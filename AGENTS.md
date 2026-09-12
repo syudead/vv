@@ -21,3 +21,6 @@ file into a handbook.
 - Do not hand-edit files in `docs/generated/`; update their source or generator.
 - Add links to new design documents and product specifications from their
   respective index files.
+- Every push to a feature branch gets a pull request. After pushing, open a PR
+  against `main` if one does not exist yet, so no pushed branch is left without
+  a review target.
