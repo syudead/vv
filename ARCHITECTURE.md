@@ -9,17 +9,22 @@ Expand the sections below as implementation lands.
 
 ## Intended topology
 
-A single Node.js process (Hono) serves the JSON API, the built React SPA, and
-byte-range video streaming, backed by SQLite and by video files on a mounted
-volume. `ffmpeg`/`ffprobe` run as child processes for metadata, thumbnails, and
-subtitle conversion. Everything ships as one container.
+A single Go binary serves the JSON API, the embedded React SPA build, and
+byte-range video streaming (via `http.ServeContent`), backed by SQLite and by
+video files on a mounted volume. `ffmpeg`/`ffprobe` run as child processes for
+metadata, thumbnails, and subtitle conversion, driven by an in-process job
+worker. Everything ships as one container.
 
 ## Intended dependency direction
 
-`apps/* -> packages/{db,media,scanner} -> packages/core`, one way only.
-`packages/core` holds the domain model and use cases and must not depend on
-HTTP, SQLite, or the filesystem. This constraint is enforced mechanically with
-dependency-cruiser in CI.
+`cmd -> internal/{httpapi,store,media,scanner,jobs} -> internal/domain`, one way
+only. `internal/domain` holds the domain model and use cases and must not depend
+on `net/http`, `database/sql`, or `os/exec`. This constraint is enforced
+mechanically with golangci-lint's depguard in CI.
+
+The API contract in `api/openapi.yaml` is the single source of truth for the
+boundary between the Go backend and the TypeScript frontend; both sides are
+generated from it.
 
 ## Principles
 
