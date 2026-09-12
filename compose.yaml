@@ -1,0 +1,29 @@
+# make up の実体。ホストに必要なのは Docker のみ（research.md R-003）。
+# プロジェクト名を固定するので、データ用ボリュームの名前は vv_data になる
+# （quickstart.md S4 が参照する名前）。
+name: vv
+
+services:
+  mdm:
+    build:
+      context: .
+      args:
+        VERSION: ${VV_VERSION:-dev}
+    ports:
+      - "8080:8080"
+    environment:
+      MDM_ADDR: ":8080"
+      MDM_MEDIA_DIR: "/media"
+      MDM_DATA_DIR: "/data"
+      MDM_LOG_LEVEL: "${MDM_LOG_LEVEL:-info}"
+    volumes:
+      # 動画を置いた場所を MDM_MEDIA_HOST_DIR で差し替えられる。読み取り専用。
+      - "${MDM_MEDIA_HOST_DIR:-./media}:/media:ro"
+      # データベースは名前付きボリュームに置く。消しても次の起動で作り直される。
+      - "data:/data"
+    # 猶予 10 秒の停止処理（contracts/http-routes.md）が終わるまで待つ。
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+volumes:
+  data:

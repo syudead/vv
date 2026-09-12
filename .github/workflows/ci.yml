@@ -1,0 +1,100 @@
+# FR-012 の自動検証。手元の make check と同じ目標を呼び、判定が一致する状態を保つ。
+# ジョブは Go と Web で分けて並行させ、重いイメージビルドは別ジョブにする
+# （research.md R-012 / SC-004: 10 分以内）。
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          # 版は go.mod に合わせる（research.md R-002）。
+          go-version-file: go.mod
+          cache: true
+
+      - name: 書式の差分を確認する
+        run: make fmt-check-go
+
+      - name: 静的検査（depguard を含む）
+        run: make lint-go
+
+      - name: テスト
+        run: make test-go
+
+  web:
+    name: Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 依存を取得する
+        run: npm --prefix web ci
+
+      - name: 書式の差分を確認する
+        run: make fmt-check-web
+
+      - name: 静的検査（型検査）
+        run: make lint-web
+
+      - name: ビルド検証
+        run: make test-web
+
+  generated:
+    name: Generated code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      # make generate の再実行で差分が出る状態は失敗とみなす（FR-012）。
+      - name: 生成物が契約と一致しているか確認する
+        run: make generate-check
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: docker/setup-buildx-action@v3
+
+      # make up が通ることの確認。公開はしない。
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          build-args: |
+            VERSION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -10,6 +10,24 @@ Thumbs.db
 node_modules/
 dist/
 build/
+/bin/
+
+# web/dist is the embed target for the Go binary. The two placeholder files below
+# are version controlled so that `go build ./...` works without a web build; every
+# other build artefact under web/dist stays out of version control. A local
+# `make build` overwrites the tracked index.html placeholder -- see
+# docs/exec-plans/tech-debt.md (TD-002).
+!web/dist/
+web/dist/*
+!web/dist/.gitkeep
+!web/dist/index.html
+
+# make test-web のビルド検証の出力先
+/web/.vite-build-check/
+
+# make dev が使う手元の作業場所
+/media/
+/.local/
 
 # Environment
 .env

@@ -1,0 +1,21 @@
+# ビルドに要らないものは context へ入れない。
+# .git を除くため、Dockerfile では go build -buildvcs=false を指定している。
+.git
+.gitignore
+.github
+.claude
+.specify
+.dockerignore
+Dockerfile
+compose.yaml
+Makefile
+bin/
+docs/
+specs/
+**/node_modules
+# SPA の成果物は web ステージから COPY する。手元のビルドを持ち込まない。
+web/dist
+*.log
+.env
+.env.*
+.DS_Store
