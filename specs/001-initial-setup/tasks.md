@@ -103,7 +103,7 @@
 - [X] T031 [P] [US2] Web 側の検査を `web/package.json` の scripts に定義し、`Makefile` の `lint`／`test` から呼ぶ。Phase 0 の Web はビルド検証（`tsc` + `vite build`）までとし、E2E は入れない（[plan.md](./plan.md) Technical Context）
 - [X] T032 [US2] `.github/workflows/ci.yml` を作成する。`main` への PR と push で実行し、Go と Web のジョブを分けて並行させ、どちらも `Makefile` の目標を呼ぶ。Go の版は `actions/setup-go` の `go-version-file: go.mod` で `go.mod` に合わせ、依存をキャッシュする。Docker イメージのビルドは別ジョブにする（FR-012／SC-004、[R-012](./research.md)）
 - [X] T033 [US2] `internal/domain` に `import _ "net/http"` を一時的に足して `make lint` が失敗し、出力に禁止理由が含まれることを確認する。`database/sql` と `os/exec` でも同様に確認し、確認後は変更を戻して `make lint` が成功することを確かめる（[quickstart.md](./quickstart.md) S8）
-- [ ] T034 [US2] `Makefile` の `check` 目標を `time make check` で計測し、手元で 5 分以内に完了することを確認する（SC-002）。超える場合は検査を別目標へ切り出すのではなく原因を直す（[contracts/developer-commands.md](./contracts/developer-commands.md)）
+- [X] T034 [US2] `Makefile` の `check` 目標を `time make check` で計測し、手元で 5 分以内に完了することを確認する（SC-002）。超える場合は検査を別目標へ切り出すのではなく原因を直す（[contracts/developer-commands.md](./contracts/developer-commands.md)）
 
 **Checkpoint**: US1 と US2 がそれぞれ独立して成立している。壊れた変更は人手のレビューに到達する前に止まる
 
