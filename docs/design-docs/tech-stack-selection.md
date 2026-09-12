@@ -143,6 +143,12 @@ DB は「再構築可能なインデックス」に限定する。タグ・再�
   「FTS5 仮想テーブルを `tokenize='trigram'` で作成して検索する」最小テストを
   置き、通らなければ `mattn/go-sqlite3` + `-tags sqlite_fts5` に切り替える
   （trigram は SQLite 3.34 以降が必要なので同梱バージョンも確認する）。
+  **2026-09-12 追記: 検証済み。** `modernc.org/sqlite` v1.58.0（同梱 SQLite 3.53.4）で
+  trigram の作成と検索が動作したため、切り替えは行わない。ただし trigram は
+  2文字以下の検索語に `MATCH` が一致しないことが判明したため、検索は
+  「3文字以上は `MATCH`、1〜2文字は FTS5 表への `LIKE`」の2経路にする
+  （[実測](../../specs/001-initial-setup/research.md)、
+  [tech-debt TD-001](../exec-plans/tech-debt.md)）。
 - **非対応コーデックの混入。** H.265/VP9/mkv などはブラウザで再生できない。
   取り込み時に `ffprobe` で判定し、再生不可を UI に明示する。変換は
   「6. 将来の拡張ポイント」の対象。
