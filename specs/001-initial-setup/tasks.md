@@ -127,7 +127,7 @@
 
 **Purpose**: 受け入れ検証と、変更と同じ単位での文書更新
 
-- [ ] T038 [quickstart.md](./quickstart.md) の S1〜S10 を順に実行し、すべて期待どおりであることを確認する — S2・S3・S5〜S10 は確認済み。残りは S1・S4（コンテナを起動して確かめる部分）で、実装した環境に Docker デーモンが無く、イメージ取得も遮断されていたため実行できていない。イメージのビルド自体は CI の Docker ジョブで成功している。内訳は [docs/exec-plans/active/001-initial-setup.md](../../docs/exec-plans/active/001-initial-setup.md) の「受け入れ検証の内訳」
+- [ ] T038 [quickstart.md](./quickstart.md) の S1〜S10 を順に実行し、すべて期待どおりであることを確認する — S2〜S10 は確認済み。S1 も Docker を使わない経路（`make build` の単一バイナリ + Chromium、`docker compose config`、CI の Docker ジョブでのイメージビルド）で中身を確認した。残るのは `make up` でコンテナとして起動する部分だけで、実装した環境に Docker デーモンが無く、イメージ取得も遮断されていたため実行できていない。内訳は [docs/exec-plans/active/001-initial-setup.md](../../docs/exec-plans/active/001-initial-setup.md) の「受け入れ検証の内訳」
 - [X] T039 `docs/exec-plans/active/001-initial-setup.md` の「進捗」表と「決定の記録」を更新する（FR-017）。受け入れ検証まで完了したら `docs/exec-plans/completed/` へ移す（`AGENTS.md`）
 - [X] T040 [P] 実装中に受け入れた妥協点を `docs/exec-plans/tech-debt.md` に記録する
 - [X] T041 [P] `ARCHITECTURE.md` の "Intended topology" と "Intended dependency direction" を、実際に入った配置に合わせて更新する（「No application code has been introduced yet」の記述を含む）
