@@ -22,13 +22,21 @@ DEV_DATA_DIR  ?= $(CURDIR)/.local/data
 GENERATED := internal/httpapi/gen/api.gen.go web/src/api/gen/openapi.ts
 
 .DEFAULT_GOAL := help
-.PHONY: help up down dev build generate fmt lint test check
+.PHONY: help setup up down dev build generate fmt lint test check
 .PHONY: fmt-check fmt-check-go fmt-check-web generate-check
 .PHONY: lint-go lint-web test-go test-web
 
 help: ## 目標の一覧を表示する
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
+
+setup: ## 依存と開発ツールを先に取得する（Claude Code の SessionStart フックが呼ぶ）
+	go mod download
+	$(NPM) install
+	@# 初回の make lint は golangci-lint の取得とビルドに数分かかるので先に済ませる。
+	$(GOLANGCI_LINT) --version
+	@# 依存のビルドキャッシュも温める（modernc.org/sqlite が大きい）。
+	go build ./...
 
 up: ## Docker でイメージを構築して起動する（導入手順で最初に実行する唯一のコマンド）
 	docker compose up --build

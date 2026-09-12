@@ -141,5 +141,5 @@ go test ./internal/store/ -run FTS -v
 
 S1〜S10 がすべて期待どおりであれば、Phase 0 は完了とみなす。
 結果と、その過程で判明した妥協点は
-[docs/exec-plans/active/001-initial-setup.md](../../docs/exec-plans/active/001-initial-setup.md)
+[docs/exec-plans/completed/001-initial-setup.md](../../docs/exec-plans/completed/001-initial-setup.md)
 と [docs/exec-plans/tech-debt.md](../../docs/exec-plans/tech-debt.md) に記録する。

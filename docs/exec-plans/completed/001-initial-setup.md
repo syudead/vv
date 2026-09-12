@@ -1,6 +1,6 @@
 # 実行計画: 初期セットアップ（Phase 0 骨組み）
 
-- ステータス: 実装完了（受け入れ検証は S1／S4 のコンテナ起動のみ環境待ち）
+- ステータス: 完了。S1〜S10 の期待はすべて確認した（コンテナとして起動する経路も含む）
 - 最終更新: 2026-09-12
 - 対象: [技術選定文書](../../design-docs/tech-stack-selection.md) 「8. 実装の進め方」の Phase 0
 
@@ -37,17 +37,17 @@
 | 計画・設計 | 完了（2026-09-12） |
 | タスク分解 | 完了（2026-09-12、[tasks.md](../../../specs/001-initial-setup/tasks.md) に 43 タスク） |
 | 実装 | 完了（2026-09-12、43 タスクすべて） |
-| 受け入れ検証（S1〜S10） | S2・S3・S5〜S10 は確認済み。S1・S4 のコンテナ起動のみ実行環境待ち |
+| 受け入れ検証（S1〜S10） | 完了（2026-09-12）。S1〜S10 すべて期待どおり。制約は下記の1点のみ |
 
 ### 受け入れ検証の内訳
 
 | シナリオ | 結果 |
 | --- | --- |
-| S1: `make up` で起動 | 一部確認。イメージのビルドは CI の Docker ジョブで成功している（約 70 秒）。起動してブラウザで確認する部分は未実行で、実装した環境に Docker デーモンが無く、レジストリの取得も遮断されていたため |
+| S1: `make up` で起動 | 確認済み。コンテナを起動して `http://localhost:8080` が開けること、`HEALTHCHECK` が `healthy` になること、`/media` が読み取り専用であること、`VERSION` ビルド引数が `version` に反映されることを確認した。Chromium でもアプリケーション名と `status: ok` が描画された。ビルドは CI の Docker ジョブでも成功している（約 70 秒）|
 | S2: `/api/health` が機械可読な応答を返す | 確認済み。`200`／`Content-Type: application/json; charset=utf-8`／`Cache-Control: no-store`、本文に `status`・`version` |
-| S3: SPA のフォールバックと `/api/*` の JSON `404` | 確認済み。`/` と `/anything` が `index.html`、`/api/nope` が `Error` スキーマの JSON `404` |
-| S4: データを消しても自動で復帰 | 名前付きボリュームでの確認は未実行（S1 と同じ理由）。同じ振る舞いは `TestMigrateRecoversAfterDatabaseFileIsDeleted` で自動検証している |
-| S5: 安全に停止する | 確認済み。`SIGTERM` で猶予付きに終了し、終了コードは `0`。再起動後も S2 が同じ結果 |
+| S3: SPA のフォールバックと `/api/*` の JSON `404` | 確認済み。Chromium で `/` と `/anything` が同一の画面を描画し、`/api/nope` は `Error` スキーマの JSON `404`。本物の Vite ビルドの `/assets/index-*.js` が `public, max-age=31536000, immutable` で返ることも確認 |
+| S4: データを消しても自動で復帰 | 確認済み。`make down` → `docker volume rm vv_data` → 再起動で、追加の操作なしに `status: ok`、記録に `applied: 1`。`MDM_DATA_DIR` を直接削除する経路でも同じ結果。`TestMigrateRecoversAfterDatabaseFileIsDeleted` でも自動検証している |
+| S5: 安全に停止する | 確認済み。バイナリ単体でも、コンテナでも `SIGTERM` で終了コード `0`。処理中の要求が無ければ猶予を待たず即座に終了する |
 | S6: 前提ツールが欠けていれば原因が分かる形で止まる | 確認済み。終了コード非0で、不足しているコマンド名（`ffprobe, ffmpeg`）と導入方法を出力 |
 | S7: `make check` が1コマンドで通る | 確認済み。`time make check` は約 9 秒（SC-002 の 5 分に対して十分な余裕。初回は `golangci-lint` の取得とビルドに数分かかる） |
 | S8: 依存方向の違反が止まる | 確認済み。`net/http`・`database/sql`・`os/exec` の3つとも `make lint` が失敗し、出力に禁止理由の文言が出る |
@@ -89,3 +89,23 @@
   Docker デーモンが無く、イメージレジストリへの取得も遮断されていたため、S1・S4 と
   イメージのビルドは実行していない。`Dockerfile`・`compose.yaml`・CI の設定は
   入れてあるので、Docker が使える環境と Pull Request 上で確認する必要がある。
+- **2026-09-12: 受け入れ検証はコンテナ経路まで完了した。** 当初この環境では Docker が
+  使えないと判断していたが、それは誤りだった。`dockerd` は入っており（root 権限あり）、
+  起動していなかっただけである。イメージ取得はマニフェストは通り blob だけが 403
+  だったので、`/etc/docker/daemon.json` に Docker Hub の公式ミラー
+  （`https://mirror.gcr.io`）を設定して解決した。`Dockerfile` は変更していない。
+  これでコンテナを起動し、ポート公開・`HEALTHCHECK`・`/media` の読み取り専用バインド・
+  `vv_data` ボリュームの寿命・停止（終了コード `0`）をすべて確認した。
+- **2026-09-12: 唯一の制約は最終段の `apk add` である。** この環境では
+  `dl-cdn.alpinelinux.org` が許可リストに無く（CA を信頼させると TLS は通るが 403）、
+  `make up` を一気に完走させることはできない。そのため実行時の確認では
+  `ffmpeg`／`ffprobe` をスタブに差し替えた最終段で起動した。Phase 0 の機能は
+  これらのコマンドを実行せず存在確認（`exec.LookPath`）だけを行うため、
+  起動経路の検証には影響しない。**本物の `ffmpeg` が入ることは CI の Docker ジョブ
+  （`apk add` の成功）で確認済みで、不足時の挙動は S6 で確認済みである。**
+  したがって S1 の期待はすべて確認できているが、`make up` 単体をこの開発環境で
+  完走させることはできない。通常の開発機では制約にならない。
+- **2026-09-12: 補助的に使った確認手段。** `docker compose config`（デーモン不要で
+  `compose.yaml` を解決し、ボリューム実名が `vv_data` になることを確認）、
+  `apt-get install ffmpeg` による本物の導入（バイナリ単体での起動前確認）、
+  同梱の Chromium を Playwright で駆動（画面の描画と JS の誤りの有無）。
