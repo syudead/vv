@@ -1,6 +1,6 @@
 # 実行計画: 初期セットアップ（Phase 0 骨組み）
 
-- ステータス: 実装完了（受け入れ検証は S1／S4／S10 が環境待ち）
+- ステータス: 実装完了（受け入れ検証は S1／S4 のコンテナ起動のみ環境待ち）
 - 最終更新: 2026-09-12
 - 対象: [技術選定文書](../../design-docs/tech-stack-selection.md) 「8. 実装の進め方」の Phase 0
 
@@ -37,13 +37,13 @@
 | 計画・設計 | 完了（2026-09-12） |
 | タスク分解 | 完了（2026-09-12、[tasks.md](../../../specs/001-initial-setup/tasks.md) に 43 タスク） |
 | 実装 | 完了（2026-09-12、43 タスクすべて） |
-| 受け入れ検証（S1〜S10） | S2・S3・S5〜S9 は確認済み。S1・S4（Docker）と S10（CI）は実行環境待ち |
+| 受け入れ検証（S1〜S10） | S2・S3・S5〜S10 は確認済み。S1・S4 のコンテナ起動のみ実行環境待ち |
 
 ### 受け入れ検証の内訳
 
 | シナリオ | 結果 |
 | --- | --- |
-| S1: `make up` で起動 | 未実行。実装した環境に Docker デーモンが無く、レジストリの取得も遮断されていたため確認できていない |
+| S1: `make up` で起動 | 一部確認。イメージのビルドは CI の Docker ジョブで成功している（約 70 秒）。起動してブラウザで確認する部分は未実行で、実装した環境に Docker デーモンが無く、レジストリの取得も遮断されていたため |
 | S2: `/api/health` が機械可読な応答を返す | 確認済み。`200`／`Content-Type: application/json; charset=utf-8`／`Cache-Control: no-store`、本文に `status`・`version` |
 | S3: SPA のフォールバックと `/api/*` の JSON `404` | 確認済み。`/` と `/anything` が `index.html`、`/api/nope` が `Error` スキーマの JSON `404` |
 | S4: データを消しても自動で復帰 | 名前付きボリュームでの確認は未実行（S1 と同じ理由）。同じ振る舞いは `TestMigrateRecoversAfterDatabaseFileIsDeleted` で自動検証している |
@@ -52,7 +52,7 @@
 | S7: `make check` が1コマンドで通る | 確認済み。`time make check` は約 9 秒（SC-002 の 5 分に対して十分な余裕。初回は `golangci-lint` の取得とビルドに数分かかる） |
 | S8: 依存方向の違反が止まる | 確認済み。`net/http`・`database/sql`・`os/exec` の3つとも `make lint` が失敗し、出力に禁止理由の文言が出る |
 | S9: 日本語の部分一致検索の前提が成り立つ | 確認済み。`go test ./internal/store/ -run FTS -v` が 6 件すべて成功（2文字の `MATCH` が0件であることも固定） |
-| S10: 変更提案で同じ検証が自動実行される | 未実行。CI の設定は入れたが、実際の実行結果は Pull Request 上で確認する |
+| S10: 変更提案で同じ検証が自動実行される | 確認済み。Pull Request #6 で Go・Web・Generated code・Docker image の 4 ジョブがすべて成功。実行時間は約 1 分 50 秒（SC-004 は 10 分）。呼んでいる目標は `make check` と同じもの |
 
 ## 決定の記録
 

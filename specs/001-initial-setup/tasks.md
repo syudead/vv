@@ -127,12 +127,12 @@
 
 **Purpose**: 受け入れ検証と、変更と同じ単位での文書更新
 
-- [ ] T038 [quickstart.md](./quickstart.md) の S1〜S10 を順に実行し、すべて期待どおりであることを確認する — S2・S3・S5〜S9 は確認済み。S1・S4（Docker デーモンとイメージ取得が使えない環境で実装したため）と S10（Pull Request 上で確認する）が残っている。内訳は [docs/exec-plans/active/001-initial-setup.md](../../docs/exec-plans/active/001-initial-setup.md) の「受け入れ検証の内訳」
+- [ ] T038 [quickstart.md](./quickstart.md) の S1〜S10 を順に実行し、すべて期待どおりであることを確認する — S2・S3・S5〜S10 は確認済み。残りは S1・S4（コンテナを起動して確かめる部分）で、実装した環境に Docker デーモンが無く、イメージ取得も遮断されていたため実行できていない。イメージのビルド自体は CI の Docker ジョブで成功している。内訳は [docs/exec-plans/active/001-initial-setup.md](../../docs/exec-plans/active/001-initial-setup.md) の「受け入れ検証の内訳」
 - [X] T039 `docs/exec-plans/active/001-initial-setup.md` の「進捗」表と「決定の記録」を更新する（FR-017）。受け入れ検証まで完了したら `docs/exec-plans/completed/` へ移す（`AGENTS.md`）
 - [X] T040 [P] 実装中に受け入れた妥協点を `docs/exec-plans/tech-debt.md` に記録する
 - [X] T041 [P] `ARCHITECTURE.md` の "Intended topology" と "Intended dependency direction" を、実際に入った配置に合わせて更新する（「No application code has been introduced yet」の記述を含む）
 - [X] T042 [P] `README.md` の "Repository structure" を、`cmd/`・`internal/`・`api/`・`web/` が入った後の実際の構成に更新する
-- [ ] T043 `Makefile` の `check` と `.github/workflows/ci.yml` の両方が緑であることを確認し、同じ判定になっていることを確かめる（FR-011／FR-012）— `make check` は緑（約 9 秒）。CI 側は Pull Request 上で確認する
+- [X] T043 `Makefile` の `check` と `.github/workflows/ci.yml` の両方が緑であることを確認し、同じ判定になっていることを確かめる（FR-011／FR-012）— `make check` は緑（約 9 秒）、CI も 4 ジョブすべて緑（約 1 分 50 秒、SC-004 の 10 分に対して余裕あり）。CI は `make fmt-check-go` / `lint-go` / `test-go` / `fmt-check-web` / `lint-web` / `test-web` / `generate-check` を呼ぶので、`make check` と同じ検査で同じ判定になっている
 
 ---
 
