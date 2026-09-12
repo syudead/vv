@@ -30,13 +30,13 @@
 
 **Purpose**: リポジトリに Go／Web のプロジェクトとしての体裁と、6 つのモジュール境界を置く
 
-- [ ] T001 `go.mod` を作成する。モジュールパスは `github.com/syudead/vv`、`go` ディレクティブは `1.26.0`。`toolchain` 行は書かない（[R-002](./research.md)）
-- [ ] T002 [P] `.gitignore` を更新する。既存の `dist/` 行が embed 用プレースホルダを除外してしまうため `!web/dist/` と `!web/dist/index.html` の否定パターンを追加し、あわせて `/bin/` を無視対象に加える（[R-008](./research.md)）
-- [ ] T003 [P] 6 つのモジュール境界を `doc.go` だけで宣言する（FR-009／SC-005）: `internal/domain/doc.go`、`internal/httpapi/doc.go`、`internal/store/doc.go`、`internal/media/doc.go`、`internal/scanner/doc.go`、`internal/jobs/doc.go`。各ファイルにパッケージの責務と、`cmd → internal/{httpapi,store,media,scanner,jobs} → internal/domain` の一方向の依存だけが許されることを書く（`ARCHITECTURE.md`）
-- [ ] T004 [P] Web プロジェクトを用意する: `web/package.json`（React 19 / Vite 8 / TypeScript、`engines` に Node 22）、`web/tsconfig.json`、`web/vite.config.ts`（`build.outDir` は `dist`）、`web/tailwind.config.ts`、`web/index.html`、`web/src/main.tsx`、`web/src/index.css`（Tailwind CSS 4 の読み込み）。`App.tsx` は US1 で作るのでここでは作らない
-- [ ] T005 [P] embed 対象のプレースホルダを版管理に置く: `web/dist/.gitkeep` と最小の `web/dist/index.html`。`web` をビルドしていない状態でも `go build` が通る状態にする（[R-008](./research.md)）
-- [ ] T006 [P] `api/openapi.yaml` を作成する。内容は [contracts/openapi.yaml](./contracts/openapi.yaml) をそのまま置き、以後はこのファイルを唯一の真実として扱う（[R-010](./research.md)）
-- [ ] T007 `Makefile` を作成し、[contracts/developer-commands.md](./contracts/developer-commands.md) の 9 目標（`up` / `down` / `dev` / `build` / `generate` / `fmt` / `lint` / `test` / `check`）をすべて宣言する。この時点では中身が未実装の目標があってよい（`up`/`down`/`dev`/`build` は T027、`fmt`/`lint`/`test`/`check` は T030、`generate` は T008 で埋める）
+- [X] T001 `go.mod` を作成する。モジュールパスは `github.com/syudead/vv`、`go` ディレクティブは `1.26.0`。`toolchain` 行は書かない（[R-002](./research.md)）
+- [X] T002 [P] `.gitignore` を更新する。既存の `dist/` 行が embed 用プレースホルダを除外してしまうため `!web/dist/` と `!web/dist/index.html` の否定パターンを追加し、あわせて `/bin/` を無視対象に加える（[R-008](./research.md)）
+- [X] T003 [P] 6 つのモジュール境界を `doc.go` だけで宣言する（FR-009／SC-005）: `internal/domain/doc.go`、`internal/httpapi/doc.go`、`internal/store/doc.go`、`internal/media/doc.go`、`internal/scanner/doc.go`、`internal/jobs/doc.go`。各ファイルにパッケージの責務と、`cmd → internal/{httpapi,store,media,scanner,jobs} → internal/domain` の一方向の依存だけが許されることを書く（`ARCHITECTURE.md`）
+- [X] T004 [P] Web プロジェクトを用意する: `web/package.json`（React 19 / Vite 8 / TypeScript、`engines` に Node 22）、`web/tsconfig.json`、`web/vite.config.ts`（`build.outDir` は `dist`）、`web/tailwind.config.ts`、`web/index.html`、`web/src/main.tsx`、`web/src/index.css`（Tailwind CSS 4 の読み込み）。`App.tsx` は US1 で作るのでここでは作らない
+- [X] T005 [P] embed 対象のプレースホルダを版管理に置く: `web/dist/.gitkeep` と最小の `web/dist/index.html`。`web` をビルドしていない状態でも `go build` が通る状態にする（[R-008](./research.md)）
+- [X] T006 [P] `api/openapi.yaml` を作成する。内容は [contracts/openapi.yaml](./contracts/openapi.yaml) をそのまま置き、以後はこのファイルを唯一の真実として扱う（[R-010](./research.md)）
+- [X] T007 `Makefile` を作成し、[contracts/developer-commands.md](./contracts/developer-commands.md) の 9 目標（`up` / `down` / `dev` / `build` / `generate` / `fmt` / `lint` / `test` / `check`）をすべて宣言する。この時点では中身が未実装の目標があってよい（`up`/`down`/`dev`/`build` は T027、`fmt`/`lint`/`test`/`check` は T030、`generate` は T008 で埋める）
 
 **Checkpoint**: `go build ./...` が通り、6 パッケージと web プロジェクトがリポジトリ上に存在する
 
@@ -48,12 +48,12 @@
 
 **⚠️ CRITICAL**: このフェーズが完了するまで、ユーザーストーリーの作業は始められない
 
-- [ ] T008 コード生成を配線する: `api/oapi-codegen.yaml`（出力 `internal/httpapi/gen/api.gen.go`、`oapi-codegen` v2.8.0）と、`openapi-typescript` v7.13.0 による `web/src/api/gen/openapi.ts` の生成を `Makefile` の `generate` 目標に実装する。生成器の版はコマンド行で固定する（[R-010](./research.md)）
-- [ ] T009 `make generate` を実行し、生成物 `internal/httpapi/gen/api.gen.go` と `web/src/api/gen/openapi.ts` を版管理に含める。生成物は手編集しない（`AGENTS.md`）
-- [ ] T010 [P] `internal/domain/health.go` に稼働情報の値を定義する。`Status` は enum(`ok`, `degraded`)、`Version` string、`Commit` string、`BuiltAt` time。判定は要求のたびに行い状態を保持しない。このパッケージは `net/http`・`database/sql`・`os/exec`・他の `internal/*` に依存しない（[data-model.md](./data-model.md)）
-- [ ] T011 `internal/store/sqlite.go` に SQLite 接続を実装する。ドライバは `modernc.org/sqlite` v1.58.0（CGO 不要）。接続時に `journal_mode=WAL`、`busy_timeout`、`foreign_keys=ON` を設定し、疎通確認用の Ping を公開する。データベースのパスは `DataDir/mdm.db` に固定し、設定項目にしない（[data-model.md](./data-model.md)）
-- [ ] T012 [P] `internal/store/migrations/00001_init.sql` を goose 形式で作成する。`videos` の列は data-model.md の定義どおり: `id` integer primary key（FTS5 の `rowid` と対応させる）、`path` text **not null, unique**（ファイルの絶対パス。保存前に Unicode NFC へ正規化する）、`title` text **not null**、`size_bytes` integer **not null**、`mtime` integer **not null**（Unix 秒）、`added_at` integer **not null, default**（Unix 秒）。あわせて `fts5(title, path, content='videos', content_rowid='id', tokenize='trigram')` の `videos_fts` と、`videos` への `INSERT`／`UPDATE`／`DELETE` を同期するトリガを作る
-- [ ] T013 `internal/store/migrate.go` に起動時マイグレーションを実装する。`github.com/pressly/goose/v3` v3.28.0 のライブラリ API と `embed.FS` を使い、(1) 未適用があれば適用、(2) データベースがアプリケーションの知らない**将来の版**を持っていた場合は何も書き換えずに起動を中止、(3) ファイルが存在しない場合は作成してから適用、を満たす（[data-model.md](./data-model.md) / [R-006](./research.md)）
+- [X] T008 コード生成を配線する: `api/oapi-codegen.yaml`（出力 `internal/httpapi/gen/api.gen.go`、`oapi-codegen` v2.8.0）と、`openapi-typescript` v7.13.0 による `web/src/api/gen/openapi.ts` の生成を `Makefile` の `generate` 目標に実装する。生成器の版はコマンド行で固定する（[R-010](./research.md)）
+- [X] T009 `make generate` を実行し、生成物 `internal/httpapi/gen/api.gen.go` と `web/src/api/gen/openapi.ts` を版管理に含める。生成物は手編集しない（`AGENTS.md`）
+- [X] T010 [P] `internal/domain/health.go` に稼働情報の値を定義する。`Status` は enum(`ok`, `degraded`)、`Version` string、`Commit` string、`BuiltAt` time。判定は要求のたびに行い状態を保持しない。このパッケージは `net/http`・`database/sql`・`os/exec`・他の `internal/*` に依存しない（[data-model.md](./data-model.md)）
+- [X] T011 `internal/store/sqlite.go` に SQLite 接続を実装する。ドライバは `modernc.org/sqlite` v1.58.0（CGO 不要）。接続時に `journal_mode=WAL`、`busy_timeout`、`foreign_keys=ON` を設定し、疎通確認用の Ping を公開する。データベースのパスは `DataDir/mdm.db` に固定し、設定項目にしない（[data-model.md](./data-model.md)）
+- [X] T012 [P] `internal/store/migrations/00001_init.sql` を goose 形式で作成する。`videos` の列は data-model.md の定義どおり: `id` integer primary key（FTS5 の `rowid` と対応させる）、`path` text **not null, unique**（ファイルの絶対パス。保存前に Unicode NFC へ正規化する）、`title` text **not null**、`size_bytes` integer **not null**、`mtime` integer **not null**（Unix 秒）、`added_at` integer **not null, default**（Unix 秒）。あわせて `fts5(title, path, content='videos', content_rowid='id', tokenize='trigram')` の `videos_fts` と、`videos` への `INSERT`／`UPDATE`／`DELETE` を同期するトリガを作る
+- [X] T013 `internal/store/migrate.go` に起動時マイグレーションを実装する。`github.com/pressly/goose/v3` v3.28.0 のライブラリ API と `embed.FS` を使い、(1) 未適用があれば適用、(2) データベースがアプリケーションの知らない**将来の版**を持っていた場合は何も書き換えずに起動を中止、(3) ファイルが存在しない場合は作成してから適用、を満たす（[data-model.md](./data-model.md) / [R-006](./research.md)）
 
 **Checkpoint**: 契約からの生成物がそろい、空のデータベースにスキーマを適用できる。ここから US1／US2／US3 は並行して進められる
 

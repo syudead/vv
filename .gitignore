@@ -10,6 +10,13 @@ Thumbs.db
 node_modules/
 dist/
 build/
+/bin/
+
+# web/dist is the embed target for the Go binary. The placeholder files below
+# are version controlled so that `go build ./...` works without a web build.
+!web/dist/
+!web/dist/.gitkeep
+!web/dist/index.html
 
 # Environment
 .env
