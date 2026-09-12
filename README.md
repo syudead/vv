@@ -50,6 +50,7 @@ MDM_MEDIA_HOST_DIR=/path/to/videos make up
 
 | 目標 | 内容 |
 | --- | --- |
+| `make setup` | 依存と開発ツールを先に取得する |
 | `make up` / `make down` | Docker で起動・停止する |
 | `make dev` | Go サーバーと Vite 開発サーバーを起動する |
 | `make build` | SPA をビルドして埋め込み、`bin/mdm` を生成する |
@@ -63,6 +64,9 @@ MDM_MEDIA_HOST_DIR=/path/to/videos make up
 このファイルを直して `make generate` を実行する。生成物
 （`internal/httpapi/gen/`、`web/src/api/gen/`）は手編集しない。
 
+Claude Code on the web でセッションを開くと、`.claude/hooks/session-start.sh` が
+`make setup` を呼んで依存と `golangci-lint` を先に用意する。手元の CLI では何もしない。
+
 ## Repository structure
 
 ```text
@@ -71,6 +75,9 @@ MDM_MEDIA_HOST_DIR=/path/to/videos make up
 ├── ARCHITECTURE.md
 ├── Dockerfile              # multi-stage（web ビルド → go ビルド → alpine + ffmpeg）
 ├── Makefile                # 開発者向けコマンドの入口
+├── .claude/
+│   ├── hooks/              # Claude Code の SessionStart フック（依存の先出し）
+│   └── settings.json
 ├── compose.yaml            # make up の実体
 ├── api/
 │   └── openapi.yaml        # API 契約（Go/TS 双方の生成元、唯一の真実）
