@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,10 +31,8 @@
 
 ## Notes
 
-- 未解決は2件。いずれもコアの範囲を決める問いであり、回答するまで `/speckit-plan` に
-  進まないこと。
-  - Q1: 整理機能（タグ・お気に入り・コレクション）をコアに含めるか
-  - Q2: 画像（静止画）をコアの管理対象に含めるか
-- 上記が確定したら spec.md の [NEEDS CLARIFICATION] を回答で置き換え、「スコープ外」の
-  一覧を更新し、本チェックリストの該当項目を [x] にする。
+- 全項目が合格。`/speckit-plan` へ進める状態である。
+- 未解決だった2件は 2026-09-12 に確定した。
+  - Q1: 整理機能（タグ・お気に入り・コレクション）→ **コアに含めない**（次段階へ）
+  - Q2: 画像（静止画）→ **コアに含めない**（管理対象は動画のみ）
 - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
