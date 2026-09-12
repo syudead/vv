@@ -1,8 +1,25 @@
 # Architecture
 
-This repository is an initial harness scaffold and does not yet contain an
-application. Document the system's major components, boundaries, dependency
-direction, and runtime topology here as implementation is introduced.
+This repository targets a self-hosted media data management (MDM) system: it
+indexes video files on local storage and plays them back in a browser. No
+application code has been introduced yet; the selected stack and the intended
+component boundaries are recorded in
+[docs/design-docs/tech-stack-selection.md](docs/design-docs/tech-stack-selection.md).
+Expand the sections below as implementation lands.
+
+## Intended topology
+
+A single Node.js process (Hono) serves the JSON API, the built React SPA, and
+byte-range video streaming, backed by SQLite and by video files on a mounted
+volume. `ffmpeg`/`ffprobe` run as child processes for metadata, thumbnails, and
+subtitle conversion. Everything ships as one container.
+
+## Intended dependency direction
+
+`apps/* -> packages/{db,media,scanner} -> packages/core`, one way only.
+`packages/core` holds the domain model and use cases and must not depend on
+HTTP, SQLite, or the filesystem. This constraint is enforced mechanically with
+dependency-cruiser in CI.
 
 ## Principles
 
