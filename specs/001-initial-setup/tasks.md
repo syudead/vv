@@ -69,24 +69,24 @@
 
 > **NOTE: 先にこれらを書き、実装前に失敗することを確認する**
 
-- [ ] T014 [P] [US1] `cmd/mdm/config_test.go`: 環境変数が未設定でも既定値（`MDM_ADDR`=`:8080`、`MDM_MEDIA_DIR`=`/media`、`MDM_DATA_DIR`=`/data`、`MDM_LOG_LEVEL`=`info`）で組み立てられること、および不正な値が**まとめて**列挙されること（1 つ見つけて即終了しない）を検証する（[contracts/configuration.md](./contracts/configuration.md)）
-- [ ] T015 [P] [US1] `internal/httpapi/health_test.go`: `net/http/httptest` で `GET /api/health` が `200`、`Content-Type: application/json; charset=utf-8`、`Cache-Control: no-store` を返し、本文が `status` と `version` を必ず含むこと。保存層へ疎通できない場合は `503` と `status: degraded` になることを検証する（[contracts/openapi.yaml](./contracts/openapi.yaml) / [contracts/http-routes.md](./contracts/http-routes.md)）
-- [ ] T016 [P] [US1] `internal/httpapi/spa_test.go`: 未知のパスが `index.html` を `200` で返すこと、`/api/` 配下の未定義経路は **HTML ではなく** `Error` スキーマの JSON `404` を返すこと、`index.html` が `Cache-Control: no-cache`、`/assets/*` が `public, max-age=31536000, immutable` を返すことを検証する（[contracts/http-routes.md](./contracts/http-routes.md)）
-- [ ] T017 [P] [US1] `internal/store/migrate_test.go`: 空のディレクトリから起動してスキーマが自動適用されること、データベースファイルを削除して再実行しても手作業なしに復旧すること（SC-006）、`goose_db_version` が埋め込み済みより新しい版を持つ場合は書き換えずに失敗することを検証する
+- [X] T014 [P] [US1] `cmd/mdm/config_test.go`: 環境変数が未設定でも既定値（`MDM_ADDR`=`:8080`、`MDM_MEDIA_DIR`=`/media`、`MDM_DATA_DIR`=`/data`、`MDM_LOG_LEVEL`=`info`）で組み立てられること、および不正な値が**まとめて**列挙されること（1 つ見つけて即終了しない）を検証する（[contracts/configuration.md](./contracts/configuration.md)）
+- [X] T015 [P] [US1] `internal/httpapi/health_test.go`: `net/http/httptest` で `GET /api/health` が `200`、`Content-Type: application/json; charset=utf-8`、`Cache-Control: no-store` を返し、本文が `status` と `version` を必ず含むこと。保存層へ疎通できない場合は `503` と `status: degraded` になることを検証する（[contracts/openapi.yaml](./contracts/openapi.yaml) / [contracts/http-routes.md](./contracts/http-routes.md)）
+- [X] T016 [P] [US1] `internal/httpapi/spa_test.go`: 未知のパスが `index.html` を `200` で返すこと、`/api/` 配下の未定義経路は **HTML ではなく** `Error` スキーマの JSON `404` を返すこと、`index.html` が `Cache-Control: no-cache`、`/assets/*` が `public, max-age=31536000, immutable` を返すことを検証する（[contracts/http-routes.md](./contracts/http-routes.md)）
+- [X] T017 [P] [US1] `internal/store/migrate_test.go`: 空のディレクトリから起動してスキーマが自動適用されること、データベースファイルを削除して再実行しても手作業なしに復旧すること（SC-006）、`goose_db_version` が埋め込み済みより新しい版を持つ場合は書き換えずに失敗することを検証する
 
 ### Implementation for User Story 1
 
-- [ ] T018 [US1] `cmd/mdm/config.go` に `MDM_*` 環境変数の解析と検証を実装する。検証規則は [data-model.md](./data-model.md) のとおり: `Addr` は `net.SplitHostPort` で解釈できること、`MediaDir` は絶対パスで存在と読み取り可否を確認し不可なら起動中止、`DataDir` は絶対パスで存在しなければ作成（作成失敗は起動中止）、`LogLevel` は `debug` / `info` / `warn` / `error` のいずれか。不正な項目は一度に列挙して終了する
-- [ ] T019 [US1] `internal/media/preflight.go` に起動前確認を実装する。`exec.LookPath` で `ffprobe` と `ffmpeg` を確認し、欠けていれば**不足しているコマンド名と導入方法**を含む結果を返す（FR-008／SC-008、[R-009](./research.md)）
-- [ ] T020 [US1] `internal/httpapi/health.go` に稼働確認ハンドラを実装する。`internal/domain` の Health と保存層への疎通結果から `ok`／`degraded` を決め、`200`／`503` を返す。版情報は `runtime/debug.ReadBuildInfo()` の `vcs.revision`／`vcs.time` から取り、リリース名は `-ldflags "-X main.version=…"` で上書き可能・既定は `dev`（[R-007](./research.md)）
-- [ ] T021 [US1] `internal/httpapi/spa.go` に SPA 配信を実装する。`embed.FS` で `web/dist` を同梱し、`/assets/*` は静的配信、`/api/` 配下以外の未知のパスは `index.html` にフォールバックする。応答ヘッダは [contracts/http-routes.md](./contracts/http-routes.md) の表に従う
-- [ ] T022 [US1] `internal/httpapi/router.go` に経路の分配を実装する。`/api/health` → JSON、`/api/*`（未定義） → `404` + `Error`（`index.html` を返してはならない）、それ以外 → SPA
-- [ ] T023 [US1] `cmd/mdm/main.go` に起動と停止を実装する。順序は「設定読み込み → `log/slog` の JSON ハンドラ設定 → 起動前確認（T019） → データベース接続とマイグレーション（T011／T013） → HTTP サーバー起動」。起動時に有効な設定値とバージョン情報を1行で記録する（FR-007）。`SIGINT`／`SIGTERM` を受けたら新規受付を止め、処理中の要求を**猶予 10 秒**まで待って終了し、正常終了の終了コードは `0`（[contracts/http-routes.md](./contracts/http-routes.md)）
-- [ ] T024 [P] [US1] `web/src/App.tsx` に稼働状態の画面を実装する。アプリケーション名と `/api/health` の `status`・`version` を表示し、型は `web/src/api/gen/openapi.ts`（T009 の生成物）から取る。ルーターとサーバー状態キャッシュは入れない（[R-011](./research.md)）
-- [ ] T025 [US1] `Dockerfile` を multi-stage で作成する（web ビルド → go ビルド → alpine + ffmpeg）。`CGO_ENABLED=0` を維持し、最終段に `ffmpeg`／`ffprobe` を同梱する
-- [ ] T026 [US1] `compose.yaml` を作成する。`8080` の公開、`MDM_MEDIA_DIR`／`MDM_DATA_DIR` に対応するマウント、データ用の名前付きボリューム（[quickstart.md](./quickstart.md) S4 が参照する名前と一致させる）を定義する
-- [ ] T027 [US1] `Makefile` の `up`（`docker compose up --build`）、`down`、`dev`（Go サーバーと Vite 開発サーバー）、`build`（SPA ビルド → 埋め込み → 単一バイナリ）を実装する（[contracts/developer-commands.md](./contracts/developer-commands.md)）
-- [ ] T028 [US1] `README.md` に導入手順を追記する（FR-016）。前提ツールは Docker のみ、最初に実行するコマンドは `make up` の1つだけであることを示し、その他の目標は開発者向けの補足として扱う。認証を掛けていないため外部公開を前提にしないことも明記する（[contracts/http-routes.md](./contracts/http-routes.md)）
+- [X] T018 [US1] `cmd/mdm/config.go` に `MDM_*` 環境変数の解析と検証を実装する。検証規則は [data-model.md](./data-model.md) のとおり: `Addr` は `net.SplitHostPort` で解釈できること、`MediaDir` は絶対パスで存在と読み取り可否を確認し不可なら起動中止、`DataDir` は絶対パスで存在しなければ作成（作成失敗は起動中止）、`LogLevel` は `debug` / `info` / `warn` / `error` のいずれか。不正な項目は一度に列挙して終了する
+- [X] T019 [US1] `internal/media/preflight.go` に起動前確認を実装する。`exec.LookPath` で `ffprobe` と `ffmpeg` を確認し、欠けていれば**不足しているコマンド名と導入方法**を含む結果を返す（FR-008／SC-008、[R-009](./research.md)）
+- [X] T020 [US1] `internal/httpapi/health.go` に稼働確認ハンドラを実装する。`internal/domain` の Health と保存層への疎通結果から `ok`／`degraded` を決め、`200`／`503` を返す。版情報は `runtime/debug.ReadBuildInfo()` の `vcs.revision`／`vcs.time` から取り、リリース名は `-ldflags "-X main.version=…"` で上書き可能・既定は `dev`（[R-007](./research.md)）
+- [X] T021 [US1] `internal/httpapi/spa.go` に SPA 配信を実装する。`embed.FS` で `web/dist` を同梱し、`/assets/*` は静的配信、`/api/` 配下以外の未知のパスは `index.html` にフォールバックする。応答ヘッダは [contracts/http-routes.md](./contracts/http-routes.md) の表に従う
+- [X] T022 [US1] `internal/httpapi/router.go` に経路の分配を実装する。`/api/health` → JSON、`/api/*`（未定義） → `404` + `Error`（`index.html` を返してはならない）、それ以外 → SPA
+- [X] T023 [US1] `cmd/mdm/main.go` に起動と停止を実装する。順序は「設定読み込み → `log/slog` の JSON ハンドラ設定 → 起動前確認（T019） → データベース接続とマイグレーション（T011／T013） → HTTP サーバー起動」。起動時に有効な設定値とバージョン情報を1行で記録する（FR-007）。`SIGINT`／`SIGTERM` を受けたら新規受付を止め、処理中の要求を**猶予 10 秒**まで待って終了し、正常終了の終了コードは `0`（[contracts/http-routes.md](./contracts/http-routes.md)）
+- [X] T024 [P] [US1] `web/src/App.tsx` に稼働状態の画面を実装する。アプリケーション名と `/api/health` の `status`・`version` を表示し、型は `web/src/api/gen/openapi.ts`（T009 の生成物）から取る。ルーターとサーバー状態キャッシュは入れない（[R-011](./research.md)）
+- [X] T025 [US1] `Dockerfile` を multi-stage で作成する（web ビルド → go ビルド → alpine + ffmpeg）。`CGO_ENABLED=0` を維持し、最終段に `ffmpeg`／`ffprobe` を同梱する
+- [X] T026 [US1] `compose.yaml` を作成する。`8080` の公開、`MDM_MEDIA_DIR`／`MDM_DATA_DIR` に対応するマウント、データ用の名前付きボリューム（[quickstart.md](./quickstart.md) S4 が参照する名前と一致させる）を定義する
+- [X] T027 [US1] `Makefile` の `up`（`docker compose up --build`）、`down`、`dev`（Go サーバーと Vite 開発サーバー）、`build`（SPA ビルド → 埋め込み → 単一バイナリ）を実装する（[contracts/developer-commands.md](./contracts/developer-commands.md)）
+- [X] T028 [US1] `README.md` に導入手順を追記する（FR-016）。前提ツールは Docker のみ、最初に実行するコマンドは `make up` の1つだけであることを示し、その他の目標は開発者向けの補足として扱う。認証を掛けていないため外部公開を前提にしないことも明記する（[contracts/http-routes.md](./contracts/http-routes.md)）
 
 **Checkpoint**: `make up` だけでアプリケーションが起動し、[quickstart.md](./quickstart.md) の S1〜S6 が通る。ここで止めても「動く骨組み」として価値がある
 
@@ -98,11 +98,11 @@
 
 **Independent Test**: `internal/domain` に禁止された import を一時的に足して `make lint` が失敗し、出力から禁止理由が読み取れること。戻せば再び成功すること（[quickstart.md](./quickstart.md) S7／S8／S10）
 
-- [ ] T029 [P] [US2] `.golangci.yml` を `golangci-lint` v2 の書式（`version: "2"`）で作成する。`depguard` で `internal/domain` からの `net/http`・`database/sql`・`os/exec`・`modernc.org/sqlite`・他の `internal/*` パッケージの import を禁止し、**ルールごとに禁止理由の文言**を書いて違反時の出力だけで原因が分かるようにする（FR-010／FR-013、[R-005](./research.md)）
-- [ ] T030 [US2] `Makefile` の `fmt`・`lint`・`test`・`check` を実装する。`check` は「`fmt` の差分確認 → `lint` → `test` → 生成物の差分確認」の順に実行し、`make generate` の再実行で差分が出る状態を失敗とみなす。CI でしか動かない検査を作らない（[contracts/developer-commands.md](./contracts/developer-commands.md)）
-- [ ] T031 [P] [US2] Web 側の検査を `web/package.json` の scripts に定義し、`Makefile` の `lint`／`test` から呼ぶ。Phase 0 の Web はビルド検証（`tsc` + `vite build`）までとし、E2E は入れない（[plan.md](./plan.md) Technical Context）
-- [ ] T032 [US2] `.github/workflows/ci.yml` を作成する。`main` への PR と push で実行し、Go と Web のジョブを分けて並行させ、どちらも `Makefile` の目標を呼ぶ。Go の版は `actions/setup-go` の `go-version-file: go.mod` で `go.mod` に合わせ、依存をキャッシュする。Docker イメージのビルドは別ジョブにする（FR-012／SC-004、[R-012](./research.md)）
-- [ ] T033 [US2] `internal/domain` に `import _ "net/http"` を一時的に足して `make lint` が失敗し、出力に禁止理由が含まれることを確認する。`database/sql` と `os/exec` でも同様に確認し、確認後は変更を戻して `make lint` が成功することを確かめる（[quickstart.md](./quickstart.md) S8）
+- [X] T029 [P] [US2] `.golangci.yml` を `golangci-lint` v2 の書式（`version: "2"`）で作成する。`depguard` で `internal/domain` からの `net/http`・`database/sql`・`os/exec`・`modernc.org/sqlite`・他の `internal/*` パッケージの import を禁止し、**ルールごとに禁止理由の文言**を書いて違反時の出力だけで原因が分かるようにする（FR-010／FR-013、[R-005](./research.md)）
+- [X] T030 [US2] `Makefile` の `fmt`・`lint`・`test`・`check` を実装する。`check` は「`fmt` の差分確認 → `lint` → `test` → 生成物の差分確認」の順に実行し、`make generate` の再実行で差分が出る状態を失敗とみなす。CI でしか動かない検査を作らない（[contracts/developer-commands.md](./contracts/developer-commands.md)）
+- [X] T031 [P] [US2] Web 側の検査を `web/package.json` の scripts に定義し、`Makefile` の `lint`／`test` から呼ぶ。Phase 0 の Web はビルド検証（`tsc` + `vite build`）までとし、E2E は入れない（[plan.md](./plan.md) Technical Context）
+- [X] T032 [US2] `.github/workflows/ci.yml` を作成する。`main` への PR と push で実行し、Go と Web のジョブを分けて並行させ、どちらも `Makefile` の目標を呼ぶ。Go の版は `actions/setup-go` の `go-version-file: go.mod` で `go.mod` に合わせ、依存をキャッシュする。Docker イメージのビルドは別ジョブにする（FR-012／SC-004、[R-012](./research.md)）
+- [X] T033 [US2] `internal/domain` に `import _ "net/http"` を一時的に足して `make lint` が失敗し、出力に禁止理由が含まれることを確認する。`database/sql` と `os/exec` でも同様に確認し、確認後は変更を戻して `make lint` が成功することを確かめる（[quickstart.md](./quickstart.md) S8）
 - [ ] T034 [US2] `Makefile` の `check` 目標を `time make check` で計測し、手元で 5 分以内に完了することを確認する（SC-002）。超える場合は検査を別目標へ切り出すのではなく原因を直す（[contracts/developer-commands.md](./contracts/developer-commands.md)）
 
 **Checkpoint**: US1 と US2 がそれぞれ独立して成立している。壊れた変更は人手のレビューに到達する前に止まる

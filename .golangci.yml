@@ -1,0 +1,89 @@
+# golangci-lint v2 の設定（書式は v1 と非互換なので version: "2" が必要）。
+# 版は Makefile の GOLANGCI_LINT_VERSION で固定する（research.md R-005）。
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    # ARCHITECTURE.md が定める依存の向きを機械的に強制する（FR-010）。
+    - depguard
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+  settings:
+    depguard:
+      rules:
+        # cmd → internal/{httpapi,store,media,scanner,jobs} → internal/domain の
+        # 一方向のみを許す。internal/domain は依存の終端なので、外部 I/O にも
+        # 他の internal パッケージにも依存してはならない。
+        #
+        # 違反したときは、この deny の desc がそのまま出力に出る（FR-013）。
+        domain-is-the-end-of-the-dependency-chain:
+          files:
+            - "**/internal/domain/*.go"
+          deny:
+            - pkg: net/http
+              desc: >-
+                internal/domain から net/http を import してはならない。ドメインモデルは
+                転送方式を知らない。HTTP に関わる処理は internal/httpapi に置くこと
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: database/sql
+              desc: >-
+                internal/domain から database/sql を import してはならない。ドメインモデルは
+                永続化の手段を知らない。SQL は internal/store に置くこと
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: os/exec
+              desc: >-
+                internal/domain から os/exec を import してはならない。外部コマンドの実行は
+                internal/media に閉じ込めること
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: modernc.org/sqlite
+              desc: >-
+                internal/domain から SQLite ドライバを import してはならない。特定の
+                データベースへの依存は internal/store に閉じ込めること
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/httpapi
+              desc: >-
+                internal/domain から他の internal パッケージを import してはならない。
+                依存は cmd → internal/{httpapi,store,media,scanner,jobs} →
+                internal/domain の一方向だけである（ARCHITECTURE.md）。
+            - pkg: github.com/syudead/vv/internal/store
+              desc: >-
+                internal/domain から他の internal パッケージを import してはならない。
+                依存は cmd → internal/{httpapi,store,media,scanner,jobs} →
+                internal/domain の一方向だけである（ARCHITECTURE.md）。
+            - pkg: github.com/syudead/vv/internal/media
+              desc: >-
+                internal/domain から他の internal パッケージを import してはならない。
+                依存は cmd → internal/{httpapi,store,media,scanner,jobs} →
+                internal/domain の一方向だけである（ARCHITECTURE.md）。
+            - pkg: github.com/syudead/vv/internal/scanner
+              desc: >-
+                internal/domain から他の internal パッケージを import してはならない。
+                依存は cmd → internal/{httpapi,store,media,scanner,jobs} →
+                internal/domain の一方向だけである（ARCHITECTURE.md）。
+            - pkg: github.com/syudead/vv/internal/jobs
+              desc: >-
+                internal/domain から他の internal パッケージを import してはならない。
+                依存は cmd → internal/{httpapi,store,media,scanner,jobs} →
+                internal/domain の一方向だけである（ARCHITECTURE.md）。
+
+  exclusions:
+    generated: lax
+    rules:
+      # 生成物は手編集しないので、検査の対象からも外す（AGENTS.md）。
+      - path: internal/httpapi/gen/
+        linters:
+          - depguard
+          - errcheck
+          - govet
+          - ineffassign
+          - staticcheck
+          - unused
+
+formatters:
+  enable:
+    - gofmt
