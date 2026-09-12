@@ -24,3 +24,7 @@ file into a handbook.
 - Every push to a feature branch gets a pull request. After pushing, open a PR
   against `main` if one does not exist yet, so no pushed branch is left without
   a review target.
+- When a change alters how a screen looks or behaves, attach an image of the
+  result to the pull request; say "UI 変更なし" when it does not. Capturing and
+  embedding one is covered in
+  [docs/how-to/ui-change-screenshots.md](docs/how-to/ui-change-screenshots.md).
