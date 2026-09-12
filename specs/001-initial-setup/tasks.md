@@ -115,9 +115,9 @@
 
 **Independent Test**: `go test ./internal/store/ -run FTS -v` を、追加のミドルウェアを起動していない環境で実行して成功すること（[quickstart.md](./quickstart.md) S9）
 
-- [ ] T035 [US3] `internal/store/fts_test.go` に FTS5 trigram の実証テストを書く。T012 のマイグレーションを適用した上で、[R-001](./research.md) の実測に対応する5点を期待値として固定する: (1) `tokenize='trigram'` の仮想表が作成できる、(2) 3文字の語 `夏休み` が `MATCH` で一致する、(3) 語中の3文字 `みの旅` が `MATCH` で一致する、(4) **2文字の語 `旅行` は `MATCH` で0件**（この挙動自体を期待値として書く）、(5) 同じ FTS5 表への `LIKE '%旅行%'` は一致する（FR-014／SC-007）
-- [ ] T036 [P] [US3] `internal/store/fts_test.go` の失敗時メッセージに、検討すべき代替手段の参照先（[research.md](./research.md) R-001 の "Alternatives considered"）を明示する。テストが落ちた開発者が、次に何を読むべきか出力だけで分かる状態にする（FR-015）
-- [ ] T037 [US3] `internal/store/fts_test.go` に `insert into videos_fts(videos_fts) values ('rebuild')` による再構築が成功することを追加する。トリガの取りこぼしが疑われたときの復旧手段が実際に動くことを固定する（[data-model.md](./data-model.md)「一貫性と再構築」）
+- [X] T035 [US3] `internal/store/fts_test.go` に FTS5 trigram の実証テストを書く。T012 のマイグレーションを適用した上で、[R-001](./research.md) の実測に対応する5点を期待値として固定する: (1) `tokenize='trigram'` の仮想表が作成できる、(2) 3文字の語 `夏休み` が `MATCH` で一致する、(3) 語中の3文字 `みの旅` が `MATCH` で一致する、(4) **2文字の語 `旅行` は `MATCH` で0件**（この挙動自体を期待値として書く）、(5) 同じ FTS5 表への `LIKE '%旅行%'` は一致する（FR-014／SC-007）
+- [X] T036 [P] [US3] `internal/store/fts_test.go` の失敗時メッセージに、検討すべき代替手段の参照先（[research.md](./research.md) R-001 の "Alternatives considered"）を明示する。テストが落ちた開発者が、次に何を読むべきか出力だけで分かる状態にする（FR-015）
+- [X] T037 [US3] `internal/store/fts_test.go` に `insert into videos_fts(videos_fts) values ('rebuild')` による再構築が成功することを追加する。トリガの取りこぼしが疑われたときの復旧手段が実際に動くことを固定する（[data-model.md](./data-model.md)「一貫性と再構築」）
 
 **Checkpoint**: 3 つのユーザーストーリーがすべて独立して成立している
 
@@ -127,12 +127,12 @@
 
 **Purpose**: 受け入れ検証と、変更と同じ単位での文書更新
 
-- [ ] T038 [quickstart.md](./quickstart.md) の S1〜S10 を順に実行し、すべて期待どおりであることを確認する
-- [ ] T039 `docs/exec-plans/active/001-initial-setup.md` の「進捗」表と「決定の記録」を更新する（FR-017）。受け入れ検証まで完了したら `docs/exec-plans/completed/` へ移す（`AGENTS.md`）
-- [ ] T040 [P] 実装中に受け入れた妥協点を `docs/exec-plans/tech-debt.md` に記録する
-- [ ] T041 [P] `ARCHITECTURE.md` の "Intended topology" と "Intended dependency direction" を、実際に入った配置に合わせて更新する（「No application code has been introduced yet」の記述を含む）
-- [ ] T042 [P] `README.md` の "Repository structure" を、`cmd/`・`internal/`・`api/`・`web/` が入った後の実際の構成に更新する
-- [ ] T043 `Makefile` の `check` と `.github/workflows/ci.yml` の両方が緑であることを確認し、同じ判定になっていることを確かめる（FR-011／FR-012）
+- [ ] T038 [quickstart.md](./quickstart.md) の S1〜S10 を順に実行し、すべて期待どおりであることを確認する — S2・S3・S5〜S9 は確認済み。S1・S4（Docker デーモンとイメージ取得が使えない環境で実装したため）と S10（Pull Request 上で確認する）が残っている。内訳は [docs/exec-plans/active/001-initial-setup.md](../../docs/exec-plans/active/001-initial-setup.md) の「受け入れ検証の内訳」
+- [X] T039 `docs/exec-plans/active/001-initial-setup.md` の「進捗」表と「決定の記録」を更新する（FR-017）。受け入れ検証まで完了したら `docs/exec-plans/completed/` へ移す（`AGENTS.md`）
+- [X] T040 [P] 実装中に受け入れた妥協点を `docs/exec-plans/tech-debt.md` に記録する
+- [X] T041 [P] `ARCHITECTURE.md` の "Intended topology" と "Intended dependency direction" を、実際に入った配置に合わせて更新する（「No application code has been introduced yet」の記述を含む）
+- [X] T042 [P] `README.md` の "Repository structure" を、`cmd/`・`internal/`・`api/`・`web/` が入った後の実際の構成に更新する
+- [ ] T043 `Makefile` の `check` と `.github/workflows/ci.yml` の両方が緑であることを確認し、同じ判定になっていることを確かめる（FR-011／FR-012）— `make check` は緑（約 9 秒）。CI 側は Pull Request 上で確認する
 
 ---
 

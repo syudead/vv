@@ -1,6 +1,6 @@
 # 実行計画: 初期セットアップ（Phase 0 骨組み）
 
-- ステータス: 計画済み（実装未着手）
+- ステータス: 実装完了（受け入れ検証は S1／S4／S10 が環境待ち）
 - 最終更新: 2026-09-12
 - 対象: [技術選定文書](../../design-docs/tech-stack-selection.md) 「8. 実装の進め方」の Phase 0
 
@@ -36,8 +36,23 @@
 | 仕様 | 完了（2026-09-12） |
 | 計画・設計 | 完了（2026-09-12） |
 | タスク分解 | 完了（2026-09-12、[tasks.md](../../../specs/001-initial-setup/tasks.md) に 43 タスク） |
-| 実装 | 未着手 |
-| 受け入れ検証（S1〜S10） | 未着手 |
+| 実装 | 完了（2026-09-12、43 タスクすべて） |
+| 受け入れ検証（S1〜S10） | S2・S3・S5〜S9 は確認済み。S1・S4（Docker）と S10（CI）は実行環境待ち |
+
+### 受け入れ検証の内訳
+
+| シナリオ | 結果 |
+| --- | --- |
+| S1: `make up` で起動 | 未実行。実装した環境に Docker デーモンが無く、レジストリの取得も遮断されていたため確認できていない |
+| S2: `/api/health` が機械可読な応答を返す | 確認済み。`200`／`Content-Type: application/json; charset=utf-8`／`Cache-Control: no-store`、本文に `status`・`version` |
+| S3: SPA のフォールバックと `/api/*` の JSON `404` | 確認済み。`/` と `/anything` が `index.html`、`/api/nope` が `Error` スキーマの JSON `404` |
+| S4: データを消しても自動で復帰 | 名前付きボリュームでの確認は未実行（S1 と同じ理由）。同じ振る舞いは `TestMigrateRecoversAfterDatabaseFileIsDeleted` で自動検証している |
+| S5: 安全に停止する | 確認済み。`SIGTERM` で猶予付きに終了し、終了コードは `0`。再起動後も S2 が同じ結果 |
+| S6: 前提ツールが欠けていれば原因が分かる形で止まる | 確認済み。終了コード非0で、不足しているコマンド名（`ffprobe, ffmpeg`）と導入方法を出力 |
+| S7: `make check` が1コマンドで通る | 確認済み。`time make check` は約 9 秒（SC-002 の 5 分に対して十分な余裕。初回は `golangci-lint` の取得とビルドに数分かかる） |
+| S8: 依存方向の違反が止まる | 確認済み。`net/http`・`database/sql`・`os/exec` の3つとも `make lint` が失敗し、出力に禁止理由の文言が出る |
+| S9: 日本語の部分一致検索の前提が成り立つ | 確認済み。`go test ./internal/store/ -run FTS -v` が 6 件すべて成功（2文字の `MATCH` が0件であることも固定） |
+| S10: 変更提案で同じ検証が自動実行される | 未実行。CI の設定は入れたが、実際の実行結果は Pull Request 上で確認する |
 
 ## 決定の記録
 
@@ -54,3 +69,23 @@
 - **2026-09-12: 憲章（`.specify/memory/constitution.md`）は雛形のまま。** 計画の
   ゲートは `ARCHITECTURE.md` と技術選定文書の判断基準から導出した。憲章を作る場合は
   この計画と矛盾しないか確認すること。
+- **2026-09-12: `web/embed.go` を置いて埋め込みの宣言だけを `web/` に持たせた。**
+  `go:embed` は自分のディレクトリより上を参照できないため、`internal/httpapi/spa.go`
+  から `web/dist` を直接埋め込むことはできない。配信の実装は計画どおり
+  `internal/httpapi/spa.go` に置き、`fs.FS` として受け取る形にした。テストでも
+  埋め込みに依存せず `fstest.MapFS` を渡せるので、`/assets/*` のヘッダ検証ができる。
+- **2026-09-12: 検査の目標を `-go` / `-web` に分けた。** 契約の 9 目標
+  （`up`/`down`/`dev`/`build`/`generate`/`fmt`/`lint`/`test`/`check`）はそのまま残し、
+  その下に `lint-go`・`lint-web`・`test-go`・`test-web`・`fmt-check-go`・`fmt-check-web`
+  を置いた。CI で Go と Web のジョブを分けて並行させるための入口で、`make lint` /
+  `make test` はこれらをまとめて呼ぶため手元と CI の判定は一致する。どれも手元で
+  実行できるので「CI でしか動かない検査」は作っていない。
+- **2026-09-12: Web の書式は Prettier を入れた。** 契約は `make fmt` を
+  「Go・Node の書式を整える」としているが、Phase 0 の Web には整形器が無かった。
+  `prettier` を devDependency に入れ、`format` / `format:check` を
+  `make fmt` / `make fmt-check` から呼ぶ。生成物（`web/src/api/gen/`）は
+  `.prettierignore` で対象外にした。
+- **2026-09-12: 受け入れ検証のうち Docker と CI に依るものを残した。** 実装した環境に
+  Docker デーモンが無く、イメージレジストリへの取得も遮断されていたため、S1・S4 と
+  イメージのビルドは実行していない。`Dockerfile`・`compose.yaml`・CI の設定は
+  入れてあるので、Docker が使える環境と Pull Request 上で確認する必要がある。
