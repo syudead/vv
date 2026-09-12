@@ -6,3 +6,4 @@ Add each new document to this index.
 ## Documents
 
 - [Core beliefs](core-beliefs.md)
+- [技術選定: MDM（Media Data Management）](tech-stack-selection.md)

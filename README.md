@@ -13,7 +13,8 @@ stores detailed, durable context under `docs/`.
 └── docs/
     ├── design-docs/
     │   ├── core-beliefs.md
-    │   └── index.md
+    │   ├── index.md
+    │   └── tech-stack-selection.md
     ├── exec-plans/
     │   ├── active/
     │   │   └── README.md
