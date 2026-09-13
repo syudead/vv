@@ -4,10 +4,19 @@
 # 契約: specs/003-sdd-loop-harness/contracts/sdd-guard.md
 # 定義: specs/003-sdd-loop-harness/data-model.md 5.〜6.
 #
-# GitHub へは `gh api` の REST だけで問い合わせる。`gh pr list` などの高水準コマンドは
-# 内部で GraphQL を使い、cloud セッションのプロキシが 403 を返しうるため（research.md R-002）。
+# GitHub から要るのは「main 向けの closed PR 一覧」と「main 向けの open PR 一覧」の 2 つだけで、
+# 取得手段は 2 通りある。
+#   a) --github-dir <dir>: <dir>/pulls-closed.json と <dir>/pulls-open.json を読む。
+#      cloud セッションには `gh` が無いので、スキルが組み込みの GitHub ツールで取った結果を
+#      ファイルに置いてから呼ぶ（research.md R-002）
+#   b) 指定が無ければ `gh api` の REST で取る（手元の検算用）。`gh pr list` などの高水準
+#      コマンドは GraphQL を使い、プロキシが 403 を返しうるので使わない
 #
-# `gh` か `jq` が無い、または REST が通らない場合も終了コード 0 で
+# 「マージ済みか」は API の merged_at ではなく、手元の git 履歴（HEAD の first-parent に
+# `Merge pull request #N` か `(#N)` があるか）で決める。取得元によって PR オブジェクトの
+# 項目が違っても判定が変わらないようにするためで、変更ファイルも同じ履歴から取る。
+#
+# `jq` が無い、`gh` が無い、または REST が通らない場合も終了コード 0 で
 # `{"go":false,"reason":"gh-unavailable","state":<stdin そのまま>}` を返す。手元
 # （Windows の Git Bash、`gh`・`jq` 無し）でも検算できるようにするためである。
 
@@ -17,12 +26,13 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage_error() {
   printf 'sdd-guard.sh: %s\n' "$1" >&2
-  printf 'usage: sdd-state.sh | sdd-guard.sh [--repo <owner/name>] [--root <repo_root>]\n' >&2
+  printf 'usage: sdd-state.sh | sdd-guard.sh [--repo <owner/name>] [--root <repo_root>] [--github-dir <dir>]\n' >&2
   exit 2
 }
 
 repo=""
 root="."
+github_dir=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,6 +45,11 @@ while [ $# -gt 0 ]; do
       shift
       [ $# -gt 0 ] || usage_error "--root に値がありません"
       root="$1"
+      ;;
+    --github-dir)
+      shift
+      [ $# -gt 0 ] || usage_error "--github-dir に値がありません"
+      github_dir="$1"
       ;;
     *)
       usage_error "未知の引数: $1"
@@ -57,42 +72,75 @@ emit_unavailable() {
   exit 0
 }
 
-# --- 手順 0: 疎通 -----------------------------------------------------------
-command -v gh >/dev/null 2>&1 || emit_unavailable
+# --- 手順 0: PR 一覧の取得 ----------------------------------------------------
 command -v jq >/dev/null 2>&1 || emit_unavailable
-gh api /rate_limit >/dev/null 2>&1 || emit_unavailable
 
-# --- リポジトリの導出 -------------------------------------------------------
-if [ -z "$repo" ]; then
-  url="$(git -C "$root" remote get-url origin 2>/dev/null || printf '')"
-  case "$url" in
-    git@github.com:*) repo="${url#git@github.com:}" ;;
-    https://github.com/*) repo="${url#https://github.com/}" ;;
-    ssh://git@github.com/*) repo="${url#ssh://git@github.com/}" ;;
-    *) repo="" ;;
-  esac
-  repo="${repo%.git}"
+if [ -n "$github_dir" ]; then
+  [ -r "$github_dir/pulls-closed.json" ] || usage_error "$github_dir/pulls-closed.json が読めません"
+  [ -r "$github_dir/pulls-open.json" ] || usage_error "$github_dir/pulls-open.json が読めません"
+  closed_json="$(cat "$github_dir/pulls-closed.json")"
+  open_json="$(cat "$github_dir/pulls-open.json")"
+  printf '%s' "$closed_json" | jq -e 'type == "array"' >/dev/null 2>&1 \
+    || usage_error "$github_dir/pulls-closed.json が JSON の配列ではありません"
+  printf '%s' "$open_json" | jq -e 'type == "array"' >/dev/null 2>&1 \
+    || usage_error "$github_dir/pulls-open.json が JSON の配列ではありません"
+else
+  command -v gh >/dev/null 2>&1 || emit_unavailable
+  gh api /rate_limit >/dev/null 2>&1 || emit_unavailable
+
+  if [ -z "$repo" ]; then
+    url="$(git -C "$root" remote get-url origin 2>/dev/null || printf '')"
+    case "$url" in
+      git@github.com:*) repo="${url#git@github.com:}" ;;
+      https://github.com/*) repo="${url#https://github.com/}" ;;
+      ssh://git@github.com/*) repo="${url#ssh://git@github.com/}" ;;
+      *) repo="" ;;
+    esac
+    repo="${repo%.git}"
+  fi
+  [ -n "$repo" ] || usage_error "--repo を導出できません（origin の URL: ${url:-なし}）"
+  owner="${repo%%/*}"
+  name="${repo#*/}"
+
+  api() { gh api "$1" 2>/dev/null || printf '[]'; }
+  closed_json="$(api "/repos/$owner/$name/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100")"
+  open_json="$(api "/repos/$owner/$name/pulls?state=open&base=main&per_page=100")"
 fi
-[ -n "$repo" ] || usage_error "--repo を導出できません（origin の URL: ${url:-なし}）"
-owner="${repo%%/*}"
-name="${repo#*/}"
 
-api() { gh api "$1" 2>/dev/null || printf '[]'; }
+# --- マージ済み PR を git 履歴から並べる ---------------------------------------
+# HEAD の first-parent を新しい順に辿り、件名から PR 番号を取る。
+#   マージコミット: "Merge pull request #N from ..."  /  squash: "... (#N)"
+# 出力は "<番号>\t<コミット>" を新しい順に並べたもの。
+merged_commits="$(git -C "$root" log --first-parent --format='%H%x09%s' HEAD 2>/dev/null \
+  | sed -n \
+      -e 's/^\([0-9a-f]*\)\t.*Merge pull request #\([0-9][0-9]*\) .*/\2\t\1/p' \
+      -e 's/^\([0-9a-f]*\)\t.*(#\([0-9][0-9]*\))$/\2\t\1/p')"
 
 # --- 手順 1: 対象機能の確定 -------------------------------------------------
-# 直近のマージ済み `sdd` PR が触った `specs/NNN-*/` を、今回の対象とみなす。
-# 一覧は更新日時の降順なので、先頭が直近である。
-merged_json="$(api "/repos/$owner/$name/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100")"
-merged_list="$(printf '%s' "$merged_json" \
-  | jq -r '.[] | select(.merged_at != null)
-                | select(([.labels[].name] | index("sdd")) != null)
+# closed 一覧のうち `sdd` ラベル付きで、かつ HEAD の履歴にマージされているものが「マージ済み
+# sdd PR」である。その直近 1 件が触った `specs/NNN-*/` を、今回の対象とみなす。
+sdd_closed="$(printf '%s' "$closed_json" \
+  | jq -r '.[] | select(([.labels[]?.name] | index("sdd")) != null)
                 | "\(.number)\t\(.head.ref)"' 2>/dev/null || printf '')"
 
-latest_num="$(printf '%s\n' "$merged_list" | sed -n '1s/\t.*//p')"
-if [ -n "$latest_num" ]; then
-  files_json="$(api "/repos/$owner/$name/pulls/$latest_num/files?per_page=100")"
-  target_dir="$(printf '%s' "$files_json" \
-    | jq -r '.[].filename' 2>/dev/null \
+tab="$(printf '\t')"
+
+# merged_list: "<番号>\t<head.ref>" を新しい順に。マージ済み sdd PR だけ。
+merged_list=""
+latest_commit=""
+while IFS="$tab" read -r num commit; do
+  [ -n "${num:-}" ] || continue
+  ref="$(printf '%s\n' "$sdd_closed" | sed -n "s/^$num$tab//p" | sed -n '1p')"
+  [ -n "$ref" ] || continue
+  merged_list="${merged_list}${num}${tab}${ref}
+"
+  [ -n "$latest_commit" ] || latest_commit="$commit"
+done <<MERGED
+$merged_commits
+MERGED
+
+if [ -n "$latest_commit" ]; then
+  target_dir="$(git -C "$root" diff --name-only "$latest_commit^1" "$latest_commit" 2>/dev/null \
     | sed -n 's#^\(specs/[0-9][0-9][0-9]-[^/]*\)/.*#\1#p' \
     | sed -n '1p')"
   if [ -n "${target_dir:-}" ]; then
@@ -118,11 +166,10 @@ fi
 
 prefix="claude/sdd-$feature-"
 
-# --- ホップの集計（手順 1 で取得済みの一覧を使い回す） ----------------------
+# --- ホップの集計（手順 1 で作った一覧を使い回す） --------------------------
 hops=0
 phase_retries=0
 phase_ref="claude/sdd-$feature-implement-p$phase"
-tab="$(printf '\t')"
 while IFS="$tab" read -r _num ref; do
   [ -n "${ref:-}" ] || continue
   case "$ref" in
@@ -134,7 +181,6 @@ $merged_list
 MERGED
 
 # --- 手順 3: 冪等（open な自動 PR があれば何もしない） ----------------------
-open_json="$(api "/repos/$owner/$name/pulls?state=open&base=main&per_page=100")"
 open_prs="$(printf '%s' "$open_json" \
   | jq -c --arg p "$prefix" '[.[].head.ref | select(startswith($p))]' 2>/dev/null || printf '[]')"
 [ -n "$open_prs" ] || open_prs='[]'

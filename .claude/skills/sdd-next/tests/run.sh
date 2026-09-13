@@ -151,5 +151,135 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# (6) ガード: --github-dir で PR 一覧をファイルから受け取り、マージ済みは git 履歴で決める
+#     `jq` と git が要る。無ければ SKIP にする（手元は jq 無しでもよい。CI では走る）。
+# ---------------------------------------------------------------------------
+if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
+  # 利用者の git 設定を読まない（署名やフックが混ざらないように）。
+  tgit() {
+    GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+      git -c user.name=sdd-test -c user.email=sdd-test@example.invalid \
+          -c core.autocrlf=false -c commit.gpgsign=false -c init.defaultBranch=main "$@"
+  }
+
+  # make_repo <フィクスチャ名> <マージ済み PR "番号:head.ref:触るディレクトリ" ...>
+  # フィクスチャを写した git リポジトリを作り、指定の PR を古い順にマージコミットとして積む。
+  # 作ったリポジトリのパスを stdout に返す。
+  make_repo() {
+    local fixture="$1"
+    shift
+    local repo="$tmpdir/repo-$fixture-$RANDOM"
+    mkdir -p "$repo"
+    cp -R "$FIXTURES/$fixture/." "$repo/"
+    tgit -C "$repo" init -q
+    tgit -C "$repo" add -A
+    tgit -C "$repo" commit -q -m "init" >/dev/null
+    local spec num ref dir
+    for spec in "$@"; do
+      num="${spec%%:*}"
+      ref="${spec#*:}"; ref="${ref%%:*}"
+      dir="${spec##*:}"
+      tgit -C "$repo" switch -q -c "$ref"
+      printf 'pr %s\n' "$num" > "$repo/$dir/.pr-$num"
+      tgit -C "$repo" add -A
+      tgit -C "$repo" commit -q -m "pr $num" >/dev/null
+      tgit -C "$repo" switch -q main
+      tgit -C "$repo" merge -q --no-ff -m "Merge pull request #$num from example/$ref" "$ref" >/dev/null
+      tgit -C "$repo" branch -q -D "$ref"
+    done
+    printf '%s' "$repo"
+  }
+
+  # pulls_json <ラベル or "-"> <"番号:head.ref" ...>  →  PR 一覧の JSON（配列）
+  pulls_json() {
+    local label="$1"
+    shift
+    local out="[" sep="" spec num ref labels
+    for spec in "$@"; do
+      num="${spec%%:*}"
+      ref="${spec#*:}"
+      if [ "$label" = "-" ]; then labels="[]"; else labels="[{\"name\":\"$label\"}]"; fi
+      out="$out$sep{\"number\":$num,\"head\":{\"ref\":\"$ref\"},\"labels\":$labels}"
+      sep=","
+    done
+    printf '%s]' "$out"
+  }
+
+  # check_guard <名前> <期待 JSON> <リポジトリ> <closed JSON> <open JSON>
+  check_guard() {
+    local name="$1" expected="$2" repo="$3" closed="$4" open="$5"
+    local gh_dir="$tmpdir/github-$RANDOM"
+    mkdir -p "$gh_dir"
+    printf '%s' "$closed" > "$gh_dir/pulls-closed.json"
+    printf '%s' "$open" > "$gh_dir/pulls-open.json"
+    local state actual code
+    state="$(norm "$("$STATE" --root "$repo" 2>/dev/null)")"
+    actual="$(printf '%s\n' "$state" \
+      | PATH="$fake_bin:$PATH" "$GUARD" --root "$repo" --github-dir "$gh_dir" 2>"$tmpdir/guard.err")"
+    code=$?
+    actual="$(norm "$actual")"
+    if [ "$code" -ne 0 ]; then
+      ng "$name" "終了コード: $code（期待: 0）" "stderr: $(cat "$tmpdir/guard.err")" "actual:   $actual"
+    elif [ "$actual" != "$expected" ]; then
+      ng "$name" "expected: $expected" "actual:   $actual"
+    else
+      ok "$name"
+    fi
+  }
+
+  st02="$(norm "$(cat "$FIXTURES/02-before-tasks/expected.json")")"
+  st03="$(norm "$(cat "$FIXTURES/03-implement-mid/expected.json")")"
+  st06="$(norm "$(cat "$FIXTURES/06-multi-feature/expected-feature.json")")"
+
+  # plan がマージ済みで、次は tasks。ホップは 1
+  repo="$(make_repo 02-before-tasks "1:claude/sdd-010-plan:specs/010-a")"
+  check_guard "ガード github-dir go" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
+    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "[]"
+
+  # 自動 PR が open なら待つ
+  check_guard "ガード github-dir open-pr" \
+    "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"]}" \
+    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "$(pulls_json sdd 2:claude/sdd-010-tasks)"
+
+  # closed でも履歴に無い（マージされていない）PR や、sdd ラベルの無い PR は数えない
+  repo="$(make_repo 02-before-tasks "1:claude/sdd-010-plan:specs/010-a")"
+  check_guard "ガード github-dir 未マージ・ラベル無しは数えない" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
+    "$repo" \
+    '[{"number":7,"head":{"ref":"claude/sdd-010-tasks"},"labels":[{"name":"sdd"}]},
+      {"number":2,"head":{"ref":"claude/sdd-010-tasks"},"labels":[]},
+      {"number":1,"head":{"ref":"claude/sdd-010-plan"},"labels":[{"name":"sdd"}]}]' \
+    "[]"
+
+  # 同じフェーズのマージが 2 回に達したら止まる
+  repo="$(make_repo 03-implement-mid \
+    "1:claude/sdd-010-plan:specs/010-a" "2:claude/sdd-010-tasks:specs/010-a" \
+    "3:claude/sdd-010-implement-p2:specs/010-a" "4:claude/sdd-010-implement-p2:specs/010-a")"
+  check_guard "ガード github-dir phase-retry-limit" \
+    "{\"go\":false,\"reason\":\"phase-retry-limit\",\"state\":$st03,\"hops\":4,\"phase_retries\":2,\"open_prs\":[]}" \
+    "$repo" \
+    "$(pulls_json sdd 4:claude/sdd-010-implement-p2 3:claude/sdd-010-implement-p2 2:claude/sdd-010-tasks 1:claude/sdd-010-plan)" \
+    "[]"
+
+  # 直近のマージ済み sdd PR が触った機能を対象にする（自動選択の 011 ではなく 010 → done）
+  repo="$(make_repo 06-multi-feature "1:claude/sdd-010-implement-p1:specs/010-a")"
+  check_guard "ガード github-dir 対象機能の確定" \
+    "{\"go\":false,\"reason\":\"nothing-to-do\",\"state\":$st06}" \
+    "$repo" "$(pulls_json sdd 1:claude/sdd-010-implement-p1)" "[]"
+
+  # ファイルが無ければ呼び出し側の誤り（終了コード 2）
+  actual="$(printf '%s\n' "$st02" | "$GUARD" --root "$repo" --github-dir "$tmpdir/no-such-dir" 2>/dev/null)"
+  code=$?
+  if [ "$code" -eq 2 ]; then
+    ok "ガード github-dir ファイル無しは終了コード 2"
+  else
+    ng "ガード github-dir ファイル無しは終了コード 2" "終了コード: $code" "stdout: $(norm "$actual")"
+  fi
+else
+  printf 'SKIP ガード github-dir（jq か git が無い）\n'
+fi
+
+# ---------------------------------------------------------------------------
 printf '\n%s\n' "PASS: $pass_count / FAIL: $fail_count"
 [ "$fail_count" -eq 0 ] || exit 1

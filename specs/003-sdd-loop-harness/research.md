@@ -202,6 +202,6 @@ JSON の組み立てで注意するのは `phase_title` のエスケープだけ
 | R-004 使用率の取得手段 | quickstart S3 | 使用量ゲートの有効／無効 | 案 a 不可: `/tmp/sdd-rate-limits.json` は生成されず、statusLine は cloud で走らない。案 b は未確認 |
 | R-005 SessionStart フックの発火 | quickstart S3 | routine 環境の setup script の要否 | 発火した（init まで約 110 秒）。setup script は不要 |
 | R-006 fire payload の中身 | quickstart S3 | なし（確認用途のみ） | Run now の添え文は `<routine-fire-payload>` として届く。GitHub トリガー発火時の中身は未確認 |
-| （新規）`gh` CLI の有無 | 同上 | **`sdd-guard.sh` が常に `gh-unavailable` を返し、連鎖が始まらない** | cloud 環境に `gh` が無い。`session-start.sh` で入れる必要がある。`GH_TOKEN` の有無も未確認 |
+| （新規）`gh` CLI の有無 | 同上 | **`sdd-guard.sh` が常に `gh-unavailable` を返し、連鎖が始まらない** | cloud 環境に `gh` が無い（PR 作成は組み込みの GitHub ツールで行われている）。`sdd-guard.sh` に `--github-dir` を足し、スキルが組み込みツールで取った PR 一覧を渡す形に変えた |
 
 いずれも US1〜US3 の受け入れには影響しない。
