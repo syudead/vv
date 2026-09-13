@@ -45,6 +45,25 @@ export function unplayableText(video: Video): string | null {
 }
 
 /**
+ * partialRatio は途中まで見た割合を返す。見ていない・見終わった・尺が
+ * 分からない場合は null を返す（帯を描かない）。
+ */
+export function partialRatio(video: Video): number | null {
+  const progress = video.progress;
+  if (progress === undefined || progress.completed) {
+    return null;
+  }
+  if (video.durationMs === undefined || video.durationMs <= 0) {
+    return null;
+  }
+  const ratio = progress.positionMs / video.durationMs;
+  if (ratio <= 0) {
+    return null;
+  }
+  return Math.min(ratio, 1);
+}
+
+/**
  * VideoCard は一覧の1件を描く。
  *
  * サムネイルは固定アスペクト比（16:9）の枠に入れ、未生成でも枠だけを出す。
@@ -53,6 +72,8 @@ export function unplayableText(video: Video): string | null {
 export default function VideoCard({ video }: { video: Video }) {
   const duration = formatDuration(video.durationMs);
   const unplayable = unplayableText(video);
+  const watched = video.progress?.completed === true;
+  const watchedRatio = partialRatio(video);
 
   return (
     <Link
@@ -81,6 +102,26 @@ export default function VideoCard({ video }: { video: Video }) {
           </span>
         )}
 
+        {/* 視聴済みと途中まで見た動画を一覧上で区別できるようにする（FR-015）。
+            見終わったものは印で、途中のものは残りの量が分かる帯で示す。 */}
+        {watched && (
+          <span className="absolute top-1.5 right-1.5 rounded bg-sky-600 px-1.5 py-0.5 text-xs text-white">
+            視聴済み
+          </span>
+        )}
+
+        {!watched && watchedRatio !== null && (
+          <span
+            aria-label={`${String(Math.round(watchedRatio * 100))}% まで再生済み`}
+            className="absolute inset-x-0 bottom-0 h-1 bg-black/40"
+          >
+            <span
+              className="block h-full bg-sky-500"
+              style={{ width: `${String(Math.round(watchedRatio * 100))}%` }}
+            />
+          </span>
+        )}
+
         {unplayable !== null && (
           <span className="absolute top-1.5 left-1.5 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-900">
             {unplayable}
@@ -89,7 +130,9 @@ export default function VideoCard({ video }: { video: Video }) {
       </div>
 
       <h3
-        className="line-clamp-2 text-sm leading-snug font-medium text-neutral-900 group-hover:underline"
+        className={`line-clamp-2 text-sm leading-snug font-medium group-hover:underline ${
+          watched ? "text-neutral-500" : "text-neutral-900"
+        }`}
         title={video.title}
       >
         {video.title}

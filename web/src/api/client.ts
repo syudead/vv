@@ -6,6 +6,7 @@ export type Video = components["schemas"]["Video"];
 export type VideoPage = components["schemas"]["VideoPage"];
 export type VideoSort = components["schemas"]["VideoSort"];
 export type Scan = components["schemas"]["Scan"];
+export type Progress = components["schemas"]["Progress"];
 export type ApiError = components["schemas"]["Error"];
 
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
@@ -100,6 +101,43 @@ export async function getCurrentScan(signal?: AbortSignal): Promise<Scan | null>
 /** startScan は取り込みを促す。実行中なら、実行中のものがそのまま返る。 */
 export function startScan(signal?: AbortSignal): Promise<Scan> {
   return request<Scan>("/api/scans", { method: "POST", signal });
+}
+
+/**
+ * saveProgress は再生位置を送る。視聴済みの判定はサーバー側が行うので、
+ * ここでは位置だけを送る（R-111）。
+ */
+export function saveProgress(
+  id: number,
+  positionMs: number,
+  signal?: AbortSignal,
+): Promise<Progress> {
+  return request<Progress>(`/api/videos/${String(id)}/progress`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) }),
+    signal,
+  });
+}
+
+/**
+ * beaconProgress は離脱時に再生位置を送る。
+ *
+ * 画面を閉じる途中では fetch が最後まで走る保証が無い。sendBeacon は
+ * ブラウザが送信を引き受けるので、閉じる操作で記録を取りこぼさない。
+ * Content-Type を選べず text/plain になるため、サーバー側は双方を受理する
+ * （contracts/http-routes.md）。
+ */
+export function beaconProgress(id: number, positionMs: number): boolean {
+  const body = JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) });
+
+  if (typeof navigator.sendBeacon === "function") {
+    return navigator.sendBeacon(`/api/videos/${String(id)}/progress`, body);
+  }
+
+  // sendBeacon が無い環境では、届かないよりは試みる方がよい。
+  void saveProgress(id, positionMs).catch(() => undefined);
+  return false;
 }
 
 /** streamUrl は動画本体の取得先を返す。 */

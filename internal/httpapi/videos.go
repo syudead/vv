@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -63,9 +65,11 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		return
 	}
 
+	progress := s.progressFor(r.Context(), page.Items)
+
 	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
 	for _, video := range page.Items {
-		payload.Items = append(payload.Items, toAPIVideo(video))
+		payload.Items = append(payload.Items, withProgress(toAPIVideo(video), progress, video.ContentKey))
 	}
 	if page.NextCursor != "" {
 		next := page.NextCursor
@@ -83,8 +87,49 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 		return
 	}
 
+	progress := s.progressFor(r.Context(), []domain.Video{video})
+
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, toAPIVideo(video), s.logger)
+	writeJSON(w, http.StatusOK, withProgress(toAPIVideo(video), progress, video.ContentKey), s.logger)
+}
+
+// progressFor は動画たちの再生位置をまとめて引く。1件ずつ引くと、60 件の
+// 一覧で 60 回の問い合わせになる。
+//
+// 引けなかった場合は一覧を諦めない。再生位置は一覧に「あると嬉しい」情報で
+// あって、無いと動画を見渡せなくなるものではない。
+func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[string]domain.Progress {
+	if s.playback == nil || len(videos) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(videos))
+	for _, video := range videos {
+		if video.ContentKey != "" {
+			keys = append(keys, video.ContentKey)
+		}
+	}
+
+	progress, err := s.playback.ProgressByContentKeys(ctx, keys)
+	if err != nil {
+		s.logger.Warn("再生位置を読み出せませんでした", slog.Any("error", err))
+		return nil
+	}
+	return progress
+}
+
+// withProgress は再生位置を載せる。記録の無い動画では省略する。
+//
+// 「記録が無い」ことを位置 0 で表さないのは、先頭まで戻した動画と一度も
+// 見ていない動画を、一覧で区別できなくなるためである（FR-015）。
+func withProgress(video gen.Video, progress map[string]domain.Progress, contentKey string) gen.Video {
+	found, ok := progress[contentKey]
+	if !ok {
+		return video
+	}
+	payload := toAPIProgress(found)
+	video.Progress = &payload
+	return video
 }
 
 // lookupVideo は id から動画を引く。見つからなければ応答を書いて false を返す。

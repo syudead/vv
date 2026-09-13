@@ -128,22 +128,22 @@ root からの相対で、[plan.md](./plan.md) の "Source Code" の配置に従
 
 ### Tests for User Story 2 ⚠️
 
-- [ ] T043 [P] [US2] `internal/domain/progress_test.go` を作成する（[R-111](./research.md) / S5）。完了判定が `position_ms >= duration_ms - 15000` **または** `position_ms / duration_ms >= 0.95` で `completed = 1` になること、再開位置が `completed` のとき、または 5 秒未満のときは先頭に戻ること、`duration_ms` が既知なら `position_ms <= duration_ms` に丸められること、`position_ms >= 0` であることを表駆動で検証する
-- [ ] T044 [P] [US2] `internal/store/progress_test.go` を作成する。鍵が `content_key`（`videos.id` ではない）であること、`upsert` で最後の書き込みが残ること、**動画の行を削除しても `playback_progress` が残る**こと（FR-025）、同じ内容のファイルを別パスに置き直しても同じ再生位置が引き継がれることを検証する
-- [ ] T045 [P] [US2] `internal/httpapi/stream_test.go` を作成する（[R-105](./research.md) / S4）。`httptest` で先頭・途中・末尾の `Range`（`206` と `Content-Range`・`Accept-Ranges: bytes`）、範囲外の `416`、`If-Range` を確認する。標準実装の再テストではなく、**ハンドラが正しい `io.ReadSeeker` と ModTime を渡していること**の確認と位置づける。あわせて安全性を検証する: `filepath.Clean` 後に `MDM_MEDIA_DIR` + 区切り文字で始まらないパス、`filepath.EvalSymlinks` 後に外へ出るパス、通常ファイルでないものは `403` ではなく **`404`**（存在を漏らさない）。`Content-Type` は拡張子から決まること（`.mp4`/`.m4v` → `video/mp4`、`.webm` → `video/webm`、それ以外 → `application/octet-stream`）、`Cache-Control: private, max-age=0, must-revalidate` が付くことも確認する
-- [ ] T046 [P] [US2] `internal/httpapi/progress_test.go` を作成する。`PUT /api/videos/{id}/progress` が `positionMs` を受けて `Progress`（`positionMs`・`completed`・`updatedAt`）を返すこと、**視聴済みの判定はサーバー側で行いクライアントの申告は採らない**こと、本文の `Content-Type` が `application/json` と `text/plain;charset=UTF-8` の**双方**で受理されること（`navigator.sendBeacon` 対応）、負の値や壊れた本文が `400` + `invalid_request`、存在しない id が `404` になることを検証する
+- [X] T043 [P] [US2] `internal/domain/progress_test.go` を作成する（[R-111](./research.md) / S5）。完了判定が `position_ms >= duration_ms - 15000` **または** `position_ms / duration_ms >= 0.95` で `completed = 1` になること、再開位置が `completed` のとき、または 5 秒未満のときは先頭に戻ること、`duration_ms` が既知なら `position_ms <= duration_ms` に丸められること、`position_ms >= 0` であることを表駆動で検証する
+- [X] T044 [P] [US2] `internal/store/progress_test.go` を作成する。鍵が `content_key`（`videos.id` ではない）であること、`upsert` で最後の書き込みが残ること、**動画の行を削除しても `playback_progress` が残る**こと（FR-025）、同じ内容のファイルを別パスに置き直しても同じ再生位置が引き継がれることを検証する
+- [X] T045 [P] [US2] `internal/httpapi/stream_test.go` を作成する（[R-105](./research.md) / S4）。`httptest` で先頭・途中・末尾の `Range`（`206` と `Content-Range`・`Accept-Ranges: bytes`）、範囲外の `416`、`If-Range` を確認する。標準実装の再テストではなく、**ハンドラが正しい `io.ReadSeeker` と ModTime を渡していること**の確認と位置づける。あわせて安全性を検証する: `filepath.Clean` 後に `MDM_MEDIA_DIR` + 区切り文字で始まらないパス、`filepath.EvalSymlinks` 後に外へ出るパス、通常ファイルでないものは `403` ではなく **`404`**（存在を漏らさない）。`Content-Type` は拡張子から決まること（`.mp4`/`.m4v` → `video/mp4`、`.webm` → `video/webm`、それ以外 → `application/octet-stream`）、`Cache-Control: private, max-age=0, must-revalidate` が付くことも確認する
+- [X] T046 [P] [US2] `internal/httpapi/progress_test.go` を作成する。`PUT /api/videos/{id}/progress` が `positionMs` を受けて `Progress`（`positionMs`・`completed`・`updatedAt`）を返すこと、**視聴済みの判定はサーバー側で行いクライアントの申告は採らない**こと、本文の `Content-Type` が `application/json` と `text/plain;charset=UTF-8` の**双方**で受理されること（`navigator.sendBeacon` 対応）、負の値や壊れた本文が `400` + `invalid_request`、存在しない id が `404` になることを検証する
 
 ### Implementation for User Story 2
 
-- [ ] T047 [P] [US2] `internal/domain/progress.go` を実装する（[R-111](./research.md)）。完了判定（`position_ms >= duration_ms - 15000` または比率 0.95 以上）と再開位置（`completed` のとき、または 5 秒未満なら先頭）を純粋関数として置く。外部 I/O に依存しない
-- [ ] T048 [P] [US2] `internal/store/progress.go` を実装する。`content_key` を鍵にした `upsert` と、一覧・詳細へ載せるための取得（複数の `content_key` をまとめて引く経路を含む）を置く。`videos` への外部キーは張らない
-- [ ] T049 [US2] `internal/httpapi/stream.go` を実装する（[R-105](./research.md) / [contracts/http-routes.md](./contracts/http-routes.md)）。DB から取得したパスを**そのまま開かず**、(1) `filepath.Clean` 後に `MDM_MEDIA_DIR` + 区切り文字で始まる、(2) `filepath.EvalSymlinks` 後にも (1) が成り立つ、(3) 通常ファイルである、の3つを満たす行だけを開いて `http.ServeContent` に渡す。満たさない行は `404`。再生できない形式（`playable = false`）でも配信自体は行う。転送中の接続断は `info` ではなく `debug` で記録する
-- [ ] T050 [US2] `internal/httpapi/progress.go` を実装する。`PUT /api/videos/{id}/progress` を受け、`domain` の判定で `completed` を決めて `store` へ `upsert` し、記録後の状態を返す。頻度制限はサーバー側では行わない
-- [ ] T051 [US2] `internal/httpapi/videos.go` を更新し、一覧と詳細の `Video` に `progress`（`positionMs`・`completed`・`updatedAt`）を載せる。再生位置を持たない動画では省略する
-- [ ] T052 [US2] `internal/httpapi/router.go` に `GET /api/videos/{id}/stream` と `PUT /api/videos/{id}/progress` を登録し、`Options` に `MediaDir` を使ったパス検証と進捗の保存先を渡す
-- [ ] T053 [P] [US2] `web/src/pages/VideoPage.tsx` を作成する。`<video>` で `/api/videos/{id}/stream` を再生し、題名・長さ・解像度などの情報を同じ画面に出す。再生中**5 秒間隔**と一時停止・離脱時（`visibilitychange` で `navigator.sendBeacon`）に進捗を送る。中断位置から再開しつつ、**先頭から見直す選択肢**も出す。再生できない形式は再生を試みる前に理由を示す（FR-020）。再生中に元のファイルが失われた場合は、何が起きたかを伝えてアプリケーション全体は使い続けられるようにする
-- [ ] T054 [US2] `web/src/App.tsx` に `/videos/:id` の経路を足し、一覧から選んだ動画を URL で開ける（共有・再読み込みできる）ようにする
-- [ ] T055 [US2] `web/src/components/VideoCard.tsx` を更新し、視聴済みと途中まで見た動画を一覧上で区別できるようにする（FR-015）。あわせて `playable = false` の動画に、再生を試みる前に分かる表示と理由（`unplayableReason`）を出す（SC-007）
+- [X] T047 [P] [US2] `internal/domain/progress.go` を実装する（[R-111](./research.md)）。完了判定（`position_ms >= duration_ms - 15000` または比率 0.95 以上）と再開位置（`completed` のとき、または 5 秒未満なら先頭）を純粋関数として置く。外部 I/O に依存しない
+- [X] T048 [P] [US2] `internal/store/progress.go` を実装する。`content_key` を鍵にした `upsert` と、一覧・詳細へ載せるための取得（複数の `content_key` をまとめて引く経路を含む）を置く。`videos` への外部キーは張らない
+- [X] T049 [US2] `internal/httpapi/stream.go` を実装する（[R-105](./research.md) / [contracts/http-routes.md](./contracts/http-routes.md)）。DB から取得したパスを**そのまま開かず**、(1) `filepath.Clean` 後に `MDM_MEDIA_DIR` + 区切り文字で始まる、(2) `filepath.EvalSymlinks` 後にも (1) が成り立つ、(3) 通常ファイルである、の3つを満たす行だけを開いて `http.ServeContent` に渡す。満たさない行は `404`。再生できない形式（`playable = false`）でも配信自体は行う。転送中の接続断は `info` ではなく `debug` で記録する
+- [X] T050 [US2] `internal/httpapi/progress.go` を実装する。`PUT /api/videos/{id}/progress` を受け、`domain` の判定で `completed` を決めて `store` へ `upsert` し、記録後の状態を返す。頻度制限はサーバー側では行わない
+- [X] T051 [US2] `internal/httpapi/videos.go` を更新し、一覧と詳細の `Video` に `progress`（`positionMs`・`completed`・`updatedAt`）を載せる。再生位置を持たない動画では省略する
+- [X] T052 [US2] `internal/httpapi/router.go` に `GET /api/videos/{id}/stream` と `PUT /api/videos/{id}/progress` を登録し、`Options` に `MediaDir` を使ったパス検証と進捗の保存先を渡す
+- [X] T053 [P] [US2] `web/src/pages/VideoPage.tsx` を作成する。`<video>` で `/api/videos/{id}/stream` を再生し、題名・長さ・解像度などの情報を同じ画面に出す。再生中**5 秒間隔**と一時停止・離脱時（`visibilitychange` で `navigator.sendBeacon`）に進捗を送る。中断位置から再開しつつ、**先頭から見直す選択肢**も出す。再生できない形式は再生を試みる前に理由を示す（FR-020）。再生中に元のファイルが失われた場合は、何が起きたかを伝えてアプリケーション全体は使い続けられるようにする
+- [X] T054 [US2] `web/src/App.tsx` に `/videos/:id` の経路を足し、一覧から選んだ動画を URL で開ける（共有・再読み込みできる）ようにする
+- [X] T055 [US2] `web/src/components/VideoCard.tsx` を更新し、視聴済みと途中まで見た動画を一覧上で区別できるようにする（FR-015）。あわせて `playable = false` の動画に、再生を試みる前に分かる表示と理由（`unplayableReason`）を出す（SC-007）
 
 **Checkpoint**: US1 と US2 がどちらも独立して成立する。一覧で見つけた動画をその場で見られる
 

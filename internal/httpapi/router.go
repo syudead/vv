@@ -28,6 +28,13 @@ type Library interface {
 	GetVideo(ctx context.Context, id int64) (domain.Video, error)
 }
 
+// Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）
+// なので、動画の行が消えても記録が残る（R-111）。
+type Playback interface {
+	SaveProgress(ctx context.Context, contentKey string, progress domain.Progress) (domain.Progress, error)
+	ProgressByContentKeys(ctx context.Context, contentKeys []string) (map[string]domain.Progress, error)
+}
+
 // Scans は取り込みの開始と状態の取得である。
 //
 // StartScan は実行中なら新しく始めず、実行中のものを返す（R-108）。走査を
@@ -45,6 +52,9 @@ type Options struct {
 	Pinger Pinger
 	// Videos は一覧と詳細の問い合わせ先。nil なら該当の経路は 500 を返す。
 	Videos Library
+	// Playback は再生位置の保存先。nil なら記録の経路は 500 を返し、
+	// 一覧には progress が載らない。
+	Playback Playback
 	// Scans は取り込みの開始と状態の取得。nil なら該当の経路は 500 を返す。
 	Scans Scans
 	// MediaDir は配信してよいファイルの根。この配下だけを開く
@@ -64,6 +74,7 @@ type server struct {
 	build         domain.BuildInfo
 	pinger        Pinger
 	videos        Library
+	playback      Playback
 	scans         Scans
 	mediaDir      string
 	thumbnailsDir string
@@ -94,6 +105,7 @@ func NewRouter(opts Options) http.Handler {
 		build:         opts.Build,
 		pinger:        opts.Pinger,
 		videos:        opts.Videos,
+		playback:      opts.Playback,
 		scans:         opts.Scans,
 		mediaDir:      opts.MediaDir,
 		thumbnailsDir: opts.ThumbnailsDir,

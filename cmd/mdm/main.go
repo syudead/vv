@@ -120,6 +120,7 @@ func run() error {
 		Build:         build,
 		Pinger:        db,
 		Videos:        db,
+		Playback:      db,
 		Scans:         lib,
 		MediaDir:      cfg.MediaDir,
 		ThumbnailsDir: cfg.ThumbnailsDir(),
