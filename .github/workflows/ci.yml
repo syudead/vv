@@ -38,6 +38,10 @@ jobs:
       - name: テスト
         run: make test-go
 
+      # 手元の make test と同じ目標を呼び、判定が一致する状態を保つ。
+      - name: ハーネスの判定テスト
+        run: make test-sdd
+
   web:
     name: Web
     runs-on: ubuntu-latest

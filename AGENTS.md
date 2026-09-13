@@ -28,3 +28,6 @@ file into a handbook.
   result to the pull request; say "UI 変更なし" when it does not. Capturing and
   embedding one is covered in
   [docs/how-to/ui-change-screenshots.md](docs/how-to/ui-change-screenshots.md).
+- `sdd` ラベル付きの PR を `main` にマージすると `/sdd-next` が Spec Kit の次の段階を
+  自動で回す。手順は `.claude/skills/sdd-next/SKILL.md`、設計は
+  `docs/design-docs/sdd-loop-harness.md`。
