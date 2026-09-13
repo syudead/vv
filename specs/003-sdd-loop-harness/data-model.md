@@ -81,9 +81,9 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 | stage | 含まれる属性 |
 | --- | --- |
 | `none` | `feature_dir`, `feature`, `stage` |
-| `plan` / `tasks` | 上 + `branch` |
-| `implement` | 上 + `phase`, `phase_title`, `remaining`, `total`, `phases` |
-| `done` | `feature_dir`, `feature`, `stage`, `phases` |
+| `plan` / `tasks` | 上 + `feature_branch`, `base_branch`, `branch` |
+| `implement` | 上 + `phase`, `phase_title`, `remaining`, `total`, `phases`, `feature_branch`, `base_branch`, `branch` |
+| `done` | `feature_dir`, `feature`, `stage`, `phases`, `feature_branch`, `base_branch` |
 
 対象機能が 1 つも無いときは `{"stage":"none"}` だけを返す。
 
@@ -148,3 +148,11 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 | 本文 | 理由の説明、State の JSON、Guard の JSON、`CLAUDE_CODE_REMOTE_SESSION_ID` |
 | ラベル | 付けない（`sdd` ラベルは PR 専用。Issue に付けても routine は反応しないが、意味を混ぜない） |
 | 重複判定 | open Issue の題名の完全一致（FR-017） |
+
+## 8. Feature branch workflow（2026-09-13 改訂）
+
+`plan` / `tasks` / `implement` の State は `feature_branch` と `base_branch` を持つ。どちらも
+`claude/sdd-NNN-feature` である。`branch` は従来どおり段階ごとに異なり、その PR を
+`base_branch` へ入れる。`done` は `feature_branch` と `base_branch: main` を持ち、段階を
+作らず最終 PR を開く。plan PR と最終 PR だけを人がマージし、tasks と検査成功済みの
+implement PR はハーネスがマージする。

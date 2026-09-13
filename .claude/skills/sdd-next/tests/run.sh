@@ -190,7 +190,7 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     printf '%s' "$repo"
   }
 
-  # pulls_json <ラベル or "-"> <"番号:head.ref" ...>  →  PR 一覧の JSON（配列）
+  # pulls_json <ラベル or "-"> <"番号:head.ref" ...>  →  feature branch 向け PR の JSON
   pulls_json() {
     local label="$1"
     shift
@@ -199,7 +199,8 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
       num="${spec%%:*}"
       ref="${spec#*:}"
       if [ "$label" = "-" ]; then labels="[]"; else labels="[{\"name\":\"$label\"}]"; fi
-      out="$out$sep{\"number\":$num,\"head\":{\"ref\":\"$ref\"},\"labels\":$labels}"
+      feature="$(printf '%s' "$ref" | sed -n 's#^claude/sdd-\([0-9][0-9][0-9]\)-.*#\1#p')"
+      out="$out$sep{\"number\":$num,\"head\":{\"ref\":\"$ref\"},\"base\":{\"ref\":\"claude/sdd-$feature-feature\"},\"labels\":$labels}"
       sep=","
     done
     printf '%s]' "$out"
@@ -241,6 +242,12 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   check_guard "ガード github-dir open-pr" \
     "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"]}" \
     "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "$(pulls_json sdd 2:claude/sdd-010-tasks)"
+
+  # main 向けの最終 PR は段階 PR の冪等ガードに含めない
+  check_guard "ガード github-dir 最終 PR は段階 PR を塞がない" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
+    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" \
+    '[{"number":9,"head":{"ref":"claude/sdd-010-feature"},"base":{"ref":"main"},"labels":[{"name":"sdd"}]}]'
 
   # closed でも履歴に無い（マージされていない）PR や、sdd ラベルの無い PR は数えない
   repo="$(make_repo 02-before-tasks "1:claude/sdd-010-plan:specs/010-a")"

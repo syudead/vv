@@ -1,11 +1,41 @@
 # SDD ループハーネス: spec 以降の段階を GitHub イベントで自動で回す
 
-- ステータス: 設計確定（未実装）
-- 最終更新: 2026-09-13
-- スコープ: Spec Kit の `plan → tasks → implement` を、人のマージを承認ゲートにして
-  Claude Code on the web のセッションで 1 段階ずつ自動実行する仕組み
+- ステータス: 設計確定（feature branch 方式を実装済み）
+- 最終更新: 2026-09-13（承認ゲートと branch 構成を改訂）
+- スコープ: Spec Kit の `plan → tasks → implement` を spec ごとの feature branch 上で進め、
+  plan と最終マージだけを人の承認ゲートにする仕組み
 
-## 1. 目的と前提
+
+## 0. 2026-09-13 改訂: feature branch を統合単位にする
+
+実運用で、tasks と各 implement phase の PR は機械的な分割境界にすぎず、毎回人が承認する
+価値より待ち時間が大きいことが分かった。また phase ごとに `main` へマージすると、未完成な
+機能が既定 branch に小刻みに入り、PR を「1 機能を統合する判断」に使えない。そこで次を採用する。
+
+```text
+main
+ └─ claude/sdd-NNN-feature       （spec ごとの統合 branch）
+     ├─ claude/sdd-NNN-plan      ─PR→ feature（人が承認）
+     ├─ claude/sdd-NNN-tasks     ─PR→ feature（自動マージ）
+     └─ claude/sdd-NNN-implement-pN ─PR→ feature（検査成功時に自動マージ）
+
+claude/sdd-NNN-feature ──────────最終 PR→ main（人が承認）
+```
+
+段階ごとに別セッション・別 PR とする性質は、コンテキスト分離、差分の観測、失敗時の停止に
+まだ価値があるため残す。外すのは通常時の人手承認だけである。plan は実装方針を固定するため
+早期の人間判断に価値があり、最終 PR は完成した機能を `main` に入れる唯一の統合判断なので残す。
+
+検討した「段階 PR 自体を廃止して feature branch に直接 push」は採用しない。PR merge event が
+routine の次セッションを起動する durable queue であり、open PR が並行実行の冪等キーにもなる
+ためである。また Git は `refs/heads/claude/sdd-NNN` とその子 ref を同時に持てないので、
+「孫 branch」は slash の名前ではなく PR の base/head 関係で表す。
+
+この方式には、routine の GitHub event から `Base branch equals main` フィルタを外す外部設定変更が
+必要である。設定変更前は plan を feature branch にマージしても次が起動しないため、
+[運用手順](../references/sdd-routine.md)の移行チェックを必須とする。
+
+## 1. 目的と前提（改訂前の背景）
 
 これまで Spec Kit の各段階（`/speckit-specify`、`/speckit-plan`、`/speckit-tasks`、
 `/speckit-implement`）は、人が web セッションを開いて 1 つずつ呼び、段階ごとに PR を
@@ -30,7 +60,7 @@ spec 以降の段階について「人が PR をマージする」以外の手�
 - 複数機能の並行実行。ハーネスが同時に扱う機能は 1 つ
 - レビューそのものの自動化（Auto-fix や code review は既存の仕組みに任せる）
 
-## 2. 全体の流れ
+## 2. 全体の流れ（改訂前。現在は 0 章を優先）
 
 ```
 人: spec PR を作る → ラベル sdd を付けてマージ

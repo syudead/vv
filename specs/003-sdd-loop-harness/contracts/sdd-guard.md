@@ -25,8 +25,8 @@ GitHub ツールで一覧を取り、ファイルに置いてから `--github-di
 
 | ファイル | 中身 | 使う項目 |
 | --- | --- | --- |
-| `pulls-closed.json` | `main` 向け closed PR の配列（更新日時の降順、100 件まで） | `number`、`head.ref`、`labels`（`["sdd"]` と `[{"name":"sdd"}]` の両方を受ける） |
-| `pulls-open.json` | `main` 向け open PR の配列 | `head.ref` |
+| `pulls-closed.json` | base を限定しない closed PR の配列（更新日時の降順、100 件まで） | `number`、`head.ref`、`labels`（`["sdd"]` と `[{"name":"sdd"}]` の両方を受ける） |
+| `pulls-open.json` | base を限定しない open PR の配列 | `head.ref` |
 
 **マージ済みかどうかは API の `merged_at` を見ない。** `--root` の git 履歴（HEAD の
 first-parent）に `Merge pull request #N` か `(#N)` の件名があれば、PR `N` はマージ済みと
@@ -56,7 +56,7 @@ Edge Cases）。
 
 | # | 判定 | データ | 結果 |
 | --- | --- | --- | --- |
-| 0 | PR 一覧が取れるか | `--github-dir` の 2 ファイル、または `GET /rate_limit` → `GET /repos/{o}/{r}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100` と `GET /repos/{o}/{r}/pulls?state=open&base=main&per_page=100` | `jq` 無し・`gh` 無し・REST 失敗 → `gh-unavailable` |
+| 0 | PR 一覧が取れるか | `--github-dir` の 2 ファイル、または `GET /rate_limit` → `GET /repos/{o}/{r}/pulls?state=closed&sort=updated&direction=desc&per_page=100` と `GET /repos/{o}/{r}/pulls?state=open&per_page=100` | `jq` 無し・`gh` 無し・REST 失敗 → `gh-unavailable` |
 | 1 | **対象機能の確定**: closed 一覧のうち label `sdd` で、かつ git 履歴にマージされている PR を新しい順に並べ、先頭の変更ファイルから `specs/NNN-*/` を抽出。見つかれば `sdd-state.sh --feature` で再判定 | `git log --first-parent HEAD` の件名（`Merge pull request #N` / `(#N)`）と `git diff --name-only <c>^1 <c>` | `state` を置き換える。見つからなければ stdin の state のまま |
 | 2 | `state.stage` が `done` または `none` | — | `go:false`, `reason:"nothing-to-do"` |
 | 3 | **冪等**: open PR のうち `head.ref` が `claude/sdd-NNN-` で始まるものがある | open 一覧 | `go:false`, `reason:"open-pr"`, `open_prs:[...]` |
@@ -95,3 +95,10 @@ $ sdd-state.sh | sdd-guard.sh     # 手元（gh 無し）
 
 `--github-dir` のテストは `jq` と git が要り、無ければ SKIP になる（CI では走る）。
 組み込み GitHub ツールの応答の形は quickstart の S3〜S6 で実機確認する。
+
+## 2026-09-13 feature branch 方式への変更
+
+PR 一覧は base を限定せず取得する。段階 PR の冪等判定は `head.ref` の prefix に加えて
+`base.ref == claude/sdd-NNN-feature` を要求する。これにより、同じ head prefix を持つ
+feature branch → main の最終 PR は段階実行を塞がない。ガードは対象 feature branch を
+checkout した状態で呼び、first-parent 履歴から段階 hop を数える。

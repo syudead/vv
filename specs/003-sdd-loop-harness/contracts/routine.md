@@ -28,7 +28,7 @@ routine-fire-payload に PR 番号が含まれていれば、対象機能の確�
 
 | # | 種類 | 設定 |
 | --- | --- | --- |
-| 1 | GitHub event | リポジトリ `syudead/vv`、イベント `pull_request` / アクション `closed`。フィルタ: Base branch equals `main`、Labels is one of `sdd`、Is merged equals `true` |
+| 1 | GitHub event | リポジトリ `syudead/vv`、イベント `pull_request` / アクション `closed`。フィルタ: Labels is one of `sdd`、Is merged equals `true`（base は限定しない） |
 | 2 | Schedule | 毎日 1 回、03:00 JST（見送り・取りこぼしの再開用。FR-019） |
 
 トリガー 1 は `opened` / `labeled` / `synchronize` を含めない（自分の PR で自分が起きないため）。
@@ -42,7 +42,7 @@ routine-fire-payload に PR 番号が含まれていれば、対象機能の確�
 
 1. claude.ai/code/routines → New routine。上の設定値を入れる。トリガーは Schedule を
    先に付けて保存する
-2. 保存後に Edit routine → Add another trigger → GitHub event。フィルタを 3 条件で入れる
+2. 保存後に Edit routine → Add another trigger → GitHub event。フィルタを 2 条件で入れる
    （CLI から付ける場合は `RemoteTrigger` の `create_webhook_trigger` で同じ内容）
 3. 「Run now」で 1 回実行し、`/sdd-next --dry-run` の結果とプローブ項目（R-004〜R-006）を
    transcript で確認する（quickstart S3）
@@ -52,3 +52,10 @@ routine-fire-payload に PR 番号が含まれていれば、対象機能の確�
 
 - 一時停止: routine の Repeats トグルを off にする（FR-018）。GitHub トリガーも止まる
 - 恒久停止: routine を削除する。リポジトリ側は何も変えなくてよい
+
+## 2026-09-13 feature branch 方式への変更
+
+GitHub event の `Base branch equals main` は削除し、`Labels is one of sdd` と
+`Is merged equals true` だけを残す。段階 PR の base は `claude/sdd-NNN-feature` であり、
+base を main に限定すると plan 後の連鎖が起動しない。作成・変更の最新手順は
+`docs/references/sdd-routine.md` を真実とする。
