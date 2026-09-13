@@ -90,7 +90,7 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
 | 部品 | 場所 | 役割 |
 | --- | --- | --- |
 | `sdd-state.sh` | `.claude/skills/sdd-next/scripts/` | `specs/*/` のファイルだけを読み、対象機能と次の段階を JSON で出す。git／gh には触れない。手元で実行して検算できる |
-| `sdd-guard.sh` | 同上 | git と `gh` を見て、無限ループ対策と冪等性を判定し `go` / `stop` を返す |
+| `sdd-guard.sh` | 同上 | 組み込み GitHub ツールが保存した PR 一覧 JSON と git 履歴を見て、無限ループ対策と冪等性を判定し `go` / `stop` を返す。`gh` は手元検算の任意フォールバック |
 | `sdd-next` スキル | `.claude/skills/sdd-next/SKILL.md` | 上記 2 つの結果を受けて該当する `/speckit-*` を呼び、PR を開く手順書 |
 | `sdd-lib.sh` | `.claude/skills/sdd-next/scripts/` | 上 2 つが `source` する共通関数。JSON のエスケープ、機能の列挙、`tasks.md` のフェーズ解析（awk） |
 | `rate-limits-statusline.sh` | `.claude/hooks/` | 使用率を受け取るためだけのステータスライン。受け取った JSON を `${TMPDIR:-/tmp}/sdd-rate-limits.json` に落とし、何も表示しない（6 章の使用量ゲート、[R-004](../../specs/003-sdd-loop-harness/research.md)） |
@@ -135,7 +135,7 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
 | 1 | 同じ段階を延々やり直す（例: implement が何も進まないまま PR が出てマージされる） | **前進チェック**: 作業前後の `sdd-state.sh` の出力を比較し、変化がなければ PR を開かず終了。`git diff` が空の場合も同じ | state.sh の JSON 差分（スキル側で判定） |
 | 2 | 同じフェーズのやり直しが積み重なる | **フェーズ別リトライ上限（2 回）**: `git log --merges` 中の `claude/sdd-NNN-implement-pN` のマージ数が 2 以上なら停止 | git のマージ履歴 |
 | 3 | 機能単位で回数が膨らむ | **機能別ホップ上限**: `claude/sdd-NNN-*` のマージ数が `2（plan, tasks）+ フェーズ数 + 余裕 2` 以上なら停止 | git のマージ履歴 + tasks.md のフェーズ数 |
-| 4 | 二重発火（同じイベントで 2 セッション、人が手で回した直後に routine も走る、日次トリガーとイベントが重なる） | **冪等ガード**: 対象機能の `sdd` ラベル付き open PR（ブランチ `claude/sdd-NNN-*`）が既にあれば何もしない | `gh pr list --label sdd --state open` |
+| 4 | 二重発火（同じイベントで 2 セッション、人が手で回した直後に routine も走る、日次トリガーとイベントが重なる） | **冪等ガード**: 対象機能の `sdd` ラベル付き open PR（head `claude/sdd-NNN-*`、base `claude/sdd-NNN-feature`）が既にあれば何もしない | 組み込み GitHub ツールで取得した open PR 一覧 |
 | 5 | 緊急停止 | routine の一時停止（claude.ai のトグル）。加えて `sdd` ラベルを付けなければ発火しない（トリガーのフィルタ条件） | routine 設定 / PR ラベル |
 
 補助的な歯止め:
@@ -147,10 +147,10 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
 
 `sdd-guard.sh` の手順:
 
-1. **対象機能の確定**: `gh pr list --state merged --label sdd --limit 1 --json files` で
-   直近のマージ済み `sdd` PR が触った `specs/NNN-*/` を採り、`--feature` として
-   `sdd-state.sh` を呼び直す。取れなければ state.sh の既定（昇順最初）を使う。
-   これで「ラベル無しで寝かせている spec」を誤って拾わない
+1. **対象機能の確定**: 組み込み GitHub ツールで取得した closed PR 一覧のうち `sdd` ラベル付きで、
+   git の first-parent 履歴に現れる直近 PR を採る。その merge/squash commit が触った
+   `specs/NNN-*/` を `--feature` として `sdd-state.sh` を呼び直す。取れなければ state.sh の
+   既定（昇順最初）を使う。これで「ラベル無しで寝かせている spec」を誤って拾わない
 2. 冪等ガード（#4）
 3. フェーズ別リトライ上限（#2）
 4. ホップ上限（#3）
@@ -168,7 +168,7 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 すべて SKILL.md に置く。人が手元の web セッションで同じコマンドを打っても同じ動きになる。
 
 ```
-0.   前提確認      main 上・作業ツリーが clean・GitHub 操作ができる。ダメなら理由を出して終了
+0.   前提確認      作業ツリーが clean。必要なら feature branch を復元する。ダメなら理由を出して終了
 0.5  使用量ゲート  7 日窓 ≥ 80% または 5 時間窓 ≥ 70% なら「今回は見送り」と書いて終了
                    （PR も Issue も作らない。再開は日次トリガーか次のマージに任せる）
 1.   判定          before = sdd-state.sh → sdd-guard.sh。go:false なら
@@ -179,7 +179,7 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 4.   前進確認      after = sdd-state.sh --feature <dir>。before と同じ、または git diff が
                    空なら PR を開かず Issue を立てて終了
 5.   PR            コミット（既存の慣習どおり日本語、Co-Authored-By 付き）→ push →
-                   ラベル sdd 付きで main へ PR。本文に before/after の JSON、実行した検査、
+                   ラベル sdd 付きで state.base_branch へ PR。本文に before/after の JSON、実行した検査、
                    残課題、セッションへのリンク（CLAUDE_CODE_REMOTE_SESSION_ID）を書く
 6.   報告          最後に「段階・PR URL・次に起きること」を 3 行で出す
 ```
@@ -195,10 +195,11 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 
 GitHub 操作の使い分け:
 
-- シェルスクリプト（`sdd-guard.sh`）は `gh` を使う。スクリプトは MCP ツールを呼べない
-- スキルの手順（モデルが行う PR 作成・Issue 作成・マージ済み PR の変更ファイル取得）は
-  cloud セッション組み込みの GitHub ツールを第一候補、`gh` を代替にする。どちらも同じ
-  GitHub プロキシ経由で認証される（`GH_TOKEN` は `proxy-injected` のプレースホルダ）
+- シェルスクリプト（`sdd-guard.sh`）は cloud の組み込み GitHub ツールを直接呼べないため、
+  スキルが PR 一覧を JSON ファイルに保存して `--github-dir` で渡す
+- スキルの手順（PR 作成・Issue 作成・label 付与・マージ）は cloud セッション組み込みの
+  GitHub ツールを通常経路にする。`gh` は cloud に無い実機ケースがあるため、使える場合の
+  手元検算・保守用フォールバックに留める
 
 Spec Kit との接続: `SPECIFY_FEATURE_DIRECTORY` を export しておけば既存の
 `.specify/scripts/bash/common.sh` が `.specify/feature.json`（gitignore 済み）を書き、
@@ -246,10 +247,11 @@ claude.ai 側の設定が消えても再現できるようにする。
   要るものは、渡す相対パスを書いた `feature.txt` と `expected-feature.json` を足す。
   `done` の機能は自動選択で飛ばされるので、`done` の形は `--feature` 経由でしか
   検証できない
-- `sdd-guard.sh`: `gh` 無しの環境で `go:false` と理由を返すことだけを自動テストする。
+- `sdd-guard.sh`: `gh` 無しの環境で `go:false` と理由を返すことを自動テストする。
   ランナーは一時ディレクトリに `gh` の代役（即座に終了コード 1 を返す実行可能ファイル）を
   置いて `PATH` の先頭に足し、`{"go":false,"reason":"gh-unavailable","state":<stdin そのまま>}`
-  が返ることを確かめる。REST を伴う判定の実挙動は導入手順で確認する
+  が返ることを確かめる。`jq` と git がある環境では `--github-dir` で PR 一覧を渡す判定も
+  自動テストする
 - スキル全体: `/sdd-next --dry-run` を導入時のプローブと日常の検算に使う
 
 ## 9. 導入手順

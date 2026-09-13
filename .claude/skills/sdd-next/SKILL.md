@@ -27,8 +27,9 @@ implement PR は作成したセッションが直ちにマージする。
 
 ## 0. 前提と作業 base の復元
 
-作業ツリーが clean で GitHub に問い合わせられることを確認する。cloud では組み込み GitHub
-ツール、手元では `gh api /rate_limit` を使う。満たさなければ変更を残さず終了する。
+作業ツリーが clean であることを確認する。cloud セッションに `gh` があるとは限らないため、
+前提確認で `gh api /rate_limit` を要求してはならない。GitHub 情報が要る箇所では cloud の
+組み込み GitHub ツールを使い、失敗したら理由を書いて変更を残さず終了する。
 
 routine payload のマージ済み PR、または closed PR 一覧の直近のマージ済み `sdd` PR の
 `base.ref` が `claude/sdd-NNN-feature` なら、次を行ってその feature branch を作業 base にする。
@@ -57,7 +58,10 @@ git switch -C <feature-branch> origin/<feature-branch>
 
 組み込み GitHub ツールでは `state=closed` と `state=open` の PR を **base で絞らず**各 100 件
 取得し、JSON 配列を `${TMPDIR:-/tmp}/sdd-github/pulls-{closed,open}.json` に置く。
-`number`, `head.ref`, `base.ref`, `labels` が必要である。手元ではスクリプトが `gh api` で取る。
+ツールの応答は書き換えずにそのまま保存する。各要素に `number`, `head.ref`, `base.ref`,
+`labels` が必要で、`labels` は `["sdd"]` と `[{"name":"sdd"}]` のどちらでもよい。
+`fields` で絞ると `labels` が落ちることがあるので付けない。手元では `--github-dir` を
+省略した場合にだけ、スクリプトが任意フォールバックとして `gh api` を試す。
 
 ```bash
 before=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
@@ -137,7 +141,9 @@ git status --porcelain
 false。**これは人が全体をレビューしてマージする。** final PR の open 状態は段階 PR の
 `open-pr` ガードには含めない。
 
-PR 作成・label・merge は cloud の組み込み GitHub ツールを優先し、手元では `gh api` を使う。
+PR 作成・label 付与・label 検証・merge は cloud の組み込み GitHub ツールを使う。`gh` は
+cloud では使わない。手元で実行する場合のみ、組み込み GitHub ツールの代替として `gh api`
+などを使ってよい。
 `main` や feature branch へ `git push` で成果物を直接上書きしてはならない。
 
 ## 6. 報告
@@ -148,7 +154,8 @@ PR 作成・label・merge は cloud の組み込み GitHub ツールを優先し
 
 `no-progress` / `phase-retry-limit` / `hop-limit` のときだけ
 `sdd-next 停止: NNN <reason>` という open Issue を重複なく作る。本文に state、guard、session
-ID を含め、label は付けない。`open-pr` / `nothing-to-do` / `gh-unavailable` では作らない。
+ID を含め、label は付けない。作成と重複確認は cloud の組み込み GitHub ツールを使う。
+`open-pr` / `nothing-to-do` / `gh-unavailable` では作らない。
 
 ## 手元での検算
 

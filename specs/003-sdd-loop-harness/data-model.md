@@ -100,14 +100,15 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 
 ## 5. ホップ（Hop）
 
-ハーネスが開いてマージされた PR 1 件。GitHub の REST から導出する。
+ハーネスが開いてマージされた PR 1 件。cloud の組み込み GitHub ツールで取得した PR 一覧と
+git の first-parent 履歴から導出する。
 
 | 属性 | 導出元 |
 | --- | --- |
 | 機能 | `head.ref` の `claude/sdd-NNN-` 部分 |
 | 段階・フェーズ | `head.ref` の残り（`plan` / `tasks` / `implement-pN`） |
-| マージ済み | `merged_at != null` |
-| 対象 | `labels[].name` に `sdd` を含み、`base.ref = main` |
+| マージ済み | `git log --first-parent` の件名に PR 番号がある |
+| 対象 | `labels` に `sdd` を含む（`labels[].name` と文字列配列の両方を受ける） |
 
 集計（`sdd-guard.sh`）:
 
@@ -115,7 +116,7 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 | --- | --- | --- |
 | `hops` | 同じ機能のマージ済みホップ数 | `2 + phases + 2` 以上で停止（FR-016） |
 | `phase_retries` | 同じ `implement-pN` のマージ済みホップ数 | 2 以上で停止（FR-015） |
-| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open | 1 件以上で何もしない（FR-013） |
+| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、かつ `base.ref = claude/sdd-NNN-feature` | 1 件以上で何もしない（FR-013） |
 
 `phases` は tasks.md が無い段階（plan／tasks）では 0 として扱い、ホップ上限は `2 + 0 + 2 = 4`
 になる。tasks.md ができた後は実際のフェーズ数で計算し直す。
@@ -137,7 +138,7 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 | `phase-retry-limit` | 同じフェーズのマージが 2 回に達した | 作る |
 | `hop-limit` | 機能のホップ上限に達した | 作る |
 | `no-progress` | （スキルが作業後に判定）状態が変わらない／差分なし | 作る |
-| `gh-unavailable` | `gh` が無い、または REST が失敗した | 作らない（作れない） |
+| `gh-unavailable` | PR 一覧が取得できない、`jq` が無い、またはローカル検算フォールバックで `gh`/REST が失敗した | 作らない（作れない） |
 | `nothing-to-do` | state が `done` または `none` | 作らない |
 
 ## 7. 停止通知（Issue）

@@ -50,6 +50,18 @@ routine-fire-payload に PR 番号が含まれていれば、対象機能の確�
 
 ラベルを作り直す場合の手順を残す。**ラベルが無いと連鎖が始まらない。**
 
+推奨は GitHub の画面から作る方法である。Issues → Labels → New label で次を入れる。
+
+| 項目 | 値 |
+| --- | --- |
+| Name | `sdd` |
+| Description | `マージすると /sdd-next が次の段階を回す` |
+| Color | `0e8a16` |
+
+API で作る場合は GitHub App、REST client、または保守者の手元で使える認証済みツールから
+`POST /repos/syudead/vv/labels` を呼ぶ。`gh` は使える環境だけの例であり、cloud セッションでは
+前提にしない。
+
 ```bash
 gh api -X POST /repos/syudead/vv/labels \
   -f name=sdd \
@@ -57,8 +69,6 @@ gh api -X POST /repos/syudead/vv/labels \
   -f color=0e8a16
 gh api /repos/syudead/vv/labels/sdd   # 作成を確認する
 ```
-
-GitHub の画面から作る場合は Issues → Labels → New label で同じ名前・説明・色を入れる。
 
 ## 作成手順
 

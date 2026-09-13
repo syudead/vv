@@ -56,7 +56,7 @@ routine の「Run now」に次の文を添えて実行する:
 (2) /tmp/sdd-rate-limits.json の有無と内容
 (3) curl -s https://api.anthropic.com/api/oauth/usage の HTTP ステータス
 (4) routine-fire-payload の中身（あれば）
-(5) echo $GH_TOKEN と gh api /rate_limit の成否
+(5) cloud セッションで組み込み GitHub ツールから PR 一覧を取得できたか
 ```
 
 **期待**: `--dry-run` の出力に `guard` の JSON が含まれ、`go:true` かつ `stage:"plan"`
@@ -68,7 +68,7 @@ routine の「Run now」に次の文を添えて実行する:
 | (1) フックが走らない | routine の環境に setup script `make setup` を置く |
 | (2) または (3) が使える | SKILL.md の「取得手段」を埋め、使用量ゲートを有効にする |
 | どちらも使えない | `docs/exec-plans/tech-debt.md` に記録し、ゲートは無効のまま |
-| (5) `gh api` が失敗 | 設計の前提が崩れる。停止して見直す |
+| (5) PR 一覧を取得できない | 組み込み GitHub ツールまたは GitHub App 権限の前提が崩れる。停止して見直す |
 
 ---
 

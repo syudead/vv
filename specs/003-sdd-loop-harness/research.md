@@ -34,38 +34,38 @@
 
 ---
 
-## R-002: cloud セッションからの GitHub 操作（`gh` と組み込みツール）
+## R-002: cloud セッションからの GitHub 操作（組み込みツールと `gh`）
 
-**Decision**: シェルスクリプト（`sdd-guard.sh`）は **`gh api` の REST エンドポイント**だけを
-使う（`gh pr list` などの高水準コマンドは使わない）。スキルの手順でモデルが行う PR 作成・
-Issue 作成は、cloud セッション組み込みの GitHub ツールを第一候補、`gh pr create` /
-`gh issue create` を代替、`gh api -X POST` を最終手段にする。
+**Decision**: cloud セッションでは `gh` を前提にしない。スキルが cloud セッション組み込みの
+GitHub ツールで PR 一覧を取得し、`${TMPDIR:-/tmp}/sdd-github/pulls-closed.json` と
+`pulls-open.json` に置いてから、`sdd-guard.sh --github-dir` に渡す。PR 作成・Issue 作成・
+label 付与・merge も組み込み GitHub ツールを通常経路にする。`gh api` は `--github-dir` を
+省略したローカル検算フォールバックでだけ使う。
 
-**Rationale**: cloud セッションには `gh` が pre-install されており、`GH_TOKEN` は
-`proxy-injected` というプレースホルダで、GitHub プロキシが実際の資格情報に差し替える
-（`/docs/en/cloud-environments` "Work with GitHub issues and pull requests"）。
-ただし同じ文書の "GitHub proxy" 節に、**GraphQL は PR ワークフロー用の固定された操作
-だけが通り、それ以外は 403 で REST の `gh api repos/{owner}/{repo}/...` に誘導される**
-とある。`gh pr list` や `gh issue list` は内部で GraphQL を使うため、通る保証が無い。
-スクリプトは判定の要なので、確実に通る REST に限定する。
+**Rationale**: 2026-09-13 のプローブで、cloud セッションには `gh` が無く
+`gh: command not found` になった。一方で cloud セッションの組み込み GitHub ツールは使えた。
+公式文書の「pre-installed」は実運用での利用可能性を保証しないため、cloud の通常経路から
+`gh` 依存を外す。`sdd-guard.sh` は MCP ツールを直接呼べないので、PR 一覧をファイルで渡す。
+高水準の `gh pr list` や `gh issue list` は、`gh` がある環境でも GraphQL や認証 proxy の
+制限で失敗しうるため使わない。
 
-使う REST エンドポイント:
+使う GitHub 情報:
 
-| 用途 | エンドポイント |
+| 用途 | 取得元 |
 | --- | --- |
-| open な `sdd` PR の一覧 | `GET /repos/{o}/{r}/pulls?state=open&base=main&per_page=100` → `labels[].name` と `head.ref` で絞る |
-| マージ済み `sdd` PR の一覧（直近・回数） | `GET /repos/{o}/{r}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100` → `merged_at != null` かつ `labels` に `sdd` |
-| PR が触ったファイル | `GET /repos/{o}/{r}/pulls/{n}/files` |
-| open Issue の題名 | `GET /repos/{o}/{r}/issues?state=open&per_page=100`（PR も混ざるので `pull_request` キーの無いものだけ） |
+| open PR の一覧 | 組み込み GitHub ツールで base を限定せず `state=open` の PR を最大 100 件取得し、`pulls-open.json` に置く |
+| closed PR の一覧 | 組み込み GitHub ツールで base を限定せず `state=closed` の PR を更新日時降順で最大 100 件取得し、`pulls-closed.json` に置く |
+| マージ済み判定 | `sdd-guard.sh` が git の first-parent 履歴から決める |
+| PR が触ったファイル | `sdd-guard.sh` が該当 merge/squash commit の diff から決める |
+| open Issue の題名 | 組み込み GitHub ツールで取得する |
 
-`gh api` は `--jq` を持つが、cloud セッションと CI には `jq` があるので、
-出力の加工は `jq` に統一する（R-007）。
+`gh api` を使う場合も REST だけに限定する。ただしこれは手元での検算・保守用であり、cloud
+セッションの成功条件に含めない。
 
 **Alternatives considered**:
 
-- `git log --merges` でホップ数を数える: スカッシュマージにすると merge commit が
-  無くなり数えられない（spec の Assumptions）。REST なら方式に依存しない
-- 組み込み GitHub ツールだけを使う: スクリプトからは呼べない
+- `gh api` を cloud の通常経路にする: 実機で `gh` が無かったため不可
+- 組み込み GitHub ツールだけを使う: スクリプトからは呼べないため、ファイル渡しにする
 
 ---
 
@@ -143,15 +143,16 @@ Issue 作成は、cloud セッション組み込みの GitHub ツールを第一
 ## R-007: スクリプトの言語と依存
 
 **Decision**: `bash`（4 以上）で書く。`sdd-state.sh` は **`jq` に依存しない**（`awk`・`grep`・
-`printf` だけで JSON を組み立てる）。`sdd-guard.sh` は `jq` と `gh` に依存する。
-テストランナーも `bash` で、`jq` 無しで動く。
+`printf` だけで JSON を組み立てる）。`sdd-guard.sh` は `jq` に依存するが、cloud の通常経路では
+`gh` に依存しない。テストランナーも `bash` で、基本テストは `jq` 無しで動く。
 
-**Rationale**: cloud セッションには bash・git・gh・jq が pre-install されている
-（`/docs/en/cloud-environments` "Installed tools"）。CI（ubuntu-latest）にも jq がある。
-一方、保守者の手元（Windows + Git Bash）には `jq` も `gh` も無い（本セッションで確認）。
+**Rationale**: cloud セッションには bash・git・jq がある想定だが、`gh` は実機プローブで
+無かった。CI（ubuntu-latest）には jq がある。一方、保守者の手元（Windows + Git Bash）には
+`jq` も `gh` も無い（本セッションで確認）。
 US3「手元で判定を検算できる」を満たすには、状態判定とそのテストが `jq` 無しで動く
-必要がある。`sdd-guard.sh` は GitHub を見る以上、手元では `gh` 無しで `go:false` を
-返す挙動を確認するだけでよい（spec の Edge Cases）。
+必要がある。`sdd-guard.sh` は GitHub を見る以上、手元では `gh` 無しで `go:false` を返す
+挙動を確認するだけでよい。`jq` と git がある環境では、`--github-dir` のファイル入力で
+GitHub 判定も自動テストする。
 
 JSON の組み立てで注意するのは `phase_title` のエスケープだけである（`"` と `\` を
 エスケープし、制御文字は含まない前提）。
