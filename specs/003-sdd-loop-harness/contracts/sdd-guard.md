@@ -25,8 +25,8 @@ GitHub ツールで一覧を取り、ファイルに置いてから `--github-di
 
 | ファイル | 中身 | 使う項目 |
 | --- | --- | --- |
-| `pulls-closed.json` | base を限定しない closed PR の配列（更新日時の降順、100 件まで） | `number`、`head.ref`、`labels`（`["sdd"]` と `[{"name":"sdd"}]` の両方を受ける） |
-| `pulls-open.json` | base を限定しない open PR の配列 | `head.ref` |
+| `pulls-closed.json` | base を限定しない closed PR の配列（更新日時の降順、必要なページをすべて連結） | `number`、`head.ref`、`labels`（`["sdd"]` と `[{"name":"sdd"}]` の両方を受ける） |
+| `pulls-open.json` | base を限定しない open PR の配列（必要なページをすべて連結） | `head.ref`、`base.ref`、`labels` |
 
 **マージ済みかどうかは API の `merged_at` を見ない。** `--root` の git 履歴（HEAD の
 first-parent）に `Merge pull request #N` か `(#N)` の件名があれば、PR `N` はマージ済みと
@@ -56,10 +56,10 @@ Edge Cases）。
 
 | # | 判定 | データ | 結果 |
 | --- | --- | --- | --- |
-| 0 | PR 一覧が取れるか | cloud は `--github-dir` の 2 ファイル。ローカル検算フォールバックだけ `GET /rate_limit` → `GET /repos/{o}/{r}/pulls?state=closed&sort=updated&direction=desc&per_page=100` と `GET /repos/{o}/{r}/pulls?state=open&per_page=100` | `jq` 無し・`gh` 無し・REST 失敗 → `gh-unavailable` |
+| 0 | PR 一覧が取れるか | cloud は `--github-dir` の 2 ファイル。ローカル検算フォールバックだけ `GET /rate_limit` → `GET /repos/{o}/{r}/pulls?state=closed&sort=updated&direction=desc&per_page=100&page=N` と `GET /repos/{o}/{r}/pulls?state=open&sort=updated&direction=desc&per_page=100&page=N` を 100 件未満のページまで取得 | `jq` 無し・`gh` 無し・REST 失敗・配列でない応答 → `gh-unavailable` |
 | 1 | **対象機能の確定**: closed 一覧のうち label `sdd` で、かつ git 履歴にマージされている PR を新しい順に並べ、先頭の変更ファイルから `specs/NNN-*/` を抽出。見つかれば `sdd-state.sh --feature` で再判定 | `git log --first-parent HEAD` の件名（`Merge pull request #N` / `(#N)`）と `git diff --name-only <c>^1 <c>` | `state` を置き換える。見つからなければ stdin の state のまま |
 | 2 | `state.stage` が `done` または `none` | — | `go:false`, `reason:"nothing-to-do"` |
-| 3 | **冪等**: open PR のうち `head.ref` が `claude/sdd-NNN-` で始まり、`base.ref == claude/sdd-NNN-feature` のものがある | open 一覧 | `go:false`, `reason:"open-pr"`, `open_prs:[...]` |
+| 3 | **冪等**: open PR のうち label `sdd` で、`head.ref` が `claude/sdd-NNN-` で始まり、`base.ref == claude/sdd-NNN-feature` のものがある | open 一覧 | `go:false`, `reason:"open-pr"`, `open_prs:[...]` |
 | 4 | **フェーズ別リトライ**: `stage = implement` で、`head.ref = claude/sdd-NNN-implement-pN` のマージ済み `sdd` PR が 2 件以上 | 1 で作った一覧を再利用 | `go:false`, `reason:"phase-retry-limit"` |
 | 5 | **ホップ上限**: `head.ref` が `claude/sdd-NNN-` で始まるマージ済み `sdd` PR が `2 + phases + 2` 件以上 | 同上 | `go:false`, `reason:"hop-limit"` |
 | 6 | 上記に該当しない | — | `go:true` |
@@ -70,7 +70,8 @@ Edge Cases）。
 
 - cloud セッションでは `gh` を前提にしない。高水準の `gh pr list` / `gh issue list` は
   GraphQL や認証の差で失敗しうるため使わない（R-002）
-- `per_page=100` を超える件数は想定しない（1 機能あたりのホップは最大でも十数件）
+- `per_page=100` を超える通常 PR があっても、cloud 側はページを連結してから渡し、ローカル
+  フォールバックも 100 件未満のページまで取得する
 - git 履歴は `--root` の HEAD を読む。スキルは `main` 上で呼ぶので、`main` の履歴になる。
   shallow clone で件名が読めない範囲のマージは数えない
 - 出力の `open_prs` は `head.ref` の配列。空なら `[]`
@@ -89,9 +90,11 @@ $ sdd-state.sh | sdd-guard.sh     # 手元（gh 無し）
 
 自動テスト（`tests/run.sh`）は次を確認する。
 
-- `PATH` から `gh` を外した状態で `gh-unavailable` を返し、`state` を素通しする
+- `PATH` から `gh` を外した状態、または `gh api` の一覧取得が失敗した状態で
+  `gh-unavailable` を返し、`state` を素通しする
 - `--github-dir` で一覧を渡し、フィクスチャを写した一時 git リポジトリにマージコミットを
-  積んで、`go:true`（ホップ数）・`open-pr`・`phase-retry-limit`・対象機能の確定
+  積んで、`go:true`（ホップ数）・`open-pr`・ラベル無し open PR は塞がないこと・
+  `phase-retry-limit`・対象機能の確定
   （`nothing-to-do`）・未マージやラベル無しを数えないこと・ファイル無しの終了コード 2
 
 `--github-dir` のテストは `jq` と git が要り、無ければ SKIP になる（CI では走る）。

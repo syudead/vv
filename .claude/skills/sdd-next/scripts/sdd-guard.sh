@@ -102,10 +102,23 @@ else
   owner="${repo%%/*}"
   name="${repo#*/}"
 
-  api() { gh api "$1" 2>/dev/null || printf '[]'; }
+  fetch_pulls() {
+    local pull_state="$1" page=1 page_json all_json='[]'
+    while :; do
+      if ! page_json="$(gh api "/repos/$owner/$name/pulls?state=$pull_state&sort=updated&direction=desc&per_page=100&page=$page" 2>/dev/null)"; then
+        emit_unavailable
+      fi
+      printf '%s' "$page_json" | jq -e 'type == "array"' >/dev/null 2>&1 || emit_unavailable
+      all_json="$(printf '%s\n%s\n' "$all_json" "$page_json" | jq -s 'add')"
+      count="$(printf '%s' "$page_json" | jq -r 'length')"
+      [ "${count:-0}" -eq 100 ] || break
+      page=$((page + 1))
+    done
+    printf '%s' "$all_json"
+  }
   # 段階 PR は feature branch 向け、最終 PR は main 向けなので base を絞らない。
-  closed_json="$(api "/repos/$owner/$name/pulls?state=closed&sort=updated&direction=desc&per_page=100")"
-  open_json="$(api "/repos/$owner/$name/pulls?state=open&per_page=100")"
+  closed_json="$(fetch_pulls closed)"
+  open_json="$(fetch_pulls open)"
 fi
 
 # --- マージ済み PR を git 履歴から並べる ---------------------------------------
@@ -188,7 +201,10 @@ MERGED
 # --- 手順 3: 冪等（open な自動 PR があれば何もしない） ----------------------
 open_prs="$(printf '%s' "$open_json" \
   | jq -c --arg p "$prefix" --arg b "$feature_branch" \
-      '[.[] | select(.base.ref == $b) | .head.ref | select(startswith($p))]' \
+      '[.[] | select(.base.ref == $b)
+              | select(([.labels[]? | if type == "object" then .name else . end]
+                        | index("sdd")) != null)
+              | .head.ref | select(startswith($p))]' \
       2>/dev/null || printf '[]')"
 [ -n "$open_prs" ] || open_prs='[]'
 open_count="$(printf '%s' "$open_prs" | jq -r 'length' 2>/dev/null || printf '0')"

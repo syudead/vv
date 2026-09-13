@@ -25,7 +25,7 @@ routine には判定ロジックを一切置かない。しきい値も対象機
 ```text
 リポジトリの `/sdd-next` スキルを実行する。それ以外の作業はしない。
 routine-fire-payload に PR 番号が含まれていれば、対象機能の確認に使ってよいが、
-対象機能の決定はスキルの手順（sdd-guard.sh）に従う。
+対象機能の決定とレビュー指摘への対応はスキルの手順に従う。
 ```
 
 ## トリガー
@@ -33,10 +33,13 @@ routine-fire-payload に PR 番号が含まれていれば、対象機能の確�
 | # | 種類 | 設定 |
 | --- | --- | --- |
 | 1 | GitHub event | リポジトリ `syudead/vv`、イベント `pull_request` / アクション `closed`。フィルタ: Labels is one of `sdd`、Is merged equals `true`（Base branch フィルタは設定しない） |
-| 2 | Schedule | 毎日 1 回、03:00 JST（見送り・取りこぼしの再開用。FR-019） |
+| 2 | Schedule | 毎日 1 回、03:00 JST（見送り・取りこぼし・open PR のレビュー指摘対応の再開用。FR-019） |
 
 トリガー 1 には `opened` / `labeled` / `synchronize` を**含めない**。含めると、ハーネス
 自身が開く `sdd` ラベル付き PR で自分が起きてしまう。
+レビュー指摘は GitHub event では起動せず、日次 schedule か保守者の Run now で拾う。
+`/sdd-next` 側が open な `sdd` PR の review thread を見て、必要なら同じ PR の head に
+修正 commit を積む。
 
 > **移行時の必須作業**: claude.ai の routine 編集画面で既存の `Base branch equals main` を
 > 削除する。段階 PR は `claude/sdd-NNN-feature` にマージされるため、このフィルタが残ると

@@ -116,7 +116,7 @@ git の first-parent 履歴から導出する。
 | --- | --- | --- |
 | `hops` | 同じ機能のマージ済みホップ数 | `2 + phases + 2` 以上で停止（FR-016） |
 | `phase_retries` | 同じ `implement-pN` のマージ済みホップ数 | 2 以上で停止（FR-015） |
-| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、かつ `base.ref = claude/sdd-NNN-feature` | 1 件以上で何もしない（FR-013） |
+| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、`base.ref = claude/sdd-NNN-feature`、かつ `labels` に `sdd` を含む | 1 件以上で新しい段階 PR は作らない（FR-013）。未解決レビューがあればレビュー対応へ渡す |
 
 `phases` は tasks.md が無い段階（plan／tasks）では 0 として扱い、ホップ上限は `2 + 0 + 2 = 4`
 になる。tasks.md ができた後は実際のフェーズ数で計算し直す。
@@ -157,3 +157,18 @@ git の first-parent 履歴から導出する。
 `base_branch` へ入れる。`done` は `feature_branch` と `base_branch: main` を持ち、段階を
 作らず最終 PR を開く。plan PR と最終 PR だけを人がマージし、tasks と検査成功済みの
 implement PR はハーネスがマージする。
+
+## 9. レビュー対応（Review Response）
+
+open な `sdd` PR に紐づく未解決 review thread または最新 commit 後の修正依頼コメント。
+通常の State とは別に GitHub 上の PR 状態から導出し、状態ファイルは持たない。
+
+| 属性 | 導出元 |
+| --- | --- |
+| 対象 PR | `sdd` ラベル付き open PR。段階 PR は `base.ref = claude/sdd-NNN-feature`、最終 PR は `base.ref = main` |
+| 対象 branch | PR の `head.ref` |
+| 要対応 | unresolved review thread、または最新 commit 後の `REQUEST_CHANGES` / 修正依頼コメント |
+| 完了 | 修正 commit を同じ head に push し、該当 thread へ対応内容と検査結果を返信。解決できた thread は resolve |
+
+レビュー対応が選ばれた run では新しい段階 PR を作らない。複数 PR が該当する場合は 1 run で
+1 件だけ扱い、残りは次の日次 run または手動実行に任せる。

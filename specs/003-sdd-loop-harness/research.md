@@ -53,10 +53,11 @@ label 付与・merge も組み込み GitHub ツールを通常経路にする。
 
 | 用途 | 取得元 |
 | --- | --- |
-| open PR の一覧 | 組み込み GitHub ツールで base を限定せず `state=open` の PR を最大 100 件取得し、`pulls-open.json` に置く |
-| closed PR の一覧 | 組み込み GitHub ツールで base を限定せず `state=closed` の PR を更新日時降順で最大 100 件取得し、`pulls-closed.json` に置く |
+| open PR の一覧 | 組み込み GitHub ツールで base を限定せず `state=open` の PR を 100 件単位で必要ページ分取得し、`pulls-open.json` に置く |
+| closed PR の一覧 | 組み込み GitHub ツールで base を限定せず `state=closed` の PR を更新日時降順に 100 件単位で必要ページ分取得し、`pulls-closed.json` に置く |
 | マージ済み判定 | `sdd-guard.sh` が git の first-parent 履歴から決める |
 | PR が触ったファイル | `sdd-guard.sh` が該当 merge/squash commit の diff から決める |
+| review threads | open な `sdd` PR に未解決レビュー指摘があるかを組み込み GitHub ツールで取得する |
 | open Issue の題名 | 組み込み GitHub ツールで取得する |
 
 `gh api` を使う場合も REST だけに限定する。ただしこれは手元での検算・保守用であり、cloud

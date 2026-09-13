@@ -56,20 +56,34 @@ git switch -C <feature-branch> origin/<feature-branch>
 
 ## 1. 判定
 
-組み込み GitHub ツールでは `state=closed` と `state=open` の PR を **base で絞らず**各 100 件
-取得し、JSON 配列を `${TMPDIR:-/tmp}/sdd-github/pulls-{closed,open}.json` に置く。
+組み込み GitHub ツールでは `state=closed` と `state=open` の PR を **base で絞らず**、
+`per_page=100` 相当で必要なページを続けて取得し、JSON 配列を
+`${TMPDIR:-/tmp}/sdd-github/pulls-{closed,open}.json` に置く。
 ツールの応答は書き換えずにそのまま保存する。各要素に `number`, `head.ref`, `base.ref`,
 `labels` が必要で、`labels` は `["sdd"]` と `[{"name":"sdd"}]` のどちらでもよい。
 `fields` で絞ると `labels` が落ちることがあるので付けない。手元では `--github-dir` を
 省略した場合にだけ、スクリプトが任意フォールバックとして `gh api` を試す。
 
+cloud:
+
 ```bash
 before=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
 guard=$(printf '%s\n' "$before" | \
   .claude/skills/sdd-next/scripts/sdd-guard.sh --github-dir "${TMPDIR:-/tmp}/sdd-github")
+before=$(printf '%s\n' "$guard" | jq -c '.state')
 ```
 
-`guard.state` を以後の真実にする。`guard.go=false` は次の通り扱う。
+手元:
+
+```bash
+before=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
+guard=$(printf '%s\n' "$before" | .claude/skills/sdd-next/scripts/sdd-guard.sh)
+before=$(printf '%s\n' "$guard" | jq -c '.state')
+```
+
+`guard.state` を以後の真実にし、`before` も必ず `guard.state` に置き換える。ガードが直近の
+マージ済み `sdd` PR から対象機能を差し替えることがあるため、初回の `sdd-state.sh` 出力を
+前進確認に使ってはいけない。`guard.go=false` は次の通り扱う。
 
 | reason | 振る舞い |
 | --- | --- |
@@ -80,6 +94,19 @@ guard=$(printf '%s\n' "$before" | \
 
 `--dry-run` ならここで guard、作業 base、次に作る head/base、plan なら手動マージ、その他なら
 自動マージ、done なら最終 PR を表示して終了する。ファイル・branch・PR を変更しない。
+
+## 1.5 レビュー対応
+
+open な `sdd` PR に未解決のレビュー指摘がある場合は、通常の段階実行より先にレビュー対応だけを
+行う。対象は `state.base_branch` 向けの段階 PR、または `main` 向けの最終 PR のうち、
+組み込み GitHub ツールで取得した review thread が未解決、または最新 commit 後に
+`REQUEST_CHANGES` / 修正依頼コメントが付いたものに限る。
+
+複数ある場合は更新日時が古い 1 件だけを扱い、同じセッションで新しい段階 PR を作らない。
+対象 PR の head branch を checkout し、レビュー指摘に必要な最小差分だけを入れ、該当する検査を
+再実行して同じ PR に push する。push 後は各レビュー thread に「対応内容 / 検査結果 / 追加で
+人の判断が必要な点」を返信し、解決できた thread は resolve する。仕様判断・権限・外部情報が
+必要なら修正を作らず、PR コメントで block 理由を返して終了する。
 
 ## 2. feature branch と段階 branch
 
@@ -135,6 +162,9 @@ git status --porcelain
 本文には before/after/guard、検査、残課題、session ID、`UI 変更なし` または UI 画像を含める。
 ラベルを読み直して確認してからマージする。自動マージ API が失敗したら PR は open のまま
 残し、停止理由を報告する（人に通常レビューを要求するための仕様には戻さない）。
+自動マージが成功した段階 PR は、同じ phase を再実行しても non-fast-forward にならないよう
+remote の `state.branch` を削除する。削除に失敗した場合は次回実行で同名 branch を上書きせず、
+古い remote head と open PR の有無を報告して停止する。
 
 `stage=done` では新しい commit や段階 branch を作らず、`feature_branch` → `main` の最終 PR を
 1 件だけ開く（既存なら再利用）。タイトルは `feat: NNN を完成する`、label は `sdd`、draft は

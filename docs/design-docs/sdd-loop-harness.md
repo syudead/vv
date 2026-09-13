@@ -1,7 +1,7 @@
 # SDD ループハーネス: spec 以降の段階を GitHub イベントで自動で回す
 
 - ステータス: 設計確定（feature branch 方式を実装済み）
-- 最終更新: 2026-09-13（承認ゲートと branch 構成を改訂）
+- 最終更新: 2026-09-14（レビュー指摘への対応フローを追加）
 - スコープ: Spec Kit の `plan → tasks → implement` を spec ごとの feature branch 上で進め、
   plan と最終マージだけを人の承認ゲートにする仕組み
 
@@ -58,7 +58,8 @@ spec 以降の段階について「人が PR をマージする」以外の手�
 
 - specify／clarify の自動化。機能説明のバックログ管理も持たない
 - 複数機能の並行実行。ハーネスが同時に扱う機能は 1 つ
-- レビューそのものの自動化（Auto-fix や code review は既存の仕組みに任せる）
+- レビューそのものの生成（code review は既存の仕組みに任せる。既に付いた指摘への修正は
+  `/sdd-next` のレビュー対応フローで扱う）
 
 ## 2. 全体の流れ（改訂前。現在は 0 章を優先）
 
@@ -71,9 +72,10 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
         ▼
 /sdd-next スキル（.claude/skills/sdd-next/SKILL.md）
   1. sdd-state.sh で次の段階を決定論的に求める → sdd-guard.sh で進めてよいか判定
-  2. 段階に応じて /speckit-plan | /speckit-tasks | /speckit-implement <フェーズ> を実行
-  3. make check（implement のとき）→ コミット → claude/sdd-NNN-<stage> へ push
-  4. ラベル sdd 付きの PR を main に開いて終了
+  2. open な sdd PR に未解決レビュー指摘があれば、その PR の head に修正 commit を積んで終了
+  3. 段階に応じて /speckit-plan | /speckit-tasks | /speckit-implement <フェーズ> を実行
+  4. make check（implement のとき）→ コミット → claude/sdd-NNN-<stage> へ push
+  5. ラベル sdd 付きの PR を main に開いて終了
         │
 人: PR をレビューしてマージ（= 承認ゲート） → 先頭に戻る
 ```
@@ -91,7 +93,7 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
 | --- | --- | --- |
 | `sdd-state.sh` | `.claude/skills/sdd-next/scripts/` | `specs/*/` のファイルだけを読み、対象機能と次の段階を JSON で出す。git／gh には触れない。手元で実行して検算できる |
 | `sdd-guard.sh` | 同上 | 組み込み GitHub ツールが保存した PR 一覧 JSON と git 履歴を見て、無限ループ対策と冪等性を判定し `go` / `stop` を返す。`gh` は手元検算の任意フォールバック |
-| `sdd-next` スキル | `.claude/skills/sdd-next/SKILL.md` | 上記 2 つの結果を受けて該当する `/speckit-*` を呼び、PR を開く手順書 |
+| `sdd-next` スキル | `.claude/skills/sdd-next/SKILL.md` | 上記 2 つの結果を受けて、既存 PR のレビュー対応または該当する `/speckit-*` の実行と PR 作成を行う手順書 |
 | `sdd-lib.sh` | `.claude/skills/sdd-next/scripts/` | 上 2 つが `source` する共通関数。JSON のエスケープ、機能の列挙、`tasks.md` のフェーズ解析（awk） |
 | `rate-limits-statusline.sh` | `.claude/hooks/` | 使用率を受け取るためだけのステータスライン。受け取った JSON を `${TMPDIR:-/tmp}/sdd-rate-limits.json` に落とし、何も表示しない（6 章の使用量ゲート、[R-004](../../specs/003-sdd-loop-harness/research.md)） |
 | `.gitattributes` | リポジトリ root | `*.sh` を `eol=lf` に固定する。手元（Windows、`core.autocrlf=true`）で CRLF のスクリプトをチェックアウトすると Git Bash が落ちるため |
@@ -135,7 +137,7 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
 | 1 | 同じ段階を延々やり直す（例: implement が何も進まないまま PR が出てマージされる） | **前進チェック**: 作業前後の `sdd-state.sh` の出力を比較し、変化がなければ PR を開かず終了。`git diff` が空の場合も同じ | state.sh の JSON 差分（スキル側で判定） |
 | 2 | 同じフェーズのやり直しが積み重なる | **フェーズ別リトライ上限（2 回）**: `git log --merges` 中の `claude/sdd-NNN-implement-pN` のマージ数が 2 以上なら停止 | git のマージ履歴 |
 | 3 | 機能単位で回数が膨らむ | **機能別ホップ上限**: `claude/sdd-NNN-*` のマージ数が `2（plan, tasks）+ フェーズ数 + 余裕 2` 以上なら停止 | git のマージ履歴 + tasks.md のフェーズ数 |
-| 4 | 二重発火（同じイベントで 2 セッション、人が手で回した直後に routine も走る、日次トリガーとイベントが重なる） | **冪等ガード**: 対象機能の `sdd` ラベル付き open PR（head `claude/sdd-NNN-*`、base `claude/sdd-NNN-feature`）が既にあれば何もしない | 組み込み GitHub ツールで取得した open PR 一覧 |
+| 4 | 二重発火（同じイベントで 2 セッション、人が手で回した直後に routine も走る、日次トリガーとイベントが重なる） | **冪等ガード**: 対象機能の `sdd` ラベル付き open PR（head `claude/sdd-NNN-*`、base `claude/sdd-NNN-feature`）が既にあれば新しい段階 PR は作らない。未解決レビューがある場合だけレビュー対応へ進む | 組み込み GitHub ツールで取得した open PR 一覧と review threads |
 | 5 | 緊急停止 | routine の一時停止（claude.ai のトグル）。加えて `sdd` ラベルを付けなければ発火しない（トリガーのフィルタ条件） | routine 設定 / PR ラベル |
 
 補助的な歯止め:
@@ -151,7 +153,7 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
    git の first-parent 履歴に現れる直近 PR を採る。その merge/squash commit が触った
    `specs/NNN-*/` を `--feature` として `sdd-state.sh` を呼び直す。取れなければ state.sh の
    既定（昇順最初）を使う。これで「ラベル無しで寝かせている spec」を誤って拾わない
-2. 冪等ガード（#4）
+2. 冪等ガード（#4）。open PR に未解決レビュー指摘がある場合は通常の停止ではなくレビュー対応へ渡す
 3. フェーズ別リトライ上限（#2）
 4. ホップ上限（#3）
 
@@ -162,6 +164,21 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
 1 件立てて人に知らせる。同じタイトルの open Issue があれば作らない。`done` / `none` は
 正常終了なので Issue は作らない。
 
+## 5.5 レビュー対応フロー
+
+日次トリガーまたは手動実行で、open な `sdd` PR に未解決レビュー指摘があれば、新しい段階を
+始めずにその PR だけを直す。対象は `sdd` ラベル付きで、段階 PR（base =
+`claude/sdd-NNN-feature`）または最終 PR（base = `main`）に限る。
+
+1 セッションで扱う PR は 1 件だけ。review thread が未解決、または最新 commit 後に
+`REQUEST_CHANGES` / 修正依頼コメントがあるものを対象にし、head branch を checkout して
+最小差分を commit、同じ PR に push する。修正後は該当 thread に対応内容と検査結果を返信し、
+解決できた thread を resolve する。仕様判断・権限・外部情報が必要なコメントは、修正せず
+block 理由を PR コメントに残して終了する。
+
+このフローは「レビューコメントを作る」仕組みではない。既存レビューを SDD ハーネスの durable
+queue に載せ、通常の段階生成と混線させずに返すための入口である。
+
 ## 6. スキルの手順: `/sdd-next [--dry-run]`
 
 routine のプロンプトは「`/sdd-next` を実行する。それ以外の作業はしない」だけにし、手順は
@@ -171,8 +188,11 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 0.   前提確認      作業ツリーが clean。必要なら feature branch を復元する。ダメなら理由を出して終了
 0.5  使用量ゲート  7 日窓 ≥ 80% または 5 時間窓 ≥ 70% なら「今回は見送り」と書いて終了
                    （PR も Issue も作らない。再開は日次トリガーか次のマージに任せる）
-1.   判定          before = sdd-state.sh → sdd-guard.sh。go:false なら
+1.   判定          before = sdd-state.sh → sdd-guard.sh。before は guard.state に置き換える。
+                   go:false なら
                    stage が done/none 以外のとき Issue を立てて終了
+1.5  レビュー対応  open な sdd PR に未解決レビュー指摘があれば、その head に修正 commit を
+                   push し、返信・resolve して終了
      --dry-run     ここまでで「何をするつもりか」を表示して終了
 2.   準備          git switch -c <state.branch>、export SPECIFY_FEATURE_DIRECTORY=<feature_dir>
 3.   段階の実行（下表）
@@ -180,7 +200,8 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
                    空なら PR を開かず Issue を立てて終了
 5.   PR            コミット（既存の慣習どおり日本語、Co-Authored-By 付き）→ push →
                    ラベル sdd 付きで state.base_branch へ PR。本文に before/after の JSON、実行した検査、
-                   残課題、セッションへのリンク（CLAUDE_CODE_REMOTE_SESSION_ID）を書く
+                   残課題、セッションへのリンク（CLAUDE_CODE_REMOTE_SESSION_ID）を書く。
+                   自動マージ成功後は remote の段階 branch を削除する
 6.   報告          最後に「段階・PR URL・次に起きること」を 3 行で出す
 ```
 
@@ -200,6 +221,8 @@ GitHub 操作の使い分け:
 - スキルの手順（PR 作成・Issue 作成・label 付与・マージ）は cloud セッション組み込みの
   GitHub ツールを通常経路にする。`gh` は cloud に無い実機ケースがあるため、使える場合の
   手元検算・保守用フォールバックに留める
+- PR 一覧は 100 件単位でページを連結してから `sdd-guard.sh` へ渡す。通常 PR が多い時期でも
+  対象 feature の古い段階 PR が欠落しないようにする
 
 Spec Kit との接続: `SPECIFY_FEATURE_DIRECTORY` を export しておけば既存の
 `.specify/scripts/bash/common.sh` が `.specify/feature.json`（gitignore 済み）を書き、
