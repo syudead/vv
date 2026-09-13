@@ -99,9 +99,11 @@ git status --porcelain         # 空であること
 | `pulls-closed.json` | `mcp__github__list_pull_requests` | `owner`, `repo`, `state: "closed"`, `base: "main"`, `sort: "updated"`, `direction: "desc"`, `perPage: 100` |
 | `pulls-open.json` | `mcp__github__list_pull_requests` | `owner`, `repo`, `state: "open"`, `base: "main"`, `perPage: 100` |
 
-ツールの応答（PR オブジェクトの **JSON 配列**）をそのままファイルに書く。各要素に
-`number`・`head.ref`・`labels[].name` が要る（`fields` で絞るならこの 3 つを含める）。
-`merged_at` は要らない — マージ済みかどうかはスクリプトが git 履歴から決める。
+ツールの応答（PR オブジェクトの **JSON 配列**）を**書き換えずに**そのままファイルに書く。
+各要素に `number`・`head.ref`・`labels` が要る。`labels` は `["sdd"]`（組み込みツール）でも
+`[{"name":"sdd"}]`（REST）でもよく、スクリプトが両方を読む。`fields` で絞ると `labels` が
+落ちることがあるので、**`fields` は付けない**。`merged_at` は要らない — マージ済みかどうかは
+スクリプトが git 履歴から決める。
 
 ```bash
 mkdir -p "${TMPDIR:-/tmp}/sdd-github"

@@ -25,7 +25,7 @@ GitHub ツールで一覧を取り、ファイルに置いてから `--github-di
 
 | ファイル | 中身 | 使う項目 |
 | --- | --- | --- |
-| `pulls-closed.json` | `main` 向け closed PR の配列（更新日時の降順、100 件まで） | `number`、`head.ref`、`labels[].name` |
+| `pulls-closed.json` | `main` 向け closed PR の配列（更新日時の降順、100 件まで） | `number`、`head.ref`、`labels`（`["sdd"]` と `[{"name":"sdd"}]` の両方を受ける） |
 | `pulls-open.json` | `main` 向け open PR の配列 | `head.ref` |
 
 **マージ済みかどうかは API の `merged_at` を見ない。** `--root` の git 履歴（HEAD の

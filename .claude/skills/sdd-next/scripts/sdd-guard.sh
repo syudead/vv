@@ -119,8 +119,11 @@ merged_commits="$(git -C "$root" log --first-parent --format='%H%x09%s' HEAD 2>/
 # --- 手順 1: 対象機能の確定 -------------------------------------------------
 # closed 一覧のうち `sdd` ラベル付きで、かつ HEAD の履歴にマージされているものが「マージ済み
 # sdd PR」である。その直近 1 件が触った `specs/NNN-*/` を、今回の対象とみなす。
+# labels は REST では `[{"name":"sdd"}]`、組み込み GitHub ツールでは `["sdd"]` で届くので、
+# 両方を受ける。
 sdd_closed="$(printf '%s' "$closed_json" \
-  | jq -r '.[] | select(([.labels[]?.name] | index("sdd")) != null)
+  | jq -r '.[] | select(([.labels[]? | if type == "object" then .name else . end]
+                         | index("sdd")) != null)
                 | "\(.number)\t\(.head.ref)"' 2>/dev/null || printf '')"
 
 tab="$(printf '\t')"

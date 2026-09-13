@@ -252,6 +252,12 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
       {"number":1,"head":{"ref":"claude/sdd-010-plan"},"labels":[{"name":"sdd"}]}]' \
     "[]"
 
+  # 組み込み GitHub ツールの形（labels が文字列の配列）でも sdd PR と分かる
+  repo="$(make_repo 02-before-tasks "1:claude/sdd-010-plan:specs/010-a")"
+  check_guard "ガード github-dir labels が文字列の配列" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
+    "$repo" '[{"number":1,"head":{"ref":"claude/sdd-010-plan"},"labels":["sdd"]}]' "[]"
+
   # 同じフェーズのマージが 2 回に達したら止まる
   repo="$(make_repo 03-implement-mid \
     "1:claude/sdd-010-plan:specs/010-a" "2:claude/sdd-010-tasks:specs/010-a" \
