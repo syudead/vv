@@ -17,6 +17,9 @@ const (
 	envMediaDir = "MDM_MEDIA_DIR"
 	envDataDir  = "MDM_DATA_DIR"
 	envLogLevel = "MDM_LOG_LEVEL"
+	// 取り込みを起動直後に1回自動実行するか。「置くだけで並ぶ」（US1）には
+	// 自動実行が要るので既定は有効にする（R-108）。
+	envScanOnStart = "MDM_SCAN_ON_START"
 )
 
 // 既定値。すべて未設定でも起動できる。
@@ -25,10 +28,17 @@ const (
 	defaultMediaDir = "/media"
 	defaultDataDir  = "/data"
 	defaultLogLevel = "info"
+	// 自動取り込みの既定値。文字列で持つのは、未設定と明示的な指定を
+	// 同じ解釈経路に通して、誤った値を一律に弾くためである。
+	defaultScanOnStart = "true"
 )
 
-// dataDirPerm は MDM_DATA_DIR を作成するときの許可属性である。
+// dataDirPerm は MDM_DATA_DIR とその配下を作成するときの許可属性である。
 const dataDirPerm os.FileMode = 0o755
+
+// thumbnailsDirName はサムネイルの置き場所である。MDM_DATA_DIR から導出し、
+// 設定項目にはしない（contracts/configuration.md「導出される場所」）。
+const thumbnailsDirName = "thumbnails"
 
 // Config は起動時に組み立てる不変の設定である。
 // データベースのパスは DataDir/mdm.db に固定し、設定項目にしない。
@@ -37,6 +47,8 @@ type Config struct {
 	MediaDir string
 	DataDir  string
 	LogLevel string
+	// ScanOnStart は起動直後に取り込みを1回自動実行するかどうか。
+	ScanOnStart bool
 }
 
 // logLevels は受け付ける記録の詳細度である。
@@ -61,6 +73,19 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	}
 
 	var problems []error
+
+	// 真偽値は true / false だけを受ける。yes や 1 を黙って受けると、
+	// 受理される綴りが環境ごとに散らばる。曖昧な値を既定へ倒さないのは、
+	// 自動取り込みが動いていない理由を設定から読み取れるようにするためである。
+	switch scanOnStart := valueOr(getenv(envScanOnStart), defaultScanOnStart); scanOnStart {
+	case "true":
+		cfg.ScanOnStart = true
+	case "false":
+		cfg.ScanOnStart = false
+	default:
+		problems = append(problems, fmt.Errorf(
+			"%s=%q は未知の値です（true / false のいずれか）", envScanOnStart, scanOnStart))
+	}
 
 	if _, _, err := net.SplitHostPort(cfg.Addr); err != nil {
 		problems = append(problems, fmt.Errorf(
@@ -115,6 +140,14 @@ func (c Config) verifyProblems() []error {
 		problems = append(problems, fmt.Errorf("%s=%s を読み取れません: %w", envDataDir, c.DataDir, err))
 	}
 
+	// サムネイルの置き場所は起動後に初めて使うが、確認はここで済ませる。
+	// 取り込みの途中で初めて失敗すると、一覧に画像が出ない理由が記録を
+	// 追わないと分からなくなる。
+	if err := os.MkdirAll(c.ThumbnailsDir(), dataDirPerm); err != nil {
+		problems = append(problems, fmt.Errorf(
+			"サムネイルの置き場所 %s を作成できません: %w", c.ThumbnailsDir(), err))
+	}
+
 	return problems
 }
 
@@ -134,7 +167,15 @@ func (c Config) LogAttrs() []slog.Attr {
 		slog.String(envMediaDir, c.MediaDir),
 		slog.String(envDataDir, c.DataDir),
 		slog.String(envLogLevel, c.LogLevel),
+		slog.Bool(envScanOnStart, c.ScanOnStart),
 	}
+}
+
+// ThumbnailsDir はサムネイルの置き場所を返す（MDM_DATA_DIR/thumbnails）。
+// 設定項目にしないのは、置き場所が散らばるとバックアップと削除の手順が
+// 増えるためである（contracts/configuration.md）。
+func (c Config) ThumbnailsDir() string {
+	return filepath.Join(c.DataDir, thumbnailsDirName)
 }
 
 // checkReadableDir はディレクトリとして開けるかどうかを確認する。

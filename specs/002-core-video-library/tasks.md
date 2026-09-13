@@ -48,20 +48,20 @@ root からの相対で、[plan.md](./plan.md) の "Source Code" の配置に従
 
 **⚠️ CRITICAL**: このフェーズが終わるまで、どのユーザーストーリーの実装も始められない
 
-- [ ] T005 `internal/store/migrations/00002_core.sql` を作成する（goose の Up / Down 両方）。[data-model.md](./data-model.md) の表を、制約をそのまま写して定義する:
+- [X] T005 `internal/store/migrations/00002_core.sql` を作成する（goose の Up / Down 両方）。[data-model.md](./data-model.md) の表を、制約をそのまま写して定義する:
   - `videos` へ列を追加: `content_key` text **not null**（`unique`）、`duration_ms` integer（尺（ミリ秒）。`ffprobe` 取得前は `null`）、`width` integer、`height` integer、`container` text、`video_codec` text、`audio_codec` text、`playable` integer **not null 既定 0**（解析前は「再生できない」側に倒す）、`unplayable_reason` text（`container` / `video_codec` / `audio_codec` のいずれか）、`probe_state` text **not null**（`pending` / `done` / `failed`）、`probe_error` text、`thumbnail_state` text **not null**（`pending` / `done` / `failed`）、`updated_at` integer **not null**（Unix 秒）
   - `playback_progress`（利用者データ）: `content_key` text **主鍵**（`videos` への外部キーは張らない — 動画が消えても残す）、`position_ms` integer not null（`position_ms >= 0` の検査制約）、`duration_ms` integer、`completed` integer not null、`updated_at` integer not null
   - `jobs`: `id` integer 主鍵、`kind` text not null（`probe` / `thumbnail`）、`video_id` integer not null（`videos` 削除時に**連鎖削除**）、`state` text not null（`queued` / `running` / `done` / `failed`）、`attempts` integer not null **既定 0**、`last_error` text、`created_at` / `updated_at` integer not null
   - `scans`: `id` integer 主鍵、`state` text not null（`running` / `done` / `failed`）、`started_at` / `finished_at` integer、`total` / `completed` / `failed` integer not null、`error` text
   - 索引: `videos(added_at desc, id desc)`、`videos(title asc, id asc)`、`videos(content_key)` unique、`jobs(state, id)`、同じ `(kind, video_id)` の未完了ジョブを1件に制限する**部分ユニーク索引**（`where state in ('queued','running')`）、`scans` の `running` を1件に制限する部分ユニーク索引
   - `videos_fts` と同期トリガは 001 のまま変更しない
-- [ ] T006 `internal/store/migrate_test.go` を拡張し、`00002` 適用後のスキーマを検証する: 追加した列が存在すること、`playback_progress` が `videos` への外部キーを**持たない**こと、部分ユニーク索引が同じ `(kind, video_id)` の2件目の `queued` を拒否すること、`running` な `scans` が同時に1件しか作れないこと、Down で 001 の状態へ戻ること
-- [ ] T007 [P] `internal/domain/video_test.go` を作成する（実装前に失敗することを確認する）。再生可否の判定を表駆動で検証する（[R-103](./research.md) / S3 / SC-007）: コンテナは `.mp4` `.m4v` `.webm` のみ許可、映像コーデックは `h264` `vp8` `vp9` `av1` のみ許可、音声コーデックは `aac` `mp3` `opus` `vorbis` **または音声なし**のみ許可。3つすべてを満たすときだけ `playable = 1`。満たさない場合に `unplayable_reason` が `container` / `video_codec` / `audio_codec` のどれになるかも検証する。外部プロセスに依存しないこと（`os/exec` を import しない）
-- [ ] T008 [P] `internal/domain/video.go` を作成する。`Video`（`videos` の行と 1 対 1）、`Probe`（`ffprobe` から取り出した事実: 尺・解像度・映像/音声コーデック）、`ProbeState` / `ThumbnailState` / `UnplayableReason` の定数、および許可リストによる再生可否判定の純粋関数を置く。`net/http`・`database/sql`・`os/exec` を import してはならない（depguard が `.golangci.yml` で強制している）
-- [ ] T009 [P] `internal/domain/scan.go` を作成する。`ScanResult`（走査1回の集計: 総数・追加・更新・移動・削除・失敗）を置く。`scans` 行の元になる値で、永続化の手段は知らない
-- [ ] T010 `cmd/mdm/config_test.go` を拡張し、`MDM_SCAN_ON_START` の検証を足す（[contracts/configuration.md](./contracts/configuration.md)）: 未設定なら既定値 `true`、`true` / `false` は受理、それ以外の値は**起動中止**の誤りになること、誤りが他の設定の誤りと**まとめて**列挙されること
-- [ ] T011 `cmd/mdm/config.go` を更新する。`MDM_SCAN_ON_START`（既定 `true`）を `Config` に足し、`LogAttrs` に含める。`MDM_DATA_DIR/thumbnails` のパスを導出する関数を置き（設定項目にはしない）、`verifyProblems` に「`MDM_DATA_DIR/thumbnails` を作成できること」の確認を追加して、他の確認結果とまとめて列挙する
-- [ ] T012 `internal/httpapi/router.go` に、応答の共通部品を足す。[contracts/http-routes.md](./contracts/http-routes.md) の「キャッシュ」表どおりに `Cache-Control` を付けるヘルパ（`/api/videos`・`/api/videos/{id}`・`/api/scans*` は `no-store`、ストリームは `private, max-age=0, must-revalidate`、`v` 付きサムネイルは `public, max-age=31536000, immutable`）と、`code`（`not_found` / `invalid_request` / `internal`）と日本語 `message` を返す `writeError` を追加する
+- [X] T006 `internal/store/migrate_test.go` を拡張し、`00002` 適用後のスキーマを検証する: 追加した列が存在すること、`playback_progress` が `videos` への外部キーを**持たない**こと、部分ユニーク索引が同じ `(kind, video_id)` の2件目の `queued` を拒否すること、`running` な `scans` が同時に1件しか作れないこと、Down で 001 の状態へ戻ること
+- [X] T007 [P] `internal/domain/video_test.go` を作成する（実装前に失敗することを確認する）。再生可否の判定を表駆動で検証する（[R-103](./research.md) / S3 / SC-007）: コンテナは `.mp4` `.m4v` `.webm` のみ許可、映像コーデックは `h264` `vp8` `vp9` `av1` のみ許可、音声コーデックは `aac` `mp3` `opus` `vorbis` **または音声なし**のみ許可。3つすべてを満たすときだけ `playable = 1`。満たさない場合に `unplayable_reason` が `container` / `video_codec` / `audio_codec` のどれになるかも検証する。外部プロセスに依存しないこと（`os/exec` を import しない）
+- [X] T008 [P] `internal/domain/video.go` を作成する。`Video`（`videos` の行と 1 対 1）、`Probe`（`ffprobe` から取り出した事実: 尺・解像度・映像/音声コーデック）、`ProbeState` / `ThumbnailState` / `UnplayableReason` の定数、および許可リストによる再生可否判定の純粋関数を置く。`net/http`・`database/sql`・`os/exec` を import してはならない（depguard が `.golangci.yml` で強制している）
+- [X] T009 [P] `internal/domain/scan.go` を作成する。`ScanResult`（走査1回の集計: 総数・追加・更新・移動・削除・失敗）を置く。`scans` 行の元になる値で、永続化の手段は知らない
+- [X] T010 `cmd/mdm/config_test.go` を拡張し、`MDM_SCAN_ON_START` の検証を足す（[contracts/configuration.md](./contracts/configuration.md)）: 未設定なら既定値 `true`、`true` / `false` は受理、それ以外の値は**起動中止**の誤りになること、誤りが他の設定の誤りと**まとめて**列挙されること
+- [X] T011 `cmd/mdm/config.go` を更新する。`MDM_SCAN_ON_START`（既定 `true`）を `Config` に足し、`LogAttrs` に含める。`MDM_DATA_DIR/thumbnails` のパスを導出する関数を置き（設定項目にはしない）、`verifyProblems` に「`MDM_DATA_DIR/thumbnails` を作成できること」の確認を追加して、他の確認結果とまとめて列挙する
+- [X] T012 `internal/httpapi/router.go` に、応答の共通部品を足す。[contracts/http-routes.md](./contracts/http-routes.md) の「キャッシュ」表どおりに `Cache-Control` を付けるヘルパ（`/api/videos`・`/api/videos/{id}`・`/api/scans*` は `no-store`、ストリームは `private, max-age=0, must-revalidate`、`v` 付きサムネイルは `public, max-age=31536000, immutable`）と、`code`（`not_found` / `invalid_request` / `internal`）と日本語 `message` を返す `writeError` を追加する
 
 **Checkpoint**: スキーマ・設定・判定規則が揃った。ここから各ストーリーを並行して始められる
 

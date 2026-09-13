@@ -100,3 +100,46 @@ func writeJSON(w http.ResponseWriter, status int, payload any, logger *slog.Logg
 		logger.Debug("応答を書き出せませんでした", slog.Any("error", err))
 	}
 }
+
+// キャッシュの指示は contracts/http-routes.md の「キャッシュ」表に対応する。
+const (
+	// cacheNoStore は一覧・詳細・スキャンの状態に付ける。取り込みで内容が
+	// 変わり続けるため、中間キャッシュに残してはならない。
+	cacheNoStore = "no-store"
+	// cacheStream は動画本体に付ける。内容が同じでも別の利用者に共有
+	// キャッシュさせないため public にしない。
+	cacheStream = "private, max-age=0, must-revalidate"
+	// cacheImmutable は v 付きのサムネイルに付ける。v は内容由来の識別子で、
+	// 内容が変われば URL も変わるので古い画像が残らない（R-112）。
+	cacheImmutable = "public, max-age=31536000, immutable"
+)
+
+// エラーの code は機械可読な種別である（contracts/http-routes.md「エラー表現」）。
+const (
+	codeNotFound       = "not_found"
+	codeInvalidRequest = "invalid_request"
+	codeInternal       = "internal"
+)
+
+// writeError は JSON のエラーを書き出す。message は利用者にそのまま提示して
+// よい日本語にする（contracts/http-routes.md）。
+func (s *server) writeError(w http.ResponseWriter, status int, code, message string) {
+	writeJSON(w, status, gen.Error{Code: code, Message: message}, s.logger)
+}
+
+// notFound は対象が存在しないことを返す。実体を開けない場合もこれを使う。
+// 403 にしないのは、存在そのものを漏らさないためである。
+func (s *server) notFound(w http.ResponseWriter, message string) {
+	s.writeError(w, http.StatusNotFound, codeNotFound, message)
+}
+
+// invalidRequest は要求の形式が不正であることを返す。
+func (s *server) invalidRequest(w http.ResponseWriter, message string) {
+	s.writeError(w, http.StatusBadRequest, codeInvalidRequest, message)
+}
+
+// internalError は予期しない失敗を返す。原因は記録に残し、応答には出さない。
+func (s *server) internalError(w http.ResponseWriter, message string, err error) {
+	s.logger.Error(message, slog.Any("error", err))
+	s.writeError(w, http.StatusInternalServerError, codeInternal, message)
+}
