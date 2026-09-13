@@ -79,9 +79,11 @@ US3 はテストの存在そのものが成果物であるため。テスト対�
 - [X] T013 `.claude/skills/sdd-next/scripts/sdd-guard.sh` を書く（[contracts/sdd-guard.md](./contracts/sdd-guard.md) と [data-model.md](./data-model.md) 5.〜6. の実装。`gh api` の REST と `jq` のみ、`gh pr list` 等の高水準コマンドは使わない — [R-002](./research.md)）: 引数は `[--repo <owner/name>] [--root <repo_root>]`、`--repo` 省略時は `git -C <root> remote get-url origin` から `git@github.com:o/r.git` と `https://github.com/o/r(.git)` の両形式で導出。stdin が空か `{` で始まらなければ終了コード 2。**最初に** `command -v gh` と `command -v jq` の有無と `gh api /rate_limit` の疎通を見て、いずれか失敗なら `jq` を使わずに `printf` で `{"go":false,"reason":"gh-unavailable","state":<stdin をそのまま>}` を出して終了コード 0（手元で検算できるようにするため）。以降は契約の手順の順に最初に該当したものを返す: (1) 対象機能の確定 — `GET /repos/{o}/{r}/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100` から `merged_at != null` かつ `labels[].name` に `sdd` を含む先頭 1 件を取り、`GET /repos/{o}/{r}/pulls/{n}/files` の `filename` から `^specs/[0-9]{3}-[^/]+/` に一致する最初のディレクトリを抽出し、見つかれば `sdd-state.sh --root <root> --feature <dir>` で `state` を置き換える（ディレクトリが手元に無く終了コード 2 なら stdin の state のまま） (2) `state.stage` が `done` か `none` → `{"go":false,"reason":"nothing-to-do","state":...}` (3) `GET /repos/{o}/{r}/pulls?state=open&base=main&per_page=100` で `head.ref` が `claude/sdd-NNN-` で始まるものがあれば `{"go":false,"reason":"open-pr","state":...,"open_prs":[<head.ref の配列>]}` (4) `stage = implement` で、(1) の一覧のうち `head.ref = claude/sdd-NNN-implement-pN`（`N` は `state.phase`）のマージ済みが **2 件以上** → `reason:"phase-retry-limit"` (5) (1) の一覧のうち `head.ref` が `claude/sdd-NNN-` で始まるマージ済みが **`2 + phases + 2` 件以上**（`phases` は `state.phases`、無ければ 0）→ `reason:"hop-limit"` (6) それ以外 → `{"go":true,"state":...,"hops":<件数>,"phase_retries":<件数>,"open_prs":[]}`。go:false の場合も `hops`・`phase_retries` を含めてよい。実装後 `run.sh` の (5) が PASS すること
 
 **Checkpoint**: `bash .claude/skills/sdd-next/tests/run.sh` が全件 PASS。リポジトリ root で
-`.claude/skills/sdd-next/scripts/sdd-state.sh` を実行すると、今日の `main` では
-`{"feature_dir":"specs/003-library-ui","feature":"003","stage":"plan","branch":"claude/sdd-003-plan"}`
-が 1 秒以内に返る（`001`・`002` は `done` なので飛ばされる）。ここから US1〜US4 に進める
+`.claude/skills/sdd-next/scripts/sdd-state.sh` を実行すると、`001`・`002` は `done` なので
+飛ばされ、本機能（`003`、T019 が未了なので `implement` phase 3）が返る。T019 にチェックが
+付いたあとは
+`{"feature_dir":"specs/004-library-ui","feature":"004","stage":"plan","branch":"claude/sdd-004-plan"}`
+が 1 秒以内に返る。ここから US1〜US4 に進める
 
 ---
 
@@ -275,7 +277,7 @@ US1 と US2 は同じ P1 で、spec が US2 を「US1 の受け入れの前提�
 - [Story] label はトレーサビリティのため。Setup／Foundational／Polish には付けない
 - 各タスクの完了後、または論理的なまとまりごとにコミットする
 - **`/speckit-analyze` で確認してほしい点**:
-  1. `specs/003-library-ui` と `specs/003-sdd-loop-harness` が同じ番号 `003` を持つ。[data-model.md](./data-model.md) は `feature` を「basename の先頭 3 文字」と定義し、ブランチ名（`claude/sdd-NNN-*`）とホップ数の集計もこの番号でしか区別しないため、この 2 機能はガードの判定と PR のブランチが衝突する。本 tasks.md は data-model の定義どおりに実装し（T012・T013）、衝突の注意を quickstart に書く（T033）に留めた。どちらかの改名か、判定を機能ディレクトリ名で行う設計変更が要る
-  2. [quickstart.md](./quickstart.md) S2／S4／S5 の期待値（`002` が `plan` 前）は spec 作成時点の `main` に基づく。今日の `main` では `002` は `done` で、自動選択の対象は `003-library-ui` になる（T033 で追従）
+  1. **解決済み（2026-09-13）**: `specs/003-library-ui` を `specs/004-library-ui` に改名した。以下は当時の記録である。`003-library-ui` と `003-sdd-loop-harness` が同じ番号 `003` を持つ。[data-model.md](./data-model.md) は `feature` を「basename の先頭 3 文字」と定義し、ブランチ名（`claude/sdd-NNN-*`）とホップ数の集計もこの番号でしか区別しないため、この 2 機能はガードの判定と PR のブランチが衝突する。本 tasks.md は data-model の定義どおりに実装し（T012・T013）、衝突の注意を quickstart に書く（T033）に留めた。どちらかの改名か、判定を機能ディレクトリ名で行う設計変更が要る
+  2. [quickstart.md](./quickstart.md) S2／S4／S5 の期待値（`002` が `plan` 前）は spec 作成時点の `main` に基づく。今日の `main` では `002` は `done` で、自動選択の対象は `004-library-ui` になる（T033 で追従）
   3. routine の作成は claude.ai 側の手作業でリポジトリ内のタスクにできない。本 tasks.md では checkbox にせず、実行計画（T001）と `docs/references/sdd-routine.md`（T017）に手順を置いた
 - 避けること: 曖昧なタスク、同一ファイルの同時編集、ストーリーの独立性を壊す相互依存

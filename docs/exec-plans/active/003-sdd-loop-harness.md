@@ -1,6 +1,6 @@
 # 実行計画: SDD ループハーネス（spec 以降の段階を自動で回す）
 
-- ステータス: 進行中（実装は完了。`sdd` ラベルの作成と S3〜S8 の実機確認が残る）
+- ステータス: 進行中（実装は完了。`sdd` ラベルの作成と routine の作成、S3〜S8 の実機確認が残る）
 - 最終更新: 2026-09-13
 - 対象: [設計文書](../../design-docs/sdd-loop-harness.md) の全体。Spec Kit の plan → tasks → implement を、人の PR マージを承認ゲートにして Claude Code on the web のセッションで 1 段階ずつ自動実行する仕組み
 
@@ -67,6 +67,15 @@ T007 は `04-done/expected.json` を
 依存している。`done` の形（`phases` を含み `branch` を含まないこと）は、`feature.txt` と
 `expected-feature.json` を足して `--feature` 経由で検証する。
 
+### `003-library-ui` を `004-library-ui` に改名した
+
+`003-sdd-loop-harness` と番号が衝突していた（`feature` は basename の先頭 3 文字なので、
+ブランチ名もホップ集計もこの 2 つを区別できない）。参照が 3 ファイル 10 行しかない
+`003-library-ui` の側を動かした。
+
+副作用: 名前順が入れ替わり、自動選択が本機能自身（T019 が未了なので `implement` phase 3）を
+返すようになった。T019 にチェックが付けば `done` になり、対象は `004-library-ui` に移る。
+
 ### 手元の検算（T028）は Linux の cloud セッションで行った
 
 T028 は Windows の Git Bash での検算を求めているが、本実装は Claude Code on the web の
@@ -91,7 +100,7 @@ CRLF になって落ちることはない（`git ls-files --eol` で確認済み
 | --- | --- |
 | **`sdd` ラベルの作成**（T019、未了） | [docs/references/sdd-routine.md](../../references/sdd-routine.md) の「前提」。実装したセッションには `gh` CLI が無く、利用できる GitHub ツールにもラベル作成の口が無かったため作れなかった。ラベルが無いと routine の GitHub トリガーが絞り込めず、連鎖が始まらない |
 | routine の作成 | 同「作成手順」。S3 の前に行う |
-| `003` の番号の衝突を解く | `003-library-ui` と `003-sdd-loop-harness` が同じ番号を持ち、ブランチ名とホップ集計が衝突する。**本番 1 回目（S4）の前に**改名か設計の見直しが要る。[quickstart.md](../../../specs/003-sdd-loop-harness/quickstart.md) S4 の注意書き |
+| **ラベル作成後に T019 にチェックを付ける** | 付けないと自動選択が本機能自身（`003`、`implement` phase 3）を選ぶ。S4 の前に行う |
 | Windows の Git Bash での検算 | [quickstart.md](../../../specs/003-sdd-loop-harness/quickstart.md) S1・S2。実装は Linux で確認済みで、CRLF の写しでも通ることまでは見てある |
 | S3（プローブ）の実行と結果の書き戻し | 同 S3。使用量ゲートの取得手段（[TD-007](../tech-debt.md)）と SessionStart フックの発火がここで確定する |
 | S4〜S8 の実機確認 | 同 S4〜S8。すべて期待どおりなら本書を `docs/exec-plans/completed/` へ移す |
