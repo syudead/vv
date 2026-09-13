@@ -6,9 +6,12 @@
 package gen
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/oapi-codegen/runtime"
 )
 
 // Defines values for HealthStatus.
@@ -23,6 +26,108 @@ func (e HealthStatus) Valid() bool {
 	case Degraded:
 		return true
 	case Ok:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScanState.
+const (
+	ScanStateDone    ScanState = "done"
+	ScanStateFailed  ScanState = "failed"
+	ScanStateRunning ScanState = "running"
+)
+
+// Valid indicates whether the value is a known member of the ScanState enum.
+func (e ScanState) Valid() bool {
+	switch e {
+	case ScanStateDone:
+		return true
+	case ScanStateFailed:
+		return true
+	case ScanStateRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VideoProbeState.
+const (
+	VideoProbeStateDone    VideoProbeState = "done"
+	VideoProbeStateFailed  VideoProbeState = "failed"
+	VideoProbeStatePending VideoProbeState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the VideoProbeState enum.
+func (e VideoProbeState) Valid() bool {
+	switch e {
+	case VideoProbeStateDone:
+		return true
+	case VideoProbeStateFailed:
+		return true
+	case VideoProbeStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VideoThumbnailState.
+const (
+	VideoThumbnailStateDone    VideoThumbnailState = "done"
+	VideoThumbnailStateFailed  VideoThumbnailState = "failed"
+	VideoThumbnailStatePending VideoThumbnailState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the VideoThumbnailState enum.
+func (e VideoThumbnailState) Valid() bool {
+	switch e {
+	case VideoThumbnailStateDone:
+		return true
+	case VideoThumbnailStateFailed:
+		return true
+	case VideoThumbnailStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VideoUnplayableReason.
+const (
+	AudioCodec VideoUnplayableReason = "audio_codec"
+	Container  VideoUnplayableReason = "container"
+	VideoCodec VideoUnplayableReason = "video_codec"
+)
+
+// Valid indicates whether the value is a known member of the VideoUnplayableReason enum.
+func (e VideoUnplayableReason) Valid() bool {
+	switch e {
+	case AudioCodec:
+		return true
+	case Container:
+		return true
+	case VideoCodec:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VideoSort.
+const (
+	AddedDesc VideoSort = "addedDesc"
+	TitleAsc  VideoSort = "titleAsc"
+)
+
+// Valid indicates whether the value is a known member of the VideoSort enum.
+func (e VideoSort) Valid() bool {
+	switch e {
+	case AddedDesc:
+		return true
+	case TitleAsc:
 		return true
 	default:
 		return false
@@ -60,11 +165,158 @@ type Health struct {
 // HealthStatus ok = 保存層まで疎通、degraded = プロセスのみ生存
 type HealthStatus string
 
+// Progress defines model for Progress.
+type Progress struct {
+	Completed  bool      `json:"completed"`
+	PositionMs int64     `json:"positionMs"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
+// ProgressUpdate defines model for ProgressUpdate.
+type ProgressUpdate struct {
+	PositionMs int64 `json:"positionMs"`
+}
+
+// Scan defines model for Scan.
+type Scan struct {
+	Completed int `json:"completed"`
+
+	// Error スキャン自体が失敗した理由
+	Error      *string    `json:"error,omitempty"`
+	Failed     int        `json:"failed"`
+	FinishedAt *time.Time `json:"finishedAt,omitempty"`
+	Id         int64      `json:"id"`
+	StartedAt  *time.Time `json:"startedAt,omitempty"`
+	State      ScanState  `json:"state"`
+
+	// Total 走査で見つけたファイル数
+	Total int `json:"total"`
+}
+
+// ScanState defines model for Scan.State.
+type ScanState string
+
+// Video defines model for Video.
+type Video struct {
+	AddedAt time.Time `json:"addedAt"`
+
+	// AudioCodec Examples: aac, opus
+	AudioCodec *string `json:"audioCodec,omitempty"`
+
+	// Container Examples: mp4, webm, mkv
+	Container *string `json:"container,omitempty"`
+
+	// DurationMs 尺。解析前・取得不能の場合は省略される
+	DurationMs *int64 `json:"durationMs,omitempty"`
+	Height     *int   `json:"height,omitempty"`
+	Id         int64  `json:"id"`
+
+	// Playable ブラウザでそのまま再生できると判定されたか
+	Playable bool `json:"playable"`
+
+	// ProbeError probeState = failed のときの理由
+	ProbeError     *string             `json:"probeError,omitempty"`
+	ProbeState     VideoProbeState     `json:"probeState"`
+	Progress       *Progress           `json:"progress,omitempty"`
+	SizeBytes      int64               `json:"sizeBytes"`
+	ThumbnailState VideoThumbnailState `json:"thumbnailState"`
+
+	// ThumbnailUrl thumbnailState = done のときだけ入る
+	ThumbnailUrl *string `json:"thumbnailUrl,omitempty"`
+
+	// Title 拡張子を除いたファイル名
+	Title string `json:"title"`
+
+	// UnplayableReason playable = false の理由。判定前は省略される
+	UnplayableReason *VideoUnplayableReason `json:"unplayableReason,omitempty"`
+
+	// VideoCodec Examples: h264, vp9
+	VideoCodec *string `json:"videoCodec,omitempty"`
+	Width      *int    `json:"width,omitempty"`
+}
+
+// VideoProbeState defines model for Video.ProbeState.
+type VideoProbeState string
+
+// VideoThumbnailState defines model for Video.ThumbnailState.
+type VideoThumbnailState string
+
+// VideoUnplayableReason playable = false の理由。判定前は省略される
+type VideoUnplayableReason string
+
+// VideoPage defines model for VideoPage.
+type VideoPage struct {
+	Items []Video `json:"items"`
+
+	// NextCursor 次のページの取得に渡す。これ以上無い場合は省略される
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 絞り込み後の総件数
+	Total int `json:"total"`
+}
+
+// VideoSort addedDesc = 追加が新しい順、titleAsc = 題名順
+type VideoSort string
+
+// VideoId defines model for VideoId.
+type VideoId = int64
+
+// InvalidRequest defines model for InvalidRequest.
+type InvalidRequest = Error
+
+// NotFound defines model for NotFound.
+type NotFound = Error
+
+// ListVideosParams defines parameters for ListVideos.
+type ListVideosParams struct {
+	// Query 題名の部分一致。1文字から指定できる
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// Sort 並び順
+	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetVideoThumbnailParams defines parameters for GetVideoThumbnail.
+type GetVideoThumbnailParams struct {
+	// V 一覧・詳細が返した URL に含まれる版
+	V *string `form:"v,omitempty" json:"v,omitempty"`
+}
+
+// PutVideoProgressJSONRequestBody defines body for PutVideoProgress for application/json ContentType.
+type PutVideoProgressJSONRequestBody = ProgressUpdate
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// GetHealth 稼働状態とビルド情報を返す
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// StartScan 取り込みを開始する
+	// (POST /api/scans)
+	StartScan(w http.ResponseWriter, r *http.Request)
+	// GetCurrentScan 直近のスキャンの状態を返す
+	// (GET /api/scans/current)
+	GetCurrentScan(w http.ResponseWriter, r *http.Request)
+	// ListVideos 動画の一覧を返す
+	// (GET /api/videos)
+	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
+	// GetVideo 動画1件の詳細を返す
+	// (GET /api/videos/{id})
+	GetVideo(w http.ResponseWriter, r *http.Request, id VideoId)
+	// PutVideoProgress 再生位置を記録する
+	// (PUT /api/videos/{id}/progress)
+	PutVideoProgress(w http.ResponseWriter, r *http.Request, id VideoId)
+	// StreamVideo 動画本体を配信する
+	// (GET /api/videos/{id}/stream)
+	StreamVideo(w http.ResponseWriter, r *http.Request, id VideoId)
+	// GetVideoThumbnail サムネイル画像を返す
+	// (GET /api/videos/{id}/thumbnail)
+	GetVideoThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoThumbnailParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -81,6 +333,226 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartScan operation middleware
+func (siw *ServerInterfaceWrapper) StartScan(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartScan(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetCurrentScan operation middleware
+func (siw *ServerInterfaceWrapper) GetCurrentScan(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetCurrentScan(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVideos operation middleware
+func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVideosParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVideos(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVideo operation middleware
+func (siw *ServerInterfaceWrapper) GetVideo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVideo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutVideoProgress operation middleware
+func (siw *ServerInterfaceWrapper) PutVideoProgress(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutVideoProgress(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamVideo operation middleware
+func (siw *ServerInterfaceWrapper) StreamVideo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamVideo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVideoThumbnail operation middleware
+func (siw *ServerInterfaceWrapper) GetVideoThumbnail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetVideoThumbnailParams
+
+	// ------------- Optional query parameter "v" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVideoThumbnail(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -211,6 +683,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/stream", wrapper.StreamVideo)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/thumbnail", wrapper.GetVideoThumbnail)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.StartScan)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 
 	return m
 }

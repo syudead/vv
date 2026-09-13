@@ -183,3 +183,286 @@ func TestDatabasePathIsFixedUnderDataDir(t *testing.T) {
 		t.Errorf("DatabaseFileName = %q, want mdm.db", DatabaseFileName)
 	}
 }
+
+// 00002 で足した列が揃っていること。取り込み・再生可否・サムネイルの状態は
+// すべて videos の列として読めなければ、一覧が列を読むだけで描けない（SC-007）。
+func TestMigrateAddsCoreColumnsToVideos(t *testing.T) {
+	db := migratedDB(t)
+
+	want := []string{
+		"content_key", "duration_ms", "width", "height", "container",
+		"video_codec", "audio_codec", "playable", "unplayable_reason",
+		"probe_state", "probe_error", "thumbnail_state", "updated_at",
+	}
+	got := tableColumns(t, db, "videos")
+
+	for _, name := range want {
+		if _, ok := got[name]; !ok {
+			t.Errorf("videos に %s 列が無い", name)
+		}
+	}
+
+	// 解析前は「再生できない」側に倒す（R-103）。既定値がここで崩れると、
+	// 未解析の動画が再生できるものとして一覧に出てしまう。
+	if notNull, ok := got["playable"]; !ok || !notNull {
+		t.Error("playable が not null ではない")
+	}
+	if notNull, ok := got["probe_state"]; !ok || !notNull {
+		t.Error("probe_state が not null ではない")
+	}
+	if notNull, ok := got["thumbnail_state"]; !ok || !notNull {
+		t.Error("thumbnail_state が not null ではない")
+	}
+}
+
+// playback_progress は「再構築できない利用者データ」なので、索引側の videos に
+// 引きずられて消えてはならない。外部キーを持たないこと自体が要件である
+// （FR-025／data-model.md）。
+func TestPlaybackProgressHasNoForeignKeyToVideos(t *testing.T) {
+	db := migratedDB(t)
+
+	rows, err := db.SQL().Query(`select "table" from pragma_foreign_key_list('playback_progress')`)
+	if err != nil {
+		t.Fatalf("外部キーを読み出せない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var target string
+		if err := rows.Scan(&target); err != nil {
+			t.Fatal(err)
+		}
+		t.Errorf("playback_progress が %s への外部キーを持っている。"+
+			"動画が消えても再生位置は残さなければならない（FR-025）", target)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 動画を消しても再生位置が残ること。外部キーを張らない判断が、実際の削除で
+// 成立していることを確かめる。
+func TestDeletingVideoKeepsPlaybackProgress(t *testing.T) {
+	db := migratedDB(t)
+
+	if _, err := db.SQL().Exec(
+		`insert into videos(path, title, size_bytes, mtime, content_key, updated_at)
+		 values ('/media/a.mp4', 'a', 1, 1, 'key-a', 1)`,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(
+		`insert into playback_progress(content_key, position_ms, completed, updated_at)
+		 values ('key-a', 4000, 0, 1)`,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.SQL().Exec(`delete from videos where content_key = 'key-a'`); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	if err := db.SQL().QueryRow(
+		`select count(*) from playback_progress where content_key = 'key-a'`,
+	).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("動画の削除で再生位置が消えた: %d 行, want 1", count)
+	}
+}
+
+// 同じ (kind, video_id) の未完了ジョブは1件だけ。再スキャンのたびにジョブを
+// 積んでも待ち行列が膨らまないことを、制約として持つ（R-106）。
+func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
+	db := migratedDB(t)
+
+	if _, err := db.SQL().Exec(
+		`insert into videos(path, title, size_bytes, mtime, content_key, updated_at)
+		 values ('/media/a.mp4', 'a', 1, 1, 'key-a', 1)`,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	insertJob := func(state string) error {
+		_, err := db.SQL().Exec(
+			`insert into jobs(kind, video_id, state, created_at, updated_at)
+			 select 'probe', id, ?, 1, 1 from videos where content_key = 'key-a'`, state)
+		return err
+	}
+
+	if err := insertJob("queued"); err != nil {
+		t.Fatalf("1件目を積めない: %v", err)
+	}
+	if err := insertJob("queued"); err == nil {
+		t.Error("同じ (kind, video_id) の queued が2件積めてしまった")
+	}
+	if err := insertJob("running"); err == nil {
+		t.Error("queued があるのに running を積めてしまった")
+	}
+
+	// 完了した行は制約の対象外。同じ対象を再解析できなければならない。
+	if _, err := db.SQL().Exec(`update jobs set state = 'done' where state = 'queued'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := insertJob("queued"); err != nil {
+		t.Errorf("完了後に積み直せない: %v", err)
+	}
+}
+
+// 動画を消すとジョブは連鎖して消える。ジョブは索引側のデータである。
+func TestDeletingVideoCascadesJobs(t *testing.T) {
+	db := migratedDB(t)
+
+	if _, err := db.SQL().Exec(
+		`insert into videos(path, title, size_bytes, mtime, content_key, updated_at)
+		 values ('/media/a.mp4', 'a', 1, 1, 'key-a', 1)`,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(
+		`insert into jobs(kind, video_id, state, created_at, updated_at)
+		 select 'probe', id, 'queued', 1, 1 from videos where content_key = 'key-a'`,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`delete from videos where content_key = 'key-a'`); err != nil {
+		t.Fatal(err)
+	}
+
+	var count int
+	if err := db.SQL().QueryRow(`select count(*) from jobs`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Errorf("ジョブが連鎖削除されていない: %d 行, want 0", count)
+	}
+}
+
+// running なスキャンは同時に1件だけ。POST /api/scans が「実行中ならそれを返す」
+// 振る舞い（R-108）は、この制約に依存している。
+func TestScansAllowOnlyOneRunning(t *testing.T) {
+	db := migratedDB(t)
+
+	insertScan := func(state string) error {
+		_, err := db.SQL().Exec(
+			`insert into scans(state, started_at) values (?, 1)`, state)
+		return err
+	}
+
+	if err := insertScan("running"); err != nil {
+		t.Fatalf("1件目の running を作れない: %v", err)
+	}
+	if err := insertScan("running"); err == nil {
+		t.Error("running なスキャンが同時に2件作れてしまった")
+	}
+
+	// 終わったスキャンは何件あってもよい。履歴として残る。
+	if _, err := db.SQL().Exec(`update scans set state = 'done' where state = 'running'`); err != nil {
+		t.Fatal(err)
+	}
+	if err := insertScan("running"); err != nil {
+		t.Errorf("終了後に次のスキャンを始められない: %v", err)
+	}
+	if err := insertScan("done"); err != nil {
+		t.Errorf("done は複数持てなければならない: %v", err)
+	}
+}
+
+// 位置は負にならない。クライアントの申告をそのまま入れても壊れない最後の防壁。
+func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
+	db := migratedDB(t)
+
+	_, err := db.SQL().Exec(
+		`insert into playback_progress(content_key, position_ms, completed, updated_at)
+		 values ('key-a', -1, 0, 1)`)
+	if err == nil {
+		t.Error("負の position_ms が入ってしまった")
+	}
+}
+
+// Down で 001 の状態へ戻ること。スキーマ変更を取り消せることは、
+// 適用を自動化している以上（起動時に適用する）必要な出口である。
+func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
+	db := migratedDB(t)
+
+	if err := Down(context.Background(), db); err != nil {
+		t.Fatalf("Down に失敗した: %v", err)
+	}
+
+	// 002 が足した表は消えている。
+	for _, name := range []string{"playback_progress", "jobs", "scans"} {
+		var count int
+		if err := db.SQL().QueryRow(
+			`select count(*) from sqlite_master where type = 'table' and name = ?`, name,
+		).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count != 0 {
+			t.Errorf("%s が残っている", name)
+		}
+	}
+
+	// 002 が足した列も消えている。
+	columns := tableColumns(t, db, "videos")
+	for _, name := range []string{"content_key", "probe_state", "thumbnail_state"} {
+		if _, ok := columns[name]; ok {
+			t.Errorf("videos に %s 列が残っている", name)
+		}
+	}
+
+	// 001 の表と索引は残っている。
+	for _, name := range []string{"videos", "videos_fts"} {
+		var count int
+		if err := db.SQL().QueryRow(
+			`select count(*) from sqlite_master where name = ?`, name,
+		).Scan(&count); err != nil {
+			t.Fatal(err)
+		}
+		if count == 0 {
+			t.Errorf("001 の %s が失われた", name)
+		}
+	}
+}
+
+// migratedDB はマイグレーションを適用したデータベースを返す。
+func migratedDB(t *testing.T) *DB {
+	t.Helper()
+
+	db, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatalf("データベースを開けない: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	if _, err := Migrate(context.Background(), db); err != nil {
+		t.Fatalf("マイグレーションに失敗した: %v", err)
+	}
+	return db
+}
+
+// tableColumns は列名から「not null かどうか」への対応を返す。
+func tableColumns(t *testing.T, db *DB, table string) map[string]bool {
+	t.Helper()
+
+	rows, err := db.SQL().Query(`select name, "notnull" from pragma_table_info(?)`, table)
+	if err != nil {
+		t.Fatalf("%s の列を読み出せない: %v", table, err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	columns := map[string]bool{}
+	for rows.Next() {
+		var name string
+		var notNull int
+		if err := rows.Scan(&name, &notNull); err != nil {
+			t.Fatal(err)
+		}
+		columns[name] = notNull == 1
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return columns
+}

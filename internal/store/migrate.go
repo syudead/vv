@@ -126,3 +126,25 @@ func recordedVersion(ctx context.Context, db *sql.DB) (int64, error) {
 	}
 	return version.Int64, nil
 }
+
+// Down は直近に適用したマイグレーションを1つ取り消す。
+//
+// 起動経路からは呼ばない。スキーマ変更を取り消せることを検証で確かめるための
+// 出口であり、適用を自動化している以上（起動時に適用する）、戻せることまで
+// 含めて機械的に確認できる状態にしておく。
+func Down(ctx context.Context, db *DB) error {
+	fsys, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		return fmt.Errorf("マイグレーションを読み出せません: %w", err)
+	}
+
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsys)
+	if err != nil {
+		return fmt.Errorf("マイグレーションを準備できません: %w", err)
+	}
+
+	if _, err := provider.Down(ctx); err != nil {
+		return fmt.Errorf("マイグレーションを取り消せません: %w", err)
+	}
+	return nil
+}

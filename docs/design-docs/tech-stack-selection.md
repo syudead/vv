@@ -87,9 +87,16 @@ web/             # React SPA。ビルド結果を embed して配信
 
 - `videos`: ファイルパス、サイズ、mtime、`content_key`、コンテナ／コーデック、
   尺、解像度、追加日時。
-- `content_key`: `ファイルサイズ + 先頭1MiB と末尾1MiB の BLAKE3 ハッシュ`。
+- `content_key`: `先頭1MiB と末尾1MiB の SHA-256 ハッシュ + ファイルサイズ`。
   全体ハッシュは数 TB では非現実的なため、この組み合わせで
   「リネーム・移動されただけのファイル」を同一と判定する。
+  ハッシュ関数は当初 BLAKE3 を想定していたが、**標準ライブラリの SHA-256**
+  に決めた（実装は `internal/scanner/content_key.go`）。読む量が1ファイル
+  あたり 2MiB に固定されているため、ハッシュ関数の速度は取り込み時間を
+  律速しない（律速は `ffprobe` の起動とディスク I/O）。標準ライブラリなら
+  依存を1つ増やさずに済み、amd64／arm64 ではハードウェア命令が使われる。
+  判断の詳細は
+  [002 の R-101](../../specs/002-core-video-library/research.md)。
 - `tags` / `video_tags`: 分類。階層は持たせず、命名規約（`series:xxx`）で表現する。
 - `playback_progress`: 再生位置と視聴済みフラグ。プレイヤーから数秒間隔で更新。
 - `videos_fts`: `title` と `path` の FTS5 仮想テーブル（trigram）。

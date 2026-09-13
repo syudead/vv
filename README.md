@@ -17,7 +17,7 @@ git clone <repository-url> && cd vv
 make up
 ```
 
-`http://localhost:8080` を開くと稼働状態が表示される。機械可読な稼働確認は次の
+`http://localhost:8080` を開くと動画の一覧が表示される。機械可読な稼働確認は次の
 とおり。
 
 ```bash
@@ -25,8 +25,9 @@ curl -sS http://localhost:8080/api/health
 # {"status":"ok","version":"dev"}
 ```
 
-停止は `make down`。データベースは名前付きボリューム `vv_data` に置かれ、消しても
-次の起動でスキーマが作り直される。
+停止は `make down`。
+
+## 動画を並べる
 
 動画を置いた場所を読ませるには `MDM_MEDIA_HOST_DIR` を渡す（既定は `./media`）。
 
@@ -34,9 +35,32 @@ curl -sS http://localhost:8080/api/health
 MDM_MEDIA_HOST_DIR=/path/to/videos make up
 ```
 
-設定はすべて環境変数で与え、既定値だけで起動できる。項目の一覧は
+**置くだけで並ぶ。** 手作業の登録は要らない。起動直後に取り込みが1回走り、
+静止画・題名・長さ付きの一覧ができる。あとから動画を足したときは、画面の
+「取り込む」を押すか `curl -X POST localhost:8080/api/scans` を叩けば追加分だけが
+増える。取り込み中も一覧と再生は普通に使える。
+
+- 動画ファイルは**読み取りしかしない**。変更・移動・削除・変換は行わない
+- 移動・改名しても同じ動画として扱われ、再生位置も引き継がれる
+- ブラウザで再生できない形式（`mkv` など）も一覧には並び、再生を試みる前に
+  その旨と理由が表示される
+- 題名は1文字から検索できる
+
+データの置き場所は2つに分かれる。
+
+| 対象 | 場所 | 消したら |
+| --- | --- | --- |
+| 索引（`videos`・サムネイルなど） | `MDM_DATA_DIR`（Docker では `vv_data`） | 再スキャンで作り直せる |
+| 再生位置（利用者データ） | 同じデータベース内の `playback_progress` | **作り直せない** |
+
+`make down && docker volume rm vv_data` のあとでも、スキーマは次の起動で作り直され
+一覧は再スキャンで復元する。失われるのは再生位置だけである（バックアップ手順の
+整備は Phase 3 の範囲）。
+
+設定はすべて環境変数で与え、既定値だけで起動できる。起動直後の自動取り込みを
+止めたい場合は `MDM_SCAN_ON_START=false` を渡す。項目の一覧は
 [specs/001-initial-setup/contracts/configuration.md](specs/001-initial-setup/contracts/configuration.md)
-にある。
+と[本機能での差分](specs/002-core-video-library/contracts/configuration.md)にある。
 
 > [!WARNING]
 > 現時点では認証を掛けていない。インターネットへの公開を前提にしないこと
@@ -86,11 +110,15 @@ Claude Code on the web でセッションを開くと、`.claude/hooks/session-s
 ├── internal/
 │   ├── domain/             # ドメインモデルとユースケース（外部 I/O 依存なし）
 │   ├── httpapi/            # ルーティング、ハンドラ、SPA 配信
-│   ├── store/              # SQLite 接続、マイグレーション、FTS5 実証
+│   ├── store/              # SQLite 接続、マイグレーション、問い合わせと検索
 │   ├── media/              # 外部ツール（ffmpeg／ffprobe）のアダプタ
-│   ├── scanner/            # ファイル走査（Phase 0 は境界の宣言のみ）
-│   └── jobs/               # ジョブキュー（Phase 0 は境界の宣言のみ）
-├── web/                    # React SPA（ビルド結果を Go バイナリへ埋め込む）
+│   ├── scanner/            # ファイル走査、内容由来の識別子、移動の検出
+│   └── jobs/               # プロセス内のジョブワーカー（直列）
+├── web/
+│   └── src/
+│       ├── api/            # 生成型を使う fetch ラッパと一覧のフック
+│       ├── components/     # 一覧の1件、取り込みの進捗
+│       └── pages/          # 一覧（/）と再生（/videos/:id）
 ├── docs/
 │   ├── design-docs/
 │   ├── exec-plans/
@@ -99,6 +127,13 @@ Claude Code on the web でセッションを開くと、`.claude/hooks/session-s
 │   └── references/
 └── specs/                  # 機能ごとの仕様・計画・契約
 ```
+
+実行時に増える場所（版管理しない）:
+
+| 場所 | 内容 |
+| --- | --- |
+| `MDM_DATA_DIR/mdm.db` | SQLite のデータベース |
+| `MDM_DATA_DIR/thumbnails/` | サムネイル（`<先頭2文字>/<content_key>.jpg`） |
 
 Directory-level README files are included so that intentionally empty
 directories remain visible in Git and explain what belongs in each location.

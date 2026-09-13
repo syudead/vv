@@ -2,8 +2,10 @@ package store
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 )
 
 // alternativesHint はテストが落ちた開発者に、次に読むべきものを示す（FR-015）。
@@ -196,5 +198,285 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	if got := countMatch(t, db, "運動会"); got != 1 {
 		t.Errorf("再構築後の MATCH '運動会' = %d 件, want 1。"+
 			"rebuild が取りこぼしの復旧手段として働いていない\n%s", got, alternativesHint)
+	}
+}
+
+// 検索の2経路（[TD-001] / R-110）。書記素が3文字以上なら MATCH、
+// 1〜2文字なら同じ FTS5 表への LIKE に振り分ける。
+//
+// trigram は3文字単位で索引を作るため2文字以下は MATCH に一致せず、
+// 日本語では2文字の検索語が多い。この振り分けが検索の前提である。
+func TestSearchRouteSelection(t *testing.T) {
+	tests := []struct {
+		query string
+		want  searchRoute
+	}{
+		{"夏", routeLike},
+		{"旅行", routeLike},
+		{"夏休み", routeMatch},
+		{"夏休みの旅行", routeMatch},
+		{"ab", routeLike},
+		{"abc", routeMatch},
+		// 数えるのは符号位置ではなく、利用者が1文字と見るまとまりである。
+		// NFD の「が」（か + 濁点）は符号位置では2つだが1文字として数える。
+		// ここを取り違えると、2文字の入力が MATCH 経路へ回って0件になる。
+		{"\u304b\u3099\u3063", routeLike},        // が + っ = 2文字（符号位置では3）
+		{"\u304b\u3099\u3063\u3053", routeMatch}, // が + っ + こ = 3文字
+		// 絵文字も1文字として数える。
+		{"🎆🎇", routeLike},
+		{"🎆🎇🎈", routeMatch},
+	}
+
+	for _, tc := range tests {
+		if got := routeFor(tc.query); got != tc.want {
+			t.Errorf("routeFor(%q) = %v, want %v", tc.query, got, tc.want)
+		}
+	}
+}
+
+// searchFixture は検索の検証用に行を入れたデータベースを返す。
+func searchFixture(t *testing.T) *DB {
+	t.Helper()
+
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	rows := []struct{ title, key string }{
+		{"夏休みの旅行", "key-1"},
+		{"花火大会", "key-2"},
+		{"holiday trip", "key-3"},
+		{"京都の街並み", "key-4"},
+		{"海辺の散歩", "key-5"},
+	}
+	for i, row := range rows {
+		_, err := db.UpsertVideo(ctx, VideoFile{
+			Path:       "/media/" + row.title + ".mp4",
+			Title:      row.title,
+			ContentKey: row.key,
+			SizeBytes:  int64(1000 + i),
+			MTime:      fixedTime,
+			AddedAt:    fixedTime.Add(time.Duration(i) * time.Minute),
+			Container:  "mp4",
+		})
+		if err != nil {
+			t.Fatalf("検証用の行を入れられない (%s): %v", row.title, err)
+		}
+	}
+	return db
+}
+
+// searchTitles は検索結果の題名を返す。
+func searchTitles(t *testing.T, db *DB, query string) []string {
+	t.Helper()
+
+	page, err := db.ListVideos(context.Background(), VideoQuery{Query: query, Limit: MaxLimit})
+	if err != nil {
+		t.Fatalf("検索に失敗した (%q): %v\n%s", query, err, alternativesHint)
+	}
+	return titlesOf(page)
+}
+
+// 3文字以上は MATCH 経路で、先頭一致ではない部分一致が取れる（FR-022）。
+func TestSearchMatchRoute(t *testing.T) {
+	db := searchFixture(t)
+
+	for query, want := range map[string]string{
+		"夏休み":     "夏休みの旅行",
+		"みの旅":     "夏休みの旅行", // 語中の3文字
+		"の街並み":    "京都の街並み",
+		"holiday": "holiday trip",
+	} {
+		got := searchTitles(t, db, query)
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("検索 %q = %v, want [%s]", query, got, want)
+		}
+	}
+}
+
+// 1〜2文字は LIKE 経路。日本語では2文字の検索語が多く、これが
+// 取れないと検索が実用にならない（FR-023 / [TD-001]）。
+func TestSearchLikeRoute(t *testing.T) {
+	db := searchFixture(t)
+
+	for query, want := range map[string]string{
+		"旅行": "夏休みの旅行",
+		"花火": "花火大会",
+		"京都": "京都の街並み",
+		"海":  "海辺の散歩", // 1文字
+	} {
+		got := searchTitles(t, db, query)
+		if len(got) != 1 || got[0] != want {
+			t.Errorf("検索 %q = %v, want [%s]\n%s", query, got, want, alternativesHint)
+		}
+	}
+}
+
+// 検索語は NFC 正規化する。macOS から送られる NFD の入力でも一致する。
+func TestSearchNormalizesQuery(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	if _, err := db.UpsertVideo(ctx, VideoFile{
+		Path: "/media/がっこう.mp4", Title: "がっこう", ContentKey: "key-1",
+		SizeBytes: 1, MTime: fixedTime, AddedAt: fixedTime, Container: "mp4",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	// NFD（か + 濁点）で検索する。
+	decomposed := "がっこう"
+	if got := searchTitles(t, db, decomposed); len(got) != 1 {
+		t.Errorf("NFD の検索語で %d 件, want 1（NFC へ正規化していない）", len(got))
+	}
+}
+
+// FTS5 の特殊文字は無効化する。引用符で包まないと、構文誤りで検索そのものが
+// 失敗し、利用者には「検索が壊れた」ようにしか見えない。
+func TestSearchEscapesSpecialCharacters(t *testing.T) {
+	db := searchFixture(t)
+
+	for _, query := range []string{
+		`"`, `""`, `*`, `:`, `^`, `-`, `(`, `)`,
+		`夏休み"`, `"夏休み" OR "花火"`, `NEAR(夏 花)`, `title:夏`,
+		`夏休み*`, `夏 AND 花火`, `'; drop table videos; --`,
+	} {
+		page, err := db.ListVideos(context.Background(), VideoQuery{Query: query, Limit: MaxLimit})
+		if err != nil {
+			t.Errorf("検索 %q で失敗した: %v\n%s", query, err, alternativesHint)
+			continue
+		}
+		// 落ちなければよい。件数は問わない（特殊文字を字面として扱う）。
+		_ = page
+	}
+
+	// 表が壊れていないことを確かめる。
+	if total, err := db.CountVideos(context.Background(), ""); err != nil || total != 5 {
+		t.Errorf("検索のあと total = %d (err=%v), want 5", total, err)
+	}
+}
+
+// 検索時の並び順は一覧と同じ規則を使う。関連度（bm25）にしないのは、
+// LIKE 経路に関連度が無く、2つの経路で並びが変わると利用者から見て
+// 不可解になるためである（R-110）。
+func TestSearchUsesSameOrderAsListing(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	// すべて「旅」を含む。追加順と題名順が食い違うように入れる。
+	rows := []struct{ title, key string }{
+		{"ち旅", "key-1"},
+		{"あ旅", "key-2"},
+		{"は旅", "key-3"},
+	}
+	for i, row := range rows {
+		if _, err := db.UpsertVideo(ctx, VideoFile{
+			Path: "/media/" + row.title + ".mp4", Title: row.title, ContentKey: row.key,
+			SizeBytes: int64(i + 1), MTime: fixedTime,
+			AddedAt: fixedTime.Add(time.Duration(i) * time.Minute), Container: "mp4",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	added, err := db.ListVideos(ctx, VideoQuery{Query: "旅", Sort: SortAddedDesc, Limit: MaxLimit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"は旅", "あ旅", "ち旅"}; !equalStrings(titlesOf(added), want) {
+		t.Errorf("addedDesc = %v, want %v", titlesOf(added), want)
+	}
+
+	byTitle, err := db.ListVideos(ctx, VideoQuery{Query: "旅", Sort: SortTitleAsc, Limit: MaxLimit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"あ旅", "ち旅", "は旅"}; !equalStrings(titlesOf(byTitle), want) {
+		t.Errorf("titleAsc = %v, want %v", titlesOf(byTitle), want)
+	}
+}
+
+// total は絞り込み後の件数である（FR-012）。
+func TestSearchTotalIsFiltered(t *testing.T) {
+	db := searchFixture(t)
+
+	page, err := db.ListVideos(context.Background(), VideoQuery{Query: "旅行", Limit: MaxLimit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 {
+		t.Errorf("total = %d, want 1（絞り込み後の件数）", page.Total)
+	}
+
+	none, err := db.ListVideos(context.Background(), VideoQuery{Query: "該当しない語", Limit: MaxLimit})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if none.Total != 0 || len(none.Items) != 0 {
+		t.Errorf("該当なし: total = %d, items = %d, want 0 と 0", none.Total, len(none.Items))
+	}
+}
+
+// 検索とカーソルを併用してもページングが破綻しないこと。
+func TestSearchPagesWithCursor(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	for i := 0; i < 7; i++ {
+		title := fmt.Sprintf("旅%d", i)
+		if _, err := db.UpsertVideo(ctx, VideoFile{
+			Path: "/media/" + title + ".mp4", Title: title,
+			ContentKey: fmt.Sprintf("key-%d", i), SizeBytes: int64(i + 1), MTime: fixedTime,
+			AddedAt: fixedTime.Add(time.Duration(i) * time.Minute), Container: "mp4",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 該当しない行も混ぜる。
+	if _, err := db.UpsertVideo(ctx, VideoFile{
+		Path: "/media/花火.mp4", Title: "花火", ContentKey: "key-x",
+		SizeBytes: 99, MTime: fixedTime, AddedAt: fixedTime, Container: "mp4",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var seen []string
+	cursor := ""
+	for page := 0; page < 10; page++ {
+		got, err := db.ListVideos(ctx, VideoQuery{Query: "旅", Limit: 2, Cursor: cursor})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Total != 7 {
+			t.Errorf("%d ページ目の total = %d, want 7", page, got.Total)
+		}
+		seen = append(seen, titlesOf(got)...)
+		if got.NextCursor == "" {
+			break
+		}
+		cursor = got.NextCursor
+	}
+
+	if len(seen) != 7 {
+		t.Errorf("ページを繋いだ件数 = %d, want 7: %v", len(seen), seen)
+	}
+	for _, title := range seen {
+		if !strings.Contains(title, "旅") {
+			t.Errorf("該当しない行が混ざった: %q", title)
+		}
+	}
+}
+
+// 空白だけの検索語は絞り込まない。入力欄を消したときに0件にしない。
+func TestSearchWithBlankQuery(t *testing.T) {
+	db := searchFixture(t)
+
+	for _, query := range []string{"", "   ", "\t\n"} {
+		page, err := db.ListVideos(context.Background(), VideoQuery{Query: query, Limit: MaxLimit})
+		if err != nil {
+			t.Fatalf("検索 %q で失敗した: %v", query, err)
+		}
+		if page.Total != 5 {
+			t.Errorf("検索 %q: total = %d, want 5", query, page.Total)
+		}
 	}
 }

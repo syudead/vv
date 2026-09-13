@@ -8,14 +8,23 @@ reconsideration.
 
 ### TD-001: trigram では2文字以下の検索語に `MATCH` が一致しない
 
-- 影響範囲: 検索（`internal/store`、Phase 2 で実装）
+- 影響範囲: 検索（`internal/store/search.go`）
 - 内容: FTS5 の trigram トークナイザは3文字単位で索引を作るため、`旅行` のような
   2文字の検索語は `MATCH` で一致しない。日本語では2文字の検索語が多い。
 - 当面の対処: 3文字以上は `MATCH`、1〜2文字は FTS5 表への `LIKE '%…%'`（trigram 索引で
   処理される）に振り分ける。経路が2つになる分、検索の実装と試験が複雑になる。
+- **実装済み（002）**: 振り分けは `internal/store/search.go` の `routeFor` にある。
+  検索語は NFC 正規化してから文字数を数える（結合文字で書かれた「が」を2文字と
+  数えると、2文字の入力が `MATCH` 経路へ回って0件になるため）。FTS5 の特殊文字は
+  二重引用符で包んで無効化し、`LIKE` の `%`／`_` は `escape` 節で逃がす。
+  並び順は一覧と同じ規則を使い、関連度（bm25）にはしない — `LIKE` 経路に関連度が
+  無く、2つの経路で並びが変わると利用者から見て不可解になる。
+  検証は `internal/store/fts_test.go`（2経路の振り分け、部分一致、1文字検索、
+  正規化、特殊文字、並び順、検索とカーソルの併用）。
 - 見直しの契機: 件数が増えて `LIKE` 経路の応答が実用的でなくなったとき。その時点で
   形態素解析ベースのトークナイザ（外部拡張）か、別の検索基盤を再検討する。
-- 一次資料: [research.md R-001](../../specs/001-initial-setup/research.md)
+- 一次資料: [research.md R-001](../../specs/001-initial-setup/research.md)、
+  [002 の R-110](../../specs/002-core-video-library/research.md)
 
 ### TD-002: `make build` が版管理している `web/dist/index.html` を上書きする
 
@@ -57,8 +66,53 @@ reconsideration.
 - 当面の対処: 振る舞いの検証は Go 側（`internal/httpapi`）の経路テストで担保する。
 - 見直しの契機: Phase 1 で一覧と詳細の画面が増えた時点。再生の E2E（Playwright）は
   Phase 3 の範囲。
-- 一次資料: [plan.md](../../specs/001-initial-setup/plan.md)
+- **契機に到達した（002）**: 画面が 1 つから 3 つ（一覧・再生・共通部品）に増え、
+  自動検証の無いコードが `web/src/` に約 800 行ある。特に検証が薄いのは
+  無限スクロールの継ぎ目（`useVideos` のカーソル引き継ぎ）、検索入力の待ち合わせと
+  打ち切り、再生位置の送信（5 秒間隔・`visibilitychange` での `sendBeacon`）で、
+  いずれも Go 側の経路テストでは代替できない。
+  それでも 002 では入れていない。判断は「画面が増えた時点で入れる」ことではなく
+  「入れるなら実行基盤（Vitest + Testing Library）と、DOM を伴う検証の書き方を
+  同時に決める」ことであり、002 の範囲（取り込み・一覧・再生・検索）と混ぜると
+  どちらも中途半端になるためである。次の機能の着手時に、上の3点を最初の対象として
+  導入する。
+- 一次資料: [plan.md](../../specs/001-initial-setup/plan.md)、
+  [002 の plan.md](../../specs/002-core-video-library/plan.md)
 
+### TD-005: Go の依存が計画より1つ多い（`github.com/oapi-codegen/runtime`）
+
+- 影響範囲: `go.mod`（`internal/httpapi/gen/api.gen.go` が import する）
+- 内容: [002 の plan.md] は「新規に増やすのは `golang.org/x/text` と `react-router`
+  の 2 つだけ」としていたが、実際にはもう1つ増えた。`api/openapi.yaml` に経路
+  パラメータ（`/api/videos/{id}`）と問い合わせパラメータ（`limit`・`sort`・`cursor`）
+  を足したことで、`oapi-codegen` の生成物が値の取り出しに
+  `github.com/oapi-codegen/runtime` を使うようになったためである。
+- 当面の対処: そのまま追加した。生成物は手編集しない方針（`AGENTS.md`）なので、
+  この import を避けるには生成器を変えるか、パラメータの取り出しを手書きに戻す
+  ことになり、どちらも「契約から生成する」という決定そのものを崩す。
+  依存は生成器と同じ供給元で、版は `go.mod` に固定されている。
+- 見直しの契機: `oapi-codegen` を差し替えるとき、あるいはこの依存が
+  生成物以外から参照され始めたとき（その時点で境界が崩れている）。
+- 一次資料: [002 の plan.md] の Technical Context / Primary Dependencies
+
+### TD-006: quickstart S5 の期待値が、短い検証用動画では成立しない
+
+- 影響範囲: [quickstart.md](../../specs/002-core-video-library/quickstart.md) の S5
+- 内容: 視聴済みの判定は「残り 15 秒以内 **または** 95% 以上」である
+  （[R-111]、`internal/domain/progress.go`）。S0 が作る検証用の動画は 8 秒なので、
+  「残り 15 秒以内」が最初から成立する。S5 が期待する
+  「`positionMs: 4000` で `completed: false`」は、この動画では得られない
+  （`completed: true` になる）。規則そのものは正しく、検証手順の前提と
+  噛み合っていない。
+- 当面の対処: 受け入れ検証では S5 用に長め（2 分以上）の動画を使う。規則は
+  3 つの文書（research.md R-111・data-model.md・tasks.md T043）が一致して
+  定めているので、実装は規則どおりにした。
+- 見直しの契機: quickstart を次に更新するとき。S0 に長めの動画を1本足し、
+  S5 をそれに向けるのが素直である。
+- 一次資料: [R-111]
+
+[R-111]: ../../specs/002-core-video-library/research.md
+[002 の plan.md]: ../../specs/002-core-video-library/plan.md
 [R-007]: ../../specs/001-initial-setup/research.md
 [R-008]: ../../specs/001-initial-setup/research.md
 [contracts/openapi.yaml]: ../../specs/001-initial-setup/contracts/openapi.yaml
