@@ -5,7 +5,9 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
-    "types": ["vite/client", "vitest/globals"],
+    // node は対比の検査（src/theme/tokens.test.ts）が src/index.css を
+    // ファイルとして読むために要る（R-405）。実行時の依存は増やさない。
+    "types": ["vite/client", "vitest/globals", "node"],
 
     "noEmit": true,
     "isolatedModules": true,

@@ -1,2 +1,60 @@
 @import "tailwindcss";
 @config "../tailwind.config.ts";
+
+/*
+ * 見た目の規則の唯一の真実（FR-001 / R-401）。
+ *
+ * 画面と部品は、ここから生成される実用クラス（bg-surface・text-muted・
+ * border-border・rounded-card など）だけを使う。生の 16 進色・生の px・
+ * Tailwind 既定のパレット名（neutral-* / sky-* / red-*）を web/src/** に
+ * 書かない。その禁止を src/theme/noRawColors.test.ts が機械で確かめる。
+ *
+ * 名前は色そのものではなく役割である（R-402）。明るい配色を足すときは、
+ * ここの値を差し替えるだけで済み、画面側は書き換えなくてよい。
+ *
+ * 対比（FR-004 / SC-006）は src/theme/tokens.test.ts がこのファイルを読んで
+ * 計算する。トークンを足したら
+ * specs/004-library-ui/contracts/design-tokens.md 2. の対比表にも足すこと。
+ * 表に無い組は検査されない。
+ */
+@theme {
+  /* 色 — specs/004-library-ui/contracts/design-tokens.md 2. */
+  --color-surface: #0f1115;
+  --color-surface-raised: #191d24;
+  --color-surface-sunken: #07090c;
+  --color-badge: #12151a;
+  --color-border: #626d7d;
+  --color-body: #e8ecf2;
+  --color-muted: #a7b1c0;
+  --color-accent: #63a9f2;
+  --color-accent-ink: #07131f;
+  --color-danger: #ff9b9b;
+  --color-danger-surface: #2c1517;
+  --color-warning: #f3c274;
+  --color-warning-surface: #2b2113;
+  --color-focus: #8ab4ff;
+
+  /* 形と大きさ — specs/004-library-ui/contracts/design-tokens.md 3. */
+  --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+  --size-tap: 2.75rem;
+  --size-tile-dense: 9rem;
+  --size-tile-standard: 11rem;
+  --size-tile-relaxed: 16rem;
+}
+
+@layer base {
+  /*
+   * 暗い配色だけを実装する（R-402）。明暗の切り替え機構は入れない。
+   * color-scheme を宣言すると、ブラウザ既定の部品（スクロールバー、
+   * <select> の一覧、<video controls>）も暗い側で描かれる。
+   */
+  :root {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-body);
+  }
+}

@@ -131,6 +131,25 @@ reconsideration.
   本項を恒久の負債として残し、ステータスラインの配線は外す。
 - 一次資料: [003 の R-004]
 
+### TD-008: 再生画面を離れるとき、最後の位置が送られていない
+
+- 影響範囲: 再生画面（`web/src/pages/VideoPage.tsx` の離脱時の送信）
+- 内容: 離脱時の後片付けは `videoRef.current` を読んで `beaconProgress` を呼ぶが、
+  React は**参照を外してから** `useEffect` の後片付けを呼ぶため、この経路では
+  `videoRef.current` が必ず `null` になっている。したがって「一覧へ戻る」で
+  画面を離れたときの最後の位置は送られず、直前の 5 秒周期の送信まで巻き戻る。
+  タブを隠したとき（`visibilitychange`）の経路は参照が生きているので動いている。
+  002 から入っていた欠落で、004 の Phase 2 で回帰の網を張ったときに見つかった。
+- 影響の大きさ: 失うのは最大 5 秒ぶんの視聴位置である（[R-111] の送信間隔）。
+  視聴済みの判定はサーバー側なので、見終わった動画の扱いは変わらない。
+- 当面の対処: 振る舞いを変えずに、いまの状態を
+  `web/src/pages/VideoPage.progress.test.tsx` に書き留めた。004 は既存の振る舞いを
+  変えないことが要求（FR-025 / SC-009）なので、Phase 2 では直していない。
+- 見直しの契機: [004 の tasks.md](../../specs/004-library-ui/tasks.md) T024〜T026
+  （再生画面の組み替え）。最後の位置を参照ではなく状態として持ち回る形にすれば、
+  後片付けの時点でも読める。直したら上記の検査の期待を「送られる」へ入れ替える。
+- 一次資料: [R-111]、[004 の tasks.md](../../specs/004-library-ui/tasks.md) T012
+
 [R-111]: ../../specs/002-core-video-library/research.md
 [002 の plan.md]: ../../specs/002-core-video-library/plan.md
 [R-007]: ../../specs/001-initial-setup/research.md
