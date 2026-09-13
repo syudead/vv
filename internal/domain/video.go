@@ -179,3 +179,45 @@ func (v Video) PlayableInBrowser() bool {
 func (v Video) HasThumbnail() bool {
 	return v.ThumbnailState == ThumbnailStateDone
 }
+
+// VideoFile は走査で分かる事実である。解析（ffprobe）で分かる事実は含まない。
+// 走査と保存の間でやり取りする値なので、どちらの都合も持ち込まない。
+type VideoFile struct {
+	Path       string
+	Title      string
+	ContentKey string
+	SizeBytes  int64
+	MTime      time.Time
+	Container  string
+	// AddedAt はゼロ値なら取り込み時刻を使う。新規のときだけ効く。
+	AddedAt time.Time
+}
+
+// IndexedVideo は差分判定に要る最小限の値である。走査は実際のファイルと
+// これを突き合わせる（R-107）。
+type IndexedVideo struct {
+	ID         int64
+	ContentKey string
+	SizeBytes  int64
+	MTime      time.Time
+}
+
+// UpsertOutcome は取り込み1件の結果である。走査の集計（ScanResult）になる。
+type UpsertOutcome string
+
+const (
+	// OutcomeAdded は新しく取り込んだ。
+	OutcomeAdded UpsertOutcome = "added"
+	// OutcomeUpdated は既存の行の内容が変わった。
+	OutcomeUpdated UpsertOutcome = "updated"
+	// OutcomeMoved は内容が同じままパスだけが変わった（移動・改名）。
+	OutcomeMoved UpsertOutcome = "moved"
+	// OutcomeUnchanged は何も変わらなかった。
+	OutcomeUnchanged UpsertOutcome = "unchanged"
+)
+
+// UpsertResult は取り込み1件の結果である。
+type UpsertResult struct {
+	ID      int64
+	Outcome UpsertOutcome
+}

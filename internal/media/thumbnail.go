@@ -1,0 +1,122 @@
+package media
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// 抽出位置の規則（R-104）。先頭が黒画面やロゴであることが多いので 10% 地点を
+// 採り、長い動画で待たされないよう上限を切る。
+const (
+	// thumbnailFraction は尺に対する抽出位置の割合。
+	thumbnailFraction = 0.10
+	// thumbnailMinOffset は抽出位置の下限（秒）。
+	thumbnailMinOffset = 1.0
+	// thumbnailMaxOffset は抽出位置の上限（秒）。
+	thumbnailMaxOffset = 60.0
+)
+
+// thumbnailTimeout は ffmpeg 1回に与える上限である。解析（Probe）と同じく、
+// 1件で取り込み全体を止めないための上限である。
+const thumbnailTimeout = 60 * time.Second
+
+// thumbnailCommand は実行する外部コマンドである。
+const thumbnailCommand = "ffmpeg"
+
+// thumbnailDirPerm はサムネイルの置き場所を作るときの許可属性である。
+const thumbnailDirPerm os.FileMode = 0o755
+
+// Thumbnail は動画から静止画を1枚取り出し、置き場所へ保存してそのパスを返す
+// （R-104）。
+//
+// 形式は JPEG にする。WebP の方が小さいが、libwebp を含む ffmpeg ビルドを
+// 前提にすると実行環境の差で失敗しうる。mjpeg エンコーダはどのビルドにも
+// 含まれる。幅 640px でおおむね 30〜60KB であり、一覧 60 件でも 2〜4MB に収まる。
+func Thumbnail(ctx context.Context, videoPath string, durationMs int64, thumbnailsDir, contentKey string) (string, error) {
+	output := ThumbnailPath(thumbnailsDir, contentKey)
+	if err := os.MkdirAll(filepath.Dir(output), thumbnailDirPerm); err != nil {
+		return "", fmt.Errorf("サムネイルの置き場所を作れません (%s): %w", filepath.Dir(output), err)
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
+	defer cancel()
+
+	args := thumbnailArgs(videoPath, thumbnailOffset(durationMs), output)
+	if _, err := exec.CommandContext(ctx, thumbnailCommand, args...).Output(); err != nil {
+		// 途中まで書かれた画像を残さない。半端な JPEG を配信すると、
+		// 生成済みなのか壊れているのかが利用者から区別できない。
+		_ = os.Remove(output)
+
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return "", fmt.Errorf(
+				"%s が失敗しました (%s): %s", thumbnailCommand, videoPath, firstLine(exitErr.Stderr))
+		}
+		return "", fmt.Errorf("%s を実行できません (%s): %w", thumbnailCommand, videoPath, err)
+	}
+
+	if info, err := os.Stat(output); err != nil || info.Size() == 0 {
+		_ = os.Remove(output)
+		return "", fmt.Errorf("サムネイルが生成されませんでした (%s)", videoPath)
+	}
+	return output, nil
+}
+
+// ThumbnailPath は content_key から保存先を決める。
+//
+//	<thumbnailsDir>/<先頭2文字>/<content_key>.jpg
+//
+// content_key で名前を決めるので、ファイルの移動・改名では作り直さない
+// （FR-025）。2文字のディレクトリに分けるのは、1ディレクトリに数万ファイルを
+// 置かないためである。
+func ThumbnailPath(thumbnailsDir, contentKey string) string {
+	safe := thumbnailFileName(contentKey)
+
+	prefix := safe
+	if len(prefix) > 2 {
+		prefix = prefix[:2]
+	}
+	return filepath.Join(thumbnailsDir, prefix, safe+".jpg")
+}
+
+// thumbnailFileName は content_key をファイル名に使える形にする。
+// content_key は "<16進>:<サイズ>" なので、区切りの ":" を置き換える。
+// ":" は Windows 共有や一部のファイルシステムで扱えず、置き場所ごと失敗する。
+func thumbnailFileName(contentKey string) string {
+	return strings.NewReplacer(":", "_", "/", "_", `\`, "_").Replace(contentKey)
+}
+
+// thumbnailOffset は抽出位置（秒）を返す。尺が不明・不正な場合は下限を使う。
+func thumbnailOffset(durationMs int64) float64 {
+	if durationMs <= 0 {
+		return thumbnailMinOffset
+	}
+
+	offset := float64(durationMs) / 1000 * thumbnailFraction
+	return min(max(offset, thumbnailMinOffset), thumbnailMaxOffset)
+}
+
+// thumbnailArgs は R-104 の引数を組み立てる。
+//
+// -ss を -i の前に置くとキーフレーム単位の高速シークになり、長い動画でも
+// 一定時間で終わる。後ろに置くと先頭から復号することになる。
+func thumbnailArgs(videoPath string, offsetSec float64, output string) []string {
+	return []string{
+		"-nostdin",
+		"-v", "error",
+		"-ss", strconv.FormatFloat(offsetSec, 'f', 3, 64),
+		"-i", videoPath,
+		"-frames:v", "1",
+		"-vf", "scale=640:-2",
+		"-q:v", "4",
+		"-y",
+		output,
+	}
+}
