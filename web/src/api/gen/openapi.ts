@@ -25,6 +25,149 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 動画の一覧を返す
+         * @description カーソル方式でページングする。`query` を与えると題名の部分一致で絞り込む。
+         *     `total` は絞り込み後の総件数で、ページングとは独立に返る。
+         */
+        get: operations["listVideos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 動画1件の詳細を返す */
+        get: operations["getVideo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 動画本体を配信する
+         * @description `Range` 要求に対応し、`206 Partial Content` と `Content-Range` を返す。
+         *     詳細は [http-routes.md](./http-routes.md) を参照。再生できない形式
+         *     （`playable = false`）でもファイルはそのまま配信する。
+         */
+        get: operations["streamVideo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * サムネイル画像を返す
+         * @description `v` は内容由来の識別子で、画像が変われば URL も変わる。長期キャッシュを
+         *     前提にしてよい（[http-routes.md](./http-routes.md)）。未生成の場合は 404。
+         */
+        get: operations["getVideoThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 再生位置を記録する
+         * @description 視聴済みの判定はサーバー側で行う。クライアントは位置だけを送る。
+         *     記録は動画の内容に紐づくため、ファイルを移動・改名しても引き継がれる。
+         */
+        put: operations["putVideoProgress"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scans": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 取り込みを開始する
+         * @description すでに実行中の場合は、新しく始めずに実行中のスキャンを返す。
+         *     応答は即座に返り、取り込みは背後で進む。
+         */
+        post: operations["startScan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/scans/current": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 直近のスキャンの状態を返す
+         * @description 実行中のものがあればそれを、無ければ最後に終わったものを返す。
+         */
+        get: operations["getCurrentScan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -49,6 +192,95 @@ export interface components {
              */
             builtAt?: string;
         };
+        /**
+         * @description addedDesc = 追加が新しい順、titleAsc = 題名順
+         * @default addedDesc
+         * @enum {string}
+         */
+        VideoSort: "addedDesc" | "titleAsc";
+        VideoPage: {
+            items: components["schemas"]["Video"][];
+            /** @description 絞り込み後の総件数 */
+            total: number;
+            /** @description 次のページの取得に渡す。これ以上無い場合は省略される */
+            nextCursor?: string;
+        };
+        Video: {
+            /** Format: int64 */
+            id: number;
+            /** @description 拡張子を除いたファイル名 */
+            title: string;
+            /** Format: int64 */
+            sizeBytes: number;
+            /** Format: date-time */
+            addedAt: string;
+            /**
+             * Format: int64
+             * @description 尺。解析前・取得不能の場合は省略される
+             */
+            durationMs?: number;
+            width?: number;
+            height?: number;
+            /**
+             * @example mp4
+             * @example webm
+             * @example mkv
+             */
+            container?: string;
+            /**
+             * @example h264
+             * @example vp9
+             */
+            videoCodec?: string;
+            /**
+             * @example aac
+             * @example opus
+             */
+            audioCodec?: string;
+            /** @description ブラウザでそのまま再生できると判定されたか */
+            playable: boolean;
+            /**
+             * @description playable = false の理由。判定前は省略される
+             * @enum {string}
+             */
+            unplayableReason?: "container" | "video_codec" | "audio_codec";
+            /** @enum {string} */
+            probeState: "pending" | "done" | "failed";
+            /** @description probeState = failed のときの理由 */
+            probeError?: string;
+            /** @enum {string} */
+            thumbnailState: "pending" | "done" | "failed";
+            /** @description thumbnailState = done のときだけ入る */
+            thumbnailUrl?: string;
+            progress?: components["schemas"]["Progress"];
+        };
+        ProgressUpdate: {
+            /** Format: int64 */
+            positionMs: number;
+        };
+        Progress: {
+            /** Format: int64 */
+            positionMs: number;
+            completed: boolean;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        Scan: {
+            /** Format: int64 */
+            id: number;
+            /** @enum {string} */
+            state: "running" | "done" | "failed";
+            /** Format: date-time */
+            startedAt?: string;
+            /** Format: date-time */
+            finishedAt?: string;
+            /** @description 走査で見つけたファイル数 */
+            total: number;
+            completed: number;
+            failed: number;
+            /** @description スキャン自体が失敗した理由 */
+            error?: string;
+        };
         Error: {
             /**
              * @description 機械可読なエラー種別
@@ -61,8 +293,30 @@ export interface components {
             message: string;
         };
     };
-    responses: never;
-    parameters: never;
+    responses: {
+        /** @description 対象が存在しない */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 要求の形式が不正 */
+        InvalidRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+    };
+    parameters: {
+        /** @description 動画の識別子 */
+        VideoId: number;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -95,6 +349,213 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["Health"];
                 };
+            };
+        };
+    };
+    listVideos: {
+        parameters: {
+            query?: {
+                /** @description 題名の部分一致。1文字から指定できる */
+                query?: string;
+                /** @description 並び順 */
+                sort?: components["schemas"]["VideoSort"];
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    getVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 詳細 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    streamVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 全体 */
+            200: {
+                headers: {
+                    "Accept-Ranges"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                    "video/webm": string;
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description 指定された範囲 */
+            206: {
+                headers: {
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description 範囲指定が不正 */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getVideoThumbnail: {
+        parameters: {
+            query?: {
+                /** @description 一覧・詳細が返した URL に含まれる版 */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 画像 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            /** @description 動画が存在しないか、サムネイルが未生成 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    putVideoProgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProgressUpdate"];
+            };
+        };
+        responses: {
+            /** @description 記録後の状態 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Progress"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    startScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 開始した、または実行中のスキャン */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Scan"];
+                };
+            };
+        };
+    };
+    getCurrentScan: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description スキャンの状態 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Scan"];
+                };
+            };
+            /** @description 一度もスキャンしていない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

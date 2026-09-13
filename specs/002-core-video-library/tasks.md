@@ -35,10 +35,10 @@ root からの相対で、[plan.md](./plan.md) の "Source Code" の配置に従
 
 **Purpose**: 増える依存（2つだけ）と、API 契約の更新・生成物の再生成を済ませる
 
-- [ ] T001 `golang.org/x/text` を依存に追加する（Unicode NFC 正規化、[R-107](./research.md)）。`go get golang.org/x/text` を実行し、`go.mod` と `go.sum` の差分をコミットする。本機能で増やす Go の依存はこれ1つだけである（[plan.md](./plan.md) Primary Dependencies）
-- [ ] T002 [P] `react-router` v7 を追加する（[R-113](./research.md)）。`web/package.json` の `dependencies` に `"react-router": "^7"` を加え、`npm --prefix web install` で `web/package-lock.json` を更新する。データ取得ライブラリ（TanStack Query 等）は**入れない**
-- [ ] T003 `api/openapi.yaml` を [contracts/openapi.yaml](./contracts/openapi.yaml) の内容で更新する。`info.version` は `0.2.0`、追加する経路は `/api/videos`・`/api/videos/{id}`・`/api/videos/{id}/stream`・`/api/videos/{id}/thumbnail`・`/api/videos/{id}/progress`・`/api/scans`・`/api/scans/current`、追加するスキーマは `VideoSort`・`VideoPage`・`Video`・`ProgressUpdate`・`Progress`・`Scan`。以後もこのファイルが唯一の真実である
-- [ ] T004 `make generate` を実行して `internal/httpapi/gen/api.gen.go` と `web/src/api/gen/openapi.ts` を再生成する（T003 に依存）。この時点で `internal/httpapi/router.go` の `server` 型が `gen.ServerInterface` を満たさずコンパイルエラーになることを確認する（未実装の経路に気付ける設計であることの確認、[plan.md](./plan.md)）
+- [X] T001 `golang.org/x/text` を依存に追加する（Unicode NFC 正規化、[R-107](./research.md)）。`go get golang.org/x/text` を実行し、`go.mod` と `go.sum` の差分をコミットする。本機能で増やす Go の依存はこれ1つだけである（[plan.md](./plan.md) Primary Dependencies）
+- [X] T002 [P] `react-router` v7 を追加する（[R-113](./research.md)）。`web/package.json` の `dependencies` に `"react-router": "^7"` を加え、`npm --prefix web install` で `web/package-lock.json` を更新する。データ取得ライブラリ（TanStack Query 等）は**入れない**
+- [X] T003 `api/openapi.yaml` を [contracts/openapi.yaml](./contracts/openapi.yaml) の内容で更新する。`info.version` は `0.2.0`、追加する経路は `/api/videos`・`/api/videos/{id}`・`/api/videos/{id}/stream`・`/api/videos/{id}/thumbnail`・`/api/videos/{id}/progress`・`/api/scans`・`/api/scans/current`、追加するスキーマは `VideoSort`・`VideoPage`・`Video`・`ProgressUpdate`・`Progress`・`Scan`。以後もこのファイルが唯一の真実である
+- [X] T004 `make generate` を実行して `internal/httpapi/gen/api.gen.go` と `web/src/api/gen/openapi.ts` を再生成する（T003 に依存）。この時点で `internal/httpapi/router.go` の `server` 型が `gen.ServerInterface` を満たさずコンパイルエラーになることを確認する（未実装の経路に気付ける設計であることの確認、[plan.md](./plan.md)）
 
 ---
 
