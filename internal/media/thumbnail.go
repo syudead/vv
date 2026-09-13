@@ -48,25 +48,46 @@ func Thumbnail(ctx context.Context, videoPath string, durationMs int64, thumbnai
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
 
-	args := thumbnailArgs(videoPath, thumbnailOffset(durationMs), output)
+	offset := thumbnailOffset(durationMs)
+	if err := runThumbnail(ctx, videoPath, offset, output); err != nil {
+		// 指定した位置でフレームが取れないことがある（可変フレームレート、
+		// 索引の壊れたファイル）。1枚も無いより先頭の1枚の方がよいので、
+		// 一度だけ先頭から取り直す。
+		if offset == 0 {
+			return "", err
+		}
+		if retryErr := runThumbnail(ctx, videoPath, 0, output); retryErr != nil {
+			return "", err
+		}
+	}
+
+	return output, nil
+}
+
+// runThumbnail は ffmpeg を1回実行し、画像が実際に書かれたことまで確かめる。
+//
+// ffmpeg は指定した位置にフレームが無いとき、終了コード 0 のまま何も出力せずに
+// 終わる。出力の有無まで見ないと、生成できていないのに成功として記録される。
+func runThumbnail(ctx context.Context, videoPath string, offsetSec float64, output string) error {
+	args := thumbnailArgs(videoPath, offsetSec, output)
 	if _, err := exec.CommandContext(ctx, thumbnailCommand, args...).Output(); err != nil {
-		// 途中まで書かれた画像を残さない。半端な JPEG を配信すると、
-		// 生成済みなのか壊れているのかが利用者から区別できない。
 		_ = os.Remove(output)
 
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return "", fmt.Errorf(
+			return fmt.Errorf(
 				"%s が失敗しました (%s): %s", thumbnailCommand, videoPath, firstLine(exitErr.Stderr))
 		}
-		return "", fmt.Errorf("%s を実行できません (%s): %w", thumbnailCommand, videoPath, err)
+		return fmt.Errorf("%s を実行できません (%s): %w", thumbnailCommand, videoPath, err)
 	}
 
 	if info, err := os.Stat(output); err != nil || info.Size() == 0 {
+		// 途中まで書かれた画像を残さない。半端な JPEG を配信すると、
+		// 生成済みなのか壊れているのかが利用者から区別できない。
 		_ = os.Remove(output)
-		return "", fmt.Errorf("サムネイルが生成されませんでした (%s)", videoPath)
+		return fmt.Errorf("サムネイルが生成されませんでした (%s、位置 %.3f 秒)", videoPath, offsetSec)
 	}
-	return output, nil
+	return nil
 }
 
 // ThumbnailPath は content_key から保存先を決める。
@@ -94,13 +115,23 @@ func thumbnailFileName(contentKey string) string {
 }
 
 // thumbnailOffset は抽出位置（秒）を返す。尺が不明・不正な場合は下限を使う。
+//
+// 下限（1 秒）が尺を越える短い動画では、丸めずに 10% 地点を使う。下限へ
+// 丸めると末尾ちょうど、あるいはその先を指すことになり、ffmpeg は終了コード 0
+// のまま1枚も出力しない（失敗として現れないので、原因が分かりにくい）。
 func thumbnailOffset(durationMs int64) float64 {
 	if durationMs <= 0 {
 		return thumbnailMinOffset
 	}
 
-	offset := float64(durationMs) / 1000 * thumbnailFraction
-	return min(max(offset, thumbnailMinOffset), thumbnailMaxOffset)
+	seconds := float64(durationMs) / 1000
+	offset := min(max(seconds*thumbnailFraction, thumbnailMinOffset), thumbnailMaxOffset)
+
+	if offset >= seconds {
+		// 10% 地点は必ず尺の内側にある。
+		return seconds * thumbnailFraction
+	}
+	return offset
 }
 
 // thumbnailArgs は R-104 の引数を組み立てる。

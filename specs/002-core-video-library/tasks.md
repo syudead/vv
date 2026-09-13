@@ -176,16 +176,16 @@ root からの相対で、[plan.md](./plan.md) の "Source Code" の配置に従
 
 **Purpose**: 複数のストーリーに跨る後始末と、変更と同じ単位での文書更新（`AGENTS.md`）
 
-- [ ] T062 [P] `internal/store/jobs.go` に完了行の掃除を足す。`done` の行は 7 日で削除する（[data-model.md](./data-model.md) 4 節。取り込み直後に最大 2万行になるため）
-- [ ] T063 [P] `ARCHITECTURE.md` の "Not built yet" を更新する。byte-range streaming・scanner・job worker・`ffmpeg`/`ffprobe` アダプタが実装済みになったこと、`internal/scanner` と `internal/jobs` が宣言だけの境界ではなくなったことを反映し、残るのは認証（Phase 3）であることを書く
-- [ ] T064 [P] `README.md` を更新する。`MDM_MEDIA_DIR` に動画を置けば一覧に並ぶこと、`MDM_SCAN_ON_START` の存在、外部公開を前提にしない（認証を掛けていない）ことの明記を維持する。"Repository structure" に増えた場所（`web/src/pages`・`web/src/components`・`MDM_DATA_DIR/thumbnails`）を反映する
-- [ ] T065 [P] `docs/design-docs/tech-stack-selection.md` の `content_key` の記述（90〜91 行目付近）を、BLAKE3 から**標準ライブラリの SHA-256** に更新する。理由（読む量が1ファイル 2MiB に固定されており、ハッシュ関数の速度が取り込み時間を律速しない）を添える（[R-101](./research.md) / [plan.md](./plan.md) Complexity Tracking）
-- [ ] T066 [P] `docs/exec-plans/tech-debt.md` を更新する。TD-001（trigram の2文字問題）に実装済みの対処（`MATCH` と `LIKE` の2経路、実装箇所）を追記し、TD-004（Web の自動テストはビルド検証のみ）の見直しの契機（Phase 1 で画面が増えた時点）に到達したことを記録する
-- [ ] T067 [P] `docs/exec-plans/active/002-core-video-library.md` の「進捗」表を更新し、完了後に `docs/exec-plans/completed/002-core-video-library.md` へ移動する（`AGENTS.md`）
-- [ ] T068 `make generate-check` を実行し、`api/openapi.yaml` と `internal/httpapi/gen/`・`web/src/api/gen/` に差分が無いことを確認する。差分があれば直すのは生成物ではなく `api/openapi.yaml` 側である
-- [ ] T069 `Makefile` の `make check`（`fmt-check` → `lint` → `test` → `generate-check`）を通す。depguard により `internal/domain` が `net/http`・`database/sql`・`os/exec`・他の `internal` パッケージを import していないことも機械的に確認される
-- [ ] T070 [quickstart.md](./quickstart.md) の S0〜S8 を実行して受け入れを確認する（検証用の動画は `ffmpeg` で生成し、実データを使わない）
-- [ ] T071 [quickstart.md](./quickstart.md) の S9（1,000 本規模: 初回取り込み 15 分以内・一覧1ページ目 2 秒以内・検索 1 秒以内）と S10（`make down && docker volume rm vv_data` 後の復旧）を実行し、計測値を記録する
+- [X] T062 [P] `internal/store/jobs.go` に完了行の掃除を足す。`done` の行は 7 日で削除する（[data-model.md](./data-model.md) 4 節。取り込み直後に最大 2万行になるため）
+- [X] T063 [P] `ARCHITECTURE.md` の "Not built yet" を更新する。byte-range streaming・scanner・job worker・`ffmpeg`/`ffprobe` アダプタが実装済みになったこと、`internal/scanner` と `internal/jobs` が宣言だけの境界ではなくなったことを反映し、残るのは認証（Phase 3）であることを書く
+- [X] T064 [P] `README.md` を更新する。`MDM_MEDIA_DIR` に動画を置けば一覧に並ぶこと、`MDM_SCAN_ON_START` の存在、外部公開を前提にしない（認証を掛けていない）ことの明記を維持する。"Repository structure" に増えた場所（`web/src/pages`・`web/src/components`・`MDM_DATA_DIR/thumbnails`）を反映する
+- [X] T065 [P] `docs/design-docs/tech-stack-selection.md` の `content_key` の記述（90〜91 行目付近）を、BLAKE3 から**標準ライブラリの SHA-256** に更新する。理由（読む量が1ファイル 2MiB に固定されており、ハッシュ関数の速度が取り込み時間を律速しない）を添える（[R-101](./research.md) / [plan.md](./plan.md) Complexity Tracking）
+- [X] T066 [P] `docs/exec-plans/tech-debt.md` を更新する。TD-001（trigram の2文字問題）に実装済みの対処（`MATCH` と `LIKE` の2経路、実装箇所）を追記し、TD-004（Web の自動テストはビルド検証のみ）の見直しの契機（Phase 1 で画面が増えた時点）に到達したことを記録する
+- [X] T067 [P] `docs/exec-plans/active/002-core-video-library.md` の「進捗」表を更新し、完了後に `docs/exec-plans/completed/002-core-video-library.md` へ移動する（`AGENTS.md`）
+- [X] T068 `make generate-check` を実行し、`api/openapi.yaml` と `internal/httpapi/gen/`・`web/src/api/gen/` に差分が無いことを確認する。差分があれば直すのは生成物ではなく `api/openapi.yaml` 側である
+- [X] T069 `Makefile` の `make check`（`fmt-check` → `lint` → `test` → `generate-check`）を通す。depguard により `internal/domain` が `net/http`・`database/sql`・`os/exec`・他の `internal` パッケージを import していないことも機械的に確認される
+- [X] T070 [quickstart.md](./quickstart.md) の S0〜S8 を実行して受け入れを確認する（検証用の動画は `ffmpeg` で生成し、実データを使わない）
+- [X] T071 [quickstart.md](./quickstart.md) の S9（1,000 本規模: 初回取り込み 15 分以内・一覧1ページ目 2 秒以内・検索 1 秒以内）と S10（`make down && docker volume rm vv_data` 後の復旧）を実行し、計測値を記録する
 - [ ] T072 一覧画面と再生画面のスクリーンショットを `docs/screenshots/<YYYYMMDD>-<短い名前>.png` として撮ってコミットし、PR 本文からコミット SHA 付きの raw URL で参照する（[docs/how-to/ui-change-screenshots.md](../../docs/how-to/ui-change-screenshots.md)）。本機能はこの規約が初めて適用される変更である（[plan.md](./plan.md) ゲート G8）
 
 ---

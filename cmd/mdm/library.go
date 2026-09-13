@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"sync"
 	"time"
@@ -217,6 +216,23 @@ func (l *library) runScan(scanID int64) {
 	if err := l.db.FinishScan(closeCtx, scanID, state, reason); err != nil {
 		l.logger.Warn("取り込みの終了を記録できませんでした", slog.Any("error", err))
 	}
+
+	// 走査のたびに掃除する。起動時だけだと、長く動かしているうちに完了行が
+	// 積み上がる（取り込み直後は最大 2万行になる — data-model.md 4 節）。
+	l.cleanFinishedJobs(closeCtx)
+}
+
+// cleanFinishedJobs は保存期間を過ぎた完了・失敗のジョブを消す。
+// 後始末なので、失敗しても取り込みの成否には影響させない。
+func (l *library) cleanFinishedJobs(ctx context.Context) {
+	removed, err := l.db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-store.JobRetention))
+	if err != nil {
+		l.logger.Warn("完了したジョブを掃除できませんでした", slog.Any("error", err))
+		return
+	}
+	if removed > 0 {
+		l.logger.Info("古いジョブを掃除しました", slog.Int64("count", removed))
+	}
 }
 
 // scanContext は走査に使う context を返す。
@@ -251,12 +267,6 @@ func (l *library) recoverInterrupted(ctx context.Context) error {
 		l.logger.Info("中断していた取り込みを閉じました", slog.Int64("count", closed))
 	}
 
-	removed, err := l.db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-store.JobRetention))
-	if err != nil {
-		return fmt.Errorf("完了したジョブを掃除できません: %w", err)
-	}
-	if removed > 0 {
-		l.logger.Info("古いジョブを掃除しました", slog.Int64("count", removed))
-	}
+	l.cleanFinishedJobs(ctx)
 	return nil
 }
