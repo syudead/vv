@@ -45,7 +45,9 @@ func (s VideoSort) Valid() bool {
 
 // VideoQuery は一覧の問い合わせ条件である。
 type VideoQuery struct {
-	Sort VideoSort
+	// Query は題名の部分一致。空なら絞り込まない。1文字から指定できる。
+	Query string
+	Sort  VideoSort
 	// Cursor は前回の応答が返した NextCursor。空なら先頭から。
 	Cursor string
 	Limit  int

@@ -26,12 +26,12 @@ export interface VideosState {
 }
 
 /**
- * useVideos は一覧を1ページずつ読む。
+ * useVideos は一覧を1ページずつ読む。query を与えると題名で絞り込む。
  *
  * 最初の表示は1ページ（60 件）だけを待つ。1万件でも最初の画面が 2 秒以内に
  * 出る（SC-003）のは、全件を読まないことによる（R-114）。
  */
-export function useVideos(sort: VideoSort): VideosState {
+export function useVideos(sort: VideoSort, query: string): VideosState {
   const [items, setItems] = useState<Video[]>([]);
   const [total, setTotal] = useState(0);
   const [cursor, setCursor] = useState<string | undefined>(undefined);
@@ -58,7 +58,12 @@ export function useVideos(sort: VideoSort): VideosState {
       }
 
       try {
-        const page = await listVideos({ sort, cursor: from, signal: controller.signal });
+        const page = await listVideos({
+          sort,
+          query,
+          cursor: from,
+          signal: controller.signal,
+        });
         setItems((current) => (replace ? page.items : [...current, ...page.items]));
         setTotal(page.total);
         setCursor(page.nextCursor);
@@ -78,11 +83,14 @@ export function useVideos(sort: VideoSort): VideosState {
         }
       }
     },
-    [sort],
+    [query, sort],
   );
 
-  // 並び順が変わったら先頭から読み直す。カーソルは並び順に紐づくので、
-  // 引き継ぐと境界の意味が変わってしまう。
+  // 並び順か検索語が変わったら先頭から読み直す。カーソルはその2つに
+  // 紐づくので、引き継ぐと境界の意味が変わってしまう。
+  //
+  // 前の要求は fetchPage が AbortController で打ち切る。入力が連続しても、
+  // 古い応答が新しい一覧を上書きすることはない。
   useEffect(() => {
     setItems([]);
     setCursor(undefined);

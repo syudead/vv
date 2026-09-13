@@ -158,15 +158,15 @@ root からの相対で、[plan.md](./plan.md) の "Source Code" の配置に従
 
 ### Tests for User Story 3 ⚠️
 
-- [ ] T056 [P] [US3] `internal/store/fts_test.go`（001 のもの）を拡張し、検索の2経路を検証する（[R-110](./research.md) / [TD-001](../../docs/exec-plans/tech-debt.md)）。**書記素が3文字以上**なら `videos_fts MATCH`、**1〜2文字**なら同じ FTS5 表への `LIKE '%…%'` に振り分かること、日本語の題名で先頭一致ではない**部分一致**が取れること（FR-022）、1文字の検索語でも取り出せること（FR-023）、検索語が NFC 正規化されること、FTS5 の特殊文字（`"` `*` `:` `^` など）が引用符で包まれて無効化されること、検索時の並び順が一覧と同じ規則（関連度を使わない）であることを検証する
-- [ ] T057 [P] [US3] `internal/httpapi/videos_test.go` に検索のケースを足す。`query` を与えると絞り込まれ `total` が**絞り込み後の**件数になること、`query` の `maxLength` が 100 であること、該当が無い場合に `items` が空で `total: 0` になること、`query` とカーソルを併用してもページングが破綻しないことを検証する
+- [X] T056 [P] [US3] `internal/store/fts_test.go`（001 のもの）を拡張し、検索の2経路を検証する（[R-110](./research.md) / [TD-001](../../docs/exec-plans/tech-debt.md)）。**書記素が3文字以上**なら `videos_fts MATCH`、**1〜2文字**なら同じ FTS5 表への `LIKE '%…%'` に振り分かること、日本語の題名で先頭一致ではない**部分一致**が取れること（FR-022）、1文字の検索語でも取り出せること（FR-023）、検索語が NFC 正規化されること、FTS5 の特殊文字（`"` `*` `:` `^` など）が引用符で包まれて無効化されること、検索時の並び順が一覧と同じ規則（関連度を使わない）であることを検証する
+- [X] T057 [P] [US3] `internal/httpapi/videos_test.go` に検索のケースを足す。`query` を与えると絞り込まれ `total` が**絞り込み後の**件数になること、`query` の `maxLength` が 100 であること、該当が無い場合に `items` が空で `total: 0` になること、`query` とカーソルを併用してもページングが破綻しないことを検証する
 
 ### Implementation for User Story 3
 
-- [ ] T058 [US3] `internal/store/videos.go` に検索を実装する（[R-110](./research.md)）。検索語を NFC 正規化し、書記素数で `MATCH` と `LIKE` の経路を選ぶ。FTS5 の特殊文字は引用符で包んで無効化する。並び順は一覧と同じ規則を使い、関連度（bm25）にはしない（2つの経路で並びが変わると利用者から見て不可解になるため）
-- [ ] T059 [US3] `internal/httpapi/videos.go` に `query` パラメータを繋ぎ、`VideoPage.total` を絞り込み後の総件数として返す
-- [ ] T060 [US3] `web/src/pages/LibraryPage.tsx` に検索欄を足す。入力に応じて一覧を絞り込み、件数を出し、検索語を消すと元の一覧に戻る。該当が1本もない場合は、結果が無いことと**次に取れる操作（検索語を変える）**を明示する（FR-024）
-- [ ] T061 [US3] `web/src/api/client.ts` に `query` パラメータを通す経路を足し、入力が連続したときに取りこぼしが起きないようにする（直前の要求を `AbortController` で打ち切る）
+- [X] T058 [US3] `internal/store/videos.go` に検索を実装する（[R-110](./research.md)）。検索語を NFC 正規化し、書記素数で `MATCH` と `LIKE` の経路を選ぶ。FTS5 の特殊文字は引用符で包んで無効化する。並び順は一覧と同じ規則を使い、関連度（bm25）にはしない（2つの経路で並びが変わると利用者から見て不可解になるため）
+- [X] T059 [US3] `internal/httpapi/videos.go` に `query` パラメータを繋ぎ、`VideoPage.total` を絞り込み後の総件数として返す
+- [X] T060 [US3] `web/src/pages/LibraryPage.tsx` に検索欄を足す。入力に応じて一覧を絞り込み、件数を出し、検索語を消すと元の一覧に戻る。該当が1本もない場合は、結果が無いことと**次に取れる操作（検索語を変える）**を明示する（FR-024）
+- [X] T061 [US3] `web/src/api/client.ts` に `query` パラメータを通す経路を足し、入力が連続したときに取りこぼしが起きないようにする（直前の要求を `AbortController` で打ち切る）
 
 **Checkpoint**: 3つのユーザーストーリーがすべて独立して成立する
 

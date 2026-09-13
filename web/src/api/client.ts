@@ -59,8 +59,12 @@ async function toRequestFailed(response: Response): Promise<RequestFailed> {
   );
 }
 
+/** MAX_QUERY_LENGTH は検索語に許す長さである（api/openapi.yaml の maxLength）。 */
+export const MAX_QUERY_LENGTH = 100;
+
 /** ListVideosParams は一覧の問い合わせ条件である。 */
 export interface ListVideosParams {
+  query?: string;
   sort?: VideoSort;
   cursor?: string;
   limit?: number;
@@ -70,6 +74,9 @@ export interface ListVideosParams {
 /** listVideos は一覧を1ページ取得する。 */
 export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   const query = new URLSearchParams();
+  if (params.query !== undefined && params.query !== "") {
+    query.set("query", params.query.slice(0, MAX_QUERY_LENGTH));
+  }
   if (params.sort !== undefined) {
     query.set("sort", params.sort);
   }

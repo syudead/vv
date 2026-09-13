@@ -3,6 +3,8 @@ package httpapi
 import (
 	"errors"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -252,5 +254,89 @@ func TestListVideosWithoutStore(t *testing.T) {
 
 	if rec := do(t, handler, http.MethodGet, "/api/videos"); rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}
+
+// 検索語を渡すと絞り込まれ、total は絞り込み後の件数になる（FR-012）。
+func TestListVideosPassesQuery(t *testing.T) {
+	library := &fakeLibrary{page: domain.VideoPage{
+		Items: []domain.Video{sampleVideo(1, "夏休みの旅行")},
+		Total: 1,
+	}}
+	handler := newTestServer(t, Options{Videos: library})
+
+	rec := do(t, handler, http.MethodGet, "/api/videos?query="+url.QueryEscape("旅行"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if library.lastQuery.Query != "旅行" {
+		t.Errorf("検索語 = %q, want 旅行", library.lastQuery.Query)
+	}
+
+	page := decode[gen.VideoPage](t, rec)
+	if page.Total != 1 {
+		t.Errorf("total = %d, want 1", page.Total)
+	}
+}
+
+// 該当が無ければ items は空で total は 0。画面はここで「該当なし」と
+// 次に取れる操作を示す（FR-024）。
+func TestListVideosWithNoMatches(t *testing.T) {
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{
+		page: domain.VideoPage{Items: []domain.Video{}, Total: 0},
+	}})
+
+	rec := do(t, handler, http.MethodGet, "/api/videos?query="+url.QueryEscape("該当しない語"))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+
+	page := decode[gen.VideoPage](t, rec)
+	if len(page.Items) != 0 || page.Total != 0 {
+		t.Errorf("items = %d 件, total = %d, want 0 と 0", len(page.Items), page.Total)
+	}
+	// null ではなく空配列で返す。クライアントが分岐を持たずに描ける。
+	if !strings.Contains(rec.Body.String(), `"items":[]`) {
+		t.Errorf("items が空配列で返っていない: %s", rec.Body)
+	}
+}
+
+// 検索語の長さの上限は契約（api/openapi.yaml の maxLength）と同じ 100 文字。
+func TestListVideosRejectsOverlongQuery(t *testing.T) {
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{}})
+
+	ok := strings.Repeat("あ", maxQueryLength)
+	if rec := do(t, handler, http.MethodGet, "/api/videos?query="+url.QueryEscape(ok)); rec.Code != http.StatusOK {
+		t.Errorf("100 文字で status = %d, want 200", rec.Code)
+	}
+
+	tooLong := strings.Repeat("あ", maxQueryLength+1)
+	rec := do(t, handler, http.MethodGet, "/api/videos?query="+url.QueryEscape(tooLong))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("101 文字で status = %d, want 400", rec.Code)
+	}
+	if got := decode[gen.Error](t, rec); got.Code != codeInvalidRequest {
+		t.Errorf("code = %q, want %s", got.Code, codeInvalidRequest)
+	}
+}
+
+// 検索とカーソルを併用できること。検索語はカーソルと一緒に渡し続ける。
+func TestListVideosCombinesQueryAndCursor(t *testing.T) {
+	library := &fakeLibrary{}
+	handler := newTestServer(t, Options{Videos: library})
+
+	target := "/api/videos?query=" + url.QueryEscape("旅行") + "&cursor=Y3Vyc29y&limit=2"
+	if rec := do(t, handler, http.MethodGet, target); rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+
+	if library.lastQuery.Query != "旅行" {
+		t.Errorf("検索語 = %q", library.lastQuery.Query)
+	}
+	if library.lastQuery.Cursor != "Y3Vyc29y" {
+		t.Errorf("カーソル = %q", library.lastQuery.Cursor)
+	}
+	if library.lastQuery.Limit != 2 {
+		t.Errorf("limit = %d, want 2", library.lastQuery.Limit)
 	}
 }

@@ -11,6 +11,10 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
+// maxQueryLength は検索語に許す長さである。api/openapi.yaml の
+// maxLength と同じ値で、越える要求は誤りとして断る。
+const maxQueryLength = 100
+
 // thumbnailVersionLength はサムネイルの URL に付ける版の長さである。
 // content_key の先頭を使う。内容が変われば版も変わるので、長期キャッシュを
 // 安全に効かせられる（R-112）。
@@ -51,6 +55,14 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 
 	if params.Cursor != nil {
 		query.Cursor = *params.Cursor
+	}
+
+	if params.Query != nil {
+		if len([]rune(*params.Query)) > maxQueryLength {
+			s.invalidRequest(w, "検索語は 100 文字までにしてください")
+			return
+		}
+		query.Query = *params.Query
 	}
 
 	page, err := s.videos.ListVideos(r.Context(), query)

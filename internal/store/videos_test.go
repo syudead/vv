@@ -159,7 +159,7 @@ func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 		t.Errorf("移動で別の行になった: %d -> %d", added.ID, moved.ID)
 	}
 
-	total, err := db.CountVideos(ctx)
+	total, err := db.CountVideos(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -475,7 +475,7 @@ func TestDeleteVideos(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	total, err := db.CountVideos(ctx)
+	total, err := db.CountVideos(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -487,7 +487,7 @@ func TestDeleteVideos(t *testing.T) {
 	if err := db.DeleteVideos(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
-	if total, _ := db.CountVideos(ctx); total != 3 {
+	if total, _ := db.CountVideos(ctx, ""); total != 3 {
 		t.Errorf("空の指定で行が消えた: %d 行, want 3", total)
 	}
 }

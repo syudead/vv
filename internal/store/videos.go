@@ -292,23 +292,35 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 	}
 
 	// 総件数はカーソルに関係なく、絞り込み後の全件である（FR-012）。
-	total, err := db.CountVideos(ctx)
+	total, err := db.CountVideos(ctx, q.Query)
 	if err != nil {
 		return VideoPage{}, err
 	}
 
-	query := `select ` + videoColumns + ` from videos`
-	var args []any
+	search, args := searchFilter(q.Query)
+	conditions := []string{}
+	if search != "" {
+		conditions = append(conditions, search)
+	}
 
 	if q.Cursor != "" {
 		condition, cursorArgs, err := cursorCondition(sort, q.Cursor)
 		if err != nil {
 			return VideoPage{}, err
 		}
-		query += ` where ` + condition
+		conditions = append(conditions, condition)
 		args = append(args, cursorArgs...)
 	}
 
+	//nolint:gosec // 組み立てるのは列名と定型の条件句だけで、値はすべて引数で渡す。
+	query := `select ` + videoColumns + ` from videos`
+	if len(conditions) > 0 {
+		query += ` where ` + strings.Join(conditions, " and ")
+	}
+
+	// 並び順は検索の有無で変えない。関連度（bm25）にすると、LIKE 経路には
+	// 関連度が無いため2つの経路で並びが変わり、利用者から見て不可解になる
+	// （R-110）。
 	query += ` order by ` + orderBy(sort) + ` limit ?`
 
 	// 次のページがあるかを知るために1件多く取る。件数を数え直すより安い。
@@ -337,11 +349,19 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 	return page, nil
 }
 
-// CountVideos は総件数を返す（FR-012）。1万件規模の count(*) は索引走査で
-// 数 ms に収まる。
-func (db *DB) CountVideos(ctx context.Context) (int, error) {
+// CountVideos は絞り込み後の総件数を返す（FR-012）。1万件規模の count(*) は
+// 索引走査で数 ms に収まる。
+func (db *DB) CountVideos(ctx context.Context, search string) (int, error) {
+	condition, args := searchFilter(search)
+
+	query := `select count(*) from videos`
+	if condition != "" {
+		query += ` where ` + condition
+	}
+
 	var total int
-	if err := db.sql.QueryRowContext(ctx, `select count(*) from videos`).Scan(&total); err != nil {
+	//nolint:gosec // condition は組み立て済みの定型句で、値はすべて引数で渡す。
+	if err := db.sql.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("件数を数えられません: %w", err)
 	}
 	return total, nil

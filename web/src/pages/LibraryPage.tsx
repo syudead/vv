@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { VideoSort } from "../api/client";
+import { MAX_QUERY_LENGTH, type VideoSort } from "../api/client";
 import { useVideos } from "../api/useVideos";
 import ScanStatus from "../components/ScanStatus";
 import VideoCard from "../components/VideoCard";
+
+/**
+ * searchDebounceMs は入力が落ち着くのを待つ時間である。
+ *
+ * 1 打鍵ごとに問い合わせると、打っている間ずっと一覧が入れ替わって読めない。
+ * 取りこぼしは起きない（打ち終えた値で必ず1回引く）。
+ */
+const searchDebounceMs = 250;
 
 /** sortLabels は並び順の選択肢である（FR-013）。 */
 const sortLabels: { value: VideoSort; label: string }[] = [
@@ -19,8 +27,18 @@ const sortLabels: { value: VideoSort; label: string }[] = [
  */
 export default function LibraryPage() {
   const [sort, setSort] = useState<VideoSort>("addedDesc");
+  // input は入力欄の値、query は実際に問い合わせる値。打鍵のたびに
+  // 一覧を入れ替えないよう、少し待ってから query へ移す。
+  const [input, setInput] = useState("");
+  const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    const timer = setTimeout(() => setQuery(input.trim()), searchDebounceMs);
+    return () => clearTimeout(timer);
+  }, [input]);
+
   const { items, total, hasMore, loading, loadingMore, error, loadMore, reload } =
-    useVideos(sort);
+    useVideos(sort, query);
 
   const sentinel = useRef<HTMLDivElement | null>(null);
 
@@ -54,11 +72,27 @@ export default function LibraryPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">vv</h1>
           <p className="text-sm text-neutral-600">
-            {loading ? "読み込み中…" : `${String(total)} 本`}
+            {loading
+              ? "読み込み中…"
+              : query === ""
+                ? `${String(total)} 本`
+                : `「${query}」に一致 ${String(total)} 本`}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-4">
+          <label className="flex items-center gap-2 text-sm text-neutral-600">
+            <span className="sr-only">題名で探す</span>
+            <input
+              type="search"
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              maxLength={MAX_QUERY_LENGTH}
+              placeholder="題名で探す"
+              className="w-48 rounded border border-neutral-300 px-2 py-1 text-sm text-neutral-900"
+            />
+          </label>
+
           <ScanStatus onFinished={onScanFinished} />
 
           <label className="flex items-center gap-2 text-sm text-neutral-600">
@@ -84,7 +118,15 @@ export default function LibraryPage() {
         </p>
       )}
 
-      {!loading && items.length === 0 && error === null && <EmptyLibrary />}
+      {!loading && items.length === 0 && error === null && (
+        <>
+          {query === "" ? (
+            <EmptyLibrary />
+          ) : (
+            <NoMatches query={query} onClear={() => setInput("")} />
+          )}
+        </>
+      )}
 
       <ul className="grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {items.map((video) => (
@@ -101,6 +143,29 @@ export default function LibraryPage() {
         <p className="py-4 text-center text-sm text-neutral-500">読み込み中…</p>
       )}
     </main>
+  );
+}
+
+/**
+ * NoMatches は該当が1本も無いときに、結果が無いことと次に取れる操作を
+ * 示す（FR-024）。「0 本」とだけ出すと、検索語が悪いのか動画が無いのかを
+ * 利用者から区別できない。
+ */
+function NoMatches({ query, onClear }: { query: string; onClear: () => void }) {
+  return (
+    <div className="rounded-lg border border-neutral-200 p-6 text-sm text-neutral-700">
+      <p className="mb-2 font-medium text-neutral-900">
+        「{query}」に一致する動画はありません
+      </p>
+      <p className="mb-3">別の語で探すか、検索語を短くしてみてください。</p>
+      <button
+        type="button"
+        onClick={onClear}
+        className="rounded border border-neutral-300 px-2.5 py-1 hover:bg-neutral-100"
+      >
+        検索語を消す
+      </button>
+    </div>
   );
 }
 
