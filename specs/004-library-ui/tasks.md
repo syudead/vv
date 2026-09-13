@@ -44,10 +44,10 @@ Foundational に置く。既存の振る舞いを守る 3 つの回帰テスト�
 
 **Purpose**: 単体テストの実行基盤を用意する。ここが無いと以降のタスクの検証が書けない
 
-- [ ] T001 実行計画 `docs/exec-plans/active/004-library-ui.md` を作成する。書式は [docs/exec-plans/active/003-sdd-loop-harness.md](../../docs/exec-plans/active/003-sdd-loop-harness.md) に合わせ、ステータス（進行中）・最終更新日・対象・目的・一次資料の表（spec／plan／research／data-model／contracts／quickstart へのリンク）・検証の方針（[quickstart.md](./quickstart.md) S1〜S10 で完了を判定し、S3〜S8 は人が確かめると明記する）・フェーズごとの進捗の空欄・決定の記録を置く
-- [ ] T002 `web/package.json` の `devDependencies` に `vitest`・`@testing-library/react`・`@testing-library/user-event`・`jsdom` の 4 つを足す（[R-406](./research.md)）。**`dependencies`（実行時の依存）は 1 つも増やさない**（plan の Constitution Check G2）。`scripts.test` を `vite build --outDir .vite-build-check --emptyOutDir && vitest run` に変える（既存のビルド検証は残す。[quickstart.md](./quickstart.md) S1 の期待がビルドと単体テストの両方であるため）。`npm install` を実行して `web/package-lock.json` を更新する
-- [ ] T003 `web/vite.config.ts` に `test` の項を足す（`environment: "jsdom"`、`globals: true`、`setupFiles: ["./vitest.setup.ts"]`、`css: false`）。あわせて `web/vitest.setup.ts` を新規作成し、`@testing-library/jest-dom` を入れずに `afterEach(() => cleanup())` だけを置く（実行時にも開発時にも依存を増やさないため、表明は Vitest の `expect` を使う）
-- [ ] T004 `Makefile` の `test-web` のコメントを実態に合わせて直す（現在の「Phase 0 は E2E を入れない」は、単体テストが無いことの説明として読まれている）。`$(NPM) run test` がビルド検証と `vitest run` の両方を走らせることを 1 行で書く。ターゲットの依存（`web/node_modules`）と `check` からの呼ばれ方は変えない
+- [X] T001 実行計画 `docs/exec-plans/active/004-library-ui.md` を作成する。書式は [docs/exec-plans/active/003-sdd-loop-harness.md](../../docs/exec-plans/active/003-sdd-loop-harness.md) に合わせ、ステータス（進行中）・最終更新日・対象・目的・一次資料の表（spec／plan／research／data-model／contracts／quickstart へのリンク）・検証の方針（[quickstart.md](./quickstart.md) S1〜S10 で完了を判定し、S3〜S8 は人が確かめると明記する）・フェーズごとの進捗の空欄・決定の記録を置く
+- [X] T002 `web/package.json` の `devDependencies` に `vitest`・`@testing-library/react`・`@testing-library/user-event`・`jsdom` の 4 つを足す（[R-406](./research.md)）。**`dependencies`（実行時の依存）は 1 つも増やさない**（plan の Constitution Check G2）。`scripts.test` を `vite build --outDir .vite-build-check --emptyOutDir && vitest run` に変える（既存のビルド検証は残す。[quickstart.md](./quickstart.md) S1 の期待がビルドと単体テストの両方であるため）。`npm install` を実行して `web/package-lock.json` を更新する
+- [X] T003 `web/vite.config.ts` に `test` の項を足す（`environment: "jsdom"`、`globals: true`、`setupFiles: ["./vitest.setup.ts"]`、`css: false`）。あわせて `web/vitest.setup.ts` を新規作成し、`@testing-library/jest-dom` を入れずに `afterEach(() => cleanup())` だけを置く（実行時にも開発時にも依存を増やさないため、表明は Vitest の `expect` を使う）
+- [X] T004 `Makefile` の `test-web` のコメントを実態に合わせて直す（現在の「Phase 0 は E2E を入れない」は、単体テストが無いことの説明として読まれている）。`$(NPM) run test` がビルド検証と `vitest run` の両方を走らせることを 1 行で書く。ターゲットの依存（`web/node_modules`）と `check` からの呼ばれ方は変えない
 
 **Checkpoint**: `make test-web` がビルド検証を通り、テストが 0 件でも成功で終わる
 
