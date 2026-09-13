@@ -36,8 +36,11 @@ routine（[docs/references/sdd-routine.md](../../../docs/references/sdd-routine.
 ```bash
 git branch --show-current      # main であること
 git status --porcelain         # 空であること
-gh api /rate_limit             # 通ること
 ```
+
+3 つ目は GitHub に問い合わせられること。cloud セッションでは組み込みの GitHub ツール
+（`mcp__github__*`）があればよい。手元では `gh api /rate_limit` が通ればよい。
+**cloud セッションに `gh` は入っていない**ので、`gh` の有無で判断してはならない。
 
 1 つでも満たさなければ、**理由を書いて終了する**。ブランチも作らず、ファイルも書き換えず、
 リポジトリに変更を残さない。
@@ -84,10 +87,41 @@ gh api /rate_limit             # 通ること
 
 ## 手順 1: 判定
 
+`sdd-guard.sh` は GitHub の PR 一覧を 2 つ（`main` 向けの closed と open）必要とする。
+判定そのものはスクリプトにあり、ここでは**一覧を取ってファイルに置くだけ**である。
+
+### cloud セッション（routine・web）
+
+`gh` が無いので、組み込みの GitHub ツールで取り、`${TMPDIR:-/tmp}/sdd-github/` に書く。
+
+| ファイル | ツール | 引数 |
+| --- | --- | --- |
+| `pulls-closed.json` | `mcp__github__list_pull_requests` | `owner`, `repo`, `state: "closed"`, `base: "main"`, `sort: "updated"`, `direction: "desc"`, `perPage: 100` |
+| `pulls-open.json` | `mcp__github__list_pull_requests` | `owner`, `repo`, `state: "open"`, `base: "main"`, `perPage: 100` |
+
+ツールの応答（PR オブジェクトの **JSON 配列**）をそのままファイルに書く。各要素に
+`number`・`head.ref`・`labels[].name` が要る（`fields` で絞るならこの 3 つを含める）。
+`merged_at` は要らない — マージ済みかどうかはスクリプトが git 履歴から決める。
+
+```bash
+mkdir -p "${TMPDIR:-/tmp}/sdd-github"
+# （ここで 2 つのツール呼び出しの結果を pulls-closed.json / pulls-open.json に書く）
+before=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
+guard=$(printf '%s\n' "$before" \
+  | .claude/skills/sdd-next/scripts/sdd-guard.sh --github-dir "${TMPDIR:-/tmp}/sdd-github")
+```
+
+ツールの呼び出しに失敗したら、`gh-unavailable` と同じ扱いで**理由を書いて終了する**。
+自分で PR 一覧を解釈して判定を代行してはならない。
+
+### 手元（`gh` がある）
+
 ```bash
 before=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
 guard=$(printf '%s\n' "$before" | .claude/skills/sdd-next/scripts/sdd-guard.sh)
 ```
+
+`--github-dir` を省くと、スクリプトが `gh api` で同じ 2 つの一覧を取る。
 
 **以後は `guard.state` を真実として使う。`before` も `guard.state` で置き換える。**
 `sdd-guard.sh` は直近のマージ済み `sdd` PR が触った機能を見て対象を確定し直すので、
@@ -100,7 +134,7 @@ guard=$(printf '%s\n' "$before" | .claude/skills/sdd-next/scripts/sdd-guard.sh)
 | --- | --- |
 | `open-pr` | **何もせず終了する。** 正常な待ちであり、異常ではない。ブランチも PR も Issue も作らない（FR-013）。人がその PR をマージすれば次のセッションが始まる |
 | `nothing-to-do` | 何もせず終了する。対象機能が `done` か `none` で、進める先が無い（FR-007） |
-| `gh-unavailable` | 理由を出して終了する。リポジトリに変更を残さない（Edge Cases）。手元での検算はこの経路を通る |
+| `gh-unavailable` | 理由を出して終了する。リポジトリに変更を残さない（Edge Cases）。PR 一覧が取れなかった（`jq` が無い、`gh` が無い、REST が失敗した）ときで、手元での検算はこの経路を通る |
 | `phase-retry-limit` | 「停止通知（Issue）」を立てて終了する（FR-015・FR-017） |
 | `hop-limit` | 「停止通知（Issue）」を立てて終了する（FR-016・FR-017） |
 
@@ -123,8 +157,8 @@ guard=$(printf '%s\n' "$before" | .claude/skills/sdd-next/scripts/sdd-guard.sh)
 その `reason` と「実行しない」ことを示す。
 
 手順 0 の前提のうち `main` 上であることと作業ツリーが clean であることは `--dry-run` でも
-要求する（判定は作業ツリーの成果物から導くため）。ただし **`gh api /rate_limit` が通らない
-場合は、`gh-unavailable` の `guard` をそのまま表示して終わる**。保守者の手元
+要求する（判定は作業ツリーの成果物から導くため）。ただし **PR 一覧が取れない場合は、
+`gh-unavailable` の `guard` をそのまま表示して終わる**。保守者の手元
 （`gh` も `jq` も無い Windows の Git Bash）で検算できるようにするためである。
 
 ## 手順 2: 準備
@@ -259,6 +293,10 @@ git push -u origin <state.branch>
 **ラベルが無いと連鎖が切れる**（routine の GitHub トリガーが `sdd` で絞っているため）。
 付けたことを必ず検証する。
 
+- cloud セッション: 組み込みの GitHub ツールで PR（= Issue 番号 `n`）にラベル `sdd` を付け、
+  同じツールで PR を読み直して `labels` に `sdd` が入っていることを確認する
+- 手元:
+
 ```bash
 gh api -X POST /repos/{o}/{r}/issues/{n}/labels -f 'labels[]=sdd'
 gh api /repos/{o}/{r}/issues/{n}/labels        # sdd が入っていることを確認する
@@ -295,7 +333,8 @@ PR: <URL>
 
 ### 重複を作らない（FR-017）
 
-作る前に必ず既存の open Issue を引く。
+作る前に必ず既存の open Issue を引く。cloud セッションでは組み込みの GitHub ツール
+（`mcp__github__list_issues`、`state: "open"`）、手元では次で取る。
 
 ```bash
 gh api '/repos/{o}/{r}/issues?state=open&per_page=100'
@@ -340,14 +379,15 @@ Issue は 1 件のままになる。
 
 判定は成果物だけから決まり、隠れた状態を持たない（FR-009）。したがって保守者は手元で
 同じコマンドを実行し、セッションが何をするつもりかを先に確かめられる。`jq` も `gh` も
-要らない（`sdd-guard.sh` だけが使い、無ければ `gh-unavailable` を返す）。
+要らない（`sdd-guard.sh` だけが使い、無ければ `gh-unavailable` を返す）。`gh` の代わりに
+`--github-dir` で PR 一覧のファイルを渡すこともでき、cloud セッションはこちらを使う。
 
 | コマンド | 期待 |
 | --- | --- |
 | `.claude/skills/sdd-next/scripts/sdd-state.sh` | 自動選択された機能の State が JSON 1 行で 1 秒以内に返る。何度実行しても同じ |
 | `.claude/skills/sdd-next/scripts/sdd-state.sh --feature specs/001-initial-setup` | その機能を明示して判定する。`done` や `none` でもそのまま返る |
 | `.claude/skills/sdd-next/scripts/sdd-state.sh \| .claude/skills/sdd-next/scripts/sdd-guard.sh` | `gh` か `jq` が無ければ `{"go":false,"reason":"gh-unavailable","state":...}`。両方あれば `go` の真偽と `hops` / `phase_retries` |
-| `bash .claude/skills/sdd-next/tests/run.sh` | フィクスチャ 6 組とガードのテストが全件 PASS（`make test-sdd` と同じ） |
+| `bash .claude/skills/sdd-next/tests/run.sh` | フィクスチャ 6 組とガードのテストが全件 PASS（`make test-sdd` と同じ）。`--github-dir` のテストは `jq` が無いと SKIP になり、CI で走る |
 | `/sdd-next --dry-run` | 手順 1.5 の表示。ブランチも PR も作らない |
 
 詳しい手順と期待値は
