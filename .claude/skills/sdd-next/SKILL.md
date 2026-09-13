@@ -48,16 +48,48 @@ US4（T029）で埋める。それまでは何もせず手順 1 へ進む。
 
 ## 手順 1: 判定
 
-US2（T020）で埋める。それまでは次を実行し、`guard.go` が `true` のときだけ手順 2 へ進む。
-
 ```bash
 before=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
 guard=$(printf '%s\n' "$before" | .claude/skills/sdd-next/scripts/sdd-guard.sh)
 ```
 
+**以後は `guard.state` を真実として使う。`before` も `guard.state` で置き換える。**
+`sdd-guard.sh` は直近のマージ済み `sdd` PR が触った機能を見て対象を確定し直すので、
+`sdd-state.sh` 単独の自動選択とは別の機能になりうるためである
+（[contracts/sdd-guard.md](../../../specs/003-sdd-loop-harness/contracts/sdd-guard.md) 手順 1）。
+
+`guard.go` が `true` なら手順 2 へ進む。`false` のときは `guard.reason` で分岐する。
+
+| `reason` | 振る舞い |
+| --- | --- |
+| `open-pr` | **何もせず終了する。** 正常な待ちであり、異常ではない。ブランチも PR も Issue も作らない（FR-013）。人がその PR をマージすれば次のセッションが始まる |
+| `nothing-to-do` | 何もせず終了する。対象機能が `done` か `none` で、進める先が無い（FR-007） |
+| `gh-unavailable` | 理由を出して終了する。リポジトリに変更を残さない（Edge Cases）。手元での検算はこの経路を通る |
+| `phase-retry-limit` | 「停止通知（Issue）」を立てて終了する（FR-015・FR-017） |
+| `hop-limit` | 「停止通知（Issue）」を立てて終了する（FR-016・FR-017） |
+
+`open-pr`・`nothing-to-do`・`gh-unavailable` では Issue を作らない。作ると、正常な待ちや
+手元での検算のたびに Issue が増えてしまう。
+
 ## 手順 1.5: `--dry-run`
 
-US3（T024）で埋める。
+引数に `--dry-run` があれば、**手順 0〜1 だけ**を行い、何をするつもりかを表示して終了する。
+ブランチも切らず、ファイルも書き換えず、PR も Issue も作らない。
+
+1. `guard` の JSON を整形して表示する
+2. 続けて 1 行:
+
+```text
+実行するなら: ブランチ `<state.branch>` を切って `<stage>`（implement なら Phase <N> `<phase_title>`）を実行し、PR `<title>` を開く
+```
+
+`<title>` は手順 5 の PR タイトルの規則で組み立てる。`guard.go` が `false` のときは、
+その `reason` と「実行しない」ことを示す。
+
+手順 0 の前提のうち `main` 上であることと作業ツリーが clean であることは `--dry-run` でも
+要求する（判定は作業ツリーの成果物から導くため）。ただし **`gh api /rate_limit` が通らない
+場合は、`gh-unavailable` の `guard` をそのまま表示して終わる**。保守者の手元
+（`gh` も `jq` も無い Windows の Git Bash）で検算できるようにするためである。
 
 ## 手順 2: 準備
 
@@ -96,7 +128,33 @@ export SPECIFY_FEATURE_DIRECTORY=<state.feature_dir>
 
 ## 手順 4: 前進確認
 
-US2（T021）で埋める。
+段階を実行しても何も進まなかった回で PR を開くと、レビューの手間だけが増え、
+マージされればホップを 1 つ消費してしまう。push の前に前進を確かめる（FR-014）。
+
+```bash
+after=$(.claude/skills/sdd-next/scripts/sdd-state.sh --feature <state.feature_dir>)
+git status --porcelain
+```
+
+`after` を `before`（= `guard.state`）と**文字列として**比較する。属性の並びは stage ごとに
+固定してあるので、文字列が同じなら状態は同じである
+（[data-model.md 4.](../../../specs/003-sdd-loop-harness/data-model.md)）。
+
+| 結果 | 次にすること |
+| --- | --- |
+| `after` が `before` と異なり、`git status --porcelain` も非空 | 前進した。手順 5 へ |
+| `after` が `before` と同一 | **前進していない。** 下の後始末をする |
+| `git status --porcelain` が空 | **差分が無い。** 下の後始末をする |
+
+`implement` では、同じフェーズに留まっていても `remaining` が減っていれば `after` の文字列が
+変わるので、前進とみなされる（「一部だけ進んだ回」を切り捨てない）。
+
+前進していないときの後始末:
+
+1. 「停止通知（Issue）」を `no-progress` で立てる
+2. `git switch main`
+3. `git branch -D <state.branch>`
+4. push も PR もせずに終了する
 
 ## 手順 5: コミット・push・PR・ラベル
 
@@ -182,3 +240,83 @@ gh api /repos/{o}/{r}/issues/{n}/labels        # sdd が入っていることを
 PR: <URL>
 次に起きること: マージすると <次の段階> が始まる ／ これで完了
 ```
+
+---
+
+## 停止通知（Issue）
+
+止まったことを保守者に知らせる唯一の手段である。Issue の本文だけで、止まった理由と
+そのときの状態が分かるようにする（SC-006）。
+
+| 項目 | 値 |
+| --- | --- |
+| title | `sdd-next 停止: NNN <reason>`（固定形式。例 `sdd-next 停止: 002 phase-retry-limit`） |
+| `<reason>` | `no-progress` / `phase-retry-limit` / `hop-limit` の **3 つだけ** |
+| body | 理由の説明、`state` の JSON、`guard` の JSON、`CLAUDE_CODE_REMOTE_SESSION_ID` |
+| ラベル | **付けない。** `sdd` は PR 専用である（Issue に付けても routine は反応しないが、意味を混ぜない） |
+
+`open-pr`・`gh-unavailable`・`nothing-to-do` では Issue を作らない。
+
+### 重複を作らない（FR-017）
+
+作る前に必ず既存の open Issue を引く。
+
+```bash
+gh api '/repos/{o}/{r}/issues?state=open&per_page=100'
+```
+
+応答には PR も混ざるので、**`pull_request` キーを持たないもの**だけを見る。その中に
+**title が完全一致**する Issue があれば、作らずに終了する。同じ理由で何度止まっても
+Issue は 1 件のままになる。
+
+作成手段は次の順に試す。
+
+1. cloud セッション組み込みの GitHub ツール
+2. `gh issue create`
+3. `gh api -X POST /repos/{o}/{r}/issues`
+
+---
+
+## しないこと
+
+- **2 段階以上を続けて進めない**（FR-003）。plan を終えたら PR を開いて終わる
+- **`spec.md` を書き換えない。** `tasks` 段階の `/speckit-analyze` が CRITICAL を出しても、
+  直すのは `tasks.md` の側だけである。解消できないものは PR 本文の「残課題」に残す
+- **`main` に直接 push しない**
+- **routine 側にしきい値や判定を持たせない。** 定数も分岐もこの手順書とスクリプトにある
+- 同じイベントで 2 セッションが同時に起動し、両方が PR を開いた場合は、保守者が片方を
+  閉じる。閉じた PR はマージされていないので連鎖しない（Edge Cases）
+
+## 止め方
+
+ハーネスを止めるのに PR は要らない。リポジトリ側は何も変えなくてよい（FR-018）。
+
+| 目的 | 方法 |
+| --- | --- |
+| 一時停止 | routine の Repeats トグルを off にする。GitHub トリガーも止まる |
+| 恒久停止 | routine を削除する |
+
+手順は [docs/references/sdd-routine.md](../../../docs/references/sdd-routine.md) の「停止」にある。
+
+---
+
+## 手元での検算
+
+判定は成果物だけから決まり、隠れた状態を持たない（FR-009）。したがって保守者は手元で
+同じコマンドを実行し、セッションが何をするつもりかを先に確かめられる。`jq` も `gh` も
+要らない（`sdd-guard.sh` だけが使い、無ければ `gh-unavailable` を返す）。
+
+| コマンド | 期待 |
+| --- | --- |
+| `.claude/skills/sdd-next/scripts/sdd-state.sh` | 自動選択された機能の State が JSON 1 行で 1 秒以内に返る。何度実行しても同じ |
+| `.claude/skills/sdd-next/scripts/sdd-state.sh --feature specs/001-initial-setup` | その機能を明示して判定する。`done` や `none` でもそのまま返る |
+| `.claude/skills/sdd-next/scripts/sdd-state.sh \| .claude/skills/sdd-next/scripts/sdd-guard.sh` | `gh` か `jq` が無ければ `{"go":false,"reason":"gh-unavailable","state":...}`。両方あれば `go` の真偽と `hops` / `phase_retries` |
+| `bash .claude/skills/sdd-next/tests/run.sh` | フィクスチャ 6 組とガードのテストが全件 PASS（`make test-sdd` と同じ） |
+| `/sdd-next --dry-run` | 手順 1.5 の表示。ブランチも PR も作らない |
+
+詳しい手順と期待値は
+[quickstart.md](../../../specs/003-sdd-loop-harness/quickstart.md) の S1・S2 にある。
+
+**保守者が手で段階を進めてもよい。** たとえば `plan.md` を自分で書いて `main` にマージ
+すれば、次のセッションの判定は `tasks` になる。ハーネスは自分が何をしたかを覚えて
+おらず、毎回その時点の成果物だけを見るので、人の作業とそのまま噛み合う。

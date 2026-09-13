@@ -56,7 +56,34 @@
 
 ## 決定の記録
 
-（実装の進行に合わせて追記する）
+### `04-done` フィクスチャの期待値を tasks.md の T007 から変えた
+
+T007 は `04-done/expected.json` を
+`{"feature_dir":"specs/010-a","feature":"010","stage":"done","phases":2}` としていたが、
+実際には `{"stage":"none"}` にした。`expected.json` は「引数なしで `--root <fixture>` を
+渡したときの出力」であり、自動選択は `done` の機能を飛ばすと契約
+（[contracts/sdd-state.md](../../../specs/003-sdd-loop-harness/contracts/sdd-state.md)
+「自動選択の規則」）が定めているためである。同じ規則に `06-multi-feature` の期待値も
+依存している。`done` の形（`phases` を含み `branch` を含まないこと）は、`feature.txt` と
+`expected-feature.json` を足して `--feature` 経由で検証する。
+
+### 手元の検算（T028）は Linux の cloud セッションで行った
+
+T028 は Windows の Git Bash での検算を求めているが、本実装は Claude Code on the web の
+cloud セッション（Linux）で行ったため、その環境では実行できていない。代わりに次を
+確認した（2026-09-13）。
+
+| 確認 | 結果 |
+| --- | --- |
+| `make test-sdd` | 14 件すべて PASS |
+| `sdd-state.sh` の所要時間 | 0.025〜0.040 秒（3 回とも 1 秒以内、SC-002） |
+| `sdd-state.sh` の決定性 | 3 回とも同一の出力 |
+| `sdd-state.sh \| sdd-guard.sh` | `{"go":false,"reason":"gh-unavailable",...}`。このセッションには `gh` が無く、実際にこの経路を通った |
+| フィクスチャが CRLF の場合 | `.md`・`.json`・`feature.txt` をすべて CRLF に変換した写しでも 14 件 PASS |
+
+CRLF の検証は Windows のチェックアウトを模したものなので、**Git Bash での実行そのものは
+保守者に残る**。`.gitattributes` で `*.sh` を `eol=lf` に固定してあるため、スクリプトが
+CRLF になって落ちることはない（`git ls-files --eol` で確認済み）。
 
 ## 保守者に残る作業
 

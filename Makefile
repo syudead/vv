@@ -24,7 +24,7 @@ GENERATED := internal/httpapi/gen/api.gen.go web/src/api/gen/openapi.ts
 .DEFAULT_GOAL := help
 .PHONY: help setup up down dev build generate fmt lint test check
 .PHONY: fmt-check fmt-check-go fmt-check-web generate-check
-.PHONY: lint-go lint-web test-go test-web
+.PHONY: lint-go lint-web test-go test-web test-sdd
 
 help: ## 目標の一覧を表示する
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -73,7 +73,7 @@ fmt: web/node_modules ## 書式を整える
 
 lint: lint-go lint-web ## golangci-lint（depguard を含む）と Web の静的検査
 
-test: test-go test-web ## Go のテストと Web の検証
+test: test-go test-web test-sdd ## Go のテストと Web の検証、SDD ハーネスの判定テスト
 
 check: ## fmt の差分確認 → lint → test → 生成物の差分確認
 	@$(MAKE) --no-print-directory fmt-check
@@ -109,6 +109,11 @@ test-go: ## Go のテストを実行する
 
 test-web: web/node_modules ## Web のビルド検証を実行する（Phase 0 は E2E を入れない）
 	$(NPM) run test
+
+# 依存は bash だけである（jq も gh も要らない）。手元の Git Bash でも同じ判定になる。
+# CI では Go のジョブから呼ぶ（Web のジョブでは呼ばない）。
+test-sdd: ## SDD ハーネスの判定テスト（bash のみ）
+	bash .claude/skills/sdd-next/tests/run.sh
 
 generate-check: ## 生成物が api/openapi.yaml と一致しているか確認する
 	@$(MAKE) --no-print-directory generate
