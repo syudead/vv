@@ -105,7 +105,13 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
   );
 }
 
-/** describe は取り込みの状態を1行で言い表す。 */
+/**
+ * describe は取り込みの状態を1行で言い表す。
+ *
+ * completed は「この取り込みで反映した数」であって、ライブラリの総数では
+ * ない（総数は一覧側が出す）。変化が無ければ 0 になるので、「N 件」とだけ
+ * 書くと蔵書が 0 本になったように読める。何の数かが分かる文言にする。
+ */
 function describe(scan: Scan | null, error: string | null): string {
   if (error !== null) {
     return `取り込みの状態を取得できません: ${error}`;
@@ -114,16 +120,18 @@ function describe(scan: Scan | null, error: string | null): string {
     return "まだ取り込んでいません";
   }
 
+  const failed =
+    scan.failed > 0 ? `・${String(scan.failed)} 件は取り込めませんでした` : "";
+
   switch (scan.state) {
     case "running":
       return scan.total > 0
-        ? `取り込み中 ${String(scan.completed)} / ${String(scan.total)} 件` +
-            (scan.failed > 0 ? `（${String(scan.failed)} 件は取り込めませんでした）` : "")
+        ? `取り込み中 ${String(scan.completed)} / ${String(scan.total)} 件${failed}`
         : "取り込み中…";
     case "done":
-      return scan.failed > 0
-        ? `取り込み済み ${String(scan.completed)} 件・${String(scan.failed)} 件は取り込めませんでした`
-        : `取り込み済み ${String(scan.completed)} 件`;
+      return scan.completed > 0
+        ? `前回の取り込みで ${String(scan.completed)} 件を反映${failed}`
+        : `前回の取り込みで変化はありませんでした${failed}`;
     case "failed":
       return `取り込みに失敗しました: ${scan.error ?? "理由は記録されていません"}`;
   }

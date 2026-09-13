@@ -186,7 +186,7 @@ root からの相対で、[plan.md](./plan.md) の "Source Code" の配置に従
 - [X] T069 `Makefile` の `make check`（`fmt-check` → `lint` → `test` → `generate-check`）を通す。depguard により `internal/domain` が `net/http`・`database/sql`・`os/exec`・他の `internal` パッケージを import していないことも機械的に確認される
 - [X] T070 [quickstart.md](./quickstart.md) の S0〜S8 を実行して受け入れを確認する（検証用の動画は `ffmpeg` で生成し、実データを使わない）
 - [X] T071 [quickstart.md](./quickstart.md) の S9（1,000 本規模: 初回取り込み 15 分以内・一覧1ページ目 2 秒以内・検索 1 秒以内）と S10（`make down && docker volume rm vv_data` 後の復旧）を実行し、計測値を記録する
-- [ ] T072 一覧画面と再生画面のスクリーンショットを `docs/screenshots/<YYYYMMDD>-<短い名前>.png` として撮ってコミットし、PR 本文からコミット SHA 付きの raw URL で参照する（[docs/how-to/ui-change-screenshots.md](../../docs/how-to/ui-change-screenshots.md)）。本機能はこの規約が初めて適用される変更である（[plan.md](./plan.md) ゲート G8）
+- [X] T072 一覧画面と再生画面のスクリーンショットを `docs/screenshots/<YYYYMMDD>-<短い名前>.png` として撮ってコミットし、PR 本文からコミット SHA 付きの raw URL で参照する（[docs/how-to/ui-change-screenshots.md](../../docs/how-to/ui-change-screenshots.md)）。本機能はこの規約が初めて適用される変更である（[plan.md](./plan.md) ゲート G8）
 
 ---
 
