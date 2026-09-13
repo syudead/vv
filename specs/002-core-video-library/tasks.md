@@ -108,11 +108,11 @@ root からの相対で、[plan.md](./plan.md) の "Source Code" の配置に従
 - [X] T035 [US1] `internal/httpapi/scans.go` を実装する（[R-108](./research.md)）。`POST /api/scans` は実行中ならそれを返して `202`、無ければ背後で開始して即座に返す。`GET /api/scans/current` は直近の状態を返す。スキャン中でも一覧・再生の経路が通常どおり応答すること（FR-007）を壊さない
 - [X] T036 [US1] `internal/httpapi/router.go` を更新する。`Options` に動画・スキャンの問い合わせ先、`MediaDir`、サムネイルの置き場所を足し、追加した経路を `gen.HandlerWithOptions` 経由で登録する。`/api/*` の未定義経路が JSON の `404` を返し、SPA の `index.html` を返さない性質を維持する
 - [X] T037 [US1] `cmd/mdm/main.go` を更新する。マイグレーション後にジョブワーカーを起動し、`MDM_SCAN_ON_START` が `true` なら起動直後に1回スキャンを背後で実行する。停止時は HTTP の猶予待ちと合わせてワーカーとスキャンの `context` を取り消し、処理中のジョブを `queued` に残して次の起動で再開できる状態で終える
-- [ ] T038 [P] [US1] `web/src/api/client.ts` を作成する。`web/src/api/gen/openapi.ts` の生成型を使う薄い `fetch` ラッパと、一覧を1ページずつ読むフックを置く。データ取得ライブラリは入れない（[R-113](./research.md)）
-- [ ] T039 [P] [US1] `web/src/components/VideoCard.tsx` を作成する。サムネイル・題名・長さを表示する。サムネイルは `loading="lazy"` と**固定アスペクト比（16:9）の枠**で描き、未生成（`thumbnailState !== "done"`）でも枠だけを出してレイアウトが動かないようにする（[R-114](./research.md) / FR-010）
-- [ ] T040 [P] [US1] `web/src/components/ScanStatus.tsx` を作成する。`GET /api/scans/current` の `state`・`total`・`completed`・`failed` を、進行中であることと残りの規模が分かる形で表示し、再取り込み（`POST /api/scans`）を起動できるようにする（FR-006）
-- [ ] T041 [US1] `web/src/pages/LibraryPage.tsx` を作成する。`IntersectionObserver` による無限スクロール（初回表示は最初の1ページ 60 件だけを待つ）、並び順の切り替え（追加が新しい順／題名順）、総件数の表示を置く（FR-011〜FR-014 / SC-003）
-- [ ] T042 [US1] `web/src/App.tsx` を `react-router` v7 の宣言的モードに置き換え、`/` に `LibraryPage` を割り当てる。001 の稼働状態表示は一覧画面から到達できる位置へ移すか、`ScanStatus` に統合する
+- [X] T038 [P] [US1] `web/src/api/client.ts` を作成する。`web/src/api/gen/openapi.ts` の生成型を使う薄い `fetch` ラッパと、一覧を1ページずつ読むフックを置く。データ取得ライブラリは入れない（[R-113](./research.md)）
+- [X] T039 [P] [US1] `web/src/components/VideoCard.tsx` を作成する。サムネイル・題名・長さを表示する。サムネイルは `loading="lazy"` と**固定アスペクト比（16:9）の枠**で描き、未生成（`thumbnailState !== "done"`）でも枠だけを出してレイアウトが動かないようにする（[R-114](./research.md) / FR-010）
+- [X] T040 [P] [US1] `web/src/components/ScanStatus.tsx` を作成する。`GET /api/scans/current` の `state`・`total`・`completed`・`failed` を、進行中であることと残りの規模が分かる形で表示し、再取り込み（`POST /api/scans`）を起動できるようにする（FR-006）
+- [X] T041 [US1] `web/src/pages/LibraryPage.tsx` を作成する。`IntersectionObserver` による無限スクロール（初回表示は最初の1ページ 60 件だけを待つ）、並び順の切り替え（追加が新しい順／題名順）、総件数の表示を置く（FR-011〜FR-014 / SC-003）
+- [X] T042 [US1] `web/src/App.tsx` を `react-router` v7 の宣言的モードに置き換え、`/` に `LibraryPage` を割り当てる。001 の稼働状態表示は一覧画面から到達できる位置へ移すか、`ScanStatus` に統合する
 
 **Checkpoint**: 置いた動画が自動で一覧に並ぶ。ここで止めても「フォルダを開かずに手持ちを見渡せる」価値が単独で成立する（**MVP**）
 
