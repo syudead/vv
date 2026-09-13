@@ -106,9 +106,9 @@ else
     local pull_state="$1" page=1 page_json all_json='[]'
     while :; do
       if ! page_json="$(gh api "/repos/$owner/$name/pulls?state=$pull_state&sort=updated&direction=desc&per_page=100&page=$page" 2>/dev/null)"; then
-        emit_unavailable
+        return 1
       fi
-      printf '%s' "$page_json" | jq -e 'type == "array"' >/dev/null 2>&1 || emit_unavailable
+      printf '%s' "$page_json" | jq -e 'type == "array"' >/dev/null 2>&1 || return 1
       all_json="$(printf '%s\n%s\n' "$all_json" "$page_json" | jq -s 'add')"
       count="$(printf '%s' "$page_json" | jq -r 'length')"
       [ "${count:-0}" -eq 100 ] || break
@@ -117,8 +117,12 @@ else
     printf '%s' "$all_json"
   }
   # 段階 PR は feature branch 向け、最終 PR は main 向けなので base を絞らない。
-  closed_json="$(fetch_pulls closed)"
-  open_json="$(fetch_pulls open)"
+  if ! closed_json="$(fetch_pulls closed)"; then
+    emit_unavailable
+  fi
+  if ! open_json="$(fetch_pulls open)"; then
+    emit_unavailable
+  fi
 fi
 
 # --- マージ済み PR を git 履歴から並べる ---------------------------------------
