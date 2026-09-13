@@ -107,7 +107,8 @@ lint-web: web/node_modules ## Web の静的検査（型検査）を実行する
 test-go: ## Go のテストを実行する
 	go test ./...
 
-test-web: web/node_modules ## Web のビルド検証を実行する（Phase 0 は E2E を入れない）
+# $(NPM) run test はビルド検証（vite build）と単体テスト（vitest run）の両方を走らせる。
+test-web: web/node_modules ## Web のビルド検証と単体テストを実行する
 	$(NPM) run test
 
 # 依存は bash だけである（jq も gh も要らない）。手元の Git Bash でも同じ判定になる。
