@@ -42,8 +42,9 @@ routine-fire-payload に PR 番号が含まれていれば、対象機能の確�
 
 - Claude GitHub App が `syudead/vv` にインストールされている（GitHub トリガーに必要）
 - リポジトリに `sdd` ラベルがある（説明: 「マージすると /sdd-next が次の段階を回す」、色 `0e8a16`）
+  — **作成済み（2026-09-13）**
 
-ラベルがまだ無い場合、保守者が次のいずれかで作る。**ラベルが無いと連鎖が始まらない。**
+ラベルを作り直す場合の手順を残す。**ラベルが無いと連鎖が始まらない。**
 
 ```bash
 gh api -X POST /repos/syudead/vv/labels \

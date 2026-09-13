@@ -37,11 +37,9 @@ time .claude/skills/sdd-next/scripts/sdd-state.sh
 
 **期待**:
 
-- 1 行目: 今日の `main` では、T019（`sdd` ラベルの作成）が未了なので本機能自身の
-  `{"feature_dir":"specs/003-sdd-loop-harness","feature":"003","stage":"implement","phase":3,...}`
-  が 1 秒以内に返る。3 回実行して同じ。T019 にチェックが付くと
+- 1 行目: 今日の `main`（001〜003 は `done`、`004-library-ui` は spec だけ）なら
   `{"feature_dir":"specs/004-library-ui","feature":"004","stage":"plan","branch":"claude/sdd-004-plan"}`
-  になる
+  が 1 秒以内に返る。3 回実行して同じ
 - 2 行目: `{"feature_dir":"specs/001-initial-setup","feature":"001","stage":"done","phases":6}`
 - 3 行目（手元に `gh` が無い場合）: `{"go":false,"reason":"gh-unavailable",...}`。
   `gh` がある場合は `{"go":true,...}` と `hops:0`
@@ -75,9 +73,6 @@ routine の「Run now」に次の文を添えて実行する:
 ---
 
 ## S4: 本番 1 回目 — plan の PR が自動で開く（US1 / FR-003 / FR-004）
-
-> **前提**: `sdd` ラベルを作ったら [tasks.md](./tasks.md) の T019 にチェックを付けてから進む。
-> 付けないと自動選択が本機能自身を選ぶ。下の期待値はチェック後のものである。
 
 routine の「Run now」を引数なしで実行する。
 
