@@ -82,7 +82,8 @@ GitHub の画面から作る場合は Issues → Labels → New label で同じ�
 
 | 項目 | 値 |
 | --- | --- |
-| routine ID | （未作成） |
-| URL | （未作成） |
-| 作成日 | （未作成） |
-| プローブ（S3）の結果 | （未実施） |
+| routine ID | `trig_01Bxsy8v6ogCron7BY6hrUkY` |
+| URL | <https://claude.ai/code/routines/trig_01Bxsy8v6ogCron7BY6hrUkY> |
+| 作成日 | 2026-09-13（環境 `env_014pXxfbDJcVpmSABD6rgVJf`、モデル `claude-opus-5`、cron `0 18 * * *` = 03:00 JST） |
+| GitHub トリガー ID | `f9033214-135a-42f0-93dd-6c2a794b50d9`（`create_webhook_trigger` で作成。API の応答にフィルタが含まれないため、Base branch / Labels / Is merged の 3 条件は画面で確認し、欠けていれば足す） |
+| プローブ（S3）の結果 | 2026-09-13 実施（session `cse_011ZErYWwbMCiPrnW6Msyka7`）。**`sdd-guard.sh` が `gh-unavailable` を返して見送り** — cloud 環境に `gh` CLI が無い（`gh: command not found`）。R-005: SessionStart フックは発火した（init まで約 110 秒、hook イベント多数。setup script は不要）。R-004 案 a: `/tmp/sdd-rate-limits.json` は無く、statusLine は cloud では走らない。案 b（curl）と `GH_TOKEN` は未確認 — Run now の添え文は `<routine-fire-payload>` として届き、routine プロンプトが「それ以外の作業はしない」なので (1)(3)(5) の報告は行われなかった。cloud セッションでは `mcp__github__*` ツールは使えた。追従: `session-start.sh` で `gh` を入れる／トークンの有無を確かめる |
