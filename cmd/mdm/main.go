@@ -86,14 +86,58 @@ func run() error {
 		slog.Int64("version", migrated.Version),
 	)
 
+	// 走査とジョブは HTTP とは別の寿命で動く。停止指示でこの context を
+	// 取り消すと、処理中のジョブは queued に残り、次の起動で再開できる。
+	backgroundCtx, stopBackground := context.WithCancel(context.Background())
+	defer stopBackground()
+
+	lib := newLibrary(cfg, db, logger)
+	lib.bindContext(backgroundCtx)
+
+	// 前回の停止で running のまま残った走査を閉じる。閉じないと
+	// 「実行中は1件だけ」の制約が働いたまま二度と取り込みを始められない。
+	if err := lib.recoverInterrupted(backgroundCtx); err != nil {
+		return err
+	}
+
+	worker := newWorker(cfg, db, logger)
+	workerDone := make(chan struct{})
+	go func() {
+		defer close(workerDone)
+		worker.Run(backgroundCtx)
+	}()
+
+	if cfg.ScanOnStart {
+		// 「置くだけで並ぶ」（US1）には自動実行が要る。応答を待たせない
+		// よう、開始だけ行って背後で進める（R-108）。
+		if _, err := lib.StartScan(backgroundCtx); err != nil {
+			// 取り込みが始められなくても、一覧と再生は動く。起動は続ける。
+			logger.Warn("起動時の取り込みを始められませんでした", slog.Any("error", err))
+		}
+	}
+
 	handler := httpapi.NewRouter(httpapi.Options{
-		Build:  build,
-		Pinger: db,
-		Assets: web.Dist(),
-		Logger: logger,
+		Build:         build,
+		Pinger:        db,
+		Videos:        db,
+		Scans:         lib,
+		MediaDir:      cfg.MediaDir,
+		ThumbnailsDir: cfg.ThumbnailsDir(),
+		Assets:        web.Dist(),
+		Logger:        logger,
 	})
 
-	return serve(cfg, handler, logger)
+	if err := serve(cfg, handler, logger); err != nil {
+		return err
+	}
+
+	// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
+	// ジョブは running のまま残るが、次の起動で queued へ戻る（R-106）。
+	stopBackground()
+	<-workerDone
+	logger.Info("取り込みとジョブを停止しました")
+
+	return nil
 }
 
 // serve は HTTP サーバーを起動し、停止指示を待つ。

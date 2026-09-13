@@ -6,38 +6,29 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
-// ScanState は走査の状態である。値は api/openapi.yaml の Scan.state に対応する。
-type ScanState string
+// 走査の語彙は internal/domain が持つ。ここでは別名を置いて、store を使う側が
+// domain を直接 import しなくても読めるようにする。
+type (
+	// ScanState は走査の状態である。
+	ScanState = domain.ScanState
+	// Scan は走査1回の記録である。
+	Scan = domain.Scan
+	// ScanProgress は進捗の値である。
+	ScanProgress = domain.ScanProgress
+)
 
 const (
 	// ScanRunning は走査中。同時に1件だけ存在できる。
-	ScanRunning ScanState = "running"
-	// ScanDone は最後まで走った。個別のファイルの失敗は failed に数える。
-	ScanDone ScanState = "done"
-	// ScanFailed は走査そのものが失敗した（対象ディレクトリが読めない等）。
-	ScanFailed ScanState = "failed"
+	ScanRunning = domain.ScanRunning
+	// ScanDone は最後まで走った。
+	ScanDone = domain.ScanDone
+	// ScanFailed は走査そのものが失敗した。
+	ScanFailed = domain.ScanFailed
 )
-
-// Scan は走査1回の記録である。
-type Scan struct {
-	ID         int64
-	State      ScanState
-	StartedAt  time.Time
-	FinishedAt time.Time
-	Total      int
-	Completed  int
-	Failed     int
-	Error      string
-}
-
-// ScanProgress は進捗の値である。
-type ScanProgress struct {
-	Total     int
-	Completed int
-	Failed    int
-}
 
 // StartScan は走査を始める。すでに実行中のものがあれば、新しく始めずに
 // それを返す（started = false）。

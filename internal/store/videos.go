@@ -13,34 +13,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 一覧の件数。上限を設けるのは、1回の応答が青天井に大きくならないようにする
-// ためである（R-109）。
-const (
-	// DefaultLimit は limit が指定されなかったときの件数。
-	DefaultLimit = 60
-	// MaxLimit は1ページで返す上限。越える指定は上限に丸める。
-	MaxLimit = 200
-)
-
-// ErrNotFound は対象の行が無いことを表す。
-var ErrNotFound = errors.New("対象が見つかりません")
-
-// ErrInvalidCursor はカーソルが解釈できないことを表す。
-//
-// 黙って先頭から返さないのは、無限スクロールが巻き戻って同じ内容を延々と
-// 表示することになるためである（contracts/http-routes.md）。
-var ErrInvalidCursor = errors.New("カーソルを解釈できません")
-
-// VideoSort は一覧の並び順である。値は api/openapi.yaml の VideoSort に対応する。
-type VideoSort string
-
-const (
-	// SortAddedDesc は追加が新しい順（既定）。
-	SortAddedDesc VideoSort = "addedDesc"
-	// SortTitleAsc は題名順。
-	SortTitleAsc VideoSort = "titleAsc"
-)
-
 // 走査と保存の間でやり取りする値は internal/domain が持つ。ここでは別名を
 // 置いて、store を使う側が domain を直接 import しなくても読めるようにする。
 type (
@@ -52,6 +24,12 @@ type (
 	UpsertOutcome = domain.UpsertOutcome
 	// UpsertResult は取り込み1件の結果である。
 	UpsertResult = domain.UpsertResult
+	// VideoSort は一覧の並び順である。
+	VideoSort = domain.VideoSort
+	// VideoQuery は一覧の問い合わせ条件である。
+	VideoQuery = domain.VideoQuery
+	// VideoPage は一覧1ページ分である。
+	VideoPage = domain.VideoPage
 )
 
 const (
@@ -63,26 +41,24 @@ const (
 	OutcomeMoved = domain.OutcomeMoved
 	// OutcomeUnchanged は何も変わらなかった。
 	OutcomeUnchanged = domain.OutcomeUnchanged
+	// SortAddedDesc は追加が新しい順（既定）。
+	SortAddedDesc = domain.SortAddedDesc
+	// SortTitleAsc は題名順。
+	SortTitleAsc = domain.SortTitleAsc
+	// DefaultLimit は limit が指定されなかったときの件数。
+	DefaultLimit = domain.DefaultLimit
+	// MaxLimit は1ページで返す上限。
+	MaxLimit = domain.MaxLimit
 )
 
-// VideoQuery は一覧の問い合わせ条件である。
-type VideoQuery struct {
-	Sort VideoSort
-	// Cursor は前回の応答が返した NextCursor。空なら先頭から。
-	Cursor string
-	Limit  int
-}
-
-// VideoPage は一覧1ページ分である。
-type VideoPage struct {
-	Items []domain.Video
-	// Total は絞り込み後の総件数。ページングとは独立に返る（FR-012）。
-	Total int
-	// NextCursor は次のページの取得に渡す。これ以上無ければ空。
-	NextCursor string
-	// Limit は実際に使われた件数。指定の丸めが効いたかを呼び出し側が見られる。
-	Limit int
-}
+// 対象が無い・カーソルが壊れているといった判断は、保存層の都合ではなく
+// 呼び出し側が扱う種類の誤りなので internal/domain が持つ。
+var (
+	// ErrNotFound は対象の行が無いことを表す。
+	ErrNotFound = domain.ErrNotFound
+	// ErrInvalidCursor はカーソルが解釈できないことを表す。
+	ErrInvalidCursor = domain.ErrInvalidCursor
+)
 
 // videoColumns は domain.Video を組み立てるのに要る列である。
 // 並びは scanVideo と対応させる。
