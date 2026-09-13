@@ -111,9 +111,30 @@ reconsideration.
   S5 をそれに向けるのが素直である。
 - 一次資料: [R-111]
 
+### TD-007: 使用量ゲートの取得手段が未確定
+
+- 影響範囲: [`.claude/skills/sdd-next/SKILL.md`](../../.claude/skills/sdd-next/SKILL.md) の手順 0.5（使用量ゲート）
+- 内容: 使用率（`rate_limits.five_hour.used_percentage` / `rate_limits.seven_day.used_percentage`）
+  は、Claude Code が**ステータスラインスクリプトへの stdin JSON にだけ**渡している
+  （[003 の R-004]）。フックの入力にはこの項目が無く、使用量に関するフックイベントも無い。
+  cloud セッションでステータスラインが実行されるかは文書に書かれていない。
+  取得できない間、ゲートは飛ばされて通常どおり段階が実行されるので、使用量を使い切った
+  時点で中途半端な成果物がブランチに残りうる。
+- 当面の対処: 案 a の配線（[`.claude/hooks/rate-limits-statusline.sh`](../../.claude/hooks/rate-limits-statusline.sh)
+  が受け取った JSON を `${TMPDIR:-/tmp}/sdd-rate-limits.json` に落とす）を入れ、
+  スキル側は「取得できなければ飛ばす」（FR-020 後段）とした。取得できないことを理由に
+  止まる方が害が大きいと判断したためである。ゲートは本機能の受け入れ（SC-001〜SC-006）に
+  関わらない。
+- 見直しの契機: [quickstart.md](../../specs/003-sdd-loop-harness/quickstart.md) S3 の
+  プローブの結果。案 a が使えればスキルの「取得手段」を確定し、駄目なら案 b
+  （`curl https://api.anthropic.com/api/oauth/usage`）を試す。両案とも不可なら、
+  本項を恒久の負債として残し、ステータスラインの配線は外す。
+- 一次資料: [003 の R-004]
+
 [R-111]: ../../specs/002-core-video-library/research.md
 [002 の plan.md]: ../../specs/002-core-video-library/plan.md
 [R-007]: ../../specs/001-initial-setup/research.md
 [R-008]: ../../specs/001-initial-setup/research.md
 [contracts/openapi.yaml]: ../../specs/001-initial-setup/contracts/openapi.yaml
 [plan.md]: ../../specs/001-initial-setup/plan.md
+[003 の R-004]: ../../specs/003-sdd-loop-harness/research.md

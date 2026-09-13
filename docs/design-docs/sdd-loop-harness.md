@@ -62,6 +62,9 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
 | `sdd-state.sh` | `.claude/skills/sdd-next/scripts/` | `specs/*/` のファイルだけを読み、対象機能と次の段階を JSON で出す。git／gh には触れない。手元で実行して検算できる |
 | `sdd-guard.sh` | 同上 | git と `gh` を見て、無限ループ対策と冪等性を判定し `go` / `stop` を返す |
 | `sdd-next` スキル | `.claude/skills/sdd-next/SKILL.md` | 上記 2 つの結果を受けて該当する `/speckit-*` を呼び、PR を開く手順書 |
+| `sdd-lib.sh` | `.claude/skills/sdd-next/scripts/` | 上 2 つが `source` する共通関数。JSON のエスケープ、機能の列挙、`tasks.md` のフェーズ解析（awk） |
+| `rate-limits-statusline.sh` | `.claude/hooks/` | 使用率を受け取るためだけのステータスライン。受け取った JSON を `${TMPDIR:-/tmp}/sdd-rate-limits.json` に落とし、何も表示しない（6 章の使用量ゲート、[R-004](../../specs/003-sdd-loop-harness/research.md)） |
+| `.gitattributes` | リポジトリ root | `*.sh` を `eol=lf` に固定する。手元（Windows、`core.autocrlf=true`）で CRLF のスクリプトをチェックアウトすると Git Bash が落ちるため |
 | routine | claude.ai（写しを [docs/references/sdd-routine.md](../references/sdd-routine.md) に置く） | GitHub トリガー・日次トリガー・最小プロンプト |
 
 ## 4. 状態判定: `sdd-state.sh [--feature specs/NNN-...]`
@@ -205,9 +208,18 @@ claude.ai 側の設定が消えても再現できるようにする。
 
 - `sdd-state.sh`: `.claude/skills/sdd-next/tests/` にフィクスチャ（plan 前 / tasks 前 /
   implement 途中 / done / spec 無し / 複数機能）と bash のテストランナーを置く。
-  `make test-sdd` を追加し、CI の Go ジョブに 1 ステップ足す。依存は bash と jq だけ
+  `make test-sdd` を追加し、CI の Go ジョブに 1 ステップ足す。**ランナーの依存は bash だけで、
+  `jq` は要らない**（保守者の手元の Git Bash に `jq` が無いため。4 章の判定を手元で
+  検算できることが US3 の要件である）
+- フィクスチャの構成: 各ディレクトリが `specs/` の書式を縮小したファイル群と、
+  `--root` だけを渡したときの出力を書いた `expected.json` を持つ。`--feature` の検証が
+  要るものは、渡す相対パスを書いた `feature.txt` と `expected-feature.json` を足す。
+  `done` の機能は自動選択で飛ばされるので、`done` の形は `--feature` 経由でしか
+  検証できない
 - `sdd-guard.sh`: `gh` 無しの環境で `go:false` と理由を返すことだけを自動テストする。
-  実挙動は導入手順で確認する
+  ランナーは一時ディレクトリに `gh` の代役（即座に終了コード 1 を返す実行可能ファイル）を
+  置いて `PATH` の先頭に足し、`{"go":false,"reason":"gh-unavailable","state":<stdin そのまま>}`
+  が返ることを確かめる。REST を伴う判定の実挙動は導入手順で確認する
 - スキル全体: `/sdd-next --dry-run` を導入時のプローブと日常の検算に使う
 
 ## 9. 導入手順

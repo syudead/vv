@@ -1,6 +1,6 @@
 # 実行計画: SDD ループハーネス（spec 以降の段階を自動で回す）
 
-- ステータス: 進行中（実装まで。受け入れ検証は保守者の実機作業が残る）
+- ステータス: 進行中（実装は完了。`sdd` ラベルの作成と S3〜S8 の実機確認が残る）
 - 最終更新: 2026-09-13
 - 対象: [設計文書](../../design-docs/sdd-loop-harness.md) の全体。Spec Kit の plan → tasks → implement を、人の PR マージを承認ゲートにして Claude Code on the web のセッションで 1 段階ずつ自動実行する仕組み
 
@@ -44,15 +44,15 @@
 | 仕様 | 完了（2026-09-13） |
 | 計画・設計成果物 | 完了（2026-09-13） |
 | タスク分解 | 完了（2026-09-13）。T001〜T035 |
-| Phase 1: Setup | 未着手 |
-| Phase 2: Foundational（判定の核とテスト） | 未着手 |
-| Phase 3: US1（マージで次の段階が始まる） | 未着手 |
-| Phase 4: US2（暴走しない・重複しない） | 未着手 |
-| Phase 5: US3（手元で検算できる） | 未着手 |
-| Phase 6: US4（使用量ゲート） | 未着手 |
-| Phase 7: Polish | 未着手 |
-| 受け入れ検証（S1・S2） | 未着手 |
-| 受け入れ検証（S3〜S8） | 未着手（保守者の実機作業） |
+| Phase 1: Setup | 完了（2026-09-13）。T001〜T003 |
+| Phase 2: Foundational（判定の核とテスト） | 完了（2026-09-13）。T004〜T013。フィクスチャ → ランナー → 実装の順に書いた |
+| Phase 3: US1（マージで次の段階が始まる） | T014〜T018 完了。**T019（`sdd` ラベルの作成）は未了** |
+| Phase 4: US2（暴走しない・重複しない） | 完了（2026-09-13）。T020〜T023 |
+| Phase 5: US3（手元で検算できる） | 完了（2026-09-13）。T024〜T028 |
+| Phase 6: US4（使用量ゲート） | 完了（2026-09-13）。T029〜T031。取得手段は未確定のまま（[TD-007](../tech-debt.md)） |
+| Phase 7: Polish | 完了（2026-09-13）。T032〜T035 |
+| 受け入れ検証（S1・S2） | 完了（2026-09-13）。Linux の cloud セッションで実施。下の「手元の検算」を参照 |
+| 受け入れ検証（S3〜S8） | 未着手（保守者の実機作業。routine の作成が前提） |
 
 ## 決定の記録
 
@@ -89,7 +89,9 @@ CRLF になって落ちることはない（`git ls-files --eol` で確認済み
 
 | 作業 | 参照 |
 | --- | --- |
-| `sdd` ラベルの作成・確認 | [docs/references/sdd-routine.md](../../references/sdd-routine.md) の「前提」 |
+| **`sdd` ラベルの作成**（T019、未了） | [docs/references/sdd-routine.md](../../references/sdd-routine.md) の「前提」。実装したセッションには `gh` CLI が無く、利用できる GitHub ツールにもラベル作成の口が無かったため作れなかった。ラベルが無いと routine の GitHub トリガーが絞り込めず、連鎖が始まらない |
 | routine の作成 | 同「作成手順」。S3 の前に行う |
-| S3（プローブ）の実行と結果の書き戻し | [quickstart.md](../../../specs/003-sdd-loop-harness/quickstart.md) S3 |
-| S4〜S8 の実機確認 | 同 S4〜S8 |
+| `003` の番号の衝突を解く | `003-library-ui` と `003-sdd-loop-harness` が同じ番号を持ち、ブランチ名とホップ集計が衝突する。**本番 1 回目（S4）の前に**改名か設計の見直しが要る。[quickstart.md](../../../specs/003-sdd-loop-harness/quickstart.md) S4 の注意書き |
+| Windows の Git Bash での検算 | [quickstart.md](../../../specs/003-sdd-loop-harness/quickstart.md) S1・S2。実装は Linux で確認済みで、CRLF の写しでも通ることまでは見てある |
+| S3（プローブ）の実行と結果の書き戻し | 同 S3。使用量ゲートの取得手段（[TD-007](../tech-debt.md)）と SessionStart フックの発火がここで確定する |
+| S4〜S8 の実機確認 | 同 S4〜S8。すべて期待どおりなら本書を `docs/exec-plans/completed/` へ移す |

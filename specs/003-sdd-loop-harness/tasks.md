@@ -164,9 +164,9 @@ Go ジョブでも同じ）と S2（`sdd-state.sh` が 1 秒以内に決定的�
 
 ### Implementation for User Story 4
 
-- [ ] T029 [US4] `.claude/skills/sdd-next/SKILL.md` に手順 0.5「使用量ゲート」と「取得手段」の節を書く: 取得手段は「`/tmp/sdd-rate-limits.json` があれば `rate_limits.seven_day.used_percentage` と `rate_limits.five_hour.used_percentage` を読む（`jq -r` か `grep -o`）。無い・読めない・数値でない場合は**取得不能**として見送りの判定を飛ばし、通常どおり手順 1 へ進む（取得できないことを理由に止まらない、FR-020 後段）」。取得できたら `seven_day >= USAGE_LIMIT_7D` または `five_hour >= USAGE_LIMIT_5H` なら「今回は見送り: 7 日窓 NN% / 5 時間窓 NN%」と書いて終了（PR も Issue も作らない。再開は日次トリガーか次のマージに任せる、FR-019）。節の末尾に「プローブ（quickstart S3）の結果で案 a／案 b のどちらかに確定し、この節を書き換える」と残す
-- [ ] T030 [P] [US4] 案 a の配線を入れる（[R-004](./research.md)）: `.claude/hooks/rate-limits-statusline.sh` を作り、stdin の JSON を `${TMPDIR:-/tmp}/sdd-rate-limits.json` に**そのまま**書いて何も表示せず終了する（`CLAUDE_CODE_REMOTE` が `true` でなければ何もせず終了し、保守者の手元では副作用を持たない）。`.claude/settings.json` に `"statusLine": {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/rate-limits-statusline.sh"}` を追加する。既存の `hooks.SessionStart` は変えない。cloud セッションでステータスラインが実行されない場合はプローブ後に外す
-- [ ] T031 [P] [US4] `docs/exec-plans/tech-debt.md` に `TD-00N: 使用量ゲートの取得手段が未確定` を追記する: 影響範囲（`.claude/skills/sdd-next/SKILL.md` 手順 0.5）、内容（使用率はステータスライン用 JSON にしか渡されず、cloud セッションで取れるかは文書に無い。取得できない間はゲートを飛ばして通常どおり進むので、使用量切れで中途半端な成果物が残り得る）、当面の対処（案 a の配線を入れてプローブで確定）、見直しの契機（quickstart S3 の結果。両案とも不可なら本項を恒久の負債として残す）
+- [X] T029 [US4] `.claude/skills/sdd-next/SKILL.md` に手順 0.5「使用量ゲート」と「取得手段」の節を書く: 取得手段は「`/tmp/sdd-rate-limits.json` があれば `rate_limits.seven_day.used_percentage` と `rate_limits.five_hour.used_percentage` を読む（`jq -r` か `grep -o`）。無い・読めない・数値でない場合は**取得不能**として見送りの判定を飛ばし、通常どおり手順 1 へ進む（取得できないことを理由に止まらない、FR-020 後段）」。取得できたら `seven_day >= USAGE_LIMIT_7D` または `five_hour >= USAGE_LIMIT_5H` なら「今回は見送り: 7 日窓 NN% / 5 時間窓 NN%」と書いて終了（PR も Issue も作らない。再開は日次トリガーか次のマージに任せる、FR-019）。節の末尾に「プローブ（quickstart S3）の結果で案 a／案 b のどちらかに確定し、この節を書き換える」と残す
+- [X] T030 [P] [US4] 案 a の配線を入れる（[R-004](./research.md)）: `.claude/hooks/rate-limits-statusline.sh` を作り、stdin の JSON を `${TMPDIR:-/tmp}/sdd-rate-limits.json` に**そのまま**書いて何も表示せず終了する（`CLAUDE_CODE_REMOTE` が `true` でなければ何もせず終了し、保守者の手元では副作用を持たない）。`.claude/settings.json` に `"statusLine": {"type": "command", "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/rate-limits-statusline.sh"}` を追加する。既存の `hooks.SessionStart` は変えない。cloud セッションでステータスラインが実行されない場合はプローブ後に外す
+- [X] T031 [P] [US4] `docs/exec-plans/tech-debt.md` に `TD-00N: 使用量ゲートの取得手段が未確定` を追記する: 影響範囲（`.claude/skills/sdd-next/SKILL.md` 手順 0.5）、内容（使用率はステータスライン用 JSON にしか渡されず、cloud セッションで取れるかは文書に無い。取得できない間はゲートを飛ばして通常どおり進むので、使用量切れで中途半端な成果物が残り得る）、当面の対処（案 a の配線を入れてプローブで確定）、見直しの契機（quickstart S3 の結果。両案とも不可なら本項を恒久の負債として残す）
 
 **Checkpoint**: `SKILL.md` の手順 0〜6 がすべて埋まり、使用量ゲートは「取得不能なら飛ばす」
 状態で動く。プローブ後の追従 PR で取得手段を確定する
@@ -177,10 +177,10 @@ Go ジョブでも同じ）と S2（`sdd-state.sh` が 1 秒以内に決定的�
 
 **Purpose**: 文書を実装に合わせ、自動検証を通し、導入に必要な状態を確認する
 
-- [ ] T032 [P] `docs/design-docs/sdd-loop-harness.md` を実装に追従させる: 8 章「テスト」に、フィクスチャの構成（`expected.json`／`feature.txt`／`expected-feature.json`）と `sdd-guard.sh` のテスト方法（`gh` の代役で `gh-unavailable` を確認）、runner が `jq` 不要であること（4 章の記述と設計文書 8 章の「依存は bash と jq」を `bash のみ` に訂正）を書く。3 章「部品」に `sdd-lib.sh`・`.gitattributes`・`rate-limits-statusline.sh` を足す。それ以外の章は変えない
-- [ ] T033 [P] `specs/003-sdd-loop-harness/quickstart.md` の S2／S4／S5 の期待値を、今日の `main` の状態に合わせて更新する: `002` は `done` になっているので自動選択の対象は `specs/003-library-ui`（`stage:"plan"`、`branch:"claude/sdd-003-plan"`）。あわせて S4 の直前に「注意: `003-library-ui` と `003-sdd-loop-harness` は同じ番号 `003` を持つため、`feature` と `branch` の規則（`claude/sdd-NNN-*`）が衝突する。本番 1 回目の前に、どちらかを別番号に改名するか、判定を機能ディレクトリ名で行うよう設計を見直すこと」を書く（本 tasks.md の Notes を参照）
-- [ ] T034 スクリプトの実行属性と構文を確認する: `git update-index --chmod=+x .claude/skills/sdd-next/scripts/*.sh .claude/skills/sdd-next/tests/run.sh .claude/hooks/rate-limits-statusline.sh`（Windows では属性が付かないため index 側で立てる）、`bash -n` を各スクリプトに実行、`git ls-files --eol` で `.sh` が `eol=lf` になっていることを確認する。その後 `make check` を実行し、`test-sdd` を含めて全成功すること
-- [ ] T035 `docs/exec-plans/active/003-sdd-loop-harness.md` の進捗を更新する: Phase 1〜7 の完了、手元の検算結果（T028）、保守者に残る作業（`sdd` ラベルの確認、routine の作成、quickstart S3 のプローブ、S4〜S8 の実機確認）を列挙する。S1〜S8 がすべて期待どおりになった時点で `docs/exec-plans/completed/` へ移す（本 PR では移さない）
+- [X] T032 [P] `docs/design-docs/sdd-loop-harness.md` を実装に追従させる: 8 章「テスト」に、フィクスチャの構成（`expected.json`／`feature.txt`／`expected-feature.json`）と `sdd-guard.sh` のテスト方法（`gh` の代役で `gh-unavailable` を確認）、runner が `jq` 不要であること（4 章の記述と設計文書 8 章の「依存は bash と jq」を `bash のみ` に訂正）を書く。3 章「部品」に `sdd-lib.sh`・`.gitattributes`・`rate-limits-statusline.sh` を足す。それ以外の章は変えない
+- [X] T033 [P] `specs/003-sdd-loop-harness/quickstart.md` の S2／S4／S5 の期待値を、今日の `main` の状態に合わせて更新する: `002` は `done` になっているので自動選択の対象は `specs/003-library-ui`（`stage:"plan"`、`branch:"claude/sdd-003-plan"`）。あわせて S4 の直前に「注意: `003-library-ui` と `003-sdd-loop-harness` は同じ番号 `003` を持つため、`feature` と `branch` の規則（`claude/sdd-NNN-*`）が衝突する。本番 1 回目の前に、どちらかを別番号に改名するか、判定を機能ディレクトリ名で行うよう設計を見直すこと」を書く（本 tasks.md の Notes を参照）
+- [X] T034 スクリプトの実行属性と構文を確認する: `git update-index --chmod=+x .claude/skills/sdd-next/scripts/*.sh .claude/skills/sdd-next/tests/run.sh .claude/hooks/rate-limits-statusline.sh`（Windows では属性が付かないため index 側で立てる）、`bash -n` を各スクリプトに実行、`git ls-files --eol` で `.sh` が `eol=lf` になっていることを確認する。その後 `make check` を実行し、`test-sdd` を含めて全成功すること
+- [X] T035 `docs/exec-plans/active/003-sdd-loop-harness.md` の進捗を更新する: Phase 1〜7 の完了、手元の検算結果（T028）、保守者に残る作業（`sdd` ラベルの確認、routine の作成、quickstart S3 のプローブ、S4〜S8 の実機確認）を列挙する。S1〜S8 がすべて期待どおりになった時点で `docs/exec-plans/completed/` へ移す（本 PR では移さない）
 
 ---
 

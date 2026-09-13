@@ -44,7 +44,43 @@ gh api /rate_limit             # 通ること
 
 ## 手順 0.5: 使用量ゲート
 
-US4（T029）で埋める。それまでは何もせず手順 1 へ進む。
+使用率がしきい値以上なら、**段階を実行せずに見送る**（FR-020）。使い切ってから止まると、
+中途半端な成果物がブランチに残る。再開は日次トリガーか次のマージに任せる（FR-019）ので、
+見送った回は PR も Issue も作らない。
+
+### 取得手段
+
+`${TMPDIR:-/tmp}/sdd-rate-limits.json`（通常は `/tmp/sdd-rate-limits.json`）があれば、
+そこから次の 2 つを読む。`jq -r` が使えればそれで、無ければ `grep -o` で取る。
+
+- `rate_limits.seven_day.used_percentage`
+- `rate_limits.five_hour.used_percentage`
+
+このファイルは [`.claude/hooks/rate-limits-statusline.sh`](../../hooks/rate-limits-statusline.sh)
+が書く。使用率は Claude Code がステータスラインスクリプトへの stdin JSON にしか渡さない
+ため、受け取るためだけにステータスラインを 1 つ置いている（[R-004](../../../specs/003-sdd-loop-harness/research.md) の案 a）。
+
+**ファイルが無い・読めない・値が数値でない場合は「取得不能」とし、この判定を丸ごと飛ばして
+通常どおり手順 1 へ進む。** 取得できないことを理由に止まってはならない（FR-020 後段）。
+
+### 判定
+
+取得できたときだけ、`USAGE_LIMIT_7D` / `USAGE_LIMIT_5H` と比べる。
+
+| 条件 | 振る舞い |
+| --- | --- |
+| `seven_day >= USAGE_LIMIT_7D` または `five_hour >= USAGE_LIMIT_5H` | 次の 1 行を出して終了する。PR も Issue も作らず、ブランチも切らない |
+| それ以外 | 手順 1 へ進む |
+
+```text
+今回は見送り: 7 日窓 NN% / 5 時間窓 NN%
+```
+
+> **未確定**: 取得手段は R-004 の案 a（ステータスライン）と案 b
+> （`curl https://api.anthropic.com/api/oauth/usage`）のどちらかに、quickstart S3 の
+> プローブで確定する。確定したらこの節を書き換える。両案とも不可なら、ゲートは無効の
+> まま（取得不能 = 飛ばす）とし、[tech-debt TD-007](../../../docs/exec-plans/tech-debt.md)
+> に残す。
 
 ## 手順 1: 判定
 
