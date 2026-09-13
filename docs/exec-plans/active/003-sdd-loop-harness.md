@@ -1,6 +1,6 @@
 # 実行計画: SDD ループハーネス（spec 以降の段階を自動で回す）
 
-- ステータス: 進行中（実装は完了。`sdd` ラベルの作成と routine の作成、S3〜S8 の実機確認が残る）
+- ステータス: 進行中（実装は完了。routine の作成と S3〜S8 の実機確認が残る）
 - 最終更新: 2026-09-13
 - 対象: [設計文書](../../design-docs/sdd-loop-harness.md) の全体。Spec Kit の plan → tasks → implement を、人の PR マージを承認ゲートにして Claude Code on the web のセッションで 1 段階ずつ自動実行する仕組み
 
@@ -46,7 +46,7 @@
 | タスク分解 | 完了（2026-09-13）。T001〜T035 |
 | Phase 1: Setup | 完了（2026-09-13）。T001〜T003 |
 | Phase 2: Foundational（判定の核とテスト） | 完了（2026-09-13）。T004〜T013。フィクスチャ → ランナー → 実装の順に書いた |
-| Phase 3: US1（マージで次の段階が始まる） | T014〜T018 完了。**T019（`sdd` ラベルの作成）は未了** |
+| Phase 3: US1（マージで次の段階が始まる） | 完了（2026-09-13）。T014〜T019 |
 | Phase 4: US2（暴走しない・重複しない） | 完了（2026-09-13）。T020〜T023 |
 | Phase 5: US3（手元で検算できる） | 完了（2026-09-13）。T024〜T028 |
 | Phase 6: US4（使用量ゲート） | 完了（2026-09-13）。T029〜T031。取得手段は未確定のまま（[TD-007](../tech-debt.md)） |
@@ -73,8 +73,8 @@ T007 は `04-done/expected.json` を
 ブランチ名もホップ集計もこの 2 つを区別できない）。参照が 3 ファイル 10 行しかない
 `003-library-ui` の側を動かした。
 
-副作用: 名前順が入れ替わり、自動選択が本機能自身（T019 が未了なので `implement` phase 3）を
-返すようになった。T019 にチェックが付けば `done` になり、対象は `004-library-ui` に移る。
+改名で名前順が入れ替わったが、T019 の完了で本機能が `done` になったため、自動選択は
+`004-library-ui`（`plan`）を返す。
 
 ### 手元の検算（T028）は Linux の cloud セッションで行った
 
@@ -98,9 +98,7 @@ CRLF になって落ちることはない（`git ls-files --eol` で確認済み
 
 | 作業 | 参照 |
 | --- | --- |
-| **`sdd` ラベルの作成**（T019、未了） | [docs/references/sdd-routine.md](../../references/sdd-routine.md) の「前提」。実装したセッションには `gh` CLI が無く、利用できる GitHub ツールにもラベル作成の口が無かったため作れなかった。ラベルが無いと routine の GitHub トリガーが絞り込めず、連鎖が始まらない |
-| routine の作成 | 同「作成手順」。S3 の前に行う |
-| **ラベル作成後に T019 にチェックを付ける** | 付けないと自動選択が本機能自身（`003`、`implement` phase 3）を選ぶ。S4 の前に行う |
+| routine の作成 | [docs/references/sdd-routine.md](../../references/sdd-routine.md) の「作成手順」。S3 の前に行う |
 | Windows の Git Bash での検算 | [quickstart.md](../../../specs/003-sdd-loop-harness/quickstart.md) S1・S2。実装は Linux で確認済みで、CRLF の写しでも通ることまでは見てある |
 | S3（プローブ）の実行と結果の書き戻し | 同 S3。使用量ゲートの取得手段（[TD-007](../tech-debt.md)）と SessionStart フックの発火がここで確定する |
 | S4〜S8 の実機確認 | 同 S4〜S8。すべて期待どおりなら本書を `docs/exec-plans/completed/` へ移す |
