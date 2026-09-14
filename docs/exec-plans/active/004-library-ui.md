@@ -56,7 +56,7 @@
 | Phase 2: Foundational（トークンと回帰の網） | 完了（2026-09-13）。T005〜T013 |
 | Phase 3: US1（一覧が「自分のライブラリ」に見える） | 完了（2026-09-14）。T014〜T023。S3 は人の確認待ち |
 | Phase 4: US2（再生画面が同じ規則で整う） | 完了（2026-09-14）。T024〜T031。S8・S5 は人の確認待ち |
-| Phase 5: US3（表示の仕方を自分で選べる） | 未着手 |
+| Phase 5: US3（表示の仕方を自分で選べる） | 完了（2026-09-14）。T032〜T037。S6 は人の確認待ち |
 | Phase 6: US4（小さな画面でも破綻しない） | 未着手 |
 | Phase 7: Polish | 未着手 |
 | 受け入れ検証（S1・S2） | 未着手 |
@@ -102,9 +102,12 @@ tasks.md Phase 1 の Checkpoint が「テストが 0 件でも成功で終わる
 ### 鍵の正規化は「並び順の既定値」も吸収する（T027）
 
 `/` と `/?sort=addedDesc` は利用者から見て同じ一覧なので、鍵も同じにした。
-`defaultSort`（`addedDesc`）を `web/src/api/listSnapshot.ts` にも置いてあり、
-`web/src/pages/LibraryPage.tsx` の同名の定数と値が揃っていることは
-`web/src/api/listSnapshot.test.ts` が確かめている。
+`defaultSort`（`addedDesc`）を `web/src/api/listSnapshot.ts` にも置いてある。
+
+T037 で `web/src/pages/LibraryPage.tsx` の同名の定数は無くなった（並び順の既定値は
+`web/src/preferences/viewPreferences.ts` の `defaults.sort` が持つ）。一覧は常に
+確定した並び順を鍵として渡すので、`listSnapshot.ts` 側の既定値は「`sort` を省いて
+呼んだとき」だけに効く保険になっている。
 
 ### 復元の判定は「鍵ごと」覚える（T029）
 
@@ -173,10 +176,59 @@ T016 は `ScanStatus` の振る舞いを変えないと定めているが、
 
 往復そのものは `web/src/pages/LibraryPage.restore.test.tsx` が確かめている。
 
+### 受け付ける並び順は配列ではなく `Record<VideoSort, true>` で持つ（T032）
+
+`web/src/preferences/viewPreferences.ts` の検証表を `Record<VideoSort, true>` にした。
+配列（`["addedDesc", "titleAsc"]`）だと、`api/openapi.yaml` に並び順が増えても型検査は
+通ってしまい、新しい値が黙って既定値へ落とされる。`Record` なら項目が足りない時点で
+落ちる。data-model.md 1. の「ここで列挙を書き写さない」を型で守る形である。
+
+判定に `in` ではなく `Object.hasOwn` を使っているのは、`in` が原型の鎖まで見るため
+`"toString"` が正しい値として通ってしまうからである（`viewPreferences.test.ts` が
+この 1 件を明示的に確かめている）。
+
+### 壊れた `?sort=` は既定値ではなく表示設定へ落とす（T037）
+
+T015 は URL の想定外の値を「既定値に落とす」としていたが、US3 で並び順の初期値が
+利用者のものになったので、落とし先を表示設定の `sort` にした。`toSort` は
+`VideoSort | undefined` を返し、「URL が並び順を指していない」（無い／壊れている）
+2 つの場合を呼び出し側で分けない — どちらも落とし先が同じだからである。
+表示設定自体が壊れていれば `readViewPreferences` が既定値を返すので、最終的な
+落とし先は変わらない。
+
+### 密度を変えたら表示設定の `sort` は触らない（T036）
+
+`contracts/view-preferences.md` 4. の「`sort` は現在値のまま」を、**保存されている値**
+のままと読んだ。画面に出ている並び順（URL 由来）を書き戻す実装にすると、他人から
+共有された `/?sort=titleAsc` を開いて密度だけ変えた利用者が、自分で選んでいない
+並び順を次回の初期値として持たされる。表示設定は state に 1 つ持ち、変えた項目だけを
+差し替えて書く。
+
+### 幅 1280px の「標準」は 6 列ではなく 5 列である（T035 の実測）
+
+`contracts/design-tokens.md` 3. の列数の表は 1280px の「標準」を 6 列としているが、
+実測は 5 列だった。表が画面幅（1280px）から左右の余白だけを引いて数えているのに対し、
+一覧の器には `max-w-6xl`（1152px）が掛かっているためである。器の幅 1152px から
+左右 1rem を引いた 1120px では、最小列幅 11rem + 間隔 1rem で 5 列にしかならない。
+
+「細かい」7 列と「ゆったり」4 列は表のとおりで、ずれているのは「標準」だけである。
+表は「目安。実測値は quickstart S4 で確かめる」と断っているので、**この PR では
+契約を書き換えていない**。幅ごとの実測は S4（T040、Phase 6）の作業であり、そこで
+表を直すか器の幅を見直すかを決める。
+
+### `vitest.setup.ts` で `localStorage` を片付ける（T033 の付随）
+
+表示設定は jsdom の `localStorage` に残り、同じファイル内の検査すべてで共有される。
+片付けないと「密度を変えた」検査が後続の検査の初期値を書き換え、実行順で結果が
+変わる。T003 は片付けを `cleanup()` だけと決めていたが、この機能が永続化する状態を
+初めて持ち込んだので 1 行足した。対比の検査は node 環境で走り `localStorage` を
+持たないため、有無を見てから呼ぶ。
+
 ## 保守者に残る作業
 
 | 作業 | 参照 |
 | --- | --- |
 | S0（検証用の動画をつくる） | [quickstart.md](../../../specs/004-library-ui/quickstart.md) S0。S3 以降の前提 |
 | S3〜S8 の実機確認 | 同 S3〜S8 |
+| 幅ごとの列数の実測と `contracts/design-tokens.md` 3. の表の突き合わせ | 同 S4（T040）。1280px の「標準」が表と 1 列ずれている |
 | S10（画面の記録）と PR への添付 | 同 S10、[docs/how-to/ui-change-screenshots.md](../../how-to/ui-change-screenshots.md) |
