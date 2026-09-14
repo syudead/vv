@@ -183,11 +183,17 @@ export default function ScanStatus({
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+    // min-w-0 と break-words は、失敗の文言（サーバーからの理由がそのまま
+    // 入りうる）で帯が横に伸びないようにする。狭い画面で横スクロールを
+    // 生むのは、たいてい折り返せない長い 1 語である（FR-022 / SC-004）。
+    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
       {/* 状態は 1 行の文言で示す。進行中は describe が「済んだ数 / 総数」を
           返す（contracts/screen-states.md 1.「固定の帯」）。 */}
       <span
-        className={error !== null || startFailure !== null ? "text-danger" : undefined}
+        className={
+          "min-w-0 break-words " +
+          (error !== null || startFailure !== null ? "text-danger" : "")
+        }
       >
         {describe(scan, error, startFailure?.message ?? null)}
       </span>
