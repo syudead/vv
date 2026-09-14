@@ -1,4 +1,4 @@
-# Specification Quality Checklist: 張りぼての UI を実用に耐える画面にする
+# Specification Quality Checklist: 原案デザインとの乖離を解消する
 
 **Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-09-14
@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [ ] No [NEEDS CLARIFICATION] markers remain
+- [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -31,11 +31,17 @@
 
 ## Notes
 
-- 反復 1 で 2 点を直した。
-  - 現状を説明する表に技術的な識別子（要素名・部品名）が混じっていたので、
-    利用者の言葉に置き換えた。
-  - SC-005 / FR-013 の「一般的な基準」を 4.5:1（大きな文字は 3:1）と具体化し、
-    測れるようにした。
-- **未解決**: FR-004（再生の操作をどこまで作り替えるか）に [NEEDS CLARIFICATION] が
-  1 件残っている。スコープの大きさを左右するため、既定値では決めずに利用者へ質問する。
-  回答後にこの項目を `[x]` へ更新する。
+- 初版は「張りぼて＝ブラウザ既定の部品が残っている」と誤読して書いたため、全面的に
+  書き直した。正しい前提は「現在の UI/UX が原案デザインと乖離している」であり、
+  本仕様はその差分を機能を変えずに埋めるものである。
+- 基準は [002 の ui-mockup.webp](../../002-core-video-library/assets/ui-mockup.webp)。
+  原案と現状を突き合わせた「差分の一覧」を仕様の先頭に置き、SC-001 をその表に
+  結び付けた。差分が閉じたかどうかを表の行単位で確認できる。
+- 原案は一覧画面の 1 枚しかないため、写っていない部分は「補完が要る範囲」に切り出し、
+  何を手がかりに導くかを明示した。
+- **全 16 項目が pass。** `/speckit-plan` へ進める状態である。
+- plan で重点的に見るべき点:
+  - 左の柱に出せる区分が当面「すべての動画」だけになる。柱の見せ方をどうするかは
+    設計側の判断が要る（仕様では「空の区分は出さない」とだけ決めている）。
+  - 一覧とリストの切り替えを見送った判断（「機能を変えない」に触れるため）は、
+    骨格が入ったあとに再検討の余地がある。
