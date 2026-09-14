@@ -1,6 +1,5 @@
-# Specification Quality Checklist: 原案デザインとの乖離を解消する
+# Specification Quality Checklist: 原案デザインに合わせた UI の再構築
 
-**Purpose**: Validate specification completeness and quality before proceeding to planning
 **Created**: 2026-09-14
 **Feature**: [spec.md](../spec.md)
 
@@ -16,7 +15,7 @@
 - [x] No [NEEDS CLARIFICATION] markers remain
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
-- [x] Success criteria are technology-agnostic (no implementation details)
+- [x] Success criteria are technology-agnostic
 - [x] All acceptance scenarios are defined
 - [x] Edge cases are identified
 - [x] Scope is clearly bounded
@@ -31,19 +30,10 @@
 
 ## Notes
 
-- 基準は [002 の ui-mockup.webp](../../002-core-video-library/assets/ui-mockup.webp)。
-  原案と現状を突き合わせた「差分の一覧」を仕様の先頭に置き、SC-001 をその表に
-  結び付けた。差分が閉じたかどうかを表の行単位で確認できる。
-- 原案は一覧画面の 1 枚しかないため、写っていない部分は「補完が要る範囲」に切り出し、
-  何を手がかりに導くかを明示した。
-- レビュー指摘を反映した。
-  - FR-007 と US2 の受け入れ条件が SD 動画で食い違っていた（FR は印を必須、受け入れは
-    非表示）。4K / HD に該当するものだけに出す、と FR 側を直した。
-  - 中身の無い設定の入口が FR-016・SC-003 と、「押せない案内は置かない」という
-    スコープ外の理由付けの両方に反していた。入口ごとスコープ外に移した。
-- **全 16 項目が pass。** `/speckit-plan` へ進める状態である。
-- 柱の見せ方は仕様側で決着済みである。区分が 1 つの間は空の群の見出しを出さず
-  （エッジケース）、狭い画面では柱を畳んで製品の名乗りを上部の帯へ移す（FR-019）。
-  plan へ持ち越す判断ではない。
-- plan で重点的に見るべき点: 一覧とリストの切り替えを見送った判断（「機能を変えない」に
-  触れるため）は、骨格が入ったあとに再検討の余地がある。
+- 一般的な UI 用語（サイドバー・ヘッダー・カード・バッジ・スライダー）で記述している。
+- 作るものは C1〜C13 のコンポーネント一覧として列挙し、それぞれ現状との差分を示した。
+  SC-001 がこの一覧に対応する。
+- 各コンポーネントは「4. 既存機能との対応」で既存の機能・データに接続先を割り当てて
+  ある。新規の API・保存項目は無い。
+- 幅の境界は 640px。既存実装が使う唯一の breakpoint に合わせた。
+- 全 16 項目 pass。
