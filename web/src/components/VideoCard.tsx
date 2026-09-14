@@ -80,7 +80,17 @@ export function partialRatio(video: Video): number | null {
  * 3 の解けた題名は**枠の上に重ねて**描く。題名の場所を広げると、長い題名の
  * 項目だけ背が高くなって格子が崩れる（FR-005 / SC-003）。
  */
-export default function VideoCard({ video }: { video: Video }) {
+export default function VideoCard({
+  video,
+  backTo,
+}: {
+  video: Video;
+  /**
+   * backTo は遷移元の一覧の URL である（FR-016）。再生画面の「一覧へ戻る」が
+   * ここへ帰る。渡さないと再生画面は `/` へ戻すので、検索語と並び順が消える。
+   */
+  backTo?: string;
+}) {
   const duration = formatDuration(video.durationMs);
   const unplayable = unplayableText(video);
   const watched = video.progress?.completed === true;
@@ -89,6 +99,9 @@ export default function VideoCard({ video }: { video: Video }) {
   return (
     <Link
       to={`/videos/${String(video.id)}`}
+      // 帰り道を持たせる。URL のクエリ（検索語・並び順）は一覧側にしか無いので、
+      // ここで渡さないと再生画面は「どの一覧から来たか」を知りようがない。
+      state={backTo === undefined ? undefined : { from: backTo }}
       // 見た目は省略しても、読み上げには必ず全文を渡す（R-409）。名前を
       // 中身から組み立てると、枠の中の小片（長さ・視聴済み）まで名前に
       // 混ざってしまう。

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   errorMessage,
@@ -25,6 +25,15 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
   // 取り込みを促したら見張り直す。押した直後に状態が動くので、次の巡回を
   // 待たずに追いかける。
   const [watch, setWatch] = useState(0);
+
+  // watching は「終わりを見届ける対象の取り込みがある」ことを表す。
+  //
+  // `GET /api/scans/current` は実行中のものが無ければ**最後に終わったもの**を
+  // 返す。最初の巡回で done が返るのはふつうの状態であって「いま終わった」の
+  // ではないので、これを知らせると一覧を開くたびに読み直しが走る（そして
+  // 一覧の復元が毎回捨てられる）。実行中を見たとき、または利用者が取り込みを
+  // 促したときにだけ、終わりを知らせる対象にする。
+  const watching = useRef(false);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -56,10 +65,16 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
         return;
       }
       if (current.state === "running") {
+        watching.current = true;
         timer = setTimeout(() => void tick(), pollInterval);
         return;
       }
+      if (!watching.current) {
+        // 前回の取り込みが done のまま残っているだけである。
+        return;
+      }
       // 走り終わった直後は、一覧に新しい動画が並んでいる。
+      watching.current = false;
       onFinished?.();
     };
 
@@ -78,6 +93,9 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
     setStarting(true);
     void (async () => {
       try {
+        // 利用者が促した取り込みは、最初の巡回で既に終わっていても
+        // 終わりを知らせる（小さなライブラリでは巡回より先に終わる）。
+        watching.current = true;
         setScan(await startScan());
         setError(null);
         setWatch((value) => value + 1);

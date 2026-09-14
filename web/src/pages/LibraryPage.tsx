@@ -193,6 +193,12 @@ export default function LibraryPage() {
     window.scrollTo({ top, behavior: "auto" });
   }, [items.length]);
 
+  // listUrl はいま見ている一覧の URL である。項目のリンクに持たせて、
+  // 再生画面の「一覧へ戻る」がこの一覧へ帰れるようにする（FR-016）。
+  // `/` へ戻すだけでは、検索語と並び順が消えて控えの鍵とも一致しない。
+  const search = searchParams.toString();
+  const listUrl = search === "" ? "/" : `/?${search}`;
+
   // 一覧を離れる瞬間（項目のリンクを踏んだとき）に控えを書く。Enter でも
   // click は起きるので、キーボードだけで往復しても復元は効く（SC-005）。
   const saveSnapshot = useCallback(() => {
@@ -336,7 +342,7 @@ export default function LibraryPage() {
                 // 輪郭が端で切れる（contracts/screen-states.md 3.「印の視認」）。
                 className="p-1 [content-visibility:auto] [contain-intrinsic-size:auto_14rem]"
               >
-                <VideoCard video={video} />
+                <VideoCard video={video} backTo={listUrl} />
               </li>
             ))}
           </ul>

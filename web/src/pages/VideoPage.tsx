@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 
 import {
   beaconProgress,
@@ -29,6 +29,25 @@ type State =
   | { kind: "failed"; reason: string };
 
 /**
+ * backTarget は「一覧へ戻る」の行き先を、遷移元から渡された state で決める
+ * （FR-016）。
+ *
+ * 検索語と並び順は一覧の URL のクエリにしかないので、`/` へ戻すと絞り込みも
+ * 並び順も消え、復元の控え（鍵が `q` と `sort` でできている）とも一致しない。
+ * 直接 `/videos/:id` を開いた場合は遷移元が無いので `/` に落とす。
+ *
+ * 受けるのはアプリケーション内の絶対パスだけである。state は履歴に残る値で、
+ * 手を加えられうるものを行き先にしたくない。
+ */
+function backTarget(state: unknown): string {
+  const from: unknown = (state as { from?: unknown } | null)?.from;
+  if (typeof from !== "string" || !from.startsWith("/") || from.startsWith("//")) {
+    return "/";
+  }
+  return from;
+}
+
+/**
  * VideoPage は再生画面である（FR-012〜FR-016）。
  *
  * 中断位置から再開しつつ、先頭から見直す選択肢も出す。見終わった動画を
@@ -49,6 +68,7 @@ type State =
 export default function VideoPage() {
   const params = useParams();
   const id = Number(params.id);
+  const backTo = backTarget(useLocation().state);
 
   const [state, setState] = useState<State>({ kind: "loading" });
   const [resumedFrom, setResumedFrom] = useState<number | null>(null);
@@ -182,7 +202,7 @@ export default function VideoPage() {
           contracts/screen-states.md 2.・3.）。取得に失敗した画面から
           戻れないと、利用者に残る手が再読み込みしかなくなる。 */}
       <Link
-        to="/"
+        to={backTo}
         className="inline-flex min-h-[var(--size-tap)] w-fit items-center rounded-control text-sm text-accent outline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus"
       >
         ← 一覧へ戻る
