@@ -63,6 +63,8 @@ FR-001 は「配色・余白・文字の大きさ・角の丸みの規則を1か
 | `body` | `badge` | 4.5 | 15.43 | OK |
 | `muted` | `surface` | 4.5 | 8.72 | OK |
 | `muted` | `surface-raised` | 4.5 | 7.80 | OK |
+| `muted` | `surface-sunken` | 4.5 | 9.20 | OK |
+| `body` | `surface-sunken` | 4.5 | 16.81 | OK |
 | `accent` | `surface` | 4.5 | 7.64 | OK |
 | `accent` | `surface-raised` | 4.5 | 6.83 | OK |
 | `accent-ink` | `accent` | 4.5 | 7.57 | OK |
