@@ -8,7 +8,7 @@ import {
 } from "react";
 import { useSearchParams } from "react-router";
 
-import { MAX_QUERY_LENGTH, type VideoSort } from "../api/client";
+import { MAX_QUERY_LENGTH, type Scan, type VideoSort } from "../api/client";
 import {
   clearListSnapshot,
   saveListSnapshot,
@@ -204,7 +204,16 @@ export default function LibraryPage() {
   const saveSnapshot = useCallback(() => {
     saveListSnapshot(
       { query, sort },
-      { items, total, cursor, hasMore, scrollY: window.scrollY },
+      {
+        items,
+        total,
+        cursor,
+        hasMore,
+        scrollY: window.scrollY,
+        // どの取り込みまでを映した一覧なのかを添える。戻ってきたときに
+        // これと違う取り込みが終わっていれば、控えは使わずに読み直す。
+        scanId: knownScanId.current,
+      },
     );
   }, [cursor, hasMore, items, query, sort, total]);
 
@@ -232,12 +241,37 @@ export default function LibraryPage() {
     return () => observer.disconnect();
   }, [hasMore, loadMore]);
 
+  // knownScanId は「この一覧に反映済みの取り込み」の id である。
+  //
+  // ScanStatus は終わっている取り込みを観測するたびに知らせてくる。実行中が
+  // 無ければ最後に終わったものが返る仕様なので、そのほとんどは「前回の残り」
+  // である。新しいかどうかを決められるのは、いまの一覧が**どの取り込みまでを
+  // 映しているか**を知っているこちら側だけである。
+  const knownScanId = useRef(restored?.scanId);
+
   // 取り込みが終わったら控えを捨ててから読み直す。取り込む前の一覧に
   // 戻してはならない（data-model.md 2.）。
-  const onScanFinished = useCallback(() => {
-    clearListSnapshot();
-    reload();
-  }, [reload]);
+  const onScanFinished = useCallback(
+    (scan: Scan) => {
+      const known = knownScanId.current;
+      knownScanId.current = scan.id;
+
+      if (known === undefined) {
+        // 初めて観測した取り込み。1 ページ目はいま読んだばかりなので、
+        // その結果はすでに映っている。ここで読み直すと、一覧を開くたびに
+        // 二重に取得することになる。
+        return;
+      }
+      if (known === scan.id) {
+        // 前回の残り。控えも一覧もそのままでよい。
+        return;
+      }
+
+      clearListSnapshot();
+      reload();
+    },
+    [reload],
+  );
 
   // 空の言い分けは 2 通りある（FR-009）。「0 本」とだけ出すと、置き場所が
   // 違うのか検索語が悪いのかを利用者から区別できない。

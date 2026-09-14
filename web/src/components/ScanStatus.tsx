@@ -12,30 +12,25 @@ import {
 const pollInterval = 2000;
 
 /**
- * watching は「終わりを見届ける取り込みがある」ことを表す。
- *
- * `GET /api/scans/current` は実行中のものが無ければ**最後に終わったもの**を
- * 返す。最初の巡回で done が返るのはふつうの状態であって「いま終わった」の
- * ではないので、これを知らせると一覧を開くたびに読み直しが走り、一覧の復元
- * （FR-016）が毎回捨てられる。実行中を見たとき、または利用者が取り込みを
- * 促したときにだけ、終わりを知らせる対象にする。
- *
- * **この印は部品より長く生きる。** 一覧で実行中を見たあと再生画面へ移ると
- * ScanStatus は捨てられるので、部品の中に持つと「見ていない間に終わった
- * 取り込み」を知らせそこなう ── 戻ってきた一覧が控えのまま古い件数を出し
- * 続ける。タブを読み込み直せば消える寿命でよく、それは控え
- * （api/listSnapshot.ts）と同じ寿命である。
- */
-let watching = false;
-
-/**
  * ScanStatus は取り込みの状態を出し、再取り込みを促せるようにする
  * （FR-006）。
  *
  * 進行中は「どれだけ残っているか」が分かる形にする。件数だけでは終わりが
  * 見えないため、総数と済んだ数を並べる。
+ *
+ * **終わりの判断はここでしない。** `GET /api/scans/current` は実行中のものが
+ * 無ければ最後に終わったものを返すので、この部品から見れば「終わっている
+ * 取り込みがある」としか言えない。それが呼び出し側にとって新しいものかどうか
+ * （＝一覧を読み直すべきか）は、呼び出し側が自分の知っている取り込みと
+ * 見比べて決める。ここで決めようとすると、画面をまたいで生きる印を持つ
+ * ことになり、印を立てそこねる／降ろしそこねる経路が増える。
  */
-export default function ScanStatus({ onFinished }: { onFinished?: () => void }) {
+export default function ScanStatus({
+  onFinished,
+}: {
+  /** 終わっている取り込みを観測するたびに呼ぶ。同じものを何度も渡しうる。 */
+  onFinished?: (scan: Scan) => void;
+}) {
   const [scan, setScan] = useState<Scan | null>(null);
   const [error, setError] = useState<string | null>(null);
   // 「始められなかった」は状態の取得に失敗したのとは別の失敗である。
@@ -77,18 +72,12 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
         return;
       }
       if (current.state === "running") {
-        watching = true;
         timer = setTimeout(() => void tick(), pollInterval);
         return;
       }
-      if (!watching) {
-        // 前回の取り込みが done のまま残っているだけである。
-        return;
-      }
-      // 走り終わった直後は、一覧に新しい動画が並んでいる。見ていない間に
-      // 終わっていた場合もここへ来る（印が部品より長く生きるため）。
-      watching = false;
-      onFinished?.();
+      // 終わっている取り込みを観測した。これが「いま終わった」ものなのか
+      // 「前回の残り」なのかは、呼び出し側が id で見分ける。
+      onFinished?.(current);
     };
 
     void tick();
@@ -107,16 +96,7 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
     setStartError(null);
     void (async () => {
       try {
-        // 利用者が促した取り込みは、最初の巡回で既に終わっていても
-        // 終わりを知らせる（小さなライブラリでは巡回より先に終わる）。
-        //
-        // 印を立てるのは**始まったあと**である。始める前に立てると、要求が
-        // 失敗したときに印だけが残り、次にこの部品が作られたときへ持ち越して
-        // しまう ── 前回の done を「いま終わった」と誤り、控えを捨てる。
-        // 見張り直すのは下の finally からなので、ここで立てれば間に合う。
-        const started = await startScan();
-        watching = true;
-        setScan(started);
+        setScan(await startScan());
         setError(null);
       } catch (failure) {
         setStartError(errorMessage(failure));
@@ -124,9 +104,9 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
         setStarting(false);
         // 成否によらず見張り直す。**要求の失敗は「始まらなかった」ことを
         // 保証しない** ── サーバーが取り込みを始めたあとで応答だけが失われる
-        // ことがある。巡回して実行中を見つければ、上の tick がそこから印を
-        // 立てて終わりまで見届ける。始まっていなければ前回の done が返る
-        // だけで、印は立たない。
+        // ことがある。押した直後に巡回し直せば、始まっていれば実行中が、
+        // 既に終わっていれば新しい id が見えるので、どちらでも呼び出し側が
+        // 気付ける。始まっていなければ前回の取り込みが返るだけである。
         setWatch((value) => value + 1);
       }
     })();

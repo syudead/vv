@@ -52,16 +52,21 @@ function video(id: number, title: string): Video {
   };
 }
 
+/** finished は終わっている取り込みを作る。 */
+function finished(id: number): Scan {
+  return {
+    id,
+    state: "done",
+    total: 2,
+    completed: 2,
+    failed: 0,
+    startedAt: "2026-09-13T00:00:00Z",
+    finishedAt: "2026-09-13T00:00:01Z",
+  };
+}
+
 /** finishedScan は「前回の取り込みが終わっている」状態である（ふつうの状態）。 */
-const finishedScan: Scan = {
-  id: 1,
-  state: "done",
-  total: 2,
-  completed: 2,
-  failed: 0,
-  startedAt: "2026-09-13T00:00:00Z",
-  finishedAt: "2026-09-13T00:00:01Z",
-};
+const finishedScan = finished(1);
 
 /** Here は現在の URL を読めるようにする（検査のためだけの部品）。 */
 function Here() {
@@ -165,6 +170,53 @@ describe("一覧 → 再生 → 一覧 の往復（FR-016）", () => {
     // 控えから戻すので、取得は増えない。完了済みの取り込みが残っていても、
     // それに巻き込まれて控えが捨てられない。
     expect(listVideos.mock.calls).toHaveLength(1);
+  });
+
+  it("見ていない間に別の取り込みが終わっていたら、控えを捨てて読み直す", async () => {
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    show("/");
+    await settle();
+    expect(listVideos.mock.calls).toHaveLength(1);
+
+    await user.click(screen.getByRole("link", { name: "ねこA.mp4" }));
+    await settle();
+
+    // 再生画面にいる間に取り込みが走り、動画が 1 本増えた。
+    getCurrentScan.mockResolvedValue(finished(2));
+    listVideos.mockResolvedValue({
+      items: [video(1, "ねこA.mp4"), video(2, "ねこB.mp4"), video(3, "ねこC.mp4")],
+      total: 3,
+    } satisfies VideoPageType);
+
+    await user.click(screen.getByRole("link", { name: "← 一覧へ戻る" }));
+    await settle();
+
+    // 控えのまま出すと、増えた動画がいつまでも見えない。
+    expect(listVideos.mock.calls).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "ねこC.mp4" })).toBeDefined();
+  });
+
+  it("応答を失った取り込みが既に終わっていても、id が違えば読み直す", async () => {
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    show("/");
+    await settle();
+    expect(listVideos.mock.calls).toHaveLength(1);
+
+    // サーバーは取り込み（id 2）を始めたが 202 が返る前に接続が切れ、
+    // 押した直後の巡回までに終わってしまった。実行中は一度も見えない。
+    startScan.mockRejectedValue(new Error("つながりません"));
+    getCurrentScan.mockResolvedValue(finished(2));
+    listVideos.mockResolvedValue({
+      items: [video(1, "ねこA.mp4"), video(2, "ねこB.mp4"), video(3, "ねこC.mp4")],
+      total: 3,
+    } satisfies VideoPageType);
+
+    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await settle();
+
+    // 実行中を見ていなくても、映している取り込みと id が違えば新しいと分かる。
+    expect(listVideos.mock.calls).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "ねこC.mp4" })).toBeDefined();
   });
 
   it("直接開いた再生画面からは一覧の先頭へ戻る", async () => {
