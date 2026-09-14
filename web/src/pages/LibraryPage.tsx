@@ -81,8 +81,13 @@ export default function LibraryPage() {
   // 落ち着かないので、打鍵の受け皿だけを手元に持つ。
   const [input, setInput] = useState(query);
 
+  // committed は自分が最後に URL へ書いた検索語である。これを覚えておかないと、
+  // 「自分が書いた変化」と「外から来た変化」を見分けられない。
+  const committed = useRef(query);
+
   const setQuery = useCallback(
     (next: string) => {
+      committed.current = next;
       setSearchParams(
         (current) => {
           const params = new URLSearchParams(current);
@@ -99,6 +104,17 @@ export default function LibraryPage() {
     },
     [setSearchParams],
   );
+
+  // 外から query が変わったら（戻る／進む、一覧へのリンク）入力欄を合わせる。
+  // input は初回描画のときだけ query から作られるので、これが無いと戻ったあとも
+  // 前の語が入力欄に残り、下の待ち合わせがその古い語を URL へ書き戻してしまう
+  // ── 戻る／進むで検索語が復元されない（R-403）。
+  useEffect(() => {
+    if (query !== committed.current) {
+      committed.current = query;
+      setInput(query);
+    }
+  }, [query]);
 
   // 入力が止まってから URL を書き換える。すでにその語で引いていれば何もしない
   // （書き換えるたびに再描画が起き、この効果が走り直すため）。
@@ -253,7 +269,13 @@ export default function LibraryPage() {
                 // 画面外の項目は描画を省かせる（R-408 / SC-008）。見込みの
                 // 大きさを必ず与える — 省いた項目の高さを 0 と見積もらせると
                 // スクロールバーが暴れる。
-                className="[content-visibility:auto] [contain-intrinsic-size:auto_14rem]"
+                //
+                // p-1 は狙いを合わせた印のための余地である。content-visibility:
+                // auto は paint containment を伴うので、この箱の外へはみ出した
+                // 描画が切られる。項目の輪郭は `outline-offset-2`（2px）+ 2px の
+                // 太さで外側 4px に描かれるから、同じ 4px を内側に空けておかないと
+                // 輪郭が端で切れる（contracts/screen-states.md 3.「印の視認」）。
+                className="p-1 [content-visibility:auto] [contain-intrinsic-size:auto_14rem]"
               >
                 <VideoCard video={video} />
               </li>

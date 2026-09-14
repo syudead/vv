@@ -1,6 +1,6 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video, VideoPage } from "../api/client";
@@ -176,6 +176,42 @@ describe("LibraryPage の件数の文言（FR-008 / FR-021）", () => {
 
     // 絞られているかどうかを、文言だけで判断できる。
     expect(screen.getByText("「ねこ」に一致 1 本")).toBeDefined();
+  });
+});
+
+/** GoBack は履歴を 1 つ戻す（検査のためだけの部品）。 */
+function GoBack() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => void navigate(-1)}>
+      戻る（検査用）
+    </button>
+  );
+}
+
+describe("LibraryPage の戻る／進む（R-403）", () => {
+  it("戻ると検索欄も URL の語に戻り、古い語を書き戻さない", async () => {
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    render(
+      <MemoryRouter initialEntries={["/?q=ねこ", "/?q=いぬ"]} initialIndex={1}>
+        <LibraryPage />
+        <GoBack />
+      </MemoryRouter>,
+    );
+    await settle();
+
+    const field = () => screen.getByPlaceholderText("題名で探す") as HTMLInputElement;
+    expect(field().value).toBe("いぬ");
+
+    await user.click(screen.getByRole("button", { name: "戻る（検査用）" }));
+    // 待ち合わせが明けても、古い「いぬ」が URL へ書き戻されない。
+    await act(async () => {
+      vi.advanceTimersByTime(searchDebounceMs * 2);
+      await Promise.resolve();
+    });
+
+    expect(field().value).toBe("ねこ");
+    expect(screen.getByText("「ねこ」に一致 0 本")).toBeDefined();
   });
 });
 
