@@ -15,11 +15,18 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import { useVideos } from "../api/useVideos";
+import DensitySelect from "../components/DensitySelect";
 import ScanStatus from "../components/ScanStatus";
 import Skeleton from "../components/Skeleton";
 import StateNotice from "../components/StateNotice";
 import Toolbar from "../components/Toolbar";
 import VideoCard from "../components/VideoCard";
+import {
+  type Density,
+  readViewPreferences,
+  type ViewPreferences,
+  writeViewPreferences,
+} from "../preferences/viewPreferences";
 
 /**
  * searchDebounceMs は入力が落ち着くのを待つ時間である。
@@ -38,41 +45,72 @@ const sortLabels: { value: VideoSort; label: string }[] = [
   { value: "titleAsc", label: "題名順" },
 ];
 
-/** defaultSort は並び順が指定されていない（または壊れている）ときの値である。 */
-const defaultSort: VideoSort = "addedDesc";
-
 /** skeletonCount は通信中に並べる骨組みの数である（最初の画面がほぼ埋まる数）。 */
 const skeletonCount = 12;
 
 /**
- * toSort は URL のクエリを VideoSort に直す。
+ * toSort は URL のクエリを VideoSort に直す。想定外なら undefined を返す。
  *
- * 想定外の値は既定値に落とす。URL は利用者が編集できるし、古い共有リンクに
- * 廃止された値が残ることもある — 一覧が出ないより、既定の並びで出るほうがよい。
+ * URL は利用者が編集できるし、古い共有リンクに廃止された値が残ることもある —
+ * 一覧が出ないより、表示設定の並びで出るほうがよい。値が無い場合と壊れている
+ * 場合を呼び出し側で分けないのは、どちらも「URL は並び順を指していない」で
+ * あり、そのときの落とし先が同じ（表示設定。data-model.md 1.）だからである。
  * 照合を sortLabels に対して行うのは、選べる値と受け付ける値を1か所に保つ
  * ためである（生成物の VideoSort から外れた値は型検査で落ちる）。
  */
-function toSort(value: string | null): VideoSort {
-  return sortLabels.find((option) => option.value === value)?.value ?? defaultSort;
+function toSort(value: string | null): VideoSort | undefined {
+  return sortLabels.find((option) => option.value === value)?.value;
 }
+
+/**
+ * tileMin は密度ごとの最小列幅である（contracts/design-tokens.md 3.）。
+ *
+ * 密度が変えるのはこの 1 つの変数だけで、列の式には触れない。
+ */
+const tileMin: Record<Density, string> = {
+  dense: "var(--size-tile-dense)",
+  standard: "var(--size-tile-standard)",
+  relaxed: "var(--size-tile-relaxed)",
+};
 
 /**
  * gridStyle は一覧の格子である（contracts/design-tokens.md 3.）。
  *
  * 列数を JavaScript で計算しない。min(--tile-min, (100% - gap) / 2) を挟むのは、
  * どの画面幅でも列が 1 本にならないことを保証するためで、幅 360px でも 2 列に
- * なり横スクロールが出ない（SC-004）。
- *
- * --tile-min はいま「標準」に固定してある。密度（US3 / T035）はこの変数の
- * 指す先を差し替えるだけで、列の式には触れない。
+ * なり横スクロールが出ない（SC-004）。その結果、狭い画面では 3 つの密度の
+ * 見た目が同じになる — これは意図した動作である。
  */
-const gridStyle = {
-  "--tile-min": "var(--size-tile-standard)",
-  "--tile-gap": "1rem",
-  gap: "var(--tile-gap)",
-  gridTemplateColumns:
-    "repeat(auto-fill, minmax(min(var(--tile-min), (100% - var(--tile-gap)) / 2), 1fr))",
-} as CSSProperties;
+function gridStyle(density: Density): CSSProperties {
+  return {
+    "--tile-min": tileMin[density],
+    "--tile-gap": "1rem",
+    gap: "var(--tile-gap)",
+    gridTemplateColumns:
+      "repeat(auto-fill, minmax(min(var(--tile-min), (100% - var(--tile-gap)) / 2), 1fr))",
+  } as CSSProperties;
+}
+
+/**
+ * topmostId は画面の上端に最も近い項目の id を返す（R-411）。
+ *
+ * 座標ではなく**項目**を覚えるのが要点である。密度を変えれば 1 行の本数が
+ * 変わり、同じスクロール座標は別の項目を指す。
+ */
+function topmostId(list: HTMLUListElement | null): number | undefined {
+  if (list === null) {
+    return undefined;
+  }
+
+  for (const child of Array.from(list.children)) {
+    // 下端が画面の上端より下にある最初の項目が、いま上端に最も近い。
+    if (child.getBoundingClientRect().bottom > 0) {
+      const id = Number((child as HTMLElement).dataset.videoId);
+      return Number.isNaN(id) ? undefined : id;
+    }
+  }
+  return undefined;
+}
 
 /**
  * LibraryPage は動画の一覧である。
@@ -87,7 +125,27 @@ const gridStyle = {
 export default function LibraryPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const query = (searchParams.get("q") ?? "").trim().slice(0, MAX_QUERY_LENGTH);
-  const sort = toSort(searchParams.get("sort"));
+
+  // 表示設定はこの端末で選ばれた見せ方である（FR-018）。読み出しは開くときの
+  // 1 回だけでよい — ほかのタブが書き換えても、いま見ている画面を作り直す
+  // 理由にはならない。readViewPreferences は決して投げないので、壊れていても
+  // 既定値でここに来る（FR-019）。
+  const [preferences, setPreferences] = useState(readViewPreferences);
+
+  // 並び順は URL が勝ち、URL が指していなければ表示設定を使う
+  // （data-model.md 1.「並び順の 2 つの役割」）。共有されたリンクは送った人の
+  // 並びで開き、自分で `/` を開くときは自分の好みで開く。
+  const sort = toSort(searchParams.get("sort")) ?? preferences.sort;
+
+  const density = preferences.density;
+
+  // 表示設定は画面の state と localStorage の両方に置く。書き込みは
+  // setPreferences の更新関数の**外**で行う — 更新関数は React が開発時に
+  // 2 回呼ぶので、副作用を中に置くと書き込みも 2 回走る。
+  const savePreferences = useCallback((updated: ViewPreferences) => {
+    setPreferences(updated);
+    writeViewPreferences(updated);
+  }, []);
 
   // input は入力欄の値。打鍵のたびに URL を書き換えると履歴も一覧も
   // 落ち着かないので、打鍵の受け皿だけを手元に持つ。
@@ -140,19 +198,65 @@ export default function LibraryPage() {
     return () => clearTimeout(timer);
   }, [input, query, setQuery]);
 
+  // 並び順を変えたら URL を書き換え、同時に表示設定にも書く（次回 `/` を
+  // 開いたときの初期値になる。data-model.md 1.）。density は現在値のまま
+  // にする（contracts/view-preferences.md 4.）。
   const changeSort = useCallback(
     (value: string) => {
+      const next = toSort(value) ?? preferences.sort;
+
       setSearchParams(
         (current) => {
           const params = new URLSearchParams(current);
-          params.set("sort", toSort(value));
+          params.set("sort", next);
           return params;
         },
         { replace: true },
       );
+
+      savePreferences({ ...preferences, sort: next });
     },
-    [setSearchParams],
+    [preferences, savePreferences, setSearchParams],
   );
+
+  // anchor は密度を変える直前に覚えた「画面上端に最も近い項目」である。
+  const anchor = useRef<number | undefined>(undefined);
+  const list = useRef<HTMLUListElement | null>(null);
+  const bar = useRef<HTMLDivElement | null>(null);
+
+  // 密度を変えたら表示設定に書く（sort は現在値のまま）。列幅が変わると同じ
+  // 座標が別の項目を指すので、戻す先の項目を**変える直前に**覚える（R-411）。
+  const changeDensity = useCallback(
+    (next: Density) => {
+      // 先頭を見ているときは覚えない。そのまま戻すと、見出しと件数まで画面の
+      // 外へ送ってしまう — 利用者は何も見失っていないのに画面が動く。
+      anchor.current = window.scrollY > 0 ? topmostId(list.current) : undefined;
+      savePreferences({ ...preferences, density: next });
+    },
+    [preferences, savePreferences],
+  );
+
+  // 覚えた項目を画面の上端へ戻す。列が組み直されたあとでなければ意味が無いので
+  // useLayoutEffect で行う（描いた同じフレームのうちに戻す。R-411）。
+  useLayoutEffect(() => {
+    const id = anchor.current;
+    if (id === undefined) {
+      return;
+    }
+    anchor.current = undefined;
+
+    const target = list.current?.querySelector(`[data-video-id="${String(id)}"]`);
+    if (target === null || target === undefined) {
+      return;
+    }
+
+    // 逃げる高さは帯の**実測値**である。scrollIntoView + 固定の scroll-margin
+    // では足りない — 帯は折り返すので、狭い画面では 2 行以上になって 64px を
+    // 大きく超え、戻した項目がその裏に隠れる。
+    const offset = bar.current?.getBoundingClientRect().height ?? 0;
+    const top = window.scrollY + target.getBoundingClientRect().top - offset;
+    window.scrollTo({ top: Math.max(top, 0), behavior: "auto" });
+  }, [density]);
 
   const clearQuery = useCallback(() => {
     setInput("");
@@ -286,6 +390,7 @@ export default function LibraryPage() {
       {/* 帯は状態によらず**先に**出す。通信中も失敗中も、探す・並べ替える・
           取り込むは押せる（FR-002 / contracts/screen-states.md 1.）。 */}
       <Toolbar
+        ref={bar}
         search={
           <label className="flex flex-1 items-center gap-2 text-sm text-muted">
             <span className="sr-only">題名で探す</span>
@@ -315,6 +420,7 @@ export default function LibraryPage() {
             </select>
           </label>
         }
+        density={<DensitySelect value={density} onChange={changeDensity} />}
         scan={<ScanStatus onFinished={onScanFinished} />}
       />
 
@@ -357,7 +463,12 @@ export default function LibraryPage() {
         {loading ? (
           // 骨組みは 1 つずつ読ませない。伝えたいのは「この領域はいま読み込み中
           // である」という 1 つの事実である（contracts/screen-states.md 3.）。
-          <div role="status" aria-label="読み込み中" className="grid" style={gridStyle}>
+          <div
+            role="status"
+            aria-label="読み込み中"
+            className="grid"
+            style={gridStyle(density)}
+          >
             {Array.from({ length: skeletonCount }, (_, index) => (
               <Skeleton key={index} />
             ))}
@@ -365,10 +476,17 @@ export default function LibraryPage() {
         ) : (
           // 控えを書くのは離れる瞬間だけである。個々の項目に配るより、
           // 一覧そのもので受けたほうが、項目の描画（数百件）に手が入らない。
-          <ul className="grid" style={gridStyle} onClick={saveSnapshot}>
+          <ul
+            ref={list}
+            className="grid"
+            style={gridStyle(density)}
+            onClick={saveSnapshot}
+          >
             {items.map((video) => (
               <li
                 key={video.id}
+                // 密度を変えたときに戻す先を探すための印である（R-411）。
+                data-video-id={video.id}
                 // 画面外の項目は描画を省かせる（R-408 / SC-008）。見込みの
                 // 大きさを必ず与える — 省いた項目の高さを 0 と見積もらせると
                 // スクロールバーが暴れる。

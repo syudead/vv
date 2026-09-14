@@ -216,7 +216,7 @@ describe("LibraryPage の戻る／進む（R-403）", () => {
 });
 
 describe("LibraryPage の到達順（contracts/screen-states.md 3.）", () => {
-  it("探す → 並べ替える → 取り込む → 一覧の項目 の順に届く", async () => {
+  it("探す → 並べ替える → 密度 → 取り込む → 一覧の項目 の順に届く", async () => {
     listVideos.mockResolvedValue({
       items: [video(1, "ねこ.mp4"), video(2, "いぬ.mp4")],
       total: 2,
@@ -225,11 +225,12 @@ describe("LibraryPage の到達順（contracts/screen-states.md 3.）", () => {
     show();
     await settle();
 
-    // 密度（US3）が入ると 3 番目に割り込むが、帯が項目より先であることと
-    // 項目が並んでいる順であることは変わらない。
+    // 密度（US3）は 3 番目に割り込む。帯が項目より先であることと、項目が
+    // 並んでいる順であることは変わらない。
     const expected = [
       screen.getByPlaceholderText("題名で探す"),
       screen.getByLabelText("並び順"),
+      screen.getByLabelText("表示"),
       screen.getByRole("button", { name: "取り込む" }),
       screen.getByRole("link", { name: "ねこ.mp4" }),
       screen.getByRole("link", { name: "いぬ.mp4" }),
