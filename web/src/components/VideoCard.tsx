@@ -117,7 +117,9 @@ export default function VideoCard({
             // 復号を別の仕事にする。1 画面に数十枚並ぶので、ここで詰まると
             // スクロールの反応が鈍る（R-408 / SC-008）。
             decoding="async"
-            className="h-full w-full object-cover transition-opacity group-hover:opacity-90"
+            // 動きを減らす設定では遷移だけを止める（FR-023 / R-410）。
+            // opacity の最終値は変わらないので、ホバーの手応えは残る。
+            className="h-full w-full object-cover transition-opacity group-hover:opacity-90 motion-reduce:transition-none"
           />
         ) : (
           <span className="flex h-full w-full items-center justify-center px-2 text-center text-xs text-muted">

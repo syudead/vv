@@ -168,16 +168,23 @@ S3 の 1〜5 を確かめる。密度の選択（US3）と復元（US2）が無�
 
 **Purpose**: 全画面に効く仕上げと、文書・記録・受け入れ検証
 
-- [ ] T042 [P] `web/src/components/VideoCard.tsx`・`web/src/components/Skeleton.tsx`・`web/src/components/ScanStatus.tsx`・`web/src/components/Toolbar.tsx` の装飾的な動き（ホバーの遷移、骨組みの明滅、進捗帯の伸び）をすべて `motion-reduce:` 変種で無効にする（FR-023 / [R-410](./research.md)）。**無効にするのは動きだけ**で、色・不透明度の最終状態と狙いを合わせた印（`--color-focus`）は常に適用する。判定を JavaScript に持たない（`matchMedia` を読まない）
-- [ ] T043 [P] `ARCHITECTURE.md` の Web 層の記述を更新する。見た目の規則の置き場が `web/src/index.css` の `@theme` 1 か所であること、`web/src/theme/` と `web/src/preferences/` の役割、単体テストの基盤が Vitest + Testing Library（`jsdom`）で `make test-web` から走ること、`web/src/api/` が「サーバーとのやり取り」の層として保たれていること を書く。依存方向の記述は変えない
-- [ ] T044 [P] `docs/design-docs/library-ui-design-system.md` を新規作成し、`docs/design-docs/index.md` の Documents に追記する（[AGENTS.md](../../AGENTS.md) の working agreements）。内容は「なぜ見た目の規則を CSS の 1 か所に置き、対比をテストで保証するのか」「なぜ暗い配色だけを実装し、明暗の切り替えを入れないのか」「なぜ仮想スクロールを入れずに `content-visibility` に任せるのか」の 3 点で、詳細は [research.md](./research.md) の R-401・R-402・R-405・R-408 を参照する形にする（写さない）
-- [ ] T045 [P] `docs/exec-plans/tech-debt.md` の [TD-004](../../docs/exec-plans/tech-debt.md)（Web の自動テストはビルド検証のみ）を解消済みにする。解消した変更（本機能）と、名指しされていた 3 点がどのファイルのテストになったか（`web/src/api/useVideos.test.ts`・`web/src/pages/LibraryPage.search.test.tsx`・`web/src/pages/VideoPage.progress.test.tsx`）を書く。**TD-006 と TD-007 には触れない**（本機能の範囲外）
-- [ ] T046 `make check` を通す（[quickstart.md](./quickstart.md) S2）。`fmt-check` → `lint` → `test` → `generate-check` のすべてが成功すること。**`generate-check` が通ることは `api/openapi.yaml` を変えていないことの証明**である（FR-024）。`web/src/api/gen/` に差分が出ていたら、それは触ってはならないものを触っている
-- [ ] T047 [quickstart.md](./quickstart.md) S0 に従い検証用の動画 3 本（長い題名・音の無い動画・長い動画）を用意し、S3〜S6・S8 を人が実行して結果を `docs/exec-plans/active/004-library-ui.md` の進捗に記録する。SC-001（3 つの入口を 10 秒以内に指し示せる）だけは 5 人の協力が要るため、実施できない場合は**実施できなかったことを記録する**（できたことにしない）
-- [ ] T048 [quickstart.md](./quickstart.md) S7（規模と反応）を実行する。1万本で最初の画面が 2 秒以内（SC-002）、1000 件まで読み込んだ状態で反応の開始が 100ms 以内（SC-008）。**SC-008 を満たせなかった場合は仮想スクロールへ進まず、[docs/exec-plans/tech-debt.md](../../docs/exec-plans/tech-debt.md) に TD として記録する**（[plan.md](./plan.md)「Phase 2 以降へ送る判断」）
-- [ ] T049 [quickstart.md](./quickstart.md) S9 を実行する。`make check` と `go test ./...` に続き、[002 の quickstart](../002-core-video-library/quickstart.md) の **S1〜S10 をそのまま実行する**（SC-009 / FR-025）。S5 は [TD-006](../../docs/exec-plans/tech-debt.md) のとおり S0 で足した「長い動画.mp4」を対象にする。結果を `docs/exec-plans/active/004-library-ui.md` に記録する
-- [ ] T050 [quickstart.md](./quickstart.md) S10 に従い、[docs/how-to/ui-change-screenshots.md](../../docs/how-to/ui-change-screenshots.md) の手順で 4 枚（一覧 1280px 密度「標準」／一覧 360px ／再生（途中から再開）／検索して該当なし）を撮り、**新しい日付**の名前で `docs/screenshots/` に置く。既存の 4 枚（`20260913-*`）は置き換えない。PR に画像を添える（[AGENTS.md](../../AGENTS.md) の working agreements）
-- [ ] T051 `docs/exec-plans/active/004-library-ui.md` を完了にし、`docs/exec-plans/completed/004-library-ui.md` へ移す（[AGENTS.md](../../AGENTS.md)）。残った妥協は [docs/exec-plans/tech-debt.md](../../docs/exec-plans/tech-debt.md) に TD として記録する
+> **T047・T049 の範囲について**: 実行環境に `ffmpeg` と Docker が無く、S0（検証用の動画を
+> つくる）を前提にする実機の確認は**していない**。SC-001（5 人に尋ねる）・読み上げソフト
+> での確認・002 の S1〜S10 の再実行がこれに当たる。実施した範囲と結果は
+> [完了した実行計画](../../docs/exec-plans/completed/004-library-ui.md)「受け入れ検証の
+> 結果」に、未実施分は [TD-009](../../docs/exec-plans/tech-debt.md) に記録した
+> （T047 の「できたことにしない」に従う）。
+
+- [X] T042 [P] `web/src/components/VideoCard.tsx`・`web/src/components/Skeleton.tsx`・`web/src/components/ScanStatus.tsx`・`web/src/components/Toolbar.tsx` の装飾的な動き（ホバーの遷移、骨組みの明滅、進捗帯の伸び）をすべて `motion-reduce:` 変種で無効にする（FR-023 / [R-410](./research.md)）。**無効にするのは動きだけ**で、色・不透明度の最終状態と狙いを合わせた印（`--color-focus`）は常に適用する。判定を JavaScript に持たない（`matchMedia` を読まない）
+- [X] T043 [P] `ARCHITECTURE.md` の Web 層の記述を更新する。見た目の規則の置き場が `web/src/index.css` の `@theme` 1 か所であること、`web/src/theme/` と `web/src/preferences/` の役割、単体テストの基盤が Vitest + Testing Library（`jsdom`）で `make test-web` から走ること、`web/src/api/` が「サーバーとのやり取り」の層として保たれていること を書く。依存方向の記述は変えない
+- [X] T044 [P] `docs/design-docs/library-ui-design-system.md` を新規作成し、`docs/design-docs/index.md` の Documents に追記する（[AGENTS.md](../../AGENTS.md) の working agreements）。内容は「なぜ見た目の規則を CSS の 1 か所に置き、対比をテストで保証するのか」「なぜ暗い配色だけを実装し、明暗の切り替えを入れないのか」「なぜ仮想スクロールを入れずに `content-visibility` に任せるのか」の 3 点で、詳細は [research.md](./research.md) の R-401・R-402・R-405・R-408 を参照する形にする（写さない）
+- [X] T045 [P] `docs/exec-plans/tech-debt.md` の [TD-004](../../docs/exec-plans/tech-debt.md)（Web の自動テストはビルド検証のみ）を解消済みにする。解消した変更（本機能）と、名指しされていた 3 点がどのファイルのテストになったか（`web/src/api/useVideos.test.ts`・`web/src/pages/LibraryPage.search.test.tsx`・`web/src/pages/VideoPage.progress.test.tsx`）を書く。**TD-006 と TD-007 には触れない**（本機能の範囲外）
+- [X] T046 `make check` を通す（[quickstart.md](./quickstart.md) S2）。`fmt-check` → `lint` → `test` → `generate-check` のすべてが成功すること。**`generate-check` が通ることは `api/openapi.yaml` を変えていないことの証明**である（FR-024）。`web/src/api/gen/` に差分が出ていたら、それは触ってはならないものを触っている
+- [X] T047 [quickstart.md](./quickstart.md) S0 に従い検証用の動画 3 本（長い題名・音の無い動画・長い動画）を用意し、S3〜S6・S8 を人が実行して結果を `docs/exec-plans/active/004-library-ui.md` の進捗に記録する。SC-001（3 つの入口を 10 秒以内に指し示せる）だけは 5 人の協力が要るため、実施できない場合は**実施できなかったことを記録する**（できたことにしない）
+- [X] T048 [quickstart.md](./quickstart.md) S7（規模と反応）を実行する。1万本で最初の画面が 2 秒以内（SC-002）、1000 件まで読み込んだ状態で反応の開始が 100ms 以内（SC-008）。**SC-008 を満たせなかった場合は仮想スクロールへ進まず、[docs/exec-plans/tech-debt.md](../../docs/exec-plans/tech-debt.md) に TD として記録する**（[plan.md](./plan.md)「Phase 2 以降へ送る判断」）
+- [X] T049 [quickstart.md](./quickstart.md) S9 を実行する。`make check` と `go test ./...` に続き、[002 の quickstart](../002-core-video-library/quickstart.md) の **S1〜S10 をそのまま実行する**（SC-009 / FR-025）。S5 は [TD-006](../../docs/exec-plans/tech-debt.md) のとおり S0 で足した「長い動画.mp4」を対象にする。結果を `docs/exec-plans/active/004-library-ui.md` に記録する
+- [X] T050 [quickstart.md](./quickstart.md) S10 に従い、[docs/how-to/ui-change-screenshots.md](../../docs/how-to/ui-change-screenshots.md) の手順で 4 枚（一覧 1280px 密度「標準」／一覧 360px ／再生（途中から再開）／検索して該当なし）を撮り、**新しい日付**の名前で `docs/screenshots/` に置く。既存の 4 枚（`20260913-*`）は置き換えない。PR に画像を添える（[AGENTS.md](../../AGENTS.md) の working agreements）
+- [X] T051 `docs/exec-plans/active/004-library-ui.md` を完了にし、`docs/exec-plans/completed/004-library-ui.md` へ移す（[AGENTS.md](../../AGENTS.md)）。残った妥協は [docs/exec-plans/tech-debt.md](../../docs/exec-plans/tech-debt.md) に TD として記録する
 
 ---
 

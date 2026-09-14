@@ -78,6 +78,40 @@ directive cannot reference a parent directory, so the declaration that pulls
 `web/dist` into the binary lives next to the SPA and `internal/httpapi/spa.go`
 consumes it as an `fs.FS`.
 
+## Web layer
+
+The SPA under `web/src` is split by responsibility rather than by widget.
+
+`web/src/api/` is the only place that talks to the server. `client.ts` wraps
+`fetch` over the generated types in `web/src/api/gen/` (never hand-edited;
+`make generate` rewrites them from `api/openapi.yaml`), `useVideos.ts` owns
+paging and request cancellation for the library list, and `listSnapshot.ts`
+holds the in-memory snapshot that lets the list restore its position after a
+round trip to the playback screen. Pages and components do not call `fetch`
+themselves, so how the server is reached stays changeable in one place.
+
+`web/src/index.css` is the single source of truth for the visual rules. Its
+`@theme` block declares every color, radius and size as a role-named token
+(`--color-surface`, `--color-muted`, `--radius-card`, `--size-tap`, …), and
+screens use only the utility classes generated from it. Raw hex values, raw
+pixels and Tailwind's default palette names are not written under `web/src/**`.
+Only the dark palette is implemented; there is no light/dark toggle. The
+reasoning is recorded in
+[docs/design-docs/library-ui-design-system.md](docs/design-docs/library-ui-design-system.md).
+
+`web/src/theme/` contains no runtime code — it is inspection only. Its two
+tests read `index.css` as a file and assert that every documented token pair
+meets its WCAG contrast ratio, and that no `.tsx` file under `web/src`
+reintroduces a raw color. `web/src/preferences/` holds the per-device display
+settings (list density and sort order) as two total functions over
+`localStorage` that never throw, so a corrupted value degrades to the defaults
+instead of blanking the screen.
+
+Unit tests run on Vitest with Testing Library in a `jsdom` environment,
+configured in `web/vite.config.ts` and `web/vitest.setup.ts`. `make test-web`
+runs the production build check and `vitest run` together, and `make check`
+calls it, so a regression in either fails CI the same way.
+
 ## Principles
 
 - Make module boundaries explicit and mechanically enforceable where possible.
