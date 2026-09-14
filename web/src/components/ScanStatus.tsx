@@ -12,6 +12,22 @@ import {
 const pollInterval = 2000;
 
 /**
+ * SeenScan は「押す前に何が見えていたか」である。3 通りを区別する。
+ *
+ * | 値 | 意味 |
+ * | --- | --- |
+ * | `undefined` | まだ状態を取れていない（何があるか分からない） |
+ * | `null` | 取れた。取り込みは 1 つも無い |
+ * | 数値 | 取れた。その id の取り込みが最後である |
+ *
+ * `undefined` と `null` を混ぜると、最初の状態が届く前に「取り込む」を押して
+ * 失敗したとき、**もとからあった取り込みが見えただけ**で「新しい取り込みが
+ * 始まった」と誤り、失敗の文言を引っ込めてしまう。利用者には始まったように
+ * 見えるが、実際には何も始まっていない。
+ */
+type SeenScan = number | null | undefined;
+
+/**
  * ScanStatus は取り込みの状態を出し、再取り込みを促せるようにする
  * （FR-006）。
  *
@@ -53,15 +69,16 @@ export default function ScanStatus({
    */
   const [startFailure, setStartFailure] = useState<{
     message: string;
-    sinceScanId: number | undefined;
+    since: SeenScan;
   } | null>(null);
   const [starting, setStarting] = useState(false);
   // 取り込みを促したら見張り直す。押した直後に状態が動くので、次の巡回を
   // 待たずに追いかける。
   const [watch, setWatch] = useState(0);
 
-  // 直近に見えた取り込みの id。押した時点の「押す前の状態」を知るために持つ。
-  const lastSeenScanId = useRef<number | undefined>(undefined);
+  // 直近に見えた取り込み。押した時点の「押す前の状態」を知るために持つ。
+  // **「まだ見ていない」と「見たが 1 つも無い」を混ぜない**（SeenScan 参照）。
+  const lastSeen = useRef<SeenScan>(undefined);
 
   // まだ一度も状態を見ていない。**この部品が作られてから 1 度だけ真**であり、
   // 「取り込む」で見張り直しても戻らない（押したあとの観測は、呼び出し側が
@@ -73,18 +90,25 @@ export default function ScanStatus({
       const current = await getCurrentScan(signal);
       setScan(current);
       setError(null);
-      lastSeenScanId.current = current?.id;
+      lastSeen.current = current === null ? null : current.id;
 
       if (current !== null) {
-        // 実行中が見えた、または別の取り込みになった = 「始められません」は
-        // 誤りだった。進んでいるのに失敗の文言を出し続けない。
-        setStartFailure((failure) =>
-          failure === null ||
-          current.state === "running" ||
-          current.id !== failure.sinceScanId
-            ? null
-            : failure,
-        );
+        setStartFailure((failure) => {
+          if (failure === null) {
+            return null;
+          }
+          // 走っているものがある = 「始められません」は誤りだった。
+          if (current.state === "running") {
+            return null;
+          }
+          // 押した時点で何が見えていたか分からない。もとからあった取り込みか
+          // 新しく始まったものかを区別できないので、言い分はそのまま残す。
+          if (failure.since === undefined) {
+            return failure;
+          }
+          // 別の取り込みになった = やはり始まっていた。
+          return current.id !== failure.since ? null : failure;
+        });
       }
       return current;
     } catch (failure) {
@@ -140,12 +164,12 @@ export default function ScanStatus({
     setStartFailure(null);
     void (async () => {
       // 押す前に見えていた取り込み。失敗の言い分をあとで見直すのに使う。
-      const before = lastSeenScanId.current;
+      const before = lastSeen.current;
       try {
         setScan(await startScan());
         setError(null);
       } catch (failure) {
-        setStartFailure({ message: errorMessage(failure), sinceScanId: before });
+        setStartFailure({ message: errorMessage(failure), since: before });
       } finally {
         setStarting(false);
         // 成否によらず見張り直す。**要求の失敗は「始まらなかった」ことを

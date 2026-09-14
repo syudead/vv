@@ -169,6 +169,46 @@ describe("ScanStatus の「取り込む」", () => {
     expect(screen.getByText("取り込みを始められません: つながりません")).toBeDefined();
   });
 
+  it("最初の状態が届く前に押して失敗したら、既存の取り込みでは消さない", async () => {
+    const onFinished = vi.fn();
+    // 最初の状態取得が返ってこないうちに押す。
+    getCurrentScan.mockReturnValueOnce(new Promise<Scan>(() => undefined));
+    getCurrentScan.mockResolvedValue(scan("done", 2, 10));
+    startScan.mockRejectedValue(new Error("つながりません"));
+
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    render(<ScanStatus onFinished={onFinished} />);
+    await settle();
+
+    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await settle();
+
+    // 押した時点で何が見えていたか分からないのだから、もとからあった
+    // 取り込み（id 10）が見えただけでは「始まった」と言えない。ここで
+    // 消すと、何も始まっていないのに始まったように見える。
+    expect(screen.getByText("取り込みを始められません: つながりません")).toBeDefined();
+  });
+
+  it("取り込みが 1 つも無いところに現れたら、始まっていたと分かる", async () => {
+    const onFinished = vi.fn();
+    // 取れているが、取り込みは 1 つも無い。
+    getCurrentScan.mockResolvedValue(null);
+    startScan.mockRejectedValue(new Error("つながりません"));
+
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    render(<ScanStatus onFinished={onFinished} />);
+    await settle();
+    expect(screen.getByText("まだ取り込んでいません")).toBeDefined();
+
+    // 応答は失われたが、実際には始まって終わっていた。
+    getCurrentScan.mockResolvedValue(scan("done", 3, 1));
+    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await settle();
+
+    // 「1 つも無い」と分かっていたのだから、現れた時点で新しい。
+    expect(screen.queryByText(/取り込みを始められません/)).toBeNull();
+  });
+
   it("応答が失われても見張り直すので、始まっていれば気付ける", async () => {
     const onFinished = vi.fn();
     getCurrentScan.mockResolvedValue(scan("done", 2, 10));
