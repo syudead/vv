@@ -87,7 +87,7 @@ before=$(printf '%s\n' "$guard" | jq -c '.state')
 
 | reason | 振る舞い |
 | --- | --- |
-| `open-pr` | 同じ feature branch 向けの段階 PR があるので終了 |
+| `open-pr` | `open_prs` の対象 PR に未解決レビュー指摘があるか確認する。あれば手順 1.5 へ進み、無ければ終了 |
 | `nothing-to-do` | `main` 上なら終了。feature branch 上なら手順 5 の最終 PR へ進む |
 | `gh-unavailable` | 理由を表示し、変更を残さず終了 |
 | `phase-retry-limit` / `hop-limit` | 同名の open Issue が無ければ停止通知を作る |
@@ -98,7 +98,8 @@ before=$(printf '%s\n' "$guard" | jq -c '.state')
 ## 1.5 レビュー対応
 
 open な `sdd` PR に未解決のレビュー指摘がある場合は、通常の段階実行より先にレビュー対応だけを
-行う。対象は `state.base_branch` 向けの段階 PR、または `main` 向けの最終 PR のうち、
+行う。`guard.reason == "open-pr"` のときも即終了せず、`guard.open_prs` の head に対応する
+PR をここで確認する。対象は `state.base_branch` 向けの段階 PR、または `main` 向けの最終 PR のうち、
 組み込み GitHub ツールで取得した review thread が未解決、または最新 commit 後に
 `REQUEST_CHANGES` / 修正依頼コメントが付いたものに限る。
 

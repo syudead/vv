@@ -190,7 +190,8 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
                    （PR も Issue も作らない。再開は日次トリガーか次のマージに任せる）
 1.   判定          before = sdd-state.sh → sdd-guard.sh。before は guard.state に置き換える。
                    go:false なら
-                   stage が done/none 以外のとき Issue を立てて終了
+                   open-pr はレビュー対応へ渡す。stage が done/none 以外の上限停止なら
+                   Issue を立てて終了
 1.5  レビュー対応  open な sdd PR に未解決レビュー指摘があれば、その head に修正 commit を
                    push し、返信・resolve して終了
      --dry-run     ここまでで「何をするつもりか」を表示して終了
