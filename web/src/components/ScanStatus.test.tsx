@@ -133,6 +133,42 @@ describe("ScanStatus の「取り込む」", () => {
     expect(screen.getByText("取り込みを始められません: つながりません")).toBeDefined();
   });
 
+  it("実は始まっていたら、失敗の文言を引っ込めて進捗を出す", async () => {
+    const onFinished = vi.fn();
+    getCurrentScan.mockResolvedValue(scan("done", 2, 10));
+    // サーバーは取り込みを始めたが、202 が返る前に接続が切れた。
+    startScan.mockRejectedValue(new Error("つながりません"));
+
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    render(<ScanStatus onFinished={onFinished} />);
+    await settle();
+
+    getCurrentScan.mockResolvedValue(scan("running", 1, 11));
+    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await settle();
+
+    // 進んでいるのに「始められません」と出し続けると、利用者は失敗したと
+    // 思って押し直す。要求の失敗は「始まらなかった」ことを保証しない。
+    expect(screen.queryByText(/取り込みを始められません/)).toBeNull();
+    expect(screen.getByText("取り込み中 1 / 3 件")).toBeDefined();
+  });
+
+  it("同じ取り込みのままなら、失敗の文言は残る", async () => {
+    const onFinished = vi.fn();
+    getCurrentScan.mockResolvedValue(scan("done", 2, 10));
+    startScan.mockRejectedValue(new Error("つながりません"));
+
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    render(<ScanStatus onFinished={onFinished} />);
+    await settle();
+
+    // 巡回は成功するが、見えるのは押す前と同じ取り込みである。
+    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await settle();
+
+    expect(screen.getByText("取り込みを始められません: つながりません")).toBeDefined();
+  });
+
   it("応答が失われても見張り直すので、始まっていれば気付ける", async () => {
     const onFinished = vi.fn();
     getCurrentScan.mockResolvedValue(scan("done", 2, 10));

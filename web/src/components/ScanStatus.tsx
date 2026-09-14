@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   errorMessage,
@@ -33,20 +33,47 @@ export default function ScanStatus({
 }) {
   const [scan, setScan] = useState<Scan | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // 「始められなかった」は状態の取得に失敗したのとは別の失敗である。
-  // 同じ入れ物に入れると、押した直後の巡回が成功しただけで消えてしまい、
-  // 押した利用者には始まったように見える。
-  const [startError, setStartError] = useState<string | null>(null);
+  /**
+   * startFailure は「押したのに始められなかった」ことである。
+   *
+   * 状態の取得の失敗とは別に持つ。同じ入れ物に入れると、押した直後の巡回が
+   * 成功しただけで消えてしまい、押した利用者には始まったように見える。
+   *
+   * `sinceScanId` は失敗した時点で見えていた取り込みの id である。**要求の
+   * 失敗は「始まらなかった」ことを保証しない**ので、そのあとに実行中が見えたり
+   * 別の取り込みが見えたりしたら、この言い分のほうが誤りだったことになる。
+   * 消す判断にこの id が要る。
+   */
+  const [startFailure, setStartFailure] = useState<{
+    message: string;
+    sinceScanId: number | undefined;
+  } | null>(null);
   const [starting, setStarting] = useState(false);
   // 取り込みを促したら見張り直す。押した直後に状態が動くので、次の巡回を
   // 待たずに追いかける。
   const [watch, setWatch] = useState(0);
+
+  // 直近に見えた取り込みの id。押した時点の「押す前の状態」を知るために持つ。
+  const lastSeenScanId = useRef<number | undefined>(undefined);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
       const current = await getCurrentScan(signal);
       setScan(current);
       setError(null);
+      lastSeenScanId.current = current?.id;
+
+      if (current !== null) {
+        // 実行中が見えた、または別の取り込みになった = 「始められません」は
+        // 誤りだった。進んでいるのに失敗の文言を出し続けない。
+        setStartFailure((failure) =>
+          failure === null ||
+          current.state === "running" ||
+          current.id !== failure.sinceScanId
+            ? null
+            : failure,
+        );
+      }
       return current;
     } catch (failure) {
       if (!isAborted(failure)) {
@@ -93,13 +120,15 @@ export default function ScanStatus({
 
   const onStart = useCallback(() => {
     setStarting(true);
-    setStartError(null);
+    setStartFailure(null);
     void (async () => {
+      // 押す前に見えていた取り込み。失敗の言い分をあとで見直すのに使う。
+      const before = lastSeenScanId.current;
       try {
         setScan(await startScan());
         setError(null);
       } catch (failure) {
-        setStartError(errorMessage(failure));
+        setStartFailure({ message: errorMessage(failure), sinceScanId: before });
       } finally {
         setStarting(false);
         // 成否によらず見張り直す。**要求の失敗は「始まらなかった」ことを
@@ -116,8 +145,10 @@ export default function ScanStatus({
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
       {/* 状態は 1 行の文言で示す。進行中は describe が「済んだ数 / 総数」を
           返す（contracts/screen-states.md 1.「固定の帯」）。 */}
-      <span className={error !== null || startError !== null ? "text-danger" : undefined}>
-        {describe(scan, error, startError)}
+      <span
+        className={error !== null || startFailure !== null ? "text-danger" : undefined}
+      >
+        {describe(scan, error, startFailure?.message ?? null)}
       </span>
 
       <button
