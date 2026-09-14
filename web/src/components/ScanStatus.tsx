@@ -38,6 +38,10 @@ let watching = false;
 export default function ScanStatus({ onFinished }: { onFinished?: () => void }) {
   const [scan, setScan] = useState<Scan | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // 「始められなかった」は状態の取得に失敗したのとは別の失敗である。
+  // 同じ入れ物に入れると、押した直後の巡回が成功しただけで消えてしまい、
+  // 押した利用者には始まったように見える。
+  const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   // 取り込みを促したら見張り直す。押した直後に状態が動くので、次の巡回を
   // 待たずに追いかける。
@@ -100,6 +104,7 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
 
   const onStart = useCallback(() => {
     setStarting(true);
+    setStartError(null);
     void (async () => {
       try {
         // 利用者が促した取り込みは、最初の巡回で既に終わっていても
@@ -108,16 +113,21 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
         // 印を立てるのは**始まったあと**である。始める前に立てると、要求が
         // 失敗したときに印だけが残り、次にこの部品が作られたときへ持ち越して
         // しまう ── 前回の done を「いま終わった」と誤り、控えを捨てる。
-        // 見張り直すのは下の setWatch からなので、ここで立てれば間に合う。
+        // 見張り直すのは下の finally からなので、ここで立てれば間に合う。
         const started = await startScan();
         watching = true;
         setScan(started);
         setError(null);
-        setWatch((value) => value + 1);
       } catch (failure) {
-        setError(errorMessage(failure));
+        setStartError(errorMessage(failure));
       } finally {
         setStarting(false);
+        // 成否によらず見張り直す。**要求の失敗は「始まらなかった」ことを
+        // 保証しない** ── サーバーが取り込みを始めたあとで応答だけが失われる
+        // ことがある。巡回して実行中を見つければ、上の tick がそこから印を
+        // 立てて終わりまで見届ける。始まっていなければ前回の done が返る
+        // だけで、印は立たない。
+        setWatch((value) => value + 1);
       }
     })();
   }, []);
@@ -126,8 +136,8 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
       {/* 状態は 1 行の文言で示す。進行中は describe が「済んだ数 / 総数」を
           返す（contracts/screen-states.md 1.「固定の帯」）。 */}
-      <span className={error !== null ? "text-danger" : undefined}>
-        {describe(scan, error)}
+      <span className={error !== null || startError !== null ? "text-danger" : undefined}>
+        {describe(scan, error, startError)}
       </span>
 
       <button
@@ -150,7 +160,16 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
  * ない（総数は一覧側が出す）。変化が無ければ 0 になるので、「N 件」とだけ
  * 書くと蔵書が 0 本になったように読める。何の数かが分かる文言にする。
  */
-function describe(scan: Scan | null, error: string | null): string {
+function describe(
+  scan: Scan | null,
+  error: string | null,
+  startError: string | null,
+): string {
+  // 押した操作が失敗したことを先に伝える。利用者にとっては、いま押した
+  // ものがどうなったかのほうが、巡回の成否より知りたいことである。
+  if (startError !== null) {
+    return `取り込みを始められません: ${startError}`;
+  }
   if (error !== null) {
     return `取り込みの状態を取得できません: ${error}`;
   }

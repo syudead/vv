@@ -14,7 +14,7 @@ import type { Scan } from "../api/client";
  * 知らせそこなう。
  *
  * 「終わりを見届ける対象がある」という印は部品より長く生きる（モジュール変数）。
- * したがって**この 5 つは書いてある順に走る前提**である。どの検査も印を立てたら
+ * したがって**この 6 つは書いてある順に走る前提**である。どの検査も印を立てたら
  * 同じ検査の中で使い切るので、順に走るかぎり持ち越さない。
  */
 
@@ -146,9 +146,10 @@ describe("ScanStatus の onFinished", () => {
 
     await user.click(screen.getByRole("button", { name: "取り込む" }));
     await settle();
-    expect(
-      screen.getByText(/取り込みの状態を取得できません|つながりません/),
-    ).toBeDefined();
+
+    // 押した操作が失敗したことは、直後の巡回が成功しても消えない。消えると、
+    // 押した利用者には始まったように見える。
+    expect(screen.getByText("取り込みを始められません: つながりません")).toBeDefined();
 
     // 始まっていないのだから、見届ける相手もいない。ここで印が残ると、
     // 次にこの部品が作られたときに前回の done を「いま終わった」と誤り、
@@ -158,5 +159,33 @@ describe("ScanStatus の onFinished", () => {
     await settle();
 
     expect(onFinished.mock.calls).toHaveLength(0);
+  });
+
+  it("応答だけが失われても、巡回で実行中を見つけて終わりを知らせる", async () => {
+    const onFinished = vi.fn();
+    getCurrentScan.mockResolvedValue(scan("done", 2));
+    // サーバーは取り込みを始めたが、202 が返る前に接続が切れた。
+    startScan.mockRejectedValue(new Error("つながりません"));
+
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    render(<ScanStatus onFinished={onFinished} />);
+    await settle();
+
+    // 押したあとの巡回では、始まっている取り込みが見える。
+    getCurrentScan.mockResolvedValue(scan("running", 1));
+    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await settle();
+    expect(onFinished.mock.calls).toHaveLength(0);
+
+    getCurrentScan.mockResolvedValue(scan("done", 5));
+    await act(async () => {
+      vi.advanceTimersByTime(pollInterval);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    // 要求の失敗は「始まらなかった」ことを保証しない。見張り直さないと、
+    // 終わった取り込みが一覧に反映されないままになる。
+    expect(onFinished.mock.calls).toHaveLength(1);
   });
 });
