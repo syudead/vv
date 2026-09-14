@@ -104,8 +104,14 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
       try {
         // 利用者が促した取り込みは、最初の巡回で既に終わっていても
         // 終わりを知らせる（小さなライブラリでは巡回より先に終わる）。
+        //
+        // 印を立てるのは**始まったあと**である。始める前に立てると、要求が
+        // 失敗したときに印だけが残り、次にこの部品が作られたときへ持ち越して
+        // しまう ── 前回の done を「いま終わった」と誤り、控えを捨てる。
+        // 見張り直すのは下の setWatch からなので、ここで立てれば間に合う。
+        const started = await startScan();
         watching = true;
-        setScan(await startScan());
+        setScan(started);
         setError(null);
         setWatch((value) => value + 1);
       } catch (failure) {

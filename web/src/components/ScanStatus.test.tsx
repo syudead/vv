@@ -14,7 +14,7 @@ import type { Scan } from "../api/client";
  * 知らせそこなう。
  *
  * 「終わりを見届ける対象がある」という印は部品より長く生きる（モジュール変数）。
- * したがって**この 4 つは書いてある順に走る前提**である。どの検査も印を立てたら
+ * したがって**この 5 つは書いてある順に走る前提**である。どの検査も印を立てたら
  * 同じ検査の中で使い切るので、順に走るかぎり持ち越さない。
  */
 
@@ -132,5 +132,31 @@ describe("ScanStatus の onFinished", () => {
 
     // 小さなライブラリでは、押した直後の巡回で既に done になっている。
     expect(onFinished.mock.calls).toHaveLength(1);
+  });
+
+  // 印を持ち越さないことを確かめる検査なので、最後に置く。
+  it("取り込みを始められなかったら印を残さない", async () => {
+    const onFinished = vi.fn();
+    getCurrentScan.mockResolvedValue(scan("done", 2));
+    startScan.mockRejectedValue(new Error("つながりません"));
+
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    render(<ScanStatus onFinished={onFinished} />);
+    await settle();
+
+    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await settle();
+    expect(
+      screen.getByText(/取り込みの状態を取得できません|つながりません/),
+    ).toBeDefined();
+
+    // 始まっていないのだから、見届ける相手もいない。ここで印が残ると、
+    // 次にこの部品が作られたときに前回の done を「いま終わった」と誤り、
+    // 一覧の控えを捨ててしまう。
+    cleanup();
+    render(<ScanStatus onFinished={onFinished} />);
+    await settle();
+
+    expect(onFinished.mock.calls).toHaveLength(0);
   });
 });
