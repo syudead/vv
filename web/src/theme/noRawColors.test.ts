@@ -109,18 +109,6 @@ function format(violation: Violation): string {
   );
 }
 
-/**
- * pendingRewrite は **まだ書き換えていない**画面である。
- *
- * この検査は Foundational（Phase 2）に置く一方、画面からトークンへの移行は
- * US1・US2（Phase 3・4）で行う。その間この一覧が猶予を持つ。
- *
- * 猶予は片道である: 一覧に載せたファイルは「いま違反していること」も検査して
- * いるので、書き換えが済むとテストが落ちて一覧から消すよう促す。放置された
- * 猶予が残らない。**一覧が空になったらこの仕組みごと消してよい。**
- */
-const pendingRewrite = new Map<string, string>([["pages/VideoPage.tsx", "T024〜T026"]]);
-
 /** entries は走査対象を web/src からの相対パスで返す。 */
 function entries(): { file: string; source: string }[] {
   return Object.entries(sources)
@@ -136,30 +124,12 @@ describe("生の色を画面に書かない（FR-001）", () => {
     expect(targets.length).toBeGreaterThan(0);
   });
 
+  // 猶予（pendingRewrite）はもう無い。US2（T024〜T026）で VideoPage が
+  // トークンへ移り、走査対象のすべてが素通りするようになった。
   for (const { file, source } of targets) {
-    if (pendingRewrite.has(file)) {
-      continue;
-    }
-
     it(`${file} に生の色が無い`, () => {
       const violations = scan(file, source);
       expect(violations.map(format), violations.map(format).join("\n")).toEqual([]);
-    });
-  }
-
-  for (const [file, task] of pendingRewrite) {
-    it(`${file} は ${task} で書き換える（猶予の一覧が古くなっていない）`, () => {
-      const source = sources[`../${file}`];
-      expect(source, `${file} が無い。猶予の一覧から消すこと`).toBeDefined();
-      if (source === undefined) {
-        return;
-      }
-
-      expect(
-        scan(file, source).length,
-        `${file} には生の色が無い。${task} が済んだので、` +
-          `noRawColors.test.ts の pendingRewrite から消すこと`,
-      ).toBeGreaterThan(0);
     });
   }
 });

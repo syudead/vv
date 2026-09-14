@@ -1,7 +1,19 @@
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { useSearchParams } from "react-router";
 
-import { MAX_QUERY_LENGTH, type VideoSort } from "../api/client";
+import { MAX_QUERY_LENGTH, type Scan, type VideoSort } from "../api/client";
+import {
+  clearListSnapshot,
+  saveListSnapshot,
+  takeListSnapshot,
+} from "../api/listSnapshot";
 import { useVideos } from "../api/useVideos";
 import ScanStatus from "../components/ScanStatus";
 import Skeleton from "../components/Skeleton";
@@ -147,8 +159,63 @@ export default function LibraryPage() {
     setQuery("");
   }, [setQuery]);
 
-  const { items, total, hasMore, loading, loadingMore, error, loadMore, reload } =
-    useVideos(sort, query);
+  // 復元は一覧を**開く瞬間**に 1 回だけ読む（data-model.md 2.）。描画のたびに
+  // 読むと、自分が離れ際に書いた控えを拾い直してしまう。鍵が違えば
+  // undefined が返り、そのまま 1 ページ目から読む — 復元できないことは
+  // 異常ではない。
+  const [restored] = useState(() => takeListSnapshot({ query, sort }));
+
+  const { items, total, cursor, hasMore, loading, loadingMore, error, loadMore, reload } =
+    useVideos(sort, query, restored);
+
+  // 戻したいスクロール位置。項目を描いたあとに 1 回だけ使う。
+  const pendingScroll = useRef(restored?.scrollY);
+
+  // ブラウザ自身の復元を止める（R-403）。無限スクロールでは復元の時点で
+  // 文書にまだ中身が無く、ブラウザの自動復元は空の文書に対して働いて失敗する。
+  useEffect(() => {
+    const previous = history.scrollRestoration;
+    history.scrollRestoration = "manual";
+    return () => {
+      history.scrollRestoration = previous;
+    };
+  }, []);
+
+  // 位置を戻すのは**項目を描いたあと**でなければならない。中身が無いうちに
+  // scrollTo を呼んでも、文書の高さが足りず途中で止まる（data-model.md 2.）。
+  // 描いた同じフレームのうちに戻すので useLayoutEffect を使う。
+  useLayoutEffect(() => {
+    const top = pendingScroll.current;
+    if (top === undefined || items.length === 0) {
+      return;
+    }
+    pendingScroll.current = undefined;
+    window.scrollTo({ top, behavior: "auto" });
+  }, [items.length]);
+
+  // listUrl はいま見ている一覧の URL である。項目のリンクに持たせて、
+  // 再生画面の「一覧へ戻る」がこの一覧へ帰れるようにする（FR-016）。
+  // `/` へ戻すだけでは、検索語と並び順が消えて控えの鍵とも一致しない。
+  const search = searchParams.toString();
+  const listUrl = search === "" ? "/" : `/?${search}`;
+
+  // 一覧を離れる瞬間（項目のリンクを踏んだとき）に控えを書く。Enter でも
+  // click は起きるので、キーボードだけで往復しても復元は効く（SC-005）。
+  const saveSnapshot = useCallback(() => {
+    saveListSnapshot(
+      { query, sort },
+      {
+        items,
+        total,
+        cursor,
+        hasMore,
+        scrollY: window.scrollY,
+        // どの取り込みまでを映した一覧なのかを添える。戻ってきたときに
+        // これと違う取り込みが終わっていれば、控えは使わずに読み直す。
+        scanId: knownScanId.current,
+      },
+    );
+  }, [cursor, hasMore, items, query, sort, total]);
 
   const sentinel = useRef<HTMLDivElement | null>(null);
 
@@ -174,7 +241,41 @@ export default function LibraryPage() {
     return () => observer.disconnect();
   }, [hasMore, loadMore]);
 
-  const onScanFinished = useCallback(() => reload(), [reload]);
+  // knownScanId は「この一覧に反映済みの取り込み」の id である。
+  //
+  // ScanStatus は終わっている取り込みを観測するたびに知らせてくる。実行中が
+  // 無ければ最後に終わったものが返る仕様なので、そのほとんどは「前回の残り」
+  // である。新しいかどうかを決められるのは、いまの一覧が**どの取り込みまでを
+  // 映しているか**を知っているこちら側だけである。
+  const knownScanId = useRef(restored?.scanId);
+
+  // 取り込みが終わったら控えを捨ててから読み直す。取り込む前の一覧に
+  // 戻してはならない（data-model.md 2.）。
+  const onScanFinished = useCallback(
+    (scan: Scan, firstSight: boolean) => {
+      const known = knownScanId.current;
+      knownScanId.current = scan.id;
+
+      if (known === scan.id) {
+        // 前回の残り。控えも一覧もそのままでよい。
+        return;
+      }
+      if (known === undefined && firstSight) {
+        // 一覧を読んだ時点で既に終わっていた取り込みである。その結果は
+        // すでに映っているので読み直さない（毎回二重に取得することになる）。
+        //
+        // **firstSight が要る。** 「初めて観測した」だけを根拠にすると、
+        // 空のライブラリで最初の取り込みを走らせた場合や、開いた時点で
+        // 取り込みが実行中だった場合まで「反映済み」に倒れてしまい、
+        // 取り込んだ動画がいつまでも出てこない。
+        return;
+      }
+
+      clearListSnapshot();
+      reload();
+    },
+    [reload],
+  );
 
   // 空の言い分けは 2 通りある（FR-009）。「0 本」とだけ出すと、置き場所が
   // 違うのか検索語が悪いのかを利用者から区別できない。
@@ -262,7 +363,9 @@ export default function LibraryPage() {
             ))}
           </div>
         ) : (
-          <ul className="grid" style={gridStyle}>
+          // 控えを書くのは離れる瞬間だけである。個々の項目に配るより、
+          // 一覧そのもので受けたほうが、項目の描画（数百件）に手が入らない。
+          <ul className="grid" style={gridStyle} onClick={saveSnapshot}>
             {items.map((video) => (
               <li
                 key={video.id}
@@ -277,7 +380,7 @@ export default function LibraryPage() {
                 // 輪郭が端で切れる（contracts/screen-states.md 3.「印の視認」）。
                 className="p-1 [content-visibility:auto] [contain-intrinsic-size:auto_14rem]"
               >
-                <VideoCard video={video} />
+                <VideoCard video={video} backTo={listUrl} />
               </li>
             ))}
           </ul>
