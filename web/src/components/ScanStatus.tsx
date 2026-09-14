@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   errorMessage,
@@ -10,6 +10,23 @@ import {
 
 /** pollInterval は取り込み中に状態を見に行く間隔である。 */
 const pollInterval = 2000;
+
+/**
+ * watching は「終わりを見届ける取り込みがある」ことを表す。
+ *
+ * `GET /api/scans/current` は実行中のものが無ければ**最後に終わったもの**を
+ * 返す。最初の巡回で done が返るのはふつうの状態であって「いま終わった」の
+ * ではないので、これを知らせると一覧を開くたびに読み直しが走り、一覧の復元
+ * （FR-016）が毎回捨てられる。実行中を見たとき、または利用者が取り込みを
+ * 促したときにだけ、終わりを知らせる対象にする。
+ *
+ * **この印は部品より長く生きる。** 一覧で実行中を見たあと再生画面へ移ると
+ * ScanStatus は捨てられるので、部品の中に持つと「見ていない間に終わった
+ * 取り込み」を知らせそこなう ── 戻ってきた一覧が控えのまま古い件数を出し
+ * 続ける。タブを読み込み直せば消える寿命でよく、それは控え
+ * （api/listSnapshot.ts）と同じ寿命である。
+ */
+let watching = false;
 
 /**
  * ScanStatus は取り込みの状態を出し、再取り込みを促せるようにする
@@ -25,15 +42,6 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
   // 取り込みを促したら見張り直す。押した直後に状態が動くので、次の巡回を
   // 待たずに追いかける。
   const [watch, setWatch] = useState(0);
-
-  // watching は「終わりを見届ける対象の取り込みがある」ことを表す。
-  //
-  // `GET /api/scans/current` は実行中のものが無ければ**最後に終わったもの**を
-  // 返す。最初の巡回で done が返るのはふつうの状態であって「いま終わった」の
-  // ではないので、これを知らせると一覧を開くたびに読み直しが走る（そして
-  // 一覧の復元が毎回捨てられる）。実行中を見たとき、または利用者が取り込みを
-  // 促したときにだけ、終わりを知らせる対象にする。
-  const watching = useRef(false);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -65,16 +73,17 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
         return;
       }
       if (current.state === "running") {
-        watching.current = true;
+        watching = true;
         timer = setTimeout(() => void tick(), pollInterval);
         return;
       }
-      if (!watching.current) {
+      if (!watching) {
         // 前回の取り込みが done のまま残っているだけである。
         return;
       }
-      // 走り終わった直後は、一覧に新しい動画が並んでいる。
-      watching.current = false;
+      // 走り終わった直後は、一覧に新しい動画が並んでいる。見ていない間に
+      // 終わっていた場合もここへ来る（印が部品より長く生きるため）。
+      watching = false;
       onFinished?.();
     };
 
@@ -95,7 +104,7 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
       try {
         // 利用者が促した取り込みは、最初の巡回で既に終わっていても
         // 終わりを知らせる（小さなライブラリでは巡回より先に終わる）。
-        watching.current = true;
+        watching = true;
         setScan(await startScan());
         setError(null);
         setWatch((value) => value + 1);

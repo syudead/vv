@@ -130,7 +130,10 @@ export function useVideos(
       restored.query === query &&
       restored.generation === generation
     ) {
-      return;
+      // 取りに行かなくても打ち切りは要る。復元した一覧で続きを読んでいる
+      // 途中に画面を離れると、この経路が後片付けを残さないかぎり要求が
+      // 最後まで走ってしまう。
+      return () => inFlight.current?.abort();
     }
     seeded.current = null;
 

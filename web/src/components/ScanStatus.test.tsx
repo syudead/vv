@@ -1,4 +1,4 @@
-import { act, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -10,7 +10,12 @@ import type { Scan } from "../api/client";
  * `GET /api/scans/current` は実行中のものが無ければ**最後に終わったもの**を返す。
  * 最初の巡回で done が返るのはふつうの状態であって「いま終わった」のではない。
  * ここを取り違えると一覧を開くたびに読み直しが走り、一覧の復元（FR-016）が
- * 毎回捨てられる。
+ * 毎回捨てられる。逆に部品の中だけで覚えると、見ていない間に終わった取り込みを
+ * 知らせそこなう。
+ *
+ * 「終わりを見届ける対象がある」という印は部品より長く生きる（モジュール変数）。
+ * したがって**この 4 つは書いてある順に走る前提**である。どの検査も印を立てたら
+ * 同じ検査の中で使い切るので、順に走るかぎり持ち越さない。
  */
 
 const { getCurrentScan, startScan } = vi.hoisted(() => ({
@@ -86,6 +91,28 @@ describe("ScanStatus の onFinished", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+
+    expect(onFinished.mock.calls).toHaveLength(1);
+  });
+
+  it("見ていない間に終わった取り込みも、戻ってきたときに知らせる", async () => {
+    const onFinished = vi.fn();
+    getCurrentScan.mockResolvedValue(scan("running", 1));
+
+    // 一覧で実行中を見る。
+    render(<ScanStatus onFinished={onFinished} />);
+    await settle();
+    expect(onFinished.mock.calls).toHaveLength(0);
+
+    // 再生画面へ移る（ScanStatus は捨てられる）。その間に取り込みが終わる。
+    cleanup();
+    getCurrentScan.mockResolvedValue(scan("done", 4));
+
+    // 一覧へ戻る。新しい ScanStatus は完了済みしか見られないが、見届ける
+    // 相手がいたことは覚えている。ここで知らせないと、控えから戻した一覧が
+    // 増えた動画を出さないままになる。
+    render(<ScanStatus onFinished={onFinished} />);
+    await settle();
 
     expect(onFinished.mock.calls).toHaveLength(1);
   });
