@@ -12,11 +12,17 @@ import type { Ref, ReactNode } from "react";
  * contracts/screen-states.md 3. の到達順がそのまま DOM の順である — 順番を
  * 呼び出し側の並べ方に任せると、画面ごとに到達順が変わってしまう。
  *
- * 帯の中の操作できる要素すべてに、狙いを合わせている印（FR-003）をここで
- * 与える。輪郭は要素の**外側**に描く（outline-offset）ので、隣の操作に
- * 隠れない。:focus-visible を使うのは、ポインタで押しただけでは印を出さない
- * ためである。個々の呼び出し側に書かせると、足した操作が印を持たないまま
- * 帯に入りうる。
+ * 帯の中の操作できる要素すべてに、狙いを合わせている印（FR-003）と指で押せる
+ * 大きさ（`--size-tap` = 44px 四方。FR-022）をここで与える。輪郭は要素の
+ * **外側**に描く（outline-offset）ので、隣の操作に隠れない。:focus-visible を
+ * 使うのは、ポインタで押しただけでは印を出さないためである。個々の呼び出し側に
+ * 書かせると、足した操作が印も当たり判定も持たないまま帯に入りうる。
+ *
+ * 中身は狭い画面で**2 行以上に折り返す**（重ねない。R-404）。行が増えた分だけ
+ * 帯が高くなるので、下の内容を位置合わせする側は ref から実測の高さを取る。
+ * 折り返しを使うのは、幅 360px から 2560px までのどの幅でも 4 つが重ならない
+ * ことを、画面幅の場合分けを持たずに満たせるからである
+ * （contracts/screen-states.md 3.「指」）。
  */
 export default function Toolbar({
   search,
@@ -47,6 +53,8 @@ export default function Toolbar({
       ref={ref}
       className={
         "sticky top-0 z-20 border-b border-border bg-surface " +
+        "[&_:is(input,select,button)]:min-h-[var(--size-tap)] " +
+        "[&_:is(input,select,button)]:min-w-[var(--size-tap)] " +
         "[&_:is(input,select,button)]:outline-offset-2 " +
         "[&_:is(input,select,button)]:focus-visible:outline-2 " +
         "[&_:is(input,select,button)]:focus-visible:outline-focus"

@@ -155,10 +155,10 @@ S3 の 1〜5 を確かめる。密度の選択（US3）と復元（US2）が無�
 
 **Independent Test**: [quickstart.md](./quickstart.md) S4（幅 360px・768px・1280px・2560px）。
 
-- [ ] T038 [US4] `web/src/components/Toolbar.tsx` を狭い画面で**2 行に折り返す**形にする（重ねない。行が増えた分だけ帯が高くなる。[R-404](./research.md)）。帯の中の 4 つ（探す・並べ替える・密度・取り込む）が幅 360px・768px・1280px・2560px のいずれでも重ならないこと。検索欄は残りの幅へ伸び、固定幅（現在の `w-48`）をやめる
-- [ ] T039 [US4] `web/src/components/Toolbar.tsx`・`web/src/components/DensitySelect.tsx`・`web/src/components/ScanStatus.tsx`・`web/src/pages/VideoPage.tsx` の押せる要素すべてに `--size-tap`（44px）四方以上の当たり判定を与える（FR-022 / [contracts/screen-states.md](./contracts/screen-states.md) 3. 指）。一覧の項目そのものは 44px より大きいので対象外である
-- [ ] T040 [US4] `web/src/pages/LibraryPage.tsx` の格子に `min(var(--tile-min), (100% - var(--tile-gap)) / 2)` の下限が効いていることを確かめ、**幅 360px でも 1 列にならない**こと・横方向のスクロールが出ないことを満たす（[contracts/design-tokens.md](./contracts/design-tokens.md) 3.）。狭い画面では 3 つの密度の見た目が同じになるが、これは意図した動作である（「狭い画面で 1 列まで大きくする」ことに利用者の利益が無い）。一覧の左右の余白を `--tile-gap` と同じ `1rem` にそろえる（[contracts/design-tokens.md](./contracts/design-tokens.md) 3. の列数の目安がこの前提で計算されている）
-- [ ] T041 [US4] `web/src/pages/VideoPage.tsx` を狭い画面で成立させる。映像は画面幅に収まり比率を保つ（`w-full` + `aspect-video` ではなく、映像自身の比率を保ったまま `max-w-full` にする）。情報欄は狭いときに縦 1 列へ落ちる（現在の `grid-cols-[auto_1fr]` を折り返す形にする）。横方向のスクロールを発生させない（FR-022 / SC-004）
+- [X] T038 [US4] `web/src/components/Toolbar.tsx` を狭い画面で**2 行に折り返す**形にする（重ねない。行が増えた分だけ帯が高くなる。[R-404](./research.md)）。帯の中の 4 つ（探す・並べ替える・密度・取り込む）が幅 360px・768px・1280px・2560px のいずれでも重ならないこと。検索欄は残りの幅へ伸び、固定幅（現在の `w-48`）をやめる
+- [X] T039 [US4] `web/src/components/Toolbar.tsx`・`web/src/components/DensitySelect.tsx`・`web/src/components/ScanStatus.tsx`・`web/src/pages/VideoPage.tsx` の押せる要素すべてに `--size-tap`（44px）四方以上の当たり判定を与える（FR-022 / [contracts/screen-states.md](./contracts/screen-states.md) 3. 指）。一覧の項目そのものは 44px より大きいので対象外である
+- [X] T040 [US4] `web/src/pages/LibraryPage.tsx` の格子に `min(var(--tile-min), (100% - var(--tile-gap)) / 2)` の下限が効いていることを確かめ、**幅 360px でも 1 列にならない**こと・横方向のスクロールが出ないことを満たす（[contracts/design-tokens.md](./contracts/design-tokens.md) 3.）。狭い画面では 3 つの密度の見た目が同じになるが、これは意図した動作である（「狭い画面で 1 列まで大きくする」ことに利用者の利益が無い）。一覧の左右の余白を `--tile-gap` と同じ `1rem` にそろえる（[contracts/design-tokens.md](./contracts/design-tokens.md) 3. の列数の目安がこの前提で計算されている）
+- [X] T041 [US4] `web/src/pages/VideoPage.tsx` を狭い画面で成立させる。映像は画面幅に収まり比率を保つ（`w-full` + `aspect-video` ではなく、映像自身の比率を保ったまま `max-w-full` にする）。情報欄は狭いときに縦 1 列へ落ちる（現在の `grid-cols-[auto_1fr]` を折り返す形にする）。横方向のスクロールを発生させない（FR-022 / SC-004）
 
 **Checkpoint**: 4 つの幅で横スクロールが無く、操作要素が重ならない
 

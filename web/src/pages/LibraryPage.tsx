@@ -392,7 +392,13 @@ export default function LibraryPage() {
       <Toolbar
         ref={bar}
         search={
-          <label className="flex flex-1 items-center gap-2 text-sm text-muted">
+          // 固定幅を持たせない。basis-48 は「これを下回るなら自分の行へ
+          // 折り返す」目安であって幅ではなく、flex-1 が帯の残りをそのまま
+          // 吸うので、広い画面では検索欄が伸びる。min-w-0 が要るのは、入力欄の
+          // 既定の最小幅が flex の縮小を止め、幅 360px で帯からはみ出すため
+          // である（FR-022 / SC-004）。入力欄そのものの下限は帯が与える
+          // --size-tap（44px）で、ここでは重ねて書かない。
+          <label className="flex min-w-0 flex-1 basis-48 items-center gap-2 text-sm text-muted">
             <span className="sr-only">題名で探す</span>
             <input
               type="search"
@@ -400,17 +406,19 @@ export default function LibraryPage() {
               onChange={(event) => setInput(event.target.value)}
               maxLength={MAX_QUERY_LENGTH}
               placeholder="題名で探す"
-              className="min-h-[var(--size-tap)] w-48 rounded-control border border-border bg-surface-raised px-2 text-sm text-body"
+              className="w-full rounded-control border border-border bg-surface-raised px-2 text-sm text-body"
             />
           </label>
         }
         sort={
           <label className="flex items-center gap-2 text-sm text-muted">
             並び順
+            {/* 当たり判定（--size-tap）は帯が帯の中のすべてに与えるので、
+                ここでは重ねて書かない（Toolbar 参照）。 */}
             <select
               value={sort}
               onChange={(event) => changeSort(event.target.value)}
-              className="min-h-[var(--size-tap)] rounded-control border border-border bg-surface-raised px-2 text-sm text-body"
+              className="rounded-control border border-border bg-surface-raised px-2 text-sm text-body"
             >
               {sortLabels.map((option) => (
                 <option key={option.value} value={option.value}>

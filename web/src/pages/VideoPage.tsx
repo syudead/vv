@@ -197,13 +197,15 @@ export default function VideoPage() {
   }, []);
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-4 p-6">
+    // 余白は狭い画面で詰める。幅 360px では p-6（左右で 48px）が中身の
+    // 13% を占め、映像も情報欄もその分だけ狭くなる（FR-022）。
+    <main className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-4 p-4 sm:p-6">
       {/* 1. 一覧へ戻る。状態によらず**先に**出す（FR-016 /
           contracts/screen-states.md 2.・3.）。取得に失敗した画面から
           戻れないと、利用者に残る手が再読み込みしかなくなる。 */}
       <Link
         to={backTo}
-        className="inline-flex min-h-[var(--size-tap)] w-fit items-center rounded-control text-sm text-accent outline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus"
+        className="inline-flex min-h-[var(--size-tap)] w-fit min-w-[var(--size-tap)] items-center rounded-control text-sm text-accent outline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus"
       >
         ← 一覧へ戻る
       </Link>
@@ -224,8 +226,12 @@ export default function VideoPage() {
 
       {state.kind === "ready" && (
         <>
-          {/* 2. 題名 */}
-          <h1 className="text-xl font-semibold tracking-tight">{state.video.title}</h1>
+          {/* 2. 題名。break-words が要るのは、題名がファイル名由来で、空白の
+              無い長い 1 語になりうるからである。折り返せない語は狭い画面で
+              そのまま横スクロールになる（FR-022 / SC-004）。 */}
+          <h1 className="text-xl font-semibold tracking-tight break-words">
+            {state.video.title}
+          </h1>
 
           {/* 3. 知らせの置き場。映像の**外**で、映像より上に置く。 */}
           <Unplayable video={state.video} />
@@ -246,7 +252,7 @@ export default function VideoPage() {
               <button
                 type="button"
                 onClick={restart}
-                className="min-h-[var(--size-tap)] rounded-control border border-border px-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-focus"
+                className="min-h-[var(--size-tap)] min-w-[var(--size-tap)] rounded-control border border-border px-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-focus"
               >
                 先頭から見直す
               </button>
@@ -254,7 +260,19 @@ export default function VideoPage() {
           )}
 
           {/* 4. 映像。地は surface-sunken で、比率を保ったまま画面幅に収まる
-              （FR-012）。操作盤はブラウザ標準に任せる。 */}
+              （FR-012）。操作盤はブラウザ標準に任せる。
+
+              比率は aspect-video で決め打たない。16:9 以外（縦長の動画など）で
+              必ず見切れるか余白が出る。<video> は自分の比率を知っているので、
+              高さを指定しなければ幅から比率どおりの高さが決まる。
+
+              幅は max-w-full で**上限だけ**を与える。ここは縦並びの flex なので
+              通常は親の幅まで伸びるが、上限があることで、伸ばす側が変わっても
+              映像が親からはみ出して横スクロールを生むことはない（FR-022）。
+
+              max-h-[70dvh] は縦長の動画が画面の高さを超え、操作盤ごと画面外へ
+              出るのを防ぐ。高さで頭打ちになった分は地（surface-sunken）が
+              レターボックスとして見える（contracts/design-tokens.md 2.）。 */}
           <video
             ref={videoRef}
             src={streamUrl(state.video.id)}
@@ -274,7 +292,7 @@ export default function VideoPage() {
               }
             }}
             onError={onError}
-            className="w-full rounded-card bg-surface-sunken"
+            className="max-h-[70dvh] max-w-full rounded-card bg-surface-sunken"
           />
 
           {/* 5. 情報欄 */}
@@ -347,12 +365,17 @@ function VideoFacts({ video }: { video: Video }) {
     ["大きさ", formatSize(video.sizeBytes)],
   ];
 
+  // 狭い画面では項目名と値が縦に積む（1 列）。項目名の列と値の列に分けるのは
+  // sm 以上だけである ── 幅 360px で 2 列にすると、値（「読み取れませんでした
+  // (理由)」のように長くなりうる）に残る幅が足りず、はみ出して横スクロールに
+  // なる（FR-022 / SC-004）。sm:contents で包みの div を消すと、dt と dd が
+  // そのまま格子の升目に入り、広い画面では元の 2 列に戻る。
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm text-body">
+    <dl className="grid gap-x-4 gap-y-2 text-sm text-body sm:grid-cols-[auto_1fr] sm:gap-y-1">
       {facts.map(([label, text]) => (
-        <div key={label} className="contents">
+        <div key={label} className="sm:contents">
           <dt className="text-muted">{label}</dt>
-          <dd className="font-mono">{text}</dd>
+          <dd className="font-mono break-words">{text}</dd>
         </div>
       ))}
     </dl>
