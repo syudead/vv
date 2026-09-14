@@ -97,6 +97,8 @@ const pairs: { foreground: string; background: string; required: number }[] = [
   { foreground: "body", background: "badge", required: 4.5 },
   { foreground: "muted", background: "surface", required: 4.5 },
   { foreground: "muted", background: "surface-raised", required: 4.5 },
+  { foreground: "muted", background: "surface-sunken", required: 4.5 },
+  { foreground: "body", background: "surface-sunken", required: 4.5 },
   { foreground: "accent", background: "surface", required: 4.5 },
   { foreground: "accent", background: "surface-raised", required: 4.5 },
   { foreground: "accent-ink", background: "accent", required: 4.5 },

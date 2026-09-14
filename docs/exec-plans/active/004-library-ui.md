@@ -53,8 +53,8 @@
 | 計画・設計成果物 | 完了（2026-09-13） |
 | タスク分解 | 完了（2026-09-13）。T001〜T051 |
 | Phase 1: Setup（単体テストの実行基盤） | 完了（2026-09-13）。T001〜T004 |
-| Phase 2: Foundational（トークンと回帰の網） | 未着手。T005〜T013 |
-| Phase 3: US1（一覧が「自分のライブラリ」に見える） | 未着手 |
+| Phase 2: Foundational（トークンと回帰の網） | 完了（2026-09-13）。T005〜T013 |
+| Phase 3: US1（一覧が「自分のライブラリ」に見える） | 完了（2026-09-14）。T014〜T023。S3 は人の確認待ち |
 | Phase 4: US2（再生画面が同じ規則で整う） | 未着手 |
 | Phase 5: US3（表示の仕方を自分で選べる） | 未着手 |
 | Phase 6: US4（小さな画面でも破綻しない） | 未着手 |
@@ -83,6 +83,14 @@ tasks.md Phase 1 の Checkpoint が「テストが 0 件でも成功で終わる
 
 `vitest`・`@testing-library/react`・`@testing-library/user-event`・`jsdom` を
 `devDependencies` に足した。`dependencies`（実行時の依存）は 1 つも増えていない。
+
+### 対比表に `surface-sunken` の 2 組を足した（T017）
+
+サムネイル未生成の枠（`bg-surface-sunken`）に理由の文言を置くので、`muted` と `body` を
+その地の上に描くことになった。[contracts/design-tokens.md](../../../specs/004-library-ui/contracts/design-tokens.md)
+2. の対比表は「表に無い組は検査されない」と定めているため、`muted` / `surface-sunken`
+（9.20）と `body` / `surface-sunken`（16.81）を表と `web/src/theme/tokens.test.ts` の
+両方に足した。トークンの値は変えていない。
 
 ## 保守者に残る作業
 

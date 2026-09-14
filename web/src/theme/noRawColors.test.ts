@@ -119,12 +119,7 @@ function format(violation: Violation): string {
  * いるので、書き換えが済むとテストが落ちて一覧から消すよう促す。放置された
  * 猶予が残らない。**一覧が空になったらこの仕組みごと消してよい。**
  */
-const pendingRewrite = new Map<string, string>([
-  ["components/ScanStatus.tsx", "T016"],
-  ["components/VideoCard.tsx", "T017 / T018"],
-  ["pages/LibraryPage.tsx", "T020〜T022"],
-  ["pages/VideoPage.tsx", "T024〜T026"],
-]);
+const pendingRewrite = new Map<string, string>([["pages/VideoPage.tsx", "T024〜T026"]]);
 
 /** entries は走査対象を web/src からの相対パスで返す。 */
 function entries(): { file: string; source: string }[] {

@@ -90,14 +90,19 @@ export default function ScanStatus({ onFinished }: { onFinished?: () => void }) 
   }, []);
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-neutral-600">
-      <span>{describe(scan, error)}</span>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+      {/* 状態は 1 行の文言で示す。進行中は describe が「済んだ数 / 総数」を
+          返す（contracts/screen-states.md 1.「固定の帯」）。 */}
+      <span className={error !== null ? "text-danger" : undefined}>
+        {describe(scan, error)}
+      </span>
 
       <button
         type="button"
         onClick={onStart}
         disabled={starting || scan?.state === "running"}
-        className="rounded border border-neutral-300 px-2.5 py-1 text-sm text-neutral-800 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50"
+        // 押せる要素は --size-tap（44px）四方以上にする（FR-022）。
+        className="min-h-[var(--size-tap)] min-w-[var(--size-tap)] rounded-control border border-border px-3 text-sm text-body disabled:cursor-not-allowed disabled:opacity-50"
       >
         取り込む
       </button>
