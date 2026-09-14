@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { Ref, ReactNode } from "react";
 
 /**
  * Toolbar は一覧の入口を常に画面上に置く帯である
@@ -23,6 +23,7 @@ export default function Toolbar({
   sort,
   density,
   scan,
+  ref,
 }: {
   /** 探す（検索欄）。 */
   search: ReactNode;
@@ -32,9 +33,18 @@ export default function Toolbar({
   density?: ReactNode;
   /** 取り込む（状態の文言 + ボタン。FR-010）。 */
   scan: ReactNode;
+  /**
+   * 帯そのものへの参照。
+   *
+   * 帯は sticky で中身に重なるので、下の内容を位置合わせする側は
+   * **実測の高さ**を知る必要がある。帯は折り返して高さが変わる（狭い画面では
+   * 2 行以上になる）ため、呼び出し側が固定値を持つと必ずずれる。
+   */
+  ref?: Ref<HTMLDivElement>;
 }) {
   return (
     <div
+      ref={ref}
       className={
         "sticky top-0 z-20 border-b border-border bg-surface " +
         "[&_:is(input,select,button)]:outline-offset-2 " +

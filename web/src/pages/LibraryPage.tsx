@@ -222,6 +222,7 @@ export default function LibraryPage() {
   // anchor は密度を変える直前に覚えた「画面上端に最も近い項目」である。
   const anchor = useRef<number | undefined>(undefined);
   const list = useRef<HTMLUListElement | null>(null);
+  const bar = useRef<HTMLDivElement | null>(null);
 
   // 密度を変えたら表示設定に書く（sort は現在値のまま）。列幅が変わると同じ
   // 座標が別の項目を指すので、戻す先の項目を**変える直前に**覚える（R-411）。
@@ -243,9 +244,18 @@ export default function LibraryPage() {
       return;
     }
     anchor.current = undefined;
-    list.current
-      ?.querySelector(`[data-video-id="${String(id)}"]`)
-      ?.scrollIntoView({ block: "start", behavior: "auto" });
+
+    const target = list.current?.querySelector(`[data-video-id="${String(id)}"]`);
+    if (target === null || target === undefined) {
+      return;
+    }
+
+    // 逃げる高さは帯の**実測値**である。scrollIntoView + 固定の scroll-margin
+    // では足りない — 帯は折り返すので、狭い画面では 2 行以上になって 64px を
+    // 大きく超え、戻した項目がその裏に隠れる。
+    const offset = bar.current?.getBoundingClientRect().height ?? 0;
+    const top = window.scrollY + target.getBoundingClientRect().top - offset;
+    window.scrollTo({ top: Math.max(top, 0), behavior: "auto" });
   }, [density]);
 
   const clearQuery = useCallback(() => {
@@ -380,6 +390,7 @@ export default function LibraryPage() {
       {/* 帯は状態によらず**先に**出す。通信中も失敗中も、探す・並べ替える・
           取り込むは押せる（FR-002 / contracts/screen-states.md 1.）。 */}
       <Toolbar
+        ref={bar}
         search={
           <label className="flex flex-1 items-center gap-2 text-sm text-muted">
             <span className="sr-only">題名で探す</span>
@@ -485,11 +496,7 @@ export default function LibraryPage() {
                 // 描画が切られる。項目の輪郭は `outline-offset-2`（2px）+ 2px の
                 // 太さで外側 4px に描かれるから、同じ 4px を内側に空けておかないと
                 // 輪郭が端で切れる（contracts/screen-states.md 3.「印の視認」）。
-                //
-                // scroll-mt-16 は帯の高さぶんの逃げである。帯は sticky で項目に
-                // 重なるので、これが無いと密度を変えて戻した項目の上端が帯の下に
-                // 隠れ、「画面上端へ戻す」（R-411）が達成できない。
-                className="scroll-mt-16 p-1 [content-visibility:auto] [contain-intrinsic-size:auto_14rem]"
+                className="p-1 [content-visibility:auto] [contain-intrinsic-size:auto_14rem]"
               >
                 <VideoCard video={video} backTo={listUrl} />
               </li>
