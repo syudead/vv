@@ -28,8 +28,15 @@ const pollInterval = 2000;
 export default function ScanStatus({
   onFinished,
 }: {
-  /** 終わっている取り込みを観測するたびに呼ぶ。同じものを何度も渡しうる。 */
-  onFinished?: (scan: Scan) => void;
+  /**
+   * 終わっている取り込みを観測するたびに呼ぶ。同じものを何度も渡しうる。
+   *
+   * `firstSight` は、この部品が**最初に見た状態**が既に終わっていたことを
+   * 表す。呼び出し側が一覧を読んだのとほぼ同時なので、その取り込みの結果は
+   * すでに一覧へ入っている。2 回目以降の観測は「読んだあとに終わった」もので、
+   * 一覧はそれを映していない。
+   */
+  onFinished?: (scan: Scan, firstSight: boolean) => void;
 }) {
   const [scan, setScan] = useState<Scan | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +62,11 @@ export default function ScanStatus({
 
   // 直近に見えた取り込みの id。押した時点の「押す前の状態」を知るために持つ。
   const lastSeenScanId = useRef<number | undefined>(undefined);
+
+  // まだ一度も状態を見ていない。**この部品が作られてから 1 度だけ真**であり、
+  // 「取り込む」で見張り直しても戻らない（押したあとの観測は、呼び出し側が
+  // 一覧を読んだあとに起きたものだからである）。
+  const atFirstSight = useRef(true);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -95,6 +107,11 @@ export default function ScanStatus({
       if (!running) {
         return;
       }
+      // 一度でも状態を見たら、以後は「最初に見た状態」ではない。取れなかった
+      // 回も数える（取れなかったことを根拠に「反映済み」とみなせない）。
+      const firstSight = atFirstSight.current;
+      atFirstSight.current = false;
+
       if (current === null) {
         return;
       }
@@ -104,7 +121,7 @@ export default function ScanStatus({
       }
       // 終わっている取り込みを観測した。これが「いま終わった」ものなのか
       // 「前回の残り」なのかは、呼び出し側が id で見分ける。
-      onFinished?.(current);
+      onFinished?.(current, firstSight);
     };
 
     void tick();

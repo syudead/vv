@@ -252,18 +252,22 @@ export default function LibraryPage() {
   // 取り込みが終わったら控えを捨ててから読み直す。取り込む前の一覧に
   // 戻してはならない（data-model.md 2.）。
   const onScanFinished = useCallback(
-    (scan: Scan) => {
+    (scan: Scan, firstSight: boolean) => {
       const known = knownScanId.current;
       knownScanId.current = scan.id;
 
-      if (known === undefined) {
-        // 初めて観測した取り込み。1 ページ目はいま読んだばかりなので、
-        // その結果はすでに映っている。ここで読み直すと、一覧を開くたびに
-        // 二重に取得することになる。
-        return;
-      }
       if (known === scan.id) {
         // 前回の残り。控えも一覧もそのままでよい。
+        return;
+      }
+      if (known === undefined && firstSight) {
+        // 一覧を読んだ時点で既に終わっていた取り込みである。その結果は
+        // すでに映っているので読み直さない（毎回二重に取得することになる）。
+        //
+        // **firstSight が要る。** 「初めて観測した」だけを根拠にすると、
+        // 空のライブラリで最初の取り込みを走らせた場合や、開いた時点で
+        // 取り込みが実行中だった場合まで「反映済み」に倒れてしまい、
+        // 取り込んだ動画がいつまでも出てこない。
         return;
       }
 

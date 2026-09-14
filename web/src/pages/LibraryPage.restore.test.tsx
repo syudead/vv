@@ -219,6 +219,68 @@ describe("一覧 → 再生 → 一覧 の往復（FR-016）", () => {
     expect(screen.getByRole("link", { name: "ねこC.mp4" })).toBeDefined();
   });
 
+  it("空のライブラリで最初の取り込みが終わったら、一覧へ反映する", async () => {
+    // まだ一度も取り込んでいない。
+    getCurrentScan.mockResolvedValue(null);
+    listVideos.mockResolvedValue({ items: [], total: 0 } satisfies VideoPageType);
+    startScan.mockResolvedValue({
+      id: 1,
+      state: "running",
+      total: 0,
+      completed: 0,
+      failed: 0,
+      startedAt: "2026-09-13T00:00:00Z",
+    } satisfies Scan);
+
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    show("/");
+    await settle();
+    expect(screen.getByText("動画がまだありません")).toBeDefined();
+
+    // 押したら取り込みが走り、終わったときには動画が入っている。
+    getCurrentScan.mockResolvedValue(finished(1));
+    listVideos.mockResolvedValue({
+      items: [video(1, "ねこA.mp4"), video(2, "ねこB.mp4")],
+      total: 2,
+    } satisfies VideoPageType);
+
+    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await settle();
+
+    // 取り込んだのに空のままでは、利用者にできることが無い。
+    expect(screen.getByRole("link", { name: "ねこA.mp4" })).toBeDefined();
+  });
+
+  it("開いた時点で実行中だった取り込みも、終わったら一覧へ反映する", async () => {
+    getCurrentScan.mockResolvedValue({
+      id: 3,
+      state: "running",
+      total: 2,
+      completed: 1,
+      failed: 0,
+      startedAt: "2026-09-13T00:00:00Z",
+    } satisfies Scan);
+
+    show("/");
+    await settle();
+    expect(listVideos.mock.calls).toHaveLength(1);
+
+    // 見ているあいだに終わり、動画が 1 本増えた。
+    getCurrentScan.mockResolvedValue(finished(3));
+    listVideos.mockResolvedValue({
+      items: [video(1, "ねこA.mp4"), video(2, "ねこB.mp4"), video(3, "ねこC.mp4")],
+      total: 3,
+    } satisfies VideoPageType);
+
+    await act(async () => {
+      vi.advanceTimersByTime(2000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("link", { name: "ねこC.mp4" })).toBeDefined();
+  });
+
   it("直接開いた再生画面からは一覧の先頭へ戻る", async () => {
     const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
     show("/videos/1");
