@@ -8,10 +8,25 @@ import {
   type VideoSort,
 } from "./client";
 
+/**
+ * VideosSeed は復元された一覧の初期状態である（data-model.md 2. / FR-016）。
+ *
+ * 与えると 1 ページ目を**取りに行かない**。再生画面から戻るたびに読み直すと、
+ * 300 件まで読んだ状態を戻すのに 5 ページ分の往復が要る（R-403）。
+ */
+export interface VideosSeed {
+  items: Video[];
+  total: number;
+  cursor?: string;
+  hasMore: boolean;
+}
+
 /** VideosState は一覧の状態である。 */
 export interface VideosState {
   items: Video[];
   total: number;
+  /** cursor は次のページの続き位置。控えを取るときに使う。 */
+  cursor: string | undefined;
   /** hasMore は次のページがあるかどうか。 */
   hasMore: boolean;
   /** loading は最初の1ページを待っている間だけ true になる。 */
@@ -30,13 +45,21 @@ export interface VideosState {
  *
  * 最初の表示は1ページ（60 件）だけを待つ。1万件でも最初の画面が 2 秒以内に
  * 出る（SC-003）のは、全件を読まないことによる（R-114）。
+ *
+ * seed を与えると、その並び順・検索語のあいだは1ページ目を取りに行かない
+ * （再生画面から戻ったときの復元。R-412 が本ファイルへの変更をこの受け渡し口
+ * だけに限っている）。
  */
-export function useVideos(sort: VideoSort, query: string): VideosState {
-  const [items, setItems] = useState<Video[]>([]);
-  const [total, setTotal] = useState(0);
-  const [cursor, setCursor] = useState<string | undefined>(undefined);
-  const [hasMore, setHasMore] = useState(true);
-  const [loading, setLoading] = useState(true);
+export function useVideos(
+  sort: VideoSort,
+  query: string,
+  seed?: VideosSeed,
+): VideosState {
+  const [items, setItems] = useState<Video[]>(seed?.items ?? []);
+  const [total, setTotal] = useState(seed?.total ?? 0);
+  const [cursor, setCursor] = useState<string | undefined>(seed?.cursor);
+  const [hasMore, setHasMore] = useState(seed?.hasMore ?? true);
+  const [loading, setLoading] = useState(seed === undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generation, setGeneration] = useState(0);
@@ -86,19 +109,41 @@ export function useVideos(sort: VideoSort, query: string): VideosState {
     [query, sort],
   );
 
+  // seeded は「いま持っている中身が復元で埋まったものか」を覚える。
+  //
+  // 効果を 1 回で消費する印にしないのは、React が開発時に効果を 2 回走らせる
+  // ためである（1 回目で消費すると 2 回目が復元を捨てて読み直してしまう）。
+  // 鍵（並び順・検索語・読み直しの世代）ごと覚えておけば、何度走っても
+  // 同じ判断になる。
+  const seeded = useRef(seed === undefined ? null : { sort, query, generation: 0 });
+
   // 並び順か検索語が変わったら先頭から読み直す。カーソルはその2つに
   // 紐づくので、引き継ぐと境界の意味が変わってしまう。
   //
   // 前の要求は fetchPage が AbortController で打ち切る。入力が連続しても、
   // 古い応答が新しい一覧を上書きすることはない。
   useEffect(() => {
+    const restored = seeded.current;
+    if (
+      restored !== null &&
+      restored.sort === sort &&
+      restored.query === query &&
+      restored.generation === generation
+    ) {
+      // 取りに行かなくても打ち切りは要る。復元した一覧で続きを読んでいる
+      // 途中に画面を離れると、この経路が後片付けを残さないかぎり要求が
+      // 最後まで走ってしまう。
+      return () => inFlight.current?.abort();
+    }
+    seeded.current = null;
+
     setItems([]);
     setCursor(undefined);
     setHasMore(true);
     void fetchPage(undefined, true);
 
     return () => inFlight.current?.abort();
-  }, [fetchPage, generation]);
+  }, [fetchPage, generation, query, sort]);
 
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore || cursor === undefined) {
@@ -109,5 +154,15 @@ export function useVideos(sort: VideoSort, query: string): VideosState {
 
   const reload = useCallback(() => setGeneration((value) => value + 1), []);
 
-  return { items, total, hasMore, loading, loadingMore, error, loadMore, reload };
+  return {
+    items,
+    total,
+    cursor,
+    hasMore,
+    loading,
+    loadingMore,
+    error,
+    loadMore,
+    reload,
+  };
 }

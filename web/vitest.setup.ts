@@ -7,6 +7,16 @@ import { afterEach, vi } from "vitest";
 
 afterEach(() => {
   cleanup();
+
+  // 表示設定（vv.view.v1）は localStorage に残る。jsdom の localStorage は
+  // ファイル内のすべての検査で共有されるので、片付けないと「密度を変えた」
+  // 検査が後続の検査の初期値を書き換え、実行順で結果が変わる。
+  //
+  // DOM を使わない検査（対比の検査は node 環境で CSS をファイルとして読む）
+  // には localStorage が無いので、有無を見てから片付ける。
+  if (typeof localStorage !== "undefined") {
+    localStorage.clear();
+  }
 });
 
 // Testing Library は各操作のあと setTimeout(..., 0) でマイクロタスクを吐き出し、

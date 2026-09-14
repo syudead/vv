@@ -56,8 +56,9 @@ reconsideration.
   context に含めて builder 段に `git` を入れるか、`COMMIT` ビルド引数を足す。
 - 一次資料: [research.md R-007](../../specs/001-initial-setup/research.md)
 
-### TD-004: Web の自動テストはビルド検証のみ
+### TD-004: Web の自動テストはビルド検証のみ（解消済み / 004）
 
+- 状態: **解消済み**（004「現在の機能を前提とした UI の実装」）
 - 影響範囲: `web/`（`make test-web`）
 - 内容: Phase 0 の Web は画面が 1 つで、検証は `tsc --noEmit` と `vite build` が
   通ることまでとした（[plan.md] Technical Context の方針どおり）。単体テストの
@@ -76,8 +77,24 @@ reconsideration.
   同時に決める」ことであり、002 の範囲（取り込み・一覧・再生・検索）と混ぜると
   どちらも中途半端になるためである。次の機能の着手時に、上の3点を最初の対象として
   導入する。
+- **解消した変更（004）**: 実行基盤として Vitest + Testing Library（環境は `jsdom`）を
+  導入し（004 の R-406）、`web/vite.config.ts` の `test` と `web/vitest.setup.ts` で
+  設定した。`web/package.json` の `scripts.test` はビルド検証と `vitest run` の両方を
+  走らせるので、`make test-web`（`make check` から呼ばれる）で両方が回る。
+  名指しされていた 3 点は、書き換えの**前**に既存の実装に対して書き、書き換えの
+  あとも同じ内容で通ることを確かめた（004 の FR-025 / SC-009）。
+
+  | 名指しされていた点 | テスト |
+  | --- | --- |
+  | 無限スクロールの継ぎ目（カーソル引き継ぎ・打ち切り） | `web/src/api/useVideos.test.ts` |
+  | 検索入力の待ち合わせと打ち切り（250ms） | `web/src/pages/LibraryPage.search.test.tsx` |
+  | 再生位置の送信（5 秒間隔・離脱時の `sendBeacon`） | `web/src/pages/VideoPage.progress.test.tsx` |
+
+  3 点目を書いた時点で TD-008（離脱時に最後の位置が送られない）を見つけている。
+  004 は既存の振る舞いを変えないことが要求なので、そちらは直さず書き留めてある。
 - 一次資料: [plan.md](../../specs/001-initial-setup/plan.md)、
-  [002 の plan.md](../../specs/002-core-video-library/plan.md)
+  [002 の plan.md](../../specs/002-core-video-library/plan.md)、
+  [004 の R-406](../../specs/004-library-ui/research.md)
 
 ### TD-005: Go の依存が計画より1つ多い（`github.com/oapi-codegen/runtime`）
 
@@ -149,6 +166,29 @@ reconsideration.
   （再生画面の組み替え）。最後の位置を参照ではなく状態として持ち回る形にすれば、
   後片付けの時点でも読める。直したら上記の検査の期待を「送られる」へ入れ替える。
 - 一次資料: [R-111]、[004 の tasks.md](../../specs/004-library-ui/tasks.md) T012
+
+### TD-009: 004 の受け入れ検証のうち、実機が要る範囲が未実施
+
+- 影響範囲: [004 の quickstart](../../specs/004-library-ui/quickstart.md) S0・S3・S5・S6・
+  S7（サーバー側）・S9
+- 内容: 004 の実装はセッション環境（Claude Code on the web の Linux コンテナ）で
+  完了したが、そこには `ffmpeg`／`ffprobe` が無く、Docker のデーモンも動いていない。
+  S0（検証用の動画をつくる）が実行できないため、それを前提にする実機の確認
+  ── 見た目の判断、SC-001（5 人に「探す・並べ替える・取り込む」を尋ねる）、読み上げ
+  ソフトでの確認、表示設定の実機確認、1 万本の実データでの SC-002、002 の S1〜S10 の
+  再実行 ── はいずれも**していない**。
+- 当面の対処: 画面側だけを本物にして測れる範囲を測った。`web` のビルドを
+  `api/openapi.yaml` と同じ形を返す見本サーバーに載せ、Chromium（Playwright）で
+  S4（4 幅の横スクロール・当たり判定・列数）、S7 の画面側（SC-002 は 240ms、
+  SC-008 は 1020 件読み込み後で最悪 23.0ms）、S8 の一部（情報欄の言い分け・再生前の
+  警告・途中からの再開・「動きを減らす」）、S10（画面 4 枚）を実行した。結果と
+  範囲は [完了した実行計画](completed/004-library-ui.md)「受け入れ検証の結果」に
+  ある。**サーバー側（SQLite の問い合わせ・`ffprobe`・取り込み）はこの検証に
+  入っていない。**
+- 見直しの契機: 保守者が `ffmpeg` と Docker のある環境で quickstart を通すとき。
+  あるいは受け入れ検証を CI で回せる形（実データを作る手順の自動化）にするとき。
+- 一次資料: [004 の quickstart.md](../../specs/004-library-ui/quickstart.md)、
+  [完了した実行計画](completed/004-library-ui.md)
 
 [R-111]: ../../specs/002-core-video-library/research.md
 [002 の plan.md]: ../../specs/002-core-video-library/plan.md
