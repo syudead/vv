@@ -88,3 +88,27 @@ describe("VideoCard が読み上げに渡すもの", () => {
     expect(screen.getByText("画像を作れませんでした")).toBeDefined();
   });
 });
+
+/**
+ * 時間バッジ（C9 / spec US3-2・US3-3）。
+ *
+ * 尺が未取得のときに出さないのは 004 からの挙動で、005 もこれを変えない。
+ * 0:00 と「まだ分からない」を同じ見た目にすると、取り込み直後の一覧が
+ * 「すべて 0 秒の動画」に見える。
+ */
+describe("VideoCard の時間バッジ", () => {
+  /** 尺の形（m:ss / h:mm:ss）に一致するものを探す。 */
+  const durationText = /^\d+:\d{2}(:\d{2})?$/;
+
+  it("尺が取得できている動画には出る", () => {
+    show(video({ durationMs: 754_000 }));
+
+    expect(screen.getByText("12:34")).toBeDefined();
+  });
+
+  it("尺が未取得の動画には出ない", () => {
+    show(video({ durationMs: undefined }));
+
+    expect(screen.queryByText(durationText)).toBeNull();
+  });
+});

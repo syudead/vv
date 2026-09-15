@@ -132,9 +132,9 @@ plan.md は書き換えない。**
 **Independent Test**: 一覧を表示し、カードの 3 要素が原案どおりに配置される
 （[quickstart.md](./quickstart.md) S4）。
 
-- [ ] T023 [US3] `web/src/components/VideoCard.tsx` の枠を作り直す（C8）。いまサムネイルとタイトル行が別々に置かれ角丸がサムネイルにだけ付いているのを、**1 つの枠**にまとめて枠全体に `--radius-card` を掛ける（spec 4. / [contracts/components.md](./contracts/components.md) 4.）。サムネイルの 16:9 固定・サムネイルの有無で大きさが変わらないこと（004 の SC-003）・題名の 2 行省略と全文への到達手段 3 つ（004 の R-409）・進捗線・視聴済みの印・再生できない印は**変えない**（spec のスコープ外）。4 状態（hover / focus / active）はカード全体に掛ける
-- [ ] T024 [US3] 時間バッジ（C9）の体裁を原案に寄せる。位置はサムネイルの**右下**のまま、地は `--color-badge`（**不透明のまま。半透明にしない**。FR-009）。**尺が未取得のときは出さない**（spec US3-3。現行の挙動を変えない）
-- [ ] T025 [US3] `web/src/components/VideoCard.test.tsx` に、尺が未取得の動画で時間バッジが出ないことの確認が無ければ足す。既存の確認（題名・視聴状況・再生できない印）は**そのまま通ること**を確かめる（FR-018）
+- [X] T023 [US3] `web/src/components/VideoCard.tsx` の枠を作り直す（C8）。いまサムネイルとタイトル行が別々に置かれ角丸がサムネイルにだけ付いているのを、**1 つの枠**にまとめて枠全体に `--radius-card` を掛ける（spec 4. / [contracts/components.md](./contracts/components.md) 4.）。サムネイルの 16:9 固定・サムネイルの有無で大きさが変わらないこと（004 の SC-003）・題名の 2 行省略と全文への到達手段 3 つ（004 の R-409）・進捗線・視聴済みの印・再生できない印は**変えない**（spec のスコープ外）。4 状態（hover / focus / active）はカード全体に掛ける
+- [X] T024 [US3] 時間バッジ（C9）の体裁を原案に寄せる。位置はサムネイルの**右下**のまま、地は `--color-badge`（**不透明のまま。半透明にしない**。FR-009）。**尺が未取得のときは出さない**（spec US3-3。現行の挙動を変えない）
+- [X] T025 [US3] `web/src/components/VideoCard.test.tsx` に、尺が未取得の動画で時間バッジが出ないことの確認が無ければ足す。既存の確認（題名・視聴状況・再生できない印）は**そのまま通ること**を確かめる（FR-018）
 
 **Checkpoint**: 一覧のカードが原案の形になり、`make test-web` が緑。[quickstart.md](./quickstart.md) S4 を人が実行できる
 
