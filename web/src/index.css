@@ -13,9 +13,11 @@
  * ここの値を差し替えるだけで済み、画面側は書き換えなくてよい。
  *
  * 対比（FR-004 / SC-006）は src/theme/tokens.test.ts がこのファイルを読んで
- * 計算する。トークンを足したら
- * specs/004-library-ui/contracts/design-tokens.md 2. の対比表にも足すこと。
- * 表に無い組は検査されない。
+ * 計算する。トークンを足したら対比表にも足すこと。**表に無い組は検査されない。**
+ * 表は 2 か所にあり、004 の分は
+ * specs/004-library-ui/contracts/design-tokens.md 2.、005 で変えた分と足した分は
+ * specs/005-ui-refinement/contracts/design-tokens.md 3. にある（後者は前者を
+ * 置き換えず、差分だけを持つ）。
  */
 @theme {
   /* 色 — specs/004-library-ui/contracts/design-tokens.md 2. */
@@ -26,13 +28,25 @@
   --color-border: #626d7d;
   --color-body: #e8ecf2;
   --color-muted: #a7b1c0;
-  --color-accent: #63a9f2;
+  --color-accent: #5fd4e4;
   --color-accent-ink: #07131f;
   --color-danger: #ff9b9b;
   --color-danger-surface: #2c1517;
   --color-warning: #f3c274;
   --color-warning-surface: #2b2113;
   --color-focus: #8ab4ff;
+
+  /* 色（005 で足す分） — specs/005-ui-refinement/contracts/design-tokens.md 2. */
+  --color-accent-surface: #12262b;
+  /*
+   * --color-inert は「表示のみの要素」の文字とアイコンである（FR-005）。
+   * surface に対して 4.00、surface-raised に対して 3.58 で、どちらも 4.5:1 を
+   * 下回る。**これは意図した値で**、淡く見えること自体が要求であるため
+   * FR-011 が明示的に対象外としている。だから tokens.test.ts の pairs には
+   * 入れない。かわりに「muted より暗い」ことだけを機械で守る
+   * （濃くして機能する要素と見分けが付かなくなる方向を塞ぐ）。
+   */
+  --color-inert: #6b7482;
 
   /* 形と大きさ — specs/004-library-ui/contracts/design-tokens.md 3. */
   --radius-card: 0.75rem;
@@ -41,6 +55,15 @@
   --size-tile-dense: 9rem;
   --size-tile-standard: 11rem;
   --size-tile-relaxed: 16rem;
+
+  /*
+   * 骨格の寸法（005 で足す分） — specs/005-ui-refinement/contracts/design-tokens.md 2.
+   *
+   * トークンにするのは 3 か所で使うからである（サイドバー自身の幅、コンテンツの
+   * 左の余地、ツールバーが粘る位置）。値を直に書くと 3 か所がずれる。
+   */
+  --size-sidebar: 15rem;
+  --size-header: 3.5rem;
 }
 
 @layer base {
