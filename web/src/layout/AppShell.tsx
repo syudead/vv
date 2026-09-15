@@ -18,10 +18,16 @@ import Sidebar from "./Sidebar";
  *
  * 重なりの順序はサイドバー・ヘッダー（z-30）がコンテンツより前、ツールバー
  * （z-20）がヘッダーより後ろである（contracts/layout.md 1.）。
+ *
+ * **画面を満たす役目はここが持つ**（`min-h-dvh`）。包む側と包まれる側の両方が
+ * 100dvh を要求すると、文書の最低の高さが `100dvh + --size-header` になり、
+ * 件数が少ない一覧でヘッダーの高さぶん余計に縦スクロールできてしまう。
+ * `box-sizing: border-box` なので、この 1 か所に置けば余白も 100dvh の内側に
+ * 収まる。
  */
 export default function AppShell({ children }: { children: ReactNode }) {
   return (
-    <div className="pt-[var(--size-header)] sm:pl-[var(--size-sidebar)]">
+    <div className="min-h-dvh pt-[var(--size-header)] sm:pl-[var(--size-sidebar)]">
       <Sidebar />
       <Header />
       {children}

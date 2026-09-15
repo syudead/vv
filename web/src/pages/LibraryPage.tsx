@@ -409,7 +409,10 @@ export default function LibraryPage() {
   const empty = !loading && error === null && items.length === 0;
 
   return (
-    <div className="min-h-dvh">
+    // 画面を満たす役目は骨格（AppShell）が持つ。ここでも 100dvh を求めると、
+    // 骨格の上余白と足し合わさって文書が画面より高くなり、件数が少ないときに
+    // 余計な縦スクロールが出る。
+    <>
       {/* 帯は状態によらず**先に**出す。通信中も失敗中も、探す・並べ替える・
           取り込むは押せる（FR-002 / contracts/screen-states.md 1.）。 */}
       <Toolbar
@@ -546,7 +549,7 @@ export default function LibraryPage() {
           <p className="py-4 text-center text-sm text-muted">読み込み中…</p>
         )}
       </main>
-    </div>
+    </>
   );
 }
 
