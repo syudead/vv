@@ -1,4 +1,7 @@
+import IconButton from "./IconButton";
 import Logo from "./Logo";
+import { itemsIn } from "./navigation";
+import Tab from "./Tab";
 
 /**
  * Header は上に固定される横の帯である（C5 / FR-001・FR-002）。
@@ -14,7 +17,9 @@ import Logo from "./Logo";
  *
  * 幅の分岐は CSS だけで閉じる。`matchMedia` で幅を監視しない。
  *
- * 中身（タブと設定）は US2 で入る。
+ * 中身はタブ 4 つ（左）と設定（右端）である（T020）。タブは navigation.ts の
+ * `tab` の行を表の順序のまま描く。設定は表示のみなので `<button>` にしない
+ * （C7 / R-503）。
  */
 export default function Header() {
   return (
@@ -25,8 +30,18 @@ export default function Header() {
         "border-b border-border bg-surface sm:left-[var(--size-sidebar)]"
       }
     >
-      <div className="flex h-full items-center px-4">
+      <div className="flex h-full items-center gap-2 px-4">
         <Logo className="sm:hidden" />
+
+        {/* タブは狭い画面で溢れる。帯の高さを保ったまま横へ流す ── 折り返すと
+            ヘッダーが --size-header を超え、コンテンツの逃げ幅と食い違う。 */}
+        <nav className="flex min-w-0 flex-1 items-center gap-4 overflow-x-auto">
+          {itemsIn("tab").map((item) => (
+            <Tab key={item.id} item={item} />
+          ))}
+        </nav>
+
+        <IconButton name="settings" label="設定" />
       </div>
     </header>
   );

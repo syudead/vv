@@ -1,4 +1,8 @@
+import { useVideoCount } from "./AppShell";
 import Logo from "./Logo";
+import NavItem from "./NavItem";
+import { itemsIn, type NavSection } from "./navigation";
+import SidebarSection from "./SidebarSection";
 
 /**
  * Sidebar は左に固定される縦の帯である（C1 / FR-001・FR-003）。
@@ -16,9 +20,22 @@ import Logo from "./Logo";
  * `visibility` や `opacity` を使わないのは、支援技術からも消えることが
  * ロゴの二重配置の前提だからである（contracts/layout.md 3.）。
  *
- * 中身（ライブラリ・コレクション・タグの項目）は US2 で入る。
+ * 中身は navigation.ts の表を**順序のまま**描くだけである（T019）。どの行が
+ * 機能するかはこのファイルに書かれていない ── NavItem が `kind` で分岐する。
  */
+
+/** sections は原案の区画とその見出しである。ライブラリの見出し文字は原案に無い。 */
+const sections: { section: NavSection; title?: string }[] = [
+  { section: "library" },
+  { section: "collection", title: "コレクション" },
+  { section: "tag", title: "タグ" },
+];
+
 export default function Sidebar() {
+  // 件数は骨格の中を子（LibraryPage）から流れてくる（AppShell の context）。
+  // 一覧がまだ読めていない間は undefined で、そのときは件数を出さない。
+  const count = useVideoCount();
+
   return (
     <aside
       className={
@@ -29,6 +46,28 @@ export default function Sidebar() {
       <div className="px-4 py-3">
         <Logo />
       </div>
+
+      {sections.map(({ section, title }) => (
+        <SidebarSection key={section} title={title}>
+          {itemsIn(section).map((item) =>
+            // 件数を渡せるのは「すべての動画」の 1 行だけである。表示のみの行に
+            // 渡す口は NavItem の型が塞いでいるので、ここでの取り違えは型で落ちる
+            // （FR-005 / T021）。
+            item.kind === "live" ? (
+              <li key={item.id}>
+                <NavItem
+                  item={item}
+                  count={item.id === "all-videos" ? count : undefined}
+                />
+              </li>
+            ) : (
+              <li key={item.id}>
+                <NavItem item={item} />
+              </li>
+            ),
+          )}
+        </SidebarSection>
+      ))}
     </aside>
   );
 }

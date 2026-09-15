@@ -21,6 +21,7 @@ import Skeleton from "../components/Skeleton";
 import StateNotice from "../components/StateNotice";
 import Toolbar from "../components/Toolbar";
 import VideoCard from "../components/VideoCard";
+import { usePublishVideoCount } from "../layout/AppShell";
 import { headerHeight } from "../layout/Header";
 import {
   type Density,
@@ -294,6 +295,29 @@ export default function LibraryPage() {
 
   const { items, total, cursor, hasMore, loading, loadingMore, error, loadMore, reload } =
     useVideos(sort, query, restored);
+
+  // 総件数をサイドバーの「すべての動画」へ届ける（T021）。ここは**公開する
+  // だけ**で、どこにどう出るかは骨格（AppShell）が決める。
+  //
+  // **`total` をそのまま公開しない。** useVideos は total を 0 で初期化し、
+  // 取り直すあいだも前の値を消さないので、total だけを見ると初回に「0 本」、
+  // 絞り込みの最中に前の件数が出る。どちらも嘘であり、同じ場面で帯が
+  // 「読み込み中…」と出しているのとも食い違う（004 の FR-008）。
+  //
+  // 件数が嘘になる場面は 2 つある。どちらも undefined に倒す。
+  //
+  // 1. `loading` — 最初の 1 ページを待っている、または取り直しの最中
+  // 2. `error !== null && items.length === 0` — 取得に失敗した。失敗しても
+  //    useVideos は total を書き換えないので、保持された前の件数（初回なら
+  //    初期値の 0）が残る。一覧がエラーを出している横でサイドバーが「12」と
+  //    言う状態になる
+  //
+  // 2 に `items.length === 0` が要る。**続きのページだけが失敗した場合は、
+  // すでに読めている一覧も総件数も有効**だからである。そこまで隠すと、読めて
+  // いる事実まで取り下げることになる。
+  usePublishVideoCount(
+    loading || (error !== null && items.length === 0) ? undefined : total,
+  );
 
   // 戻したいスクロール位置。項目を描いたあとに 1 回だけ使う。
   const pendingScroll = useRef(restored?.scrollY);
