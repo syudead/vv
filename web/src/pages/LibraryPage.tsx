@@ -21,6 +21,7 @@ import Skeleton from "../components/Skeleton";
 import StateNotice from "../components/StateNotice";
 import Toolbar from "../components/Toolbar";
 import VideoCard from "../components/VideoCard";
+import { headerHeight } from "../layout/Header";
 import {
   type Density,
   readViewPreferences,
@@ -92,19 +93,27 @@ function gridStyle(density: Density): CSSProperties {
 }
 
 /**
- * topmostId は画面の上端に最も近い項目の id を返す（R-411）。
+ * topmostId は固定領域の下端に最も近い項目の id を返す（R-411）。
  *
  * 座標ではなく**項目**を覚えるのが要点である。密度を変えれば 1 行の本数が
  * 変わり、同じスクロール座標は別の項目を指す。
+ *
+ * 基準は 004 ではビューポートの上端（0）だったが、005 ではその上にヘッダーと
+ * ツールバーが載る。0 のままだと、ヘッダーの裏に隠れて**見えていない**項目を
+ * 「上端に最も近い項目」として覚えてしまう（contracts/layout.md 1.）。
  */
-function topmostId(list: HTMLUListElement | null): number | undefined {
+function topmostId(
+  list: HTMLUListElement | null,
+  /** 固定領域の下端（px）。ここから下が実際に見えている領域である。 */
+  top: number,
+): number | undefined {
   if (list === null) {
     return undefined;
   }
 
   for (const child of Array.from(list.children)) {
-    // 下端が画面の上端より下にある最初の項目が、いま上端に最も近い。
-    if (child.getBoundingClientRect().bottom > 0) {
+    // 下端が固定領域の下端より下にある最初の項目が、いちばん上に見えている。
+    if (child.getBoundingClientRect().bottom > top) {
       const id = Number((child as HTMLElement).dataset.videoId);
       return Number.isNaN(id) ? undefined : id;
     }
@@ -224,16 +233,30 @@ export default function LibraryPage() {
   const list = useRef<HTMLUListElement | null>(null);
   const bar = useRef<HTMLDivElement | null>(null);
 
+  // fixedBottom は画面に固定されている領域の下端（px）である
+  // （contracts/layout.md 1.「固定領域の下端」）。
+  //
+  //     固定領域の下端 = --size-header + ツールバーの実測高
+  //
+  // 帯は狭い画面で折り返して高くなるので**実測**で取る。ヘッダーの分を足すのは
+  // 005 で帯がヘッダーの下に粘るようになったためで、足さないと戻した項目が
+  // ヘッダーの裏に 56px ぶん隠れる（R-501 の「1 つの例外」）。
+  const fixedBottom = useCallback(
+    () => headerHeight() + (bar.current?.getBoundingClientRect().height ?? 0),
+    [],
+  );
+
   // 密度を変えたら表示設定に書く（sort は現在値のまま）。列幅が変わると同じ
   // 座標が別の項目を指すので、戻す先の項目を**変える直前に**覚える（R-411）。
   const changeDensity = useCallback(
     (next: Density) => {
-      // 先頭を見ているときは覚えない。そのまま戻すと、見出しと件数まで画面の
-      // 外へ送ってしまう — 利用者は何も見失っていないのに画面が動く。
-      anchor.current = window.scrollY > 0 ? topmostId(list.current) : undefined;
+      // 先頭を見ているときは覚えない。そのまま戻すと、件数まで画面の外へ
+      // 送ってしまう — 利用者は何も見失っていないのに画面が動く。
+      anchor.current =
+        window.scrollY > 0 ? topmostId(list.current, fixedBottom()) : undefined;
       savePreferences({ ...preferences, density: next });
     },
-    [preferences, savePreferences],
+    [fixedBottom, preferences, savePreferences],
   );
 
   // 覚えた項目を画面の上端へ戻す。列が組み直されたあとでなければ意味が無いので
@@ -250,13 +273,13 @@ export default function LibraryPage() {
       return;
     }
 
-    // 逃げる高さは帯の**実測値**である。scrollIntoView + 固定の scroll-margin
-    // では足りない — 帯は折り返すので、狭い画面では 2 行以上になって 64px を
-    // 大きく超え、戻した項目がその裏に隠れる。
-    const offset = bar.current?.getBoundingClientRect().height ?? 0;
+    // 逃げる高さは固定領域の**実測値**である。scrollIntoView + 固定の
+    // scroll-margin では足りない — 帯は折り返すので、狭い画面では 2 行以上に
+    // なって 64px を大きく超え、戻した項目がその裏に隠れる。
+    const offset = fixedBottom();
     const top = window.scrollY + target.getBoundingClientRect().top - offset;
     window.scrollTo({ top: Math.max(top, 0), behavior: "auto" });
-  }, [density]);
+  }, [density, fixedBottom]);
 
   const clearQuery = useCallback(() => {
     setInput("");
@@ -386,7 +409,10 @@ export default function LibraryPage() {
   const empty = !loading && error === null && items.length === 0;
 
   return (
-    <div className="min-h-dvh">
+    // 画面を満たす役目は骨格（AppShell）が持つ。ここでも 100dvh を求めると、
+    // 骨格の上余白と足し合わさって文書が画面より高くなり、件数が少ないときに
+    // 余計な縦スクロールが出る。
+    <>
       {/* 帯は状態によらず**先に**出す。通信中も失敗中も、探す・並べ替える・
           取り込むは押せる（FR-002 / contracts/screen-states.md 1.）。 */}
       <Toolbar
@@ -430,16 +456,15 @@ export default function LibraryPage() {
         }
         density={<DensitySelect value={density} onChange={changeDensity} />}
         scan={<ScanStatus onFinished={onScanFinished} />}
-      />
-
-      <main className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">vv</h1>
-          {/*
+        count={
+          /*
             件数の文言は「いま絞られているのか」を文言だけで判断できる形にする
             （FR-008 / contracts/screen-states.md 1.「件数の文言」）。検索の結果
             が変わったことが読み上げに届くよう、変化を知らせる領域にする（FR-021）。
-          */}
+
+            005 で変わったのは**置き場所だけ**である（原案どおり帯の右端へ。
+            R-508）。文言も role="status" / aria-live も 004 のまま連れて来る。
+          */
           <p role="status" aria-live="polite" className="text-sm text-muted">
             {loading
               ? "読み込み中…"
@@ -447,8 +472,11 @@ export default function LibraryPage() {
                 ? `${String(total)} 本`
                 : `「${query}」に一致 ${String(total)} 本`}
           </p>
-        </div>
+        }
+      />
 
+      {/* 見出し文字は置かない。h1 はロゴ（C2）が持つ（R-508）。 */}
+      <main className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4">
         {error !== null && (
           <StateNotice tone="danger" title="一覧を取得できません" description={error}>
             <button
@@ -521,7 +549,7 @@ export default function LibraryPage() {
           <p className="py-4 text-center text-sm text-muted">読み込み中…</p>
         )}
       </main>
-    </div>
+    </>
   );
 }
 
