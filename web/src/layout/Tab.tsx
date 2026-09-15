@@ -17,21 +17,34 @@ import type { InertNavItem, LiveNavItem, NavItem } from "./navigation";
  * 無い（FR-005 が件数を出すのは NavItem「すべての動画」の 1 行だけと定めている）。
  */
 
-/** tab は 2 形が共有する骨格である。状態の表現は含めない（NavItem と同じ理由）。 */
+/**
+ * tab は 2 形が共有する骨格である。状態の表現は含めない（NavItem と同じ理由）。
+ *
+ * 当たり判定は `--size-tap`（44px）**四方**以上を保つ（contracts/components.md 2.）。
+ * 高さだけを 44px にすると、「動画」のような 2 文字のタブは余白を足しても幅が
+ * 44px に届かない ── 四方と書かれているのは、横に並ぶ要素では幅のほうが先に
+ * 足りなくなるからである。
+ */
 const tab =
-  "relative flex min-h-[var(--size-tap)] items-center gap-2 px-1 text-sm whitespace-nowrap";
+  "relative flex min-h-[var(--size-tap)] min-w-[var(--size-tap)] items-center " +
+  "justify-center gap-2 px-2 text-sm whitespace-nowrap";
 
 /**
  * states は操作できる要素の 4 状態である（contracts/components.md 2.）。
  *
- * 下線は選択中の印なので、hover / active は**文字の明るさ**で示す。帯の中の
- * 要素に地を敷くと、隣り合うタブの間隔が原案より詰まって見える。動きを減らす
- * 設定では遷移だけを止め、色の最終状態は常に適用する（FR-012）。
+ * hover は地を 1 段明るく、active は 1 段暗くする ── NavItem と同じ向きで、
+ * 同じトークン由来の覆い色を使う。下線（選択中の印）と文字色だけで済ませない
+ * のは、契約が 4 状態の区別を**地**で定めているためである。
+ *
+ * タブには選択中の地が無いので、NavItem のような `::after` の覆いは要らず、
+ * 地そのものを差し替えてよい（下線は別の `::after` が描く）。動きを減らす設定
+ * では遷移だけを止め、**色の最終状態は常に適用する**（FR-012）。
  */
 const states =
-  "text-muted transition-colors hover:text-body active:text-muted " +
+  "rounded-control text-muted transition-colors " +
+  "hover:bg-body/10 hover:text-body active:bg-surface-sunken/60 active:text-muted " +
   "motion-reduce:transition-none " +
-  "rounded-control outline-offset-2 focus-visible:outline-2 focus-visible:outline-focus";
+  "outline-offset-2 focus-visible:outline-2 focus-visible:outline-focus";
 
 export default function Tab({ item }: { item: NavItem }) {
   if (item.kind === "inert") {

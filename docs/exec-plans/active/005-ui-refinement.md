@@ -261,15 +261,16 @@ PR #36 のレビューで、**件数が少ない一覧に 56px の余分な縦�
 
 | 検査 | 結果 |
 | --- | --- |
-| `make test-web` | **成功**。`vite build` が通り、14 ファイル / **135 件**のテストが緑 |
+| `make test-web` | **成功**。`vite build` が通り、14 ファイル / **138 件**のテストが緑 |
 | `make check` | **成功**。`fmt-check` → `lint` → `test` → `generate-check` がすべて成功 |
 
-件数が 123 件から 135 件に増えた内訳は、新設の `layout/placeholders.test.tsx` の **7 件**
+件数が 123 件から 138 件に増えた内訳は、新設の `layout/placeholders.test.tsx` の **7 件**
 （[contracts/components.md](../../../specs/005-ui-refinement/contracts/components.md) 5. が
-求める 4 つに、「（未実装）」が添えられていることと件数の 2 場面を加えたもの）と、
+求める 4 つに、「（未実装）」が添えられていることと件数の 2 場面を加えたもの）、
 `noRawColors.test.ts` の走査対象に加わった 5 ファイル（`layout/NavItem.tsx`・
 `layout/SidebarSection.tsx`・`layout/Tab.tsx`・`layout/IconButton.tsx`・
-`layout/placeholders.test.tsx`）の分である。
+`layout/placeholders.test.tsx`）、そしてレビュー指摘で足した
+`pages/LibraryPage.test.tsx` の **3 件**である。
 
 `generate-check` が通っているので、`api/openapi.yaml` と生成物は変わっていない
 （FR-014）。差分は `web/src/` と本書に閉じている。
@@ -350,3 +351,59 @@ contracts/components.md 2. の「背景を 1 段明るく / 暗く」は**地に
 `expect(names).not.toContain(expect.stringContaining(label))` は、`toContain` が
 非対称マッチャを解さないため常に通る空の検査だった。壊して落ちることを見なければ、
 この種の取り違えは残る。
+
+### レビュー指摘への対応（Phase 4）
+
+PR #37 のレビュー（Devin）が 5 件を挙げ、**4 件を受け入れて直した**。
+
+#### 1. 取得に失敗すると嘘の件数が出る（バグ）
+
+`useVideos` は取得に失敗しても `total` を書き換えない。`loading` だけを見て公開して
+いたので、一覧がエラーを出している横でサイドバーが保持された前の件数（初回なら初期値の
+0）を名乗っていた。`error !== null && items.length === 0` も `undefined` に倒すことで
+直した。
+
+`items.length === 0` が要るのは、**続きのページだけが失敗した場合は、すでに読めている
+一覧も総件数も有効**だからである。そこまで隠すと、読めている事実まで取り下げることになる。
+
+これは公開する値を `loading ? undefined : total` にした理由（0 と「まだ分からない」を
+同じ見た目にしない）と同じ筋であり、**その理由を最後まで適用していなかった**という
+指摘である。`pages/LibraryPage.test.tsx` に 3 件を足し、条件を元に戻すと 2 件が落ちる
+ことを見てから残した。
+
+#### 2・3. タブが契約の 4 状態と当たり判定を満たしていない（バグ）
+
+[contracts/components.md](../../../specs/005-ui-refinement/contracts/components.md) 2. は
+hover を「背景を 1 段明るく」、active を「1 段暗く」と定め、当たり判定を `--size-tap`
+**四方**以上と定めている。タブは下線と文字色だけで状態を示し、幅の下限も持っていなかった
+（「動画」は余白込みでも 44px に届かない）。
+
+**契約に寄せた。** 背景の覆いは NavItem と同じ向き・同じトークン由来の色にし、
+`min-w-[var(--size-tap)]` を足した。当初は「帯の中の要素に地を敷くと間隔が詰まって
+見える」と考えて外していたが、契約は C6 を名指しで 4 状態の対象にしており、見た目の
+好みで外してよい規定ではない。四方と書かれているのは、**横に並ぶ要素では幅のほうが先に
+足りなくなる**からである。
+
+#### 4. 件数 Context の Provider 欠落を検出できない（受け入れず）
+
+「既定値が何もしない関数なので、骨格の外で `usePublishVideoCount` を呼ぶと黙って
+何も起きない」という指摘である。**これは意図した設計なので直さない。**
+
+`pages/LibraryPage.test.tsx`・`LibraryPage.search.test.tsx`・`LibraryPage.restore.test.tsx`
+の 3 つは `LibraryPage` を**骨格なしで**描いている。Provider 欠落で投げる作りにすると、
+一覧そのものを単体で描けなくなる。件数は一覧の付随情報であって、一覧が成り立つ条件では
+ない ── 骨格の外では「件数の出し先が無い」だけで、それは異常ではない。
+
+読み出し側（`useVideoCount`）が骨格の外で `undefined` を返すのも同じ理由である。
+
+#### 5. 機能する入口の検査が自己参照になっていた（受け入れ）
+
+期待値を `navItems` から作っていたため、**別の行を `live` に変えると期待値も一緒に動き、
+検査が通ってしまう**状態だった。FR-013 が求めているのは「利用者が行える操作が増えて
+いないこと」なので、表とは独立に固定した 2 つ（`all-videos` / `tab-videos`）と突き合わせる
+形に直した。
+
+T022 (c) は当初からこの形を求めていた（「`kind: "live"` が **ちょうど 2 つ**である」）ので、
+読み違えである。同じ回に「壊して落ちることを確かめる」をやりながら、この 1 件は
+`liveItems` を経由していたために壊れても落ちなかった ── 自己参照は、壊し方が
+「表を変える」側にあるときだけ効かなくなる。

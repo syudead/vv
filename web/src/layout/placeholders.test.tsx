@@ -46,8 +46,15 @@ function shell(count: number | undefined) {
 /** inertItems は表の中の表示のみの行である。 */
 const inertItems = navItems.filter((item) => item.kind === "inert");
 
-/** liveItems は表の中の機能する行である。 */
-const liveItems = navItems.filter((item) => item.kind === "live");
+/**
+ * liveIds は spec が「機能する」と定めた 2 つである（contracts/components.md 1.）。
+ *
+ * **ここに表から作った値を置いてはならない。** 期待値を `navItems` から導くと、
+ * 別の行を `live` に変えたときに期待値も一緒に動き、検査は通ってしまう。
+ * FR-013 が求めているのは「利用者が行える操作が増えていないこと」なので、
+ * 表とは独立に固定した 2 つと突き合わせる必要がある。
+ */
+const liveIds = ["all-videos", "tab-videos"];
 
 describe("表示のみの要素は対話要素でない（FR-005 / FR-006）", () => {
   it("表示のみのラベルが button にも link にも現れない", () => {
@@ -73,15 +80,21 @@ describe("表示のみの要素は対話要素でない（FR-005 / FR-006）", (
   });
 
   it("機能する入口が「すべての動画」と「動画」の 2 つだけである", () => {
-    shell(undefined);
+    // まず表そのものを見る。これ以外の行が live になったら、それは利用者が
+    // 行える操作が増えたということで、FR-013 の違反である。
+    expect(
+      navItems.filter((item) => item.kind === "live").map((item) => item.id),
+    ).toEqual(liveIds);
 
-    // 骨格が差し出すリンクは、表の live な行とちょうど同じ集合である。
+    const { container } = shell(undefined);
+
+    // 次に、骨格が実際に差し出すリンクがその 2 つとちょうど同じであることを見る。
+    // 表が正しくても、描画側が inert な行までリンクにしていたら意味が無い。
     const links = screen.getAllByRole("link");
-    expect(links).toHaveLength(liveItems.length);
-    for (const item of liveItems) {
-      expect(links.some((link) => (link.textContent ?? "").includes(item.label))).toBe(
-        true,
-      );
+    expect(links).toHaveLength(liveIds.length);
+    for (const id of liveIds) {
+      const row = container.querySelector(`[data-nav-id="${id}"]`);
+      expect(row?.tagName, `${id} がリンクになっていない`).toBe("A");
     }
   });
 
@@ -93,7 +106,7 @@ describe("表示のみの要素は対話要素でない（FR-005 / FR-006）", (
     const focusable = container.querySelectorAll(
       "a[href], button, input, select, textarea, [tabindex]",
     );
-    expect(focusable).toHaveLength(liveItems.length);
+    expect(focusable).toHaveLength(liveIds.length);
 
     // 表示のみの行そのものにも tabIndex を持たせない（R-503）。
     for (const item of inertItems) {

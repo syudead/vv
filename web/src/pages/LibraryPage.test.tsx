@@ -29,6 +29,7 @@ vi.mock("../api/client", async (importOriginal) => ({
 }));
 
 const { default: LibraryPage } = await import("./LibraryPage");
+const { default: AppShell } = await import("../layout/AppShell");
 
 /** searchDebounceMs は LibraryPage の待ち合わせ時間と同じ値である。 */
 const searchDebounceMs = 250;
@@ -240,5 +241,78 @@ describe("LibraryPage の到達順（contracts/screen-states.md 3.）", () => {
       await user.tab();
       expect(document.activeElement).toBe(element);
     }
+  });
+});
+
+describe("サイドバーへ公開する件数（T021）", () => {
+  /**
+   * showInShell は骨格ごと描く。件数はサイドバーの「すべての動画」に出るので、
+   * LibraryPage 単体では確かめられない。
+   */
+  function showInShell(path = "/") {
+    render(
+      <MemoryRouter initialEntries={[path]}>
+        <AppShell>
+          <LibraryPage />
+        </AppShell>
+      </MemoryRouter>,
+    );
+  }
+
+  /**
+   * navCount はサイドバーの「すべての動画」に出ている数字を返す。出ていなければ
+   * null を返す。帯の右端の件数とは別の場所を見ている。
+   */
+  function navCount(): string | null {
+    const row = document.querySelector('[data-nav-id="all-videos"]');
+    return /\d+/.exec(row?.textContent ?? "")?.[0] ?? null;
+  }
+
+  it("読めたら総件数が出る", async () => {
+    listVideos.mockResolvedValue({
+      items: [video(1, "ねこ.mp4")],
+      total: 12,
+    } satisfies VideoPage);
+    showInShell();
+    await settle();
+
+    expect(navCount()).toBe("12");
+  });
+
+  it("取得に失敗したら件数を出さない", async () => {
+    // useVideos は失敗しても total を書き換えない（初回なら初期値の 0 が残る）。
+    // それをそのまま公開すると、一覧がエラーを出している横でサイドバーが件数を
+    // 名乗る。読めていないものの数は「まだ分からない」であって 0 ではない。
+    listVideos.mockRejectedValue(new Error("つながりません"));
+    showInShell();
+    await settle();
+
+    expect(screen.getByText("一覧を取得できません")).toBeDefined();
+    expect(navCount()).toBeNull();
+  });
+
+  it("読めたあとに取り直しが失敗したら件数を取り下げる", async () => {
+    // 前の件数が残っているぶん、こちらのほうが嘘が長く見える。検索語を変えて
+    // 取り直す場面がこれにあたる。
+    listVideos.mockResolvedValue({
+      items: [video(1, "ねこ.mp4")],
+      total: 12,
+    } satisfies VideoPage);
+    showInShell();
+    await settle();
+    expect(navCount()).toBe("12");
+
+    listVideos.mockRejectedValue(new Error("つながりません"));
+    await act(async () => {
+      await userEvent
+        .setup({ advanceTimers: vi.advanceTimersByTime })
+        .type(screen.getByPlaceholderText("題名で探す"), "いぬ");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(searchDebounceMs);
+    });
+    await settle();
+
+    expect(navCount()).toBeNull();
   });
 });
