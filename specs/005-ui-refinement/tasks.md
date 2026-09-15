@@ -56,8 +56,8 @@ plan.md は書き換えない。**
 
 **Purpose**: 実行計画を置き、書き換える前の緑を記録する
 
-- [ ] T001 実行計画 `docs/exec-plans/active/005-ui-refinement.md` を作成する。書式は [docs/exec-plans/completed/004-library-ui.md](../../docs/exec-plans/completed/004-library-ui.md) に合わせ、ステータス（進行中）・最終更新日・対象・目的・一次資料の表（spec／plan／research／data-model／contracts／quickstart へのリンク）・検証の方針（[quickstart.md](./quickstart.md) S1〜S9 で完了を判定し、S2〜S7 は人が確かめると明記する）・フェーズごとの進捗の空欄・決定の記録を置く。[plan.md](./plan.md) が「作るのは implement の最初の回」と定めているのがこのタスクである
-- [ ] T002 書き換える前に `make test-web` と `make check` を実行し、結果を `docs/exec-plans/active/005-ui-refinement.md` の進捗に記録する。**004 の検査が緑である状態から始める**ことを記録しておかないと、以降で落ちたときに本機能が壊したのか元から赤かったのかが分からない（FR-018 / SC-009）
+- [X] T001 実行計画 `docs/exec-plans/active/005-ui-refinement.md` を作成する。書式は [docs/exec-plans/completed/004-library-ui.md](../../docs/exec-plans/completed/004-library-ui.md) に合わせ、ステータス（進行中）・最終更新日・対象・目的・一次資料の表（spec／plan／research／data-model／contracts／quickstart へのリンク）・検証の方針（[quickstart.md](./quickstart.md) S1〜S9 で完了を判定し、S2〜S7 は人が確かめると明記する）・フェーズごとの進捗の空欄・決定の記録を置く。[plan.md](./plan.md) が「作るのは implement の最初の回」と定めているのがこのタスクである
+- [X] T002 書き換える前に `make test-web` と `make check` を実行し、結果を `docs/exec-plans/active/005-ui-refinement.md` の進捗に記録する。**004 の検査が緑である状態から始める**ことを記録しておかないと、以降で落ちたときに本機能が壊したのか元から赤かったのかが分からない（FR-018 / SC-009）
 
 **Checkpoint**: 実行計画があり、着手前の `make check` が緑であることが記録されている
 
