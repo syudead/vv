@@ -32,9 +32,14 @@ jsdom は CSS を適用しないので、`position: fixed`・メディアクエ�
 
 ## Path Conventions
 
-本機能の変更は **`web/src/` に閉じる**。`api/openapi.yaml`・`internal/`・`cmd/`・
+本機能の**コードの変更は `web/src/` に閉じる**。`api/openapi.yaml`・`internal/`・`cmd/`・
 `web/src/api/gen/` には触れない。これは方針であると同時に FR-013・FR-014 に対する構造上の
 防波堤である（[plan.md](./plan.md) の Structure Decision）。
+
+コード以外では、Phase 8 が `ARCHITECTURE.md`・`docs/design-docs/`・`docs/exec-plans/`・
+`docs/screenshots/` と [004 の contracts/design-tokens.md](../004-library-ui/contracts/design-tokens.md) を
+更新する（[plan.md](./plan.md) の Source Code の一覧に含まれている）。**この機能の spec.md と
+plan.md は書き換えない。**
 
 - 骨格（新設）: `web/src/layout/` — どの画面にも同じ形で存在し、画面の中身を知らない
 - 部品: `web/src/components/` — 画面が並べるもの
@@ -109,11 +114,11 @@ jsdom は CSS を適用しないので、`position: fixed`・メディアクエ�
 - [ ] T015 [US2] `web/src/layout/NavItem.tsx` を新規作成する（C3）。`kind` で 2 形に分かれる。`live` は `<Link>` で、通常 / hover（地を 1 段明るく）/ focus（`:focus-visible` で `--color-focus` の輪郭を `outline-offset` つきで外側に）/ active（地を 1 段暗く）の 4 状態を持ち、選択中は `--color-accent-surface` の地と `--color-accent` の文字で示し、右端に件数を出す。`inert` は **`<span>` で描き、`disabled` も `aria-disabled` も `role="button"` も `tabIndex` も付けない**（[R-503](./research.md)）。色は `--color-inert`、**件数は受け取らない**、ラベルの直後に `<span class="sr-only">（未実装）</span>` を添える（FR-006）。hover でも変化しない。当たり判定は `--size-tap` 四方以上
 - [ ] T016 [P] [US2] `web/src/layout/SidebarSection.tsx` を新規作成する（C4）。見出し（「コレクション」「タグ」など）と項目群を受ける器で、見出しは `<h2>`、項目群は `<ul>` / `<li>` にする。ライブラリの区画は原案に見出し文字が無いので、見出しを省ける形にする
 - [ ] T017 [P] [US2] `web/src/layout/Tab.tsx` を新規作成する（C6）。`live`（「動画」）は選択中として**下線**と `--color-accent` で示し、4 状態を持つ。`inert` は `<span>` で `--color-inert`、`（未実装）` を添える（T015 と同じ規約）。規約は [contracts/components.md](./contracts/components.md) 3. を共有する
-- [ ] T018 [P] [US2] `web/src/layout/IconButton.tsx` を新規作成する（C7）。**設定・フィルタ・表示切替の 3 つはすべて表示のみ**なので、この部品は対話要素を作らない — `<span>` にアイコン（T005）と `<span class="sr-only">設定（未実装）</span>` を置き、`--color-inert` で描く。名前が Button であっても `<button>` にしない理由をファイル冒頭のコメントに書く（[R-503](./research.md)）
+- [ ] T018 [P] [US2] `web/src/layout/IconButton.tsx` を新規作成する（C7）。**設定・フィルタ・表示切替の 3 つはすべて表示のみ**なので、この部品は対話要素を作らない — `<span>` にアイコン（T005）と `<span class="sr-only">{label}（未実装）</span>` を置き、`--color-inert` で描く。**`label` は必須の引数にする** — 3 か所で使い回す部品なので、文言を部品の中に固定すると漏斗も表示切替も「設定」と読まれ、要素の区別が読み上げ利用者にだけ失われる（FR-006）。名前が Button であっても `<button>` にしない理由をファイル冒頭のコメントに書く（[R-503](./research.md)）
 - [ ] T019 [US2] `web/src/layout/Sidebar.tsx` に中身を入れる。`navigation.ts`（T006）の `section` が `library` / `collection` / `tag` の行を、表の順序のまま SidebarSection（T016）+ NavItem（T015）で描く。見出しは「ライブラリ」（原案どおり省いてよい）・「コレクション」・「タグ」。「すべての動画」にだけ件数を渡す
-- [ ] T020 [US2] `web/src/layout/Header.tsx` に中身を入れる。`navigation.ts` の `section` が `tab` の 4 行を Tab（T017）で左から並べ、右端に設定の IconButton（T018）を置く
-- [ ] T021 [US2] 一覧の総件数を NavItem「すべての動画」へ届ける。**`total` は `LibraryPage`（AppShell の子）が `useVideos` から得る値**なので、親である Sidebar へは引数で渡せない。`web/src/layout/AppShell.tsx` の中に件数の context（`useState<number | undefined>` と設定用の関数）を置き、同じファイルから提供側と読み出し側の hook を export する。`LibraryPage` は `total` が変わったときにそれを設定するだけにし、**`web/src/api/useVideos.ts` の置き場所も戻り値も変えない**（[data-model.md 5.](./data-model.md) の「変わらないもの」）。新しいファイルを作らないのは、この状態が骨格の外で使われないためである。**`inert` の行には渡さない**（渡す口を作らない。FR-005）。`total` が未取得のあいだは件数を出さない（「0 本」と出すと嘘になる）
-- [ ] T022 [US2] `web/src/layout/placeholders.test.tsx` を新規作成する（[contracts/components.md](./contracts/components.md) 5.）。サイドバーとヘッダーを描いて次の 4 つを確かめる。(a) `getAllByRole("button")` / `("link")` に表示のみのラベルが 1 つも現れない、(b) 表示のみの要素が tab 順（`tabIndex >= 0`）に現れない、(c) `navigation.ts` の `kind: "live"` が `all-videos` と `tab-videos` の**ちょうど 2 つ**である（これ以外が `live` になったら利用者が行える操作が増えたということで FR-013 の違反）、(d) 表示のみの要素の近傍に件数が出ていない
+- [ ] T020 [US2] `web/src/layout/Header.tsx` に中身を入れる。`navigation.ts` の `section` が `tab` の 4 行を Tab（T017）で左から並べ、右端に設定の IconButton（T018。`label` は「設定」）を置く
+- [ ] T021 [US2] 一覧の総件数を NavItem「すべての動画」へ届ける。**`total` は `LibraryPage`（AppShell の子）が `useVideos` から得る値**なので、親である Sidebar へは引数で渡せない。`web/src/layout/AppShell.tsx` の中に件数の context（`useState<number | undefined>` と設定用の関数）を置き、同じファイルから提供側と読み出し側の hook を export する。`LibraryPage` は件数を公開するだけにし、**`web/src/api/useVideos.ts` の置き場所も戻り値も変えない**（[data-model.md 5.](./data-model.md) の「変わらないもの」）。新しいファイルを作らないのは、この状態が骨格の外で使われないためである。**公開する値は `total` ではなく `loading ? undefined : total`** にする — `useVideos` は `total` を 0 で初期化し、検索語や並び順を変えて取り直すあいだも前の値を消さないので、`total` だけを見ると初回に「0 本」、絞り込みの最中に前の件数が出る。どちらも嘘であり、帯の件数が同じ場面で「読み込み中…」と出しているのと食い違う（004 の FR-008）。**件数が `undefined` のあいだは NavItem に件数を出さない**。`inert` の行には渡さない（渡す口を作らない。FR-005）
+- [ ] T022 [US2] `web/src/layout/placeholders.test.tsx` を新規作成する（[contracts/components.md](./contracts/components.md) 5.）。サイドバーとヘッダーを描いて次の 4 つを確かめる。(a) `getAllByRole("button")` / `("link")` に表示のみのラベルが 1 つも現れない、(b) 表示のみの要素が tab 順（`tabIndex >= 0`）に現れない、(c) `navigation.ts` の `kind: "live"` が `all-videos` と `tab-videos` の**ちょうど 2 つ**である（これ以外が `live` になったら利用者が行える操作が増えたということで FR-013 の違反）、(d) 表示のみの要素の近傍に件数が出ていない、(e) 件数が `undefined`（未取得・取り直しの最中。T021）のときは `live` な「すべての動画」にも件数が出ない
 
 **Checkpoint**: サイドバーとヘッダーが原案の順序で並び、`make test-web` が緑。[quickstart.md](./quickstart.md) S3・S7 を人が実行できる
 
@@ -149,7 +154,7 @@ jsdom は CSS を適用しないので、`position: fixed`・メディアクエ�
 - [ ] T029 [US4] `web/src/components/DensitySlider.test.tsx` を新規作成し、往復が恒等（`toDensity(toIndex(d)) === d`）であることを 3 段階すべてで確かめる。範囲外の位置が `standard` に落ちることも 1 件確かめる
 - [ ] T030 [US4] `web/src/components/DensitySelect.tsx` を**削除**し、`web/src/pages/LibraryPage.tsx` の差し込み先を DensitySlider（T028）に替える。密度を変えたあとの位置合わせ（T014）は経路を変えない — 変えるのは入口の部品だけである
 - [ ] T031 [US4] `web/src/components/StateNotice.tsx` を 3 段階に整理する（C13。[contracts/components.md](./contracts/components.md) 4.）。`Tone` から `empty` を落として `info` に寄せ、情報（`surface-raised` / `body`）・警告（`warning-surface` / `warning`）・エラー（`danger-surface` / `danger`）の 3 つにする。**色だけでなく形からも判別できる**よう、左端の色帯かアイコン（T005）を段階ごとに変える（spec US4-5）。`tone="empty"` を渡している既存の呼び出し（`web/src/pages/LibraryPage.tsx`）を `info` に付け替える。**画面全体を置き換えない**という既存の性質は変えない
-- [ ] T032 [US4] `web/src/components/Toolbar.tsx` に漏斗（フィルタ）と表示切替（グリッド / リスト）の IconButton（T018）を置く。**どちらも表示のみ**で、押しても何も起きず、`Tab` でも止まらない（FR-005 / [contracts/components.md](./contracts/components.md) 3.）。帯の中の折り返し（狭い画面で 2 行以上になる）と、帯が操作要素に与える `--size-tap`・`:focus-visible` の規則は**変えない**
+- [ ] T032 [US4] `web/src/components/Toolbar.tsx` に漏斗（フィルタ）と表示切替（グリッド / リスト）の IconButton（T018）を置く。**`label` にはそれぞれ「フィルタ」「表示切替」を渡す**（設定と同じ文言で読まれないこと。FR-006）。**どちらも表示のみ**で、押しても何も起きず、`Tab` でも止まらない（FR-005 / [contracts/components.md](./contracts/components.md) 3.）。帯の中の折り返し（狭い画面で 2 行以上になる）と、帯が操作要素に与える `--size-tap`・`:focus-visible` の規則は**変えない**
 
 **Checkpoint**: ツールバーと通知が原案の体裁になり、`make test-web` が緑。[quickstart.md](./quickstart.md) S5 を人が実行できる
 
@@ -163,7 +168,7 @@ jsdom は CSS を適用しないので、`position: fixed`・メディアクエ�
 **Independent Test**: 動画を 1 本開き、2 分割になり、パネル内にタイトルと情報があり、
 × で一覧へ戻れる（[quickstart.md](./quickstart.md) S6）。
 
-- [ ] T033 [P] [US5] `web/src/components/MetaList.tsx` を新規作成する（C16。[R-507](./research.md)）。`web/src/pages/VideoPage.tsx` の `VideoFacts` を移し、**値から `font-mono` を外す**（FR-016）。`<dl>` / `<dt>` / `<dd>` の構造は保ち、ラベルは `--color-muted`、値は `--color-body`、1 項目 1 行として行間に区切り線を置く。6 項目（長さ・解像度・形式・映像・音声・大きさ）の**順序**と、取れていない値の言い分け（「確認中」「読み取れませんでした」「なし」）は **004 のまま変えない**（[data-model.md 4.](./data-model.md)）
+- [ ] T033 [US5] `web/src/components/MetaList.tsx` を新規作成する（C16。[R-507](./research.md)）。`web/src/pages/VideoPage.tsx` の `VideoFacts` を移し、**値から `font-mono` を外す**（FR-016）。`<dl>` / `<dt>` / `<dd>` の構造は保ち、ラベルは `--color-muted`、値は `--color-body`、1 項目 1 行として行間に区切り線を置く。6 項目（長さ・解像度・形式・映像・音声・大きさ）の**順序**と、取れていない値の言い分け（「確認中」「読み取れませんでした」「なし」）は **004 のまま変えない**（[data-model.md 4.](./data-model.md)）
 - [ ] T034 [P] [US5] `web/src/components/MetaList.test.tsx` を新規作成し、(a) 6 項目が [data-model.md 4.](./data-model.md) の順序で並ぶ、(b) ラベルと値が `<dt>` / `<dd>` の対で出る、(c) 値に等幅フォントの指定が無い、の 3 つを確かめる
 - [ ] T035 [US5] `web/src/components/InfoPanel.tsx` を新規作成する（C14 + C15）。幅は `sm:` 以上で `minmax(18rem, 24rem)` の範囲に置き、固定幅にしない（[R-505](./research.md)）。中身は **×（右上）→ 題名 → 知らせ → 動画の情報**の順（[contracts/layout.md](./contracts/layout.md) 4.）。**題名は `h1` のままパネルの中に置く** — spec US5-1 が消すと言っているのは「画面の見出し文字」（ロゴや画面名）であって、US5-3 が求めるパネル内の題名ではない。再生画面には Logo が無いので（[R-505](./research.md)）、ここで `h1` を落とすと画面に見出しが 1 つも無くなる。× （C15）は同じファイルの中に置き、4 状態と `--size-tap` を持ち、押すと遷移元の一覧へ戻る（**スクロール位置の復元は 004 の振る舞いのまま**）。**映像に重ねない**（FR-017）
 - [ ] T036 [US5] `web/src/pages/VideoPage.tsx` を 2 分割にする（FR-015）。幅 640px 以上で左に映像・右に InfoPanel（T035）、**640px 未満ではパネルを映像の下へ回す**（一覧と同じ `sm:` の境界。[R-505](./research.md)）。いまの `<h1>` の題名と「← 一覧へ戻る」のリンクを**画面の直下から外し**、題名（`h1` のまま。T035）と戻る導線（×）をパネルの中へ移す。映像はパネルを除いた領域いっぱいに広がり、比率を保ち（高さを決め打たない）、操作列はブラウザ標準のままにする。再開の知らせ・再生できない形式・再生の失敗の 3 つの通知を**パネルの中**に置き、**映像の大きさを変えない**（spec US5-6 / US4-6）。再生位置の送信（5 秒ごと・離脱時の `sendBeacon`）と再開の下限 5 秒は**触らない**
@@ -228,7 +233,9 @@ jsdom は CSS を適用しないので、`position: fixed`・メディアクエ�
 - US1 の T007（Logo）は T008〜T010 と並行できる
 - US2 の T016・T017・T018 は T015 のあと並行できる（すべて別ファイル）
 - US4 の T026・T027 は並行できる
-- US5 の T033・T034 は T035・T036 と並行できる
+- US5 は T033（MetaList）→ T035（InfoPanel が MetaList を収める）→ T036（画面が InfoPanel を
+  収める）が一本の鎖なので、**この 3 つは並行できない**。並行できるのは T034（MetaList の
+  検査）だけで、T033 のあと T035・T036 と同時に進められる
 - Polish の T038〜T040 は別ファイルで並行できる
 
 ---
