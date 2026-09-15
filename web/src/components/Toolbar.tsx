@@ -1,5 +1,7 @@
 import type { Ref, ReactNode } from "react";
 
+import IconButton from "../layout/IconButton";
+
 /**
  * Toolbar は一覧の入口を常に画面上に置く帯である
  * （FR-007 / R-404 / contracts/screen-states.md 1.「固定の帯」）。
@@ -31,6 +33,12 @@ import type { Ref, ReactNode } from "react";
  *   より後ろ、一覧の項目より前という関係を保つ
  * - 件数を帯の**右端**で受けるようになった。一覧の見出し文字が無くなり、
  *   置き場所がここへ移ったためである（R-508）
+ *
+ * 原案にある漏斗（フィルタ）と表示切替は**この帯が自分で描く**（C7 / T032）。
+ * 裏側の機能が無い表示のみの要素なので、呼び出し側が差し込む口（`search` や
+ * `sort`）にしない ── 口にすると「何を差すか」が画面ごとに決められるように
+ * 見えるが、差すものは永遠に無い。押しても何も起きず `Tab` でも止まらない
+ * ことは IconButton が守る（FR-005 / contracts/components.md 3.）。
  */
 export default function Toolbar({
   search,
@@ -79,8 +87,15 @@ export default function Toolbar({
     >
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-4 gap-y-2 px-4 py-2">
         {search}
+        {/* 漏斗は検索の隣に置く。どちらも「絞り込む」入口だからである。
+            label は「フィルタ」── 3 つの IconButton で文言を使い回すと、
+            漏斗も表示切替も「設定」と読まれる（FR-006）。 */}
+        <IconButton name="filter" label="フィルタ" />
         {sort}
         {density}
+        {/* 表示切替（格子 / 一覧）は密度の隣に置く。どちらも一覧の見せ方を
+            変える入口である。 */}
+        <IconButton name="grid" label="表示切替" />
         {scan}
         {/* 件数は右端に寄せる。ml-auto にするのは、帯が折り返しても
             「その行の右端」に居られるからである（固定の幅を与えない）。 */}
