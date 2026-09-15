@@ -91,8 +91,8 @@
 | G4: 重要な制約は可能な限りテスト可能にする | core-beliefs | 要設計 — 「表示のみ」「構図」「対比」をどう機械で守るか | PASS — 表示のみは DOM の性質（対話要素でない・tab 順に無い）として検査でき（[R-503](./research.md)）、対比と明暗の順序は CSS を読む検査で守る（[contracts/design-tokens.md](./contracts/design-tokens.md) 4.）。構図と画面幅は人が確かめると明示した（[quickstart.md](./quickstart.md) S2・S3） |
 | G5: 文書は変更と同じ変更単位で更新する | AGENTS.md / core-beliefs | 要対応 | PASS — 成果物に `ARCHITECTURE.md`（Web 層に骨格の記述を足す）と `docs/design-docs/library-ui-design-system.md` の追補を含める |
 | G6: 生成物は手編集せず、元ファイルから生成する | AGENTS.md | PASS | PASS — `web/src/api/gen/` に触れない。`generate-check` が契約の無変更を機械的に示す（FR-014） |
-| G7: 後から重くできる境界を最初に引く | 判断基準4 | 要設計 — 裏側の無い入口を 12 個置くことが、後で機能を足すときの妨げにならないか | PASS — 表示のみの項目は 1 つの表（[data-model.md](./data-model.md) 2.）から描く。機能が付くときは、その行を「機能する」に替えて描画側の分岐を 1 か所通すだけで済む（[contracts/components.md](./contracts/components.md) 3.） |
-| G8: 画面の変更は画像で示す | AGENTS.md | 要対応 — 本機能は画面の変更そのもの | PASS — [quickstart.md](./quickstart.md) S8 で 6 枚を撮り、PR に添えることを手順に組み込んだ |
+| G7: 後から重くできる境界を最初に引く | 判断基準4 | 要設計 — 裏側の無い入口を 15 個置くことが、後で機能を足すときの妨げにならないか | PASS — 表示のみの項目は 1 つの表（[data-model.md](./data-model.md) 2.）から描く。機能が付くときは、その行を「機能する」に替えて描画側の分岐を 1 か所通すだけで済む（[contracts/components.md](./contracts/components.md) 3.） |
+| G8: 画面の変更は画像で示す | AGENTS.md | 要対応 — 本機能は画面の変更そのもの | PASS — [quickstart.md](./quickstart.md) S9 で 6 枚を撮り、PR に添えることを手順に組み込んだ |
 
 違反なし。判断の分かれる点は「Complexity Tracking」に記載する。
 
@@ -105,7 +105,7 @@ specs/005-ui-refinement/
 ├── plan.md              # This file (/speckit-plan command output)
 ├── research.md          # Phase 0 output — 未確定事項の解消（R-501〜R-511）
 ├── data-model.md        # Phase 1 output — 画面が持つ状態と静的な表
-├── quickstart.md        # Phase 1 output — 受け入れの検証手順（S0〜S8）
+├── quickstart.md        # Phase 1 output — 受け入れの検証手順（S0〜S9）
 ├── contracts/           # Phase 1 output
 │   ├── layout.md             # 3 領域の寸法・境界・スクロールの持ち主（FR-001〜FR-003・FR-015）
 │   ├── design-tokens.md      # 004 の契約への差分（FR-010・FR-011）
@@ -154,7 +154,7 @@ web/src/
 
 ~ ARCHITECTURE.md                                  # Web 層に骨格（layout/）の記述を足す
 ~ docs/design-docs/library-ui-design-system.md     # 原案に寄せた分の追補
-~ docs/screenshots/                                # 新しい 6 枚（quickstart S8）
+~ docs/screenshots/                                # 新しい 6 枚（quickstart S9）
 ```
 
 **Structure Decision**: 変更は `web/src/` に閉じる。Go 側・`api/openapi.yaml`・生成物には
@@ -187,7 +187,7 @@ web/src/
 
 | Violation | Why Needed | Simpler Alternative Rejected Because |
 |-----------|------------|-------------------------------------|
-| 裏側の機能が無い入口を 12 個、画面に置く | 原案の構図を再現するのが本機能の目的で（spec 冒頭）、機能の有無で要素を省くと構図そのものが変わる。SC-001 は「原案に写っている要素が同じ領域に同じ順序で存在すること」を判定基準にしている | 省く案は SC-001 を満たせない。押せるようにする案は FR-013（実際に行える操作の種類と数を変えない）に反し、裏側の無い操作を足すことになる |
+| 裏側の機能が無い入口を 15 個、画面に置く | 原案の構図を再現するのが本機能の目的で（spec 冒頭）、機能の有無で要素を省くと構図そのものが変わる。SC-001 は「原案に写っている要素が同じ領域に同じ順序で存在すること」を判定基準にしている | 省く案は SC-001 を満たせない。押せるようにする案は FR-013（実際に行える操作の種類と数を変えない）に反し、裏側の無い操作を足すことになる |
 | 骨格を `position: fixed` で作り、`display: grid` の器にしない（[R-501](./research.md)） | 004 の復元・密度アンカー・無限スクロールが `window.scrollY` とビューポート基準の `IntersectionObserver` に載っている。スクロール容器を内側へ移すと 3 つとも書き換えになり、FR-018・SC-009 の担保が本機能の主目的から外れて膨らむ | grid + 内部スクロールにする案は構図としては素直だが、差分が「見た目の変更」から「一覧の中核の作り直し」へ広がる。持ち主を変えるのは、仮想スクロールのように内側の容器を必要とする変更が来たときでよい |
 | ロゴが DOM に 2 か所ある（[R-502](./research.md)） | FR-003 は「ロゴはどの幅でも画面上に存在する」ことを求める一方、640px 未満では置き場所がサイドバーからヘッダーへ移る。CSS だけで満たすには両方に置いて片方を消すほかない | 1 か所に置いて JavaScript で移す案は、幅の監視・初回描画のちらつき・テストのための擬似 `matchMedia` を抱え込む。`display: none` は支援技術からも消えるので、二重に読まれる心配は無い |
 | 密度の保存値（`dense` / `standard` / `relaxed`）と、スライダーの位置（0 / 1 / 2）が別物になる（[R-506](./research.md)） | C12 はスライダーだと spec が決めている。一方 `vv.view.v1` の値の形を変えると、いま使っている利用者の設定が失われる（FR-013 の「従来どおり」に反する） | 保存の形をスライダーに合わせて数値にする案は、移行の処理を 1 つ増やし、壊れた値の扱い（004 の FR-019）を書き直すことになる。読み替えは 1 つの配列で足り、往復の検査も 1 つで済む |
