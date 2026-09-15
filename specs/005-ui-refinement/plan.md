@@ -89,7 +89,7 @@
 | G2: 常駐する外部ミドルウェアを増やさない | 判断基準1 | PASS | PASS — 依存は実行時も開発時も 0 個増。アイコンは外部の集を入れずインライン `<svg>` で持つ（[R-510](./research.md)） |
 | G3: DB は再構築可能なインデックスに留める | 判断基準2 | PASS — DB に触れない | PASS — 新しい永続化は無い。`vv.view.v1` の形も変えない（[data-model.md](./data-model.md) 3.） |
 | G4: 重要な制約は可能な限りテスト可能にする | core-beliefs | 要設計 — 「表示のみ」「構図」「対比」をどう機械で守るか | PASS — 表示のみは DOM の性質（対話要素でない・tab 順に無い）として検査でき（[R-503](./research.md)）、対比と明暗の順序は CSS を読む検査で守る（[contracts/design-tokens.md](./contracts/design-tokens.md) 4.）。構図と画面幅は人が確かめると明示した（[quickstart.md](./quickstart.md) S2・S3） |
-| G5: 文書は変更と同じ変更単位で更新する | AGENTS.md / core-beliefs | 要対応 | PASS — 成果物に `ARCHITECTURE.md`（Web 層に骨格の記述を足す）と `docs/design-docs/library-ui-design-system.md` の追補を含める |
+| G5: 文書は変更と同じ変更単位で更新する | AGENTS.md / core-beliefs | 要対応 | PASS — 成果物に `ARCHITECTURE.md`（Web 層に骨格の記述を足す）と `docs/design-docs/library-ui-design-system.md` の追補を含める。実行計画は `docs/exec-plans/active/005-ui-refinement.md` に置く（下記） |
 | G6: 生成物は手編集せず、元ファイルから生成する | AGENTS.md | PASS | PASS — `web/src/api/gen/` に触れない。`generate-check` が契約の無変更を機械的に示す（FR-014） |
 | G7: 後から重くできる境界を最初に引く | 判断基準4 | 要設計 — 裏側の無い入口を 15 個置くことが、後で機能を足すときの妨げにならないか | PASS — 表示のみの項目は 1 つの表（[data-model.md](./data-model.md) 2.）から描く。機能が付くときは、その行を「機能する」に替えて描画側の分岐を 1 か所通すだけで済む（[contracts/components.md](./contracts/components.md) 3.） |
 | G8: 画面の変更は画像で示す | AGENTS.md | 要対応 — 本機能は画面の変更そのもの | PASS — [quickstart.md](./quickstart.md) S9 で 6 枚を撮り、PR に添えることを手順に組み込んだ |
@@ -154,6 +154,7 @@ web/src/
 
 ~ ARCHITECTURE.md                                  # Web 層に骨格（layout/）の記述を足す
 ~ docs/design-docs/library-ui-design-system.md     # 原案に寄せた分の追補
++ docs/exec-plans/active/005-ui-refinement.md      # 実行計画（AGENTS.md）。implement の最初の回で作る
 ~ docs/screenshots/                                # 新しい 6 枚（quickstart S9）
 ```
 
@@ -164,6 +165,12 @@ web/src/
 存在し、画面の中身を知らない）と部品（画面が並べるもの）で変更の理由が違うからである。
 骨格には「表示のみの要素」が集中しており、その規約（[R-503](./research.md)）を 1 つの
 区画に閉じ込められる利点もある。
+
+AGENTS.md が求める実行計画は `docs/exec-plans/active/005-ui-refinement.md` に置き、
+完了時に `completed/` へ移す。**作るのは implement の最初の回**である — 004 の実行計画も
+Phase 1 の回（`e764a2a`）で作られており、plan 段階の成果物は Spec Kit 側
+（`plan.md`・`research.md`・`data-model.md`・`contracts/`・`quickstart.md`）に限られる。
+本 PR にその文書が無いのはそのためで、漏れではない。
 
 `pages/LibraryPage.tsx` の**復元と無限スクロールには触らない**。
 [R-501](./research.md) がスクロールの持ち主を変えないと決めたのは、この 2 つを差分から
