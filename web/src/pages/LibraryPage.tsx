@@ -15,8 +15,10 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import { useVideos } from "../api/useVideos";
-import DensitySelect from "../components/DensitySelect";
+import DensitySlider from "../components/DensitySlider";
 import ScanStatus from "../components/ScanStatus";
+import SearchInput from "../components/SearchInput";
+import Select from "../components/Select";
 import Skeleton from "../components/Skeleton";
 import StateNotice from "../components/StateNotice";
 import Toolbar from "../components/Toolbar";
@@ -441,44 +443,19 @@ export default function LibraryPage() {
           取り込むは押せる（FR-002 / contracts/screen-states.md 1.）。 */}
       <Toolbar
         ref={bar}
-        search={
-          // 固定幅を持たせない。basis-48 は「これを下回るなら自分の行へ
-          // 折り返す」目安であって幅ではなく、flex-1 が帯の残りをそのまま
-          // 吸うので、広い画面では検索欄が伸びる。min-w-0 が要るのは、入力欄の
-          // 既定の最小幅が flex の縮小を止め、幅 360px で帯からはみ出すため
-          // である（FR-022 / SC-004）。入力欄そのものの下限は帯が与える
-          // --size-tap（44px）で、ここでは重ねて書かない。
-          <label className="flex min-w-0 flex-1 basis-48 items-center gap-2 text-sm text-muted">
-            <span className="sr-only">題名で探す</span>
-            <input
-              type="search"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              maxLength={MAX_QUERY_LENGTH}
-              placeholder="題名で探す"
-              className="w-full rounded-control border border-border bg-surface-raised px-2 text-sm text-body"
-            />
-          </label>
-        }
+        // 見た目（虫眼鏡・枠・4 状態）は部品が持ち、待ち合わせ 250ms と
+        // URL の書き換えはこの画面が持つ（data-model.md 5.）。
+        search={<SearchInput value={input} onChange={setInput} />}
+        // 選択肢は従来どおり sortLabels の 2 つで、部品は数を知らない（FR-013）。
         sort={
-          <label className="flex items-center gap-2 text-sm text-muted">
-            並び順
-            {/* 当たり判定（--size-tap）は帯が帯の中のすべてに与えるので、
-                ここでは重ねて書かない（Toolbar 参照）。 */}
-            <select
-              value={sort}
-              onChange={(event) => changeSort(event.target.value)}
-              className="rounded-control border border-border bg-surface-raised px-2 text-sm text-body"
-            >
-              {sortLabels.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <Select
+            label="並び順"
+            value={sort}
+            onChange={changeSort}
+            options={sortLabels}
+          />
         }
-        density={<DensitySelect value={density} onChange={changeDensity} />}
+        density={<DensitySlider value={density} onChange={changeDensity} />}
         scan={<ScanStatus onFinished={onScanFinished} />}
         count={
           /*
@@ -584,7 +561,7 @@ export default function LibraryPage() {
 function NoMatches({ query, onClear }: { query: string; onClear: () => void }) {
   return (
     <StateNotice
-      tone="empty"
+      tone="info"
       title={`「${query}」に一致する動画はありません`}
       description="別の語で探すか、検索語を短くしてみてください。"
     >
@@ -607,7 +584,7 @@ function NoMatches({ query, onClear }: { query: string; onClear: () => void }) {
 function EmptyLibrary() {
   return (
     <StateNotice
-      tone="empty"
+      tone="info"
       title="動画がまだありません"
       description={
         <p>
