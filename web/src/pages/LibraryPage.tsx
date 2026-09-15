@@ -21,6 +21,7 @@ import Skeleton from "../components/Skeleton";
 import StateNotice from "../components/StateNotice";
 import Toolbar from "../components/Toolbar";
 import VideoCard from "../components/VideoCard";
+import { usePublishVideoCount } from "../layout/AppShell";
 import { headerHeight } from "../layout/Header";
 import {
   type Density,
@@ -294,6 +295,16 @@ export default function LibraryPage() {
 
   const { items, total, cursor, hasMore, loading, loadingMore, error, loadMore, reload } =
     useVideos(sort, query, restored);
+
+  // 総件数をサイドバーの「すべての動画」へ届ける（T021）。ここは**公開する
+  // だけ**で、どこにどう出るかは骨格（AppShell）が決める。
+  //
+  // **公開するのは `total` ではなく `loading ? undefined : total`** である。
+  // useVideos は total を 0 で初期化し、検索語や並び順を変えて取り直すあいだも
+  // 前の値を消さない ── total だけを見ると初回に「0 本」、絞り込みの最中に前の
+  // 件数が出る。どちらも嘘であり、同じ場面で帯が「読み込み中…」と出しているの
+  // とも食い違う（004 の FR-008）。undefined のあいだは件数を出さない。
+  usePublishVideoCount(loading ? undefined : total);
 
   // 戻したいスクロール位置。項目を描いたあとに 1 回だけ使う。
   const pendingScroll = useRef(restored?.scrollY);

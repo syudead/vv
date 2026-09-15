@@ -1,6 +1,6 @@
 # 実行計画: 原案デザインに合わせた UI の再構築
 
-- ステータス: 進行中（Phase 3 まで。Phase 4 以降は未着手）
+- ステータス: 進行中（Phase 4 まで。Phase 5 以降は未着手）
 - 最終更新: 2026-09-15
 - 対象: [spec](../../../specs/005-ui-refinement/spec.md) の全体（FR-001〜FR-018 / SC-001〜SC-009）。004 で作った 2 画面を、原案の 3 領域（サイドバー・ヘッダー・コンテンツ）の構図に組み替える。変更は **`web/src/` に閉じる**（`api/openapi.yaml`・`internal/`・`cmd/`・`web/src/api/gen/` には触れない）
 
@@ -60,7 +60,7 @@
 | Phase 1: Setup（実行計画と着手前の緑） | 完了（2026-09-15）。T001〜T002 |
 | Phase 2: Foundational（トークン・表・アイコン） | 完了（2026-09-15）。T003〜T006 |
 | Phase 3: US1（レイアウトが原案の 3 領域になる） | 完了（2026-09-15）。T007〜T014。S2 の寸法・境界・固定は実ブラウザで確認済み。原案との照合（SC-001）は S3 で人が行う |
-| Phase 4: US2（サイドバーとヘッダーが原案どおりに並ぶ） | 未着手。T015〜T022 |
+| Phase 4: US2（サイドバーとヘッダーが原案どおりに並ぶ） | 完了（2026-09-15）。T015〜T022。機能する入口が 2 つだけであることは機械で守られている（`layout/placeholders.test.tsx`）。原案との照合（順序・体裁）は S3、読み上げは S7 で人が行う |
 | Phase 5: US3（動画カードが原案の形になる） | 未着手。T023〜T025 |
 | Phase 6: US4（ツールバーと通知を整える） | 未着手。T026〜T032 |
 | Phase 7: US5（再生画面が動画と情報パネルの 2 分割になる） | 未着手。T033〜T037 |
@@ -254,3 +254,99 @@ PR #36 のレビューで、**件数が少ない一覧に 56px の余分な縦�
 
 包む側と包まれる側が同じ「画面を満たす」要求を二重に持つと足し合わさる、という
 一般の落とし穴である。骨格を導入した回だからこそ、役目の置き場所を 1 つに決めておく。
+
+## Phase 4 の検査の結果
+
+実行日: 2026-09-15。
+
+| 検査 | 結果 |
+| --- | --- |
+| `make test-web` | **成功**。`vite build` が通り、14 ファイル / **135 件**のテストが緑 |
+| `make check` | **成功**。`fmt-check` → `lint` → `test` → `generate-check` がすべて成功 |
+
+件数が 123 件から 135 件に増えた内訳は、新設の `layout/placeholders.test.tsx` の **7 件**
+（[contracts/components.md](../../../specs/005-ui-refinement/contracts/components.md) 5. が
+求める 4 つに、「（未実装）」が添えられていることと件数の 2 場面を加えたもの）と、
+`noRawColors.test.ts` の走査対象に加わった 5 ファイル（`layout/NavItem.tsx`・
+`layout/SidebarSection.tsx`・`layout/Tab.tsx`・`layout/IconButton.tsx`・
+`layout/placeholders.test.tsx`）の分である。
+
+`generate-check` が通っているので、`api/openapi.yaml` と生成物は変わっていない
+（FR-014）。差分は `web/src/` と本書に閉じている。
+
+### 画面の記録と、そこから読み取れたこと
+
+[docs/how-to/ui-change-screenshots.md](../../how-to/ui-change-screenshots.md) の
+「コンテナ内・エージェントの実行環境」の手順で 2 枚を撮った（確認用の動画 12 本は
+[S0](../../../specs/005-ui-refinement/quickstart.md) のとおり ffmpeg の testsrc で作った。
+実データは写していない）。
+
+| 画像 | 幅 | 見えること |
+| --- | --- | --- |
+| `20260915-005-p4-library-1280.png` | 1280 | サイドバーがロゴ → ライブラリ（見出し無し）→ コレクション → タグの順で並ぶ。「すべての動画」だけが選択中の地と文字色を持ち、右端に件数（12）が出る。残りの 9 行は `--color-inert` で淡い。ヘッダーはタブ 4 つが左、設定が右端 |
+| `20260915-005-p4-library-600.png` | 600 | 640px 未満。サイドバーが消え、ロゴがヘッダーへ移る（FR-003）。タブと設定はヘッダーに残る |
+
+**件数が出ているのは 1 行だけ**である。表示のみの 9 行には数字が無く、これは
+`layout/placeholders.test.tsx` が機械でも見ている。撮影時点の総件数（12）が
+サイドバーと帯の右端の両方で一致しているので、T021 の経路（`LibraryPage` →
+`AppShell` の context → `Sidebar`）が実際につながっていることも読み取れる。
+
+原案との照合（順序と体裁が一致していること・4 状態の見え方）は S3、読み上げに
+「（未実装）」が届くことは S7 で人が確かめる。画像からは分からない。
+
+## 決定の記録（Phase 4）
+
+### 件数は骨格の中を子から親へ流す（T021）
+
+総件数を持っているのは `useVideos` を呼ぶ `LibraryPage` で、それは `AppShell` の**子**で
+ある。出す先の NavItem「すべての動画」は `Sidebar` の中、つまり骨格の別の枝にあるので、
+引数では渡せない。`AppShell` の中に件数の context を置き、同じファイルから公開側
+（`usePublishVideoCount`）と読み出し側（`useVideoCount`）の hook を export した。
+
+新しいファイルを作らなかったのは、この状態が骨格の外で使われないためである。器と同じ
+ファイルに置くほうが、どこまでが骨格の関心かが読み取れる。`web/src/api/useVideos.ts` の
+置き場所も戻り値も変えていない（[data-model.md 5.](../../../specs/005-ui-refinement/data-model.md)
+の「変わらないもの」）。
+
+値と設定関数は**別の context に分けた**。1 つのオブジェクトにまとめると、件数が変わる
+たびに新しいオブジェクトになり、公開側の効果が毎回走り直す。
+
+### 公開するのは `total` ではなく `loading ? undefined : total`（T021）
+
+`useVideos` は `total` を 0 で初期化し、検索語や並び順を変えて取り直すあいだも前の値を
+消さない。`total` だけを見ると**初回に「0 本」、絞り込みの最中に前の件数**が出る。どちらも
+嘘であり、同じ場面で帯が「読み込み中…」と出しているのとも食い違う（004 の FR-008）。
+
+`undefined` を「まだ分からない」に割り当て、そのあいだは件数を出さないことにした。0 と
+未取得が同じ見た目にならない。`layout/placeholders.test.tsx` がこの 2 つ（42 のときは
+出る／`undefined` のときは出ない）を両方から見ている。
+
+### 「表示のみ」に件数を渡す口を型で塞いだ（T015 / T021）
+
+`NavItem` の props を判別可能な合併にし、`InertNavItem` を取る側を `count?: never` と
+した。表示のみの行へ件数を渡すと `tsc --noEmit` が落ちる。T006 で `to` を `to?: never` に
+したのと同じ手口で、**FR-005 の「件数を出さない」を規約ではなく型にした**ものである。
+
+描画側のレビューで気付く形にすると、行を足すたびに人が見る必要が残る。
+
+### hover / active は地ではなく覆いで表す（T015）
+
+contracts/components.md 2. の「背景を 1 段明るく / 暗く」は**地に対する相対**の指示だが、
+選択中（`accent-surface`）と通常（サイドバーの `surface-raised`）では地が違う。地の色そのものを
+差し替えると、選択中の行にホバーしたときに色みが消える。
+
+`::after` の覆い（`hover:after:bg-body/10` / `active:after:bg-surface-sunken/60`）にすると、
+どちらの地の上でも同じ向きに 1 段動き、選択中の色みも残る。`isolate` + `after:-z-10` で
+覆いを中身の下に敷いてあるので、文字とアイコンは覆われない。`surface-raised` より明るい
+トークンが無いことへの答えでもある（生の色は `theme/noRawColors.test.ts` が禁じている）。
+
+### 検査が本当に効くことを確かめてから残した（T022）
+
+`layout/placeholders.test.tsx` を書いたあと、`InertRow` を一時的に
+`<button type="button" disabled>` に変えて実行し、「対話要素になっている」と「tab 順に
+現れない」の 2 件が落ちることを見てから戻した。
+
+表示のみの要素の検査は**通ってしまう書き方**になりやすい。最初に書いた
+`expect(names).not.toContain(expect.stringContaining(label))` は、`toContain` が
+非対称マッチャを解さないため常に通る空の検査だった。壊して落ちることを見なければ、
+この種の取り違えは残る。
