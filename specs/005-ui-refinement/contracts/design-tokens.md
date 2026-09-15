@@ -87,7 +87,7 @@
 | `--color-border` / `--color-body` / `--color-muted` / `--color-focus` | そのまま |
 | `--color-danger*` / `--color-warning*` | そのまま。C13 Notice の 3 段階は `info` = `surface-raised`、`warning`、`danger` の既存の組で足りる |
 | `--radius-card` / `--radius-control` / `--size-tap` | そのまま。カード全体の角丸（spec 4.）は `--radius-card` を枠に移すだけで、値は変えない |
-| `--size-tile-dense` / `-standard` / `-relaxed` と格子の式 | そのまま。本機能は列の式に触れない |
+| `--size-tile-dense` / `-standard` / `-relaxed` と格子の式 | そのまま。本機能は列の式に触れない。**ただし列の「数」は変わる** — 幅 640 以上では器からサイドバーの 240px が引かれるため。[004 の contracts/design-tokens.md](../../004-library-ui/contracts/design-tokens.md) 3. の表は実装の回に実測して更新する（[quickstart.md](../quickstart.md) S2） |
 | 動き（`motion-reduce:` の扱い） | 004 の契約 4. のまま（FR-012） |
 
 ## 6. この契約の検査
