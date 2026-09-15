@@ -23,12 +23,21 @@ import type { Ref, ReactNode } from "react";
  * 折り返しを使うのは、幅 360px から 2560px までのどの幅でも 4 つが重ならない
  * ことを、画面幅の場合分けを持たずに満たせるからである
  * （contracts/screen-states.md 3.「指」）。
+ *
+ * 005 で変わったのは 2 つだけである。
+ *
+ * - 粘る位置がヘッダーの下端（`--size-header`）になった。0 のままだとヘッダーの
+ *   裏へ潜る（contracts/layout.md 1.「重なりの順序」）。z-20 はヘッダー（z-30）
+ *   より後ろ、一覧の項目より前という関係を保つ
+ * - 件数を帯の**右端**で受けるようになった。一覧の見出し文字が無くなり、
+ *   置き場所がここへ移ったためである（R-508）
  */
 export default function Toolbar({
   search,
   sort,
   density,
   scan,
+  count,
   ref,
 }: {
   /** 探す（検索欄）。 */
@@ -39,6 +48,14 @@ export default function Toolbar({
   density?: ReactNode;
   /** 取り込む（状態の文言 + ボタン。FR-010）。 */
   scan: ReactNode;
+  /**
+   * 件数（「N 本」「「語」に一致 N 本」「読み込み中…」。R-508）。
+   *
+   * 帯の右端に置く。文言も読み上げの扱い（role="status" / aria-live）も
+   * 呼び出し側が持つ ── 004 の FR-008 / FR-021 をそのまま連れて来るだけで、
+   * 帯は置き場所だけを決める（FR-018）。
+   */
+  count?: ReactNode;
   /**
    * 帯そのものへの参照。
    *
@@ -52,7 +69,7 @@ export default function Toolbar({
     <div
       ref={ref}
       className={
-        "sticky top-0 z-20 border-b border-border bg-surface " +
+        "sticky top-[var(--size-header)] z-20 border-b border-border bg-surface " +
         "[&_:is(input,select,button)]:min-h-[var(--size-tap)] " +
         "[&_:is(input,select,button)]:min-w-[var(--size-tap)] " +
         "[&_:is(input,select,button)]:outline-offset-2 " +
@@ -65,6 +82,9 @@ export default function Toolbar({
         {sort}
         {density}
         {scan}
+        {/* 件数は右端に寄せる。ml-auto にするのは、帯が折り返しても
+            「その行の右端」に居られるからである（固定の幅を与えない）。 */}
+        {count !== undefined && <div className="ml-auto">{count}</div>}
       </div>
     </div>
   );

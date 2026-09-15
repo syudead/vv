@@ -1,6 +1,6 @@
 # 実行計画: 原案デザインに合わせた UI の再構築
 
-- ステータス: 進行中（Phase 2 まで。Phase 3 以降は未着手）
+- ステータス: 進行中（Phase 3 まで。Phase 4 以降は未着手）
 - 最終更新: 2026-09-15
 - 対象: [spec](../../../specs/005-ui-refinement/spec.md) の全体（FR-001〜FR-018 / SC-001〜SC-009）。004 で作った 2 画面を、原案の 3 領域（サイドバー・ヘッダー・コンテンツ）の構図に組み替える。変更は **`web/src/` に閉じる**（`api/openapi.yaml`・`internal/`・`cmd/`・`web/src/api/gen/` には触れない）
 
@@ -59,7 +59,7 @@
 | タスク分解 | 完了（2026-09-15）。T001〜T046 |
 | Phase 1: Setup（実行計画と着手前の緑） | 完了（2026-09-15）。T001〜T002 |
 | Phase 2: Foundational（トークン・表・アイコン） | 完了（2026-09-15）。T003〜T006 |
-| Phase 3: US1（レイアウトが原案の 3 領域になる） | 未着手。T007〜T014 |
+| Phase 3: US1（レイアウトが原案の 3 領域になる） | 完了（2026-09-15）。T007〜T014。構図の確認（quickstart S2）は人が行う |
 | Phase 4: US2（サイドバーとヘッダーが原案どおりに並ぶ） | 未着手。T015〜T022 |
 | Phase 5: US3（動画カードが原案の形になる） | 未着手。T023〜T025 |
 | Phase 6: US4（ツールバーと通知を整える） | 未着手。T026〜T032 |
@@ -151,3 +151,55 @@ plan の PR に本書が無いのは漏れではない。
 `noRawColors.test.ts` の走査対象に `layout/icons.tsx` が 1 つ加わった分である。
 `generate-check` が通っているので、`api/openapi.yaml` と生成物は変わっていない
 （FR-014）。
+
+## Phase 3 の検査の結果
+
+実行日: 2026-09-15。
+
+| 検査 | 結果 |
+| --- | --- |
+| `make test-web` | **成功**。`vite build` が通り、13 ファイル / **123 件**のテストが緑 |
+| `make check` | **成功**。`fmt-check` → `lint` → `test` → `generate-check` がすべて成功 |
+
+件数が 119 件から 123 件に増えたのは、`noRawColors.test.ts` の走査対象に
+`layout/Logo.tsx`・`layout/Sidebar.tsx`・`layout/Header.tsx`・`layout/AppShell.tsx` の
+4 ファイルが加わった分である。**Phase 3 で新しい単体テストは足していない** —
+[tasks.md](../../../specs/005-ui-refinement/tasks.md) が足すと定めた 4 件はいずれも
+Phase 4 以降のもので、構図そのもの（SC-001）と画面幅による出し分け（SC-003・SC-007）には
+[R-511](../../../specs/005-ui-refinement/research.md) のとおり機械の検査を用意しない。
+
+`generate-check` が通っているので、`api/openapi.yaml` と生成物は変わっていない
+（FR-014）。差分は `web/src/` に閉じている。
+
+**構図の確認（[quickstart.md](../../../specs/005-ui-refinement/quickstart.md) S2）は未実施である。**
+幅 1280 / 640 / 639 / 360 での 3 領域・固定・ロゴの移動は人がブラウザで確かめるもので、
+この回では行っていない。US2 で中身（ナビゲーションとタブ）が入ってから S2・S3 をまとめて
+実行するほうが、同じ画面を 2 度見ずに済む。
+
+## 決定の記録（Phase 3）
+
+### 固定領域の下端は「実測」で取る（T014）
+
+[contracts/layout.md](../../../specs/005-ui-refinement/contracts/layout.md) 1. の
+
+```text
+固定領域の下端 = --size-header + ツールバーの実測高
+```
+
+のうち、`--size-header` の側も**描かれたヘッダーを測って**得ることにした
+（`layout/Header.tsx` の `headerHeight()` が `[data-app-header]` を測る）。56px という値を
+JavaScript 側に書き写すと、トークンを変えたときにここだけ古い値が残るためである。
+`getComputedStyle` でカスタムプロパティを読んで `rem` を px に直す案も採らなかった —
+単位の解釈を自前で持つことになり、jsdom では値が取れないので結局分岐が要る。
+
+測る対象が無いとき（再生画面、骨格を持たずに描くテスト）は 0 を返す。ヘッダーが
+無いのだから、その裏に隠れる項目も無く、逃げる高さも 0 でよい。
+
+### 復元と無限スクロールには触っていない（T014 / FR-018）
+
+`window.scrollY` の保存・復元（`api/listSnapshot.ts` と `LibraryPage` の 2 つの
+`useLayoutEffect`）と `IntersectionObserver` による続きの読み込みは**差分に現れない**。
+スクロールの持ち主を文書のままにした（[R-501](../../../specs/005-ui-refinement/research.md)）
+ので、004 が積んだ 3 つの仕掛けのうち固定領域の高さに依存するのは密度アンカーだけであり、
+そこだけを直せば足りる。触っていないことが差分から読み取れることが、FR-018 のいちばん
+強い根拠である。
