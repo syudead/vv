@@ -87,9 +87,14 @@ function contrast(foreground: string, background: string): number {
 /**
  * pairs は検査する組である。
  *
- * specs/004-library-ui/contracts/design-tokens.md 2.「対比」の表をそのまま
- * 持つ。**表に無い組は検査されない**ので、トークンを足したら両方に足す。
- * 必要な比は FR-004 による（本文 4.5:1、境界と大きな文字 3:1）。
+ * specs/004-library-ui/contracts/design-tokens.md 2.「対比」の表と、
+ * specs/005-ui-refinement/contracts/design-tokens.md 3. が足す 3 行を持つ。
+ * **表に無い組は検査されない**ので、トークンを足したら両方に足す。
+ * 必要な比は FR-004 / FR-011 による（本文 4.5:1、境界と大きな文字 3:1）。
+ *
+ * --color-inert はここに**入れない**。005 の契約 4. のとおり、4.5:1 を下回るのが
+ * 意図した値だからである（淡く見えることが要求で、FR-011 が対象外としている）。
+ * かわりに明暗の順序を下の describe で確かめる。
  */
 const pairs: { foreground: string; background: string; required: number }[] = [
   { foreground: "body", background: "surface", required: 4.5 },
@@ -111,6 +116,12 @@ const pairs: { foreground: string; background: string; required: number }[] = [
   { foreground: "focus", background: "surface", required: 3 },
   { foreground: "focus", background: "surface-raised", required: 3 },
   { foreground: "accent", background: "surface-sunken", required: 3 },
+
+  // 005 で足す 3 行 — specs/005-ui-refinement/contracts/design-tokens.md 3.
+  // accent-surface は選択中の NavItem の地と、選択中の Tab の下線の周りである。
+  { foreground: "accent", background: "accent-surface", required: 4.5 },
+  { foreground: "body", background: "accent-surface", required: 4.5 },
+  { foreground: "muted", background: "accent-surface", required: 4.5 },
 ];
 
 describe("見た目のトークンの対比（FR-004 / SC-006）", () => {
@@ -147,4 +158,34 @@ describe("見た目のトークンの対比（FR-004 / SC-006）", () => {
       ).toBeGreaterThanOrEqual(required);
     });
   }
+});
+
+describe("表示のみの要素の色（FR-011 の対象外 / 005 の契約 4.）", () => {
+  const colors = themeColors(css);
+
+  /*
+   * --color-inert は対比の下限を持たない。淡く見えること自体が FR-005 の要求で、
+   * 4.5:1 を満たす値にすると要求を満たせないからである。
+   *
+   * ただし片側だけは機械で守れる。値を濃くしすぎて muted（機能する要素の補助
+   * 文言）と見分けが付かなくなる方向は、明暗の順序として検査できる。淡くし
+   * すぎる方向（読めなくなる）は人が quickstart の S3 で確かめる。
+   */
+  it("inert が muted より暗い", () => {
+    const inert = colors.get("inert");
+    const muted = colors.get("muted");
+
+    expect(inert, "--color-inert が web/src/index.css の @theme にない").toBeDefined();
+    expect(muted, "--color-muted が web/src/index.css の @theme にない").toBeDefined();
+    if (inert === undefined || muted === undefined) {
+      return;
+    }
+
+    expect(
+      luminance(inert),
+      `inert(${inert}) の相対輝度 ${luminance(inert).toFixed(4)} が ` +
+        `muted(${muted}) の ${luminance(muted).toFixed(4)} 以上になっている。` +
+        "表示のみの要素が、機能する要素の補助文言と見分けが付かなくなる",
+    ).toBeLessThan(luminance(muted));
+  });
 });

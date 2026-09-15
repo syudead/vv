@@ -1,6 +1,6 @@
 # 実行計画: 原案デザインに合わせた UI の再構築
 
-- ステータス: 進行中（Phase 1 まで。Phase 2 以降は未着手）
+- ステータス: 進行中（Phase 2 まで。Phase 3 以降は未着手）
 - 最終更新: 2026-09-15
 - 対象: [spec](../../../specs/005-ui-refinement/spec.md) の全体（FR-001〜FR-018 / SC-001〜SC-009）。004 で作った 2 画面を、原案の 3 領域（サイドバー・ヘッダー・コンテンツ）の構図に組み替える。変更は **`web/src/` に閉じる**（`api/openapi.yaml`・`internal/`・`cmd/`・`web/src/api/gen/` には触れない）
 
@@ -58,7 +58,7 @@
 | 計画・設計成果物 | 完了（2026-09-15） |
 | タスク分解 | 完了（2026-09-15）。T001〜T046 |
 | Phase 1: Setup（実行計画と着手前の緑） | 完了（2026-09-15）。T001〜T002 |
-| Phase 2: Foundational（トークン・表・アイコン） | 未着手。T003〜T006 |
+| Phase 2: Foundational（トークン・表・アイコン） | 完了（2026-09-15）。T003〜T006 |
 | Phase 3: US1（レイアウトが原案の 3 領域になる） | 未着手。T007〜T014 |
 | Phase 4: US2（サイドバーとヘッダーが原案どおりに並ぶ） | 未着手。T015〜T022 |
 | Phase 5: US3（動画カードが原案の形になる） | 未着手。T023〜T025 |
@@ -99,3 +99,55 @@ FR-014（契約を変えない）に対する機械的な裏付けになる。
 計画も Phase 1 の回（`e764a2a`）で作られており、plan 段階の成果物は Spec Kit 側
 （`plan.md`・`research.md`・`data-model.md`・`contracts/`・`quickstart.md`）に限られる。
 plan の PR に本書が無いのは漏れではない。
+
+### 「表示のみ」は型で塞ぐ（T006）
+
+[data-model.md 2.](../../../specs/005-ui-refinement/data-model.md) の不変条件
+「`kind: "inert"` の行は `to` を持たない」を、規約ではなく**型**で表した。
+`InertNavItem` の `to` を `to?: never` としてあるので、表示のみの行に行き先を書くと
+`tsc --noEmit`（`make lint`）が落ちる。確認のため一時ファイルで実際に落ちること
+（`TS2322: Type 'string' is not assignable to type 'undefined'`）を見てから消した。
+
+行き先が付く＝押せてしまうということで、それは利用者が行える操作が増えたということ
+（FR-013 の違反）である。描画側のレビューで気付く形にすると、行を足すたびに人が見る
+必要が残る。
+
+### `--color-inert` は対比表に入れない（T003・T004）
+
+[contracts/design-tokens.md](../../../specs/005-ui-refinement/contracts/design-tokens.md) 4.
+のとおり、`--color-inert`（`#6b7482`）は `surface` に対して 4.00、`surface-raised` に
+対して 3.58 で、どちらも 4.5:1 を下回る。**これは意図した値である** — FR-011 が
+「表示のみの要素は淡く表示するため、この基準の対象外とする」と明示しており、淡く
+見えることが要求だからである。したがって `tokens.test.ts` の `pairs` には入れない。
+
+かわりに片側だけを機械で守る。値を濃くしすぎて `muted`（機能する要素の補助文言）と
+見分けが付かなくなる方向は、相対輝度の順序（`inert` < `muted`）として検査できる。
+淡くしすぎる方向（読めなくなる）は人が [S3](../../../specs/005-ui-refinement/quickstart.md)
+で確かめる。
+
+### アイコンは 11 個をインラインで持つ（T005）
+
+[R-510](../../../specs/005-ui-refinement/research.md) のとおり外部のアイコン集を入れず、
+`web/src/layout/icons.tsx` に 11 個（`film`・`clock`・`heart`・`folder`・`tag`・
+`search`・`filter`・`settings`・`grid`・`list`・`close`）をインラインの `<svg>` で
+置いた。**依存は実行時・開発時とも 1 つも増えていない**（`web/package.json` は無変更）。
+
+`aria-hidden="true"` と `focusable="false"` は `Icon` が一律に付け、呼び出し側には
+書かせない。呼び出し側に任せると、後から足したアイコンが読み上げに漏れるためである。
+色は指定せず `currentColor` に任せるので、囲みの文字色（`text-inert` など）がそのまま
+伝わり、`theme/noRawColors.test.ts` の走査も素通りする。
+
+## Phase 2 の検査の結果
+
+実行日: 2026-09-15。
+
+| 検査 | 結果 |
+| --- | --- |
+| `make test-web` | **成功**。`vite build` が通り、13 ファイル / **119 件**のテストが緑 |
+| `make check` | **成功**。`fmt-check` → `lint` → `test` → `generate-check` がすべて成功 |
+
+件数が 114 件から 119 件に増えた内訳は、対比の 3 組（`accent` / `body` / `muted` に
+対する `accent-surface`）、`inert` < `muted` の明暗の順序 1 件、そして
+`noRawColors.test.ts` の走査対象に `layout/icons.tsx` が 1 つ加わった分である。
+`generate-check` が通っているので、`api/openapi.yaml` と生成物は変わっていない
+（FR-014）。
