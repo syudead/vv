@@ -160,7 +160,7 @@ describe("一覧 → 再生 → 一覧 の往復（FR-016）", () => {
     await settle();
     expect(here()).toBe("/videos/1");
 
-    await user.click(screen.getByRole("link", { name: "← 一覧へ戻る" }));
+    await user.click(screen.getByRole("link", { name: "一覧へ戻る" }));
     await settle();
 
     // `/` へ戻すと検索語も並び順も消える。離れたときの一覧に帰ること。
@@ -188,7 +188,7 @@ describe("一覧 → 再生 → 一覧 の往復（FR-016）", () => {
       total: 3,
     } satisfies VideoPageType);
 
-    await user.click(screen.getByRole("link", { name: "← 一覧へ戻る" }));
+    await user.click(screen.getByRole("link", { name: "一覧へ戻る" }));
     await settle();
 
     // 控えのまま出すと、増えた動画がいつまでも見えない。
@@ -286,7 +286,7 @@ describe("一覧 → 再生 → 一覧 の往復（FR-016）", () => {
     show("/videos/1");
     await settle();
 
-    await user.click(screen.getByRole("link", { name: "← 一覧へ戻る" }));
+    await user.click(screen.getByRole("link", { name: "一覧へ戻る" }));
     await settle();
 
     // 遷移元が無いので、戻り先は既定の一覧である。

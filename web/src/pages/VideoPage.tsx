@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useParams } from "react-router";
+import { useLocation, useParams } from "react-router";
 
 import {
   beaconProgress,
@@ -10,6 +10,7 @@ import {
   streamUrl,
   type Video,
 } from "../api/client";
+import InfoPanel from "../components/InfoPanel";
 import Skeleton from "../components/Skeleton";
 import StateNotice from "../components/StateNotice";
 import { formatDuration, unplayableText } from "../components/VideoCard";
@@ -30,7 +31,7 @@ type State =
 
 /**
  * backTarget は「一覧へ戻る」の行き先を、遷移元から渡された state で決める
- * （FR-016）。
+ * （FR-017）。
  *
  * 検索語と並び順は一覧の URL のクエリにしかないので、`/` へ戻すと絞り込みも
  * 並び順も消え、復元の控え（鍵が `q` と `sort` でできている）とも一致しない。
@@ -48,22 +49,24 @@ function backTarget(state: unknown): string {
 }
 
 /**
- * VideoPage は再生画面である（FR-012〜FR-016）。
+ * VideoPage は再生画面である（FR-015〜FR-017）。
  *
  * 中断位置から再開しつつ、先頭から見直す選択肢も出す。見終わった動画を
  * 末尾から再開させても利用者にできることが無いので、その判断はサーバー側の
  * completed に従う。
  *
- * 並びは contracts/screen-states.md 2.「並び」の 5 段に固定する。
+ * **構図は 2 分割である**（contracts/layout.md 4.）。左に映像、右に情報パネル
+ * （C14）を置き、一覧と同じ 640px の境界（`sm:`）でパネルを映像の下へ畳む。
+ * 境界を一覧と別にすると、狭くしていく途中で構図の変わる点が 2 つになる
+ * （R-505）。
  *
- * 1. 一覧へ戻る（**どの状態でも先に出す**。通信中も失敗中も戻れる。FR-016）
- * 2. 題名
- * 3. 知らせの置き場（再生できない形式・再生の失敗・続きから始まった知らせ）
- * 4. 映像
- * 5. 情報欄
+ * 004 の縦 5 段（戻る道 → 題名 → 知らせ → 映像 → 情報欄）は、**題名・知らせ・
+ * 情報をパネルへ移し、戻る道を × に替える**ことで置き換わった。知らせを映像の
+ * 上に積まないので、知らせが増えても**映像の大きさは変わらない**（spec US5-6 /
+ * US4-6）。× を映像に重ねないのは FR-017 である。
  *
- * 3 が映像より**上**にあるのが要点である。映像の上に重ねると映像を隠して
- * FR-014 に反し、情報欄の下に置くと気付かれない。
+ * サイドバーもヘッダーも被せない。分岐は `App.tsx` の 1 か所にあり、この画面は
+ * 骨格の存在を知らない（FR-015 / R-505）。
  */
 export default function VideoPage() {
   const params = useParams();
@@ -196,86 +199,48 @@ export default function VideoPage() {
     );
   }, []);
 
+  const ready = state.kind === "ready" ? state.video : undefined;
+
   return (
-    // 余白は狭い画面で詰める。幅 360px では p-6（左右で 48px）が中身の
-    // 13% を占め、映像も情報欄もその分だけ狭くなる（FR-022）。
-    <main className="mx-auto flex min-h-dvh max-w-5xl flex-col gap-4 p-4 sm:p-6">
-      {/* 1. 一覧へ戻る。状態によらず**先に**出す（FR-016 /
-          contracts/screen-states.md 2.・3.）。取得に失敗した画面から
-          戻れないと、利用者に残る手が再読み込みしかなくなる。 */}
-      <Link
-        to={backTo}
-        className="inline-flex min-h-[var(--size-tap)] w-fit min-w-[var(--size-tap)] items-center rounded-control text-sm text-accent outline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-focus"
-      >
-        ← 一覧へ戻る
-      </Link>
+    // 2 分割の器（contracts/layout.md 4.）。
+    //
+    // 幅 640px 以上で左に映像・右にパネル、未満では 1 列に畳む。パネルの幅を
+    // `minmax(18rem, 24rem)` にするのは、固定幅だと幅 640〜800px で映像が
+    // 極端に細くなるからである（R-505）。映像の側は `minmax(0, 1fr)` で、
+    // 0 を下限にしないと中身（映像）の既定幅が下限になって器からはみ出す。
+    //
+    // 余白は狭い画面で詰める。幅 360px では p-6（左右で 48px）が中身の 13% を
+    // 占め、映像もパネルもその分だけ狭くなる。
+    //
+    // `items-start` で、パネルを映像の高さに引き伸ばさない。
+    <main className="mx-auto grid min-h-dvh w-full max-w-7xl items-start gap-4 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] sm:gap-6 sm:p-6">
+      {/* 左（狭い画面では上）: 映像だけを置く。題名も知らせもここには無い。 */}
+      <div className="min-w-0">
+        {state.kind === "loading" && (
+          // 骨組みは読み上げに渡さない。伝えたいのは「この領域はいま読み込み中
+          // である」という 1 つの事実である（contracts/screen-states.md 3.）。
+          <div role="status" aria-label="読み込み中">
+            <Skeleton />
+          </div>
+        )}
 
-      {state.kind === "loading" && (
-        // 骨組みは読み上げに渡さない。伝えたいのは「この領域はいま読み込み中
-        // である」という 1 つの事実である（contracts/screen-states.md 3.）。
-        <div role="status" aria-label="読み込み中">
-          <Skeleton />
-        </div>
-      )}
+        {/* 取得に失敗したら映像は出さない。取得できていないのだから、再生の
+            入口を出しても押せることは無い。理由はパネルの中に出る。 */}
 
-      {state.kind === "failed" && (
-        // 映像は出さない。取得できていないのだから、再生の入口を出しても
-        // 押せることは無い（contracts/screen-states.md 2.）。
-        <StateNotice tone="danger" title="動画を開けません" description={state.reason} />
-      )}
-
-      {state.kind === "ready" && (
-        <>
-          {/* 2. 題名。break-words が要るのは、題名がファイル名由来で、空白の
-              無い長い 1 語になりうるからである。折り返せない語は狭い画面で
-              そのまま横スクロールになる（FR-022 / SC-004）。 */}
-          <h1 className="text-xl font-semibold tracking-tight break-words">
-            {state.video.title}
-          </h1>
-
-          {/* 3. 知らせの置き場。映像の**外**で、映像より上に置く。 */}
-          <Unplayable video={state.video} />
-
-          {playbackError !== null && (
-            <StateNotice
-              tone="danger"
-              title="再生できません"
-              description={playbackError}
-            />
-          )}
-
-          {resumedFrom !== null && (
-            <StateNotice
-              tone="info"
-              title={`${formatDuration(resumedFrom)} から再開しました`}
-            >
-              <button
-                type="button"
-                onClick={restart}
-                className="min-h-[var(--size-tap)] min-w-[var(--size-tap)] rounded-control border border-border px-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-focus"
-              >
-                先頭から見直す
-              </button>
-            </StateNotice>
-          )}
-
-          {/* 4. 映像。地は surface-sunken で、比率を保ったまま画面幅に収まる
-              （FR-012）。操作盤はブラウザ標準に任せる。
-
-              比率は aspect-video で決め打たない。16:9 以外（縦長の動画など）で
-              必ず見切れるか余白が出る。<video> は自分の比率を知っているので、
-              高さを指定しなければ幅から比率どおりの高さが決まる。
-
-              幅は max-w-full で**上限だけ**を与える。ここは縦並びの flex なので
-              通常は親の幅まで伸びるが、上限があることで、伸ばす側が変わっても
-              映像が親からはみ出して横スクロールを生むことはない（FR-022）。
-
-              max-h-[70dvh] は縦長の動画が画面の高さを超え、操作盤ごと画面外へ
-              出るのを防ぐ。高さで頭打ちになった分は地（surface-sunken）が
-              レターボックスとして見える（contracts/design-tokens.md 2.）。 */}
+        {ready !== undefined && (
+          // 地は surface-sunken で、パネルを除いた領域いっぱいに広がる
+          // （spec US5-2）。操作列はブラウザ標準に任せる。
+          //
+          // 比率は aspect-video で決め打たない。16:9 以外（縦長の動画など）で
+          // 必ず見切れるか余白が出る。<video> は自分の比率を知っているので、
+          // 高さを指定しなければ幅から比率どおりの高さが決まる。
+          //
+          // max-h-[70dvh] は縦長の動画が画面の高さを超え、操作列ごと画面外へ
+          // 出るのを防ぐ。高さで頭打ちになった分は地（surface-sunken）が
+          // レターボックスとして見える（contracts/design-tokens.md 2.）。
           <video
             ref={videoRef}
-            src={streamUrl(state.video.id)}
+            src={streamUrl(ready.id)}
             controls
             preload="metadata"
             onLoadedMetadata={onLoaded}
@@ -292,19 +257,51 @@ export default function VideoPage() {
               }
             }}
             onError={onError}
-            className="max-h-[70dvh] max-w-full rounded-card bg-surface-sunken"
+            className="h-auto max-h-[70dvh] w-full rounded-card bg-surface-sunken"
           />
+        )}
+      </div>
 
-          {/* 5. 情報欄 */}
-          <VideoFacts video={state.video} />
-        </>
-      )}
+      {/* 右（狭い画面では下）: 情報パネル。× → 題名 → 知らせ → 情報の順は
+          InfoPanel が持つ。**どの状態でも描く** — 取得に失敗した画面から
+          戻れないと、利用者に残る手が再読み込みしかなくなる（FR-017）。 */}
+      <InfoPanel backTo={backTo} title={ready?.title} video={ready}>
+        {state.kind === "failed" && (
+          <StateNotice
+            tone="danger"
+            title="動画を開けません"
+            description={state.reason}
+          />
+        )}
+
+        {ready !== undefined && <Unplayable video={ready} />}
+
+        {playbackError !== null && (
+          <StateNotice tone="danger" title="再生できません" description={playbackError} />
+        )}
+
+        {resumedFrom !== null && (
+          <StateNotice
+            tone="info"
+            title={`${formatDuration(resumedFrom)} から再開しました`}
+          >
+            <button
+              type="button"
+              onClick={restart}
+              className="min-h-[var(--size-tap)] min-w-[var(--size-tap)] rounded-control border border-border px-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-focus"
+            >
+              先頭から見直す
+            </button>
+          </StateNotice>
+        )}
+      </InfoPanel>
     </main>
   );
 }
 
 /**
- * Unplayable は再生できない形式であることを、**再生を試みる前に**示す（FR-015）。
+ * Unplayable は再生できない形式であることを、**再生を試みる前に**示す
+ * （spec US5-6 の知らせのうちの 1 つ）。
  */
 function Unplayable({ video }: { video: Video }) {
   const reason = unplayableText(video);
@@ -319,77 +316,4 @@ function Unplayable({ video }: { video: Video }) {
       description={video.probeError}
     />
   );
-}
-
-/**
- * missing は取れていない値の見せ方を決める（data-model.md 3.「取れていない値
- * の扱い」/ FR-013）。
- *
- * **空欄にしない。** 空欄は「値が無い」のか「まだ調べていない」のか「調べたが
- * 読めなかった」のかを区別できず、利用者は待てばよいのか諦めるのかを判断
- * できない。
- */
-function missing(video: Video): string {
-  if (video.probeState === "pending") {
-    return "確認中";
-  }
-  if (video.probeState === "failed") {
-    return video.probeError === undefined
-      ? "読み取れませんでした"
-      : `読み取れませんでした (${video.probeError})`;
-  }
-  // 解析は済んでいて値が無い。音声の無い動画のように、無いこと自体が情報である。
-  return "なし";
-}
-
-/** VideoFacts は題名・長さ・解像度などを同じ画面に出す（FR-013）。 */
-function VideoFacts({ video }: { video: Video }) {
-  const fallback = missing(video);
-
-  /** value は取れていれば値を、取れていなければ言い分けを返す。 */
-  const value = (text: string | undefined): string =>
-    text === undefined || text === "" ? fallback : text;
-
-  const resolution =
-    video.width === undefined || video.height === undefined
-      ? undefined
-      : `${String(video.width)} × ${String(video.height)}`;
-
-  // sizeBytes は必須の項目なので、この言い分けに入らない。
-  const facts: [string, string][] = [
-    ["長さ", value(formatDuration(video.durationMs))],
-    ["解像度", value(resolution)],
-    ["形式", value(video.container)],
-    ["映像", value(video.videoCodec)],
-    ["音声", value(video.audioCodec)],
-    ["大きさ", formatSize(video.sizeBytes)],
-  ];
-
-  // 狭い画面では項目名と値が縦に積む（1 列）。項目名の列と値の列に分けるのは
-  // sm 以上だけである ── 幅 360px で 2 列にすると、値（「読み取れませんでした
-  // (理由)」のように長くなりうる）に残る幅が足りず、はみ出して横スクロールに
-  // なる（FR-022 / SC-004）。sm:contents で包みの div を消すと、dt と dd が
-  // そのまま格子の升目に入り、広い画面では元の 2 列に戻る。
-  return (
-    <dl className="grid gap-x-4 gap-y-2 text-sm text-body sm:grid-cols-[auto_1fr] sm:gap-y-1">
-      {facts.map(([label, text]) => (
-        <div key={label} className="sm:contents">
-          <dt className="text-muted">{label}</dt>
-          <dd className="font-mono break-words">{text}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
-/** formatSize はバイト数を読める大きさにする。 */
-function formatSize(bytes: number): string {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = bytes;
-  let unit = 0;
-  while (value >= 1024 && unit < units.length - 1) {
-    value /= 1024;
-    unit += 1;
-  }
-  return `${value.toFixed(unit === 0 ? 0 : 1)} ${units[unit] ?? "B"}`;
 }

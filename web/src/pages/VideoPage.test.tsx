@@ -5,12 +5,22 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Video } from "../api/client";
 
 /**
- * 再生画面の 4 状態と並び（contracts/screen-states.md 2. / FR-012〜FR-016）。
+ * 再生画面の 4 状態と構図（contracts/layout.md 4. / FR-015〜FR-017）。
  *
- * 要点は 2 つある。**「一覧へ戻る」がどの状態でも先に出る**こと（取得に失敗
- * した画面から戻れないと、残る手が再読み込みしかなくなる）と、**知らせが映像
- * より前にある**ことである。後者は見た目を見れば分かるが、映像の上に重ねる
- * 実装と DOM の順序では区別がつかない — 重ねると映像を隠して FR-014 に反する。
+ * 005 で縦 5 段から 2 分割になった。確かめる事柄は 2 つで、004 から引き継ぐ。
+ *
+ * **× がどの状態でも出る**こと。取得に失敗した画面から戻れないと、利用者に
+ * 残る手が再読み込みしかなくなる（004 の「一覧へ戻る」が持っていた役割を、
+ * 005 では C15 の × が持つ）。
+ *
+ * **知らせがパネルの中にあり、映像の外にある**こと。004 では「知らせが映像より
+ * 前にある」ことで確かめていた。005 は知らせを別の器（パネル）へ移したので、
+ * 器の内外で確かめる ── 知らせが何段増えても映像の大きさは変わらず
+ * （spec US5-6）、× も映像に重ならない（FR-017）。
+ *
+ * **画面幅による出し分け（2 分割 / 縦の畳み）は確かめない。** jsdom は CSS
+ * メディアクエリを解決しないので、擬似的に確かめると「テストは通るが画面は
+ * 壊れている」状態を招く（R-511）。人が quickstart S6 で見る。
  */
 
 const { getVideo, saveProgress, beaconProgress } = vi.hoisted(() => ({
@@ -59,12 +69,16 @@ async function show(path = "/videos/7"): Promise<void> {
   });
 }
 
-/** precedes は left が right より前の DOM 位置にあるかを返す。 */
-function precedes(left: Element, right: Element): boolean {
-  return (left.compareDocumentPosition(right) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+/** panel は情報パネル（C14）を返す。 */
+function panel(): HTMLElement {
+  const element = document.querySelector("aside");
+  if (element === null) {
+    throw new Error("情報パネルが描かれていない");
+  }
+  return element;
 }
 
-/** facts は情報欄（dl）を返す。知らせの文言と取り違えないよう範囲を絞る。 */
+/** facts は情報欄（C16 の dl）を返す。知らせの文言と取り違えないよう範囲を絞る。 */
 function facts(): HTMLElement {
   const element = document.querySelector("dl");
   if (element === null) {
@@ -82,6 +96,11 @@ function player(): HTMLVideoElement {
   return element;
 }
 
+/** close は一覧へ戻る × （C15）を返す。 */
+function close(): HTMLElement {
+  return screen.getByRole("link", { name: "一覧へ戻る" });
+}
+
 beforeEach(() => {
   getVideo.mockReset();
   getVideo.mockResolvedValue(done);
@@ -95,24 +114,28 @@ beforeEach(() => {
   beaconProgress.mockReturnValue(true);
 });
 
-describe("VideoPage の 4 状態（contracts/screen-states.md 2.）", () => {
-  it("通信中も「一覧へ戻る」が先に出て、映像の場所には骨組みが出る", async () => {
+describe("VideoPage の 4 状態（contracts/layout.md 4.）", () => {
+  it("通信中もパネルの × が出て、映像の場所には骨組みが出る", async () => {
     getVideo.mockReturnValue(new Promise<Video>(() => undefined));
     await show();
 
-    const back = screen.getByRole("link", { name: "← 一覧へ戻る" });
+    // 戻る道は取得の成否によらず出ている。
+    expect(panel().contains(close())).toBe(true);
+
+    // 骨組みは映像の側にあり、パネルの中ではない。
     const loading = screen.getByRole("status", { name: "読み込み中" });
-    expect(precedes(back, loading)).toBe(true);
+    expect(panel().contains(loading)).toBe(false);
   });
 
-  it("失敗しても「一覧へ戻る」が先に出て、映像は出ない", async () => {
+  it("失敗してもパネルの × が出て、理由はパネルの中に出る。映像は出ない", async () => {
     getVideo.mockRejectedValue(new Error("つながりません"));
     await show();
 
-    const back = screen.getByRole("link", { name: "← 一覧へ戻る" });
-    const notice = screen.getByText("動画を開けません");
-    expect(precedes(back, notice)).toBe(true);
-    expect(screen.getByText("つながりません")).toBeDefined();
+    expect(panel().contains(close())).toBe(true);
+
+    const list = within(panel());
+    expect(list.getByText("動画を開けません")).toBeDefined();
+    expect(list.getByText("つながりません")).toBeDefined();
 
     // 取得できていないのだから、再生の入口を出しても押せることは無い。
     expect(document.querySelector("video")).toBeNull();
@@ -122,12 +145,39 @@ describe("VideoPage の 4 状態（contracts/screen-states.md 2.）", () => {
     await show("/videos/なにか");
 
     expect(getVideo.mock.calls).toHaveLength(0);
-    expect(screen.getByText("動画の指定が正しくありません")).toBeDefined();
+    expect(within(panel()).getByText("動画の指定が正しくありません")).toBeDefined();
     expect(document.querySelector("video")).toBeNull();
+  });
+
+  it("× の行き先は遷移元の一覧で、遷移元が無ければ一覧の先頭である", async () => {
+    await show();
+
+    // 直接 /videos/7 を開いた場合。復元の控えを持たない側へ落とす。
+    expect(close().getAttribute("href")).toBe("/");
   });
 });
 
-describe("VideoPage の情報欄（data-model.md 3. / FR-013）", () => {
+describe("VideoPage のパネル（contracts/layout.md 4. / C14・C15・C16）", () => {
+  it("題名と情報はパネルの中にあり、映像はパネルの外にある", async () => {
+    await show();
+
+    const heading = screen.getByRole("heading", { level: 1, name: "長い動画" });
+    expect(panel().contains(heading)).toBe(true);
+    expect(panel().contains(facts())).toBe(true);
+
+    // 映像がパネルの外にあることが、パネルの中身が増えても映像の大きさが
+    // 変わらないことの根拠である（spec US5-6）。
+    expect(panel().contains(player())).toBe(false);
+  });
+
+  it("画面の見出し文字は出さない。見出しはパネルの題名だけである（FR-015）", async () => {
+    await show();
+
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
+  });
+});
+
+describe("VideoPage の情報欄（data-model.md 4. / FR-016）", () => {
   it("解析が済んでいれば値が並び、無い値だけが「なし」になる", async () => {
     getVideo.mockResolvedValue({ ...done, audioCodec: undefined } satisfies Video);
     await show();
@@ -178,8 +228,8 @@ describe("VideoPage の情報欄（data-model.md 3. / FR-013）", () => {
   });
 });
 
-describe("VideoPage の知らせ（contracts/screen-states.md 2.「並び」）", () => {
-  it("再生できない形式は、再生を試みる前に映像より上へ出る", async () => {
+describe("VideoPage の知らせ（contracts/layout.md 4.「パネルの中身の順序」）", () => {
+  it("再生できない形式は、再生を試みる前にパネルの中へ出る", async () => {
     getVideo.mockResolvedValue({
       ...done,
       playable: false,
@@ -188,14 +238,15 @@ describe("VideoPage の知らせ（contracts/screen-states.md 2.「並び」）"
     } satisfies Video);
     await show();
 
+    // 再生を試みる前である = 映像が読み込まれる前から出ている。
     const warning = screen.getByText(
       "映像の形式 (hevc) は再生できません。ファイルは取得できますが、ブラウザでそのまま再生できない可能性があります。",
     );
-    // 再生を試みる前である = 映像が読み込まれる前から出ている。
-    expect(precedes(warning, player())).toBe(true);
+    expect(panel().contains(warning)).toBe(true);
+    expect(panel().contains(player())).toBe(false);
   });
 
-  it("続きから始まった知らせと「先頭から見直す」が映像より前に出る", async () => {
+  it("続きから始まった知らせと「先頭から見直す」がパネルの中へ出る", async () => {
     getVideo.mockResolvedValue({
       ...done,
       progress: {
@@ -221,13 +272,37 @@ describe("VideoPage の知らせ（contracts/screen-states.md 2.「並び」）"
       await Promise.resolve();
     });
 
-    // 中断位置へ飛んでいる（002 のまま。FR-025）。
+    // 中断位置へ飛んでいる（002 のまま。FR-018）。
     expect(currentTime).toBe(65);
 
     const notice = screen.getByText("1:05 から再開しました");
     const restart = screen.getByRole("button", { name: "先頭から見直す" });
-    // 映像の上に重ねると映像を隠す（FR-014）。情報欄の下だと気付かれない。
-    expect(precedes(notice, element)).toBe(true);
-    expect(precedes(restart, element)).toBe(true);
+    // 知らせがパネルの中に閉じているので、映像の大きさは変わらない
+    // （spec US5-6 / US4-6）。
+    expect(panel().contains(notice)).toBe(true);
+    expect(panel().contains(restart)).toBe(true);
+    expect(panel().contains(element)).toBe(false);
+  });
+
+  it("知らせは題名の下、動画の情報の上に入る（パネルの中身の順序）", async () => {
+    getVideo.mockResolvedValue({
+      ...done,
+      playable: false,
+      unplayableReason: "video_codec",
+      videoCodec: "hevc",
+    } satisfies Video);
+    await show();
+
+    const nodes = [...panel().children];
+    const index = (node: Element | null): number =>
+      nodes.findIndex((child) => child === node || child.contains(node));
+
+    const heading = screen.getByRole("heading", { level: 1, name: "長い動画" });
+    const warning = screen.getByText(/映像の形式 \(hevc\) は再生できません/);
+
+    // × → 題名 → 知らせ → 動画の情報（spec US5-3）。
+    expect(index(close())).toBeLessThan(index(heading));
+    expect(index(heading)).toBeLessThan(index(warning));
+    expect(index(warning)).toBeLessThan(index(facts()));
   });
 });
