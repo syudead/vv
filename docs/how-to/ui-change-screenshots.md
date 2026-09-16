@@ -36,10 +36,20 @@ Chromium と Playwright が使える場合は、起動したサーバーを直�
 
 ```bash
 make build
-MDM_MEDIA_DIR=./media MDM_DATA_DIR=./.local/data ./bin/mdm &
+MDM_MEDIA_DIR="$PWD/media" MDM_DATA_DIR="$PWD/.local/data" ./bin/mdm &
 npx playwright screenshot --viewport-size=1280,800 --wait-for-timeout=1500 \
   http://localhost:8080/ /tmp/ui.png
 ```
+
+**`MDM_MEDIA_DIR` と `MDM_DATA_DIR` は絶対パスで渡す。** 相対パスを渡すと
+「絶対パスではありません」と言って起動しない。
+
+Playwright のブラウザは `PLAYWRIGHT_BROWSERS_PATH` の下にあり、`playwright install` は
+要らない。`npx playwright screenshot` で足りないとき（画面幅を変えて何枚も撮る、
+操作してから撮る、要素だけを切り出す）は `playwright` を入れて短い script を書く。
+`chromium.launch({ executablePath })` に渡す実体の場所は
+`ls $PLAYWRIGHT_BROWSERS_PATH` で確かめる ── バージョン付きの名前
+（`chromium-<数字>/chrome-linux/chrome`）なので、決め打ちにすると更新で外れる。
 
 `make build` は版管理している `web/dist/index.html` を上書きするため
 （[TD-002](../exec-plans/tech-debt.md)）、撮影後に `git checkout -- web/dist/index.html`
