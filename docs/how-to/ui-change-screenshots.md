@@ -36,10 +36,48 @@ Chromium と Playwright が使える場合は、起動したサーバーを直�
 
 ```bash
 make build
-MDM_MEDIA_DIR=./media MDM_DATA_DIR=./.local/data ./bin/mdm &
+MDM_MEDIA_DIR="$PWD/media" MDM_DATA_DIR="$PWD/.local/data" ./bin/mdm &
+```
+
+**`MDM_MEDIA_DIR` と `MDM_DATA_DIR` は絶対パスで渡す。** 相対パスを渡すと
+「絶対パスではありません」と言って起動しない。
+
+#### ブラウザの用意は環境で分かれる
+
+まず何が入っているかを見る。
+
+```bash
+ls "${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+```
+
+**(a) 何も無い（素の環境）**: `npx playwright install chromium` で入れる。以降は
+`npx playwright screenshot` も `chromium.launch()`（引数なし）もそのまま動く。
+
+```bash
 npx playwright screenshot --viewport-size=1280,800 --wait-for-timeout=1500 \
   http://localhost:8080/ /tmp/ui.png
 ```
+
+**(b) ブラウザが事前に置いてある（Claude Code on the web のコンテナなど）**: この場合
+`npx playwright install` は**実行しない**。ただし `npx --yes playwright` は最新版を取りに
+行くので、置いてあるブラウザの版と食い違い、`npx playwright screenshot` も
+`chromium.launch()`（引数なし）も
+`Executable doesn't exist at .../chromium_headless_shell-<別の数字>/...` で落ちる。
+**置いてある実体を `executablePath` で名指しする**。
+
+```js
+import { chromium } from "playwright";
+const browser = await chromium.launch({
+  executablePath: `${process.env.PLAYWRIGHT_BROWSERS_PATH}/chromium`,
+});
+```
+
+`$PLAYWRIGHT_BROWSERS_PATH/chromium` は版のついた実体への symlink なので、これを使えば
+`chromium-<数字>/chrome-linux/chrome` を決め打ちせずに済む（数字は更新で変わる）。
+symlink が無ければ `ls` で見えた版つきの名前を直に指す。
+
+script を書くのは、`npx playwright screenshot` で足りないとき（画面幅を変えて何枚も撮る、
+操作してから撮る、要素だけを切り出す）でもある。
 
 `make build` は版管理している `web/dist/index.html` を上書きするため
 （[TD-002](../exec-plans/tech-debt.md)）、撮影後に `git checkout -- web/dist/index.html`

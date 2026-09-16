@@ -90,6 +90,31 @@ holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.
 
+`web/src/layout/` holds the shell — the sidebar, the header and the frame that
+puts them around a screen — and is kept apart from `web/src/components/`
+because the two change for different reasons. Wherever the shell is used it has
+the same shape and knows nothing about what the screen puts inside it, while
+components are what a screen arranges. Only the library list is wrapped in it:
+`App.tsx` puts `AppShell` around the `/` route alone, and the playback screen
+(`/videos/:id`) deliberately gets no sidebar and no header, because it is a
+two-pane screen of its own (R-505). Keeping that choice to the one routing
+decision is what lets the shell stay ignorant of which screen it is framing.
+The split also confines the display-only elements (the entries that reproduce
+the mockup's navigation but have no feature behind them) to one directory, so
+the rule they follow — they are not interactive elements at all, rather than
+disabled ones — is stated and enforced in a single place
+(`web/src/layout/placeholders.test.tsx`).
+
+The shell does not take ownership of scrolling. The sidebar and the header are
+`position: fixed`, and the document (the window) keeps scrolling the content as
+it did before the shell existed. That is deliberate: the library list's scroll
+restoration, its density anchoring and its infinite scroll all sit on
+`window.scrollY` and on a viewport-based `IntersectionObserver`, so moving the
+scroll container inside the shell would rewrite all three. The reasoning is
+recorded in
+[specs/005-ui-refinement/research.md](specs/005-ui-refinement/research.md)
+(R-501).
+
 `web/src/index.css` is the single source of truth for the visual rules. Its
 `@theme` block declares every color, radius and size as a role-named token
 (`--color-surface`, `--color-muted`, `--radius-card`, `--size-tap`, …), and
