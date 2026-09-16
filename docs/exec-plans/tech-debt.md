@@ -198,7 +198,7 @@ reconsideration.
 [plan.md]: ../../specs/001-initial-setup/plan.md
 [003 の R-004]: ../../specs/003-sdd-loop-harness/research.md
 
-### TD-008: routine の base branch フィルタ変更はリポジトリから自動化できない
+### TD-010: routine の base branch フィルタ変更はリポジトリから自動化できない
 
 - **影響範囲**: `/sdd-next` の feature branch 方式への移行
 - **内容**: リポジトリ内の実装は段階 PR を `claude/sdd-NNN-feature` 向けに作るが、既存の

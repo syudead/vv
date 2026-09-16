@@ -77,12 +77,12 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
   4. make check（implement のとき）→ コミット → claude/sdd-NNN-<stage> へ push
   5. ラベル sdd 付きの PR を feature branch に開き、checks green 後に自動マージして終了
         │
-人: PR をレビューしてマージ（= 承認ゲート） → 先頭に戻る
+plan は人がレビューしてマージ、tasks / implement は checks green 後に自動マージ → 先頭に戻る
 ```
 
 自然な終端は、対象機能の tasks.md に未完了 `- [ ]` が無くなった状態（`done`）。
-このとき PR も Issue も作らずセッションは終わる。次の機能の spec PR が `sdd` ラベル
-付きでマージされれば、また回り始める。
+このとき feature branch から `main` への最終 PR を 1 件だけ開く。最終 PR は人がレビューして
+マージする。次の機能の spec PR が `sdd` ラベル付きでマージされれば、また回り始める。
 
 ## 3. 部品
 
@@ -153,7 +153,9 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
    git の first-parent 履歴に現れる直近 PR を採る。その merge/squash commit が触った
    `specs/NNN-*/` を `--feature` として `sdd-state.sh` を呼び直す。取れなければ state.sh の
    既定（昇順最初）を使う。これで「ラベル無しで寝かせている spec」を誤って拾わない
-2. 冪等ガード（#4）。open PR に未解決レビュー指摘がある場合は通常の停止ではなくレビュー対応へ渡す
+2. 冪等ガード（#4）。open PR に未解決レビュー指摘がある場合は通常の停止ではなくレビュー対応へ渡す。
+   指摘が無い tasks / implement の non-draft PR は checks を再評価し、green なら既存 PR を
+   マージする
 3. フェーズ別リトライ上限（#2）
 4. ホップ上限（#3）
 
@@ -178,6 +180,8 @@ block 理由を PR コメントに残して終了する。
 
 このフローは「レビューコメントを作る」仕組みではない。既存レビューを SDD ハーネスの durable
 queue に載せ、通常の段階生成と混線させずに返すための入口である。
+修正後の tasks / implement PR は checks が green ならその場でマージしてよい。checks が pending
+または読めない場合も、次回の日次実行が同じ open PR を再評価する。
 
 ## 6. スキルの手順: `/sdd-next [--dry-run]`
 
@@ -190,8 +194,9 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
                    （PR も Issue も作らない。再開は日次トリガーか次のマージに任せる）
 1.   判定          before = sdd-state.sh → sdd-guard.sh。before は guard.state に置き換える。
                    go:false なら
-                   open-pr はレビュー対応へ渡す。stage が done/none 以外の上限停止なら
-                   Issue を立てて終了
+                   open-pr はレビュー対応または checks 再評価へ渡す。feature branch 上の
+                   nothing-to-do は最終 PR のレビュー確認へ進む。stage が done/none 以外の
+                   上限停止なら Issue を立てて終了
 1.5  レビュー対応  open な sdd PR に未解決レビュー指摘があれば、その head に修正 commit を
                    push し、返信・resolve して終了
      --dry-run     ここまでで「何をするつもりか」を表示して終了
@@ -251,8 +256,8 @@ JSON**（`rate_limits.five_hour.used_percentage` 等）にだけ渡していて�
 | 名前 | `sdd-next (syudead/vv)` |
 | リポジトリ / 環境 | `syudead/vv` / 既存の Default。依存取得は既存の SessionStart フック（`CLAUDE_CODE_REMOTE=true` なら `make setup`）に任せ、routine で走らなければ環境の setup script に `make setup` を置く |
 | プロンプト | 「リポジトリの `/sdd-next` スキルを実行する。それ以外の作業はしない。`routine-fire-payload` に PR 情報があれば対象機能の特定に使ってよい。」 |
-| トリガー 1 | GitHub `pull_request.closed`。フィルタ: base = `main`、labels に `sdd` を含む、is merged = true |
-| トリガー 2 | スケジュール: 毎日 1 回（深夜）。見送り・取りこぼしの再開用。状態は導出・ガードは冪等なので、open な `sdd` PR があるか `done` なら即終了して無害 |
+| トリガー 1 | GitHub `pull_request.closed`。フィルタ: labels に `sdd` を含む、is merged = true。base は限定しない |
+| トリガー 2 | スケジュール: 毎日 1 回（深夜）。見送り・取りこぼし・open PR のレビュー対応と checks 再評価用。状態は導出・ガードは冪等なので、待機状態なら無害 |
 | コネクタ | 無し（GitHub は組み込みツールとプロキシで足りる） |
 
 設定の写しは [docs/references/sdd-routine.md](../references/sdd-routine.md) に置き、
@@ -286,10 +291,9 @@ claude.ai 側の設定が消えても再現できるようにする。
 2. routine を作り、Run now でプローブする: `/sdd-next --dry-run` を走らせ、SessionStart
    フックの実行・使用量の取得方法・fire payload の中身を確認する。結果で使用量ゲートの
    実装を決めて小さな追従 PR を出す
-3. Run now で本番 1 回目: 002 は spec 済みなので `plan` 段階の PR が開く（001 は `done`
-   なので飛ばされる）
-4. その PR をレビューして `sdd` ラベル付きでマージする。以後は自動で tasks → implement
-   （フェーズごと）→ done
+3. Run now で本番 1 回目: 次の未完了 spec の feature branch が作られ、`plan` 段階の PR が開く
+4. plan PR をレビューして `sdd` ラベル付きで feature branch にマージする。以後は自動で
+   tasks → implement（フェーズごと）→ 最終 PR まで進む
 
 ## 10. 検討した代替案
 

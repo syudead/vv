@@ -116,7 +116,7 @@ git の first-parent 履歴から導出する。
 | --- | --- | --- |
 | `hops` | 同じ機能のマージ済みホップ数 | `2 + phases + 2` 以上で停止（FR-016） |
 | `phase_retries` | 同じ `implement-pN` のマージ済みホップ数 | 2 以上で停止（FR-015） |
-| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、`base.ref = claude/sdd-NNN-feature`。label 付与失敗時も head/base が一致すれば対象。`base.ref` が無い同 prefix の open PR は区別不能なので fail-closed | 1 件以上で新しい段階 PR は作らない（FR-013）。未解決レビューがあればレビュー対応へ渡す |
+| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、`base.ref = claude/sdd-NNN-feature`。label 付与失敗時も head/base が一致すれば対象。`base.ref` が無い同 prefix の open PR は区別不能なので fail-closed | 1 件以上で新しい段階 PR は作らない（FR-013）。未解決レビューがあればレビュー対応へ渡し、無ければ tasks / implement の non-draft PR の checks を再評価する |
 
 `phases` は tasks.md が無い段階（plan／tasks）では 0 として扱い、ホップ上限は `2 + 0 + 2 = 4`
 になる。tasks.md ができた後は実際のフェーズ数で計算し直す。
@@ -134,7 +134,7 @@ git の first-parent 履歴から導出する。
 
 | reason | 意味 | Issue |
 | --- | --- | --- |
-| `open-pr` | 対象機能に open な自動 PR がある | 作らない（正常な待ち） |
+| `open-pr` | 対象機能に open な自動 PR がある | 作らない（レビュー対応または checks 再評価の入口） |
 | `phase-retry-limit` | 同じフェーズのマージが 2 回に達した | 作る |
 | `hop-limit` | 機能のホップ上限に達した | 作る |
 | `no-progress` | （スキルが作業後に判定）状態が変わらない／差分なし | 作る |
@@ -165,10 +165,13 @@ open な `sdd` PR に紐づく未解決 review thread または最新 commit 後
 
 | 属性 | 導出元 |
 | --- | --- |
-| 対象 PR | `sdd` ラベル付き open PR。段階 PR は `base.ref = claude/sdd-NNN-feature`、最終 PR は `base.ref = main` |
+| 対象 PR | open PR。段階 PR は `base.ref = claude/sdd-NNN-feature`、最終 PR は `base.ref = main`。段階 PR は label 付与失敗時も同じ head/base なら対象 |
 | 対象 branch | PR の `head.ref` |
 | 要対応 | unresolved review thread、または最新 commit 後の `REQUEST_CHANGES` / 修正依頼コメント |
 | 完了 | 修正 commit を同じ head に push し、該当 thread へ対応内容と検査結果を返信。解決できた thread は resolve |
 
 レビュー対応が選ばれた run では新しい段階 PR を作らない。複数 PR が該当する場合は 1 run で
 1 件だけ扱い、残りは次の日次 run または手動実行に任せる。
+tasks / implement の non-draft PR は、レビュー対応後またはレビュー指摘が無い open-pr 分岐で
+checks が green なら自動マージできる。pending / failed / 読み取り不能 / draft の場合は
+open のまま待つ。

@@ -31,11 +31,14 @@ implement PR は、PR checks が green になってから作成したセッシ�
 前提確認で `gh api /rate_limit` を要求してはならない。GitHub 情報が要る箇所では cloud の
 組み込み GitHub ツールを使い、失敗したら理由を書いて変更を残さず終了する。
 
-routine payload のマージ済み PR、または closed PR 一覧から選んだ直近のマージ済み段階 `sdd` PR の
-`base.ref` が `claude/sdd-NNN-feature` なら、次を行ってその feature branch を作業 base にする。
-日次実行では open な `head.ref = claude/sdd-NNN-feature`, `base.ref = main` の最終 PR も候補にする。
-closed PR 一覧は `updated_at` 順なので、未マージ PR やコメント更新だけで先頭に来た PR を
-作業 base の根拠にしてはならない。
+routine payload のマージ済み PR、または closed PR 一覧から選んだ直近の **git 履歴にある**
+マージ済み段階 `sdd` PR の `base.ref` が `claude/sdd-NNN-feature` なら、次を行ってその
+feature branch を作業 base にする。closed PR 一覧は `updated_at` 順なので、未マージ PR や
+コメント更新だけで先頭に来た PR を作業 base の根拠にしてはならない。
+
+日次実行では、open な `head.ref = claude/sdd-NNN-feature`, `base.ref = main` の最終 PR も
+候補にする。複数ある場合は、更新日時に頼らず、対象候補を `head.ref` の昇順で 1 件だけ選ぶ。
+同時に複数機能を進めることは本機能の対象外なので、選ばなかった候補は触らない。
 
 ```bash
 git fetch origin <feature-branch>
@@ -93,8 +96,8 @@ before=$(printf '%s\n' "$guard" | jq -c '.state')
 
 | reason | 振る舞い |
 | --- | --- |
-| `open-pr` | `open_prs` の対象 PR に未解決レビュー指摘があるか確認する。あれば手順 1.5 へ進み、無ければ終了 |
-| `nothing-to-do` | `main` 上なら終了。feature branch 上なら手順 5 の最終 PR へ進む |
+| `open-pr` | `open_prs` の対象 PR を確認する。未解決レビュー指摘があれば手順 1.5 へ進む。無ければ、tasks / implement の non-draft PR は checks を再取得し、green なら既存 PR をマージ、失敗・pending・draft なら理由を報告して待機する。plan PR は人の承認待ちとして終了 |
+| `nothing-to-do` | `main` 上なら終了。feature branch 上なら既存の最終 PR と未解決レビュー指摘を先に確認し、要対応なら手順 1.5 へ進む。無ければ手順 5 の最終 PR へ進む |
 | `gh-unavailable` | 理由を表示し、変更を残さず終了 |
 | `phase-retry-limit` / `hop-limit` | 同名の open Issue が無ければ停止通知を作る |
 
@@ -112,8 +115,10 @@ PR をここで確認する。対象は `state.base_branch` 向けの段階 PR�
 複数ある場合は更新日時が古い 1 件だけを扱い、同じセッションで新しい段階 PR を作らない。
 対象 PR の head branch を checkout し、レビュー指摘に必要な最小差分だけを入れ、該当する検査を
 再実行して同じ PR に push する。push 後は各レビュー thread に「対応内容 / 検査結果 / 追加で
-人の判断が必要な点」を返信し、解決できた thread は resolve する。仕様判断・権限・外部情報が
-必要なら修正を作らず、PR コメントで block 理由を返して終了する。
+人の判断が必要な点」を返信し、解決できた thread は resolve する。tasks / implement の
+non-draft PR は、返信後に checks が green ならマージしてよい。checks が pending / failed /
+読めない場合は、次回の日次実行が open PR 分岐で再評価するため、open のまま理由を報告して終わる。
+仕様判断・権限・外部情報が必要なら修正を作らず、PR コメントで block 理由を返して終了する。
 
 ## 2. feature branch と段階 branch
 
@@ -130,6 +135,9 @@ export SPECIFY_FEATURE_DIRECTORY=<state.feature_dir>
 branch のトポロジーは `main ← claude/sdd-NNN-feature ← claude/sdd-NNN-<stage>` である。
 Git の ref は同名 prefix と子 ref を同時に持てないため、名前に `/` は使わず、PR の base で
 親子関係を表す。
+この feature branch は SDD ハーネス専用の作業 base であり、`AGENTS.md` の「push した
+feature branch には `main` 向け PR を開く」一般規則の例外である。最終 PR は `stage=done` に
+なってから 1 件だけ開く。
 
 ## 3. 次の 1 段階だけを実行
 

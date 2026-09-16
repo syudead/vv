@@ -18,4 +18,4 @@ GitHub / routine の制約上安全に実現できない場合は実装せず、
 
 採用した。段階 PR はセッション分離・監査・再実行防止のため残す一方、tasks と成功した
 implement は自動マージする。plan と feature branch → main の最終 PR だけを人手ゲートにした。
-外部 routine の base フィルタ削除だけはリポジトリから実施できないため TD-008 に記録した。
+外部 routine の base フィルタ削除だけはリポジトリから実施できないため TD-010 に記録した。
