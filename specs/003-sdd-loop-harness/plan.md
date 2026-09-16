@@ -12,8 +12,8 @@ the web のセッションで 1 段階ずつ自動実行する。保守者の操
 
 技術的な進め方は、判定ロジックをすべてリポジトリ内の bash スクリプト 2 本と
 スキル 1 つに置き、claude.ai 側の routine は「`/sdd-next` を呼ぶ」だけにすることである。
-状態は `specs/NNN-*/` の成果物から導出し（`sdd-state.sh`）、暴走防止と冪等性は GitHub の
-REST API で判定する（`sdd-guard.sh`）。段階の中身は既存の `/speckit-*` に委ね、ハーネスは
+状態は `specs/NNN-*/` の成果物から導出し（`sdd-state.sh`）、暴走防止と冪等性は cloud の
+組み込み GitHub ツールが取得した PR 一覧と git 履歴で判定する（`sdd-guard.sh`）。段階の中身は既存の `/speckit-*` に委ね、ハーネスは
 「どれを呼ぶか」「PR をどう開くか」「いつ止まるか」だけを持つ。
 
 方式の選定と代替案は[設計文書](../../docs/design-docs/sdd-loop-harness.md)で確定済み。
@@ -25,7 +25,7 @@ US1〜US3 の受け入れには影響しない。
 
 **Language/Version**: bash 4 以上（cloud セッション、CI の ubuntu-latest、手元の Git Bash で共通）。スキルは Markdown（`SKILL.md`）
 
-**Primary Dependencies**: `gh`（GitHub CLI、REST の `gh api` のみ使用）／`jq`（`sdd-guard.sh` のみ）／`awk`・`grep`・`sed`（POSIX 範囲）／既存の Spec Kit スクリプト `.specify/scripts/bash/common.sh`／Claude Code の routine（GitHub トリガー + 日次スケジュール）
+**Primary Dependencies**: cloud セッション組み込みの GitHub ツール／`jq`（`sdd-guard.sh` のみ）／`awk`・`grep`・`sed`（POSIX 範囲）／既存の Spec Kit スクリプト `.specify/scripts/bash/common.sh`／Claude Code の routine（GitHub トリガー + 日次スケジュール）。`gh` はローカル検算の任意フォールバックであり、cloud の成功条件に含めない
 
 **Storage**: なし。状態はリポジトリの成果物と GitHub の PR／Issue から導出する（FR-009）
 
@@ -35,7 +35,7 @@ US1〜US3 の受け入れには影響しない。
 
 **Project Type**: 開発ワークフローの自動化（スクリプト + スキル + 外部サービスの設定）。製品コードには触れない
 
-**Performance Goals**: `sdd-state.sh` は 1 秒以内（SC-002）。`sdd-guard.sh` は REST 4 回以内（open PR・merged PR・files・issues）で数秒
+**Performance Goals**: `sdd-state.sh` は 1 秒以内（SC-002）。`sdd-guard.sh` は渡された PR 一覧と git 履歴だけで数秒以内
 
 **Constraints**: 判定に隠れた状態を持たない／`jq` 無しで状態判定が動く／GraphQL を使わない（プロキシの制限、R-002）／1 セッション = 1 段階／routine 側に判定ロジックを置かない
 
@@ -89,7 +89,7 @@ specs/003-sdd-loop-harness/
 │       ├── SKILL.md                 # /sdd-next の手順書（しきい値の定数を先頭に置く）
 │       ├── scripts/
 │       │   ├── sdd-state.sh         # 状態判定（ファイルのみ、jq 不要）
-│       │   ├── sdd-guard.sh         # ガード（gh api + jq）
+│       │   ├── sdd-guard.sh         # ガード（PR 一覧 JSON + git + jq。gh は任意フォールバック）
 │       │   └── sdd-lib.sh           # 共通関数（JSON エスケープ、tasks.md の解析）
 │       └── tests/
 │           ├── run.sh               # テストランナー（bash のみ）
@@ -143,9 +143,9 @@ AGENTS.md                            # Working agreements に 1 行追加
 4. **implement の対象指定は文言で渡す**: `/speckit-implement` に「Phase N（題名）の
    タスクだけを対象にする」と引数で伝える。`speckit-implement` は user input を
    考慮する仕様なので、フィルタの仕組みを新設しない（FR-008）
-5. **PR は `gh` の高水準コマンドか組み込みツールで開く**が、ラベル付与は
-   `gh api -X POST /repos/{o}/{r}/issues/{n}/labels` で確実に行う（ラベルが無いと
-   連鎖が切れるため、付与を検証する）
+5. **PR 作成・ラベル付与・マージは cloud の組み込み GitHub ツールで行う**。`gh` は
+   cloud で使えるとは限らないため通常経路に含めない。ラベルが無いと連鎖が切れるため、
+   付与を検証する
 6. **使用量ゲートは最初から SKILL.md に書く**が、取得関数が無ければ飛ばす。取得手段は
    プローブ後の追従 PR で足す（R-004）
 7. **routine の作成はこのリポジトリの外**（claude.ai）で行う。手順と設定値は

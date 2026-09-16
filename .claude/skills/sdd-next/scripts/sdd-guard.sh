@@ -4,7 +4,7 @@
 # 契約: specs/003-sdd-loop-harness/contracts/sdd-guard.md
 # 定義: specs/003-sdd-loop-harness/data-model.md 5.〜6.
 #
-# GitHub から要るのは「main 向けの closed PR 一覧」と「main 向けの open PR 一覧」の 2 つだけで、
+# GitHub から要るのは base を限定しない closed PR 一覧と open PR 一覧の 2 つだけで、
 # 取得手段は 2 通りある。
 #   a) --github-dir <dir>: <dir>/pulls-closed.json と <dir>/pulls-open.json を読む。
 #      cloud セッションには `gh` が無いので、スキルが組み込みの GitHub ツールで取った結果を
@@ -12,7 +12,7 @@
 #   b) 指定が無ければ `gh api` の REST で取る（手元の検算用）。`gh pr list` などの高水準
 #      コマンドは GraphQL を使い、プロキシが 403 を返しうるので使わない
 #
-# 「マージ済みか」は API の merged_at ではなく、手元の git 履歴（HEAD の first-parent に
+# 「マージ済みか」は API の merged_at ではなく、作業 base の git 履歴（HEAD の first-parent に
 # `Merge pull request #N` か `(#N)` があるか）で決める。取得元によって PR オブジェクトの
 # 項目が違っても判定が変わらないようにするためで、変更ファイルも同じ履歴から取る。
 #
@@ -102,9 +102,27 @@ else
   owner="${repo%%/*}"
   name="${repo#*/}"
 
-  api() { gh api "$1" 2>/dev/null || printf '[]'; }
-  closed_json="$(api "/repos/$owner/$name/pulls?state=closed&base=main&sort=updated&direction=desc&per_page=100")"
-  open_json="$(api "/repos/$owner/$name/pulls?state=open&base=main&per_page=100")"
+  fetch_pulls() {
+    local pull_state="$1" page=1 page_json all_json='[]'
+    while :; do
+      if ! page_json="$(gh api "/repos/$owner/$name/pulls?state=$pull_state&sort=updated&direction=desc&per_page=100&page=$page" 2>/dev/null)"; then
+        return 1
+      fi
+      printf '%s' "$page_json" | jq -e 'type == "array"' >/dev/null 2>&1 || return 1
+      all_json="$(printf '%s\n%s\n' "$all_json" "$page_json" | jq -s 'add')"
+      count="$(printf '%s' "$page_json" | jq -r 'length')"
+      [ "${count:-0}" -eq 100 ] || break
+      page=$((page + 1))
+    done
+    printf '%s' "$all_json"
+  }
+  # 段階 PR は feature branch 向け、最終 PR は main 向けなので base を絞らない。
+  if ! closed_json="$(fetch_pulls closed)"; then
+    emit_unavailable
+  fi
+  if ! open_json="$(fetch_pulls open)"; then
+    emit_unavailable
+  fi
 fi
 
 # --- マージ済み PR を git 履歴から並べる ---------------------------------------
@@ -168,6 +186,7 @@ if [ "$stage" = "done" ] || [ "$stage" = "none" ] || [ -z "$feature" ]; then
 fi
 
 prefix="claude/sdd-$feature-"
+feature_branch="claude/sdd-$feature-feature"
 
 # --- ホップの集計（手順 1 で作った一覧を使い回す） --------------------------
 hops=0
@@ -184,8 +203,25 @@ $merged_list
 MERGED
 
 # --- 手順 3: 冪等（open な自動 PR があれば何もしない） ----------------------
+# `base.ref` が無い応答では final PR と段階 PR を区別できないため、fail-closed にする。
+invalid_open_prs="$(printf '%s' "$open_json" \
+  | jq -c --arg p "$prefix" \
+      '[.[] | (.head.ref // "") as $h
+              | select($h | startswith($p))
+              | select((has("base") | not) or (.base | type != "object") or (.base.ref? == null))
+              | $h]' \
+      2>/dev/null || printf '[]')"
+invalid_open_count="$(printf '%s' "$invalid_open_prs" | jq -r 'length' 2>/dev/null || printf '0')"
+if [ "${invalid_open_count:-0}" -gt 0 ]; then
+  emit_unavailable
+fi
+
+# label 付与に失敗した段階 PR も同じ head/base なら次回実行を塞ぐ。
 open_prs="$(printf '%s' "$open_json" \
-  | jq -c --arg p "$prefix" '[.[].head.ref | select(startswith($p))]' 2>/dev/null || printf '[]')"
+  | jq -c --arg p "$prefix" --arg b "$feature_branch" \
+      '[.[] | select(.base.ref == $b)
+              | .head.ref | select(startswith($p))]' \
+      2>/dev/null || printf '[]')"
 [ -n "$open_prs" ] || open_prs='[]'
 open_count="$(printf '%s' "$open_prs" | jq -r 'length' 2>/dev/null || printf '0')"
 

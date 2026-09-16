@@ -81,9 +81,9 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 | stage | 含まれる属性 |
 | --- | --- |
 | `none` | `feature_dir`, `feature`, `stage` |
-| `plan` / `tasks` | 上 + `branch` |
-| `implement` | 上 + `phase`, `phase_title`, `remaining`, `total`, `phases` |
-| `done` | `feature_dir`, `feature`, `stage`, `phases` |
+| `plan` / `tasks` | 上 + `feature_branch`, `base_branch`, `branch` |
+| `implement` | 上 + `phase`, `phase_title`, `remaining`, `total`, `phases`, `feature_branch`, `base_branch`, `branch` |
+| `done` | `feature_dir`, `feature`, `stage`, `phases`, `feature_branch`, `base_branch` |
 
 対象機能が 1 つも無いときは `{"stage":"none"}` だけを返す。
 
@@ -100,14 +100,15 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 
 ## 5. ホップ（Hop）
 
-ハーネスが開いてマージされた PR 1 件。GitHub の REST から導出する。
+ハーネスが開いてマージされた PR 1 件。cloud の組み込み GitHub ツールで取得した PR 一覧と
+git の first-parent 履歴から導出する。
 
 | 属性 | 導出元 |
 | --- | --- |
 | 機能 | `head.ref` の `claude/sdd-NNN-` 部分 |
 | 段階・フェーズ | `head.ref` の残り（`plan` / `tasks` / `implement-pN`） |
-| マージ済み | `merged_at != null` |
-| 対象 | `labels[].name` に `sdd` を含み、`base.ref = main` |
+| マージ済み | `git log --first-parent` の件名に PR 番号がある |
+| 対象 | `labels` に `sdd` を含む（`labels[].name` と文字列配列の両方を受ける） |
 
 集計（`sdd-guard.sh`）:
 
@@ -115,7 +116,7 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 | --- | --- | --- |
 | `hops` | 同じ機能のマージ済みホップ数 | `2 + phases + 2` 以上で停止（FR-016） |
 | `phase_retries` | 同じ `implement-pN` のマージ済みホップ数 | 2 以上で停止（FR-015） |
-| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open | 1 件以上で何もしない（FR-013） |
+| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、`base.ref = claude/sdd-NNN-feature`。label 付与失敗時も head/base が一致すれば対象。`base.ref` が無い同 prefix の open PR は区別不能なので fail-closed | 1 件以上で新しい段階 PR は作らない（FR-013）。未解決レビューがあればレビュー対応へ渡し、無ければ tasks / implement の non-draft PR の checks を再評価する |
 
 `phases` は tasks.md が無い段階（plan／tasks）では 0 として扱い、ホップ上限は `2 + 0 + 2 = 4`
 になる。tasks.md ができた後は実際のフェーズ数で計算し直す。
@@ -133,11 +134,11 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 
 | reason | 意味 | Issue |
 | --- | --- | --- |
-| `open-pr` | 対象機能に open な自動 PR がある | 作らない（正常な待ち） |
+| `open-pr` | 対象機能に open な自動 PR がある | 作らない（レビュー対応または checks 再評価の入口） |
 | `phase-retry-limit` | 同じフェーズのマージが 2 回に達した | 作る |
 | `hop-limit` | 機能のホップ上限に達した | 作る |
 | `no-progress` | （スキルが作業後に判定）状態が変わらない／差分なし | 作る |
-| `gh-unavailable` | `gh` が無い、または REST が失敗した | 作らない（作れない） |
+| `gh-unavailable` | PR 一覧が取得できない、`jq` が無い、またはローカル検算フォールバックで `gh`/REST が失敗した | 作らない（作れない） |
 | `nothing-to-do` | state が `done` または `none` | 作らない |
 
 ## 7. 停止通知（Issue）
@@ -148,3 +149,29 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 | 本文 | 理由の説明、State の JSON、Guard の JSON、`CLAUDE_CODE_REMOTE_SESSION_ID` |
 | ラベル | 付けない（`sdd` ラベルは PR 専用。Issue に付けても routine は反応しないが、意味を混ぜない） |
 | 重複判定 | open Issue の題名の完全一致（FR-017） |
+
+## 8. Feature branch workflow（2026-09-13 改訂）
+
+`plan` / `tasks` / `implement` の State は `feature_branch` と `base_branch` を持つ。どちらも
+`claude/sdd-NNN-feature` である。`branch` は従来どおり段階ごとに異なり、その PR を
+`base_branch` へ入れる。`done` は `feature_branch` と `base_branch: main` を持ち、段階を
+作らず最終 PR を開く。plan PR と最終 PR だけを人がマージし、tasks と検査成功済みの
+implement PR はハーネスがマージする。
+
+## 9. レビュー対応（Review Response）
+
+open な `sdd` PR に紐づく未解決 review thread または最新 commit 後の修正依頼コメント。
+通常の State とは別に GitHub 上の PR 状態から導出し、状態ファイルは持たない。
+
+| 属性 | 導出元 |
+| --- | --- |
+| 対象 PR | open PR。段階 PR は `base.ref = claude/sdd-NNN-feature`、最終 PR は `base.ref = main`。段階 PR は label 付与失敗時も同じ head/base なら対象 |
+| 対象 branch | PR の `head.ref` |
+| 要対応 | unresolved review thread、または最新 commit 後の `REQUEST_CHANGES` / 修正依頼コメント |
+| 完了 | 修正 commit を同じ head に push し、該当 thread へ対応内容と検査結果を返信。解決できた thread は resolve |
+
+レビュー対応が選ばれた run では新しい段階 PR を作らない。複数 PR が該当する場合は 1 run で
+1 件だけ扱い、残りは次の日次 run または手動実行に任せる。
+tasks / implement の non-draft PR は、レビュー対応後またはレビュー指摘が無い open-pr 分岐で
+checks が green なら自動マージできる。pending / failed / 読み取り不能 / draft の場合は
+open のまま待つ。

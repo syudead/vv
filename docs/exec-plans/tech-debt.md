@@ -256,3 +256,13 @@ reconsideration.
 [contracts/openapi.yaml]: ../../specs/001-initial-setup/contracts/openapi.yaml
 [plan.md]: ../../specs/001-initial-setup/plan.md
 [003 の R-004]: ../../specs/003-sdd-loop-harness/research.md
+
+### TD-010: routine の base branch フィルタ変更はリポジトリから自動化できない
+
+- **影響範囲**: `/sdd-next` の feature branch 方式への移行
+- **内容**: リポジトリ内の実装は段階 PR を `claude/sdd-NNN-feature` 向けに作るが、既存の
+  claude.ai routine には `Base branch equals main` が設定されている。この外部設定は commit
+  だけでは変更できず、残っている間は plan のマージ後に次セッションが起動しない。
+- **当面の対処**: `docs/references/sdd-routine.md` の移行手順に従い、画面で base 条件を削除して
+  test merge を行う。
+- **見直しの契機**: routine 設定を API / IaC としてリポジトリから同期できるようになった時。

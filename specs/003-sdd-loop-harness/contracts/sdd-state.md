@@ -66,3 +66,9 @@ $ .claude/skills/sdd-next/scripts/sdd-state.sh --root .claude/skills/sdd-next/te
 | `04-done` | `[x]` と `[X]` の混在をすべて完了と数える、`done` に `phases` を含む |
 | `05-no-spec` | `spec.md` 無し → `none`、自動選択で飛ばされて `{"stage":"none"}` |
 | `06-multi-feature` | `done` の機能を飛ばして次の機能を選ぶ、`--feature` で `done` の機能を明示できる |
+
+## Feature branch fields（2026-09-13 改訂）
+
+`plan` / `tasks` / `implement` は `feature_branch` と `base_branch` を追加で返し、値はいずれも
+`claude/sdd-NNN-feature` とする。`done` は同じ `feature_branch` と `base_branch: main` を返す。
+段階 `branch` は feature branch から作り、その branch 向け PR の head に使う。
