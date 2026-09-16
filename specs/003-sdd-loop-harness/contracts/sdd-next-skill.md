@@ -59,8 +59,11 @@ implement が `feat:`（テストのみなら `test:`）
 | base | `state.base_branch` |
 | title | plan: `docs: NNN の実装計画と設計成果物を追加する` / tasks: `docs: NNN の実装タスクを分解する` / implement: `feat: NNN Phase N（<phase_title の先頭 30 文字>）を実装する` |
 | label | `sdd`（必須） |
-| draft | implement で `make check` が通らなかったときだけ `true` |
+| draft | implement で `make check` が通らない、または検査が skip されたときは `true` |
 | body | 下の雛形 |
+
+tasks / implement の non-draft PR は、PR checks が green であることを確認してから自動マージする。
+checks が読めない、失敗、pending のまま timeout した場合は open のまま停止理由を報告する。
 
 段階 PR を自動マージできたら remote の `state.branch` を削除する。同じ phase が続いたときでも
 次回は最新 feature branch から同名 head を作り直す。削除できない場合は stale branch として

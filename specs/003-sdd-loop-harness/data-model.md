@@ -116,7 +116,7 @@ git の first-parent 履歴から導出する。
 | --- | --- | --- |
 | `hops` | 同じ機能のマージ済みホップ数 | `2 + phases + 2` 以上で停止（FR-016） |
 | `phase_retries` | 同じ `implement-pN` のマージ済みホップ数 | 2 以上で停止（FR-015） |
-| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、`base.ref = claude/sdd-NNN-feature`、かつ `labels` に `sdd` を含む | 1 件以上で新しい段階 PR は作らない（FR-013）。未解決レビューがあればレビュー対応へ渡す |
+| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、`base.ref = claude/sdd-NNN-feature`。label 付与失敗時も head/base が一致すれば対象。`base.ref` が無い同 prefix の open PR は区別不能なので fail-closed | 1 件以上で新しい段階 PR は作らない（FR-013）。未解決レビューがあればレビュー対応へ渡す |
 
 `phases` は tasks.md が無い段階（plan／tasks）では 0 として扱い、ホップ上限は `2 + 0 + 2 = 4`
 になる。tasks.md ができた後は実際のフェーズ数で計算し直す。

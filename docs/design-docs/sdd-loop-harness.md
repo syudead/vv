@@ -71,11 +71,11 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
         │ 新しい web セッション（main を clone）
         ▼
 /sdd-next スキル（.claude/skills/sdd-next/SKILL.md）
-  1. sdd-state.sh で次の段階を決定論的に求める → sdd-guard.sh で進めてよいか判定
+  1. 必要なら feature branch を復元し、sdd-state.sh → sdd-guard.sh で進めてよいか判定
   2. open な sdd PR に未解決レビュー指摘があれば、その PR の head に修正 commit を積んで終了
   3. 段階に応じて /speckit-plan | /speckit-tasks | /speckit-implement <フェーズ> を実行
   4. make check（implement のとき）→ コミット → claude/sdd-NNN-<stage> へ push
-  5. ラベル sdd 付きの PR を main に開いて終了
+  5. ラベル sdd 付きの PR を feature branch に開き、checks green 後に自動マージして終了
         │
 人: PR をレビューしてマージ（= 承認ゲート） → 先頭に戻る
 ```
@@ -137,7 +137,7 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
 | 1 | 同じ段階を延々やり直す（例: implement が何も進まないまま PR が出てマージされる） | **前進チェック**: 作業前後の `sdd-state.sh` の出力を比較し、変化がなければ PR を開かず終了。`git diff` が空の場合も同じ | state.sh の JSON 差分（スキル側で判定） |
 | 2 | 同じフェーズのやり直しが積み重なる | **フェーズ別リトライ上限（2 回）**: `git log --merges` 中の `claude/sdd-NNN-implement-pN` のマージ数が 2 以上なら停止 | git のマージ履歴 |
 | 3 | 機能単位で回数が膨らむ | **機能別ホップ上限**: `claude/sdd-NNN-*` のマージ数が `2（plan, tasks）+ フェーズ数 + 余裕 2` 以上なら停止 | git のマージ履歴 + tasks.md のフェーズ数 |
-| 4 | 二重発火（同じイベントで 2 セッション、人が手で回した直後に routine も走る、日次トリガーとイベントが重なる） | **冪等ガード**: 対象機能の `sdd` ラベル付き open PR（head `claude/sdd-NNN-*`、base `claude/sdd-NNN-feature`）が既にあれば新しい段階 PR は作らない。未解決レビューがある場合だけレビュー対応へ進む | 組み込み GitHub ツールで取得した open PR 一覧と review threads |
+| 4 | 二重発火（同じイベントで 2 セッション、人が手で回した直後に routine も走る、日次トリガーとイベントが重なる） | **冪等ガード**: 対象機能の open PR（head `claude/sdd-NNN-*`、base `claude/sdd-NNN-feature`）が既にあれば、label 付与に失敗していても新しい段階 PR は作らない。同 prefix で `base.ref` が無い場合は fail-closed。未解決レビューがある場合だけレビュー対応へ進む | 組み込み GitHub ツールで取得した open PR 一覧と review threads |
 | 5 | 緊急停止 | routine の一時停止（claude.ai のトグル）。加えて `sdd` ラベルを付けなければ発火しない（トリガーのフィルタ条件） | routine 設定 / PR ラベル |
 
 補助的な歯止め:
@@ -202,6 +202,7 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 5.   PR            コミット（既存の慣習どおり日本語、Co-Authored-By 付き）→ push →
                    ラベル sdd 付きで state.base_branch へ PR。本文に before/after の JSON、実行した検査、
                    残課題、セッションへのリンク（CLAUDE_CODE_REMOTE_SESSION_ID）を書く。
+                   tasks / implement は checks green を確認してから自動マージする。
                    自動マージ成功後は remote の段階 branch を削除する
 6.   報告          最後に「段階・PR URL・次に起きること」を 3 行で出す
 ```

@@ -266,9 +266,14 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"]}" \
     "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "$(pulls_json sdd 2:claude/sdd-010-tasks)"
 
-  check_guard "ガード github-dir ラベル無し open PR は塞がない" \
-    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
+  check_guard "ガード github-dir ラベル無し open PR も塞ぐ" \
+    "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"]}" \
     "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "$(pulls_json - 2:claude/sdd-010-tasks)"
+
+  check_guard "ガード github-dir base.ref 欠落は fail-closed" \
+    "{\"go\":false,\"reason\":\"gh-unavailable\",\"state\":$st02}" \
+    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" \
+    '[{"number":2,"head":{"ref":"claude/sdd-010-tasks"},"labels":[{"name":"sdd"}]}]'
 
   # main 向けの最終 PR は段階 PR の冪等ガードに含めない
   check_guard "ガード github-dir 最終 PR は段階 PR を塞がない" \

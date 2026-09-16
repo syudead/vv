@@ -11,7 +11,7 @@ disable-model-invocation: false
 1 spec に 1 本の長寿命 feature branch を作り、その branch を base にした段階 PR で
 `plan → tasks → implement（フェーズごと）` を進める。**人が判断するのは plan PR と、完成した
 feature branch を `main` へ入れる最終 PR の 2 回だけ**である。tasks と検査に成功した
-implement PR は作成したセッションが直ちにマージする。
+implement PR は、PR checks が green になってから作成したセッションがマージする。
 
 - 設計: [docs/design-docs/sdd-loop-harness.md](../../../docs/design-docs/sdd-loop-harness.md)
 - 状態: [data-model.md](../../../specs/003-sdd-loop-harness/data-model.md)
@@ -31,9 +31,11 @@ implement PR は作成したセッションが直ちにマージする。
 前提確認で `gh api /rate_limit` を要求してはならない。GitHub 情報が要る箇所では cloud の
 組み込み GitHub ツールを使い、失敗したら理由を書いて変更を残さず終了する。
 
-routine payload のマージ済み PR、または closed PR 一覧の直近のマージ済み `sdd` PR の
+routine payload のマージ済み PR、または closed PR 一覧から選んだ直近のマージ済み段階 `sdd` PR の
 `base.ref` が `claude/sdd-NNN-feature` なら、次を行ってその feature branch を作業 base にする。
 日次実行では open な `head.ref = claude/sdd-NNN-feature`, `base.ref = main` の最終 PR も候補にする。
+closed PR 一覧は `updated_at` 順なので、未マージ PR やコメント更新だけで先頭に来た PR を
+作業 base の根拠にしてはならない。
 
 ```bash
 git fetch origin <feature-branch>
@@ -41,7 +43,9 @@ git switch -C <feature-branch> origin/<feature-branch>
 ```
 
 それ以外（spec PR が `main` に入った最初の実行）は `main` のままにする。段階間の状態は
-`main` ではなく feature branch にあるため、この復元を省略してはならない。
+`main` ではなく feature branch にあるため、この復元を省略してはならない。guard が返した
+`state.feature_branch` が現在 branch と違い、remote に存在する場合は、その branch に切り替えて
+PR 一覧の取得、`before`、guard をやり直す。
 
 ## 0.5 使用量ゲート
 
@@ -61,7 +65,9 @@ git switch -C <feature-branch> origin/<feature-branch>
 `${TMPDIR:-/tmp}/sdd-github/pulls-{closed,open}.json` に置く。
 ツールの応答は書き換えずにそのまま保存する。各要素に `number`, `head.ref`, `base.ref`,
 `labels` が必要で、`labels` は `["sdd"]` と `[{"name":"sdd"}]` のどちらでもよい。
-`fields` で絞ると `labels` が落ちることがあるので付けない。手元では `--github-dir` を
+open 一覧で同じ head prefix の要素に `base.ref` が無い場合は、段階 PR と最終 PR を区別できないので
+`gh-unavailable` として止める。open な段階 PR は label 付与に失敗していても同じ head/base なら塞ぐ。
+`fields` で絞ると `labels` や `base.ref` が落ちることがあるので付けない。手元では `--github-dir` を
 省略した場合にだけ、スクリプトが任意フォールバックとして `gh api` を試す。
 
 cloud:
@@ -155,13 +161,14 @@ git status --porcelain
 | base | `state.base_branch` | `state.base_branch` |
 | head | `state.branch` | `state.branch` |
 | label | `sdd` | `sdd` |
-| draft | false | `make check` 失敗時だけ true |
-| マージ | **人がレビューしてマージ** | non-draft なら作成者が直ちに merge |
+| draft | false | `make check` 失敗または検査 skip 時は true |
+| マージ | **人がレビューしてマージ** | non-draft かつ PR checks が green なら作成者が merge |
 
 タイトルは plan=`docs: NNN の実装計画と設計成果物を追加する`、tasks=`docs: NNN の実装タスクを
 分解する`、implement=`feat: NNN Phase N（phase_title 先頭 30 文字）を実装する` とする。
 本文には before/after/guard、検査、残課題、session ID、`UI 変更なし` または UI 画像を含める。
-ラベルを読み直して確認してからマージする。自動マージ API が失敗したら PR は open のまま
+ラベルを読み直して確認し、PR の checks が green になるまで待ってからマージする。checks を
+読めない、失敗、pending のまま timeout、またはローカル検査に skip がある場合は draft/open のまま
 残し、停止理由を報告する（人に通常レビューを要求するための仕様には戻さない）。
 自動マージが成功した段階 PR は、同じ phase を再実行しても non-fast-forward にならないよう
 remote の `state.branch` を削除する。削除に失敗した場合は次回実行で同名 branch を上書きせず、

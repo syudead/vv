@@ -203,11 +203,23 @@ $merged_list
 MERGED
 
 # --- 手順 3: 冪等（open な自動 PR があれば何もしない） ----------------------
+# `base.ref` が無い応答では final PR と段階 PR を区別できないため、fail-closed にする。
+invalid_open_prs="$(printf '%s' "$open_json" \
+  | jq -c --arg p "$prefix" \
+      '[.[] | (.head.ref // "") as $h
+              | select($h | startswith($p))
+              | select((has("base") | not) or (.base | type != "object") or (.base.ref? == null))
+              | $h]' \
+      2>/dev/null || printf '[]')"
+invalid_open_count="$(printf '%s' "$invalid_open_prs" | jq -r 'length' 2>/dev/null || printf '0')"
+if [ "${invalid_open_count:-0}" -gt 0 ]; then
+  emit_unavailable
+fi
+
+# label 付与に失敗した段階 PR も同じ head/base なら次回実行を塞ぐ。
 open_prs="$(printf '%s' "$open_json" \
   | jq -c --arg p "$prefix" --arg b "$feature_branch" \
       '[.[] | select(.base.ref == $b)
-              | select(([.labels[]? | if type == "object" then .name else . end]
-                        | index("sdd")) != null)
               | .head.ref | select(startswith($p))]' \
       2>/dev/null || printf '[]')"
 [ -n "$open_prs" ] || open_prs='[]'
