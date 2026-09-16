@@ -1,6 +1,6 @@
 ---
 name: "sdd-next"
-description: "Spec Kit の次の 1 段階（plan / tasks / implement の 1 フェーズ）を実行し、sdd ラベル付き PR を開く。routine と手動の両方から同じ手順で動く"
+description: "Spec Kit の次の 1 段階を feature branch 上で実行する。plan と最終マージだけを人の承認ゲートにする"
 argument-hint: "--dry-run（判定だけ表示して終わる）"
 user-invocable: true
 disable-model-invocation: false
@@ -8,393 +8,194 @@ disable-model-invocation: false
 
 # sdd-next
 
-Spec Kit の **次の 1 段階だけ**を実行し、`sdd` ラベル付きの PR を開いて終わる。承認ゲートは
-人のマージである。1 セッション = 1 段階で、2 段階以上を続けて進めることはしない（FR-003）。
-
-routine（[docs/references/sdd-routine.md](../../../docs/references/sdd-routine.md)）から呼ばれる
-場合も、保守者が web セッションで手打ちする場合も、手順は同じである。判定ロジックは
-すべて `scripts/` の 2 本にあり、この手順書はその出力に従うだけである。
+1 spec に 1 本の長寿命 feature branch を作り、その branch を base にした段階 PR で
+`plan → tasks → implement（フェーズごと）` を進める。**人が判断するのは plan PR と、完成した
+feature branch を `main` へ入れる最終 PR の 2 回だけ**である。tasks と検査に成功した
+implement PR は作成したセッションが直ちにマージする。
 
 - 設計: [docs/design-docs/sdd-loop-harness.md](../../../docs/design-docs/sdd-loop-harness.md)
-- 契約: [contracts/sdd-next-skill.md](../../../specs/003-sdd-loop-harness/contracts/sdd-next-skill.md)
-- 状態の定義: [data-model.md](../../../specs/003-sdd-loop-harness/data-model.md)
+- 状態: [data-model.md](../../../specs/003-sdd-loop-harness/data-model.md)
+- ガード: [contracts/sdd-guard.md](../../../specs/003-sdd-loop-harness/contracts/sdd-guard.md)
 
 ## 定数
 
-| 名前 | 値 | 用途 |
-| --- | --- | --- |
-| `USAGE_LIMIT_7D` | 80 | 7 日窓の使用率がこれ以上なら見送る（FR-020） |
-| `USAGE_LIMIT_5H` | 70 | 5 時間窓の使用率がこれ以上なら見送る |
-| `PHASE_RETRY_LIMIT` | 2 | 同じフェーズのマージがこの回数に達したら止まる。`sdd-guard.sh` と同じ値で、**ここは文書用**である。判定はスクリプト側にしかない |
+| 名前 | 値 |
+| --- | --- |
+| `USAGE_LIMIT_7D` | 80 |
+| `USAGE_LIMIT_5H` | 70 |
+| `PHASE_RETRY_LIMIT` | 2（判定値は `sdd-guard.sh` が真実） |
 
----
+## 0. 前提と作業 base の復元
 
-## 手順 0: 前提確認
+作業ツリーが clean であることを確認する。cloud セッションに `gh` があるとは限らないため、
+前提確認で `gh api /rate_limit` を要求してはならない。GitHub 情報が要る箇所では cloud の
+組み込み GitHub ツールを使い、失敗したら理由を書いて変更を残さず終了する。
 
-次の 3 つをすべて確かめる。
+routine payload のマージ済み PR、または closed PR 一覧の直近のマージ済み `sdd` PR の
+`base.ref` が `claude/sdd-NNN-feature` なら、次を行ってその feature branch を作業 base にする。
+日次実行では open な `head.ref = claude/sdd-NNN-feature`, `base.ref = main` の最終 PR も候補にする。
 
 ```bash
-git branch --show-current      # main であること
-git status --porcelain         # 空であること
+git fetch origin <feature-branch>
+git switch -C <feature-branch> origin/<feature-branch>
 ```
 
-3 つ目は GitHub に問い合わせられること。cloud セッションでは組み込みの GitHub ツール
-（`mcp__github__*`）があればよい。手元では `gh api /rate_limit` が通ればよい。
-**cloud セッションに `gh` は入っていない**ので、`gh` の有無で判断してはならない。
+それ以外（spec PR が `main` に入った最初の実行）は `main` のままにする。段階間の状態は
+`main` ではなく feature branch にあるため、この復元を省略してはならない。
 
-1 つでも満たさなければ、**理由を書いて終了する**。ブランチも作らず、ファイルも書き換えず、
-リポジトリに変更を残さない。
+## 0.5 使用量ゲート
 
-## 手順 0.5: 使用量ゲート
-
-使用率がしきい値以上なら、**段階を実行せずに見送る**（FR-020）。使い切ってから止まると、
-中途半端な成果物がブランチに残る。再開は日次トリガーか次のマージに任せる（FR-019）ので、
-見送った回は PR も Issue も作らない。
-
-### 取得手段
-
-`${TMPDIR:-/tmp}/sdd-rate-limits.json`（通常は `/tmp/sdd-rate-limits.json`）があれば、
-そこから次の 2 つを読む。`jq -r` が使えればそれで、無ければ `grep -o` で取る。
-
-- `rate_limits.seven_day.used_percentage`
-- `rate_limits.five_hour.used_percentage`
-
-このファイルは [`.claude/hooks/rate-limits-statusline.sh`](../../hooks/rate-limits-statusline.sh)
-が書く。使用率は Claude Code がステータスラインスクリプトへの stdin JSON にしか渡さない
-ため、受け取るためだけにステータスラインを 1 つ置いている（[R-004](../../../specs/003-sdd-loop-harness/research.md) の案 a）。
-
-**ファイルが無い・読めない・値が数値でない場合は「取得不能」とし、この判定を丸ごと飛ばして
-通常どおり手順 1 へ進む。** 取得できないことを理由に止まってはならない（FR-020 後段）。
-
-### 判定
-
-取得できたときだけ、`USAGE_LIMIT_7D` / `USAGE_LIMIT_5H` と比べる。
-
-| 条件 | 振る舞い |
-| --- | --- |
-| `seven_day >= USAGE_LIMIT_7D` または `five_hour >= USAGE_LIMIT_5H` | 次の 1 行を出して終了する。PR も Issue も作らず、ブランチも切らない |
-| それ以外 | 手順 1 へ進む |
+`${TMPDIR:-/tmp}/sdd-rate-limits.json` から
+`rate_limits.seven_day.used_percentage` と `rate_limits.five_hour.used_percentage` を読めた場合、
+前者が 80 以上または後者が 70 以上なら次を表示し、何も作らず終了する。読めない場合は
+ゲートを飛ばす。
 
 ```text
 今回は見送り: 7 日窓 NN% / 5 時間窓 NN%
 ```
 
-> **未確定**: 取得手段は R-004 の案 a（ステータスライン）と案 b
-> （`curl https://api.anthropic.com/api/oauth/usage`）のどちらかに、quickstart S3 の
-> プローブで確定する。確定したらこの節を書き換える。両案とも不可なら、ゲートは無効の
-> まま（取得不能 = 飛ばす）とし、[tech-debt TD-007](../../../docs/exec-plans/tech-debt.md)
-> に残す。
+## 1. 判定
 
-## 手順 1: 判定
+組み込み GitHub ツールでは `state=closed` と `state=open` の PR を **base で絞らず**、
+`per_page=100` 相当で必要なページを続けて取得し、JSON 配列を
+`${TMPDIR:-/tmp}/sdd-github/pulls-{closed,open}.json` に置く。
+ツールの応答は書き換えずにそのまま保存する。各要素に `number`, `head.ref`, `base.ref`,
+`labels` が必要で、`labels` は `["sdd"]` と `[{"name":"sdd"}]` のどちらでもよい。
+`fields` で絞ると `labels` が落ちることがあるので付けない。手元では `--github-dir` を
+省略した場合にだけ、スクリプトが任意フォールバックとして `gh api` を試す。
 
-`sdd-guard.sh` は GitHub の PR 一覧を 2 つ（`main` 向けの closed と open）必要とする。
-判定そのものはスクリプトにあり、ここでは**一覧を取ってファイルに置くだけ**である。
-
-### cloud セッション（routine・web）
-
-`gh` が無いので、組み込みの GitHub ツールで取り、`${TMPDIR:-/tmp}/sdd-github/` に書く。
-
-| ファイル | ツール | 引数 |
-| --- | --- | --- |
-| `pulls-closed.json` | `mcp__github__list_pull_requests` | `owner`, `repo`, `state: "closed"`, `base: "main"`, `sort: "updated"`, `direction: "desc"`, `perPage: 100` |
-| `pulls-open.json` | `mcp__github__list_pull_requests` | `owner`, `repo`, `state: "open"`, `base: "main"`, `perPage: 100` |
-
-ツールの応答（PR オブジェクトの **JSON 配列**）を**書き換えずに**そのままファイルに書く。
-各要素に `number`・`head.ref`・`labels` が要る。`labels` は `["sdd"]`（組み込みツール）でも
-`[{"name":"sdd"}]`（REST）でもよく、スクリプトが両方を読む。`fields` で絞ると `labels` が
-落ちることがあるので、**`fields` は付けない**。`merged_at` は要らない — マージ済みかどうかは
-スクリプトが git 履歴から決める。
+cloud:
 
 ```bash
-mkdir -p "${TMPDIR:-/tmp}/sdd-github"
-# （ここで 2 つのツール呼び出しの結果を pulls-closed.json / pulls-open.json に書く）
 before=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
-guard=$(printf '%s\n' "$before" \
-  | .claude/skills/sdd-next/scripts/sdd-guard.sh --github-dir "${TMPDIR:-/tmp}/sdd-github")
+guard=$(printf '%s\n' "$before" | \
+  .claude/skills/sdd-next/scripts/sdd-guard.sh --github-dir "${TMPDIR:-/tmp}/sdd-github")
+before=$(printf '%s\n' "$guard" | jq -c '.state')
 ```
 
-ツールの呼び出しに失敗したら、`gh-unavailable` と同じ扱いで**理由を書いて終了する**。
-自分で PR 一覧を解釈して判定を代行してはならない。
-
-### 手元（`gh` がある）
+手元:
 
 ```bash
 before=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
 guard=$(printf '%s\n' "$before" | .claude/skills/sdd-next/scripts/sdd-guard.sh)
+before=$(printf '%s\n' "$guard" | jq -c '.state')
 ```
 
-`--github-dir` を省くと、スクリプトが `gh api` で同じ 2 つの一覧を取る。
+`guard.state` を以後の真実にし、`before` も必ず `guard.state` に置き換える。ガードが直近の
+マージ済み `sdd` PR から対象機能を差し替えることがあるため、初回の `sdd-state.sh` 出力を
+前進確認に使ってはいけない。`guard.go=false` は次の通り扱う。
 
-**以後は `guard.state` を真実として使う。`before` も `guard.state` で置き換える。**
-`sdd-guard.sh` は直近のマージ済み `sdd` PR が触った機能を見て対象を確定し直すので、
-`sdd-state.sh` 単独の自動選択とは別の機能になりうるためである
-（[contracts/sdd-guard.md](../../../specs/003-sdd-loop-harness/contracts/sdd-guard.md) 手順 1）。
-
-`guard.go` が `true` なら手順 2 へ進む。`false` のときは `guard.reason` で分岐する。
-
-| `reason` | 振る舞い |
+| reason | 振る舞い |
 | --- | --- |
-| `open-pr` | **何もせず終了する。** 正常な待ちであり、異常ではない。ブランチも PR も Issue も作らない（FR-013）。人がその PR をマージすれば次のセッションが始まる |
-| `nothing-to-do` | 何もせず終了する。対象機能が `done` か `none` で、進める先が無い（FR-007） |
-| `gh-unavailable` | 理由を出して終了する。リポジトリに変更を残さない（Edge Cases）。PR 一覧が取れなかった（`jq` が無い、`gh` が無い、REST が失敗した）ときで、手元での検算はこの経路を通る |
-| `phase-retry-limit` | 「停止通知（Issue）」を立てて終了する（FR-015・FR-017） |
-| `hop-limit` | 「停止通知（Issue）」を立てて終了する（FR-016・FR-017） |
+| `open-pr` | `open_prs` の対象 PR に未解決レビュー指摘があるか確認する。あれば手順 1.5 へ進み、無ければ終了 |
+| `nothing-to-do` | `main` 上なら終了。feature branch 上なら手順 5 の最終 PR へ進む |
+| `gh-unavailable` | 理由を表示し、変更を残さず終了 |
+| `phase-retry-limit` / `hop-limit` | 同名の open Issue が無ければ停止通知を作る |
 
-`open-pr`・`nothing-to-do`・`gh-unavailable` では Issue を作らない。作ると、正常な待ちや
-手元での検算のたびに Issue が増えてしまう。
+`--dry-run` ならここで guard、作業 base、次に作る head/base、plan なら手動マージ、その他なら
+自動マージ、done なら最終 PR を表示して終了する。ファイル・branch・PR を変更しない。
 
-## 手順 1.5: `--dry-run`
+## 1.5 レビュー対応
 
-引数に `--dry-run` があれば、**手順 0〜1 だけ**を行い、何をするつもりかを表示して終了する。
-ブランチも切らず、ファイルも書き換えず、PR も Issue も作らない。
+open な `sdd` PR に未解決のレビュー指摘がある場合は、通常の段階実行より先にレビュー対応だけを
+行う。`guard.reason == "open-pr"` のときも即終了せず、`guard.open_prs` の head に対応する
+PR をここで確認する。対象は `state.base_branch` 向けの段階 PR、または `main` 向けの最終 PR のうち、
+組み込み GitHub ツールで取得した review thread が未解決、または最新 commit 後に
+`REQUEST_CHANGES` / 修正依頼コメントが付いたものに限る。
 
-1. `guard` の JSON を整形して表示する
-2. 続けて 1 行:
+複数ある場合は更新日時が古い 1 件だけを扱い、同じセッションで新しい段階 PR を作らない。
+対象 PR の head branch を checkout し、レビュー指摘に必要な最小差分だけを入れ、該当する検査を
+再実行して同じ PR に push する。push 後は各レビュー thread に「対応内容 / 検査結果 / 追加で
+人の判断が必要な点」を返信し、解決できた thread は resolve する。仕様判断・権限・外部情報が
+必要なら修正を作らず、PR コメントで block 理由を返して終了する。
 
-```text
-実行するなら: ブランチ `<state.branch>` を切って `<stage>`（implement なら Phase <N> `<phase_title>`）を実行し、PR `<title>` を開く
-```
+## 2. feature branch と段階 branch
 
-`<title>` は手順 5 の PR タイトルの規則で組み立てる。`guard.go` が `false` のときは、
-その `reason` と「実行しない」ことを示す。
-
-手順 0 の前提のうち `main` 上であることと作業ツリーが clean であることは `--dry-run` でも
-要求する（判定は作業ツリーの成果物から導くため）。ただし **PR 一覧が取れない場合は、
-`gh-unavailable` の `guard` をそのまま表示して終わる**。保守者の手元
-（`gh` も `jq` も無い Windows の Git Bash）で検算できるようにするためである。
-
-## 手順 2: 準備
+最初の `plan` で `feature_branch` が remote に無い場合だけ、現在の `main` から作って push する。
+以後の段階は必ず最新の feature branch から作る。
 
 ```bash
+git switch -c <state.feature_branch>       # 初回だけ
+git push -u origin <state.feature_branch>  # 初回だけ
 git switch -c <state.branch>
 export SPECIFY_FEATURE_DIRECTORY=<state.feature_dir>
 ```
 
-`state.branch` と `state.feature_dir` は手順 1 の `guard.state` から取る。
+branch のトポロジーは `main ← claude/sdd-NNN-feature ← claude/sdd-NNN-<stage>` である。
+Git の ref は同名 prefix と子 ref を同時に持てないため、名前に `/` は使わず、PR の base で
+親子関係を表す。
 
-`SPECIFY_FEATURE_DIRECTORY` を export すると `.specify/scripts/bash/common.sh` が
-`.specify/feature.json` を書くので、以後の `/speckit-*` は環境変数なしでも同じ機能を指す
-（[R-003](../../../specs/003-sdd-loop-harness/research.md)）。ブランチ名は Spec Kit の
-規約（`NNN-name`）ではなくハーネスの規約（`claude/sdd-NNN-<stage>`）に従う。routine の
-セッションは `claude/` 接頭辞のブランチに push することが常に許可されている。
+## 3. 次の 1 段階だけを実行
 
-ブランチが切れなければ終了する。
+| stage | 実行 | 検証 |
+| --- | --- | --- |
+| `plan` | `/speckit-plan` | `plan.md` と `research.md` が生成済み |
+| `tasks` | `/speckit-tasks` → `/speckit-analyze` | `tasks.md` があり、tasks 側で直せる CRITICAL は解消済み |
+| `implement` | `/speckit-implement "Phase N（title）のタスクだけ。他フェーズに触れない"` | 完了を `[X]` にし `make check` 成功 |
 
-## 手順 3: 段階の実行
+1 セッションで 2 段階へ進まない。tasks では `spec.md` / `plan.md` を直さない。implement の
+検査を直せなければ draft PR にして自動マージしない。
 
-`guard.state.stage` に応じて**1 つだけ**実行する。
-
-| stage | 実行 | 検証 | 通らないとき |
-| --- | --- | --- | --- |
-| `plan` | `/speckit-plan` | `plan.md` と `research.md` が生成されている | 生成されていなければ手順 4 で `no-progress` になる。無理に作らない |
-| `tasks` | `/speckit-tasks` → `/speckit-analyze` | `tasks.md` が生成され、analyze の CRITICAL が tasks.md 側の直しで解消済み | **`spec.md` と `plan.md` には手を入れない。** 解消できない CRITICAL は PR 本文の「残課題」に書いて残す |
-| `implement` | `/speckit-implement "Phase <N>（<phase_title>）のタスクだけを対象にする。他のフェーズには手を付けない"` | 完了したタスクを `tasks.md` で `[X]` にし、`make check` が通る | 直す。直せなければ PR を **draft** で開き、本文に失敗内容を書く（FR-006） |
-| `done` / `none` | 何もしない | — | — |
-
-`implement` のフィルタは**引数で伝えるだけ**で、`/speckit-implement` 側に新しい仕組みは
-足さない（FR-008）。`<N>` と `<phase_title>` は `guard.state.phase` / `guard.state.phase_title`
-をそのまま使う。
-
-どの段階でも「次の 1 段階」だけを実行する。plan を終えたあとに続けて tasks を実行しては
-ならない（FR-003）。次の段階は、人がこの PR をマージしたときに別のセッションで始まる。
-
-## 手順 4: 前進確認
-
-段階を実行しても何も進まなかった回で PR を開くと、レビューの手間だけが増え、
-マージされればホップを 1 つ消費してしまう。push の前に前進を確かめる（FR-014）。
+## 4. 前進確認
 
 ```bash
 after=$(.claude/skills/sdd-next/scripts/sdd-state.sh --feature <state.feature_dir>)
 git status --porcelain
 ```
 
-`after` を `before`（= `guard.state`）と**文字列として**比較する。属性の並びは stage ごとに
-固定してあるので、文字列が同じなら状態は同じである
-（[data-model.md 4.](../../../specs/003-sdd-loop-harness/data-model.md)）。
+`after != before` かつ差分が非空のときだけ進む。同じなら `no-progress` の停止通知を作り、
+段階 branch を削除して終わる。同じ phase でも `remaining` が減れば前進である。
 
-| 結果 | 次にすること |
-| --- | --- |
-| `after` が `before` と異なり、`git status --porcelain` も非空 | 前進した。手順 5 へ |
-| `after` が `before` と同一 | **前進していない。** 下の後始末をする |
-| `git status --porcelain` が空 | **差分が無い。** 下の後始末をする |
+## 5. commit、PR、マージ
 
-`implement` では、同じフェーズに留まっていても `remaining` が減っていれば `after` の文字列が
-変わるので、前進とみなされる（「一部だけ進んだ回」を切り捨てない）。
+段階成果物を日本語の要約で commit し、`state.branch` を push する。PR は次の値で作る。
 
-前進していないときの後始末:
+| 項目 | plan | tasks / implement |
+| --- | --- | --- |
+| base | `state.base_branch` | `state.base_branch` |
+| head | `state.branch` | `state.branch` |
+| label | `sdd` | `sdd` |
+| draft | false | `make check` 失敗時だけ true |
+| マージ | **人がレビューしてマージ** | non-draft なら作成者が直ちに merge |
 
-1. 「停止通知（Issue）」を `no-progress` で立てる
-2. `git switch main`
-3. `git branch -D <state.branch>`
-4. push も PR もせずに終了する
+タイトルは plan=`docs: NNN の実装計画と設計成果物を追加する`、tasks=`docs: NNN の実装タスクを
+分解する`、implement=`feat: NNN Phase N（phase_title 先頭 30 文字）を実装する` とする。
+本文には before/after/guard、検査、残課題、session ID、`UI 変更なし` または UI 画像を含める。
+ラベルを読み直して確認してからマージする。自動マージ API が失敗したら PR は open のまま
+残し、停止理由を報告する（人に通常レビューを要求するための仕様には戻さない）。
+自動マージが成功した段階 PR は、同じ phase を再実行しても non-fast-forward にならないよう
+remote の `state.branch` を削除する。削除に失敗した場合は次回実行で同名 branch を上書きせず、
+古い remote head と open PR の有無を報告して停止する。
 
-## 手順 5: コミット・push・PR・ラベル
+`stage=done` では新しい commit や段階 branch を作らず、`feature_branch` → `main` の最終 PR を
+1 件だけ開く（既存なら再利用）。タイトルは `feat: NNN を完成する`、label は `sdd`、draft は
+false。**これは人が全体をレビューしてマージする。** final PR の open 状態は段階 PR の
+`open-pr` ガードには含めない。
 
-### コミット
+PR 作成・label 付与・label 検証・merge は cloud の組み込み GitHub ツールを使う。`gh` は
+cloud では使わない。手元で実行する場合のみ、組み込み GitHub ツールの代替として `gh api`
+などを使ってよい。
+`main` や feature branch へ `git push` で成果物を直接上書きしてはならない。
 
-日本語の要約 1 行 + 空行 + 本文。既存の履歴に合わせる。
+## 6. 報告
 
-- プレフィックス: `plan` / `tasks` は `docs:`、`implement` は `feat:`（テストだけを足した回は `test:`）
-- 末尾に `Co-Authored-By: <セッションのモデル名> <noreply@anthropic.com>` を置く
+段階、PR URL、自動/手動マージ結果、次に起きる段階を簡潔に報告する。
 
-### push
+## 停止通知
 
-```bash
-git push -u origin <state.branch>
-```
-
-`main` には直接 push しない。
-
-### PR
-
-| 項目 | 値 |
-| --- | --- |
-| base | `main` |
-| title（plan） | `docs: NNN の実装計画と設計成果物を追加する` |
-| title（tasks） | `docs: NNN の実装タスクを分解する` |
-| title（implement） | `feat: NNN Phase N（<phase_title の先頭 30 文字>）を実装する` |
-| draft | `implement` で `make check` が通らなかったときだけ `true` |
-| label | `sdd`（必須） |
-
-作成手段は次の順に試す。
-
-1. cloud セッション組み込みの GitHub ツール
-2. `gh pr create`
-3. `gh api -X POST /repos/{o}/{r}/pulls`
-
-本文は次の雛形をそのまま使う。
-
-```markdown
-## 段階
-
-<stage>（機能 NNN、Phase N のとき: Phase N <phase_title>）
-
-## 判定
-
-- before: `<before の JSON>`
-- after: `<after の JSON>`
-- guard: `<guard の JSON>`
-
-## 実行した検査
-
-- <make check の結果 / analyze の要約 / なし>
-
-## 残課題
-
-- <あれば>
-
-## 実行元
-
-- session: <CLAUDE_CODE_REMOTE_SESSION_ID>
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-```
-
-### ラベル
-
-**ラベルが無いと連鎖が切れる**（routine の GitHub トリガーが `sdd` で絞っているため）。
-付けたことを必ず検証する。
-
-- cloud セッション: 組み込みの GitHub ツールで PR（= Issue 番号 `n`）にラベル `sdd` を付け、
-  同じツールで PR を読み直して `labels` に `sdd` が入っていることを確認する
-- 手元:
-
-```bash
-gh api -X POST /repos/{o}/{r}/issues/{n}/labels -f 'labels[]=sdd'
-gh api /repos/{o}/{r}/issues/{n}/labels        # sdd が入っていることを確認する
-```
-
-付いていなければ 1 回だけ再試行する。それでも付かなければ、PR 本文の**先頭**に
-`ラベル未付与: 手で `sdd` を付けてください` を追記して終了する。
-
-## 手順 6: 報告
-
-次の 3 行だけを出す。
-
-```text
-段階: <stage>（機能 NNN、implement なら Phase N <phase_title>）
-PR: <URL>
-次に起きること: マージすると <次の段階> が始まる ／ これで完了
-```
-
----
-
-## 停止通知（Issue）
-
-止まったことを保守者に知らせる唯一の手段である。Issue の本文だけで、止まった理由と
-そのときの状態が分かるようにする（SC-006）。
-
-| 項目 | 値 |
-| --- | --- |
-| title | `sdd-next 停止: NNN <reason>`（固定形式。例 `sdd-next 停止: 002 phase-retry-limit`） |
-| `<reason>` | `no-progress` / `phase-retry-limit` / `hop-limit` の **3 つだけ** |
-| body | 理由の説明、`state` の JSON、`guard` の JSON、`CLAUDE_CODE_REMOTE_SESSION_ID` |
-| ラベル | **付けない。** `sdd` は PR 専用である（Issue に付けても routine は反応しないが、意味を混ぜない） |
-
-`open-pr`・`gh-unavailable`・`nothing-to-do` では Issue を作らない。
-
-### 重複を作らない（FR-017）
-
-作る前に必ず既存の open Issue を引く。cloud セッションでは組み込みの GitHub ツール
-（`mcp__github__list_issues`、`state: "open"`）、手元では次で取る。
-
-```bash
-gh api '/repos/{o}/{r}/issues?state=open&per_page=100'
-```
-
-応答には PR も混ざるので、**`pull_request` キーを持たないもの**だけを見る。その中に
-**title が完全一致**する Issue があれば、作らずに終了する。同じ理由で何度止まっても
-Issue は 1 件のままになる。
-
-作成手段は次の順に試す。
-
-1. cloud セッション組み込みの GitHub ツール
-2. `gh issue create`
-3. `gh api -X POST /repos/{o}/{r}/issues`
-
----
-
-## しないこと
-
-- **2 段階以上を続けて進めない**（FR-003）。plan を終えたら PR を開いて終わる
-- **`spec.md` を書き換えない。** `tasks` 段階の `/speckit-analyze` が CRITICAL を出しても、
-  直すのは `tasks.md` の側だけである。解消できないものは PR 本文の「残課題」に残す
-- **`main` に直接 push しない**
-- **routine 側にしきい値や判定を持たせない。** 定数も分岐もこの手順書とスクリプトにある
-- 同じイベントで 2 セッションが同時に起動し、両方が PR を開いた場合は、保守者が片方を
-  閉じる。閉じた PR はマージされていないので連鎖しない（Edge Cases）
-
-## 止め方
-
-ハーネスを止めるのに PR は要らない。リポジトリ側は何も変えなくてよい（FR-018）。
-
-| 目的 | 方法 |
-| --- | --- |
-| 一時停止 | routine の Repeats トグルを off にする。GitHub トリガーも止まる |
-| 恒久停止 | routine を削除する |
-
-手順は [docs/references/sdd-routine.md](../../../docs/references/sdd-routine.md) の「停止」にある。
-
----
+`no-progress` / `phase-retry-limit` / `hop-limit` のときだけ
+`sdd-next 停止: NNN <reason>` という open Issue を重複なく作る。本文に state、guard、session
+ID を含め、label は付けない。作成と重複確認は cloud の組み込み GitHub ツールを使う。
+`open-pr` / `nothing-to-do` / `gh-unavailable` では作らない。
 
 ## 手元での検算
 
-判定は成果物だけから決まり、隠れた状態を持たない（FR-009）。したがって保守者は手元で
-同じコマンドを実行し、セッションが何をするつもりかを先に確かめられる。`jq` も `gh` も
-要らない（`sdd-guard.sh` だけが使い、無ければ `gh-unavailable` を返す）。`gh` の代わりに
-`--github-dir` で PR 一覧のファイルを渡すこともでき、cloud セッションはこちらを使う。
+```bash
+.claude/skills/sdd-next/scripts/sdd-state.sh
+.claude/skills/sdd-next/scripts/sdd-state.sh --feature specs/001-initial-setup
+.claude/skills/sdd-next/scripts/sdd-state.sh | .claude/skills/sdd-next/scripts/sdd-guard.sh
+bash .claude/skills/sdd-next/tests/run.sh
+```
 
-| コマンド | 期待 |
-| --- | --- |
-| `.claude/skills/sdd-next/scripts/sdd-state.sh` | 自動選択された機能の State が JSON 1 行で 1 秒以内に返る。何度実行しても同じ |
-| `.claude/skills/sdd-next/scripts/sdd-state.sh --feature specs/001-initial-setup` | その機能を明示して判定する。`done` や `none` でもそのまま返る |
-| `.claude/skills/sdd-next/scripts/sdd-state.sh \| .claude/skills/sdd-next/scripts/sdd-guard.sh` | `gh` か `jq` が無ければ `{"go":false,"reason":"gh-unavailable","state":...}`。両方あれば `go` の真偽と `hops` / `phase_retries` |
-| `bash .claude/skills/sdd-next/tests/run.sh` | フィクスチャ 6 組とガードのテストが全件 PASS（`make test-sdd` と同じ）。`--github-dir` のテストは `jq` が無いと SKIP になり、CI で走る |
-| `/sdd-next --dry-run` | 手順 1.5 の表示。ブランチも PR も作らない |
-
-詳しい手順と期待値は
-[quickstart.md](../../../specs/003-sdd-loop-harness/quickstart.md) の S1・S2 にある。
-
-**保守者が手で段階を進めてもよい。** たとえば `plan.md` を自分で書いて `main` にマージ
-すれば、次のセッションの判定は `tasks` になる。ハーネスは自分が何をしたかを覚えて
-おらず、毎回その時点の成果物だけを見るので、人の作業とそのまま噛み合う。
+状態は成果物から導出し、専用状態ファイルを持たない。feature branch 上で実行することだけが
+重要である。

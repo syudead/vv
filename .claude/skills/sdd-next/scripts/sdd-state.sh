@@ -64,13 +64,13 @@ state_for() {
     return
   fi
   if [ ! -f "$abs/plan.md" ]; then
-    printf 'plan\t{"feature_dir":"%s","feature":"%s","stage":"plan","branch":"claude/sdd-%s-plan"}\n' \
-      "$fdir" "$num" "$num"
+    printf 'plan\t{"feature_dir":"%s","feature":"%s","stage":"plan","feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-plan"}\n' \
+      "$fdir" "$num" "$num" "$num" "$num"
     return
   fi
   if [ ! -f "$abs/tasks.md" ]; then
-    printf 'tasks\t{"feature_dir":"%s","feature":"%s","stage":"tasks","branch":"claude/sdd-%s-tasks"}\n' \
-      "$fdir" "$num" "$num"
+    printf 'tasks\t{"feature_dir":"%s","feature":"%s","stage":"tasks","feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-tasks"}\n' \
+      "$fdir" "$num" "$num" "$num" "$num"
     return
   fi
 
@@ -89,15 +89,16 @@ state_for() {
   done < <(sdd_phases "$abs/tasks.md")
 
   if [ -z "$sel_num" ]; then
-    printf 'done\t{"feature_dir":"%s","feature":"%s","stage":"done","phases":%d}\n' \
-      "$fdir" "$num" "$phases"
+    printf 'done\t{"feature_dir":"%s","feature":"%s","stage":"done","phases":%d,"feature_branch":"claude/sdd-%s-feature","base_branch":"main"}\n' \
+      "$fdir" "$num" "$phases" "$num"
     return
   fi
 
   local esc
   esc="$(sdd_json_escape "$sel_title")"
-  printf 'implement\t{"feature_dir":"%s","feature":"%s","stage":"implement","phase":%d,"phase_title":"%s","remaining":%d,"total":%d,"phases":%d,"branch":"claude/sdd-%s-implement-p%d"}\n' \
-    "$fdir" "$num" "$sel_num" "$esc" "$sel_remaining" "$sel_total" "$phases" "$num" "$sel_num"
+  printf 'implement\t{"feature_dir":"%s","feature":"%s","stage":"implement","phase":%d,"phase_title":"%s","remaining":%d,"total":%d,"phases":%d,"feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-implement-p%d"}\n' \
+    "$fdir" "$num" "$sel_num" "$esc" "$sel_remaining" "$sel_total" "$phases" \
+    "$num" "$num" "$num" "$sel_num"
 }
 
 tab="$(printf '\t')"

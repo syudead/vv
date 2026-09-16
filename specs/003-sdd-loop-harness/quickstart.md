@@ -11,7 +11,7 @@ claude.ai の routine と GitHub で行う。実装の詳細はここに書か�
 | シナリオ | 必要なもの |
 | --- | --- |
 | S1〜S2（判定の検算） | bash（Git Bash 可）。`jq`・`gh` は不要 |
-| S3〜S8（実機） | routine が [contracts/routine.md](./contracts/routine.md) どおりに作られている、`sdd` ラベルがある、Claude GitHub App が入っている |
+| S3〜S9（実機） | routine が [contracts/routine.md](./contracts/routine.md) どおりに作られている、`sdd` ラベルがある、Claude GitHub App が入っている |
 
 ---
 
@@ -22,7 +22,8 @@ make test-sdd
 ```
 
 **期待**: フィクスチャ 6 組（`01-before-plan` 〜 `06-multi-feature`）がすべて PASS。
-`gh` を `PATH` から外した `sdd-guard.sh` が `gh-unavailable` を返すテストも PASS。
+`gh` を `PATH` から外した場合と、`gh api` の PR 一覧取得が失敗した場合に
+`sdd-guard.sh` が `gh-unavailable` を返すテストも PASS。
 同じコマンドが CI の Go ジョブでも実行され、同じ判定になる。
 
 ---
@@ -56,7 +57,7 @@ routine の「Run now」に次の文を添えて実行する:
 (2) /tmp/sdd-rate-limits.json の有無と内容
 (3) curl -s https://api.anthropic.com/api/oauth/usage の HTTP ステータス
 (4) routine-fire-payload の中身（あれば）
-(5) echo $GH_TOKEN と gh api /rate_limit の成否
+(5) cloud セッションで組み込み GitHub ツールから PR 一覧を取得できたか
 ```
 
 **期待**: `--dry-run` の出力に `guard` の JSON が含まれ、`go:true` かつ `stage:"plan"`
@@ -68,7 +69,7 @@ routine の「Run now」に次の文を添えて実行する:
 | (1) フックが走らない | routine の環境に setup script `make setup` を置く |
 | (2) または (3) が使える | SKILL.md の「取得手段」を埋め、使用量ゲートを有効にする |
 | どちらも使えない | `docs/exec-plans/tech-debt.md` に記録し、ゲートは無効のまま |
-| (5) `gh api` が失敗 | 設計の前提が崩れる。停止して見直す |
+| (5) PR 一覧を取得できない | 組み込み GitHub ツールまたは GitHub App 権限の前提が崩れる。停止して見直す |
 
 ---
 
@@ -123,6 +124,17 @@ S4 の PR を open のままにして、routine の「Run now」を 3 回実行�
 
 ---
 
+## S9: open PR のレビュー指摘を同じ PR に返す
+
+S4〜S5 で作られた open な `sdd` PR に inline review comment を付ける。修正内容は小さく、
+同じ段階の範囲で直せるものにする。その後、日次実行を待つか routine の「Run now」を実行する。
+
+**期待**: 新しい段階 PR は作られない。対象 PR の head branch に修正 commit が push され、
+該当 review thread に対応内容と検査結果の返信が付く。解決できた thread は resolved になる。
+仕様判断が必要なコメントの場合は、修正 commit を作らず PR コメントに block 理由が残る。
+
+---
+
 ## 完了の判定
 
 | 成功基準 | 確認するシナリオ |
@@ -134,5 +146,5 @@ S4 の PR を open のままにして、routine の「Run now」を 3 回実行�
 | SC-005 二重起動で PR が増えない | S6 |
 | SC-006 Issue だけで停止が分かる | S8 |
 
-S1〜S8 がすべて期待どおりなら、`docs/exec-plans/active/003-sdd-loop-harness.md` を
+S1〜S9 がすべて期待どおりなら、`docs/exec-plans/active/003-sdd-loop-harness.md` を
 completed へ移す。

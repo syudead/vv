@@ -150,6 +150,29 @@ else
   ok "ガード gh-unavailable"
 fi
 
+cat > "$fake_bin/gh" <<'FAKE_GH_API_FAIL'
+#!/usr/bin/env bash
+if [ "$1" = "api" ] && [ "$2" = "/rate_limit" ]; then
+  printf '{}\n'
+  exit 0
+fi
+exit 1
+FAKE_GH_API_FAIL
+chmod +x "$fake_bin/gh"
+
+guard_actual="$(printf '%s\n' "$state_json" \
+  | PATH="$fake_bin:$PATH" "$GUARD" --repo example/repo --root "$FIXTURES/01-before-plan" 2>/dev/null)"
+guard_code=$?
+guard_actual="$(norm "$guard_actual")"
+
+if [ "$guard_code" -ne 0 ]; then
+  ng "ガード gh api 失敗" "終了コード: $guard_code（期待: 0）" "actual:   $guard_actual"
+elif [ "$guard_actual" != "$guard_expected" ]; then
+  ng "ガード gh api 失敗" "expected: $guard_expected" "actual:   $guard_actual"
+else
+  ok "ガード gh api 失敗"
+fi
+
 # ---------------------------------------------------------------------------
 # (6) ガード: --github-dir で PR 一覧をファイルから受け取り、マージ済みは git 履歴で決める
 #     `jq` と git が要る。無ければ SKIP にする（手元は jq 無しでもよい。CI では走る）。
@@ -190,7 +213,7 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     printf '%s' "$repo"
   }
 
-  # pulls_json <ラベル or "-"> <"番号:head.ref" ...>  →  PR 一覧の JSON（配列）
+  # pulls_json <ラベル or "-"> <"番号:head.ref" ...>  →  feature branch 向け PR の JSON
   pulls_json() {
     local label="$1"
     shift
@@ -199,7 +222,8 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
       num="${spec%%:*}"
       ref="${spec#*:}"
       if [ "$label" = "-" ]; then labels="[]"; else labels="[{\"name\":\"$label\"}]"; fi
-      out="$out$sep{\"number\":$num,\"head\":{\"ref\":\"$ref\"},\"labels\":$labels}"
+      feature="$(printf '%s' "$ref" | sed -n 's#^claude/sdd-\([0-9][0-9][0-9]\)-.*#\1#p')"
+      out="$out$sep{\"number\":$num,\"head\":{\"ref\":\"$ref\"},\"base\":{\"ref\":\"claude/sdd-$feature-feature\"},\"labels\":$labels}"
       sep=","
     done
     printf '%s]' "$out"
@@ -241,6 +265,16 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   check_guard "ガード github-dir open-pr" \
     "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"]}" \
     "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "$(pulls_json sdd 2:claude/sdd-010-tasks)"
+
+  check_guard "ガード github-dir ラベル無し open PR は塞がない" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
+    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "$(pulls_json - 2:claude/sdd-010-tasks)"
+
+  # main 向けの最終 PR は段階 PR の冪等ガードに含めない
+  check_guard "ガード github-dir 最終 PR は段階 PR を塞がない" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
+    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" \
+    '[{"number":9,"head":{"ref":"claude/sdd-010-feature"},"base":{"ref":"main"},"labels":[{"name":"sdd"}]}]'
 
   # closed でも履歴に無い（マージされていない）PR や、sdd ラベルの無い PR は数えない
   repo="$(make_repo 02-before-tasks "1:claude/sdd-010-plan:specs/010-a")"

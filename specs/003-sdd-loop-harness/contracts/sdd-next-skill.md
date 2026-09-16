@@ -24,14 +24,15 @@
 
 | # | 手順 | 成功の条件 | 失敗時 |
 | --- | --- | --- | --- |
-| 0 | 前提確認: `git branch --show-current` が `main`、`git status --porcelain` が空、`gh api /rate_limit` が通る | すべて満たす | 理由を書いて終了。変更を残さない |
+| 0 | 前提確認: 作業ツリーが clean。必要に応じて feature branch を復元できる | 満たす | 理由を書いて終了。変更を残さない |
 | 0.5 | 使用量ゲート: 使用率を取得し、しきい値と比較 | しきい値未満、または取得不能 | 「見送り」と書いて終了（PR・Issue 無し） |
-| 1 | 判定: `before=$(sdd-state.sh)`、`guard=$(echo "$before" \| sdd-guard.sh)` | `guard.go = true` | `reason` が `phase-retry-limit` / `hop-limit` なら Issue を立てて終了。それ以外は理由を書いて終了 |
-| 1.5 | `--dry-run` なら `guard` を整形して表示して終了 | — | — |
+| 1 | 判定: cloud では組み込み GitHub ツールで PR 一覧を `${TMPDIR:-/tmp}/sdd-github/` に置き、`before=$(sdd-state.sh)`、`guard=$(echo "$before" \| sdd-guard.sh --github-dir ...)`。以後の `before` は必ず `guard.state` で置き換える | `guard.go = true`、または `reason = open-pr` | `open-pr` は手順 1.5 でレビュー有無を確認する。`phase-retry-limit` / `hop-limit` なら Issue を立てて終了。それ以外は理由を書いて終了 |
+| 1.5 | レビュー対応: open な `sdd` PR に未解決レビュー指摘があれば、対象 PR の head に修正 commit を積み、返信・resolve して終了 | 対象 PR が無い、または未解決レビューが無い場合は終了。対応完了時も終了 | 判断待ちなら PR コメントで block 理由を書いて終了。新しい段階 PR は作らない |
+| 1.6 | `--dry-run` なら `guard` を整形して表示して終了 | — | — |
 | 2 | 準備: `git switch -c <state.branch>`、`export SPECIFY_FEATURE_DIRECTORY=<state.feature_dir>` | ブランチが切れる | 終了 |
 | 3 | 段階の実行（下表） | 段階ごとの条件 | 段階ごとの扱い |
 | 4 | 前進確認: `after=$(sdd-state.sh --feature <dir>)`、`before` と比較、`git status --porcelain` が非空 | 異なる かつ 差分あり | Issue（`no-progress`）を立て、ブランチを捨てて終了 |
-| 5 | コミット・push・PR 作成・ラベル付与（下記） | PR の URL が得られ、ラベル `sdd` が付いている | ラベル付与に失敗したら `gh api -X POST .../labels` で再試行。それでも失敗なら PR 本文の先頭に「ラベル未付与」と書いて終了 |
+| 5 | コミット・push・PR 作成・ラベル付与（下記） | PR の URL が得られ、ラベル `sdd` が付いている | cloud の組み込み GitHub ツールで 1 回再試行。それでも失敗なら PR 本文の先頭に「ラベル未付与」と書いて終了 |
 | 6 | 報告: 段階・PR URL・次に起きること（「マージすると `<次の段階>` が始まる」または「これで完了」）を 3 行で出す | — | — |
 
 ## 段階の実行
@@ -55,11 +56,15 @@ implement が `feat:`（テストのみなら `test:`）
 
 | 項目 | 値 |
 | --- | --- |
-| base | `main` |
+| base | `state.base_branch` |
 | title | plan: `docs: NNN の実装計画と設計成果物を追加する` / tasks: `docs: NNN の実装タスクを分解する` / implement: `feat: NNN Phase N（<phase_title の先頭 30 文字>）を実装する` |
 | label | `sdd`（必須） |
 | draft | implement で `make check` が通らなかったときだけ `true` |
 | body | 下の雛形 |
+
+段階 PR を自動マージできたら remote の `state.branch` を削除する。同じ phase が続いたときでも
+次回は最新 feature branch から同名 head を作り直す。削除できない場合は stale branch として
+次回の実行を停止し、`--force` で上書きしない。
 
 ```markdown
 ## 段階
@@ -91,7 +96,7 @@ implement が `feat:`（テストのみなら `test:`）
 
 - title: `sdd-next 停止: NNN <reason>`
 - body: 理由の説明、`state` と `guard` の JSON、session ID
-- 作る前に `GET /repos/{o}/{r}/issues?state=open` で同じ title が無いことを確認する
+- 作る前に cloud の組み込み GitHub ツールで open Issue を確認し、同じ title が無いことを確認する
 
 ## 使用率の取得（手順 0.5）
 
@@ -105,3 +110,4 @@ implement が `feat:`（テストのみなら `test:`）
 - spec.md を書き換えない（tasks 段階の analyze でも）
 - `main` に直接 push しない
 - routine 側にしきい値や判定を持たせない
+- cloud セッションで `gh` が使えることを前提にしない
