@@ -72,6 +72,33 @@ MDM_MEDIA_HOST_DIR=/path/to/videos make up
 `make up` だけで、以下は開発者向けの補足である。目標の契約は
 [specs/001-initial-setup/contracts/developer-commands.md](specs/001-initial-setup/contracts/developer-commands.md)。
 
+### ローカル開発環境
+
+Go・Node・task のバージョンは `mise.toml` に固定している。`mise` を使う場合は
+最初に次を実行する。
+
+```bash
+mise trust
+mise install
+mise exec --command "task setup"
+mise exec --command "task doctor"
+```
+
+`task` は `Makefile` の置き換えではなく、Windows / PowerShell でも同じ入口を
+使うための薄いラッパーである。`make` が使える環境では従来どおり `make check` や
+`make dev` を使ってよい。`mise activate` 済みの shell では `task setup` のように
+直接呼べる。
+
+| 入口 | 内容 |
+| --- | --- |
+| `task doctor` / `scripts/doctor.ps1` | Go・Node・ffmpeg・bash・Docker などの有無を確認する |
+| `task setup` / `scripts/setup.ps1` | Go module、npm 依存、lint ツール、ビルドキャッシュを準備する |
+| `task dev` / `scripts/dev.ps1` | Go サーバーと Vite 開発サーバーを PowerShell で起動する |
+| `task check` / `scripts/check.ps1` | `make check` を優先し、`make` が無ければ同等の順序で検査する |
+
+`ffmpeg` / `ffprobe`、Docker、GNU make、bash は OS 側のツールであり、`mise.toml`
+だけでは完結しない。足りないものは `task doctor` の出力に従って導入する。
+
 | 目標 | 内容 |
 | --- | --- |
 | `make setup` | 依存と開発ツールを先に取得する |
