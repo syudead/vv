@@ -1,5 +1,7 @@
+#Requires -Version 7.4
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
@@ -70,4 +72,3 @@ Run-Step "generate-check" {
 
 Write-Host ""
 Write-Host "check: all steps passed"
-

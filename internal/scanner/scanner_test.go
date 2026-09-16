@@ -394,8 +394,9 @@ func TestScanContinuesAfterFileFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(broken, 0o600) })
-	if _, err := os.Open(broken); err == nil {
-		t.Skip("root で実行しているため、読めないファイルを作れない")
+	if file, err := os.Open(broken); err == nil {
+		_ = file.Close()
+		t.Skip("この環境では chmod で読み取りを禁止できない（root / Windows）")
 	}
 
 	index := newFakeIndex()

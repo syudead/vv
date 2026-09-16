@@ -74,7 +74,8 @@ MDM_MEDIA_HOST_DIR=/path/to/videos make up
 
 ### ローカル開発環境
 
-Go・Node・task のバージョンは `mise.toml` に固定している。`mise` を使う場合は
+Go・Node・task のバージョンは `mise.toml` に固定している。task の実行には
+PowerShell 7.4 以上（`pwsh`）が必要である。`mise` を使う場合は
 最初に次を実行する。
 
 ```bash
@@ -83,6 +84,14 @@ mise install
 mise exec --command "task setup"
 mise exec --command "task doctor"
 ```
+
+開発サーバーは `mise exec --command "task dev"` で起動し、
+`http://localhost:5173` を開く。終了は Ctrl+C。
+変更の検証は `mise exec --command "task check"` で実行する。
+Go と Web のソースは `.gitattributes` で LF に固定し、Windows の改行変換による
+整形エラーを防ぐ。既存のチェックアウトで CRLF が残っている場合は、
+`mise exec --command "gofmt -w cmd internal web/embed.go"` と
+`mise exec --command "npm --prefix web run format"` で整形する。
 
 `task` は `Makefile` の置き換えではなく、Windows / PowerShell でも同じ入口を
 使うための薄いラッパーである。`make` が使える環境では従来どおり `make check` や
@@ -98,6 +107,9 @@ mise exec --command "task doctor"
 
 `ffmpeg` / `ffprobe`、Docker、GNU make、bash は OS 側のツールであり、`mise.toml`
 だけでは完結しない。足りないものは `task doctor` の出力に従って導入する。
+Docker はコンテナ起動用の任意ツールで、`task up` / `task down` は make 不要。
+Windows で Go バイナリを直接動かす場合、`MDM_MEDIA_DIR` / `MDM_DATA_DIR` は
+ドライブ名を含む絶対パスにする。`task dev` はリポジトリ内の絶対パスを自動設定する。
 
 | 目標 | 内容 |
 | --- | --- |

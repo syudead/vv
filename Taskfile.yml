@@ -19,15 +19,15 @@ tasks:
   check:
     desc: Run the same checks as CI, using make when available.
     cmds:
+      - pwsh -NoLogo -NoProfile -File scripts/local-dev.tests.ps1
       - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
 
   up:
     desc: Build and run the Docker Compose app.
     cmds:
-      - make up
+      - docker compose up --build
 
   down:
     desc: Stop the Docker Compose app.
     cmds:
-      - make down
-
+      - docker compose down --remove-orphans

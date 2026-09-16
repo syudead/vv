@@ -9,13 +9,26 @@ import (
 
 // envFrom は環境変数の読み取りを差し替えるための getenv を返す。
 func envFrom(values map[string]string) func(string) string {
-	return func(key string) string { return values[key] }
+	return func(key string) string {
+		if value, ok := values[key]; ok {
+			return value
+		}
+		// Windows needs a volume even for root-relative paths.
+		if key == envMediaDir || key == envDataDir {
+			return filepath.Join(os.TempDir(), "vv-config-test")
+		}
+		return ""
+	}
 }
 
 func TestLoadConfigUsesDefaultsWhenUnset(t *testing.T) {
-	cfg, err := LoadConfig(envFrom(nil))
-	if err != nil {
+	cfg, err := LoadConfig(func(string) string { return "" })
+	if filepath.IsAbs(defaultMediaDir) && err != nil {
 		t.Fatalf("既定値だけで組み立てられるはずが失敗した: %v", err)
+	}
+	if !filepath.IsAbs(defaultMediaDir) && (err == nil ||
+		!strings.Contains(err.Error(), envMediaDir) || !strings.Contains(err.Error(), envDataDir)) {
+		t.Fatalf("platform must reject defaults without an absolute volume: %v", err)
 	}
 
 	if cfg.Addr != ":8080" {
@@ -33,18 +46,20 @@ func TestLoadConfigUsesDefaultsWhenUnset(t *testing.T) {
 }
 
 func TestLoadConfigReadsEnvironment(t *testing.T) {
+	mediaDir := filepath.Join(t.TempDir(), "videos")
+	dataDir := filepath.Join(t.TempDir(), "data")
 	cfg, err := LoadConfig(envFrom(map[string]string{
 		"MDM_ADDR":      "127.0.0.1:9000",
-		"MDM_MEDIA_DIR": "/srv/videos",
-		"MDM_DATA_DIR":  "/srv/data",
+		"MDM_MEDIA_DIR": mediaDir,
+		"MDM_DATA_DIR":  dataDir,
 		"MDM_LOG_LEVEL": "debug",
 	}))
 	if err != nil {
 		t.Fatalf("正しい値で失敗した: %v", err)
 	}
 
-	if cfg.Addr != "127.0.0.1:9000" || cfg.MediaDir != "/srv/videos" ||
-		cfg.DataDir != "/srv/data" || cfg.LogLevel != "debug" {
+	if cfg.Addr != "127.0.0.1:9000" || cfg.MediaDir != mediaDir ||
+		cfg.DataDir != dataDir || cfg.LogLevel != "debug" {
 		t.Errorf("環境変数が反映されていない: %+v", cfg)
 	}
 }

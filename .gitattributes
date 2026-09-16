@@ -1,3 +1,5 @@
 # スクリプトは LF で配布する。Windows（core.autocrlf=true）でチェックアウトしても
 # CRLF にしない。Git Bash が `$'\r': command not found` で落ちるため。
 *.sh text eol=lf
+*.go text eol=lf
+web/** text auto eol=lf

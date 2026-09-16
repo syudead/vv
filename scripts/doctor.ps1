@@ -1,3 +1,4 @@
+#Requires -Version 7.4
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
@@ -67,6 +68,7 @@ function Check-Tool {
 }
 
 $checks = @(
+    (Check-Tool "pwsh" { pwsh --version } "Install PowerShell 7.4 or later."),
     (Check-Tool "go" { go version } "Install with mise: mise install"),
     (Check-Tool "node" { node --version } "Install with mise: mise install"),
     (Check-Tool "npm" { npm --version } "Install with mise: mise install"),

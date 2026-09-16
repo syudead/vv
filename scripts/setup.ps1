@@ -1,5 +1,7 @@
+#Requires -Version 7.4
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$PSNativeCommandUseErrorActionPreference = $true
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
@@ -17,4 +19,3 @@ Write-Host "Warming Go build cache..."
 go build ./...
 
 Write-Host "Setup complete."
-

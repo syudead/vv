@@ -1,3 +1,4 @@
+#Requires -Version 7.4
 param(
     [string]$MediaDir = "",
     [string]$DataDir = ""
@@ -5,6 +6,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
 
 function Require-Command {
     param([Parameter(Mandatory = $true)][string]$Name)
@@ -38,6 +40,9 @@ Write-Host ""
 
 $goJob = Start-Job -Name "vv-go" -ScriptBlock {
     param($Root, $Media, $Data)
+    $ErrorActionPreference = "Stop"
+    $PSNativeCommandUseErrorActionPreference = $true
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
     Set-Location $Root
     $env:MDM_MEDIA_DIR = $Media
     $env:MDM_DATA_DIR = $Data
@@ -46,8 +51,11 @@ $goJob = Start-Job -Name "vv-go" -ScriptBlock {
 
 $webJob = Start-Job -Name "vv-web" -ScriptBlock {
     param($Root)
+    $ErrorActionPreference = "Stop"
+    $PSNativeCommandUseErrorActionPreference = $true
+    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
     Set-Location $Root
-    npm --prefix web run dev -- --host 127.0.0.1
+    npm --prefix web run dev -- --host 127.0.0.1 --strictPort
 } -ArgumentList $repoRoot
 
 $jobs = @($goJob, $webJob)
@@ -64,7 +72,7 @@ try {
                 Receive-Job $job
                 Write-Host "$($job.Name) exited with state $($job.State)."
             }
-            break
+            throw "A development server stopped. See the output above."
         }
 
         Start-Sleep -Seconds 1
