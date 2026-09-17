@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SDD ハーネスの判定テスト。
 #
-# 依存は bash・coreutils（mktemp・tr・cat）・jq・git。`gh` は要らない
+# 依存は bash・coreutils（mktemp・tr・cat）・jq・git。`gh` も GitHub API も要らない
 # （research.md R-007 / US3: 保守者の手元 = Windows の Git Bash で検算できること）。
 #
 # 検査するもの:
@@ -9,7 +9,8 @@
 #   (2) feature.txt を持つフィクスチャ … --feature でも expected-feature.json と一致
 #   (3) 決定性     … 同じ入力で 2 回実行して同じ出力
 #   (4) 異常系     … 引数の誤りで終了コード 2
-#   (5) ガード     … gh が使えないとき sdd-guard.sh が gh-unavailable を返し state を素通しする
+#   (5) workflow   … UI Issue だけ design 段階を挟む
+#   (6) ガード     … git だけで判定し、remote が無ければ remote-unavailable で state を素通しする
 #
 # 出力は PASS/FAIL の 1 行ずつ。失敗が 1 つでもあれば終了コード 1。
 
@@ -126,56 +127,8 @@ check_exit_code "異常系 --feature が存在しない" 2 \
 check_exit_code "異常系 未知の引数" 2 --root "$FIXTURES/01-before-plan" --bogus
 
 # ---------------------------------------------------------------------------
-# (5) ガード: gh が使えないとき gh-unavailable を返し、state を素通しする
 # ---------------------------------------------------------------------------
-fake_bin="$tmpdir/bin"
-mkdir -p "$fake_bin"
-cat > "$fake_bin/gh" <<'FAKE_GH'
-#!/usr/bin/env bash
-exit 1
-FAKE_GH
-chmod +x "$fake_bin/gh"
-
-state_json="$(norm "$(cat "$FIXTURES/01-before-plan/expected.json")")"
-guard_expected="{\"go\":false,\"reason\":\"gh-unavailable\",\"state\":$state_json}"
-guard_actual="$(printf '%s\n' "$state_json" \
-  | PATH="$fake_bin:$PATH" "$GUARD" --repo example/repo --root "$FIXTURES/01-before-plan" 2>/dev/null)"
-guard_code=$?
-guard_actual="$(norm "$guard_actual")"
-
-if [ "$guard_code" -ne 0 ]; then
-  ng "ガード gh-unavailable" "終了コード: $guard_code（期待: 0）" "actual:   $guard_actual"
-elif [ "$guard_actual" != "$guard_expected" ]; then
-  ng "ガード gh-unavailable" "expected: $guard_expected" "actual:   $guard_actual"
-else
-  ok "ガード gh-unavailable"
-fi
-
-cat > "$fake_bin/gh" <<'FAKE_GH_API_FAIL'
-#!/usr/bin/env bash
-if [ "$1" = "api" ] && [ "$2" = "/rate_limit" ]; then
-  printf '{}\n'
-  exit 0
-fi
-exit 1
-FAKE_GH_API_FAIL
-chmod +x "$fake_bin/gh"
-
-guard_actual="$(printf '%s\n' "$state_json" \
-  | PATH="$fake_bin:$PATH" "$GUARD" --repo example/repo --root "$FIXTURES/01-before-plan" 2>/dev/null)"
-guard_code=$?
-guard_actual="$(norm "$guard_actual")"
-
-if [ "$guard_code" -ne 0 ]; then
-  ng "ガード gh api 失敗" "終了コード: $guard_code（期待: 0）" "actual:   $guard_actual"
-elif [ "$guard_actual" != "$guard_expected" ]; then
-  ng "ガード gh api 失敗" "expected: $guard_expected" "actual:   $guard_actual"
-else
-  ok "ガード gh api 失敗"
-fi
-
-# ---------------------------------------------------------------------------
-# (6) workflow: UI Issue だけ design 段階を挟む
+# (5) workflow: UI Issue だけ design 段階を挟む
 # ---------------------------------------------------------------------------
 ui_actual="$("$STATE" --root "$FIXTURES/02-before-tasks" --feature specs/010-a --workflow ui 2>/dev/null)"
 ui_actual="$(norm "$ui_actual")"
@@ -217,7 +170,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# (7) ガード: --github-dir で PR 一覧をファイルから受け取り、マージ済みは git 履歴で決める
+# (6) ガード: git だけで判定する。remote が無ければ remote-unavailable で state を素通しする。
 #     jq と git が無ければ失敗にする。
 # ---------------------------------------------------------------------------
 if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
@@ -229,8 +182,10 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   }
 
   # make_repo <フィクスチャ名> <マージ済み PR "番号:head.ref:触るディレクトリ" ...>
-  # フィクスチャを写した git リポジトリを作り、指定の PR を古い順にマージコミットとして積む。
-  # 作ったリポジトリのパスを stdout に返す。
+  # フィクスチャを写した git リポジトリと bare の origin を作る。PR が 1 件でもあれば
+  # `claude/sdd-NNN-feature` を main から切り、指定の PR を古い順に merge commit として
+  # feature branch に積み、main と feature を origin に push する。HEAD は feature branch
+  # （PR が無ければ main）。作ったリポジトリのパスを stdout に返す。
   make_repo() {
     local fixture="$1"
     shift
@@ -240,50 +195,42 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     tgit -C "$repo" init -q
     tgit -C "$repo" add -A
     tgit -C "$repo" commit -q -m "init" >/dev/null
-    local spec num ref dir
+    tgit init -q --bare "$repo.git"
+    tgit -C "$repo" remote add origin "$repo.git"
+    tgit -C "$repo" push -q origin main
+    local spec num ref dir feature_branch=""
     for spec in "$@"; do
       num="${spec%%:*}"
       ref="${spec#*:}"; ref="${ref%%:*}"
       dir="${spec##*:}"
+      if [ -z "$feature_branch" ]; then
+        feature_branch="$(printf '%s' "$ref" | sed -n 's#^\(claude/sdd-[0-9][0-9][0-9]-\).*#\1feature#p')"
+        tgit -C "$repo" switch -q -c "$feature_branch"
+      fi
       tgit -C "$repo" switch -q -c "$ref"
       printf 'pr %s\n' "$num" > "$repo/$dir/.pr-$num"
       tgit -C "$repo" add -A
       tgit -C "$repo" commit -q -m "pr $num" >/dev/null
-      tgit -C "$repo" switch -q main
+      tgit -C "$repo" switch -q "$feature_branch"
       tgit -C "$repo" merge -q --no-ff -m "Merge pull request #$num from example/$ref" "$ref" >/dev/null
       tgit -C "$repo" branch -q -D "$ref"
     done
+    [ -z "$feature_branch" ] || tgit -C "$repo" push -q origin "$feature_branch"
     printf '%s' "$repo"
   }
 
-  # pulls_json <ラベル or "-"> <"番号:head.ref" ...>  →  feature branch 向け PR の JSON
-  pulls_json() {
-    local label="$1"
-    shift
-    local out="[" sep="" spec num ref labels
-    for spec in "$@"; do
-      num="${spec%%:*}"
-      ref="${spec#*:}"
-      if [ "$label" = "-" ]; then labels="[]"; else labels="[{\"name\":\"$label\"}]"; fi
-      feature="$(printf '%s' "$ref" | sed -n 's#^claude/sdd-\([0-9][0-9][0-9]\)-.*#\1#p')"
-      out="$out$sep{\"number\":$num,\"head\":{\"ref\":\"$ref\"},\"base\":{\"ref\":\"claude/sdd-$feature-feature\"},\"labels\":$labels}"
-      sep=","
-    done
-    printf '%s]' "$out"
+  # push_branch <リポジトリ> <branch 名>  … 進行中の段階 PR を模して remote に branch を置く
+  push_branch() {
+    tgit -C "$1" push -q origin "HEAD:refs/heads/$2"
   }
 
-  # check_guard <名前> <期待 JSON> <リポジトリ> <closed JSON> <open JSON> [workflow]
+  # check_guard <名前> <期待 JSON> <リポジトリ> [workflow]
   check_guard() {
-    local name="$1" expected="$2" repo="$3" closed="$4" open="$5"
-    local workflow="${6:-standard}"
-    local gh_dir="$tmpdir/github-$RANDOM"
-    mkdir -p "$gh_dir"
-    printf '%s' "$closed" > "$gh_dir/pulls-closed.json"
-    printf '%s' "$open" > "$gh_dir/pulls-open.json"
+    local name="$1" expected="$2" repo="$3"
+    local workflow="${4:-standard}"
     local state actual code
     state="$(norm "$("$STATE" --root "$repo" --workflow "$workflow" 2>/dev/null)")"
-    actual="$(printf '%s\n' "$state" \
-      | PATH="$fake_bin:$PATH" "$GUARD" --root "$repo" --github-dir "$gh_dir" 2>"$tmpdir/guard.err")"
+    actual="$(printf '%s\n' "$state" | "$GUARD" --root "$repo" 2>"$tmpdir/guard.err")"
     code=$?
     actual="$(norm "$actual")"
     if [ "$code" -ne 0 ]; then
@@ -295,93 +242,123 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     fi
   }
 
+  st01="$(norm "$(cat "$FIXTURES/01-before-plan/expected.json")")"
   st02="$(norm "$(cat "$FIXTURES/02-before-tasks/expected.json")")"
   st03="$(norm "$(cat "$FIXTURES/03-implement-mid/expected.json")")"
-  st06="$(norm "$(cat "$FIXTURES/06-multi-feature/expected-feature.json")")"
+
+  # remote が無ければ fail-closed
+  repo="$tmpdir/repo-no-remote"
+  mkdir -p "$repo"
+  cp -R "$FIXTURES/01-before-plan/." "$repo/"
+  tgit -C "$repo" init -q
+  tgit -C "$repo" add -A
+  tgit -C "$repo" commit -q -m "init" >/dev/null
+  check_guard "ガード remote-unavailable" \
+    "{\"go\":false,\"reason\":\"remote-unavailable\",\"state\":$st01}" "$repo"
+
+  # spec が main に入った直後（feature branch はまだ無い）。main 上で plan へ進む
+  repo="$(make_repo 01-before-plan)"
+  check_guard "ガード 初回は main から plan" \
+    "{\"go\":true,\"state\":$st01,\"hops\":0,\"phase_retries\":0,\"open_prs\":[]}" "$repo"
 
   # plan がマージ済みで、次は tasks。ホップは 1
   repo="$(make_repo 02-before-tasks "1:claude/sdd-010-plan:specs/010-a")"
-  check_guard "ガード github-dir go" \
-    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
-    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "[]"
+  check_guard "ガード go" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" "$repo"
 
   st02_ui="$(norm "$("$STATE" --root "$repo" --feature specs/010-a --workflow ui 2>/dev/null)")"
-  check_guard "ガード github-dir UI workflow 維持" \
-    "{\"go\":true,\"state\":$st02_ui,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
-    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "[]" ui
+  check_guard "ガード UI workflow 維持" \
+    "{\"go\":true,\"state\":$st02_ui,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" "$repo" ui
 
-  # 自動 PR が open なら待つ
-  check_guard "ガード github-dir open-pr" \
-    "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"]}" \
-    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "$(pulls_json sdd 2:claude/sdd-010-tasks)"
+  # feature branch が remote にあるのに main 上なら止める（手打ちの取り違えなど）
+  tgit -C "$repo" switch -q main
+  check_guard "ガード wrong-base" \
+    "{\"go\":false,\"reason\":\"wrong-base\",\"state\":$(norm "$("$STATE" --root "$repo" 2>/dev/null)"),\"feature_branch\":\"claude/sdd-010-feature\",\"current_branch\":\"main\"}" \
+    "$repo"
+  tgit -C "$repo" switch -q claude/sdd-010-feature
 
-  check_guard "ガード github-dir ラベル無し open PR も塞ぐ" \
-    "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"]}" \
-    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "$(pulls_json - 2:claude/sdd-010-tasks)"
+  # 段階 branch が remote に残っていれば待つ（label の有無に依らない）
+  push_branch "$repo" claude/sdd-010-tasks
+  head_sha="$(tgit -C "$repo" rev-parse HEAD)"
+  check_guard "ガード open-pr（観測した SHA 付き）" \
+    "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"],\"open_heads\":{\"claude/sdd-010-tasks\":\"$head_sha\"}}" \
+    "$repo"
+  # マージせず閉じた PR の branch は remote に残る。スキルが branch を消せば次は進む（S7 の再作成）
+  tgit -C "$repo" push -q origin --delete claude/sdd-010-tasks
+  check_guard "ガード 閉じた PR の branch を消せば go" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" "$repo"
 
-  check_guard "ガード github-dir base.ref 欠落は fail-closed" \
-    "{\"go\":false,\"reason\":\"gh-unavailable\",\"state\":$st02}" \
-    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" \
-    '[{"number":2,"head":{"ref":"claude/sdd-010-tasks"},"labels":[{"name":"sdd"}]}]'
+  # 他の機能の branch は数えない
+  push_branch "$repo" claude/sdd-011-plan
+  check_guard "ガード 他機能の branch は塞がない" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" "$repo"
 
-  # main 向けの最終 PR は段階 PR の冪等ガードに含めない
-  check_guard "ガード github-dir 最終 PR は段階 PR を塞がない" \
-    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
-    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" \
-    '[{"number":9,"head":{"ref":"claude/sdd-010-feature"},"base":{"ref":"main"},"labels":[{"name":"sdd"}]}]'
-
-  # closed でも履歴に無い（マージされていない）PR や、sdd ラベルの無い PR は数えない
+  # squash マージ（件名 "(#N)"）は head 名が分からないので hop に数えない
   repo="$(make_repo 02-before-tasks "1:claude/sdd-010-plan:specs/010-a")"
-  check_guard "ガード github-dir 未マージ・ラベル無しは数えない" \
-    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
-    "$repo" \
-    '[{"number":7,"head":{"ref":"claude/sdd-010-tasks"},"labels":[{"name":"sdd"}]},
-      {"number":2,"head":{"ref":"claude/sdd-010-tasks"},"labels":[]},
-      {"number":1,"head":{"ref":"claude/sdd-010-plan"},"labels":[{"name":"sdd"}]}]' \
-    "[]"
-
-  # 組み込み GitHub ツールの形（labels が文字列の配列）でも sdd PR と分かる
-  repo="$(make_repo 02-before-tasks "1:claude/sdd-010-plan:specs/010-a")"
-  check_guard "ガード github-dir labels が文字列の配列" \
-    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
-    "$repo" '[{"number":1,"head":{"ref":"claude/sdd-010-plan"},"labels":["sdd"]}]' "[]"
+  printf 'squash\n' > "$repo/specs/010-a/.pr-2"
+  tgit -C "$repo" add -A
+  tgit -C "$repo" commit -q -m "docs: 010 の実装タスクを分解する (#2)" >/dev/null
+  check_guard "ガード squash は hop に数えない" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" "$repo"
 
   # 同じフェーズのマージが 2 回に達したら止まる
   repo="$(make_repo 03-implement-mid \
     "1:claude/sdd-010-plan:specs/010-a" "2:claude/sdd-010-tasks:specs/010-a" \
     "3:claude/sdd-010-implement-p2:specs/010-a" "4:claude/sdd-010-implement-p2:specs/010-a")"
-  check_guard "ガード github-dir phase-retry-limit" \
+  check_guard "ガード phase-retry-limit" \
     "{\"go\":false,\"reason\":\"phase-retry-limit\",\"state\":$st03,\"hops\":4,\"phase_retries\":2,\"open_prs\":[]}" \
-    "$repo" \
-    "$(pulls_json sdd 4:claude/sdd-010-implement-p2 3:claude/sdd-010-implement-p2 2:claude/sdd-010-tasks 1:claude/sdd-010-plan)" \
-    "[]"
+    "$repo"
 
-  # target は直近のマージ済み sdd PR が触った機能を選ぶ。guard は対象を差し替えない。
+  # target は --pr で渡された PR が触った機能を選ぶ。guard は対象を差し替えない。
   repo="$(make_repo 06-multi-feature "1:claude/sdd-010-implement-p1:specs/010-a")"
-  gh_dir="$tmpdir/github-target"
-  mkdir -p "$gh_dir"
-  printf '%s' "$(pulls_json sdd 1:claude/sdd-010-implement-p1)" > "$gh_dir/pulls-closed.json"
-  printf '%s' "[]" > "$gh_dir/pulls-open.json"
-  actual="$("$TARGET" --root "$repo" --github-dir "$gh_dir")"
+  actual="$("$TARGET" --root "$repo" --pr 1)"
   if [ "$actual" = "specs/010-a" ]; then
-    ok "target github-dir 対象機能の確定"
+    ok "target --pr 対象機能の確定"
   else
-    ng "target github-dir 対象機能の確定" "expected: specs/010-a" "actual: $actual"
+    ng "target --pr 対象機能の確定" "expected: specs/010-a" "actual: $actual"
+  fi
+  # 既定 branch しか持たない clone でも、origin を fetch して見つける
+  clone="$tmpdir/clone-$RANDOM"
+  tgit clone -q --single-branch --branch main "$repo.git" "$clone"
+  actual="$("$TARGET" --root "$clone" --pr 1)"
+  if [ "$actual" = "specs/010-a" ]; then
+    ok "target --pr は無ければ origin を fetch して探す"
+  else
+    ng "target --pr は無ければ origin を fetch して探す" "expected: specs/010-a" "actual: $actual"
+  fi
+  actual="$("$TARGET" --root "$repo" --pr 99)"
+  if [ "$actual" = "specs/011-b" ]; then
+    ok "target --pr 見つからなければ未完了の先頭"
+  else
+    ng "target --pr 見つからなければ未完了の先頭" "expected: specs/011-b" "actual: $actual"
+  fi
+  actual="$("$TARGET" --root "$repo")"
+  if [ "$actual" = "specs/011-b" ]; then
+    ok "target --pr 無しは未完了の先頭"
+  else
+    ng "target --pr 無しは未完了の先頭" "expected: specs/011-b" "actual: $actual"
+  fi
+  "$TARGET" --root "$repo" --pr abc >/dev/null 2>&1
+  code=$?
+  if [ "$code" -eq 2 ]; then
+    ok "target --pr が数字でなければ終了コード 2"
+  else
+    ng "target --pr が数字でなければ終了コード 2" "終了コード: $code"
   fi
   check_guard "ガードは対象機能を差し替えない" \
     "{\"go\":true,\"state\":$(norm "$("$STATE" --root "$repo")"),\"hops\":0,\"phase_retries\":0,\"open_prs\":[]}" \
-    "$repo" "$(pulls_json sdd 1:claude/sdd-010-implement-p1)" "[]"
+    "$repo"
 
-  # ファイルが無ければ呼び出し側の誤り（終了コード 2）
-  actual="$(printf '%s\n' "$st02" | "$GUARD" --root "$repo" --github-dir "$tmpdir/no-such-dir" 2>/dev/null)"
+  # 引数の誤りは終了コード 2
+  actual="$(printf '%s\n' "$st02" | "$GUARD" --root "$repo" --github-dir /nowhere 2>/dev/null)"
   code=$?
   if [ "$code" -eq 2 ]; then
-    ok "ガード github-dir ファイル無しは終了コード 2"
+    ok "ガード 未知の引数は終了コード 2"
   else
-    ng "ガード github-dir ファイル無しは終了コード 2" "終了コード: $code" "stdout: $(norm "$actual")"
+    ng "ガード 未知の引数は終了コード 2" "終了コード: $code" "stdout: $(norm "$actual")"
   fi
 else
-  ng "ガード github-dir" "jq and git are required; run mise install"
+  ng "ガード" "jq and git are required; run mise install"
 fi
 
 # ---------------------------------------------------------------------------

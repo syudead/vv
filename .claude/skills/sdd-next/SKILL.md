@@ -28,28 +28,32 @@ implement PR は、PR checks が green になってから作成したセッシ�
 
 ## 0. 前提と作業 base の復元
 
-作業ツリーが clean であることを確認する。cloud セッションに `gh` があるとは限らないため、
-前提確認で `gh api /rate_limit` を要求してはならない。GitHub 情報が要る箇所では cloud の
-組み込み GitHub ツールを使い、失敗したら理由を書いて変更を残さず終了する。
+作業ツリーが clean であることを確認する。判定に GitHub API は使わない。PR 一覧を取得して
+ファイルに保存する手順は廃止した（応答がスプールされた `~/.claude/projects/` 配下の
+ファイルを Bash で触ると sandbox の権限プロンプトで routine が止まる。2026-09-16）。
+PR の作成・label・merge・review thread の読み書きだけ cloud の組み込み GitHub ツールを使い、
+失敗したら理由を書いて変更を残さず終了する。**`~/.claude/` 配下のファイルを Bash で
+読み書きしてはならない。**
 
-routine payload のマージ済み PR、または closed PR 一覧から選んだ直近の **git 履歴にある**
-マージ済み段階 `sdd` PR の `base.ref` が `claude/sdd-NNN-feature` なら、次を行ってその
-feature branch を作業 base にする。closed PR 一覧は `updated_at` 順なので、未マージ PR や
-コメント更新だけで先頭に来た PR を作業 base の根拠にしてはならない。
+起動情報はセッション冒頭の `<github-trigger-context>` にある。使うのは次の 3 つ。
 
-日次実行では、open な `head.ref = claude/sdd-NNN-feature`, `base.ref = main` の最終 PR も
-候補にする。複数ある場合は、更新日時に頼らず、対象候補を `head.ref` の昇順で 1 件だけ選ぶ。
-同時に複数機能を進めることは本機能の対象外なので、選ばなかった候補は触らない。
-
-```bash
-git fetch origin <feature-branch>
-git switch -C <feature-branch> origin/<feature-branch>
+```text
+PR: #41 — https://github.com/syudead/vv/pull/41      → 引数 --pr 41
+Branch: claude/sdd-005-implement-p8 → main            → head → base
 ```
 
-それ以外（spec PR が `main` に入った最初の実行）は `main` のままにする。段階間の状態は
-`main` ではなく feature branch にあるため、この復元を省略してはならない。guard が返した
-`state.feature_branch` が現在 branch と違い、remote に存在する場合は、その branch に切り替えて
-PR 一覧の取得、`before`、guard をやり直す。
+`base` が `claude/sdd-NNN-feature` なら、次を行ってその feature branch を作業 base にする。
+
+```bash
+git fetch origin <base>
+git switch -C <base> origin/<base>
+```
+
+`base` が `main`（spec PR か最終 PR がマージされた直後）なら `main` のままにする。
+`<github-trigger-context>` が無い（保守者の Run now や手打ち）場合も `main` から始める。
+段階間の状態は `main` ではなく feature branch にあるため、この復元を省略してはならない。
+guard が `wrong-base` を返したら、その `feature_branch` を上のコマンドで復元して
+`before` と guard をやり直す。
 
 ## 0.5 使用量ゲート
 
@@ -64,44 +68,24 @@ PR 一覧の取得、`before`、guard をやり直す。
 
 ## 1. 判定
 
-最初に `sdd-target.sh` で対象 feature を一度だけ確定する。直近のマージ済み段階 PR が触った
-feature を優先し、無ければ `sdd-state.sh` の未完了候補を使う。対象が無ければ正常終了する。
+最初に `sdd-target.sh` で対象 feature を一度だけ確定する。`<github-trigger-context>` の
+PR 番号を `--pr` で渡すと、その PR のマージコミットが触った feature を優先する。番号が無い、
+または履歴に見つからなければ `sdd-state.sh` の未完了候補を使う。対象が無ければ正常終了する。
 確定した feature の `spec.md` から `**Parent Issue**: #NNN` を読み、その Issue を組み込み
 GitHub ツールで取得する。spec の3桁番号から Issue 番号を推測してはならない。
 
 Issue に `ui` ラベルがあれば `workflow=ui`、無ければ `workflow=standard` とする。Parent Issue
 行は行全体が `**Parent Issue**: #[1-9][0-9]*` に一致するものを1件だけ許可する。行の欠落・
-重複・不正値、または Issue 取得失敗は `gh-unavailable` として止める。workflow を
+重複・不正値、または Issue 取得失敗は `remote-unavailable` と同じ扱いで止める。workflow を
 確定した `feature_dir` と workflow で state を1回計算し、guardへ渡す。`ui` は実装技術の分類では
 なく、実装前に UI/interaction design を必要とする Issue 種別である。
 
-組み込み GitHub ツールでは `state=closed` と `state=open` の PR を **base で絞らず**、
-`per_page=100` 相当で必要なページを続けて取得し、JSON 配列を
-`${TMPDIR:-/tmp}/sdd-github/pulls-{closed,open}.json` に置く。
-ツールの応答は書き換えずにそのまま保存する。各要素に `number`, `head.ref`, `base.ref`,
-`labels` が必要で、`labels` は `["sdd"]` と `[{"name":"sdd"}]` のどちらでもよい。
-open 一覧で同じ head prefix の要素に `base.ref` が無い場合は、段階 PR と最終 PR を区別できないので
-`gh-unavailable` として止める。open な段階 PR は label 付与に失敗していても同じ head/base なら塞ぐ。
-`fields` で絞ると `labels` や `base.ref` が落ちることがあるので付けない。手元では `--github-dir` を
-省略した場合にだけ、スクリプトが任意フォールバックとして `gh api` を試す。
-
-cloud:
+guard は git だけを見る。マージ済み段階 PR は HEAD の first-parent にある merge commit の
+件名（`Merge pull request #N from syudead/claude/sdd-NNN-<stage>`）から、進行中の段階 PR は
+remote に残る `claude/sdd-NNN-*` branch から数える（マージで branch は自動削除される）。
 
 ```bash
-feature_dir=$(.claude/skills/sdd-next/scripts/sdd-target.sh \
-  --github-dir "${TMPDIR:-/tmp}/sdd-github")
-# feature_dir/spec.md の Parent Issue を取得して workflow を決める
-before=$(.claude/skills/sdd-next/scripts/sdd-state.sh \
-  --feature "$feature_dir" --workflow <standard|ui>)
-guard=$(printf '%s\n' "$before" | \
-  .claude/skills/sdd-next/scripts/sdd-guard.sh --github-dir "${TMPDIR:-/tmp}/sdd-github")
-before=$(printf '%s\n' "$guard" | jq -c '.state')
-```
-
-手元:
-
-```bash
-feature_dir=$(.claude/skills/sdd-next/scripts/sdd-target.sh)
+feature_dir=$(.claude/skills/sdd-next/scripts/sdd-target.sh --pr <PR 番号>)   # 番号が無ければ --pr を省く
 # feature_dir/spec.md の Parent Issue を取得して workflow を決める
 before=$(.claude/skills/sdd-next/scripts/sdd-state.sh \
   --feature "$feature_dir" --workflow <standard|ui>)
@@ -114,9 +98,10 @@ before=$(printf '%s\n' "$guard" | jq -c '.state')
 
 | reason | 振る舞い |
 | --- | --- |
-| `open-pr` | `open_prs` の対象 PR を確認する。未解決レビュー指摘があれば手順 1.5 へ進む。無ければ、design / tasks / implement の non-draft PR は checks を再取得し、green なら既存 PR をマージ、失敗・pending・draft なら理由を報告して待機する。plan PR は人の承認待ちとして終了 |
+| `wrong-base` | `feature_branch` を手順 0 のコマンドで復元し、`before` と guard をやり直す |
+| `open-pr` | `open_prs` の branch ごとに、組み込み GitHub ツールで `head=syudead:<branch>`, `state=open` の PR を 1 件だけ探す（応答は 0〜1 件）。未解決レビュー指摘があれば手順 1.5 へ進む。無ければ、design / tasks / implement の non-draft PR は checks を再取得し、green なら既存 PR をマージ、失敗・pending・draft なら理由を報告して待機する。plan PR は人の承認待ちとして終了。open PR が無ければ、同じ `head=` で `state=closed` を 1 件検索する。**closed かつ未マージ（`merged_at` が null）で、その `head.sha` が guard の `open_heads[<branch>]`（ls-remote で観測した SHA）と一致する branch だけ** stale とみなす（同名 branch の過去の closed PR は作り直した push にも一致するので、名前だけでは判定しない）。削除は観測した SHA に対する lease 付きで行い、拒否されたら（誰かが更新した）削除せず報告して終了する。<br>`git fetch origin <branch>`（復元用に object を手元に置く）→ `git push --force-with-lease=refs/heads/<branch>:<sha> origin :refs/heads/<branch>`<br>削除後にもう一度 `head=`, `state=open` を検索し、競合して作られた PR があれば `git push origin <sha>:refs/heads/<branch>` で ref を戻して終了する。無ければ guard をやり直し、同じ段階を作り直す（quickstart S7。GitHub は閉じただけの PR の head branch を消さないため、この回復が無いと永久に `open-pr` になる）。やり直しは 1 セッション 1 回まで。**PR が open にも closed にも無い branch、SHA が一致しない branch は削除しない**。別セッションが push して PR を作っている最中かもしれない（二重発火は通常経路）。その場合は branch 名と SHA を報告して終了し、次の起動に任せる。PR 作成に失敗した push の後始末は手順 5 のとおり push した側が行う |
 | `nothing-to-do` | `main` 上なら終了。feature branch 上なら既存の最終 PR と未解決レビュー指摘を先に確認し、要対応なら手順 1.5 へ進む。無ければ手順 5 の最終 PR へ進む |
-| `gh-unavailable` | 理由を表示し、変更を残さず終了 |
+| `remote-unavailable` | 理由を表示し、変更を残さず終了 |
 | `phase-retry-limit` / `hop-limit` | 同名の open Issue が無ければ停止通知を作る |
 
 `--dry-run` ならここで guard、作業 base、次に作る head/base、plan なら手動マージ、その他なら
@@ -225,7 +210,7 @@ git status --porcelain
 | head | `state.branch` | `state.branch` |
 | label | `sdd` | `sdd` |
 | draft | false | `make check` 失敗または検査 skip 時は true |
-| マージ | **人がレビューしてマージ** | non-draft かつ PR checks が green なら作成者が merge |
+| マージ | **人がレビューしてマージ**（merge commit を選ぶ） | non-draft かつ PR checks が green なら作成者が `merge_method: merge` で merge |
 
 タイトルは plan=`docs: NNN の実装計画と設計成果物を追加する`、design=`docs: NNN の UI・操作設計を追加する`、tasks=`docs: NNN の実装タスクを
 分解する`、implement=`feat: NNN Phase N（phase_title 先頭 30 文字）を実装する` とする。
@@ -233,6 +218,14 @@ git status --porcelain
 `UI 変更なし` と書く。UI 変更の場合は変更前後、確認した viewport（最低 360 / 768 / 1280）、
 参照画像との比較画像、visual review の指摘と修正、interaction / accessibility の確認結果、
 視覚上の残課題を含める。
+push の後に PR 作成の呼び出しが失敗したら、まず `head=syudead:<state.branch>`, `state=open` を
+1 件検索する（サーバー側では作成が成功し、応答だけ失敗した場合がある）。PR があればそれを
+使って続ける。無ければ同じセッションで
+`git push --force-with-lease=refs/heads/<state.branch>:<push した SHA> origin :refs/heads/<state.branch>`
+を行ってから理由を報告して終了する。remote に branch だけが残ると、後続セッションは（作成中と
+区別できないため）削除せずに待ち続ける。
+段階 PR は必ず merge commit でマージする（squash / rebase だと件名から head 名が消え、guard が
+hop と phase retry を数えられない）。人が plan PR をマージするときも「Create a merge commit」を選ぶ。
 ラベルを読み直して確認し、PR の checks が green になるまで待ってからマージする。checks を
 読めない、失敗、pending のまま timeout、またはローカル検査に skip がある場合は draft/open のまま
 残し、停止理由を報告する（人に通常レビューを要求するための仕様には戻さない）。
@@ -259,16 +252,17 @@ cloud では使わない。手元で実行する場合のみ、組み込み GitH
 `no-progress` / `phase-retry-limit` / `hop-limit` のときだけ
 `sdd-next 停止: NNN <reason>` という open Issue を重複なく作る。本文に state、guard、session
 ID を含め、label は付けない。作成と重複確認は cloud の組み込み GitHub ツールを使う。
-`open-pr` / `nothing-to-do` / `gh-unavailable` では作らない。
+`open-pr` / `nothing-to-do` / `wrong-base` / `remote-unavailable` では作らない。
 
 ## 手元での検算
 
 ```bash
 .claude/skills/sdd-next/scripts/sdd-state.sh
 .claude/skills/sdd-next/scripts/sdd-state.sh --feature specs/001-initial-setup
+.claude/skills/sdd-next/scripts/sdd-target.sh --pr 41
 .claude/skills/sdd-next/scripts/sdd-state.sh | .claude/skills/sdd-next/scripts/sdd-guard.sh
 bash .claude/skills/sdd-next/tests/run.sh
 ```
 
-状態は成果物から導出し、専用状態ファイルを持たない。feature branch 上で実行することだけが
-重要である。
+状態は成果物と git（merge commit の件名、remote の branch）から導出し、専用状態ファイルも
+GitHub API も使わない。feature branch 上で実行することだけが重要である。
