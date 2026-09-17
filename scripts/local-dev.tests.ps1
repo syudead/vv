@@ -5,6 +5,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $cases = @(
+    @{ Script = "check"; Failure = "jq"; Forbidden = "==> fmt-check-go" },
     @{ Script = "setup"; Failure = "go"; Forbidden = "Installing web dependencies" },
     @{ Script = "setup"; Failure = "npm"; Forbidden = "Preparing golangci-lint" },
     @{ Script = "check"; Failure = "npm"; Forbidden = "==> lint-go" },
@@ -27,6 +28,9 @@ foreach ($case in $cases) {
             if ($global:localDevTestFailure -eq "npm") { & pwsh -NoProfile -Command "exit 17" }
         }
         function gofmt {}
+        function jq {
+            if ($global:localDevTestFailure -eq "jq") { & pwsh -NoProfile -Command "exit 17" }
+        }
         function make { & pwsh -NoProfile -Command "exit 17" }
         & (Join-Path $Root "scripts/$Script.ps1")
     } -args $repoRoot, $case.Script, $case.Failure 2>&1

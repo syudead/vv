@@ -54,8 +54,10 @@ Windows PowerShell でも同じ入口を使えるようにする。
 - `task setup`、`task doctor`、`task check` 成功。
   Go 全パッケージ、Go lint、Web 型検査、ビルド、16 ファイル / 156 テスト、
   SDD 15 テスト、OpenAPI 生成物の一致を確認。
-- 条件付きの未実施: chmod で読み取りを禁止できない Windows では権限テストを skip。
-  jq 未導入のため SDD の github-dir ガードテストは skip。Docker は未導入で未検証。
+- 当初は chmod の権限テストと jq が必要な SDD ガード10ケースを省略していた。
+  [追加修正](007-local-check-coverage.md)で jq を必須化し、OS に依存しない
+  読み取り失敗の回帰テストを追加した。実権限の補助テストのみ環境により skip する。
+  Docker は未導入で未検証。
 - `task dev` の Go / Vite 起動、ブラウザーの一覧とサムネイル表示、
   8080 / 5173 両方の `/api/health` が status=ok を返すことを確認。
   Ctrl+C 後に両ポートが解放されることも確認した。

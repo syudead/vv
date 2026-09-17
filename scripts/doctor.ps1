@@ -68,6 +68,7 @@ function Check-Tool {
 }
 
 $checks = @(
+    (Check-Tool "jq" { jq --version } "Install with mise: mise install"),
     (Check-Tool "pwsh" { pwsh --version } "Install PowerShell 7.4 or later."),
     (Check-Tool "go" { go version } "Install with mise: mise install"),
     (Check-Tool "node" { node --version } "Install with mise: mise install"),

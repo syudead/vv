@@ -111,7 +111,7 @@ test-go: ## Go のテストを実行する
 test-web: web/node_modules ## Web のビルド検証と単体テストを実行する
 	$(NPM) run test
 
-# 依存は bash だけである（jq も gh も要らない）。手元の Git Bash でも同じ判定になる。
+# 依存は bash・coreutils・jq・git。手元の Git Bash でも同じ判定になる。
 # CI では Go のジョブから呼ぶ（Web のジョブでは呼ばない）。
 test-sdd: ## SDD ハーネスの判定テスト（bash のみ）
 	bash .claude/skills/sdd-next/tests/run.sh

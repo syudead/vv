@@ -386,6 +386,29 @@ func TestScanEnqueuesJobsForNewVideos(t *testing.T) {
 // 個別のファイルの失敗で走査全体を止めない（FR-008）。読めないファイルは
 // failed に数えて次へ進む。
 func TestScanContinuesAfterFileFailure(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b", "c.mp4": "c"})
+	index := newFakeIndex()
+	scanner := New(Options{MediaDir: root, Index: index, Queue: index, Reporter: index})
+	scanner.contentKey = func(path string) (string, error) {
+		if filepath.Base(path) == "b.mp4" {
+			return "", &os.PathError{Op: "open", Path: path, Err: os.ErrPermission}
+		}
+		return ContentKey(path)
+	}
+	result, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != 3 || result.Failed != 1 || result.Added != 2 {
+		t.Fatalf("want total=3 failed=1 added=2, got %+v", result)
+	}
+	paths := index.upsertedPaths()
+	if len(paths) != 2 || paths[0] != filepath.Join(root, "a.mp4") || paths[1] != filepath.Join(root, "c.mp4") {
+		t.Fatalf("files before and after the failure must be indexed: %v", paths)
+	}
+}
+
+func TestScanContinuesAfterPermissionFailure(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "壊れた.mp4": "b", "c.mp4": "c"})
 
 	// 読み取り権限を落として、鍵の計算を失敗させる。

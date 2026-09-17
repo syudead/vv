@@ -74,7 +74,7 @@ MDM_MEDIA_HOST_DIR=/path/to/videos make up
 
 ### ローカル開発環境
 
-Go・Node・task のバージョンは `mise.toml` に固定している。task の実行には
+Go・Node・task・jq のバージョンは `mise.toml` に固定している。task の実行には
 PowerShell 7.4 以上（`pwsh`）が必要である。`mise` を使う場合は
 最初に次を実行する。
 
@@ -88,6 +88,9 @@ mise exec --command "task doctor"
 開発サーバーは `mise exec --command "task dev"` で起動し、
 `http://localhost:5173` を開く。終了は Ctrl+C。
 変更の検証は `mise exec --command "task check"` で実行する。
+SDD の検査にも `jq` が必要で、不足時は失敗する。
+Windows で `task setup` を再実行するときは、先に開発サーバーを停止する。
+起動中はネイティブ依存のファイルがロックされ、npm ci が失敗するためである。
 Go と Web のソースは `.gitattributes` で LF に固定し、Windows の改行変換による
 整形エラーを防ぐ。既存のチェックアウトで CRLF が残っている場合は、
 `mise exec --command "gofmt -w cmd internal web/embed.go"` と

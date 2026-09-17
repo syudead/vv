@@ -84,6 +84,7 @@ type Scanner struct {
 	reporter      Reporter
 	thumbnailsDir string
 	logger        *slog.Logger
+	contentKey    func(string) (string, error)
 }
 
 // New は走査を組み立てる。
@@ -99,6 +100,7 @@ func New(opts Options) *Scanner {
 		reporter:      opts.Reporter,
 		thumbnailsDir: opts.ThumbnailsDir,
 		logger:        logger,
+		contentKey:    ContentKey,
 	}
 }
 
@@ -210,7 +212,7 @@ func (s *Scanner) ingest(
 		return nil
 	}
 
-	key, err := ContentKey(path)
+	key, err := s.contentKey(path)
 	if err != nil {
 		return err
 	}

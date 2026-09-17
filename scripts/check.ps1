@@ -6,6 +6,8 @@ $PSNativeCommandUseErrorActionPreference = $true
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
+jq --version
+
 if ($null -ne (Get-Command make -ErrorAction SilentlyContinue)) {
     make check
     exit $LASTEXITCODE
