@@ -228,7 +228,7 @@ PR が開くこと、を順に確認する。
 - **FR-017**: ハーネスは、FR-014〜FR-016 で停止したとき、停止理由を書いた Issue を
   1 件立てなければならない。同じ題名の open Issue があるときは作ってはならない
 - **FR-023**: 新規 spec は起点となる GitHub Issue 番号を `Parent Issue` として保持しなければ
-  ならない。ハーネスは guard による対象 feature の復元後にこの参照を読み、Issue の `ui`
+  ならない。ハーネスは対象 feature の確定後にこの参照を読み、Issue の `ui`
   ラベルで workflow を選ばなければならない。spec番号から Issue 番号を推測してはならない
 - **FR-024**: 最終 implement 後に自動候補が `none` でも、ハーネスは workflow 判定より先に
   git 履歴から完了 feature を復元し、feature branch から `main` への最終 PR を作成できなければ

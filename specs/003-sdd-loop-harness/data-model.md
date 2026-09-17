@@ -19,8 +19,7 @@
 規則:
 
 - 対象候補は `feature_dir` の昇順で走査する
-- guard が git 履歴から対象を復元した後、その feature の `parent_issue` を読む。`stage=none` でも
-  復元を先に行う
+- `sdd-target.sh` が git 履歴から対象を確定した後、その feature の `parent_issue` を読む
 - 新規または進行中 feature で Parent Issue が欠落・重複・不正なら fail-closed とする。
   この契約導入前に完了済みの legacy feature は再実行しない限り移行不要
 - `spec.md` が無い機能は `none`（対象外）として扱い、候補から除く

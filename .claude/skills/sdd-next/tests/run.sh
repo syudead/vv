@@ -20,6 +20,7 @@ SCRIPTS="$dir/../scripts"
 FIXTURES="$dir/fixtures"
 STATE="$SCRIPTS/sdd-state.sh"
 GUARD="$SCRIPTS/sdd-guard.sh"
+TARGET="$SCRIPTS/sdd-target.sh"
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
@@ -355,10 +356,20 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     "$(pulls_json sdd 4:claude/sdd-010-implement-p2 3:claude/sdd-010-implement-p2 2:claude/sdd-010-tasks 1:claude/sdd-010-plan)" \
     "[]"
 
-  # 直近のマージ済み sdd PR が触った機能を対象にする（自動選択の 011 ではなく 010 → done）
+  # target は直近のマージ済み sdd PR が触った機能を選ぶ。guard は対象を差し替えない。
   repo="$(make_repo 06-multi-feature "1:claude/sdd-010-implement-p1:specs/010-a")"
-  check_guard "ガード github-dir 対象機能の確定" \
-    "{\"go\":false,\"reason\":\"nothing-to-do\",\"state\":$st06}" \
+  gh_dir="$tmpdir/github-target"
+  mkdir -p "$gh_dir"
+  printf '%s' "$(pulls_json sdd 1:claude/sdd-010-implement-p1)" > "$gh_dir/pulls-closed.json"
+  printf '%s' "[]" > "$gh_dir/pulls-open.json"
+  actual="$("$TARGET" --root "$repo" --github-dir "$gh_dir")"
+  if [ "$actual" = "specs/010-a" ]; then
+    ok "target github-dir 対象機能の確定"
+  else
+    ng "target github-dir 対象機能の確定" "expected: specs/010-a" "actual: $actual"
+  fi
+  check_guard "ガードは対象機能を差し替えない" \
+    "{\"go\":true,\"state\":$(norm "$("$STATE" --root "$repo")"),\"hops\":0,\"phase_retries\":0,\"open_prs\":[]}" \
     "$repo" "$(pulls_json sdd 1:claude/sdd-010-implement-p1)" "[]"
 
   # ファイルが無ければ呼び出し側の誤り（終了コード 2）

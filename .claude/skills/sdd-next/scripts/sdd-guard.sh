@@ -160,19 +160,6 @@ done <<MERGED
 $merged_commits
 MERGED
 
-state_workflow="$(printf '%s' "$state" | jq -r '.workflow // "standard"' 2>/dev/null || printf 'standard')"
-if [ -n "$latest_commit" ]; then
-  target_dir="$(git -C "$root" diff --name-only "$latest_commit^1" "$latest_commit" 2>/dev/null \
-    | sed -n 's#^\(specs/[0-9][0-9][0-9]-[^/]*\)/.*#\1#p' \
-    | sed -n '1p')"
-  if [ -n "${target_dir:-}" ]; then
-    # 手元にその機能ディレクトリが無ければ（終了コード 2）、stdin の state のままにする。
-    if new_state="$("$script_dir/sdd-state.sh" --root "$root" --feature "$target_dir" --workflow "$state_workflow" 2>/dev/null)"; then
-      state="$(printf '%s' "$new_state" | tr -d '\r\n')"
-    fi
-  fi
-fi
-
 json_field() { printf '%s' "$state" | jq -r "$1" 2>/dev/null || printf ''; }
 
 stage="$(json_field '.stage // "none"')"

@@ -225,8 +225,8 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 ### UI 変更の実装・視覚評価ループ
 
 `spec.md` の `**Parent Issue**: #NNN` が指す Issue の `ui` ラベルを workflow の唯一の入力とする。
-spec番号とIssue番号は独立であり、同じ番号と仮定しない。guardで対象featureを復元してから
-Parent Issueを読み、workflowを反映したstateとguardを再計算する。UI workflow は
+spec番号とIssue番号は独立であり、同じ番号と仮定しない。`sdd-target.sh` で対象featureを
+一度だけ確定してからParent Issueを読み、stateとguardを各1回実行する。UI workflow は
 `plan → design → tasks → implement`、通常 workflow は `plan → tasks → implement` と進む。
 Phase、タスク、変更パス、拡張子から UI かどうかを推測しない。
 
