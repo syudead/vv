@@ -113,8 +113,9 @@ REFS
 # 「plan からやり直せ」に見えてしまうので、feature branch 上でなければ止める。
 current_branch="$(git -C "$root" branch --show-current 2>/dev/null || printf '')"
 if [ "$feature_exists" = true ] && [ "$current_branch" != "$feature_branch" ]; then
-  printf '{"go":false,"reason":"wrong-base","state":%s,"feature_branch":"%s","current_branch":"%s"}\n' \
-    "$state" "$feature_branch" "$current_branch"
+  # branch 名は git の ref として `"` を含みうるので、jq で JSON 文字列に組み立てる。
+  jq -cn --argjson state "$state" --arg fb "$feature_branch" --arg cb "$current_branch" \
+    '{go:false,reason:"wrong-base",state:$state,feature_branch:$fb,current_branch:$cb}'
   exit 0
 fi
 

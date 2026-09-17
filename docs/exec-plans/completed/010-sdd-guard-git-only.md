@@ -21,7 +21,7 @@ feature branch 方式に切り替えて最初に走った routine セッショ�
 - [x] `sdd-guard.sh` を git 専用にする。`--github-dir` / `gh` フォールバック /
       `gh-unavailable` を廃止し、`remote-unavailable` と `wrong-base` を追加する
 - [x] `sdd-target.sh` を `--pr <番号>`（`<github-trigger-context>` の PR）で受ける形にする
-- [x] tests を bare の origin を使う git フィクスチャに置き換える（32 件 PASS）
+- [x] tests を bare の origin を使う git フィクスチャに置き換える（34 件 PASS）
 - [x] SKILL.md 手順 0 / 1 を書き換え、`~/.claude/` 配下を Bash で触らない規則を明記する。
       段階 PR は merge commit でマージすることを明記する
 - [x] 契約・データモデル・設計・routine 参照を追従させる
