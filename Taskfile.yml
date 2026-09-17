@@ -1,0 +1,32 @@
+version: "3"
+
+tasks:
+  doctor:
+    desc: Check the local development environment.
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1
+
+  setup:
+    desc: Download dependencies and warm local tool caches.
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1
+
+  dev:
+    desc: Run the Go server and Vite dev server.
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
+
+  check:
+    desc: Run application checks and PowerShell regression tests, also covered by CI.
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
+
+  up:
+    desc: Build and run the Docker Compose app.
+    cmds:
+      - docker compose up --build
+
+  down:
+    desc: Stop the Docker Compose app.
+    cmds:
+      - docker compose down --remove-orphans

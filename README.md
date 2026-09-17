@@ -72,6 +72,51 @@ MDM_MEDIA_HOST_DIR=/path/to/videos make up
 `make up` だけで、以下は開発者向けの補足である。目標の契約は
 [specs/001-initial-setup/contracts/developer-commands.md](specs/001-initial-setup/contracts/developer-commands.md)。
 
+### ローカル開発環境
+
+Go・Node・task・jq のバージョンは `mise.toml` に固定している。task の実行には
+PowerShell 7.4 以上（`pwsh`）が必要である。`mise` を使う場合は
+最初に次を実行する。
+
+```bash
+mise trust
+mise install
+mise exec --command "task setup"
+mise exec --command "task doctor"
+```
+
+開発サーバーは `mise exec --command "task dev"` で起動し、
+`http://localhost:5173` を開く。終了は Ctrl+C。
+変更の検証は `mise exec --command "task check"` で実行する。
+検査ツールの版は `scripts/tool-versions.json` を Makefile と PowerShell で共有する。
+`task check` と `make check` はアプリの検査に加えて PowerShell の回帰テストを実行する。
+CI でもアプリの検査と、Windows / Linux の PowerShell 回帰テストを実行する。
+SDD の検査にも `jq` が必要で、不足時は失敗する。
+Windows で `task setup` を再実行するときは、先に開発サーバーを停止する。
+起動中はネイティブ依存のファイルがロックされ、npm ci が失敗するためである。
+Go と Web のソースは `.gitattributes` で LF に固定し、Windows の改行変換による
+整形エラーを防ぐ。既存のチェックアウトで CRLF が残っている場合は、
+`mise exec --command "gofmt -w cmd internal web/embed.go"` と
+`mise exec --command "npm --prefix web run format"` で整形する。
+
+`task` は `Makefile` の置き換えではなく、Windows / PowerShell でも同じ入口を
+使うための薄いラッパーである。`make` が使える環境では従来どおり `make check` や
+`make dev` を使ってよい。`mise activate` 済みの shell では `task setup` のように
+直接呼べる。
+
+| 入口 | 内容 |
+| --- | --- |
+| `task doctor` / `scripts/doctor.ps1` | Go・Node・ffmpeg・bash・Docker などの有無を確認する |
+| `task setup` / `scripts/setup.ps1` | Go module、npm 依存、lint ツール、ビルドキャッシュを準備する |
+| `task dev` / `scripts/dev.ps1` | Go サーバーと Vite 開発サーバーを PowerShell で起動する |
+| `task check` / `scripts/check.ps1` | `make check` を優先し、`make` が無ければ同等の順序で検査する |
+
+`ffmpeg` / `ffprobe`、Docker、GNU make、bash は OS 側のツールであり、`mise.toml`
+だけでは完結しない。足りないものは `task doctor` の出力に従って導入する。
+Docker はコンテナ起動用の任意ツールで、`task up` / `task down` は make 不要。
+Windows で Go バイナリを直接動かす場合、`MDM_MEDIA_DIR` / `MDM_DATA_DIR` は
+ドライブ名を含む絶対パスにする。`task dev` はリポジトリ内の絶対パスを自動設定する。
+
 | 目標 | 内容 |
 | --- | --- |
 | `make setup` | 依存と開発ツールを先に取得する |
@@ -82,7 +127,7 @@ MDM_MEDIA_HOST_DIR=/path/to/videos make up
 | `make fmt` | 書式を整える |
 | `make lint` | `golangci-lint`（depguard を含む）と Web の型検査 |
 | `make test` | Go のテストと Web のビルド検証 |
-| `make check` | 上記をまとめて実行する。CI と同じ判定になる |
+| `make check` | 上記とローカル開発スクリプトの回帰検査をまとめて実行する。CI と同じ判定になる |
 
 `api/openapi.yaml` が Go と TypeScript の境界の唯一の真実である。型を変えるときは
 このファイルを直して `make generate` を実行する。生成物

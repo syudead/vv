@@ -15,7 +15,7 @@
 | `make fmt` | Go・Node | 書式を整える | FR-011 |
 | `make lint` | Go・Node | `golangci-lint`（depguard を含む）と Web の静的検査 | FR-010 / FR-011 / FR-013 |
 | `make test` | Go・Node | Go のテストと Web の単体テスト | FR-011 / FR-014 |
-| `make check` | Go・Node | `fmt` の差分確認 → `lint` → `test` → 生成物の差分確認 を順に実行 | FR-011 / SC-002 |
+| `make check` | Go・Node・PowerShell 7.4・jq・Git・bash | ローカル開発スクリプトの回帰検査 → `fmt` の差分確認 → `lint` → `test` → 生成物の差分確認 を順に実行 | FR-011 / SC-002 |
 
 ## 約束
 
@@ -29,5 +29,6 @@
 
 ## 依存ツールの導入
 
-`make up` 以外の目標はホストに Go・Node・ffmpeg を要求する。README には
+`make up` 以外の目標はホストに Go・Node・ffmpeg を要求する。`make check` はさらに
+PowerShell 7.4・jq・Git・bash を要求する。README には
 `make up` だけを「必ず動く道」として示し、その他は開発者向けの補足として扱う。

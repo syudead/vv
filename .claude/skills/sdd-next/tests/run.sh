@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SDD ハーネスの判定テスト。
 #
-# 依存は bash・coreutils（mktemp・tr・cat）だけである。`jq` も `gh` も要らない
+# 依存は bash・coreutils（mktemp・tr・cat）・jq・git。`gh` は要らない
 # （research.md R-007 / US3: 保守者の手元 = Windows の Git Bash で検算できること）。
 #
 # 検査するもの:
@@ -175,7 +175,7 @@ fi
 
 # ---------------------------------------------------------------------------
 # (6) ガード: --github-dir で PR 一覧をファイルから受け取り、マージ済みは git 履歴で決める
-#     `jq` と git が要る。無ければ SKIP にする（手元は jq 無しでもよい。CI では走る）。
+#     jq と git が無ければ失敗にする。
 # ---------------------------------------------------------------------------
 if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   # 利用者の git 設定を読まない（署名やフックが混ざらないように）。
@@ -322,7 +322,7 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     ng "ガード github-dir ファイル無しは終了コード 2" "終了コード: $code" "stdout: $(norm "$actual")"
   fi
 else
-  printf 'SKIP ガード github-dir（jq か git が無い）\n'
+  ng "ガード github-dir" "jq and git are required; run mise install"
 fi
 
 # ---------------------------------------------------------------------------
