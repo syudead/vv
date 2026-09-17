@@ -14,6 +14,10 @@ if ($null -ne (Get-Command make -ErrorAction SilentlyContinue)) {
     exit $LASTEXITCODE
 }
 
+if ($env:VV_SKIP_LOCAL_DEV_TESTS -ne "1") {
+    pwsh -NoLogo -NoProfile -File scripts/local-dev.tests.ps1
+}
+
 function Run-Step {
     param(
         [Parameter(Mandatory = $true)][string]$Name,

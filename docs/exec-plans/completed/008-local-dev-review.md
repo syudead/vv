@@ -17,4 +17,7 @@
 - The first Linux CI run exposed PowerShell preserving the injected nonzero
   native exit code after all assertions passed. The test script now exits 0
   explicitly, and the OS matrix uses fail-fast=false so both platforms report.
+- make check and the no-make PowerShell fallback now both run the local-dev
+  regression suite once. Injected check failures set an environment guard to
+  avoid recursively invoking the suite under test.
 - UI unchanged.

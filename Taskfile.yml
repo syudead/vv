@@ -19,7 +19,6 @@ tasks:
   check:
     desc: Run application checks and PowerShell regression tests, also covered by CI.
     cmds:
-      - pwsh -NoLogo -NoProfile -File scripts/local-dev.tests.ps1
       - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
 
   up:

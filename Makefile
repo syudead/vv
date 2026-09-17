@@ -22,7 +22,7 @@ DEV_DATA_DIR  ?= $(CURDIR)/.local/data
 GENERATED := internal/httpapi/gen/api.gen.go web/src/api/gen/openapi.ts
 
 .DEFAULT_GOAL := help
-.PHONY: help setup up down dev build generate fmt lint test check
+.PHONY: help setup up down dev build generate fmt lint test check test-local-dev
 .PHONY: fmt-check fmt-check-go fmt-check-web generate-check
 .PHONY: lint-go lint-web test-go test-web test-sdd
 
@@ -76,11 +76,15 @@ lint: lint-go lint-web ## golangci-lint（depguard を含む）と Web の静的
 test: test-go test-web test-sdd ## Go のテストと Web の検証、SDD ハーネスの判定テスト
 
 check: ## fmt の差分確認 → lint → test → 生成物の差分確認
+	@$(MAKE) --no-print-directory test-local-dev
 	@$(MAKE) --no-print-directory fmt-check
 	@$(MAKE) --no-print-directory lint
 	@$(MAKE) --no-print-directory test
 	@$(MAKE) --no-print-directory generate-check
 	@echo "check: すべて成功しました"
+
+test-local-dev: ## PowerShell のローカル開発スクリプトを検証する
+	pwsh -NoLogo -NoProfile -File scripts/local-dev.tests.ps1
 
 fmt-check: fmt-check-go fmt-check-web ## 書式の差分を確認する（書き換えない）
 

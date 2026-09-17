@@ -16,6 +16,7 @@ foreach ($case in $cases) {
     $output = & pwsh -NoLogo -NoProfile -Command {
         param($Root, $Script, $Failure)
         $global:localDevTestFailure = $Failure
+        $env:VV_SKIP_LOCAL_DEV_TESTS = "1"
         function Get-Command {
             param($Name, $ErrorAction)
             if ($Name -eq "make" -and $global:localDevTestFailure -ne "make") { return }
