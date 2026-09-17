@@ -16,7 +16,7 @@ PR にする。バックエンドや文書だけの変更では、現在の軽�
 ## 方針
 
 - 初期実装では spec の明示分類と対象パスから UI 変更を判定した。この方式は PR #49 の
-  レビューを受け、Phase の領域分類を主判定にする後続計画へ置き換えた
+  レビューを受け、Phase の領域分類だけを使う後続計画へ置き換えた
 - UI 変更では、360px / 768px / 1280px のスクリーンショット、参照画像との比較、
   visual review、指摘修正と再撮影、interaction / accessibility の確認を必須にする
 - 判定ロジックは `.claude/skills/sdd-next/scripts/` に置き、`make test-sdd` で検算できるようにする

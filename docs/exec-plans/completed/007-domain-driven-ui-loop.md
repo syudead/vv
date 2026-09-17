@@ -14,21 +14,20 @@ implement の実行ループを選べるようにする。差分パスは分類�
 - `tasks.md` の各 Phase に `sdd-domains` メタデータを必須化する
 - 領域は `frontend-ui`、`frontend-non-ui`、`backend`、`infrastructure`、`documentation` とする
 - implement 前に対象 Phase の領域を読み、`frontend-ui` を含む場合だけ UI 専用ループを選ぶ
-- implement 後は `HEAD` との差分と未追跡ファイルから UI 分類漏れを検出する
-- テスト専用ファイルは差分パスの UI 判定から除外する
+- implement ループの選択は Phase の領域分類だけを入力とする
+- 変更パスや拡張子による UI 判定は行わない
 
 ## 完了条件
 
 - 領域分類により implement 前に UI 専用ループを選択できる
 - 分類欠落、未知の分類、重複する分類行を停止条件として検出できる
-- staged、unstaged、未追跡を含む実装後差分で分類漏れを検出できる
-- テストだけの変更を UI 変更と誤判定しない
+- 変更パスに依存せず実装前にループを選択できる
 - 自動テストと関連文書が新しい契約を反映する
 
 ## 結果
 
 - `/speckit-tasks` が各 Phase の領域分類を生成する契約を追加した
 - `/sdd-next` は implement 前に Phase 分類で通常/UIループを選ぶようにした
-- 実装後のパス判定を staged / unstaged / 未追跡を含む分類漏れ検査へ変更した
+- パス判定を削除し、Phase の領域分類を唯一のループ選択入力にした
 - テスト専用パスと分類契約違反の回帰テストを追加した
 - 導入前の `tasks.md` は、過去機能を再開するときに全 Phase を分類して移行する方針とした

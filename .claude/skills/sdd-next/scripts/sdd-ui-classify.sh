@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tasks.md の Phase 領域分類から、implement が UI 専用ループを必要とするか判定する。
-# 変更パスは implement 後の分類漏れ検出にだけ使う。依存は bash・awk・sed だけで、jq は使わない。
+# 依存は bash・awk・sed だけで、jq は使わない。
 
 set -u
 
@@ -10,7 +10,7 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage_error() {
   printf 'sdd-ui-classify.sh: %s\n' "$1" >&2
-  printf 'usage: sdd-ui-classify.sh [--root <repo_root>] --feature <specs/NNN-name> --phase <N> [--paths <file>]\n' >&2
+  printf 'usage: sdd-ui-classify.sh [--root <repo_root>] --feature <specs/NNN-name> --phase <N>\n' >&2
   exit 2
 }
 
@@ -22,7 +22,6 @@ classification_error() {
 root="."
 feature=""
 phase=""
-paths_file=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -41,11 +40,6 @@ while [ $# -gt 0 ]; do
       [ $# -gt 0 ] || usage_error "--phase に値がありません"
       phase="$1"
       ;;
-    --paths)
-      shift
-      [ $# -gt 0 ] || usage_error "--paths に値がありません"
-      paths_file="$1"
-      ;;
     *)
       usage_error "未知の引数: $1"
       ;;
@@ -61,10 +55,6 @@ case "$phase" in *[!0-9]*|'') usage_error "--phase は 1 以上の整数です: 
 if [ ! -d "$root/$feature" ]; then
   usage_error "--feature のディレクトリがありません: $root/$feature"
 fi
-if [ -n "$paths_file" ] && [ ! -r "$paths_file" ]; then
-  usage_error "--paths のファイルが読めません: $paths_file"
-fi
-
 tasks="$root/$feature/tasks.md"
 [ -f "$tasks" ] || classification_error "tasks.md がありません: $feature/tasks.md"
 
@@ -120,31 +110,9 @@ for domain in $domains; do
 done
 IFS="$old_ifs"
 
-matched=""
-if [ -n "$paths_file" ]; then
-  while IFS= read -r path; do
-    path="${path%$'\r'}"
-    [ -n "$path" ] || continue
-    case "$path" in
-      *.test.ts|*.test.tsx|*.spec.ts|*.spec.tsx|*/__tests__/*) continue ;;
-      web/index.html|web/tailwind.config.ts|web/src/*.css|web/src/*.tsx|web/src/*.ts|web/src/**/*.css|web/src/**/*.tsx|web/src/**/*.ts)
-        # API・設定・生成型は、単独では UI 分類漏れとみなさない。
-        case "$path" in
-          web/src/api/*|web/src/theme/*|web/src/api/gen/*) continue ;;
-        esac
-        matched="$path"
-        break
-        ;;
-    esac
-  done < "$paths_file"
-fi
-
 if [ "$ui_planned" = true ]; then
-  printf '{"ui_change":true,"source":"phase-domains","domains":[%s],"classification_mismatch":false,"matched_path":""}\n' "$domains_json"
-elif [ -n "$matched" ]; then
-  esc="$(sdd_json_escape "$matched")"
-  printf '{"ui_change":true,"source":"path-safety-net","domains":[%s],"classification_mismatch":true,"matched_path":"%s"}\n' "$domains_json" "$esc"
+  printf '{"ui_change":true,"source":"phase-domains","domains":[%s]}\n' "$domains_json"
 else
-  printf '{"ui_change":false,"source":"phase-domains","domains":[%s],"classification_mismatch":false,"matched_path":""}\n' "$domains_json"
+  printf '{"ui_change":false,"source":"phase-domains","domains":[%s]}\n' "$domains_json"
 fi
 exit 0

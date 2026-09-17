@@ -145,7 +145,7 @@ feature branch には `main` 向け PR を開く」一般規則の例外であ�
 | --- | --- | --- |
 | `plan` | `/speckit-plan` | `plan.md` と `research.md` が生成済み |
 | `tasks` | `/speckit-tasks` → Phase ごとの領域分類 → `/speckit-analyze` | `tasks.md` があり、各 Phase に `sdd-domains` が 1 つあり、tasks 側で直せる CRITICAL は解消済み |
-| `implement` | 対象 Phase の領域分類 → 選択したループで `/speckit-implement` | 完了を `[X]` にし、実装後の分類漏れ検査と `make check` が成功 |
+| `implement` | 対象 Phase の領域分類 → 選択したループで `/speckit-implement` | 完了を `[X]` にし `make check` 成功 |
 
 1 セッションで 2 段階へ進まない。tasks では `spec.md` / `plan.md` を直さない。implement の
 検査を直せなければ draft PR にして自動マージしない。
@@ -194,20 +194,6 @@ implement では `/speckit-implement` より前に対象 Phase を判定する�
    その評価を PR 本文に残す。
 6. hover / active / keyboard / focus / tap target / reduced motion など、変更した画面に関わる
    interaction と accessibility を確認する。
-
-実装後は staged / unstaged の tracked ファイルと未追跡ファイルをまとめ、分類漏れを検査する。
-
-```bash
-{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } \
-  | sort -u > "${TMPDIR:-/tmp}/sdd-ui-paths.txt"
-.claude/skills/sdd-next/scripts/sdd-ui-classify.sh \
-  --feature <state.feature_dir> --phase <state.phase> \
-  --paths "${TMPDIR:-/tmp}/sdd-ui-paths.txt"
-```
-
-`classification_mismatch=true` は、`frontend-ui` ではない Phase で UI 実装ファイルが変更されたことを
-示す。これは専用ループを実装前から適用できなかった分類漏れなので、non-draft PR を作らず停止する。
-テスト専用ファイルはこの安全網の UI パス判定から除外する。
 
 UI 変更のスクリーンショットと比較画像は [docs/how-to/ui-change-screenshots.md](../../../docs/how-to/ui-change-screenshots.md)
 に従って `docs/screenshots/` に置く。visual review は同じセッション内で行ってよいが、

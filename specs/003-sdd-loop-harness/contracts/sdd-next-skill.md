@@ -41,7 +41,7 @@
 | --- | --- | --- | --- |
 | `plan` | `/speckit-plan` | `plan.md` と `research.md` が生成されている | 生成されていなければ手順 4 で `no-progress` になる |
 | `tasks` | `/speckit-tasks` → Phase ごとの `sdd-domains` 分類 → `/speckit-analyze` | `tasks.md` が生成され、全 Phase の分類が有効で、analyze の CRITICAL が tasks.md の範囲で解消済み | spec／plan に手を入れない。解消できない CRITICAL は PR 本文に残す |
-| `implement` | 対象 Phase の分類で通常/UIループを選択 → `/speckit-implement "Phase <N>（<phase_title>）のタスクだけを対象にする。他のフェーズには手を付けない"` → 実装後の分類漏れ検査 → 完了タスクを `[X]` に → `make check` | 分類漏れがなく `make check` が通る | 直す。直せなければ draft PR にして本文に失敗内容を書く（FR-006） |
+| `implement` | 対象 Phase の分類で通常/UIループを選択 → `/speckit-implement "Phase <N>（<phase_title>）のタスクだけを対象にする。他のフェーズには手を付けない"` → 完了タスクを `[X]` に → `make check` | `make check` が通る | 直す。直せなければ draft PR にして本文に失敗内容を書く（FR-006） |
 
 ### UI 変更の implement 追加条件
 
@@ -50,8 +50,7 @@ tasks は各 `## Phase N:` 節に `<!-- sdd-domains: ... -->` を 1 行だけ持
 分類はファイル種別ではなく、その Phase で AI ハーネスの実行ループを変える必要がある領域を表す。
 
 implement は実装開始前に対象 Phase を `sdd-ui-classify.sh --phase <N>` で読み、`frontend-ui` を
-含む場合に UI 専用ループを選ぶ。実装後は `HEAD` との差分と未追跡ファイルを同スクリプトへ渡し、
-分類漏れを検査する。パス判定は実装ループを最初に選ぶためには使わない。
+含む場合に UI 専用ループを選ぶ。変更ファイルのパスから領域を推測しない。
 
 `ui_change=true` の場合は、次を満たすまで non-draft PR を開かない。
 

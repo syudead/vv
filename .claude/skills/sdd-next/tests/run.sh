@@ -175,14 +175,14 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# (6) UI 分類: Phase 領域による事前判定と、変更パスによる事後の漏れ検出
+# (6) UI 分類: Phase 領域による実装ループの事前判定
 # ---------------------------------------------------------------------------
 ui_tmp="$tmpdir/ui"
 mkdir -p "$ui_tmp/specs/010-ui"
 printf '# Tasks\n\n## Phase 1: UI\n<!-- sdd-domains: frontend-ui, backend -->\n- [ ] T001\n\n## Phase 2: API\n<!-- sdd-domains: backend -->\n- [ ] T002\n' > "$ui_tmp/specs/010-ui/tasks.md"
 ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 2>/dev/null)"
 ui_actual="$(norm "$ui_actual")"
-if [ "$ui_actual" = '{"ui_change":true,"source":"phase-domains","domains":["frontend-ui","backend"],"classification_mismatch":false,"matched_path":""}' ]; then
+if [ "$ui_actual" = '{"ui_change":true,"source":"phase-domains","domains":["frontend-ui","backend"]}' ]; then
   ok "UI 分類 Phase frontend-ui"
 else
   ng "UI 分類 Phase frontend-ui" "actual:   $ui_actual"
@@ -190,28 +190,10 @@ fi
 
 ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 2 2>/dev/null)"
 ui_actual="$(norm "$ui_actual")"
-if [ "$ui_actual" = '{"ui_change":false,"source":"phase-domains","domains":["backend"],"classification_mismatch":false,"matched_path":""}' ]; then
+if [ "$ui_actual" = '{"ui_change":false,"source":"phase-domains","domains":["backend"]}' ]; then
   ok "UI 分類 Phase backend"
 else
   ng "UI 分類 Phase backend" "actual:   $ui_actual"
-fi
-
-printf 'web/src/pages/LibraryPage.tsx\n' > "$ui_tmp/paths.txt"
-ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 2 --paths "$ui_tmp/paths.txt" 2>/dev/null)"
-ui_actual="$(norm "$ui_actual")"
-if [ "$ui_actual" = '{"ui_change":true,"source":"path-safety-net","domains":["backend"],"classification_mismatch":true,"matched_path":"web/src/pages/LibraryPage.tsx"}' ]; then
-  ok "UI 分類 path safety net"
-else
-  ng "UI 分類 path safety net" "actual:   $ui_actual"
-fi
-
-printf 'web/src/components/VideoCard.test.tsx\nweb/src/api/client.ts\n' > "$ui_tmp/paths.txt"
-ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 2 --paths "$ui_tmp/paths.txt" 2>/dev/null)"
-ui_actual="$(norm "$ui_actual")"
-if [ "$ui_actual" = '{"ui_change":false,"source":"phase-domains","domains":["backend"],"classification_mismatch":false,"matched_path":""}' ]; then
-  ok "UI 分類 test-only path"
-else
-  ng "UI 分類 test-only path" "actual:   $ui_actual"
 fi
 
 printf '# Tasks\n\n## Phase 1: Missing\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
@@ -257,39 +239,6 @@ if [ "$ui_code" -eq 3 ]; then
   ok "UI 分類 trailing empty domain"
 else
   ng "UI 分類 trailing empty domain" "終了コード: $ui_code（期待: 3）"
-fi
-
-printf '# Tasks\n\n## Phase 1: Preferences\n<!-- sdd-domains: backend -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
-printf 'web/src/preferences/viewPreferences.ts\n' > "$ui_tmp/paths.txt"
-ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 --paths "$ui_tmp/paths.txt" 2>/dev/null)"
-ui_actual="$(norm "$ui_actual")"
-if [ "$ui_actual" = '{"ui_change":true,"source":"path-safety-net","domains":["backend"],"classification_mismatch":true,"matched_path":"web/src/preferences/viewPreferences.ts"}' ]; then
-  ok "UI 分類 preferences path"
-else
-  ng "UI 分類 preferences path" "actual:   $ui_actual"
-fi
-
-if command -v git >/dev/null 2>&1; then
-  ui_repo="$tmpdir/ui-repo"
-  mkdir -p "$ui_repo/specs/010-ui" "$ui_repo/web/src/pages"
-  printf '# Tasks\n\n## Phase 1: Backend\n<!-- sdd-domains: backend -->\n- [ ] T001\n' > "$ui_repo/specs/010-ui/tasks.md"
-  printf 'initial\n' > "$ui_repo/web/src/pages/Tracked.tsx"
-  GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git -C "$ui_repo" -c init.defaultBranch=main init -q
-  GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git -C "$ui_repo" add -A
-  GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git -C "$ui_repo" \
-    -c user.name=sdd-test -c user.email=sdd-test@example.invalid -c commit.gpgsign=false \
-    commit -q -m init
-  printf 'staged\n' >> "$ui_repo/web/src/pages/Tracked.tsx"
-  GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null git -C "$ui_repo" add web/src/pages/Tracked.tsx
-  printf 'untracked\n' > "$ui_repo/web/src/pages/New.tsx"
-  { git -C "$ui_repo" diff --name-only HEAD; git -C "$ui_repo" ls-files --others --exclude-standard; } \
-    | sort -u > "$ui_repo/paths.txt"
-  if grep -Fxq 'web/src/pages/Tracked.tsx' "$ui_repo/paths.txt" \
-    && grep -Fxq 'web/src/pages/New.tsx' "$ui_repo/paths.txt"; then
-    ok "UI 分類 paths staged and untracked"
-  else
-    ng "UI 分類 paths staged and untracked" "actual: $(norm "$(cat "$ui_repo/paths.txt")")"
-  fi
 fi
 
 # ---------------------------------------------------------------------------
