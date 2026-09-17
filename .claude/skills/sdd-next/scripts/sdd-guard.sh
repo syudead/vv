@@ -9,6 +9,8 @@
 #     "Merge pull request #N from <owner>/<head.ref>"
 #   - 進行中の段階 PR:           remote に残る `claude/sdd-NNN-*` の branch
 #     （リポジトリは delete_branch_on_merge なので、残っている = まだマージされていない）
+#     マージせず閉じた PR の branch は消えないので、その回復（branch 削除 → やり直し）は
+#     スキルが open PR の有無を見て行う（SKILL.md 1. の open-pr）
 #   - feature branch の有無:      同じ ls-remote の結果
 #
 # 以前は組み込み GitHub ツールで取った PR 一覧を `--github-dir` で渡していたが、応答が

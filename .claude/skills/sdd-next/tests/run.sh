@@ -282,7 +282,10 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   check_guard "ガード open-pr" \
     "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"]}" \
     "$repo"
+  # マージせず閉じた PR の branch は remote に残る。スキルが branch を消せば次は進む（S7 の再作成）
   tgit -C "$repo" push -q origin --delete claude/sdd-010-tasks
+  check_guard "ガード 閉じた PR の branch を消せば go" \
+    "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" "$repo"
 
   # 他の機能の branch は数えない
   push_branch "$repo" claude/sdd-011-plan
@@ -312,6 +315,15 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     ok "target --pr 対象機能の確定"
   else
     ng "target --pr 対象機能の確定" "expected: specs/010-a" "actual: $actual"
+  fi
+  # 既定 branch しか持たない clone でも、origin を fetch して見つける
+  clone="$tmpdir/clone-$RANDOM"
+  tgit clone -q --single-branch --branch main "$repo.git" "$clone"
+  actual="$("$TARGET" --root "$clone" --pr 1)"
+  if [ "$actual" = "specs/010-a" ]; then
+    ok "target --pr は無ければ origin を fetch して探す"
+  else
+    ng "target --pr は無ければ origin を fetch して探す" "expected: specs/010-a" "actual: $actual"
   fi
   actual="$("$TARGET" --root "$repo" --pr 99)"
   if [ "$actual" = "specs/011-b" ]; then

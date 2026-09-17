@@ -31,9 +31,17 @@ esac
 
 # マージコミット "Merge pull request #N from ..." と squash "... (#N)" の両方を探す。
 # feature branch を復元する前に呼ばれても見つかるよう、ローカルにある全 ref を見る。
+# それでも無ければ（clone が既定 branch しか持たない場合）origin を 1 回 fetch して探し直す。
 tab="$(printf '\t')"
-line="$(git -C "$root" log --all --format="%H%x09%s" 2>/dev/null \
-  | grep -E -m1 "^[0-9a-f]+${tab}(Merge pull request #$pr |.*\(#$pr\)$)" || true)"
+find_merge() {
+  git -C "$root" log --all --format="%H%x09%s" 2>/dev/null \
+    | grep -E -m1 "^[0-9a-f]+${tab}(Merge pull request #$pr |.*\(#$pr\)$)" || true
+}
+line="$(find_merge)"
+if [ -z "$line" ] \
+  && git -C "$root" fetch -q origin '+refs/heads/*:refs/remotes/origin/*' 2>/dev/null; then
+  line="$(find_merge)"
+fi
 commit="${line%%"$tab"*}"
 subject="${line#*"$tab"}"
 

@@ -99,7 +99,7 @@ before=$(printf '%s\n' "$guard" | jq -c '.state')
 | reason | 振る舞い |
 | --- | --- |
 | `wrong-base` | `feature_branch` を手順 0 のコマンドで復元し、`before` と guard をやり直す |
-| `open-pr` | `open_prs` の branch に対応する open PR を組み込み GitHub ツールで探す。未解決レビュー指摘があれば手順 1.5 へ進む。無ければ、design / tasks / implement の non-draft PR は checks を再取得し、green なら既存 PR をマージ、失敗・pending・draft なら理由を報告して待機する。plan PR は人の承認待ちとして終了。branch はあるのに PR が無ければ、その branch の内容を報告して停止する |
+| `open-pr` | `open_prs` の branch ごとに、組み込み GitHub ツールで `head=syudead:<branch>`, `state=open` の PR を 1 件だけ探す（応答は 0〜1 件）。未解決レビュー指摘があれば手順 1.5 へ進む。無ければ、design / tasks / implement の non-draft PR は checks を再取得し、green なら既存 PR をマージ、失敗・pending・draft なら理由を報告して待機する。plan PR は人の承認待ちとして終了。**open PR が無い branch**（マージせず閉じた PR、または PR 作成に失敗した push）は stale なので `git push origin --delete <branch>` で消し、guard をやり直して同じ段階を作り直す（quickstart S7）。GitHub は閉じただけの PR の head branch を消さないため、この回復が無いと永久に `open-pr` になる。やり直しは 1 セッション 1 回まで |
 | `nothing-to-do` | `main` 上なら終了。feature branch 上なら既存の最終 PR と未解決レビュー指摘を先に確認し、要対応なら手順 1.5 へ進む。無ければ手順 5 の最終 PR へ進む |
 | `remote-unavailable` | 理由を表示し、変更を残さず終了 |
 | `phase-retry-limit` / `hop-limit` | 同名の open Issue が無ければ停止通知を作る |
