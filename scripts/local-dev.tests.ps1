@@ -72,3 +72,5 @@ foreach ($scenario in @("healthy", "missing-git", "broken-jq", "empty-jq")) {
     }
     Write-Host "PASS doctor/$scenario"
 }
+
+exit 0

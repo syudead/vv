@@ -14,4 +14,7 @@
   API consistency checks passed.
 - CI now runs the PowerShell tests on both Windows and Linux. Remote results
   are tracked on PR #47 after push.
+- The first Linux CI run exposed PowerShell preserving the injected nonzero
+  native exit code after all assertions passed. The test script now exits 0
+  explicitly, and the OS matrix uses fail-fast=false so both platforms report.
 - UI unchanged.
