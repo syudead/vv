@@ -20,4 +20,7 @@
 - make check and the no-make PowerShell fallback now both run the local-dev
   regression suite once. Injected check failures set an environment guard to
   avoid recursively invoking the suite under test.
+- Make reads shared tool versions lazily, so Docker-only and help/dev targets
+  do not invoke jq during parsing. A Linux CI test shadows jq and verifies
+  help/up/down/dev leave it untouched.
 - UI unchanged.
