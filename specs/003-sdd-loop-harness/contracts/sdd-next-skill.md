@@ -26,7 +26,7 @@
 | --- | --- | --- | --- |
 | 0 | 前提確認: 作業ツリーが clean。必要に応じて feature branch を復元できる | 満たす | 理由を書いて終了。変更を残さない |
 | 0.5 | 使用量ゲート: 使用率を取得し、しきい値と比較 | しきい値未満、または取得不能 | 「見送り」と書いて終了（PR・Issue 無し） |
-| 1 | 判定: cloud では組み込み GitHub ツールで PR 一覧を `${TMPDIR:-/tmp}/sdd-github/` に置き、`before=$(sdd-state.sh)`、`guard=$(echo "$before" \| sdd-guard.sh --github-dir ...)`。以後の `before` は必ず `guard.state` で置き換える | `guard.go = true`、または `reason = open-pr` | `open-pr` は手順 1.5 でレビュー有無を確認する。`phase-retry-limit` / `hop-limit` なら Issue を立てて終了。それ以外は理由を書いて終了 |
+| 1 | 判定: cloud では組み込み GitHub ツールで PR 一覧を `${TMPDIR:-/tmp}/sdd-github/` に置く。標準 workflow の state を guard へ渡して対象 feature を復元する。初回 guard の reason は判定に使わない。復元後も feature が無ければ正常終了する。feature があれば、その `spec.md` の単一かつ正しい `Parent Issue` のラベルで workflow を決め、state と guard を再計算する。以後の `before` は必ず最終 `guard.state` で置き換える | `guard.go = true`、または `reason = open-pr` | Parent Issue の欠落・重複・不正・取得失敗は `gh-unavailable`。`open-pr` は手順 1.5 でレビュー有無を確認する。`phase-retry-limit` / `hop-limit` なら Issue を立てて終了。それ以外は理由を書いて終了 |
 | 1.5 | レビュー対応: open な `sdd` PR に未解決レビュー指摘があれば、対象 PR の head に修正 commit を積み、返信・resolve して終了 | 対象 PR が無い、または未解決レビューが無い場合は終了。対応完了時も終了 | 判断待ちなら PR コメントで block 理由を書いて終了。新しい段階 PR は作らない |
 | 1.6 | `--dry-run` なら `guard` を整形して表示して終了 | — | — |
 | 2 | 準備: `git switch -c <state.branch>`、`export SPECIFY_FEATURE_DIRECTORY=<state.feature_dir>` | ブランチが切れる | 終了 |
@@ -46,7 +46,8 @@
 
 ### UI workflow
 
-親 Issue に `ui` ラベルがある場合だけ `workflow=ui` とする。ラベルが無ければ
+対象 feature の `spec.md` にある単一の `**Parent Issue**: #NNN` が指す Issue に `ui` ラベルが
+ある場合だけ `workflow=ui` とする。spec番号から Issue 番号を推測しない。ラベルが無ければ
 `workflow=standard`。Phase、タスク、変更パス、拡張子から workflow を推測しない。
 
 UI workflow は `plan → design → tasks → implement` と進み、design の成果物を

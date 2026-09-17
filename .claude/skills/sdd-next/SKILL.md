@@ -64,13 +64,18 @@ PR 一覧の取得、`before`、guard をやり直す。
 
 ## 1. 判定
 
-最初に標準 workflow で対象 feature 候補を判定し、その3桁番号と同じ親 Issue を組み込み GitHub
-ツールで読む。Issue に `ui` ラベルがあれば `workflow=ui`、無ければ `workflow=standard` とする。
-Issue を取得できない場合は workflow を推測せず `gh-unavailable` として止める。`ui` は実装技術の
-分類ではなく、実装前に UI/interaction design を必要とする Issue 種別である。
+最初は標準 workflow の state を guard へ渡し、直近のマージ済み段階 PR から対象 feature を
+復元させる。これは候補が `stage=none` になる最終 implement 後にも必須である。確定した
+`guard.state.feature_dir` の `spec.md` から `**Parent Issue**: #NNN` を読み、その Issue を組み込み
+GitHub ツールで取得する。spec の3桁番号から Issue 番号を推測してはならない。
+初回 guard は対象復元だけに使い、workflow 未確定時点の `reason` やホップ上限では終了しない。
+初回 guard 後も `state.feature_dir` が無ければ進行対象なしとして正常終了する。
 
-guard が直近のマージ済み PR から別 feature を選び直した場合は、その番号の親 Issue を読み直し、
-workflow と state を再計算してから guard を再実行する。
+Issue に `ui` ラベルがあれば `workflow=ui`、無ければ `workflow=standard` とする。Parent Issue
+行は行全体が `**Parent Issue**: #[1-9][0-9]*` に一致するものを1件だけ許可する。行の欠落・
+重複・不正値、または Issue 取得失敗は `gh-unavailable` として止める。workflow を
+反映した state を同じ `feature_dir` で再計算し、guard を再実行する。`ui` は実装技術の分類では
+なく、実装前に UI/interaction design を必要とする Issue 種別である。
 
 組み込み GitHub ツールでは `state=closed` と `state=open` の PR を **base で絞らず**、
 `per_page=100` 相当で必要なページを続けて取得し、JSON 配列を
@@ -86,9 +91,11 @@ cloud:
 
 ```bash
 candidate=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
-# candidate.feature と同番号の Issue labels を GitHub ツールで取得して workflow を決める
+initial_guard=$(printf '%s\n' "$candidate" | \
+  .claude/skills/sdd-next/scripts/sdd-guard.sh --github-dir "${TMPDIR:-/tmp}/sdd-github")
+# initial_guard.state.feature_dir/spec.md の Parent Issue を取得して workflow を決める
 before=$(.claude/skills/sdd-next/scripts/sdd-state.sh \
-  --feature <candidate.feature_dir> --workflow <standard|ui>)
+  --feature <initial_guard.state.feature_dir> --workflow <standard|ui>)
 guard=$(printf '%s\n' "$before" | \
   .claude/skills/sdd-next/scripts/sdd-guard.sh --github-dir "${TMPDIR:-/tmp}/sdd-github")
 before=$(printf '%s\n' "$guard" | jq -c '.state')
@@ -98,9 +105,10 @@ before=$(printf '%s\n' "$guard" | jq -c '.state')
 
 ```bash
 candidate=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
-# candidate.feature と同番号の Issue labels を取得して workflow を決める
+initial_guard=$(printf '%s\n' "$candidate" | .claude/skills/sdd-next/scripts/sdd-guard.sh)
+# initial_guard.state.feature_dir/spec.md の Parent Issue を取得して workflow を決める
 before=$(.claude/skills/sdd-next/scripts/sdd-state.sh \
-  --feature <candidate.feature_dir> --workflow <standard|ui>)
+  --feature <initial_guard.state.feature_dir> --workflow <standard|ui>)
 guard=$(printf '%s\n' "$before" | .claude/skills/sdd-next/scripts/sdd-guard.sh)
 before=$(printf '%s\n' "$guard" | jq -c '.state')
 ```

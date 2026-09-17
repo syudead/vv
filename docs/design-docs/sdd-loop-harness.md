@@ -51,7 +51,7 @@ spec 以降の段階について「人が PR をマージする」以外の手�
 | 1 セッションの仕事 | 次の 1 段階だけ。段階ごとにセッションを分けてコンテキストを区切る |
 | PR の粒度 | これまでどおり段階ごとに 1 PR。implement は tasks.md のフェーズごとに 1 PR |
 | 承認ゲート | PR のマージそのもの。マージされない限り次の段階は始まらない |
-| 状態の真実 | リポジトリの成果物（`specs/NNN-*/` にあるファイルと tasks.md のチェック）から導出する。状態ファイルやラベルを真実にしない |
+| 状態の真実 | リポジトリの成果物（`specs/NNN-*/` にあるファイル、`spec.md` の Parent Issue、tasks.md のチェック）と参照先 Issue のラベルから導出する。専用状態ファイルを持たない |
 | 入口 | spec は人が作る（`/speckit-clarify` は人への質問が要るため自律実行に向かない）。spec PR に `sdd` ラベルを付けてマージした時点から自動で回り始める |
 
 非スコープ:
@@ -224,7 +224,9 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 
 ### UI 変更の実装・視覚評価ループ
 
-親 Issue の `ui` ラベルを workflow の唯一の入力とする。UI workflow は
+`spec.md` の `**Parent Issue**: #NNN` が指す Issue の `ui` ラベルを workflow の唯一の入力とする。
+spec番号とIssue番号は独立であり、同じ番号と仮定しない。guardで対象featureを復元してから
+Parent Issueを読み、workflowを反映したstateとguardを再計算する。UI workflow は
 `plan → design → tasks → implement`、通常 workflow は `plan → tasks → implement` と進む。
 Phase、タスク、変更パス、拡張子から UI かどうかを推測しない。
 

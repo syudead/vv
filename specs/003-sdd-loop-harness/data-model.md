@@ -14,10 +14,15 @@
 | `feature` | 文字列（3 桁の番号、例 `002`） | `feature_dir` の basename の先頭 3 文字 |
 | 成果物の有無 | `spec.md` / `plan.md` / `ui-design.md` / `tasks.md` それぞれの存在 | ファイルの存在 |
 | `workflow` | `standard` / `ui` | 親 Issue の `ui` ラベル。ラベル判定は `/sdd-next` が行い、スクリプトへ渡す |
+| `parent_issue` | 正の整数 | `spec.md` で行全体が `**Parent Issue**: #[1-9][0-9]*` に一致する単一行。feature番号とは独立 |
 
 規則:
 
 - 対象候補は `feature_dir` の昇順で走査する
+- guard が git 履歴から対象を復元した後、その feature の `parent_issue` を読む。`stage=none` でも
+  復元を先に行う
+- 新規または進行中 feature で Parent Issue が欠落・重複・不正なら fail-closed とする。
+  この契約導入前に完了済みの legacy feature は再実行しない限り移行不要
 - `spec.md` が無い機能は `none`（対象外）として扱い、候補から除く
 
 ## 2. 段階（Stage）

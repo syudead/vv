@@ -6,6 +6,8 @@
 
 **Status**: Draft
 
+**Parent Issue**: #[ISSUE NUMBER]
+
 **Input**: User description: "$ARGUMENTS"
 
 ## User Scenarios & Testing *(mandatory)*
