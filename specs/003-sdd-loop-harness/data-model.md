@@ -119,7 +119,7 @@ git の first-parent 履歴から導出する。
 | --- | --- | --- |
 | `hops` | 同じ機能のマージ済みホップ数 | standard は `2 + phases + 2`、UI は design 分を加えた `3 + phases + 2` 以上で停止（FR-016） |
 | `phase_retries` | 同じ `implement-pN` のマージ済みホップ数 | 2 以上で停止（FR-015） |
-| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、`base.ref = claude/sdd-NNN-feature`。label 付与失敗時も head/base が一致すれば対象。`base.ref` が無い同 prefix の open PR は区別不能なので fail-closed | 1 件以上で新しい段階 PR は作らない（FR-013）。未解決レビューがあればレビュー対応へ渡し、無ければ tasks / implement の non-draft PR の checks を再評価する |
+| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、`base.ref = claude/sdd-NNN-feature`。label 付与失敗時も head/base が一致すれば対象。`base.ref` が無い同 prefix の open PR は区別不能なので fail-closed | 1 件以上で新しい段階 PR は作らない（FR-013）。未解決レビューがあればレビュー対応へ渡し、無ければ design / tasks / implement の non-draft PR の checks を再評価する |
 
 `phases` は tasks.md が無い段階（plan／design／tasks）では 0 として扱う。
 になる。tasks.md ができた後は実際のフェーズ数で計算し直す。
@@ -175,6 +175,6 @@ open な `sdd` PR に紐づく未解決 review thread または最新 commit 後
 
 レビュー対応が選ばれた run では新しい段階 PR を作らない。複数 PR が該当する場合は 1 run で
 1 件だけ扱い、残りは次の日次 run または手動実行に任せる。
-tasks / implement の non-draft PR は、レビュー対応後またはレビュー指摘が無い open-pr 分岐で
+design / tasks / implement の non-draft PR は、レビュー対応後またはレビュー指摘が無い open-pr 分岐で
 checks が green なら自動マージできる。pending / failed / 読み取り不能 / draft の場合は
 open のまま待つ。

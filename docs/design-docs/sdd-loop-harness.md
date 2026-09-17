@@ -154,7 +154,7 @@ plan は人がレビューしてマージ、design / tasks / implement は check
    `specs/NNN-*/` を `--feature` として `sdd-state.sh` を呼び直す。取れなければ state.sh の
    既定（昇順最初）を使う。これで「ラベル無しで寝かせている spec」を誤って拾わない
 2. 冪等ガード（#4）。open PR に未解決レビュー指摘がある場合は通常の停止ではなくレビュー対応へ渡す。
-   指摘が無い tasks / implement の non-draft PR は checks を再評価し、green なら既存 PR を
+   指摘が無い design / tasks / implement の non-draft PR は checks を再評価し、green なら既存 PR を
    マージする
 3. フェーズ別リトライ上限（#2）
 4. ホップ上限（#3）
@@ -180,7 +180,7 @@ block 理由を PR コメントに残して終了する。
 
 このフローは「レビューコメントを作る」仕組みではない。既存レビューを SDD ハーネスの durable
 queue に載せ、通常の段階生成と混線させずに返すための入口である。
-修正後の tasks / implement PR は checks が green ならその場でマージしてよい。checks が pending
+修正後の design / tasks / implement PR は checks が green ならその場でマージしてよい。checks が pending
 または読めない場合も、次回の日次実行が同じ open PR を再評価する。
 
 ## 6. スキルの手順: `/sdd-next [--dry-run]`
@@ -207,7 +207,7 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 5.   PR            コミット（既存の慣習どおり日本語、Co-Authored-By 付き）→ push →
                    ラベル sdd 付きで state.base_branch へ PR。本文に before/after の JSON、実行した検査、
                    残課題、セッションへのリンク（CLAUDE_CODE_REMOTE_SESSION_ID）を書く。
-                   tasks / implement は checks green を確認してから自動マージする。
+                   design / tasks / implement は checks green を確認してから自動マージする。
                    自動マージ成功後は remote の段階 branch を削除する
 6.   報告          最後に「段階・PR URL・次に起きること」を 3 行で出す
 ```
