@@ -63,7 +63,7 @@ func TestThumbnailPathAvoidsPathSeparators(t *testing.T) {
 	if strings.Contains(filepath.Base(got), ":") {
 		t.Errorf("ファイル名に : が残っている: %q", got)
 	}
-	if strings.Count(strings.TrimPrefix(got, "/data/thumbnails/"), "/") != 1 {
+	if filepath.Dir(got) != filepath.Join("/data/thumbnails", "aa") {
 		t.Errorf("2文字のディレクトリ1段に収まっていない: %q", got)
 	}
 }

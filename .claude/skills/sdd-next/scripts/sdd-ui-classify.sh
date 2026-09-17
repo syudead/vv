@@ -93,9 +93,13 @@ line_count="$(printf '%s\n' "$domain_lines" | sed '/^$/d' | awk 'END { print NR 
 
 domains=""
 ui_planned=false
+trimmed_domains="$(printf '%s' "$domain_lines" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+case "$trimmed_domains" in
+  ,*|*,|*,,*) classification_error "Phase $phase の sdd-domains に空の分類があります" ;;
+esac
 old_ifs="$IFS"
 IFS=','
-for raw in $domain_lines; do
+for raw in $trimmed_domains; do
   domain="$(printf '%s' "$raw" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
   case "$domain" in
     frontend-ui|frontend-non-ui|backend|infrastructure|documentation) ;;
@@ -126,7 +130,7 @@ if [ -n "$paths_file" ]; then
       web/index.html|web/tailwind.config.ts|web/src/*.css|web/src/*.tsx|web/src/*.ts|web/src/**/*.css|web/src/**/*.tsx|web/src/**/*.ts)
         # API・設定・生成型は、単独では UI 分類漏れとみなさない。
         case "$path" in
-          web/src/api/*|web/src/preferences/*|web/src/theme/*|web/src/api/gen/*) continue ;;
+          web/src/api/*|web/src/theme/*|web/src/api/gen/*) continue ;;
         esac
         matched="$path"
         break

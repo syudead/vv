@@ -166,6 +166,10 @@ tasks では要件を Phase に分解した後、各 `## Phase N:` 節に、そ�
 tasks の完了確認では `sdd_phases` が返す全 Phase に対して `sdd-ui-classify.sh --phase N` を実行し、
 終了コード 0 を確認する。1 Phase でも失敗した場合は tasks 段階を完了扱いにしない。
 
+この契約の導入前に作られた `tasks.md` を再開する場合は、implement を始める前に全 Phase を
+現在の要件とタスク内容から分類し、各節へ `sdd-domains` を追加して上記検証を通す。完了済みの
+過去機能は一括移行せず、再開時にだけ移行する。
+
 ### UI 変更の専用ループ
 
 implement では `/speckit-implement` より前に対象 Phase を判定する。

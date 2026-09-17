@@ -73,6 +73,8 @@ sdd-ui-classify.sh --feature <feature_dir> --phase <N> --paths /tmp/sdd-ui-paths
 | 2 | 引数、root、feature、paths の誤り |
 | 3 | `tasks.md` または対象 Phase の分類がない、分類行が複数、未知または重複した domain |
 
+先頭・末尾・連続するカンマは空の domain として終了コード 3 にする。
+
 ## テスト
 
 `.claude/skills/sdd-next/tests/run.sh` が Phase の UI / 非 UI 分類、分類契約違反、実装後の分類漏れ、

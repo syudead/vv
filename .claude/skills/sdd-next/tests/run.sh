@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SDD ハーネスの判定テスト。
 #
-# 依存は bash・coreutils（mktemp・tr・cat）だけである。`jq` も `gh` も要らない
+# 依存は bash・coreutils（mktemp・tr・cat）・jq・git。`gh` は要らない
 # （research.md R-007 / US3: 保守者の手元 = Windows の Git Bash で検算できること）。
 #
 # 検査するもの:
@@ -250,6 +250,25 @@ else
   ng "UI 分類 duplicate domain" "終了コード: $ui_code（期待: 3）"
 fi
 
+printf '# Tasks\n\n## Phase 1: Trailing comma\n<!-- sdd-domains: backend, -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
+"$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 >/dev/null 2>&1
+ui_code=$?
+if [ "$ui_code" -eq 3 ]; then
+  ok "UI 分類 trailing empty domain"
+else
+  ng "UI 分類 trailing empty domain" "終了コード: $ui_code（期待: 3）"
+fi
+
+printf '# Tasks\n\n## Phase 1: Preferences\n<!-- sdd-domains: backend -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
+printf 'web/src/preferences/viewPreferences.ts\n' > "$ui_tmp/paths.txt"
+ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 --paths "$ui_tmp/paths.txt" 2>/dev/null)"
+ui_actual="$(norm "$ui_actual")"
+if [ "$ui_actual" = '{"ui_change":true,"source":"path-safety-net","domains":["backend"],"classification_mismatch":true,"matched_path":"web/src/preferences/viewPreferences.ts"}' ]; then
+  ok "UI 分類 preferences path"
+else
+  ng "UI 分類 preferences path" "actual:   $ui_actual"
+fi
+
 if command -v git >/dev/null 2>&1; then
   ui_repo="$tmpdir/ui-repo"
   mkdir -p "$ui_repo/specs/010-ui" "$ui_repo/web/src/pages"
@@ -275,7 +294,7 @@ fi
 
 # ---------------------------------------------------------------------------
 # (7) ガード: --github-dir で PR 一覧をファイルから受け取り、マージ済みは git 履歴で決める
-#     `jq` と git が要る。無ければ SKIP にする（手元は jq 無しでもよい。CI では走る）。
+#     jq と git が無ければ失敗にする。
 # ---------------------------------------------------------------------------
 if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   # 利用者の git 設定を読まない（署名やフックが混ざらないように）。
@@ -422,7 +441,7 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     ng "ガード github-dir ファイル無しは終了コード 2" "終了コード: $code" "stdout: $(norm "$actual")"
   fi
 else
-  printf 'SKIP ガード github-dir（jq か git が無い）\n'
+  ng "ガード github-dir" "jq and git are required; run mise install"
 fi
 
 # ---------------------------------------------------------------------------

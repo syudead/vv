@@ -28,6 +28,7 @@ web/dist/*
 # make dev が使う手元の作業場所
 /media/
 /.local/
+/worktrees/
 
 # Environment
 .env
