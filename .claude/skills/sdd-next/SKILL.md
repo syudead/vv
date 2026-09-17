@@ -164,7 +164,7 @@ feature branch には `main` 向け PR を開く」一般規則の例外であ�
 | `plan` | `/speckit-plan` | `plan.md` と `research.md` が生成済み |
 | `design`（UI型のみ） | spec / plan / 参照画像 / 既存画面から `ui-design.md` を作る | 下記の UI/interaction design 契約を満たす |
 | `tasks` | `/speckit-tasks` → `/speckit-analyze` | `tasks.md` があり、tasks 側で直せる CRITICAL は解消済み |
-| `implement` | `/speckit-implement`。UI型では専用ループを含める | 完了を `[X]` にし `make check` 成功 |
+| `implement` | `/speckit-implement "Phase <state.phase>（<state.phase_title>）のタスクだけを対象にする。他のフェーズには手を付けない"`。UI型では同じフェーズ制約の中で専用ループも実行する | 完了を `[X]` にし `make check` 成功 |
 
 1 セッションで 2 段階へ進まない。tasks では `spec.md` / `plan.md` を直さない。implement の
 検査を直せなければ draft PR にして自動マージしない。
