@@ -20,7 +20,6 @@ SCRIPTS="$dir/../scripts"
 FIXTURES="$dir/fixtures"
 STATE="$SCRIPTS/sdd-state.sh"
 GUARD="$SCRIPTS/sdd-guard.sh"
-UI_CLASSIFY="$SCRIPTS/sdd-ui-classify.sh"
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
@@ -175,88 +174,45 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# (6) UI 分類: Phase 領域による実装ループの事前判定
+# (6) workflow: UI Issue だけ design 段階を挟む
 # ---------------------------------------------------------------------------
+ui_actual="$("$STATE" --root "$FIXTURES/02-before-tasks" --feature specs/010-a --workflow ui 2>/dev/null)"
+ui_actual="$(norm "$ui_actual")"
+ui_expected='{"feature_dir":"specs/010-a","feature":"010","stage":"design","workflow":"ui","feature_branch":"claude/sdd-010-feature","base_branch":"claude/sdd-010-feature","branch":"claude/sdd-010-design"}'
+if [ "$ui_actual" = "$ui_expected" ]; then
+  ok "workflow ui design"
+else
+  ng "workflow ui design" "expected: $ui_expected" "actual:   $ui_actual"
+fi
+
 ui_tmp="$tmpdir/ui"
-mkdir -p "$ui_tmp/specs/010-ui"
-printf '# Tasks\n\n## Phase 1: UI\n<!-- sdd-domains: frontend-ui, backend -->\n- [ ] T001\n\n## Phase 2: API\n<!-- sdd-domains: backend -->\n- [ ] T002\n' > "$ui_tmp/specs/010-ui/tasks.md"
-ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 2>/dev/null)"
+mkdir -p "$ui_tmp"
+cp -R "$FIXTURES/02-before-tasks/." "$ui_tmp/"
+printf '# UI design\n' > "$ui_tmp/specs/010-a/ui-design.md"
+ui_actual="$("$STATE" --root "$ui_tmp" --feature specs/010-a --workflow ui 2>/dev/null)"
 ui_actual="$(norm "$ui_actual")"
-if [ "$ui_actual" = '{"ui_change":true,"source":"phase-domains","domains":["frontend-ui","backend"]}' ]; then
-  ok "UI 分類 Phase frontend-ui"
+ui_expected='{"feature_dir":"specs/010-a","feature":"010","stage":"tasks","workflow":"ui","feature_branch":"claude/sdd-010-feature","base_branch":"claude/sdd-010-feature","branch":"claude/sdd-010-tasks"}'
+if [ "$ui_actual" = "$ui_expected" ]; then
+  ok "workflow ui tasks after design"
 else
-  ng "UI 分類 Phase frontend-ui" "actual:   $ui_actual"
+  ng "workflow ui tasks after design" "expected: $ui_expected" "actual:   $ui_actual"
 fi
 
-ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 2 2>/dev/null)"
+ui_actual="$("$STATE" --root "$FIXTURES/01-before-plan" --feature specs/010-a --workflow ui 2>/dev/null)"
 ui_actual="$(norm "$ui_actual")"
-if [ "$ui_actual" = '{"ui_change":false,"source":"phase-domains","domains":["backend"]}' ]; then
-  ok "UI 分類 Phase backend"
+ui_expected='{"feature_dir":"specs/010-a","feature":"010","stage":"plan","workflow":"ui","feature_branch":"claude/sdd-010-feature","base_branch":"claude/sdd-010-feature","branch":"claude/sdd-010-plan"}'
+if [ "$ui_actual" = "$ui_expected" ]; then
+  ok "workflow ui plan first"
 else
-  ng "UI 分類 Phase backend" "actual:   $ui_actual"
+  ng "workflow ui plan first" "expected: $ui_expected" "actual:   $ui_actual"
 fi
 
-printf '# Tasks\n\n## Phase 1: Missing\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
-"$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 >/dev/null 2>&1
+"$STATE" --root "$FIXTURES/01-before-plan" --workflow other >/dev/null 2>&1
 ui_code=$?
-if [ "$ui_code" -eq 3 ]; then
-  ok "UI 分類 missing domains"
+if [ "$ui_code" -eq 2 ]; then
+  ok "workflow unknown"
 else
-  ng "UI 分類 missing domains" "終了コード: $ui_code（期待: 3）"
-fi
-
-printf '# Tasks\n\n## Phase 1: Invalid\n<!-- sdd-domains: mobile -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
-"$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 >/dev/null 2>&1
-ui_code=$?
-if [ "$ui_code" -eq 3 ]; then
-  ok "UI 分類 unknown domain"
-else
-  ng "UI 分類 unknown domain" "終了コード: $ui_code（期待: 3）"
-fi
-
-printf '# Tasks\n\n## Phase 1: Duplicate\n<!-- sdd-domains: backend -->\n<!-- sdd-domains: documentation -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
-"$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 >/dev/null 2>&1
-ui_code=$?
-if [ "$ui_code" -eq 3 ]; then
-  ok "UI 分類 duplicate marker"
-else
-  ng "UI 分類 duplicate marker" "終了コード: $ui_code（期待: 3）"
-fi
-
-printf '# Tasks\n\n## Phase 1: Duplicate domain\n<!-- sdd-domains: backend, backend -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
-"$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 >/dev/null 2>&1
-ui_code=$?
-if [ "$ui_code" -eq 3 ]; then
-  ok "UI 分類 duplicate domain"
-else
-  ng "UI 分類 duplicate domain" "終了コード: $ui_code（期待: 3）"
-fi
-
-printf '# Tasks\n\n## Phase 1: Trailing comma\n<!-- sdd-domains: backend, -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
-"$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 >/dev/null 2>&1
-ui_code=$?
-if [ "$ui_code" -eq 3 ]; then
-  ok "UI 分類 trailing empty domain"
-else
-  ng "UI 分類 trailing empty domain" "終了コード: $ui_code（期待: 3）"
-fi
-
-printf '# Tasks\n\n## Phase 1: Empty second marker\n<!-- sdd-domains: backend -->\n<!-- sdd-domains: -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
-"$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 >/dev/null 2>&1
-ui_code=$?
-if [ "$ui_code" -eq 3 ]; then
-  ok "UI 分類 empty second marker"
-else
-  ng "UI 分類 empty second marker" "終了コード: $ui_code（期待: 3）"
-fi
-
-printf '# Tasks\n\n## Phase 1: Empty first marker\n<!-- sdd-domains: -->\n<!-- sdd-domains: backend -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
-"$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 >/dev/null 2>&1
-ui_code=$?
-if [ "$ui_code" -eq 3 ]; then
-  ok "UI 分類 empty first marker"
-else
-  ng "UI 分類 empty first marker" "終了コード: $ui_code（期待: 3）"
+  ng "workflow unknown" "終了コード: $ui_code（期待: 2）"
 fi
 
 # ---------------------------------------------------------------------------
@@ -315,15 +271,16 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     printf '%s]' "$out"
   }
 
-  # check_guard <名前> <期待 JSON> <リポジトリ> <closed JSON> <open JSON>
+  # check_guard <名前> <期待 JSON> <リポジトリ> <closed JSON> <open JSON> [workflow]
   check_guard() {
     local name="$1" expected="$2" repo="$3" closed="$4" open="$5"
+    local workflow="${6:-standard}"
     local gh_dir="$tmpdir/github-$RANDOM"
     mkdir -p "$gh_dir"
     printf '%s' "$closed" > "$gh_dir/pulls-closed.json"
     printf '%s' "$open" > "$gh_dir/pulls-open.json"
     local state actual code
-    state="$(norm "$("$STATE" --root "$repo" 2>/dev/null)")"
+    state="$(norm "$("$STATE" --root "$repo" --workflow "$workflow" 2>/dev/null)")"
     actual="$(printf '%s\n' "$state" \
       | PATH="$fake_bin:$PATH" "$GUARD" --root "$repo" --github-dir "$gh_dir" 2>"$tmpdir/guard.err")"
     code=$?
@@ -346,6 +303,11 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   check_guard "ガード github-dir go" \
     "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
     "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "[]"
+
+  st02_ui="$(norm "$("$STATE" --root "$repo" --feature specs/010-a --workflow ui 2>/dev/null)")"
+  check_guard "ガード github-dir UI workflow 維持" \
+    "{\"go\":true,\"state\":$st02_ui,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
+    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "[]" ui
 
   # 自動 PR が open なら待つ
   check_guard "ガード github-dir open-pr" \

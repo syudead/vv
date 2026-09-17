@@ -17,12 +17,13 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage_error() {
   printf 'sdd-state.sh: %s\n' "$1" >&2
-  printf 'usage: sdd-state.sh [--root <repo_root>] [--feature <specs/NNN-name>]\n' >&2
+  printf 'usage: sdd-state.sh [--root <repo_root>] [--feature <specs/NNN-name>] [--workflow <standard|ui>]\n' >&2
   exit 2
 }
 
 root="."
 feature=""
+workflow="standard"
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +37,11 @@ while [ $# -gt 0 ]; do
       [ $# -gt 0 ] || usage_error "--feature に値がありません"
       feature="$1"
       ;;
+    --workflow)
+      shift
+      [ $# -gt 0 ] || usage_error "--workflow に値がありません"
+      workflow="$1"
+      ;;
     *)
       usage_error "未知の引数: $1"
       ;;
@@ -44,6 +50,7 @@ while [ $# -gt 0 ]; do
 done
 
 [ -d "$root" ] || usage_error "--root のディレクトリがありません: $root"
+case "$workflow" in standard|ui) ;; *) usage_error "--workflow は standard または ui です: $workflow" ;; esac
 if [ -n "$feature" ] && [ ! -d "$root/$feature" ]; then
   usage_error "--feature のディレクトリがありません: $root/$feature"
 fi
@@ -64,13 +71,28 @@ state_for() {
     return
   fi
   if [ ! -f "$abs/plan.md" ]; then
-    printf 'plan\t{"feature_dir":"%s","feature":"%s","stage":"plan","feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-plan"}\n' \
+    if [ "$workflow" = "ui" ]; then
+      printf 'plan\t{"feature_dir":"%s","feature":"%s","stage":"plan","workflow":"ui","feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-plan"}\n' \
+        "$fdir" "$num" "$num" "$num" "$num"
+    else
+      printf 'plan\t{"feature_dir":"%s","feature":"%s","stage":"plan","feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-plan"}\n' \
+        "$fdir" "$num" "$num" "$num" "$num"
+    fi
+    return
+  fi
+  if [ "$workflow" = "ui" ] && [ ! -f "$abs/ui-design.md" ]; then
+    printf 'design\t{"feature_dir":"%s","feature":"%s","stage":"design","workflow":"ui","feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-design"}\n' \
       "$fdir" "$num" "$num" "$num" "$num"
     return
   fi
   if [ ! -f "$abs/tasks.md" ]; then
-    printf 'tasks\t{"feature_dir":"%s","feature":"%s","stage":"tasks","feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-tasks"}\n' \
-      "$fdir" "$num" "$num" "$num" "$num"
+    if [ "$workflow" = "ui" ]; then
+      printf 'tasks\t{"feature_dir":"%s","feature":"%s","stage":"tasks","workflow":"ui","feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-tasks"}\n' \
+        "$fdir" "$num" "$num" "$num" "$num"
+    else
+      printf 'tasks\t{"feature_dir":"%s","feature":"%s","stage":"tasks","feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-tasks"}\n' \
+        "$fdir" "$num" "$num" "$num" "$num"
+    fi
     return
   fi
 
@@ -89,16 +111,27 @@ state_for() {
   done < <(sdd_phases "$abs/tasks.md")
 
   if [ -z "$sel_num" ]; then
-    printf 'done\t{"feature_dir":"%s","feature":"%s","stage":"done","phases":%d,"feature_branch":"claude/sdd-%s-feature","base_branch":"main"}\n' \
-      "$fdir" "$num" "$phases" "$num"
+    if [ "$workflow" = "ui" ]; then
+      printf 'done\t{"feature_dir":"%s","feature":"%s","stage":"done","workflow":"ui","phases":%d,"feature_branch":"claude/sdd-%s-feature","base_branch":"main"}\n' \
+        "$fdir" "$num" "$phases" "$num"
+    else
+      printf 'done\t{"feature_dir":"%s","feature":"%s","stage":"done","phases":%d,"feature_branch":"claude/sdd-%s-feature","base_branch":"main"}\n' \
+        "$fdir" "$num" "$phases" "$num"
+    fi
     return
   fi
 
   local esc
   esc="$(sdd_json_escape "$sel_title")"
-  printf 'implement\t{"feature_dir":"%s","feature":"%s","stage":"implement","phase":%d,"phase_title":"%s","remaining":%d,"total":%d,"phases":%d,"feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-implement-p%d"}\n' \
-    "$fdir" "$num" "$sel_num" "$esc" "$sel_remaining" "$sel_total" "$phases" \
-    "$num" "$num" "$num" "$sel_num"
+  if [ "$workflow" = "ui" ]; then
+    printf 'implement\t{"feature_dir":"%s","feature":"%s","stage":"implement","workflow":"ui","phase":%d,"phase_title":"%s","remaining":%d,"total":%d,"phases":%d,"feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-implement-p%d"}\n' \
+      "$fdir" "$num" "$sel_num" "$esc" "$sel_remaining" "$sel_total" "$phases" \
+      "$num" "$num" "$num" "$sel_num"
+  else
+    printf 'implement\t{"feature_dir":"%s","feature":"%s","stage":"implement","phase":%d,"phase_title":"%s","remaining":%d,"total":%d,"phases":%d,"feature_branch":"claude/sdd-%s-feature","base_branch":"claude/sdd-%s-feature","branch":"claude/sdd-%s-implement-p%d"}\n' \
+      "$fdir" "$num" "$sel_num" "$esc" "$sel_remaining" "$sel_total" "$phases" \
+      "$num" "$num" "$num" "$sel_num"
+  fi
 }
 
 tab="$(printf '\t')"

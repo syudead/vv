@@ -9,7 +9,8 @@ disable-model-invocation: false
 # sdd-next
 
 1 spec に 1 本の長寿命 feature branch を作り、その branch を base にした段階 PR で
-`plan → tasks → implement（フェーズごと）` を進める。**人が判断するのは plan PR と、完成した
+通常 Issue は `plan → tasks → implement（フェーズごと）`、`ui` ラベル付き Issue は
+`plan → design → tasks → implement（フェーズごと）` を進める。**人が判断するのは plan PR と、完成した
 feature branch を `main` へ入れる最終 PR の 2 回だけ**である。tasks と検査に成功した
 implement PR は、PR checks が green になってから作成したセッションがマージする。
 
@@ -63,6 +64,14 @@ PR 一覧の取得、`before`、guard をやり直す。
 
 ## 1. 判定
 
+最初に標準 workflow で対象 feature 候補を判定し、その3桁番号と同じ親 Issue を組み込み GitHub
+ツールで読む。Issue に `ui` ラベルがあれば `workflow=ui`、無ければ `workflow=standard` とする。
+Issue を取得できない場合は workflow を推測せず `gh-unavailable` として止める。`ui` は実装技術の
+分類ではなく、実装前に UI/interaction design を必要とする Issue 種別である。
+
+guard が直近のマージ済み PR から別 feature を選び直した場合は、その番号の親 Issue を読み直し、
+workflow と state を再計算してから guard を再実行する。
+
 組み込み GitHub ツールでは `state=closed` と `state=open` の PR を **base で絞らず**、
 `per_page=100` 相当で必要なページを続けて取得し、JSON 配列を
 `${TMPDIR:-/tmp}/sdd-github/pulls-{closed,open}.json` に置く。
@@ -76,7 +85,10 @@ open 一覧で同じ head prefix の要素に `base.ref` が無い場合は、�
 cloud:
 
 ```bash
-before=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
+candidate=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
+# candidate.feature と同番号の Issue labels を GitHub ツールで取得して workflow を決める
+before=$(.claude/skills/sdd-next/scripts/sdd-state.sh \
+  --feature <candidate.feature_dir> --workflow <standard|ui>)
 guard=$(printf '%s\n' "$before" | \
   .claude/skills/sdd-next/scripts/sdd-guard.sh --github-dir "${TMPDIR:-/tmp}/sdd-github")
 before=$(printf '%s\n' "$guard" | jq -c '.state')
@@ -85,7 +97,10 @@ before=$(printf '%s\n' "$guard" | jq -c '.state')
 手元:
 
 ```bash
-before=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
+candidate=$(.claude/skills/sdd-next/scripts/sdd-state.sh)
+# candidate.feature と同番号の Issue labels を取得して workflow を決める
+before=$(.claude/skills/sdd-next/scripts/sdd-state.sh \
+  --feature <candidate.feature_dir> --workflow <standard|ui>)
 guard=$(printf '%s\n' "$before" | .claude/skills/sdd-next/scripts/sdd-guard.sh)
 before=$(printf '%s\n' "$guard" | jq -c '.state')
 ```
@@ -96,7 +111,7 @@ before=$(printf '%s\n' "$guard" | jq -c '.state')
 
 | reason | 振る舞い |
 | --- | --- |
-| `open-pr` | `open_prs` の対象 PR を確認する。未解決レビュー指摘があれば手順 1.5 へ進む。無ければ、tasks / implement の non-draft PR は checks を再取得し、green なら既存 PR をマージ、失敗・pending・draft なら理由を報告して待機する。plan PR は人の承認待ちとして終了 |
+| `open-pr` | `open_prs` の対象 PR を確認する。未解決レビュー指摘があれば手順 1.5 へ進む。無ければ、design / tasks / implement の non-draft PR は checks を再取得し、green なら既存 PR をマージ、失敗・pending・draft なら理由を報告して待機する。plan PR は人の承認待ちとして終了 |
 | `nothing-to-do` | `main` 上なら終了。feature branch 上なら既存の最終 PR と未解決レビュー指摘を先に確認し、要対応なら手順 1.5 へ進む。無ければ手順 5 の最終 PR へ進む |
 | `gh-unavailable` | 理由を表示し、変更を残さず終了 |
 | `phase-retry-limit` / `hop-limit` | 同名の open Issue が無ければ停止通知を作る |
@@ -115,7 +130,7 @@ PR をここで確認する。対象は `state.base_branch` 向けの段階 PR�
 複数ある場合は更新日時が古い 1 件だけを扱い、同じセッションで新しい段階 PR を作らない。
 対象 PR の head branch を checkout し、レビュー指摘に必要な最小差分だけを入れ、該当する検査を
 再実行して同じ PR に push する。push 後は各レビュー thread に「対応内容 / 検査結果 / 追加で
-人の判断が必要な点」を返信し、解決できた thread は resolve する。tasks / implement の
+人の判断が必要な点」を返信し、解決できた thread は resolve する。design / tasks / implement の
 non-draft PR は、返信後に checks が green ならマージしてよい。checks が pending / failed /
 読めない場合は、次回の日次実行が open PR 分岐で再評価するため、open のまま理由を報告して終わる。
 仕様判断・権限・外部情報が必要なら修正を作らず、PR コメントで block 理由を返して終了する。
@@ -144,44 +159,31 @@ feature branch には `main` 向け PR を開く」一般規則の例外であ�
 | stage | 実行 | 検証 |
 | --- | --- | --- |
 | `plan` | `/speckit-plan` | `plan.md` と `research.md` が生成済み |
-| `tasks` | `/speckit-tasks` → Phase ごとの領域分類 → `/speckit-analyze` | `tasks.md` があり、各 Phase に `sdd-domains` が 1 つあり、tasks 側で直せる CRITICAL は解消済み |
-| `implement` | 対象 Phase の領域分類 → 選択したループで `/speckit-implement` | 完了を `[X]` にし `make check` 成功 |
+| `design`（UI型のみ） | spec / plan / 参照画像 / 既存画面から `ui-design.md` を作る | 下記の UI/interaction design 契約を満たす |
+| `tasks` | `/speckit-tasks` → `/speckit-analyze` | `tasks.md` があり、tasks 側で直せる CRITICAL は解消済み |
+| `implement` | `/speckit-implement`。UI型では専用ループを含める | 完了を `[X]` にし `make check` 成功 |
 
 1 セッションで 2 段階へ進まない。tasks では `spec.md` / `plan.md` を直さない。implement の
 検査を直せなければ draft PR にして自動マージしない。
 
-### Phase の領域分類
+### UI/interaction design（UI型のみ）
 
-tasks では要件を Phase に分解した後、各 `## Phase N:` 節に、その Phase の実装で AI ハーネスの
-実行ループを切り替えるための領域分類を 1 行だけ付ける。
+`design` ではコードを実装せず、`<state.feature_dir>/ui-design.md` に次を定義する。
 
-```markdown
-## Phase 2: 一覧画面と検索 API
-<!-- sdd-domains: frontend-ui, backend -->
-```
+1. 対象画面と、ページ単位で完成させる実装境界
+2. 情報の優先順位、視覚的階層、レイアウト、密度、タイポグラフィ
+3. 360px / 768px / 1280px のレスポンシブ方針
+4. loading / empty / error / overflow と操作状態
+5. hover / active / focus / keyboard / tap target / reduced motion の要件
+6. 参照画像・変更前画面と、実装後に比較する visual / interaction review 基準
 
-使用できる分類は `frontend-ui`、`frontend-non-ui`、`backend`、`infrastructure`、
-`documentation`。これはファイル種別ではなく、その Phase の実装ループを変える必要がある領域を
-表す。分類の欠落、未知の値、同一 Phase 内の複数行は `/speckit-analyze` までに解消する。
-tasks の完了確認では `sdd_phases` が返す全 Phase に対して `sdd-ui-classify.sh --phase N` を実行し、
-終了コード 0 を確認する。1 Phase でも失敗した場合は tasks 段階を完了扱いにしない。
-
-この契約の導入前に作られた `tasks.md` を再開する場合は、implement を始める前に全 Phase を
-現在の要件とタスク内容から分類し、各節へ `sdd-domains` を追加して上記検証を通す。完了済みの
-過去機能は一括移行せず、再開時にだけ移行する。
+この段階は既存の spec を画面と操作へ具体化する。ユーザー調査、課題探索、要件再定義、情報設計
+全体の再構築は行わない。必要になった場合は現在の Issue を膨らませず、別 Issue として扱う。
 
 ### UI 変更の専用ループ
 
-implement では `/speckit-implement` より前に対象 Phase を判定する。
-
-```bash
-.claude/skills/sdd-next/scripts/sdd-ui-classify.sh \
-  --feature <state.feature_dir> --phase <state.phase>
-```
-
-終了コード 3 はタスク分解の契約違反なので、実装を開始せず停止理由を報告する。
-`ui_change=true`、すなわち Phase が `frontend-ui` を含む場合は、`/speckit-implement` のプロンプトに
-以下の専用手順を含め、通常の部品単位の完了扱いにはしない。
+`state.workflow=ui` の implement では、`ui-design.md` を入力にして以下の専用手順を
+`/speckit-implement` のプロンプトへ含め、通常の部品単位の完了扱いにはしない。
 
 1. 実装前に、ユーザー要求、spec / plan / tasks、参照画像、変更前画面を確認する。
 2. フェーズ内のタスクを、部品別ではなく「一覧画面を完成」「再生画面を完成」のような
@@ -202,7 +204,8 @@ UI 変更のスクリーンショットと比較画像は [docs/how-to/ui-change
 ## 4. 前進確認
 
 ```bash
-after=$(.claude/skills/sdd-next/scripts/sdd-state.sh --feature <state.feature_dir>)
+after=$(.claude/skills/sdd-next/scripts/sdd-state.sh \
+  --feature <state.feature_dir> --workflow <state.workflow または standard>)
 git status --porcelain
 ```
 
@@ -213,7 +216,7 @@ git status --porcelain
 
 段階成果物を日本語の要約で commit し、`state.branch` を push する。PR は次の値で作る。
 
-| 項目 | plan | tasks / implement |
+| 項目 | plan | design / tasks / implement |
 | --- | --- | --- |
 | base | `state.base_branch` | `state.base_branch` |
 | head | `state.branch` | `state.branch` |
@@ -221,7 +224,7 @@ git status --porcelain
 | draft | false | `make check` 失敗または検査 skip 時は true |
 | マージ | **人がレビューしてマージ** | non-draft かつ PR checks が green なら作成者が merge |
 
-タイトルは plan=`docs: NNN の実装計画と設計成果物を追加する`、tasks=`docs: NNN の実装タスクを
+タイトルは plan=`docs: NNN の実装計画と設計成果物を追加する`、design=`docs: NNN の UI・操作設計を追加する`、tasks=`docs: NNN の実装タスクを
 分解する`、implement=`feat: NNN Phase N（phase_title 先頭 30 文字）を実装する` とする。
 本文には before/after/guard、検査、残課題、session ID を含める。UI 変更でない場合は
 `UI 変更なし` と書く。UI 変更の場合は変更前後、確認した viewport（最低 360 / 768 / 1280）、

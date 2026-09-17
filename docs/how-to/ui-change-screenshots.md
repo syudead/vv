@@ -11,9 +11,9 @@
 画面に変化がない変更（内部実装、テスト、文書、CI）は不要である。その場合は PR の
 「画面の変更」に **UI 変更なし** と書いて、確認済みであることを残す。
 
-`/sdd-next` では、要件をタスクへ分解するときに各 Phase を領域分類する。
-`tasks.md` の Phase が `<!-- sdd-domains: frontend-ui, ... -->` を含む場合、implement は
-実装開始前からこの撮影・評価手順を使う。変更パスや拡張子による機械判定は行わない。
+`/sdd-next` では、親 Issue に `ui` ラベルがある場合だけ UI workflow を使う。workflow は
+`plan → design → tasks → implement` と進み、`design` で作成した `ui-design.md` を実装と
+撮影・評価の入力にする。Phase、タスク、変更パス、拡張子から UI かどうかを推測しない。
 
 ## 何を載せるか
 

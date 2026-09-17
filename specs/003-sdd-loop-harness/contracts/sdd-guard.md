@@ -61,7 +61,7 @@ Edge Cases）。
 | 2 | `state.stage` が `done` または `none` | — | `go:false`, `reason:"nothing-to-do"` |
 | 3 | **冪等**: open PR のうち `head.ref` が `claude/sdd-NNN-` で始まり、`base.ref == claude/sdd-NNN-feature` のものがある。label 付与失敗で `sdd` が無くても塞ぐ。同 prefix で `base.ref` が無い要素は段階 PR と最終 PR を区別できないため `gh-unavailable` | open 一覧 | `go:false`, `reason:"open-pr"`, `open_prs:[...]` |
 | 4 | **フェーズ別リトライ**: `stage = implement` で、`head.ref = claude/sdd-NNN-implement-pN` のマージ済み `sdd` PR が 2 件以上 | 1 で作った一覧を再利用 | `go:false`, `reason:"phase-retry-limit"` |
-| 5 | **ホップ上限**: `head.ref` が `claude/sdd-NNN-` で始まるマージ済み `sdd` PR が `2 + phases + 2` 件以上 | 同上 | `go:false`, `reason:"hop-limit"` |
+| 5 | **ホップ上限**: standard は `2 + phases + 2`、UI workflow は design 分を加えた `3 + phases + 2` 件以上 | 同上 | `go:false`, `reason:"hop-limit"` |
 | 6 | 上記に該当しない | — | `go:true` |
 
 `phases` は `state.phases`（無ければ 0）。

@@ -31,7 +31,7 @@
 | 1.6 | `--dry-run` なら `guard` を整形して表示して終了 | — | — |
 | 2 | 準備: `git switch -c <state.branch>`、`export SPECIFY_FEATURE_DIRECTORY=<state.feature_dir>` | ブランチが切れる | 終了 |
 | 3 | 段階の実行（下表） | 段階ごとの条件 | 段階ごとの扱い |
-| 4 | 前進確認: `after=$(sdd-state.sh --feature <dir>)`、`before` と比較、`git status --porcelain` が非空 | 異なる かつ 差分あり | Issue（`no-progress`）を立て、ブランチを捨てて終了 |
+| 4 | 前進確認: `after=$(sdd-state.sh --feature <dir> --workflow <workflow>)`、`before` と比較、`git status --porcelain` が非空 | 異なる かつ 差分あり | Issue（`no-progress`）を立て、ブランチを捨てて終了 |
 | 5 | コミット・push・PR 作成・ラベル付与（下記） | PR の URL が得られ、ラベル `sdd` が付いている | cloud の組み込み GitHub ツールで 1 回再試行。それでも失敗なら PR 本文の先頭に「ラベル未付与」と書いて終了 |
 | 6 | 報告: 段階・PR URL・次に起きること（「マージすると `<次の段階>` が始まる」または「これで完了」）を 3 行で出す | — | — |
 
@@ -40,19 +40,20 @@
 | stage | 実行 | 検証 | 通らないとき |
 | --- | --- | --- | --- |
 | `plan` | `/speckit-plan` | `plan.md` と `research.md` が生成されている | 生成されていなければ手順 4 で `no-progress` になる |
-| `tasks` | `/speckit-tasks` → Phase ごとの `sdd-domains` 分類 → `/speckit-analyze` | `tasks.md` が生成され、全 Phase の分類が有効で、analyze の CRITICAL が tasks.md の範囲で解消済み | spec／plan に手を入れない。解消できない CRITICAL は PR 本文に残す |
-| `implement` | 対象 Phase の分類で通常/UIループを選択 → `/speckit-implement "Phase <N>（<phase_title>）のタスクだけを対象にする。他のフェーズには手を付けない"` → 完了タスクを `[X]` に → `make check` | `make check` が通る | 直す。直せなければ draft PR にして本文に失敗内容を書く（FR-006） |
+| `design` | UI workflow のみ。spec / plan / 参照画像 / 既存画面から `ui-design.md` を作る | 画面境界、視覚設計、レスポンシブ、状態、interaction / accessibility、評価基準が定義済み | 要件再定義が必要なら別 Issue として停止 |
+| `tasks` | `/speckit-tasks` → `/speckit-analyze` | `tasks.md` が生成され、analyze の CRITICAL が tasks.md の範囲で解消済み | spec／plan に手を入れない。解消できない CRITICAL は PR 本文に残す |
+| `implement` | `/speckit-implement "Phase <N>（<phase_title>）のタスクだけを対象にする。他のフェーズには手を付けない"`。UI workflow では専用レビューを追加 | `make check` が通る | 直す。直せなければ draft PR にして本文に失敗内容を書く（FR-006） |
 
-### UI 変更の implement 追加条件
+### UI workflow
 
-tasks は各 `## Phase N:` 節に `<!-- sdd-domains: ... -->` を 1 行だけ持つ。値は
-`frontend-ui`、`frontend-non-ui`、`backend`、`infrastructure`、`documentation` のカンマ区切りとする。
-分類はファイル種別ではなく、その Phase で AI ハーネスの実行ループを変える必要がある領域を表す。
+親 Issue に `ui` ラベルがある場合だけ `workflow=ui` とする。ラベルが無ければ
+`workflow=standard`。Phase、タスク、変更パス、拡張子から workflow を推測しない。
 
-implement は実装開始前に対象 Phase を `sdd-ui-classify.sh --phase <N>` で読み、`frontend-ui` を
-含む場合に UI 専用ループを選ぶ。変更ファイルのパスから領域を推測しない。
+UI workflow は `plan → design → tasks → implement` と進み、design の成果物を
+`<feature_dir>/ui-design.md` とする。design は既存要件の UI/interaction への具体化に限定し、
+UX リサーチや要件再定義は非目標とする。
 
-`ui_change=true` の場合は、次を満たすまで non-draft PR を開かない。
+UI workflow の implement は、次を満たすまで non-draft PR を開かない。
 
 | 条件 | 内容 |
 | --- | --- |
@@ -69,7 +70,7 @@ implement は実装開始前に対象 Phase を `sdd-ui-classify.sh --phase <N>`
 
 **コミットメッセージ**: 既存の慣習に合わせて日本語の要約 1 行 + 空行 + 本文。末尾に
 `Co-Authored-By: <セッションのモデル名> <noreply@anthropic.com>`（既存履歴は
-`Claude Opus 5`）。プレフィックスは plan／tasks が `docs:`、
+`Claude Opus 5`）。プレフィックスは plan／design／tasks が `docs:`、
 implement が `feat:`（テストのみなら `test:`）
 
 **PR**:
@@ -77,12 +78,12 @@ implement が `feat:`（テストのみなら `test:`）
 | 項目 | 値 |
 | --- | --- |
 | base | `state.base_branch` |
-| title | plan: `docs: NNN の実装計画と設計成果物を追加する` / tasks: `docs: NNN の実装タスクを分解する` / implement: `feat: NNN Phase N（<phase_title の先頭 30 文字>）を実装する` |
+| title | plan: `docs: NNN の実装計画と設計成果物を追加する` / design: `docs: NNN の UI・操作設計を追加する` / tasks: `docs: NNN の実装タスクを分解する` / implement: `feat: NNN Phase N（<phase_title の先頭 30 文字>）を実装する` |
 | label | `sdd`（必須） |
 | draft | implement で `make check` が通らない、または検査が skip されたときは `true` |
 | body | 下の雛形 |
 
-tasks / implement の non-draft PR は、PR checks が green であることを確認してから自動マージする。
+design / tasks / implement の non-draft PR は、PR checks が green であることを確認してから自動マージする。
 checks が読めない、失敗、pending のまま timeout した場合は open のまま停止理由を報告する。
 
 段階 PR を自動マージできたら remote の `state.branch` を削除する。同じ phase が続いたときでも

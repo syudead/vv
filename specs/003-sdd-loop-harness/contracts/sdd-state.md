@@ -7,13 +7,14 @@
 ## 呼び出し
 
 ```bash
-sdd-state.sh [--root <repo_root>] [--feature <feature_dir>]
+sdd-state.sh [--root <repo_root>] [--feature <feature_dir>] [--workflow <standard|ui>]
 ```
 
 | 引数 | 既定 | 意味 |
 | --- | --- | --- |
 | `--root` | カレントディレクトリ | `specs/` を探す起点。テストではフィクスチャのディレクトリを渡す |
 | `--feature` | 自動選択 | 対象機能を固定する。`specs/NNN-name` の相対パス。指定した機能が `none` や `done` でもそのまま判定する |
+| `--workflow` | `standard` | 親 Issue の種類。`ui` のとき plan 後に design 段階を挟む |
 
 ## 出力
 
@@ -27,7 +28,7 @@ sdd-state.sh [--root <repo_root>] [--feature <feature_dir>]
 | コード | 条件 |
 | --- | --- |
 | 0 | 判定できた（`none` / `done` を含む） |
-| 2 | `--root` が存在しない、`--feature` のディレクトリが存在しない、引数の誤り |
+| 2 | `--root` が存在しない、`--feature` のディレクトリが存在しない、workflow または引数の誤り |
 
 ## 自動選択の規則
 
@@ -67,8 +68,11 @@ $ .claude/skills/sdd-next/scripts/sdd-state.sh --root .claude/skills/sdd-next/te
 | `05-no-spec` | `spec.md` 無し → `none`、自動選択で飛ばされて `{"stage":"none"}` |
 | `06-multi-feature` | `done` の機能を飛ばして次の機能を選ぶ、`--feature` で `done` の機能を明示できる |
 
+追加テストでは `--workflow ui` に対し、plan 後で `ui-design.md` が無ければ `design`、生成後は
+`tasks` を返すこと、および未知の workflow を終了コード 2 で拒否することを検証する。
+
 ## Feature branch fields（2026-09-13 改訂）
 
-`plan` / `tasks` / `implement` は `feature_branch` と `base_branch` を追加で返し、値はいずれも
+`plan` / `design` / `tasks` / `implement` は `feature_branch` と `base_branch` を追加で返し、値はいずれも
 `claude/sdd-NNN-feature` とする。`done` は同じ `feature_branch` と `base_branch: main` を返す。
 段階 `branch` は feature branch から作り、その branch 向け PR の head に使う。

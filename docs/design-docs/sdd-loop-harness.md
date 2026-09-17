@@ -2,7 +2,7 @@
 
 - ステータス: 設計確定（feature branch 方式を実装済み）
 - 最終更新: 2026-09-14（レビュー指摘への対応フローを追加）
-- スコープ: Spec Kit の `plan → tasks → implement` を spec ごとの feature branch 上で進め、
+- スコープ: 通常は `plan → tasks → implement`、UI Issue は `plan → design → tasks → implement` を spec ごとの feature branch 上で進め、
   plan と最終マージだけを人の承認ゲートにする仕組み
 
 
@@ -73,11 +73,11 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
 /sdd-next スキル（.claude/skills/sdd-next/SKILL.md）
   1. 必要なら feature branch を復元し、sdd-state.sh → sdd-guard.sh で進めてよいか判定
   2. open な sdd PR に未解決レビュー指摘があれば、その PR の head に修正 commit を積んで終了
-  3. 段階に応じて /speckit-plan | /speckit-tasks | /speckit-implement <フェーズ> を実行
+  3. 段階に応じて /speckit-plan | UI/interaction design | /speckit-tasks | /speckit-implement <フェーズ> を実行
   4. make check（implement のとき）→ コミット → claude/sdd-NNN-<stage> へ push
   5. ラベル sdd 付きの PR を feature branch に開き、checks green 後に自動マージして終了
         │
-plan は人がレビューしてマージ、tasks / implement は checks green 後に自動マージ → 先頭に戻る
+plan は人がレビューしてマージ、design / tasks / implement は checks green 後に自動マージ → 先頭に戻る
 ```
 
 自然な終端は、対象機能の tasks.md に未完了 `- [ ]` が無くなった状態（`done`）。
@@ -91,16 +91,15 @@ plan は人がレビューしてマージ、tasks / implement は checks green �
 
 | 部品 | 場所 | 役割 |
 | --- | --- | --- |
-| `sdd-state.sh` | `.claude/skills/sdd-next/scripts/` | `specs/*/` のファイルだけを読み、対象機能と次の段階を JSON で出す。git／gh には触れない。手元で実行して検算できる |
+| `sdd-state.sh` | `.claude/skills/sdd-next/scripts/` | `specs/*/` と渡された workflow を読み、対象機能と次の段階を JSON で出す。git／gh には触れない。手元で実行して検算できる |
 | `sdd-guard.sh` | 同上 | 組み込み GitHub ツールが保存した PR 一覧 JSON と git 履歴を見て、無限ループ対策と冪等性を判定し `go` / `stop` を返す。`gh` は手元検算の任意フォールバック |
-| `sdd-ui-classify.sh` | 同上 | `tasks.md` の Phase 領域分類だけから implement ループを選ぶ |
 | `sdd-next` スキル | `.claude/skills/sdd-next/SKILL.md` | 上記 2 つの結果を受けて、既存 PR のレビュー対応または該当する `/speckit-*` の実行と PR 作成を行う手順書 |
 | `sdd-lib.sh` | `.claude/skills/sdd-next/scripts/` | 上 2 つが `source` する共通関数。JSON のエスケープ、機能の列挙、`tasks.md` のフェーズ解析（awk） |
 | `rate-limits-statusline.sh` | `.claude/hooks/` | 使用率を受け取るためだけのステータスライン。受け取った JSON を `${TMPDIR:-/tmp}/sdd-rate-limits.json` に落とし、何も表示しない（6 章の使用量ゲート、[R-004](../../specs/003-sdd-loop-harness/research.md)） |
 | `.gitattributes` | リポジトリ root | `*.sh` を `eol=lf` に固定する。手元（Windows、`core.autocrlf=true`）で CRLF のスクリプトをチェックアウトすると Git Bash が落ちるため |
 | routine | claude.ai（写しを [docs/references/sdd-routine.md](../references/sdd-routine.md) に置く） | GitHub トリガー・日次トリガー・最小プロンプト |
 
-## 4. 状態判定: `sdd-state.sh [--feature specs/NNN-...]`
+## 4. 状態判定: `sdd-state.sh [--feature specs/NNN-...] [--workflow standard|ui]`
 
 出力は JSON 1 行:
 
@@ -137,7 +136,7 @@ plan は人がレビューしてマージ、tasks / implement は checks green �
 | --- | --- | --- | --- |
 | 1 | 同じ段階を延々やり直す（例: implement が何も進まないまま PR が出てマージされる） | **前進チェック**: 作業前後の `sdd-state.sh` の出力を比較し、変化がなければ PR を開かず終了。`git diff` が空の場合も同じ | state.sh の JSON 差分（スキル側で判定） |
 | 2 | 同じフェーズのやり直しが積み重なる | **フェーズ別リトライ上限（2 回）**: `git log --merges` 中の `claude/sdd-NNN-implement-pN` のマージ数が 2 以上なら停止 | git のマージ履歴 |
-| 3 | 機能単位で回数が膨らむ | **機能別ホップ上限**: `claude/sdd-NNN-*` のマージ数が `2（plan, tasks）+ フェーズ数 + 余裕 2` 以上なら停止 | git のマージ履歴 + tasks.md のフェーズ数 |
+| 3 | 機能単位で回数が膨らむ | **機能別ホップ上限**: standard は `2（plan, tasks）+ フェーズ数 + 余裕 2`、UI は design 分を 1 加えて停止 | git のマージ履歴 + workflow + tasks.md のフェーズ数 |
 | 4 | 二重発火（同じイベントで 2 セッション、人が手で回した直後に routine も走る、日次トリガーとイベントが重なる） | **冪等ガード**: 対象機能の open PR（head `claude/sdd-NNN-*`、base `claude/sdd-NNN-feature`）が既にあれば、label 付与に失敗していても新しい段階 PR は作らない。同 prefix で `base.ref` が無い場合は fail-closed。未解決レビューがある場合だけレビュー対応へ進む | 組み込み GitHub ツールで取得した open PR 一覧と review threads |
 | 5 | 緊急停止 | routine の一時停止（claude.ai のトグル）。加えて `sdd` ラベルを付けなければ発火しない（トリガーのフィルタ条件） | routine 設定 / PR ラベル |
 
@@ -218,22 +217,19 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 | stage | 呼ぶもの | 追加の作業 | PR の題名例 |
 | --- | --- | --- | --- |
 | `plan` | `/speckit-plan` | なし | `docs: 002 の実装計画と設計成果物を追加する` |
-| `tasks` | `/speckit-tasks` → Phase 領域分類 → `/speckit-analyze` | 全 Phase に有効な `sdd-domains` が 1 行あることを検証し、analyze の結果を PR 本文に載せる。CRITICAL が tasks.md 側の直しで解消できるものだけ直す（spec／plan は触らない） | `docs: 002 の実装タスクを分解する` |
-| `implement` | 対象 Phase の分類でループ選択 → `/speckit-implement "Phase N（<title>）のタスクだけを対象にする"` | 完了タスクを `[X]` にする。`make check` を通す。通らなければ直し、それでも通らないときは draft PR として開き本文に失敗内容を書く（人が判断してから ready にする）。文書の同時更新や `docs/exec-plans/` の扱いは `AGENTS.md` に従う | `feat: 002 Phase 3（US1 置いた動画が自動で一覧に並ぶ）を実装する` |
+| `design` | UI workflow のみ。`ui-design.md` を作る | 既存要件を画面と操作へ具体化し、画面境界、視覚設計、レスポンシブ、状態、interaction / accessibility、評価基準を書く | `docs: 002 の UI・操作設計を追加する` |
+| `tasks` | `/speckit-tasks` → `/speckit-analyze` | analyze の結果を PR 本文に載せる。CRITICAL が tasks.md 側の直しで解消できるものだけ直す（spec／plan は触らない） | `docs: 002 の実装タスクを分解する` |
+| `implement` | `/speckit-implement "Phase N（<title>）のタスクだけを対象にする"` | UI workflow では `ui-design.md` に従う。完了タスクを `[X]` にして `make check` を通す | `feat: 002 Phase 3（US1 置いた動画が自動で一覧に並ぶ）を実装する` |
 | `done` / `none` | 何もしない | — | — |
 
 ### UI 変更の実装・視覚評価ループ
 
-tasks の要件分解時に各 Phase を `frontend-ui`、`frontend-non-ui`、`backend`、`infrastructure`、
-`documentation` の 1 つ以上へ分類する。分類は変更ファイルの拡張子ではなく、AI ハーネスの
-implement ループを変える必要がある領域を表す。`frontend-ui` を含む Phase は、実装開始前から
-UI 専用ループへ入る。
+親 Issue の `ui` ラベルを workflow の唯一の入力とする。UI workflow は
+`plan → design → tasks → implement`、通常 workflow は `plan → tasks → implement` と進む。
+Phase、タスク、変更パス、拡張子から UI かどうかを推測しない。
 
-実装ループの選択では変更ファイルのパスや拡張子を判定材料にしない。タスク分解時の領域分類を
-唯一の入力とし、分類が不正なら implement を開始せず停止する。
-
-既存の `tasks.md` は完了済みなら一括更新しない。過去機能を再開するときは、implement 前に
-全 Phase を現行の domain へ分類してからハーネスへ戻す。
+design は既存要件を UI と interaction へ具体化する段階である。UX リサーチ、課題探索、
+要件再定義、情報設計全体の再構築は含めない。
 
 UI 変更では次を必須にする。
 
@@ -310,7 +306,7 @@ claude.ai 側の設定が消えても再現できるようにする。
   が返ることを確かめる。`jq` と git がある環境では `--github-dir` で PR 一覧を渡す判定も
   自動テストする
 - スキル全体: `/sdd-next --dry-run` を導入時のプローブと日常の検算に使う
-- `sdd-ui-classify.sh`: Phase の UI / 非 UI 領域と、分類欠落・未知値・重複・空要素を
+- `sdd-state.sh --workflow ui`: plan 後に design を返し、`ui-design.md` の生成後に tasks へ進むことを
   `.claude/skills/sdd-next/tests/run.sh` で検証する
 
 ## 9. 導入手順
