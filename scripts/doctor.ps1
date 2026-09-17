@@ -10,6 +10,7 @@ function Find-Command {
 function First-Line {
     param([Parameter(Mandatory = $true)][scriptblock]$Command)
     try {
+        $LASTEXITCODE = 0
         $output = & $Command 2>&1
         if ($LASTEXITCODE -ne 0 -and $null -ne $LASTEXITCODE) {
             return $null
@@ -30,20 +31,6 @@ function Check-Tool {
 
     $cmd = Find-Command $Name
     if ($null -eq $cmd) {
-        $mise = Find-Command "mise"
-        if ($null -ne $mise) {
-            $misePath = First-Line { mise which $Name }
-            if (-not [string]::IsNullOrWhiteSpace($misePath)) {
-                return [pscustomobject]@{
-                    Name = $Name
-                    Required = $Required
-                    Ok = $true
-                    Detail = "available via mise: $misePath"
-                    Hint = ""
-                }
-            }
-        }
-
         return [pscustomobject]@{
             Name = $Name
             Required = $Required
@@ -55,7 +42,13 @@ function Check-Tool {
 
     $version = First-Line $VersionCommand
     if ([string]::IsNullOrWhiteSpace($version)) {
-        $version = "found at $($cmd.Source)"
+        return [pscustomobject]@{
+            Name = $Name
+            Required = $Required
+            Ok = $false
+            Detail = "version check failed or returned no output: $($cmd.Source)"
+            Hint = $InstallHint
+        }
     }
 
     return [pscustomobject]@{
@@ -68,6 +61,7 @@ function Check-Tool {
 }
 
 $checks = @(
+    (Check-Tool "git" { git --version } "Install Git for Windows (or Git on your OS) and add it to PATH."),
     (Check-Tool "jq" { jq --version } "Install with mise: mise install"),
     (Check-Tool "pwsh" { pwsh --version } "Install PowerShell 7.4 or later."),
     (Check-Tool "go" { go version } "Install with mise: mise install"),

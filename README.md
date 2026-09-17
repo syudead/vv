@@ -88,6 +88,9 @@ mise exec --command "task doctor"
 開発サーバーは `mise exec --command "task dev"` で起動し、
 `http://localhost:5173` を開く。終了は Ctrl+C。
 変更の検証は `mise exec --command "task check"` で実行する。
+検査ツールの版は `scripts/tool-versions.json` を Makefile と PowerShell で共有する。
+`task check` はアプリの検査に加えて PowerShell の回帰テストを実行する。
+CI でもアプリの検査と、Windows / Linux の PowerShell 回帰テストを実行する。
 SDD の検査にも `jq` が必要で、不足時は失敗する。
 Windows で `task setup` を再実行するときは、先に開発サーバーを停止する。
 起動中はネイティブ依存のファイルがロックされ、npm ci が失敗するためである。

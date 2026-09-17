@@ -5,6 +5,7 @@ $PSNativeCommandUseErrorActionPreference = $true
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+$toolVersions = Get-Content (Join-Path $PSScriptRoot "tool-versions.json") -Raw | ConvertFrom-Json
 
 Write-Host "Downloading Go modules..."
 go mod download
@@ -13,7 +14,7 @@ Write-Host "Installing web dependencies..."
 npm --prefix web ci
 
 Write-Host "Preparing golangci-lint..."
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 --version
+go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$($toolVersions.golangciLint)" --version
 
 Write-Host "Warming Go build cache..."
 go build ./...

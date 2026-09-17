@@ -5,6 +5,7 @@ $PSNativeCommandUseErrorActionPreference = $true
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
+$toolVersions = Get-Content (Join-Path $PSScriptRoot "tool-versions.json") -Raw | ConvertFrom-Json
 
 jq --version
 
@@ -39,7 +40,7 @@ Run-Step "fmt-check-web" {
 }
 
 Run-Step "lint-go" {
-    go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2 run
+    go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$($toolVersions.golangciLint)" run
 }
 
 Run-Step "lint-web" {
@@ -59,9 +60,9 @@ Run-Step "test-sdd" {
 }
 
 Run-Step "generate-check" {
-    go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0 `
+    go run "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$($toolVersions.oapiCodegen)" `
         -config api/oapi-codegen.yaml api/openapi.yaml
-    npx --yes openapi-typescript@7.13.0 `
+    npx --yes "openapi-typescript@$($toolVersions.openapiTypescript)" `
         api/openapi.yaml -o web/src/api/gen/openapi.ts
 
     $generatedStatus = git status --porcelain -- internal/httpapi/gen/api.gen.go web/src/api/gen/openapi.ts

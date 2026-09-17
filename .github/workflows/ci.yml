@@ -17,6 +17,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  local-dev:
+    name: Local dev scripts (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: PowerShell regression tests
+        shell: pwsh
+        run: ./scripts/local-dev.tests.ps1
+
   go:
     name: Go
     runs-on: ubuntu-latest

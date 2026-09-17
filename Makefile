@@ -7,9 +7,9 @@
 VERSION ?= dev
 
 # ツールの版はここで固定する（R-005 / R-010）。生成物は版管理に含め、手編集しない。
-GOLANGCI_LINT_VERSION      := v2.13.2
-OAPI_CODEGEN_VERSION       := v2.8.0
-OPENAPI_TYPESCRIPT_VERSION := 7.13.0
+GOLANGCI_LINT_VERSION      := $(shell jq -er .golangciLint scripts/tool-versions.json)
+OAPI_CODEGEN_VERSION       := $(shell jq -er .oapiCodegen scripts/tool-versions.json)
+OPENAPI_TYPESCRIPT_VERSION := $(shell jq -er .openapiTypescript scripts/tool-versions.json)
 
 GOLANGCI_LINT := go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 NPM           := npm --prefix web

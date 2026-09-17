@@ -41,3 +41,34 @@ foreach ($case in $cases) {
     }
     Write-Host "PASS $($case.Script) stops after $($case.Failure) fails"
 }
+
+foreach ($scenario in @("healthy", "missing-git", "broken-jq", "empty-jq")) {
+    $output = & pwsh -NoLogo -NoProfile -Command {
+        param($Root, $Scenario)
+        $global:doctorScenario = $Scenario
+        function Get-Command {
+            param($Name, $ErrorAction)
+            if ($Name -eq "git" -and $global:doctorScenario -eq "missing-git") { return }
+            [pscustomobject]@{ Source = "test-$Name" }
+        }
+        foreach ($name in @("git", "go", "node", "npm", "ffmpeg", "ffprobe", "bash", "mise", "task", "make", "docker")) {
+            Set-Item "function:$name" { "test-version" }
+        }
+        function jq {
+            switch ($global:doctorScenario) {
+                "broken-jq" { & pwsh -NoProfile -Command "exit 17" }
+                "empty-jq" { return }
+                default { "jq-test-version" }
+            }
+        }
+        & (Join-Path $Root "scripts/doctor.ps1")
+    } -args $repoRoot, $scenario *>&1
+    $code = $LASTEXITCODE
+    $log = $output | Out-String
+    $expected = if ($scenario -eq "healthy") { 0 } else { 1 }
+    $tool = if ($scenario -eq "missing-git") { "git" } else { "jq" }
+    if ($code -ne $expected -or ($expected -eq 1 -and $log -notmatch "\[ERR\]\s+$tool\s")) {
+        throw "doctor/$scenario failed (exit $code):`n$log"
+    }
+    Write-Host "PASS doctor/$scenario"
+}
