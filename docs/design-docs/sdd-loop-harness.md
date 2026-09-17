@@ -115,13 +115,13 @@ plan は人がレビューしてマージ、design / tasks / implement は check
 | --- | --- | --- |
 | `spec.md` が無い | `none`（対象外） | — |
 | `plan.md` が無い | `plan` | `claude/sdd-NNN-plan` |
+| `workflow = ui` かつ `ui-design.md` が無い | `design` | `claude/sdd-NNN-design` |
 | `tasks.md` が無い | `tasks` | `claude/sdd-NNN-tasks` |
 | `tasks.md` に `- [ ]` が残る | `implement`。phase は未完了を含む最初の `## Phase N:` 節。`remaining` / `total` はその節内の `- [ ]` / `- [x]` の数 | `claude/sdd-NNN-implement-pN` |
 | 残りなし | `done` | — |
 
 `--feature` 省略時の対象機能: `specs/[0-9][0-9][0-9]-*/` を昇順に走査し、`done` でも
-`none` でもない最初の機能。`--feature` は `sdd-guard.sh` が直近のマージ済み `sdd` PR
-から対象機能を確定したときに使う。
+`none` でもない最初の機能。`--feature` には `sdd-target.sh` が確定した対象機能を渡す。
 
 `stage` が `implement` のときは `remaining` を出力に含める。前進チェック（5. #1）で
 「同じフェーズだが一部進んだ」回を前進として扱うためである。
