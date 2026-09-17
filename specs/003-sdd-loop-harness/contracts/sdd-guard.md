@@ -74,9 +74,10 @@ squash しても hop 上限が少し緩くなるだけで、判定は壊れな�
 - 出力の `open_prs` は remote に残る段階 branch 名の配列。空なら `[]`
 - 最終 PR（feature → main）は feature branch そのものが head なので、手順 4 には掛からない
 - マージせず閉じた PR の head branch は GitHub が消さないので、手順 4 は `open-pr` を返し続ける。
-  guard は PR の状態を知らない。スキルが `open_prs` の各 branch に open PR が無いことを組み込み
-  GitHub ツール（`head=` 指定の 1 件検索）で確かめたら、その branch を削除して guard をやり直す
-  （SKILL.md 1.、quickstart S7 の再作成）
+  guard は PR の状態を知らない。スキルが `open_prs` の各 branch について、組み込み GitHub ツール
+  （`head=` 指定の 1 件検索）で **closed かつ未マージの PR が実在する**ことを確かめた branch だけを
+  削除して guard をやり直す（SKILL.md 1.、quickstart S7 の再作成）。PR が 1 件も無い branch は
+  別セッションが PR を作成中かもしれないので削除しない
 - `sdd-target.sh --pr` はローカルの全 ref を探し、無ければ origin の全 branch を 1 回 fetch して
   探し直す。既定 branch しか持たない clone でも見つかる
 

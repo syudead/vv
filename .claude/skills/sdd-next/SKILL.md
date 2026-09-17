@@ -99,7 +99,7 @@ before=$(printf '%s\n' "$guard" | jq -c '.state')
 | reason | 振る舞い |
 | --- | --- |
 | `wrong-base` | `feature_branch` を手順 0 のコマンドで復元し、`before` と guard をやり直す |
-| `open-pr` | `open_prs` の branch ごとに、組み込み GitHub ツールで `head=syudead:<branch>`, `state=open` の PR を 1 件だけ探す（応答は 0〜1 件）。未解決レビュー指摘があれば手順 1.5 へ進む。無ければ、design / tasks / implement の non-draft PR は checks を再取得し、green なら既存 PR をマージ、失敗・pending・draft なら理由を報告して待機する。plan PR は人の承認待ちとして終了。**open PR が無い branch**（マージせず閉じた PR、または PR 作成に失敗した push）は stale なので `git push origin --delete <branch>` で消し、guard をやり直して同じ段階を作り直す（quickstart S7）。GitHub は閉じただけの PR の head branch を消さないため、この回復が無いと永久に `open-pr` になる。やり直しは 1 セッション 1 回まで |
+| `open-pr` | `open_prs` の branch ごとに、組み込み GitHub ツールで `head=syudead:<branch>`, `state=open` の PR を 1 件だけ探す（応答は 0〜1 件）。未解決レビュー指摘があれば手順 1.5 へ進む。無ければ、design / tasks / implement の non-draft PR は checks を再取得し、green なら既存 PR をマージ、失敗・pending・draft なら理由を報告して待機する。plan PR は人の承認待ちとして終了。open PR が無ければ、同じ `head=` で `state=closed` を 1 件検索する。**closed かつ未マージ（`merged_at` が null）の PR が実在する branch だけ** stale とみなし、`git push origin --delete <branch>` で消して guard をやり直し、同じ段階を作り直す（quickstart S7。GitHub は閉じただけの PR の head branch を消さないため、この回復が無いと永久に `open-pr` になる）。やり直しは 1 セッション 1 回まで。**PR が open にも closed にも無い branch は削除しない**。別セッションが push して PR を作っている最中かもしれない（二重発火は通常経路）。その場合は branch 名を報告して終了し、次の起動に任せる。PR 作成に失敗した push の後始末は手順 5 のとおり push した側が行う |
 | `nothing-to-do` | `main` 上なら終了。feature branch 上なら既存の最終 PR と未解決レビュー指摘を先に確認し、要対応なら手順 1.5 へ進む。無ければ手順 5 の最終 PR へ進む |
 | `remote-unavailable` | 理由を表示し、変更を残さず終了 |
 | `phase-retry-limit` / `hop-limit` | 同名の open Issue が無ければ停止通知を作る |
@@ -218,6 +218,9 @@ git status --porcelain
 `UI 変更なし` と書く。UI 変更の場合は変更前後、確認した viewport（最低 360 / 768 / 1280）、
 参照画像との比較画像、visual review の指摘と修正、interaction / accessibility の確認結果、
 視覚上の残課題を含める。
+push の後に PR 作成が失敗したら、同じセッションで `git push origin --delete <state.branch>` を
+行ってから理由を報告して終了する。remote に branch だけが残ると、後続セッションは（作成中と
+区別できないため）削除せずに待ち続ける。
 段階 PR は必ず merge commit でマージする（squash / rebase だと件名から head 名が消え、guard が
 hop と phase retry を数えられない）。人が plan PR をマージするときも「Create a merge commit」を選ぶ。
 ラベルを読み直して確認し、PR の checks が green になるまで待ってからマージする。checks を
