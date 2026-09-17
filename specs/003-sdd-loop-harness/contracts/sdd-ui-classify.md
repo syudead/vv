@@ -1,4 +1,4 @@
-# 契約: `sdd-ui-classify.sh`（UI 変更判定）
+# 契約: `sdd-ui-classify.sh`（implement ループ判定）
 
 **Feature**: [spec.md](../spec.md) | **Design**: [設計文書 6 章](../../../docs/design-docs/sdd-loop-harness.md)
 
@@ -6,44 +6,74 @@
 
 ## 呼び出し
 
+実装前のループ選択:
+
 ```bash
-git diff --name-only > /tmp/sdd-ui-paths.txt
-sdd-ui-classify.sh [--root <repo_root>] [--feature <feature_dir>] [--paths <file>]
+sdd-ui-classify.sh --feature <feature_dir> --phase <N>
+```
+
+実装後の分類漏れ検査:
+
+```bash
+{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } | sort -u > /tmp/sdd-ui-paths.txt
+sdd-ui-classify.sh --feature <feature_dir> --phase <N> --paths /tmp/sdd-ui-paths.txt
 ```
 
 | 引数 | 既定 | 意味 |
 | --- | --- | --- |
 | `--root` | カレントディレクトリ | リポジトリ root |
-| `--feature` | なし | 対象機能。`specs/NNN-name` の相対パス |
-| `--paths` | 標準入力 | `git diff --name-only` 形式の変更パス一覧 |
+| `--feature` | 必須 | 対象機能。`specs/NNN-name` の相対パス |
+| `--phase` | 必須 | 対象 Phase の 1 以上の整数 |
+| `--paths` | なし | 実装後にだけ渡す変更パス一覧 |
 
-## 判定規則
+## Phase 領域分類
 
-1. `--feature` が指定され、`spec.md` / `plan.md` / `tasks.md` のいずれかに
-   `<!-- sdd-ui-change: yes -->` または `<!-- sdd-ui-change: no -->` がある場合は、その明示分類を優先する。
-2. 明示分類が無い場合、次のパスが含まれていれば UI 変更とする。
-   `web/index.html`、`web/tailwind.config.ts`、`web/src/**/*.tsx`、`web/src/**/*.ts`、`web/src/**/*.css`、
-   `docs/screenshots/*`、`specs/*/assets/*`。
-3. ただし `web/src/api/*`、`web/src/api/gen/*`、`web/src/preferences/*`、`web/src/theme/*` は、
-   単独では UI 変更としない。表示が変わる API 変更など、パスだけで拾えないものは spec の明示分類を使う。
+`tasks.md` の各 `## Phase N:` 節は、次のメタデータを 1 行だけ持つ。
+
+```markdown
+<!-- sdd-domains: frontend-ui, backend -->
+```
+
+有効な値は以下とする。
+
+| domain | 実装領域 |
+| --- | --- |
+| `frontend-ui` | 描画、配置、スタイル、操作などブラウザ上の見た目・挙動 |
+| `frontend-non-ui` | 画面を変えないフロントエンドのロジック、生成コード、テスト |
+| `backend` | サーバー、ストレージ、API、バックグラウンド処理 |
+| `infrastructure` | build、CI、配布、デプロイ、実行環境設定 |
+| `documentation` | 文書だけの変更 |
+
+分類は変更予定ファイルではなく、その Phase で AI ハーネスの実装ループを変える必要がある領域を
+表す。`frontend-ui` を含む場合、実装開始前から UI 専用ループを選ぶ。
+
+## 実装後の安全網
+
+`--paths` がある場合だけ変更パスを検査する。Phase が `frontend-ui` を含まないのに UI 実装パスを
+検出した場合、`classification_mismatch=true` を返す。`*.test.ts`、`*.test.tsx`、`*.spec.ts`、
+`*.spec.tsx`、`__tests__` 配下は UI 実装パスから除外する。
+
+このパス判定は分類漏れの検出専用であり、実装前のループ選択には使用しない。
 
 ## 出力
 
 標準出力に JSON 1 行を返す。
 
 ```json
-{"ui_change":true,"source":"path","matched_path":"web/src/pages/LibraryPage.tsx"}
+{"ui_change":true,"source":"phase-domains","domains":["frontend-ui","backend"],"classification_mismatch":false,"matched_path":""}
 ```
 
-`source` は `spec-explicit` または `path`。`matched_path` は明示分類では空文字にする。
+`source` は `phase-domains` または `path-safety-net`。
 
 ## 終了コード
 
 | コード | 条件 |
 | --- | --- |
 | 0 | 判定できた |
-| 2 | `--root` が存在しない、`--feature` のディレクトリが存在しない、`--paths` が読めない、引数の誤り |
+| 2 | 引数、root、feature、paths の誤り |
+| 3 | `tasks.md` または対象 Phase の分類がない、分類行が複数、未知または重複した domain |
 
 ## テスト
 
-`.claude/skills/sdd-next/tests/run.sh` が、明示 `yes`、明示 `no`、UI パス、非 UI パスを検証する。
+`.claude/skills/sdd-next/tests/run.sh` が Phase の UI / 非 UI 分類、分類契約違反、実装後の分類漏れ、
+テスト専用パスの除外を検証する。

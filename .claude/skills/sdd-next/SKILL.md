@@ -144,25 +144,40 @@ feature branch には `main` 向け PR を開く」一般規則の例外であ�
 | stage | 実行 | 検証 |
 | --- | --- | --- |
 | `plan` | `/speckit-plan` | `plan.md` と `research.md` が生成済み |
-| `tasks` | `/speckit-tasks` → `/speckit-analyze` | `tasks.md` があり、tasks 側で直せる CRITICAL は解消済み |
-| `implement` | `/speckit-implement "Phase N（title）のタスクだけ。他フェーズに触れない"` | 完了を `[X]` にし `make check` 成功 |
+| `tasks` | `/speckit-tasks` → Phase ごとの領域分類 → `/speckit-analyze` | `tasks.md` があり、各 Phase に `sdd-domains` が 1 つあり、tasks 側で直せる CRITICAL は解消済み |
+| `implement` | 対象 Phase の領域分類 → 選択したループで `/speckit-implement` | 完了を `[X]` にし、実装後の分類漏れ検査と `make check` が成功 |
 
 1 セッションで 2 段階へ進まない。tasks では `spec.md` / `plan.md` を直さない。implement の
 検査を直せなければ draft PR にして自動マージしない。
 
-### UI 変更の専用ループ
+### Phase の領域分類
 
-implement では通常の前進確認へ進む前に、差分の対象パスを保存して UI 変更かを判定する。
-feature の spec / plan / tasks に `<!-- sdd-ui-change: yes -->` または
-`<!-- sdd-ui-change: no -->` がある場合はそれを優先し、無ければ対象パスで判定する。
+tasks では要件を Phase に分解した後、各 `## Phase N:` 節に、その Phase の実装で AI ハーネスの
+実行ループを切り替えるための領域分類を 1 行だけ付ける。
 
-```bash
-git diff --name-only > "${TMPDIR:-/tmp}/sdd-ui-paths.txt"
-.claude/skills/sdd-next/scripts/sdd-ui-classify.sh \
-  --feature <state.feature_dir> --paths "${TMPDIR:-/tmp}/sdd-ui-paths.txt"
+```markdown
+## Phase 2: 一覧画面と検索 API
+<!-- sdd-domains: frontend-ui, backend -->
 ```
 
-`ui_change=true` の場合、通常の部品単位の完了扱いにはせず、次を省略せずに実行する。
+使用できる分類は `frontend-ui`、`frontend-non-ui`、`backend`、`infrastructure`、
+`documentation`。これはファイル種別ではなく、その Phase の実装ループを変える必要がある領域を
+表す。分類の欠落、未知の値、同一 Phase 内の複数行は `/speckit-analyze` までに解消する。
+tasks の完了確認では `sdd_phases` が返す全 Phase に対して `sdd-ui-classify.sh --phase N` を実行し、
+終了コード 0 を確認する。1 Phase でも失敗した場合は tasks 段階を完了扱いにしない。
+
+### UI 変更の専用ループ
+
+implement では `/speckit-implement` より前に対象 Phase を判定する。
+
+```bash
+.claude/skills/sdd-next/scripts/sdd-ui-classify.sh \
+  --feature <state.feature_dir> --phase <state.phase>
+```
+
+終了コード 3 はタスク分解の契約違反なので、実装を開始せず停止理由を報告する。
+`ui_change=true`、すなわち Phase が `frontend-ui` を含む場合は、`/speckit-implement` のプロンプトに
+以下の専用手順を含め、通常の部品単位の完了扱いにはしない。
 
 1. 実装前に、ユーザー要求、spec / plan / tasks、参照画像、変更前画面を確認する。
 2. フェーズ内のタスクを、部品別ではなく「一覧画面を完成」「再生画面を完成」のような
@@ -175,6 +190,20 @@ git diff --name-only > "${TMPDIR:-/tmp}/sdd-ui-paths.txt"
    その評価を PR 本文に残す。
 6. hover / active / keyboard / focus / tap target / reduced motion など、変更した画面に関わる
    interaction と accessibility を確認する。
+
+実装後は staged / unstaged の tracked ファイルと未追跡ファイルをまとめ、分類漏れを検査する。
+
+```bash
+{ git diff --name-only HEAD; git ls-files --others --exclude-standard; } \
+  | sort -u > "${TMPDIR:-/tmp}/sdd-ui-paths.txt"
+.claude/skills/sdd-next/scripts/sdd-ui-classify.sh \
+  --feature <state.feature_dir> --phase <state.phase> \
+  --paths "${TMPDIR:-/tmp}/sdd-ui-paths.txt"
+```
+
+`classification_mismatch=true` は、`frontend-ui` ではない Phase で UI 実装ファイルが変更されたことを
+示す。これは専用ループを実装前から適用できなかった分類漏れなので、non-draft PR を作らず停止する。
+テスト専用ファイルはこの安全網の UI パス判定から除外する。
 
 UI 変更のスクリーンショットと比較画像は [docs/how-to/ui-change-screenshots.md](../../../docs/how-to/ui-change-screenshots.md)
 に従って `docs/screenshots/` に置く。visual review は同じセッション内で行ってよいが、

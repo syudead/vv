@@ -93,7 +93,7 @@ plan は人がレビューしてマージ、tasks / implement は checks green �
 | --- | --- | --- |
 | `sdd-state.sh` | `.claude/skills/sdd-next/scripts/` | `specs/*/` のファイルだけを読み、対象機能と次の段階を JSON で出す。git／gh には触れない。手元で実行して検算できる |
 | `sdd-guard.sh` | 同上 | 組み込み GitHub ツールが保存した PR 一覧 JSON と git 履歴を見て、無限ループ対策と冪等性を判定し `go` / `stop` を返す。`gh` は手元検算の任意フォールバック |
-| `sdd-ui-classify.sh` | 同上 | implement の差分が UI 変更かどうかを、spec の明示分類（`<!-- sdd-ui-change: yes/no -->`）または対象パスから判定する |
+| `sdd-ui-classify.sh` | 同上 | `tasks.md` の Phase 領域分類から implement ループを選び、実装後の対象パスから分類漏れを検出する |
 | `sdd-next` スキル | `.claude/skills/sdd-next/SKILL.md` | 上記 2 つの結果を受けて、既存 PR のレビュー対応または該当する `/speckit-*` の実行と PR 作成を行う手順書 |
 | `sdd-lib.sh` | `.claude/skills/sdd-next/scripts/` | 上 2 つが `source` する共通関数。JSON のエスケープ、機能の列挙、`tasks.md` のフェーズ解析（awk） |
 | `rate-limits-statusline.sh` | `.claude/hooks/` | 使用率を受け取るためだけのステータスライン。受け取った JSON を `${TMPDIR:-/tmp}/sdd-rate-limits.json` に落とし、何も表示しない（6 章の使用量ゲート、[R-004](../../specs/003-sdd-loop-harness/research.md)） |
@@ -218,16 +218,21 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 | stage | 呼ぶもの | 追加の作業 | PR の題名例 |
 | --- | --- | --- | --- |
 | `plan` | `/speckit-plan` | なし | `docs: 002 の実装計画と設計成果物を追加する` |
-| `tasks` | `/speckit-tasks` → `/speckit-analyze` | analyze の結果を PR 本文に載せる。CRITICAL が tasks.md 側の直しで解消できるものだけ直す（spec／plan は触らない） | `docs: 002 の実装タスクを分解する` |
-| `implement` | `/speckit-implement "Phase N（<title>）のタスクだけを対象にする"` | 完了タスクを `[X]` にする。`make check` を通す。通らなければ直し、それでも通らないときは draft PR として開き本文に失敗内容を書く（人が判断してから ready にする）。文書の同時更新や `docs/exec-plans/` の扱いは `AGENTS.md` に従う | `feat: 002 Phase 3（US1 置いた動画が自動で一覧に並ぶ）を実装する` |
+| `tasks` | `/speckit-tasks` → Phase 領域分類 → `/speckit-analyze` | 全 Phase に有効な `sdd-domains` が 1 行あることを検証し、analyze の結果を PR 本文に載せる。CRITICAL が tasks.md 側の直しで解消できるものだけ直す（spec／plan は触らない） | `docs: 002 の実装タスクを分解する` |
+| `implement` | 対象 Phase の分類でループ選択 → `/speckit-implement "Phase N（<title>）のタスクだけを対象にする"` | 実装後に差分パスで分類漏れを検査し、完了タスクを `[X]` にする。`make check` を通す。通らなければ直し、それでも通らないときは draft PR として開き本文に失敗内容を書く（人が判断してから ready にする）。文書の同時更新や `docs/exec-plans/` の扱いは `AGENTS.md` に従う | `feat: 002 Phase 3（US1 置いた動画が自動で一覧に並ぶ）を実装する` |
 | `done` / `none` | 何もしない | — | — |
 
 ### UI 変更の実装・視覚評価ループ
 
-implement の差分が UI 変更を含む場合は、通常の「部品実装 → `make check` → PR」だけでは
-完了扱いにしない。`sdd-ui-classify.sh` が、対象機能の spec / plan / tasks にある
-`<!-- sdd-ui-change: yes/no -->` を優先し、明示が無ければ変更パスで判定する。パスだけで
-拾えない API 変更が画面表示を変える場合は、spec に明示分類を書く。
+tasks の要件分解時に各 Phase を `frontend-ui`、`frontend-non-ui`、`backend`、`infrastructure`、
+`documentation` の 1 つ以上へ分類する。分類は変更ファイルの拡張子ではなく、AI ハーネスの
+implement ループを変える必要がある領域を表す。`frontend-ui` を含む Phase は、実装開始前から
+UI 専用ループへ入る。
+
+実装後のパス判定は主判定ではなく、領域分類の漏れを検出する安全網である。`HEAD` との差分で
+staged / unstaged の tracked ファイルを取得し、未追跡ファイルを加える。テスト専用ファイルは
+画面変更として扱わない。非 UI と分類された Phase で UI 実装ファイルを検出した場合は、
+分類漏れとして non-draft PR を作らず停止する。
 
 UI 変更では次を必須にする。
 
@@ -304,8 +309,8 @@ claude.ai 側の設定が消えても再現できるようにする。
   が返ることを確かめる。`jq` と git がある環境では `--github-dir` で PR 一覧を渡す判定も
   自動テストする
 - スキル全体: `/sdd-next --dry-run` を導入時のプローブと日常の検算に使う
-- `sdd-ui-classify.sh`: spec の明示 `yes` / `no`、UI 対象パス、非 UI パスを
-  `.claude/skills/sdd-next/tests/run.sh` で検証する
+- `sdd-ui-classify.sh`: Phase の UI / 非 UI 領域、分類欠落・未知値・重複、実装後の UI パス漏れ、
+  テスト専用パスの除外を `.claude/skills/sdd-next/tests/run.sh` で検証する
 
 ## 9. 導入手順
 

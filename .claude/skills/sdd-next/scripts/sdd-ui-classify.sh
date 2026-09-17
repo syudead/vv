@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
-# UI 変更かどうかを、spec の明示分類または変更対象パスから判定する。
-#
-# 明示分類は feature ディレクトリ内の spec.md / plan.md / tasks.md に置ける:
-#   <!-- sdd-ui-change: yes -->
-#   <!-- sdd-ui-change: no -->
-#
-# パス判定は git diff --name-only の出力を受ける想定で、UI の描画・配置・操作に関わる
-# web/ 配下のファイルを UI 変更として扱う。依存は bash・grep・sed だけで、jq は使わない。
+# tasks.md の Phase 領域分類から、implement が UI 専用ループを必要とするか判定する。
+# 変更パスは implement 後の分類漏れ検出にだけ使う。依存は bash・awk・sed だけで、jq は使わない。
 
 set -u
 
@@ -16,12 +10,18 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage_error() {
   printf 'sdd-ui-classify.sh: %s\n' "$1" >&2
-  printf 'usage: sdd-ui-classify.sh [--root <repo_root>] [--feature <specs/NNN-name>] [--paths <file>]\n' >&2
+  printf 'usage: sdd-ui-classify.sh [--root <repo_root>] --feature <specs/NNN-name> --phase <N> [--paths <file>]\n' >&2
   exit 2
+}
+
+classification_error() {
+  printf 'sdd-ui-classify.sh: %s\n' "$1" >&2
+  exit 3
 }
 
 root="."
 feature=""
+phase=""
 paths_file=""
 
 while [ $# -gt 0 ]; do
@@ -36,6 +36,11 @@ while [ $# -gt 0 ]; do
       [ $# -gt 0 ] || usage_error "--feature に値がありません"
       feature="$1"
       ;;
+    --phase)
+      shift
+      [ $# -gt 0 ] || usage_error "--phase に値がありません"
+      phase="$1"
+      ;;
     --paths)
       shift
       [ $# -gt 0 ] || usage_error "--paths に値がありません"
@@ -49,59 +54,93 @@ while [ $# -gt 0 ]; do
 done
 
 [ -d "$root" ] || usage_error "--root のディレクトリがありません: $root"
-if [ -n "$feature" ] && [ ! -d "$root/$feature" ]; then
+[ -n "$feature" ] || usage_error "--feature は必須です"
+[ -n "$phase" ] || usage_error "--phase は必須です"
+case "$phase" in *[!0-9]*|'') usage_error "--phase は 1 以上の整数です: $phase" ;; esac
+[ "$phase" -gt 0 ] || usage_error "--phase は 1 以上の整数です: $phase"
+if [ ! -d "$root/$feature" ]; then
   usage_error "--feature のディレクトリがありません: $root/$feature"
 fi
 if [ -n "$paths_file" ] && [ ! -r "$paths_file" ]; then
   usage_error "--paths のファイルが読めません: $paths_file"
 fi
 
-explicit=""
-if [ -n "$feature" ]; then
-  for doc in spec.md plan.md tasks.md; do
-    file="$root/$feature/$doc"
-    [ -f "$file" ] || continue
-    found="$(sed -n 's/\r$//; s/.*sdd-ui-change:[[:space:]]*\(yes\|no\).*/\1/p' "$file" | sed -n '1p')"
-    if [ -n "$found" ]; then
-      explicit="$found"
-      break
-    fi
-  done
-fi
+tasks="$root/$feature/tasks.md"
+[ -f "$tasks" ] || classification_error "tasks.md がありません: $feature/tasks.md"
 
-if [ "$explicit" = "yes" ]; then
-  printf '%s\n' '{"ui_change":true,"source":"spec-explicit","matched_path":""}'
-  exit 0
-fi
-if [ "$explicit" = "no" ]; then
-  printf '%s\n' '{"ui_change":false,"source":"spec-explicit","matched_path":""}'
-  exit 0
-fi
+domain_lines="$(awk -v target="$phase" '
+  {
+    line = $0
+    sub(/\r$/, "", line)
+    if (line ~ /^## Phase [0-9]+:/) {
+      rest = line
+      sub(/^## Phase /, "", rest)
+      current = (substr(rest, 1, index(rest, ":") - 1) + 0 == target)
+      next
+    }
+    if (line ~ /^## /) { current = 0; next }
+    if (current && line ~ /<!--[[:space:]]*sdd-domains:[^>]*-->/) {
+      sub(/^.*sdd-domains:[[:space:]]*/, "", line)
+      sub(/[[:space:]]*-->.*$/, "", line)
+      print line
+    }
+  }
+' "$tasks")"
+
+line_count="$(printf '%s\n' "$domain_lines" | sed '/^$/d' | awk 'END { print NR + 0 }')"
+[ "$line_count" -gt 0 ] || classification_error "Phase $phase に sdd-domains がありません"
+[ "$line_count" -eq 1 ] || classification_error "Phase $phase に sdd-domains が複数あります"
+
+domains=""
+ui_planned=false
+old_ifs="$IFS"
+IFS=','
+for raw in $domain_lines; do
+  domain="$(printf '%s' "$raw" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')"
+  case "$domain" in
+    frontend-ui|frontend-non-ui|backend|infrastructure|documentation) ;;
+    '') classification_error "Phase $phase の sdd-domains に空の分類があります" ;;
+    *) classification_error "Phase $phase の未知の domain: $domain" ;;
+  esac
+  case ",$domains," in *",$domain,"*) classification_error "Phase $phase の domain が重複しています: $domain" ;; esac
+  domains="${domains:+$domains,}$domain"
+  [ "$domain" = "frontend-ui" ] && ui_planned=true
+done
+IFS="$old_ifs"
+
+domains_json=""
+old_ifs="$IFS"
+IFS=','
+for domain in $domains; do
+  domains_json="${domains_json:+$domains_json,}\"$domain\""
+done
+IFS="$old_ifs"
 
 matched=""
-while IFS= read -r path; do
-  path="${path%$'\r'}"
-  [ -n "$path" ] || continue
-  case "$path" in
-    web/index.html|web/tailwind.config.ts|web/src/*.css|web/src/*.tsx|web/src/*.ts|web/src/**/*.css|web/src/**/*.tsx|web/src/**/*.ts)
-      # api / preferences / theme の純粋な検査や生成型は、単独では画面変更とみなさない。
-      case "$path" in
-        web/src/api/*|web/src/preferences/*|web/src/theme/*|web/src/api/gen/*) continue ;;
-      esac
-      matched="$path"
-      break
-      ;;
-    docs/screenshots/*|specs/*/assets/*)
-      matched="$path"
-      break
-      ;;
-  esac
-done < "${paths_file:-/dev/stdin}"
+if [ -n "$paths_file" ]; then
+  while IFS= read -r path; do
+    path="${path%$'\r'}"
+    [ -n "$path" ] || continue
+    case "$path" in
+      *.test.ts|*.test.tsx|*.spec.ts|*.spec.tsx|*/__tests__/*) continue ;;
+      web/index.html|web/tailwind.config.ts|web/src/*.css|web/src/*.tsx|web/src/*.ts|web/src/**/*.css|web/src/**/*.tsx|web/src/**/*.ts)
+        # API・設定・生成型は、単独では UI 分類漏れとみなさない。
+        case "$path" in
+          web/src/api/*|web/src/preferences/*|web/src/theme/*|web/src/api/gen/*) continue ;;
+        esac
+        matched="$path"
+        break
+        ;;
+    esac
+  done < "$paths_file"
+fi
 
-if [ -n "$matched" ]; then
+if [ "$ui_planned" = true ]; then
+  printf '{"ui_change":true,"source":"phase-domains","domains":[%s],"classification_mismatch":false,"matched_path":""}\n' "$domains_json"
+elif [ -n "$matched" ]; then
   esc="$(sdd_json_escape "$matched")"
-  printf '{"ui_change":true,"source":"path","matched_path":"%s"}\n' "$esc"
+  printf '{"ui_change":true,"source":"path-safety-net","domains":[%s],"classification_mismatch":true,"matched_path":"%s"}\n' "$domains_json" "$esc"
 else
-  printf '%s\n' '{"ui_change":false,"source":"path","matched_path":""}'
+  printf '{"ui_change":false,"source":"phase-domains","domains":[%s],"classification_mismatch":false,"matched_path":""}\n' "$domains_json"
 fi
 exit 0

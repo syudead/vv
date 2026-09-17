@@ -82,6 +82,8 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Phase 2: Foundational tasks (blocking prerequisites for all user stories)
    - Phase 3+: One phase per user story (in priority order from spec.md)
    - Each phase includes: story goal, independent test criteria, tests (if requested), implementation tasks
+   - Each phase includes exactly one domain metadata line immediately after its heading:
+     `<!-- sdd-domains: domain-a, domain-b -->`
    - Final Phase: Polish & cross-cutting concerns
    - All tasks must follow the strict checklist format (see Task Generation Rules below)
    - Clear file paths for each task
@@ -204,6 +206,24 @@ Every task MUST strictly follow this format:
 
 ### Phase Structure
 
+Every phase MUST declare one or more implementation domains. Domains describe whether the AI harness must
+change its implementation loop; they are not inferred from file extensions. Use only:
+
+- `frontend-ui`: changes rendered layout, styling, interaction, or other browser-visible behavior
+- `frontend-non-ui`: frontend-only logic, generated clients, state, or tests with no visible behavior change
+- `backend`: server, storage, API, or background processing
+- `infrastructure`: build, CI, packaging, deployment, or runtime configuration
+- `documentation`: documentation-only work
+
+Example:
+
+```markdown
+## Phase 3: User Story 1 - Search the library
+<!-- sdd-domains: frontend-ui, backend -->
+```
+
+Use exactly one `sdd-domains` line per phase. Include every domain needed to complete that phase.
+
 - **Phase 1**: Setup (project initialization)
 - **Phase 2**: Foundational (blocking prerequisites - MUST complete before user stories)
 - **Phase 3+**: User Stories in priority order (P1, P2, P3...)
@@ -214,5 +234,6 @@ Every task MUST strictly follow this format:
 ## Done When
 
 - [ ] tasks.md generated with all phases, task IDs, and file paths
+- [ ] Every phase has exactly one valid `sdd-domains` metadata line
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with task count, story breakdown, and MVP scope
