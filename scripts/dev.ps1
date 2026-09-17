@@ -46,7 +46,7 @@ $goJob = Start-Job -Name "vv-go" -ScriptBlock {
     Set-Location $Root
     $env:MDM_MEDIA_DIR = $Media
     $env:MDM_DATA_DIR = $Data
-    go run ./cmd/mdm
+    go run ./cmd/mdm 2>&1
 } -ArgumentList $repoRoot, $MediaDir, $DataDir
 
 $webJob = Start-Job -Name "vv-web" -ScriptBlock {
@@ -55,7 +55,7 @@ $webJob = Start-Job -Name "vv-web" -ScriptBlock {
     $PSNativeCommandUseErrorActionPreference = $true
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
     Set-Location $Root
-    npm --prefix web run dev -- --host 127.0.0.1 --strictPort
+    npm --prefix web run dev -- --host 127.0.0.1 --strictPort 2>&1
 } -ArgumentList $repoRoot
 
 $jobs = @($goJob, $webJob)
@@ -63,13 +63,13 @@ $jobs = @($goJob, $webJob)
 try {
     while ($true) {
         foreach ($job in $jobs) {
-            Receive-Job $job
+            Receive-Job $job -ErrorAction Continue
         }
 
         $finished = @($jobs | Where-Object { $_.State -ne "Running" })
         if ($finished.Count -gt 0) {
             foreach ($job in $finished) {
-                Receive-Job $job
+                Receive-Job $job -ErrorAction Continue
                 Write-Host "$($job.Name) exited with state $($job.State)."
             }
             throw "A development server stopped. See the output above."
