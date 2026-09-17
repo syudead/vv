@@ -58,7 +58,7 @@ fi
 tasks="$root/$feature/tasks.md"
 [ -f "$tasks" ] || classification_error "tasks.md がありません: $feature/tasks.md"
 
-domain_lines="$(awk -v target="$phase" '
+domain_result="$(awk -v target="$phase" '
   {
     line = $0
     sub(/\r$/, "", line)
@@ -72,12 +72,15 @@ domain_lines="$(awk -v target="$phase" '
     if (current && line ~ /<!--[[:space:]]*sdd-domains:[^>]*-->/) {
       sub(/^.*sdd-domains:[[:space:]]*/, "", line)
       sub(/[[:space:]]*-->.*$/, "", line)
-      print line
+      marker_count++
+      if (marker_count == 1) marker_value = line
     }
   }
+  END { printf "%d\n%s\n", marker_count + 0, marker_value }
 ' "$tasks")"
 
-line_count="$(printf '%s\n' "$domain_lines" | sed '/^$/d' | awk 'END { print NR + 0 }')"
+line_count="$(printf '%s\n' "$domain_result" | sed -n '1p')"
+domain_lines="$(printf '%s\n' "$domain_result" | sed -n '2p')"
 [ "$line_count" -gt 0 ] || classification_error "Phase $phase に sdd-domains がありません"
 [ "$line_count" -eq 1 ] || classification_error "Phase $phase に sdd-domains が複数あります"
 

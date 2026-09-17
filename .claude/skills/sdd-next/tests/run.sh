@@ -241,6 +241,24 @@ else
   ng "UI 分類 trailing empty domain" "終了コード: $ui_code（期待: 3）"
 fi
 
+printf '# Tasks\n\n## Phase 1: Empty second marker\n<!-- sdd-domains: backend -->\n<!-- sdd-domains: -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
+"$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 >/dev/null 2>&1
+ui_code=$?
+if [ "$ui_code" -eq 3 ]; then
+  ok "UI 分類 empty second marker"
+else
+  ng "UI 分類 empty second marker" "終了コード: $ui_code（期待: 3）"
+fi
+
+printf '# Tasks\n\n## Phase 1: Empty first marker\n<!-- sdd-domains: -->\n<!-- sdd-domains: backend -->\n- [ ] T001\n' > "$ui_tmp/specs/010-ui/tasks.md"
+"$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --phase 1 >/dev/null 2>&1
+ui_code=$?
+if [ "$ui_code" -eq 3 ]; then
+  ok "UI 分類 empty first marker"
+else
+  ng "UI 分類 empty first marker" "終了コード: $ui_code（期待: 3）"
+fi
+
 # ---------------------------------------------------------------------------
 # (7) ガード: --github-dir で PR 一覧をファイルから受け取り、マージ済みは git 履歴で決める
 #     jq と git が無ければ失敗にする。
