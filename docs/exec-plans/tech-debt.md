@@ -281,3 +281,17 @@ reconsideration.
   形が見つかったとき。その場合も Q-4（「存在する」だけの基準の禁止）のような
   質的内容まで機械化しない。
 - 一次資料: Issue #43
+
+### TD-013: squash / rebase でマージした段階 PR は guard の hop に数えない
+
+- **影響範囲**: `/sdd-next` の `sdd-guard.sh`（hop 上限、phase retry 上限）
+- **内容**: 判定を git 専用にしたため、マージ済み段階 PR の head 名は merge commit の件名
+  `Merge pull request #N from <owner>/<head>` からしか取れない。squash / rebase だと
+  件名が PR タイトルになり head 名が消えるので、その PR は hop に数えない。自動マージは
+  `merge_method: merge` を指定するので影響しないが、人が plan PR を squash すると hop 上限が
+  1 つ緩くなる（止まらなくなるのではなく、上限が 1 増えるだけ）。
+- **当面の対処**: SKILL.md 5. に「merge commit でマージする」を明記した。
+- **見直しの契機**: リポジトリ設定で squash / rebase を無効にする（`allow_squash_merge=false`,
+  `allow_rebase_merge=false`）と決めたとき。または段階 PR のタイトル規則から head 名を復元
+  する価値が出たとき。
+- 一次資料: `docs/exec-plans/completed/010-sdd-guard-git-only.md`

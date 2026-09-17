@@ -1,55 +1,50 @@
 #!/usr/bin/env bash
-# ガード。stdin で受けた State に対し、GitHub の PR を見て「進めてよいか」を判定する。
+# ガード。stdin で受けた State に対し、git だけを見て「進めてよいか」を判定する。
 #
 # 契約: specs/003-sdd-loop-harness/contracts/sdd-guard.md
 # 定義: specs/003-sdd-loop-harness/data-model.md 5.〜6.
 #
-# GitHub から要るのは base を限定しない closed PR 一覧と open PR 一覧の 2 つだけで、
-# 取得手段は 2 通りある。
-#   a) --github-dir <dir>: <dir>/pulls-closed.json と <dir>/pulls-open.json を読む。
-#      cloud セッションには `gh` が無いので、スキルが組み込みの GitHub ツールで取った結果を
-#      ファイルに置いてから呼ぶ（research.md R-002）
-#   b) 指定が無ければ `gh api` の REST で取る（手元の検算用）。`gh pr list` などの高水準
-#      コマンドは GraphQL を使い、プロキシが 403 を返しうるので使わない
+# GitHub API は使わない。要る情報はすべて git に載っている。
+#   - マージ済み段階 PR の head 名: HEAD の first-parent にある merge commit の件名
+#     "Merge pull request #N from <owner>/<head.ref>"
+#   - 進行中の段階 PR:           remote に残る `claude/sdd-NNN-*` の branch
+#     （リポジトリは delete_branch_on_merge なので、残っている = まだマージされていない）
+#   - feature branch の有無:      同じ ls-remote の結果
 #
-# 「マージ済みか」は API の merged_at ではなく、作業 base の git 履歴（HEAD の first-parent に
-# `Merge pull request #N` か `(#N)` があるか）で決める。取得元によって PR オブジェクトの
-# 項目が違っても判定が変わらないようにするためで、変更ファイルも同じ履歴から取る。
+# 以前は組み込み GitHub ツールで取った PR 一覧を `--github-dir` で渡していたが、応答が
+# 大きいとツール結果が `~/.claude/projects/` 配下にスプールされ、それを Bash で触った時点で
+# sandbox の権限プロンプトに掛かって routine が止まった（2026-09-16、
+# session_01E9LfqSkmUk9ke8owLbm9Nh）。git 専用にしてその経路を無くす。
 #
-# `jq` が無い、`gh` が無い、または REST が通らない場合も終了コード 0 で
-# `{"go":false,"reason":"gh-unavailable","state":<stdin そのまま>}` を返す。手元
-# （Windows の Git Bash、`gh`・`jq` 無し）でも検算できるようにするためである。
+# squash マージ（件名 "... (#N)"）は head 名が分からないので hop に数えない。段階 PR は
+# merge commit でマージすること（SKILL.md 5.）。人が plan PR を squash しても、hop 上限が
+# 少し緩くなるだけで判定は壊れない。
+#
+# `git ls-remote` が失敗したら終了コード 0 で
+# `{"go":false,"reason":"remote-unavailable","state":<stdin そのまま>}` を返す。
 
 set -u
 
-script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 usage_error() {
   printf 'sdd-guard.sh: %s\n' "$1" >&2
-  printf 'usage: sdd-state.sh | sdd-guard.sh [--repo <owner/name>] [--root <repo_root>] [--github-dir <dir>]\n' >&2
+  printf 'usage: sdd-state.sh | sdd-guard.sh [--root <repo_root>] [--remote <name>]\n' >&2
   exit 2
 }
 
-repo=""
 root="."
-github_dir=""
+remote="origin"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --repo)
-      shift
-      [ $# -gt 0 ] || usage_error "--repo に値がありません"
-      repo="$1"
-      ;;
     --root)
       shift
       [ $# -gt 0 ] || usage_error "--root に値がありません"
       root="$1"
       ;;
-    --github-dir)
+    --remote)
       shift
-      [ $# -gt 0 ] || usage_error "--github-dir に値がありません"
-      github_dir="$1"
+      [ $# -gt 0 ] || usage_error "--remote に値がありません"
+      remote="$1"
       ;;
     *)
       usage_error "未知の引数: $1"
@@ -57,6 +52,9 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+command -v jq >/dev/null 2>&1 || usage_error "jq が必要です（mise install）"
+command -v git >/dev/null 2>&1 || usage_error "git が必要です"
 
 # stdin は sdd-state.sh の出力（JSON 1 行）。CR と改行を落として 1 行に正規化する。
 state="$(cat)"
@@ -66,100 +64,6 @@ case "$state" in
   *) usage_error "stdin が JSON ではありません" ;;
 esac
 
-# stdin をそのまま state に載せて返す。`jq` が無い場合でも使えるよう printf で組み立てる。
-emit_unavailable() {
-  printf '{"go":false,"reason":"gh-unavailable","state":%s}\n' "$state"
-  exit 0
-}
-
-# --- 手順 0: PR 一覧の取得 ----------------------------------------------------
-command -v jq >/dev/null 2>&1 || emit_unavailable
-
-if [ -n "$github_dir" ]; then
-  [ -r "$github_dir/pulls-closed.json" ] || usage_error "$github_dir/pulls-closed.json が読めません"
-  [ -r "$github_dir/pulls-open.json" ] || usage_error "$github_dir/pulls-open.json が読めません"
-  closed_json="$(cat "$github_dir/pulls-closed.json")"
-  open_json="$(cat "$github_dir/pulls-open.json")"
-  printf '%s' "$closed_json" | jq -e 'type == "array"' >/dev/null 2>&1 \
-    || usage_error "$github_dir/pulls-closed.json が JSON の配列ではありません"
-  printf '%s' "$open_json" | jq -e 'type == "array"' >/dev/null 2>&1 \
-    || usage_error "$github_dir/pulls-open.json が JSON の配列ではありません"
-else
-  command -v gh >/dev/null 2>&1 || emit_unavailable
-  gh api /rate_limit >/dev/null 2>&1 || emit_unavailable
-
-  if [ -z "$repo" ]; then
-    url="$(git -C "$root" remote get-url origin 2>/dev/null || printf '')"
-    case "$url" in
-      git@github.com:*) repo="${url#git@github.com:}" ;;
-      https://github.com/*) repo="${url#https://github.com/}" ;;
-      ssh://git@github.com/*) repo="${url#ssh://git@github.com/}" ;;
-      *) repo="" ;;
-    esac
-    repo="${repo%.git}"
-  fi
-  [ -n "$repo" ] || usage_error "--repo を導出できません（origin の URL: ${url:-なし}）"
-  owner="${repo%%/*}"
-  name="${repo#*/}"
-
-  fetch_pulls() {
-    local pull_state="$1" page=1 page_json all_json='[]'
-    while :; do
-      if ! page_json="$(gh api "/repos/$owner/$name/pulls?state=$pull_state&sort=updated&direction=desc&per_page=100&page=$page" 2>/dev/null)"; then
-        return 1
-      fi
-      printf '%s' "$page_json" | jq -e 'type == "array"' >/dev/null 2>&1 || return 1
-      all_json="$(printf '%s\n%s\n' "$all_json" "$page_json" | jq -s 'add')"
-      count="$(printf '%s' "$page_json" | jq -r 'length')"
-      [ "${count:-0}" -eq 100 ] || break
-      page=$((page + 1))
-    done
-    printf '%s' "$all_json"
-  }
-  # 段階 PR は feature branch 向け、最終 PR は main 向けなので base を絞らない。
-  if ! closed_json="$(fetch_pulls closed)"; then
-    emit_unavailable
-  fi
-  if ! open_json="$(fetch_pulls open)"; then
-    emit_unavailable
-  fi
-fi
-
-# --- マージ済み PR を git 履歴から並べる ---------------------------------------
-# HEAD の first-parent を新しい順に辿り、件名から PR 番号を取る。
-#   マージコミット: "Merge pull request #N from ..."  /  squash: "... (#N)"
-# 出力は "<番号>\t<コミット>" を新しい順に並べたもの。
-merged_commits="$(git -C "$root" log --first-parent --format='%H%x09%s' HEAD 2>/dev/null \
-  | sed -n \
-      -e 's/^\([0-9a-f]*\)\t.*Merge pull request #\([0-9][0-9]*\) .*/\2\t\1/p' \
-      -e 's/^\([0-9a-f]*\)\t.*(#\([0-9][0-9]*\))$/\2\t\1/p')"
-
-# --- 手順 1: 対象機能の確定 -------------------------------------------------
-# closed 一覧のうち `sdd` ラベル付きで、かつ HEAD の履歴にマージされているものが「マージ済み
-# sdd PR」である。その直近 1 件が触った `specs/NNN-*/` を、今回の対象とみなす。
-# labels は REST では `[{"name":"sdd"}]`、組み込み GitHub ツールでは `["sdd"]` で届くので、
-# 両方を受ける。
-sdd_closed="$(printf '%s' "$closed_json" \
-  | jq -r '.[] | select(([.labels[]? | if type == "object" then .name else . end]
-                         | index("sdd")) != null)
-                | "\(.number)\t\(.head.ref)"' 2>/dev/null || printf '')"
-
-tab="$(printf '\t')"
-
-# merged_list: "<番号>\t<head.ref>" を新しい順に。マージ済み sdd PR だけ。
-merged_list=""
-latest_commit=""
-while IFS="$tab" read -r num commit; do
-  [ -n "${num:-}" ] || continue
-  ref="$(printf '%s\n' "$sdd_closed" | sed -n "s/^$num$tab//p" | sed -n '1p')"
-  [ -n "$ref" ] || continue
-  merged_list="${merged_list}${num}${tab}${ref}
-"
-  [ -n "$latest_commit" ] || latest_commit="$commit"
-done <<MERGED
-$merged_commits
-MERGED
-
 json_field() { printf '%s' "$state" | jq -r "$1" 2>/dev/null || printf ''; }
 
 stage="$(json_field '.stage // "none"')"
@@ -168,7 +72,7 @@ phases="$(json_field '.phases // 0')"
 phase="$(json_field '.phase // 0')"
 workflow="$(json_field '.workflow // "standard"')"
 
-# --- 手順 2: 進める先が無い -------------------------------------------------
+# --- 手順 1: 進める先が無い -------------------------------------------------
 if [ "$stage" = "done" ] || [ "$stage" = "none" ] || [ -z "$feature" ]; then
   printf '{"go":false,"reason":"nothing-to-do","state":%s}\n' "$state"
   exit 0
@@ -177,57 +81,72 @@ fi
 prefix="claude/sdd-$feature-"
 feature_branch="claude/sdd-$feature-feature"
 
-# --- ホップの集計（手順 1 で作った一覧を使い回す） --------------------------
+# --- 手順 2: remote に残る段階 branch と feature branch --------------------
+# 出力は "<sha>\trefs/heads/<name>" の行。失敗（remote 無し・ネットワーク不可）は fail-closed。
+if ! remote_refs="$(git -C "$root" ls-remote --heads "$remote" "refs/heads/$prefix*" 2>/dev/null)"; then
+  printf '{"go":false,"reason":"remote-unavailable","state":%s}\n' "$state"
+  exit 0
+fi
+remote_heads="$(printf '%s\n' "$remote_refs" | sed -n 's#^[0-9a-f]*[[:space:]]*refs/heads/##p')"
+
+feature_exists=false
+open_prs='[]'
+while IFS= read -r ref; do
+  [ -n "$ref" ] || continue
+  if [ "$ref" = "$feature_branch" ]; then
+    feature_exists=true
+  else
+    open_prs="$(printf '%s' "$open_prs" | jq -c --arg r "$ref" '. + [$r]')"
+  fi
+done <<REFS
+$remote_heads
+REFS
+
+# --- 手順 3: 作業 base の確認 -----------------------------------------------
+# feature branch が remote にあるなら、段階の履歴はそこにしかない。main のまま判定すると
+# 「plan からやり直せ」に見えてしまうので、feature branch 上でなければ止める。
+current_branch="$(git -C "$root" branch --show-current 2>/dev/null || printf '')"
+if [ "$feature_exists" = true ] && [ "$current_branch" != "$feature_branch" ]; then
+  printf '{"go":false,"reason":"wrong-base","state":%s,"feature_branch":"%s","current_branch":"%s"}\n' \
+    "$state" "$feature_branch" "$current_branch"
+  exit 0
+fi
+
+# --- ホップの集計: HEAD の first-parent にある merge commit の件名 ------------
+# "Merge pull request #N from <owner>/<head.ref>" から head.ref を取る。
+merged_refs="$(git -C "$root" log --first-parent --format='%s' HEAD 2>/dev/null \
+  | sed -n 's/^Merge pull request #[0-9][0-9]* from [^/]*\/\(.*\)$/\1/p')"
+
 hops=0
 phase_retries=0
 phase_ref="claude/sdd-$feature-implement-p$phase"
-while IFS="$tab" read -r _num ref; do
-  [ -n "${ref:-}" ] || continue
+while IFS= read -r ref; do
+  [ -n "$ref" ] || continue
   case "$ref" in
     "$prefix"*) hops=$((hops + 1)) ;;
+    *) continue ;;
   esac
   [ "$ref" = "$phase_ref" ] && phase_retries=$((phase_retries + 1))
 done <<MERGED
-$merged_list
+$merged_refs
 MERGED
 
-# --- 手順 3: 冪等（open な自動 PR があれば何もしない） ----------------------
-# `base.ref` が無い応答では final PR と段階 PR を区別できないため、fail-closed にする。
-invalid_open_prs="$(printf '%s' "$open_json" \
-  | jq -c --arg p "$prefix" \
-      '[.[] | (.head.ref // "") as $h
-              | select($h | startswith($p))
-              | select((has("base") | not) or (.base | type != "object") or (.base.ref? == null))
-              | $h]' \
-      2>/dev/null || printf '[]')"
-invalid_open_count="$(printf '%s' "$invalid_open_prs" | jq -r 'length' 2>/dev/null || printf '0')"
-if [ "${invalid_open_count:-0}" -gt 0 ]; then
-  emit_unavailable
-fi
-
-# label 付与に失敗した段階 PR も同じ head/base なら次回実行を塞ぐ。
-open_prs="$(printf '%s' "$open_json" \
-  | jq -c --arg p "$prefix" --arg b "$feature_branch" \
-      '[.[] | select(.base.ref == $b)
-              | .head.ref | select(startswith($p))]' \
-      2>/dev/null || printf '[]')"
-[ -n "$open_prs" ] || open_prs='[]'
-open_count="$(printf '%s' "$open_prs" | jq -r 'length' 2>/dev/null || printf '0')"
-
+# --- 手順 4: 冪等（段階 branch が remote に残っていれば何もしない） ------------
+open_count="$(printf '%s' "$open_prs" | jq -r 'length')"
 if [ "${open_count:-0}" -gt 0 ]; then
   printf '{"go":false,"reason":"open-pr","state":%s,"hops":%d,"phase_retries":%d,"open_prs":%s}\n' \
     "$state" "$hops" "$phase_retries" "$open_prs"
   exit 0
 fi
 
-# --- 手順 4: 同じフェーズのマージが 2 回に達した ----------------------------
+# --- 手順 5: 同じフェーズのマージが 2 回に達した ----------------------------
 if [ "$stage" = "implement" ] && [ "$phase_retries" -ge 2 ]; then
   printf '{"go":false,"reason":"phase-retry-limit","state":%s,"hops":%d,"phase_retries":%d,"open_prs":[]}\n' \
     "$state" "$hops" "$phase_retries"
   exit 0
 fi
 
-# --- 手順 5: 機能あたりのホップ上限（plan + [design] + tasks + 全フェーズ + 予備 2） ---
+# --- 手順 6: 機能あたりのホップ上限（plan + [design] + tasks + 全フェーズ + 予備 2） ---
 design_hops=0
 [ "$workflow" = "ui" ] && design_hops=1
 hop_limit=$((2 + design_hops + phases + 2))
@@ -237,7 +156,7 @@ if [ "$hops" -ge "$hop_limit" ]; then
   exit 0
 fi
 
-# --- 手順 6: 進めてよい -----------------------------------------------------
+# --- 手順 7: 進めてよい -----------------------------------------------------
 printf '{"go":true,"state":%s,"hops":%d,"phase_retries":%d,"open_prs":[]}\n' \
   "$state" "$hops" "$phase_retries"
 exit 0

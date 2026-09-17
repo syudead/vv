@@ -22,8 +22,9 @@ make test-sdd
 ```
 
 **期待**: フィクスチャ 6 組（`01-before-plan` 〜 `06-multi-feature`）がすべて PASS。
-`gh` を `PATH` から外した場合と、`gh api` の PR 一覧取得が失敗した場合に
-`sdd-guard.sh` が `gh-unavailable` を返すテストも PASS。
+remote の無い作業ツリーで `sdd-guard.sh` が `remote-unavailable` を返すテスト、bare の origin を
+使った `go` / `wrong-base` / `open-pr` / `phase-retry-limit` のテストも PASS（`jq` と git が要る。
+`mise install` で揃う）。
 同じコマンドが CI の Go ジョブでも実行され、同じ判定になる。
 
 ---
@@ -42,8 +43,8 @@ time .claude/skills/sdd-next/scripts/sdd-state.sh
   `{"feature_dir":"specs/004-library-ui","feature":"004","stage":"plan","branch":"claude/sdd-004-plan"}`
   が 1 秒以内に返る。3 回実行して同じ
 - 2 行目: `{"feature_dir":"specs/001-initial-setup","feature":"001","stage":"done","phases":6}`
-- 3 行目（手元に `gh` が無い場合）: `{"go":false,"reason":"gh-unavailable",...}`。
-  `gh` がある場合は `{"go":true,...}` と `hops:0`
+- 3 行目: `origin` に問い合わせて `{"go":true,...}` と `hops:0`（ネットワークが無ければ
+  `{"go":false,"reason":"remote-unavailable",...}`）
 
 ---
 

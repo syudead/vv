@@ -1,6 +1,6 @@
 # routine `sdd-next (syudead/vv)` の設定
 
-出典: [specs/003-sdd-loop-harness/contracts/routine.md](../../specs/003-sdd-loop-harness/contracts/routine.md)、写した日: 2026-09-13
+出典: [specs/003-sdd-loop-harness/contracts/routine.md](../../specs/003-sdd-loop-harness/contracts/routine.md)、写した日: 2026-09-13、最終更新: 2026-09-17（日次トリガー削除、prompt を `<github-trigger-context>` 参照に変更）
 
 claude.ai 側に作る routine の設定の写しである。**以後はこのファイルを真実とする**
 （FR-021）。routine そのものは claude.ai/code/routines にあり、リポジトリからは
@@ -24,8 +24,9 @@ routine には判定ロジックを一切置かない。しきい値も対象機
 
 ```text
 リポジトリの `/sdd-next` スキルを実行する。それ以外の作業はしない。
-routine-fire-payload に PR 番号が含まれていれば、対象機能の確認に使ってよいが、
-対象機能の決定とレビュー指摘への対応はスキルの手順に従う。
+セッション冒頭の <github-trigger-context> にある PR 番号と base branch を、
+対象機能の確定（sdd-target.sh --pr）と作業 base の復元に使う。それ以外の判断は
+スキルの手順に従う。~/.claude/ 配下のファイルを Bash で読み書きしない。
 ```
 
 ## トリガー
@@ -33,11 +34,11 @@ routine-fire-payload に PR 番号が含まれていれば、対象機能の確�
 | # | 種類 | 設定 |
 | --- | --- | --- |
 | 1 | GitHub event | リポジトリ `syudead/vv`、イベント `pull_request` / アクション `closed`。フィルタ: Labels is one of `sdd`、Is merged equals `true`（Base branch フィルタは設定しない） |
-| 2 | Schedule | 毎日 1 回、03:00 JST（見送り・取りこぼし・open PR のレビュー指摘対応の再開用。FR-019） |
+| 2 | （削除済み） | 2026-09-17 に日次 Schedule（03:00 JST）を削除した。取りこぼし・レビュー指摘対応は保守者の Run now で拾う。Run now には `<github-trigger-context>` が無いので `main` から始まり、guard の `wrong-base` で feature branch に復元される |
 
 トリガー 1 には `opened` / `labeled` / `synchronize` を**含めない**。含めると、ハーネス
 自身が開く `sdd` ラベル付き PR で自分が起きてしまう。
-レビュー指摘は GitHub event では起動せず、日次 schedule か保守者の Run now で拾う。
+レビュー指摘は GitHub event では起動せず、保守者の Run now で拾う。
 `/sdd-next` 側が open な `sdd` PR の review thread を見て、必要なら同じ PR の head に
 修正 commit を積む。
 
@@ -101,6 +102,6 @@ gh api /repos/syudead/vv/labels/sdd   # 作成を確認する
 | --- | --- |
 | routine ID | `trig_01Bxsy8v6ogCron7BY6hrUkY` |
 | URL | <https://claude.ai/code/routines/trig_01Bxsy8v6ogCron7BY6hrUkY> |
-| 作成日 | 2026-09-13（環境 `env_014pXxfbDJcVpmSABD6rgVJf`、モデル `claude-opus-5`、cron `0 18 * * *` = 03:00 JST） |
+| 作成日 | 2026-09-13（環境 `env_014pXxfbDJcVpmSABD6rgVJf`、モデル `claude-opus-5`）。cron `0 18 * * *` は 2026-09-17 に削除 |
 | GitHub トリガー ID | `f9033214-135a-42f0-93dd-6c2a794b50d9`（`create_webhook_trigger` で作成。API の応答にフィルタが含まれないため、Labels / Is merged の 2 条件を画面で確認し、Base branch 条件があれば削除する） |
 | プローブ（S3）の結果 | 2026-09-13 実施（session `cse_011ZErYWwbMCiPrnW6Msyka7`）。**`sdd-guard.sh` が `gh-unavailable` を返して見送り** — cloud 環境に `gh` CLI が無い（`gh: command not found`）。R-005: SessionStart フックは発火した（init まで約 110 秒、hook イベント多数。setup script は不要）。R-004 案 a: `/tmp/sdd-rate-limits.json` は無く、statusLine は cloud では走らない。案 b（curl）と `GH_TOKEN` は未確認 — Run now の添え文は `<routine-fire-payload>` として届き、routine プロンプトが「それ以外の作業はしない」なので (1)(3)(5) の報告は行われなかった。cloud セッションでは `mcp__github__*` ツールは使えた。対処: `sdd-guard.sh` に `--github-dir` を足し、スキルが組み込みの GitHub ツールで取った PR 一覧を渡す形にした（cloud には `gh` を入れない） |

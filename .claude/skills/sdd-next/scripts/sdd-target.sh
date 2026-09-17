@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
+# 対象 feature の確定。
+#
+#   sdd-target.sh [--root <repo_root>] [--pr <番号>]
+#
+# `--pr` は routine を起動した PR の番号（`<github-trigger-context>` の `PR: #N`）。
+# その PR のマージコミットを git 履歴から探し、対象 feature を決める。
+#   - 段階 PR: 件名 "Merge pull request #N from <owner>/claude/sdd-NNN-<stage>" の NNN
+#   - spec PR（人が付けた branch 名）: 差分で最も多く触った `specs/NNN-*/`
+# 見つからない、または `--pr` が無い（保守者の手打ち）ときは `sdd-state.sh` の
+# 自動選択（未完了の先頭）に落ちる。GitHub API は使わない。
 set -euo pipefail
 
 root="."
-github_dir=""
+pr=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --root) root="$2"; shift 2 ;;
-    --github-dir) github_dir="$2"; shift 2 ;;
+    --pr) pr="$2"; shift 2 ;;
     *) printf 'unknown argument: %s\n' "$1" >&2; exit 2 ;;
   esac
 done
@@ -14,23 +24,37 @@ done
 fallback="$("$(dirname "$0")/sdd-state.sh" --root "$root")"
 fallback_dir="$(printf '%s' "$fallback" | jq -r '.feature_dir // empty')"
 
-[ -n "$github_dir" ] || { printf '%s\n' "$fallback_dir"; exit 0; }
-closed_json="$(cat "$github_dir/pulls-closed.json")"
-merged_commits="$(git -C "$root" log --first-parent --format='%H%x09%s' HEAD 2>/dev/null |
-  sed -n -e 's/^\([0-9a-f]*\)\t.*Merge pull request #\([0-9][0-9]*\) .*/\2\t\1/p' \
-         -e 's/^\([0-9a-f]*\)\t.*(#\([0-9][0-9]*\))$/\2\t\1/p')"
-sdd_numbers="$(printf '%s' "$closed_json" | jq -r '.[] | select(([.labels[]? | if type == "object" then .name else . end] | index("sdd")) != null) | .number')"
+case "$pr" in
+  '') printf '%s\n' "$fallback_dir"; exit 0 ;;
+  *[!0-9]*) printf 'sdd-target.sh: --pr は数字だけを受けます: %s\n' "$pr" >&2; exit 2 ;;
+esac
+
+# マージコミット "Merge pull request #N from ..." と squash "... (#N)" の両方を探す。
+# feature branch を復元する前に呼ばれても見つかるよう、ローカルにある全 ref を見る。
 tab="$(printf '\t')"
-while IFS="$tab" read -r number commit; do
-  [ -n "${number:-}" ] || continue
-  printf '%s\n' "$sdd_numbers" | grep -qx "$number" || continue
-  target="$(git -C "$root" diff --name-only "$commit^1" "$commit" 2>/dev/null |
-    sed -n 's#^\(specs/[0-9][0-9][0-9]-[^/]*\)/.*#\1#p' | sed -n '1p')"
-  if [ -n "$target" ] && [ -d "$root/$target" ]; then
-    printf '%s\n' "$target"
-    exit 0
+line="$(git -C "$root" log --all --format="%H%x09%s" 2>/dev/null \
+  | grep -E -m1 "^[0-9a-f]+${tab}(Merge pull request #$pr |.*\(#$pr\)$)" || true)"
+commit="${line%%"$tab"*}"
+subject="${line#*"$tab"}"
+
+target=""
+if [ -n "$commit" ]; then
+  # 段階 PR は head 名 claude/sdd-NNN-<stage> に機能番号を持つ。これが最も確実。
+  num="$(printf '%s' "$subject" \
+    | sed -n 's|^Merge pull request #[0-9]* from [^/]*/claude/sdd-\([0-9][0-9][0-9]\)-.*|\1|p')"
+  if [ -n "$num" ]; then
+    target="$(cd "$root" && ls -d "specs/$num"-*/ 2>/dev/null | sed -n 's#/$##p' | sed -n '1p')"
   fi
-done <<EOF
-$merged_commits
-EOF
+  # spec PR（人が付けた branch 名）は差分から。触ったファイル数が最も多い specs/NNN-*/ を採る。
+  if [ -z "$target" ]; then
+    target="$(git -C "$root" diff --name-only "$commit^1" "$commit" 2>/dev/null \
+      | sed -n 's#^\(specs/[0-9][0-9][0-9]-[^/]*\)/.*#\1#p' \
+      | sort | uniq -c | sort -k1,1nr -k2,2r | awk 'NR==1 {print $2}')"
+  fi
+fi
+
+if [ -n "$target" ] && [ -d "$root/$target" ]; then
+  printf '%s\n' "$target"
+  exit 0
+fi
 printf '%s\n' "$fallback_dir"
