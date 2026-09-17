@@ -26,12 +26,12 @@
 | --- | --- | --- | --- |
 | 0 | 前提確認: 作業ツリーが clean。必要に応じて feature branch を復元できる | 満たす | 理由を書いて終了。変更を残さない |
 | 0.5 | 使用量ゲート: 使用率を取得し、しきい値と比較 | しきい値未満、または取得不能 | 「見送り」と書いて終了（PR・Issue 無し） |
-| 1 | 判定: cloud では組み込み GitHub ツールで PR 一覧を `${TMPDIR:-/tmp}/sdd-github/` に置き、`before=$(sdd-state.sh)`、`guard=$(echo "$before" \| sdd-guard.sh --github-dir ...)`。以後の `before` は必ず `guard.state` で置き換える | `guard.go = true`、または `reason = open-pr` | `open-pr` は手順 1.5 でレビュー有無を確認する。`phase-retry-limit` / `hop-limit` なら Issue を立てて終了。それ以外は理由を書いて終了 |
+| 1 | 判定: `sdd-target.sh` で対象 feature を一度だけ確定し、その `spec.md` の `Parent Issue` のラベルで workflow を決める。確定した feature と workflow で state、guard を各1回実行する | `guard.go = true`、または `reason = open-pr` | Parent Issue の欠落・重複・不正・取得失敗は `gh-unavailable`。`open-pr` は手順 1.5 でレビュー有無を確認する。`phase-retry-limit` / `hop-limit` なら Issue を立てて終了。それ以外は理由を書いて終了 |
 | 1.5 | レビュー対応: open な `sdd` PR に未解決レビュー指摘があれば、対象 PR の head に修正 commit を積み、返信・resolve して終了 | 対象 PR が無い、または未解決レビューが無い場合は終了。対応完了時も終了 | 判断待ちなら PR コメントで block 理由を書いて終了。新しい段階 PR は作らない |
 | 1.6 | `--dry-run` なら `guard` を整形して表示して終了 | — | — |
 | 2 | 準備: `git switch -c <state.branch>`、`export SPECIFY_FEATURE_DIRECTORY=<state.feature_dir>` | ブランチが切れる | 終了 |
 | 3 | 段階の実行（下表） | 段階ごとの条件 | 段階ごとの扱い |
-| 4 | 前進確認: `after=$(sdd-state.sh --feature <dir>)`、`before` と比較、`git status --porcelain` が非空 | 異なる かつ 差分あり | Issue（`no-progress`）を立て、ブランチを捨てて終了 |
+| 4 | 前進確認: `after=$(sdd-state.sh --feature <dir> --workflow <workflow>)`、`before` と比較、`git status --porcelain` が非空 | 異なる かつ 差分あり | Issue（`no-progress`）を立て、ブランチを捨てて終了 |
 | 5 | コミット・push・PR 作成・ラベル付与（下記） | PR の URL が得られ、ラベル `sdd` が付いている | cloud の組み込み GitHub ツールで 1 回再試行。それでも失敗なら PR 本文の先頭に「ラベル未付与」と書いて終了 |
 | 6 | 報告: 段階・PR URL・次に起きること（「マージすると `<次の段階>` が始まる」または「これで完了」）を 3 行で出す | — | — |
 
@@ -40,8 +40,30 @@
 | stage | 実行 | 検証 | 通らないとき |
 | --- | --- | --- | --- |
 | `plan` | `/speckit-plan` | `plan.md` と `research.md` が生成されている | 生成されていなければ手順 4 で `no-progress` になる |
+| `design` | UI workflow のみ。spec / plan / 参照画像 / 既存画面から `ui-design.md` を作る | 画面境界、視覚設計、レスポンシブ、状態、interaction / accessibility、評価基準が定義済み | 要件再定義が必要なら別 Issue として停止 |
 | `tasks` | `/speckit-tasks` → `/speckit-analyze` | `tasks.md` が生成され、analyze の CRITICAL が tasks.md の範囲で解消済み | spec／plan に手を入れない。解消できない CRITICAL は PR 本文に残す |
-| `implement` | `/speckit-implement "Phase <N>（<phase_title>）のタスクだけを対象にする。他のフェーズには手を付けない"` → 完了タスクを `[X]` に → `make check` | `make check` が通る | 直す。直せなければ draft PR にして本文に失敗内容を書く（FR-006） |
+| `implement` | `/speckit-implement "Phase <N>（<phase_title>）のタスクだけを対象にする。他のフェーズには手を付けない"`。UI workflow では専用レビューを追加 | `make check` が通る | 直す。直せなければ draft PR にして本文に失敗内容を書く（FR-006） |
+
+### UI workflow
+
+対象 feature の `spec.md` にある単一の `**Parent Issue**: #NNN` が指す Issue に `ui` ラベルが
+ある場合だけ `workflow=ui` とする。spec番号から Issue 番号を推測しない。ラベルが無ければ
+`workflow=standard`。Phase、タスク、変更パス、拡張子から workflow を推測しない。
+
+UI workflow は `plan → design → tasks → implement` と進み、design の成果物を
+`<feature_dir>/ui-design.md` とする。design は既存要件の UI/interaction への具体化に限定し、
+UX リサーチや要件再定義は非目標とする。
+
+UI workflow の implement は、次を満たすまで non-draft PR を開かない。
+
+| 条件 | 内容 |
+| --- | --- |
+| 実装単位 | 部品別ではなく、1 画面を端から端まで評価できるページ単位の縦切りにする |
+| 実ブラウザ確認 | 360px、768px、1280px の viewport でスクリーンショットを生成する |
+| 比較画像 | 参照画像がある場合、参照画像と実装結果を並べた比較画像を生成する |
+| visual review | 実装者のメモとは分け、撮影後の画面成果物を入力にして visual review を行う |
+| 修正ループ | visual review の指摘に対する修正と再撮影を少なくとも 1 回行う。指摘なしならその評価を記録する |
+| interaction / accessibility | hover、active、keyboard、focus、tap target、reduced motion など、変更画面に関わる確認を行う |
 
 ## ブランチ・コミット・PR・Issue の形式
 
@@ -49,7 +71,7 @@
 
 **コミットメッセージ**: 既存の慣習に合わせて日本語の要約 1 行 + 空行 + 本文。末尾に
 `Co-Authored-By: <セッションのモデル名> <noreply@anthropic.com>`（既存履歴は
-`Claude Opus 5`）。プレフィックスは plan／tasks が `docs:`、
+`Claude Opus 5`）。プレフィックスは plan／design／tasks が `docs:`、
 implement が `feat:`（テストのみなら `test:`）
 
 **PR**:
@@ -57,12 +79,12 @@ implement が `feat:`（テストのみなら `test:`）
 | 項目 | 値 |
 | --- | --- |
 | base | `state.base_branch` |
-| title | plan: `docs: NNN の実装計画と設計成果物を追加する` / tasks: `docs: NNN の実装タスクを分解する` / implement: `feat: NNN Phase N（<phase_title の先頭 30 文字>）を実装する` |
+| title | plan: `docs: NNN の実装計画と設計成果物を追加する` / design: `docs: NNN の UI・操作設計を追加する` / tasks: `docs: NNN の実装タスクを分解する` / implement: `feat: NNN Phase N（<phase_title の先頭 30 文字>）を実装する` |
 | label | `sdd`（必須） |
 | draft | implement で `make check` が通らない、または検査が skip されたときは `true` |
 | body | 下の雛形 |
 
-tasks / implement の non-draft PR は、PR checks が green であることを確認してから自動マージする。
+design / tasks / implement の non-draft PR は、PR checks が green であることを確認してから自動マージする。
 checks が読めない、失敗、pending のまま timeout した場合は open のまま停止理由を報告する。
 
 段階 PR を自動マージできたら remote の `state.branch` を削除する。同じ phase が続いたときでも
@@ -83,6 +105,7 @@ checks が読めない、失敗、pending のまま timeout した場合は open
 ## 実行した検査
 
 - <make check の結果 / analyze の要約 / なし>
+- UI: <UI 変更なし / 変更前後画像、360・768・1280 の確認、比較画像、visual review と修正、interaction・accessibility の結果>
 
 ## 残課題
 

@@ -2,7 +2,7 @@
 
 - ステータス: 設計確定（feature branch 方式を実装済み）
 - 最終更新: 2026-09-14（レビュー指摘への対応フローを追加）
-- スコープ: Spec Kit の `plan → tasks → implement` を spec ごとの feature branch 上で進め、
+- スコープ: 通常は `plan → tasks → implement`、UI Issue は `plan → design → tasks → implement` を spec ごとの feature branch 上で進め、
   plan と最終マージだけを人の承認ゲートにする仕組み
 
 
@@ -51,7 +51,7 @@ spec 以降の段階について「人が PR をマージする」以外の手�
 | 1 セッションの仕事 | 次の 1 段階だけ。段階ごとにセッションを分けてコンテキストを区切る |
 | PR の粒度 | これまでどおり段階ごとに 1 PR。implement は tasks.md のフェーズごとに 1 PR |
 | 承認ゲート | PR のマージそのもの。マージされない限り次の段階は始まらない |
-| 状態の真実 | リポジトリの成果物（`specs/NNN-*/` にあるファイルと tasks.md のチェック）から導出する。状態ファイルやラベルを真実にしない |
+| 状態の真実 | リポジトリの成果物（`specs/NNN-*/` にあるファイル、`spec.md` の Parent Issue、tasks.md のチェック）と参照先 Issue のラベルから導出する。専用状態ファイルを持たない |
 | 入口 | spec は人が作る（`/speckit-clarify` は人への質問が要るため自律実行に向かない）。spec PR に `sdd` ラベルを付けてマージした時点から自動で回り始める |
 
 非スコープ:
@@ -73,11 +73,11 @@ routine「sdd-next」（claude.ai 側。プロンプトは /sdd-next を呼ぶ�
 /sdd-next スキル（.claude/skills/sdd-next/SKILL.md）
   1. 必要なら feature branch を復元し、sdd-state.sh → sdd-guard.sh で進めてよいか判定
   2. open な sdd PR に未解決レビュー指摘があれば、その PR の head に修正 commit を積んで終了
-  3. 段階に応じて /speckit-plan | /speckit-tasks | /speckit-implement <フェーズ> を実行
+  3. 段階に応じて /speckit-plan | UI/interaction design | /speckit-tasks | /speckit-implement <フェーズ> を実行
   4. make check（implement のとき）→ コミット → claude/sdd-NNN-<stage> へ push
   5. ラベル sdd 付きの PR を feature branch に開き、checks green 後に自動マージして終了
         │
-plan は人がレビューしてマージ、tasks / implement は checks green 後に自動マージ → 先頭に戻る
+plan は人がレビューしてマージ、design / tasks / implement は checks green 後に自動マージ → 先頭に戻る
 ```
 
 自然な終端は、対象機能の tasks.md に未完了 `- [ ]` が無くなった状態（`done`）。
@@ -91,7 +91,7 @@ plan は人がレビューしてマージ、tasks / implement は checks green �
 
 | 部品 | 場所 | 役割 |
 | --- | --- | --- |
-| `sdd-state.sh` | `.claude/skills/sdd-next/scripts/` | `specs/*/` のファイルだけを読み、対象機能と次の段階を JSON で出す。git／gh には触れない。手元で実行して検算できる |
+| `sdd-state.sh` | `.claude/skills/sdd-next/scripts/` | `specs/*/` と渡された workflow を読み、対象機能と次の段階を JSON で出す。git／gh には触れない。手元で実行して検算できる |
 | `sdd-guard.sh` | 同上 | 組み込み GitHub ツールが保存した PR 一覧 JSON と git 履歴を見て、無限ループ対策と冪等性を判定し `go` / `stop` を返す。`gh` は手元検算の任意フォールバック |
 | `sdd-next` スキル | `.claude/skills/sdd-next/SKILL.md` | 上記 2 つの結果を受けて、既存 PR のレビュー対応または該当する `/speckit-*` の実行と PR 作成を行う手順書 |
 | `sdd-lib.sh` | `.claude/skills/sdd-next/scripts/` | 上 2 つが `source` する共通関数。JSON のエスケープ、機能の列挙、`tasks.md` のフェーズ解析（awk） |
@@ -99,7 +99,7 @@ plan は人がレビューしてマージ、tasks / implement は checks green �
 | `.gitattributes` | リポジトリ root | `*.sh` を `eol=lf` に固定する。手元（Windows、`core.autocrlf=true`）で CRLF のスクリプトをチェックアウトすると Git Bash が落ちるため |
 | routine | claude.ai（写しを [docs/references/sdd-routine.md](../references/sdd-routine.md) に置く） | GitHub トリガー・日次トリガー・最小プロンプト |
 
-## 4. 状態判定: `sdd-state.sh [--feature specs/NNN-...]`
+## 4. 状態判定: `sdd-state.sh [--feature specs/NNN-...] [--workflow standard|ui]`
 
 出力は JSON 1 行:
 
@@ -115,13 +115,13 @@ plan は人がレビューしてマージ、tasks / implement は checks green �
 | --- | --- | --- |
 | `spec.md` が無い | `none`（対象外） | — |
 | `plan.md` が無い | `plan` | `claude/sdd-NNN-plan` |
+| `workflow = ui` かつ `ui-design.md` が無い | `design` | `claude/sdd-NNN-design` |
 | `tasks.md` が無い | `tasks` | `claude/sdd-NNN-tasks` |
 | `tasks.md` に `- [ ]` が残る | `implement`。phase は未完了を含む最初の `## Phase N:` 節。`remaining` / `total` はその節内の `- [ ]` / `- [x]` の数 | `claude/sdd-NNN-implement-pN` |
 | 残りなし | `done` | — |
 
 `--feature` 省略時の対象機能: `specs/[0-9][0-9][0-9]-*/` を昇順に走査し、`done` でも
-`none` でもない最初の機能。`--feature` は `sdd-guard.sh` が直近のマージ済み `sdd` PR
-から対象機能を確定したときに使う。
+`none` でもない最初の機能。`--feature` には `sdd-target.sh` が確定した対象機能を渡す。
 
 `stage` が `implement` のときは `remaining` を出力に含める。前進チェック（5. #1）で
 「同じフェーズだが一部進んだ」回を前進として扱うためである。
@@ -136,7 +136,7 @@ plan は人がレビューしてマージ、tasks / implement は checks green �
 | --- | --- | --- | --- |
 | 1 | 同じ段階を延々やり直す（例: implement が何も進まないまま PR が出てマージされる） | **前進チェック**: 作業前後の `sdd-state.sh` の出力を比較し、変化がなければ PR を開かず終了。`git diff` が空の場合も同じ | state.sh の JSON 差分（スキル側で判定） |
 | 2 | 同じフェーズのやり直しが積み重なる | **フェーズ別リトライ上限（2 回）**: `git log --merges` 中の `claude/sdd-NNN-implement-pN` のマージ数が 2 以上なら停止 | git のマージ履歴 |
-| 3 | 機能単位で回数が膨らむ | **機能別ホップ上限**: `claude/sdd-NNN-*` のマージ数が `2（plan, tasks）+ フェーズ数 + 余裕 2` 以上なら停止 | git のマージ履歴 + tasks.md のフェーズ数 |
+| 3 | 機能単位で回数が膨らむ | **機能別ホップ上限**: standard は `2（plan, tasks）+ フェーズ数 + 余裕 2`、UI は design 分を 1 加えて停止 | git のマージ履歴 + workflow + tasks.md のフェーズ数 |
 | 4 | 二重発火（同じイベントで 2 セッション、人が手で回した直後に routine も走る、日次トリガーとイベントが重なる） | **冪等ガード**: 対象機能の open PR（head `claude/sdd-NNN-*`、base `claude/sdd-NNN-feature`）が既にあれば、label 付与に失敗していても新しい段階 PR は作らない。同 prefix で `base.ref` が無い場合は fail-closed。未解決レビューがある場合だけレビュー対応へ進む | 組み込み GitHub ツールで取得した open PR 一覧と review threads |
 | 5 | 緊急停止 | routine の一時停止（claude.ai のトグル）。加えて `sdd` ラベルを付けなければ発火しない（トリガーのフィルタ条件） | routine 設定 / PR ラベル |
 
@@ -154,7 +154,7 @@ plan は人がレビューしてマージ、tasks / implement は checks green �
    `specs/NNN-*/` を `--feature` として `sdd-state.sh` を呼び直す。取れなければ state.sh の
    既定（昇順最初）を使う。これで「ラベル無しで寝かせている spec」を誤って拾わない
 2. 冪等ガード（#4）。open PR に未解決レビュー指摘がある場合は通常の停止ではなくレビュー対応へ渡す。
-   指摘が無い tasks / implement の non-draft PR は checks を再評価し、green なら既存 PR を
+   指摘が無い design / tasks / implement の non-draft PR は checks を再評価し、green なら既存 PR を
    マージする
 3. フェーズ別リトライ上限（#2）
 4. ホップ上限（#3）
@@ -180,7 +180,7 @@ block 理由を PR コメントに残して終了する。
 
 このフローは「レビューコメントを作る」仕組みではない。既存レビューを SDD ハーネスの durable
 queue に載せ、通常の段階生成と混線させずに返すための入口である。
-修正後の tasks / implement PR は checks が green ならその場でマージしてよい。checks が pending
+修正後の design / tasks / implement PR は checks が green ならその場でマージしてよい。checks が pending
 または読めない場合も、次回の日次実行が同じ open PR を再評価する。
 
 ## 6. スキルの手順: `/sdd-next [--dry-run]`
@@ -207,7 +207,7 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 5.   PR            コミット（既存の慣習どおり日本語、Co-Authored-By 付き）→ push →
                    ラベル sdd 付きで state.base_branch へ PR。本文に before/after の JSON、実行した検査、
                    残課題、セッションへのリンク（CLAUDE_CODE_REMOTE_SESSION_ID）を書く。
-                   tasks / implement は checks green を確認してから自動マージする。
+                   design / tasks / implement は checks green を確認してから自動マージする。
                    自動マージ成功後は remote の段階 branch を削除する
 6.   報告          最後に「段階・PR URL・次に起きること」を 3 行で出す
 ```
@@ -217,9 +217,34 @@ routine のプロンプトは「`/sdd-next` を実行する。それ以外の作
 | stage | 呼ぶもの | 追加の作業 | PR の題名例 |
 | --- | --- | --- | --- |
 | `plan` | `/speckit-plan` | なし | `docs: 002 の実装計画と設計成果物を追加する` |
+| `design` | UI workflow のみ。`ui-design.md` を作る | 既存要件を画面と操作へ具体化し、画面境界、視覚設計、レスポンシブ、状態、interaction / accessibility、評価基準を書く | `docs: 002 の UI・操作設計を追加する` |
 | `tasks` | `/speckit-tasks` → `/speckit-analyze` | analyze の結果を PR 本文に載せる。CRITICAL が tasks.md 側の直しで解消できるものだけ直す（spec／plan は触らない） | `docs: 002 の実装タスクを分解する` |
-| `implement` | `/speckit-implement "Phase N（<title>）のタスクだけを対象にする"` | 完了タスクを `[X]` にする。`make check` を通す。通らなければ直し、それでも通らないときは draft PR として開き本文に失敗内容を書く（人が判断してから ready にする）。文書の同時更新や `docs/exec-plans/` の扱いは `AGENTS.md` に従う | `feat: 002 Phase 3（US1 置いた動画が自動で一覧に並ぶ）を実装する` |
+| `implement` | `/speckit-implement "Phase N（<title>）のタスクだけを対象にする"` | UI workflow では `ui-design.md` に従う。完了タスクを `[X]` にして `make check` を通す | `feat: 002 Phase 3（US1 置いた動画が自動で一覧に並ぶ）を実装する` |
 | `done` / `none` | 何もしない | — | — |
+
+### UI 変更の実装・視覚評価ループ
+
+`spec.md` の `**Parent Issue**: #NNN` が指す Issue の `ui` ラベルを workflow の唯一の入力とする。
+spec番号とIssue番号は独立であり、同じ番号と仮定しない。`sdd-target.sh` で対象featureを
+一度だけ確定してからParent Issueを読み、stateとguardを各1回実行する。UI workflow は
+`plan → design → tasks → implement`、通常 workflow は `plan → tasks → implement` と進む。
+Phase、タスク、変更パス、拡張子から UI かどうかを推測しない。
+
+design は既存要件を UI と interaction へ具体化する段階である。UX リサーチ、課題探索、
+要件再定義、情報設計全体の再構築は含めない。
+
+UI 変更では次を必須にする。
+
+1. 実装前に、ユーザー要求、仕様、参照画像、変更前画面を確認する
+2. 「一覧画面を完成」「再生画面を完成」のように、1 画面を端から端まで評価できる単位で実装する
+3. 実ブラウザで 360px、768px、1280px のスクリーンショットを生成する
+4. 参照画像がある場合、参照画像と変更後スクリーンショットを並べた比較画像を生成する
+5. 実装中の判断とは別に、撮影後の画面成果物を入力にした visual review を行う
+6. visual review の指摘を修正して再撮影する。指摘なしの場合も、その評価を PR 本文に残す
+7. interaction / accessibility を確認してから PR を non-draft にする
+
+PR 本文には、変更前後、確認した viewport、比較画像、visual review の指摘と修正、視覚上の
+残課題を載せる。UI 変更でない場合は `UI 変更なし` と書く。
 
 GitHub 操作の使い分け:
 
@@ -283,6 +308,8 @@ claude.ai 側の設定が消えても再現できるようにする。
   が返ることを確かめる。`jq` と git がある環境では `--github-dir` で PR 一覧を渡す判定も
   自動テストする
 - スキル全体: `/sdd-next --dry-run` を導入時のプローブと日常の検算に使う
+- `sdd-state.sh --workflow ui`: plan 後に design を返し、`ui-design.md` の生成後に tasks へ進むことを
+  `.claude/skills/sdd-next/tests/run.sh` で検証する
 
 ## 9. 導入手順
 

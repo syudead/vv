@@ -160,24 +160,13 @@ done <<MERGED
 $merged_commits
 MERGED
 
-if [ -n "$latest_commit" ]; then
-  target_dir="$(git -C "$root" diff --name-only "$latest_commit^1" "$latest_commit" 2>/dev/null \
-    | sed -n 's#^\(specs/[0-9][0-9][0-9]-[^/]*\)/.*#\1#p' \
-    | sed -n '1p')"
-  if [ -n "${target_dir:-}" ]; then
-    # 手元にその機能ディレクトリが無ければ（終了コード 2）、stdin の state のままにする。
-    if new_state="$("$script_dir/sdd-state.sh" --root "$root" --feature "$target_dir" 2>/dev/null)"; then
-      state="$(printf '%s' "$new_state" | tr -d '\r\n')"
-    fi
-  fi
-fi
-
 json_field() { printf '%s' "$state" | jq -r "$1" 2>/dev/null || printf ''; }
 
 stage="$(json_field '.stage // "none"')"
 feature="$(json_field '.feature // ""')"
 phases="$(json_field '.phases // 0')"
 phase="$(json_field '.phase // 0')"
+workflow="$(json_field '.workflow // "standard"')"
 
 # --- 手順 2: 進める先が無い -------------------------------------------------
 if [ "$stage" = "done" ] || [ "$stage" = "none" ] || [ -z "$feature" ]; then
@@ -238,8 +227,10 @@ if [ "$stage" = "implement" ] && [ "$phase_retries" -ge 2 ]; then
   exit 0
 fi
 
-# --- 手順 5: 機能あたりのホップ上限（plan + tasks + 全フェーズ + 予備 2） ---
-hop_limit=$((2 + phases + 2))
+# --- 手順 5: 機能あたりのホップ上限（plan + [design] + tasks + 全フェーズ + 予備 2） ---
+design_hops=0
+[ "$workflow" = "ui" ] && design_hops=1
+hop_limit=$((2 + design_hops + phases + 2))
 if [ "$hops" -ge "$hop_limit" ]; then
   printf '{"go":false,"reason":"hop-limit","state":%s,"hops":%d,"phase_retries":%d,"open_prs":[]}\n' \
     "$state" "$hops" "$phase_retries"

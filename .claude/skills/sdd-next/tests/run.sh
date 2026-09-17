@@ -20,6 +20,7 @@ SCRIPTS="$dir/../scripts"
 FIXTURES="$dir/fixtures"
 STATE="$SCRIPTS/sdd-state.sh"
 GUARD="$SCRIPTS/sdd-guard.sh"
+TARGET="$SCRIPTS/sdd-target.sh"
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
@@ -174,7 +175,49 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# (6) ガード: --github-dir で PR 一覧をファイルから受け取り、マージ済みは git 履歴で決める
+# (6) workflow: UI Issue だけ design 段階を挟む
+# ---------------------------------------------------------------------------
+ui_actual="$("$STATE" --root "$FIXTURES/02-before-tasks" --feature specs/010-a --workflow ui 2>/dev/null)"
+ui_actual="$(norm "$ui_actual")"
+ui_expected='{"feature_dir":"specs/010-a","feature":"010","stage":"design","workflow":"ui","feature_branch":"claude/sdd-010-feature","base_branch":"claude/sdd-010-feature","branch":"claude/sdd-010-design"}'
+if [ "$ui_actual" = "$ui_expected" ]; then
+  ok "workflow ui design"
+else
+  ng "workflow ui design" "expected: $ui_expected" "actual:   $ui_actual"
+fi
+
+ui_tmp="$tmpdir/ui"
+mkdir -p "$ui_tmp"
+cp -R "$FIXTURES/02-before-tasks/." "$ui_tmp/"
+printf '# UI design\n' > "$ui_tmp/specs/010-a/ui-design.md"
+ui_actual="$("$STATE" --root "$ui_tmp" --feature specs/010-a --workflow ui 2>/dev/null)"
+ui_actual="$(norm "$ui_actual")"
+ui_expected='{"feature_dir":"specs/010-a","feature":"010","stage":"tasks","workflow":"ui","feature_branch":"claude/sdd-010-feature","base_branch":"claude/sdd-010-feature","branch":"claude/sdd-010-tasks"}'
+if [ "$ui_actual" = "$ui_expected" ]; then
+  ok "workflow ui tasks after design"
+else
+  ng "workflow ui tasks after design" "expected: $ui_expected" "actual:   $ui_actual"
+fi
+
+ui_actual="$("$STATE" --root "$FIXTURES/01-before-plan" --feature specs/010-a --workflow ui 2>/dev/null)"
+ui_actual="$(norm "$ui_actual")"
+ui_expected='{"feature_dir":"specs/010-a","feature":"010","stage":"plan","workflow":"ui","feature_branch":"claude/sdd-010-feature","base_branch":"claude/sdd-010-feature","branch":"claude/sdd-010-plan"}'
+if [ "$ui_actual" = "$ui_expected" ]; then
+  ok "workflow ui plan first"
+else
+  ng "workflow ui plan first" "expected: $ui_expected" "actual:   $ui_actual"
+fi
+
+"$STATE" --root "$FIXTURES/01-before-plan" --workflow other >/dev/null 2>&1
+ui_code=$?
+if [ "$ui_code" -eq 2 ]; then
+  ok "workflow unknown"
+else
+  ng "workflow unknown" "終了コード: $ui_code（期待: 2）"
+fi
+
+# ---------------------------------------------------------------------------
+# (7) ガード: --github-dir で PR 一覧をファイルから受け取り、マージ済みは git 履歴で決める
 #     jq と git が無ければ失敗にする。
 # ---------------------------------------------------------------------------
 if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
@@ -229,15 +272,16 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     printf '%s]' "$out"
   }
 
-  # check_guard <名前> <期待 JSON> <リポジトリ> <closed JSON> <open JSON>
+  # check_guard <名前> <期待 JSON> <リポジトリ> <closed JSON> <open JSON> [workflow]
   check_guard() {
     local name="$1" expected="$2" repo="$3" closed="$4" open="$5"
+    local workflow="${6:-standard}"
     local gh_dir="$tmpdir/github-$RANDOM"
     mkdir -p "$gh_dir"
     printf '%s' "$closed" > "$gh_dir/pulls-closed.json"
     printf '%s' "$open" > "$gh_dir/pulls-open.json"
     local state actual code
-    state="$(norm "$("$STATE" --root "$repo" 2>/dev/null)")"
+    state="$(norm "$("$STATE" --root "$repo" --workflow "$workflow" 2>/dev/null)")"
     actual="$(printf '%s\n' "$state" \
       | PATH="$fake_bin:$PATH" "$GUARD" --root "$repo" --github-dir "$gh_dir" 2>"$tmpdir/guard.err")"
     code=$?
@@ -260,6 +304,11 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
   check_guard "ガード github-dir go" \
     "{\"go\":true,\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
     "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "[]"
+
+  st02_ui="$(norm "$("$STATE" --root "$repo" --feature specs/010-a --workflow ui 2>/dev/null)")"
+  check_guard "ガード github-dir UI workflow 維持" \
+    "{\"go\":true,\"state\":$st02_ui,\"hops\":1,\"phase_retries\":0,\"open_prs\":[]}" \
+    "$repo" "$(pulls_json sdd 1:claude/sdd-010-plan)" "[]" ui
 
   # 自動 PR が open なら待つ
   check_guard "ガード github-dir open-pr" \
@@ -307,10 +356,20 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
     "$(pulls_json sdd 4:claude/sdd-010-implement-p2 3:claude/sdd-010-implement-p2 2:claude/sdd-010-tasks 1:claude/sdd-010-plan)" \
     "[]"
 
-  # 直近のマージ済み sdd PR が触った機能を対象にする（自動選択の 011 ではなく 010 → done）
+  # target は直近のマージ済み sdd PR が触った機能を選ぶ。guard は対象を差し替えない。
   repo="$(make_repo 06-multi-feature "1:claude/sdd-010-implement-p1:specs/010-a")"
-  check_guard "ガード github-dir 対象機能の確定" \
-    "{\"go\":false,\"reason\":\"nothing-to-do\",\"state\":$st06}" \
+  gh_dir="$tmpdir/github-target"
+  mkdir -p "$gh_dir"
+  printf '%s' "$(pulls_json sdd 1:claude/sdd-010-implement-p1)" > "$gh_dir/pulls-closed.json"
+  printf '%s' "[]" > "$gh_dir/pulls-open.json"
+  actual="$("$TARGET" --root "$repo" --github-dir "$gh_dir")"
+  if [ "$actual" = "specs/010-a" ]; then
+    ok "target github-dir 対象機能の確定"
+  else
+    ng "target github-dir 対象機能の確定" "expected: specs/010-a" "actual: $actual"
+  fi
+  check_guard "ガードは対象機能を差し替えない" \
+    "{\"go\":true,\"state\":$(norm "$("$STATE" --root "$repo")"),\"hops\":0,\"phase_retries\":0,\"open_prs\":[]}" \
     "$repo" "$(pulls_json sdd 1:claude/sdd-010-implement-p1)" "[]"
 
   # ファイルが無ければ呼び出し側の誤り（終了コード 2）

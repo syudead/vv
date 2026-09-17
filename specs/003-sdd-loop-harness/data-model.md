@@ -12,16 +12,21 @@
 | --- | --- | --- |
 | `feature_dir` | 文字列（例 `specs/002-core-video-library`、リポジトリ root からの相対） | `specs/[0-9][0-9][0-9]-*/` に一致するディレクトリ |
 | `feature` | 文字列（3 桁の番号、例 `002`） | `feature_dir` の basename の先頭 3 文字 |
-| 成果物の有無 | `spec.md` / `plan.md` / `tasks.md` それぞれの存在 | ファイルの存在 |
+| 成果物の有無 | `spec.md` / `plan.md` / `ui-design.md` / `tasks.md` それぞれの存在 | ファイルの存在 |
+| `workflow` | `standard` / `ui` | 親 Issue の `ui` ラベル。ラベル判定は `/sdd-next` が行い、スクリプトへ渡す |
+| `parent_issue` | 正の整数 | `spec.md` で行全体が `**Parent Issue**: #[1-9][0-9]*` に一致する単一行。feature番号とは独立 |
 
 規則:
 
 - 対象候補は `feature_dir` の昇順で走査する
+- `sdd-target.sh` が git 履歴から対象を確定した後、その feature の `parent_issue` を読む
+- 新規または進行中 feature で Parent Issue が欠落・重複・不正なら fail-closed とする。
+  この契約導入前に完了済みの legacy feature は再実行しない限り移行不要
 - `spec.md` が無い機能は `none`（対象外）として扱い、候補から除く
 
 ## 2. 段階（Stage）
 
-列挙: `none` / `plan` / `tasks` / `implement` / `done`
+列挙: `none` / `plan` / `design` / `tasks` / `implement` / `done`
 
 導出（上から最初に一致したもの）:
 
@@ -29,6 +34,7 @@
 | --- | --- |
 | `spec.md` が無い | `none` |
 | `plan.md` が無い | `plan` |
+| `workflow = ui` かつ `ui-design.md` が無い | `design` |
 | `tasks.md` が無い | `tasks` |
 | tasks.md に未完了タスクがある | `implement` |
 | それ以外 | `done` |
@@ -36,7 +42,8 @@
 状態遷移（人のマージを挟んで 1 つずつ進む）:
 
 ```
-none ──(人が spec を書く)──▶ plan ──▶ tasks ──▶ implement(p1) ──▶ … ──▶ implement(pK) ──▶ done
+standard: none ──▶ plan ──▶ tasks ──▶ implement(p1..pK) ──▶ done
+ui:       none ──▶ plan ──▶ design ──▶ tasks ──▶ implement(p1..pK) ──▶ done
 ```
 
 `implement` は同じ stage のまま `phase` が進む。同じ `phase` に留まることもある
@@ -81,9 +88,9 @@ tasks.md の `## Phase N:` 節。`stage = implement` のときだけ意味を持
 | stage | 含まれる属性 |
 | --- | --- |
 | `none` | `feature_dir`, `feature`, `stage` |
-| `plan` / `tasks` | 上 + `feature_branch`, `base_branch`, `branch` |
-| `implement` | 上 + `phase`, `phase_title`, `remaining`, `total`, `phases`, `feature_branch`, `base_branch`, `branch` |
-| `done` | `feature_dir`, `feature`, `stage`, `phases`, `feature_branch`, `base_branch` |
+| `plan` / `design` / `tasks` | 上 + UI workflow なら `workflow`, および `feature_branch`, `base_branch`, `branch` |
+| `implement` | 上 + UI workflow なら `workflow`, および `phase`, `phase_title`, `remaining`, `total`, `phases`, `feature_branch`, `base_branch`, `branch` |
+| `done` | `feature_dir`, `feature`, `stage`, UI workflow なら `workflow`, および `phases`, `feature_branch`, `base_branch` |
 
 対象機能が 1 つも無いときは `{"stage":"none"}` だけを返す。
 
@@ -106,7 +113,7 @@ git の first-parent 履歴から導出する。
 | 属性 | 導出元 |
 | --- | --- |
 | 機能 | `head.ref` の `claude/sdd-NNN-` 部分 |
-| 段階・フェーズ | `head.ref` の残り（`plan` / `tasks` / `implement-pN`） |
+| 段階・フェーズ | `head.ref` の残り（`plan` / `design` / `tasks` / `implement-pN`） |
 | マージ済み | `git log --first-parent` の件名に PR 番号がある |
 | 対象 | `labels` に `sdd` を含む（`labels[].name` と文字列配列の両方を受ける） |
 
@@ -114,11 +121,11 @@ git の first-parent 履歴から導出する。
 
 | 名前 | 定義 | 上限 |
 | --- | --- | --- |
-| `hops` | 同じ機能のマージ済みホップ数 | `2 + phases + 2` 以上で停止（FR-016） |
+| `hops` | 同じ機能のマージ済みホップ数 | standard は `2 + phases + 2`、UI は design 分を加えた `3 + phases + 2` 以上で停止（FR-016） |
 | `phase_retries` | 同じ `implement-pN` のマージ済みホップ数 | 2 以上で停止（FR-015） |
-| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、`base.ref = claude/sdd-NNN-feature`。label 付与失敗時も head/base が一致すれば対象。`base.ref` が無い同 prefix の open PR は区別不能なので fail-closed | 1 件以上で新しい段階 PR は作らない（FR-013）。未解決レビューがあればレビュー対応へ渡し、無ければ tasks / implement の non-draft PR の checks を再評価する |
+| open な自動 PR | 同じ機能の `claude/sdd-NNN-*` で state = open、`base.ref = claude/sdd-NNN-feature`。label 付与失敗時も head/base が一致すれば対象。`base.ref` が無い同 prefix の open PR は区別不能なので fail-closed | 1 件以上で新しい段階 PR は作らない（FR-013）。未解決レビューがあればレビュー対応へ渡し、無ければ design / tasks / implement の non-draft PR の checks を再評価する |
 
-`phases` は tasks.md が無い段階（plan／tasks）では 0 として扱い、ホップ上限は `2 + 0 + 2 = 4`
+`phases` は tasks.md が無い段階（plan／design／tasks）では 0 として扱う。
 になる。tasks.md ができた後は実際のフェーズ数で計算し直す。
 
 ## 6. ガード結果（Guard）
@@ -152,7 +159,7 @@ git の first-parent 履歴から導出する。
 
 ## 8. Feature branch workflow（2026-09-13 改訂）
 
-`plan` / `tasks` / `implement` の State は `feature_branch` と `base_branch` を持つ。どちらも
+`plan` / `design` / `tasks` / `implement` の State は `feature_branch` と `base_branch` を持つ。どちらも
 `claude/sdd-NNN-feature` である。`branch` は従来どおり段階ごとに異なり、その PR を
 `base_branch` へ入れる。`done` は `feature_branch` と `base_branch: main` を持ち、段階を
 作らず最終 PR を開く。plan PR と最終 PR だけを人がマージし、tasks と検査成功済みの
@@ -172,6 +179,6 @@ open な `sdd` PR に紐づく未解決 review thread または最新 commit 後
 
 レビュー対応が選ばれた run では新しい段階 PR を作らない。複数 PR が該当する場合は 1 run で
 1 件だけ扱い、残りは次の日次 run または手動実行に任せる。
-tasks / implement の non-draft PR は、レビュー対応後またはレビュー指摘が無い open-pr 分岐で
+design / tasks / implement の non-draft PR は、レビュー対応後またはレビュー指摘が無い open-pr 分岐で
 checks が green なら自動マージできる。pending / failed / 読み取り不能 / draft の場合は
 open のまま待つ。
