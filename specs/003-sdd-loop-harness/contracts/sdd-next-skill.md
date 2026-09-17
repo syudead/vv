@@ -43,6 +43,23 @@
 | `tasks` | `/speckit-tasks` → `/speckit-analyze` | `tasks.md` が生成され、analyze の CRITICAL が tasks.md の範囲で解消済み | spec／plan に手を入れない。解消できない CRITICAL は PR 本文に残す |
 | `implement` | `/speckit-implement "Phase <N>（<phase_title>）のタスクだけを対象にする。他のフェーズには手を付けない"` → 完了タスクを `[X]` に → `make check` | `make check` が通る | 直す。直せなければ draft PR にして本文に失敗内容を書く（FR-006） |
 
+### UI 変更の implement 追加条件
+
+implement の差分は、前進確認の前に `.claude/skills/sdd-next/scripts/sdd-ui-classify.sh` へ渡して
+UI 変更かを判定する。判定は対象機能の `spec.md` / `plan.md` / `tasks.md` にある
+`<!-- sdd-ui-change: yes|no -->` を優先し、明示が無ければ変更パスで行う。
+
+`ui_change=true` の場合は、次を満たすまで non-draft PR を開かない。
+
+| 条件 | 内容 |
+| --- | --- |
+| 実装単位 | 部品別ではなく、1 画面を端から端まで評価できるページ単位の縦切りにする |
+| 実ブラウザ確認 | 360px、768px、1280px の viewport でスクリーンショットを生成する |
+| 比較画像 | 参照画像がある場合、参照画像と実装結果を並べた比較画像を生成する |
+| visual review | 実装者のメモとは分け、撮影後の画面成果物を入力にして visual review を行う |
+| 修正ループ | visual review の指摘に対する修正と再撮影を少なくとも 1 回行う。指摘なしならその評価を記録する |
+| interaction / accessibility | hover、active、keyboard、focus、tap target、reduced motion など、変更画面に関わる確認を行う |
+
 ## ブランチ・コミット・PR・Issue の形式
 
 **ブランチ**: `state.branch`（[data-model.md 4.](../data-model.md)）
@@ -83,6 +100,7 @@ checks が読めない、失敗、pending のまま timeout した場合は open
 ## 実行した検査
 
 - <make check の結果 / analyze の要約 / なし>
+- UI: <UI 変更なし / 変更前後画像、360・768・1280 の確認、比較画像、visual review と修正、interaction・accessibility の結果>
 
 ## 残課題
 

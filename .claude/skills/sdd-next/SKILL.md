@@ -150,6 +150,36 @@ feature branch には `main` 向け PR を開く」一般規則の例外であ�
 1 セッションで 2 段階へ進まない。tasks では `spec.md` / `plan.md` を直さない。implement の
 検査を直せなければ draft PR にして自動マージしない。
 
+### UI 変更の専用ループ
+
+implement では通常の前進確認へ進む前に、差分の対象パスを保存して UI 変更かを判定する。
+feature の spec / plan / tasks に `<!-- sdd-ui-change: yes -->` または
+`<!-- sdd-ui-change: no -->` がある場合はそれを優先し、無ければ対象パスで判定する。
+
+```bash
+git diff --name-only > "${TMPDIR:-/tmp}/sdd-ui-paths.txt"
+.claude/skills/sdd-next/scripts/sdd-ui-classify.sh \
+  --feature <state.feature_dir> --paths "${TMPDIR:-/tmp}/sdd-ui-paths.txt"
+```
+
+`ui_change=true` の場合、通常の部品単位の完了扱いにはせず、次を省略せずに実行する。
+
+1. 実装前に、ユーザー要求、spec / plan / tasks、参照画像、変更前画面を確認する。
+2. フェーズ内のタスクを、部品別ではなく「一覧画面を完成」「再生画面を完成」のような
+   ページ単位の縦切りで実装する。途中状態の画面を PR にしない。
+3. 実ブラウザで 360px、768px、1280px の viewport を描画してスクリーンショットを作る。
+   ブラウザが起動できない環境では UI 変更の PR を non-draft にしない。
+4. 参照画像がある場合は、参照画像と変更後スクリーンショットを横に並べた比較画像を作る。
+5. 実装者の視点から離れ、仕様・参照画像・スクリーンショットだけを読んで visual review を行う。
+   指摘を記録し、最低 1 回は修正して再撮影する。指摘が無い場合でも「指摘なし」として
+   その評価を PR 本文に残す。
+6. hover / active / keyboard / focus / tap target / reduced motion など、変更した画面に関わる
+   interaction と accessibility を確認する。
+
+UI 変更のスクリーンショットと比較画像は [docs/how-to/ui-change-screenshots.md](../../../docs/how-to/ui-change-screenshots.md)
+に従って `docs/screenshots/` に置く。visual review は同じセッション内で行ってよいが、
+実装中のメモではなく、撮影後の画面成果物を入力にした別節として書き直す。
+
 ## 4. 前進確認
 
 ```bash
@@ -174,7 +204,10 @@ git status --porcelain
 
 タイトルは plan=`docs: NNN の実装計画と設計成果物を追加する`、tasks=`docs: NNN の実装タスクを
 分解する`、implement=`feat: NNN Phase N（phase_title 先頭 30 文字）を実装する` とする。
-本文には before/after/guard、検査、残課題、session ID、`UI 変更なし` または UI 画像を含める。
+本文には before/after/guard、検査、残課題、session ID を含める。UI 変更でない場合は
+`UI 変更なし` と書く。UI 変更の場合は変更前後、確認した viewport（最低 360 / 768 / 1280）、
+参照画像との比較画像、visual review の指摘と修正、interaction / accessibility の確認結果、
+視覚上の残課題を含める。
 ラベルを読み直して確認し、PR の checks が green になるまで待ってからマージする。checks を
 読めない、失敗、pending のまま timeout、またはローカル検査に skip がある場合は draft/open のまま
 残し、停止理由を報告する（人に通常レビューを要求するための仕様には戻さない）。

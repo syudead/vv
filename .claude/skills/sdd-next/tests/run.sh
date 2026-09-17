@@ -20,6 +20,7 @@ SCRIPTS="$dir/../scripts"
 FIXTURES="$dir/fixtures"
 STATE="$SCRIPTS/sdd-state.sh"
 GUARD="$SCRIPTS/sdd-guard.sh"
+UI_CLASSIFY="$SCRIPTS/sdd-ui-classify.sh"
 
 tmpdir="$(mktemp -d)"
 trap 'rm -rf "$tmpdir"' EXIT
@@ -174,7 +175,49 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# (6) ガード: --github-dir で PR 一覧をファイルから受け取り、マージ済みは git 履歴で決める
+# (6) UI 分類: spec の明示分類、対象パス、非 UI パス
+# ---------------------------------------------------------------------------
+ui_tmp="$tmpdir/ui"
+mkdir -p "$ui_tmp/specs/010-ui"
+printf '# UI feature\n<!-- sdd-ui-change: yes -->\n' > "$ui_tmp/specs/010-ui/spec.md"
+ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui 2>/dev/null)"
+ui_actual="$(norm "$ui_actual")"
+if [ "$ui_actual" = '{"ui_change":true,"source":"spec-explicit","matched_path":""}' ]; then
+  ok "UI 分類 spec explicit yes"
+else
+  ng "UI 分類 spec explicit yes" "actual:   $ui_actual"
+fi
+
+printf '# UI feature\n<!-- sdd-ui-change: no -->\n' > "$ui_tmp/specs/010-ui/spec.md"
+printf 'web/src/pages/LibraryPage.tsx\n' > "$ui_tmp/paths.txt"
+ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --paths "$ui_tmp/paths.txt" 2>/dev/null)"
+ui_actual="$(norm "$ui_actual")"
+if [ "$ui_actual" = '{"ui_change":false,"source":"spec-explicit","matched_path":""}' ]; then
+  ok "UI 分類 spec explicit no"
+else
+  ng "UI 分類 spec explicit no" "actual:   $ui_actual"
+fi
+
+printf '# UI feature\n' > "$ui_tmp/specs/010-ui/spec.md"
+ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --paths "$ui_tmp/paths.txt" 2>/dev/null)"
+ui_actual="$(norm "$ui_actual")"
+if [ "$ui_actual" = '{"ui_change":true,"source":"path","matched_path":"web/src/pages/LibraryPage.tsx"}' ]; then
+  ok "UI 分類 path"
+else
+  ng "UI 分類 path" "actual:   $ui_actual"
+fi
+
+printf 'internal/store/videos.go\nweb/src/api/client.ts\n' > "$ui_tmp/paths.txt"
+ui_actual="$("$UI_CLASSIFY" --root "$ui_tmp" --feature specs/010-ui --paths "$ui_tmp/paths.txt" 2>/dev/null)"
+ui_actual="$(norm "$ui_actual")"
+if [ "$ui_actual" = '{"ui_change":false,"source":"path","matched_path":""}' ]; then
+  ok "UI 分類 non-ui path"
+else
+  ng "UI 分類 non-ui path" "actual:   $ui_actual"
+fi
+
+# ---------------------------------------------------------------------------
+# (7) ガード: --github-dir で PR 一覧をファイルから受け取り、マージ済みは git 履歴で決める
 #     `jq` と git が要る。無ければ SKIP にする（手元は jq 無しでもよい。CI では走る）。
 # ---------------------------------------------------------------------------
 if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
