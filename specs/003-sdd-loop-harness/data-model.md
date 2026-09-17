@@ -141,7 +141,7 @@ git の first-parent 履歴から導出する。
 
 | reason | 意味 | Issue |
 | --- | --- | --- |
-| `open-pr` | 対象機能の段階 branch が remote に残っている（= open な自動 PR がある） | 作らない（レビュー対応または checks 再評価の入口） |
+| `open-pr` | 対象機能の段階 branch が remote に残っている（open な自動 PR、または閉じた PR の残骸）。`open_heads` に観測 SHA | 作らない（レビュー対応・checks 再評価・stale branch 回復の入口） |
 | `phase-retry-limit` | 同じフェーズのマージが 2 回に達した | 作る |
 | `hop-limit` | 機能のホップ上限に達した | 作る |
 | `no-progress` | （スキルが作業後に判定）状態が変わらない／差分なし | 作る |

@@ -57,7 +57,7 @@ squash しても hop 上限が少し緩くなるだけで、判定は壊れな�
 | 1 | `state.stage` が `done` または `none` | — | `go:false`, `reason:"nothing-to-do"` |
 | 2 | remote に問い合わせられない | `git ls-remote` の失敗 | `go:false`, `reason:"remote-unavailable"` |
 | 3 | **作業 base**: `claude/sdd-NNN-feature` が remote にあるのに、現在 branch がそれではない | ls-remote と `git branch --show-current` | `go:false`, `reason:"wrong-base"`, `feature_branch`, `current_branch` |
-| 4 | **冪等**: remote に `claude/sdd-NNN-*`（feature を除く）の branch が残っている。label の有無に依らない | ls-remote | `go:false`, `reason:"open-pr"`, `open_prs:[...]` |
+| 4 | **冪等**: remote に `claude/sdd-NNN-*`（feature を除く）の branch が残っている。label の有無に依らない | ls-remote | `go:false`, `reason:"open-pr"`, `open_prs:[...]`, `open_heads:{<branch>:<sha>}` |
 | 5 | **フェーズ別リトライ**: `stage = implement` で、head が `claude/sdd-NNN-implement-pN` の merge commit が 2 件以上 | first-parent の件名 | `go:false`, `reason:"phase-retry-limit"` |
 | 6 | **ホップ上限**: standard は `2 + phases + 2`、UI workflow は design 分を加えた `3 + phases + 2` 件以上 | 同上 | `go:false`, `reason:"hop-limit"` |
 | 7 | 上記に該当しない | — | `go:true` |
@@ -71,13 +71,16 @@ squash しても hop 上限が少し緩くなるだけで、判定は壊れな�
   復元し忘れは手順 3 が `wrong-base` で止める（main 上では plan.md が無いので、止めないと
   「plan からやり直せ」に見える）
 - shallow clone で件名が読めない範囲のマージは数えない
-- 出力の `open_prs` は remote に残る段階 branch 名の配列。空なら `[]`
+- 出力の `open_prs` は remote に残る段階 branch 名の配列。空なら `[]`。`open_heads` は branch 名 →
+  ls-remote で観測した SHA。スキルはこの SHA と closed PR の `head.sha` を照合し、削除も
+  この SHA への `--force-with-lease` で行う（観測と削除の間に別セッションが push していれば拒否される）
 - 最終 PR（feature → main）は feature branch そのものが head なので、手順 4 には掛からない
 - マージせず閉じた PR の head branch は GitHub が消さないので、手順 4 は `open-pr` を返し続ける。
   guard は PR の状態を知らない。スキルが `open_prs` の各 branch について、組み込み GitHub ツール
-  （`head=` 指定の 1 件検索）で **closed かつ未マージの PR が実在する**ことを確かめた branch だけを
-  削除して guard をやり直す（SKILL.md 1.、quickstart S7 の再作成）。PR が 1 件も無い branch は
-  別セッションが PR を作成中かもしれないので削除しない
+  （`head=` 指定の 1 件検索）で **closed かつ未マージの PR が実在し、その `head.sha` が `open_heads`
+  の SHA と一致する**ことを確かめた branch だけを削除して guard をやり直す（SKILL.md 1.、
+  quickstart S7 の再作成）。PR が 1 件も無い branch、SHA が一致しない branch は別セッションが
+  PR を作成中かもしれないので削除しない
 - `sdd-target.sh --pr` はローカルの全 ref を探し、無ければ origin の全 branch を 1 回 fetch して
   探し直す。既定 branch しか持たない clone でも見つかる
 
@@ -103,7 +106,7 @@ $ sdd-state.sh | sdd-guard.sh     # main 上で、feature branch は remote に�
 - feature branch がまだ無い初回は main 上で `go`（hops 0）
 - plan マージ済みで `go`（hops 1）。UI workflow でも state を維持
 - feature branch が remote にあるのに main 上 → `wrong-base`
-- remote に段階 branch が残っていれば `open-pr`。他機能の branch は塞がない
+- remote に段階 branch が残っていれば `open-pr`（`open_heads` に観測 SHA）。他機能の branch は塞がない
 - squash マージの件名は hop に数えない
 - 同じフェーズの merge commit 2 件で `phase-retry-limit`
 - 渡された対象機能を差し替えない

@@ -89,16 +89,20 @@ if ! remote_refs="$(git -C "$root" ls-remote --heads "$remote" "refs/heads/$pref
   printf '{"go":false,"reason":"remote-unavailable","state":%s}\n' "$state"
   exit 0
 fi
-remote_heads="$(printf '%s\n' "$remote_refs" | sed -n 's#^[0-9a-f]*[[:space:]]*refs/heads/##p')"
+# "<sha>\t<name>" に整形する。sha はスキルが stale branch を消すときの --force-with-lease に使う。
+remote_heads="$(printf '%s\n' "$remote_refs" | sed -n 's#^\([0-9a-f]*\)[[:space:]]*refs/heads/#\1\t#p')"
 
+tab="$(printf '\t')"
 feature_exists=false
 open_prs='[]'
-while IFS= read -r ref; do
+open_heads='{}'
+while IFS="$tab" read -r sha ref; do
   [ -n "$ref" ] || continue
   if [ "$ref" = "$feature_branch" ]; then
     feature_exists=true
   else
     open_prs="$(printf '%s' "$open_prs" | jq -c --arg r "$ref" '. + [$r]')"
+    open_heads="$(printf '%s' "$open_heads" | jq -c --arg r "$ref" --arg s "$sha" '. + {($r): $s}')"
   fi
 done <<REFS
 $remote_heads
@@ -136,8 +140,8 @@ MERGED
 # --- 手順 4: 冪等（段階 branch が remote に残っていれば何もしない） ------------
 open_count="$(printf '%s' "$open_prs" | jq -r 'length')"
 if [ "${open_count:-0}" -gt 0 ]; then
-  printf '{"go":false,"reason":"open-pr","state":%s,"hops":%d,"phase_retries":%d,"open_prs":%s}\n' \
-    "$state" "$hops" "$phase_retries" "$open_prs"
+  printf '{"go":false,"reason":"open-pr","state":%s,"hops":%d,"phase_retries":%d,"open_prs":%s,"open_heads":%s}\n' \
+    "$state" "$hops" "$phase_retries" "$open_prs" "$open_heads"
   exit 0
 fi
 

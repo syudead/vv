@@ -279,8 +279,9 @@ if command -v jq >/dev/null 2>&1 && command -v git >/dev/null 2>&1; then
 
   # 段階 branch が remote に残っていれば待つ（label の有無に依らない）
   push_branch "$repo" claude/sdd-010-tasks
-  check_guard "ガード open-pr" \
-    "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"]}" \
+  head_sha="$(tgit -C "$repo" rev-parse HEAD)"
+  check_guard "ガード open-pr（観測した SHA 付き）" \
+    "{\"go\":false,\"reason\":\"open-pr\",\"state\":$st02,\"hops\":1,\"phase_retries\":0,\"open_prs\":[\"claude/sdd-010-tasks\"],\"open_heads\":{\"claude/sdd-010-tasks\":\"$head_sha\"}}" \
     "$repo"
   # マージせず閉じた PR の branch は remote に残る。スキルが branch を消せば次は進む（S7 の再作成）
   tgit -C "$repo" push -q origin --delete claude/sdd-010-tasks
