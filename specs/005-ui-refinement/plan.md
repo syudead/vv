@@ -106,12 +106,10 @@ specs/005-ui-refinement/
 ├── research.md          # Phase 0 output — 未確定事項の解消（R-501〜R-511）
 ├── data-model.md        # Phase 1 output — 画面が持つ状態と静的な表
 ├── quickstart.md        # Phase 1 output — 受け入れの検証手順（S0〜S9）
-├── contracts/           # Phase 1 output
+└── contracts/           # Phase 1 output
 │   ├── layout.md             # 3 領域の寸法・境界・スクロールの持ち主（FR-001〜FR-003・FR-015）
 │   ├── design-tokens.md      # 004 の契約への差分（FR-010・FR-011）
 │   └── components.md         # C1〜C16 の一覧と、表示のみの要素の規約（FR-004〜FR-008）
-├── checklists/
-│   └── requirements.md  # /speckit-specify の品質チェックリスト
 ```
 
 ### Source Code (repository root)

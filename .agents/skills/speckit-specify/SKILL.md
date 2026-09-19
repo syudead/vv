@@ -147,60 +147,29 @@ Given that feature description, do this:
 
 7. Write the specification to SPEC_FILE using the template structure, replacing placeholders with concrete details derived from the feature description (arguments) while preserving section order and headings.
 
-8. **Specification Quality Validation**: After writing the initial spec, validate it against quality criteria:
+8. **Specification Quality Validation**: After writing the initial spec, review it in memory against these criteria. Do not create a validation artifact:
 
-   a. **Create Spec Quality Checklist**: Generate a checklist file at `SPECIFY_FEATURE_DIRECTORY/checklists/requirements.md` using the checklist template structure with these validation items:
+   - No implementation details (languages, frameworks, APIs)
+   - Focused on user value and business needs
+   - Written for non-technical stakeholders
+   - All mandatory sections completed
+   - No `[NEEDS CLARIFICATION]` markers remain
+   - Requirements are testable and unambiguous
+   - Every functional requirement has clear acceptance criteria
+   - User scenarios cover the primary flows
+   - Success criteria are measurable and technology-agnostic
+   - Acceptance scenarios and edge cases are defined
+   - Scope, dependencies, and assumptions are clear
+   - Feature requirements align with the measurable success outcomes
 
-      ```markdown
-      # Specification Quality Checklist: [FEATURE NAME]
+   Handle validation results as follows:
 
-      **Purpose**: Validate specification completeness and quality before proceeding to planning
-      **Created**: [DATE]
-      **Feature**: [Link to spec.md]
+   - **If all criteria pass**: Proceed to the Mandatory Post-Execution Hooks section.
 
-      ## Content Quality
-
-      - [ ] No implementation details (languages, frameworks, APIs)
-      - [ ] Focused on user value and business needs
-      - [ ] Written for non-technical stakeholders
-      - [ ] All mandatory sections completed
-
-      ## Requirement Completeness
-
-      - [ ] No [NEEDS CLARIFICATION] markers remain
-      - [ ] Requirements are testable and unambiguous
-      - [ ] Success criteria are measurable
-      - [ ] Success criteria are technology-agnostic (no implementation details)
-      - [ ] All acceptance scenarios are defined
-      - [ ] Edge cases are identified
-      - [ ] Scope is clearly bounded
-      - [ ] Dependencies and assumptions identified
-
-      ## Feature Readiness
-
-      - [ ] All functional requirements have clear acceptance criteria
-      - [ ] User scenarios cover primary flows
-      - [ ] Feature meets measurable outcomes defined in Success Criteria
-      - [ ] No implementation details leak into specification
-
-      ## Notes
-
-      - Items marked incomplete require spec updates before `/speckit-clarify` or `/speckit-plan`
-      ```
-
-   b. **Run Validation Check**: Review the spec against each checklist item:
-      - For each item, determine if it passes or fails
-      - Document specific issues found (quote relevant spec sections)
-
-   c. **Handle Validation Results**:
-
-      - **If all items pass**: Mark checklist complete and proceed to the Mandatory Post-Execution Hooks section
-
-      - **If items fail (excluding [NEEDS CLARIFICATION])**:
-        1. List the failing items and specific issues
-        2. Update the spec to address each issue
-        3. Re-run validation until all items pass (max 3 iterations)
-        4. If still failing after 3 iterations, document remaining issues in checklist notes and warn user
+   - **If criteria fail (excluding [NEEDS CLARIFICATION])**:
+     1. Update the spec to address each issue.
+     2. Re-run validation until all criteria pass (max 3 iterations).
+     3. If issues remain after 3 iterations, report them to the user.
 
       - **If [NEEDS CLARIFICATION] markers remain**:
         1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
@@ -236,8 +205,6 @@ Given that feature description, do this:
         7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
         8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
         9. Re-run validation after all clarifications are resolved
-
-   d. **Update Checklist**: After each validation iteration, update the checklist file with current pass/fail status
 
 ## Mandatory Post-Execution Hooks
 
@@ -279,7 +246,7 @@ Check if `.specify/extensions.yml` exists in the project root.
 Report completion to the user with:
 - `SPECIFY_FEATURE_DIRECTORY` — the feature directory path
 - `SPEC_FILE` — the spec file path
-- Checklist results summary
+- Validation results summary
 - Readiness for the next phase (`/speckit-clarify` or `/speckit-plan`)
 
 **NOTE:** Branch creation is handled by the `before_specify` hook (git extension). Spec directory and file creation are always handled by this core command.
@@ -308,7 +275,7 @@ When creating this spec from a user prompt:
    - Have multiple reasonable interpretations with different implications
    - Lack any reasonable default
 4. **Prioritize clarifications**: scope > security/privacy > user experience > technical details
-5. **Think like a tester**: Every vague requirement should fail the "testable and unambiguous" checklist item
+5. **Think like a tester**: Treat every vague requirement as a validation failure
 6. **Common areas needing clarification** (only if no reasonable default exists):
    - Feature scope and boundaries (include/exclude specific use cases)
    - User types and permissions (if multiple conflicting interpretations possible)
@@ -347,6 +314,6 @@ Success criteria must be:
 
 ## Done When
 
-- [ ] Specification written to `SPEC_FILE` and validated against quality checklist
+- [ ] Specification written to `SPEC_FILE` and validated against the quality criteria
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
-- [ ] Completion reported to user with feature directory, spec file path, and checklist results
+- [ ] Completion reported to user with feature directory, spec file path, and validation results
