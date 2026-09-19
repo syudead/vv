@@ -11,9 +11,11 @@
 画面に変化がない変更（内部実装、テスト、文書、CI）は不要である。その場合は PR の
 「画面の変更」に **UI 変更なし** と書いて、確認済みであることを残す。
 
-`/sdd-next` では、親 Issue に `ui` ラベルがある場合だけ UI workflow を使う。workflow は
-`plan → design → tasks → implement` と進み、`design` で作成した `ui-design.md` を実装と
-撮影・評価の入力にする。Phase、タスク、変更パス、拡張子から UI かどうかを推測しない。
+Issue handoff SDDでは、親Issueに`ui`ラベルがある場合だけUI workflowを使う。workflowは
+`plan -> design -> plan-to-issues -> implement`と進み、`design`で作成した`ui-design.md`を実装と
+撮影・評価の入力にする。Phase、task、変更path、拡張子からUIかどうかを推測しない。
+正規手順は`.agents/skills/issue-handoff/references/design.md`と
+`.agents/skills/issue-handoff/references/implement.md`にある。
 
 ## 何を載せるか
 

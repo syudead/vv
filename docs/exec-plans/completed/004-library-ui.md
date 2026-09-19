@@ -29,7 +29,6 @@
 | [data-model.md](../../../specs/004-library-ui/data-model.md) | 画面が持つ 2 つの状態と読み替えの規則 |
 | [contracts/](../../../specs/004-library-ui/contracts/) | [design-tokens.md](../../../specs/004-library-ui/contracts/design-tokens.md)（トークンと対比表）・[view-preferences.md](../../../specs/004-library-ui/contracts/view-preferences.md)（表示設定）・[screen-states.md](../../../specs/004-library-ui/contracts/screen-states.md)（4 状態・キーボード・読み上げ） |
 | [quickstart.md](../../../specs/004-library-ui/quickstart.md) | 受け入れの検証手順（S0〜S10） |
-| [tasks.md](../../../specs/004-library-ui/tasks.md) | タスク分解（T001〜T051、Phase 1〜7） |
 
 ## 検証の方針
 
@@ -107,7 +106,7 @@ import せずに書ける）と、`include` の `vitest.setup.ts`（型検査の
 
 ### `passWithNoTests: true` を置いた（T003）
 
-tasks.md Phase 1 の Checkpoint が「テストが 0 件でも成功で終わる」ことを求めているため。
+当時の実装計画が「テストが0件でも成功で終わる」ことを求めているため。
 テストが揃う Phase 2 以降は外してよい。`web/vite.config.ts` の当該行にその旨を書いてある。
 
 ### 増えた依存は開発時の 4 つだけ（T002・plan の G2）

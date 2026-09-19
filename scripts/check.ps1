@@ -59,10 +59,6 @@ Run-Step "test-web" {
     npm --prefix web run test
 }
 
-Run-Step "test-sdd" {
-    bash .claude/skills/sdd-next/tests/run.sh
-}
-
 Run-Step "generate-check" {
     go run "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$($toolVersions.oapiCodegen)" `
         -config api/oapi-codegen.yaml api/openapi.yaml

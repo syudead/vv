@@ -29,7 +29,6 @@
 | [data-model.md](../../../specs/005-ui-refinement/data-model.md) | 画面が持つ状態と、ナビゲーションの静的な表 |
 | [contracts/](../../../specs/005-ui-refinement/contracts/) | [layout.md](../../../specs/005-ui-refinement/contracts/layout.md)（3 領域の寸法・境界・スクロールの持ち主）・[design-tokens.md](../../../specs/005-ui-refinement/contracts/design-tokens.md)（004 の契約への差分）・[components.md](../../../specs/005-ui-refinement/contracts/components.md)（C1〜C16 と表示のみの要素の規約） |
 | [quickstart.md](../../../specs/005-ui-refinement/quickstart.md) | 受け入れの検証手順（S0〜S9） |
-| [tasks.md](../../../specs/005-ui-refinement/tasks.md) | タスク分解（T001〜T046、Phase 1〜8） |
 
 ## 検証の方針
 
@@ -164,7 +163,7 @@ plan の PR に本書が無いのは漏れではない。
 件数が 119 件から 123 件に増えたのは、`noRawColors.test.ts` の走査対象に
 `layout/Logo.tsx`・`layout/Sidebar.tsx`・`layout/Header.tsx`・`layout/AppShell.tsx` の
 4 ファイルが加わった分である。**Phase 3 で新しい単体テストは足していない** —
-[tasks.md](../../../specs/005-ui-refinement/tasks.md) が足すと定めた 4 件はいずれも
+当時の実装計画が追加すると定めた4件はいずれも
 Phase 4 以降のもので、構図そのもの（SC-001）と画面幅による出し分け（SC-003・SC-007）には
 [R-511](../../../specs/005-ui-refinement/research.md) のとおり機械の検査を用意しない。
 

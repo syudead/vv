@@ -122,31 +122,16 @@ reconsideration.
   （`completed: true` になる）。規則そのものは正しく、検証手順の前提と
   噛み合っていない。
 - 当面の対処: 受け入れ検証では S5 用に長め（2 分以上）の動画を使う。規則は
-  3 つの文書（research.md R-111・data-model.md・tasks.md T043）が一致して
-  定めているので、実装は規則どおりにした。
+  research.md R-111とdata-model.mdが一致して定めているので、実装は規則どおりにした。
 - 見直しの契機: quickstart を次に更新するとき。S0 に長めの動画を1本足し、
   S5 をそれに向けるのが素直である。
 - 一次資料: [R-111]
 
-### TD-007: 使用量ゲートの取得手段が未確定
+### TD-007: 解消済み - Routine使用量ゲート
 
-- 影響範囲: [`.claude/skills/sdd-next/SKILL.md`](../../.claude/skills/sdd-next/SKILL.md) の手順 0.5（使用量ゲート）
-- 内容: 使用率（`rate_limits.five_hour.used_percentage` / `rate_limits.seven_day.used_percentage`）
-  は、Claude Code が**ステータスラインスクリプトへの stdin JSON にだけ**渡している
-  （[003 の R-004]）。フックの入力にはこの項目が無く、使用量に関するフックイベントも無い。
-  cloud セッションでステータスラインが実行されるかは文書に書かれていない。
-  取得できない間、ゲートは飛ばされて通常どおり段階が実行されるので、使用量を使い切った
-  時点で中途半端な成果物がブランチに残りうる。
-- 当面の対処: 案 a の配線（[`.claude/hooks/rate-limits-statusline.sh`](../../.claude/hooks/rate-limits-statusline.sh)
-  が受け取った JSON を `${TMPDIR:-/tmp}/sdd-rate-limits.json` に落とす）を入れ、
-  スキル側は「取得できなければ飛ばす」（FR-020 後段）とした。取得できないことを理由に
-  止まる方が害が大きいと判断したためである。ゲートは本機能の受け入れ（SC-001〜SC-006）に
-  関わらない。
-- 見直しの契機: [quickstart.md](../../specs/003-sdd-loop-harness/quickstart.md) S3 の
-  プローブの結果。案 a が使えればスキルの「取得手段」を確定し、駄目なら案 b
-  （`curl https://api.anthropic.com/api/oauth/usage`）を試す。両案とも不可なら、
-  本項を恒久の負債として残し、ステータスラインの配線は外す。
-- 一次資料: [003 の R-004]
+- 解消日: 2026-09-19
+- 解消方法: Issue handoffへの移行で無人Routineと使用量ゲートを廃止した。専用status-line hookと
+  一時JSONも削除し、各工程は保守者が明示的に開始する。
 
 ### TD-008: 再生画面を離れるとき、最後の位置が送られていない
 
@@ -162,17 +147,13 @@ reconsideration.
 - 当面の対処: 振る舞いを変えずに、いまの状態を
   `web/src/pages/VideoPage.progress.test.tsx` に書き留めた。004 は既存の振る舞いを
   変えないことが要求（FR-025 / SC-009）なので、Phase 2 では直していない。
-- 見直しの契機: **当初は [004 の tasks.md](../../specs/004-library-ui/tasks.md) T024〜T026
-  （再生画面の組み替え）を挙げていたが、実際に組み替えたのは
-  [005 の tasks.md](../../specs/005-ui-refinement/tasks.md) T036 である。そこでも
-  直していない** — 005 の T036 が「再生位置の送信と再開の下限は触らない」と明示し、
-  T037 が「確かめている事柄そのものは変えない」と定めているためで、直すと上記の
+- 見直しの契機: **004と005のUI改修でも直していない**。005では再生位置の送信と
+  再開の下限、および既存検査の意味を変えない方針だったためで、直すと上記の
   検査を書き換えることになり FR-018（004 の受け入れ基準を引き続き満たす）の
   確認が緩む。**次の契機は、再生位置の送信そのものを主題にする機能である。**
   最後の位置を参照ではなく状態として持ち回る形にすれば、後片付けの時点でも読める。
   直したら上記の検査の期待を「送られる」へ入れ替える。
-- 一次資料: [R-111]、[004 の tasks.md](../../specs/004-library-ui/tasks.md) T012、
-  [005 の tasks.md](../../specs/005-ui-refinement/tasks.md) T036
+- 一次資料: [R-111]、`web/src/pages/VideoPage.progress.test.tsx`
 
 ### TD-009: 004 の受け入れ検証のうち、実機が要る範囲が未実施
 
@@ -255,17 +236,11 @@ reconsideration.
 [R-008]: ../../specs/001-initial-setup/research.md
 [contracts/openapi.yaml]: ../../specs/001-initial-setup/contracts/openapi.yaml
 [plan.md]: ../../specs/001-initial-setup/plan.md
-[003 の R-004]: ../../specs/003-sdd-loop-harness/research.md
+### TD-010: 解消済み - Routineのbase branch filter
 
-### TD-010: routine の base branch フィルタ変更はリポジトリから自動化できない
-
-- **影響範囲**: `/sdd-next` の feature branch 方式への移行
-- **内容**: リポジトリ内の実装は段階 PR を `claude/sdd-NNN-feature` 向けに作るが、既存の
-  claude.ai routine には `Base branch equals main` が設定されている。この外部設定は commit
-  だけでは変更できず、残っている間は plan のマージ後に次セッションが起動しない。
-- **当面の対処**: `docs/references/sdd-routine.md` の移行手順に従い、画面で base 条件を削除して
-  test merge を行う。
-- **見直しの契機**: routine 設定を API / IaC としてリポジトリから同期できるようになった時。
+- 解消日: 2026-09-19
+- 解消方法: Routineとmerge-triggered stage起動を廃止した。外部Routineの削除だけは保守者が
+  claude.ai上で行う。
 
 ### TD-012: 仕様品質ゲートは人のレビュー依存で、機械的には強制されない
 
@@ -282,16 +257,8 @@ reconsideration.
   質的内容まで機械化しない。
 - 一次資料: Issue #43
 
-### TD-013: squash / rebase でマージした段階 PR は guard の hop に数えない
+### TD-013: 解消済み - merge方式で変わるhop集計
 
-- **影響範囲**: `/sdd-next` の `sdd-guard.sh`（hop 上限、phase retry 上限）
-- **内容**: 判定を git 専用にしたため、マージ済み段階 PR の head 名は merge commit の件名
-  `Merge pull request #N from <owner>/<head>` からしか取れない。squash / rebase だと
-  件名が PR タイトルになり head 名が消えるので、その PR は hop に数えない。自動マージは
-  `merge_method: merge` を指定するので影響しないが、人が plan PR を squash すると hop 上限が
-  1 つ緩くなる（止まらなくなるのではなく、上限が 1 増えるだけ）。
-- **当面の対処**: SKILL.md 5. に「merge commit でマージする」を明記した。
-- **見直しの契機**: リポジトリ設定で squash / rebase を無効にする（`allow_squash_merge=false`,
-  `allow_rebase_merge=false`）と決めたとき。または段階 PR のタイトル規則から head 名を復元
-  する価値が出たとき。
-- 一次資料: `docs/exec-plans/completed/010-sdd-guard-git-only.md`
+- 解消日: 2026-09-19
+- 解消方法: hop/retry集計とbranch名復元を廃止した。現在の工程判定は明示されたfeature
+  directoryのartifactとGit祖先関係だけを使う。
