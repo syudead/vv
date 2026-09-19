@@ -3,8 +3,9 @@
 Read [README.md](README.md) first. This is the only SDD workflow that writes
 GitHub Issues. It does not change repository files or open a PR.
 
-1. Resolve the parent, feature branch, and feature directory. Require
-   `Next: taskstoissues` and a checked-in `tasks.md`.
+1. Resolve the parent, requested feature branch, and feature directory. Require
+   a checked-in `tasks.md`; treat `Next: taskstoissues` as an optional progress
+   hint.
 2. Read task-list rows from the current `tasks.md`; do not scan retired or
    historical task files. Extract each `T` followed by at least three digits.
    List the parent's native sub-issues in both open and closed states. Match an

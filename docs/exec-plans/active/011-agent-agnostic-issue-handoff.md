@@ -97,10 +97,11 @@ directory 番号は独立であり、一致や変換を仮定しない。
   branch へマージされた時点で人が閉じ、GitHub sub-issues の進捗へ即時に反映する。
 - branch 名は任意とし、対象 Issue、工程、base branch の判定に使わない。
 - Spec完了後に親Issueから作業を再開するエージェントは、親Issueにリンクされた`base=main`のopenな
-  統合PRを1件だけ取得し、そのheadをfeature branchとする。0件または複数件なら推測せず停止する。
+  統合PRからfeature branch候補を取得する。依頼でPRまたはbranchが指定されていればそれを使い、
+  候補だけでは対象を特定できない場合はユーザーへ確認する。複数PRの存在自体はエラーにしない。
 - Spec未完了で統合PRがまだない場合は、親Issueを参照し、`**Parent Issue**`が一致する`spec.md`を
-  追加するopenなspec PRを調べる。0件なら新規specifyを開始し、1件ならそのbaseをfeature branch、
-  headを作業sub-branchとしてreview対応だけを行い、複数件なら停止する。
+  追加するopenなspec PRを調べる。review対象が指定されていればそのheadを使い、指定がなければ
+  既存PRの再利用または別PRの作成を選べる。複数PRの存在自体はエラーにしない。
 
 ## 3. 完成後の利用フロー
 
@@ -132,7 +133,8 @@ directory 番号は独立であり、一致や変換を仮定しない。
 ### 3.2 Plan
 
 1. 保守者が同じ親 Issue を任意のコーディングエージェントに指定する。
-2. エージェントは親Issueにリンクされた唯一のopenな統合PRからfeature branchを取得し、親Issueと
+2. エージェントは依頼で指定されたPRまたはbranchを優先し、親Issueにリンクされたopenな統合PRを
+   候補としてfeature branchを取得する。候補だけで対象を特定できなければユーザーへ確認し、選択した
    feature branchの`spec.md`を読む。
 3. エージェントは共通workflowのplan工程だけを実行する。
 4. 任意名の sub-branch から feature branch 向け plan PR を作り、親 Issue を通常参照して終了する。
@@ -220,13 +222,11 @@ directory 番号は独立であり、一致や変換を仮定しない。
 - 開始前に、repositoryのread/push、Issueのread、PRのread/createに必要なGitHub接続があることを
   確認する。taskstoissuesではIssueのwriteとsub-issue操作、review修正では既存PR headへのpushも
   必須とし、不足していればrepositoryを変更する前に停止する。
-- Spec完了後の親Issueでは唯一のopenな統合PR、子Issueでは親sub-issueを経由して統合PRを取得し、
-  そのheadをfeature branchとして扱う。Spec未完了で統合PRがない場合だけは、親Issueを参照する
-  openなspec PRが0件なら新規specify、1件ならreview対応、複数件なら停止する。
-- feature branch のマージ済み成果物を読む。
-- feature branchの`specs/*/spec.md`から`Parent Issue`が対象親Issueと一致するdirectoryを1件だけ
-  解決する。0件または複数件なら停止し、親IssueのSDD節と不一致なら作業を始めず保守者へ差分を
-  報告する。親Issueの修正後に改めて実行する。
+- 親Issueまたは子IssueのGitHub関係からPRとfeature branch候補を取得する。依頼で対象が指定されて
+  いればそれを優先し、候補だけでは対象を特定できない場合はユーザーへ確認する。
+- 選択したbranchの成果物を読む。
+- 選択したfeature directoryの`Parent Issue`を対象発見に使う。親IssueのSDD節と成果物の一致は
+  実行条件にせず、`Next`もユーザーが指定した工程を禁止しない。
 - 解決したpathを`SPECIFY_FEATURE_DIRECTORY`として明示し、branch名や前回sessionの
   `.specify/feature.json`に依存せずdownstream commandを実行する。
 - 現在不足している指定工程を 1 つだけ実行する。
@@ -306,13 +306,13 @@ close、reopen、またはエージェントを起動しない。
 
 ### Phase 2: read-only 状態判定
 
-- [ ] Spec完了後の親Issueまたは子IssueからGitHub標準のIssue/PR関係をたどり、唯一のopenな統合PRとfeature
-      branchを解決するagent共通手順を作る。repository内にGitHub接続コマンドは作らず、0件・複数件は
-      fail-closedにする。
-- [ ] spec未マージ時だけ、親Issueを参照して対象`spec.md`を追加するopenなspec PRが0件なら新規開始、
-      1件ならfeature branchと作業headを復元してreview対応、複数件なら停止することを検証する。
-- [ ] feature branch上の`Parent Issue`からfeature directoryを一意に解決し、親IssueのSDD節と
-      照合する。0件・複数件・path不一致をfixtureで検証する。
+- [ ] Spec完了後の親Issueまたは子IssueからGitHub標準のIssue/PR関係をたどり、指定されたPRまたはbranchを
+      解決するagent共通手順を作る。repository内にGitHub接続コマンドは作らず、候補が複数で依頼から
+      対象を特定できない場合はユーザーへ確認する。
+- [ ] spec未マージ時は、review対象が指定されていればそのheadを復元し、指定がなければ既存PRの再利用
+      または別PRの作成を許容することを検証する。
+- [ ] feature branch上の`Parent Issue`をfeature directory候補の発見に使い、親IssueのSDD節や成果物の
+      存在を実行可否の判定に使わないことを検証する。
 - [ ] 明示されたfeature branchの`spec.md`、`plan.md`、`ui-design.md`、`tasks.md`から次工程を表示する。
 - [ ] spec、plan、ui-design、tasksの欠落を検査する。
 - [ ] checkout後の工程状態判定がGitHub API、Issue本文、branch名、agent情報へ依存しないことを
@@ -323,9 +323,9 @@ close、reopen、またはエージェントを起動しない。
 
 ### Phase 3: stage PR 運用
 
-- [ ] specify、plan、design、tasksの各工程を1 PRに限定する共通手順を作る。
+- [ ] specify、plan、design、tasksの各工程を独立したPRとして実行できる共通手順を作る。
 - [ ] stage PR の base が feature branch であることを検査する。
-- [ ] 同じ工程の open PR がある場合は新規 PR を作らず報告して終了する。
+- [ ] 同じ工程のopen PRがあっても、明示されたreview対象の継続または別PRの作成を選べるようにする。
 - [ ] review修正は既存PRのheadへ積み、別エージェントへ渡しても新規PRや次工程を始めない手順を作る。
 - [ ] PR 本文の通常 Issue 参照と、GitHub timeline での関連表示を実機確認する。
 - [ ] branch 名を変えても検査結果が変わらないことを確認する。

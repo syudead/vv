@@ -24,7 +24,8 @@ agent for an Issue handoff run and are not runtime state.
 
 - Every run starts from one explicitly supplied parent Issue or sub-issue.
 - The parent Issue contains the requirement and an `## SDD` summary only.
-- Merged files on the feature branch are the source of truth for artifact state.
+- Files on the selected branch describe the available artifacts; their presence
+  does not gate a user-requested workflow.
 - `**Parent Issue**: #NNN` in `spec.md` is the only repository mapping between
   a feature directory and its parent Issue.
 - PR `head`/`base`, Issue timeline references, the integration PR's
@@ -44,7 +45,8 @@ The parent summary has this form:
 ```
 
 Omit `Design` unless the parent has the existing `ui` domain label. Remove
-`Next` after `taskstoissues` succeeds.
+`Next` after `taskstoissues` succeeds. The checklist and `Next` communicate
+progress to humans; they do not authorize or block a requested workflow.
 
 ## GitHub preflight
 
@@ -59,22 +61,24 @@ a required capability is missing.
 
 Resolve the feature branch without naming conventions:
 
-1. When Spec is complete, find the one open PR that targets `main` and closes
-   the parent Issue. Its head is the feature branch. Zero or multiple matches
-   are an error.
+1. When Spec is complete, inspect open PRs that target `main` and close the
+   parent Issue. Use the explicitly supplied PR or branch when available. If
+   more than one candidate remains and the target cannot be determined from the
+   request, ask which one to use; multiple PRs are not an error.
 2. For a child Issue, get its native parent first, then apply step 1.
 3. Before Spec is merged, inspect open PRs that reference the parent and add a
-   `spec.md` whose `**Parent Issue**` matches it. Zero means start `specify`,
-   one means continue that PR only, and multiple means stop.
-4. If an open PR already exists for the requested stage or child Issue,
-   update that PR's head for review fixes; do not open another PR.
+   `spec.md` whose `**Parent Issue**` matches it. Continue an explicitly
+   supplied PR for review work. Otherwise, use an unambiguous requested target
+   or create another PR; existing matching PRs do not block the run.
+4. When the user requests review fixes for an existing PR, update that PR's
+   head. A request to run a stage may create a separate PR even when another PR
+   for that stage is open.
 
-After checkout, inspect the resolved feature directory directly. Require one
-exact `**Parent Issue**: #NNN` line in `spec.md`, then check the required files
-in order: `spec.md`, `plan.md`, optional `ui-design.md`, and `tasks.md`. Their
-presence must agree with the parent SDD summary. Do not infer freshness from
-timestamps or Git history. On disagreement, stop and report the difference; a
-maintainer updates the Issue before the run is retried.
+After checkout, inspect the selected feature directory directly. Use the exact
+`**Parent Issue**: #NNN` line in `spec.md` when mapping an existing directory to
+its parent. Read `spec.md`, `plan.md`, optional `ui-design.md`, and `tasks.md` as
+inputs when they exist. Do not compare their presence with the parent checklist
+or `Next`, and do not stop merely because those descriptions differ.
 
 Historical feature directories without an exact `**Parent Issue**: #NNN` line
 are not auto-migrated and are not valid handoff inputs. They remain historical
@@ -89,9 +93,8 @@ run. Before invoking Spec Kit, preserve any pre-existing
 `.specify/feature.json` without reading it. Restore it after the command, or
 remove the file produced by the command when none existed before.
 
-When all required artifacts exist, `Next: taskstoissues` means reconciliation
-is pending, while no `Next` plus reconciled native sub-issues means
-implementation may proceed.
+`Next: taskstoissues` can tell a maintainer that reconciliation is pending, but
+its presence or absence does not determine whether implementation may proceed.
 
 The skill deliberately does not infer whether an existing downstream
 artifact incorporates a later upstream revision. When an approved artifact is

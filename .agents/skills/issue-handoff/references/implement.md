@@ -3,10 +3,10 @@
 Read [README.md](README.md) first. Input is one native child Issue.
 
 1. Get its parent through the native sub-issue relationship. Resolve the
-   feature branch from the parent's unique open integration PR and verify the
-   feature directory's `**Parent Issue**` field.
-2. Confirm that no open implementation PR already references this child. If
-   one exists, update only that PR's head for review fixes.
+   explicitly requested feature branch or PR from the parent's relationships
+   and read the feature directory's `**Parent Issue**` field.
+2. If the request names an existing implementation PR, update that PR's head.
+   Otherwise, an existing PR for the child does not block a separate PR.
 3. Create an arbitrary-name sub-branch from the current feature branch.
 4. Implement only the named task and its necessary tests. In the same change,
    mark only that task complete in `tasks.md`; do not alter other task markers.
@@ -19,7 +19,7 @@ Read [README.md](README.md) first. Input is one native child Issue.
    implemented on the feature branch; the parent closes only when the
    integration PR reaches `main`.
 
-If an approved artifact must change, stop new implementation. The maintainer
-resets the parent SDD summary to the first affected stage, and the affected stage
-workflows run again before child implementation resumes.
+If an approved artifact changes, use the selected branch's current artifacts as
+implementation inputs. The parent SDD summary may be updated to communicate the
+revision, but it does not block a user-requested implementation.
 

@@ -1,10 +1,10 @@
 # Specify workflow
 
-Read [README.md](README.md) first. Input is one parent Issue with `Next:
-specify`.
+Read [README.md](README.md) first. Input is one parent Issue and a user request
+to create or revise a specification.
 
-1. If the Issue already has one open Spec PR, work only on review changes in
-   that PR. Multiple matching PRs are an error.
+1. If the request names an existing Spec PR, work on that PR. Otherwise an
+   existing Spec PR may be reused or a separate PR may be created.
 2. For a new Spec, fetch `main`. Determine the next feature-directory number
    after inspecting `main`, every open integration PR head, and every open Spec
    PR. The directory number is independent from the Issue number.
@@ -17,9 +17,7 @@ specify`.
    `docs/how-to/spec-quality-review.md`. Leave its independent-review item
    open; the author cannot approve it.
 6. Push the sub-branch and open a PR to the feature branch with `Refs #NNN`.
-   Recheck open Spec PRs for the chosen directory prefix. If another run won
-   the same prefix, keep the oldest PR, close the later one, refetch, and start
-   numbering again.
+   Another open Spec PR does not require either PR to be closed.
 7. Stop. An independent reviewer applies `docs/how-to/spec-quality-review.md`
    to the open PR. Only after approval does a human merge it.
 8. After human merge, the maintainer opens the feature-to-`main` integration

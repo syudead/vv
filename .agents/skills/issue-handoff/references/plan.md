@@ -1,10 +1,10 @@
 # Plan workflow
 
-Read [README.md](README.md) first. Input is a parent Issue with Spec complete
-and `Next: plan`.
+Read [README.md](README.md) first. Input is a parent Issue and a user request to
+create or revise a plan.
 
-1. Resolve the feature branch from the parent's unique open integration PR.
-2. Confirm that its `spec.md` maps to the parent and `plan.md` is absent.
+1. Resolve the requested feature branch or PR from the parent relationship.
+2. Read the selected branch's `spec.md` and any existing `plan.md` as inputs.
 3. Create an arbitrary-name sub-branch from the current feature branch.
 4. Run the installed Spec Kit plan procedure for the explicit feature path.
    Resolve all consequential choices in the plan; do not pass undecided

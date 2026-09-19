@@ -1,9 +1,10 @@
 # Tasks workflow
 
-Read [README.md](README.md) first. Input is a parent Issue with `Next: tasks`.
+Read [README.md](README.md) first. Input is a parent Issue and a user request to
+create or revise its task list.
 
-1. Resolve the feature branch and feature directory. Confirm the parent summary
-   says `Next: tasks`, the preceding artifacts exist, and `tasks.md` is absent.
+1. Resolve the requested feature branch and feature directory. Read the
+   available artifacts, including an existing `tasks.md`, as inputs.
 2. Create an arbitrary-name sub-branch from the current feature branch.
 3. Run the installed Spec Kit tasks procedure and then its analyze procedure.
    For UI Issues, treat `ui-design.md` as an input.

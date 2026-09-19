@@ -48,6 +48,7 @@ agent固有session、packet、独自JSON、branch命名はどちらにも含め�
 
 UI IssueだけはPlanとTasksの間にDesignを持つ。`Next`は
 `specify | plan | design | tasks | taskstoissues`のいずれかで、sub-issuesとの照合完了後に削除する。
+ただしSDD節は人向けの進捗表示であり、指定された工程を許可または禁止する状態機械ではない。
 
 ### Feature artifacts
 
@@ -70,13 +71,13 @@ branch名や前回sessionの選択状態から対象を推測しない。
 
 ## Discovery
 
-Spec merge後は、親Issueを閉じるopenな`base=main` PRを一件取得し、そのheadをfeature branchとする。
-子Issueから開始した場合はnative sub-issue APIで親を取得してから同じ手順を使う。0件または複数件なら
-推測せず停止する。
+Spec merge後は、親Issueを閉じるopenな`base=main` PRからfeature branch候補を取得する。
+子Issueから開始した場合はnative sub-issue APIで親を取得してから同じ手順を使う。依頼でPRまたは
+branchが明示されていればそれを使い、候補が複数あって対象を特定できない場合だけユーザーへ確認する。
 
 Spec merge前だけはintegration PRが存在しない。親Issueを参照し、一致する`**Parent Issue**`を持つ
-`spec.md`を追加するopen PRを調べる。0件なら新規Specify、1件ならそのPRのreview対応、複数件なら
-停止する。
+`spec.md`を追加するopen PRを調べる。review対象のPRが明示されていればそのheadを更新し、それ以外は
+既存PRを再利用しても別PRを作ってもよい。複数PRの存在自体はエラーにしない。
 
 GitHub discoveryは各agentのnative integrationが行う。repository共通のGitHub接続commandは作らない。
 ClaudeとCodexはGitHub MCPを使い、`gh`へfallbackしない。
@@ -115,8 +116,8 @@ CIはすべてのPRで検証するが、agentや次工程を起動しない。�
 
 ## Failure behavior
 
-親Issue、artifact、GitHub relationshipが一致しない場合はfail closedとする。agentが親Issueを暗黙に
-修正して続行せず、保守者が直してから再実行する。review修正は同じPR headへ積む。
+親IssueのSDD節、artifact、GitHub relationshipは対象発見と作業入力に使うが、相互の一致を実行条件に
+しない。対象を一意に特定できない場合はユーザーへ確認する。review修正は指定されたPR headへ積む。
 
 feature branch push後、Spec PR作成前に停止するとGitHub標準関係がまだないため、branchを親Issueから
 復元できない。そのbranchは保守者が削除し、Specifyをやり直す。この短い非原子的区間を埋めるための
