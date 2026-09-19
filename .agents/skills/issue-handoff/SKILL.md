@@ -19,5 +19,4 @@ parent Issue's `Next` value is a hint, not an execution gate:
 - `taskstoissues`: [references/taskstoissues.md](references/taskstoissues.md)
 - child Issue implementation: [references/implement.md](references/implement.md)
 
-Perform one stage, open or update one pull request, and stop. Use the native
-GitHub integration available to the current agent. Never fall back to `gh`.
+Perform one stage, open or update one pull request, and stop.

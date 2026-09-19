@@ -25,5 +25,4 @@ GitHub Issues. It does not change repository files or open a PR.
 7. When reconciliation succeeds, remove `Next` from the parent's SDD summary
    and stop. Re-running is idempotent against the parent's sub-issues.
 
-The agent may use GitHub MCP or another native official-API integration. In
-this repository it must not invoke `gh` or commit a task packet/result file.
+Do not commit a task packet or result file.

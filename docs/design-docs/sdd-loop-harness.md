@@ -79,8 +79,7 @@ Spec merge前だけはintegration PRが存在しない。親Issueを参照し、
 `spec.md`を追加するopen PRを調べる。review対象のPRが明示されていればそのheadを更新し、それ以外は
 既存PRを再利用しても別PRを作ってもよい。複数PRの存在自体はエラーにしない。
 
-GitHub discoveryは各agentのnative integrationが行う。repository共通のGitHub接続commandは作らない。
-ClaudeとCodexはGitHub MCPを使い、`gh`へfallbackしない。
+GitHub discoveryは各agentの利用可能なintegrationが行う。repository共通のGitHub接続commandは作らない。
 
 ## Stage transitions
 
@@ -111,8 +110,7 @@ CIはすべてのPRで検証するが、agentや次工程を起動しない。�
 - agent packet、result JSON、session state
 - branch名によるfeature/stage判定
 
-正規手順は`.agents/skills/issue-handoff/`に置く。`.claude/skills`は
-`.agents/skills`全体へのsymlinkとし、agent別の複製やadapterを持たない。
+正規手順は`.agents/skills/issue-handoff/`に置く。
 
 ## Failure behavior
 

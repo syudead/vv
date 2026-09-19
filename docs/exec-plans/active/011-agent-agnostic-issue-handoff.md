@@ -9,17 +9,12 @@
 ## 実装状況（2026-09-19）
 
 共通Agent Skill、全PR向けCI設定、設計・仕様・運用文書の置換、旧`/sdd-next`とusage hookの撤去は
-完了した。全skillの正本は`.agents/skills/`に置き、`.claude/skills`はdirectory全体へのsymlinkとした。
+完了した。全skillの正本は`.agents/skills/`に置いた。
 工程手順は`.agents/skills/issue-handoff/`へ統合し、専用の状態判定script、wrapper、fixture testは
 廃止した。local-dev test、Web format/lint/build/test 156件は成功している。
 
-GitHub MCPで`syudead/vv`へのadmin/push権限、Issue/PRのread、PR作成能力を確認した。2026-09-19
-時点でopen PRは0件、`sdd`付きopen Issueは0件である。Issue #46のnative sub-issues APIをreadし、
-空配列を取得できることも確認した。一方、現在公開されているGitHub MCP toolにはsub-issueの
-追加・解除mutationとrepository labelの削除操作がない。このため、通常Issueを代わりに作ることはせず、
-native sub-issue作成の実機確認とlegacy `sdd` label削除は未完了としている。外部Claude Routineの
-停止・削除もGitHub MCPの責務外である。local環境には`make`とGoがないため、完全な`make check`も
-実行していない。
+native sub-issue作成の実機確認、legacy `sdd` label削除、外部Claude Routineの停止・削除は
+未完了としている。local環境には`make`とGoがないため、完全な`make check`も実行していない。
 
 また、実装後の最終監査で既存の仕様品質規則Q-6に必要な独立reviewが未実施と判明した。要求原文と
 Success Criterionの対応表はspecへ補完したが、仕様作成者とは別のreviewerによる承認は未完了である。
@@ -164,9 +159,8 @@ directory 番号は独立であり、一致や変換を仮定しない。
    `- [x] ~~TNNN 元のtask~~ (cancelled: 理由)`という解決済みの取り消し表記へ変え、対応する子Issueを
    `not planned`として閉じる。
    要件が実質的に変わる場合は既存IDを上書きせず、旧taskを取り消して新しいIDを追加する。
-7. GitHub sub-issue操作は、GitHubの公式sub-issue APIを扱える各エージェントのnative GitHub
-   integrationを使う。このrepositoryではClaudeとCodexはGitHub MCPを使い、`gh` CLIへは
-   fallbackしない。対応能力がない環境では通常Issueだけを作って続行せず、変更前に停止する。
+7. GitHub sub-issue操作には公式sub-issue APIを使う。対応能力がない環境では通常Issueだけを
+   作って続行せず、変更前に停止する。
 8. sub-issuesの作成・再利用が完了したら、親IssueのSDD節から`Next`行を削除する。SDD成果物工程は
    完了とし、以後の実装進捗はGitHubのsub-issuesだけで扱う。
 
@@ -246,8 +240,7 @@ directory 番号は独立であり、一致や変換を仮定しない。
 - 親 Issue 本文へ PR 一覧や子 Issue 一覧を転記しない。
 
 工程の正規手順は`.agents/skills/issue-handoff/`へ置き、既存templateとscriptをそこから参照する。
-AGENTS.mdは親/子Issueの読み方とこのskillへの導線だけを持つ。`.claude/skills`は
-`.agents/skills`へのsymlinkとし、エージェント固有の複製やadapterを作らない。
+AGENTS.mdは親/子Issueの読み方とこのskillへの導線だけを持つ。
 `.specify/init-options.json`の`ai`/`integration`はSpec Kit導入・更新時のmetadataに
 限定し、実行時のエージェント選択やbranch操作には使わない。
 
@@ -295,7 +288,7 @@ close、reopen、またはエージェントを起動しない。
       定義する。
 - [ ] feature/sub-branch、stage PR、統合 PR、親/子 Issue の責務を契約にする。
 - [ ] エージェント非依存の正規手順を`.agents/skills/issue-handoff/`へ工程別に置き、AGENTS.mdを
-      そこへの導線へ縮める。`.claude/skills`は共通skill directoryへのsymlinkにする。
+      そこへの導線へ縮める。
 - [ ] 親IssueのNext値を`specify | plan | design | tasks | taskstoissues`に限定し、slash command名を
       保存しない。
 - [ ] branch 名、Issue 番号、feature 番号を対応判定に使わないことを fixture で検証する。
@@ -335,7 +328,7 @@ close、reopen、またはエージェントを起動しない。
 ### Phase 4: taskstoissues と実装
 
 - [ ] 現行`speckit-taskstoissues`を、Issue作成後にGitHub sub-issue APIで親Issueへ追加する実装へ
-      変更する。GitHub MCPに対応toolがない環境では作成前に停止する。
+      変更する。対応するAPI操作が利用できない環境では作成前に停止する。
 - [ ] 既存のopen/closed sub-issueを親Issueのsub-issues内のtask IDで再利用し、repository全体の
       同名taskと混同せず重複作成しない。
 - [ ] 子 Issue の実装 PR が feature branch を base にすることを検査する。

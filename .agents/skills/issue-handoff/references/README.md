@@ -8,7 +8,6 @@ Codex, and other Agent Skills-compatible tools use the same files.
 | Path | Owner | Purpose |
 | --- | --- | --- |
 | `.agents/skills/` | This repository | Shared Agent Skills and handoff procedures |
-| `.claude/skills` | Symlink | Claude discovery path for the shared skills |
 | `.specify/` | Spec Kit | Installed templates, scripts, metadata, and bundled workflows |
 
 Do not put repository handoff policy under `.specify/`, and do not patch
@@ -49,10 +48,6 @@ Omit `Design` unless the parent has the existing `ui` domain label. Remove
 progress to humans; they do not authorize or block a requested workflow.
 
 ## GitHub preflight
-
-Use the agent's native GitHub integration. This repository intentionally has
-no command that authenticates to GitHub. Claude and Codex use GitHub MCP and
-never fall back to `gh`.
 
 Before changing the checkout, verify that the integration can read Issues and
 PRs and can push and create PRs. `taskstoissues` additionally requires Issue
