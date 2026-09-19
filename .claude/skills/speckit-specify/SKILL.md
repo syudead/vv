@@ -10,6 +10,14 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
+## Repository issue handoff
+
+When this command is invoked with a GitHub parent Issue, read and follow
+`docs/agent-workflows/README.md` and `docs/agent-workflows/specify.md` first. Those
+files own branch topology, GitHub preflight, PR scope, and stopping behavior.
+This skill owns only Spec Kit artifact generation. A run creates or updates one
+Spec PR and never starts Plan.
+
 
 ## User Input
 
@@ -101,15 +109,10 @@ Given that feature description, do this:
    - Record the GitHub Issue that initiated this feature as `**Parent Issue**: #NNN` in
      `SPEC_FILE`. Use the explicit Issue URL/number from the request or triggering context; never
      derive it from the spec directory number. If no parent Issue is available, stop and ask for
-     one before completing the spec because `/sdd-next` uses its labels to select the workflow.
-   - Persist the resolved path to `.specify/feature.json`:
-     ```json
-     {
-       "feature_directory": "<resolved feature dir>"
-     }
-     ```
-     Write the actual resolved directory path value (for example, `specs/003-user-auth`), not the literal string `SPECIFY_FEATURE_DIRECTORY`.
-     This allows downstream commands (`/speckit-plan`, `/speckit-tasks`, etc.) to locate the feature directory without relying on git branch name conventions.
+     one before completing the spec because the Issue is the cross-agent handoff surface.
+   - Do not persist the resolved path to `.specify/feature.json`. Repository
+     handoff runs pass `SPECIFY_FEATURE_DIRECTORY` explicitly in every stage;
+     a previous local session is not a source of truth.
 
    **IMPORTANT**:
    - You must only create one feature per `/speckit-specify` invocation

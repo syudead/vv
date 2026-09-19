@@ -10,6 +10,14 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
+## Repository issue handoff
+
+When this command is invoked for a GitHub parent Issue, read and follow
+`docs/agent-workflows/README.md` and `docs/agent-workflows/plan.md` first. Those
+files own feature-branch discovery, the one-stage boundary, and PR behavior.
+Set the resolved path explicitly as `SPECIFY_FEATURE_DIRECTORY`; do not infer
+it from a branch name or a previous `.specify/feature.json`.
+
 
 ## User Input
 
@@ -57,7 +65,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. **Setup**: Run `.specify/scripts/bash/setup-plan.sh --json` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, FEATURE_DIR, BRANCH. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. **Setup**: Run `scripts/issue-handoff/run-speckit.sh --feature "$SPECIFY_FEATURE_DIRECTORY" plan --json` from repo root and parse JSON for FEATURE_SPEC, IMPL_PLAN, FEATURE_DIR, BRANCH. The wrapper preserves any pre-existing machine-local Spec Kit pointer and removes state produced by this run. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 2. **Load context**: Read FEATURE_SPEC and `.specify/memory/constitution.md`. Load IMPL_PLAN template (already copied).
 
