@@ -96,12 +96,10 @@ specs/004-library-ui/
 ├── research.md          # Phase 0 output — 未確定事項の解消（R-401〜R-412）
 ├── data-model.md        # Phase 1 output — 画面が持つ 2 つの状態と読み替えの規則
 ├── quickstart.md        # Phase 1 output — 受け入れの検証手順（S0〜S10）
-├── contracts/           # Phase 1 output
+└── contracts/           # Phase 1 output
 │   ├── design-tokens.md      # 見た目のトークンと対比表（FR-001・FR-004）
 │   ├── view-preferences.md   # 表示設定の保存（FR-017〜FR-019）
 │   └── screen-states.md      # 4 状態・キーボード・読み上げ・当たり判定
-├── checklists/
-│   └── requirements.md  # /speckit-specify の品質チェックリスト
 ```
 
 ### Source Code (repository root)
