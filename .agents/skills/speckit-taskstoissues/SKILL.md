@@ -12,13 +12,12 @@ Read and execute `.agents/skills/issue-handoff/references/README.md` and
 `.agents/skills/issue-handoff/references/taskstoissues.md`. They are the complete contract for this
 repository.
 
-Use GitHub MCP for Issue and sub-issue operations. Never invoke `gh`, search
-the whole repository for matching task titles, create ordinary unparented
-Issues as a fallback, or write a result packet to the repository. If GitHub
-MCP cannot list, create, update, close, and attach native sub-issues, stop
-before creating anything and report the missing capability.
+Use an available GitHub integration that can perform the Issue and native
+sub-issue operations required by the shared workflow. If a required operation
+is unavailable, stop before creating anything and report the missing
+capability. Do not create ordinary unparented Issues as a fallback or write a
+result packet to the repository.
 
-The operation is complete only when every current task ID has exactly one
-child under the supplied parent, cancelled tasks are closed as not planned,
-and the parent's `Next` line has been removed. Do not edit the integration PR
-or add child links to the parent body.
+The operation is complete when each task not already represented by a native
+child has been created and attached, and the parent's `Next` line has been
+removed. Do not edit the integration PR or add child links to the parent body.
