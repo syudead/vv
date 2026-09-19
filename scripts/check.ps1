@@ -59,8 +59,8 @@ Run-Step "test-web" {
     npm --prefix web run test
 }
 
-Run-Step "test-sdd" {
-    bash .claude/skills/sdd-next/tests/run.sh
+Run-Step "test-agent-workflows" {
+    bash -lc ".specify/tests/workflows/run.sh"
 }
 
 Run-Step "generate-check" {

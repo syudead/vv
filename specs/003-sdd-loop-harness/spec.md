@@ -1,300 +1,150 @@
-# Feature Specification: SDD ループハーネス（spec 以降の段階を自動で回す）
-
-**Feature Branch**: `claude/sdd-loop-harness`
+# Feature Specification: Issue handoff SDD
 
 **Created**: 2026-09-13
 
-**Status**: Draft
+**Revised**: 2026-09-19
 
-**Input**: 設計文書 [docs/design-docs/sdd-loop-harness.md](../../docs/design-docs/sdd-loop-harness.md)
-（ブレインストーミングで確定した設計。本仕様はそこから利用者視点の要件と受け入れ条件を
-起こしたもの）
+**Status**: Independent review required
 
-> Legacy note: 本仕様は Parent Issue 契約の導入前に完了したため、対応する親 Issue を持たない。
+**Parent Issue**: legacy feature; created before the parent-Issue contract
 
-## User Scenarios & Testing *(mandatory)*
+## Original requirements
 
-本機能の利用者は、このリポジトリを 1 人で開発している保守者である。現状、Spec Kit の
-各段階（plan → tasks → implement）は保守者が Claude Code on the web のセッションを
-開いて 1 つずつ呼び、段階ごとに PR を作ってマージしている。段階の切れ目ごとに
-「次のセッションを開いて、どの段階か思い出して、コマンドを打つ」手作業が挟まり、
-そこで作業が止まる。
+The following statements are preserved verbatim from the user conversation on
+2026-09-19. Speaker: user.
 
-本機能は、その手作業を「plan と最終 PR をレビューしてマージする」だけにする。spec の PR に
-目印のラベルを付けてマージすると、以降の段階は spec ごとの feature branch 上で自動で
-1 段階ずつ進む。保守者は plan PR と、完成した feature branch から `main` への最終 PR だけを
-レビューし、tasks と検査済み implement の PR は CI が green になってからハーネスが自動で
-マージする。
+- **RQ-001**: 「claudeじゃなくて任意のコーディングエージェントにしたいんだが
+  ルーティーン依存、PRトリガーも消す」
+- **RQ-002**: 「feature branchとサブbranch運用を捨てるなよ
+  あと未決定事項を放置しまたママ計画を書くな」
+- **RQ-003**: 「変な番号の紐づきとか作るなよ　せっかく異存なくしてるのに」
+- **RQ-004**: 「親issueはspec / planとかの状況は書く必要あるけど、prとか子タスクとかその情報を書く必要はあるのか？」
+- **RQ-005**: 「issueとprとの紐づけは計画上どうなってる？」
+- **RQ-006**:
 
-前提として、[001 初期セットアップ](../001-initial-setup/spec.md)の骨組みと、Spec Kit の
-コマンド（`/speckit-plan`、`/speckit-tasks`、`/speckit-analyze`、`/speckit-implement`）が
-リポジトリ内で使える状態であるものとする。
+  > - issueを切る
+  > - specify でissue をspec.mdに
+  > - spec.md prマージ
+  > - githubトリガーか何かでissueの本文をアップデートしてplan.mdと紐づけ？
+  > - ーーーここで1回切れる
+  > - issueを指定してplanでplan.mdに
+  > - plan.md prマージ
 
-### User Story 1 - マージすると次の段階が自動で始まる (Priority: P1)
+- **RQ-007**: 「余計な制御しなくていいだろ」
+- **RQ-008**: 「そのSDDうんチャラとかラベルとか必要なの？」
 
-保守者は、機能の spec を書いた PR に目印のラベル `sdd` を付けてマージする。すると
-新しいセッションが起動して spec ごとの feature branch を作り、plan の段階を実行し、
-その成果を feature branch 向け PR として開いて終わる。保守者が plan PR をマージすると、
-次は tasks の段階が同じ feature branch 上で進み、checks が green になれば自動でマージされる。
-tasks の後は implement が tasks.md のフェーズごとに進み、フェーズが尽きたら
-feature branch から `main` への最終 PR を開いて止まる。
+## Problem
 
-**Why this priority**: 「マージ以外の手作業を無くす」が本機能の存在理由そのもの。
-これが単独で成立すれば、保守者はレビューに専念でき、段階の切れ目で作業が止まらない。
+The previous SDD harness could derive a stage from repository artifacts, but
+could proceed only when a Claude Routine reacted to a labelled PR merge. It
+also restored context from Claude-specific session input and branch names.
+Changing from PR-oriented tracking to Issues did not remove those execution
+dependencies.
 
-**Independent Test**: spec.md だけがある機能ディレクトリを用意し、その spec PR を
-`sdd` ラベル付きでマージする。plan の PR が自動で開くこと、それをマージすると tasks の
-PR が開くこと、を順に確認する。
+The repository needs a handoff that any coding agent can use from a supplied
+Issue without inheriting a previous conversation, agent session, trigger, or
+branch naming convention.
 
-**Acceptance Scenarios**:
+## User scenarios
 
-1. **Given** `specs/NNN-*/spec.md` があり plan.md が無い機能、**When** その機能に関わる
-   PR が `sdd` ラベル付きで `main` にマージされる、**Then** 新しいセッションが起動し、
-   plan の成果物（plan.md 以下）を含む `sdd` ラベル付き PR が feature branch 向けに開かれる
-2. **Given** plan.md があり tasks.md が無い機能、**When** plan PR が feature branch に
-   マージされる、**Then** tasks.md を含む `sdd` ラベル付き PR が feature branch 向けに開かれ、
-   checks が green なら自動でマージされる
-3. **Given** tasks.md に未完了タスクが残る機能、**When** 同様にマージされる、**Then**
-   未完了を含む最初のフェーズのタスクだけを実装し、自動検証を通した `sdd` ラベル付き
-   PR が開かれる。他のフェーズのタスクには手を付けない
-4. **Given** tasks.md の全タスクが完了している機能、**When** 同様にマージされる、
-   **Then** feature branch から `main` への最終 PR が 1 件だけ開かれる
-5. **Given** どの段階でも、**When** セッションが終わる、**Then** そのセッションが
-   行ったのは「次の 1 段階」だけであり、2 段階以上を続けて進めていない
+### US1: Continue one stage with another agent (P1)
 
----
+A maintainer gives a parent Issue to a coding agent. The agent follows native
+Issue/PR relationships to the long-lived feature branch, reads merged
+artifacts, performs exactly the requested missing stage, opens a PR to the
+feature branch, and stops. A later stage can be run by a different agent.
 
-### User Story 2 - 暴走しない・重複しない (Priority: P1)
+**Independent test**: Specify and Plan complete in separate sessions using
+different agent implementations and arbitrary branch names.
 
-保守者が PR を機械的にマージし続けても、同じ段階を延々と繰り返したり、同じ機能に
-対して PR が二重に開いたりしない。異常を検知したときはハーネスが自分で止まり、
-保守者が気づける形で知らせる。保守者はいつでもハーネスを止められる。
+### US2: Implement one child task (P1)
 
-**Why this priority**: 自律的に動く仕組みは、止まらない・重複するときの被害が
-手作業より大きい。US1 と同じ優先度で、US1 の受け入れの前提でもある。
+Tasks become native sub-issues of the parent. A maintainer gives one child to
+an agent, which finds the parent and feature branch, implements only that task,
+and opens a feature-branch PR. The child closes after that PR is merged; the
+parent remains open until the integration PR reaches `main`.
 
-**Independent Test**: 対象機能に open な段階 PR がある状態でセッションを起動し、未解決
-レビューがあれば同じ PR へ修正 commit を積み、無ければ tasks / implement PR の checks を
-再評価して green ならマージ、そうでなければ待機することを確認する。同じフェーズの PR が
-上限回数マージされた状態を作り、次のセッションが停止して Issue を立てることを確認する。
+**Independent test**: Starting from only a child Issue, a fresh agent opens the
+correct PR and changes only its matching task marker.
 
-**Acceptance Scenarios**:
+### US3: Inspect state without an agent service (P2)
 
-1. **Given** 対象機能に open な段階 PR が既にあり未解決レビューが無い、
-   **When** セッションが起動する、**Then** 新しいブランチも PR も作らず、tasks /
-   implement の non-draft PR は checks を再評価して green ならマージし、それ以外は待機する
-2. **Given** 段階の実行が終わったが、成果物の状態がセッション開始時と変わっていない
-   （または差分が空）、**When** PR を開く段になる、**Then** PR を開かず、停止理由を
-   書いた Issue を 1 件立てて終わる
-3. **Given** 同じフェーズの implement PR が既に 2 回マージされている、**When**
-   セッションが起動する、**Then** そのフェーズをやり直さず、Issue を立てて終わる
-4. **Given** 同じ機能の自動 PR のマージ回数が上限（plan と tasks の 2 回 + フェーズ数
-   + 余裕 2 回）に達している、**When** セッションが起動する、**Then** Issue を立てて終わる
-5. **Given** 停止理由の Issue が既に open である、**When** 同じ理由で再び停止する、
-   **Then** Issue を重複して作らない
-6. **Given** ハーネスが開いた PR がマージされずに閉じられた、**When** その閉じる
-   イベントが起きる、**Then** 新しいセッションは起動しない
-7. **Given** 保守者が起動元の routine を一時停止した、**When** `sdd` ラベル付き PR が
-   マージされる、**Then** セッションは起動しない
+A maintainer runs a local command with an explicit feature directory and can
+see the next artifact stage or stale dependency. The command does not access
+GitHub and does not read branch naming, session files, or agent state.
 
----
+**Independent test**: Fixture repositories return the same stage on arbitrary
+branch names and return an earlier stage after its input changes.
 
-### User Story 3 - 手元で判定を検算できる (Priority: P2)
+## Functional requirements
 
-保守者は、ハーネスが「今どの段階で、次に何をするか」をどう判定したかを、セッションを
-起動せずに手元で確かめられる。判定はリポジトリの成果物だけから決まり、隠れた状態を
-持たない。
+- **FR-001**: Every run starts from an explicitly supplied parent Issue or
+  native sub-issue.
+- **FR-002**: Standard flow is Specify, Plan, Tasks, Tasks-to-sub-issues. A
+  parent with the existing `ui` label inserts Design between Plan and Tasks.
+- **FR-003**: One run performs one stage, opens or updates one PR, and stops.
+- **FR-004**: Stage and implementation PRs target a long-lived feature branch;
+  only the integration PR targets `main`.
+- **FR-005**: Branch names are arbitrary and never select an Issue, feature,
+  stage, or retry.
+- **FR-006**: Issue numbers and feature-directory numbers are independent.
+  The only repository mapping is one exact `**Parent Issue**: #NNN` line in
+  `spec.md`.
+- **FR-007**: The parent body contains requirements and the Spec, Plan,
+  optional Design, Tasks, and Next summary. It does not copy PR, branch,
+  child-Issue, retry, agent, or session data.
+- **FR-008**: GitHub timeline references, PR head/base, the parent-closing
+  integration PR, and native sub-issues are the relationship sources of truth.
+- **FR-009**: No Routine, merge-triggered agent, schedule, SDD automation
+  label, committed packet, result JSON, or session state is required.
+- **FR-010**: The local state command reads only an explicit feature directory
+  and Git history and reports stale downstream artifacts.
+- **FR-011**: Tasks-to-sub-issues deduplicates task IDs only within the supplied
+  parent's native sub-issues and fails before writing when that API is absent.
+- **FR-012**: Task IDs are immutable after child creation. New work receives a
+  larger ID; cancelled work retains its ID and closes as not planned.
+- **FR-013**: Implementation PR merge closes its child manually as completed.
+  Integration PR merge closes only the parent through `Closes`.
+- **FR-014**: All PRs run CI regardless of base branch name.
+- **FR-015**: Before integration, latest `main` enters the feature branch
+  through a reviewed sub-branch PR; the feature branch is not force-pushed.
+- **FR-016**: Repository GitHub access is performed by each agent's native
+  adapter. No shared repository command owns authentication or API transport.
 
-**Why this priority**: 判定を信頼できなければ自動化を任せられない。US1・US2 が
-動いた後、日常的な運用で最も頻繁に使う。
+## Edge cases
 
-**Independent Test**: 手元のチェックアウトで判定コマンドを実行し、結果の JSON が
-成果物の状態と一致することを確認する。フィクスチャで各状態を再現した自動テストが
-通ることを確認する。
+- Zero or multiple integration PRs after Spec completion stop the run.
+- Zero open Spec PRs before Spec completion starts Specify; one resumes that
+  PR; multiple stop the run.
+- Parent SDD summary and merged artifacts disagree: stop until a maintainer
+  updates the Issue.
+- A feature branch pushed before its Spec PR cannot be recovered from standard
+  GitHub relationships; a maintainer removes it and retries.
+- Revised Spec, Plan, or Design pauses implementation until downstream
+  artifacts and sub-issues are reconciled.
 
-**Acceptance Scenarios**:
+## Success criteria
 
-1. **Given** 手元のチェックアウト、**When** 状態判定コマンドを実行する、**Then**
-   対象機能・段階・（implement なら）フェーズと残タスク数・作業ブランチ名が JSON で
-   得られる
-2. **Given** 同じ成果物の状態、**When** 判定を何度実行しても、**Then** 同じ結果になる
-3. **Given** 保守者が手作業で途中の段階（例: plan.md を手で書いた）を進めた、**When**
-   次のセッションが起動する、**Then** 手作業の結果を前提に、その次の段階から続く
-4. **Given** 判定の各パターン（plan 前／tasks 前／implement 途中／完了／spec 無し／
-   複数機能）のフィクスチャ、**When** 自動テストを実行する、**Then** すべて期待どおりの
-   JSON を返す
+- **SC-001**: Specify and Plan can be completed by different coding agents
+  without sharing conversation or session state.
+- **SC-002**: Every fixture for missing and stale artifacts passes without
+  network access and without inspecting the current branch name.
+- **SC-003**: Parent Issues contain no replicated PR or child-Issue list.
+- **SC-004**: Every stage and implementation PR targets the long-lived feature
+  branch from an arbitrary-name sub-branch; only the integration PR targets
+  `main`.
+- **SC-005**: Merging an implementation PR updates native sub-issue progress,
+  while only integration to `main` closes the parent.
+- **SC-006**: Removing Claude Routine and `/sdd-next` leaves `make check`
+  passing and leaves no executable reference to the retired controller.
 
----
+## Requirement traceability
 
-### User Story 4 - 使用量が乏しいときは見送り、あとで再開する (Priority: P3)
-
-保守者のアカウントの使用量が上限に近いとき、ハーネスは段階の実行を見送る。見送った
-分やイベントの取りこぼしは、1 日 1 回の定期実行で拾われ、保守者が何もしなくても再開する。
-
-**Why this priority**: 途中で使用量切れになると中途半端な成果物が残る。ただし
-取得手段が環境依存で不確実なので、US1〜US3 の後に置く。
-
-**Independent Test**: 使用率のしきい値を一時的に 0% にしてセッションを起動し、
-見送って終わることを確認する。定期実行が「open な PR がある」「完了済み」の状態で
-何もせず終わることを確認する。
-
-**Acceptance Scenarios**:
-
-1. **Given** 使用率がしきい値以上、**When** セッションが起動する、**Then** 段階を
-   実行せず、見送った旨を記録して終わる（PR も Issue も作らない）
-2. **Given** 見送りで進まなかった機能、**When** 定期実行のセッションが起動する、
-   **Then** 通常どおり判定し、進められるなら次の段階を実行する
-3. **Given** 使用率が取得できない環境、**When** セッションが起動する、**Then**
-   見送りの判定を飛ばして通常どおり進む（取得できないことを理由に止まらない）
-
----
-
-### Edge Cases
-
-- 対象機能が複数ある（spec 済みで未完了の機能が 2 つ以上）とき: 直近にマージされた
-  `sdd` PR が触った機能を対象にする。それが判別できないときは番号が最小の未完了の機能
-- `sdd` ラベル無しでマージされた spec（寝かせている機能）: 対象にしない
-- tasks.md のフェーズが 1 つしか無い／チェックボックスの書式が `[x]` と `[X]` で
-  混在する: いずれも正しく数える
-- 段階の実行中に自動検証（`make check`）が通らないまま直せない: PR を draft として
-  開き、本文に失敗内容を書いて人の判断に委ねる。draft はマージできないので連鎖は止まる
-- GitHub への操作（PR 作成・Issue 作成）ができない環境で起動した: 理由を出して終わる。
-  リポジトリに変更を残さない
-- 同じイベントで 2 つのセッションが同時に起動した: 先に PR を開いた方が残り、後の方は
-  open PR の存在を見て何もしない。両方が同時に PR を開く競合は許容し、保守者が片方を
-  閉じる（閉じた PR はマージされていないので連鎖を起こさない）
-- 定期実行と PR マージが同時刻に重なった: 上と同じ
-- open PR にレビュー指摘が残っている: 新しい段階は始めず、同じ PR の head branch に
-  修正 commit を積む。仕様判断が必要なら PR コメントで block して終わる
-
-## Requirements *(mandatory)*
-
-### Functional Requirements
-
-**起動と進行**
-
-- **FR-001**: ハーネスは、`sdd` ラベル付き PR がマージされたときに、Claude Code on the web
-  の新しいセッションとして起動しなければならない。最初の spec PR は `main` 向け、
-  以後の段階 PR は spec ごとの feature branch 向けである
-- **FR-002**: ハーネスは、マージされずに閉じた PR、`sdd` ラベルの無いマージでは
-  起動してはならない。final PR を開くまでは、段階 PR の base が `main` であることを
-  要求してはならない
-- **FR-003**: ハーネスは、1 セッションで「次の 1 段階」だけを実行しなければならない。
-  standard workflow は plan → tasks → implement、UI workflow は plan → design → tasks →
-  implement（tasks.md のフェーズごと）→ 完了の順に進む
-- **FR-004**: ハーネスは、段階の成果物を spec ごとの feature branch 向け PR として開き、
-  その PR に `sdd` ラベルを付けなければならない。plan 以外は検査成功後に自動マージし、
-  完了時は feature branch から `main` への最終 PR を開かなければならない。PR の本文には、
-  判定した状態（実行前後）、実行した検査、
-  残課題、実行したセッションへの参照を含めなければならない
-- **FR-005**: ハーネスは、implement の段階では tasks.md の「未完了タスクを含む最初の
-  フェーズ」のタスクだけを対象にし、完了したタスクにチェックを付け、リポジトリの自動
-  検証（`make check`）を通してから PR を開かなければならない
-- **FR-006**: ハーネスは、implement の自動検証が通らないまま直せないとき、PR を draft
-  として開き、失敗内容を本文に書かなければならない
-- **FR-007**: ハーネスは、対象機能の全タスクが完了しているとき、feature branch から
-  `main` への最終 PR を 1 件だけ開くか既存 PR を再利用しなければならない。`main` 上で
-  進める対象が無いときは、PR も Issue も作らずに終わらなければならない
-- **FR-008**: 段階の実行には、リポジトリにある既存の Spec Kit コマンドを使わなければ
-  ならない。ハーネスは段階の中身を再実装してはならない
-
-**状態の判定**
-
-- **FR-009**: ハーネスは、対象機能と次の段階を、リポジトリの成果物（機能ディレクトリの
-  ファイル、`spec.md` の Parent Issue、tasks.md のチェック状態）と参照先 Issue のラベルから
-  決定しなければならない。状態を記録する専用ファイルを持ってはならない
-- **FR-010**: 状態の判定は、セッションを起動せずに手元で実行できるコマンドとして提供
-  され、結果を機械可読（JSON）で返さなければならない
-- **FR-011**: 対象機能は、直近にマージされた `sdd` ラベル付き PR が変更した機能
-  ディレクトリから決めなければならない。判別できないときは、spec があり未完了の機能
-  のうち番号が最小のものを対象にする
-- **FR-012**: 状態判定は、判定の各パターンを再現するフィクスチャによる自動テストを持ち、
-  リポジトリの自動検証の一部として実行されなければならない
-
-**暴走防止と冪等性**
-
-- **FR-013**: ハーネスは、対象機能に open な段階 PR が既にあるとき、新しい段階 PR を
-  作ってはならない。ラベル付与に失敗して `sdd` ラベルが無い段階 PR も同じ head/base なら
-  塞ぐ対象にしなければならない。未解決レビュー指摘があれば同じ PR の head branch に
-  修正 commit を積み、無ければ design / tasks / implement の non-draft PR の checks を再評価して
-  green なら既存 PR をマージしなければならない
-- **FR-014**: ハーネスは、段階の実行後に状態が実行前と変わっていない、または差分が
-  空のとき、PR を開いてはならない
-- **FR-015**: ハーネスは、同じフェーズの implement PR のマージ回数が 2 回に達している
-  とき、そのフェーズを再実行してはならない
-- **FR-016**: ハーネスは、同じ機能の自動 PR のマージ回数が standard workflow では
-  「2 + フェーズ数 + 2」、UI workflow では design 分を加えた「3 + フェーズ数 + 2」に
-  達しているとき、段階を実行してはならない
-- **FR-017**: ハーネスは、FR-014〜FR-016 で停止したとき、停止理由を書いた Issue を
-  1 件立てなければならない。同じ題名の open Issue があるときは作ってはならない
-- **FR-023**: 新規 spec は起点となる GitHub Issue 番号を `Parent Issue` として保持しなければ
-  ならない。ハーネスは対象 feature の確定後にこの参照を読み、Issue の `ui`
-  ラベルで workflow を選ばなければならない。spec番号から Issue 番号を推測してはならない
-- **FR-024**: 最終 implement 後に自動候補が `none` でも、ハーネスは workflow 判定より先に
-  git 履歴から完了 feature を復元し、feature branch から `main` への最終 PR を作成できなければ
-  ならない
-- **FR-018**: 保守者は、起動元を一時停止することでハーネス全体を止められなければ
-  ならない
-
-**再開と使用量**
-
-- **FR-019**: ハーネスは、1 日 1 回の定期実行でも起動し、そのときはマージ起動と同じ
-  判定を行わなければならない。open PR がある場合はレビュー指摘の有無と checks を確認し、
-  feature branch が完了済みなら既存の最終 PR のレビュー指摘を確認してから、無ければ最終 PR を
-  作成または再利用する
-- **FR-020**: ハーネスは、アカウントの使用率が取得でき、かつしきい値（7 日窓 80% または
-  5 時間窓 70%）以上のとき、段階を実行せずに見送らなければならない。取得できないときは
-  見送りの判定を飛ばす
-
-**文書と運用**
-
-- **FR-021**: 起動元（routine）の設定内容は、リポジトリ内に写しとして保存され、消えても
-  再現できなければならない
-- **FR-022**: 判定コマンド・実行手順・起動元の設定は、リポジトリ内の 1 箇所（スキルの
-  ディレクトリ）と設計文書から辿れなければならない
-
-### Key Entities *(include if feature involves data)*
-
-- **機能（Feature）**: `specs/NNN-*/` の 1 ディレクトリ。番号と、spec／plan／tasks の
-  成果物を持つ
-- **段階（Stage）**: 機能が次に必要とする作業。`plan`・`tasks`・`implement`・`done`・
-  `none`（対象外）のいずれか
-- **フェーズ（Phase）**: tasks.md の `## Phase N:` 節。番号・題名・タスク数・未完了数を持つ
-- **状態（State）**: ある時点の機能に対する判定結果。機能・段階・フェーズ・作業ブランチ名
-  からなり、成果物だけから導出される
-- **ホップ（Hop）**: ハーネスが開いてマージされた PR 1 件。機能と段階（とフェーズ）に
-  対応し、回数の上限判定に使う
-- **停止通知**: ハーネスが自ら止まったときに立てる Issue。題名に機能番号と理由を含む
-
-## Success Criteria *(mandatory)*
-
-### Measurable Outcomes
-
-- **SC-001**: spec のマージから implement の最終フェーズの PR まで、保守者の操作が
-  「各 PR のレビューとマージ」だけで進む。段階の切れ目でセッションを開いたりコマンドを
-  打ったりする操作は 0 回
-- **SC-002**: 手元で状態判定コマンドを実行すると、1 秒以内に JSON が返り、同じ入力に
-  対して常に同じ結果になる
-- **SC-003**: 状態判定の自動テストがリポジトリの自動検証（CI）で実行され、6 パターン
-  以上のフィクスチャをすべて通る
-- **SC-004**: 保守者が PR を機械的にマージし続けても、同じ機能に対する自動 PR の総数は
-  「2 + フェーズ数 + 2」を超えない
-- **SC-005**: 対象機能に open な自動 PR がある状態でセッションを 10 回起動しても、
-  新しい PR もブランチも 0 件
-- **SC-006**: 停止したとき、保守者は GitHub の Issue 一覧だけで「止まったこと」と
-  「理由」を確認できる（セッションの transcript を開く必要が無い）
-
-## Assumptions
-
-- 保守者は 1 人で、GitHub とセッションの実行主体は同じアカウントである。複数人での
-  運用は想定しない
-- ハーネスは同時に 1 つの機能だけを進める。複数機能の並行進行は対象外
-- spec の作成（`/speckit-specify`、`/speckit-clarify`）は保守者が行う。ハーネスは spec を
-  作らない
-- 起動元は Claude Code の routine（GitHub トリガー + 日次スケジュール）を使う。
-  routine の実行回数はアカウントの日次上限に従う
-- PR のマージにはマージコミットでもスカッシュでもよい。回数の判定はマージ方式に依存
-  しない方法で行う
-- 使用率の取得は環境に依存する。取得できない場合の見送りは行わず、その事実を
-  技術的負債として記録する
-- レビューの質は本機能の対象外。PR の内容の良し悪しは保守者のレビューで担保する
+| Success criterion | Original requirements |
+| --- | --- |
+| SC-001 | RQ-001, RQ-006 |
+| SC-002 | RQ-001, RQ-003, RQ-007 |
+| SC-003 | RQ-004 |
+| SC-004 | RQ-002, RQ-005 |
+| SC-005 | RQ-004, RQ-005 |
+| SC-006 | RQ-001, RQ-007, RQ-008 |

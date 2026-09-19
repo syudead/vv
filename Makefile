@@ -24,7 +24,7 @@ GENERATED := internal/httpapi/gen/api.gen.go web/src/api/gen/openapi.ts
 .DEFAULT_GOAL := help
 .PHONY: help setup up down dev build generate fmt lint test check test-local-dev
 .PHONY: fmt-check fmt-check-go fmt-check-web generate-check
-.PHONY: lint-go lint-web test-go test-web test-sdd
+.PHONY: lint-go lint-web test-go test-web test-agent-workflows
 
 help: ## 目標の一覧を表示する
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -73,7 +73,7 @@ fmt: web/node_modules ## 書式を整える
 
 lint: lint-go lint-web ## golangci-lint（depguard を含む）と Web の静的検査
 
-test: test-go test-web test-sdd ## Go のテストと Web の検証、SDD ハーネスの判定テスト
+test: test-go test-web test-agent-workflows ## Go、Web、Issue handoff workflow の検証
 
 check: ## fmt の差分確認 → lint → test → 生成物の差分確認
 	@$(MAKE) --no-print-directory test-local-dev
@@ -115,10 +115,10 @@ test-go: ## Go のテストを実行する
 test-web: web/node_modules ## Web のビルド検証と単体テストを実行する
 	$(NPM) run test
 
-# 依存は bash・coreutils・jq・git。手元の Git Bash でも同じ判定になる。
+# 依存は bash・coreutils・git。手元の Git Bash でも同じ判定になる。
 # CI では Go のジョブから呼ぶ（Web のジョブでは呼ばない）。
-test-sdd: ## SDD ハーネスの判定テスト（bash のみ）
-	bash .claude/skills/sdd-next/tests/run.sh
+test-agent-workflows: ## Issue handoff workflow のローカル状態判定テスト
+	bash -lc '.specify/tests/workflows/run.sh'
 
 generate-check: ## 生成物が api/openapi.yaml と一致しているか確認する
 	@$(MAKE) --no-print-directory generate

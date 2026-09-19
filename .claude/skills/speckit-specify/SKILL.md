@@ -10,6 +10,14 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
+## Repository issue handoff
+
+When this command is invoked with a GitHub parent Issue, read and follow
+`.specify/workflows/README.md` and `.specify/workflows/specify.md` first. Those
+files own branch topology, GitHub preflight, PR scope, and stopping behavior.
+This skill owns only Spec Kit artifact generation. A run creates or updates one
+Spec PR and never starts Plan.
+
 
 ## User Input
 
@@ -101,7 +109,7 @@ Given that feature description, do this:
    - Record the GitHub Issue that initiated this feature as `**Parent Issue**: #NNN` in
      `SPEC_FILE`. Use the explicit Issue URL/number from the request or triggering context; never
      derive it from the spec directory number. If no parent Issue is available, stop and ask for
-     one before completing the spec because `/sdd-next` uses its labels to select the workflow.
+     one before completing the spec because the Issue is the cross-agent handoff surface.
    - Persist the resolved path to `.specify/feature.json`:
      ```json
      {

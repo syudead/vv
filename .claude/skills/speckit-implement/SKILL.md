@@ -10,6 +10,15 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
+## Repository issue handoff
+
+When this command is invoked with a native child Issue, read and follow
+`.specify/workflows/README.md` and `.specify/workflows/implement.md` first.
+Those files own parent and feature-branch discovery, sub-branch/PR behavior,
+and the one-child boundary. Set `SPECIFY_FEATURE_DIRECTORY` explicitly and
+implement only the task named by the child Issue, even though the generic
+Spec Kit procedure below can process a broader task set.
+
 
 ## User Input
 

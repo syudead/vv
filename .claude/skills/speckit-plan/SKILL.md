@@ -10,6 +10,14 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
+## Repository issue handoff
+
+When this command is invoked for a GitHub parent Issue, read and follow
+`.specify/workflows/README.md` and `.specify/workflows/plan.md` first. Those
+files own feature-branch discovery, the one-stage boundary, and PR behavior.
+Set the resolved path explicitly as `SPECIFY_FEATURE_DIRECTORY`; do not infer
+it from a branch name or a previous `.specify/feature.json`.
+
 
 ## User Input
 

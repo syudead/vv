@@ -1,0 +1,94 @@
+# Issue handoff workflows
+
+This directory is the agent-neutral contract for one-stage-at-a-time SDD work.
+Agent-specific skills may point here, but must not redefine branch discovery,
+stage ordering, or Issue/PR ownership.
+
+`.specify/init-options.json`, `.specify/integration.json`, and integration
+manifests record how Spec Kit was installed and updated. They do not select the
+agent for an Issue handoff run and are not runtime state.
+
+## Inputs and sources of truth
+
+- Every run starts from one explicitly supplied parent Issue or sub-issue.
+- The parent Issue contains the requirement and an `## SDD` summary only.
+- Merged files on the feature branch are the source of truth for artifact state.
+- `**Parent Issue**: #NNN` in `spec.md` is the only repository mapping between
+  a feature directory and its parent Issue.
+- PR `head`/`base`, Issue timeline references, the integration PR's
+  `Closes #NNN`, and native GitHub sub-issues carry relationships. Do not copy
+  PR, branch, or child-Issue lists into the parent body.
+
+The parent summary has this form:
+
+```markdown
+## SDD
+
+- [ ] Spec
+- [ ] Plan
+- [ ] Design
+- [ ] Tasks
+- Next: `specify`
+```
+
+Omit `Design` unless the parent has the existing `ui` domain label. Remove
+`Next` after `taskstoissues` succeeds.
+
+## GitHub preflight
+
+Use the agent's native GitHub integration. This repository intentionally has
+no command that authenticates to GitHub. The Claude and Codex adapters use
+GitHub MCP and never fall back to `gh`.
+
+Before changing the checkout, verify that the integration can read Issues and
+PRs and can push and create PRs. `taskstoissues` additionally requires Issue
+write access and native sub-issue operations. Stop before changing files when
+a required capability is missing.
+
+Resolve the feature branch without naming conventions:
+
+1. When Spec is complete, find the one open PR that targets `main` and closes
+   the parent Issue. Its head is the feature branch. Zero or multiple matches
+   are an error.
+2. For a child Issue, get its native parent first, then apply step 1.
+3. Before Spec is merged, inspect open PRs that reference the parent and add a
+   `spec.md` whose `**Parent Issue**` matches it. Zero means start `specify`,
+   one means continue that PR only, and multiple means stop.
+4. If an open PR already exists for the requested stage or child Issue,
+   update that PR's head for review fixes; do not open another PR.
+
+After checkout, run this for an existing feature directory:
+
+```bash
+bash .specify/scripts/bash/sdd-stage.sh --feature specs/NNN-name [--ui]
+```
+
+The command is local and read-only. For Spec through Tasks, its result must
+agree with the parent SDD summary. On disagreement, stop and report the
+difference; a maintainer updates the Issue before the run is retried. A brand
+new Specify has no directory yet and does not run this command.
+
+`next=taskstoissues` means only that repository artifacts are ready for GitHub
+reconciliation. The command cannot tell whether sub-issues already exist. At
+that boundary, `Next: taskstoissues` means reconciliation is pending, while no
+`Next` plus reconciled native sub-issues means implementation may proceed.
+
+## Branch and PR contract
+
+- The long-lived feature branch starts from `main`.
+- Every stage and implementation runs on an arbitrary-name sub-branch created
+  from the current feature branch.
+- Stage and implementation PRs target the feature branch. The integration PR
+  targets `main` and remains open after Spec is merged.
+- Stage PRs use `Refs #<parent>`. Implementation PRs use `Refs #<child>`.
+  Only the integration PR uses `Closes #<parent>`.
+- No branch name, Issue number, feature-directory number, label, JSON packet,
+  session ID, or previous conversation selects the feature or stage.
+- A run performs one workflow, opens or updates one PR, and stops. PR merges do
+  not start another agent.
+
+Humans merge every PR. After a stage PR merge, the maintainer updates the
+parent SDD summary. After an implementation PR merge, the maintainer closes
+that child Issue as completed. The integration PR is merged only after all
+children are resolved, latest `main` has been merged through a reviewed
+sub-branch, and the full checks pass.

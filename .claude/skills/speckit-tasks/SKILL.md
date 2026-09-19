@@ -10,6 +10,14 @@ user-invocable: true
 disable-model-invocation: false
 ---
 
+## Repository issue handoff
+
+When this command is invoked for a GitHub parent Issue, read and follow
+`.specify/workflows/README.md` and `.specify/workflows/tasks.md` first. Those
+files own feature-branch discovery, immutable task-ID rules, the one-stage
+boundary, and PR behavior. Set `SPECIFY_FEATURE_DIRECTORY` explicitly. For a
+UI Issue, include `ui-design.md` as an input before generating tasks.
+
 
 ## User Input
 
