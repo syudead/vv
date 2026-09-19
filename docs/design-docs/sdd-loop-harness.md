@@ -52,8 +52,8 @@ UI IssueだけはPlanとTasksの間にDesignを持つ。`Next`は
 ### Feature artifacts
 
 `spec.md`の`**Parent Issue**: #NNN`だけがfeature directoryと親Issueを対応させる。番号の一致は
-要求しない。`scripts/issue-handoff/sdd-stage.sh`は明示されたdirectoryだけを読み、不足している次工程を
-表示する。GitHub、branch名、Issue本文、agent情報へはアクセスしない。
+要求しない。共通skillは明示されたdirectoryの成果物を直接読み、不足している次工程を判断する。
+branch名や前回sessionの選択状態から対象を推測しない。
 
 既存の後続成果物が後から改訂された前段成果物を取り込んでいるかは自動推測しない。改訂時は保守者が
 親IssueのSDD summaryを戻し、影響する工程をreviewed PRとして再実行する。
@@ -79,7 +79,7 @@ Spec merge前だけはintegration PRが存在しない。親Issueを参照し、
 停止する。
 
 GitHub discoveryは各agentのnative integrationが行う。repository共通のGitHub接続commandは作らない。
-Claude/Codex adapterはGitHub MCPを使い、`gh`へfallbackしない。
+ClaudeとCodexはGitHub MCPを使い、`gh`へfallbackしない。
 
 ## Stage transitions
 
@@ -110,7 +110,8 @@ CIはすべてのPRで検証するが、agentや次工程を起動しない。�
 - agent packet、result JSON、session state
 - branch名によるfeature/stage判定
 
-正規手順は`docs/agent-workflows/`、agent固有入口はそれを参照するadapterに限定する。
+正規手順は`.agents/skills/issue-handoff/`に置く。`.claude/skills`は
+`.agents/skills`全体へのsymlinkとし、agent別の複製やadapterを持たない。
 
 ## Failure behavior
 
@@ -123,7 +124,7 @@ feature branch push後、Spec PR作成前に停止するとGitHub標準関係が
 
 ## Verification
 
-- `make test-agent-workflows`: branch名に依存しないartifact存在状態の判定
+- Agent Skill validator: frontmatter、skill名、参照先の整合性
 - `make check`: repository全体
 - GitHub実機確認: timeline参照、native sub-issues、parent取得、integration PRからのbranch解決、
   feature向けPRでのCI、default branch merge時のparent close

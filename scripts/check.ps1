@@ -14,15 +14,6 @@ if ($null -ne (Get-Command make -ErrorAction SilentlyContinue)) {
     exit $LASTEXITCODE
 }
 
-$gitBash = Get-Command bash -ErrorAction SilentlyContinue
-if ($null -eq $gitBash) {
-    throw "Git Bash is required when make is unavailable. Install Git for Windows and add bash.exe to PATH."
-}
-& $gitBash.Source -lc 'case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) exit 0 ;; *) exit 1 ;; esac'
-if ($LASTEXITCODE -ne 0) {
-    throw "The bash command on PATH is not Git Bash. scripts/check.ps1 requires Git for Windows when make is unavailable."
-}
-
 if ($env:VV_SKIP_LOCAL_DEV_TESTS -ne "1") {
     pwsh -NoLogo -NoProfile -File scripts/local-dev.tests.ps1
 }
@@ -66,10 +57,6 @@ Run-Step "test-go" {
 
 Run-Step "test-web" {
     npm --prefix web run test
-}
-
-Run-Step "test-agent-workflows" {
-    & $gitBash.Source -lc "bash tests/issue-handoff/run.sh"
 }
 
 Run-Step "generate-check" {

@@ -34,8 +34,8 @@ file into a handbook.
   embedding one is covered in
   [docs/how-to/ui-change-screenshots.md](docs/how-to/ui-change-screenshots.md).
 - SDD work starts from an explicitly supplied parent Issue or native sub-issue.
-  Follow `docs/agent-workflows/README.md`; each run performs one stage and opens
-  or updates one PR. Stage and implementation PRs target the long-lived feature
+  Use `.agents/skills/issue-handoff`; each run performs one stage and opens or
+  updates one PR. Stage and implementation PRs target the long-lived feature
   branch, and only its integration PR targets `main`.
 - The empty feature-branch push during `specify` is the sole temporary exception
   to the rule that every pushed feature branch already has a PR to `main`.

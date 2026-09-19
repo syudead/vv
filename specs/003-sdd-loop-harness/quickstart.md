@@ -2,13 +2,10 @@
 
 ## S1: Local artifact state
 
-```bash
-make test-agent-workflows
-bash scripts/issue-handoff/sdd-stage.sh --feature specs/<issue-backed-feature>
-```
-
-Expected: fixture tests pass; the command prints `feature`, `workflow`, `next`,
-`reason`, and `parent_issue` without creating a file or contacting GitHub.
+Verify that `.agents/skills/issue-handoff/SKILL.md` is discoverable and that
+`.claude/skills` resolves to `.agents/skills`. Open the skill and confirm that
+it routes to the expected stage reference without creating files or contacting
+GitHub.
 
 ## S2: Parent Issue and Specify
 

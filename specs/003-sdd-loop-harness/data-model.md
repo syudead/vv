@@ -31,7 +31,7 @@ no `Next` and reconciled native children is complete.
 | shipped state | parent closed by the merged integration PR |
 | implemented state | child closed after its implementation PR merges to the feature branch |
 
-These values are fetched by an agent adapter and are never written to a
+These values are fetched by the agent's native integration and are never written to a
 repository state file.
 
 ## Parent SDD summary

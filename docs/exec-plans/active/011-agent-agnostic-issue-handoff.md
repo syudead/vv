@@ -8,11 +8,10 @@
 
 ## 実装状況（2026-09-19）
 
-リポジトリ内の共通workflow、ローカル状態判定と契約テスト、agent adapter、全PR向けCI設定、
-設計・仕様・運用文書の置換、旧`/sdd-next`とusage hookの撤去は完了した。共通workflow、実行script、
-契約testはそれぞれ`docs/agent-workflows/`、`scripts/issue-handoff/`、`tests/issue-handoff/`に置き、
-Spec Kit管理下の`.specify/`から分離した。workflow test、local-dev test、Web format/lint/build/test
-156件は成功している。
+共通Agent Skill、全PR向けCI設定、設計・仕様・運用文書の置換、旧`/sdd-next`とusage hookの撤去は
+完了した。全skillの正本は`.agents/skills/`に置き、`.claude/skills`はdirectory全体へのsymlinkとした。
+工程手順は`.agents/skills/issue-handoff/`へ統合し、専用の状態判定script、wrapper、fixture testは
+廃止した。local-dev test、Web format/lint/build/test 156件は成功している。
 
 GitHub MCPで`syudead/vv`へのadmin/push権限、Issue/PRのread、PR作成能力を確認した。2026-09-19
 時点でopen PRは0件、`sdd`付きopen Issueは0件である。Issue #46のnative sub-issues APIをreadし、
@@ -164,7 +163,7 @@ directory 番号は独立であり、一致や変換を仮定しない。
    `not planned`として閉じる。
    要件が実質的に変わる場合は既存IDを上書きせず、旧taskを取り消して新しいIDを追加する。
 7. GitHub sub-issue操作は、GitHubの公式sub-issue APIを扱える各エージェントのnative GitHub
-   integrationを使う。このrepositoryのClaude/Codex adapterはGitHub MCPを使い、`gh` CLIへは
+   integrationを使う。このrepositoryではClaudeとCodexはGitHub MCPを使い、`gh` CLIへは
    fallbackしない。対応能力がない環境では通常Issueだけを作って続行せず、変更前に停止する。
 8. sub-issuesの作成・再利用が完了したら、親IssueのSDD節から`Next`行を削除する。SDD成果物工程は
    完了とし、以後の実装進捗はGitHubのsub-issuesだけで扱う。
@@ -246,10 +245,10 @@ directory 番号は独立であり、一致や変換を仮定しない。
 - PR merge を契機に自分自身または別エージェントを起動しない。
 - 親 Issue 本文へ PR 一覧や子 Issue 一覧を転記しない。
 
-工程の正規手順は`docs/agent-workflows/{specify,plan,design,tasks,taskstoissues,implement}.md`へ置き、
-既存templateとscriptをそこから参照する。AGENTS.mdは親/子Issueの読み方とこのdirectoryへの導線だけを
-持つ。`.claude/skills/`などのエージェント固有skillを残す場合は、共通workflowを参照する薄い
-adapterとする。`.specify/init-options.json`の`ai`/`integration`はSpec Kit導入・更新時のmetadataに
+工程の正規手順は`.agents/skills/issue-handoff/`へ置き、既存templateとscriptをそこから参照する。
+AGENTS.mdは親/子Issueの読み方とこのskillへの導線だけを持つ。`.claude/skills`は
+`.agents/skills`へのsymlinkとし、エージェント固有の複製やadapterを作らない。
+`.specify/init-options.json`の`ai`/`integration`はSpec Kit導入・更新時のmetadataに
 限定し、実行時のエージェント選択やbranch操作には使わない。
 
 ## 5. 自動化の境界
@@ -269,13 +268,13 @@ Claude Routine、工程またはエージェントを起動する`pull_request` 
 - 各エージェントのnative GitHub integrationで、親Issueまたは親sub-issueから統合PRとfeature
   branchを一意に解決するread-only preflight手順
 - 同じ工程のopen PRがないことのread-only確認
-- feature branchの成果物から次工程を表示するローカルread-onlyコマンド
+- feature branchの成果物を直接読んで次工程を判断する共通skill手順
 - stage ごとの変更可能ファイルと成果物の検査
 - tasks と子 Issue の重複作成防止
 - 全体の `make check`
 
-GitHub preflightを行う共通repositoryコマンドは作らず、認証とAPI差異は各agent adapterに閉じ込める。
-ローカル状態判定コマンドはGitHubへアクセスしない。preflightと検査はPRを作成、merge、Issueを編集、
+GitHub preflightを行う共通repositoryコマンドは作らず、認証とAPI差異は各agentのnative integrationに閉じ込める。
+成果物確認はcheckout内だけで行う。preflightと検査はPRを作成、merge、Issueを編集、
 close、reopen、またはエージェントを起動しない。
 工程本体が行うPR作成、保守者が行う親IssueのSDD節更新、taskstoissuesが行うsub-issue作成は
 別責務として明示する。
@@ -295,8 +294,8 @@ close、reopen、またはエージェントを起動しない。
 - [ ] 親IssueのSDD節をSpec / Plan / Tasks / Nextと、UI IssueだけのDesignに限定したテンプレートを
       定義する。
 - [ ] feature/sub-branch、stage PR、統合 PR、親/子 Issue の責務を契約にする。
-- [ ] エージェント非依存の正規手順を`docs/agent-workflows/`へ工程別に置き、AGENTS.mdと既存Claude
-      skillをそこへの導線へ縮める。
+- [ ] エージェント非依存の正規手順を`.agents/skills/issue-handoff/`へ工程別に置き、AGENTS.mdを
+      そこへの導線へ縮める。`.claude/skills`は共通skill directoryへのsymlinkにする。
 - [ ] 親IssueのNext値を`specify | plan | design | tasks | taskstoissues`に限定し、slash command名を
       保存しない。
 - [ ] branch 名、Issue 番号、feature 番号を対応判定に使わないことを fixture で検証する。
@@ -318,7 +317,7 @@ close、reopen、またはエージェントを起動しない。
 - [ ] spec、plan、ui-design、tasksの欠落を検査する。
 - [ ] checkout後の工程状態判定がGitHub API、Issue本文、branch名、agent情報へ依存しないことを
       検証する。GitHubを読むpreflightとは責務を分ける。
-- [ ] GitHub関係のfixtureを各adapterの契約テストに渡し、repositoryの状態判定テストからnetworkと
+- [ ] GitHub関係のfixtureを各native integrationの契約テストに渡し、repositoryの状態判定テストからnetworkと
       GitHub認証を排除する。
 - [ ] 出力は人とエージェントが読める表示にし、永続状態ファイルを作らない。
 

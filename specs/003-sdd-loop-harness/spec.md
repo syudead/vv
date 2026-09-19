@@ -97,7 +97,7 @@ branch names and reject dirty artifact directories.
   integration PR, and native sub-issues are the relationship sources of truth.
 - **FR-009**: No Routine, merge-triggered agent, schedule, SDD automation
   label, committed packet, result JSON, or session state is required.
-- **FR-010**: The local state command reads only an explicit feature directory
+- **FR-010**: The shared skill reads only an explicit feature directory
   and reports the first missing required artifact. It does not infer whether
   downstream content incorporates a later upstream revision.
 - **FR-011**: Tasks-to-sub-issues deduplicates task IDs only within the supplied
@@ -110,7 +110,7 @@ branch names and reject dirty artifact directories.
 - **FR-015**: Before integration, latest `main` enters the feature branch
   through a reviewed sub-branch PR; the feature branch is not force-pushed.
 - **FR-016**: Repository GitHub access is performed by each agent's native
-  adapter. No shared repository command owns authentication or API transport.
+  integration. No shared repository command owns authentication or API transport.
 
 ## Edge cases
 
