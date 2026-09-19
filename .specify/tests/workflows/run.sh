@@ -185,6 +185,12 @@ if [ -e "$repo_root/.specify/workflows/speckit/workflow.yml" ]; then
   printf 'retired full-cycle workflow still exists\n' >&2
   contract_ok=false
 fi
+for script in setup-plan.sh setup-tasks.sh check-prerequisites.sh; do
+  if ! grep -q 'get_feature_paths --no-persist' "$repo_root/.specify/scripts/bash/$script"; then
+    printf 'handoff setup may persist feature.json: %s\n' "$script" >&2
+    contract_ok=false
+  fi
+done
 if [ "$contract_ok" = true ]; then
   printf 'PASS repository-contract\n'
   pass=$((pass + 1))
