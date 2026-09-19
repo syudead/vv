@@ -12,7 +12,7 @@
 「画面の変更」に **UI 変更なし** と書いて、確認済みであることを残す。
 
 Issue handoff SDDでは、親Issueに`ui`ラベルがある場合だけUI workflowを使う。workflowは
-`plan -> design -> tasks -> implement`と進み、`design`で作成した`ui-design.md`を実装と
+`plan -> design -> plan-to-issues -> implement`と進み、`design`で作成した`ui-design.md`を実装と
 撮影・評価の入力にする。Phase、task、変更path、拡張子からUIかどうかを推測しない。
 正規手順は`.agents/skills/issue-handoff/references/design.md`と
 `.agents/skills/issue-handoff/references/implement.md`にある。

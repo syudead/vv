@@ -7,7 +7,7 @@ No dedicated runtime state is persisted. The following values are derived.
 | Value | Source | Rule |
 | --- | --- | --- |
 | feature directory | explicit workflow input | normalized path under `specs/` |
-| parent Issue | `spec.md` | exactly one `**Parent Issue**: #NNN` line |
+| parent Issue | explicit workflow input or native sub-issue relationship | read as context when supplied |
 | workflow | parent `ui` label | `standard` or `ui`; passed explicitly to local inspection |
 | artifact stage | required files | first missing downstream artifact |
 
@@ -23,8 +23,8 @@ are represented by native GitHub sub-issues.
 
 | Value | Source |
 | --- | --- |
-| feature branch | head of the unique open integration PR that targets `main` and closes the parent |
-| active pre-Spec work | unique open Spec PR cross-referenced from the parent |
+| working branch | explicitly supplied branch or current checkout |
+| review target | explicitly supplied PR |
 | child parent | native GitHub sub-issue parent relationship |
 | stage relationship | normal Issue reference in a feature-targeting PR |
 | shipped state | parent closed by the merged integration PR |

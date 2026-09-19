@@ -21,15 +21,14 @@ agent for an Issue handoff run and are not runtime state.
 
 ## Inputs and sources of truth
 
-- Every run starts from one explicitly supplied parent Issue or sub-issue.
+- An Issue-driven run starts from an explicitly supplied Issue. An explicitly
+  supplied PR or branch may provide additional context.
 - The parent Issue contains the requirement and an `## SDD` summary only.
 - Files on the selected branch describe the available artifacts; their presence
   does not gate a user-requested workflow.
-- `**Parent Issue**: #NNN` in `spec.md` is the only repository mapping between
-  a feature directory and its parent Issue.
-- PR `head`/`base`, Issue timeline references, the integration PR's
-  `Closes #NNN`, and native GitHub sub-issues carry relationships. Do not copy
-  PR, branch, or child-Issue lists into the parent body.
+- Read standard GitHub Issue, PR, and native sub-issue relationships when they
+  are relevant. Do not copy PR, branch, or child-Issue lists into the parent
+  body or create a second relationship registry in repository files.
 
 The parent summary has this form:
 
@@ -54,32 +53,16 @@ repository push and PR creation access. `plan-to-issues` needs Issue write
 access and native sub-issue operations but does not require push or PR creation.
 Stop before mutation when a required capability is missing.
 
-Resolve the feature branch without naming conventions:
+Use the supplied Issue, PR, branch, and current checkout directly. Read their
+standard GitHub relationships as ordinary context; do not run a repository-
+specific traversal to recover a branch or feature directory, compare multiple
+records for consistency, or require a unique candidate. When review fixes are
+requested for a PR, update that PR's head. Ask the user only when information
+that is actually required for the requested mutation is unavailable.
 
-1. When Spec is complete, inspect open PRs that target `main` and close the
-   parent Issue. Use the explicitly supplied PR or branch when available. If
-   more than one candidate remains and the target cannot be determined from the
-   request, ask which one to use; multiple PRs are not an error.
-2. For a child Issue, get its native parent first, then apply step 1.
-3. Before Spec is merged, inspect open PRs that reference the parent and add a
-   `spec.md` whose `**Parent Issue**` matches it. Continue an explicitly
-   supplied PR for review work. Otherwise, use an unambiguous requested target
-   or create another PR; existing matching PRs do not block the run.
-4. When the user requests review fixes for an existing PR, update that PR's
-   head. A request to run a stage may create a separate PR even when another PR
-   for that stage is open.
-
-After checkout, inspect the selected feature directory directly. Use the exact
-`**Parent Issue**: #NNN` line in `spec.md` when mapping an existing directory to
-its parent. Read `spec.md`, `plan.md`, and optional `ui-design.md` as inputs when
-they exist. Do not compare their presence with the parent checklist or `Next`,
-and do not stop merely because those descriptions differ.
-
-Historical feature directories without an exact `**Parent Issue**: #NNN` line
-are not auto-migrated and are not valid handoff inputs. They remain historical
-artifacts. Continuing one requires a maintainer to choose a parent Issue and
-add the exact mapping through a reviewed artifact PR; never infer it from a
-directory number, branch name, or old PR.
+After checkout, read `spec.md`, `plan.md`, and optional `ui-design.md` when they
+are relevant and available. Their metadata and the parent checklist are useful
+context, not identity checks or execution gates.
 
 Supply `SPECIFY_FEATURE_DIRECTORY` explicitly whenever invoking Spec Kit; never
 select work from a branch name, prior conversation, or existing
@@ -102,8 +85,8 @@ stages through reviewed PRs.
   targets `main` and remains open after Spec is merged.
 - Stage PRs use `Refs #<parent>`. Implementation PRs use `Refs #<child>`.
   Only the integration PR uses `Closes #<parent>`.
-- No branch name, Issue number, feature-directory number, label, JSON packet,
-  session ID, or previous conversation selects the feature or stage.
+- Do not derive hidden identity rules from branch names, Issue numbers,
+  feature-directory numbers, labels, JSON packets, or session IDs.
 - A run performs one workflow, opens or updates one PR, and stops. PR merges do
   not start another agent.
 

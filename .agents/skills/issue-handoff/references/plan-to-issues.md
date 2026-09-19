@@ -3,7 +3,8 @@
 Read [README.md](README.md) first. Input is a parent Issue and an approved
 `plan.md` containing one `## Implementation Work` section.
 
-1. Resolve the requested feature branch and feature directory from the parent.
+1. Use the supplied parent Issue and current checkout as context, and read the
+   relevant approved Plan.
 2. Read each `###` subsection under `## Implementation Work` as one proposed
    child Issue. Use its heading as the title and its scope, dependencies, and
    acceptance evidence as the body.

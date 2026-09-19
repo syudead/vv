@@ -6,8 +6,8 @@
 
 Replace the Claude Routine controller with agent-neutral Markdown workflows.
 Keep the long-lived feature branch and sub-branch PR topology. Use native
-GitHub relationships for remote discovery and a pure local script for artifact
-state. Human review and explicit invocation are the only stage transitions.
+GitHub relationships as optional work context. Human review and explicit
+invocation are the only stage transitions.
 
 ## Components
 
@@ -15,7 +15,7 @@ state. Human review and explicit invocation are the only stage transitions.
 | --- | --- |
 | `.agents/skills/issue-handoff/` | Canonical, agent-neutral stage procedures |
 | `.claude/skills` | Symlink to the shared Agent Skills directory |
-| GitHub native relationships | Parent/sub-issue and Issue/PR discovery |
+| GitHub native relationships | Optional parent/sub-issue and Issue/PR context |
 | `.github/workflows/ci.yml` | Validation on every PR; never starts an agent |
 
 ## Dependency direction
@@ -30,8 +30,8 @@ names. GitHub authentication and API details do not enter repository scripts.
 
 ## Artifact state
 
-The skill resolves an explicit `specs/NNN-name` directory, validates one parent
-line, and inspects required artifacts in order. It selects:
+For Spec Kit work, the skill uses an explicit `specs/NNN-name` directory and
+inspects required artifacts in order. It selects:
 
 1. `specify` when `spec.md` is absent.
 2. `plan` when `plan.md` is absent.
@@ -70,15 +70,14 @@ represented. Existing children are changed only when explicitly requested.
 - `make check`
 - Search for executable references to `sdd-next`, old branch naming, and the
   automation label.
-- GitHub live test covering Spec recovery, integration-PR discovery,
-  sub-issue parent lookup, child completion, parent close, and CI on a
+- GitHub live test covering supplied Issue/PR context, sub-issue parent lookup,
+  child completion, parent close, and CI on a
   feature-targeting PR.
 
 ## Risks and decisions
 
-- The gap between pushing an empty feature branch and creating its Spec PR is
-  not recoverable without custom state. This is accepted; orphan cleanup is
-  manual.
+- The workflow does not attempt to recover an unspecified branch or feature
+  directory. Missing information needed for a mutation is requested directly.
 - Explicit human invocation and merge replace automatic throughput, retry,
   and reconciliation. They are deliberate removals, not deferred automation.
 - Child close means implemented on the feature branch, not shipped. Parent

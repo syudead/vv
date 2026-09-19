@@ -49,9 +49,9 @@ branch naming convention.
 
 ### US1: Continue one stage with another agent (P1)
 
-A maintainer gives a parent Issue to a coding agent. The agent follows native
-Issue/PR relationships to the long-lived feature branch, reads merged
-artifacts, performs exactly the requested missing stage, opens a PR to the
+A maintainer gives a parent Issue and relevant checkout to a coding agent. The
+agent reads the supplied context and available artifacts, performs exactly the
+requested stage, opens a PR to the
 feature branch, and stops. A later stage can be run by a different agent.
 
 **Independent test**: Specify and Plan complete in separate sessions using
@@ -60,13 +60,13 @@ different agent implementations and arbitrary branch names.
 ### US2: Implement one child Issue (P1)
 
 Implementation work from the approved Plan becomes native sub-issues of the
-parent. A maintainer gives one child to an agent, which finds the parent and
-feature branch, implements only that work,
+parent. A maintainer gives one child and relevant checkout to an agent, which
+reads the child's native parent context, implements only that work,
 and opens a feature-branch PR. The child closes after that PR is merged; the
 parent remains open until the integration PR reaches `main`.
 
-**Independent test**: Starting from only a child Issue, a fresh agent opens the
-correct PR and does not implement unrelated Plan items.
+**Independent test**: Starting from a child Issue in the intended checkout, a
+fresh agent opens the requested PR and does not implement unrelated Plan items.
 
 ### US3: Inspect state without an agent service (P2)
 
@@ -75,7 +75,7 @@ see the next missing artifact stage. The command does not access
 GitHub and does not read branch naming, session files, or agent state.
 
 **Independent test**: Fixture repositories return the same stage on arbitrary
-branch names and reject dirty artifact directories.
+branch names.
 
 ## Functional requirements
 
@@ -89,13 +89,12 @@ branch names and reject dirty artifact directories.
 - **FR-005**: Branch names are arbitrary and never select an Issue, feature,
   stage, or retry.
 - **FR-006**: Issue numbers and feature-directory numbers are independent.
-  The only repository mapping is one exact `**Parent Issue**: #NNN` line in
-  `spec.md`.
+  Metadata in `spec.md` may provide context but is not an identity check.
 - **FR-007**: The parent body contains requirements and the Spec, Plan,
   optional Design, and Next summary. It does not copy PR, branch,
   child-Issue, retry, agent, or session data.
-- **FR-008**: GitHub timeline references, PR head/base, the parent-closing
-  integration PR, and native sub-issues are the relationship sources of truth.
+- **FR-008**: Supplied Issues, PRs, branches, the current checkout, and standard
+  GitHub relationships provide work context without a prescribed lookup order.
 - **FR-009**: No Routine, merge-triggered agent, schedule, SDD automation
   label, committed packet, result JSON, or session state is required.
 - **FR-010**: The shared skill reads only an explicit feature directory
@@ -116,15 +115,11 @@ branch names and reject dirty artifact directories.
 
 ## Edge cases
 
-- Zero or multiple integration PRs after Spec completion stop the run.
-- Zero open Spec PRs before Spec completion starts Specify; one resumes that
-  PR; multiple stop the run.
-- Parent SDD summary and merged artifacts disagree: stop until a maintainer
-  updates the Issue.
-- A feature branch pushed before its Spec PR cannot be recovered from standard
-  GitHub relationships; a maintainer removes it and retries.
-- Revised Spec, Plan, or Design pauses implementation until downstream
-  artifacts and sub-issues are reconciled.
+- Multiple related PRs or artifacts do not stop a run or require reconciliation.
+- When information required for the requested mutation is absent from the
+  request and current checkout, ask the user for it.
+- Revised Spec, Plan, or Design can be used as current implementation context
+  without comparing it to prior artifacts or sub-issues.
 
 ## Success criteria
 

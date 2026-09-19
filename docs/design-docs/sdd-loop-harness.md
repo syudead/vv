@@ -24,7 +24,7 @@ branch名は識別子ではない。Issue番号とfeature directory番号にも�
 `<github-trigger-context>`、`sdd`ラベル、`claude/sdd-*`というbranch名に依存していた。別agentは
 前sessionの状態を再現できず、repository内の判定scriptも外部Routineなしには前進できなかった。
 
-新方式では状態を二種類に分ける。
+新方式では作業の文脈を二種類から読む。
 
 - repository state: feature branchへmerge済みの`spec.md`、`plan.md`、`ui-design.md`
 - GitHub relationships: Issue timeline、integration PRの`Closes`、PRのhead/base、native sub-issues
@@ -50,9 +50,8 @@ UI IssueだけはPlanの後にDesignを持つ。`Next`は
 
 ### Feature artifacts
 
-`spec.md`の`**Parent Issue**: #NNN`だけがfeature directoryと親Issueを対応させる。番号の一致は
-要求しない。共通skillは明示されたdirectoryの成果物を直接読み、不足している次工程を判断する。
-branch名や前回sessionの選択状態から対象を推測しない。
+共通skillは指定されたIssue、PR、branch、現在のcheckoutと、関連する成果物をそのまま読む。
+`spec.md`の親Issue表記は文脈の補助であり、対象を決めるための照合キーや実行条件にはしない。
 
 既存の後続成果物が後から改訂された前段成果物を取り込んでいるかは自動推測しない。改訂時は保守者が
 親IssueのSDD summaryを戻し、影響する工程をreviewed PRとして再実行する。
@@ -67,17 +66,12 @@ branch名や前回sessionの選択状態から対象を推測しない。
 
 子Issueのcloseは「feature branchへ実装済み」、親Issueのcloseは「mainへ統合済み」を表す。
 
-## Discovery
+## Context
 
-Spec merge後は、親Issueを閉じるopenな`base=main` PRからfeature branch候補を取得する。
-子Issueから開始した場合はnative sub-issue APIで親を取得してから同じ手順を使う。依頼でPRまたは
-branchが明示されていればそれを使い、候補が複数あって対象を特定できない場合だけユーザーへ確認する。
-
-Spec merge前だけはintegration PRが存在しない。親Issueを参照し、一致する`**Parent Issue**`を持つ
-`spec.md`を追加するopen PRを調べる。review対象のPRが明示されていればそのheadを更新し、それ以外は
-既存PRを再利用しても別PRを作ってもよい。複数PRの存在自体はエラーにしない。
-
-GitHub discoveryは各agentの利用可能なintegrationが行う。repository共通のGitHub接続commandは作らない。
+指定されたIssue、PR、branchと現在のcheckoutを作業文脈として使う。GitHub標準のIssue/PR参照や
+native sub-issue関係は必要に応じて読むが、親からintegration PR、feature branch、feature directoryを
+順番に復元するrepository固有の手順は設けない。複数のPRや成果物を照合して一意性を判定しない。
+要求された変更に本当に必要な情報が得られない場合だけユーザーへ確認する。
 
 ## Stage transitions
 
@@ -112,16 +106,13 @@ CIはすべてのPRで検証するが、agentや次工程を起動しない。�
 
 ## Failure behavior
 
-親IssueのSDD節、artifact、GitHub relationshipは対象発見と作業入力に使うが、相互の一致を実行条件に
-しない。対象を一意に特定できない場合はユーザーへ確認する。review修正は指定されたPR headへ積む。
-
-feature branch push後、Spec PR作成前に停止するとGitHub標準関係がまだないため、branchを親Issueから
-復元できない。そのbranchは保守者が削除し、Specifyをやり直す。この短い非原子的区間を埋めるための
-独自markerや命名規則は導入しない。
+親IssueのSDD節、artifact、GitHub relationshipは作業入力として利用できるが、相互の一致を実行条件に
+しない。review修正は指定されたPR headへ積む。必要な対象が依頼にも現在のcheckoutにも存在しない場合は
+推測せずユーザーへ確認する。
 
 ## Verification
 
 - Agent Skill validator: frontmatter、skill名、参照先の整合性
 - `make check`: repository全体
-- GitHub実機確認: timeline参照、native sub-issues、parent取得、integration PRからのbranch解決、
+- GitHub実機確認: timeline参照、native sub-issues、parent取得、
   feature向けPRでのCI、default branch merge時のparent close

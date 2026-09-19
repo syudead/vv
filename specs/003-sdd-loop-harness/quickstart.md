@@ -23,7 +23,7 @@ equality is used.
 
 Give the same parent to a different agent implementation or fresh session.
 
-Expected: it obtains the feature branch from the integration PR, creates Plan
+Expected: when given the Issue and working branch or checkout, it creates Plan
 on a new arbitrary sub-branch, opens one feature-targeting PR, and stops.
 
 ## S4: UI path
@@ -46,8 +46,8 @@ parent body, and `Next` is absent.
 
 Give one child Issue to a fresh agent.
 
-Expected: it resolves the parent and feature branch, changes only that task and
-its marker, opens a feature-targeting PR, and stops. After human merge, close
+Expected: it reads the child and its native parent context, changes only that
+work item, opens a feature-targeting PR, and stops. After human merge, close
 the child and verify native progress updates while the parent remains open.
 
 ## S7: CI and integration
@@ -59,5 +59,5 @@ Expected: all PR types run CI and only the integration merge closes the parent.
 
 ## S8: Failure cases
 
-Verify that an unavailable sub-issue API and an invalid parent line stop without
-guessing or writing a packet/state file.
+Verify that an unavailable sub-issue API stops before mutation and that missing
+context needed for a mutation is requested without writing a packet/state file.

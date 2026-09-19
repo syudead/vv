@@ -29,8 +29,9 @@ sub-issueから任意のコーディングエージェントが一工程だけ�
 
 - 親IssueのSDD節はSpec、Plan、任意のDesign、Nextだけを持つ。
 - `Next`は人向けの進捗表示であり、工程の実行条件にしない。
-- feature directoryと親Issueの対応は`spec.md`の`**Parent Issue**: #NNN`で表す。
-- GitHubのPR関係とnative sub-issue関係を引き継ぎに使う。
+- 指定されたIssue、PR、branch、現在のcheckoutをそのまま作業文脈に使う。
+- GitHubの標準PR参照とnative sub-issue関係は必要に応じて読む。
+- branchやfeature directoryを復元する専用手順や照合は設けない。
 - 専用状態ファイル、marker、wrapper、lock、agent packetは作らない。
 
 ## 残作業

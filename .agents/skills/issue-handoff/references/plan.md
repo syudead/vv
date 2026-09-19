@@ -3,8 +3,8 @@
 Read [README.md](README.md) first. Input is a parent Issue and a user request to
 create or revise a plan.
 
-1. Resolve the requested feature branch or PR from the parent relationship.
-2. Read the selected branch's `spec.md` and any existing `plan.md` as inputs.
+1. Use the supplied Issue, PR, branch, and current checkout as context.
+2. Read the relevant `spec.md` and any existing `plan.md` as inputs.
 3. Create an arbitrary-name sub-branch from the current feature branch.
 4. Run the installed Spec Kit plan procedure for the explicit feature path.
    Resolve all consequential choices and include an implementation-work section

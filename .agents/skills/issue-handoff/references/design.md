@@ -3,7 +3,7 @@
 Read [README.md](README.md) first. This workflow is used when the user requests
 UI design work for a parent Issue.
 
-1. Resolve the feature branch and explicit feature directory from the parent.
+1. Use the supplied Issue, PR, branch, and current checkout as context.
 2. Read the available spec, plan, and existing UI design as inputs.
 3. Create an arbitrary-name sub-branch from the feature branch.
 4. Create `<feature-dir>/ui-design.md` from the approved spec, plan, existing

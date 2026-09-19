@@ -2,9 +2,8 @@
 
 Read [README.md](README.md) first. Input is one native child Issue.
 
-1. Get its parent through the native sub-issue relationship. Resolve the
-   explicitly requested feature branch or PR from the parent's relationships
-   and read the feature directory's `**Parent Issue**` field.
+1. Read the supplied child Issue and its native parent relationship. Use any
+   supplied PR or branch and the current checkout as additional context.
 2. If the request names an existing implementation PR, update that PR's head.
    Otherwise, an existing PR for the child does not block a separate PR.
 3. Create an arbitrary-name sub-branch from the current feature branch.

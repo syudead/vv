@@ -9,14 +9,16 @@ relationships. Do not use PR-merge events as an execution trigger.
 Issue/PR and parent/sub-issue relationships, so copying them into a custom
 packet creates a second, divergent state store.
 
-## R-002: Feature branch discovery
+## R-002: Work context
 
-**Decision**: After Spec merge, use the head of the unique open integration PR
-that targets `main` and closes the parent. Before Spec merge, use the unique
-open Spec PR cross-reference.
+**Decision**: Use the explicitly supplied Issue, PR, branch, and current
+checkout directly. Read standard GitHub relationships only when useful to the
+requested work. Do not prescribe a repository-specific recovery traversal or
+uniqueness check.
 
-**Why**: This preserves arbitrary branch names and requires no Issue-number to
-feature-number mapping.
+**Why**: The caller already supplies the work target. Reconstructing it through
+several records adds ordering and consistency requirements without improving
+the requested change.
 
 ## R-003: Local state
 
