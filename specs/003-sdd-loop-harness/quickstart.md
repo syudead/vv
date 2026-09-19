@@ -35,8 +35,8 @@ artifact work is complete.
 
 ## S5: Native sub-issues
 
-After the final artifact merges, create native sub-issues directly from the
-approved Plan and optional UI design.
+After the final artifact merges, run Plan-to-issues to create native sub-issues
+directly from the approved Plan and optional UI design.
 
 Expected: each implementation item not already represented under this parent
 gets one native child, no duplicate is created, no child list appears in the

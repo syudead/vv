@@ -11,12 +11,13 @@ No dedicated runtime state is persisted. The following values are derived.
 | workflow | parent `ui` label | `standard` or `ui`; passed explicitly to local inspection |
 | artifact stage | required files | first missing downstream artifact |
 
-Artifact dependency order is `spec -> plan -> tasks` or
-`spec -> plan -> ui-design -> tasks`. The repository does not persist or infer
+Artifact dependency order is `spec -> plan` or `spec -> plan -> ui-design`.
+The repository does not persist or infer
 which upstream revision produced a downstream artifact.
 
-The approved Plan contains the implementation-work breakdown. Child creation
-and completion are represented only by native GitHub sub-issues.
+The approved Plan contains the implementation-work breakdown.
+`Next: plan-to-issues` means child creation is pending; child creation and completion
+are represented by native GitHub sub-issues.
 
 ## GitHub values
 

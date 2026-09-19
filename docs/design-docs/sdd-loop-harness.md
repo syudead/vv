@@ -45,7 +45,7 @@ agent固有session、packet、独自JSON、branch命名はどちらにも含め�
 ```
 
 UI IssueだけはPlanの後にDesignを持つ。`Next`は
-`specify | plan | design`のいずれかで、最終成果物のmerge後に削除する。
+`specify | plan | design | plan-to-issues`のいずれかで、子Issue作成後に削除する。
 ただしSDD節は人向けの進捗表示であり、指定された工程を許可または禁止する状態機械ではない。
 
 ### Feature artifacts
@@ -81,10 +81,11 @@ GitHub discoveryは各agentの利用可能なintegrationが行う。repository�
 
 ## Stage transitions
 
-通常Issueは`specify -> plan`、UI Issueは`specify -> plan -> design`で進む。各stageは任意名sub-branchからfeature
+通常Issueは`specify -> plan -> plan-to-issues`、UI Issueは
+`specify -> plan -> design -> plan-to-issues`で進む。成果物stageは任意名sub-branchからfeature
 branch向けPRを一件作って終了し、人がreview、merge、親IssueのSDD節更新を行う。
 
-実装作業は承認済みPlanから直接native sub-issueとして作る。子Issueを作る直前に親の既存
+`plan-to-issues`は承認済みPlanから実装作業を直接native sub-issueとして作る。子Issueを作る直前に親の既存
 sub-issuesを確認し、同じ作業が既にあれば作成しない。既存childの更新やcloseは対象Issueが明示された
 場合だけ行う。
 

@@ -81,8 +81,8 @@ branch names and reject dirty artifact directories.
 
 - **FR-001**: Every run starts from an explicitly supplied parent Issue or
   native sub-issue.
-- **FR-002**: Standard flow is Specify then Plan. A parent with the existing
-  `ui` label adds Design after Plan.
+- **FR-002**: Standard flow is Specify, Plan, then Plan-to-issues. A parent with
+  the existing `ui` label adds Design between Plan and Plan-to-issues.
 - **FR-003**: One run performs one stage, opens or updates one PR, and stops.
 - **FR-004**: Stage and implementation PRs target a long-lived feature branch;
   only the integration PR targets `main`.

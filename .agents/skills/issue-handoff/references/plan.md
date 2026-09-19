@@ -12,6 +12,5 @@ create or revise a plan.
 5. Run the plan's checks, push, and open a feature-branch PR with
    `Refs #<parent>`. Stop.
 6. After human merge, the maintainer marks Plan complete. For a `ui` Issue set
-   `Next: design`; otherwise remove `Next` and create implementation children
-   directly from the approved plan as needed.
+   `Next: design`; otherwise set `Next: plan-to-issues`.
 

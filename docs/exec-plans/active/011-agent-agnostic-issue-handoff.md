@@ -10,10 +10,10 @@ sub-issueから任意のコーディングエージェントが一工程だけ�
 
 ## 成果物と工程
 
-- 標準: `specify -> plan -> implement`
-- UI: `specify -> plan -> design -> implement`
+- 標準: `specify -> plan -> plan-to-issues -> implement`
+- UI: `specify -> plan -> design -> plan-to-issues -> implement`
 - SDD成果物は`spec.md`、`plan.md`、必要な場合の`ui-design.md`だけとする。
-- `plan.md`に実装作業の分解を含め、native sub-issueは承認済みPlanから直接作る。
+- `plan.md`に実装作業の分解を含め、`plan-to-issues`がnative sub-issueを承認済みPlanから直接作る。
 - `tasks.md`、Tasks工程、Tasks-to-sub-issues工程、永続task IDは使用しない。
 - 実装はユーザーまたは子Issueが明示した一作業だけを対象にする。
 

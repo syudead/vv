@@ -43,15 +43,15 @@ The parent summary has this form:
 ```
 
 Omit `Design` unless the parent has the existing `ui` domain label. Remove
-`Next` after the final artifact is merged. The checklist and `Next` communicate
+`Next` after `plan-to-issues` succeeds. The checklist and `Next` communicate
 progress to humans; they do not authorize or block a requested workflow.
 
 ## GitHub preflight
 
 Verify only the capabilities needed by the requested workflow. Every workflow
 needs Issue and PR read access. Specify, Plan, Design, and Implement need
-repository push and PR creation access. Creating implementation sub-issues from
-the approved plan needs Issue write access and native sub-issue operations.
+repository push and PR creation access. `plan-to-issues` needs Issue write
+access and native sub-issue operations but does not require push or PR creation.
 Stop before mutation when a required capability is missing.
 
 Resolve the feature branch without naming conventions:

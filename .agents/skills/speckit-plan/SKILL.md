@@ -160,7 +160,14 @@ Command ends after Phase 1 design. Report branch, IMPL_PLAN path, and generated 
    - Do not include full implementation code, model/service/controller bodies, migrations, or complete test suites
    - Keep this artifact as a validation/run guide; detailed implementation work belongs in the implementation-work section of `plan.md`
 
-**Output**: data-model.md, /contracts/*, quickstart.md
+4. **Add implementation work to `plan.md`**:
+   - Add one `## Implementation Work` section
+   - Add one `### <child Issue title>` subsection per independently reviewable implementation unit
+   - For each unit, state its scope, dependencies, and observable acceptance evidence
+   - Keep units small enough for one implementation PR
+   - Do not add persistent task IDs or create a separate `tasks.md`
+
+**Output**: plan.md with implementation work, data-model.md, /contracts/*, quickstart.md
 
 ## Key rules
 
