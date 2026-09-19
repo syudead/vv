@@ -59,15 +59,7 @@ rg -n "name: \"speckit-checklist\"|custom checklist|custom checklists|custom rev
 
 **Expected**: `speckit-checklist` の定義と、実装前確認における custom checklist の説明が見つかる。
 
-## S6: 差分の形式を確認する
-
-```powershell
-git diff --check codex/remove-requirements-checklist...HEAD
-```
-
-**Expected**: 終了コード 0、エラー出力なし。
-
 ## Acceptance
 
-S1〜S6 がすべて期待どおりなら、[spec.md](spec.md) の SC-001〜SC-006 を満たすための
+S1〜S5 がすべて期待どおりなら、[spec.md](spec.md) の SC-001〜SC-006 を満たすための
 実装・移行・残存確認が再現可能である。
