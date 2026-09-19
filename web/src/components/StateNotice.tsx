@@ -6,9 +6,9 @@ import Icon, { type IconName } from "../layout/icons";
  * Tone は知らせの段階である（contracts/components.md 4. の C13）。
  *
  * **3 つしかない**（spec US4-5）。004 にあった `empty` は落として `info` に
- * 寄せた ── 「蔵書が空」「該当なし」「再開しました」はどれも利用者に伝える
- * 事実であって、失敗でも警告でもない。同じ見え方のものに 2 つの名前があると、
- * 呼び出し側ごとに選び方が分かれて段階の意味が薄れる。
+ * 寄せた ── 「蔵書が空」「該当なし」はどちらも利用者に伝える事実であって、
+ * 失敗でも警告でもない。同じ見え方のものに 2 つの名前があると、呼び出し側
+ * ごとに選び方が分かれて段階の意味が薄れる。
  */
 export type Tone = "info" | "warning" | "danger";
 
@@ -52,7 +52,7 @@ export default function StateNotice({
   title: string;
   /** 本文。次に取れる操作の説明を置く。 */
   description?: ReactNode;
-  /** 任意の操作（再試行、検索語を消す、先頭から見直す）。 */
+  /** 任意の操作（再試行、検索語を消す）。 */
   children?: ReactNode;
 }) {
   const { className, icon } = tones[tone];

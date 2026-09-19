@@ -97,7 +97,7 @@ curl -sS "http://localhost:8080/api/videos/$ID" | grep -o '"progress":{[^}]*}'
 ```
 
 **期待**: `positionMs: 4000`、`completed: false`。ブラウザで同じ動画を開くと 4 秒地点
-（誤差 5 秒以内）から再開でき、先頭から見直す選択肢も出る。尺の 95% 以降を送ると
+（誤差 5 秒以内）から再開できる。尺の 95% 以降を送ると
 `completed: true` になり、一覧で視聴済みと分かる。
 
 ## S6: 題名で探せる（US3 / FR-021〜FR-024 / SC-006）
