@@ -118,7 +118,7 @@ test-web: web/node_modules ## Web のビルド検証と単体テストを実行�
 # 依存は bash・coreutils・git。手元の Git Bash でも同じ判定になる。
 # CI では Go のジョブから呼ぶ（Web のジョブでは呼ばない）。
 test-agent-workflows: ## Issue handoff workflow のローカル状態判定テスト
-	bash -lc 'bash .specify/tests/workflows/run.sh'
+	bash -lc 'bash tests/issue-handoff/run.sh'
 
 generate-check: ## 生成物が api/openapi.yaml と一致しているか確認する
 	@$(MAKE) --no-print-directory generate

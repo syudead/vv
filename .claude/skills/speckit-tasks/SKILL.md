@@ -13,7 +13,7 @@ disable-model-invocation: false
 ## Repository issue handoff
 
 When this command is invoked for a GitHub parent Issue, read and follow
-`.specify/workflows/README.md` and `.specify/workflows/tasks.md` first. Those
+`docs/agent-workflows/README.md` and `docs/agent-workflows/tasks.md` first. Those
 files own feature-branch discovery, immutable task-ID rules, the one-stage
 boundary, and PR behavior. Set `SPECIFY_FEATURE_DIRECTORY` explicitly. For a
 UI Issue, include `ui-design.md` as an input before generating tasks.
@@ -65,7 +65,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. **Setup**: Run `.specify/scripts/bash/setup-tasks.sh --json` from repo root and parse FEATURE_DIR, TASKS_TEMPLATE_CONTENT, TASKS_TEMPLATE, and AVAILABLE_DOCS list. `FEATURE_DIR` and `TASKS_TEMPLATE` must be absolute paths when provided. `AVAILABLE_DOCS` is a list of document names/relative paths available under `FEATURE_DIR` (for example `research.md` or `contracts/`). For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. **Setup**: Run `scripts/issue-handoff/run-speckit.sh --feature "$SPECIFY_FEATURE_DIRECTORY" tasks --json` from repo root and parse FEATURE_DIR, TASKS_TEMPLATE_CONTENT, TASKS_TEMPLATE, and AVAILABLE_DOCS list. The wrapper preserves any pre-existing machine-local Spec Kit pointer and removes state produced by this run. `FEATURE_DIR` and `TASKS_TEMPLATE` must be absolute paths when provided. `AVAILABLE_DOCS` is a list of document names/relative paths available under `FEATURE_DIR` (for example `research.md` or `contracts/`). For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 2. **Load design documents**: Read from FEATURE_DIR:
    - **Required**: plan.md (tech stack, libraries, structure), spec.md (user stories with priorities)

@@ -9,8 +9,10 @@
 ## 実装状況（2026-09-19）
 
 リポジトリ内の共通workflow、ローカル状態判定と契約テスト、agent adapter、全PR向けCI設定、
-設計・仕様・運用文書の置換、旧`/sdd-next`とusage hookの撤去は完了した。workflow test 15件、
-local-dev test、Web format/lint/build/test 156件は成功している。
+設計・仕様・運用文書の置換、旧`/sdd-next`とusage hookの撤去は完了した。共通workflow、実行script、
+契約testはそれぞれ`docs/agent-workflows/`、`scripts/issue-handoff/`、`tests/issue-handoff/`に置き、
+Spec Kit管理下の`.specify/`から分離した。workflow test、local-dev test、Web format/lint/build/test
+156件は成功している。
 
 GitHub MCPで`syudead/vv`へのadmin/push権限、Issue/PRのread、PR作成能力を確認した。2026-09-19
 時点でopen PRは0件、`sdd`付きopen Issueは0件である。Issue #46のnative sub-issues APIをreadし、
@@ -245,7 +247,7 @@ Tasksを未完了へ戻す。古い成果物は自動削除せず、後続工程
 - PR merge を契機に自分自身または別エージェントを起動しない。
 - 親 Issue 本文へ PR 一覧や子 Issue 一覧を転記しない。
 
-工程の正規手順は`.specify/workflows/{specify,plan,design,tasks,taskstoissues,implement}.md`へ置き、
+工程の正規手順は`docs/agent-workflows/{specify,plan,design,tasks,taskstoissues,implement}.md`へ置き、
 既存templateとscriptをそこから参照する。AGENTS.mdは親/子Issueの読み方とこのdirectoryへの導線だけを
 持つ。`.claude/skills/`などのエージェント固有skillを残す場合は、共通workflowを参照する薄い
 adapterとする。`.specify/init-options.json`の`ai`/`integration`はSpec Kit導入・更新時のmetadataに
@@ -294,7 +296,7 @@ close、reopen、またはエージェントを起動しない。
 - [ ] 親IssueのSDD節をSpec / Plan / Tasks / Nextと、UI IssueだけのDesignに限定したテンプレートを
       定義する。
 - [ ] feature/sub-branch、stage PR、統合 PR、親/子 Issue の責務を契約にする。
-- [ ] エージェント非依存の正規手順を`.specify/workflows/`へ工程別に置き、AGENTS.mdと既存Claude
+- [ ] エージェント非依存の正規手順を`docs/agent-workflows/`へ工程別に置き、AGENTS.mdと既存Claude
       skillをそこへの導線へ縮める。
 - [ ] 親IssueのNext値を`specify | plan | design | tasks | taskstoissues`に限定し、slash command名を
       保存しない。

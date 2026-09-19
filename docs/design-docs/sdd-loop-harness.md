@@ -52,7 +52,7 @@ UI IssueだけはPlanとTasksの間にDesignを持つ。`Next`は
 ### Feature artifacts
 
 `spec.md`の`**Parent Issue**: #NNN`だけがfeature directoryと親Issueを対応させる。番号の一致は
-要求しない。`.specify/scripts/bash/sdd-stage.sh`は明示されたdirectoryだけを読み、次工程とstaleな
+要求しない。`scripts/issue-handoff/sdd-stage.sh`は明示されたdirectoryだけを読み、次工程とstaleな
 後続成果物を表示する。GitHub、branch名、Issue本文、agent情報へはアクセスしない。
 
 後続成果物が最新の前段成果物を含むかはGit commitの祖先関係で判定する。file timestampや生成時の
@@ -110,7 +110,7 @@ CIはすべてのPRで検証するが、agentや次工程を起動しない。�
 - agent packet、result JSON、session state
 - branch名によるfeature/stage判定
 
-正規手順は`.specify/workflows/`、agent固有入口はそれを参照するadapterに限定する。
+正規手順は`docs/agent-workflows/`、agent固有入口はそれを参照するadapterに限定する。
 
 ## Failure behavior
 

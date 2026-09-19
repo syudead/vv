@@ -6,7 +6,7 @@ document.
 
 Current operation starts by explicitly giving a parent Issue or native
 sub-issue to a coding agent. The canonical procedure is
-[`.specify/workflows/README.md`](../../.specify/workflows/README.md), and the
+[`docs/agent-workflows/README.md`](../agent-workflows/README.md), and the
 design rationale is
 [`docs/design-docs/sdd-loop-harness.md`](../design-docs/sdd-loop-harness.md).
 

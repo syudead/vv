@@ -198,9 +198,9 @@ Routine. Their IDs are not reused. This replacement starts at the next ID.
 
 - [X] T036 Enable CI for PRs targeting any base branch.
 - [X] T037 Add agent-neutral Specify, Plan, Design, Tasks, Tasks-to-sub-issues,
-  and Implement workflows under `.specify/workflows/`.
-- [X] T038 Add the network-free `.specify/scripts/bash/sdd-stage.sh` inspector
-  and fixture tests under `.specify/tests/workflows/`.
+  and Implement workflows under `docs/agent-workflows/`.
+- [X] T038 Add the network-free `scripts/issue-handoff/sdd-stage.sh` inspector
+  and fixture tests under `tests/issue-handoff/`.
 - [X] T039 Connect Claude's Spec Kit skills to the common workflow contract and
   replace repository-wide task Issue matching with native parent sub-issues.
 - [X] T040 Replace the active design, specification, data model, research,

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-repo_root=$(cd "$(dirname "$0")/../../.." && pwd)
-subject="$repo_root/.specify/scripts/bash/sdd-stage.sh"
+repo_root=$(cd "$(dirname "$0")/../.." && pwd)
+subject="$repo_root/scripts/issue-handoff/sdd-stage.sh"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
@@ -164,30 +164,92 @@ write_spec "$repo"
 commit_all "$repo" spec
 assert_exit non-normalized-feature 2 bash "$subject" --root "$repo" --feature specs//901-example
 
+wrapper="$repo_root/scripts/issue-handoff/run-speckit.sh"
+repo=$(new_repo wrapper)
+mkdir -p "$repo/.specify/scripts/bash"
+cat > "$repo/.specify/scripts/bash/check-prerequisites.sh" <<'EOF'
+#!/usr/bin/env bash
+printf '{"feature_directory":"changed-by-speckit"}\n' > "$SPECIFY_INIT_DIR/.specify/feature.json"
+printf 'feature=%s\n' "$SPECIFY_FEATURE_DIRECTORY"
+[ "${1:-}" != "--fail" ]
+EOF
+cp "$repo/.specify/scripts/bash/check-prerequisites.sh" "$repo/.specify/scripts/bash/setup-plan.sh"
+cp "$repo/.specify/scripts/bash/check-prerequisites.sh" "$repo/.specify/scripts/bash/setup-tasks.sh"
+commit_all "$repo" wrapper-fixture
+
+printf '{"feature_directory":"machine-local-selection"}\n' > "$repo/.specify/feature.json"
+if output=$(cd "$repo" && bash "$wrapper" --feature specs/901-example prerequisites) &&
+  printf '%s\n' "$output" | grep -qx 'feature=specs/901-example' &&
+  grep -qx '{"feature_directory":"machine-local-selection"}' "$repo/.specify/feature.json"; then
+  printf 'PASS wrapper-restores-existing-state\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL wrapper-restores-existing-state\n' >&2
+  fail=$((fail + 1))
+fi
+
+rm -f "$repo/.specify/feature.json"
+if (cd "$repo" && bash "$wrapper" --feature specs/901-example plan >/dev/null) &&
+  [ ! -e "$repo/.specify/feature.json" ]; then
+  printf 'PASS wrapper-leaves-no-state\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL wrapper-leaves-no-state\n' >&2
+  fail=$((fail + 1))
+fi
+
+printf '{"feature_directory":"machine-local-selection"}\n' > "$repo/.specify/feature.json"
+if ! (cd "$repo" && bash "$wrapper" --feature specs/901-example prerequisites --fail >/dev/null) &&
+  grep -qx '{"feature_directory":"machine-local-selection"}' "$repo/.specify/feature.json"; then
+  printf 'PASS wrapper-restores-state-after-failure\n'
+  pass=$((pass + 1))
+else
+  printf 'FAIL wrapper-restores-state-after-failure\n' >&2
+  fail=$((fail + 1))
+fi
+
+assert_exit wrapper-rejects-non-normalized-feature 2 bash -c \
+  'cd "$1" && bash "$2" --feature specs//901-example prerequisites' _ "$repo" "$wrapper"
+
 contract_ok=true
 for workflow in specify plan design tasks taskstoissues implement; do
-  if [ ! -f "$repo_root/.specify/workflows/$workflow.md" ]; then
+  if [ ! -f "$repo_root/docs/agent-workflows/$workflow.md" ]; then
     printf 'missing canonical workflow: %s\n' "$workflow" >&2
     contract_ok=false
   fi
 done
 for adapter in speckit-specify speckit-plan speckit-tasks speckit-taskstoissues speckit-implement; do
-  if ! grep -q '\.specify/workflows/' "$repo_root/.claude/skills/$adapter/SKILL.md"; then
+  if ! grep -q 'docs/agent-workflows/' "$repo_root/.claude/skills/$adapter/SKILL.md"; then
     printf 'adapter does not reference canonical workflows: %s\n' "$adapter" >&2
     contract_ok=false
   fi
 done
+for adapter in speckit-plan speckit-tasks speckit-implement; do
+  if ! grep -q 'scripts/issue-handoff/run-speckit.sh' "$repo_root/.claude/skills/$adapter/SKILL.md"; then
+    printf 'adapter bypasses stateless Spec Kit wrapper: %s\n' "$adapter" >&2
+    contract_ok=false
+  fi
+done
+if ! bash -n "$repo_root/scripts/issue-handoff/run-speckit.sh"; then
+  printf 'invalid stateless Spec Kit wrapper syntax\n' >&2
+  contract_ok=false
+fi
 if [ -e "$repo_root/.claude/skills/sdd-next/SKILL.md" ]; then
   printf 'retired sdd-next controller still exists\n' >&2
   contract_ok=false
 fi
-if [ -e "$repo_root/.specify/workflows/speckit/workflow.yml" ]; then
-  printf 'retired full-cycle workflow still exists\n' >&2
-  contract_ok=false
-fi
-for script in setup-plan.sh setup-tasks.sh check-prerequisites.sh; do
-  if ! grep -q 'get_feature_paths --no-persist' "$repo_root/.specify/scripts/bash/$script"; then
-    printf 'handoff setup may persist feature.json: %s\n' "$script" >&2
+for misplaced in \
+  .specify/workflows/README.md \
+  .specify/workflows/specify.md \
+  .specify/workflows/plan.md \
+  .specify/workflows/design.md \
+  .specify/workflows/tasks.md \
+  .specify/workflows/taskstoissues.md \
+  .specify/workflows/implement.md \
+  .specify/scripts/bash/sdd-stage.sh \
+  .specify/tests/workflows/run.sh; do
+  if [ -e "$repo_root/$misplaced" ]; then
+    printf 'repository handoff file is misplaced under .specify: %s\n' "$misplaced" >&2
     contract_ok=false
   fi
 done

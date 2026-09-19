@@ -4,7 +4,7 @@
 
 ```bash
 make test-agent-workflows
-bash .specify/scripts/bash/sdd-stage.sh --feature specs/<issue-backed-feature>
+bash scripts/issue-handoff/sdd-stage.sh --feature specs/<issue-backed-feature>
 ```
 
 Expected: fixture tests pass; the command prints `feature`, `workflow`, `next`,

@@ -12,8 +12,8 @@ disable-model-invocation: false
 
 # Tasks to native sub-issues
 
-Read and execute `.specify/workflows/README.md` and
-`.specify/workflows/taskstoissues.md`. They are the complete contract for this
+Read and execute `docs/agent-workflows/README.md` and
+`docs/agent-workflows/taskstoissues.md`. They are the complete contract for this
 repository.
 
 Use GitHub MCP for Issue and sub-issue operations. Never invoke `gh`, search

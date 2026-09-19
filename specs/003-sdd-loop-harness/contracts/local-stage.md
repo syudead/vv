@@ -3,7 +3,7 @@
 ## Invocation
 
 ```bash
-bash .specify/scripts/bash/sdd-stage.sh --feature specs/NNN-name [--ui] [--root PATH]
+bash scripts/issue-handoff/sdd-stage.sh --feature specs/NNN-name [--ui] [--root PATH]
 ```
 
 ## Output

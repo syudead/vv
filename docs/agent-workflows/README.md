@@ -4,6 +4,22 @@ This directory is the agent-neutral contract for one-stage-at-a-time SDD work.
 Agent-specific skills may point here, but must not redefine branch discovery,
 stage ordering, or Issue/PR ownership.
 
+## Directory ownership
+
+| Path | Owner | Purpose |
+| --- | --- | --- |
+| `docs/agent-workflows/` | This repository | Agent-neutral handoff and PR procedures |
+| `scripts/issue-handoff/` | This repository | Local, stateless inspection and Spec Kit invocation |
+| `tests/issue-handoff/` | This repository | Handoff contract tests |
+| `.claude/skills/` | Claude adapter | Thin entry points to the agent-neutral procedures |
+| `.specify/` | Spec Kit | Installed templates, scripts, metadata, and bundled workflows |
+
+Do not put repository handoff policy or tests under `.specify/`, and do not
+patch installed Spec Kit scripts to implement this workflow. The external
+wrapper isolates Spec Kit's optional machine-local selection file instead.
+The bundled `.specify/workflows/speckit/workflow.yml` belongs to Spec Kit. This
+handoff does not invoke it, and it is not a GitHub event trigger.
+
 `.specify/init-options.json`, `.specify/integration.json`, and integration
 manifests record how Spec Kit was installed and updated. They do not select the
 agent for an Issue handoff run and are not runtime state.
@@ -60,7 +76,7 @@ Resolve the feature branch without naming conventions:
 After checkout, run this for an existing feature directory:
 
 ```bash
-bash .specify/scripts/bash/sdd-stage.sh --feature specs/NNN-name [--ui]
+bash scripts/issue-handoff/sdd-stage.sh --feature specs/NNN-name [--ui]
 ```
 
 The command is local and read-only. For Spec through Tasks, its result must
@@ -74,10 +90,12 @@ artifacts. Continuing one requires a maintainer to choose a parent Issue and
 add the exact mapping through a reviewed artifact PR; never infer it from a
 directory number, branch name, or old PR.
 
-Every adapter supplies `SPECIFY_FEATURE_DIRECTORY` explicitly for downstream
-commands and must not write `.specify/feature.json`. The ignored file remains
-supported only by the installed Spec Kit compatibility scripts outside this
-Issue handoff contract.
+Every adapter supplies `SPECIFY_FEATURE_DIRECTORY` explicitly. Plan, Tasks,
+and Implement invoke Spec Kit through
+`scripts/issue-handoff/run-speckit.sh`, which restores any pre-existing local
+`.specify/feature.json` after the command. The handoff therefore neither reads
+nor changes persistent session selection while `.specify/` remains owned by
+the installed Spec Kit distribution.
 
 `next=taskstoissues` means only that repository artifacts are ready for GitHub
 reconciliation. The command cannot tell whether sub-issues already exist. At

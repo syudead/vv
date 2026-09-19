@@ -13,7 +13,7 @@ disable-model-invocation: false
 ## Repository issue handoff
 
 When this command is invoked with a GitHub parent Issue, read and follow
-`.specify/workflows/README.md` and `.specify/workflows/specify.md` first. Those
+`docs/agent-workflows/README.md` and `docs/agent-workflows/specify.md` first. Those
 files own branch topology, GitHub preflight, PR scope, and stopping behavior.
 This skill owns only Spec Kit artifact generation. A run creates or updates one
 Spec PR and never starts Plan.

@@ -13,17 +13,17 @@ state. Human review and explicit invocation are the only stage transitions.
 
 | Component | Responsibility |
 | --- | --- |
-| `.specify/workflows/*.md` | Canonical, agent-neutral stage procedures |
+| `docs/agent-workflows/*.md` | Canonical, agent-neutral stage procedures |
 | agent skills | Thin entry points that defer repository behavior to the canonical workflows |
-| `.specify/scripts/bash/sdd-stage.sh` | Local artifact and stale-dependency inspection |
-| `.specify/tests/workflows/run.sh` | Network-free fixture tests |
+| `scripts/issue-handoff/sdd-stage.sh` | Local artifact and stale-dependency inspection |
+| `tests/issue-handoff/run.sh` | Network-free fixture tests |
 | GitHub native relationships | Parent/sub-issue and Issue/PR discovery |
 | `.github/workflows/ci.yml` | Validation on every PR; never starts an agent |
 
 ## Dependency direction
 
 ```text
-agent adapter -> .specify/workflows -> Spec Kit artifact procedures
+agent adapter -> docs/agent-workflows -> Spec Kit artifact procedures
                                   -> native GitHub integration
 
 local test -> sdd-stage.sh -> feature artifacts + git history
