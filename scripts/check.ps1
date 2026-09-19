@@ -60,7 +60,7 @@ Run-Step "test-web" {
 }
 
 Run-Step "test-agent-workflows" {
-    bash -lc ".specify/tests/workflows/run.sh"
+    bash -lc "bash .specify/tests/workflows/run.sh"
 }
 
 Run-Step "generate-check" {
