@@ -11,8 +11,8 @@ metadata:
 When this command is invoked for a GitHub parent Issue, read and follow
 `.agents/skills/issue-handoff/references/README.md` and
 `.agents/skills/issue-handoff/references/tasks.md` first. Those
-files own feature-branch discovery, immutable task-ID rules, the one-stage
-boundary, and PR behavior. Set `SPECIFY_FEATURE_DIRECTORY` explicitly. For a
+files own feature-branch discovery, the one-stage boundary, and PR behavior.
+Set `SPECIFY_FEATURE_DIRECTORY` explicitly. For a
 UI Issue, include `ui-design.md` as an input before generating tasks.
 
 
@@ -137,7 +137,7 @@ Output path to generated tasks.md and summary:
 - Parallel opportunities identified
 - Independent test criteria for each story
 - Suggested MVP scope (typically just User Story 1)
-- Format validation: Confirm ALL tasks follow the checklist format (checkbox, ID, labels, file paths)
+- Format validation: Confirm ALL tasks follow the checklist format (checkbox, labels, file paths)
 
 Context for task generation: $ARGUMENTS
 
@@ -154,32 +154,29 @@ The tasks.md should be immediately executable - each task must be specific enoug
 Every task MUST strictly follow this format:
 
 ```text
-- [ ] [TaskID] [P?] [Story?] Description with file path
+- [ ] [P?] [Story?] Description with file path
 ```
 
 **Format Components**:
 
 1. **Checkbox**: ALWAYS start with `- [ ]` (markdown checkbox)
-2. **Task ID**: Sequential number (T001, T002, T003...) in execution order
-3. **[P] marker**: Include ONLY if task is parallelizable (different files, no dependencies on incomplete tasks)
-4. **[Story] label**: REQUIRED for user story phase tasks only
+2. **[P] marker**: Include ONLY if task is parallelizable (different files, no dependencies on incomplete tasks)
+3. **[Story] label**: REQUIRED for user story phase tasks only
    - Format: [US1], [US2], [US3], etc. (maps to user stories from spec.md)
    - Setup phase: NO story label
    - Foundational phase: NO story label
    - User Story phases: MUST have story label
    - Polish phase: NO story label
-5. **Description**: Clear action with exact file path
+4. **Description**: Clear action with exact file path
 
 **Examples**:
 
-- ✅ CORRECT: `- [ ] T001 Create project structure per implementation plan`
-- ✅ CORRECT: `- [ ] T005 [P] Implement authentication middleware in src/middleware/auth.py`
-- ✅ CORRECT: `- [ ] T012 [P] [US1] Create User model in src/models/user.py`
-- ✅ CORRECT: `- [ ] T014 [US1] Implement UserService in src/services/user_service.py`
-- ❌ WRONG: `- [ ] Create User model` (missing ID and Story label)
-- ❌ WRONG: `T001 [US1] Create model` (missing checkbox)
-- ❌ WRONG: `- [ ] [US1] Create User model` (missing Task ID)
-- ❌ WRONG: `- [ ] T001 [US1] Create model` (missing file path)
+- ✅ CORRECT: `- [ ] Create project structure per implementation plan`
+- ✅ CORRECT: `- [ ] [P] Implement authentication middleware in src/middleware/auth.py`
+- ✅ CORRECT: `- [ ] [P] [US1] Create User model in src/models/user.py`
+- ✅ CORRECT: `- [ ] [US1] Implement UserService in src/services/user_service.py`
+- ❌ WRONG: `[US1] Create model` (missing checkbox)
+- ❌ WRONG: `- [ ] [US1] Create model` (missing file path)
 
 ### Task Organization
 
@@ -218,6 +215,6 @@ Every task MUST strictly follow this format:
 
 ## Done When
 
-- [ ] tasks.md generated with all phases, task IDs, and file paths
+- [ ] tasks.md generated with all phases and file paths
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with task count, story breakdown, and MVP scope

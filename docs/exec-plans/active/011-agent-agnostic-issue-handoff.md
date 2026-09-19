@@ -152,13 +152,8 @@ directory 番号は独立であり、一致や変換を仮定しない。
 3. 親 Issue の SDD 節を Tasks 完了、Next=`taskstoissues` に更新する。
 4. 共通workflowのtaskstoissues工程が`tasks.md`のtaskごとにIssueを作り、GitHubのsub-issue APIで親Issueへ
    追加する。現在のskillは通常Issueを作るだけなので、この工程の実装対象として変更する。
-5. 重複判定はrepository全体の`TNNN`タイトルではなく、親Issueの既存sub-issues内のtask IDで行う。
-   同じtask IDが親のsub-issuesに1件あれば再利用し、複数あれば作成せず停止する。
-6. task IDは子Issue作成後に不変とし、既存taskの並べ替え、改番、別の意味への再利用を禁止する。
-   task追加時は既存の最大番号より大きいIDを付ける。taskが不要になった場合は、`tasks.md`の元の行を
-   `- [x] ~~TNNN 元のtask~~ (cancelled: 理由)`という解決済みの取り消し表記へ変え、対応する子Issueを
-   `not planned`として閉じる。
-   要件が実質的に変わる場合は既存IDを上書きせず、旧taskを取り消して新しいIDを追加する。
+5. 子Issueを作る直前に親Issueの既存sub-issuesを確認し、同じ作業が既にあれば作成しない。
+6. taskに永続IDは付けない。既存子Issueの更新やcloseは対象Issueが明示された場合だけ行う。
 7. GitHub sub-issue操作には公式sub-issue APIを使う。対応能力がない環境では通常Issueだけを
    作って続行せず、変更前に停止する。
 8. sub-issuesの作成・再利用が完了したら、親IssueのSDD節から`Next`行を削除する。SDD成果物工程は
@@ -175,9 +170,9 @@ directory 番号は独立であり、一致や変換を仮定しない。
    実装済み」を表し、親Issueのcloseは「`main`へ統合済み」を表す。
 5. spec、plan、design、tasksを変更する必要が生じた場合は新規実装を止め、該当stageから順に
    feature branch向けPRを作り直す。改訂開始時に保守者が親Issueの該当stage以降を未完了へ戻し、
-   `Next`を影響を受ける最初のstageに設定する。各stageのmerge後は通常フローどおりSDD節を進める。既存task
-   IDを保ったままtasksを更新し、taskstoissuesを再実行して、新規taskの子Issue追加、説明だけ変わった
-   既存子Issueの本文更新、不要taskの`not planned` closeを行い、完了後に`Next`を再び削除する。
+   `Next`を影響を受ける最初のstageに設定する。各stageのmerge後は通常フローどおりSDD節を進める。
+   tasksを更新し、taskstoissuesを再実行して、既存sub-issuesにない作業の子Issueだけを追加する。
+   既存子Issueの更新やcloseは対象Issueを明示して別途行い、完了後に`Next`を再び削除する。
 
 ### 3.6 Integrate
 
@@ -329,17 +324,14 @@ close、reopen、またはエージェントを起動しない。
 
 - [ ] 現行`speckit-taskstoissues`を、Issue作成後にGitHub sub-issue APIで親Issueへ追加する実装へ
       変更する。対応するAPI操作が利用できない環境では作成前に停止する。
-- [ ] 既存のopen/closed sub-issueを親Issueのsub-issues内のtask IDで再利用し、repository全体の
-      同名taskと混同せず重複作成しない。
+- [ ] 子Issue作成直前に親Issueのopen/closed sub-issuesを確認し、同じ作業を重複作成しない。
 - [ ] 子 Issue の実装 PR が feature branch を base にすることを検査する。
 - [ ] 実装PRが対応taskだけを`tasks.md`で完了にし、他task markerを変更しないことを検査する。
 - [ ] 子 Issue 一覧を親 Issue 本文へ複製しないことを確認する。
 - [ ] 実装PRのfeature branchへのmerge後に対応する子Issueをcompletedで閉じ、sub-issue進捗へ反映する
       手順を作る。
-- [ ] 子Issue作成後のtask IDを固定し、追加は単調増加、不要taskは取り消し表記と`not planned` close、
-      実質的な要件変更は新IDにすることをfixtureで検証する。
-- [ ] SDD成果物の改訂中は新規実装を止め、taskstoissues再実行で既存sub-issuesを更新・追加・close
-      できることを検証する。
+- [ ] taskに永続IDを付けず、既存子Issueの変更は対象Issueが明示された場合だけ行うことを検証する。
+- [ ] SDD成果物の改訂後、taskstoissues再実行で既存sub-issuesにない作業だけを追加できることを検証する。
 
 ### Phase 5: 統合 PR
 
@@ -396,7 +388,7 @@ close、reopen、またはエージェントを起動しない。
 - 統合 PR だけが `main` を base にし、親 Issue だけの `Closes` を持つ。
 - 子Issueは対応実装がfeature branchへマージされた時点で人が閉じ、親Issueは統合PRのmergeで閉じる。
 - 全stage/implement PRで、base branch名に依存せずCIが起動する。
-- task IDは子Issue作成後に改番・再利用されず、追加・変更・取り消しが既存sub-issuesと矛盾しない。
+- 子Issue作成前に親の既存sub-issuesを確認し、同じ作業を重複作成しない。
 - 統合前に最新`main`をfeature branchへPR経由で取り込み、全体検査を再実行する。
 - 専用状態 JSON、独自 PR マーカー、機械管理コメント、agent packet を追加しない。
 - 現行`speckit-specify`を正しいbranchへ移動してから実行し、現行`speckit-taskstoissues`が作るIssueを

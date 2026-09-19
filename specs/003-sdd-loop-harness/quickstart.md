@@ -37,8 +37,9 @@ Expected: after Plan, local state and the parent select Design; after
 
 After Tasks merges, run Tasks-to-sub-issues.
 
-Expected: each task ID has exactly one native child under this parent, a rerun
-creates none, no child list appears in the parent body, and `Next` is removed.
+Expected: each task not already represented under this parent gets one native
+child, no duplicate is created for existing work, no child list appears in the
+parent body, and `Next` is removed.
 
 ## S6: Child implementation
 
@@ -57,6 +58,5 @@ Expected: all PR types run CI and only the integration merge closes the parent.
 
 ## S8: Failure cases
 
-Verify that zero/multiple integration PRs, duplicate task IDs under one parent,
-an invalid parent line, and dirty artifacts stop without guessing or writing a
-packet/state file.
+Verify that an unavailable sub-issue API and an invalid parent line stop without
+guessing or writing a packet/state file.

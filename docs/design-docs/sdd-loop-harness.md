@@ -87,9 +87,9 @@ GitHub discoveryは各agentの利用可能なintegrationが行う。repository�
 `specify -> plan -> design -> tasks -> taskstoissues`で進む。各stageは任意名sub-branchからfeature
 branch向けPRを一件作って終了し、人がreview、merge、親IssueのSDD節更新を行う。
 
-`taskstoissues`はrepositoryを変更しない。親のnative sub-issues内だけでtask IDを照合し、存在しない
-childを作成して親へ追加する。task IDはchild作成後に不変で、追加は単調増加、取消は
-`- [x] ~~TNNN ...~~ (cancelled: reason)`とnot-planned closeで表す。
+`taskstoissues`はrepositoryを変更しない。子Issueを作る直前に親のnative sub-issuesを確認し、同じ
+作業が既にあれば作成しない。taskに永続IDは持たせず、既存childの更新やcloseは対象Issueが明示された
+場合だけ行う。
 
 ## Integration
 

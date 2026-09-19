@@ -22,8 +22,7 @@ One explicit GitHub parent Issue or native sub-issue.
 
 ## Failure
 
-Missing capability, ambiguous GitHub relationship, invalid parent mapping,
-dirty artifacts, stale parent summary, or duplicate child ID stops before a
-new mutation. No fallback branch naming, Issue-number conversion, or state
-packet is permitted.
+Missing capability, ambiguous GitHub relationship, or invalid parent mapping
+stops before a new mutation. No fallback branch naming, Issue-number
+conversion, or state packet is permitted.
 

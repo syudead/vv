@@ -100,10 +100,11 @@ branch names and reject dirty artifact directories.
 - **FR-010**: The shared skill reads only an explicit feature directory
   and reports the first missing required artifact. It does not infer whether
   downstream content incorporates a later upstream revision.
-- **FR-011**: Tasks-to-sub-issues deduplicates task IDs only within the supplied
-  parent's native sub-issues and fails before writing when that API is absent.
-- **FR-012**: Task IDs are immutable after child creation. New work receives a
-  larger ID; cancelled work retains its ID and closes as not planned.
+- **FR-011**: Immediately before creating a child, Tasks-to-sub-issues checks
+  the supplied parent's native sub-issues and skips work already represented
+  there. It fails before writing when that API is absent.
+- **FR-012**: Tasks do not carry persistent IDs. Existing child Issues are
+  updated or closed only when explicitly requested.
 - **FR-013**: Implementation PR merge closes its child manually as completed.
   Integration PR merge closes only the parent through `Closes`.
 - **FR-014**: All PRs run CI regardless of base branch name.

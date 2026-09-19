@@ -49,9 +49,10 @@ The common workflows describe required queries and mutations but do not name a
 transport. Environments without the capability required by the selected
 workflow stop before mutation.
 
-`taskstoissues` is intentionally a GitHub-only operation. It compares task IDs
-with the parent's native sub-issues, creates and attaches missing children,
-updates non-material wording, and closes cancelled tasks as not planned.
+`taskstoissues` is intentionally a GitHub-only operation. Immediately before
+creating a child, it checks the parent's native sub-issues and skips work that
+is already represented. Existing children are changed only when explicitly
+requested.
 
 ## Migration order
 

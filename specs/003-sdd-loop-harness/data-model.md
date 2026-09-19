@@ -10,7 +10,6 @@ No dedicated runtime state is persisted. The following values are derived.
 | parent Issue | `spec.md` | exactly one `**Parent Issue**: #NNN` line |
 | workflow | parent `ui` label | `standard` or `ui`; passed explicitly to local inspection |
 | artifact stage | required files | first missing downstream artifact |
-| task ID | `tasks.md` | `T` plus at least three digits; immutable after child creation |
 
 Artifact dependency order is `spec -> plan -> tasks` or
 `spec -> plan -> ui-design -> tasks`. The repository does not persist or infer
@@ -47,5 +46,5 @@ agent, or session records.
 - Implemented: checked task and completed child.
 - Cancelled: checked struck-through task with a reason and child closed as not
   planned.
-- Revised materially: old task cancelled and a new monotonically larger ID
-  created.
+- Revised: update the task text; an existing child changes only when explicitly
+  requested.
