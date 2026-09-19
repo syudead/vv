@@ -74,8 +74,9 @@ if [ ! -f "$root/$spec" ]; then
   emit "specify" "missing spec.md"
 fi
 
+mapfile -t parent_declarations < <(tr -d '\r' < "$root/$spec" | grep -E '^[[:space:]]*\*\*Parent Issue\*\*:' || true)
 mapfile -t parent_lines < <(tr -d '\r' < "$root/$spec" | sed -n 's/^\*\*Parent Issue\*\*: #\([1-9][0-9]*\)$/\1/p')
-if [ "${#parent_lines[@]}" -ne 1 ]; then
+if [ "${#parent_declarations[@]}" -ne 1 ] || [ "${#parent_lines[@]}" -ne 1 ]; then
   printf 'sdd-stage: spec.md must contain exactly one **Parent Issue**: #NNN line\n' >&2
   exit 2
 fi
@@ -94,8 +95,8 @@ includes_latest() {
   local upstream=$1 downstream=$2 upstream_commit downstream_commit
   upstream_commit=$(latest_commit "$upstream")
   downstream_commit=$(latest_commit "$downstream")
-  [ -n "$upstream_commit" ] && [ -n "$downstream_commit" ] &&
-    git -C "$root" merge-base --is-ancestor "$upstream_commit" "$downstream_commit"
+  [ -n "$upstream_commit" ] && [ -n "$downstream_commit" ] || return 1
+  grep -Fqx "<!-- SDD input: $upstream @ $upstream_commit -->" "$root/$downstream"
 }
 
 if [ ! -f "$root/$plan" ]; then

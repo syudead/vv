@@ -29,13 +29,30 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null) || {
   exit 2
 }
 state="$repo_root/.specify/feature.json"
+lock=$(git -C "$repo_root" rev-parse --git-path sdd-run-speckit.lock)
 backup=$(mktemp)
 had_state=false
+lock_acquired=false
 
-if [ -f "$state" ]; then
-  cp "$state" "$backup"
-  had_state=true
-fi
+acquire_lock() {
+  while ! mkdir "$lock" 2>/dev/null; do
+    sleep 1
+  done
+  lock_acquired=true
+}
+
+record_input() {
+  local upstream=$1 downstream=$2 upstream_commit tmp_marker
+  upstream_commit=$(git -C "$repo_root" log -1 --format=%H -- "$upstream")
+  [ -n "$upstream_commit" ] || return 0
+  [ -f "$repo_root/$downstream" ] || return 0
+
+  tmp_marker=$(mktemp)
+  printf '<!-- SDD input: %s @ %s -->\n' "$upstream" "$upstream_commit" > "$tmp_marker"
+  grep -Fvx "<!-- SDD input: $upstream @ $upstream_commit -->" "$repo_root/$downstream" |
+    grep -Ev '^<!-- SDD input: .* -->$' >> "$tmp_marker" || true
+  mv "$tmp_marker" "$repo_root/$downstream"
+}
 
 restore_state() {
   rm -f "$state"
@@ -43,6 +60,9 @@ restore_state() {
     cp "$backup" "$state"
   fi
   rm -f "$backup"
+  if [ "$lock_acquired" = true ]; then
+    rmdir "$lock"
+  fi
 }
 trap restore_state EXIT
 trap 'exit 129' HUP
@@ -57,6 +77,25 @@ case "${1:-}" in
 esac
 shift
 
+acquire_lock
+if [ -f "$state" ]; then
+  cp "$state" "$backup"
+  had_state=true
+fi
+
 rm -f "$state"
 SPECIFY_INIT_DIR="$repo_root" SPECIFY_FEATURE_DIRECTORY="$feature" \
   bash "$repo_root/.specify/scripts/bash/$script" "$@"
+
+case "$script" in
+  setup-plan.sh)
+    record_input "$feature/spec.md" "$feature/plan.md"
+    ;;
+  setup-tasks.sh)
+    if [ -f "$repo_root/$feature/ui-design.md" ]; then
+      record_input "$feature/ui-design.md" "$feature/tasks.md"
+    else
+      record_input "$feature/plan.md" "$feature/tasks.md"
+    fi
+    ;;
+esac

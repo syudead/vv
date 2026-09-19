@@ -55,8 +55,9 @@ UI IssueだけはPlanとTasksの間にDesignを持つ。`Next`は
 要求しない。`scripts/issue-handoff/sdd-stage.sh`は明示されたdirectoryだけを読み、次工程とstaleな
 後続成果物を表示する。GitHub、branch名、Issue本文、agent情報へはアクセスしない。
 
-後続成果物が最新の前段成果物を含むかはGit commitの祖先関係で判定する。file timestampや生成時の
-session状態は使わない。
+後続成果物が最新の前段成果物を含むかは、生成時に記録した`SDD input` markerのupstream pathと
+commitが、現在の前段成果物を最後に変更したcommitと一致するかで判定する。file timestampや
+後続成果物自身の最終commit、生成時のsession状態は使わない。
 
 ### GitHub
 
