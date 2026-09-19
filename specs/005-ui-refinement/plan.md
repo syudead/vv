@@ -112,7 +112,6 @@ specs/005-ui-refinement/
 │   └── components.md         # C1〜C16 の一覧と、表示のみの要素の規約（FR-004〜FR-008）
 ├── checklists/
 │   └── requirements.md  # /speckit-specify の品質チェックリスト
-└── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
 ```
 
 ### Source Code (repository root)

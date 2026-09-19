@@ -57,15 +57,16 @@ feature branch, and stops. A later stage can be run by a different agent.
 **Independent test**: Specify and Plan complete in separate sessions using
 different agent implementations and arbitrary branch names.
 
-### US2: Implement one child task (P1)
+### US2: Implement one child Issue (P1)
 
-Tasks become native sub-issues of the parent. A maintainer gives one child to
-an agent, which finds the parent and feature branch, implements only that task,
+Implementation work from the approved Plan becomes native sub-issues of the
+parent. A maintainer gives one child to an agent, which finds the parent and
+feature branch, implements only that work,
 and opens a feature-branch PR. The child closes after that PR is merged; the
 parent remains open until the integration PR reaches `main`.
 
 **Independent test**: Starting from only a child Issue, a fresh agent opens the
-correct PR and changes only its matching task marker.
+correct PR and does not implement unrelated Plan items.
 
 ### US3: Inspect state without an agent service (P2)
 
@@ -80,8 +81,8 @@ branch names and reject dirty artifact directories.
 
 - **FR-001**: Every run starts from an explicitly supplied parent Issue or
   native sub-issue.
-- **FR-002**: Standard flow is Specify, Plan, Tasks, Tasks-to-sub-issues. A
-  parent with the existing `ui` label inserts Design between Plan and Tasks.
+- **FR-002**: Standard flow is Specify then Plan. A parent with the existing
+  `ui` label adds Design after Plan.
 - **FR-003**: One run performs one stage, opens or updates one PR, and stops.
 - **FR-004**: Stage and implementation PRs target a long-lived feature branch;
   only the integration PR targets `main`.
@@ -91,7 +92,7 @@ branch names and reject dirty artifact directories.
   The only repository mapping is one exact `**Parent Issue**: #NNN` line in
   `spec.md`.
 - **FR-007**: The parent body contains requirements and the Spec, Plan,
-  optional Design, Tasks, and Next summary. It does not copy PR, branch,
+  optional Design, and Next summary. It does not copy PR, branch,
   child-Issue, retry, agent, or session data.
 - **FR-008**: GitHub timeline references, PR head/base, the parent-closing
   integration PR, and native sub-issues are the relationship sources of truth.
@@ -100,11 +101,11 @@ branch names and reject dirty artifact directories.
 - **FR-010**: The shared skill reads only an explicit feature directory
   and reports the first missing required artifact. It does not infer whether
   downstream content incorporates a later upstream revision.
-- **FR-011**: Immediately before creating a child, Tasks-to-sub-issues checks
-  the supplied parent's native sub-issues and skips work already represented
-  there. It fails before writing when that API is absent.
-- **FR-012**: Tasks do not carry persistent IDs. Existing child Issues are
-  updated or closed only when explicitly requested.
+- **FR-011**: Implementation children are created directly from the approved
+  Plan. Immediately before creating a child, the workflow checks the supplied
+  parent's native sub-issues and skips work already represented there.
+- **FR-012**: Existing child Issues are updated or closed only when explicitly
+  requested.
 - **FR-013**: Implementation PR merge closes its child manually as completed.
   Integration PR merge closes only the parent through `Closes`.
 - **FR-014**: All PRs run CI regardless of base branch name.

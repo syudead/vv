@@ -7,10 +7,11 @@ create or revise a plan.
 2. Read the selected branch's `spec.md` and any existing `plan.md` as inputs.
 3. Create an arbitrary-name sub-branch from the current feature branch.
 4. Run the installed Spec Kit plan procedure for the explicit feature path.
-   Resolve all consequential choices in the plan; do not pass undecided
-   architecture or scope into Tasks.
+   Resolve all consequential choices and include an implementation-work section
+   detailed enough to create native child Issues directly from the plan.
 5. Run the plan's checks, push, and open a feature-branch PR with
    `Refs #<parent>`. Stop.
-6. After human merge, the maintainer marks Plan complete and sets `Next: design`
-   for a `ui` Issue or `Next: tasks` otherwise.
+6. After human merge, the maintainer marks Plan complete. For a `ui` Issue set
+   `Next: design`; otherwise remove `Next` and create implementation children
+   directly from the approved plan as needed.
 

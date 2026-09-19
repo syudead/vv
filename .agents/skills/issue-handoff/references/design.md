@@ -11,6 +11,7 @@ UI design work for a parent Issue.
    hierarchy, responsive behavior, content and system states, interactions,
    accessibility, and observable review criteria. Do not implement code.
 5. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
-6. After human merge, the maintainer marks Design complete and sets
-   `Next: tasks`.
+6. After human merge, the maintainer marks Design complete, removes `Next`, and
+   creates implementation children directly from the approved plan and design
+   as needed.
 

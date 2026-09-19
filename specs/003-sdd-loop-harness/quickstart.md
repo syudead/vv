@@ -30,16 +30,17 @@ on a new arbitrary sub-branch, opens one feature-targeting PR, and stops.
 
 Repeat S2 with the existing `ui` label.
 
-Expected: after Plan, local state and the parent select Design; after
-`ui-design.md` merges they select Tasks.
+Expected: after Plan, the parent selects Design; after `ui-design.md` merges,
+artifact work is complete.
 
 ## S5: Native sub-issues
 
-After Tasks merges, run Tasks-to-sub-issues.
+After the final artifact merges, create native sub-issues directly from the
+approved Plan and optional UI design.
 
-Expected: each task not already represented under this parent gets one native
-child, no duplicate is created for existing work, no child list appears in the
-parent body, and `Next` is removed.
+Expected: each implementation item not already represented under this parent
+gets one native child, no duplicate is created, no child list appears in the
+parent body, and `Next` is absent.
 
 ## S6: Child implementation
 

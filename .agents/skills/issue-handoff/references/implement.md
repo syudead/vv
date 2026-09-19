@@ -8,8 +8,7 @@ Read [README.md](README.md) first. Input is one native child Issue.
 2. If the request names an existing implementation PR, update that PR's head.
    Otherwise, an existing PR for the child does not block a separate PR.
 3. Create an arbitrary-name sub-branch from the current feature branch.
-4. Implement only the named task and its necessary tests. In the same change,
-   mark only that task complete in `tasks.md`; do not alter other task markers.
+4. Implement only the work named by the child Issue and its necessary tests.
 5. Run focused checks and the repository checks required by the change. For UI
    work, follow `docs/how-to/ui-change-screenshots.md` and `ui-design.md`, and
    include screenshots plus visual, interaction, and accessibility review.

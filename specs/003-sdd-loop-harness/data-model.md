@@ -15,9 +15,8 @@ Artifact dependency order is `spec -> plan -> tasks` or
 `spec -> plan -> ui-design -> tasks`. The repository does not persist or infer
 which upstream revision produced a downstream artifact.
 
-The repository can prove only that Tasks are ready for reconciliation. Whether
-Tasks-to-sub-issues has run is GitHub state: `Next: taskstoissues` is pending;
-no `Next` and reconciled native children is complete.
+The approved Plan contains the implementation-work breakdown. Child creation
+and completion are represented only by native GitHub sub-issues.
 
 ## GitHub values
 
@@ -36,7 +35,7 @@ repository state file.
 ## Parent SDD summary
 
 The parent summary is a human-maintained projection of artifact state. It has
-checkboxes for Spec, Plan, optional Design, and Tasks, plus one `Next` value
+checkboxes for Spec, Plan, and optional Design, plus one `Next` value
 while artifact work remains. It does not contain PR, branch, child, retry,
 agent, or session records.
 

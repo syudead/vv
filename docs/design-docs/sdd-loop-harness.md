@@ -11,7 +11,7 @@ PRを作り、そこで終了する。
 ```text
 main
   <- feature branch                 integration PR（Closes parent）
-       <- arbitrary stage branch    Spec / Plan / Design / Tasks PR
+       <- arbitrary stage branch    Spec / Plan / Design PR
        <- arbitrary task branch     implementation PR
        <- arbitrary sync branch     latest main synchronization PR
 ```
@@ -26,7 +26,7 @@ branch名は識別子ではない。Issue番号とfeature directory番号にも�
 
 新方式では状態を二種類に分ける。
 
-- repository state: feature branchへmerge済みの`spec.md`、`plan.md`、`ui-design.md`、`tasks.md`
+- repository state: feature branchへmerge済みの`spec.md`、`plan.md`、`ui-design.md`
 - GitHub relationships: Issue timeline、integration PRの`Closes`、PRのhead/base、native sub-issues
 
 agent固有session、packet、独自JSON、branch命名はどちらにも含めない。
@@ -42,12 +42,10 @@ agent固有session、packet、独自JSON、branch命名はどちらにも含め�
 
 - [x] Spec: `specs/006-search/spec.md`
 - [x] Plan: `specs/006-search/plan.md`
-- [ ] Tasks
-- Next: `tasks`
 ```
 
-UI IssueだけはPlanとTasksの間にDesignを持つ。`Next`は
-`specify | plan | design | tasks | taskstoissues`のいずれかで、sub-issuesとの照合完了後に削除する。
+UI IssueだけはPlanの後にDesignを持つ。`Next`は
+`specify | plan | design`のいずれかで、最終成果物のmerge後に削除する。
 ただしSDD節は人向けの進捗表示であり、指定された工程を許可または禁止する状態機械ではない。
 
 ### Feature artifacts
@@ -83,12 +81,11 @@ GitHub discoveryは各agentの利用可能なintegrationが行う。repository�
 
 ## Stage transitions
 
-通常Issueは`specify -> plan -> tasks -> taskstoissues`、UI Issueは
-`specify -> plan -> design -> tasks -> taskstoissues`で進む。各stageは任意名sub-branchからfeature
+通常Issueは`specify -> plan`、UI Issueは`specify -> plan -> design`で進む。各stageは任意名sub-branchからfeature
 branch向けPRを一件作って終了し、人がreview、merge、親IssueのSDD節更新を行う。
 
-`taskstoissues`はrepositoryを変更しない。子Issueを作る直前に親のnative sub-issuesを確認し、同じ
-作業が既にあれば作成しない。taskに永続IDは持たせず、既存childの更新やcloseは対象Issueが明示された
+実装作業は承認済みPlanから直接native sub-issueとして作る。子Issueを作る直前に親の既存
+sub-issuesを確認し、同じ作業が既にあれば作成しない。既存childの更新やcloseは対象Issueが明示された
 場合だけ行う。
 
 ## Integration

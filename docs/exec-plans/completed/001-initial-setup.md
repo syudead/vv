@@ -22,7 +22,6 @@
 | [data-model.md](../../../specs/001-initial-setup/data-model.md) | Phase 0 で作る最小スキーマ |
 | [contracts/](../../../specs/001-initial-setup/contracts/) | API・設定・コマンドの契約 |
 | [quickstart.md](../../../specs/001-initial-setup/quickstart.md) | 受け入れの検証手順（S1〜S10） |
-| [tasks.md](../../../specs/001-initial-setup/tasks.md) | 実装タスクの分解と実行順 |
 
 ## 検証の方針
 
@@ -35,7 +34,7 @@
 | --- | --- |
 | 仕様 | 完了（2026-09-12） |
 | 計画・設計 | 完了（2026-09-12） |
-| タスク分解 | 完了（2026-09-12、[tasks.md](../../../specs/001-initial-setup/tasks.md) に 43 タスク） |
+| タスク分解 | 完了（2026-09-12、旧タスク成果物は後に廃止） |
 | 実装 | 完了（2026-09-12、43 タスクすべて） |
 | 受け入れ検証（S1〜S10） | 完了（2026-09-12）。S1〜S10 すべて期待どおり。制約は下記の1点のみ |
 

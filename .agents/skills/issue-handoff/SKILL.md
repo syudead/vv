@@ -15,8 +15,6 @@ parent Issue's `Next` value is a hint, not an execution gate:
 - `specify`: [references/specify.md](references/specify.md)
 - `plan`: [references/plan.md](references/plan.md)
 - `design`: [references/design.md](references/design.md)
-- `tasks`: [references/tasks.md](references/tasks.md)
-- `taskstoissues`: [references/taskstoissues.md](references/taskstoissues.md)
 - child Issue implementation: [references/implement.md](references/implement.md)
 
 Perform one stage, open or update one pull request, and stop.

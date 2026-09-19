@@ -39,21 +39,20 @@ The parent summary has this form:
 - [ ] Spec
 - [ ] Plan
 - [ ] Design
-- [ ] Tasks
 - Next: `specify`
 ```
 
 Omit `Design` unless the parent has the existing `ui` domain label. Remove
-`Next` after `taskstoissues` succeeds. The checklist and `Next` communicate
+`Next` after the final artifact is merged. The checklist and `Next` communicate
 progress to humans; they do not authorize or block a requested workflow.
 
 ## GitHub preflight
 
 Verify only the capabilities needed by the requested workflow. Every workflow
-needs Issue and PR read access. Specify, Plan, Design, Tasks, and Implement need
-repository push and PR creation access. `taskstoissues` instead needs Issue
-write access and native sub-issue operations; it does not require push or PR
-creation access. Stop before mutation when a required capability is missing.
+needs Issue and PR read access. Specify, Plan, Design, and Implement need
+repository push and PR creation access. Creating implementation sub-issues from
+the approved plan needs Issue write access and native sub-issue operations.
+Stop before mutation when a required capability is missing.
 
 Resolve the feature branch without naming conventions:
 
@@ -72,9 +71,9 @@ Resolve the feature branch without naming conventions:
 
 After checkout, inspect the selected feature directory directly. Use the exact
 `**Parent Issue**: #NNN` line in `spec.md` when mapping an existing directory to
-its parent. Read `spec.md`, `plan.md`, optional `ui-design.md`, and `tasks.md` as
-inputs when they exist. Do not compare their presence with the parent checklist
-or `Next`, and do not stop merely because those descriptions differ.
+its parent. Read `spec.md`, `plan.md`, and optional `ui-design.md` as inputs when
+they exist. Do not compare their presence with the parent checklist or `Next`,
+and do not stop merely because those descriptions differ.
 
 Historical feature directories without an exact `**Parent Issue**: #NNN` line
 are not auto-migrated and are not valid handoff inputs. They remain historical
@@ -88,9 +87,6 @@ select work from a branch name, prior conversation, or existing
 run. Before invoking Spec Kit, preserve any pre-existing
 `.specify/feature.json` without reading it. Restore it after the command, or
 remove the file produced by the command when none existed before.
-
-`Next: taskstoissues` can tell a maintainer that reconciliation is pending, but
-its presence or absence does not determine whether implementation may proceed.
 
 The skill deliberately does not infer whether an existing downstream
 artifact incorporates a later upstream revision. When an approved artifact is

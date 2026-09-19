@@ -81,7 +81,6 @@ specs/001-initial-setup/
 │   └── developer-commands.md # make 目標の契約
 ├── checklists/
 │   └── requirements.md  # /speckit-specify の品質チェックリスト
-└── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
 ```
 
 ### Source Code (repository root)

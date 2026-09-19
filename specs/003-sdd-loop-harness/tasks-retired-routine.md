@@ -1,8 +1,8 @@
 # Retired tasks: Claude Routine SDD loop
 
 This file is historical evidence for the removed controller. It is not an
-input to the current Tasks or Tasks-to-sub-issues workflows. Do not execute or
-reconcile its checkboxes. Current work is in [tasks.md](./tasks.md).
+input to the current workflow. Do not execute or reconcile its checkboxes.
+The repository no longer uses a current `tasks.md` artifact.
 
 # Original task plan: SDD ループハーネス（spec 以降の段階を自動で回す）
 

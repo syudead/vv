@@ -1,6 +1,6 @@
 ---
 name: "speckit-implement"
-description: "Implement one explicitly requested unit of work using the feature plan and tasks as context."
+description: "Implement one explicitly requested unit of work using the feature specification and plan as context."
 metadata:
   author: "github-spec-kit"
   source: "templates/commands/implement.md"
@@ -62,7 +62,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. Preserve `.specify/feature.json` as required by the issue-handoff contract, then run `SPECIFY_INIT_DIR="$PWD" SPECIFY_FEATURE_DIRECTORY="$SPECIFY_FEATURE_DIRECTORY" bash .specify/scripts/bash/check-prerequisites.sh --json --require-tasks --include-tasks` from repo root. Restore the machine-local file afterward and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. Preserve `.specify/feature.json` as required by the issue-handoff contract, then run `SPECIFY_INIT_DIR="$PWD" SPECIFY_FEATURE_DIRECTORY="$SPECIFY_FEATURE_DIRECTORY" bash .specify/scripts/bash/check-prerequisites.sh --json --require-spec` from repo root. Restore the machine-local file afterward and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
 2. **Check checklists status** (if FEATURE_DIR/checklists/ exists):
    - Treat checklist markers as a read-only gate: scan checkbox state, report status, and ask before proceeding when needed; do NOT modify checklist files or markers
@@ -99,7 +99,7 @@ You **MUST** consider the user input before proceeding (if not empty).
      - Automatically proceed to step 3
 
 3. Load and analyze the implementation context:
-   - **REQUIRED**: Read tasks.md for context, dependencies, and the matching task row when present
+   - **REQUIRED**: Read spec.md for requirements and acceptance criteria
    - **REQUIRED**: Read plan.md for tech stack, architecture, and file structure
    - **IF EXISTS**: Read data-model.md for entities and relationships
    - **IF EXISTS**: Read contracts/ for API specifications and test requirements
@@ -153,8 +153,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 5. Resolve the requested work:
    - Use the user's request or supplied Issue as the scope boundary
-   - Locate the matching task row when one exists
-   - Read related tasks only to understand dependencies; do not implement them
+   - Use the plan's implementation-work section and the supplied Issue as context
+   - Read related work only to understand dependencies; do not implement it
    - If the requested work cannot be identified, ask the user instead of selecting all remaining tasks
 
 6. Implement only the requested work and its necessary tests:
@@ -168,7 +168,6 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Halt execution if a required step fails
    - Provide clear error messages with context for debugging
    - Suggest next steps if implementation cannot proceed
-   - When a matching task row exists, mark only that row as `[X]`; do not alter other task markers
 
 8. Completion validation:
    - Verify the requested work is complete
@@ -176,7 +175,8 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Validate that tests pass and coverage meets requirements
    - Confirm the implementation follows the technical plan
 
-Note: A complete task breakdown is useful context but is not permission to implement unrequested work.
+Note: Broader work described by the plan is context, not permission to implement
+anything outside the explicit request.
 
 ## Mandatory Post-Execution Hooks
 
@@ -219,7 +219,7 @@ Report final status with summary of completed work.
 
 ## Done When
 
-- [ ] Requested work completed and only its matching task row marked `[X]`, when present
+- [ ] Requested work completed without expanding into unrelated plan items
 - [ ] Implementation validated against specification, plan, and test coverage
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with summary of completed work

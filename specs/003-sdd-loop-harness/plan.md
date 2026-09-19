@@ -36,8 +36,6 @@ line, and inspects required artifacts in order. It selects:
 1. `specify` when `spec.md` is absent.
 2. `plan` when `plan.md` is absent.
 3. `design` for UI work when `ui-design.md` is absent.
-4. `tasks` when `tasks.md` is absent.
-5. `taskstoissues` when all required artifacts exist.
 
 The skill does not infer whether downstream content incorporates a later
 upstream revision. A maintainer resets the parent summary when artifacts are
@@ -49,10 +47,10 @@ The common workflows describe required queries and mutations but do not name a
 transport. Environments without the capability required by the selected
 workflow stop before mutation.
 
-`taskstoissues` is intentionally a GitHub-only operation. Immediately before
-creating a child, it checks the parent's native sub-issues and skips work that
-is already represented. Existing children are changed only when explicitly
-requested.
+The approved Plan contains the implementation-work breakdown. Native child
+Issues are created directly from it. Immediately before creating a child, the
+workflow checks the parent's native sub-issues and skips work already
+represented. Existing children are changed only when explicitly requested.
 
 ## Migration order
 

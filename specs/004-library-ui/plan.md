@@ -102,7 +102,6 @@ specs/004-library-ui/
 │   └── screen-states.md      # 4 状態・キーボード・読み上げ・当たり判定
 ├── checklists/
 │   └── requirements.md  # /speckit-specify の品質チェックリスト
-└── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
 ```
 
 ### Source Code (repository root)

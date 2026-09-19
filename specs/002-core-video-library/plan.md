@@ -84,7 +84,6 @@ specs/002-core-video-library/
 │   └── ui-mockup.webp   # 仕様の入力になった画面案
 ├── checklists/
 │   └── requirements.md  # /speckit-specify の品質チェックリスト
-└── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
 ```
 
 ### Source Code (repository root)
