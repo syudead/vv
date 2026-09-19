@@ -246,7 +246,7 @@ describe("VideoPage の知らせ（contracts/layout.md 4.「パネルの中身�
     expect(panel().contains(player())).toBe(false);
   });
 
-  it("続きから始まった知らせと「先頭から見直す」がパネルの中へ出る", async () => {
+  it("中断位置から始まるが、再開した知らせは出さない", async () => {
     getVideo.mockResolvedValue({
       ...done,
       progress: {
@@ -275,12 +275,8 @@ describe("VideoPage の知らせ（contracts/layout.md 4.「パネルの中身�
     // 中断位置へ飛んでいる（002 のまま。FR-018）。
     expect(currentTime).toBe(65);
 
-    const notice = screen.getByText("1:05 から再開しました");
-    const restart = screen.getByRole("button", { name: "先頭から見直す" });
-    // 知らせがパネルの中に閉じているので、映像の大きさは変わらない
-    // （spec US5-6 / US4-6）。
-    expect(panel().contains(notice)).toBe(true);
-    expect(panel().contains(restart)).toBe(true);
+    expect(screen.queryByText("1:05 から再開しました")).toBeNull();
+    expect(screen.queryByRole("button", { name: "先頭から見直す" })).toBeNull();
     expect(panel().contains(element)).toBe(false);
   });
 

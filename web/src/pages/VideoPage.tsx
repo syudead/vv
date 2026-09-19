@@ -13,7 +13,7 @@ import {
 import InfoPanel from "../components/InfoPanel";
 import Skeleton from "../components/Skeleton";
 import StateNotice from "../components/StateNotice";
-import { formatDuration, unplayableText } from "../components/VideoCard";
+import { unplayableText } from "../components/VideoCard";
 
 /** saveInterval は再生中に位置を送る間隔である（R-111）。 */
 const saveIntervalMs = 5000;
@@ -51,9 +51,8 @@ function backTarget(state: unknown): string {
 /**
  * VideoPage は再生画面である（FR-015〜FR-017）。
  *
- * 中断位置から再開しつつ、先頭から見直す選択肢も出す。見終わった動画を
- * 末尾から再開させても利用者にできることが無いので、その判断はサーバー側の
- * completed に従う。
+ * 中断位置から再開する。見終わった動画を末尾から再開させても利用者にできる
+ * ことが無いので、その判断はサーバー側の completed に従う。
  *
  * **構図は 2 分割である**（contracts/layout.md 4.）。左に映像、右に情報パネル
  * （C14）を置き、一覧と同じ 640px の境界（`sm:`）でパネルを映像の下へ畳む。
@@ -74,7 +73,6 @@ export default function VideoPage() {
   const backTo = backTarget(useLocation().state);
 
   const [state, setState] = useState<State>({ kind: "loading" });
-  const [resumedFrom, setResumedFrom] = useState<number | null>(null);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -175,18 +173,7 @@ export default function VideoPage() {
     }
 
     element.currentTime = progress.positionMs / 1000;
-    setResumedFrom(progress.positionMs);
   }, [state]);
-
-  /** restart は先頭から見直す。 */
-  const restart = useCallback(() => {
-    const element = videoRef.current;
-    if (element !== null) {
-      element.currentTime = 0;
-      void element.play().catch(() => undefined);
-    }
-    setResumedFrom(null);
-  }, []);
 
   /**
    * onError は再生できなかったことを伝える。元のファイルが失われた場合でも、
@@ -278,21 +265,6 @@ export default function VideoPage() {
 
         {playbackError !== null && (
           <StateNotice tone="danger" title="再生できません" description={playbackError} />
-        )}
-
-        {resumedFrom !== null && (
-          <StateNotice
-            tone="info"
-            title={`${formatDuration(resumedFrom)} から再開しました`}
-          >
-            <button
-              type="button"
-              onClick={restart}
-              className="min-h-[var(--size-tap)] min-w-[var(--size-tap)] rounded-control border border-border px-3 text-sm outline-offset-2 focus-visible:outline-2 focus-visible:outline-focus"
-            >
-              先頭から見直す
-            </button>
-          </StateNotice>
         )}
       </InfoPanel>
     </main>
