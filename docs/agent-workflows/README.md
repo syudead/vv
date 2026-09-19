@@ -31,9 +31,6 @@ agent for an Issue handoff run and are not runtime state.
 - Merged files on the feature branch are the source of truth for artifact state.
 - `**Parent Issue**: #NNN` in `spec.md` is the only repository mapping between
   a feature directory and its parent Issue.
-- Generated downstream artifacts record their exact upstream path and commit in
-  an `SDD input` marker. A downstream artifact is current only while that marker
-  matches the latest commit that changed its upstream artifact.
 - PR `head`/`base`, Issue timeline references, the integration PR's
   `Closes #NNN`, and native GitHub sub-issues carry relationships. Do not copy
   PR, branch, or child-Issue lists into the parent body.
@@ -100,12 +97,18 @@ and Implement invoke Spec Kit through
 nor changes persistent session selection while `.specify/` remains owned by
 the installed Spec Kit distribution. Wrapper runs are serialized with a
 repository-local lock so concurrent agents cannot restore or remove each
-other's selection state.
+other's selection state. The lock records its owner process and a later run
+recovers it when that process no longer exists.
 
 `next=taskstoissues` means only that repository artifacts are ready for GitHub
 reconciliation. The command cannot tell whether sub-issues already exist. At
 that boundary, `Next: taskstoissues` means reconciliation is pending, while no
 `Next` plus reconciled native sub-issues means implementation may proceed.
+
+The local command deliberately does not infer whether an existing downstream
+artifact incorporates a later upstream revision. When an approved artifact is
+revised, the maintainer resets the parent SDD summary and reruns the affected
+stages through reviewed PRs.
 
 ## Branch and PR contract
 

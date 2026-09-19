@@ -28,5 +28,6 @@ the parent Issue's `Next` line and its native sub-issues.
 ## Errors
 
 Exit 2 for an invalid or non-normalized feature path, missing directory,
-invalid parent line, or dirty artifact directory. Stale downstream artifacts
-are a successful state result selecting the stage that must be rerun.
+invalid parent line, or dirty artifact directory. Existing downstream content
+is not compared with earlier artifacts; revisions are coordinated through the
+parent Issue summary and reviewed stage PRs.

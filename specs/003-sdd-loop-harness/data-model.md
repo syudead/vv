@@ -9,13 +9,12 @@ No dedicated runtime state is persisted. The following values are derived.
 | feature directory | explicit workflow input | normalized path under `specs/` |
 | parent Issue | `spec.md` | exactly one `**Parent Issue**: #NNN` line |
 | workflow | parent `ui` label | `standard` or `ui`; passed explicitly to local inspection |
-| artifact stage | files and Git history | first missing or stale downstream artifact |
+| artifact stage | required files | first missing downstream artifact |
 | task ID | `tasks.md` | `T` plus at least three digits; immutable after child creation |
 
 Artifact dependency order is `spec -> plan -> tasks` or
-`spec -> plan -> ui-design -> tasks`. A downstream artifact is current only
-when the latest commit touching its direct input is an ancestor of the latest
-commit touching the downstream file.
+`spec -> plan -> ui-design -> tasks`. The repository does not persist or infer
+which upstream revision produced a downstream artifact.
 
 The repository can prove only that Tasks are ready for reconciliation. Whether
 Tasks-to-sub-issues has run is GitHub state: `Next: taskstoissues` is pending;

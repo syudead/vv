@@ -61,5 +61,5 @@ Expected: all PR types run CI and only the integration merge closes the parent.
 ## S8: Failure cases
 
 Verify that zero/multiple integration PRs, duplicate task IDs under one parent,
-an invalid parent line, dirty artifacts, and stale downstream artifacts stop
-without guessing or writing a packet/state file.
+an invalid parent line, and dirty artifacts stop without guessing or writing a
+packet/state file.

@@ -36,33 +36,28 @@ lock_acquired=false
 
 acquire_lock() {
   while ! mkdir "$lock" 2>/dev/null; do
+    owner_pid=$(cat "$lock/owner" 2>/dev/null || true)
+    if [[ "$owner_pid" =~ ^[1-9][0-9]*$ ]] && ! kill -0 "$owner_pid" 2>/dev/null; then
+      rm -f "$lock/owner"
+      rmdir "$lock" 2>/dev/null || true
+      continue
+    fi
     sleep 1
   done
+  printf '%s\n' "$$" > "$lock/owner"
   lock_acquired=true
 }
 
-record_input() {
-  local upstream=$1 downstream=$2 upstream_commit tmp_marker
-  upstream_commit=$(git -C "$repo_root" log -1 --format=%H -- "$upstream")
-  [ -n "$upstream_commit" ] || return 0
-  [ -f "$repo_root/$downstream" ] || return 0
-
-  tmp_marker=$(mktemp)
-  printf '<!-- SDD input: %s @ %s -->\n' "$upstream" "$upstream_commit" > "$tmp_marker"
-  grep -Fvx "<!-- SDD input: $upstream @ $upstream_commit -->" "$repo_root/$downstream" |
-    grep -Ev '^<!-- SDD input: .* -->$' >> "$tmp_marker" || true
-  mv "$tmp_marker" "$repo_root/$downstream"
-}
-
 restore_state() {
-  rm -f "$state"
-  if [ "$had_state" = true ]; then
-    cp "$backup" "$state"
-  fi
-  rm -f "$backup"
   if [ "$lock_acquired" = true ]; then
+    rm -f "$state"
+    if [ "$had_state" = true ]; then
+      cp "$backup" "$state"
+    fi
+    rm -f "$lock/owner"
     rmdir "$lock"
   fi
+  rm -f "$backup"
 }
 trap restore_state EXIT
 trap 'exit 129' HUP
@@ -86,16 +81,3 @@ fi
 rm -f "$state"
 SPECIFY_INIT_DIR="$repo_root" SPECIFY_FEATURE_DIRECTORY="$feature" \
   bash "$repo_root/.specify/scripts/bash/$script" "$@"
-
-case "$script" in
-  setup-plan.sh)
-    record_input "$feature/spec.md" "$feature/plan.md"
-    ;;
-  setup-tasks.sh)
-    if [ -f "$repo_root/$feature/ui-design.md" ]; then
-      record_input "$feature/ui-design.md" "$feature/tasks.md"
-    else
-      record_input "$feature/plan.md" "$feature/tasks.md"
-    fi
-    ;;
-esac

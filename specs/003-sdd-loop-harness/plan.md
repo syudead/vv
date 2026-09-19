@@ -15,7 +15,7 @@ state. Human review and explicit invocation are the only stage transitions.
 | --- | --- |
 | `docs/agent-workflows/*.md` | Canonical, agent-neutral stage procedures |
 | agent skills | Thin entry points that defer repository behavior to the canonical workflows |
-| `scripts/issue-handoff/sdd-stage.sh` | Local artifact and stale-dependency inspection |
+| `scripts/issue-handoff/sdd-stage.sh` | Local required-artifact inspection |
 | `tests/issue-handoff/run.sh` | Network-free fixture tests |
 | GitHub native relationships | Parent/sub-issue and Issue/PR discovery |
 | `.github/workflows/ci.yml` | Validation on every PR; never starts an agent |
@@ -39,13 +39,14 @@ It validates one parent line, requires a clean artifact directory, and emits
 human-readable `key=value` lines. It selects:
 
 1. `specify` when `spec.md` is absent.
-2. `plan` when `plan.md` is absent or does not contain the latest Spec commit.
-3. `design` for UI work when `ui-design.md` is absent or stale against Plan.
-4. `tasks` when `tasks.md` is absent or stale against its direct input.
-5. `taskstoissues` when all artifacts are current.
+2. `plan` when `plan.md` is absent.
+3. `design` for UI work when `ui-design.md` is absent.
+4. `tasks` when `tasks.md` is absent.
+5. `taskstoissues` when all required artifacts exist.
 
-Git ancestor checks are used instead of file timestamps so merge topology is
-preserved across machines.
+The script does not infer whether downstream content incorporates a later
+upstream revision. A maintainer resets the parent summary when artifacts are
+revised, and review verifies the regenerated content.
 
 ## GitHub operations
 

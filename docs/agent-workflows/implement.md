@@ -20,6 +20,6 @@ Read [README.md](README.md) first. Input is one native child Issue.
    integration PR reaches `main`.
 
 If an approved artifact must change, stop new implementation. The maintainer
-resets the parent SDD summary to the first stale stage, and the affected stage
+resets the parent SDD summary to the first affected stage, and the affected stage
 workflows run again before child implementation resumes.
 

@@ -52,12 +52,11 @@ UI IssueだけはPlanとTasksの間にDesignを持つ。`Next`は
 ### Feature artifacts
 
 `spec.md`の`**Parent Issue**: #NNN`だけがfeature directoryと親Issueを対応させる。番号の一致は
-要求しない。`scripts/issue-handoff/sdd-stage.sh`は明示されたdirectoryだけを読み、次工程とstaleな
-後続成果物を表示する。GitHub、branch名、Issue本文、agent情報へはアクセスしない。
+要求しない。`scripts/issue-handoff/sdd-stage.sh`は明示されたdirectoryだけを読み、不足している次工程を
+表示する。GitHub、branch名、Issue本文、agent情報へはアクセスしない。
 
-後続成果物が最新の前段成果物を含むかは、生成時に記録した`SDD input` markerのupstream pathと
-commitが、現在の前段成果物を最後に変更したcommitと一致するかで判定する。file timestampや
-後続成果物自身の最終commit、生成時のsession状態は使わない。
+既存の後続成果物が後から改訂された前段成果物を取り込んでいるかは自動推測しない。改訂時は保守者が
+親IssueのSDD summaryを戻し、影響する工程をreviewed PRとして再実行する。
 
 ### GitHub
 
@@ -124,7 +123,7 @@ feature branch push後、Spec PR作成前に停止するとGitHub標準関係が
 
 ## Verification
 
-- `make test-agent-workflows`: branch名に依存しないartifact状態とstale判定
+- `make test-agent-workflows`: branch名に依存しないartifact存在状態の判定
 - `make check`: repository全体
 - GitHub実機確認: timeline参照、native sub-issues、parent取得、integration PRからのbranch解決、
   feature向けPRでのCI、default branch merge時のparent close

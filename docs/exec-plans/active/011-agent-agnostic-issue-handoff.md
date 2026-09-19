@@ -83,10 +83,8 @@ directory 番号は独立であり、一致や変換を仮定しない。
 | `ui` Issueで`ui-design.md`あり、`tasks.md`なし | Spec / Plan / Design 完了 | tasks |
 | `tasks.md` あり | 通常はSpec / Plan / Tasks、UIはSpec / Plan / Design / Tasks完了 | taskstoissues |
 
-spec が plan より後に変更された場合は Plan を未完了へ戻し、plan が tasks より後に変更された場合は
-Tasks を未完了へ戻す。UI Issueではplanがui-designより後ならDesignを、ui-designがtasksより後なら
-Tasksを未完了へ戻す。判定には後続成果物へ記録した`SDD input` markerを使い、後続成果物自身が後から
-編集されても前段成果物の取り込み状態を誤判定しない。古い成果物は自動削除せず、後続工程のPRで更新する。`ui`ラベルはUI設計工程
+承認済みの前段成果物を改訂するときは、保守者が影響する最初の工程以降を親Issueで未完了へ戻す。
+ローカルscriptは成果物間の更新順や内容の取り込みを推測しない。古い成果物は自動削除せず、後続工程のPRで更新する。`ui`ラベルはUI設計工程
 を選ぶ既存のドメイン入力として維持し、SDD自動起動や状態管理には使わない。
 
 ### 2.3 GitHub の関係
@@ -182,7 +180,7 @@ Tasksを未完了へ戻す。判定には後続成果物へ記録した`SDD inpu
    実装済み」を表し、親Issueのcloseは「`main`へ統合済み」を表す。
 5. spec、plan、design、tasksを変更する必要が生じた場合は新規実装を止め、該当stageから順に
    feature branch向けPRを作り直す。改訂開始時に保守者が親Issueの該当stage以降を未完了へ戻し、
-   `Next`を最初のstale stageに設定する。各stageのmerge後は通常フローどおりSDD節を進める。既存task
+   `Next`を影響を受ける最初のstageに設定する。各stageのmerge後は通常フローどおりSDD節を進める。既存task
    IDを保ったままtasksを更新し、taskstoissuesを再実行して、新規taskの子Issue追加、説明だけ変わった
    既存子Issueの本文更新、不要taskの`not planned` closeを行い、完了後に`Next`を再び削除する。
 
@@ -317,7 +315,7 @@ close、reopen、またはエージェントを起動しない。
 - [ ] feature branch上の`Parent Issue`からfeature directoryを一意に解決し、親IssueのSDD節と
       照合する。0件・複数件・path不一致をfixtureで検証する。
 - [ ] 明示されたfeature branchの`spec.md`、`plan.md`、`ui-design.md`、`tasks.md`から次工程を表示する。
-- [ ] spec、plan、ui-design、tasksの欠落と更新順によるstaleを検査する。
+- [ ] spec、plan、ui-design、tasksの欠落を検査する。
 - [ ] checkout後の工程状態判定がGitHub API、Issue本文、branch名、agent情報へ依存しないことを
       検証する。GitHubを読むpreflightとは責務を分ける。
 - [ ] GitHub関係のfixtureを各adapterの契約テストに渡し、repositoryの状態判定テストからnetworkと

@@ -70,11 +70,11 @@ correct PR and changes only its matching task marker.
 ### US3: Inspect state without an agent service (P2)
 
 A maintainer runs a local command with an explicit feature directory and can
-see the next artifact stage or stale dependency. The command does not access
+see the next missing artifact stage. The command does not access
 GitHub and does not read branch naming, session files, or agent state.
 
 **Independent test**: Fixture repositories return the same stage on arbitrary
-branch names and return an earlier stage after its input changes.
+branch names and reject dirty artifact directories.
 
 ## Functional requirements
 
@@ -98,7 +98,8 @@ branch names and return an earlier stage after its input changes.
 - **FR-009**: No Routine, merge-triggered agent, schedule, SDD automation
   label, committed packet, result JSON, or session state is required.
 - **FR-010**: The local state command reads only an explicit feature directory
-  and Git history and reports stale downstream artifacts.
+  and reports the first missing required artifact. It does not infer whether
+  downstream content incorporates a later upstream revision.
 - **FR-011**: Tasks-to-sub-issues deduplicates task IDs only within the supplied
   parent's native sub-issues and fails before writing when that API is absent.
 - **FR-012**: Task IDs are immutable after child creation. New work receives a
@@ -127,7 +128,7 @@ branch names and return an earlier stage after its input changes.
 
 - **SC-001**: Specify and Plan can be completed by different coding agents
   without sharing conversation or session state.
-- **SC-002**: Every fixture for missing and stale artifacts passes without
+- **SC-002**: Every fixture for missing artifacts and dirty directories passes without
   network access and without inspecting the current branch name.
 - **SC-003**: Parent Issues contain no replicated PR or child-Issue list.
 - **SC-004**: Every stage and implementation PR targets the long-lived feature
