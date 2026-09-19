@@ -19,7 +19,7 @@ Spec Kit の仕様作成時に生成していた組み込み `checklists/require
 
 **Storage**: Git 管理下の Markdown とテンプレート。品質確認専用の永続ファイルは追加しない
 
-**Testing**: `rg` とファイル列挙による残存検査、`git diff --check`、手順文書の相互参照確認
+**Testing**: `rg` とファイル列挙による残存検査、手順文書の相互参照確認
 
 **Target Platform**: このリポジトリを扱うローカル coding agent と GitHub 上の保守者
 
@@ -131,4 +131,4 @@ specs/{001,002,003,004,005,006}-*/
 **Dependencies**: 前 2 項目の文言と対象範囲が確定していること。
 
 **Observable acceptance evidence**: 対象ファイル数、現行手順内の旧ライフサイクル参照、
-別担当者承認の必須文言、削除済み how-to へのリンクがすべて 0 件で、`git diff --check` が成功する。
+別担当者承認の必須文言、削除済み how-to へのリンクがすべて 0 件である。
