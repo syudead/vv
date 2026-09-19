@@ -68,6 +68,17 @@ agree with the parent SDD summary. On disagreement, stop and report the
 difference; a maintainer updates the Issue before the run is retried. A brand
 new Specify has no directory yet and does not run this command.
 
+Historical feature directories without an exact `**Parent Issue**: #NNN` line
+are not auto-migrated and are not valid handoff inputs. They remain historical
+artifacts. Continuing one requires a maintainer to choose a parent Issue and
+add the exact mapping through a reviewed artifact PR; never infer it from a
+directory number, branch name, or old PR.
+
+Every adapter supplies `SPECIFY_FEATURE_DIRECTORY` explicitly for downstream
+commands and must not write `.specify/feature.json`. The ignored file remains
+supported only by the installed Spec Kit compatibility scripts outside this
+Issue handoff contract.
+
 `next=taskstoissues` means only that repository artifacts are ready for GitHub
 reconciliation. The command cannot tell whether sub-issues already exist. At
 that boundary, `Next: taskstoissues` means reconciliation is pending, while no

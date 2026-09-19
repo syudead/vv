@@ -6,7 +6,7 @@
 
 **Status**: Independent review required
 
-**Parent Issue**: legacy feature; created before the parent-Issue contract
+**Parent Issue**: #46
 
 ## Original requirements
 

@@ -36,7 +36,7 @@ case "$feature" in
   *) printf 'sdd-stage: feature must be under specs/: %s\n' "$feature" >&2; exit 2 ;;
 esac
 case "/$feature/" in
-  */../*|*/./*) printf 'sdd-stage: feature path must be normalized: %s\n' "$feature" >&2; exit 2 ;;
+  */../*|*/./*|*//*) printf 'sdd-stage: feature path must be normalized: %s\n' "$feature" >&2; exit 2 ;;
 esac
 
 if [ -z "$root" ]; then
@@ -45,7 +45,11 @@ if [ -z "$root" ]; then
     exit 2
   }
 fi
-root=$(cd "$root" && pwd)
+requested_root=$root
+if ! root=$(cd "$root" 2>/dev/null && pwd); then
+  printf 'sdd-stage: root directory does not exist: %s\n' "$requested_root" >&2
+  exit 2
+fi
 dir="$root/$feature"
 [ -d "$dir" ] || {
   printf 'sdd-stage: feature directory does not exist: %s\n' "$feature" >&2

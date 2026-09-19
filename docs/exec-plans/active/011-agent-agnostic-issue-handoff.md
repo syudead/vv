@@ -9,7 +9,7 @@
 ## 実装状況（2026-09-19）
 
 リポジトリ内の共通workflow、ローカル状態判定と契約テスト、agent adapter、全PR向けCI設定、
-設計・仕様・運用文書の置換、旧`/sdd-next`とusage hookの撤去は完了した。workflow test 13件、
+設計・仕様・運用文書の置換、旧`/sdd-next`とusage hookの撤去は完了した。workflow test 15件、
 local-dev test、Web format/lint/build/test 156件は成功している。
 
 GitHub MCPで`syudead/vv`へのadmin/push権限、Issue/PRのread、PR作成能力を確認した。2026-09-19

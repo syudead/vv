@@ -57,6 +57,20 @@ assert_failure() {
   fi
 }
 
+assert_exit() {
+  local name=$1 expected=$2
+  shift 2
+  local actual=0
+  "$@" >/dev/null 2>&1 || actual=$?
+  if [ "$actual" -eq "$expected" ]; then
+    printf 'PASS %s\n' "$name"
+    pass=$((pass + 1))
+  else
+    printf 'FAIL %s: expected exit %s, got %s\n' "$name" "$expected" "$actual" >&2
+    fail=$((fail + 1))
+  fi
+}
+
 repo=$(new_repo missing-spec)
 printf 'fixture\n' > "$repo/specs/901-example/.keep"
 commit_all "$repo" init
@@ -143,6 +157,12 @@ repo=$(new_repo invalid-parent)
 printf '# Spec\n\n**Parent Issue**: #42\n\n**Parent Issue**: #43\n' > "$repo/specs/901-example/spec.md"
 commit_all "$repo" spec
 assert_failure invalid-parent "$repo"
+
+assert_exit missing-root 2 bash "$subject" --root "$tmp/does-not-exist" --feature specs/901-example
+repo=$(new_repo non-normalized-feature)
+write_spec "$repo"
+commit_all "$repo" spec
+assert_exit non-normalized-feature 2 bash "$subject" --root "$repo" --feature specs//901-example
 
 contract_ok=true
 for workflow in specify plan design tasks taskstoissues implement; do
