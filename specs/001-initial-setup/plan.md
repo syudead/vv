@@ -74,13 +74,11 @@ specs/001-initial-setup/
 ├── research.md          # Phase 0 output — 未確定事項の解消（実測含む）
 ├── data-model.md        # Phase 1 output — Phase 0 で作る最小スキーマ
 ├── quickstart.md        # Phase 1 output — 受け入れの検証手順
-├── contracts/           # Phase 1 output
+└── contracts/           # Phase 1 output
 │   ├── openapi.yaml          # Phase 0 の API 契約（api/openapi.yaml の原型）
 │   ├── http-routes.md        # OpenAPI に書けない経路・ヘッダ・停止の約束
 │   ├── configuration.md      # 環境変数と起動前確認の契約
 │   └── developer-commands.md # make 目標の契約
-├── checklists/
-│   └── requirements.md  # /speckit-specify の品質チェックリスト
 ```
 
 ### Source Code (repository root)

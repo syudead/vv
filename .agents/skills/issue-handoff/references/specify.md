@@ -13,14 +13,12 @@ to create or revise a specification.
 4. Run the installed Spec Kit specify procedure on the sub-branch. Record the
    initiating Issue as exactly `**Parent Issue**: #NNN` in `spec.md`. Do not
    leave unresolved clarification markers.
-5. Run the specification checklist described in
-   `docs/how-to/spec-quality-review.md`. Leave its independent-review item
-   open; the author cannot approve it.
+5. Validate the specification against `docs/product-specs/spec-quality.md`
+   and correct any issues before opening the PR.
 6. Push the sub-branch and open a PR to the feature branch with `Refs #NNN`.
    Another open Spec PR does not require either PR to be closed.
-7. Stop. An independent reviewer applies `docs/how-to/spec-quality-review.md`
-   to the open PR. Only after approval does a human merge it.
-8. After human merge, the maintainer opens the feature-to-`main` integration
+7. Stop. A human decides when to merge the PR.
+8. After merge, the maintainer opens the feature-to-`main` integration
    PR with `Closes #NNN`, then marks Spec complete and sets `Next: plan` in the
    parent Issue.
 

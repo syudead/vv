@@ -80,10 +80,8 @@ specs/002-core-video-library/
 │   ├── openapi.yaml          # API 契約（api/openapi.yaml の次の姿）
 │   ├── http-routes.md        # Range 配信・キャッシュ・経路の安全性
 │   └── configuration.md      # 増える環境変数と既存項目の意味の変化
-├── assets/
+└── assets/
 │   └── ui-mockup.webp   # 仕様の入力になった画面案
-├── checklists/
-│   └── requirements.md  # /speckit-specify の品質チェックリスト
 ```
 
 ### Source Code (repository root)
