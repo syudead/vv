@@ -155,9 +155,12 @@ Given that feature description, do this:
    - All mandatory sections completed
    - No `[NEEDS CLARIFICATION]` markers remain
    - Requirements are testable and unambiguous
+   - Every functional requirement has clear acceptance criteria
+   - User scenarios cover the primary flows
    - Success criteria are measurable and technology-agnostic
    - Acceptance scenarios and edge cases are defined
    - Scope, dependencies, and assumptions are clear
+   - Feature requirements align with the measurable success outcomes
 
    Handle validation results as follows:
 
