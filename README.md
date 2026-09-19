@@ -91,7 +91,6 @@ mise exec --command "task doctor"
 検査ツールの版は `scripts/tool-versions.json` を Makefile と PowerShell で共有する。
 `task check` と `make check` はアプリの検査に加えて PowerShell の回帰テストを実行する。
 CI でもアプリの検査と、Windows / Linux の PowerShell 回帰テストを実行する。
-SDD の検査にも `jq` が必要で、不足時は失敗する。
 Windows で `task setup` を再実行するときは、先に開発サーバーを停止する。
 起動中はネイティブ依存のファイルがロックされ、npm ci が失敗するためである。
 Go と Web のソースは `.gitattributes` で LF に固定し、Windows の改行変換による
