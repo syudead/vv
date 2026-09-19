@@ -49,10 +49,11 @@ progress to humans; they do not authorize or block a requested workflow.
 
 ## GitHub preflight
 
-Before changing the checkout, verify that the integration can read Issues and
-PRs and can push and create PRs. `taskstoissues` additionally requires Issue
-write access and native sub-issue operations. Stop before changing files when
-a required capability is missing.
+Verify only the capabilities needed by the requested workflow. Every workflow
+needs Issue and PR read access. Specify, Plan, Design, Tasks, and Implement need
+repository push and PR creation access. `taskstoissues` instead needs Issue
+write access and native sub-issue operations; it does not require push or PR
+creation access. Stop before mutation when a required capability is missing.
 
 Resolve the feature branch without naming conventions:
 

@@ -38,8 +38,8 @@ no completed work and active-task selection would be ambiguous.
 
 ## R-005: GitHub transport
 
-**Decision**: Keep it in each agent's native integration. Claude and Codex use GitHub MCP; no
-repository command calls GitHub and there is no `gh` fallback.
+**Decision**: Keep transport selection outside the repository workflow. No
+repository command calls GitHub.
 
 **Why**: Authentication and tool availability differ by agent. Artifact-state
 logic remains portable only when it is network-free.

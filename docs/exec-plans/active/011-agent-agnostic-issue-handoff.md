@@ -213,9 +213,9 @@ directory 番号は独立であり、一致や変換を仮定しない。
 エージェントは次を行う。
 
 - 明示された親 Issue または子 Issue を読む。
-- 開始前に、repositoryのread/push、Issueのread、PRのread/createに必要なGitHub接続があることを
-  確認する。taskstoissuesではIssueのwriteとsub-issue操作、review修正では既存PR headへのpushも
-  必須とし、不足していればrepositoryを変更する前に停止する。
+- 開始前に、IssueとPRをreadできることを確認する。PRを作る工程ではrepositoryへのpushとPR作成、
+  taskstoissuesではIssueのwriteとsub-issue操作、review修正では既存PR headへのpushを確認する。
+  選択した工程に必要な能力が不足していればmutation前に停止する。
 - 親Issueまたは子IssueのGitHub関係からPRとfeature branch候補を取得する。依頼で対象が指定されて
   いればそれを優先し、候補だけでは対象を特定できない場合はユーザーへ確認する。
 - 選択したbranchの成果物を読む。

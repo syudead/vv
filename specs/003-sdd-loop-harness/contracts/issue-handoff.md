@@ -6,8 +6,10 @@ One explicit GitHub parent Issue or native sub-issue.
 
 ## Preconditions
 
-- Required GitHub read/push/PR capabilities are available.
-- Tasks-to-sub-issues additionally has Issue write and native sub-issue access.
+- Issue and PR read capabilities are available.
+- PR-producing workflows have repository push and PR creation access.
+- Tasks-to-sub-issues has Issue write and native sub-issue access; it does not
+  require repository push or PR creation access.
 - Parent SDD summary agrees with merged feature artifacts.
 - The requested stage has no other open PR, except the PR being revised.
 
@@ -22,6 +24,6 @@ One explicit GitHub parent Issue or native sub-issue.
 
 Missing capability, ambiguous GitHub relationship, invalid parent mapping,
 dirty artifacts, stale parent summary, or duplicate child ID stops before a
-new mutation. No fallback branch naming, Issue-number conversion, `gh`, or
-state packet is permitted.
+new mutation. No fallback branch naming, Issue-number conversion, or state
+packet is permitted.
 

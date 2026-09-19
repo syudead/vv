@@ -46,9 +46,8 @@ revised, and review verifies the regenerated content.
 ## GitHub operations
 
 The common workflows describe required queries and mutations but do not name a
-transport. Claude and Codex use GitHub MCP. Another agent may use its own
-official-API integration. Environments without the required capability stop
-before mutation; `gh` is not a fallback in this repository.
+transport. Environments without the capability required by the selected
+workflow stop before mutation.
 
 `taskstoissues` is intentionally a GitHub-only operation. It compares task IDs
 with the parent's native sub-issues, creates and attaches missing children,
