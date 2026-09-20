@@ -3,36 +3,39 @@
 Read [README.md](README.md) first. Input is a parent Issue and an approved
 `plan.md` containing one `## Implementation Work` section.
 
-A child Issue created here is what `/speckit-implement` builds from. Nothing
-downstream re-reads the plan on its own, so a unit that is too thin to
-implement produces a thin implementation. This stage copies the plan; it does
-not improve it, and it does not paper over it.
+A child Issue created here is what `/speckit-implement` builds from, and nothing
+downstream re-reads the plan on its own. So this stage does not transcribe: it
+**writes each unit up for the person who will implement it**, in full sentences,
+with the links and the ordering they need.
+
+The plan does not have to carry that prose. It carries the decisions — what the
+units are, what each one covers, what counts as done — and a human approved
+those. Expanding an approved decision into a readable Issue is this stage's job.
+Deciding something the plan did not decide is not: scope the plan does not
+cover, acceptance evidence not derivable from it, or an answer to a question
+the spec still holds open. The test is whether you can point at where in the
+approved artifacts the statement comes from.
 
 1. Use the supplied parent Issue and current checkout as context, and read the
    relevant approved Plan.
 2. Read each `###` subsection under `## Implementation Work` as one proposed
-   child Issue. Use its heading as the title and its scope, dependencies, and
-   acceptance evidence as the body.
-3. **Check the units before creating anything.** For each proposed child, all of
-   the following must already hold in the plan
-   ([P-5](../../../../docs/design-docs/plan-quality.md)):
-   - the heading works as an Issue title on its own, away from the plan
-   - the scope names what changes, and points to the artifact section holding
-     the detail where there is one
-   - the acceptance evidence is observable — a check that passes, a response
-     that is returned, something visible on screen. "Implemented correctly" is
-     not evidence
-   - each dependency names another unit in this same section
-   - the units together cover the feature, and do not overlap
-
-   Where a unit fails this, stop before creating any Issue and report which
-   unit and which point. The fix belongs in `plan.md` through `/speckit-plan`.
-   Never invent scope, dependencies, or acceptance evidence to fill the gap: an
-   Issue is a durable instruction to whoever implements it, and inventing its
-   content here puts work nobody approved into the feature.
-4. Give each Issue body, after the copied text, a link to the plan it came from
-   and the name of the feature branch, so the implementer can reach the spec and
-   the artifacts without being told where they are.
+   child Issue. Its heading is the Issue title.
+3. **Write the Issue body from the approved artifacts.** Take the unit's scope,
+   dependencies, and acceptance evidence, and expand them into something a
+   person can pick up cold: what changes and where, what has to land first, and
+   what counts as done. Draw the detail from the artifacts the plan points at —
+   the contract for an endpoint's errors, the data model for a field's rules,
+   the spec for the behavior — rather than leaving the implementer to find them.
+   Include a link to `plan.md`, the feature directory, and the feature branch
+   name.
+4. **Do not decide anything new here.** For every statement in the body, you
+   must be able to name where in the spec, the plan, or an artifact it comes
+   from. If writing a usable Issue would require settling something none of
+   them settle — scope the plan does not cover, acceptance evidence that cannot
+   be derived, or a question the spec still holds open — do not invent it:
+   put that question to the user, and if it changes what gets built, the answer
+   belongs in `plan.md` through `/speckit-plan` before the Issue is created.
+   ([P-5](../../../../docs/design-docs/plan-quality.md))
 5. List the parent's open and closed native sub-issues. Immediately before each
    create, skip the proposal when the same work is already represented.
 6. Create each missing Issue and attach it to the parent through GitHub's native

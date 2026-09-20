@@ -144,9 +144,12 @@ layout" with a link]
   Issue body — and `/speckit-implement` then builds one unit per PR working from
   that Issue.
 
-  So each subsection has to stand on its own: someone holding only that Issue
-  and this feature's artifacts must know what to build and when it is done.
-  - Write the heading as a title that still means something outside this plan.
+  What this section settles is the breakdown: what the units are, what each
+  covers, what has to land first, and what counts as done. The prose an
+  implementer reads is written later, when the Issue is created from these
+  units and the artifacts — so keep it short here, and do not draft the Issue.
+  - Write the heading as a title that still means something outside this plan;
+    it becomes the Issue title verbatim.
   - Name a dependency by the other unit's heading; Issue numbers do not exist
     yet when this is written.
   - Point to the artifact section that specifies the detail (a contract, an
