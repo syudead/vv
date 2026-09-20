@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
+	"golang.org/x/text/unicode/norm"
 )
 
 func TestMediaFolderOperationsAreAtomicAndScoped(t *testing.T) {
@@ -178,7 +179,30 @@ func TestAddMediaFolderRejectsSymbolicLinkComponent(t *testing.T) {
 	}
 	// 末尾は実directoryなのでLstatを通過し、EvalSymlinksによる親componentの
 	// 検証が働くことを確認する。
-	if _, err := db.AddMediaFolder(context.Background(), filepath.Join(link, "child")); !errors.Is(err, ErrInvalidFolder) {
+	if _, err := db.AddMediaFolder(context.Background(), filepath.Join(link, "child")); !errors.Is(err, ErrUnsupportedFolder) {
+		t.Fatalf("error = %v, want ErrUnsupportedFolder", err)
+	}
+}
+
+func TestAddMediaFolderRejectsRelativePath(t *testing.T) {
+	db := migratedDB(t)
+	if _, err := db.AddMediaFolder(context.Background(), filepath.Join("relative", "media")); !errors.Is(err, ErrInvalidFolder) {
 		t.Fatalf("error = %v, want ErrInvalidFolder", err)
+	}
+}
+
+func TestAddMediaFolderPreservesFilesystemUnicodePath(t *testing.T) {
+	db := migratedDB(t)
+	decomposed := norm.NFD.String("Café")
+	path := filepath.Join(t.TempDir(), decomposed)
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	folder, err := db.AddMediaFolder(context.Background(), path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if folder.Path != path {
+		t.Fatalf("path = %q, want exact filesystem path %q", folder.Path, path)
 	}
 }

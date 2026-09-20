@@ -21,7 +21,8 @@ worker. Everything ships as one container.
 In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, checks that
 `ffprobe`/`ffmpeg` are on `PATH`, opens SQLite under `MDM_DATA_DIR` and applies
 embedded goose migrations at startup, then starts the job worker. It serves `GET /api/health`,
-the video library API (`/api/videos*`, `/api/scans*`), byte-range streaming,
+the video library API (`/api/videos*`, `/api/scans*`), media-folder settings and
+server-side directory picker APIs, byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts

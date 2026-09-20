@@ -234,9 +234,8 @@ func TestScanDerivesTitleFromFileName(t *testing.T) {
 	}
 }
 
-// パスは保存前に Unicode NFC へ正規化する（R-107）。macOS は NFD で
-// ファイル名を返すので、正規化しないと同じ動画が2行になる。
-func TestScanNormalizesPathToNFC(t *testing.T) {
+// 実在pathはファイルシステムへ再入力できる綴りを保ち、表示用titleだけをNFC化する。
+func TestScanPreservesPathAndNormalizesTitleToNFC(t *testing.T) {
 	// "が" を NFD（か + 濁点）で作る。
 	decomposed := norm.NFD.String("がっこう.mp4")
 	if decomposed == norm.NFC.String(decomposed) {
@@ -252,8 +251,9 @@ func TestScanNormalizesPathToNFC(t *testing.T) {
 		t.Fatalf("取り込んだ数 = %d, want 1", len(index.upserts))
 	}
 	got := index.upserts[0]
-	if got.Path != norm.NFC.String(got.Path) {
-		t.Errorf("Path が NFC でない: %q", got.Path)
+	wantPath := filepath.Join(root, decomposed)
+	if got.Path != wantPath {
+		t.Errorf("Path = %q, want exact filesystem path %q", got.Path, wantPath)
 	}
 	if got.Title != norm.NFC.String(got.Title) {
 		t.Errorf("Title が NFC でない: %q", got.Title)

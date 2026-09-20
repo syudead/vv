@@ -14,7 +14,8 @@
 
 **Decision**: 各MediaFolderにID、path、行単位versionを持たせ、追加・変更・削除をそれぞれ1件の
 atomic operationにする。一覧全体のPUT、draft、global version、並び替えは実装しない。同じ
-正規化pathと、祖先・子孫で探索範囲が重なるpathは拒否する。
+lexical clean後のpathと、祖先・子孫で探索範囲が重なるpathは拒否する。Unicode表現は
+ファイルシステムが返した実在entryの綴りを保持する。
 
 **Rationale**: 1件の操作に無関係なfolderを更新対象にせず、競合と失敗の範囲を対象行へ限定するため。
 
@@ -53,7 +54,7 @@ filesystem rootとdrive rootは登録不可とする。`Lstat`でsymlinkを候�
 
 **Decision**: listing時に読取可能性を確認し、POST/PUT時にも`Lstat`で対象pathの存在・実directory・
 readable・非filesystem-rootと、全既存folderに対する重複・包含を再検証する。API pathはOSの
-絶対・正規化済み表現とする。
+絶対・lexical clean済み表現とし、Unicode表現は実在entryの綴りを保持する。
 
 ## R-706: 非同期走査を失敗境界で閉じる
 

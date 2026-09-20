@@ -78,7 +78,7 @@ Phase 0 でこの表を作る理由は、日本語の部分一致検索の実証
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | `id` | integer | primary key | 行 ID。FTS5 の `rowid` と対応させる |
-| `path` | text | not null, unique | ファイルの絶対パス。保存前に Unicode NFC へ正規化する |
+| `path` | text | not null, unique | ファイルの絶対パス。ファイルシステムが返したUnicode表現を保持する |
 | `title` | text | not null | 表示名。Phase 0 では拡張子を除いたファイル名 |
 | `size_bytes` | integer | not null | ファイルサイズ |
 | `mtime` | integer | not null | ファイルの更新時刻（Unix 秒） |

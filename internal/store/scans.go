@@ -30,7 +30,7 @@ const (
 	ScanFailed = domain.ScanFailed
 )
 
-var ErrNoMediaFolders = errors.New("メディアフォルダが登録されていません")
+var ErrNoMediaFolders = domain.ErrNoMediaFolders
 
 // StartScan は走査を始める。すでに実行中のものがあれば、新しく始めずに
 // それを返す（started = false）。

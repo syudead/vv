@@ -17,6 +17,15 @@ const (
 // ErrNotFound は対象が存在しないことを表す。
 var ErrNotFound = errors.New("対象が見つかりません")
 
+var (
+	ErrNoMediaFolders         = errors.New("メディアフォルダが登録されていません")
+	ErrScanRunning            = errors.New("取り込みの実行中です")
+	ErrFolderConflict         = errors.New("メディアフォルダが重複または包含しています")
+	ErrVersionConflict        = errors.New("メディアフォルダが別の操作で変更されています")
+	ErrInvalidMediaFolder     = errors.New("メディアフォルダとして登録できません")
+	ErrUnsupportedMediaFolder = errors.New("対応していないメディアフォルダです")
+)
+
 // ErrInvalidCursor はカーソルが解釈できないことを表す。
 //
 // 黙って先頭から返さないのは、無限スクロールが巻き戻って同じ内容を延々と

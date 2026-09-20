@@ -17,12 +17,20 @@ import (
 // 応答は即座に返り、取り込みは背後で進む。走査中も一覧・再生の経路は通常
 // どおり応答する（FR-007）。
 func (s *server) StartScan(w http.ResponseWriter, r *http.Request) {
+	var body struct{}
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
 	if s.scans == nil {
 		s.internalError(w, "取り込みの経路が設定されていません", nil)
 		return
 	}
 
 	scan, err := s.scans.StartScan(r.Context())
+	if errors.Is(err, domain.ErrNoMediaFolders) {
+		s.writeError(w, http.StatusConflict, codeMediaFoldersNotConfigured, "メディアフォルダを設定してください")
+		return
+	}
 	if err != nil {
 		s.internalError(w, "取り込みを開始できませんでした", err)
 		return
