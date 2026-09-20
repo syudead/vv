@@ -23,7 +23,6 @@ Phase 0 ではその部分集合だけを作り、Phase 1 で拡張する。
 | フィールド | 型 | 既定値 | 検証規則 |
 | --- | --- | --- | --- |
 | `Addr` | string | `:8080` | `net.SplitHostPort` で解釈できること |
-| `MediaDir` | string | `/media` | 絶対パスであること。起動時に存在と読み取り可否を確認し、不可なら起動中止 |
 | `DataDir` | string | `/data` | 絶対パスであること。存在しなければ作成する（作成失敗は起動中止） |
 | `LogLevel` | string | `info` | `debug` / `info` / `warn` / `error` のいずれか |
 

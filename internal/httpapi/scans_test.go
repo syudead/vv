@@ -84,7 +84,7 @@ func TestGetCurrentScanExposesError(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true,
 		current: domain.Scan{
-			ID: 4, State: domain.ScanFailed, Error: "MDM_MEDIA_DIR を読み取れません",
+			ID: 4, State: domain.ScanFailed, Error: "メディアフォルダを読み取れません",
 		},
 	}})
 

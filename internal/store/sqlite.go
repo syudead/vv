@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"sync"
 
 	// CGO を必要としない SQLite ドライバ。CGO_ENABLED=0 を維持するために採用した
 	// （specs/001-initial-setup/research.md R-001）。
@@ -26,8 +27,9 @@ func DatabasePath(dataDir string) string {
 
 // DB は SQLite への接続を保持する。
 type DB struct {
-	sql  *sql.DB
-	path string
+	sql      *sql.DB
+	path     string
+	folderMu sync.Mutex
 }
 
 // dsn は接続時に適用する PRAGMA を含む DSN を組み立てる。

@@ -55,6 +55,8 @@ migrationは各既存videoのpath、title、size、mtimeを1件のVideoLocation�
 content key、probe結果、job、playback progressを保持する。既存library dataを削除しない。
 location IDは再利用しない。scannerが同じpathのcontent、size、mtime、またはvideo所属を変える場合は
 location versionを加算する。
+旧schemaへのDown migrationは1 videoにつき1 locationしか表現できないため、複数locationを持つvideoが
+存在する場合はデータを縮約せずrollbackを拒否する。
 
 ### jobs location binding
 
@@ -62,6 +64,7 @@ location versionを加算する。
 よく、workerがclaimしてcurrent locationを選ぶtransactionで3値を記録する。retryで別locationを選ぶときは
 3値を同じtransactionで置き換える。migration前からpending/runningだったjobは未選択へ戻し、次のclaimで
 current locationを選び直す。
+登録済みMediaFolderに属するcurrent locationがないjobはclaimせずqueuedで保持し、folder登録後に再開する。
 
 ## Atomic Folder Operations
 

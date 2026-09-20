@@ -22,9 +22,15 @@ var ErrNoJob = errors.New("処理するジョブがありません")
 
 // Job は待ち行列から専有した仕事である。
 type Job struct {
-	ID      int64
-	Kind    JobKind
-	VideoID int64
+	ID              int64
+	Kind            JobKind
+	VideoID         int64
+	ContentKey      string
+	LocationID      int64
+	LocationVersion int64
+	LocationPath    string
+	// LastLocation はclaim時点の登録済みlocation集合で最後の候補かを表す。
+	LastLocation bool
 	// Attempts はこの取り出しを含めた試行回数。
 	Attempts int
 }

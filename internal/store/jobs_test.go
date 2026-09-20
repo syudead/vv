@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -277,6 +279,80 @@ func TestDeleteFinishedJobsKeepsPending(t *testing.T) {
 	}
 	if removed != 0 {
 		t.Errorf("未完了のジョブが消えた: %d 件", removed)
+	}
+}
+
+func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	var videoID int64
+	for i := range 4 {
+		result, err := db.UpsertVideo(ctx, sampleFile(fmt.Sprintf("/media/%d/movie.mp4", i), "movie", "shared", 1, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		videoID = result.ID
+	}
+	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 4 * MaxJobAttempts {
+		job, err := db.ClaimJob(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantAttempt := i/4 + 1
+		if job.Attempts != wantAttempt {
+			t.Fatalf("location %d attempts = %d, want %d", i, job.Attempts, wantAttempt)
+		}
+		if job.LastLocation != (i%4 == 3) {
+			t.Fatalf("location %d LastLocation = %v", i, job.LastLocation)
+		}
+		if err := db.FailClaimedJob(ctx, job, "location unavailable"); err != nil {
+			t.Fatal(err)
+		}
+		wantState := "queued"
+		if i == 4*MaxJobAttempts-1 {
+			wantState = "failed"
+		}
+		if got := jobState(t, db, job.ID); got != wantState {
+			t.Fatalf("location %d state = %s, want %s", i, got, wantState)
+		}
+	}
+	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("ClaimJob after final cycle error = %v, want ErrNoJob", err)
+	}
+}
+
+func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	video, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(root, "movie.mp4"), "movie", "migrated", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.EnqueueJob(ctx, JobThumbnail, video.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("unregistered ClaimJob error = %v, want ErrNoJob", err)
+	}
+	if got := jobState(t, db, 1); got != "queued" {
+		t.Fatalf("unregistered job state = %s, want queued", got)
+	}
+	if _, err := db.AddMediaFolder(ctx, root); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.LocationPath != filepath.Join(root, "movie.mp4") {
+		t.Fatalf("LocationPath = %q", job.LocationPath)
 	}
 }
 

@@ -1,6 +1,6 @@
 # 実行計画: 設定画面
 
-- ステータス: 計画・設計中
+- ステータス: 実装中（#67）
 - 最終更新: 2026-09-21
 - Parent Issue: #62
 - Feature branch: `codex/feature-settings-screen`
@@ -32,11 +32,18 @@ thumbnailを削除しないことも確認する。
 - 360px、768px、1280pxのscreenshotとvisual review
 - symlink、部分I/O失敗、stale job write-back、再生履歴維持の回帰確認
 
+### 実施済み
+
+- #67: `go test ./...`
+- #67: 旧schemaからのmigrationでvideo ID、location、job、playback progressを維持
+- #67: 重複contentの別location維持、stale job write-back拒否、0 folder scan拒否
+- #67: reporting failureとroot I/O failureでmissing locationを削除しないことを確認
+
 ## 進捗
 
 - [x] Spec
 - [x] Plan
-- [ ] Design
+- [x] Design
 - [ ] #67
 - [ ] #68
 - [ ] #69

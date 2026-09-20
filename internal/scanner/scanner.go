@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -12,6 +13,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 	"golang.org/x/text/unicode/norm"
 )
+
+var ErrNoMediaFolders = errors.New("メディアフォルダが登録されていません")
 
 // mediaExtensions は取り込みの対象にする拡張子である（R-107）。
 //
@@ -43,14 +46,13 @@ const progressInterval = 20
 
 // Index は走査結果の保存先である。scanner は保存の手段を知らない。
 type Index interface {
+	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 	// IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
 	IndexedVideosByPath(ctx context.Context) (map[string]domain.IndexedVideo, error)
 	// UpsertVideo は1件を索引に反映する。
 	UpsertVideo(ctx context.Context, file domain.VideoFile) (domain.UpsertResult, error)
-	// DeleteVideos は指定した行を消す。
-	DeleteVideos(ctx context.Context, ids []int64) error
-	// ContentKeys は参照されている内容の識別子を集合で返す。
-	ContentKeys(ctx context.Context) (map[string]struct{}, error)
+	// DeleteVideoLocations removes missing filesystem locations and orphan videos.
+	DeleteVideoLocations(ctx context.Context, ids []int64) error
 }
 
 // Queue は重い処理の積み先である。nil でもよい（積まないだけ）。
@@ -65,26 +67,20 @@ type Reporter interface {
 
 // Options は走査の組み立てに必要な依存である。
 type Options struct {
-	// MediaDir は走査する根。この配下だけを対象にする。
-	MediaDir string
 	Index    Index
 	Queue    Queue
 	Reporter Reporter
-	// ThumbnailsDir は孤児サムネイルの掃除先。空なら掃除しない。
-	ThumbnailsDir string
 	// Logger は nil なら slog の既定を使う。
 	Logger *slog.Logger
 }
 
-// Scanner は MDM_MEDIA_DIR を走査して索引を実際のファイルに合わせる。
+// Scanner は登録済みメディアフォルダを走査して索引を実際のファイルに合わせる。
 type Scanner struct {
-	mediaDir      string
-	index         Index
-	queue         Queue
-	reporter      Reporter
-	thumbnailsDir string
-	logger        *slog.Logger
-	contentKey    func(string) (string, error)
+	index      Index
+	queue      Queue
+	reporter   Reporter
+	logger     *slog.Logger
+	contentKey func(string) (string, error)
 }
 
 // New は走査を組み立てる。
@@ -94,13 +90,11 @@ func New(opts Options) *Scanner {
 		logger = slog.Default()
 	}
 	return &Scanner{
-		mediaDir:      opts.MediaDir,
-		index:         opts.Index,
-		queue:         opts.Queue,
-		reporter:      opts.Reporter,
-		thumbnailsDir: opts.ThumbnailsDir,
-		logger:        logger,
-		contentKey:    ContentKey,
+		index:      opts.Index,
+		queue:      opts.Queue,
+		reporter:   opts.Reporter,
+		logger:     logger,
+		contentKey: ContentKey,
 	}
 }
 
@@ -109,17 +103,23 @@ func New(opts Options) *Scanner {
 // 手順は次のとおり。
 //
 //  1. 索引に入っているものをパスで引ける形で読み出す
-//  2. MediaDir 以下を再帰的に走り、対象のファイルを列挙する
+//  2. 登録済みの全ルート以下を再帰的に走り、対象のファイルを列挙する
 //  3. パスが一致する行は、サイズと mtime を比べる。変化が無ければ何もしない
 //     （content_key の再計算もしない）
 //  4. 新しい・変わったファイルだけ content_key を計算して反映する。内容が
 //     同じでパスが違うものは移動・改名として扱われる（重複を作らない）
 //  5. 走査で見つからなかった行を消す
-//  6. 参照されなくなったサムネイルを掃除する
 //
 // 動画ファイルは読み取りのみで扱う。変更・移動・削除・変換は行わない（FR-009）。
 // 個別のファイルの失敗では中止せず、失敗として数えて次へ進む（FR-008）。
 func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
+	folders, err := s.index.ListMediaFolders(ctx)
+	if err != nil {
+		return domain.ScanResult{}, err
+	}
+	if len(folders) == 0 {
+		return domain.ScanResult{}, ErrNoMediaFolders
+	}
 	indexed, err := s.index.IndexedVideosByPath(ctx)
 	if err != nil {
 		return domain.ScanResult{}, err
@@ -129,66 +129,106 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	// seen は走査で見つけたパス。ここに無い索引の行が「消えたファイル」になる。
 	seen := map[string]struct{}{}
 
-	walkErr := filepath.WalkDir(s.mediaDir, func(path string, entry fs.DirEntry, err error) error {
-		if ctxErr := ctx.Err(); ctxErr != nil {
-			return ctxErr
-		}
-		if err != nil {
-			// 根が読めない場合は走査そのものの失敗。途中のディレクトリが
-			// 読めないだけなら、そこを飛ばして続ける（FR-008）。
-			if path == s.mediaDir {
-				return err
-			}
-			s.logger.Warn("走査中に読み取れない場所がありました",
-				slog.String("path", path), slog.Any("error", err))
+	protected := []string{}
+	var fatalErr error
+	for _, folder := range folders {
+		root := folder.Path
+		rootInfo, rootErr := os.Lstat(root)
+		if rootErr != nil || rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+			protected = append(protected, root)
 			result.Failed++
-			return fs.SkipDir
+			continue
 		}
+		walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			if err != nil {
+				// 根が読めない場合は走査そのものの失敗。途中のディレクトリが
+				// 読めないだけなら、その範囲を保護して続ける（FR-008）。通常
+				// fileではSkipDirを返さない。返すと後続の兄弟まで省略される。
+				normalized := norm.NFC.String(path)
+				protected = append(protected, normalized)
+				s.logger.Warn("走査中に読み取れない場所がありました",
+					slog.String("path", path), slog.Any("error", err))
+				result.Failed++
+				if walkErrorIsDirectory(path, root, entry, indexed) {
+					return fs.SkipDir
+				}
+				return nil
+			}
 
-		if entry.IsDir() {
-			if path != s.mediaDir && isExcludedDir(entry.Name()) {
-				return fs.SkipDir
+			if entry.IsDir() {
+				if path != root && isExcludedDir(entry.Name()) {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			if entry.Type()&os.ModeSymlink != 0 {
+				return nil
+			}
+
+			if !isMediaFile(entry.Name()) {
+				return nil
+			}
+
+			normalized := norm.NFC.String(path)
+			seen[normalized] = struct{}{}
+			result.Total++
+
+			if err := s.ingest(ctx, path, normalized, entry, indexed, &result); err != nil {
+				if ctx.Err() != nil {
+					return err
+				}
+				// 1件の失敗で全体を止めない。理由は記録に残し、次のファイルへ進む。
+				s.logger.Warn("取り込めなかったファイルがあります",
+					slog.String("path", path), slog.Any("error", err))
+				result.Failed++
+			}
+
+			if result.Total%progressInterval == 0 {
+				if err := s.report(ctx, result); err != nil {
+					fatalErr = err
+					return err
+				}
 			}
 			return nil
-		}
-
-		if !isMediaFile(entry.Name()) {
-			return nil
-		}
-
-		normalized := norm.NFC.String(path)
-		seen[normalized] = struct{}{}
-		result.Total++
-
-		if err := s.ingest(ctx, path, normalized, entry, indexed, &result); err != nil {
+		})
+		if walkErr != nil {
+			if fatalErr != nil {
+				return result, fatalErr
+			}
 			if ctx.Err() != nil {
-				return err
+				return result, ctx.Err()
 			}
-			// 1件の失敗で全体を止めない。理由は記録に残し、次のファイルへ進む。
-			s.logger.Warn("取り込めなかったファイルがあります",
-				slog.String("path", path), slog.Any("error", err))
+			protected = append(protected, root)
 			result.Failed++
+			s.logger.Warn("メディアフォルダを最後まで走査できませんでした", slog.String("path", root), slog.Any("error", walkErr))
 		}
-
-		if result.Total%progressInterval == 0 {
-			s.report(ctx, result)
-		}
-		return nil
-	})
-	if walkErr != nil {
-		return result, fmt.Errorf("%s を走査できません: %w", s.mediaDir, walkErr)
+	}
+	if err := s.report(ctx, result); err != nil {
+		return result, err
 	}
 
-	removed, err := s.removeMissing(ctx, indexed, seen)
+	removed, err := s.removeMissing(ctx, folders, seen, protected)
 	if err != nil {
 		return result, err
 	}
 	result.Removed = removed
 
-	s.report(ctx, result)
-	s.cleanOrphanThumbnails(ctx)
-
 	return result, nil
+}
+
+func walkErrorIsDirectory(path, root string, entry fs.DirEntry, indexed map[string]domain.IndexedVideo) bool {
+	if path == root || entry != nil && entry.IsDir() {
+		return true
+	}
+	for indexedPath := range indexed {
+		if indexedPath != path && domain.PathWithinRoot(path, indexedPath) {
+			return true
+		}
+	}
+	return false
 }
 
 // ingest は1つのファイルを索引に反映する。
@@ -242,21 +282,23 @@ func (s *Scanner) ingest(
 		return nil
 	}
 
-	// 内容が変わった（または新しい）ものだけ、重い処理を積む。移動・改名では
-	// 内容が同じなので、解析もサムネイルも作り直さない（FR-025）。
-	if upserted.Outcome == domain.OutcomeMoved {
-		return nil
-	}
-	return s.enqueue(ctx, upserted.ID)
+	return s.enqueue(ctx, upserted)
 }
 
 // enqueue は解析とサムネイルのジョブを積む。
-func (s *Scanner) enqueue(ctx context.Context, videoID int64) error {
+func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error {
 	if s.queue == nil {
 		return nil
 	}
-	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail} {
-		if err := s.queue.EnqueueJob(ctx, kind, videoID); err != nil {
+	kinds := []domain.JobKind{}
+	if result.NeedsProbe {
+		kinds = append(kinds, domain.JobProbe)
+	}
+	if result.NeedsThumbnail {
+		kinds = append(kinds, domain.JobThumbnail)
+	}
+	for _, kind := range kinds {
+		if err := s.queue.EnqueueJob(ctx, kind, result.ID); err != nil {
 			return err
 		}
 	}
@@ -269,7 +311,7 @@ func (s *Scanner) enqueue(ctx context.Context, videoID int64) error {
 // そちらへ付け替わっている。その結果このパスは索引から消えているので、ここで
 // 「消えたファイル」として扱われることはない。
 func (s *Scanner) removeMissing(
-	ctx context.Context, indexed map[string]domain.IndexedVideo, seen map[string]struct{},
+	ctx context.Context, folders []domain.MediaFolder, seen map[string]struct{}, protected []string,
 ) (int, error) {
 	current, err := s.index.IndexedVideosByPath(ctx)
 	if err != nil {
@@ -278,75 +320,53 @@ func (s *Scanner) removeMissing(
 
 	var missing []int64
 	for path, row := range current {
-		if _, ok := seen[path]; !ok {
-			missing = append(missing, row.ID)
+		if _, ok := seen[path]; ok {
+			continue
 		}
+		managed := false
+		for _, folder := range folders {
+			if domain.PathWithinRoot(folder.Path, path) {
+				managed = true
+				break
+			}
+		}
+		if managed && pathProtected(path, protected) {
+			continue
+		}
+		locationID := row.LocationID
+		if locationID == 0 {
+			locationID = row.ID
+		}
+		missing = append(missing, locationID)
 	}
 	if len(missing) == 0 {
 		return 0, nil
 	}
 
-	if err := s.index.DeleteVideos(ctx, missing); err != nil {
+	if err := s.index.DeleteVideoLocations(ctx, missing); err != nil {
 		return 0, err
 	}
 	return len(missing), nil
 }
 
-// cleanOrphanThumbnails は、どの content_key からも参照されなくなった画像を
-// 消す（data-model.md 2 節）。
-//
-// 動画がライブラリから消えても画像はファイルとして残るため、掃除しないと
-// MDM_DATA_DIR が増え続ける。掃除の失敗で走査全体を失敗にはしない。次回の
-// 走査でやり直せる後始末だからである。
-func (s *Scanner) cleanOrphanThumbnails(ctx context.Context) {
-	if s.thumbnailsDir == "" {
-		return
-	}
-
-	keys, err := s.index.ContentKeys(ctx)
-	if err != nil {
-		s.logger.Warn("サムネイルの掃除を省きました", slog.Any("error", err))
-		return
-	}
-
-	referenced := map[string]struct{}{}
-	for key := range keys {
-		referenced[thumbnailFileName(key)] = struct{}{}
-	}
-
-	removed := 0
-	err = filepath.WalkDir(s.thumbnailsDir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return err //nolint:nilerr // ディレクトリは対象外、誤りはそのまま上げる
+func pathProtected(path string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if domain.PathWithinRoot(prefix, path) {
+			return true
 		}
-		name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		if _, ok := referenced[name]; ok {
-			return nil
-		}
-		if err := os.Remove(path); err != nil {
-			s.logger.Warn("サムネイルを消せませんでした",
-				slog.String("path", path), slog.Any("error", err))
-			return nil
-		}
-		removed++
-		return nil
-	})
-	if err != nil && !os.IsNotExist(err) {
-		s.logger.Warn("サムネイルの掃除に失敗しました", slog.Any("error", err))
 	}
-	if removed > 0 {
-		s.logger.Info("参照されないサムネイルを削除しました", slog.Int("removed", removed))
-	}
+	return false
 }
 
 // report は進捗を報告する。報告の失敗で走査を止めない。
-func (s *Scanner) report(ctx context.Context, result domain.ScanResult) {
+func (s *Scanner) report(ctx context.Context, result domain.ScanResult) error {
 	if s.reporter == nil {
-		return
+		return nil
 	}
 	if err := s.reporter.ReportScanProgress(ctx, result); err != nil {
-		s.logger.Warn("走査の進捗を記録できませんでした", slog.Any("error", err))
+		return fmt.Errorf("走査の進捗を記録できません: %w", err)
 	}
+	return nil
 }
 
 // isMediaFile は取り込みの対象かどうかを返す。
@@ -385,14 +405,4 @@ func titleOf(path string) string {
 		return name
 	}
 	return norm.NFC.String(title)
-}
-
-// thumbnailFileName は content_key からサムネイルのファイル名（拡張子を除く）を
-// 決める。internal/media の ThumbnailPath と同じ規則である。
-//
-// 掃除のためだけに internal/media へ依存するより、規則を1行で写す方が
-// 依存の向き（ARCHITECTURE.md）を保てる。規則が変わったときに両方を直す
-// 必要があるので、双方のコメントで対応を示しておく。
-func thumbnailFileName(contentKey string) string {
-	return strings.NewReplacer(":", "_", "/", "_", `\`, "_").Replace(contentKey)
 }

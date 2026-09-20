@@ -37,6 +37,11 @@ type Queue interface {
 // 「直列に取り出して、成否を記録し、止まったら戻す」という進め方だけである。
 type Handler func(ctx context.Context, job domain.Job) error
 
+type identityQueue interface {
+	CompleteClaimedJob(context.Context, domain.Job) error
+	FailClaimedJob(context.Context, domain.Job, string) error
+}
+
 // Options はワーカーの組み立てに必要な依存である。
 type Options struct {
 	Queue    Queue
@@ -139,7 +144,13 @@ func (w *Worker) process(ctx context.Context, job domain.Job) {
 		return
 	}
 
-	if err := w.queue.CompleteJob(ctx, job.ID); err != nil {
+	var err error
+	if queue, ok := w.queue.(identityQueue); ok {
+		err = queue.CompleteClaimedJob(ctx, job)
+	} else {
+		err = w.queue.CompleteJob(ctx, job.ID)
+	}
+	if err != nil {
 		w.logger.Warn("ジョブの完了を記録できませんでした",
 			slog.Int64("job", job.ID), slog.Any("error", err))
 	}
@@ -155,7 +166,13 @@ func (w *Worker) fail(ctx context.Context, job domain.Job, cause error) {
 		slog.Any("error", cause),
 	)
 
-	if err := w.queue.FailJob(ctx, job.ID, cause.Error()); err != nil {
+	var err error
+	if queue, ok := w.queue.(identityQueue); ok {
+		err = queue.FailClaimedJob(ctx, job, cause.Error())
+	} else {
+		err = w.queue.FailJob(ctx, job.ID, cause.Error())
+	}
+	if err != nil {
 		w.logger.Warn("ジョブの失敗を記録できませんでした",
 			slog.Int64("job", job.ID), slog.Any("error", err))
 	}
