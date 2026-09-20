@@ -4,40 +4,43 @@
 
 ## Summary
 
-設定画面にメディアフォルダ1項目を追加する。初回は未設定とし、利用者はサーバー上の
-ディレクトリをフォルダ選択UIで辿って保存する。設定はSQLiteだけを正本とし、
-`MDM_MEDIA_DIR` と起動時自動取り込みを廃止する。
+設定画面にメディアフォルダ1項目を追加し、その値として複数のサーバーディレクトリを管理する。
+初回は0件で、folder pickerから追加・削除する。保存時は旧ライブラリDBデータをtransaction内で
+削除し、次の手動走査で全rootから再構築する。`MDM_MEDIA_DIR` と起動時自動取り込みは廃止する。
 
 ## Feature Behavior
 
-- メディアフォルダは初回未設定。設定完了まで手動取り込みを開始できない
-- 現在値は読み取り専用で表示し、文字列入力では変更しない
-- 「フォルダを選択」でサーバー上のroot/driveからディレクトリ階層を移動する
-- 選択候補は保存時に存在・directory・readableを再検証する
-- 保存だけでは取り込まず、次の明示取り込みが新しいフォルダを使う
-- 走査中の変更と古いversionからの更新は拒否する
-- `MDM_MEDIA_DIR` と `MDM_SCAN_ON_START` は設定、コード、文書から削除する
+- メディアフォルダは0件以上の重複しないroot集合
+- 現在一覧は読み取り専用で表示し、文字列入力では変更しない
+- folder pickerを繰り返し使ってrootを追加し、一覧から削除できる
+- 同一pathと祖先・子孫で探索範囲が重なるpathは保存しない
+- 一覧の変更保存時にvideos、検索索引、jobs、scans、playback progressを削除する
+- 保存だけでは取り込まず、次の明示走査が保存済み全rootを処理する
+- 0件では走査を開始できない
+- 非同期走査のfilesystem errorは対象単位で記録し、致命的失敗やpanicでもprocessとscan状態を壊さない
+- `MDM_MEDIA_DIR` と `MDM_SCAN_ON_START` はコード・設定・文書から削除する
 
 詳細な利用者シナリオと受け入れ条件は [spec.md](spec.md) を正本とする。
 
 ## Technical Context
 
-共通の構成と規則は再掲しない。
+共通定義は再掲しない。
 
 - 構成と依存方向: [ARCHITECTURE.md](../../ARCHITECTURE.md)
 - APIの正本: [api/openapi.yaml](../../api/openapi.yaml)
 - 検証コマンド: [Makefile](../../Makefile)
-- 本機能の判断: [research.md](research.md)
+- 技術判断: [research.md](research.md)
 - データ差分: [data-model.md](data-model.md)
 - API差分: [contracts/settings-api.md](contracts/settings-api.md)
 
-新規外部依存は追加しない。OS上のdirectory列挙はGo標準ライブラリで実装する。
+新規外部依存は追加しない。filesystem操作はGo標準ライブラリを使う。
 
 ## Constitution Check
 
-- `cmd/mdm` がstore、scanner、httpapi、OS filesystem操作を調停し、internalの兄弟依存を増やさない
+- `cmd/mdm` がstore、scanner、httpapi、filesystemを調停し、internalの兄弟依存を増やさない
+- 設定一覧の更新と旧DBデータ削除を1つのSQLite transactionにする
 - APIはOpenAPIを先に変更し、生成物を手編集しない
-- directory APIはファイル内容を返さず、選択に必要なdirectory情報だけを公開する
+- directory APIは選択に必要なdirectory情報だけを公開する
 - 設定項目をメディアフォルダ以外へ広げない
 - UI実装PRは既存の画像確認手順に従う
 
@@ -45,8 +48,8 @@
 
 ## Project Structure
 
-永続化は `internal/store`、設定とfilesystemの調停は `cmd/mdm`、HTTPは `internal/httpapi`、
-画面とfolder pickerは `web/src/settings` に置く。既存の所有境界を維持する。
+永続化は `internal/store`、設定・filesystem・走査の調停は `cmd/mdm`、HTTPは
+`internal/httpapi`、画面とfolder pickerは `web/src/settings` に置く。
 
 ## Complexity Tracking
 
@@ -54,52 +57,52 @@
 
 ## Implementation Work
 
-### メディアフォルダ設定の保存と実行時反映
+### メディアフォルダ集合の保存・ライブラリ無効化・安全な走査
 
 **Scope**:
 
-- nullableなメディアフォルダを持つSQLite singletonとversion付き更新を追加する
-- 初回値を未設定にし、`MDM_MEDIA_DIR` の読取、Config field、ログ、文書、開発スクリプトを削除する
-- `MDM_SCAN_ON_START` と待受開始時の自動走査も削除する
-- 未設定時はscanを開始せず、設定が必要なdomain errorを返す
-- 設定更新と走査開始を直列化し、走査は開始時の保存値を固定して使う
-- streamは要求時の保存値を配信rootとして検証する
-- migration、store、config、startup、scan、streamのテストを追加・更新する
+- settings revisionと0件以上のmedia folder rowsをSQLiteへ追加する
+- 一覧を正規化し、重複・祖先子孫の重なり・無効directoryを拒否する
+- 一覧更新と同じtransactionでvideos、FTS、jobs、scans、playback progressを削除する
+- 設定変更後の不要thumbnail filesを参照不能にし、cleanup失敗を安全に記録する
+- 0件でscanを開始せず、走査は開始時の全root snapshotを使う
+- root/directory/file単位のI/O失敗を記録して可能な範囲を継続する
+- goroutine境界でpanicを回収し、必ずscanをdone/failedへ確定してrunningを残さない
+- `MDM_MEDIA_DIR`、`MDM_SCAN_ON_START`、起動時走査をコード・設定・文書から削除する
 
 **Dependencies**: なし。
 
-**Acceptance**: 初回は未設定で起動し、環境変数に依存しない。保存や起動では走査せず、
-次の手動走査だけが保存済みフォルダを使う。未設定時と走査中の失敗を永続状態を壊さず扱う。
+**Acceptance**: 一覧変更直後に旧ライブラリDBが空になり、自動走査は始まらない。次の手動走査が
+全rootを処理し、一部I/O失敗またはpanicでもprocess crashと永続running scanを残さない。
 
 ### 設定・ディレクトリ選択 API
 
 **Scope**:
 
-- `GET /api/settings` はnullableな現在値、version、更新時刻を返す
-- `PUT /api/settings` はfolder pickerで選択した絶対パスとversionを受け取る
-- `GET /api/directories` はpath省略時にfilesystem root/drive、指定時に現在位置・親・子directoryを返す
-- ファイルを一覧へ含めず、失われた場所、読取不能、走査中、版競合を機械可読なerrorへ変換する
-- OpenAPIからGo/TypeScriptを再生成し、Web API clientを追加する
-- settingsとdirectory listingのcontract testsを追加する
+- settings APIを `mediaFolders: string[]` とversionへ変更する
+- PUTは一覧全体を置換し、DB無効化結果を返す
+- directory APIはroot/drive、現在位置、親、子directoryだけを返す
+- 0件、無効directory、重複・包含、走査中、版競合を機械可読errorへ変換する
+- OpenAPIからGo/TypeScriptを再生成し、Web API clientとcontract testsを追加する
 
-**Dependencies**: メディアフォルダ設定の保存と実行時反映。
+**Dependencies**: メディアフォルダ集合の保存・ライブラリ無効化・安全な走査。
 
-**Acceptance**: 未設定から選択・保存でき、directoryだけを階層移動できる。無効場所、走査中、
-版競合を区別し、生成物とOpenAPIが一致する。
+**Acceptance**: 複数root一覧を取得・置換でき、directoryだけを階層移動できる。設定変更応答後は
+ライブラリが空で、自動scanはない。すべてのerrorが契約どおり区別される。
 
-### 設定画面とサーバーフォルダ選択 UI
+### 設定画面と複数サーバーフォルダ選択 UI
 
 **Scope**:
 
-- `/settings` とSidebarの実navigationを追加する
-- 現在値または未設定を表示し、text inputを置かない
-- folder picker dialogでroot/drive、親、子directoryをkeyboardとpointerで移動できるようにする
-- 現在表示中のdirectoryを候補として選び、設定画面で明示保存する
-- loading、取得失敗、directory失敗、未設定、保存中、成功、走査中、版競合を扱う
-- 未設定時はTopBarの取り込みを利用不能にし、設定への導線と理由を示す
+- `/settings` とSidebar navigationを追加する
+- 0件以上の保存済みroot一覧、追加、削除、未保存変更を表示する
+- folder picker dialogでroot/drive、親、子directoryをkeyboardとpointerで移動する
+- 同一・重複範囲の候補を追加できない理由を表示する
+- 保存後に一覧を空状態へ更新し、手動取り込みが必要と案内する
+- loading、directory失敗、0件、保存中、成功、走査中、版競合を扱う
 - Vitest/Testing Library、360px・768px・1280pxの画像、visual reviewで検証する
 
 **Dependencies**: 設定・ディレクトリ選択API。
 
-**Acceptance**: 利用者がパス文字列を入力せず、サーバー上のdirectoryを選んで保存できる。
-未設定・失敗・競合でも現在値や候補を失わず、保存だけでは取り込みを開始しない。
+**Acceptance**: 利用者が文字列を入力せず複数rootを管理できる。変更保存後は旧動画が表示されず、
+手動走査完了後に全rootの動画が表示される。

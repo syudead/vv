@@ -6,40 +6,41 @@
 
 ```json
 {
-  "mediaDir": null,
-  "version": 1,
+  "mediaFolders": ["/srv/videos", "/mnt/archive"],
+  "version": 3,
   "updatedAt": "2026-09-21T00:00:00Z"
 }
 ```
 
-`mediaDir` は未設定時にnull、設定後はサーバー上の絶対パス。`Cache-Control: no-store` を付ける。
+初回は `mediaFolders: []`。応答に `Cache-Control: no-store` を付ける。
 
 ## PUT /api/settings
 
-folder pickerが返した候補を保存する。
+folder集合全体を置換する。
 
 ```json
 {
-  "mediaDir": "/srv/videos",
-  "version": 1
+  "mediaFolders": ["/srv/videos", "/mnt/archive"],
+  "version": 3
 }
 ```
 
-成功は200と更新後resource。保存からscanを開始しない。
+成功は200と更新後resource。集合が変わった場合は応答前に旧ライブラリDBデータを削除する。
+保存からscanを開始しない。同じ集合・同じ順序のPUTはDB削除とversion加算を行わない。
 
-| Status | Code                      | Condition                             |
-| ------ | ------------------------- | ------------------------------------- |
-| `400`  | `invalid_request`         | JSON、version、path形式が不正         |
-| `400`  | `invalid_media_directory` | 存在しない、directoryでない、読取不能 |
-| `409`  | `scan_in_progress`        | 走査中                                |
-| `409`  | `conflict`                | versionが古い                         |
-| `500`  | `internal`                | その他の失敗                          |
+| Status | Code                            | Condition                             |
+| ------ | ------------------------------- | ------------------------------------- |
+| `400`  | `invalid_request`               | JSON、version、path形式が不正         |
+| `400`  | `invalid_media_directory`       | 存在しない、directoryでない、読取不能 |
+| `400`  | `overlapping_media_directories` | 重複または祖先・子孫関係がある        |
+| `409`  | `scan_in_progress`              | 走査中                                |
+| `409`  | `conflict`                      | versionが古い                         |
+| `500`  | `internal`                      | transactionを含むその他の失敗         |
 
 ## GET /api/directories
 
-- path省略: filesystem rootを `directories` に返す。Linuxでは`/`、Windowsでは利用可能なdrive
-- path指定: 正規化した絶対pathを `currentPath`、親を `parentPath`、直下directoryを
-  `directories` に返す
+- path省略: Linuxでは`/`、Windowsでは利用可能なdrive rootsを `directories` に返す
+- path指定: 正規化した絶対pathを `currentPath`、親を `parentPath`、直下directoryを返す
 - directory entryは `{ name, path }`
 - ファイルを返さない
 - 応答は `Cache-Control: no-store`
@@ -51,8 +52,15 @@ folder pickerが返した候補を保存する。
 | `400`  | `directory_unavailable` | 読取不能                       |
 | `500`  | `internal`              | 列挙失敗                       |
 
+## POST /api/scans
+
+- `mediaFolders` が0件ならscan rowを作らず `409 media_folders_not_configured`
+- scan開始時のfolder集合を最後まで使う
+- 一部root/directory/fileのI/O失敗はfailed countへ記録し、残りを継続する
+- 継続不能なerror、panic、cancelはscanをfailedへ確定する
+- panicをHTTP server processへ伝播させない
+
 ## Runtime
 
 - `MDM_MEDIA_DIR` と `MDM_SCAN_ON_START` は読まない。
-- `mediaDir = null` では手動scanを開始しない。
-- 保存後も旧索引は次の手動走査まで残るが、streamは現行mediaDir外を404として拒否する。
+- settings変更後はライブラリAPIが空を返し、次の手動scan完了後に全rootの結果を返す。
