@@ -144,7 +144,11 @@ describe("LibraryPage", () => {
     const user = userEvent.setup();
     renderLibrary();
     await screen.findByRole("link", { name: "動画 1" });
-    await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+    const checkbox = screen.getByRole("checkbox", { name: "「動画 1」を選択" });
+    expect(checkbox.parentElement?.className).toContain(
+      "[@media(hover:none)]:opacity-100",
+    );
+    await user.click(checkbox);
     expect(screen.getByText("1 件を選択中")).toBeDefined();
     await user.keyboard("{Escape}");
     expect(screen.queryByText("1 件を選択中")).toBeNull();

@@ -49,11 +49,13 @@ export function useScan(): ScanContextValue {
  */
 export function ScanProvider({ children }: { children: ReactNode }) {
   const [scan, setScan] = useState<Scan | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [pollError, setPollError] = useState<string | null>(null);
+  const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [finished, setFinished] = useState<Scan | null>(null);
   const [watch, setWatch] = useState(0);
-  const firstSight = useRef(true);
+  const requestedScanId = useRef<number | null>(null);
+  const observedRunningScanId = useRef<number | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -64,25 +66,28 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       let current: Scan | null;
       try {
         current = await getCurrentScan(controller.signal);
+        if (!alive) return;
         setScan(current);
-        setError(null);
+        setPollError(null);
       } catch (failure) {
-        if (!isAborted(failure)) setError(errorMessage(failure));
+        if (alive && !isAborted(failure)) setPollError(errorMessage(failure));
         return;
       }
-      if (!alive) return;
-
-      const initial = firstSight.current;
-      firstSight.current = false;
 
       if (current === null) return;
       if (current.state === "running") {
+        observedRunningScanId.current = current.id;
         timer = setTimeout(() => void tick(), pollInterval);
         return;
       }
-      if (!initial) {
+
+      const completedObservedScan = observedRunningScanId.current === current.id;
+      const completedRequestedScan = requestedScanId.current === current.id;
+      if (completedObservedScan || completedRequestedScan) {
         setFinished(current);
       }
+      if (completedObservedScan) observedRunningScanId.current = null;
+      if (completedRequestedScan) requestedScanId.current = null;
     };
 
     void tick();
@@ -95,18 +100,29 @@ export function ScanProvider({ children }: { children: ReactNode }) {
 
   const start = useCallback(() => {
     setStarting(true);
+    setStartError(null);
     void (async () => {
       try {
-        setScan(await startScan());
-        setError(null);
+        const started = await startScan();
+        requestedScanId.current = started.id;
+        setScan(started);
+        setPollError(null);
+        if (started.state === "running") {
+          observedRunningScanId.current = started.id;
+        } else {
+          requestedScanId.current = null;
+          setFinished(started);
+        }
+        setWatch((value) => value + 1);
       } catch (failure) {
-        setError(`取り込みを始められません: ${errorMessage(failure)}`);
+        setStartError(`取り込みを始められません: ${errorMessage(failure)}`);
       } finally {
         setStarting(false);
-        setWatch((value) => value + 1);
       }
     })();
   }, []);
+
+  const error = startError ?? pollError;
 
   const value = useMemo<ScanContextValue>(
     () => ({

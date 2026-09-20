@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -97,5 +97,36 @@ describe("VideoPage", () => {
     );
     renderPage();
     expect(await screen.findByText("見つかりません")).toBeDefined();
+  });
+
+  it("一時停止と再生終了で現在位置を直ちに保存する", async () => {
+    renderPage();
+    await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+    const player = document.querySelector("video");
+    if (player === null) throw new Error("video が描画されていません");
+
+    player.currentTime = 12.345;
+    fireEvent.pause(player);
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === "/api/videos/7/progress" &&
+            init?.method === "PUT" &&
+            init.body === JSON.stringify({ positionMs: 12_345 }),
+        ),
+      ).toBe(true);
+    });
+
+    player.currentTime = 242;
+    fireEvent.ended(player);
+    await waitFor(() => {
+      const progressCalls = fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input) === "/api/videos/7/progress" && init?.method === "PUT",
+      );
+      expect(progressCalls).toHaveLength(2);
+      expect(progressCalls[1]?.[1]?.body).toBe(JSON.stringify({ positionMs: 242_000 }));
+    });
   });
 });

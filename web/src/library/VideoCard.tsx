@@ -46,7 +46,7 @@ function SelectCheck({
         "absolute top-2 left-2 z-20 transition-opacity duration-150",
         selectionMode || selected
           ? "opacity-100"
-          : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100",
+          : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
       )}
     >
       <Checkbox

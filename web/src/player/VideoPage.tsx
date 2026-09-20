@@ -76,10 +76,10 @@ export default function VideoPage() {
   }, [video]);
 
   const send = useCallback(
-    (positionMs: number, leaving: boolean) => {
+    (positionMs: number, leaving: boolean, force = false) => {
       if (!Number.isFinite(positionMs) || positionMs < 0) return;
       const rounded = Math.round(positionMs);
-      if (!leaving && Math.abs(rounded - lastSent.current) < 1000) return;
+      if (!leaving && !force && Math.abs(rounded - lastSent.current) < 1000) return;
       lastSent.current = rounded;
       if (leaving) {
         beaconProgress(id, rounded);
@@ -89,6 +89,11 @@ export default function VideoPage() {
     },
     [id],
   );
+
+  const flushProgress = useCallback(() => {
+    const element = videoRef.current;
+    if (element !== null) send(element.currentTime * 1000, false, true);
+  }, [send]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -182,6 +187,8 @@ export default function VideoPage() {
               preload="metadata"
               poster={video.thumbnailUrl}
               onLoadedMetadata={onLoaded}
+              onPause={flushProgress}
+              onEnded={flushProgress}
               onError={onError}
               className="absolute inset-0 h-full w-full bg-navbar"
             />
