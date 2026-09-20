@@ -59,7 +59,7 @@ describe("VideoPage", () => {
     expect(
       await screen.findByRole("heading", { level: 1, name: "テスト動画" }),
     ).toBeDefined();
-    expect(screen.getByText("1920×1080")).toBeDefined();
+    expect(screen.getAllByText("1920×1080")).toHaveLength(2);
     expect(screen.getByText("4:02")).toBeDefined();
     expect(screen.getByRole("tab", { name: "ファイル情報" })).toBeDefined();
     expect(document.title).toBe("テスト動画 - vv");

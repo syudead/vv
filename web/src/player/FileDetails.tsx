@@ -15,6 +15,18 @@ const probeLabel: Record<Video["probeState"], string> = {
   failed: "解析失敗",
 };
 
+function missingMetadata(video: Video): string {
+  if (video.probeState === "pending") {
+    return "確認中";
+  }
+  if (video.probeState === "failed") {
+    return video.probeError === undefined
+      ? "読み取れませんでした"
+      : `読み取れませんでした（${video.probeError}）`;
+  }
+  return "なし";
+}
+
 function Rows({ rows }: { rows: { label: string; value: string }[] }) {
   return (
     <dl className="grid grid-cols-[max-content_1fr] gap-x-8 gap-y-2 text-sm">
@@ -36,9 +48,17 @@ const tabClass =
 
 /** FileDetails は Stash の scene-tabs と同じ、プレイヤー下のタブ。 */
 export default function FileDetails({ video }: { video: Video }) {
+  const fallback = missingMetadata(video);
+  const metadata = (value: string | undefined): string =>
+    value === undefined || value === "" ? fallback : value;
+
   const details = [
-    { label: "長さ", value: formatDuration(video.durationMs) },
-    { label: "画質", value: qualityLabel(video) },
+    { label: "長さ", value: metadata(formatDuration(video.durationMs)) },
+    { label: "解像度", value: metadata(formatResolution(video)) },
+    { label: "形式", value: metadata(video.container) },
+    { label: "映像", value: metadata(video.videoCodec) },
+    { label: "音声", value: metadata(video.audioCodec) },
+    { label: "大きさ", value: formatBytes(video.sizeBytes) },
     { label: "追加日時", value: formatDateTime(video.addedAt) },
     {
       label: "最終再生",
@@ -56,13 +76,10 @@ export default function FileDetails({ video }: { video: Video }) {
   ];
 
   const file = [
-    { label: "解像度", value: formatResolution(video) },
-    { label: "コンテナ", value: video.container ?? "" },
-    { label: "映像コーデック", value: video.videoCodec ?? "" },
-    { label: "音声コーデック", value: video.audioCodec ?? "" },
+    { label: "画質", value: qualityLabel(video) },
     {
-      label: "大きさ",
-      value: `${formatBytes(video.sizeBytes)}（${video.sizeBytes.toLocaleString("ja-JP")} バイト）`,
+      label: "バイト数",
+      value: `${video.sizeBytes.toLocaleString("ja-JP")} バイト`,
     },
     {
       label: "解析",
