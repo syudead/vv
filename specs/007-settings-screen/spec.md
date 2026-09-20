@@ -25,6 +25,26 @@
 - **2026-09-21 / User clarification**: フォルダ一覧を一括保存せず、追加・変更・削除を1件ずつ
   atomicに行う。既存ライブラリDBへ干渉するのは既存フォルダの変更・削除時だけとする
 
+## Settled Without Asking
+
+- 設定画面は既存のサイドバーにある「設定」入口を実画面へ置き換え、既存のAppShell、responsive
+  sidebar、配色、文字体系、密度を維持する。出所は
+  [ARCHITECTURE.md](../../ARCHITECTURE.md) のWeb layerと
+  [Sidebar.tsx](../../web/src/shell/Sidebar.tsx) の既存settings entryである。
+- メディアフォルダはブラウザ端末のlocal folderやupload先ではなく、アプリケーションserverから
+  見える既存directoryを表す。出所は
+  [001 configuration contract](../001-initial-setup/contracts/configuration.md) のserver-side media/data
+  configurationと、本featureのself-hosted deployment境界である。
+- folder操作から自動取り込みを開始せず、既存の手動取り込み、進捗表示、部分失敗後の継続を再利用する。
+  出所は [002 core video library](../002-core-video-library/spec.md) のUS1、FR-006〜FR-008である。
+- folder変更時に削除できるのは再構築可能な索引・解析データだけであり、再生位置と視聴済み状態は
+  維持する。出所は [002 core video library](../002-core-video-library/spec.md) のFR-025・FR-026である。
+- 同一contentを複数pathで発見しても論理videoは重複させず、各folder内の実在場所を別に保持する。
+  出所は [002 core video library](../002-core-video-library/spec.md) のFR-004と、要求者が指定した
+  複数folder・変更対象だけへ作用する規則の組み合わせである。
+- 認証を本featureへ追加せず、単一利用者が家庭内のtrusted networkで運用する境界を維持する。
+  出所は [002 core video library](../002-core-video-library/spec.md) のAssumptionsである。
+
 本仕様の対象は、アプリケーションの設定を確認・変更する**設定画面**である。初回に置く
 設定項目は、サーバー上の動画を探す**メディアフォルダ1項目だけ**とし、その項目へ複数の
 ディレクトリを登録できるようにする。起動時の自動
