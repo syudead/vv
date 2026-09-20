@@ -184,6 +184,12 @@ something to say, is worse than an absent one.
    - Acceptance evidence is something observable — a check that passes, a
      response that is returned, something visible on screen. "Implemented
      correctly" is not evidence (P-5)
+   - Each subsection becomes a child Issue verbatim (heading → title, body →
+     body) and is what the implementer works from, so write it to be readable
+     on its own: a heading that means something outside this plan, dependencies
+     named by the other unit's heading, and a pointer to the artifact section
+     holding the detail rather than a copy of it
+   - The units together must cover the whole feature without overlapping
    - Keep units small enough for one implementation PR
    - Do not add persistent task IDs or create a separate `tasks.md`
 

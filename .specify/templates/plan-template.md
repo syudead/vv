@@ -119,16 +119,30 @@ layout" with a link]
 
 <!--
   ACTION REQUIRED: One `###` subsection per independently reviewable
-  implementation unit; each becomes one child Issue and one implementation PR.
-  State scope, dependencies, and observable acceptance evidence. Do not add
-  persistent task IDs and do not create a separate tasks.md.
+  implementation unit. `/speckit-plan-to-issues` turns each one into a native
+  child Issue — the heading becomes the Issue title, the body below becomes the
+  Issue body — and `/speckit-implement` then builds one unit per PR working from
+  that Issue.
+
+  So each subsection has to stand on its own: someone holding only that Issue
+  and this feature's artifacts must know what to build and when it is done.
+  - Write the heading as a title that still means something outside this plan.
+  - Name a dependency by the other unit's heading; Issue numbers do not exist
+    yet when this is written.
+  - Point to the artifact section that specifies the detail (a contract, an
+    entity) instead of repeating it here.
+  - Between them the units must cover the whole feature, and must not overlap.
+  - For a unit that changes a screen, say so in its acceptance: the
+    implementation PR owes screenshots and a visual/accessibility review.
+
+  Do not add persistent task IDs and do not create a separate tasks.md.
 -->
 
 ### [Child Issue title]
 
-**Scope**: [what changes in this unit]
+**Scope**: [what changes in this unit, and the artifact section that specifies it]
 
-**Dependencies**: [other units this one needs, or "None"]
+**Dependencies**: [the headings of the units that must land first, or "None"]
 
 **Acceptance**: [observable evidence that this unit is done — a check that
 passes, a response that is returned, something visible on screen. "Implemented
