@@ -125,12 +125,18 @@ describe("SettingsPage", () => {
         .getByRole("button", { name: "このフォルダを追加" })
         .hasAttribute("disabled"),
     ).toBe(true);
-    await user.click(await within(dialog).findByRole("button", { name: "/" }));
+    const root = await within(dialog).findByRole("button", { name: "/" });
+    root.focus();
+    await user.keyboard("{Enter}");
+    const srv = await within(dialog).findByRole("button", { name: "srv" });
+    await waitFor(() => expect(document.activeElement).toBe(srv));
     expect(
       within(dialog).getByText("ファイルシステムまたはドライブのルートは選択できません"),
     ).toBeDefined();
-    await user.click(await within(dialog).findByRole("button", { name: "srv" }));
-    await user.click(await within(dialog).findByRole("button", { name: "media" }));
+    await user.keyboard("{ArrowRight}");
+    const media = await within(dialog).findByRole("button", { name: "media" });
+    await waitFor(() => expect(document.activeElement).toBe(media));
+    await user.click(media);
     await user.click(within(dialog).getByRole("button", { name: "このフォルダを追加" }));
 
     expect(await screen.findByText("/srv/media")).toBeDefined();

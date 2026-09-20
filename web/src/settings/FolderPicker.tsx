@@ -174,10 +174,13 @@ export default function FolderPicker({
   const [confirming, setConfirming] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const rows = useRef<Array<HTMLButtonElement | null>>([]);
+  const listRegion = useRef<HTMLDivElement>(null);
   const loadController = useRef<AbortController | null>(null);
+  const focusAfterLoad = useRef(false);
 
-  const load = useCallback((path?: string) => {
+  const load = useCallback((path?: string, restoreKeyboardFocus = false) => {
     loadController.current?.abort();
+    focusAfterLoad.current = restoreKeyboardFocus;
     setRequestedPath(path);
     setLoading(true);
     setLoadError(null);
@@ -201,6 +204,12 @@ export default function FolderPicker({
     return () => loadController.current?.abort();
   }, [load, replacing?.path]);
 
+  useEffect(() => {
+    if (loading || listing === null || !focusAfterLoad.current) return;
+    focusAfterLoad.current = false;
+    (rows.current[0] ?? listRegion.current)?.focus();
+  }, [listing, loading]);
+
   const onListKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (listing === null || listing.directories.length === 0) return;
     let next = activeIndex;
@@ -211,7 +220,7 @@ export default function FolderPicker({
     else if (event.key === "End") next = listing.directories.length - 1;
     else if (event.key === "ArrowLeft" && listing.parentPath !== null) {
       event.preventDefault();
-      load(listing.parentPath ?? undefined);
+      load(listing.parentPath ?? undefined, true);
       return;
     } else return;
     event.preventDefault();
@@ -266,7 +275,9 @@ export default function FolderPicker({
         <div className="flex shrink-0 items-start gap-2 border-b border-border px-4 py-3">
           <IconButton
             label="親フォルダへ戻る"
-            onClick={() => load(listing?.parentPath ?? undefined)}
+            onClick={(event) =>
+              load(listing?.parentPath ?? undefined, event.detail === 0)
+            }
             disabled={loading || listing?.parentPath == null}
           >
             <ArrowUp />
@@ -280,6 +291,8 @@ export default function FolderPicker({
         </div>
 
         <div
+          ref={listRegion}
+          tabIndex={-1}
           className="min-h-0 flex-1 overflow-y-auto p-2 sm:min-h-72"
           onKeyDown={onListKeyDown}
           aria-label="フォルダ一覧"
@@ -324,11 +337,11 @@ export default function FolderPicker({
                     type="button"
                     tabIndex={index === activeIndex ? 0 : -1}
                     onFocus={() => setActiveIndex(index)}
-                    onClick={() => load(directory.path)}
+                    onClick={(event) => load(directory.path, event.detail === 0)}
                     onKeyDown={(event) => {
                       if (event.key === "ArrowRight") {
                         event.preventDefault();
-                        load(directory.path);
+                        load(directory.path, true);
                       }
                     }}
                     className="flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-hover-wash focus:bg-active-wash"

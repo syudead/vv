@@ -13,6 +13,7 @@ import {
   errorMessage,
   getCurrentScan,
   isAborted,
+  listMediaFolders,
   startScan,
   type Scan,
 } from "../api/client";
@@ -64,6 +65,16 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
   const recoveryPollsLeft = useRef(0);
   const lastSeenScanId = useRef<number | null | undefined>(undefined);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void listMediaFolders(controller.signal)
+      .then((folders) => setFolderCount(folders.length))
+      .catch((failure: unknown) => {
+        if (!isAborted(failure)) setFolderCount(null);
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -151,7 +162,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   }, [watch]);
 
   const start = useCallback(() => {
-    if (folderCount === 0) return;
+    if (folderCount === null || folderCount === 0) return;
     const baselineScanId = scan?.id ?? null;
     setStarting(true);
     setStartError(null);
@@ -191,7 +202,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       error,
       starting,
       running: starting || scan?.state === "running",
-      canStart: folderCount !== 0,
+      canStart: folderCount !== null && folderCount > 0,
       start,
       refresh,
       setFolderCount,

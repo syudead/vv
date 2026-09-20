@@ -131,6 +131,7 @@ export default function SettingsPage() {
         setFolders((current) =>
           current.map((folder) => (folder.id === updated.id ? updated : folder)),
         );
+        setRowError((current) => (current?.id === updated.id ? null : current));
         toast("変更しました。反映するには取り込みを実行してください");
       }
       setPicker(null);
