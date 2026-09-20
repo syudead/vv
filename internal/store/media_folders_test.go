@@ -163,3 +163,19 @@ func TestMediaFolderMutationRejectsRunningScan(t *testing.T) {
 		t.Fatalf("error = %v, want ErrScanRunning", err)
 	}
 }
+
+func TestAddMediaFolderRejectsSymbolicLinkComponent(t *testing.T) {
+	db := migratedDB(t)
+	root := t.TempDir()
+	real := filepath.Join(root, "real")
+	if err := os.Mkdir(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symbolic links are unavailable: %v", err)
+	}
+	if _, err := db.AddMediaFolder(context.Background(), link); !errors.Is(err, ErrInvalidFolder) {
+		t.Fatalf("error = %v, want ErrInvalidFolder", err)
+	}
+}

@@ -48,6 +48,14 @@ func validateMediaFolder(path string) (string, error) {
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return "", ErrInvalidFolder
 	}
+	resolved, err := filepath.EvalSymlinks(cleaned)
+	if err != nil {
+		return "", fmt.Errorf("%w: %v", ErrInvalidFolder, err)
+	}
+	resolved, err = NormalizePath(resolved)
+	if err != nil || !domain.PathWithinRoot(cleaned, resolved) || !domain.PathWithinRoot(resolved, cleaned) {
+		return "", fmt.Errorf("%w: symbolic link", ErrInvalidFolder)
+	}
 	parent := filepath.Dir(cleaned)
 	if parent == cleaned {
 		return "", fmt.Errorf("%w: filesystem root", ErrInvalidFolder)
@@ -192,15 +200,14 @@ func ensureFolderMutationAllowed(ctx context.Context, tx *sql.Tx, exceptID int64
 	if err := ensureNoRunningScan(ctx, tx); err != nil {
 		return err
 	}
-	rows, err := tx.QueryContext(ctx, `select id, path from media_folders where id <> ?`, exceptID)
+	rows, err := tx.QueryContext(ctx, `select path from media_folders where id <> ?`, exceptID)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
-		var id int64
 		var existing string
-		if err := rows.Scan(&id, &existing); err != nil {
+		if err := rows.Scan(&existing); err != nil {
 			return err
 		}
 		if PathWithinRoot(existing, path) || PathWithinRoot(path, existing) {
