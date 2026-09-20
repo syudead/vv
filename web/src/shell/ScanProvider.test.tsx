@@ -26,6 +26,9 @@ function Harness() {
       <button type="button" onClick={value.refresh}>
         更新
       </button>
+      <button type="button" onClick={() => value.setFolderCount(1)}>
+        フォルダ追加を反映
+      </button>
       <p>{value.error ?? "エラーなし"}</p>
       <p>完了: {value.finished?.id ?? "なし"}</p>
       <p>開始可否: {value.canStart ? "可" : "不可"}</p>
@@ -185,5 +188,29 @@ describe("ScanProvider", () => {
     await user.click(screen.getByRole("button", { name: "開始" }));
 
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("起動時の遅い応答で後発のフォルダ件数を上書きしない", async () => {
+    let resolveFolders: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") {
+        return new Promise<Response>((resolve) => {
+          resolveFolders = resolve;
+        });
+      }
+      return Promise.resolve(json({}, 404));
+    });
+    const user = userEvent.setup();
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "フォルダ追加を反映" }));
+    expect(screen.getByText("開始可否: 可")).toBeDefined();
+    resolveFolders?.(json([]));
+
+    await waitFor(() => expect(screen.getByText("開始可否: 可")).toBeDefined());
   });
 });
