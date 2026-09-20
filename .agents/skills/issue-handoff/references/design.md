@@ -20,10 +20,13 @@ Read these before writing, and link them rather than repeating them:
   values, not about numbers in general: the viewport widths and breakpoints a
   review criterion needs are written out
 - `web/src/theme/tokens.test.ts` — the `pairs` array is what actually enforces
-  contrast; it is a hard-coded list, so a new foreground/background combination
-  is checked only once it is added there. A new colour token is a decision, and
-  the change that introduces it adds the pair to that array and records the
-  token in `specs/004-library-ui/contracts/design-tokens.md`
+  contrast; it is a hard-coded list, so a foreground/background combination is
+  checked only once it is added there. A new colour token is a decision, and the
+  change that introduces it records the token in
+  `specs/004-library-ui/contracts/design-tokens.md`. Add a pair to that array
+  only for a combination that carries a contrast requirement — the array is not
+  a registry of tokens, and it reads six-digit hex values only, so a
+  translucent or decorative token does not belong in it
 - the existing screens in `web/src` — what the product already does
 
 Where those settle a question, follow them and say so. Where the form is one
