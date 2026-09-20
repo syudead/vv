@@ -42,7 +42,7 @@ satisfy. The three that decide whether the output is usable:
   invent concepts to fill a template slot.
 - **P-6** — a template item that does not apply is left out, not filled with
   plausible prose.
-- **P-8** — the plan is as long as the change earns. `## Summary` and
+- **P-7** — the plan is as long as the change earns. `## Summary` and
   `## Implementation Work` are always there; every other section appears only
   when it carries a decision.
 
@@ -71,7 +71,7 @@ silently.
    none, a real choice between alternatives or a single obvious way. Keep the
    sections that will hold a decision and delete the rest from the copied
    template. A small change legitimately ends with `## Summary` and
-   `## Implementation Work` alone (P-8).
+   `## Implementation Work` alone (P-7).
 
 5. **Execute plan workflow**: Follow the structure in IMPL_PLAN template to:
    - Fill Technical Context with links to the canonical definitions plus only
@@ -194,11 +194,12 @@ something to say, is worse than an absent one.
    - Acceptance evidence is something observable — a check that passes, a
      response that is returned, something visible on screen. "Implemented
      correctly" is not evidence (P-5)
-   - Each subsection becomes a child Issue verbatim (heading → title, body →
-     body) and is what the implementer works from, so write it to be readable
-     on its own: a heading that means something outside this plan, dependencies
-     named by the other unit's heading, and a pointer to the artifact section
-     holding the detail rather than a copy of it
+   - The heading becomes the child Issue's title verbatim, so write one that
+     still means something outside this plan. The three fields are the approved
+     input `/speckit-plan-to-issues` writes the Issue body from — not a draft of
+     that body, so keep them short: name dependencies by the other unit's
+     heading, and point to the artifact section holding the detail rather than
+     copying it
    - The units together must cover the whole feature without overlapping
    - Keep units small enough for one implementation PR
    - Do not add persistent task IDs or create a separate `tasks.md`
@@ -226,7 +227,7 @@ something to say, is worse than an absent one.
 - [ ] Every artifact produced carries feature-specific content; none was created
       to fill a slot, and no template item was answered with invented prose
 - [ ] The sections kept in plan.md are the ones that hold a decision; the rest
-      were deleted rather than filled (P-8)
+      were deleted rather than filled (P-7)
 - [ ] Each decision names the alternative it rejected
 - [ ] Feature-specific decisions, contract deltas, data deltas, and the
       implementation-work units are present in the artifacts

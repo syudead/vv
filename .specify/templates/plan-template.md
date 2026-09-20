@@ -12,11 +12,11 @@
   into implementation units. The requirement itself lives in spec.md; the
   research behind a decision lives in research.md.
 
-  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-8).
+  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-7).
   The two that bite most often: write a decision or nothing at all (P-1), and
   leave a section out rather than filling it with plausible prose (P-6).
 
-  HOW MUCH OF THIS TEMPLATE TO USE: as much as the change earns (P-8). Only
+  HOW MUCH OF THIS TEMPLATE TO USE: as much as the change earns (P-7). Only
   `## Summary` and `## Implementation Work` are always present. Every other
   section appears when it carries a decision and is deleted when it does not —
   a one-package change with no new dependency, no structural choice and no gate
@@ -140,9 +140,9 @@ layout" with a link]
 <!--
   ACTION REQUIRED: One `###` subsection per independently reviewable
   implementation unit. `/speckit-plan-to-issues` turns each one into a native
-  child Issue — the heading becomes the Issue title, the body below becomes the
-  Issue body — and `/speckit-implement` then builds one unit per PR working from
-  that Issue.
+  child Issue — the heading becomes the Issue title, and the three fields below
+  are its approved input for writing that Issue's body — and
+  `/speckit-implement` then builds one unit per PR working from that Issue.
 
   What this section settles is the breakdown: what the units are, what each
   covers, what has to land first, and what counts as done. The prose an
