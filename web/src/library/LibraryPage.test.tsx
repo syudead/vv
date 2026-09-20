@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -98,6 +98,20 @@ describe("LibraryPage", () => {
       const calls = fetchMock.mock.calls.map((call) => String(call[0]));
       expect(calls.some((url) => url.includes("query=abc"))).toBe(true);
     });
+  });
+
+  it("狭い画面向けメニューから省略された表示操作を使える", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+
+    await user.click(screen.getByRole("button", { name: "表示と並び順" }));
+
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("radio", { name: "題名" })).toBeDefined();
+    expect(
+      within(dialog).getByRole("radiogroup", { name: "表示形式（コンパクト）" }),
+    ).toBeDefined();
+    expect(within(dialog).getByRole("slider", { name: "カードの大きさ" })).toBeDefined();
   });
 
   it("空なら取り込みを促す", async () => {

@@ -24,6 +24,7 @@ import {
   type Zoom,
 } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
+import TopBarPortal from "../shell/TopBarPortal";
 import LibraryToolbar, { sortOptions, type WatchFilter } from "./LibraryToolbar";
 import SelectionBar from "./SelectionBar";
 import {
@@ -271,18 +272,20 @@ export default function LibraryPage() {
     <div className="flex w-full flex-col gap-3 px-3 pt-3 pb-24 sm:px-4">
       <h1 className="sr-only">ライブラリ</h1>
 
-      <LibraryToolbar
-        sort={sort}
-        onSortChange={changeSort}
-        watch={watch}
-        onWatchChange={setWatch}
-        playableOnly={playableOnly}
-        onPlayableOnlyChange={setPlayableOnly}
-        view={view}
-        onViewChange={(next) => savePreferences({ ...preferences, view: next })}
-        zoom={zoom}
-        onZoomChange={changeZoom}
-      />
+      <TopBarPortal>
+        <LibraryToolbar
+          sort={sort}
+          onSortChange={changeSort}
+          watch={watch}
+          onWatchChange={setWatch}
+          playableOnly={playableOnly}
+          onPlayableOnlyChange={setPlayableOnly}
+          view={view}
+          onViewChange={(next) => savePreferences({ ...preferences, view: next })}
+          zoom={zoom}
+          onZoomChange={changeZoom}
+        />
+      </TopBarPortal>
 
       <p
         role="status"
