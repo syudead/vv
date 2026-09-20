@@ -125,6 +125,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Consolidate explicit must-have items mentioned by user
    - Map focus selections to category scaffolding
    - Infer any missing context from spec/plan (do NOT hallucinate)
+   - An ambiguity you find in the spec becomes a checklist item that asks the question, never an item that assumes one reading of it (Q-6 in docs/product-specs/spec-quality.md)
 
 5. **Load feature context**: Read from FEATURE_DIR:
    - spec.md: Feature requirements and scope

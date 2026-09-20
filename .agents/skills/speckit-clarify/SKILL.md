@@ -7,6 +7,14 @@ metadata:
 ---
 
 
+## Repository rules for specifications
+
+Follow [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md)
+(Q-1..Q-7). Where it conflicts with a general instruction below, **it wins**.
+An ambiguity you cannot resolve goes back to the user as a question (Q-6), and
+an implementation constraint never becomes a product requirement or a scope
+boundary (Q-7).
+
 ## User Input
 
 ```text
@@ -125,7 +133,7 @@ Execution steps:
    - Information is better deferred to planning phase (note internally)
 
 4. Generate (internally) a prioritized queue of candidate clarification questions (maximum 5). Do NOT output them all at once. Apply these constraints:
-    - Maximum of 5 total questions across the whole session.
+    - Ask at most 5 in one round. A question that does not fit this round is not dropped: it stays in the spec as a `[NEEDS CLARIFICATION: ...]` marker for the next round (Q-6).
     - Each question must be answerable with EITHER:
        - A short multiple‑choice selection (2–5 distinct, mutually exclusive options), OR
        - A one-word / short‑phrase answer (explicitly constrain: "Answer in <=5 words").
@@ -133,7 +141,7 @@ Execution steps:
     - Ensure category coverage balance: attempt to cover the highest impact unresolved categories first; avoid asking two low-impact questions when a single high-impact area (e.g., security posture) is unresolved.
     - Exclude questions already answered, trivial stylistic preferences, or plan-level execution details (unless blocking correctness).
     - Favor clarifications that reduce downstream rework risk or prevent misaligned acceptance tests.
-    - If more than 5 categories remain unresolved, select the top 5 by (Impact * Uncertainty) heuristic.
+    - If more than 5 categories remain unresolved, ask the top 5 by (Impact * Uncertainty) heuristic and leave the rest recorded in the spec as `[NEEDS CLARIFICATION: ...]`. Never close one by choosing an interpretation.
 
 5. Sequential questioning loop (interactive):
     - Present EXACTLY ONE question at a time.
@@ -258,12 +266,14 @@ Report completion (after questioning loop ends or early termination):
 - Number of questions asked & answered.
 - Path to updated spec.
 - Sections touched (list names).
-- Coverage summary table listing each taxonomy category with Status: Resolved (was Partial/Missing and addressed), Deferred (exceeds question quota or better suited for planning), Clear (already sufficient), Outstanding (still Partial/Missing but low impact).
+- Coverage summary table listing each taxonomy category with Status: Resolved (was Partial/Missing and addressed), Deferred (exceeds this round's quota or better suited for planning), Clear (already sufficient), Outstanding (still Partial/Missing but low impact).
+- Every Deferred and Outstanding category must also be visible in the spec itself as a `[NEEDS CLARIFICATION: ...]` marker, not only in this report.
 - If any Outstanding or Deferred remain, recommend whether to proceed to `/speckit-plan` or run `/speckit-clarify` again later post-plan.
 - Suggested next command.
 
 ## Done When
 
 - [ ] Spec ambiguities identified and clarifications integrated into spec file
+- [ ] Ambiguities not asked this round remain in the spec as `[NEEDS CLARIFICATION: ...]`; none was closed by choosing an interpretation
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with questions answered, sections touched, and coverage summary

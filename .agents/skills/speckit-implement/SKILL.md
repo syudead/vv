@@ -112,6 +112,12 @@ You **MUST** consider the user input before proceeding (if not empty).
    For a plain-text request, use the user's request and the relevant code and
    documentation in the current checkout instead.
 
+   If the work named by the Issue turns out to be ambiguous, or the obvious way
+   to build it is blocked by a technical constraint, stop and ask rather than
+   deciding it in code. A choice that changes what the user gets belongs to the
+   person who asked for the feature (Q-6 and Q-7 in
+   `docs/product-specs/spec-quality.md`).
+
 4. **Project Setup Verification**:
    - **REQUIRED**: Create/verify ignore files based on actual project setup:
 

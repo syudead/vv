@@ -284,20 +284,28 @@ Report completion to the user with:
 
 When creating this spec from a user prompt:
 
-1. **Make informed guesses**: Use context, industry standards, and common patterns to fill gaps
-2. **Document assumptions**: Record reasonable defaults in the Assumptions section
-3. **Limit clarifications**: Maximum 3 [NEEDS CLARIFICATION] markers - use only for critical decisions that:
-   - Significantly impact feature scope or user experience
-   - Have multiple reasonable interpretations with different implications
-   - Lack any reasonable default
-4. **Prioritize clarifications**: scope > security/privacy > user experience > technical details
-5. **Think like a tester**: Treat every vague requirement as a validation failure
-6. **Common areas needing clarification** (only if no reasonable default exists):
-   - Feature scope and boundaries (include/exclude specific use cases)
-   - User types and permissions (if multiple conflicting interpretations possible)
-   - Security/compliance requirements (when legally/financially significant)
+1. **Sort each gap by what the answer changes**: if the answer would change the
+   scope, the interaction, the user's experience, or the security and privacy
+   posture, it is a question. Everything else may take a default (Q-6)
+2. **Ask, with a marker**: write `[NEEDS CLARIFICATION: specific question]` for
+   each question and put it to the user. Carry at most 3 into one round; the
+   rest stay in the spec for the next round
+3. **Prioritize**: scope > security/privacy > user experience > technical details
+4. **Document defaults**: record each default you did take in the Assumptions
+   section, so a reader can see what was decided without being asked
+5. **Think like a tester**: treat every vague requirement as a validation failure
+6. **Keep implementation out of it**: a technical constraint is a question about
+   the requirement, never a reason to narrow it (Q-7)
 
-**Examples of reasonable defaults** (don't ask about these):
+**Areas that always need an answer from the user**:
+
+- Feature scope and boundaries — which use cases are in and which are out
+- The shape of an interaction when more than one form would satisfy the words
+  used (for example entering a value by hand versus choosing it from a list)
+- User types and permissions, where interpretations conflict
+- Security and compliance requirements
+
+**Areas where a default is usually fine** (record it in Assumptions):
 
 - Data retention: Industry-standard practices for the domain
 - Performance targets: Standard web/mobile app expectations unless specified
