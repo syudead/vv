@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -140,7 +141,7 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 				return
 			}
 		}
-		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		if requiresJSONBody(r) {
 			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if err != nil || mediaType != "application/json" {
 				s.invalidRequest(w, "Content-Typeはapplication/jsonを指定してください")
@@ -149,6 +150,22 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func requiresJSONBody(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodPost:
+		return r.URL.Path == "/api/media-folders" || r.URL.Path == "/api/scans"
+	case http.MethodPut:
+		if id, ok := strings.CutPrefix(r.URL.Path, "/api/media-folders/"); ok {
+			return id != "" && !strings.Contains(id, "/")
+		}
+		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/"); ok {
+			id, rest, found := strings.Cut(suffix, "/")
+			return found && id != "" && rest == "progress"
+		}
+	}
+	return false
 }
 
 // apiNotFound は /api/ 配下の未定義経路に JSON の 404 を返す。
