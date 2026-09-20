@@ -54,7 +54,7 @@ silently.
 
 1. **Setup**: Preserve `.specify/feature.json` as required by the issue-handoff contract, then run `SPECIFY_INIT_DIR="$PWD" SPECIFY_FEATURE_DIRECTORY="$SPECIFY_FEATURE_DIRECTORY" bash .specify/scripts/bash/setup-plan.sh --json` from repo root. Restore the machine-local file afterward and parse JSON for FEATURE_SPEC, IMPL_PLAN, FEATURE_DIR, BRANCH. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
-2. **Load context**: Read FEATURE_SPEC and `.specify/memory/constitution.md`. Load IMPL_PLAN template (already copied).
+2. **Load context**: Read FEATURE_SPEC and `.specify/memory/constitution.md`. Load IMPL_PLAN template (already copied). Treat the constitution as **unusable** when the file is absent, empty, or still carries template placeholders (`[PRINCIPLE_1_NAME]`, `[SECTION_2_CONTENT]`, and the like); in that case the gates come from the repository's agent guide and architecture notes instead, and the plan says which rules were checked.
 
 3. **Locate the canonical definitions**: Before writing anything, find the
    existing sources of truth for this repository — architecture notes, design
@@ -71,9 +71,14 @@ silently.
    - Evaluate gates (ERROR if violations unjustified)
    - Fill Project Structure with the affected ownership boundaries, new paths,
      and structural decisions — never a repository-wide tree
-   - Phase 0: Generate research.md (resolve all NEEDS CLARIFICATION)
-   - Phase 1: Generate data-model.md, contracts/, quickstart.md
+   - Phase 0: Resolve every NEEDS CLARIFICATION; write research.md if this
+     feature adds decisions of its own
+   - Phase 1: Write whichever of data-model.md, contracts/, and quickstart.md
+     carry feature-specific content
    - Re-evaluate Constitution Check post-design
+
+   Phase 0 and Phase 1 create an artifact only when it has something of its own
+   to say (P-2). Name the ones you are not creating, and why, in `plan.md`.
 
 ## Mandatory Post-Execution Hooks
 
@@ -108,7 +113,10 @@ Command ends after Phase 1 design. Report branch, IMPL_PLAN path, and generated 
      Task: "Find best practices for {tech} in {domain}"
    ```
 
-3. **Consolidate findings** in `research.md` using format:
+3. **Consolidate findings** in `research.md`. Create the file only when this
+   feature has unknowns to resolve or decisions of its own to record; when every
+   relevant choice is already settled by a canonical document, skip it and say so
+   in one line in `plan.md` (P-2). Use the format:
    - Decision: [what was chosen]
    - Rationale: [why chosen]
    - Alternatives considered: [what else evaluated]
@@ -117,11 +125,14 @@ Command ends after Phase 1 design. Report branch, IMPL_PLAN path, and generated 
    record only the decisions this feature adds. Do not re-derive the existing
    stack.
 
-**Output**: research.md with all NEEDS CLARIFICATION resolved
+**Output**: all NEEDS CLARIFICATION resolved; research.md when this feature has
+decisions of its own, otherwise a one-line note in `plan.md` saying none were
+needed
 
 ### Phase 1: Design & Contracts
 
-**Prerequisites:** `research.md` complete
+**Prerequisites:** Phase 0 complete — `research.md` written, or established that
+this feature needs none
 
 Each artifact below is produced **only if it has feature-specific content**
 (P-2). Decide that first, for each one: if this feature adds no entity, exposes

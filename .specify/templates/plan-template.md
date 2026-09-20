@@ -61,9 +61,10 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file. If the project has no constitution
-file, check against the repository's agent guide and architecture notes and say
-which rules were checked.]
+[Gates determined based on constitution file. If the project has no usable
+constitution (the file is absent, empty, or still contains template
+placeholders), check against the repository's agent guide and architecture notes
+and say which rules were checked.]
 
 ## Project Structure
 
@@ -76,7 +77,7 @@ out, not filled with invented material.
 ```text
 specs/[###-feature]/
 ├── plan.md              # This file (/speckit-plan command output)
-├── research.md          # Phase 0 output — decisions this feature adds
+├── research.md          # Phase 0 output — decisions this feature adds [omit if none]
 ├── data-model.md        # Phase 1 output — entity deltas [omit if none]
 ├── quickstart.md        # Phase 1 output — validation steps [omit if none]
 └── contracts/           # Phase 1 output — interface deltas [omit if none]
