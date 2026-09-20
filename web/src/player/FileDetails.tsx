@@ -31,8 +31,8 @@ function Rows({ rows }: { rows: { label: string; value: string }[] }) {
 }
 
 const tabClass =
-  "border-b-2 border-transparent px-2 py-2 text-sm text-fg transition-colors hover:border-fg " +
-  "data-[state=active]:border-link data-[state=active]:text-link";
+  "border-b-2 border-transparent px-2 py-2 text-sm text-fg-muted transition-colors hover:text-fg " +
+  "data-[state=active]:border-accent data-[state=active]:text-fg";
 
 /** FileDetails は Stash の scene-tabs と同じ、プレイヤー下のタブ。 */
 export default function FileDetails({ video }: { video: Video }) {

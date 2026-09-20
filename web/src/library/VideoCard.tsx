@@ -71,7 +71,8 @@ function VideoCard(props: VideoCardProps) {
     <article
       data-video-id={video.id}
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-md bg-surface shadow-card transition-[box-shadow,transform] duration-150",
+        "group relative flex flex-col overflow-hidden rounded-lg bg-surface shadow-card transition-[box-shadow,transform] duration-200 ease-out-quart",
+        "hover:-translate-y-0.5",
         "hover:shadow-card-hover",
         selected && "ring-2 ring-accent",
         selectionMode && "select-none",
@@ -103,7 +104,7 @@ function VideoCard(props: VideoCardProps) {
               alt=""
               loading="lazy"
               decoding="async"
-              className="h-full w-full object-cover object-top"
+              className="h-full w-full object-cover object-top transition-transform duration-300 ease-out-quart group-hover:scale-[1.03]"
             />
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-fg-subtle">
@@ -115,14 +116,14 @@ function VideoCard(props: VideoCardProps) {
           )}
 
           {(quality !== "" || duration !== "") && (
-            <span className="absolute right-2.5 bottom-2 flex items-baseline gap-1.5 text-sm text-fg text-shadow-badge tabular-nums transition-opacity duration-300 group-hover:opacity-0">
-              {quality !== "" && <span className="font-black uppercase">{quality}</span>}
+            <span className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm bg-navbar/85 px-1.5 py-0.5 text-[11px] font-medium text-fg tabular-nums backdrop-blur-sm">
+              {quality !== "" && <span className="text-accent">{quality}</span>}
               {duration !== "" && <span>{duration}</span>}
             </span>
           )}
 
           {state === "watched" && (
-            <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-success-strong text-accent-fg">
+            <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-navbar/85 text-success backdrop-blur-sm">
               <Check className="size-3.5" strokeWidth={3} />
               <span className="sr-only">視聴済み</span>
             </span>

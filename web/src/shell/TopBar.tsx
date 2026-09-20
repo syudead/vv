@@ -13,9 +13,9 @@ function NavItem({ entry }: { entry: NavEntry }) {
   const Icon = entry.icon;
   const className = (active: boolean) =>
     cn(
-      "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-fg transition-colors select-none",
-      "hover:bg-hover-wash [&>svg]:size-4",
-      active && "bg-active-wash",
+      "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors select-none",
+      "hover:bg-hover-wash hover:text-fg [&>svg]:size-4",
+      active ? "bg-active-wash font-medium text-fg" : "text-fg-muted",
     );
 
   if (entry.to === undefined) {
@@ -87,11 +87,12 @@ function ScanButton() {
 export default function TopBar() {
   const toast = useToast();
   return (
-    <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 bg-navbar px-2 shadow-card sm:px-3">
+    <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 border-b border-border bg-bg/90 px-2 backdrop-blur-md sm:px-3">
       <Link
         to="/"
-        className="mr-2 flex h-8 items-center rounded-md px-2 text-base font-semibold text-fg select-none hover:bg-hover-wash"
+        className="mr-2 flex h-8 items-center gap-2 rounded-md px-2 text-base font-semibold tracking-tight text-fg select-none hover:bg-hover-wash"
       >
+        <span className="size-2.5 rounded-full bg-accent" aria-hidden="true" />
         vv
       </Link>
 

@@ -140,7 +140,7 @@ export default function VideoPage() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg">
-      <header className="flex h-navbar shrink-0 items-center bg-navbar px-2 shadow-card sm:px-3">
+      <header className="flex h-navbar shrink-0 items-center border-b border-border bg-bg px-2 sm:px-3">
         <Link
           to={backTo}
           className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-fg transition-colors hover:bg-hover-wash"

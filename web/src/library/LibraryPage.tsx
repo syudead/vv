@@ -328,7 +328,7 @@ export default function LibraryPage() {
         ) : (
           !loading &&
           filtered.length > 0 && (
-            <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-md bg-surface shadow-card">
+            <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg bg-surface shadow-card">
               <thead>
                 <tr className="text-left text-xs text-fg-muted">
                   <th className="w-10" />

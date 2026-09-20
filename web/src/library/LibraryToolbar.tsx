@@ -193,7 +193,7 @@ export default function LibraryToolbar({
             aria-label="カードの大きさ"
             className="relative flex h-9 w-28 touch-none items-center select-none"
           >
-            <Slider.Track className="relative h-1 grow rounded-full bg-elevated">
+            <Slider.Track className="relative h-1 grow rounded-full bg-border-strong">
               <Slider.Range className="absolute h-full rounded-full bg-accent" />
             </Slider.Track>
             <Slider.Thumb className="block size-4 rounded-full bg-fg shadow-card transition-transform hover:scale-110" />
