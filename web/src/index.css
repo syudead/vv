@@ -71,6 +71,8 @@
 
   /* --- レイアウト定数 --- */
   --spacing-navbar: 52px;
+  --spacing-sidebar: 232px;
+  --spacing-sidebar-rail: 68px;
   --spacing-card-0: 220px;
   --spacing-card-1: 280px;
   --spacing-card-2: 360px;

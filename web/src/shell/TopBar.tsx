@@ -1,42 +1,11 @@
-import { RefreshCw, Settings } from "lucide-react";
-import { Link, NavLink } from "react-router";
+import { Menu, RefreshCw, Settings } from "lucide-react";
+import { Link } from "react-router";
 
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import { useToast } from "../ui/Toast";
 import Tooltip from "../ui/Tooltip";
-import { navEntries, type NavEntry } from "./navigation";
 import { describeScan, useScan } from "./ScanProvider";
-
-function NavItem({ entry }: { entry: NavEntry }) {
-  const toast = useToast();
-  const Icon = entry.icon;
-  const className = (active: boolean) =>
-    cn(
-      "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors select-none",
-      "hover:bg-hover-wash hover:text-fg [&>svg]:size-4",
-      active ? "bg-active-wash font-medium text-fg" : "text-fg-muted",
-    );
-
-  if (entry.to === undefined) {
-    return (
-      <button
-        type="button"
-        onClick={() => toast(`「${entry.label}」は準備中です`)}
-        className={className(false)}
-      >
-        <Icon />
-        <span className="hidden sm:inline">{entry.label}</span>
-      </button>
-    );
-  }
-  return (
-    <NavLink to={entry.to} end className={({ isActive }) => className(isActive)}>
-      <Icon />
-      <span className="hidden sm:inline">{entry.label}</span>
-    </NavLink>
-  );
-}
 
 function ScanButton() {
   const scan = useScan();
@@ -83,11 +52,14 @@ function ScanButton() {
   );
 }
 
-/** TopBar は Stash と同じ「上部ナビバーのみ」の骨格。 */
-export default function TopBar() {
+/** TopBar は ☰・ロゴ・更新・設定だけを持つ。ナビは Sidebar にある。 */
+export default function TopBar({ onMenu }: { onMenu: () => void }) {
   const toast = useToast();
   return (
     <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 border-b border-border bg-bg/90 px-2 backdrop-blur-md sm:px-3">
+      <IconButton label="メニュー" onClick={onMenu} tooltip={false}>
+        <Menu />
+      </IconButton>
       <Link
         to="/"
         className="mr-2 flex h-8 items-center gap-2 rounded-md px-2 text-base font-semibold tracking-tight text-fg select-none hover:bg-hover-wash"
@@ -95,12 +67,6 @@ export default function TopBar() {
         <span className="size-2.5 rounded-full bg-accent" aria-hidden="true" />
         vv
       </Link>
-
-      <nav aria-label="メインナビゲーション" className="flex items-center gap-0.5">
-        {navEntries.map((entry) => (
-          <NavItem key={entry.id} entry={entry} />
-        ))}
-      </nav>
 
       <div className="ml-auto flex items-center gap-0.5">
         <ScanButton />
