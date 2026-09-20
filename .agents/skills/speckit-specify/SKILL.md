@@ -16,6 +16,17 @@ This skill owns only Spec Kit artifact generation. A run creates or updates one
 Spec PR and never starts Plan.
 
 
+## Repository rules for specifications
+
+Follow [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md)
+(Q-1..Q-7). Where it conflicts with a general instruction below, **it wins**.
+Two of its rules invert the defaults of this command:
+
+- **Q-6** — an ambiguity you cannot resolve goes back to the user as a question.
+  A plausible interpretation is not a resolution.
+- **Q-7** — an implementation constraint is never promoted into a product
+  requirement or a scope boundary.
+
 ## User Input
 
 ```text
@@ -125,19 +136,24 @@ Given that feature description, do this:
        If empty: ERROR "No feature description provided"
     2. Extract key concepts from description
        Identify: actors, actions, data, constraints
-    3. For unclear aspects:
-       - Make informed guesses based on context and industry standards
-       - Only mark with [NEEDS CLARIFICATION: specific question] if:
-         - The choice significantly impacts feature scope or user experience
-         - Multiple reasonable interpretations exist with different implications
-         - No reasonable default exists
-       - **LIMIT: Maximum 3 [NEEDS CLARIFICATION] markers total**
-       - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
+    3. For unclear aspects, decide by what the answer changes:
+       - Mark with [NEEDS CLARIFICATION: specific question] whenever the answer
+         would change what the user gets — the scope, the interaction, the
+         security or privacy posture, or which of several readings of the
+         request is correct. Ask; do not pick one and move on (Q-6)
+       - Make an informed guess only for a detail that does not change what the
+         user gets whichever way it goes, and record it in Assumptions
+       - An implementation difficulty is never the reason for a guess. If the
+         obvious way to build something is hard, that is a question about the
+         requirement, not a requirement (Q-7)
+       - Carry at most 3 markers into one round of questions; the rest wait for
+         the next round rather than being guessed
+       - Prioritize by impact: scope > security/privacy > user experience > technical details
     4. Fill User Scenarios & Testing section
        If no clear user flow: ERROR "Cannot determine user scenarios"
     5. Generate Functional Requirements
        Each requirement must be testable
-       Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
+       Use a default only for a detail that does not change what the user gets, and record it in Assumptions. Anything that does becomes a [NEEDS CLARIFICATION] marker (Q-6)
     6. Define Success Criteria
        Create measurable, technology-agnostic outcomes
        Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
@@ -153,7 +169,7 @@ Given that feature description, do this:
    - Focused on user value and business needs
    - Written for non-technical stakeholders
    - All mandatory sections completed
-   - No `[NEEDS CLARIFICATION]` markers remain
+   - No `[NEEDS CLARIFICATION]` markers remain — each one answered by the user, never deleted by choosing an interpretation
    - Requirements are testable and unambiguous
    - Every functional requirement has clear acceptance criteria
    - User scenarios cover the primary flows
@@ -173,7 +189,7 @@ Given that feature description, do this:
 
       - **If [NEEDS CLARIFICATION] markers remain**:
         1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
-        2. **LIMIT CHECK**: If more than 3 markers exist, keep only the 3 most critical (by scope/security/UX impact) and make informed guesses for the rest
+        2. **BATCH**: Ask at most 3 per round, most critical first (by scope/security/UX impact). Markers that do not fit stay in the spec and are asked in the next round — never resolved by guessing (Q-6)
         3. For each clarification needed (max 3), present options to user in this format:
 
            ```markdown
