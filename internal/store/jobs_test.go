@@ -435,6 +435,55 @@ func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	}
 }
 
+func TestClaimedJobBecomesStaleWhenLowerIDLocationIsReassigned(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	lower, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := db.UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-b", 1024, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lower.ID >= target.ID {
+		t.Fatalf("fixture IDs = %d, %d; want lower source ID", lower.ID, target.ID)
+	}
+	if err := db.EnqueueJob(ctx, JobProbe, target.ID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reusing the earlier location for the target content changes membership
+	// without creating an ID larger than the claimed target location.
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-b", 2048, time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	current, err := db.JobIdentityCurrent(ctx, job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current {
+		t.Fatal("job identity remained current after a lower-ID location was reassigned")
+	}
+	written, err := db.ApplyProbeForJob(ctx, job, domain.Probe{VideoCodec: "h264"}, domain.Playability{Playable: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written {
+		t.Fatal("job wrote a result after a lower-ID location was reassigned")
+	}
+	if err := db.CompleteClaimedJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobState(t, db, job.ID); got != "queued" {
+		t.Fatalf("state = %q, want queued", got)
+	}
+}
+
 func jobState(t *testing.T, db *DB, id int64) string {
 	t.Helper()
 

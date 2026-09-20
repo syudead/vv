@@ -99,11 +99,12 @@ queued jobは別locationを選べるようbindingだけをclearする。content 
 
 ## In-flight Job Write Protection
 
-job workerはclaim時に処理対象の`video_id`、`content_key`、`location_id`、`location_version`、`path`を
+`videos.location_generation`はlocationの追加・削除・別videoへの再割り当てごとに加算する。job workerは
+claim時に処理対象の`video_id`、`content_key`、`location_id`、`location_version`、`path`と、この世代を
 記録し、そのpathだけを外部processへ渡す。probe結果、probe失敗、thumbnail stateの全write-back前に、
-video identityに加えて同じID・version・pathのlocationが現在も対象videoに属することをtransaction内で
-確認する。一致しない結果はstale completionとして破棄する。別のcurrent locationがあればjobをそこへ
-再queueし、なければ削除済みjobの完了として終了する。
+video identity、location identity、世代がすべて現在値と一致することをtransaction内で確認する。
+location IDの大小は集合変更の判定に使わない。一致しない結果はstale completionとして破棄する。
+別のcurrent locationがあればjobをそこへ再queueし、なければ削除済みjobの完了として終了する。
 
 file消失、permission、open/stat失敗はlocation固有の失敗として扱い、論理videoのprobe/thumbnail stateを
 failedへ変更しない。workerはjob開始時にsnapshotした未試行のcurrent locationsをpath順で試す。
@@ -135,7 +136,9 @@ seen location pathsと列挙不能prefixを管理する。
 
 - 新しいpathはcontent keyに対応するvideoを作成または再利用し、locationをupsertする
 - 同じcontentが別pathにあっても既存locationを移動せず、追加locationとして保持する
+- 走査結果の`Moved`は既知contentの新規path発見を表し、移動・改名と同一contentの重複location追加を含む
 - rootを最後まで列挙できた場合だけ、そのroot内のmissing locationを削除候補にする
+- 登録root外に残るmigration由来のlocationは走査対象外として保持する
 - root自体の列挙に失敗した場合は、そのroot配下の既存locationをすべて保持する
 - subtreeの列挙に失敗した場合は、そのprefix配下の既存locationを保持する
 - fileのstat/openに失敗した場合は、そのpathの既存locationを保持する

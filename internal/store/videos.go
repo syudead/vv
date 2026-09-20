@@ -39,7 +39,7 @@ const (
 	OutcomeAdded = domain.OutcomeAdded
 	// OutcomeUpdated は既存の行の内容が変わった。
 	OutcomeUpdated = domain.OutcomeUpdated
-	// OutcomeMoved は内容が同じままパスだけが変わった（移動・改名）。
+	// OutcomeMoved は既知の内容を新しいpathで発見した。
 	OutcomeMoved = domain.OutcomeMoved
 	// OutcomeUnchanged は何も変わらなかった。
 	OutcomeUnchanged = domain.OutcomeUnchanged
@@ -96,9 +96,9 @@ func videoColumns() string {
 
 // UpsertVideo は走査で分かった1件を索引に反映する（R-107 / R-109）。
 //
-// 突き合わせは content_key を先に見る。内容が同じでパスだけが違うものは
-// 移動・改名なので、行を作り直さずパスを更新する。重複を作らないことが
-// FR-004 の要求であり、再生位置とサムネイルを引き継ぐ前提でもある。
+// 突き合わせは content_key を先に見る。内容が同じ別pathは同じvideoの
+// locationとして追加する。論理videoを重複させないことがFR-004の要求であり、
+// 再生位置とサムネイルを引き継ぐ前提でもある。
 //
 // 内容が変わったとき（サイズか mtime が変わる）は、解析結果を捨てて
 // probe_state を pending へ戻す（data-model.md）。
@@ -163,6 +163,15 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 	if err != nil {
 		return UpsertResult{}, fmt.Errorf("動画の場所を保存できません (%s): %w", file.Path, err)
 	}
+	if !locationExists {
+		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id = ?`, videoID); err != nil {
+			return UpsertResult{}, err
+		}
+	} else if oldVideoID != videoID {
+		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id in (?, ?)`, oldVideoID, videoID); err != nil {
+			return UpsertResult{}, err
+		}
+	}
 	if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
 		return UpsertResult{}, err
 	}
@@ -225,11 +234,11 @@ func (db *DB) ApplyProbeForJob(
 		playable = ?, unplayable_reason = ?, probe_state = 'done', probe_error = null, updated_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
-		and not exists (select 1 from video_locations where video_id = videos.id and id > ?)`,
+		and location_generation = ?`,
 		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height),
 		nullableString(probe.VideoCodec), nullableString(probe.AudioCodec), boolToInt(play.Playable),
 		nullableString(string(play.Reason)), time.Now().Unix(), job.VideoID, job.ContentKey,
-		job.LocationID, job.LocationVersion, job.LocationPath, job.LocationSetMaxID)
+		job.LocationID, job.LocationVersion, job.LocationPath, job.LocationGeneration)
 	if err != nil {
 		return false, err
 	}
@@ -257,9 +266,9 @@ func (db *DB) MarkProbeFailedForJob(ctx context.Context, job domain.Job, reason 
 		set probe_state = 'failed', probe_error = ?, playable = 0, updated_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
-		and not exists (select 1 from video_locations where video_id = videos.id and id > ?)`,
+		and location_generation = ?`,
 		reason, time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
-		job.LocationVersion, job.LocationPath, job.LocationSetMaxID)
+		job.LocationVersion, job.LocationPath, job.LocationGeneration)
 	if err != nil {
 		return false, err
 	}
@@ -282,9 +291,9 @@ func (db *DB) SetThumbnailStateForJob(ctx context.Context, job domain.Job, state
 	res, err := db.sql.ExecContext(ctx, `update videos set thumbnail_state = ?, updated_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
-		and not exists (select 1 from video_locations where video_id = videos.id and id > ?)`,
+		and location_generation = ?`,
 		string(state), time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
-		job.LocationVersion, job.LocationPath, job.LocationSetMaxID)
+		job.LocationVersion, job.LocationPath, job.LocationGeneration)
 	if err != nil {
 		return false, err
 	}
@@ -463,6 +472,9 @@ func (db *DB) DeleteVideoLocations(ctx context.Context, ids []int64) error {
 		}
 	}
 	for videoID := range affected {
+		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id = ?`, videoID); err != nil {
+			return err
+		}
 		if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
 			return err
 		}

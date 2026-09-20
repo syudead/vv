@@ -581,7 +581,7 @@ func TestReportingFailurePreventsMissingDeletion(t *testing.T) {
 	}
 }
 
-func TestSuccessfulScanRemovesMigratedLocationOutsideRegisteredRoots(t *testing.T) {
+func TestSuccessfulScanPreservesMigratedLocationOutsideRegisteredRoots(t *testing.T) {
 	root := mediaTree(t, map[string]string{})
 	index := newFakeIndex()
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
@@ -591,8 +591,8 @@ func TestSuccessfulScanRemovesMigratedLocationOutsideRegisteredRoots(t *testing.
 	if _, err := New(Options{Index: index}).Scan(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(index.deleted) != 1 || index.deleted[0] != 19 {
-		t.Fatalf("deleted locations = %v, want [19]", index.deleted)
+	if len(index.deleted) != 0 {
+		t.Fatalf("deleted location outside registered roots: %v", index.deleted)
 	}
 }
 

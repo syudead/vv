@@ -236,7 +236,7 @@ const (
 	OutcomeAdded UpsertOutcome = "added"
 	// OutcomeUpdated は既存の行の内容が変わった。
 	OutcomeUpdated UpsertOutcome = "updated"
-	// OutcomeMoved は内容が同じままパスだけが変わった（移動・改名）。
+	// OutcomeMoved は既知の内容を新しいpathで発見した。
 	OutcomeMoved UpsertOutcome = "moved"
 	// OutcomeUnchanged は何も変わらなかった。
 	OutcomeUnchanged UpsertOutcome = "unchanged"

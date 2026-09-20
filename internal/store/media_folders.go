@@ -268,6 +268,9 @@ func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
 		}
 	}
 	for videoID := range affected {
+		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id = ?`, videoID); err != nil {
+			return err
+		}
 		if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
 			return err
 		}
@@ -297,6 +300,9 @@ func syncLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
 		return err
 	}
 	for videoID := range videoIDs {
+		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id = ?`, videoID); err != nil {
+			return err
+		}
 		if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
 			return err
 		}

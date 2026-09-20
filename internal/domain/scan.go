@@ -13,7 +13,8 @@ type ScanResult struct {
 	Added int
 	// Updated は既存の行を更新した数（サイズか mtime が変わったもの）。
 	Updated int
-	// Moved は内容が同じままパスだけが変わった数（移動・改名）。
+	// Moved は既知の内容を新しいpathで発見した数。移動・改名に加え、
+	// 同じ内容の別location追加を含む。
 	Moved int
 	// Removed は実体が無くなって行を消した数。
 	Removed int
