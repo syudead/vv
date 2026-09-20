@@ -2,48 +2,76 @@
 
 機械可読な正本は実装時に更新する [api/openapi.yaml](../../../api/openapi.yaml) とする。
 
-## GET /api/settings
+## MediaFolder Resource
 
 ```json
 {
-  "mediaFolders": ["/srv/videos", "/mnt/archive"],
-  "version": 3,
-  "updatedAt": "2026-09-21T00:00:00Z"
+  "id": 12,
+  "path": "/srv/videos",
+  "version": 2,
+  "createdAt": "2026-09-21T00:00:00Z",
+  "updatedAt": "2026-09-21T01:00:00Z"
 }
 ```
 
-初回は `mediaFolders: []`。応答に `Cache-Control: no-store` を付ける。
+一覧全体を置換するendpointは作らない。追加・変更・削除は常に1件単位で完了する。
 
-## PUT /api/settings
+## GET /api/media-folders
 
-folder集合全体を置換する。
+MediaFolder配列を`id`昇順で返す。初回は`[]`。応答に`Cache-Control: no-store`を付ける。
+
+## POST /api/media-folders
+
+1件を追加する。
+
+```json
+{ "path": "/mnt/archive" }
+```
+
+成功は`201`と作成したresource。MediaFolderへのinsertだけを行い、既存のvideos、FTS、jobs、scans、
+playback progressを変更せず、scanも開始しない。
+
+## PUT /api/media-folders/{id}
+
+既存1件のpathを変更する。
 
 ```json
 {
-  "mediaFolders": ["/srv/videos", "/mnt/archive"],
-  "version": 3
+  "path": "/mnt/new-archive",
+  "version": 2
 }
 ```
 
-成功は200と更新後resource。集合が変わった場合は応答前に旧ライブラリDBデータを削除する。
-保存からscanを開始しない。同じ集合・同じ順序のPUTはDB削除とversion加算を行わない。
+成功は`200`と更新後resource。path更新と同じtransactionで、そのMediaFolderに属するvideos、FTS、
+jobs、playback progressだけを削除する。他MediaFolderのデータとscan履歴は変更せず、scanも開始しない。
+同じ正規化pathへのPUTはno-opとし、version加算とDB削除を行わない。
 
-| Status | Code                            | Condition                             |
-| ------ | ------------------------------- | ------------------------------------- |
-| `400`  | `invalid_request`               | JSON、version、path形式が不正         |
-| `400`  | `invalid_media_directory`       | 存在しない、directoryでない、読取不能 |
-| `400`  | `overlapping_media_directories` | 重複または祖先・子孫関係がある        |
-| `409`  | `scan_in_progress`              | 走査中                                |
-| `409`  | `conflict`                      | versionが古い                         |
-| `500`  | `internal`                      | transactionを含むその他の失敗         |
+## DELETE /api/media-folders/{id}?version={version}
+
+既存1件を削除する。成功は`204`。MediaFolder削除と同じtransactionで、そのfolderに属するvideos、
+FTS、jobs、playback progressだけを削除する。他MediaFolderのデータとscan履歴は変更しない。
+
+## MediaFolder Mutation Errors
+
+| Status | Code                            | Condition                                  |
+| ------ | ------------------------------- | ------------------------------------------ |
+| `400`  | `invalid_request`               | JSON、version、path形式が不正              |
+| `400`  | `invalid_media_directory`       | 存在しない、directoryでない、読取不能      |
+| `404`  | `media_folder_not_found`        | PUT/DELETE対象が存在しない                 |
+| `409`  | `overlapping_media_directories` | 重複または別resourceと祖先・子孫関係がある |
+| `409`  | `scan_in_progress`              | 走査中                                     |
+| `409`  | `conflict`                      | 対象resourceのversionが古い                |
+| `500`  | `internal`                      | transactionを含むその他の失敗              |
+
+失敗時は対象MediaFolderとライブラリDBを変更しない。
 
 ## GET /api/directories
 
-- path省略: Linuxでは`/`、Windowsでは利用可能なdrive rootsを `directories` に返す
-- path指定: 正規化した絶対pathを `currentPath`、親を `parentPath`、直下directoryを返す
-- directory entryは `{ name, path }`
+- path省略: Linuxでは`/`、Windowsでは利用可能なdrive rootsを`directories`に返す
+- path指定: 正規化した絶対pathを`currentPath`、親を`parentPath`、直下directoryを返す
+- directory entryは`{ name, path }`
 - ファイルを返さない
-- 応答は `Cache-Control: no-store`
+- 応答は`Cache-Control: no-store`
 
 | Status | Code                    | Condition                      |
 | ------ | ----------------------- | ------------------------------ |
@@ -54,8 +82,9 @@ folder集合全体を置換する。
 
 ## POST /api/scans
 
-- `mediaFolders` が0件ならscan rowを作らず `409 media_folders_not_configured`
-- scan開始時のfolder集合を最後まで使う
+- MediaFolderが0件ならscan rowを作らず`409 media_folders_not_configured`
+- scan開始時のMediaFolder snapshotを最後まで使う
+- 全rootを1回のscanとして扱い、root境界判定を変更・削除・streamと共通化する
 - 一部root/directory/fileのI/O失敗はfailed countへ記録し、残りを継続する
 - 継続不能なerror、panic、cancelはscanをfailedへ確定する
 - panicをHTTP server processへ伝播させない
@@ -63,4 +92,6 @@ folder集合全体を置換する。
 ## Runtime
 
 - `MDM_MEDIA_DIR` と `MDM_SCAN_ON_START` は読まない。
-- settings変更後はライブラリAPIが空を返し、次の手動scan完了後に全rootの結果を返す。
+- MediaFolder追加後も既存ライブラリAPIの結果を維持する。
+- MediaFolder変更・削除後は対象folder由来の動画だけを結果から除く。
+- 次の手動scan完了後に現在の全MediaFolderの結果を返す。

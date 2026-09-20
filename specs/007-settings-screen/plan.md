@@ -4,18 +4,22 @@
 
 ## Summary
 
-設定画面にメディアフォルダ1項目を追加し、その値として複数のサーバーディレクトリを管理する。
-初回は0件で、folder pickerから追加・削除する。保存時は旧ライブラリDBデータをtransaction内で
-削除し、次の手動走査で全rootから再構築する。`MDM_MEDIA_DIR` と起動時自動取り込みは廃止する。
+設定画面にメディアフォルダ1項目を追加し、複数のサーバーディレクトリを個別resourceとして管理する。
+folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存は行わない。新規追加では既存ライブラリを
+維持し、既存folderの変更・削除時だけ対象folder由来のDBデータをtransaction内で削除する。
+`MDM_MEDIA_DIR` と起動時自動取り込みは廃止する。
 
 ## Feature Behavior
 
-- メディアフォルダは0件以上の重複しないroot集合
-- 現在一覧は読み取り専用で表示し、文字列入力では変更しない
-- folder pickerを繰り返し使ってrootを追加し、一覧から削除できる
-- 同一pathと祖先・子孫で探索範囲が重なるpathは保存しない
-- 一覧の変更保存時にvideos、検索索引、jobs、scans、playback progressを削除する
-- 保存だけでは取り込まず、次の明示走査が保存済み全rootを処理する
+- メディアフォルダは0件以上の重複しないresource
+- pathは読み取り専用表示とし、文字列入力では変更しない
+- folder pickerから1件を選び、追加または既存1件の変更を即時実行する
+- 各行の削除も1件の独立した操作として即時実行する
+- 一覧全体のdraft、bulk PUT、保存buttonは持たない
+- 同一pathと祖先・子孫で探索範囲が重なるpathは登録しない
+- 新規追加では既存ライブラリDBへ書き込まない
+- 既存folderの変更・削除では対象folder由来のデータだけをatomicに削除する
+- folder操作だけでは取り込まず、次の明示走査が登録済み全rootを処理する
 - 0件では走査を開始できない
 - 非同期走査のfilesystem errorは対象単位で記録し、致命的失敗やpanicでもprocessとscan状態を壊さない
 - `MDM_MEDIA_DIR` と `MDM_SCAN_ON_START` はコード・設定・文書から削除する
@@ -38,7 +42,8 @@
 ## Constitution Check
 
 - `cmd/mdm` がstore、scanner、httpapi、filesystemを調停し、internalの兄弟依存を増やさない
-- 設定一覧の更新と旧DBデータ削除を1つのSQLite transactionにする
+- 既存folder 1件の更新と、そのfolder由来データの削除を1つのSQLite transactionにする
+- 新規追加transactionから既存ライブラリtableへ書き込まない
 - APIはOpenAPIを先に変更し、生成物を手編集しない
 - directory APIは選択に必要なdirectory情報だけを公開する
 - 設定項目をメディアフォルダ以外へ広げない
@@ -57,14 +62,18 @@
 
 ## Implementation Work
 
-### メディアフォルダ集合の保存・ライブラリ無効化・安全な走査
+### メディアフォルダ個別操作・対象別無効化・安全な走査
 
 **Scope**:
 
-- settings revisionと0件以上のmedia folder rowsをSQLiteへ追加する
-- 一覧を正規化し、重複・祖先子孫の重なり・無効directoryを拒否する
-- 一覧更新と同じtransactionでvideos、FTS、jobs、scans、playback progressを削除する
-- 設定変更後の不要thumbnail filesを参照不能にし、cleanup失敗を安全に記録する
+- ID、path、行単位versionを持つ0件以上のmedia folder rowsをSQLiteへ追加する
+- video pathのroot所属判定を共通化し、変更・削除とstream・scannerで同じ境界規則を使う
+- 追加、既存path変更、削除を別々のstore transactionとして実装する
+- 追加時は既存videos、FTS、jobs、scans、playback progressを変更しない
+- 変更・削除時は旧root配下のvideos、FTS、jobs、playback progressだけを削除する
+- videos schemaと既存video rowsをmigrationや新規追加で変更しない
+- 他folderのデータと完了済みscan履歴を維持する
+- 対象thumbnail filesをcommit後にcleanupし、失敗を安全に記録する
 - 0件でscanを開始せず、走査は開始時の全root snapshotを使う
 - root/directory/file単位のI/O失敗を記録して可能な範囲を継続する
 - goroutine境界でpanicを回収し、必ずscanをdone/failedへ確定してrunningを残さない
@@ -72,37 +81,41 @@
 
 **Dependencies**: なし。
 
-**Acceptance**: 一覧変更直後に旧ライブラリDBが空になり、自動走査は始まらない。次の手動走査が
-全rootを処理し、一部I/O失敗またはpanicでもprocess crashと永続running scanを残さない。
+**Acceptance**: 新規追加後も既存ライブラリが変わらず、既存1件の変更・削除後はそのfolder由来の
+DBデータだけが消える。次の手動走査が全rootを処理し、一部I/O失敗またはpanicでもprocess crashと
+永続running scanを残さない。
 
-### 設定・ディレクトリ選択 API
+### メディアフォルダ・ディレクトリ選択 API
 
 **Scope**:
 
-- settings APIを `mediaFolders: string[]` とversionへ変更する
-- PUTは一覧全体を置換し、DB無効化結果を返す
+- `GET/POST /api/media-folders`で一覧取得と1件追加を提供する
+- `PUT/DELETE /api/media-folders/{id}`で既存1件の変更・削除を提供する
+- 一覧全体のPUTを提供しない
+- PUT/DELETEは行単位versionで同時変更を検出する
 - directory APIはroot/drive、現在位置、親、子directoryだけを返す
-- 0件、無効directory、重複・包含、走査中、版競合を機械可読errorへ変換する
+- 無効directory、重複・包含、走査中、対象消失、版競合を機械可読errorへ変換する
 - OpenAPIからGo/TypeScriptを再生成し、Web API clientとcontract testsを追加する
 
-**Dependencies**: メディアフォルダ集合の保存・ライブラリ無効化・安全な走査。
+**Dependencies**: メディアフォルダ個別操作・対象別無効化・安全な走査。
 
-**Acceptance**: 複数root一覧を取得・置換でき、directoryだけを階層移動できる。設定変更応答後は
-ライブラリが空で、自動scanはない。すべてのerrorが契約どおり区別される。
+**Acceptance**: folderを1件ずつ取得・追加・変更・削除できる。追加応答後は既存ライブラリが維持され、
+変更・削除応答後は対象データだけが消える。すべてのerrorが契約どおり区別される。
 
 ### 設定画面と複数サーバーフォルダ選択 UI
 
 **Scope**:
 
 - `/settings` とSidebar navigationを追加する
-- 0件以上の保存済みroot一覧、追加、削除、未保存変更を表示する
+- 0件以上の登録済みroot一覧と、追加・変更・削除の行単位操作を表示する
+- 一覧全体の編集状態と保存buttonを置かない
 - folder picker dialogでroot/drive、親、子directoryをkeyboardとpointerで移動する
-- 同一・重複範囲の候補を追加できない理由を表示する
-- 保存後に一覧を空状態へ更新し、手動取り込みが必要と案内する
-- loading、directory失敗、0件、保存中、成功、走査中、版競合を扱う
+- 追加は選択確定時に1件POSTし、既存ライブラリが維持されたことを反映する
+- 変更・削除は対象データが消えることを事前に示し、対象行だけをPUT/DELETEする
+- loading、directory失敗、0件、各行処理中、成功、走査中、版競合を扱う
 - Vitest/Testing Library、360px・768px・1280pxの画像、visual reviewで検証する
 
-**Dependencies**: 設定・ディレクトリ選択API。
+**Dependencies**: メディアフォルダ・ディレクトリ選択API。
 
-**Acceptance**: 利用者が文字列を入力せず複数rootを管理できる。変更保存後は旧動画が表示されず、
-手動走査完了後に全rootの動画が表示される。
+**Acceptance**: 利用者が文字列を入力せず複数rootを1件ずつ管理できる。追加は既存動画を維持し、
+変更・削除は対象folderの動画だけを非表示にする。操作からscanは開始しない。
