@@ -46,14 +46,14 @@ func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
 	if _, err := Migrate(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
-	var migratedID int64
+	var migratedID, locationGeneration int64
 	var migratedPath, migratedKey string
-	if err := db.SQL().QueryRow(`select v.id, l.path, v.content_key from videos v join video_locations l on l.video_id = v.id where v.id = ?`, videoID).
-		Scan(&migratedID, &migratedPath, &migratedKey); err != nil {
+	if err := db.SQL().QueryRow(`select v.id, l.path, v.content_key, v.location_generation from videos v join video_locations l on l.video_id = v.id where v.id = ?`, videoID).
+		Scan(&migratedID, &migratedPath, &migratedKey, &locationGeneration); err != nil {
 		t.Fatal(err)
 	}
-	if migratedID != videoID || migratedPath != "/media/a.mp4" || migratedKey != "key-a" {
-		t.Fatalf("migrated video = %d %q %q", migratedID, migratedPath, migratedKey)
+	if migratedID != videoID || migratedPath != "/media/a.mp4" || migratedKey != "key-a" || locationGeneration != 1 {
+		t.Fatalf("migrated video = %d %q %q generation=%d", migratedID, migratedPath, migratedKey, locationGeneration)
 	}
 	var jobs, progress int
 	if err := db.SQL().QueryRow(`select count(*) from jobs where video_id = ?`, videoID).Scan(&jobs); err != nil {

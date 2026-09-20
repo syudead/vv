@@ -350,7 +350,7 @@ func (s *Scanner) removeMissing(
 				break
 			}
 		}
-		if managed && pathProtected(path, protected) {
+		if !managed || pathProtected(path, protected) {
 			continue
 		}
 		locationID := row.LocationID
