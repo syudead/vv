@@ -29,7 +29,8 @@ sectionをcardで囲まず、見出し、説明、操作、folder rowsを同じc
 3. 説明「動画を探すサーバー上のフォルダです。変更後は上部の『ライブラリを更新』から
    取り込みを実行してください。取り込みは自動では始まりません。」
 4. 登録済みfolder rows、またはempty state
-5. 登録済みfolderがある場合、その後にFolderPlus icon付きprimary action「フォルダを追加」
+5. 登録済みfolderがある場合、その後にFolderPlus icon付きprimary action「フォルダを追加」。
+   一覧取得失敗時も同じ位置に無効状態で表示する
 
 content columnはwide desktopでも読み取り幅を広げ続けず、左をAppShellのcontent edgeへ揃える。
 ページ見出しとsection見出しは既存画面の文字scaleを使い、marketing pageのような大見出しや
@@ -97,7 +98,7 @@ folder名の再入力や一覧全体の確認は要求しない。
 | State | Presentation and behaviour |
 | --- | --- |
 | Initial loading | section見出しを残し、folder rowと同じ高さのSkeletonを表示する。page全体をspinnerへ置き換えない |
-| List load failure | row領域に理由と「再試行」を表示する。追加actionは現在値を確認できないため無効にする |
+| List load failure | row領域に理由と「再試行」を表示する。row領域の後に追加actionを残すが、現在値を確認できないため無効にし、その理由をerror本文で示す |
 | Picker loading | header、現在path、footerを固定し、directory listだけをSkeletonへ置き換える |
 | Picker load failure | 現在pathを維持し、list領域に理由、「再試行」、「ルートへ戻る」を表示する |
 | Invalid candidate | dialogを閉じず、footer直前に具体的な理由を表示する。以前の設定は変更しない |
