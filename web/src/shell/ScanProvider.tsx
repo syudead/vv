@@ -18,6 +18,7 @@ import {
 } from "../api/client";
 
 const pollInterval = 2000;
+const recoveryPollLimit = 15;
 
 export interface ScanContextValue {
   scan: Scan | null;
@@ -56,6 +57,8 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [watch, setWatch] = useState(0);
   const requestedScanId = useRef<number | null>(null);
   const observedRunningScanId = useRef<number | null>(null);
+  const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
+  const recoveryPollsLeft = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -70,11 +73,37 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         setScan(current);
         setPollError(null);
       } catch (failure) {
-        if (alive && !isAborted(failure)) setPollError(errorMessage(failure));
+        if (alive && !isAborted(failure)) {
+          setPollError(errorMessage(failure));
+          if (
+            recoveryBaselineScanId.current !== undefined &&
+            recoveryPollsLeft.current > 0
+          ) {
+            recoveryPollsLeft.current -= 1;
+            timer = setTimeout(() => void tick(), pollInterval);
+          }
+        }
         return;
       }
 
-      if (current === null) return;
+      const recoveryBaseline = recoveryBaselineScanId.current;
+      const recovered =
+        recoveryBaseline !== undefined &&
+        current !== null &&
+        (current.state === "running" || current.id !== recoveryBaseline);
+      if (recovered) {
+        recoveryBaselineScanId.current = undefined;
+        recoveryPollsLeft.current = 0;
+        setStartError(null);
+      }
+
+      if (current === null) {
+        if (recoveryBaseline !== undefined && recoveryPollsLeft.current > 0) {
+          recoveryPollsLeft.current -= 1;
+          timer = setTimeout(() => void tick(), pollInterval);
+        }
+        return;
+      }
       if (current.state === "running") {
         observedRunningScanId.current = current.id;
         timer = setTimeout(() => void tick(), pollInterval);
@@ -83,11 +112,15 @@ export function ScanProvider({ children }: { children: ReactNode }) {
 
       const completedObservedScan = observedRunningScanId.current === current.id;
       const completedRequestedScan = requestedScanId.current === current.id;
-      if (completedObservedScan || completedRequestedScan) {
+      if (completedObservedScan || completedRequestedScan || recovered) {
         setFinished(current);
       }
       if (completedObservedScan) observedRunningScanId.current = null;
       if (completedRequestedScan) requestedScanId.current = null;
+      if (!recovered && recoveryBaseline !== undefined && recoveryPollsLeft.current > 0) {
+        recoveryPollsLeft.current -= 1;
+        timer = setTimeout(() => void tick(), pollInterval);
+      }
     };
 
     void tick();
@@ -99,8 +132,11 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   }, [watch]);
 
   const start = useCallback(() => {
+    const baselineScanId = scan?.id ?? null;
     setStarting(true);
     setStartError(null);
+    recoveryBaselineScanId.current = undefined;
+    recoveryPollsLeft.current = 0;
     void (async () => {
       try {
         const started = await startScan();
@@ -116,11 +152,14 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         setWatch((value) => value + 1);
       } catch (failure) {
         setStartError(`取り込みを始められません: ${errorMessage(failure)}`);
+        recoveryBaselineScanId.current = baselineScanId;
+        recoveryPollsLeft.current = recoveryPollLimit;
+        setWatch((value) => value + 1);
       } finally {
         setStarting(false);
       }
     })();
-  }, []);
+  }, [scan?.id]);
 
   const error = startError ?? pollError;
 

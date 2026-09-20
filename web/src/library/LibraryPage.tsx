@@ -25,6 +25,7 @@ import {
 } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
+import Button from "../ui/Button";
 import LibraryToolbar, { sortOptions, type WatchFilter } from "./LibraryToolbar";
 import SelectionBar from "./SelectionBar";
 import {
@@ -147,10 +148,20 @@ export default function LibraryPage() {
 
   // --- 一覧の取得（戻ってきたときはスナップショットから復元） ---
   const [restored] = useState(() => takeListSnapshot({ query, sort }));
-  const { items, total, cursor, hasMore, loading, loadingMore, error, loadMore, reload } =
-    useVideos(sort, query, restored);
+  const {
+    items,
+    total,
+    cursor,
+    hasMore,
+    loading,
+    loadingMore,
+    error,
+    loadMore,
+    retryLoadMore,
+    reload,
+  } = useVideos(sort, query, restored);
 
-  // --- 絞り込み（読み込み済みの範囲に対して手元で行う） ---
+  // --- 絞り込み（有効な間は残ページも読み、ライブラリ全体を対象にする） ---
   const [watch, setWatch] = useState<WatchFilter>("all");
   const [playableOnly, setPlayableOnly] = useState(false);
   const filtered = useMemo(
@@ -163,6 +174,12 @@ export default function LibraryPage() {
     [items, playableOnly, watch],
   );
   const filtering = watch !== "all" || playableOnly;
+
+  useEffect(() => {
+    if (filtering && hasMore && !loading && !loadingMore && error === null) {
+      loadMore();
+    }
+  }, [error, filtering, hasMore, loadMore, loading, loadingMore]);
 
   // --- 選択 ---
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -306,14 +323,19 @@ export default function LibraryPage() {
           <NoMatches query={query} onClear={clearQuery} />
         ))}
 
-      {!loading && !empty && filtered.length === 0 && (
-        <NoFilterMatches
-          onReset={() => {
-            setWatch("all");
-            setPlayableOnly(false);
-          }}
-        />
-      )}
+      {!loading &&
+        !loadingMore &&
+        !hasMore &&
+        error === null &&
+        !empty &&
+        filtered.length === 0 && (
+          <NoFilterMatches
+            onReset={() => {
+              setWatch("all");
+              setPlayableOnly(false);
+            }}
+          />
+        )}
 
       <div ref={list} onClick={saveSnapshot}>
         {view === "grid" ? (
@@ -361,7 +383,12 @@ export default function LibraryPage() {
       </div>
 
       {error !== null && items.length > 0 && (
-        <p className="text-center text-sm text-danger">続きを取得できません: {error}</p>
+        <div className="flex items-center justify-center gap-2 text-sm text-danger">
+          <p>続きを取得できません: {error}</p>
+          <Button size="sm" onClick={retryLoadMore}>
+            再試行
+          </Button>
+        </div>
       )}
 
       {!loading && filtered.length > 0 && (

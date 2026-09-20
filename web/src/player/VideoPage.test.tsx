@@ -44,10 +44,13 @@ function renderPage(id = "7", from?: string) {
 
 describe("VideoPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
+  const sendBeaconMock = vi.fn(() => true);
 
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("navigator", { sendBeacon: sendBeaconMock });
     fetchMock.mockResolvedValue(json(video));
+    sendBeaconMock.mockClear();
   });
 
   afterEach(() => {
@@ -128,5 +131,21 @@ describe("VideoPage", () => {
       expect(progressCalls).toHaveLength(2);
       expect(progressCalls[1]?.[1]?.body).toBe(JSON.stringify({ positionMs: 242_000 }));
     });
+  });
+
+  it("DOM ref が外れた後のアンマウントでも最後の再生位置を送る", async () => {
+    const page = renderPage();
+    await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+    const player = document.querySelector("video");
+    if (player === null) throw new Error("video が描画されていません");
+
+    player.currentTime = 12.345;
+    fireEvent.timeUpdate(player);
+    page.unmount();
+
+    expect(sendBeaconMock).toHaveBeenCalledWith(
+      "/api/videos/7/progress",
+      JSON.stringify({ positionMs: 12_345 }),
+    );
   });
 });

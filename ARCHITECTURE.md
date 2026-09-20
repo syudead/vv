@@ -90,18 +90,17 @@ holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.
 
-`web/src/layout/` holds the shell — the collapsible sidebar and the frame that
-puts it around a screen — and is kept apart from `web/src/components/`
-because the two change for different reasons. Wherever the shell is used it has
-the same shape and knows nothing about what the screen puts inside it, while
-components are what a screen arranges. Only the library list is wrapped in it:
-`App.tsx` puts `AppShell` around the `/` route alone, and the playback screen
+`web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
+frame around a screen. `web/src/library/` and `web/src/player/` own their
+respective product flows, while reusable primitives live in `web/src/ui/` and
+formatting helpers live in `web/src/lib/`. Only the library list uses the shell:
+`app/App.tsx` puts `AppShell` around the `/` route alone, and the playback screen
 (`/videos/:id`) deliberately gets no sidebar, because it is a
 two-pane screen of its own (R-505). Keeping that choice to the one routing
 decision is what lets the shell stay ignorant of which screen it is framing.
-The shell exposes only the library as a route. "Recently added" and "In
-progress" are non-interactive orientation labels until backing routes exist;
-`web/src/layout/placeholders.test.tsx` keeps that boundary explicit.
+The shell exposes only the library as a route. "Recently added", "In progress",
+and settings show a preparation notice until backing routes exist; shell tests
+keep that boundary explicit.
 
 The shell does not take ownership of scrolling. The sidebar and the toolbar are
 fixed or sticky, and the document (the window) keeps scrolling the content as

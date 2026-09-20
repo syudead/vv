@@ -65,7 +65,32 @@ describe("ScanProvider", () => {
     const currentCalls = fetchMock.mock.calls.filter(
       ([input]) => String(input) === "/api/scans/current",
     );
-    expect(currentCalls).toHaveLength(1);
+    expect(currentCalls.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("開始応答を失っても新しい取り込みの完了を追跡する", async () => {
+    let currentCalls = 0;
+    fetchMock.mockImplementation((input, init) => {
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          json({ code: "internal", message: "応答を失いました" }, 500),
+        );
+      }
+      currentCalls += 1;
+      return Promise.resolve(json(scan(currentCalls === 1 ? 1 : 2, "done")));
+    });
+    const user = userEvent.setup();
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    await waitFor(() => expect(currentCalls).toBe(1));
+
+    await user.click(screen.getByRole("button", { name: "開始" }));
+
+    expect(await screen.findByText("完了: 2")).toBeDefined();
+    expect(screen.getByText("エラーなし")).toBeDefined();
   });
 
   it("初回状態取得前に開始して高速完了した取り込みを通知する", async () => {

@@ -91,6 +91,8 @@ export default function Sidebar({
       )}
       <aside
         aria-label="メインナビゲーション"
+        aria-hidden={drawer && !open ? true : undefined}
+        inert={drawer && !open ? true : undefined}
         className={cn(
           "fixed top-navbar bottom-0 left-0 z-40 flex flex-col border-r border-border bg-bg transition-transform duration-200 ease-out-quart",
           mode === "expanded" && "w-sidebar",

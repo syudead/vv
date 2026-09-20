@@ -140,6 +140,46 @@ describe("LibraryPage", () => {
     expect(screen.getByRole("button", { name: "再試行" })).toBeDefined();
   });
 
+  it("絞り込み時は後続ページも取得して全件から探す", async () => {
+    let listCalls = 0;
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      listCalls += 1;
+      return Promise.resolve(
+        json(
+          listCalls === 1
+            ? {
+                items: [video(1)],
+                total: 2,
+                nextCursor: "cursor-1",
+              }
+            : {
+                items: [
+                  video(2, {
+                    progress: {
+                      positionMs: 30_000,
+                      completed: false,
+                      updatedAt: "",
+                    },
+                  }),
+                ],
+                total: 2,
+              },
+        ),
+      );
+    });
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+
+    await user.click(screen.getByRole("button", { name: "絞り込み" }));
+    await user.click(screen.getByRole("radio", { name: "視聴途中" }));
+
+    expect(await screen.findByRole("link", { name: "動画 2" })).toBeDefined();
+    expect(listCalls).toBe(2);
+  });
+
   it("選択すると選択バーが出て Esc で消える", async () => {
     const user = userEvent.setup();
     renderLibrary();

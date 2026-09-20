@@ -47,6 +47,7 @@ export default function VideoPage() {
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lastSent = useRef<number>(-1);
+  const latestPositionMs = useRef<number | null>(null);
 
   useEffect(() => {
     if (!Number.isSafeInteger(id) || id < 1) {
@@ -92,8 +93,15 @@ export default function VideoPage() {
 
   const flushProgress = useCallback(() => {
     const element = videoRef.current;
-    if (element !== null) send(element.currentTime * 1000, false, true);
+    if (element === null) return;
+    latestPositionMs.current = element.currentTime * 1000;
+    send(latestPositionMs.current, false, true);
   }, [send]);
+
+  const rememberProgress = useCallback(() => {
+    const element = videoRef.current;
+    if (element !== null) latestPositionMs.current = element.currentTime * 1000;
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -106,17 +114,20 @@ export default function VideoPage() {
   }, [send]);
 
   useEffect(() => {
-    const onHidden = () => {
+    const sendLatest = () => {
       const element = videoRef.current;
-      if (document.visibilityState === "hidden" && element !== null) {
-        send(element.currentTime * 1000, true);
-      }
+      if (element !== null) latestPositionMs.current = element.currentTime * 1000;
+      if (latestPositionMs.current !== null) send(latestPositionMs.current, true);
+    };
+    const onHidden = () => {
+      if (document.visibilityState === "hidden") sendLatest();
     };
     document.addEventListener("visibilitychange", onHidden);
+    window.addEventListener("pagehide", sendLatest);
     return () => {
       document.removeEventListener("visibilitychange", onHidden);
-      const element = videoRef.current;
-      if (element !== null) send(element.currentTime * 1000, true);
+      window.removeEventListener("pagehide", sendLatest);
+      sendLatest();
     };
   }, [send]);
 
@@ -132,6 +143,7 @@ export default function VideoPage() {
       return;
     }
     element.currentTime = progress.positionMs / 1000;
+    latestPositionMs.current = progress.positionMs;
     setResumedFrom(progress.positionMs);
   }, [video]);
 
@@ -187,6 +199,7 @@ export default function VideoPage() {
               preload="metadata"
               poster={video.thumbnailUrl}
               onLoadedMetadata={onLoaded}
+              onTimeUpdate={rememberProgress}
               onPause={flushProgress}
               onEnded={flushProgress}
               onError={onError}
