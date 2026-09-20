@@ -60,7 +60,7 @@ src/
   library/      LibraryPage, LibraryToolbar, VideoGrid, VideoCard, SelectionBar, states
   player/       VideoPage, VideoMeta, FileDetails
   api/          既存維持
-  preferences/  既存維持（density は 3 段のまま）
+  preferences/  表示形式と4段ズームを保持
   lib/          format.ts（尺・サイズ・相対日時）
 ```
 

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,6 +23,9 @@ function Harness() {
       <button type="button" onClick={value.start}>
         開始
       </button>
+      <button type="button" onClick={value.refresh}>
+        更新
+      </button>
       <p>{value.error ?? "エラーなし"}</p>
       <p>完了: {value.finished?.id ?? "なし"}</p>
     </>
@@ -37,6 +40,7 @@ describe("ScanProvider", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -110,6 +114,47 @@ describe("ScanProvider", () => {
     await waitFor(() => expect(currentCalls).toBe(1));
 
     await user.click(screen.getByRole("button", { name: "開始" }));
+
+    expect(await screen.findByText("完了: 2")).toBeDefined();
+  });
+
+  it("通常の取り込み追跡は一時的な状態取得失敗後も再開する", async () => {
+    vi.useFakeTimers();
+    let currentCalls = 0;
+    fetchMock.mockImplementation(() => {
+      currentCalls += 1;
+      if (currentCalls === 1) return Promise.resolve(json(scan(3, "running")));
+      if (currentCalls === 2) return Promise.reject(new Error("一時的な失敗"));
+      return Promise.resolve(json(scan(3, "done")));
+    });
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    await act(async () => Promise.resolve());
+
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(currentCalls).toBe(2);
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+
+    expect(screen.getByText("完了: 3")).toBeDefined();
+    vi.useRealTimers();
+  });
+
+  it("再確認で別タブが完了した取り込みを通知する", async () => {
+    let currentId = 1;
+    fetchMock.mockImplementation(() => Promise.resolve(json(scan(currentId, "done"))));
+    const user = userEvent.setup();
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    await screen.findByText("完了: なし");
+
+    currentId = 2;
+    await user.click(screen.getByRole("button", { name: "更新" }));
 
     expect(await screen.findByText("完了: 2")).toBeDefined();
   });

@@ -27,6 +27,7 @@ export interface ScanContextValue {
   starting: boolean;
   running: boolean;
   start: () => void;
+  refresh: () => void;
   /**
    * 「終わったのを見た」スキャン。初回表示で既に終わっていたものは含めない
    * （利用者が待っていたものではないため、一覧を勝手に入れ替えない）。
@@ -59,6 +60,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const observedRunningScanId = useRef<number | null>(null);
   const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
   const recoveryPollsLeft = useRef(0);
+  const lastSeenScanId = useRef<number | null | undefined>(undefined);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -70,16 +72,30 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       try {
         current = await getCurrentScan(controller.signal);
         if (!alive) return;
+        const previousScanId = lastSeenScanId.current;
+        lastSeenScanId.current = current?.id ?? null;
         setScan(current);
         setPollError(null);
+
+        if (
+          previousScanId !== undefined &&
+          current !== null &&
+          current.id !== previousScanId &&
+          current.state !== "running"
+        ) {
+          setFinished(current);
+        }
       } catch (failure) {
         if (alive && !isAborted(failure)) {
           setPollError(errorMessage(failure));
           if (
-            recoveryBaselineScanId.current !== undefined &&
-            recoveryPollsLeft.current > 0
+            observedRunningScanId.current !== null ||
+            (recoveryBaselineScanId.current !== undefined &&
+              recoveryPollsLeft.current > 0)
           ) {
-            recoveryPollsLeft.current -= 1;
+            if (recoveryBaselineScanId.current !== undefined) {
+              recoveryPollsLeft.current -= 1;
+            }
             timer = setTimeout(() => void tick(), pollInterval);
           }
         }
@@ -161,6 +177,8 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     })();
   }, [scan?.id]);
 
+  const refresh = useCallback(() => setWatch((value) => value + 1), []);
+
   const error = startError ?? pollError;
 
   const value = useMemo<ScanContextValue>(
@@ -170,9 +188,10 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       starting,
       running: starting || scan?.state === "running",
       start,
+      refresh,
       finished,
     }),
-    [error, finished, scan, start, starting],
+    [error, finished, refresh, scan, start, starting],
   );
 
   return <ScanContext.Provider value={value}>{children}</ScanContext.Provider>;

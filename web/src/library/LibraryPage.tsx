@@ -236,6 +236,7 @@ export default function LibraryPage() {
   // --- 取り込み完了で一覧を入れ替える ---
   const scan = useScan();
   const knownScanId = useRef(restored?.scanId);
+  useEffect(() => scan.refresh(), [scan.refresh]);
   useEffect(() => {
     const finished = scan.finished;
     if (finished === null || knownScanId.current === finished.id) return;
