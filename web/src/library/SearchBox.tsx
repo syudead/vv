@@ -71,8 +71,8 @@ export default function SearchBox({ className }: { className?: string }) {
   };
 
   return (
-    <div className={cn("group relative flex h-10 w-full items-center", className)}>
-      <Search className="pointer-events-none absolute left-3.5 size-4 text-fg-subtle transition-colors group-focus-within:text-fg-muted" />
+    <div className={cn("group relative flex h-9 w-full items-center", className)}>
+      <Search className="pointer-events-none absolute left-3 size-4 text-fg-subtle transition-colors group-focus-within:text-fg-muted" />
       <input
         ref={field}
         type="search"
@@ -91,9 +91,9 @@ export default function SearchBox({ className }: { className?: string }) {
         autoComplete="off"
         spellCheck={false}
         className={cn(
-          "h-full w-full rounded-full border border-border bg-surface pr-10 pl-10 text-sm text-fg",
-          "placeholder:text-fg-subtle transition-[border-color,background-color] duration-150",
-          "hover:border-border-strong focus:border-accent focus:bg-bg focus:outline-none",
+          "h-full w-full rounded-md border border-border bg-field pr-9 pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
+          "placeholder:text-fg-subtle transition-[border-color,box-shadow] duration-150",
+          "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft",
           "[&::-webkit-search-cancel-button]:hidden",
         )}
       />
@@ -102,13 +102,13 @@ export default function SearchBox({ className }: { className?: string }) {
           type="button"
           onClick={clear}
           aria-label="検索語をクリア"
-          className="absolute right-2 flex size-7 items-center justify-center rounded-full text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+          className="absolute right-1.5 flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
         >
           <X className="size-4" />
         </button>
       )}
       {input === "" && (
-        <kbd className="pointer-events-none absolute right-3.5 hidden rounded-sm border border-border px-1.5 font-sans text-[11px] text-fg-subtle sm:block">
+        <kbd className="pointer-events-none absolute right-3 hidden rounded-sm border border-border-strong px-1.5 font-sans text-[11px] text-fg-subtle sm:block">
           /
         </kbd>
       )}

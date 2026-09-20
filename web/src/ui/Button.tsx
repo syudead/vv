@@ -11,16 +11,16 @@ const base =
   "disabled:pointer-events-none disabled:opacity-50 [&>svg]:size-4";
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-accent-fg hover:bg-accent-hover active:bg-accent",
+  primary: "bg-accent text-accent-fg hover:bg-accent-hover active:bg-accent-hover",
   secondary:
-    "bg-surface text-fg border border-border hover:bg-surface-hover hover:border-border-strong active:bg-surface",
-  ghost: "text-fg-muted hover:bg-surface-hover hover:text-fg active:bg-surface",
-  danger: "bg-danger-soft text-danger hover:bg-danger/25",
+    "bg-elevated text-fg hover:bg-hover-wash hover:bg-blend-lighten active:bg-active-wash",
+  ghost: "text-fg hover:bg-hover-wash active:bg-active-wash",
+  danger: "bg-danger-strong text-accent-fg hover:bg-danger-strong/80",
 };
 
 const sizes: Record<ButtonSize, string> = {
-  sm: "h-8 px-3 text-xs",
-  md: "h-9 px-3.5 text-sm",
+  sm: "h-8 px-2.5 text-xs",
+  md: "h-9 px-3 text-sm",
   lg: "h-10 px-4 text-sm",
 };
 

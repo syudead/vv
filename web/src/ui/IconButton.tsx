@@ -35,11 +35,11 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
       aria-label={label}
       data-active={active || undefined}
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full transition-colors duration-150 select-none [&>svg]:size-5",
+        "inline-flex shrink-0 items-center justify-center rounded-md transition-colors duration-150 select-none [&>svg]:size-4",
         "disabled:pointer-events-none disabled:opacity-50",
         variant === "ghost"
-          ? "text-fg-muted hover:bg-surface-hover hover:text-fg active:bg-surface data-active:bg-surface-hover data-active:text-fg"
-          : "bg-surface text-fg border border-border hover:bg-surface-hover hover:border-border-strong",
+          ? "text-fg hover:bg-hover-wash active:bg-active-wash data-active:bg-active-wash"
+          : "bg-elevated text-fg hover:bg-hover-wash active:bg-active-wash data-active:bg-active-wash",
         sizes[size],
         className,
       )}

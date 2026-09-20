@@ -18,22 +18,18 @@ function EmptyState({
   tone?: "neutral" | "danger";
 }) {
   return (
-    <div className="flex flex-col items-center justify-center px-6 py-24 text-center animate-fade-in">
-      <div
+    <div className="mx-auto flex w-full max-w-lg flex-col items-center justify-center px-6 py-20 text-center animate-fade-in">
+      <Icon
         className={
-          "mb-5 flex size-16 items-center justify-center rounded-2xl " +
-          (tone === "danger" ? "bg-danger-soft text-danger" : "bg-surface text-fg-muted")
+          "mb-4 size-10 " + (tone === "danger" ? "text-danger" : "text-fg-subtle")
         }
-      >
-        <Icon className="size-7" strokeWidth={1.5} />
-      </div>
-      <h2 className="text-lg font-semibold tracking-tight text-fg">{title}</h2>
+        strokeWidth={1.5}
+      />
+      <h2 className="text-lg font-semibold text-fg">{title}</h2>
       {description !== undefined && (
-        <p className="mt-1.5 max-w-md text-sm text-fg-muted text-balance">
-          {description}
-        </p>
+        <p className="mt-1.5 text-sm text-fg-muted text-balance">{description}</p>
       )}
-      {action !== undefined && <div className="mt-6 flex gap-2">{action}</div>}
+      {action !== undefined && <div className="mt-5 flex gap-2">{action}</div>}
     </div>
   );
 }
@@ -93,15 +89,19 @@ export function LoadFailed({ reason, onRetry }: { reason: string; onRetry: () =>
   );
 }
 
-export function GridSkeleton({ count }: { count: number }) {
+export function CardSkeleton({ count }: { count: number }) {
   return (
     <>
       {Array.from({ length: count }, (_, index) => (
-        <div key={index} className="flex flex-col gap-2.5" aria-hidden="true">
-          <Skeleton className="aspect-video w-full rounded-lg" />
-          <div className="flex flex-col gap-1.5 px-0.5">
+        <div
+          key={index}
+          className="flex flex-col overflow-hidden rounded-md bg-surface"
+          aria-hidden="true"
+        >
+          <Skeleton className="aspect-video w-full rounded-none" />
+          <div className="flex flex-col gap-1.5 px-3 pt-2 pb-3">
             <Skeleton className="h-4 w-4/5" />
-            <Skeleton className="h-3 w-1/3" />
+            <Skeleton className="h-3 w-1/2" />
           </div>
         </div>
       ))}

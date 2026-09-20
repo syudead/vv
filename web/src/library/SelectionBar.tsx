@@ -21,13 +21,13 @@ export default function SelectionBar({
     <div
       role="region"
       aria-label="選択中の操作"
-      className="fixed inset-x-0 bottom-5 z-30 flex justify-center px-4"
+      className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4"
     >
-      <div className="flex h-12 items-center gap-2 rounded-xl bg-elevated pr-1.5 pl-4 shadow-elevated animate-slide-up">
-        <span className="text-sm font-medium text-fg tabular-nums">
+      <div className="flex h-11 items-center gap-2 rounded-md bg-elevated pr-1.5 pl-4 shadow-elevated animate-slide-up">
+        <span className="text-sm text-fg tabular-nums">
           {count.toLocaleString("ja-JP")} 件を選択中
         </span>
-        <span className="mx-1 h-5 w-px bg-border" />
+        <span className="mx-1 h-5 w-px bg-border-strong" />
         <Button variant="ghost" size="sm" onClick={onSelectAll} disabled={count >= total}>
           すべて選択
         </Button>

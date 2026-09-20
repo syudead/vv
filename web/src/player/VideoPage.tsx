@@ -140,10 +140,10 @@ export default function VideoPage() {
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg">
-      <header className="sticky top-0 z-30 flex h-12 shrink-0 items-center bg-linear-to-b from-bg to-bg/0 px-2 sm:px-4">
+      <header className="flex h-navbar shrink-0 items-center bg-navbar px-2 shadow-card sm:px-3">
         <Link
           to={backTo}
-          className="inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm font-medium text-fg-muted transition-colors hover:bg-surface-hover hover:text-fg"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-fg transition-colors hover:bg-hover-wash"
         >
           <ArrowLeft className="size-4" />
           ライブラリ
@@ -151,10 +151,10 @@ export default function VideoPage() {
       </header>
 
       {/* プレイヤー領域。幅いっぱい、高さは画面に収まる範囲で 16:9。 */}
-      <div className="flex w-full justify-center bg-bg px-0 sm:px-6">
-        <div className="relative aspect-video w-full max-w-[calc((100dvh-11rem)*16/9)] overflow-hidden bg-bg sm:rounded-xl sm:bg-surface">
+      <div className="flex w-full justify-center bg-navbar">
+        <div className="relative aspect-video w-full max-w-[calc((100dvh-12rem)*16/9)] overflow-hidden bg-navbar">
           {state.kind === "loading" && (
-            <Skeleton className="absolute inset-0 rounded-none sm:rounded-xl" />
+            <Skeleton className="absolute inset-0 rounded-none" />
           )}
 
           {state.kind === "failed" && (
@@ -183,17 +183,17 @@ export default function VideoPage() {
               poster={video.thumbnailUrl}
               onLoadedMetadata={onLoaded}
               onError={onError}
-              className="absolute inset-0 h-full w-full bg-bg"
+              className="absolute inset-0 h-full w-full bg-navbar"
             />
           )}
         </div>
       </div>
 
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-5 sm:px-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-5 sm:px-6">
         {playbackError !== null && (
           <div
             role="alert"
-            className="flex items-start gap-3 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger animate-fade-in"
+            className="flex items-start gap-3 rounded-md border border-danger-strong px-4 py-3 text-sm text-fg animate-fade-in"
           >
             <AlertCircle className="mt-0.5 size-4 shrink-0" />
             {playbackError}
@@ -232,9 +232,7 @@ function Blocked({
 }) {
   return (
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center animate-fade-in">
-      <div className="flex size-14 items-center justify-center rounded-2xl bg-warning-soft text-warning">
-        <AlertCircle className="size-6" />
-      </div>
+      <AlertCircle className="size-8 text-warning" />
       <h2 className="text-lg font-semibold tracking-tight text-fg">{title}</h2>
       <p className="max-w-md text-sm text-fg-muted text-balance">{description}</p>
       <Link to={backTo} className={buttonClassName("secondary", "md", "mt-2")}>

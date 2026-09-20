@@ -1,11 +1,42 @@
-import { Menu, Play, RefreshCw } from "lucide-react";
-import { Link } from "react-router";
+import { RefreshCw, Settings } from "lucide-react";
+import { Link, NavLink } from "react-router";
 
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
+import { useToast } from "../ui/Toast";
 import Tooltip from "../ui/Tooltip";
+import { navEntries, type NavEntry } from "./navigation";
 import { describeScan, useScan } from "./ScanProvider";
-import SearchBox from "./SearchBox";
+
+function NavItem({ entry }: { entry: NavEntry }) {
+  const toast = useToast();
+  const Icon = entry.icon;
+  const className = (active: boolean) =>
+    cn(
+      "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-fg transition-colors select-none",
+      "hover:bg-hover-wash [&>svg]:size-4",
+      active && "bg-active-wash",
+    );
+
+  if (entry.to === undefined) {
+    return (
+      <button
+        type="button"
+        onClick={() => toast(`「${entry.label}」は準備中です`)}
+        className={className(false)}
+      >
+        <Icon />
+        <span className="hidden sm:inline">{entry.label}</span>
+      </button>
+    );
+  }
+  return (
+    <NavLink to={entry.to} end className={({ isActive }) => className(isActive)}>
+      <Icon />
+      <span className="hidden sm:inline">{entry.label}</span>
+    </NavLink>
+  );
+}
 
 function ScanButton() {
   const scan = useScan();
@@ -23,12 +54,12 @@ function ScanButton() {
         disabled={scan.running}
         aria-label={scan.running ? description : "ライブラリを更新"}
         className={cn(
-          "relative inline-flex h-9 items-center gap-2 rounded-full border px-3 text-sm font-medium transition-colors select-none",
+          "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors select-none",
           scan.error !== null
-            ? "border-danger/40 bg-danger-soft text-danger"
+            ? "bg-danger-soft text-danger"
             : scan.running
-              ? "border-accent/40 bg-accent-soft text-accent-hover"
-              : "border-border bg-surface text-fg-muted hover:border-border-strong hover:bg-surface-hover hover:text-fg",
+              ? "bg-accent-soft text-link"
+              : "text-fg hover:bg-hover-wash active:bg-active-wash",
         )}
       >
         <RefreshCw
@@ -37,7 +68,7 @@ function ScanButton() {
             scan.running && "animate-spin motion-reduce:animate-none",
           )}
         />
-        <span className="hidden sm:inline">
+        <span className="hidden tabular-nums md:inline">
           {scan.running
             ? progress === null
               ? "更新中"
@@ -52,33 +83,29 @@ function ScanButton() {
   );
 }
 
-export default function TopBar({ onMenu }: { onMenu: () => void }) {
+/** TopBar は Stash と同じ「上部ナビバーのみ」の骨格。 */
+export default function TopBar() {
+  const toast = useToast();
   return (
-    <header className="fixed inset-x-0 top-0 z-40 flex h-topbar items-center gap-2 border-b border-border bg-bg/85 px-3 backdrop-blur-md sm:px-4">
-      <div className="flex shrink-0 items-center gap-1">
-        <IconButton label="メニュー" onClick={onMenu} size="lg" tooltip={false}>
-          <Menu />
-        </IconButton>
-        <Link
-          to="/"
-          className="flex h-10 items-center gap-2 rounded-md px-2 text-fg select-none"
-          aria-label="vv ホーム"
-        >
-          <span className="flex size-7 items-center justify-center rounded-md bg-accent text-accent-fg">
-            <Play className="size-3.5 fill-current" />
-          </span>
-          <span className="hidden text-lg font-semibold tracking-tight sm:inline">
-            vv
-          </span>
-        </Link>
-      </div>
+    <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 bg-navbar px-2 shadow-card sm:px-3">
+      <Link
+        to="/"
+        className="mr-2 flex h-8 items-center rounded-md px-2 text-base font-semibold text-fg select-none hover:bg-hover-wash"
+      >
+        vv
+      </Link>
 
-      <div className="flex min-w-0 flex-1 justify-center px-2 sm:px-6">
-        <SearchBox className="max-w-2xl" />
-      </div>
+      <nav aria-label="メインナビゲーション" className="flex items-center gap-0.5">
+        {navEntries.map((entry) => (
+          <NavItem key={entry.id} entry={entry} />
+        ))}
+      </nav>
 
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="ml-auto flex items-center gap-0.5">
         <ScanButton />
+        <IconButton label="設定" size="sm" onClick={() => toast("「設定」は準備中です")}>
+          <Settings />
+        </IconButton>
       </div>
     </header>
   );

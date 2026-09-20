@@ -29,14 +29,14 @@ export default function SegmentedControl<T extends string>({
         if (next !== "") onValueChange(next as T);
       }}
       aria-label={label}
-      className="inline-flex h-9 items-center gap-0.5 rounded-md border border-border bg-surface p-0.5"
+      className="inline-flex h-9 items-center rounded-md bg-elevated"
     >
       {options.map((option) => (
         <Tooltip key={option.value} content={option.label}>
           <ToggleGroup.Item
             value={option.value}
             aria-label={option.label}
-            className="inline-flex h-full w-8 items-center justify-center rounded-sm text-fg-muted transition-colors hover:text-fg data-[state=on]:bg-surface-hover data-[state=on]:text-fg [&>svg]:size-4"
+            className="inline-flex h-full w-9 items-center justify-center rounded-md text-fg transition-colors first:rounded-r-none last:rounded-l-none hover:bg-hover-wash data-[state=on]:bg-active-wash [&>svg]:size-4"
           >
             {option.icon}
           </ToggleGroup.Item>

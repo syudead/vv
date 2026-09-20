@@ -25,7 +25,7 @@ export default function Checkbox({
       onClick={onClick}
       className={cn(
         "inline-flex size-5 shrink-0 items-center justify-center rounded-sm border transition-colors",
-        "border-fg/60 bg-bg/70 backdrop-blur-sm hover:border-fg",
+        "border-fg/70 bg-navbar/70 hover:border-fg",
         "data-[state=checked]:border-accent data-[state=checked]:bg-accent",
         className,
       )}

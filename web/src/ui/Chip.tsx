@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import { cn } from "../lib/cn";
 
 const tones = {
-  neutral: "bg-surface text-fg-muted border border-border",
-  accent: "bg-accent-soft text-accent-hover",
+  neutral: "bg-elevated text-fg",
+  accent: "bg-accent-soft text-link",
   success: "bg-success-soft text-success",
   warning: "bg-warning-soft text-warning",
   danger: "bg-danger-soft text-danger",

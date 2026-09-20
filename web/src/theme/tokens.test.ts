@@ -70,7 +70,7 @@ describe("contrast", () => {
     ["fg-muted", "surface", 4.5],
     ["fg-muted", "elevated", 4.5],
     ["accent-fg", "accent", 4.5],
-    ["accent-hover", "bg", 4.5],
+    ["link", "bg", 4.5],
     ["danger", "bg", 4.5],
     ["warning", "bg", 4.5],
     ["success", "bg", 4.5],

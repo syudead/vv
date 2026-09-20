@@ -85,16 +85,15 @@ describe("LibraryPage", () => {
   it("一覧と件数を出す", async () => {
     renderLibrary();
     expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
-    expect(screen.getByRole("status").textContent).toBe("3 件");
+    expect(screen.getByRole("status").textContent).toBe("3 件（6:00 · 6.0 MB）");
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
   });
 
-  it("検索語は URL から読んで見出しに出す", async () => {
+  it("検索語は URL から読んで件数行に出す", async () => {
     renderLibrary("/?q=abc");
-    expect(await screen.findByRole("heading", { level: 1 })).toHaveProperty(
-      "textContent",
-      "「abc」の検索結果",
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("status").textContent).toMatch(/^「abc」/);
+    });
     await waitFor(() => {
       const calls = fetchMock.mock.calls.map((call) => String(call[0]));
       expect(calls.some((url) => url.includes("query=abc"))).toBe(true);

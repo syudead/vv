@@ -1,16 +1,13 @@
-import { Check, Clock, HardDrive, History, MonitorPlay } from "lucide-react";
+import { Check, History } from "lucide-react";
 
 import type { Video } from "../api/client";
-import {
-  formatBytes,
-  formatDuration,
-  formatRelative,
-  qualityLabel,
-  watchState,
-} from "../lib/format";
+import { formatDateTime, formatResolution, watchState } from "../lib/format";
 import Chip from "../ui/Chip";
 
-/** VideoHeader は題名と、ひと目で分かる要点をチップで並べる。 */
+/**
+ * VideoHeader は Stash の scene-header / scene-subheader と同じ構成。
+ * 大きめの題名、その下に左が日付・右が太字の解像度。
+ */
 export default function VideoHeader({
   video,
   resumedFrom,
@@ -19,51 +16,35 @@ export default function VideoHeader({
   /** 中断位置から再開したときの位置（m:ss）。再開していなければ null。 */
   resumedFrom: string | null;
 }) {
-  const duration = formatDuration(video.durationMs);
-  const quality = qualityLabel(video);
+  const resolution = formatResolution(video);
   const state = watchState(video);
-  const codec = [video.videoCodec, video.audioCodec].filter(Boolean).join(" / ");
 
   return (
-    <div className="flex flex-col gap-3 animate-fade-in">
-      <h1 className="text-lg leading-snug font-semibold tracking-tight text-fg break-all sm:text-xl">
+    <div className="flex flex-col gap-2 animate-fade-in">
+      <h1 className="text-xl leading-snug font-medium text-fg break-all sm:text-2xl">
         {video.title}
       </h1>
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        {quality !== "" && (
-          <Chip>
-            <MonitorPlay />
-            {quality}
-          </Chip>
-        )}
-        {codec !== "" && <Chip>{codec.toUpperCase()}</Chip>}
-        {duration !== "" && (
-          <Chip>
-            <Clock />
-            {duration}
-          </Chip>
-        )}
-        <Chip>
-          <HardDrive />
-          {formatBytes(video.sizeBytes)}
-        </Chip>
-        <span className="mx-1 text-xs text-fg-subtle">
-          追加 {formatRelative(video.addedAt)}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <span className="text-sm text-fg-muted tabular-nums">
+          {formatDateTime(video.addedAt)}
         </span>
-
-        {state === "watched" && (
-          <Chip tone="success" className="ml-auto">
-            <Check strokeWidth={3} />
-            視聴済み
-          </Chip>
-        )}
-        {resumedFrom !== null && (
-          <Chip tone="accent" className="ml-auto">
-            <History />
-            {resumedFrom} から再開
-          </Chip>
-        )}
+        <span className="flex items-center gap-2">
+          {state === "watched" && (
+            <Chip tone="success">
+              <Check strokeWidth={3} />
+              視聴済み
+            </Chip>
+          )}
+          {resumedFrom !== null && (
+            <Chip tone="accent">
+              <History />
+              {resumedFrom} から再開
+            </Chip>
+          )}
+          {resolution !== "" && (
+            <span className="text-sm font-bold text-fg">{resolution}</span>
+          )}
+        </span>
       </div>
     </div>
   );

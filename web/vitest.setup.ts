@@ -27,3 +27,12 @@ afterEach(() => {
 Object.assign(globalThis, {
   jest: { advanceTimersByTime: vi.advanceTimersByTime.bind(vi) },
 });
+
+// Radix Slider は ResizeObserver を要る。jsdom には無いので空の実装を置く。
+if (typeof globalThis.ResizeObserver === "undefined") {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}

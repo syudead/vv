@@ -25,7 +25,7 @@ export function MenuContent({
         sideOffset={6}
         collisionPadding={8}
         className={cn(
-          "z-50 min-w-48 rounded-lg bg-elevated p-1.5 shadow-elevated animate-pop-in origin-(--radix-dropdown-menu-content-transform-origin)",
+          "z-50 min-w-44 rounded-md bg-elevated p-1 shadow-elevated animate-pop-in origin-(--radix-dropdown-menu-content-transform-origin)",
           className,
         )}
       >
@@ -48,8 +48,8 @@ export function MenuSeparator() {
 }
 
 const itemClass =
-  "relative flex h-9 cursor-default items-center gap-2.5 rounded-md px-2.5 text-sm text-fg outline-none select-none " +
-  "data-highlighted:bg-surface-hover data-disabled:opacity-50 [&>svg]:size-4 [&>svg]:text-fg-muted";
+  "relative flex h-8 cursor-default items-center gap-2.5 rounded-sm px-2.5 text-sm text-fg outline-none select-none " +
+  "data-highlighted:bg-hover-wash data-disabled:opacity-50 [&>svg]:size-4 [&>svg]:text-fg-muted";
 
 export function MenuItem({
   children,
