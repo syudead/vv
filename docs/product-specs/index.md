@@ -10,5 +10,5 @@ acceptance criteria. Add links to new specifications below.
 - [Issue handoff SDD（agentを固定しない一工程ずつの実行）](../../specs/003-sdd-loop-harness/spec.md)
 - [原案デザインとの乖離を解消する](../../specs/005-ui-refinement/spec.md)
 - [requirements.md と別担当者承認必須ルールの廃止](../../specs/006-remove-requirements-checklist/spec.md)
-- [メディアフォルダ設定画面](../../specs/007-settings-screen/spec.md)
+- [設定画面](../../specs/007-settings-screen/spec.md)
 - [仕様品質の規則: 要求の縮退を防ぐ](spec-quality.md)
