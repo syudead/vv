@@ -15,14 +15,18 @@ import (
 )
 
 var (
-	ErrScanRunning     = errors.New("取り込みの実行中です")
-	ErrFolderConflict  = errors.New("メディアフォルダが重複または包含しています")
-	ErrVersionConflict = errors.New("メディアフォルダが別の操作で変更されています")
-	ErrInvalidFolder   = errors.New("メディアフォルダとして登録できません")
+	ErrScanRunning       = domain.ErrScanRunning
+	ErrFolderConflict    = domain.ErrFolderConflict
+	ErrVersionConflict   = domain.ErrVersionConflict
+	ErrInvalidFolder     = domain.ErrInvalidMediaFolder
+	ErrUnsupportedFolder = domain.ErrUnsupportedMediaFolder
 )
 
 // NormalizePath returns the canonical lexical form used by every path boundary check.
 func NormalizePath(path string) (string, error) {
+	if path == "" || !filepath.IsAbs(path) {
+		return "", ErrInvalidFolder
+	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalidFolder, err)
@@ -46,6 +50,9 @@ func validateMediaFolder(path string) (string, error) {
 		return "", fmt.Errorf("%w: %v", ErrInvalidFolder, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", ErrUnsupportedFolder
+		}
 		return "", ErrInvalidFolder
 	}
 	resolved, err := filepath.EvalSymlinks(cleaned)
@@ -54,11 +61,11 @@ func validateMediaFolder(path string) (string, error) {
 	}
 	resolved, err = NormalizePath(resolved)
 	if err != nil || !domain.PathWithinRoot(cleaned, resolved) || !domain.PathWithinRoot(resolved, cleaned) {
-		return "", fmt.Errorf("%w: symbolic link", ErrInvalidFolder)
+		return "", fmt.Errorf("%w: symbolic link", ErrUnsupportedFolder)
 	}
 	parent := filepath.Dir(cleaned)
 	if parent == cleaned {
-		return "", fmt.Errorf("%w: filesystem root", ErrInvalidFolder)
+		return "", fmt.Errorf("%w: filesystem root", ErrUnsupportedFolder)
 	}
 	dir, err := os.Open(cleaned)
 	if err != nil {

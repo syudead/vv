@@ -44,7 +44,7 @@ function renderPage(id = "7", from?: string) {
 
 describe("VideoPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
-  const sendBeaconMock = vi.fn(() => true);
+  const sendBeaconMock = vi.fn((_url: string, _data?: BodyInit | null) => true);
 
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
@@ -143,9 +143,11 @@ describe("VideoPage", () => {
     fireEvent.timeUpdate(player);
     page.unmount();
 
-    expect(sendBeaconMock).toHaveBeenCalledWith(
-      "/api/videos/7/progress",
-      JSON.stringify({ positionMs: 12_345 }),
-    );
+    expect(sendBeaconMock).toHaveBeenCalledOnce();
+    const [target, payload] = sendBeaconMock.mock.calls[0] ?? [];
+    expect(target).toBe("/api/videos/7/progress");
+    expect(payload).toBeInstanceOf(Blob);
+    expect((payload as Blob).type).toBe("application/json");
+    expect(await (payload as Blob).text()).toBe(JSON.stringify({ positionMs: 12_345 }));
   });
 });

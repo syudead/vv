@@ -114,6 +114,7 @@ func run() error {
 		Videos:        db,
 		Playback:      db,
 		Scans:         lib,
+		MediaFolders:  db,
 		ThumbnailsDir: cfg.ThumbnailsDir(),
 		Assets:        web.Dist(),
 		Logger:        logger,

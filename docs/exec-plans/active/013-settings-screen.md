@@ -1,6 +1,6 @@
 # 実行計画: 設定画面
 
-- ステータス: 実装中（#67）
+- ステータス: 実装中（#68）
 - 最終更新: 2026-09-21
 - Parent Issue: #62
 - Feature branch: `codex/feature-settings-screen`
@@ -38,13 +38,14 @@ thumbnailを削除しないことも確認する。
 - #67: 旧schemaからのmigrationでvideo ID、location、job、playback progressを維持
 - #67: 重複contentの別location維持、stale job write-back拒否、0 folder scan拒否
 - #67: reporting failureとroot I/O failureでmissing locationを削除しないことを確認
+- #67: PR #73をfeature branchへマージし、全CIとレビュー指摘対応を完了
 
 ## 進捗
 
 - [x] Spec
 - [x] Plan
 - [x] Design
-- [ ] #67
+- [x] #67
 - [ ] #68
 - [ ] #69
 - [ ] 統合検証と`main`向けPR

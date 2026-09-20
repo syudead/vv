@@ -178,7 +178,14 @@ func TestAddMediaFolderRejectsSymbolicLinkComponent(t *testing.T) {
 	}
 	// 末尾は実directoryなのでLstatを通過し、EvalSymlinksによる親componentの
 	// 検証が働くことを確認する。
-	if _, err := db.AddMediaFolder(context.Background(), filepath.Join(link, "child")); !errors.Is(err, ErrInvalidFolder) {
+	if _, err := db.AddMediaFolder(context.Background(), filepath.Join(link, "child")); !errors.Is(err, ErrUnsupportedFolder) {
+		t.Fatalf("error = %v, want ErrUnsupportedFolder", err)
+	}
+}
+
+func TestAddMediaFolderRejectsRelativePath(t *testing.T) {
+	db := migratedDB(t)
+	if _, err := db.AddMediaFolder(context.Background(), filepath.Join("relative", "media")); !errors.Is(err, ErrInvalidFolder) {
 		t.Fatalf("error = %v, want ErrInvalidFolder", err)
 	}
 }

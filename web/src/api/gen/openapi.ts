@@ -148,6 +148,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/media-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 登録済みメディアフォルダを返す */
+        get: operations["listMediaFolders"];
+        put?: never;
+        /** メディアフォルダを1件追加する */
+        post: operations["createMediaFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/media-folders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** メディアフォルダ1件のpathを変更する */
+        put: operations["updateMediaFolder"];
+        post?: never;
+        /** メディアフォルダを1件削除する */
+        delete: operations["deleteMediaFolder"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/directories": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** フォルダ選択用の直下ディレクトリを返す */
+        get: operations["listDirectories"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans/current": {
         parameters: {
             query?: never;
@@ -191,6 +244,34 @@ export interface components {
              * @description ビルド時刻。取得できない場合は省略される
              */
             builtAt?: string;
+        };
+        MediaFolder: {
+            /** Format: int64 */
+            id: number;
+            path: string;
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        CreateMediaFolderRequest: {
+            path: string;
+        };
+        UpdateMediaFolderRequest: {
+            path: string;
+            /** Format: int64 */
+            version: number;
+        };
+        DirectoryEntry: {
+            name: string;
+            path: string;
+        };
+        DirectoryListing: {
+            currentPath?: string;
+            parentPath: string | null;
+            directories: components["schemas"]["DirectoryEntry"][];
         };
         /**
          * @description addedDesc = 追加が新しい順、titleAsc = 題名順
@@ -312,10 +393,30 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description same-originでない操作 */
+        Forbidden: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 現在の状態と競合する操作 */
+        Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
         /** @description 動画の識別子 */
         VideoId: number;
+        /** @description メディアフォルダの識別子 */
+        MediaFolderId: number;
     };
     requestBodies: never;
     headers: never;
@@ -509,6 +610,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -519,7 +621,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
         responses: {
             /** @description 開始した、または実行中のスキャン */
             202: {
@@ -530,6 +636,146 @@ export interface operations {
                     "application/json": components["schemas"]["Scan"];
                 };
             };
+            403: components["responses"]["Forbidden"];
+            /** @description メディアフォルダが未設定 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listMediaFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description id昇順のメディアフォルダ一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaFolder"][];
+                };
+            };
+        };
+    };
+    createMediaFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMediaFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description 作成したメディアフォルダ */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaFolder"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    updateMediaFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description メディアフォルダの識別子 */
+                id: components["parameters"]["MediaFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateMediaFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description 更新後のメディアフォルダ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaFolder"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteMediaFolder: {
+        parameters: {
+            query: {
+                version: number;
+            };
+            header?: never;
+            path: {
+                /** @description メディアフォルダの識別子 */
+                id: components["parameters"]["MediaFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 削除した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listDirectories: {
+        parameters: {
+            query?: {
+                /** @description 列挙する絶対path。省略時はnavigation rootを返す */
+                path?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description directory一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DirectoryListing"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     getCurrentScan: {

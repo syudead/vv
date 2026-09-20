@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,7 +138,15 @@ func do(t *testing.T, handler http.Handler, method, target string) *httptest.Res
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest(method, target, nil))
+	body := ""
+	if method == http.MethodPost || method == http.MethodPut {
+		body = "{}"
+	}
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	if method == http.MethodPost || method == http.MethodPut {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	handler.ServeHTTP(rec, req)
 	return rec
 }
 

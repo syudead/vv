@@ -134,6 +134,24 @@ func (e VideoSort) Valid() bool {
 	}
 }
 
+// CreateMediaFolderRequest defines model for CreateMediaFolderRequest.
+type CreateMediaFolderRequest struct {
+	Path string `json:"path"`
+}
+
+// DirectoryEntry defines model for DirectoryEntry.
+type DirectoryEntry struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// DirectoryListing defines model for DirectoryListing.
+type DirectoryListing struct {
+	CurrentPath *string          `json:"currentPath,omitempty"`
+	Directories []DirectoryEntry `json:"directories"`
+	ParentPath  *string          `json:"parentPath"`
+}
+
 // Error defines model for Error.
 type Error struct {
 	// Code 機械可読なエラー種別
@@ -165,6 +183,15 @@ type Health struct {
 // HealthStatus ok = 保存層まで疎通、degraded = プロセスのみ生存
 type HealthStatus string
 
+// MediaFolder defines model for MediaFolder.
+type MediaFolder struct {
+	CreatedAt time.Time `json:"createdAt"`
+	Id        int64     `json:"id"`
+	Path      string    `json:"path"`
+	UpdatedAt time.Time `json:"updatedAt"`
+	Version   int64     `json:"version"`
+}
+
 // Progress defines model for Progress.
 type Progress struct {
 	Completed  bool      `json:"completed"`
@@ -195,6 +222,12 @@ type Scan struct {
 
 // ScanState defines model for Scan.State.
 type ScanState string
+
+// UpdateMediaFolderRequest defines model for UpdateMediaFolderRequest.
+type UpdateMediaFolderRequest struct {
+	Path    string `json:"path"`
+	Version int64  `json:"version"`
+}
 
 // Video defines model for Video.
 type Video struct {
@@ -258,14 +291,37 @@ type VideoPage struct {
 // VideoSort addedDesc = 追加が新しい順、titleAsc = 題名順
 type VideoSort string
 
+// MediaFolderId defines model for MediaFolderId.
+type MediaFolderId = int64
+
 // VideoId defines model for VideoId.
 type VideoId = int64
+
+// Conflict defines model for Conflict.
+type Conflict = Error
+
+// Forbidden defines model for Forbidden.
+type Forbidden = Error
 
 // InvalidRequest defines model for InvalidRequest.
 type InvalidRequest = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// ListDirectoriesParams defines parameters for ListDirectories.
+type ListDirectoriesParams struct {
+	// Path 列挙する絶対path。省略時はnavigation rootを返す
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
+type DeleteMediaFolderParams struct {
+	Version int64 `form:"version" json:"version"`
+}
+
+// StartScanJSONBody defines parameters for StartScan.
+type StartScanJSONBody = map[string]interface{}
 
 // ListVideosParams defines parameters for ListVideos.
 type ListVideosParams struct {
@@ -288,14 +344,38 @@ type GetVideoThumbnailParams struct {
 	V *string `form:"v,omitempty" json:"v,omitempty"`
 }
 
+// CreateMediaFolderJSONRequestBody defines body for CreateMediaFolder for application/json ContentType.
+type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
+
+// UpdateMediaFolderJSONRequestBody defines body for UpdateMediaFolder for application/json ContentType.
+type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
+
+// StartScanJSONRequestBody defines body for StartScan for application/json ContentType.
+type StartScanJSONRequestBody = StartScanJSONBody
+
 // PutVideoProgressJSONRequestBody defines body for PutVideoProgress for application/json ContentType.
 type PutVideoProgressJSONRequestBody = ProgressUpdate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListDirectories フォルダ選択用の直下ディレクトリを返す
+	// (GET /api/directories)
+	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
 	// GetHealth 稼働状態とビルド情報を返す
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// ListMediaFolders 登録済みメディアフォルダを返す
+	// (GET /api/media-folders)
+	ListMediaFolders(w http.ResponseWriter, r *http.Request)
+	// CreateMediaFolder メディアフォルダを1件追加する
+	// (POST /api/media-folders)
+	CreateMediaFolder(w http.ResponseWriter, r *http.Request)
+	// DeleteMediaFolder メディアフォルダを1件削除する
+	// (DELETE /api/media-folders/{id})
+	DeleteMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId, params DeleteMediaFolderParams)
+	// UpdateMediaFolder メディアフォルダ1件のpathを変更する
+	// (PUT /api/media-folders/{id})
+	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
 	// StartScan 取り込みを開始する
 	// (POST /api/scans)
 	StartScan(w http.ResponseWriter, r *http.Request)
@@ -328,11 +408,140 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
+// ListDirectories operation middleware
+func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListDirectoriesParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListDirectories(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetHealth operation middleware
 func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListMediaFolders operation middleware
+func (siw *ServerInterfaceWrapper) ListMediaFolders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListMediaFolders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateMediaFolder operation middleware
+func (siw *ServerInterfaceWrapper) CreateMediaFolder(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateMediaFolder(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteMediaFolder operation middleware
+func (siw *ServerInterfaceWrapper) DeleteMediaFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id MediaFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteMediaFolderParams
+
+	// ------------- Required query parameter "version" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", r.URL.Query(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "version"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteMediaFolder(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateMediaFolder operation middleware
+func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id MediaFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateMediaFolder(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -689,6 +898,11 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/thumbnail", wrapper.GetVideoThumbnail)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.StartScan)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/media-folders", wrapper.ListMediaFolders)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/media-folders", wrapper.CreateMediaFolder)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.DeleteMediaFolder)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.UpdateMediaFolder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 
 	return m

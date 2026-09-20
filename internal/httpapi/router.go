@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io/fs"
 	"log/slog"
+	"mime"
 	"net/http"
 
 	"github.com/syudead/vv/internal/domain"
@@ -44,6 +45,14 @@ type Scans interface {
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 }
 
+// MediaFolders は設定画面が1件ずつ操作するメディアフォルダ保存先である。
+type MediaFolders interface {
+	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
+	AddMediaFolder(ctx context.Context, path string) (domain.MediaFolder, error)
+	ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64, path string) (domain.MediaFolder, error)
+	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
+}
+
 // Options は経路の組み立てに必要な依存である。
 type Options struct {
 	// Build は稼働中のバイナリを特定するための情報。
@@ -57,6 +66,8 @@ type Options struct {
 	Playback Playback
 	// Scans は取り込みの開始と状態の取得。nil なら該当の経路は 500 を返す。
 	Scans Scans
+	// MediaFolders は登録rootの取得と個別操作。nilなら該当経路は500を返す。
+	MediaFolders MediaFolders
 	// ThumbnailsDir はサムネイルの置き場所。
 	ThumbnailsDir string
 	// Assets は SPA のビルド成果物（web/dist に相当）。
@@ -73,6 +84,7 @@ type server struct {
 	videos        Library
 	playback      Playback
 	scans         Scans
+	mediaFolders  MediaFolders
 	thumbnailsDir string
 	logger        *slog.Logger
 }
@@ -103,11 +115,12 @@ func NewRouter(opts Options) http.Handler {
 		videos:        opts.Videos,
 		playback:      opts.Playback,
 		scans:         opts.Scans,
+		mediaFolders:  opts.MediaFolders,
 		thumbnailsDir: opts.ThumbnailsDir,
 		logger:        logger,
 	}
 
-	return gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
+	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
 		BaseRouter: mux,
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
 			writeJSON(w, http.StatusBadRequest, gen.Error{
@@ -115,6 +128,26 @@ func NewRouter(opts Options) http.Handler {
 				Message: err.Error(),
 			}, logger)
 		},
+	})
+	return srv.mutationBoundary(generated)
+}
+
+func (s *server) mutationBoundary(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			if !s.acceptsSameOrigin(w, r) {
+				return
+			}
+		}
+		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if err != nil || mediaType != "application/json" {
+				s.invalidRequest(w, "Content-Typeはapplication/jsonを指定してください")
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
 	})
 }
 
@@ -160,9 +193,18 @@ const (
 
 // エラーの code は機械可読な種別である（contracts/http-routes.md「エラー表現」）。
 const (
-	codeNotFound       = "not_found"
-	codeInvalidRequest = "invalid_request"
-	codeInternal       = "internal"
+	codeNotFound                    = "not_found"
+	codeInvalidRequest              = "invalid_request"
+	codeInternal                    = "internal"
+	codeForbidden                   = "forbidden"
+	codeInvalidMediaDirectory       = "invalid_media_directory"
+	codeUnsupportedMediaDirectory   = "unsupported_media_directory"
+	codeMediaFolderNotFound         = "media_folder_not_found"
+	codeOverlappingMediaDirectories = "overlapping_media_directories"
+	codeScanInProgress              = "scan_in_progress"
+	codeConflict                    = "conflict"
+	codeMediaFoldersNotConfigured   = "media_folders_not_configured"
+	codeDirectoryUnavailable        = "directory_unavailable"
 )
 
 // writeError は JSON のエラーを書き出す。message は利用者にそのまま提示して

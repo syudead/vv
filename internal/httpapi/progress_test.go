@@ -132,15 +132,11 @@ func TestPutProgressMarksCompletion(t *testing.T) {
 	}
 }
 
-// navigator.sendBeacon は Content-Type を text/plain で送る。離脱時の記録を
-// 取りこぼさないため、双方を受理する（contracts/http-routes.md）。
-func TestPutProgressAcceptsBeaconContentType(t *testing.T) {
+// POST/PUTはJSONだけを受理する。sendBeacon側もJSON Blobを使う。
+func TestPutProgressAcceptsJSONContentType(t *testing.T) {
 	for _, contentType := range []string{
 		"application/json",
-		"text/plain;charset=UTF-8",
-		"text/plain; charset=utf-8",
 		"application/json; charset=utf-8",
-		"", // 指定なし
 	} {
 		playback := newFakePlayback()
 		handler := progressServer(t, playback)
@@ -154,12 +150,12 @@ func TestPutProgressAcceptsBeaconContentType(t *testing.T) {
 
 // 受け付けない Content-Type は誤りにする。
 func TestPutProgressRejectsUnsupportedContentType(t *testing.T) {
-	handler := progressServer(t, newFakePlayback())
-
-	rec := putProgress(t, handler, "/api/videos/1/progress",
-		"application/x-www-form-urlencoded", `positionMs=2000`)
-	if rec.Code == http.StatusOK {
-		t.Error("想定外の Content-Type を受理した")
+	for _, contentType := range []string{"application/x-www-form-urlencoded", "text/plain", ""} {
+		handler := progressServer(t, newFakePlayback())
+		rec := putProgress(t, handler, "/api/videos/1/progress", contentType, `{"positionMs":2000}`)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("Content-Type=%q: status = %d, want 400", contentType, rec.Code)
+		}
 	}
 }
 
