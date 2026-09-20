@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -107,15 +108,6 @@ func run() error {
 		worker.Run(backgroundCtx)
 	}()
 
-	if cfg.ScanOnStart {
-		// 「置くだけで並ぶ」（US1）には自動実行が要る。応答を待たせない
-		// よう、開始だけ行って背後で進める（R-108）。
-		if _, err := lib.StartScan(backgroundCtx); err != nil {
-			// 取り込みが始められなくても、一覧と再生は動く。起動は続ける。
-			logger.Warn("起動時の取り込みを始められませんでした", slog.Any("error", err))
-		}
-	}
-
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:         build,
 		Pinger:        db,
@@ -128,7 +120,20 @@ func run() error {
 		Logger:        logger,
 	})
 
-	if err := serve(cfg, handler, logger); err != nil {
+	onListening := func() {
+		if !cfg.ScanOnStart {
+			return
+		}
+		// 「置くだけで並ぶ」（US1）には自動実行が要る。待ち受け成功後に
+		// 始めることで、ポート競合で起動できない時に running 行だけを
+		// 残さない。
+		if _, err := lib.StartScan(backgroundCtx); err != nil {
+			// 取り込みが始められなくても、一覧と再生は動く。起動は続ける。
+			logger.Warn("起動時の取り込みを始められませんでした", slog.Any("error", err))
+		}
+	}
+
+	if err := serve(cfg, handler, logger, onListening); err != nil {
 		return err
 	}
 
@@ -145,20 +150,34 @@ func run() error {
 //
 // SIGINT / SIGTERM を受けたら新規の接続受付を止め、処理中の要求を猶予時間まで
 // 待ってから終了する。正常終了の終了コードは 0 である。
-func serve(cfg Config, handler http.Handler, logger *slog.Logger) error {
+func serve(
+	cfg Config,
+	handler http.Handler,
+	logger *slog.Logger,
+	onListening func(),
+) error {
 	srv := &http.Server{
 		Addr:              cfg.Addr,
 		Handler:           handler,
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
+	listener, err := net.Listen("tcp", cfg.Addr)
+	if err != nil {
+		return fmt.Errorf("待ち受けに失敗しました (%s): %w", cfg.Addr, err)
+	}
+	defer func() { _ = listener.Close() }()
+
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	listenErr := make(chan error, 1)
+	logger.Info("待ち受けを開始しました", slog.String("addr", cfg.Addr))
+	if onListening != nil {
+		onListening()
+	}
 	go func() {
-		logger.Info("待ち受けを開始しました", slog.String("addr", cfg.Addr))
-		listenErr <- srv.ListenAndServe()
+		listenErr <- srv.Serve(listener)
 	}()
 
 	select {

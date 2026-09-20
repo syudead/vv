@@ -36,6 +36,8 @@ export interface VideosState {
   error: string | null;
   /** loadMore は次のページを読む。無限スクロールの観測点から呼ぶ。 */
   loadMore: () => void;
+  /** retryLoadMore は失敗した続きのページを同じカーソルから再要求する。 */
+  retryLoadMore: () => void;
   /** reload は先頭から読み直す。取り込みのあとに使う。 */
   reload: () => void;
 }
@@ -152,6 +154,11 @@ export function useVideos(
     void fetchPage(cursor, false);
   }, [cursor, fetchPage, hasMore, loading, loadingMore]);
 
+  const retryLoadMore = useCallback(() => {
+    if (loading || loadingMore || cursor === undefined) return;
+    void fetchPage(cursor, false);
+  }, [cursor, fetchPage, loading, loadingMore]);
+
   const reload = useCallback(() => setGeneration((value) => value + 1), []);
 
   return {
@@ -163,6 +170,7 @@ export function useVideos(
     loadingMore,
     error,
     loadMore,
+    retryLoadMore,
     reload,
   };
 }

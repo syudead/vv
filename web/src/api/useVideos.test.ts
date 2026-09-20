@@ -25,6 +25,7 @@ const { useVideos } = await import("./useVideos");
 interface Pending {
   params: ListVideosParams;
   resolve: (page: VideoPage) => void;
+  reject: (reason: unknown) => void;
   aborted: () => boolean;
 }
 
@@ -67,6 +68,7 @@ beforeEach(() => {
     calls.push({
       params,
       resolve: (value) => settle?.(value),
+      reject: (reason) => fail?.(reason),
       aborted: () => params.signal?.aborted === true,
     });
     return promise;
@@ -124,6 +126,26 @@ describe("useVideos（一覧の読み込み）", () => {
     });
 
     expect(calls).toHaveLength(1);
+  });
+
+  it("続きの取得失敗後に同じカーソルから再試行できる", async () => {
+    const { result } = renderHook(() => useVideos("addedDesc", ""));
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2], "cursor-1")));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+
+    await act(async () => calls[1]?.reject(new Error("一時的な失敗")));
+    expect(result.current.error).toBe("一時的な失敗");
+    expect(result.current.hasMore).toBe(false);
+
+    act(() => result.current.retryLoadMore());
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls[2]?.params.cursor).toBe("cursor-1");
+    await act(async () => calls[2]?.resolve(page([3])));
+    expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3]);
+    expect(result.current.error).toBeNull();
   });
 
   it("並び順や検索語が変わったらカーソルを引き継がず先頭から読み直す", async () => {

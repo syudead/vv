@@ -1,191 +1,83 @@
 // @vitest-environment node
-//
-// この検査は DOM を使わない（CSS を読んで計算するだけ）。jsdom では
-// import.meta.url が http の URL になり、隣のファイルを指せない。
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-// 色の定義は web/src/index.css の @theme が唯一の真実である（R-401）。
-// TypeScript 側に値を複製せず、そのファイルを**ファイルとして**読んで計算する
-// （R-405）。取り込み（import）にしないのは、vite.config.ts の css: false が
-// CSS の取り込みを空に差し替えるためで、そもそも描画は要らない。
-const css = readFileSync(new URL("../index.css", import.meta.url), "utf8");
-
 /**
- * themeColors は @theme ブロックの --color-* を取り出す。
- *
- * @theme の外（@layer base など）に同じ名前があっても拾わない。規則の置き場が
- * 1 か所であることが FR-001 の要求で、検査もその 1 か所だけを見る。
+ * 見た目の値は src/index.css の @theme にだけ置く。
+ * 画面側に生の色が散ると、配色を変えるときに取りこぼす。
  */
-function themeColors(source: string): Map<string, string> {
-  const found = new Map<string, string>();
 
-  const at = source.indexOf("@theme");
-  if (at < 0) {
-    return found;
-  }
-  const open = source.indexOf("{", at);
-  if (open < 0) {
-    return found;
-  }
+const root = join(__dirname, "..");
 
-  // 対応する閉じ括弧まで（@theme の中に入れ子が来ても数え違えないようにする）。
-  let depth = 0;
-  let close = -1;
-  for (let i = open; i < source.length; i += 1) {
-    const char = source[i];
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        close = i;
-        break;
-      }
-    }
-  }
-  if (close < 0) {
-    return found;
-  }
-
-  const block = source.slice(open + 1, close);
-  const declaration = /--color-([a-z0-9-]+)\s*:\s*(#[0-9a-fA-F]{6})\s*;/g;
-  for (const match of block.matchAll(declaration)) {
-    const name = match[1];
-    const value = match[2];
-    if (name !== undefined && value !== undefined) {
-      found.set(name, value.toLowerCase());
-    }
-  }
-  return found;
+function walk(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    if (statSync(path).isDirectory()) return name === "gen" ? [] : walk(path);
+    return /\.(tsx?|css)$/.test(name) && !name.includes(".test.") ? [path] : [];
+  });
 }
 
-/** channel は sRGB の 1 成分（0〜255）を線形化する（WCAG 2.1 の定義）。 */
-function channel(value: number): number {
-  const ratio = value / 255;
-  return ratio <= 0.03928 ? ratio / 12.92 : ((ratio + 0.055) / 1.055) ** 2.4;
-}
+const rawColor = /#[0-9a-f]{3,8}\b|\brgba?\(|\bhsla?\(|\boklch\(/i;
 
-/** luminance は #rrggbb の相対輝度を返す。 */
-function luminance(hex: string): number {
-  const red = Number.parseInt(hex.slice(1, 3), 16);
-  const green = Number.parseInt(hex.slice(3, 5), 16);
-  const blue = Number.parseInt(hex.slice(5, 7), 16);
-  return 0.2126 * channel(red) + 0.7152 * channel(green) + 0.0722 * channel(blue);
-}
+describe("design tokens", () => {
+  const files = walk(root).filter((path) => !path.endsWith("index.css"));
 
-/** contrast は 2 色の対比（1〜21）を返す。 */
-function contrast(foreground: string, background: string): number {
-  const first = luminance(foreground);
-  const second = luminance(background);
-  const lighter = Math.max(first, second);
-  const darker = Math.min(first, second);
-  return (lighter + 0.05) / (darker + 0.05);
-}
-
-/**
- * pairs は検査する組である。
- *
- * specs/004-library-ui/contracts/design-tokens.md 2.「対比」の表と、
- * specs/005-ui-refinement/contracts/design-tokens.md 3. が足す 3 行を持つ。
- * **表に無い組は検査されない**ので、トークンを足したら両方に足す。
- * 必要な比は FR-004 / FR-011 による（本文 4.5:1、境界と大きな文字 3:1）。
- *
- * --color-inert はここに**入れない**。005 の契約 4. のとおり、4.5:1 を下回るのが
- * 意図した値だからである（淡く見えることが要求で、FR-011 が対象外としている）。
- * かわりに明暗の順序を下の describe で確かめる。
- */
-const pairs: { foreground: string; background: string; required: number }[] = [
-  { foreground: "body", background: "surface", required: 4.5 },
-  { foreground: "body", background: "surface-raised", required: 4.5 },
-  { foreground: "body", background: "badge", required: 4.5 },
-  { foreground: "muted", background: "surface", required: 4.5 },
-  { foreground: "muted", background: "surface-raised", required: 4.5 },
-  { foreground: "muted", background: "surface-sunken", required: 4.5 },
-  { foreground: "body", background: "surface-sunken", required: 4.5 },
-  { foreground: "accent", background: "surface", required: 4.5 },
-  { foreground: "accent", background: "surface-raised", required: 4.5 },
-  { foreground: "accent-ink", background: "accent", required: 4.5 },
-  { foreground: "danger", background: "danger-surface", required: 4.5 },
-  { foreground: "danger", background: "surface", required: 4.5 },
-  { foreground: "warning", background: "warning-surface", required: 4.5 },
-  { foreground: "warning", background: "surface", required: 4.5 },
-  { foreground: "border", background: "surface", required: 3 },
-  { foreground: "border", background: "surface-raised", required: 3 },
-  { foreground: "focus", background: "surface", required: 3 },
-  { foreground: "focus", background: "surface-raised", required: 3 },
-  { foreground: "accent", background: "surface-sunken", required: 3 },
-
-  // 005 で足す 3 行 — specs/005-ui-refinement/contracts/design-tokens.md 3.
-  // accent-surface は選択中の NavItem の地と、選択中の Tab の下線の周りである。
-  { foreground: "accent", background: "accent-surface", required: 4.5 },
-  { foreground: "body", background: "accent-surface", required: 4.5 },
-  { foreground: "muted", background: "accent-surface", required: 4.5 },
-];
-
-describe("見た目のトークンの対比（FR-004 / SC-006）", () => {
-  const colors = themeColors(css);
-
-  it("@theme から色トークンを読めている", () => {
-    expect(colors.size).toBeGreaterThan(0);
+  it("index.css 以外に生の色を書かない", () => {
+    const offenders = files.filter((path) => rawColor.test(readFileSync(path, "utf8")));
+    expect(offenders.map((path) => path.slice(root.length))).toEqual([]);
   });
 
-  for (const { foreground, background, required } of pairs) {
-    it(`${foreground} / ${background} が ${String(required)}:1 以上である`, () => {
-      const front = colors.get(foreground);
-      const back = colors.get(background);
-
-      // 写し（契約の表）と実体（CSS）のずれを検出する。表に載っているのに
-      // CSS に無いトークンは、検査したつもりで検査できていない状態である。
-      expect(
-        front,
-        `--color-${foreground} が web/src/index.css の @theme にない`,
-      ).toBeDefined();
-      expect(
-        back,
-        `--color-${background} が web/src/index.css の @theme にない`,
-      ).toBeDefined();
-      if (front === undefined || back === undefined) {
-        return;
-      }
-
-      const actual = contrast(front, back);
-      expect(
-        actual,
-        `${foreground}(${front}) / ${background}(${back}) の対比は ` +
-          `${actual.toFixed(2)}:1 で、必要な ${String(required)}:1 に足りない`,
-      ).toBeGreaterThanOrEqual(required);
-    });
-  }
+  it("Tailwind 既定のパレット名を使わない", () => {
+    const palette =
+      /\b(?:bg|text|border|ring|from|to|via|fill|stroke)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}\b/;
+    const offenders = files.filter((path) => palette.test(readFileSync(path, "utf8")));
+    expect(offenders.map((path) => path.slice(root.length))).toEqual([]);
+  });
 });
 
-describe("表示のみの要素の色（FR-011 の対象外 / 005 の契約 4.）", () => {
-  const colors = themeColors(css);
+/** relativeLuminance / contrast は WCAG 2 の定義。 */
+function luminance(hex: string): number {
+  const value = hex.length === 4 ? hex.replace(/[0-9a-f]/gi, (c) => c + c) : hex;
+  const channel = (i: number) => {
+    const c = parseInt(value.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
 
-  /*
-   * --color-inert は対比の下限を持たない。淡く見えること自体が FR-005 の要求で、
-   * 4.5:1 を満たす値にすると要求を満たせないからである。
-   *
-   * ただし片側だけは機械で守れる。値を濃くしすぎて muted（機能する要素の補助
-   * 文言）と見分けが付かなくなる方向は、明暗の順序として検査できる。淡くし
-   * すぎる方向（読めなくなる）は人が quickstart の S3 で確かめる。
-   */
-  it("inert が muted より暗い", () => {
-    const inert = colors.get("inert");
-    const muted = colors.get("muted");
+function contrast(a: string, b: string): number {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
 
-    expect(inert, "--color-inert が web/src/index.css の @theme にない").toBeDefined();
-    expect(muted, "--color-muted が web/src/index.css の @theme にない").toBeDefined();
-    if (inert === undefined || muted === undefined) {
-      return;
-    }
+describe("contrast", () => {
+  const css = readFileSync(join(root, "index.css"), "utf8");
+  const token = (name: string): string => {
+    const match = new RegExp(`--color-${name}:\\s*(#[0-9a-f]{6})`, "i").exec(css);
+    const hex = match?.[1];
+    if (hex === undefined) throw new Error(`--color-${name} が index.css に無い`);
+    return hex;
+  };
 
-    expect(
-      luminance(inert),
-      `inert(${inert}) の相対輝度 ${luminance(inert).toFixed(4)} が ` +
-        `muted(${muted}) の ${luminance(muted).toFixed(4)} 以上になっている。` +
-        "表示のみの要素が、機能する要素の補助文言と見分けが付かなくなる",
-    ).toBeLessThan(luminance(muted));
+  const pairs: [string, string, number][] = [
+    ["fg", "bg", 4.5],
+    ["fg", "surface", 4.5],
+    ["fg", "elevated", 4.5],
+    ["fg-muted", "bg", 4.5],
+    ["fg-muted", "surface", 4.5],
+    ["fg-muted", "elevated", 4.5],
+    ["accent-fg", "accent", 4.5],
+    ["link", "bg", 4.5],
+    ["danger", "bg", 4.5],
+    ["warning", "bg", 4.5],
+    ["success", "bg", 4.5],
+    ["bg", "fg", 4.5],
+  ];
+
+  it.each(pairs)("%s on %s >= %s", (fg, bg, minimum) => {
+    expect(contrast(token(fg), token(bg))).toBeGreaterThanOrEqual(minimum);
   });
 });
