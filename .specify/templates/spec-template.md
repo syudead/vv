@@ -134,5 +134,5 @@
 -->
 
 - [Assumption about target users, e.g., "Users have stable internet connectivity"]
-- [Assumption about data/environment, e.g., "Existing authentication system will be reused"]
-- [Dependency on existing system/service, e.g., "Requires access to the existing user profile API"]
+- [Assumption about the environment the feature runs in, e.g., "Media files stay on storage the server can read directly"]
+- [Dependency on an existing system/service the request already implies, e.g., "Requires access to the existing user profile API"]

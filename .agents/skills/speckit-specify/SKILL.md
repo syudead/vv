@@ -305,13 +305,18 @@ When creating this spec from a user prompt:
 - User types and permissions, where interpretations conflict
 - Security and compliance requirements
 
-**Areas where a default is usually fine** (record it in Assumptions):
+**Areas where a default is usually fine** (record it in Assumptions), as long as
+the default leaves the user's experience, the scope, and the protection of their
+data unchanged:
 
-- Data retention: Industry-standard practices for the domain
-- Performance targets: Standard web/mobile app expectations unless specified
-- Error handling: User-friendly messages with appropriate fallbacks
-- Authentication method: Standard session-based or OAuth2 for web apps
-- Integration patterns: Use project-appropriate patterns (REST/GraphQL for web services, function calls for libraries, CLI args for tools, etc.)
+- Performance targets: standard web/mobile app expectations, when the request
+  implies no budget of its own
+- Error handling: user-friendly messages with appropriate fallbacks
+- Integration patterns: project-appropriate patterns (REST/GraphQL for web
+  services, function calls for libraries, CLI args for tools, etc.)
+
+Data retention and the authentication method are **not** on this list: both
+change the protection of the user's data, so both are questions (Q-6).
 
 ### Success Criteria Guidelines
 
