@@ -14,7 +14,7 @@ afterEach(() => {
   //
   // DOM を使わない検査（対比の検査は node 環境で CSS をファイルとして読む）
   // には localStorage が無いので、有無を見てから片付ける。
-  if (typeof localStorage !== "undefined") {
+  if (typeof localStorage !== "undefined" && typeof localStorage.clear === "function") {
     localStorage.clear();
   }
 });

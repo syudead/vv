@@ -14,7 +14,7 @@ import type { IconName } from "./icons";
  */
 
 /** NavSection は項目が置かれる区画である。並び順は表の順序そのものである。 */
-export type NavSection = "library" | "collection" | "tag" | "tab";
+export type NavSection = "library";
 
 interface NavItemBase {
   /** 表の中で一意。テストが指す名前である */
@@ -56,65 +56,26 @@ export type NavItem = LiveNavItem | InertNavItem;
 export const navItems: readonly NavItem[] = [
   {
     id: "all-videos",
-    label: "すべての動画",
+    label: "ライブラリ",
     icon: "film",
     kind: "live",
     to: "/",
     section: "library",
   },
-  { id: "recent", label: "最近追加", icon: "clock", kind: "inert", section: "library" },
   {
-    id: "favorites",
-    label: "お気に入り",
-    icon: "heart",
+    id: "recent",
+    label: "最近追加",
+    icon: "clock",
     kind: "inert",
     section: "library",
   },
-  { id: "unsorted", label: "未整理", icon: "folder", kind: "inert", section: "library" },
-
   {
-    id: "collection-trip",
-    label: "旅行",
-    icon: "folder",
+    id: "in-progress",
+    label: "視聴途中",
+    icon: "play",
     kind: "inert",
-    section: "collection",
+    section: "library",
   },
-  {
-    id: "collection-live",
-    label: "ライブ",
-    icon: "folder",
-    kind: "inert",
-    section: "collection",
-  },
-  {
-    id: "collection-docs",
-    label: "資料",
-    icon: "folder",
-    kind: "inert",
-    section: "collection",
-  },
-
-  { id: "tag-scenery", label: "風景", icon: "tag", kind: "inert", section: "tag" },
-  { id: "tag-trip", label: "旅行", icon: "tag", kind: "inert", section: "tag" },
-  { id: "tag-sea", label: "海", icon: "tag", kind: "inert", section: "tag" },
-
-  {
-    id: "tab-videos",
-    label: "動画",
-    icon: "film",
-    kind: "live",
-    to: "/",
-    section: "tab",
-  },
-  { id: "tab-images", label: "画像", icon: "grid", kind: "inert", section: "tab" },
-  {
-    id: "tab-collections",
-    label: "コレクション",
-    icon: "folder",
-    kind: "inert",
-    section: "tab",
-  },
-  { id: "tab-tags", label: "タグ", icon: "tag", kind: "inert", section: "tab" },
 ];
 
 /** itemsIn は 1 つの区画の項目を、表の順序のまま返す。 */

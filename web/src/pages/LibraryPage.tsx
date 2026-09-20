@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -16,15 +17,15 @@ import {
 } from "../api/listSnapshot";
 import { useVideos } from "../api/useVideos";
 import DensitySlider from "../components/DensitySlider";
+import PlaybackFilter, { type PlaybackFilterValue } from "../components/PlaybackFilter";
 import ScanStatus from "../components/ScanStatus";
 import SearchInput from "../components/SearchInput";
+import SelectionBar from "../components/SelectionBar";
 import Select from "../components/Select";
 import Skeleton from "../components/Skeleton";
 import StateNotice from "../components/StateNotice";
 import Toolbar from "../components/Toolbar";
 import VideoCard from "../components/VideoCard";
-import { usePublishVideoCount } from "../layout/AppShell";
-import { headerHeight } from "../layout/Header";
 import {
   type Density,
   readViewPreferences,
@@ -45,8 +46,8 @@ const searchDebounceMs = 250;
 
 /** sortLabels は並び順の選択肢である。 */
 const sortLabels: { value: VideoSort; label: string }[] = [
-  { value: "addedDesc", label: "追加が新しい順" },
-  { value: "titleAsc", label: "題名順" },
+  { value: "addedDesc", label: "追加日" },
+  { value: "titleAsc", label: "タイトル" },
 ];
 
 /** skeletonCount は通信中に並べる骨組みの数である（最初の画面がほぼ埋まる数）。 */
@@ -67,7 +68,7 @@ function toSort(value: string | null): VideoSort | undefined {
 }
 
 /**
- * tileMin は密度ごとの最小列幅である（contracts/design-tokens.md 3.）。
+ * tileMin は密度ごとの基準列幅である（contracts/design-tokens.md 3.）。
  *
  * 密度が変えるのはこの 1 つの変数だけで、列の式には触れない。
  */
@@ -80,18 +81,13 @@ const tileMin: Record<Density, string> = {
 /**
  * gridStyle は一覧の格子である（contracts/design-tokens.md 3.）。
  *
- * 列数を JavaScript で計算しない。min(--tile-min, (100% - gap) / 2) を挟むのは、
- * どの画面幅でも列が 1 本にならないことを保証するためで、幅 360px でも 2 列に
- * なり横スクロールが出ない（SC-004）。その結果、狭い画面では 3 つの密度の
- * 見た目が同じになる — これは意図した動作である。
+ * 列数を JavaScript で計算しない。広い画面では基準幅の固定列を左から並べ、
+ * 余白を埋めるためだけにカードを引き伸ばさない。幅 640px 未満は CSS 側で
+ * 等幅の 2 列へ切り替え、横スクロールを出さない（SC-004）。
  */
 function gridStyle(density: Density): CSSProperties {
   return {
     "--tile-min": tileMin[density],
-    "--tile-gap": "1rem",
-    gap: "var(--tile-gap)",
-    gridTemplateColumns:
-      "repeat(auto-fill, minmax(min(var(--tile-min), (100% - var(--tile-gap)) / 2), 1fr))",
   } as CSSProperties;
 }
 
@@ -101,9 +97,9 @@ function gridStyle(density: Density): CSSProperties {
  * 座標ではなく**項目**を覚えるのが要点である。密度を変えれば 1 行の本数が
  * 変わり、同じスクロール座標は別の項目を指す。
  *
- * 基準は 004 ではビューポートの上端（0）だったが、005 ではその上にヘッダーと
- * ツールバーが載る。0 のままだと、ヘッダーの裏に隠れて**見えていない**項目を
- * 「上端に最も近い項目」として覚えてしまう（contracts/layout.md 1.）。
+ * 基準はビューポートの上端（0）ではなく、固定ツールバーの下端である。0 のまま
+ * だと、帯の裏に隠れて**見えていない**項目を「上端に最も近い項目」として
+ * 覚えてしまう（contracts/layout.md 1.）。
  */
 function topmostId(
   list: HTMLUListElement | null,
@@ -236,16 +232,10 @@ export default function LibraryPage() {
   const list = useRef<HTMLUListElement | null>(null);
   const bar = useRef<HTMLDivElement | null>(null);
 
-  // fixedBottom は画面に固定されている領域の下端（px）である
-  // （contracts/layout.md 1.「固定領域の下端」）。
-  //
-  //     固定領域の下端 = --size-header + ツールバーの実測高
-  //
-  // 帯は狭い画面で折り返して高くなるので**実測**で取る。ヘッダーの分を足すのは
-  // 005 で帯がヘッダーの下に粘るようになったためで、足さないと戻した項目が
-  // ヘッダーの裏に 56px ぶん隠れる（R-501 の「1 つの例外」）。
+  // fixedBottom は画面上部に固定されたツールバーの下端である。
+  // 狭い画面では折り返して高さが変わるため、固定値ではなく実測する。
   const fixedBottom = useCallback(
-    () => headerHeight() + (bar.current?.getBoundingClientRect().height ?? 0),
+    () => bar.current?.getBoundingClientRect().height ?? 0,
     [],
   );
 
@@ -298,28 +288,65 @@ export default function LibraryPage() {
   const { items, total, cursor, hasMore, loading, loadingMore, error, loadMore, reload } =
     useVideos(sort, query, restored);
 
-  // 総件数をサイドバーの「すべての動画」へ届ける（T021）。ここは**公開する
-  // だけ**で、どこにどう出るかは骨格（AppShell）が決める。
-  //
-  // **`total` をそのまま公開しない。** useVideos は total を 0 で初期化し、
-  // 取り直すあいだも前の値を消さないので、total だけを見ると初回に「0 本」、
-  // 絞り込みの最中に前の件数が出る。どちらも嘘であり、同じ場面で帯が
-  // 「読み込み中…」と出しているのとも食い違う（004 の FR-008）。
-  //
-  // 件数が嘘になる場面は 2 つある。どちらも undefined に倒す。
-  //
-  // 1. `loading` — 最初の 1 ページを待っている、または取り直しの最中
-  // 2. `error !== null && items.length === 0` — 取得に失敗した。失敗しても
-  //    useVideos は total を書き換えないので、保持された前の件数（初回なら
-  //    初期値の 0）が残る。一覧がエラーを出している横でサイドバーが「12」と
-  //    言う状態になる
-  //
-  // 2 に `items.length === 0` が要る。**続きのページだけが失敗した場合は、
-  // すでに読めている一覧も総件数も有効**だからである。そこまで隠すと、読めて
-  // いる事実まで取り下げることになる。
-  usePublishVideoCount(
-    loading || (error !== null && items.length === 0) ? undefined : total,
+  const [playbackFilter, setPlaybackFilter] = useState<PlaybackFilterValue>("all");
+  const filteredItems = useMemo(
+    () =>
+      items.filter((video) => {
+        const progress = video.progress;
+        switch (playbackFilter) {
+          case "unwatched":
+            return (
+              progress === undefined || (!progress.completed && progress.positionMs <= 0)
+            );
+          case "inProgress":
+            return (
+              progress !== undefined && !progress.completed && progress.positionMs > 0
+            );
+          case "watched":
+            return progress?.completed === true;
+          case "all":
+            return true;
+        }
+      }),
+    [items, playbackFilter],
   );
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+
+  const changeSelection = useCallback((id: number, selected: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (selected) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+
+  useEffect(() => {
+    const visibleIds = new Set(filteredItems.map((item) => item.id));
+    setSelectedIds((current) => {
+      const next = new Set([...current].filter((id) => visibleIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [filteredItems]);
+
+  useEffect(() => {
+    if (selectedIds.size === 0) {
+      return;
+    }
+    const clearFromEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        clearSelection();
+      }
+    };
+    document.addEventListener("keydown", clearFromEscape);
+    return () => document.removeEventListener("keydown", clearFromEscape);
+  }, [clearSelection, selectedIds.size]);
 
   // 戻したいスクロール位置。項目を描いたあとに 1 回だけ使う。
   const pendingScroll = useRef(restored?.scrollY);
@@ -455,6 +482,7 @@ export default function LibraryPage() {
             options={sortLabels}
           />
         }
+        filter={<PlaybackFilter value={playbackFilter} onChange={setPlaybackFilter} />}
         density={<DensitySlider value={density} onChange={changeDensity} />}
         scan={<ScanStatus onFinished={onScanFinished} />}
         count={
@@ -463,21 +491,20 @@ export default function LibraryPage() {
             （FR-008 / contracts/screen-states.md 1.「件数の文言」）。検索の結果
             が変わったことが読み上げに届くよう、変化を知らせる領域にする（FR-021）。
 
-            005 で変わったのは**置き場所だけ**である（原案どおり帯の右端へ。
-            R-508）。文言も role="status" / aria-live も 004 のまま連れて来る。
+            文言と role="status" / aria-live は従来の契約を保ち、帯の左端へ置く。
           */
-          <p role="status" aria-live="polite" className="text-sm text-muted">
+          <p role="status" aria-live="polite" className="text-xs text-muted">
             {loading
               ? "読み込み中…"
               : query === ""
-                ? `${String(total)} 本`
-                : `「${query}」に一致 ${String(total)} 本`}
+                ? `${(playbackFilter === "all" ? total : filteredItems.length).toLocaleString("ja-JP")}件`
+                : `「${query}」に一致 ${(playbackFilter === "all" ? total : filteredItems.length).toLocaleString("ja-JP")}件`}
           </p>
         }
       />
 
-      {/* 見出し文字は置かない。h1 はロゴ（C2）が持つ（R-508）。 */}
-      <main className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4">
+      <main className="flex flex-col gap-4 px-3 py-4 sm:px-4">
+        <h1 className="sr-only">ライブラリ</h1>
         {error !== null && (
           <StateNotice tone="danger" title="一覧を取得できません" description={error}>
             <button
@@ -497,13 +524,29 @@ export default function LibraryPage() {
             <NoMatches query={query} onClear={clearQuery} />
           ))}
 
+        {!loading && !empty && filteredItems.length === 0 && (
+          <StateNotice
+            tone="info"
+            title="条件に一致する動画はありません"
+            description="再生状態の絞り込みを変更してください。"
+          >
+            <button
+              type="button"
+              onClick={() => setPlaybackFilter("all")}
+              className="min-h-[var(--size-tap)] rounded-control border border-border px-3 text-sm outline-offset-2 hover:bg-body/10 focus-visible:outline-2 focus-visible:outline-focus active:bg-surface-sunken"
+            >
+              絞り込みを解除
+            </button>
+          </StateNotice>
+        )}
+
         {loading ? (
           // 骨組みは 1 つずつ読ませない。伝えたいのは「この領域はいま読み込み中
           // である」という 1 つの事実である（contracts/screen-states.md 3.）。
           <div
             role="status"
             aria-label="読み込み中"
-            className="grid"
+            className="library-grid"
             style={gridStyle(density)}
           >
             {Array.from({ length: skeletonCount }, (_, index) => (
@@ -515,11 +558,11 @@ export default function LibraryPage() {
           // 一覧そのもので受けたほうが、項目の描画（数百件）に手が入らない。
           <ul
             ref={list}
-            className="grid"
+            className="library-grid"
             style={gridStyle(density)}
             onClick={saveSnapshot}
           >
-            {items.map((video) => (
+            {filteredItems.map((video) => (
               <li
                 key={video.id}
                 // 密度を変えたときに戻す先を探すための印である（R-411）。
@@ -533,9 +576,15 @@ export default function LibraryPage() {
                 // 描画が切られる。項目の輪郭は `outline-offset-2`（2px）+ 2px の
                 // 太さで外側 4px に描かれるから、同じ 4px を内側に空けておかないと
                 // 輪郭が端で切れる（contracts/screen-states.md 3.「印の視認」）。
-                className="p-1 [content-visibility:auto] [contain-intrinsic-size:auto_14rem]"
+                className="[content-visibility:auto] [contain-intrinsic-size:auto_14rem]"
               >
-                <VideoCard video={video} backTo={listUrl} />
+                <VideoCard
+                  video={video}
+                  backTo={listUrl}
+                  selected={selectedIds.has(video.id)}
+                  selectionMode={selectedIds.size > 0}
+                  onSelect={changeSelection}
+                />
               </li>
             ))}
           </ul>
@@ -550,6 +599,8 @@ export default function LibraryPage() {
           <p className="py-4 text-center text-sm text-muted">読み込み中…</p>
         )}
       </main>
+
+      <SelectionBar count={selectedIds.size} onClear={clearSelection} />
     </>
   );
 }
@@ -591,8 +642,8 @@ function EmptyLibrary() {
           <code className="rounded-control bg-surface-sunken px-1 py-0.5 font-mono">
             MDM_MEDIA_DIR
           </code>{" "}
-          に指定した場所へ動画を置き、「取り込む」を押してください。取り込みは起動直後にも
-          1 回自動で走ります。
+          に指定した場所へ動画を置き、「更新」を押してください。取り込みは起動直後にも1回
+          自動で走ります。
         </p>
       }
     />

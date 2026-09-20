@@ -29,7 +29,6 @@ vi.mock("../api/client", async (importOriginal) => ({
 }));
 
 const { default: LibraryPage } = await import("./LibraryPage");
-const { default: AppShell } = await import("../layout/AppShell");
 
 /** searchDebounceMs は LibraryPage の待ち合わせ時間と同じ値である。 */
 const searchDebounceMs = 250;
@@ -109,9 +108,9 @@ describe("LibraryPage の 4 状態（contracts/screen-states.md 1.）", () => {
     expect(screen.getByText("読み込み中…")).toBeDefined();
 
     // 帯は状態によらず先に出る。待っているあいだも操作できる。
-    expect(enabled(screen.getByPlaceholderText("題名で探す"))).toBe(true);
+    expect(enabled(screen.getByPlaceholderText("検索"))).toBe(true);
     expect(enabled(screen.getByLabelText("並び順"))).toBe(true);
-    expect(enabled(screen.getByRole("button", { name: "取り込む" }))).toBe(true);
+    expect(enabled(screen.getByRole("button", { name: "更新" }))).toBe(true);
   });
 
   it("成功したら項目が並ぶ", async () => {
@@ -135,8 +134,8 @@ describe("LibraryPage の 4 状態（contracts/screen-states.md 1.）", () => {
     expect(screen.getByRole("button", { name: "再試行" })).toBeDefined();
 
     // 失敗を 1 枚の画面に差し替えると、検索も取り込みもできなくなる（FR-002）。
-    expect(enabled(screen.getByPlaceholderText("題名で探す"))).toBe(true);
-    expect(enabled(screen.getByRole("button", { name: "取り込む" }))).toBe(true);
+    expect(enabled(screen.getByPlaceholderText("検索"))).toBe(true);
+    expect(enabled(screen.getByRole("button", { name: "更新" }))).toBe(true);
   });
 
   it("空（蔵書 0）と空（該当 0）は別の文言である", async () => {
@@ -165,18 +164,44 @@ describe("LibraryPage の件数の文言（FR-008 / FR-021）", () => {
     show();
     await settle();
 
-    const count = screen.getByText("1 本");
+    const count = screen.getByText("1件");
     expect(count.getAttribute("role")).toBe("status");
     expect(count.getAttribute("aria-live")).toBe("polite");
 
-    await user.type(screen.getByPlaceholderText("題名で探す"), "ねこ");
+    await user.type(screen.getByPlaceholderText("検索"), "ねこ");
     await act(async () => {
       vi.advanceTimersByTime(searchDebounceMs);
       await Promise.resolve();
     });
 
     // 絞られているかどうかを、文言だけで判断できる。
-    expect(screen.getByText("「ねこ」に一致 1 本")).toBeDefined();
+    expect(screen.getByText("「ねこ」に一致 1件")).toBeDefined();
+  });
+});
+
+describe("LibraryPage の選択モード", () => {
+  it("選択後だけ固定操作を出し、解除後はカードの選択欄へフォーカスを戻す", async () => {
+    listVideos.mockResolvedValue({ items: [video(1, "ねこ.mp4")], total: 1 });
+    const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
+    show();
+    await settle();
+
+    const checkbox = screen.getByRole("checkbox", { name: "「ねこ.mp4」を選択" });
+    expect(screen.queryByRole("toolbar", { name: "選択操作" })).toBeNull();
+
+    await user.click(checkbox);
+    expect(screen.getByRole("toolbar", { name: "選択操作" })).toBeDefined();
+    expect(screen.getByText("1件選択")).toBeDefined();
+    expect(screen.getByText("1件")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "選択解除" }));
+    await act(async () => {
+      vi.advanceTimersByTime(20);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole("toolbar", { name: "選択操作" })).toBeNull();
+    expect(document.activeElement).toBe(checkbox);
   });
 });
 
@@ -201,7 +226,7 @@ describe("LibraryPage の戻る／進む（R-403）", () => {
     );
     await settle();
 
-    const field = () => screen.getByPlaceholderText("題名で探す") as HTMLInputElement;
+    const field = () => screen.getByPlaceholderText("検索") as HTMLInputElement;
     expect(field().value).toBe("いぬ");
 
     await user.click(screen.getByRole("button", { name: "戻る（検査用）" }));
@@ -212,7 +237,7 @@ describe("LibraryPage の戻る／進む（R-403）", () => {
     });
 
     expect(field().value).toBe("ねこ");
-    expect(screen.getByText("「ねこ」に一致 0 本")).toBeDefined();
+    expect(screen.getByText("「ねこ」に一致 0件")).toBeDefined();
   });
 });
 
@@ -229,11 +254,14 @@ describe("LibraryPage の到達順（contracts/screen-states.md 3.）", () => {
     // 密度（US3）は 3 番目に割り込む。帯が項目より先であることと、項目が
     // 並んでいる順であることは変わらない。
     const expected = [
-      screen.getByPlaceholderText("題名で探す"),
+      screen.getByPlaceholderText("検索"),
+      screen.getByText("絞り込み").closest("summary"),
       screen.getByLabelText("並び順"),
-      screen.getByLabelText("表示"),
-      screen.getByRole("button", { name: "取り込む" }),
+      screen.getByRole("button", { name: "標準" }),
+      screen.getByRole("button", { name: "更新" }),
+      screen.getByRole("checkbox", { name: "「ねこ.mp4」を選択" }),
       screen.getByRole("link", { name: "ねこ.mp4" }),
+      screen.getByRole("checkbox", { name: "「いぬ.mp4」を選択" }),
       screen.getByRole("link", { name: "いぬ.mp4" }),
     ];
 
@@ -241,78 +269,5 @@ describe("LibraryPage の到達順（contracts/screen-states.md 3.）", () => {
       await user.tab();
       expect(document.activeElement).toBe(element);
     }
-  });
-});
-
-describe("サイドバーへ公開する件数（T021）", () => {
-  /**
-   * showInShell は骨格ごと描く。件数はサイドバーの「すべての動画」に出るので、
-   * LibraryPage 単体では確かめられない。
-   */
-  function showInShell(path = "/") {
-    render(
-      <MemoryRouter initialEntries={[path]}>
-        <AppShell>
-          <LibraryPage />
-        </AppShell>
-      </MemoryRouter>,
-    );
-  }
-
-  /**
-   * navCount はサイドバーの「すべての動画」に出ている数字を返す。出ていなければ
-   * null を返す。帯の右端の件数とは別の場所を見ている。
-   */
-  function navCount(): string | null {
-    const row = document.querySelector('[data-nav-id="all-videos"]');
-    return /\d+/.exec(row?.textContent ?? "")?.[0] ?? null;
-  }
-
-  it("読めたら総件数が出る", async () => {
-    listVideos.mockResolvedValue({
-      items: [video(1, "ねこ.mp4")],
-      total: 12,
-    } satisfies VideoPage);
-    showInShell();
-    await settle();
-
-    expect(navCount()).toBe("12");
-  });
-
-  it("取得に失敗したら件数を出さない", async () => {
-    // useVideos は失敗しても total を書き換えない（初回なら初期値の 0 が残る）。
-    // それをそのまま公開すると、一覧がエラーを出している横でサイドバーが件数を
-    // 名乗る。読めていないものの数は「まだ分からない」であって 0 ではない。
-    listVideos.mockRejectedValue(new Error("つながりません"));
-    showInShell();
-    await settle();
-
-    expect(screen.getByText("一覧を取得できません")).toBeDefined();
-    expect(navCount()).toBeNull();
-  });
-
-  it("読めたあとに取り直しが失敗したら件数を取り下げる", async () => {
-    // 前の件数が残っているぶん、こちらのほうが嘘が長く見える。検索語を変えて
-    // 取り直す場面がこれにあたる。
-    listVideos.mockResolvedValue({
-      items: [video(1, "ねこ.mp4")],
-      total: 12,
-    } satisfies VideoPage);
-    showInShell();
-    await settle();
-    expect(navCount()).toBe("12");
-
-    listVideos.mockRejectedValue(new Error("つながりません"));
-    await act(async () => {
-      await userEvent
-        .setup({ advanceTimers: vi.advanceTimersByTime })
-        .type(screen.getByPlaceholderText("題名で探す"), "いぬ");
-    });
-    await act(async () => {
-      vi.advanceTimersByTime(searchDebounceMs);
-    });
-    await settle();
-
-    expect(navCount()).toBeNull();
   });
 });

@@ -93,7 +93,7 @@ describe("LibraryPage の検索（待ち合わせと打ち切り）", () => {
     const initial = listVideos.mock.calls.length;
     expect(initial).toBe(1);
 
-    await user.type(screen.getByPlaceholderText("題名で探す"), "ねこ");
+    await user.type(screen.getByPlaceholderText("検索"), "ねこ");
 
     // 打っている間は増えない。
     expect(listVideos.mock.calls.length).toBe(initial);
@@ -111,7 +111,7 @@ describe("LibraryPage の検索（待ち合わせと打ち切り）", () => {
     const user = userEvent.setup({ delay: null, advanceTimers: vi.advanceTimersByTime });
     await show();
 
-    await user.type(screen.getByPlaceholderText("題名で探す"), "いぬ");
+    await user.type(screen.getByPlaceholderText("検索"), "いぬ");
     await act(async () => {
       vi.advanceTimersByTime(searchDebounceMs);
       await Promise.resolve();
@@ -127,7 +127,7 @@ describe("LibraryPage の検索（待ち合わせと打ち切り）", () => {
     await show();
 
     const initial = listVideos.mock.calls.length;
-    const field = screen.getByPlaceholderText("題名で探す");
+    const field = screen.getByPlaceholderText("検索");
 
     await user.type(field, "ね");
     await act(async () => {

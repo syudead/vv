@@ -18,11 +18,13 @@ import Icon from "../layout/icons";
  */
 const box =
   "relative isolate inline-flex items-center rounded-control " +
-  "border border-border bg-surface-raised text-body " +
+  "border border-border bg-surface-raised text-body shadow-sm " +
+  "transition-[border-color,background-color] hover:border-body/80 " +
+  "focus-within:border-accent focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-focus " +
   "after:pointer-events-none after:absolute after:inset-0 after:-z-10 " +
   "after:rounded-control after:transition-colors " +
   "hover:after:bg-body/10 active:after:bg-surface-sunken/60 " +
-  "motion-reduce:after:transition-none";
+  "motion-reduce:transition-none motion-reduce:after:transition-none";
 
 /**
  * control は選択そのものである。`appearance-none` がブラウザ既定の矢印を消すので、
@@ -31,9 +33,8 @@ const box =
  * 当たり判定は `--size-tap` 四方以上を保つ（004 の FR-022）。
  */
 const control =
-  "min-h-[var(--size-tap)] min-w-[var(--size-tap)] appearance-none " +
-  "bg-transparent pr-8 pl-2 text-sm text-body " +
-  "outline-offset-2 focus-visible:outline-2 focus-visible:outline-focus";
+  "min-h-[var(--size-tap)] w-24 min-w-[var(--size-tap)] appearance-none " +
+  "cursor-pointer bg-transparent pr-8 pl-3 text-sm text-body outline-none";
 
 export default function Select({
   label,
@@ -56,7 +57,7 @@ export default function Select({
 }) {
   return (
     <label className="flex items-center gap-2 text-sm text-muted">
-      {label}
+      <span className="sr-only">{label}</span>
       <span className={box}>
         <select
           value={value}

@@ -115,7 +115,7 @@ describe("ScanStatus の onFinished", () => {
   });
 });
 
-describe("ScanStatus の「取り込む」", () => {
+describe("ScanStatus の「更新」", () => {
   it("始められなかったことは、直後の巡回が成功しても消えない", async () => {
     const onFinished = vi.fn();
     getCurrentScan.mockResolvedValue(scan("done", 2, 10));
@@ -125,7 +125,7 @@ describe("ScanStatus の「取り込む」", () => {
     render(<ScanStatus onFinished={onFinished} />);
     await settle();
 
-    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await user.click(screen.getByRole("button", { name: "更新" }));
     await settle();
 
     // 消えると、押した利用者には始まったように見える。状態の取得の失敗とは
@@ -144,7 +144,7 @@ describe("ScanStatus の「取り込む」", () => {
     await settle();
 
     getCurrentScan.mockResolvedValue(scan("running", 1, 11));
-    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await user.click(screen.getByRole("button", { name: "更新" }));
     await settle();
 
     // 進んでいるのに「始められません」と出し続けると、利用者は失敗したと
@@ -163,7 +163,7 @@ describe("ScanStatus の「取り込む」", () => {
     await settle();
 
     // 巡回は成功するが、見えるのは押す前と同じ取り込みである。
-    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await user.click(screen.getByRole("button", { name: "更新" }));
     await settle();
 
     expect(screen.getByText("取り込みを始められません: つながりません")).toBeDefined();
@@ -180,7 +180,7 @@ describe("ScanStatus の「取り込む」", () => {
     render(<ScanStatus onFinished={onFinished} />);
     await settle();
 
-    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await user.click(screen.getByRole("button", { name: "更新" }));
     await settle();
 
     // 押した時点で何が見えていたか分からないのだから、もとからあった
@@ -202,7 +202,7 @@ describe("ScanStatus の「取り込む」", () => {
 
     // 応答は失われたが、実際には始まって終わっていた。
     getCurrentScan.mockResolvedValue(scan("done", 3, 1));
-    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await user.click(screen.getByRole("button", { name: "更新" }));
     await settle();
 
     // 「1 つも無い」と分かっていたのだから、現れた時点で新しい。
@@ -222,7 +222,7 @@ describe("ScanStatus の「取り込む」", () => {
 
     // 押したあとの巡回では、始まっている取り込み（別の id）が既に終わっている。
     getCurrentScan.mockResolvedValue(scan("done", 5, 11));
-    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await user.click(screen.getByRole("button", { name: "更新" }));
     await settle();
 
     // 要求の失敗は「始まらなかった」ことを保証しない。見張り直さないと、
@@ -240,7 +240,7 @@ describe("ScanStatus の「取り込む」", () => {
     await settle();
 
     getCurrentScan.mockResolvedValue(scan("done", 4, 11));
-    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await user.click(screen.getByRole("button", { name: "更新" }));
     await settle();
 
     expect(ids(onFinished)).toEqual([10, 11]);

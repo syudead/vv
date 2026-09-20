@@ -1,7 +1,8 @@
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { Density } from "../preferences/viewPreferences";
-import { toDensity, toIndex } from "./DensitySlider";
+import DensitySlider, { toDensity, toIndex } from "./DensitySlider";
 
 /**
  * 密度の読み替えの不変条件（FR-013 / data-model.md 3.）。
@@ -34,5 +35,22 @@ describe("密度の位置の読み替え（data-model.md 3.）", () => {
     for (const index of [-1, 3, 1.5, Number.NaN]) {
       expect(toDensity(index), `${String(index)} の落とし先が違う`).toBe("standard");
     }
+  });
+});
+
+describe("密度切替のキーボード操作", () => {
+  it("選択中だけがTab対象で、左右キーで隣へ移る", () => {
+    const changes: Density[] = [];
+    render(<DensitySlider value="standard" onChange={(value) => changes.push(value)} />);
+
+    const standard = screen.getByRole("button", { name: "標準" });
+    const relaxed = screen.getByRole("button", { name: "ゆったり" });
+    expect(standard.getAttribute("tabindex")).toBe("0");
+    expect(relaxed.getAttribute("tabindex")).toBe("-1");
+
+    standard.focus();
+    fireEvent.keyDown(standard, { key: "ArrowRight" });
+    expect(changes).toEqual(["relaxed"]);
+    expect(document.activeElement).toBe(relaxed);
   });
 });

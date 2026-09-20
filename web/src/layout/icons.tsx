@@ -30,7 +30,15 @@ export type IconName =
   | "chevron"
   | "info"
   | "alert"
-  | "error";
+  | "error"
+  | "play"
+  | "panelCollapse"
+  | "panelExpand"
+  | "arrowLeft"
+  | "arrowRight"
+  | "refresh"
+  | "compactList"
+  | "check";
 
 /**
  * shapes は輪郭だけを持つ。viewBox・線の太さ・読み上げの扱いは Icon が一律に
@@ -114,6 +122,38 @@ const shapes: Record<IconName, ReactNode> = {
 
   // 下向きの山 — 選択欄の既定の矢印の代わり（C11）
   chevron: <path d="m6 9.5 6 6 6-6" />,
+
+  play: <path d="m8 5 11 7-11 7Z" />,
+
+  panelCollapse: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16M15 9l-3 3 3 3" />
+    </>
+  ),
+
+  panelExpand: (
+    <>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 4v16M12 9l3 3-3 3" />
+    </>
+  ),
+
+  arrowLeft: <path d="m15 6-6 6 6 6" />,
+  arrowRight: <path d="m9 6 6 6-6 6" />,
+  refresh: (
+    <>
+      <path d="M20 7v5h-5" />
+      <path d="M18.2 16a7.5 7.5 0 1 1 .8-7l1 3" />
+    </>
+  ),
+  compactList: (
+    <>
+      <path d="M8 7h12M8 12h12M8 17h12" />
+      <path d="M4 7h.01M4 12h.01M4 17h.01" />
+    </>
+  ),
+  check: <path d="m5 12 4 4L19 6" />,
 
   /*
    * 知らせの 3 段階（C13 / spec US4-5）。

@@ -1,6 +1,7 @@
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
+import Icon from "../layout/icons";
 
 /** formatDuration は尺を mm:ss（1時間以上は h:mm:ss）で表す。 */
 export function formatDuration(durationMs: number | undefined): string {
@@ -75,9 +76,9 @@ export function partialRatio(video: Video): number | null {
 const states =
   "relative isolate after:pointer-events-none after:absolute after:inset-0 " +
   "after:-z-10 after:rounded-card after:transition-colors " +
-  "hover:after:bg-body/10 active:after:bg-surface-sunken/60 " +
+  "hover:after:bg-body/10 active:after:bg-surface-sunken/60 outline-none " +
   "motion-reduce:after:transition-none " +
-  "outline-offset-2 focus-visible:outline-2 focus-visible:outline-focus";
+  "focus-visible:outline-none";
 
 /**
  * VideoCard は一覧の1件を描く
@@ -92,19 +93,20 @@ const states =
  * 枠は 16:9 固定である。サムネイルの有無で大きさが変わらない（SC-003）ので、
  * 画像が届いてもレイアウトが動かず、読んでいる位置が飛ばない。
  *
- * 題名の全文への到達手段は 3 つある（R-409 / FR-011）。
+ * 題名の全文への到達手段は 2 つある（R-409 / FR-011）。
  *
  * 1. リンクのアクセシブル名は**常に全文**である（aria-label）。見た目の省略に
  *    引きずられない。
  * 2. ポインタには title 属性で全文を出す。
- * 3. キーボードで狙いを合わせると省略が解ける。
- *
- * 3 の解けた題名は**枠の上に重ねて**描く。題名の場所を広げると、長い題名の
- * 項目だけ背が高くなって格子が崩れる（FR-005 / SC-003）。
+ * キーボード利用時も aria-label から全文を読み上げる。見た目は一行に固定し、
+ * 長い題名だけで格子の高さが変わらないようにする（FR-005 / SC-003）。
  */
 export default function VideoCard({
   video,
   backTo,
+  selected = false,
+  selectionMode = false,
+  onSelect,
 }: {
   video: Video;
   /**
@@ -112,6 +114,9 @@ export default function VideoCard({
    * ここへ帰る。渡さないと再生画面は `/` へ戻すので、検索語と並び順が消える。
    */
   backTo?: string;
+  selected?: boolean;
+  selectionMode?: boolean;
+  onSelect?: (id: number, selected: boolean) => void;
 }) {
   const duration = formatDuration(video.durationMs);
   const unplayable = unplayableText(video);
@@ -119,39 +124,64 @@ export default function VideoCard({
   const watchedRatio = partialRatio(video);
 
   return (
-    <Link
-      to={`/videos/${String(video.id)}`}
-      // 帰り道を持たせる。URL のクエリ（検索語・並び順）は一覧側にしか無いので、
-      // ここで渡さないと再生画面は「どの一覧から来たか」を知りようがない。
-      state={backTo === undefined ? undefined : { from: backTo }}
-      // 見た目は省略しても、読み上げには必ず全文を渡す（R-409）。名前を
-      // 中身から組み立てると、枠の中の小片（長さ・視聴済み）まで名前に
-      // 混ざってしまう。
-      aria-label={video.title}
-      className={"group flex flex-col rounded-card bg-surface-raised " + states}
-    >
-      <div className="relative aspect-video w-full overflow-hidden rounded-t-card bg-surface-sunken">
-        {video.thumbnailUrl !== undefined ? (
-          <img
-            src={video.thumbnailUrl}
-            alt=""
-            loading="lazy"
-            // 復号を別の仕事にする。1 画面に数十枚並ぶので、ここで詰まると
-            // スクロールの反応が鈍る（R-408 / SC-008）。
-            decoding="async"
-            // 動きを減らす設定では遷移だけを止める（FR-023 / R-410）。
-            // opacity の最終値は変わらないので、ホバーの手応えは残る。
-            className="h-full w-full object-cover transition-opacity group-hover:opacity-90 motion-reduce:transition-none"
-          />
-        ) : (
-          <span className="flex h-full w-full items-center justify-center px-2 text-center text-xs text-muted">
-            {video.thumbnailState === "failed"
-              ? "画像を作れませんでした"
-              : "画像を準備中"}
-          </span>
-        )}
+    <article className="group relative">
+      <input
+        type="checkbox"
+        data-video-select="true"
+        checked={selected}
+        onChange={(event) => onSelect?.(video.id, event.target.checked)}
+        onClick={(event) => event.stopPropagation()}
+        aria-label={`「${video.title}」を選択`}
+        className={
+          "peer absolute top-2 left-2 z-10 h-5 w-5 cursor-pointer appearance-none rounded-selection border border-body/80 bg-badge transition-[opacity,border-color,background-color] hover:border-accent checked:border-accent checked:bg-accent " +
+          "outline-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus motion-reduce:transition-none " +
+          (selectionMode || selected
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100")
+        }
+      />
+      <span className="pointer-events-none absolute top-2 left-2 z-20 hidden h-5 w-5 items-center justify-center text-accent-ink peer-checked:flex">
+        <Icon name="check" className="h-4 w-4" />
+      </span>
+      <Link
+        to={`/videos/${String(video.id)}`}
+        // 帰り道を持たせる。URL のクエリ（検索語・並び順）は一覧側にしか無いので、
+        // ここで渡さないと再生画面は「どの一覧から来たか」を知りようがない。
+        state={backTo === undefined ? undefined : { from: backTo }}
+        // 見た目は省略しても、読み上げには必ず全文を渡す（R-409）。名前を
+        // 中身から組み立てると、枠の中の小片（長さ・視聴済み）まで名前に
+        // 混ざってしまう。
+        aria-label={video.title}
+        className={"group/card block cursor-pointer rounded-card " + states}
+      >
+        <div
+          className={
+            "relative aspect-video w-full overflow-hidden rounded-card border-2 bg-surface-sunken transition-[border-color,box-shadow] " +
+            "group-hover/card:border-body/80 group-active/card:border-accent group-focus-visible/card:border-focus group-focus-visible/card:outline-2 group-focus-visible/card:outline-offset-2 group-focus-visible/card:outline-focus motion-reduce:transition-none " +
+            (selected ? "border-accent" : "border-transparent")
+          }
+        >
+          {video.thumbnailUrl !== undefined ? (
+            <img
+              src={video.thumbnailUrl}
+              alt=""
+              loading="lazy"
+              // 復号を別の仕事にする。1 画面に数十枚並ぶので、ここで詰まると
+              // スクロールの反応が鈍る（R-408 / SC-008）。
+              decoding="async"
+              // 動きを減らす設定では遷移だけを止める（FR-023 / R-410）。
+              // opacity の最終値は変わらないので、ホバーの手応えは残る。
+              className="h-full w-full object-cover transition-opacity duration-200 group-hover/card:opacity-90 group-active/card:opacity-75 motion-reduce:transition-none"
+            />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center px-2 text-center text-xs text-muted">
+              {video.thumbnailState === "failed"
+                ? "画像を作れませんでした"
+                : "画像を準備中"}
+            </span>
+          )}
 
-        {/*
+          {/*
           時間バッジ（C9）はサムネイルの右下に乗る。地は `--color-badge` で
           **不透明**である（FR-009 / 005 の contracts/design-tokens.md 6.）。
           半透明にすると明るいサムネイルの上で読めなくなる。
@@ -162,61 +192,54 @@ export default function VideoCard({
           桁は `tabular-nums` で揃える。等幅フォントにはしない — 原案のバッジは
           地の書体のままで、数字の幅だけが揃っていればカードごとに位置が動かない。
         */}
-        {duration !== "" && (
-          <span className="absolute right-1.5 bottom-1.5 rounded-control bg-badge px-1.5 py-0.5 text-xs text-body tabular-nums">
-            {duration}
-          </span>
-        )}
+          {duration !== "" && (
+            <span className="absolute right-1.5 bottom-1.5 rounded-control bg-badge px-1.5 py-0.5 text-xs font-medium text-body shadow-sm tabular-nums">
+              {duration}
+            </span>
+          )}
 
-        {/* 視聴済みと途中まで見た動画を一覧上で区別できるようにする（FR-006）。
+          {/* 視聴済みと途中まで見た動画を一覧上で区別できるようにする（FR-006）。
             見終わったものは印で、途中のものは残りの量が分かる帯で示す。 */}
-        {watched && (
-          <span className="absolute top-1.5 right-1.5 rounded-control bg-accent px-1.5 py-0.5 text-xs text-accent-ink">
-            視聴済み
-          </span>
-        )}
+          {watched && (
+            <span className="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-accent-ink shadow-sm">
+              <Icon name="check" className="h-3.5 w-3.5" />
+              <span className="sr-only">視聴済み</span>
+            </span>
+          )}
 
-        {!watched && watchedRatio !== null && (
-          <span
-            aria-label={`${String(Math.round(watchedRatio * 100))}% まで再生済み`}
-            className="absolute inset-x-0 bottom-0 h-1 bg-surface-sunken"
-          >
+          {!watched && watchedRatio !== null && (
             <span
-              className="block h-full bg-accent"
-              style={{ width: `${String(Math.round(watchedRatio * 100))}%` }}
-            />
-          </span>
-        )}
+              aria-label={`${String(Math.round(watchedRatio * 100))}% まで再生済み`}
+              className="absolute inset-x-0 bottom-0 h-1 bg-surface-sunken"
+            >
+              <span
+                className="block h-full bg-accent"
+                style={{ width: `${String(Math.round(watchedRatio * 100))}%` }}
+              />
+            </span>
+          )}
 
-        {unplayable !== null && (
-          <span className="absolute top-1.5 left-1.5 rounded-control bg-warning-surface px-1.5 py-0.5 text-xs text-warning">
-            {unplayable}
-          </span>
-        )}
-      </div>
+          {unplayable !== null && (
+            <span className="absolute top-1.5 left-1.5 rounded-control bg-warning-surface px-1.5 py-0.5 text-xs text-warning">
+              {unplayable}
+            </span>
+          )}
+        </div>
 
-      {/*
-        題名の場所は 2 行分で固定する（h-10）。中の題名は下端を揃えて重ね置き
-        してあるので、狙いを合わせて省略が解けると**上へ**伸び、枠の上に
-        重なる。項目の高さは変わらない。
-
-        余白は外側の器が持つ。題名は `inset-x-0` で置かれるが、絶対配置の基準は
-        器の**パディングの内側**なので、省略が解けて伸びたときも枠の縁に触れない。
-      */}
-      <div className="px-2 pt-1.5 pb-2">
-        <div className="relative h-10">
+        {/* 題名は一行に固定し、カードごとの高さを揃える。全文は title と
+            リンクのアクセシブル名から到達できる。 */}
+        <div className="pt-2 pb-1">
           <h3
             title={video.title}
             className={
-              "absolute inset-x-0 bottom-0 line-clamp-2 rounded-control text-sm leading-snug font-medium group-hover:underline " +
-              "group-focus-visible:line-clamp-none group-focus-visible:bg-surface-raised group-focus-visible:p-1 " +
+              "truncate rounded-control text-sm leading-5 font-medium transition-colors group-focus-visible/card:text-accent motion-reduce:transition-none " +
               (watched ? "text-muted" : "text-body")
             }
           >
             {video.title}
           </h3>
         </div>
-      </div>
-    </Link>
+      </Link>
+    </article>
   );
 }

@@ -7,6 +7,7 @@ import {
   startScan,
   type Scan,
 } from "../api/client";
+import Icon from "../layout/icons";
 
 /** pollInterval は取り込み中に状態を見に行く間隔である。 */
 const pollInterval = 2000;
@@ -186,13 +187,14 @@ export default function ScanStatus({
     // min-w-0 と break-words は、失敗の文言（サーバーからの理由がそのまま
     // 入りうる）で帯が横に伸びないようにする。狭い画面で横スクロールを
     // 生むのは、たいてい折り返せない長い 1 語である（FR-022 / SC-004）。
-    <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+    <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-1 text-sm text-muted">
       {/* 状態は 1 行の文言で示す。進行中は describe が「済んだ数 / 総数」を
           返す（contracts/screen-states.md 1.「固定の帯」）。 */}
       <span
         className={
-          "min-w-0 break-words " +
-          (error !== null || startFailure !== null ? "text-danger" : "")
+          (error !== null || startFailure !== null || scan?.state === "running"
+            ? "min-w-0 break-words "
+            : "sr-only ") + (error !== null || startFailure !== null ? "text-danger" : "")
         }
       >
         {describe(scan, error, startFailure?.message ?? null)}
@@ -203,9 +205,18 @@ export default function ScanStatus({
         onClick={onStart}
         disabled={starting || scan?.state === "running"}
         // 押せる要素は --size-tap（44px）四方以上にする（FR-022）。
-        className="min-h-[var(--size-tap)] min-w-[var(--size-tap)] rounded-control border border-border px-3 text-sm text-body disabled:cursor-not-allowed disabled:opacity-50"
+        className="min-h-[var(--size-tap)] min-w-[var(--size-tap)] rounded-control border border-accent bg-accent px-3 text-sm font-semibold text-accent-ink outline-none transition-colors hover:bg-accent-surface hover:text-accent active:bg-surface-sunken active:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:border-border disabled:bg-surface-raised disabled:text-muted motion-reduce:transition-none"
       >
-        取り込む
+        <Icon
+          name="refresh"
+          className={
+            "mr-1.5 inline-block h-4 w-4 " +
+            (starting || scan?.state === "running"
+              ? "animate-spin motion-reduce:animate-none"
+              : "")
+          }
+        />
+        {starting ? "開始中" : scan?.state === "running" ? "更新中" : "更新"}
       </button>
     </div>
   );

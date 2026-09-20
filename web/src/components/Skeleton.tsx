@@ -21,12 +21,19 @@ export default function Skeleton({
   height?: string;
   className?: string;
 }) {
-  const size = shape === "tile" ? "aspect-video w-full" : `w-full ${height}`;
+  if (shape === "tile") {
+    return (
+      <div aria-hidden className="space-y-2">
+        <div className="aspect-video w-full animate-pulse rounded-card bg-surface-raised motion-reduce:animate-none" />
+        <div className="h-4 w-3/4 animate-pulse rounded-control bg-surface-raised motion-reduce:animate-none" />
+      </div>
+    );
+  }
 
   return (
     <div
       aria-hidden
-      className={`animate-pulse rounded-card bg-surface-raised motion-reduce:animate-none ${size} ${className}`}
+      className={`w-full animate-pulse rounded-card bg-surface-raised motion-reduce:animate-none ${height} ${className}`}
     />
   );
 }

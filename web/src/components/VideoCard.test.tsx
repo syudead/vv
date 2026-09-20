@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it } from "vitest";
 
@@ -110,5 +110,38 @@ describe("VideoCard の時間バッジ", () => {
     show(video({ durationMs: undefined }));
 
     expect(screen.queryByText(durationText)).toBeNull();
+  });
+});
+
+describe("VideoCard の選択", () => {
+  it("通常はチェックを隠し、選択モードでは表示する", () => {
+    const { rerender } = render(
+      <MemoryRouter>
+        <VideoCard video={video()} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("checkbox").className).toContain("opacity-0");
+
+    rerender(
+      <MemoryRouter>
+        <VideoCard video={video()} selectionMode />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("checkbox").className).toContain("opacity-100");
+  });
+
+  it("チェック変更を動画IDとともに通知する", () => {
+    const changes: Array<[number, boolean]> = [];
+    render(
+      <MemoryRouter>
+        <VideoCard
+          video={video()}
+          onSelect={(id, selected) => changes.push([id, selected])}
+        />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("checkbox"));
+    expect(changes).toEqual([[1, true]]);
   });
 });

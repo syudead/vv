@@ -59,7 +59,7 @@ export default function StateNotice({
 
   return (
     <div
-      className={`flex gap-3 rounded-card border border-l-4 border-border p-6 text-sm ${className}`}
+      className={`flex w-full max-w-3xl self-start gap-3 rounded-card border border-l-4 border-border p-4 text-sm ${className}`}
     >
       {/* アイコンは段階の印である。意味は隣の見出しが持つので aria-hidden で
           よい（Icon が一律に付ける。contracts/components.md 3.）。 */}

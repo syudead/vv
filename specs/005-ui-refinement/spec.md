@@ -4,12 +4,16 @@
 
 **Created**: 2026-09-14
 
-**Status**: Draft
+**Status**: Superseded（2026-09-20）
 
 **Input**: User description: "UIを最低限の張りぼてからまともにする"
 
 **原案**: [002 の assets/ui-mockup.webp](../002-core-video-library/assets/ui-mockup.webp)
 **現状**: [docs/screenshots/](../../docs/screenshots/) の `20260914-p7-*`
+
+> この仕様は原案再現時の履歴である。2026-09-20 以降の一覧 UI は
+> [動画を主役にするライブラリ UI](../../docs/design-docs/modern-library-ui.md) を優先し、
+> 原案にしか存在しない未実装の入口は表示しない。
 
 原案と現在の実装が乖離している。その差分を**機能を変えずに**埋め、画面の見た目を
 原案に一致させる。サーバーの API も、保存するデータも、利用者が実際に行える操作も

@@ -211,7 +211,7 @@ describe("一覧 → 再生 → 一覧 の往復（FR-016）", () => {
       total: 3,
     } satisfies VideoPageType);
 
-    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await user.click(screen.getByRole("button", { name: "更新" }));
     await settle();
 
     // 実行中を見ていなくても、映している取り込みと id が違えば新しいと分かる。
@@ -244,7 +244,7 @@ describe("一覧 → 再生 → 一覧 の往復（FR-016）", () => {
       total: 2,
     } satisfies VideoPageType);
 
-    await user.click(screen.getByRole("button", { name: "取り込む" }));
+    await user.click(screen.getByRole("button", { name: "更新" }));
     await settle();
 
     // 取り込んだのに空のままでは、利用者にできることが無い。

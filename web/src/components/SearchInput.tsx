@@ -32,12 +32,15 @@ import Icon from "../layout/icons";
  * ためである（004 の FR-022 / SC-004）。
  */
 const field =
-  "relative isolate flex min-w-0 flex-1 basis-48 items-center rounded-control " +
-  "border border-border bg-surface-raised text-muted " +
+  "relative isolate flex min-w-0 flex-1 items-center rounded-control " +
+  "border border-border bg-surface-raised text-muted shadow-sm " +
+  "transition-[border-color,background-color,box-shadow] hover:border-body/80 " +
+  "focus-within:border-accent focus-within:bg-surface-raised focus-within:outline-2 " +
+  "focus-within:outline-offset-2 focus-within:outline-focus " +
   "after:pointer-events-none after:absolute after:inset-0 after:-z-10 " +
   "after:rounded-control after:transition-colors " +
   "hover:after:bg-body/10 active:after:bg-surface-sunken/60 " +
-  "motion-reduce:after:transition-none";
+  "motion-reduce:transition-none motion-reduce:after:transition-none";
 
 /**
  * input は入力そのものである。当たり判定は `--size-tap`（44px）以上を保つ
@@ -47,9 +50,8 @@ const field =
  * 取らないと打った文字がアイコンに重なる。
  */
 const input =
-  "min-h-[var(--size-tap)] w-full bg-transparent pr-3 pl-9 text-sm text-body " +
-  "placeholder:text-muted " +
-  "outline-offset-2 focus-visible:outline-2 focus-visible:outline-focus";
+  "min-h-[var(--size-tap)] w-full bg-transparent pr-3 pl-10 text-sm text-body " +
+  "placeholder:text-muted outline-none";
 
 export default function SearchInput({
   value,
@@ -63,13 +65,13 @@ export default function SearchInput({
   return (
     <label className={field}>
       <span className="sr-only">題名で探す</span>
-      <Icon name="search" className="pointer-events-none absolute left-3 h-4 w-4" />
+      <Icon name="search" className="pointer-events-none absolute left-3 h-5 w-5" />
       <input
         type="search"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         maxLength={MAX_QUERY_LENGTH}
-        placeholder="題名で探す"
+        placeholder="検索"
         className={input}
       />
     </label>
