@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -277,6 +278,41 @@ func TestDeleteFinishedJobsKeepsPending(t *testing.T) {
 	}
 	if removed != 0 {
 		t.Errorf("未完了のジョブが消えた: %d 件", removed)
+	}
+}
+
+func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	var videoID int64
+	for i := range 4 {
+		result, err := db.UpsertVideo(ctx, sampleFile(fmt.Sprintf("/media/%d/movie.mp4", i), "movie", "shared", 1, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		videoID = result.ID
+	}
+	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 4 {
+		job, err := db.ClaimJob(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if job.Attempts != 1 {
+			t.Fatalf("location %d attempts = %d, want 1", i, job.Attempts)
+		}
+		if err := db.FailClaimedJob(ctx, job, "location unavailable"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Attempts != 2 {
+		t.Fatalf("second location cycle attempts = %d, want 2", job.Attempts)
 	}
 }
 

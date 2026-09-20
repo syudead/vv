@@ -8,15 +8,14 @@ import (
 
 func scanDB(t *testing.T) *DB {
 	t.Helper()
-	db := migratedDB(t)
-	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
-		t.Fatal(err)
-	}
-	return db
+	return migratedDB(t)
 }
 
 func TestStartScanRejectsEmptyFolderSetWithoutCreatingScan(t *testing.T) {
 	db := migratedDB(t)
+	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, err := db.StartScan(context.Background()); !errors.Is(err, ErrNoMediaFolders) {
 		t.Fatalf("error = %v, want ErrNoMediaFolders", err)
 	}

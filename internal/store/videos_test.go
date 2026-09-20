@@ -204,6 +204,47 @@ func TestListVideosPagesByRepresentativeLocationTitle(t *testing.T) {
 	}
 }
 
+func TestAddingDuplicateLocationRequestsRecoveryForFailedProcessing(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	first, err := db.UpsertVideo(ctx, sampleFile("/media/a/movie.mp4", "movie", "shared", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.MarkProbeFailed(ctx, first.ID, "broken location"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetThumbnailState(ctx, first.ID, domain.ThumbnailStateFailed); err != nil {
+		t.Fatal(err)
+	}
+	second, err := db.UpsertVideo(ctx, sampleFile("/media/b/movie.mp4", "movie", "shared", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.NeedsProbe || !second.NeedsThumbnail {
+		t.Fatalf("recovery flags = probe:%v thumbnail:%v", second.NeedsProbe, second.NeedsThumbnail)
+	}
+}
+
+func TestRepresentativeLocationComesFromRegisteredRoot(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	first, err := db.UpsertVideo(ctx, sampleFile("/legacy/movie.mp4", "legacy", "shared-location", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/current.mp4", "current", "shared-location", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	video, err := db.GetVideo(ctx, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.Path != "/media/current.mp4" || video.Title != "current" {
+		t.Fatalf("representative = %q (%q)", video.Path, video.Title)
+	}
+}
+
 // 存在しない id は「無い」と分かる誤りを返す。
 func TestGetVideoReportsMissing(t *testing.T) {
 	db := migratedDB(t)

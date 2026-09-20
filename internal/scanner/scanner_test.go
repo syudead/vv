@@ -71,7 +71,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 		f.rows[file.Path] = domain.IndexedVideo{
 			ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
 		}
-		return domain.UpsertResult{ID: row.ID, Outcome: domain.OutcomeUpdated}, nil
+		return domain.UpsertResult{ID: row.ID, Outcome: domain.OutcomeUpdated, NeedsProbe: true, NeedsThumbnail: true}, nil
 	}
 
 	id := f.nextID
@@ -79,7 +79,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 	f.rows[file.Path] = domain.IndexedVideo{
 		ID: id, LocationID: id, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
 	}
-	return domain.UpsertResult{ID: id, Outcome: domain.OutcomeAdded}, nil
+	return domain.UpsertResult{ID: id, Outcome: domain.OutcomeAdded, NeedsProbe: true, NeedsThumbnail: true}, nil
 }
 
 func (f *fakeIndex) DeleteVideos(_ context.Context, ids []int64) error {
@@ -96,14 +96,6 @@ func (f *fakeIndex) DeleteVideos(_ context.Context, ids []int64) error {
 
 func (f *fakeIndex) DeleteVideoLocations(ctx context.Context, ids []int64) error {
 	return f.DeleteVideos(ctx, ids)
-}
-
-func (f *fakeIndex) ContentKeys(context.Context) (map[string]struct{}, error) {
-	out := map[string]struct{}{}
-	for _, row := range f.rows {
-		out[row.ContentKey] = struct{}{}
-	}
-	return out, nil
 }
 
 func (f *fakeIndex) EnqueueJob(_ context.Context, kind domain.JobKind, videoID int64) error {
@@ -534,6 +526,21 @@ func TestReportingFailurePreventsMissingDeletion(t *testing.T) {
 	}
 	if len(index.deleted) != 0 {
 		t.Fatalf("deleted locations after reporting failure: %v", index.deleted)
+	}
+}
+
+func TestSuccessfulScanRemovesMigratedLocationOutsideRegisteredRoots(t *testing.T) {
+	root := mediaTree(t, map[string]string{})
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	index.rows[filepath.Join(t.TempDir(), "legacy.mp4")] = domain.IndexedVideo{
+		ID: 9, LocationID: 19, ContentKey: "legacy", SizeBytes: 1, MTime: time.Unix(1, 0),
+	}
+	if _, err := New(Options{Index: index}).Scan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(index.deleted) != 1 || index.deleted[0] != 19 {
+		t.Fatalf("deleted locations = %v, want [19]", index.deleted)
 	}
 }
 

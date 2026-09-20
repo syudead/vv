@@ -46,12 +46,14 @@ func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
 	if _, err := Migrate(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.GetVideo(context.Background(), videoID)
-	if err != nil {
+	var migratedID int64
+	var migratedPath, migratedKey string
+	if err := db.SQL().QueryRow(`select v.id, l.path, v.content_key from videos v join video_locations l on l.video_id = v.id where v.id = ?`, videoID).
+		Scan(&migratedID, &migratedPath, &migratedKey); err != nil {
 		t.Fatal(err)
 	}
-	if video.ID != videoID || video.Path != "/media/a.mp4" || video.ContentKey != "key-a" {
-		t.Fatalf("migrated video = %+v", video)
+	if migratedID != videoID || migratedPath != "/media/a.mp4" || migratedKey != "key-a" {
+		t.Fatalf("migrated video = %d %q %q", migratedID, migratedPath, migratedKey)
 	}
 	var jobs, progress int
 	if err := db.SQL().QueryRow(`select count(*) from jobs where video_id = ?`, videoID).Scan(&jobs); err != nil {
@@ -485,6 +487,9 @@ func migratedDB(t *testing.T) *DB {
 
 	if _, err := Migrate(context.Background(), db); err != nil {
 		t.Fatalf("マイグレーションに失敗した: %v", err)
+	}
+	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
+		t.Fatalf("テスト用メディアフォルダを登録できない: %v", err)
 	}
 	return db
 }

@@ -37,11 +37,10 @@ type library struct {
 func newLibrary(cfg Config, db *store.DB, logger *slog.Logger) *library {
 	lib := &library{db: db, logger: logger}
 	lib.scanner = scanner.New(scanner.Options{
-		Index:         db,
-		Queue:         db,
-		Reporter:      lib,
-		ThumbnailsDir: cfg.ThumbnailsDir(),
-		Logger:        logger,
+		Index:    db,
+		Queue:    db,
+		Reporter: lib,
+		Logger:   logger,
 	})
 	return lib
 }

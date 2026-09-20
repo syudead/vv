@@ -101,7 +101,9 @@ func (db *DB) ClaimJob(ctx context.Context) (Job, error) {
 		return Job{}, fmt.Errorf("ジョブを取り出せません: %w", err)
 	}
 	job.Kind = JobKind(kind)
-	job.Attempts++
+	if !previousPath.Valid {
+		job.Attempts++
+	}
 	var locationID, locationVersion int64
 	var locationPath, contentKey string
 	selectLocation := `select l.id, l.version, l.path, v.content_key
@@ -115,6 +117,7 @@ func (db *DB) ClaimJob(ctx context.Context) (Job, error) {
 	selectLocation += ` order by l.path limit 1`
 	err = conn.QueryRowContext(ctx, selectLocation, args...).Scan(&locationID, &locationVersion, &locationPath, &contentKey)
 	if errors.Is(err, sql.ErrNoRows) && previousPath.Valid {
+		job.Attempts++
 		err = conn.QueryRowContext(ctx, `select l.id, l.version, l.path, v.content_key
 			from video_locations l join videos v on v.id = l.video_id
 			where l.video_id = ? order by l.path limit 1`, job.VideoID).

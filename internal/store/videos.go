@@ -6,6 +6,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -62,14 +64,35 @@ var (
 
 // videoColumns は domain.Video を組み立てるのに要る列である。
 // 並びは scanVideo と対応させる。
-const videoColumns = `videos.id,
-	(select path from video_locations where video_id = videos.id order by path limit 1) as path,
-	(select title from video_locations where video_id = videos.id order by path limit 1) as title,
-	(select size_bytes from video_locations where video_id = videos.id order by path limit 1) as size_bytes,
-	(select mtime from video_locations where video_id = videos.id order by path limit 1) as mtime,
+const videoColumnsTemplate = `videos.id,
+	(select path from video_locations l where video_id = videos.id and {registered} order by path limit 1) as path,
+	(select title from video_locations l where video_id = videos.id and {registered} order by path limit 1) as title,
+	(select size_bytes from video_locations l where video_id = videos.id and {registered} order by path limit 1) as size_bytes,
+	(select mtime from video_locations l where video_id = videos.id and {registered} order by path limit 1) as mtime,
 	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
 	videos.height, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state`
+
+func registeredLocationCondition(alias string) string {
+	separator := strconv.Itoa(int(os.PathSeparator))
+	pathExpr := alias + `.path`
+	rootExpr := `mf.path`
+	if runtime.GOOS == "windows" {
+		pathExpr = `lower(` + pathExpr + `)`
+		rootExpr = `lower(` + rootExpr + `)`
+	}
+	return `exists (select 1 from media_folders mf where instr(` + pathExpr + `, ` + rootExpr + ` || char(` + separator + `)) = 1` +
+		` or instr(` + pathExpr + `, ` + rootExpr + ` || char(47)) = 1 or instr(` + pathExpr + `, ` + rootExpr + ` || char(92)) = 1)`
+}
+
+func registeredVideoCondition(alias string) string {
+	return `exists (select 1 from video_locations l where l.video_id = ` + alias + `.id and ` +
+		registeredLocationCondition("l") + `)`
+}
+
+func videoColumns() string {
+	return strings.ReplaceAll(videoColumnsTemplate, "{registered}", registeredLocationCondition("l"))
+}
 
 // UpsertVideo は走査で分かった1件を索引に反映する（R-107 / R-109）。
 //
@@ -102,7 +125,9 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 	}
 
 	var videoID int64
-	err = tx.QueryRowContext(ctx, `select id from videos where content_key = ?`, file.ContentKey).Scan(&videoID)
+	var probeState, thumbnailState string
+	err = tx.QueryRowContext(ctx, `select id, probe_state, thumbnail_state from videos where content_key = ?`, file.ContentKey).
+		Scan(&videoID, &probeState, &thumbnailState)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return UpsertResult{}, err
 	}
@@ -112,6 +137,8 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 		addedAt = time.Now()
 	}
 	if newVideo {
+		probeState = string(domain.ProbeStatePending)
+		thumbnailState = string(domain.ThumbnailStatePending)
 		res, err := tx.ExecContext(ctx, `
 		insert into videos
 			(added_at, updated_at, content_key, container, playable, probe_state, thumbnail_state)
@@ -150,7 +177,11 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 	} else if newVideo {
 		outcome = OutcomeAdded
 	}
-	return UpsertResult{ID: videoID, Outcome: outcome}, nil
+	return UpsertResult{
+		ID: videoID, Outcome: outcome,
+		NeedsProbe:     probeState != string(domain.ProbeStateDone),
+		NeedsThumbnail: thumbnailState != string(domain.ThumbnailStateDone),
+	}, nil
 }
 
 // ApplyProbe は解析の結果を反映する。再生可否の判定は domain が行い、
@@ -278,7 +309,7 @@ func (db *DB) VideoLocations(ctx context.Context, videoID int64) ([]domain.Video
 // GetVideo は1件を返す。
 func (db *DB) GetVideo(ctx context.Context, id int64) (domain.Video, error) {
 	//nolint:gosec // videoColumns は定数で、利用者の入力は混ざらない。
-	row := db.sql.QueryRowContext(ctx, `select `+videoColumns+` from videos where videos.id = ?`, id)
+	row := db.sql.QueryRowContext(ctx, `select `+videoColumns()+` from videos where videos.id = ? and `+registeredVideoCondition("videos"), id)
 
 	video, err := scanVideo(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -309,7 +340,7 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 	}
 
 	search, args := searchFilter(q.Query)
-	conditions := []string{}
+	conditions := []string{registeredVideoCondition("videos")}
 	if search != "" {
 		conditions = append(conditions, search)
 	}
@@ -324,7 +355,7 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 	}
 
 	//nolint:gosec // 組み立てるのは列名と定型の条件句だけで、値はすべて引数で渡す。
-	query := `select * from (select ` + videoColumns + ` from videos) as videos`
+	query := `select * from (select ` + videoColumns() + ` from videos) as videos`
 	if len(conditions) > 0 {
 		query += ` where ` + strings.Join(conditions, " and ")
 	}
@@ -364,10 +395,11 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 // 索引走査で数 ms に収まる。
 func (db *DB) CountVideos(ctx context.Context, search string) (int, error) {
 	condition, args := searchFilter(search)
+	availability := registeredVideoCondition("videos")
 
-	query := `select count(*) from videos`
+	query := `select count(*) from videos where ` + availability
 	if condition != "" {
-		query += ` where ` + condition
+		query += ` and ` + condition
 	}
 
 	var total int

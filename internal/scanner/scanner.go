@@ -53,8 +53,6 @@ type Index interface {
 	UpsertVideo(ctx context.Context, file domain.VideoFile) (domain.UpsertResult, error)
 	// DeleteVideoLocations removes missing filesystem locations and orphan videos.
 	DeleteVideoLocations(ctx context.Context, ids []int64) error
-	// ContentKeys は参照されている内容の識別子を集合で返す。
-	ContentKeys(ctx context.Context) (map[string]struct{}, error)
 }
 
 // Queue は重い処理の積み先である。nil でもよい（積まないだけ）。
@@ -72,20 +70,17 @@ type Options struct {
 	Index    Index
 	Queue    Queue
 	Reporter Reporter
-	// ThumbnailsDir は孤児サムネイルの掃除先。空なら掃除しない。
-	ThumbnailsDir string
 	// Logger は nil なら slog の既定を使う。
 	Logger *slog.Logger
 }
 
 // Scanner は登録済みメディアフォルダを走査して索引を実際のファイルに合わせる。
 type Scanner struct {
-	index         Index
-	queue         Queue
-	reporter      Reporter
-	thumbnailsDir string
-	logger        *slog.Logger
-	contentKey    func(string) (string, error)
+	index      Index
+	queue      Queue
+	reporter   Reporter
+	logger     *slog.Logger
+	contentKey func(string) (string, error)
 }
 
 // New は走査を組み立てる。
@@ -95,12 +90,11 @@ func New(opts Options) *Scanner {
 		logger = slog.Default()
 	}
 	return &Scanner{
-		index:         opts.Index,
-		queue:         opts.Queue,
-		reporter:      opts.Reporter,
-		thumbnailsDir: opts.ThumbnailsDir,
-		logger:        logger,
-		contentKey:    ContentKey,
+		index:      opts.Index,
+		queue:      opts.Queue,
+		reporter:   opts.Reporter,
+		logger:     logger,
+		contentKey: ContentKey,
 	}
 }
 
@@ -221,8 +215,6 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	}
 	result.Removed = removed
 
-	s.cleanOrphanThumbnails(ctx)
-
 	return result, nil
 }
 
@@ -277,21 +269,23 @@ func (s *Scanner) ingest(
 		return nil
 	}
 
-	// 内容が変わった（または新しい）ものだけ、重い処理を積む。移動・改名では
-	// 内容が同じなので、解析もサムネイルも作り直さない（FR-025）。
-	if upserted.Outcome == domain.OutcomeMoved {
-		return nil
-	}
-	return s.enqueue(ctx, upserted.ID)
+	return s.enqueue(ctx, upserted)
 }
 
 // enqueue は解析とサムネイルのジョブを積む。
-func (s *Scanner) enqueue(ctx context.Context, videoID int64) error {
+func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error {
 	if s.queue == nil {
 		return nil
 	}
-	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail} {
-		if err := s.queue.EnqueueJob(ctx, kind, videoID); err != nil {
+	kinds := []domain.JobKind{}
+	if result.NeedsProbe {
+		kinds = append(kinds, domain.JobProbe)
+	}
+	if result.NeedsThumbnail {
+		kinds = append(kinds, domain.JobThumbnail)
+	}
+	for _, kind := range kinds {
+		if err := s.queue.EnqueueJob(ctx, kind, result.ID); err != nil {
 			return err
 		}
 	}
@@ -323,7 +317,7 @@ func (s *Scanner) removeMissing(
 				break
 			}
 		}
-		if !managed || pathProtected(path, protected) {
+		if managed && pathProtected(path, protected) {
 			continue
 		}
 		locationID := row.LocationID
@@ -349,53 +343,6 @@ func pathProtected(path string, prefixes []string) bool {
 		}
 	}
 	return false
-}
-
-// cleanOrphanThumbnails は、どの content_key からも参照されなくなった画像を
-// 消す（data-model.md 2 節）。
-//
-// 動画がライブラリから消えても画像はファイルとして残るため、掃除しないと
-// MDM_DATA_DIR が増え続ける。掃除の失敗で走査全体を失敗にはしない。次回の
-// 走査でやり直せる後始末だからである。
-func (s *Scanner) cleanOrphanThumbnails(ctx context.Context) {
-	if s.thumbnailsDir == "" {
-		return
-	}
-
-	keys, err := s.index.ContentKeys(ctx)
-	if err != nil {
-		s.logger.Warn("サムネイルの掃除を省きました", slog.Any("error", err))
-		return
-	}
-
-	referenced := map[string]struct{}{}
-	for key := range keys {
-		referenced[thumbnailFileName(key)] = struct{}{}
-	}
-
-	removed := 0
-	err = filepath.WalkDir(s.thumbnailsDir, func(path string, entry fs.DirEntry, err error) error {
-		if err != nil || entry.IsDir() {
-			return err //nolint:nilerr // ディレクトリは対象外、誤りはそのまま上げる
-		}
-		name := strings.TrimSuffix(entry.Name(), filepath.Ext(entry.Name()))
-		if _, ok := referenced[name]; ok {
-			return nil
-		}
-		if err := os.Remove(path); err != nil {
-			s.logger.Warn("サムネイルを消せませんでした",
-				slog.String("path", path), slog.Any("error", err))
-			return nil
-		}
-		removed++
-		return nil
-	})
-	if err != nil && !os.IsNotExist(err) {
-		s.logger.Warn("サムネイルの掃除に失敗しました", slog.Any("error", err))
-	}
-	if removed > 0 {
-		s.logger.Info("参照されないサムネイルを削除しました", slog.Int("removed", removed))
-	}
 }
 
 // report は進捗を報告する。報告の失敗で走査を止めない。
@@ -445,14 +392,4 @@ func titleOf(path string) string {
 		return name
 	}
 	return norm.NFC.String(title)
-}
-
-// thumbnailFileName は content_key からサムネイルのファイル名（拡張子を除く）を
-// 決める。internal/media の ThumbnailPath と同じ規則である。
-//
-// 掃除のためだけに internal/media へ依存するより、規則を1行で写す方が
-// 依存の向き（ARCHITECTURE.md）を保てる。規則が変わったときに両方を直す
-// 必要があるので、双方のコメントで対応を示しておく。
-func thumbnailFileName(contentKey string) string {
-	return strings.NewReplacer(":", "_", "/", "_", `\`, "_").Replace(contentKey)
 }

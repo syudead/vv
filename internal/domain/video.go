@@ -242,6 +242,8 @@ const (
 
 // UpsertResult は取り込み1件の結果である。
 type UpsertResult struct {
-	ID      int64
-	Outcome UpsertOutcome
+	ID             int64
+	Outcome        UpsertOutcome
+	NeedsProbe     bool
+	NeedsThumbnail bool
 }
