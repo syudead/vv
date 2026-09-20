@@ -41,7 +41,7 @@ describe("ScanProvider", () => {
   });
 
   it("開始要求の失敗を状態取得の成功で消さない", async () => {
-    fetchMock.mockImplementation((input, init) => {
+    fetchMock.mockImplementation((_input, init) => {
       if (init?.method === "POST") {
         return Promise.resolve(
           json({ code: "internal", message: "開始できません" }, 500),
@@ -70,7 +70,7 @@ describe("ScanProvider", () => {
 
   it("開始応答を失っても新しい取り込みの完了を追跡する", async () => {
     let currentCalls = 0;
-    fetchMock.mockImplementation((input, init) => {
+    fetchMock.mockImplementation((_input, init) => {
       if (init?.method === "POST") {
         return Promise.resolve(
           json({ code: "internal", message: "応答を失いました" }, 500),
@@ -95,7 +95,7 @@ describe("ScanProvider", () => {
 
   it("初回状態取得前に開始して高速完了した取り込みを通知する", async () => {
     let currentCalls = 0;
-    fetchMock.mockImplementation((input, init) => {
+    fetchMock.mockImplementation((_input, init) => {
       if (init?.method === "POST") return Promise.resolve(json(scan(2, "running"), 202));
       currentCalls += 1;
       if (currentCalls === 1) return new Promise<Response>(() => undefined);
