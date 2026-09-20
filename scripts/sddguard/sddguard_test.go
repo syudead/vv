@@ -9,11 +9,23 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 )
 
-const repoRoot = "../.."
+func repositoryRoot(t *testing.T) string {
+	t.Helper()
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("resolve sddguard source path")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", ".."))
+	if _, err := os.Stat(filepath.Join(root, "go.mod")); err != nil {
+		t.Fatalf("verify repository root %s: %v", root, err)
+	}
+	return root
+}
 
 // removedArtifacts are files the Tasks stage used to own. The workflow replaced
 // that stage with the Implementation Work section of plan.md
@@ -25,9 +37,23 @@ var removedArtifacts = []string{
 }
 
 func TestTasksStageArtifactsAreAbsent(t *testing.T) {
+	repoRoot := repositoryRoot(t)
 	for _, rel := range removedArtifacts {
 		if _, err := os.Stat(filepath.Join(repoRoot, rel)); err == nil {
 			t.Errorf("%s exists. The Tasks stage was removed; implementation work belongs in the Implementation Work section of plan.md", rel)
+		} else if !os.IsNotExist(err) {
+			t.Errorf("cannot verify that %s is absent: %v", rel, err)
+		}
+	}
+
+	prerequisitesPath := filepath.Join(repoRoot, ".specify", "scripts", "bash", "check-prerequisites.sh")
+	prerequisites, err := os.ReadFile(prerequisitesPath)
+	if err != nil {
+		t.Fatalf("read check-prerequisites.sh: %v", err)
+	}
+	for _, obsolete := range []string{"--require-tasks", "--include-tasks", "/speckit-tasks"} {
+		if strings.Contains(string(prerequisites), obsolete) {
+			t.Errorf("check-prerequisites.sh contains removed Tasks-stage reference %q", obsolete)
 		}
 	}
 
@@ -70,6 +96,7 @@ var (
 // specs/ and fails on a placeholder left outside a code span or fenced block,
 // where an artifact quotes a marker to discuss it rather than to leave one.
 func TestSpecArtifactsHaveNoTemplatePlaceholders(t *testing.T) {
+	repoRoot := repositoryRoot(t)
 	specsDir := filepath.Join(repoRoot, "specs")
 	err := filepath.WalkDir(specsDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -116,6 +143,7 @@ func TestSpecArtifactsHaveNoTemplatePlaceholders(t *testing.T) {
 var indexedDirs = []string{"docs/design-docs", "docs/product-specs"}
 
 func TestDocumentsAreLinkedFromTheirIndex(t *testing.T) {
+	repoRoot := repositoryRoot(t)
 	for _, dir := range indexedDirs {
 		indexPath := filepath.Join(repoRoot, dir, "index.md")
 		index, err := os.ReadFile(indexPath)

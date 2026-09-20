@@ -8,10 +8,10 @@
 
 ## 前提
 
-| シナリオ | 必要なもの |
-| --- | --- |
-| S0（検証用の動画を作る） | `ffmpeg`（コンテナ内で実行してもよい） |
-| S1〜S9 | Docker（`make up`）。手元で動かす場合は Go 1.26・Node 22・`ffmpeg` |
+| シナリオ                 | 必要なもの                                                         |
+| ------------------------ | ------------------------------------------------------------------ |
+| S0（検証用の動画を作る） | `ffmpeg`（コンテナ内で実行してもよい）                             |
+| S1〜S9                   | Docker（`make up`）。手元で動かす場合は Go 1.26・Node 22・`ffmpeg` |
 
 ---
 
@@ -38,15 +38,17 @@ touch "./media/メモ.txt" "./media/.hidden.mp4" "./media/途中.mp4.part"
 
 ---
 
-## S1: 置いた動画が自動で一覧に並ぶ（US1 / FR-001・FR-002 / SC-001）
+## S1: 動画を手動で取り込んで一覧に並べる（US1 / FR-001・FR-002 / SC-001）
 
 ```bash
 MDM_MEDIA_HOST_DIR=./media make up
-# 別の端末で
+# ブラウザで /settings を開き、コンテナ内の /media をメディアフォルダとして登録する
+# 「取り込む」を押すか、別の端末で次を実行する
+curl -sS -X POST "http://localhost:8080/api/scans"
 curl -sS "http://localhost:8080/api/videos" | head -c 800
 ```
 
-**期待**: 起動から **30 秒以内**に最初の動画が `items` に現れる。最終的に 3 件
+**期待**: 手動取り込みの開始から **30 秒以内**に最初の動画が `items` に現れる。最終的に 3 件
 （`total: 3`）で、`メモ.txt`・`.hidden.mp4`・`途中.mp4.part` は含まれない。
 各項目に `title`（拡張子なし）・`sizeBytes`・`durationMs`・`width`・`height` が入る。
 
@@ -156,7 +158,9 @@ time curl -sS -o /dev/null "http://localhost:8080/api/videos?query=動画5"
 make down && docker volume rm vv_data && MDM_MEDIA_HOST_DIR=./media make up
 ```
 
-**期待**: 手作業なしにスキーマが作り直され、再スキャンで一覧が復元する。
+設定画面で`/media`を登録し直し、手動取り込みを開始する。
+
+**期待**: スキーマが起動時に作り直され、folder登録と手動取り込み後に一覧が復元する。
 再生位置（利用者データ）は失われる — これは「索引は再構築できる／利用者データは
 できない」という区分どおりの挙動であり、バックアップ手順の整備は Phase 3 で扱う。
 
@@ -164,11 +168,11 @@ make down && docker volume rm vv_data && MDM_MEDIA_HOST_DIR=./media make up
 
 ## 自動検証との対応
 
-| 検証 | 手段 |
-| --- | --- |
-| S1・S2・S7・S8 の取り込み規則 | `internal/scanner` の単体テスト（一時ディレクトリ） |
-| S3 の再生可否判定 | `internal/domain` の表駆動テスト（外部プロセス不要） |
-| S4 の Range 配信 | `internal/httpapi` の `httptest`（先頭・途中・末尾・不正範囲） |
-| S5 の完了判定・再開位置 | `internal/domain` の単体テスト |
-| S6 の2経路の検索 | `internal/store` のテスト（001 の `fts_test.go` を拡張） |
-| S9 の規模 | 手動計測。自動化は Phase 3（E2E）で検討する |
+| 検証                          | 手段                                                           |
+| ----------------------------- | -------------------------------------------------------------- |
+| S1・S2・S7・S8 の取り込み規則 | `internal/scanner` の単体テスト（一時ディレクトリ）            |
+| S3 の再生可否判定             | `internal/domain` の表駆動テスト（外部プロセス不要）           |
+| S4 の Range 配信              | `internal/httpapi` の `httptest`（先頭・途中・末尾・不正範囲） |
+| S5 の完了判定・再開位置       | `internal/domain` の単体テスト                                 |
+| S6 の2経路の検索              | `internal/store` のテスト（001 の `fts_test.go` を拡張）       |
+| S9 の規模                     | 手動計測。自動化は Phase 3（E2E）で検討する                    |
