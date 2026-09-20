@@ -204,6 +204,17 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 	if err := db.EnsureJob(ctx, JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
+	old := time.Now().Add(-8 * 24 * time.Hour).Unix()
+	if _, err := db.SQL().Exec(`update jobs set updated_at = ? where video_id = ?`, old, videoID); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-JobRetention))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 0 {
+		t.Fatalf("pending state retry suppression was garbage-collected: %d", removed)
+	}
 	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
 		t.Fatalf("terminal failure was revived: %v", err)
 	}
