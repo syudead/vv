@@ -23,13 +23,12 @@ create table videos_new (
     video_codec text, audio_codec text,
     playable integer not null default 0, unplayable_reason text,
     probe_state text not null default 'pending', probe_error text,
-    thumbnail_state text not null default 'pending',
-    location_generation integer not null default 0, updated_at integer not null default 0
+    thumbnail_state text not null default 'pending', updated_at integer not null default 0
 );
 insert into videos_new
 select id, added_at, content_key, duration_ms, width, height, container, video_codec,
        audio_codec, playable, unplayable_reason, probe_state, probe_error,
-       thumbnail_state, 1, updated_at from videos;
+       thumbnail_state, updated_at from videos;
 
 create table jobs_new (
     id integer primary key,

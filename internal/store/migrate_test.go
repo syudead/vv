@@ -67,6 +67,51 @@ func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
 	}
 }
 
+func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *testing.T) {
+	db, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	fsy, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(context.Background(), 3); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tableColumns(t, db, "videos")["location_generation"]; ok {
+		t.Fatal("version 3 unexpectedly contains location_generation")
+	}
+	res, err := db.SQL().Exec(`insert into videos(content_key) values ('existing')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	videoID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Migrate(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Applied != 1 || result.Version != 4 {
+		t.Fatalf("migration result = %+v, want one migration to version 4", result)
+	}
+	var generation int64
+	if err := db.SQL().QueryRow(`select location_generation from videos where id = ?`, videoID).Scan(&generation); err != nil {
+		t.Fatal(err)
+	}
+	if generation != 1 {
+		t.Fatalf("location_generation = %d, want 1", generation)
+	}
+}
+
 // FR-005: 初回起動でスキーマが手作業なしに適用される。
 func TestMigrateAppliesSchemaOnEmptyDirectory(t *testing.T) {
 	dataDir := t.TempDir()
@@ -434,7 +479,7 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	db := migratedDB(t)
 
-	for range 2 {
+	for range 3 {
 		if err := Down(context.Background(), db); err != nil {
 			t.Fatalf("Down に失敗した: %v", err)
 		}
@@ -485,6 +530,9 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := Down(ctx, db); err != nil {
+		t.Fatalf("location generation Down failed: %v", err)
+	}
 	if err := Down(ctx, db); err == nil {
 		t.Fatal("multiple locations were silently collapsed by Down")
 	}
