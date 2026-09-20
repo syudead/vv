@@ -20,9 +20,15 @@ Spec PR and never starts Plan.
 
 Follow [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md)
 (Q-1..Q-7). Where it conflicts with a general instruction below, **it wins**.
+
+Two different people are meant below, and the words are not interchangeable.
+The **requester** is whoever asked for this feature and is running this command;
+they are the one a question goes to. The **user** is whoever will use the
+finished product; the spec's User Scenarios are about them, and "what the user
+gets" means their experience. A question never goes to them.
 Two of its rules invert the defaults of this command:
 
-- **Q-6** — an ambiguity you cannot resolve goes back to the user as a question.
+- **Q-6** — an ambiguity you cannot resolve goes back to the requester as a question.
   A plausible interpretation is not a resolution.
 - **Q-7** — an implementation constraint is never promoted into a product
   requirement or a scope boundary.
@@ -173,7 +179,7 @@ Given that feature description, do this:
    - Focused on user value and business needs
    - Written for non-technical stakeholders
    - All mandatory sections completed
-   - No `[NEEDS CLARIFICATION]` markers remain — each one answered by the user, never deleted by choosing an interpretation
+   - No `[NEEDS CLARIFICATION]` markers remain — each one answered by the requester, never deleted by choosing an interpretation
    - Requirements are testable and unambiguous
    - Every functional requirement has clear acceptance criteria
    - User scenarios cover the primary flows
@@ -223,7 +229,7 @@ Given that feature description, do this:
         5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
         6. Present all questions together before waiting for responses
         7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
-        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
+        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the requester's selected or provided answer
         9. Re-run validation after all clarifications are resolved
 
 ## Mandatory Post-Execution Hooks

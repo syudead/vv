@@ -11,9 +11,13 @@ metadata:
 
 Follow [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md)
 (Q-1..Q-7). Where it conflicts with a general instruction below, **it wins**.
-An ambiguity you cannot resolve goes back to the user as a question (Q-6), and
-an implementation constraint never becomes a product requirement or a scope
-boundary (Q-7).
+An ambiguity you cannot resolve goes back to the **requester** as a question
+(Q-6), and an implementation constraint never becomes a product requirement or a
+scope boundary (Q-7).
+
+The requester is whoever asked for this feature and is running this command —
+the one a question goes to. The *user* is whoever will use the finished product;
+"what the user gets" means their experience, and they are never asked anything.
 
 ## User Input
 
