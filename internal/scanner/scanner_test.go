@@ -2,6 +2,7 @@ package scanner
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"sort"
@@ -16,6 +17,7 @@ import (
 // fakeIndex は保存層の代わりに、走査が何をしたかを覚えておく。
 // 走査規則そのものを検証したいので、SQLite には触れない。
 type fakeIndex struct {
+	folders []domain.MediaFolder
 	rows    map[string]domain.IndexedVideo // path -> 行
 	nextID  int64
 	upserts []domain.VideoFile
@@ -23,7 +25,12 @@ type fakeIndex struct {
 	jobs    []jobCall
 	// keyCalls は content_key を計算したパス。変わっていないファイルで
 	// 再計算していないことを確かめるために数える。
-	progress []domain.ScanResult
+	progress  []domain.ScanResult
+	reportErr error
+}
+
+func (f *fakeIndex) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
+	return f.folders, nil
 }
 
 type jobCall struct {
@@ -50,7 +57,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 		if row.ContentKey == file.ContentKey {
 			delete(f.rows, path)
 			f.rows[file.Path] = domain.IndexedVideo{
-				ID: row.ID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
+				ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
 			}
 			outcome := domain.OutcomeMoved
 			if path == file.Path {
@@ -62,7 +69,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 
 	if row, ok := f.rows[file.Path]; ok {
 		f.rows[file.Path] = domain.IndexedVideo{
-			ID: row.ID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
+			ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
 		}
 		return domain.UpsertResult{ID: row.ID, Outcome: domain.OutcomeUpdated}, nil
 	}
@@ -70,7 +77,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 	id := f.nextID
 	f.nextID++
 	f.rows[file.Path] = domain.IndexedVideo{
-		ID: id, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
+		ID: id, LocationID: id, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
 	}
 	return domain.UpsertResult{ID: id, Outcome: domain.OutcomeAdded}, nil
 }
@@ -85,6 +92,10 @@ func (f *fakeIndex) DeleteVideos(_ context.Context, ids []int64) error {
 		}
 	}
 	return nil
+}
+
+func (f *fakeIndex) DeleteVideoLocations(ctx context.Context, ids []int64) error {
+	return f.DeleteVideos(ctx, ids)
 }
 
 func (f *fakeIndex) ContentKeys(context.Context) (map[string]struct{}, error) {
@@ -102,7 +113,7 @@ func (f *fakeIndex) EnqueueJob(_ context.Context, kind domain.JobKind, videoID i
 
 func (f *fakeIndex) ReportScanProgress(_ context.Context, result domain.ScanResult) error {
 	f.progress = append(f.progress, result)
-	return nil
+	return f.reportErr
 }
 
 // upsertedPaths は取り込もうとしたパスを並べて返す。
@@ -136,7 +147,8 @@ func mediaTree(t *testing.T, files map[string]string) string {
 func runScan(t *testing.T, root string, index *fakeIndex) domain.ScanResult {
 	t.Helper()
 
-	scanner := New(Options{MediaDir: root, Index: index, Queue: index, Reporter: index})
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index, Queue: index, Reporter: index})
 	result, err := scanner.Scan(context.Background())
 	if err != nil {
 		t.Fatalf("走査に失敗した: %v", err)
@@ -388,7 +400,8 @@ func TestScanEnqueuesJobsForNewVideos(t *testing.T) {
 func TestScanContinuesAfterFileFailure(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b", "c.mp4": "c"})
 	index := newFakeIndex()
-	scanner := New(Options{MediaDir: root, Index: index, Queue: index, Reporter: index})
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index, Queue: index, Reporter: index})
 	scanner.contentKey = func(path string) (string, error) {
 		if filepath.Base(path) == "b.mp4" {
 			return "", &os.PathError{Op: "open", Path: path, Err: os.ErrPermission}
@@ -473,12 +486,18 @@ func TestScanReportsProgress(t *testing.T) {
 	}
 }
 
-// 走査の対象が読めない場合は、走査そのものの失敗として返す。
+// 読めないrootは失敗として数え、既存索引を保持する。
 func TestScanFailsWhenMediaDirIsUnreadable(t *testing.T) {
-	scanner := New(Options{MediaDir: filepath.Join(t.TempDir(), "missing"), Index: newFakeIndex()})
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: filepath.Join(t.TempDir(), "missing"), Version: 1}}
+	scanner := New(Options{Index: index})
 
-	if _, err := scanner.Scan(context.Background()); err == nil {
-		t.Error("存在しないディレクトリで成功した")
+	result, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatalf("root I/O failure should be isolated: %v", err)
+	}
+	if result.Failed != 1 {
+		t.Errorf("Failed = %d, want 1", result.Failed)
 	}
 }
 
@@ -493,9 +512,28 @@ func TestScanStopsOnCancel(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	scanner := New(Options{MediaDir: root, Index: newFakeIndex()})
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index})
 	if _, err := scanner.Scan(ctx); err == nil {
 		t.Error("取り消し済みの context で成功した")
+	}
+}
+
+func TestReportingFailurePreventsMissingDeletion(t *testing.T) {
+	root := mediaTree(t, map[string]string{"present.mp4": "present"})
+	missing := filepath.Join(root, "missing.mp4")
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	index.rows[missing] = domain.IndexedVideo{ID: 9, LocationID: 19, ContentKey: "missing", SizeBytes: 1, MTime: time.Unix(1, 0)}
+	index.reportErr = errors.New("database unavailable")
+
+	_, err := New(Options{Index: index, Reporter: index}).Scan(context.Background())
+	if err == nil {
+		t.Fatal("reporting failure was ignored")
+	}
+	if len(index.deleted) != 0 {
+		t.Fatalf("deleted locations after reporting failure: %v", index.deleted)
 	}
 }
 

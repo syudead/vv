@@ -196,10 +196,34 @@ type VideoFile struct {
 // IndexedVideo は差分判定に要る最小限の値である。走査は実際のファイルと
 // これを突き合わせる（R-107）。
 type IndexedVideo struct {
-	ID         int64
-	ContentKey string
-	SizeBytes  int64
-	MTime      time.Time
+	ID              int64
+	ContentKey      string
+	LocationID      int64
+	LocationVersion int64
+	SizeBytes       int64
+	MTime           time.Time
+}
+
+// MediaFolder is one independently managed scan root.
+type MediaFolder struct {
+	ID        int64
+	Path      string
+	Version   int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// VideoLocation is one current filesystem location for a logical video.
+type VideoLocation struct {
+	ID        int64
+	VideoID   int64
+	Path      string
+	Version   int64
+	Title     string
+	SizeBytes int64
+	MTime     time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // UpsertOutcome は取り込み1件の結果である。走査の集計（ScanResult）になる。

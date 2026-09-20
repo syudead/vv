@@ -40,8 +40,7 @@ func streamServer(t *testing.T, mediaDir string, video domain.Video) http.Handle
 	t.Helper()
 
 	return newTestServer(t, Options{
-		Videos:   &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}},
-		MediaDir: mediaDir,
+		Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
 	})
 }
 
@@ -212,7 +211,7 @@ func TestStreamServesUnplayableFormats(t *testing.T) {
 	}
 }
 
-// DB に入っているパスをそのまま開かない。MDM_MEDIA_DIR の外を指す行は 404
+// DB に入っているパスをそのまま開かない。登録rootの外を指す行は 404
 // にする。403 にしないのは、存在そのものを漏らさないためである（R-105）。
 func TestStreamRefusesPathsOutsideMediaDir(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 512)
@@ -325,7 +324,7 @@ func TestStreamHandlesMissingFile(t *testing.T) {
 
 // 存在しない id は 404。
 func TestStreamForMissingVideo(t *testing.T) {
-	handler := newTestServer(t, Options{Videos: &fakeLibrary{}, MediaDir: t.TempDir()})
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{roots: []string{t.TempDir()}}})
 
 	if rec := rangeRequest(t, handler, "/api/videos/999/stream", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", rec.Code)

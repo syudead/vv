@@ -1,6 +1,5 @@
 #Requires -Version 7.4
 param(
-    [string]$MediaDir = "",
     [string]$DataDir = ""
 )
 
@@ -23,31 +22,26 @@ Require-Command "npm"
 Require-Command "ffmpeg"
 Require-Command "ffprobe"
 
-if ([string]::IsNullOrWhiteSpace($MediaDir)) {
-    $MediaDir = Join-Path $repoRoot "media"
-}
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
     $DataDir = Join-Path $repoRoot ".local/data"
 }
 
-New-Item -ItemType Directory -Force -Path $MediaDir, $DataDir | Out-Null
+New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 
 Write-Host "Go:   http://localhost:8080"
 Write-Host "Vite: http://localhost:5173 (/api proxies to :8080)"
-Write-Host "Media: $MediaDir"
 Write-Host "Data:  $DataDir"
 Write-Host ""
 
 $goJob = Start-Job -Name "vv-go" -ScriptBlock {
-    param($Root, $Media, $Data)
+    param($Root, $Data)
     $ErrorActionPreference = "Stop"
     $PSNativeCommandUseErrorActionPreference = $true
     [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
     Set-Location $Root
-    $env:MDM_MEDIA_DIR = $Media
     $env:MDM_DATA_DIR = $Data
     go run ./cmd/mdm 2>&1
-} -ArgumentList $repoRoot, $MediaDir, $DataDir
+} -ArgumentList $repoRoot, $DataDir
 
 $webJob = Start-Job -Name "vv-web" -ScriptBlock {
     param($Root)

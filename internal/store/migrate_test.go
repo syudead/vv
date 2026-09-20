@@ -3,11 +3,67 @@ package store
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/pressly/goose/v3"
 )
+
+func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
+	db, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	fsy, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+	res, err := db.SQL().Exec(`insert into videos(path, title, size_bytes, mtime, content_key, added_at, updated_at)
+		values ('/media/a.mp4', 'a', 10, 20, 'key-a', 30, 40)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	videoID, _ := res.LastInsertId()
+	if _, err := db.SQL().Exec(`insert into jobs(kind, video_id, state, created_at, updated_at)
+		values ('probe', ?, 'queued', 1, 1)`, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`insert into playback_progress(content_key, position_ms, completed, updated_at)
+		values ('key-a', 99, 0, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Migrate(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	video, err := db.GetVideo(context.Background(), videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.ID != videoID || video.Path != "/media/a.mp4" || video.ContentKey != "key-a" {
+		t.Fatalf("migrated video = %+v", video)
+	}
+	var jobs, progress int
+	if err := db.SQL().QueryRow(`select count(*) from jobs where video_id = ?`, videoID).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SQL().QueryRow(`select count(*) from playback_progress where content_key = 'key-a'`).Scan(&progress); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 1 || progress != 1 {
+		t.Fatalf("jobs=%d progress=%d, want 1 and 1", jobs, progress)
+	}
+}
 
 // FR-005: 初回起動でスキーマが手作業なしに適用される。
 func TestMigrateAppliesSchemaOnEmptyDirectory(t *testing.T) {
@@ -136,9 +192,7 @@ func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 将来の版が触るはずのない印を置き、書き換えられないことを確かめる。
-	if _, err := db.SQL().Exec(
-		`insert into videos(path, title, size_bytes, mtime) values ('/media/sentinel.mp4', 'sentinel', 1, 1)`,
-	); err != nil {
+	if _, err := db.SQL().Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'sentinel', 1)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -245,10 +299,7 @@ func TestPlaybackProgressHasNoForeignKeyToVideos(t *testing.T) {
 func TestDeletingVideoKeepsPlaybackProgress(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.SQL().Exec(
-		`insert into videos(path, title, size_bytes, mtime, content_key, updated_at)
-		 values ('/media/a.mp4', 'a', 1, 1, 'key-a', 1)`,
-	); err != nil {
+	if _, err := db.SQL().Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.SQL().Exec(
@@ -278,10 +329,7 @@ func TestDeletingVideoKeepsPlaybackProgress(t *testing.T) {
 func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.SQL().Exec(
-		`insert into videos(path, title, size_bytes, mtime, content_key, updated_at)
-		 values ('/media/a.mp4', 'a', 1, 1, 'key-a', 1)`,
-	); err != nil {
+	if _, err := db.SQL().Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -315,10 +363,7 @@ func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 func TestDeletingVideoCascadesJobs(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.SQL().Exec(
-		`insert into videos(path, title, size_bytes, mtime, content_key, updated_at)
-		 values ('/media/a.mp4', 'a', 1, 1, 'key-a', 1)`,
-	); err != nil {
+	if _, err := db.SQL().Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.SQL().Exec(
@@ -387,8 +432,10 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	db := migratedDB(t)
 
-	if err := Down(context.Background(), db); err != nil {
-		t.Fatalf("Down に失敗した: %v", err)
+	for range 2 {
+		if err := Down(context.Background(), db); err != nil {
+			t.Fatalf("Down に失敗した: %v", err)
+		}
 	}
 
 	// 002 が足した表は消えている。

@@ -14,8 +14,7 @@ OPENAPI_TYPESCRIPT_VERSION = $(shell jq -er .openapiTypescript scripts/tool-vers
 GOLANGCI_LINT = go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 NPM           := npm --prefix web
 
-# make dev 用の既定値。/media と /data は開発機には無いので手元の場所を使う。
-DEV_MEDIA_DIR ?= $(CURDIR)/media
+# make dev 用のデータ置き場。
 DEV_DATA_DIR  ?= $(CURDIR)/.local/data
 
 # 生成物。make generate の再実行で差分が出る状態は失敗とみなす。
@@ -45,10 +44,10 @@ down: ## 起動したものを停止・削除する
 	docker compose down --remove-orphans
 
 dev: web/node_modules ## Go サーバーと Vite 開発サーバーを起動する
-	@mkdir -p "$(DEV_MEDIA_DIR)" "$(DEV_DATA_DIR)"
+	@mkdir -p "$(DEV_DATA_DIR)"
 	@echo "Go: http://localhost:8080 / Vite: http://localhost:5173（/api は :8080 へ中継）"
 	@trap 'kill 0' EXIT INT TERM; \
-	MDM_MEDIA_DIR="$(DEV_MEDIA_DIR)" MDM_DATA_DIR="$(DEV_DATA_DIR)" go run ./cmd/mdm & \
+	MDM_DATA_DIR="$(DEV_DATA_DIR)" go run ./cmd/mdm & \
 	$(NPM) run dev & \
 	wait
 

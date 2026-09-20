@@ -114,11 +114,11 @@ func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 	if updated.Outcome != OutcomeUpdated {
 		t.Errorf("Outcome = %q, want %q", updated.Outcome, OutcomeUpdated)
 	}
-	if updated.ID != added.ID {
-		t.Errorf("行が作り直された: %d -> %d", added.ID, updated.ID)
+	if updated.ID == added.ID {
+		t.Errorf("内容が変わったのに論理動画IDが維持された: %d", added.ID)
 	}
 
-	video, err := db.GetVideo(ctx, added.ID)
+	video, err := db.GetVideo(ctx, updated.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,6 +180,27 @@ func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 	// 内容は変わっていないので、解析結果は捨てない。
 	if video.ProbeState != domain.ProbeStatePending {
 		t.Errorf("ProbeState = %q", video.ProbeState)
+	}
+}
+
+func TestListVideosPagesByRepresentativeLocationTitle(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	for i, title := range []string{"charlie", "alpha", "bravo"} {
+		if _, err := db.UpsertVideo(ctx, sampleFile("/media/"+title+".mp4", title, fmt.Sprintf("key-%d", i), int64(i+1), 0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := db.ListVideos(ctx, VideoQuery{Sort: SortTitleAsc, Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := db.ListVideos(ctx, VideoQuery{Sort: SortTitleAsc, Limit: 1, Cursor: first.NextCursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Items[0].Title != "alpha" || second.Items[0].Title != "bravo" {
+		t.Fatalf("pages = %q, %q", first.Items[0].Title, second.Items[0].Title)
 	}
 }
 

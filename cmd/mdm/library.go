@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"time"
 
@@ -35,7 +37,6 @@ type library struct {
 func newLibrary(cfg Config, db *store.DB, logger *slog.Logger) *library {
 	lib := &library{db: db, logger: logger}
 	lib.scanner = scanner.New(scanner.Options{
-		MediaDir:      cfg.MediaDir,
 		Index:         db,
 		Queue:         db,
 		Reporter:      lib,
@@ -68,25 +69,32 @@ func newWorker(cfg Config, db *store.DB, logger *slog.Logger) *jobs.Worker {
 // 許可リストの規則は単体テストだけで検証できる。
 func probeHandler(db *store.DB) jobs.Handler {
 	return func(ctx context.Context, job domain.Job) error {
-		video, err := db.GetVideo(ctx, job.VideoID)
+		current, err := db.JobIdentityCurrent(ctx, job)
 		if err != nil {
 			return err
 		}
+		if !current {
+			return nil
+		}
+		if err := checkReadableRegularFile(job.LocationPath); err != nil {
+			return err
+		}
 
-		probe, err := media.Probe(ctx, video.Path)
+		probe, err := media.Probe(ctx, job.LocationPath)
 		if err != nil {
 			// 上限まで試して駄目なら、行は残したまま失敗として記録する。
 			// 一覧からは消さない（FR-008）。
 			if job.Attempts >= domain.MaxJobAttempts {
-				if markErr := db.MarkProbeFailed(ctx, video.ID, err.Error()); markErr != nil {
+				if _, markErr := db.MarkProbeFailedForJob(ctx, job, err.Error()); markErr != nil {
 					return markErr
 				}
 			}
 			return err
 		}
 
-		playability := domain.EvaluatePlayability(domain.ContainerFromPath(video.Path), probe)
-		return db.ApplyProbe(ctx, video.ID, probe, playability)
+		playability := domain.EvaluatePlayability(domain.ContainerFromPath(job.LocationPath), probe)
+		_, err = db.ApplyProbeForJob(ctx, job, probe, playability)
+		return err
 	}
 }
 
@@ -103,21 +111,46 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 			durationMs = *video.DurationMs
 		}
 
+		current, err := db.JobIdentityCurrent(ctx, job)
+		if err != nil {
+			return err
+		}
+		if !current {
+			return nil
+		}
+		if err := checkReadableRegularFile(job.LocationPath); err != nil {
+			return err
+		}
 		if _, err := media.Thumbnail(
-			ctx, video.Path, durationMs, cfg.ThumbnailsDir(), video.ContentKey,
+			ctx, job.LocationPath, durationMs, cfg.ThumbnailsDir(), job.ContentKey,
 		); err != nil {
 			if job.Attempts >= domain.MaxJobAttempts {
-				if markErr := db.SetThumbnailState(
-					ctx, video.ID, domain.ThumbnailStateFailed,
-				); markErr != nil {
+				if _, markErr := db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateFailed); markErr != nil {
 					return markErr
 				}
 			}
 			return err
 		}
 
-		return db.SetThumbnailState(ctx, video.ID, domain.ThumbnailStateDone)
+		_, err = db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
+		return err
 	}
+}
+
+func checkReadableRegularFile(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("通常ファイルではありません: %s", path)
+	}
+	return nil
 }
 
 // StartScan は取り込みを開始する。実行中なら新しく始めず、実行中のものを返す
@@ -181,7 +214,14 @@ func (l *library) runScan(scanID int64) {
 
 	ctx := l.scanContext()
 
-	result, err := l.scanner.Scan(ctx)
+	result, err := func() (result domain.ScanResult, err error) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				err = fmt.Errorf("取り込み処理がpanicしました: %v", recovered)
+			}
+		}()
+		return l.scanner.Scan(ctx)
+	}()
 
 	// 停止指示で打ち切った場合は、失敗として閉じる。次の起動で走り直せる。
 	state := store.ScanDone

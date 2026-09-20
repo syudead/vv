@@ -14,23 +14,15 @@ import (
 // 項目と既定値の契約は specs/001-initial-setup/contracts/configuration.md にある。
 const (
 	envAddr     = "MDM_ADDR"
-	envMediaDir = "MDM_MEDIA_DIR"
 	envDataDir  = "MDM_DATA_DIR"
 	envLogLevel = "MDM_LOG_LEVEL"
-	// 取り込みを起動直後に1回自動実行するか。「置くだけで並ぶ」（US1）には
-	// 自動実行が要るので既定は有効にする（R-108）。
-	envScanOnStart = "MDM_SCAN_ON_START"
 )
 
 // 既定値。すべて未設定でも起動できる。
 const (
 	defaultAddr     = ":8080"
-	defaultMediaDir = "/media"
 	defaultDataDir  = "/data"
 	defaultLogLevel = "info"
-	// 自動取り込みの既定値。文字列で持つのは、未設定と明示的な指定を
-	// 同じ解釈経路に通して、誤った値を一律に弾くためである。
-	defaultScanOnStart = "true"
 )
 
 // dataDirPerm は MDM_DATA_DIR とその配下を作成するときの許可属性である。
@@ -44,11 +36,8 @@ const thumbnailsDirName = "thumbnails"
 // データベースのパスは DataDir/mdm.db に固定し、設定項目にしない。
 type Config struct {
 	Addr     string
-	MediaDir string
 	DataDir  string
 	LogLevel string
-	// ScanOnStart は起動直後に取り込みを1回自動実行するかどうか。
-	ScanOnStart bool
 }
 
 // logLevels は受け付ける記録の詳細度である。
@@ -67,25 +56,11 @@ var logLevels = map[string]slog.Level{
 func LoadConfig(getenv func(string) string) (Config, error) {
 	cfg := Config{
 		Addr:     valueOr(getenv(envAddr), defaultAddr),
-		MediaDir: valueOr(getenv(envMediaDir), defaultMediaDir),
 		DataDir:  valueOr(getenv(envDataDir), defaultDataDir),
 		LogLevel: valueOr(getenv(envLogLevel), defaultLogLevel),
 	}
 
 	var problems []error
-
-	// 真偽値は true / false だけを受ける。yes や 1 を黙って受けると、
-	// 受理される綴りが環境ごとに散らばる。曖昧な値を既定へ倒さないのは、
-	// 自動取り込みが動いていない理由を設定から読み取れるようにするためである。
-	switch scanOnStart := valueOr(getenv(envScanOnStart), defaultScanOnStart); scanOnStart {
-	case "true":
-		cfg.ScanOnStart = true
-	case "false":
-		cfg.ScanOnStart = false
-	default:
-		problems = append(problems, fmt.Errorf(
-			"%s=%q は未知の値です（true / false のいずれか）", envScanOnStart, scanOnStart))
-	}
 
 	if _, _, err := net.SplitHostPort(cfg.Addr); err != nil {
 		problems = append(problems, fmt.Errorf(
@@ -93,10 +68,6 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 			envAddr, cfg.Addr, err))
 	}
 
-	if !filepath.IsAbs(cfg.MediaDir) {
-		problems = append(problems, fmt.Errorf(
-			"%s=%q は絶対パスではありません", envMediaDir, cfg.MediaDir))
-	}
 	if !filepath.IsAbs(cfg.DataDir) {
 		problems = append(problems, fmt.Errorf(
 			"%s=%q は絶対パスではありません", envDataDir, cfg.DataDir))
@@ -115,7 +86,7 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 }
 
 // Verify はファイルシステム側の前提を確認する。
-// MediaDir は存在と読み取り可否を確認し、DataDir は存在しなければ作成する。
+// DataDir は存在しなければ作成する。
 // 不正な項目はここでもまとめて列挙する。
 func (c Config) Verify() error {
 	problems := c.verifyProblems()
@@ -129,10 +100,6 @@ func (c Config) Verify() error {
 // 確認結果とまとめて1度に提示するため、誤りをまとめる前の形で返す。
 func (c Config) verifyProblems() []error {
 	var problems []error
-
-	if err := checkReadableDir(c.MediaDir); err != nil {
-		problems = append(problems, fmt.Errorf("%s=%s を読み取れません: %w", envMediaDir, c.MediaDir, err))
-	}
 
 	if err := os.MkdirAll(c.DataDir, dataDirPerm); err != nil {
 		problems = append(problems, fmt.Errorf("%s=%s を作成できません: %w", envDataDir, c.DataDir, err))
@@ -164,10 +131,8 @@ func (c Config) Level() slog.Level {
 func (c Config) LogAttrs() []slog.Attr {
 	return []slog.Attr{
 		slog.String(envAddr, c.Addr),
-		slog.String(envMediaDir, c.MediaDir),
 		slog.String(envDataDir, c.DataDir),
 		slog.String(envLogLevel, c.LogLevel),
-		slog.Bool(envScanOnStart, c.ScanOnStart),
 	}
 }
 

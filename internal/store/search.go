@@ -67,14 +67,14 @@ func searchFilter(query string) (condition string, args []any) {
 
 	switch routeFor(query) {
 	case routeMatch:
-		return `videos.id in (select rowid from videos_fts where videos_fts match ?)`,
+		return `videos.id in (select video_id from video_locations where id in (select rowid from videos_fts where videos_fts match ?))`,
 			[]any{quoteMatchQuery(normalized)}
 
 	case routeLike:
 		// title と path の双方を見る。題名は拡張子を除いたファイル名なので
 		// ほぼ同じだが、ディレクトリ名で絞りたい場合に path が効く。
-		return `videos.id in (select rowid from videos_fts where title like ? escape '\' ` +
-				`or path like ? escape '\')`,
+		return `videos.id in (select video_id from video_locations where id in (` +
+				`select rowid from videos_fts where title like ? escape '\' or path like ? escape '\'))`,
 			[]any{likePattern(normalized), likePattern(normalized)}
 
 	default:

@@ -57,9 +57,6 @@ type Options struct {
 	Playback Playback
 	// Scans は取り込みの開始と状態の取得。nil なら該当の経路は 500 を返す。
 	Scans Scans
-	// MediaDir は配信してよいファイルの根。この配下だけを開く
-	// （contracts/http-routes.md の安全性）。
-	MediaDir string
 	// ThumbnailsDir はサムネイルの置き場所。
 	ThumbnailsDir string
 	// Assets は SPA のビルド成果物（web/dist に相当）。
@@ -76,7 +73,6 @@ type server struct {
 	videos        Library
 	playback      Playback
 	scans         Scans
-	mediaDir      string
 	thumbnailsDir string
 	logger        *slog.Logger
 }
@@ -107,7 +103,6 @@ func NewRouter(opts Options) http.Handler {
 		videos:        opts.Videos,
 		playback:      opts.Playback,
 		scans:         opts.Scans,
-		mediaDir:      opts.MediaDir,
 		thumbnailsDir: opts.ThumbnailsDir,
 		logger:        logger,
 	}
