@@ -29,6 +29,9 @@ type Job struct {
 	LocationID      int64
 	LocationVersion int64
 	LocationPath    string
+	// LocationSetMaxID はclaim時点に存在したlocation IDの上限。処理中に
+	// locationが追加された場合、古いsnapshotで完了・最終失敗にしないために使う。
+	LocationSetMaxID int64
 	// LastLocation はclaim時点の登録済みlocation集合で最後の候補かを表す。
 	LastLocation bool
 	// Attempts はこの取り出しを含めた試行回数。

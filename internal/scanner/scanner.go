@@ -247,7 +247,12 @@ func (s *Scanner) ingest(
 	if existing, ok := indexed[path]; ok &&
 		existing.SizeBytes == info.Size() &&
 		existing.MTime.Unix() == info.ModTime().Unix() {
-		return nil
+		return s.enqueue(ctx, domain.UpsertResult{
+			ID:             existing.ID,
+			Outcome:        domain.OutcomeUnchanged,
+			NeedsProbe:     existing.ProbeState != domain.ProbeStateDone,
+			NeedsThumbnail: existing.ThumbnailState != domain.ThumbnailStateDone,
+		})
 	}
 
 	key, err := s.contentKey(path)
