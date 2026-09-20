@@ -123,9 +123,6 @@ func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFold
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
-	if err := syncAllRepresentativeContainers(ctx, tx); err != nil {
-		return domain.MediaFolder{}, err
-	}
 	if err := tx.Commit(); err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -169,9 +166,6 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 		return domain.MediaFolder{}, err
 	}
 	if err := removeLocationsUnder(ctx, tx, oldPath); err != nil {
-		return domain.MediaFolder{}, err
-	}
-	if err := syncAllRepresentativeContainers(ctx, tx); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	if err := tx.Commit(); err != nil {

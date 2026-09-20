@@ -73,11 +73,9 @@ current locationを選び直す。
 1. running scanがないことを確認する
 2. candidateのabsolute、exists、directory、readable、非symlink、非filesystem-root、重複・包含を検証する
 3. MediaFolderを1行insertする
-4. 既存locationが新rootの登録対象になったvideoについて代表location由来のcontainerと再生可否を同期する
-5. commitする
+4. commitする
 
-追加transactionは代表locationが変わる`videos`の派生属性以外の`videos`、`videos_fts`、`jobs`、`scans`、
-`playback_progress`へ書き込まない。
+追加transactionは`videos`、`videos_fts`、`jobs`、`scans`、`playback_progress`へ書き込まない。
 
 ### Replace Existing Path
 
@@ -117,7 +115,7 @@ retry上限へ達した`failed` jobはcontentが変わるまで復活させな�
 
 APIが返す代表locationのpathが変わる可能性がある操作では、同じtransaction内で`videos.container`と
 probe済みvideoの`playable`・`unplayable_reason`を新しい代表pathに合わせて再計算する。対象はlocationの
-追加・削除・別videoへの再割り当てと、MediaFolderの追加・変更・削除による登録範囲の変更を含む。
+追加・削除・別videoへの再割り当てと、MediaFolderの変更・削除による登録範囲の変更を含む。
 
 ## DirectoryListing
 

@@ -58,6 +58,7 @@ type Index interface {
 // Queue は重い処理の積み先である。nil でもよい（積まないだけ）。
 type Queue interface {
 	EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64) error
+	EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error
 }
 
 // Reporter は走査の進捗の報告先である。nil でもよい（報告しないだけ）。
@@ -242,17 +243,12 @@ func (s *Scanner) ingest(
 		return err
 	}
 
-	// 変わっていないファイルは何もしない。ここで content_key を計算しないので、
-	// 2 回目以降の走査はディレクトリ走査と比較だけで終わる（R-107）。
+	// 変わっていないファイルは再hashせず、欠落したpending jobだけを補う。
+	// terminal failureは復活させない（R-107）。
 	if existing, ok := indexed[path]; ok &&
 		existing.SizeBytes == info.Size() &&
 		existing.MTime.Unix() == info.ModTime().Unix() {
-		return s.enqueue(ctx, domain.UpsertResult{
-			ID:             existing.ID,
-			Outcome:        domain.OutcomeUnchanged,
-			NeedsProbe:     existing.ProbeState == domain.ProbeStatePending,
-			NeedsThumbnail: existing.ThumbnailState == domain.ThumbnailStatePending,
-		})
+		return s.ensurePendingJobs(ctx, existing)
 	}
 
 	key, err := s.contentKey(path)
@@ -286,6 +282,27 @@ func (s *Scanner) ingest(
 	}
 
 	return s.enqueue(ctx, upserted)
+}
+
+func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVideo) error {
+	if s.queue == nil {
+		return nil
+	}
+	states := []struct {
+		kind    domain.JobKind
+		pending bool
+	}{
+		{kind: domain.JobProbe, pending: video.ProbeState == domain.ProbeStatePending},
+		{kind: domain.JobThumbnail, pending: video.ThumbnailState == domain.ThumbnailStatePending},
+	}
+	for _, state := range states {
+		if state.pending {
+			if err := s.queue.EnsureJob(ctx, state.kind, video.ID); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // enqueue は解析とサムネイルのジョブを積む。

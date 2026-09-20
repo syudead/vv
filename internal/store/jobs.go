@@ -62,6 +62,20 @@ func (db *DB) EnqueueJob(ctx context.Context, kind JobKind, videoID int64) error
 	return nil
 }
 
+// EnsureJob recovers a missing pending job without reviving a terminal failure.
+func (db *DB) EnsureJob(ctx context.Context, kind JobKind, videoID int64) error {
+	now := time.Now().Unix()
+	_, err := db.sql.ExecContext(ctx, `
+		insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
+		select ?, ?, 'queued', 0, ?, ?
+		where not exists (select 1 from jobs where kind = ? and video_id = ?)`,
+		string(kind), videoID, now, now, string(kind), videoID)
+	if err != nil {
+		return fmt.Errorf("欠落ジョブを復旧できません (%s, video=%d): %w", kind, videoID, err)
+	}
+	return nil
+}
+
 // ClaimJob は待ち行列から1件を専有する（R-106）。
 //
 // 取り出しと状態の書き換えを begin immediate のトランザクションで囲む。

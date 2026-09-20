@@ -3,12 +3,19 @@ package domain
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
 // PathWithinRoot applies the host OS volume, separator and path comparison rules.
 func PathWithinRoot(root, path string) bool {
-	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(path))
+	cleanRoot := filepath.Clean(root)
+	cleanPath := filepath.Clean(path)
+	if runtime.GOOS == "windows" {
+		cleanRoot = strings.ToLower(cleanRoot)
+		cleanPath = strings.ToLower(cleanPath)
+	}
+	rel, err := filepath.Rel(cleanRoot, cleanPath)
 	if err != nil {
 		return false
 	}
