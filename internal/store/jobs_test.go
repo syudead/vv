@@ -186,6 +186,40 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 	}
 }
 
+func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	for range MaxJobAttempts {
+		job, err := db.ClaimJob(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.FailJob(ctx, job.ID, "unreadable location"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.EnsureJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-8 * 24 * time.Hour).Unix()
+	if _, err := db.SQL().Exec(`update jobs set updated_at = ? where video_id = ?`, old, videoID); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-JobRetention))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 0 {
+		t.Fatalf("pending state retry suppression was garbage-collected: %d", removed)
+	}
+	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("terminal failure was revived: %v", err)
+	}
+}
+
 // 起動時に running のまま残っている行は queued へ戻す。取り込み中に止めても
 // 次の起動で再開でき、重複も生まない（R-106 / spec のエッジケース）。
 func TestRequeueRunningJobs(t *testing.T) {

@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -191,6 +193,20 @@ func TestAddMediaFolderRejectsRelativePath(t *testing.T) {
 	}
 }
 
+func TestAddMediaFolderRejectsWindowsCaseDuplicate(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows path comparison")
+	}
+	db := migratedDB(t)
+	root := t.TempDir()
+	if _, err := db.AddMediaFolder(context.Background(), root); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.AddMediaFolder(context.Background(), strings.ToUpper(root)); !errors.Is(err, ErrFolderConflict) {
+		t.Fatalf("case-only duplicate error = %v, want ErrFolderConflict", err)
+	}
+}
+
 func TestAddMediaFolderPreservesFilesystemUnicodePath(t *testing.T) {
 	db := migratedDB(t)
 	decomposed := norm.NFD.String("Café")
@@ -252,25 +268,30 @@ func TestDeletingRepresentativeLocationRecomputesContainerAndPlayability(t *test
 	}
 }
 
-func TestAddingFolderRecomputesRepresentativeContainer(t *testing.T) {
+func TestReplacingFolderSynchronizesLocationsEnabledByNewRoot(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	root := t.TempDir()
 	rootA := filepath.Join(root, "a")
 	rootB := filepath.Join(root, "b")
-	for _, path := range []string{rootA, rootB} {
+	rootC := filepath.Join(root, "c")
+	for _, path := range []string{rootA, rootB, rootC} {
 		if err := os.Mkdir(path, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.AddMediaFolder(ctx, rootB); err != nil {
-		t.Fatal(err)
-	}
-	video, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootB, "movie.mkv"), "movie", "same", 1, 0))
+	folderA, err := db.AddMediaFolder(ctx, rootA)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootA, "movie.mp4"), "movie", "same", 1, 0)); err != nil {
+	if _, err := db.AddMediaFolder(ctx, rootC); err != nil {
+		t.Fatal(err)
+	}
+	video, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootC, "z.mkv"), "z", "same", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootB, "a.mp4"), "a", "same", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	probe := domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}
@@ -278,14 +299,14 @@ func TestAddingFolderRecomputesRepresentativeContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := db.AddMediaFolder(ctx, rootA); err != nil {
+	if _, err := db.ReplaceMediaFolder(ctx, folderA.ID, folderA.Version, rootB); err != nil {
 		t.Fatal(err)
 	}
 	got, err := db.GetVideo(ctx, video.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Path != filepath.Join(rootA, "movie.mp4") || got.Container != "mp4" || !got.Playable {
-		t.Fatalf("representative was not synchronized: %+v", got)
+	if got.Path != filepath.Join(rootB, "a.mp4") || got.Container != "mp4" || !got.Playable {
+		t.Fatalf("new-root representative was not synchronized: %+v", got)
 	}
 }

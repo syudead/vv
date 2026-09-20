@@ -532,31 +532,6 @@ func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64)
 	return nil
 }
 
-func syncAllRepresentativeContainers(ctx context.Context, tx *sql.Tx) error {
-	rows, err := tx.QueryContext(ctx, `select id from videos`)
-	if err != nil {
-		return err
-	}
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Close(); err != nil {
-		return err
-	}
-	for _, id := range ids {
-		if err := syncRepresentativeContainer(ctx, tx, id); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // ContentKeys は参照されている内容の識別子を集合で返す。
 // スキャン完了時の孤児サムネイルの掃除に使う（data-model.md 2 節）。
 func (db *DB) ContentKeys(ctx context.Context) (map[string]struct{}, error) {

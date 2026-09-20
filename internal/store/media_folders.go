@@ -123,9 +123,6 @@ func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFold
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
-	if err := syncAllRepresentativeContainers(ctx, tx); err != nil {
-		return domain.MediaFolder{}, err
-	}
 	if err := tx.Commit(); err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -171,7 +168,7 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	if err := removeLocationsUnder(ctx, tx, oldPath); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	if err := syncAllRepresentativeContainers(ctx, tx); err != nil {
+	if err := syncLocationsUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -277,4 +274,32 @@ func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
 	}
 	_, err = tx.ExecContext(ctx, `delete from videos where not exists (select 1 from video_locations where video_locations.video_id = videos.id)`)
 	return err
+}
+
+func syncLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
+	rows, err := tx.QueryContext(ctx, `select video_id, path from video_locations`)
+	if err != nil {
+		return err
+	}
+	videoIDs := map[int64]struct{}{}
+	for rows.Next() {
+		var videoID int64
+		var path string
+		if err := rows.Scan(&videoID, &path); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		if domain.PathWithinRoot(root, path) {
+			videoIDs[videoID] = struct{}{}
+		}
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for videoID := range videoIDs {
+		if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
+			return err
+		}
+	}
+	return nil
 }

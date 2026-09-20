@@ -73,11 +73,9 @@ current locationを選び直す。
 1. running scanがないことを確認する
 2. candidateのabsolute、exists、directory、readable、非symlink、非filesystem-root、重複・包含を検証する
 3. MediaFolderを1行insertする
-4. 既存locationが新rootの登録対象になったvideoについて代表location由来のcontainerと再生可否を同期する
-5. commitする
+4. commitする
 
-追加transactionは代表locationが変わる`videos`の派生属性以外の`videos`、`videos_fts`、`jobs`、`scans`、
-`playback_progress`へ書き込まない。
+追加transactionは`videos`、`videos_fts`、`jobs`、`scans`、`playback_progress`へ書き込まない。
 
 ### Replace Existing Path
 
@@ -114,10 +112,12 @@ failed stateを書き戻せる。job完了・失敗の記録も同じidentity条
 claim後にcurrent locationが追加された場合も、probe結果・probe失敗・thumbnail stateを書き戻さずjobを
 再queueする。変更のないfileを再走査した場合、欠落jobを復旧するのはstateが`pending`のときだけとし、
 retry上限へ達した`failed` jobはcontentが変わるまで復活させない。
+location固有のI/O失敗でjobだけが`failed`、論理stateが`pending`の組合せでは、そのjobを再試行抑止記録として
+保持期間後も残す。content変更時の通常enqueueが抑止記録を置き換え、再解析を開始する。
 
 APIが返す代表locationのpathが変わる可能性がある操作では、同じtransaction内で`videos.container`と
 probe済みvideoの`playable`・`unplayable_reason`を新しい代表pathに合わせて再計算する。対象はlocationの
-追加・削除・別videoへの再割り当てと、MediaFolderの追加・変更・削除による登録範囲の変更を含む。
+追加・削除・別videoへの再割り当てと、MediaFolderの変更・削除による登録範囲の変更を含む。
 
 ## DirectoryListing
 

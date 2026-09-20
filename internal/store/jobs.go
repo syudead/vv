@@ -62,6 +62,20 @@ func (db *DB) EnqueueJob(ctx context.Context, kind JobKind, videoID int64) error
 	return nil
 }
 
+// EnsureJob recovers a missing pending job without reviving a terminal failure.
+func (db *DB) EnsureJob(ctx context.Context, kind JobKind, videoID int64) error {
+	now := time.Now().Unix()
+	_, err := db.sql.ExecContext(ctx, `
+		insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
+		select ?, ?, 'queued', 0, ?, ?
+		where not exists (select 1 from jobs where kind = ? and video_id = ?)`,
+		string(kind), videoID, now, now, string(kind), videoID)
+	if err != nil {
+		return fmt.Errorf("欠落ジョブを復旧できません (%s, video=%d): %w", kind, videoID, err)
+	}
+	return nil
+}
+
 // ClaimJob は待ち行列から1件を専有する（R-106）。
 //
 // 取り出しと状態の書き換えを begin immediate のトランザクションで囲む。
@@ -258,10 +272,17 @@ func (db *DB) RequeueRunningJobs(ctx context.Context) (int64, error) {
 }
 
 // DeleteFinishedJobsBefore は指定時刻より前に完了・失敗した行を消し、その数を
-// 返す。未完了の行は対象にしない。
+// 返す。location固有の終端失敗は論理stateがpendingの間は再試行抑止記録として残す。
 func (db *DB) DeleteFinishedJobsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
 	res, err := db.sql.ExecContext(ctx,
-		`delete from jobs where state in ('done', 'failed') and updated_at < ?`,
+		`delete from jobs where updated_at < ? and (
+			state = 'done' or (state = 'failed' and exists (
+				select 1 from videos v where v.id = jobs.video_id and (
+					(jobs.kind = 'probe' and v.probe_state <> 'pending') or
+					(jobs.kind = 'thumbnail' and v.thumbnail_state <> 'pending')
+				)
+			))
+		)`,
 		cutoff.Unix())
 	if err != nil {
 		return 0, fmt.Errorf("完了したジョブを掃除できません: %w", err)

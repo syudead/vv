@@ -106,6 +106,16 @@ func (f *fakeIndex) EnqueueJob(_ context.Context, kind domain.JobKind, videoID i
 	return nil
 }
 
+func (f *fakeIndex) EnsureJob(_ context.Context, kind domain.JobKind, videoID int64) error {
+	for _, job := range f.jobs {
+		if job.kind == kind && job.videoID == videoID {
+			return nil
+		}
+	}
+	f.jobs = append(f.jobs, jobCall{kind: kind, videoID: videoID})
+	return nil
+}
+
 func (f *fakeIndex) ReportScanProgress(_ context.Context, result domain.ScanResult) error {
 	f.progress = append(f.progress, result)
 	return f.reportErr
