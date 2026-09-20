@@ -136,11 +136,15 @@ Given that feature description, do this:
        If empty: ERROR "No feature description provided"
     2. Extract key concepts from description
        Identify: actors, actions, data, constraints
-    3. For unclear aspects, decide by what the answer changes:
-       - Mark with [NEEDS CLARIFICATION: specific question] whenever the answer
-         would change what the user gets — the scope, the interaction, the
-         security or privacy posture, or which of several readings of the
-         request is correct. Ask; do not pick one and move on (Q-6)
+    3. For unclear aspects, look for the answer before writing a question:
+       - Resolve it from this repository's design docs and existing screens, the
+         spec's own wording, or the form comparable current products have
+         converged on. Write that answer into the spec and record it in
+         Assumptions with where it came from
+       - Mark with [NEEDS CLARIFICATION: specific question] only when the answer
+         changes what the user gets, no reference settles it (or two credible
+         answers lead somewhere materially different), and getting it wrong
+         would be expensive to undo. Then ask; do not pick one silently (Q-6)
        - Make an informed guess only for a detail that does not change what the
          user gets whichever way it goes, and record it in Assumptions
        - An implementation difficulty is never the reason for a guess. If the
@@ -153,7 +157,7 @@ Given that feature description, do this:
        If no clear user flow: ERROR "Cannot determine user scenarios"
     5. Generate Functional Requirements
        Each requirement must be testable
-       Use a default only for a detail that does not change what the user gets, and record it in Assumptions. Anything that does becomes a [NEEDS CLARIFICATION] marker (Q-6)
+       Settle unspecified details from the references above and record them in Assumptions. Only a gap that no reference settles, and whose answer changes what the user gets, becomes a [NEEDS CLARIFICATION] marker (Q-6)
     6. Define Success Criteria
        Create measurable, technology-agnostic outcomes
        Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
@@ -284,39 +288,47 @@ Report completion to the user with:
 
 When creating this spec from a user prompt:
 
-1. **Sort each gap by what the answer changes**: if the answer would change the
-   scope, the interaction, the user's experience, or the security and privacy
-   posture, it is a question. Everything else may take a default (Q-6)
-2. **Ask, with a marker**: write `[NEEDS CLARIFICATION: specific question]` for
-   each question and put it to the user. Carry at most 3 into one round; the
-   rest stay in the spec for the next round
+1. **Answer it yourself first**: for each gap, look for the answer before
+   considering a question. In order: this repository's design docs and existing
+   screens, the spec's own wording, and the form that comparable current
+   products have converged on. An answer found this way is written into the
+   spec and recorded in Assumptions — asking about something that already has a
+   settled answer wastes the requester's attention and is itself a defect.
+2. **Ask only what is genuinely open**: a gap becomes a
+   `[NEEDS CLARIFICATION: specific question]` only when all three hold:
+   - the answer changes what the user gets — the scope, the interaction, or the
+     protection of their data; and
+   - step 1 produced no answer, or produced two credible answers with
+     materially different consequences; and
+   - getting it wrong would be expensive to undo.
+   Carry at most 3 into one round; the rest stay in the spec for the next round.
 3. **Prioritize**: scope > security/privacy > user experience > technical details
-4. **Document defaults**: record each default you did take in the Assumptions
-   section, so a reader can see what was decided without being asked
+4. **Document what you settled**: record each answer you took from a reference
+   or a convention in the Assumptions section, naming where it came from, so the
+   requester can overturn it by reading rather than by being interrogated
 5. **Think like a tester**: treat every vague requirement as a validation failure
 6. **Keep implementation out of it**: a technical constraint is a question about
    the requirement, never a reason to narrow it (Q-7)
 
-**Areas that always need an answer from the user**:
+**Do not ask about these** — settle them from the references above and record
+what you chose:
 
-- Feature scope and boundaries — which use cases are in and which are out
-- The shape of an interaction when more than one form would satisfy the words
-  used (for example entering a value by hand versus choosing it from a list)
-- User types and permissions, where interpretations conflict
-- Security and compliance requirements
-
-**Areas where a default is usually fine** (record it in Assumptions), as long as
-the default leaves the user's experience, the scope, and the protection of their
-data unchanged:
-
-- Performance targets: standard web/mobile app expectations, when the request
-  implies no budget of its own
+- How a common interaction looks and behaves when current products of the same
+  kind have converged on one form. Follow that form; the reason to ask is a
+  genuine fork, not the existence of a choice
+- Visual layout, density, and component behavior already governed by this
+  repository's design docs
+- Performance targets, when the request implies no budget of its own
 - Error handling: user-friendly messages with appropriate fallbacks
 - Integration patterns: project-appropriate patterns (REST/GraphQL for web
   services, function calls for libraries, CLI args for tools, etc.)
 
-Data retention and the authentication method are **not** on this list: both
-change the protection of the user's data, so both are questions (Q-6).
+**Worth asking, once the three conditions above hold**:
+
+- Which use cases are in and which are out, when the request does not imply it
+- A behavior where two credible designs lead somewhere materially different
+- Data retention and the authentication method, when this product has no
+  established position on them — both change how the user's data is protected
 
 ### Success Criteria Guidelines
 
