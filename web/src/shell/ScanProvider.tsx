@@ -26,8 +26,10 @@ export interface ScanContextValue {
   error: string | null;
   starting: boolean;
   running: boolean;
+  canStart: boolean;
   start: () => void;
   refresh: () => void;
+  setFolderCount: (count: number) => void;
   /**
    * 「終わったのを見た」スキャン。初回表示で既に終わっていたものは含めない
    * （利用者が待っていたものではないため、一覧を勝手に入れ替えない）。
@@ -56,6 +58,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [starting, setStarting] = useState(false);
   const [finished, setFinished] = useState<Scan | null>(null);
   const [watch, setWatch] = useState(0);
+  const [folderCount, setFolderCount] = useState<number | null>(null);
   const requestedScanId = useRef<number | null>(null);
   const observedRunningScanId = useRef<number | null>(null);
   const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
@@ -148,6 +151,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   }, [watch]);
 
   const start = useCallback(() => {
+    if (folderCount === 0) return;
     const baselineScanId = scan?.id ?? null;
     setStarting(true);
     setStartError(null);
@@ -175,7 +179,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         setStarting(false);
       }
     })();
-  }, [scan?.id]);
+  }, [folderCount, scan?.id]);
 
   const refresh = useCallback(() => setWatch((value) => value + 1), []);
 
@@ -187,11 +191,13 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       error,
       starting,
       running: starting || scan?.state === "running",
+      canStart: folderCount !== 0,
       start,
       refresh,
+      setFolderCount,
       finished,
     }),
-    [error, finished, refresh, scan, start, starting],
+    [error, finished, folderCount, refresh, scan, start, starting],
   );
 
   return <ScanContext.Provider value={value}>{children}</ScanContext.Provider>;

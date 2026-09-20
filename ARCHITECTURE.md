@@ -94,15 +94,16 @@ round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
-frame around a screen. `web/src/library/` and `web/src/player/` own their
-respective product flows, while reusable primitives live in `web/src/ui/` and
-formatting helpers live in `web/src/lib/`. Only the library list uses the shell:
-`app/App.tsx` puts `AppShell` around the `/` route alone, and the playback screen
+frame around a screen. `web/src/library/`, `web/src/settings/`, and
+`web/src/player/` own their respective product flows, while reusable primitives live in
+`web/src/ui/` and formatting helpers live in `web/src/lib/`. The library and settings
+screens use the shell: `app/App.tsx` puts `AppShell` around the `/` and `/settings`
+routes, and the playback screen
 (`/videos/:id`) deliberately gets no sidebar, because it is a
 two-pane screen of its own (R-505). Keeping that choice to the one routing
 decision is what lets the shell stay ignorant of which screen it is framing.
-The shell exposes only the library as a route. "Recently added", "In progress",
-and settings show a preparation notice until backing routes exist; shell tests
+The shell exposes the library and media-folder settings as routes. "Recently added"
+and "In progress" show a preparation notice until backing routes exist; shell tests
 keep that boundary explicit.
 
 The shell does not take ownership of scrolling. The sidebar and the toolbar are

@@ -9,18 +9,23 @@ import { describeScan, useScan } from "./ScanProvider";
 function ScanButton() {
   const scan = useScan();
   const description = describeScan(scan);
+  const buttonDescription = scan.canStart
+    ? scan.running
+      ? description
+      : "ライブラリを更新"
+    : "メディアフォルダを設定してください";
   const progress =
     scan.scan?.state === "running" && scan.scan.total > 0
       ? scan.scan.completed / scan.scan.total
       : null;
 
   return (
-    <Tooltip content={description}>
+    <Tooltip content={buttonDescription}>
       <button
         type="button"
         onClick={scan.start}
-        disabled={scan.running}
-        aria-label={scan.running ? description : "ライブラリを更新"}
+        disabled={scan.running || !scan.canStart}
+        aria-label={buttonDescription}
         className={cn(
           "inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm transition-colors select-none",
           scan.error !== null

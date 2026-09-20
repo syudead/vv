@@ -10,6 +10,7 @@ const settingsEntry: NavEntry = {
   id: "settings",
   label: "設定",
   icon: Settings,
+  to: "/settings",
 };
 
 function Entry({
