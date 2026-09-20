@@ -12,7 +12,7 @@ folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存
 既存構成と依存方向は [ARCHITECTURE.md](../../ARCHITECTURE.md)、要求は [spec.md](spec.md)、
 技術判断は [research.md](research.md)、データ差分は [data-model.md](data-model.md)、API差分は
 [contracts/settings-api.md](contracts/settings-api.md) を正本とする。実装進捗と検証結果は
-[docs/exec-plans/active/013-settings-screen.md](../../docs/exec-plans/active/013-settings-screen.md) に記録する。
+[docs/exec-plans/completed/013-settings-screen.md](../../docs/exec-plans/completed/013-settings-screen.md) に記録する。
 
 ## Structural Decisions
 
