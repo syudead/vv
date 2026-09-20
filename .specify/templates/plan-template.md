@@ -7,6 +7,15 @@
 **Note**: This template is filled in by the `/speckit-plan` command; its definition describes the execution workflow.
 
 <!--
+  WHAT THIS DOCUMENT IS: the decisions for building this feature — the deltas
+  from the existing sources of truth, the structural choices, and the breakdown
+  into implementation units. The requirement itself lives in spec.md; the
+  research behind a decision lives in research.md.
+
+  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-6).
+  The two that bite most often: write a decision or nothing at all (P-1), and
+  leave a section out rather than filling it with plausible prose (P-6).
+
   PRINCIPLE FOR EVERY SECTION BELOW: do not restate what an existing source of
   truth already defines. In an established repository, link to the canonical
   document (architecture notes, design docs, dependency manifests, API schemas,
@@ -60,13 +69,17 @@ which rules were checked.]
 
 ### Documentation (this feature)
 
+List the artifacts this feature actually has. Each one is created only when it
+carries feature-specific content (P-2); an artifact with nothing to say is left
+out, not filled with invented material.
+
 ```text
 specs/[###-feature]/
 ├── plan.md              # This file (/speckit-plan command output)
-├── research.md          # Phase 0 output (/speckit-plan command)
-├── data-model.md        # Phase 1 output (/speckit-plan command)
-├── quickstart.md        # Phase 1 output (/speckit-plan command)
-└── contracts/           # Phase 1 output (/speckit-plan command)
+├── research.md          # Phase 0 output — decisions this feature adds
+├── data-model.md        # Phase 1 output — entity deltas [omit if none]
+├── quickstart.md        # Phase 1 output — validation steps [omit if none]
+└── contracts/           # Phase 1 output — interface deltas [omit if none]
 ```
 
 The `## Implementation Work` section below is the input to `/speckit-plan-to-issues`;
@@ -116,4 +129,6 @@ layout" with a link]
 
 **Dependencies**: [other units this one needs, or "None"]
 
-**Acceptance**: [observable evidence that this unit is done]
+**Acceptance**: [observable evidence that this unit is done — a check that
+passes, a response that is returned, something visible on screen. "Implemented
+correctly" is not evidence (P-5)]
