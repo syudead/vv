@@ -237,8 +237,10 @@
 - **FR-031**: directory listingはシンボリックリンクを返さず、登録・変更時はroot候補を`Lstat`で
   再検証してシンボリックリンクを拒否し、scannerもroot配下のリンクを辿ってはならない
 - **FR-032**: filesystem rootおよびWindows drive rootをメディアフォルダとして登録してはならない
-- **FR-033**: 非同期jobの結果は処理開始時の`video_id`と`content_key`が現在行に一致する場合だけ
-  書き戻し、削除・差し替え済みvideoへの古い結果は破棄しなければならない
+- **FR-033**: 非同期jobの結果は処理開始時の`video_id`、`content_key`、`location_id`、
+  `location_version`、`path`が現在のvideoとlocationに一致する場合だけ書き戻し、消失・変更済みlocationの
+  結果を破棄しなければならない。location固有のI/O失敗は別のcurrent locationへ再試行し、論理videoを
+  failedにしてはならない
 - **FR-034**: 走査のmissing削除は完全に列挙できた範囲だけに適用し、列挙に失敗したrootまたは
   subtree配下の既存DB行を維持しなければならない
 - **FR-035**: directory listingとfolder mutationは既存アプリと同じtrusted-network境界で提供し、
@@ -246,6 +248,9 @@
 - **FR-036**: システムは同じ内容の動画が複数の登録済みフォルダに存在する状態を、1つの動画と
   複数の実在場所として保持し、1つのフォルダの変更・削除で別フォルダ側から利用できる動画を
   削除してはならない
+- **FR-037**: folder変更・削除はcontent key名のthumbnail fileを削除してはならない。orphan thumbnailの
+  回収は本機能の対象外とし、将来実装する場合も同じcontentの再登録・再生成と競合しない参照確認付きGCとして
+  folder操作から分離しなければならない
 
 ### Key Entities
 
@@ -292,6 +297,8 @@
   （2026-09-21「MDM_MEDIA_DIR廃止」と2026-09-20「自動取り込みは恒久的に不要」に対応）
 - **SC-011**: 部分的I/O失敗で失われる既存DB行、panicで停止するprocess、runningのまま残るscanを
   すべて0件にする（2026-09-21「非同期探索で例外と不整合を起こさない」に対応）
+- **SC-012**: locationの削除・再登録とjob完了を並行させた試験で、誤ってfailedになる残存videoと、
+  `thumbnail_state = done`なのに404になるthumbnailをともに0件にする
 
 ## Superseded Behavior
 

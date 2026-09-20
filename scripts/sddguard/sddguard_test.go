@@ -34,6 +34,7 @@ func repositoryRoot(t *testing.T) string {
 var removedArtifacts = []string{
 	".specify/templates/tasks-template.md",
 	".specify/scripts/bash/setup-tasks.sh",
+	"specs/003-sdd-loop-harness/tasks-retired-routine.md",
 }
 
 func TestTasksStageArtifactsAreAbsent(t *testing.T) {
@@ -57,12 +58,35 @@ func TestTasksStageArtifactsAreAbsent(t *testing.T) {
 		}
 	}
 
-	matches, err := filepath.Glob(filepath.Join(repoRoot, "specs", "*", "tasks.md"))
+	specsDir := filepath.Join(repoRoot, "specs")
+	err = filepath.WalkDir(specsDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		rel, err := filepath.Rel(repoRoot, path)
+		if err != nil {
+			return err
+		}
+		if d.Name() == "tasks.md" {
+			t.Errorf("%s exists. Implementation work belongs in the Implementation Work section of plan.md, which /speckit-plan-to-issues turns into child Issues", filepath.ToSlash(rel))
+		}
+		if !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(body), "/speckit-tasks") {
+			t.Errorf("%s contains the removed /speckit-tasks workflow", filepath.ToSlash(rel))
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("glob specs/*/tasks.md: %v", err)
-	}
-	for _, path := range matches {
-		t.Errorf("%s exists. Implementation work belongs in the Implementation Work section of plan.md, which /speckit-plan-to-issues turns into child Issues", filepath.ToSlash(path))
+		t.Fatalf("inspect specs for removed Tasks workflow: %v", err)
 	}
 }
 

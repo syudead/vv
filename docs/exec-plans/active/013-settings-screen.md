@@ -21,6 +21,8 @@
 
 検証では、同じcontentを2つの登録rootへ置いた状態で片方を変更・削除しても、もう片方の
 locationから動画、job、thumbnail、再生位置を継続利用できることを確認する。
+削除locationのjob失敗を残存videoへ書き込まないことと、folder操作後の遅延cleanupが再生成済み
+thumbnailを削除しないことも確認する。
 
 ## 検証
 

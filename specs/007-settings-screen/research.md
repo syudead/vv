@@ -31,7 +31,8 @@ atomic operationにする。一覧全体のPUT、draft、global version、並び
 `videos`をcontent単位、`video_locations`を実在path単位に分ける。同じcontentが複数rootにある場合は
 1 videoと複数locationsとして保持する。folder変更・削除では旧root配下のlocationsだけを消し、
 locationが0件になったvideoだけをjobsとともに削除する。`playback_progress`は同じcontentが再発見された
-ときに戻す再構築不能な利用者データなので削除しない。別locationが残るvideoのthumbnailも維持する。
+ときに戻す再構築不能な利用者データなので削除しない。content key名のthumbnail fileはfolder操作で
+削除せず、別locationや直後の再登録が生成した同名fileとの競合をなくす。orphan cacheのGCは別機能とする。
 
 migrationは既存videoのpath、title、size、mtimeを1件のlocationへ移し、video ID、content key、
 probe結果、jobs、playback progressを保持する。新規folder追加では既存video/locationへ書き込まない。
@@ -76,12 +77,17 @@ POSTはpathのunique・overlap検証で競合を処理する。
 
 ## R-708: 非同期jobの古い結果をidentity条件で拒否する
 
-**Decision**: workerは処理開始時の`video_id`と`content_key`を保持し、probe・thumbnailの全write-backを
-両方の一致で条件付ける。0行更新は、folder変更・削除またはvideo差し替え後のstale resultとして
-正常に破棄する。
+**Decision**: workerは処理開始時の`video_id`、`content_key`、`location_id`、`location_version`、`path`を
+保持し、probe・thumbnailの全write-back前にvideoとlocationの両identityをtransaction内で再確認する。
+locationが消失・変更済みなら結果を破棄し、別のcurrent locationへ再queueする。file access failureは
+location固有として論理videoをfailedにせず、実際に読めたcurrent locationでmedia解析が失敗した場合だけ
+content単位のfailureを書き戻す。
 
-**Rationale**: SQLiteのID再利用や同じIDの内容差し替えが起きても、旧外部processの結果を現在の
-別videoへ書き込ませないため。
+**Rationale**: SQLiteのID再利用や同じIDの内容差し替えだけでなく、同じvideoの処理元locationが
+削除された場合にも、古いI/O失敗で残存videoをfailedにしないため。
+
+**Rejected**: video IDとcontent keyだけを検証する案。削除されたlocationと残存locationは同じ
+video identityを共有するため、location固有の失敗を拒否できない。
 
 ## R-709: directory APIは既存のtrusted-network境界を引き継ぐ
 
@@ -93,3 +99,13 @@ POSTはpathのunique・overlap検証で競合を処理する。
 **Rationale**: directory APIは既存アプリよりfilesystem情報を多く扱うが、認証方式をこのfeature内で
 部分実装するとアプリ全体のaccess boundaryが分裂する。既存の明示的な脅威モデルを維持しつつ、
 browser由来のcross-origin操作は拒否する。
+
+## R-710: thumbnail cache削除をfolder操作から分離する
+
+**Decision**: content key名のthumbnail fileはfolder変更・削除で消さない。orphan cacheの回収は、
+削除直前の参照確認とfile generationを扱う専用GCを導入する別featureまで行わない。
+
+**Rationale**: cache fileが残ってもDBの可視性や再生状態は変わらず、同じcontentの再登録時に再利用できる。
+
+**Rejected**: transaction commit後のbest-effort cleanup。同じcontentを直後に再登録して同名thumbnailを
+生成した場合、遅延cleanupが新しいfileまで削除できるため。

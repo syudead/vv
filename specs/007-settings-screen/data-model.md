@@ -31,9 +31,10 @@
 
 | Field        | Rule                                      |
 | ------------ | ----------------------------------------- |
-| `id`         | primary key                               |
+| `id`         | autoincrement primary key、再利用しない   |
 | `video_id`   | videosへのforeign key、video削除時cascade |
 | `path`       | 正規化済み絶対path、unique                |
+| `version`    | 1から始まり、内容・所属変更ごとに加算     |
 | `title`      | pathのbasenameから導出                    |
 | `size_bytes` | locationの走査時点の値                    |
 | `mtime`      | locationの走査時点の値                    |
@@ -52,6 +53,15 @@ insert/update/deleteでFTSを同期する。
 
 migrationは各既存videoのpath、title、size、mtimeを1件のVideoLocationへ移し、video ID、
 content key、probe結果、job、playback progressを保持する。既存library dataを削除しない。
+location IDは再利用しない。scannerが同じpathのcontent、size、mtime、またはvideo所属を変える場合は
+location versionを加算する。
+
+### jobs location binding
+
+既存jobにnullableな`location_id`、`location_version`、`location_path`を追加する。queue時点では未選択でも
+よく、workerがclaimしてcurrent locationを選ぶtransactionで3値を記録する。retryで別locationを選ぶときは
+3値を同じtransactionで置き換える。migration前からpending/runningだったjobは未選択へ戻し、次のclaimで
+current locationを選び直す。
 
 ## Atomic Folder Operations
 
@@ -71,23 +81,31 @@ content key、probe結果、job、playback progressを保持する。既存libra
 3. 旧root配下にあるVideoLocationと影響を受けるvideo IDを確保する
 4. 対象folderのpathとversionを更新する
 5. 手順3のlocationsを削除し、location FTSを同期する
-6. locationが0件になったvideosだけを削除し、そのjobsをcascadeさせる
-7. commitする
+6. surviving videoのqueued jobが削除locationへbinding済みなら、bindingだけを未選択へ戻す
+7. locationが0件になったvideosだけを削除し、そのjobsをcascadeさせる
+8. commitする
 
 ### Delete
 
 Replaceと同じ対象特定・従属データ削除を行い、MediaFolder行を削除してcommitする。
 
-いずれも途中失敗時はfolderとライブラリDBの双方を変更しない。別rootのlocationが残るvideo、
-そのjobとthumbnail、全`playback_progress`、全scan履歴には触れない。locationが0件になって削除した
-videoのthumbnailだけをcommit後にbest-effort cleanupする。
+いずれも途中失敗時はfolderとライブラリDBの双方を変更しない。別rootのlocationが残るvideoと
+そのjob state、thumbnail state、全`playback_progress`、全scan履歴を維持する。削除locationへbinding済みの
+queued jobは別locationを選べるようbindingだけをclearする。content key名のthumbnail fileはfolder操作で
+削除しない。参照確認とfile削除の競合を防げる専用GCを将来導入するまで、orphan cacheを残す。
 
 ## In-flight Job Write Protection
 
-job workerはclaim後に取得した`video_id`と`content_key`を処理identityとして保持する。probe結果、
-probe失敗、thumbnail stateの全write-backは`WHERE id = ? AND content_key = ?`で条件付ける。該当行が
-0件なら、folder変更・削除またはvideo差し替え後のstale resultとして破棄し、別videoへ書き込まない。
-job完了・失敗の記録も、削除済みjobが0件更新となる場合を正常なstale completionとして扱う。
+job workerはclaim時に処理対象の`video_id`、`content_key`、`location_id`、`location_version`、`path`を
+記録し、そのpathだけを外部processへ渡す。probe結果、probe失敗、thumbnail stateの全write-back前に、
+video identityに加えて同じID・version・pathのlocationが現在も対象videoに属することをtransaction内で
+確認する。一致しない結果はstale completionとして破棄する。別のcurrent locationがあればjobをそこへ
+再queueし、なければ削除済みjobの完了として終了する。
+
+file消失、permission、open/stat失敗はlocation固有の失敗として扱い、論理videoのprobe/thumbnail stateを
+failedへ変更しない。workerはjob開始時にsnapshotした未試行のcurrent locationsをpath順で試す。
+有効なlocationを実際に読めたうえでmedia解析自体が失敗した場合だけ、identity再確認後にcontent単位の
+failed stateを書き戻せる。job完了・失敗の記録も同じidentity条件を使う。
 
 ## DirectoryListing
 

@@ -54,6 +54,9 @@ video、job、thumbnail、全playback progress、scan履歴は変更せず、sca
 locationsを削除し、locationが0件になったvideos、FTS、jobsだけを削除する。別MediaFolder側の
 locationが残るvideo、job、thumbnail、全playback progress、scan履歴は変更しない。
 
+PUT/DELETEはcontent key名のthumbnail fileを削除しない。orphan cache cleanupはfolder mutationと
+独立した参照確認付きGCだけが行える。
+
 ## MediaFolder Mutation Errors
 
 | Status | Code                            | Condition                                  |
@@ -104,4 +107,5 @@ locationが残るvideo、job、thumbnail、全playback progress、scan履歴は�
 - MediaFolder変更・削除後は対象folder側のlocationだけを除き、別folder側のlocationが残る動画は
   結果とstreamから除かない。
 - folder操作後も再生位置と視聴済み状態を維持する。
+- 削除・変更済みlocationを使ったjob結果はvideoへ書き戻さず、残存locationへ再試行する。
 - 次の手動scan完了後に現在の全MediaFolderの結果を返す。

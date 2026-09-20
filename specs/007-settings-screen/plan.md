@@ -24,6 +24,10 @@ folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存
 - **利用者データをfolder操作から分離する**: folder変更・削除で消すのは対象locationsと、locationが
   0件になった動画の再構築可能データだけとする。`playback_progress`まで消す案は再scanで復元できない
   利用者操作を失うため採用しない。
+- **jobを処理元locationへ結び付ける**: video/contentに加えてlocation ID/version/pathを検証する。
+  video identityだけを検証する案は、削除済みlocationのI/O失敗を残存videoへ書き込めるため採用しない。
+- **thumbnail cacheをfolder操作で削除しない**: orphan fileは将来の参照確認付きGCへ任せる。commit後の
+  best-effort削除は、同じcontentの再登録が生成した同名fileを消せるため採用しない。
 - **既存のtrusted-network境界を維持する**: directory APIとmutationはsame-originかつJSONに限定する。
   このfeatureだけに認証を新設する案は既存APIと異なる境界を作るため採用せず、認証導入は別featureとする。
 
@@ -43,8 +47,10 @@ folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存
 - 別rootのlocationが残るvideo、job、thumbnailと、全`playback_progress`、scan履歴を維持する
 - APIでは登録root内のlocationをpath順で選び、streamは同順で最初の利用可能なfileを使う
 - locationのtitle/pathを検索し、結果をvideo単位で重複排除する
-- workerのprobe・thumbnail書き戻しを`video_id`と`content_key`の一致で条件付ける
-- orphan videoのthumbnailだけをcommit後にcleanupし、失敗を安全に記録する
+- location IDを再利用せず、content・所属・file fingerprint変更時にlocation versionを加算する
+- workerが選んだvideo/content/location ID/version/pathの全identityをwrite-back前に再確認する
+- 消失・変更locationの結果を破棄して残存locationへ再queueし、location固有I/O失敗をvideo失敗にしない
+- content key名のthumbnail fileはfolder操作で削除せず、参照確認付きGCを別機能へ分離する
 - scannerは同じcontentの別pathを既存locationの移動ではなく追加locationとしてupsertする
 - 0件でscanを開始せず、走査は開始時の全root snapshotを使う
 - root/directory/file単位のI/O失敗を記録し、列挙失敗範囲をmissing location削除から除外する
@@ -55,8 +61,8 @@ folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存
 
 **Acceptance**: migrationで既存データが維持され、新規追加後も既存ライブラリが変わらない。既存1件の
 変更・削除後は対象locationsとorphan動画だけが消える。同じcontentが別rootに残る場合は動画を引き続き
-一覧・検索・再生できる。手動走査は一部I/O失敗で既存locationを誤削除せず、panicでもprocess crashと
-永続running scanを残さない。
+一覧・検索・再生できる。削除locationのjob結果とfolder操作が残存video・thumbnailを壊さない。手動走査は
+一部I/O失敗で既存locationを誤削除せず、panicでもprocess crashと永続running scanを残さない。
 
 ### メディアフォルダ・ディレクトリ選択 API
 
