@@ -128,9 +128,9 @@
   not an assumption (Q-6). A scope boundary in particular is decided by the
   person asking for the feature, never assumed here.
 
-  An implementation constraint never belongs in this section either. "The
-  browser cannot do X, so the feature will not offer X" is a product decision
-  wearing a technical excuse — ask instead (Q-7).
+  An implementation constraint never belongs in this section either. When the
+  obvious way to build something turns out to be hard, put that to the person
+  asking for the feature as a choice, and write down what they decide (Q-7).
 -->
 
 - [Assumption about target users, e.g., "Users have stable internet connectivity"]
