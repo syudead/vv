@@ -1,9 +1,16 @@
+import { Settings } from "lucide-react";
 import { NavLink } from "react-router";
 
 import { cn } from "../lib/cn";
 import { useToast } from "../ui/Toast";
 import { navEntries, type NavEntry } from "./navigation";
 import type { SidebarMode } from "./useSidebar";
+
+const settingsEntry: NavEntry = {
+  id: "settings",
+  label: "設定",
+  icon: Settings,
+};
 
 function Entry({
   entry,
@@ -94,13 +101,22 @@ export default function Sidebar({
       >
         <nav
           className={cn(
-            "flex flex-col gap-0.5 overflow-x-hidden overflow-y-auto",
+            "flex min-h-0 flex-1 flex-col gap-0.5 overflow-x-hidden overflow-y-auto",
             mode === "rail" ? "items-center px-1.5 py-2" : "px-2.5 py-3",
           )}
         >
           {navEntries.map((entry) => (
             <Entry key={entry.id} entry={entry} mode={mode} onNavigate={onClose} />
           ))}
+        </nav>
+        <nav
+          aria-label="設定"
+          className={cn(
+            "shrink-0 border-t border-border",
+            mode === "rail" ? "px-1.5 py-2" : "px-2.5 py-3",
+          )}
+        >
+          <Entry entry={settingsEntry} mode={mode} onNavigate={onClose} />
         </nav>
       </aside>
     </>

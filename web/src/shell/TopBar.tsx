@@ -1,9 +1,8 @@
-import { Menu, RefreshCw, Settings } from "lucide-react";
+import { Menu, RefreshCw } from "lucide-react";
 import { Link } from "react-router";
 
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
-import { useToast } from "../ui/Toast";
 import Tooltip from "../ui/Tooltip";
 import { describeScan, useScan } from "./ScanProvider";
 
@@ -52,9 +51,8 @@ function ScanButton() {
   );
 }
 
-/** TopBar は ☰・ロゴ・更新・設定だけを持つ。ナビは Sidebar にある。 */
+/** TopBar は ☰・ロゴ・更新だけを持つ。ナビと設定は Sidebar にある。 */
 export default function TopBar({ onMenu }: { onMenu: () => void }) {
-  const toast = useToast();
   return (
     <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 border-b border-border bg-bg/90 px-2 backdrop-blur-md sm:px-3">
       <IconButton label="メニュー" onClick={onMenu} tooltip={false}>
@@ -70,9 +68,6 @@ export default function TopBar({ onMenu }: { onMenu: () => void }) {
 
       <div className="ml-auto flex items-center gap-0.5">
         <ScanButton />
-        <IconButton label="設定" size="sm" onClick={() => toast("「設定」は準備中です")}>
-          <Settings />
-        </IconButton>
       </div>
     </header>
   );
