@@ -1,6 +1,6 @@
 # 実行計画: 設定画面
 
-- ステータス: 実装中（#69）
+- ステータス: 完了
 - 最終更新: 2026-09-21
 - Parent Issue: #62
 - Feature branch: `codex/feature-settings-screen`
@@ -41,8 +41,11 @@ thumbnailを削除しないことも確認する。
 - #67: PR #73をfeature branchへマージし、全CIとレビュー指摘対応を完了
 - #68: PR #74をfeature branchへマージし、全CIとレビュー指摘対応を完了
 - #69: `/settings`、行単位の追加・変更・削除、server directory picker、0件・失敗・走査中・競合状態を実装
-- #69: Vitest 72件、TypeScript、Prettier、Go test/vet、local-dev testsを完走
+- #69: Vitest 74件、TypeScript、Prettier、Go test/vet、local-dev testsを完走
 - #69: 360/768/1280pxで一覧・empty・picker・削除確認を撮影し、横scroll、重なり、focus trap、Escape、focus復帰を確認
+- #69: PR #75をfeature branchへマージし、自動レビュー4件への修正と再CIを完了
+- 統合: 最新`origin/main`に未取込commitがないことを確認（feature branchが32 commits ahead、0 commits behind）
+- 統合: OpenAPI生成差分なし、Go test/vet、golangci-lint、Web build/74 tests/type/format、local-dev testsを完走
 
 ## 進捗
 
@@ -51,8 +54,8 @@ thumbnailを削除しないことも確認する。
 - [x] Design
 - [x] #67
 - [x] #68
-- [ ] #69
-- [ ] 統合検証と`main`向けPR
+- [x] #69
+- [x] 統合検証と`main`向けPR
 
 ## 決定
 
