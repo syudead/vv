@@ -1,44 +1,47 @@
 # Research: 設定画面
 
-既存の技術選定は [ARCHITECTURE.md](../../ARCHITECTURE.md) と
-[技術選定文書](../../docs/design-docs/tech-stack-selection.md)を引き継ぐ。以下は本機能で追加する
-判断だけを記録する。
+共通の技術選定は [ARCHITECTURE.md](../../ARCHITECTURE.md) と
+[技術選定文書](../../docs/design-docs/tech-stack-selection.md)を引き継ぐ。
 
-## R-701: 設定の正本
+## R-701: SQLiteだけを設定の正本にする
 
-**Decision**: SQLite にメディアフォルダの singleton 行を保存し、行がない初回だけ
-`MDM_MEDIA_DIR` から初期化する。
+**Decision**: メディアフォルダは初回未設定でSQLiteに保持する。`MDM_MEDIA_DIR` は移行元や
+初期値としても使わず廃止する。
 
-**Rationale**: サーバー処理とすべてのブラウザーが同じ永続値を使うため。
+**Rationale**: UI設定と環境変数という2つの正本を残さず、設定方法を画面へ一本化するため。
 
-**Alternatives considered**: JSON ファイル、localStorage、毎起動の環境変数優先は、正本が
-分かれるため採用しない。
+**Alternatives considered**: 環境変数の恒久併用、一度だけのbootstrap、`/media` の暗黙設定は、
+画面で選んでいない値を有効にするため採用しない。
 
-## R-702: 走査と配信への反映
+## R-702: サーバー側directory browserを提供する
 
-**Decision**: 設定更新と走査開始を同じ排他境界で直列化し、走査は開始時の値を固定する。
-動画配信は要求ごとに現行値を参照する。保存済みフォルダが消失してもサーバーは起動し、
-設定画面から修正可能にする。
+**Decision**: ブラウザー標準pickerではなく、APIが返すサーバーfilesystemのdirectoryを辿る
+folder pickerを実装する。path省略時はLinuxのrootまたはWindowsのdriveを返し、以後は親と
+直下directoryを返す。ファイル内容とファイル名は返さない。
 
-**Rationale**: 走査途中の切替と、変更後に旧ルートを配信することを防ぐため。
+**Rationale**: ブラウザー標準pickerはclient端末を対象とする。利用者にサーバー絶対パスを
+手入力させず、実在する選択肢から指定できるようにするため。
 
-**Alternatives considered**: 起動時の固定値、走査途中の動的参照、保存時の自動走査は要求を
-満たさない。
+**Alternatives considered**: text inputは誤入力を招くため不採用。ブラウザー標準pickerは
+対象filesystemが異なる。server上のfolder作成は別機能なので含めない。
 
-## R-703: 同時更新
+## R-703: 選択時と保存時の両方で検証する
 
-**Decision**: 設定に整数 `version` を持たせ、PUT の条件付き更新で古い画面からの保存を
-`409` にする。
+**Decision**: directory listing時に読取可能性を確認し、PUT時にも存在・directory・readableを
+再検証する。APIが返すpathはOSの絶対・正規化済み表現とする。
 
-**Rationale**: 複数タブから新しい値を黙って上書きしないため。
+**Rationale**: 一覧表示後にdirectoryが消える競合を扱い、clientから任意文字列を送られても
+無効な保存値を作らないため。
 
-**Alternatives considered**: last-write-wins は仕様の競合要件を満たさない。
+## R-704: 走査と配信への反映
 
-## R-704: 設定画面
+**Decision**: 未設定時は走査を開始しない。設定更新と走査開始を直列化し、走査は開始時の値を
+固定する。動画配信は要求ごとに現行値を参照する。
 
-**Decision**: 既存 AppShell 内の `/settings` に、メディアフォルダ入力と保存操作だけを置く。
+**Rationale**: 未設定や走査途中の切替を許さず、現在設定のroot外を配信しないため。
 
-**Rationale**: 1項目でも情報設計上は設定画面であり、既存のナビゲーションと操作規則を
-そのまま利用できるため。
+## R-705: versionで同時更新を検出する
 
-**Alternatives considered**: モーダルやメディア専用画面は、設定画面という要求と直接URLを失う。
+**Decision**: 設定に整数versionを持たせ、PUTの条件付き更新で古い画面からの保存を409にする。
+
+**Rationale**: 複数画面から新しい値を黙って上書きしないため。

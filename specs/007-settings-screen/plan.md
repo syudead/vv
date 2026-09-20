@@ -1,55 +1,52 @@
 # Implementation Plan: 設定画面
 
-**Branch**: `codex/plan-settings-screen` | **Date**: 2026-09-20 | **Spec**: [spec.md](spec.md)
+**Branch**: `codex/revise-settings-folder-picker` | **Date**: 2026-09-21 | **Spec**: [spec.md](spec.md)
 
 ## Summary
 
-設定画面を追加し、メディアフォルダだけを変更可能にする。保存値は SQLite を正本とし、
-走査は利用者の明示操作でのみ開始する。
+設定画面にメディアフォルダ1項目を追加する。初回は未設定とし、利用者はサーバー上の
+ディレクトリをフォルダ選択UIで辿って保存する。設定はSQLiteだけを正本とし、
+`MDM_MEDIA_DIR` と起動時自動取り込みを廃止する。
 
 ## Feature Behavior
 
-- 画面は「設定」とし、設定項目はメディアフォルダ1件だけにする。データフォルダ、待受先、
-  ログレベル、表示設定などは置かない
-- 現在有効なサーバー上の絶対パスを表示し、その場で編集・保存できる
-- 初回値は既存の `MDM_MEDIA_DIR` を引き継ぎ、画面から保存した後は保存値を正本にする
-- 保存前に、絶対パス、存在、ディレクトリ、読取可能性を検証する。失敗時は現在値を変更せず、
-  入力中の値と理由を画面に残す
-- 保存だけでは取り込みを開始しない。保存後に手動取り込みが必要であることを示し、次の
-  手動取り込みが新しいフォルダを使う
-- 走査中は変更できない。複数画面からの古い保存は競合として拒否し、新しい値を上書きしない
-- 起動時の自動取り込みと `MDM_SCAN_ON_START` は廃止する
-- 画面は読み込み中、保存中、保存成功、入力エラー、競合、走査中を扱う
+- メディアフォルダは初回未設定。設定完了まで手動取り込みを開始できない
+- 現在値は読み取り専用で表示し、文字列入力では変更しない
+- 「フォルダを選択」でサーバー上のroot/driveからディレクトリ階層を移動する
+- 選択候補は保存時に存在・directory・readableを再検証する
+- 保存だけでは取り込まず、次の明示取り込みが新しいフォルダを使う
+- 走査中の変更と古いversionからの更新は拒否する
+- `MDM_MEDIA_DIR` と `MDM_SCAN_ON_START` は設定、コード、文書から削除する
 
 詳細な利用者シナリオと受け入れ条件は [spec.md](spec.md) を正本とする。
 
 ## Technical Context
 
-技術構成、依存方向、生成物、検証コマンドは既存定義を変更しない。
+共通の構成と規則は再掲しない。
 
 - 構成と依存方向: [ARCHITECTURE.md](../../ARCHITECTURE.md)
-- Go / Web の依存: [go.mod](../../go.mod)、[web/package.json](../../web/package.json)
-- API の正本: [api/openapi.yaml](../../api/openapi.yaml)
-- 開発・検証コマンド: [Makefile](../../Makefile)
+- APIの正本: [api/openapi.yaml](../../api/openapi.yaml)
+- 検証コマンド: [Makefile](../../Makefile)
+- 本機能の判断: [research.md](research.md)
+- データ差分: [data-model.md](data-model.md)
+- API差分: [contracts/settings-api.md](contracts/settings-api.md)
 
-本機能固有の技術判断だけを [research.md](research.md) に記録する。
+新規外部依存は追加しない。OS上のdirectory列挙はGo標準ライブラリで実装する。
 
 ## Constitution Check
 
-`.specify/memory/constitution.md` は未設定。既存の `AGENTS.md` と `ARCHITECTURE.md` に対して、
-次を確認した。
-
-- `cmd/mdm` で store、scanner、httpapi を組み立て、internal の兄弟依存を増やさない
-- API は OpenAPI を先に変更し、生成物を手編集しない
+- `cmd/mdm` がstore、scanner、httpapi、OS filesystem操作を調停し、internalの兄弟依存を増やさない
+- APIはOpenAPIを先に変更し、生成物を手編集しない
+- directory APIはファイル内容を返さず、選択に必要なdirectory情報だけを公開する
 - 設定項目をメディアフォルダ以外へ広げない
-- UI 実装 PR は既存の画像確認手順に従う
+- UI実装PRは既存の画像確認手順に従う
 
 設計後も違反なし。
 
 ## Project Structure
 
-既存の所有境界を維持する。永続化は `internal/store`、実行時の調停は `cmd/mdm`、HTTP は
-`internal/httpapi`、画面は `web/src/settings` に置く。新しいパッケージや外部依存は追加しない。
+永続化は `internal/store`、設定とfilesystemの調停は `cmd/mdm`、HTTPは `internal/httpapi`、
+画面とfolder pickerは `web/src/settings` に置く。既存の所有境界を維持する。
 
 ## Complexity Tracking
 
@@ -59,27 +56,50 @@
 
 ### メディアフォルダ設定の保存と実行時反映
 
-**Scope**: SQLite の設定行、初回 `MDM_MEDIA_DIR` 引継ぎ、パス検証、走査開始との排他、
-走査・動画配信への反映、`MDM_SCAN_ON_START` と起動時走査の削除。
+**Scope**:
+
+- nullableなメディアフォルダを持つSQLite singletonとversion付き更新を追加する
+- 初回値を未設定にし、`MDM_MEDIA_DIR` の読取、Config field、ログ、文書、開発スクリプトを削除する
+- `MDM_SCAN_ON_START` と待受開始時の自動走査も削除する
+- 未設定時はscanを開始せず、設定が必要なdomain errorを返す
+- 設定更新と走査開始を直列化し、走査は開始時の保存値を固定して使う
+- streamは要求時の保存値を配信rootとして検証する
+- migration、store、config、startup、scan、streamのテストを追加・更新する
 
 **Dependencies**: なし。
 
-**Acceptance**: 保存値が再起動後も残り、保存や起動では走査せず、次の手動走査だけが新しい
-フォルダを使う。
+**Acceptance**: 初回は未設定で起動し、環境変数に依存しない。保存や起動では走査せず、
+次の手動走査だけが保存済みフォルダを使う。未設定時と走査中の失敗を永続状態を壊さず扱う。
 
-### 設定 API
+### 設定・ディレクトリ選択 API
 
-**Scope**: `GET /api/settings` と `PUT /api/settings` を OpenAPI と HTTP 実装へ追加する。
+**Scope**:
 
-**Dependencies**: 設定の保存と実行時反映。
+- `GET /api/settings` はnullableな現在値、version、更新時刻を返す
+- `PUT /api/settings` はfolder pickerで選択した絶対パスとversionを受け取る
+- `GET /api/directories` はpath省略時にfilesystem root/drive、指定時に現在位置・親・子directoryを返す
+- ファイルを一覧へ含めず、失われた場所、読取不能、走査中、版競合を機械可読なerrorへ変換する
+- OpenAPIからGo/TypeScriptを再生成し、Web API clientを追加する
+- settingsとdirectory listingのcontract testsを追加する
 
-**Acceptance**: 有効値を取得・保存でき、無効パス、走査中、版競合を契約どおり拒否する。
+**Dependencies**: メディアフォルダ設定の保存と実行時反映。
 
-### 設定画面
+**Acceptance**: 未設定から選択・保存でき、directoryだけを階層移動できる。無効場所、走査中、
+版競合を区別し、生成物とOpenAPIが一致する。
 
-**Scope**: `/settings`、Sidebar のリンク、メディアフォルダ1項目の表示・編集・状態表示を追加する。
+### 設定画面とサーバーフォルダ選択 UI
 
-**Dependencies**: 設定 API。
+**Scope**:
 
-**Acceptance**: 保存だけでは走査せず、入力失敗時も値を保持する。360px・768px・1280px、
-キーボード、支援技術で確認し、UI 実装 PR に画像を添付する。
+- `/settings` とSidebarの実navigationを追加する
+- 現在値または未設定を表示し、text inputを置かない
+- folder picker dialogでroot/drive、親、子directoryをkeyboardとpointerで移動できるようにする
+- 現在表示中のdirectoryを候補として選び、設定画面で明示保存する
+- loading、取得失敗、directory失敗、未設定、保存中、成功、走査中、版競合を扱う
+- 未設定時はTopBarの取り込みを利用不能にし、設定への導線と理由を示す
+- Vitest/Testing Library、360px・768px・1280pxの画像、visual reviewで検証する
+
+**Dependencies**: 設定・ディレクトリ選択API。
+
+**Acceptance**: 利用者がパス文字列を入力せず、サーバー上のdirectoryを選んで保存できる。
+未設定・失敗・競合でも現在値や候補を失わず、保存だけでは取り込みを開始しない。
