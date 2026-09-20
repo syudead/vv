@@ -38,7 +38,8 @@
 
 ## Summary
 
-[Extract from feature spec: primary requirement + technical approach from research]
+[The primary requirement from the feature spec, plus the technical approach in
+one or two sentences]
 
 ## Technical Context
 
@@ -87,6 +88,12 @@ placeholders carries none.]
 
 ## Project Structure
 
+<!--
+  CONDITIONAL — delete this whole section, both subsections included, when the
+  feature produces no artifact besides this plan and changes nothing about the
+  layout.
+-->
+
 ### Documentation (this feature)
 
 List the artifacts this feature actually has. Each one is created only when it
@@ -129,6 +136,11 @@ and what each one owns in it]
 layout" with a link]
 
 ## Complexity Tracking
+
+<!--
+  CONDITIONAL — delete this section when the Constitution Check found no
+  violation. An empty table is the kind of filler P-6 rules out.
+-->
 
 > **Fill ONLY if Constitution Check has violations that must be justified**
 

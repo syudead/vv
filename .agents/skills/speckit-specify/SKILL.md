@@ -21,17 +21,18 @@ Spec PR and never starts Plan.
 Follow [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md)
 (Q-1..Q-7). Where it conflicts with a general instruction below, **it wins**.
 
-Two different people are meant below, and the words are not interchangeable.
-The **requester** is whoever asked for this feature and is running this command;
-they are the one a question goes to. The **user** is whoever will use the
-finished product; the spec's User Scenarios are about them, and "what the user
-gets" means their experience. A question never goes to them.
 Two of its rules invert the defaults of this command:
 
 - **Q-6** — an ambiguity you cannot resolve goes back to the requester as a question.
   A plausible interpretation is not a resolution.
 - **Q-7** — an implementation constraint is never promoted into a product
   requirement or a scope boundary.
+
+Two different people are meant throughout, and the words are not
+interchangeable. The **requester** is whoever asked for this feature and is
+running this command; they are the one a question goes to. The **user** is
+whoever will use the finished product; the spec's User Scenarios are about them,
+and "what the user gets" means their experience. A question never goes to them.
 
 ## User Input
 
