@@ -12,9 +12,17 @@
   into implementation units. The requirement itself lives in spec.md; the
   research behind a decision lives in research.md.
 
-  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-6).
+  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-8).
   The two that bite most often: write a decision or nothing at all (P-1), and
   leave a section out rather than filling it with plausible prose (P-6).
+
+  HOW MUCH OF THIS TEMPLATE TO USE: as much as the change earns (P-8). Only
+  `## Summary` and `## Implementation Work` are always present. Every other
+  section appears when it carries a decision and is deleted when it does not —
+  a one-package change with no new dependency, no structural choice and no gate
+  to weigh is a plan of two sections, and that is a complete plan, not a
+  shortcut. A change that spans several boundaries or picks between real
+  alternatives earns every section, at length.
 
   PRINCIPLE FOR EVERY SECTION BELOW: do not restate what an existing source of
   truth already defines. In an established repository, link to the canonical
@@ -35,6 +43,9 @@
 ## Technical Context
 
 <!--
+  CONDITIONAL — delete this section when this feature inherits everything
+  unchanged and has no open question.
+
   ACTION REQUIRED: Link the canonical definitions instead of copying them, then
   list only what this feature changes or still has to decide. Typical links:
   architecture and dependency direction, dependency manifests, interface
@@ -60,6 +71,12 @@
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
+
+<!--
+  CONDITIONAL — keep the gates this change could plausibly violate. When none
+  applies, one line saying which rules you checked and that none is at stake is
+  the whole section.
+-->
 
 [Gates determined based on constitution file. If the project has no usable
 constitution (the file is absent, empty, or still contains template
@@ -89,6 +106,9 @@ this workflow has no separate tasks stage and produces no `tasks.md`.
 ### Source Code
 
 <!--
+  CONDITIONAL — delete when the change sits inside one existing boundary, adds
+  no path, and makes no structural choice.
+
   ACTION REQUIRED: Name the ownership boundaries this feature touches, the paths
   it adds, and any structural decision worth defending. Do NOT reproduce the
   repository tree — link to the architecture notes for the overall layout.

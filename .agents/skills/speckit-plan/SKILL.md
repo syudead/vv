@@ -42,6 +42,9 @@ satisfy. The three that decide whether the output is usable:
   invent concepts to fill a template slot.
 - **P-6** — a template item that does not apply is left out, not filled with
   plausible prose.
+- **P-8** — the plan is as long as the change earns. `## Summary` and
+  `## Implementation Work` are always there; every other section appears only
+  when it carries a decision.
 
 ## Pre-Execution Checks
 
@@ -63,7 +66,14 @@ silently.
    canonical source exists for something (a new repository, or a gap), record it
    in the plan and say so.
 
-4. **Execute plan workflow**: Follow the structure in IMPL_PLAN template to:
+4. **Decide the shape of the plan**: Before filling anything, judge what this
+   change actually involves — one boundary or several, a new dependency or
+   none, a real choice between alternatives or a single obvious way. Keep the
+   sections that will hold a decision and delete the rest from the copied
+   template. A small change legitimately ends with `## Summary` and
+   `## Implementation Work` alone (P-8).
+
+5. **Execute plan workflow**: Follow the structure in IMPL_PLAN template to:
    - Fill Technical Context with links to the canonical definitions plus only
      the feature-specific deltas, constraints, and unknowns (mark unknowns as
      "NEEDS CLARIFICATION")
@@ -80,7 +90,7 @@ silently.
    Phase 0 and Phase 1 create an artifact only when it has something of its own
    to say (P-2). Name the ones you are not creating, and why, in `plan.md`.
 
-5. **Reconcile the artifacts on disk**: This command also revises existing
+6. **Reconcile the artifacts on disk**: This command also revises existing
    plans, and `setup-plan.sh` keeps whatever a previous run left behind. When an
    artifact no longer carries feature-specific content, delete it in this same
    change so the directory matches the list in `plan.md` — a stale file stays an
@@ -215,6 +225,8 @@ something to say, is worse than an absent one.
 - [ ] Artifacts link to the canonical definitions and restate none of them
 - [ ] Every artifact produced carries feature-specific content; none was created
       to fill a slot, and no template item was answered with invented prose
+- [ ] The sections kept in plan.md are the ones that hold a decision; the rest
+      were deleted rather than filled (P-8)
 - [ ] Each decision names the alternative it rejected
 - [ ] Feature-specific decisions, contract deltas, data deltas, and the
       implementation-work units are present in the artifacts

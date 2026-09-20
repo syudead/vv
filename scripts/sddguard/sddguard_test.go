@@ -1,0 +1,134 @@
+// Package sddguard holds repository guards for the SDD artifacts under specs/
+// and docs/. It contains no runtime code: the rules in
+// docs/design-docs/plan-quality.md and docs/product-specs/spec-quality.md are
+// prose, and these tests turn the mechanically checkable part of them into a
+// failure instead of a convention.
+package sddguard
+
+import (
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"testing"
+)
+
+const repoRoot = "../.."
+
+// removedArtifacts are files the Tasks stage used to own. The workflow replaced
+// that stage with the Implementation Work section of plan.md
+// (docs/exec-plans/active/011-agent-agnostic-issue-handoff.md), so their
+// reappearance means the stage is creeping back in.
+var removedArtifacts = []string{
+	".specify/templates/tasks-template.md",
+	".specify/scripts/bash/setup-tasks.sh",
+}
+
+func TestTasksStageArtifactsAreAbsent(t *testing.T) {
+	for _, rel := range removedArtifacts {
+		if _, err := os.Stat(filepath.Join(repoRoot, rel)); err == nil {
+			t.Errorf("%s exists. The Tasks stage was removed; implementation work belongs in the Implementation Work section of plan.md", rel)
+		}
+	}
+
+	matches, err := filepath.Glob(filepath.Join(repoRoot, "specs", "*", "tasks.md"))
+	if err != nil {
+		t.Fatalf("glob specs/*/tasks.md: %v", err)
+	}
+	for _, path := range matches {
+		t.Errorf("%s exists. Implementation work belongs in the Implementation Work section of plan.md, which /speckit-plan-to-issues turns into child Issues", filepath.ToSlash(path))
+	}
+}
+
+// placeholders are fragments the templates carry for the author to replace.
+// Finding one in a delivered artifact means a section was shipped unfilled.
+var placeholders = []string{
+	"[NEEDS CLARIFICATION",
+	"[REMOVE IF UNUSED]",
+	"[e.g.,",
+	"[Assumption about",
+	"[Measurable metric",
+	"[Child Issue title]",
+	"[FEATURE]",
+	"[###-feature-name]",
+	"[DATE]",
+	"[PRINCIPLE_",
+}
+
+var (
+	fence    = regexp.MustCompile("^\\s*```")
+	codeSpan = regexp.MustCompile("`[^`]*`")
+	skipDirs = map[string]bool{"assets": true}
+)
+
+// TestSpecArtifactsHaveNoTemplatePlaceholders reads every markdown file under
+// specs/ and fails on a placeholder left outside a code span or fenced block,
+// where an artifact quotes a marker to discuss it rather than to leave one.
+func TestSpecArtifactsHaveNoTemplatePlaceholders(t *testing.T) {
+	specsDir := filepath.Join(repoRoot, "specs")
+	err := filepath.WalkDir(specsDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if skipDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		inFence := false
+		for i, line := range strings.Split(string(body), "\n") {
+			if fence.MatchString(line) {
+				inFence = !inFence
+				continue
+			}
+			if inFence {
+				continue
+			}
+			stripped := codeSpan.ReplaceAllString(line, "")
+			for _, marker := range placeholders {
+				if strings.Contains(stripped, marker) {
+					t.Errorf("%s:%d: template placeholder %q was delivered unfilled. Fill the section, or remove it when it does not apply", filepath.ToSlash(path), i+1, marker)
+				}
+			}
+		}
+		return nil
+	})
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("walk specs/: %v", err)
+	}
+}
+
+// indexedDirs must each link every sibling document from their index, which is
+// what AGENTS.md asks for when a document is added.
+var indexedDirs = []string{"docs/design-docs", "docs/product-specs"}
+
+func TestDocumentsAreLinkedFromTheirIndex(t *testing.T) {
+	for _, dir := range indexedDirs {
+		indexPath := filepath.Join(repoRoot, dir, "index.md")
+		index, err := os.ReadFile(indexPath)
+		if err != nil {
+			t.Fatalf("read %s: %v", dir+"/index.md", err)
+		}
+		entries, err := os.ReadDir(filepath.Join(repoRoot, dir))
+		if err != nil {
+			t.Fatalf("read %s: %v", dir, err)
+		}
+		for _, entry := range entries {
+			name := entry.Name()
+			if entry.IsDir() || name == "index.md" || !strings.HasSuffix(name, ".md") {
+				continue
+			}
+			if !strings.Contains(string(index), "]("+name+")") {
+				t.Errorf("%s/%s is not linked from %s/index.md. Add it to the index so the document can be found", dir, name, dir)
+			}
+		}
+	}
+}
