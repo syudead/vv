@@ -107,7 +107,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **IF EXISTS**: Read data-model.md for entities and relationships
    - **IF EXISTS**: Read contracts/ for API specifications and test requirements
    - **IF EXISTS**: Read research.md for technical decisions and constraints
-   - **REQUIRED**: Read this repository's governance for its constraints — ARCHITECTURE.md, docs/design-docs/core-beliefs.md, and AGENTS.md. If `.specify/memory/constitution.md` exists and carries real principles, read it and let it win; a file that is absent, empty, or still holding template placeholders is not a source of constraints, and this repository currently keeps none.
+   - **REQUIRED**: Read this repository's governance for its constraints — ARCHITECTURE.md, docs/design-docs/core-beliefs.md, and AGENTS.md. If `.specify/memory/constitution.md` exists, read it and let the principles it has actually ratified win; an unfilled template slot inside it is simply not a constraint, while a file that is absent, empty, or still nothing but placeholders carries none at all. This repository currently keeps no such file.
    - **IF EXISTS**: Read quickstart.md for integration scenarios
    For a plain-text request, use the user's request and the relevant code and
    documentation in the current checkout instead.

@@ -15,11 +15,15 @@ Read these before writing, and link them rather than repeating them:
   — the visual rules and why they are what they are
 - [docs/design-docs/modern-library-ui.md](../../../../docs/design-docs/modern-library-ui.md)
   — the layout and information hierarchy the product has settled on
-- `web/src/index.css` (`@theme`) — the token values themselves. Never write a
-  colour, radius, or size into `ui-design.md`; name the token
-- `specs/004-library-ui/contracts/design-tokens.md` — the pairs the contrast
-  test checks. A new token is a decision, and it is added here in the same
-  change that introduces it
+- `web/src/index.css` (`@theme`) — the design-token values themselves. Never
+  copy a token's value into `ui-design.md`; name the token. This is about token
+  values, not about numbers in general: the viewport widths and breakpoints a
+  review criterion needs are written out
+- `web/src/theme/tokens.test.ts` — the `pairs` array is what actually enforces
+  contrast; it is a hard-coded list, so a new foreground/background combination
+  is checked only once it is added there. A new colour token is a decision, and
+  the change that introduces it adds the pair to that array and records the
+  token in `specs/004-library-ui/contracts/design-tokens.md`
 - the existing screens in `web/src` — what the product already does
 
 Where those settle a question, follow them and say so. Where the form is one

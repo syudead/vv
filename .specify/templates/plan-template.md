@@ -81,8 +81,9 @@
 [Gates taken from the repository's governance — its architecture notes, its
 stated judgement criteria, and its agent guide. Name the rules you checked and
 the verdict for each. Where a project keeps a Spec Kit constitution file with
-real principles, that file is the source instead; one that is absent, empty, or
-still holding template placeholders is not.]
+ratified principles, those are the gates instead; an unfilled slot inside such a
+file is simply not a gate, and a file that is absent, empty, or nothing but
+placeholders carries none.]
 
 ## Project Structure
 
