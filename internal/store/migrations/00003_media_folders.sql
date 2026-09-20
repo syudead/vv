@@ -90,6 +90,17 @@ end;
 insert into videos_fts(videos_fts) values ('rebuild');
 
 -- +goose Down
+-- The legacy schema can represent only one path per logical video. Refuse a
+-- lossy rollback instead of silently discarding additional locations.
+create temporary table media_folder_rollback_guard (
+    valid integer not null check (valid = 1)
+);
+insert into media_folder_rollback_guard
+select case when exists (
+    select video_id from video_locations group by video_id having count(*) > 1
+) then 0 else 1 end;
+drop table media_folder_rollback_guard;
+
 drop trigger if exists video_locations_au;
 drop trigger if exists video_locations_ad;
 drop trigger if exists video_locations_ai;

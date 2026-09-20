@@ -544,6 +544,21 @@ func TestSuccessfulScanRemovesMigratedLocationOutsideRegisteredRoots(t *testing.
 	}
 }
 
+func TestWalkErrorOnlySkipsDirectories(t *testing.T) {
+	root := t.TempDir()
+	failedFile := filepath.Join(root, "b.mp4")
+	indexed := map[string]domain.IndexedVideo{
+		failedFile:                             {ID: 1},
+		filepath.Join(root, "locked", "c.mp4"): {ID: 2},
+	}
+	if walkErrorIsDirectory(failedFile, root, nil, indexed) {
+		t.Fatal("file error would skip the remaining siblings")
+	}
+	if !walkErrorIsDirectory(filepath.Join(root, "locked"), root, nil, indexed) {
+		t.Fatal("directory error would not skip its unreadable subtree")
+	}
+}
+
 // snapshot はディレクトリ配下のパスと内容を読み取る。
 func snapshot(t *testing.T, root string) map[string]string {
 	t.Helper()

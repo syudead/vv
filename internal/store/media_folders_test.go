@@ -168,14 +168,17 @@ func TestAddMediaFolderRejectsSymbolicLinkComponent(t *testing.T) {
 	db := migratedDB(t)
 	root := t.TempDir()
 	real := filepath.Join(root, "real")
-	if err := os.Mkdir(real, 0o755); err != nil {
+	child := filepath.Join(real, "child")
+	if err := os.MkdirAll(child, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	link := filepath.Join(root, "link")
 	if err := os.Symlink(real, link); err != nil {
 		t.Skipf("symbolic links are unavailable: %v", err)
 	}
-	if _, err := db.AddMediaFolder(context.Background(), link); !errors.Is(err, ErrInvalidFolder) {
+	// 末尾は実directoryなのでLstatを通過し、EvalSymlinksによる親componentの
+	// 検証が働くことを確認する。
+	if _, err := db.AddMediaFolder(context.Background(), filepath.Join(link, "child")); !errors.Is(err, ErrInvalidFolder) {
 		t.Fatalf("error = %v, want ErrInvalidFolder", err)
 	}
 }

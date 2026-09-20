@@ -109,7 +109,6 @@ func New(opts Options) *Scanner {
 //  4. 新しい・変わったファイルだけ content_key を計算して反映する。内容が
 //     同じでパスが違うものは移動・改名として扱われる（重複を作らない）
 //  5. 走査で見つからなかった行を消す
-//  6. 参照されなくなったサムネイルを掃除する
 //
 // 動画ファイルは読み取りのみで扱う。変更・移動・削除・変換は行わない（FR-009）。
 // 個別のファイルの失敗では中止せず、失敗として数えて次へ進む（FR-008）。
@@ -146,15 +145,17 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 			}
 			if err != nil {
 				// 根が読めない場合は走査そのものの失敗。途中のディレクトリが
-				// 読めないだけなら、そこを飛ばして続ける（FR-008）。
-				protected = append(protected, norm.NFC.String(path))
-				if path != root {
-					protected = append(protected, norm.NFC.String(filepath.Dir(path)))
-				}
+				// 読めないだけなら、その範囲を保護して続ける（FR-008）。通常
+				// fileではSkipDirを返さない。返すと後続の兄弟まで省略される。
+				normalized := norm.NFC.String(path)
+				protected = append(protected, normalized)
 				s.logger.Warn("走査中に読み取れない場所がありました",
 					slog.String("path", path), slog.Any("error", err))
 				result.Failed++
-				return fs.SkipDir
+				if walkErrorIsDirectory(path, root, entry, indexed) {
+					return fs.SkipDir
+				}
+				return nil
 			}
 
 			if entry.IsDir() {
@@ -216,6 +217,18 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	result.Removed = removed
 
 	return result, nil
+}
+
+func walkErrorIsDirectory(path, root string, entry fs.DirEntry, indexed map[string]domain.IndexedVideo) bool {
+	if path == root || entry != nil && entry.IsDir() {
+		return true
+	}
+	for indexedPath := range indexed {
+		if indexedPath != path && domain.PathWithinRoot(path, indexedPath) {
+			return true
+		}
+	}
+	return false
 }
 
 // ingest は1つのファイルを索引に反映する。

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -295,24 +296,63 @@ func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
 	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	for i := range 4 {
+	for i := range 4 * MaxJobAttempts {
 		job, err := db.ClaimJob(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if job.Attempts != 1 {
-			t.Fatalf("location %d attempts = %d, want 1", i, job.Attempts)
+		wantAttempt := i/4 + 1
+		if job.Attempts != wantAttempt {
+			t.Fatalf("location %d attempts = %d, want %d", i, job.Attempts, wantAttempt)
+		}
+		if job.LastLocation != (i%4 == 3) {
+			t.Fatalf("location %d LastLocation = %v", i, job.LastLocation)
 		}
 		if err := db.FailClaimedJob(ctx, job, "location unavailable"); err != nil {
 			t.Fatal(err)
 		}
+		wantState := "queued"
+		if i == 4*MaxJobAttempts-1 {
+			wantState = "failed"
+		}
+		if got := jobState(t, db, job.ID); got != wantState {
+			t.Fatalf("location %d state = %s, want %s", i, got, wantState)
+		}
+	}
+	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("ClaimJob after final cycle error = %v, want ErrNoJob", err)
+	}
+}
+
+func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	video, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(root, "movie.mp4"), "movie", "migrated", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.EnqueueJob(ctx, JobThumbnail, video.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("unregistered ClaimJob error = %v, want ErrNoJob", err)
+	}
+	if got := jobState(t, db, 1); got != "queued" {
+		t.Fatalf("unregistered job state = %s, want queued", got)
+	}
+	if _, err := db.AddMediaFolder(ctx, root); err != nil {
+		t.Fatal(err)
 	}
 	job, err := db.ClaimJob(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.Attempts != 2 {
-		t.Fatalf("second location cycle attempts = %d, want 2", job.Attempts)
+	if job.LocationPath != filepath.Join(root, "movie.mp4") {
+		t.Fatalf("LocationPath = %q", job.LocationPath)
 	}
 }
 

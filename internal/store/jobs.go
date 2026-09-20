@@ -89,11 +89,14 @@ func (db *DB) ClaimJob(ctx context.Context) (Job, error) {
 	var job Job
 	var kind string
 	var previousPath sql.NullString
-	err = conn.QueryRowContext(ctx, `
-		select id, kind, video_id, attempts, location_path from jobs
-		 where state = 'queued'
-		 order by id
-		 limit 1`).Scan(&job.ID, &kind, &job.VideoID, &job.Attempts, &previousPath)
+	// 登録前の移行locationは保持するが処理しない。folder登録後に同じqueued
+	// jobをそのまま再開でき、登録外pathをworkerへ渡すこともない。
+	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.location_path from jobs j
+		where j.state = 'queued' and exists (
+			select 1 from video_locations l where l.video_id = j.video_id and ` + registeredLocationCondition("l") + `)
+		order by j.id limit 1`
+	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
+	err = conn.QueryRowContext(ctx, queuedJobSQL).Scan(&job.ID, &kind, &job.VideoID, &job.Attempts, &previousPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNoJob
 	}
@@ -108,7 +111,7 @@ func (db *DB) ClaimJob(ctx context.Context) (Job, error) {
 	var locationPath, contentKey string
 	selectLocation := `select l.id, l.version, l.path, v.content_key
 		from video_locations l join videos v on v.id = l.video_id
-		where l.video_id = ?`
+		where l.video_id = ? and ` + registeredLocationCondition("l")
 	args := []any{job.VideoID}
 	if previousPath.Valid {
 		selectLocation += ` and l.path > ?`
@@ -120,7 +123,7 @@ func (db *DB) ClaimJob(ctx context.Context) (Job, error) {
 		job.Attempts++
 		err = conn.QueryRowContext(ctx, `select l.id, l.version, l.path, v.content_key
 			from video_locations l join videos v on v.id = l.video_id
-			where l.video_id = ? order by l.path limit 1`, job.VideoID).
+			where l.video_id = ? and `+registeredLocationCondition("l")+` order by l.path limit 1`, job.VideoID).
 			Scan(&locationID, &locationVersion, &locationPath, &contentKey)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
@@ -140,6 +143,13 @@ func (db *DB) ClaimJob(ctx context.Context) (Job, error) {
 	job.LocationID = locationID
 	job.LocationVersion = locationVersion
 	job.LocationPath = locationPath
+	var hasLaterLocation int
+	if err := conn.QueryRowContext(ctx, `select exists (
+		select 1 from video_locations l where l.video_id = ? and l.path > ? and `+registeredLocationCondition("l")+`)`,
+		job.VideoID, job.LocationPath).Scan(&hasLaterLocation); err != nil {
+		return Job{}, fmt.Errorf("ジョブの処理場所の終端を確認できません: %w", err)
+	}
+	job.LastLocation = hasLaterLocation == 0
 
 	if _, err := conn.ExecContext(ctx, `
 		update jobs set state = 'running', attempts = ?, location_id = ?, location_version = ?,
@@ -191,12 +201,12 @@ func (db *DB) FailClaimedJob(ctx context.Context, job Job, reason string) error 
 			when not exists (select 1 from videos v join video_locations l on l.video_id = v.id
 				where v.id = ? and v.content_key = ? and l.id = ? and l.version = ? and l.path = ?)
 			then 'queued'
-			when attempts >= ? then 'failed' else 'queued' end,
+			when attempts >= ? and ? then 'failed' else 'queued' end,
 		last_error = ?,
 		location_id = case when exists (select 1 from video_locations where id = ? and version = ? and path = ?) then location_id else null end,
 		updated_at = ? where id = ?`,
 		job.VideoID, job.ContentKey, job.LocationID, job.LocationVersion, job.LocationPath,
-		MaxJobAttempts, reason, job.LocationID, job.LocationVersion, job.LocationPath,
+		MaxJobAttempts, job.LastLocation, reason, job.LocationID, job.LocationVersion, job.LocationPath,
 		time.Now().Unix(), job.ID)
 	if err != nil {
 		return fmt.Errorf("ジョブの失敗を記録できません (id=%d): %w", job.ID, err)

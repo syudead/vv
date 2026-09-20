@@ -29,6 +29,8 @@ type Job struct {
 	LocationID      int64
 	LocationVersion int64
 	LocationPath    string
+	// LastLocation はclaim時点の登録済みlocation集合で最後の候補かを表す。
+	LastLocation bool
 	// Attempts はこの取り出しを含めた試行回数。
 	Attempts int
 }

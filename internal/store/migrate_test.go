@@ -475,6 +475,28 @@ func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	}
 }
 
+func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a/movie.mp4", "movie", "shared", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b/movie.mp4", "movie", "shared", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Down(ctx, db); err == nil {
+		t.Fatal("multiple locations were silently collapsed by Down")
+	}
+	var locations int
+	if err := db.SQL().QueryRow(`select count(*) from video_locations`).Scan(&locations); err != nil {
+		t.Fatalf("failed Down did not preserve the new schema: %v", err)
+	}
+	if locations != 2 {
+		t.Fatalf("locations after failed Down = %d, want 2", locations)
+	}
+}
+
 // migratedDB はマイグレーションを適用したデータベースを返す。
 func migratedDB(t *testing.T) *DB {
 	t.Helper()

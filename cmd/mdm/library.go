@@ -83,7 +83,7 @@ func probeHandler(db *store.DB) jobs.Handler {
 		if err != nil {
 			// 上限まで試して駄目なら、行は残したまま失敗として記録する。
 			// 一覧からは消さない（FR-008）。
-			if job.Attempts >= domain.MaxJobAttempts {
+			if job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
 				if _, markErr := db.MarkProbeFailedForJob(ctx, job, err.Error()); markErr != nil {
 					return markErr
 				}
@@ -123,7 +123,7 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 		if _, err := media.Thumbnail(
 			ctx, job.LocationPath, durationMs, cfg.ThumbnailsDir(), job.ContentKey,
 		); err != nil {
-			if job.Attempts >= domain.MaxJobAttempts {
+			if job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
 				if _, markErr := db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateFailed); markErr != nil {
 					return markErr
 				}
