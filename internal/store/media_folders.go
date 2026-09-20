@@ -123,6 +123,9 @@ func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFold
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
+	if err := syncAllRepresentativeContainers(ctx, tx); err != nil {
+		return domain.MediaFolder{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -161,11 +164,14 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	if err := ensureFolderMutationAllowed(ctx, tx, id, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
+	now := time.Now().Unix()
+	if _, err := tx.ExecContext(ctx, `update media_folders set path = ?, version = version + 1, updated_at = ? where id = ?`, cleaned, now, id); err != nil {
+		return domain.MediaFolder{}, err
+	}
 	if err := removeLocationsUnder(ctx, tx, oldPath); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	now := time.Now().Unix()
-	if _, err := tx.ExecContext(ctx, `update media_folders set path = ?, version = version + 1, updated_at = ? where id = ?`, cleaned, now, id); err != nil {
+	if err := syncAllRepresentativeContainers(ctx, tx); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	if err := tx.Commit(); err != nil {
@@ -237,20 +243,22 @@ func ensureNoRunningScan(ctx context.Context, tx *sql.Tx) error {
 }
 
 func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
-	rows, err := tx.QueryContext(ctx, `select id, path from video_locations`)
+	rows, err := tx.QueryContext(ctx, `select id, video_id, path from video_locations`)
 	if err != nil {
 		return err
 	}
 	var ids []int64
+	affected := map[int64]struct{}{}
 	for rows.Next() {
-		var id int64
+		var id, videoID int64
 		var path string
-		if err := rows.Scan(&id, &path); err != nil {
+		if err := rows.Scan(&id, &videoID, &path); err != nil {
 			_ = rows.Close()
 			return err
 		}
 		if domain.PathWithinRoot(root, path) {
 			ids = append(ids, id)
+			affected[videoID] = struct{}{}
 		}
 	}
 	_ = rows.Close()
@@ -259,6 +267,11 @@ func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `delete from video_locations where id = ?`, id); err != nil {
+			return err
+		}
+	}
+	for videoID := range affected {
+		if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
 			return err
 		}
 	}

@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 // jobsFixture は動画を1本入れた状態を返す。ジョブは videos を参照する。
@@ -353,6 +355,49 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 	}
 	if job.LocationPath != filepath.Join(root, "movie.mp4") {
 		t.Fatalf("LocationPath = %q", job.LocationPath)
+	}
+}
+
+func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", "key-a", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	written, err := db.ApplyProbeForJob(ctx, job, domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}, domain.Playability{Playable: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written {
+		t.Fatal("job claimed before a location was added wrote a stale result")
+	}
+	written, err = db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written {
+		t.Fatal("thumbnail job claimed before a location was added wrote a stale result")
+	}
+	if err := db.FailClaimedJob(ctx, job, "old location failed"); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobState(t, db, job.ID); got != "queued" {
+		t.Fatalf("state = %q, want queued", got)
+	}
+	retried, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.LocationPath != "/media/z.mp4" {
+		t.Fatalf("retry path = %q, want /media/z.mp4", retried.LocationPath)
 	}
 }
 

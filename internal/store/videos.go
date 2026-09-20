@@ -163,7 +163,13 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 	if err != nil {
 		return UpsertResult{}, fmt.Errorf("動画の場所を保存できません (%s): %w", file.Path, err)
 	}
+	if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
+		return UpsertResult{}, err
+	}
 	if locationExists && oldVideoID != videoID {
+		if err := syncRepresentativeContainer(ctx, tx, oldVideoID); err != nil {
+			return UpsertResult{}, err
+		}
 		if _, err := tx.ExecContext(ctx, `delete from videos where id = ? and not exists (select 1 from video_locations where video_id = ?)`, oldVideoID, oldVideoID); err != nil {
 			return UpsertResult{}, err
 		}
@@ -218,11 +224,12 @@ func (db *DB) ApplyProbeForJob(
 		update videos set duration_ms = ?, width = ?, height = ?, video_codec = ?, audio_codec = ?,
 		playable = ?, unplayable_reason = ?, probe_state = 'done', probe_error = null, updated_at = ?
 		where id = ? and content_key = ? and exists (
-			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)`,
+			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
+		and not exists (select 1 from video_locations where video_id = videos.id and id > ?)`,
 		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height),
 		nullableString(probe.VideoCodec), nullableString(probe.AudioCodec), boolToInt(play.Playable),
 		nullableString(string(play.Reason)), time.Now().Unix(), job.VideoID, job.ContentKey,
-		job.LocationID, job.LocationVersion, job.LocationPath)
+		job.LocationID, job.LocationVersion, job.LocationPath, job.LocationSetMaxID)
 	if err != nil {
 		return false, err
 	}
@@ -249,9 +256,10 @@ func (db *DB) MarkProbeFailedForJob(ctx context.Context, job domain.Job, reason 
 	res, err := db.sql.ExecContext(ctx, `update videos
 		set probe_state = 'failed', probe_error = ?, playable = 0, updated_at = ?
 		where id = ? and content_key = ? and exists (
-			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)`,
+			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
+		and not exists (select 1 from video_locations where video_id = videos.id and id > ?)`,
 		reason, time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
-		job.LocationVersion, job.LocationPath)
+		job.LocationVersion, job.LocationPath, job.LocationSetMaxID)
 	if err != nil {
 		return false, err
 	}
@@ -273,9 +281,10 @@ func (db *DB) SetThumbnailState(ctx context.Context, id int64, state domain.Thum
 func (db *DB) SetThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.ThumbnailState) (bool, error) {
 	res, err := db.sql.ExecContext(ctx, `update videos set thumbnail_state = ?, updated_at = ?
 		where id = ? and content_key = ? and exists (
-			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)`,
+			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
+		and not exists (select 1 from video_locations where video_id = videos.id and id > ?)`,
 		string(state), time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
-		job.LocationVersion, job.LocationPath)
+		job.LocationVersion, job.LocationPath, job.LocationSetMaxID)
 	if err != nil {
 		return false, err
 	}
@@ -441,8 +450,20 @@ func (db *DB) DeleteVideoLocations(ctx context.Context, ids []int64) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	affected := map[int64]struct{}{}
 	for _, id := range ids {
+		var videoID int64
+		if err := tx.QueryRowContext(ctx, `select video_id from video_locations where id = ?`, id).Scan(&videoID); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		} else if err == nil {
+			affected[videoID] = struct{}{}
+		}
 		if _, err := tx.ExecContext(ctx, `delete from video_locations where id = ?`, id); err != nil {
+			return err
+		}
+	}
+	for videoID := range affected {
+		if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
 			return err
 		}
 	}
@@ -456,7 +477,7 @@ func (db *DB) DeleteVideoLocations(ctx context.Context, ids []int64) error {
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
 // 走査はこれと実際のファイルを突き合わせて差分を出す（R-107）。
 func (db *DB) IndexedVideosByPath(ctx context.Context) (map[string]IndexedVideo, error) {
-	rows, err := db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime from video_locations l join videos v on v.id = l.video_id`)
+	rows, err := db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state from video_locations l join videos v on v.id = l.video_id`)
 	if err != nil {
 		return nil, fmt.Errorf("索引を読み出せません: %w", err)
 	}
@@ -467,7 +488,7 @@ func (db *DB) IndexedVideosByPath(ctx context.Context) (map[string]IndexedVideo,
 		var path string
 		var video IndexedVideo
 		var mtime int64
-		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime); err != nil {
+		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &video.ProbeState, &video.ThumbnailState); err != nil {
 			return nil, fmt.Errorf("索引を読み出せません: %w", err)
 		}
 		video.MTime = time.Unix(mtime, 0)
@@ -477,6 +498,63 @@ func (db *DB) IndexedVideosByPath(ctx context.Context) (map[string]IndexedVideo,
 		return nil, fmt.Errorf("索引を読み出せません: %w", err)
 	}
 	return out, nil
+}
+
+func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64) error {
+	query := `select l.path, v.container, v.probe_state, coalesce(v.video_codec, ''), coalesce(v.audio_codec, '')
+		from videos v join video_locations l on l.video_id = v.id
+		where v.id = ? and ` + registeredLocationCondition("l") + ` order by l.path limit 1`
+	var path, probeState, videoCodec, audioCodec string
+	var oldContainer sql.NullString
+	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
+	err := tx.QueryRowContext(ctx, query, videoID).Scan(&path, &oldContainer, &probeState, &videoCodec, &audioCodec)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("代表場所を読み出せません (video=%d): %w", videoID, err)
+	}
+	container := domain.ContainerFromPath(path)
+	if oldContainer.String == container {
+		return nil
+	}
+	if probeState == string(domain.ProbeStateDone) {
+		play := domain.EvaluatePlayability(container, domain.Probe{VideoCodec: videoCodec, AudioCodec: audioCodec})
+		_, err = tx.ExecContext(ctx, `update videos set container = ?, playable = ?, unplayable_reason = ?, updated_at = ? where id = ?`,
+			nullableString(container), boolToInt(play.Playable), nullableString(string(play.Reason)), time.Now().Unix(), videoID)
+	} else {
+		_, err = tx.ExecContext(ctx, `update videos set container = ?, playable = 0, unplayable_reason = null, updated_at = ? where id = ?`,
+			nullableString(container), time.Now().Unix(), videoID)
+	}
+	if err != nil {
+		return fmt.Errorf("代表場所のcontainerを更新できません (video=%d): %w", videoID, err)
+	}
+	return nil
+}
+
+func syncAllRepresentativeContainers(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `select id from videos`)
+	if err != nil {
+		return err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := syncRepresentativeContainer(ctx, tx, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // ContentKeys は参照されている内容の識別子を集合で返す。

@@ -202,6 +202,8 @@ type IndexedVideo struct {
 	LocationVersion int64
 	SizeBytes       int64
 	MTime           time.Time
+	ProbeState      ProbeState
+	ThumbnailState  ThumbnailState
 }
 
 // MediaFolder is one independently managed scan root.

@@ -58,6 +58,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 			delete(f.rows, path)
 			f.rows[file.Path] = domain.IndexedVideo{
 				ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
+				ProbeState: row.ProbeState, ThumbnailState: row.ThumbnailState,
 			}
 			outcome := domain.OutcomeMoved
 			if path == file.Path {
@@ -70,6 +71,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 	if row, ok := f.rows[file.Path]; ok {
 		f.rows[file.Path] = domain.IndexedVideo{
 			ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
+			ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending,
 		}
 		return domain.UpsertResult{ID: row.ID, Outcome: domain.OutcomeUpdated, NeedsProbe: true, NeedsThumbnail: true}, nil
 	}
@@ -78,6 +80,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 	f.nextID++
 	f.rows[file.Path] = domain.IndexedVideo{
 		ID: id, LocationID: id, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
+		ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending,
 	}
 	return domain.UpsertResult{ID: id, Outcome: domain.OutcomeAdded, NeedsProbe: true, NeedsThumbnail: true}, nil
 }
@@ -260,8 +263,8 @@ func TestScanPreservesPathAndNormalizesTitleToNFC(t *testing.T) {
 	}
 }
 
-// サイズも mtime も変わらない既存行は何もしない。content_key の再計算も
-// しないので、2 回目以降の走査はディレクトリ走査と比較だけで済む（R-107）。
+// サイズも mtime も変わらず解析済みの既存行は何もしない。content_key の
+// 再計算もしないので、2 回目以降の走査は比較だけで済む（R-107）。
 func TestScanSkipsUnchangedFiles(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 
@@ -269,6 +272,11 @@ func TestScanSkipsUnchangedFiles(t *testing.T) {
 	first := runScan(t, root, index)
 	if first.Added != 1 {
 		t.Fatalf("1 回目: Added = %d, want 1", first.Added)
+	}
+	for path, row := range index.rows {
+		row.ProbeState = domain.ProbeStateDone
+		row.ThumbnailState = domain.ThumbnailStateDone
+		index.rows[path] = row
 	}
 
 	upsertsAfterFirst := len(index.upserts)
@@ -289,6 +297,40 @@ func TestScanSkipsUnchangedFiles(t *testing.T) {
 	if len(index.jobs) != jobsAfterFirst {
 		t.Errorf("ジョブ = %d 件, want %d（変化が無ければ積み直さない）",
 			len(index.jobs), jobsAfterFirst)
+	}
+}
+
+func TestScanRequeuesMissingJobsForUnchangedPendingVideo(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+
+	upsertsAfterFirst := len(index.upserts)
+	index.jobs = nil // EnqueueJob が一時的に失敗して、DBにジョブが無い状態を再現する。
+	runScan(t, root, index)
+
+	if len(index.upserts) != upsertsAfterFirst {
+		t.Fatalf("unchanged file was rehashed: upserts = %d, want %d", len(index.upserts), upsertsAfterFirst)
+	}
+	if len(index.jobs) != 2 {
+		t.Fatalf("requeued jobs = %d, want 2", len(index.jobs))
+	}
+}
+
+func TestScanDoesNotRequeueFailedJobsForUnchangedVideo(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	for path, row := range index.rows {
+		row.ProbeState = domain.ProbeStateFailed
+		row.ThumbnailState = domain.ThumbnailStateFailed
+		index.rows[path] = row
+	}
+	index.jobs = nil
+
+	runScan(t, root, index)
+	if len(index.jobs) != 0 {
+		t.Fatalf("failed jobs were requeued: %d", len(index.jobs))
 	}
 }
 

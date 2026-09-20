@@ -136,6 +136,33 @@ func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 	}
 }
 
+func TestReassigningRepresentativeLocationSynchronizesOldVideo(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	oldVideo, err := db.UpsertVideo(ctx, sampleFile("/media/a.mkv", "a", "old", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "old", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	probe := domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.ApplyProbe(ctx, oldVideo.ID, probe, domain.EvaluatePlayability("mkv", probe)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mkv", "replacement", "new", 2, time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.GetVideo(ctx, oldVideo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Path != "/media/b.mp4" || got.Container != "mp4" || !got.Playable {
+		t.Fatalf("old video representative was not synchronized: %+v", got)
+	}
+}
+
 // 移動・改名は行の作り直しではなくパスの更新になる。重複を作らないことが
 // FR-004 の要求で、再生位置を引き継ぐ前提でもある。
 func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {

@@ -150,6 +150,10 @@ func (db *DB) ClaimJob(ctx context.Context) (Job, error) {
 		return Job{}, fmt.Errorf("ジョブの処理場所の終端を確認できません: %w", err)
 	}
 	job.LastLocation = hasLaterLocation == 0
+	if err := conn.QueryRowContext(ctx, `select coalesce(max(l.id), 0) from video_locations l
+		where l.video_id = ? and `+registeredLocationCondition("l"), job.VideoID).Scan(&job.LocationSetMaxID); err != nil {
+		return Job{}, fmt.Errorf("ジョブのlocation集合を確認できません: %w", err)
+	}
 
 	if _, err := conn.ExecContext(ctx, `
 		update jobs set state = 'running', attempts = ?, location_id = ?, location_version = ?,
@@ -174,11 +178,12 @@ func (db *DB) CompleteClaimedJob(ctx context.Context, job Job) error {
 		state = case when exists (
 			select 1 from video_locations l join videos v on v.id = l.video_id
 			where v.id = ? and v.content_key = ? and l.id = ? and l.version = ? and l.path = ?
+			and not exists (select 1 from video_locations newer where newer.video_id = v.id and newer.id > ?)
 		) then 'done' else 'queued' end,
 		last_error = null,
 		location_id = case when exists (select 1 from video_locations where id = ? and version = ? and path = ?) then location_id else null end,
 		updated_at = ? where id = ?`,
-		job.VideoID, job.ContentKey, job.LocationID, job.LocationVersion, job.LocationPath,
+		job.VideoID, job.ContentKey, job.LocationID, job.LocationVersion, job.LocationPath, job.LocationSetMaxID,
 		job.LocationID, job.LocationVersion, job.LocationPath, time.Now().Unix(), job.ID)
 	if err != nil {
 		return fmt.Errorf("ジョブの完了を記録できません (id=%d): %w", job.ID, err)
@@ -201,12 +206,14 @@ func (db *DB) FailClaimedJob(ctx context.Context, job Job, reason string) error 
 			when not exists (select 1 from videos v join video_locations l on l.video_id = v.id
 				where v.id = ? and v.content_key = ? and l.id = ? and l.version = ? and l.path = ?)
 			then 'queued'
+			when exists (select 1 from video_locations where video_id = ? and id > ?) then 'queued'
 			when attempts >= ? and ? then 'failed' else 'queued' end,
 		last_error = ?,
 		location_id = case when exists (select 1 from video_locations where id = ? and version = ? and path = ?) then location_id else null end,
 		updated_at = ? where id = ?`,
 		job.VideoID, job.ContentKey, job.LocationID, job.LocationVersion, job.LocationPath,
-		MaxJobAttempts, job.LastLocation, reason, job.LocationID, job.LocationVersion, job.LocationPath,
+		job.VideoID, job.LocationSetMaxID, MaxJobAttempts, job.LastLocation, reason,
+		job.LocationID, job.LocationVersion, job.LocationPath,
 		time.Now().Unix(), job.ID)
 	if err != nil {
 		return fmt.Errorf("ジョブの失敗を記録できません (id=%d): %w", job.ID, err)
