@@ -140,13 +140,13 @@ Given that feature description, do this:
        - Resolve it from this repository's design docs and existing screens, the
          spec's own wording, or the form comparable current products have
          converged on. Write that answer into the spec and record it in
-         Assumptions with where it came from
+         Settled Without Asking with where it came from
        - Mark with [NEEDS CLARIFICATION: specific question] only when the answer
          changes what the user gets, no reference settles it (or two credible
          answers lead somewhere materially different), and getting it wrong
          would be expensive to undo. Then ask; do not pick one silently (Q-6)
        - Make an informed guess only for a detail that does not change what the
-         user gets whichever way it goes, and record it in Assumptions
+         user gets whichever way it goes, and record it in Settled Without Asking
        - An implementation difficulty is never the reason for a guess. If the
          obvious way to build something is hard, that is a question about the
          requirement, not a requirement (Q-7)
@@ -157,7 +157,7 @@ Given that feature description, do this:
        If no clear user flow: ERROR "Cannot determine user scenarios"
     5. Generate Functional Requirements
        Each requirement must be testable
-       Settle unspecified details from the references above and record them in Assumptions. Only a gap that no reference settles, and whose answer changes what the user gets, becomes a [NEEDS CLARIFICATION] marker (Q-6)
+       Settle unspecified details from the references above and record them, with their source, in the Settled Without Asking section. Only a gap that no reference settles, and whose answer changes what the user gets, becomes a [NEEDS CLARIFICATION] marker (Q-6)
     6. Define Success Criteria
        Create measurable, technology-agnostic outcomes
        Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
@@ -292,7 +292,7 @@ When creating this spec from a user prompt:
    considering a question. In order: this repository's design docs and existing
    screens, the spec's own wording, and the form that comparable current
    products have converged on. An answer found this way is written into the
-   spec and recorded in Assumptions — asking about something that already has a
+   spec and recorded in Settled Without Asking — asking about something that already has a
    settled answer wastes the requester's attention and is itself a defect.
 2. **Ask only what is genuinely open**: a gap becomes a
    `[NEEDS CLARIFICATION: specific question]` only when all three hold:
@@ -304,7 +304,7 @@ When creating this spec from a user prompt:
    Carry at most 3 into one round; the rest stay in the spec for the next round.
 3. **Prioritize**: scope > security/privacy > user experience > technical details
 4. **Document what you settled**: record each answer you took from a reference
-   or a convention in the Assumptions section, naming where it came from, so the
+   or a convention in the Settled Without Asking section, naming where it came from, so the
    requester can overturn it by reading rather than by being interrogated
 5. **Think like a tester**: treat every vague requirement as a validation failure
 6. **Keep implementation out of it**: a technical constraint is a question about

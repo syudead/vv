@@ -42,8 +42,13 @@ func TestTasksStageArtifactsAreAbsent(t *testing.T) {
 
 // placeholders are fragments the templates carry for the author to replace.
 // Finding one in a delivered artifact means a section was shipped unfilled.
+//
+// `[NEEDS CLARIFICATION: ...]` is deliberately not on this list. It is a
+// legitimate state, not residue: /speckit-clarify records a product ambiguity
+// it could not ask this round as such a marker, so the spec carries it between
+// rounds. Whether a marker may still be open is a question about the stage the
+// feature is in, which this repository-wide check cannot see.
 var placeholders = []string{
-	"[NEEDS CLARIFICATION",
 	"[REMOVE IF UNUSED]",
 	"[e.g.,",
 	"[Assumption about",

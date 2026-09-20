@@ -119,20 +119,25 @@
 - **SC-003**: [User satisfaction metric, e.g., "90% of users successfully complete primary task on first attempt"]
 - **SC-004**: [Business metric, e.g., "Reduce support tickets related to [X] by 50%"]
 
-## Assumptions
+## Settled Without Asking
 
 <!--
-  ACTION REQUIRED: Record only the details the description left open whose
-  answer does not change what the user gets. Anything that would change the
-  scope, the interaction, or the security posture is a question to the user,
-  not an assumption (Q-6). A scope boundary in particular is decided by the
-  person asking for the feature, never assumed here.
+  ACTION REQUIRED: Each entry is something the description left open that you
+  answered from a source, written as the answer plus the source it came from.
+  The requester reads this section to overturn an answer without being
+  interrogated for it.
 
-  An implementation constraint never belongs in this section either. When the
-  obvious way to build something turns out to be hard, put that to the person
-  asking for the feature as a choice, and write down what they decide (Q-7).
+  An entry with no source is not an assumption to record — it is a question
+  (Q-6) or it does not belong in the spec at all. The requester is available;
+  a spec does not proceed on guesses about what they want.
+
+  Sources that count: this repository's design docs and existing screens, the
+  request's own wording, and the form comparable current products have
+  converged on. An implementation constraint is not a source: when the obvious
+  way to build something turns out to be hard, that is a choice to put to the
+  requester, and what they decide is what gets written (Q-7).
 -->
 
-- [Assumption about target users, e.g., "Users have stable internet connectivity"]
-- [Assumption about the environment the feature runs in, e.g., "Media files stay on storage the server can read directly"]
-- [Dependency on an existing system/service the request already implies, e.g., "Requires access to the existing user profile API"]
+- [Answer — source, e.g., "The list keeps the dense admin-console layout — docs/design-docs/modern-library-ui.md"]
+- [Answer — source, e.g., "Folders are chosen by browsing the server's directories, the form comparable media servers have converged on"]
+- [Dependency the request already implies, e.g., "Requires access to the existing user profile API"]
