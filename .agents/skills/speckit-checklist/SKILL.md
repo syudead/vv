@@ -86,7 +86,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - All file paths must be absolute.
    - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
-2. Load this repository's governance for its principles and constraints — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. There is no Spec Kit constitution file here.
+2. Load this repository's governance for its principles and constraints — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. If `.specify/memory/constitution.md` exists and carries real principles, read it and let it win; a file that is absent, empty, or still holding template placeholders is not a source of constraints, and this repository currently keeps none.
 
 3. **Clarify intent (dynamic)**: Derive up to THREE initial contextual clarifying questions (no pre-baked catalog). They MUST:
    - Be generated from the user's phrasing + extracted signals from spec/plan
