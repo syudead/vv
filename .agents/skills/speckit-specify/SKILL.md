@@ -201,7 +201,7 @@ Given that feature description, do this:
       - **If [NEEDS CLARIFICATION] markers remain**:
         1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
         2. **BATCH**: Ask at most 3 per round, most critical first (by scope/security/UX impact). Markers that do not fit stay in the spec and are asked in the next round — never resolved by guessing (Q-6)
-        3. For each clarification needed (max 3), present options to user in this format:
+        3. For each clarification in the current round (max 3 per round), present options to user in this format:
 
            ```markdown
            ## Question [N]: [Topic]
@@ -227,11 +227,11 @@ Given that feature description, do this:
            - Each cell should have spaces around content: `| Content |` not `|Content|`
            - Header separator must have at least 3 dashes: `|--------|`
            - Test that the table renders correctly in markdown preview
-        5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
+        5. Number questions sequentially across the entire clarification session (Q1, Q2, Q3, Q4, ...). Do not reset numbering between rounds; the limit is 3 questions per round, not 3 questions total.
         6. Present all questions together before waiting for responses
         7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
         8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the requester's selected or provided answer
-        9. Re-run validation after all clarifications are resolved
+        9. Re-run validation after applying the round's answers. If [NEEDS CLARIFICATION] markers remain, return to step 2 for the next round and continue the session-wide question numbering. Proceed only after every marker is resolved.
 
 ## Mandatory Post-Execution Hooks
 
