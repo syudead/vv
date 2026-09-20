@@ -19,6 +19,9 @@
 
 各IssueのPRは`codex/feature-settings-screen`をbaseとし、統合PRだけを`main`へ向ける。
 
+検証では、同じcontentを2つの登録rootへ置いた状態で片方を変更・削除しても、もう片方の
+locationから動画、job、thumbnail、再生位置を継続利用できることを確認する。
+
 ## 検証
 
 - 各Issueに記載したunit・contract・UI test

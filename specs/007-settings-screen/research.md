@@ -25,14 +25,21 @@ atomic operationにする。一覧全体のPUT、draft、global version、並び
 - 新規追加はMediaFolderをinsertするだけで、既存ライブラリDBを変更しない
 - 既存folderのpath変更は、そのfolder由来のDBデータ削除とpath更新を1transactionで行う
 - 削除は、そのfolder由来のDBデータ削除とfolder行削除を1transactionで行う
-- 全folderの再生位置・視聴済み状態、他folder由来の動画・job、完了済みscan履歴は変更しない
+- 全folderの再生位置・視聴済み状態、他folderのlocationが残るvideo・job・thumbnail、完了済みscan履歴は
+  変更しない
 
-対象videoは、正規化済みpathが旧root配下にあるかをOS規則に従う共通helperで判定する。
-`videos`へfolder IDを追加せず、migrationや新規追加で既存videoを更新しない。対象videosの削除で
-FTSとjobsをcascadeする。`playback_progress`は同じcontentが再発見されたときに戻す再構築不能な
-利用者データなので削除しない。thumbnail filesはcommit後にbest-effortでcleanupする。
+`videos`をcontent単位、`video_locations`を実在path単位に分ける。同じcontentが複数rootにある場合は
+1 videoと複数locationsとして保持する。folder変更・削除では旧root配下のlocationsだけを消し、
+locationが0件になったvideoだけをjobsとともに削除する。`playback_progress`は同じcontentが再発見された
+ときに戻す再構築不能な利用者データなので削除しない。別locationが残るvideoのthumbnailも維持する。
+
+migrationは既存videoのpath、title、size、mtimeを1件のlocationへ移し、video ID、content key、
+probe結果、jobs、playback progressを保持する。新規folder追加では既存video/locationへ書き込まない。
 
 **Rationale**: 追加済みfolderのデータは新規rootを増やしても有効であり、全削除する理由がない。
+
+**Rejected**: videoの単一pathだけでfolder所属を判定する案。同じcontentが別rootにも存在する事実を
+表現できず、片方のfolder削除で未変更root側のvideoまで失うため。
 
 ## R-704: サーバー側directory browserを提供する
 

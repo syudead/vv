@@ -43,14 +43,16 @@ playback progressを変更せず、scanも開始しない。
 }
 ```
 
-成功は`200`と更新後resource。path更新と同じtransactionで、そのMediaFolderに属するvideos、FTS、
-jobsだけを削除する。全playback progress、他MediaFolderのデータ、scan履歴は変更せず、scanも開始しない。
+成功は`200`と更新後resource。path更新と同じtransactionで、そのMediaFolder配下のvideo locationsを
+削除する。locationが0件になったvideos、FTS、jobsだけを削除し、別MediaFolder側のlocationが残る
+video、job、thumbnail、全playback progress、scan履歴は変更せず、scanも開始しない。
 同じ正規化pathへのPUTはno-opとし、version加算とDB削除を行わない。
 
 ## DELETE /api/media-folders/{id}?version={version}
 
-既存1件を削除する。成功は`204`。MediaFolder削除と同じtransactionで、そのfolderに属するvideos、
-FTS、jobsだけを削除する。全playback progress、他MediaFolderのデータ、scan履歴は変更しない。
+既存1件を削除する。成功は`204`。MediaFolder削除と同じtransactionで、そのfolder配下のvideo
+locationsを削除し、locationが0件になったvideos、FTS、jobsだけを削除する。別MediaFolder側の
+locationが残るvideo、job、thumbnail、全playback progress、scan履歴は変更しない。
 
 ## MediaFolder Mutation Errors
 
@@ -87,6 +89,7 @@ FTS、jobsだけを削除する。全playback progress、他MediaFolderのデー
 - MediaFolderが0件ならscan rowを作らず`409 media_folders_not_configured`
 - scan開始時のMediaFolder snapshotを最後まで使う
 - 全rootを1回のscanとして扱い、root境界判定を変更・削除・streamと共通化する
+- 同じcontent keyを別pathで発見した場合は既存locationを移動せず、同じvideoへlocationを追加する
 - 一部root/directory/fileのI/O失敗はfailed countへ記録し、残りを継続する
 - root列挙失敗時はroot全体、subtree失敗時はそのprefix、file失敗時はそのpathをmissing削除から除外する
 - 継続不能なerror、panic、cancelはscanをfailedへ確定する
@@ -98,6 +101,7 @@ FTS、jobsだけを削除する。全playback progress、他MediaFolderのデー
 - directory APIとfolder mutationは認証導入前のtrusted-network運用に限定する。
 - CORSを許可せず、全mutationをsame-originに限定し、POST/PUTは`application/json`だけを受理する。
 - MediaFolder追加後も既存ライブラリAPIの結果を維持する。
-- MediaFolder変更・削除後は対象folder由来の動画だけを結果から除く。
+- MediaFolder変更・削除後は対象folder側のlocationだけを除き、別folder側のlocationが残る動画は
+  結果とstreamから除かない。
 - folder操作後も再生位置と視聴済み状態を維持する。
 - 次の手動scan完了後に現在の全MediaFolderの結果を返す。

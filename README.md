@@ -35,10 +35,9 @@ curl -sS http://localhost:8080/api/health
 MDM_MEDIA_HOST_DIR=/path/to/videos make up
 ```
 
-**置くだけで並ぶ。** 手作業の登録は要らない。起動直後に取り込みが1回走り、
-静止画・題名・長さ付きの一覧ができる。あとから動画を足したときは、画面の
-「取り込む」を押すか `curl -X POST localhost:8080/api/scans` を叩けば追加分だけが
-増える。取り込み中も一覧と再生は普通に使える。
+起動後に設定画面でメディアフォルダを登録し、画面の「取り込む」を押すか
+`curl -X POST localhost:8080/api/scans` を実行すると、静止画・題名・長さ付きの一覧ができる。
+あとから動画を足した場合も同じ手動操作で反映する。取り込み中も一覧と再生は普通に使える。
 
 - 動画ファイルは**読み取りしかしない**。変更・移動・削除・変換は行わない
 - 移動・改名しても同じ動画として扱われ、再生位置も引き継がれる
@@ -48,17 +47,17 @@ MDM_MEDIA_HOST_DIR=/path/to/videos make up
 
 データの置き場所は2つに分かれる。
 
-| 対象 | 場所 | 消したら |
-| --- | --- | --- |
-| 索引（`videos`・サムネイルなど） | `MDM_DATA_DIR`（Docker では `vv_data`） | 再スキャンで作り直せる |
-| 再生位置（利用者データ） | 同じデータベース内の `playback_progress` | **作り直せない** |
+| 対象                             | 場所                                     | 消したら               |
+| -------------------------------- | ---------------------------------------- | ---------------------- |
+| 索引（`videos`・サムネイルなど） | `MDM_DATA_DIR`（Docker では `vv_data`）  | 再スキャンで作り直せる |
+| 再生位置（利用者データ）         | 同じデータベース内の `playback_progress` | **作り直せない**       |
 
 `make down && docker volume rm vv_data` のあとでも、スキーマは次の起動で作り直され
 一覧は再スキャンで復元する。失われるのは再生位置だけである（バックアップ手順の
 整備は Phase 3 の範囲）。
 
-設定はすべて環境変数で与え、既定値だけで起動できる。起動直後の自動取り込みを
-止めたい場合は `MDM_SCAN_ON_START=false` を渡す。項目の一覧は
+起動設定は環境変数、メディアフォルダは設定画面で管理する。取り込みは起動時に自動実行せず、
+利用者が明示的に開始する。項目の一覧は
 [specs/001-initial-setup/contracts/configuration.md](specs/001-initial-setup/contracts/configuration.md)
 と[本機能での差分](specs/002-core-video-library/contracts/configuration.md)にある。
 
@@ -103,30 +102,30 @@ Go と Web のソースは `.gitattributes` で LF に固定し、Windows の改
 `make dev` を使ってよい。`mise activate` 済みの shell では `task setup` のように
 直接呼べる。
 
-| 入口 | 内容 |
-| --- | --- |
-| `task doctor` / `scripts/doctor.ps1` | Go・Node・ffmpeg・bash・Docker などの有無を確認する |
-| `task setup` / `scripts/setup.ps1` | Go module、npm 依存、lint ツール、ビルドキャッシュを準備する |
-| `task dev` / `scripts/dev.ps1` | Go サーバーと Vite 開発サーバーを PowerShell で起動する |
-| `task check` / `scripts/check.ps1` | `make check` を優先し、`make` が無ければ同等の順序で検査する |
+| 入口                                 | 内容                                                         |
+| ------------------------------------ | ------------------------------------------------------------ |
+| `task doctor` / `scripts/doctor.ps1` | Go・Node・ffmpeg・bash・Docker などの有無を確認する          |
+| `task setup` / `scripts/setup.ps1`   | Go module、npm 依存、lint ツール、ビルドキャッシュを準備する |
+| `task dev` / `scripts/dev.ps1`       | Go サーバーと Vite 開発サーバーを PowerShell で起動する      |
+| `task check` / `scripts/check.ps1`   | `make check` を優先し、`make` が無ければ同等の順序で検査する |
 
 `ffmpeg` / `ffprobe`、Docker、GNU make、bash は OS 側のツールであり、`mise.toml`
 だけでは完結しない。足りないものは `task doctor` の出力に従って導入する。
 Docker はコンテナ起動用の任意ツールで、`task up` / `task down` は make 不要。
-Windows で Go バイナリを直接動かす場合、`MDM_MEDIA_DIR` / `MDM_DATA_DIR` は
-ドライブ名を含む絶対パスにする。`task dev` はリポジトリ内の絶対パスを自動設定する。
+Windows で Go バイナリを直接動かす場合、`MDM_DATA_DIR` はドライブ名を含む絶対パスにする。
+メディアフォルダは起動後に設定画面で選択する。`task dev` はデータ用の絶対パスを自動設定する。
 
-| 目標 | 内容 |
-| --- | --- |
-| `make setup` | 依存と開発ツールを先に取得する |
-| `make up` / `make down` | Docker で起動・停止する |
-| `make dev` | Go サーバーと Vite 開発サーバーを起動する |
-| `make build` | SPA をビルドして埋め込み、`bin/mdm` を生成する |
-| `make generate` | `api/openapi.yaml` から Go と TypeScript の型を生成する |
-| `make fmt` | 書式を整える |
-| `make lint` | `golangci-lint`（depguard を含む）と Web の型検査 |
-| `make test` | Go のテストと Web のビルド検証 |
-| `make check` | 上記とローカル開発スクリプトの回帰検査をまとめて実行する。CI と同じ判定になる |
+| 目標                    | 内容                                                                          |
+| ----------------------- | ----------------------------------------------------------------------------- |
+| `make setup`            | 依存と開発ツールを先に取得する                                                |
+| `make up` / `make down` | Docker で起動・停止する                                                       |
+| `make dev`              | Go サーバーと Vite 開発サーバーを起動する                                     |
+| `make build`            | SPA をビルドして埋め込み、`bin/mdm` を生成する                                |
+| `make generate`         | `api/openapi.yaml` から Go と TypeScript の型を生成する                       |
+| `make fmt`              | 書式を整える                                                                  |
+| `make lint`             | `golangci-lint`（depguard を含む）と Web の型検査                             |
+| `make test`             | Go のテストと Web のビルド検証                                                |
+| `make check`            | 上記とローカル開発スクリプトの回帰検査をまとめて実行する。CI と同じ判定になる |
 
 `api/openapi.yaml` が Go と TypeScript の境界の唯一の真実である。型を変えるときは
 このファイルを直して `make generate` を実行する。生成物
@@ -174,9 +173,9 @@ Claude Code on the web でセッションを開くと、`.claude/hooks/session-s
 
 実行時に増える場所（版管理しない）:
 
-| 場所 | 内容 |
-| --- | --- |
-| `MDM_DATA_DIR/mdm.db` | SQLite のデータベース |
+| 場所                       | 内容                                          |
+| -------------------------- | --------------------------------------------- |
+| `MDM_DATA_DIR/mdm.db`      | SQLite のデータベース                         |
 | `MDM_DATA_DIR/thumbnails/` | サムネイル（`<先頭2文字>/<content_key>.jpg`） |
 
 Directory-level README files are included so that intentionally empty

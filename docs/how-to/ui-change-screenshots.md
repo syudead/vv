@@ -55,11 +55,12 @@ Chromium と Playwright が使える場合は、起動したサーバーを直�
 
 ```bash
 make build
-MDM_MEDIA_DIR="$PWD/media" MDM_DATA_DIR="$PWD/.local/data" ./bin/mdm &
+MDM_DATA_DIR="$PWD/.local/data" ./bin/mdm &
 ```
 
-**`MDM_MEDIA_DIR` と `MDM_DATA_DIR` は絶対パスで渡す。** 相対パスを渡すと
-「絶対パスではありません」と言って起動しない。
+**`MDM_DATA_DIR` は絶対パスで渡す。** 相対パスを渡すと
+「絶対パスではありません」と言って起動しない。動画を使う撮影では、起動後に設定画面で
+テスト用メディアフォルダを登録して手動取り込みを実行する。
 
 #### ブラウザの用意は環境で分かれる
 
@@ -119,6 +120,6 @@ script を書くのは、`npx playwright screenshot` で足りないとき（画
 
 ## 前後を並べる書き方
 
-| 変更前 | 変更後 |
-| --- | --- |
+| 変更前                                                                                      | 変更後                                                                                    |
+| ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | ![before](https://raw.githubusercontent.com/syudead/vv/<sha>/docs/screenshots/<before>.png) | ![after](https://raw.githubusercontent.com/syudead/vv/<sha>/docs/screenshots/<after>.png) |

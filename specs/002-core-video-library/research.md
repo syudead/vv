@@ -76,11 +76,11 @@ ffprobe -v error -print_format json -show_format -show_streams -- <path>
 **Decision**: 拡張子（コンテナ）と `ffprobe` が返したコーデック名の**許可リスト**で
 判定し、結果を `playable` と `unplayable_reason` に保存する。
 
-| 判定対象 | 許可する値 |
-| --- | --- |
-| コンテナ（拡張子） | `.mp4` `.m4v` `.webm` |
-| 映像コーデック | `h264` `vp8` `vp9` `av1` |
-| 音声コーデック | `aac` `mp3` `opus` `vorbis`、または音声なし |
+| 判定対象           | 許可する値                                  |
+| ------------------ | ------------------------------------------- |
+| コンテナ（拡張子） | `.mp4` `.m4v` `.webm`                       |
+| 映像コーデック     | `h264` `vp8` `vp9` `av1`                    |
+| 音声コーデック     | `aac` `mp3` `opus` `vorbis`、または音声なし |
 
 3つすべてを満たすものだけ `playable = 1`。満たさない場合は、どれが理由かを
 `unplayable_reason`（`container` / `video_codec` / `audio_codec`）に残す。
@@ -139,15 +139,15 @@ ffmpeg -nostdin -v error -ss <秒> -i <path> -frames:v 1 -vf scale=640:-2 -q:v 4
 
 **Decision**: `GET /api/videos/{id}/stream` は、DB から取得したパスを開いて
 `http.ServeContent` に渡すだけにする。Range の解釈・`206`・`Content-Range`・
-`Accept-Ranges`・`416` は標準実装に任せる。開く前に、パスが `MDM_MEDIA_DIR` の
-**内側**にあることを検証する。
+`Accept-Ranges`・`416` は標準実装に任せる。開く前に、locationのpathが現在登録済みの
+MediaFolderの**内側**にあることを検証する。
 
 **Rationale**: 技術選定文書 3.3 の決定をそのまま実装する。Linux では `io.Copy` が
 `sendfile` に落ちるため、大きなファイルでもユーザー空間のコピーが起きない。
 
 パス検証を入れるのは、DB の値をそのまま `os.Open` に渡す実装は、将来 DB へ書き込む
 経路が増えたときに任意ファイル読み出しになりうるため。`filepath.Clean` したうえで
-`MediaDir + string(os.PathSeparator)` を接頭辞として持つことを確認し、満たさない行は
+各MediaFolder + `string(os.PathSeparator)` を接頭辞として持つことを確認し、満たさない行は
 `404` として扱う（存在を漏らさない）。シンボリックリンクは `filepath.EvalSymlinks` 後に
 同じ検証を行う。
 
@@ -184,7 +184,7 @@ I/O 飽和を避ける）に従う。起動時の巻き戻しがあるため、�
 
 ## R-107: 走査（スキャン）の実装
 
-**Decision**: `filepath.WalkDir` で `MDM_MEDIA_DIR` 以下を再帰的に走る。
+**Decision**: `filepath.WalkDir` でscan開始時にsnapshotした登録済みMediaFolder以下を再帰的に走る。
 
 - 拡張子の対象: `.mp4` `.m4v` `.webm` `.mkv` `.mov` `.avi` `.wmv` `.flv` `.ts` `.mpg` `.mpeg`
   （再生できない形式も**取り込む**。一覧に出したうえで再生不可と示すため — FR-003）
@@ -214,13 +214,12 @@ I/O 飽和を避ける）に従う。起動時の巻き戻しがあるため、�
 
 ## R-108: 取り込みの起点と進捗の見せ方
 
-**Decision**: 起動直後に1回、バックグラウンドで自動実行する（`MDM_SCAN_ON_START=true`、
-既定で有効）。加えて `POST /api/scans` で任意に開始できる。進行中の状態は
+**Decision**: [007 設定画面](../007-settings-screen/spec.md) により起動時の自動実行は廃止された。
+`POST /api/scans`で利用者が明示的に開始する。進行中の状態は
 `GET /api/scans/current` が返し、`scans` テーブルに `total` / `completed` / `failed` を
 持つ。スキャン中でも一覧・再生の経路は通常どおり応答する（FR-007）。
 
-**Rationale**: 「置くだけで並ぶ」（US1）には自動実行が要る。一方、追加した動画をすぐ
-反映したい場面があるため手動の起点も要る（FR-006）。スキャンは同時に1本だけ許可し、
+**Rationale**: 大規模なfilesystem走査の開始時期を利用者が制御できるようにする。スキャンは同時に1本だけ許可し、
 実行中の `POST /api/scans` は現在のスキャンを返す（`409` にはしない — 利用者の意図は
 「今の状態を進めたい」なので、進行中ならそれを返すのが素直）。
 
@@ -340,11 +339,11 @@ I/O 飽和を避ける）に従う。起動時の巻き戻しがあるため、�
 
 ## 未解決のまま Phase 2 以降へ送る論点
 
-| 論点 | 送り先 | 理由 |
-| --- | --- | --- |
-| シークプレビュー用スプライト | Phase 2 | 1枚のサムネイルで一覧の要求は満たせる |
-| タグ・お気に入り・コレクション | Phase 2 | spec でスコープ外と決定済み |
-| 字幕の変換と表示 | Phase 2 | 技術選定文書 8 のフェーズ分けどおり |
-| 認証・複数利用者 | Phase 3 | 同上 |
-| 再生の E2E（Playwright） | Phase 3 | 同上。Phase 1 は `httptest` と手動検証で担保する |
-| 非対応コーデックのトランスコード | 将来 | 技術選定文書 6 の拡張ポイント |
+| 論点                             | 送り先  | 理由                                             |
+| -------------------------------- | ------- | ------------------------------------------------ |
+| シークプレビュー用スプライト     | Phase 2 | 1枚のサムネイルで一覧の要求は満たせる            |
+| タグ・お気に入り・コレクション   | Phase 2 | spec でスコープ外と決定済み                      |
+| 字幕の変換と表示                 | Phase 2 | 技術選定文書 8 のフェーズ分けどおり              |
+| 認証・複数利用者                 | Phase 3 | 同上                                             |
+| 再生の E2E（Playwright）         | Phase 3 | 同上。Phase 1 は `httptest` と手動検証で担保する |
+| 非対応コーデックのトランスコード | 将来    | 技術選定文書 6 の拡張ポイント                    |

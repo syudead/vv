@@ -16,10 +16,12 @@ make check
 3. 同一pathと祖先・子孫で重なるpathを登録できない。
 4. filesystem/drive rootとsymlinkはpickerで確定できず、APIでも拒否される。
 5. 新規folderを追加しても既存videos、FTS、jobs、scans、playback progressが変わらない。
-6. videos schemaと既存video rowsはmigrationと新規folder追加で変更されない。
-7. 既存folderを変更すると、path更新と旧root配下のvideos、FTS、jobs削除が同じtransactionで完了する。
-8. 既存folderを削除すると、旧root配下の再構築可能データだけが消え、playback progress、
-   他folderのデータ、scan履歴が残る。
+6. migrationで既存videoのpath、title、size、mtimeが1件のlocationへ移り、video ID、content key、
+   probe結果、jobs、playback progressが維持される。
+7. 既存folderを変更すると、path更新と旧root配下のlocations削除が同じtransactionで完了し、
+   locationが0件になったvideos、FTS、jobsだけが削除される。
+8. 同じ内容をroot Aとroot Bに置いて取り込んだあとroot Bを変更・削除しても、root A側のlocation、
+   video、job、thumbnailが残り、一覧表示とstreamを継続できる。
 9. 変更・削除transactionを失敗させると対象folderとライブラリDBの双方が元のまま残る。
 10. 削除と並行していたprobe/thumbnail結果が、再利用されたvideo IDへ書き込まれない。
 11. folder操作の直後にscanは自動開始されず、次の手動scanが登録済み全rootを処理する。
@@ -27,6 +29,7 @@ make check
 13. scannerでpanicを発生させてもserver processが継続し、scanがfailedになりrunningを残さない。
 14. cross-origin mutationとJSON以外のPOST/PUTを拒否し、CORS responseを返さない。
 15. 360px・768px・1280pxで複数folder一覧とpickerをkeyboard操作できる。
+16. 複数locationのtitle/path検索結果はvideo単位で重複せず、利用可能なlocationから再生できる。
 
 UI実装PRに0件、複数件、picker、重複error、追加成功、変更・削除警告、対象データ削除後、
 走査中の画像とvisual reviewを記録する。
