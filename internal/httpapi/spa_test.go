@@ -62,6 +62,23 @@ func TestUnknownAPIPathReturnsJSONNotFound(t *testing.T) {
 	}
 }
 
+func TestUnknownMutationAPIPathReturnsJSONNotFoundBeforeBodyValidation(t *testing.T) {
+	router := newTestRouter(t, stubPinger{})
+
+	for _, method := range []string{http.MethodPost, http.MethodPut} {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(method, "/api/unknown", strings.NewReader(`{"ignored":true}`))
+		router.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want %d: %s", method, rec.Code, http.StatusNotFound, rec.Body.String())
+		}
+		if got := rec.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+			t.Errorf("%s: Content-Type = %q", method, got)
+		}
+	}
+}
+
 func TestAssetsAreServedWithImmutableCacheControl(t *testing.T) {
 	router := newTestRouter(t, stubPinger{})
 
