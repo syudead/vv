@@ -159,5 +159,5 @@ C16 MetaList が描く 6 項目である。**004 の `VideoFacts` と同じ値�
 | URL のクエリ（`q`・`sort`）の意味 | `web/src/pages/LibraryPage.tsx` |
 | 1 ページ 60 件・カーソルの引き継ぎ | `web/src/api/useVideos.ts` |
 | 検索の待ち合わせ 250ms と打ち切り | `web/src/pages/LibraryPage.tsx` |
-| 再生位置の送信（5 秒ごと・離脱時の `sendBeacon`）と再開の下限 5 秒 | `web/src/pages/VideoPage.tsx` |
+| 再生位置の送信（5 秒ごと・離脱時の `keepalive` fetch）と再開の下限 5 秒 | `web/src/pages/VideoPage.tsx` |
 | 取り込みの巡回（2 秒ごと、実行中だけ） | `web/src/components/ScanStatus.tsx` |

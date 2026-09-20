@@ -147,8 +147,7 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 				// 根が読めない場合は走査そのものの失敗。途中のディレクトリが
 				// 読めないだけなら、その範囲を保護して続ける（FR-008）。通常
 				// fileではSkipDirを返さない。返すと後続の兄弟まで省略される。
-				normalized := norm.NFC.String(path)
-				protected = append(protected, normalized)
+				protected = append(protected, path)
 				s.logger.Warn("走査中に読み取れない場所がありました",
 					slog.String("path", path), slog.Any("error", err))
 				result.Failed++
@@ -172,11 +171,10 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 				return nil
 			}
 
-			normalized := norm.NFC.String(path)
-			seen[normalized] = struct{}{}
+			seen[path] = struct{}{}
 			result.Total++
 
-			if err := s.ingest(ctx, path, normalized, entry, indexed, &result); err != nil {
+			if err := s.ingest(ctx, path, entry, indexed, &result); err != nil {
 				if ctx.Err() != nil {
 					return err
 				}
@@ -234,7 +232,7 @@ func walkErrorIsDirectory(path, root string, entry fs.DirEntry, indexed map[stri
 // ingest は1つのファイルを索引に反映する。
 func (s *Scanner) ingest(
 	ctx context.Context,
-	path, normalized string,
+	path string,
 	entry fs.DirEntry,
 	indexed map[string]domain.IndexedVideo,
 	result *domain.ScanResult,
@@ -246,7 +244,7 @@ func (s *Scanner) ingest(
 
 	// 変わっていないファイルは何もしない。ここで content_key を計算しないので、
 	// 2 回目以降の走査はディレクトリ走査と比較だけで終わる（R-107）。
-	if existing, ok := indexed[normalized]; ok &&
+	if existing, ok := indexed[path]; ok &&
 		existing.SizeBytes == info.Size() &&
 		existing.MTime.Unix() == info.ModTime().Unix() {
 		return nil
@@ -258,12 +256,12 @@ func (s *Scanner) ingest(
 	}
 
 	file := domain.VideoFile{
-		Path:       normalized,
-		Title:      titleOf(normalized),
+		Path:       path,
+		Title:      titleOf(path),
 		ContentKey: key,
 		SizeBytes:  info.Size(),
 		MTime:      info.ModTime(),
-		Container:  domain.ContainerFromPath(normalized),
+		Container:  domain.ContainerFromPath(path),
 	}
 
 	upserted, err := s.index.UpsertVideo(ctx, file)

@@ -130,7 +130,7 @@ func (s *server) acceptsSameOrigin(w http.ResponseWriter, r *http.Request) bool 
 	}
 	parsed, err := url.Parse(origin)
 	expectedScheme := "http"
-	if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+	if r.TLS != nil {
 		expectedScheme = "https"
 	}
 	if err != nil || parsed.Scheme != expectedScheme || !strings.EqualFold(parsed.Host, r.Host) {

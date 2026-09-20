@@ -75,8 +75,8 @@ DB に入っているパスをそのまま開かない。次を満たさない�
 - 呼び出し間隔はクライアントの責務（再生中 5 秒ごと、一時停止・離脱時）。サーバー側で
   頻度制限はしない
 - 視聴済みの判定はサーバー側で行い、応答で返す。クライアントの申告は採らない
-- `navigator.sendBeacon` は `application/json` のBlobを送り、他のPUTと同じく
-  JSON以外の `Content-Type` は受理しない
+- 離脱時は `fetch` の `keepalive` を使ってPUTを送り、通常保存と同じmethod・
+  `application/json` 契約を維持する
 
 ## 認証
 

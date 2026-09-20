@@ -75,7 +75,8 @@ PUT/DELETEはcontent key名のthumbnail fileを削除しない。orphan cache cl
 ## GET /api/directories
 
 - path省略: Linuxでは`/`、Windowsでは利用可能なdrive rootsを`directories`に返す
-- path指定: 正規化した絶対pathを`currentPath`、親を`parentPath`、直下directoryを返す
+- path指定: lexical cleanした絶対pathを`currentPath`、親を`parentPath`、直下directoryを返す。
+  pathのUnicode表現はファイルシステムが返した実在entryの綴りを保持する
 - directory entryは`{ name, path }`
 - ファイルとsymlinkを返さない
 - 応答は`Cache-Control: no-store`

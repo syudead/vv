@@ -114,6 +114,12 @@ func TestMediaFolderMutationRequiresJSONAndSameOrigin(t *testing.T) {
 	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatal("CORS header was added")
 	}
+	rec = request(t, handler, http.MethodPost, "/api/media-folders", `{"path":"/media"}`, map[string]string{
+		"Content-Type": "application/json", "Origin": "https://example.com", "X-Forwarded-Proto": "https",
+	})
+	if rec.Code != http.StatusForbidden || folders.operation != "" {
+		t.Fatalf("untrusted forwarded proto response = %d operation=%s", rec.Code, folders.operation)
+	}
 }
 
 func jsonRequest(t *testing.T, handler http.Handler, method, target, body string) *httptest.ResponseRecorder {

@@ -44,13 +44,10 @@ function renderPage(id = "7", from?: string) {
 
 describe("VideoPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
-  const sendBeaconMock = vi.fn((_url: string, _data?: BodyInit | null) => true);
 
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
-    vi.stubGlobal("navigator", { sendBeacon: sendBeaconMock });
     fetchMock.mockResolvedValue(json(video));
-    sendBeaconMock.mockClear();
   });
 
   afterEach(() => {
@@ -143,11 +140,19 @@ describe("VideoPage", () => {
     fireEvent.timeUpdate(player);
     page.unmount();
 
-    expect(sendBeaconMock).toHaveBeenCalledOnce();
-    const [target, payload] = sendBeaconMock.mock.calls[0] ?? [];
-    expect(target).toBe("/api/videos/7/progress");
-    expect(payload).toBeInstanceOf(Blob);
-    expect((payload as Blob).type).toBe("application/json");
-    expect(await (payload as Blob).text()).toBe(JSON.stringify({ positionMs: 12_345 }));
+    const finalCall = fetchMock.mock.calls
+      .filter(
+        ([input, init]) =>
+          String(input) === "/api/videos/7/progress" && init?.keepalive === true,
+      )
+      .at(-1);
+    expect(finalCall?.[1]).toEqual(
+      expect.objectContaining({
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ positionMs: 12_345 }),
+        keepalive: true,
+      }),
+    );
   });
 });

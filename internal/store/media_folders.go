@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
-	"golang.org/x/text/unicode/norm"
 )
 
 var (
@@ -22,7 +21,9 @@ var (
 	ErrUnsupportedFolder = domain.ErrUnsupportedMediaFolder
 )
 
-// NormalizePath returns the canonical lexical form used by every path boundary check.
+// NormalizePath returns a clean absolute path while preserving the filesystem's
+// exact Unicode spelling. Rewriting that spelling can point at another entry on
+// filesystems where normalization forms are distinct.
 func NormalizePath(path string) (string, error) {
 	if path == "" || !filepath.IsAbs(path) {
 		return "", ErrInvalidFolder
@@ -31,7 +32,7 @@ func NormalizePath(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalidFolder, err)
 	}
-	return norm.NFC.String(filepath.Clean(absolute)), nil
+	return filepath.Clean(absolute), nil
 }
 
 // PathWithinRoot reports whether path is root itself or one of its descendants.

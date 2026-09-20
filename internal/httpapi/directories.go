@@ -33,7 +33,7 @@ func listDirectories(requested *string) (gen.DirectoryListing, int, string, erro
 	if *requested == "" || !filepath.IsAbs(*requested) {
 		return gen.DirectoryListing{}, http.StatusBadRequest, codeInvalidRequest, errors.New("絶対pathを指定してください")
 	}
-	current := norm.NFC.String(filepath.Clean(*requested))
+	current := filepath.Clean(*requested)
 	info, err := os.Lstat(current)
 	if errors.Is(err, fs.ErrNotExist) || err == nil && !info.IsDir() {
 		return gen.DirectoryListing{}, http.StatusNotFound, codeNotFound, errors.New("ディレクトリが見つかりません")
@@ -45,7 +45,7 @@ func listDirectories(requested *string) (gen.DirectoryListing, int, string, erro
 		return gen.DirectoryListing{}, http.StatusNotFound, codeNotFound, errors.New("ディレクトリが見つかりません")
 	}
 	resolved, err := filepath.EvalSymlinks(current)
-	resolved = norm.NFC.String(filepath.Clean(resolved))
+	resolved = filepath.Clean(resolved)
 	if err != nil || !domain.PathWithinRoot(current, resolved) || !domain.PathWithinRoot(resolved, current) {
 		return gen.DirectoryListing{}, http.StatusNotFound, codeNotFound, errors.New("ディレクトリが見つかりません")
 	}
@@ -64,7 +64,7 @@ func listDirectories(requested *string) (gen.DirectoryListing, int, string, erro
 			continue
 		}
 		directories = append(directories, gen.DirectoryEntry{
-			Name: entry.Name(), Path: norm.NFC.String(path),
+			Name: norm.NFC.String(entry.Name()), Path: path,
 		})
 	}
 	sort.Slice(directories, func(i, j int) bool {

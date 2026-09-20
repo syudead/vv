@@ -132,7 +132,7 @@ func TestPutProgressMarksCompletion(t *testing.T) {
 	}
 }
 
-// POST/PUTはJSONだけを受理する。sendBeacon側もJSON Blobを使う。
+// POST/PUTはJSONだけを受理する。離脱時のkeepalive PUTも同じ契約を使う。
 func TestPutProgressAcceptsJSONContentType(t *testing.T) {
 	for _, contentType := range []string{
 		"application/json",

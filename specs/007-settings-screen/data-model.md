@@ -7,7 +7,7 @@
 | Field        | Rule                                    |
 | ------------ | --------------------------------------- |
 | `id`         | primary key                             |
-| `path`       | 正規化済みserver絶対path、unique        |
+| `path`       | lexical clean済みserver絶対path、unique。Unicode表現は実在entryの綴りを保持 |
 | `version`    | 1から始まり、その行のpath変更ごとに加算 |
 | `created_at` | serverが設定                            |
 | `updated_at` | serverが設定                            |
@@ -33,7 +33,7 @@
 | ------------ | ----------------------------------------- |
 | `id`         | autoincrement primary key、再利用しない   |
 | `video_id`   | videosへのforeign key、video削除時cascade |
-| `path`       | 正規化済み絶対path、unique                |
+| `path`       | lexical clean済み絶対path、unique。Unicode表現は実在entryの綴りを保持 |
 | `version`    | 1から始まり、内容・所属変更ごとに加算     |
 | `title`      | pathのbasenameから導出                    |
 | `size_bytes` | locationの走査時点の値                    |

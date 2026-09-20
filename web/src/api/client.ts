@@ -198,23 +198,16 @@ export function saveProgress(
 /**
  * beaconProgress は離脱時に再生位置を送る。
  *
- * 画面を閉じる途中では fetch が最後まで走る保証が無い。sendBeacon は
- * ブラウザが送信を引き受けるので、閉じる操作で記録を取りこぼさない。
- * JSON BlobでContent-Typeを明示し、mutation境界を保つ。
+ * keepalive付きfetchで、既存のPUT契約を保ったまま画面離脱後も送信を継続する。
  */
-export function beaconProgress(id: number, positionMs: number): boolean {
+export function beaconProgress(id: number, positionMs: number): void {
   const body = JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) });
-
-  if (typeof navigator.sendBeacon === "function") {
-    return navigator.sendBeacon(
-      `/api/videos/${String(id)}/progress`,
-      new Blob([body], { type: "application/json" }),
-    );
-  }
-
-  // sendBeacon が無い環境では、届かないよりは試みる方がよい。
-  void saveProgress(id, positionMs).catch(() => undefined);
-  return false;
+  void fetch(`/api/videos/${String(id)}/progress`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true,
+  }).catch(() => undefined);
 }
 
 /** streamUrl は動画本体の取得先を返す。 */

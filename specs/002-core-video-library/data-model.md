@@ -43,7 +43,7 @@ path依存列を`video_locations`へ分離する。列の設計方針は
 | `updated_at`        | integer | ○    | 更新時刻（Unix 秒）                                    |
 
 - 検証規則:
-  - locationの`path`は絶対パスで、NFC正規化済み、登録済みMediaFolderの内側であること
+  - locationの`path`は絶対パスで、ファイルシステムが返したUnicode表現を保持し、登録済みMediaFolderの内側であること
   - locationの`title`は拡張子を除いたファイル名（NFC）。空になる場合はファイル名をそのまま使う
   - `playable = 1` は `probe_state = done` のときだけ取り得る
   - `duration_ms` は 0 以上。取得できないものは `null` のままにし、0 で代用しない

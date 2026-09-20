@@ -48,7 +48,7 @@ func routeFor(query string) searchRoute {
 
 // normalizeQuery は検索語を突き合わせられる形にする。
 //
-// NFC へ正規化するのは、保存しているパスと題名も NFC だからである（R-107）。
+// NFC へ正規化するのは、検索対象の表示用題名をNFCで保存するためである（R-107）。
 // macOS から NFD で送られた入力も、これで同じ表記に揃う。
 func normalizeQuery(query string) string {
 	return norm.NFC.String(strings.TrimSpace(query))

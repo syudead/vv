@@ -190,7 +190,8 @@ I/O 飽和を避ける）に従う。起動時の巻き戻しがあるため、�
   （再生できない形式も**取り込む**。一覧に出したうえで再生不可と示すため — FR-003）
 - 除外: 名前が `.` で始まるファイル・ディレクトリ、`@eaDir`、`#recycle`、
   `lost+found`、書き込み途中の拡張子（`.part` `.crdownload` `.tmp`）
-- パスは保存前に Unicode **NFC** へ正規化する（`golang.org/x/text/unicode/norm`）
+- 実在パスはファイルシステムが返したUnicode表現を保持し、表示名と検索用文字列だけを
+  **NFC** へ正規化する。実在パスを書き換えるとLinux等で別の存在しないpathになるため
 - 既存行との突き合わせ: パス一致なら `size_bytes` と `mtime` を比較し、変化が
   なければ何もしない（`content_key` の再計算もしない）
 - パスに無い行 = 消えたファイル。`content_key` が一致する新しいパスがあれば
@@ -262,7 +263,7 @@ I/O 飽和を避ける）に従う。起動時の巻き戻しがあるため、�
 
 **Decision**: 記録の鍵は `content_key`（`videos.id` ではない）。クライアントは再生中
 **5 秒間隔**と、一時停止・離脱時に `PUT /api/videos/{id}/progress` を送る。離脱時は
-`visibilitychange` で `navigator.sendBeacon` を使う。視聴済みの判定はサーバー側で行い、
+`visibilitychange` で `fetch` の `keepalive` を使う。視聴済みの判定はサーバー側で行い、
 `position_ms >= duration_ms - 15000` または `position_ms / duration_ms >= 0.95` を満たしたら
 `completed = 1` にする。再開位置は、`completed` のとき、または 5 秒未満のときは先頭に戻す。
 

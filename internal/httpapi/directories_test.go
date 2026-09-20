@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/syudead/vv/internal/httpapi/gen"
+	"golang.org/x/text/unicode/norm"
 )
 
 func TestListDirectoriesReturnsSortedRealChildren(t *testing.T) {
@@ -37,6 +38,33 @@ func TestListDirectoriesReturnsSortedRealChildren(t *testing.T) {
 	}
 	if rec.Header().Get("Cache-Control") != cacheNoStore {
 		t.Fatal("directory listing is cacheable")
+	}
+}
+
+func TestListDirectoriesPreservesFilesystemUnicodePath(t *testing.T) {
+	root := t.TempDir()
+	decomposed := norm.NFD.String("Café")
+	child := filepath.Join(root, decomposed)
+	if err := os.Mkdir(child, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handler := newTestServer(t, Options{})
+	rec := do(t, handler, http.MethodGet, "/api/directories?path="+url.QueryEscape(root))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	listing := decode[gen.DirectoryListing](t, rec)
+	if len(listing.Directories) != 1 || listing.Directories[0].Path != child {
+		t.Fatalf("directories = %+v, want exact path %q", listing.Directories, child)
+	}
+
+	rec = do(t, handler, http.MethodGet, "/api/directories?path="+url.QueryEscape(child))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("returned path cannot be opened: %d %s", rec.Code, rec.Body)
+	}
+	opened := decode[gen.DirectoryListing](t, rec)
+	if opened.CurrentPath == nil || *opened.CurrentPath != child {
+		t.Fatalf("currentPath = %v, want %q", opened.CurrentPath, child)
 	}
 }
 
