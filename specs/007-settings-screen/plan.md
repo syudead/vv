@@ -1,85 +1,103 @@
 # Implementation Plan: 設定画面
 
-**Branch**: `codex/plan-settings-screen` | **Date**: 2026-09-20 | **Spec**: [spec.md](spec.md)
+**Branch**: `codex/revise-settings-folder-picker` | **Date**: 2026-09-21 | **Spec**: [spec.md](spec.md)
 
 ## Summary
 
-設定画面を追加し、メディアフォルダだけを変更可能にする。保存値は SQLite を正本とし、
-走査は利用者の明示操作でのみ開始する。
+設定画面にメディアフォルダ1項目を追加し、複数のサーバーディレクトリを個別resourceとして管理する。
+folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存は行わない。新規追加では既存ライブラリを
+維持し、既存folderの変更・削除時だけ対象root配下のvideo locationsをtransaction内で削除する。
+`MDM_MEDIA_DIR` と起動時自動取り込みは廃止する。
 
-## Feature Behavior
+既存構成と依存方向は [ARCHITECTURE.md](../../ARCHITECTURE.md)、要求は [spec.md](spec.md)、
+技術判断は [research.md](research.md)、データ差分は [data-model.md](data-model.md)、API差分は
+[contracts/settings-api.md](contracts/settings-api.md) を正本とする。実装進捗と検証結果は
+[docs/exec-plans/active/013-settings-screen.md](../../docs/exec-plans/active/013-settings-screen.md) に記録する。
 
-- 画面は「設定」とし、設定項目はメディアフォルダ1件だけにする。データフォルダ、待受先、
-  ログレベル、表示設定などは置かない
-- 現在有効なサーバー上の絶対パスを表示し、その場で編集・保存できる
-- 初回値は既存の `MDM_MEDIA_DIR` を引き継ぎ、画面から保存した後は保存値を正本にする
-- 保存前に、絶対パス、存在、ディレクトリ、読取可能性を検証する。失敗時は現在値を変更せず、
-  入力中の値と理由を画面に残す
-- 保存だけでは取り込みを開始しない。保存後に手動取り込みが必要であることを示し、次の
-  手動取り込みが新しいフォルダを使う
-- 走査中は変更できない。複数画面からの古い保存は競合として拒否し、新しい値を上書きしない
-- 起動時の自動取り込みと `MDM_SCAN_ON_START` は廃止する
-- 画面は読み込み中、保存中、保存成功、入力エラー、競合、走査中を扱う
+## Structural Decisions
 
-詳細な利用者シナリオと受け入れ条件は [spec.md](spec.md) を正本とする。
-
-## Technical Context
-
-技術構成、依存方向、生成物、検証コマンドは既存定義を変更しない。
-
-- 構成と依存方向: [ARCHITECTURE.md](../../ARCHITECTURE.md)
-- Go / Web の依存: [go.mod](../../go.mod)、[web/package.json](../../web/package.json)
-- API の正本: [api/openapi.yaml](../../api/openapi.yaml)
-- 開発・検証コマンド: [Makefile](../../Makefile)
-
-本機能固有の技術判断だけを [research.md](research.md) に記録する。
-
-## Constitution Check
-
-`.specify/memory/constitution.md` は未設定。既存の `AGENTS.md` と `ARCHITECTURE.md` に対して、
-次を確認した。
-
-- `cmd/mdm` で store、scanner、httpapi を組み立て、internal の兄弟依存を増やさない
-- API は OpenAPI を先に変更し、生成物を手編集しない
-- 設定項目をメディアフォルダ以外へ広げない
-- UI 実装 PR は既存の画像確認手順に従う
-
-設計後も違反なし。
-
-## Project Structure
-
-既存の所有境界を維持する。永続化は `internal/store`、実行時の調停は `cmd/mdm`、HTTP は
-`internal/httpapi`、画面は `web/src/settings` に置く。新しいパッケージや外部依存は追加しない。
-
-## Complexity Tracking
-
-該当なし。
+- **folderは個別resourceにする**: POST/PUT/DELETEを1件ずつatomicに実行する。一覧全体のdraftと
+  bulk PUTは、無関係なfolderまで競合・削除対象にし、今回の操作単位と一致しないため採用しない。
+- **動画と実在場所を分離する**: `videos`をcontent単位、`video_locations`をpath単位にする。videoの
+  単一pathを書き換える案は、同じcontentが複数rootにある事実を失い、片方の削除で未変更root側の
+  動画まで消すため採用しない。
+- **利用者データをfolder操作から分離する**: folder変更・削除で消すのは対象locationsと、locationが
+  0件になった動画の再構築可能データだけとする。`playback_progress`まで消す案は再scanで復元できない
+  利用者操作を失うため採用しない。
+- **jobを処理元locationへ結び付ける**: video/contentに加えてlocation ID/version/pathを検証する。
+  video identityだけを検証する案は、削除済みlocationのI/O失敗を残存videoへ書き込めるため採用しない。
+- **thumbnail cacheをfolder操作で削除しない**: orphan fileは将来の参照確認付きGCへ任せる。commit後の
+  best-effort削除は、同じcontentの再登録が生成した同名fileを消せるため採用しない。
+- **既存のtrusted-network境界を維持する**: directory APIとmutationはsame-originかつJSONに限定する。
+  このfeatureだけに認証を新設する案は既存APIと異なる境界を作るため採用せず、認証導入は別featureとする。
 
 ## Implementation Work
 
-### メディアフォルダ設定の保存と実行時反映
+### メディアフォルダ個別操作・location model・安全な走査
 
-**Scope**: SQLite の設定行、初回 `MDM_MEDIA_DIR` 引継ぎ、パス検証、走査開始との排他、
-走査・動画配信への反映、`MDM_SCAN_ON_START` と起動時走査の削除。
+**Scope**:
+
+- ID、path、行単位versionを持つ0件以上のmedia folder rowsをSQLiteへ追加する
+- `videos`からpath、title、size、mtimeを`video_locations`へ移すmigrationを追加し、既存video ID、
+  content key、probe結果、jobs、playback progressを保持する
+- location pathのroot所属判定を共通化し、folder変更・削除、stream、scannerで同じ境界規則を使う
+- 追加、既存path変更、削除を別々のstore transactionとして実装する
+- 追加時は既存videos、locations、FTS、jobs、scans、playback progressを変更しない
+- 変更・削除時は旧root配下のlocationsを削除し、locationが0件になったvideos、FTS、jobsだけを削除する
+- 別rootのlocationが残るvideo、job、thumbnailと、全`playback_progress`、scan履歴を維持する
+- APIでは登録root内のlocationをpath順で選び、streamは同順で最初の利用可能なfileを使う
+- locationのtitle/pathを検索し、結果をvideo単位で重複排除する
+- location IDを再利用せず、content・所属・file fingerprint変更時にlocation versionを加算する
+- workerが選んだvideo/content/location ID/version/pathの全identityをwrite-back前に再確認する
+- 消失・変更locationの結果を破棄して残存locationへ再queueし、location固有I/O失敗をvideo失敗にしない
+- content key名のthumbnail fileはfolder操作で削除せず、参照確認付きGCを別機能へ分離する
+- scannerは同じcontentの別pathを既存locationの移動ではなく追加locationとしてupsertする
+- 0件でscanを開始せず、走査は開始時の全root snapshotを使う
+- root/directory/file単位のI/O失敗を記録し、列挙失敗範囲をmissing location削除から除外する
+- goroutine境界でpanicを回収し、必ずscanをdone/failedへ確定してrunningを残さない
+- `MDM_MEDIA_DIR`、`MDM_SCAN_ON_START`、起動時走査をコード・設定・現行文書から削除する
 
 **Dependencies**: なし。
 
-**Acceptance**: 保存値が再起動後も残り、保存や起動では走査せず、次の手動走査だけが新しい
-フォルダを使う。
+**Acceptance**: migrationで既存データが維持され、新規追加後も既存ライブラリが変わらない。既存1件の
+変更・削除後は対象locationsとorphan動画だけが消える。同じcontentが別rootに残る場合は動画を引き続き
+一覧・検索・再生できる。削除locationのjob結果とfolder操作が残存video・thumbnailを壊さない。手動走査は
+一部I/O失敗で既存locationを誤削除せず、panicでもprocess crashと永続running scanを残さない。
 
-### 設定 API
+### メディアフォルダ・ディレクトリ選択 API
 
-**Scope**: `GET /api/settings` と `PUT /api/settings` を OpenAPI と HTTP 実装へ追加する。
+**Scope**:
 
-**Dependencies**: 設定の保存と実行時反映。
+- `GET/POST /api/media-folders`で一覧取得と1件追加を提供する
+- `PUT/DELETE /api/media-folders/{id}`で既存1件の変更・削除を提供し、一覧全体のPUTは提供しない
+- PUT/DELETEは行単位versionで同時変更を検出する
+- directory APIはroot/drive、現在位置、親、子directoryだけを返す
+- directory listingとPOST/PUTはsymlinkを拒否し、filesystem/drive rootを登録不可にする
+- 無効directory、symlink、root、重複・包含、走査中、対象消失、版競合を機械可読errorへ変換する
+- 全mutationをsame-originに限定し、POST/PUTはJSONだけを受理してCORS responseを追加しない
+- OpenAPIを先に変更し、Go/TypeScriptを再生成してhandler、Web API client、contract testsを追加する
 
-**Acceptance**: 有効値を取得・保存でき、無効パス、走査中、版競合を契約どおり拒否する。
+**Dependencies**: メディアフォルダ個別操作・location model・安全な走査。
 
-### 設定画面
+**Acceptance**: folderを1件ずつ取得・追加・変更・削除できる。追加応答後は既存ライブラリが維持され、
+変更・削除応答後は対象locationsだけが消え、別rootのlocationが残る動画は利用できる。すべてのerrorが
+契約どおり区別される。
 
-**Scope**: `/settings`、Sidebar のリンク、メディアフォルダ1項目の表示・編集・状態表示を追加する。
+### 設定画面と複数サーバーフォルダ選択 UI
 
-**Dependencies**: 設定 API。
+**Scope**:
 
-**Acceptance**: 保存だけでは走査せず、入力失敗時も値を保持する。360px・768px・1280px、
-キーボード、支援技術で確認し、UI 実装 PR に画像を添付する。
+- `/settings` とSidebar navigationを追加する
+- 0件以上の登録済みroot一覧と、追加・変更・削除の行単位操作を表示する
+- 一覧全体の編集状態と保存buttonを置かない
+- folder picker dialogでroot/drive、親、子directoryをkeyboardとpointerで移動する
+- 追加は選択確定時に1件POSTし、既存ライブラリを維持する
+- 変更・削除は対象rootのlocationが消えることを事前に示し、対象行だけをPUT/DELETEする
+- loading、directory失敗、0件、各行処理中、成功、走査中、版競合を扱う
+- Vitest/Testing Library、360px・768px・1280pxの画像、visual reviewで検証する
+
+**Dependencies**: メディアフォルダ・ディレクトリ選択API。
+
+**Acceptance**: 利用者が文字列を入力せず複数rootを1件ずつ管理できる。追加は既存動画を維持し、
+変更・削除は対象rootのlocationだけを非表示にする。別rootのlocationが残る動画は表示を維持し、
+操作からscanは開始しない。

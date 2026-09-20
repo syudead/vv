@@ -7,6 +7,18 @@ metadata:
 ---
 
 
+## Repository rules for specifications
+
+Follow [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md)
+(Q-1..Q-7). Where it conflicts with a general instruction below, **it wins**.
+An ambiguity you cannot resolve goes back to the **requester** as a question
+(Q-6), and an implementation constraint never becomes a product requirement or a
+scope boundary (Q-7).
+
+The requester is whoever asked for this feature and is running this command —
+the one a question goes to. The *user* is whoever will use the finished product;
+"what the user gets" means their experience, and they are never asked anything.
+
 ## User Input
 
 ```text
@@ -62,11 +74,11 @@ Execution steps:
 1. Run `.specify/scripts/bash/check-prerequisites.sh --json --paths-only` from repo root **once** (combined `--json --paths-only` mode / `-Json -PathsOnly`). Parse minimal JSON payload fields:
    - `FEATURE_DIR`
    - `FEATURE_SPEC`
-   - (Optionally capture `IMPL_PLAN`, `TASKS` for future chained flows.)
+   - (Optionally capture `IMPL_PLAN` for future chained flows.)
    - If JSON parsing fails, abort and instruct user to re-run `/speckit-specify` or verify feature branch environment.
    - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
-2. **IF EXISTS**: Load `.specify/memory/constitution.md` for project principles and governance constraints.
+2. Load this repository's governance for its principles and constraints — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. If `.specify/memory/constitution.md` exists, read it and let the principles it has actually ratified win; an unfilled template slot inside it is simply not a constraint, while a file that is absent, empty, or still nothing but placeholders carries none at all. This repository currently keeps no such file.
 
 3. Load the current spec file. Perform a structured ambiguity & coverage scan using this taxonomy. For each category, mark status: Clear / Partial / Missing. Produce an internal coverage map used for prioritization (do not output raw map unless no questions will be asked).
 
@@ -125,7 +137,7 @@ Execution steps:
    - Information is better deferred to planning phase (note internally)
 
 4. Generate (internally) a prioritized queue of candidate clarification questions (maximum 5). Do NOT output them all at once. Apply these constraints:
-    - Maximum of 5 total questions across the whole session.
+    - Ask at most 5 in one round. A question that does not fit this round is not dropped: a product ambiguity stays in the spec as a `[NEEDS CLARIFICATION: ...]` marker for the next round (Q-6); a planning-only question is carried in the completion report instead.
     - Each question must be answerable with EITHER:
        - A short multiple‑choice selection (2–5 distinct, mutually exclusive options), OR
        - A one-word / short‑phrase answer (explicitly constrain: "Answer in <=5 words").
@@ -133,7 +145,7 @@ Execution steps:
     - Ensure category coverage balance: attempt to cover the highest impact unresolved categories first; avoid asking two low-impact questions when a single high-impact area (e.g., security posture) is unresolved.
     - Exclude questions already answered, trivial stylistic preferences, or plan-level execution details (unless blocking correctness).
     - Favor clarifications that reduce downstream rework risk or prevent misaligned acceptance tests.
-    - If more than 5 categories remain unresolved, select the top 5 by (Impact * Uncertainty) heuristic.
+    - If more than 5 categories remain unresolved, ask the top 5 by (Impact * Uncertainty) heuristic and record the rest — product ambiguities in the spec as `[NEEDS CLARIFICATION: ...]`, planning-only ones in the completion report. Never close one by choosing an interpretation.
 
 5. Sequential questioning loop (interactive):
     - Present EXACTLY ONE question at a time.
@@ -258,12 +270,14 @@ Report completion (after questioning loop ends or early termination):
 - Number of questions asked & answered.
 - Path to updated spec.
 - Sections touched (list names).
-- Coverage summary table listing each taxonomy category with Status: Resolved (was Partial/Missing and addressed), Deferred (exceeds question quota or better suited for planning), Clear (already sufficient), Outstanding (still Partial/Missing but low impact).
+- Coverage summary table listing each taxonomy category with Status: Resolved (was Partial/Missing and addressed), Deferred (exceeds this round's quota or better suited for planning), Clear (already sufficient), Outstanding (still Partial/Missing but low impact).
+- Every Deferred or Outstanding **product** ambiguity — one Q-6 governs, where the answer changes what the user gets — must also be visible in the spec itself as a `[NEEDS CLARIFICATION: ...]` marker, not only in this report. A question that only affects how the feature is built stays in this report and is carried to `/speckit-plan`; the spec holds no implementation detail.
 - If any Outstanding or Deferred remain, recommend whether to proceed to `/speckit-plan` or run `/speckit-clarify` again later post-plan.
 - Suggested next command.
 
 ## Done When
 
 - [ ] Spec ambiguities identified and clarifications integrated into spec file
+- [ ] Product ambiguities not asked this round remain in the spec as `[NEEDS CLARIFICATION: ...]`; none was closed by choosing an interpretation. Planning-only questions are reported for `/speckit-plan` instead of being written into the spec
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with questions answered, sections touched, and coverage summary

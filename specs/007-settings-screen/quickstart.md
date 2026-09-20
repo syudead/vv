@@ -1,6 +1,6 @@
 # Quickstart: 設定画面を検証する
 
-共通の検証コマンドと起動方法は [Makefile](../../Makefile) と
+共通コマンドは [Makefile](../../Makefile)、UI確認は
 [UI画像手順](../../docs/how-to/ui-change-screenshots.md)を使う。
 
 ## Automated
@@ -11,12 +11,27 @@ make check
 
 ## Acceptance Scenarios
 
-1. `MDM_MEDIA_DIR=A` で初回起動し、設定画面で `A` が表示される。
-2. 有効な `B` を保存して再起動し、環境変数が `A` のままでも `B` が表示される。
-3. 保存時と起動時に scan が作られず、手動取り込みだけが `B` を走査する。
-4. 相対パス、存在しないパス、通常ファイル、読取不能な場所を保存できない。
-5. running scan 中の保存と、古い version からの保存を `409` で拒否する。
-6. `B` の保存直後、旧ルート `A` の動画を配信しない。手動走査後の一覧は `B` と一致する。
-7. 360px・768px・1280pxで重なりや横スクロールがなく、キーボードと支援技術で保存できる。
+1. 初回起動でfolder一覧が0件になり、環境変数は初期値へ影響しない。
+2. folder pickerから複数rootを1件ずつ追加・変更・削除でき、bulk保存操作がない。
+3. 同一pathと祖先・子孫で重なるpathを登録できない。
+4. filesystem/drive rootとsymlinkはpickerで確定できず、APIでも拒否される。
+5. 新規folderを追加しても既存videos、FTS、jobs、scans、playback progressが変わらない。
+6. migrationで既存videoのpath、title、size、mtimeが1件のlocationへ移り、video ID、content key、
+   probe結果、jobs、playback progressが維持される。
+7. 既存folderを変更すると、path更新と旧root配下のlocations削除が同じtransactionで完了し、
+   locationが0件になったvideos、FTS、jobsだけが削除される。
+8. 同じ内容をroot Aとroot Bに置いて取り込んだあとroot Bを変更・削除しても、root A側のlocation、
+   video、job、thumbnailが残り、一覧表示とstreamを継続できる。
+9. 変更・削除transactionを失敗させると対象folderとライブラリDBの双方が元のまま残る。
+10. root A/BのうちBをjob処理中に削除しても、B由来のI/O失敗を残存videoへ書き込まず、Aへ再試行する。
+11. folder操作の直後にscanは自動開始されず、次の手動scanが登録済み全rootを処理する。
+12. rootまたはsubtreeを走査中に読取不能にしても、その範囲の既存videoを保持して残りを処理する。
+13. scannerでpanicを発生させてもserver processが継続し、scanがfailedになりrunningを残さない。
+14. cross-origin mutationとJSON以外のPOST/PUTを拒否し、CORS responseを返さない。
+15. 360px・768px・1280pxで複数folder一覧とpickerをkeyboard操作できる。
+16. 複数locationのtitle/path検索結果はvideo単位で重複せず、利用可能なlocationから再生できる。
+17. orphan video削除直後に同じcontentを別rootから取り込んでも、保持または再生成したthumbnailが
+    folder操作によって削除されず、thumbnail APIが404にならない。
 
-UI 実装 PR には手順7の画像と visual review を記録する。
+UI実装PRに0件、複数件、picker、重複error、追加成功、変更・削除警告、対象データ削除後、
+走査中の画像とvisual reviewを記録する。

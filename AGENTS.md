@@ -19,6 +19,8 @@ file into a handbook.
 - Keep documentation close to the code and update it with behavior changes.
 - When writing or changing a specification, follow
   [docs/product-specs/spec-quality.md](docs/product-specs/spec-quality.md).
+- When writing or changing a Plan and its artifacts, follow
+  [docs/design-docs/plan-quality.md](docs/design-docs/plan-quality.md).
 - Prefer focused, reviewable changes with automated checks.
 - Do not hand-edit files in `docs/generated/`; update their source or generator.
 - Add links to new design documents and product specifications from their

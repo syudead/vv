@@ -93,7 +93,7 @@ Follow this execution flow:
 
 2. Collect/derive values for placeholders:
    - If user input (conversation) supplies a value, use it.
-   - Otherwise infer from existing repo context (README, docs, prior constitution versions if embedded).
+   - Otherwise derive a candidate from existing repo context (README, docs, prior constitution versions if embedded) and present it to the user for ratification. A constitution is governance: never write an inferred principle as if it had been adopted.
    - For governance dates: `RATIFICATION_DATE` is the original adoption date (if unknown ask or mark TODO), `LAST_AMENDED_DATE` is today if changes are made, otherwise keep previous.
    - `CONSTITUTION_VERSION` must increment according to semantic versioning rules:
      - MAJOR: Backward incompatible governance/principle removals or redefinitions.

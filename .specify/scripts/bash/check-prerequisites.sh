@@ -10,8 +10,6 @@
 # OPTIONS:
 #   --json              Output in JSON format
 #   --require-spec      Require spec.md to exist (for analysis phase)
-#   --require-tasks     Require tasks.md to exist (for implementation phase)
-#   --include-tasks     Include tasks.md in AVAILABLE_DOCS list
 #   --paths-only        Only output path variables (no validation)
 #   --template NAME     Include composed template content in JSON output
 #   --help, -h          Show help message
@@ -26,8 +24,6 @@ set -e
 # Parse command line arguments
 JSON_MODE=false
 REQUIRE_SPEC=false
-REQUIRE_TASKS=false
-INCLUDE_TASKS=false
 PATHS_ONLY=false
 TEMPLATE_NAME=""
 
@@ -38,12 +34,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --require-spec)
             REQUIRE_SPEC=true
-            ;;
-        --require-tasks)
-            REQUIRE_TASKS=true
-            ;;
-        --include-tasks)
-            INCLUDE_TASKS=true
             ;;
         --paths-only)
             PATHS_ONLY=true
@@ -65,18 +55,13 @@ Consolidated prerequisite checking for Spec-Driven Development workflow.
 OPTIONS:
   --json              Output in JSON format
   --require-spec      Require spec.md to exist (for analysis phase)
-  --require-tasks     Require tasks.md to exist (for implementation phase)
-  --include-tasks     Include tasks.md in AVAILABLE_DOCS list
   --paths-only        Only output path variables (no prerequisite validation)
   --template NAME     Include composed template content in JSON output
   --help, -h          Show this help message
 
 EXAMPLES:
-  # Check task prerequisites (plan.md required)
+  # Check planning prerequisites (plan.md required)
   ./check-prerequisites.sh --json
-
-  # Check implementation prerequisites (plan.md + tasks.md required)
-  ./check-prerequisites.sh --json --require-tasks --include-tasks
 
   # Get feature paths only (no validation)
   ./check-prerequisites.sh --paths-only
@@ -118,11 +103,10 @@ if $PATHS_ONLY; then
                 --arg feature_dir "$FEATURE_DIR" \
                 --arg feature_spec "$FEATURE_SPEC" \
                 --arg impl_plan "$IMPL_PLAN" \
-                --arg tasks "$TASKS" \
-                '{REPO_ROOT:$repo_root,BRANCH:$branch,FEATURE_DIR:$feature_dir,FEATURE_SPEC:$feature_spec,IMPL_PLAN:$impl_plan,TASKS:$tasks}'
+                '{REPO_ROOT:$repo_root,BRANCH:$branch,FEATURE_DIR:$feature_dir,FEATURE_SPEC:$feature_spec,IMPL_PLAN:$impl_plan}'
         else
-            printf '{"REPO_ROOT":"%s","BRANCH":"%s","FEATURE_DIR":"%s","FEATURE_SPEC":"%s","IMPL_PLAN":"%s","TASKS":"%s"}\n' \
-                "$(json_escape "$REPO_ROOT")" "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$FEATURE_DIR")" "$(json_escape "$FEATURE_SPEC")" "$(json_escape "$IMPL_PLAN")" "$(json_escape "$TASKS")"
+            printf '{"REPO_ROOT":"%s","BRANCH":"%s","FEATURE_DIR":"%s","FEATURE_SPEC":"%s","IMPL_PLAN":"%s"}\n' \
+                "$(json_escape "$REPO_ROOT")" "$(json_escape "$CURRENT_BRANCH")" "$(json_escape "$FEATURE_DIR")" "$(json_escape "$FEATURE_SPEC")" "$(json_escape "$IMPL_PLAN")"
         fi
     else
         echo "REPO_ROOT: $REPO_ROOT"
@@ -130,7 +114,6 @@ if $PATHS_ONLY; then
         echo "FEATURE_DIR: $FEATURE_DIR"
         echo "FEATURE_SPEC: $FEATURE_SPEC"
         echo "IMPL_PLAN: $IMPL_PLAN"
-        echo "TASKS: $TASKS"
     fi
     exit 0
 fi
@@ -155,13 +138,6 @@ if $REQUIRE_SPEC && [[ ! -f "$FEATURE_SPEC" ]]; then
     exit 1
 fi
 
-# Check for tasks.md if required
-if $REQUIRE_TASKS && [[ ! -f "$TASKS" ]]; then
-    echo "ERROR: tasks.md not found in $FEATURE_DIR" >&2
-    echo "Run /speckit-tasks first to create the task list." >&2
-    exit 1
-fi
-
 # Build list of available documents
 docs=()
 
@@ -175,11 +151,6 @@ if [[ -d "$CONTRACTS_DIR" ]] && [[ -n "$(ls -A "$CONTRACTS_DIR" 2>/dev/null)" ]]
 fi
 
 [[ -f "$QUICKSTART" ]] && docs+=("quickstart.md")
-
-# Include tasks.md if requested and it exists
-if $INCLUDE_TASKS && [[ -f "$TASKS" ]]; then
-    docs+=("tasks.md")
-fi
 
 TEMPLATE_CONTENT=""
 if [[ -n "$TEMPLATE_NAME" ]]; then
@@ -237,7 +208,4 @@ else
     check_dir "$CONTRACTS_DIR" "contracts/"
     check_file "$QUICKSTART" "quickstart.md"
 
-    if $INCLUDE_TASKS; then
-        check_file "$TASKS" "tasks.md"
-    fi
 fi

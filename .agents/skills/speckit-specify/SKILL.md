@@ -16,6 +16,24 @@ This skill owns only Spec Kit artifact generation. A run creates or updates one
 Spec PR and never starts Plan.
 
 
+## Repository rules for specifications
+
+Follow [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md)
+(Q-1..Q-7). Where it conflicts with a general instruction below, **it wins**.
+
+Two of its rules invert the defaults of this command:
+
+- **Q-6** — an ambiguity you cannot resolve goes back to the requester as a question.
+  A plausible interpretation is not a resolution.
+- **Q-7** — an implementation constraint is never promoted into a product
+  requirement or a scope boundary.
+
+Two different people are meant throughout, and the words are not
+interchangeable. The **requester** is whoever asked for this feature and is
+running this command; they are the one a question goes to. The **user** is
+whoever will use the finished product; the spec's User Scenarios are about them,
+and "what the user gets" means their experience. A question never goes to them.
+
 ## User Input
 
 ```text
@@ -118,26 +136,35 @@ Given that feature description, do this:
 
 4. Load the resolved active `spec-template` file to understand required sections.
 
-5. **IF EXISTS**: Load `.specify/memory/constitution.md` for project principles and governance constraints.
+5. Load this repository's governance for its principles and constraints — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. If `.specify/memory/constitution.md` exists, read it and let the principles it has actually ratified win; an unfilled template slot inside it is simply not a constraint, while a file that is absent, empty, or still nothing but placeholders carries none at all. This repository currently keeps no such file.
 
 6. Follow this execution flow:
     1. Parse user description from arguments
        If empty: ERROR "No feature description provided"
     2. Extract key concepts from description
        Identify: actors, actions, data, constraints
-    3. For unclear aspects:
-       - Make informed guesses based on context and industry standards
-       - Only mark with [NEEDS CLARIFICATION: specific question] if:
-         - The choice significantly impacts feature scope or user experience
-         - Multiple reasonable interpretations exist with different implications
-         - No reasonable default exists
-       - **LIMIT: Maximum 3 [NEEDS CLARIFICATION] markers total**
-       - Prioritize clarifications by impact: scope > security/privacy > user experience > technical details
+    3. For unclear aspects, look for the answer before writing a question:
+       - Resolve it from this repository's design docs and existing screens, the
+         spec's own wording, or the form comparable current products have
+         converged on. Write that answer into the spec and record it in
+         Settled Without Asking with where it came from
+       - Mark with [NEEDS CLARIFICATION: specific question] only when the answer
+         changes what the user gets, no reference settles it (or two credible
+         answers lead somewhere materially different), and getting it wrong
+         would be expensive to undo. Then ask; do not pick one silently (Q-6)
+       - Make an informed guess only for a detail that does not change what the
+         user gets whichever way it goes, and record it in Settled Without Asking
+       - An implementation difficulty is never the reason for a guess. If the
+         obvious way to build something is hard, that is a question about the
+         requirement, not a requirement (Q-7)
+       - Carry at most 3 markers into one round of questions; the rest wait for
+         the next round rather than being guessed
+       - Prioritize by impact: scope > security/privacy > user experience > technical details
     4. Fill User Scenarios & Testing section
        If no clear user flow: ERROR "Cannot determine user scenarios"
     5. Generate Functional Requirements
        Each requirement must be testable
-       Use reasonable defaults for unspecified details (document assumptions in Assumptions section)
+       Settle unspecified details from the references above and record them, with their source, in the Settled Without Asking section. Only a gap that no reference settles, and whose answer changes what the user gets, becomes a [NEEDS CLARIFICATION] marker (Q-6)
     6. Define Success Criteria
        Create measurable, technology-agnostic outcomes
        Include both quantitative metrics (time, performance, volume) and qualitative measures (user satisfaction, task completion)
@@ -153,7 +180,7 @@ Given that feature description, do this:
    - Focused on user value and business needs
    - Written for non-technical stakeholders
    - All mandatory sections completed
-   - No `[NEEDS CLARIFICATION]` markers remain
+   - No `[NEEDS CLARIFICATION]` markers remain — each one answered by the requester, never deleted by choosing an interpretation
    - Requirements are testable and unambiguous
    - Every functional requirement has clear acceptance criteria
    - User scenarios cover the primary flows
@@ -173,8 +200,8 @@ Given that feature description, do this:
 
       - **If [NEEDS CLARIFICATION] markers remain**:
         1. Extract all [NEEDS CLARIFICATION: ...] markers from the spec
-        2. **LIMIT CHECK**: If more than 3 markers exist, keep only the 3 most critical (by scope/security/UX impact) and make informed guesses for the rest
-        3. For each clarification needed (max 3), present options to user in this format:
+        2. **BATCH**: Ask at most 3 per round, most critical first (by scope/security/UX impact). Markers that do not fit stay in the spec and are asked in the next round — never resolved by guessing (Q-6)
+        3. For each clarification in the current round (max 3 per round), present options to user in this format:
 
            ```markdown
            ## Question [N]: [Topic]
@@ -200,11 +227,11 @@ Given that feature description, do this:
            - Each cell should have spaces around content: `| Content |` not `|Content|`
            - Header separator must have at least 3 dashes: `|--------|`
            - Test that the table renders correctly in markdown preview
-        5. Number questions sequentially (Q1, Q2, Q3 - max 3 total)
+        5. Number questions sequentially across the entire clarification session (Q1, Q2, Q3, Q4, ...). Do not reset numbering between rounds; the limit is 3 questions per round, not 3 questions total.
         6. Present all questions together before waiting for responses
         7. Wait for user to respond with their choices for all questions (e.g., "Q1: A, Q2: Custom - [details], Q3: B")
-        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the user's selected or provided answer
-        9. Re-run validation after all clarifications are resolved
+        8. Update the spec by replacing each [NEEDS CLARIFICATION] marker with the requester's selected or provided answer
+        9. Re-run validation after applying the round's answers. If [NEEDS CLARIFICATION] markers remain, return to step 2 for the next round and continue the session-wide question numbering. Proceed only after every marker is resolved.
 
 ## Mandatory Post-Execution Hooks
 
@@ -268,26 +295,47 @@ Report completion to the user with:
 
 When creating this spec from a user prompt:
 
-1. **Make informed guesses**: Use context, industry standards, and common patterns to fill gaps
-2. **Document assumptions**: Record reasonable defaults in the Assumptions section
-3. **Limit clarifications**: Maximum 3 [NEEDS CLARIFICATION] markers - use only for critical decisions that:
-   - Significantly impact feature scope or user experience
-   - Have multiple reasonable interpretations with different implications
-   - Lack any reasonable default
-4. **Prioritize clarifications**: scope > security/privacy > user experience > technical details
-5. **Think like a tester**: Treat every vague requirement as a validation failure
-6. **Common areas needing clarification** (only if no reasonable default exists):
-   - Feature scope and boundaries (include/exclude specific use cases)
-   - User types and permissions (if multiple conflicting interpretations possible)
-   - Security/compliance requirements (when legally/financially significant)
+1. **Answer it yourself first**: for each gap, look for the answer before
+   considering a question. In order: this repository's design docs and existing
+   screens, the spec's own wording, and the form that comparable current
+   products have converged on. An answer found this way is written into the
+   spec and recorded in Settled Without Asking — asking about something that already has a
+   settled answer wastes the requester's attention and is itself a defect.
+2. **Ask only what is genuinely open**: a gap becomes a
+   `[NEEDS CLARIFICATION: specific question]` only when all three hold:
+   - the answer changes what the user gets — the scope, the interaction, or the
+     protection of their data; and
+   - step 1 produced no answer, or produced two credible answers with
+     materially different consequences; and
+   - getting it wrong would be expensive to undo.
+   Carry at most 3 into one round; the rest stay in the spec for the next round.
+3. **Prioritize**: scope > security/privacy > user experience > technical details
+4. **Document what you settled**: record each answer you took from a reference
+   or a convention in the Settled Without Asking section, naming where it came from, so the
+   requester can overturn it by reading rather than by being interrogated
+5. **Think like a tester**: treat every vague requirement as a validation failure
+6. **Keep implementation out of it**: a technical constraint is a question about
+   the requirement, never a reason to narrow it (Q-7)
 
-**Examples of reasonable defaults** (don't ask about these):
+**Do not ask about these** — settle them from the references above and record
+what you chose:
 
-- Data retention: Industry-standard practices for the domain
-- Performance targets: Standard web/mobile app expectations unless specified
-- Error handling: User-friendly messages with appropriate fallbacks
-- Authentication method: Standard session-based or OAuth2 for web apps
-- Integration patterns: Use project-appropriate patterns (REST/GraphQL for web services, function calls for libraries, CLI args for tools, etc.)
+- How a common interaction looks and behaves when current products of the same
+  kind have converged on one form. Follow that form; the reason to ask is a
+  genuine fork, not the existence of a choice
+- Visual layout, density, and component behavior already governed by this
+  repository's design docs
+- Performance targets, when the request implies no budget of its own
+- Error handling: user-friendly messages with appropriate fallbacks
+- Integration patterns: project-appropriate patterns (REST/GraphQL for web
+  services, function calls for libraries, CLI args for tools, etc.)
+
+**Worth asking, once the three conditions above hold**:
+
+- Which use cases are in and which are out, when the request does not imply it
+- A behavior where two credible designs lead somewhere materially different
+- Data retention and the authentication method, when this product has no
+  established position on them — both change how the user's data is protected
 
 ### Success Criteria Guidelines
 
