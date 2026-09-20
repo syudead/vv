@@ -251,3 +251,41 @@ func TestDeletingRepresentativeLocationRecomputesContainerAndPlayability(t *test
 		t.Fatalf("playability was not recomputed: playable=%v reason=%q", got.Playable, got.UnplayableReason)
 	}
 }
+
+func TestAddingFolderRecomputesRepresentativeContainer(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	rootA := filepath.Join(root, "a")
+	rootB := filepath.Join(root, "b")
+	for _, path := range []string{rootA, rootB} {
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.AddMediaFolder(ctx, rootB); err != nil {
+		t.Fatal(err)
+	}
+	video, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootB, "movie.mkv"), "movie", "same", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootA, "movie.mp4"), "movie", "same", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	probe := domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mkv", probe)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.AddMediaFolder(ctx, rootA); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.GetVideo(ctx, video.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Path != filepath.Join(rootA, "movie.mp4") || got.Container != "mp4" || !got.Playable {
+		t.Fatalf("representative was not synchronized: %+v", got)
+	}
+}

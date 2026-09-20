@@ -167,6 +167,9 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 		return UpsertResult{}, err
 	}
 	if locationExists && oldVideoID != videoID {
+		if err := syncRepresentativeContainer(ctx, tx, oldVideoID); err != nil {
+			return UpsertResult{}, err
+		}
 		if _, err := tx.ExecContext(ctx, `delete from videos where id = ? and not exists (select 1 from video_locations where video_id = ?)`, oldVideoID, oldVideoID); err != nil {
 			return UpsertResult{}, err
 		}
@@ -278,9 +281,10 @@ func (db *DB) SetThumbnailState(ctx context.Context, id int64, state domain.Thum
 func (db *DB) SetThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.ThumbnailState) (bool, error) {
 	res, err := db.sql.ExecContext(ctx, `update videos set thumbnail_state = ?, updated_at = ?
 		where id = ? and content_key = ? and exists (
-			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)`,
+			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
+		and not exists (select 1 from video_locations where video_id = videos.id and id > ?)`,
 		string(state), time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
-		job.LocationVersion, job.LocationPath)
+		job.LocationVersion, job.LocationPath, job.LocationSetMaxID)
 	if err != nil {
 		return false, err
 	}
@@ -524,6 +528,31 @@ func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64)
 	}
 	if err != nil {
 		return fmt.Errorf("代表場所のcontainerを更新できません (video=%d): %w", videoID, err)
+	}
+	return nil
+}
+
+func syncAllRepresentativeContainers(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `select id from videos`)
+	if err != nil {
+		return err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, id := range ids {
+		if err := syncRepresentativeContainer(ctx, tx, id); err != nil {
+			return err
+		}
 	}
 	return nil
 }

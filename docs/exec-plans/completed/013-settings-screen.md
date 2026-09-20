@@ -46,6 +46,7 @@ thumbnailを削除しないことも確認する。
 - #69: PR #75をfeature branchへマージし、自動レビュー4件への修正と再CIを完了
 - 統合: 最新`origin/main`に未取込commitがないことを確認（feature branchが32 commits ahead、0 commits behind）
 - 統合: OpenAPI生成差分なし、Go test/vet、golangci-lint、Web build/74 tests/type/format、local-dev testsを完走
+- 統合レビュー: pending jobの復旧、claim後のlocation追加、代表location変更時のcontainer/playability同期を回帰testで確認
 
 ## 進捗
 

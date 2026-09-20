@@ -317,6 +317,23 @@ func TestScanRequeuesMissingJobsForUnchangedPendingVideo(t *testing.T) {
 	}
 }
 
+func TestScanDoesNotRequeueFailedJobsForUnchangedVideo(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	for path, row := range index.rows {
+		row.ProbeState = domain.ProbeStateFailed
+		row.ThumbnailState = domain.ThumbnailStateFailed
+		index.rows[path] = row
+	}
+	index.jobs = nil
+
+	runScan(t, root, index)
+	if len(index.jobs) != 0 {
+		t.Fatalf("failed jobs were requeued: %d", len(index.jobs))
+	}
+}
+
 // 内容が変われば取り込み直す。
 func TestScanUpdatesChangedFile(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})

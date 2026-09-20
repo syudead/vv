@@ -250,8 +250,8 @@ func (s *Scanner) ingest(
 		return s.enqueue(ctx, domain.UpsertResult{
 			ID:             existing.ID,
 			Outcome:        domain.OutcomeUnchanged,
-			NeedsProbe:     existing.ProbeState != domain.ProbeStateDone,
-			NeedsThumbnail: existing.ThumbnailState != domain.ThumbnailStateDone,
+			NeedsProbe:     existing.ProbeState == domain.ProbeStatePending,
+			NeedsThumbnail: existing.ThumbnailState == domain.ThumbnailStatePending,
 		})
 	}
 
