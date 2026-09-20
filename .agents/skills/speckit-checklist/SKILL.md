@@ -86,10 +86,10 @@ You **MUST** consider the user input before proceeding (if not empty).
    - All file paths must be absolute.
    - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
-2. **IF EXISTS**: Load `.specify/memory/constitution.md` for project principles and governance constraints.
+2. Load this repository's governance for its principles and constraints — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. If `.specify/memory/constitution.md` exists, read it and let the principles it has actually ratified win; an unfilled template slot inside it is simply not a constraint, while a file that is absent, empty, or still nothing but placeholders carries none at all. This repository currently keeps no such file.
 
 3. **Clarify intent (dynamic)**: Derive up to THREE initial contextual clarifying questions (no pre-baked catalog). They MUST:
-   - Be generated from the user's phrasing + extracted signals from spec/plan/tasks
+   - Be generated from the user's phrasing + extracted signals from spec/plan
    - Only ask about information that materially changes checklist content
    - Be skipped individually if already unambiguous in `$ARGUMENTS`
    - Prefer precision over breadth
@@ -124,7 +124,8 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Derive checklist theme (e.g., security, review, deploy, ux)
    - Consolidate explicit must-have items mentioned by user
    - Map focus selections to category scaffolding
-   - Infer any missing context from spec/plan/tasks (do NOT hallucinate)
+   - Infer any missing context from spec/plan (do NOT hallucinate)
+   - An ambiguity you find in the spec becomes a checklist item that asks the question, never an item that assumes one reading of it (Q-6 in docs/product-specs/spec-quality.md)
 
 5. **Load feature context**: Read from FEATURE_DIR:
    - spec.md: Feature requirements and scope

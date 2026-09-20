@@ -107,10 +107,16 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **IF EXISTS**: Read data-model.md for entities and relationships
    - **IF EXISTS**: Read contracts/ for API specifications and test requirements
    - **IF EXISTS**: Read research.md for technical decisions and constraints
-   - **IF EXISTS**: Read .specify/memory/constitution.md for governance constraints
+   - **REQUIRED**: Read this repository's governance for its constraints — ARCHITECTURE.md, docs/design-docs/core-beliefs.md, and AGENTS.md. If `.specify/memory/constitution.md` exists, read it and let the principles it has actually ratified win; an unfilled template slot inside it is simply not a constraint, while a file that is absent, empty, or still nothing but placeholders carries none at all. This repository currently keeps no such file.
    - **IF EXISTS**: Read quickstart.md for integration scenarios
    For a plain-text request, use the user's request and the relevant code and
    documentation in the current checkout instead.
+
+   If the work named by the Issue turns out to be ambiguous, or the obvious way
+   to build it is blocked by a technical constraint, stop and ask rather than
+   deciding it in code. A choice that changes what the user gets belongs to the
+   person who asked for the feature (Q-6 and Q-7 in
+   `docs/product-specs/spec-quality.md`).
 
 4. **Project Setup Verification**:
    - **REQUIRED**: Create/verify ignore files based on actual project setup:
