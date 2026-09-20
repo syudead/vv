@@ -80,6 +80,14 @@ silently.
    Phase 0 and Phase 1 create an artifact only when it has something of its own
    to say (P-2). Name the ones you are not creating, and why, in `plan.md`.
 
+5. **Reconcile the artifacts on disk**: This command also revises existing
+   plans, and `setup-plan.sh` keeps whatever a previous run left behind. When an
+   artifact no longer carries feature-specific content, delete it in this same
+   change so the directory matches the list in `plan.md` — a stale file stays an
+   input to later stages. If it still holds something worth keeping, move that
+   into the canonical document first and link to it, then delete. Git keeps the
+   history, so deleting loses nothing.
+
 ## Mandatory Post-Execution Hooks
 
 **You MUST complete this section before reporting completion to the user.**
