@@ -78,10 +78,11 @@
   the whole section.
 -->
 
-[Gates determined based on constitution file. If the project has no usable
-constitution (the file is absent, empty, or still contains template
-placeholders), check against the repository's agent guide and architecture notes
-and say which rules were checked.]
+[Gates taken from the repository's governance — its architecture notes, its
+stated judgement criteria, and its agent guide. Name the rules you checked and
+the verdict for each. Where a project keeps a Spec Kit constitution file with
+real principles, that file is the source instead; one that is absent, empty, or
+still holding template placeholders is not.]
 
 ## Project Structure
 

@@ -107,7 +107,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **IF EXISTS**: Read data-model.md for entities and relationships
    - **IF EXISTS**: Read contracts/ for API specifications and test requirements
    - **IF EXISTS**: Read research.md for technical decisions and constraints
-   - **IF EXISTS**: Read .specify/memory/constitution.md for governance constraints
+   - **REQUIRED**: Read this repository's governance for its constraints — ARCHITECTURE.md, docs/design-docs/core-beliefs.md, and AGENTS.md. There is no Spec Kit constitution file here
    - **IF EXISTS**: Read quickstart.md for integration scenarios
    For a plain-text request, use the user's request and the relevant code and
    documentation in the current checkout instead.

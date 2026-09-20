@@ -135,7 +135,7 @@ Given that feature description, do this:
 
 4. Load the resolved active `spec-template` file to understand required sections.
 
-5. **IF EXISTS**: Load `.specify/memory/constitution.md` for project principles and governance constraints.
+5. Load this repository's governance for its principles and constraints — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. There is no Spec Kit constitution file here.
 
 6. Follow this execution flow:
     1. Parse user description from arguments

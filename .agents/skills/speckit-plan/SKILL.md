@@ -57,7 +57,7 @@ silently.
 
 1. **Setup**: Preserve `.specify/feature.json` as required by the issue-handoff contract, then run `SPECIFY_INIT_DIR="$PWD" SPECIFY_FEATURE_DIRECTORY="$SPECIFY_FEATURE_DIRECTORY" bash .specify/scripts/bash/setup-plan.sh --json` from repo root. Restore the machine-local file afterward and parse JSON for FEATURE_SPEC, IMPL_PLAN, FEATURE_DIR, BRANCH. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
 
-2. **Load context**: Read FEATURE_SPEC and `.specify/memory/constitution.md`. Load IMPL_PLAN template (already copied). Treat the constitution as **unusable** when the file is absent, empty, or still carries template placeholders (`[PRINCIPLE_1_NAME]`, `[SECTION_2_CONTENT]`, and the like); in that case the gates come from the repository's agent guide and architecture notes instead, and the plan says which rules were checked.
+2. **Load context**: Read FEATURE_SPEC and this repository's governance, which is where the gates come from — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. Load IMPL_PLAN template (already copied). This repository keeps no Spec Kit constitution file; those documents are the source of truth, and the plan names which of their rules it checked. If a `.specify/memory/constitution.md` is ever added and carries real principles, it wins — but one that is absent, empty, or still holding template placeholders is not a source of gates.
 
 3. **Locate the canonical definitions**: Before writing anything, find the
    existing sources of truth for this repository — architecture notes, design
@@ -77,7 +77,7 @@ silently.
    - Fill Technical Context with links to the canonical definitions plus only
      the feature-specific deltas, constraints, and unknowns (mark unknowns as
      "NEEDS CLARIFICATION")
-   - Fill Constitution Check section from constitution
+   - Fill Constitution Check section from that governance
    - Evaluate gates (ERROR if violations unjustified)
    - Fill Project Structure with the affected ownership boundaries, new paths,
      and structural decisions — never a repository-wide tree
