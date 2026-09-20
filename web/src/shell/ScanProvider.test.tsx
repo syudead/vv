@@ -26,8 +26,12 @@ function Harness() {
       <button type="button" onClick={value.refresh}>
         更新
       </button>
+      <button type="button" onClick={() => value.setFolderCount(1)}>
+        フォルダ追加を反映
+      </button>
       <p>{value.error ?? "エラーなし"}</p>
       <p>完了: {value.finished?.id ?? "なし"}</p>
+      <p>開始可否: {value.canStart ? "可" : "不可"}</p>
     </>
   );
 }
@@ -45,7 +49,8 @@ describe("ScanProvider", () => {
   });
 
   it("開始要求の失敗を状態取得の成功で消さない", async () => {
-    fetchMock.mockImplementation((_input, init) => {
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
       if (init?.method === "POST") {
         return Promise.resolve(
           json({ code: "internal", message: "開始できません" }, 500),
@@ -74,7 +79,8 @@ describe("ScanProvider", () => {
 
   it("開始応答を失っても新しい取り込みの完了を追跡する", async () => {
     let currentCalls = 0;
-    fetchMock.mockImplementation((_input, init) => {
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
       if (init?.method === "POST") {
         return Promise.resolve(
           json({ code: "internal", message: "応答を失いました" }, 500),
@@ -99,7 +105,8 @@ describe("ScanProvider", () => {
 
   it("初回状態取得前に開始して高速完了した取り込みを通知する", async () => {
     let currentCalls = 0;
-    fetchMock.mockImplementation((_input, init) => {
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
       if (init?.method === "POST") return Promise.resolve(json(scan(2, "running"), 202));
       currentCalls += 1;
       if (currentCalls === 1) return new Promise<Response>(() => undefined);
@@ -121,7 +128,8 @@ describe("ScanProvider", () => {
   it("通常の取り込み追跡は一時的な状態取得失敗後も再開する", async () => {
     vi.useFakeTimers();
     let currentCalls = 0;
-    fetchMock.mockImplementation(() => {
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
       currentCalls += 1;
       if (currentCalls === 1) return Promise.resolve(json(scan(3, "running")));
       if (currentCalls === 2) return Promise.reject(new Error("一時的な失敗"));
@@ -144,7 +152,13 @@ describe("ScanProvider", () => {
 
   it("再確認で別タブが完了した取り込みを通知する", async () => {
     let currentId = 1;
-    fetchMock.mockImplementation(() => Promise.resolve(json(scan(currentId, "done"))));
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders"
+          ? json([{}])
+          : json(scan(currentId, "done")),
+      ),
+    );
     const user = userEvent.setup();
     render(
       <ScanProvider>
@@ -157,5 +171,46 @@ describe("ScanProvider", () => {
     await user.click(screen.getByRole("button", { name: "更新" }));
 
     expect(await screen.findByText("完了: 2")).toBeDefined();
+  });
+
+  it("フォルダ0件では設定画面を開かなくても開始要求を送らない", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(String(input) === "/api/media-folders" ? json([]) : json({}, 404)),
+    );
+    const user = userEvent.setup();
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+
+    expect(await screen.findByText("開始可否: 不可")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "開始" }));
+
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("起動時の遅い応答で後発のフォルダ件数を上書きしない", async () => {
+    let resolveFolders: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") {
+        return new Promise<Response>((resolve) => {
+          resolveFolders = resolve;
+        });
+      }
+      return Promise.resolve(json({}, 404));
+    });
+    const user = userEvent.setup();
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+
+    await user.click(screen.getByRole("button", { name: "フォルダ追加を反映" }));
+    expect(screen.getByText("開始可否: 可")).toBeDefined();
+    resolveFolders?.(json([]));
+
+    await waitFor(() => expect(screen.getByText("開始可否: 可")).toBeDefined());
   });
 });

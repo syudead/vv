@@ -13,6 +13,7 @@ import {
   errorMessage,
   getCurrentScan,
   isAborted,
+  listMediaFolders,
   startScan,
   type Scan,
 } from "../api/client";
@@ -26,8 +27,10 @@ export interface ScanContextValue {
   error: string | null;
   starting: boolean;
   running: boolean;
+  canStart: boolean;
   start: () => void;
   refresh: () => void;
+  setFolderCount: (count: number) => void;
   /**
    * 「終わったのを見た」スキャン。初回表示で既に終わっていたものは含めない
    * （利用者が待っていたものではないため、一覧を勝手に入れ替えない）。
@@ -56,11 +59,48 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [starting, setStarting] = useState(false);
   const [finished, setFinished] = useState<Scan | null>(null);
   const [watch, setWatch] = useState(0);
+  const [folderWatch, setFolderWatch] = useState(0);
+  const [folderCount, setFolderCount] = useState<number | null>(null);
+  const folderCountRevision = useRef(0);
   const requestedScanId = useRef<number | null>(null);
   const observedRunningScanId = useRef<number | null>(null);
   const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
   const recoveryPollsLeft = useRef(0);
   const lastSeenScanId = useRef<number | null | undefined>(undefined);
+
+  const updateFolderCount = useCallback((count: number) => {
+    folderCountRevision.current += 1;
+    setFolderCount(count);
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let alive = true;
+
+    const load = async () => {
+      const revision = folderCountRevision.current;
+      try {
+        const folders = await listMediaFolders(controller.signal);
+        if (alive && revision === folderCountRevision.current) {
+          setFolderCount(folders.length);
+        }
+      } catch (failure) {
+        if (!alive || isAborted(failure) || revision !== folderCountRevision.current) {
+          return;
+        }
+        setFolderCount(null);
+        timer = setTimeout(() => void load(), pollInterval);
+      }
+    };
+
+    void load();
+    return () => {
+      alive = false;
+      controller.abort();
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [folderWatch]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -148,6 +188,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   }, [watch]);
 
   const start = useCallback(() => {
+    if (folderCount === null || folderCount === 0) return;
     const baselineScanId = scan?.id ?? null;
     setStarting(true);
     setStartError(null);
@@ -175,9 +216,12 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         setStarting(false);
       }
     })();
-  }, [scan?.id]);
+  }, [folderCount, scan?.id]);
 
-  const refresh = useCallback(() => setWatch((value) => value + 1), []);
+  const refresh = useCallback(() => {
+    setWatch((value) => value + 1);
+    setFolderWatch((value) => value + 1);
+  }, []);
 
   const error = startError ?? pollError;
 
@@ -187,11 +231,13 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       error,
       starting,
       running: starting || scan?.state === "running",
+      canStart: folderCount !== null && folderCount > 0,
       start,
       refresh,
+      setFolderCount: updateFolderCount,
       finished,
     }),
-    [error, finished, refresh, scan, start, starting],
+    [error, finished, folderCount, refresh, scan, start, starting, updateFolderCount],
   );
 
   return <ScanContext.Provider value={value}>{children}</ScanContext.Provider>;

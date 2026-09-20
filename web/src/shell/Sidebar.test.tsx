@@ -21,13 +21,14 @@ describe("Sidebar", () => {
     expect(sidebar?.getAttribute("aria-hidden")).toBe("true");
   });
 
-  it("設定をサイドバー末尾に表示し、準備中の通知を出す", async () => {
+  it("設定をサイドバー末尾の実リンクとして表示してdrawerを閉じる", async () => {
     const user = userEvent.setup();
+    const onClose = vi.fn();
 
     render(
       <MemoryRouter>
         <ToastProvider>
-          <Sidebar mode="expanded" open onClose={vi.fn()} />
+          <Sidebar mode="drawer" open onClose={onClose} />
         </ToastProvider>
       </MemoryRouter>,
     );
@@ -35,10 +36,12 @@ describe("Sidebar", () => {
     const sidebar = screen.getByRole("complementary", {
       name: "メインナビゲーション",
     });
-    const settings = within(sidebar).getByRole("button", { name: "設定" });
+    const settings = within(sidebar).getByRole("link", { name: "設定" });
 
     await user.click(settings);
 
-    expect(await screen.findByText("「設定」は準備中です")).toBeDefined();
+    expect(settings.getAttribute("href")).toBe("/settings");
+    expect(onClose).toHaveBeenCalledOnce();
+    expect(settings.getAttribute("aria-current")).toBe("page");
   });
 });

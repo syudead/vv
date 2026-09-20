@@ -66,6 +66,7 @@ describe("LibraryPage", () => {
     fetchMock.mockImplementation((input) => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
       const page: VideoPage = {
         items: [
           video(1),
@@ -119,7 +120,9 @@ describe("LibraryPage", () => {
       Promise.resolve(
         String(input).startsWith("/api/scans/current")
           ? json({}, 404)
-          : json({ items: [], total: 0 } satisfies VideoPage),
+          : String(input) === "/api/media-folders"
+            ? json([{}])
+            : json({ items: [], total: 0 } satisfies VideoPage),
       ),
     );
     renderLibrary();
@@ -132,7 +135,9 @@ describe("LibraryPage", () => {
       Promise.resolve(
         String(input).startsWith("/api/scans/current")
           ? json({}, 404)
-          : json({ code: "internal", message: "壊れています" }, 500),
+          : String(input) === "/api/media-folders"
+            ? json([{}])
+            : json({ code: "internal", message: "壊れています" }, 500),
       ),
     );
     renderLibrary();
@@ -145,6 +150,7 @@ describe("LibraryPage", () => {
     fetchMock.mockImplementation((input) => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
       listCalls += 1;
       return Promise.resolve(
         json(

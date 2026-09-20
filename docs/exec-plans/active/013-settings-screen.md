@@ -1,6 +1,6 @@
 # 実行計画: 設定画面
 
-- ステータス: 実装中（#68）
+- ステータス: 実装中（#69）
 - 最終更新: 2026-09-21
 - Parent Issue: #62
 - Feature branch: `codex/feature-settings-screen`
@@ -39,6 +39,10 @@ thumbnailを削除しないことも確認する。
 - #67: 重複contentの別location維持、stale job write-back拒否、0 folder scan拒否
 - #67: reporting failureとroot I/O failureでmissing locationを削除しないことを確認
 - #67: PR #73をfeature branchへマージし、全CIとレビュー指摘対応を完了
+- #68: PR #74をfeature branchへマージし、全CIとレビュー指摘対応を完了
+- #69: `/settings`、行単位の追加・変更・削除、server directory picker、0件・失敗・走査中・競合状態を実装
+- #69: Vitest 72件、TypeScript、Prettier、Go test/vet、local-dev testsを完走
+- #69: 360/768/1280pxで一覧・empty・picker・削除確認を撮影し、横scroll、重なり、focus trap、Escape、focus復帰を確認
 
 ## 進捗
 
@@ -46,7 +50,7 @@ thumbnailを削除しないことも確認する。
 - [x] Plan
 - [x] Design
 - [x] #67
-- [ ] #68
+- [x] #68
 - [ ] #69
 - [ ] 統合検証と`main`向けPR
 
