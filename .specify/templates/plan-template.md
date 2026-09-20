@@ -6,6 +6,19 @@
 
 **Note**: This template is filled in by the `/speckit-plan` command; its definition describes the execution workflow.
 
+<!--
+  PRINCIPLE FOR EVERY SECTION BELOW: do not restate what an existing source of
+  truth already defines. In an established repository, link to the canonical
+  document (architecture notes, design docs, dependency manifests, API schemas,
+  build/test entry points) and write only what this feature adds, changes, or
+  leaves open. Duplicated descriptions go stale and bury the feature-specific
+  decisions.
+
+  In a new repository, or wherever no canonical source exists yet, record the
+  information here as usual — the plan is then the first source of truth, and a
+  later change should move it to a durable location and link back.
+-->
+
 ## Summary
 
 [Extract from feature spec: primary requirement + technical approach from research]
@@ -13,34 +26,35 @@
 ## Technical Context
 
 <!--
-  ACTION REQUIRED: Replace the content in this section with the technical details
-  for the project. The structure here is presented in advisory capacity to guide
-  the iteration process.
+  ACTION REQUIRED: Link the canonical definitions instead of copying them, then
+  list only what this feature changes or still has to decide. Typical links:
+  architecture and dependency direction, dependency manifests, interface
+  schemas, and the command entry point used for checks.
+
+  Write out an item below ONLY when one of these holds:
+  - this feature changes it (a new dependency, a new storage location, a new
+    runtime target)
+  - it is a feature-specific constraint the canonical documents do not cover
+    (a performance budget, a compatibility window, a scale assumption)
+  - it is unresolved — mark it `NEEDS CLARIFICATION` and resolve it in
+    research.md
+
+  Do not restate an unchanged language version, dependency list, test runner,
+  platform, or project type. If nothing in a category changes, omit it.
 -->
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
+**Canonical definitions**: [links to the existing sources this feature inherits]
 
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
-
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
-
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
-
-**Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-
-**Project Type**: [e.g., library/cli/web-service/mobile-app/compiler/desktop-app or NEEDS CLARIFICATION]
-
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
-
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]
-
-**Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
+**Feature-specific context**: [deltas, constraints, and open questions only, or
+"None beyond the canonical definitions"]
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+[Gates determined based on constitution file. If the project has no constitution
+file, check against the repository's agent guide and architecture notes and say
+which rules were checked.]
 
 ## Project Structure
 
@@ -56,52 +70,25 @@ specs/[###-feature]/
 └── tasks.md             # Phase 2 output (/speckit-tasks command - NOT created by /speckit-plan)
 ```
 
-### Source Code (repository root)
+### Source Code
+
 <!--
-  ACTION REQUIRED: Replace the placeholder tree below with the concrete layout
-  for this feature. Delete unused options and expand the chosen structure with
-  real paths (e.g., apps/admin, packages/something). The delivered plan must
-  not include Option labels.
+  ACTION REQUIRED: Name the ownership boundaries this feature touches, the paths
+  it adds, and any structural decision worth defending. Do NOT reproduce the
+  repository tree — link to the architecture notes for the overall layout.
+
+  Only when the repository has no established layout yet (a new project), lay
+  out the directory structure you are choosing here, with real paths rather than
+  placeholder options.
 -->
 
-```text
-# [REMOVE IF UNUSED] Option 1: Single project (DEFAULT)
-src/
-├── models/
-├── services/
-├── cli/
-└── lib/
+**Affected boundaries**: [existing directories or packages this feature changes,
+and what each one owns in it]
 
-tests/
-├── contract/
-├── integration/
-└── unit/
+**New paths**: [paths this feature adds, or "None"]
 
-# [REMOVE IF UNUSED] Option 2: Web application (when "frontend" + "backend" detected)
-backend/
-├── src/
-│   ├── models/
-│   ├── services/
-│   └── api/
-└── tests/
-
-frontend/
-├── src/
-│   ├── components/
-│   ├── pages/
-│   └── services/
-└── tests/
-
-# [REMOVE IF UNUSED] Option 3: Mobile + API (when "iOS/Android" detected)
-api/
-└── [same as backend above]
-
-ios/ or android/
-└── [platform-specific structure: feature modules, UI flows, platform tests]
-```
-
-**Structure Decision**: [Document the selected structure and reference the real
-directories captured above]
+**Structure decision**: [structural choices and why, or "Follows the existing
+layout" with a link]
 
 ## Complexity Tracking
 
@@ -111,3 +98,20 @@ directories captured above]
 |-----------|------------|-------------------------------------|
 | [e.g., 4th project] | [current need] | [why 3 projects insufficient] |
 | [e.g., Repository pattern] | [specific problem] | [why direct DB access insufficient] |
+
+## Implementation Work
+
+<!--
+  ACTION REQUIRED: One `###` subsection per independently reviewable
+  implementation unit; each becomes one child Issue and one implementation PR.
+  State scope, dependencies, and observable acceptance evidence. Do not add
+  persistent task IDs and do not create a separate tasks.md.
+-->
+
+### [Child Issue title]
+
+**Scope**: [what changes in this unit]
+
+**Dependencies**: [other units this one needs, or "None"]
+
+**Acceptance**: [observable evidence that this unit is done]

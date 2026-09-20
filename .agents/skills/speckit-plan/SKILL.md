@@ -66,10 +66,21 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 2. **Load context**: Read FEATURE_SPEC and `.specify/memory/constitution.md`. Load IMPL_PLAN template (already copied).
 
-3. **Execute plan workflow**: Follow the structure in IMPL_PLAN template to:
-   - Fill Technical Context (mark unknowns as "NEEDS CLARIFICATION")
+3. **Locate the canonical definitions**: Before writing anything, find the
+   existing sources of truth for this repository — architecture notes, design
+   docs, dependency manifests, interface schemas, and the entry point used for
+   checks. Every artifact below links to them instead of restating them. When no
+   canonical source exists for something (a new repository, or a gap), record it
+   in the plan and say so.
+
+4. **Execute plan workflow**: Follow the structure in IMPL_PLAN template to:
+   - Fill Technical Context with links to the canonical definitions plus only
+     the feature-specific deltas, constraints, and unknowns (mark unknowns as
+     "NEEDS CLARIFICATION")
    - Fill Constitution Check section from constitution
    - Evaluate gates (ERROR if violations unjustified)
+   - Fill Project Structure with the affected ownership boundaries, new paths,
+     and structural decisions — never a repository-wide tree
    - Phase 0: Generate research.md (resolve all NEEDS CLARIFICATION)
    - Phase 1: Generate data-model.md, contracts/, quickstart.md
    - Re-evaluate Constitution Check post-design
@@ -119,8 +130,10 @@ Command ends after Phase 1 design. Report branch, IMPL_PLAN path, and generated 
 
 1. **Extract unknowns from Technical Context** above:
    - For each NEEDS CLARIFICATION → research task
-   - For each dependency → best practices task
+   - For each dependency **this feature introduces or changes** → best practices task
    - For each integration → patterns task
+   - Skip research on choices the repository has already settled; link to the
+     document that settles them instead
 
 2. **Generate and dispatch research agents**:
 
@@ -136,6 +149,10 @@ Command ends after Phase 1 design. Report branch, IMPL_PLAN path, and generated 
    - Rationale: [why chosen]
    - Alternatives considered: [what else evaluated]
 
+   Open `research.md` with a link to the inherited technology decisions, then
+   record only the decisions this feature adds. Do not re-derive the existing
+   stack.
+
 **Output**: research.md with all NEEDS CLARIFICATION resolved
 
 ### Phase 1: Design & Contracts
@@ -146,15 +163,23 @@ Command ends after Phase 1 design. Report branch, IMPL_PLAN path, and generated 
    - Entity name, fields, relationships
    - Validation rules from requirements
    - State transitions if applicable
+   - Write only the entities this feature adds and the fields it changes on
+     existing ones; say that the rest of the model is unchanged rather than
+     restating it
 
 2. **Define interface contracts** (if project has external interfaces) → `/contracts/`:
    - Identify what interfaces the project exposes to users or other systems
    - Document the contract format appropriate for the project type
    - Examples: public APIs for libraries, command schemas for CLI tools, endpoints for web services, grammars for parsers, UI contracts for applications
+   - Where a machine-readable schema is the source of truth, name it and
+     describe only the endpoints, payloads, and errors this feature adds or
+     changes
    - Skip if project is purely internal (build scripts, one-off tools, etc.)
 
 3. **Create quickstart validation guide** → `quickstart.md`:
    - Document runnable validation scenarios that prove the feature works end-to-end
+   - Link the repository's existing setup and check commands instead of
+     re-documenting them; spell out only steps specific to this feature
    - Include prerequisites, setup commands, test/run commands, and expected outcomes
    - Use links or references to contracts and data model details instead of duplicating them
    - Do not include full implementation code, model/service/controller bodies, migrations, or complete test suites
@@ -172,10 +197,16 @@ Command ends after Phase 1 design. Report branch, IMPL_PLAN path, and generated 
 ## Key rules
 
 - Use absolute paths for filesystem operations; use project-relative paths for references in documentation
+- Link the canonical definition rather than copying it; a plan artifact holds
+  what is specific to this feature, plus whatever has no canonical home yet
+- Every artifact must let a reader reach the canonical sources it relies on
 - ERROR on gate failures or unresolved clarifications
 
 ## Done When
 
 - [ ] Plan workflow executed and design artifacts generated
+- [ ] Artifacts link to the canonical definitions and restate none of them
+- [ ] Feature-specific decisions, contract deltas, data deltas, and the
+      implementation-work units are present in the artifacts
 - [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with branch, plan path, and generated artifacts
