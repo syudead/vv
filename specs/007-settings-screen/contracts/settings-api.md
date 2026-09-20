@@ -1,6 +1,7 @@
 # Settings API Contract
 
-機械可読な正本は実装時に更新する [api/openapi.yaml](../../../api/openapi.yaml) とする。
+実装は最初に機械可読な正本 [api/openapi.yaml](../../../api/openapi.yaml) を更新し、その生成物に
+handlerとclientを合わせる。本書はその変更内容を事前に定める設計契約とする。
 
 ## MediaFolder Resource
 
@@ -43,13 +44,13 @@ playback progressを変更せず、scanも開始しない。
 ```
 
 成功は`200`と更新後resource。path更新と同じtransactionで、そのMediaFolderに属するvideos、FTS、
-jobs、playback progressだけを削除する。他MediaFolderのデータとscan履歴は変更せず、scanも開始しない。
+jobsだけを削除する。全playback progress、他MediaFolderのデータ、scan履歴は変更せず、scanも開始しない。
 同じ正規化pathへのPUTはno-opとし、version加算とDB削除を行わない。
 
 ## DELETE /api/media-folders/{id}?version={version}
 
 既存1件を削除する。成功は`204`。MediaFolder削除と同じtransactionで、そのfolderに属するvideos、
-FTS、jobs、playback progressだけを削除する。他MediaFolderのデータとscan履歴は変更しない。
+FTS、jobsだけを削除する。全playback progress、他MediaFolderのデータ、scan履歴は変更しない。
 
 ## MediaFolder Mutation Errors
 
@@ -57,6 +58,7 @@ FTS、jobs、playback progressだけを削除する。他MediaFolderのデータ
 | ------ | ------------------------------- | ------------------------------------------ |
 | `400`  | `invalid_request`               | JSON、version、path形式が不正              |
 | `400`  | `invalid_media_directory`       | 存在しない、directoryでない、読取不能      |
+| `400`  | `unsupported_media_directory`   | symlinkまたはfilesystem/drive root         |
 | `404`  | `media_folder_not_found`        | PUT/DELETE対象が存在しない                 |
 | `409`  | `overlapping_media_directories` | 重複または別resourceと祖先・子孫関係がある |
 | `409`  | `scan_in_progress`              | 走査中                                     |
@@ -70,7 +72,7 @@ FTS、jobs、playback progressだけを削除する。他MediaFolderのデータ
 - path省略: Linuxでは`/`、Windowsでは利用可能なdrive rootsを`directories`に返す
 - path指定: 正規化した絶対pathを`currentPath`、親を`parentPath`、直下directoryを返す
 - directory entryは`{ name, path }`
-- ファイルを返さない
+- ファイルとsymlinkを返さない
 - 応答は`Cache-Control: no-store`
 
 | Status | Code                    | Condition                      |
@@ -86,12 +88,16 @@ FTS、jobs、playback progressだけを削除する。他MediaFolderのデータ
 - scan開始時のMediaFolder snapshotを最後まで使う
 - 全rootを1回のscanとして扱い、root境界判定を変更・削除・streamと共通化する
 - 一部root/directory/fileのI/O失敗はfailed countへ記録し、残りを継続する
+- root列挙失敗時はroot全体、subtree失敗時はそのprefix、file失敗時はそのpathをmissing削除から除外する
 - 継続不能なerror、panic、cancelはscanをfailedへ確定する
 - panicをHTTP server processへ伝播させない
 
 ## Runtime
 
 - `MDM_MEDIA_DIR` と `MDM_SCAN_ON_START` は読まない。
+- directory APIとfolder mutationは認証導入前のtrusted-network運用に限定する。
+- CORSを許可せず、全mutationをsame-originに限定し、POST/PUTは`application/json`だけを受理する。
 - MediaFolder追加後も既存ライブラリAPIの結果を維持する。
 - MediaFolder変更・削除後は対象folder由来の動画だけを結果から除く。
+- folder操作後も再生位置と視聴済み状態を維持する。
 - 次の手動scan完了後に現在の全MediaFolderの結果を返す。

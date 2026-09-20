@@ -25,24 +25,27 @@ atomic operationにする。一覧全体のPUT、draft、global version、並び
 - 新規追加はMediaFolderをinsertするだけで、既存ライブラリDBを変更しない
 - 既存folderのpath変更は、そのfolder由来のDBデータ削除とpath更新を1transactionで行う
 - 削除は、そのfolder由来のDBデータ削除とfolder行削除を1transactionで行う
-- 他folder由来の動画、job、再生状態と完了済みscan履歴は変更しない
+- 全folderの再生位置・視聴済み状態、他folder由来の動画・job、完了済みscan履歴は変更しない
 
 対象videoは、正規化済みpathが旧root配下にあるかをOS規則に従う共通helperで判定する。
 `videos`へfolder IDを追加せず、migrationや新規追加で既存videoを更新しない。対象videosの削除で
-FTSとjobsをcascadeし、対象content keyのplayback progressもtransaction内で削除する。
-thumbnail filesはcommit後にbest-effortでcleanupする。
+FTSとjobsをcascadeする。`playback_progress`は同じcontentが再発見されたときに戻す再構築不能な
+利用者データなので削除しない。thumbnail filesはcommit後にbest-effortでcleanupする。
 
 **Rationale**: 追加済みfolderのデータは新規rootを増やしても有効であり、全削除する理由がない。
 
 ## R-704: サーバー側directory browserを提供する
 
 **Decision**: APIが返すserver filesystemのdirectoryを辿るfolder pickerを実装する。path省略時は
-Linux rootまたはWindows driveを返し、以後は親と直下directoryを返す。ファイルを返さない。
+Linux rootまたはWindows driveをnavigation起点として返し、以後は親と直下の実directoryを返す。
+filesystem rootとdrive rootは登録不可とする。`Lstat`でsymlinkを候補から除き、scannerもリンクを
+辿らない。
 
 ## R-705: 選択時と操作実行時の両方で検証する
 
-**Decision**: listing時に読取可能性を確認し、POST/PUT時にも対象pathの存在・directory・readableと
-全既存folderに対する重複・包含を再検証する。API pathはOSの絶対・正規化済み表現とする。
+**Decision**: listing時に読取可能性を確認し、POST/PUT時にも`Lstat`で対象pathの存在・実directory・
+readable・非filesystem-rootと、全既存folderに対する重複・包含を再検証する。API pathはOSの
+絶対・正規化済み表現とする。
 
 ## R-706: 非同期走査を失敗境界で閉じる
 
@@ -51,6 +54,8 @@ Linux rootまたはWindows driveを返し、以後は親と直下directoryを返
 - scan開始時にfolder一覧をsnapshotする
 - rootを1件ずつ処理し、1rootの失敗で残りrootを止めない
 - directory/file単位の消失・permission・stat/open失敗をfailed countとlogへ記録して継続する
+- root列挙失敗時はroot全体、subtree失敗時はそのprefix、file失敗時はそのpathの既存索引を保持する
+- missing削除は完全に列挙できた範囲だけに適用し、scan全体のfatal error時は実行しない
 - DB更新など継続不能なerrorはscan全体をfailedにする
 - goroutine最上位でdeferによるfinalizeとpanic recoveryを行う
 - panic/error/cancelの全出口でrunning scanをdoneまたはfailedへ確定し、processへpanicを伝播させない
@@ -61,3 +66,23 @@ Linux rootまたはWindows driveを返し、以後は親と直下directoryを返
 
 **Decision**: PUTとDELETEは対象MediaFolderのexpected versionを要求し、同じ行への古い操作を409にする。
 POSTはpathのunique・overlap検証で競合を処理する。
+
+## R-708: 非同期jobの古い結果をidentity条件で拒否する
+
+**Decision**: workerは処理開始時の`video_id`と`content_key`を保持し、probe・thumbnailの全write-backを
+両方の一致で条件付ける。0行更新は、folder変更・削除またはvideo差し替え後のstale resultとして
+正常に破棄する。
+
+**Rationale**: SQLiteのID再利用や同じIDの内容差し替えが起きても、旧外部processの結果を現在の
+別videoへ書き込ませないため。
+
+## R-709: directory APIは既存のtrusted-network境界を引き継ぐ
+
+**Decision**: 認証は既存roadmapどおり別featureとし、本機能だけの独自認証や新しいpath allowlist
+設定は追加しない。認証導入までは家庭内の信頼できるnetworkだけで運用し、CORSを許可せず、
+全mutationをsame-originに限定し、POST/PUTは`application/json`だけを受理する。public exposureは
+非対応と明記する。
+
+**Rationale**: directory APIは既存アプリよりfilesystem情報を多く扱うが、認証方式をこのfeature内で
+部分実装するとアプリ全体のaccess boundaryが分裂する。既存の明示的な脅威モデルを維持しつつ、
+browser由来のcross-origin操作は拒否する。

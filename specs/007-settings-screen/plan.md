@@ -36,6 +36,7 @@ folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存
 - 技術判断: [research.md](research.md)
 - データ差分: [data-model.md](data-model.md)
 - API差分: [contracts/settings-api.md](contracts/settings-api.md)
+- 実行状況: [docs/exec-plans/active/013-settings-screen.md](../../docs/exec-plans/active/013-settings-screen.md)
 
 新規外部依存は追加しない。filesystem操作はGo標準ライブラリを使う。
 
@@ -46,6 +47,7 @@ folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存
 - 新規追加transactionから既存ライブラリtableへ書き込まない
 - APIはOpenAPIを先に変更し、生成物を手編集しない
 - directory APIは選択に必要なdirectory情報だけを公開する
+- directory APIは既存trusted-network境界を引き継ぎ、CORSとcross-origin mutationを許可しない
 - 設定項目をメディアフォルダ以外へ広げない
 - UI実装PRは既存の画像確認手順に従う
 
@@ -70,20 +72,23 @@ folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存
 - video pathのroot所属判定を共通化し、変更・削除とstream・scannerで同じ境界規則を使う
 - 追加、既存path変更、削除を別々のstore transactionとして実装する
 - 追加時は既存videos、FTS、jobs、scans、playback progressを変更しない
-- 変更・削除時は旧root配下のvideos、FTS、jobs、playback progressだけを削除する
+- 変更・削除時は旧root配下のvideos、FTS、jobsだけを削除する
+- folder操作では全`playback_progress`と完了済みscan履歴を維持する
 - videos schemaと既存video rowsをmigrationや新規追加で変更しない
 - 他folderのデータと完了済みscan履歴を維持する
+- workerのprobe・thumbnail書き戻しを`video_id`と`content_key`の一致で条件付ける
 - 対象thumbnail filesをcommit後にcleanupし、失敗を安全に記録する
 - 0件でscanを開始せず、走査は開始時の全root snapshotを使う
 - root/directory/file単位のI/O失敗を記録して可能な範囲を継続する
+- root/subtree/fileの列挙失敗範囲をmissing削除から除外する
 - goroutine境界でpanicを回収し、必ずscanをdone/failedへ確定してrunningを残さない
 - `MDM_MEDIA_DIR`、`MDM_SCAN_ON_START`、起動時走査をコード・設定・文書から削除する
 
 **Dependencies**: なし。
 
 **Acceptance**: 新規追加後も既存ライブラリが変わらず、既存1件の変更・削除後はそのfolder由来の
-DBデータだけが消える。次の手動走査が全rootを処理し、一部I/O失敗またはpanicでもprocess crashと
-永続running scanを残さない。
+再構築可能なDBデータだけが消え、再生状態は残る。次の手動走査が全rootを処理し、一部I/O失敗で
+既存索引を誤削除せず、panicでもprocess crashと永続running scanを残さない。
 
 ### メディアフォルダ・ディレクトリ選択 API
 
@@ -94,7 +99,9 @@ DBデータだけが消える。次の手動走査が全rootを処理し、一�
 - 一覧全体のPUTを提供しない
 - PUT/DELETEは行単位versionで同時変更を検出する
 - directory APIはroot/drive、現在位置、親、子directoryだけを返す
-- 無効directory、重複・包含、走査中、対象消失、版競合を機械可読errorへ変換する
+- directory listingとPOST/PUTはsymlinkを拒否し、filesystem/drive rootを登録不可にする
+- 無効directory、symlink、root、重複・包含、走査中、対象消失、版競合を機械可読errorへ変換する
+- 全mutationをsame-originに限定し、POST/PUTはJSONだけを受理してCORS responseを追加しない
 - OpenAPIからGo/TypeScriptを再生成し、Web API clientとcontract testsを追加する
 
 **Dependencies**: メディアフォルダ個別操作・対象別無効化・安全な走査。
