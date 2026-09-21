@@ -58,6 +58,9 @@ A technical constraint is never a reason to narrow the design (Q-7).
    check the implementation PR will have to show, so the screenshots asked for
    in [docs/how-to/ui-change-screenshots.md](../../../../docs/how-to/ui-change-screenshots.md)
    have something to be judged against.
-6. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
-7. After human merge, the maintainer marks Design complete and sets
+6. Run the [`self-review` skill](../../self-review/SKILL.md) over the whole diff.
+   Reconcile every stated behaviour against `spec.md` and the existing design
+   system rules, which this artifact narrows more often than it contradicts.
+7. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
+8. After human merge, the maintainer marks Design complete and sets
    `Next: plan-to-issues`.

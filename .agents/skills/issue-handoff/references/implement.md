@@ -11,9 +11,12 @@ Read [README.md](README.md) first. Input is one native child Issue.
 5. Run focused checks and the repository checks required by the change. For UI
    work, follow `docs/how-to/ui-change-screenshots.md` and `ui-design.md`, and
    include screenshots plus visual, interaction, and accessibility review.
-6. Push and open a feature-branch PR with `Refs #<child>`, checks, and remaining
+6. Run the [`self-review` skill](../../self-review/SKILL.md) over the whole diff
+   against the feature branch. Fix what it finds, re-run the checks from step 5,
+   and carry anything it defers into the PR body.
+7. Push and open a feature-branch PR with `Refs #<child>`, checks, and remaining
    risks in the body. Stop.
-7. After human merge, the maintainer closes the child as completed. This means
+8. After human merge, the maintainer closes the child as completed. This means
    implemented on the feature branch; the parent closes only when the
    integration PR reaches `main`.
 
