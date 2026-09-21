@@ -3,16 +3,20 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+import { generateMediaFixtures } from "./media-fixtures.mjs";
+
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(webRoot, "..");
 const runRoot = path.join(repoRoot, ".local", "e2e", `${Date.now()}-${process.pid}`);
 const outputDir = path.join(runRoot, "bin");
 const output = path.join(outputDir, process.platform === "win32" ? "mdm.exe" : "mdm");
 const mediaDir = path.join(runRoot, "media");
+const settingsMediaDir = path.join(runRoot, "settings-media");
 
 function run() {
   mkdirSync(outputDir, { recursive: true });
   try {
+    generateMediaFixtures(mediaDir);
     const build = spawnSync(
       "go",
       ["build", "-buildvcs=false", "-o", output, "./cmd/mdm"],
@@ -38,6 +42,7 @@ function run() {
         ...process.env,
         MDM_E2E_RUN_ROOT: runRoot,
         MDM_E2E_MEDIA_DIR: mediaDir,
+        MDM_E2E_SETTINGS_MEDIA_DIR: settingsMediaDir,
       },
       stdio: "inherit",
     });
