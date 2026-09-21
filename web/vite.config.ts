@@ -16,7 +16,9 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: "http://localhost:8080",
-        changeOrigin: true,
+        // Preserve the browser-facing Host so the API's Origin check sees
+        // localhost:5173 on both sides during development.
+        changeOrigin: false,
       },
     },
   },
