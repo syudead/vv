@@ -60,7 +60,7 @@ request時probeはstream indexと`disposition.attached_pic`を取得し、最初
 audio streamだけを出力し、その他のvideo、subtitle、data streamは含めない。取り込み時probeも同じ
 非添付video選択規則を使う。
 
-resolution renditionは追加しない。transcode request開始時にffprobeで下記属性を取得し、判定結果は
+解像度選択や複数renditionは追加しない。transcode request開始時にffprobeで下記属性を取得し、判定結果は
 永続化しない。属性が欠落・未知・範囲外ならcopyせずencodeする。
 
 ### Selective mode
@@ -69,14 +69,24 @@ resolution renditionは追加しない。transcode request開始時にffprobeで
 
 | Input stream | Output action |
 | --- | --- |
-| H.264 Baseline/Constrained Baseline/Main/High、level 5.1以下、8-bit `yuv420p` | copy |
+| H.264 Baseline/Constrained Baseline/Main/High、level 5.1以下、8-bit `yuv420p`、下記output envelope内 | copy |
 | 上記を全て確認できないvideo | H.264 (`libx264`, `yuv420p`, `preset=veryfast`, `crf=23`) |
 | AAC-LC、1〜2 channel、8〜48 kHz | copy |
-| 上記を全て確認できないaudio | AAC-LC stereo 192kbps |
+| 上記を全て確認できないaudio | AAC-LC stereo 192kbps、48 kHz |
 | audioなし | audioを出力しない |
 
-H.264 encode時は`pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p`を適用する。奇数の幅・高さだけ右端・
-下端へ最大1px補い、元の映像内容は拡大・縮小しない。
+### Video output envelope
+
+H.264 encodeはHigh profile、level 5.1を明示し、出力を次の全条件へ収める。
+
+- 幅3840以下、高さ2160以下。超える入力だけ縦横比を維持して縮小し、拡大しない
+- 幅と高さを偶数にする。縮小不要な奇数寸法は右端・下端へ最大1px padする
+- frame rateは60fps以下、かつ`ceil(width/16) * ceil(height/16) * fps <= 983040`。超える場合だけ
+  frameを間引き、入力frame rateが不明なら30fpsとする
+- 8-bit `yuv420p`。scale/pad後も元のdisplay aspect ratioを維持する
+
+これにより3840x2160は最大約30fps、1920x1080は60fpsを維持できる。互換性判定時もwidth、height、
+frame rateを同じenvelopeと照合し、範囲外または不明ならcopyしない。
 
 ### Normalize mode
 

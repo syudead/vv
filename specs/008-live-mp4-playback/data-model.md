@@ -56,13 +56,14 @@ directからの切替時は`logicalPositionMs`と`playIntended`を保持する�
 | `audioAction` | `none` / `copy` / `aac` | 音声なしは`none` |
 
 `selective`は既知の非対応動画を`startMs=0`から再生する場合だけ使う。request時probeでprofile、level、
-pixel format、bit depth、寸法、AAC profile、sample rate、channel数、stream index、attached-pic dispositionを
-取得する。最初の非添付videoを本編として選び、互換性をすべて確認できたstreamだけをcopyする。結果は
-request終了時に破棄する。
+pixel format、bit depth、寸法、frame rate、AAC profile、sample rate、channel数、stream index、
+attached-pic dispositionを取得する。最初の非添付videoを本編として選び、互換性をすべて確認できた
+streamだけをcopyする。結果はrequest終了時に破棄する。
 
 `normalize`はdirect再生可能と判定済みの動画、または`startMs>0`のrequestに使う。映像と存在する音声を
-互換設定へ変換し、正確なseekのため要求位置より前のframe/sampleを捨てる。H.264 encode時は奇数の幅・
-高さだけ右端・下端へ最大1px paddingし、映像内容はscaleしない。
+互換設定へ変換し、正確なseekのため要求位置より前のframe/sampleを捨てる。H.264 encodeは最大
+3840x2160、最大60fps、Level 5.1のmacroblock rate以内へ必要な場合だけ縮小・frame間引きを行い、
+奇数寸法は最大1px paddingする。AAC encodeは48 kHzにresampleする。
 
 ## Transcode Process
 

@@ -54,22 +54,24 @@ offsetを加えた時間軸を提示している。
 ## R-203: codec選択は互換属性をrequest時に検査する
 
 **Decision**: transcode requestの開始時にffprobeを実行し、stream index、`disposition.attached_pic`、codec名、
-profile、level、pixel format、bit depth、寸法、AAC profile、sample rate、channel数を取得する。最初の
-非添付video streamを本編として明示indexでmapし、添付画像しかなければ失敗させる。取り込み時probeも
-同じ選択規則を使う。
+profile、level、pixel format、bit depth、寸法、frame rate、AAC profile、sample rate、channel数を取得する。
+最初の非添付video streamを本編として明示indexでmapし、添付画像しかなければ失敗させる。取り込み時
+probeも同じ選択規則を使う。
 
 H.264はBaseline/Constrained Baseline/Main/High、8-bit `yuv420p`、level 5.1以下をすべて確認できた場合だけ
 copyする。AACはLC、1〜2 channel、8〜48 kHzをすべて確認できた場合だけcopyする。値が欠落・未知・
 範囲外なら対応streamをencodeする。このrequest時probe結果は永続化しない。
 
-映像変換は`libx264`/`yuv420p`/`preset veryfast`/`crf 23`とし、encode時だけ
-`pad=ceil(iw/2)*2:ceil(ih/2)*2`で右端・下端を最大1px補って偶数寸法にする。映像内容を拡大・縮小
-しない。音声変換はAAC-LC stereo 192kbpsとする。字幕/data streamは出力しない。
+映像変換は`libx264`/High profile/level 5.1/`yuv420p`/`preset veryfast`/`crf 23`とする。最大3840x2160、
+最大60fps、かつLevel 5.1の983,040 macroblocks/秒以内へ、超過時だけ縦横比を保って縮小またはframeを
+間引く。奇数寸法は右端・下端を最大1px補い、入力を拡大しない。音声変換はAAC-LC stereo 192kbps、
+48 kHzとする。字幕/data streamは出力しない。
 
 **Rationale**: codec名だけではHigh 4:4:4 Predictiveや10-bit H.264を一般的なbrowser向けH.264と
 区別できない。保守的な属性allowlistなら、containerだけが問題の互換streamは品質を保ってcopyしつつ、
-判定できないstreamを安全側でencodeできる。`yuv420p` encodeは奇数寸法で失敗するため、必要な場合だけ
-最大1pxのpaddingを加える。
+判定できないstreamを安全側でencodeできる。encode後にも同じ互換範囲を外れないよう、sample rate、
+寸法、frame rate、profile/levelを出力側で固定する。`yuv420p` encodeは奇数寸法で失敗するため、必要な
+場合だけ最大1pxのpaddingを加える。
 
 **Alternatives considered**:
 
@@ -85,6 +87,14 @@ copyする。AACはLC、1〜2 channel、8〜48 kHzをすべて確認できた場
 - [FFmpeg pad filter](https://ffmpeg.org/ffmpeg-filters.html#pad-1)
 - [MDN Web video codec guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Video_codecs)
 - [Stash stream codec selection](https://github.com/stashapp/stash/blob/develop/pkg/ffmpeg/stream_transcode.go)
+
+出力envelopeのLevel 5.1上限はH.264 Table A-1のMaxFS 36,864 macroblocks/frame、MaxMBPS 983,040
+macroblocks/秒に従う。3840x2160を寸法上限にし、低解像度では60fpsまで維持することで、全入力を一律
+30fpsへ落とさない。
+
+**Additional primary source**:
+
+- [ITU-T H.264 Recommendation](https://www.itu.int/rec/T-REC-H.264)
 
 ## R-204: processはHTTP requestが単独所有する
 
