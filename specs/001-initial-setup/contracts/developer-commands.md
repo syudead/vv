@@ -9,14 +9,16 @@
 | --------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------ |
 | `task up`       | Task・Docker                            | イメージを構築してアプリケーションを起動する。**導入手順の最初に実行する唯一のコマンド**            | FR-001 / SC-001          |
 | `task down`     | Task・Docker                            | 起動したものを停止・削除する                                                                        | —                        |
-| `task dev`      | Task・PowerShell 7.4・Go・Node・ffmpeg | Go サーバーと Vite の開発サーバーを起動する（変更の即時反映用）                                     | —                        |
-| `task build`    | Task・PowerShell 7.4・Go・Node         | SPA をビルドして埋め込み、単一バイナリを生成する                                                    | —                        |
-| `task generate` | Task・PowerShell 7.4・Go・Node         | `api/openapi.yaml` から Go と TypeScript の型を生成する                                             | FR-012                   |
-| `task fmt`      | Task・PowerShell 7.4・Go・Node         | 書式を整える                                                                                        | FR-011                   |
-| `task lint`     | Task・PowerShell 7.4・Go・Node         | `golangci-lint`（depguard を含む）と Web の静的検査                                                 | FR-010 / FR-011 / FR-013 |
-| `task test`     | Task・PowerShell 7.4・Go・Node         | Go のテストと Web の単体テスト                                                                      | FR-011 / FR-014          |
-| `task test-e2e` | Task・PowerShell 7.4・Go・Node・ffmpeg・Chromium | GoサーバーとVite proxyを通る主要操作を実ブラウザで検証する                                  | FR-011 / FR-014          |
-| `task check`    | Task・Go・Node・PowerShell 7.4・Git・bash | ローカル開発スクリプトとTaskタスクの回帰検査 → `fmt` の差分確認 → `lint` → `test` → 生成物の差分確認 → 適用済みマイグレーションの不変性 を順に実行 | FR-011 / SC-002          |
+| `task doctor`   | Task・Go                                | 手元に必要な外部コマンドが揃っているかを調べる。必須が欠けていれば失敗する                          | —                        |
+| `task setup`    | Task・Go・Node・jq                      | Go module、npm 依存、検査ツール、ビルドキャッシュを先に用意する。npm 依存は毎回入れ直す             | —                        |
+| `task dev`      | Task・Go・Node・ffmpeg                  | Go サーバーと Vite の開発サーバーを起動する（変更の即時反映用）                                     | —                        |
+| `task build`    | Task・Go・Node                          | SPA をビルドして埋め込み、単一バイナリを生成する                                                    | —                        |
+| `task generate` | Task・Go・Node                          | `api/openapi.yaml` から Go と TypeScript の型を生成する                                             | FR-012                   |
+| `task fmt`      | Task・Go・Node・jq                      | 書式を整える                                                                                        | FR-011                   |
+| `task lint`     | Task・Go・Node・jq                      | `golangci-lint`（depguard を含む）と Web の静的検査                                                 | FR-010 / FR-011 / FR-013 |
+| `task test`     | Task・Go・Node                          | Go のテストと Web の単体テスト                                                                      | FR-011 / FR-014          |
+| `task test-e2e` | Task・Go・Node・ffmpeg・Chromium        | GoサーバーとVite proxyを通る主要操作を実ブラウザで検証する                                          | FR-011 / FR-014          |
+| `task check`    | Task・Go・Node・jq・Git・bash           | `fmt` の差分確認 → `lint` → `test` → 生成物の差分確認 → 適用済みマイグレーションの不変性 → Windows 向けビルドの成立 を順に実行 | FR-011 / SC-002          |
 
 ## 約束
 
@@ -32,5 +34,15 @@
 ## 依存ツールの導入
 
 `task up` 以外のタスクはホストに Go・Node・ffmpeg を要求する。`task check` はさらに
-PowerShell 7.4・Git・bash を要求する。README には
+jq・Git・bash を要求する。README には
 `task up` だけを「必ず動く道」として示し、その他は開発者向けの補足として扱う。
+
+判断や後始末を伴う処理は `scripts/` の Go プログラムに置く。Taskfile へ直接書くのは、
+外部コマンドを順に並べるだけで済む目標に限る。検査のためだけに別のランタイム
+（かつての PowerShell 7.4）を前提にしない。
+
+Go に置くと、その中身を `task test` の `go test ./...` が検証できる。現に検証して
+いるのは各プログラムの判断部分である —— `doctor` の合否と終了コード、`generate` の
+生成物の差分判定と失敗時の打ち切り、`build` の `web/dist` の退避と復元、`dev` の
+出力の行送り。外部コマンドを実際に起動する経路は対象外で、そこは `task check` 自身が
+通ることで確かめる。

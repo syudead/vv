@@ -67,14 +67,14 @@ MDM_MEDIA_HOST_DIR=/path/to/videos task up
 
 ## Developer commands
 
-`task up` 以外のタスクはホストに Go・Node・`ffmpeg` を要求する。「必ず動く道」は
+`task up` 以外のタスクはホストに Go・Node・`ffmpeg` を要求し、検査は加えて
+`jq`・Git・bash を使う。「必ず動く道」は
 `task up` だけで、以下は開発者向けの補足である。タスクの契約は
 [specs/001-initial-setup/contracts/developer-commands.md](specs/001-initial-setup/contracts/developer-commands.md)。
 
 ### ローカル開発環境
 
-Go・Node・task・jq のバージョンは `mise.toml` に固定している。task の実行には
-PowerShell 7.4 以上（`pwsh`）が必要である。`mise` を使う場合は
+Go・Node・task・jq のバージョンは `mise.toml` に固定している。`mise` を使う場合は
 最初に次を実行する。
 
 ```bash
@@ -88,24 +88,24 @@ mise exec --command "task doctor"
 `http://localhost:5173` を開く。終了は Ctrl+C。
 変更の検証は `mise exec --command "task check"` で実行する。
 検査ツールの版は `scripts/tool-versions.json` と `mise.toml` に固定する。
-`task check` はアプリの検査に加えて PowerShell の回帰テストを実行する。
-CI でもアプリの検査と、Windows / Linux の PowerShell 回帰テストを実行する。
+判断や後始末を伴う開発者コマンドの実体は `scripts/` の Go プログラムに置き、
+その判断部分は `task check` の `go test ./...` が検証する。追加のシェルや
+ランタイムは要らない。
 Windows で `task setup` を再実行するときは、先に開発サーバーを停止する。
 起動中はネイティブ依存のファイルがロックされ、npm ci が失敗するためである。
 Go と Web のソースは `.gitattributes` で LF に固定し、Windows の改行変換による
 整形エラーを防ぐ。既存のチェックアウトで CRLF が残っている場合は、
-`mise exec --command "gofmt -w cmd internal web/embed.go"` と
-`mise exec --command "npm --prefix web run format"` で整形する。
+`mise exec --command "task fmt"` で整形する。
 
 `Taskfile.yml` が開発者コマンドの唯一の入口である。`mise activate` 済みの shell では
 `task setup` のように直接呼べる。
 
-| 入口                                 | 内容                                                         |
-| ------------------------------------ | ------------------------------------------------------------ |
-| `task doctor` / `scripts/doctor.ps1` | Go・Node・ffmpeg・bash・Docker などの有無を確認する          |
-| `task setup` / `scripts/setup.ps1`   | Go module、npm 依存、lint ツール、ビルドキャッシュを準備する |
-| `task dev` / `scripts/dev.ps1`       | Go サーバーと Vite 開発サーバーを PowerShell で起動する      |
-| `task check`                         | 静的検査、テスト、生成物とマイグレーションをまとめて検証する |
+| 入口           | 実体                    | 内容                                                         |
+| -------------- | ----------------------- | ------------------------------------------------------------ |
+| `task doctor`  | `go run ./scripts/doctor` | Go・Node・ffmpeg・jq・bash・Docker などの有無を確認する      |
+| `task setup`   | Taskfile                | Go module、npm 依存、lint ツール、ビルドキャッシュを準備する |
+| `task dev`     | `go run ./scripts/dev`  | Go サーバーと Vite 開発サーバーを同時に起動する              |
+| `task check`   | Taskfile                | 静的検査、テスト、生成物とマイグレーションをまとめて検証する |
 
 `ffmpeg` / `ffprobe`、Docker、bash は OS 側のツールであり、`mise.toml`
 だけでは完結しない。足りないものは `task doctor` の出力に従って導入する。
@@ -124,7 +124,7 @@ Windows で Go バイナリを直接動かす場合、`MDM_DATA_DIR` はドラ�
 | `task lint`             | `golangci-lint`（depguard を含む）と Web の型検査                             |
 | `task test`             | Go のテストと Web のビルド検証                                                |
 | `task test-e2e`         | Go・Vite・Chromiumを起動し、主要な画面操作を実ブラウザで検証する              |
-| `task check`            | 静的検査、単体テスト、生成物、マイグレーション、ローカル開発スクリプトをまとめて検証する |
+| `task check`            | 静的検査、単体テスト、生成物、マイグレーションをまとめて検証する               |
 
 CI はこの表の `task check` と `task test-e2e` だけを実行する。CI 側に検査を並べず、
 目標そのものを呼ぶことで、手元と CI の判定を一致させている。
@@ -164,6 +164,7 @@ Claude Code on the web でセッションを開くと、`.claude/hooks/session-s
 │       ├── api/            # 生成型を使う fetch ラッパと一覧のフック
 │       ├── components/     # 一覧の1件、取り込みの進捗
 │       └── pages/          # 一覧（/）と再生（/videos/:id）
+├── scripts/                # 開発者コマンドの実体（Go）と固定した検査ツールの版
 ├── docs/
 │   ├── design-docs/
 │   ├── exec-plans/
