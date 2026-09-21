@@ -202,14 +202,14 @@ type DirectoryListing struct {
 
 // Error defines model for Error.
 type Error struct {
-	// Code 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （make generate）。新しい種別はまずここへ足す。
+	// Code 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 	Code ErrorCode `json:"code"`
 
 	// Message 人が読むための説明。利用者にそのまま提示してよい文言にする
 	Message string `json:"message"`
 }
 
-// ErrorCode 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （make generate）。新しい種別はまずここへ足す。
+// ErrorCode 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 type ErrorCode string
 
 // Health defines model for Health.

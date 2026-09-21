@@ -1,6 +1,16 @@
 version: "3"
 
 tasks:
+  default:
+    cmds:
+      - task: help
+
+  help:
+    desc: List available developer commands.
+    cmds:
+      - task --list
+    silent: true
+
   doctor:
     desc: Check the local development environment.
     cmds:
@@ -11,16 +21,6 @@ tasks:
     cmds:
       - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1
 
-  dev:
-    desc: Run the Go server and Vite dev server.
-    cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
-
-  check:
-    desc: Run application checks and PowerShell regression tests, also covered by CI.
-    cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/check.ps1
-
   up:
     desc: Build and run the Docker Compose app.
     cmds:
@@ -30,3 +30,116 @@ tasks:
     desc: Stop the Docker Compose app.
     cmds:
       - docker compose down --remove-orphans
+
+  dev:
+    desc: Run the Go server and Vite development server.
+    deps: [web-deps]
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
+
+  build:
+    desc: Build the SPA and the single Go binary.
+    deps: [web-deps]
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
+
+  generate:
+    desc: Generate Go and TypeScript types from OpenAPI.
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/generate.ps1
+
+  fmt:
+    desc: Format Go and Web sources.
+    deps: [web-deps]
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
+
+  lint:
+    desc: Run all static analysis.
+    cmds:
+      - task: lint-go
+      - task: lint-web
+
+  test:
+    desc: Run Go and Web tests.
+    cmds:
+      - task: test-go
+      - task: test-web
+
+  check:
+    desc: Run every check that does not require a browser.
+    cmds:
+      - task: test-local-dev
+      - task: fmt-check
+      - task: lint
+      - task: test
+      - task: generate-check
+      - task: migrations-check
+      - 'echo "check: all checks passed (browser checks are in task test-e2e)"'
+
+  test-local-dev:
+    desc: Test the PowerShell local-development scripts.
+    cmds:
+      - pwsh -NoLogo -NoProfile -File scripts/local-dev.tests.ps1
+
+  fmt-check:
+    desc: Check Go and Web formatting without changing files.
+    cmds:
+      - task: fmt-check-go
+      - task: fmt-check-web
+
+  fmt-check-go:
+    desc: Check Go formatting.
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/format-check-go.ps1
+
+  fmt-check-web:
+    desc: Check Web formatting.
+    deps: [web-deps]
+    cmds:
+      - npm --prefix web run format:check
+
+  lint-go:
+    desc: Run golangci-lint, including dependency rules.
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/lint-go.ps1
+
+  lint-web:
+    desc: Run Web static analysis.
+    deps: [web-deps]
+    cmds:
+      - npm --prefix web run lint
+
+  test-go:
+    desc: Run Go tests.
+    cmds:
+      - go test ./...
+
+  test-web:
+    desc: Run the Web build check and unit tests.
+    deps: [web-deps]
+    cmds:
+      - npm --prefix web run test
+
+  test-e2e:
+    desc: Run browser end-to-end tests through Go and Vite.
+    deps: [web-deps]
+    cmds:
+      - npm --prefix web run test:e2e
+
+  generate-check:
+    desc: Check that committed generated files match OpenAPI.
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/generate-check.ps1
+
+  migrations-check:
+    desc: Check that applied migrations have not been changed.
+    cmds:
+      - bash scripts/migrations-immutable.sh
+
+  web-deps:
+    internal: true
+    status:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/web-deps.ps1 -Check
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/web-deps.ps1

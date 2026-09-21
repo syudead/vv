@@ -41,7 +41,7 @@
 **Storage**: 新しい永続化は `localStorage` の 1 鍵（`vv.view.v1`）だけ。SQLite の表は
 変わらず、`api/openapi.yaml` も変わらない（[data-model.md](./data-model.md)）
 
-**Testing**: `vitest run`（`jsdom`）を `make test-web` に追加する。対象は本機能の純粋な
+**Testing**: `vitest run`（`jsdom`）を `task test-web` に追加する。対象は本機能の純粋な
 部品 3 つ（対比の検査・表示設定の読み書き・一覧の復元）と、TD-004 が名指しした既存の
 3 点（カーソル引き継ぎ・検索の待ち合わせと打ち切り・再生位置の送信）。画面の見た目・
 画面幅・読み上げ・反応時間は受け入れ検証（[quickstart.md](./quickstart.md) S3〜S8）で
@@ -139,7 +139,7 @@ web/src/
   + useVideos.test.ts        # TD-004 の 1 点目（カーソル引き継ぎ）
   ~ client.ts                # 変更しない（FR-025 の防波堤）
 
-~ Makefile                   # test-web に vitest run を足す
+~ Taskfile.yml               # test-web に vitest run を足す
 ~ ARCHITECTURE.md            # Web 層の記述（見た目の規則の置き場、テスト基盤）
 ~ docs/exec-plans/tech-debt.md   # TD-004 を解消済みにする
 ~ docs/screenshots/          # 新しい 4 枚（quickstart S10）

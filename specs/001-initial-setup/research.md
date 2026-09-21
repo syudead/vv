@@ -71,9 +71,9 @@ trigram トークナイザは3文字単位で索引を作るため、2文字以�
 
 ## R-003: 「1コマンドで起動」を何にするか
 
-**Decision**: `make up`（実体は `docker compose up --build`）を正の起動導線とする。
-ホストに必要なのは Docker のみ。開発中の再読み込み用に `make dev`（Go と Vite を
-それぞれ起動）を併置するが、導入手順の先頭に置くのは `make up` とする。
+**Decision**: `task up`（実体は `docker compose up --build`）を正の起動導線とする。
+ホストに必要なのは Task と Docker。開発中の再読み込み用に `task dev`（Go と Vite を
+それぞれ起動）を併置するが、導入手順の先頭に置くのは `task up` とする。
 
 **Rationale**: SC-001 は「導入手順のみで15分以内・コマンド1つ」。`ffmpeg` や Go の
 導入をホストに求めると15分に収まらないうえ、環境差で失敗する。コンテナ内に
@@ -137,10 +137,10 @@ SQL ファイルを `embed.FS` で同梱して起動時に自動適用する。C
 **Decision**: `runtime/debug.ReadBuildInfo()` から `vcs.revision` と `vcs.time` を読む。
 リリース名だけ `-ldflags "-X main.version=…"` で上書き可能にし、既定値は `dev`。
 
-**Rationale**: コミットと時刻はビルド時に Go が自動で埋めるため、Makefile に
+**Rationale**: コミットと時刻はビルド時に Go が自動で埋めるため、Taskfile.yml に
 `git rev-parse` を書かずに済む。FR-002／稼働情報の返却に必要な情報が揃う。
 
-**Alternatives considered**: すべて `ldflags` で渡す（Makefile と Dockerfile の
+**Alternatives considered**: すべて `ldflags` で渡す（Taskfile.yml と Dockerfile の
 両方に同じ記述が要る）、埋め込まない（稼働中のビルドが特定できない）。
 
 ---
@@ -149,7 +149,7 @@ SQL ファイルを `embed.FS` で同梱して起動時に自動適用する。C
 
 **Decision**: `web/` の Vite ビルド結果（`web/dist`）を `internal/httpapi` から
 `embed.FS` で配信する。`/api/` 配下以外の未知のパスは `index.html` に落とす
-（クライアント側ルーティングのため）。`make build` を
+（クライアント側ルーティングのため）。`task build` を
 「SPA ビルド → 埋め込み → Go ビルド」の単一目標にする。
 
 **Rationale**: 技術選定文書の「5. 既知のリスクと対処」がこの構成を指定している。
@@ -181,7 +181,7 @@ SQL ファイルを `embed.FS` で同梱して起動時に自動適用する。C
 
 **Decision**: `api/openapi.yaml` を置き、`GET /api/health` の1本だけを定義する。
 生成は Phase 0 から回す（Go: `oapi-codegen` v2.8.0 / TS: `openapi-typescript` v7.13.0）。
-生成物は版管理に含め、`make generate` の再実行結果と差分がないことを CI で確認する。
+生成物は版管理に含め、`task generate` の再実行結果と差分がないことを CI で確認する。
 
 **Rationale**: 「2言語構成のずれをコンパイルエラーで検出する」という仕組みは、
 経路が1本のうちに通しておかないと、後から全経路に適用する作業になる。
@@ -211,11 +211,11 @@ Phase 1 で一覧と詳細が出た時点で導入する。
 ## R-012: CI の構成
 
 **Decision**: GitHub Actions で1つのワークフロー。`main` への PR と push で
-`make check`（書式・静的検査・Go テスト・Web ビルド・生成物の差分確認）を実行し、
+`task check`（書式・静的検査・Go テスト・Web ビルド・生成物の差分確認）を実行し、
 Docker イメージのビルドも通す。ジョブは Go と Web で分け、並行させる。
 
 **Rationale**: SC-004（10分以内）を満たすため、依存の取得をキャッシュし、
-重いイメージビルドを別ジョブにする。ローカルの `make check` と CI が同じ
+重いイメージビルドを別ジョブにする。ローカルの `task check` と CI が同じ
 目標を呼ぶ構成にして、手元と CI の判定を一致させる（FR-011／FR-012）。
 
 **Alternatives considered**: ワークフローを検査ごとに分割（設定の重複が増える）、

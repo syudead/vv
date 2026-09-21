@@ -21,12 +21,12 @@ Phase 0 が「できた」と言える状態を、実行して確かめる手順
 
 ```bash
 git clone <repository-url> && cd vv
-make up
+task up
 ```
 
 **期待**: 依存の取得とビルドを含めて起動が完了し、`http://localhost:8080` が開ける。
 計測: clone からブラウザで稼働表示を見るまで **15 分以内**、実行したコマンドは
-`make up` の **1つだけ**。
+`task up` の **1つだけ**。
 
 ## S2: 稼働確認の入口が機械可読な応答を返す（FR-002）
 
@@ -55,9 +55,9 @@ curl -sS http://localhost:8080/api/health | jq -e '.status == "ok" and (.version
 ## S4: データを消しても手作業なしで復帰する（FR-005 / SC-006）
 
 ```bash
-make down
+task down
 docker volume rm vv_data   # 実際のボリューム名は compose.yaml に合わせる
-make up
+task up
 curl -sS http://localhost:8080/api/health | jq -r .status
 ```
 
@@ -67,7 +67,7 @@ curl -sS http://localhost:8080/api/health | jq -r .status
 ## S5: 安全に停止する（FR-006 / 停止の契約）
 
 ```bash
-make down          # あるいは起動中のプロセスに SIGTERM
+task down          # あるいは起動中のプロセスに SIGTERM
 ```
 
 **期待**: 処理中の要求を打ち切らずに終了し、終了コードは `0`。
@@ -87,7 +87,7 @@ env PATH=/usr/bin:/bin MDM_DATA_DIR=/tmp/mdm ./bin/mdm; echo "exit=$?"
 ## S7: 検証一式が1コマンドで通る（FR-011 / SC-002）
 
 ```bash
-time make check
+time task check
 ```
 
 **期待**: 書式・静的検査・テスト・生成物の差分確認がすべて成功し、
@@ -102,11 +102,11 @@ import _ "net/http"
 ```
 
 ```bash
-make lint; echo "exit=$?"
+task lint; echo "exit=$?"
 ```
 
 **期待**: 失敗する。出力に「`internal/domain` から `net/http` を import してはならない」
-という**理由の文言**が含まれる。確認後は変更を戻し、`make lint` が再び成功すること。
+という**理由の文言**が含まれる。確認後は変更を戻し、`task lint` が再び成功すること。
 
 同じことを `database/sql` と `os/exec` でも確認する。
 
@@ -132,7 +132,7 @@ go test ./internal/store/ -run FTS -v
 
 任意の変更で Pull Request を作る。
 
-**期待**: `make check` と同じ検査が自動で走り、結果が PR 上で見える。
+**期待**: `task check` と同じ検査が自動で走り、結果が PR 上で見える。
 完了まで **10 分以内**。S8 の違反を含む PR は失敗する。
 
 ---

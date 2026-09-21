@@ -13,8 +13,8 @@
 
 | シナリオ | 必要なもの |
 | --- | --- |
-| S1・S2 | Node 22（`make test-web`） |
-| S0・S3〜S9 | Docker（`make up`）とブラウザ。S0 は `ffmpeg` |
+| S1・S2 | Node 22（`task test-web`） |
+| S0・S3〜S9 | Docker（`task up`）とブラウザ。S0 は `ffmpeg` |
 
 ## 成功基準との対応
 
@@ -58,7 +58,7 @@ ffmpeg -f lavfi -i testsrc=size=1280x720:rate=30:duration=150 \
 ## S1: 自動検査（機械）
 
 ```bash
-make test-web
+task test-web
 ```
 
 **期待**: 次がすべて成功する。
@@ -76,7 +76,7 @@ make test-web
 ## S2: 型と書式（機械）
 
 ```bash
-make check
+task check
 ```
 
 **期待**: `fmt-check` → `lint` → `test` → `generate-check` がすべて成功する。
@@ -88,7 +88,7 @@ make check
 ## S3: 一覧が「自分のライブラリ」に見える（人）
 
 ```bash
-MDM_MEDIA_HOST_DIR=./media make up
+MDM_MEDIA_HOST_DIR=./media task up
 ```
 
 ブラウザで `http://localhost:8080` を開く。
@@ -215,7 +215,7 @@ for i in $(seq 1 10000); do cp ./media/bulk/seed.mp4 "./media/bulk/動画$i.mp4"
 ## S9: 既存の振る舞いが変わっていないこと（機械 + 人）
 
 ```bash
-make check          # generate-check が「契約を変えていない」ことを示す
+task check          # generate-check が「契約を変えていない」ことを示す
 go test ./...       # サーバー側の振る舞い
 ```
 

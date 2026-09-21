@@ -40,7 +40,7 @@ sub-issueから任意のコーディングエージェントが一工程だけ�
 - [ ] native sub-issueの作成と親への追加を実機確認する。
 - [ ] 外部Claude Routineを停止・削除する。
 - [ ] legacy `sdd` labelを削除する。
-- [ ] 利用可能な環境で`make check`を完走する。
+- [ ] 利用可能な環境で`task check`を完走する。
 
 ## 完了条件
 

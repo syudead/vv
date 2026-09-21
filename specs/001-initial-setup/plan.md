@@ -34,7 +34,7 @@ Phase 0 最大のリスクだった「CGO 不要の SQLite ドライバで日本
 
 **Project Type**: web-service（単一 Go バイナリ + 埋め込み React SPA）
 
-**Performance Goals**: 起動から稼働確認の応答まで 2 秒以内／`make check` を手元で 5 分以内（SC-002）／CI 10 分以内（SC-004）
+**Performance Goals**: 起動から稼働確認の応答まで 2 秒以内／`task check` を手元で 5 分以内（SC-002）／CI 10 分以内（SC-004）
 
 **Constraints**: 常駐する外部ミドルウェアを増やさない／`CGO_ENABLED=0` を維持／設定なしの既定値で起動できる／依存取得後はオフラインで再ビルドできる
 
@@ -59,7 +59,7 @@ Phase 0 最大のリスクだった「CGO 不要の SQLite ドライバで日本
 | G3: DB は再構築可能なインデックスに留める | 判断基準2 | PASS — Phase 0 は利用者データを持たない | PASS — 削除→再起動で自動復旧（SC-006） |
 | G4: 重要な制約は可能な限りテスト可能にする | core-beliefs | PASS — 依存方向・検索前提・起動経路を自動検証 | PASS — 各制約に対応するテストを配置 |
 | G5: 文書は変更と同じ変更単位で更新する | AGENTS.md / core-beliefs | PASS — 実行計画と README を成果物に含む（FR-016／FR-017） | PASS |
-| G6: 生成物は手編集せず、元ファイルから生成する | AGENTS.md | PASS — OpenAPI 生成物は `make generate` 由来、CI で差分検査 | PASS |
+| G6: 生成物は手編集せず、元ファイルから生成する | AGENTS.md | PASS — OpenAPI 生成物は `task generate` 由来、CI で差分検査 | PASS |
 | G7: 後から重くできる境界を最初に引く | 判断基準4 | PASS — 6 パッケージの境界を Phase 0 で作る（FR-009） | PASS |
 
 違反なし。justify が必要な逸脱は「Complexity Tracking」に1件記載する。
@@ -78,7 +78,7 @@ specs/001-initial-setup/
 │   ├── openapi.yaml          # Phase 0 の API 契約（api/openapi.yaml の原型）
 │   ├── http-routes.md        # OpenAPI に書けない経路・ヘッダ・停止の約束
 │   ├── configuration.md      # 環境変数と起動前確認の契約
-│   └── developer-commands.md # make 目標の契約
+│   └── developer-commands.md # Task タスクの契約
 ```
 
 ### Source Code (repository root)
@@ -130,8 +130,8 @@ web/                       # React SPA
 
 .github/workflows/ci.yml   # FR-012 の自動検証
 Dockerfile                 # multi-stage（web ビルド → go ビルド → alpine + ffmpeg）
-compose.yaml               # make up の実体
-Makefile                   # up / dev / build / generate / check / test / lint / fmt
+compose.yaml               # task up の実体
+Taskfile.yml               # up / dev / build / generate / check / test / lint / fmt
 .golangci.yml              # depguard による依存方向の強制（v2 書式）
 ```
 

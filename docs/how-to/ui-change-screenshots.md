@@ -43,10 +43,10 @@ interaction / accessibility の確認結果、残課題を書く。
 ### Docker やブラウザが使える手元の環境
 
 ```bash
-make dev     # もしくは make up
+task dev     # もしくは task up
 ```
 
-ブラウザで `http://localhost:8080`（`make dev` の Vite 側は `http://localhost:5173`）を
+ブラウザで `http://localhost:8080`（`task dev` の Vite 側は `http://localhost:5173`）を
 開き、通常のスクリーンショット機能で撮る。
 
 ### コンテナ内・エージェントの実行環境（画面のない環境）
@@ -54,7 +54,7 @@ make dev     # もしくは make up
 Chromium と Playwright が使える場合は、起動したサーバーを直接撮影できる。
 
 ```bash
-make build
+task build
 MDM_DATA_DIR="$PWD/.local/data" ./bin/mdm &
 ```
 
@@ -99,9 +99,8 @@ symlink が無ければ `ls` で見えた版つきの名前を直に指す。
 script を書くのは、`npx playwright screenshot` で足りないとき（画面幅を変えて何枚も撮る、
 操作してから撮る、要素だけを切り出す）でもある。
 
-`make build` は版管理している `web/dist/index.html` を上書きするため
-（[TD-002](../exec-plans/tech-debt.md)）、撮影後に `git checkout -- web/dist/index.html`
-で戻す。
+`task build` はビルド中だけ `web/dist` を成果物へ差し替え、バイナリ生成後に元の内容を
+復元する。撮影後に `web/dist/index.html` を戻す操作は不要である。
 
 ## どこに置き、どう貼るか
 

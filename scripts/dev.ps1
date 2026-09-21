@@ -1,6 +1,6 @@
 #Requires -Version 7.4
 param(
-    [string]$DataDir = ""
+    [string]$DataDir = $env:DEV_DATA_DIR
 )
 
 Set-StrictMode -Version Latest

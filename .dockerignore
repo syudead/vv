@@ -8,7 +8,7 @@
 .dockerignore
 Dockerfile
 compose.yaml
-Makefile
+Taskfile.yml
 bin/
 docs/
 specs/

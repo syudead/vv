@@ -138,7 +138,7 @@ WCAG の相対輝度から対比を計算する単体テストを置く。検査
 ## R-406: Web の単体テストの実行基盤
 
 **Decision**: **Vitest + Testing Library（`@testing-library/react` / `user-event`、環境は
-`jsdom`）** を導入する。`make test-web` はビルド検証に加えて `vitest run` を実行する。
+`jsdom`）** を導入する。`task test-web` はビルド検証に加えて `vitest run` を実行する。
 最初の検証対象は、[TD-004](../../docs/exec-plans/tech-debt.md) が名指ししている 3 点
 （`useVideos` のカーソル引き継ぎ、検索入力の待ち合わせと打ち切り、再生位置の送信）と、
 本機能が新しく作る 3 つの純粋な部品（対比の検査 R-405、表示設定の読み書き R-407、
@@ -287,7 +287,7 @@ repeat(auto-fill, minmax(<最小幅>, 1fr))`）だけを変える。密度を変
 1. **API を呼ぶ層（`web/src/api/`）には手を入れない**。本機能の変更は
    `pages/`・`components/` と新設する `theme/`・`preferences/` に閉じる。`client.ts` と
    `useVideos.ts` への変更は、R-403 の復元に必要な「キャッシュの差し込み口」だけに限る。
-2. **`api/openapi.yaml` を変更しない**。`make generate` の差分検査（`generate-check`）が
+2. **`api/openapi.yaml` を変更しない**。`task generate` の差分検査（`generate-check`）が
    そのまま「契約を変えていない」ことの機械的な証明になる（FR-024）。
 3. **002 の受け入れ検証 S1〜S10 を再実行する**（SC-009）。手順は
    [002 quickstart](../002-core-video-library/quickstart.md) のまま使い、本機能の

@@ -142,7 +142,7 @@ FR-006 は一覧の各項目に「未視聴・途中・視聴済み」を出す�
 | 対象 | 本機能での変更 |
 | --- | --- |
 | `internal/store/migrations/` | 無し |
-| `api/openapi.yaml` | 無し（`make generate-check` が機械的に保証する） |
+| `api/openapi.yaml` | 無し（`task generate-check` が機械的に保証する） |
 | `web/src/api/gen/` | 無し（上の生成物） |
 | `web/src/api/client.ts` | 無し |
 | `web/src/api/useVideos.ts` | 復元状態の受け渡し口のみ（R-412） |
