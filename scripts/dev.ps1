@@ -30,19 +30,6 @@ function Assert-PortAvailable {
     }
 }
 
-function Stop-ProcessTree {
-    param([System.Diagnostics.Process]$Process)
-
-    if ($null -eq $Process -or $Process.HasExited) { return }
-    if ($IsWindows) {
-        taskkill /PID $Process.Id /T /F 2>$null | Out-Null
-        return
-    }
-
-    pkill -TERM -P $Process.Id 2>$null
-    kill -TERM $Process.Id 2>$null
-}
-
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
@@ -51,6 +38,7 @@ Require-Command "npm"
 Require-Command "ffmpeg"
 Require-Command "ffprobe"
 . (Join-Path $PSScriptRoot "project-tool.ps1")
+. (Join-Path $PSScriptRoot "process-tree.ps1")
 $airPath = Get-ProjectTool "air"
 $npmPath = if ($IsWindows) {
     (Get-Command "npm.cmd" -ErrorAction Stop).Source
@@ -58,7 +46,6 @@ $npmPath = if ($IsWindows) {
     (Get-Command "npm" -ErrorAction Stop).Source
 }
 
-Assert-PortAvailable -Port 8080 -Address ([System.Net.IPAddress]::Any)
 Assert-PortAvailable -Port 5173 -Address ([System.Net.IPAddress]::Loopback)
 
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
@@ -67,8 +54,10 @@ if ([string]::IsNullOrWhiteSpace($DataDir)) {
 
 New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
 
-Write-Host "Go:   http://localhost:8080"
-Write-Host "Vite: http://localhost:5173 (/api proxies to :8080)"
+$backendAddress = if ([string]::IsNullOrWhiteSpace($env:MDM_ADDR)) { ":8080" } else { $env:MDM_ADDR }
+$apiTarget = if ([string]::IsNullOrWhiteSpace($env:MDM_API_TARGET)) { "http://localhost:8080" } else { $env:MDM_API_TARGET }
+Write-Host "Go:   $backendAddress"
+Write-Host "Vite: http://localhost:5173 (/api proxies to $apiTarget)"
 Write-Host "Data:  $DataDir"
 Write-Host ""
 
@@ -92,6 +81,9 @@ try {
         Start-Sleep -Milliseconds 500
     }
 } finally {
-    Stop-ProcessTree $webProcess
-    Stop-ProcessTree $goProcess
+    try {
+        Stop-ProcessTree $webProcess
+    } finally {
+        Stop-ProcessTree $goProcess
+    }
 }

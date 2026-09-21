@@ -16,8 +16,8 @@ Go 製ツールは `tools/go.mod` の `tool` directive でアプリ依存から�
 
 ### Air は既存の開発入口から起動する
 
-`.air.toml` は `cmd/mdm` を `.local/air` にビルドし、`cmd` と `internal` の Go・SQL
-変更を監視する。開発時の SPA は Vite が配信するため、Web ソースは Air で監視しない。
+`.air.toml` は `cmd/mdm` を `.local/air` にビルドし、`cmd`、`internal`、`web` の Go・SQL
+変更を監視する。Web の TypeScript や CSS は引き続き Vite が監視する。
 `scripts/dev.ps1` は Vite と Air を並行起動し、利用者の入口は引き続き `task dev` とする。
 
 ## Implementation Work

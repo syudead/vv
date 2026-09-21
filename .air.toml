@@ -4,8 +4,21 @@ tmp_dir = ".local/air"
 [build]
 cmd = "go build -o ./.local/air/mdm ./cmd/mdm"
 entrypoint = [".local/air/mdm"]
-include_dir = ["cmd", "internal"]
+include_dir = ["cmd", "internal", "web"]
 include_ext = ["go", "sql"]
+# Air compares exclude_dir values with native path separators, so keep both forms.
+exclude_dir = [
+  "web/node_modules",
+  "web\\node_modules",
+  "web/dist",
+  "web\\dist",
+  "web/.vite-build-check",
+  "web\\.vite-build-check",
+  "web/playwright-report",
+  "web\\playwright-report",
+  "web/test-results",
+  "web\\test-results",
+]
 exclude_regex = ["_test\\.go"]
 delay = 300
 stop_on_error = true

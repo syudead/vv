@@ -53,6 +53,63 @@ if (-not $devScript.Contains('Get-ProjectTool "air"') -or
 }
 Write-Host "PASS dev starts the project-local Air tool"
 
+if ($devScript.Contains('Assert-PortAvailable -Port 8080')) {
+    throw "dev.ps1 must let the backend validate its configured MDM_ADDR"
+}
+Write-Host "PASS dev does not require the default backend port when MDM_ADDR is customized"
+
+$airConfig = Get-Content (Join-Path $repoRoot ".air.toml") -Raw
+if ($airConfig -notmatch 'include_dir\s*=\s*\[[^\]]*"web"') {
+    throw ".air.toml does not watch the web Go package"
+}
+Write-Host "PASS Air watches the web Go package"
+
+. (Join-Path $repoRoot "scripts/process-tree.ps1")
+$processTreeRoot = Join-Path $repoRoot ".local/process-tree-test"
+Remove-Item -Recurse -Force $processTreeRoot -ErrorAction SilentlyContinue
+$rootProcess = $null
+$leafPid = $null
+try {
+    New-Item -ItemType Directory -Force -Path $processTreeRoot | Out-Null
+    $leafPidFile = Join-Path $processTreeRoot "leaf.pid"
+    $leafScript = Join-Path $processTreeRoot "leaf.ps1"
+    $childScript = Join-Path $processTreeRoot "child.ps1"
+    $rootScript = Join-Path $processTreeRoot "root.ps1"
+    Set-Content -LiteralPath $leafScript -Value '$PID | Set-Content -LiteralPath $args[0]; while ($true) { Start-Sleep -Seconds 1 }'
+    Set-Content -LiteralPath $childScript -Value '$child = Start-Process -FilePath $args[0] -ArgumentList @("-NoLogo", "-NoProfile", "-File", "`"$($args[1])`"", "`"$($args[2])`"") -PassThru; while (-not $child.HasExited) { Start-Sleep -Milliseconds 100 }'
+    Set-Content -LiteralPath $rootScript -Value '$child = Start-Process -FilePath $args[0] -ArgumentList @("-NoLogo", "-NoProfile", "-File", "`"$($args[1])`"", "`"$($args[0])`"", "`"$($args[2])`"", "`"$($args[3])`"") -PassThru; while (-not $child.HasExited) { Start-Sleep -Milliseconds 100 }'
+
+    $pwshPath = (Get-Process -Id $PID).Path
+    $rootProcess = Start-Process -FilePath $pwshPath -ArgumentList @(
+        "-NoLogo", "-NoProfile", "-File", "`"$rootScript`"", "`"$pwshPath`"",
+        "`"$childScript`"", "`"$leafScript`"", "`"$leafPidFile`""
+    ) -PassThru
+
+    $deadline = [DateTime]::UtcNow.AddSeconds(10)
+    while (-not (Test-Path $leafPidFile) -and [DateTime]::UtcNow -lt $deadline) {
+        Start-Sleep -Milliseconds 100
+    }
+    if (-not (Test-Path $leafPidFile)) {
+        throw "the process-tree fixture did not start its grandchild"
+    }
+    $leafPid = [int](Get-Content $leafPidFile -Raw)
+
+    Stop-ProcessTree $rootProcess
+    if ($null -ne (Get-Process -Id $leafPid -ErrorAction SilentlyContinue)) {
+        throw "Stop-ProcessTree left the grandchild process $leafPid running"
+    }
+    Write-Host "PASS process-tree cleanup stops a real grandchild process"
+}
+finally {
+    if ($null -ne $rootProcess -and -not $rootProcess.HasExited) {
+        Stop-ProcessTree $rootProcess
+    }
+    if ($null -ne $leafPid) {
+        Stop-Process -Id $leafPid -Force -ErrorAction SilentlyContinue
+    }
+    Remove-Item -Recurse -Force $processTreeRoot -ErrorAction SilentlyContinue
+}
+
 foreach ($scenario in @("healthy", "missing-git", "missing-task", "broken-jq", "empty-jq")) {
     $output = & pwsh -NoLogo -NoProfile -Command {
         param($Root, $Scenario)
