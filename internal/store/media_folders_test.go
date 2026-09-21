@@ -169,6 +169,9 @@ func TestMediaFolderMutationRejectsRunningScan(t *testing.T) {
 
 func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 	db := migratedDB(t)
+	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
+		t.Fatal(err)
+	}
 	root := string(os.PathSeparator)
 	if volume := filepath.VolumeName(t.TempDir()); volume != "" {
 		root = volume + string(os.PathSeparator)
