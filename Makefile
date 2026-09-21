@@ -17,14 +17,16 @@ NPM           := npm --prefix web
 # make dev 用のデータ置き場。
 DEV_DATA_DIR  ?= $(CURDIR)/.local/data
 
-# migrations-check の比較対象。CI は PR の base branch を渡す。
-MIGRATIONS_BASE ?= origin/main
+# migrations-check の比較対象。既定は空で、scripts/migrations-immutable.sh が
+# PR の base branch（GITHUB_BASE_REF）か origin/main を選ぶ。CI が引数を渡すと
+# 手元と CI で呼び出しが変わり、同じ判定にならない。
+MIGRATIONS_BASE ?=
 
 # 生成物。make generate の再実行で差分が出る状態は失敗とみなす。
 GENERATED := internal/httpapi/gen/api.gen.go web/src/api/gen/openapi.ts
 
 .DEFAULT_GOAL := help
-.PHONY: help setup up down dev build generate fmt lint test check test-local-dev
+.PHONY: help setup up down dev build generate fmt lint test check test-local-dev test-make-targets
 .PHONY: fmt-check fmt-check-go fmt-check-web generate-check migrations-check
 .PHONY: lint-go lint-web test-go test-web test-e2e
 
@@ -77,16 +79,29 @@ lint: lint-go lint-web ## golangci-lint（depguard を含む）と Web の静的
 
 test: test-go test-web ## Go と Web の検証
 
-check: ## fmt の差分確認 → lint → test → 生成物の差分確認
+# 検査の入口は check と test-e2e の2つだけにする。CI もこの2つしか呼ばない。
+#
+# CI 側に検査を並べると、どちらかに足し忘れたときに手元と CI の判定が食い違う。
+# 実際、migrations-check を CI へ足したときにここへ繋ぎ忘れ、push するまで
+# 気づけない状態になった。
+#
+# E2E を分けてあるのは developer-commands.md の約束による。Chromium と ffmpeg
+# を要する検査を check へ入れると、それらが無い環境では check 自体を通せない。
+check: ## 追加runtimeの要らない検査をすべて実行する
 	@$(MAKE) --no-print-directory test-local-dev
+	@$(MAKE) --no-print-directory test-make-targets
 	@$(MAKE) --no-print-directory fmt-check
 	@$(MAKE) --no-print-directory lint
 	@$(MAKE) --no-print-directory test
 	@$(MAKE) --no-print-directory generate-check
-	@echo "check: すべて成功しました"
+	@$(MAKE) --no-print-directory migrations-check
+	@echo "check: すべて成功しました（ブラウザ検査は make test-e2e）"
 
 test-local-dev: ## PowerShell のローカル開発スクリプトを検証する
 	pwsh -NoLogo -NoProfile -File scripts/local-dev.tests.ps1
+
+test-make-targets: ## Docker だけの目標が jq を要求しないことを確認する
+	bash scripts/make-lazy-versions.test.sh
 
 fmt-check: fmt-check-go fmt-check-web ## 書式の差分を確認する（書き換えない）
 
@@ -121,7 +136,6 @@ test-e2e: web/node_modules ## Go + Vite + Chromium で主要操作をE2E検証�
 	$(NPM) run test:e2e
 
 migrations-check: ## 適用済みのマイグレーションを書き換えていないか確認する
-	@# 比較対象は既定で origin/main。手元では git fetch origin main のあとに実行する。
 	./scripts/migrations-immutable.sh $(MIGRATIONS_BASE)
 
 generate-check: ## 生成物が api/openapi.yaml と一致しているか確認する

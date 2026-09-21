@@ -16,11 +16,12 @@
 | `make lint`     | Go・Node                                | `golangci-lint`（depguard を含む）と Web の静的検査                                                 | FR-010 / FR-011 / FR-013 |
 | `make test`     | Go・Node                                | Go のテストと Web の単体テスト                                                                      | FR-011 / FR-014          |
 | `make test-e2e` | Go・Node・ffmpeg・Chromium              | GoサーバーとVite proxyを通る主要操作を実ブラウザで検証する                                          | FR-011 / FR-014          |
-| `make check`    | Go・Node・PowerShell 7.4・jq・Git・bash | ローカル開発スクリプトの回帰検査 → `fmt` の差分確認 → `lint` → `test` → 生成物の差分確認 を順に実行 | FR-011 / SC-002          |
+| `make check`    | Go・Node・PowerShell 7.4・jq・Git・bash | ローカル開発スクリプトとMake目標の回帰検査 → `fmt` の差分確認 → `lint` → `test` → 生成物の差分確認 → 適用済みマイグレーションの不変性 を順に実行 | FR-011 / SC-002          |
 
 ## 約束
 
-- CIは`make check`と`make test-e2e`を実行し、手元でも同じ目標で再現できる。CIでしか動かない検査を作らない。
+- CIは`make check`と`make test-e2e`だけを実行し、手元でも同じ目標で再現できる。CIでしか動かない検査を作らない。
+  CI のステップに検査を直接並べない。並べると目標の側へ足し忘れたときに判定が食い違う。
 - `make check` は手元で 5 分以内に終わる（SC-002）。超えるようになったら、
   まず原因を直す。ブラウザなど追加runtimeが必要な検査は、前提を明記した専用目標に分ける。
 - 失敗時は、どの規則に違反したかが出力だけで分かる（FR-013）。depguard の
