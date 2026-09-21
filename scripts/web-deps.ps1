@@ -13,7 +13,7 @@ $lockfile = Get-Item "web/package-lock.json"
 $stampPath = Join-Path $repoRoot ".local/web-deps.stamp"
 
 if ($Check) {
-    if (-not (Test-Path $stampPath)) {
+    if (-not (Test-Path "web/node_modules" -PathType Container) -or -not (Test-Path $stampPath -PathType Leaf)) {
         exit 1
     }
     $stamp = Get-Item $stampPath

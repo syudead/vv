@@ -67,4 +67,28 @@ foreach ($scenario in @("healthy", "missing-git", "missing-task", "broken-jq", "
     Write-Host "PASS doctor/$scenario"
 }
 
+$webDepsRoot = Join-Path $repoRoot ".local/web-deps-test"
+Remove-Item -Recurse -Force $webDepsRoot -ErrorAction SilentlyContinue
+try {
+    New-Item -ItemType Directory -Force -Path (Join-Path $webDepsRoot "scripts"), (Join-Path $webDepsRoot "web/node_modules"), (Join-Path $webDepsRoot ".local") | Out-Null
+    Copy-Item (Join-Path $repoRoot "scripts/web-deps.ps1") (Join-Path $webDepsRoot "scripts/web-deps.ps1")
+    New-Item -ItemType File -Path (Join-Path $webDepsRoot "web/package-lock.json"), (Join-Path $webDepsRoot ".local/web-deps.stamp") | Out-Null
+
+    & (Join-Path $webDepsRoot "scripts/web-deps.ps1") -Check
+    if ($LASTEXITCODE -ne 0) {
+        throw "web-deps rejected a current stamp with node_modules present"
+    }
+    Write-Host "PASS web-deps accepts installed dependencies"
+
+    Remove-Item -Recurse -Force (Join-Path $webDepsRoot "web/node_modules")
+    & (Join-Path $webDepsRoot "scripts/web-deps.ps1") -Check
+    if ($LASTEXITCODE -eq 0) {
+        throw "web-deps accepted a stamp without node_modules"
+    }
+    Write-Host "PASS web-deps rejects missing node_modules"
+}
+finally {
+    Remove-Item -Recurse -Force $webDepsRoot -ErrorAction SilentlyContinue
+}
+
 exit 0

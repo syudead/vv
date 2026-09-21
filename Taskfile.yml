@@ -33,6 +33,7 @@ tasks:
 
   dev:
     desc: Run the Go server and Vite development server.
+    deps: [web-deps]
     cmds:
       - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
 
