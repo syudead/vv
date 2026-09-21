@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -136,6 +137,33 @@ func TestTranscodeReturnsErrorWhenProcessProducesNoBody(t *testing.T) {
 	rec := do(t, transcodeServer(t, false, fake), http.MethodGet, "/api/videos/1/transcode.mp4")
 	if rec.Code != http.StatusInternalServerError || fake.waits != 1 || fake.stops != 1 {
 		t.Errorf("response=%d waits=%d stops=%d", rec.Code, fake.waits, fake.stops)
+	}
+}
+
+func TestInitialTranscodeDataTimesOut(t *testing.T) {
+	reader, writer := io.Pipe()
+	t.Cleanup(func() {
+		_ = writer.Close()
+	})
+	stops := 0
+	waits := 0
+
+	started := time.Now()
+	data, err := awaitInitialTranscodeData(
+		context.Background(),
+		reader,
+		func() error { waits++; return nil },
+		func() { stops++ },
+		20*time.Millisecond,
+	)
+	if err == nil || len(data) != 0 {
+		t.Fatalf("data=%q err=%v", data, err)
+	}
+	if stops != 1 || waits != 1 {
+		t.Fatalf("stops=%d waits=%d", stops, waits)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("timeoutまで %s かかった", elapsed)
 	}
 }
 
