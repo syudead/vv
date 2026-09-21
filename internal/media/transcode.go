@@ -249,9 +249,13 @@ func videoEncodeArgs(stream transcodeStream) []string {
 	if stream.FPS <= 0 {
 		filters = append(filters, "fps=30.000")
 	} else if !constantFrameRate(stream) {
-		filters = append(filters, "fps="+formatFPS(math.Min(stream.FPS, limit)))
+		if stream.FPS <= limit {
+			filters = append(filters, "fps="+formatExactFPS(stream.FPS))
+		} else {
+			filters = append(filters, "fps="+formatCappedFPS(limit))
+		}
 	} else if stream.FPS > limit+0.0001 {
-		filters = append(filters, "fps="+formatFPS(limit))
+		filters = append(filters, "fps="+formatCappedFPS(limit))
 	}
 
 	args := []string{"-c:v", "libx264", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23"}
@@ -309,9 +313,14 @@ func formatSeconds(milliseconds int64) string {
 	return strconv.FormatFloat(float64(milliseconds)/1000, 'f', 3, 64)
 }
 
-func formatFPS(fps float64) string {
+func formatCappedFPS(fps float64) string {
 	// 丸めでmacroblock rate上限を越えないよう、ミリfps単位で切り捨てる。
 	return strconv.FormatFloat(math.Floor(fps*1000)/1000, 'f', 3, 64)
+}
+
+func formatExactFPS(fps float64) string {
+	// 低fpsのVFRを0へ丸めず、ffprobeから得た正の値を保つ。
+	return strconv.FormatFloat(fps, 'f', -1, 64)
 }
 
 type tailWriter struct {

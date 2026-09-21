@@ -96,7 +96,8 @@ func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 		{"odd dimensions", transcodeStream{Width: 641, Height: 359, FPS: 30, RealFPS: 30}, "-vf pad=642:360:0:0"},
 		{"8K60", transcodeStream{Width: 7680, Height: 4320, FPS: 60, RealFPS: 60}, "-vf scale=3840:2160,fps=30.340"},
 		{"unknown rate", transcodeStream{Width: 1920, Height: 1080}, "-vf fps=30.000"},
-		{"VFR peak", transcodeStream{Width: 1920, Height: 1080, FPS: 30, RealFPS: 120}, "-vf fps=30.000"},
+		{"VFR peak", transcodeStream{Width: 1920, Height: 1080, FPS: 30, RealFPS: 120}, "-vf fps=30"},
+		{"very low VFR", transcodeStream{Width: 1920, Height: 1080, FPS: 0.0005, RealFPS: 1}, "-vf fps=0.0005"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
