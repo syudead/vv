@@ -122,6 +122,11 @@ func TestStreamRejectsUnsatisfiableRange(t *testing.T) {
 	if rec.Code != http.StatusRequestedRangeNotSatisfiable {
 		t.Errorf("status = %d, want 416", rec.Code)
 	}
+	// ServeContent は成功用のヘッダを設定したあとで 416 を返すので、
+	// 失敗応答に配信用の Cache-Control が残らないことを固定する。
+	if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
+		t.Errorf("416 の Cache-Control = %q, want %q", got, cacheNoStore)
+	}
 }
 
 // If-Range が一致すれば部分応答、一致しなければ全体を返す。シーク中に

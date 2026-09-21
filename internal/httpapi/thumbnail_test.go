@@ -62,6 +62,24 @@ func TestThumbnailCacheControlWithVersion(t *testing.T) {
 	}
 }
 
+// 版付きサムネイルは1年の immutable で配信するが、失敗応答にそれが残ると
+// 壊れた結果が1年キャッシュされる。416 では no-store に戻ることを固定する。
+func TestThumbnailUnsatisfiableRangeIsNotCached(t *testing.T) {
+	dir, video := thumbnailFixture(t)
+	handler := newTestServer(t, Options{
+		Videos:        &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		ThumbnailsDir: dir,
+	})
+
+	rec := rangeRequest(t, handler, "/api/videos/1/thumbnail?v=abcdef012345", "bytes=99999999999-")
+	if rec.Code != http.StatusRequestedRangeNotSatisfiable {
+		t.Fatalf("status = %d, want 416", rec.Code)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
+		t.Errorf("416 の Cache-Control = %q, want %q", got, cacheNoStore)
+	}
+}
+
 // v の無い要求には長期キャッシュを付けない。版が分からないものを1年
 // 抱えさせると、差し替えても古い画像が残る。
 func TestThumbnailCacheControlWithoutVersion(t *testing.T) {

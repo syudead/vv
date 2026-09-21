@@ -7,6 +7,7 @@ package sddguard
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -188,4 +189,90 @@ func TestDocumentsAreLinkedFromTheirIndex(t *testing.T) {
 			}
 		}
 	}
+}
+
+// guardedMarkdown は web/ の外にある、版管理された Markdown を返す。prettier は
+// `npm --prefix web run format:check` で web/ だけを整形検査するので、
+// specs/ と docs/ とリポジトリ直下はどの検査にもかかっていない。
+//
+// 走査ではなく git の追跡一覧を使う。ディレクトリを辿ると、無視されている作業用の
+// チェックアウト（エージェントが作る .claude/worktrees/ など）まで拾い、そこにある
+// 古い内容を現在の違反として報告してしまう。
+func guardedMarkdown(t *testing.T) []string {
+	t.Helper()
+	repoRoot := repositoryRoot(t)
+
+	out, err := exec.Command("git", "-C", repoRoot, "ls-files", "-z", "--", "*.md").Output()
+	if err != nil {
+		t.Fatalf("版管理された Markdown を一覧できない: %v", err)
+	}
+
+	var files []string
+	for _, rel := range strings.Split(string(out), "\x00") {
+		if rel == "" || strings.HasPrefix(rel, "web/") {
+			continue
+		}
+		files = append(files, filepath.Join(repoRoot, rel))
+	}
+	if len(files) == 0 {
+		t.Fatal("Markdown を1つも拾えていない。一覧の条件を確認すること")
+	}
+	return files
+}
+
+// TestMarkdownHasNoTrailingWhitespace は行末の空白を落とす。PR #72 では
+// PR 本文に `git diff --check` 済みと書いてあったが実際には違反しており、
+// レビューが指摘して1往復かかった。
+func TestMarkdownHasNoTrailingWhitespace(t *testing.T) {
+	for _, path := range guardedMarkdown(t) {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s を読めない: %v", path, err)
+		}
+		for i, line := range strings.Split(string(body), "\n") {
+			if line != strings.TrimRight(line, " \t") {
+				t.Errorf("%s:%d: 行末に空白がある。取り除くこと", relativeTo(t, path), i+1)
+			}
+		}
+	}
+}
+
+// markdownLink は Markdown の相対リンクを拾う。外部 URL と純粋な anchor は除く。
+var markdownLink = regexp.MustCompile(`\]\(([^)\s]+)\)`)
+
+// TestMarkdownRelativeLinksResolve は解決できない相対リンクを落とす。PR #76 は
+// 実行計画を active/ から completed/ へ移した結果、参照元のリンクが切れていた。
+func TestMarkdownRelativeLinksResolve(t *testing.T) {
+	for _, path := range guardedMarkdown(t) {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s を読めない: %v", path, err)
+		}
+		for _, match := range markdownLink.FindAllStringSubmatch(string(body), -1) {
+			target := match[1]
+			if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") ||
+				strings.HasPrefix(target, "#") || strings.HasPrefix(target, "mailto:") {
+				continue
+			}
+			if i := strings.Index(target, "#"); i >= 0 {
+				target = target[:i]
+			}
+			if target == "" {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(filepath.Dir(path), target)); err != nil {
+				t.Errorf("%s: リンク先 %s が見つからない。移動したなら参照元も更新すること",
+					relativeTo(t, path), target)
+			}
+		}
+	}
+}
+
+func relativeTo(t *testing.T, path string) string {
+	t.Helper()
+	rel, err := filepath.Rel(repositoryRoot(t), path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	return filepath.ToSlash(rel)
 }

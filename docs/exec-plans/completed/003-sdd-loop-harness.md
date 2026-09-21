@@ -16,7 +16,7 @@ specification and design are:
 
 - [`specs/003-sdd-loop-harness/spec.md`](../../../specs/003-sdd-loop-harness/spec.md)
 - [`docs/design-docs/sdd-loop-harness.md`](../../design-docs/sdd-loop-harness.md)
-- [`docs/agent-workflows/README.md`](../../agent-workflows/README.md)
+- [`.agents/skills/issue-handoff/SKILL.md`](../../../.agents/skills/issue-handoff/SKILL.md)
 
 The external Claude Routine and legacy `sdd` label require maintainer cleanup
 after live GitHub verification because repository changes cannot delete them.

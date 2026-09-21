@@ -6,6 +6,9 @@ Thumbs.db
 .vscode/
 .idea/
 
+# エージェントが作る一時 worktree。中身は別チェックアウトなので版管理しない。
+.claude/worktrees/
+
 # Dependencies and build output
 node_modules/
 dist/

@@ -32,6 +32,24 @@ jobs:
         if: runner.os == 'Linux'
         run: bash scripts/make-lazy-versions.test.sh
 
+  migrations:
+    name: Migrations
+    runs-on: ubuntu-latest
+    # base branch と比べるので pull_request のときだけ実行する。
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v5
+
+      # 既定の checkout は1コミットしか持たないので、比較対象を取り寄せる。
+      - name: base branch を取得する
+        run: git fetch --no-tags --depth=1 origin "$BASE"
+        env:
+          BASE: ${{ github.base_ref }}
+
+      # 適用済みの .sql を書き換えると、更新済みのデータベースだけが壊れる。
+      - name: 適用済みのマイグレーションが変更されていないか確認する
+        run: make migrations-check MIGRATIONS_BASE=FETCH_HEAD
+
   go:
     name: Go
     runs-on: ubuntu-latest

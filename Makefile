@@ -17,12 +17,15 @@ NPM           := npm --prefix web
 # make dev 用のデータ置き場。
 DEV_DATA_DIR  ?= $(CURDIR)/.local/data
 
+# migrations-check の比較対象。CI は PR の base branch を渡す。
+MIGRATIONS_BASE ?= origin/main
+
 # 生成物。make generate の再実行で差分が出る状態は失敗とみなす。
 GENERATED := internal/httpapi/gen/api.gen.go web/src/api/gen/openapi.ts
 
 .DEFAULT_GOAL := help
 .PHONY: help setup up down dev build generate fmt lint test check test-local-dev
-.PHONY: fmt-check fmt-check-go fmt-check-web generate-check
+.PHONY: fmt-check fmt-check-go fmt-check-web generate-check migrations-check
 .PHONY: lint-go lint-web test-go test-web test-e2e
 
 help: ## 目標の一覧を表示する
@@ -116,6 +119,10 @@ test-web: web/node_modules ## Web のビルド検証と単体テストを実行�
 
 test-e2e: web/node_modules ## Go + Vite + Chromium で主要操作をE2E検証する
 	$(NPM) run test:e2e
+
+migrations-check: ## 適用済みのマイグレーションを書き換えていないか確認する
+	@# 比較対象は既定で origin/main。手元では git fetch origin main のあとに実行する。
+	./scripts/migrations-immutable.sh $(MIGRATIONS_BASE)
 
 generate-check: ## 生成物が api/openapi.yaml と一致しているか確認する
 	@$(MAKE) --no-print-directory generate
