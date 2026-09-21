@@ -131,6 +131,14 @@ func TestTranscodeLogsProcessFailureAfterBodyStarts(t *testing.T) {
 	}
 }
 
+func TestTranscodeReturnsErrorWhenProcessProducesNoBody(t *testing.T) {
+	fake := &fakeTranscoder{waitErr: errors.New("exit 1")}
+	rec := do(t, transcodeServer(t, false, fake), http.MethodGet, "/api/videos/1/transcode.mp4")
+	if rec.Code != http.StatusInternalServerError || fake.waits != 1 || fake.stops != 1 {
+		t.Errorf("response=%d waits=%d stops=%d", rec.Code, fake.waits, fake.stops)
+	}
+}
+
 func doRequest(handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

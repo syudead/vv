@@ -52,6 +52,14 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		return
 	}
 	defer func() { _ = stream.Close() }()
+	first := make([]byte, 32*1024)
+	firstLength, firstErr := io.ReadAtLeast(stream, first, 1)
+	if firstLength == 0 {
+		stop()
+		waitErr := wait()
+		s.internalError(w, "ライブ変換が初期データを生成できませんでした", errors.Join(firstErr, waitErr))
+		return
+	}
 
 	w.Header().Set("Content-Type", "video/mp4")
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -62,7 +70,13 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		flusher.Flush()
 	}
 
-	_, copyErr := io.Copy(w, stream)
+	written, copyErr := w.Write(first[:firstLength])
+	if copyErr == nil && written != firstLength {
+		copyErr = io.ErrShortWrite
+	}
+	if copyErr == nil {
+		_, copyErr = io.Copy(w, stream)
+	}
 	if copyErr != nil {
 		stop()
 	}

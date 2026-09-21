@@ -46,8 +46,9 @@ cannot be reconstructed. That is why playback positions are keyed by the
 content identifier rather than by `videos.id`, and why that table carries no
 foreign key to `videos`.
 
-Not built yet: authentication, subtitles, transcoding for formats the browser
-cannot play, and multi-user support.
+Not built yet: authentication, subtitles, and multi-user support. Browser-incompatible
+video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is
+not persisted.
 
 ## Intended dependency direction
 

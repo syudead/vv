@@ -109,6 +109,7 @@ type transcodeStream struct {
 	Height           int
 	Level            int
 	FPS              float64
+	RealFPS          float64
 	SampleRate       int
 	Channels         int
 	AttachedPicture  bool
@@ -157,6 +158,7 @@ func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
 			Height:           stream.Height,
 			Level:            stream.Level,
 			FPS:              parseFrameRate(stream.AverageFrameRate),
+			RealFPS:          parseFrameRate(stream.RealFrameRate),
 			SampleRate:       parsePositiveInt(stream.SampleRate),
 			Channels:         stream.Channels,
 			AttachedPicture:  stream.Disposition.AttachedPicture != 0,
@@ -219,7 +221,7 @@ func videoCanCopy(stream transcodeStream) bool {
 	}
 	if stream.CodecName != "h264" || !profiles[strings.ToLower(stream.Profile)] ||
 		stream.Level <= 0 || stream.Level > 51 || stream.PixelFormat != "yuv420p" ||
-		stream.BitsPerRawSample != 8 || stream.FPS <= 0 {
+		stream.BitsPerRawSample != 8 || !constantFrameRate(stream) {
 		return false
 	}
 	width, height := outputDimensions(stream.Width, stream.Height)
@@ -246,6 +248,8 @@ func videoEncodeArgs(stream transcodeStream) []string {
 	limit := maxOutputFPS(width, height)
 	if stream.FPS <= 0 {
 		filters = append(filters, "fps=30.000")
+	} else if !constantFrameRate(stream) {
+		filters = append(filters, "fps="+formatFPS(math.Min(stream.FPS, limit)))
 	} else if stream.FPS > limit+0.0001 {
 		filters = append(filters, "fps="+formatFPS(limit))
 	}
@@ -255,6 +259,10 @@ func videoEncodeArgs(stream transcodeStream) []string {
 		args = append(args, "-vf", strings.Join(filters, ","))
 	}
 	return args
+}
+
+func constantFrameRate(stream transcodeStream) bool {
+	return stream.FPS > 0 && stream.RealFPS > 0 && math.Abs(stream.FPS-stream.RealFPS) < 0.0001
 }
 
 func outputDimensions(width, height int) (int, int) {

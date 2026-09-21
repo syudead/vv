@@ -14,7 +14,7 @@ import (
 func compatibleMetadata() transcodeMetadata {
 	audio := transcodeStream{Index: 2, CodecType: "audio", CodecName: "aac", Profile: "LC", SampleRate: 48000, Channels: 2}
 	return transcodeMetadata{
-		Video: transcodeStream{Index: 1, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30},
+		Video: transcodeStream{Index: 1, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30},
 		Audio: &audio,
 	}
 }
@@ -22,7 +22,7 @@ func compatibleMetadata() transcodeMetadata {
 func TestParseTranscodeProbeSkipsAttachedPicture(t *testing.T) {
 	const output = `{"streams":[
 		{"index":0,"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}},
-		{"index":1,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":1920,"height":1080,"level":41,"avg_frame_rate":"30000/1001"},
+		{"index":1,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":1920,"height":1080,"level":41,"avg_frame_rate":"30000/1001","r_frame_rate":"30000/1001"},
 		{"index":2,"codec_type":"audio","codec_name":"aac","profile":"LC","sample_rate":"48000","channels":2}
 	],"format":{"duration":"12.5"}}`
 	got, err := parseTranscodeProbe([]byte(output))
@@ -64,6 +64,7 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 		}, "-c:v libx264"},
 		{"96kHz AAC", func(m *transcodeMetadata) { m.Audio.SampleRate = 96000 }, "-c:a aac -profile:a aac_low -ac 2 -b:a 192k -ar 48000"},
 		{"unknown video attribute", func(m *transcodeMetadata) { m.Video.BitsPerRawSample = 0 }, "-c:v libx264"},
+		{"variable frame rate", func(m *transcodeMetadata) { m.Video.RealFPS = 120 }, "-c:v libx264"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -92,9 +93,10 @@ func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 		stream transcodeStream
 		want   string
 	}{
-		{"odd dimensions", transcodeStream{Width: 641, Height: 359, FPS: 30}, "-vf pad=642:360:0:0"},
-		{"8K60", transcodeStream{Width: 7680, Height: 4320, FPS: 60}, "-vf scale=3840:2160,fps=30.340"},
+		{"odd dimensions", transcodeStream{Width: 641, Height: 359, FPS: 30, RealFPS: 30}, "-vf pad=642:360:0:0"},
+		{"8K60", transcodeStream{Width: 7680, Height: 4320, FPS: 60, RealFPS: 60}, "-vf scale=3840:2160,fps=30.340"},
 		{"unknown rate", transcodeStream{Width: 1920, Height: 1080}, "-vf fps=30.000"},
+		{"VFR peak", transcodeStream{Width: 1920, Height: 1080, FPS: 30, RealFPS: 120}, "-vf fps=30.000"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -171,7 +173,7 @@ func TestTranscodeHelperProcess(t *testing.T) {
 	}
 	mode := os.Args[len(os.Args)-1]
 	if mode == "probe" {
-		_, _ = io.WriteString(os.Stdout, `{"streams":[{"index":0,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":640,"height":360,"level":31,"avg_frame_rate":"30/1"}],"format":{"duration":"10.0"}}`)
+		_, _ = io.WriteString(os.Stdout, `{"streams":[{"index":0,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":640,"height":360,"level":31,"avg_frame_rate":"30/1","r_frame_rate":"30/1"}],"format":{"duration":"10.0"}}`)
 		os.Exit(0)
 	}
 	if mode != "ffmpeg" {

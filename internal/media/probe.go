@@ -76,6 +76,7 @@ type probeOutput struct {
 		Height           int    `json:"height"`
 		Level            int    `json:"level"`
 		AverageFrameRate string `json:"avg_frame_rate"`
+		RealFrameRate    string `json:"r_frame_rate"`
 		SampleRate       string `json:"sample_rate"`
 		Channels         int    `json:"channels"`
 		Disposition      struct {
