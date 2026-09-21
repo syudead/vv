@@ -561,6 +561,10 @@ func migratedDB(t *testing.T) *DB {
 	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
 		t.Fatalf("テスト用メディアフォルダを登録できない: %v", err)
 	}
+
+	// 検査はここに掛ける。個々のテストへ呼び出しを足すと、経路が増えるたびに
+	// 足し忘れが起き、不変条件を1件ずつ潰す元の状態へ戻る。
+	t.Cleanup(func() { assertRepresentativeInvariant(t, db) })
 	return db
 }
 

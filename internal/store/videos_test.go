@@ -633,3 +633,60 @@ func equalStrings(got, want []string) bool {
 	}
 	return true
 }
+
+// 同じ内容の場所を後から足して代表場所が入れ替わる場合。取り込みは新しい行を
+// 作らず場所だけを足すので、container は既存の値のまま残りうる。
+// assertRepresentativeInvariant が働くのはこの状態である（invariants_test.go）。
+func TestUpsertVideoResyncsWhenAddedLocationBecomesRepresentative(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b.mkv", "movie", "same", 10, 0)); err != nil {
+		t.Fatal(err)
+	}
+	// /media/a.mp4 はパス順で先にくるので、足した時点で代表場所になる。
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "movie", "same", 10, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	var container string
+	if err := db.SQL().QueryRow(
+		`select coalesce(container, '') from videos where content_key = 'same'`).Scan(&container); err != nil {
+		t.Fatal(err)
+	}
+	if want := domain.ContainerFromPath("/media/a.mp4"); container != want {
+		t.Fatalf("代表場所が入れ替わっても container が古いまま: 得 %q / 期待 %q", container, want)
+	}
+}
+
+// 代表場所を削除して、残った別拡張子の場所が代表になる場合。
+// 削除経路にも同じ再同期が要る。
+func TestDeleteVideoLocationsResyncsRemainingRepresentative(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mkv", "movie", "same", 10, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b.mp4", "movie", "same", 10, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	var locationID int64
+	if err := db.SQL().QueryRow(
+		`select id from video_locations where path = '/media/a.mkv'`).Scan(&locationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DeleteVideoLocations(ctx, []int64{locationID}); err != nil {
+		t.Fatal(err)
+	}
+
+	var container string
+	if err := db.SQL().QueryRow(
+		`select coalesce(container, '') from videos where content_key = 'same'`).Scan(&container); err != nil {
+		t.Fatal(err)
+	}
+	if want := domain.ContainerFromPath("/media/b.mp4"); container != want {
+		t.Fatalf("代表場所の削除後に container が古いまま: 得 %q / 期待 %q", container, want)
+	}
+}
