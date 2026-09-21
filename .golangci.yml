@@ -13,6 +13,20 @@ linters:
     - staticcheck
     - unused
 
+    # 以下は 007 設定画面の実装で実際に起きた欠陥の種類に対応する。
+    # レビューは1件ずつ指摘するので、同じ種類が別の場所に残る。
+
+    # 行の反復を打ち切ったまま成功として扱う誤り。フォルダの削除や同期が
+    # 黙って一部にしか適用されない状態になる。
+    - rowserrcheck
+    # rows を defer せずに閉じる誤り。途中の return で閉じ漏れる。
+    - sqlclosecheck
+    # 原因エラーを %v で埋め込み、errors.Is で辿れなくする誤り。
+    - errorlint
+    # 背後で動かす処理へ context を渡し忘れる誤り。意図して渡さない箇所は
+    # 理由を添えて nolint で示す（cmd/mdm/library.go の走査開始）。
+    - contextcheck
+
   settings:
     depguard:
       rules:
@@ -83,6 +97,10 @@ linters:
           - ineffassign
           - staticcheck
           - unused
+          - rowserrcheck
+          - sqlclosecheck
+          - errorlint
+          - contextcheck
 
 formatters:
   enable:

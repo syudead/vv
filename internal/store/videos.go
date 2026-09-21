@@ -617,7 +617,7 @@ func encodeCursor(sort VideoSort, last domain.Video) string {
 func decodeCursor(cursor string) (value string, id int64, err error) {
 	raw, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
-		return "", 0, fmt.Errorf("%w: %v", ErrInvalidCursor, err)
+		return "", 0, fmt.Errorf("%w: %w", ErrInvalidCursor, err)
 	}
 
 	parts := strings.SplitN(string(raw), cursorSeparator, 2)

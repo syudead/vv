@@ -173,6 +173,10 @@ func (l *library) StartScan(ctx context.Context) (domain.Scan, error) {
 	}
 	l.running = true
 
+	// contextcheck はここで ctx を渡していないことを指摘するが、渡してはならない。
+	// 上のコメント（R-108）のとおり、要求の ctx を使うと応答を返した時点で走査が
+	// 打ち切られる。走査は起動時に渡した寿命の長い context で動く。
+	//nolint:contextcheck // 要求の ctx を走査へ持ち込まないのは意図した設計である。
 	go l.runScan(scan.ID)
 
 	return scan, nil
