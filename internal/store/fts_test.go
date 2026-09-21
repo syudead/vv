@@ -47,7 +47,7 @@ func ftsFixture(t *testing.T) *DB {
 		}
 	}
 
-	return db
+	return checkInvariants(t, db)
 }
 
 // countMatch は MATCH での一致件数を返す。
