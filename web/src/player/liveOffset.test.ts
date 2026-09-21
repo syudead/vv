@@ -67,6 +67,7 @@ describe("live offset middleware", () => {
 
     expect(middleware.setCurrentTime(50)).toBe(0);
     expect(middleware.setCurrentTime(70)).toBe(0);
+    expect(middleware.currentTime(20)).toBe(70);
     expect(tech.setSource).not.toHaveBeenCalled();
     vi.advanceTimersByTime(200);
 
@@ -80,6 +81,16 @@ describe("live offset middleware", () => {
     middleware.callPlay();
     canPlay();
     expect(tech.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("後方seekのreload待機中は選択位置を論理時刻として返す", () => {
+    vi.useFakeTimers();
+    const { middleware, tech } = fixture();
+    middleware.setSource(liveSource(7, 120_000, 30_000), () => undefined);
+    tech.buffered.mockReturnValue(ranges([[0, 10]]));
+
+    expect(middleware.setCurrentTime(5)).toBe(0);
+    expect(middleware.currentTime(20)).toBe(5);
   });
 
   it("未buffer位置の予約後にbuffer内へ戻したら古いreloadを破棄する", () => {
