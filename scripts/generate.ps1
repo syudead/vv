@@ -5,9 +5,10 @@ $PSNativeCommandUseErrorActionPreference = $true
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
-$toolVersions = Get-Content (Join-Path $PSScriptRoot "tool-versions.json") -Raw | ConvertFrom-Json
+. (Join-Path $PSScriptRoot "project-tool.ps1")
+$oapiCodegen = Get-ProjectTool "oapi-codegen"
 
-go run "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@$($toolVersions.oapiCodegen)" `
+& $oapiCodegen `
     -config api/oapi-codegen.yaml api/openapi.yaml
-npx --yes "openapi-typescript@$($toolVersions.openapiTypescript)" `
+npm exec --yes --package="openapi-typescript@7.13.0" -- openapi-typescript `
     api/openapi.yaml -o web/src/api/gen/openapi.ts

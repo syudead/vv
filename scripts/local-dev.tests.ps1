@@ -6,8 +6,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $cases = @(
     @{ Script = "setup"; Failure = "go"; Forbidden = "Installing web dependencies" },
-    @{ Script = "setup"; Failure = "npm"; Forbidden = "Preparing golangci-lint" },
-    @{ Script = "generate"; Failure = "go"; Forbidden = "openapi-typescript" }
+    @{ Script = "setup"; Failure = "npm"; Forbidden = "Preparing Go development tools" }
 )
 
 foreach ($case in $cases) {
@@ -20,7 +19,6 @@ foreach ($case in $cases) {
         function npm {
             if ($global:localDevTestFailure -eq "npm") { & pwsh -NoProfile -Command "exit 17" }
         }
-        function npx {}
         & (Join-Path $Root "scripts/$Script.ps1")
     } -args $repoRoot, $case.Script, $case.Failure 2>&1
     $code = $LASTEXITCODE
@@ -30,6 +28,30 @@ foreach ($case in $cases) {
     }
     Write-Host "PASS $($case.Script) stops after $($case.Failure) fails"
 }
+
+if (Test-Path (Join-Path $repoRoot "scripts/tool-versions.json")) {
+    throw "tool versions must use ecosystem manifests instead of scripts/tool-versions.json"
+}
+
+$toolMod = Get-Content (Join-Path $repoRoot "tools/go.mod") -Raw
+foreach ($tool in @(
+    "github.com/air-verse/air",
+    "github.com/golangci/golangci-lint/v2/cmd/golangci-lint",
+    "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen"
+)) {
+    if (-not $toolMod.Contains($tool)) {
+        throw "tools/go.mod does not declare $tool"
+    }
+}
+Write-Host "PASS Go development tools use the isolated tools module"
+
+$devScript = Get-Content (Join-Path $repoRoot "scripts/dev.ps1") -Raw
+if (-not $devScript.Contains('Get-ProjectTool "air"') -or
+    -not $devScript.Contains('Start-Process -FilePath $airPath') -or
+    -not $devScript.Contains('".air.toml"')) {
+    throw "dev.ps1 does not start the project-local Air configuration"
+}
+Write-Host "PASS dev starts the project-local Air tool"
 
 foreach ($scenario in @("healthy", "missing-git", "missing-task", "broken-jq", "empty-jq")) {
     $output = & pwsh -NoLogo -NoProfile -Command {
@@ -70,15 +92,27 @@ foreach ($scenario in @("healthy", "missing-git", "missing-task", "broken-jq", "
 $webDepsRoot = Join-Path $repoRoot ".local/web-deps-test"
 Remove-Item -Recurse -Force $webDepsRoot -ErrorAction SilentlyContinue
 try {
-    New-Item -ItemType Directory -Force -Path (Join-Path $webDepsRoot "scripts"), (Join-Path $webDepsRoot "web/node_modules"), (Join-Path $webDepsRoot ".local") | Out-Null
+    $viteDir = Join-Path $webDepsRoot "web/node_modules/.bin"
+    $viteName = if ($IsWindows) { "vite.cmd" } else { "vite" }
+    New-Item -ItemType Directory -Force -Path (Join-Path $webDepsRoot "scripts"), $viteDir, (Join-Path $webDepsRoot ".local") | Out-Null
     Copy-Item (Join-Path $repoRoot "scripts/web-deps.ps1") (Join-Path $webDepsRoot "scripts/web-deps.ps1")
-    New-Item -ItemType File -Path (Join-Path $webDepsRoot "web/package-lock.json"), (Join-Path $webDepsRoot ".local/web-deps.stamp") | Out-Null
+    $testLockfile = Join-Path $webDepsRoot "web/package-lock.json"
+    New-Item -ItemType File -Path $testLockfile, (Join-Path $viteDir $viteName) | Out-Null
+    Set-Content -LiteralPath (Join-Path $webDepsRoot ".local/web-deps.stamp") `
+        -Value (Get-FileHash -Algorithm SHA256 $testLockfile).Hash -NoNewline
 
     & (Join-Path $webDepsRoot "scripts/web-deps.ps1") -Check
     if ($LASTEXITCODE -ne 0) {
         throw "web-deps rejected a current stamp with node_modules present"
     }
     Write-Host "PASS web-deps accepts installed dependencies"
+
+    Remove-Item -Force (Join-Path $viteDir $viteName)
+    & (Join-Path $webDepsRoot "scripts/web-deps.ps1") -Check
+    if ($LASTEXITCODE -eq 0) {
+        throw "web-deps accepted node_modules without the Vite executable"
+    }
+    Write-Host "PASS web-deps rejects an incomplete installation"
 
     Remove-Item -Recurse -Force (Join-Path $webDepsRoot "web/node_modules")
     & (Join-Path $webDepsRoot "scripts/web-deps.ps1") -Check

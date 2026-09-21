@@ -5,6 +5,7 @@ $PSNativeCommandUseErrorActionPreference = $true
 
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
-$toolVersions = Get-Content (Join-Path $PSScriptRoot "tool-versions.json") -Raw | ConvertFrom-Json
+. (Join-Path $PSScriptRoot "project-tool.ps1")
+$golangciLint = Get-ProjectTool "golangci-lint"
 
-go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$($toolVersions.golangciLint)" run
+& $golangciLint run

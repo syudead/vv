@@ -87,7 +87,8 @@ mise exec --command "task doctor"
 開発サーバーは `mise exec --command "task dev"` で起動し、
 `http://localhost:5173` を開く。終了は Ctrl+C。
 変更の検証は `mise exec --command "task check"` で実行する。
-検査ツールの版は `scripts/tool-versions.json` と `mise.toml` に固定する。
+Go 製の開発ツールは `tools/go.mod`、実行環境は `mise.toml` に固定する。
+`task setup` は Go 製ツールを `.local/bin` へインストールする。
 `task check` はアプリの検査に加えて PowerShell の回帰テストを実行する。
 CI でもアプリの検査と、Windows / Linux の PowerShell 回帰テストを実行する。
 Windows で `task setup` を再実行するときは、先に開発サーバーを停止する。
@@ -103,8 +104,8 @@ Go と Web のソースは `.gitattributes` で LF に固定し、Windows の改
 | 入口                                 | 内容                                                         |
 | ------------------------------------ | ------------------------------------------------------------ |
 | `task doctor` / `scripts/doctor.ps1` | Go・Node・ffmpeg・bash・Docker などの有無を確認する          |
-| `task setup` / `scripts/setup.ps1`   | Go module、npm 依存、lint ツール、ビルドキャッシュを準備する |
-| `task dev` / `scripts/dev.ps1`       | Go サーバーと Vite 開発サーバーを PowerShell で起動する      |
+| `task setup` / `scripts/setup.ps1`   | Go module、npm 依存、開発ツール、ビルドキャッシュを準備する  |
+| `task dev` / `scripts/dev.ps1`       | Air で自動再起動する Go サーバーと Vite を起動する            |
 | `task check`                         | 静的検査、テスト、生成物とマイグレーションをまとめて検証する |
 
 `ffmpeg` / `ffprobe`、Docker、bash は OS 側のツールであり、`mise.toml`
@@ -117,7 +118,7 @@ Windows で Go バイナリを直接動かす場合、`MDM_DATA_DIR` はドラ�
 | ----------------------- | ----------------------------------------------------------------------------- |
 | `task setup`            | 依存と開発ツールを先に取得する                                                |
 | `task up` / `task down` | Docker で起動・停止する                                                       |
-| `task dev`              | Go サーバーと Vite 開発サーバーを起動する                                     |
+| `task dev`              | Go サーバーを自動再起動し、Vite 開発サーバーとともに起動する                   |
 | `task build`            | SPA をビルドして埋め込み、`bin/mdm` を生成する                                |
 | `task generate`         | `api/openapi.yaml` から Go と TypeScript の型を生成する                       |
 | `task fmt`              | 書式を整える                                                                  |
@@ -134,7 +135,7 @@ CI はこの表の `task check` と `task test-e2e` だけを実行する。CI �
 （`internal/httpapi/gen/`、`web/src/api/gen/`）は手編集しない。
 
 Claude Code on the web でセッションを開くと、`.claude/hooks/session-start.sh` が
-`task setup` を呼んで依存と `golangci-lint` を先に用意する。手元の CLI では何もしない。
+`task setup` を呼んで依存と Go 製の開発ツールを先に用意する。手元の CLI では何もしない。
 
 ## Repository structure
 
@@ -159,6 +160,7 @@ Claude Code on the web でセッションを開くと、`.claude/hooks/session-s
 │   ├── media/              # 外部ツール（ffmpeg／ffprobe）のアダプタ
 │   ├── scanner/            # ファイル走査、内容由来の識別子、移動の検出
 │   └── jobs/               # プロセス内のジョブワーカー（直列）
+├── tools/                   # Go 製の開発ツールを分離した module
 ├── web/
 │   └── src/
 │       ├── api/            # 生成型を使う fetch ラッパと一覧のフック

@@ -9,7 +9,7 @@
 | --------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------ |
 | `task up`       | Task・Docker                            | イメージを構築してアプリケーションを起動する。**導入手順の最初に実行する唯一のコマンド**            | FR-001 / SC-001          |
 | `task down`     | Task・Docker                            | 起動したものを停止・削除する                                                                        | —                        |
-| `task dev`      | Task・PowerShell 7.4・Go・Node・ffmpeg | Go サーバーと Vite の開発サーバーを起動する（変更の即時反映用）                                     | —                        |
+| `task dev`      | Task・PowerShell 7.4・Go・Node・ffmpeg | Go サーバーを Air で自動再起動し、Vite の開発サーバーとともに起動する                                | —                        |
 | `task build`    | Task・PowerShell 7.4・Go・Node         | SPA をビルドして埋め込み、単一バイナリを生成する                                                    | —                        |
 | `task generate` | Task・PowerShell 7.4・Go・Node         | `api/openapi.yaml` から Go と TypeScript の型を生成する                                             | FR-012                   |
 | `task fmt`      | Task・PowerShell 7.4・Go・Node         | 書式を整える                                                                                        | FR-011                   |

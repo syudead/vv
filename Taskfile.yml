@@ -32,8 +32,8 @@ tasks:
       - docker compose down --remove-orphans
 
   dev:
-    desc: Run the Go server and Vite development server.
-    deps: [web-deps]
+    desc: Run the Go server with hot reload and the Vite development server.
+    deps: [go-tools, web-deps]
     cmds:
       - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
 
@@ -45,6 +45,7 @@ tasks:
 
   generate:
     desc: Generate Go and TypeScript types from OpenAPI.
+    deps: [go-tools]
     cmds:
       - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/generate.ps1
 
@@ -101,6 +102,7 @@ tasks:
 
   lint-go:
     desc: Run golangci-lint, including dependency rules.
+    deps: [go-tools]
     cmds:
       - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/lint-go.ps1
 
@@ -129,6 +131,7 @@ tasks:
 
   generate-check:
     desc: Check that committed generated files match OpenAPI.
+    deps: [go-tools]
     cmds:
       - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/generate-check.ps1
 
@@ -143,3 +146,10 @@ tasks:
       - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/web-deps.ps1 -Check
     cmds:
       - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/web-deps.ps1
+
+  go-tools:
+    internal: true
+    status:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/go-tools.ps1 -Check
+    cmds:
+      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/go-tools.ps1

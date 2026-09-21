@@ -14,6 +14,35 @@ function Require-Command {
     }
 }
 
+function Assert-PortAvailable {
+    param(
+        [Parameter(Mandatory = $true)][int]$Port,
+        [Parameter(Mandatory = $true)][System.Net.IPAddress]$Address
+    )
+
+    $listener = [System.Net.Sockets.TcpListener]::new($Address, $Port)
+    try {
+        $listener.Start()
+    } catch {
+        throw "Port $Port is already in use. Stop the existing development process and retry."
+    } finally {
+        $listener.Stop()
+    }
+}
+
+function Stop-ProcessTree {
+    param([System.Diagnostics.Process]$Process)
+
+    if ($null -eq $Process -or $Process.HasExited) { return }
+    if ($IsWindows) {
+        taskkill /PID $Process.Id /T /F 2>$null | Out-Null
+        return
+    }
+
+    pkill -TERM -P $Process.Id 2>$null
+    kill -TERM $Process.Id 2>$null
+}
+
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 
@@ -21,6 +50,16 @@ Require-Command "go"
 Require-Command "npm"
 Require-Command "ffmpeg"
 Require-Command "ffprobe"
+. (Join-Path $PSScriptRoot "project-tool.ps1")
+$airPath = Get-ProjectTool "air"
+$npmPath = if ($IsWindows) {
+    (Get-Command "npm.cmd" -ErrorAction Stop).Source
+} else {
+    (Get-Command "npm" -ErrorAction Stop).Source
+}
+
+Assert-PortAvailable -Port 8080 -Address ([System.Net.IPAddress]::Any)
+Assert-PortAvailable -Port 5173 -Address ([System.Net.IPAddress]::Loopback)
 
 if ([string]::IsNullOrWhiteSpace($DataDir)) {
     $DataDir = Join-Path $repoRoot ".local/data"
@@ -33,50 +72,26 @@ Write-Host "Vite: http://localhost:5173 (/api proxies to :8080)"
 Write-Host "Data:  $DataDir"
 Write-Host ""
 
-$goJob = Start-Job -Name "vv-go" -ScriptBlock {
-    param($Root, $Data)
-    $ErrorActionPreference = "Stop"
-    $PSNativeCommandUseErrorActionPreference = $true
-    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-    Set-Location $Root
-    $env:MDM_DATA_DIR = $Data
-    go run ./cmd/mdm 2>&1
-} -ArgumentList $repoRoot, $DataDir
-
-$webJob = Start-Job -Name "vv-web" -ScriptBlock {
-    param($Root)
-    $ErrorActionPreference = "Stop"
-    $PSNativeCommandUseErrorActionPreference = $true
-    [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
-    Set-Location $Root
-    npm --prefix web run dev -- --host 127.0.0.1 --strictPort 2>&1
-} -ArgumentList $repoRoot
-
-$jobs = @($goJob, $webJob)
+$goProcess = $null
+$webProcess = $null
 
 try {
+    $goProcess = Start-Process -FilePath $airPath -ArgumentList @("-c", ".air.toml") `
+        -WorkingDirectory $repoRoot -Environment @{ MDM_DATA_DIR = $DataDir } -NoNewWindow -PassThru
+    $webProcess = Start-Process -FilePath $npmPath `
+        -ArgumentList @("--prefix", "web", "run", "dev", "--", "--host", "127.0.0.1", "--strictPort") `
+        -WorkingDirectory $repoRoot -NoNewWindow -PassThru
+
     while ($true) {
-        foreach ($job in $jobs) {
-            Receive-Job $job -ErrorAction Continue
-        }
-
-        $finished = @($jobs | Where-Object { $_.State -ne "Running" })
+        $finished = @(@($goProcess, $webProcess) | Where-Object { $_.HasExited })
         if ($finished.Count -gt 0) {
-            foreach ($job in $finished) {
-                Receive-Job $job -ErrorAction Continue
-                Write-Host "$($job.Name) exited with state $($job.State)."
-            }
-            throw "A development server stopped. See the output above."
+            $details = $finished | ForEach-Object { "PID $($_.Id) exited with code $($_.ExitCode)" }
+            throw "A development server stopped: $($details -join '; ')."
         }
 
-        Start-Sleep -Seconds 1
+        Start-Sleep -Milliseconds 500
     }
 } finally {
-    foreach ($job in $jobs) {
-        if ($job.State -eq "Running") {
-            Stop-Job $job
-        }
-        Receive-Job $job -ErrorAction SilentlyContinue
-        Remove-Job $job -Force
-    }
+    Stop-ProcessTree $webProcess
+    Stop-ProcessTree $goProcess
 }

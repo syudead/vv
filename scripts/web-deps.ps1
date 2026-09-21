@@ -11,13 +11,14 @@ $repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 Set-Location $repoRoot
 $lockfile = Get-Item "web/package-lock.json"
 $stampPath = Join-Path $repoRoot ".local/web-deps.stamp"
+$viteCommand = if ($IsWindows) { "web/node_modules/.bin/vite.cmd" } else { "web/node_modules/.bin/vite" }
+$fingerprint = (Get-FileHash -Algorithm SHA256 $lockfile).Hash
 
 if ($Check) {
-    if (-not (Test-Path "web/node_modules" -PathType Container) -or -not (Test-Path $stampPath -PathType Leaf)) {
+    if (-not (Test-Path $viteCommand -PathType Leaf) -or -not (Test-Path $stampPath -PathType Leaf)) {
         exit 1
     }
-    $stamp = Get-Item $stampPath
-    if ($stamp.LastWriteTimeUtc -lt $lockfile.LastWriteTimeUtc) {
+    if ((Get-Content $stampPath -Raw) -ne $fingerprint) {
         exit 1
     }
     exit 0
@@ -25,4 +26,4 @@ if ($Check) {
 
 npm --prefix web ci
 New-Item -ItemType Directory -Force -Path (Split-Path $stampPath) | Out-Null
-New-Item -ItemType File -Force -Path $stampPath | Out-Null
+Set-Content -LiteralPath $stampPath -Value $fingerprint -NoNewline
