@@ -26,7 +26,7 @@ func (s *server) ListDirectories(w http.ResponseWriter, _ *http.Request, params 
 	writeJSON(w, http.StatusOK, listing, s.logger)
 }
 
-func listDirectories(requested *string) (gen.DirectoryListing, int, string, error) {
+func listDirectories(requested *string) (gen.DirectoryListing, int, gen.ErrorCode, error) {
 	if requested == nil {
 		return directoryRoots(), 0, "", nil
 	}

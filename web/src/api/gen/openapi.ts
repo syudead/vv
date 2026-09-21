@@ -364,12 +364,10 @@ export interface components {
         };
         Error: {
             /**
-             * @description 機械可読なエラー種別
-             * @example not_found
-             * @example invalid_request
-             * @example internal
+             * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （make generate）。新しい種別はまずここへ足す。
+             * @enum {string}
              */
-            code: string;
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable";
             /** @description 人が読むための説明。利用者にそのまま提示してよい文言にする */
             message: string;
         };
