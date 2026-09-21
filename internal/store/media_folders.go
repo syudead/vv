@@ -30,7 +30,7 @@ func NormalizePath(path string) (string, error) {
 	}
 	absolute, err := filepath.Abs(path)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalidFolder, err)
+		return "", fmt.Errorf("%w: %w", ErrInvalidFolder, err)
 	}
 	return filepath.Clean(absolute), nil
 }
@@ -48,7 +48,7 @@ func validateMediaFolder(path string) (string, error) {
 	}
 	info, err := os.Lstat(cleaned)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalidFolder, err)
+		return "", fmt.Errorf("%w: %w", ErrInvalidFolder, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		if info.Mode()&os.ModeSymlink != 0 {
@@ -58,7 +58,7 @@ func validateMediaFolder(path string) (string, error) {
 	}
 	resolved, err := filepath.EvalSymlinks(cleaned)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalidFolder, err)
+		return "", fmt.Errorf("%w: %w", ErrInvalidFolder, err)
 	}
 	resolved, err = NormalizePath(resolved)
 	if err != nil || !domain.PathWithinRoot(cleaned, resolved) || !domain.PathWithinRoot(resolved, cleaned) {
@@ -66,11 +66,11 @@ func validateMediaFolder(path string) (string, error) {
 	}
 	dir, err := os.Open(cleaned)
 	if err != nil {
-		return "", fmt.Errorf("%w: %v", ErrInvalidFolder, err)
+		return "", fmt.Errorf("%w: %w", ErrInvalidFolder, err)
 	}
 	defer func() { _ = dir.Close() }()
 	if _, err := dir.ReadDir(1); err != nil && !errors.Is(err, io.EOF) {
-		return "", fmt.Errorf("%w: %v", ErrInvalidFolder, err)
+		return "", fmt.Errorf("%w: %w", ErrInvalidFolder, err)
 	}
 	return cleaned, nil
 }
@@ -235,26 +235,41 @@ func ensureNoRunningScan(ctx context.Context, tx *sql.Tx) error {
 	return nil
 }
 
-func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
+// locationsUnder は root 配下の場所の id と、その場所を持つ動画の id を返す。
+//
+// 反復の打ち切りを検査せずにこの集合を使うと、途中で失敗しても部分集合のまま
+// 成功として扱われ、フォルダの削除や同期が黙って一部にしか適用されない。
+// 呼び出し側ごとに書くと検査の漏れも各所に散るので、1か所に集める。
+func locationsUnder(ctx context.Context, tx *sql.Tx, root string) (ids []int64, videoIDs map[int64]struct{}, err error) {
 	rows, err := tx.QueryContext(ctx, `select id, video_id, path from video_locations`)
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
-	var ids []int64
-	affected := map[int64]struct{}{}
+	defer func() { _ = rows.Close() }()
+
+	videoIDs = map[int64]struct{}{}
 	for rows.Next() {
 		var id, videoID int64
 		var path string
 		if err := rows.Scan(&id, &videoID, &path); err != nil {
-			_ = rows.Close()
-			return err
+			return nil, nil, err
 		}
 		if domain.PathWithinRoot(root, path) {
 			ids = append(ids, id)
-			affected[videoID] = struct{}{}
+			videoIDs[videoID] = struct{}{}
 		}
 	}
-	_ = rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return ids, videoIDs, nil
+}
+
+func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
+	ids, affected, err := locationsUnder(ctx, tx, root)
+	if err != nil {
+		return err
+	}
 	for _, id := range ids {
 		if _, err := tx.ExecContext(ctx, `update jobs set location_id = null, location_version = null, location_path = null where state = 'queued' and location_id = ?`, id); err != nil {
 			return err
@@ -276,23 +291,8 @@ func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
 }
 
 func syncLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
-	rows, err := tx.QueryContext(ctx, `select video_id, path from video_locations`)
+	_, videoIDs, err := locationsUnder(ctx, tx, root)
 	if err != nil {
-		return err
-	}
-	videoIDs := map[int64]struct{}{}
-	for rows.Next() {
-		var videoID int64
-		var path string
-		if err := rows.Scan(&videoID, &path); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		if domain.PathWithinRoot(root, path) {
-			videoIDs[videoID] = struct{}{}
-		}
-	}
-	if err := rows.Close(); err != nil {
 		return err
 	}
 	for videoID := range videoIDs {
