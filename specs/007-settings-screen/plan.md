@@ -72,9 +72,9 @@ folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存
 - `PUT/DELETE /api/media-folders/{id}`で既存1件の変更・削除を提供し、一覧全体のPUTは提供しない
 - PUT/DELETEは行単位versionで同時変更を検出する
 - directory APIはroot/drive、現在位置、親、子directoryだけを返す
-- 登録可否の規則は [spec.md](spec.md) の FR-028・FR-031・FR-032 を正本とし、ここでは再掲しない
-- 失敗時の `code` は [contracts/settings-api.md](contracts/settings-api.md) を正本とし、
-  handlerは domain error をその表の `code` へ変換する
+- 登録可否の規則は [spec.md](spec.md) の FR-006・FR-028・FR-031・FR-032 を正本とし、ここでは再掲しない
+- 受理しない条件と失敗時の `code` は [contracts/settings-api.md](contracts/settings-api.md) を
+  正本とし、handlerは domain error をその表の `code` へ変換する
 - 全mutationをsame-originに限定し、POST/PUTはJSONだけを受理してCORS responseを追加しない
 - OpenAPIを先に変更し、Go/TypeScriptを再生成してhandler、Web API client、contract testsを追加する
 
