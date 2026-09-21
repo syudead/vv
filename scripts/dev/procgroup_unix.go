@@ -8,9 +8,12 @@ import (
 	"time"
 )
 
-// shutdownGrace は SIGTERM のあと SIGKILL へ移るまでの猶予である。Go サーバーは
-// 取り込み中のジョブを畳んでから終わるので、その時間を与える。
-const shutdownGrace = 5 * time.Second
+// killGrace は SIGTERM のあと SIGKILL へ移るまでの猶予である。Go サーバーは
+// 処理中の要求を cmd/mdm の shutdownGrace（10 秒）まで待ってから終わるので、
+// それより短くすると正常な停止の途中で殺すことになる。猶予は
+// アプリ < killGrace < drainTimeout の順に外側ほど長くする。
+// この順序は scripts/dev の試験が守る。
+const killGrace = 15 * time.Second
 
 // isolateProcessGroup は開発サーバーを独立したプロセスグループの長にする。
 // どちらのサーバーもさらに子を持つ（go run が起動するバイナリ、npm が起動する
@@ -31,5 +34,5 @@ func terminateGroup(cmd *exec.Cmd) {
 		_ = cmd.Process.Kill()
 		return
 	}
-	time.AfterFunc(shutdownGrace, func() { _ = syscall.Kill(group, syscall.SIGKILL) })
+	time.AfterFunc(killGrace, func() { _ = syscall.Kill(group, syscall.SIGKILL) })
 }

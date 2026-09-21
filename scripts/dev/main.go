@@ -24,8 +24,9 @@ var requiredCommands = []string{"go", "npm", "ffmpeg", "ffprobe"}
 
 // drainTimeout は停止を指示したサーバーの後始末を待つ上限である。孫を残す
 // 経路（Windows）では出力の口が閉じず Wait が返らないので、待ち続けると
-// 端末が固まる。unix の SIGKILL 猶予より長く取る。
-const drainTimeout = 10 * time.Second
+// 端末が固まる。unix の killGrace より長く取らないと、強制終了が起きる前に
+// 待つのをやめてしまう。
+const drainTimeout = 20 * time.Second
 
 // outputLock は2つのサーバーの行が混ざらないようにする。
 var outputLock sync.Mutex

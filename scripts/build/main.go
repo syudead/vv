@@ -55,18 +55,25 @@ func preserveDist(root string, fn func() error) (err error) {
 
 // restoreDist は退避した web/dist を戻し、退避先を片付ける。退避できなかった
 // ときは元の web/dist がそのまま残っているので、触らない。
+//
+// 戻せなかったときは退避先を消さない。版管理された web/dist/index.html と
+// .gitkeep はその時点で退避先にしか無く、消すと原状回復の手段が無くなる。
 func restoreDist(dist, backupDist, backupRoot string, moved, existed bool) error {
-	var err error
 	switch {
 	case moved:
-		err = errors.Join(os.RemoveAll(dist), os.Rename(backupDist, dist))
+		if err := os.RemoveAll(dist); err != nil {
+			return fmt.Errorf("%s を片付けられません。退避したものは %s にある: %w", distPath, backupDist, err)
+		}
+		if err := os.Rename(backupDist, dist); err != nil {
+			return fmt.Errorf("%s を戻せません。退避したものは %s にある: %w", distPath, backupDist, err)
+		}
 	case !existed:
 		// 退避するものが無かった場合。fn が作った出力だけを片付ける。
-		err = os.RemoveAll(dist)
+		if err := os.RemoveAll(dist); err != nil {
+			return err
+		}
 	}
-	// existed かつ退避できなかったときは、元の web/dist がそのまま残って
-	// いるので触らない。
-	return errors.Join(err, os.RemoveAll(backupRoot))
+	return os.RemoveAll(backupRoot)
 }
 
 func main() {

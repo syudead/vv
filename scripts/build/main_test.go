@@ -114,3 +114,30 @@ func TestPreserveDistRemovesOutputWhenNothingWasThere(t *testing.T) {
 		t.Errorf("退避先を片付けていない: %v", local)
 	}
 }
+
+// 戻せなかったときは退避先を残す。版管理された web/dist/index.html と
+// .gitkeep はその時点で退避先にしか無い。
+func TestRestoreDistKeepsTheBackupWhenItCannotRestore(t *testing.T) {
+	root := t.TempDir()
+	backupRoot := filepath.Join(root, "backup")
+	backupDist := filepath.Join(backupRoot, "dist")
+	if err := os.MkdirAll(backupDist, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(backupDist, ".gitkeep"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 戻し先の親をファイルにして rename を失敗させる。
+	if err := os.WriteFile(filepath.Join(root, "web"), nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dist := filepath.Join(root, "web", "dist")
+
+	if err := restoreDist(dist, backupDist, backupRoot, true, true); err == nil {
+		t.Fatal("戻せなかったことを伝えていない")
+	}
+	if _, err := os.Stat(filepath.Join(backupDist, ".gitkeep")); err != nil {
+		t.Errorf("戻せなかったのに退避先を消した: %v", err)
+	}
+}
