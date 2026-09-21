@@ -43,14 +43,17 @@ export default function VideoPage() {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [resumedFrom, setResumedFrom] = useState<number | null>(null);
 
-  const lastSent = useRef<number>(-1);
-  const latestPositionMs = useRef<number | null>(null);
+  const lastSent = useRef<{ videoId: number; positionMs: number } | null>(null);
+  const latestPosition = useRef<{ videoId: number; positionMs: number } | null>(null);
 
   useEffect(() => {
     if (!Number.isSafeInteger(id) || id < 1) {
       setState({ kind: "failed", reason: "動画の指定が正しくありません" });
       return;
     }
+    setState({ kind: "loading" });
+    setPlaybackError(null);
+    setResumedFrom(null);
     const controller = new AbortController();
     void (async () => {
       try {
@@ -63,7 +66,7 @@ export default function VideoPage() {
     return () => controller.abort();
   }, [id]);
 
-  const video = state.kind === "ready" ? state.video : undefined;
+  const video = state.kind === "ready" && state.video.id === id ? state.video : undefined;
 
   useEffect(() => {
     const previous = document.title;
@@ -77,8 +80,15 @@ export default function VideoPage() {
     (positionMs: number, leaving: boolean, force = false) => {
       if (!Number.isFinite(positionMs) || positionMs < 0) return;
       const rounded = Math.round(positionMs);
-      if (!leaving && !force && Math.abs(rounded - lastSent.current) < 1000) return;
-      lastSent.current = rounded;
+      if (
+        !leaving &&
+        !force &&
+        lastSent.current?.videoId === id &&
+        Math.abs(rounded - lastSent.current.positionMs) < 1000
+      ) {
+        return;
+      }
+      lastSent.current = { videoId: id, positionMs: rounded };
       if (leaving) {
         beaconProgress(id, rounded);
         return;
@@ -88,21 +98,25 @@ export default function VideoPage() {
     [id],
   );
 
-  const rememberProgress = useCallback((positionMs: number) => {
-    latestPositionMs.current = positionMs;
-  }, []);
+  const rememberProgress = useCallback(
+    (positionMs: number) => {
+      latestPosition.current = { videoId: id, positionMs };
+    },
+    [id],
+  );
 
   const savePlayerProgress = useCallback(
     (positionMs: number, immediate: boolean) => {
-      latestPositionMs.current = positionMs;
+      latestPosition.current = { videoId: id, positionMs };
       send(positionMs, false, immediate);
     },
-    [send],
+    [id, send],
   );
 
   useEffect(() => {
     const sendLatest = () => {
-      if (latestPositionMs.current !== null) send(latestPositionMs.current, true);
+      const latest = latestPosition.current;
+      if (latest?.videoId === id) send(latest.positionMs, true);
     };
     const onHidden = () => {
       if (document.visibilityState === "hidden") sendLatest();
@@ -114,7 +128,7 @@ export default function VideoPage() {
       window.removeEventListener("pagehide", sendLatest);
       sendLatest();
     };
-  }, [send]);
+  }, [id, send]);
 
   const onError = useCallback(() => {
     setPlaybackError(

@@ -1,5 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
@@ -52,6 +52,7 @@ function renderPage(id = "7", from?: string) {
         { pathname: `/videos/${id}`, state: from === undefined ? undefined : { from } },
       ]}
     >
+      <Link to="/videos/8">次の動画</Link>
       <Routes>
         <Route path="/videos/:id" element={<VideoPage />} />
       </Routes>
@@ -170,5 +171,27 @@ describe("VideoPage", () => {
         keepalive: true,
       }),
     );
+  });
+
+  it("別動画へのroute変更で前の動画の進捗を新しいIDへ送らない", async () => {
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/videos/7") return Promise.resolve(json(video));
+      if (String(input) === "/api/videos/8") return new Promise(() => undefined);
+      return Promise.resolve(json({}));
+    });
+    const page = renderPage();
+    await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+    const callbacks = playerMock.props;
+    if (callbacks === undefined) throw new Error("player が描画されていません");
+    callbacks.onPosition(12_345);
+
+    fireEvent.click(screen.getByRole("link", { name: "次の動画" }));
+    await waitFor(() => expect(screen.queryByTestId("video-player")).toBeNull());
+    page.unmount();
+
+    const finalProgressURLs = fetchMock.mock.calls
+      .filter(([, init]) => init?.keepalive === true)
+      .map(([input]) => String(input));
+    expect(finalProgressURLs).toEqual(["/api/videos/7/progress"]);
   });
 });
