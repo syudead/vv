@@ -15,10 +15,14 @@ to create or revise a specification.
    leave unresolved clarification markers.
 5. Validate the specification against `docs/product-specs/spec-quality.md`
    and correct any issues before opening the PR.
-6. Push the sub-branch and open a PR to the feature branch with `Refs #NNN`.
+6. Run the [`self-review` skill](../../self-review/SKILL.md) over the whole
+   diff. Checks 1 and 5 carry the weight here: a new specification is
+   reconciled against the contracts it supersedes in other feature
+   directories, which is where a contradiction survives unnoticed.
+7. Push the sub-branch and open a PR to the feature branch with `Refs #NNN`.
    Another open Spec PR does not require either PR to be closed.
-7. Stop. A human decides when to merge the PR.
-8. After merge, the maintainer opens the feature-to-`main` integration
+8. Stop. A human decides when to merge the PR.
+9. After merge, the maintainer opens the feature-to-`main` integration
    PR with `Closes #NNN`, then marks Spec complete and sets `Next: plan` in the
    parent Issue.
 
