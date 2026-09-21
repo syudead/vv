@@ -311,6 +311,44 @@ describe("SettingsPage", () => {
     ).toBe(false);
   });
 
+  it("削除後の一覧再取得に失敗しても削除済み行とdialogを戻さない", async () => {
+    const original = folder(1, "/media/original", 3);
+    let deleted = false;
+    let deleteRequests = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") {
+        return Promise.resolve(
+          deleted
+            ? json({ code: "internal", message: "一覧を再取得できません" }, 500)
+            : json([original]),
+        );
+      }
+      if (url === "/api/media-folders/1?version=3" && init?.method === "DELETE") {
+        deleted = true;
+        deleteRequests += 1;
+        return Promise.resolve(json({}, 204));
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("/media/original");
+    await user.click(screen.getByRole("button", { name: "フォルダを削除" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "削除する" }),
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "一覧を再取得できません",
+    );
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByText("/media/original")).toBeNull();
+    expect(deleteRequests).toBe(1);
+  });
+
   it("別画面で削除済みなら一覧を再取得して古い行を除く", async () => {
     const stale = folder(1, "/media/stale", 3);
     const remaining = folder(2, "/media/remaining", 5);

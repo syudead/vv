@@ -173,10 +173,14 @@ export default function SettingsPage() {
     setPending({ id: target.id, kind: "delete" });
     try {
       await deleteMediaFolder(target.id, target.version);
-      const refreshed = await load();
-      const nextFolder = refreshed?.[Math.min(targetIndex, refreshed.length - 1)];
+      const remaining = folders.filter((folder) => folder.id !== target.id);
+      setFolders(remaining);
+      scan.setFolderCount(remaining.length);
       setDeleting(null);
       toast("削除しました。取り込みは自動では始まりません");
+      const refreshed = await load();
+      const current = refreshed ?? remaining;
+      const nextFolder = current[Math.min(targetIndex, current.length - 1)];
       focusFolderAction(nextFolder);
     } catch (failure) {
       await handleFailure(failure, target);
