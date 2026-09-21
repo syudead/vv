@@ -81,13 +81,13 @@ export function createLiveOffsetMiddleware(player: Player) {
     }
     clearReload();
     pendingOffsetSeconds = seconds;
-    source.vvOffsetChanged?.(seconds);
     reloadTimer = setTimeout(() => {
       if (tech === undefined) return;
       const shouldResume = playIntended || !tech.paused();
       const playbackRate = tech.playbackRate();
       offsetSeconds = seconds;
       pendingOffsetSeconds = undefined;
+      source.vvOffsetChanged?.(seconds);
       source = liveSource(
         source.vvVideoId as number,
         (source.vvDurationSeconds as number) * 1000,
@@ -145,6 +145,8 @@ export function createLiveOffsetMiddleware(player: Player) {
       const ranges = tech.buffered();
       for (let index = 0; index < ranges.length; index += 1) {
         if (ranges.start(index) <= relative && relative <= ranges.end(index)) {
+          clearReload();
+          pendingOffsetSeconds = undefined;
           return relative;
         }
       }

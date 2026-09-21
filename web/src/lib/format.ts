@@ -90,7 +90,7 @@ export function formatDateTime(iso: string): string {
   });
 }
 
-/** unplayableText は再生できない理由を利用者に伝わる言葉にする。再生できれば null。 */
+/** unplayableText は解析中または解析失敗を利用者に伝える。再生を試せる動画は null。 */
 export function unplayableText(video: Video): string | null {
   if (video.playable) {
     return null;
@@ -101,16 +101,7 @@ export function unplayableText(video: Video): string | null {
   if (video.probeState === "pending") {
     return "確認中";
   }
-  switch (video.unplayableReason) {
-    case "container":
-      return `${video.container ?? "この形式"} は再生できません`;
-    case "video_codec":
-      return `映像 ${video.videoCodec ?? "不明"} は再生できません`;
-    case "audio_codec":
-      return `音声 ${video.audioCodec ?? "不明"} は再生できません`;
-    default:
-      return "再生できません";
-  }
+  return null;
 }
 
 export type WatchState = "unwatched" | "inProgress" | "watched";

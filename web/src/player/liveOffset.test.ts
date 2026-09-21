@@ -82,6 +82,21 @@ describe("live offset middleware", () => {
     expect(tech.play).toHaveBeenCalledTimes(1);
   });
 
+  it("未buffer位置の予約後にbuffer内へ戻したら古いreloadを破棄する", () => {
+    vi.useFakeTimers();
+    const changed = vi.fn();
+    const { middleware, tech } = fixture();
+    middleware.setSource(liveSource(7, 120_000, 0, changed), () => undefined);
+
+    expect(middleware.setCurrentTime(70)).toBe(0);
+    expect(middleware.setCurrentTime(10)).toBe(10);
+    vi.runAllTimers();
+
+    expect(tech.setSource).not.toHaveBeenCalled();
+    expect(changed).not.toHaveBeenCalled();
+    expect(middleware.currentTime(10)).toBe(10);
+  });
+
   it("disposeで予約済みreloadを破棄する", () => {
     vi.useFakeTimers();
     const { middleware, tech, dispose } = fixture();
