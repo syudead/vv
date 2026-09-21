@@ -19,6 +19,8 @@ const base: Video = {
   playable: true,
   probeState: "done",
   thumbnailState: "done",
+  durationMs: 10_000,
+  videoCodec: "h264",
 };
 
 describe("formatDuration", () => {
@@ -105,7 +107,7 @@ describe("unplayableText", () => {
   it("再生できれば null", () => {
     expect(unplayableText(base)).toBeNull();
   });
-  it("理由ごとの文言", () => {
+  it("解析待ちと解析失敗だけ文言を返す", () => {
     expect(unplayableText({ ...base, playable: false, probeState: "pending" })).toBe(
       "確認中",
     );
@@ -119,14 +121,12 @@ describe("unplayableText", () => {
         unplayableReason: "container",
         container: "mkv",
       }),
-    ).toBe("mkv は再生できません");
-    expect(
-      unplayableText({
-        ...base,
-        playable: false,
-        unplayableReason: "video_codec",
-        videoCodec: "hevc",
-      }),
-    ).toBe("映像 hevc は再生できません");
+    ).toBeNull();
+    expect(unplayableText({ ...base, playable: false, durationMs: undefined })).toBe(
+      "再生に必要な情報がありません",
+    );
+    expect(unplayableText({ ...base, playable: false, videoCodec: undefined })).toBe(
+      "再生に必要な情報がありません",
+    );
   });
 });

@@ -8,17 +8,15 @@ import {
   getVideo,
   isAborted,
   saveProgress,
-  streamUrl,
   type Video,
 } from "../api/client";
-import { formatDuration, unplayableText } from "../lib/format";
+import { formatDuration } from "../lib/format";
 import { buttonClassName } from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 import FileDetails from "./FileDetails";
 import VideoHeader from "./VideoHeader";
+import VideoPlayer, { canStartPlayback } from "./VideoPlayer";
 
-/** saveIntervalMs は再生中に位置を送る間隔。 */
-const saveIntervalMs = 5000;
 /** minResumeMs 未満の位置は「見始めたばかり」として先頭から再生する。 */
 const minResumeMs = 5000;
 
@@ -45,7 +43,6 @@ export default function VideoPage() {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [resumedFrom, setResumedFrom] = useState<number | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
   const lastSent = useRef<number>(-1);
   const latestPositionMs = useRef<number | null>(null);
 
@@ -91,32 +88,20 @@ export default function VideoPage() {
     [id],
   );
 
-  const flushProgress = useCallback(() => {
-    const element = videoRef.current;
-    if (element === null) return;
-    latestPositionMs.current = element.currentTime * 1000;
-    send(latestPositionMs.current, false, true);
-  }, [send]);
-
-  const rememberProgress = useCallback(() => {
-    const element = videoRef.current;
-    if (element !== null) latestPositionMs.current = element.currentTime * 1000;
+  const rememberProgress = useCallback((positionMs: number) => {
+    latestPositionMs.current = positionMs;
   }, []);
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const element = videoRef.current;
-      if (element !== null && !element.paused && !element.ended) {
-        send(element.currentTime * 1000, false);
-      }
-    }, saveIntervalMs);
-    return () => clearInterval(timer);
-  }, [send]);
+  const savePlayerProgress = useCallback(
+    (positionMs: number, immediate: boolean) => {
+      latestPositionMs.current = positionMs;
+      send(positionMs, false, immediate);
+    },
+    [send],
+  );
 
   useEffect(() => {
     const sendLatest = () => {
-      const element = videoRef.current;
-      if (element !== null) latestPositionMs.current = element.currentTime * 1000;
       if (latestPositionMs.current !== null) send(latestPositionMs.current, true);
     };
     const onHidden = () => {
@@ -131,29 +116,18 @@ export default function VideoPage() {
     };
   }, [send]);
 
-  const onLoaded = useCallback(() => {
-    const element = videoRef.current;
-    if (element === null || video === undefined) return;
-    const progress = video.progress;
-    if (
-      progress === undefined ||
-      progress.completed ||
-      progress.positionMs < minResumeMs
-    ) {
-      return;
-    }
-    element.currentTime = progress.positionMs / 1000;
-    latestPositionMs.current = progress.positionMs;
-    setResumedFrom(progress.positionMs);
-  }, [video]);
-
   const onError = useCallback(() => {
     setPlaybackError(
       "この動画を再生できませんでした。ファイルが移動・削除されたか、ブラウザが対応していない形式の可能性があります。",
     );
   }, []);
 
-  const unplayable = video === undefined ? null : unplayableText(video);
+  const initialPositionMs =
+    video?.progress === undefined ||
+    video.progress.completed ||
+    video.progress.positionMs < minResumeMs
+      ? 0
+      : video.progress.positionMs;
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg">
@@ -182,28 +156,22 @@ export default function VideoPage() {
             />
           )}
 
-          {video !== undefined && unplayable !== null && (
+          {video !== undefined && !canStartPlayback(video) && (
             <Blocked
               title="この動画は再生できません"
-              description={`${unplayable}。ブラウザが対応する形式（mp4 / h264 / aac など）に変換してください。`}
+              description="再生に必要な動画情報を取得できませんでした。"
               backTo={backTo}
             />
           )}
 
-          {video !== undefined && unplayable === null && (
-            <video
-              ref={videoRef}
-              src={streamUrl(video.id)}
-              controls
-              playsInline
-              preload="metadata"
-              poster={video.thumbnailUrl}
-              onLoadedMetadata={onLoaded}
-              onTimeUpdate={rememberProgress}
-              onPause={flushProgress}
-              onEnded={flushProgress}
+          {video !== undefined && canStartPlayback(video) && (
+            <VideoPlayer
+              video={video}
+              initialPositionMs={initialPositionMs}
+              onPosition={rememberProgress}
+              onProgress={savePlayerProgress}
+              onResumed={setResumedFrom}
               onError={onError}
-              className="absolute inset-0 h-full w-full bg-navbar"
             />
           )}
         </div>
