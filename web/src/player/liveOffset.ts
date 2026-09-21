@@ -123,7 +123,8 @@ export function createLiveOffsetMiddleware(player: Player) {
         : seconds;
     },
     currentTime(seconds: number) {
-      return (pendingOffsetSeconds ?? offsetSeconds ?? 0) + seconds;
+      if (pendingOffsetSeconds !== undefined) return pendingOffsetSeconds;
+      return (offsetSeconds ?? 0) + seconds;
     },
     buffered(ranges: TimeRanges) {
       if (offsetSeconds === undefined) return ranges;
