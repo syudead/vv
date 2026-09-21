@@ -17,7 +17,7 @@
 | `state` | `loading` / `ready` / `playing` / `failed` / `disposed` | 下記遷移だけを許可 |
 | `fallbackTried` | directからtranscodeへ切り替え済みか | `false`から`true`への一方向 |
 | `logicalPositionMs` | 元動画全体での現在位置 | `0..durationMs`へclamp |
-| `sourceOffsetMs` | 現sourceが元動画のどこから始まるか | directは0、transcodeはseek位置 |
+| `sourceOffsetMs` | 現sourceが元動画のどこから始まるか | directは0、transcodeは正確に捨てたseek位置 |
 | `playIntended` | failure前に再生中または再生要求済みだったか | source切替後のautoplay可否だけに使う |
 
 ### Initial route
@@ -49,12 +49,17 @@ directからの切替時は`logicalPositionMs`と`playIntended`を保持する�
 | `videoId` | 対象動画 | current locationが1件以上必要 |
 | `sourcePath` | root・symlink・regular-file検証済みlocation | 応答やlogへpathを公開しない |
 | `startMs` | 変換開始位置 | 省略時0、`0 <= startMs < durationMs` |
-| `mode` | `selective` / `normalize` | 既存動画のplayable判定からserverが決定 |
+| `mode` | `selective` / `normalize` | playable判定と`startMs`からserverが決定 |
 | `videoAction` | `copy` / `h264` | 映像streamが無い場合はrequest失敗 |
 | `audioAction` | `none` / `copy` / `aac` | 音声なしは`none` |
 
-`selective`は既知の非対応動画に使い、H.264/AACだけをcopyする。`normalize`はdirect再生可能と判定済みの
-動画がtranscode endpointへ来た場合に使い、映像・音声を互換設定へ変換する。
+`selective`は既知の非対応動画を`startMs=0`から再生する場合だけ使う。request時probeでprofile、level、
+pixel format、bit depth、寸法、AAC profile、sample rate、channel数を取得し、互換性をすべて確認できた
+streamだけをcopyする。結果はrequest終了時に破棄する。
+
+`normalize`はdirect再生可能と判定済みの動画、または`startMs>0`のrequestに使う。映像と存在する音声を
+互換設定へ変換し、正確なseekのため要求位置より前のframe/sampleを捨てる。H.264 encode時は奇数の幅・
+高さだけ右端・下端へ最大1px paddingし、映像内容はscaleしない。
 
 ## Transcode Process
 

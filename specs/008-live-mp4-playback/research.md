@@ -51,27 +51,35 @@ offsetを加えた時間軸を提示している。
 - [Stash offset middleware](https://github.com/stashapp/stash/blob/develop/ui/v2.5/src/components/ScenePlayer/live.ts)
 - [Stash transcode route start parameter](https://github.com/stashapp/stash/blob/develop/internal/api/routes_scene.go)
 
-## R-203: codec選択はstream単位、direct失敗後だけ全正規化
+## R-203: codec選択は互換属性をrequest時に検査する
 
-**Decision**: 解析済み非対応動画ではH.264 videoとAAC audioをcopyし、それ以外だけを変換する。
-映像変換は解像度を維持して`libx264`/`yuv420p`/`preset veryfast`/`crf 23`、音声変換はAAC stereo
-192kbpsとする。直接再生可と判定済みなのに実再生で失敗した動画は、同じ誤判定を持ち越さないよう
-映像と音声をともにこの互換設定へ正規化する。字幕/data streamは出力しない。
+**Decision**: transcode requestの開始時にffprobeを実行し、codec名に加えてprofile、level、pixel format、
+bit depth、寸法、AAC profile、sample rate、channel数を取得する。H.264はBaseline/Constrained Baseline/
+Main/High、8-bit `yuv420p`、level 5.1以下をすべて確認できた場合だけcopyする。AACはLC、1〜2 channel、
+8〜48 kHzをすべて確認できた場合だけcopyする。値が欠落・未知・範囲外なら対応streamをencodeする。
+このrequest時probe結果は永続化しない。
 
-**Rationale**: containerや片方のcodecだけが問題なら互換streamをcopyすることで品質と開始時間を守れる。
-一方、runtime failure後に同じstreamをcopyするとfallbackが元のfailureを再現しうる。全正規化はその場合
-だけに限定する。StashもMP4でH.264をcopyし、非対応映像だけH.264へ変換する。
+映像変換は`libx264`/`yuv420p`/`preset veryfast`/`crf 23`とし、encode時だけ
+`pad=ceil(iw/2)*2:ceil(ih/2)*2`で右端・下端を最大1px補って偶数寸法にする。映像内容を拡大・縮小
+しない。音声変換はAAC-LC stereo 192kbpsとする。字幕/data streamは出力しない。
+
+**Rationale**: codec名だけではHigh 4:4:4 Predictiveや10-bit H.264を一般的なbrowser向けH.264と
+区別できない。保守的な属性allowlistなら、containerだけが問題の互換streamは品質を保ってcopyしつつ、
+判定できないstreamを安全側でencodeできる。`yuv420p` encodeは奇数寸法で失敗するため、必要な場合だけ
+最大1pxのpaddingを加える。
 
 **Alternatives considered**:
 
 - 常に映像・音声を再encode: 容器だけ非対応の動画にも品質劣化とCPU負荷を加えるため不採用。
-- codec名だけを見てruntime failure後もcopy: profile、pixel format、実browser差によるfailureを解消
-  できないため不採用。
+- codec名だけでcopy: profile、pixel format、bit depth、AAC profileによる非互換性を見落とすため不採用。
+- 互換属性をDBへ追加: transcode requestだけが使う値のmigrationとAPI公開を増やすため不採用。
 - 解像度別rendition: 要求された選択肢ではなく、scaleとsource選択UIを増やすため不採用。
 
 **Primary sources**:
 
 - [FFmpeg seeking and accurate seek](https://ffmpeg.org/ffmpeg.html)
+- [FFmpeg pad filter](https://ffmpeg.org/ffmpeg-filters.html#pad-1)
+- [MDN Web video codec guide](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Video_codecs)
 - [Stash stream codec selection](https://github.com/stashapp/stash/blob/develop/pkg/ffmpeg/stream_transcode.go)
 
 ## R-204: processはHTTP requestが単独所有する
@@ -110,3 +118,28 @@ decode errorが見えない。browserがfailureを通知し、attempted routeを
 **Primary source**:
 
 - [Stash finite source fallback](https://github.com/stashapp/stash/blob/develop/ui/v2.5/src/components/ScenePlayer/source-selector.ts)
+
+## R-206: 途中開始は正確さを優先して全streamをencodeする
+
+**Decision**: `startMs=0`の既知非対応動画だけR-203の選択的copyを許可する。`startMs>0`のrequestは、
+映像をH.264、存在する音声をAACへencodeし、input-side `-ss`の既定`accurate_seek`で要求位置より前の
+frame/sampleを捨てる。direct media error後のfallbackも開始位置にかかわらず同じ全正規化を使う。
+playerの`sourceOffsetMs`には要求した`startMs`をそのまま使う。
+
+**Rationale**: FFmpegのinput-side seekは最寄りのseek pointへ移動する。transcode時は要求位置までの余分な
+区間をdecodeして捨てるが、stream copy時はその区間を保持する。copy出力を要求位置として扱うと、映像、
+表示時刻、保存progressがGOP長だけずれる。途中開始でのencodeは正確な時間軸に必要な処理であり、先頭から
+のcontainer-only変換では引き続きcopyを使う。
+
+**Alternatives considered**:
+
+- copy出力の実際の先頭timestampをclientへ返す: body送信前に確定・伝達する追加protocolが必要で、
+  音声と映像の先頭差もclientへ漏れるため不採用。
+- output-side seekとcopyを併用する: 先頭から要求位置までdecode/demuxするため、長い動画の2秒以内のseekを
+  満たせないため不採用。
+- keyframeまでの巻き戻りを許容する: seek barと保存progressが実映像と一致せずFR-006/FR-007に反するため
+  不採用。
+
+**Primary source**:
+
+- [FFmpeg `-ss` and accurate seek](https://ffmpeg.org/ffmpeg.html)
