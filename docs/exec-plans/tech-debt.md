@@ -26,29 +26,14 @@ reconsideration.
 - 一次資料: [research.md R-001](../../specs/001-initial-setup/research.md)、
   [002 の R-110](../../specs/002-core-video-library/research.md)
 
-### TD-002: `make build` が版管理している `web/dist/index.html` を上書きする
-
-- 影響範囲: 開発者の作業環境（`web/dist`、`.gitignore`）
-- 内容: `go:embed` は対象ディレクトリが存在しないとコンパイルが通らないため、
-  `web/dist/.gitkeep` と最小の `index.html` を版管理している（[R-008]）。
-  一方 Vite の出力先も `web/dist` なので、`make build` を実行すると版管理している
-  プレースホルダが実際のビルド成果物で上書きされ、作業ツリーが汚れる。
-- 当面の対処: `web/dist` 配下はこの 2 ファイル以外を `.gitignore` で除外し、
-  ビルド検証（`make test-web`）は別の出力先（`web/.vite-build-check`）を使うことで
-  `make check` が作業ツリーを汚さないようにした。`make build` 後の
-  `web/dist/index.html` の差分はコミットしない。
-- 見直しの契機: Vite の出力先を `web/dist` から動かせるようになったとき、あるいは
-  埋め込み用のプレースホルダを版管理しなくても済む仕組みに変えたとき。
-- 一次資料: [research.md R-008](../../specs/001-initial-setup/research.md)
-
 ### TD-003: コンテナのビルドではコミット情報が埋め込まれない
 
 - 影響範囲: `/api/health` の応答（`commit`・`builtAt`)、`Dockerfile`
 - 内容: [R-007] はビルド情報を `runtime/debug.ReadBuildInfo()` の
   `vcs.revision`／`vcs.time` から取る方針だが、これには `.git` とビルド環境の
   `git` が必要になる。`.dockerignore` で `.git` を除いているため、
-  `make up`／`make build`（Docker 経路）では `-buildvcs=false` を指定しており、
-  `commit` と `builtAt` は応答から省略される。手元の `make build` では埋め込まれる。
+  `task up`／`task build`（Docker 経路）では `-buildvcs=false` を指定しており、
+  `commit` と `builtAt` は応答から省略される。手元の `task build` では埋め込まれる。
 - 当面の対処: 契約（[contracts/openapi.yaml]）は `commit`・`builtAt` を
   「取得できない場合は省略される」任意項目としているため、応答としては適合している。
   リリース名は `VERSION` ビルド引数から `-ldflags` で渡している。
@@ -59,7 +44,7 @@ reconsideration.
 ### TD-004: Web の自動テストはビルド検証のみ（解消済み / 004）
 
 - 状態: **解消済み**（004「現在の機能を前提とした UI の実装」）
-- 影響範囲: `web/`（`make test-web`）
+- 影響範囲: `web/`（`task test-web`）
 - 内容: Phase 0 の Web は画面が 1 つで、検証は `tsc --noEmit` と `vite build` が
   通ることまでとした（[plan.md] Technical Context の方針どおり）。単体テストの
   実行基盤（Vitest 等）は入れていないため、`App.tsx` の描画や `/api/health` の
@@ -80,7 +65,7 @@ reconsideration.
 - **解消した変更（004）**: 実行基盤として Vitest + Testing Library（環境は `jsdom`）を
   導入し（004 の R-406）、`web/vite.config.ts` の `test` と `web/vitest.setup.ts` で
   設定した。`web/package.json` の `scripts.test` はビルド検証と `vitest run` の両方を
-  走らせるので、`make test-web`（`make check` から呼ばれる）で両方が回る。
+  走らせるので、`task test-web`（`task check` から呼ばれる）で両方が回る。
   名指しされていた 3 点は、書き換えの**前**に既存の実装に対して書き、書き換えの
   あとも同じ内容で通ることを確かめた（004 の FR-025 / SC-009）。
 
@@ -209,7 +194,7 @@ reconsideration.
 - 影響範囲: [005 の quickstart](../../specs/005-ui-refinement/quickstart.md) S7-7・S7-8、
   [004 の quickstart](../../specs/004-library-ui/quickstart.md) S3（聞き取り）・S7（継ぎ目）
 - 内容: 005 の実装はセッション環境（Claude Code on the web の Linux コンテナ）で完了した。
-  S2〜S6・S8 の大半は `ffmpeg` を入れ、`make build` した実体を Chromium（Playwright）で
+  S2〜S6・S8 の大半は `ffmpeg` を入れ、`task build` した実体を Chromium（Playwright）で
   操作して確かめられたが、次の 3 つは**していない**。
   1. **読み上げでの確認**（S7-7・S7-8）: 読み上げソフトが無い。淡い要素に `（未実装）` の
      補足語が付いていることと、`display: none` のロゴが支援技術からも消えることは DOM で

@@ -11,7 +11,7 @@
 | シナリオ                 | 必要なもの                                                         |
 | ------------------------ | ------------------------------------------------------------------ |
 | S0（検証用の動画を作る） | `ffmpeg`（コンテナ内で実行してもよい）                             |
-| S1〜S9                   | Docker（`make up`）。手元で動かす場合は Go 1.26・Node 22・`ffmpeg` |
+| S1〜S9                   | Docker（`task up`）。手元で動かす場合は Go 1.26・Node 22・`ffmpeg` |
 
 ---
 
@@ -41,7 +41,7 @@ touch "./media/メモ.txt" "./media/.hidden.mp4" "./media/途中.mp4.part"
 ## S1: 動画を手動で取り込んで一覧に並べる（US1 / FR-001・FR-002 / SC-001）
 
 ```bash
-MDM_MEDIA_HOST_DIR=./media make up
+MDM_MEDIA_HOST_DIR=./media task up
 # ブラウザで /settings を開き、コンテナ内の /media をメディアフォルダとして登録する
 # 「取り込む」を押すか、別の端末で次を実行する
 curl -sS -X POST "http://localhost:8080/api/scans"
@@ -155,7 +155,7 @@ time curl -sS -o /dev/null "http://localhost:8080/api/videos?query=動画5"
 ## S10: データを消しても復旧する（FR-026）
 
 ```bash
-make down && docker volume rm vv_data && MDM_MEDIA_HOST_DIR=./media make up
+task down && docker volume rm vv_data && MDM_MEDIA_HOST_DIR=./media task up
 ```
 
 設定画面で`/media`を登録し直し、手動取り込みを開始する。

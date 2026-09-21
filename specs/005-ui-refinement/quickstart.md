@@ -14,8 +14,8 @@
 
 | シナリオ | 必要なもの |
 | --- | --- |
-| S1 | Node 22（`make test-web`） |
-| S0・S2〜S9 | Docker（`make up`）とブラウザ。S0 は `ffmpeg` |
+| S1 | Node 22（`task test-web`） |
+| S0・S2〜S9 | Docker（`task up`）とブラウザ。S0 は `ffmpeg` |
 
 **原案を手元で開いておく**: [002 の assets/ui-mockup.webp](../002-core-video-library/assets/ui-mockup.webp)。
 S2〜S5 はこれと並べて見る。
@@ -48,7 +48,7 @@ S2〜S5 はこれと並べて見る。
 ## S1: 自動検査（機械）
 
 ```bash
-make test-web
+task test-web
 ```
 
 **期待**: 次がすべて成功する。004 から増えるのは下 4 行である。
@@ -65,7 +65,7 @@ make test-web
 続けて全体を通す。
 
 ```bash
-make check
+task check
 ```
 
 **期待**: `generate-check` が差分なしで通る（`api/openapi.yaml` と生成物に触れていない。
@@ -75,7 +75,7 @@ FR-014）。
 
 ## S2: レイアウトと画面幅（人）
 
-`make up` でサーバーを起動し、一覧（`http://localhost:8080/`）を開く。
+`task up` でサーバーを起動し、一覧（`http://localhost:8080/`）を開く。
 
 | 幅 | 見ること | 対応 |
 | --- | --- | --- |
@@ -240,7 +240,7 @@ FR-014）。
 FR-018 / SC-009 の確認である。
 
 ```bash
-make check
+task check
 ```
 
 続けて [004 の quickstart](../004-library-ui/quickstart.md) の S3〜S9 を実行する。手順も

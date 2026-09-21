@@ -13,7 +13,7 @@
 # 比較になり、同じコマンドを実行しても判定が変わる。
 set -eu
 
-base="${1:-}"
+base="${1:-${MIGRATIONS_BASE:-}}"
 if [ -z "$base" ]; then
 	if [ -n "${GITHUB_BASE_REF:-}" ]; then
 		base="origin/${GITHUB_BASE_REF}"

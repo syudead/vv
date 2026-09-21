@@ -234,7 +234,7 @@ const (
 )
 
 // エラーの code の正本は api/openapi.yaml の Error.code である。gen.ErrorCode*
-// は make generate の出力なので、新しい種別は openapi.yaml へ足す。ここで別名を
+// は task generate の出力なので、新しい種別は openapi.yaml へ足す。ここで別名を
 // 与えているのは呼び出し側を短く保つためだけで、値を決めてはいない。
 const (
 	codeNotFound                    = gen.ErrorCodeNotFound

@@ -143,7 +143,7 @@ DB は「再構築可能なインデックス」に限定する。タグ・再�
 - **フロントとバックエンドの2言語化。** 型のずれと二重のビルド／CI が増える。
   API は `api/openapi.yaml` を唯一の真実とし、Go と TypeScript の両方を
   生成物にすることで、ずれをコンパイルエラーとして検出する。ビルドは
-  `Makefile` の単一ターゲット（`make build` で SPA ビルド → embed → Go build）に
+  `Taskfile.yml` の単一タスク（`task build` で SPA ビルド → embed → Go build）に
   まとめる。
 - **`modernc.org/sqlite` の FTS5 と trigram トークナイザ。** 同梱 SQLite の
   ビルドオプション次第で使えない可能性がある。Phase 0 で

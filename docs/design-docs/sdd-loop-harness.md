@@ -87,7 +87,7 @@ sub-issuesを確認し、同じ作業が既にあれば作成しない。既存c
 
 Spec merge直後にfeature branchから`main`へのintegration PRを作り、featureの生存中は同じPRを使う。
 全child解決後、最新`main`を同期用sub-branchへmergeし、そのPRをfeatureへmergeする。feature全体の
-`make check`と必要なUI reviewを再実行してから、人がintegration PRをmergeする。rebaseやforce-pushで
+`task check`と必要なUI reviewを再実行してから、人がintegration PRをmergeする。rebaseやforce-pushで
 長寿命feature branchを書き換えない。
 
 ## Automation boundary
@@ -113,6 +113,6 @@ CIはすべてのPRで検証するが、agentや次工程を起動しない。�
 ## Verification
 
 - Agent Skill validator: frontmatter、skill名、参照先の整合性
-- `make check`: repository全体
+- `task check`: repository全体
 - GitHub実機確認: timeline参照、native sub-issues、parent取得、
   feature向けPRでのCI、default branch merge時のparent close

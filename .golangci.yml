@@ -1,5 +1,5 @@
 # golangci-lint v2 の設定（書式は v1 と非互換なので version: "2" が必要）。
-# 版は Makefile の GOLANGCI_LINT_VERSION で固定する（research.md R-005）。
+# 版は scripts/tool-versions.json で固定する（research.md R-005）。
 version: "2"
 
 linters:

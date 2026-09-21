@@ -1,5 +1,5 @@
-# FR-012 の自動検証。make check を構成する目標と、追加runtimeを要するtest-e2eを呼ぶ。
-# どの検査も同じmake目標で手元から再現できる。ジョブはGoとWebで分けて並行させ、重いイメージビルドは別ジョブにする
+# FR-012 の自動検証。task check を構成するタスクと、追加runtimeを要するtest-e2eを呼ぶ。
+# どの検査も同じTaskタスクで手元から再現できる。ジョブはGoとWebで分けて並行させ、重いイメージビルドは別ジョブにする
 # （research.md R-012 / SC-004: 10 分以内）。
 name: CI
 
@@ -34,6 +34,11 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Taskを取得する
+        run: |
+          go install "github.com/go-task/task/v3/cmd/task@v$(jq -r .task scripts/tool-versions.json)"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Web依存を取得する
         run: npm --prefix web ci
 
@@ -46,7 +51,7 @@ jobs:
           BASE: ${{ github.base_ref }}
 
       - name: 追加runtimeの要らない検査
-        run: make check
+        run: task check
 
   e2e:
     name: Browser E2E
@@ -65,6 +70,11 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
+      - name: Taskを取得する
+        run: |
+          go install "github.com/go-task/task/v3/cmd/task@v$(jq -r .task scripts/tool-versions.json)"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Web依存を取得する
         run: npm --prefix web ci
 
@@ -78,7 +88,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: 実ブラウザE2E
-        run: make test-e2e
+        run: task test-e2e
 
       - name: 失敗時のPlaywright artefact
         if: failure()
@@ -96,7 +106,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # Windows でしか確かめられない。Linux 側は make check が含んでいる。
+      # Windows でしか確かめられない。Linux 側は task check が含んでいる。
       - name: PowerShell regression tests
         shell: pwsh
         run: ./scripts/local-dev.tests.ps1
@@ -109,7 +119,7 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # make up が通ることの確認。公開はしない。
+      # task up が使うイメージの確認。公開はしない。
       - uses: docker/build-push-action@v6
         with:
           context: .

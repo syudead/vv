@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# make up の実体。SPA のビルド → 単一バイナリのビルド → 実行環境の 3 段に分ける
+# task up の実体。SPA のビルド → 単一バイナリのビルド → 実行環境の 3 段に分ける
 # （research.md R-003 / R-008）。
 
 # 1) SPA をビルドする。

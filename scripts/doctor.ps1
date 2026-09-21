@@ -62,7 +62,7 @@ function Check-Tool {
 
 $checks = @(
     (Check-Tool "git" { git --version } "Install Git for Windows (or Git on your OS) and add it to PATH."),
-    (Check-Tool "jq" { jq --version } "Install with mise: mise install"),
+    (Check-Tool "jq" { jq --version } "Install with mise: mise install" $false),
     (Check-Tool "pwsh" { pwsh --version } "Install PowerShell 7.4 or later."),
     (Check-Tool "go" { go version } "Install with mise: mise install"),
     (Check-Tool "node" { node --version } "Install with mise: mise install"),
@@ -71,9 +71,8 @@ $checks = @(
     (Check-Tool "ffprobe" { ffprobe -version } "Install ffmpeg and ensure ffprobe is on PATH."),
     (Check-Tool "bash" { bash --version } "Install Git for Windows or another bash provider."),
     (Check-Tool "mise" { mise --version } "Install mise to use the pinned tool versions in mise.toml." $false),
-    (Check-Tool "task" { task --version } "Install with mise: mise install" $false),
-    (Check-Tool "make" { make --version } "Install GNU make, or use scripts/check.ps1 and Taskfile.yml." $false),
-    (Check-Tool "docker" { docker --version } "Install Docker Desktop for make up / make down." $false)
+    (Check-Tool "task" { task --version } "Install with mise: mise install"),
+    (Check-Tool "docker" { docker --version } "Install Docker Desktop for task up / task down." $false)
 )
 
 $docker = $checks | Where-Object { $_.Name -eq "docker" }

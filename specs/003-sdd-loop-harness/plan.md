@@ -67,7 +67,7 @@ represented. Existing children are changed only when explicitly requested.
 ## Verification
 
 - Agent Skill validation
-- `make check`
+- `task check`
 - Search for executable references to `sdd-next`, old branch naming, and the
   automation label.
 - GitHub live test covering supplied Issue/PR context, sub-issue parent lookup,

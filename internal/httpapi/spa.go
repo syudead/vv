@@ -67,7 +67,7 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *spaHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
 	if !h.isRegularFile(indexFileName) {
 		h.logger.Error("index.html が埋め込まれていません", slog.String("path", r.URL.Path))
-		http.Error(w, "index.html がありません（make build を実行してください）",
+		http.Error(w, "index.html がありません（task build を実行してください）",
 			http.StatusInternalServerError)
 		return
 	}

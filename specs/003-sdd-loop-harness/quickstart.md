@@ -53,7 +53,7 @@ the child and verify native progress updates while the parent remains open.
 ## S7: CI and integration
 
 Verify CI on a feature-targeting PR. Resolve all children, merge latest `main`
-through a sync sub-branch PR, run `make check`, and merge the integration PR.
+through a sync sub-branch PR, run `task check`, and merge the integration PR.
 
 Expected: all PR types run CI and only the integration merge closes the parent.
 

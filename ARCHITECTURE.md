@@ -59,7 +59,7 @@ mechanically with golangci-lint's depguard in CI.
 The depguard rules live in [.golangci.yml](.golangci.yml) and also deny the
 SQLite driver and every other `internal/*` package from `internal/domain`. Each
 rule carries the reason in its message, so a violation explains itself from the
-`make lint` output alone.
+`task lint` output alone.
 
 The sibling packages under `internal/` do not import each other either, and
 that is not mechanically enforced — it is a convention the code keeps by
@@ -73,7 +73,7 @@ neither side needs the other.
 
 The API contract in `api/openapi.yaml` is the single source of truth for the
 boundary between the Go backend and the TypeScript frontend; both sides are
-generated from it (`make generate`), the generated files are version
+generated from it (`task generate`), the generated files are version
 controlled, and CI fails when regenerating them produces a diff.
 
 `web/embed.go` is the one deliberate exception to the layering: Go's embed
@@ -87,7 +87,7 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 
 `web/src/api/` is the only place that talks to the server. `client.ts` wraps
 `fetch` over the generated types in `web/src/api/gen/` (never hand-edited;
-`make generate` rewrites them from `api/openapi.yaml`), `useVideos.ts` owns
+`task generate` rewrites them from `api/openapi.yaml`), `useVideos.ts` owns
 paging and request cancellation for the library list, and `listSnapshot.ts`
 holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. Pages and components do not call `fetch`
@@ -134,8 +134,8 @@ settings (list density and sort order) as two total functions over
 instead of blanking the screen.
 
 Unit tests run on Vitest with Testing Library in a `jsdom` environment,
-configured in `web/vite.config.ts` and `web/vitest.setup.ts`. `make test-web`
-runs the production build check and `vitest run` together, and `make check`
+configured in `web/vite.config.ts` and `web/vitest.setup.ts`. `task test-web`
+runs the production build check and `vitest run` together, and `task check`
 calls it, so a regression in either fails CI the same way.
 
 ## Principles

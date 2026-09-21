@@ -9,8 +9,8 @@
       これは版管理に置いた埋め込み用のプレースホルダである。
       internal/httpapi が web/dist を embed するため、web をビルドしていない
       状態でも go build ./... が通るようにこのファイルを置いている。
-      make build / make up は Vite の出力でこのディレクトリを上書きする。
+      task build はビルド中だけ Vite の出力でこのディレクトリを差し替える。
     -->
-    <p>vv: SPA がまだビルドされていません。make build を実行してください。</p>
+    <p>vv: SPA がまだビルドされていません。task build を実行してください。</p>
   </body>
 </html>

@@ -1,16 +1,16 @@
 # Quickstart: 設定画面を検証する
 
-共通コマンドは [Makefile](../../Makefile)、UI確認は
+共通コマンドは [Taskfile.yml](../../Taskfile.yml)、UI確認は
 [UI画像手順](../../docs/how-to/ui-change-screenshots.md)を使う。
 
 ## Automated
 
 ```bash
-make check
-make test-e2e
+task check
+task test-e2e
 ```
 
-`make test-e2e`はGoサーバー、Vite proxy、Chromiumを起動し、設定画面から実際に
+`task test-e2e`はGoサーバー、Vite proxy、Chromiumを起動し、設定画面から実際に
 メディアフォルダを追加してsame-origin境界を含むbrowser-to-API経路を検証する。
 
 ## Acceptance Scenarios

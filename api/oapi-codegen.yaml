@@ -1,4 +1,4 @@
-# oapi-codegen の設定。生成器の版は Makefile の generate 目標で固定する。
+# oapi-codegen の設定。生成器の版は scripts/tool-versions.json で固定する。
 # 生成物は版管理に含めるが手編集しない。型を変えるときは api/openapi.yaml を直す。
 package: gen
 output: internal/httpapi/gen/api.gen.go

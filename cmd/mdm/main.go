@@ -208,7 +208,7 @@ func checkPreconditions(cfg Config) error {
 }
 
 // buildInfo は稼働中のバイナリを特定するための情報を集める。
-// コミットと時刻はビルド時に Go が埋めるため、Makefile に git の呼び出しは要らない。
+// コミットと時刻はビルド時に Go が埋めるため、Taskfile に git の呼び出しは要らない。
 func buildInfo() domain.BuildInfo {
 	info := domain.BuildInfo{Version: version}
 	if info.Version == "" {

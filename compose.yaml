@@ -1,4 +1,4 @@
-# make up の実体。ホストに必要なのは Docker のみ（research.md R-003）。
+# task up の実体（research.md R-003）。
 # プロジェクト名を固定するので、データ用ボリュームの名前は vv_data になる
 # （quickstart.md S4 が参照する名前）。
 name: vv

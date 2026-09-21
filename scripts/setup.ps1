@@ -11,7 +11,7 @@ Write-Host "Downloading Go modules..."
 go mod download
 
 Write-Host "Installing web dependencies..."
-npm --prefix web ci
+& (Join-Path $PSScriptRoot "web-deps.ps1")
 
 Write-Host "Preparing golangci-lint..."
 go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$($toolVersions.golangciLint)" --version

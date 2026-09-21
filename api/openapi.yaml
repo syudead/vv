@@ -1,7 +1,7 @@
 # vv の API 契約。このファイルが唯一の真実であり、Go（oapi-codegen）と
 # TypeScript（openapi-typescript）の双方をここから生成する。
 # 生成物（internal/httpapi/gen/、web/src/api/gen/）は手編集しない。
-# 型を変えるときはこのファイルを直し、make generate を実行すること。
+# 型を変えるときはこのファイルを直し、task generate を実行すること。
 openapi: 3.1.0
 
 info:
@@ -626,7 +626,7 @@ components:
           type: string
           description: >-
             機械可読なエラー種別。ここが正本で、Go の定数は生成物である
-            （make generate）。新しい種別はまずここへ足す。
+            （task generate）。新しい種別はまずここへ足す。
           enum:
             - not_found
             - invalid_request

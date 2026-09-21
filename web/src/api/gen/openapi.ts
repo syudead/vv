@@ -364,7 +364,7 @@ export interface components {
         };
         Error: {
             /**
-             * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （make generate）。新しい種別はまずここへ足す。
+             * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
             code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable";

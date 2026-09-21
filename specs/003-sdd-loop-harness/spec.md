@@ -133,7 +133,7 @@ branch names.
   `main`.
 - **SC-005**: Merging an implementation PR updates native sub-issue progress,
   while only integration to `main` closes the parent.
-- **SC-006**: Removing Claude Routine and `/sdd-next` leaves `make check`
+- **SC-006**: Removing Claude Routine and `/sdd-next` leaves `task check`
   passing and leaves no executable reference to the retired controller.
 
 ## Requirement traceability
