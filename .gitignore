@@ -24,6 +24,8 @@ web/dist/*
 
 # make test-web のビルド検証の出力先
 /web/.vite-build-check/
+/web/playwright-report/
+/web/test-results/
 
 # make dev が使う手元の作業場所
 /media/

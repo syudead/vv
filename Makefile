@@ -23,7 +23,7 @@ GENERATED := internal/httpapi/gen/api.gen.go web/src/api/gen/openapi.ts
 .DEFAULT_GOAL := help
 .PHONY: help setup up down dev build generate fmt lint test check test-local-dev
 .PHONY: fmt-check fmt-check-go fmt-check-web generate-check
-.PHONY: lint-go lint-web test-go test-web
+.PHONY: lint-go lint-web test-go test-web test-e2e
 
 help: ## 目標の一覧を表示する
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -113,6 +113,9 @@ test-go: ## Go のテストを実行する
 # $(NPM) run test はビルド検証（vite build）と単体テスト（vitest run）の両方を走らせる。
 test-web: web/node_modules ## Web のビルド検証と単体テストを実行する
 	$(NPM) run test
+
+test-e2e: web/node_modules ## Go + Vite + Chromium で主要操作をE2E検証する
+	$(NPM) run test:e2e
 
 generate-check: ## 生成物が api/openapi.yaml と一致しているか確認する
 	@$(MAKE) --no-print-directory generate

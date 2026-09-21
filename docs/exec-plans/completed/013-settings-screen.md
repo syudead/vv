@@ -29,6 +29,7 @@ thumbnailを削除しないことも確認する。
 - 各Issueに記載したunit・contract・UI test
 - `make generate`後の生成差分検査
 - `make check`
+- `make test-e2e`（Go + Vite proxy + Chromium）
 - 360px、768px、1280pxのscreenshotとvisual review
 - symlink、部分I/O失敗、stale job write-back、再生履歴維持の回帰確認
 
@@ -47,6 +48,7 @@ thumbnailを削除しないことも確認する。
 - 統合: 最新`origin/main`に未取込commitがないことを確認（feature branchが32 commits ahead、0 commits behind）
 - 統合: OpenAPI生成差分なし、Go test/vet、golangci-lint、Web build/74 tests/type/format、local-dev testsを完走
 - 統合レビュー: pending jobの復旧、claim後のlocation追加、代表location変更時のcontainer/playability同期を回帰testで確認
+- 統合: 設定画面からVite proxy越しに実Go APIへfolderを追加するPlaywright E2EをCIへ追加
 
 ## 進捗
 
