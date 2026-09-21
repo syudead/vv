@@ -159,8 +159,8 @@ func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
 		sampleAspectNum, sampleAspectDen := parseAspectRatio(stream.SampleAspectRatio)
 		rotation := parseRotation(stream.Tags.Rotate)
 		for _, sideData := range stream.SideDataList {
-			if parsedRotation := normalizeRotation(sideData.Rotation); parsedRotation != 0 {
-				rotation = parsedRotation
+			if strings.EqualFold(sideData.SideDataType, "Display Matrix") {
+				rotation = normalizeRotation(sideData.Rotation)
 				break
 			}
 		}

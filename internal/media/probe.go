@@ -84,7 +84,8 @@ type probeOutput struct {
 			Rotate string `json:"rotate"`
 		} `json:"tags"`
 		SideDataList []struct {
-			Rotation float64 `json:"rotation"`
+			SideDataType string  `json:"side_data_type"`
+			Rotation     float64 `json:"rotation"`
 		} `json:"side_data_list"`
 		Disposition struct {
 			AttachedPicture int `json:"attached_pic"`

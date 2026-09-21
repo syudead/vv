@@ -28,7 +28,7 @@ func compatibleMetadata() transcodeMetadata {
 func TestParseTranscodeProbeSkipsAttachedPicture(t *testing.T) {
 	const output = `{"streams":[
 		{"index":0,"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}},
-		{"index":1,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":1920,"height":1080,"level":41,"avg_frame_rate":"30000/1001","r_frame_rate":"30000/1001","sample_aspect_ratio":"4:3","side_data_list":[{"rotation":-90}]},
+		{"index":1,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":1920,"height":1080,"level":41,"avg_frame_rate":"30000/1001","r_frame_rate":"30000/1001","sample_aspect_ratio":"4:3","side_data_list":[{"side_data_type":"Display Matrix","rotation":-90}]},
 		{"index":2,"codec_type":"audio","codec_name":"aac","profile":"LC","sample_rate":"48000","channels":2}
 	],"format":{"duration":"12.5"}}`
 	got, err := parseTranscodeProbe([]byte(output))
@@ -37,6 +37,21 @@ func TestParseTranscodeProbeSkipsAttachedPicture(t *testing.T) {
 	}
 	if got.Video.Index != 1 || got.Video.Rotation != 270 || got.Video.SampleAspectNum != 4 || got.Video.SampleAspectDen != 3 || got.Audio == nil || got.Audio.Index != 2 {
 		t.Fatalf("stream selection = %+v", got)
+	}
+}
+
+func TestParseTranscodeProbeDisplayMatrixZeroOverridesRotateTag(t *testing.T) {
+	const output = `{"streams":[{
+		"index":0,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8",
+		"width":1920,"height":1080,"level":41,"avg_frame_rate":"30/1","r_frame_rate":"30/1","sample_aspect_ratio":"1:1",
+		"tags":{"rotate":"90"},"side_data_list":[{"side_data_type":"Display Matrix","rotation":0}]
+	}],"format":{"duration":"12.5"}}`
+	got, err := parseTranscodeProbe([]byte(output))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Video.Rotation != 0 {
+		t.Fatalf("rotation = %d, want 0", got.Video.Rotation)
 	}
 }
 
