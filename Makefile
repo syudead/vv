@@ -1,7 +1,7 @@
 # 開発者向けコマンドの契約:
 #   specs/001-initial-setup/contracts/developer-commands.md
-# ここにある目標名がそのまま開発者との契約になる。README と CI は必ずこの目標を呼び、
-# 手元と CI が同じ判定になるようにする（CI でしか動かない検査を作らない）。
+# ここにある目標名がそのまま開発者との契約になる。README と CI は必ずこれらの目標を呼び、
+# CI の検査を同じ目標で手元でも再現できる状態にする（CI 専用の検査を作らない）。
 
 # リリース名。既定は dev で、ビルド時に上書きできる（research.md R-007）。
 VERSION ?= dev
@@ -74,12 +74,11 @@ lint: lint-go lint-web ## golangci-lint（depguard を含む）と Web の静的
 
 test: test-go test-web ## Go と Web の検証
 
-check: ## fmt の差分確認 → lint → test → E2E → 生成物の差分確認
+check: ## fmt の差分確認 → lint → test → 生成物の差分確認
 	@$(MAKE) --no-print-directory test-local-dev
 	@$(MAKE) --no-print-directory fmt-check
 	@$(MAKE) --no-print-directory lint
 	@$(MAKE) --no-print-directory test
-	@$(MAKE) --no-print-directory test-e2e
 	@$(MAKE) --no-print-directory generate-check
 	@echo "check: すべて成功しました"
 
