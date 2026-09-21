@@ -18,7 +18,7 @@ make test-e2e
 1. 初回起動でfolder一覧が0件になり、環境変数は初期値へ影響しない。
 2. folder pickerから複数rootを1件ずつ追加・変更・削除でき、bulk保存操作がない。
 3. 同一pathと祖先・子孫で重なるpathを登録できない。
-4. filesystem/drive rootとsymlinkはpickerで確定できず、APIでも拒否される。
+4. filesystem/drive rootはpickerで確定して登録でき、symlinkはpickerとAPIで拒否される。
 5. 新規folderを追加しても既存videos、FTS、jobs、scans、playback progressが変わらない。
 6. migrationで既存videoのpath、title、size、mtimeが1件のlocationへ移り、video ID、content key、
    probe結果、jobs、playback progressが維持される。

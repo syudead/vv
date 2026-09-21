@@ -167,6 +167,22 @@ func TestMediaFolderMutationRejectsRunningScan(t *testing.T) {
 	}
 }
 
+func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
+	db := migratedDB(t)
+	root := string(os.PathSeparator)
+	if volume := filepath.VolumeName(t.TempDir()); volume != "" {
+		root = volume + string(os.PathSeparator)
+	}
+
+	folder, err := db.AddMediaFolder(context.Background(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if folder.Path != filepath.Clean(root) {
+		t.Fatalf("path = %q, want %q", folder.Path, filepath.Clean(root))
+	}
+}
+
 func TestAddMediaFolderRejectsSymbolicLinkComponent(t *testing.T) {
 	db := migratedDB(t)
 	root := t.TempDir()

@@ -63,7 +63,7 @@ PUT/DELETEはcontent key名のthumbnail fileを削除しない。orphan cache cl
 | ------ | ------------------------------- | ------------------------------------------ |
 | `400`  | `invalid_request`               | JSON、version、path形式が不正              |
 | `400`  | `invalid_media_directory`       | 存在しない、directoryでない、読取不能      |
-| `400`  | `unsupported_media_directory`   | symlinkまたはfilesystem/drive root         |
+| `400`  | `unsupported_media_directory`   | symlink                                    |
 | `404`  | `media_folder_not_found`        | PUT/DELETE対象が存在しない                 |
 | `409`  | `overlapping_media_directories` | 重複または別resourceと祖先・子孫関係がある |
 | `409`  | `scan_in_progress`              | 走査中                                     |

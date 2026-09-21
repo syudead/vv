@@ -140,9 +140,7 @@ function candidateProblem(
   replacing?: MediaFolder,
 ): string | null {
   const path = listing?.currentPath;
-  if (path === undefined || listing?.parentPath === null) {
-    return "ファイルシステムまたはドライブのルートは選択できません";
-  }
+  if (path === undefined) return "フォルダを選択してください";
   if (replacing?.path === path) return "現在と同じフォルダです";
   const conflict = folders.find(
     (folder) => folder.id !== replacing?.id && pathsOverlap(folder.path, path),
