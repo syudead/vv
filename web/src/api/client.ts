@@ -215,6 +215,14 @@ export function streamUrl(id: number): string {
   return `/api/videos/${id}/stream`;
 }
 
+/** transcodeUrl は指定した元動画時刻からライブ変換する取得先を返す。 */
+export function transcodeUrl(id: number, startMs = 0): string {
+  const query = new URLSearchParams();
+  if (startMs > 0) query.set("startMs", String(Math.round(startMs)));
+  const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+  return `/api/videos/${String(id)}/transcode.mp4${suffix}`;
+}
+
 /** isAborted は「利用者が先に進んだので打ち切った」だけかどうかを返す。 */
 export function isAborted(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
