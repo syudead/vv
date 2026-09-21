@@ -147,7 +147,8 @@ export default function SettingsPage() {
       if (replacing === undefined) {
         const created = await createMediaFolder(path);
         setFolders((current) => [...current, created].sort((a, b) => a.id - b.id));
-        scan.setFolderCount(folders.length + 1);
+        scan.setFolderCount(1);
+        await load();
         toast("追加しました。反映するには取り込みを実行してください");
       } else {
         const updated = await updateMediaFolder(replacing.id, path, replacing.version);

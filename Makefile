@@ -74,11 +74,12 @@ lint: lint-go lint-web ## golangci-lint（depguard を含む）と Web の静的
 
 test: test-go test-web ## Go と Web の検証
 
-check: ## fmt の差分確認 → lint → test → 生成物の差分確認
+check: ## fmt の差分確認 → lint → test → E2E → 生成物の差分確認
 	@$(MAKE) --no-print-directory test-local-dev
 	@$(MAKE) --no-print-directory fmt-check
 	@$(MAKE) --no-print-directory lint
 	@$(MAKE) --no-print-directory test
+	@$(MAKE) --no-print-directory test-e2e
 	@$(MAKE) --no-print-directory generate-check
 	@echo "check: すべて成功しました"
 

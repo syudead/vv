@@ -14,6 +14,7 @@ import {
   getCurrentScan,
   isAborted,
   listMediaFolders,
+  RequestFailed,
   startScan,
   type Scan,
 } from "../api/client";
@@ -71,6 +72,12 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const updateFolderCount = useCallback((count: number) => {
     folderCountRevision.current += 1;
     setFolderCount(count);
+  }, []);
+
+  useEffect(() => {
+    const refreshFolders = () => setFolderWatch((value) => value + 1);
+    window.addEventListener("focus", refreshFolders);
+    return () => window.removeEventListener("focus", refreshFolders);
   }, []);
 
   useEffect(() => {
@@ -208,6 +215,12 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         }
         setWatch((value) => value + 1);
       } catch (failure) {
+        if (
+          failure instanceof RequestFailed &&
+          failure.code === "media_folders_not_configured"
+        ) {
+          updateFolderCount(0);
+        }
         setStartError(`取り込みを始められません: ${errorMessage(failure)}`);
         recoveryBaselineScanId.current = baselineScanId;
         recoveryPollsLeft.current = recoveryPollLimit;
@@ -216,7 +229,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         setStarting(false);
       }
     })();
-  }, [folderCount, scan?.id]);
+  }, [folderCount, scan?.id, updateFolderCount]);
 
   const refresh = useCallback(() => {
     setWatch((value) => value + 1);

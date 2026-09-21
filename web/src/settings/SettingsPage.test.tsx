@@ -78,13 +78,17 @@ describe("SettingsPage", () => {
 
   it("pickerを親子移動して1件追加し、自動取り込みを始めない", async () => {
     const created = folder(7, "/srv/media");
+    let createdOnServer = false;
     fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders" && init?.method === "POST") {
+        createdOnServer = true;
         return Promise.resolve(json(created, 201));
       }
-      if (url === "/api/media-folders") return Promise.resolve(json([]));
+      if (url === "/api/media-folders") {
+        return Promise.resolve(json(createdOnServer ? [created] : []));
+      }
       if (url === "/api/directories") {
         return Promise.resolve(
           json({ parentPath: null, directories: [{ name: "/", path: "/" }] }),
