@@ -309,5 +309,10 @@ describe("SettingsPage", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getByText("/media/remaining")).toBeDefined();
     expect(listRequests).toBeGreaterThan(1);
+    await waitFor(() =>
+      expect(
+        (document.activeElement as HTMLElement | null)?.getAttribute("aria-label"),
+      ).toBe("フォルダを変更"),
+    );
   });
 });
