@@ -24,7 +24,7 @@ MIGRATIONS_BASE ?= origin/main
 GENERATED := internal/httpapi/gen/api.gen.go web/src/api/gen/openapi.ts
 
 .DEFAULT_GOAL := help
-.PHONY: help setup up down dev build generate fmt lint test check test-local-dev
+.PHONY: help setup up down dev build generate fmt lint test check check-all test-local-dev
 .PHONY: fmt-check fmt-check-go fmt-check-web generate-check migrations-check
 .PHONY: lint-go lint-web test-go test-web test-e2e
 
@@ -77,13 +77,22 @@ lint: lint-go lint-web ## golangci-lint（depguard を含む）と Web の静的
 
 test: test-go test-web ## Go と Web の検証
 
-check: ## fmt の差分確認 → lint → test → 生成物の差分確認
+check: ## 素早く回す検査（ブラウザE2Eを除く。push 前は check-all）
 	@$(MAKE) --no-print-directory test-local-dev
 	@$(MAKE) --no-print-directory fmt-check
 	@$(MAKE) --no-print-directory lint
 	@$(MAKE) --no-print-directory test
 	@$(MAKE) --no-print-directory generate-check
-	@echo "check: すべて成功しました"
+	@$(MAKE) --no-print-directory migrations-check
+	@echo "check: すべて成功しました（E2E は check-all）"
+
+# CI が実行する範囲と一致させる目標。push 前はこれを通す。
+# check から外してあるのは、E2E が Chromium と ffmpeg を要し、日常の
+# 繰り返しには重すぎるからである。CI でしか動かない検査は作らない。
+check-all: ## CI と同じ範囲（check + ブラウザE2E）
+	@$(MAKE) --no-print-directory check
+	@$(MAKE) --no-print-directory test-e2e
+	@echo "check-all: すべて成功しました"
 
 test-local-dev: ## PowerShell のローカル開発スクリプトを検証する
 	pwsh -NoLogo -NoProfile -File scripts/local-dev.tests.ps1
