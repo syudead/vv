@@ -80,7 +80,13 @@ type probeOutput struct {
 		SampleAspectRatio string `json:"sample_aspect_ratio"`
 		SampleRate        string `json:"sample_rate"`
 		Channels          int    `json:"channels"`
-		Disposition       struct {
+		Tags              struct {
+			Rotate string `json:"rotate"`
+		} `json:"tags"`
+		SideDataList []struct {
+			Rotation float64 `json:"rotation"`
+		} `json:"side_data_list"`
+		Disposition struct {
 			AttachedPicture int `json:"attached_pic"`
 		} `json:"disposition"`
 	} `json:"streams"`

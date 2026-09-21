@@ -19,13 +19,7 @@ function run() {
     generateMediaFixtures(mediaDir);
     const mediaContract = spawnSync(
       "go",
-      [
-        "test",
-        "./internal/media",
-        "-run",
-        "^TestVideoEncodePreservesDisplayAspectRatioWithFFmpeg$",
-        "-count=1",
-      ],
+      ["test", "./internal/media", "-run", "^TestVideoEncode.*WithFFmpeg$", "-count=1"],
       {
         cwd: repoRoot,
         env: { ...process.env, GOCACHE: path.join(runRoot, "go-build") },

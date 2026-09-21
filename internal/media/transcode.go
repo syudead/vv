@@ -40,12 +40,15 @@ func NewLiveTranscoder(serverDone <-chan struct{}) *LiveTranscoder {
 }
 
 // Start returns FFmpeg stdout, a wait function, and an idempotent stop function.
-// The caller must call wait exactly once after a successful start.
+// startupDeadline bounds the request-time probe; the caller uses the same
+// deadline while waiting for the first output. The caller must call wait
+// exactly once after a successful start.
 func (t *LiveTranscoder) Start(
 	requestContext context.Context,
 	path string,
 	startMs int64,
 	normalize bool,
+	startupDeadline time.Time,
 ) (io.ReadCloser, func() error, func(), error) {
 	ctx, cancel := context.WithCancel(requestContext)
 	watchDone := make(chan struct{})
@@ -61,7 +64,7 @@ func (t *LiveTranscoder) Start(
 		cancel()
 	})
 
-	metadata, err := t.probe(ctx, path)
+	metadata, err := t.probe(ctx, path, startupDeadline)
 	if err != nil {
 		cleanup()
 		return nil, nil, nil, err
@@ -112,6 +115,7 @@ type transcodeStream struct {
 	RealFPS          float64
 	SampleAspectNum  int64
 	SampleAspectDen  int64
+	Rotation         int
 	SampleRate       int
 	Channels         int
 	AttachedPicture  bool
@@ -122,8 +126,8 @@ type transcodeMetadata struct {
 	Audio *transcodeStream
 }
 
-func (t *LiveTranscoder) probe(ctx context.Context, path string) (transcodeMetadata, error) {
-	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
+func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline time.Time) (transcodeMetadata, error) {
+	probeCtx, cancel := context.WithDeadline(ctx, startupDeadline)
 	defer cancel()
 
 	output, err := t.commandContext(probeCtx, probeCommand, probeArgs(path)...).Output()
@@ -150,6 +154,13 @@ func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
 	var result transcodeMetadata
 	for _, stream := range parsed.Streams {
 		sampleAspectNum, sampleAspectDen := parseAspectRatio(stream.SampleAspectRatio)
+		rotation := parseRotation(stream.Tags.Rotate)
+		for _, sideData := range stream.SideDataList {
+			if parsedRotation := normalizeRotation(sideData.Rotation); parsedRotation != 0 {
+				rotation = parsedRotation
+				break
+			}
+		}
 		converted := transcodeStream{
 			Index:            stream.Index,
 			CodecType:        stream.CodecType,
@@ -164,6 +175,7 @@ func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
 			RealFPS:          parseFrameRate(stream.RealFrameRate),
 			SampleAspectNum:  sampleAspectNum,
 			SampleAspectDen:  sampleAspectDen,
+			Rotation:         rotation,
 			SampleRate:       parsePositiveInt(stream.SampleRate),
 			Channels:         stream.Channels,
 			AttachedPicture:  stream.Disposition.AttachedPicture != 0,
@@ -229,8 +241,9 @@ func videoCanCopy(stream transcodeStream) bool {
 		stream.BitsPerRawSample != 8 || !constantFrameRate(stream) {
 		return false
 	}
-	width, height := outputDimensions(stream.Width, stream.Height)
-	return width == stream.Width && height == stream.Height && stream.Width%2 == 0 && stream.Height%2 == 0 &&
+	displayWidth, displayHeight, _, _ := displayGeometry(stream)
+	width, height := outputDimensions(displayWidth, displayHeight)
+	return width == displayWidth && height == displayHeight && displayWidth%2 == 0 && displayHeight%2 == 0 &&
 		stream.FPS <= maxOutputFPS(width, height)+0.0001
 }
 
@@ -241,15 +254,22 @@ func audioCanCopy(stream transcodeStream) bool {
 }
 
 func videoEncodeArgs(stream transcodeStream) []string {
-	width, height := outputDimensions(stream.Width, stream.Height)
+	displayWidth, displayHeight, sampleAspectNum, sampleAspectDen := displayGeometry(stream)
+	width, height := outputDimensions(displayWidth, displayHeight)
 	filters := make([]string, 0, 2)
-	if width != stream.Width || height != stream.Height {
-		if stream.Width > maxVideoWidth || stream.Height > maxVideoHeight {
+	dimensionsChanged := width != displayWidth || height != displayHeight
+	if dimensionsChanged {
+		if displayWidth > maxVideoWidth || displayHeight > maxVideoHeight {
 			filters = append(filters, fmt.Sprintf("scale=%d:%d", width, height))
 		} else {
 			filters = append(filters, fmt.Sprintf("pad=%d:%d:0:0", width, height))
 		}
-		filters = append(filters, fmt.Sprintf("setsar=%s:max=1000000", outputSampleAspectRatio(stream, width, height)))
+	}
+	if dimensionsChanged || stream.Rotation != 0 {
+		filters = append(filters, fmt.Sprintf(
+			"setsar=%s:max=1000000",
+			outputSampleAspectRatio(sampleAspectNum, sampleAspectDen, displayWidth, displayHeight, width, height),
+		))
 	}
 	limit := maxOutputFPS(width, height)
 	if stream.FPS <= 0 {
@@ -331,21 +351,49 @@ func parseAspectRatio(value string) (int64, int64) {
 	return n, d
 }
 
-func outputSampleAspectRatio(stream transcodeStream, width, height int) string {
-	numerator := stream.SampleAspectNum
-	denominator := stream.SampleAspectDen
+func displayGeometry(stream transcodeStream) (int, int, int64, int64) {
+	width, height := stream.Width, stream.Height
+	numerator, denominator := stream.SampleAspectNum, stream.SampleAspectDen
 	if numerator <= 0 || denominator <= 0 {
 		numerator, denominator = 1, 1
 	}
+	if stream.Rotation == 90 || stream.Rotation == 270 {
+		width, height = height, width
+		numerator, denominator = denominator, numerator
+	}
+	return width, height, numerator, denominator
+}
+
+func outputSampleAspectRatio(numerator, denominator int64, sourceWidth, sourceHeight, width, height int) string {
 	return fmt.Sprintf(
 		"%d/%d*%d/%d*%d/%d",
 		numerator,
 		denominator,
-		stream.Width,
-		stream.Height,
+		sourceWidth,
+		sourceHeight,
 		height,
 		width,
 	)
+}
+
+func parseRotation(value string) int {
+	rotation, err := strconv.ParseFloat(value, 64)
+	if err != nil {
+		return 0
+	}
+	return normalizeRotation(rotation)
+}
+
+func normalizeRotation(value float64) int {
+	quarterTurns := math.Round(value / 90)
+	if math.Abs(value-quarterTurns*90) > 0.01 {
+		return 0
+	}
+	rotation := int(quarterTurns*90) % 360
+	if rotation < 0 {
+		rotation += 360
+	}
+	return rotation
 }
 
 func formatSeconds(milliseconds int64) string {
