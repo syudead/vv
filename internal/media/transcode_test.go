@@ -3,6 +3,7 @@ package media
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 func compatibleMetadata() transcodeMetadata {
@@ -68,6 +71,11 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 		{"96kHz AAC", func(m *transcodeMetadata) { m.Audio.SampleRate = 96000 }, "-c:a aac -profile:a aac_low -ac 2 -b:a 192k -ar 48000"},
 		{"unknown video attribute", func(m *transcodeMetadata) { m.Video.BitsPerRawSample = 0 }, "-c:v libx264"},
 		{"variable frame rate", func(m *transcodeMetadata) { m.Video.RealFPS = 120 }, "-c:v libx264"},
+		{"rotated coded height", func(m *transcodeMetadata) {
+			m.Video.Width = 2160
+			m.Video.Height = 3840
+			m.Video.Rotation = 90
+		}, "-c:v libx264"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -322,6 +330,9 @@ func TestLiveTranscoderBoundsProbeByStartupDeadline(t *testing.T) {
 	)
 	if err == nil {
 		t.Fatal("停止するprobeが成功した")
+	}
+	if errors.Is(err, domain.ErrUnprocessableMedia) {
+		t.Fatalf("timeoutを動画固有errorとして返しました: %v", err)
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("startup deadlineまで %s かかった", elapsed)

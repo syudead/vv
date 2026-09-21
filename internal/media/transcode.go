@@ -132,6 +132,9 @@ func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline
 
 	output, err := t.commandContext(probeCtx, probeCommand, probeArgs(path)...).Output()
 	if err != nil {
+		if contextErr := probeCtx.Err(); contextErr != nil {
+			return transcodeMetadata{}, fmt.Errorf("request時probeが期限内に完了しませんでした: %w", contextErr)
+		}
 		return transcodeMetadata{}, fmt.Errorf("%w: request時probeに失敗しました: %w", domain.ErrUnprocessableMedia, err)
 	}
 	metadata, err := parseTranscodeProbe(output)
@@ -239,6 +242,9 @@ func videoCanCopy(stream transcodeStream) bool {
 	if stream.CodecName != "h264" || !profiles[strings.ToLower(stream.Profile)] ||
 		stream.Level <= 0 || stream.Level > 51 || stream.PixelFormat != "yuv420p" ||
 		stream.BitsPerRawSample != 8 || !constantFrameRate(stream) {
+		return false
+	}
+	if stream.Width > maxVideoWidth || stream.Height > maxVideoHeight {
 		return false
 	}
 	displayWidth, displayHeight, _, _ := displayGeometry(stream)
