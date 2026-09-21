@@ -21,22 +21,18 @@ func TestProcessGroupStopsDescendantAfterRootExits(t *testing.T) {
 
 	dir := t.TempDir()
 	addressFile := filepath.Join(dir, "address")
-	gateFile := filepath.Join(dir, "start")
 	cmd := exec.Command(os.Args[0], "-test.run=TestProcessGroupStopsDescendantAfterRootExits")
-	cmd.Env = append(os.Environ(), processGroupHelper+"=root", "VV_ADDRESS_FILE="+addressFile, "VV_GATE_FILE="+gateFile)
+	cmd.Env = append(os.Environ(), processGroupHelper+"=root", "VV_ADDRESS_FILE="+addressFile)
 	group, err := newProcessGroup(cmd)
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { group.terminate(cmd) })
 	if err := cmd.Start(); err != nil {
 		group.terminate(cmd)
 		t.Fatal(err)
 	}
 	if err := group.attach(cmd); err != nil {
-		group.terminate(cmd)
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(gateFile, []byte("start"), 0o600); err != nil {
 		group.terminate(cmd)
 		t.Fatal(err)
 	}
@@ -69,12 +65,6 @@ func TestProcessGroupStopsDescendantAfterRootExits(t *testing.T) {
 func runProcessGroupHelper(mode string) {
 	switch mode {
 	case "root":
-		for {
-			if _, err := os.Stat(os.Getenv("VV_GATE_FILE")); err == nil {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
 		child := exec.Command(os.Args[0], "-test.run=TestProcessGroupStopsDescendantAfterRootExits")
 		child.Env = append(os.Environ(), processGroupHelper+"=child")
 		if err := child.Start(); err != nil {

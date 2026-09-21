@@ -49,3 +49,44 @@ func TestPrefixWriterFlushesTrailingLine(t *testing.T) {
 		t.Errorf("二重に出力した: %q", out.String())
 	}
 }
+
+func TestAPITargetFor(t *testing.T) {
+	tests := []struct {
+		name    string
+		address string
+		want    string
+	}{
+		{name: "wildcard", address: ":18081", want: "http://localhost:18081"},
+		{name: "IPv4 wildcard", address: "0.0.0.0:8080", want: "http://localhost:8080"},
+		{name: "IPv6 wildcard", address: "[::]:8080", want: "http://localhost:8080"},
+		{name: "explicit host", address: "127.0.0.1:9000", want: "http://127.0.0.1:9000"},
+		{name: "IPv6 host", address: "[::1]:9000", want: "http://[::1]:9000"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := apiTargetFor(test.address, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != test.want {
+				t.Fatalf("apiTargetFor(%q) = %q, want %q", test.address, got, test.want)
+			}
+		})
+	}
+}
+
+func TestAPITargetForRejectsInvalidAddress(t *testing.T) {
+	if _, err := apiTargetFor("localhost", ""); err == nil {
+		t.Fatal("ポートのないアドレスを受理しました")
+	}
+}
+
+func TestAPITargetForPrefersConfiguredTarget(t *testing.T) {
+	got, err := apiTargetFor(":18081", "https://api.example.test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != "https://api.example.test" {
+		t.Fatalf("明示した MDM_API_TARGET が優先されていません: %q", got)
+	}
+}

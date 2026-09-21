@@ -34,4 +34,5 @@ Go 製ツールは `tools/go.mod` の `tool` directive でアプリ依存から�
 - Air v1.67.4: `web/embed.go` の更新を検知し、再ビルド後にテスト用ポート 18081 で再起動。
 - `GET /api/health`: Air 起動中に `status: ok` を確認。
 - `scripts/dev`: Vite の起動失敗後に Air・MDM が残らないことを確認。
-- `go test ./scripts/dev`: 起動元が先に終了しても子プロセスを停止する実プロセステストに成功。
+- `go test ./scripts/dev`: 起動元が即座に子プロセスを生成して先に終了しても、子を停止する実プロセステストに成功。
+- `go test ./scripts/dev`: `MDM_ADDR` のワイルドカード・IPv4・IPv6 から Vite の API 転送先を導出するテストに成功。

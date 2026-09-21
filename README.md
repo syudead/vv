@@ -86,6 +86,8 @@ mise exec --command "task doctor"
 
 開発サーバーは `mise exec --command "task dev"` で起動し、
 `http://localhost:5173` を開く。終了は Ctrl+C。
+`MDM_ADDR` で Go サーバーの待受先を変えると、Vite の `/api` 転送先も同じ
+ホスト・ポートへ追従する。別の転送先が必要な場合だけ `MDM_API_TARGET` を指定する。
 変更の検証は `mise exec --command "task check"` で実行する。
 Go 製の開発ツールは `tools/go.mod` の `tool` directive、実行環境は `mise.toml` に固定する。
 判断や後始末を伴う開発者コマンドの実体は `scripts/` の Go プログラムに置き、

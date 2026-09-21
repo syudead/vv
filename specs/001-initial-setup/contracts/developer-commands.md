@@ -11,7 +11,7 @@
 | `task down`     | Task・Docker                            | 起動したものを停止・削除する                                                                        | —                        |
 | `task doctor`   | Task・Go                                | 手元に必要な外部コマンドが揃っているかを調べる。必須が欠けていれば失敗する                          | —                        |
 | `task setup`    | Task・Go・Node                         | Go module、npm 依存、検査ツール、ビルドキャッシュを先に用意する。npm 依存は毎回入れ直す             | —                        |
-| `task dev`      | Task・Go・Node・ffmpeg                 | Go サーバーを Air で自動再起動し、Vite の開発サーバーとともに起動する                                | —                        |
+| `task dev`      | Task・Go・Node・ffmpeg                 | Go サーバーを Air で自動再起動し、Vite の開発サーバーとともに起動する。Vite の API 転送先は `MDM_API_TARGET`、未指定なら `MDM_ADDR` から導出する | —                        |
 | `task build`    | Task・Go・Node                          | SPA をビルドして埋め込み、単一バイナリを生成する                                                    | —                        |
 | `task generate` | Task・Go・Node                          | `api/openapi.yaml` から Go と TypeScript の型を生成する                                             | FR-012                   |
 | `task fmt`      | Task・Go・Node                         | 書式を整える                                                                                        | FR-011                   |
@@ -44,5 +44,6 @@ Git・bash を要求する。README には
 Go に置くと、その中身を `task test` の `go test ./...` が検証できる。現に検証して
 いるのは各プログラムの判断部分である —— `doctor` の合否と終了コード、`generate` の
 生成物の差分判定と失敗時の打ち切り、`build` の `web/dist` の退避と復元、`dev` の
-出力の行送り。外部コマンドを実際に起動する経路は対象外で、そこは `task check` 自身が
-通ることで確かめる。
+出力の行送りと API 転送先の導出。`dev` のプロセス終了だけは実プロセスを使い、起動元が
+先に終了した場合も子プロセスが残らないことを Unix と Windows で検証する。その他の
+外部コマンドを実際に起動する経路は `task check` 自身が通ることで確かめる。

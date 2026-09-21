@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -122,6 +123,20 @@ func (s *server) flush() {
 	}
 }
 
+func apiTargetFor(backendAddress, configuredTarget string) (string, error) {
+	if configuredTarget != "" {
+		return configuredTarget, nil
+	}
+	host, port, err := net.SplitHostPort(backendAddress)
+	if err != nil {
+		return "", fmt.Errorf("MDM_ADDR=%q を Vite の接続先へ変換できません: %w", backendAddress, err)
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	return "http://" + net.JoinHostPort(host, port), nil
+}
+
 func main() {
 	root, err := devtools.RepositoryRoot()
 	if err != nil {
@@ -152,9 +167,9 @@ func main() {
 	if backendAddress == "" {
 		backendAddress = ":8080"
 	}
-	apiTarget := os.Getenv("MDM_API_TARGET")
-	if apiTarget == "" {
-		apiTarget = "http://localhost:8080"
+	apiTarget, err := apiTargetFor(backendAddress, os.Getenv("MDM_API_TARGET"))
+	if err != nil {
+		devtools.Fail(err)
 	}
 	fmt.Println("Go:  ", backendAddress)
 	fmt.Printf("Vite: http://localhost:5173 (/api proxies to %s)\n", apiTarget)
@@ -169,7 +184,7 @@ func main() {
 	if err != nil {
 		devtools.Fail(err)
 	}
-	webServer, err := start(root, "web", nil, "npm", "--prefix", "web", "run", "dev", "--",
+	webServer, err := start(root, "web", []string{"MDM_API_TARGET=" + apiTarget}, "npm", "--prefix", "web", "run", "dev", "--",
 		"--host", "127.0.0.1", "--strictPort")
 	if err != nil {
 		goServer.stop()
