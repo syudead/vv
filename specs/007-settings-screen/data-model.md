@@ -71,7 +71,9 @@ current locationを選び直す。
 ### Add
 
 1. running scanがないことを確認する
-2. candidateのabsolute、exists、directory、readable、非symlink、重複・包含を検証する
+2. candidateが [spec.md](spec.md) の登録規則（FR-006・FR-028・FR-031・FR-032）と
+   [contracts/settings-api.md](contracts/settings-api.md) の `invalid_request`・
+   `invalid_media_directory` の条件を満たすことを検証する
 3. MediaFolderを1行insertする
 4. commitする
 
