@@ -7,7 +7,11 @@
 
 ```bash
 make check
+make test-e2e
 ```
+
+`make test-e2e`はGoサーバー、Vite proxy、Chromiumを起動し、設定画面から実際に
+メディアフォルダを追加してsame-origin境界を含むbrowser-to-API経路を検証する。
 
 ## Acceptance Scenarios
 

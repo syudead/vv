@@ -15,9 +15,9 @@ export default defineConfig({
     port: 5173,
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        target: process.env.MDM_API_TARGET ?? "http://localhost:8080",
         // Preserve the browser-facing Host so the API's Origin check sees
-        // localhost:5173 on both sides during development.
+        // the same authority on both sides during development.
         changeOrigin: false,
       },
     },
