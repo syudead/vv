@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -56,9 +57,10 @@ type MediaFolders interface {
 }
 
 // Transcoder は1 request分のfragmented MP4を生成する。
+// startupDeadlineはrequest時probeと初期データ生成の共通期限である。
 // waitは成功したStartにつきちょうど1回呼び、stopは切断時にprocessを止める。
 type Transcoder interface {
-	Start(context.Context, string, int64, bool) (io.ReadCloser, func() error, func(), error)
+	Start(context.Context, string, int64, bool, time.Time) (io.ReadCloser, func() error, func(), error)
 }
 
 // Options は経路の組み立てに必要な依存である。

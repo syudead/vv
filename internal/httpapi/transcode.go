@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-const transcodeInitialDataTimeout = 4 * time.Second
+const transcodeStartupTimeout = 4 * time.Second
 
 // TranscodeVideo streams one request-scoped fragmented MP4 process.
 func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.TranscodeVideoParams) {
@@ -46,7 +46,10 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	}
 	defer func() { _ = file.Close() }()
 
-	stream, wait, stop, err := s.transcoder.Start(r.Context(), file.Name(), startMs, video.Playable || startMs > 0)
+	startupDeadline := time.Now().Add(transcodeStartupTimeout)
+	stream, wait, stop, err := s.transcoder.Start(
+		r.Context(), file.Name(), startMs, video.Playable || startMs > 0, startupDeadline,
+	)
 	if err != nil {
 		if errors.Is(err, domain.ErrUnprocessableMedia) {
 			s.logger.Info("動画をライブ変換できません", slog.Int64("video", video.ID), slog.Any("error", err))
@@ -57,7 +60,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		return
 	}
 	defer func() { _ = stream.Close() }()
-	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop, transcodeInitialDataTimeout)
+	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop, time.Until(startupDeadline))
 	if err != nil {
 		s.internalError(w, "ライブ変換が初期データを生成できませんでした", err)
 		return

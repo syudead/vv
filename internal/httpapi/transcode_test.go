@@ -26,7 +26,7 @@ type fakeTranscoder struct {
 	stops     int
 }
 
-func (f *fakeTranscoder) Start(_ context.Context, path string, startMs int64, normalize bool) (io.ReadCloser, func() error, func(), error) {
+func (f *fakeTranscoder) Start(_ context.Context, path string, startMs int64, normalize bool, _ time.Time) (io.ReadCloser, func() error, func(), error) {
 	f.starts++
 	f.path, f.startMs, f.normalize = path, startMs, normalize
 	if f.err != nil {
