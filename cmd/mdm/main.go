@@ -114,26 +114,13 @@ func run() error {
 		Videos:        db,
 		Playback:      db,
 		Scans:         lib,
-		MediaDir:      cfg.MediaDir,
+		MediaFolders:  db,
 		ThumbnailsDir: cfg.ThumbnailsDir(),
 		Assets:        web.Dist(),
 		Logger:        logger,
 	})
 
-	onListening := func() {
-		if !cfg.ScanOnStart {
-			return
-		}
-		// 「置くだけで並ぶ」（US1）には自動実行が要る。待ち受け成功後に
-		// 始めることで、ポート競合で起動できない時に running 行だけを
-		// 残さない。
-		if _, err := lib.StartScan(backgroundCtx); err != nil {
-			// 取り込みが始められなくても、一覧と再生は動く。起動は続ける。
-			logger.Warn("起動時の取り込みを始められませんでした", slog.Any("error", err))
-		}
-	}
-
-	if err := serve(cfg, handler, logger, onListening); err != nil {
+	if err := serve(cfg, handler, logger, nil); err != nil {
 		return err
 	}
 

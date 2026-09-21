@@ -196,10 +196,36 @@ type VideoFile struct {
 // IndexedVideo は差分判定に要る最小限の値である。走査は実際のファイルと
 // これを突き合わせる（R-107）。
 type IndexedVideo struct {
-	ID         int64
-	ContentKey string
-	SizeBytes  int64
-	MTime      time.Time
+	ID              int64
+	ContentKey      string
+	LocationID      int64
+	LocationVersion int64
+	SizeBytes       int64
+	MTime           time.Time
+	ProbeState      ProbeState
+	ThumbnailState  ThumbnailState
+}
+
+// MediaFolder is one independently managed scan root.
+type MediaFolder struct {
+	ID        int64
+	Path      string
+	Version   int64
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// VideoLocation is one current filesystem location for a logical video.
+type VideoLocation struct {
+	ID        int64
+	VideoID   int64
+	Path      string
+	Version   int64
+	Title     string
+	SizeBytes int64
+	MTime     time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // UpsertOutcome は取り込み1件の結果である。走査の集計（ScanResult）になる。
@@ -210,7 +236,7 @@ const (
 	OutcomeAdded UpsertOutcome = "added"
 	// OutcomeUpdated は既存の行の内容が変わった。
 	OutcomeUpdated UpsertOutcome = "updated"
-	// OutcomeMoved は内容が同じままパスだけが変わった（移動・改名）。
+	// OutcomeMoved は既知の内容を新しいpathで発見した。
 	OutcomeMoved UpsertOutcome = "moved"
 	// OutcomeUnchanged は何も変わらなかった。
 	OutcomeUnchanged UpsertOutcome = "unchanged"
@@ -218,6 +244,8 @@ const (
 
 // UpsertResult は取り込み1件の結果である。
 type UpsertResult struct {
-	ID      int64
-	Outcome UpsertOutcome
+	ID             int64
+	Outcome        UpsertOutcome
+	NeedsProbe     bool
+	NeedsThumbnail bool
 }

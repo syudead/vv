@@ -3,8 +3,12 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 // jobsFixture は動画を1本入れた状態を返す。ジョブは videos を参照する。
@@ -182,6 +186,40 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 	}
 }
 
+func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	for range MaxJobAttempts {
+		job, err := db.ClaimJob(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := db.FailJob(ctx, job.ID, "unreadable location"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.EnsureJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-8 * 24 * time.Hour).Unix()
+	if _, err := db.SQL().Exec(`update jobs set updated_at = ? where video_id = ?`, old, videoID); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-JobRetention))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 0 {
+		t.Fatalf("pending state retry suppression was garbage-collected: %d", removed)
+	}
+	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("terminal failure was revived: %v", err)
+	}
+}
+
 // 起動時に running のまま残っている行は queued へ戻す。取り込み中に止めても
 // 次の起動で再開でき、重複も生まない（R-106 / spec のエッジケース）。
 func TestRequeueRunningJobs(t *testing.T) {
@@ -277,6 +315,172 @@ func TestDeleteFinishedJobsKeepsPending(t *testing.T) {
 	}
 	if removed != 0 {
 		t.Errorf("未完了のジョブが消えた: %d 件", removed)
+	}
+}
+
+func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	var videoID int64
+	for i := range 4 {
+		result, err := db.UpsertVideo(ctx, sampleFile(fmt.Sprintf("/media/%d/movie.mp4", i), "movie", "shared", 1, 0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		videoID = result.ID
+	}
+	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	for i := range 4 * MaxJobAttempts {
+		job, err := db.ClaimJob(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		wantAttempt := i/4 + 1
+		if job.Attempts != wantAttempt {
+			t.Fatalf("location %d attempts = %d, want %d", i, job.Attempts, wantAttempt)
+		}
+		if job.LastLocation != (i%4 == 3) {
+			t.Fatalf("location %d LastLocation = %v", i, job.LastLocation)
+		}
+		if err := db.FailClaimedJob(ctx, job, "location unavailable"); err != nil {
+			t.Fatal(err)
+		}
+		wantState := "queued"
+		if i == 4*MaxJobAttempts-1 {
+			wantState = "failed"
+		}
+		if got := jobState(t, db, job.ID); got != wantState {
+			t.Fatalf("location %d state = %s, want %s", i, got, wantState)
+		}
+	}
+	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("ClaimJob after final cycle error = %v, want ErrNoJob", err)
+	}
+}
+
+func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	video, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(root, "movie.mp4"), "movie", "migrated", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.EnqueueJob(ctx, JobThumbnail, video.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("unregistered ClaimJob error = %v, want ErrNoJob", err)
+	}
+	if got := jobState(t, db, 1); got != "queued" {
+		t.Fatalf("unregistered job state = %s, want queued", got)
+	}
+	if _, err := db.AddMediaFolder(ctx, root); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.LocationPath != filepath.Join(root, "movie.mp4") {
+		t.Fatalf("LocationPath = %q", job.LocationPath)
+	}
+}
+
+func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", "key-a", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	written, err := db.ApplyProbeForJob(ctx, job, domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}, domain.Playability{Playable: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written {
+		t.Fatal("job claimed before a location was added wrote a stale result")
+	}
+	written, err = db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written {
+		t.Fatal("thumbnail job claimed before a location was added wrote a stale result")
+	}
+	if err := db.FailClaimedJob(ctx, job, "old location failed"); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobState(t, db, job.ID); got != "queued" {
+		t.Fatalf("state = %q, want queued", got)
+	}
+	retried, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.LocationPath != "/media/z.mp4" {
+		t.Fatalf("retry path = %q, want /media/z.mp4", retried.LocationPath)
+	}
+}
+
+func TestClaimedJobBecomesStaleWhenLowerIDLocationIsReassigned(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	lower, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	target, err := db.UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-b", 1024, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lower.ID >= target.ID {
+		t.Fatalf("fixture IDs = %d, %d; want lower source ID", lower.ID, target.ID)
+	}
+	if err := db.EnqueueJob(ctx, JobProbe, target.ID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reusing the earlier location for the target content changes membership
+	// without creating an ID larger than the claimed target location.
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-b", 2048, time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	current, err := db.JobIdentityCurrent(ctx, job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current {
+		t.Fatal("job identity remained current after a lower-ID location was reassigned")
+	}
+	written, err := db.ApplyProbeForJob(ctx, job, domain.Probe{VideoCodec: "h264"}, domain.Playability{Playable: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written {
+		t.Fatal("job wrote a result after a lower-ID location was reassigned")
+	}
+	if err := db.CompleteClaimedJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobState(t, db, job.ID); got != "queued" {
+		t.Fatalf("state = %q, want queued", got)
 	}
 }
 

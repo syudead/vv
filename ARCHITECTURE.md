@@ -2,7 +2,7 @@
 
 This repository targets a self-hosted media data management (MDM) system: it
 indexes video files on local storage and plays them back in a browser. The
-core is in place — a single Go binary that scans a media directory, serves the
+core is in place — a single Go binary that scans configured media folders, serves the
 JSON API and the embedded React SPA, streams video with byte ranges, and
 records playback positions, backed by SQLite — and the remaining components are
 introduced as later phases land. The selected stack and the component
@@ -18,20 +18,23 @@ video files on a mounted volume. `ffmpeg`/`ffprobe` run as child processes for
 metadata, thumbnails, and subtitle conversion, driven by an in-process job
 worker. Everything ships as one container.
 
-In place today: `cmd/mdm` reads `MDM_*` environment variables, checks that
+In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, checks that
 `ffprobe`/`ffmpeg` are on `PATH`, opens SQLite under `MDM_DATA_DIR` and applies
-embedded goose migrations at startup, then starts the job worker and (unless
-`MDM_SCAN_ON_START=false`) one background scan. It serves `GET /api/health`,
-the video library API (`/api/videos*`, `/api/scans*`), byte-range streaming,
+embedded goose migrations at startup, then starts the job worker. It serves `GET /api/health`,
+the video library API (`/api/videos*`, `/api/scans*`), media-folder settings and
+server-side directory picker APIs, byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
-`internal/scanner` walks `MDM_MEDIA_DIR`, identifies files by content
+`internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
+a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
 not duplicate rows, and queues the heavy work. `internal/jobs` runs a single
 serial in-process worker that drives the `internal/media` adapters
 (`ffprobe` for metadata, `ffmpeg` for one thumbnail per video); interrupted
-jobs are requeued at the next startup. Streaming delegates ranges to
-`http.ServeContent` and only opens paths that resolve inside `MDM_MEDIA_DIR`.
+jobs are requeued at the next startup. Logical videos are separated from their physical
+locations so the same content may remain available from more than one configured root.
+Streaming delegates ranges to `http.ServeContent` and only opens current locations that
+resolve inside a configured media folder.
 
 Shutdown drains in-flight requests within a 10 second grace period, then stops
 the scanner and the worker so a running job returns to the queue.
@@ -91,15 +94,16 @@ round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
-frame around a screen. `web/src/library/` and `web/src/player/` own their
-respective product flows, while reusable primitives live in `web/src/ui/` and
-formatting helpers live in `web/src/lib/`. Only the library list uses the shell:
-`app/App.tsx` puts `AppShell` around the `/` route alone, and the playback screen
+frame around a screen. `web/src/library/`, `web/src/settings/`, and
+`web/src/player/` own their respective product flows, while reusable primitives live in
+`web/src/ui/` and formatting helpers live in `web/src/lib/`. The library and settings
+screens use the shell: `app/App.tsx` puts `AppShell` around the `/` and `/settings`
+routes, and the playback screen
 (`/videos/:id`) deliberately gets no sidebar, because it is a
 two-pane screen of its own (R-505). Keeping that choice to the one routing
 decision is what lets the shell stay ignorant of which screen it is framing.
-The shell exposes only the library as a route. "Recently added", "In progress",
-and settings show a preparation notice until backing routes exist; shell tests
+The shell exposes the library and media-folder settings as routes. "Recently added"
+and "In progress" show a preparation notice until backing routes exist; shell tests
 keep that boundary explicit.
 
 The shell does not take ownership of scrolling. The sidebar and the toolbar are

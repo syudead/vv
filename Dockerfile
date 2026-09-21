@@ -35,7 +35,6 @@ RUN apk add --no-cache ffmpeg ca-certificates tzdata \
 COPY --from=build /out/mdm /usr/local/bin/mdm
 
 ENV MDM_ADDR=":8080" \
-    MDM_MEDIA_DIR="/media" \
     MDM_DATA_DIR="/data" \
     MDM_LOG_LEVEL="info"
 

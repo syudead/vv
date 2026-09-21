@@ -23,7 +23,6 @@ Phase 0 ではその部分集合だけを作り、Phase 1 で拡張する。
 | フィールド | 型 | 既定値 | 検証規則 |
 | --- | --- | --- | --- |
 | `Addr` | string | `:8080` | `net.SplitHostPort` で解釈できること |
-| `MediaDir` | string | `/media` | 絶対パスであること。起動時に存在と読み取り可否を確認し、不可なら起動中止 |
 | `DataDir` | string | `/data` | 絶対パスであること。存在しなければ作成する（作成失敗は起動中止） |
 | `LogLevel` | string | `info` | `debug` / `info` / `warn` / `error` のいずれか |
 
@@ -79,7 +78,7 @@ Phase 0 でこの表を作る理由は、日本語の部分一致検索の実証
 | 列 | 型 | 制約 | 説明 |
 | --- | --- | --- | --- |
 | `id` | integer | primary key | 行 ID。FTS5 の `rowid` と対応させる |
-| `path` | text | not null, unique | ファイルの絶対パス。保存前に Unicode NFC へ正規化する |
+| `path` | text | not null, unique | ファイルの絶対パス。ファイルシステムが返したUnicode表現を保持する |
 | `title` | text | not null | 表示名。Phase 0 では拡張子を除いたファイル名 |
 | `size_bytes` | integer | not null | ファイルサイズ |
 | `mtime` | integer | not null | ファイルの更新時刻（Unix 秒） |

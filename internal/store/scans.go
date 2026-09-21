@@ -30,12 +30,23 @@ const (
 	ScanFailed = domain.ScanFailed
 )
 
+var ErrNoMediaFolders = domain.ErrNoMediaFolders
+
 // StartScan は走査を始める。すでに実行中のものがあれば、新しく始めずに
 // それを返す（started = false）。
 //
 // 409 にしないのは、利用者の意図が「今の状態を進めたい」であり、進行中なら
 // それを返すのが素直だからである（R-108）。
 func (db *DB) StartScan(ctx context.Context) (scan Scan, started bool, err error) {
+	db.folderMu.Lock()
+	defer db.folderMu.Unlock()
+	var folderCount int
+	if err := db.sql.QueryRowContext(ctx, `select count(*) from media_folders`).Scan(&folderCount); err != nil {
+		return Scan{}, false, err
+	}
+	if folderCount == 0 {
+		return Scan{}, false, ErrNoMediaFolders
+	}
 	if running, err := db.scanBy(ctx,
 		`select `+scanColumns+` from scans where state = 'running' limit 1`,
 	); err == nil {

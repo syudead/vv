@@ -1,5 +1,5 @@
-# FR-012 の自動検証。手元の make check と同じ目標を呼び、判定が一致する状態を保つ。
-# ジョブは Go と Web で分けて並行させ、重いイメージビルドは別ジョブにする
+# FR-012 の自動検証。make check を構成する目標と、追加runtimeを要するtest-e2eを呼ぶ。
+# どの検査も同じmake目標で手元から再現できる。ジョブはGoとWebで分けて並行させ、重いイメージビルドは別ジョブにする
 # （research.md R-012 / SC-004: 10 分以内）。
 name: CI
 
@@ -76,6 +76,48 @@ jobs:
 
       - name: ビルド検証
         run: make test-web
+
+  e2e:
+    name: Browser E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Web依存を取得する
+        run: npm --prefix web ci
+
+      - name: メディア処理コマンドを取得する
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+
+      - name: Chromiumを取得する
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: 実ブラウザE2E
+        run: make test-e2e
+
+      - name: 失敗時のPlaywright artefact
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 7
 
   generated:
     name: Generated code

@@ -70,7 +70,7 @@ reconsideration.
 - **契機に到達した（002）**: 画面が 1 つから 3 つ（一覧・再生・共通部品）に増え、
   自動検証の無いコードが `web/src/` に約 800 行ある。特に検証が薄いのは
   無限スクロールの継ぎ目（`useVideos` のカーソル引き継ぎ）、検索入力の待ち合わせと
-  打ち切り、再生位置の送信（5 秒間隔・`visibilitychange` での `sendBeacon`）で、
+  打ち切り、再生位置の送信（5 秒間隔・`visibilitychange` での `keepalive` fetch）で、
   いずれも Go 側の経路テストでは代替できない。
   それでも 002 では入れていない。判断は「画面が増えた時点で入れる」ことではなく
   「入れるなら実行基盤（Vitest + Testing Library）と、DOM を伴う検証の書き方を
@@ -88,7 +88,7 @@ reconsideration.
   | --- | --- |
   | 無限スクロールの継ぎ目（カーソル引き継ぎ・打ち切り） | `web/src/api/useVideos.test.ts` |
   | 検索入力の待ち合わせと打ち切り（250ms） | `web/src/pages/LibraryPage.search.test.tsx` |
-  | 再生位置の送信（5 秒間隔・離脱時の `sendBeacon`） | `web/src/pages/VideoPage.progress.test.tsx` |
+  | 再生位置の送信（5 秒間隔・離脱時の `keepalive` fetch） | `web/src/pages/VideoPage.progress.test.tsx` |
 
   3 点目を書いた時点で TD-008（離脱時に最後の位置が送られない）を見つけている。
   004 は既存の振る舞いを変えないことが要求なので、そちらは直さず書き留めてある。

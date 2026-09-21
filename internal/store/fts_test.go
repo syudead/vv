@@ -38,10 +38,10 @@ func ftsFixture(t *testing.T) *DB {
 		{"/media/holiday-trip.mp4", "holiday trip"},
 	}
 	for _, row := range rows {
-		_, err := db.SQL().Exec(
-			`insert into videos(path, title, size_bytes, mtime) values (?, ?, ?, ?)`,
-			row.path, row.title, 1024, 1757000000,
-		)
+		_, err := db.UpsertVideo(context.Background(), VideoFile{
+			Path: row.path, Title: row.title, ContentKey: row.path,
+			SizeBytes: 1024, MTime: time.Unix(1757000000, 0),
+		})
 		if err != nil {
 			t.Fatalf("検証用の行を入れられない (%s): %v", row.path, err)
 		}
@@ -177,12 +177,16 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	db := ftsFixture(t)
 
 	// トリガを外し、索引へ反映されない行を作る。取りこぼしの状況を再現する。
-	if _, err := db.SQL().Exec(`drop trigger videos_ai`); err != nil {
+	if _, err := db.SQL().Exec(`drop trigger video_locations_ai`); err != nil {
 		t.Fatalf("トリガを外せない: %v", err)
 	}
-	if _, err := db.SQL().Exec(
-		`insert into videos(path, title, size_bytes, mtime) values ('/media/運動会.mp4', '運動会', 1, 1)`,
-	); err != nil {
+	res, err := db.SQL().Exec(`insert into videos(added_at, updated_at, content_key) values (1, 1, 'sports-day')`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	videoID, _ := res.LastInsertId()
+	if _, err := db.SQL().Exec(`insert into video_locations(video_id, path, title, size_bytes, mtime, created_at, updated_at)
+		values (?, '/media/運動会.mp4', '運動会', 1, 1, 1, 1)`, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if got := countMatch(t, db, "運動会"); got != 0 {

@@ -13,11 +13,10 @@ services:
       - "8080:8080"
     environment:
       MDM_ADDR: ":8080"
-      MDM_MEDIA_DIR: "/media"
       MDM_DATA_DIR: "/data"
       MDM_LOG_LEVEL: "${MDM_LOG_LEVEL:-info}"
     volumes:
-      # 動画を置いた場所を MDM_MEDIA_HOST_DIR で差し替えられる。読み取り専用。
+      # 設定画面で選べるコンテナ内の候補。ホスト側は差し替えられる。
       - "${MDM_MEDIA_HOST_DIR:-./media}:/media:ro"
       # データベースは名前付きボリュームに置く。消しても次の起動で作り直される。
       - "data:/data"

@@ -1,7 +1,7 @@
 # 開発者向けコマンドの契約:
 #   specs/001-initial-setup/contracts/developer-commands.md
-# ここにある目標名がそのまま開発者との契約になる。README と CI は必ずこの目標を呼び、
-# 手元と CI が同じ判定になるようにする（CI でしか動かない検査を作らない）。
+# ここにある目標名がそのまま開発者との契約になる。README と CI は必ずこれらの目標を呼び、
+# CI の検査を同じ目標で手元でも再現できる状態にする（CI 専用の検査を作らない）。
 
 # リリース名。既定は dev で、ビルド時に上書きできる（research.md R-007）。
 VERSION ?= dev
@@ -14,8 +14,7 @@ OPENAPI_TYPESCRIPT_VERSION = $(shell jq -er .openapiTypescript scripts/tool-vers
 GOLANGCI_LINT = go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 NPM           := npm --prefix web
 
-# make dev 用の既定値。/media と /data は開発機には無いので手元の場所を使う。
-DEV_MEDIA_DIR ?= $(CURDIR)/media
+# make dev 用のデータ置き場。
 DEV_DATA_DIR  ?= $(CURDIR)/.local/data
 
 # 生成物。make generate の再実行で差分が出る状態は失敗とみなす。
@@ -24,7 +23,7 @@ GENERATED := internal/httpapi/gen/api.gen.go web/src/api/gen/openapi.ts
 .DEFAULT_GOAL := help
 .PHONY: help setup up down dev build generate fmt lint test check test-local-dev
 .PHONY: fmt-check fmt-check-go fmt-check-web generate-check
-.PHONY: lint-go lint-web test-go test-web
+.PHONY: lint-go lint-web test-go test-web test-e2e
 
 help: ## 目標の一覧を表示する
 	@grep -hE '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -45,10 +44,10 @@ down: ## 起動したものを停止・削除する
 	docker compose down --remove-orphans
 
 dev: web/node_modules ## Go サーバーと Vite 開発サーバーを起動する
-	@mkdir -p "$(DEV_MEDIA_DIR)" "$(DEV_DATA_DIR)"
+	@mkdir -p "$(DEV_DATA_DIR)"
 	@echo "Go: http://localhost:8080 / Vite: http://localhost:5173（/api は :8080 へ中継）"
 	@trap 'kill 0' EXIT INT TERM; \
-	MDM_MEDIA_DIR="$(DEV_MEDIA_DIR)" MDM_DATA_DIR="$(DEV_DATA_DIR)" go run ./cmd/mdm & \
+	MDM_DATA_DIR="$(DEV_DATA_DIR)" go run ./cmd/mdm & \
 	$(NPM) run dev & \
 	wait
 
@@ -114,6 +113,9 @@ test-go: ## Go のテストを実行する
 # $(NPM) run test はビルド検証（vite build）と単体テスト（vitest run）の両方を走らせる。
 test-web: web/node_modules ## Web のビルド検証と単体テストを実行する
 	$(NPM) run test
+
+test-e2e: web/node_modules ## Go + Vite + Chromium で主要操作をE2E検証する
+	$(NPM) run test:e2e
 
 generate-check: ## 生成物が api/openapi.yaml と一致しているか確認する
 	@$(MAKE) --no-print-directory generate

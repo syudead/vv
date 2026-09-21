@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,10 +18,27 @@ import (
 // （形・状態コード・ヘッダ）だけを検証したいので SQLite には触れない。
 type fakeLibrary struct {
 	videos map[int64]domain.Video
+	roots  []string
 	page   domain.VideoPage
 	// lastQuery は最後に渡された問い合わせ条件。丸めの検証に使う。
 	lastQuery domain.VideoQuery
 	listErr   error
+}
+
+func (f *fakeLibrary) VideoLocations(_ context.Context, videoID int64) ([]domain.VideoLocation, error) {
+	video, ok := f.videos[videoID]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	return []domain.VideoLocation{{ID: 1, VideoID: videoID, Path: video.Path, Version: 1}}, nil
+}
+
+func (f *fakeLibrary) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
+	folders := make([]domain.MediaFolder, 0, len(f.roots))
+	for i, root := range f.roots {
+		folders = append(folders, domain.MediaFolder{ID: int64(i + 1), Path: root, Version: 1})
+	}
+	return folders, nil
 }
 
 func (f *fakeLibrary) ListVideos(_ context.Context, q domain.VideoQuery) (domain.VideoPage, error) {
@@ -120,7 +138,15 @@ func do(t *testing.T, handler http.Handler, method, target string) *httptest.Res
 	t.Helper()
 
 	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, httptest.NewRequest(method, target, nil))
+	body := ""
+	if method == http.MethodPost || method == http.MethodPut {
+		body = "{}"
+	}
+	req := httptest.NewRequest(method, target, strings.NewReader(body))
+	if method == http.MethodPost || method == http.MethodPut {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	handler.ServeHTTP(rec, req)
 	return rec
 }
 

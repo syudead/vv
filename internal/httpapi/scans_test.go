@@ -84,7 +84,7 @@ func TestGetCurrentScanExposesError(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true,
 		current: domain.Scan{
-			ID: 4, State: domain.ScanFailed, Error: "MDM_MEDIA_DIR を読み取れません",
+			ID: 4, State: domain.ScanFailed, Error: "メディアフォルダを読み取れません",
 		},
 	}})
 
@@ -133,6 +133,39 @@ func TestStartScanReportsFailure(t *testing.T) {
 	rec := do(t, handler, http.MethodPost, "/api/scans")
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("status = %d, want 500", rec.Code)
+	}
+}
+
+func TestStartScanRejectsEmptyMediaFolderSet(t *testing.T) {
+	handler := newTestServer(t, Options{Scans: &fakeScans{startErr: domain.ErrNoMediaFolders}})
+	rec := do(t, handler, http.MethodPost, "/api/scans")
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Error](t, rec); got.Code != codeMediaFoldersNotConfigured {
+		t.Fatalf("code = %q, want %q", got.Code, codeMediaFoldersNotConfigured)
+	}
+}
+
+func TestStartScanRejectsCrossOriginRequest(t *testing.T) {
+	scans := &fakeScans{}
+	handler := newTestServer(t, Options{Scans: scans})
+	rec := request(t, handler, http.MethodPost, "/api/scans", `{}`, map[string]string{
+		"Content-Type": "application/json", "Origin": "https://attacker.example",
+	})
+	if rec.Code != http.StatusForbidden || scans.started != 0 {
+		t.Fatalf("response = %d, started = %d", rec.Code, scans.started)
+	}
+}
+
+func TestStartScanRejectsInvalidJSONBody(t *testing.T) {
+	scans := &fakeScans{}
+	handler := newTestServer(t, Options{Scans: scans})
+	for _, body := range []string{"", `{"unexpected":true}`} {
+		rec := request(t, handler, http.MethodPost, "/api/scans", body, map[string]string{"Content-Type": "application/json"})
+		if rec.Code != http.StatusBadRequest || scans.started != 0 {
+			t.Fatalf("body=%q response=%d started=%d", body, rec.Code, scans.started)
+		}
 	}
 }
 

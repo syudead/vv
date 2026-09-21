@@ -114,11 +114,11 @@ func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 	if updated.Outcome != OutcomeUpdated {
 		t.Errorf("Outcome = %q, want %q", updated.Outcome, OutcomeUpdated)
 	}
-	if updated.ID != added.ID {
-		t.Errorf("行が作り直された: %d -> %d", added.ID, updated.ID)
+	if updated.ID == added.ID {
+		t.Errorf("内容が変わったのに論理動画IDが維持された: %d", added.ID)
 	}
 
-	video, err := db.GetVideo(ctx, added.ID)
+	video, err := db.GetVideo(ctx, updated.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,6 +133,33 @@ func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 	}
 	if video.Playable {
 		t.Error("解析し直す前なのに再生できる扱いのままになっている")
+	}
+}
+
+func TestReassigningRepresentativeLocationSynchronizesOldVideo(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	oldVideo, err := db.UpsertVideo(ctx, sampleFile("/media/a.mkv", "a", "old", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "old", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	probe := domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.ApplyProbe(ctx, oldVideo.ID, probe, domain.EvaluatePlayability("mkv", probe)); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mkv", "replacement", "new", 2, time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.GetVideo(ctx, oldVideo.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Path != "/media/b.mp4" || got.Container != "mp4" || !got.Playable {
+		t.Fatalf("old video representative was not synchronized: %+v", got)
 	}
 }
 
@@ -180,6 +207,68 @@ func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 	// 内容は変わっていないので、解析結果は捨てない。
 	if video.ProbeState != domain.ProbeStatePending {
 		t.Errorf("ProbeState = %q", video.ProbeState)
+	}
+}
+
+func TestListVideosPagesByRepresentativeLocationTitle(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	for i, title := range []string{"charlie", "alpha", "bravo"} {
+		if _, err := db.UpsertVideo(ctx, sampleFile("/media/"+title+".mp4", title, fmt.Sprintf("key-%d", i), int64(i+1), 0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	first, err := db.ListVideos(ctx, VideoQuery{Sort: SortTitleAsc, Limit: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := db.ListVideos(ctx, VideoQuery{Sort: SortTitleAsc, Limit: 1, Cursor: first.NextCursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Items[0].Title != "alpha" || second.Items[0].Title != "bravo" {
+		t.Fatalf("pages = %q, %q", first.Items[0].Title, second.Items[0].Title)
+	}
+}
+
+func TestAddingDuplicateLocationRequestsRecoveryForFailedProcessing(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	first, err := db.UpsertVideo(ctx, sampleFile("/media/a/movie.mp4", "movie", "shared", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.MarkProbeFailed(ctx, first.ID, "broken location"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.SetThumbnailState(ctx, first.ID, domain.ThumbnailStateFailed); err != nil {
+		t.Fatal(err)
+	}
+	second, err := db.UpsertVideo(ctx, sampleFile("/media/b/movie.mp4", "movie", "shared", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !second.NeedsProbe || !second.NeedsThumbnail {
+		t.Fatalf("recovery flags = probe:%v thumbnail:%v", second.NeedsProbe, second.NeedsThumbnail)
+	}
+}
+
+func TestRepresentativeLocationComesFromRegisteredRoot(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	first, err := db.UpsertVideo(ctx, sampleFile("/legacy/movie.mp4", "legacy", "shared-location", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/current.mp4", "current", "shared-location", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	video, err := db.GetVideo(ctx, first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.Path != "/media/current.mp4" || video.Title != "current" {
+		t.Fatalf("representative = %q (%q)", video.Path, video.Title)
 	}
 }
 

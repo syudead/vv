@@ -48,7 +48,7 @@ func routeFor(query string) searchRoute {
 
 // normalizeQuery は検索語を突き合わせられる形にする。
 //
-// NFC へ正規化するのは、保存しているパスと題名も NFC だからである（R-107）。
+// NFC へ正規化するのは、検索対象の表示用題名をNFCで保存するためである（R-107）。
 // macOS から NFD で送られた入力も、これで同じ表記に揃う。
 func normalizeQuery(query string) string {
 	return norm.NFC.String(strings.TrimSpace(query))
@@ -67,14 +67,15 @@ func searchFilter(query string) (condition string, args []any) {
 
 	switch routeFor(query) {
 	case routeMatch:
-		return `videos.id in (select rowid from videos_fts where videos_fts match ?)`,
+		return `videos.id in (select l.video_id from video_locations l where ` + registeredLocationCondition("l") +
+				` and l.id in (select rowid from videos_fts where videos_fts match ?))`,
 			[]any{quoteMatchQuery(normalized)}
 
 	case routeLike:
 		// title と path の双方を見る。題名は拡張子を除いたファイル名なので
 		// ほぼ同じだが、ディレクトリ名で絞りたい場合に path が効く。
-		return `videos.id in (select rowid from videos_fts where title like ? escape '\' ` +
-				`or path like ? escape '\')`,
+		return `videos.id in (select l.video_id from video_locations l where ` + registeredLocationCondition("l") + ` and l.id in (` +
+				`select rowid from videos_fts where title like ? escape '\' or path like ? escape '\'))`,
 			[]any{likePattern(normalized), likePattern(normalized)}
 
 	default:
