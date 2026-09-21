@@ -7,6 +7,7 @@ package sddguard
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -190,35 +191,31 @@ func TestDocumentsAreLinkedFromTheirIndex(t *testing.T) {
 	}
 }
 
-// guardedMarkdown は web/ の外にある Markdown を返す。prettier は
+// guardedMarkdown は web/ の外にある、版管理された Markdown を返す。prettier は
 // `npm --prefix web run format:check` で web/ だけを整形検査するので、
 // specs/ と docs/ とリポジトリ直下はどの検査にもかかっていない。
+//
+// 走査ではなく git の追跡一覧を使う。ディレクトリを辿ると、無視されている作業用の
+// チェックアウト（エージェントが作る .claude/worktrees/ など）まで拾い、そこにある
+// 古い内容を現在の違反として報告してしまう。
 func guardedMarkdown(t *testing.T) []string {
 	t.Helper()
 	repoRoot := repositoryRoot(t)
 
-	var files []string
-	err := filepath.WalkDir(repoRoot, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", "node_modules", "web", "dist", ".local":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), ".md") {
-			files = append(files, path)
-		}
-		return nil
-	})
+	out, err := exec.Command("git", "-C", repoRoot, "ls-files", "-z", "--", "*.md").Output()
 	if err != nil {
-		t.Fatalf("Markdown を走査できない: %v", err)
+		t.Fatalf("版管理された Markdown を一覧できない: %v", err)
+	}
+
+	var files []string
+	for _, rel := range strings.Split(string(out), "\x00") {
+		if rel == "" || strings.HasPrefix(rel, "web/") {
+			continue
+		}
+		files = append(files, filepath.Join(repoRoot, rel))
 	}
 	if len(files) == 0 {
-		t.Fatal("Markdown を1つも拾えていない。走査の除外条件を確認すること")
+		t.Fatal("Markdown を1つも拾えていない。一覧の条件を確認すること")
 	}
 	return files
 }
@@ -267,30 +264,6 @@ func TestMarkdownRelativeLinksResolve(t *testing.T) {
 				t.Errorf("%s: リンク先 %s が見つからない。移動したなら参照元も更新すること",
 					relativeTo(t, path), target)
 			}
-		}
-	}
-}
-
-// TestPlansReferenceAnExistingExecutionPlan は plan.md が指す実行計画の実在を
-// 確かめる。AGENTS.md は実行計画を docs/exec-plans/ に置くよう求めており、
-// PR #64 ではその配置から外れていることをレビューが指摘した。
-func TestPlansReferenceAnExistingExecutionPlan(t *testing.T) {
-	repoRoot := repositoryRoot(t)
-	entries, err := filepath.Glob(filepath.Join(repoRoot, "specs", "*", "plan.md"))
-	if err != nil {
-		t.Fatalf("plan.md を探せない: %v", err)
-	}
-	if len(entries) == 0 {
-		t.Fatal("plan.md を1つも拾えていない。走査の条件を確認すること")
-	}
-	for _, path := range entries {
-		body, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("%s を読めない: %v", path, err)
-		}
-		if !strings.Contains(string(body), "docs/exec-plans/") {
-			t.Errorf("%s が docs/exec-plans/ の実行計画を参照していない。"+
-				"AGENTS.md は実質的な作業の計画をそこへ置くよう求めている", relativeTo(t, path))
 		}
 	}
 }

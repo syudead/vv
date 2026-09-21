@@ -131,7 +131,30 @@ func NewRouter(opts Options) http.Handler {
 			}, logger)
 		},
 	})
-	return srv.mutationBoundary(generated)
+	return noStoreOnError(srv.mutationBoundary(generated))
+}
+
+// noStoreOnError は 4xx と 5xx の応答に no-store を付け直す。
+//
+// stream と thumbnail は成功用の Cache-Control を設定してから
+// http.ServeContent を呼び、ServeContent 自身が不正な Range に 416 を返す。
+// その経路は writeError を通らないので、版付きサムネイルでは失敗応答に
+// 1年の immutable が残っていた。書き出す直前の状態で判断する。
+func noStoreOnError(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(&errorCacheWriter{ResponseWriter: w}, r)
+	})
+}
+
+type errorCacheWriter struct {
+	http.ResponseWriter
+}
+
+func (w *errorCacheWriter) WriteHeader(status int) {
+	if status >= http.StatusBadRequest {
+		w.Header().Set("Cache-Control", cacheNoStore)
+	}
+	w.ResponseWriter.WriteHeader(status)
 }
 
 func (s *server) mutationBoundary(next http.Handler) http.Handler {

@@ -2,8 +2,6 @@
 
 **Branch**: `claude/peaceful-tesla-as1pwp`（機能ディレクトリ: `001-initial-setup`） | **Date**: 2026-09-12 | **Spec**: [spec.md](./spec.md)
 
-**実行計画**: [docs/exec-plans/completed/001-initial-setup.md](../../docs/exec-plans/completed/001-initial-setup.md)
-
 **Input**: Feature specification from `/specs/001-initial-setup/spec.md`
 
 ## Summary

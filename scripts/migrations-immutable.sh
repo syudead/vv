@@ -18,10 +18,12 @@ if ! git rev-parse --verify --quiet "$base" >/dev/null; then
 	exit 2
 fi
 
-modified="$(git diff --name-only --diff-filter=M "$base" -- "$dir")"
+# 内容の変更(M)だけでなく、削除(D)と改名(R)も履歴を変える。新しい番号の
+# 追加(A)は許す。
+modified="$(git diff --name-only --diff-filter=DMR "$base" -- "$dir")"
 
 if [ -n "$modified" ]; then
-	echo "適用済みのマイグレーションが変更されています:" >&2
+	echo "適用済みのマイグレーションが変更・削除されています:" >&2
 	echo "$modified" | sed 's/^/  /' >&2
 	cat >&2 <<'MSG'
 
