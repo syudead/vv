@@ -79,8 +79,10 @@ export default function SettingsPage() {
       setLoadError(null);
       try {
         const result = await listMediaFolders(signal);
-        setFolders([...result].sort((a, b) => a.id - b.id));
+        const sorted = [...result].sort((a, b) => a.id - b.id);
+        setFolders(sorted);
         scan.setFolderCount(result.length);
+        return sorted;
       } catch (failure) {
         if (signal?.aborted) return;
         setLoadError(errorMessage(failure));
@@ -97,15 +99,36 @@ export default function SettingsPage() {
     return () => controller.abort();
   }, [load]);
 
+  const focusFolderAction = (folder?: MediaFolder) => {
+    setTimeout(() => {
+      if (folder === undefined) addButton.current?.focus();
+      else
+        rowRefs.current
+          .get(folder.id)
+          ?.querySelector<HTMLButtonElement>("button")
+          ?.focus();
+    }, 0);
+  };
+
   const handleFailure = async (failure: unknown, folder?: MediaFolder) => {
-    if (failure instanceof RequestFailed && failure.code === "conflict" && folder) {
+    if (
+      failure instanceof RequestFailed &&
+      (failure.code === "conflict" || failure.code === "media_folder_not_found") &&
+      folder
+    ) {
       setRowError({
         id: folder.id,
-        message: "別の画面で変更されました。内容を確認してやり直してください",
+        message: "別の画面で変更または削除されました。内容を確認してやり直してください",
       });
       setPicker(null);
       setDeleting(null);
-      await load();
+      const targetIndex = folders.findIndex((candidate) => candidate.id === folder.id);
+      const refreshed = await load();
+      if (refreshed !== undefined) {
+        const nextFolder =
+          refreshed[Math.min(Math.max(targetIndex, 0), refreshed.length - 1)];
+        focusFolderAction(nextFolder);
+      }
       return;
     }
     if (failure instanceof RequestFailed && failure.code === "scan_in_progress") {
@@ -156,14 +179,7 @@ export default function SettingsPage() {
       scan.setFolderCount(remaining.length);
       setDeleting(null);
       toast("削除しました。取り込みは自動では始まりません");
-      setTimeout(() => {
-        if (nextFolder === undefined) addButton.current?.focus();
-        else
-          rowRefs.current
-            .get(nextFolder.id)
-            ?.querySelector<HTMLButtonElement>("button")
-            ?.focus();
-      }, 0);
+      focusFolderAction(nextFolder);
     } catch (failure) {
       await handleFailure(failure, target);
     } finally {
