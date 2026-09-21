@@ -66,10 +66,22 @@ func probeArgs(path string) []string {
 // probeOutput は ffprobe の JSON のうち、取り出す部分だけを写す。
 type probeOutput struct {
 	Streams []struct {
-		CodecType string `json:"codec_type"`
-		CodecName string `json:"codec_name"`
-		Width     int    `json:"width"`
-		Height    int    `json:"height"`
+		Index            int    `json:"index"`
+		CodecType        string `json:"codec_type"`
+		CodecName        string `json:"codec_name"`
+		Profile          string `json:"profile"`
+		PixelFormat      string `json:"pix_fmt"`
+		BitsPerRawSample string `json:"bits_per_raw_sample"`
+		Width            int    `json:"width"`
+		Height           int    `json:"height"`
+		Level            int    `json:"level"`
+		AverageFrameRate string `json:"avg_frame_rate"`
+		RealFrameRate    string `json:"r_frame_rate"`
+		SampleRate       string `json:"sample_rate"`
+		Channels         int    `json:"channels"`
+		Disposition      struct {
+			AttachedPicture int `json:"attached_pic"`
+		} `json:"disposition"`
 	} `json:"streams"`
 	Format struct {
 		Duration   string `json:"duration"`
@@ -101,12 +113,12 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 		FormatName: parsed.Format.FormatName,
 	}
 
-	// 映像・音声とも先頭のストリームを採る。後ろに付く mjpeg のような
-	// 埋め込み画像を本編と取り違えないため。
+	// 映像は最初の非添付stream、音声は最初のstreamを採る。アルバムアートや
+	// posterはvideoとして現れるため、attached_picを本編にしてはならない。
 	for _, stream := range parsed.Streams {
 		switch stream.CodecType {
 		case "video":
-			if probe.VideoCodec == "" {
+			if probe.VideoCodec == "" && stream.Disposition.AttachedPicture == 0 {
 				probe.VideoCodec = stream.CodecName
 				probe.Width = stream.Width
 				probe.Height = stream.Height

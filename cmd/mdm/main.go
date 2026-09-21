@@ -108,6 +108,11 @@ func run() error {
 		worker.Run(backgroundCtx)
 	}()
 
+	// ライブ変換はHTTP requestより長生きさせない。Shutdownは実行中requestの
+	// contextを取り消さないため、server寿命を別に持って先にcancelする。
+	transcodeCtx, stopTranscodes := context.WithCancel(context.Background())
+	defer stopTranscodes()
+
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:         build,
 		Pinger:        db,
@@ -116,11 +121,12 @@ func run() error {
 		Scans:         lib,
 		MediaFolders:  db,
 		ThumbnailsDir: cfg.ThumbnailsDir(),
+		Transcoder:    media.NewLiveTranscoder(transcodeCtx.Done()),
 		Assets:        web.Dist(),
 		Logger:        logger,
 	})
 
-	if err := serve(cfg, handler, logger, nil); err != nil {
+	if err := serve(cfg, handler, logger, nil, stopTranscodes); err != nil {
 		return err
 	}
 
@@ -142,6 +148,21 @@ func serve(
 	handler http.Handler,
 	logger *slog.Logger,
 	onListening func(),
+	beforeShutdown func(),
+) error {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return serveUntil(ctx.Done(), stop, cfg, handler, logger, onListening, beforeShutdown)
+}
+
+func serveUntil(
+	stopRequested <-chan struct{},
+	restoreSignals func(),
+	cfg Config,
+	handler http.Handler,
+	logger *slog.Logger,
+	onListening func(),
+	beforeShutdown func(),
 ) error {
 	srv := &http.Server{
 		Addr:              cfg.Addr,
@@ -154,9 +175,6 @@ func serve(
 		return fmt.Errorf("待ち受けに失敗しました (%s): %w", cfg.Addr, err)
 	}
 	defer func() { _ = listener.Close() }()
-
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer stop()
 
 	listenErr := make(chan error, 1)
 	logger.Info("待ち受けを開始しました", slog.String("addr", cfg.Addr))
@@ -174,11 +192,16 @@ func serve(
 		}
 		return nil
 
-	case <-ctx.Done():
+	case <-stopRequested:
 		// 2 度目の指示で即座に終われるよう、通知の受け取りは戻しておく。
-		stop()
+		if restoreSignals != nil {
+			restoreSignals()
+		}
 		logger.Info("停止指示を受けました。処理中の要求を待ちます",
 			slog.String("grace", shutdownGrace.String()))
+		if beforeShutdown != nil {
+			beforeShutdown()
+		}
 
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGrace)
 		defer cancel()

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"log/slog"
 	"mime"
@@ -54,6 +55,12 @@ type MediaFolders interface {
 	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
 }
 
+// Transcoder は1 request分のfragmented MP4を生成する。
+// waitは成功したStartにつきちょうど1回呼び、stopは切断時にprocessを止める。
+type Transcoder interface {
+	Start(context.Context, string, int64, bool) (io.ReadCloser, func() error, func(), error)
+}
+
 // Options は経路の組み立てに必要な依存である。
 type Options struct {
 	// Build は稼働中のバイナリを特定するための情報。
@@ -71,6 +78,8 @@ type Options struct {
 	MediaFolders MediaFolders
 	// ThumbnailsDir はサムネイルの置き場所。
 	ThumbnailsDir string
+	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
+	Transcoder Transcoder
 	// Assets は SPA のビルド成果物（web/dist に相当）。
 	Assets fs.FS
 	// Logger は応答の過程で出す記録。nil の場合は slog の既定を使う。
@@ -87,6 +96,7 @@ type server struct {
 	scans         Scans
 	mediaFolders  MediaFolders
 	thumbnailsDir string
+	transcoder    Transcoder
 	logger        *slog.Logger
 }
 
@@ -118,6 +128,7 @@ func NewRouter(opts Options) http.Handler {
 		scans:         opts.Scans,
 		mediaFolders:  opts.MediaFolders,
 		thumbnailsDir: opts.ThumbnailsDir,
+		transcoder:    opts.Transcoder,
 		logger:        logger,
 	}
 
@@ -148,6 +159,14 @@ func noStoreOnError(next http.Handler) http.Handler {
 
 type errorCacheWriter struct {
 	http.ResponseWriter
+}
+
+func (w *errorCacheWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+func (w *errorCacheWriter) Flush() {
+	if flusher, ok := w.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
 }
 
 func (w *errorCacheWriter) WriteHeader(status int) {

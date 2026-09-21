@@ -1,10 +1,15 @@
 package domain
 
 import (
+	"errors"
 	"path/filepath"
 	"strings"
 	"time"
 )
+
+// ErrUnprocessableMedia は動画をbrowser互換streamへ変換するための情報または
+// 本編映像が得られないことを表す。HTTP層は409へ写す。
+var ErrUnprocessableMedia = errors.New("動画をライブ変換できません")
 
 // ProbeState はメタデータ取得（ffprobe）の状態である。
 // 値は api/openapi.yaml の Video.probeState に対応する。

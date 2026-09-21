@@ -12,6 +12,8 @@ func TestParseProbeOutput(t *testing.T) {
 	const output = `{
 	  "streams": [
 	    {"codec_type": "audio", "codec_name": "aac"},
+	    {"index": 1, "codec_type": "video", "codec_name": "mjpeg", "width": 600, "height": 600,
+	     "disposition": {"attached_pic": 1}},
 	    {"codec_type": "video", "codec_name": "h264", "width": 1280, "height": 720},
 	    {"codec_type": "video", "codec_name": "mjpeg", "width": 320, "height": 180}
 	  ],
@@ -29,8 +31,7 @@ func TestParseProbeOutput(t *testing.T) {
 	if got.FormatName != "mov,mp4,m4a,3gp,3g2,mj2" {
 		t.Errorf("FormatName = %q", got.FormatName)
 	}
-	// 映像・音声とも「先頭のストリーム」を採る。後ろに付く mjpeg のような
-	// 埋め込み画像を本編と取り違えない。
+	// 添付画像を飛ばし、最初の非添付映像を本編として採る。
 	if got.VideoCodec != "h264" {
 		t.Errorf("VideoCodec = %q, want h264", got.VideoCodec)
 	}
@@ -39,6 +40,24 @@ func TestParseProbeOutput(t *testing.T) {
 	}
 	if got.AudioCodec != "aac" {
 		t.Errorf("AudioCodec = %q, want aac", got.AudioCodec)
+	}
+}
+
+func TestParseProbeOutputDoesNotTreatAttachedPictureAsVideo(t *testing.T) {
+	const output = `{
+	  "streams": [
+	    {"index": 0, "codec_type": "video", "codec_name": "mjpeg",
+	     "disposition": {"attached_pic": 1}}
+	  ],
+	  "format": {"duration": "12.0", "format_name": "mov,mp4"}
+	}`
+
+	got, err := parseProbeOutput([]byte(output))
+	if err != nil {
+		t.Fatalf("解析に失敗した: %v", err)
+	}
+	if got.VideoCodec != "" || got.Width != 0 || got.Height != 0 {
+		t.Errorf("添付画像を本編として採った: %+v", got)
 	}
 }
 
