@@ -36,6 +36,15 @@ This is the largest category by far. The artifact was read when the work
 started and the code was written from memory afterwards, so the drift is
 invisible from inside the change.
 
+A change that replaces a restatement with a reference is the same check run
+backwards, and it is where this one is most often skipped. List every item the
+removed text carried and name the reference that now covers it, one by one. A
+reference that covers most of the list reads as correct and silently drops the
+rest: replacing an enumeration of six validation rules with three requirement
+numbers kept the overlap, symlink and root rules and lost absolute, exists,
+directory and readable, which read literally permitted registering a folder
+that had just been deleted.
+
 ### 2. Enumerate the call sites of every invariant the change touches
 
 Name the invariants the change relies on — "the representative location
@@ -70,6 +79,12 @@ List the artifacts, examples, and other features' specifications that the
 change contradicts. `README` and `quickstart` command examples, another
 feature's spec, the design-document index, and the execution plan all go stale
 silently.
+
+The pull request's own description belongs on that list. It is written against
+the first push and nothing updates it afterwards, so by the time a review round
+or two has landed it describes a diff that no longer exists. Re-read it against
+the current head before the work is called done, the same as any other artifact
+the change makes stale.
 
 Anything outside this feature's own directory is a separate change. Record it
 and raise it; do not fix it in this pull request.
