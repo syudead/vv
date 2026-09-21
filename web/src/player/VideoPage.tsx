@@ -47,13 +47,13 @@ export default function VideoPage() {
   const latestPosition = useRef<{ videoId: number; positionMs: number } | null>(null);
 
   useEffect(() => {
+    setState({ kind: "loading" });
+    setPlaybackError(null);
+    setResumedFrom(null);
     if (!Number.isSafeInteger(id) || id < 1) {
       setState({ kind: "failed", reason: "動画の指定が正しくありません" });
       return;
     }
-    setState({ kind: "loading" });
-    setPlaybackError(null);
-    setResumedFrom(null);
     const controller = new AbortController();
     void (async () => {
       try {

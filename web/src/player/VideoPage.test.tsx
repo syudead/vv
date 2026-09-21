@@ -8,6 +8,7 @@ import VideoPage from "./VideoPage";
 interface PlayerCallbacks {
   onPosition: (positionMs: number) => void;
   onProgress: (positionMs: number, immediate: boolean) => void;
+  onError: () => void;
 }
 
 const playerMock = vi.hoisted(() => ({
@@ -53,6 +54,7 @@ function renderPage(id = "7", from?: string) {
       ]}
     >
       <Link to="/videos/8">次の動画</Link>
+      <Link to="/videos/invalid">無効な動画</Link>
       <Routes>
         <Route path="/videos/:id" element={<VideoPage />} />
       </Routes>
@@ -193,5 +195,19 @@ describe("VideoPage", () => {
       .filter(([, init]) => init?.keepalive === true)
       .map(([input]) => String(input));
     expect(finalProgressURLs).toEqual(["/api/videos/7/progress"]);
+  });
+
+  it("無効なrouteへ変更したら前の動画の再生エラーを消す", async () => {
+    renderPage();
+    await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+    const callbacks = playerMock.props;
+    if (callbacks === undefined) throw new Error("player が描画されていません");
+    callbacks.onError();
+    expect(await screen.findByRole("alert")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("link", { name: "無効な動画" }));
+
+    expect(await screen.findByText("動画の指定が正しくありません")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });
