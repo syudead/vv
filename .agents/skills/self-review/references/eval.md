@@ -40,7 +40,7 @@ them one at a time.
 | `ade2b9d` | #82 vite proxy and E2E | 2 |
 | `bc5ec82` | #83 stale folder refresh | 1 |
 
-These twelve pull requests carry 72 of the 73 findings; the last one is on #85,
+These thirteen pull requests carry 72 of the 73 findings; the last one is on #85,
 which is still open. `#70` is the useful case for artifact work and `#73` for
 implementation. `#80` is a single finding and the most expensive one to miss:
 it makes every existing database fail to start.
