@@ -232,3 +232,10 @@ reconsideration.
 - 解消日: 2026-09-19
 - 解消方法: hop/retry集計とbranch名復元を廃止した。現在の工程判定は明示されたfeature
   directoryのartifactとGit祖先関係だけを使う。
+
+### TD-014: 解消済み - Windows の `task dev` が残す孫プロセス
+
+- 解消日: 2026-09-21
+- 解消方法: `scripts/dev` が Windows Job Object へ各サーバーを登録し、終了時に
+  `KILL_ON_JOB_CLOSE` で子孫をまとめて停止する。Unix は独立プロセスグループを使う。
+  起動元が先に終了したあとも子プロセスが止まることを実プロセスのテストで検証する。

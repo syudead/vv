@@ -12,7 +12,9 @@ Thumbs.db
 # Dependencies and build output
 node_modules/
 dist/
-build/
+# 版管理の根の build/ だけを除く。scripts/build は task build の実体なので、
+# どの階層の build/ も除くと版管理から外れてしまう。
+/build/
 /bin/
 
 # web/dist is the embed target for the Go binary. The two placeholder files below
@@ -23,6 +25,9 @@ build/
 web/dist/*
 !web/dist/.gitkeep
 !web/dist/index.html
+
+# task が sources / generates の判定に使う作業領域
+/.task/
 
 # task test-web のビルド検証の出力先
 /web/.vite-build-check/

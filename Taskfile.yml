@@ -1,5 +1,8 @@
 version: "3"
 
+# 開発者コマンドの契約は specs/001-initial-setup/contracts/developer-commands.md。
+# 込み入った処理は scripts/ の Go プログラムに置く。Go と Node は全員が既に
+# 持っているので、検査のためだけに別のランタイムを足さない。
 tasks:
   default:
     cmds:
@@ -14,12 +17,23 @@ tasks:
   doctor:
     desc: Check the local development environment.
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/doctor.ps1
+      - go run ./scripts/doctor
 
   setup:
     desc: Download dependencies and warm local tool caches.
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/setup.ps1
+      - go mod download
+      - go -C tools mod download
+      # web-deps 越しではなく直接呼ぶ。setup は「入れ直す」入口なので、
+      # 最新かどうかの判定で飛ばしてはいけない。
+      - npm --prefix web ci
+      - cmd: npm ci
+        dir: tools
+      - task: golangci
+        vars: { GOLANGCI_ARGS: "--version" }
+      - go -C tools tool air -v
+      - go -C tools tool oapi-codegen -version
+      - go build ./...
 
   up:
     desc: Build and run the Docker Compose app.
@@ -33,27 +47,29 @@ tasks:
 
   dev:
     desc: Run the Go server with hot reload and the Vite development server.
-    deps: [go-tools, web-deps]
+    deps: [web-deps]
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/dev.ps1
+      - go run ./scripts/dev
 
   build:
     desc: Build the SPA and the single Go binary.
     deps: [web-deps]
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
+      - go run ./scripts/build
 
   generate:
     desc: Generate Go and TypeScript types from OpenAPI.
-    deps: [go-tools]
+    deps: [node-tools]
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/generate.ps1
+      - go run ./scripts/generate
 
   fmt:
     desc: Format Go and Web sources.
     deps: [web-deps]
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/format.ps1
+      - task: golangci
+        vars: { GOLANGCI_ARGS: "fmt" }
+      - npm --prefix web run format
 
   lint:
     desc: Run all static analysis.
@@ -70,18 +86,13 @@ tasks:
   check:
     desc: Run every check that does not require a browser.
     cmds:
-      - task: test-local-dev
       - task: fmt-check
       - task: lint
       - task: test
       - task: generate-check
       - task: migrations-check
+      - task: build-windows-check
       - 'echo "check: all checks passed (browser checks are in task test-e2e)"'
-
-  test-local-dev:
-    desc: Test the PowerShell local-development scripts.
-    cmds:
-      - pwsh -NoLogo -NoProfile -File scripts/local-dev.tests.ps1
 
   fmt-check:
     desc: Check Go and Web formatting without changing files.
@@ -92,7 +103,8 @@ tasks:
   fmt-check-go:
     desc: Check Go formatting.
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/format-check-go.ps1
+      - task: golangci
+        vars: { GOLANGCI_ARGS: "fmt --diff" }
 
   fmt-check-web:
     desc: Check Web formatting.
@@ -102,9 +114,9 @@ tasks:
 
   lint-go:
     desc: Run golangci-lint, including dependency rules.
-    deps: [go-tools]
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/lint-go.ps1
+      - task: golangci
+        vars: { GOLANGCI_ARGS: "run" }
 
   lint-web:
     desc: Run Web static analysis.
@@ -131,25 +143,54 @@ tasks:
 
   generate-check:
     desc: Check that committed generated files match OpenAPI.
-    deps: [go-tools]
+    deps: [node-tools]
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/generate-check.ps1
+      - go run ./scripts/generate -check
 
   migrations-check:
     desc: Check that applied migrations have not been changed.
     cmds:
       - bash scripts/migrations-immutable.sh
 
+  # Windows でしか使わないコード（scripts/dev/procgroup_windows.go）は、
+  # 手元の GOOS では型検査すらされない。壊れたことに気付く口をここに置く。
+  build-windows-check:
+    desc: Check that the sources still build for Windows.
+    env:
+      GOOS: windows
+      CGO_ENABLED: 0
+    cmds:
+      - go build ./...
+
+  # golangci-lint は run と fmt の両方で使う。版は tools/go.mod が
+  # 単一の出どころなので、呼び出しもここ1か所に寄せる。
+  golangci:
+    internal: true
+    vars:
+      GOLANGCI:
+        sh: go -C tools tool -n golangci-lint
+    cmds:
+      - '"{{.GOLANGCI}}" {{.GOLANGCI_ARGS}}'
+
+  # package-lock.json より node_modules が古ければ入れ直す。判定は Task の
+  # timestamp 方式に任せる（以前は同じことを自前のスタンプファイルでしていた）。
   web-deps:
     internal: true
-    status:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/web-deps.ps1 -Check
+    method: timestamp
+    sources:
+      - web/package-lock.json
+    generates:
+      - web/node_modules/.package-lock.json
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/web-deps.ps1
+      - npm --prefix web ci
 
-  go-tools:
+  node-tools:
     internal: true
-    status:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/go-tools.ps1 -Check
+    method: timestamp
+    sources:
+      - tools/package-lock.json
+    generates:
+      - tools/node_modules/.package-lock.json
     cmds:
-      - pwsh -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/go-tools.ps1
+      - cmd: npm ci
+        dir: tools
