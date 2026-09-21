@@ -2,10 +2,13 @@ package media
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -14,7 +17,7 @@ import (
 func compatibleMetadata() transcodeMetadata {
 	audio := transcodeStream{Index: 2, CodecType: "audio", CodecName: "aac", Profile: "LC", SampleRate: 48000, Channels: 2}
 	return transcodeMetadata{
-		Video: transcodeStream{Index: 1, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30},
+		Video: transcodeStream{Index: 1, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1},
 		Audio: &audio,
 	}
 }
@@ -93,8 +96,8 @@ func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 		stream transcodeStream
 		want   string
 	}{
-		{"odd dimensions", transcodeStream{Width: 641, Height: 359, FPS: 30, RealFPS: 30}, "-vf pad=642:360:0:0"},
-		{"8K60", transcodeStream{Width: 7680, Height: 4320, FPS: 60, RealFPS: 60}, "-vf scale=3840:2160,fps=30.340"},
+		{"odd dimensions", transcodeStream{Width: 641, Height: 359, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1}, "-vf pad=642:360:0:0,setsar=1/1*641/359*360/642:max=1000000"},
+		{"8K60", transcodeStream{Width: 7680, Height: 4320, FPS: 60, RealFPS: 60}, "-vf scale=3840:2160,setsar=1/1*7680/4320*2160/3840:max=1000000,fps=30.340"},
 		{"unknown rate", transcodeStream{Width: 1920, Height: 1080}, "-vf fps=30.000"},
 		{"VFR peak", transcodeStream{Width: 1920, Height: 1080, FPS: 30, RealFPS: 120}, "-vf fps=30"},
 		{"very low VFR", transcodeStream{Width: 1920, Height: 1080, FPS: 0.0005, RealFPS: 1}, "-vf fps=0.0005"},
@@ -106,6 +109,72 @@ func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 				t.Errorf("argsに %q がない: %s", tc.want, args)
 			}
 		})
+	}
+}
+
+func TestVideoEncodePreservesDisplayAspectRatioWithFFmpeg(t *testing.T) {
+	if _, err := exec.LookPath(transcodeCommand); err != nil {
+		t.Skip("ffmpegがありません")
+	}
+	if _, err := exec.LookPath(probeCommand); err != nil {
+		t.Skip("ffprobeがありません")
+	}
+
+	directory := t.TempDir()
+	input := filepath.Join(directory, "odd-sar.mkv")
+	generate := exec.Command(transcodeCommand,
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc=size=641x359:rate=15:duration=1",
+		"-vf", "setsar=4/3", "-c:v", "ffv1", input,
+	)
+	if output, err := generate.CombinedOutput(); err != nil {
+		t.Fatalf("fixture生成: %v: %s", err, output)
+	}
+
+	probeInput, err := exec.Command(probeCommand, probeArgs(input)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := parseTranscodeProbe(probeInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	output := filepath.Join(directory, "normalized.mp4")
+	outputFile, err := os.Create(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(transcodeCommand, transcodeArgs(input, 0, metadata, false)...)
+	command.Stdout = outputFile
+	var stderr strings.Builder
+	command.Stderr = &stderr
+	runErr := command.Run()
+	closeErr := outputFile.Close()
+	if runErr != nil || closeErr != nil {
+		t.Fatalf("変換: run=%v close=%v stderr=%s", runErr, closeErr, stderr.String())
+	}
+
+	probeOutputJSON, err := exec.Command(probeCommand, probeArgs(output)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var probed probeOutput
+	if err := json.Unmarshal(probeOutputJSON, &probed); err != nil {
+		t.Fatal(err)
+	}
+	if len(probed.Streams) == 0 {
+		t.Fatal("出力に映像streamがありません")
+	}
+	video := probed.Streams[0]
+	if video.Width != 642 || video.Height != 360 {
+		t.Fatalf("出力寸法 = %dx%d", video.Width, video.Height)
+	}
+	numerator, denominator := parseAspectRatio(video.SampleAspectRatio)
+	inputDAR := float64(641*4) / float64(359*3)
+	outputDAR := float64(video.Width) * float64(numerator) / (float64(video.Height) * float64(denominator))
+	if math.Abs(inputDAR-outputDAR) > 0.00001 {
+		t.Fatalf("display aspect ratio: input=%f output=%f (SAR=%s)", inputDAR, outputDAR, video.SampleAspectRatio)
 	}
 }
 

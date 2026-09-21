@@ -1,14 +1,19 @@
 package httpapi
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
+
+const transcodeInitialDataTimeout = 4 * time.Second
 
 // TranscodeVideo streams one request-scoped fragmented MP4 process.
 func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.TranscodeVideoParams) {
@@ -52,12 +57,9 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		return
 	}
 	defer func() { _ = stream.Close() }()
-	first := make([]byte, 32*1024)
-	firstLength, firstErr := io.ReadAtLeast(stream, first, 1)
-	if firstLength == 0 {
-		stop()
-		waitErr := wait()
-		s.internalError(w, "ライブ変換が初期データを生成できませんでした", errors.Join(firstErr, waitErr))
+	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop, transcodeInitialDataTimeout)
+	if err != nil {
+		s.internalError(w, "ライブ変換が初期データを生成できませんでした", err)
 		return
 	}
 
@@ -70,8 +72,8 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		flusher.Flush()
 	}
 
-	written, copyErr := w.Write(first[:firstLength])
-	if copyErr == nil && written != firstLength {
+	written, copyErr := w.Write(first)
+	if copyErr == nil && written != len(first) {
 		copyErr = io.ErrShortWrite
 	}
 	if copyErr == nil {
@@ -85,4 +87,46 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.logger.Warn("ライブ変換streamが途中で終了しました",
 			slog.Int64("video", video.ID), slog.Any("copy_error", copyErr), slog.Any("process_error", waitErr))
 	}
+}
+
+type initialTranscodeRead struct {
+	data []byte
+	err  error
+}
+
+func readInitialTranscodeData(ctx context.Context, stream io.Reader, timeout time.Duration) ([]byte, error) {
+	result := make(chan initialTranscodeRead, 1)
+	go func() {
+		buffer := make([]byte, 32*1024)
+		length, err := io.ReadAtLeast(stream, buffer, 1)
+		result <- initialTranscodeRead{data: buffer[:length], err: err}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case read := <-result:
+		return read.data, read.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+		return nil, fmt.Errorf("初期データ待機が%sでタイムアウトしました", timeout)
+	}
+}
+
+func awaitInitialTranscodeData(
+	ctx context.Context,
+	stream io.ReadCloser,
+	wait func() error,
+	stop func(),
+	timeout time.Duration,
+) ([]byte, error) {
+	data, readErr := readInitialTranscodeData(ctx, stream, timeout)
+	if len(data) > 0 {
+		return data, nil
+	}
+	stop()
+	closeErr := stream.Close()
+	waitErr := wait()
+	return nil, errors.Join(readErr, closeErr, waitErr)
 }

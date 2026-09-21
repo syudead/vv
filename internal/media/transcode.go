@@ -110,6 +110,8 @@ type transcodeStream struct {
 	Level            int
 	FPS              float64
 	RealFPS          float64
+	SampleAspectNum  int64
+	SampleAspectDen  int64
 	SampleRate       int
 	Channels         int
 	AttachedPicture  bool
@@ -147,6 +149,7 @@ func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
 
 	var result transcodeMetadata
 	for _, stream := range parsed.Streams {
+		sampleAspectNum, sampleAspectDen := parseAspectRatio(stream.SampleAspectRatio)
 		converted := transcodeStream{
 			Index:            stream.Index,
 			CodecType:        stream.CodecType,
@@ -159,6 +162,8 @@ func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
 			Level:            stream.Level,
 			FPS:              parseFrameRate(stream.AverageFrameRate),
 			RealFPS:          parseFrameRate(stream.RealFrameRate),
+			SampleAspectNum:  sampleAspectNum,
+			SampleAspectDen:  sampleAspectDen,
 			SampleRate:       parsePositiveInt(stream.SampleRate),
 			Channels:         stream.Channels,
 			AttachedPicture:  stream.Disposition.AttachedPicture != 0,
@@ -244,6 +249,7 @@ func videoEncodeArgs(stream transcodeStream) []string {
 		} else {
 			filters = append(filters, fmt.Sprintf("pad=%d:%d:0:0", width, height))
 		}
+		filters = append(filters, fmt.Sprintf("setsar=%s:max=1000000", outputSampleAspectRatio(stream, width, height)))
 	}
 	limit := maxOutputFPS(width, height)
 	if stream.FPS <= 0 {
@@ -307,6 +313,39 @@ func parseFrameRate(value string) float64 {
 		return 0
 	}
 	return n / d
+}
+
+func parseAspectRatio(value string) (int64, int64) {
+	numerator, denominator, ok := strings.Cut(value, ":")
+	if !ok {
+		numerator, denominator, ok = strings.Cut(value, "/")
+	}
+	if !ok {
+		return 1, 1
+	}
+	n, nErr := strconv.ParseInt(numerator, 10, 64)
+	d, dErr := strconv.ParseInt(denominator, 10, 64)
+	if nErr != nil || dErr != nil || n <= 0 || d <= 0 {
+		return 1, 1
+	}
+	return n, d
+}
+
+func outputSampleAspectRatio(stream transcodeStream, width, height int) string {
+	numerator := stream.SampleAspectNum
+	denominator := stream.SampleAspectDen
+	if numerator <= 0 || denominator <= 0 {
+		numerator, denominator = 1, 1
+	}
+	return fmt.Sprintf(
+		"%d/%d*%d/%d*%d/%d",
+		numerator,
+		denominator,
+		stream.Width,
+		stream.Height,
+		height,
+		width,
+	)
 }
 
 func formatSeconds(milliseconds int64) string {

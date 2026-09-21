@@ -17,6 +17,23 @@ function run() {
   mkdirSync(outputDir, { recursive: true });
   try {
     generateMediaFixtures(mediaDir);
+    const mediaContract = spawnSync(
+      "go",
+      [
+        "test",
+        "./internal/media",
+        "-run",
+        "^TestVideoEncodePreservesDisplayAspectRatioWithFFmpeg$",
+        "-count=1",
+      ],
+      {
+        cwd: repoRoot,
+        env: { ...process.env, GOCACHE: path.join(runRoot, "go-build") },
+        stdio: "inherit",
+      },
+    );
+    if (mediaContract.error !== undefined) throw mediaContract.error;
+    if (mediaContract.status !== 0) return mediaContract.status ?? 1;
     const build = spawnSync(
       "go",
       ["build", "-buildvcs=false", "-o", output, "./cmd/mdm"],

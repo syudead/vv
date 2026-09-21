@@ -66,20 +66,21 @@ func probeArgs(path string) []string {
 // probeOutput は ffprobe の JSON のうち、取り出す部分だけを写す。
 type probeOutput struct {
 	Streams []struct {
-		Index            int    `json:"index"`
-		CodecType        string `json:"codec_type"`
-		CodecName        string `json:"codec_name"`
-		Profile          string `json:"profile"`
-		PixelFormat      string `json:"pix_fmt"`
-		BitsPerRawSample string `json:"bits_per_raw_sample"`
-		Width            int    `json:"width"`
-		Height           int    `json:"height"`
-		Level            int    `json:"level"`
-		AverageFrameRate string `json:"avg_frame_rate"`
-		RealFrameRate    string `json:"r_frame_rate"`
-		SampleRate       string `json:"sample_rate"`
-		Channels         int    `json:"channels"`
-		Disposition      struct {
+		Index             int    `json:"index"`
+		CodecType         string `json:"codec_type"`
+		CodecName         string `json:"codec_name"`
+		Profile           string `json:"profile"`
+		PixelFormat       string `json:"pix_fmt"`
+		BitsPerRawSample  string `json:"bits_per_raw_sample"`
+		Width             int    `json:"width"`
+		Height            int    `json:"height"`
+		Level             int    `json:"level"`
+		AverageFrameRate  string `json:"avg_frame_rate"`
+		RealFrameRate     string `json:"r_frame_rate"`
+		SampleAspectRatio string `json:"sample_aspect_ratio"`
+		SampleRate        string `json:"sample_rate"`
+		Channels          int    `json:"channels"`
+		Disposition       struct {
 			AttachedPicture int `json:"attached_pic"`
 		} `json:"disposition"`
 	} `json:"streams"`
