@@ -190,6 +190,55 @@ describe("ScanProvider", () => {
     expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
 
+  it("windowへ戻ったとき別タブで削除された最後のフォルダを反映する", async () => {
+    let folders = [{}];
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json(folders) : json({}, 404),
+      ),
+    );
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    expect(await screen.findByText("開始可否: 可")).toBeDefined();
+
+    folders = [];
+    window.dispatchEvent(new Event("focus"));
+
+    expect(await screen.findByText("開始可否: 不可")).toBeDefined();
+  });
+
+  it("開始時にフォルダ未設定なら開始可否も不可へ同期する", async () => {
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (init?.method === "POST") {
+        return Promise.resolve(
+          json(
+            {
+              code: "media_folders_not_configured",
+              message: "メディアフォルダが設定されていません",
+            },
+            409,
+          ),
+        );
+      }
+      return Promise.resolve(json({}, 404));
+    });
+    const user = userEvent.setup();
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    expect(await screen.findByText("開始可否: 可")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "開始" }));
+
+    expect(await screen.findByText("開始可否: 不可")).toBeDefined();
+  });
+
   it("起動時の遅い応答で後発のフォルダ件数を上書きしない", async () => {
     let resolveFolders: ((response: Response) => void) | undefined;
     fetchMock.mockImplementation((input) => {
