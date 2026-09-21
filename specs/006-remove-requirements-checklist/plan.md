@@ -2,6 +2,8 @@
 
 **Branch**: `codex/plan-remove-requirements-checklist` | **Date**: 2026-09-20 | **Spec**: [spec.md](spec.md)
 
+**実行計画**: [docs/exec-plans/completed/006-local-dev-environment.md](../../docs/exec-plans/completed/006-local-dev-environment.md)
+
 **Input**: Feature specification from `specs/006-remove-requirements-checklist/spec.md`
 
 ## Summary

@@ -124,8 +124,9 @@ func NewRouter(opts Options) http.Handler {
 	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
 		BaseRouter: mux,
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
+			w.Header().Set("Cache-Control", cacheNoStore)
 			writeJSON(w, http.StatusBadRequest, gen.Error{
-				Code:    "invalid_request",
+				Code:    codeInvalidRequest,
 				Message: err.Error(),
 			}, logger)
 		},
@@ -174,8 +175,9 @@ func requiresJSONBody(r *http.Request) bool {
 // クライアント側では「JSON 解析の失敗」としてしか観測できなくなる。原因の切り分けが
 // 遅れるため、/api/ 配下だけは必ず JSON のエラーを返す（contracts/http-routes.md）。
 func apiNotFound(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusNotFound, gen.Error{
-		Code:    "not_found",
+		Code:    codeNotFound,
 		Message: "そのような API 経路はありません: " + r.URL.Path,
 	}, slog.Default())
 }
@@ -229,6 +231,10 @@ const (
 // writeError は JSON のエラーを書き出す。message は利用者にそのまま提示して
 // よい日本語にする（contracts/http-routes.md）。
 func (s *server) writeError(w http.ResponseWriter, status int, code gen.ErrorCode, message string) {
+	// エラーもキャッシュさせない。存在しなかった経路や読めなかったディレクトリの
+	// 応答が残ると、状態が変わったあとも古い失敗を返しうる（PR #74 の指摘）。
+	// 成功側と違って呼び出し箇所が多いので、ここで一括して付ける。
+	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, status, gen.Error{Code: code, Message: message}, s.logger)
 }
 

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -122,4 +123,43 @@ func repositoryRoot(t *testing.T) string {
 		t.Fatalf("リポジトリ根 %s を確認できない: %v", root, err)
 	}
 	return root
+}
+
+// TestErrorResponsesAreNotCached は API のエラー応答に no-store が付くことを
+// 確かめる。付け忘れると、状態が変わったあとも古い失敗が返りうる。PR #74 は
+// directory 一覧の 404 についてこれを指摘したが、writeError を通る全経路が
+// 同じ状態だったので、経路ごとではなく writeError 側で付けている。
+func TestErrorResponsesAreNotCached(t *testing.T) {
+	handler := newTestServer(t, Options{})
+
+	cases := []struct {
+		name, method, target, body string
+	}{
+		{"未定義のAPI経路", http.MethodGet, "/api/does-not-exist", ""},
+		{"動画が存在しない", http.MethodGet, "/api/videos/999999", ""},
+		{"limitが不正", http.MethodGet, "/api/videos?limit=abc", ""},
+		{"cursorが壊れている", http.MethodGet, "/api/videos?cursor=%%%", ""},
+		{"存在しないディレクトリ", http.MethodGet, "/api/directories?path=/does/not/exist", ""},
+		{"相対pathのディレクトリ", http.MethodGet, "/api/directories?path=relative", ""},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var reader io.Reader
+			if tc.body != "" {
+				reader = strings.NewReader(tc.body)
+			}
+			req := httptest.NewRequest(tc.method, tc.target, reader)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code < 400 {
+				t.Fatalf("エラー応答を期待したが %d が返った: %s", rec.Code, rec.Body)
+			}
+			if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
+				t.Errorf("%d の応答に Cache-Control: %s が付いていない（得 %q）。"+
+					"エラーもキャッシュさせないこと", rec.Code, cacheNoStore, got)
+			}
+		})
+	}
 }

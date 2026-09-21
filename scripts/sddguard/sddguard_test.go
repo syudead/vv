@@ -189,3 +189,117 @@ func TestDocumentsAreLinkedFromTheirIndex(t *testing.T) {
 		}
 	}
 }
+
+// guardedMarkdown は web/ の外にある Markdown を返す。prettier は
+// `npm --prefix web run format:check` で web/ だけを整形検査するので、
+// specs/ と docs/ とリポジトリ直下はどの検査にもかかっていない。
+func guardedMarkdown(t *testing.T) []string {
+	t.Helper()
+	repoRoot := repositoryRoot(t)
+
+	var files []string
+	err := filepath.WalkDir(repoRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			switch d.Name() {
+			case ".git", "node_modules", "web", "dist", ".local":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(d.Name(), ".md") {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Markdown を走査できない: %v", err)
+	}
+	if len(files) == 0 {
+		t.Fatal("Markdown を1つも拾えていない。走査の除外条件を確認すること")
+	}
+	return files
+}
+
+// TestMarkdownHasNoTrailingWhitespace は行末の空白を落とす。PR #72 では
+// PR 本文に `git diff --check` 済みと書いてあったが実際には違反しており、
+// レビューが指摘して1往復かかった。
+func TestMarkdownHasNoTrailingWhitespace(t *testing.T) {
+	for _, path := range guardedMarkdown(t) {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s を読めない: %v", path, err)
+		}
+		for i, line := range strings.Split(string(body), "\n") {
+			if line != strings.TrimRight(line, " \t") {
+				t.Errorf("%s:%d: 行末に空白がある。取り除くこと", relativeTo(t, path), i+1)
+			}
+		}
+	}
+}
+
+// markdownLink は Markdown の相対リンクを拾う。外部 URL と純粋な anchor は除く。
+var markdownLink = regexp.MustCompile(`\]\(([^)\s]+)\)`)
+
+// TestMarkdownRelativeLinksResolve は解決できない相対リンクを落とす。PR #76 は
+// 実行計画を active/ から completed/ へ移した結果、参照元のリンクが切れていた。
+func TestMarkdownRelativeLinksResolve(t *testing.T) {
+	for _, path := range guardedMarkdown(t) {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s を読めない: %v", path, err)
+		}
+		for _, match := range markdownLink.FindAllStringSubmatch(string(body), -1) {
+			target := match[1]
+			if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") ||
+				strings.HasPrefix(target, "#") || strings.HasPrefix(target, "mailto:") {
+				continue
+			}
+			if i := strings.Index(target, "#"); i >= 0 {
+				target = target[:i]
+			}
+			if target == "" {
+				continue
+			}
+			if _, err := os.Stat(filepath.Join(filepath.Dir(path), target)); err != nil {
+				t.Errorf("%s: リンク先 %s が見つからない。移動したなら参照元も更新すること",
+					relativeTo(t, path), target)
+			}
+		}
+	}
+}
+
+// TestPlansReferenceAnExistingExecutionPlan は plan.md が指す実行計画の実在を
+// 確かめる。AGENTS.md は実行計画を docs/exec-plans/ に置くよう求めており、
+// PR #64 ではその配置から外れていることをレビューが指摘した。
+func TestPlansReferenceAnExistingExecutionPlan(t *testing.T) {
+	repoRoot := repositoryRoot(t)
+	entries, err := filepath.Glob(filepath.Join(repoRoot, "specs", "*", "plan.md"))
+	if err != nil {
+		t.Fatalf("plan.md を探せない: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("plan.md を1つも拾えていない。走査の条件を確認すること")
+	}
+	for _, path := range entries {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%s を読めない: %v", path, err)
+		}
+		if !strings.Contains(string(body), "docs/exec-plans/") {
+			t.Errorf("%s が docs/exec-plans/ の実行計画を参照していない。"+
+				"AGENTS.md は実質的な作業の計画をそこへ置くよう求めている", relativeTo(t, path))
+		}
+	}
+}
+
+func relativeTo(t *testing.T, path string) string {
+	t.Helper()
+	rel, err := filepath.Rel(repositoryRoot(t), path)
+	if err != nil {
+		return filepath.ToSlash(path)
+	}
+	return filepath.ToSlash(rel)
+}

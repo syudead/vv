@@ -2,6 +2,8 @@
 
 **Date**: 2026-09-19 | **Spec**: [spec.md](./spec.md)
 
+**実行計画**: [docs/exec-plans/completed/003-sdd-loop-harness.md](../../docs/exec-plans/completed/003-sdd-loop-harness.md)
+
 ## Summary
 
 Replace the Claude Routine controller with agent-neutral Markdown workflows.

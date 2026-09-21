@@ -2,4 +2,4 @@
 
 The JSON state and branch-selection command was removed. Its replacement is
 the explicit, network-free, human-readable contract in
-[local-stage.md](local-stage.md).
+[issue-handoff.md](issue-handoff.md).
