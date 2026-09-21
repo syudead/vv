@@ -9,7 +9,6 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -23,27 +22,6 @@ import (
 var generated = []string{
 	"internal/httpapi/gen/api.gen.go",
 	"web/src/api/gen/openapi.ts",
-}
-
-// toolVersions は scripts/tool-versions.json の必要な部分である。
-type toolVersions struct {
-	OapiCodegen       string `json:"oapiCodegen"`
-	OpenapiTypescript string `json:"openapiTypescript"`
-}
-
-func readToolVersions(root string) (toolVersions, error) {
-	var versions toolVersions
-	raw, err := os.ReadFile(filepath.Join(root, "scripts", "tool-versions.json"))
-	if err != nil {
-		return versions, fmt.Errorf("scripts/tool-versions.json を読めません: %w", err)
-	}
-	if err := json.Unmarshal(raw, &versions); err != nil {
-		return versions, fmt.Errorf("scripts/tool-versions.json を解釈できません: %w", err)
-	}
-	if versions.OapiCodegen == "" || versions.OpenapiTypescript == "" {
-		return versions, fmt.Errorf("scripts/tool-versions.json に生成器の版がありません")
-	}
-	return versions, nil
 }
 
 // snapshot は生成物の内容を要約する。存在しないファイルは空の要約にして、
@@ -88,14 +66,12 @@ func changed(before, after map[string]string, paths []string) []string {
 // 後続の生成器を呼ばないことを確かめる。
 type runner func(dir string, name string, args ...string) error
 
-func generate(root string, versions toolVersions, run runner) error {
-	if err := run(root, "go", "run",
-		"github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@"+versions.OapiCodegen,
+func generate(root, oapiCodegen, openapiTypescript string, run runner) error {
+	if err := run(root, oapiCodegen,
 		"-config", "api/oapi-codegen.yaml", "api/openapi.yaml"); err != nil {
 		return err
 	}
-	return run(root, "npx", "--yes",
-		"openapi-typescript@"+versions.OpenapiTypescript,
+	return run(root, openapiTypescript,
 		"api/openapi.yaml", "-o", "web/src/api/gen/openapi.ts")
 }
 
@@ -107,7 +83,11 @@ func main() {
 	if err != nil {
 		devtools.Fail(err)
 	}
-	versions, err := readToolVersions(root)
+	oapiCodegen, err := devtools.GoToolPath(root, "oapi-codegen")
+	if err != nil {
+		devtools.Fail(err)
+	}
+	openapiTypescript, err := devtools.NodeToolPath(root, "openapi-typescript")
 	if err != nil {
 		devtools.Fail(err)
 	}
@@ -119,7 +99,7 @@ func main() {
 		}
 	}
 
-	if err := generate(root, versions, devtools.Run); err != nil {
+	if err := generate(root, oapiCodegen, openapiTypescript, devtools.Run); err != nil {
 		devtools.Fail(err)
 	}
 

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 // RepositoryRoot はこのソースの位置から版管理の根を求める。go run の作業
@@ -24,6 +25,34 @@ func RepositoryRoot() (string, error) {
 		return "", fmt.Errorf("版管理の根 %s を確認できません: %w", root, err)
 	}
 	return root, nil
+}
+
+// GoToolPath は tools/go.mod の tool directive が固定する実行ファイルを解決する。
+// 呼び出し側の作業ディレクトリは変えず、ツールだけ分離 module から選べる。
+func GoToolPath(root, name string) (string, error) {
+	cmd := exec.Command("go", "-C", "tools", "tool", "-n", name)
+	cmd.Dir = root
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("go tool %s を解決できません: %w", name, err)
+	}
+	path := strings.TrimSpace(string(output))
+	if path == "" {
+		return "", fmt.Errorf("go tool %s の実行ファイルが空です", name)
+	}
+	return path, nil
+}
+
+// NodeToolPath は tools/package.json に分離した Node 製ツールを解決する。
+func NodeToolPath(root, name string) (string, error) {
+	if runtime.GOOS == "windows" {
+		name += ".cmd"
+	}
+	path := filepath.Join(root, "tools", "node_modules", ".bin", name)
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("node tool %s を解決できません。task setup を実行してください: %w", name, err)
+	}
+	return path, nil
 }
 
 // Run は外部コマンドを実行し、出力をそのまま親へ流す。開発者コマンドの出力は

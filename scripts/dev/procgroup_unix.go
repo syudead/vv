@@ -15,17 +15,22 @@ import (
 // この順序は scripts/dev の試験が守る。
 const killGrace = 15 * time.Second
 
-// isolateProcessGroup は開発サーバーを独立したプロセスグループの長にする。
+type processGroup struct{}
+
+// newProcessGroup は開発サーバーを独立したプロセスグループの長にする。
 // どちらのサーバーもさらに子を持つ（go run が起動するバイナリ、npm が起動する
 // vite）ため、グループにしておかないと孫が残る。--strictPort の vite が
 // 残ると、次の task dev が起動できない。
-func isolateProcessGroup(cmd *exec.Cmd) {
+func newProcessGroup(cmd *exec.Cmd) (*processGroup, error) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	return &processGroup{}, nil
 }
 
-// terminateGroup はグループごと止める。まず SIGTERM を送り、猶予のあとに
+func (*processGroup) attach(*exec.Cmd) error { return nil }
+
+// terminate はグループごと止める。まず SIGTERM を送り、猶予のあとに
 // 残っていれば SIGKILL にする。
-func terminateGroup(cmd *exec.Cmd) {
+func (*processGroup) terminate(cmd *exec.Cmd) {
 	if cmd.Process == nil {
 		return
 	}

@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -78,6 +79,7 @@ func (w *prefixWriter) flush() {
 type server struct {
 	label   string
 	cmd     *exec.Cmd
+	group   *processGroup
 	writers []*prefixWriter
 }
 
@@ -96,19 +98,43 @@ func start(root, label string, env []string, name string, args ...string) (*serv
 	cmd.Env = append(os.Environ(), env...)
 	cmd.Stdout = stdout
 	cmd.Stderr = stderr
-	isolateProcessGroup(cmd)
+	group, err := newProcessGroup(cmd)
+	if err != nil {
+		return nil, fmt.Errorf("%s の停止管理を準備できません: %w", label, err)
+	}
 	if err := cmd.Start(); err != nil {
+		group.terminate(cmd)
 		return nil, fmt.Errorf("%s を起動できません: %w", label, err)
 	}
-	return &server{label: label, cmd: cmd, writers: []*prefixWriter{stdout, stderr}}, nil
+	if err := group.attach(cmd); err != nil {
+		_ = cmd.Process.Kill()
+		group.terminate(cmd)
+		_ = cmd.Wait()
+		return nil, fmt.Errorf("%s を停止管理へ登録できません: %w", label, err)
+	}
+	return &server{label: label, cmd: cmd, group: group, writers: []*prefixWriter{stdout, stderr}}, nil
 }
 
-func (s *server) stop() { terminateGroup(s.cmd) }
+func (s *server) stop() { s.group.terminate(s.cmd) }
 
 func (s *server) flush() {
 	for _, w := range s.writers {
 		w.flush()
 	}
+}
+
+func apiTargetFor(backendAddress, configuredTarget string) (string, error) {
+	if configuredTarget != "" {
+		return configuredTarget, nil
+	}
+	host, port, err := net.SplitHostPort(backendAddress)
+	if err != nil {
+		return "", fmt.Errorf("MDM_ADDR=%q を Vite の接続先へ変換できません: %w", backendAddress, err)
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "localhost"
+	}
+	return "http://" + net.JoinHostPort(host, port), nil
 }
 
 func main() {
@@ -137,16 +163,28 @@ func main() {
 	interrupts := make(chan os.Signal, 1)
 	signal.Notify(interrupts, os.Interrupt, syscall.SIGTERM)
 
-	fmt.Println("Go:   http://localhost:8080")
-	fmt.Println("Vite: http://localhost:5173 (/api proxies to :8080)")
-	fmt.Println("Data:", dataDir)
-	fmt.Println()
-
-	goServer, err := start(root, "go", []string{"MDM_DATA_DIR=" + dataDir}, "go", "run", "./cmd/mdm")
+	backendAddress := os.Getenv("MDM_ADDR")
+	if backendAddress == "" {
+		backendAddress = ":8080"
+	}
+	apiTarget, err := apiTargetFor(backendAddress, os.Getenv("MDM_API_TARGET"))
 	if err != nil {
 		devtools.Fail(err)
 	}
-	webServer, err := start(root, "web", nil, "npm", "--prefix", "web", "run", "dev", "--",
+	fmt.Println("Go:  ", backendAddress)
+	fmt.Printf("Vite: http://localhost:5173 (/api proxies to %s)\n", apiTarget)
+	fmt.Println("Data:", dataDir)
+	fmt.Println()
+
+	airPath, err := devtools.GoToolPath(root, "air")
+	if err != nil {
+		devtools.Fail(err)
+	}
+	goServer, err := start(root, "go", []string{"MDM_DATA_DIR=" + dataDir}, airPath, "-c", ".air.toml")
+	if err != nil {
+		devtools.Fail(err)
+	}
+	webServer, err := start(root, "web", []string{"MDM_API_TARGET=" + apiTarget}, "npm", "--prefix", "web", "run", "dev", "--",
 		"--host", "127.0.0.1", "--strictPort")
 	if err != nil {
 		goServer.stop()
@@ -174,9 +212,7 @@ func main() {
 		drain(exits, len(servers))
 	case first := <-exits:
 		for _, s := range servers {
-			if s.label != first.label {
-				s.stop()
-			}
+			s.stop()
 		}
 		drain(exits, len(servers)-1)
 		for _, s := range servers {

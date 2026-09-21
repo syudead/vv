@@ -68,13 +68,13 @@ MDM_MEDIA_HOST_DIR=/path/to/videos task up
 ## Developer commands
 
 `task up` 以外のタスクはホストに Go・Node・`ffmpeg` を要求し、検査は加えて
-`jq`・Git・bash を使う。「必ず動く道」は
+Git・bash を使う。「必ず動く道」は
 `task up` だけで、以下は開発者向けの補足である。タスクの契約は
 [specs/001-initial-setup/contracts/developer-commands.md](specs/001-initial-setup/contracts/developer-commands.md)。
 
 ### ローカル開発環境
 
-Go・Node・task・jq のバージョンは `mise.toml` に固定している。`mise` を使う場合は
+Go・Node・task のバージョンは `mise.toml` に固定している。`mise` を使う場合は
 最初に次を実行する。
 
 ```bash
@@ -86,8 +86,10 @@ mise exec --command "task doctor"
 
 開発サーバーは `mise exec --command "task dev"` で起動し、
 `http://localhost:5173` を開く。終了は Ctrl+C。
+`MDM_ADDR` で Go サーバーの待受先を変えると、Vite の `/api` 転送先も同じ
+ホスト・ポートへ追従する。別の転送先が必要な場合だけ `MDM_API_TARGET` を指定する。
 変更の検証は `mise exec --command "task check"` で実行する。
-検査ツールの版は `scripts/tool-versions.json` と `mise.toml` に固定する。
+Go 製の開発ツールは `tools/go.mod` の `tool` directive、実行環境は `mise.toml` に固定する。
 判断や後始末を伴う開発者コマンドの実体は `scripts/` の Go プログラムに置き、
 その判断部分は `task check` の `go test ./...` が検証する。追加のシェルや
 ランタイムは要らない。
@@ -102,9 +104,9 @@ Go と Web のソースは `.gitattributes` で LF に固定し、Windows の改
 
 | 入口           | 実体                    | 内容                                                         |
 | -------------- | ----------------------- | ------------------------------------------------------------ |
-| `task doctor`  | `go run ./scripts/doctor` | Go・Node・ffmpeg・jq・bash・Docker などの有無を確認する      |
+| `task doctor`  | `go run ./scripts/doctor` | Go・Node・ffmpeg・bash・Docker などの有無を確認する          |
 | `task setup`   | Taskfile                | Go module、npm 依存、lint ツール、ビルドキャッシュを準備する |
-| `task dev`     | `go run ./scripts/dev`  | Go サーバーと Vite 開発サーバーを同時に起動する              |
+| `task dev`     | `go run ./scripts/dev`  | Air で自動再起動する Go サーバーと Vite を同時に起動する      |
 | `task check`   | Taskfile                | 静的検査、テスト、生成物とマイグレーションをまとめて検証する |
 
 `ffmpeg` / `ffprobe`、Docker、bash は OS 側のツールであり、`mise.toml`
@@ -117,7 +119,7 @@ Windows で Go バイナリを直接動かす場合、`MDM_DATA_DIR` はドラ�
 | ----------------------- | ----------------------------------------------------------------------------- |
 | `task setup`            | 依存と開発ツールを先に取得する                                                |
 | `task up` / `task down` | Docker で起動・停止する                                                       |
-| `task dev`              | Go サーバーと Vite 開発サーバーを起動する                                     |
+| `task dev`              | Go サーバーを自動再起動し、Vite 開発サーバーとともに起動する                   |
 | `task build`            | SPA をビルドして埋め込み、`bin/mdm` を生成する                                |
 | `task generate`         | `api/openapi.yaml` から Go と TypeScript の型を生成する                       |
 | `task fmt`              | 書式を整える                                                                  |

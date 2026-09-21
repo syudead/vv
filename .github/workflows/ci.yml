@@ -27,6 +27,9 @@ jobs:
           # 版は go.mod に合わせる（research.md R-002）。
           go-version-file: go.mod
           cache: true
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
 
       - uses: actions/setup-node@v5
         with:
@@ -34,13 +37,16 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Taskを取得する
-        run: |
-          go install "github.com/go-task/task/v3/cmd/task@v$(jq -r .task scripts/tool-versions.json)"
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: "task"
 
       - name: Web依存を取得する
         run: npm --prefix web ci
+
+      - name: Node開発ツールを取得する
+        working-directory: tools
+        run: npm ci
 
       # migrations-check が base branch と比べるので取り寄せる。比較先の選択は
       # スクリプトが GITHUB_BASE_REF から行う（引数は渡さない）。
@@ -70,10 +76,9 @@ jobs:
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: Taskを取得する
-        run: |
-          go install "github.com/go-task/task/v3/cmd/task@v$(jq -r .task scripts/tool-versions.json)"
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - uses: jdx/mise-action@v4
+        with:
+          install_args: "task"
 
       - name: Web依存を取得する
         run: npm --prefix web ci

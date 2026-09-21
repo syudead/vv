@@ -1,15 +1,15 @@
-//go:build !unix
+//go:build !unix && !windows
 
 package main
 
 import "os/exec"
 
-// Windows にはプロセスグループへ一括で合図する同等の仕組みがないので、
-// 起動したプロセスだけを止める。孫が残ることがあり、その場合は次の
-// task dev が --strictPort で失敗して気付ける。
-func isolateProcessGroup(cmd *exec.Cmd) {}
+type processGroup struct{}
 
-func terminateGroup(cmd *exec.Cmd) {
+func newProcessGroup(*exec.Cmd) (*processGroup, error) { return &processGroup{}, nil }
+func (*processGroup) attach(*exec.Cmd) error           { return nil }
+
+func (*processGroup) terminate(cmd *exec.Cmd) {
 	if cmd.Process != nil {
 		_ = cmd.Process.Kill()
 	}

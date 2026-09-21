@@ -23,11 +23,16 @@ tasks:
     desc: Download dependencies and warm local tool caches.
     cmds:
       - go mod download
+      - go -C tools mod download
       # web-deps 越しではなく直接呼ぶ。setup は「入れ直す」入口なので、
       # 最新かどうかの判定で飛ばしてはいけない。
       - npm --prefix web ci
+      - cmd: npm ci
+        dir: tools
       - task: golangci
         vars: { GOLANGCI_ARGS: "--version" }
+      - go -C tools tool air -v
+      - go -C tools tool oapi-codegen -version
       - go build ./...
 
   up:
@@ -41,7 +46,7 @@ tasks:
       - docker compose down --remove-orphans
 
   dev:
-    desc: Run the Go server and Vite development server.
+    desc: Run the Go server with hot reload and the Vite development server.
     deps: [web-deps]
     cmds:
       - go run ./scripts/dev
@@ -54,6 +59,7 @@ tasks:
 
   generate:
     desc: Generate Go and TypeScript types from OpenAPI.
+    deps: [node-tools]
     cmds:
       - go run ./scripts/generate
 
@@ -137,6 +143,7 @@ tasks:
 
   generate-check:
     desc: Check that committed generated files match OpenAPI.
+    deps: [node-tools]
     cmds:
       - go run ./scripts/generate -check
 
@@ -145,7 +152,7 @@ tasks:
     cmds:
       - bash scripts/migrations-immutable.sh
 
-  # Windows でしか使わないコード（scripts/dev/procgroup_other.go）は、
+  # Windows でしか使わないコード（scripts/dev/procgroup_windows.go）は、
   # 手元の GOOS では型検査すらされない。壊れたことに気付く口をここに置く。
   build-windows-check:
     desc: Check that the sources still build for Windows.
@@ -155,15 +162,15 @@ tasks:
     cmds:
       - go build ./...
 
-  # golangci-lint は run と fmt の両方で使う。版は scripts/tool-versions.json が
+  # golangci-lint は run と fmt の両方で使う。版は tools/go.mod が
   # 単一の出どころなので、呼び出しもここ1か所に寄せる。
   golangci:
     internal: true
     vars:
-      VERSION:
-        sh: jq -r .golangciLint scripts/tool-versions.json
+      GOLANGCI:
+        sh: go -C tools tool -n golangci-lint
     cmds:
-      - go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@{{.VERSION}} {{.GOLANGCI_ARGS}}
+      - '"{{.GOLANGCI}}" {{.GOLANGCI_ARGS}}'
 
   # package-lock.json より node_modules が古ければ入れ直す。判定は Task の
   # timestamp 方式に任せる（以前は同じことを自前のスタンプファイルでしていた）。
@@ -176,3 +183,14 @@ tasks:
       - web/node_modules/.package-lock.json
     cmds:
       - npm --prefix web ci
+
+  node-tools:
+    internal: true
+    method: timestamp
+    sources:
+      - tools/package-lock.json
+    generates:
+      - tools/node_modules/.package-lock.json
+    cmds:
+      - cmd: npm ci
+        dir: tools
