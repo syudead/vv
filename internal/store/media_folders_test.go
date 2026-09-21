@@ -169,6 +169,7 @@ func TestMediaFolderMutationRejectsRunningScan(t *testing.T) {
 
 func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 	db := migratedDB(t)
+	ctx := context.Background()
 	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
 		t.Fatal(err)
 	}
@@ -177,12 +178,32 @@ func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 		root = volume + string(os.PathSeparator)
 	}
 
-	folder, err := db.AddMediaFolder(context.Background(), root)
+	folder, err := db.AddMediaFolder(ctx, root)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if folder.Path != filepath.Clean(root) {
 		t.Fatalf("path = %q, want %q", folder.Path, filepath.Clean(root))
+	}
+
+	file := sampleFile(filepath.Join(t.TempDir(), "root-visible.mp4"), "root visible", "root-content", 1, 0)
+	video, err := db.UpsertVideo(ctx, file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := db.ListVideos(ctx, VideoQuery{Query: "root visible", Limit: MaxLimit})
+	if err != nil || len(page.Items) != 1 || page.Items[0].ID != video.ID {
+		t.Fatalf("root video is not listed or searchable: %+v, %v", page, err)
+	}
+	if _, err := db.GetVideo(ctx, video.ID); err != nil {
+		t.Fatalf("root video detail is unavailable: %v", err)
+	}
+	if err := db.EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil || job.VideoID != video.ID || job.LocationPath != file.Path {
+		t.Fatalf("root video job is not claimable: %+v, %v", job, err)
 	}
 }
 

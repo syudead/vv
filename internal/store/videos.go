@@ -81,8 +81,11 @@ func registeredLocationCondition(alias string) string {
 		pathExpr = `lower(` + pathExpr + `)`
 		rootExpr = `lower(` + rootExpr + `)`
 	}
-	return `exists (select 1 from media_folders mf where instr(` + pathExpr + `, ` + rootExpr + ` || char(` + separator + `)) = 1` +
-		` or instr(` + pathExpr + `, ` + rootExpr + ` || char(47)) = 1 or instr(` + pathExpr + `, ` + rootExpr + ` || char(92)) = 1)`
+	trimmedRoot := `rtrim(` + rootExpr + `, char(47) || char(92))`
+	return `exists (select 1 from media_folders mf where ` + pathExpr + ` = ` + rootExpr +
+		` or instr(` + pathExpr + `, ` + trimmedRoot + ` || char(` + separator + `)) = 1` +
+		` or instr(` + pathExpr + `, ` + trimmedRoot + ` || char(47)) = 1` +
+		` or instr(` + pathExpr + `, ` + trimmedRoot + ` || char(92)) = 1)`
 }
 
 func registeredVideoCondition(alias string) string {
