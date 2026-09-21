@@ -126,9 +126,10 @@ Windows で Go バイナリを直接動かす場合、`MDM_DATA_DIR` はドラ�
 | `make lint`             | `golangci-lint`（depguard を含む）と Web の型検査                             |
 | `make test`             | Go のテストと Web のビルド検証                                                |
 | `make test-e2e`         | Go・Vite・Chromiumを起動し、主要な画面操作を実ブラウザで検証する              |
-| `make check`            | 静的検査、単体テスト、生成物、ローカル開発スクリプトをまとめて検証する        |
+| `make check`            | 静的検査、単体テスト、生成物、マイグレーション、ローカル開発スクリプトをまとめて検証する |
 
-CI は `make check` に加えて `make test-e2e` を実行する。
+CI はこの表の `make check` と `make test-e2e` だけを実行する。CI 側に検査を並べず、
+目標そのものを呼ぶことで、手元と CI の判定を一致させている。
 
 `api/openapi.yaml` が Go と TypeScript の境界の唯一の真実である。型を変えるときは
 このファイルを直して `make generate` を実行する。生成物

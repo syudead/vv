@@ -73,5 +73,9 @@ Run-Step "generate-check" {
     }
 }
 
+Run-Step "migrations-check" {
+    bash scripts/migrations-immutable.sh
+}
+
 Write-Host ""
 Write-Host "check: all steps passed"

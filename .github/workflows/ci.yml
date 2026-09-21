@@ -16,42 +16,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  local-dev:
-    name: Local dev scripts (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v5
-      - name: PowerShell regression tests
-        shell: pwsh
-        run: ./scripts/local-dev.tests.ps1
-      - name: Docker-only Make targets do not require jq
-        if: runner.os == 'Linux'
-        run: bash scripts/make-lazy-versions.test.sh
-
-  migrations:
-    name: Migrations
-    runs-on: ubuntu-latest
-    # base branch と比べるので pull_request のときだけ実行する。
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v5
-
-      # 既定の checkout は1コミットしか持たないので、比較対象を取り寄せる。
-      - name: base branch を取得する
-        run: git fetch --no-tags --depth=1 origin "$BASE"
-        env:
-          BASE: ${{ github.base_ref }}
-
-      # 適用済みの .sql を書き換えると、更新済みのデータベースだけが壊れる。
-      - name: 適用済みのマイグレーションが変更されていないか確認する
-        run: make migrations-check MIGRATIONS_BASE=FETCH_HEAD
-
-  go:
-    name: Go
+  check:
+    name: Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -62,38 +28,25 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: 書式の差分を確認する
-        run: make fmt-check-go
-
-      - name: 静的検査（depguard を含む）
-        run: make lint-go
-
-      - name: テスト
-        run: make test-go
-
-  web:
-    name: Web
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
       - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: web/package-lock.json
 
-      - name: 依存を取得する
+      - name: Web依存を取得する
         run: npm --prefix web ci
 
-      - name: 書式の差分を確認する
-        run: make fmt-check-web
+      # migrations-check が base branch と比べるので取り寄せる。比較先の選択は
+      # スクリプトが GITHUB_BASE_REF から行う（引数は渡さない）。
+      - name: base branch を取得する
+        if: github.event_name == 'pull_request'
+        run: git fetch --no-tags --depth=1 origin "$BASE:refs/remotes/origin/$BASE"
+        env:
+          BASE: ${{ github.base_ref }}
 
-      - name: 静的検査（型検査）
-        run: make lint-web
-
-      - name: ビルド検証
-        run: make test-web
+      - name: 追加runtimeの要らない検査
+        run: make check
 
   e2e:
     name: Browser E2E
@@ -137,24 +90,16 @@ jobs:
             web/test-results/
           retention-days: 7
 
-  generated:
-    name: Generated code
-    runs-on: ubuntu-latest
+  windows:
+    name: Local dev scripts (windows)
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - uses: actions/setup-node@v5
-        with:
-          node-version: 22
-
-      # make generate の再実行で差分が出る状態は失敗とみなす（FR-012）。
-      - name: 生成物が契約と一致しているか確認する
-        run: make generate-check
+      # Windows でしか確かめられない。Linux 側は make check が含んでいる。
+      - name: PowerShell regression tests
+        shell: pwsh
+        run: ./scripts/local-dev.tests.ps1
 
   docker:
     name: Docker image

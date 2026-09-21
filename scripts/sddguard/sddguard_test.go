@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
-	"sort"
 	"strings"
 	"testing"
 )
@@ -276,79 +275,4 @@ func relativeTo(t *testing.T, path string) string {
 		return filepath.ToSlash(path)
 	}
 	return filepath.ToSlash(rel)
-}
-
-// TestCheckAllCoversEveryCIMakeTarget は、CI が呼ぶ make 目標がすべて
-// check-all でも実行されることを確かめる。
-//
-// Makefile の冒頭は「CI でしか動かない検査を作らない」と定めているが、
-// 守っているかを見るものが無かった。実際、migrations-check を CI へ足した
-// ときに check へ繋ぎ忘れ、手元では push するまで気づけない状態にした。
-// 目標名を人が2箇所へ書く限り同じことが起きるので、突き合わせる。
-//
-// 目標の依存関係は make 自身に解決させる。Makefile を読み直すと、書き方の
-// 違い（前提条件とレシピ内の再帰呼び出し）で取りこぼす。
-func TestCheckAllCoversEveryCIMakeTarget(t *testing.T) {
-	repoRoot := repositoryRoot(t)
-
-	workflow, err := os.ReadFile(filepath.Join(repoRoot, ".github", "workflows", "ci.yml"))
-	if err != nil {
-		t.Fatalf("CI の定義を読めない: %v", err)
-	}
-	calls := regexp.MustCompile(`\bmake ([a-z0-9-]+)`).FindAllStringSubmatch(string(workflow), -1)
-	if len(calls) == 0 {
-		t.Fatal("CI から make の呼び出しを1つも読み取れていない。走査の条件を確認すること")
-	}
-
-	covered := map[string]bool{}
-	for _, cmd := range dryRun(t, repoRoot, "check-all") {
-		covered[cmd] = true
-	}
-	if len(covered) == 0 {
-		t.Fatal("check-all が実行する命令を1つも読み取れていない")
-	}
-
-	// 検査ではない目標は対象外にする。check-all 自身も含める必要はない。
-	notAChecked := map[string]bool{"check-all": true, "generate": true, "up": true, "setup": true}
-
-	seen := map[string]bool{}
-	for _, call := range calls {
-		target := call[1]
-		if notAChecked[target] || seen[target] {
-			continue
-		}
-		seen[target] = true
-
-		for _, cmd := range dryRun(t, repoRoot, target) {
-			if covered[cmd] {
-				continue
-			}
-			t.Errorf("CI は make %s を呼ぶが、check-all はその命令を実行しない:\n  %s\n"+
-				"手元で同じ判定ができないので、check か check-all へ繋ぐこと", target, cmd)
-			break
-		}
-	}
-}
-
-// dryRun は目標が実行する命令を make に列挙させる。報告を安定させるため
-// 並びを固定して返す。
-func dryRun(t *testing.T, repoRoot, target string) []string {
-	t.Helper()
-
-	out, err := exec.Command("make", "-C", repoRoot, "--dry-run", target).Output()
-	if err != nil {
-		t.Fatalf("make --dry-run %s を実行できない: %v", target, err)
-	}
-
-	var cmds []string
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		// make 自身の進捗表示は命令ではない。
-		if line == "" || strings.HasPrefix(line, "make[") {
-			continue
-		}
-		cmds = append(cmds, line)
-	}
-	sort.Strings(cmds)
-	return cmds
 }

@@ -7,10 +7,20 @@
 # 00003 を書き換えたあと 00004 を新設して直している。
 #
 # 使い方: scripts/migrations-immutable.sh [比較対象]
-#   比較対象の既定は origin/main。
+#
+# 比較対象を省いたときは、PR の base branch（GITHUB_BASE_REF）があればそれを、
+# 無ければ origin/main を使う。呼び出し側が渡し分けると、手元と CI で違う
+# 比較になり、同じコマンドを実行しても判定が変わる。
 set -eu
 
-base="${1:-origin/main}"
+base="${1:-}"
+if [ -z "$base" ]; then
+	if [ -n "${GITHUB_BASE_REF:-}" ]; then
+		base="origin/${GITHUB_BASE_REF}"
+	else
+		base="origin/main"
+	fi
+fi
 dir="internal/store/migrations"
 
 if ! git rev-parse --verify --quiet "$base" >/dev/null; then
