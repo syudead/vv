@@ -14,6 +14,54 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for ErrorCode.
+const (
+	ErrorCodeConflict                    ErrorCode = "conflict"
+	ErrorCodeDirectoryUnavailable        ErrorCode = "directory_unavailable"
+	ErrorCodeForbidden                   ErrorCode = "forbidden"
+	ErrorCodeInternal                    ErrorCode = "internal"
+	ErrorCodeInvalidMediaDirectory       ErrorCode = "invalid_media_directory"
+	ErrorCodeInvalidRequest              ErrorCode = "invalid_request"
+	ErrorCodeMediaFolderNotFound         ErrorCode = "media_folder_not_found"
+	ErrorCodeMediaFoldersNotConfigured   ErrorCode = "media_folders_not_configured"
+	ErrorCodeNotFound                    ErrorCode = "not_found"
+	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
+	ErrorCodeScanInProgress              ErrorCode = "scan_in_progress"
+	ErrorCodeUnsupportedMediaDirectory   ErrorCode = "unsupported_media_directory"
+)
+
+// Valid indicates whether the value is a known member of the ErrorCode enum.
+func (e ErrorCode) Valid() bool {
+	switch e {
+	case ErrorCodeConflict:
+		return true
+	case ErrorCodeDirectoryUnavailable:
+		return true
+	case ErrorCodeForbidden:
+		return true
+	case ErrorCodeInternal:
+		return true
+	case ErrorCodeInvalidMediaDirectory:
+		return true
+	case ErrorCodeInvalidRequest:
+		return true
+	case ErrorCodeMediaFolderNotFound:
+		return true
+	case ErrorCodeMediaFoldersNotConfigured:
+		return true
+	case ErrorCodeNotFound:
+		return true
+	case ErrorCodeOverlappingMediaDirectories:
+		return true
+	case ErrorCodeScanInProgress:
+		return true
+	case ErrorCodeUnsupportedMediaDirectory:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Degraded HealthStatus = "degraded"
@@ -154,14 +202,15 @@ type DirectoryListing struct {
 
 // Error defines model for Error.
 type Error struct {
-	// Code 機械可読なエラー種別
-	//
-	// Examples: not_found, invalid_request, internal
-	Code string `json:"code"`
+	// Code 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （make generate）。新しい種別はまずここへ足す。
+	Code ErrorCode `json:"code"`
 
 	// Message 人が読むための説明。利用者にそのまま提示してよい文言にする
 	Message string `json:"message"`
 }
+
+// ErrorCode 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （make generate）。新しい種別はまずここへ足す。
+type ErrorCode string
 
 // Health defines model for Health.
 type Health struct {

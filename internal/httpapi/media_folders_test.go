@@ -76,7 +76,7 @@ func TestMediaFolderMutationErrors(t *testing.T) {
 	tests := []struct {
 		err    error
 		status int
-		code   string
+		code   gen.ErrorCode
 	}{
 		{domain.ErrInvalidMediaFolder, 400, codeInvalidMediaDirectory},
 		{domain.ErrUnsupportedMediaFolder, 400, codeUnsupportedMediaDirectory},
@@ -87,7 +87,7 @@ func TestMediaFolderMutationErrors(t *testing.T) {
 		{errors.New("database unavailable"), 500, codeInternal},
 	}
 	for _, tc := range tests {
-		t.Run(tc.code, func(t *testing.T) {
+		t.Run(string(tc.code), func(t *testing.T) {
 			handler := newTestServer(t, Options{MediaFolders: &fakeMediaFolders{err: tc.err}})
 			rec := jsonRequest(t, handler, http.MethodPost, "/api/media-folders", `{"path":"/media"}`)
 			if rec.Code != tc.status || decode[gen.Error](t, rec).Code != tc.code {

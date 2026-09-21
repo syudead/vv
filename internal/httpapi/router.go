@@ -208,25 +208,27 @@ const (
 	cacheImmutable = "public, max-age=31536000, immutable"
 )
 
-// エラーの code は機械可読な種別である（contracts/http-routes.md「エラー表現」）。
+// エラーの code の正本は api/openapi.yaml の Error.code である。gen.ErrorCode*
+// は make generate の出力なので、新しい種別は openapi.yaml へ足す。ここで別名を
+// 与えているのは呼び出し側を短く保つためだけで、値を決めてはいない。
 const (
-	codeNotFound                    = "not_found"
-	codeInvalidRequest              = "invalid_request"
-	codeInternal                    = "internal"
-	codeForbidden                   = "forbidden"
-	codeInvalidMediaDirectory       = "invalid_media_directory"
-	codeUnsupportedMediaDirectory   = "unsupported_media_directory"
-	codeMediaFolderNotFound         = "media_folder_not_found"
-	codeOverlappingMediaDirectories = "overlapping_media_directories"
-	codeScanInProgress              = "scan_in_progress"
-	codeConflict                    = "conflict"
-	codeMediaFoldersNotConfigured   = "media_folders_not_configured"
-	codeDirectoryUnavailable        = "directory_unavailable"
+	codeNotFound                    = gen.ErrorCodeNotFound
+	codeInvalidRequest              = gen.ErrorCodeInvalidRequest
+	codeInternal                    = gen.ErrorCodeInternal
+	codeForbidden                   = gen.ErrorCodeForbidden
+	codeInvalidMediaDirectory       = gen.ErrorCodeInvalidMediaDirectory
+	codeUnsupportedMediaDirectory   = gen.ErrorCodeUnsupportedMediaDirectory
+	codeMediaFolderNotFound         = gen.ErrorCodeMediaFolderNotFound
+	codeOverlappingMediaDirectories = gen.ErrorCodeOverlappingMediaDirectories
+	codeScanInProgress              = gen.ErrorCodeScanInProgress
+	codeConflict                    = gen.ErrorCodeConflict
+	codeMediaFoldersNotConfigured   = gen.ErrorCodeMediaFoldersNotConfigured
+	codeDirectoryUnavailable        = gen.ErrorCodeDirectoryUnavailable
 )
 
 // writeError は JSON のエラーを書き出す。message は利用者にそのまま提示して
 // よい日本語にする（contracts/http-routes.md）。
-func (s *server) writeError(w http.ResponseWriter, status int, code, message string) {
+func (s *server) writeError(w http.ResponseWriter, status int, code gen.ErrorCode, message string) {
 	writeJSON(w, status, gen.Error{Code: code, Message: message}, s.logger)
 }
 
