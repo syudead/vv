@@ -564,8 +564,7 @@ func migratedDB(t *testing.T) *DB {
 
 	// 検査はここに掛ける。個々のテストへ呼び出しを足すと、経路が増えるたびに
 	// 足し忘れが起き、不変条件を1件ずつ潰す元の状態へ戻る。
-	t.Cleanup(func() { assertRepresentativeInvariant(t, db) })
-	return db
+	return checkInvariants(t, db)
 }
 
 // tableColumns は列名から「not null かどうか」への対応を返す。
