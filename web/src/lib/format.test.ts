@@ -19,6 +19,8 @@ const base: Video = {
   playable: true,
   probeState: "done",
   thumbnailState: "done",
+  durationMs: 10_000,
+  videoCodec: "h264",
 };
 
 describe("formatDuration", () => {
@@ -120,5 +122,11 @@ describe("unplayableText", () => {
         container: "mkv",
       }),
     ).toBeNull();
+    expect(unplayableText({ ...base, playable: false, durationMs: undefined })).toBe(
+      "再生に必要な情報がありません",
+    );
+    expect(unplayableText({ ...base, playable: false, videoCodec: undefined })).toBe(
+      "再生に必要な情報がありません",
+    );
   });
 });

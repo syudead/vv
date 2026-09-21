@@ -101,6 +101,13 @@ export function unplayableText(video: Video): string | null {
   if (video.probeState === "pending") {
     return "確認中";
   }
+  if (
+    video.durationMs === undefined ||
+    video.durationMs <= 0 ||
+    video.videoCodec === undefined
+  ) {
+    return "再生に必要な情報がありません";
+  }
   return null;
 }
 
