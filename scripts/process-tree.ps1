@@ -47,7 +47,8 @@ function Stop-ProcessTree {
     }
 
     $processIds = @(Get-UnixProcessTreeIds -RootProcessId $Process.Id)
-    $killPath = (Get-Command "kill" -CommandType Application -ErrorAction Stop).Source
+    $killPath = Get-Command "kill" -CommandType Application -ErrorAction Stop |
+        Select-Object -First 1 -ExpandProperty Source
     & $killPath -TERM @processIds 2>$null
 
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
