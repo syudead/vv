@@ -9,14 +9,14 @@
 | --------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------ |
 | `task up`       | Task・Docker                            | イメージを構築してアプリケーションを起動する。**導入手順の最初に実行する唯一のコマンド**            | FR-001 / SC-001          |
 | `task down`     | Task・Docker                            | 起動したものを停止・削除する                                                                        | —                        |
-| `task dev`      | Task・PowerShell 7.4・Go・Node・ffmpeg | Go サーバーと Vite の開発サーバーを起動する（変更の即時反映用）                                     | —                        |
-| `task build`    | Task・PowerShell 7.4・Go・Node         | SPA をビルドして埋め込み、単一バイナリを生成する                                                    | —                        |
-| `task generate` | Task・PowerShell 7.4・Go・Node         | `api/openapi.yaml` から Go と TypeScript の型を生成する                                             | FR-012                   |
-| `task fmt`      | Task・PowerShell 7.4・Go・Node         | 書式を整える                                                                                        | FR-011                   |
-| `task lint`     | Task・PowerShell 7.4・Go・Node         | `golangci-lint`（depguard を含む）と Web の静的検査                                                 | FR-010 / FR-011 / FR-013 |
-| `task test`     | Task・PowerShell 7.4・Go・Node         | Go のテストと Web の単体テスト                                                                      | FR-011 / FR-014          |
-| `task test-e2e` | Task・PowerShell 7.4・Go・Node・ffmpeg・Chromium | GoサーバーとVite proxyを通る主要操作を実ブラウザで検証する                                  | FR-011 / FR-014          |
-| `task check`    | Task・Go・Node・PowerShell 7.4・Git・bash | ローカル開発スクリプトとTaskタスクの回帰検査 → `fmt` の差分確認 → `lint` → `test` → 生成物の差分確認 → 適用済みマイグレーションの不変性 を順に実行 | FR-011 / SC-002          |
+| `task dev`      | Task・Go・Node・ffmpeg                  | Go サーバーと Vite の開発サーバーを起動する（変更の即時反映用）                                     | —                        |
+| `task build`    | Task・Go・Node                          | SPA をビルドして埋め込み、単一バイナリを生成する                                                    | —                        |
+| `task generate` | Task・Go・Node                          | `api/openapi.yaml` から Go と TypeScript の型を生成する                                             | FR-012                   |
+| `task fmt`      | Task・Go・Node・jq                      | 書式を整える                                                                                        | FR-011                   |
+| `task lint`     | Task・Go・Node・jq                      | `golangci-lint`（depguard を含む）と Web の静的検査                                                 | FR-010 / FR-011 / FR-013 |
+| `task test`     | Task・Go・Node                          | Go のテストと Web の単体テスト                                                                      | FR-011 / FR-014          |
+| `task test-e2e` | Task・Go・Node・ffmpeg・Chromium        | GoサーバーとVite proxyを通る主要操作を実ブラウザで検証する                                          | FR-011 / FR-014          |
+| `task check`    | Task・Go・Node・jq・Git・bash           | `fmt` の差分確認 → `lint` → `test` → 生成物の差分確認 → 適用済みマイグレーションの不変性 を順に実行 | FR-011 / SC-002          |
 
 ## 約束
 
@@ -32,5 +32,10 @@
 ## 依存ツールの導入
 
 `task up` 以外のタスクはホストに Go・Node・ffmpeg を要求する。`task check` はさらに
-PowerShell 7.4・Git・bash を要求する。README には
+jq・Git・bash を要求する。README には
 `task up` だけを「必ず動く道」として示し、その他は開発者向けの補足として扱う。
+
+開発者コマンドの実体は `scripts/` の Go プログラムに置く。Taskfile へ直接書くのは
+外部コマンドを1つ呼ぶだけの目標に限る。検査のためだけに別のランタイム
+（かつての PowerShell 7.4）を前提にしない。実体が Go なので、その振る舞いは
+`task test` が `go test ./...` として検証する。

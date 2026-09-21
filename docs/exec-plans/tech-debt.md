@@ -232,3 +232,17 @@ reconsideration.
 - 解消日: 2026-09-19
 - 解消方法: hop/retry集計とbranch名復元を廃止した。現在の工程判定は明示されたfeature
   directoryのartifactとGit祖先関係だけを使う。
+
+### TD-014: Windows の `task dev` は孫プロセスを残すことがある
+
+- 影響範囲: `scripts/dev`（`task dev`）
+- 内容: 開発サーバーは2つとも孫プロセスを持つ（`go run` が起動するバイナリ、
+  `npm` が起動する vite）。unix ではプロセスグループを分けてグループごと
+  止めているが、Windows には同等の仕組みが無いため、起動したプロセスだけを
+  止めている。孫が残ると vite が 5173 を掴んだままになり、次の `task dev` が
+  `--strictPort` で失敗する。
+- 当面の対処: 失敗そのものは分かりやすいので、残ったプロセスを手で止める。
+  PowerShell 版でも `Stop-Job` が同じ状態だったため、振る舞いは変わっていない。
+- 見直しの契機: Windows で実際に困ったとき。Job Object を使うか、
+  `taskkill /T` 相当の停止に切り替える。
+- 一次資料: `scripts/dev/procgroup_other.go`

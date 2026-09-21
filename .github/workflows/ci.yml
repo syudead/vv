@@ -100,17 +100,6 @@ jobs:
             web/test-results/
           retention-days: 7
 
-  windows:
-    name: Local dev scripts (windows)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      # Windows でしか確かめられない。Linux 側は task check が含んでいる。
-      - name: PowerShell regression tests
-        shell: pwsh
-        run: ./scripts/local-dev.tests.ps1
-
   docker:
     name: Docker image
     runs-on: ubuntu-latest
