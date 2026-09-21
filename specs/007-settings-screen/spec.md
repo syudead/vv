@@ -187,7 +187,8 @@
 - 長いパスや日本語を含むパスを省略表示しても、選択中の値全体を確認できる。
 - 登録・変更の直前にフォルダが失われた場合は、以前の有効な設定を維持する。
 - 同じdirectoryの重複と、親子関係で探索範囲が重なるdirectoryは同時登録しない。
-- filesystem root、Windows drive root、シンボリックリンクはメディアフォルダとして登録しない。
+- filesystem rootとWindows drive rootもメディアフォルダとして登録できる。
+- シンボリックリンクはメディアフォルダとして登録しない。
 - pickerはシンボリックリンクを候補に表示せず、走査はroot配下のシンボリックリンクを辿らない。
 - 取り込み中はメディアフォルダを変更できない。進行中の取り込みを別の場所へ途中から
   切り替えない。
@@ -256,7 +257,7 @@
 - **FR-030**: メディアフォルダの登録・変更・削除後も、システムは取り込みを自動開始してはならない
 - **FR-031**: directory listingはシンボリックリンクを返さず、登録・変更時はroot候補を`Lstat`で
   再検証してシンボリックリンクを拒否し、scannerもroot配下のリンクを辿ってはならない
-- **FR-032**: filesystem rootおよびWindows drive rootをメディアフォルダとして登録してはならない
+- **FR-032**: filesystem rootおよびWindows drive rootを通常のメディアフォルダとして登録できなければならない
 - **FR-033**: 非同期jobの結果は処理開始時の`video_id`、`content_key`、`location_id`、
   `location_version`、`path`が現在のvideoとlocationに一致する場合だけ書き戻し、消失・変更済みlocationの
   結果を破棄しなければならない。location固有のI/O失敗は別のcurrent locationへ再試行し、論理videoを

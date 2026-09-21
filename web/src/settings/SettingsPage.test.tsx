@@ -131,8 +131,10 @@ describe("SettingsPage", () => {
     const srv = await within(dialog).findByRole("button", { name: "srv" });
     await waitFor(() => expect(document.activeElement).toBe(srv));
     expect(
-      within(dialog).getByText("ファイルシステムまたはドライブのルートは選択できません"),
-    ).toBeDefined();
+      within(dialog)
+        .getByRole("button", { name: "このフォルダを追加" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
     await user.keyboard("{ArrowRight}");
     const media = await within(dialog).findByRole("button", { name: "media" });
     await waitFor(() => expect(document.activeElement).toBe(media));

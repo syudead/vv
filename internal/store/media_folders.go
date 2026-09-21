@@ -64,10 +64,6 @@ func validateMediaFolder(path string) (string, error) {
 	if err != nil || !domain.PathWithinRoot(cleaned, resolved) || !domain.PathWithinRoot(resolved, cleaned) {
 		return "", fmt.Errorf("%w: symbolic link", ErrUnsupportedFolder)
 	}
-	parent := filepath.Dir(cleaned)
-	if parent == cleaned {
-		return "", fmt.Errorf("%w: filesystem root", ErrUnsupportedFolder)
-	}
 	dir, err := os.Open(cleaned)
 	if err != nil {
 		return "", fmt.Errorf("%w: %v", ErrInvalidFolder, err)

@@ -47,13 +47,16 @@ probe結果、jobs、playback progressを保持する。新規folder追加では
 
 **Decision**: APIが返すserver filesystemのdirectoryを辿るfolder pickerを実装する。path省略時は
 Linux rootまたはWindows driveをnavigation起点として返し、以後は親と直下の実directoryを返す。
-filesystem rootとdrive rootは登録不可とする。`Lstat`でsymlinkを候補から除き、scannerもリンクを
+filesystem rootとdrive rootも登録可能とする。`Lstat`でsymlinkを候補から除き、scannerもリンクを
 辿らない。
+
+**Rationale**: rootは利用者が明示的に選ぶ正規のdirectoryであり、rootだけを禁止しても広い子directoryの
+走査やfilesystem情報の列挙は防げない。access boundaryはtrusted-networkとsame-originで管理する。
 
 ## R-705: 選択時と操作実行時の両方で検証する
 
 **Decision**: listing時に読取可能性を確認し、POST/PUT時にも`Lstat`で対象pathの存在・実directory・
-readable・非filesystem-rootと、全既存folderに対する重複・包含を再検証する。API pathはOSの
+readableと、全既存folderに対する重複・包含を再検証する。API pathはOSの
 絶対・lexical clean済み表現とし、Unicode表現は実在entryの綴りを保持する。
 
 ## R-706: 非同期走査を失敗境界で閉じる

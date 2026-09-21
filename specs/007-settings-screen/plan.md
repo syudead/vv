@@ -72,8 +72,8 @@ folder pickerから1件ずつ追加・変更・削除し、一覧全体の保存
 - `PUT/DELETE /api/media-folders/{id}`で既存1件の変更・削除を提供し、一覧全体のPUTは提供しない
 - PUT/DELETEは行単位versionで同時変更を検出する
 - directory APIはroot/drive、現在位置、親、子directoryだけを返す
-- directory listingとPOST/PUTはsymlinkを拒否し、filesystem/drive rootを登録不可にする
-- 無効directory、symlink、root、重複・包含、走査中、対象消失、版競合を機械可読errorへ変換する
+- directory listingとPOST/PUTはsymlinkを拒否し、filesystem/drive rootは登録可能にする
+- 無効directory、symlink、重複・包含、走査中、対象消失、版競合を機械可読errorへ変換する
 - 全mutationをsame-originに限定し、POST/PUTはJSONだけを受理してCORS responseを追加しない
 - OpenAPIを先に変更し、Go/TypeScriptを再生成してhandler、Web API client、contract testsを追加する
 

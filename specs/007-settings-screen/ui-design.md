@@ -67,7 +67,7 @@ pickerの構成は次の順とする。
 6. primary action: 追加時「このフォルダを追加」、変更時「このフォルダに変更」
 
 directory rowはFolder icon、directory名、ChevronRight iconを持つ全幅buttonで、activateすると
-そのdirectoryへ移動する。root/driveは移動の起点として表示するが選択確定できない。空directoryでも
+そのdirectoryへ移動する。root/driveも移動後に選択確定できる。空directoryでも
 現在位置が有効なら確定できる。変更前と同じpath、登録済みpathとの重複、登録済みpathとの親子重複では
 primary actionを無効にして理由を表示する。pathを入力・編集するtext fieldは置かない。
 
