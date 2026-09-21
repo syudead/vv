@@ -98,10 +98,14 @@ export default function SettingsPage() {
   }, [load]);
 
   const handleFailure = async (failure: unknown, folder?: MediaFolder) => {
-    if (failure instanceof RequestFailed && failure.code === "conflict" && folder) {
+    if (
+      failure instanceof RequestFailed &&
+      (failure.code === "conflict" || failure.code === "media_folder_not_found") &&
+      folder
+    ) {
       setRowError({
         id: folder.id,
-        message: "別の画面で変更されました。内容を確認してやり直してください",
+        message: "別の画面で変更または削除されました。内容を確認してやり直してください",
       });
       setPicker(null);
       setDeleting(null);

@@ -272,4 +272,42 @@ describe("SettingsPage", () => {
       ).toBe("フォルダを変更"),
     );
   });
+
+  it("別画面で削除済みなら一覧を再取得して古い行を除く", async () => {
+    const stale = folder(1, "/media/stale", 3);
+    const remaining = folder(2, "/media/remaining", 5);
+    let listRequests = 0;
+    let deletedElsewhere = false;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") {
+        listRequests += 1;
+        return Promise.resolve(json(deletedElsewhere ? [remaining] : [stale, remaining]));
+      }
+      if (url === "/api/media-folders/1?version=3" && init?.method === "DELETE") {
+        deletedElsewhere = true;
+        return Promise.resolve(
+          json(
+            { code: "media_folder_not_found", message: "フォルダが見つかりません" },
+            404,
+          ),
+        );
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("/media/remaining");
+    await user.click(screen.getAllByRole("button", { name: "フォルダを削除" })[0]!);
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "削除する" }),
+    );
+
+    await waitFor(() => expect(screen.queryByText("/media/stale")).toBeNull());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByText("/media/remaining")).toBeDefined();
+    expect(listRequests).toBeGreaterThan(1);
+  });
 });

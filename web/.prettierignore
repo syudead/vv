@@ -1,5 +1,7 @@
 node_modules/
 dist/
 .vite-build-check/
+playwright-report/
+test-results/
 # 生成物は手編集しないので整形の対象にもしない（AGENTS.md）。
 src/api/gen/
