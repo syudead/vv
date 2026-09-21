@@ -242,11 +242,15 @@ describe("SettingsPage", () => {
 
   it("削除は対象id/versionだけへ送り、残る行へfocusを移す", async () => {
     const folders = [folder(1, "/media/one", 3), folder(2, "/media/two", 5)];
+    let deleted = false;
     fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
-      if (url === "/api/media-folders") return Promise.resolve(json(folders));
+      if (url === "/api/media-folders") {
+        return Promise.resolve(json(deleted ? [folders[1]] : folders));
+      }
       if (url === "/api/media-folders/1?version=3" && init?.method === "DELETE") {
+        deleted = true;
         return Promise.resolve(json({}, 204));
       }
       throw new Error(`unexpected request: ${url}`);
@@ -273,6 +277,38 @@ describe("SettingsPage", () => {
         (document.activeElement as HTMLElement | null)?.getAttribute("aria-label"),
       ).toBe("フォルダを変更"),
     );
+  });
+
+  it("削除後に一覧を再取得して別タブで追加されたfolder数を反映する", async () => {
+    const original = folder(1, "/media/original", 3);
+    const concurrent = folder(2, "/media/concurrent", 1);
+    let deleted = false;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") {
+        return Promise.resolve(json(deleted ? [concurrent] : [original]));
+      }
+      if (url === "/api/media-folders/1?version=3" && init?.method === "DELETE") {
+        deleted = true;
+        return Promise.resolve(json({}, 204));
+      }
+      throw new Error(`unexpected request: ${url}`);
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText("/media/original");
+    await user.click(screen.getByRole("button", { name: "フォルダを削除" }));
+    await user.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "削除する" }),
+    );
+
+    expect(await screen.findByText("/media/concurrent")).toBeDefined();
+    expect(screen.queryByText("/media/original")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "ライブラリを更新" }).hasAttribute("disabled"),
+    ).toBe(false);
   });
 
   it("別画面で削除済みなら一覧を再取得して古い行を除く", async () => {

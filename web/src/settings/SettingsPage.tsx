@@ -168,15 +168,13 @@ export default function SettingsPage() {
   const removeFolder = async () => {
     if (deleting === null) return;
     const target = deleting;
+    const targetIndex = folders.findIndex((folder) => folder.id === target.id);
     setOperationError(null);
     setPending({ id: target.id, kind: "delete" });
     try {
       await deleteMediaFolder(target.id, target.version);
-      const remaining = folders.filter((folder) => folder.id !== target.id);
-      const targetIndex = folders.findIndex((folder) => folder.id === target.id);
-      const nextFolder = remaining[Math.min(targetIndex, remaining.length - 1)];
-      setFolders(remaining);
-      scan.setFolderCount(remaining.length);
+      const refreshed = await load();
+      const nextFolder = refreshed?.[Math.min(targetIndex, refreshed.length - 1)];
       setDeleting(null);
       toast("削除しました。取り込みは自動では始まりません");
       focusFolderAction(nextFolder);
