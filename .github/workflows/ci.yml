@@ -97,6 +97,11 @@ jobs:
       - name: Web依存を取得する
         run: npm --prefix web ci
 
+      - name: メディア処理コマンドを取得する
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+
       - name: Chromiumを取得する
         working-directory: web
         run: npx playwright install --with-deps chromium
