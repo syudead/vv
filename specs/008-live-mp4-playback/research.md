@@ -53,11 +53,14 @@ offsetを加えた時間軸を提示している。
 
 ## R-203: codec選択は互換属性をrequest時に検査する
 
-**Decision**: transcode requestの開始時にffprobeを実行し、codec名に加えてprofile、level、pixel format、
-bit depth、寸法、AAC profile、sample rate、channel数を取得する。H.264はBaseline/Constrained Baseline/
-Main/High、8-bit `yuv420p`、level 5.1以下をすべて確認できた場合だけcopyする。AACはLC、1〜2 channel、
-8〜48 kHzをすべて確認できた場合だけcopyする。値が欠落・未知・範囲外なら対応streamをencodeする。
-このrequest時probe結果は永続化しない。
+**Decision**: transcode requestの開始時にffprobeを実行し、stream index、`disposition.attached_pic`、codec名、
+profile、level、pixel format、bit depth、寸法、AAC profile、sample rate、channel数を取得する。最初の
+非添付video streamを本編として明示indexでmapし、添付画像しかなければ失敗させる。取り込み時probeも
+同じ選択規則を使う。
+
+H.264はBaseline/Constrained Baseline/Main/High、8-bit `yuv420p`、level 5.1以下をすべて確認できた場合だけ
+copyする。AACはLC、1〜2 channel、8〜48 kHzをすべて確認できた場合だけcopyする。値が欠落・未知・
+範囲外なら対応streamをencodeする。このrequest時probe結果は永続化しない。
 
 映像変換は`libx264`/`yuv420p`/`preset veryfast`/`crf 23`とし、encode時だけ
 `pad=ceil(iw/2)*2:ceil(ih/2)*2`で右端・下端を最大1px補って偶数寸法にする。映像内容を拡大・縮小
@@ -72,6 +75,7 @@ Main/High、8-bit `yuv420p`、level 5.1以下をすべて確認できた場合�
 
 - 常に映像・音声を再encode: 容器だけ非対応の動画にも品質劣化とCPU負荷を加えるため不採用。
 - codec名だけでcopy: profile、pixel format、bit depth、AAC profileによる非互換性を見落とすため不採用。
+- `0:v:0`を無条件にmap: attached coverを本編と取り違えるため不採用。
 - 互換属性をDBへ追加: transcode requestだけが使う値のmigrationとAPI公開を増やすため不採用。
 - 解像度別rendition: 要求された選択肢ではなく、scaleとsource選択UIを増やすため不採用。
 
@@ -143,3 +147,24 @@ playerの`sourceOffsetMs`には要求した`startMs`をそのまま使う。
 **Primary source**:
 
 - [FFmpeg `-ss` and accurate seek](https://ffmpeg.org/ffmpeg.html)
+
+## R-207: server寿命をtranscode processへ伝播する
+
+**Decision**: `cmd/mdm`でserver寿命のcancelable contextを作り、transcoderへ注入する。SIGINT/SIGTERM時は
+そのcontextをcancelしてから`http.Server.Shutdown`の10秒待機へ入る。各FFmpeg commandはrequest contextと
+server contextのどちらでも停止し、5秒以内に終了しなければkillして`Wait`を完了する。
+
+**Rationale**: Goの`http.Server.Shutdown`は実行中handlerの終了を待つが、そのrequest contextを
+cancelしない。request contextだけをprocess寿命に使うと、長い変換がshutdown猶予を使い切る。server側の
+停止通知を先に伝え、process停止上限をHTTP猶予より短くすれば、handlerを猶予内に返せる。
+
+**Alternatives considered**:
+
+- request contextだけを使う: client切断には対応できるがserver停止を通知できないため不採用。
+- `Shutdown` timeout後にprocessをkill: 正常なgraceful shutdownを毎回timeout扱いにするため不採用。
+- 全transcode processのglobal registry: context注入だけで同じ寿命制御ができ、共有可変状態が不要なため
+  不採用。
+
+**Primary source**:
+
+- [Go `net/http.Server.Shutdown`](https://pkg.go.dev/net/http#Server.Shutdown)

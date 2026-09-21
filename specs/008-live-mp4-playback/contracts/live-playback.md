@@ -46,7 +46,7 @@ FFmpeg outputはresponseへ直接流し、data directoryやmedia folderへfile�
 | --- | --- | --- |
 | `id`または`startMs`が不正 | `400` | `invalid_request` |
 | 動画、current location、実体がない／安全に開けない | `404` | `not_found` |
-| 取込probeまたはrequest時互換probe失敗、尺なし、映像streamなし | `409` | `conflict` |
+| 取込probeまたはrequest時互換probe失敗、尺なし、非添付の映像streamなし | `409` | `conflict` |
 | FFmpegを起動できない | `500` | `internal` |
 
 Error responseは既存`Error` JSONと`Cache-Control: no-store`を使い、filesystem pathやFFmpeg command全文を
@@ -55,7 +55,11 @@ Error responseは既存`Error` JSONと`Cache-Control: no-store`を使い、files
 
 ## Codec selection
 
-最初の映像streamと、存在する場合は最初の音声streamだけを出力し、subtitle/data streamは含めない。
+request時probeはstream indexと`disposition.attached_pic`を取得し、最初の非添付video streamを本編として
+明示indexでmapする。添付画像しかない場合は映像streamなしとして`409`を返す。存在する場合は最初の
+audio streamだけを出力し、その他のvideo、subtitle、data streamは含めない。取り込み時probeも同じ
+非添付video選択規則を使う。
+
 resolution renditionは追加しない。transcode request開始時にffprobeで下記属性を取得し、判定結果は
 永続化しない。属性が欠落・未知・範囲外ならcopyせずencodeする。
 
@@ -85,10 +89,13 @@ H.264 encode時は`pad=ceil(iw/2)*2:ceil(ih/2)*2,format=yuv420p`を適用する�
 - `startMs>0`ではinput-side seekと既定のaccurate seekを使い、映像・音声をencodeして要求位置より前を
   捨てる。`sourceOffsetMs`は要求した`startMs`と一致する
 - outputは`frag_keyframe+empty_moov+default_base_moof`のMP4をstdoutへ出す
-- HTTP request contextをFFmpeg command contextに渡す
-- seek、source切替、画面離脱、接続切断、server shutdownで旧contextをcancelする
+- `cmd/mdm`でserver寿命のcancelable contextを作り、transcoderへ注入する。停止指示時は
+  `http.Server.Shutdown`を待つ前にserver contextをcancelする
+- FFmpeg commandはrequest contextとserver contextのどちらが終了してもcancelする
+- seek、source切替、画面離脱、接続切断で旧request contextをcancelする
 - stderrをstdoutと同時に上限付きでdrainし、pipe詰まりを起こさない
-- cancel後10秒以内にprocess、pipe、drain goroutineを終了する
+- cancel後5秒以内にprocess、pipe、drain goroutineを終了する。通常終了しなければkillして`Wait`を完了し、
+  HTTP serverの10秒shutdown猶予内にhandlerを返す
 - 同じ動画を含む別requestのprocessを停止しない
 
 ## Cache behavior

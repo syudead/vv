@@ -49,13 +49,16 @@ directからの切替時は`logicalPositionMs`と`playIntended`を保持する�
 | `videoId` | 対象動画 | current locationが1件以上必要 |
 | `sourcePath` | root・symlink・regular-file検証済みlocation | 応答やlogへpathを公開しない |
 | `startMs` | 変換開始位置 | 省略時0、`0 <= startMs < durationMs` |
+| `videoStreamIndex` | 最初の非添付video streamの絶対index | `attached_pic=0`、存在しなければrequest失敗 |
+| `audioStreamIndex` | 最初のaudio streamの絶対index | 音声なしは`none` |
 | `mode` | `selective` / `normalize` | playable判定と`startMs`からserverが決定 |
 | `videoAction` | `copy` / `h264` | 映像streamが無い場合はrequest失敗 |
 | `audioAction` | `none` / `copy` / `aac` | 音声なしは`none` |
 
 `selective`は既知の非対応動画を`startMs=0`から再生する場合だけ使う。request時probeでprofile、level、
-pixel format、bit depth、寸法、AAC profile、sample rate、channel数を取得し、互換性をすべて確認できた
-streamだけをcopyする。結果はrequest終了時に破棄する。
+pixel format、bit depth、寸法、AAC profile、sample rate、channel数、stream index、attached-pic dispositionを
+取得する。最初の非添付videoを本編として選び、互換性をすべて確認できたstreamだけをcopyする。結果は
+request終了時に破棄する。
 
 `normalize`はdirect再生可能と判定済みの動画、または`startMs>0`のrequestに使う。映像と存在する音声を
 互換設定へ変換し、正確なseekのため要求位置より前のframe/sampleを捨てる。H.264 encode時は奇数の幅・
@@ -77,7 +80,9 @@ Transcode Requestから起動され、同じHTTP requestだけが所有する。
 
 - process開始後はstdoutとstderrを並行してdrainする。
 - response write failureまたはrequest cancellationで`stopping`へ進み、child processを停止する。
+- server lifetime cancellationでも同じ`stopping`へ進む。停止指示はHTTP shutdownの待機前に発火する。
 - `Wait`は1回だけ呼び、pipeを閉じて`stopped`へ進む。
+- cancel後5秒で終了しなければprocessをkillし、HTTP shutdownの10秒猶予を使い切らない。
 - `stopped`後にfile、process、goroutineを残さない。
 - process間でbuffer、offset、cancel functionを共有しない。
 

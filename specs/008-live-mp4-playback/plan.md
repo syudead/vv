@@ -32,6 +32,8 @@
   であり、`startMs` ごとに request-scoped FFmpeg process を1つ起動する。
 - transcode request開始時のffprobeでstream互換属性を検査し、確認できたstreamだけをcopyする。
   `startMs>0`は正確なseekのため映像・音声をencodeする。probe結果は永続化しない。
+- request時と取り込み時のprobeはattached coverを除外し、最初の非添付video streamを本編として扱う。
+- server寿命contextをtranscoderへ注入し、SIGINT/SIGTERM時はHTTP shutdownを待つ前に変換をcancelする。
 - SQLite schema と既存の再生位置契約は変更しない。ライブ変換 session、buffer、代替動画を永続化
   しない。
 - [spec.md](spec.md) の開始3秒、シーク2秒、再開位置誤差5秒、終了10秒を E2E と process lifecycle
@@ -74,7 +76,8 @@ Phase 1 後も判定は同じであり、例外や Complexity Tracking を必要
   循環させうるため採用しない。
 - **global transcode manager を置かない**: 各 HTTP request が1 processを所有し、seek/source変更/
   画面離脱/切断で旧requestを cancelする。同じ動画のrequest共有は、一方のtabのseekや終了が他方を
-  巻き込むため採用しない。
+  巻き込むため採用しない。server停止だけは全request共通の寿命contextをcancelし、process registryを
+  作らずHTTP shutdown猶予内に終了させる。
 
 ## Project Structure
 
@@ -101,7 +104,7 @@ process の状態遷移、契約と quickstart は新しい binary response と�
 - `api/openapi.yaml`: MP4 ライブ変換経路と query/response/error schema
 - `internal/media/`: FFmpeg argument selection、stdout/stderr、process cancellation
 - `internal/httpapi/`: 安全な location 解決、transcoder interface、binary response
-- `cmd/mdm/`: media adapter の注入と shutdown lifecycle
+- `cmd/mdm/`: media adapter、server寿命contextの注入と shutdown lifecycle
 - `web/src/api/`・`web/src/player/`: source URL、有限 fallback、offset seek、既存 progress 連携
 - `web/e2e/`: 形式 matrix、runtime fallback、seek/resume、process cleanup の browser test
 
@@ -117,18 +120,20 @@ process の状態遷移、契約と quickstart は新しい binary response と�
 ### fragmented MP4 ライブ変換と配信 API
 
 **Scope**: [live-playback contract](contracts/live-playback.md) に従い、request時のstream互換probe、
-属性ごとのcopy/変換、奇数寸法padding、途中開始のaccurate seek、fragmented MP4 stdout、bounded
-stderr、request cancellationを`internal/media`に追加する。既存のlocation安全性を再利用する
-`transcode.mp4`経路、OpenAPI/生成物、router wiring、unit/contract testを追加する。直接配信とその
-Range契約は変更しない。
+attached coverを除く本編stream選択、属性ごとのcopy/変換、奇数寸法padding、途中開始のaccurate seek、
+fragmented MP4 stdout、bounded stderr、request/server cancellationを`internal/media`に追加する。既存の
+取り込みprobeも同じ本編選択へ揃える。location安全性を再利用する`transcode.mp4`経路、OpenAPI/生成物、
+router wiring、unit/contract testを追加する。`cmd/mdm`はserver contextをHTTP shutdown前にcancelする。
+直接配信とそのRange契約は変更しない。
 
 **Dependencies**: なし。
 
 **Acceptance**: 互換属性をすべて確認できたstreamだけがFFmpeg引数上copyされ、未知・非対応stream、
 direct失敗後、途中開始だけがencodeされる。奇数寸法を含むH.264 encodeが成功し、長いGOP内へのseekで
-実映像とlogical timeが一致する。`startMs`の200、入力不正の400、実体なしの404、起動失敗の500が
-契約どおり返る。request cancel後10秒以内にprocessが終了し、元ファイルとdata directoryに動画出力が
-作られない。
+実映像とlogical timeが一致する。cover先行時は非添付videoをmapし、coverしかなければ409を返す。
+`startMs`の200、入力不正の400、実体なしの404、起動失敗の500が契約どおり返る。requestまたはserver
+cancel後5秒以内にprocessが終了し、SIGTERM時はHTTP shutdownの10秒猶予内にhandlerが返る。元ファイルと
+data directoryに動画出力は作られない。
 
 ### 直接配信からライブ変換へ有限切り替えするプレイヤー
 
@@ -145,8 +150,9 @@ direct decode errorは同じ論理位置から1度だけtranscodeへ移り、次
 ### 動画形式 matrix の E2E
 
 **Scope**: [quickstart](quickstart.md) のfixture matrixをFFmpegで生成し、direct、containerのみ非対応、
-videoのみ非対応、audioのみ非対応、両方非対応、無音、codec属性境界、奇数寸法、長いGOPの途中seek、
-runtime fallback、resume、error、cleanupをPlaywrightとbackend table testで検証する。
+videoのみ非対応、audioのみ非対応、両方非対応、無音、attached cover、codec属性境界、奇数寸法、
+長いGOPの途中seek、runtime fallback、resume、error、request/server cleanupをPlaywrightとbackend
+table testで検証する。
 
 **Dependencies**: fragmented MP4 ライブ変換と配信 API、直接配信からライブ変換へ有限切り替えする
 プレイヤー。
