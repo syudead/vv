@@ -21,7 +21,7 @@ export default defineConfig({
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  outputDir: path.join(runRoot, "test-results"),
+  outputDir: path.join(webRoot, "test-results"),
   reporter: process.env.CI ? [["html", { open: "never" }], ["list"]] : "list",
   use: {
     baseURL: "http://127.0.0.1:15173",

@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -10,24 +10,42 @@ const outputDir = path.join(runRoot, "bin");
 const output = path.join(outputDir, process.platform === "win32" ? "mdm.exe" : "mdm");
 const mediaDir = path.join(runRoot, "media");
 
-mkdirSync(outputDir, { recursive: true });
-const build = spawnSync("go", ["build", "-buildvcs=false", "-o", output, "./cmd/mdm"], {
-  cwd: repoRoot,
-  env: { ...process.env, GOCACHE: path.join(runRoot, "go-build") },
-  stdio: "inherit",
-});
-if (build.error !== undefined) throw build.error;
-if (build.status !== 0) process.exit(build.status ?? 1);
+function run() {
+  mkdirSync(outputDir, { recursive: true });
+  try {
+    const build = spawnSync(
+      "go",
+      ["build", "-buildvcs=false", "-o", output, "./cmd/mdm"],
+      {
+        cwd: repoRoot,
+        env: { ...process.env, GOCACHE: path.join(runRoot, "go-build") },
+        stdio: "inherit",
+      },
+    );
+    if (build.error !== undefined) throw build.error;
+    if (build.status !== 0) return build.status ?? 1;
 
-const playwrightCLI = path.join(webRoot, "node_modules", "@playwright", "test", "cli.js");
-const test = spawnSync(process.execPath, [playwrightCLI, "test"], {
-  cwd: webRoot,
-  env: {
-    ...process.env,
-    MDM_E2E_RUN_ROOT: runRoot,
-    MDM_E2E_MEDIA_DIR: mediaDir,
-  },
-  stdio: "inherit",
-});
-if (test.error !== undefined) throw test.error;
-process.exit(test.status ?? 1);
+    const playwrightCLI = path.join(
+      webRoot,
+      "node_modules",
+      "@playwright",
+      "test",
+      "cli.js",
+    );
+    const test = spawnSync(process.execPath, [playwrightCLI, "test"], {
+      cwd: webRoot,
+      env: {
+        ...process.env,
+        MDM_E2E_RUN_ROOT: runRoot,
+        MDM_E2E_MEDIA_DIR: mediaDir,
+      },
+      stdio: "inherit",
+    });
+    if (test.error !== undefined) throw test.error;
+    return test.status ?? 1;
+  } finally {
+    rmSync(runRoot, { recursive: true, force: true });
+  }
+}
+
+process.exit(run());
