@@ -193,7 +193,9 @@ describe("SettingsPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "このフォルダに変更" }));
     dialog = await screen.findByRole("dialog", { name: "フォルダの変更を確認" });
     expect(within(dialog).getByText(/再生位置と視聴済み状態は残ります/)).toBeDefined();
-    await user.click(within(dialog).getByRole("button", { name: "戻る" }));
+    const back = within(dialog).getByRole("button", { name: "戻る" });
+    await waitFor(() => expect(document.activeElement).toBe(back));
+    await user.click(back);
     expect(
       await screen.findByRole("dialog", { name: "メディアフォルダを変更" }),
     ).toBeDefined();

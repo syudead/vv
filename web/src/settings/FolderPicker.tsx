@@ -60,8 +60,6 @@ export function ModalFrame({
       element.setAttribute("inert", "");
       element.setAttribute("aria-hidden", "true");
     }
-    const target = initialFocus?.current ?? focusableElements(panel.current!)[0];
-    target?.focus();
     const keydown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
@@ -91,6 +89,11 @@ export function ModalFrame({
       }
       queueMicrotask(() => previous?.focus());
     };
+  }, []);
+
+  useEffect(() => {
+    const target = initialFocus?.current ?? focusableElements(panel.current!)[0];
+    target?.focus();
   }, [initialFocus]);
 
   return createPortal(
@@ -173,6 +176,7 @@ export default function FolderPicker({
   const [activeIndex, setActiveIndex] = useState(0);
   const rows = useRef<Array<HTMLButtonElement | null>>([]);
   const listRegion = useRef<HTMLDivElement>(null);
+  const confirmBack = useRef<HTMLButtonElement>(null);
   const loadController = useRef<AbortController | null>(null);
   const focusAfterLoad = useRef(false);
 
@@ -232,7 +236,11 @@ export default function FolderPicker({
 
   if (confirming && replacing !== undefined && currentPath !== undefined) {
     return (
-      <ModalFrame title="フォルダの変更を確認" onClose={onClose}>
+      <ModalFrame
+        title="フォルダの変更を確認"
+        onClose={onClose}
+        initialFocus={confirmBack}
+      >
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
           <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
             <span className="text-xs font-medium text-fg-muted">変更前</span>
@@ -250,7 +258,11 @@ export default function FolderPicker({
           )}
         </div>
         <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
-          <Button onClick={() => setConfirming(false)} disabled={submitting}>
+          <Button
+            ref={confirmBack}
+            onClick={() => setConfirming(false)}
+            disabled={submitting}
+          >
             <ArrowLeft />
             戻る
           </Button>
