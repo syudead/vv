@@ -23,7 +23,9 @@ tasks:
     desc: Download dependencies and warm local tool caches.
     cmds:
       - go mod download
-      - task: web-deps
+      # web-deps 越しではなく直接呼ぶ。setup は「入れ直す」入口なので、
+      # 最新かどうかの判定で飛ばしてはいけない。
+      - npm --prefix web ci
       - task: golangci
         vars: { GOLANGCI_ARGS: "--version" }
       - go build ./...
@@ -83,6 +85,7 @@ tasks:
       - task: test
       - task: generate-check
       - task: migrations-check
+      - task: build-windows-check
       - 'echo "check: all checks passed (browser checks are in task test-e2e)"'
 
   fmt-check:
@@ -141,6 +144,16 @@ tasks:
     desc: Check that applied migrations have not been changed.
     cmds:
       - bash scripts/migrations-immutable.sh
+
+  # Windows でしか使わないコード（scripts/dev/procgroup_other.go）は、
+  # 手元の GOOS では型検査すらされない。壊れたことに気付く口をここに置く。
+  build-windows-check:
+    desc: Check that the sources still build for Windows.
+    env:
+      GOOS: windows
+      CGO_ENABLED: 0
+    cmds:
+      - go build ./...
 
   # golangci-lint は run と fmt の両方で使う。版は scripts/tool-versions.json が
   # 単一の出どころなので、呼び出しもここ1か所に寄せる。

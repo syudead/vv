@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/syudead/vv/scripts/devtools"
 )
@@ -20,6 +21,14 @@ import (
 // requiredCommands は開発サーバーが使う外部コマンドである。足りない理由は
 // task doctor が詳しく出すので、ここでは入口だけを塞ぐ。
 var requiredCommands = []string{"go", "npm", "ffmpeg", "ffprobe"}
+
+// drainTimeout は停止を指示したサーバーの後始末を待つ上限である。孫を残す
+// 経路（Windows）では出力の口が閉じず Wait が返らないので、待ち続けると
+// 端末が固まる。unix の SIGKILL 猶予より長く取る。
+const drainTimeout = 10 * time.Second
+
+// outputLock は2つのサーバーの行が混ざらないようにする。
+var outputLock sync.Mutex
 
 // prefixWriter は行頭に出所を付ける。2つのサーバーの出力が混ざるので、
 // どちらの行かが分からないと読めない。
@@ -43,10 +52,32 @@ func (w *prefixWriter) Write(p []byte) (int, error) {
 			break
 		}
 		if _, err := fmt.Fprint(w.out, w.prefix, line); err != nil {
-			return 0, err
+			// 受け取った分は取り込み済みなので、書けた量ではなく
+			// 消費した量を返す（io.Writer の約束）。
+			return len(p), err
 		}
 	}
 	return len(p), nil
+}
+
+// flush は改行で終わらなかった最後の行を出す。落ちる直前の一行は改行を
+// 伴わないことがあり、捨てると「上の出力を確認すること」が嘘になる。
+func (w *prefixWriter) flush() {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if w.buf.Len() == 0 {
+		return
+	}
+	_, _ = fmt.Fprint(w.out, w.prefix, w.buf.String(), "\n")
+	w.buf.Reset()
+}
+
+// server は起動した開発サーバー1つである。
+type server struct {
+	label   string
+	cmd     *exec.Cmd
+	writers []*prefixWriter
 }
 
 // exit は終了したサーバーを伝える。
@@ -55,21 +86,29 @@ type exit struct {
 	err   error
 }
 
-func start(root, label string, env []string, name string, args ...string) (*exec.Cmd, error) {
+func start(root, label string, env []string, name string, args ...string) (*server, error) {
+	stdout := &prefixWriter{prefix: "[" + label + "] ", out: os.Stdout, mu: &outputLock}
+	stderr := &prefixWriter{prefix: "[" + label + "] ", out: os.Stderr, mu: &outputLock}
+
 	cmd := exec.Command(name, args...)
 	cmd.Dir = root
 	cmd.Env = append(os.Environ(), env...)
-	cmd.Stdout = &prefixWriter{prefix: "[" + label + "] ", out: os.Stdout, mu: &outputLock}
-	cmd.Stderr = &prefixWriter{prefix: "[" + label + "] ", out: os.Stderr, mu: &outputLock}
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	isolateProcessGroup(cmd)
 	if err := cmd.Start(); err != nil {
 		return nil, fmt.Errorf("%s を起動できません: %w", label, err)
 	}
-	return cmd, nil
+	return &server{label: label, cmd: cmd, writers: []*prefixWriter{stdout, stderr}}, nil
 }
 
-// outputLock は2つのサーバーの行が混ざらないようにする。
-var outputLock sync.Mutex
+func (s *server) stop() { terminateGroup(s.cmd) }
+
+func (s *server) flush() {
+	for _, w := range s.writers {
+		w.flush()
+	}
+}
 
 func main() {
 	root, err := devtools.RepositoryRoot()
@@ -91,6 +130,12 @@ func main() {
 		devtools.Fail(err)
 	}
 
+	// サーバーは独立したプロセスグループに入り、端末の Ctrl+C を直接は
+	// 受け取らない。止める責任はこちらにあるので、1つ目を起動する前に
+	// 合図を受け取れるようにしておく。
+	interrupts := make(chan os.Signal, 1)
+	signal.Notify(interrupts, os.Interrupt, syscall.SIGTERM)
+
 	fmt.Println("Go:   http://localhost:8080")
 	fmt.Println("Vite: http://localhost:5173 (/api proxies to :8080)")
 	fmt.Println("Data:", dataDir)
@@ -103,33 +148,39 @@ func main() {
 	webServer, err := start(root, "web", nil, "npm", "--prefix", "web", "run", "dev", "--",
 		"--host", "127.0.0.1", "--strictPort")
 	if err != nil {
-		terminateGroup(goServer)
+		goServer.stop()
+		goServer.flush()
 		devtools.Fail(err)
 	}
 
-	servers := map[string]*exec.Cmd{"go": goServer, "web": webServer}
+	servers := []*server{goServer, webServer}
 	exits := make(chan exit, len(servers))
-	for label, cmd := range servers {
-		go func() { exits <- exit{label: label, err: cmd.Wait()} }()
+	for _, s := range servers {
+		go func() { exits <- exit{label: s.label, err: s.cmd.Wait()} }()
 	}
 
-	interrupts := make(chan os.Signal, 1)
-	signal.Notify(interrupts, os.Interrupt, syscall.SIGTERM)
+	defer func() {
+		for _, s := range servers {
+			s.flush()
+		}
+	}()
 
 	select {
 	case <-interrupts:
-		for _, cmd := range servers {
-			terminateGroup(cmd)
+		for _, s := range servers {
+			s.stop()
 		}
 		drain(exits, len(servers))
-		return
 	case first := <-exits:
-		for label, cmd := range servers {
-			if label != first.label {
-				terminateGroup(cmd)
+		for _, s := range servers {
+			if s.label != first.label {
+				s.stop()
 			}
 		}
 		drain(exits, len(servers)-1)
+		for _, s := range servers {
+			s.flush()
+		}
 		// 正常終了でも止める。開発サーバーは動き続けるのが正しい状態なので、
 		// 落ちた理由が何であれ片肺では続けない。
 		reason := "正常終了"
@@ -141,9 +192,15 @@ func main() {
 }
 
 // drain は残りの Wait を回収してから戻る。回収しないと、止めたサーバーの
-// 最後の出力が表示されないまま終わることがある。
+// 最後の出力が表示されないまま終わる。孫が出力の口を握ったまま残ると Wait は
+// 返らないので、待つのは drainTimeout までにする。
 func drain(exits <-chan exit, remaining int) {
+	deadline := time.After(drainTimeout)
 	for range remaining {
-		<-exits
+		select {
+		case <-exits:
+		case <-deadline:
+			return
+		}
 	}
 }

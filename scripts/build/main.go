@@ -29,38 +29,44 @@ func preserveDist(root string, fn func() error) (err error) {
 	}
 	backupDist := filepath.Join(backupRoot, "dist")
 
-	hadDist := true
+	// 退避先を作った直後に後始末を登録する。途中で返っても空の退避先を
+	// 残さないため。戻す側の失敗も握り潰さない —— 版管理された
+	// web/dist/index.html が退避先にしか無い状態で黙って終わると、
+	// 利用者は作業ツリーが欠けたことに気付けない。
+	moved, existed := false, true
+	defer func() {
+		err = errors.Join(err, restoreDist(dist, backupDist, backupRoot, moved, existed))
+	}()
+
 	if _, statErr := os.Stat(dist); errors.Is(statErr, os.ErrNotExist) {
-		hadDist = false
+		existed = false
 	} else if statErr != nil {
 		return statErr
 	}
-	if hadDist {
+	if existed {
 		if err := os.Rename(dist, backupDist); err != nil {
 			return fmt.Errorf("%s を退避できません: %w", distPath, err)
 		}
+		moved = true
 	}
-
-	defer func() {
-		restoreErr := restoreDist(dist, backupDist, backupRoot, hadDist)
-		if err == nil {
-			err = restoreErr
-		}
-	}()
 
 	return fn()
 }
 
-func restoreDist(dist, backupDist, backupRoot string, hadDist bool) error {
-	if err := os.RemoveAll(dist); err != nil {
-		return fmt.Errorf("%s を片付けられません: %w", distPath, err)
+// restoreDist は退避した web/dist を戻し、退避先を片付ける。退避できなかった
+// ときは元の web/dist がそのまま残っているので、触らない。
+func restoreDist(dist, backupDist, backupRoot string, moved, existed bool) error {
+	var err error
+	switch {
+	case moved:
+		err = errors.Join(os.RemoveAll(dist), os.Rename(backupDist, dist))
+	case !existed:
+		// 退避するものが無かった場合。fn が作った出力だけを片付ける。
+		err = os.RemoveAll(dist)
 	}
-	if hadDist {
-		if err := os.Rename(backupDist, dist); err != nil {
-			return fmt.Errorf("%s を戻せません: %w", distPath, err)
-		}
-	}
-	return os.RemoveAll(backupRoot)
+	// existed かつ退避できなかったときは、元の web/dist がそのまま残って
+	// いるので触らない。
+	return errors.Join(err, os.RemoveAll(backupRoot))
 }
 
 func main() {

@@ -88,3 +88,29 @@ func TestPreserveDistRestoresAfterFailure(t *testing.T) {
 		t.Errorf("退避先を片付けていない: %v", local)
 	}
 }
+
+// web/dist が無い状態から始めた場合、ビルドが作った出力だけを片付ける。
+func TestPreserveDistRemovesOutputWhenNothingWasThere(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".local"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := preserveDist(root, func() error {
+		return os.MkdirAll(filepath.Join(root, distPath), 0o755)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := os.Stat(filepath.Join(root, distPath)); !os.IsNotExist(err) {
+		t.Errorf("退避するものが無かったのに出力を残した: %v", err)
+	}
+	local, err := os.ReadDir(filepath.Join(root, ".local"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(local) != 0 {
+		t.Errorf("退避先を片付けていない: %v", local)
+	}
+}

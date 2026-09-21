@@ -1,6 +1,7 @@
 // Package devtools は scripts/ 配下の開発者コマンドが共有する土台である。
-// 各コマンドは task から go run で呼ばれるので、追加のランタイムを増やさない
-// ことがこのパッケージの存在理由である（docs/exec-plans/completed/012-task-command-migration.md）。
+// 各コマンドは task から go run で呼ばれる。検査のためだけに別のランタイムを
+// 足さないという決まりは
+// specs/001-initial-setup/contracts/developer-commands.md にある。
 package devtools
 
 import (

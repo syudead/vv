@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -83,5 +84,36 @@ func TestReadToolVersionsRejectsIncompleteFile(t *testing.T) {
 	}
 	if versions.OapiCodegen != "v2.8.0" || versions.OpenapiTypescript != "7.13.0" {
 		t.Errorf("版を読み違えた: %+v", versions)
+	}
+}
+
+// TestGenerateStopsAtTheFirstFailure は、Go 側の生成に失敗したら
+// TypeScript 側を呼ばないことを確かめる。片方だけ新しい生成物が残ると、
+// 差分確認がどちらの原因で落ちたのか分からなくなる。
+func TestGenerateStopsAtTheFirstFailure(t *testing.T) {
+	calls := []string{}
+	failing := func(dir string, name string, args ...string) error {
+		calls = append(calls, name)
+		return errors.New("生成器が落ちた")
+	}
+
+	versions := toolVersions{OapiCodegen: "v2.8.0", OpenapiTypescript: "7.13.0"}
+	if err := generate(t.TempDir(), versions, failing); err == nil {
+		t.Fatal("生成器の失敗を伝えていない")
+	}
+	if !slices.Equal(calls, []string{"go"}) {
+		t.Errorf("失敗したあとも生成を続けた: %v", calls)
+	}
+
+	calls = nil
+	succeeding := func(dir string, name string, args ...string) error {
+		calls = append(calls, name)
+		return nil
+	}
+	if err := generate(t.TempDir(), versions, succeeding); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(calls, []string{"go", "npx"}) {
+		t.Errorf("生成器の呼び出しが揃っていない: %v", calls)
 	}
 }

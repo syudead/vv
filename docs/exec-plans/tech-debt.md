@@ -241,8 +241,10 @@ reconsideration.
   止めているが、Windows には同等の仕組みが無いため、起動したプロセスだけを
   止めている。孫が残ると vite が 5173 を掴んだままになり、次の `task dev` が
   `--strictPort` で失敗する。
-- 当面の対処: 失敗そのものは分かりやすいので、残ったプロセスを手で止める。
-  PowerShell 版でも `Stop-Job` が同じ状態だったため、振る舞いは変わっていない。
+- 当面の対処: 停止を待つのは `drainTimeout`（10 秒）までにして、孫が出力の口を
+  握ったままでも `task dev` 自体は終わるようにした。これが無いと `Wait` が
+  返らず端末が固まる。残ったプロセスは手で止める。PowerShell 版の `Stop-Job` は
+  孫を待たずに戻っていたので、待たせない点だけを合わせている。
 - 見直しの契機: Windows で実際に困ったとき。Job Object を使うか、
   `taskkill /T` 相当の停止に切り替える。
 - 一次資料: `scripts/dev/procgroup_other.go`

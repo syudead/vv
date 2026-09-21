@@ -27,3 +27,25 @@ func TestPrefixWriterLabelsCompleteLines(t *testing.T) {
 		t.Errorf("出所を付けた行になっていない:\n got %q\nwant %q", got, want)
 	}
 }
+
+func TestPrefixWriterFlushesTrailingLine(t *testing.T) {
+	var out bytes.Buffer
+	var lock sync.Mutex
+	writer := &prefixWriter{prefix: "[go] ", out: &out, mu: &lock}
+
+	// 落ちる直前の一行は改行を伴わないことがある。捨てると、こちらが出す
+	// 「上の出力を確認すること」に対応する出力が残らない。
+	if _, err := writer.Write([]byte("panic: nil map")); err != nil {
+		t.Fatal(err)
+	}
+	writer.flush()
+	if got, want := out.String(), "[go] panic: nil map\n"; got != want {
+		t.Errorf("改行で終わらない最後の行を出していない:\n got %q\nwant %q", got, want)
+	}
+
+	// 出し切ったあとの flush は何も足さない。
+	writer.flush()
+	if out.String() != "[go] panic: nil map\n" {
+		t.Errorf("二重に出力した: %q", out.String())
+	}
+}

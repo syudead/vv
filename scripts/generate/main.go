@@ -84,13 +84,17 @@ func changed(before, after map[string]string, paths []string) []string {
 	return stale
 }
 
-func generate(root string, versions toolVersions) error {
-	if err := devtools.Run(root, "go", "run",
+// runner は外部コマンドを実行する。テストから差し替えて、失敗したときに
+// 後続の生成器を呼ばないことを確かめる。
+type runner func(dir string, name string, args ...string) error
+
+func generate(root string, versions toolVersions, run runner) error {
+	if err := run(root, "go", "run",
 		"github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@"+versions.OapiCodegen,
 		"-config", "api/oapi-codegen.yaml", "api/openapi.yaml"); err != nil {
 		return err
 	}
-	return devtools.Run(root, "npx", "--yes",
+	return run(root, "npx", "--yes",
 		"openapi-typescript@"+versions.OpenapiTypescript,
 		"api/openapi.yaml", "-o", "web/src/api/gen/openapi.ts")
 }
@@ -115,7 +119,7 @@ func main() {
 		}
 	}
 
-	if err := generate(root, versions); err != nil {
+	if err := generate(root, versions, devtools.Run); err != nil {
 		devtools.Fail(err)
 	}
 
