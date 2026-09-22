@@ -88,6 +88,15 @@ func SeekThumbnailPath(root, contentKey string, positionMs int64) string {
 	return filepath.Join(SeekThumbnailDir(root, contentKey), fmt.Sprintf("%06d.jpg", index))
 }
 
+// RemoveSeekThumbnails removes the completed cache for one content key.
+func RemoveSeekThumbnails(thumbnailsDir, contentKey string) error {
+	root := filepath.Join(thumbnailsDir, "seek")
+	if err := os.RemoveAll(SeekThumbnailDir(root, contentKey)); err != nil {
+		return fmt.Errorf("シークサムネイルを削除できません: %w", err)
+	}
+	return nil
+}
+
 // RemoveOrphanSeekThumbnails removes completed caches that no longer have a
 // video row. Temporary directories are ignored because a worker may still be
 // generating them while a scan is being finalized.

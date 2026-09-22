@@ -143,6 +143,17 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 		); err != nil {
 			return err
 		}
+
+		// A scan can delete the video while ffmpeg is still generating files.
+		// Recheck after the atomic rename so a cache committed after scan cleanup
+		// cannot remain orphaned indefinitely.
+		keys, err := db.ContentKeys(context.WithoutCancel(ctx))
+		if err != nil {
+			return err
+		}
+		if _, referenced := keys[job.ContentKey]; !referenced {
+			return media.RemoveSeekThumbnails(cfg.ThumbnailsDir(), job.ContentKey)
+		}
 		return nil
 	}
 }

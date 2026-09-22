@@ -50,6 +50,7 @@ process command、stderrを返さない。
 - 既存動画はmigrationで生成jobへ一度だけ再投入し、一覧用thumbnailの状態は維持する
 - scan完了時にDBのcontent keyと照合し、削除済み動画の確定済みcacheを削除する
 - 生成中の一時directoryは掃除対象外とし、workerの後始末に任せる
+- workerは確定後にcontent keyの参照を再確認し、scan中に参照が消えていれば即座に削除する
 
 ## Client lifecycle
 

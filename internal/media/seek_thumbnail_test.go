@@ -120,3 +120,17 @@ func TestRemoveOrphanSeekThumbnailsWithoutCache(t *testing.T) {
 		t.Fatalf("removed = %d, want 0", removed)
 	}
 }
+
+func TestRemoveSeekThumbnails(t *testing.T) {
+	thumbnailsDir := t.TempDir()
+	target := SeekThumbnailDir(filepath.Join(thumbnailsDir, "seek"), "remove:1")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveSeekThumbnails(thumbnailsDir, "remove:1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("removed cache error = %v", err)
+	}
+}
