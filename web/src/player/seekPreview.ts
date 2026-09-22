@@ -25,11 +25,10 @@ export function seekPreviewTarget(
   const localX = Math.min(Math.max(clientX - rect.left, 0), rect.width);
   const ratio = rect.width > 0 ? localX / rect.width : 0;
   const positionMs = Math.round(ratio * durationMs);
-  const lastBucketMs =
-    Math.floor(Math.max(0, Math.ceil(durationMs) - 1) / bucketMs) * bucketMs;
+  const lastPositionMs = Math.max(0, Math.ceil(durationMs) - 1);
   const requestPositionMs = Math.min(
-    lastBucketMs,
-    Math.floor(positionMs / bucketMs) * bucketMs,
+    lastPositionMs,
+    Math.round(positionMs / bucketMs) * bucketMs,
   );
   const halfWidth = Math.min(previewWidth / 2, rect.width / 2);
   return {
@@ -66,6 +65,7 @@ export function attachSeekPreview(
   let visible = false;
   let request: AbortController | null = null;
   let timer: number | null = null;
+  let normalPreviewWidth = 0;
 
   const cancelPending = () => {
     if (timer !== null) window.clearTimeout(timer);
@@ -92,11 +92,14 @@ export function attachSeekPreview(
         ? "loading"
         : (preview.dataset.state as "loading" | "ready" | "unavailable"),
     );
+    if (preview.dataset.state !== "unavailable" && preview.offsetWidth > 0) {
+      normalPreviewWidth = preview.offsetWidth;
+    }
     const target = seekPreviewTarget(
       event.clientX,
       rect,
       options.durationMs,
-      preview.offsetWidth,
+      normalPreviewWidth || preview.offsetWidth,
     );
     preview.style.left = `${String(target.leftPx)}px`;
     time.textContent = formatDuration(target.positionMs);
@@ -171,7 +174,15 @@ export function attachSeekPreview(
       // The capture may already have been released by the browser.
     }
     activePointer = null;
-    hide();
+    const rect = progress.getBoundingClientRect();
+    const remainsHovered =
+      event.pointerType !== "touch" &&
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom;
+    if (remainsHovered) show(event);
+    else hide();
   };
 
   progress.addEventListener("pointerenter", onPointerEnter);

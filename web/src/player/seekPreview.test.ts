@@ -2,10 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { attachSeekPreview, seekPreviewTarget } from "./seekPreview";
 
-function pointer(type: string, clientX: number, pointerId = 1, pointerType = "mouse") {
+function pointer(
+  type: string,
+  clientX: number,
+  pointerId = 1,
+  pointerType = "mouse",
+  clientY = 5,
+) {
   const event = new Event(type) as PointerEvent;
   Object.defineProperties(event, {
     clientX: { value: clientX },
+    clientY: { value: clientY },
     pointerId: { value: pointerId },
     pointerType: { value: pointerType },
   });
@@ -45,9 +52,10 @@ describe("seek preview target", () => {
       requestPositionMs: 60_000,
       leftPx: 201,
     });
+    expect(seekPreviewTarget(303, rect, 120_000, 240).requestPositionMs).toBe(61_000);
     expect(seekPreviewTarget(500, rect, 120_000, 240)).toEqual({
       positionMs: 120_000,
-      requestPositionMs: 119_000,
+      requestPositionMs: 119_999,
       leftPx: 280,
     });
   });
@@ -128,7 +136,9 @@ describe("seek preview controller", () => {
     });
     const preview = progress.querySelector<HTMLElement>(".vv-seek-preview");
     if (preview === null) throw new Error("preview DOMがありません");
-    Object.defineProperty(preview, "offsetWidth", { value: 160 });
+    Object.defineProperty(preview, "offsetWidth", {
+      get: () => (preview.dataset.state === "unavailable" ? 30 : 160),
+    });
 
     progress.dispatchEvent(pointer("pointerdown", 250, 7, "touch"));
     progress.dispatchEvent(pointer("pointermove", 900, 7, "touch"));
@@ -139,7 +149,31 @@ describe("seek preview controller", () => {
     await Promise.resolve();
     expect(preview.dataset.state).toBe("unavailable");
 
+    progress.dispatchEvent(pointer("pointermove", 100, 7, "touch"));
+    expect(preview.dataset.state).toBe("loading");
+    expect(preview.style.left).toBe("80px");
+
     progress.dispatchEvent(pointer("pointerup", 900, 7, "touch"));
+    expect(preview.dataset.state).toBe("hidden");
+  });
+
+  it("mouse dragをbar内で終えるとhover previewを維持し、bar外では隠す", () => {
+    const progress = progressElement();
+    attachSeekPreview(progress, {
+      durationMs: 10_000,
+      thumbnailUrl: "/preview",
+      fetchImage: vi.fn(() => new Promise<Blob>(() => undefined)),
+    });
+    const preview = progress.querySelector<HTMLElement>(".vv-seek-preview");
+    if (preview === null) throw new Error("preview DOMがありません");
+    Object.defineProperty(preview, "offsetWidth", { value: 160 });
+
+    progress.dispatchEvent(pointer("pointerdown", 250));
+    progress.dispatchEvent(pointer("pointerup", 250));
+    expect(preview.dataset.state).toBe("loading");
+
+    progress.dispatchEvent(pointer("pointerdown", 250));
+    progress.dispatchEvent(pointer("pointerup", 600));
     expect(preview.dataset.state).toBe("hidden");
   });
 });

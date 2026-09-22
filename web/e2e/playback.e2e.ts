@@ -454,7 +454,7 @@ test.describe.serial("live MP4 playback", () => {
       }
 
       if (width === 360) {
-        await page.route("**/seek-thumbnail?*positionMs=4000*", (route) =>
+        await page.route("**/seek-thumbnail?*positionMs=5000*", (route) =>
           route.abort("failed"),
         );
         await page.mouse.move(
@@ -470,7 +470,7 @@ test.describe.serial("live MP4 playback", () => {
             fullPage: true,
           });
         }
-        await page.unroute("**/seek-thumbnail?*positionMs=4000*");
+        await page.unroute("**/seek-thumbnail?*positionMs=5000*");
       }
 
       await page.locator(".video-js").focus();
