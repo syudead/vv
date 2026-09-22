@@ -99,8 +99,8 @@ symlink が無ければ `ls` で見えた版つきの名前を直に指す。
 script を書くのは、`npx playwright screenshot` で足りないとき（画面幅を変えて何枚も撮る、
 操作してから撮る、要素だけを切り出す）でもある。
 
-`task build` はビルド中だけ `web/dist` を成果物へ差し替え、バイナリ生成後に元の内容を
-復元する。撮影後に `web/dist/index.html` を戻す操作は不要である。
+`task build` は `web/dist` へ成果物を書くが、版管理しているのは `.gitkeep` だけで、
+生成物は `.gitignore` で除いてある。撮影後に `web/dist` を戻す操作は不要である。
 
 ## どこに置き、どう貼るか
 

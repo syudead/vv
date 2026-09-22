@@ -17,14 +17,17 @@ dist/
 /build/
 /bin/
 
-# web/dist is the embed target for the Go binary. The two placeholder files below
-# are version controlled so that `go build ./...` works without a web build; every
-# other build artefact under web/dist stays out of version control. `task build`
-# restores the placeholder directory after embedding the production assets.
+# web/dist is the embed target for the Go binary. Only .gitkeep is version
+# controlled, so that the directory exists and `go build ./...` works without a
+# web build; every build artefact under web/dist stays out of version control.
+# `task build` writes next to .gitkeep instead of replacing the directory, so the
+# working tree stays clean whatever happens during the build.
 !web/dist/
 web/dist/*
 !web/dist/.gitkeep
-!web/dist/index.html
+
+# npm run test の出力先。web/dist を汚さないために分けてある。
+web/.vite-build-check/
 
 # task が sources / generates の判定に使う作業領域
 /.task/

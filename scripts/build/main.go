@@ -13,67 +13,34 @@ import (
 
 const (
 	distPath   = "web/dist"
+	keepFile   = ".gitkeep"
 	outputPath = "bin/mdm"
 )
 
-// preserveDist は web/dist を退避してから fn を実行し、必ず元へ戻す。
+// cleanDist はビルドの出力先から前回の生成物だけを消す。
 //
-// web/dist は Go の埋め込み先で、版管理には .gitkeep と index.html の
-// 置き場所だけを入れている（.gitignore）。ビルドはそこへ本番の資材を書くので、
-// 戻さないと作業ツリーが生成物で汚れたままになる。
-func preserveDist(root string, fn func() error) (err error) {
+// web/dist は Go の埋め込み先で、版管理に入れているのは .gitkeep だけである
+// （.gitignore）。Vite の emptyOutDir は .git 以外を区別せず消すので切ってあり、
+// 代わりにここで掃除する。.gitkeep を残したまま横へ書くので、途中で中断されても
+// 作業ツリーから版管理のファイルが消えることはない。
+func cleanDist(root string) error {
 	dist := filepath.Join(root, distPath)
-	backupRoot, err := os.MkdirTemp(filepath.Join(root, ".local"), "build-dist-backup-")
+	entries, err := os.ReadDir(dist)
+	if errors.Is(err, os.ErrNotExist) {
+		return os.MkdirAll(dist, 0o755)
+	}
 	if err != nil {
-		return fmt.Errorf("退避先を作れません: %w", err)
+		return err
 	}
-	backupDist := filepath.Join(backupRoot, "dist")
-
-	// 退避先を作った直後に後始末を登録する。途中で返っても空の退避先を
-	// 残さないため。戻す側の失敗も握り潰さない —— 版管理された
-	// web/dist/index.html が退避先にしか無い状態で黙って終わると、
-	// 利用者は作業ツリーが欠けたことに気付けない。
-	moved, existed := false, true
-	defer func() {
-		err = errors.Join(err, restoreDist(dist, backupDist, backupRoot, moved, existed))
-	}()
-
-	if _, statErr := os.Stat(dist); errors.Is(statErr, os.ErrNotExist) {
-		existed = false
-	} else if statErr != nil {
-		return statErr
-	}
-	if existed {
-		if err := os.Rename(dist, backupDist); err != nil {
-			return fmt.Errorf("%s を退避できません: %w", distPath, err)
+	for _, entry := range entries {
+		if entry.Name() == keepFile {
+			continue
 		}
-		moved = true
-	}
-
-	return fn()
-}
-
-// restoreDist は退避した web/dist を戻し、退避先を片付ける。退避できなかった
-// ときは元の web/dist がそのまま残っているので、触らない。
-//
-// 戻せなかったときは退避先を消さない。版管理された web/dist/index.html と
-// .gitkeep はその時点で退避先にしか無く、消すと原状回復の手段が無くなる。
-func restoreDist(dist, backupDist, backupRoot string, moved, existed bool) error {
-	switch {
-	case moved:
-		if err := os.RemoveAll(dist); err != nil {
-			return fmt.Errorf("%s を片付けられません。退避したものは %s にある: %w", distPath, backupDist, err)
-		}
-		if err := os.Rename(backupDist, dist); err != nil {
-			return fmt.Errorf("%s を戻せません。退避したものは %s にある: %w", distPath, backupDist, err)
-		}
-	case !existed:
-		// 退避するものが無かった場合。fn が作った出力だけを片付ける。
-		if err := os.RemoveAll(dist); err != nil {
-			return err
+		if err := os.RemoveAll(filepath.Join(dist, entry.Name())); err != nil {
+			return fmt.Errorf("%s の前回の生成物を消せません: %w", distPath, err)
 		}
 	}
-	return os.RemoveAll(backupRoot)
+	return nil
 }
 
 func main() {
@@ -86,24 +53,20 @@ func main() {
 	if err != nil {
 		devtools.Fail(err)
 	}
-	if err := os.MkdirAll(filepath.Join(root, ".local"), 0o755); err != nil {
+	if err := cleanDist(root); err != nil {
 		devtools.Fail(err)
 	}
-
-	err = preserveDist(root, func() error {
-		if err := devtools.Run(root, "npm", "--prefix", "web", "run", "build"); err != nil {
-			return err
-		}
-		if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
-			return err
-		}
-		// CGO を切るのは、配布するバイナリを実行環境の libc から独立させるため
-		// （Dockerfile の実行段は alpine）。
-		return devtools.RunEnv(root, []string{"CGO_ENABLED=0"}, "go", "build",
-			"-trimpath", "-ldflags", "-s -w -X main.version="+version,
-			"-o", outputPath, "./cmd/mdm")
-	})
-	if err != nil {
+	if err := devtools.Run(root, "npm", "--prefix", "web", "run", "build"); err != nil {
+		devtools.Fail(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "bin"), 0o755); err != nil {
+		devtools.Fail(err)
+	}
+	// CGO を切るのは、配布するバイナリを実行環境の libc から独立させるため
+	// （Dockerfile の実行段は alpine）。
+	if err := devtools.RunEnv(root, []string{"CGO_ENABLED=0"}, "go", "build",
+		"-trimpath", "-ldflags", "-s -w -X main.version="+version,
+		"-o", outputPath, "./cmd/mdm"); err != nil {
 		devtools.Fail(err)
 	}
 
