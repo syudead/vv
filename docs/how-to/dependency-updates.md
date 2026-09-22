@@ -6,8 +6,9 @@
 
 ## 何が起きるか
 
-- 毎週月曜の早朝（JST）に、Go modules / web npm / tools npm / GitHub Actions
-  の 4 グループに分けて PR が出る。脆弱性対応の PR は曜日を待たずに出る。
+- 毎週月曜の早朝（JST）に、Go modules / web npm / tools npm / GitHub Actions /
+  mise tools / container images の 6 グループに分けて PR が出る。脆弱性対応の
+  PR は曜日を待たずに出る。
 - マイナー・パッチ・lockfile 保守・ダイジェスト更新は、`main` の必須チェック
   （CI の 3 ジョブ）が通れば Renovate が自動でマージする。
 - メジャー更新は PR が残る。破壊的変更を読んで人がマージする。
@@ -18,7 +19,11 @@
 
 - `Dockerfile` の `golang` / `node` イメージと `mise.toml` の `go` / `node`。
   ランタイム版は `go.mod` の `go` 行と揃える必要があるので、人が
-  `go.mod` を上げるときに一緒に変える。
+  `go.mod` を上げるときに一緒に変える。mise manager は `go` を `golang/go`、
+  `node` を `nodejs` という packageName で扱うため、除外は `matchPackageNames`
+  ではなく両 manager に共通の `matchDepNames` で指定している。
+- `mise.toml` の `task` と `jq`、`Dockerfile` の `alpine` は対象内で、それぞれ
+  mise tools / container images グループに入る。
 - Dependabot の security updates はリポジトリ設定で無効にしている。
   Renovate の `vulnerabilityAlerts` が同じ役割を果たす。
 
