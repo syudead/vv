@@ -13,4 +13,5 @@ acceptance criteria. Add links to new specifications below.
 - [requirements.md と別担当者承認必須ルールの廃止](../../specs/006-remove-requirements-checklist/spec.md)
 - [設定画面](../../specs/007-settings-screen/spec.md)
 - [MP4 ライブ変換による動画再生](../../specs/008-live-mp4-playback/spec.md)
+- [動画シーク時のサムネイルプレビュー](../../specs/009-seek-thumbnail-preview/spec.md)
 - [仕様品質の規則: 要求の縮退を防ぐ](spec-quality.md)
