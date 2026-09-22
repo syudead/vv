@@ -64,10 +64,6 @@ describe("seek preview target", () => {
 describe("seek preview controller", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.stubGlobal("URL", {
-      createObjectURL: vi.fn(() => "blob:preview"),
-      revokeObjectURL: vi.fn(),
-    });
   });
 
   afterEach(() => {
@@ -118,12 +114,12 @@ describe("seek preview controller", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(preview.dataset.state).toBe("ready");
-    expect(image.src).toContain("blob:preview");
+    expect(image.src).toContain("positionMs=90000");
 
     progress.dispatchEvent(pointer("pointerleave", 400));
     expect(preview.dataset.state).toBe("hidden");
     detach();
-    expect(URL.revokeObjectURL).toHaveBeenCalled();
+    expect(progress.querySelector(".vv-seek-preview")).toBeNull();
   });
 
   it("touch dragはbar外でも追従し、終了時に隠す", async () => {

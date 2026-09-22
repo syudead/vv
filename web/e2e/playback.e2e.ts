@@ -73,7 +73,7 @@ async function waitForVideos(request: APIRequestContext) {
       },
       { timeout: 30_000 },
     )
-    .toBe(8);
+    .toBe(9);
 }
 
 async function play(page: Page, item: Video) {
@@ -488,6 +488,36 @@ test.describe.serial("live MP4 playback", () => {
       const back = page.getByRole("link", { name: "ライブラリ" });
       await back.focus();
       await Promise.all([page.waitForURL("/"), back.press("Enter")]);
+    }
+  });
+
+  test("縦動画のシークpreviewも実JPEGを表示する", async ({ page }) => {
+    const item = video("portrait");
+    await page.setViewportSize({ width: 768, height: 800 });
+    await play(page, item);
+
+    const seekBar = page.locator(".vjs-progress-holder");
+    const seekBounds = await seekBar.boundingBox();
+    if (seekBounds === null) throw new Error("player controls are not visible");
+    await page.mouse.move(
+      seekBounds.x + seekBounds.width * 0.5,
+      seekBounds.y + seekBounds.height / 2,
+    );
+
+    const preview = page.locator('.vv-seek-preview[data-state="ready"]');
+    await expect(preview).toBeVisible({ timeout: 5000 });
+    const previewBounds = await preview.boundingBox();
+    if (previewBounds === null) throw new Error("seek preview is not visible");
+    expect(previewBounds.width / previewBounds.height).toBeCloseTo(16 / 9, 1);
+    const image = preview.locator("img");
+    await expect(image).toHaveAttribute("src", /\/seek-thumbnail\?.*positionMs=/);
+    expect(await image.getAttribute("src")).not.toContain("blob:");
+    if (screenshotDir !== undefined) {
+      await mkdir(screenshotDir, { recursive: true });
+      await page.screenshot({
+        path: path.join(screenshotDir, "20260922-seek-thumbnail-portrait-768.png"),
+        fullPage: true,
+      });
     }
   });
 });

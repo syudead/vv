@@ -157,6 +157,15 @@ export function generateMediaFixtures(mediaDir) {
     "-f",
     "lavfi",
     "-i",
+    "testsrc2=size=180x320:rate=15:duration=6",
+    ...h264,
+    "-an",
+    file("portrait.mp4"),
+  ]);
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
     "color=c=red:size=320x180:rate=15:duration=10",
     "-f",
     "lavfi",
@@ -199,6 +208,7 @@ export function generateMediaFixtures(mediaDir) {
     "audio-only.mp4": { video: "h264", audio: "flac" },
     "video-audio.avi": { video: "mpeg4", audio: "pcm_s16le" },
     "silent.mkv": { video: "mpeg4", audio: undefined },
+    "portrait.mp4": { video: "h264", audio: undefined },
     "long-gop.mkv": { video: "h264", audio: "aac" },
   };
   for (const [name, codecs] of Object.entries(expected)) {
