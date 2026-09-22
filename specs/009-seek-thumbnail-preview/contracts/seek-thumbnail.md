@@ -26,7 +26,9 @@ machine-readable schema の正本は [api/openapi.yaml](../../../api/openapi.yam
 | `v` | string | no | `Video.seekThumbnailUrl` が返した content version |
 
 client は最寄りの1秒へ丸めた `positionMs` を送り、末尾を越える場合は `durationMs - 1` へ収める。
-server は受け取った有効値を変更せず抽出位置として扱う。
+server はその位置に最も近い有効な映像フレームを選び、選択時刻と要求時刻の差を1秒以内に収める。
+要求位置以後にフレームがない末尾付近では、最大1秒手前から再度デコードして最後に得られるフレームを
+返す。コンテナの終端時刻を映像フレームの開始時刻として扱わない。
 
 ### Success
 
@@ -34,7 +36,7 @@ server は受け取った有効値を変更せず抽出位置として扱う。
 - `Content-Type: image/jpeg`
 - `Cache-Control: public, max-age=31536000, immutable`（空でない `v` がある場合）
 - `Cache-Control: no-store`（`v` が無い場合）
-- Body: 指定位置から1秒以内の映像を表す1枚の JPEG
+- Body: 指定位置との差が1秒以内で最も近く取得できる映像を表す1枚の JPEG
 - Range response と `Content-Disposition` は提供しない
 
 画像は response のためだけに生成し、data directoryまたはmedia folderへ保存しない。response開始前に
@@ -56,6 +58,8 @@ process command、stderrを返さない。
 
 - current location は既存のmedia folder境界、symlink、regular-file検査を通ったものだけを使う
 - 抽出は request context と10秒のうち先に終了した方で中断する
+- 指定位置から画像を得られない場合は、`max(0, positionMs - 1000)` から終端までをデコードし、
+  指定位置に最も近い最後のframeを選ぶ。差が1秒を超える場合は画像取得不能とする
 - request中断後5秒以内にprocessとpipeを終了し、別requestの抽出または動画再生へ影響させない
 - JPEG は幅320px以内、縦横比を維持し、拡大しない
 - 元動画、SQLite、既存thumbnail、playback progressを変更しない

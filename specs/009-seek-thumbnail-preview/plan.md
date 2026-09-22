@@ -29,8 +29,8 @@
 
 **Feature-specific context**:
 
-- `GET /api/videos/{id}/seek-thumbnail` を OpenAPI に追加し、元動画の論理時刻 `positionMs` に対応する
-  JPEG を返す。動画詳細は content-derived version を含む `seekThumbnailUrl` を返す。
+- `GET /api/videos/{id}/seek-thumbnail` を OpenAPI に追加し、元動画の論理時刻 `positionMs` から1秒以内で
+  最も近く取得できる JPEG を返す。動画詳細は content-derived version を含む `seekThumbnailUrl` を返す。
 - 抽出処理は request context と短い上限時間に従い、生成画像を永続化しない。新しい SQLite 列、
   background job、data directory は追加しない。
 - client は対象時刻を最寄りの1秒へまとめ、150ms の debounce、前要求の中断、最新位置の照合で
@@ -123,8 +123,8 @@ specs/009-seek-thumbnail-preview/
 
 **Acceptance**: 有効な動画と時刻へ JPEG と immutable cache が返り、入力不正は400、動画・実体なしは404、
 解析未完了・尺なし・フレーム取得不能は409、process開始不能は500になる。先頭、中央、末尾の画像が
-要求時刻から1秒以内で、request中断時に抽出processが終了する。元動画、SQLite、data directoryに変更が
-なく、`task check` が成功する。
+要求時刻から1秒以内で、末尾に要求時刻以後のframeがない場合も手前の最終frameを返し、request中断時に
+抽出processが終了する。元動画、SQLite、data directoryに変更がなく、`task check` が成功する。
 
 ### シークバーのサムネイルプレビュー UI
 
