@@ -48,6 +48,8 @@ process command、stderrを返さない。
 - 一時directoryへ全画像を生成し、成功後にcontent keyのdirectoryへatomicにrenameする
 - 中断・失敗時は一時directoryを削除し、不完全な画像群を公開しない
 - 既存動画はmigrationで生成jobへ一度だけ再投入し、一覧用thumbnailの状態は維持する
+- scan完了時にDBのcontent keyと照合し、削除済み動画の確定済みcacheを削除する
+- 生成中の一時directoryは掃除対象外とし、workerの後始末に任せる
 
 ## Client lifecycle
 

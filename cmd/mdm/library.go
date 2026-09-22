@@ -21,9 +21,10 @@ import (
 // internal/scanner と internal/jobs は保存の手段を知らず、interface 越しに
 // ここで渡された *store.DB を使う。
 type library struct {
-	db      *store.DB
-	scanner *scanner.Scanner
-	logger  *slog.Logger
+	db            *store.DB
+	scanner       *scanner.Scanner
+	logger        *slog.Logger
+	thumbnailsDir string
 
 	// mu は走査の起動が重ならないようにする。実行中かどうかの判断は
 	// scans 表（部分ユニーク索引）が持つので、ここは goroutine を
@@ -35,7 +36,7 @@ type library struct {
 
 // newLibrary は走査・ジョブの組み立てを行う。
 func newLibrary(cfg Config, db *store.DB, logger *slog.Logger) *library {
-	lib := &library{db: db, logger: logger}
+	lib := &library{db: db, logger: logger, thumbnailsDir: cfg.ThumbnailsDir()}
 	lib.scanner = scanner.New(scanner.Options{
 		Index:    db,
 		Queue:    db,
@@ -132,20 +133,17 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 				}
 				return err
 			}
+			applied, err := db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
+			if err != nil || !applied {
+				return err
+			}
 		}
 		if err := media.GenerateSeekThumbnails(
 			ctx, job.LocationPath, cfg.ThumbnailsDir(), job.ContentKey,
 		); err != nil {
-			if !hadThumbnail && job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
-				if _, markErr := db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateFailed); markErr != nil {
-					return markErr
-				}
-			}
 			return err
 		}
-
-		_, err = db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
-		return err
+		return nil
 	}
 }
 
@@ -276,6 +274,23 @@ func (l *library) runScan(scanID int64) {
 	// 走査のたびに掃除する。起動時だけだと、長く動かしているうちに完了行が
 	// 積み上がる（取り込み直後は最大 2万行になる — data-model.md 4 節）。
 	l.cleanFinishedJobs(closeCtx)
+	l.cleanSeekThumbnails(closeCtx)
+}
+
+func (l *library) cleanSeekThumbnails(ctx context.Context) {
+	keys, err := l.db.ContentKeys(ctx)
+	if err != nil {
+		l.logger.Warn("シークサムネイルの参照を読み出せませんでした", slog.Any("error", err))
+		return
+	}
+	removed, err := media.RemoveOrphanSeekThumbnails(l.thumbnailsDir, keys)
+	if err != nil {
+		l.logger.Warn("孤児シークサムネイルを掃除できませんでした", slog.Any("error", err))
+		return
+	}
+	if removed > 0 {
+		l.logger.Info("孤児シークサムネイルを掃除しました", slog.Int("count", removed))
+	}
 }
 
 // cleanFinishedJobs は保存期間を過ぎた完了・失敗のジョブを消す。

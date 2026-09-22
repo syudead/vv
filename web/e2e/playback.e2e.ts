@@ -498,9 +498,7 @@ test.describe.serial("live MP4 playback", () => {
     const item = video("direct");
     await page.setViewportSize({ width: 360, height: 800 });
     await play(page, item);
-    await page.route("**/seek-thumbnail?*positionMs=5000*", (route) =>
-      route.abort("failed"),
-    );
+    await page.route("**/seek-thumbnail?*", (route) => route.abort("failed"));
     const seekBar = page.locator(".vjs-progress-holder");
     const seekBounds = await seekBar.boundingBox();
     if (seekBounds === null) throw new Error("seek bar is not visible");

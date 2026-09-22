@@ -26,10 +26,7 @@ export function seekPreviewTarget(
   const ratio = rect.width > 0 ? localX / rect.width : 0;
   const lastPositionMs = Math.max(0, Math.ceil(durationMs) - 1);
   const positionMs = Math.min(lastPositionMs, Math.round(ratio * durationMs));
-  const requestPositionMs = Math.min(
-    lastPositionMs,
-    Math.round(positionMs / bucketMs) * bucketMs,
-  );
+  const requestPositionMs = Math.floor(positionMs / bucketMs) * bucketMs;
   const halfWidth = Math.min(previewWidth / 2, rect.width / 2);
   return {
     positionMs,

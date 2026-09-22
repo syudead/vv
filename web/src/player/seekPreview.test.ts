@@ -55,7 +55,7 @@ describe("seek preview target", () => {
     expect(seekPreviewTarget(303, rect, 120_000, 240).requestPositionMs).toBe(60_000);
     expect(seekPreviewTarget(500, rect, 120_000, 240)).toEqual({
       positionMs: 119_999,
-      requestPositionMs: 119_999,
+      requestPositionMs: 115_000,
       leftPx: 280,
     });
   });
