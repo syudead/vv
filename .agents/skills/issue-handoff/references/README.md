@@ -8,6 +8,7 @@ Codex, and other Agent Skills-compatible tools use the same files.
 | Path | Owner | Purpose |
 | --- | --- | --- |
 | `.agents/skills/` | This repository | Shared Agent Skills and handoff procedures |
+| `.codex/agents/` | This repository | Optional project-scoped Codex workers used inside a handoff run |
 | `.specify/` | Spec Kit | Installed templates, scripts, metadata, and bundled workflows |
 
 Do not put repository handoff policy under `.specify/`, and do not patch
@@ -18,6 +19,12 @@ handoff does not invoke it, and it is not a GitHub event trigger.
 `.specify/init-options.json`, `.specify/integration.json`, and integration
 manifests record how Spec Kit was installed and updated. They do not select the
 agent for an Issue handoff run and are not runtime state.
+
+Project-scoped workers under `.codex/agents/` may perform a bounded part of a
+run when Codex is the selected host. They do not own the handoff, persist its
+state, or start another stage; the parent agent remains responsible for the
+workflow and its pull request. Other Agent Skills-compatible hosts may use an
+equivalent bounded worker or perform that part locally.
 
 ## Inputs and sources of truth
 

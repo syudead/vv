@@ -8,6 +8,15 @@ Read [README.md](README.md) first. Input is one native child Issue.
    Otherwise, an existing PR for the child does not block a separate PR.
 3. Create an arbitrary-name sub-branch from the current feature branch.
 4. Implement only the work named by the child Issue and its necessary tests.
+   When Codex provides the project-scoped `subissue_implementer` custom agent,
+   delegate this step to it. Give it the child Issue body, the relevant approved
+   artifact paths, the acceptance evidence, and an explicit write scope. The
+   worker owns only the implementation, focused tests, and focused checks: it
+   does not create branches, change approved artifacts, run self-review, push,
+   or open a PR. Wait for it to finish, inspect its changes, and keep ownership
+   of every later step in this workflow. If that custom agent is unavailable,
+   use an equivalent bounded worker when the host supports one, or perform this
+   step locally.
 5. Run focused checks and the repository checks required by the change. For UI
    work, follow `docs/how-to/ui-change-screenshots.md` and `ui-design.md`, and
    include screenshots plus visual, interaction, and accessibility review.
