@@ -7,9 +7,13 @@ import tailwindcss from "@tailwindcss/vite";
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   build: {
-    // Go 側が embed する出力先。web/dist は版管理にプレースホルダを置いてある。
+    // Go 側が embed する出力先。web/dist は版管理に .gitkeep だけを置いてあり、
+    // これが Go の埋め込み対象を空にしないので、SPA をビルドしていなくても
+    // go build ./... が通る。emptyOutDir を切っているのは、これが .git 以外を
+    // 区別せず消して .gitkeep まで持っていくため。前回の生成物の掃除は
+    // scripts/build が .gitkeep を残して行う。
     outDir: "dist",
-    emptyOutDir: true,
+    emptyOutDir: false,
   },
   server: {
     port: 5173,

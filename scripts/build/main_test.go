@@ -1,23 +1,19 @@
 package main
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-// prepareRoot は web/dist の置き場所だけを持つ版管理の根を模す。
+// prepareRoot は .gitkeep だけを持つ版管理の根を模す。
 func prepareRoot(t *testing.T) string {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, distPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(root, ".local"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(root, distPath, ".gitkeep"), nil, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(root, distPath, keepFile), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return root
@@ -36,108 +32,56 @@ func distEntries(t *testing.T, root string) []string {
 	return names
 }
 
-func TestPreserveDistRestoresPlaceholderAfterBuild(t *testing.T) {
+// 前回の生成物は消すが、版管理された .gitkeep は残す。これが消えると
+// 埋め込み先が空になり、SPA をビルドしていない状態で go build ./... が通らなくなる。
+func TestCleanDistRemovesArtefactsButKeepsThePlaceholder(t *testing.T) {
 	root := prepareRoot(t)
+	dist := filepath.Join(root, distPath)
+	if err := os.MkdirAll(filepath.Join(dist, "assets"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dist, "index.html"), []byte("前回の出力"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
-	err := preserveDist(root, func() error {
-		// ビルドが本番の資材を書く様子を模す。
-		if err := os.MkdirAll(filepath.Join(root, distPath, "assets"), 0o755); err != nil {
-			return err
-		}
-		return os.WriteFile(filepath.Join(root, distPath, "index.html"), []byte("built"), 0o644)
-	})
-	if err != nil {
+	if err := cleanDist(root); err != nil {
 		t.Fatal(err)
 	}
 
 	names := distEntries(t, root)
-	if len(names) != 1 || names[0] != ".gitkeep" {
-		t.Errorf("ビルド後に web/dist が元へ戻っていない: %v", names)
+	if len(names) != 1 || names[0] != keepFile {
+		t.Errorf("前回の生成物だけを消していない: %v", names)
 	}
 }
 
-// ビルドが失敗しても作業ツリーを汚したままにしない。
-func TestPreserveDistRestoresAfterFailure(t *testing.T) {
-	root := prepareRoot(t)
-	failure := errors.New("ビルド失敗")
+// 置き場所が無ければ作る。埋め込み先が無いまま Vite を呼ぶと、
+// 出力先の用意で失敗する経路が増える。
+func TestCleanDistCreatesTheDirectoryWhenItIsMissing(t *testing.T) {
+	root := t.TempDir()
 
-	err := preserveDist(root, func() error {
-		if err := os.MkdirAll(filepath.Join(root, distPath), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(filepath.Join(root, distPath, "index.html"), []byte("half built"), 0o644); err != nil {
-			return err
-		}
-		return failure
-	})
-	if !errors.Is(err, failure) {
-		t.Errorf("ビルドの失敗を伝えていない: %v", err)
+	if err := cleanDist(root); err != nil {
+		t.Fatal(err)
+	}
+
+	info, err := os.Stat(filepath.Join(root, distPath))
+	if err != nil {
+		t.Fatalf("置き場所を作っていない: %v", err)
+	}
+	if !info.IsDir() {
+		t.Errorf("%s がディレクトリではない", distPath)
+	}
+}
+
+// 掃除だけで済ませるので、既に .gitkeep しか無い状態は何も変えない。
+func TestCleanDistLeavesACleanDirectoryAlone(t *testing.T) {
+	root := prepareRoot(t)
+
+	if err := cleanDist(root); err != nil {
+		t.Fatal(err)
 	}
 
 	names := distEntries(t, root)
-	if len(names) != 1 || names[0] != ".gitkeep" {
-		t.Errorf("失敗時に web/dist が元へ戻っていない: %v", names)
-	}
-
-	// 退避先も残さない。
-	local, err := os.ReadDir(filepath.Join(root, ".local"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(local) != 0 {
-		t.Errorf("退避先を片付けていない: %v", local)
-	}
-}
-
-// web/dist が無い状態から始めた場合、ビルドが作った出力だけを片付ける。
-func TestPreserveDistRemovesOutputWhenNothingWasThere(t *testing.T) {
-	root := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(root, ".local"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	err := preserveDist(root, func() error {
-		return os.MkdirAll(filepath.Join(root, distPath), 0o755)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := os.Stat(filepath.Join(root, distPath)); !os.IsNotExist(err) {
-		t.Errorf("退避するものが無かったのに出力を残した: %v", err)
-	}
-	local, err := os.ReadDir(filepath.Join(root, ".local"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(local) != 0 {
-		t.Errorf("退避先を片付けていない: %v", local)
-	}
-}
-
-// 戻せなかったときは退避先を残す。版管理された web/dist/index.html と
-// .gitkeep はその時点で退避先にしか無い。
-func TestRestoreDistKeepsTheBackupWhenItCannotRestore(t *testing.T) {
-	root := t.TempDir()
-	backupRoot := filepath.Join(root, "backup")
-	backupDist := filepath.Join(backupRoot, "dist")
-	if err := os.MkdirAll(backupDist, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(backupDist, ".gitkeep"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// 戻し先の親をファイルにして rename を失敗させる。
-	if err := os.WriteFile(filepath.Join(root, "web"), nil, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	dist := filepath.Join(root, "web", "dist")
-
-	if err := restoreDist(dist, backupDist, backupRoot, true, true); err == nil {
-		t.Fatal("戻せなかったことを伝えていない")
-	}
-	if _, err := os.Stat(filepath.Join(backupDist, ".gitkeep")); err != nil {
-		t.Errorf("戻せなかったのに退避先を消した: %v", err)
+	if len(names) != 1 || names[0] != keepFile {
+		t.Errorf("掃除済みの置き場所を変えた: %v", names)
 	}
 }
