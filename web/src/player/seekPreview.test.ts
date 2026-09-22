@@ -136,8 +136,9 @@ describe("seek preview controller", () => {
     });
     const preview = progress.querySelector<HTMLElement>(".vv-seek-preview");
     if (preview === null) throw new Error("preview DOMがありません");
+    let normalWidth = 160;
     Object.defineProperty(preview, "offsetWidth", {
-      get: () => (preview.dataset.state === "unavailable" ? 30 : 160),
+      get: () => (preview.dataset.state === "unavailable" ? 30 : normalWidth),
     });
 
     progress.dispatchEvent(pointer("pointerdown", 250, 7, "touch"));
@@ -149,9 +150,10 @@ describe("seek preview controller", () => {
     await Promise.resolve();
     expect(preview.dataset.state).toBe("unavailable");
 
+    normalWidth = 240;
     progress.dispatchEvent(pointer("pointermove", 100, 7, "touch"));
     expect(preview.dataset.state).toBe("loading");
-    expect(preview.style.left).toBe("80px");
+    expect(preview.style.left).toBe("120px");
 
     progress.dispatchEvent(pointer("pointerup", 900, 7, "touch"));
     expect(preview.dataset.state).toBe("hidden");

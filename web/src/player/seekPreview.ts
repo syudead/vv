@@ -65,7 +65,6 @@ export function attachSeekPreview(
   let visible = false;
   let request: AbortController | null = null;
   let timer: number | null = null;
-  let normalPreviewWidth = 0;
 
   const cancelPending = () => {
     if (timer !== null) window.clearTimeout(timer);
@@ -92,14 +91,20 @@ export function attachSeekPreview(
         ? "loading"
         : (preview.dataset.state as "loading" | "ready" | "unavailable"),
     );
-    if (preview.dataset.state !== "unavailable" && preview.offsetWidth > 0) {
-      normalPreviewWidth = preview.offsetWidth;
+    const nextBucket = seekPreviewTarget(
+      event.clientX,
+      rect,
+      options.durationMs,
+      0,
+    ).requestPositionMs;
+    if (activeBucket !== nextBucket && preview.dataset.state === "unavailable") {
+      setState("loading");
     }
     const target = seekPreviewTarget(
       event.clientX,
       rect,
       options.durationMs,
-      normalPreviewWidth || preview.offsetWidth,
+      preview.offsetWidth,
     );
     preview.style.left = `${String(target.leftPx)}px`;
     time.textContent = formatDuration(target.positionMs);
