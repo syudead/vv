@@ -12,10 +12,13 @@ conditions.
 Then read the stage reference for the workflow requested by the user. The
 parent Issue's `Next` value is a hint, not an execution gate:
 
-- `specify`: [references/specify.md](references/specify.md)
 - `plan`: [references/plan.md](references/plan.md)
 - `design`: [references/design.md](references/design.md)
 - `plan-to-issues`: [references/plan-to-issues.md](references/plan-to-issues.md)
 - child Issue implementation: [references/implement.md](references/implement.md)
+
+Writing or revising the requirement itself is not a stage here. The parent
+Issue is the specification, and the
+[`issue-spec` skill](../issue-spec/SKILL.md) writes it.
 
 Perform one stage, open or update one pull request, and stop.

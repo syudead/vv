@@ -11,7 +11,7 @@ PRを作り、そこで終了する。
 ```text
 main
   <- feature branch                 integration PR（Closes parent）
-       <- arbitrary stage branch    Spec / Plan / Design PR
+       <- arbitrary stage branch    Plan / Design PR
        <- arbitrary task branch     implementation PR
        <- arbitrary sync branch     latest main synchronization PR
 ```
@@ -26,8 +26,8 @@ branch名は識別子ではない。Issue番号とfeature directory番号にも�
 
 新方式では作業の文脈を二種類から読む。
 
-- repository state: feature branchへmerge済みの`spec.md`、`plan.md`、`ui-design.md`
-- GitHub relationships: Issue timeline、integration PRの`Closes`、PRのhead/base、native sub-issues
+- repository state: feature branchへmerge済みの`plan.md`、`ui-design.md`
+- GitHub relationships: 親Issue本文、Issue timeline、integration PRの`Closes`、PRのhead/base、native sub-issues
 
 agent固有session、packet、独自JSON、branch命名はどちらにも含めない。
 
@@ -35,23 +35,26 @@ agent固有session、packet、独自JSON、branch命名はどちらにも含め�
 
 ### Parent Issue
 
-親Issueは要求とSDD成果物の到達点だけを持つ。PR、branch、子Issue一覧、retry、agent情報は書かない。
+親Issueは仕様そのものとSDD成果物の到達点を持つ。要求、要件、受け入れ条件、Edge Cases、
+対象外がここにあり、`.agents/skills/issue-spec`が書く。PR、branch、子Issue一覧、retry、
+agent情報は書かない。
 
 ```markdown
 ## SDD
 
-- [x] Spec: `specs/006-search/spec.md`
 - [x] Plan: `specs/006-search/plan.md`
 ```
 
 UI IssueだけはPlanの後にDesignを持つ。`Next`は
-`specify | plan | design | plan-to-issues`のいずれかで、子Issue作成後に削除する。
+`plan | design | plan-to-issues`のいずれかで、子Issue作成後に削除する。
 ただしSDD節は人向けの進捗表示であり、指定された工程を許可または禁止する状態機械ではない。
 
 ### Feature artifacts
 
 共通skillは指定されたIssue、PR、branch、現在のcheckoutと、関連する成果物をそのまま読む。
-`spec.md`の親Issue表記は文脈の補助であり、対象を決めるための照合キーや実行条件にはしない。
+`specs/001-008`は凍結済みで、作られた当時の機能の記録として残す。新しいfeatureに
+`spec.md`を作らず、凍結済みのものも編集しない。置き換えが起きる場合はPlanの
+`## 既存仕様への影響`が記録する。
 
 既存の後続成果物が後から改訂された前段成果物を取り込んでいるかは自動推測しない。改訂時は保守者が
 親IssueのSDD summaryを戻し、影響する工程をreviewed PRとして再実行する。
@@ -75,9 +78,9 @@ native sub-issue関係は必要に応じて読むが、親からintegration PR�
 
 ## Stage transitions
 
-通常Issueは`specify -> plan -> plan-to-issues`、UI Issueは
-`specify -> plan -> design -> plan-to-issues`で進む。成果物stageは任意名sub-branchからfeature
-branch向けPRを一件作って終了し、人がreview、merge、親IssueのSDD節更新を行う。
+通常Issueは`plan -> plan-to-issues`、UI Issueは`plan -> design -> plan-to-issues`で進む。
+仕様は親Issueとして先に書かれているので、工程には含めない。成果物stageは任意名sub-branchから
+feature branch向けPRを一件作って終了し、人がreview、merge、親IssueのSDD節更新を行う。
 
 `plan-to-issues`は承認済みPlanから実装作業を直接native sub-issueとして作る。子Issueを作る直前に親の既存
 sub-issuesを確認し、同じ作業が既にあれば作成しない。既存childの更新やcloseは対象Issueが明示された
@@ -85,7 +88,7 @@ sub-issuesを確認し、同じ作業が既にあれば作成しない。既存c
 
 ## Integration
 
-Spec merge直後にfeature branchから`main`へのintegration PRを作り、featureの生存中は同じPRを使う。
+Plan merge直後にfeature branchから`main`へのintegration PRを作り、featureの生存中は同じPRを使う。
 全child解決後、最新`main`を同期用sub-branchへmergeし、そのPRをfeatureへmergeする。feature全体の
 `task check`と必要なUI reviewを再実行してから、人がintegration PRをmergeする。rebaseやforce-pushで
 長寿命feature branchを書き換えない。
