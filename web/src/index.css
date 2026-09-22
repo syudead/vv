@@ -56,7 +56,7 @@
   display: none;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
 }
 
 .vv-seek-preview[data-state="ready"] img {
