@@ -100,4 +100,3 @@ If the user supplies partial updates (e.g., only one principle revision), still 
 If critical info missing (e.g., ratification date truly unknown), insert `TODO(<FIELD_NAME>): explanation` and include in the Sync Impact Report under deferred items.
 
 Write only `.specify/memory/constitution.md`; do not create or modify template source files.
-
