@@ -31,7 +31,7 @@ record of what was investigated.
 
 Before writing any artifact, read
 [docs/design-docs/plan-quality.md](../../../docs/design-docs/plan-quality.md).
-It defines P-1..P-8, the rules every artifact this command produces must
+It defines P-1..P-7, the rules every artifact this command produces must
 satisfy. The three that decide whether the output is usable:
 
 - **P-1** — write a decision, or write nothing. Investigation belongs in
@@ -193,7 +193,7 @@ something to say, is worse than an absent one.
 
 - Use absolute paths for filesystem operations; use project-relative paths for references in documentation
 - Follow [docs/design-docs/plan-quality.md](../../../docs/design-docs/plan-quality.md)
-  (P-1..P-8) for every artifact this command writes
+  (P-1..P-7) for every artifact this command writes
 - Link the canonical definition rather than copying it; a plan artifact holds
   what is specific to this feature, plus whatever has no canonical home yet
 - Every artifact must let a reader reach the canonical sources it relies on

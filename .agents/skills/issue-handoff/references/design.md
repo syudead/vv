@@ -11,9 +11,8 @@ and it is not a place to re-choose things that are already chosen.
 
 Read these before writing, and link them rather than repeating them:
 
-- [docs/design-docs/library-ui-design-system.md](../../../../docs/design-docs/library-ui-design-system.md)
+- [docs/design-docs/library-ui.md](../../../../docs/design-docs/library-ui.md)
   — the visual rules and why they are what they are
-- [docs/design-docs/modern-library-ui.md](../../../../docs/design-docs/modern-library-ui.md)
   — the layout and information hierarchy the product has settled on
 - `web/src/index.css` (`@theme`) — the design-token values themselves. Never
   copy a token's value into `ui-design.md`; name the token. This is about token
@@ -22,8 +21,8 @@ Read these before writing, and link them rather than repeating them:
 - `web/src/theme/tokens.test.ts` — the `pairs` array is what actually enforces
   contrast; it is a hard-coded list, so a foreground/background combination is
   checked only once it is added there. A new colour token is a decision, and the
-  change that introduces it records the token in
-  `specs/004-library-ui/contracts/design-tokens.md`. Add a pair to that array
+  change that introduces it records the token in `web/src/index.css`, which is
+  the single source of truth for the values. Add a pair to that array
   only for a combination that carries a contrast requirement — the array is not
   a registry of tokens, and it reads six-digit hex values only, so a
   translucent or decorative token does not belong in it

@@ -8,12 +8,11 @@ import (
 	"time"
 )
 
-// alternativesHint はテストが落ちた開発者に、次に読むべきものを示す（FR-015）。
+// alternativesHint はテストが落ちた開発者に、次に読むべきものを示す。
 // 出力だけで代替手段の検討先が分かる状態にしておく。
-const alternativesHint = "この前提が崩れた場合の代替手段は " +
-	"specs/001-initial-setup/research.md の R-001 \"Alternatives considered\" にある" +
-	"（mattn/go-sqlite3 + -tags sqlite_fts5 への切り替え、2文字検索の扱い、" +
-	"外部の全文検索エンジンの導入）。まずそこを読むこと。"
+const alternativesHint = "この前提が崩れた場合の代替手段: " +
+	"mattn/go-sqlite3 + -tags sqlite_fts5 への切り替え（CGO が要る）、" +
+	"2文字検索を LIKE 経路へ寄せる範囲の見直し、外部の全文検索エンジンの導入。"
 
 // ftsFixture はマイグレーションを適用したデータベースに検証用の行を入れて返す。
 func ftsFixture(t *testing.T) *DB {
@@ -66,7 +65,7 @@ func countMatch(t *testing.T, db *DB, query string) int {
 
 // TestFTS5TrigramIsAvailable は trigram トークナイザの仮想表が作れることを固定する。
 // Phase 0 最大のリスクだった「CGO 不要のドライバで日本語の部分一致検索ができるか」の
-// 前提そのものである（FR-014／SC-007、research.md R-001）。
+// 前提そのものである。
 func TestFTS5TrigramIsAvailable(t *testing.T) {
 	db := ftsFixture(t)
 
@@ -142,7 +141,7 @@ func TestFTS5TrigramMatchesTwoCharacterQueryWithLike(t *testing.T) {
 			"trigram 表への LIKE は索引で処理される前提である\n%s", count, alternativesHint)
 	}
 
-	// 索引が使われていることも確認する（research.md R-001 の実行計画に対応）。
+	// 索引が使われていることも確認する。
 	var plan strings.Builder
 	rows, err := db.SQL().Query(
 		`explain query plan select rowid from videos_fts where title like ?`, "%旅行%",
@@ -172,7 +171,7 @@ func TestFTS5TrigramMatchesTwoCharacterQueryWithLike(t *testing.T) {
 }
 
 // TestFTS5RebuildRecoversIndex は、トリガの取りこぼしが疑われたときの復旧手段が
-// 実際に動くことを固定する（data-model.md「一貫性と再構築」）。
+// 実際に動くことを固定する。
 func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	db := ftsFixture(t)
 
@@ -205,7 +204,7 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	}
 }
 
-// 検索の2経路（[TD-001] / R-110）。書記素が3文字以上なら MATCH、
+// 検索の2経路。書記素が3文字以上なら MATCH、
 // 1〜2文字なら同じ FTS5 表への LIKE に振り分ける。
 //
 // trigram は3文字単位で索引を作るため2文字以下は MATCH に一致せず、
@@ -280,7 +279,7 @@ func searchTitles(t *testing.T, db *DB, query string) []string {
 	return titlesOf(page)
 }
 
-// 3文字以上は MATCH 経路で、先頭一致ではない部分一致が取れる（FR-022）。
+// 3文字以上は MATCH 経路で、先頭一致ではない部分一致が取れる。
 func TestSearchMatchRoute(t *testing.T) {
 	db := searchFixture(t)
 
@@ -298,7 +297,7 @@ func TestSearchMatchRoute(t *testing.T) {
 }
 
 // 1〜2文字は LIKE 経路。日本語では2文字の検索語が多く、これが
-// 取れないと検索が実用にならない（FR-023 / [TD-001]）。
+// 取れないと検索が実用にならない。
 func TestSearchLikeRoute(t *testing.T) {
 	db := searchFixture(t)
 
@@ -361,7 +360,7 @@ func TestSearchEscapesSpecialCharacters(t *testing.T) {
 
 // 検索時の並び順は一覧と同じ規則を使う。関連度（bm25）にしないのは、
 // LIKE 経路に関連度が無く、2つの経路で並びが変わると利用者から見て
-// 不可解になるためである（R-110）。
+// 不可解になるためである。
 func TestSearchUsesSameOrderAsListing(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -399,7 +398,7 @@ func TestSearchUsesSameOrderAsListing(t *testing.T) {
 	}
 }
 
-// total は絞り込み後の件数である（FR-012）。
+// total は絞り込み後の件数である。
 func TestSearchTotalIsFiltered(t *testing.T) {
 	db := searchFixture(t)
 

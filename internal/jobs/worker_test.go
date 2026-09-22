@@ -129,7 +129,7 @@ func runWorker(t *testing.T, queue *fakeQueue, handlers map[domain.JobKind]Handl
 }
 
 // ワーカーは直列（並列度1）で処理する。初回スキャンで HDD の I/O を飽和
-// させないための決定である（R-106）。
+// させないための決定である。
 func TestWorkerProcessesJobsSerially(t *testing.T) {
 	queue := &fakeQueue{}
 	for i := int64(1); i <= 10; i++ {
@@ -212,7 +212,7 @@ func TestWorkerRecoversAfterTransientFailure(t *testing.T) {
 }
 
 // 起動時に running を巻き戻してから処理を始める。取り込み中に止めても
-// 次の起動で再開できる（R-106）。
+// 次の起動で再開できる。
 func TestWorkerRequeuesRunningJobsBeforeStarting(t *testing.T) {
 	queue := &fakeQueue{}
 	queue.add(&fakeJob{id: 1, kind: domain.JobProbe})

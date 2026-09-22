@@ -52,9 +52,10 @@ UI IssueだけはPlanの後にDesignを持つ。`Next`は
 ### Feature artifacts
 
 共通skillは指定されたIssue、PR、branch、現在のcheckoutと、関連する成果物をそのまま読む。
-`specs/001-008`は凍結済みで、作られた当時の機能の記録として残す。新しいfeatureに
-`spec.md`を作らず、凍結済みのものも編集しない。置き換えが起きる場合はPlanの
-`## 既存仕様への影響`が記録する。
+featureディレクトリは`plan.md`を必ず持ち、`ui`Issueでは`ui-design.md`を加える。
+Planが判断の根拠や契約を持つ場合は`research.md`・`data-model.md`・`contracts/`・
+`quickstart.md`がそれに伴う（P-2: 書くことが無い成果物は作らない）。`spec.md`は
+作らない。要求の正本は親Issueである。
 
 既存の後続成果物が後から改訂された前段成果物を取り込んでいるかは自動推測しない。改訂時は保守者が
 親IssueのSDD summaryを戻し、影響する工程をreviewed PRとして再実行する。

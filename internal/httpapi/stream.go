@@ -14,7 +14,7 @@ import (
 )
 
 // cacheStream は動画本体に付ける値である。内容が同じでも別の利用者に
-// 共有キャッシュさせないため public にしない（contracts/http-routes.md）。
+// 共有キャッシュさせないため public にしない。
 const cacheStream = "private, max-age=0, must-revalidate"
 
 // streamContentTypes は拡張子から Content-Type を決める表である。
@@ -22,7 +22,7 @@ const cacheStream = "private, max-age=0, must-revalidate"
 // ffprobe の format_name ではなく拡張子を見るのは、format_name が
 // mov,mp4,m4a,3gp,3g2,mj2 のようにまとめて返り mp4 と mov を区別できない
 // ためである。再生可否の判定も拡張子を基準にしているので、判定と配信で
-// 基準が揃う（R-103）。
+// 基準が揃う。
 var streamContentTypes = map[string]string{
 	".mp4":  "video/mp4",
 	".m4v":  "video/mp4",
@@ -35,7 +35,7 @@ const defaultStreamContentType = "application/octet-stream"
 // StreamVideo は動画本体を配信する（GET /api/videos/{id}/stream）。
 //
 // Range の解釈・206・Content-Range・Accept-Ranges・416・If-Range は
-// http.ServeContent に任せ、自前で組み立てない（R-105 / 技術選定文書 3.3）。
+// http.ServeContent に任せ、自前で組み立てない（技術選定文書 3.3）。
 // Linux では io.Copy が sendfile に落ちるため、大きなファイルでもユーザー
 // 空間のコピーが起きない。
 //
@@ -51,7 +51,7 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 	if !ok {
 		// 実体を開けない理由（外を指している、消えた、通常ファイルでない）は
 		// 応答で区別しない。403 と 404 を出し分けると、どのパスが存在するかを
-		// 漏らすことになる（R-105）。
+		// 漏らすことになる。
 		s.notFound(w, "この動画の実体を開けません")
 		return
 	}
@@ -63,7 +63,7 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 	http.ServeContent(w, r, filepath.Base(path), info.ModTime(), file)
 }
 
-// openMediaFile は配信してよい実体だけを開く（R-105 / contracts/http-routes.md）。
+// openMediaFile は配信してよい実体だけを開く。
 //
 // DB の値をそのまま os.Open に渡す実装は、将来 DB へ書き込む経路が増えたときに
 // 任意ファイル読み出しになりうる。次の3つをすべて満たす行だけを開く。

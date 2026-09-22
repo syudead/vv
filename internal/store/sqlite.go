@@ -8,8 +8,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	// CGO を必要としない SQLite ドライバ。CGO_ENABLED=0 を維持するために採用した
-	// （specs/001-initial-setup/research.md R-001）。
+	// CGO を必要としない SQLite ドライバ。CGO_ENABLED=0 を維持するために採用した。
 	_ "modernc.org/sqlite"
 )
 

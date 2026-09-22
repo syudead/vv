@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// 応答ヘッダは contracts/http-routes.md の表に従う。
+// 応答ヘッダは下の振り分けに従う。
 const (
 	// assetsPrefix 配下は内容ハッシュ付きの名前なので長期キャッシュして良い。
 	assetsPrefix = "assets/"
@@ -33,7 +33,7 @@ func newSPAHandler(assets fs.FS, logger *slog.Logger) http.Handler {
 	return &spaHandler{assets: assets, logger: logger}
 }
 
-// ServeHTTP は次のように振り分ける（contracts/http-routes.md）。
+// ServeHTTP は次のように振り分ける。
 //
 //   - 実在するファイル → そのまま配信する
 //   - /assets/ 配下で実在しない → 404（index.html へ落とさない）

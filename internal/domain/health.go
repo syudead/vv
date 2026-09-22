@@ -3,7 +3,7 @@ package domain
 import "time"
 
 // DefaultVersion はリリース名が指定されないままビルドされた場合の既定値である。
-// ビルド時に -ldflags "-X main.version=…" で上書きできる（R-007）。
+// ビルド時に -ldflags "-X main.version=…" で上書きできる。
 const DefaultVersion = "dev"
 
 // Status は稼働状態を表す。取り得る値は ok と degraded の2つだけで、

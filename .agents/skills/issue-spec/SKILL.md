@@ -57,9 +57,7 @@ what this stage adds.
 - **対象外 is a decision, not a disclaimer.** List only what a reader would
   otherwise expect to be included.
 - **Name the existing behaviour this replaces.** When the feature changes
-  something the product already does, say so in 要件. The plan records which
-  frozen specification under `specs/` it supersedes; the Issue records that the
-  change exists.
+  something the product already does, say so in 要件.
 - **Revising is the same stage.** When the requirement changes, edit this Issue
   rather than recording the change somewhere downstream.
 

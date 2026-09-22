@@ -2,7 +2,7 @@ package domain
 
 import "testing"
 
-// 再生可否は許可リストで決める（R-103 / S3 / SC-007）。未知の値を「再生できる」と
+// 再生可否は許可リストで決める。未知の値を「再生できる」と
 // 誤るより「できない」と誤る方が、利用者の損失が小さいためである。
 //
 // この表がそのまま仕様であり、一覧は取り込み時に確定した結果を読むだけになる。
@@ -132,7 +132,7 @@ func TestEvaluatePlayabilityNormalizesCase(t *testing.T) {
 }
 
 // コンテナは拡張子から決める。ffprobe の format_name は mp4 と mov を
-// 区別しないため、判定と配信の基準を拡張子に揃える（R-103）。
+// 区別しないため、判定と配信の基準を拡張子に揃える。
 func TestContainerFromPath(t *testing.T) {
 	tests := []struct {
 		path string
@@ -153,7 +153,7 @@ func TestContainerFromPath(t *testing.T) {
 	}
 }
 
-// playable = 1 は probe_state = done のときだけ取り得る（data-model.md）。
+// playable = 1 は probe_state = done のときだけ取り得る。
 // 解析前の動画が「再生できる」と表示されてはならない。
 func TestPlayableRequiresCompletedProbe(t *testing.T) {
 	tests := []struct {

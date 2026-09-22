@@ -23,7 +23,7 @@ type tool struct {
 // ここに並ぶものを1つも必要としない（README の「必ず動く道」）。
 var tools = []tool{
 	{name: "git", versionArgs: []string{"--version"}, hint: "Git を導入して PATH へ通すこと。", required: true},
-	{name: "jq", versionArgs: []string{"--version"}, hint: "quickstart の JSON 確認に使う。mise で導入できる: mise install。", required: false},
+	{name: "jq", versionArgs: []string{"--version"}, hint: "API 応答の JSON 確認に使う。mise で導入できる: mise install。", required: false},
 	{name: "go", versionArgs: []string{"version"}, hint: "mise で導入する: mise install", required: true},
 	{name: "node", versionArgs: []string{"--version"}, hint: "mise で導入する: mise install", required: true},
 	{name: "npm", versionArgs: []string{"--version"}, hint: "mise で導入する: mise install", required: true},

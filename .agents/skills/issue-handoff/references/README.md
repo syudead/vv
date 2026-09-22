@@ -15,10 +15,9 @@ Spec Kit is not upgraded any more, so nothing under `.specify/` is treated as
 vendored. `.specify/templates/plan-template.md` is the only part this workflow
 still uses, and it is edited in place like any other file here.
 
-`.specify/scripts/`, `.specify/workflows/`, `.specify/feature.json`,
-`.specify/init-options.json`, `.specify/integration.json`, and the integration
-manifests are not used by this workflow. Do not invoke them and do not keep
-them in step with anything.
+The rest of Spec Kit's scaffolding (`.specify/scripts/`, `.specify/workflows/`,
+the integration manifests) was removed because this workflow never invoked it.
+Do not reinstate it.
 
 Project-scoped workers under `.codex/agents/` may perform a bounded part of a
 run when Codex is the selected host. They do not own the handoff, persist its
@@ -73,9 +72,10 @@ After checkout, read `plan.md` and optional `ui-design.md` when they are
 relevant and available. Their metadata and the parent checklist are useful
 context, not identity checks or execution gates.
 
-`specs/001-008` are frozen. They are the record of features already built, and
-they stay readable as such. Do not add a `spec.md` to a new feature directory
-and do not revise a frozen one; the requirement lives in the parent Issue.
+Do not add a `spec.md` to a feature directory; the requirement lives in the
+parent Issue. A feature directory always holds `plan.md`, adds `ui-design.md`
+for a `ui` Issue, and carries `research.md`, `data-model.md`, `contracts/` or
+`quickstart.md` when the Plan has that content of its own (P-2).
 
 Name the feature directory explicitly; never select work from a branch name or
 a prior conversation. Use a separate checkout or worktree for each concurrent

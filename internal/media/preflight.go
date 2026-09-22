@@ -9,14 +9,14 @@ import (
 
 // RequiredCommands は起動前に存在を確認する外部コマンドである。
 // Phase 0 の機能はこれらを使わないが、Phase 1 で必須になるため
-// 「起動できた＝前提が揃っている」状態をここで保証する（FR-008 / research.md R-009）。
+// 「起動できた＝前提が揃っている」状態をここで保証する。
 var RequiredCommands = []string{"ffprobe", "ffmpeg"}
 
 // ErrMissingCommands は必要な外部コマンドが見つからなかったことを表す。
 var ErrMissingCommands = errors.New("必要な外部コマンドが見つかりません")
 
 // installHint は不足していた場合に提示する導入方法である。欠けているコマンド名だけを
-// 出しても次の一手が分からないため、導入方法を必ず添える（SC-008）。
+// 出しても次の一手が分からないため、導入方法を必ず添える。
 const installHint = "Docker で実行する（task up）か、ffmpeg を導入してください" +
 	"（alpine: apk add ffmpeg / Debian・Ubuntu: apt-get install ffmpeg / macOS: brew install ffmpeg）"
 

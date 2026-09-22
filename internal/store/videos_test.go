@@ -51,7 +51,7 @@ func TestUpsertVideoAddsNewRow(t *testing.T) {
 	if video.ContentKey != "key-a" {
 		t.Errorf("ContentKey = %q", video.ContentKey)
 	}
-	// 解析前は「再生できない」側に倒す（R-103）。
+	// 解析前は「再生できない」側に倒す。
 	if video.Playable {
 		t.Error("解析前なのに再生できる扱いになっている")
 	}
@@ -61,14 +61,14 @@ func TestUpsertVideoAddsNewRow(t *testing.T) {
 	if video.ThumbnailState != domain.ThumbnailStatePending {
 		t.Errorf("ThumbnailState = %q, want pending", video.ThumbnailState)
 	}
-	// 取得できていない尺は null のままにする。0 で代用しない（data-model.md）。
+	// 取得できていない尺は null のままにする。0 で代用しない。
 	if video.DurationMs != nil {
 		t.Errorf("DurationMs = %v, want nil", *video.DurationMs)
 	}
 }
 
 // 同じパス・同じサイズ・同じ mtime の再取り込みでは何も変わらない。
-// 2 回目以降のスキャンを安く保つ前提である（R-107）。
+// 2 回目以降のスキャンを安く保つ前提である。
 func TestUpsertVideoIsUnchangedWhenNothingMoved(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -164,7 +164,7 @@ func TestReassigningRepresentativeLocationSynchronizesOldVideo(t *testing.T) {
 }
 
 // 移動・改名は行の作り直しではなくパスの更新になる。重複を作らないことが
-// FR-004 の要求で、再生位置を引き継ぐ前提でもある。
+// 要求で、再生位置を引き継ぐ前提でもある。
 func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -347,7 +347,7 @@ func TestApplyProbeKeepsUnknownDurationNull(t *testing.T) {
 }
 
 // 解析に失敗した動画は、理由を添えて failed にする。取り込み全体は止めない
-// （FR-008）ので、一覧には並んだままになる。
+// ので、一覧には並んだままになる。
 func TestMarkProbeFailedKeepsRowAndRecordsReason(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -422,7 +422,7 @@ func titlesOf(page VideoPage) []string {
 	return out
 }
 
-// 並び順は「追加が新しい順」と「題名順」の2つ（R-109）。
+// 並び順は「追加が新しい順」と「題名順」の2つ。
 func TestListVideosSortOrders(t *testing.T) {
 	db, _ := listFixture(t)
 	ctx := context.Background()
@@ -446,7 +446,7 @@ func TestListVideosSortOrders(t *testing.T) {
 	}
 }
 
-// 既定の件数は 60、上限は 200（R-109）。上限を越える指定は上限に丸める。
+// 既定の件数は 60、上限は 200。上限を越える指定は上限に丸める。
 func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 	db, _ := listFixture(t)
 	ctx := context.Background()
@@ -480,7 +480,7 @@ func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 }
 
 // カーソルで続きから取れること。並び順の値と id を境界にするので、
-// 途中で行が増減しても取りこぼしと重複が起きない（R-109）。
+// 途中で行が増減しても取りこぼしと重複が起きない。
 func TestListVideosPagesWithCursor(t *testing.T) {
 	for _, sort := range []VideoSort{SortAddedDesc, SortTitleAsc} {
 		t.Run(string(sort), func(t *testing.T) {
@@ -526,7 +526,7 @@ func TestListVideosStopsAtLastPage(t *testing.T) {
 	}
 }
 
-// total は絞り込み後の総件数であり、ページの件数とは独立している（FR-012）。
+// total は絞り込み後の総件数であり、ページの件数とは独立している。
 func TestListVideosTotalIsIndependentOfPageSize(t *testing.T) {
 	db, _ := listFixture(t)
 
@@ -543,7 +543,7 @@ func TestListVideosTotalIsIndependentOfPageSize(t *testing.T) {
 }
 
 // 壊れたカーソルは誤りとして返す。黙って先頭から返すと、無限スクロールが
-// 巻き戻って同じ内容を延々と表示することになる（contracts/http-routes.md）。
+// 巻き戻って同じ内容を延々と表示することになる。
 func TestListVideosRejectsBrokenCursor(t *testing.T) {
 	db, _ := listFixture(t)
 
@@ -555,7 +555,7 @@ func TestListVideosRejectsBrokenCursor(t *testing.T) {
 	}
 }
 
-// 行の削除。消えたファイルを索引から落とす（FR-005）。
+// 行の削除。消えたファイルを索引から落とす。
 func TestDeleteVideos(t *testing.T) {
 	db, ids := listFixture(t)
 	ctx := context.Background()
@@ -582,7 +582,7 @@ func TestDeleteVideos(t *testing.T) {
 }
 
 // 索引に入っているパスの一覧を取れること。走査は実際のファイルとこれを
-// 突き合わせて差分を出す（R-107）。
+// 突き合わせて差分を出す。
 func TestIndexedVideosByPath(t *testing.T) {
 	db, _ := listFixture(t)
 

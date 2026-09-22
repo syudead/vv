@@ -25,7 +25,7 @@ export default defineConfig({
   // 単体テスト（task test-web が npm run test 経由で vitest run を呼ぶ）。
   // DOM を伴う検証があるので環境は jsdom。css: false で Tailwind の変換を挟まない
   // ── 見た目の検査（対比）は CSS をファイルとして読むので、描画する必要が無い。
-  // テストが揃ったので passWithNoTests は外した（tasks.md Phase 2）。テストが
+  // テストが揃ったので passWithNoTests は外した。テストが
   // 1 件も集まらない状態は、いまは設定か置き場所の誤りなので失敗でよい。
   test: {
     environment: "jsdom",

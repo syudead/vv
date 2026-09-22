@@ -6,7 +6,7 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// searchRoute は検索に使う経路である（R-110 / TD-001）。
+// searchRoute は検索に使う経路である。
 type searchRoute int
 
 const (
@@ -22,7 +22,7 @@ const (
 //
 // trigram は3文字単位で索引を作るため、2文字以下の検索語は MATCH に
 // 一致しない。日本語では「旅行」「花火」のような2文字の検索語が現実に
-// 多いので、そこは LIKE に振り分ける（TD-001 / 001 R-001 の実測）。
+// 多いので、そこは LIKE に振り分ける。
 const matchMinLength = 3
 
 // routeFor は検索語から経路を選ぶ。
@@ -48,7 +48,7 @@ func routeFor(query string) searchRoute {
 
 // normalizeQuery は検索語を突き合わせられる形にする。
 //
-// NFC へ正規化するのは、検索対象の表示用題名をNFCで保存するためである（R-107）。
+// NFC へ正規化するのは、検索対象の表示用題名をNFCで保存するためである。
 // macOS から NFD で送られた入力も、これで同じ表記に揃う。
 func normalizeQuery(query string) string {
 	return norm.NFC.String(strings.TrimSpace(query))
@@ -61,7 +61,7 @@ func normalizeQuery(query string) string {
 //
 // 並び順は呼び出し側（一覧）が決める。関連度（bm25）を使わないのは、
 // LIKE 経路に関連度が無く、2つの経路で並びが変わると利用者から見て
-// 不可解になるためである（R-110）。
+// 不可解になるためである。
 func searchFilter(query string) (condition string, args []any) {
 	normalized := normalizeQuery(query)
 

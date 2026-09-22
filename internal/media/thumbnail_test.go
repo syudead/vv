@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// 抽出位置は「尺の 10%、ただし下限 1 秒・上限 60 秒」（R-104）。
+// 抽出位置は「尺の 10%、ただし下限 1 秒・上限 60 秒」。
 //
 // 下限が尺を越える短い動画だけは例外で、10% 地点をそのまま使う。下限へ
 // 丸めると末尾ちょうど（またはその先）を指し、ffmpeg が終了コード 0 のまま
@@ -46,7 +46,7 @@ func TestThumbnailOffset(t *testing.T) {
 
 // 保存先は <MDM_DATA_DIR>/thumbnails/<content_key の先頭2文字>/<content_key>.jpg。
 //
-// content_key で名前を決めるので、移動・改名では作り直さない（FR-025）。
+// content_key で名前を決めるので、移動・改名では作り直さない。
 // 2文字のディレクトリに分けるのは、1ディレクトリに数万ファイルを置かないため。
 func TestThumbnailPath(t *testing.T) {
 	got := ThumbnailPath("/data/thumbnails", "ab12cd34:5678")
@@ -90,7 +90,7 @@ func TestThumbnailOffsetStaysInsideDuration(t *testing.T) {
 	}
 }
 
-// 組み立てる引数が R-104 のとおりであること。-ss を -i の前に置くと
+// 組み立てる引数が意図どおりであること。-ss を -i の前に置くと
 // キーフレーム単位の高速シークになり、長い動画でも一定時間で終わる。
 func TestThumbnailArgs(t *testing.T) {
 	got := thumbnailArgs("/media/a.mp4", 10, "/data/thumbnails/ab/ab.jpg")

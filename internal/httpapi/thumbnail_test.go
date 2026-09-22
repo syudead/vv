@@ -48,7 +48,7 @@ func TestGetThumbnail(t *testing.T) {
 }
 
 // v 付きの要求には長期キャッシュを付ける。内容が変われば content_key が
-// 変わり URL も変わるので、古い画像が残らない（R-112）。
+// 変わり URL も変わるので、古い画像が残らない。
 func TestThumbnailCacheControlWithVersion(t *testing.T) {
 	dir, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
@@ -98,7 +98,7 @@ func TestThumbnailCacheControlWithoutVersion(t *testing.T) {
 	}
 }
 
-// 未生成なら 404。クライアントは枠だけを描く（FR-010）。
+// 未生成なら 404。クライアントは枠だけを描く。
 func TestThumbnailNotGenerated(t *testing.T) {
 	pending := sampleVideo(2, "解析前")
 	pending.ThumbnailState = domain.ThumbnailStatePending

@@ -12,7 +12,7 @@
   into implementation units. The requirement itself lives in the parent Issue;
   the research behind a decision lives in research.md.
 
-  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-8).
+  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-7).
   The two that bite most often: write a decision or nothing at all (P-1), and
   leave a section out rather than filling it with plausible prose (P-6).
 
@@ -82,17 +82,6 @@ one or two sentences]
 [Gates taken from the repository's governance — its architecture notes, its
 stated judgement criteria, and its agent guide. Name the rules you checked and
 the verdict for each.]
-
-## 既存仕様への影響
-
-<!--
-  CONDITIONAL — delete this section when this feature replaces nothing (P-8).
-
-  `specs/` is frozen. When this feature changes behaviour one of those files
-  still describes, name the file and the requirement identifiers it supersedes
-  (`FR-003`, `SC-007`). Do not edit the frozen file. Do not write this section
-  to say that nothing conflicts.
--->
 
 ## Project Structure
 

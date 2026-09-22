@@ -29,7 +29,7 @@ func TestStartScanRejectsEmptyFolderSetWithoutCreatingScan(t *testing.T) {
 }
 
 // 実行中のスキャンは同時に1件だけ。POST /api/scans が「実行中ならそれを返す」
-// 振る舞い（R-108）は、これが成り立つことを前提にしている。
+// 振る舞いは、これが成り立つことを前提にしている。
 func TestStartScanReturnsRunningInsteadOfStartingAnother(t *testing.T) {
 	db := scanDB(t)
 	ctx := context.Background()
@@ -60,7 +60,7 @@ func TestStartScanReturnsRunningInsteadOfStartingAnother(t *testing.T) {
 	}
 }
 
-// 進捗を更新できること。取り込みの規模と残りが利用者に見える（FR-006）。
+// 進捗を更新できること。取り込みの規模と残りが利用者に見える。
 func TestUpdateScanProgress(t *testing.T) {
 	db := scanDB(t)
 	ctx := context.Background()

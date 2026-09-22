@@ -57,9 +57,21 @@ MDM_MEDIA_HOST_DIR=/path/to/videos task up
 整備は Phase 3 の範囲）。
 
 起動設定は環境変数、メディアフォルダは設定画面で管理する。取り込みは起動時に自動実行せず、
-利用者が明示的に開始する。項目の一覧は
-[specs/001-initial-setup/contracts/configuration.md](specs/001-initial-setup/contracts/configuration.md)
-と[本機能での差分](specs/002-core-video-library/contracts/configuration.md)にある。
+利用者が明示的に開始する。設定ファイルは持たない。
+
+| 環境変数        | 既定値  | 内容                                                  |
+| --------------- | ------- | ----------------------------------------------------- |
+| `MDM_ADDR`      | `:8080` | 待ち受けアドレス（例: `:8080`、`127.0.0.1:8080`）     |
+| `MDM_DATA_DIR`  | `/data` | データの置き場所。絶対パスであること                  |
+| `MDM_LOG_LEVEL` | `info`  | `debug` / `info` / `warn` / `error` のいずれか        |
+
+不正な値はまとめて列挙して起動時に失敗する（1つ直すごとに再起動する往復を避けるため）。
+次の 2 つは `MDM_DATA_DIR` から導出され、設定項目にはしない。
+
+| 対象         | 場所                                                    |
+| ------------ | ------------------------------------------------------- |
+| データベース | `MDM_DATA_DIR/mdm.db`                                   |
+| サムネイル   | `MDM_DATA_DIR/thumbnails/<先頭2文字>/<content_key>.jpg` |
 
 > [!WARNING]
 > 現時点では認証を掛けていない。インターネットへの公開を前提にしないこと
@@ -69,8 +81,7 @@ MDM_MEDIA_HOST_DIR=/path/to/videos task up
 
 `task up` 以外のタスクはホストに Go・Node・`ffmpeg` を要求し、検査は加えて
 Git・bash を使う。「必ず動く道」は
-`task up` だけで、以下は開発者向けの補足である。タスクの契約は
-[specs/001-initial-setup/contracts/developer-commands.md](specs/001-initial-setup/contracts/developer-commands.md)。
+`task up` だけで、以下は開発者向けの補足である。タスクの一覧は `task help` で出る。
 
 ### ローカル開発環境
 
@@ -165,17 +176,23 @@ Claude Code on the web でセッションを開くと、`.claude/hooks/session-s
 │   └── jobs/               # プロセス内のジョブワーカー（直列）
 ├── web/
 │   └── src/
-│       ├── api/            # 生成型を使う fetch ラッパと一覧のフック
-│       ├── components/     # 一覧の1件、取り込みの進捗
-│       └── pages/          # 一覧（/）と再生（/videos/:id）
+│       ├── api/            # 生成型を使う fetch ラッパ、一覧のページング、復元用の控え
+│       ├── app/            # ルーティングと画面の枠の割り当て
+│       ├── shell/          # トップバー、サイドバー、取り込み状態
+│       ├── library/        # 一覧（/）
+│       ├── player/         # 再生（/videos/:id）
+│       ├── settings/       # 設定（/settings）
+│       ├── ui/             # 画面をまたいで使う部品
+│       ├── lib/            # 整形などの補助
+│       ├── preferences/    # 端末ごとの表示設定
+│       └── theme/          # 見た目の検査（実行コードは持たない）
 ├── scripts/                # 開発者コマンドの実体（Go）と固定した検査ツールの版
-├── docs/
-│   ├── design-docs/
-│   ├── exec-plans/
-│   ├── generated/
-│   ├── product-specs/
-│   └── references/
-└── specs/                  # 機能ごとの仕様・計画・契約
+├── specs/                  # 機能ごとの Plan 成果物
+└── docs/
+    ├── design-docs/        # 結論だけでは分からない技術判断の経緯
+    ├── product-specs/      # 仕様の書き方の規則
+    ├── how-to/             # 繰り返す手順
+    └── screenshots/        # PR に貼る画面の画像
 ```
 
 実行時に増える場所（版管理しない）:

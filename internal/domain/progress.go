@@ -2,7 +2,7 @@ package domain
 
 import "time"
 
-// 視聴済みと再開位置の規則（R-111）。
+// 視聴済みと再開位置の規則。
 const (
 	// CompletionTailMs は「末尾まで見た」とみなす残り時間（ミリ秒）。
 	// 終わりのクレジットを飛ばしても視聴済みになる。
@@ -16,7 +16,7 @@ const (
 )
 
 // Progress は再生位置の記録である。鍵は content_key なので、ファイルを
-// 移動・改名・置き直しても引き継がれる（FR-025／FR-026）。
+// 移動・改名・置き直しても引き継がれる。
 type Progress struct {
 	PositionMs int64
 	DurationMs int64
@@ -24,7 +24,7 @@ type Progress struct {
 	UpdatedAt  time.Time
 }
 
-// EvaluateProgress は申告された位置から、保存する値を決める（R-111）。
+// EvaluateProgress は申告された位置から、保存する値を決める。
 //
 // 視聴済みの判定はサーバー側で行い、クライアントの申告は採らない。
 // クライアントごとに判定が揺れると、一覧の表示と再生画面が食い違う。
@@ -61,7 +61,7 @@ func isCompleted(positionMs, durationMs int64) bool {
 	return float64(positionMs)/float64(durationMs) >= CompletionRatio
 }
 
-// ResumePosition は次に開いたときの再生開始位置を返す（R-111）。
+// ResumePosition は次に開いたときの再生開始位置を返す。
 //
 // 見終わった動画は先頭から始める。末尾から再開させても、利用者にできることが
 // 無い。ほとんど見ていない（5 秒未満）ものも先頭に戻す。

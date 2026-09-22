@@ -21,11 +21,13 @@
 - 技術選定と FFmpeg 利用: [tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)
 - API スキーマ: [api/openapi.yaml](../../api/openapi.yaml)
 - 既存サムネイルとキャッシュ契約:
-  [002 HTTP 契約](../002-core-video-library/contracts/http-routes.md)
-- ライブ変換の論理時間軸: [008 live playback contract](../008-live-mp4-playback/contracts/live-playback.md)
+  [api/openapi.yaml](../../api/openapi.yaml)・
+  [internal/httpapi/thumbnail.go](../../internal/httpapi/thumbnail.go)・
+  [internal/httpapi/router.go](../../internal/httpapi/router.go)
+- ライブ変換の論理時間軸: [internal/httpapi/transcode.go](../../internal/httpapi/transcode.go)
 - Web の所有境界と視覚規則:
   [ARCHITECTURE.md](../../ARCHITECTURE.md#web-layer)・
-  [library-ui-design-system.md](../../docs/design-docs/library-ui-design-system.md)
+  [library-ui.md](../../docs/design-docs/library-ui.md)
 - 検査入口: [Taskfile.yml](../../Taskfile.yml)
 
 **Feature-specific context**:

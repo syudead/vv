@@ -9,10 +9,9 @@ file into a handbook.
 1. Read `ARCHITECTURE.md` for system boundaries and dependency direction.
 2. Read `docs/design-docs/index.md` and `docs/product-specs/index.md` for the
    relevant design and product context.
-3. For substantial work, create an execution plan in
-   `docs/exec-plans/active/` and move it to `docs/exec-plans/completed/` when
-   the work is finished.
-4. Record known compromises in `docs/exec-plans/tech-debt.md`.
+3. For substantial work, the Plan (`specs/<feature>/plan.md`) carries the goal,
+   the scope, the validation strategy and the notable decisions. Progress lives
+   on the parent Issue and its child Issues, not in a file.
 
 ## Working agreements
 
@@ -20,12 +19,12 @@ file into a handbook.
 - A feature's specification is its parent GitHub Issue. Write and revise it with
   `.agents/skills/issue-spec`, following
   [docs/product-specs/spec-quality.md](docs/product-specs/spec-quality.md).
-  Do not add a `spec.md`; `specs/001-008` are frozen records of features already
-  built.
+  Do not add a `spec.md`.
 - When writing or changing a Plan and its artifacts, follow
   [docs/design-docs/plan-quality.md](docs/design-docs/plan-quality.md).
 - Prefer focused, reviewable changes with automated checks.
-- Do not hand-edit files in `docs/generated/`; update their source or generator.
+- Do not hand-edit generated files (`internal/httpapi/gen/`, `web/src/api/gen/`);
+  change `api/openapi.yaml` and run `task generate`.
 - Add links to new design documents from `docs/design-docs/index.md`.
 - Every push to a feature branch gets a pull request. After pushing, open a PR
   against `main` if one does not exist yet, so no pushed branch is left without

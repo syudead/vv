@@ -22,11 +22,10 @@ import (
 )
 
 // version はリリース名である。ビルド時に
-// -ldflags "-X main.version=…" で上書きできる（research.md R-007）。
+// -ldflags "-X main.version=…" で上書きできる。
 var version = domain.DefaultVersion
 
-// shutdownGrace は停止指示を受けてから処理中の要求を待つ猶予である
-// （contracts/http-routes.md）。
+// shutdownGrace は停止指示を受けてから処理中の要求を待つ猶予である。
 const shutdownGrace = 10 * time.Second
 
 // readHeaderTimeout は要求ヘッダの読み取りに与える上限である。
@@ -55,7 +54,7 @@ func run() error {
 	build := buildInfo()
 
 	// どの設定で動いているかを後から追跡できるように、有効な設定値と
-	// バージョン情報を1行で記録する（FR-007）。
+	// バージョン情報を1行で記録する。
 	logger.LogAttrs(context.Background(), slog.LevelInfo, "起動します",
 		append(cfg.LogAttrs(),
 			slog.String("version", build.Version),
@@ -132,7 +131,7 @@ func run() error {
 	}
 
 	// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
-	// ジョブは running のまま残るが、次の起動で queued へ戻る（R-106）。
+	// ジョブは running のまま残るが、次の起動で queued へ戻る。
 	stopBackground()
 	<-workerDone
 	logger.Info("取り込みとジョブを停止しました")
@@ -216,8 +215,7 @@ func serveUntil(
 }
 
 // checkPreconditions は起動前の前提を確認する。設定の不備と外部コマンドの不足を
-// まとめて列挙し、設定を1回直すごとに再起動する往復を避ける
-// （contracts/configuration.md）。
+// まとめて列挙し、設定を1回直すごとに再起動する往復を避ける。
 func checkPreconditions(cfg Config) error {
 	problems := cfg.verifyProblems()
 

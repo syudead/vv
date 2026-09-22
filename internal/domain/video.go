@@ -54,9 +54,9 @@ const (
 	ReasonAudioCodec UnplayableReason = "audio_codec"
 )
 
-// 許可リスト（R-103）。拒否リストにしないのは、未知の値を「再生できる」と
+// 許可リスト。拒否リストにしないのは、未知の値を「再生できる」と
 // 誤ると再生して初めて失敗するためである。「再生できない」と誤る方が、
-// 利用者の損失が小さい（SC-007）。
+// 利用者の損失が小さい。
 //
 // hevc（H.265）や mkv はブラウザによっては再生できることがあるが、確実では
 // ないので許可しない。
@@ -91,7 +91,7 @@ type Probe struct {
 	AudioCodec string
 	// FormatName は ffprobe の format.format_name。記録用に持つ。
 	// mov,mp4,m4a,3gp,3g2,mj2 のようにまとめて返るため、再生可否の判定には
-	// 使わない（R-103）。
+	// 使わない。
 	FormatName string
 }
 
@@ -103,10 +103,10 @@ type Playability struct {
 }
 
 // EvaluatePlayability はコンテナと ffprobe の結果から、ブラウザでそのまま
-// 再生できるかを判定する（R-103）。
+// 再生できるかを判定する。
 //
 // コンテナ → 映像 → 音声 の順に見て、最初に外れたものを理由にする。判定は
-// 取り込み時に1度だけ行い、一覧では列を読むだけにする（SC-007）。
+// 取り込み時に1度だけ行い、一覧では列を読むだけにする。
 // 外部プロセスには触れないので、この規則は単体テストだけで検証できる。
 func EvaluatePlayability(container string, probe Probe) Playability {
 	if _, ok := allowedContainers[normalizeCodecName(container)]; !ok {
@@ -129,7 +129,7 @@ func EvaluatePlayability(container string, probe Probe) Playability {
 // ffprobe の format_name ではなく拡張子を見るのは、format_name が
 // mov,mp4,m4a,3gp,3g2,mj2 のようにまとめて返り mp4 と mov を区別できないため
 // である。ブラウザに渡す Content-Type も拡張子から決めるので、判定と配信で
-// 基準が揃う（R-103）。
+// 基準が揃う。
 func ContainerFromPath(path string) string {
 	return normalizeCodecName(strings.TrimPrefix(filepath.Ext(path), "."))
 }
@@ -143,7 +143,7 @@ func normalizeCodecName(name string) string {
 // Video は videos の行と 1 対 1 で対応する値である。永続化の手段は知らない。
 //
 // 取得できなかった数値は nil で持つ。0 で代用すると「尺が 0 の動画」と
-// 「尺が分からない動画」を一覧で区別できなくなる（data-model.md）。
+// 「尺が分からない動画」を一覧で区別できなくなる。
 type Video struct {
 	ID        int64
 	Path      string
@@ -154,7 +154,7 @@ type Video struct {
 	UpdatedAt time.Time
 
 	// ContentKey は内容由来の識別子。移動・改名を越えて同じ動画と判定する鍵で、
-	// 再生位置とサムネイルの名前もこれで決まる（R-101）。
+	// 再生位置とサムネイルの名前もこれで決まる。
 	ContentKey string
 
 	DurationMs *int64
@@ -176,15 +176,15 @@ type Video struct {
 // PlayableInBrowser はブラウザでそのまま再生できると確定しているかを返す。
 //
 // playable が立っていても、解析が終わっていなければ「確定していない」ものとして
-// 扱う（data-model.md: playable = 1 は probe_state = done のときだけ取り得る）。
-// 解析前の動画を「再生できる」と見せると、SC-007 の「再生を試みる前に判別できる」
+// 扱う（playable = 1 は probe_state = done のときだけ取り得る）。
+// 解析前の動画を「再生できる」と見せると、「再生を試みる前に判別できる」
 // が成り立たなくなる。
 func (v Video) PlayableInBrowser() bool {
 	return v.Playable && v.ProbeState == ProbeStateDone
 }
 
 // HasThumbnail はサムネイルが生成済みかを返す。一覧はこれが false のとき
-// 枠だけを描く（FR-010）。
+// 枠だけを描く。
 func (v Video) HasThumbnail() bool {
 	return v.ThumbnailState == ThumbnailStateDone
 }
@@ -203,7 +203,7 @@ type VideoFile struct {
 }
 
 // IndexedVideo は差分判定に要る最小限の値である。走査は実際のファイルと
-// これを突き合わせる（R-107）。
+// これを突き合わせる。
 type IndexedVideo struct {
 	ID              int64
 	ContentKey      string

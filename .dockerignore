@@ -4,14 +4,12 @@
 .gitignore
 .github
 .claude
-.specify
 .dockerignore
 Dockerfile
 compose.yaml
 Taskfile.yml
 bin/
 docs/
-specs/
 **/node_modules
 # SPA の成果物は web ステージから COPY する。手元のビルドを持ち込まない。
 web/dist

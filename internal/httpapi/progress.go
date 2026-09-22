@@ -18,10 +18,9 @@ const maxProgressBody = 1 << 10
 // PutVideoProgress は再生位置を記録する（PUT /api/videos/{id}/progress）。
 //
 // 視聴済みの判定はサーバー側で行い、クライアントの申告は採らない。
-// クライアントごとに判定が揺れると、一覧の表示と再生画面が食い違う（R-111）。
+// クライアントごとに判定が揺れると、一覧の表示と再生画面が食い違う。
 //
-// 呼び出し間隔はクライアントの責務で、サーバー側で頻度制限はしない
-// （contracts/http-routes.md）。
+// 呼び出し間隔はクライアントの責務で、サーバー側で頻度制限はしない。
 func (s *server) PutVideoProgress(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	if s.playback == nil {
 		s.internalError(w, "再生位置の保存先が設定されていません", nil)
@@ -48,7 +47,7 @@ func (s *server) PutVideoProgress(w http.ResponseWriter, r *http.Request, id gen
 	}
 
 	// 記録の鍵は content_key（videos.id ではない）。ファイルを移動・改名・
-	// 置き直しても再生位置が引き継がれる（FR-025／FR-026）。
+	// 置き直しても再生位置が引き継がれる。
 	saved, err := s.playback.SaveProgress(
 		r.Context(), video.ContentKey, domain.EvaluateProgress(positionMs, durationMs))
 	if err != nil {

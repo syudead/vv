@@ -3,7 +3,7 @@
 **Feature**: [parent Issue #117](https://github.com/syudead/vv/issues/117) | **Plan**: [plan.md](plan.md)
 
 既存の再生画面、Video.js の操作構造、役割トークンは
-[ライブラリ UI の見た目の規則](../../docs/design-docs/library-ui-design-system.md) と
+[ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
 [`web/src/index.css`](../../web/src/index.css) に従う。本書はシークプレビューが追加する表示と操作だけを
 定める。一覧画面と再生画面のページ構成は変更しない。
 

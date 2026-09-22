@@ -101,7 +101,7 @@ frame around a screen. `web/src/library/`, `web/src/settings/`, and
 screens use the shell: `app/App.tsx` puts `AppShell` around the `/` and `/settings`
 routes, and the playback screen
 (`/videos/:id`) deliberately gets no sidebar, because it is a
-two-pane screen of its own (R-505). Keeping that choice to the one routing
+two-pane screen of its own. Keeping that choice to the one routing
 decision is what lets the shell stay ignorant of which screen it is framing.
 The shell exposes the library and media-folder settings as routes. "Recently added"
 and "In progress" show a preparation notice until backing routes exist; shell tests
@@ -110,27 +110,25 @@ keep that boundary explicit.
 The shell does not take ownership of scrolling. The sidebar and the toolbar are
 fixed or sticky, and the document (the window) keeps scrolling the content as
 it did before the shell existed. That is deliberate: the library list's scroll
-restoration, its density anchoring and its infinite scroll all sit on
+restoration, its zoom anchoring and its infinite scroll all sit on
 `window.scrollY` and on a viewport-based `IntersectionObserver`, so moving the
-scroll container inside the shell would rewrite all three. The reasoning is
-recorded in
-[specs/005-ui-refinement/research.md](specs/005-ui-refinement/research.md)
-(R-501).
+scroll container inside the shell would rewrite all three.
 
 `web/src/index.css` is the single source of truth for the visual rules. Its
 `@theme` block declares every color, radius and size as a role-named token
-(`--color-surface`, `--color-muted`, `--radius-card`, `--size-tap`, …), and
+(`--color-surface`, `--color-fg-muted`, `--color-accent`, …), and
 screens use only the utility classes generated from it. Raw hex values, raw
 pixels and Tailwind's default palette names are not written under `web/src/**`.
 Only the dark palette is implemented; there is no light/dark toggle. The
 reasoning is recorded in
-[docs/design-docs/library-ui-design-system.md](docs/design-docs/library-ui-design-system.md).
+[docs/design-docs/library-ui.md](docs/design-docs/library-ui.md).
 
-`web/src/theme/` contains no runtime code — it is inspection only. Its two
-tests read `index.css` as a file and assert that every documented token pair
-meets its WCAG contrast ratio, and that no `.tsx` file under `web/src`
-reintroduces a raw color. `web/src/preferences/` holds the per-device display
-settings (list density and sort order) as two total functions over
+`web/src/theme/` contains no runtime code — it is inspection only.
+`tokens.test.ts` reads `index.css` as a file and asserts that every token pair
+it lists meets its WCAG contrast ratio, and that no file under `web/src`
+reintroduces a raw color or a Tailwind palette name.
+`web/src/preferences/` holds the per-device display settings as total
+functions over
 `localStorage` that never throw, so a corrupted value degrades to the defaults
 instead of blanking the screen.
 
@@ -145,4 +143,5 @@ calls it, so a regression in either fails CI the same way.
 - Keep dependencies directed from product-facing layers toward stable domain
   interfaces.
 - Capture consequential design decisions in `docs/design-docs/`.
-- Generate volatile reference material into `docs/generated/`.
+- Keep generated code (`internal/httpapi/gen/`, `web/src/api/gen/`) generated;
+  change `api/openapi.yaml` instead.

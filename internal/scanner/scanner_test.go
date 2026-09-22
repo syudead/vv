@@ -162,7 +162,7 @@ func runScan(t *testing.T, root string, index *fakeIndex) domain.ScanResult {
 }
 
 // 対象の拡張子。再生できない形式も取り込む。一覧に出したうえで「再生できない」
-// と示すためで、一覧から消してしまうと利用者は手元に何があるか分からない（FR-003）。
+// と示すためで、一覧から消してしまうと利用者は手元に何があるか分からない。
 func TestScanIncludesAllSupportedExtensions(t *testing.T) {
 	files := map[string]string{}
 	for _, ext := range []string{
@@ -185,7 +185,7 @@ func TestScanIncludesAllSupportedExtensions(t *testing.T) {
 	}
 }
 
-// 除外の規則。走査の対象から外すものを1つずつ確かめる（R-107）。
+// 除外の規則。走査の対象から外すものを1つずつ確かめる。
 func TestScanExcludesNonMediaAndHiddenEntries(t *testing.T) {
 	root := mediaTree(t, map[string]string{
 		"見える.mp4":            "ok",
@@ -224,7 +224,7 @@ func TestScanExcludesNonMediaAndHiddenEntries(t *testing.T) {
 	}
 }
 
-// 題名は拡張子を除いたファイル名（FR-002）。
+// 題名は拡張子を除いたファイル名。
 func TestScanDerivesTitleFromFileName(t *testing.T) {
 	root := mediaTree(t, map[string]string{
 		"夏休みの旅行.mp4":        "a",
@@ -274,7 +274,7 @@ func TestScanPreservesPathAndNormalizesTitleToNFC(t *testing.T) {
 }
 
 // サイズも mtime も変わらず解析済みの既存行は何もしない。content_key の
-// 再計算もしないので、2 回目以降の走査は比較だけで済む（R-107）。
+// 再計算もしないので、2 回目以降の走査は比較だけで済む。
 func TestScanSkipsUnchangedFiles(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 
@@ -368,7 +368,7 @@ func TestScanUpdatesChangedFile(t *testing.T) {
 }
 
 // 移動・改名は、消えたパスと新しいパスの content_key が一致することで
-// 判定し、パスの更新として扱う。重複を作らない（FR-004 / S7）。
+// 判定し、パスの更新として扱う。重複を作らない。
 func TestScanDetectsMoveWithoutDuplicating(t *testing.T) {
 	root := mediaTree(t, map[string]string{"海辺の散歩.mp4": "同じ内容"})
 
@@ -400,7 +400,7 @@ func TestScanDetectsMoveWithoutDuplicating(t *testing.T) {
 	}
 }
 
-// 消えたファイルは行を削除する（FR-005 / S8）。
+// 消えたファイルは行を削除する。
 func TestScanRemovesMissingFiles(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b"})
 
@@ -420,7 +420,7 @@ func TestScanRemovesMissingFiles(t *testing.T) {
 	}
 }
 
-// 新しく取り込んだ動画には、解析とサムネイルのジョブを積む（R-106）。
+// 新しく取り込んだ動画には、解析とサムネイルのジョブを積む。
 func TestScanEnqueuesJobsForNewVideos(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})
 
@@ -439,7 +439,7 @@ func TestScanEnqueuesJobsForNewVideos(t *testing.T) {
 	}
 }
 
-// 個別のファイルの失敗で走査全体を止めない（FR-008）。読めないファイルは
+// 個別のファイルの失敗で走査全体を止めない。読めないファイルは
 // failed に数えて次へ進む。
 func TestScanContinuesAfterFileFailure(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b", "c.mp4": "c"})
@@ -490,7 +490,7 @@ func TestScanContinuesAfterPermissionFailure(t *testing.T) {
 	}
 }
 
-// 動画ファイルは読み取りのみで扱う。変更・移動・削除をしない（FR-009）。
+// 動画ファイルは読み取りのみで扱う。変更・移動・削除をしない。
 func TestScanDoesNotModifyMediaFiles(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "入れ子/b.mkv": "b"})
 
@@ -514,7 +514,7 @@ func TestScanDoesNotModifyMediaFiles(t *testing.T) {
 	}
 }
 
-// 走査中に進捗を報告する。取り込みの規模と残りが見える（FR-006）。
+// 走査中に進捗を報告する。取り込みの規模と残りが見える。
 func TestScanReportsProgress(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b"})
 

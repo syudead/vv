@@ -32,7 +32,7 @@ const (
 var ErrNoJob = domain.ErrNoJob
 
 // JobRetention は完了したジョブを残す期間である。取り込み直後に最大 2万行に
-// なるため、放置せず掃除する（data-model.md 4 節）。
+// なるため、放置せず掃除する。
 const JobRetention = 7 * 24 * time.Hour
 
 // EnqueueJob はジョブを積む。同じ (kind, video_id) の未完了ジョブが既に
@@ -76,7 +76,7 @@ func (db *DB) EnsureJob(ctx context.Context, kind JobKind, videoID int64) error 
 	return nil
 }
 
-// ClaimJob は待ち行列から1件を専有する（R-106）。
+// ClaimJob は待ち行列から1件を専有する。
 //
 // 取り出しと状態の書き換えを begin immediate のトランザクションで囲む。
 // select と update を分けると、同じ行を二重に処理する余地が残る。ワーカーは
@@ -212,7 +212,7 @@ func (db *DB) CompleteJob(ctx context.Context, id int64) error {
 }
 
 // FailJob は失敗を記録する。試行回数が上限に達していなければ queued へ戻し、
-// 達していれば failed で止める（R-106）。
+// 達していれば failed で止める。
 func (db *DB) FailClaimedJob(ctx context.Context, job Job, reason string) error {
 	_, err := db.sql.ExecContext(ctx, `
 		update jobs
@@ -256,7 +256,7 @@ func (db *DB) JobIdentityCurrent(ctx context.Context, job Job) (bool, error) {
 // 返す。起動時に1度だけ呼ぶ。
 //
 // これがあるので、取り込みの途中でプロセスを止めても次の起動で再開でき、
-// 同じ処理を二重に行うこともない（R-106）。
+// 同じ処理を二重に行うこともない。
 func (db *DB) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	res, err := db.sql.ExecContext(ctx,
 		`update jobs set state = 'queued', updated_at = ? where state = 'running'`,

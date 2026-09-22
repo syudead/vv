@@ -47,7 +47,7 @@
 | フロント | React + Vite + TanStack Router/Query + Tailwind CSS | 静的ビルドを Go バイナリに `embed` して配るため、フロントは純粋な SPA でよい |
 | API 契約 | OpenAPI 3.1 を真実とし、Go は `oapi-codegen`、TS は `openapi-typescript` で生成 | 2言語構成で唯一増えるコスト（型のずれ）を機械的に防ぐ |
 | DB | SQLite（`modernc.org/sqlite`、CGO 不要、WAL モード） | 静的バイナリのままクロスコンパイルでき、alpine ベースの小さいイメージに載る |
-| クエリ | `sqlc`（SQL から型付きコード生成）+ 複雑なクエリは `database/sql` で手書き | SQL を一次資料として保てる。sqlc の SQLite 対応は Postgres ほど成熟していないため、逃げ道を残す |
+| クエリ | `database/sql` で SQL を手書き | SQL を一次資料として保てる。選定時は `sqlc` での生成も想定したが、SQLite 対応の成熟度と、FTS5 の生 SQL を書く必要から採用していない |
 | マイグレーション | `goose`（`embed.FS` にマイグレーションを同梱） | 外部ツールのインストール不要でバイナリ単体で適用できる |
 | 全文検索 | SQLite FTS5（`tokenize='trigram'`） | 日本語をトークナイザ追加なしで部分一致検索できる。外部検索エンジン不要 |
 | メディア解析 | `ffprobe` / `ffmpeg` を `os/exec` で実行（`context` でタイムアウト） | ラッパーを挟まず引数と失敗理由が明示的になる。プロセス停止の制御も標準機能で足りる |
@@ -67,8 +67,8 @@ cmd/
 internal/
   domain/        # ドメインモデルとユースケース（外部 I/O への依存なし）
   httpapi/       # ハンドラ、ルーティング、ストリーミング、SPA の配信
-  store/         # SQLite 実装、sqlc 生成コード、マイグレーション
-  media/         # ffprobe/ffmpeg アダプタ、サムネイル生成、字幕変換
+  store/         # SQLite 実装、問い合わせと検索、マイグレーション
+  media/         # ffprobe/ffmpeg アダプタ、サムネイル生成
   scanner/       # ファイルスキャンと差分検出
   jobs/          # ジョブキューとワーカー
 api/
@@ -94,8 +94,6 @@ web/             # React SPA。ビルド結果を embed して配信
   あたり 2MiB に固定されているため、ハッシュ関数の速度は取り込み時間を
   律速しない（律速は `ffprobe` の起動とディスク I/O）。標準ライブラリなら
   依存を1つ増やさずに済み、amd64／arm64 ではハードウェア命令が使われる。
-  判断の詳細は
-  [002 の R-101](../../specs/002-core-video-library/research.md)。
 - `tags` / `video_tags`: 分類。階層は持たせず、命名規約（`series:xxx`）で表現する。
 - `playback_progress`: 再生位置と視聴済みフラグ。プレイヤーから数秒間隔で更新。
 - `videos_fts`: `title` と `path` の FTS5 仮想テーブル（trigram）。
@@ -127,7 +125,7 @@ DB は「再構築可能なインデックス」に限定する。タグ・再�
 | TypeScript / Node.js バックエンド | 第1版では言語統一のため採用していたが撤回（「7. 決定の変更履歴」）。Range 配信とプロセス管理を自前で書く必要があり、ネイティブ依存（`better-sqlite3`）の再ビルド運用も抱える |
 | Python + FastAPI | ライブラリは豊富だが、配布が重く、常駐ワーカーと依存管理の運用コストがセルフホスト用途に合わない |
 | Echo / Gin / Fiber | 標準 `ServeMux` で足りる規模であり、ルーティングのために依存を増やす理由がない。Fiber は `net/http` 互換でないため `ServeContent` の利点も失う |
-| GORM / ent | スキーマが小さく、FTS5 の生 SQL を書く必要がある。ORM の抽象より sqlc の生成コードのほうが読める |
+| GORM / ent | スキーマが小さく、FTS5 の生 SQL を書く必要がある。ORM の抽象より手書きの SQL のほうが読める |
 | `mattn/go-sqlite3` | 成熟しているが CGO が必要で、クロスコンパイルと alpine ビルドが面倒になる。FTS5 にもビルドタグが必要。`modernc.org/sqlite` で FTS5 が使えない場合の代替として残す |
 | PostgreSQL | 単一ユーザーには過剰。別コンテナとバックアップ運用が増える。マルチユーザー化時に再検討する |
 | Meilisearch / Elasticsearch | 検索品質は上だが常駐プロセスが増える。FTS5 trigram で数万件なら実用的 |
@@ -153,8 +151,8 @@ DB は「再構築可能なインデックス」に限定する。タグ・再�
   trigram の作成と検索が動作したため、切り替えは行わない。ただし trigram は
   2文字以下の検索語に `MATCH` が一致しないことが判明したため、検索は
   「3文字以上は `MATCH`、1〜2文字は FTS5 表への `LIKE`」の2経路にする
-  （[実測](../../specs/001-initial-setup/research.md)、
-  [tech-debt TD-001](../exec-plans/tech-debt.md)）。
+  （振り分けは `internal/store/search.go` の `routeFor`、検証は
+  `internal/store/fts_test.go`）。
 - **非対応コーデックの混入。** H.265/VP9/mkv などはブラウザで再生できない。
   取り込み時に `ffprobe` で判定し、再生不可を UI に明示する。変換は
   「6. 将来の拡張ポイント」の対象。
@@ -199,6 +197,3 @@ DB は「再構築可能なインデックス」に限定する。タグ・再�
 3. **Phase 2 — 使える状態。** サムネイル（シークプレビュー用のbackground事前生成を含む）、
    FTS5 検索、タグ、再生位置の保存、字幕変換。
 4. **Phase 3 — 運用。** 認証、構造化ログ、バックアップ手順、E2E の整備。
-
-実装着手時は `docs/exec-plans/active/` に実行計画を作成し、Phase 単位で
-進捗と決定を記録する。

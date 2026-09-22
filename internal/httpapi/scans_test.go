@@ -10,7 +10,7 @@ import (
 )
 
 // 取り込みの開始は 202 とスキャンを返す。応答は即座に返り、取り込みは
-// 背後で進む（R-108）。
+// 背後で進む。
 func TestStartScanReturnsAccepted(t *testing.T) {
 	scans := &fakeScans{}
 	handler := newTestServer(t, Options{Scans: scans})
@@ -30,7 +30,7 @@ func TestStartScanReturnsAccepted(t *testing.T) {
 }
 
 // 実行中に呼んでも新しく始めず、実行中のものを返す。409 にしないのは、
-// 利用者の意図が「今の状態を進めたい」だからである（R-108）。
+// 利用者の意図が「今の状態を進めたい」だからである。
 func TestStartScanReturnsRunningInsteadOfConflict(t *testing.T) {
 	scans := &fakeScans{
 		hasScan: true,
@@ -55,7 +55,7 @@ func TestStartScanReturnsRunningInsteadOfConflict(t *testing.T) {
 	}
 }
 
-// 直近の状態を返す。取り込みの規模と残りが分かる（FR-006）。
+// 直近の状態を返す。取り込みの規模と残りが分かる。
 func TestGetCurrentScan(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true,

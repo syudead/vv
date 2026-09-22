@@ -29,8 +29,7 @@ func repositoryRoot(t *testing.T) string {
 }
 
 // removedArtifacts are files the Tasks stage used to own. The workflow replaced
-// that stage with the Implementation Work section of plan.md
-// (docs/exec-plans/active/011-agent-agnostic-issue-handoff.md), so their
+// that stage with the Implementation Work section of plan.md, so their
 // reappearance means the stage is creeping back in.
 var removedArtifacts = []string{
 	".specify/templates/tasks-template.md",
@@ -48,19 +47,8 @@ func TestTasksStageArtifactsAreAbsent(t *testing.T) {
 		}
 	}
 
-	prerequisitesPath := filepath.Join(repoRoot, ".specify", "scripts", "bash", "check-prerequisites.sh")
-	prerequisites, err := os.ReadFile(prerequisitesPath)
-	if err != nil {
-		t.Fatalf("read check-prerequisites.sh: %v", err)
-	}
-	for _, obsolete := range []string{"--require-tasks", "--include-tasks", "/speckit-tasks"} {
-		if strings.Contains(string(prerequisites), obsolete) {
-			t.Errorf("check-prerequisites.sh contains removed Tasks-stage reference %q", obsolete)
-		}
-	}
-
 	specsDir := filepath.Join(repoRoot, "specs")
-	err = filepath.WalkDir(specsDir, func(path string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(specsDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

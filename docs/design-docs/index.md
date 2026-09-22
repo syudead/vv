@@ -9,6 +9,4 @@ Add each new document to this index.
 - [Plan品質の規則: 空欄を埋めるための記述を防ぐ](plan-quality.md)
 - [技術選定: MDM（Media Data Management）](tech-stack-selection.md)
 - [Issue handoff SDD: agentを固定しない一工程ずつの実行](sdd-loop-harness.md)
-- [ライブラリ UI の見た目の規則: CSS 1 か所・対比の自動検査・仮想スクロール無し](library-ui-design-system.md)
-- [コンパクトな動画ライブラリ UI](modern-library-ui.md)
-- [UI 全面刷新（フロントのみ・プレイヤー本体を除く）](../superpowers/specs/ui-overhaul-design.md)
+- [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)

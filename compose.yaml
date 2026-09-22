@@ -1,6 +1,6 @@
-# task up の実体（research.md R-003）。
+# task up の実体。
 # プロジェクト名を固定するので、データ用ボリュームの名前は vv_data になる
-# （quickstart.md S4 が参照する名前）。
+
 name: vv
 
 services:
@@ -20,7 +20,7 @@ services:
       - "${MDM_MEDIA_HOST_DIR:-./media}:/media:ro"
       # データベースは名前付きボリュームに置く。消しても次の起動で作り直される。
       - "data:/data"
-    # 猶予 10 秒の停止処理（contracts/http-routes.md）が終わるまで待つ。
+    # 猶予 10 秒の停止処理が終わるまで待つ。
     stop_grace_period: 15s
     restart: unless-stopped
 

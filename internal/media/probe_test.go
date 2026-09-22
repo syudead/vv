@@ -7,7 +7,7 @@ import (
 
 // ffprobe を起動せずに解析部分だけを検証する。外部プロセスに依存しない形で
 // 「JSON からどの値を取り出すか」を固定しておくと、ffprobe の出力が変わった
-// ときに壊れ方が分かりやすい（R-102）。
+// ときに壊れ方が分かりやすい。
 func TestParseProbeOutput(t *testing.T) {
 	const output = `{
 	  "streams": [
@@ -81,7 +81,7 @@ func TestParseProbeOutputWithoutAudio(t *testing.T) {
 }
 
 // 解析できない出力は、その1件の失敗として返す。取り込み全体は止めない
-// （FR-008）ので、呼び出し側は次のファイルへ進める。
+// ので、呼び出し側は次のファイルへ進める。
 func TestParseProbeOutputRejectsBrokenInput(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -104,7 +104,7 @@ func TestParseProbeOutputRejectsBrokenInput(t *testing.T) {
 	}
 }
 
-// 組み立てる引数が R-102 の1回分であること。値ごとに複数回起動すると、
+// 組み立てる引数が1回分であること。値ごとに複数回起動すると、
 // プロセス起動が支配的なコストなので取り込みが遅くなる。
 func TestProbeArgs(t *testing.T) {
 	got := probeArgs("/media/夏休みの旅行.mp4")
@@ -129,7 +129,7 @@ func TestProbeArgs(t *testing.T) {
 }
 
 // タイムアウトは 30 秒。壊れたファイルで ffprobe が戻らない場合に取り込み
-// 全体を止めないための上限である（R-102）。
+// 全体を止めないための上限である。
 func TestProbeTimeout(t *testing.T) {
 	if probeTimeout.Seconds() != 30 {
 		t.Errorf("probeTimeout = %v, want 30s", probeTimeout)

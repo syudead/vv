@@ -2,7 +2,7 @@ package domain
 
 import "testing"
 
-// 視聴済みの判定はサーバー側で行う。クライアントの申告は採らない（R-111）。
+// 視聴済みの判定はサーバー側で行う。クライアントの申告は採らない。
 //
 //	position_ms >= duration_ms - 15000  または  position_ms / duration_ms >= 0.95
 //
@@ -40,7 +40,7 @@ func TestEvaluateProgressCompletion(t *testing.T) {
 	}
 }
 
-// 位置は 0 以上に、尺が既知なら尺以下に丸める（data-model.md）。
+// 位置は 0 以上に、尺が既知なら尺以下に丸める。
 // 壊れた値をそのまま保存すると、再開位置が尺の外へ飛ぶ。
 func TestEvaluateProgressClampsPosition(t *testing.T) {
 	tests := []struct {
@@ -64,8 +64,8 @@ func TestEvaluateProgressClampsPosition(t *testing.T) {
 	}
 }
 
-// 再開位置。見終わった動画と、ほとんど見ていない動画は先頭から始める
-// （R-111）。見終わった動画を末尾から再開させても、利用者にできることが無い。
+// 再開位置。見終わった動画と、ほとんど見ていない動画は先頭から始める。
+// 見終わった動画を末尾から再開させても、利用者にできることが無い。
 func TestResumePosition(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -88,8 +88,8 @@ func TestResumePosition(t *testing.T) {
 	}
 }
 
-// 判定に使う値が R-111 のとおりであること。数字を変えるときは、この
-// テストと research.md の両方を直すことになる。
+// 判定に使う値を固定する。ここが視聴済み判定の唯一の基準なので、
+// 数字を変えるときは意図的に変えていることをこのテストで示す。
 func TestProgressThresholds(t *testing.T) {
 	if CompletionTailMs != 15_000 {
 		t.Errorf("CompletionTailMs = %d, want 15000", CompletionTailMs)

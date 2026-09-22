@@ -97,14 +97,14 @@ func TestPutProgress(t *testing.T) {
 	}
 
 	// 鍵は content_key（videos.id ではない）。ファイルを移動・改名しても
-	// 引き継がれることの前提である（R-111）。
+	// 引き継がれることの前提である。
 	if playback.lastKey != "abcdef0123456789abcdef:1024" {
 		t.Errorf("記録の鍵 = %q, want content_key", playback.lastKey)
 	}
 }
 
-// 視聴済みの判定はサーバー側で行い、クライアントの申告は採らない
-// （contracts/http-routes.md）。契約にも completed の入力は無い。
+// 視聴済みの判定はサーバー側で行い、クライアントの申告は採らない。
+// 契約にも completed の入力は無い。
 func TestPutProgressIgnoresClientCompletionClaim(t *testing.T) {
 	playback := newFakePlayback()
 	handler := progressServer(t, playback)
@@ -202,7 +202,7 @@ func TestPutProgressForMissingVideo(t *testing.T) {
 }
 
 // 一覧と詳細に再生位置を載せる。一覧で視聴済みと途中まで見た動画を
-// 区別できるようにするため（FR-015）。
+// 区別できるようにするため。
 func TestVideosIncludeProgress(t *testing.T) {
 	playback := newFakePlayback()
 	playback.saved["abcdef0123456789abcdef:1024"] = domain.Progress{

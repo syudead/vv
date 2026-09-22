@@ -4,12 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ListVideosParams, Video, VideoPage, VideoSort } from "./client";
 
 /**
- * 一覧の読み込みの振る舞い（002 のまま変えない。FR-025 / SC-009）。
+ * 一覧の読み込みの振る舞いを固定する。
  *
- * TD-004 が名指しした 1 点目である。カーソルの引き継ぎと打ち切りは目で見て
- * 分かる形に現れないので、004 で web/src/ のほぼ全域を書き換える前に、
- * ここで固定しておく。**このテストは US1・US2 の書き換えのあとも同じ内容で
- * 通ること。**
+ * カーソルの引き継ぎと打ち切りは目で見て分かる形に現れない。画面を書き換えても
+ * **このテストが同じ内容で通ること**が、既存の振る舞いを保った証拠になる。
  */
 
 const { listVideos } = vi.hoisted(() => ({ listVideos: vi.fn() }));
