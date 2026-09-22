@@ -1,7 +1,6 @@
 # 実行計画: 設定画面
 
 - ステータス: 完了
-- 最終更新: 2026-09-21
 - Parent Issue: #62
 - Feature branch: `codex/feature-settings-screen`
 

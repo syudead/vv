@@ -1,7 +1,6 @@
 # Completed: Claude Routine SDD loop
 
-- Status: Retired on 2026-09-19
-- Original implementation completed: 2026-09-13
+- Status: Retired
 - Replacement: [Issue handoff execution plan](../active/011-agent-agnostic-issue-handoff.md)
 
 The original work implemented `/sdd-next`, Git-derived guards, a Claude

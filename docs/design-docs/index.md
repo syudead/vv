@@ -11,4 +11,4 @@ Add each new document to this index.
 - [Issue handoff SDD: agentを固定しない一工程ずつの実行](sdd-loop-harness.md)
 - [ライブラリ UI の見た目の規則: CSS 1 か所・対比の自動検査・仮想スクロール無し](library-ui-design-system.md)
 - [コンパクトな動画ライブラリ UI](modern-library-ui.md)
-- [UI 全面刷新（フロントのみ・プレイヤー本体を除く）](../superpowers/specs/2026-09-20-ui-overhaul-design.md)
+- [UI 全面刷新（フロントのみ・プレイヤー本体を除く）](../superpowers/specs/ui-overhaul-design.md)
