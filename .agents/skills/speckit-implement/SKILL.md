@@ -15,8 +15,7 @@ Issue. When an Issue or PR is supplied, read and follow
 behavior. A plain-text implementation request uses the current checkout and
 does not require an Issue, parent Issue, feature directory, or PR.
 
-Set `SPECIFY_FEATURE_DIRECTORY` explicitly only when the request uses a Spec
-Kit feature directory.
+Name the feature directory explicitly only when the request uses one.
 
 
 ## User Input
@@ -65,7 +64,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. For Spec Kit feature work, preserve `.specify/feature.json` as required by the issue-handoff contract, then run `SPECIFY_INIT_DIR="$PWD" SPECIFY_FEATURE_DIRECTORY="$SPECIFY_FEATURE_DIRECTORY" bash .specify/scripts/bash/check-prerequisites.sh --json --require-spec` from repo root. Restore the machine-local file afterward and parse FEATURE_DIR and AVAILABLE_DOCS list. All paths must be absolute. For a plain-text implementation request, skip this step and use the current checkout and relevant repository files. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. For feature-directory work, the directory is given to you. List what it holds — `plan.md`, and any of `ui-design.md`, `data-model.md`, `contracts/`, `research.md`, `quickstart.md`, `checklists/` — and use that as the available-documents list. Run no script for this. For a plain-text implementation request, skip this step and use the current checkout and relevant repository files.
 
 2. **Check checklists status** (if FEATURE_DIR/checklists/ exists):
    - Treat checklist markers as a read-only gate: scan checkbox state, report status, and ask before proceeding when needed; do NOT modify checklist files or markers
@@ -102,7 +101,7 @@ You **MUST** consider the user input before proceeding (if not empty).
      - Automatically proceed to step 3
 
 3. Load and analyze the implementation context. For Spec Kit feature work:
-   - **REQUIRED**: Read spec.md for requirements and acceptance criteria
+   - **REQUIRED**: Read the parent Issue for requirements and acceptance criteria
    - **REQUIRED**: Read plan.md for tech stack, architecture, and file structure
    - **IF EXISTS**: Read data-model.md for entities and relationships
    - **IF EXISTS**: Read contracts/ for API specifications and test requirements

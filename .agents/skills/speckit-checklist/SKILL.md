@@ -82,9 +82,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Execution Steps
 
-1. **Setup**: Run `.specify/scripts/bash/check-prerequisites.sh --json --template checklist-template` from repo root and parse JSON for FEATURE_DIR, AVAILABLE_DOCS list, and TEMPLATE_CONTENT.
-   - All file paths must be absolute.
-   - For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. **Setup**: The feature directory is given to you. List what it holds as the available-documents list, and read [`.specify/templates/checklist-template.md`](../../../.specify/templates/checklist-template.md) as the template. Run no script for this.
 
 2. Load this repository's governance for its principles and constraints — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. If `.specify/memory/constitution.md` exists, read it and let the principles it has actually ratified win; an unfilled template slot inside it is simply not a constraint, while a file that is absent, empty, or still nothing but placeholders carries none at all. This repository currently keeps no such file.
 
@@ -127,9 +125,9 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Infer any missing context from spec/plan (do NOT hallucinate)
    - An ambiguity you find in the spec becomes a checklist item that asks the question, never an item that assumes one reading of it (Q-6 in docs/product-specs/spec-quality.md)
 
-5. **Load feature context**: Read from FEATURE_DIR:
-   - spec.md: Feature requirements and scope
-   - plan.md (if exists): Technical details, dependencies
+5. **Load feature context**:
+   - the parent Issue: feature requirements and scope
+   - plan.md in FEATURE_DIR (if exists): Technical details, dependencies
 
    **Context Loading Strategy**:
    - Load only necessary portions relevant to active focus areas (avoid full-file dumping)

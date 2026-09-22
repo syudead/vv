@@ -15,8 +15,9 @@ Two rules make the difference between a review that finds things and one that
 agrees with itself.
 
 - **Cite a source.** Every claim that the change is correct names a file and a
-  line in an artifact or an existing contract. "This looks right" is not an
-  answer; `spec.md:99-108 says X, and the code does X` is.
+  line in an artifact or an existing contract, or a named section of the parent
+  Issue. "This looks right" is not an answer;
+  `plan.md:99-108 says X, and the code does X` is.
 - **Enumerate, do not judge.** Where a check asks for call sites, states, or
   paths, list them with `grep` and walk the list. A reviewer asked whether a
   case is handled says yes. A reviewer asked to list every case finds the one
@@ -26,9 +27,9 @@ agrees with itself.
 
 ### 1. Reconcile the diff against the sources of truth
 
-For each behaviour the diff adds or changes, quote the line in `spec.md`,
-`data-model.md`, `contracts/`, `ui-design.md`, `api/openapi.yaml`, or
-`AGENTS.md` that governs it, and state whether the code matches. A behaviour
+For each behaviour the diff adds or changes, quote the parent Issue's 要件 or
+受け入れ条件, or the line in `plan.md`, `data-model.md`, `contracts/`,
+`ui-design.md`, `api/openapi.yaml`, or `AGENTS.md` that governs it, and state whether the code matches. A behaviour
 with no governing line is either missing from the artifact or outside the
 change's scope; say which.
 

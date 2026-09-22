@@ -30,8 +30,8 @@ and commands read the constitution at runtime and are not modified here.
 - If it is unclear whether an instruction is constitution content, ask for clarification before
   making changes.
 - After completing the constitution update, include a `Next Actions` section for each deferred
-  intent. List the original intent and suggest the appropriate follow-up Spec Kit command, such
-  as `/speckit-specify`, without invoking it.
+  intent. List the original intent and suggest the appropriate follow-up, such as the
+  `issue-spec` skill or `/speckit-plan`, without invoking it.
 - If there are no non-governance intents, omit the `Next Actions` section.
 
 ## Pre-Execution Checks
@@ -78,11 +78,7 @@ preset/template resolution stack.
 
 Follow this execution flow:
 
-1. Run `.specify/scripts/bash/resolve-template.sh constitution-template --json` from the repository root and parse `TEMPLATE_CONTENT` as the active template.
-   - The shared resolver applies project overrides, composing preset layers, and extension layers
-     before the core template fallback. It MUST succeed before continuing.
-   - If it fails, stop and report the resolution error; do not continue with only one contributing
-     template layer.
+1. Read [`.specify/templates/constitution-template.md`](../../../.specify/templates/constitution-template.md) as the active template. Run no script for this.
    - If `.specify/memory/constitution.md` exists, load it as the source of current project-specific
      values and amendments. Preserve information that is still applicable when applying the newly
      resolved scaffold.

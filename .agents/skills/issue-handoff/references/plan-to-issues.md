@@ -13,8 +13,8 @@ units are, what each one covers, what counts as done — and a human approved
 those. Expanding an approved decision into a readable Issue is this stage's job.
 Deciding something the plan did not decide is not: scope the plan does not
 cover, acceptance evidence not derivable from it, or an answer to a question
-the spec still holds open. The test is whether you can point at where in the
-approved artifacts the statement comes from.
+the parent Issue still holds open. The test is whether you can point at where
+in the parent Issue or the approved artifacts the statement comes from.
 
 1. Use the supplied parent Issue and current checkout as context, and read the
    relevant approved Plan.
@@ -25,14 +25,16 @@ approved artifacts the statement comes from.
    person can pick up cold: what changes and where, what has to land first, and
    what counts as done. Draw the detail from the artifacts the plan points at —
    the contract for an endpoint's errors, the data model for a field's rules,
-   the spec for the behavior — rather than leaving the implementer to find them.
+   the parent Issue for the behaviour — rather than leaving the implementer to
+   find them.
    Include a link to `plan.md`, the feature directory, and the feature branch
    name.
 4. **Do not decide anything new here.** For every statement in the body, you
-   must be able to name where in the spec, the plan, or an artifact it comes
-   from. If writing a usable Issue would require settling something none of
-   them settle — scope the plan does not cover, acceptance evidence that cannot
-   be derived, or a question the spec still holds open — do not invent it:
+   must be able to name where in the parent Issue, the plan, or an artifact it
+   comes from. If writing a usable Issue would require settling something none
+   of them settle — scope the plan does not cover, acceptance evidence that
+   cannot be derived, or a question the parent Issue still holds open — do not
+   invent it:
    put that question to the user, and if it changes what gets built, the answer
    belongs in `plan.md` through `/speckit-plan` before the Issue is created.
    ([P-5](../../../../docs/design-docs/plan-quality.md))
