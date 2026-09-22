@@ -133,12 +133,13 @@ export function attachSeekPreview(
       request = controller;
       const url = thumbnailRequestUrl(options.thumbnailUrl, requestedBucket);
       void fetchImage(url, controller.signal)
-        .then((blob) => {
+        .then(() => {
           if (controller.signal.aborted) return;
-          const objectUrl = URL.createObjectURL(blob);
-          remember(cache, requestedBucket, objectUrl);
+          // Reuse the validated HTTP response from browser cache. Blob-backed portrait
+          // JPEGs can paint black when nested in Video.js controls on Chromium.
+          remember(cache, requestedBucket, url);
           if (!visible || activeBucket !== requestedBucket) return;
-          image.src = objectUrl;
+          image.src = url;
           setState("ready");
         })
         .catch((error: unknown) => {
@@ -205,7 +206,6 @@ export function attachSeekPreview(
     progress.removeEventListener("pointerdown", onPointerDown);
     progress.removeEventListener("pointerup", onPointerEnd);
     progress.removeEventListener("pointercancel", onPointerEnd);
-    for (const objectUrl of cache.values()) URL.revokeObjectURL(objectUrl);
     preview.remove();
   };
 }
@@ -225,12 +225,11 @@ async function fetchThumbnail(url: string, signal: AbortSignal): Promise<Blob> {
 function remember(
   cache: Map<number, string>,
   positionMs: number,
-  objectUrl: string,
+  imageUrl: string,
 ): void {
-  cache.set(positionMs, objectUrl);
+  cache.set(positionMs, imageUrl);
   if (cache.size <= cacheLimit) return;
   const oldest = cache.entries().next().value as [number, string] | undefined;
   if (oldest === undefined) return;
   cache.delete(oldest[0]);
-  URL.revokeObjectURL(oldest[1]);
 }
