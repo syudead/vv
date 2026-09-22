@@ -16,6 +16,9 @@ const mock = vi.hoisted(() => {
     on(event: string, callback: Callback) {
       this.handlers.set(event, [...(this.handlers.get(event) ?? []), callback]);
     }
+    ready(callback: Callback) {
+      callback();
+    }
     one(event: string, callback: Callback) {
       const once = () => {
         this.off(event, once);
