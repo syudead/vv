@@ -114,16 +114,17 @@ func run() error {
 	defer stopTranscodes()
 
 	handler := httpapi.NewRouter(httpapi.Options{
-		Build:         build,
-		Pinger:        db,
-		Videos:        db,
-		Playback:      db,
-		Scans:         lib,
-		MediaFolders:  db,
-		ThumbnailsDir: cfg.ThumbnailsDir(),
-		Transcoder:    media.NewLiveTranscoder(transcodeCtx.Done()),
-		Assets:        web.Dist(),
-		Logger:        logger,
+		Build:          build,
+		Pinger:         db,
+		Videos:         db,
+		Playback:       db,
+		Scans:          lib,
+		MediaFolders:   db,
+		ThumbnailsDir:  cfg.ThumbnailsDir(),
+		Transcoder:     media.NewLiveTranscoder(transcodeCtx.Done()),
+		SeekThumbnails: media.NewSeekThumbnailExtractor(),
+		Assets:         web.Dist(),
+		Logger:         logger,
 	})
 
 	if err := serve(cfg, handler, logger, nil, stopTranscodes); err != nil {

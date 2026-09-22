@@ -63,6 +63,12 @@ type Transcoder interface {
 	Start(context.Context, string, int64, bool, time.Time) (io.ReadCloser, func() error, func(), error)
 }
 
+// SeekThumbnailExtractor は1 request分のJPEGを元動画から取り出す。
+// 返すbytesは完全な1枚で、永続ファイルを作らない。
+type SeekThumbnailExtractor interface {
+	Extract(context.Context, string, int64) ([]byte, error)
+}
+
 // Options は経路の組み立てに必要な依存である。
 type Options struct {
 	// Build は稼働中のバイナリを特定するための情報。
@@ -82,6 +88,8 @@ type Options struct {
 	ThumbnailsDir string
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
 	Transcoder Transcoder
+	// SeekThumbnails は任意時刻のJPEGを生成する。nilなら経路は500を返す。
+	SeekThumbnails SeekThumbnailExtractor
 	// Assets は SPA のビルド成果物（web/dist に相当）。
 	Assets fs.FS
 	// Logger は応答の過程で出す記録。nil の場合は slog の既定を使う。
@@ -91,15 +99,16 @@ type Options struct {
 // server は生成された gen.ServerInterface を満たす。契約（api/openapi.yaml）に
 // 経路を足したらこの型がコンパイルエラーになるため、実装漏れに気付ける。
 type server struct {
-	build         domain.BuildInfo
-	pinger        Pinger
-	videos        Library
-	playback      Playback
-	scans         Scans
-	mediaFolders  MediaFolders
-	thumbnailsDir string
-	transcoder    Transcoder
-	logger        *slog.Logger
+	build          domain.BuildInfo
+	pinger         Pinger
+	videos         Library
+	playback       Playback
+	scans          Scans
+	mediaFolders   MediaFolders
+	thumbnailsDir  string
+	transcoder     Transcoder
+	seekThumbnails SeekThumbnailExtractor
+	logger         *slog.Logger
 }
 
 // NewRouter は経路を分配するハンドラを返す。
@@ -123,15 +132,16 @@ func NewRouter(opts Options) http.Handler {
 	mux.Handle("/", newSPAHandler(opts.Assets, logger))
 
 	srv := &server{
-		build:         opts.Build,
-		pinger:        opts.Pinger,
-		videos:        opts.Videos,
-		playback:      opts.Playback,
-		scans:         opts.Scans,
-		mediaFolders:  opts.MediaFolders,
-		thumbnailsDir: opts.ThumbnailsDir,
-		transcoder:    opts.Transcoder,
-		logger:        logger,
+		build:          opts.Build,
+		pinger:         opts.Pinger,
+		videos:         opts.Videos,
+		playback:       opts.Playback,
+		scans:          opts.Scans,
+		mediaFolders:   opts.MediaFolders,
+		thumbnailsDir:  opts.ThumbnailsDir,
+		transcoder:     opts.Transcoder,
+		seekThumbnails: opts.SeekThumbnails,
+		logger:         logger,
 	}
 
 	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
