@@ -9,8 +9,9 @@
 ポインターとタッチの移動へ追従する。
 
 要求は [spec.md](spec.md)、方式選択は [research.md](research.md)、HTTP 差分は
-[contracts/seek-thumbnail.md](contracts/seek-thumbnail.md)、検証手順は [quickstart.md](quickstart.md)
-を正本とする。永続化する新しいエンティティや状態はないため `data-model.md` は作成しない。
+[contracts/seek-thumbnail.md](contracts/seek-thumbnail.md)、UI差分は [ui-design.md](ui-design.md)、
+検証手順は [quickstart.md](quickstart.md) を正本とする。永続化する新しいエンティティや状態はないため
+`data-model.md` は作成しない。
 
 ## Technical Context
 
@@ -83,14 +84,16 @@ specs/009-seek-thumbnail-preview/
 ├── spec.md
 ├── plan.md
 ├── research.md
+├── ui-design.md
 ├── quickstart.md
 └── contracts/
     └── seek-thumbnail.md
 ```
 
-`research.md` は抽出・再利用・境界の判断、contract は新しい binary response、quickstart は
-時刻精度、連続操作、縮退、視覚確認を持つ。永続データ差分がないため `data-model.md` は作成しない。
-この workflow は `tasks.md` を作らず、下の Implementation Work を子 Issue 化する。
+`research.md` は抽出・再利用・境界の判断、contract は新しい binary response、`ui-design.md` は
+表示・状態・入力方式の差分、quickstart は時刻精度、連続操作、縮退、視覚確認を持つ。永続データ差分が
+ないため `data-model.md` は作成しない。この workflow は `tasks.md` を作らず、下の
+Implementation Work を子 Issue 化する。
 
 ### Source Code
 
@@ -128,7 +131,8 @@ specs/009-seek-thumbnail-preview/
 
 ### シークバーのサムネイルプレビュー UI
 
-**Scope**: [spec UI acceptance](spec.md#ui-acceptance-criteria) と [quickstart](quickstart.md) に従い、
+**Scope**: [UI design](ui-design.md)、[spec UI acceptance](spec.md#ui-acceptance-criteria)、
+[quickstart](quickstart.md) に従い、
 シークバーのpointer hover／drag／touchへ追従する静止画と時刻、1秒正規化、150ms debounce、前要求中断、
 古い応答拒否、取得失敗時の時刻のみ表示、破棄時cleanupを既存プレイヤーへ追加する。frontend unit testと
 browser testを追加し、一覧画面は変更しない。

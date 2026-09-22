@@ -54,9 +54,10 @@
 | ready | 現在のbucketに一致する画像だけを表示し、時刻は操作位置へ引き続き即時追従する |
 | unavailable | 画像領域を隠し、対象時刻だけを進捗位置の上に表示する。error文言や再試行操作は出さない |
 
-pointer hover、pointer drag、touch dragは同じ表示を使う。drag終了、pointer leave、動画切り替え、
-画面離脱では即時にhiddenへ戻す。画像の取得、表示、失敗は再生、一時停止、mute、source切り替え、
-実際のシーク位置を変更しない。
+pointer hover、pointer drag、touch dragは同じ表示を使う。drag終了、drag中でないpointer leave、
+動画切り替え、画面離脱では即時にhiddenへ戻す。drag中に進捗バーの外へ出ても表示を維持し、
+pointer captureまたは同等の仕組みで終了まで位置をプレイヤー内へ収めて追従する。画像の取得、表示、
+失敗は再生、一時停止、mute、source切り替え、実際のシーク位置を変更しない。
 
 同じ1秒bucketでは同じ画像を維持し、時刻表示だけを実際の操作位置へ追従させる。別bucketへ移った時点で
 古い画像を隠すため、前の場面を現在位置の結果と誤認させない。
@@ -74,8 +75,8 @@ pointer hover、pointer drag、touch dragは同じ表示を使う。drag終了�
 ## Visual review criteria
 
 実装PRでは時刻を映像内に描いた公開可能なfixtureを使い、360px、768px、1280pxの各viewportで、
-先頭、中央、末尾のready状態を撮影する。加えてloadingまたはunavailableの時刻のみ表示を少なくとも
-1幅で撮影し、変更前の同じ再生画面と比較する。
+先頭、中央、末尾のready状態を撮影する。加えてloadingの空の16:9面と時刻、またはunavailableの
+時刻のみ表示を少なくとも1幅で撮影し、変更前の同じ再生画面と比較する。
 
 - **視覚的階層**: 動画が主表示のままで、プレビューは進捗操作中だけ現れ、現在再生映像と誤認しない
 - **情報密度**: 静止画と時刻以外の文言・操作がなく、control barの既存情報を押し出さない
