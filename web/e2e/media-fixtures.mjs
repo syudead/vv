@@ -88,6 +88,7 @@ export function generateMediaFixtures(mediaDir) {
     file("direct.mp4"),
   ]);
   ffmpeg(["-i", file("direct.mp4"), "-c", "copy", file("container-only.mkv")]);
+  ffmpeg(["-i", file("direct.mp4"), "-c", "copy", file("container-only-mov.mov")]);
   ffmpeg([
     "-f",
     "lavfi",
@@ -204,6 +205,7 @@ export function generateMediaFixtures(mediaDir) {
     "direct.mp4": { video: "h264", audio: "aac" },
     "direct-fallback.mp4": { video: "h264", audio: "aac" },
     "container-only.mkv": { video: "h264", audio: "aac" },
+    "container-only-mov.mov": { video: "h264", audio: "aac" },
     "video-only.mp4": { video: "mpeg4", audio: "aac" },
     "audio-only.mp4": { video: "h264", audio: "flac" },
     "video-audio.avi": { video: "mpeg4", audio: "pcm_s16le" },

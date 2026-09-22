@@ -20,8 +20,9 @@ import (
 func compatibleMetadata() transcodeMetadata {
 	audio := transcodeStream{Index: 2, CodecType: "audio", CodecName: "aac", Profile: "LC", SampleRate: 48000, Channels: 2}
 	return transcodeMetadata{
-		Video: transcodeStream{Index: 1, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1},
-		Audio: &audio,
+		FormatName: "matroska,webm",
+		Video:      transcodeStream{Index: 1, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1},
+		Audio:      &audio,
 	}
 }
 
@@ -30,12 +31,12 @@ func TestParseTranscodeProbeSkipsAttachedPicture(t *testing.T) {
 		{"index":0,"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}},
 		{"index":1,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":1920,"height":1080,"level":41,"avg_frame_rate":"30000/1001","r_frame_rate":"30000/1001","sample_aspect_ratio":"4:3","side_data_list":[{"side_data_type":"Display Matrix","rotation":-90}]},
 		{"index":2,"codec_type":"audio","codec_name":"aac","profile":"LC","sample_rate":"48000","channels":2}
-	],"format":{"duration":"12.5"}}`
+	],"format":{"duration":"12.5","format_name":"MOV,MP4,M4A,3GP,3G2,MJ2"}}`
 	got, err := parseTranscodeProbe([]byte(output))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Video.Index != 1 || got.Video.Rotation != 270 || got.Video.SampleAspectNum != 4 || got.Video.SampleAspectDen != 3 || got.Audio == nil || got.Audio.Index != 2 {
+	if got.FormatName != "mov,mp4,m4a,3gp,3g2,mj2" || got.Video.Index != 1 || got.Video.Rotation != 270 || got.Video.SampleAspectNum != 4 || got.Video.SampleAspectDen != 3 || got.Audio == nil || got.Audio.Index != 2 {
 		t.Fatalf("stream selection = %+v", got)
 	}
 }
@@ -68,6 +69,9 @@ func TestTranscodeArgsCopiesCompatibleStreams(t *testing.T) {
 		if !strings.Contains(args, want) {
 			t.Errorf("argsに %q がない: %s", want, args)
 		}
+	}
+	if strings.Contains(args, "-interleaved_read") {
+		t.Fatalf("非MOVにもMOV demuxer optionがある: %s", args)
 	}
 }
 
@@ -106,10 +110,19 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 
 func TestTranscodeArgsNormalizesSeek(t *testing.T) {
 	args := strings.Join(transcodeArgs("movie.mp4", 25000, compatibleMetadata(), false), " ")
-	for _, want := range []string{"-ss 25.000 -i movie.mp4", "-c:v libx264", "-c:a aac"} {
+	for _, want := range []string{"-ss 25.000 -i movie.mp4", "-c:v libx264", "-preset superfast", "-c:a aac"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("argsに %q がない: %s", want, args)
 		}
+	}
+}
+
+func TestTranscodeArgsDisablesInterleavedReadsForMOVDemuxer(t *testing.T) {
+	metadata := compatibleMetadata()
+	metadata.FormatName = "mov,mp4,m4a,3gp,3g2,mj2"
+	args := strings.Join(transcodeArgs("movie.mov", 25000, metadata, false), " ")
+	if !strings.Contains(args, "-ss 25.000 -interleaved_read 0 -i movie.mov") {
+		t.Fatalf("MOV demuxer optionがinputより前にない: %s", args)
 	}
 }
 
