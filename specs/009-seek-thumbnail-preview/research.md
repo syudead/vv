@@ -18,11 +18,12 @@
 
 ## R-302: clientとserverは同じ5秒bucketを使う
 
-**Decision**: clientは対象時刻を5秒bucketへ丸め、serverは同じ規則で生成済みfileを選ぶ。150msの
-debounce、中断、最新bucket照合、版付きimmutable cacheは維持する。
+**Decision**: clientは対象時刻を5秒bucketへ切り下げ、serverは同じ規則で生成済みfileを選ぶ。bucket変更時に
+即時要求し、中断、最新bucket照合、decode後の差し替え、版付きimmutable cacheを使う。
 
 **Rationale**: 同じ区間のpointer移動を同じURLへまとめ、不要なreadと描画競合を避ける。時刻表示自体は
-実際のpointer位置へ即時追従するため、シーク精度は粗くならない。
+実際のpointer位置へ即時追従するため、シーク精度は粗くならない。次画像のdecode完了までは表示済み画像を
+維持し、通信・decode待ちの黒い面を連続操作へ挟まない。
 
 ## R-303: 一覧画像と保存場所を分離する
 

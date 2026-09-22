@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { attachSeekPreview, seekPreviewTarget } from "./seekPreview";
 
@@ -62,17 +62,12 @@ describe("seek preview target", () => {
 });
 
 describe("seek preview controller", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
   afterEach(() => {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
     document.body.replaceChildren();
   });
 
-  it("時刻を即時表示し、debounce後に現在bucketの画像だけを表示する", async () => {
+  it("画像を即時要求し、次の画像が完成するまで表示中の画像を維持する", async () => {
     const progress = progressElement();
     const requests: Array<{
       url: string;
@@ -96,20 +91,23 @@ describe("seek preview controller", () => {
     progress.dispatchEvent(pointer("pointerenter", 300));
     expect(preview.dataset.state).toBe("loading");
     expect(preview.textContent).toBe("1:00");
-    expect(fetchImage).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(150);
     expect(requests[0]?.url).toBe(
       "/api/videos/1/seek-thumbnail?v=content&positionMs=60000",
     );
 
-    progress.dispatchEvent(pointer("pointermove", 400));
-    expect(requests[0]?.signal.aborted).toBe(true);
-    expect(preview.dataset.state).toBe("loading");
-    expect(image.hasAttribute("src")).toBe(false);
-    await vi.advanceTimersByTimeAsync(150);
+    requests[0]?.resolve(new Blob(["first"]));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(preview.dataset.state).toBe("ready");
+    expect(image.src).toContain("positionMs=60000");
 
-    requests[0]?.resolve(new Blob(["old"]));
+    progress.dispatchEvent(pointer("pointermove", 400));
+    expect(preview.dataset.state).toBe("loading");
+    expect(image.src).toContain("positionMs=60000");
+    expect(requests[1]?.url).toBe(
+      "/api/videos/1/seek-thumbnail?v=content&positionMs=90000",
+    );
+
     requests[1]?.resolve(new Blob(["current"]));
     await Promise.resolve();
     await Promise.resolve();
@@ -177,7 +175,6 @@ describe("seek preview controller", () => {
     progress.dispatchEvent(pointer("pointermove", 900, 7, "touch"));
     expect(progress.setPointerCapture).toHaveBeenCalledWith(7);
     expect(preview.textContent).toBe("0:09");
-    await vi.advanceTimersByTimeAsync(150);
     await Promise.resolve();
     await Promise.resolve();
     expect(preview.dataset.state).toBe("unavailable");

@@ -55,7 +55,7 @@ process command、stderrを返さない。
 ## Client lifecycle
 
 - サムネイル要求は5秒bucketへ丸め、時刻表示は実際のpointer/touch位置へ即時追従する
-- bucketが150ms変わらなかった場合だけ画像を要求する
+- bucketが変わった時点で画像を要求し、decode完了までは直前の画像を維持する
 - bucket変更、シークバー離脱、drag終了、動画変更、page離脱で不要な要求を中断する
 - 応答時のbucketが最新対象と異なる場合は表示しない
 - 同じ版・bucketは同じURLとし、browser cacheから再利用する

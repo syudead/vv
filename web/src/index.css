@@ -59,7 +59,8 @@
   object-fit: cover;
 }
 
-.vv-seek-preview[data-state="ready"] img {
+.vv-seek-preview[data-state="ready"] img,
+.vv-seek-preview[data-state="loading"] img[src] {
   display: block;
 }
 

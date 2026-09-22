@@ -6,7 +6,7 @@
 
 再生画面のシークバーが示す論理時刻について、thumbnail background jobが5秒間隔のJPEGを事前生成する。
 画像経路は生成済みfileを読むだけとし、再生中にFFmpegを起動しない。プレイヤーは時刻を即時表示し、
-5秒単位の画像要求を短く遅延・中断・再利用しながら、ポインターとタッチの移動へ追従する。
+5秒単位の画像要求を即時開始し、中断・再利用しながら、ポインターとタッチの移動へ追従する。
 
 要求はGitHub Issue #117、方式選択は [research.md](research.md)、HTTP 差分は
 [contracts/seek-thumbnail.md](contracts/seek-thumbnail.md)、UI差分は [ui-design.md](ui-design.md)、
@@ -34,7 +34,7 @@
   content-derived versionを含む`seekThumbnailUrl`を返す。
 - 既存thumbnail jobを拡張し、生成画像を`MDM_DATA_DIR/thumbnails/seek`へ保存する。既存動画は
   migrationで同じjobへ一度だけ再投入する。
-- client は対象時刻を最寄りの5秒へまとめ、150ms の debounce、前要求の中断、最新位置の照合で
+- client は対象時刻を5秒bucketへ切り下げ、前要求の中断、最新位置の照合、decode後の差し替えで
   連続操作を制御する。同じ URL は immutable browser cache で再利用する。
 - 既存の直接配信／ライブ変換の source ではなく、元動画全体の `durationMs` とシークバー位置から
   `positionMs` を求めるため、再生経路切り替え後も同じ時間軸を使う。
@@ -62,9 +62,9 @@ Phase 1 後も判定は同じで、例外や Complexity Tracking を必要とす
 
 - **background jobで事前生成する**: 5秒間隔の静止画をcontent key単位で永続cacheし、HTTP requestは
   file readだけを行う。requestごとのFFmpeg起動は初回表示が数秒遅れるため廃止する。
-- **5秒単位の版付き URL を再利用する**: client は最寄りの5秒を同じ URL にまとめ、150ms 静止した
-  対象だけ取得する。移動時は前要求を中断し、完了時に対象時刻を再照合する。生の pointer move ごとに
-  process を起動する案は負荷と古い応答競合を増やすため採用しない。
+- **5秒単位の版付き URL を再利用する**: client は同じ5秒bucketを同じ URL にまとめ、bucket変更時に
+  即時取得する。移動時は前要求を中断し、decode完了時に対象時刻を再照合して一度に差し替える。
+  取得中に表示済み画像を消す案は黒い面が連続操作へ挟まるため採用しない。
 - **静止画専用経路を既存 thumbnail から分ける**: 一覧用の生成済み代表画像と、任意時刻を入力にする
   事前生成画像で status・lifecycle・cache key が異なるため、既存 `/thumbnail` の optional query へ
   多重化しない。ライブ変換経路からフレームを抜く案は source offset と再生経路に依存し、直接配信と
@@ -98,10 +98,10 @@ Implementation Work を子 Issue 化する。
 **Affected boundaries**:
 
 - `api/openapi.yaml`: 任意時刻の JPEG 経路、query、response、`Video.seekThumbnailUrl`
-- `internal/media/`: 1 request 分の静止画抽出、上限時間、process cancellation
-- `internal/httpapi/`: current location 検証、抽出 interface、binary response と cache/error
-- `cmd/mdm/`: media adapter の注入
-- `web/src/api/`・`web/src/player/`: 版付き URL、時刻正規化、debounce、中断、表示 lifecycle
+- `internal/media/`: background生成、disk cache、孤児cache cleanup
+- `internal/httpapi/`: 生成済みJPEGのbinary responseとcache/error
+- `cmd/mdm/`: thumbnail jobへの生成処理とcleanupの組み込み
+- `web/src/api/`・`web/src/player/`: 版付き URL、時刻正規化、中断、decode、表示 lifecycle
 - `web/e2e/`: ポインター／タッチ、直接配信／ライブ変換、失敗時縮退、viewport 検証
 
 **New paths**:
@@ -130,8 +130,8 @@ unit/contract testを追加する。既存の一覧サムネイル、動画配�
 
 **Scope**: [UI design](ui-design.md)、[spec UI acceptance](spec.md#ui-acceptance-criteria)、
 [quickstart](quickstart.md) に従い、
-シークバーのpointer hover／drag／touchへ追従する静止画と時刻、5秒正規化、150ms debounce、前要求中断、
-古い応答拒否、取得失敗時の時刻のみ表示、破棄時cleanupを既存プレイヤーへ追加する。frontend unit testと
+シークバーのpointer hover／drag／touchへ追従する静止画と時刻、5秒正規化、即時要求、前要求中断、
+decode後の差し替え、古い応答拒否、取得失敗時の時刻のみ表示、破棄時cleanupを既存プレイヤーへ追加する。frontend unit testと
 browser testを追加し、一覧画面は変更しない。
 
 **Dependencies**: 任意時刻のシークサムネイル生成・配信 API。

@@ -1,7 +1,6 @@
 import { formatDuration } from "../lib/format";
 
 const bucketMs = 5000;
-const debounceMs = 150;
 const cacheLimit = 12;
 
 interface PreviewOptions {
@@ -62,11 +61,8 @@ export function attachSeekPreview(
   let activePointer: number | null = null;
   let visible = false;
   let request: AbortController | null = null;
-  let timer: number | null = null;
 
   const cancelPending = () => {
-    if (timer !== null) window.clearTimeout(timer);
-    timer = null;
     request?.abort();
     request = null;
   };
@@ -110,7 +106,6 @@ export function attachSeekPreview(
     if (activeBucket === target.requestPositionMs) return;
     activeBucket = target.requestPositionMs;
     cancelPending();
-    image.removeAttribute("src");
 
     const cached = cache.get(activeBucket);
     if (cached !== undefined) {
@@ -119,37 +114,37 @@ export function attachSeekPreview(
       return;
     }
     if (unavailable.has(activeBucket)) {
+      image.removeAttribute("src");
       setState("unavailable");
       return;
     }
 
     setState("loading");
     const requestedBucket = activeBucket;
-    timer = window.setTimeout(() => {
-      timer = null;
-      const controller = new AbortController();
-      request = controller;
-      const url = thumbnailRequestUrl(options.thumbnailUrl, requestedBucket);
-      void fetchImage(url, controller.signal)
-        .then(() => {
-          if (controller.signal.aborted) return;
-          // Reuse the validated HTTP response from browser cache. Blob-backed portrait
-          // JPEGs can paint black when nested in Video.js controls on Chromium.
-          remember(cache, requestedBucket, url);
-          if (!visible || activeBucket !== requestedBucket) return;
-          image.src = url;
-          setState("ready");
-        })
-        .catch((error: unknown) => {
-          if (controller.signal.aborted) return;
-          unavailable.add(requestedBucket);
-          if (visible && activeBucket === requestedBucket) setState("unavailable");
-          if (error instanceof Error && error.name === "AbortError") return;
-        })
-        .finally(() => {
-          if (request === controller) request = null;
-        });
-    }, debounceMs);
+    const controller = new AbortController();
+    request = controller;
+    const url = thumbnailRequestUrl(options.thumbnailUrl, requestedBucket);
+    void fetchImage(url, controller.signal)
+      .then(() => {
+        if (controller.signal.aborted) return;
+        // Reuse the validated and decoded HTTP response from browser cache.
+        remember(cache, requestedBucket, url);
+        if (!visible || activeBucket !== requestedBucket) return;
+        image.src = url;
+        setState("ready");
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        unavailable.add(requestedBucket);
+        if (visible && activeBucket === requestedBucket) {
+          image.removeAttribute("src");
+          setState("unavailable");
+        }
+        if (error instanceof Error && error.name === "AbortError") return;
+      })
+      .finally(() => {
+        if (request === controller) request = null;
+      });
   };
 
   const onPointerEnter = (event: PointerEvent) => {
@@ -217,7 +212,14 @@ async function fetchThumbnail(url: string, signal: AbortSignal): Promise<Blob> {
   const response = await fetch(url, { signal });
   if (!response.ok)
     throw new Error(`seek thumbnail request failed: ${String(response.status)}`);
-  return response.blob();
+  const blob = await response.blob();
+  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+
+  const decoded = new Image();
+  decoded.src = url;
+  await decoded.decode();
+  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+  return blob;
 }
 
 function remember(

@@ -456,6 +456,21 @@ test.describe.serial("live MP4 playback", () => {
       await expect(page.locator('.vv-seek-preview[data-state="ready"]')).toBeVisible({
         timeout: 5000,
       });
+      await page.route("**/seek-thumbnail?*", async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        await route.continue();
+      });
+      await page.mouse.move(
+        seekBounds.x + seekBounds.width * 0.99,
+        seekBounds.y + seekBounds.height / 2,
+      );
+      await expect(
+        page.locator('.vv-seek-preview[data-state="loading"] img'),
+      ).toBeVisible({ timeout: 150 });
+      await expect(page.locator('.vv-seek-preview[data-state="ready"]')).toBeVisible({
+        timeout: 5000,
+      });
+      await page.unroute("**/seek-thumbnail?*");
       for (const ratio of [0.01, 0.5, 0.99]) {
         await page.mouse.move(
           seekBounds.x + seekBounds.width * ratio,
