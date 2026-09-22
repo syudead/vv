@@ -122,6 +122,42 @@ describe("seek preview controller", () => {
     expect(progress.querySelector(".vv-seek-preview")).toBeNull();
   });
 
+  it("細いbarではなくprogress control全体をhover領域にする", () => {
+    const progress = progressElement();
+    const interactionTarget = document.createElement("div");
+    interactionTarget.getBoundingClientRect = () =>
+      ({
+        left: 90,
+        width: 420,
+        right: 510,
+        top: -20,
+        bottom: 30,
+        height: 50,
+        x: 90,
+        y: -20,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    interactionTarget.setPointerCapture = vi.fn();
+    interactionTarget.releasePointerCapture = vi.fn();
+    document.body.append(interactionTarget);
+
+    attachSeekPreview(
+      progress,
+      {
+        durationMs: 120_000,
+        thumbnailUrl: "/preview",
+        fetchImage: vi.fn(() => new Promise<Blob>(() => undefined)),
+      },
+      interactionTarget,
+    );
+    const preview = progress.querySelector<HTMLElement>(".vv-seek-preview");
+    if (preview === null) throw new Error("preview DOMがありません");
+
+    interactionTarget.dispatchEvent(pointer("pointerenter", 300, 1, "mouse", -10));
+    expect(preview.dataset.state).toBe("loading");
+    expect(preview.textContent).toBe("1:00");
+  });
+
   it("touch dragはbar外でも追従し、終了時に隠す", async () => {
     const progress = progressElement();
     const fetchImage = vi.fn(() => Promise.reject(new Error("unavailable")));

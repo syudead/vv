@@ -38,6 +38,7 @@ export function seekPreviewTarget(
 export function attachSeekPreview(
   progress: HTMLElement,
   options: PreviewOptions,
+  interactionTarget: HTMLElement = progress,
 ): () => void {
   const preview = document.createElement("div");
   preview.className = "vv-seek-preview";
@@ -163,7 +164,7 @@ export function attachSeekPreview(
   const onPointerDown = (event: PointerEvent) => {
     activePointer = event.pointerId;
     try {
-      progress.setPointerCapture(event.pointerId);
+      interactionTarget.setPointerCapture(event.pointerId);
     } catch {
       // Synthetic events and older browsers may not expose pointer capture.
     }
@@ -172,12 +173,12 @@ export function attachSeekPreview(
   const onPointerEnd = (event: PointerEvent) => {
     if (activePointer !== event.pointerId) return;
     try {
-      progress.releasePointerCapture(event.pointerId);
+      interactionTarget.releasePointerCapture(event.pointerId);
     } catch {
       // The capture may already have been released by the browser.
     }
     activePointer = null;
-    const rect = progress.getBoundingClientRect();
+    const rect = interactionTarget.getBoundingClientRect();
     const remainsHovered =
       event.pointerType !== "touch" &&
       event.clientX >= rect.left &&
@@ -188,21 +189,21 @@ export function attachSeekPreview(
     else hide();
   };
 
-  progress.addEventListener("pointerenter", onPointerEnter);
-  progress.addEventListener("pointermove", onPointerMove);
-  progress.addEventListener("pointerleave", onPointerLeave);
-  progress.addEventListener("pointerdown", onPointerDown);
-  progress.addEventListener("pointerup", onPointerEnd);
-  progress.addEventListener("pointercancel", onPointerEnd);
+  interactionTarget.addEventListener("pointerenter", onPointerEnter);
+  interactionTarget.addEventListener("pointermove", onPointerMove);
+  interactionTarget.addEventListener("pointerleave", onPointerLeave);
+  interactionTarget.addEventListener("pointerdown", onPointerDown);
+  interactionTarget.addEventListener("pointerup", onPointerEnd);
+  interactionTarget.addEventListener("pointercancel", onPointerEnd);
 
   return () => {
     hide();
-    progress.removeEventListener("pointerenter", onPointerEnter);
-    progress.removeEventListener("pointermove", onPointerMove);
-    progress.removeEventListener("pointerleave", onPointerLeave);
-    progress.removeEventListener("pointerdown", onPointerDown);
-    progress.removeEventListener("pointerup", onPointerEnd);
-    progress.removeEventListener("pointercancel", onPointerEnd);
+    interactionTarget.removeEventListener("pointerenter", onPointerEnter);
+    interactionTarget.removeEventListener("pointermove", onPointerMove);
+    interactionTarget.removeEventListener("pointerleave", onPointerLeave);
+    interactionTarget.removeEventListener("pointerdown", onPointerDown);
+    interactionTarget.removeEventListener("pointerup", onPointerEnd);
+    interactionTarget.removeEventListener("pointercancel", onPointerEnd);
     preview.remove();
   };
 }

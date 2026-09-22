@@ -68,11 +68,16 @@ export default function VideoPlayer({
         return;
       }
       const progress = host.querySelector<HTMLElement>(".vjs-progress-holder");
-      if (progress !== null) {
-        detachSeekPreview = attachSeekPreview(progress, {
-          durationMs: video.durationMs,
-          thumbnailUrl: video.seekThumbnailUrl,
-        });
+      const progressControl = host.querySelector<HTMLElement>(".vjs-progress-control");
+      if (progress !== null && progressControl !== null) {
+        detachSeekPreview = attachSeekPreview(
+          progress,
+          {
+            durationMs: video.durationMs,
+            thumbnailUrl: video.seekThumbnailUrl,
+          },
+          progressControl,
+        );
       }
     });
 

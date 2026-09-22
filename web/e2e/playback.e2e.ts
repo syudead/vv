@@ -445,11 +445,17 @@ test.describe.serial("live MP4 playback", () => {
         return element !== null && !element.paused && element.currentTime > 0.1;
       });
       const seekBar = page.locator(".vjs-progress-holder");
+      const seekControl = page.locator(".vjs-progress-control");
       const seekBounds = await seekBar.boundingBox();
+      const controlBounds = await seekControl.boundingBox();
       const playerBounds = await page.locator(".video-js").boundingBox();
-      if (seekBounds === null || playerBounds === null) {
+      if (seekBounds === null || controlBounds === null || playerBounds === null) {
         throw new Error("player controls are not visible");
       }
+      await page.mouse.move(seekBounds.x + seekBounds.width * 0.25, controlBounds.y + 2);
+      await expect(page.locator('.vv-seek-preview[data-state="ready"]')).toBeVisible({
+        timeout: 5000,
+      });
       for (const ratio of [0.01, 0.5, 0.99]) {
         await page.mouse.move(
           seekBounds.x + seekBounds.width * ratio,
