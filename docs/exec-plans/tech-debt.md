@@ -114,7 +114,6 @@ reconsideration.
 
 ### TD-007: 解消済み - Routine使用量ゲート
 
-- 解消日: 2026-09-19
 - 解消方法: Issue handoffへの移行で無人Routineと使用量ゲートを廃止した。専用status-line hookと
   一時JSONも削除し、各工程は保守者が明示的に開始する。
 
@@ -223,19 +222,16 @@ reconsideration.
 [plan.md]: ../../specs/001-initial-setup/plan.md
 ### TD-010: 解消済み - Routineのbase branch filter
 
-- 解消日: 2026-09-19
 - 解消方法: Routineとmerge-triggered stage起動を廃止した。外部Routineの削除だけは保守者が
   claude.ai上で行う。
 
 ### TD-013: 解消済み - merge方式で変わるhop集計
 
-- 解消日: 2026-09-19
 - 解消方法: hop/retry集計とbranch名復元を廃止した。現在の工程判定は明示されたfeature
   directoryのartifactとGit祖先関係だけを使う。
 
 ### TD-014: 解消済み - Windows の `task dev` が残す孫プロセス
 
-- 解消日: 2026-09-21
 - 解消方法: `scripts/dev` が Windows Job Object へ各サーバーを登録し、終了時に
   `KILL_ON_JOB_CLOSE` で子孫をまとめて停止する。Unix は独立プロセスグループを使う。
   起動元が先に終了したあとも子プロセスが止まることを実プロセスのテストで検証する。

@@ -1,6 +1,6 @@
 # Implementation Plan: [FEATURE]
 
-**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Parent Issue**: #[NNN]
+**Branch**: `[###-feature-name]` | **Parent Issue**: #[NNN]
 
 **Input**: The parent Issue. It is this feature's specification.
 

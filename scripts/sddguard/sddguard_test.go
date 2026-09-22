@@ -107,7 +107,6 @@ var placeholders = []string{
 	"[Child Issue title]",
 	"[FEATURE]",
 	"[###-feature-name]",
-	"[DATE]",
 	"[PRINCIPLE_",
 }
 

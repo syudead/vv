@@ -1,13 +1,12 @@
 # SDD ガードの git 専用化
 
 - ステータス: 完了
-- 最終更新: 2026-09-17
 - 対象: `.claude/skills/sdd-next/`（`sdd-guard.sh`、`sdd-target.sh`、`SKILL.md`、tests）
 
 ## Goal
 
 feature branch 方式に切り替えて最初に走った routine セッション
-（2026-09-16 18:05Z、session_01E9LfqSkmUk9ke8owLbm9Nh）が、判定に入る前の
+（session_01E9LfqSkmUk9ke8owLbm9Nh）が、判定に入る前の
 「組み込み GitHub ツールで closed PR 一覧を取り、ファイルに保存する」手順で止まった。
 応答 157KB がトークン上限を超えて `~/.claude/projects/.../tool-results/` にスプールされ、
 それを Bash で `cp` した時点で sandbox が「sensitive file の編集」の権限プロンプトを出し、
@@ -34,7 +33,7 @@ tasks → implement（部分・完了）→ done → 最終 PR マージ → 次
 すべて期待どおり。`wrong-base` により、main のまま判定して「plan からやり直せ」に見える
 穴も塞いだ。
 
-日次スケジュールトリガーは 2026-09-17 に保守者が削除した。取りこぼしとレビュー対応は
+日次スケジュールトリガーは保守者が削除した。取りこぼしとレビュー対応は
 Run now で拾う。
 
 ## 残課題

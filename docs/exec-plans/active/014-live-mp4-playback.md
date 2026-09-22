@@ -1,7 +1,6 @@
 # 実行計画: MP4 ライブ変換による動画再生
 
 - ステータス: 実装中
-- 最終更新: 2026-09-22
 - Parent Issue: #100
 - Feature branch: `codex/live-mp4-playback-feature`
 
