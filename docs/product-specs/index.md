@@ -8,6 +8,6 @@ because the implementation and its tests are the source of truth for what the
 system does today, and the frozen text had drifted from both. Git history still
 carries them if an audit needs them.
 
-## Documents
+## Specification quality
 
 - [仕様品質の規則: 要求の縮退を防ぐ](spec-quality.md)

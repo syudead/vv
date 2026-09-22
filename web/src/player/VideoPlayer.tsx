@@ -10,6 +10,7 @@ import {
   updatePosition,
   type PlaybackAttempt,
 } from "./playbackAttempt";
+import { attachSeekPreview } from "./seekPreview";
 
 const saveIntervalMs = 5000;
 
@@ -56,6 +57,29 @@ export default function VideoPlayer({
     let attempt: PlaybackAttempt = initialAttempt;
     let switchingSource = false;
     let resumeReported = false;
+    let detachSeekPreview: (() => void) | undefined;
+
+    player.ready(() => {
+      if (
+        player.isDisposed() ||
+        video.seekThumbnailUrl === undefined ||
+        video.durationMs === undefined
+      ) {
+        return;
+      }
+      const progress = host.querySelector<HTMLElement>(".vjs-progress-holder");
+      const progressControl = host.querySelector<HTMLElement>(".vjs-progress-control");
+      if (progress !== null && progressControl !== null) {
+        detachSeekPreview = attachSeekPreview(
+          progress,
+          {
+            durationMs: video.durationMs,
+            thumbnailUrl: video.seekThumbnailUrl,
+          },
+          progressControl,
+        );
+      }
+    });
 
     const logicalPositionMs = () => {
       if (attempt.state === "loading") return attempt.logicalPositionMs;
@@ -137,6 +161,7 @@ export default function VideoPlayer({
 
     return () => {
       window.clearInterval(timer);
+      detachSeekPreview?.();
       attempt = { ...attempt, state: "disposed" };
       if (!player.isDisposed()) player.dispose();
     };

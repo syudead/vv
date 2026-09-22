@@ -107,25 +107,26 @@ func run() error {
 		worker.Run(backgroundCtx)
 	}()
 
-	// ライブ変換はHTTP requestより長生きさせない。Shutdownは実行中requestの
-	// contextを取り消さないため、server寿命を別に持って先にcancelする。
-	transcodeCtx, stopTranscodes := context.WithCancel(context.Background())
-	defer stopTranscodes()
+	// request単位のtranscode processはHTTP requestより長生きさせない。Shutdownは
+	// 実行中requestのcontextを取り消さないため、server寿命を別に持って先にcancelする。
+	requestMediaCtx, stopRequestMedia := context.WithCancel(context.Background())
+	defer stopRequestMedia()
 
 	handler := httpapi.NewRouter(httpapi.Options{
-		Build:         build,
-		Pinger:        db,
-		Videos:        db,
-		Playback:      db,
-		Scans:         lib,
-		MediaFolders:  db,
-		ThumbnailsDir: cfg.ThumbnailsDir(),
-		Transcoder:    media.NewLiveTranscoder(transcodeCtx.Done()),
-		Assets:        web.Dist(),
-		Logger:        logger,
+		Build:          build,
+		Pinger:         db,
+		Videos:         db,
+		Playback:       db,
+		Scans:          lib,
+		MediaFolders:   db,
+		ThumbnailsDir:  cfg.ThumbnailsDir(),
+		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),
+		SeekThumbnails: media.NewSeekThumbnailCache(cfg.ThumbnailsDir()),
+		Assets:         web.Dist(),
+		Logger:         logger,
 	})
 
-	if err := serve(cfg, handler, logger, nil, stopTranscodes); err != nil {
+	if err := serve(cfg, handler, logger, nil, stopRequestMedia); err != nil {
 		return err
 	}
 

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createMediaFolder,
   deleteMediaFolder,
+  fetchSeekThumbnail,
   listDirectories,
   listMediaFolders,
   startScan,
@@ -14,6 +15,41 @@ describe("playback URLs", () => {
   it("transcode startMsを省略または整数化する", () => {
     expect(transcodeUrl(7)).toBe("/api/videos/7/transcode.mp4");
     expect(transcodeUrl(7, 12_345.4)).toBe("/api/videos/7/transcode.mp4?startMs=12345");
+  });
+
+  it("fetches seek thumbnails through the API boundary", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(new Uint8Array([1, 2, 3]), {
+        headers: { "Content-Type": "image/jpeg" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+
+    const image = await fetchSeekThumbnail(
+      "/api/videos/7/seek-thumbnail?positionMs=5000",
+      signal,
+    );
+    expect(image).toMatchObject({ size: 3, type: "image/jpeg" });
+    expect(fetch).toHaveBeenCalledWith("/api/videos/7/seek-thumbnail?positionMs=5000", {
+      signal,
+    });
+  });
+
+  it("rejects unavailable seek thumbnails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(new Response(null, { status: 409 })),
+    );
+
+    await expect(
+      fetchSeekThumbnail(
+        "/api/videos/7/seek-thumbnail?positionMs=5000",
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ status: 409, code: "seek_thumbnail_failed" });
   });
 });
 

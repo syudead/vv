@@ -297,11 +297,14 @@ type Video struct {
 	Playable bool `json:"playable"`
 
 	// ProbeError probeState = failed のときの理由
-	ProbeError     *string             `json:"probeError,omitempty"`
-	ProbeState     VideoProbeState     `json:"probeState"`
-	Progress       *Progress           `json:"progress,omitempty"`
-	SizeBytes      int64               `json:"sizeBytes"`
-	ThumbnailState VideoThumbnailState `json:"thumbnailState"`
+	ProbeError *string         `json:"probeError,omitempty"`
+	ProbeState VideoProbeState `json:"probeState"`
+	Progress   *Progress       `json:"progress,omitempty"`
+
+	// SeekThumbnailUrl probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL
+	SeekThumbnailUrl *string             `json:"seekThumbnailUrl,omitempty"`
+	SizeBytes        int64               `json:"sizeBytes"`
+	ThumbnailState   VideoThumbnailState `json:"thumbnailState"`
 
 	// ThumbnailUrl thumbnailState = done のときだけ入る
 	ThumbnailUrl *string `json:"thumbnailUrl,omitempty"`
@@ -387,6 +390,14 @@ type ListVideosParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// GetVideoSeekThumbnailParams defines parameters for GetVideoSeekThumbnail.
+type GetVideoSeekThumbnailParams struct {
+	PositionMs int64 `form:"positionMs" json:"positionMs"`
+
+	// V 一覧・詳細が返したURLに含まれる内容由来の版
+	V *string `form:"v,omitempty" json:"v,omitempty"`
+}
+
 // GetVideoThumbnailParams defines parameters for GetVideoThumbnail.
 type GetVideoThumbnailParams struct {
 	// V 一覧・詳細が返した URL に含まれる版
@@ -445,6 +456,9 @@ type ServerInterface interface {
 	// PutVideoProgress 再生位置を記録する
 	// (PUT /api/videos/{id}/progress)
 	PutVideoProgress(w http.ResponseWriter, r *http.Request, id VideoId)
+	// GetVideoSeekThumbnail 指定時刻のシークプレビュー画像を返す
+	// (GET /api/videos/{id}/seek-thumbnail)
+	GetVideoSeekThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoSeekThumbnailParams)
 	// StreamVideo 動画本体を配信する
 	// (GET /api/videos/{id}/stream)
 	StreamVideo(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -760,6 +774,61 @@ func (siw *ServerInterfaceWrapper) PutVideoProgress(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// GetVideoSeekThumbnail operation middleware
+func (siw *ServerInterfaceWrapper) GetVideoSeekThumbnail(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetVideoSeekThumbnailParams
+
+	// ------------- Required query parameter "positionMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "positionMs", r.URL.Query(), &params.PositionMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "positionMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "positionMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "v" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVideoSeekThumbnail(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // StreamVideo operation middleware
 func (siw *ServerInterfaceWrapper) StreamVideo(w http.ResponseWriter, r *http.Request) {
 
@@ -996,6 +1065,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/stream", wrapper.StreamVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/transcode.mp4", wrapper.TranscodeVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/thumbnail", wrapper.GetVideoThumbnail)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/seek-thumbnail", wrapper.GetVideoSeekThumbnail)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.StartScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/media-folders", wrapper.ListMediaFolders)
