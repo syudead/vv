@@ -88,8 +88,8 @@ func TestResumePosition(t *testing.T) {
 	}
 }
 
-// 判定に使う値が R-111 のとおりであること。数字を変えるときは、この
-// テストと research.md の両方を直すことになる。
+// 判定に使う値を固定する。ここが視聴済み判定の唯一の基準なので、
+// 数字を変えるときは意図的に変えていることをこのテストで示す。
 func TestProgressThresholds(t *testing.T) {
 	if CompletionTailMs != 15_000 {
 		t.Errorf("CompletionTailMs = %d, want 15000", CompletionTailMs)

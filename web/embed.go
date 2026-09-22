@@ -3,7 +3,7 @@
 // 埋め込みの指示は自分のディレクトリより上を参照できないため、宣言だけを web/ に置き、
 // 配信の実装は internal/httpapi/spa.go が持つ。
 // web/dist にはプレースホルダを版管理しているので、SPA をビルドしていない状態でも
-// go build ./... は通る（research.md R-008）。
+// go build ./... は通る。
 package web
 
 import (

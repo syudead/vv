@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 )
 
-// 設定は環境変数のみで与える。設定ファイルは持たない（research.md R-004）。
-// 項目と既定値の契約は specs/001-initial-setup/contracts/configuration.md にある。
+// 設定は環境変数のみで与える。設定ファイルは持たない。
+// 項目と既定値は README.md の「起動設定」にある。
 const (
 	envAddr     = "MDM_ADDR"
 	envDataDir  = "MDM_DATA_DIR"
@@ -29,7 +29,7 @@ const (
 const dataDirPerm os.FileMode = 0o755
 
 // thumbnailsDirName はサムネイルの置き場所である。MDM_DATA_DIR から導出し、
-// 設定項目にはしない（contracts/configuration.md「導出される場所」）。
+// 設定項目にはしない。
 const thumbnailsDirName = "thumbnails"
 
 // Config は起動時に組み立てる不変の設定である。
@@ -52,7 +52,7 @@ var logLevels = map[string]slog.Level{
 // ファイルシステムに触れる検証は Verify が行う。
 //
 // 不正な項目は**まとめて**列挙して返す。1つ見つけて即終了すると、設定を1回直すごとに
-// 再起動する往復が生じるため（contracts/configuration.md）。
+// 再起動する往復が生じるため。
 func LoadConfig(getenv func(string) string) (Config, error) {
 	cfg := Config{
 		Addr:     valueOr(getenv(envAddr), defaultAddr),

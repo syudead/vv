@@ -1,7 +1,7 @@
 // Package devtools は scripts/ 配下の開発者コマンドが共有する土台である。
 // 各コマンドは task から go run で呼ばれる。検査のためだけに別のランタイムを
 // 足さないという決まりは
-// specs/001-initial-setup/contracts/developer-commands.md にある。
+// Taskfile.yml にある（task help で一覧が出る）。
 package devtools
 
 import (

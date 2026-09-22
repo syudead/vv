@@ -1,6 +1,5 @@
 version: "3"
 
-# 開発者コマンドの契約は specs/001-initial-setup/contracts/developer-commands.md。
 # 込み入った処理は scripts/ の Go プログラムに置く。Go と Node は全員が既に
 # 持っているので、検査のためだけに別のランタイムを足さない。
 tasks:

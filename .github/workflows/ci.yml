@@ -1,6 +1,6 @@
 # FR-012 の自動検証。task check を構成するタスクと、追加runtimeを要するtest-e2eを呼ぶ。
 # どの検査も同じTaskタスクで手元から再現できる。ジョブはGoとWebで分けて並行させ、重いイメージビルドは別ジョブにする
-# （research.md R-012 / SC-004: 10 分以内）。
+# （目標は 10 分以内）。
 name: CI
 
 on:
@@ -24,7 +24,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          # 版は go.mod に合わせる（research.md R-002）。
+          # 版は go.mod に合わせる。
           go-version-file: go.mod
           cache: true
           cache-dependency-path: |

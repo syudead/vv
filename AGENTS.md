@@ -1,44 +1,29 @@
 # Agent guide
 
-This file is the short map for contributors and coding agents. Keep detailed
-knowledge in the appropriate document under `docs/` rather than expanding this
-file into a handbook.
+この文書は、このリポジトリで作業する人とコーディングエージェントのための短い地図である。
+細かい知識はこの文書に足さず、`docs/` の該当する文書か、コードのそばに置く。
 
-## Start here
+## まず読むもの
 
-1. Read `ARCHITECTURE.md` for system boundaries and dependency direction.
-2. Read `docs/design-docs/index.md` and `docs/product-specs/index.md` for the
-   relevant design and product context.
-3. For substantial work, create an execution plan in
-   `docs/exec-plans/active/` and move it to `docs/exec-plans/completed/` when
-   the work is finished.
-4. Record known compromises in `docs/exec-plans/tech-debt.md`.
+1. [ARCHITECTURE.md](ARCHITECTURE.md) — 層の境界と依存の向き
+2. [README.md](README.md) — 起動方法、設定、開発コマンド
+3. [docs/design-docs/](docs/design-docs/) — 結論だけでは分からない技術判断の経緯
 
-## Working agreements
+## 進め方
 
-- Keep documentation close to the code and update it with behavior changes.
-- A feature's specification is its parent GitHub Issue. Write and revise it with
-  `.agents/skills/issue-spec`, following
-  [docs/product-specs/spec-quality.md](docs/product-specs/spec-quality.md).
-  Do not add a `spec.md`; `specs/001-008` are frozen records of features already
-  built.
-- When writing or changing a Plan and its artifacts, follow
-  [docs/design-docs/plan-quality.md](docs/design-docs/plan-quality.md).
-- Prefer focused, reviewable changes with automated checks.
-- Do not hand-edit files in `docs/generated/`; update their source or generator.
-- Add links to new design documents from `docs/design-docs/index.md`.
-- Every push to a feature branch gets a pull request. After pushing, open a PR
-  against `main` if one does not exist yet, so no pushed branch is left without
-  a review target.
-- When a change alters how a screen looks or behaves, attach an image of the
-  result to the pull request; say "UI 変更なし" when it does not. Capturing and
-  embedding one is covered in
-  [docs/how-to/ui-change-screenshots.md](docs/how-to/ui-change-screenshots.md).
-- SDD work starts from an explicitly supplied parent Issue or native sub-issue
-  and runs `plan → design → plan-to-issues → implement`, with `design` only for
-  `ui` Issues. Use `.agents/skills/issue-handoff`; each run performs one stage
-  and opens or updates one PR. Stage and implementation PRs target the
-  long-lived feature branch, and only its integration PR targets `main`.
-- The empty feature-branch push during `plan` is the sole temporary exception
-  to the rule that every pushed feature branch already has a PR to `main`.
-  Open the integration PR immediately after the Plan PR is merged.
+- GitHub Issue が要求の置き場である。仕様を別ファイルに書き写さない。
+- 変更は焦点を絞り、レビューできる大きさにする。
+- `task check` が通ること。CI も同じタスクを呼ぶので、手元で再現できる。
+- feature branch へ push したら `main` への pull request を開く。
+
+## 文書の扱い
+
+- 文書はコードのそばに置き、振る舞いを変える変更と**同じ変更単位で**更新する。
+  古い文書は、無い文書より害が大きい。
+- 判断の経緯を残す価値があるものだけ `docs/design-docs/` に足し、
+  [docs/design-docs/index.md](docs/design-docs/index.md) にリンクを足す。
+- 生成物（`internal/httpapi/gen/`・`web/src/api/gen/`）は手編集しない。
+  `api/openapi.yaml` を直して `task generate` で作り直す。
+- 画面の見た目や振る舞いが変わる変更では、結果の画像を pull request に添える。
+  変わらないときは「UI 変更なし」と書く。撮り方は
+  [docs/how-to/ui-change-screenshots.md](docs/how-to/ui-change-screenshots.md)。

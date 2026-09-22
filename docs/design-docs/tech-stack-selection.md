@@ -94,8 +94,6 @@ web/             # React SPA。ビルド結果を embed して配信
   あたり 2MiB に固定されているため、ハッシュ関数の速度は取り込み時間を
   律速しない（律速は `ffprobe` の起動とディスク I/O）。標準ライブラリなら
   依存を1つ増やさずに済み、amd64／arm64 ではハードウェア命令が使われる。
-  判断の詳細は
-  [002 の R-101](../../specs/002-core-video-library/research.md)。
 - `tags` / `video_tags`: 分類。階層は持たせず、命名規約（`series:xxx`）で表現する。
 - `playback_progress`: 再生位置と視聴済みフラグ。プレイヤーから数秒間隔で更新。
 - `videos_fts`: `title` と `path` の FTS5 仮想テーブル（trigram）。
@@ -153,8 +151,8 @@ DB は「再構築可能なインデックス」に限定する。タグ・再�
   trigram の作成と検索が動作したため、切り替えは行わない。ただし trigram は
   2文字以下の検索語に `MATCH` が一致しないことが判明したため、検索は
   「3文字以上は `MATCH`、1〜2文字は FTS5 表への `LIKE`」の2経路にする
-  （[実測](../../specs/001-initial-setup/research.md)、
-  [tech-debt TD-001](../exec-plans/tech-debt.md)）。
+  （振り分けは `internal/store/search.go` の `routeFor`、検証は
+  `internal/store/fts_test.go`）。
 - **非対応コーデックの混入。** H.265/VP9/mkv などはブラウザで再生できない。
   取り込み時に `ffprobe` で判定し、再生不可を UI に明示する。変換は
   「6. 将来の拡張ポイント」の対象。
@@ -199,6 +197,3 @@ DB は「再構築可能なインデックス」に限定する。タグ・再�
 3. **Phase 2 — 使える状態。** サムネイル（シークプレビュー用スプライト含む）、
    FTS5 検索、タグ、再生位置の保存、字幕変換。
 4. **Phase 3 — 運用。** 認証、構造化ログ、バックアップ手順、E2E の整備。
-
-実装着手時は `docs/exec-plans/active/` に実行計画を作成し、Phase 単位で
-進捗と決定を記録する。

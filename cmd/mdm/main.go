@@ -22,7 +22,7 @@ import (
 )
 
 // version はリリース名である。ビルド時に
-// -ldflags "-X main.version=…" で上書きできる（research.md R-007）。
+// -ldflags "-X main.version=…" で上書きできる。
 var version = domain.DefaultVersion
 
 // shutdownGrace は停止指示を受けてから処理中の要求を待つ猶予である

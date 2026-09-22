@@ -10,10 +10,9 @@ import (
 
 // alternativesHint はテストが落ちた開発者に、次に読むべきものを示す（FR-015）。
 // 出力だけで代替手段の検討先が分かる状態にしておく。
-const alternativesHint = "この前提が崩れた場合の代替手段は " +
-	"specs/001-initial-setup/research.md の R-001 \"Alternatives considered\" にある" +
-	"（mattn/go-sqlite3 + -tags sqlite_fts5 への切り替え、2文字検索の扱い、" +
-	"外部の全文検索エンジンの導入）。まずそこを読むこと。"
+const alternativesHint = "この前提が崩れた場合の代替手段: " +
+	"mattn/go-sqlite3 + -tags sqlite_fts5 への切り替え（CGO が要る）、" +
+	"2文字検索を LIKE 経路へ寄せる範囲の見直し、外部の全文検索エンジンの導入。"
 
 // ftsFixture はマイグレーションを適用したデータベースに検証用の行を入れて返す。
 func ftsFixture(t *testing.T) *DB {
@@ -66,7 +65,7 @@ func countMatch(t *testing.T, db *DB, query string) int {
 
 // TestFTS5TrigramIsAvailable は trigram トークナイザの仮想表が作れることを固定する。
 // Phase 0 最大のリスクだった「CGO 不要のドライバで日本語の部分一致検索ができるか」の
-// 前提そのものである（FR-014／SC-007、research.md R-001）。
+// 前提そのものである。
 func TestFTS5TrigramIsAvailable(t *testing.T) {
 	db := ftsFixture(t)
 
@@ -142,7 +141,7 @@ func TestFTS5TrigramMatchesTwoCharacterQueryWithLike(t *testing.T) {
 			"trigram 表への LIKE は索引で処理される前提である\n%s", count, alternativesHint)
 	}
 
-	// 索引が使われていることも確認する（research.md R-001 の実行計画に対応）。
+	// 索引が使われていることも確認する。
 	var plan strings.Builder
 	rows, err := db.SQL().Query(
 		`explain query plan select rowid from videos_fts where title like ?`, "%旅行%",

@@ -4,7 +4,7 @@
 
 ## 関連 Issue
 
-<!-- stage PRは親、implement PRは子を `Refs #NNN`。main向け統合PRだけ親を `Closes #NNN`。 -->
+<!-- `Refs #NNN`、この PR で閉じるなら `Closes #NNN`。 -->
 
 ## 変更点
 
@@ -22,10 +22,3 @@
 
 <!-- 実行した検証。例: task check が成功 / 起動して /api/health を確認 -->
 
-## 既存仕様への影響
-
-<!--
-  凍結済みの specs/ に書かれた振る舞いを変える場合、ファイルと置き換える要求の識別子を
-  書く（例: specs/002-core-video-library/spec.md の FR-003）。
-  該当しない場合はこの節を消す。
--->

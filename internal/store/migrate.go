@@ -12,7 +12,7 @@ import (
 )
 
 // migrationsFS はマイグレーション SQL をバイナリへ同梱する。外部ツール（goose CLI）を
-// 導入しなくても起動時に適用できるようにするため（research.md R-006）。
+// 導入しなくても起動時に適用できるようにするため。
 //
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
