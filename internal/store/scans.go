@@ -36,7 +36,7 @@ var ErrNoMediaFolders = domain.ErrNoMediaFolders
 // それを返す（started = false）。
 //
 // 409 にしないのは、利用者の意図が「今の状態を進めたい」であり、進行中なら
-// それを返すのが素直だからである（R-108）。
+// それを返すのが素直だからである。
 func (db *DB) StartScan(ctx context.Context) (scan Scan, started bool, err error) {
 	db.folderMu.Lock()
 	defer db.folderMu.Unlock()
@@ -74,7 +74,7 @@ func (db *DB) StartScan(ctx context.Context) (scan Scan, started bool, err error
 }
 
 // UpdateScanProgress は進捗を更新する。走査中も一覧・再生は通常どおり応答する
-// ので（FR-007）、ここでは行を1つ書き換えるだけにする。
+// ので、ここでは行を1つ書き換えるだけにする。
 func (db *DB) UpdateScanProgress(ctx context.Context, id int64, progress ScanProgress) error {
 	_, err := db.sql.ExecContext(ctx,
 		`update scans set total = ?, completed = ?, failed = ? where id = ?`,

@@ -28,8 +28,7 @@ func TestUnknownPathFallsBackToIndexHTML(t *testing.T) {
 }
 
 // フォールバックを無条件にすると、綴りを誤った API 呼び出しに HTML が 200 で返り、
-// クライアント側では「JSON 解析の失敗」としてしか観測できなくなる
-// （contracts/http-routes.md）。
+// クライアント側では「JSON 解析の失敗」としてしか観測できなくなる。
 func TestUnknownAPIPathReturnsJSONNotFound(t *testing.T) {
 	router := newTestRouter(t, stubPinger{})
 
@@ -47,7 +46,7 @@ func TestUnknownAPIPathReturnsJSONNotFound(t *testing.T) {
 			t.Errorf("%s: HTML が返っている: %s", path, rec.Body.String())
 		}
 
-		// contracts/openapi.yaml の Error は code と message を required にしている。
+		// api/openapi.yaml の Error は code と message を required にしている。
 		var body struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`

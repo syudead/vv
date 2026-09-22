@@ -20,8 +20,7 @@
 
 - 文書はコードのそばに置き、振る舞いを変える変更と**同じ変更単位で**更新する。
   古い文書は、無い文書より害が大きい。
-- 判断の経緯を残す価値があるものだけ `docs/design-docs/` に足し、
-  [docs/design-docs/index.md](docs/design-docs/index.md) にリンクを足す。
+- 判断の経緯を残す価値があるものだけ `docs/design-docs/` に足す。
 - 生成物（`internal/httpapi/gen/`・`web/src/api/gen/`）は手編集しない。
   `api/openapi.yaml` を直して `task generate` で作り直す。
 - 画面の見た目や振る舞いが変わる変更では、結果の画像を pull request に添える。

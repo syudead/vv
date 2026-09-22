@@ -59,7 +59,7 @@ func rangeRequest(t *testing.T, handler http.Handler, target, rangeHeader string
 
 // Range の解釈は http.ServeContent に任せる。ここで確かめるのは標準実装の
 // 再テストではなく、ハンドラが正しい io.ReadSeeker と ModTime を渡している
-// ことである（R-105 / 技術選定文書 3.3）。
+// ことである（技術選定文書 3.3）。
 func TestStreamServesRanges(t *testing.T) {
 	const size = 4096
 	mediaDir, video, content := streamFixture(t, "a.mp4", size)
@@ -165,7 +165,7 @@ func TestStreamHonorsIfRange(t *testing.T) {
 }
 
 // Content-Type は拡張子から決める。ffprobe の format_name は mp4 と mov を
-// 区別できないので、判定と配信で基準を揃える（R-103 / contracts/http-routes.md）。
+// 区別できないので、判定と配信で基準を揃える。
 func TestStreamContentType(t *testing.T) {
 	tests := []struct {
 		name string
@@ -203,7 +203,7 @@ func TestStreamCacheControl(t *testing.T) {
 }
 
 // 再生できない形式でも配信自体は行う。ブラウザが再生できるかどうかと、
-// ファイルを取得できるかは別の話である（contracts/http-routes.md）。
+// ファイルを取得できるかは別の話である。
 func TestStreamServesUnplayableFormats(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mkv", 512)
 	video.Playable = false
@@ -217,7 +217,7 @@ func TestStreamServesUnplayableFormats(t *testing.T) {
 }
 
 // DB に入っているパスをそのまま開かない。登録rootの外を指す行は 404
-// にする。403 にしないのは、存在そのものを漏らさないためである（R-105）。
+// にする。403 にしないのは、存在そのものを漏らさないためである。
 func TestStreamRefusesPathsOutsideMediaDir(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 512)
 
@@ -255,7 +255,7 @@ func TestStreamRefusesPathsOutsideMediaDir(t *testing.T) {
 }
 
 // シンボリックリンクで外へ出る行も 404。Clean だけでは辿り着けるため、
-// EvalSymlinks のあとにも同じ検証を行う（R-105）。
+// EvalSymlinks のあとにも同じ検証を行う。
 func TestStreamRefusesSymlinkEscape(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 512)
 

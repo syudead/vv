@@ -9,7 +9,7 @@ import (
 )
 
 // 鍵は content_key（videos.id ではない）。ファイルを移動・改名・置き直しても
-// 再生位置が引き継がれる（FR-025／FR-026 / R-111）。
+// 再生位置が引き継がれる。
 func TestSaveAndLoadProgressByContentKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -72,7 +72,7 @@ func TestSaveProgressKeepsLastWrite(t *testing.T) {
 	}
 }
 
-// 動画の行を削除しても再生位置は残る（FR-025）。
+// 動画の行を削除しても再生位置は残る。
 // 「再構築できる索引」と「再構築できない利用者データ」の分離そのものである。
 func TestProgressSurvivesVideoDeletion(t *testing.T) {
 	db := migratedDB(t)
@@ -100,7 +100,7 @@ func TestProgressSurvivesVideoDeletion(t *testing.T) {
 }
 
 // 同じ内容のファイルを別のパスに置き直しても、同じ再生位置が引き継がれる
-// （SC-008 / S7）。content_key を鍵にした判断が実際に効いていることの確認。
+// content_key を鍵にした判断が実際に効いていることの確認。
 func TestProgressFollowsContentAcrossPaths(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

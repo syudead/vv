@@ -64,7 +64,7 @@ func newWorker(cfg Config, db *store.DB, logger *slog.Logger) *jobs.Worker {
 // probeHandler は ffprobe の結果を索引へ反映する。
 //
 // 再生可否の判定は internal/domain の純粋関数が行い、ここはその結果を
-// 保存層へ渡すだけである（R-103）。判定が外部プロセスに依存しないので、
+// 保存層へ渡すだけである。判定が外部プロセスに依存しないので、
 // 許可リストの規則は単体テストだけで検証できる。
 func probeHandler(db *store.DB) jobs.Handler {
 	return func(ctx context.Context, job domain.Job) error {
@@ -82,7 +82,7 @@ func probeHandler(db *store.DB) jobs.Handler {
 		probe, err := media.Probe(ctx, job.LocationPath)
 		if err != nil {
 			// 上限まで試して駄目なら、行は残したまま失敗として記録する。
-			// 一覧からは消さない（FR-008）。
+			// 一覧からは消さない。
 			if job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
 				if _, markErr := db.MarkProbeFailedForJob(ctx, job, err.Error()); markErr != nil {
 					return markErr
@@ -152,8 +152,8 @@ func checkReadableRegularFile(path string) error {
 	return nil
 }
 
-// StartScan は取り込みを開始する。実行中なら新しく始めず、実行中のものを返す
-// （R-108）。応答は即座に返り、走査は背後で進む。
+// StartScan は取り込みを開始する。実行中なら新しく始めず、実行中のものを返す。
+// 応答は即座に返り、走査は背後で進む。
 //
 // ctx は要求のものなので、走査自体には使わない。要求が終わった時点で走査が
 // 打ち切られてしまう。走査は起動時に渡した寿命の長い context で動かす。
@@ -174,7 +174,7 @@ func (l *library) StartScan(ctx context.Context) (domain.Scan, error) {
 	l.running = true
 
 	// contextcheck はここで ctx を渡していないことを指摘するが、渡してはならない。
-	// 上のコメント（R-108）のとおり、要求の ctx を使うと応答を返した時点で走査が
+	// 上のコメントのとおり、要求の ctx を使うと応答を返した時点で走査が
 	// 打ち切られる。走査は起動時に渡した寿命の長い context で動く。
 	//nolint:contextcheck // 要求の ctx を走査へ持ち込まないのは意図した設計である。
 	go l.runScan(scan.ID)
@@ -188,7 +188,7 @@ func (l *library) CurrentScan(ctx context.Context) (domain.Scan, error) {
 }
 
 // ReportScanProgress は走査の進捗を記録する。走査中も一覧・再生は通常どおり
-// 応答する（FR-007）ので、ここでは行を1つ書き換えるだけにする。
+// 応答するので、ここでは行を1つ書き換えるだけにする。
 func (l *library) ReportScanProgress(ctx context.Context, result domain.ScanResult) error {
 	return l.db.UpdateScanProgress(ctx, l.currentScanID(ctx), domain.ScanProgress{
 		Total:     result.Total,
@@ -261,7 +261,7 @@ func (l *library) runScan(scanID int64) {
 	}
 
 	// 走査のたびに掃除する。起動時だけだと、長く動かしているうちに完了行が
-	// 積み上がる（取り込み直後は最大 2万行になる — data-model.md 4 節）。
+	// 積み上がる（取り込み直後は最大 2万行になる）。
 	l.cleanFinishedJobs(closeCtx)
 }
 

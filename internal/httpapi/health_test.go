@@ -55,7 +55,7 @@ func TestHealthReturnsOKWhenStoreIsReachable(t *testing.T) {
 		t.Errorf("Cache-Control = %q, want %q", got, "no-store")
 	}
 
-	// contracts/openapi.yaml の Health は status と version を required にしている。
+	// api/openapi.yaml の Health は status と version を required にしている。
 	var body map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("JSON として解釈できない: %v (%s)", err, rec.Body.String())

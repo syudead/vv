@@ -54,7 +54,7 @@ type Options struct {
 
 // Worker はプロセス内のジョブワーカーである。
 //
-// goroutine 1本で直列に処理する（R-106）。並列度を上げないのは、初回スキャンで
+// goroutine 1本で直列に処理する。並列度を上げないのは、初回スキャンで
 // HDD の I/O が飽和し、全体としてはかえって遅くなるためである。並列度は設定に
 // せず、必要になった時点で見直す。
 type Worker struct {
@@ -87,7 +87,7 @@ func New(opts Options) *Worker {
 //
 // 起動時にまず running のまま残っている行を queued へ戻す。前回の停止で
 // 処理中だったジョブがここで拾われるので、取り込みの途中で止めても次の
-// 起動で再開でき、重複も生まない（R-106 / spec のエッジケース）。
+// 起動で再開でき、重複も生まない。
 func (w *Worker) Run(ctx context.Context) {
 	if restored, err := w.queue.RequeueRunningJobs(ctx); err != nil {
 		w.logger.Warn("中断したジョブを戻せませんでした", slog.Any("error", err))

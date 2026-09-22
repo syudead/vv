@@ -112,7 +112,7 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 	}
 }
 
-// FR-005: 初回起動でスキーマが手作業なしに適用される。
+// 初回起動でスキーマが手作業なしに適用される。
 func TestMigrateAppliesSchemaOnEmptyDirectory(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -174,7 +174,7 @@ func TestMigrateIsIdempotent(t *testing.T) {
 	}
 }
 
-// SC-006: データベースファイルを削除しても、手作業なしに次の起動で復旧する。
+// データベースファイルを削除しても、手作業なしに次の起動で復旧する。
 func TestMigrateRecoversAfterDatabaseFileIsDeleted(t *testing.T) {
 	dataDir := t.TempDir()
 
@@ -286,7 +286,7 @@ func TestDatabasePathIsFixedUnderDataDir(t *testing.T) {
 }
 
 // 00002 で足した列が揃っていること。取り込み・再生可否・サムネイルの状態は
-// すべて videos の列として読めなければ、一覧が列を読むだけで描けない（SC-007）。
+// すべて videos の列として読めなければ、一覧が列を読むだけで描けない。
 func TestMigrateAddsCoreColumnsToVideos(t *testing.T) {
 	db := migratedDB(t)
 
@@ -303,7 +303,7 @@ func TestMigrateAddsCoreColumnsToVideos(t *testing.T) {
 		}
 	}
 
-	// 解析前は「再生できない」側に倒す（R-103）。既定値がここで崩れると、
+	// 解析前は「再生できない」側に倒す。既定値がここで崩れると、
 	// 未解析の動画が再生できるものとして一覧に出てしまう。
 	if notNull, ok := got["playable"]; !ok || !notNull {
 		t.Error("playable が not null ではない")
@@ -317,8 +317,7 @@ func TestMigrateAddsCoreColumnsToVideos(t *testing.T) {
 }
 
 // playback_progress は「再構築できない利用者データ」なので、索引側の videos に
-// 引きずられて消えてはならない。外部キーを持たないこと自体が要件である
-// （FR-025／data-model.md）。
+// 引きずられて消えてはならない。外部キーを持たないこと自体が要件である。
 func TestPlaybackProgressHasNoForeignKeyToVideos(t *testing.T) {
 	db := migratedDB(t)
 
@@ -334,7 +333,7 @@ func TestPlaybackProgressHasNoForeignKeyToVideos(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Errorf("playback_progress が %s への外部キーを持っている。"+
-			"動画が消えても再生位置は残さなければならない（FR-025）", target)
+			"動画が消えても再生位置は残さなければならない", target)
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatal(err)
@@ -372,7 +371,7 @@ func TestDeletingVideoKeepsPlaybackProgress(t *testing.T) {
 }
 
 // 同じ (kind, video_id) の未完了ジョブは1件だけ。再スキャンのたびにジョブを
-// 積んでも待ち行列が膨らまないことを、制約として持つ（R-106）。
+// 積んでも待ち行列が膨らまないことを、制約として持つ。
 func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 	db := migratedDB(t)
 
@@ -433,7 +432,7 @@ func TestDeletingVideoCascadesJobs(t *testing.T) {
 }
 
 // running なスキャンは同時に1件だけ。POST /api/scans が「実行中ならそれを返す」
-// 振る舞い（R-108）は、この制約に依存している。
+// 振る舞いは、この制約に依存している。
 func TestScansAllowOnlyOneRunning(t *testing.T) {
 	db := migratedDB(t)
 

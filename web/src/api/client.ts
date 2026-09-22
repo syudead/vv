@@ -1,7 +1,7 @@
 import type { components } from "./gen/openapi";
 
 // 型は api/openapi.yaml からの生成物を使う。契約を変えると、ここが
-// コンパイルエラーになって気付ける（R-010）。
+// コンパイルエラーになって気付ける。
 export type Video = components["schemas"]["Video"];
 export type VideoPage = components["schemas"]["VideoPage"];
 export type VideoSort = components["schemas"]["VideoSort"];
@@ -12,7 +12,7 @@ export type DirectoryListing = components["schemas"]["DirectoryListing"];
 export type ApiError = components["schemas"]["Error"];
 
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
-// これだけを待つ（R-114 / SC-003）。
+// これだけを待つ。
 export const PAGE_SIZE = 60;
 
 /** 応答がエラーだったことを表す。message は利用者にそのまま見せてよい。 */
@@ -32,8 +32,8 @@ export class RequestFailed extends Error {
  * request は JSON を取りに行く薄いラッパである。
  *
  * データ取得ライブラリは入れない。この時点の要求は「一覧（無限スクロール）・
- * 詳細・進捗送信」の3種類しかなく、キャッシュ無効化の関係も単純だからである
- * （R-113）。画面をまたぐキャッシュ整合や楽観更新が要る段階で再検討する。
+ * 詳細・進捗送信」の3種類しかなく、キャッシュ無効化の関係も単純だからである。
+ * 画面をまたぐキャッシュ整合や楽観更新が要る段階で再検討する。
  */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
@@ -180,7 +180,7 @@ export function listDirectories(
 
 /**
  * saveProgress は再生位置を送る。視聴済みの判定はサーバー側が行うので、
- * ここでは位置だけを送る（R-111）。
+ * ここでは位置だけを送る。
  */
 export function saveProgress(
   id: number,

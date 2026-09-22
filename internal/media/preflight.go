@@ -16,7 +16,7 @@ var RequiredCommands = []string{"ffprobe", "ffmpeg"}
 var ErrMissingCommands = errors.New("必要な外部コマンドが見つかりません")
 
 // installHint は不足していた場合に提示する導入方法である。欠けているコマンド名だけを
-// 出しても次の一手が分からないため、導入方法を必ず添える（SC-008）。
+// 出しても次の一手が分からないため、導入方法を必ず添える。
 const installHint = "Docker で実行する（task up）か、ffmpeg を導入してください" +
 	"（alpine: apk add ffmpeg / Debian・Ubuntu: apt-get install ffmpeg / macOS: brew install ffmpeg）"
 

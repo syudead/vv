@@ -16,14 +16,14 @@ import (
 // probeTimeout は ffprobe 1回に与える上限である。
 //
 // 壊れたファイルで ffprobe が戻らないことがあり、そこで取り込み全体が止まると
-// 残りの動画が一覧に出てこない。1件を諦めて次へ進む方が損失が小さい（FR-008）。
+// 残りの動画が一覧に出てこない。1件を諦めて次へ進む方が損失が小さい。
 const probeTimeout = 30 * time.Second
 
 // probeCommand は実行する外部コマンドである。存在は起動前に確認済み
 // （Preflight）。
 const probeCommand = "ffprobe"
 
-// Probe は1ファイルのメタデータを取得する（R-102）。
+// Probe は1ファイルのメタデータを取得する。
 //
 // 必要な値は -show_format -show_streams の1回ですべて揃う。値ごとに
 // -show_entries で複数回起動すると、プロセス起動が支配的なコストなので遅くなる。
@@ -51,7 +51,7 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	return probe, nil
 }
 
-// probeArgs は R-102 が定める1回分の引数を組み立てる。
+// probeArgs は ffprobe に渡す1回分の引数を組み立てる。
 // パスは -- の後ろに置き、"-" で始まる名前のファイルを選択肢と取り違えない。
 func probeArgs(path string) []string {
 	return []string{

@@ -1,4 +1,4 @@
-# FR-012 の自動検証。task check を構成するタスクと、追加runtimeを要するtest-e2eを呼ぶ。
+# 自動検証。task check を構成するタスクと、追加runtimeを要するtest-e2eを呼ぶ。
 # どの検査も同じTaskタスクで手元から再現できる。ジョブはGoとWebで分けて並行させ、重いイメージビルドは別ジョブにする
 # （目標は 10 分以内）。
 name: CI

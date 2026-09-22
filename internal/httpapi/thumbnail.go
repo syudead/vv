@@ -11,7 +11,7 @@ import (
 
 // GetVideoThumbnail はサムネイル画像を返す（GET /api/videos/{id}/thumbnail）。
 //
-// 未生成の場合は 404 を返し、クライアントは枠だけを描く（FR-010）。壊れた
+// 未生成の場合は 404 を返し、クライアントは枠だけを描く。壊れた
 // 応答を返すより、未生成と同じ扱いにする方が利用者の損失が小さい。
 func (s *server) GetVideoThumbnail(
 	w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoThumbnailParams,
@@ -43,7 +43,7 @@ func (s *server) GetVideoThumbnail(
 	}
 
 	// 版付きの要求だけ長期キャッシュを許す。版は内容由来なので、内容が
-	// 変われば URL も変わり、古い画像が残らない（R-112）。版の無い要求に
+	// 変われば URL も変わり、古い画像が残らない。版の無い要求に
 	// 1年のキャッシュを付けると、差し替えても更新されなくなる。
 	if params.V != nil && *params.V != "" {
 		w.Header().Set("Cache-Control", cacheImmutable)

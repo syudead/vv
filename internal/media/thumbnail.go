@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// 抽出位置の規則（R-104）。先頭が黒画面やロゴであることが多いので 10% 地点を
+// 抽出位置の規則。先頭が黒画面やロゴであることが多いので 10% 地点を
 // 採り、長い動画で待たされないよう上限を切る。
 const (
 	// thumbnailFraction は尺に対する抽出位置の割合。
@@ -33,8 +33,7 @@ const thumbnailCommand = "ffmpeg"
 // thumbnailDirPerm はサムネイルの置き場所を作るときの許可属性である。
 const thumbnailDirPerm os.FileMode = 0o755
 
-// Thumbnail は動画から静止画を1枚取り出し、置き場所へ保存してそのパスを返す
-// （R-104）。
+// Thumbnail は動画から静止画を1枚取り出し、置き場所へ保存してそのパスを返す。
 //
 // 形式は JPEG にする。WebP の方が小さいが、libwebp を含む ffmpeg ビルドを
 // 前提にすると実行環境の差で失敗しうる。mjpeg エンコーダはどのビルドにも
@@ -94,8 +93,8 @@ func runThumbnail(ctx context.Context, videoPath string, offsetSec float64, outp
 //
 //	<thumbnailsDir>/<先頭2文字>/<content_key>.jpg
 //
-// content_key で名前を決めるので、ファイルの移動・改名では作り直さない
-// （FR-025）。2文字のディレクトリに分けるのは、1ディレクトリに数万ファイルを
+// content_key で名前を決めるので、ファイルの移動・改名では作り直さない。
+// 2文字のディレクトリに分けるのは、1ディレクトリに数万ファイルを
 // 置かないためである。
 func ThumbnailPath(thumbnailsDir, contentKey string) string {
 	safe := thumbnailFileName(contentKey)
@@ -134,7 +133,7 @@ func thumbnailOffset(durationMs int64) float64 {
 	return offset
 }
 
-// thumbnailArgs は R-104 の引数を組み立てる。
+// thumbnailArgs は ffmpeg に渡す1回分の引数を組み立てる。
 //
 // -ss を -i の前に置くとキーフレーム単位の高速シークになり、長い動画でも
 // 一定時間で終わる。後ろに置くと先頭から復号することになる。

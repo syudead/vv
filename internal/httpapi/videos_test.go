@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 一覧は items・total・nextCursor を返す（FR-011・FR-012）。
+// 一覧は items・total・nextCursor を返す。
 func TestListVideosReturnsPage(t *testing.T) {
 	library := &fakeLibrary{page: domain.VideoPage{
 		Items:      []domain.Video{sampleVideo(1, "海辺の散歩"), sampleVideo(2, "京都の街並み")},
@@ -46,7 +46,7 @@ func TestListVideosReturnsPage(t *testing.T) {
 	if !first.Playable {
 		t.Error("playable = false")
 	}
-	// サムネイルは生成済みのときだけ URL を入れ、内容由来の版を付ける（R-112）。
+	// サムネイルは生成済みのときだけ URL を入れ、内容由来の版を付ける。
 	if first.ThumbnailUrl == nil {
 		t.Fatal("thumbnailUrl が入っていない")
 	}
@@ -55,7 +55,7 @@ func TestListVideosReturnsPage(t *testing.T) {
 	}
 }
 
-// 取り込み直後の動画も一覧に並ぶ。未取得の値は省略する（FR-010）。
+// 取り込み直後の動画も一覧に並ぶ。未取得の値は省略する。
 func TestListVideosOmitsUnknownValues(t *testing.T) {
 	pending := domain.Video{
 		ID: 7, Title: "解析前", SizeBytes: 10,
@@ -84,7 +84,7 @@ func TestListVideosOmitsUnknownValues(t *testing.T) {
 	}
 }
 
-// 再生できない動画は、理由まで一覧に出す（SC-007）。
+// 再生できない動画は、理由まで一覧に出す。
 func TestListVideosExposesUnplayableReason(t *testing.T) {
 	unplayable := sampleVideo(3, "対応外の動画")
 	unplayable.Playable = false
@@ -104,7 +104,7 @@ func TestListVideosExposesUnplayableReason(t *testing.T) {
 	}
 }
 
-// limit は既定 60・上限 200（R-109）。
+// limit は既定 60・上限 200。
 func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 	tests := []struct {
 		target string
@@ -257,7 +257,7 @@ func TestListVideosWithoutStore(t *testing.T) {
 	}
 }
 
-// 検索語を渡すと絞り込まれ、total は絞り込み後の件数になる（FR-012）。
+// 検索語を渡すと絞り込まれ、total は絞り込み後の件数になる。
 func TestListVideosPassesQuery(t *testing.T) {
 	library := &fakeLibrary{page: domain.VideoPage{
 		Items: []domain.Video{sampleVideo(1, "夏休みの旅行")},
@@ -280,7 +280,7 @@ func TestListVideosPassesQuery(t *testing.T) {
 }
 
 // 該当が無ければ items は空で total は 0。画面はここで「該当なし」と
-// 次に取れる操作を示す（FR-024）。
+// 次に取れる操作を示す。
 func TestListVideosWithNoMatches(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{
 		page: domain.VideoPage{Items: []domain.Video{}, Total: 0},

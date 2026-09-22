@@ -97,14 +97,14 @@ func videoColumns() string {
 	return strings.ReplaceAll(videoColumnsTemplate, "{registered}", registeredLocationCondition("l"))
 }
 
-// UpsertVideo は走査で分かった1件を索引に反映する（R-107 / R-109）。
+// UpsertVideo は走査で分かった1件を索引に反映する。
 //
 // 突き合わせは content_key を先に見る。内容が同じ別pathは同じvideoの
-// locationとして追加する。論理videoを重複させないことがFR-004の要求であり、
+// locationとして追加する。論理videoを重複させないことが要求であり、
 // 再生位置とサムネイルを引き継ぐ前提でもある。
 //
 // 内容が変わったとき（サイズか mtime が変わる）は、解析結果を捨てて
-// probe_state を pending へ戻す（data-model.md）。
+// probe_state を pending へ戻す。
 func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, error) {
 	now := time.Now().Unix()
 	tx, err := db.sql.BeginTx(ctx, nil)
@@ -250,7 +250,7 @@ func (db *DB) ApplyProbeForJob(
 }
 
 // MarkProbeFailed は解析に失敗したことを記録する。行は残す。個別のファイルの
-// 失敗で取り込み全体を止めないため、一覧には並んだままになる（FR-008）。
+// 失敗で取り込み全体を止めないため、一覧には並んだままになる。
 func (db *DB) MarkProbeFailed(ctx context.Context, id int64, reason string) error {
 	_, err := db.sql.ExecContext(ctx, `
 		update videos
@@ -342,7 +342,7 @@ func (db *DB) GetVideo(ctx context.Context, id int64) (domain.Video, error) {
 	return video, nil
 }
 
-// ListVideos は一覧1ページを返す（R-109）。
+// ListVideos は一覧1ページを返す。
 //
 // ページングは keyset（カーソル）方式である。offset を使うと、取り込みで行が
 // 増減した瞬間に取りこぼしと重複が起きる。並び順の値と id を境界に使うので、
@@ -354,7 +354,7 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 		sort = SortAddedDesc
 	}
 
-	// 総件数はカーソルに関係なく、絞り込み後の全件である（FR-012）。
+	// 総件数はカーソルに関係なく、絞り込み後の全件である。
 	total, err := db.CountVideos(ctx, q.Query)
 	if err != nil {
 		return VideoPage{}, err
@@ -382,8 +382,7 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 	}
 
 	// 並び順は検索の有無で変えない。関連度（bm25）にすると、LIKE 経路には
-	// 関連度が無いため2つの経路で並びが変わり、利用者から見て不可解になる
-	// （R-110）。
+	// 関連度が無いため2つの経路で並びが変わり、利用者から見て不可解になる。
 	query += ` order by ` + orderBy(sort) + ` limit ?`
 
 	// 次のページがあるかを知るために1件多く取る。件数を数え直すより安い。
@@ -412,7 +411,7 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 	return page, nil
 }
 
-// CountVideos は絞り込み後の総件数を返す（FR-012）。1万件規模の count(*) は
+// CountVideos は絞り込み後の総件数を返す。1万件規模の count(*) は
 // 索引走査で数 ms に収まる。
 func (db *DB) CountVideos(ctx context.Context, search string) (int, error) {
 	condition, args := searchFilter(search)
@@ -490,7 +489,7 @@ func (db *DB) DeleteVideoLocations(ctx context.Context, ids []int64) error {
 }
 
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
-// 走査はこれと実際のファイルを突き合わせて差分を出す（R-107）。
+// 走査はこれと実際のファイルを突き合わせて差分を出す。
 func (db *DB) IndexedVideosByPath(ctx context.Context) (map[string]IndexedVideo, error) {
 	rows, err := db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state from video_locations l join videos v on v.id = l.video_id`)
 	if err != nil {
@@ -548,7 +547,7 @@ func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64)
 }
 
 // ContentKeys は参照されている内容の識別子を集合で返す。
-// スキャン完了時の孤児サムネイルの掃除に使う（data-model.md 2 節）。
+// スキャン完了時の孤児サムネイルの掃除に使う。
 func (db *DB) ContentKeys(ctx context.Context) (map[string]struct{}, error) {
 	rows, err := db.sql.QueryContext(ctx, `select content_key from videos`)
 	if err != nil {
@@ -603,7 +602,7 @@ func cursorCondition(sort VideoSort, cursor string) (string, []any, error) {
 const cursorSeparator = "\x1f"
 
 // encodeCursor は「並び順の値 + id」を不透明な文字列に包む。クライアントは
-// 中身を解釈しない（R-109）。
+// 中身を解釈しない。
 func encodeCursor(sort VideoSort, last domain.Video) string {
 	value := strconv.FormatInt(last.AddedAt.Unix(), 10)
 	if sort == SortTitleAsc {

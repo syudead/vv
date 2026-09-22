@@ -127,7 +127,7 @@ func (c Config) Level() slog.Level {
 	return slog.LevelInfo
 }
 
-// LogAttrs は有効な設定値を記録に出すための属性を返す（FR-007）。
+// LogAttrs は有効な設定値を記録に出すための属性を返す。
 func (c Config) LogAttrs() []slog.Attr {
 	return []slog.Attr{
 		slog.String(envAddr, c.Addr),
@@ -138,7 +138,7 @@ func (c Config) LogAttrs() []slog.Attr {
 
 // ThumbnailsDir はサムネイルの置き場所を返す（MDM_DATA_DIR/thumbnails）。
 // 設定項目にしないのは、置き場所が散らばるとバックアップと削除の手順が
-// 増えるためである（contracts/configuration.md）。
+// 増えるためである。
 func (c Config) ThumbnailsDir() string {
 	return filepath.Join(c.DataDir, thumbnailsDirName)
 }

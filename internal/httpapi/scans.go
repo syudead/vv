@@ -12,10 +12,10 @@ import (
 //
 // すでに実行中なら新しく始めず、実行中のものを返す。409 にしないのは、
 // 利用者の意図が「今の状態を進めたい」であり、進行中ならそれを返すのが
-// 素直だからである（R-108）。
+// 素直だからである。
 //
 // 応答は即座に返り、取り込みは背後で進む。走査中も一覧・再生の経路は通常
-// どおり応答する（FR-007）。
+// どおり応答する。
 func (s *server) StartScan(w http.ResponseWriter, r *http.Request) {
 	var body struct{}
 	if !s.readJSONBody(w, r, &body) {

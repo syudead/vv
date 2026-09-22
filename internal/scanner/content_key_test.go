@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// wantKey は R-101 の式をテスト側で独立に組み立てる。実装と同じ関数を
+// wantKey は鍵の式をテスト側で独立に組み立てる。実装と同じ関数を
 // 呼んで比べても意味が無いので、式そのものをここに書き写す。
 //
 //	content_key = hex(sha256(先頭 1MiB ‖ 末尾 1MiB)) + ":" + ファイルサイズ
@@ -55,7 +55,7 @@ func pattern(n int, seed byte) []byte {
 	return out
 }
 
-// 鍵は R-101 の式そのものであること。ファイルの大きさによらず成り立つ。
+// 鍵は wantKey の式そのものであること。ファイルの大きさによらず成り立つ。
 func TestContentKeyMatchesFormula(t *testing.T) {
 	sizes := []struct {
 		name string
@@ -87,7 +87,7 @@ func TestContentKeyMatchesFormula(t *testing.T) {
 }
 
 // 内容が同じならパスが違っても同じ鍵になる。移動・改名を越えて同じ動画と
-// 判定できることが、FR-004／FR-025 の前提である。
+// 判定できることが、移動を越えて再生位置を引き継ぐ前提である。
 func TestContentKeyIgnoresPath(t *testing.T) {
 	content := pattern(3*readWindow, 0x11)
 
@@ -109,7 +109,7 @@ func TestContentKeyIgnoresPath(t *testing.T) {
 
 // 末尾だけが違うファイルで鍵が変わること。先頭だけを読む実装では区別できず、
 // 別の動画が同じ1本として扱われてしまう。多くの動画コンテナは末尾に索引を
-// 持つため、この確認が要である（R-101）。
+// 持つため、この確認が要である。
 func TestContentKeyDetectsTailDifference(t *testing.T) {
 	base := pattern(4*readWindow, 0x22)
 
@@ -152,7 +152,7 @@ func TestContentKeyDetectsHeadDifference(t *testing.T) {
 }
 
 // 同じ内容でも大きさが違えば別の動画である。サイズを鍵に含めることで、
-// 偶然の衝突を実質的に無視できる（R-101）。
+// 偶然の衝突を実質的に無視できる。
 func TestContentKeyIncludesSize(t *testing.T) {
 	short := pattern(1024, 0x44)
 	long := append(append([]byte{}, short...), short...)
@@ -170,7 +170,7 @@ func TestContentKeyIncludesSize(t *testing.T) {
 	}
 }
 
-// 2MiB 以下のファイルは全体を1度だけ読む（R-101 実装上の注意）。
+// 2MiB 以下のファイルは全体を1度だけ読む。
 // 読み出し回数を数えて、先頭と末尾で2度読んでいないことを確かめる。
 func TestContentKeyReadsSmallFileOnce(t *testing.T) {
 	content := pattern(readWindow+512, 0x55)

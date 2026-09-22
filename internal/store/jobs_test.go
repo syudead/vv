@@ -63,7 +63,7 @@ func TestClaimJobOnEmptyQueue(t *testing.T) {
 	}
 }
 
-// 失敗は attempts を +1 して queued に戻し、3 回で failed にして止める（R-106）。
+// 失敗は attempts を +1 して queued に戻し、3 回で failed にして止める。
 // 止めないと、壊れたファイル1つがワーカーを永久に占有する。
 func TestFailJobRetriesThenGivesUp(t *testing.T) {
 	db, videoID := jobsFixture(t)
@@ -221,7 +221,7 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 }
 
 // 起動時に running のまま残っている行は queued へ戻す。取り込み中に止めても
-// 次の起動で再開でき、重複も生まない（R-106 / spec のエッジケース）。
+// 次の起動で再開でき、重複も生まない。
 func TestRequeueRunningJobs(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -251,8 +251,7 @@ func TestRequeueRunningJobs(t *testing.T) {
 	}
 }
 
-// 完了した行は 7 日で掃除する。取り込み直後に最大 2万行になるため
-// （data-model.md 4 節）。
+// 完了した行は 7 日で掃除する。取り込み直後に最大 2万行になるため。
 func TestDeleteFinishedJobsBefore(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()

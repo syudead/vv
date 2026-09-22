@@ -17,12 +17,12 @@ const maxQueryLength = 100
 
 // thumbnailVersionLength はサムネイルの URL に付ける版の長さである。
 // content_key の先頭を使う。内容が変われば版も変わるので、長期キャッシュを
-// 安全に効かせられる（R-112）。
+// 安全に効かせられる。
 const thumbnailVersionLength = 12
 
 // ListVideos は動画の一覧を返す（GET /api/videos）。
 //
-// ページングはカーソル方式で、総件数はページとは独立に返る（R-109）。
+// ページングはカーソル方式で、総件数はページとは独立に返る。
 func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.ListVideosParams) {
 	if s.videos == nil {
 		s.internalError(w, "一覧の問い合わせ先が設定されていません", nil)
@@ -69,7 +69,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
 		// 黙って先頭から返さない。無限スクロールが巻き戻って同じ内容を
-		// 延々と表示することになる（contracts/http-routes.md）。
+		// 延々と表示することになる。
 		s.invalidRequest(w, "読み込み位置を解釈できません。一覧を開き直してください")
 		return
 	case err != nil:
@@ -133,7 +133,7 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 // withProgress は再生位置を載せる。記録の無い動画では省略する。
 //
 // 「記録が無い」ことを位置 0 で表さないのは、先頭まで戻した動画と一度も
-// 見ていない動画を、一覧で区別できなくなるためである（FR-015）。
+// 見ていない動画を、一覧で区別できなくなるためである。
 func withProgress(video gen.Video, progress map[string]domain.Progress, contentKey string) gen.Video {
 	found, ok := progress[contentKey]
 	if !ok {
@@ -166,7 +166,7 @@ func (s *server) lookupVideo(w http.ResponseWriter, r *http.Request, id int64) (
 // toAPIVideo は domain.Video を契約の形へ写す。
 //
 // 取得できていない値は省略する。0 で埋めると、一覧で「尺が 0 の動画」と
-// 「尺が分からない動画」を区別できなくなる（data-model.md）。
+// 「尺が分からない動画」を区別できなくなる。
 func toAPIVideo(video domain.Video) gen.Video {
 	out := gen.Video{
 		Id:             video.ID,
@@ -208,7 +208,7 @@ func toAPIVideo(video domain.Video) gen.Video {
 		out.ProbeError = &reason
 	}
 	// サムネイルは生成済みのときだけ URL を出す。未生成の動画も一覧には
-	// 並べ、クライアントは枠だけを描く（FR-010）。
+	// 並べ、クライアントは枠だけを描く。
 	if video.HasThumbnail() {
 		url := thumbnailURL(video)
 		out.ThumbnailUrl = &url
@@ -218,7 +218,7 @@ func toAPIVideo(video domain.Video) gen.Video {
 }
 
 // thumbnailURL はサムネイルの取得先を組み立てる。版は content_key の先頭で、
-// 内容が変われば URL も変わる（R-112）。
+// 内容が変われば URL も変わる。
 func thumbnailURL(video domain.Video) string {
 	version := video.ContentKey
 	if len(version) > thumbnailVersionLength {

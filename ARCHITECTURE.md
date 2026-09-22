@@ -101,7 +101,7 @@ frame around a screen. `web/src/library/`, `web/src/settings/`, and
 screens use the shell: `app/App.tsx` puts `AppShell` around the `/` and `/settings`
 routes, and the playback screen
 (`/videos/:id`) deliberately gets no sidebar, because it is a
-two-pane screen of its own (R-505). Keeping that choice to the one routing
+two-pane screen of its own. Keeping that choice to the one routing
 decision is what lets the shell stay ignorant of which screen it is framing.
 The shell exposes the library and media-folder settings as routes. "Recently added"
 and "In progress" show a preparation notice until backing routes exist; shell tests

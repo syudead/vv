@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# task up の実体。SPA のビルド → 単一バイナリのビルド → 実行環境の 3 段に分ける
-# （research.md R-003 / R-008）。
+# task up の実体。SPA のビルド → 単一バイナリのビルド → 実行環境の 3 段に分ける。
 
 # 1) SPA をビルドする。
 FROM node:22-alpine AS web
@@ -28,7 +27,7 @@ RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false \
     -ldflags "-s -w -X main.version=${VERSION}" \
     -o /out/mdm ./cmd/mdm
 
-# 3) 実行する。ffmpeg／ffprobe を同梱し、起動前確認（FR-008）が通る状態にする。
+# 3) 実行する。ffmpeg／ffprobe を同梱し、起動前確認が通る状態にする。
 FROM alpine:3.22
 RUN apk add --no-cache ffmpeg ca-certificates tzdata \
     && mkdir -p /media /data

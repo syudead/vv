@@ -16,11 +16,11 @@ import (
 
 var ErrNoMediaFolders = errors.New("メディアフォルダが登録されていません")
 
-// mediaExtensions は取り込みの対象にする拡張子である（R-107）。
+// mediaExtensions は取り込みの対象にする拡張子である。
 //
 // 再生できない形式（mkv・avi など）も取り込む。一覧に出したうえで「再生でき
 // ない」と示すためで、一覧から消してしまうと利用者は手元に何があるか分から
-// なくなる（FR-003）。
+// なくなる。
 var mediaExtensions = map[string]struct{}{
 	".mp4": {}, ".m4v": {}, ".webm": {}, ".mkv": {}, ".mov": {}, ".avi": {},
 	".wmv": {}, ".flv": {}, ".ts": {}, ".mpg": {}, ".mpeg": {},
@@ -99,7 +99,7 @@ func New(opts Options) *Scanner {
 	}
 }
 
-// Scan は走査を1回行い、集計を返す（R-107）。
+// Scan は走査を1回行い、集計を返す。
 //
 // 手順は次のとおり。
 //
@@ -111,8 +111,8 @@ func New(opts Options) *Scanner {
 //     同じでパスが違うものは移動・改名として扱われる（重複を作らない）
 //  5. 走査で見つからなかった行を消す
 //
-// 動画ファイルは読み取りのみで扱う。変更・移動・削除・変換は行わない（FR-009）。
-// 個別のファイルの失敗では中止せず、失敗として数えて次へ進む（FR-008）。
+// 動画ファイルは読み取りのみで扱う。変更・移動・削除・変換は行わない。
+// 個別のファイルの失敗では中止せず、失敗として数えて次へ進む。
 func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	folders, err := s.index.ListMediaFolders(ctx)
 	if err != nil {
@@ -146,7 +146,7 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 			}
 			if err != nil {
 				// 根が読めない場合は走査そのものの失敗。途中のディレクトリが
-				// 読めないだけなら、その範囲を保護して続ける（FR-008）。通常
+				// 読めないだけなら、その範囲を保護して続ける。通常
 				// fileではSkipDirを返さない。返すと後続の兄弟まで省略される。
 				protected = append(protected, path)
 				s.logger.Warn("走査中に読み取れない場所がありました",
@@ -244,7 +244,7 @@ func (s *Scanner) ingest(
 	}
 
 	// 変わっていないファイルは再hashせず、欠落したpending jobだけを補う。
-	// terminal failureは復活させない（R-107）。
+	// terminal failureは復活させない。
 	if existing, ok := indexed[path]; ok &&
 		existing.SizeBytes == info.Size() &&
 		existing.MTime.Unix() == info.ModTime().Unix() {
@@ -325,7 +325,7 @@ func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error
 	return nil
 }
 
-// removeMissing は走査で見つからなかった行を消す（FR-005）。
+// removeMissing は走査で見つからなかった行を消す。
 //
 // 移動・改名の場合は、新しいパスの取り込みで content_key が一致し、既存の行が
 // そちらへ付け替わっている。その結果このパスは索引から消えているので、ここで
@@ -417,7 +417,7 @@ func isExcludedDir(name string) bool {
 }
 
 // titleOf は表示名を決める。拡張子を除いたファイル名で、空になる場合は
-// ファイル名をそのまま使う（data-model.md）。
+// ファイル名をそのまま使う。
 func titleOf(path string) string {
 	name := filepath.Base(path)
 	title := strings.TrimSuffix(name, filepath.Ext(name))

@@ -4,7 +4,7 @@ import type { Video } from "./client";
 import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
 /**
- * 一覧の復元状態（data-model.md 2. / FR-016）。
+ * 一覧の復元状態。
  *
  * 要点は 2 つある。**鍵が違えば取れない**こと（別の絞り込みの一覧を戻り先に
  * してはならない）と、**直近の 1 件しか持たない**ことである。後者を外すと、
