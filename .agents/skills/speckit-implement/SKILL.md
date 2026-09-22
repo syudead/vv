@@ -28,7 +28,24 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 1. For feature-directory work, the directory is given to you. List what it holds — `plan.md`, and any of `ui-design.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md` — and use that as the available-documents list. Run no script for this. For a plain-text implementation request, skip this step and use the current checkout and relevant repository files.
 
-2. **Project Setup Verification**:
+2. Load and analyze the implementation context. For Spec Kit feature work:
+   - **REQUIRED**: Read the parent Issue for requirements and acceptance criteria
+   - **REQUIRED**: Read plan.md for tech stack, architecture, and file structure
+   - **IF EXISTS**: Read data-model.md for entities and relationships
+   - **IF EXISTS**: Read contracts/ for API specifications and test requirements
+   - **IF EXISTS**: Read research.md for technical decisions and constraints
+   - **REQUIRED**: Read this repository's governance for its constraints — ARCHITECTURE.md, docs/design-docs/core-beliefs.md, and AGENTS.md
+   - **IF EXISTS**: Read quickstart.md for integration scenarios
+   For a plain-text request, use the user's request and the relevant code and
+   documentation in the current checkout instead.
+
+   If the work named by the Issue turns out to be ambiguous, or the obvious way
+   to build it is blocked by a technical constraint, stop and ask rather than
+   deciding it in code. A choice that changes what the user gets belongs to the
+   person who asked for the feature (Q-6 and Q-7 in
+   `docs/product-specs/spec-quality.md`).
+
+3. **Project Setup Verification**:
    - **REQUIRED**: Create/verify ignore files based on actual project setup:
 
    **Detection & Creation Logic**:
@@ -72,25 +89,25 @@ You **MUST** consider the user input before proceeding (if not empty).
    - **Terraform**: `.terraform/`, `*.tfstate*`, `*.tfvars`, `.terraform.lock.hcl`
    - **Kubernetes/k8s**: `*.secret.yaml`, `secrets/`, `.kube/`, `kubeconfig*`, `*.key`, `*.crt`
 
-3. Resolve the requested work:
+4. Resolve the requested work:
    - Use the user's request or supplied Issue as the scope boundary
    - Use the plan's implementation-work section and the supplied Issue as context
    - Read related work only to understand dependencies; do not implement it
    - If the requested work cannot be identified, ask the user instead of selecting all remaining tasks
 
-4. Implement only the requested work and its necessary tests:
+5. Implement only the requested work and its necessary tests:
    - Respect dependencies without expanding the scope to unrelated work
    - Follow TDD when required by the specification or request
    - Include only setup, integration, and documentation changes necessary for this work
    - Run focused validation and any repository checks required by the change
 
-5. Progress tracking and error handling:
+6. Progress tracking and error handling:
    - Report progress for the requested work
    - Halt execution if a required step fails
    - Provide clear error messages with context for debugging
    - Suggest next steps if implementation cannot proceed
 
-6. Completion validation:
+7. Completion validation:
    - Verify the requested work is complete
    - Check that the implementation matches the relevant specification and acceptance criteria
    - Validate that tests pass and coverage meets requirements

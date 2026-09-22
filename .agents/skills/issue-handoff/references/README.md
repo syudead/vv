@@ -73,8 +73,9 @@ relevant and available. Their metadata and the parent checklist are useful
 context, not identity checks or execution gates.
 
 Do not add a `spec.md` to a feature directory; the requirement lives in the
-parent Issue. A feature directory holds `plan.md` and, for a `ui` Issue,
-`ui-design.md`.
+parent Issue. A feature directory always holds `plan.md`, adds `ui-design.md`
+for a `ui` Issue, and carries `research.md`, `data-model.md`, `contracts/` or
+`quickstart.md` when the Plan has that content of its own (P-2).
 
 Name the feature directory explicitly; never select work from a branch name or
 a prior conversation. Use a separate checkout or worktree for each concurrent
