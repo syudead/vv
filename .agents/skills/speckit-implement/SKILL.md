@@ -26,7 +26,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 ## Outline
 
-1. For feature-directory work, the directory is given to you. List what it holds — `plan.md`, and `ui-design.md` for a `ui` Issue — and use that as the available-documents list. Run no script for this. For a plain-text implementation request, skip this step and use the current checkout and relevant repository files.
+1. For feature-directory work, the directory is given to you. List what it holds — `plan.md`, and any of `ui-design.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md` — and use that as the available-documents list. Run no script for this. For a plain-text implementation request, skip this step and use the current checkout and relevant repository files.
 
 2. **Project Setup Verification**:
    - **REQUIRED**: Create/verify ignore files based on actual project setup:

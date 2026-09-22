@@ -12,7 +12,7 @@
   into implementation units. The requirement itself lives in the parent Issue;
   the research behind a decision lives in research.md.
 
-  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-8).
+  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-7).
   The two that bite most often: write a decision or nothing at all (P-1), and
   leave a section out rather than filling it with plausible prose (P-6).
 
