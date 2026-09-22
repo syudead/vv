@@ -95,6 +95,8 @@ Go 製の開発ツールは `tools/go.mod` の `tool` directive、実行環境�
 ランタイムは要らない。
 Windows で `task setup` を再実行するときは、先に開発サーバーを停止する。
 起動中はネイティブ依存のファイルがロックされ、npm ci が失敗するためである。
+ホストで実行する開発者向けTaskでは、`task setup`だけがnpm依存を入れ直す。
+それ以外のTaskは依存を自動導入しないため、先に`task setup`を実行する。
 Go と Web のソースは `.gitattributes` で LF に固定し、Windows の改行変換による
 整形エラーを防ぐ。既存のチェックアウトで CRLF が残っている場合は、
 `mise exec --command "task fmt"` で整形する。
