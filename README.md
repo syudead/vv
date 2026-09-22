@@ -176,9 +176,16 @@ Claude Code on the web でセッションを開くと、`.claude/hooks/session-s
 │   └── jobs/               # プロセス内のジョブワーカー（直列）
 ├── web/
 │   └── src/
-│       ├── api/            # 生成型を使う fetch ラッパと一覧のフック
-│       ├── components/     # 一覧の1件、取り込みの進捗
-│       └── pages/          # 一覧（/）と再生（/videos/:id）
+│       ├── api/            # 生成型を使う fetch ラッパ、一覧のページング、復元用の控え
+│       ├── app/            # ルーティングと画面の枠の割り当て
+│       ├── shell/          # トップバー、サイドバー、取り込み状態
+│       ├── library/        # 一覧（/）
+│       ├── player/         # 再生（/videos/:id）
+│       ├── settings/       # 設定（/settings）
+│       ├── ui/             # 画面をまたいで使う部品
+│       ├── lib/            # 整形などの補助
+│       ├── preferences/    # 端末ごとの表示設定
+│       └── theme/          # 見た目の検査（実行コードは持たない）
 ├── scripts/                # 開発者コマンドの実体（Go）と固定した検査ツールの版
 └── docs/
     ├── design-docs/        # 結論だけでは分からない技術判断の経緯
