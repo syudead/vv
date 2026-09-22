@@ -35,6 +35,11 @@ files, or open a pull request. Stop when the Issue is written.
 Leave out a section this feature has nothing for. Do not invent content to
 fill a heading.
 
+Write 要件 and 受け入れ条件 as numbered lists. Downstream stages cite an item as
+`要件 3` or `受け入れ条件 5`, and a plan, a child Issue, a checklist, or a review
+has nothing to point at otherwise. The numbers are handles, not a traceability
+matrix: do not add a table mapping one list to the other.
+
 ## Rules
 
 Follow [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md).
