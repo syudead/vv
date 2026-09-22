@@ -19,6 +19,7 @@ interface Video {
   container?: string;
   videoCodec?: string;
   audioCodec?: string;
+  seekThumbnailUrl?: string;
 }
 
 interface MediaFolder {
@@ -397,7 +398,9 @@ test.describe.serial("live MP4 playback", () => {
     await context.close();
   });
 
-  test("360px、768px、1280pxでplayerとkeyboard操作が重ならない", async ({ page }) => {
+  test("360px、768px、1280pxでシークpreviewとkeyboard操作が重ならない", async ({
+    page,
+  }) => {
     test.setTimeout(30_000);
     const item = video("direct");
     for (const width of [360, 768, 1280]) {
@@ -418,15 +421,56 @@ test.describe.serial("live MP4 playback", () => {
         const element = document.querySelector("video");
         return element !== null && !element.paused && element.currentTime > 0.1;
       });
+      const seekBar = page.locator(".vjs-progress-control");
+      const seekBounds = await seekBar.boundingBox();
+      const playerBounds = await page.locator(".video-js").boundingBox();
+      if (seekBounds === null || playerBounds === null) {
+        throw new Error("player controls are not visible");
+      }
+      for (const ratio of [0.01, 0.5, 0.99]) {
+        await page.mouse.move(
+          seekBounds.x + seekBounds.width * ratio,
+          seekBounds.y + seekBounds.height / 2,
+        );
+        const preview = page.locator('.vv-seek-preview[data-state="ready"]');
+        await expect(preview).toBeVisible({ timeout: 5000 });
+        const previewBounds = await preview.boundingBox();
+        expect(previewBounds?.x ?? -1).toBeGreaterThanOrEqual(playerBounds.x);
+        expect(
+          (previewBounds?.x ?? width) + (previewBounds?.width ?? width + 1),
+        ).toBeLessThanOrEqual(playerBounds.x + playerBounds.width);
+      }
       if (screenshotDir !== undefined) {
         await mkdir(screenshotDir, { recursive: true });
+        await page.mouse.move(
+          seekBounds.x + seekBounds.width * 0.5,
+          seekBounds.y + seekBounds.height / 2,
+        );
+        await expect(page.locator('.vv-seek-preview[data-state="ready"]')).toBeVisible();
         await page.screenshot({
-          path: path.join(
-            screenshotDir,
-            `20260922-live-mp4-e2e-player-${String(width)}.png`,
-          ),
+          path: path.join(screenshotDir, `20260922-seek-thumbnail-${String(width)}.png`),
           fullPage: true,
         });
+      }
+
+      if (width === 360) {
+        await page.route("**/seek-thumbnail?*positionMs=4000*", (route) =>
+          route.abort("failed"),
+        );
+        await page.mouse.move(
+          seekBounds.x + seekBounds.width * 0.75,
+          seekBounds.y + seekBounds.height / 2,
+        );
+        await expect(
+          page.locator('.vv-seek-preview[data-state="unavailable"]'),
+        ).toBeVisible();
+        if (screenshotDir !== undefined) {
+          await page.screenshot({
+            path: path.join(screenshotDir, "20260922-seek-thumbnail-unavailable-360.png"),
+            fullPage: true,
+          });
+        }
+        await page.unroute("**/seek-thumbnail?*positionMs=4000*");
       }
 
       await page.locator(".video-js").focus();
@@ -435,9 +479,9 @@ test.describe.serial("live MP4 playback", () => {
       const beforeSeek = await page
         .locator("video")
         .evaluate((element) => element.currentTime);
-      const seekBar = page.locator(".vjs-progress-holder");
-      await seekBar.focus();
-      await seekBar.press("ArrowRight");
+      const progressHolder = page.locator(".vjs-progress-holder");
+      await progressHolder.focus();
+      await progressHolder.press("ArrowRight");
       await expect
         .poll(() => page.locator("video").evaluate((element) => element.currentTime))
         .toBeGreaterThan(beforeSeek);
