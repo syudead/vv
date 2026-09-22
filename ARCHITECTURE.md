@@ -30,7 +30,7 @@ a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
 not duplicate rows, and queues the heavy work. `internal/jobs` runs a single
 serial in-process worker that drives the `internal/media` adapters
-(`ffprobe` for metadata, `ffmpeg` for one thumbnail per video); interrupted
+(`ffprobe` for metadata, `ffmpeg` for one library thumbnail plus five-second seek-preview frames per video); interrupted
 jobs are requeued at the next startup. Logical videos are separated from their physical
 locations so the same content may remain available from more than one configured root.
 Streaming delegates ranges to `http.ServeContent` and only opens current locations that

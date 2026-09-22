@@ -120,10 +120,23 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 		if err := checkReadableRegularFile(job.LocationPath); err != nil {
 			return err
 		}
-		if _, err := media.Thumbnail(
-			ctx, job.LocationPath, durationMs, cfg.ThumbnailsDir(), job.ContentKey,
+		hadThumbnail := video.ThumbnailState == domain.ThumbnailStateDone
+		if !hadThumbnail {
+			if _, err := media.Thumbnail(
+				ctx, job.LocationPath, durationMs, cfg.ThumbnailsDir(), job.ContentKey,
+			); err != nil {
+				if job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
+					if _, markErr := db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateFailed); markErr != nil {
+						return markErr
+					}
+				}
+				return err
+			}
+		}
+		if err := media.GenerateSeekThumbnails(
+			ctx, job.LocationPath, cfg.ThumbnailsDir(), job.ContentKey,
 		); err != nil {
-			if job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
+			if !hadThumbnail && job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
 				if _, markErr := db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateFailed); markErr != nil {
 					return markErr
 				}

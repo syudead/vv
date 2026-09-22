@@ -1,6 +1,6 @@
 import { formatDuration } from "../lib/format";
 
-const bucketMs = 1000;
+const bucketMs = 5000;
 const debounceMs = 150;
 const cacheLimit = 12;
 

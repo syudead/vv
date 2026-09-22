@@ -40,7 +40,7 @@ function progressElement(): HTMLElement {
 }
 
 describe("seek preview target", () => {
-  it("論理時刻を1秒bucketへ写し、両端ではpreviewを内側へ収める", () => {
+  it("論理時刻を5秒bucketへ写し、両端ではpreviewを内側へ収める", () => {
     const rect = { left: 100, width: 400 };
     expect(seekPreviewTarget(100, rect, 120_000, 240)).toEqual({
       positionMs: 0,
@@ -52,7 +52,7 @@ describe("seek preview target", () => {
       requestPositionMs: 60_000,
       leftPx: 201,
     });
-    expect(seekPreviewTarget(303, rect, 120_000, 240).requestPositionMs).toBe(61_000);
+    expect(seekPreviewTarget(303, rect, 120_000, 240).requestPositionMs).toBe(60_000);
     expect(seekPreviewTarget(500, rect, 120_000, 240)).toEqual({
       positionMs: 119_999,
       requestPositionMs: 119_999,

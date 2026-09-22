@@ -59,7 +59,7 @@ pointer hover、pointer drag、touch dragは同じ表示を使う。drag終了�
 pointer captureまたは同等の仕組みで終了まで位置をプレイヤー内へ収めて追従する。画像の取得、表示、
 失敗は再生、一時停止、mute、source切り替え、実際のシーク位置を変更しない。
 
-同じ1秒bucketでは同じ画像を維持し、時刻表示だけを実際の操作位置へ追従させる。別bucketへ移った時点で
+同じ5秒bucketでは同じ画像を維持し、時刻表示だけを実際の操作位置へ追従させる。別bucketへ移った時点で
 古い画像を隠すため、前の場面を現在位置の結果と誤認させない。
 
 ## Accessibility
