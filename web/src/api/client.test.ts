@@ -6,8 +6,16 @@ import {
   listDirectories,
   listMediaFolders,
   startScan,
+  transcodeUrl,
   updateMediaFolder,
 } from "./client";
+
+describe("playback URLs", () => {
+  it("transcode startMsを省略または整数化する", () => {
+    expect(transcodeUrl(7)).toBe("/api/videos/7/transcode.mp4");
+    expect(transcodeUrl(7, 12_345.4)).toBe("/api/videos/7/transcode.mp4?startMs=12345");
+  });
+});
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

@@ -142,6 +142,44 @@ paths:
         "416":
           description: 範囲指定が不正
 
+  /api/videos/{id}/transcode.mp4:
+    get:
+      operationId: transcodeVideo
+      summary: 動画をMP4へライブ変換して配信する
+      description: |
+        指定位置からfragmented MP4を生成し、保存せずレスポンスへ直送する。
+        Rangeは使わず、シークはstartMsを変えた新しいrequestで行う。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - name: startMs
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: fragmented MP4 stream
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          description: 変換processを開始できない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/videos/{id}/thumbnail:
     get:
       operationId: getVideoThumbnail

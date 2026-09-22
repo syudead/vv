@@ -1,9 +1,27 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { Link, MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
 import VideoPage from "./VideoPage";
+
+interface PlayerCallbacks {
+  onPosition: (positionMs: number) => void;
+  onProgress: (positionMs: number, immediate: boolean) => void;
+  onError: () => void;
+}
+
+const playerMock = vi.hoisted(() => ({
+  props: undefined as PlayerCallbacks | undefined,
+}));
+
+vi.mock("./VideoPlayer", () => ({
+  default: (props: PlayerCallbacks) => {
+    playerMock.props = props;
+    return <div data-testid="video-player" />;
+  },
+  canStartPlayback: () => true,
+}));
 
 const video: Video = {
   id: 7,
@@ -35,6 +53,8 @@ function renderPage(id = "7", from?: string) {
         { pathname: `/videos/${id}`, state: from === undefined ? undefined : { from } },
       ]}
     >
+      <Link to="/videos/8">次の動画</Link>
+      <Link to="/videos/invalid">無効な動画</Link>
       <Routes>
         <Route path="/videos/:id" element={<VideoPage />} />
       </Routes>
@@ -46,6 +66,7 @@ describe("VideoPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
+    playerMock.props = undefined;
     vi.stubGlobal("fetch", fetchMock);
     fetchMock.mockResolvedValue(json(video));
   });
@@ -77,7 +98,7 @@ describe("VideoPage", () => {
     expect(back.getAttribute("href")).toBe("/");
   });
 
-  it("再生できない動画は理由を出して video を置かない", async () => {
+  it("解析済みの非対応動画はライブ変換から開始する", async () => {
     fetchMock.mockResolvedValue(
       json({
         ...video,
@@ -87,8 +108,9 @@ describe("VideoPage", () => {
       }),
     );
     renderPage();
-    expect(await screen.findByText("この動画は再生できません")).toBeDefined();
-    expect(document.querySelector("video")).toBeNull();
+    await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+    expect(screen.getByTestId("video-player")).toBeDefined();
+    expect(screen.queryByText("この動画は再生できません")).toBeNull();
   });
 
   it("取得に失敗したら理由を出す", async () => {
@@ -99,14 +121,13 @@ describe("VideoPage", () => {
     expect(await screen.findByText("見つかりません")).toBeDefined();
   });
 
-  it("一時停止と再生終了で現在位置を直ちに保存する", async () => {
+  it("playerの即時保存通知をprogress APIへ送る", async () => {
     renderPage();
     await screen.findByRole("heading", { level: 1, name: "テスト動画" });
-    const player = document.querySelector("video");
-    if (player === null) throw new Error("video が描画されていません");
+    const callbacks = playerMock.props;
+    if (callbacks === undefined) throw new Error("player が描画されていません");
 
-    player.currentTime = 12.345;
-    fireEvent.pause(player);
+    callbacks.onProgress(12_345, true);
     await waitFor(() => {
       expect(
         fetchMock.mock.calls.some(
@@ -118,8 +139,7 @@ describe("VideoPage", () => {
       ).toBe(true);
     });
 
-    player.currentTime = 242;
-    fireEvent.ended(player);
+    callbacks.onProgress(242_000, true);
     await waitFor(() => {
       const progressCalls = fetchMock.mock.calls.filter(
         ([input, init]) =>
@@ -133,11 +153,10 @@ describe("VideoPage", () => {
   it("DOM ref が外れた後のアンマウントでも最後の再生位置を送る", async () => {
     const page = renderPage();
     await screen.findByRole("heading", { level: 1, name: "テスト動画" });
-    const player = document.querySelector("video");
-    if (player === null) throw new Error("video が描画されていません");
+    const callbacks = playerMock.props;
+    if (callbacks === undefined) throw new Error("player が描画されていません");
 
-    player.currentTime = 12.345;
-    fireEvent.timeUpdate(player);
+    callbacks.onPosition(12_345);
     page.unmount();
 
     const finalCall = fetchMock.mock.calls
@@ -154,5 +173,41 @@ describe("VideoPage", () => {
         keepalive: true,
       }),
     );
+  });
+
+  it("別動画へのroute変更で前の動画の進捗を新しいIDへ送らない", async () => {
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/videos/7") return Promise.resolve(json(video));
+      if (String(input) === "/api/videos/8") return new Promise(() => undefined);
+      return Promise.resolve(json({}));
+    });
+    const page = renderPage();
+    await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+    const callbacks = playerMock.props;
+    if (callbacks === undefined) throw new Error("player が描画されていません");
+    callbacks.onPosition(12_345);
+
+    fireEvent.click(screen.getByRole("link", { name: "次の動画" }));
+    await waitFor(() => expect(screen.queryByTestId("video-player")).toBeNull());
+    page.unmount();
+
+    const finalProgressURLs = fetchMock.mock.calls
+      .filter(([, init]) => init?.keepalive === true)
+      .map(([input]) => String(input));
+    expect(finalProgressURLs).toEqual(["/api/videos/7/progress"]);
+  });
+
+  it("無効なrouteへ変更したら前の動画の再生エラーを消す", async () => {
+    renderPage();
+    await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+    const callbacks = playerMock.props;
+    if (callbacks === undefined) throw new Error("player が描画されていません");
+    callbacks.onError();
+    expect(await screen.findByRole("alert")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("link", { name: "無効な動画" }));
+
+    expect(await screen.findByText("動画の指定が正しくありません")).toBeDefined();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

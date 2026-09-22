@@ -8,17 +8,15 @@ import {
   getVideo,
   isAborted,
   saveProgress,
-  streamUrl,
   type Video,
 } from "../api/client";
-import { formatDuration, unplayableText } from "../lib/format";
+import { formatDuration } from "../lib/format";
 import { buttonClassName } from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 import FileDetails from "./FileDetails";
 import VideoHeader from "./VideoHeader";
+import VideoPlayer, { canStartPlayback } from "./VideoPlayer";
 
-/** saveIntervalMs は再生中に位置を送る間隔。 */
-const saveIntervalMs = 5000;
 /** minResumeMs 未満の位置は「見始めたばかり」として先頭から再生する。 */
 const minResumeMs = 5000;
 
@@ -45,11 +43,13 @@ export default function VideoPage() {
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [resumedFrom, setResumedFrom] = useState<number | null>(null);
 
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const lastSent = useRef<number>(-1);
-  const latestPositionMs = useRef<number | null>(null);
+  const lastSent = useRef<{ videoId: number; positionMs: number } | null>(null);
+  const latestPosition = useRef<{ videoId: number; positionMs: number } | null>(null);
 
   useEffect(() => {
+    setState({ kind: "loading" });
+    setPlaybackError(null);
+    setResumedFrom(null);
     if (!Number.isSafeInteger(id) || id < 1) {
       setState({ kind: "failed", reason: "動画の指定が正しくありません" });
       return;
@@ -66,7 +66,7 @@ export default function VideoPage() {
     return () => controller.abort();
   }, [id]);
 
-  const video = state.kind === "ready" ? state.video : undefined;
+  const video = state.kind === "ready" && state.video.id === id ? state.video : undefined;
 
   useEffect(() => {
     const previous = document.title;
@@ -80,8 +80,15 @@ export default function VideoPage() {
     (positionMs: number, leaving: boolean, force = false) => {
       if (!Number.isFinite(positionMs) || positionMs < 0) return;
       const rounded = Math.round(positionMs);
-      if (!leaving && !force && Math.abs(rounded - lastSent.current) < 1000) return;
-      lastSent.current = rounded;
+      if (
+        !leaving &&
+        !force &&
+        lastSent.current?.videoId === id &&
+        Math.abs(rounded - lastSent.current.positionMs) < 1000
+      ) {
+        return;
+      }
+      lastSent.current = { videoId: id, positionMs: rounded };
       if (leaving) {
         beaconProgress(id, rounded);
         return;
@@ -91,33 +98,25 @@ export default function VideoPage() {
     [id],
   );
 
-  const flushProgress = useCallback(() => {
-    const element = videoRef.current;
-    if (element === null) return;
-    latestPositionMs.current = element.currentTime * 1000;
-    send(latestPositionMs.current, false, true);
-  }, [send]);
+  const rememberProgress = useCallback(
+    (positionMs: number) => {
+      latestPosition.current = { videoId: id, positionMs };
+    },
+    [id],
+  );
 
-  const rememberProgress = useCallback(() => {
-    const element = videoRef.current;
-    if (element !== null) latestPositionMs.current = element.currentTime * 1000;
-  }, []);
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      const element = videoRef.current;
-      if (element !== null && !element.paused && !element.ended) {
-        send(element.currentTime * 1000, false);
-      }
-    }, saveIntervalMs);
-    return () => clearInterval(timer);
-  }, [send]);
+  const savePlayerProgress = useCallback(
+    (positionMs: number, immediate: boolean) => {
+      latestPosition.current = { videoId: id, positionMs };
+      send(positionMs, false, immediate);
+    },
+    [id, send],
+  );
 
   useEffect(() => {
     const sendLatest = () => {
-      const element = videoRef.current;
-      if (element !== null) latestPositionMs.current = element.currentTime * 1000;
-      if (latestPositionMs.current !== null) send(latestPositionMs.current, true);
+      const latest = latestPosition.current;
+      if (latest?.videoId === id) send(latest.positionMs, true);
     };
     const onHidden = () => {
       if (document.visibilityState === "hidden") sendLatest();
@@ -129,23 +128,7 @@ export default function VideoPage() {
       window.removeEventListener("pagehide", sendLatest);
       sendLatest();
     };
-  }, [send]);
-
-  const onLoaded = useCallback(() => {
-    const element = videoRef.current;
-    if (element === null || video === undefined) return;
-    const progress = video.progress;
-    if (
-      progress === undefined ||
-      progress.completed ||
-      progress.positionMs < minResumeMs
-    ) {
-      return;
-    }
-    element.currentTime = progress.positionMs / 1000;
-    latestPositionMs.current = progress.positionMs;
-    setResumedFrom(progress.positionMs);
-  }, [video]);
+  }, [id, send]);
 
   const onError = useCallback(() => {
     setPlaybackError(
@@ -153,7 +136,12 @@ export default function VideoPage() {
     );
   }, []);
 
-  const unplayable = video === undefined ? null : unplayableText(video);
+  const initialPositionMs =
+    video?.progress === undefined ||
+    video.progress.completed ||
+    video.progress.positionMs < minResumeMs
+      ? 0
+      : video.progress.positionMs;
 
   return (
     <div className="flex min-h-dvh flex-col bg-bg">
@@ -182,28 +170,22 @@ export default function VideoPage() {
             />
           )}
 
-          {video !== undefined && unplayable !== null && (
+          {video !== undefined && !canStartPlayback(video) && (
             <Blocked
               title="この動画は再生できません"
-              description={`${unplayable}。ブラウザが対応する形式（mp4 / h264 / aac など）に変換してください。`}
+              description="再生に必要な動画情報を取得できませんでした。"
               backTo={backTo}
             />
           )}
 
-          {video !== undefined && unplayable === null && (
-            <video
-              ref={videoRef}
-              src={streamUrl(video.id)}
-              controls
-              playsInline
-              preload="metadata"
-              poster={video.thumbnailUrl}
-              onLoadedMetadata={onLoaded}
-              onTimeUpdate={rememberProgress}
-              onPause={flushProgress}
-              onEnded={flushProgress}
+          {video !== undefined && canStartPlayback(video) && (
+            <VideoPlayer
+              video={video}
+              initialPositionMs={initialPositionMs}
+              onPosition={rememberProgress}
+              onProgress={savePlayerProgress}
+              onResumed={setResumedFrom}
               onError={onError}
-              className="absolute inset-0 h-full w-full bg-navbar"
             />
           )}
         </div>

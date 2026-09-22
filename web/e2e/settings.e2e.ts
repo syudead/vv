@@ -53,8 +53,10 @@ test("filesystem rootをメディアフォルダとして登録できる", async
 });
 
 test("設定画面からVite proxy越しにメディアフォルダを追加できる", async ({ page }) => {
-  const mediaDir = process.env.MDM_E2E_MEDIA_DIR;
-  if (mediaDir === undefined) throw new Error("MDM_E2E_MEDIA_DIR is not configured");
+  const mediaDir = process.env.MDM_E2E_SETTINGS_MEDIA_DIR;
+  if (mediaDir === undefined) {
+    throw new Error("MDM_E2E_SETTINGS_MEDIA_DIR is not configured");
+  }
   await mkdir(mediaDir, { recursive: true });
 
   try {
@@ -89,6 +91,16 @@ test("設定画面からVite proxy越しにメディアフォルダを追加で�
 
     await expect(page.getByText(mediaDir)).toBeVisible();
     await expect(page.getByText("same-originの操作だけを受け付けます")).toHaveCount(0);
+
+    await page.getByRole("button", { name: "フォルダを削除" }).click();
+    const confirmation = page.getByRole("dialog", { name: "フォルダの削除を確認" });
+    const remove = page.waitForResponse(
+      (response) =>
+        response.url().includes("/api/media-folders/") &&
+        response.request().method() === "DELETE",
+    );
+    await confirmation.getByRole("button", { name: "削除する" }).click();
+    expect((await remove).status()).toBe(204);
   } finally {
     await rm(mediaDir, { recursive: true, force: true });
   }

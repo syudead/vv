@@ -85,6 +85,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/transcode.mp4": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 動画をMP4へライブ変換して配信する
+         * @description 指定位置からfragmented MP4を生成し、保存せずレスポンスへ直送する。
+         *     Rangeは使わず、シークはstartMsを変えた新しいrequestで行う。
+         */
+        get: operations["transcodeVideo"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/thumbnail": {
         parameters: {
             query?: never;
@@ -546,6 +567,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    transcodeVideo: {
+        parameters: {
+            query?: {
+                startMs?: number;
+            };
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description fragmented MP4 stream */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 変換processを開始できない */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
