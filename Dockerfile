@@ -17,7 +17,8 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-# 版管理のプレースホルダを、実際のビルド成果物で置き換える。
+# 埋め込み先へ SPA の成果物を置く。手元の web/dist は .dockerignore で除いてあるので、
+# ここで入るのは web ステージが作ったものだけである。
 COPY --from=web /src/web/dist ./web/dist
 ARG VERSION=dev
 # CGO_ENABLED=0 を維持する（modernc.org/sqlite は CGO を必要としない）。
