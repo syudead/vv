@@ -74,5 +74,7 @@ export function clampPosition(positionMs: number, durationMs: number): number {
 }
 
 export function clampTranscodeStart(positionMs: number, durationMs: number): number {
-  return Math.min(Math.max(0, durationMs - 1), clampPosition(positionMs, durationMs));
+  // Container durations can extend slightly past the final decodable frame.
+  // Leave enough media at the tail for FFmpeg to produce a playable fragment.
+  return Math.min(Math.max(0, durationMs - 1000), clampPosition(positionMs, durationMs));
 }

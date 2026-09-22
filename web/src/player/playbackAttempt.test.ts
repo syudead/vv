@@ -54,6 +54,6 @@ describe("PlaybackAttempt", () => {
     const attempt = createPlaybackAttempt(video, 0);
     if (attempt === null) throw new Error("attemptがありません");
     expect(updatePosition(attempt, 12_000).logicalPositionMs).toBe(10_000);
-    expect(fallbackToTranscode(attempt, 10_000, false)?.sourceOffsetMs).toBe(9999);
+    expect(fallbackToTranscode(attempt, 10_000, false)?.sourceOffsetMs).toBe(9000);
   });
 });

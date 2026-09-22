@@ -62,6 +62,9 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	defer func() { _ = stream.Close() }()
 	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop, time.Until(startupDeadline))
 	if err != nil {
+		if errors.Is(r.Context().Err(), context.Canceled) {
+			return
+		}
 		s.internalError(w, "ライブ変換が初期データを生成できませんでした", err)
 		return
 	}
@@ -86,6 +89,9 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		stop()
 	}
 	waitErr := wait()
+	if errors.Is(r.Context().Err(), context.Canceled) {
+		return
+	}
 	if copyErr != nil || waitErr != nil {
 		s.logger.Warn("ライブ変換streamが途中で終了しました",
 			slog.Int64("video", video.ID), slog.Any("copy_error", copyErr), slog.Any("process_error", waitErr))
