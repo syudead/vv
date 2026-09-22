@@ -19,7 +19,7 @@ func TestSeekThumbnailArgsBoundFrameWindow(t *testing.T) {
 	forward := seekThumbnailArgs("/media/a.mp4", 9999, false)
 	joined := strings.Join(forward, " ")
 	for _, want := range []string{
-		"-ss 9.999", "-t 1.000", "-frames:v 1", "scale=min(320\\,iw):-2", "-f image2pipe", "pipe:1",
+		"-ss 9.999", "-t 1.000", "-frames:v 1", "scale=min(320\\,iw):-2,format=yuvj420p", "-f image2pipe", "pipe:1",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("通常抽出引数に %q が無い: %v", want, forward)
@@ -28,7 +28,7 @@ func TestSeekThumbnailArgsBoundFrameWindow(t *testing.T) {
 
 	tail := seekThumbnailArgs("/media/a.mp4", 9999, true)
 	tailJoined := strings.Join(tail, " ")
-	for _, want := range []string{"-ss 8.999", "-t 1.000", "reverse,scale=min(320\\,iw):-2"} {
+	for _, want := range []string{"-ss 8.999", "-t 1.000", "reverse,scale=min(320\\,iw):-2,format=yuvj420p"} {
 		if !strings.Contains(tailJoined, want) {
 			t.Errorf("末尾抽出引数に %q が無い: %v", want, tail)
 		}
@@ -36,7 +36,7 @@ func TestSeekThumbnailArgsBoundFrameWindow(t *testing.T) {
 }
 
 func TestSeekThumbnailExtractsAndFallsBackToTail(t *testing.T) {
-	extractor := NewSeekThumbnailExtractor()
+	extractor := NewSeekThumbnailExtractor(nil)
 	calls := 0
 	extractor.commandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
 		calls++
@@ -57,11 +57,11 @@ func TestSeekThumbnailExtractsAndFallsBackToTail(t *testing.T) {
 }
 
 func TestSeekThumbnailClassifiesProcessFailures(t *testing.T) {
-	extractor := NewSeekThumbnailExtractor()
+	extractor := NewSeekThumbnailExtractor(nil)
 	extractor.commandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
 		return seekThumbnailHelperCommand(ctx, "failure")
 	}
-	if _, err := extractor.Extract(context.Background(), "/media/a.mp4", 1000); !errors.Is(err, domain.ErrSeekFrameUnavailable) {
+	if _, err := extractor.Extract(context.Background(), "/media/a.mp4", 1000); err == nil || errors.Is(err, domain.ErrSeekFrameUnavailable) {
 		t.Fatalf("exit error=%v", err)
 	}
 
@@ -74,7 +74,7 @@ func TestSeekThumbnailClassifiesProcessFailures(t *testing.T) {
 }
 
 func TestSeekThumbnailStopsProcessWhenContextIsCanceled(t *testing.T) {
-	extractor := NewSeekThumbnailExtractor()
+	extractor := NewSeekThumbnailExtractor(nil)
 	extractor.commandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
 		return seekThumbnailHelperCommand(ctx, "wait")
 	}
@@ -88,6 +88,29 @@ func TestSeekThumbnailStopsProcessWhenContextIsCanceled(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("process終了まで%sかかった", elapsed)
+	}
+}
+
+func TestSeekThumbnailStopsProcessWhenServerStops(t *testing.T) {
+	serverDone := make(chan struct{})
+	extractor := NewSeekThumbnailExtractor(serverDone)
+	extractor.commandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
+		return seekThumbnailHelperCommand(ctx, "wait")
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := extractor.Extract(context.Background(), "/media/a.mp4", 1000)
+		done <- err
+	}()
+
+	close(serverDone)
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("error=%v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("server停止後もprocessが終了しない")
 	}
 }
 
@@ -109,7 +132,7 @@ func TestSeekThumbnailExtractsStartMiddleAndMediaEnd(t *testing.T) {
 		t.Fatalf("fixture生成に失敗しました: %v: %s", err, output)
 	}
 
-	extractor := NewSeekThumbnailExtractor()
+	extractor := NewSeekThumbnailExtractor(nil)
 	tests := []struct {
 		name       string
 		positionMs int64

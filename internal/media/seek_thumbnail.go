@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -19,17 +20,36 @@ const (
 
 // SeekThumbnailExtractor generates one request-scoped JPEG without persisting it.
 type SeekThumbnailExtractor struct {
+	serverDone     <-chan struct{}
 	commandContext func(context.Context, string, ...string) *exec.Cmd
 }
 
-func NewSeekThumbnailExtractor() *SeekThumbnailExtractor {
-	return &SeekThumbnailExtractor{commandContext: exec.CommandContext}
+func NewSeekThumbnailExtractor(serverDone <-chan struct{}) *SeekThumbnailExtractor {
+	if serverDone == nil {
+		serverDone = make(chan struct{})
+	}
+	return &SeekThumbnailExtractor{serverDone: serverDone, commandContext: exec.CommandContext}
 }
 
 // Extract returns the first frame at or after positionMs within one second. If
 // the media ends first, it retries the preceding one-second window and returns
 // that window's final frame.
 func (e *SeekThumbnailExtractor) Extract(ctx context.Context, path string, positionMs int64) ([]byte, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	watchDone := make(chan struct{})
+	go func() {
+		select {
+		case <-e.serverDone:
+			cancel()
+		case <-watchDone:
+		}
+	}()
+	cleanup := sync.OnceFunc(func() {
+		close(watchDone)
+		cancel()
+	})
+	defer cleanup()
+
 	image, err := e.run(ctx, seekThumbnailArgs(path, positionMs, false))
 	if err == nil {
 		return image, nil
@@ -55,7 +75,8 @@ func (e *SeekThumbnailExtractor) run(ctx context.Context, args []string) ([]byte
 		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return nil, fmt.Errorf("%w: %s", domain.ErrSeekFrameUnavailable, firstLine(exitErr.Stderr))
+			return nil, fmt.Errorf("%sが失敗しました: %w; stderr: %s",
+				seekThumbnailCommand, err, firstLine(exitErr.Stderr))
 		}
 		return nil, fmt.Errorf("%sを開始できません: %w", seekThumbnailCommand, err)
 	}
@@ -68,7 +89,8 @@ func (e *SeekThumbnailExtractor) run(ctx context.Context, args []string) ([]byte
 func seekThumbnailArgs(path string, positionMs int64, tail bool) []string {
 	startMs := positionMs
 	duration := seekThumbnailLookahead
-	filter := "scale=min(320\\,iw):-2"
+	// min(320, iw) keeps small sources at their original width instead of upscaling.
+	filter := "scale=min(320\\,iw):-2,format=yuvj420p"
 	if tail {
 		startMs = max(0, positionMs-seekThumbnailLookahead.Milliseconds())
 		duration = time.Duration(positionMs-startMs) * time.Millisecond
