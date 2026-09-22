@@ -16,28 +16,53 @@ import (
 )
 
 const (
-	transcodeCommand   = "ffmpeg"
-	transcodeStopDelay = 5 * time.Second
-	stderrTailLimit    = 32 * 1024
-	liveX264Preset     = "superfast"
-	maxVideoWidth      = 3840
-	maxVideoHeight     = 2160
-	maxVideoFPS        = 60
-	maxMacroblocksSec  = 983040
+	transcodeCommand           = "ffmpeg"
+	transcodeStopDelay         = 5 * time.Second
+	transcodeCapabilityTimeout = 2 * time.Second
+	stderrTailLimit            = 32 * 1024
+	liveX264Preset             = "superfast"
+	maxVideoWidth              = 3840
+	maxVideoHeight             = 2160
+	maxVideoFPS                = 60
+	maxMacroblocksSec          = 983040
 )
 
 // LiveTranscoder starts one FFmpeg process for each HTTP request. Its output is
 // never written to a persistent file.
 type LiveTranscoder struct {
-	serverDone     <-chan struct{}
-	commandContext func(context.Context, string, ...string) *exec.Cmd
+	serverDone         <-chan struct{}
+	commandContext     func(context.Context, string, ...string) *exec.Cmd
+	movInterleavedRead bool
 }
 
 func NewLiveTranscoder(serverDone <-chan struct{}) *LiveTranscoder {
 	if serverDone == nil {
 		serverDone = make(chan struct{})
 	}
-	return &LiveTranscoder{serverDone: serverDone, commandContext: exec.CommandContext}
+	return &LiveTranscoder{
+		serverDone:         serverDone,
+		commandContext:     exec.CommandContext,
+		movInterleavedRead: detectMOVInterleavedRead(exec.CommandContext),
+	}
+}
+
+func detectMOVInterleavedRead(commandContext func(context.Context, string, ...string) *exec.Cmd) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), transcodeCapabilityTimeout)
+	defer cancel()
+	output, err := commandContext(ctx, transcodeCommand, "-hide_banner", "-h", "demuxer=mov").CombinedOutput()
+	// Detection is advisory. Older FFmpeg builds and failed probes keep the
+	// compatible argument set that predates this optimization.
+	return err == nil && ffmpegHelpHasOption(output, "-interleaved_read")
+}
+
+func ffmpegHelpHasOption(output []byte, option string) bool {
+	for line := range strings.Lines(string(output)) {
+		fields := strings.Fields(line)
+		if len(fields) > 0 && fields[0] == option {
+			return true
+		}
+	}
+	return false
 }
 
 // Start returns FFmpeg stdout, a wait function, and an idempotent stop function.
@@ -71,7 +96,7 @@ func (t *LiveTranscoder) Start(
 		return nil, nil, nil, err
 	}
 
-	cmd := t.commandContext(ctx, transcodeCommand, transcodeArgs(path, startMs, metadata, normalize)...)
+	cmd := t.commandContext(ctx, transcodeCommand, transcodeArgs(path, startMs, metadata, normalize, t.movInterleavedRead)...)
 	cmd.WaitDelay = transcodeStopDelay
 	stderr := &tailWriter{limit: stderrTailLimit}
 	cmd.Stderr = stderr
@@ -205,13 +230,13 @@ func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
 	return result, nil
 }
 
-func transcodeArgs(path string, startMs int64, metadata transcodeMetadata, normalize bool) []string {
+func transcodeArgs(path string, startMs int64, metadata transcodeMetadata, normalize, movInterleavedRead bool) []string {
 	normalize = normalize || startMs > 0
 	args := []string{"-hide_banner", "-loglevel", "warning"}
 	if startMs > 0 {
 		args = append(args, "-ss", formatSeconds(startMs))
 	}
-	if usesMOVDemuxer(metadata.FormatName) {
+	if movInterleavedRead && usesMOVDemuxer(metadata.FormatName) {
 		// MOV系をネットワークドライブから読むと、stream間のpacket並べ替えで
 		// 小さなseekを繰り返すことがある。demuxerには各trackを順に読ませる。
 		args = append(args, "-interleaved_read", "0")
