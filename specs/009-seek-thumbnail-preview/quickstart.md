@@ -26,7 +26,7 @@
 ## Visual and interaction review
 
 テスト用の時刻表示動画を使い、360px、768px、1280pxで変更前の再生画面と変更後を撮影する。各幅で
-先頭、中央、末尾を表示し、[spec UI acceptance](spec.md#ui-acceptance-criteria) の5観点を判定する。
+先頭、中央、末尾を表示し、[親IssueのUI品質](https://github.com/syudead/vv/issues/117)の5観点を判定する。
 
 - 動画が主表示のままで、プレビューはpointer hoverまたはdrag中だけ現れる
 - 静止画と時刻以外の情報や操作が増えていない

@@ -79,7 +79,6 @@ Phase 1 後も判定は同じで、例外や Complexity Tracking を必要とす
 
 ```text
 specs/009-seek-thumbnail-preview/
-├── spec.md
 ├── plan.md
 ├── research.md
 ├── ui-design.md
@@ -128,7 +127,7 @@ unit/contract testを追加する。既存の一覧サムネイル、動画配�
 
 ### シークバーのサムネイルプレビュー UI
 
-**Scope**: [UI design](ui-design.md)、[spec UI acceptance](spec.md#ui-acceptance-criteria)、
+**Scope**: [UI design](ui-design.md)、[親Issue #117](https://github.com/syudead/vv/issues/117)、
 [quickstart](quickstart.md) に従い、
 シークバーのpointer hover／drag／touchへ追従する静止画と時刻、5秒正規化、即時要求、前要求中断、
 decode後の差し替え、古い応答拒否、取得失敗時の時刻のみ表示、破棄時cleanupを既存プレイヤーへ追加する。frontend unit testと

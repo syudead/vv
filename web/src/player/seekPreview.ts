@@ -1,3 +1,4 @@
+import { fetchSeekThumbnail } from "../api/client";
 import { formatDuration } from "../lib/format";
 
 const bucketMs = 5000;
@@ -215,10 +216,7 @@ function thumbnailRequestUrl(base: string, positionMs: number): string {
 }
 
 async function fetchThumbnail(url: string, signal: AbortSignal): Promise<Blob> {
-  const response = await fetch(url, { signal });
-  if (!response.ok)
-    throw new Error(`seek thumbnail request failed: ${String(response.status)}`);
-  const blob = await response.blob();
+  const blob = await fetchSeekThumbnail(url, signal);
   if (signal.aborted) throw new DOMException("Aborted", "AbortError");
 
   const decoded = new Image();

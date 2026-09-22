@@ -19,14 +19,6 @@ describes, its Plan records the replacement in `## 既存仕様への影響`.
 - [設定画面](../../specs/007-settings-screen/spec.md)
 - [MP4 ライブ変換による動画再生](../../specs/008-live-mp4-playback/spec.md)
 
-## In-flight compatibility record
-
-Feature 009 started before the parent-Issue specification workflow replaced
-`spec.md`. Its parent Issue is the current source of truth; the existing file is
-kept as a compatibility record for its already-reviewed Plan and implementation.
-
-- [動画シーク時のサムネイルプレビュー](../../specs/009-seek-thumbnail-preview/spec.md)
-
 ## Specification quality
 
 - [仕様品質の規則: 要求の縮退を防ぐ](spec-quality.md)

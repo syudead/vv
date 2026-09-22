@@ -223,6 +223,22 @@ export function transcodeUrl(id: number, startMs = 0): string {
   return `/api/videos/${String(id)}/transcode.mp4${suffix}`;
 }
 
+/** fetchSeekThumbnail はシークプレビュー用のJPEGを取得する。 */
+export async function fetchSeekThumbnail(
+  url: string,
+  signal: AbortSignal,
+): Promise<Blob> {
+  const response = await fetch(url, { signal });
+  if (!response.ok) {
+    throw new RequestFailed(
+      response.status,
+      "seek_thumbnail_failed",
+      `seek thumbnail request failed: ${String(response.status)}`,
+    );
+  }
+  return response.blob();
+}
+
 /** isAborted は「利用者が先に進んだので打ち切った」だけかどうかを返す。 */
 export function isAborted(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
