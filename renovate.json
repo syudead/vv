@@ -1,0 +1,47 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "依存更新の方針は docs/how-to/dependency-updates.md を参照。",
+  "extends": ["config:best-practices", ":semanticCommits"],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "build(deps): ",
+  "postUpdateOptions": ["gomodTidy"],
+  "lockFileMaintenance": { "enabled": true },
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": ["at any time"]
+  },
+  "packageRules": [
+    {
+      "description": "メジャー以外は CI が通れば自動マージする。",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest", "lockFileMaintenance"],
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "matchManagers": ["gomod"],
+      "groupName": "Go modules"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchFileNames": ["web/**"],
+      "groupName": "web npm"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchFileNames": ["tools/**"],
+      "groupName": "tools npm"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "Go と Node のランタイム版は go.mod と揃えて人が決める。",
+      "matchManagers": ["dockerfile", "mise"],
+      "matchPackageNames": ["go", "golang", "node", "docker.io/library/golang", "docker.io/library/node"],
+      "enabled": false
+    }
+  ]
+}

@@ -33,6 +33,8 @@ file into a handbook.
   result to the pull request; say "UI 変更なし" when it does not. Capturing and
   embedding one is covered in
   [docs/how-to/ui-change-screenshots.md](docs/how-to/ui-change-screenshots.md).
+  Renovate の PR はこの対象外。依存更新の運用は
+  [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md)。
 - SDD work starts from an explicitly supplied parent Issue or native sub-issue
   and runs `plan → design → plan-to-issues → implement`, with `design` only for
   `ui` Issues. Use `.agents/skills/issue-handoff`; each run performs one stage
