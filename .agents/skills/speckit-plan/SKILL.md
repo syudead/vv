@@ -44,13 +44,6 @@ satisfy. The three that decide whether the output is usable:
   `## Implementation Work` are always there; every other section appears only
   when it carries a decision.
 
-## Pre-Execution Checks
-
-Dispatch the `hooks.before_plan` hooks exactly as
-[references/extension-hooks.md](references/extension-hooks.md) describes, then
-continue to the Outline. If `.specify/extensions.yml` does not exist, skip
-silently.
-
 ## Outline
 
 1. **Setup**: The feature directory is given to you. The plan is `<feature-dir>/plan.md`, and the other artifacts sit beside it. Copy [`.specify/templates/plan-template.md`](../../../.specify/templates/plan-template.md) to `<feature-dir>/plan.md` when no plan exists yet. Run no script for this.
@@ -95,15 +88,6 @@ silently.
    input to later stages. If it still holds something worth keeping, move that
    into the canonical document first and link to it, then delete. Git keeps the
    history, so deleting loses nothing.
-
-## Mandatory Post-Execution Hooks
-
-**You MUST complete this section before reporting completion to the user.**
-
-Dispatch the `hooks.after_plan` hooks exactly as
-[references/extension-hooks.md](references/extension-hooks.md) describes. If
-`.specify/extensions.yml` does not exist, or no hooks are registered under that
-key, skip to the Completion Report.
 
 ## Completion Report
 
@@ -229,5 +213,4 @@ something to say, is worse than an absent one.
 - [ ] Each decision names the alternative it rejected
 - [ ] Feature-specific decisions, contract deltas, data deltas, and the
       implementation-work units are present in the artifacts
-- [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with branch, plan path, and generated artifacts
