@@ -40,8 +40,9 @@ A technical constraint is never a reason to narrow the design (Q-7).
 ## Steps
 
 1. Use the supplied Issue, PR, branch, and current checkout as context.
-2. Read the available spec, plan, and existing UI design as inputs, plus the
-   sources above.
+2. Read the parent Issue, the plan, and any existing UI design as inputs, plus
+   the sources above. The Issue's `## UI品質とアクセシビリティ` section is where
+   this artifact starts.
 3. Create an arbitrary-name sub-branch from the feature branch.
 4. Create `<feature-dir>/ui-design.md`. Write only what this feature adds or
    changes: screen boundaries, visual hierarchy, responsive behaviour, content
@@ -59,8 +60,9 @@ A technical constraint is never a reason to narrow the design (Q-7).
    in [docs/how-to/ui-change-screenshots.md](../../../../docs/how-to/ui-change-screenshots.md)
    have something to be judged against.
 6. Run the [`self-review` skill](../../self-review/SKILL.md) over the whole diff.
-   Reconcile every stated behaviour against `spec.md` and the existing design
-   system rules, which this artifact narrows more often than it contradicts.
+   Reconcile every stated behaviour against the parent Issue and the existing
+   design system rules, which this artifact narrows more often than it
+   contradicts.
 7. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
 8. After human merge, the maintainer marks Design complete and sets
    `Next: plan-to-issues`.

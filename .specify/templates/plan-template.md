@@ -1,18 +1,18 @@
 # Implementation Plan: [FEATURE]
 
-**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Spec**: [link]
+**Branch**: `[###-feature-name]` | **Date**: [DATE] | **Parent Issue**: #[NNN]
 
-**Input**: Feature specification from `/specs/[###-feature-name]/spec.md`
+**Input**: The parent Issue. It is this feature's specification.
 
 **Note**: This template is filled in by the `/speckit-plan` command; its definition describes the execution workflow.
 
 <!--
   WHAT THIS DOCUMENT IS: the decisions for building this feature — the deltas
   from the existing sources of truth, the structural choices, and the breakdown
-  into implementation units. The requirement itself lives in spec.md; the
-  research behind a decision lives in research.md.
+  into implementation units. The requirement itself lives in the parent Issue;
+  the research behind a decision lives in research.md.
 
-  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-7).
+  Quality rules for this document: docs/design-docs/plan-quality.md (P-1..P-8).
   The two that bite most often: write a decision or nothing at all (P-1), and
   leave a section out rather than filling it with plausible prose (P-6).
 
@@ -38,7 +38,7 @@
 
 ## Summary
 
-[The primary requirement from the feature spec, plus the technical approach in
+[The primary requirement from the parent Issue, plus the technical approach in
 one or two sentences]
 
 ## Technical Context
@@ -81,10 +81,18 @@ one or two sentences]
 
 [Gates taken from the repository's governance — its architecture notes, its
 stated judgement criteria, and its agent guide. Name the rules you checked and
-the verdict for each. Where a project keeps a Spec Kit constitution file with
-ratified principles, those are the gates instead; an unfilled slot inside such a
-file is simply not a gate, and a file that is absent, empty, or nothing but
-placeholders carries none.]
+the verdict for each.]
+
+## 既存仕様への影響
+
+<!--
+  CONDITIONAL — delete this section when this feature replaces nothing (P-8).
+
+  `specs/` is frozen. When this feature changes behaviour one of those files
+  still describes, name the file and the requirement identifiers it supersedes
+  (`FR-003`, `SC-007`). Do not edit the frozen file. Do not write this section
+  to say that nothing conflicts.
+-->
 
 ## Project Structure
 
@@ -103,6 +111,7 @@ out, not filled with invented material.
 ```text
 specs/[###-feature]/
 ├── plan.md              # This file (/speckit-plan command output)
+│                        # No spec.md — the parent Issue is the specification
 ├── research.md          # Phase 0 output — decisions this feature adds [omit if none]
 ├── data-model.md        # Phase 1 output — entity deltas [omit if none]
 ├── quickstart.md        # Phase 1 output — validation steps [omit if none]

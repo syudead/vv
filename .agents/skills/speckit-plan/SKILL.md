@@ -12,8 +12,7 @@ When this command is invoked for a GitHub parent Issue, read and follow
 `.agents/skills/issue-handoff/references/README.md` and
 `.agents/skills/issue-handoff/references/plan.md` first. Those
 files own feature-branch discovery, the one-stage boundary, and PR behavior.
-Set the resolved path explicitly as `SPECIFY_FEATURE_DIRECTORY`; do not infer
-it from a branch name or a previous `.specify/feature.json`.
+Name the feature directory explicitly; do not infer it from a branch name.
 
 ## User Input
 
@@ -32,7 +31,7 @@ record of what was investigated.
 
 Before writing any artifact, read
 [docs/design-docs/plan-quality.md](../../../docs/design-docs/plan-quality.md).
-It defines P-1..P-7, the rules every artifact this command produces must
+It defines P-1..P-8, the rules every artifact this command produces must
 satisfy. The three that decide whether the output is usable:
 
 - **P-1** — write a decision, or write nothing. Investigation belongs in
@@ -45,18 +44,11 @@ satisfy. The three that decide whether the output is usable:
   `## Implementation Work` are always there; every other section appears only
   when it carries a decision.
 
-## Pre-Execution Checks
-
-Dispatch the `hooks.before_plan` hooks exactly as
-[references/extension-hooks.md](references/extension-hooks.md) describes, then
-continue to the Outline. If `.specify/extensions.yml` does not exist, skip
-silently.
-
 ## Outline
 
-1. **Setup**: Preserve `.specify/feature.json` as required by the issue-handoff contract, then run `SPECIFY_INIT_DIR="$PWD" SPECIFY_FEATURE_DIRECTORY="$SPECIFY_FEATURE_DIRECTORY" bash .specify/scripts/bash/setup-plan.sh --json` from repo root. Restore the machine-local file afterward and parse JSON for FEATURE_SPEC, IMPL_PLAN, FEATURE_DIR, BRANCH. For single quotes in args like "I'm Groot", use escape syntax: e.g 'I'\''m Groot' (or double-quote if possible: "I'm Groot").
+1. **Setup**: The feature directory is given to you. The plan is `<feature-dir>/plan.md`, and the other artifacts sit beside it. Copy [`.specify/templates/plan-template.md`](../../../.specify/templates/plan-template.md) to `<feature-dir>/plan.md` when no plan exists yet. Run no script for this.
 
-2. **Load context**: Read FEATURE_SPEC and this repository's governance, which is where the gates come from — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. Load IMPL_PLAN template (already copied). This repository keeps no Spec Kit constitution file; those documents are the source of truth, and the plan names which of their rules it checked. If a `.specify/memory/constitution.md` is ever added, the principles it has actually ratified win — an unfilled template slot inside it is simply not a gate, while a file that is absent, empty, or still nothing but placeholders carries none at all.
+2. **Load context**: Read the parent Issue — it is the specification. Then read this repository's governance, which is where the gates come from — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. Those documents are the source of truth, and the plan names which of their rules it checked.
 
 3. **Locate the canonical definitions**: Before writing anything, find the
    existing sources of truth for this repository — architecture notes, design
@@ -90,21 +82,12 @@ silently.
    to say (P-2). Name the ones you are not creating, and why, in `plan.md`.
 
 6. **Reconcile the artifacts on disk**: This command also revises existing
-   plans, and `setup-plan.sh` keeps whatever a previous run left behind. When an
+   plans, and a previous run's files stay where they are. When an
    artifact no longer carries feature-specific content, delete it in this same
    change so the directory matches the list in `plan.md` — a stale file stays an
    input to later stages. If it still holds something worth keeping, move that
    into the canonical document first and link to it, then delete. Git keeps the
    history, so deleting loses nothing.
-
-## Mandatory Post-Execution Hooks
-
-**You MUST complete this section before reporting completion to the user.**
-
-Dispatch the `hooks.after_plan` hooks exactly as
-[references/extension-hooks.md](references/extension-hooks.md) describes. If
-`.specify/extensions.yml` does not exist, or no hooks are registered under that
-key, skip to the Completion Report.
 
 ## Completion Report
 
@@ -158,7 +141,7 @@ checks, do not create that file — say so in one line in `plan.md` and move on.
 An artifact that restates the existing model, or that invents concepts to have
 something to say, is worse than an absent one.
 
-1. **Extract entities from feature spec** → `data-model.md`:
+1. **Extract entities from the parent Issue** → `data-model.md`:
    - Entity name, fields, relationships
    - Validation rules from requirements
    - State transitions if applicable
@@ -210,7 +193,7 @@ something to say, is worse than an absent one.
 
 - Use absolute paths for filesystem operations; use project-relative paths for references in documentation
 - Follow [docs/design-docs/plan-quality.md](../../../docs/design-docs/plan-quality.md)
-  (P-1..P-7) for every artifact this command writes
+  (P-1..P-8) for every artifact this command writes
 - Link the canonical definition rather than copying it; a plan artifact holds
   what is specific to this feature, plus whatever has no canonical home yet
 - Every artifact must let a reader reach the canonical sources it relies on
@@ -230,5 +213,4 @@ something to say, is worse than an absent one.
 - [ ] Each decision names the alternative it rejected
 - [ ] Feature-specific decisions, contract deltas, data deltas, and the
       implementation-work units are present in the artifacts
-- [ ] Extension hooks dispatched or skipped according to the rules in Mandatory Post-Execution Hooks above
 - [ ] Completion reported to user with branch, plan path, and generated artifacts
