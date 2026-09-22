@@ -3,10 +3,10 @@
 A feature's specification is its parent GitHub Issue. Nothing is added to this
 list any more.
 
-The files below are frozen. They describe features already built, at the time
-they were built, and stay readable as that record. Do not revise them; when a
-later feature changes what one of them describes, its Plan records the
-replacement in `## 既存仕様への影響`.
+The specifications for features 001 through 008 below are frozen. They describe
+features already built, at the time they were built, and stay readable as that
+record. Do not revise them; when a later feature changes what one of them
+describes, its Plan records the replacement in `## 既存仕様への影響`.
 
 ## Frozen specifications
 
@@ -18,4 +18,7 @@ replacement in `## 既存仕様への影響`.
 - [requirements.md と別担当者承認必須ルールの廃止](../../specs/006-remove-requirements-checklist/spec.md)
 - [設定画面](../../specs/007-settings-screen/spec.md)
 - [MP4 ライブ変換による動画再生](../../specs/008-live-mp4-playback/spec.md)
+
+## Specification quality
+
 - [仕様品質の規則: 要求の縮退を防ぐ](spec-quality.md)

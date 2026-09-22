@@ -53,6 +53,12 @@ func TestListVideosReturnsPage(t *testing.T) {
 	if want := "/api/videos/1/thumbnail?v=abcdef012345"; *first.ThumbnailUrl != want {
 		t.Errorf("thumbnailUrl = %q, want %q", *first.ThumbnailUrl, want)
 	}
+	if first.SeekThumbnailUrl == nil {
+		t.Fatal("seekThumbnailUrl が入っていない")
+	}
+	if want := "/api/videos/1/seek-thumbnail?v=abcdef012345"; *first.SeekThumbnailUrl != want {
+		t.Errorf("seekThumbnailUrl = %q, want %q", *first.SeekThumbnailUrl, want)
+	}
 }
 
 // 取り込み直後の動画も一覧に並ぶ。未取得の値は省略する（FR-010）。
@@ -79,8 +85,37 @@ func TestListVideosOmitsUnknownValues(t *testing.T) {
 	if item.ThumbnailUrl != nil {
 		t.Errorf("thumbnailUrl = %v, want 省略", *item.ThumbnailUrl)
 	}
+	if item.SeekThumbnailUrl != nil {
+		t.Errorf("seekThumbnailUrl = %v, want 省略", *item.SeekThumbnailUrl)
+	}
 	if item.Playable {
 		t.Error("解析前なのに playable = true")
+	}
+}
+
+func TestListVideosOmitsSeekThumbnailWithoutContentVersion(t *testing.T) {
+	video := sampleVideo(8, "版なし")
+	video.ContentKey = ""
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{
+		page: domain.VideoPage{Items: []domain.Video{video}, Total: 1},
+	}})
+
+	item := decode[gen.VideoPage](t, do(t, handler, http.MethodGet, "/api/videos")).Items[0]
+	if item.SeekThumbnailUrl != nil {
+		t.Errorf("seekThumbnailUrl = %v, want 省略", *item.SeekThumbnailUrl)
+	}
+}
+
+func TestListVideosOmitsSeekThumbnailWithoutVideoStream(t *testing.T) {
+	video := sampleVideo(8, "音声のみ")
+	video.VideoCodec = ""
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{
+		page: domain.VideoPage{Items: []domain.Video{video}, Total: 1},
+	}})
+
+	item := decode[gen.VideoPage](t, do(t, handler, http.MethodGet, "/api/videos")).Items[0]
+	if item.SeekThumbnailUrl != nil {
+		t.Errorf("seekThumbnailUrl = %v, want 省略", *item.SeekThumbnailUrl)
 	}
 }
 

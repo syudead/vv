@@ -213,6 +213,11 @@ func toAPIVideo(video domain.Video) gen.Video {
 		url := thumbnailURL(video)
 		out.ThumbnailUrl = &url
 	}
+	if video.ProbeState == domain.ProbeStateDone && video.DurationMs != nil &&
+		*video.DurationMs > 0 && video.VideoCodec != "" && video.ContentKey != "" {
+		url := seekThumbnailURL(video)
+		out.SeekThumbnailUrl = &url
+	}
 
 	return out
 }
@@ -220,9 +225,18 @@ func toAPIVideo(video domain.Video) gen.Video {
 // thumbnailURL はサムネイルの取得先を組み立てる。版は content_key の先頭で、
 // 内容が変われば URL も変わる（R-112）。
 func thumbnailURL(video domain.Video) string {
-	version := video.ContentKey
-	if len(version) > thumbnailVersionLength {
-		version = version[:thumbnailVersionLength]
-	}
+	version := thumbnailVersion(video.ContentKey)
 	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/thumbnail?v=" + version
+}
+
+func seekThumbnailURL(video domain.Video) string {
+	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/seek-thumbnail?v=" +
+		thumbnailVersion(video.ContentKey)
+}
+
+func thumbnailVersion(contentKey string) string {
+	if len(contentKey) > thumbnailVersionLength {
+		return contentKey[:thumbnailVersionLength]
+	}
+	return contentKey
 }
