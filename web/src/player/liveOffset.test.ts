@@ -121,6 +121,27 @@ describe("live offset middleware", () => {
     expect(tech.pause).toHaveBeenCalledTimes(1);
   });
 
+  it("一時停止中のreloadが完了する前に再seekしても停止意図を維持する", () => {
+    vi.useFakeTimers();
+    const { middleware, tech, canPlay } = fixture();
+    middleware.setSource(liveSource(7, 120_000, 0), () => undefined);
+    tech.buffered.mockReturnValue(ranges([]));
+
+    middleware.setCurrentTime(70);
+    vi.advanceTimersByTime(200);
+    expect(tech.play).toHaveBeenCalledTimes(1);
+    expect(tech.paused()).toBe(false);
+
+    middleware.setCurrentTime(80);
+    vi.advanceTimersByTime(200);
+    expect(tech.play).toHaveBeenCalledTimes(2);
+
+    canPlay(0);
+    expect(tech.pause).not.toHaveBeenCalled();
+    canPlay(1);
+    expect(tech.pause).toHaveBeenCalledTimes(1);
+  });
+
   it("reload中に一時停止されたらcanplay後も再生しない", () => {
     vi.useFakeTimers();
     const { middleware, tech, canPlay } = fixture();

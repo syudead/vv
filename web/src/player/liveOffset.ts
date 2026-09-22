@@ -95,8 +95,6 @@ export function createLiveOffsetMiddleware(player: Player) {
     reloadTimer = setTimeout(() => {
       reloadTimer = undefined;
       if (disposed || tech === undefined || generation !== reloadGeneration) return;
-      const shouldResume = playIntended || !tech.paused();
-      playIntended = shouldResume;
       const playbackRate = tech.playbackRate();
       offsetSeconds = seconds;
       pendingOffsetSeconds = undefined;
