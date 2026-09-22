@@ -4,7 +4,7 @@
 
 ## 関連 Issue
 
-<!-- `Refs #NNN`、この PR で閉じるなら `Closes #NNN`。 -->
+<!-- stage PRは親、implement PRは子を `Refs #NNN`。main向け統合PRだけ親を `Closes #NNN`。 -->
 
 ## 変更点
 
@@ -21,4 +21,3 @@
 ## 確認
 
 <!-- 実行した検証。例: task check が成功 / 起動して /api/health を確認 -->
-

@@ -187,9 +187,12 @@ Claude Code on the web でセッションを開くと、`.claude/hooks/session-s
 │       ├── preferences/    # 端末ごとの表示設定
 │       └── theme/          # 見た目の検査（実行コードは持たない）
 ├── scripts/                # 開発者コマンドの実体（Go）と固定した検査ツールの版
+├── specs/                  # 機能ごとの Plan 成果物
 └── docs/
     ├── design-docs/        # 結論だけでは分からない技術判断の経緯
-    └── how-to/             # 繰り返す手順
+    ├── product-specs/      # 仕様の書き方の規則
+    ├── how-to/             # 繰り返す手順
+    └── screenshots/        # PR に貼る画面の画像
 ```
 
 実行時に増える場所（版管理しない）:
