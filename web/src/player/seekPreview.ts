@@ -24,8 +24,8 @@ export function seekPreviewTarget(
 ): PreviewTarget {
   const localX = Math.min(Math.max(clientX - rect.left, 0), rect.width);
   const ratio = rect.width > 0 ? localX / rect.width : 0;
-  const positionMs = Math.round(ratio * durationMs);
   const lastPositionMs = Math.max(0, Math.ceil(durationMs) - 1);
+  const positionMs = Math.min(lastPositionMs, Math.round(ratio * durationMs));
   const requestPositionMs = Math.min(
     lastPositionMs,
     Math.round(positionMs / bucketMs) * bucketMs,

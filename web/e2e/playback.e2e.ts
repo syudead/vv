@@ -421,7 +421,7 @@ test.describe.serial("live MP4 playback", () => {
         const element = document.querySelector("video");
         return element !== null && !element.paused && element.currentTime > 0.1;
       });
-      const seekBar = page.locator(".vjs-progress-control");
+      const seekBar = page.locator(".vjs-progress-holder");
       const seekBounds = await seekBar.boundingBox();
       const playerBounds = await page.locator(".video-js").boundingBox();
       if (seekBounds === null || playerBounds === null) {
