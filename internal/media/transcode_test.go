@@ -63,57 +63,12 @@ func TestParseTranscodeProbeRejectsAttachedPictureOnly(t *testing.T) {
 	}
 }
 
-func TestFFmpegHelpHasOption(t *testing.T) {
-	tests := []struct {
-		name   string
-		output string
-		want   bool
-	}{
-		{"supported", "  -interleaved_read <boolean> .D......... Interleave packets (default true)\n", true},
-		{"unsupported", "  -seek_streams_individually <boolean> .D.V....... Seek each stream\n", false},
-		{"mentioned outside option column", "Unrecognized option 'interleaved_read'\n", false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := ffmpegHelpHasOption([]byte(tc.output), "-interleaved_read"); got != tc.want {
-				t.Fatalf("supported = %t, want %t", got, tc.want)
-			}
-		})
-	}
-}
-
-func TestDetectMOVInterleavedRead(t *testing.T) {
-	tests := []struct {
-		mode string
-		want bool
-	}{
-		{"capability-supported", true},
-		{"capability-unsupported", false},
-		{"capability-error", false},
-	}
-	for _, tc := range tests {
-		t.Run(tc.mode, func(t *testing.T) {
-			commandContext := func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-				cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestTranscodeHelperProcess", "--", tc.mode)
-				cmd.Env = append(os.Environ(), "VV_TRANSCODE_HELPER=1")
-				return cmd
-			}
-			if got := detectMOVInterleavedRead(commandContext); got != tc.want {
-				t.Fatalf("supported = %t, want %t", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestTranscodeArgsCopiesCompatibleStreams(t *testing.T) {
-	args := strings.Join(transcodeArgs("movie.mkv", 0, compatibleMetadata(), false, true), " ")
+	args := strings.Join(transcodeArgs("movie.mkv", 0, compatibleMetadata(), false), " ")
 	for _, want := range []string{"-map 0:1", "-map 0:2", "-c:v copy", "-c:a copy", "frag_keyframe+empty_moov+default_base_moof", "-f mp4 pipe:1"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("argsに %q がない: %s", want, args)
 		}
-	}
-	if strings.Contains(args, "-interleaved_read") {
-		t.Fatalf("非MOVにもMOV demuxer optionがある: %s", args)
 	}
 }
 
@@ -142,7 +97,7 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			metadata := compatibleMetadata()
 			tc.mutate(&metadata)
-			args := strings.Join(transcodeArgs("movie.mkv", 0, metadata, false, true), " ")
+			args := strings.Join(transcodeArgs("movie.mkv", 0, metadata, false), " ")
 			if !strings.Contains(args, tc.want) {
 				t.Errorf("argsに %q がない: %s", tc.want, args)
 			}
@@ -151,24 +106,89 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 }
 
 func TestTranscodeArgsNormalizesSeek(t *testing.T) {
-	args := strings.Join(transcodeArgs("movie.mp4", 25000, compatibleMetadata(), false, true), " ")
-	for _, want := range []string{"-ss 25.000 -i movie.mp4", "-c:v libx264", "-preset superfast", "-c:a aac"} {
+	args := strings.Join(transcodeArgs("movie.mkv", 25000, compatibleMetadata(), false), " ")
+	for _, want := range []string{"-ss 25.000 -i movie.mkv", "-c:v libx264", "-preset superfast", "-c:a aac"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("argsに %q がない: %s", want, args)
 		}
 	}
 }
 
-func TestTranscodeArgsDisablesInterleavedReadsForMOVDemuxer(t *testing.T) {
+func TestTranscodeArgsReadsMOVTracksSeparately(t *testing.T) {
 	metadata := compatibleMetadata()
 	metadata.FormatName = "mov,mp4,m4a,3gp,3g2,mj2"
-	args := strings.Join(transcodeArgs("movie.mov", 25000, metadata, false, true), " ")
-	if !strings.Contains(args, "-ss 25.000 -interleaved_read 0 -i movie.mov") {
-		t.Fatalf("MOV demuxer optionがinputより前にない: %s", args)
+	args := strings.Join(transcodeArgs("movie.mov", 25000, metadata, false), " ")
+	for _, want := range []string{
+		"-ss 25.000 -an -i movie.mov -ss 25.000 -vn -i movie.mov",
+		"-map 0:1 -map 1:2",
+	} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("argsに %q がない: %s", want, args)
+		}
 	}
-	fallbackArgs := strings.Join(transcodeArgs("movie.mov", 25000, metadata, false, false), " ")
-	if strings.Contains(fallbackArgs, "-interleaved_read") {
-		t.Fatalf("非対応FFmpeg用の引数にMOV demuxer optionがある: %s", fallbackArgs)
+	if strings.Contains(args, "-interleaved_read") {
+		t.Fatalf("再生を損なう可能性のあるMOV demuxer optionがある: %s", args)
+	}
+}
+
+func TestMOVTranscodeReadsVideoAndAudioFromSeparateInputs(t *testing.T) {
+	if _, err := exec.LookPath(transcodeCommand); err != nil {
+		t.Skip("ffmpegがありません")
+	}
+	if _, err := exec.LookPath(probeCommand); err != nil {
+		t.Skip("ffprobeがありません")
+	}
+
+	directory := t.TempDir()
+	input := filepath.Join(directory, "interleaved.mov")
+	generate := exec.Command(transcodeCommand,
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc=size=320x180:rate=15:duration=2",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2",
+		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+		"-c:a", "aac", input,
+	)
+	if output, err := generate.CombinedOutput(); err != nil {
+		t.Fatalf("MOV fixture生成: %v: %s", err, output)
+	}
+
+	probeInput, err := exec.Command(probeCommand, probeArgs(input)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := parseTranscodeProbe(probeInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Audio == nil || !usesMOVDemuxer(metadata.FormatName) {
+		t.Fatalf("MOV fixtureのmetadataが不正です: %+v", metadata)
+	}
+
+	output := filepath.Join(directory, "output.mp4")
+	outputFile, err := os.Create(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(transcodeCommand, transcodeArgs(input, 500, metadata, false)...)
+	command.Stdout = outputFile
+	var stderr strings.Builder
+	command.Stderr = &stderr
+	runErr := command.Run()
+	closeErr := outputFile.Close()
+	if runErr != nil || closeErr != nil {
+		t.Fatalf("MOV変換: run=%v close=%v stderr=%s", runErr, closeErr, stderr.String())
+	}
+
+	probeOutputJSON, err := exec.Command(probeCommand, probeArgs(output)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	converted, err := parseTranscodeProbe(probeOutputJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if converted.Audio == nil {
+		t.Fatal("別入力から変換した出力に音声streamがありません")
 	}
 }
 
@@ -229,7 +249,7 @@ func TestVideoEncodePreservesDisplayAspectRatioWithFFmpeg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(transcodeCommand, transcodeArgs(input, 0, metadata, false, false)...)
+	command := exec.Command(transcodeCommand, transcodeArgs(input, 0, metadata, false)...)
 	command.Stdout = outputFile
 	var stderr strings.Builder
 	command.Stderr = &stderr
@@ -307,7 +327,7 @@ func TestVideoEncodeRotated4KStaysWithinEnvelopeWithFFmpeg(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(transcodeCommand, transcodeArgs(input, 0, metadata, false, false)...)
+	command := exec.Command(transcodeCommand, transcodeArgs(input, 0, metadata, false)...)
 	command.Stdout = outputFile
 	var stderr strings.Builder
 	command.Stderr = &stderr
@@ -434,18 +454,6 @@ func TestTranscodeHelperProcess(t *testing.T) {
 		return
 	}
 	mode := os.Args[len(os.Args)-1]
-	if mode == "capability-supported" {
-		_, _ = io.WriteString(os.Stdout, "  -interleaved_read <boolean> .D......... Interleave packets\n")
-		os.Exit(0)
-	}
-	if mode == "capability-unsupported" {
-		_, _ = io.WriteString(os.Stdout, "  -seek_streams_individually <boolean> .D.V....... Seek each stream\n")
-		os.Exit(0)
-	}
-	if mode == "capability-error" {
-		_, _ = io.WriteString(os.Stderr, "unknown demuxer\n")
-		os.Exit(2)
-	}
 	if mode == "probe-hang" {
 		for {
 			time.Sleep(time.Second)
