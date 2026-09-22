@@ -1,197 +1,164 @@
 package media
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"image/jpeg"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/syudead/vv/internal/domain"
 )
 
-func TestSeekThumbnailArgsBoundFrameWindow(t *testing.T) {
-	forward := seekThumbnailArgs("/media/a.mp4", 9999, false)
-	joined := strings.Join(forward, " ")
+func TestSeekThumbnailArgsGenerateFiveSecondFrames(t *testing.T) {
+	args := seekThumbnailArgs("/media/a.mp4", "/cache/%06d.jpg")
+	joined := strings.Join(args, " ")
 	for _, want := range []string{
-		"-ss 9.999", "-t 1.000", "-frames:v 1", "scale=min(320\\,iw):-2,format=yuvj420p", "-f image2pipe", "pipe:1",
+		"-i /media/a.mp4",
+		"-map 0:V:0?",
+		"select='isnan(prev_selected_t)+gt(floor(t/5)\\,floor(prev_selected_t/5))'",
+		"scale=min(320\\,iw):-2",
+		"-start_number 0",
+		"/cache/%06d.jpg",
 	} {
 		if !strings.Contains(joined, want) {
-			t.Errorf("通常抽出引数に %q が無い: %v", want, forward)
-		}
-	}
-
-	tail := seekThumbnailArgs("/media/a.mp4", 9999, true)
-	tailJoined := strings.Join(tail, " ")
-	for _, want := range []string{"-ss 8.999", "-t 1.000", "reverse,scale=min(320\\,iw):-2,format=yuvj420p"} {
-		if !strings.Contains(tailJoined, want) {
-			t.Errorf("末尾抽出引数に %q が無い: %v", want, tail)
+			t.Errorf("生成引数に %q が無い: %v", want, args)
 		}
 	}
 }
 
-func TestSeekThumbnailExtractsAndFallsBackToTail(t *testing.T) {
-	extractor := NewSeekThumbnailExtractor(nil)
-	calls := 0
-	extractor.commandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-		calls++
-		mode := "image"
-		if calls == 1 {
-			mode = "empty"
-		}
-		return seekThumbnailHelperCommand(ctx, mode)
-	}
-
-	image, err := extractor.Extract(context.Background(), "/media/a.mp4", 9999)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(image) != "jpeg" || calls != 2 {
-		t.Errorf("image=%q calls=%d", image, calls)
-	}
-}
-
-func TestSeekThumbnailClassifiesProcessFailures(t *testing.T) {
-	extractor := NewSeekThumbnailExtractor(nil)
-	extractor.commandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-		return seekThumbnailHelperCommand(ctx, "failure")
-	}
-	if _, err := extractor.Extract(context.Background(), "/media/a.mp4", 1000); err == nil || errors.Is(err, domain.ErrSeekFrameUnavailable) {
-		t.Fatalf("exit error=%v", err)
-	}
-
-	extractor.commandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, "definitely-not-a-real-command-seek-thumbnail")
-	}
-	if _, err := extractor.Extract(context.Background(), "/media/a.mp4", 1000); err == nil || errors.Is(err, domain.ErrSeekFrameUnavailable) {
-		t.Fatalf("start error=%v", err)
-	}
-}
-
-func TestSeekThumbnailStopsProcessWhenContextIsCanceled(t *testing.T) {
-	extractor := NewSeekThumbnailExtractor(nil)
-	extractor.commandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-		return seekThumbnailHelperCommand(ctx, "wait")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
-	defer cancel()
-
-	started := time.Now()
-	_, err := extractor.Extract(ctx, "/media/a.mp4", 1000)
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("error=%v", err)
-	}
-	if elapsed := time.Since(started); elapsed > time.Second {
-		t.Fatalf("process終了まで%sかかった", elapsed)
-	}
-}
-
-func TestSeekThumbnailStopsProcessWhenServerStops(t *testing.T) {
-	serverDone := make(chan struct{})
-	extractor := NewSeekThumbnailExtractor(serverDone)
-	extractor.commandContext = func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-		return seekThumbnailHelperCommand(ctx, "wait")
-	}
-	done := make(chan error, 1)
-	go func() {
-		_, err := extractor.Extract(context.Background(), "/media/a.mp4", 1000)
-		done <- err
-	}()
-
-	close(serverDone)
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("error=%v", err)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("server停止後もprocessが終了しない")
-	}
-}
-
-func TestSeekThumbnailExtractsStartMiddleAndMediaEnd(t *testing.T) {
+func TestGenerateSeekThumbnailsUsesFixedBucketsAtFractionalFrameRate(t *testing.T) {
 	if _, err := exec.LookPath(seekThumbnailCommand); err != nil {
-		t.Skip("ffmpegが無いため実画像の抽出を省略します")
+		t.Skip("ffmpegが無いため実画像の生成を省略します")
 	}
 
-	path := filepath.Join(t.TempDir(), "colors.mp4")
+	videoPath := filepath.Join(t.TempDir(), "fractional.mp4")
 	args := []string{
 		"-nostdin", "-v", "error",
-		"-f", "lavfi", "-i", "color=c=red:s=64x64:r=30:d=1",
-		"-f", "lavfi", "-i", "color=c=green:s=64x64:r=30:d=1",
-		"-f", "lavfi", "-i", "color=c=blue:s=64x64:r=30:d=1",
-		"-filter_complex", "[0:v][1:v][2:v]concat=n=3:v=1:a=0",
-		"-c:v", "mpeg4", "-y", path,
+		"-f", "lavfi", "-i", "color=c=green:s=64x64:r=30000/1001:d=16",
+		"-c:v", "mpeg4", "-y", videoPath,
 	}
 	if output, err := exec.Command(seekThumbnailCommand, args...).CombinedOutput(); err != nil {
 		t.Fatalf("fixture生成に失敗しました: %v: %s", err, output)
 	}
 
-	extractor := NewSeekThumbnailExtractor(nil)
-	tests := []struct {
-		name       string
-		positionMs int64
-		dominant   byte
-	}{
-		{"start", 100, 'r'},
-		{"middle", 1100, 'g'},
-		{"end fallback", 2999, 'b'},
+	thumbnailsDir := t.TempDir()
+	if err := GenerateSeekThumbnails(context.Background(), videoPath, thumbnailsDir, "fractional:1"); err != nil {
+		t.Fatal(err)
 	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			data, err := extractor.Extract(context.Background(), path, tc.positionMs)
-			if err != nil {
-				t.Fatal(err)
-			}
-			image, err := jpeg.Decode(bytes.NewReader(data))
-			if err != nil {
-				t.Fatalf("JPEGを読めません: %v", err)
-			}
-			if bounds := image.Bounds(); bounds.Dx() != 64 || bounds.Dy() != 64 {
-				t.Fatalf("size=%dx%d want=64x64", bounds.Dx(), bounds.Dy())
-			}
-			r, g, b, _ := image.At(32, 32).RGBA()
-			switch tc.dominant {
-			case 'r':
-				if r <= g || r <= b {
-					t.Errorf("pixel=%d,%d,%d want red", r, g, b)
-				}
-			case 'g':
-				if g <= r || g <= b {
-					t.Errorf("pixel=%d,%d,%d want green", r, g, b)
-				}
-			case 'b':
-				if b <= r || b <= g {
-					t.Errorf("pixel=%d,%d,%d want blue", r, g, b)
-				}
-			}
-		})
+	cache := NewSeekThumbnailCache(thumbnailsDir)
+	for _, position := range []int64{0, 5000, 10_000, 15_000, 15_999} {
+		if _, err := cache.Read(context.Background(), "fractional:1", position); err != nil {
+			t.Fatalf("position %d: %v", position, err)
+		}
 	}
 }
 
-func seekThumbnailHelperCommand(ctx context.Context, mode string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestSeekThumbnailHelperProcess")
-	cmd.Env = append(os.Environ(), "GO_SEEK_THUMBNAIL_HELPER=1", "GO_SEEK_THUMBNAIL_MODE="+mode)
-	return cmd
+func TestSeekThumbnailPathUsesFiveSecondBucket(t *testing.T) {
+	root := filepath.Join("cache", "seek")
+	first := SeekThumbnailPath(root, "abcdef:12", 4999)
+	second := SeekThumbnailPath(root, "abcdef:12", 5000)
+	if filepath.Base(first) != "000000.jpg" || filepath.Base(second) != "000001.jpg" {
+		t.Fatalf("paths = %q, %q", first, second)
+	}
+	if !strings.Contains(first, filepath.Join("ab", "abcdef_12")) {
+		t.Fatalf("content path = %q", first)
+	}
 }
 
-func TestSeekThumbnailHelperProcess(t *testing.T) {
-	if os.Getenv("GO_SEEK_THUMBNAIL_HELPER") != "1" {
-		return
+func TestGenerateAndReadSeekThumbnails(t *testing.T) {
+	if _, err := exec.LookPath(seekThumbnailCommand); err != nil {
+		t.Skip("ffmpegが無いため実画像の生成を省略します")
 	}
-	switch os.Getenv("GO_SEEK_THUMBNAIL_MODE") {
-	case "image":
-		_, _ = os.Stdout.WriteString("jpeg")
-	case "wait":
-		time.Sleep(10 * time.Second)
-	case "failure":
-		_, _ = os.Stderr.WriteString("frame unavailable\n")
-		os.Exit(2)
+
+	videoPath := filepath.Join(t.TempDir(), "colors.mp4")
+	args := []string{
+		"-nostdin", "-v", "error",
+		"-f", "lavfi", "-i", "color=c=red:s=64x64:r=30:d=3",
+		"-f", "lavfi", "-i", "color=c=blue:s=64x64:r=30:d=3",
+		"-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0",
+		"-c:v", "mpeg4", "-y", videoPath,
 	}
-	os.Exit(0)
+	if output, err := exec.Command(seekThumbnailCommand, args...).CombinedOutput(); err != nil {
+		t.Fatalf("fixture生成に失敗しました: %v: %s", err, output)
+	}
+
+	thumbnailsDir := t.TempDir()
+	if err := GenerateSeekThumbnails(context.Background(), videoPath, thumbnailsDir, "abcdef:12"); err != nil {
+		t.Fatal(err)
+	}
+	cache := NewSeekThumbnailCache(thumbnailsDir)
+	for _, position := range []int64{0, 4999, 5000, 5999} {
+		data, err := cache.Read(context.Background(), "abcdef:12", position)
+		if err != nil {
+			t.Fatalf("position %d: %v", position, err)
+		}
+		if _, err := jpeg.Decode(strings.NewReader(string(data))); err != nil {
+			t.Fatalf("position %d JPEG: %v", position, err)
+		}
+	}
+}
+
+func TestSeekThumbnailCacheReportsMissingFrame(t *testing.T) {
+	cache := NewSeekThumbnailCache(t.TempDir())
+	_, err := cache.Read(context.Background(), "missing:1", 0)
+	if !os.IsNotExist(err) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRemoveOrphanSeekThumbnails(t *testing.T) {
+	thumbnailsDir := t.TempDir()
+	root := filepath.Join(thumbnailsDir, "seek")
+	kept := SeekThumbnailDir(root, "keep:1")
+	orphan := SeekThumbnailDir(root, "orphan:2")
+	temporary := filepath.Join(filepath.Dir(orphan), ".seek-active")
+	for _, dir := range []string{kept, orphan, temporary} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	removed, err := RemoveOrphanSeekThumbnails(
+		thumbnailsDir, map[string]struct{}{"keep:1": {}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 1 {
+		t.Fatalf("removed = %d, want 1", removed)
+	}
+	if _, err := os.Stat(kept); err != nil {
+		t.Fatalf("kept cache: %v", err)
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Fatalf("orphan cache error = %v", err)
+	}
+	if _, err := os.Stat(temporary); err != nil {
+		t.Fatalf("active temporary cache: %v", err)
+	}
+}
+
+func TestRemoveOrphanSeekThumbnailsWithoutCache(t *testing.T) {
+	removed, err := RemoveOrphanSeekThumbnails(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 0 {
+		t.Fatalf("removed = %d, want 0", removed)
+	}
+}
+
+func TestRemoveSeekThumbnails(t *testing.T) {
+	thumbnailsDir := t.TempDir()
+	target := SeekThumbnailDir(filepath.Join(thumbnailsDir, "seek"), "remove:1")
+	if err := os.MkdirAll(target, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveSeekThumbnails(thumbnailsDir, "remove:1"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("removed cache error = %v", err)
+	}
 }

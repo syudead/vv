@@ -15,11 +15,11 @@
 
 | Case | Setup | Expected evidence |
 | --- | --- | --- |
-| 直接配信 | 時刻を画像内に描いたMP4/H.264/AAC | 表示時刻と画像内時刻の差が1秒以内 |
+| 直接配信 | 時刻を画像内に描いたMP4/H.264/AAC | 表示時刻に対応する5秒bucketの画像 |
 | ライブ変換 | 同内容のMKV/非対応codec | 直接配信と同じ論理時刻の画像 |
-| 先頭・末尾 | 0秒付近と`durationMs - 1`、末尾に同時刻以後のframeなし | 1秒以内の有効なJPEG、画面外へのはみ出しなし |
+| 先頭・末尾 | 0秒付近と`durationMs - 1` | 対応する5秒bucketのJPEG、画面外へのはみ出しなし |
 | rapid move | 10秒間に100回以上位置変更 | 1秒以内に最新位置へ収束し、古い画像へ戻らない |
-| duplicate bucket | 同じ1秒内を反復 | URLが同一で、追加のnetwork生成を繰り返さない |
+| duplicate bucket | 同じ5秒内を反復 | URLが同一で、追加のnetwork取得を繰り返さない |
 | image failure | 画像応答を409または切断 | 時刻、再生、シークが継続する |
 | lifecycle | hover中に一覧へ戻る／動画変更 | request、表示、object URLが残らない |
 

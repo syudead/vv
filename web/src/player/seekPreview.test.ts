@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { attachSeekPreview, seekPreviewTarget } from "./seekPreview";
 
@@ -40,7 +40,7 @@ function progressElement(): HTMLElement {
 }
 
 describe("seek preview target", () => {
-  it("論理時刻を1秒bucketへ写し、両端ではpreviewを内側へ収める", () => {
+  it("論理時刻を5秒bucketへ写し、両端ではpreviewを内側へ収める", () => {
     const rect = { left: 100, width: 400 };
     expect(seekPreviewTarget(100, rect, 120_000, 240)).toEqual({
       positionMs: 0,
@@ -52,27 +52,22 @@ describe("seek preview target", () => {
       requestPositionMs: 60_000,
       leftPx: 201,
     });
-    expect(seekPreviewTarget(303, rect, 120_000, 240).requestPositionMs).toBe(61_000);
+    expect(seekPreviewTarget(303, rect, 120_000, 240).requestPositionMs).toBe(60_000);
     expect(seekPreviewTarget(500, rect, 120_000, 240)).toEqual({
       positionMs: 119_999,
-      requestPositionMs: 119_999,
+      requestPositionMs: 115_000,
       leftPx: 280,
     });
   });
 });
 
 describe("seek preview controller", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
   afterEach(() => {
-    vi.useRealTimers();
     vi.unstubAllGlobals();
     document.body.replaceChildren();
   });
 
-  it("時刻を即時表示し、debounce後に現在bucketの画像だけを表示する", async () => {
+  it("画像を即時要求し、次の画像が完成するまで表示中の画像を維持する", async () => {
     const progress = progressElement();
     const requests: Array<{
       url: string;
@@ -96,20 +91,23 @@ describe("seek preview controller", () => {
     progress.dispatchEvent(pointer("pointerenter", 300));
     expect(preview.dataset.state).toBe("loading");
     expect(preview.textContent).toBe("1:00");
-    expect(fetchImage).not.toHaveBeenCalled();
-
-    await vi.advanceTimersByTimeAsync(150);
     expect(requests[0]?.url).toBe(
       "/api/videos/1/seek-thumbnail?v=content&positionMs=60000",
     );
 
-    progress.dispatchEvent(pointer("pointermove", 400));
-    expect(requests[0]?.signal.aborted).toBe(true);
-    expect(preview.dataset.state).toBe("loading");
-    expect(image.hasAttribute("src")).toBe(false);
-    await vi.advanceTimersByTimeAsync(150);
+    requests[0]?.resolve(new Blob(["first"]));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(preview.dataset.state).toBe("ready");
+    expect(image.src).toContain("positionMs=60000");
 
-    requests[0]?.resolve(new Blob(["old"]));
+    progress.dispatchEvent(pointer("pointermove", 400));
+    expect(preview.dataset.state).toBe("loading");
+    expect(image.src).toContain("positionMs=60000");
+    expect(requests[1]?.url).toBe(
+      "/api/videos/1/seek-thumbnail?v=content&positionMs=90000",
+    );
+
     requests[1]?.resolve(new Blob(["current"]));
     await Promise.resolve();
     await Promise.resolve();
@@ -120,6 +118,42 @@ describe("seek preview controller", () => {
     expect(preview.dataset.state).toBe("hidden");
     detach();
     expect(progress.querySelector(".vv-seek-preview")).toBeNull();
+  });
+
+  it("細いbarではなくprogress control全体をhover領域にする", () => {
+    const progress = progressElement();
+    const interactionTarget = document.createElement("div");
+    interactionTarget.getBoundingClientRect = () =>
+      ({
+        left: 90,
+        width: 420,
+        right: 510,
+        top: -20,
+        bottom: 30,
+        height: 50,
+        x: 90,
+        y: -20,
+        toJSON: () => ({}),
+      }) as DOMRect;
+    interactionTarget.setPointerCapture = vi.fn();
+    interactionTarget.releasePointerCapture = vi.fn();
+    document.body.append(interactionTarget);
+
+    attachSeekPreview(
+      progress,
+      {
+        durationMs: 120_000,
+        thumbnailUrl: "/preview",
+        fetchImage: vi.fn(() => new Promise<Blob>(() => undefined)),
+      },
+      interactionTarget,
+    );
+    const preview = progress.querySelector<HTMLElement>(".vv-seek-preview");
+    if (preview === null) throw new Error("preview DOMがありません");
+
+    interactionTarget.dispatchEvent(pointer("pointerenter", 300, 1, "mouse", -10));
+    expect(preview.dataset.state).toBe("loading");
+    expect(preview.textContent).toBe("1:00");
   });
 
   it("touch dragはbar外でも追従し、終了時に隠す", async () => {
@@ -141,7 +175,6 @@ describe("seek preview controller", () => {
     progress.dispatchEvent(pointer("pointermove", 900, 7, "touch"));
     expect(progress.setPointerCapture).toHaveBeenCalledWith(7);
     expect(preview.textContent).toBe("0:09");
-    await vi.advanceTimersByTimeAsync(150);
     await Promise.resolve();
     await Promise.resolve();
     expect(preview.dataset.state).toBe("unavailable");
@@ -153,6 +186,33 @@ describe("seek preview controller", () => {
 
     progress.dispatchEvent(pointer("pointerup", 900, 7, "touch"));
     expect(preview.dataset.state).toBe("hidden");
+  });
+
+  it("生成中の取得失敗は待機時間後に同じbucketを再試行する", async () => {
+    let now = 10_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const progress = progressElement();
+    const fetchImage = vi.fn(() => Promise.reject(new Error("generating")));
+    attachSeekPreview(progress, {
+      durationMs: 120_000,
+      thumbnailUrl: "/preview",
+      fetchImage,
+    });
+    const preview = progress.querySelector<HTMLElement>(".vv-seek-preview");
+    if (preview === null) throw new Error("preview DOMがありません");
+
+    progress.dispatchEvent(pointer("pointerenter", 300));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(preview.dataset.state).toBe("unavailable");
+    expect(fetchImage).toHaveBeenCalledTimes(1);
+
+    progress.dispatchEvent(pointer("pointermove", 300));
+    expect(fetchImage).toHaveBeenCalledTimes(1);
+
+    now += 5000;
+    progress.dispatchEvent(pointer("pointermove", 300));
+    expect(fetchImage).toHaveBeenCalledTimes(2);
   });
 
   it("mouse dragをbar内で終えるとhover previewを維持し、bar外では隠す", () => {

@@ -62,8 +62,8 @@ func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
 	if err := db.SQL().QueryRow(`select count(*) from playback_progress where content_key = 'key-a'`).Scan(&progress); err != nil {
 		t.Fatal(err)
 	}
-	if jobs != 1 || progress != 1 {
-		t.Fatalf("jobs=%d progress=%d, want 1 and 1", jobs, progress)
+	if jobs != 2 || progress != 1 {
+		t.Fatalf("jobs=%d progress=%d, want 2 and 1", jobs, progress)
 	}
 }
 
@@ -100,8 +100,8 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Applied != 1 || result.Version != 4 {
-		t.Fatalf("migration result = %+v, want one migration to version 4", result)
+	if result.Applied != 2 || result.Version != 5 {
+		t.Fatalf("migration result = %+v, want two migrations to version 5", result)
 	}
 	var generation int64
 	if err := db.SQL().QueryRow(`select location_generation from videos where id = ?`, videoID).Scan(&generation); err != nil {
@@ -479,7 +479,7 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	db := migratedDB(t)
 
-	for range 3 {
+	for range 4 {
 		if err := Down(context.Background(), db); err != nil {
 			t.Fatalf("Down に失敗した: %v", err)
 		}
@@ -530,6 +530,9 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := Down(ctx, db); err != nil {
+		t.Fatalf("seek thumbnail cache Down failed: %v", err)
+	}
 	if err := Down(ctx, db); err != nil {
 		t.Fatalf("location generation Down failed: %v", err)
 	}

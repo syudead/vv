@@ -1,8 +1,8 @@
 import { formatDuration } from "../lib/format";
 
-const bucketMs = 1000;
-const debounceMs = 150;
+const bucketMs = 5000;
 const cacheLimit = 12;
+const unavailableRetryMs = 5000;
 
 interface PreviewOptions {
   durationMs: number;
@@ -26,10 +26,7 @@ export function seekPreviewTarget(
   const ratio = rect.width > 0 ? localX / rect.width : 0;
   const lastPositionMs = Math.max(0, Math.ceil(durationMs) - 1);
   const positionMs = Math.min(lastPositionMs, Math.round(ratio * durationMs));
-  const requestPositionMs = Math.min(
-    lastPositionMs,
-    Math.round(positionMs / bucketMs) * bucketMs,
-  );
+  const requestPositionMs = Math.floor(positionMs / bucketMs) * bucketMs;
   const halfWidth = Math.min(previewWidth / 2, rect.width / 2);
   return {
     positionMs,
@@ -41,6 +38,7 @@ export function seekPreviewTarget(
 export function attachSeekPreview(
   progress: HTMLElement,
   options: PreviewOptions,
+  interactionTarget: HTMLElement = progress,
 ): () => void {
   const preview = document.createElement("div");
   preview.className = "vv-seek-preview";
@@ -59,16 +57,13 @@ export function attachSeekPreview(
 
   const fetchImage = options.fetchImage ?? fetchThumbnail;
   const cache = new Map<number, string>();
-  const unavailable = new Set<number>();
+  const unavailableUntil = new Map<number, number>();
   let activeBucket: number | null = null;
   let activePointer: number | null = null;
   let visible = false;
   let request: AbortController | null = null;
-  let timer: number | null = null;
 
   const cancelPending = () => {
-    if (timer !== null) window.clearTimeout(timer);
-    timer = null;
     request?.abort();
     request = null;
   };
@@ -112,7 +107,6 @@ export function attachSeekPreview(
     if (activeBucket === target.requestPositionMs) return;
     activeBucket = target.requestPositionMs;
     cancelPending();
-    image.removeAttribute("src");
 
     const cached = cache.get(activeBucket);
     if (cached !== undefined) {
@@ -120,38 +114,43 @@ export function attachSeekPreview(
       setState("ready");
       return;
     }
-    if (unavailable.has(activeBucket)) {
+    const retryAt = unavailableUntil.get(activeBucket);
+    if (retryAt !== undefined && retryAt > Date.now()) {
+      activeBucket = null;
+      image.removeAttribute("src");
       setState("unavailable");
       return;
     }
+    unavailableUntil.delete(activeBucket);
 
     setState("loading");
     const requestedBucket = activeBucket;
-    timer = window.setTimeout(() => {
-      timer = null;
-      const controller = new AbortController();
-      request = controller;
-      const url = thumbnailRequestUrl(options.thumbnailUrl, requestedBucket);
-      void fetchImage(url, controller.signal)
-        .then(() => {
-          if (controller.signal.aborted) return;
-          // Reuse the validated HTTP response from browser cache. Blob-backed portrait
-          // JPEGs can paint black when nested in Video.js controls on Chromium.
-          remember(cache, requestedBucket, url);
-          if (!visible || activeBucket !== requestedBucket) return;
-          image.src = url;
-          setState("ready");
-        })
-        .catch((error: unknown) => {
-          if (controller.signal.aborted) return;
-          unavailable.add(requestedBucket);
-          if (visible && activeBucket === requestedBucket) setState("unavailable");
-          if (error instanceof Error && error.name === "AbortError") return;
-        })
-        .finally(() => {
-          if (request === controller) request = null;
-        });
-    }, debounceMs);
+    const controller = new AbortController();
+    request = controller;
+    const url = thumbnailRequestUrl(options.thumbnailUrl, requestedBucket);
+    void fetchImage(url, controller.signal)
+      .then(() => {
+        if (controller.signal.aborted) return;
+        // Reuse the validated and decoded HTTP response from browser cache.
+        remember(cache, requestedBucket, url);
+        unavailableUntil.delete(requestedBucket);
+        if (!visible || activeBucket !== requestedBucket) return;
+        image.src = url;
+        setState("ready");
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        unavailableUntil.set(requestedBucket, Date.now() + unavailableRetryMs);
+        if (visible && activeBucket === requestedBucket) {
+          activeBucket = null;
+          image.removeAttribute("src");
+          setState("unavailable");
+        }
+        if (error instanceof Error && error.name === "AbortError") return;
+      })
+      .finally(() => {
+        if (request === controller) request = null;
+      });
   };
 
   const onPointerEnter = (event: PointerEvent) => {
@@ -166,7 +165,7 @@ export function attachSeekPreview(
   const onPointerDown = (event: PointerEvent) => {
     activePointer = event.pointerId;
     try {
-      progress.setPointerCapture(event.pointerId);
+      interactionTarget.setPointerCapture(event.pointerId);
     } catch {
       // Synthetic events and older browsers may not expose pointer capture.
     }
@@ -175,12 +174,12 @@ export function attachSeekPreview(
   const onPointerEnd = (event: PointerEvent) => {
     if (activePointer !== event.pointerId) return;
     try {
-      progress.releasePointerCapture(event.pointerId);
+      interactionTarget.releasePointerCapture(event.pointerId);
     } catch {
       // The capture may already have been released by the browser.
     }
     activePointer = null;
-    const rect = progress.getBoundingClientRect();
+    const rect = interactionTarget.getBoundingClientRect();
     const remainsHovered =
       event.pointerType !== "touch" &&
       event.clientX >= rect.left &&
@@ -191,21 +190,21 @@ export function attachSeekPreview(
     else hide();
   };
 
-  progress.addEventListener("pointerenter", onPointerEnter);
-  progress.addEventListener("pointermove", onPointerMove);
-  progress.addEventListener("pointerleave", onPointerLeave);
-  progress.addEventListener("pointerdown", onPointerDown);
-  progress.addEventListener("pointerup", onPointerEnd);
-  progress.addEventListener("pointercancel", onPointerEnd);
+  interactionTarget.addEventListener("pointerenter", onPointerEnter);
+  interactionTarget.addEventListener("pointermove", onPointerMove);
+  interactionTarget.addEventListener("pointerleave", onPointerLeave);
+  interactionTarget.addEventListener("pointerdown", onPointerDown);
+  interactionTarget.addEventListener("pointerup", onPointerEnd);
+  interactionTarget.addEventListener("pointercancel", onPointerEnd);
 
   return () => {
     hide();
-    progress.removeEventListener("pointerenter", onPointerEnter);
-    progress.removeEventListener("pointermove", onPointerMove);
-    progress.removeEventListener("pointerleave", onPointerLeave);
-    progress.removeEventListener("pointerdown", onPointerDown);
-    progress.removeEventListener("pointerup", onPointerEnd);
-    progress.removeEventListener("pointercancel", onPointerEnd);
+    interactionTarget.removeEventListener("pointerenter", onPointerEnter);
+    interactionTarget.removeEventListener("pointermove", onPointerMove);
+    interactionTarget.removeEventListener("pointerleave", onPointerLeave);
+    interactionTarget.removeEventListener("pointerdown", onPointerDown);
+    interactionTarget.removeEventListener("pointerup", onPointerEnd);
+    interactionTarget.removeEventListener("pointercancel", onPointerEnd);
     preview.remove();
   };
 }
@@ -219,7 +218,14 @@ async function fetchThumbnail(url: string, signal: AbortSignal): Promise<Blob> {
   const response = await fetch(url, { signal });
   if (!response.ok)
     throw new Error(`seek thumbnail request failed: ${String(response.status)}`);
-  return response.blob();
+  const blob = await response.blob();
+  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+
+  const decoded = new Image();
+  decoded.src = url;
+  await decoded.decode();
+  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+  return blob;
 }
 
 function remember(

@@ -57,7 +57,7 @@ async function waitForScan(request: APIRequestContext) {
         if (!response.ok()) return "missing";
         return ((await response.json()) as { state: string }).state;
       },
-      { timeout: 30_000 },
+      { timeout: 60_000 },
     )
     .toBe("done");
 }
@@ -71,9 +71,31 @@ async function waitForVideos(request: APIRequestContext) {
         for (const item of page.items) videos.set(item.title, item);
         return [...videos.values()].filter((item) => item.probeState === "done").length;
       },
-      { timeout: 30_000 },
+      { timeout: 60_000 },
     )
     .toBe(9);
+}
+
+async function waitForSeekThumbnails(request: APIRequestContext) {
+  await expect
+    .poll(
+      async () => {
+        let ready = 0;
+        for (const item of videos.values()) {
+          if (item.seekThumbnailUrl === undefined) continue;
+          const separator = item.seekThumbnailUrl.includes("?") ? "&" : "?";
+          const response = await request.get(
+            `${item.seekThumbnailUrl}${separator}positionMs=0`,
+          );
+          if (response.ok()) ready++;
+        }
+        return ready;
+      },
+      { timeout: 60_000 },
+    )
+    .toBe(
+      [...videos.values()].filter((item) => item.seekThumbnailUrl !== undefined).length,
+    );
 }
 
 async function play(page: Page, item: Video) {
@@ -125,6 +147,7 @@ async function throttle(page: Page, bytesPerSecond: number) {
 
 test.describe.serial("live MP4 playback", () => {
   test.beforeAll(async ({ request }) => {
+    test.setTimeout(120_000);
     const mediaDir = process.env.MDM_E2E_MEDIA_DIR;
     if (mediaDir === undefined) throw new Error("MDM_E2E_MEDIA_DIR is not configured");
     sourceSnapshot = await snapshot(mediaDir);
@@ -140,6 +163,7 @@ test.describe.serial("live MP4 playback", () => {
     expect(scan.status()).toBe(202);
     await waitForScan(request);
     await waitForVideos(request);
+    await waitForSeekThumbnails(request);
   });
 
   test.afterAll(async ({ request }) => {
@@ -422,11 +446,32 @@ test.describe.serial("live MP4 playback", () => {
         return element !== null && !element.paused && element.currentTime > 0.1;
       });
       const seekBar = page.locator(".vjs-progress-holder");
+      const seekControl = page.locator(".vjs-progress-control");
       const seekBounds = await seekBar.boundingBox();
+      const controlBounds = await seekControl.boundingBox();
       const playerBounds = await page.locator(".video-js").boundingBox();
-      if (seekBounds === null || playerBounds === null) {
+      if (seekBounds === null || controlBounds === null || playerBounds === null) {
         throw new Error("player controls are not visible");
       }
+      await page.mouse.move(seekBounds.x + seekBounds.width * 0.25, controlBounds.y + 2);
+      await expect(page.locator('.vv-seek-preview[data-state="ready"]')).toBeVisible({
+        timeout: 5000,
+      });
+      await page.route("**/seek-thumbnail?*", async (route) => {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        await route.continue();
+      });
+      await page.mouse.move(
+        seekBounds.x + seekBounds.width * 0.99,
+        seekBounds.y + seekBounds.height / 2,
+      );
+      await expect(
+        page.locator('.vv-seek-preview[data-state="loading"] img'),
+      ).toBeVisible({ timeout: 150 });
+      await expect(page.locator('.vv-seek-preview[data-state="ready"]')).toBeVisible({
+        timeout: 5000,
+      });
+      await page.unroute("**/seek-thumbnail?*");
       for (const ratio of [0.01, 0.5, 0.99]) {
         await page.mouse.move(
           seekBounds.x + seekBounds.width * ratio,
@@ -453,26 +498,6 @@ test.describe.serial("live MP4 playback", () => {
         });
       }
 
-      if (width === 360) {
-        await page.route("**/seek-thumbnail?*positionMs=5000*", (route) =>
-          route.abort("failed"),
-        );
-        await page.mouse.move(
-          seekBounds.x + seekBounds.width * 0.75,
-          seekBounds.y + seekBounds.height / 2,
-        );
-        await expect(
-          page.locator('.vv-seek-preview[data-state="unavailable"]'),
-        ).toBeVisible();
-        if (screenshotDir !== undefined) {
-          await page.screenshot({
-            path: path.join(screenshotDir, "20260922-seek-thumbnail-unavailable-360.png"),
-            fullPage: true,
-          });
-        }
-        await page.unroute("**/seek-thumbnail?*positionMs=5000*");
-      }
-
       await page.locator(".video-js").focus();
       await page.locator(".video-js").press("Space");
       await page.locator(".video-js").press("Space");
@@ -488,6 +513,29 @@ test.describe.serial("live MP4 playback", () => {
       const back = page.getByRole("link", { name: "ライブラリ" });
       await back.focus();
       await Promise.all([page.waitForURL("/"), back.press("Enter")]);
+    }
+  });
+
+  test("シーク画像を取得できなくても時刻と操作を維持する", async ({ page }) => {
+    const item = video("direct");
+    await page.setViewportSize({ width: 360, height: 800 });
+    await play(page, item);
+    await page.route("**/seek-thumbnail?*", (route) => route.abort("failed"));
+    const seekBar = page.locator(".vjs-progress-holder");
+    const seekBounds = await seekBar.boundingBox();
+    if (seekBounds === null) throw new Error("seek bar is not visible");
+    await page.mouse.move(
+      seekBounds.x + seekBounds.width * 0.75,
+      seekBounds.y + seekBounds.height / 2,
+    );
+    await expect(
+      page.locator('.vv-seek-preview[data-state="unavailable"]'),
+    ).toBeVisible();
+    if (screenshotDir !== undefined) {
+      await page.screenshot({
+        path: path.join(screenshotDir, "20260922-seek-thumbnail-unavailable-360.png"),
+        fullPage: true,
+      });
     }
   });
 

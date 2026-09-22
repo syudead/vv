@@ -108,7 +108,7 @@ func run() error {
 		worker.Run(backgroundCtx)
 	}()
 
-	// request単位のmedia processはHTTP requestより長生きさせない。Shutdownは
+	// request単位のtranscode processはHTTP requestより長生きさせない。Shutdownは
 	// 実行中requestのcontextを取り消さないため、server寿命を別に持って先にcancelする。
 	requestMediaCtx, stopRequestMedia := context.WithCancel(context.Background())
 	defer stopRequestMedia()
@@ -122,7 +122,7 @@ func run() error {
 		MediaFolders:   db,
 		ThumbnailsDir:  cfg.ThumbnailsDir(),
 		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),
-		SeekThumbnails: media.NewSeekThumbnailExtractor(requestMediaCtx.Done()),
+		SeekThumbnails: media.NewSeekThumbnailCache(cfg.ThumbnailsDir()),
 		Assets:         web.Dist(),
 		Logger:         logger,
 	})

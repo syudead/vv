@@ -63,10 +63,9 @@ type Transcoder interface {
 	Start(context.Context, string, int64, bool, time.Time) (io.ReadCloser, func() error, func(), error)
 }
 
-// SeekThumbnailExtractor は1 request分のJPEGを元動画から取り出す。
-// 返すbytesは完全な1枚で、永続ファイルを作らない。
-type SeekThumbnailExtractor interface {
-	Extract(context.Context, string, int64) ([]byte, error)
+// SeekThumbnailReader はbackground jobが生成したJPEGを読み出す。
+type SeekThumbnailReader interface {
+	Read(context.Context, string, int64) ([]byte, error)
 }
 
 // Options は経路の組み立てに必要な依存である。
@@ -88,8 +87,8 @@ type Options struct {
 	ThumbnailsDir string
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
 	Transcoder Transcoder
-	// SeekThumbnails は任意時刻のJPEGを生成する。nilなら経路は500を返す。
-	SeekThumbnails SeekThumbnailExtractor
+	// SeekThumbnails は生成済みの任意時刻JPEGを読む。nilなら経路は500を返す。
+	SeekThumbnails SeekThumbnailReader
 	// Assets は SPA のビルド成果物（web/dist に相当）。
 	Assets fs.FS
 	// Logger は応答の過程で出す記録。nil の場合は slog の既定を使う。
@@ -107,7 +106,7 @@ type server struct {
 	mediaFolders   MediaFolders
 	thumbnailsDir  string
 	transcoder     Transcoder
-	seekThumbnails SeekThumbnailExtractor
+	seekThumbnails SeekThumbnailReader
 	logger         *slog.Logger
 }
 

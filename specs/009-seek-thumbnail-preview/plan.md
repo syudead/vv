@@ -1,14 +1,14 @@
 # Implementation Plan: 動画シーク時のサムネイルプレビュー
 
-**Branch**: `codex/seek-thumbnail-preview-feature` | **Date**: 2026-09-22 | **Spec**: [spec.md](spec.md)
+**Branch**: `codex/seek-thumbnail-preview-feature` | **Date**: 2026-09-22 | **Spec**: GitHub Issue #117
 
 ## Summary
 
-再生画面のシークバーが示す論理時刻について、要求時に元動画から静止画を抽出する版付き画像経路を
-追加する。プレイヤーは時刻を即時表示し、1秒単位の画像要求を短く遅延・中断・再利用しながら、
-ポインターとタッチの移動へ追従する。
+再生画面のシークバーが示す論理時刻について、thumbnail background jobが5秒間隔のJPEGを事前生成する。
+画像経路は生成済みfileを読むだけとし、再生中にFFmpegを起動しない。プレイヤーは時刻を即時表示し、
+5秒単位の画像要求を即時開始し、中断・再利用しながら、ポインターとタッチの移動へ追従する。
 
-要求は [spec.md](spec.md)、方式選択は [research.md](research.md)、HTTP 差分は
+要求はGitHub Issue #117、方式選択は [research.md](research.md)、HTTP 差分は
 [contracts/seek-thumbnail.md](contracts/seek-thumbnail.md)、UI差分は [ui-design.md](ui-design.md)、
 検証手順は [quickstart.md](quickstart.md) を正本とする。永続化する新しいエンティティや状態はないため
 `data-model.md` は作成しない。
@@ -30,15 +30,15 @@
 
 **Feature-specific context**:
 
-- `GET /api/videos/{id}/seek-thumbnail` を OpenAPI に追加し、元動画の論理時刻 `positionMs` から1秒以内の
-  対応frameを JPEG で返す。動画詳細は content-derived version を含む `seekThumbnailUrl` を返す。
-- 抽出処理は request context と短い上限時間に従い、生成画像を永続化しない。新しい SQLite 列、
-  background job、data directory は追加しない。
-- client は対象時刻を最寄りの1秒へまとめ、150ms の debounce、前要求の中断、最新位置の照合で
+- `GET /api/videos/{id}/seek-thumbnail` は5秒間隔で事前生成したJPEGを返す。動画詳細は
+  content-derived versionを含む`seekThumbnailUrl`を返す。
+- 既存thumbnail jobを拡張し、生成画像を`MDM_DATA_DIR/thumbnails/seek`へ保存する。既存動画は
+  migrationで同じjobへ一度だけ再投入する。
+- client は対象時刻を5秒bucketへ切り下げ、前要求の中断、最新位置の照合、decode後の差し替えで
   連続操作を制御する。同じ URL は immutable browser cache で再利用する。
 - 既存の直接配信／ライブ変換の source ではなく、元動画全体の `durationMs` とシークバー位置から
   `positionMs` を求めるため、再生経路切り替え後も同じ時間軸を使う。
-- [spec.md](spec.md) の表示1秒、時刻誤差1秒、100回移動、360px／768px／1280pxを contract、unit、
+- parent Issueの即時表示、5秒bucket、100回移動、360px／768px／1280pxをcontract、unit、
   browser test と視覚レビューの基準にする。
 
 ## Constitution Check
@@ -49,7 +49,7 @@
 - **API の正本**: 合格。新経路と `Video.seekThumbnailUrl` は `api/openapi.yaml` から Go/TypeScript
   を生成する。
 - **データ保護**: 合格。検証済み current location を読み取り専用で開き、元動画、SQLite、
-  playback progress、data directory を変更しない。
+  playback progressを変更しない。data directoryには再構築可能なシーク画像cacheだけを追加する。
 - **UI の正本**: 合格。既存の役割トークンとプレイヤー構造を使い、仕様の5観点は Design と
   360px／768px／1280pxの画像レビューで判定する。
 - **検証可能性**: 合格。時刻正規化、古い応答の拒否、process cancellation、HTTP status、
@@ -60,15 +60,13 @@ Phase 1 後も判定は同じで、例外や Complexity Tracking を必要とす
 
 ## Structural Decisions
 
-- **要求時に1枚だけ抽出する**: 位置ごとの静止画を request-scoped process で生成し、応答後は残さない。
-  全尺のスプライトを取り込み時に生成する案は、見られない長尺動画にも保存量と走査時間を先払いし、
-  既存の直列 job を長時間占有するため採用しない。各フレームを永続キャッシュする案も、利用された
-  時刻に比例する回収対象を新設するため採用しない。
-- **1秒単位の版付き URL を再利用する**: client は最寄りの1秒を同じ URL にまとめ、150ms 静止した
-  対象だけ取得する。移動時は前要求を中断し、完了時に対象時刻を再照合する。生の pointer move ごとに
-  process を起動する案は負荷と古い応答競合を増やし、粗い5秒以上の区間は仕様の1秒精度を満たさない。
+- **background jobで事前生成する**: 5秒間隔の静止画をcontent key単位で永続cacheし、HTTP requestは
+  file readだけを行う。requestごとのFFmpeg起動は初回表示が数秒遅れるため廃止する。
+- **5秒単位の版付き URL を再利用する**: client は同じ5秒bucketを同じ URL にまとめ、bucket変更時に
+  即時取得する。移動時は前要求を中断し、decode完了時に対象時刻を再照合して一度に差し替える。
+  取得中に表示済み画像を消す案は黒い面が連続操作へ挟まるため採用しない。
 - **静止画専用経路を既存 thumbnail から分ける**: 一覧用の生成済み代表画像と、任意時刻を入力にする
-  一時画像で status・lifecycle・cache key が異なるため、既存 `/thumbnail` の optional query へ
+  事前生成画像で status・lifecycle・cache key が異なるため、既存 `/thumbnail` の optional query へ
   多重化しない。ライブ変換経路からフレームを抜く案は source offset と再生経路に依存し、直接配信と
   ライブ変換で意味が変わるため採用しない。
 - **プレイヤー内の補助表示として所有する**: Video.js の進捗操作へイベントと表示を追加し、React の
@@ -100,10 +98,10 @@ Implementation Work を子 Issue 化する。
 **Affected boundaries**:
 
 - `api/openapi.yaml`: 任意時刻の JPEG 経路、query、response、`Video.seekThumbnailUrl`
-- `internal/media/`: 1 request 分の静止画抽出、上限時間、process cancellation
-- `internal/httpapi/`: current location 検証、抽出 interface、binary response と cache/error
-- `cmd/mdm/`: media adapter の注入
-- `web/src/api/`・`web/src/player/`: 版付き URL、時刻正規化、debounce、中断、表示 lifecycle
+- `internal/media/`: background生成、disk cache、孤児cache cleanup
+- `internal/httpapi/`: 生成済みJPEGのbinary responseとcache/error
+- `cmd/mdm/`: thumbnail jobへの生成処理とcleanupの組み込み
+- `web/src/api/`・`web/src/player/`: 版付き URL、時刻正規化、中断、decode、表示 lifecycle
 - `web/e2e/`: ポインター／タッチ、直接配信／ライブ変換、失敗時縮退、viewport 検証
 
 **New paths**:
@@ -118,23 +116,22 @@ Implementation Work を子 Issue 化する。
 ### 任意時刻のシークサムネイル生成・配信 API
 
 **Scope**: [seek thumbnail contract](contracts/seek-thumbnail.md) に従い、OpenAPI と生成物、
-`Video.seekThumbnailUrl`、安全な current location からの request-scoped JPEG 抽出、版付き cache、
-中断・期限、status/error mapping、unit/contract testを追加する。既存の一覧サムネイル、動画配信、
-ライブ変換、DB schema、job queueは変更しない。
+`Video.seekThumbnailUrl`、thumbnail jobによる5秒間隔JPEG生成、版付きcache、status/error mapping、
+unit/contract testを追加する。既存の一覧サムネイル、動画配信、ライブ変換は変更しない。
 
 **Dependencies**: なし。
 
 **Acceptance**: 有効な動画と時刻へ JPEG と immutable cache が返り、入力不正は400、動画・実体なしは404、
-解析未完了・尺なし・フレーム取得不能は409、process開始不能は500になる。先頭、中央、末尾の画像が
-要求時刻から1秒以内で、末尾に要求時刻以後のframeがない場合も手前の最終frameを返し、request中断時に
-抽出processが終了する。元動画、SQLite、data directoryに変更がなく、`task check` が成功する。
+解析未完了・尺なし・cache生成中は409、予期しないI/O失敗は500になる。先頭、中央、末尾の画像が
+対応する5秒bucketから返り、HTTP request中にFFmpegを起動しない。生成途中のfileを配信せず、
+`task check`が成功する。
 
 ### シークバーのサムネイルプレビュー UI
 
 **Scope**: [UI design](ui-design.md)、[spec UI acceptance](spec.md#ui-acceptance-criteria)、
 [quickstart](quickstart.md) に従い、
-シークバーのpointer hover／drag／touchへ追従する静止画と時刻、1秒正規化、150ms debounce、前要求中断、
-古い応答拒否、取得失敗時の時刻のみ表示、破棄時cleanupを既存プレイヤーへ追加する。frontend unit testと
+シークバーのpointer hover／drag／touchへ追従する静止画と時刻、5秒正規化、即時要求、前要求中断、
+decode後の差し替え、古い応答拒否、取得失敗時の時刻のみ表示、破棄時cleanupを既存プレイヤーへ追加する。frontend unit testと
 browser testを追加し、一覧画面は変更しない。
 
 **Dependencies**: 任意時刻のシークサムネイル生成・配信 API。
