@@ -1,0 +1,58 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "依存更新の方針は docs/how-to/dependency-updates.md を参照。",
+  "extends": ["config:best-practices", ":semanticCommits"],
+  "timezone": "Asia/Tokyo",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "semanticCommitType": "build",
+  "semanticCommitScope": "deps",
+  "postUpdateOptions": ["gomodTidy"],
+  "lockFileMaintenance": { "enabled": true },
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "schedule": ["at any time"]
+  },
+  "packageRules": [
+    {
+      "description": "メジャー以外は CI が通れば自動マージする。",
+      "matchUpdateTypes": ["minor", "patch", "pin", "digest", "lockFileMaintenance"],
+      "automerge": true,
+      "automergeType": "pr"
+    },
+    {
+      "description": "Go と Node のランタイム版は go.mod と揃えて人が決める。mise は go を golang/go、node を nodejs という packageName で扱うので、両manager に効く depName で指定する。",
+      "matchManagers": ["dockerfile", "mise"],
+      "matchDepNames": ["go", "golang", "node"],
+      "enabled": false
+    },
+    {
+      "matchManagers": ["gomod"],
+      "groupName": "Go modules"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchFileNames": ["web/**"],
+      "groupName": "web npm"
+    },
+    {
+      "matchManagers": ["npm"],
+      "matchFileNames": ["tools/**"],
+      "groupName": "tools npm"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "mise が管理する開発ツール（task、jq など）。",
+      "matchManagers": ["mise"],
+      "groupName": "mise tools"
+    },
+    {
+      "description": "Dockerfile の土台イメージ（alpine など）。",
+      "matchManagers": ["dockerfile"],
+      "groupName": "container images"
+    }
+  ]
+}
