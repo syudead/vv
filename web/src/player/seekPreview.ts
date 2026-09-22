@@ -2,6 +2,7 @@ import { formatDuration } from "../lib/format";
 
 const bucketMs = 5000;
 const cacheLimit = 12;
+const unavailableRetryMs = 5000;
 
 interface PreviewOptions {
   durationMs: number;
@@ -56,7 +57,7 @@ export function attachSeekPreview(
 
   const fetchImage = options.fetchImage ?? fetchThumbnail;
   const cache = new Map<number, string>();
-  const unavailable = new Set<number>();
+  const unavailableUntil = new Map<number, number>();
   let activeBucket: number | null = null;
   let activePointer: number | null = null;
   let visible = false;
@@ -113,11 +114,14 @@ export function attachSeekPreview(
       setState("ready");
       return;
     }
-    if (unavailable.has(activeBucket)) {
+    const retryAt = unavailableUntil.get(activeBucket);
+    if (retryAt !== undefined && retryAt > Date.now()) {
+      activeBucket = null;
       image.removeAttribute("src");
       setState("unavailable");
       return;
     }
+    unavailableUntil.delete(activeBucket);
 
     setState("loading");
     const requestedBucket = activeBucket;
@@ -129,14 +133,16 @@ export function attachSeekPreview(
         if (controller.signal.aborted) return;
         // Reuse the validated and decoded HTTP response from browser cache.
         remember(cache, requestedBucket, url);
+        unavailableUntil.delete(requestedBucket);
         if (!visible || activeBucket !== requestedBucket) return;
         image.src = url;
         setState("ready");
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        unavailable.add(requestedBucket);
+        unavailableUntil.set(requestedBucket, Date.now() + unavailableRetryMs);
         if (visible && activeBucket === requestedBucket) {
+          activeBucket = null;
           image.removeAttribute("src");
           setState("unavailable");
         }

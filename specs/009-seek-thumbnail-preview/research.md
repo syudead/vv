@@ -32,3 +32,12 @@
 
 **Rationale**: 一覧画像は1動画1枚、シーク画像は時間bucketごとの複数fileで、配信とcleanupの単位が異なる。
 同じbackground jobで生成しても保存境界を分けることで既存一覧APIを変更しない。
+
+## R-304: 既存動画は直列workerで段階的に生成する
+
+**Decision**: migrationは既存動画をthumbnail queueへ一度だけ再投入し、既存の直列workerで順番に生成する。
+1動画の上限は30分とし、失敗しても一覧用thumbnailと再生を維持する。cache容量と初回完了時間は動画尺に
+比例するため、生成中は409へ縮退し、ライブラリ全体の完了を起動条件にしない。
+
+**Rationale**: 並列decodeはCPU・disk負荷を急増させる。5秒ごと・幅320pxのJPEGは1時間あたり720枚に
+なるため、運用時は`thumbnails/seek`の容量を監視できる再構築可能dataとして扱う。

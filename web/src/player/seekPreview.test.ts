@@ -188,6 +188,33 @@ describe("seek preview controller", () => {
     expect(preview.dataset.state).toBe("hidden");
   });
 
+  it("生成中の取得失敗は待機時間後に同じbucketを再試行する", async () => {
+    let now = 10_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const progress = progressElement();
+    const fetchImage = vi.fn(() => Promise.reject(new Error("generating")));
+    attachSeekPreview(progress, {
+      durationMs: 120_000,
+      thumbnailUrl: "/preview",
+      fetchImage,
+    });
+    const preview = progress.querySelector<HTMLElement>(".vv-seek-preview");
+    if (preview === null) throw new Error("preview DOMがありません");
+
+    progress.dispatchEvent(pointer("pointerenter", 300));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(preview.dataset.state).toBe("unavailable");
+    expect(fetchImage).toHaveBeenCalledTimes(1);
+
+    progress.dispatchEvent(pointer("pointermove", 300));
+    expect(fetchImage).toHaveBeenCalledTimes(1);
+
+    now += 5000;
+    progress.dispatchEvent(pointer("pointermove", 300));
+    expect(fetchImage).toHaveBeenCalledTimes(2);
+  });
+
   it("mouse dragをbar内で終えるとhover previewを維持し、bar外では隠す", () => {
     const progress = progressElement();
     attachSeekPreview(progress, {

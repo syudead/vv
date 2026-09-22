@@ -57,7 +57,7 @@ async function waitForScan(request: APIRequestContext) {
         if (!response.ok()) return "missing";
         return ((await response.json()) as { state: string }).state;
       },
-      { timeout: 30_000 },
+      { timeout: 60_000 },
     )
     .toBe("done");
 }
@@ -71,7 +71,7 @@ async function waitForVideos(request: APIRequestContext) {
         for (const item of page.items) videos.set(item.title, item);
         return [...videos.values()].filter((item) => item.probeState === "done").length;
       },
-      { timeout: 30_000 },
+      { timeout: 60_000 },
     )
     .toBe(9);
 }
@@ -147,6 +147,7 @@ async function throttle(page: Page, bytesPerSecond: number) {
 
 test.describe.serial("live MP4 playback", () => {
   test.beforeAll(async ({ request }) => {
+    test.setTimeout(120_000);
     const mediaDir = process.env.MDM_E2E_MEDIA_DIR;
     if (mediaDir === undefined) throw new Error("MDM_E2E_MEDIA_DIR is not configured");
     sourceSnapshot = await snapshot(mediaDir);

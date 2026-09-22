@@ -49,7 +49,7 @@
 - **API の正本**: 合格。新経路と `Video.seekThumbnailUrl` は `api/openapi.yaml` から Go/TypeScript
   を生成する。
 - **データ保護**: 合格。検証済み current location を読み取り専用で開き、元動画、SQLite、
-  playback progress、data directory を変更しない。
+  playback progressを変更しない。data directoryには再構築可能なシーク画像cacheだけを追加する。
 - **UI の正本**: 合格。既存の役割トークンとプレイヤー構造を使い、仕様の5観点は Design と
   360px／768px／1280pxの画像レビューで判定する。
 - **検証可能性**: 合格。時刻正規化、古い応答の拒否、process cancellation、HTTP status、
