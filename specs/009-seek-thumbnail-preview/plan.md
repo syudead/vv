@@ -29,8 +29,8 @@
 
 **Feature-specific context**:
 
-- `GET /api/videos/{id}/seek-thumbnail` を OpenAPI に追加し、元動画の論理時刻 `positionMs` から1秒以内で
-  最も近く取得できる JPEG を返す。動画詳細は content-derived version を含む `seekThumbnailUrl` を返す。
+- `GET /api/videos/{id}/seek-thumbnail` を OpenAPI に追加し、元動画の論理時刻 `positionMs` から1秒以内の
+  対応frameを JPEG で返す。動画詳細は content-derived version を含む `seekThumbnailUrl` を返す。
 - 抽出処理は request context と短い上限時間に従い、生成画像を永続化しない。新しい SQLite 列、
   background job、data directory は追加しない。
 - client は対象時刻を最寄りの1秒へまとめ、150ms の debounce、前要求の中断、最新位置の照合で
