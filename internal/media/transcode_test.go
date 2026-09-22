@@ -192,6 +192,55 @@ func TestMOVTranscodeReadsVideoAndAudioFromSeparateInputs(t *testing.T) {
 	}
 }
 
+func TestMOVTranscodeStopsAfterClientCancellation(t *testing.T) {
+	if _, err := exec.LookPath(transcodeCommand); err != nil {
+		t.Skip("ffmpegがありません")
+	}
+	if _, err := exec.LookPath(probeCommand); err != nil {
+		t.Skip("ffprobeがありません")
+	}
+
+	directory := t.TempDir()
+	input := filepath.Join(directory, "long.mov")
+	generate := exec.Command(transcodeCommand,
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc=size=160x90:rate=15:duration=30",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=30",
+		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+		"-c:a", "aac", input,
+	)
+	if output, err := generate.CombinedOutput(); err != nil {
+		t.Fatalf("MOV fixture生成: %v: %s", err, output)
+	}
+
+	transcoder := NewLiveTranscoder(nil)
+	stream, wait, stop, err := transcoder.Start(
+		context.Background(), input, 0, true, time.Now().Add(5*time.Second),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readInitialBytes(stream); err != nil {
+		t.Fatalf("初期データ取得: %v", err)
+	}
+
+	started := time.Now()
+	stop()
+	_ = stream.Close()
+	if err := wait(); err == nil {
+		t.Fatal("cancelしたFFmpegが成功終了しました")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("cancel後のFFmpeg終了に %s かかりました", elapsed)
+	}
+}
+
+func readInitialBytes(stream io.Reader) ([]byte, error) {
+	buffer := make([]byte, 32*1024)
+	length, err := io.ReadAtLeast(stream, buffer, 1)
+	return buffer[:length], err
+}
+
 func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 	tests := []struct {
 		name   string
