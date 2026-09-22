@@ -205,6 +205,48 @@ paths:
         "404":
           description: 動画が存在しないか、サムネイルが未生成
 
+  /api/videos/{id}/seek-thumbnail:
+    get:
+      operationId: getVideoSeekThumbnail
+      summary: 指定時刻のシークプレビュー画像を返す
+      description: |
+        元動画の論理時刻から1秒以内のJPEGを要求時に生成する。画像は保存しない。
+        `v` は内容由来の識別子で、空でない場合だけ長期キャッシュを許可する。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - name: positionMs
+          in: query
+          required: true
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: v
+          in: query
+          description: 一覧・詳細が返したURLに含まれる内容由来の版
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 指定時刻に対応する画像
+          content:
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          description: 画像生成processを開始または完了できない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/videos/{id}/progress:
     put:
       operationId: putVideoProgress
@@ -600,6 +642,9 @@ components:
         thumbnailUrl:
           type: string
           description: thumbnailState = done のときだけ入る
+        seekThumbnailUrl:
+          type: string
+          description: probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL
         progress:
           $ref: "#/components/schemas/Progress"
 

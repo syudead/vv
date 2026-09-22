@@ -127,6 +127,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/seek-thumbnail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 指定時刻のシークプレビュー画像を返す
+         * @description 元動画の論理時刻から1秒以内のJPEGを要求時に生成する。画像は保存しない。
+         *     `v` は内容由来の識別子で、空でない場合だけ長期キャッシュを許可する。
+         */
+        get: operations["getVideoSeekThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/progress": {
         parameters: {
             query?: never;
@@ -354,6 +375,8 @@ export interface components {
             thumbnailState: "pending" | "done" | "failed";
             /** @description thumbnailState = done のときだけ入る */
             thumbnailUrl?: string;
+            /** @description probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL */
+            seekThumbnailUrl?: string;
             progress?: components["schemas"]["Progress"];
         };
         ProgressUpdate: {
@@ -637,6 +660,45 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getVideoSeekThumbnail: {
+        parameters: {
+            query: {
+                positionMs: number;
+                /** @description 一覧・詳細が返したURLに含まれる内容由来の版 */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 指定時刻に対応する画像 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": string;
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 画像生成processを開始または完了できない */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };
