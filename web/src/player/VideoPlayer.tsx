@@ -67,7 +67,7 @@ export default function VideoPlayer({
       ) {
         return;
       }
-      const progress = host.querySelector<HTMLElement>(".vjs-progress-control");
+      const progress = host.querySelector<HTMLElement>(".vjs-progress-holder");
       if (progress !== null) {
         detachSeekPreview = attachSeekPreview(progress, {
           durationMs: video.durationMs,

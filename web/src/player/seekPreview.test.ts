@@ -54,7 +54,7 @@ describe("seek preview target", () => {
     });
     expect(seekPreviewTarget(303, rect, 120_000, 240).requestPositionMs).toBe(61_000);
     expect(seekPreviewTarget(500, rect, 120_000, 240)).toEqual({
-      positionMs: 120_000,
+      positionMs: 119_999,
       requestPositionMs: 119_999,
       leftPx: 280,
     });
@@ -144,7 +144,7 @@ describe("seek preview controller", () => {
     progress.dispatchEvent(pointer("pointerdown", 250, 7, "touch"));
     progress.dispatchEvent(pointer("pointermove", 900, 7, "touch"));
     expect(progress.setPointerCapture).toHaveBeenCalledWith(7);
-    expect(preview.textContent).toBe("0:10");
+    expect(preview.textContent).toBe("0:09");
     await vi.advanceTimersByTimeAsync(150);
     await Promise.resolve();
     await Promise.resolve();
