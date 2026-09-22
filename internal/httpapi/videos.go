@@ -214,7 +214,7 @@ func toAPIVideo(video domain.Video) gen.Video {
 		out.ThumbnailUrl = &url
 	}
 	if video.ProbeState == domain.ProbeStateDone && video.DurationMs != nil &&
-		*video.DurationMs > 0 && video.ContentKey != "" {
+		*video.DurationMs > 0 && video.VideoCodec != "" && video.ContentKey != "" {
 		url := seekThumbnailURL(video)
 		out.SeekThumbnailUrl = &url
 	}

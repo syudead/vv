@@ -106,6 +106,19 @@ func TestListVideosOmitsSeekThumbnailWithoutContentVersion(t *testing.T) {
 	}
 }
 
+func TestListVideosOmitsSeekThumbnailWithoutVideoStream(t *testing.T) {
+	video := sampleVideo(8, "音声のみ")
+	video.VideoCodec = ""
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{
+		page: domain.VideoPage{Items: []domain.Video{video}, Total: 1},
+	}})
+
+	item := decode[gen.VideoPage](t, do(t, handler, http.MethodGet, "/api/videos")).Items[0]
+	if item.SeekThumbnailUrl != nil {
+		t.Errorf("seekThumbnailUrl = %v, want 省略", *item.SeekThumbnailUrl)
+	}
+}
+
 // 再生できない動画は、理由まで一覧に出す（SC-007）。
 func TestListVideosExposesUnplayableReason(t *testing.T) {
 	unplayable := sampleVideo(3, "対応外の動画")

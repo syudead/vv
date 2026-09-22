@@ -25,7 +25,7 @@ func (s *server) GetVideoSeekThumbnail(
 	if !ok {
 		return
 	}
-	if video.ProbeState != domain.ProbeStateDone || video.DurationMs == nil || *video.DurationMs <= 0 {
+	if video.ProbeState != domain.ProbeStateDone || video.DurationMs == nil || *video.DurationMs <= 0 || video.VideoCodec == "" {
 		s.writeError(w, http.StatusConflict, codeConflict, "この動画はプレビューに必要な解析情報がありません")
 		return
 	}

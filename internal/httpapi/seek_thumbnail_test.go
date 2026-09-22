@@ -92,6 +92,16 @@ func TestSeekThumbnailRejectsInvalidPositionAndProbe(t *testing.T) {
 	if rec := do(t, handler, http.MethodGet, "/api/videos/1/seek-thumbnail?positionMs=0"); rec.Code != http.StatusConflict {
 		t.Errorf("probe pending: status=%d", rec.Code)
 	}
+
+	video.ProbeState = domain.ProbeStateDone
+	video.VideoCodec = ""
+	handler = newTestServer(t, Options{
+		Videos:         &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{mediaDir}},
+		SeekThumbnails: extractor,
+	})
+	if rec := do(t, handler, http.MethodGet, "/api/videos/1/seek-thumbnail?positionMs=0"); rec.Code != http.StatusConflict {
+		t.Errorf("video stream missing: status=%d", rec.Code)
+	}
 }
 
 func TestSeekThumbnailMapsFileAndExtractionFailures(t *testing.T) {
