@@ -16,6 +16,7 @@ import (
 
 type fakeTranscoder struct {
 	body      string
+	stream    io.ReadCloser
 	err       error
 	waitErr   error
 	path      string
@@ -32,7 +33,35 @@ func (f *fakeTranscoder) Start(_ context.Context, path string, startMs int64, no
 	if f.err != nil {
 		return nil, nil, nil, f.err
 	}
-	return io.NopCloser(strings.NewReader(f.body)), func() error { f.waits++; return f.waitErr }, func() { f.stops++ }, nil
+	stream := f.stream
+	if stream == nil {
+		stream = io.NopCloser(strings.NewReader(f.body))
+	}
+	return stream, func() error { f.waits++; return f.waitErr }, func() { f.stops++ }, nil
+}
+
+type blockingReadCloser struct {
+	started chan struct{}
+	closed  chan struct{}
+}
+
+func newBlockingReadCloser() *blockingReadCloser {
+	return &blockingReadCloser{started: make(chan struct{}), closed: make(chan struct{})}
+}
+
+func (r *blockingReadCloser) Read(_ []byte) (int, error) {
+	close(r.started)
+	<-r.closed
+	return 0, io.EOF
+}
+
+func (r *blockingReadCloser) Close() error {
+	select {
+	case <-r.closed:
+	default:
+		close(r.closed)
+	}
+	return nil
 }
 
 func transcodeServer(t *testing.T, playable bool, transcoder Transcoder) http.Handler {
@@ -137,6 +166,35 @@ func TestTranscodeReturnsErrorWhenProcessProducesNoBody(t *testing.T) {
 	rec := do(t, transcodeServer(t, false, fake), http.MethodGet, "/api/videos/1/transcode.mp4")
 	if rec.Code != http.StatusInternalServerError || fake.waits != 1 || fake.stops != 1 {
 		t.Errorf("response=%d waits=%d stops=%d", rec.Code, fake.waits, fake.stops)
+	}
+}
+
+func TestTranscodeSilentlyStopsWhenRequestIsCanceledBeforeInitialData(t *testing.T) {
+	stream := newBlockingReadCloser()
+	fake := &fakeTranscoder{stream: stream, waitErr: context.Canceled}
+	handler := transcodeServer(t, false, fake)
+	ctx, cancel := context.WithCancel(context.Background())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/api/videos/1/transcode.mp4", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		done <- rec
+	}()
+	<-stream.started
+	cancel()
+
+	select {
+	case rec := <-done:
+		if rec.Body.Len() != 0 || fake.stops != 1 || fake.waits != 1 {
+			t.Errorf("body=%q stops=%d waits=%d", rec.Body.String(), fake.stops, fake.waits)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled request did not stop")
 	}
 }
 
