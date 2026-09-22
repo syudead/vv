@@ -35,9 +35,19 @@ in the parent Issue or the approved artifacts the statement comes from.
    of them settle — scope the plan does not cover, acceptance evidence that
    cannot be derived, or a question the parent Issue still holds open — do not
    invent it:
-   put that question to the user, and if it changes what gets built, the answer
-   belongs in `plan.md` through `/speckit-plan` before the Issue is created.
-   ([P-5](../../../../docs/design-docs/plan-quality.md))
+   put that question to the user. Where the answer belongs depends on what it
+   settles, and neither one is written here.
+   - It changes what the user gets — scope, an interaction, how data is
+     protected — so it is a requirement: it goes into the parent Issue through
+     the [`issue-spec` skill](../../issue-spec/SKILL.md). Rerun `plan` when the
+     new requirement moves the breakdown or the acceptance evidence.
+   - It is a structural or technical decision the plan should have made: it goes
+     into `plan.md` through `/speckit-plan`
+     ([P-5](../../../../docs/design-docs/plan-quality.md)).
+
+   Create no child Issue until the artifact that owns the answer carries it and
+   a human has approved that change. A child Issue built on an answer the parent
+   Issue does not have leaves the specification behind the implementation.
 5. List the parent's open and closed native sub-issues. Immediately before each
    create, skip the proposal when the same work is already represented.
 6. Create each missing Issue and attach it to the parent through GitHub's native
