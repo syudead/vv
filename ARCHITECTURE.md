@@ -31,7 +31,8 @@ a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
 not duplicate rows, and queues the heavy work. `internal/jobs` runs a single
 serial in-process worker that drives the `internal/media` adapters
-(`ffprobe` for metadata, `ffmpeg` for one library thumbnail plus five-second seek-preview frames per video); interrupted
+(`ffprobe` for metadata, `ffmpeg` for one library thumbnail, five-second seek-preview frames,
+and a content-keyed hover-preview clip per video); interrupted
 jobs are requeued at the next startup. Logical videos are separated from their physical
 locations so the same content may remain available from more than one configured root.
 Folders are not stored: the folder browsing API derives each folder's direct
@@ -44,7 +45,7 @@ Shutdown drains in-flight requests within a 10 second grace period, then stops
 the scanner and the worker so a running job returns to the queue.
 
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
-`videos_fts`, `jobs`, `scans` and the thumbnail files are a rebuildable index
+`videos_fts`, `jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
 (deleting them costs a rescan), while `playback_progress` is user data that
 cannot be reconstructed. That is why playback positions are keyed by the
 content identifier rather than by `videos.id`, and why that table carries no

@@ -96,7 +96,7 @@ func (db *DB) HasFolderLocations(ctx context.Context, dir string) (bool, error) 
 const folderVideoColumns = `videos.id, direct.path, loc.title, loc.size_bytes, loc.mtime,
 	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
 	videos.height, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
-	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state`
+	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.preview_state`
 
 // directVideosCTE は直下の所在を動画ごとに1件へまとめる。同じ動画の所在が
 // 同じフォルダに2つ以上あるときは、パスの昇順で先のものを代表にする。

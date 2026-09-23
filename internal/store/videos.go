@@ -71,7 +71,7 @@ const videoColumnsTemplate = `videos.id,
 	(select mtime from video_locations l where video_id = videos.id and {registered} order by path limit 1) as mtime,
 	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
 	videos.height, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
-	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state`
+	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.preview_state`
 
 func registeredLocationCondition(alias string) string {
 	separator := strconv.Itoa(int(os.PathSeparator))
@@ -128,9 +128,9 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 	}
 
 	var videoID int64
-	var probeState, thumbnailState string
-	err = tx.QueryRowContext(ctx, `select id, probe_state, thumbnail_state from videos where content_key = ?`, file.ContentKey).
-		Scan(&videoID, &probeState, &thumbnailState)
+	var probeState, thumbnailState, previewState string
+	err = tx.QueryRowContext(ctx, `select id, probe_state, thumbnail_state, preview_state from videos where content_key = ?`, file.ContentKey).
+		Scan(&videoID, &probeState, &thumbnailState, &previewState)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return UpsertResult{}, err
 	}
@@ -142,6 +142,7 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 	if newVideo {
 		probeState = string(domain.ProbeStatePending)
 		thumbnailState = string(domain.ThumbnailStatePending)
+		previewState = string(domain.PreviewStatePending)
 		res, err := tx.ExecContext(ctx, `
 		insert into videos
 			(added_at, updated_at, content_key, container, playable, probe_state, thumbnail_state)
@@ -199,6 +200,7 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 		ID: videoID, Outcome: outcome,
 		NeedsProbe:     probeState != string(domain.ProbeStateDone),
 		NeedsThumbnail: thumbnailState != string(domain.ThumbnailStateDone),
+		NeedsPreview:   probeState == string(domain.ProbeStateDone) && previewState != string(domain.PreviewStateDone),
 	}, nil
 }
 
@@ -302,6 +304,134 @@ func (db *DB) SetThumbnailStateForJob(ctx context.Context, job domain.Job, state
 	}
 	count, err := res.RowsAffected()
 	return count == 1, err
+}
+
+// SetPreviewStateForJob applies only to the content and location generation
+// captured when the preview job was claimed.
+func (db *DB) SetPreviewStateForJob(ctx context.Context, job domain.Job, state domain.PreviewState) (bool, error) {
+	res, err := db.sql.ExecContext(ctx, `update videos set preview_state = ?, updated_at = ?
+		where id = ? and content_key = ? and exists (
+			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
+		and location_generation = ?`, string(state), time.Now().Unix(), job.VideoID, job.ContentKey,
+		job.LocationID, job.LocationVersion, job.LocationPath, job.LocationGeneration)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// SetPreviewStateForContent accepts a completed asset after a representative
+// location changed, while still refusing a stale content identity.
+func (db *DB) SetPreviewStateForContent(ctx context.Context, job domain.Job, state domain.PreviewState) (bool, error) {
+	res, err := db.sql.ExecContext(ctx, `update videos set preview_state = ?, updated_at = ?
+		where id = ? and content_key = ?`, string(state), time.Now().Unix(), job.VideoID, job.ContentKey)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
+// CompletePreviewForContent atomically marks the content-keyed asset and its
+// claimed job complete. Location-only changes do not invalidate the asset.
+func (db *DB) CompletePreviewForContent(ctx context.Context, job domain.Job) (bool, error) {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	now := time.Now().Unix()
+	res, err := tx.ExecContext(ctx, `update videos set preview_state = 'done', updated_at = ?
+		where id = ? and content_key = ?`, now, job.VideoID, job.ContentKey)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	res, err = tx.ExecContext(ctx, `update jobs set state = 'done', last_error = null, updated_at = ?
+		where id = ? and kind = 'preview' and video_id = ? and state = 'running'`, now, job.ID, job.VideoID)
+	if err != nil {
+		return false, err
+	}
+	n, err = res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n != 1 {
+		return false, fmt.Errorf("preview job is not running (id=%d)", job.ID)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (db *DB) ContentKeyCurrent(ctx context.Context, videoID int64, key string) (bool, error) {
+	var current int
+	err := db.sql.QueryRowContext(ctx, `select exists(select 1 from videos where id = ? and content_key = ?)`, videoID, key).Scan(&current)
+	return current != 0, err
+}
+
+// PreviewSourceCurrent accepts location-only churn while rejecting a claimed
+// source path that was reassigned to different content during generation.
+func (db *DB) PreviewSourceCurrent(ctx context.Context, job domain.Job) (bool, error) {
+	var current int
+	err := db.sql.QueryRowContext(ctx, `select exists (
+		select 1 from videos where id = ? and content_key = ?
+	) and not exists (
+		select 1 from video_locations l join videos v on v.id = l.video_id
+		where l.path = ? and v.content_key <> ?
+	)`, job.VideoID, job.ContentKey, job.LocationPath, job.ContentKey).Scan(&current)
+	return current != 0, err
+}
+
+func (db *DB) PreviewAssets(ctx context.Context) ([]domain.PreviewAsset, error) {
+	rows, err := db.sql.QueryContext(ctx, `select id, content_key, preview_state from videos`)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var assets []domain.PreviewAsset
+	for rows.Next() {
+		var item domain.PreviewAsset
+		if err := rows.Scan(&item.ID, &item.ContentKey, &item.State); err != nil {
+			return nil, err
+		}
+		assets = append(assets, item)
+	}
+	return assets, rows.Err()
+}
+
+func (db *DB) SetPreviewState(ctx context.Context, id int64, state domain.PreviewState) error {
+	_, err := db.sql.ExecContext(ctx, `update videos set preview_state = ?, updated_at = ? where id = ?`, string(state), time.Now().Unix(), id)
+	return err
+}
+
+// RequeuePreviewRepair atomically makes a corrupt completed asset pending and
+// replaces any retained terminal job with one queued repair.
+func (db *DB) RequeuePreviewRepair(ctx context.Context, id int64) error {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	now := time.Now().Unix()
+	if _, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', updated_at = ? where id = ?`, now, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = 'preview' and video_id = ? and state in ('done', 'failed')`, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
+		select 'preview', ?, 'queued', 0, ?, ?
+		where exists (select 1 from videos where id = ?)
+		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`, id, now, now, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (db *DB) VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error) {
@@ -491,7 +621,7 @@ func (db *DB) DeleteVideoLocations(ctx context.Context, ids []int64) error {
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
 // 走査はこれと実際のファイルを突き合わせて差分を出す。
 func (db *DB) IndexedVideosByPath(ctx context.Context) (map[string]IndexedVideo, error) {
-	rows, err := db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state from video_locations l join videos v on v.id = l.video_id`)
+	rows, err := db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state, v.preview_state from video_locations l join videos v on v.id = l.video_id`)
 	if err != nil {
 		return nil, fmt.Errorf("索引を読み出せません: %w", err)
 	}
@@ -502,7 +632,7 @@ func (db *DB) IndexedVideosByPath(ctx context.Context) (map[string]IndexedVideo,
 		var path string
 		var video IndexedVideo
 		var mtime int64
-		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &video.ProbeState, &video.ThumbnailState); err != nil {
+		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &video.ProbeState, &video.ThumbnailState, &video.PreviewState); err != nil {
 			return nil, fmt.Errorf("索引を読み出せません: %w", err)
 		}
 		video.MTime = time.Unix(mtime, 0)
@@ -651,20 +781,20 @@ type rowScanner interface {
 // scanVideo は1行を domain.Video へ写す。列の並びは videoColumns と対応する。
 func scanVideo(row rowScanner) (domain.Video, error) {
 	var (
-		video                             domain.Video
-		mtime, addedAt, updatedAt         int64
-		durationMs                        sql.NullInt64
-		width, height                     sql.NullInt64
-		container, videoCodec, audioCodec sql.NullString
-		unplayableReason, probeError      sql.NullString
-		playable                          int
-		probeState, thumbnailState        string
+		video                                    domain.Video
+		mtime, addedAt, updatedAt                int64
+		durationMs                               sql.NullInt64
+		width, height                            sql.NullInt64
+		container, videoCodec, audioCodec        sql.NullString
+		unplayableReason, probeError             sql.NullString
+		playable                                 int
+		probeState, thumbnailState, previewState string
 	)
 
 	err := row.Scan(
 		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &addedAt, &updatedAt,
 		&video.ContentKey, &durationMs, &width, &height, &container, &videoCodec, &audioCodec,
-		&playable, &unplayableReason, &probeState, &probeError, &thumbnailState,
+		&playable, &unplayableReason, &probeState, &probeError, &thumbnailState, &previewState,
 	)
 	if err != nil {
 		return domain.Video{}, err
@@ -693,6 +823,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.ProbeState = domain.ProbeState(probeState)
 	video.ProbeError = probeError.String
 	video.ThumbnailState = domain.ThumbnailState(thumbnailState)
+	video.PreviewState = domain.PreviewState(previewState)
 
 	return video, nil
 }

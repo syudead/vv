@@ -45,6 +45,7 @@ function video(id: number, title: string): Video {
     playable: true,
     probeState: "done",
     thumbnailState: "done",
+    previewState: "pending",
   };
 }
 

@@ -114,6 +114,7 @@ func sampleVideo(id int64, title string) domain.Video {
 		Playable:       true,
 		ProbeState:     domain.ProbeStateDone,
 		ThumbnailState: domain.ThumbnailStateDone,
+		PreviewState:   domain.PreviewStatePending,
 	}
 }
 

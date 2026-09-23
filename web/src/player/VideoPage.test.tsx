@@ -31,6 +31,7 @@ const video: Video = {
   playable: true,
   probeState: "done",
   thumbnailState: "done",
+  previewState: "pending",
   durationMs: 242_000,
   width: 1920,
   height: 1080,

@@ -85,6 +85,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 生成済み hover preview を配信する
+         * @description 保存済みの preview MP4 だけを Range 対応で配信する。元動画の stream や
+         *     live transcode へ fallback しない。`v` が current content key と一致する
+         *     ときだけ immutable cache を許可する。
+         */
+        get: operations["getVideoPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/transcode.mp4": {
         parameters: {
             query?: never;
@@ -468,8 +490,12 @@ export interface components {
             probeError?: string;
             /** @enum {string} */
             thumbnailState: "pending" | "done" | "failed";
+            /** @enum {string} */
+            previewState: "pending" | "done" | "failed";
             /** @description thumbnailState = done のときだけ入る */
             thumbnailUrl?: string;
+            /** @description previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL */
+            previewUrl?: string;
             /** @description probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL */
             seekThumbnailUrl?: string;
             progress?: components["schemas"]["Progress"];
@@ -683,6 +709,52 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": string;
+                };
+            };
+            404: components["responses"]["NotFound"];
+            /** @description 範囲指定が不正 */
+            416: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getVideoPreview: {
+        parameters: {
+            query?: {
+                /** @description 一覧・詳細が返した current content key */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description preview MP4 全体 */
+            200: {
+                headers: {
+                    "Accept-Ranges"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
+                };
+            };
+            /** @description preview MP4 の指定範囲 */
+            206: {
+                headers: {
+                    "Accept-Ranges"?: string;
+                    "Content-Range"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "video/mp4": string;
                 };
             };
             404: components["responses"]["NotFound"];

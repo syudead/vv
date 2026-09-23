@@ -19,6 +19,7 @@ const base: Video = {
   playable: true,
   probeState: "done",
   thumbnailState: "done",
+  previewState: "pending",
   durationMs: 10_000,
   videoCodec: "h264",
 };

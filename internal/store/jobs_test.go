@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -431,6 +432,411 @@ func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	}
 	if retried.LocationPath != "/media/z.mp4" {
 		t.Fatalf("retry path = %q, want /media/z.mp4", retried.LocationPath)
+	}
+}
+
+func TestPreviewStateUsesContentIdentityForSuccessAndClaimIdentityForFailure(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	probe := domain.Probe{DurationMs: 1000, VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability(domain.ContainerFromPath("/media/a.mp4"), probe)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", "key-a", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	written, err := db.SetPreviewStateForContent(ctx, job, domain.PreviewStateDone)
+	if err != nil || !written {
+		t.Fatalf("content-key completion = %v, %v", written, err)
+	}
+	if err := db.SetPreviewState(ctx, videoID, domain.PreviewStatePending); err != nil {
+		t.Fatal(err)
+	}
+	written, err = db.SetPreviewStateForJob(ctx, job, domain.PreviewStateFailed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written {
+		t.Fatal("stale location claim marked preview failed")
+	}
+	video, err := db.GetVideo(ctx, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.PreviewState != domain.PreviewStatePending {
+		t.Fatalf("preview state = %q, want pending", video.PreviewState)
+	}
+}
+
+func TestDeleteFinishedJobsRemovesTerminalPreviewFailure(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-8 * 24 * time.Hour).Unix()
+	if _, err := db.SQL().Exec(`update videos set preview_state = 'failed' where id = ?`, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`update jobs set state = 'failed', attempts = ?, updated_at = ? where video_id = ? and kind = 'preview'`, MaxJobAttempts, old, videoID); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-JobRetention))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed != 1 || countJobs(t, db) != 0 {
+		t.Fatalf("removed = %d, jobs = %d", removed, countJobs(t, db))
+	}
+}
+
+func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, MaxJobAttempts-1, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.FailClaimedJob(ctx, job, "preview failed"); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobState(t, db, job.ID); got != "failed" {
+		t.Fatalf("job state = %q, want failed", got)
+	}
+	video, err := db.GetVideo(ctx, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.PreviewState != domain.PreviewStateFailed {
+		t.Fatalf("preview state = %q, want failed", video.PreviewState)
+	}
+}
+
+func TestFailClaimedPreviewKeepsPendingWhileRetrying(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.FailClaimedJob(ctx, job, "retry preview"); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobState(t, db, job.ID); got != "queued" {
+		t.Fatalf("job state = %q, want queued", got)
+	}
+	video, err := db.GetVideo(ctx, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.PreviewState != domain.PreviewStatePending {
+		t.Fatalf("preview state = %q, want pending", video.PreviewState)
+	}
+}
+
+func TestFailClaimedPreviewRollsBackJobWhenStateUpdateFails(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, MaxJobAttempts-1, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`create trigger reject_preview_failure before update of preview_state on videos
+		when new.preview_state = 'failed' begin select raise(abort, 'reject preview failure'); end`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.FailClaimedJob(ctx, job, "preview failed"); err == nil {
+		t.Fatal("FailClaimedJob succeeded despite rejected preview state update")
+	}
+	if got := jobState(t, db, job.ID); got != "running" {
+		t.Fatalf("job state = %q, want running after rollback", got)
+	}
+	video, err := db.GetVideo(ctx, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.PreviewState != domain.PreviewStatePending {
+		t.Fatalf("preview state = %q, want pending after rollback", video.PreviewState)
+	}
+}
+
+func TestReconcilePreviewFailuresRequeuesStaleClaim(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	probe := domain.Probe{DurationMs: 1_000, VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`update jobs set state = 'failed', attempts = ? where id = ?`, MaxJobAttempts, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`update video_locations set version = version + 1 where id = ?`, job.LocationID); err != nil {
+		t.Fatal(err)
+	}
+	marked, requeued, err := db.ReconcilePreviewFailures(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if marked != 0 || requeued != 1 {
+		t.Fatalf("reconciled marked=%d requeued=%d, want 0/1", marked, requeued)
+	}
+	video, err := db.GetVideo(ctx, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.PreviewState != domain.PreviewStatePending {
+		t.Fatalf("preview state = %q, want pending", video.PreviewState)
+	}
+	retry, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retry.Kind != JobPreview || retry.VideoID != videoID || retry.LocationVersion == job.LocationVersion {
+		t.Fatalf("retry job = %+v, stale job = %+v", retry, job)
+	}
+}
+
+func TestReconcilePreviewFailuresRequeuesClaimFromUnregisteredLocation(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	rootA := filepath.Join(root, "a")
+	rootB := filepath.Join(root, "b")
+	for _, path := range []string{rootA, rootB} {
+		if err := os.Mkdir(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	folderA, err := db.AddMediaFolder(ctx, rootA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.AddMediaFolder(ctx, rootB); err != nil {
+		t.Fatal(err)
+	}
+	video, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootA, "movie.mp4"), "movie", "same", 1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootB, "movie.mp4"), "movie", "same", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	probe := domain.Probe{DurationMs: 1_000, VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.EnqueueJob(ctx, JobPreview, video.ID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.LocationPath != filepath.Join(rootA, "movie.mp4") {
+		t.Fatalf("claimed location = %q, want location A", job.LocationPath)
+	}
+	if _, err := db.SQL().Exec(`delete from media_folders where id = ?`, folderA.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SQL().Exec(`update jobs set state = 'failed', attempts = ? where id = ?`, MaxJobAttempts, job.ID); err != nil {
+		t.Fatal(err)
+	}
+	marked, requeued, err := db.ReconcilePreviewFailures(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if marked != 0 || requeued != 1 {
+		t.Fatalf("reconciled marked=%d requeued=%d, want 0/1", marked, requeued)
+	}
+	got, err := db.GetVideo(ctx, video.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PreviewState != domain.PreviewStatePending {
+		t.Fatalf("preview state = %q, want pending", got.PreviewState)
+	}
+	retry, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retry.LocationPath != filepath.Join(rootB, "movie.mp4") {
+		t.Fatalf("retry location = %q, want registered location B", retry.LocationPath)
+	}
+}
+
+func TestPreviewRunningJobIsRequeuedAfterRestart(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	claimed, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if claimed.Kind != JobPreview {
+		t.Fatalf("kind = %q", claimed.Kind)
+	}
+	if restored, err := db.RequeueRunningJobs(ctx); err != nil || restored != 1 {
+		t.Fatalf("RequeueRunningJobs() = %d, %v", restored, err)
+	}
+	retried, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if retried.ID != claimed.ID || retried.Kind != JobPreview {
+		t.Fatalf("retried job = %+v, want id %d preview", retried, claimed.ID)
+	}
+}
+
+func TestPreviewCompletionRejectsChangedContent(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "replacement", "key-b", 2048, time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	current, err := db.ContentKeyCurrent(ctx, job.VideoID, job.ContentKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current {
+		t.Fatal("changed content remained current")
+	}
+	written, err := db.SetPreviewStateForContent(ctx, job, domain.PreviewStateDone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if written {
+		t.Fatal("changed content accepted stale preview completion")
+	}
+}
+
+func TestPreviewSourceRejectsReassignedClaimedPathWithOriginalContentRemaining(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	video, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-a", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.EnqueueJob(ctx, JobPreview, video.ID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.LocationPath != "/media/a.mp4" {
+		t.Fatalf("claimed path = %q", job.LocationPath)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "replacement", "key-b", 2048, time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	contentCurrent, err := db.ContentKeyCurrent(ctx, job.VideoID, job.ContentKey)
+	if err != nil || !contentCurrent {
+		t.Fatalf("original content should remain through b.mp4: %v, %v", contentCurrent, err)
+	}
+	sourceCurrent, err := db.PreviewSourceCurrent(ctx, job)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sourceCurrent {
+		t.Fatal("claimed path reassigned to different content was accepted")
+	}
+}
+
+func TestPreviewSourceAcceptsLocationOnlyChange(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", job.ContentKey, 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	current, err := db.PreviewSourceCurrent(ctx, job)
+	if err != nil || !current {
+		t.Fatalf("location-only change = %v, %v; want current", current, err)
+	}
+}
+
+func TestCompletePreviewAtomicallyFinishesAssetAndJobAfterCancellation(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", job.ContentKey, 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	applied, err := db.CompletePreviewForContent(context.WithoutCancel(cancelled), job)
+	if err != nil || !applied {
+		t.Fatalf("CompletePreviewForContent() = %v, %v", applied, err)
+	}
+	if got := jobState(t, db, job.ID); got != "done" {
+		t.Fatalf("job state = %q, want done", got)
+	}
+	video, err := db.GetVideo(ctx, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.PreviewState != domain.PreviewStateDone {
+		t.Fatalf("preview state = %q, want done", video.PreviewState)
+	}
+	if err := db.CompleteClaimedJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobState(t, db, job.ID); got != "done" {
+		t.Fatalf("generic completion rewrote atomic preview completion to %q", got)
 	}
 }
 
