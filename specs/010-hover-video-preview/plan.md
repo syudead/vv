@@ -56,6 +56,7 @@ Phase 1 後も例外や Complexity Tracking を必要とする違反はない。
 ```text
 specs/010-hover-video-preview/
 ├── plan.md
+├── ui-design.md
 ├── research.md
 ├── data-model.md
 ├── quickstart.md
