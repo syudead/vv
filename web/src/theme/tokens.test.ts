@@ -75,6 +75,8 @@ describe("contrast", () => {
     ["warning", "bg", 4.5],
     ["success", "bg", 4.5],
     ["fg", "navbar", 4.5],
+    // 動画詳細画面の段階表示・読み取り失敗・再生失敗の説明（プレイヤーの上の不透明な面）。
+    ["fg-muted", "navbar", 4.5],
     ["accent", "navbar", 4.5],
     ["success", "navbar", 4.5],
     ["bg", "fg", 4.5],
