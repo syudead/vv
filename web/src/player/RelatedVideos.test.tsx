@@ -72,11 +72,13 @@ describe("RelatedVideos", () => {
     if (first === undefined || second === undefined || third === undefined) {
       throw new Error("項目が足りません");
     }
-    expect(within(first).getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
-      "20",
-    );
-    expect(within(second).queryByRole("progressbar")).toBeNull();
-    expect(within(third).queryByRole("progressbar")).toBeNull();
+    expect(
+      within(first)
+        .getByRole("progressbar", { hidden: true })
+        .getAttribute("aria-valuenow"),
+    ).toBe("20");
+    expect(within(second).queryByRole("progressbar", { hidden: true })).toBeNull();
+    expect(within(third).queryByRole("progressbar", { hidden: true })).toBeNull();
   });
 
   it("0 件のときは見出しも並びも出さず、× だけを残す", () => {
@@ -101,5 +103,25 @@ describe("RelatedVideos", () => {
       },
     });
     expect(screen.getByText("準備中")).toBeDefined();
+  });
+
+  it("リンクの読み上げ名は長さと題名だけで、進捗の数値を含めない", () => {
+    renderList({
+      kind: "ready",
+      id: 1,
+      related: {
+        items: [
+          item(2, {
+            progress: {
+              positionMs: 32_500,
+              completed: false,
+              updatedAt: "2026-09-02T00:00:00Z",
+            },
+          }),
+        ],
+      },
+    });
+    expect(screen.getByRole("link", { name: "1:05 関連 2" })).toBeDefined();
+    expect(screen.queryByRole("progressbar")).toBeNull();
   });
 });

@@ -92,6 +92,11 @@ const mock = vi.hoisted(() => {
       if (value !== undefined) this.userActiveValue = value;
       return this.userActiveValue;
     }
+    started = false;
+    hasStarted(value?: boolean) {
+      if (value !== undefined) this.started = value;
+      return this.started;
+    }
     poster(value?: string) {
       if (value !== undefined) this.posterValue = value;
       return this.posterValue;
@@ -356,6 +361,8 @@ describe("VideoPlayer", () => {
     act(() => player.trigger("error"));
     expect(values.onError).toHaveBeenCalledWith(42_500);
     expect(player.errorValue).toBeNull();
+    // 変換へ切り替えたあとの失敗でも、操作バーを出す印を付け直す。
+    expect(player.started).toBe(true);
   });
 
   it("autoplayなら作ってすぐ再生を始める", async () => {

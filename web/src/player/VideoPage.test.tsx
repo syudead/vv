@@ -308,6 +308,31 @@ describe("VideoPage", () => {
     });
   });
 
+  describe("位置と大きさ", () => {
+    it("開いたときと別の動画へ移ったときに、ページの先頭へ戻す", async () => {
+      const scrollTo = vi.fn();
+      vi.stubGlobal("scrollTo", scrollTo);
+      server.videos.set(8, [{ ...related(8, "後続の動画"), location: video.location }]);
+      renderPage("7", "/?q=a");
+      await ready();
+      expect(scrollTo).toHaveBeenCalledWith(0, 0);
+      scrollTo.mockClear();
+      fireEvent.click(await screen.findByRole("link", { name: /後続の動画/ }));
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("後続の動画"),
+      );
+      expect(scrollTo).toHaveBeenCalledWith(0, 0);
+    });
+
+    it("プレイヤーの入れ物は列を 1 本（minmax(0,1fr)）に固定し、層を幅の中で折り返させる", async () => {
+      renderPage();
+      await ready();
+      // 列の指定が無いと、層の列が内容の幅まで広がり、狭い幅で右が切れる。
+      const frame = document.querySelector("[data-player-frame]");
+      expect(frame?.className.split(" ")).toContain("grid-cols-[minmax(0,1fr)]");
+    });
+  });
+
   describe("関連動画", () => {
     it("関連動画から移ったあとの × は最初の一覧へ戻る", async () => {
       server.videos.set(8, [{ ...related(8, "後続の動画"), location: video.location }]);

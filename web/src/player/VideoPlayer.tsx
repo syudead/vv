@@ -320,6 +320,9 @@ export default function VideoPlayer(props: Props) {
         // 失敗したときも、操作バーを隠したままにしない。
         player.error(null);
         setHoldControlBar(false);
+        // 変換へ切り替えると video.js は「再生を始めた」印（vjs-has-started）を外し、
+        // 操作バーを出さなくなる。失敗の層の下でも操作バーを押せるように付け直す。
+        player.hasStarted(true);
         return;
       }
 

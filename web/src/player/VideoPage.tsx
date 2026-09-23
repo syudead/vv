@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 
 import {
@@ -88,6 +95,12 @@ export default function VideoPage() {
   const related =
     relatedState.id === id ? relatedState : { kind: "loading" as const, id };
   const video = detail.kind === "ready" ? detail.video : undefined;
+
+  // 一覧をスクロールした位置から来ても、プレイヤーを画面の上に出す。別の動画へ移ったときも
+  // 同じ。一覧へ戻ったときの位置の復元は一覧の側（LibraryPage）が行う。
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
 
   const [pageId, setPageId] = useState(id);
   const [controls, setControls] = useState<PlayerControls | null>(null);
@@ -306,7 +319,7 @@ export default function VideoPage() {
           <div
             ref={frameRef}
             data-player-frame=""
-            className="relative isolate mx-auto grid w-full max-w-[calc((100dvh-9rem)*16/9)] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
+            className="relative isolate mx-auto grid w-full grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-9rem)*16/9)] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
           >
             {/* 16:9 は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
                 全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}

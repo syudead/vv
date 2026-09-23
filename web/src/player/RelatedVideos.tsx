@@ -52,6 +52,8 @@ export function VideoThumbnail({
       )}
       {ratio !== null && (
         <span
+          // リンクの読み上げ名に割合の数値が混ざらないように、読み上げからは外す。
+          aria-hidden="true"
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
