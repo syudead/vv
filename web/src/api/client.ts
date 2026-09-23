@@ -1,4 +1,5 @@
 import type { components } from "./gen/openapi";
+import { clearListSnapshot } from "./listSnapshot";
 
 // 型は api/openapi.yaml からの生成物を使う。契約を変えると、ここが
 // コンパイルエラーになって気付ける。
@@ -178,32 +179,41 @@ export function listMediaFolders(signal?: AbortSignal): Promise<MediaFolder[]> {
   return request<MediaFolder[]>("/api/media-folders", { signal });
 }
 
-/** createMediaFolder は選択済みpathを1件追加する。 */
-export function createMediaFolder(
+/**
+ * createMediaFolder は選択済みpathを1件追加する。
+ *
+ * 登録フォルダを変える3つの操作は、成功したら一覧の控えを捨てる。控えは
+ * 登録の変更を知らないので、戻ったときに消えたフォルダや古い一覧を出してしまう。
+ */
+export async function createMediaFolder(
   path: string,
   signal?: AbortSignal,
 ): Promise<MediaFolder> {
-  return request<MediaFolder>("/api/media-folders", {
+  const created = await request<MediaFolder>("/api/media-folders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path }),
     signal,
   });
+  clearListSnapshot();
+  return created;
 }
 
 /** updateMediaFolder は1件だけをversion付きで置き換える。 */
-export function updateMediaFolder(
+export async function updateMediaFolder(
   id: number,
   path: string,
   version: number,
   signal?: AbortSignal,
 ): Promise<MediaFolder> {
-  return request<MediaFolder>(`/api/media-folders/${String(id)}`, {
+  const updated = await request<MediaFolder>(`/api/media-folders/${String(id)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path, version }),
     signal,
   });
+  clearListSnapshot();
+  return updated;
 }
 
 /** deleteMediaFolder は1件だけをversion付きで削除する。 */
@@ -219,6 +229,7 @@ export async function deleteMediaFolder(
   if (!response.ok) {
     throw await toRequestFailed(response);
   }
+  clearListSnapshot();
 }
 
 /** listDirectories はpickerのnavigation起点または指定path直下を取得する。 */

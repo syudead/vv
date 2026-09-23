@@ -10,6 +10,7 @@ import {
   transcodeUrl,
   updateMediaFolder,
 } from "./client";
+import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
 describe("playback URLs", () => {
   it("transcode startMsを省略または整数化する", () => {
@@ -116,6 +117,36 @@ describe("settings API client", () => {
         signal,
       }),
     );
+  });
+
+  it("登録フォルダの追加・変更・削除が成功したら一覧の控えを捨て、失敗したら残す", async () => {
+    const key = { query: "", sort: "addedDesc" as const, folder: "3\0A" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+
+    fetch.mockResolvedValueOnce(jsonResponse({ id: 1, path: "/a", version: 1 }));
+    hold();
+    await createMediaFolder("/a");
+    expect(takeListSnapshot(key)).toBeUndefined();
+
+    fetch.mockResolvedValueOnce(jsonResponse({ id: 1, path: "/b", version: 2 }));
+    hold();
+    await updateMediaFolder(1, "/b", 1);
+    expect(takeListSnapshot(key)).toBeUndefined();
+
+    fetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    hold();
+    await deleteMediaFolder(1, 2);
+    expect(takeListSnapshot(key)).toBeUndefined();
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "version_conflict", message: "conflict" }, 409),
+    );
+    hold();
+    await expect(deleteMediaFolder(1, 1)).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
   });
 
   it("encodes directory paths and forwards cancellation", async () => {
