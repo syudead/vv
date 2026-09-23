@@ -70,7 +70,7 @@
 | waiting/stalled after playing | 現在の preview frame を維持し、再開を待つ |
 | pending/failed/missing preview | idle のまま。source stream fallback なし |
 | play/media error | idle へ即時復帰し、再 hover を許可 |
-| selection/focus/touch/pen | 既存 interaction のみ。preview 開始なし |
+| focus/touch/pen、checkbox の直接操作 | 既存 interaction のみ。preview 開始なし |
 
 ## Observable Review Criteria
 
