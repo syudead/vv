@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"testing"
 	"time"
@@ -199,5 +200,28 @@ func TestListFolderVideosRejectsBrokenCursor(t *testing.T) {
 	_, err := db.ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media/A", Cursor: "!!"})
 	if !errors.Is(err, ErrInvalidCursor) {
 		t.Errorf("err = %v, want ErrInvalidCursor", err)
+	}
+}
+
+// Unix では `\` はファイル名の一部なので、`A\` という名前のフォルダを `A` と
+// 取り違えない。
+func TestFolderNamesEndingWithBackslashOnUnix(t *testing.T) {
+	if os.PathSeparator != '/' {
+		t.Skip("`\\` is a path separator on this OS")
+	}
+	db, _ := folderFixture(t,
+		sampleFile("/media/A\\/movie.mp4", "movie", "key-m", 1, 0),
+		sampleFile("/media/A/other.mp4", "other", "key-o", 1, 0),
+	)
+	page, err := db.ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media/A\\"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := titlesOf(page); !slices.Equal(got, []string{"movie"}) {
+		t.Errorf("A\\ = %q, want only movie", got)
+	}
+	found, err := db.HasFolderLocations(context.Background(), "/media/A\\")
+	if err != nil || !found {
+		t.Errorf("HasFolderLocations(A\\) = %v, %v; want true", found, err)
 	}
 }

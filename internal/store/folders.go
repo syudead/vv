@@ -12,10 +12,16 @@ import (
 )
 
 // folderPrefix はフォルダ配下の所在の接頭辞（フォルダのパス + 区切り）を返す。
-// `/` のように区切りで終わるフォルダには区切りを重ねない。
+// `/` のように区切りで終わるフォルダには区切りを重ねない。落とすのはその OS の
+// 区切りだけで、Unix では `\` はファイル名の一部なので残す（`A\` という名前の
+// フォルダを `A` と取り違えない）。
 func folderPrefix(dir string) string {
 	separator := string(os.PathSeparator)
-	prefix := strings.TrimRight(dir, `/\`) + separator
+	cutset := separator
+	if runtime.GOOS == "windows" {
+		cutset = `/\`
+	}
+	prefix := strings.TrimRight(dir, cutset) + separator
 	if runtime.GOOS == "windows" {
 		prefix = strings.ToLower(prefix)
 	}
