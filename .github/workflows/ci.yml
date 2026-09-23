@@ -59,8 +59,47 @@ jobs:
       - name: 追加runtimeの要らない検査
         run: task check
 
+  # e2e は一番長いジョブなので、画面にも挙動にも効かない変更（文書、Plan、
+  # エージェントの手順）だけの PR では回さない。if で飛ばしたジョブは成功扱い
+  # なので、必須チェックにしていても PR は止まらない。main への push では常に回す。
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      e2e: ${{ steps.filter.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          # pull_request は base との merge commit を取り出す。1つ前の親が
+          # base なので、2世代あれば PR の変更だけを比べられる。
+          fetch-depth: 2
+
+      - name: e2e を要する変更かを調べる
+        id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "e2e=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # ここに無いものは全部 e2e の対象にする。新しい置き場所を足しても
+          # 既定で検査される側に倒すためである。
+          code=$(git diff --name-only HEAD^1 HEAD |
+            grep -Ev '(\.md$|^docs/|^specs/|^\.agents/|^\.claude/|^renovate\.json$)' || true)
+          if [ -n "$code" ]; then
+            printf 'e2e の対象:\n%s\n' "$code"
+            echo "e2e=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "文書だけの変更なので e2e を飛ばす"
+            echo "e2e=false" >> "$GITHUB_OUTPUT"
+          fi
+
   e2e:
     name: Browser E2E
+    needs: changes
+    if: needs.changes.outputs.e2e == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -69,6 +108,15 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+          # Checks ジョブと同じキーにして、task check が温めたビルドキャッシュを使う。
+          cache-dependency-path: |
+            go.sum
+            tools/go.sum
+
+      # run-e2e.mjs は GOCACHE が決まっていればそこを使う。setup-go が復元した
+      # 場所を渡し、ビルドをゼロからやり直さないようにする。
+      - name: Goのビルドキャッシュの場所を渡す
+        run: echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
@@ -83,14 +131,54 @@ jobs:
       - name: Web依存を取得する
         run: npm --prefix web ci
 
+      # ffmpeg は apt の索引の更新と取得に時間がかかるので、.deb を runner の
+      # イメージ版ごとに取っておく。同じイメージなら入る版も依存も変わらない。
+      - name: runnerのイメージ版を調べる
+        id: image
+        run: echo "version=$ImageOS-$ImageVersion" >> "$GITHUB_OUTPUT"
+
+      - name: メディア処理コマンドのパッケージを復元する
+        id: ffmpeg-debs
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ffmpeg-debs
+          key: ffmpeg-debs-${{ steps.image.outputs.version }}
+
       - name: メディア処理コマンドを取得する
+        env:
+          CACHE_HIT: ${{ steps.ffmpeg-debs.outputs.cache-hit }}
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes ffmpeg
+          debs="$HOME/.cache/ffmpeg-debs"
+          if [ "$CACHE_HIT" != "true" ]; then
+            mkdir -p "$debs/partial"
+            sudo apt-get update
+            sudo apt-get install --yes --download-only --no-install-recommends \
+              -o Dir::Cache::archives="$debs" ffmpeg
+            sudo rm -rf "$debs/partial" "$debs/lock"
+            sudo chown -R "$USER" "$debs"
+          fi
+          # イメージに初めから入っていれば取るものが無い。
+          if compgen -G "$debs/*.deb" > /dev/null; then sudo dpkg -i "$debs"/*.deb; fi
+          ffmpeg -version | head -n 1
+
+      # ubuntu-latest には Chrome とその依存ライブラリが入っているので、
+      # --with-deps（apt の更新と導入）は付けず、ブラウザ本体だけを版ごとに取っておく。
+      - name: Playwrightの版を調べる
+        id: playwright
+        working-directory: web
+        run: echo "version=$(npx playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Chromiumを復元する
+        id: chromium
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}
 
       - name: Chromiumを取得する
+        if: steps.chromium.outputs.cache-hit != 'true'
         working-directory: web
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: 実ブラウザE2E
         run: task test-e2e

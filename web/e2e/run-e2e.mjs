@@ -13,6 +13,11 @@ const output = path.join(outputDir, process.platform === "win32" ? "mdm.exe" : "
 const mediaDir = path.join(runRoot, "media");
 const settingsMediaDir = path.join(runRoot, "settings-media");
 const foldersMediaDir = path.join(runRoot, "folders-media");
+// Go のビルドキャッシュは実行をまたいで使い回す。実行ごとの runRoot に置くと
+// 毎回ゼロからのコンパイルになる。既定の置き場（GOCACHE）が決まっていれば
+// それに従い（CI は setup-go が復元した場所を渡す）、無ければ作業ツリーの中の
+// .local に置く。作業ツリーの外に書けない環境でも動くようにするためである。
+const goCache = process.env.GOCACHE ?? path.join(repoRoot, ".local", "go-build");
 
 function run() {
   mkdirSync(outputDir, { recursive: true });
@@ -24,7 +29,7 @@ function run() {
       ["test", "./internal/media", "-run", "^TestVideoEncode.*WithFFmpeg$", "-count=1"],
       {
         cwd: repoRoot,
-        env: { ...process.env, GOCACHE: path.join(runRoot, "go-build") },
+        env: { ...process.env, GOCACHE: goCache },
         stdio: "inherit",
       },
     );
@@ -35,7 +40,7 @@ function run() {
       ["build", "-buildvcs=false", "-o", output, "./cmd/mdm"],
       {
         cwd: repoRoot,
-        env: { ...process.env, GOCACHE: path.join(runRoot, "go-build") },
+        env: { ...process.env, GOCACHE: goCache },
         stdio: "inherit",
       },
     );
