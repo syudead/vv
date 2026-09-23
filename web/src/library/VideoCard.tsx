@@ -1,5 +1,14 @@
 import { AlertTriangle, Check, ImageOff } from "lucide-react";
-import { memo, type MouseEvent } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+} from "react";
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
@@ -22,6 +31,10 @@ export interface VideoCardProps {
   selected: boolean;
   selectionMode: boolean;
   onSelect: (id: number, selected: boolean) => void;
+  activePreviewId?: number | null;
+  previewResetEpoch?: number;
+  onPreviewStart?: (id: number) => void;
+  onPreviewReset?: () => void;
 }
 
 function useCardState(video: Video) {
@@ -39,9 +52,16 @@ function SelectCheck({
   selected,
   selectionMode,
   onSelect,
-}: Pick<VideoCardProps, "video" | "selected" | "selectionMode" | "onSelect">) {
+  previewing,
+  onPreviewCancel,
+}: Pick<VideoCardProps, "video" | "selected" | "selectionMode" | "onSelect"> & {
+  previewing: boolean;
+  onPreviewCancel: () => void;
+}) {
   return (
     <div
+      data-preview-checkbox="true"
+      onPointerEnter={onPreviewCancel}
       className={cn(
         "absolute top-2 left-2 z-20 transition-opacity duration-150",
         selectionMode || selected
@@ -53,6 +73,7 @@ function SelectCheck({
         checked={selected}
         onCheckedChange={(next) => onSelect(video.id, next)}
         label={`「${video.title}」を選択`}
+        className={previewing ? "!bg-navbar" : undefined}
         onClick={(event: MouseEvent) => event.stopPropagation()}
       />
     </div>
@@ -64,12 +85,101 @@ function SelectCheck({
  * 右下に「720P 59:11」の文字（ホバーで消える）、下に題名と日付・大きさ。
  */
 function VideoCard(props: VideoCardProps) {
-  const { video, backTo, selected, selectionMode, onSelect } = props;
-  const { duration, unplayable, state, ratio, quality } = useCardState(video);
+  const {
+    video,
+    backTo,
+    selected,
+    selectionMode,
+    onSelect,
+    activePreviewId = null,
+    previewResetEpoch = 0,
+    onPreviewStart,
+    onPreviewReset,
+  } = props;
+  const eligible = video.previewState === "done" && video.previewUrl !== undefined;
+  const {
+    duration,
+    unplayable: rawUnplayable,
+    state,
+    ratio,
+    quality,
+  } = useCardState(video);
+  const unplayable = eligible ? null : rawUnplayable;
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const lifecycle = useRef(0);
+  const observedResetEpoch = useRef(previewResetEpoch);
+  const [attempting, setAttempting] = useState(false);
+  const [playing, setPlaying] = useState(false);
+
+  const releasePreview = useCallback(() => {
+    lifecycle.current += 1;
+    if (timer.current !== null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    const element = videoRef.current;
+    if (element !== null) {
+      element.pause();
+      element.removeAttribute("src");
+      element.load();
+    }
+    setAttempting(false);
+    setPlaying(false);
+  }, []);
+
+  useEffect(() => {
+    const resetChanged = observedResetEpoch.current !== previewResetEpoch;
+    observedResetEpoch.current = previewResetEpoch;
+    if (resetChanged || selectionMode || activePreviewId !== video.id) releasePreview();
+  }, [activePreviewId, previewResetEpoch, releasePreview, selectionMode, video.id]);
+
+  // Layout cleanup runs before React detaches videoRef, so navigation/unmount
+  // can still pause the element and release its resource.
+  useLayoutEffect(() => () => releasePreview(), [releasePreview]);
+
+  useEffect(() => {
+    if (!attempting) return;
+    const element = videoRef.current;
+    if (element === null) return;
+    const currentLifecycle = lifecycle.current;
+    try {
+      const result = element.play();
+      result?.catch(() => {
+        if (lifecycle.current === currentLifecycle) releasePreview();
+      });
+    } catch {
+      releasePreview();
+    }
+  }, [attempting, releasePreview]);
+
+  const startPreview = useCallback(
+    (event: PointerEvent<HTMLElement>) => {
+      const target = event.target;
+      if (
+        !eligible ||
+        selectionMode ||
+        event.pointerType !== "mouse" ||
+        (target instanceof Element && target.closest("[data-preview-checkbox]"))
+      ) {
+        releasePreview();
+        return;
+      }
+      if (timer.current !== null) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        onPreviewStart?.(video.id);
+        setAttempting(true);
+      }, 400);
+    },
+    [eligible, onPreviewStart, releasePreview, selectionMode, video.id],
+  );
 
   return (
     <article
       data-video-id={video.id}
+      onPointerEnter={startPreview}
+      onPointerLeave={releasePreview}
       className={cn(
         "group relative flex flex-col overflow-hidden rounded-lg bg-surface shadow-card transition-[box-shadow,transform] duration-200 ease-out-quart",
         "hover:-translate-y-0.5",
@@ -83,6 +193,8 @@ function VideoCard(props: VideoCardProps) {
         selected={selected}
         selectionMode={selectionMode}
         onSelect={onSelect}
+        previewing={playing}
+        onPreviewCancel={releasePreview}
       />
 
       <Link
@@ -90,6 +202,7 @@ function VideoCard(props: VideoCardProps) {
         state={{ from: backTo }}
         aria-label={video.title}
         onClick={(event) => {
+          onPreviewReset?.();
           if (selectionMode) {
             event.preventDefault();
             onSelect(video.id, !selected);
@@ -98,32 +211,70 @@ function VideoCard(props: VideoCardProps) {
         className="flex min-w-0 flex-col outline-none"
       >
         <div className="relative aspect-video w-full overflow-hidden bg-navbar">
-          {video.thumbnailUrl !== undefined ? (
-            <img
-              src={video.thumbnailUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="h-full w-full object-cover object-top transition-transform duration-300 ease-out-quart group-hover:scale-[1.03]"
-            />
-          ) : (
-            <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-fg-subtle">
-              <ImageOff className="size-6" strokeWidth={1.5} />
-              <span className="text-xs">
-                {video.thumbnailState === "failed" ? "画像なし" : "準備中"}
-              </span>
-            </div>
-          )}
+          <div
+            data-preview-media="true"
+            className="absolute inset-0 transition-transform duration-300 ease-out-quart group-hover:scale-[1.03]"
+          >
+            {video.thumbnailUrl !== undefined ? (
+              <img
+                src={video.thumbnailUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className={cn(
+                  "h-full w-full object-cover object-top",
+                  playing && "opacity-0",
+                )}
+              />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-fg-subtle">
+                <ImageOff className="size-6" strokeWidth={1.5} />
+                <span className="text-xs">
+                  {video.thumbnailState === "failed" ? "画像なし" : "準備中"}
+                </span>
+              </div>
+            )}
+
+            {attempting && video.previewUrl !== undefined && (
+              <video
+                ref={videoRef}
+                src={video.previewUrl}
+                muted
+                playsInline
+                loop
+                preload="auto"
+                controls={false}
+                aria-hidden="true"
+                tabIndex={-1}
+                onPlaying={() => setPlaying(true)}
+                onError={releasePreview}
+                className={cn(
+                  "absolute inset-0 h-full w-full object-cover object-top",
+                  playing ? "opacity-100" : "opacity-0",
+                )}
+              />
+            )}
+          </div>
 
           {(quality !== "" || duration !== "") && (
-            <span className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm bg-navbar/85 px-1.5 py-0.5 text-[11px] font-medium text-fg tabular-nums backdrop-blur-sm">
+            <span
+              className={cn(
+                "absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[11px] font-medium tabular-nums backdrop-blur-sm",
+                playing ? "bg-navbar text-fg" : "bg-navbar/85 text-fg",
+              )}
+            >
               {quality !== "" && <span className="text-accent">{quality}</span>}
               {duration !== "" && <span>{duration}</span>}
             </span>
           )}
 
           {state === "watched" && (
-            <span className="absolute top-2 right-2 flex size-6 items-center justify-center rounded-full bg-navbar/85 text-success backdrop-blur-sm">
+            <span
+              className={cn(
+                "absolute top-2 right-2 flex size-6 items-center justify-center text-success backdrop-blur-sm",
+                playing ? "rounded-full bg-navbar" : "rounded-full bg-navbar/85",
+              )}
+            >
               <Check className="size-3.5" strokeWidth={3} />
               <span className="sr-only">視聴済み</span>
             </span>
@@ -136,7 +287,10 @@ function VideoCard(props: VideoCardProps) {
               aria-valuemax={100}
               aria-valuenow={Math.round(ratio * 100)}
               aria-label="再生済みの割合"
-              className="absolute inset-x-0 bottom-0 h-[5px] bg-fg-subtle/50"
+              className={cn(
+                "absolute inset-x-0 bottom-0 h-[5px]",
+                playing ? "bg-fg-subtle" : "bg-fg-subtle/50",
+              )}
             >
               <span
                 className="block h-full bg-accent"
