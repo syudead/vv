@@ -287,6 +287,37 @@ describe("FolderPage", () => {
     expect(requests.filter((url) => url === "/api/folders/3?path=A%2FB").length).toBe(1);
   });
 
+  it("最上位でも取り込みが終わると登録フォルダを読み直す", async () => {
+    let scanPolls = 0;
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input).startsWith("/api/scans/current")) {
+        scanPolls += 1;
+        requests.push(String(input));
+        return Promise.resolve(
+          json({
+            id: 9,
+            state: scanPolls <= 2 ? "running" : "done",
+            total: 1,
+            completed: scanPolls <= 2 ? 0 : 1,
+            failed: 0,
+          }),
+        );
+      }
+      return base!(input, init);
+    });
+    renderFolders("/folders");
+    await screen.findByRole("link", {
+      name: "movies、動画 0 本、フォルダ 9 件、/a/movies",
+    });
+    expect(requests.filter((url) => url === "/api/folders").length).toBe(1);
+
+    await waitFor(
+      () => expect(requests.filter((url) => url === "/api/folders").length).toBe(2),
+      { timeout: 5000 },
+    );
+  }, 10_000);
+
   it("取り込みが終わると子フォルダと動画を読み直す", async () => {
     let scanPolls = 0;
     const base = fetchMock.getMockImplementation();

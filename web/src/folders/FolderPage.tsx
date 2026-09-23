@@ -163,6 +163,18 @@ function RootView() {
   const roots = useRootFolders();
   const folders = roots.data?.folders ?? [];
 
+  // 取り込みが終わったら登録フォルダの集計を読み直す（Edge Case「取り込み中」）。
+  const scan = useScan();
+  const knownScanId = useRef(scan.finished?.id);
+  const { reload } = roots;
+  useEffect(() => scan.refresh(), [scan.refresh]);
+  useEffect(() => {
+    const finished = scan.finished;
+    if (finished === null || knownScanId.current === finished.id) return;
+    knownScanId.current = finished.id;
+    reload();
+  }, [reload, scan.finished]);
+
   return (
     <>
       <h1 ref={heading} tabIndex={-1} className="sr-only">
