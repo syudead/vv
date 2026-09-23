@@ -260,6 +260,7 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
 ```text
 specs/012-video-detail-ia/
 ├── plan.md
+├── ui-design.md
 ├── quickstart.md
 └── contracts/
     └── video-detail-api.md
@@ -267,7 +268,6 @@ specs/012-video-detail-ia/
 
 - `data-model.md` は作らない。新しく保存するエンティティが無いからである。
 - `research.md` も作らない。判断は上の Structural Decisions で閉じている。
-- `ui-design.md` は次の Design 工程で足す。
 - この workflow は `tasks.md` を作らず、下の Implementation Work を子 Issue にする。
 
 ### Source Code
