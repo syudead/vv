@@ -28,7 +28,7 @@ task test-e2e
 実装中に対象の unit/component tests だけを回す場合は、次を使う。
 
 ```powershell
-npm --prefix web exec -- vitest run src/shell/ScanProvider.test.tsx src/shell/scanPresentation.test.ts src/shell/ScanNoticeProvider.test.tsx src/shell/ScanProgressIndicator.test.tsx src/settings/ScanStatusSection.test.tsx
+npm --prefix web exec -- vitest run src/shell/ScanProvider.test.tsx src/shell/scanPresentation.test.ts src/shell/scanNoticeSession.test.ts src/shell/ScanNoticeProvider.test.tsx src/shell/ScanProgressIndicator.test.tsx src/settings/ScanStatusSection.test.tsx
 ```
 
 `task check` では API 契約と生成物に差分が無いことも確認する。`task test-e2e` では既存の実サーバー fixture に加え、上表の browser route mock を使う `web/e2e/scan-progress.e2e.ts` を実行する。
@@ -42,6 +42,11 @@ npm --prefix web exec -- vitest run src/shell/ScanProvider.test.tsx src/shell/sc
 5. 一部失敗と全体失敗を区別し、全体失敗は理由と再試行を表示して、利用者が確認する前にフローティング表示が消えないことを確認する。
 6. 初回取得と実行中 polling の一時通信失敗後に、手動更新なしで同じ scan の追跡を再開することを確認する。
 7. 状態取得に失敗したまま別画面へ移動しても再試行が続き、回復後に同じ current scan を両表示へ反映することを確認する。
+8. running scan の id を追跡した状態で provider を再 mount し、API が同じ id の terminal scan を返すと結果通知が現れることを確認する。
+9. 全体失敗の通知を閉じるか設定詳細へ移動したあと provider を再 mount し、同じ failed scan の通知が再表示されないことを確認する。新しい id の failed scan は表示されることも確認する。
+10. 完了通知の表示中に provider を再 mount し、保存した期限までの残時間だけ表示されること、期限後は再表示されないことを確認する。
+11. `sessionStorage` の値が空、壊れた JSON、version 不一致、不正な id／期限である場合と、読み書きが例外になる場合に、画面が blank にならず server state から設定詳細を表示できることを確認する。
+12. scan A の完了通知が残っている間に scan B の running を観測し、A の `completionNotice` が消えることを確認する。その後 provider を再 mount して API が terminal の B を返すと、B の id と新しい期限を持つ通知が表示されることを確認する。
 
 ## Interaction
 
@@ -52,7 +57,8 @@ npm --prefix web exec -- vitest run src/shell/ScanProvider.test.tsx src/shell/sc
 5. 実行中に別の開始操作を行っても indicator が増えず、同じ scan id と進捗へ合流することを確認する。
 6. 取り込み中にライブラリの閲覧、検索、filter、フォルダ移動を行い、動画を開いて再生できることを確認する。再生画面にはシェルの indicator を重ねない。
 7. 完了後にライブラリとフォルダの内容が読み直され、設定画面には直近結果が残ることを確認する。
-8. browser を取り込み中に再読み込みし、current scan の追跡が復元されることを確認する。完了済み scan の再読み込みでは新着完了通知を繰り返さず、設定詳細だけが直近結果を示すことを確認する。
+8. browser を取り込み中に再読み込みし、current scan の追跡が復元されることを確認する。reload 中に同じ scan が完了した場合は結果通知を表示する。
+9. 全体失敗の通知を確認して閉じたあと browser を再読み込みし、同じ failed scan の通知が復活せず、設定詳細だけが直近結果を示すことを確認する。
 
 ## Layout And Accessibility
 

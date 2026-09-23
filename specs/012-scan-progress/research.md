@@ -4,11 +4,19 @@
 
 ## フローティング表示の所有
 
-**Decision**: ライブラリ、フォルダ、設定画面に共通するインジケーターは `web/src/shell/` が所有し、各 `AppShell` の右下に描画する。通知の寿命は route より上の `ScanNoticeProvider` が所有する。
+**Decision**: ライブラリ、フォルダ、設定画面に共通するインジケーターは `web/src/shell/` が所有し、各 `AppShell` の右下に描画する。通知の寿命は route より上の `ScanNoticeProvider` が所有し、再読み込みに必要な最小状態は `sessionStorage` に置く。
 
-**Rationale**: 表示位置は shell の責務だが、現在の route 構成では画面移動ごとに `AppShell` が mount し直される。描画と通知寿命を分けることで、画面移動中も完了期限と失敗の確認状態を保てる。
+**Rationale**: 表示位置は shell の責務だが、現在の route 構成では画面移動ごとに `AppShell` が mount し直され、browser reload では route より上の provider も作り直される。描画と通知寿命を分け、tracking id、確認済み terminal id、完了期限を tab session に保存することで、実行中の reload 直後の完了を拾い、確認済み失敗と期限切れ完了を復活させない。
 
-**Alternatives considered**: トップバーへの集約は開始と監視を再び同じ狭い操作へ混ぜるため不採用。Toast は短時間・非 interactive という既存契約と衝突するため不採用。indicator component 自身に timer と確認状態を置く案は route 移動で失われるため不採用。
+**Alternatives considered**: トップバーへの集約は開始と監視を再び同じ狭い操作へ混ぜるため不採用。Toast は短時間・非 interactive という既存契約と衝突するため不採用。indicator component や provider のメモリだけに状態を置く案は route 移動または reload で失われるため不採用。`localStorage` は別 tab と後日の session まで確認状態を残すため不採用。
+
+## 通知 session state
+
+**Decision**: version 付きの `sessionStorage` record に `trackingScanId`、`acknowledgedTerminalScanId`、`completionNotice { scanId, expiresAt }` だけを保存する。新しい running scan を追跡すると別 id の completion notice を消す。読み書きは total function とし、欠損、schema 不一致、非有限値、storage 例外では空状態へ戻す。
+
+**Rationale**: server の scan が正本なので payload 全体を複製する必要はない。この最小 record があれば、reload 前から追跡した scan の terminal 化、失敗の確認済み判定、scan ごとの完了 timer の残時間を server response と現在時刻から復元できる。deadline を scan id と組にすることで、前の scan の残り時間を次の scan へ適用しない。保存に失敗しても設定詳細は server state から表示できる。
+
+**Alternatives considered**: `Scan` payload 全体の保存は server state と二重の正本を作るため不採用。cookie や DB への保存は tab 内の一時的な表示状態に対して範囲が広すぎるため不採用。保存失敗を画面全体の error にする案は、補助通知の都合で取り込み詳細を失うため不採用。
 
 ## 状態取得失敗からの回復
 
