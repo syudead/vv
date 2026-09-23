@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -39,7 +40,7 @@ func TestPreviewArgsAreSilentBrowserCompatibleAndFastStart(t *testing.T) {
 	for _, arg := range args {
 		joined += arg + " "
 	}
-	for _, want := range []string{"libx264", "yuv420p", "+faststart", "-an", "concat=n=12:v=1:a=0"} {
+	for _, want := range []string{"libx264", "yuv420p", "+faststart", "-an", "[0:V:0]", "concat=n=12:v=1:a=0"} {
 		if !contains(joined, want) {
 			t.Errorf("args do not contain %q: %v", want, args)
 		}
@@ -255,11 +256,26 @@ func TestGeneratePreviewProducesBrowserCompatibleFastStartAsset(t *testing.T) {
 func TestGeneratePreviewSamplesAcrossWholeTimeline(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()
-	source := filepath.Join(dir, "timeline.mp4")
+	timeline := filepath.Join(dir, "timeline.mp4")
 	filter := "nullsrc=size=64x64:rate=4:duration=120,geq=lum='16+floor(N/40)*18':cb=128:cr=128"
 	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", filter,
-		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", source).CombinedOutput(); err != nil {
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", timeline).CombinedOutput(); err != nil {
 		t.Fatalf("create timeline source: %v: %s", err, out)
+	}
+	cover := filepath.Join(dir, "cover.jpg")
+	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "color=white:size=64x64",
+		"-frames:v", "1", "-y", cover).CombinedOutput(); err != nil {
+		t.Fatalf("create cover: %v: %s", err, out)
+	}
+	source := filepath.Join(dir, "timeline-with-cover.mp4")
+	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-i", cover, "-i", timeline,
+		"-map", "0:v:0", "-map", "1:v:0", "-c", "copy", "-disposition:v:0", "attached_pic", "-y", source).CombinedOutput(); err != nil {
+		t.Fatalf("mux attached cover: %v: %s", err, out)
+	}
+	disposition, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:1",
+		"-show_entries", "stream_disposition=attached_pic", "-of", "default=nw=1:nk=1", source).Output()
+	if err != nil || strings.TrimSpace(string(disposition)) != "1" {
+		t.Fatalf("fixture does not contain an attached cover: %q, %v", disposition, err)
 	}
 	if err := GeneratePreview(context.Background(), source, dir, "timeline", 120000,
 		func(context.Context) (bool, error) { return true, nil }); err != nil {

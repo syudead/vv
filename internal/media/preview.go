@@ -64,7 +64,9 @@ func GeneratePreview(
 	if err := os.MkdirAll(filepath.Dir(target), thumbnailDirPerm); err != nil {
 		return fmt.Errorf("プレビューの置き場所を作れません: %w", err)
 	}
-	assetLock := flock.New(target + ".lock")
+	// Publishing two files cannot be atomic as a pair, so all processes that
+	// share this preview root use one bounded, persistent publication lock.
+	assetLock := flock.New(filepath.Join(thumbnailsDir, "preview", ".publish.lock"))
 	locked, err := assetLock.TryLockContext(ctx, 100*time.Millisecond)
 	if err != nil {
 		return fmt.Errorf("プレビューの生成ロックを取得できません: %w", err)
@@ -289,7 +291,7 @@ func previewArgs(videoPath, output string, durationMs int64) []string {
 		labels := make([]string, 0, len(segments))
 		for i, segment := range segments {
 			label := fmt.Sprintf("v%d", i)
-			filters = append(filters, fmt.Sprintf("[0:v]trim=start=%s:end=%s,setpts=PTS-STARTPTS,scale='trunc(min(640,iw)/2)*2':-2,format=yuv420p[%s]", previewFormatSeconds(segment[0]), previewFormatSeconds(segment[1]), label))
+			filters = append(filters, fmt.Sprintf("[0:V:0]trim=start=%s:end=%s,setpts=PTS-STARTPTS,scale='trunc(min(640,iw)/2)*2':-2,format=yuv420p[%s]", previewFormatSeconds(segment[0]), previewFormatSeconds(segment[1]), label))
 			labels = append(labels, "["+label+"]")
 		}
 		filters = append(filters, strings.Join(labels, "")+fmt.Sprintf("concat=n=%d:v=1:a=0[v]", len(labels)))
