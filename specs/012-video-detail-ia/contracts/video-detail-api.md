@@ -20,7 +20,7 @@
 | `location` | object | 代表の所在。登録フォルダの下に所在が無い動画はそもそも 404 なので、この応答では常に入る |
 | `location.path` | string | 代表の所在の絶対パス。サーバーから見たパスで、コンテナ内ならコンテナ内のパスになる |
 | `location.openable` | boolean | 次の両方を満たすとき `true`。要求元がループバックであること、サーバーが既定アプリを起動できる環境であること |
-| `seekThumbnailState` | `pending` \| `done` \| `failed` | シーク用プレビューの状態。`probeState=done` で `durationMs` が正のときだけ入る |
+| `seekThumbnailState` | `pending` \| `done` \| `failed` | シーク用プレビューの状態。既存の `seekThumbnailUrl` と同じ条件（読み取り済み・長さが正・映像コーデックあり・内容鍵あり）のときだけ入る |
 
 代表の所在の選び方は、既存の `GetVideo` と同じとする。登録フォルダの下にある所在のうち、
 パスが最小のものである。
@@ -28,8 +28,9 @@
 `seekThumbnailState` の導き方は次のとおり。
 
 - `done`：置き場（`thumbnails/seek/<prefix>/<contentKey>/`）が存在する
-- `failed`：置き場が無く、その動画の `thumbnail` ジョブが `failed` である
-- `pending`：それ以外
+- `pending`：置き場が無く、`thumbnail_state` が `pending` であるか、その動画の `thumbnail`
+  ジョブが `queued`・`running` である
+- `failed`：それ以外（ジョブが `failed`、またはジョブの行が保持期間を過ぎて消えている）
 
 ## 関連動画: `GET /api/videos/{id}/related`
 
@@ -45,6 +46,10 @@ RelatedVideos:
       type: array
       maxItems: 20
       items: { $ref: "#/components/schemas/Video" }
+    nextId:
+      type: integer
+      format: int64
+      description: 同じディレクトリで自然順の次の動画。無ければ省く
 ```
 
 `items` の各 `Video` には、一覧と同じく `progress` を付ける。
@@ -63,12 +68,11 @@ RelatedVideos:
   1 件として数える。
 - 1 と 2 の比較に使うこの動画自身のファイル名は、代表の所在のものである。
 - この動画自身は含めない。登録フォルダの下に所在の無い動画も含めない。
-- 画面は 1 の先頭を「次の動画」として使う。1 が空のときは、応答から判る「次の動画」は
-  無い。このため、1 が空であることを判別できる必要がある。
-  - `RelatedVideos` に `nextId`（int64・任意）を足す。1 の先頭の `id` を入れ、1 が空なら
-    項目ごと省く。
-  - 却下: 画面が `location.path` のディレクトリと各項目のパスを比べる案。関連動画の各項目は
-    `location` を持たないので比べられない。
+- `nextId` は 1 の先頭の `id` で、1 が空なら省く。画面はこれを「次の動画」として使う。
+  - 却下: 画面が `items[0]` を次の動画とみなす案。1 が空のとき `items[0]` は先行や
+    追加日時の近い動画になり、要件 14「次の動画が無いときは『もう一度見る』だけ」を満たせない。
+    また、関連動画の各項目は `location` を持たないので、画面でディレクトリを比べることも
+    できない。
 
 誤り:
 
@@ -81,10 +85,14 @@ RelatedVideos:
 要求の本文は無い。
 
 - 成功は 202 で、更新後の `Video`（`probeState: pending`）を返す。
-- サーバーは 1 つの取引の中で次を行う。
-  - `probe_state` を `pending` に戻し、`probe_error` を消す。
-  - `probe` ジョブを積む（既存の `EnqueueJob` の重複防止に従う）。
-- 読み取りが成功したあとのサムネイル・プレビューのジョブは、既存の取り込みの流れで積まれる。
+- サーバーは 1 つの取引の中で次を行う（`RequeuePreviewRepair` と同じ形）。
+  - `where probe_state='failed'` を付けて、`probe_state` を `pending` に戻し、`probe_error` を
+    消す。更新が 0 行なら 409 とする。
+  - `thumbnail_state` が `done` でなければ `pending` に戻す。
+  - `preview_state` が `failed` なら `pending` に戻す。
+  - `probe` ジョブを積む。`thumbnail_state` を戻したときは `thumbnail` ジョブも積む。
+    どちらも、その種類の終わった行を消してから `on conflict … do nothing` で挿入する。
+- プレビューのジョブは、読み取りの成功後に既存の `probeHandler` が積む。
 
 | 状態 | 状況 | `code` |
 | --- | --- | --- |
@@ -101,13 +109,18 @@ RelatedVideos:
   時点で返す。
 - アプリが開いたかどうかは確かめない。
 
+判定は表の上から順に行い、最初に当たったものを返す。
+
 | 状態 | 状況 | `code` |
 | --- | --- | --- |
 | 404 | 知らない id、または登録フォルダの下に所在が無い | `not_found` |
-| 403 | 要求元がループバックでない | `forbidden`（既存） |
-| 409 | サーバーが既定アプリを起動できない環境である | `open_unavailable` |
+| 409 | サーバーが既定アプリを起動できない環境である（要求元を問わない） | `open_unavailable` |
+| 403 | 要求元がループバックでない、または `Host` がループバックの名前（`localhost`・`127.0.0.1`・`[::1]`）でない | `forbidden`（既存） |
 | 409 | 代表の所在にファイルが無い（移動・削除された） | `file_missing` |
 | 500 | 子プロセスを起動できなかった | `internal` |
+
+既存の POST の同一オリジン確認（`mutationBoundary`）は、この経路にもそのまま掛かる。
+`Host` の確認は、それを DNS rebinding で通り抜けられないようにするためである。
 
 403 と 409 `open_unavailable` の判定は、`location.openable` と同じ条件で行う。
 画面が `openable: false` でリンクを出さないのは、この 2 つを利用者に見せないためである。

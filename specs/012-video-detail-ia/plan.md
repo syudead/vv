@@ -67,7 +67,12 @@
   パッケージの外へ漏らさない」）: 条件付き合格。
   - OS の既定アプリを起動する `os/exec` は ffmpeg とは別の責務なので、`internal/media` には
     置かず、新しいパッケージ `internal/opener` に閉じ込める（Structural Decisions 4）。
-  - ARCHITECTURE.md の「`os/exec` を使う場所」の記述を同じ単位で更新する。
+  - 次の記述は、実装の単位の中で更新する。
+    - ARCHITECTURE.md「Intended dependency direction」の矢印
+      （`internal/{httpapi,store,media,scanner,jobs}` に `opener` を足す）
+    - `.golangci.yml` の depguard の説明文（「外部コマンドの実行は internal/media に
+      閉じ込めること」）
+    - `internal/media/probe.go` のコメント（「os/exec はこのパッケージの外へ漏らさない」）
 - **API の正本**（AGENTS.md）: 合格。経路と型は `api/openapi.yaml` に足して `task generate` で
   生成する。生成物は手で編集しない。
 - **データの扱い**（ARCHITECTURE.md の、再構築できる索引と利用者データの区別）: 合格。
@@ -110,9 +115,13 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
 3. **シーク用プレビューの状態は、応答を作るときに導く。**
    - 状態は次のとおり。
      - `done`：置き場のディレクトリが存在する
-     - `failed`：その動画のサムネイルのジョブが `failed` である
-     - `pending`：それ以外
-   - 読み取りが終わっていて、長さが正の動画にだけ返す。
+     - `pending`：置き場が無く、`thumbnail_state=pending` であるか、その動画の
+       サムネイルのジョブが `queued`・`running` である
+     - `failed`：それ以外。失敗したジョブの行は 7 日で消える（`DeleteFinishedJobsBefore`）
+       ので、行が無いことを `pending` と読まない。そう読むと、作成中の 1 行が消えず、
+       取り直しも止まらなくなる。
+   - 返す条件は、既存の `seekThumbnailUrl` と同じ判定にそろえる（読み取り済み・長さが正・
+     映像コーデックあり・内容鍵あり）。
    - 却下: `videos` に列を足してジョブで更新する案。マイグレーションと、生成物の欠落を
      直す既存の修復処理との整合が要る。そこまでして得られるのは、画面の 1 行の表示だけである。
 4. **ファイルを開く処理は `internal/opener` に置く。起動できる環境かどうかは、起動時に 1 度
@@ -132,15 +141,34 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
 5. **ファイルを開けるのは、要求がループバックから来たときだけにする。**
    - `openable` と `POST /api/videos/{id}/open` は、`RemoteAddr` がループバックのときだけ
      真・成功になる。
+   - さらに `Host` がループバックの名前（`localhost`・`127.0.0.1`・`[::1]`、ポートは問わない）で
+     あることも条件にする。既存の POST の同一オリジン確認（`router.go` の
+     `mutationBoundary`）は `Origin` と `Host` を比べるだけなので、DNS rebinding で
+     `127.0.0.1` を指させた他サイトのページを通してしまう。`Host` の確認でこれを塞ぐ。
    - 開くのは、サーバーが持っているその動画の代表の所在だけである。要求からパスは受け取らない。
+   - 誤りの判定順は次のとおり。
+     1. 404
+     2. 409 `open_unavailable`（サーバー全体で決まる事実で、要求元を問わない）
+     3. 403
+     4. 409 `file_missing`
    - 却下: 起動できる環境なら誰の要求でも開く案。認証が無いので、同じネットワークの誰でも
      サーバーの PC でアプリを起動できてしまう。要件 18 の「サーバーとブラウザが同じ PC」
      とも一致しない。
    - 逆プロキシを挟んだ構成では、要求がループバックに見えることがある。`X-Forwarded-For`
      は信用しない。この構成については quickstart で注意する。
 6. **読み取りのやり直しは、`probe_state=failed` の動画にだけ受け付ける。1 つの取引の中で
-   状態を `pending` に戻し、ジョブを積む。**
-   - `RequeuePreviewRepair` と同じ形にする。
+   状態を戻し、スキャンが新しい内容に積むのと同じジョブを積む。**
+   - `RequeuePreviewRepair` と同じ形にする。`where probe_state='failed'` 付きの更新と、
+     既存の終わったジョブ行の削除、`on conflict … do nothing` の挿入を、取引の中で直接書く。
+     `EnqueueJob` は取引に参加できないので使わない。
+   - 戻す状態と積むジョブは次のとおり。
+     - `probe_state`：`pending` に戻し、`probe_error` を消す。`probe` ジョブを積む。
+     - `thumbnail_state`：`done` でなければ `pending` に戻し、`thumbnail` ジョブを積む。
+       スキャンの `Scanner.enqueue` と同じ組にするためである。`probeHandler` は成功後に
+       プレビューしか積まない。読み取りに失敗した動画はたいていサムネイルも失敗しているので、
+       これが無いと、やり直しが成功してもサムネイルとシーク用プレビューは作られない。
+     - `preview_state`：`failed` なら `pending` に戻す。ジョブは、読み取りの成功後に
+       `probeHandler` が積む。
    - 失敗していない動画への要求は 409 `probe_not_failed` とする。連打や別タブからの二度目は
      これになり、ジョブは重複しない（Edge Case）。
    - 却下: 状態を問わず積み直す案。読み取り済みの動画を押すたびに、サムネイルとプレビューの
@@ -166,11 +194,27 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
      - 修飾キーが押されているとき
      - ボタンやリンクの上で Space が押されたとき（そのボタンやリンク自身の操作になる）
    - Esc は、全画面中なら何もしない。全画面の解除はブラウザが行う。
+   - 変換して再生中（`liveOffset.ts` が再生位置と速度を仲立ちする経路）でも、同じ操作が
+     論理上の再生位置に対して効くようにする。
    - 却下: video.js の `userActions.hotkeys`。プレイヤーにフォーカスがあるときしか効かない。
      関連動画を眺めたあとなどに効かなくなる。
 10. **関連動画から移るときは、最初の戻り先を引き継ぐ。**
     - 関連動画と「次を再生」のリンクは、`state.from` に今の戻り先を渡す。
     - これで × は、最初に開いた一覧（フォルダ画面を含む）へ戻る（Edge Case）。
+11. **生成の `failed` は「終わった」として扱う。**
+    - 段階表示の各行は次のように決める。
+      - `done`：完了
+      - `pending`：未完了の段のうち先頭が「処理中」、残りが「待機中」（ジョブは 1 本ずつ
+        順に動くので、先頭だけが動いている）
+      - `failed`：「作成できませんでした」
+    - 作成中の 1 行（要件 11）は、`pending` が 1 つでもある間だけ出す。取り直しも同じ
+      条件で止める（Structural Decisions 7）。
+    - 見た目は `ui-design.md` が決める。
+    - 却下: `failed` も「作成中」に含める案。再試行されない失敗のために、1 行と
+      2 秒ごとの取り直しが画面を開いている限り続く。
+12. **プレイヤーの上に重ねる層の入れ物は、最初にそれを要する単位（プレイヤーの操作の単位）
+    が作る。** 状態表示と再生終了の単位は、その入れ物に層を足す。3 つの単位は
+    Implementation Work の依存で順に並べ、同じ部品を並行して書き換えない。
 
 ## Project Structure
 
@@ -204,7 +248,8 @@ specs/012-video-detail-ia/
 - `web/src/api/`: 動画 1 件の取得と取り直しのフック、新しい経路の呼び出し
 - `web/src/player/`: 画面の構成・プレイヤーの操作・状態表示・関連動画・再生終了
 - `web/e2e/playback.e2e.ts`: 新しい構成・キーボード・関連動画の実ブラウザ検証
-- `ARCHITECTURE.md`・`docs/design-docs/library-ui.md`: `os/exec` の置き場、公開する API、
+- `ARCHITECTURE.md`・`.golangci.yml`・`internal/media/probe.go` のコメント・
+  `docs/design-docs/library-ui.md`: 外部コマンドの置き場、依存の矢印、公開する API、
   再生画面の構成
 
 **New paths**:
@@ -216,7 +261,8 @@ specs/012-video-detail-ia/
 - `web/src/player/` の新しい部品（属性の一列、関連動画の列、状態表示の層、再生終了）と
   対応 test
 
-**削除**: `web/src/player/VideoHeader.tsx`、`web/src/player/FileDetails.tsx` とその test。
+**削除**: `web/src/player/VideoHeader.tsx`、`web/src/player/FileDetails.tsx`、
+`web/src/player/FileDetails.test.tsx`。
 
 ## Implementation Work
 
@@ -235,9 +281,12 @@ specs/012-video-detail-ia/
 - httpapi の test で次を確かめる。
   - `GET /api/videos/{id}` が代表の所在の絶対パスを返す。
   - `GET /api/videos` の項目には `location` が無い。
-  - シーク用プレビューの状態が、置き場あり・ジョブ失敗・それ以外でそれぞれ `done`・`failed`・
-    `pending` になる。
-  - 読み取り前の動画には `seekThumbnailState` が無い。
+  - シーク用プレビューの状態が次のとおりになる。
+    - 置き場あり：`done`
+    - ジョブが `queued`・`running`：`pending`
+    - ジョブが `failed`：`failed`
+    - ジョブの行が消えた：`failed`
+  - 読み取り前の動画と映像の無い動画には `seekThumbnailState` が無い。
 - `task check` が成功する。
 
 ### サーバーの PC で動画ファイルを開く API を足す
@@ -247,16 +296,17 @@ specs/012-video-detail-ia/
 - `POST /api/videos/{id}/open` と `location.openable` を実装する
   （Structural Decisions 5、[contracts](contracts/video-detail-api.md)「ファイルを開く」）。
 - `cmd/mdm` で組み立てる。
-- ARCHITECTURE.md の `os/exec` の置き場と API の記述を更新する。
+- ARCHITECTURE.md の依存の矢印と API の記述、`.golangci.yml` の depguard の説明文、
+  `internal/media/probe.go` のコメントを更新する（Constitution Check「外部プロセスの閉じ込め」）。
 
 **Dependencies**: 動画 1 件の応答に所在とシーク用プレビューの状態を足す。
 
 **Acceptance**:
 - opener の test で、OS と環境変数の組ごとに「開ける／開けない」とコマンドが決まる。
 - httpapi の test で次を確かめる。
-  - ループバックの要求だけが 204 と `openable: true` を得る。
-  - ループバック以外の要求は 403 になる。
-  - 開けない環境では 409 `open_unavailable` になる。
+  - ループバックから、ループバックの `Host` で来た要求だけが 204 と `openable: true` を得る。
+  - ループバック以外の要求と、`Host` がループバックの名前でない要求は 403 になる。
+  - 開けない環境では、要求元を問わず 409 `open_unavailable` になる。
   - ファイルが無いときは 409 `file_missing` になる。
   - 知らない id は 404 になる。
   - opener には、要求の内容に関わらず代表の所在だけが渡る。
@@ -299,6 +349,8 @@ specs/012-video-detail-ia/
 - store・httpapi の test で次を確かめる。
   - 失敗した動画への要求で `probeState` が `pending` になり、読み取りのジョブがちょうど
     1 件積まれる。
+  - `thumbnail_state=failed` の動画では、`thumbnailState` も `pending` に戻り、サムネイルの
+    ジョブが 1 件積まれる。`preview_state=failed` なら `previewState` が `pending` に戻る。
   - 続けて 2 回送ると、2 回目は 409 `probe_not_failed` で、ジョブは増えない。
   - 読み取り済みの動画は 409 になる。
   - 知らない id は 404 になる。
@@ -311,6 +363,10 @@ specs/012-video-detail-ia/
   - 上部バー・チップ・タブ・`VideoHeader`・`FileDetails` を外す。
   - 2 列と縦積みの構成、題名、区切り線の下の属性の一列、ファイルの場所
     （開けるときだけリンク）、右上の ×、Esc で閉じる操作を実装する。
+  - 長いパスは、広い画面では 1 行で末尾を省略してポイントで全体を示し、狭い画面では
+    折り返す（Edge Case「パスが長い」、見た目は `ui-design.md`）。
+  - 開こうとして `file_missing` などで失敗したときは、場所の行のすぐ下に開けなかった
+    ことを出す。帯やトーストは使わない（Edge Case「ファイルが移動・削除されている」）。
 - 動画 1 件の取得を `web/src/api/useVideoDetail.ts` に移す（この単位では取り直しをしない）。
 - `docs/design-docs/library-ui.md` に再生画面の構成の節を足し、ARCHITECTURE.md の Web layer の
   再生画面の記述を更新する。
@@ -320,8 +376,14 @@ specs/012-video-detail-ia/
 **Acceptance**:
 - 単体 test で次を確かめる。
   - 廃止した項目が出ない。
-  - 属性の英語ラベルと値の形（`H.264`・未再生の `—`）が正しい。
+  - 属性の英語ラベルと値の形が正しい。
+    - コーデックが `H.264` のように大文字になる。
+    - 未再生の LAST PLAYED が `—` になる。
+    - 読み取り前の項目が「読み取り中」になる。
+    - 読み取り失敗の動画では技術情報が「読み取れませんでした」の 1 項目になる。
   - `openable` が偽のとき場所がリンクにならない。
+  - 開く要求が 409 `file_missing` を返したとき、場所の行の下に開けなかったことが出て、
+    画面の他の部分は変わらない。
   - × と Esc で `state.from` へ戻る。
   - 全画面中の Esc では閉じない。
 - `task check` が成功する。
@@ -337,14 +399,16 @@ specs/012-video-detail-ia/
   - リンクで戻り先を引き継ぐ（Structural Decisions 10）。
 - `playback.e2e.ts` に、関連動画から移って × で最初の一覧へ戻る検証を足す。
 
-**Dependencies**: 関連動画 API を足す、動画詳細画面を題名・属性・場所・閉じる操作の構成に
-組み直す。
+**Dependencies**:
+- 関連動画 API を足す
+- 動画詳細画面を題名・属性・場所・閉じる操作の構成に組み直す
 
 **Acceptance**:
 - 単体 test で次を確かめる。
   - 項目に追加日時などの文字が出ない。
   - 途中まで見た動画だけに進捗バーが出る。
   - 関連動画から移ったあとの × が最初の一覧へ戻る。
+  - 関連動画が 0 件のとき、見出しは出ず、× は広い画面でも残る。
 - e2e が成功する。
 - `task check` が成功する。
 - 画面が変わる単位なので、PR に画像と確認結果を添える。
@@ -357,6 +421,7 @@ specs/012-video-detail-ia/
   - 現在時刻/長さを出す。
   - 画面全体のキーボード操作を足す（Structural Decisions 9）。
   - タッチ端末向けの中央操作を足す（Structural Decisions 8）。
+  - プレイヤーの上に重ねる層の入れ物を作る（Structural Decisions 12）。
 - `playback.e2e.ts` にキーボード操作の検証を足す。
 
 **Dependencies**: 動画詳細画面を題名・属性・場所・閉じる操作の構成に組み直す。
@@ -365,6 +430,8 @@ specs/012-video-detail-ia/
 - 単体 test で次を確かめる。
   - Space・←/→・F・M・0 がそれぞれの操作を起こす。
   - ボタン上の Space や入力欄では起きない。
+  - タッチ用の中央の 10 秒戻る/進むを押すと、再生位置が 10 秒動く。
+  - 変換して再生する経路でも、→ と再生速度の変更が論理上の再生位置と速度に効く。
 - e2e で次を確かめる。
   - → で再生位置が 10 秒進む。
   - 再生速度の変更が反映される。
@@ -385,17 +452,25 @@ specs/012-video-detail-ia/
 - `useVideoDetail` に処理中だけの取り直しを足し、プレイヤーを作り直す条件を限る
   （Structural Decisions 7）。
 - 既存のプレイヤー下の赤帯と `Blocked` を置き換える。
+- 表示中の動画が消えた（取り直しや再生が 404 になった）ときは、プレイヤーの中に
+  「開けません」を出し、× で戻れるようにする（Edge Case）。
+- 段階表示と 1 行の出し分けは Structural Decisions 11 に従う。
 
 **Dependencies**:
 - 動画 1 件の応答に所在とシーク用プレビューの状態を足す
 - 読み取りに失敗した動画を読み取り直す API を足す
-- 動画詳細画面を題名・属性・場所・閉じる操作の構成に組み直す
+- プレイヤーに再生速度・10 秒送り・キーボード操作を足す
 
 **Acceptance**:
 - 単体 test で次を確かめる。
-  - 各 `probeState`・`thumbnailState`・`seekThumbnailState`・`previewState` の組で、正しい
-    段階と 1 行の表示が出る。
+  - 各 `probeState`・`thumbnailState`・`seekThumbnailState`・`previewState` の組で、
+    Structural Decisions 11 どおりの段階と 1 行の表示が出る。`failed` だけが残ると 1 行は
+    消え、取り直しも止まる。
   - `pending` から `done` への変化で再生できるようになる。
+  - 取り直しで `probeState` が `pending` から `failed` に変わると、段階表示から読み取り
+    失敗の表示へ切り替わる。
+  - 変換して再生する動画で、操作バーに「変換して再生中」が出る。
+  - 取り直しが 404 を返すと、プレイヤーの中に「開けません」が出て、× が残る。
   - 取り直しで `thumbnailState` だけが変わってもプレイヤーが作り直されない。
   - 「もう一度読み取る」の 409 でも段階表示へ移る。
   - 再生失敗の再試行が失敗した位置から始まる。
@@ -411,13 +486,15 @@ specs/012-video-detail-ia/
   - 次が無いときは「もう一度見る」だけにする。
 - 「次を再生」は戻り先を引き継ぎ、移った先で再生を始める。
 
-**Dependencies**: 動画詳細画面に関連動画の列を足す。
+**Dependencies**:
+- 動画詳細画面に関連動画の列を足す
+- プレイヤーの中に読み込み・変換・失敗・取り込み中の状態を出す
 
 **Acceptance**:
 - 単体 test で次を確かめる。
   - `ended` で層が出る。
   - 同じフォルダの後続が無いとき「次を再生」が出ない。
   - 「もう一度見る」で先頭から再生される。
-  - 「次を再生」で次の動画の画面へ戻り先付きで移る。
+  - 「次を再生」で次の動画の画面へ戻り先付きで移り、移った先で再生が始まる。
 - `task check` が成功する。
 - 画面が変わる単位なので、PR に画像と確認結果を添える。

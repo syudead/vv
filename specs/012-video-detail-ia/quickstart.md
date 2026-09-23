@@ -21,7 +21,11 @@
    - 手順: `docker compose up` で起動し、同じ PC のブラウザで開く。
    - 期待する結果: 場所はコンテナ内のパス（`/media/...`）の文字だけになる。
      `curl -X POST http://localhost:8080/api/videos/<id>/open` は 409 `open_unavailable` を
-     返す。
+     返す。コンテナには画面が無いので、要求元の判定（403）より先にこちらが決まる
+     （[contracts](contracts/video-detail-api.md)「ファイルを開く」の判定順）。
+
+同じ PC のブラウザでも、`localhost` ではなく LAN のアドレスで開くと、場所は文字だけになる
+（要求元と `Host` がループバックでないため）。
 
 注意: 逆プロキシを同じ PC に置いて中継すると、別の PC からの要求もループバックに見える。
 その構成で開けてしまう場合は、逆プロキシ側でこの経路を塞ぐ（plan の Structural Decisions 5）。
