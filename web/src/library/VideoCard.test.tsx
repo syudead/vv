@@ -212,6 +212,53 @@ describe("VideoCard hover preview", () => {
     expect(load).toHaveBeenCalled();
   });
 
+  it("removes an inactive coordinated preview in the active-card render", async () => {
+    const item = video();
+    const onStart = vi.fn();
+    const rendered = renderCard(item, {
+      activePreviewId: item.id,
+      onPreviewStart: onStart,
+    });
+    fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(400));
+    const preview = document.querySelector("video");
+    expect(preview).not.toBeNull();
+    if (preview === null) return;
+    fireEvent.playing(preview);
+    expect(document.querySelector("img")?.classList.contains("opacity-0")).toBe(true);
+
+    rendered.rerender(
+      <MemoryRouter>
+        <VideoCard
+          video={item}
+          backTo="/"
+          selected={false}
+          selectionMode={false}
+          onSelect={vi.fn()}
+          activePreviewId={2}
+          onPreviewStart={onStart}
+        />
+      </MemoryRouter>,
+    );
+    expect(document.querySelector("video")).toBeNull();
+    expect(document.querySelector("img")?.classList.contains("opacity-0")).toBe(false);
+    await act(async () => Promise.resolve());
+    expect(pause).toHaveBeenCalled();
+    expect(load).toHaveBeenCalled();
+  });
+
+  it("does not suppress an existing warning when a preview URL is present", () => {
+    renderCard(video({ durationMs: undefined }), {
+      activePreviewId: 1,
+      onPreviewStart: vi.fn(),
+    });
+    expect(screen.getByText("再生に必要な情報がありません")).toBeDefined();
+
+    fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(400));
+    expect(screen.getByText("再生に必要な情報がありません")).toBeDefined();
+  });
+
   it("releases the media element before unmount detaches its ref", () => {
     const rendered = renderCard(video(), { activePreviewId: 1 });
     fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });

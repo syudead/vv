@@ -104,13 +104,28 @@ function VideoCard(props: VideoCardProps) {
     ratio,
     quality,
   } = useCardState(video);
-  const unplayable = eligible ? null : rawUnplayable;
+  const coordinated = props.activePreviewId !== undefined && onPreviewStart !== undefined;
+  const previewActive = !coordinated || activePreviewId === video.id;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const lifecycle = useRef(0);
   const observedResetEpoch = useRef(previewResetEpoch);
   const [attempting, setAttempting] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const showingPreview = playing && previewActive;
+
+  const setVideoElement = useCallback((element: HTMLVideoElement | null) => {
+    const previous = videoRef.current;
+    videoRef.current = element;
+    if (element === null && previous !== null) {
+      queueMicrotask(() => {
+        if (videoRef.current === previous || !previous.hasAttribute("src")) return;
+        previous.pause();
+        previous.removeAttribute("src");
+        previous.load();
+      });
+    }
+  }, []);
 
   const releasePreview = useCallback(() => {
     lifecycle.current += 1;
@@ -193,7 +208,7 @@ function VideoCard(props: VideoCardProps) {
         selected={selected}
         selectionMode={selectionMode}
         onSelect={onSelect}
-        previewing={playing}
+        previewing={showingPreview}
         onPreviewCancel={releasePreview}
       />
 
@@ -223,7 +238,7 @@ function VideoCard(props: VideoCardProps) {
                 decoding="async"
                 className={cn(
                   "h-full w-full object-cover object-top",
-                  playing && "opacity-0",
+                  showingPreview && "opacity-0",
                 )}
               />
             ) : (
@@ -235,9 +250,9 @@ function VideoCard(props: VideoCardProps) {
               </div>
             )}
 
-            {attempting && video.previewUrl !== undefined && (
+            {attempting && previewActive && video.previewUrl !== undefined && (
               <video
-                ref={videoRef}
+                ref={setVideoElement}
                 src={video.previewUrl}
                 muted
                 playsInline
@@ -250,7 +265,7 @@ function VideoCard(props: VideoCardProps) {
                 onError={releasePreview}
                 className={cn(
                   "absolute inset-0 h-full w-full object-cover object-top",
-                  playing ? "opacity-100" : "opacity-0",
+                  showingPreview ? "opacity-100" : "opacity-0",
                 )}
               />
             )}
@@ -260,7 +275,7 @@ function VideoCard(props: VideoCardProps) {
             <span
               className={cn(
                 "absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[11px] font-medium tabular-nums backdrop-blur-sm",
-                playing ? "bg-navbar text-fg" : "bg-navbar/85 text-fg",
+                showingPreview ? "bg-navbar text-fg" : "bg-navbar/85 text-fg",
               )}
             >
               {quality !== "" && <span className="text-accent">{quality}</span>}
@@ -272,7 +287,7 @@ function VideoCard(props: VideoCardProps) {
             <span
               className={cn(
                 "absolute top-2 right-2 flex size-6 items-center justify-center text-success backdrop-blur-sm",
-                playing ? "rounded-full bg-navbar" : "rounded-full bg-navbar/85",
+                showingPreview ? "rounded-full bg-navbar" : "rounded-full bg-navbar/85",
               )}
             >
               <Check className="size-3.5" strokeWidth={3} />
@@ -289,7 +304,7 @@ function VideoCard(props: VideoCardProps) {
               aria-label="再生済みの割合"
               className={cn(
                 "absolute inset-x-0 bottom-0 h-[5px]",
-                playing ? "bg-fg-subtle" : "bg-fg-subtle/50",
+                showingPreview ? "bg-fg-subtle" : "bg-fg-subtle/50",
               )}
             >
               <span
@@ -299,10 +314,12 @@ function VideoCard(props: VideoCardProps) {
             </span>
           )}
 
-          {unplayable !== null && (
+          {rawUnplayable !== null && (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-overlay text-warning">
               <AlertTriangle className="size-5" />
-              <span className="px-3 text-center text-xs font-medium">{unplayable}</span>
+              <span className="px-3 text-center text-xs font-medium">
+                {rawUnplayable}
+              </span>
             </div>
           )}
         </div>
