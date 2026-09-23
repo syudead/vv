@@ -15,6 +15,13 @@ Issue. When an Issue or PR is supplied, read and follow
 behavior. A plain-text implementation request uses the current checkout and
 does not require an Issue, parent Issue, feature directory, or PR.
 
+For Issue handoff work, delegate the bounded implementation step to the
+repository's `subissue-implementer` role when the selected host provides it,
+then run self-review through the repository's `self-reviewer` role when
+available. In Codex these agents use snake_case names; in Claude they use
+kebab-case names. The parent agent still owns branch management, full
+validation, fixes, push, and the pull request.
+
 Name the feature directory explicitly only when the request uses one.
 ## User Input
 

@@ -109,10 +109,12 @@ CIはすべてのPRで検証するが、agentや次工程を起動しない。�
 正規手順は`.agents/skills/issue-handoff/`に置く。
 
 一工程を担当する親agentは、hostが対応している場合、その工程内の境界が確定した作業を
-project-scoped subagentへ委譲してよい。Codexでは子Issueの実装とfocused testだけを
-`.codex/agents/subissue-implementer.toml`のworkerへ委譲し、branch、全体検証、self-review、
-push、PRは親agentが所有する。この内部委譲は次工程を起動せず、handoff stateも追加しない。
-対応しないhostは同じ作業を親agent自身で実行する。
+project-scoped subagentへ委譲する。repositoryはCodex向けに`.codex/agents/`、Claude向けに
+`.claude/agents/`の同じ役割のworkerを持つ。子Issueの実装とfocused testは
+`subissue-implementer`へ委譲し、self-reviewは実装とは別文脈の`self-reviewer`へ委譲する。
+branch、全体検証、review指摘の修正、push、PRは親agentが所有する。この内部委譲は次工程を
+起動せず、handoff stateも追加しない。対応しないhostは同等のbounded workerを使い、なければ
+同じ作業を親agent自身で実行する。
 
 ## Failure behavior
 
