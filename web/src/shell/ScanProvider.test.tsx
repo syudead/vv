@@ -30,6 +30,7 @@ function Harness() {
         フォルダ追加を反映
       </button>
       <p>{value.error ?? "エラーなし"}</p>
+      <p>状態: {value.scan?.id ?? "なし"}</p>
       <p>完了: {value.finished?.id ?? "なし"}</p>
       <p>開始可否: {value.canStart ? "可" : "不可"}</p>
     </>
@@ -148,6 +149,46 @@ describe("ScanProvider", () => {
 
     expect(screen.getByText("完了: 3")).toBeDefined();
     vi.useRealTimers();
+  });
+
+  it("初回の状態取得失敗を手動更新なしで再試行する", async () => {
+    vi.useFakeTimers();
+    let currentCalls = 0;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      currentCalls += 1;
+      if (currentCalls === 1) return Promise.reject(new Error("一時的な失敗"));
+      return Promise.resolve(json(scan(4, "done")));
+    });
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    await act(async () => Promise.resolve());
+    expect(screen.getByText("状態: なし")).toBeDefined();
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(await screen.findByText("状態: 4")).toBeDefined();
+  });
+
+  it("状態取得の一時失敗中も最後の成功状態を保持する", async () => {
+    vi.useFakeTimers();
+    let currentCalls = 0;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      currentCalls += 1;
+      if (currentCalls === 1) return Promise.resolve(json(scan(5, "running")));
+      return Promise.reject(new Error("一時的な失敗"));
+    });
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    await act(async () => Promise.resolve());
+    expect(screen.getByText("状態: 5")).toBeDefined();
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(screen.getByText("状態: 5")).toBeDefined();
   });
 
   it("再確認で別タブが完了した取り込みを通知する", async () => {

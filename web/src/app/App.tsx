@@ -5,6 +5,7 @@ import LibraryPage from "../library/LibraryPage";
 import VideoPage from "../player/VideoPage";
 import SettingsPage from "../settings/SettingsPage";
 import AppShell from "../shell/AppShell";
+import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
@@ -21,36 +22,38 @@ export default function App() {
       <TooltipProvider>
         <ToastProvider>
           <ScanProvider>
-            <Routes>
-              <Route
-                path="/"
-                element={
-                  <AppShell>
-                    <LibraryPage />
-                  </AppShell>
-                }
-              />
-              {["/folders", "/folders/*"].map((path) => (
+            <ScanNoticeProvider>
+              <Routes>
                 <Route
-                  key={path}
-                  path={path}
+                  path="/"
                   element={
                     <AppShell>
-                      <FolderPage />
+                      <LibraryPage />
                     </AppShell>
                   }
                 />
-              ))}
-              <Route
-                path="/settings"
-                element={
-                  <AppShell>
-                    <SettingsPage />
-                  </AppShell>
-                }
-              />
-              <Route path="/videos/:id" element={<VideoPage />} />
-            </Routes>
+                {["/folders", "/folders/*"].map((path) => (
+                  <Route
+                    key={path}
+                    path={path}
+                    element={
+                      <AppShell>
+                        <FolderPage />
+                      </AppShell>
+                    }
+                  />
+                ))}
+                <Route
+                  path="/settings"
+                  element={
+                    <AppShell>
+                      <SettingsPage />
+                    </AppShell>
+                  }
+                />
+                <Route path="/videos/:id" element={<VideoPage />} />
+              </Routes>
+            </ScanNoticeProvider>
           </ScanProvider>
         </ToastProvider>
       </TooltipProvider>

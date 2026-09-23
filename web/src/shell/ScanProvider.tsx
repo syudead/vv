@@ -65,6 +65,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const folderCountRevision = useRef(0);
   const requestedScanId = useRef<number | null>(null);
   const observedRunningScanId = useRef<number | null>(null);
+  const hasSuccessfulFetch = useRef(false);
   const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
   const recoveryPollsLeft = useRef(0);
   const lastSeenScanId = useRef<number | null | undefined>(undefined);
@@ -136,6 +137,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         if (alive && !isAborted(failure)) {
           setPollError(errorMessage(failure));
           if (
+            !hasSuccessfulFetch.current ||
             observedRunningScanId.current !== null ||
             (recoveryBaselineScanId.current !== undefined &&
               recoveryPollsLeft.current > 0)
@@ -148,6 +150,8 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
+
+      hasSuccessfulFetch.current = true;
 
       const recoveryBaseline = recoveryBaselineScanId.current;
       const recovered =
