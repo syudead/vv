@@ -14,6 +14,7 @@ const video: Video = {
   addedAt: "2026-09-01T00:00:00Z",
   playable: true,
   probeState: "done",
+  previewState: "pending",
   thumbnailState: "done",
   durationMs: 10_000,
   videoCodec: "h264",

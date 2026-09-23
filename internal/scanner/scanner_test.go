@@ -59,6 +59,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 			f.rows[file.Path] = domain.IndexedVideo{
 				ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
 				ProbeState: row.ProbeState, ThumbnailState: row.ThumbnailState,
+				PreviewState: row.PreviewState,
 			}
 			outcome := domain.OutcomeMoved
 			if path == file.Path {
@@ -71,7 +72,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 	if row, ok := f.rows[file.Path]; ok {
 		f.rows[file.Path] = domain.IndexedVideo{
 			ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
-			ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending,
+			ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending, PreviewState: domain.PreviewStatePending,
 		}
 		return domain.UpsertResult{ID: row.ID, Outcome: domain.OutcomeUpdated, NeedsProbe: true, NeedsThumbnail: true}, nil
 	}
@@ -80,7 +81,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 	f.nextID++
 	f.rows[file.Path] = domain.IndexedVideo{
 		ID: id, LocationID: id, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
-		ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending,
+		ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending, PreviewState: domain.PreviewStatePending,
 	}
 	return domain.UpsertResult{ID: id, Outcome: domain.OutcomeAdded, NeedsProbe: true, NeedsThumbnail: true}, nil
 }
@@ -286,6 +287,7 @@ func TestScanSkipsUnchangedFiles(t *testing.T) {
 	for path, row := range index.rows {
 		row.ProbeState = domain.ProbeStateDone
 		row.ThumbnailState = domain.ThumbnailStateDone
+		row.PreviewState = domain.PreviewStateDone
 		index.rows[path] = row
 	}
 
@@ -324,6 +326,24 @@ func TestScanRequeuesMissingJobsForUnchangedPendingVideo(t *testing.T) {
 	}
 	if len(index.jobs) != 2 {
 		t.Fatalf("requeued jobs = %d, want 2", len(index.jobs))
+	}
+}
+
+func TestScanRequeuesMissingPreviewForProbeCompleteVideo(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	for path, row := range index.rows {
+		row.ProbeState = domain.ProbeStateDone
+		row.ThumbnailState = domain.ThumbnailStateDone
+		row.PreviewState = domain.PreviewStatePending
+		index.rows[path] = row
+	}
+	index.jobs = nil
+
+	runScan(t, root, index)
+	if len(index.jobs) != 1 || index.jobs[0].kind != domain.JobPreview {
+		t.Fatalf("requeued jobs = %+v, want one preview job", index.jobs)
 	}
 }
 

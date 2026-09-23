@@ -11,3 +11,4 @@ Add each new document to this index.
 - [MOVライブ変換のtrack分離入力](mov-live-transcoding.md)
 - [Issue handoff SDD: agentを固定しない一工程ずつの実行](sdd-loop-harness.md)
 - [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
+- [一覧画面の hover 動画プレビュー UI](../../specs/010-hover-video-preview/ui-design.md)

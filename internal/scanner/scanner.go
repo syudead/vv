@@ -294,6 +294,7 @@ func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVid
 	}{
 		{kind: domain.JobProbe, pending: video.ProbeState == domain.ProbeStatePending},
 		{kind: domain.JobThumbnail, pending: video.ThumbnailState == domain.ThumbnailStatePending},
+		{kind: domain.JobPreview, pending: video.ProbeState == domain.ProbeStateDone && video.PreviewState == domain.PreviewStatePending},
 	}
 	for _, state := range states {
 		if state.pending {
@@ -316,6 +317,9 @@ func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error
 	}
 	if result.NeedsThumbnail {
 		kinds = append(kinds, domain.JobThumbnail)
+	}
+	if result.NeedsPreview {
+		kinds = append(kinds, domain.JobPreview)
 	}
 	for _, kind := range kinds {
 		if err := s.queue.EnqueueJob(ctx, kind, result.ID); err != nil {

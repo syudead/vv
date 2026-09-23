@@ -1,4 +1,12 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +32,7 @@ function video(id: number, extra: Partial<Video> = {}): Video {
     height: 1080,
     videoCodec: "h264",
     ...extra,
+    previewState: extra.previewState ?? "pending",
   };
 }
 
@@ -80,6 +89,9 @@ describe("LibraryPage", () => {
   });
 
   afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -198,5 +210,158 @@ describe("LibraryPage", () => {
     expect(screen.getByText("1 件を選択中")).toBeDefined();
     await user.keyboard("{Escape}");
     expect(screen.queryByText("1 件を選択中")).toBeNull();
+  });
+
+  it("preview は一度に1件だけ active にし resize で全 card を reset する", async () => {
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      return Promise.resolve(
+        json({
+          items: [
+            video(1, { previewState: "done", previewUrl: "/preview-1.mp4" }),
+            video(2, { previewState: "done", previewUrl: "/preview-2.mp4" }),
+          ],
+          total: 2,
+        } satisfies VideoPage),
+      );
+    });
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+    vi.useFakeTimers();
+
+    const cards = screen.getAllByRole("article");
+    fireEvent.pointerEnter(cards[0]!, { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(400));
+    expect(document.querySelectorAll("video")).toHaveLength(1);
+    expect(document.querySelector("video")?.getAttribute("src")).toBe("/preview-1.mp4");
+
+    fireEvent.pointerEnter(cards[1]!, { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(400));
+    expect(document.querySelectorAll("video")).toHaveLength(1);
+    expect(document.querySelector("video")?.getAttribute("src")).toBe("/preview-2.mp4");
+
+    fireEvent(window, new Event("resize"));
+    expect(document.querySelector("video")).toBeNull();
+    expect(play).toHaveBeenCalledTimes(2);
+  });
+
+  it("filter、sort、view、zoom の変更で active preview を reset する", async () => {
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      return Promise.resolve(
+        json({
+          items: [
+            video(1, { previewState: "done", previewUrl: "/preview-1.mp4" }),
+            video(2, { previewState: "done", previewUrl: "/preview-2.mp4" }),
+          ],
+          total: 2,
+        } satisfies VideoPage),
+      );
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+    vi.useFakeTimers();
+
+    const startFirst = () => {
+      fireEvent.pointerEnter(screen.getAllByRole("article")[0]!, {
+        pointerType: "mouse",
+      });
+      act(() => vi.advanceTimersByTime(400));
+      expect(document.querySelector("video")).not.toBeNull();
+    };
+
+    startFirst();
+    fireEvent.click(screen.getByRole("button", { name: "絞り込み" }));
+    fireEvent.click(screen.getByRole("radio", { name: "未視聴" }));
+    await act(async () => Promise.resolve());
+    expect(document.querySelector("video")).toBeNull();
+
+    startFirst();
+    fireEvent.click(screen.getByRole("button", { name: "表示と並び順" }));
+    let dialog = screen.getByRole("dialog");
+    const slider = within(dialog).getByRole("slider", { name: "カードの大きさ" });
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+    expect(document.querySelector("video")).toBeNull();
+
+    startFirst();
+    fireEvent.click(within(dialog).getByRole("radio", { name: "リスト" }));
+    expect(document.querySelector("video")).toBeNull();
+    expect(screen.queryByRole("article")).toBeNull();
+
+    dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("radio", { name: "グリッド" }));
+    startFirst();
+    dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("radio", { name: "題名" }));
+    expect(document.querySelector("video")).toBeNull();
+  });
+
+  it("次 page の読み込み開始と list 追加で active preview を reset する", async () => {
+    let intersect: IntersectionObserverCallback | undefined;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(callback: IntersectionObserverCallback) {
+          intersect = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    let listCalls = 0;
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      listCalls += 1;
+      return Promise.resolve(
+        json(
+          listCalls === 1
+            ? {
+                items: [
+                  video(1, {
+                    previewState: "done",
+                    previewUrl: "/preview-1.mp4",
+                  }),
+                ],
+                total: 2,
+                nextCursor: "next",
+              }
+            : { items: [video(2)], total: 2 },
+        ),
+      );
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockImplementation(() => undefined);
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+    vi.useFakeTimers();
+    fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
+    act(() => vi.advanceTimersByTime(400));
+    expect(document.querySelector("video")).not.toBeNull();
+
+    act(() =>
+      intersect?.(
+        [{ isIntersecting: true } as IntersectionObserverEntry],
+        {} as IntersectionObserver,
+      ),
+    );
+    expect(document.querySelector("video")).toBeNull();
+    vi.useRealTimers();
+    expect(await screen.findByRole("link", { name: "動画 2" })).toBeDefined();
+    expect(listCalls).toBe(2);
   });
 });
