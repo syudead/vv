@@ -86,7 +86,9 @@ jobs:
           fi
           # ここに無いものは全部 e2e の対象にする。新しい置き場所を足しても
           # 既定で検査される側に倒すためである。
-          code=$(git diff --name-only HEAD^1 HEAD |
+          # --no-renames: 移動は移動先しか出ないので、コードを docs/ へ移すと
+          # 文書だけの変更に見えてしまう。削除と追加に分けて両方を判定する。
+          code=$(git diff --no-renames --name-only HEAD^1 HEAD |
             grep -Ev '(\.md$|^docs/|^specs/|^\.agents/|^\.claude/|^renovate\.json$)' || true)
           if [ -n "$code" ]; then
             printf 'e2e の対象:\n%s\n' "$code"
@@ -108,7 +110,8 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-          # Checks ジョブと同じキーにして、task check が温めたビルドキャッシュを使う。
+          # Checks ジョブと同じキーにして、以前の実行の task check が保存した
+          # ビルドキャッシュを使う（同じ実行の Checks は並行なので間に合わない）。
           cache-dependency-path: |
             go.sum
             tools/go.sum
