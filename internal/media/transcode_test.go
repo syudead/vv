@@ -20,8 +20,9 @@ import (
 func compatibleMetadata() transcodeMetadata {
 	audio := transcodeStream{Index: 2, CodecType: "audio", CodecName: "aac", Profile: "LC", SampleRate: 48000, Channels: 2}
 	return transcodeMetadata{
-		Video: transcodeStream{Index: 1, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1},
-		Audio: &audio,
+		FormatName: "matroska,webm",
+		Video:      transcodeStream{Index: 1, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1},
+		Audio:      &audio,
 	}
 }
 
@@ -30,12 +31,12 @@ func TestParseTranscodeProbeSkipsAttachedPicture(t *testing.T) {
 		{"index":0,"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}},
 		{"index":1,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":1920,"height":1080,"level":41,"avg_frame_rate":"30000/1001","r_frame_rate":"30000/1001","sample_aspect_ratio":"4:3","side_data_list":[{"side_data_type":"Display Matrix","rotation":-90}]},
 		{"index":2,"codec_type":"audio","codec_name":"aac","profile":"LC","sample_rate":"48000","channels":2}
-	],"format":{"duration":"12.5"}}`
+	],"format":{"duration":"12.5","format_name":"MOV,MP4,M4A,3GP,3G2,MJ2"}}`
 	got, err := parseTranscodeProbe([]byte(output))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Video.Index != 1 || got.Video.Rotation != 270 || got.Video.SampleAspectNum != 4 || got.Video.SampleAspectDen != 3 || got.Audio == nil || got.Audio.Index != 2 {
+	if got.FormatName != "mov,mp4,m4a,3gp,3g2,mj2" || got.Video.Index != 1 || got.Video.Rotation != 270 || got.Video.SampleAspectNum != 4 || got.Video.SampleAspectDen != 3 || got.Audio == nil || got.Audio.Index != 2 {
 		t.Fatalf("stream selection = %+v", got)
 	}
 }
@@ -105,12 +106,139 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 }
 
 func TestTranscodeArgsNormalizesSeek(t *testing.T) {
-	args := strings.Join(transcodeArgs("movie.mp4", 25000, compatibleMetadata(), false), " ")
-	for _, want := range []string{"-ss 25.000 -i movie.mp4", "-c:v libx264", "-c:a aac"} {
+	args := strings.Join(transcodeArgs("movie.mkv", 25000, compatibleMetadata(), false), " ")
+	for _, want := range []string{"-ss 25.000 -i movie.mkv", "-c:v libx264", "-preset superfast", "-c:a aac"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("argsに %q がない: %s", want, args)
 		}
 	}
+}
+
+func TestTranscodeArgsReadsMOVTracksSeparately(t *testing.T) {
+	metadata := compatibleMetadata()
+	metadata.FormatName = "mov,mp4,m4a,3gp,3g2,mj2"
+	args := strings.Join(transcodeArgs("movie.mov", 25000, metadata, false), " ")
+	for _, want := range []string{
+		"-ss 25.000 -an -i movie.mov -ss 25.000 -vn -i movie.mov",
+		"-map 0:1 -map 1:2",
+	} {
+		if !strings.Contains(args, want) {
+			t.Fatalf("argsに %q がない: %s", want, args)
+		}
+	}
+	if strings.Contains(args, "-interleaved_read") {
+		t.Fatalf("再生を損なう可能性のあるMOV demuxer optionがある: %s", args)
+	}
+}
+
+func TestMOVTranscodeReadsVideoAndAudioFromSeparateInputs(t *testing.T) {
+	if _, err := exec.LookPath(transcodeCommand); err != nil {
+		t.Skip("ffmpegがありません")
+	}
+	if _, err := exec.LookPath(probeCommand); err != nil {
+		t.Skip("ffprobeがありません")
+	}
+
+	directory := t.TempDir()
+	input := filepath.Join(directory, "interleaved.mov")
+	generate := exec.Command(transcodeCommand,
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc=size=320x180:rate=15:duration=2",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2",
+		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+		"-c:a", "aac", input,
+	)
+	if output, err := generate.CombinedOutput(); err != nil {
+		t.Fatalf("MOV fixture生成: %v: %s", err, output)
+	}
+
+	probeInput, err := exec.Command(probeCommand, probeArgs(input)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata, err := parseTranscodeProbe(probeInput)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Audio == nil || !usesMOVDemuxer(metadata.FormatName) {
+		t.Fatalf("MOV fixtureのmetadataが不正です: %+v", metadata)
+	}
+
+	output := filepath.Join(directory, "output.mp4")
+	outputFile, err := os.Create(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := exec.Command(transcodeCommand, transcodeArgs(input, 500, metadata, false)...)
+	command.Stdout = outputFile
+	var stderr strings.Builder
+	command.Stderr = &stderr
+	runErr := command.Run()
+	closeErr := outputFile.Close()
+	if runErr != nil || closeErr != nil {
+		t.Fatalf("MOV変換: run=%v close=%v stderr=%s", runErr, closeErr, stderr.String())
+	}
+
+	probeOutputJSON, err := exec.Command(probeCommand, probeArgs(output)...).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	converted, err := parseTranscodeProbe(probeOutputJSON)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if converted.Audio == nil {
+		t.Fatal("別入力から変換した出力に音声streamがありません")
+	}
+}
+
+func TestMOVTranscodeStopsAfterClientCancellation(t *testing.T) {
+	if _, err := exec.LookPath(transcodeCommand); err != nil {
+		t.Skip("ffmpegがありません")
+	}
+	if _, err := exec.LookPath(probeCommand); err != nil {
+		t.Skip("ffprobeがありません")
+	}
+
+	directory := t.TempDir()
+	input := filepath.Join(directory, "long.mov")
+	generate := exec.Command(transcodeCommand,
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc=size=160x90:rate=15:duration=30",
+		"-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=30",
+		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+		"-c:a", "aac", input,
+	)
+	if output, err := generate.CombinedOutput(); err != nil {
+		t.Fatalf("MOV fixture生成: %v: %s", err, output)
+	}
+
+	transcoder := NewLiveTranscoder(nil)
+	stream, wait, stop, err := transcoder.Start(
+		context.Background(), input, 0, true, time.Now().Add(5*time.Second),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := readInitialBytes(stream); err != nil {
+		t.Fatalf("初期データ取得: %v", err)
+	}
+
+	started := time.Now()
+	stop()
+	_ = stream.Close()
+	if err := wait(); err == nil {
+		t.Fatal("cancelしたFFmpegが成功終了しました")
+	}
+	if elapsed := time.Since(started); elapsed > 2*time.Second {
+		t.Fatalf("cancel後のFFmpeg終了に %s かかりました", elapsed)
+	}
+}
+
+func readInitialBytes(stream io.Reader) ([]byte, error) {
+	buffer := make([]byte, 32*1024)
+	length, err := io.ReadAtLeast(stream, buffer, 1)
+	return buffer[:length], err
 }
 
 func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {

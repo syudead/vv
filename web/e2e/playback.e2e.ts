@@ -73,7 +73,7 @@ async function waitForVideos(request: APIRequestContext) {
       },
       { timeout: 60_000 },
     )
-    .toBe(9);
+    .toBe(10);
 }
 
 async function waitForSeekThumbnails(request: APIRequestContext) {
@@ -186,6 +186,7 @@ test.describe.serial("live MP4 playback", () => {
     const matrix = [
       { title: "direct", direct: true, video: "h264", audio: "aac" },
       { title: "container-only", direct: false, video: "h264", audio: "aac" },
+      { title: "container-only-mov", direct: false, video: "h264", audio: "aac" },
       { title: "video-only", direct: false, video: "mpeg4", audio: "aac" },
       { title: "audio-only", direct: false, video: "h264", audio: "flac" },
       { title: "video-audio", direct: false, video: "mpeg4", audio: "pcm_s16le" },
