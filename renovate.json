@@ -21,9 +21,10 @@
       "automergeType": "pr"
     },
     {
-      "description": "Go と Node のランタイム版は go.mod と揃えて人が決める。mise は go を golang/go、node を nodejs という packageName で扱うので、両manager に効く depName で指定する。",
+      "description": "Go と Node のランタイム版は go.mod と揃えて人が決める。mise は go を golang/go、node を nodejs という packageName で扱うので、両manager に効く depName で指定する。同じタグのダイジェスト更新は止めない。",
       "matchManagers": ["dockerfile", "mise"],
       "matchDepNames": ["go", "golang", "node"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
       "enabled": false
     },
     {

@@ -14,6 +14,8 @@
 - メジャー更新は PR が残る。破壊的変更を読んで人がマージする。
 - GitHub Actions はコミットハッシュに固定され、コメントでタグ名を併記する
   （`config:best-practices` の既定）。
+- `Dockerfile` のベースイメージは `タグ@sha256:ダイジェスト` で固定する。同じ
+  タグの中身が更新されると、Renovate がダイジェスト更新の PR を出す。
 
 ## 対象外にしているもの
 
@@ -22,6 +24,8 @@
   `go.mod` を上げるときに一緒に変える。mise manager は `go` を `golang/go`、
   `node` を `nodejs` という packageName で扱うため、除外は `matchPackageNames`
   ではなく両 manager に共通の `matchDepNames` で指定している。
+  止めるのはバージョンの変更（major / minor / patch）だけで、`Dockerfile` の
+  イメージのダイジェスト更新は対象内に残す。
 - `mise.toml` の `task` と `jq`、`Dockerfile` の `alpine` は対象内で、それぞれ
   mise tools / container images グループに入る。
 - Dependabot の security updates はリポジトリ設定で無効にしている。
