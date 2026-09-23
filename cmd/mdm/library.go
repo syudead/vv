@@ -112,13 +112,7 @@ func previewHandler(cfg Config, db *store.DB) jobs.Handler {
 			return nil
 		}
 		if video.DurationMs == nil || *video.DurationMs <= 0 {
-			err := fmt.Errorf("プレビュー生成に必要な動画の長さがありません")
-			if job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
-				if _, markErr := db.SetPreviewStateForJob(ctx, job, domain.PreviewStateFailed); markErr != nil {
-					return markErr
-				}
-			}
-			return err
+			return fmt.Errorf("プレビュー生成に必要な動画の長さがありません")
 		}
 		current, err := db.ContentKeyCurrent(ctx, job.VideoID, job.ContentKey)
 		if err != nil || !current {
@@ -131,11 +125,6 @@ func previewHandler(cfg Config, db *store.DB) jobs.Handler {
 			return db.PreviewSourceCurrent(validateCtx, job)
 		}
 		if err := media.GeneratePreview(ctx, job.LocationPath, cfg.ThumbnailsDir(), job.ContentKey, *video.DurationMs, validateContent); err != nil {
-			if job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
-				if _, markErr := db.SetPreviewStateForJob(ctx, job, domain.PreviewStateFailed); markErr != nil {
-					return markErr
-				}
-			}
 			return err
 		}
 		applied, err := db.CompletePreviewForContent(context.WithoutCancel(ctx), job)
@@ -386,6 +375,14 @@ func (l *library) cleanPreviewTemps(cutoff time.Time) {
 }
 
 func (l *library) reconcilePreviews(ctx context.Context) {
+	marked, requeued, err := l.db.ReconcilePreviewFailures(ctx)
+	if err != nil {
+		l.logger.Warn("プレビュー失敗状態を整合できませんでした", slog.Any("error", err))
+		return
+	}
+	if marked > 0 || requeued > 0 {
+		l.logger.Info("プレビュー失敗状態を整合しました", slog.Int64("failed", marked), slog.Int64("requeued", requeued))
+	}
 	assets, err := l.db.PreviewAssets(ctx)
 	if err != nil {
 		l.logger.Warn("プレビューの状態を読み出せませんでした", slog.Any("error", err))
