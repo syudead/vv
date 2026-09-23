@@ -266,21 +266,6 @@ func (db *DB) MarkProbeFailed(ctx context.Context, id int64, reason string) erro
 	return nil
 }
 
-func (db *DB) MarkProbeFailedForJob(ctx context.Context, job domain.Job, reason string) (bool, error) {
-	res, err := db.sql.ExecContext(ctx, `update videos
-		set probe_state = 'failed', probe_error = ?, playable = 0, updated_at = ?
-		where id = ? and content_key = ? and exists (
-			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
-		and location_generation = ?`,
-		reason, time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
-		job.LocationVersion, job.LocationPath, job.LocationGeneration)
-	if err != nil {
-		return false, err
-	}
-	count, err := res.RowsAffected()
-	return count == 1, err
-}
-
 // SetThumbnailState はサムネイル生成の状態を記録する。
 func (db *DB) SetThumbnailState(ctx context.Context, id int64, state domain.ThumbnailState) error {
 	_, err := db.sql.ExecContext(ctx,
@@ -432,6 +417,84 @@ func (db *DB) RequeuePreviewRepair(ctx context.Context, id int64) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// RetryProbe は読み取りに失敗した動画を、1つの取引の中で読み取り直す状態へ
+// 戻し、スキャンが新しい内容に積むのと同じジョブを積む。
+//
+// probe_state が failed でなければ何も変えず domain.ErrProbeNotFailed を返す。
+// 連打や別タブからの二度目はこれになり、ジョブは重複しない。failed は、その
+// 動画の読み取りのジョブが終わっていることを意味する（FailClaimedJob が同じ
+// 取引で記録する）ので、ここで積むジョブが running の古いジョブとの重複防止で
+// 省かれることは無い。
+//
+// seekThumbnailMissing はシーク用プレビューの置き場が無いことを表す。置き場の
+// 有無はファイルの事実なので、呼び出し側が確かめて渡す。thumbnail_state が
+// done でも置き場が無ければ、状態はそのままでサムネイルのジョブを積む
+// （thumbnailHandler は代表サムネイルがあればシーク用プレビューだけを作る）。
+// 一覧用プレビューのジョブは、読み取りの成功後に probeHandler が積む。
+func (db *DB) RetryProbe(ctx context.Context, id int64, seekThumbnailMissing bool) error {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("読み取りのやり直しを開始できません (id=%d): %w", id, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now().Unix()
+	res, err := tx.ExecContext(ctx, `update videos set probe_state = 'pending', probe_error = null, updated_at = ?
+		where id = ? and probe_state = 'failed'`, now, id)
+	if err != nil {
+		return fmt.Errorf("読み取りの状態を戻せません (id=%d): %w", id, err)
+	}
+	reset, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("読み取りの状態の更新件数を確認できません (id=%d): %w", id, err)
+	}
+	if reset == 0 {
+		var exists int
+		if err := tx.QueryRowContext(ctx, `select exists(select 1 from videos where id = ?)`, id).Scan(&exists); err != nil {
+			return fmt.Errorf("動画の有無を確かめられません (id=%d): %w", id, err)
+		}
+		if exists == 0 {
+			return ErrNotFound
+		}
+		return domain.ErrProbeNotFailed
+	}
+
+	res, err = tx.ExecContext(ctx, `update videos set thumbnail_state = 'pending', updated_at = ?
+		where id = ? and thumbnail_state <> 'done'`, now, id)
+	if err != nil {
+		return fmt.Errorf("サムネイルの状態を戻せません (id=%d): %w", id, err)
+	}
+	thumbnailReset, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("サムネイルの状態の更新件数を確認できません (id=%d): %w", id, err)
+	}
+	if _, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', updated_at = ?
+		where id = ? and preview_state = 'failed'`, now, id); err != nil {
+		return fmt.Errorf("プレビューの状態を戻せません (id=%d): %w", id, err)
+	}
+
+	kinds := []JobKind{JobProbe}
+	if thumbnailReset > 0 || seekThumbnailMissing {
+		kinds = append(kinds, JobThumbnail)
+	}
+	for _, kind := range kinds {
+		if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
+			string(kind), id); err != nil {
+			return fmt.Errorf("古いジョブを掃除できません (%s, video=%d): %w", kind, id, err)
+		}
+		if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
+			values (?, ?, 'queued', 0, ?, ?)
+			on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
+			string(kind), id, now, now); err != nil {
+			return fmt.Errorf("ジョブを積めません (%s, video=%d): %w", kind, id, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("読み取りのやり直しを確定できません (id=%d): %w", id, err)
+	}
+	return nil
 }
 
 func (db *DB) VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error) {

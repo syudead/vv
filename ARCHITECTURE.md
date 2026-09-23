@@ -21,7 +21,10 @@ worker. Everything ships as one container.
 In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, checks that
 `ffprobe`/`ffmpeg` are on `PATH`, opens SQLite under `MDM_DATA_DIR` and applies
 embedded goose migrations at startup, then starts the job worker. It serves `GET /api/health`,
-the video library API (`/api/videos*`, `/api/scans*`), media-folder settings and
+the video library API (`/api/videos*`, `/api/scans*`; a single video's response also
+carries its representative location and seek-preview state, and
+`/api/videos/{id}/related`, `/probe` and `/open` return related videos, retry a failed
+metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the read-only folder browsing API
 (`/api/folders*`), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
@@ -41,6 +44,14 @@ addressing a folder by its registered root's id and a `/`-separated relative pat
 Streaming delegates ranges to `http.ServeContent` and only opens current locations that
 resolve inside a configured media folder.
 
+`internal/opener` launches the operating system's default app for a video's
+representative location (`explorer.exe`, `open` or `xdg-open`). It is kept apart from
+`internal/media`, which is the entry point for `ffmpeg`/`ffprobe`, and it resolves the
+command once at startup; on Linux and similar systems it also requires `DISPLAY` or
+`WAYLAND_DISPLAY`, so containers and headless servers report it as unavailable. The
+open route only accepts requests whose remote address and `Host` are loopback, and it
+never takes a path from the request.
+
 Shutdown drains in-flight requests within a 10 second grace period, then stops
 the scanner and the worker so a running job returns to the queue.
 
@@ -57,7 +68,7 @@ not persisted.
 
 ## Intended dependency direction
 
-`cmd -> internal/{httpapi,store,media,scanner,jobs} -> internal/domain`, one way
+`cmd -> internal/{httpapi,store,media,opener,scanner,jobs} -> internal/domain`, one way
 only. `internal/domain` holds the domain model and use cases and must not depend
 on `net/http`, `database/sql`, or `os/exec`. This constraint is enforced
 mechanically with golangci-lint's depguard in CI.

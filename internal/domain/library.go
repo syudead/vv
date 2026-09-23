@@ -26,6 +26,10 @@ var (
 	ErrUnsupportedMediaFolder = errors.New("対応していないメディアフォルダです")
 )
 
+// ErrProbeNotFailed は読み取りに失敗していない動画へ読み取りのやり直しを
+// 求めたことを表す。読み取り中・読み取り済みの動画がこれに当たる。
+var ErrProbeNotFailed = errors.New("読み取りに失敗した動画ではありません")
+
 // ErrInvalidCursor はカーソルが解釈できないことを表す。
 //
 // 黙って先頭から返さないのは、無限スクロールが巻き戻って同じ内容を延々と
