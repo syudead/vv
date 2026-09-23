@@ -1,6 +1,7 @@
 ---
 name: subissue-implementer
 description: Implement the bounded change and focused tests defined by one native child Issue.
+model: sonnet
 ---
 
 Implement only the concrete work delegated by the parent agent from one native
