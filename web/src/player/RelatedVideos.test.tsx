@@ -72,13 +72,11 @@ describe("RelatedVideos", () => {
     if (first === undefined || second === undefined || third === undefined) {
       throw new Error("項目が足りません");
     }
-    expect(
-      within(first)
-        .getByRole("progressbar", { hidden: true })
-        .getAttribute("aria-valuenow"),
-    ).toBe("20");
-    expect(within(second).queryByRole("progressbar", { hidden: true })).toBeNull();
-    expect(within(third).queryByRole("progressbar", { hidden: true })).toBeNull();
+    expect(within(first).getByRole("progressbar").getAttribute("aria-valuenow")).toBe(
+      "20",
+    );
+    expect(within(second).queryByRole("progressbar")).toBeNull();
+    expect(within(third).queryByRole("progressbar")).toBeNull();
   });
 
   it("0 件のときは見出しも並びも出さず、× だけを残す", () => {
@@ -121,7 +119,8 @@ describe("RelatedVideos", () => {
         ],
       },
     });
-    expect(screen.getByRole("link", { name: "1:05 関連 2" })).toBeDefined();
-    expect(screen.queryByRole("progressbar")).toBeNull();
+    // リンクの名前は題名と長さだけで、割合は進捗バーとして別に読める。
+    expect(screen.getByRole("link", { name: "関連 2 1:05" })).toBeDefined();
+    expect(screen.getByRole("progressbar", { name: "再生済みの割合" })).toBeDefined();
   });
 });

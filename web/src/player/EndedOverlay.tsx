@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import type { Video } from "../api/client";
 import Button from "../ui/Button";
-import { VideoThumbnail } from "./RelatedVideos";
+import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
 
 /**
@@ -51,6 +51,7 @@ export default function EndedOverlay({
           <Link
             to={`/videos/${String(next.id)}`}
             state={{ from: backTo }}
+            aria-label={videoLinkLabel(next)}
             className="flex items-start gap-3 rounded-md"
           >
             <VideoThumbnail video={next} className="hidden w-56 sm:block" />

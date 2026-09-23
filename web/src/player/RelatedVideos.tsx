@@ -10,6 +10,15 @@ import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 
 /**
+ * videoLinkLabel は関連動画と「次の動画」のリンクの読み上げ名である。題名と長さだけにし、
+ * 中の進捗バーの割合が名前に混ざらないようにする。進捗バー自体は読み上げに残す。
+ */
+export function videoLinkLabel(video: Video): string {
+  const duration = formatDuration(video.durationMs);
+  return duration === "" ? video.title : `${video.title} ${duration}`;
+}
+
+/**
  * VideoThumbnail は関連動画と「次の動画」のサムネイルである。無いときは一覧のカードと
  * 同じ代わりの表示にし、右下に長さ、途中まで見た動画だけ下端に進捗バーを出す。
  */
@@ -52,8 +61,6 @@ export function VideoThumbnail({
       )}
       {ratio !== null && (
         <span
-          // リンクの読み上げ名に割合の数値が混ざらないように、読み上げからは外す。
-          aria-hidden="true"
           role="progressbar"
           aria-valuemin={0}
           aria-valuemax={100}
@@ -139,6 +146,7 @@ export default function RelatedVideos({
               <Link
                 to={`/videos/${String(video.id)}`}
                 state={{ from: backTo }}
+                aria-label={videoLinkLabel(video)}
                 className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-hover-wash"
               >
                 <VideoThumbnail video={video} className="w-40" />
