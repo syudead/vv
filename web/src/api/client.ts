@@ -1,6 +1,6 @@
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
-import { recordSavedProgress } from "./progressEvents";
+import { nextProgressSequence, recordSavedProgress } from "./progressEvents";
 
 // 型は api/openapi.yaml からの生成物を使う。契約を変えると、ここが
 // コンパイルエラーになって気付ける。
@@ -255,13 +255,14 @@ export async function saveProgress(
   positionMs: number,
   signal?: AbortSignal,
 ): Promise<Progress> {
+  const sequence = nextProgressSequence();
   const saved = await request<Progress>(`/api/videos/${String(id)}/progress`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) }),
     signal,
   });
-  recordSavedProgress(id, saved);
+  recordSavedProgress(id, saved, sequence);
   return saved;
 }
 
@@ -272,6 +273,7 @@ export async function saveProgress(
  */
 export function beaconProgress(id: number, positionMs: number): void {
   const body = JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) });
+  const sequence = nextProgressSequence();
   void fetch(`/api/videos/${String(id)}/progress`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -279,7 +281,8 @@ export function beaconProgress(id: number, positionMs: number): void {
     keepalive: true,
   })
     .then(async (response) => {
-      if (response.ok) recordSavedProgress(id, (await response.json()) as Progress);
+      if (response.ok)
+        recordSavedProgress(id, (await response.json()) as Progress, sequence);
     })
     .catch(() => undefined);
 }

@@ -202,6 +202,32 @@ describe("progress API client", () => {
       expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(progress);
     });
 
+    // 応答の順が入れ替わっても、後から送った保存の位置を残す。
+    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    const older = {
+      positionMs: 10_000,
+      completed: false,
+      updatedAt: "2026-09-23T00:00:00Z",
+    };
+    const newer = {
+      positionMs: 20_000,
+      completed: false,
+      updatedAt: "2026-09-23T00:00:00Z",
+    };
+    let answerOlder: (response: Response) => void = () => undefined;
+    fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          answerOlder = resolve;
+        }),
+    );
+    fetch.mockResolvedValueOnce(jsonResponse(newer));
+    const first = saveProgress(7, 10_000);
+    await saveProgress(7, 20_000);
+    answerOlder(jsonResponse(older));
+    await first;
+    expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(newer);
+
     // 失敗した送信では控えを書き換えない。
     saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
     fetch.mockResolvedValueOnce(jsonResponse({ code: "not_found", message: "x" }, 404));

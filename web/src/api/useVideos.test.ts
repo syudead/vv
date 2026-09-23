@@ -18,7 +18,7 @@ vi.mock("./client", async (importOriginal) => ({
 }));
 
 const { useVideos } = await import("./useVideos");
-const { recordSavedProgress } = await import("./progressEvents");
+const { nextProgressSequence, recordSavedProgress } = await import("./progressEvents");
 
 /** Pending は応答を後から決められる 1 回の呼び出しである。 */
 interface Pending {
@@ -121,7 +121,7 @@ describe("useVideos（一覧の読み込み）", () => {
       updatedAt: "2026-09-23T00:00:00Z",
     };
     act(() => {
-      recordSavedProgress(2, progress);
+      recordSavedProgress(2, progress, nextProgressSequence());
     });
 
     expect(result.current.items.find((video) => video.id === 2)?.progress).toEqual(
