@@ -28,7 +28,7 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	}
 	roots, err := s.folders.ListMediaFolders(r.Context())
 	if err != nil {
-		s.internalError(w, "フォルダを取得できませんでした", err)
+		s.folderError(w, r, "フォルダを取得できませんでした", err)
 		return
 	}
 
@@ -36,7 +36,7 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	for _, root := range roots {
 		locations, err := s.folders.FolderLocations(r.Context(), root.Path)
 		if err != nil {
-			s.internalError(w, "フォルダを取得できませんでした", err)
+			s.folderError(w, r, "フォルダを取得できませんでした", err)
 			return
 		}
 		listing, _ := domain.SummarizeFolder(root, "", locations)
@@ -56,7 +56,7 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 	}
 	locations, err := s.folders.FolderLocations(r.Context(), domain.FolderDir(root.Path, rel))
 	if err != nil {
-		s.internalError(w, "フォルダを取得できませんでした", err)
+		s.folderError(w, r, "フォルダを取得できませんでした", err)
 		return
 	}
 	listing, found := domain.SummarizeFolder(root, rel, locations)
@@ -103,7 +103,7 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	if rel != "" {
 		found, err := s.folders.HasFolderLocations(r.Context(), query.Dir)
 		if err != nil {
-			s.internalError(w, "フォルダの動画を取得できませんでした", err)
+			s.folderError(w, r, "フォルダの動画を取得できませんでした", err)
 			return
 		}
 		if !found {
@@ -118,7 +118,7 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		s.invalidRequest(w, "読み込み位置を解釈できません。フォルダを開き直してください")
 		return
 	case err != nil:
-		s.internalError(w, "フォルダの動画を取得できませんでした", err)
+		s.folderError(w, r, "フォルダの動画を取得できませんでした", err)
 		return
 	}
 
@@ -154,7 +154,7 @@ func (s *server) resolveFolderRoot(w http.ResponseWriter, r *http.Request, rootI
 
 	roots, err := s.folders.ListMediaFolders(r.Context())
 	if err != nil {
-		s.internalError(w, "フォルダを取得できませんでした", err)
+		s.folderError(w, r, "フォルダを取得できませんでした", err)
 		return domain.MediaFolder{}, "", false
 	}
 	for _, root := range roots {
@@ -191,4 +191,13 @@ func toAPIFolder(folder domain.FolderSummary) gen.FolderSummary {
 		FolderCount: folder.FolderCount,
 		Previews:    previews,
 	}
+}
+
+// folderError は保存層の失敗を 500 で返す。要求が打ち切られた（画面が先へ
+// 進んだ）ための失敗は、誰も応答を読まないので書かず、ログにも残さない。
+func (s *server) folderError(w http.ResponseWriter, r *http.Request, message string, err error) {
+	if errors.Is(r.Context().Err(), context.Canceled) {
+		return
+	}
+	s.internalError(w, message, err)
 }
