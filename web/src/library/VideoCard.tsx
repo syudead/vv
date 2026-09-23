@@ -96,7 +96,6 @@ function VideoCard(props: VideoCardProps) {
     onPreviewStart,
     onPreviewReset,
   } = props;
-  const eligible = video.previewState === "done" && video.previewUrl !== undefined;
   const {
     duration,
     unplayable: rawUnplayable,
@@ -104,6 +103,10 @@ function VideoCard(props: VideoCardProps) {
     ratio,
     quality,
   } = useCardState(video);
+  const eligible =
+    rawUnplayable === null &&
+    video.previewState === "done" &&
+    video.previewUrl !== undefined;
   const coordinated = props.activePreviewId !== undefined && onPreviewStart !== undefined;
   const previewActive = !coordinated || activePreviewId === video.id;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

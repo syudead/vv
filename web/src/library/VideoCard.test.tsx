@@ -248,15 +248,18 @@ describe("VideoCard hover preview", () => {
   });
 
   it("does not suppress an existing warning when a preview URL is present", () => {
+    const onStart = vi.fn();
     renderCard(video({ durationMs: undefined }), {
       activePreviewId: 1,
-      onPreviewStart: vi.fn(),
+      onPreviewStart: onStart,
     });
     expect(screen.getByText("再生に必要な情報がありません")).toBeDefined();
 
     fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
     act(() => vi.advanceTimersByTime(400));
     expect(screen.getByText("再生に必要な情報がありません")).toBeDefined();
+    expect(onStart).not.toHaveBeenCalled();
+    expect(document.querySelector("video")).toBeNull();
   });
 
   it("releases the media element before unmount detaches its ref", () => {
