@@ -9,11 +9,11 @@
 
 ### Hover できる pointer だけで preview を開始する
 
-**Decision**: preview の開始条件を mouse/trackpad の hover に限定し、keyboard focus、touch contact、row view では開始しない。
+**Decision**: `pointerenter` ごとに `event.pointerType === "mouse"` を確認して preview を mouse/trackpad の hover に限定し、keyboard focus、touch contact、row view では開始しない。
 
-**Rationale**: 親 Issue は hover できない入力環境とキーボード操作で自動再生しないこと、行ビューを対象外にすることを明示している。既存カードは focus、selection、click navigation をすでに持つため、preview はそれらより低い優先順位の補助表示に留める。
+**Rationale**: 親 Issue は hover できない入力環境とキーボード操作で自動再生しないこと、行ビューを対象外にすることを明示している。イベント自身の `pointerType` なら touch contact を除外しつつ、タッチ主体端末へ接続した mouse を許可できる。既存カードは focus、selection、click navigation をすでに持つため、preview はそれらより低い優先順位の補助表示に留める。
 
-**Alternatives considered**: focus でも preview を開始する案は、キーボード利用者の移動だけで動画を動かし、focus ring と Enter 遷移の確認を難しくするため採用しない。touch long press preview は親 Issue の対象外なので採用しない。
+**Alternatives considered**: `(hover: hover) and (pointer: fine)` を eligibility に使う案は主入力しか表さず、タッチ主体端末へ接続した mouse を除外するため採用しない。focus でも preview を開始する案は、キーボード利用者の移動だけで動画を動かし、focus ring と Enter 遷移の確認を難しくするため採用しない。touch long press preview は親 Issue の対象外なので採用しない。
 
 ### 直接 stream だけを preview source にする
 

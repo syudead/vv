@@ -41,12 +41,14 @@ If the implementation adds browser-backed coverage for pointer media behavior, a
 
 7. Hover a playable card whose thumbnail is pending or failed. Expected: preview can start from the placeholder, and stopping preview restores that placeholder.
 
-8. Enable selection mode by checking a card, then interact with card checkboxes and card bodies. Expected: selection toggles stay usable and the check indicator is not hidden by preview.
+8. Reject the preview element's `play()` promise, then simulate a media load or playback error in a separate attempt. Expected: each failure removes or resets the preview, restores the prior thumbnail or placeholder without a large error overlay, and a later hover can try again.
 
-9. Verify keyboard behavior by tabbing to cards/links and pressing Enter. Expected: focus rings and navigation work, and focus alone does not start preview.
+9. Enable selection mode by checking a card, then interact with card checkboxes and card bodies. Expected: selection toggles stay usable and the check indicator is not hidden by preview.
 
-10. Verify a touch-only or emulated touch environment. Expected: touching a card does not start hover preview; existing selection and navigation behavior remains available.
+10. Verify keyboard behavior by tabbing to cards/links and pressing Enter. Expected: focus rings and navigation work, and focus alone does not start preview.
 
-11. Capture implementation screenshots at 360px, 768px, and 1280px while a card is previewing. Expected: no overlap with adjacent cards, toolbar, selection bar, progress bar, state labels, title, or metadata.
+11. Verify a touch-only or emulated touch environment. Expected: touching a card does not start hover preview; existing selection and navigation behavior remains available. Then emulate a touch-primary device with an attached mouse, or dispatch mouse pointer events without changing the primary-input media query. Expected: mouse hover starts preview even when `(hover: hover) and (pointer: fine)` is false.
 
-12. Repeat with `prefers-reduced-motion: reduce`. Expected: preview can start and stop, but decorative scale/fade motion is reduced and no excessive flicker appears.
+12. Capture implementation screenshots at 360px, 768px, and 1280px while a card is previewing and compare them with the approved `ui-design.md`. Expected: its visual hierarchy, information density, spacing, typography, and action-priority criteria pass, with no overlap between the preview and adjacent cards, toolbar, selection bar, progress bar, state labels, title, or metadata.
+
+13. Repeat with `prefers-reduced-motion: reduce`. Expected: preview can start and stop, but decorative scale/fade motion is reduced and no excessive flicker appears.
