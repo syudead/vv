@@ -247,44 +247,70 @@ export function listDirectories(
 }
 
 /**
- * saveProgress は再生位置を送る。視聴済みの判定はサーバー側が行うので、
- * ここでは位置だけを送る。
+ * progressQueue は動画ごとに、送った保存の完了を待つ連なりである。
+ *
+ * サーバーは届いた保存をそのまま上書きするので、同じ動画の保存を並行して送ると、
+ * 先に送った古い位置が後から届いて残ることがある。1件ずつ順に送る。
  */
-export async function saveProgress(
+const progressQueue = new Map<number, Promise<unknown>>();
+
+function enqueueProgress<T>(id: number, send: () => Promise<T>): Promise<T> {
+  // 送信中の保存が無ければ、その場で送る（画面を離れる瞬間の送信を遅らせない）。
+  const previous = progressQueue.get(id);
+  const next = previous === undefined ? send() : previous.then(send);
+  const tail = next.catch(() => undefined);
+  progressQueue.set(id, tail);
+  void tail.then(() => {
+    if (progressQueue.get(id) === tail) progressQueue.delete(id);
+  });
+  return next;
+}
+
+/**
+ * saveProgress は再生位置を送る。視聴済みの判定はサーバー側が行うので、
+ * ここでは位置だけを送る。同じ動画の保存は、前の保存が終わってから送る。
+ */
+export function saveProgress(
   id: number,
   positionMs: number,
   signal?: AbortSignal,
 ): Promise<Progress> {
   const sequence = nextProgressSequence();
-  const saved = await request<Progress>(`/api/videos/${String(id)}/progress`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) }),
-    signal,
+  return enqueueProgress(id, async () => {
+    const saved = await request<Progress>(`/api/videos/${String(id)}/progress`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) }),
+      signal,
+    });
+    recordSavedProgress(id, saved, sequence);
+    return saved;
   });
-  recordSavedProgress(id, saved, sequence);
-  return saved;
 }
 
 /**
  * beaconProgress は離脱時に再生位置を送る。
  *
  * keepalive付きfetchで、既存のPUT契約を保ったまま画面離脱後も送信を継続する。
+ * アプリの中で画面を移るときは、送信中の保存が終わってから送る。ページ自体が
+ * 隠れる（タブを閉じるなど）ときは待てないので、すぐに送る。
  */
 export function beaconProgress(id: number, positionMs: number): void {
   const body = JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) });
   const sequence = nextProgressSequence();
-  void fetch(`/api/videos/${String(id)}/progress`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body,
-    keepalive: true,
-  })
-    .then(async (response) => {
+  const send = () =>
+    fetch(`/api/videos/${String(id)}/progress`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body,
+      keepalive: true,
+    }).then(async (response) => {
       if (response.ok)
         recordSavedProgress(id, (await response.json()) as Progress, sequence);
-    })
-    .catch(() => undefined);
+    });
+  const sending =
+    document.visibilityState === "hidden" ? send() : enqueueProgress(id, send);
+  void sending.catch(() => undefined);
 }
 
 /** streamUrl は動画本体の取得先を返す。 */
