@@ -9,6 +9,13 @@ Read [references/README.md](references/README.md) before acting. It is the
 shared contract for artifact work, GitHub context, PR behavior, and stopping
 conditions.
 
+When the selected host provides the repository's bounded workers, delegate the
+implementation step to the `subissue-implementer` role and the self-review step
+to the `self-reviewer` role. In Codex these agents are named
+`subissue_implementer` and `self_reviewer`; in Claude they are named
+`subissue-implementer` and `self-reviewer`. The parent agent still owns
+checkout, branching, full validation, fixes, push, and the pull request.
+
 Then read the stage reference for the workflow requested by the user. The
 parent Issue's `Next` value is a hint, not an execution gate:
 

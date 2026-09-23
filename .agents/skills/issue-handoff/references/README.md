@@ -8,7 +8,8 @@ Codex, and other Agent Skills-compatible tools use the same files.
 | Path | Owner | Purpose |
 | --- | --- | --- |
 | `.agents/skills/` | This repository | Shared Agent Skills and handoff procedures |
-| `.codex/agents/` | This repository | Optional project-scoped Codex workers used inside a handoff run |
+| `.codex/agents/` | This repository | Project-scoped Codex workers used inside a handoff run |
+| `.claude/agents/` | This repository | Project-scoped Claude workers used inside a handoff run |
 | `.specify/templates/` | This repository | Artifact templates, edited directly |
 
 Spec Kit is not upgraded any more, so nothing under `.specify/` is treated as
@@ -19,11 +20,14 @@ The rest of Spec Kit's scaffolding (`.specify/scripts/`, `.specify/workflows/`,
 the integration manifests) was removed because this workflow never invoked it.
 Do not reinstate it.
 
-Project-scoped workers under `.codex/agents/` may perform a bounded part of a
-run when Codex is the selected host. They do not own the handoff, persist its
-state, or start another stage; the parent agent remains responsible for the
-workflow and its pull request. Other Agent Skills-compatible hosts may use an
-equivalent bounded worker or perform that part locally.
+Project-scoped workers may perform a bounded part of a run when the selected
+host supports them. The repository provides matching Codex and Claude workers:
+`subissue-implementer` for child-Issue implementation and focused checks, and
+`self-reviewer` for fresh-context review before push. They do not own the
+handoff, persist its state, or start another stage; the parent agent remains
+responsible for the workflow, fixes, full validation, push, and pull request.
+Other Agent Skills-compatible hosts should use an equivalent bounded worker
+when one is available, or perform that part locally.
 
 ## Inputs and sources of truth
 
