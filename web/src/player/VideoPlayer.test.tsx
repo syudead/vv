@@ -27,7 +27,9 @@ const mock = vi.hoisted(() => {
       this.posterValue = options.poster as string | undefined;
       // 操作バーの DOM だけを真似る（差し込みと aria-keyshortcuts の検査のため）。
       element.innerHTML =
-        '<div class="vjs-control-bar"><button class="vjs-play-control"></button>' +
+        '<div class="vjs-control-bar"><div class="vjs-progress-control">' +
+        '<div class="vjs-progress-holder"></div></div>' +
+        '<button class="vjs-play-control"></button>' +
         '<button class="vjs-skip-backward-10"></button><button class="vjs-skip-forward-10"></button>' +
         '<button class="vjs-mute-control"></button><div class="vjs-playback-rate"></div>' +
         '<button class="vjs-fullscreen-control"></button></div>';
@@ -76,7 +78,8 @@ const mock = vi.hoisted(() => {
       if (value !== undefined) this.rate = value;
       return this.rate;
     }
-    isFullscreen() {
+    isFullscreen(value?: boolean) {
+      if (value !== undefined) this.fullscreen = value;
       return this.fullscreen;
     }
     requestFullscreen() {
@@ -415,5 +418,87 @@ describe("VideoPlayer", () => {
     expect(values.onStatus).toHaveBeenLastCalledWith(
       expect.objectContaining({ ended: false }),
     );
+  });
+
+  it("全画面は上に重ねる層ごと（渡した入れ物）にし、吹き出しもその中に描く", async () => {
+    const frame = document.createElement("div");
+    document.body.append(frame);
+    const requestFullscreen = vi.fn(() => Promise.resolve());
+    Object.assign(frame, { requestFullscreen });
+    const values = { ...props({ playable: false }), fullscreenTarget: () => frame };
+    render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(values.onControls).toHaveBeenCalled());
+    const controls = values.onControls.mock.calls.at(-1)?.[0] as
+      import("./playerControls").PlayerControls | null;
+    const player = mock.instances[0];
+    if (controls == null || player === undefined)
+      throw new Error("操作の入口がありません");
+    const changes = vi.fn();
+    player.on("fullscreenchange", changes);
+
+    // F キーも video.js の全画面ボタンも player.requestFullscreen を通る。
+    controls.toggleFullscreen();
+    expect(requestFullscreen).toHaveBeenCalledTimes(1);
+
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      value: frame,
+    });
+    act(() => {
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    expect(controls.isFullscreen()).toBe(true);
+    // 全画面ボタンの表示を切り替えるため、プレイヤーにも知らせる。
+    expect(changes).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(await screen.findByRole("button", { name: "変換して再生中" }));
+    const content = await screen.findByText(/シークに数秒かかります/);
+    expect(frame.contains(content)).toBe(true);
+
+    Object.defineProperty(document, "fullscreenElement", {
+      configurable: true,
+      value: null,
+    });
+    act(() => {
+      document.dispatchEvent(new Event("fullscreenchange"));
+    });
+    expect(controls.isFullscreen()).toBe(false);
+    frame.remove();
+  });
+
+  it("シーク位置サムネイルの URL が後から来たら、作り直さずに再生バーへ付ける", async () => {
+    const values = props({ seekThumbnailUrl: undefined, seekThumbnailState: "pending" });
+    const view = render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const element = mock.instances[0]?.element;
+    expect(element?.querySelector(".vv-seek-preview")).toBeNull();
+
+    view.rerender(
+      <VideoPlayer
+        {...values}
+        video={{
+          ...values.video,
+          seekThumbnailUrl: "/api/videos/7/seek-thumbnail?v=1",
+          seekThumbnailState: "done",
+        }}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        element?.querySelector(".vjs-progress-holder .vv-seek-preview"),
+      ).not.toBeNull(),
+    );
+    expect(mock.instances).toHaveLength(1);
+  });
+
+  it("読み込みの前に最後の失敗が起きても、操作バーを隠したままにしない", async () => {
+    const values = props({ playable: false });
+    const view = render(<VideoPlayer {...values} autoplay />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const host = view.container.querySelector(".vv-video-player");
+    expect(host?.getAttribute("data-loading")).toBe("true");
+    act(() => mock.instances[0]?.trigger("error"));
+    expect(values.onError).toHaveBeenCalled();
+    expect(host?.hasAttribute("data-loading")).toBe(false);
   });
 });

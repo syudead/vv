@@ -35,9 +35,13 @@ export default function CloseButton({
   }
   return (
     <span
+      data-close-overlay=""
       className={cn(
         "absolute top-2 right-2 z-30 transition-opacity duration-150 motion-reduce:transition-none lg:hidden",
-        visible ? "opacity-100" : "opacity-0 focus-within:opacity-100",
+        // 見えない間は押せなくする。キーボードでフォーカスが来たときだけ見せる。
+        visible
+          ? "opacity-100"
+          : "pointer-events-none opacity-0 focus-within:opacity-100",
       )}
     >
       <IconButton

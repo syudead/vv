@@ -300,6 +300,17 @@ test.describe.serial("live MP4 playback", () => {
       return element !== null && !element.paused && element.currentTime > 0.1;
     });
 
+    // 絞った回線では再生が始まるまでに 2 秒を超えることがあり、そのあいだに video.js は
+    // 操作バーを隠して押せなくする（vjs-user-inactive）。人と同じく、プレイヤーの上で
+    // マウスを動かして操作バーを出してから再生バーを押す。
+    const playerBox = await page.locator(".video-js").boundingBox();
+    if (playerBox === null) throw new Error("player is not visible");
+    await page.mouse.move(
+      playerBox.x + playerBox.width * 0.75,
+      playerBox.y + playerBox.height / 2,
+      { steps: 3 },
+    );
+    await expect(page.locator(".video-js")).toHaveClass(/vjs-user-active/);
     const seekBar = page.locator(".vjs-progress-control");
     const box = await seekBar.boundingBox();
     if (box === null) throw new Error("seek bar is not visible");

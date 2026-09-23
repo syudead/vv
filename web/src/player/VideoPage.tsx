@@ -19,6 +19,7 @@ import PropertyStrip from "./PropertyStrip";
 import RelatedVideos from "./RelatedVideos";
 import {
   CreatingLine,
+  LoadFailure,
   LoadingOverlay,
   MissingVideo,
   PlaybackFailure,
@@ -99,6 +100,8 @@ export default function VideoPage() {
   }));
   const [endedTakesFocus, setEndedTakesFocus] = useState(false);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  // 全画面はプレイヤーの上の層ごとにする（状態表示・再生終了・中央操作を全画面でも出す）。
+  const fullscreenTarget = useCallback(() => frameRef.current, []);
 
   // 別の動画へ移ったら、前の動画の再生の状態を持ち越さない。
   if (pageId !== id) {
@@ -245,7 +248,7 @@ export default function VideoPage() {
   let statusLayer: ReactNode = null;
   if (detail.kind === "missing") statusLayer = <MissingVideo />;
   else if (detail.kind === "failed")
-    statusLayer = <MissingVideo reason={detail.reason} />;
+    statusLayer = <LoadFailure reason={detail.reason} onRetry={refresh} />;
   else if (video === undefined) statusLayer = <LoadingOverlay backdrop />;
   else if (video.probeState === "pending")
     statusLayer = <ProcessingStages video={video} />;
@@ -303,10 +306,14 @@ export default function VideoPage() {
           <div
             ref={frameRef}
             data-player-frame=""
-            className="relative isolate mx-auto grid w-full max-w-[calc((100dvh-9rem)*16/9)] overflow-hidden bg-navbar lg:rounded-lg"
+            className="relative isolate mx-auto grid w-full max-w-[calc((100dvh-9rem)*16/9)] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
           >
-            {/* 16:9 は下限。状態表示が収まらない幅では、内容に合わせて伸びる。 */}
-            <div aria-hidden="true" className="col-start-1 row-start-1 aspect-video" />
+            {/* 16:9 は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
+                全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
+            <div
+              aria-hidden="true"
+              className="col-start-1 row-start-1 aspect-video [:fullscreen>&]:hidden"
+            />
             <CloseButton
               variant="overlay"
               onClose={close}
@@ -329,6 +336,7 @@ export default function VideoPage() {
                 onError={onError}
                 onControls={setControls}
                 onStatus={onStatus}
+                fullscreenTarget={fullscreenTarget}
               />
             )}
           </div>

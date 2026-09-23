@@ -30,7 +30,8 @@ export default function TouchControls({
         "hidden w-full items-center justify-center gap-7 transition-opacity duration-150 motion-reduce:transition-none [@media(pointer:coarse)]:flex",
         visible
           ? "opacity-100"
-          : "pointer-events-none opacity-0 [&_button]:pointer-events-none",
+          : // 見えない間は押せなくする。Tab でフォーカスが来たら見せ、輪郭を隠さない。
+            "pointer-events-none opacity-0 focus-within:opacity-100 [&_button]:pointer-events-none",
       )}
     >
       <button

@@ -89,7 +89,11 @@ export function Dimmed({ children }: { children: ReactNode }) {
 export function LoadingOverlay({ backdrop }: { backdrop: boolean }) {
   return (
     <div
-      className={cn("flex w-full items-center justify-center", backdrop && "bg-navbar")}
+      // 読み込み中の輪は押せる要素を持たないので、下のプレイヤー（再生バー）へ通す。
+      className={cn(
+        "pointer-events-none flex w-full items-center justify-center",
+        backdrop && "bg-navbar",
+      )}
     >
       <LoaderCircle className={cn("size-7 text-accent", spin)} aria-hidden="true" />
       <span role="status" className="sr-only">
@@ -152,32 +156,34 @@ export function ProcessingStages({ video }: { video: Video }) {
         <p className="hidden text-sm text-fg-muted sm:block">
           動画の情報を読み取っています。終わるとこの画面のまま再生できるようになります。
         </p>
-        <ol role="status" aria-live="polite" className="flex flex-col gap-1.5 sm:gap-3">
-          {processingStages(video).map((stage) => (
-            <li key={stage.name} className="flex items-center gap-2.5">
-              {stageIcons[stage.state]}
-              <span
-                className={cn(
-                  "min-w-0 flex-1 text-sm",
-                  stage.state === "active" && "font-medium text-fg",
-                  stage.state === "done" && "text-fg",
-                  (stage.state === "waiting" || stage.state === "failed") &&
-                    "text-fg-muted",
-                )}
-              >
-                {stage.name}
-              </span>
-              <span
-                className={cn(
-                  "shrink-0 text-xs",
-                  stage.state === "active" ? "text-accent" : "text-fg-muted",
-                )}
-              >
-                {stageLabels[stage.state]}
-              </span>
-            </li>
-          ))}
-        </ol>
+        <div role="status" aria-live="polite">
+          <ol className="flex flex-col gap-1.5 sm:gap-3">
+            {processingStages(video).map((stage) => (
+              <li key={stage.name} className="flex items-center gap-2.5">
+                {stageIcons[stage.state]}
+                <span
+                  className={cn(
+                    "min-w-0 flex-1 text-sm",
+                    stage.state === "active" && "font-medium text-fg",
+                    stage.state === "done" && "text-fg",
+                    (stage.state === "waiting" || stage.state === "failed") &&
+                      "text-fg-muted",
+                  )}
+                >
+                  {stage.name}
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 text-xs",
+                    stage.state === "active" ? "text-accent" : "text-fg-muted",
+                  )}
+                >
+                  {stageLabels[stage.state]}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
         <p className="hidden text-xs text-fg-muted sm:block">
           再生できるのは『動画情報の読み取り』が終わってからです。残りは再生中に作られます。
         </p>
@@ -248,19 +254,51 @@ export function ReadFailure({
   );
 }
 
-/**
- * MissingVideo は表示中の動画が無いとき（404）の表示である。戻る操作は × に任せる。
- * reason があれば（404 以外の失敗）決まった説明の代わりに出す。
- */
-export function MissingVideo({ reason }: { reason?: string }) {
+/** MissingVideo は表示中の動画が無いとき（404）の表示である。戻る操作は × に任せる。 */
+export function MissingVideo() {
   return (
     <Surface>
       <Panel role="alert" className="max-w-md items-center gap-3 text-center">
         <AlertCircle className="size-8 text-fg-muted" aria-hidden="true" />
         <h2 className="text-lg font-semibold text-fg">この動画は開けません</h2>
         <p className="text-sm text-fg-muted text-balance">
-          {reason ?? "ライブラリから外れたか、ファイルが無くなりました。"}
+          ライブラリから外れたか、ファイルが無くなりました。
         </p>
+      </Panel>
+    </Surface>
+  );
+}
+
+/**
+ * LoadFailure は、最初の取得が 404 以外で失敗したときの表示である。一時的な失敗かも
+ * しれないので、取り直す「再試行」を置く。
+ */
+export function LoadFailure({
+  reason,
+  onRetry,
+}: {
+  reason: string;
+  onRetry: () => Promise<void>;
+}) {
+  const [busy, setBusy] = useState(false);
+  const retry = () => {
+    setBusy(true);
+    void onRetry().finally(() => setBusy(false));
+  };
+  return (
+    <Surface>
+      <Panel role="alert" className="max-w-md items-center gap-3 text-center">
+        <AlertCircle className="size-8 text-danger" aria-hidden="true" />
+        <h2 className="text-lg font-semibold text-fg">この動画を読み込めませんでした</h2>
+        <p className="text-sm text-fg-muted text-balance">{reason}</p>
+        <Button variant="secondary" onClick={retry} disabled={busy} className="mt-1">
+          {busy ? (
+            <LoaderCircle className={spin} aria-hidden="true" />
+          ) : (
+            <RefreshCw aria-hidden="true" />
+          )}
+          再試行
+        </Button>
       </Panel>
     </Surface>
   );

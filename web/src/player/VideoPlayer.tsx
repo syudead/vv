@@ -18,6 +18,7 @@ import {
   createPlayerControls,
   type ControllablePlayer,
   type PlayerControls,
+  rateMenuOpen,
 } from "./playerControls";
 import { attachSeekPreview } from "./seekPreview";
 
@@ -109,6 +110,21 @@ interface Props {
   onError: (positionMs: number) => void;
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
+  /**
+   * 全画面にする要素（プレイヤーと、その上に重ねる層を含む入れ物）。無ければ video.js の
+   * 既定どおりプレイヤーだけを全画面にする。
+   */
+  fullscreenTarget?: () => HTMLElement | null;
+}
+
+/** FullscreenPlayer は、全画面の先を差し替えるために触る video.js の Player の部分である。 */
+interface FullscreenPlayer {
+  isFullscreen(value?: boolean): boolean | undefined;
+  requestFullscreen(): Promise<void>;
+  exitFullscreen(): Promise<void>;
+  trigger(event: string): void;
+  /** video.js が document の fullscreenchange で呼ぶ（内部の名前）。 */
+  documentFullscreenChange_?: () => void;
 }
 
 /**
@@ -126,7 +142,11 @@ export default function VideoPlayer(props: Props) {
   const popoverOpen = useRef(false);
   const [indicatorSlot, setIndicatorSlot] = useState<HTMLElement | null>(null);
   const [route, setRoute] = useState<PlaybackRoute | null>(null);
-  const [metadataLoaded, setMetadataLoaded] = useState(false);
+  /** 最初の読み込みが終わるまで操作バーを隠す（自動で再生を始めるとき）。 */
+  const [holdControlBar, setHoldControlBar] = useState(true);
+  const [playerReady, setPlayerReady] = useState(false);
+  /** 全画面にしている入れ物。吹き出しはその中に描かないと全画面の間に見えない。 */
+  const [fullscreenFrame, setFullscreenFrame] = useState<HTMLElement | null>(null);
 
   useEffect(() => {
     latest.current = props;
@@ -164,11 +184,36 @@ export default function VideoPlayer(props: Props) {
     let attempt: PlaybackAttempt = initialAttempt;
     let switchingSource = false;
     let resumeApplied = false;
-    let detachSeekPreview: (() => void) | undefined;
     let slot: HTMLElement | null = null;
     let status: PlayerStatus = { ...initialPlayerStatus };
     setRoute(attempt.route);
-    setMetadataLoaded(false);
+    setHoldControlBar(true);
+
+    // 全画面は、プレイヤーだけでなく上に重ねる層ごと（入れ物ごと）にする。video.js の
+    // 全画面の操作（ボタン・ダブルクリック）も F キーも、この差し替えを通る。
+    const frame = current.fullscreenTarget?.() ?? null;
+    let syncFullscreen: (() => void) | undefined;
+    if (frame !== null) {
+      const fs = player as unknown as FullscreenPlayer;
+      syncFullscreen = () => {
+        const on = document.fullscreenElement === frame;
+        if (fs.isFullscreen() !== on) {
+          fs.isFullscreen(on);
+          // 接頭辞の無い API では video.js は自分で知らせないので、全画面ボタンの表示を
+          // 切り替えるために知らせる。受けた側がまた呼んでも、状態が同じなので止まる。
+          fs.trigger("fullscreenchange");
+        }
+        setFullscreenFrame(on ? frame : null);
+      };
+      fs.requestFullscreen = () =>
+        frame.requestFullscreen?.().catch(() => undefined) ?? Promise.resolve();
+      fs.exitFullscreen = () =>
+        document.fullscreenElement != null
+          ? document.exitFullscreen().catch(() => undefined)
+          : Promise.resolve();
+      fs.documentFullscreenChange_ = syncFullscreen;
+      document.addEventListener("fullscreenchange", syncFullscreen);
+    }
 
     const setStatus = (next: Partial<PlayerStatus>) => {
       const merged = { ...status, ...next };
@@ -185,16 +230,14 @@ export default function VideoPlayer(props: Props) {
     };
     latest.current.onStatus(status);
 
-    const menuOpen = () =>
-      popoverOpen.current ||
-      host.querySelector(".vjs-menu.vjs-lock-showing") !== null ||
-      host.querySelector(".vjs-menu-button-popup.vjs-hover") !== null;
+    const menuOpen = () => popoverOpen.current || rateMenuOpen(host);
     latest.current.onControls(
       createPlayerControls(player as unknown as ControllablePlayer, menuOpen),
     );
 
     player.ready(() => {
       if (player.isDisposed()) return;
+      setPlayerReady(true);
       for (const [selector, keys] of keyShortcuts) {
         host.querySelector(selector)?.setAttribute("aria-keyshortcuts", keys);
       }
@@ -204,18 +247,6 @@ export default function VideoPlayer(props: Props) {
         slot.className = "vv-transcode-indicator flex flex-none items-center px-2";
         bar.insertBefore(slot, bar.querySelector(":scope > .vjs-playback-rate"));
         setIndicatorSlot(slot);
-      }
-
-      const seekThumbnailUrl = latest.current.video.seekThumbnailUrl;
-      if (seekThumbnailUrl === undefined) return;
-      const progress = host.querySelector<HTMLElement>(".vjs-progress-holder");
-      const progressControl = host.querySelector<HTMLElement>(".vjs-progress-control");
-      if (progress !== null && progressControl !== null) {
-        detachSeekPreview = attachSeekPreview(
-          progress,
-          { durationMs: attempt.durationMs, thumbnailUrl: seekThumbnailUrl },
-          progressControl,
-        );
       }
     });
 
@@ -245,7 +276,7 @@ export default function VideoPlayer(props: Props) {
 
     player.on("loadedmetadata", () => {
       attempt = { ...attempt, state: "ready" };
-      setMetadataLoaded(true);
+      setHoldControlBar(false);
       if (resumeApplied || initialPositionMs <= 0) return;
       resumeApplied = true;
       if (attempt.route === "direct") player.currentTime(initialPositionMs / 1000);
@@ -285,8 +316,10 @@ export default function VideoPlayer(props: Props) {
         setStatus({ playing: false, loading: false });
         latest.current.onError(position);
         // 誤りの印（vjs-error）は操作バーを隠す。失敗はプレイヤーの上の層で伝え、
-        // 操作バーは見えるままにする（ui-design「Overlay layer」）。
+        // 操作バーは見えるままにする（ui-design「Overlay layer」）。読み込みの前に
+        // 失敗したときも、操作バーを隠したままにしない。
         player.error(null);
+        setHoldControlBar(false);
         return;
       }
 
@@ -320,7 +353,11 @@ export default function VideoPlayer(props: Props) {
 
     return () => {
       window.clearInterval(timer);
-      detachSeekPreview?.();
+      if (syncFullscreen !== undefined) {
+        document.removeEventListener("fullscreenchange", syncFullscreen);
+      }
+      setFullscreenFrame(null);
+      setPlayerReady(false);
       slot?.remove();
       setIndicatorSlot(null);
       popoverOpen.current = false;
@@ -330,6 +367,24 @@ export default function VideoPlayer(props: Props) {
       if (!player.isDisposed()) player.dispose();
     };
   }, [video.id, video.probeState, video.durationMs, video.playable]);
+
+  // シーク位置サムネイルは、処理中の取り直しで後から URL が来ることもある。プレイヤーは
+  // 作り直さず、再生バーへの取り付けだけをやり直す。
+  const seekThumbnailUrl = video.seekThumbnailUrl;
+  const durationMs = video.durationMs;
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!playerReady || host === null || seekThumbnailUrl === undefined) return;
+    if (durationMs === undefined || durationMs <= 0) return;
+    const progress = host.querySelector<HTMLElement>(".vjs-progress-holder");
+    const progressControl = host.querySelector<HTMLElement>(".vjs-progress-control");
+    if (progress === null || progressControl === null) return;
+    return attachSeekPreview(
+      progress,
+      { durationMs, thumbnailUrl: seekThumbnailUrl },
+      progressControl,
+    );
+  }, [durationMs, playerReady, seekThumbnailUrl]);
 
   // 代表サムネイルが後からできたときは、作り直さずに背景の画像だけを差し替える。
   useEffect(() => {
@@ -342,13 +397,14 @@ export default function VideoPlayer(props: Props) {
   return (
     <div
       ref={hostRef}
-      data-loading={metadataLoaded ? undefined : "true"}
+      data-loading={holdControlBar ? "true" : undefined}
       className="vv-video-player absolute inset-0"
     >
       {indicatorSlot !== null &&
         route === "transcode" &&
         createPortal(
           <TranscodeIndicator
+            container={fullscreenFrame}
             onOpenChange={(open) => {
               popoverOpen.current = open;
             }}
@@ -365,7 +421,13 @@ export default function VideoPlayer(props: Props) {
  * ポイントしたときだけ開くツールチップにはしない。タッチやキーボードの人が理由に
  * 届かなくなるので、押して開く吹き出しにする。
  */
-function TranscodeIndicator({ onOpenChange }: { onOpenChange: (open: boolean) => void }) {
+function TranscodeIndicator({
+  container,
+  onOpenChange,
+}: {
+  container: HTMLElement | null;
+  onOpenChange: (open: boolean) => void;
+}) {
   return (
     <PopoverRoot onOpenChange={onOpenChange}>
       {/* video.js の `.video-js button` が表示・文字の大きさ・色を上書きするので、! で戻す。 */}
@@ -373,7 +435,7 @@ function TranscodeIndicator({ onOpenChange }: { onOpenChange: (open: boolean) =>
         <Info className="size-3.5 shrink-0" aria-hidden="true" />
         変換して再生中
       </PopoverTrigger>
-      <PopoverContent className="w-64 text-sm text-fg">
+      <PopoverContent container={container} className="w-64 text-sm text-fg">
         ブラウザがそのまま再生できない形式のため、変換しながら再生しています。シークに数秒かかります。
       </PopoverContent>
     </PopoverRoot>

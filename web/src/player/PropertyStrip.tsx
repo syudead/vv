@@ -15,7 +15,7 @@ export default function PropertyStrip({ video }: { video: Video }) {
         {videoProperties(video).map((property) => (
           <div
             key={property.label}
-            className="flex min-w-0 flex-col gap-1 xl:shrink-0 xl:border-l xl:border-border xl:px-4 xl:first:border-l-0 xl:first:pl-0"
+            className="flex min-w-0 flex-col gap-1 xl:border-l xl:border-border xl:px-4 xl:first:border-l-0 xl:first:pl-0"
           >
             <dt
               lang="en"
@@ -24,8 +24,10 @@ export default function PropertyStrip({ video }: { video: Video }) {
               {property.label}
             </dt>
             <dd
+              title={property.value}
               className={cn(
-                "text-sm font-medium tabular-nums [overflow-wrap:anywhere]",
+                // xl の 1 行では、長い値を省略して横スクロールを出さない（全体は title）。
+                "text-sm font-medium tabular-nums [overflow-wrap:anywhere] xl:truncate",
                 property.tone === "muted"
                   ? "text-fg-muted"
                   : property.tone === "warning"

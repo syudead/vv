@@ -11,13 +11,16 @@ export function PopoverContent({
   children,
   align = "end",
   className,
+  container,
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
   className?: string;
+  /** 吹き出しを描く先。全画面の要素の中で開くときに、その要素を渡す。既定は body。 */
+  container?: HTMLElement | null;
 }) {
   return (
-    <RadixPopover.Portal>
+    <RadixPopover.Portal container={container ?? undefined}>
       <RadixPopover.Content
         align={align}
         sideOffset={6}

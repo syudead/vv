@@ -277,7 +277,16 @@ describe("VideoPage", () => {
       renderPage();
       await ready();
       await screen.findByRole("heading", { level: 2, name: "関連動画" });
-      const before = document.querySelector("h1")?.parentElement?.innerHTML;
+      const snapshot = () => ({
+        frame: document.querySelector("[data-player-frame]")?.outerHTML,
+        title: document.querySelector("h1")?.outerHTML,
+        properties: document.querySelector("dl")?.outerHTML,
+        related: document.querySelector("aside")?.outerHTML,
+        location: screen.getByRole("button", { name: /ファイルを開く/ }).parentElement
+          ?.outerHTML,
+        text: document.body.textContent,
+      });
+      const before = snapshot();
       fireEvent.click(screen.getByRole("button", { name: /ファイルを開く/ }));
       const alert = await screen.findByRole("alert");
       expect(alert.textContent).toBe("開けませんでした: ファイルが見つかりません");
@@ -289,7 +298,13 @@ describe("VideoPage", () => {
         name: /ファイルを開く/,
       }).parentElement;
       expect(location?.nextElementSibling).toBe(alert);
-      expect(before).toBeDefined();
+      // 足されるのはその 1 行だけで、プレイヤー・題名・属性・場所の行・関連動画は変わらない。
+      const after = snapshot();
+      expect({ ...after, text: undefined }).toEqual({ ...before, text: undefined });
+      const path = "/media/movies/テスト動画.mp4";
+      expect(after.text).toBe(
+        (before.text ?? "").replace(path, `${path}${alert.textContent ?? ""}`),
+      );
     });
   });
 
@@ -494,10 +509,29 @@ describe("VideoPage", () => {
       expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=a");
     });
 
-    it("最初の取得が 404 でも「開けません」を出す", async () => {
+    it("最初の取得が 404 でも「開けません」を出し、再試行は置かない", async () => {
       server.videos.delete(7);
       renderPage();
       expect(await screen.findByText("この動画は開けません")).toBeDefined();
+      expect(screen.queryByRole("button", { name: "再試行" })).toBeNull();
+    });
+
+    it("最初の取得が 404 以外で失敗したら理由と「再試行」を出し、取り直せる", async () => {
+      let calls = 0;
+      server.videos.set(7, () => {
+        calls += 1;
+        return calls === 1
+          ? json({ code: "internal", message: "データベースに届きません" }, 500)
+          : json(video);
+      });
+      renderPage();
+      const alert = await screen.findByRole("alert");
+      expect(within(alert).getByText("この動画を読み込めませんでした")).toBeDefined();
+      expect(within(alert).getByText("データベースに届きません")).toBeDefined();
+      expect(screen.queryByText("この動画は開けません")).toBeNull();
+      fireEvent.click(within(alert).getByRole("button", { name: "再試行" }));
+      expect((await ready()).textContent).toBe("テスト動画");
+      expect(screen.getByTestId("video-player")).toBeDefined();
     });
 
     it("再生失敗の再試行は失敗した位置から、自動で再生を始める", async () => {
@@ -559,6 +593,27 @@ describe("VideoPage", () => {
       fireEvent.click(screen.getByRole("button", { name: "もう一度見る" }));
       expect(controls.restart).toHaveBeenCalledTimes(1);
       expect(screen.getByRole("button", { name: "次を再生" })).toBeDefined();
+    });
+
+    it("フォーカスがプレイヤーの中にあったときだけ、主な操作へフォーカスを移す", async () => {
+      renderPage();
+      await ready();
+      await screen.findByRole("heading", { level: 2, name: "関連動画" });
+      screen.getByRole("button", { name: "10 秒進む" }).focus();
+      end();
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "次を再生" }),
+      );
+    });
+
+    it("プレイヤーの外（関連動画）にいる人のフォーカスは奪わない", async () => {
+      renderPage();
+      await ready();
+      const link = await screen.findByRole("link", { name: /後続の動画/ });
+      link.focus();
+      end();
+      expect(screen.getByRole("button", { name: "次を再生" })).toBeDefined();
+      expect(document.activeElement).toBe(link);
     });
 
     it("同じフォルダの後続が無ければ「次を再生」を出さない", async () => {
