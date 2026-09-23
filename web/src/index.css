@@ -81,7 +81,11 @@
 
 /* 狭い幅では、操作バーのボタンを詰めてプレイヤーの幅に収める。 */
 @media (max-width: 39.99rem) {
-  .vv-video-player .video-js .vjs-control-bar .vjs-control:not(.vjs-time-control) {
+  /* 再生バー（.vjs-progress-control も .vjs-control）は幅いっぱいのままにする。 */
+  .vv-video-player
+    .video-js
+    .vjs-control-bar
+    .vjs-control:not(.vjs-time-control, .vjs-progress-control) {
     width: 3em;
   }
 
