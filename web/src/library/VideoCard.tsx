@@ -21,7 +21,8 @@ export interface VideoCardProps {
   backTo: string;
   selected: boolean;
   selectionMode: boolean;
-  onSelect: (id: number, selected: boolean) => void;
+  /** 選択を持たない画面（フォルダ画面）では省き、チェックを描かない。 */
+  onSelect?: (id: number, selected: boolean) => void;
 }
 
 function useCardState(video: Video) {
@@ -39,7 +40,9 @@ function SelectCheck({
   selected,
   selectionMode,
   onSelect,
-}: Pick<VideoCardProps, "video" | "selected" | "selectionMode" | "onSelect">) {
+}: Pick<VideoCardProps, "video" | "selected" | "selectionMode"> & {
+  onSelect: (id: number, selected: boolean) => void;
+}) {
   return (
     <div
       className={cn(
@@ -72,25 +75,29 @@ function VideoCard(props: VideoCardProps) {
       data-video-id={video.id}
       className={cn(
         "group relative flex flex-col overflow-hidden rounded-lg bg-surface shadow-card transition-[box-shadow,transform] duration-200 ease-out-quart",
+        // リンクの輪郭は overflow-hidden で切れるので、キーボードフォーカスは箱の外側に出す。
+        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link",
         "hover:-translate-y-0.5",
         "hover:shadow-card-hover",
         selected && "ring-2 ring-accent",
         selectionMode && "select-none",
       )}
     >
-      <SelectCheck
-        video={video}
-        selected={selected}
-        selectionMode={selectionMode}
-        onSelect={onSelect}
-      />
+      {onSelect !== undefined && (
+        <SelectCheck
+          video={video}
+          selected={selected}
+          selectionMode={selectionMode}
+          onSelect={onSelect}
+        />
+      )}
 
       <Link
         to={`/videos/${String(video.id)}`}
         state={{ from: backTo }}
         aria-label={video.title}
         onClick={(event) => {
-          if (selectionMode) {
+          if (selectionMode && onSelect !== undefined) {
             event.preventDefault();
             onSelect(video.id, !selected);
           }
@@ -198,7 +205,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       <td className="w-10 pl-3">
         <Checkbox
           checked={selected}
-          onCheckedChange={(next) => onSelect(video.id, next)}
+          onCheckedChange={(next) => onSelect?.(video.id, next)}
           label={`「${video.title}」を選択`}
           className={cn(
             "transition-opacity",
@@ -236,7 +243,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           onClick={(event) => {
             if (selectionMode) {
               event.preventDefault();
-              onSelect(video.id, !selected);
+              onSelect?.(video.id, !selected);
             }
           }}
           className={cn(

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   errorMessage,
+  type FolderRef,
   isAborted,
+  listFolderVideos,
   listVideos,
   type Video,
   type VideoSort,
@@ -50,12 +52,23 @@ export interface VideosState {
  *
  * seed を与えると、その並び順・検索語のあいだは1ページ目を取りに行かない
  * （再生画面から戻ったときの復元。一覧の状態はこの受け渡し口からだけ入る）。
+ *
+ * folder を与えると、ライブラリ全体ではなくそのフォルダ直下の動画を読む
+ * （フォルダ画面）。その場合 query は使わない。ページング・中断・復元の
+ * 仕組みはライブラリと同じものを使う。
  */
 export function useVideos(
   sort: VideoSort,
   query: string,
   seed?: VideosSeed,
+  folder?: FolderRef,
 ): VideosState {
+  // フォルダは値で比べる。呼び出し側が描画ごとに新しいオブジェクトを渡しても
+  // 読み直さないよう、鍵の文字列だけを依存に使う。
+  const folderKey =
+    folder === undefined ? "" : `${String(folder.rootId)}\0${folder.path}`;
+  const folderRef = useRef(folder);
+  folderRef.current = folder;
   const [items, setItems] = useState<Video[]>(seed?.items ?? []);
   const [total, setTotal] = useState(seed?.total ?? 0);
   const [cursor, setCursor] = useState<string | undefined>(seed?.cursor);
@@ -82,12 +95,16 @@ export function useVideos(
       }
 
       try {
-        const page = await listVideos({
-          sort,
-          query,
-          cursor: from,
-          signal: controller.signal,
-        });
+        const target = folderRef.current;
+        const page =
+          target === undefined
+            ? await listVideos({ sort, query, cursor: from, signal: controller.signal })
+            : await listFolderVideos({
+                folder: target,
+                sort,
+                cursor: from,
+                signal: controller.signal,
+              });
         setItems((current) => (replace ? page.items : [...current, ...page.items]));
         setTotal(page.total);
         setCursor(page.nextCursor);
@@ -107,7 +124,8 @@ export function useVideos(
         }
       }
     },
-    [query, sort],
+    // folderKey は folderRef の中身が変わったことを表す。
+    [folderKey, query, sort],
   );
 
   // seeded は「いま持っている中身が復元で埋まったものか」を覚える。
@@ -116,9 +134,11 @@ export function useVideos(
   // ためである（1 回目で消費すると 2 回目が復元を捨てて読み直してしまう）。
   // 鍵（並び順・検索語・読み直しの世代）ごと覚えておけば、何度走っても
   // 同じ判断になる。
-  const seeded = useRef(seed === undefined ? null : { sort, query, generation: 0 });
+  const seeded = useRef(
+    seed === undefined ? null : { sort, query, folderKey, generation: 0 },
+  );
 
-  // 並び順か検索語が変わったら先頭から読み直す。カーソルはその2つに
+  // 並び順・検索語・フォルダが変わったら先頭から読み直す。カーソルはそれらに
   // 紐づくので、引き継ぐと境界の意味が変わってしまう。
   //
   // 前の要求は fetchPage が AbortController で打ち切る。入力が連続しても、
@@ -129,6 +149,7 @@ export function useVideos(
       restored !== null &&
       restored.sort === sort &&
       restored.query === query &&
+      restored.folderKey === folderKey &&
       restored.generation === generation
     ) {
       // 取りに行かなくても打ち切りは要る。復元した一覧で続きを読んでいる
@@ -144,7 +165,7 @@ export function useVideos(
     void fetchPage(undefined, true);
 
     return () => inFlight.current?.abort();
-  }, [fetchPage, generation, query, sort]);
+  }, [fetchPage, folderKey, generation, query, sort]);
 
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore || cursor === undefined) {

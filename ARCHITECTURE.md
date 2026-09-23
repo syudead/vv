@@ -99,15 +99,19 @@ round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
-frame around a screen. `web/src/library/`, `web/src/settings/`, and
+frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`, and
 `web/src/player/` own their respective product flows, while reusable primitives live in
-`web/src/ui/` and formatting helpers live in `web/src/lib/`. The library and settings
-screens use the shell: `app/App.tsx` puts `AppShell` around the `/` and `/settings`
-routes, and the playback screen
+`web/src/ui/` and formatting helpers live in `web/src/lib/`. The library, folder and settings
+screens use the shell: `app/App.tsx` puts `AppShell` around the `/`, `/folders/*` and
+`/settings` routes, and the playback screen
 (`/videos/:id`) deliberately gets no sidebar, because it is a
 two-pane screen of its own. Keeping that choice to the one routing
 decision is what lets the shell stay ignorant of which screen it is framing.
-The shell exposes the library and media-folder settings as routes. "Recently added"
+The shell exposes the library, the folder browser and media-folder settings as routes.
+The folder browser reuses the library's video card and paging (`useVideos` takes the
+folder as its source) and reads its location from the URL itself: each path segment is
+encoded once when a link is built and decoded once from `location.pathname`, so names
+containing `%`, `#` or `?` round-trip. "Recently added"
 and "In progress" show a preparation notice until backing routes exist; shell tests
 keep that boundary explicit.
 
