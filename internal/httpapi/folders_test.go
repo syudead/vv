@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"path/filepath"
 	"slices"
@@ -258,5 +261,32 @@ func TestFolderRoutesWithoutStoreFailClosed(t *testing.T) {
 		if rec := do(t, handler, http.MethodGet, target); rec.Code != http.StatusInternalServerError {
 			t.Errorf("%s: status = %d, want 500", target, rec.Code)
 		}
+	}
+}
+
+// TestFolderRoutesDoNotLogCanceledRequests は、画面が先へ進んで打ち切られた要求の
+// 失敗をエラーとして記録しないことを確かめる。
+func TestFolderRoutesDoNotLogCanceledRequests(t *testing.T) {
+	var logs bytes.Buffer
+	folders := folderFixture()
+	folders.listErr = context.Canceled
+	handler := newTestServer(t, Options{
+		Folders: folders,
+		Logger:  slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/api/folders/3/videos", nil)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	if logs.Len() != 0 {
+		t.Fatalf("打ち切られた要求を記録した: %s", logs.String())
+	}
+
+	// 打ち切られていない要求の失敗は、これまでどおり記録する。
+	folders.listErr = errors.New("disk on fire")
+	do(t, handler, http.MethodGet, "/api/folders/3/videos")
+	if !strings.Contains(logs.String(), "disk on fire") {
+		t.Fatalf("保存層の失敗を記録していない: %q", logs.String())
 	}
 }

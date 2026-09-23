@@ -31,20 +31,29 @@ func folderPrefix(dir string) string {
 // folderPathExpr は所在のパスを接頭辞と比べられる形にする。Windows では
 // 大文字小文字を区別しない（registeredLocationCondition と同じ扱い）。
 func folderPathExpr(alias string) string {
-	if runtime.GOOS == "windows" {
+	return folderPathExprFor(alias, runtime.GOOS == "windows")
+}
+
+func folderPathExprFor(alias string, windows bool) string {
+	if windows {
 		return `lower(` + alias + `.path)`
 	}
 	return alias + `.path`
 }
 
 // directChildCondition は、接頭辞の後ろに区切りが無い（直下にある）ことを表す。
+// 接頭辞の `?` は1つだけにする。呼び出し側は接頭辞を条件ごとに1回ずつ渡す。
 func directChildCondition(alias string) string {
-	rest := `substr(` + folderPathExpr(alias) + `, length(?) + 1)`
-	condition := `instr(` + rest + `, char(` + strconv.Itoa(int(os.PathSeparator)) + `)) = 0`
-	if runtime.GOOS == "windows" {
-		condition += ` and instr(` + rest + `, char(47)) = 0`
+	return directChildConditionFor(alias, runtime.GOOS == "windows")
+}
+
+func directChildConditionFor(alias string, windows bool) string {
+	rest := `substr(` + folderPathExprFor(alias, windows) + `, length(?) + 1)`
+	if windows {
+		// Windows では `/` も区切りなので、`\` にそろえてから1回で調べる。
+		return `instr(replace(` + rest + `, char(47), char(92)), char(92)) = 0`
 	}
-	return condition
+	return `instr(` + rest + `, char(` + strconv.Itoa(int(os.PathSeparator)) + `)) = 0`
 }
 
 // FolderLocations はフォルダ配下（深さを問わない）の、登録フォルダの下にある

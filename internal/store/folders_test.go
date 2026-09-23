@@ -2,10 +2,12 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -223,5 +225,59 @@ func TestFolderNamesEndingWithBackslashOnUnix(t *testing.T) {
 	found, err := db.HasFolderLocations(context.Background(), "/media/A\\")
 	if err != nil || !found {
 		t.Errorf("HasFolderLocations(A\\) = %v, %v; want true", found, err)
+	}
+}
+
+// TestDirectChildConditionOnWindows は Windows 用の条件を Linux でも実際の SQLite で
+// 確かめる。以前は接頭辞の `?` が2回現れ、Windows でだけ引数が足りなくなっていた。
+func TestDirectChildConditionOnWindows(t *testing.T) {
+	for _, windows := range []bool{false, true} {
+		condition := directChildConditionFor("l", windows)
+		if got := strings.Count(condition, "?"); got != 1 {
+			t.Fatalf("windows=%v: 接頭辞の ? は1つであるべき: %d (%s)", windows, got, condition)
+		}
+	}
+
+	handle, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = handle.Close() })
+	ctx := context.Background()
+	if _, err := handle.ExecContext(ctx, `create table l (path text)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{
+		`C:\Media\A\x.mp4`,   // 直下
+		`C:\Media\A\B\y.mp4`, // 孫（\ 区切り）
+		`C:\Media\A\B/z.mp4`, // 孫（/ 区切りが混ざる）
+		`C:\Media\AB\w.mp4`,  // 接頭辞が似ているだけの別フォルダ
+	} {
+		if _, err := handle.ExecContext(ctx, `insert into l (path) values (?)`, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	prefix := `c:\media\a\`
+	query := `select path from l where instr(` + folderPathExprFor("l", true) + `, ?) = 1 and ` +
+		directChildConditionFor("l", true)
+	rows, err := handle.QueryContext(ctx, query, prefix, prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var got []string
+	for rows.Next() {
+		var path string
+		if err := rows.Scan(&path); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, path)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{`C:\Media\A\x.mp4`}; !slices.Equal(got, want) {
+		t.Fatalf("直下の所在 = %v, want %v", got, want)
 	}
 }
