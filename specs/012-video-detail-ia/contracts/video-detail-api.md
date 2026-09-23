@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | `location` | object | 代表の所在。登録フォルダの下に所在が無い動画はそもそも 404 なので、この応答では常に入る |
 | `location.path` | string | 代表の所在の絶対パス。サーバーから見たパスで、コンテナ内ならコンテナ内のパスになる |
-| `location.openable` | boolean | 次の両方を満たすとき `true`。要求元がループバックであること、サーバーが既定アプリを起動できる環境であること |
+| `location.openable` | boolean | 次のすべてを満たすとき `true`。要求元がループバックであること、`Host` がループバックの名前であること、サーバーが既定アプリを起動できる環境であること（「ファイルを開く」の 403・409 `open_unavailable` と同じ条件） |
 | `seekThumbnailState` | `pending` \| `done` \| `failed` | シーク用プレビューの状態。既存の `seekThumbnailUrl` と同じ条件（読み取り済み・長さが正・映像コーデックあり・内容鍵あり）のときだけ入る |
 
 代表の所在の選び方は、既存の `GetVideo` と同じとする。登録フォルダの下にある所在のうち、
@@ -95,8 +95,12 @@ RelatedVideos:
   - `where probe_state='failed'` を付けて、`probe_state` を `pending` に戻し、`probe_error` を
     消す。更新が 0 行なら 409 とする。
   - `thumbnail_state` が `done` でなければ `pending` に戻す。
+  - `thumbnail_state` が `done` でも、シーク用プレビューの置き場が無ければ、状態はそのままで
+    `thumbnail` ジョブを積む。既存の `thumbnailHandler` は、代表サムネイルがあれば作り直さず、
+    シーク用プレビューだけを作る。
   - `preview_state` が `failed` なら `pending` に戻す。
-  - `probe` ジョブを積む。`thumbnail_state` を戻したときは `thumbnail` ジョブも積む。
+  - `probe` ジョブを積む。`thumbnail_state` を戻したとき、またはシーク用プレビューの置き場が
+    無いときは、`thumbnail` ジョブも積む。
     どちらも、その種類の終わった行を消してから `on conflict … do nothing` で挿入する。
 - プレビューのジョブは、読み取りの成功後に既存の `probeHandler` が積む。
 - `probe_state='failed'` は、その動画の読み取りのジョブが終わっていることを意味する。
