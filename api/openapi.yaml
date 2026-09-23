@@ -142,6 +142,52 @@ paths:
         "416":
           description: 範囲指定が不正
 
+  /api/videos/{id}/preview:
+    get:
+      operationId: getVideoPreview
+      summary: 生成済み hover preview を配信する
+      description: |
+        保存済みの preview MP4 だけを Range 対応で配信する。元動画の stream や
+        live transcode へ fallback しない。`v` が current content key と一致する
+        ときだけ immutable cache を許可する。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - name: v
+          in: query
+          description: 一覧・詳細が返した current content key
+          schema:
+            type: string
+      responses:
+        "200":
+          description: preview MP4 全体
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        "206":
+          description: preview MP4 の指定範囲
+          headers:
+            Accept-Ranges:
+              schema:
+                type: string
+            Content-Range:
+              schema:
+                type: string
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "416":
+          description: 範囲指定が不正
+
   /api/videos/{id}/transcode.mp4:
     get:
       operationId: transcodeVideo
@@ -591,7 +637,7 @@ components:
 
     Video:
       type: object
-      required: [id, title, sizeBytes, addedAt, playable, probeState, thumbnailState]
+      required: [id, title, sizeBytes, addedAt, playable, probeState, thumbnailState, previewState]
       additionalProperties: false
       properties:
         id:
@@ -639,9 +685,15 @@ components:
         thumbnailState:
           type: string
           enum: [pending, done, failed]
+        previewState:
+          type: string
+          enum: [pending, done, failed]
         thumbnailUrl:
           type: string
           description: thumbnailState = done のときだけ入る
+        previewUrl:
+          type: string
+          description: previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL
         seekThumbnailUrl:
           type: string
           description: probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL

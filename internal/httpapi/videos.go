@@ -5,7 +5,10 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -81,7 +84,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 
 	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
 	for _, video := range page.Items {
-		payload.Items = append(payload.Items, withProgress(toAPIVideo(video), progress, video.ContentKey))
+		payload.Items = append(payload.Items, withProgress(toAPIVideo(video, s.thumbnailsDir), progress, video.ContentKey))
 	}
 	if page.NextCursor != "" {
 		next := page.NextCursor
@@ -102,7 +105,7 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	progress := s.progressFor(r.Context(), []domain.Video{video})
 
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, withProgress(toAPIVideo(video), progress, video.ContentKey), s.logger)
+	writeJSON(w, http.StatusOK, withProgress(toAPIVideo(video, s.thumbnailsDir), progress, video.ContentKey), s.logger)
 }
 
 // progressFor は動画たちの再生位置をまとめて引く。1件ずつ引くと、60 件の
@@ -167,7 +170,7 @@ func (s *server) lookupVideo(w http.ResponseWriter, r *http.Request, id int64) (
 //
 // 取得できていない値は省略する。0 で埋めると、一覧で「尺が 0 の動画」と
 // 「尺が分からない動画」を区別できなくなる。
-func toAPIVideo(video domain.Video) gen.Video {
+func toAPIVideo(video domain.Video, thumbnailsDir string) gen.Video {
 	out := gen.Video{
 		Id:             video.ID,
 		Title:          video.Title,
@@ -176,6 +179,7 @@ func toAPIVideo(video domain.Video) gen.Video {
 		Playable:       video.PlayableInBrowser(),
 		ProbeState:     gen.VideoProbeState(video.ProbeState),
 		ThumbnailState: gen.VideoThumbnailState(video.ThumbnailState),
+		PreviewState:   gen.VideoPreviewState(video.PreviewState),
 	}
 
 	if video.DurationMs != nil {
@@ -218,8 +222,33 @@ func toAPIVideo(video domain.Video) gen.Video {
 		url := seekThumbnailURL(video)
 		out.SeekThumbnailUrl = &url
 	}
+	if video.PreviewState == domain.PreviewStateDone && previewAssetAvailable(thumbnailsDir, video.ContentKey) {
+		url := previewURL(video)
+		out.PreviewUrl = &url
+	}
 
 	return out
+}
+
+func previewURL(video domain.Video) string {
+	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/preview?v=" + video.ContentKey
+}
+
+func previewAssetAvailable(thumbnailsDir, contentKey string) bool {
+	if thumbnailsDir == "" || contentKey == "" {
+		return false
+	}
+	info, err := os.Stat(previewFilePath(thumbnailsDir, contentKey))
+	return err == nil && info.Mode().IsRegular() && info.Size() > 0
+}
+
+func previewFilePath(thumbnailsDir, contentKey string) string {
+	safe := strings.NewReplacer(":", "_", "/", "_", `\`, "_").Replace(contentKey)
+	prefix := safe
+	if len(prefix) > 2 {
+		prefix = prefix[:2]
+	}
+	return filepath.Join(thumbnailsDir, "preview", prefix, safe+".mp4")
 }
 
 // thumbnailURL はサムネイルの取得先を組み立てる。版は content_key の先頭で、

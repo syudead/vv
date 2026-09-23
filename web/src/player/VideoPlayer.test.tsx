@@ -99,6 +99,7 @@ const video: Video = {
   playable: true,
   probeState: "done",
   thumbnailState: "done",
+  previewState: "pending",
   durationMs: 120_000,
   videoCodec: "h264",
   container: "mp4",
