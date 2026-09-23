@@ -142,7 +142,9 @@ Windows で Go バイナリを直接動かす場合、`MDM_DATA_DIR` はドラ�
 | `task check`            | 静的検査、単体テスト、生成物、マイグレーションをまとめて検証する               |
 
 CI はこの表の `task check` と `task test-e2e` だけを実行する。CI 側に検査を並べず、
-目標そのものを呼ぶことで、手元と CI の判定を一致させている。
+目標そのものを呼ぶことで、手元と CI の判定を一致させている。PR の変更が文書
+（`*.md`、`docs/`、`specs/`、`.agents/`、`.claude/`、`renovate.json`）だけのときは
+`task test-e2e` を飛ばす。
 
 `api/openapi.yaml` が Go と TypeScript の境界の唯一の真実である。型を変えるときは
 このファイルを直して `task generate` を実行する。生成物

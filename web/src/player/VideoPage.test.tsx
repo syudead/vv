@@ -196,7 +196,8 @@ describe("VideoPage", () => {
     it("題名・属性の一列・場所・関連動画を出し、廃止した項目を出さない", async () => {
       renderPage("7", "/?q=abc");
       expect((await ready()).textContent).toBe("テスト動画");
-      expect(document.title).toBe("テスト動画 - vv");
+      // 題名は描画後の effect で入るので、h1 が出た直後ではなく反映を待つ。
+      await waitFor(() => expect(document.title).toBe("テスト動画 - vv"));
       expect(screen.getByText("RESOLUTION")).toBeDefined();
       expect(screen.getByText("H.264")).toBeDefined();
       expect(
