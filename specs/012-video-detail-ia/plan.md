@@ -223,6 +223,31 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
     中央操作）は入れ物が決める。
     - 却下: 層ごとにプレイヤーの上へ別々に絶対配置する案。重なりの順とクリックの通り方を
       部品ごとに決めることになり、同時に出たときの振る舞いが定まらない。
+13. **読み取りとサムネイルの終端失敗は、ジョブを `failed` にするのと同じ取引で動画側の状態へ
+    記録する。** プレビューはすでにこの形である（`FailClaimedJob` の `JobPreview` の分岐）。
+    - 今は `probeHandler` と `thumbnailHandler` が、エラーを返す前に自分で
+      `probe_state`・`thumbnail_state` を `failed` にしている。そのため次の 2 つのずれが起きる。
+      - ファイルの確認（`checkReadableRegularFile`）などの前段で上限まで失敗すると、
+        状態は `pending` のまま、ジョブだけが `failed` になる。取り込み中の段階表示と
+        2 秒ごとの取り直しが終わらない。
+      - 動画側が `failed` になってからジョブが `failed` になるまでの間に「もう一度読み取る」が
+        来ると、ジョブがまだ `running` なので新しいジョブの挿入が省かれる。そのあと古い
+        ジョブが `failed` になり、動画はジョブの無い `pending` で止まる。
+    - `FailClaimedJob` が終端（`state='failed'`）を確定した取引の中で、次のように記録する。
+      - `probe`：`probe_state='failed'`、`probe_error` に理由
+      - `thumbnail`：`thumbnail_state` が `done` でなければ `failed`
+      - 条件は `JobPreview` の分岐と同じく、内容鍵・所在の世代・所在が一致するときに限る。
+    - 2 つのハンドラが自分で状態を書く処理は外す。
+    - 起動時に、`ReconcilePreviewFailures` と同じ条件で整合を取る。状態が `pending` で、
+      進行中のジョブが無く、終端の `failed` のジョブがある動画を `failed` に直す。
+      この変更より前に止まってしまった動画のためである。
+    - これにより「状態が `failed` なら、その種類のジョブは終わっている」が成り立つ。
+      読み取りのやり直し（Structural Decisions 6）はこれを前提にする。
+    - 却下: 導き方の側で、終端のジョブを `pending` より優先する案。画面の取り直しは
+      止まるが、`probe_state` と `thumbnail_state` が一覧・スキャン・やり直しの判定で
+      食い違ったまま残る。
+    - 却下: やり直しの側で、`running` のジョブが終わるのを待って積む案。待ち合わせを
+      HTTP の要求の中に持ち込むことになり、ずれそのものは残る。
 
 ## Project Structure
 
@@ -249,10 +274,11 @@ specs/012-video-detail-ia/
   `Error.code` の 3 つの種別
 - `internal/domain/`: 関連動画の並べ方
 - `internal/store/`: フォルダ直下の動画の id とパス、追加日時の前後、読み取りのやり直し、
-  サムネイルのジョブの状態
+  サムネイルのジョブの状態、読み取りとサムネイルの終端失敗の記録と起動時の整合
 - `internal/httpapi/`: 動画 1 件の応答の拡張と 3 つの経路
 - `internal/opener/`（新設）: OS の既定アプリの起動と、起動できる環境かどうかの判定
-- `cmd/mdm/`: `opener` と新しい store の操作を `httpapi` へ渡す
+- `cmd/mdm/`: `opener` と新しい store の操作を `httpapi` へ渡す。`probeHandler`・
+  `thumbnailHandler` が自分で失敗の状態を書く処理を外す
 - `web/src/api/`: 動画 1 件の取得と取り直しのフック、新しい経路の呼び出し
 - `web/src/player/`: 画面の構成・プレイヤーの操作・状態表示・関連動画・再生終了
 - `web/e2e/playback.e2e.ts`: 新しい構成・キーボード・関連動画の実ブラウザ検証
@@ -301,6 +327,8 @@ specs/012-video-detail-ia/
   - `GET /api/videos/{id}/related` を実装する（[contracts](contracts/video-detail-api.md)
     「関連動画」）。
 - **読み取りに失敗した動画を読み取り直す API を足す**
+  - 読み取りとサムネイルの終端失敗を、ジョブの失敗と同じ取引で記録するように直す。
+    ハンドラが自分で状態を書く処理を外し、起動時の整合を足す（Structural Decisions 13）。
   - `POST /api/videos/{id}/probe` を実装する（Structural Decisions 6、
     [contracts](contracts/video-detail-api.md)「読み取りのやり直し」）。
   - store に、状態を戻すことと積むことを 1 つの取引で行う操作を足す。
@@ -398,6 +426,11 @@ specs/012-video-detail-ia/
     - `thumbnail_state=failed` の動画では、`thumbnailState` も `pending` に戻り、サムネイルの
       ジョブが 1 件積まれる。`preview_state=failed` なら `previewState` が `pending` に戻る。
     - 続けて 2 回送ると、2 回目は 409 `probe_not_failed` で、ジョブは増えない。
+  - ファイルの確認で上限まで失敗した読み取り・サムネイルのジョブは、同じ取引で
+    `probe_state`・`thumbnail_state` を `failed` にする。
+  - 最後の試行が失敗した直後（ジョブの失敗が記録される前）には、動画はまだ `failed` に
+    ならない。この間の要求は 409 になり、ジョブの無い `pending` は生まれない。
+  - 起動時の整合で、`pending` のまま終端の失敗ジョブを持つ動画が `failed` になる。
     - 読み取り済みの動画は 409 になる。
     - 知らない id は 404 になる。
 - **動画詳細画面を題名・属性・場所・閉じる操作の構成に組み直す**

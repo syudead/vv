@@ -32,6 +32,10 @@
   ジョブが `queued`・`running` である
 - `failed`：それ以外（ジョブが `failed`、またはジョブの行が保持期間を過ぎて消えている）
 
+サムネイルのジョブが代表サムネイルより前の段で終端失敗したときも、`thumbnail_state` は同じ
+取引で `failed` になる（plan の Structural Decisions 13）。そのため、ジョブが `failed` なのに
+`thumbnail_state` だけが `pending` のまま残ることは無い。
+
 ## 関連動画: `GET /api/videos/{id}/related`
 
 応答は 200 で、`RelatedVideos` を返す。
@@ -95,6 +99,10 @@ RelatedVideos:
   - `probe` ジョブを積む。`thumbnail_state` を戻したときは `thumbnail` ジョブも積む。
     どちらも、その種類の終わった行を消してから `on conflict … do nothing` で挿入する。
 - プレビューのジョブは、読み取りの成功後に既存の `probeHandler` が積む。
+- `probe_state='failed'` は、その動画の読み取りのジョブが終わっていることを意味する。
+  終端の失敗は、ジョブを `failed` にするのと同じ取引で記録するからである（plan の
+  Structural Decisions 13）。このため、ここで積む新しいジョブが、まだ動いている古いジョブとの
+  重複防止で省かれることは無い。
 
 | 状態 | 状況 | `code` |
 | --- | --- | --- |
