@@ -100,8 +100,8 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Applied != 2 || result.Version != 5 {
-		t.Fatalf("migration result = %+v, want two migrations to version 5", result)
+	if result.Applied != 3 || result.Version != 6 {
+		t.Fatalf("migration result = %+v, want three migrations to version 6", result)
 	}
 	var generation int64
 	if err := db.SQL().QueryRow(`select location_generation from videos where id = ?`, videoID).Scan(&generation); err != nil {
@@ -109,6 +109,70 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 	}
 	if generation != 1 {
 		t.Fatalf("location_generation = %d, want 1", generation)
+	}
+}
+
+func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
+	db, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	fsy, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := provider.UpTo(context.Background(), 5); err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range []struct {
+		key, state string
+	}{
+		{key: "done", state: "done"},
+		{key: "pending", state: "pending"},
+	} {
+		res, err := db.SQL().Exec(`insert into videos(content_key, probe_state) values (?, ?)`, item.key, item.state)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.SQL().Exec(`insert into video_locations
+			(video_id, path, title, size_bytes, mtime, created_at, updated_at)
+			values (?, ?, ?, 1, 1, 1, 1)`, id, "/media/"+item.key+".mp4", item.key); err != nil {
+			t.Fatal(err)
+		}
+	}
+	result, err := Migrate(context.Background(), db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Applied != 1 || result.Version != 6 {
+		t.Fatalf("migration result = %+v", result)
+	}
+	var jobs int
+	if err := db.SQL().QueryRow(`select count(*) from jobs j join videos v on v.id = j.video_id
+		where j.kind = 'preview' and j.state = 'queued' and v.content_key = 'done'`).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 1 {
+		t.Fatalf("backfilled preview jobs = %d, want 1", jobs)
+	}
+	if err := db.SQL().QueryRow(`select count(*) from jobs j join videos v on v.id = j.video_id
+		where j.kind = 'preview' and v.content_key = 'pending'`).Scan(&jobs); err != nil {
+		t.Fatal(err)
+	}
+	if jobs != 0 {
+		t.Fatalf("pending probe preview jobs = %d, want 0", jobs)
+	}
+	if _, err := db.SQL().Exec(`update videos set preview_state = 'invalid' where content_key = 'done'`); err == nil {
+		t.Fatal("preview_state accepted an invalid value")
 	}
 }
 
@@ -478,7 +542,7 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	db := migratedDB(t)
 
-	for range 4 {
+	for range 5 {
 		if err := Down(context.Background(), db); err != nil {
 			t.Fatalf("Down に失敗した: %v", err)
 		}
@@ -529,6 +593,9 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := Down(ctx, db); err != nil {
+		t.Fatalf("hover preview Down failed: %v", err)
+	}
 	if err := Down(ctx, db); err != nil {
 		t.Fatalf("seek thumbnail cache Down failed: %v", err)
 	}

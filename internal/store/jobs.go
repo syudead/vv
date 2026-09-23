@@ -24,6 +24,7 @@ const (
 	JobProbe = domain.JobProbe
 	// JobThumbnail は ffmpeg による静止画の抽出。
 	JobThumbnail = domain.JobThumbnail
+	JobPreview   = domain.JobPreview
 	// MaxJobAttempts は諦めるまでの試行回数である。
 	MaxJobAttempts = domain.MaxJobAttempts
 )
@@ -280,7 +281,8 @@ func (db *DB) DeleteFinishedJobsBefore(ctx context.Context, cutoff time.Time) (i
 			state = 'done' or (state = 'failed' and exists (
 				select 1 from videos v where v.id = jobs.video_id and (
 					(jobs.kind = 'probe' and v.probe_state <> 'pending') or
-					(jobs.kind = 'thumbnail' and v.thumbnail_state <> 'pending')
+					(jobs.kind = 'thumbnail' and v.thumbnail_state <> 'pending') or
+					(jobs.kind = 'preview' and v.preview_state <> 'pending')
 				)
 			))
 		)`,
