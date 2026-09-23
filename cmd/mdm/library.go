@@ -57,6 +57,7 @@ func newWorker(cfg Config, db *store.DB, logger *slog.Logger) *jobs.Worker {
 		Handlers: map[domain.JobKind]jobs.Handler{
 			domain.JobProbe:     probeHandler(db),
 			domain.JobThumbnail: thumbnailHandler(cfg, db),
+			domain.JobPreview:   previewHandler(cfg, db),
 		},
 		Logger: logger,
 	})
@@ -93,8 +94,47 @@ func probeHandler(db *store.DB) jobs.Handler {
 		}
 
 		playability := domain.EvaluatePlayability(domain.ContainerFromPath(job.LocationPath), probe)
-		_, err = db.ApplyProbeForJob(ctx, job, probe, playability)
-		return err
+		applied, err := db.ApplyProbeForJob(ctx, job, probe, playability)
+		if err != nil || !applied {
+			return err
+		}
+		return db.EnqueueJob(ctx, domain.JobPreview, job.VideoID)
+	}
+}
+
+func previewHandler(cfg Config, db *store.DB) jobs.Handler {
+	return func(ctx context.Context, job domain.Job) error {
+		video, err := db.GetVideo(ctx, job.VideoID)
+		if err != nil {
+			return err
+		}
+		if video.ProbeState != domain.ProbeStateDone {
+			return nil
+		}
+		if video.DurationMs == nil || *video.DurationMs <= 0 {
+			return fmt.Errorf("プレビュー生成に必要な動画の長さがありません")
+		}
+		current, err := db.ContentKeyCurrent(ctx, job.VideoID, job.ContentKey)
+		if err != nil || !current {
+			return err
+		}
+		if err := checkReadableRegularFile(job.LocationPath); err != nil {
+			return err
+		}
+		validateContent := func(validateCtx context.Context) (bool, error) {
+			return db.PreviewSourceCurrent(validateCtx, job)
+		}
+		if err := media.GeneratePreview(ctx, job.LocationPath, cfg.ThumbnailsDir(), job.ContentKey, *video.DurationMs, validateContent); err != nil {
+			return err
+		}
+		applied, err := db.CompletePreviewForContent(context.WithoutCancel(ctx), job)
+		if err != nil {
+			return err
+		}
+		if !applied {
+			return media.ErrPreviewStale
+		}
+		return nil
 	}
 }
 
@@ -284,8 +324,11 @@ func (l *library) runScan(scanID int64) {
 
 	// 走査のたびに掃除する。起動時だけだと、長く動かしているうちに完了行が
 	// 積み上がる（取り込み直後は最大 2万行になる）。
+	l.reconcilePreviews(closeCtx)
 	l.cleanFinishedJobs(closeCtx)
 	l.cleanSeekThumbnails(closeCtx)
+	l.cleanPreviews(closeCtx)
+	l.cleanPreviewTemps(media.PreviewTempCutoff(time.Now()))
 }
 
 func (l *library) cleanSeekThumbnails(ctx context.Context) {
@@ -301,6 +344,65 @@ func (l *library) cleanSeekThumbnails(ctx context.Context) {
 	}
 	if removed > 0 {
 		l.logger.Info("孤児シークサムネイルを掃除しました", slog.Int("count", removed))
+	}
+}
+
+func (l *library) cleanPreviews(ctx context.Context) {
+	keys, err := l.db.ContentKeys(ctx)
+	if err != nil {
+		l.logger.Warn("プレビューの参照を読み出せませんでした", slog.Any("error", err))
+		return
+	}
+	removed, err := media.RemoveOrphanPreviews(l.thumbnailsDir, keys)
+	if err != nil {
+		l.logger.Warn("孤児プレビューを掃除できませんでした", slog.Any("error", err))
+		return
+	}
+	if removed > 0 {
+		l.logger.Info("孤児プレビューを掃除しました", slog.Int("count", removed))
+	}
+}
+
+func (l *library) cleanPreviewTemps(cutoff time.Time) {
+	removed, err := media.RemoveAbandonedPreviewTemps(l.thumbnailsDir, cutoff)
+	if err != nil {
+		l.logger.Warn("中断したプレビュー生成物を掃除できませんでした", slog.Any("error", err))
+		return
+	}
+	if removed > 0 {
+		l.logger.Info("中断したプレビュー生成物を掃除しました", slog.Int("count", removed))
+	}
+}
+
+func (l *library) reconcilePreviews(ctx context.Context) {
+	marked, requeued, err := l.db.ReconcilePreviewFailures(ctx)
+	if err != nil {
+		l.logger.Warn("プレビュー失敗状態を整合できませんでした", slog.Any("error", err))
+		return
+	}
+	if marked > 0 || requeued > 0 {
+		l.logger.Info("プレビュー失敗状態を整合しました", slog.Int64("failed", marked), slog.Int64("requeued", requeued))
+	}
+	assets, err := l.db.PreviewAssets(ctx)
+	if err != nil {
+		l.logger.Warn("プレビューの状態を読み出せませんでした", slog.Any("error", err))
+		return
+	}
+	for _, asset := range assets {
+		if asset.State != domain.PreviewStateDone {
+			continue
+		}
+		path := media.PreviewPath(l.thumbnailsDir, asset.ContentKey)
+		manifest := media.PreviewManifestPath(l.thumbnailsDir, asset.ContentKey)
+		if _, err := media.VerifyPreview(path, manifest); err == nil {
+			continue
+		}
+		if err := media.RemovePreview(l.thumbnailsDir, asset.ContentKey); err != nil {
+			l.logger.Warn("壊れたプレビューを削除できませんでした", slog.Any("error", err))
+		}
+		if err := l.db.RequeuePreviewRepair(ctx, asset.ID); err != nil {
+			l.logger.Warn("プレビューの修復ジョブを積めませんでした", slog.Any("error", err))
+		}
 	}
 }
 
@@ -350,5 +452,6 @@ func (l *library) recoverInterrupted(ctx context.Context) error {
 	}
 
 	l.cleanFinishedJobs(ctx)
+	l.cleanPreviewTemps(time.Now())
 	return nil
 }

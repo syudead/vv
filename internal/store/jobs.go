@@ -24,6 +24,7 @@ const (
 	JobProbe = domain.JobProbe
 	// JobThumbnail は ffmpeg による静止画の抽出。
 	JobThumbnail = domain.JobThumbnail
+	JobPreview   = domain.JobPreview
 	// MaxJobAttempts は諦めるまでの試行回数である。
 	MaxJobAttempts = domain.MaxJobAttempts
 )
@@ -196,7 +197,7 @@ func (db *DB) CompleteClaimedJob(ctx context.Context, job Job) error {
 		) then 'done' else 'queued' end,
 		last_error = null,
 		location_id = case when exists (select 1 from video_locations where id = ? and version = ? and path = ?) then location_id else null end,
-		updated_at = ? where id = ?`,
+		updated_at = ? where id = ? and state = 'running'`,
 		job.VideoID, job.ContentKey, job.LocationID, job.LocationVersion, job.LocationPath, job.LocationGeneration,
 		job.LocationID, job.LocationVersion, job.LocationPath, time.Now().Unix(), job.ID)
 	if err != nil {
@@ -214,7 +215,14 @@ func (db *DB) CompleteJob(ctx context.Context, id int64) error {
 // FailJob は失敗を記録する。試行回数が上限に達していなければ queued へ戻し、
 // 達していれば failed で止める。
 func (db *DB) FailClaimedJob(ctx context.Context, job Job, reason string) error {
-	_, err := db.sql.ExecContext(ctx, `
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("ジョブの失敗記録を開始できません (id=%d): %w", job.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now().Unix()
+	res, err := tx.ExecContext(ctx, `
 		update jobs
 		set state = case
 			when not exists (select 1 from videos v join video_locations l on l.video_id = v.id
@@ -224,13 +232,45 @@ func (db *DB) FailClaimedJob(ctx context.Context, job Job, reason string) error 
 			when attempts >= ? and ? then 'failed' else 'queued' end,
 		last_error = ?,
 		location_id = case when exists (select 1 from video_locations where id = ? and version = ? and path = ?) then location_id else null end,
-		updated_at = ? where id = ?`,
+		updated_at = ? where id = ? and state = 'running'`,
 		job.VideoID, job.ContentKey, job.LocationID, job.LocationVersion, job.LocationPath,
 		job.VideoID, job.LocationGeneration, MaxJobAttempts, job.LastLocation, reason,
 		job.LocationID, job.LocationVersion, job.LocationPath,
-		time.Now().Unix(), job.ID)
+		now, job.ID)
 	if err != nil {
 		return fmt.Errorf("ジョブの失敗を記録できません (id=%d): %w", job.ID, err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("ジョブの更新件数を確認できません (id=%d): %w", job.ID, err)
+	}
+	if affected != 1 {
+		return fmt.Errorf("実行中のジョブへ失敗を記録できません (id=%d, affected=%d)", job.ID, affected)
+	}
+
+	var state string
+	if err := tx.QueryRowContext(ctx, `select state from jobs where id = ?`, job.ID).Scan(&state); err != nil {
+		return fmt.Errorf("ジョブの失敗状態を確認できません (id=%d): %w", job.ID, err)
+	}
+	if job.Kind == JobPreview && state == "failed" {
+		res, err := tx.ExecContext(ctx, `update videos set preview_state = 'failed', updated_at = ?
+			where id = ? and content_key = ? and location_generation = ? and exists (
+				select 1 from video_locations where id = ? and video_id = ? and version = ? and path = ?
+			)`, now, job.VideoID, job.ContentKey, job.LocationGeneration,
+			job.LocationID, job.VideoID, job.LocationVersion, job.LocationPath)
+		if err != nil {
+			return fmt.Errorf("プレビューの終端失敗を記録できません (job=%d): %w", job.ID, err)
+		}
+		updated, rowsErr := res.RowsAffected()
+		if rowsErr != nil {
+			return fmt.Errorf("preview 状態の更新件数を確認できません (job=%d): %w", job.ID, rowsErr)
+		}
+		if updated != 1 {
+			return fmt.Errorf("current preview へ終端失敗を記録できません (job=%d, affected=%d)", job.ID, updated)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("ジョブの失敗を確定できません (id=%d): %w", job.ID, err)
 	}
 	return nil
 }
@@ -272,6 +312,69 @@ func (db *DB) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	return affected, nil
 }
 
+// ReconcilePreviewFailures repairs the legacy state where a terminal preview
+// job was recorded without updating videos.preview_state. A single unchanged
+// source is enough to identify the failure; ambiguous or stale claims are
+// queued again so the current locations decide the result.
+func (db *DB) ReconcilePreviewFailures(ctx context.Context) (int64, int64, error) {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, 0, fmt.Errorf("preview failure の整合を開始できません: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now().Unix()
+	registered := registeredLocationCondition("current_location")
+	failedRegistered := registeredLocationCondition("l")
+	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
+	markSQL := `update videos as v set preview_state = 'failed', updated_at = ?
+		where v.preview_state = 'pending'
+		and not exists (select 1 from jobs active where active.kind = 'preview'
+			and active.video_id = v.id and active.state in ('queued', 'running'))
+		and 1 = (select count(*) from video_locations current_location
+			where current_location.video_id = v.id and ` + registered + `)
+		and exists (
+			select 1 from jobs j join video_locations l on l.id = j.location_id
+			where j.kind = 'preview' and j.video_id = v.id and j.state = 'failed'
+			and j.attempts >= ? and l.video_id = v.id
+			and l.version = j.location_version and l.path = j.location_path
+			and ` + failedRegistered + `
+		)`
+	markedResult, err := tx.ExecContext(ctx, markSQL, now, MaxJobAttempts)
+	if err != nil {
+		return 0, 0, fmt.Errorf("current preview failure を反映できません: %w", err)
+	}
+	marked, err := markedResult.RowsAffected()
+	if err != nil {
+		return 0, 0, fmt.Errorf("反映した preview failure を数えられません: %w", err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = 'preview' and state = 'failed'
+		and exists (select 1 from videos v where v.id = jobs.video_id and v.preview_state = 'pending')`); err != nil {
+		return 0, 0, fmt.Errorf("stale preview failure を削除できません: %w", err)
+	}
+	registered = registeredLocationCondition("l")
+	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
+	requeueSQL := `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
+		select 'preview', v.id, 'queued', 0, ?, ? from videos v
+		where v.preview_state = 'pending' and v.probe_state = 'done'
+		and exists (select 1 from video_locations l where l.video_id = v.id and ` + registered + `)
+		and not exists (select 1 from jobs j where j.kind = 'preview' and j.video_id = v.id
+			and j.state in ('queued', 'running'))`
+	requeuedResult, err := tx.ExecContext(ctx, requeueSQL, now, now)
+	if err != nil {
+		return 0, 0, fmt.Errorf("stale preview failure を再投入できません: %w", err)
+	}
+	requeued, err := requeuedResult.RowsAffected()
+	if err != nil {
+		return 0, 0, fmt.Errorf("再投入した preview job を数えられません: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, 0, fmt.Errorf("preview failure の整合を確定できません: %w", err)
+	}
+	return marked, requeued, nil
+}
+
 // DeleteFinishedJobsBefore は指定時刻より前に完了・失敗した行を消し、その数を
 // 返す。location固有の終端失敗は論理stateがpendingの間は再試行抑止記録として残す。
 func (db *DB) DeleteFinishedJobsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
@@ -280,7 +383,8 @@ func (db *DB) DeleteFinishedJobsBefore(ctx context.Context, cutoff time.Time) (i
 			state = 'done' or (state = 'failed' and exists (
 				select 1 from videos v where v.id = jobs.video_id and (
 					(jobs.kind = 'probe' and v.probe_state <> 'pending') or
-					(jobs.kind = 'thumbnail' and v.thumbnail_state <> 'pending')
+					(jobs.kind = 'thumbnail' and v.thumbnail_state <> 'pending') or
+					(jobs.kind = 'preview' and v.preview_state <> 'pending')
 				)
 			))
 		)`,

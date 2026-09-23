@@ -74,6 +74,9 @@ describe("contrast", () => {
     ["danger", "bg", 4.5],
     ["warning", "bg", 4.5],
     ["success", "bg", 4.5],
+    ["fg", "navbar", 4.5],
+    ["accent", "navbar", 4.5],
+    ["success", "navbar", 4.5],
     ["bg", "fg", 4.5],
   ];
 

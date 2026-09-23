@@ -261,6 +261,36 @@ func TestWorkerStopsOnCancel(t *testing.T) {
 	}
 }
 
+func TestWorkerDoesNotCompleteJobAfterHandlerCancels(t *testing.T) {
+	queue := &fakeQueue{}
+	queue.add(&fakeJob{id: 1, kind: domain.JobProbe})
+	ctx, cancel := context.WithCancel(context.Background())
+	job, err := queue.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker := New(Options{
+		Queue: queue,
+		Handlers: map[domain.JobKind]Handler{
+			domain.JobProbe: func(context.Context, domain.Job) error {
+				cancel()
+				return nil
+			},
+		},
+	})
+	worker.process(ctx, job)
+	done, failed := queue.counts()
+	if done != 0 || failed != 0 {
+		t.Fatalf("cancelled result was recorded: done=%d failed=%d", done, failed)
+	}
+	queue.mu.Lock()
+	running := queue.running
+	queue.mu.Unlock()
+	if running != 1 {
+		t.Fatalf("running jobs = %d, want 1 for startup recovery", running)
+	}
+}
+
 // 扱いを知らない種類のジョブは、再試行せず諦める。再試行しても結果は
 // 変わらないので、待ち行列を塞ぐだけになる。
 func TestWorkerGivesUpOnUnknownKind(t *testing.T) {

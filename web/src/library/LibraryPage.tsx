@@ -87,6 +87,13 @@ export default function LibraryPage() {
   const [preferences, setPreferences] = useState(readViewPreferences);
   const sort = toSort(searchParams.get("sort")) ?? preferences.sort;
   const { zoom, view } = preferences;
+  const [activePreviewId, setActivePreviewId] = useState<number | null>(null);
+  const [previewResetEpoch, setPreviewResetEpoch] = useState(0);
+  const resetPreview = useCallback(() => {
+    setActivePreviewId(null);
+    setPreviewResetEpoch((epoch) => epoch + 1);
+  }, []);
+  const startPreview = useCallback((id: number) => setActivePreviewId(id), []);
 
   const savePreferences = useCallback((updated: ViewPreferences) => {
     setPreferences(updated);
@@ -103,12 +110,14 @@ export default function LibraryPage() {
         },
         { replace: true },
       );
+      resetPreview();
       savePreferences({ ...preferences, sort: next });
     },
-    [preferences, savePreferences, setSearchParams],
+    [preferences, resetPreview, savePreferences, setSearchParams],
   );
 
   const clearQuery = useCallback(() => {
+    resetPreview();
     setSearchParams(
       (current) => {
         const params = new URLSearchParams(current);
@@ -117,7 +126,7 @@ export default function LibraryPage() {
       },
       { replace: true },
     );
-  }, [setSearchParams]);
+  }, [resetPreview, setSearchParams]);
 
   // --- 大きさ切替で読んでいた位置を保つ ---
   const anchor = useRef<number | undefined>(undefined);
@@ -131,10 +140,17 @@ export default function LibraryPage() {
     (next: Zoom) => {
       anchor.current =
         window.scrollY > 0 ? topmostId(list.current, topOffset()) : undefined;
+      resetPreview();
       savePreferences({ ...preferences, zoom: next });
     },
-    [preferences, savePreferences],
+    [preferences, resetPreview, savePreferences],
   );
+
+  useEffect(() => {
+    const onResize = () => resetPreview();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [resetPreview]);
 
   useLayoutEffect(() => {
     const id = anchor.current;
@@ -176,10 +192,25 @@ export default function LibraryPage() {
   const filtering = watch !== "all" || playableOnly;
 
   useEffect(() => {
+    resetPreview();
+  }, [
+    filtered,
+    items.length,
+    playableOnly,
+    query,
+    resetPreview,
+    sort,
+    view,
+    watch,
+    zoom,
+  ]);
+
+  useEffect(() => {
     if (filtering && hasMore && !loading && !loadingMore && error === null) {
+      resetPreview();
       loadMore();
     }
-  }, [error, filtering, hasMore, loadMore, loading, loadingMore]);
+  }, [error, filtering, hasMore, loadMore, loading, loadingMore, resetPreview]);
 
   // --- 選択 ---
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -266,13 +297,16 @@ export default function LibraryPage() {
     if (target === null || !hasMore) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+        if (entries.some((entry) => entry.isIntersecting)) {
+          resetPreview();
+          loadMore();
+        }
       },
       { rootMargin: "600px" },
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMore, loadMore]);
+  }, [hasMore, loadMore, resetPreview]);
 
   const empty = !loading && error === null && items.length === 0;
   const selectionMode = selectedIds.size > 0;
@@ -284,6 +318,10 @@ export default function LibraryPage() {
     selected: selectedIds.has(video.id),
     selectionMode,
     onSelect: changeSelection,
+    activePreviewId,
+    previewResetEpoch,
+    onPreviewStart: startPreview,
+    onPreviewReset: resetPreview,
   });
 
   return (
@@ -299,7 +337,10 @@ export default function LibraryPage() {
           playableOnly={playableOnly}
           onPlayableOnlyChange={setPlayableOnly}
           view={view}
-          onViewChange={(next) => savePreferences({ ...preferences, view: next })}
+          onViewChange={(next) => {
+            resetPreview();
+            savePreferences({ ...preferences, view: next });
+          }}
           zoom={zoom}
           onZoomChange={changeZoom}
         />
