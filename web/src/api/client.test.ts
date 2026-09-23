@@ -5,9 +5,11 @@ import {
   deleteMediaFolder,
   fetchSeekThumbnail,
   listDirectories,
+  beaconProgress,
   listMediaFolders,
   startScan,
   transcodeUrl,
+  saveProgress,
   updateMediaFolder,
 } from "./client";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
@@ -163,5 +165,74 @@ describe("settings API client", () => {
     expect(fetch).toHaveBeenCalledWith("/api/directories?path=C%3A%5CMedia+Files", {
       signal,
     });
+  });
+});
+
+describe("progress API client", () => {
+  const key = { query: "", sort: "addedDesc" as const };
+  const progress = {
+    positionMs: 60_000,
+    completed: true,
+    updatedAt: "2026-09-23T00:00:00Z",
+  };
+  const unwatched = {
+    id: 7,
+    title: "x",
+    sizeBytes: 1,
+    addedAt: "2026-09-01T00:00:00Z",
+    playable: true,
+    probeState: "done" as const,
+    thumbnailState: "done" as const,
+    previewState: "pending" as const,
+  };
+
+  it("保存と離脱時の送信が受け付けられたら、一覧の控えの再生位置を差し替える", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+
+    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    fetch.mockResolvedValueOnce(jsonResponse(progress));
+    await saveProgress(7, 60_000);
+    expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(progress);
+
+    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    fetch.mockResolvedValueOnce(jsonResponse(progress));
+    beaconProgress(7, 60_000);
+    await vi.waitFor(() => {
+      expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(progress);
+    });
+
+    // 応答の順が入れ替わっても、後から送った保存の位置を残す。
+    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    const older = {
+      positionMs: 10_000,
+      completed: false,
+      updatedAt: "2026-09-23T00:00:00Z",
+    };
+    const newer = {
+      positionMs: 20_000,
+      completed: false,
+      updatedAt: "2026-09-23T00:00:00Z",
+    };
+    let answerOlder: (response: Response) => void = () => undefined;
+    fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          answerOlder = resolve;
+        }),
+    );
+    fetch.mockResolvedValueOnce(jsonResponse(newer));
+    const first = saveProgress(7, 10_000);
+    await saveProgress(7, 20_000);
+    answerOlder(jsonResponse(older));
+    await first;
+    expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(newer);
+
+    // 失敗した送信では控えを書き換えない。
+    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    fetch.mockResolvedValueOnce(jsonResponse({ code: "not_found", message: "x" }, 404));
+    beaconProgress(7, 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(takeListSnapshot(key)?.items[0]?.progress).toBeUndefined();
   });
 });

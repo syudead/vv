@@ -1,5 +1,6 @@
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
+import { nextProgressSequence, recordSavedProgress } from "./progressEvents";
 
 // 型は api/openapi.yaml からの生成物を使う。契約を変えると、ここが
 // コンパイルエラーになって気付ける。
@@ -249,17 +250,20 @@ export function listDirectories(
  * saveProgress は再生位置を送る。視聴済みの判定はサーバー側が行うので、
  * ここでは位置だけを送る。
  */
-export function saveProgress(
+export async function saveProgress(
   id: number,
   positionMs: number,
   signal?: AbortSignal,
 ): Promise<Progress> {
-  return request<Progress>(`/api/videos/${String(id)}/progress`, {
+  const sequence = nextProgressSequence();
+  const saved = await request<Progress>(`/api/videos/${String(id)}/progress`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) }),
     signal,
   });
+  recordSavedProgress(id, saved, sequence);
+  return saved;
 }
 
 /**
@@ -269,12 +273,18 @@ export function saveProgress(
  */
 export function beaconProgress(id: number, positionMs: number): void {
   const body = JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) });
+  const sequence = nextProgressSequence();
   void fetch(`/api/videos/${String(id)}/progress`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body,
     keepalive: true,
-  }).catch(() => undefined);
+  })
+    .then(async (response) => {
+      if (response.ok)
+        recordSavedProgress(id, (await response.json()) as Progress, sequence);
+    })
+    .catch(() => undefined);
 }
 
 /** streamUrl は動画本体の取得先を返す。 */
