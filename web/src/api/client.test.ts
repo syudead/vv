@@ -277,4 +277,31 @@ describe("progress API client", () => {
       .map(([, init]) => JSON.parse(String(init?.body)) as { positionMs: number });
     expect(bodies.map((body) => body.positionMs)).toEqual([10_000, 20_000, 30_000]);
   });
+
+  it("ページが隠れるときの送信は待たずに出し、以後の保存はその完了を待つ", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    let answerBeacon: (response: Response) => void = () => undefined;
+    fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          answerBeacon = resolve;
+        }),
+    );
+    fetch.mockImplementation(() => Promise.resolve(jsonResponse(progress)));
+
+    const hidden = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    beaconProgress(10, 20_000);
+    hidden.mockRestore();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // タブが再び表示されて始まった保存は、隠れたときの送信の完了を待つ。
+    const next = saveProgress(10, 25_000);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    answerBeacon(jsonResponse(progress));
+    await next;
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
 });

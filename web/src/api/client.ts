@@ -267,6 +267,21 @@ function enqueueProgress<T>(id: number, send: () => Promise<T>): Promise<T> {
 }
 
 /**
+ * sendProgressNow は順番を待たずにすぐ送り、それでも以後の保存は、それまでの
+ * 保存とこの送信の両方が終わってから送るようにする。
+ */
+function sendProgressNow<T>(id: number, send: () => Promise<T>): Promise<T> {
+  const previous = progressQueue.get(id) ?? Promise.resolve();
+  const next = send();
+  const tail = Promise.all([previous, next.catch(() => undefined)]);
+  progressQueue.set(id, tail);
+  void tail.then(() => {
+    if (progressQueue.get(id) === tail) progressQueue.delete(id);
+  });
+  return next;
+}
+
+/**
  * saveProgress は再生位置を送る。視聴済みの判定はサーバー側が行うので、
  * ここでは位置だけを送る。同じ動画の保存は、前の保存が終わってから送る。
  */
@@ -293,7 +308,9 @@ export function saveProgress(
  *
  * keepalive付きfetchで、既存のPUT契約を保ったまま画面離脱後も送信を継続する。
  * アプリの中で画面を移るときは、送信中の保存が終わってから送る。ページ自体が
- * 隠れる（タブを閉じるなど）ときは待てないので、すぐに送る。
+ * 隠れる（タブを閉じるなど）ときは待てないので、すぐに送る。その場合も、以後の
+ * 保存はこの送信の完了を待つ。すでに送信中だった保存との順序は、クライアントだけ
+ * では保証できない（サーバーは届いた順に上書きする）。
  */
 export function beaconProgress(id: number, positionMs: number): void {
   const body = JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) });
@@ -309,7 +326,9 @@ export function beaconProgress(id: number, positionMs: number): void {
         recordSavedProgress(id, (await response.json()) as Progress, sequence);
     });
   const sending =
-    document.visibilityState === "hidden" ? send() : enqueueProgress(id, send);
+    document.visibilityState === "hidden"
+      ? sendProgressNow(id, send)
+      : enqueueProgress(id, send);
   void sending.catch(() => undefined);
 }
 
