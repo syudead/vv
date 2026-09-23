@@ -113,7 +113,7 @@ function VideoCard(props: VideoCardProps) {
               alt=""
               loading="lazy"
               decoding="async"
-              className="h-full w-full object-cover object-top transition-transform duration-300 ease-out-quart group-hover:scale-[1.03]"
+              className="h-full w-full object-cover object-top transition-transform duration-300 ease-out-quart group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
             />
           ) : (
             <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-fg-subtle">
