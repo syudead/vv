@@ -11,6 +11,11 @@ import {
 import { Link, useLocation, useSearchParams } from "react-router";
 
 import type { FolderRef, VideoSort } from "../api/client";
+import {
+  clearListSnapshot,
+  saveListSnapshot,
+  takeListSnapshot,
+} from "../api/listSnapshot";
 import { useFolderListing, useRootFolders } from "../api/useFolderListing";
 import { useVideos } from "../api/useVideos";
 import { sortOptions } from "../library/LibraryToolbar";
@@ -49,13 +54,17 @@ let hasMounted = false;
 /**
  * useArrival は別のフォルダへ移ったとき、見出しへフォーカスを移して先頭へ
  * スクロールする。読み上げソフトの利用者が移動と現在地を知れるようにする。
+ * 控えから戻ってきたとき（restoring）は、元の位置へ戻すのでどちらもしない。
  */
-function useArrival() {
+function useArrival(restoring = false) {
   const heading = useRef<HTMLHeadingElement | null>(null);
   useLayoutEffect(() => {
-    window.scrollTo({ top: 0, behavior: "auto" });
-    if (hasMounted) heading.current?.focus({ preventScroll: true });
+    if (!restoring) {
+      window.scrollTo({ top: 0, behavior: "auto" });
+      if (hasMounted) heading.current?.focus({ preventScroll: true });
+    }
     hasMounted = true;
+    // 到着はフォルダごとに1回だけ扱う（FolderView は key でフォルダごとに作り直す）。
   }, []);
   return heading;
 }
@@ -154,6 +163,18 @@ function RootView() {
   const roots = useRootFolders();
   const folders = roots.data?.folders ?? [];
 
+  // 取り込みが終わったら登録フォルダの集計を読み直す（Edge Case「取り込み中」）。
+  const scan = useScan();
+  const knownScanId = useRef(scan.finished?.id);
+  const { reload } = roots;
+  useEffect(() => scan.refresh(), [scan.refresh]);
+  useEffect(() => {
+    const finished = scan.finished;
+    if (finished === null || knownScanId.current === finished.id) return;
+    knownScanId.current = finished.id;
+    reload();
+  }, [reload, scan.finished]);
+
   return (
     <>
       <h1 ref={heading} tabIndex={-1} className="sr-only">
@@ -199,12 +220,19 @@ function RootView() {
 
 /** FolderView はフォルダ1件の中身（直下の子フォルダと動画）を並べる。 */
 function FolderView({ folder }: { folder: FolderRef }) {
-  const heading = useArrival();
   const location = useLocation();
   const { sort, zoom, changeSort, changeZoom } = usePreferences();
   const scan = useScan();
-  const listing = useFolderListing(folder);
-  const videos = useVideos(sort, "", undefined, folder);
+
+  // --- 再生画面から戻ったときは控えから復元する（要件 10） ---
+  const key = folderKey(folder);
+  const [restored] = useState(() => {
+    const held = takeListSnapshot({ query: "", sort, folder: key });
+    return held?.folderListing === undefined ? undefined : held;
+  });
+  const heading = useArrival(restored !== undefined);
+  const listing = useFolderListing(folder, restored?.folderListing);
+  const videos = useVideos(sort, "", restored, folder);
 
   const summary = listing.data?.folder;
   const children = listing.data?.folders ?? [];
@@ -212,6 +240,74 @@ function FolderView({ folder }: { folder: FolderRef }) {
   const name =
     summary?.name ?? (folder.path === "" ? rootName : folder.path.split("/").at(-1));
   const backTo = `${location.pathname}${location.search}`;
+
+  // --- スクロール位置の復元 ---
+  const pendingScroll = useRef(restored?.scrollY);
+  useEffect(() => {
+    const previous = history.scrollRestoration;
+    history.scrollRestoration = "manual";
+    return () => {
+      history.scrollRestoration = previous;
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const top = pendingScroll.current;
+    if (top === undefined || (videos.items.length === 0 && children.length === 0)) return;
+    pendingScroll.current = undefined;
+    window.scrollTo({ top, behavior: "auto" });
+    // 初回の描画では TopBarPortal がツールバーを本文の流れに置き、直後にトップバーへ
+    // 移す。その分だけ本文が縮み、スクロールの追従で位置がずれるので、描画の前に
+    // もう一度合わせる。
+    requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
+  }, [children.length, videos.items.length]);
+
+  // --- 取り込みが終わったら控えを捨てて読み直す（Edge Case「取り込み中」） ---
+  // 表示を始めた時点で終わっていた取り込みは、読み込んだ中身に反映済みである。
+  const knownScanId = useRef(
+    restored === undefined ? scan.finished?.id : restored.scanId,
+  );
+  // 読み直しの途中の中身は、終わった取り込みを反映していない。子フォルダと動画の
+  // 両方が読み終わるまでは控えを取らず、戻ったときに読み直させる。
+  const reloadPending = useRef(false);
+  useEffect(() => {
+    if (!listing.loading && !videos.loading) reloadPending.current = false;
+  }, [listing.loading, videos.loading]);
+  const { reload: reloadListing } = listing;
+  const { reload: reloadVideos } = videos;
+  useEffect(() => scan.refresh(), [scan.refresh]);
+  useEffect(() => {
+    const finished = scan.finished;
+    if (finished === null || knownScanId.current === finished.id) return;
+    knownScanId.current = finished.id;
+    reloadPending.current = true;
+    clearListSnapshot();
+    reloadListing();
+    reloadVideos();
+  }, [reloadListing, reloadVideos, scan.finished]);
+
+  const saveSnapshot = useCallback(() => {
+    if (listing.data === null || reloadPending.current) return;
+    saveListSnapshot(
+      { query: "", sort, folder: key },
+      {
+        items: videos.items,
+        total: videos.total,
+        cursor: videos.cursor,
+        hasMore: videos.hasMore,
+        scrollY: window.scrollY,
+        scanId: knownScanId.current,
+        folderListing: listing.data,
+      },
+    );
+  }, [
+    key,
+    listing.data,
+    sort,
+    videos.cursor,
+    videos.hasMore,
+    videos.items,
+    videos.total,
+  ]);
 
   // --- 無限スクロール（ライブラリと同じ観測点） ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -334,7 +430,10 @@ function FolderView({ folder }: { folder: FolderRef }) {
             : breadcrumbsFor(folder, rootName)
         }
       />
-      {body}
+      {/* 中身を押す直前（再生画面・子フォルダへ移る直前）の状態を控える。 */}
+      <div onClick={saveSnapshot} className="flex flex-col gap-3">
+        {body}
+      </div>
       <div ref={sentinel} aria-hidden="true" className="h-px" />
     </>
   );

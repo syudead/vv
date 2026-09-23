@@ -3,7 +3,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-import { generateMediaFixtures } from "./media-fixtures.mjs";
+import { generateFolderFixtures, generateMediaFixtures } from "./media-fixtures.mjs";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(webRoot, "..");
@@ -12,11 +12,13 @@ const outputDir = path.join(runRoot, "bin");
 const output = path.join(outputDir, process.platform === "win32" ? "mdm.exe" : "mdm");
 const mediaDir = path.join(runRoot, "media");
 const settingsMediaDir = path.join(runRoot, "settings-media");
+const foldersMediaDir = path.join(runRoot, "folders-media");
 
 function run() {
   mkdirSync(outputDir, { recursive: true });
   try {
     generateMediaFixtures(mediaDir);
+    generateFolderFixtures(foldersMediaDir);
     const mediaContract = spawnSync(
       "go",
       ["test", "./internal/media", "-run", "^TestVideoEncode.*WithFFmpeg$", "-count=1"],
@@ -54,6 +56,7 @@ function run() {
         MDM_E2E_RUN_ROOT: runRoot,
         MDM_E2E_MEDIA_DIR: mediaDir,
         MDM_E2E_SETTINGS_MEDIA_DIR: settingsMediaDir,
+        MDM_E2E_FOLDERS_MEDIA_DIR: foldersMediaDir,
       },
       stdio: "inherit",
     });

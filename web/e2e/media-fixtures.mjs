@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -216,4 +216,53 @@ export function generateMediaFixtures(mediaDir) {
   for (const [name, codecs] of Object.entries(expected)) {
     assertFixture(file(name), codecs);
   }
+}
+
+/**
+ * generateFolderFixtures はフォルダ画面の検証用のフォルダ構成を作る
+ * （specs/011-folder-browser/quickstart.md）。動画はどれも内容を変えた数秒の
+ * H.264 で、同じ内容の複製だけが同じ動画になる。
+ */
+export function generateFolderFixtures(root) {
+  let count = 0;
+  const make = (relative) => {
+    const file = path.join(root, relative);
+    mkdirSync(path.dirname(file), { recursive: true });
+    count += 1;
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=10:duration=2",
+      "-vf",
+      `hue=h=${String((count * 37) % 360)}`,
+      ...h264,
+      "-an",
+      "-metadata",
+      `title=folder-fixture-${String(count)}`,
+      file,
+    ]);
+  };
+  const copy = (from, to) => {
+    mkdirSync(path.dirname(path.join(root, to)), { recursive: true });
+    copyFileSync(path.join(root, from), path.join(root, to));
+  };
+
+  make("a/movies/A/x.mp4");
+  make("a/movies/A/B/y.mp4");
+  make("a/movies/A/B/C/z.mp4");
+  make("a/movies/1/w1.mp4");
+  make("a/movies/2/w2.mp4");
+  make("a/movies/10/w10.mp4");
+  for (let index = 1; index <= 61; index += 1) {
+    make(`a/movies/many/clip-${String(index).padStart(2, "0")}.mp4`);
+  }
+  for (let index = 1; index <= 5; index += 1)
+    make(`a/movies/five/part-${String(index)}.mp4`);
+  make("a/movies/only-deeper/inner/d.mp4");
+  make("a/movies/100% #1 日本語/s.mp4");
+  make("a/movies/dup/same-a.mp4");
+  copy("a/movies/dup/same-a.mp4", "a/movies/dup/same-b.mp4");
+  copy("a/movies/A/x.mp4", "b/movies/copy-of-x.mp4");
+  return count;
 }

@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -10,6 +10,7 @@ import type {
   Video,
   VideoPage,
 } from "../api/client";
+import { clearListSnapshot } from "../api/listSnapshot";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
@@ -83,6 +84,16 @@ const folderRoot: FolderListing = {
   ],
 };
 
+/** Player は再生画面の代わりで、「戻る」で履歴を1つ戻る。 */
+function Player() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => void navigate(-1)}>
+      戻る
+    </button>
+  );
+}
+
 function renderFolders(initial: string) {
   return render(
     <MemoryRouter initialEntries={[initial]}>
@@ -91,7 +102,7 @@ function renderFolders(initial: string) {
           <ScanProvider>
             <Routes>
               <Route path="/folders/*" element={<FolderPage />} />
-              <Route path="/videos/:id" element={<p>再生画面</p>} />
+              <Route path="/videos/:id" element={<Player />} />
             </Routes>
           </ScanProvider>
         </ToastProvider>
@@ -139,6 +150,7 @@ describe("FolderPage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     localStorage.clear();
+    clearListSnapshot();
   });
 
   it("最上位に登録フォルダをパス付きで並べる", async () => {
@@ -247,4 +259,139 @@ describe("FolderPage", () => {
     renderFolders("/folders/abc");
     expect(await screen.findByText("このフォルダは見つかりません")).toBeDefined();
   });
+
+  it("再生画面から戻ると控えから復元し、子フォルダも動画も読み直さない", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A");
+    await user.click(await screen.findByRole("link", { name: "x" }));
+    await user.click(await screen.findByRole("button", { name: "戻る" }));
+
+    expect(await screen.findByRole("link", { name: "x" })).toBeDefined();
+    expect(
+      screen.getByRole("link", { name: "B、動画 1 本、フォルダ 1 件" }),
+    ).toBeDefined();
+    expect(requests.filter((url) => url === "/api/folders/3?path=A").length).toBe(1);
+    expect(
+      requests.filter((url) => url.startsWith("/api/folders/3/videos?")).length,
+    ).toBe(1);
+  });
+
+  it("別のフォルダの控えでは復元しない", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A");
+    // A の控えを取ってから B へ移る。B は A の控えを使わず自分で読む。
+    await user.click(
+      await screen.findByRole("link", { name: "B、動画 1 本、フォルダ 1 件" }),
+    );
+    await screen.findByText("このフォルダは見つかりません");
+    expect(requests.filter((url) => url === "/api/folders/3?path=A%2FB").length).toBe(1);
+  });
+
+  it("取り込み後の読み直しが終わる前に動画を開いても、古い子フォルダを控えに残さない", async () => {
+    const user = userEvent.setup();
+    let scanPolls = 0;
+    let listingCalls = 0;
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) {
+        scanPolls += 1;
+        requests.push(url);
+        return Promise.resolve(
+          json({
+            id: 9,
+            state: scanPolls <= 2 ? "running" : "done",
+            total: 1,
+            completed: scanPolls <= 2 ? 0 : 1,
+            failed: 0,
+          }),
+        );
+      }
+      if (url === "/api/folders/3?path=A") {
+        listingCalls += 1;
+        // 取り込み後の子フォルダの読み直し（2回目）だけ、返らないままにする。
+        if (listingCalls === 2) {
+          requests.push(url);
+          return new Promise<Response>(() => {});
+        }
+      }
+      return base!(input, init);
+    });
+    renderFolders("/folders/3/A");
+    await screen.findByRole("link", { name: "x" });
+    await waitFor(() => expect(listingCalls).toBe(2), { timeout: 5000 });
+
+    // 動画は読み直し済みで、子フォルダはまだ古い。
+    await user.click(await screen.findByRole("link", { name: "x" }));
+    await user.click(await screen.findByRole("button", { name: "戻る" }));
+
+    // 控えから復元せず、子フォルダを読み直す。
+    await waitFor(() => expect(listingCalls).toBe(3));
+  }, 10_000);
+
+  it("最上位でも取り込みが終わると登録フォルダを読み直す", async () => {
+    let scanPolls = 0;
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input).startsWith("/api/scans/current")) {
+        scanPolls += 1;
+        requests.push(String(input));
+        return Promise.resolve(
+          json({
+            id: 9,
+            state: scanPolls <= 2 ? "running" : "done",
+            total: 1,
+            completed: scanPolls <= 2 ? 0 : 1,
+            failed: 0,
+          }),
+        );
+      }
+      return base!(input, init);
+    });
+    renderFolders("/folders");
+    await screen.findByRole("link", {
+      name: "movies、動画 0 本、フォルダ 9 件、/a/movies",
+    });
+    expect(requests.filter((url) => url === "/api/folders").length).toBe(1);
+
+    await waitFor(
+      () => expect(requests.filter((url) => url === "/api/folders").length).toBe(2),
+      { timeout: 5000 },
+    );
+  }, 10_000);
+
+  it("取り込みが終わると子フォルダと動画を読み直す", async () => {
+    let scanPolls = 0;
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input).startsWith("/api/scans/current")) {
+        scanPolls += 1;
+        requests.push(String(input));
+        return Promise.resolve(
+          json({
+            id: 9,
+            state: scanPolls <= 2 ? "running" : "done",
+            total: 1,
+            completed: scanPolls <= 2 ? 0 : 1,
+            failed: 0,
+          }),
+        );
+      }
+      return base!(input, init);
+    });
+    renderFolders("/folders/3/A");
+    await screen.findByRole("link", { name: "x" });
+    expect(requests.filter((url) => url === "/api/folders/3?path=A").length).toBe(1);
+
+    await waitFor(
+      () =>
+        expect(requests.filter((url) => url === "/api/folders/3?path=A").length).toBe(2),
+      { timeout: 5000 },
+    );
+    await waitFor(() =>
+      expect(
+        requests.filter((url) => url.startsWith("/api/folders/3/videos?")).length,
+      ).toBe(2),
+    );
+  }, 10_000);
 });
