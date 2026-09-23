@@ -287,6 +287,48 @@ describe("FolderPage", () => {
     expect(requests.filter((url) => url === "/api/folders/3?path=A%2FB").length).toBe(1);
   });
 
+  it("取り込み後の読み直しが終わる前に動画を開いても、古い子フォルダを控えに残さない", async () => {
+    const user = userEvent.setup();
+    let scanPolls = 0;
+    let listingCalls = 0;
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) {
+        scanPolls += 1;
+        requests.push(url);
+        return Promise.resolve(
+          json({
+            id: 9,
+            state: scanPolls <= 2 ? "running" : "done",
+            total: 1,
+            completed: scanPolls <= 2 ? 0 : 1,
+            failed: 0,
+          }),
+        );
+      }
+      if (url === "/api/folders/3?path=A") {
+        listingCalls += 1;
+        // 取り込み後の子フォルダの読み直し（2回目）だけ、返らないままにする。
+        if (listingCalls === 2) {
+          requests.push(url);
+          return new Promise<Response>(() => {});
+        }
+      }
+      return base!(input, init);
+    });
+    renderFolders("/folders/3/A");
+    await screen.findByRole("link", { name: "x" });
+    await waitFor(() => expect(listingCalls).toBe(2), { timeout: 5000 });
+
+    // 動画は読み直し済みで、子フォルダはまだ古い。
+    await user.click(await screen.findByRole("link", { name: "x" }));
+    await user.click(await screen.findByRole("button", { name: "戻る" }));
+
+    // 控えから復元せず、子フォルダを読み直す。
+    await waitFor(() => expect(listingCalls).toBe(3));
+  }, 10_000);
+
   it("最上位でも取り込みが終わると登録フォルダを読み直す", async () => {
     let scanPolls = 0;
     const base = fetchMock.getMockImplementation();

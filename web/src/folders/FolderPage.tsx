@@ -266,6 +266,12 @@ function FolderView({ folder }: { folder: FolderRef }) {
   const knownScanId = useRef(
     restored === undefined ? scan.finished?.id : restored.scanId,
   );
+  // 読み直しの途中の中身は、終わった取り込みを反映していない。子フォルダと動画の
+  // 両方が読み終わるまでは控えを取らず、戻ったときに読み直させる。
+  const reloadPending = useRef(false);
+  useEffect(() => {
+    if (!listing.loading && !videos.loading) reloadPending.current = false;
+  }, [listing.loading, videos.loading]);
   const { reload: reloadListing } = listing;
   const { reload: reloadVideos } = videos;
   useEffect(() => scan.refresh(), [scan.refresh]);
@@ -273,13 +279,14 @@ function FolderView({ folder }: { folder: FolderRef }) {
     const finished = scan.finished;
     if (finished === null || knownScanId.current === finished.id) return;
     knownScanId.current = finished.id;
+    reloadPending.current = true;
     clearListSnapshot();
     reloadListing();
     reloadVideos();
   }, [reloadListing, reloadVideos, scan.finished]);
 
   const saveSnapshot = useCallback(() => {
-    if (listing.data === null) return;
+    if (listing.data === null || reloadPending.current) return;
     saveListSnapshot(
       { query: "", sort, folder: key },
       {
