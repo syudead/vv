@@ -65,9 +65,13 @@ export function folderKey(folder: FolderRef): string {
 /**
  * rootDisplayName は登録フォルダの表示名を絶対パスから作る。サーバーの
  * `FolderSummary.name` と同じ規則（最後の段、段が無ければパスそのもの）。
+ *
+ * 区切りはサーバーの OS に従う。`/` で始まる（Unix の）パスでは `\` はファイル名の
+ * 一部なので区切りにしない。それ以外（Windows のドライブ付きパス）は両方を区切る。
  */
 export function rootDisplayName(rootPath: string): string {
-  const segments = rootPath.split(/[/\\]/).filter((segment) => segment !== "");
+  const separator = rootPath.startsWith("/") ? /\// : /[/\\]/;
+  const segments = rootPath.split(separator).filter((segment) => segment !== "");
   const last = segments.at(-1);
   if (last === undefined || /^[A-Za-z]:$/.test(last)) return rootPath;
   return last;

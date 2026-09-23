@@ -55,6 +55,10 @@ describe("rootDisplayName", () => {
     expect(rootDisplayName("D:\\media\\anime")).toBe("anime");
   });
 
+  it("Unix のパスでは \\ を名前の一部として残す", () => {
+    expect(rootDisplayName("/media/a\\b")).toBe("a\\b");
+  });
+
   it("最後の段が無いパスはそのまま名前にする", () => {
     expect(rootDisplayName("/")).toBe("/");
     expect(rootDisplayName("D:\\")).toBe("D:\\");

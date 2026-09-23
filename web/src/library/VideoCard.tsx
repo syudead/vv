@@ -78,6 +78,8 @@ function VideoCard(props: VideoCardProps) {
         // リンクの輪郭は overflow-hidden で切れるので、キーボードフォーカスは箱の外側に出す。
         "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link",
         "hover:-translate-y-0.5",
+        // 装飾的な動きは動きを減らす設定で止める（library-ui.md 4）。影の最終状態は残す。
+        "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
         "hover:shadow-card-hover",
         selected && "ring-2 ring-accent",
         selectionMode && "select-none",
