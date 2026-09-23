@@ -150,6 +150,57 @@ func TestGeneratePreviewDoesNotPublishStaleOutput(t *testing.T) {
 	}
 }
 
+func TestGeneratePreviewSerializesSameContentAcrossCallers(t *testing.T) {
+	requireFFmpeg(t)
+	dir := t.TempDir()
+	source := makePreviewSource(t, dir, 1)
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- GeneratePreview(context.Background(), source, dir, "shared", 1000,
+			func(context.Context) (bool, error) {
+				close(entered)
+				<-release
+				return true, nil
+			})
+	}()
+	select {
+	case <-entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("first generator did not reach publication")
+	}
+	secondValidated := make(chan struct{}, 1)
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- GeneratePreview(context.Background(), source, dir, "shared", 1000,
+			func(context.Context) (bool, error) {
+				secondValidated <- struct{}{}
+				return true, nil
+			})
+	}()
+	select {
+	case <-secondValidated:
+		t.Fatal("second generator passed the content lock while the first held it")
+	case <-time.After(150 * time.Millisecond):
+	}
+	close(release)
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-secondDone; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-secondValidated:
+		t.Fatal("second generator regenerated an already complete asset")
+	default:
+	}
+	if _, err := VerifyPreview(PreviewPath(dir, "shared"), PreviewManifestPath(dir, "shared")); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestGeneratePreviewProducesBrowserCompatibleFastStartAsset(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()

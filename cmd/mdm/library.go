@@ -138,12 +138,14 @@ func previewHandler(cfg Config, db *store.DB) jobs.Handler {
 			}
 			return err
 		}
-		current, err = db.ContentKeyCurrent(context.WithoutCancel(ctx), job.VideoID, job.ContentKey)
-		if err != nil || !current {
+		applied, err := db.CompletePreviewForContent(context.WithoutCancel(ctx), job)
+		if err != nil {
 			return err
 		}
-		_, err = db.SetPreviewStateForContent(context.WithoutCancel(ctx), job, domain.PreviewStateDone)
-		return err
+		if !applied {
+			return media.ErrPreviewStale
+		}
+		return nil
 	}
 }
 

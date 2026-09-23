@@ -333,6 +333,42 @@ func (db *DB) SetPreviewStateForContent(ctx context.Context, job domain.Job, sta
 	return n == 1, err
 }
 
+// CompletePreviewForContent atomically marks the content-keyed asset and its
+// claimed job complete. Location-only changes do not invalidate the asset.
+func (db *DB) CompletePreviewForContent(ctx context.Context, job domain.Job) (bool, error) {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	now := time.Now().Unix()
+	res, err := tx.ExecContext(ctx, `update videos set preview_state = 'done', updated_at = ?
+		where id = ? and content_key = ?`, now, job.VideoID, job.ContentKey)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil || n == 0 {
+		return false, err
+	}
+	res, err = tx.ExecContext(ctx, `update jobs set state = 'done', last_error = null, updated_at = ?
+		where id = ? and kind = 'preview' and video_id = ? and state = 'running'`, now, job.ID, job.VideoID)
+	if err != nil {
+		return false, err
+	}
+	n, err = res.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if n != 1 {
+		return false, fmt.Errorf("preview job is not running (id=%d)", job.ID)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (db *DB) ContentKeyCurrent(ctx context.Context, videoID int64, key string) (bool, error) {
 	var current int
 	err := db.sql.QueryRowContext(ctx, `select exists(select 1 from videos where id = ? and content_key = ?)`, videoID, key).Scan(&current)

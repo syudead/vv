@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gofrs/flock"
 )
 
 const (
@@ -59,14 +61,23 @@ func GeneratePreview(
 ) error {
 	target := PreviewPath(thumbnailsDir, contentKey)
 	manifest := PreviewManifestPath(thumbnailsDir, contentKey)
+	if err := os.MkdirAll(filepath.Dir(target), thumbnailDirPerm); err != nil {
+		return fmt.Errorf("プレビューの置き場所を作れません: %w", err)
+	}
+	assetLock := flock.New(target + ".lock")
+	locked, err := assetLock.TryLockContext(ctx, 100*time.Millisecond)
+	if err != nil {
+		return fmt.Errorf("プレビューの生成ロックを取得できません: %w", err)
+	}
+	if !locked {
+		return errors.New("プレビューの生成ロックを取得できません")
+	}
+	defer func() { _ = assetLock.Unlock() }()
 	if _, err := VerifyPreview(target, manifest); err == nil {
 		return nil
 	}
 	_ = os.Remove(target)
 	_ = os.Remove(manifest)
-	if err := os.MkdirAll(filepath.Dir(target), thumbnailDirPerm); err != nil {
-		return fmt.Errorf("プレビューの置き場所を作れません: %w", err)
-	}
 	temporary, err := os.MkdirTemp(filepath.Dir(target), ".preview-*")
 	if err != nil {
 		return fmt.Errorf("プレビューの一時領域を作れません: %w", err)

@@ -197,7 +197,7 @@ func (db *DB) CompleteClaimedJob(ctx context.Context, job Job) error {
 		) then 'done' else 'queued' end,
 		last_error = null,
 		location_id = case when exists (select 1 from video_locations where id = ? and version = ? and path = ?) then location_id else null end,
-		updated_at = ? where id = ?`,
+		updated_at = ? where id = ? and state = 'running'`,
 		job.VideoID, job.ContentKey, job.LocationID, job.LocationVersion, job.LocationPath, job.LocationGeneration,
 		job.LocationID, job.LocationVersion, job.LocationPath, time.Now().Unix(), job.ID)
 	if err != nil {

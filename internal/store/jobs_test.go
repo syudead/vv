@@ -606,6 +606,43 @@ func TestPreviewSourceAcceptsLocationOnlyChange(t *testing.T) {
 	}
 }
 
+func TestCompletePreviewAtomicallyFinishesAssetAndJobAfterCancellation(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", job.ContentKey, 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	applied, err := db.CompletePreviewForContent(context.WithoutCancel(cancelled), job)
+	if err != nil || !applied {
+		t.Fatalf("CompletePreviewForContent() = %v, %v", applied, err)
+	}
+	if got := jobState(t, db, job.ID); got != "done" {
+		t.Fatalf("job state = %q, want done", got)
+	}
+	video, err := db.GetVideo(ctx, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.PreviewState != domain.PreviewStateDone {
+		t.Fatalf("preview state = %q, want done", video.PreviewState)
+	}
+	if err := db.CompleteClaimedJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+	if got := jobState(t, db, job.ID); got != "done" {
+		t.Fatalf("generic completion rewrote atomic preview completion to %q", got)
+	}
+}
+
 func TestClaimedJobBecomesStaleWhenLowerIDLocationIsReassigned(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
