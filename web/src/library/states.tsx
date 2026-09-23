@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 
-function EmptyState({
+export function EmptyState({
   icon: Icon,
   title,
   description,

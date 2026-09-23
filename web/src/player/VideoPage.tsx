@@ -34,6 +34,15 @@ function backTarget(state: unknown): string {
   return from;
 }
 
+/** backLabel は戻り先の画面の名前である。フォルダ画面から来たらフォルダへ戻る。 */
+function backLabel(backTo: string): string {
+  return backTo === "/folders" ||
+    backTo.startsWith("/folders/") ||
+    backTo.startsWith("/folders?")
+    ? "フォルダ"
+    : "ライブラリ";
+}
+
 export default function VideoPage() {
   const params = useParams();
   const id = Number(params.id);
@@ -151,7 +160,7 @@ export default function VideoPage() {
           className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-fg transition-colors hover:bg-hover-wash"
         >
           <ArrowLeft className="size-4" />
-          ライブラリ
+          {backLabel(backTo)}
         </Link>
       </header>
 
@@ -238,7 +247,7 @@ function Blocked({
       <h2 className="text-lg font-semibold tracking-tight text-fg">{title}</h2>
       <p className="max-w-md text-sm text-fg-muted text-balance">{description}</p>
       <Link to={backTo} className={buttonClassName("secondary", "md", "mt-2")}>
-        ライブラリへ戻る
+        {backLabel(backTo)}へ戻る
       </Link>
     </div>
   );

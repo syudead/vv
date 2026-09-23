@@ -10,6 +10,9 @@ export type Progress = components["schemas"]["Progress"];
 export type MediaFolder = components["schemas"]["MediaFolder"];
 export type DirectoryListing = components["schemas"]["DirectoryListing"];
 export type ApiError = components["schemas"]["Error"];
+export type FolderSummary = components["schemas"]["FolderSummary"];
+export type FolderListing = components["schemas"]["FolderListing"];
+export type RootFolderListing = components["schemas"]["RootFolderListing"];
 
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
 // これだけを待つ。
@@ -88,6 +91,59 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   query.set("limit", String(params.limit ?? PAGE_SIZE));
 
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
+}
+
+/** FolderRef はフォルダを指す。登録フォルダの id と `/` 区切りの相対パスの組である。 */
+export interface FolderRef {
+  rootId: number;
+  /** 登録フォルダ自身は空文字。 */
+  path: string;
+}
+
+/** listRootFolders はフォルダ画面の最上位（登録済みメディアフォルダ）を取得する。 */
+export function listRootFolders(signal?: AbortSignal): Promise<RootFolderListing> {
+  return request<RootFolderListing>("/api/folders", { signal });
+}
+
+/** folderQuery は相対パスを問い合わせに載せる。登録フォルダ自身では省く。 */
+function folderQuery(folder: FolderRef): URLSearchParams {
+  const query = new URLSearchParams();
+  if (folder.path !== "") query.set("path", folder.path);
+  return query;
+}
+
+/** getFolder はフォルダ1件と直下の子フォルダを取得する。 */
+export function getFolder(
+  folder: FolderRef,
+  signal?: AbortSignal,
+): Promise<FolderListing> {
+  const query = folderQuery(folder);
+  const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+  return request<FolderListing>(`/api/folders/${String(folder.rootId)}${suffix}`, {
+    signal,
+  });
+}
+
+/** ListFolderVideosParams はフォルダ直下の動画の問い合わせ条件である。 */
+export interface ListFolderVideosParams {
+  folder: FolderRef;
+  sort?: VideoSort;
+  cursor?: string;
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+/** listFolderVideos はフォルダ直下の動画を1ページ取得する。 */
+export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoPage> {
+  const query = folderQuery(params.folder);
+  if (params.sort !== undefined) query.set("sort", params.sort);
+  if (params.cursor !== undefined && params.cursor !== "")
+    query.set("cursor", params.cursor);
+  query.set("limit", String(params.limit ?? PAGE_SIZE));
+  return request<VideoPage>(
+    `/api/folders/${String(params.folder.rootId)}/videos?${query.toString()}`,
+    { signal: params.signal },
+  );
 }
 
 /** getVideo は動画1件の詳細を取得する。 */
