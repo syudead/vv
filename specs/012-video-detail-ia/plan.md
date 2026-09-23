@@ -170,6 +170,10 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
    - 戻す状態と積むジョブは次のとおり。
      - `probe_state`：`pending` に戻し、`probe_error` を消す。`probe` ジョブを積む。
      - `thumbnail_state`：`done` でなければ `pending` に戻し、`thumbnail` ジョブを積む。
+       `done` でもシーク用プレビューの置き場が無ければ、状態はそのままで `thumbnail` ジョブを
+       積む。代表サムネイルの後でシーク用プレビューだけが終端失敗した動画を、やり直しで
+       直せるようにするためである（`thumbnailHandler` は代表サムネイルがあればシーク用
+       プレビューだけを作る）。
        スキャンの `Scanner.enqueue` と同じ組にするためである。`probeHandler` は成功後に
        プレビューしか積まない。読み取りに失敗した動画はたいていサムネイルも失敗しているので、
        これが無いと、やり直しが成功してもサムネイルとシーク用プレビューは作られない。
@@ -429,6 +433,8 @@ specs/012-video-detail-ia/
       1 件積まれる。
     - `thumbnail_state=failed` の動画では、`thumbnailState` も `pending` に戻り、サムネイルの
       ジョブが 1 件積まれる。`preview_state=failed` なら `previewState` が `pending` に戻る。
+    - `thumbnail_state=done` でシーク用プレビューの置き場が無い動画では、状態は `done` のまま
+      サムネイルのジョブが 1 件積まれる。
     - 続けて 2 回送ると、2 回目は 409 `probe_not_failed` で、ジョブは増えない。
     - 読み取り済みの動画は 409 になる。
     - 知らない id は 404 になる。
