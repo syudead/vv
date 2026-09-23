@@ -1,11 +1,14 @@
 package httpapi
 
 import (
+	"context"
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
@@ -29,17 +32,54 @@ func (s *server) OpenVideoFile(w http.ResponseWriter, r *http.Request, id gen.Vi
 		s.writeError(w, http.StatusForbidden, codeForbidden, "ファイルはサーバーと同じ PC からだけ開けます")
 		return
 	}
-	info, err := os.Stat(video.Path)
-	if err != nil || !info.Mode().IsRegular() {
+	path, ok := s.openablePath(r, video.Path)
+	if !ok {
 		s.writeError(w, http.StatusConflict, codeFileMissing, "ファイルが見つかりません。移動または削除された可能性があります")
 		return
 	}
-	if err := s.opener.Open(video.Path); err != nil {
+	if err := s.opener.Open(path); err != nil {
 		s.internalError(w, "ファイルを開けませんでした", err)
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// openablePath は、代表の所在が登録フォルダの内側にある通常ファイルを指すときだけ
+// そのパスを返す。
+//
+// 配信（openLocation）と同じく、DB の値をそのまま OS へ渡さない。Clean 後の
+// パスと、シンボリックリンクを辿った先の両方が登録フォルダの内側にあることを
+// 確かめる。既定アプリで開くのは配信より強い操作なので、同じ検証を省かない。
+// 外を指している場合も「見つからない」と同じに扱い、どのパスが存在するかを漏らさない。
+func (s *server) openablePath(r *http.Request, path string) (string, bool) {
+	type folderLister interface {
+		ListMediaFolders(context.Context) ([]domain.MediaFolder, error)
+	}
+	library, ok := s.videos.(folderLister)
+	if !ok {
+		return "", false
+	}
+	folders, err := library.ListMediaFolders(r.Context())
+	if err != nil {
+		return "", false
+	}
+	cleaned := filepath.Clean(path)
+	for _, folder := range folders {
+		if !isInside(folder.Path, cleaned) {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(cleaned)
+		if err != nil || !isInside(folder.Path, resolved) {
+			continue
+		}
+		info, err := os.Stat(resolved)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		return cleaned, true
+	}
+	return "", false
 }
 
 // canOpen は location.openable を決める。POST /api/videos/{id}/open の 403 と

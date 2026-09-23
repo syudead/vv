@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -86,7 +87,7 @@ func TestProcessingHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 			if got := tc.state(video); got != "pending" {
 				t.Fatalf("handler が状態を書いた: %q, want pending", got)
 			}
-			if err := db.RetryProbe(ctx, videoID, true); err == nil {
+			if err := db.RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
 				t.Fatal("失敗の記録前に読み取りのやり直しを受け付けた")
 			}
 

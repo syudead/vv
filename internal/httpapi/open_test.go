@@ -17,13 +17,14 @@ import (
 // openFixture は実在するファイルを代表の所在に持つ動画を返す。
 func openFixture(t *testing.T) (domain.Video, *fakeLibrary) {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "movie.mp4")
+	root := t.TempDir()
+	path := filepath.Join(root, "movie.mp4")
 	if err := os.WriteFile(path, []byte("video"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	video := sampleVideo(1, "movie")
 	video.Path = path
-	return video, &fakeLibrary{videos: map[int64]domain.Video{1: video}}
+	return video, &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{root}}
 }
 
 func openRequest(target, remote, host string) *http.Request {
@@ -116,6 +117,35 @@ func TestOpenVideoFileReportsMissingFile(t *testing.T) {
 
 	rec = serve(handler, openRequest("/api/videos/1/open", "192.168.1.20:1", "localhost"))
 	assertErrorCode(t, rec, http.StatusForbidden, codeForbidden)
+	if len(opener.opened) != 0 {
+		t.Fatalf("opened = %q, want none", opener.opened)
+	}
+}
+
+// 代表の所在が登録フォルダの外を指すとき（シンボリックリンクで外へ出る、または
+// 登録を外したフォルダの下にある）は、ファイルが無いときと同じ 409 file_missing に
+// なり、opener には何も渡らない。配信と同じく DB の値をそのまま OS へ渡さない。
+func TestOpenVideoFileRejectsLocationOutsideMediaFolders(t *testing.T) {
+	video, library := openFixture(t)
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	if err := os.WriteFile(outside, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(video.Path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, video.Path); err != nil {
+		t.Skipf("symlink を作れません: %v", err)
+	}
+	opener := &fakeOpener{available: true}
+	handler := newTestServer(t, Options{Videos: library, Opener: opener})
+
+	rec := serve(handler, openRequest("/api/videos/1/open", "127.0.0.1:1", "localhost"))
+	assertErrorCode(t, rec, http.StatusConflict, codeFileMissing)
+
+	library.roots = []string{t.TempDir()}
+	rec = serve(handler, openRequest("/api/videos/1/open", "127.0.0.1:1", "localhost"))
+	assertErrorCode(t, rec, http.StatusConflict, codeFileMissing)
 	if len(opener.opened) != 0 {
 		t.Fatalf("opened = %q, want none", opener.opened)
 	}
