@@ -7,7 +7,7 @@
 （`/videos/:id`）がそれらに**足す**ものと**変える**ものだけを定める。
 
 - 新しい色・半径・影のトークンは足さない。
-- 部品は `web/src/ui/` の既存のもの（`Button`・`IconButton`・`Skeleton`・`Tooltip`）を使う。
+- 部品は `web/src/ui/` の既存のもの（`Button`・`IconButton`・`Skeleton`・`Tooltip`・`Popover`）を使う。
 - 出発点は、要求者とこのセッションで作ったモックアップ（親 Issue の「参照」）である。
   本書はその形を、トークンと幅の規則に落としたものである。
 
@@ -81,15 +81,20 @@
   （要件 17）。
 - 項目は RESOLUTION・CONTAINER・VIDEO・AUDIO・SIZE・ADDED・LAST PLAYED の順とする。
   - 各項目はラベルの下に値を置く縦の組（`gap-1`）である。
-  - `sm` 以上では横一列に並べ、項目の間を `border-l border-border` の縦線と左右 `px-6` で
-    区切る（先頭の項目は左の線と余白なし）。入りきらない幅では次の行へ折り返し、行の間は
-    `gap-y-4` とする。
+  - `sm` 以上では横に並べ、項目の間を `border-l border-border` の縦線と左右 `px-4` で区切る
+    （先頭の項目は左の線と余白なし）。
+    - 7 項目は約 720px を要するので、1 行に収まることを保証するのは `lg` 以上（左列が
+      それより広い）とする。
+    - `sm` 以上 `lg` 未満では、入りきらない分を次の行へ折り返す。行の間は `gap-y-4` とする。
   - `sm` 未満では 3 列の格子にし、縦線は引かない。
+    - 親 Issue 受け入れ条件 15 は「1 行に並ぶ」を求めるが、360px で 1 行にすると横スクロールが
+      出て、受け入れ条件 2 に反する。
+    - 縦線で区切った列を折り返すと、線が行の途中に残る。そのため格子にする。
 - 値の書き方は次のとおり。
 
   | 状況 | 値 |
   | --- | --- |
-  | ADDED | 絶対日時（`2026/09/20 21:03`） |
+  | ADDED | 日付（`2026/09/20`）。時刻まで要る場面が無いので、1 行に収めるために日付だけにする |
   | LAST PLAYED | 絶対日時。未再生なら `—`（`text-fg-muted`） |
   | 読み取り前の技術情報（RESOLUTION・CONTAINER・VIDEO・AUDIO） | それぞれ「読み取り中」（`text-fg-muted`） |
   | 読み取り失敗 | 技術情報の 4 項目を 1 つの項目 MEDIA「読み取れませんでした」（`text-warning`）にまとめる |
@@ -137,11 +142,17 @@
 
 ## Close
 
-- ×（lucide の `X`、`size-5`）は `IconButton` で、読み上げ名は「閉じる」とする。
-  - 色は `text-fg-muted`、hover で `text-fg` と `bg-hover-wash`。
-  - 背景の面は持たず、プレイヤーには重ねない（`lg` 以上）。
+- ×（lucide の `X`、`size-5`）は `IconButton` を使い、大きさと色は `className` で上書きする。
+  `IconButton` に新しい大きさの種類は足さない。読み上げ名は「閉じる」とする。
+- × は幅ごとに 1 つずつ、DOM に 2 つ置く（`lg` 以上用は関連動画の見出しの行、`lg` 未満用は
+  プレイヤーの上）。どちらを見せるかは CSS（`hidden`／`lg:hidden`）だけで決める。
+  `display: none` の側は Tab の順にも読み上げにも入らない。JavaScript で DOM を並べ替えない。
+- `lg` 以上では、色は `text-fg-muted`、hover で `text-fg` と `bg-hover-wash` とする。背景の面は
+  持たず、プレイヤーには重ねない。
 - `lg` 未満では、プレイヤーの右上に重ねる。
   - `bg-overlay` の丸い面（`size-11`）の上に置き、押せる大きさを確保する。
+  - 親 Issue の「背景なし…プレイヤーに重ねない（狭い画面を除く）」は、背景なしも重ねないも
+    広い画面の規則で、狭い画面は両方の例外と読む。映像の上で × を見失わないためである。
   - 見せる時期は、再生中は操作バーと同じ（video.js の `user-active` の間だけ）。一時停止中と、
     状態表示・再生終了の層が出ている間は常に見せる。
 - × は `state.from` の一覧へ戻る。Esc も同じ操作である（Plan の Structural Decisions 9・10）。
@@ -171,10 +182,12 @@
   キーを添える（「一時停止（Space）」など）。
 - 「変換して再生中」は次のように出す。
   - lucide の `Info`（`size-3.5`）と文字を `text-xs text-fg-muted` で出す。
-  - 理由の「ブラウザがそのまま再生できない形式のため、変換しながら再生しています。シークに
-    数秒かかります。」は、ポイントしたときの説明と、視覚的に隠した文字の両方に入れる。
-    タッチや読み上げでも理由に届くようにするためである（要件 10）。
-  - 押せる部品にはしない。
+  - これを `web/src/ui/Popover.tsx` の引き金（`button`）にする。クリック・タップ・Enter で、
+    理由の「ブラウザがそのまま再生できない形式のため、変換しながら再生しています。シークに
+    数秒かかります。」を小さな吹き出しで開く。
+    - ポイントしたときだけ開くツールチップにはしない。タッチやキーボードの人が理由に
+      届かなくなるからである（要件 10）。
+  - 見た目は他の操作バーのボタンより控えめにする（枠も面も無く、文字色は `fg-muted`）。
 
 ### Touch controls
 
@@ -202,14 +215,19 @@
 - 領域の外に出すのは、作成中の 1 行（プレイヤーの直下）だけである。
 - 内容が 16:9 に収まらない幅（360px の段階表示など）では、領域の高さを内容に合わせて伸ばす。
   16:9 は下限として保つ。
+- 再生失敗と再生終了の層は、重なりの順で video.js の操作バーの**下**に置く。暗くするのは
+  映像だけで、操作バーは押せるまま見えるようにする。
+- 層の中の文字は、`bg-overlay` の上に直接置かない。`bg-overlay` は半透明で、明るい最後の
+  コマの上では `fg-muted` や `accent` の文字の対比が足りなくなる。文字の塊は
+  `bg-navbar`・`rounded-lg`・`p-5` の不透明な面に載せる。
 
 | 状態 | 見え方 |
 | --- | --- |
-| 読み込み中 | サムネイルがあれば背景に出し、中央に `Loader2`（`size-7`、`text-accent`、回転）を置く。視覚的に隠した「読み込み中」を `role="status"` で読む。操作バーは読み込みが終わるまで出さない |
+| 読み込み中 | サムネイルがあれば背景に出し、中央に `LoaderCircle`（`size-7`、`text-accent`、回転）を置く。視覚的に隠した「読み込み中」を `role="status"` で読む。操作バーは読み込みが終わるまで出さない |
 | 変換して再生中 | 上の「Control bar」を参照。重ねる層は無い |
-| 再生失敗 | 全体に `bg-overlay` を敷く。中央（`max-w-md`）に `AlertCircle`（`size-8`、`text-danger`）、`h2`「再生できませんでした」（`text-lg font-semibold`）、理由（`text-sm text-fg-muted`）、`secondary` の「{m:ss} からもう一度試す」（`RotateCcw`）を縦に並べる。`role="alert"` |
+| 再生失敗 | 映像に `bg-overlay` を敷く。中央の `bg-navbar` の面（`max-w-md`）に `AlertCircle`（`size-8`、`text-danger`）、`h2`「再生できませんでした」（`text-lg font-semibold`）、理由（`text-sm text-fg-muted`）、`secondary` の「{m:ss} からもう一度試す」（`RotateCcw`）を縦に並べる。`role="alert"` |
 | 取り込み中（読み取り前） | 下の「Processing stages」 |
-| 読み取り失敗 | `bg-navbar` の面の中央（`max-w-lg`）に、`AlertTriangle`（`size-8`、`text-warning`）、`h2`「この動画を読み取れませんでした」、説明「ファイルが壊れているか、途中までしか書き込まれていない可能性があります。」（`text-sm text-fg-muted`）、理由の原文、操作を縦に並べる。理由の原文は `bg-field`・`border border-border`・`rounded-md`・`font-mono text-xs text-fg`・`break-all` で、3 行を超えたら中でスクロールする。操作は `secondary` の「もう一度読み取る」（`RefreshCw`）で、開けるときだけ `secondary` の「ファイルを開く」（`FolderOpen`）も並べる。送っている間はボタンを無効にし、アイコンを回転中の `Loader2` に替える。`role="alert"` |
+| 読み取り失敗 | `bg-navbar` の面の中央（`max-w-lg`）に、`AlertTriangle`（`size-8`、`text-warning`）、`h2`「この動画を読み取れませんでした」、説明「ファイルが壊れているか、途中までしか書き込まれていない可能性があります。」（`text-sm text-fg-muted`）、理由の原文、操作を縦に並べる。理由の原文は `bg-field`・`border border-border`・`rounded-md`・`font-mono text-xs text-fg`・`break-all` で、3 行を超えたら中でスクロールする。操作は `secondary` の「もう一度読み取る」（`RefreshCw`）で、開けるときだけ `secondary` の「ファイルを開く」（`FolderOpen`）も並べる。送っている間はボタンを無効にし、アイコンを回転中の `LoaderCircle` に替える。応答が 202 か 409 `probe_not_failed` なら、動画を取り直して段階表示へ移る（409 は、別のタブや連打ですでにやり直しが始まっている）。それ以外の失敗では、ボタンの下に `text-sm text-danger` の「読み取りを始められませんでした」を出し、ボタンを押せる状態に戻す。`role="alert"` |
 | 動画が消えた（404） | `bg-navbar` の面の中央に、`AlertCircle`（`text-fg-muted`）、`h2`「この動画は開けません」、「ライブラリから外れたか、ファイルが無くなりました。」を置く。戻る操作は × に任せ、ボタンは足さない |
 
 ### Processing stages
@@ -231,13 +249,16 @@
   - シーク用プレビュー
   - 一覧用プレビュー
 - 各行は、アイコン・名前（`text-sm`）・右端の状態の文字（`text-xs`）を並べる。
+- 「ファイルの検出」の行は常に「完了」とする。動画の行が存在することが、検出が済んだことを
+  意味する。他の 4 行は、Plan の Structural Decisions 11 のとおり、それぞれ `probeState`・
+  `thumbnailState`・`seekThumbnailState`・`previewState` から決める。
 
 | 行の状態（Plan の Structural Decisions 11） | アイコン | 名前 | 状態の文字 |
 | --- | --- | --- | --- |
 | 完了 | `CircleCheck`（`text-success`） | `text-fg` | 「完了」`text-fg-muted` |
-| 処理中 | `Loader2`（`text-accent`、回転） | `text-fg font-medium` | 「処理中」`text-accent` |
+| 処理中 | `LoaderCircle`（`text-accent`、回転） | `text-fg font-medium` | 「処理中」`text-accent` |
 | 待機中 | `Circle`（`text-fg-muted`） | `text-fg-muted` | 「待機中」`text-fg-muted` |
-| 作成できませんでした | `CircleAlert`（`text-warning`） | `text-fg-muted` | 「作成できませんでした」`text-fg-muted` |
+| 作成できませんでした | `AlertCircle`（`text-warning`） | `text-fg-muted` | 「作成できませんでした」`text-fg-muted` |
 
 - 行の間は `gap-3`、アイコンと名前の間は `gap-2.5` とする。
 - `sm` 未満では、説明と注記を出さず、行の間を `gap-1.5` に詰める。
@@ -251,7 +272,7 @@
 
 - 作成中とは、サムネイル・シーク用プレビュー・一覧用プレビューのどれかが `pending` である
   ことをいう。
-- 書式は `flex items-center gap-2`・`text-xs text-fg-muted`。先頭に `Loader2`（`size-3.5`、
+- 書式は `flex items-center gap-2`・`text-xs text-fg-muted`。先頭に `LoaderCircle`（`size-3.5`、
   `text-accent`、回転）を置く。
 - 文言は「{作成中のもの}を作成中 · 再生はできます」とする。作成中のものは、上の段の名前を
   「と」でつなぐ（例:「シーク用プレビューと一覧用プレビューを作成中 · 再生はできます」）。
@@ -262,8 +283,9 @@
 
 最後まで再生すると、次の層を出す（要件 14）。
 
-- プレイヤー全体に `bg-overlay` を敷く。操作バーは出したままにする（もう一度見るのにも使える）。
-- **次の動画があるとき**は、中央（`max-w-lg`）に次を縦に並べる。
+- 映像に `bg-overlay` を敷く。操作バーは、その上に出したままにする（もう一度見るのにも
+  使える）。
+- **次の動画があるとき**は、中央の `bg-navbar` の面（`max-w-lg`）に次を縦に並べる。
   - ラベル「次の動画」（`text-xs font-semibold text-accent`）
   - 次の動画へのリンク：サムネイル（`w-56`、16:9、`rounded-md`、長さの札付き）と題名
     （`text-base font-semibold`、2 行で省略）を横に並べる
@@ -285,7 +307,7 @@
   - `lg` 以上：プレイヤー（中央操作 → 状態表示・再生終了の層の操作 → 操作バー）→
     ファイルの場所 → 関連動画の見出しの行の × → 関連動画の各項目。
   - `lg` 未満：× が先頭、そのあとプレイヤー → ファイルの場所 → 関連動画。
-- **動きを減らす設定**（`prefers-reduced-motion: reduce`）：回転（`Loader2`）と、層の出入りの
+- **動きを減らす設定**（`prefers-reduced-motion: reduce`）：回転（`LoaderCircle`）と、層の出入りの
   `animate-fade-in` を止める。状態の見え方は変えない（library-ui.md 4）。
 
 ## Accessibility
@@ -300,8 +322,10 @@
   - 警告として（`alert`）読む：再生失敗・読み取り失敗・開けなかった 1 行
 - 題名は `h1` で、`document.title` は既存どおり「{題名} - vv」とする。
 - 色とコントラストの組：
-  - 新しく使う組は、`fg-muted` on `navbar`（段階表示と読み取り失敗の説明）だけである。
-    実装の PR で `tokens.test.ts` の `pairs` に足す。
+  - 新しく使う組は、`fg-muted` on `navbar` だけである（段階表示・読み取り失敗・再生失敗の
+    説明）。実装の PR で `tokens.test.ts` の `pairs` に足す。
+  - 層の中の文字は、どれも不透明な `bg-navbar` の上に置く（「Overlay layer」）。半透明の
+    `bg-overlay` の上の文字は `pairs` で検査できないので、そこに文字は置かない。
   - それ以外（`fg`・`fg-muted` on `bg`、`warning` on `bg`、`fg`・`accent`・`success` on
     `navbar`）はすでに入っている。
   - アイコンだけに使う色（`danger`・`warning` on `navbar` など）は、文字ではないので組に
@@ -330,7 +354,8 @@
   - 関連動画は右列（狭い幅では下）に控えめにあり、プレイヤーと競わない。
 - **情報密度**
   - 題名の周りに空きがあり、題名の下に要約の行・チップ・ボタンが無い。
-  - 属性は 1 行（`sm` 以上）に収まる。
+  - 属性は `lg` 以上（1280px の画像）で 1 行に収まる。768px では折り返してもよいが、
+    縦線が行の途中で途切れていない。360px では 3 列の格子で、横スクロールが無い。
   - 関連動画の各項目は、サムネイル・長さ・題名だけである。
 - **余白のリズム**
   - プレイヤーと題名、題名と区切り線、区切り線と属性の間隔が同じ段階に見える。
@@ -343,6 +368,9 @@
   - 再生の操作と「次の動画」（関連動画・終了時の提示）が、閉じる × やファイルの場所より先に
     目に入る。
   - × は背景の無い控えめな色で、`lg` 以上ではプレイヤーに重なっていない。
+  - 開けないときのファイルの場所は、下線も hover の変化も無く、周りの控えめな文字と同じに
+    読める。押せそうに見えない（受け入れ条件 16）。
+  - 開けるときの場所は下線で押せると分かるが、題名や関連動画より目立たない。
 - **状態の伝え方**
   - 取り込み中・読み取り失敗・再生失敗が、どれもプレイヤーの領域の中で完結している。
   - プレイヤーの外の帯やトーストが無い（作成中の 1 行を除く）。
