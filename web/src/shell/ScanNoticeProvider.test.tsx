@@ -26,6 +26,12 @@ function Harness() {
       <button type="button" onClick={notice.acknowledgeTerminalScan}>
         acknowledge
       </button>
+      <button type="button" onClick={() => notice.setCompletionNoticePaused(true)}>
+        pause
+      </button>
+      <button type="button" onClick={() => notice.setCompletionNoticePaused(false)}>
+        resume
+      </button>
       <button type="button" onClick={scan.refresh}>
         refresh
       </button>
@@ -132,6 +138,30 @@ describe("ScanNoticeProvider", () => {
 
     await act(async () => vi.advanceTimersByTimeAsync(8000));
 
+    expect(screen.getByTestId("notice").textContent).toBe("none");
+  });
+
+  it("pauses a completed scan notice while it is being read", async () => {
+    let currentCalls = 0;
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders"
+          ? json([{}])
+          : json(scan(13, currentCalls++ === 0 ? "running" : "done")),
+      ),
+    );
+    vi.useFakeTimers();
+    renderProvider();
+    await act(async () => Promise.resolve());
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(screen.getByTestId("notice").textContent).toBe("13");
+
+    await act(async () => screen.getByRole("button", { name: "pause" }).click());
+    await act(async () => vi.advanceTimersByTimeAsync(9000));
+    expect(screen.getByTestId("notice").textContent).toBe("13");
+
+    await act(async () => screen.getByRole("button", { name: "resume" }).click());
+    await act(async () => vi.advanceTimersByTimeAsync(8000));
     expect(screen.getByTestId("notice").textContent).toBe("none");
   });
 
