@@ -416,6 +416,84 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/folders:
+    get:
+      operationId: listRootFolders
+      summary: フォルダ画面の最上位（登録済みメディアフォルダ）を返す
+      description: |
+        フォルダは保存せず、取り込み済みの所在のパスから導く。登録済みの
+        メディアフォルダは、動画が無くても含む。並びは名前の自然順。
+      responses:
+        "200":
+          description: 登録済みメディアフォルダの集計
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RootFolderListing"
+
+  /api/folders/{rootId}:
+    get:
+      operationId: getFolder
+      summary: フォルダ1件と、その直下の子フォルダを返す
+      description: |
+        フォルダは登録済みメディアフォルダの id と、そこからの `/` 区切りの相対パスで
+        指す。子フォルダは直下だけを名前の自然順で返す。
+      parameters:
+        - $ref: "#/components/parameters/FolderRootId"
+        - $ref: "#/components/parameters/FolderPath"
+      responses:
+        "200":
+          description: フォルダと直下の子フォルダ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolderListing"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/folders/{rootId}/videos:
+    get:
+      operationId: listFolderVideos
+      summary: フォルダ直下の動画を返す
+      description: |
+        孫以降のフォルダにある動画は含めない。ページングと並び順は
+        `listVideos` と同じ。`title` と `sizeBytes` はそのフォルダにある所在のもので、
+        同じ動画の所在が同じフォルダに2つ以上あっても1件だけ返す。
+      parameters:
+        - $ref: "#/components/parameters/FolderRootId"
+        - $ref: "#/components/parameters/FolderPath"
+        - name: sort
+          in: query
+          description: 並び順
+          schema:
+            $ref: "#/components/schemas/VideoSort"
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 60
+      responses:
+        "200":
+          description: 直下の動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/scans/current:
     get:
       operationId: getCurrentScan
@@ -451,6 +529,23 @@ components:
         type: integer
         format: int64
         minimum: 1
+    FolderRootId:
+      name: rootId
+      in: path
+      required: true
+      description: フォルダが属する登録済みメディアフォルダの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    FolderPath:
+      name: path
+      in: query
+      description: |
+        登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+        登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+      schema:
+        type: string
 
   responses:
     NotFound:
@@ -588,6 +683,72 @@ components:
         nextCursor:
           type: string
           description: 次のページの取得に渡す。これ以上無い場合は省略される
+
+    FolderPreview:
+      type: object
+      required: [videoId, thumbnailUrl]
+      additionalProperties: false
+      properties:
+        videoId:
+          type: integer
+          format: int64
+        thumbnailUrl:
+          type: string
+          description: Video.thumbnailUrl と同じ版付き URL
+
+    FolderSummary:
+      type: object
+      required: [rootId, path, name, rootPath, videoCount, folderCount, previews]
+      additionalProperties: false
+      properties:
+        rootId:
+          type: integer
+          format: int64
+        path:
+          type: string
+          description: 登録フォルダからの `/` 区切りの相対パス。登録フォルダ自身は空文字
+        name:
+          type: string
+          description: 表示名。相対パスの最後の段、登録フォルダ自身は絶対パスの最後の段
+        rootPath:
+          type: string
+          description: 登録フォルダの絶対パス
+        videoCount:
+          type: integer
+          description: 直下の動画の件数
+        folderCount:
+          type: integer
+          description: 直下の子フォルダの件数
+        previews:
+          type: array
+          maxItems: 4
+          description: 直下の動画のうちサムネイル生成済みのもの。所在のパスの昇順で最大4件
+          items:
+            $ref: "#/components/schemas/FolderPreview"
+
+    FolderListing:
+      type: object
+      required: [folder, folders]
+      additionalProperties: false
+      properties:
+        folder:
+          $ref: "#/components/schemas/FolderSummary"
+        folders:
+          type: array
+          description: 直下の子フォルダ。名前の自然順
+          items:
+            $ref: "#/components/schemas/FolderSummary"
+
+    RootFolderListing:
+      type: object
+      required: [folders]
+      additionalProperties: false
+      properties:
+        folders:
+          type: array
+          description: 登録済みメディアフォルダ。名前の自然順
+          items:
+            $ref: "#/components/schemas/FolderSummary"
 
     Video:
       type: object

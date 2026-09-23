@@ -119,6 +119,7 @@ func run() error {
 		Playback:       db,
 		Scans:          lib,
 		MediaFolders:   db,
+		Folders:        db,
 		ThumbnailsDir:  cfg.ThumbnailsDir(),
 		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),
 		SeekThumbnails: media.NewSeekThumbnailCache(cfg.ThumbnailsDir()),

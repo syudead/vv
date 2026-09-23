@@ -243,6 +243,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * フォルダ画面の最上位（登録済みメディアフォルダ）を返す
+         * @description フォルダは保存せず、取り込み済みの所在のパスから導く。登録済みの
+         *     メディアフォルダは、動画が無くても含む。並びは名前の自然順。
+         */
+        get: operations["listRootFolders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/folders/{rootId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * フォルダ1件と、その直下の子フォルダを返す
+         * @description フォルダは登録済みメディアフォルダの id と、そこからの `/` 区切りの相対パスで
+         *     指す。子フォルダは直下だけを名前の自然順で返す。
+         */
+        get: operations["getFolder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/folders/{rootId}/videos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * フォルダ直下の動画を返す
+         * @description 孫以降のフォルダにある動画は含めない。ページングと並び順は
+         *     `listVideos` と同じ。`title` と `sizeBytes` はそのフォルダにある所在のもので、
+         *     同じ動画の所在が同じフォルダに2つ以上あっても1件だけ返す。
+         */
+        get: operations["listFolderVideos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans/current": {
         parameters: {
             query?: never;
@@ -327,6 +391,37 @@ export interface components {
             total: number;
             /** @description 次のページの取得に渡す。これ以上無い場合は省略される */
             nextCursor?: string;
+        };
+        FolderPreview: {
+            /** Format: int64 */
+            videoId: number;
+            /** @description Video.thumbnailUrl と同じ版付き URL */
+            thumbnailUrl: string;
+        };
+        FolderSummary: {
+            /** Format: int64 */
+            rootId: number;
+            /** @description 登録フォルダからの `/` 区切りの相対パス。登録フォルダ自身は空文字 */
+            path: string;
+            /** @description 表示名。相対パスの最後の段、登録フォルダ自身は絶対パスの最後の段 */
+            name: string;
+            /** @description 登録フォルダの絶対パス */
+            rootPath: string;
+            /** @description 直下の動画の件数 */
+            videoCount: number;
+            /** @description 直下の子フォルダの件数 */
+            folderCount: number;
+            /** @description 直下の動画のうちサムネイル生成済みのもの。所在のパスの昇順で最大4件 */
+            previews: components["schemas"]["FolderPreview"][];
+        };
+        FolderListing: {
+            folder: components["schemas"]["FolderSummary"];
+            /** @description 直下の子フォルダ。名前の自然順 */
+            folders: components["schemas"]["FolderSummary"][];
+        };
+        RootFolderListing: {
+            /** @description 登録済みメディアフォルダ。名前の自然順 */
+            folders: components["schemas"]["FolderSummary"][];
         };
         Video: {
             /** Format: int64 */
@@ -459,6 +554,13 @@ export interface components {
         VideoId: number;
         /** @description メディアフォルダの識別子 */
         MediaFolderId: number;
+        /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+        FolderRootId: number;
+        /**
+         * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+         *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+         */
+        FolderPath: string;
     };
     requestBodies: never;
     headers: never;
@@ -890,6 +992,94 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DirectoryListing"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listRootFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 登録済みメディアフォルダの集計 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RootFolderListing"];
+                };
+            };
+        };
+    };
+    getFolder: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+                 */
+                path?: components["parameters"]["FolderPath"];
+            };
+            header?: never;
+            path: {
+                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                rootId: components["parameters"]["FolderRootId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description フォルダと直下の子フォルダ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderListing"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listFolderVideos: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+                 */
+                path?: components["parameters"]["FolderPath"];
+                /** @description 並び順 */
+                sort?: components["schemas"]["VideoSort"];
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                rootId: components["parameters"]["FolderRootId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 直下の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoPage"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
