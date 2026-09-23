@@ -9,6 +9,7 @@ import {
   type Video,
   type VideoSort,
 } from "./client";
+import { subscribeProgress } from "./progressEvents";
 
 /**
  * VideosSeed は復元された一覧の初期状態である。
@@ -77,6 +78,22 @@ export function useVideos(
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [generation, setGeneration] = useState(0);
+
+  // 再生画面で保存された再生位置を、表示中の項目へ反映する。復元した一覧は
+  // 再生前の中身なので、戻ったあとに届く離脱時の保存もここで受ける。
+  useEffect(
+    () =>
+      subscribeProgress((videoId, progress) => {
+        setItems((current) =>
+          current.some((video) => video.id === videoId)
+            ? current.map((video) =>
+                video.id === videoId ? { ...video, progress } : video,
+              )
+            : current,
+        );
+      }),
+    [],
+  );
 
   // 読み込み中の要求を覚えておく。並び順を変えた直後に古い応答が届いても、
   // 新しい一覧を上書きしないようにする。

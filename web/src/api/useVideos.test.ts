@@ -18,6 +18,7 @@ vi.mock("./client", async (importOriginal) => ({
 }));
 
 const { useVideos } = await import("./useVideos");
+const { recordSavedProgress } = await import("./progressEvents");
 
 /** Pending は応答を後から決められる 1 回の呼び出しである。 */
 interface Pending {
@@ -103,6 +104,32 @@ describe("useVideos（一覧の読み込み）", () => {
       calls[1]?.resolve(page([3], "cursor-2"));
     });
     expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3]);
+  });
+
+  it("保存された再生位置を、表示中の該当する項目にだけ反映する", async () => {
+    const { result } = renderHook(() => useVideos("addedDesc", ""));
+    await waitFor(() => {
+      expect(calls).toHaveLength(1);
+    });
+    await act(async () => {
+      calls[0]?.resolve(page([1, 2]));
+    });
+
+    const progress = {
+      positionMs: 60_000,
+      completed: true,
+      updatedAt: "2026-09-23T00:00:00Z",
+    };
+    act(() => {
+      recordSavedProgress(2, progress);
+    });
+
+    expect(result.current.items.find((video) => video.id === 2)?.progress).toEqual(
+      progress,
+    );
+    expect(
+      result.current.items.find((video) => video.id === 1)?.progress,
+    ).toBeUndefined();
   });
 
   it("nextCursor が無ければ hasMore が偽になり、loadMore は要求を出さない", async () => {
