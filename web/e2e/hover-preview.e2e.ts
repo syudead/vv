@@ -81,6 +81,38 @@ function watchRequests(page: Page): Request[] {
   return requests;
 }
 
+async function stablePageAriaSnapshot(page: Page) {
+  let previous: string | undefined;
+  let consecutiveMatches = 0;
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const current = await page.ariaSnapshot();
+    consecutiveMatches = current === previous ? consecutiveMatches + 1 : 0;
+    previous = current;
+    if (consecutiveMatches >= 4) return current;
+    await page.waitForTimeout(200);
+  }
+  throw new Error("page accessibility tree did not stabilize");
+}
+
+async function liveRegionSnapshot(page: Page) {
+  return page.locator("[aria-live]").evaluateAll((elements) =>
+    elements.map((element) => ({
+      live: element.getAttribute("aria-live"),
+      role: element.getAttribute("role"),
+      text: element.textContent?.trim() ?? "",
+    })),
+  );
+}
+
+async function tabTo(page: Page, target: ReturnType<Page["locator"]>) {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    await page.keyboard.press("Tab");
+    if (await target.evaluate((element) => element === document.activeElement)) return;
+  }
+  throw new Error("target was not reachable with Tab");
+}
+
 async function snapshot(directory: string): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   for (const name of (await readdir(directory)).sort()) {
@@ -333,20 +365,62 @@ test.describe.serial("library hover preview", () => {
     try {
       await page.goto("/");
       const target = card(page, item);
-      const before = await target.ariaSnapshot();
+      await expect(target).toBeVisible();
+      const before = await stablePageAriaSnapshot(page);
+      const liveRegions = await liveRegionSnapshot(page);
       await hoverAndWaitForPlayback(page, item);
-      expect(await target.ariaSnapshot()).toBe(before);
+      expect(await page.ariaSnapshot()).toBe(before);
+      expect(await liveRegionSnapshot(page)).toEqual(liveRegions);
       await expect(
         target.getByRole("link", { name: item.title, exact: true }),
       ).toHaveCount(1);
       await expect(target.locator("[aria-live]")).toHaveCount(0);
       await expect(target.locator("video[controls]")).toHaveCount(0);
       await expect(target.locator("video")).toHaveAttribute("aria-hidden", "true");
+      await page.mouse.move(0, 0);
+      await expect(target.locator("video")).toHaveCount(0);
+      await expect(target.locator("img")).toBeVisible();
+      expect(await page.ariaSnapshot()).toBe(before);
+      expect(await liveRegionSnapshot(page)).toEqual(liveRegions);
       expect(previewRequests(requests)).toHaveLength(1);
       expect(forbiddenRequests(requests)).toHaveLength(0);
     } finally {
       await context.close();
     }
+  });
+
+  test("keyboard操作はfocus、選択、Esc解除、Enter遷移だけを行いpreviewを作らない", async ({
+    page,
+  }) => {
+    const item = video("direct");
+    const requests = watchRequests(page);
+
+    await page.goto("/");
+    const target = card(page, item);
+    const link = target.getByRole("link", { name: item.title, exact: true });
+    const checkbox = target.getByRole("checkbox", { name: `「${item.title}」を選択` });
+
+    await tabTo(page, checkbox);
+    await expect(checkbox).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(checkbox).toBeChecked();
+    await expect(page.getByText("1 件を選択中")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(checkbox).not.toBeChecked();
+    await expect(page.getByText("1 件を選択中")).toHaveCount(0);
+
+    await page.keyboard.press("Tab");
+    await expect(link).toBeFocused();
+    await page.waitForTimeout(500);
+
+    await expect(target.locator("video")).toHaveCount(0);
+    await expect(target.locator("video[controls]")).toHaveCount(0);
+    expect(previewRequests(requests)).toHaveLength(0);
+    expect(forbiddenRequests(requests)).toHaveLength(0);
+
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(new RegExp(`/videos/${String(item.id)}$`));
+    expect(previewRequests(requests)).toHaveLength(0);
   });
 
   test("reduced motionでもpreviewが進み、装飾transition durationは実質ゼロ", async ({
