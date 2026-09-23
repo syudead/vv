@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -21,6 +22,7 @@ const completionNoticeDuration = 8000;
 
 export interface ScanNoticeContextValue extends ScanNoticeSession {
   acknowledgeTerminalScan: () => void;
+  setCompletionNoticePaused: (paused: boolean) => void;
 }
 
 const ScanNoticeContext = createContext<ScanNoticeContextValue | null>(null);
@@ -34,6 +36,8 @@ export function useScanNotice(): ScanNoticeContextValue {
 export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   const scan = useScan();
   const [session, setSession] = useState<ScanNoticeSession>(readScanNoticeSession);
+  const [completionNoticePaused, setCompletionNoticePausedState] = useState(false);
+  const pausedAt = useRef<number | null>(null);
 
   const updateSession = useCallback((next: ScanNoticeSession) => {
     setSession(next);
@@ -85,6 +89,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     const notice = session.completionNotice;
     if (notice === null) return;
     if (scan.scan?.id === notice.scanId && scan.scan.state === "failed") return;
+    if (completionNoticePaused) return;
     const remaining = notice.expiresAt - Date.now();
     if (remaining <= 0) {
       updateSession({
@@ -102,10 +107,12 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
       });
     }, remaining);
     return () => window.clearTimeout(timer);
-  }, [session, updateSession]);
+  }, [completionNoticePaused, scan.scan, session, updateSession]);
 
   const acknowledgeTerminalScan = useCallback(() => {
     if (session.completionNotice === null) return;
+    pausedAt.current = null;
+    setCompletionNoticePausedState(false);
     updateSession({
       ...session,
       completionNotice: null,
@@ -113,9 +120,37 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     });
   }, [session, updateSession]);
 
+  const setCompletionNoticePaused = useCallback(
+    (paused: boolean) => {
+      const notice = session.completionNotice;
+      if (
+        notice === null ||
+        (scan.scan?.id === notice.scanId && scan.scan.state === "failed")
+      ) {
+        pausedAt.current = null;
+        setCompletionNoticePausedState(false);
+        return;
+      }
+      if (paused) {
+        pausedAt.current ??= Date.now();
+        setCompletionNoticePausedState(true);
+        return;
+      }
+      if (pausedAt.current === null) return;
+      const pausedFor = Date.now() - pausedAt.current;
+      pausedAt.current = null;
+      setCompletionNoticePausedState(false);
+      updateSession({
+        ...session,
+        completionNotice: { ...notice, expiresAt: notice.expiresAt + pausedFor },
+      });
+    },
+    [scan.scan, session, updateSession],
+  );
+
   const value = useMemo(
-    () => ({ ...session, acknowledgeTerminalScan }),
-    [acknowledgeTerminalScan, session],
+    () => ({ ...session, acknowledgeTerminalScan, setCompletionNoticePaused }),
+    [acknowledgeTerminalScan, session, setCompletionNoticePaused],
   );
   return (
     <ScanNoticeContext.Provider value={value}>{children}</ScanNoticeContext.Provider>
