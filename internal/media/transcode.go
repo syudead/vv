@@ -19,6 +19,7 @@ const (
 	transcodeCommand   = "ffmpeg"
 	transcodeStopDelay = 5 * time.Second
 	stderrTailLimit    = 32 * 1024
+	liveX264Preset     = "superfast"
 	maxVideoWidth      = 3840
 	maxVideoHeight     = 2160
 	maxVideoFPS        = 60
@@ -36,7 +37,10 @@ func NewLiveTranscoder(serverDone <-chan struct{}) *LiveTranscoder {
 	if serverDone == nil {
 		serverDone = make(chan struct{})
 	}
-	return &LiveTranscoder{serverDone: serverDone, commandContext: exec.CommandContext}
+	return &LiveTranscoder{
+		serverDone:     serverDone,
+		commandContext: exec.CommandContext,
+	}
 }
 
 // Start returns FFmpeg stdout, a wait function, and an idempotent stop function.
@@ -122,8 +126,9 @@ type transcodeStream struct {
 }
 
 type transcodeMetadata struct {
-	Video transcodeStream
-	Audio *transcodeStream
+	FormatName string
+	Video      transcodeStream
+	Audio      *transcodeStream
 }
 
 func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline time.Time) (transcodeMetadata, error) {
@@ -154,7 +159,7 @@ func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
 		return transcodeMetadata{}, fmt.Errorf("動画の尺がありません")
 	}
 
-	var result transcodeMetadata
+	result := transcodeMetadata{FormatName: strings.ToLower(parsed.Format.FormatName)}
 	for _, stream := range parsed.Streams {
 		sampleAspectNum, sampleAspectDen := parseAspectRatio(stream.SampleAspectRatio)
 		rotation := parseRotation(stream.Tags.Rotate)
@@ -206,12 +211,31 @@ func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
 func transcodeArgs(path string, startMs int64, metadata transcodeMetadata, normalize bool) []string {
 	normalize = normalize || startMs > 0
 	args := []string{"-hide_banner", "-loglevel", "warning"}
-	if startMs > 0 {
-		args = append(args, "-ss", formatSeconds(startMs))
+	appendInput := func(disableStream string) {
+		if startMs > 0 {
+			args = append(args, "-ss", formatSeconds(startMs))
+		}
+		if disableStream != "" {
+			args = append(args, disableStream)
+		}
+		args = append(args, "-i", path)
 	}
-	args = append(args, "-i", path, "-map", fmt.Sprintf("0:%d", metadata.Video.Index))
-	if metadata.Audio != nil {
-		args = append(args, "-map", fmt.Sprintf("0:%d", metadata.Audio.Index))
+
+	if metadata.Audio != nil && usesMOVDemuxer(metadata.FormatName) {
+		// MOVでは映像と音声を別々の入力で読む。各demuxerが一方のtrackだけを
+		// 追うため、ネットワークドライブ上でtrack間を往復seekせずに済む。
+		appendInput("-an")
+		appendInput("-vn")
+		args = append(args,
+			"-map", fmt.Sprintf("0:%d", metadata.Video.Index),
+			"-map", fmt.Sprintf("1:%d", metadata.Audio.Index),
+		)
+	} else {
+		appendInput("")
+		args = append(args, "-map", fmt.Sprintf("0:%d", metadata.Video.Index))
+		if metadata.Audio != nil {
+			args = append(args, "-map", fmt.Sprintf("0:%d", metadata.Audio.Index))
+		}
 	}
 
 	encodeVideo := normalize || !videoCanCopy(metadata.Video)
@@ -233,6 +257,15 @@ func transcodeArgs(path string, startMs int64, metadata transcodeMetadata, norma
 		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
 		"-f", "mp4", "pipe:1",
 	)
+}
+
+func usesMOVDemuxer(formatName string) bool {
+	for format := range strings.SplitSeq(strings.ToLower(formatName), ",") {
+		if strings.TrimSpace(format) == "mov" {
+			return true
+		}
+	}
+	return false
 }
 
 func videoCanCopy(stream transcodeStream) bool {
@@ -290,7 +323,7 @@ func videoEncodeArgs(stream transcodeStream) []string {
 		filters = append(filters, "fps="+formatCappedFPS(limit))
 	}
 
-	args := []string{"-c:v", "libx264", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23"}
+	args := []string{"-c:v", "libx264", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p", "-preset", liveX264Preset, "-crf", "23"}
 	if len(filters) > 0 {
 		args = append(args, "-vf", strings.Join(filters, ","))
 	}

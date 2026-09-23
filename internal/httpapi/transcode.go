@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-const transcodeStartupTimeout = 4 * time.Second
+const transcodeStartupTimeout = 6 * time.Second
 
 // TranscodeVideo streams one request-scoped fragmented MP4 process.
 func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.TranscodeVideoParams) {
