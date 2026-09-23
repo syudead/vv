@@ -11,6 +11,7 @@ const (
 	JobProbe JobKind = "probe"
 	// JobThumbnail は ffmpeg による静止画の抽出。
 	JobThumbnail JobKind = "thumbnail"
+	JobPreview   JobKind = "preview"
 )
 
 // MaxJobAttempts は諦めるまでの試行回数である。止めないと、壊れたファイル

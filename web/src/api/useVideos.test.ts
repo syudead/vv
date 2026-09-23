@@ -39,6 +39,7 @@ function item(id: number): Video {
     playable: true,
     probeState: "done",
     thumbnailState: "done",
+    previewState: "pending",
   };
 }
 
