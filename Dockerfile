@@ -3,7 +3,7 @@
 # task up の実体。SPA のビルド → 単一バイナリのビルド → 実行環境の 3 段に分ける。
 
 # 1) SPA をビルドする。
-FROM node:22-alpine AS web
+FROM node:24-alpine AS web
 WORKDIR /src/web
 # 依存の取得だけを先に行い、ソースの変更でこの層が無駄にならないようにする。
 COPY web/package.json web/package-lock.json ./
@@ -12,7 +12,7 @@ COPY web/ ./
 RUN npm run build
 
 # 2) 単一バイナリをビルドする。
-FROM golang:1.26-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
@@ -29,7 +29,7 @@ RUN CGO_ENABLED=0 go build -trimpath -buildvcs=false \
     -o /out/mdm ./cmd/mdm
 
 # 3) 実行する。ffmpeg／ffprobe を同梱し、起動前確認が通る状態にする。
-FROM alpine:3.22
+FROM alpine:3.24
 RUN apk add --no-cache ffmpeg ca-certificates tzdata \
     && mkdir -p /media /data
 COPY --from=build /out/mdm /usr/local/bin/mdm
