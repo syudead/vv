@@ -93,7 +93,8 @@
 
 - keyboard-only path で card focus、Enter navigation、checkbox selection、Esc clear を確認し、focus だけで media request が起きない。
 - accessible tree に preview 固有の重複 link、button、video control、live region が増えない。
-- 必須の assistive-technology check として Windows Narrator で card link の題名、checkbox、focus 順を読み上げ、mouse preview の開始・loop・停止が announcement を割り込ませず、keyboard focus だけでは preview が始まらないことを確認して実装 PR に記録する。あわせて Playwright の ARIA snapshot で preview 固有 control/live region の不在を回帰検査する。Narrator の確認を省略した実装 PR は Design acceptance 未達とする。
+- 親 Issue が受け入れ条件とする keyboard/focus semantics は、card focus、Enter navigation、checkbox selection、Esc clear を通る keyboard-only path の request log と、mouse preview の開始前・再生中・停止後で page の accessible tree が不変である Playwright ARIA snapshot を必須証跡とする。preview 固有 control/live region がなく、focus だけでは media request が発生しないことを検査し、この証跡がない実装 PR は Design acceptance 未達とする。
+- 実際の読み上げ音は ARIA snapshot では証明できないため、自動証跡の代替済みとは扱わない。対話可能な Windows 環境では追加の探索的確認として Narrator で card link の題名、checkbox、focus 順を読み上げ、mouse preview の開始・loop・停止が announcement を割り込ませないことを確認する。native screen reader を操作できない実装環境では未確認であることを PR の残余リスクへ明記するが、親 Issue が spoken-output の確認を受け入れ条件に含めていないため、この探索的確認だけは merge gate にしない。
 - `prefers-reduced-motion: reduce` で card/thumbnail の装飾 transition が止まり、400ms 後の preview、停止、error fallback はちらつきや blank frame なしで利用できる。
 
 ### Human Visual Review
