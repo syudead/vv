@@ -5,11 +5,14 @@ import {
   deleteMediaFolder,
   fetchSeekThumbnail,
   listDirectories,
+  beaconProgress,
   listMediaFolders,
   startScan,
   transcodeUrl,
+  saveProgress,
   updateMediaFolder,
 } from "./client";
+import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
 describe("playback URLs", () => {
   it("transcode startMsを省略または整数化する", () => {
@@ -118,6 +121,36 @@ describe("settings API client", () => {
     );
   });
 
+  it("登録フォルダの追加・変更・削除が成功したら一覧の控えを捨て、失敗したら残す", async () => {
+    const key = { query: "", sort: "addedDesc" as const, folder: "3\0A" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+
+    fetch.mockResolvedValueOnce(jsonResponse({ id: 1, path: "/a", version: 1 }));
+    hold();
+    await createMediaFolder("/a");
+    expect(takeListSnapshot(key)).toBeUndefined();
+
+    fetch.mockResolvedValueOnce(jsonResponse({ id: 1, path: "/b", version: 2 }));
+    hold();
+    await updateMediaFolder(1, "/b", 1);
+    expect(takeListSnapshot(key)).toBeUndefined();
+
+    fetch.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    hold();
+    await deleteMediaFolder(1, 2);
+    expect(takeListSnapshot(key)).toBeUndefined();
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "version_conflict", message: "conflict" }, 409),
+    );
+    hold();
+    await expect(deleteMediaFolder(1, 1)).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+  });
+
   it("encodes directory paths and forwards cancellation", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -132,5 +165,143 @@ describe("settings API client", () => {
     expect(fetch).toHaveBeenCalledWith("/api/directories?path=C%3A%5CMedia+Files", {
       signal,
     });
+  });
+});
+
+describe("progress API client", () => {
+  const key = { query: "", sort: "addedDesc" as const };
+  const progress = {
+    positionMs: 60_000,
+    completed: true,
+    updatedAt: "2026-09-23T00:00:00Z",
+  };
+  const unwatched = {
+    id: 7,
+    title: "x",
+    sizeBytes: 1,
+    addedAt: "2026-09-01T00:00:00Z",
+    playable: true,
+    probeState: "done" as const,
+    thumbnailState: "done" as const,
+    previewState: "pending" as const,
+  };
+
+  it("保存と離脱時の送信が受け付けられたら、一覧の控えの再生位置を差し替える", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+
+    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    fetch.mockResolvedValueOnce(jsonResponse(progress));
+    await saveProgress(7, 60_000);
+    expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(progress);
+
+    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    fetch.mockResolvedValueOnce(jsonResponse(progress));
+    beaconProgress(7, 60_000);
+    await vi.waitFor(() => {
+      expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(progress);
+    });
+
+    // ページが隠れるときの送信は待たずに出るので、応答の順が入れ替わりうる。
+    // その場合も、後から送った保存の位置を残す。
+    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    const older = {
+      positionMs: 10_000,
+      completed: false,
+      updatedAt: "2026-09-23T00:00:00Z",
+    };
+    const newer = {
+      positionMs: 20_000,
+      completed: false,
+      updatedAt: "2026-09-23T00:00:00Z",
+    };
+    let answerOlder: (response: Response) => void = () => undefined;
+    const callsBefore = fetch.mock.calls.length;
+    fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          answerOlder = resolve;
+        }),
+    );
+    fetch.mockResolvedValueOnce(jsonResponse(newer));
+    const first = saveProgress(7, 10_000);
+    // 保存は順番待ちを経て送られるので、送り始めてから次へ進む。
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(callsBefore + 1));
+    const hidden = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    beaconProgress(7, 20_000);
+    hidden.mockRestore();
+    await vi.waitFor(() => {
+      expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(newer);
+    });
+    answerOlder(jsonResponse(older));
+    await first;
+    expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(newer);
+
+    // 失敗した送信では控えを書き換えない。
+    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    fetch.mockResolvedValueOnce(jsonResponse({ code: "not_found", message: "x" }, 404));
+    beaconProgress(7, 60_000);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(takeListSnapshot(key)?.items[0]?.progress).toBeUndefined();
+  });
+
+  it("同じ動画の保存は、前の保存が終わってから送る", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    let answerFirst: (response: Response) => void = () => undefined;
+    fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          answerFirst = resolve;
+        }),
+    );
+    fetch.mockImplementation(() => Promise.resolve(jsonResponse(progress)));
+
+    const first = saveProgress(8, 10_000);
+    const second = saveProgress(8, 20_000);
+    beaconProgress(8, 30_000);
+    // 別の動画は待たない。
+    await saveProgress(9, 5_000);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+    expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([
+      "/api/videos/8/progress",
+      "/api/videos/9/progress",
+    ]);
+
+    answerFirst(jsonResponse(progress));
+    await first;
+    await second;
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(4));
+    const bodies = fetch.mock.calls
+      .filter(([url]) => String(url) === "/api/videos/8/progress")
+      .map(([, init]) => JSON.parse(String(init?.body)) as { positionMs: number });
+    expect(bodies.map((body) => body.positionMs)).toEqual([10_000, 20_000, 30_000]);
+  });
+
+  it("ページが隠れるときの送信は待たずに出し、以後の保存はその完了を待つ", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    let answerBeacon: (response: Response) => void = () => undefined;
+    fetch.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          answerBeacon = resolve;
+        }),
+    );
+    fetch.mockImplementation(() => Promise.resolve(jsonResponse(progress)));
+
+    const hidden = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    beaconProgress(10, 20_000);
+    hidden.mockRestore();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // タブが再び表示されて始まった保存は、隠れたときの送信の完了を待つ。
+    const next = saveProgress(10, 25_000);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    answerBeacon(jsonResponse(progress));
+    await next;
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });

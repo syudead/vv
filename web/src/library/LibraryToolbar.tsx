@@ -50,7 +50,7 @@ const viewOptions = [
   { value: "list", label: "リスト", icon: <List /> },
 ] as const;
 
-function ZoomSlider({
+export function ZoomSlider({
   zoom,
   onZoomChange,
   className,

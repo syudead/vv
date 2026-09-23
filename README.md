@@ -180,6 +180,7 @@ Claude Code on the web でセッションを開くと、`.claude/hooks/session-s
 │       ├── app/            # ルーティングと画面の枠の割り当て
 │       ├── shell/          # トップバー、サイドバー、取り込み状態
 │       ├── library/        # 一覧（/）
+│       ├── folders/        # フォルダ（/folders）
 │       ├── player/         # 再生（/videos/:id）
 │       ├── settings/       # 設定（/settings）
 │       ├── ui/             # 画面をまたいで使う部品

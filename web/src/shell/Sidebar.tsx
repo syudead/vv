@@ -54,7 +54,7 @@ function Entry({
   return (
     <NavLink
       to={entry.to}
-      end
+      end={entry.matchDescendants !== true}
       onClick={onNavigate}
       className={({ isActive }) => className(isActive)}
     >

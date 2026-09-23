@@ -30,7 +30,8 @@ export interface VideoCardProps {
   backTo: string;
   selected: boolean;
   selectionMode: boolean;
-  onSelect: (id: number, selected: boolean) => void;
+  /** 選択を持たない画面（フォルダ画面）では省き、チェックを描かない。 */
+  onSelect?: (id: number, selected: boolean) => void;
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
@@ -54,7 +55,8 @@ function SelectCheck({
   onSelect,
   previewing,
   onPreviewCancel,
-}: Pick<VideoCardProps, "video" | "selected" | "selectionMode" | "onSelect"> & {
+}: Pick<VideoCardProps, "video" | "selected" | "selectionMode"> & {
+  onSelect: (id: number, selected: boolean) => void;
   previewing: boolean;
   onPreviewCancel: () => void;
 }) {
@@ -200,20 +202,26 @@ function VideoCard(props: VideoCardProps) {
       onPointerLeave={releasePreview}
       className={cn(
         "group relative flex flex-col overflow-hidden rounded-lg bg-surface shadow-card transition-[box-shadow,transform] duration-200 ease-out-quart",
+        // リンクの輪郭は overflow-hidden で切れるので、キーボードフォーカスは箱の外側に出す。
+        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link",
         "hover:-translate-y-0.5",
+        // 装飾的な動きは動きを減らす設定で止める（library-ui.md 4）。影の最終状態は残す。
+        "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
         "hover:shadow-card-hover",
         selected && "ring-2 ring-accent",
         selectionMode && "select-none",
       )}
     >
-      <SelectCheck
-        video={video}
-        selected={selected}
-        selectionMode={selectionMode}
-        onSelect={onSelect}
-        previewing={showingPreview}
-        onPreviewCancel={releasePreview}
-      />
+      {onSelect !== undefined && (
+        <SelectCheck
+          video={video}
+          selected={selected}
+          selectionMode={selectionMode}
+          onSelect={onSelect}
+          previewing={showingPreview}
+          onPreviewCancel={releasePreview}
+        />
+      )}
 
       <Link
         to={`/videos/${String(video.id)}`}
@@ -221,7 +229,7 @@ function VideoCard(props: VideoCardProps) {
         aria-label={video.title}
         onClick={(event) => {
           onPreviewReset?.();
-          if (selectionMode) {
+          if (selectionMode && onSelect !== undefined) {
             event.preventDefault();
             onSelect(video.id, !selected);
           }
@@ -231,7 +239,7 @@ function VideoCard(props: VideoCardProps) {
         <div className="relative aspect-video w-full overflow-hidden bg-navbar">
           <div
             data-preview-media="true"
-            className="absolute inset-0 transition-transform duration-300 ease-out-quart group-hover:scale-[1.03]"
+            className="absolute inset-0 transition-transform duration-300 ease-out-quart group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
           >
             {video.thumbnailUrl !== undefined ? (
               <img
@@ -372,7 +380,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       <td className="w-10 pl-3">
         <Checkbox
           checked={selected}
-          onCheckedChange={(next) => onSelect(video.id, next)}
+          onCheckedChange={(next) => onSelect?.(video.id, next)}
           label={`「${video.title}」を選択`}
           className={cn(
             "transition-opacity",
@@ -410,7 +418,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           onClick={(event) => {
             if (selectionMode) {
               event.preventDefault();
-              onSelect(video.id, !selected);
+              onSelect?.(video.id, !selected);
             }
           }}
           className={cn(

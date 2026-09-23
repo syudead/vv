@@ -82,6 +82,8 @@ type Options struct {
 	Scans Scans
 	// MediaFolders は登録rootの取得と個別操作。nilなら該当経路は500を返す。
 	MediaFolders MediaFolders
+	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
+	Folders Folders
 	// ThumbnailsDir はサムネイルの置き場所。
 	ThumbnailsDir string
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
@@ -103,6 +105,7 @@ type server struct {
 	playback       Playback
 	scans          Scans
 	mediaFolders   MediaFolders
+	folders        Folders
 	thumbnailsDir  string
 	transcoder     Transcoder
 	seekThumbnails SeekThumbnailReader
@@ -114,6 +117,7 @@ type server struct {
 //	/api/health      → JSON（生成された経路定義から登録する）
 //	/api/videos*     → JSON・動画本体・サムネイル（同上）
 //	/api/scans*      → JSON（同上）
+//	/api/folders*    → JSON（同上）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
 func NewRouter(opts Options) http.Handler {
@@ -136,6 +140,7 @@ func NewRouter(opts Options) http.Handler {
 		playback:       opts.Playback,
 		scans:          opts.Scans,
 		mediaFolders:   opts.MediaFolders,
+		folders:        opts.Folders,
 		thumbnailsDir:  opts.ThumbnailsDir,
 		transcoder:     opts.Transcoder,
 		seekThumbnails: opts.SeekThumbnails,

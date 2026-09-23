@@ -92,3 +92,23 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     expect(takeListSnapshot({ query: "ねこ", sort: "titleAsc" })).toBeUndefined();
   });
 });
+
+describe("フォルダ画面の控え", () => {
+  it("フォルダを含む鍵は、同じ検索語と並び順のライブラリ一覧や別のフォルダと一致しない", () => {
+    saveListSnapshot({ query: "", sort: "addedDesc", folder: "3\0A" }, body([1, 2], 40));
+
+    expect(takeListSnapshot({ query: "", sort: "addedDesc" })).toBeUndefined();
+    expect(
+      takeListSnapshot({ query: "", sort: "addedDesc", folder: "3\0A/B" }),
+    ).toBeUndefined();
+    expect(
+      takeListSnapshot({ query: "", sort: "titleAsc", folder: "3\0A" }),
+    ).toBeUndefined();
+    expect(takeListSnapshot({ query: "", folder: "3\0A" })?.scrollY).toBe(40);
+  });
+
+  it("ライブラリ一覧の控えはフォルダ画面で拾わない", () => {
+    saveListSnapshot({ query: "" }, body([1]));
+    expect(takeListSnapshot({ query: "", folder: "3\0" })).toBeUndefined();
+  });
+});

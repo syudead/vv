@@ -93,6 +93,12 @@ describe("VideoPage", () => {
     expect(back.getAttribute("href")).toBe("/?q=abc&sort=titleAsc");
   });
 
+  it("フォルダ画面から来たら、戻り先をフォルダと名付ける", async () => {
+    renderPage("7", "/folders/3/A%20B?sort=titleAsc");
+    const back = await screen.findByRole("link", { name: "フォルダ" });
+    expect(back.getAttribute("href")).toBe("/folders/3/A%20B?sort=titleAsc");
+  });
+
   it("外部 URL を戻り先にしない", async () => {
     renderPage("7", "//evil.example");
     const back = await screen.findByRole("link", { name: "ライブラリ" });

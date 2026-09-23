@@ -233,6 +233,43 @@ type Error struct {
 // ErrorCode 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 type ErrorCode string
 
+// FolderListing defines model for FolderListing.
+type FolderListing struct {
+	Folder FolderSummary `json:"folder"`
+
+	// Folders 直下の子フォルダ。名前の自然順
+	Folders []FolderSummary `json:"folders"`
+}
+
+// FolderPreview defines model for FolderPreview.
+type FolderPreview struct {
+	// ThumbnailUrl Video.thumbnailUrl と同じ版付き URL
+	ThumbnailUrl string `json:"thumbnailUrl"`
+	VideoId      int64  `json:"videoId"`
+}
+
+// FolderSummary defines model for FolderSummary.
+type FolderSummary struct {
+	// FolderCount 直下の子フォルダの件数
+	FolderCount int `json:"folderCount"`
+
+	// Name 表示名。相対パスの最後の段、登録フォルダ自身は絶対パスの最後の段
+	Name string `json:"name"`
+
+	// Path 登録フォルダからの `/` 区切りの相対パス。登録フォルダ自身は空文字
+	Path string `json:"path"`
+
+	// Previews 直下の動画のうちサムネイル生成済みのもの。所在のパスの昇順で最大4件
+	Previews []FolderPreview `json:"previews"`
+	RootId   int64           `json:"rootId"`
+
+	// RootPath 登録フォルダの絶対パス
+	RootPath string `json:"rootPath"`
+
+	// VideoCount 直下の動画の件数
+	VideoCount int `json:"videoCount"`
+}
+
 // Health defines model for Health.
 type Health struct {
 	// BuiltAt ビルド時刻。取得できない場合は省略される
@@ -272,6 +309,12 @@ type Progress struct {
 // ProgressUpdate defines model for ProgressUpdate.
 type ProgressUpdate struct {
 	PositionMs int64 `json:"positionMs"`
+}
+
+// RootFolderListing defines model for RootFolderListing.
+type RootFolderListing struct {
+	// Folders 登録済みメディアフォルダ。名前の自然順
+	Folders []FolderSummary `json:"folders"`
 }
 
 // Scan defines model for Scan.
@@ -371,6 +414,12 @@ type VideoPage struct {
 // VideoSort addedDesc = 追加が新しい順、titleAsc = 題名順
 type VideoSort string
 
+// FolderPath defines model for FolderPath.
+type FolderPath = string
+
+// FolderRootId defines model for FolderRootId.
+type FolderRootId = int64
+
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
 
@@ -393,6 +442,29 @@ type NotFound = Error
 type ListDirectoriesParams struct {
 	// Path 列挙する絶対path。省略時はnavigation rootを返す
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// GetFolderParams defines parameters for GetFolder.
+type GetFolderParams struct {
+	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+	// 登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// ListFolderVideosParams defines parameters for ListFolderVideos.
+type ListFolderVideosParams struct {
+	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+	// 登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
+
+	// Sort 並び順
+	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
@@ -460,6 +532,15 @@ type ServerInterface interface {
 	// ListDirectories フォルダ選択用の直下ディレクトリを返す
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
+	// ListRootFolders フォルダ画面の最上位（登録済みメディアフォルダ）を返す
+	// (GET /api/folders)
+	ListRootFolders(w http.ResponseWriter, r *http.Request)
+	// GetFolder フォルダ1件と、その直下の子フォルダを返す
+	// (GET /api/folders/{rootId})
+	GetFolder(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params GetFolderParams)
+	// ListFolderVideos フォルダ直下の動画を返す
+	// (GET /api/folders/{rootId}/videos)
+	ListFolderVideos(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params ListFolderVideosParams)
 	// GetHealth 稼働状態とビルド情報を返す
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -540,6 +621,143 @@ func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListDirectories(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListRootFolders operation middleware
+func (siw *ServerInterfaceWrapper) ListRootFolders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListRootFolders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetFolder operation middleware
+func (siw *ServerInterfaceWrapper) GetFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "rootId" -------------
+	var rootId FolderRootId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rootId", r.PathValue("rootId"), &rootId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rootId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFolderParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFolder(w, r, rootId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListFolderVideos operation middleware
+func (siw *ServerInterfaceWrapper) ListFolderVideos(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "rootId" -------------
+	var rootId FolderRootId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rootId", r.PathValue("rootId"), &rootId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rootId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListFolderVideosParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListFolderVideos(w, r, rootId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1153,6 +1371,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.DeleteMediaFolder)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.UpdateMediaFolder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}/videos", wrapper.ListFolderVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 
 	return m
