@@ -41,6 +41,15 @@ const (
 	ThumbnailStateFailed ThumbnailState = "failed"
 )
 
+// PreviewState is the lifecycle of the content-keyed hover preview asset.
+type PreviewState string
+
+const (
+	PreviewStatePending PreviewState = "pending"
+	PreviewStateDone    PreviewState = "done"
+	PreviewStateFailed  PreviewState = "failed"
+)
+
 // UnplayableReason はブラウザで再生できないと判定した理由である。
 // 値は api/openapi.yaml の Video.unplayableReason に対応する。
 type UnplayableReason string
@@ -171,6 +180,7 @@ type Video struct {
 	ProbeState     ProbeState
 	ProbeError     string
 	ThumbnailState ThumbnailState
+	PreviewState   PreviewState
 }
 
 // PlayableInBrowser はブラウザでそのまま再生できると確定しているかを返す。
@@ -213,6 +223,7 @@ type IndexedVideo struct {
 	MTime           time.Time
 	ProbeState      ProbeState
 	ThumbnailState  ThumbnailState
+	PreviewState    PreviewState
 }
 
 // MediaFolder is one independently managed scan root.
@@ -237,6 +248,12 @@ type VideoLocation struct {
 	UpdatedAt time.Time
 }
 
+type PreviewAsset struct {
+	ID         int64
+	ContentKey string
+	State      PreviewState
+}
+
 // UpsertOutcome は取り込み1件の結果である。走査の集計（ScanResult）になる。
 type UpsertOutcome string
 
@@ -257,4 +274,5 @@ type UpsertResult struct {
 	Outcome        UpsertOutcome
 	NeedsProbe     bool
 	NeedsThumbnail bool
+	NeedsPreview   bool
 }

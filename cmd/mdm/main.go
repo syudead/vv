@@ -99,6 +99,7 @@ func run() error {
 	if err := lib.recoverInterrupted(backgroundCtx); err != nil {
 		return err
 	}
+	lib.reconcilePreviews(backgroundCtx)
 
 	worker := newWorker(cfg, db, logger)
 	workerDone := make(chan struct{})

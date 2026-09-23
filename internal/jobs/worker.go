@@ -143,6 +143,9 @@ func (w *Worker) process(ctx context.Context, job domain.Job) {
 		w.fail(ctx, job, err)
 		return
 	}
+	if ctx.Err() != nil {
+		return
+	}
 
 	var err error
 	if queue, ok := w.queue.(identityQueue); ok {
