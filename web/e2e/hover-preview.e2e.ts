@@ -11,6 +11,8 @@ import {
   type Request,
 } from "@playwright/test";
 
+import { elapse } from "./clock";
+
 interface Video {
   id: number;
   title: string;
@@ -186,7 +188,7 @@ async function assertNoPreviewAfterPointer(
     pointerType,
     bubbles: true,
   });
-  await page.waitForTimeout(500);
+  await elapse(page, 500);
   await expect(target.locator("video")).toHaveCount(0);
 }
 
@@ -327,10 +329,11 @@ test.describe.serial("library hover preview", () => {
     });
 
     const requests = watchRequests(page);
+    await page.clock.install();
     await page.goto("/");
     for (const item of variants) {
       await hoverCard(page, item);
-      await page.waitForTimeout(500);
+      await elapse(page, 500);
       await expect(card(page, item).locator("video")).toHaveCount(0);
     }
 
@@ -340,12 +343,12 @@ test.describe.serial("library hover preview", () => {
       exact: true,
     });
     await link.focus();
-    await page.waitForTimeout(500);
+    await elapse(page, 500);
     await expect(card(page, eligible).locator("video")).toHaveCount(0);
     await assertNoPreviewAfterPointer(page, eligible, "touch");
     await assertNoPreviewAfterPointer(page, eligible, "pen");
     await card(page, eligible).locator("[data-preview-checkbox]").hover();
-    await page.waitForTimeout(500);
+    await elapse(page, 500);
     await expect(card(page, eligible).locator("video")).toHaveCount(0);
 
     expect(previewRequests(requests)).toHaveLength(0);
@@ -395,6 +398,7 @@ test.describe.serial("library hover preview", () => {
     const item = video("direct");
     const requests = watchRequests(page);
 
+    await page.clock.install();
     await page.goto("/");
     const target = card(page, item);
     const link = target.getByRole("link", { name: item.title, exact: true });
@@ -411,7 +415,7 @@ test.describe.serial("library hover preview", () => {
 
     await page.keyboard.press("Tab");
     await expect(link).toBeFocused();
-    await page.waitForTimeout(500);
+    await elapse(page, 500);
 
     await expect(target.locator("video")).toHaveCount(0);
     await expect(target.locator("video[controls]")).toHaveCount(0);
