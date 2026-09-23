@@ -1,54 +1,46 @@
-# Quickstart: 一覧画面の hover 動画プレビュー
+# Quickstart: Hover Preview Validation
 
-## Prerequisites
+## Fixtures
 
-- Follow the repository setup and checks in [Taskfile.yml](../../Taskfile.yml).
-- Prepare at least one browser-playable video (`playable=true`) with completed probe, one playable card without a ready thumbnail, plus one ineligible card such as `playable=false` or probe pending/failed.
+- 9 秒を超え、場面変化が分かる動画。
+- 9 秒以下の短い動画。
+- browser が原本を直接再生できないが ffmpeg では decode できる動画。
+- ffmpeg generation を意図的に失敗させられる破損または unsupported fixture。
 
-## Automated Checks
-
-Run the focused web tests while implementing:
-
-```powershell
-npm --prefix web run test -- LibraryPage
-```
-
-Before opening the implementation PR, run:
+## Repository Checks
 
 ```powershell
+task generate
 task check
 ```
 
-If the implementation adds browser-backed coverage for pointer media behavior, also run the targeted e2e test and note it in the PR.
+generated file に手編集差分がなく、repository 全体の test/lint が成功することを確認する。
 
-## Manual Validation
+## Generation
 
-1. Start the app with the normal development command:
+1. migration 前から存在する probe 完了動画を含む DB を起動し、再 import なしで preview job が一度だけ backfill されることを確認する。
+2. 新規動画を scan し、probe 成功後に preview job が queue されることを確認する。
+3. 9 秒超の動画は全尺に分散した 12 x 0.75 秒、短尺は全体一回の出力になっていることを frame/timestamp test で確認する。
+4. `ffprobe` で最大幅 640px、H.264、`yuv420p`、audio stream なしを確認し、先頭 byte range だけで再生開始できる fast-start MP4 であること、manifest の byte length/SHA-256 が一致することを確認する。
+5. worker を生成途中で終了し、partial file が完成 path に見えず、再起動時に job が queue へ戻ることを確認する。
+6. failure を retry 上限まで発生させ、preview が `failed` でも import、thumbnail、一覧取得が成功することを確認する。
+7. MP4/manifest の片方を削除する、MP4 を truncate/bit-flip する、manifest の size/digest を変更する各 case で、scan/startup reconciliation が state を `pending` に戻して一度だけ再生成することを確認する。metadata が読める MP4 payload corruption も fixture に含める。
+8. 生成中に location/代表場所だけを変更しても、content key が同じなら完成 asset が採用され再生成されないことを確認する。content を変更した場合は stale temporary output が公開済み asset を削除せず、新 asset が生成され旧 asset が orphan cleanup されることを確認する。
 
-   ```powershell
-   task dev
-   ```
+## API
 
-2. Open the library in grid view. Hover a playable, ready card long enough for the delay to elapse. Expected: a muted video preview plays inside the thumbnail area; no sound controls appear.
+1. 一覧/detail response が常に `previewState` を返し、`previewUrl` は done asset にだけあることを確認する。
+2. preview endpoint の full request が 200、valid Range が 206 と正しい headers/body、invalid Range が 416 になることを確認する。
+3. pending/failed/missing/zero-size file が 404 かつ `no-store` で、stream/transcode への redirect や ffmpeg process 起動がないことを確認する。
+4. current content key を持つ URL の immutable cache と、version 不一致の non-immutable behavior を確認する。
 
-3. Move the pointer away, then hover a second eligible card. Expected: the first card returns to its thumbnail and only the second card previews.
+## Library UI
 
-4. Click a previewing card. Expected: navigation to `/videos/:id` still occurs, and the preview stops during navigation.
-
-5. Watch network calls while starting and stopping previews. Expected: no `PUT /api/videos/{id}/progress` request is sent.
-
-6. Hover ineligible cards: unplayable, probe pending/failed, or missing playback information. Expected: the existing card state stays visible and no video preview starts.
-
-7. Hover a playable card whose thumbnail is pending or failed. Expected: preview can start from the placeholder, and stopping preview restores that placeholder.
-
-8. Reject the preview element's `play()` promise, then simulate a media load or playback error in a separate attempt. Expected: each failure removes or resets the preview, restores the prior thumbnail or placeholder without a large error overlay, and a later hover can try again.
-
-9. Enable selection mode by checking a card, then interact with card checkboxes and card bodies. Expected: selection toggles stay usable and the check indicator is not hidden by preview.
-
-10. Verify keyboard behavior by tabbing to cards/links and pressing Enter. Expected: focus rings and navigation work, and focus alone does not start preview.
-
-11. Verify a touch-only or emulated touch environment. Expected: touching a card does not start hover preview; existing selection and navigation behavior remains available. Then emulate a touch-primary device with an attached mouse, or dispatch mouse pointer events without changing the primary-input media query. Expected: mouse hover starts preview even when `(hover: hover) and (pointer: fine)` is false.
-
-12. Capture implementation screenshots at 360px, 768px, and 1280px while a card is previewing and compare them with the approved `ui-design.md`. Expected: its visual hierarchy, information density, spacing, typography, and action-priority criteria pass, with no overlap between the preview and adjacent cards, toolbar, selection bar, progress bar, state labels, title, or metadata.
-
-13. Repeat with `prefers-reduced-motion: reduce`. Expected: preview can start and stop, but decorative scale/fade motion is reduced and no excessive flicker appears.
+1. done preview の grid card へ mouse/trackpad を置き、delay 後に muted preview が同じ thumbnail surface 内で始まることを確認する。
+2. browser-incompatible な原本でも生成済み preview が再生でき、pending/failed/missing preview は thumbnail/placeholder のままであることを確認する。
+3. pointer leave、別 card、navigation、filter/sort/page/list追加、grid/list 切替、viewport resize、unmount で停止・resource 解放・表示復帰することを確認する。更新後も mounted の card を含め、active preview が同時に1件だけであることを確認する。
+4. `play()` rejection と media error で fallback し、次の hover で再試行できることを確認する。
+5. touch contact、pen、keyboard focus で開始せず、touch 主体端末へ接続した mouse では開始することを確認する。
+6. selection mode、checkbox、Enter/click navigation、focus ring、progress/watched/unplayable indicator が保たれることを確認する。
+7. network panel で preview URL だけが取得され、`/stream`、`transcode.mp4`、progress PUT/beacon が発生しないことを確認する。
+8. 360px、768px、1280px と reduced-motion で、UI contract の視覚的階層、情報密度、余白、タイポグラフィ、操作優先順位を screenshot と操作記録で確認する。

@@ -1,43 +1,47 @@
-# UI Contract: Library Hover Video Preview
+# Contract: Library Hover Preview
 
-## Scope
+## Eligibility
 
-この contract はグリッド表示の `VideoCard` が利用者へ見せる hover preview の状態遷移を定義する。要求と UI 品質5観点の正本は [GitHub Issue #134](https://github.com/syudead/vv/issues/134) の `UI品質とアクセシビリティ`、実装境界は [plan.md](../plan.md#source-code) に従う。視覚的階層、情報密度、余白、タイポグラフィ、操作優先順位の観測可能な判定基準は、次の design stage で作成・承認する `ui-design.md` が所有する。
+preview は次のすべてを満たすときだけ開始できる。
 
-## Eligible Card
+- grid view の `VideoCard` が mounted している。
+- `previewState === "done"` かつ `previewUrl` がある。
+- `pointerenter` を発生させた `event.pointerType === "mouse"`。
+- selection checkbox の直接操作中ではない。
 
-A grid card is eligible for preview only when all conditions are true:
+`playable`、`thumbnailUrl`、primary-input media query は eligibility に使わない。keyboard focus と touch/pen contact は開始条件にしない。
 
-- `video.playable === true`
-- `video.probeState === "done"`
-- Existing `Video` data needed to build the direct stream URL is present
-- The `pointerenter` event that requests preview has `pointerType === "mouse"`
-- The card is mounted in grid view
+## Visual States
 
-If any condition is false, hover leaves the current thumbnail, disabled, pending, failed, watched, and progress displays unchanged. A missing or failed thumbnail does not by itself make a playable card ineligible; the card returns to its existing placeholder after preview stops.
+| State | Thumbnail surface |
+| --- | --- |
+| default / pending / failed | current thumbnail または placeholder |
+| delay waiting | default surface のまま。layout と overlay は変えない |
+| previewing | 同じ aspect-ratio surface 内で muted preview を置換表示 |
+| playback rejected / media error | video を除去し default surface へ即時復帰 |
 
-## State Transitions
+preview は card dimensions、metadata 行、selection checkbox、progress bar、watched/unplayable indicators、focus ring を移動・非表示にしない。新しい badge、説明文、loading spinner、controls、timeline は追加しない。
 
-- `thumbnail`: default state. The thumbnail or existing placeholder is visible with existing quality, duration, watched, progress, selection, and unplayable overlays.
-- `pending-preview`: pointer has entered an eligible card and the delay timer is running. The card remains visually equivalent to `thumbnail`.
-- `previewing`: delay elapsed and the muted video has started or is attempting to start. The video is clipped to the thumbnail area, uses the same aspect ratio, and never pushes title, metadata, toolbar, selection bar, or adjacent cards.
-- `fallback-thumbnail`: `play()` is rejected, the media element errors, the card becomes ineligible, or the pointer leaves. The video element is removed or reset and the thumbnail state is restored.
+## Playback And Cleanup
 
-The implementation may keep `pending-preview` internal if no visible state differs.
+- source は API が返す `previewUrl` のみ。`streamUrl`/`transcodeUrl` fallback を持たない。
+- `<video muted playsInline>` とし、audio controls と progress persistence を持たない。
+- `LibraryPage` は active card ID と reset epoch だけを所有する。別 card が active になったとき、または filter/sort/page/list追加、grid/list 切替、viewport resize で epoch が変わったとき、残存 card を含む以前の preview を停止する。
+- pointer leave、coordinator の active/reset change、click navigation、unmount、`play()` rejection、media error で timer を cancel し、pause、source/resource 解放、default surface 復帰を行う。
+- 再度 eligible hover した場合は新しい lifecycle として開始できる。
 
-## Required Behaviors
+## Existing Interaction Priority
 
-- Preview start is delayed so fast pointer passes across cards do not start playback.
-- Only the card currently under the pointer may preview. Leaving a card stops its preview before or as the next card starts.
-- Pointer leave, navigation to `/videos/:id`, grid/list switch, filtering, sorting, reload, infinite-scroll unmount, and component unmount stop playback and release the video element.
-- The preview video is always muted and inline. The UI provides no volume, unmute, seek, playback controls, or progress-save action.
-- Starting, playing, pausing, ending, or failing the preview does not call `PUT /api/videos/{id}/progress`.
-- Selection controls keep their existing z-order and click behavior. In selection mode, clicking the card toggles selection instead of navigating, as it does today.
-- Keyboard focus does not start preview. Focus indicators and Enter navigation continue to work.
-- Touch contact does not start preview, including on a touch-primary device. A mouse connected to that device can start preview because eligibility follows the event's `pointerType`, not the device's primary-input media features.
-- `prefers-reduced-motion: reduce` suppresses decorative scale/fade motion while preserving the final preview/thumbnail states.
+- click/Enter navigation、checkbox selection、keyboard focus、touch scroll/tap を変更しない。
+- selection mode でも checkbox hit target と card feedback を preview より優先する。
+- `prefers-reduced-motion` では transition を抑制するが、利用者が mouse hover したときの video 内容自体は隠さない。design stage で最終 motion rule を確定する。
 
-## Observable Evidence
+## Quality Evidence
 
-- Unit tests cover delay/cancel, ineligible cards, cleanup on unmount, keyboard/touch non-start, mouse input on a touch-primary device, progress API non-use, selection-mode interaction, `play()` rejection, and media error recovery. Both failure cases restore the prior thumbnail or placeholder and allow a later hover attempt.
-- Manual or browser-backed verification covers 360px, 768px, and 1280px widths, plus reduced motion.
+- **視覚的階層**: title、checkbox、progress、status indicator が preview より上位の既存位置と contrast を保つ。
+- **情報密度**: 新規 text/badge/control を増やさず、一覧の同時表示 card 数を変えない。
+- **余白**: card、grid gap、thumbnail aspect ratio、metadata padding に layout shift がない。
+- **タイポグラフィ**: font family、size、weight、line clamp を変更しない。
+- **操作優先順位**: selection/navigation/focus/touch が hover playback より優先される。
+
+実装 PR は 360px、768px、1280px の before/preview/fallback screenshots、reduced-motion、keyboard、touch、mouse、selection の結果を添付する。unit tests は eligibility、delay/cancel、cleanup、error recovery、source URL、progress API 非呼び出しを証明し、network evidence は preview endpoint 以外の media endpoint が呼ばれないことを示す。
