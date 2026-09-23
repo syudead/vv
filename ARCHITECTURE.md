@@ -22,7 +22,8 @@ In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, che
 `ffprobe`/`ffmpeg` are on `PATH`, opens SQLite under `MDM_DATA_DIR` and applies
 embedded goose migrations at startup, then starts the job worker. It serves `GET /api/health`,
 the video library API (`/api/videos*`, `/api/scans*`), media-folder settings and
-server-side directory picker APIs, byte-range streaming,
+server-side directory picker APIs, the read-only folder browsing API
+(`/api/folders*`), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
@@ -33,6 +34,9 @@ serial in-process worker that drives the `internal/media` adapters
 (`ffprobe` for metadata, `ffmpeg` for one library thumbnail plus five-second seek-preview frames per video); interrupted
 jobs are requeued at the next startup. Logical videos are separated from their physical
 locations so the same content may remain available from more than one configured root.
+Folders are not stored: the folder browsing API derives each folder's direct
+children and direct videos from the current locations' paths on every request,
+addressing a folder by its registered root's id and a `/`-separated relative path.
 Streaming delegates ranges to `http.ServeContent` and only opens current locations that
 resolve inside a configured media folder.
 
