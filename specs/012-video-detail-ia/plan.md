@@ -234,7 +234,11 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
         来ると、ジョブがまだ `running` なので新しいジョブの挿入が省かれる。そのあと古い
         ジョブが `failed` になり、動画はジョブの無い `pending` で止まる。
     - `FailClaimedJob` が終端（`state='failed'`）を確定した取引の中で、次のように記録する。
-      - `probe`：`probe_state='failed'`、`probe_error` に理由
+      - `probe`：`probe_state` が `pending` のときだけ `failed` にし、`probe_error` に理由を
+        入れる。`probeHandler` は結果を保存して `done` にしたあとでプレビューのジョブを積み、
+        そこで失敗してもエラーを返す。そのときに保存済みの結果を失敗で上書きしないためである。
+        欠けたプレビューのジョブは、既存の `ReconcilePreviewFailures` が `done` の動画に
+        積み直す。
       - `thumbnail`：`thumbnail_state` が `done` でなければ `failed`
       - 条件は `JobPreview` の分岐と同じく、内容鍵・所在の世代・所在が一致するときに限る。
     - 2 つのハンドラが自分で状態を書く処理は外す。
@@ -426,13 +430,15 @@ specs/012-video-detail-ia/
     - `thumbnail_state=failed` の動画では、`thumbnailState` も `pending` に戻り、サムネイルの
       ジョブが 1 件積まれる。`preview_state=failed` なら `previewState` が `pending` に戻る。
     - 続けて 2 回送ると、2 回目は 409 `probe_not_failed` で、ジョブは増えない。
-  - ファイルの確認で上限まで失敗した読み取り・サムネイルのジョブは、同じ取引で
-    `probe_state`・`thumbnail_state` を `failed` にする。
-  - 最後の試行が失敗した直後（ジョブの失敗が記録される前）には、動画はまだ `failed` に
-    ならない。この間の要求は 409 になり、ジョブの無い `pending` は生まれない。
-  - 起動時の整合で、`pending` のまま終端の失敗ジョブを持つ動画が `failed` になる。
     - 読み取り済みの動画は 409 になる。
     - 知らない id は 404 になる。
+    - ファイルの確認で上限まで失敗した読み取り・サムネイルのジョブは、同じ取引で
+      `probe_state`・`thumbnail_state` を `failed` にする。
+    - 読み取りの結果を保存したあと、プレビューのジョブを積むところで上限まで失敗しても、
+      `probe_state` は `done` のまま変わらない。
+    - 最後の試行が失敗した直後（ジョブの失敗が記録される前）には、動画はまだ `failed` に
+      ならない。この間の要求は 409 になり、ジョブの無い `pending` は生まれない。
+    - 起動時の整合で、`pending` のまま終端の失敗ジョブを持つ動画が `failed` になる。
 - **動画詳細画面を題名・属性・場所・閉じる操作の構成に組み直す**
   - 単体 test で次を確かめる。
     - 廃止した項目が出ない。
