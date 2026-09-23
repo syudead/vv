@@ -96,6 +96,88 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/videos/{id}/related:
+    get:
+      operationId: getRelatedVideos
+      summary: 関連動画を返す
+      description: |
+        代表の所在と同じディレクトリ直下の動画を、ファイル名の自然順でこの動画より
+        後のもの、前のものの順に並べ、足りない分を追加日時の差が小さい順（差が同じなら
+        id の大きい方が先）で補う。最大20件で、この動画自身は含めない。同じフォルダの
+        順序は全順序で、自然順が同じならファイル名のバイト順、それも同じなら id の
+        小さい方を先にする。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: 関連動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RelatedVideos"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/videos/{id}/probe:
+    post:
+      operationId: reprobeVideo
+      summary: 読み取りに失敗した動画を読み取り直す
+      description: |
+        `probeState = failed` の動画だけを受け付ける。1つの取引の中で読み取りの状態を
+        pending に戻し、読み取りのジョブを積む。サムネイルが完成していないとき、または
+        シーク用プレビューの置き場が無いときはサムネイルのジョブも積み、失敗した
+        一覧用プレビューの状態も pending に戻す。要求の本文は無い。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "202":
+          description: 読み取りを積み直した。更新後の動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: probeState が failed でない（probe_not_failed）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/videos/{id}/open:
+    post:
+      operationId: openVideoFile
+      summary: 代表の所在をサーバーの PC の既定アプリで開く
+      description: |
+        要求の本文は無く、パスも受け取らない。子プロセスを起動した時点で 204 を返す。
+        判定は 404 → 409 open_unavailable → 403 → 409 file_missing → 500 の順に行う。
+        要求元（RemoteAddr）がループバックで、Host がループバックの名前
+        （localhost・127.0.0.1・[::1]）のときだけ受け付ける。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "204":
+          description: 既定アプリを起動した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: 既定アプリを起動できない環境（open_unavailable）か、ファイルが無い（file_missing）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: 子プロセスを起動できなかった
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/videos/{id}/stream:
     get:
       operationId: streamVideo
@@ -860,6 +942,46 @@ components:
           description: probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL
         progress:
           $ref: "#/components/schemas/Progress"
+        location:
+          $ref: "#/components/schemas/VideoLocation"
+        seekThumbnailState:
+          type: string
+          enum: [pending, done, failed]
+          description: |
+            シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
+            seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
+            pending = 置き場が無く thumbnailState = pending かサムネイルのジョブが
+            queued・running、failed = それ以外
+
+    VideoLocation:
+      type: object
+      required: [path, openable]
+      additionalProperties: false
+      description: 代表の所在。GET /api/videos/{id} の応答にだけ入る
+      properties:
+        path:
+          type: string
+          description: 代表の所在の絶対パス。サーバーから見たパスで、コンテナ内ならコンテナ内のパス
+        openable:
+          type: boolean
+          description: |
+            要求元がループバックで、Host がループバックの名前で、サーバーが既定アプリを
+            起動できる環境のとき true
+
+    RelatedVideos:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 20
+          items:
+            $ref: "#/components/schemas/Video"
+        nextId:
+          type: integer
+          format: int64
+          description: 同じディレクトリで自然順の次の動画。無ければ省く
 
     ProgressUpdate:
       type: object
@@ -936,6 +1058,9 @@ components:
             - scan_in_progress
             - media_folders_not_configured
             - directory_unavailable
+            - probe_not_failed
+            - open_unavailable
+            - file_missing
         message:
           type: string
           description: 人が読むための説明。利用者にそのまま提示してよい文言にする

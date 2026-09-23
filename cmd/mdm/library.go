@@ -81,15 +81,10 @@ func probeHandler(db *store.DB) jobs.Handler {
 			return err
 		}
 
+		// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
+		// FailClaimedJob が動画側へ記録する。行は残したままで、一覧からは消さない。
 		probe, err := media.Probe(ctx, job.LocationPath)
 		if err != nil {
-			// 上限まで試して駄目なら、行は残したまま失敗として記録する。
-			// 一覧からは消さない。
-			if job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
-				if _, markErr := db.MarkProbeFailedForJob(ctx, job, err.Error()); markErr != nil {
-					return markErr
-				}
-			}
 			return err
 		}
 
@@ -161,16 +156,13 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 		if err := checkReadableRegularFile(job.LocationPath); err != nil {
 			return err
 		}
+		// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
+		// FailClaimedJob が動画側へ記録する。
 		hadThumbnail := video.ThumbnailState == domain.ThumbnailStateDone
 		if !hadThumbnail {
 			if _, err := media.Thumbnail(
 				ctx, job.LocationPath, durationMs, cfg.ThumbnailsDir(), job.ContentKey,
 			); err != nil {
-				if job.Attempts >= domain.MaxJobAttempts && job.LastLocation {
-					if _, markErr := db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateFailed); markErr != nil {
-						return markErr
-					}
-				}
 				return err
 			}
 			applied, err := db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
@@ -371,6 +363,21 @@ func (l *library) cleanPreviewTemps(cutoff time.Time) {
 	}
 	if removed > 0 {
 		l.logger.Info("中断したプレビュー生成物を掃除しました", slog.Int("count", removed))
+	}
+}
+
+// reconcileProcessingFailures は、読み取りとサムネイルの終端失敗がジョブにだけ
+// 記録されて、動画側が pending のまま残った状態を直す。失敗を同じ取引で記録する
+// ようになる前に止まった動画のためで、起動時に1度呼ぶ。
+func (l *library) reconcileProcessingFailures(ctx context.Context) {
+	marked, requeued, err := l.db.ReconcileProcessingFailures(ctx)
+	if err != nil {
+		l.logger.Warn("読み取り・サムネイルの失敗状態を整合できませんでした", slog.Any("error", err))
+		return
+	}
+	if marked > 0 || requeued > 0 {
+		l.logger.Info("読み取り・サムネイルの失敗状態を整合しました",
+			slog.Int64("failed", marked), slog.Int64("requeued", requeued))
 	}
 }
 

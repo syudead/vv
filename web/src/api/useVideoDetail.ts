@@ -1,0 +1,196 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import {
+  errorMessage,
+  getRelatedVideos,
+  getVideo,
+  isAborted,
+  RequestFailed,
+  type RelatedVideos,
+  type Video,
+} from "./client";
+
+/** pollIntervalMs は取り直しの間隔である。取り込みの状態（ScanProvider）と同じ 2 秒にする。 */
+export const pollIntervalMs = 2000;
+
+export type VideoDetailState =
+  | { kind: "loading"; id: number }
+  | { kind: "ready"; id: number; video: Video }
+  /** 動画が無い（404、または id の形が正しくない）。取り直しで消えたときもこれになる。 */
+  | { kind: "missing"; id: number }
+  /** 最初の取得が 404 以外で失敗した。 */
+  | { kind: "failed"; id: number; reason: string };
+
+/**
+ * isProcessing は、取り込みの処理が残っていて取り直す必要があるかを返す
+ * （plan の Structural Decisions 7・11）。
+ *
+ * 読み取りに失敗した動画は、そこで終わりとして扱う。一覧用プレビューのジョブは読み取りの
+ * 成功後にしか積まれないので、失敗した動画の `previewState` は `pending` のまま残る。
+ * それを「処理中」と読むと、取り直しが画面を開いている限り続く。
+ */
+export function isProcessing(video: Video): boolean {
+  if (video.probeState === "pending") return true;
+  if (video.probeState !== "done") return false;
+  return (
+    video.thumbnailState === "pending" ||
+    video.seekThumbnailState === "pending" ||
+    video.previewState === "pending"
+  );
+}
+
+/**
+ * useVideoDetail は動画 1 件を取得し、処理中の間だけ 2 秒ごとに取り直す。
+ *
+ * - ページが隠れている間は取り直さず、見えるようになったらすぐ取り直す。
+ * - 別の動画へ移ったとき、画面を離れたときは、送信中の要求を打ち切って止める。
+ * - 取り直しが 404 を返したら `missing` にする（表示中の動画がライブラリから消えた）。
+ *   それ以外の一時的な失敗では、手元の控えを残して取り直しを続ける。
+ *
+ * `refresh` はすぐに取り直し、その取得が終わったら解決する。
+ */
+export function useVideoDetail(id: number): {
+  state: VideoDetailState;
+  refresh: () => Promise<void>;
+} {
+  const [state, setState] = useState<VideoDetailState>({ kind: "loading", id });
+  const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
+
+  useEffect(() => {
+    setState({ kind: "loading", id });
+    if (!Number.isSafeInteger(id) || id < 1) {
+      setState({ kind: "missing", id });
+      refreshRef.current = () => Promise.resolve();
+      return;
+    }
+
+    let alive = true;
+    let controller: AbortController | null = null;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let waitingForVisible = false;
+    let current: Video | undefined;
+    const waiters: (() => void)[] = [];
+
+    const settle = () => {
+      for (const resolve of waiters.splice(0)) resolve();
+    };
+    const clearTimer = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = undefined;
+    };
+
+    const scheduleNext = () => {
+      if (!alive) return;
+      if (document.visibilityState === "hidden") {
+        waitingForVisible = true;
+        return;
+      }
+      timer = setTimeout(() => void load(), pollIntervalMs);
+    };
+
+    const load = async () => {
+      clearTimer();
+      waitingForVisible = false;
+      controller?.abort();
+      const mine = new AbortController();
+      controller = mine;
+      try {
+        const video = await getVideo(id, mine.signal);
+        if (!alive || controller !== mine) return;
+        current = video;
+        setState({ kind: "ready", id, video });
+        settle();
+        if (isProcessing(video)) scheduleNext();
+      } catch (failure) {
+        if (!alive || controller !== mine || isAborted(failure)) return;
+        if (failure instanceof RequestFailed && failure.status === 404) {
+          current = undefined;
+          setState({ kind: "missing", id });
+          settle();
+          return;
+        }
+        if (current === undefined) {
+          setState({ kind: "failed", id, reason: errorMessage(failure) });
+          settle();
+          return;
+        }
+        settle();
+        if (isProcessing(current)) scheduleNext();
+      }
+    };
+
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        if (timer !== undefined) {
+          clearTimer();
+          waitingForVisible = true;
+        }
+        return;
+      }
+      if (waitingForVisible) void load();
+    };
+
+    refreshRef.current = () =>
+      new Promise<void>((resolve) => {
+        if (!alive) {
+          resolve();
+          return;
+        }
+        waiters.push(resolve);
+        void load();
+      });
+
+    document.addEventListener("visibilitychange", onVisibility);
+    void load();
+    return () => {
+      alive = false;
+      controller?.abort();
+      clearTimer();
+      document.removeEventListener("visibilitychange", onVisibility);
+      settle();
+    };
+  }, [id]);
+
+  const refresh = useCallback(() => refreshRef.current(), []);
+  return { state, refresh };
+}
+
+export type RelatedState =
+  | { kind: "loading"; id: number }
+  | { kind: "ready"; id: number; related: RelatedVideos }
+  | { kind: "failed"; id: number };
+
+/** useRelatedVideos は関連動画を 1 回取得する。失敗したら `retry` で取り直せる。 */
+export function useRelatedVideos(id: number): {
+  state: RelatedState;
+  retry: () => void;
+} {
+  const [state, setState] = useState<RelatedState>({ kind: "loading", id });
+  const [attempt, setAttempt] = useState(0);
+
+  useEffect(() => {
+    setState({ kind: "loading", id });
+    if (!Number.isSafeInteger(id) || id < 1) {
+      setState({ kind: "ready", id, related: { items: [] } });
+      return;
+    }
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const related = await getRelatedVideos(id, controller.signal);
+        setState({ kind: "ready", id, related });
+      } catch (failure) {
+        if (isAborted(failure)) return;
+        if (failure instanceof RequestFailed && failure.status === 404) {
+          setState({ kind: "ready", id, related: { items: [] } });
+          return;
+        }
+        setState({ kind: "failed", id });
+      }
+    })();
+    return () => controller.abort();
+  }, [attempt, id]);
+
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
+  return { state, retry };
+}

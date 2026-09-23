@@ -17,6 +17,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi"
 	"github.com/syudead/vv/internal/media"
+	"github.com/syudead/vv/internal/opener"
 	"github.com/syudead/vv/internal/store"
 	"github.com/syudead/vv/web"
 )
@@ -99,6 +100,7 @@ func run() error {
 	if err := lib.recoverInterrupted(backgroundCtx); err != nil {
 		return err
 	}
+	lib.reconcileProcessingFailures(backgroundCtx)
 	lib.reconcilePreviews(backgroundCtx)
 
 	worker := newWorker(cfg, db, logger)
@@ -113,6 +115,12 @@ func run() error {
 	requestMediaCtx, stopRequestMedia := context.WithCancel(context.Background())
 	defer stopRequestMedia()
 
+	// 既定アプリを起動できる環境かどうかは、ここで1度だけ決める。要求のたびには
+	// コマンドを探さない。
+	fileOpener := opener.New()
+	logger.Info("ファイルを開く機能の状態", slog.Bool("available", fileOpener.Available()),
+		slog.String("command", fileOpener.Command()))
+
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:          build,
 		Pinger:         db,
@@ -124,6 +132,10 @@ func run() error {
 		ThumbnailsDir:  cfg.ThumbnailsDir(),
 		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),
 		SeekThumbnails: media.NewSeekThumbnailCache(cfg.ThumbnailsDir()),
+		ThumbnailJobs:  db,
+		Related:        db,
+		Reprobe:        db,
+		Opener:         fileOpener,
 		Assets:         web.Dist(),
 		Logger:         logger,
 	})

@@ -282,7 +282,7 @@ test.describe.serial("folder browser", () => {
     );
     expect(before).toBeGreaterThan(0);
 
-    await page.getByRole("link", { name: "フォルダ" }).click();
+    await page.getByRole("button", { name: "閉じる" }).click();
     await expect(page).toHaveURL(folderUrl(rootA(), "many"));
     await expect(cards).toHaveCount(61);
     await expect
