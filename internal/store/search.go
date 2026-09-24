@@ -51,8 +51,11 @@ func routeFor(query string) searchRoute {
 // search_key と同じ domain.FoldForMatch を掛けるので、NFC・NFD、全角半角、
 // 大文字小文字、ひらがなとカタカナの違いが同じ表記に揃う
 // （specs/013-library-search/data-model.md §3）。
+//
+// 検索語の中の改行は空白に置き換える。search_key は題名と相対パスを改行で
+// つないでいるので、改行を含む語は2つの境目をまたいで当たってしまう。
 func normalizeQuery(query string) string {
-	return domain.FoldForMatch(strings.TrimSpace(query))
+	return strings.ReplaceAll(domain.FoldForMatch(strings.TrimSpace(query)), "\n", " ")
 }
 
 // searchFilter は検索の条件句と引数を返す。絞り込まない場合は空の句を返す。

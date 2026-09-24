@@ -336,3 +336,36 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 		t.Errorf("再適用後の検索 = %v, want [花火大会]", got)
 	}
 }
+
+// 一覧に出る所在は、検索でも見つかる。一覧の登録判定（registeredLocationCondition）は
+// どの OS でも root の直後の `\` を区切りとして認めるので、鍵を作る側も同じ規則で
+// 相対パスを取る。
+func TestSearchKeyFollowsListRegistrationRule(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	path := `/media\film.mp4`
+	if _, err := db.UpsertVideo(ctx, sampleFile(path, "film", "key-backslash", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if key, _, _ := locationKeys(t, db, path); key == "" {
+		t.Fatalf("search_key が空です（一覧には出るのに検索で見つからない）")
+	}
+	if got := searchTitles(t, db, "film"); len(got) != 1 {
+		t.Errorf("検索 film = %v, want [film]", got)
+	}
+}
+
+// 題名と相対パスの境目（改行）をまたぐ検索語には当たらない。
+func TestSearchDoesNotMatchAcrossTitleAndPath(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/def.mp4", "abc", "key-boundary", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	// 3文字以上（MATCH）と1〜2文字（instr）の両方の経路を調べる。
+	for _, query := range []string{"bc\nde", "c\nd"} {
+		if got := searchTitles(t, db, query); len(got) != 0 {
+			t.Errorf("検索 %q = %v, want 境目をまたいで当たらない", query, got)
+		}
+	}
+}
