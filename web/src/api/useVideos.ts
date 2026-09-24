@@ -313,7 +313,13 @@ export function useVideos(
         setError(null);
         setNotFound(false);
       } catch (failure) {
-        if (isAborted(failure)) {
+        // 打ち切った要求や、条件を変えた後に届いた古い要求の失敗は、新しい一覧に
+        // 404 や失敗を持ち込まないよう捨てる。
+        if (
+          isAborted(failure) ||
+          controller.signal.aborted ||
+          inFlight.current !== controller
+        ) {
           return;
         }
         if (
