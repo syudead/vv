@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
+import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useScanNotice } from "./ScanNoticeProvider";
@@ -40,7 +41,11 @@ function countSummary(presentation: ScanPresentation) {
   return `${String(presentation.completed)} / ${total} 件（${String(presentation.failed)} 件失敗）`;
 }
 
-export default function ScanProgressIndicator() {
+export default function ScanProgressIndicator({
+  placement = "default",
+}: {
+  placement?: "default" | "playback";
+}) {
   const scan = useScan();
   const notice = useScanNotice();
   const navigate = useNavigate();
@@ -95,7 +100,12 @@ export default function ScanProgressIndicator() {
 
   return (
     <div
-      className="fixed right-3 bottom-4 z-30 max-w-[calc(100vw-1.5rem)] sm:right-5 sm:bottom-5"
+      className={cn(
+        "fixed right-3 z-30 max-w-[calc(100vw-1.5rem)] sm:right-5",
+        placement === "playback"
+          ? "bottom-4 sm:top-2 sm:bottom-auto"
+          : "bottom-4 sm:bottom-5",
+      )}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
     >
