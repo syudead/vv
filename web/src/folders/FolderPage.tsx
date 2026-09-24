@@ -750,7 +750,12 @@ function FolderView({ folder }: { folder: FolderRef }) {
                     ...conditionLabels(criteria),
                     rangeLabel("direct", name ?? "フォルダ"),
                   ]}
-                  note="中のフォルダも探すには、検索語を入れてください。"
+                  note={
+                    // 中のフォルダが無ければ、検索語を入れても結果は変わらない。
+                    children.length > 0
+                      ? "中のフォルダも探すには、検索語を入れてください。"
+                      : undefined
+                  }
                   onClear={clearFromNoMatches}
                 />
               </>
