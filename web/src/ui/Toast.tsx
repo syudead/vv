@@ -36,8 +36,14 @@ export function ToastProvider({
   const show = useCallback(
     (message: string) => {
       const id = Date.now() + Math.random();
-      const expiresAt = placement === "default" ? Date.now() + toastDuration : null;
-      setItems((current) => [...current.slice(-2), { id, message, expiresAt }]);
+      setItems((current) => {
+        const expiresAt =
+          placement === "default" || current.length === 0
+            ? Date.now() + toastDuration
+            : null;
+        const next = [...current, { id, message, expiresAt }];
+        return placement === "default" ? next.slice(-3) : next;
+      });
     },
     [placement],
   );
@@ -45,40 +51,48 @@ export function ToastProvider({
   useEffect(() => {
     setItems((current) => {
       if (current.length === 0) return current;
-      const expiresAt = placement === "default" ? Date.now() + toastDuration : null;
-      return current.map((item) => ({ ...item, expiresAt }));
+      const now = Date.now();
+      return current.map((item, index) => ({
+        ...item,
+        expiresAt:
+          placement === "playback"
+            ? index === 0
+              ? (item.expiresAt ?? now + toastDuration)
+              : null
+            : (item.expiresAt ?? now + toastDuration),
+      }));
     });
   }, [placement]);
 
-  const playbackItemId = placement === "playback" ? items[0]?.id : undefined;
-  useEffect(() => {
-    if (playbackItemId === undefined) return;
-    const timeout = window.setTimeout(() => {
-      setItems((current) => current.filter((item) => item.id !== playbackItemId));
-    }, toastDuration);
-    return () => window.clearTimeout(timeout);
-  }, [playbackItemId]);
-
-  const nextDefaultExpiry =
-    placement === "default"
-      ? items.reduce<number | null>((next, item) => {
+  const nextExpiry =
+    placement === "playback"
+      ? (items[0]?.expiresAt ?? null)
+      : items.reduce<number | null>((next, item) => {
           if (item.expiresAt === null) return next;
           return next === null ? item.expiresAt : Math.min(next, item.expiresAt);
-        }, null)
-      : null;
+        }, null);
   useEffect(() => {
-    if (nextDefaultExpiry === null) return;
+    if (nextExpiry === null) return;
     const timeout = window.setTimeout(
       () => {
         const now = Date.now();
-        setItems((current) =>
-          current.filter((item) => item.expiresAt === null || item.expiresAt > now),
-        );
+        setItems((current) => {
+          if (placement === "default") {
+            return current.filter(
+              (item) => item.expiresAt === null || item.expiresAt > now,
+            );
+          }
+          const remaining = current.slice(1);
+          if (remaining.length === 0) return remaining;
+          return remaining.map((item, index) =>
+            index === 0 ? { ...item, expiresAt: now + toastDuration } : item,
+          );
+        });
       },
-      Math.max(0, nextDefaultExpiry - Date.now()),
+      Math.max(0, nextExpiry - Date.now()),
     );
     return () => window.clearTimeout(timeout);
-  }, [nextDefaultExpiry]);
+  }, [nextExpiry, placement]);
 
   return (
     <ToastContext.Provider value={show}>
