@@ -145,6 +145,9 @@ describe("FolderPage", () => {
       if (url.startsWith("/api/folders/3/videos?")) {
         return Promise.resolve(json({ items: [], total: 0 }));
       }
+      // 準備中の項目は1件ずつ取り直される。実際のサーバーと同じく、その動画を返す。
+      const single = /^\/api\/videos\/(\d+)$/.exec(url);
+      if (single !== null) return Promise.resolve(json(video(Number(single[1]), "x")));
       return Promise.resolve(
         json({ code: "not_found", message: "そのフォルダは見つかりません" }, 404),
       );

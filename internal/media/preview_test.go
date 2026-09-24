@@ -315,7 +315,7 @@ func TestGeneratePreviewCancellationLeavesNoPublishedOrTemporaryAsset(t *testing
 			t.Fatalf("cancelled output was published at %s: %v", path, statErr)
 		}
 	}
-	temps, err := filepath.Glob(filepath.Join(dir, "preview", "*", ".preview-*"))
+	temps, err := filepath.Glob(filepath.Join(dir, temporaryDirName, "*"))
 	if err != nil {
 		t.Fatal(err)
 	}

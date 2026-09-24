@@ -174,7 +174,7 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	if err := tx.Commit(); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	db.notifyContentReleased(released)
+	db.notifyVideosDeleted(released)
 	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
 	db.notifyJobsQueued(domain.JobKinds...)
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: version + 1, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(now, 0)}, nil
@@ -212,7 +212,7 @@ func (db *DB) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) 
 		return err
 	}
 	// 登録を外して消えた動画の生成物を片付けさせる。
-	db.notifyContentReleased(released)
+	db.notifyVideosDeleted(released)
 	return nil
 }
 
@@ -279,8 +279,8 @@ func locationsUnder(ctx context.Context, tx *sql.Tx, root string) (ids []int64, 
 }
 
 // removeLocationsUnder は root 以下の所在を消し、所在が無くなった動画の行も消す。
-// 消した動画の内容の識別子を返す。
-func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) ([]string, error) {
+// 消した動画を返す。
+func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) ([]DeletedVideo, error) {
 	ids, affected, err := locationsUnder(ctx, tx, root)
 	if err != nil {
 		return nil, err

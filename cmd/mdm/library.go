@@ -63,22 +63,30 @@ func newWorkers(
 		domain.JobThumbnail: thumbnailHandler(db, assets),
 		domain.JobPreview:   previewHandler(db, assets),
 	}
+	workers := make([]*jobs.Worker, 0, len(domain.JobKinds))
+	byKind := make(map[domain.JobKind]*jobs.Worker, len(domain.JobKinds))
 	finished := func(job domain.Job) {
+		// サムネイルは解析が終わるまで取り出されない（store.ClaimJob）。解析の
+		// 成否が決まったら、待っていたサムネイルのワーカーを起こす。
+		if job.Kind == domain.JobProbe {
+			byKind[domain.JobThumbnail].Wake()
+		}
 		if events == nil {
 			return
 		}
 		events.VideoChanged(job.VideoID)
 		events.ProcessingChanged()
 	}
-	workers := make([]*jobs.Worker, 0, len(domain.JobKinds))
 	for _, kind := range domain.JobKinds {
-		workers = append(workers, jobs.New(jobs.Options{
+		worker := jobs.New(jobs.Options{
 			Kind:     kind,
 			Queue:    db,
 			Handler:  handlers[kind],
 			Finished: finished,
 			Logger:   logger,
-		}))
+		})
+		workers = append(workers, worker)
+		byKind[kind] = worker
 	}
 	return workers
 }

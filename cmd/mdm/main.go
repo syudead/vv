@@ -106,11 +106,25 @@ func run() error {
 
 	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
 	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
+	// 前回の停止で残った生成途中の成果物を消す。ワーカーを動かす前なので、
+	// 生成中のものを消すことはない。
+	if err := media.RemoveTemporary(cfg.ThumbnailsDir()); err != nil {
+		logger.Warn("生成途中の成果物を削除できませんでした", slog.Any("error", err))
+	}
 	assets := newArtifacts(db, cfg.ThumbnailsDir(), logger)
 	workers := newWorkers(db, assets, logger, events)
 	db.OnJobsQueued(wakeWorkers(workers, events))
-	// 動画の行が消えたら、参照の無くなった内容の生成物だけを消す。
-	db.OnContentReleased(assets.release)
+	// 動画の行が消えたら、参照の無くなった内容の生成物だけを消し、開いている
+	// 画面へ消えたことを知らせる（取り直すと見つからないので、画面が外す）。
+	db.OnVideosDeleted(func(deleted []store.DeletedVideo) {
+		keys := make([]string, 0, len(deleted))
+		for _, video := range deleted {
+			keys = append(keys, video.ContentKey)
+			events.VideoChanged(video.ID)
+		}
+		assets.release(keys)
+		events.ProcessingChanged()
+	})
 	var workersDone sync.WaitGroup
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })

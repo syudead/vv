@@ -79,7 +79,7 @@ func GeneratePreview(
 	}
 	_ = os.Remove(target)
 	_ = os.Remove(manifest)
-	temporary, err := os.MkdirTemp(filepath.Dir(target), ".preview-*")
+	temporary, err := makeTemporaryDir(thumbnailsDir, "preview-*")
 	if err != nil {
 		return fmt.Errorf("プレビューの一時領域を作れません: %w", err)
 	}

@@ -40,8 +40,11 @@ and driving the `internal/media` adapters
 (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, five-second seek-preview frames,
 and a content-keyed hover-preview clip per video). A worker sleeps while its queue is
 empty: `internal/store` reports every committed enqueue, and `cmd/mdm` wakes the worker
-for that stage, so no worker polls the queue. Interrupted scans are closed and running
-jobs are requeued at the next startup. When a video row is deleted (a scan finds its last
+for that stage, so no worker polls the queue. A thumbnail job is not claimed until its
+video's probe has finished, because the frame position depends on the duration; the probe
+worker wakes the thumbnail worker when it records a result. Interrupted scans are closed,
+running jobs are requeued, and the single `.tmp` directory that holds in-progress
+generation output is removed at the next startup. When a video row is deleted (a scan finds its last
 location gone, its content changes, or its media folder is removed or replaced),
 `internal/store` reports the released content keys after commit, and `cmd/mdm` removes
 that content's thumbnail, seek frames and hover preview unless another video still

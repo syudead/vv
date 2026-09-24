@@ -310,4 +310,18 @@ describe("useVideos の準備の反映", () => {
     await waitFor(() => expect(result.current.items[1]?.previewState).toBe("done"));
     expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([2]);
   });
+
+  it("取り直した動画が索引から消えていたら、一覧から外す", async () => {
+    const { result } = renderHook(() => useVideos("addedDesc", ""));
+    await act(async () => calls[0]?.resolve(page([1, 2])));
+    const { RequestFailed } = await import("./client");
+    getVideo.mockRejectedValue(new RequestFailed(404, "not_found", "見つかりません"));
+
+    await emitServerEvent("video", { id: 2 });
+
+    await waitFor(() =>
+      expect(result.current.items.map((video) => video.id)).toEqual([1]),
+    );
+    expect(result.current.total).toBe(99);
+  });
 });

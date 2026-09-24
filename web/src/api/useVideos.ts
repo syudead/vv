@@ -7,6 +7,7 @@ import {
   isAborted,
   listFolderVideos,
   listVideos,
+  RequestFailed,
   type Video,
   type VideoSort,
 } from "./client";
@@ -131,8 +132,16 @@ export function useVideos(
           );
         } catch (failure) {
           if (isAborted(failure)) return;
-          // 消えた動画や一時的な失敗は、その1件だけ諦める。一覧からの削除は
-          // 取り込みの完了時の読み直しが受け持つ。
+          // 動画が索引から消えていたら、一覧からも外す。一時的な失敗は、その
+          // 1件だけ諦める（次の知らせか取り込みの完了時の読み直しで直る）。
+          if (
+            failure instanceof RequestFailed &&
+            failure.status === 404 &&
+            itemsRef.current.some((video) => video.id === id)
+          ) {
+            setItems((current) => current.filter((video) => video.id !== id));
+            setTotal((value) => Math.max(0, value - 1));
+          }
         }
       }
     } finally {

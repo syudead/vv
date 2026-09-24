@@ -167,3 +167,27 @@ func RemoveContentArtifacts(thumbnailsDir, contentKey string) error {
 	}
 	return errors.Join(errs...)
 }
+
+// temporaryDirName は生成途中の成果物を置く場所の名前である。生成物の置き場の
+// 直下に1か所だけ作り、確定するときに同じファイルシステムの中で本来の場所へ
+// 移す。
+const temporaryDirName = ".tmp"
+
+// makeTemporaryDir は生成途中の成果物を置く一時ディレクトリを作る。
+func makeTemporaryDir(thumbnailsDir, pattern string) (string, error) {
+	root := filepath.Join(thumbnailsDir, temporaryDirName)
+	if err := os.MkdirAll(root, thumbnailDirPerm); err != nil {
+		return "", err
+	}
+	return os.MkdirTemp(root, pattern)
+}
+
+// RemoveTemporary は生成途中の成果物の置き場を丸ごと消す。起動時、ワーカーを
+// 動かす前に呼ぶ。生成の途中でプロセスが止まると後片付けが走らず、ここに残る。
+// 一時領域を1か所にまとめてあるので、生成物の置き場全体を読まずに済む。
+func RemoveTemporary(thumbnailsDir string) error {
+	if err := os.RemoveAll(filepath.Join(thumbnailsDir, temporaryDirName)); err != nil {
+		return fmt.Errorf("生成途中の一時領域を削除できません: %w", err)
+	}
+	return nil
+}

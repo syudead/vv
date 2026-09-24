@@ -692,13 +692,18 @@ func TestDeleteVideoLocationsResyncsRemainingRepresentative(t *testing.T) {
 	}
 }
 
-// releasedRecorder は OnContentReleased の知らせを記録する。
+// releasedRecorder は OnVideosDeleted の知らせのうち、内容の識別子を記録する。
 type releasedRecorder struct {
 	keys []string
 }
 
-func (r *releasedRecorder) record(keys []string) {
-	r.keys = append(r.keys, keys...)
+func (r *releasedRecorder) record(deleted []DeletedVideo) {
+	for _, video := range deleted {
+		if video.ID == 0 {
+			panic("消した動画の id が無い")
+		}
+		r.keys = append(r.keys, video.ContentKey)
+	}
 }
 
 func (r *releasedRecorder) take() []string {
@@ -715,7 +720,7 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	recorder := &releasedRecorder{}
-	db.OnContentReleased(recorder.record)
+	db.OnVideosDeleted(recorder.record)
 
 	for _, file := range []VideoFile{
 		sampleFile("/media/a.mp4", "a", "key-a", 1, 0),

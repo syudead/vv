@@ -42,6 +42,13 @@ func missingSourceFixture(t *testing.T) (context.Context, string, *store.DB, int
 
 func claimLastAttempt(t *testing.T, ctx context.Context, db *store.DB, kind domain.JobKind, videoID int64) domain.Job {
 	t.Helper()
+	if kind == domain.JobThumbnail {
+		// サムネイルは解析の後に取り出すので、解析は済ませておく。
+		probe := domain.Probe{DurationMs: 1000, VideoCodec: "h264", AudioCodec: "aac"}
+		if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := db.EnqueueJob(ctx, kind, videoID); err != nil {
 		t.Fatal(err)
 	}

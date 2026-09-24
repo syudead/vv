@@ -106,9 +106,15 @@ func (db *DB) ClaimJob(ctx context.Context, kind JobKind) (Job, error) {
 	var previousPath sql.NullString
 	// 登録前の移行locationは保持するが処理しない。folder登録後に同じqueued
 	// jobをそのまま再開でき、登録外pathをworkerへ渡すこともない。
+	//
+	// サムネイルは解析が終わる（done か failed になる）まで取り出さない。抽出位置は
+	// 動画の長さで決まり、解析より先に作ると長さの分からない位置で固定される。
+	// 段階ごとのワーカーは並行して動くので、積んだ順では解析が先になる保証が無い。
 	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.location_path from jobs j
 		where j.state = 'queued' and j.kind = ? and exists (
 			select 1 from video_locations l where l.video_id = j.video_id and ` + registeredLocationCondition("l") + `)
+		and (j.kind <> 'thumbnail' or exists (
+			select 1 from videos v where v.id = j.video_id and v.probe_state <> 'pending'))
 		order by j.id limit 1`
 	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
 	err = conn.QueryRowContext(ctx, queuedJobSQL, string(kind)).Scan(&job.ID, &kindName, &job.VideoID, &job.Attempts, &previousPath)

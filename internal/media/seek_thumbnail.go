@@ -44,7 +44,7 @@ func GenerateSeekThumbnails(
 		return fmt.Errorf("シークサムネイルの置き場所を作れません: %w", err)
 	}
 
-	temporary, err := os.MkdirTemp(filepath.Dir(target), ".seek-*")
+	temporary, err := makeTemporaryDir(thumbnailsDir, "seek-*")
 	if err != nil {
 		return fmt.Errorf("シークサムネイルの一時領域を作れません: %w", err)
 	}

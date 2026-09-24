@@ -87,7 +87,7 @@ func (a *artifacts) removeIfUnreferenced(ctx context.Context, contentKey string)
 }
 
 // release は、動画の行が消えたときに、参照の無くなった内容の生成物を消す。
-// 保存層の OnContentReleased に渡す。消えた動画の分だけを見るので、
+// 保存層の OnVideosDeleted の知らせから呼ぶ。消えた動画の分だけを見るので、
 // ライブラリ全体は読まない。
 //
 // ファイルの削除は呼び出し元（走査やフォルダ設定の要求）を待たせないよう背後で

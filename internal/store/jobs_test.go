@@ -294,6 +294,8 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
 		t.Fatal(err)
 	}
+	// サムネイルは解析の後に取り出すので、解析は済ませておく。
+	probeDone(t, db, video.ID)
 	if err := db.EnqueueJob(ctx, JobThumbnail, video.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -711,6 +713,7 @@ func countJobs(t *testing.T, db *DB) int {
 func TestClaimJobTakesOnlyTheRequestedKind(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
+	probeDone(t, db, videoID)
 	if err := db.EnqueueJob(ctx, JobThumbnail, videoID); err != nil {
 		t.Fatal(err)
 	}
@@ -826,7 +829,8 @@ func TestProcessingCountsRemainingWorkPerStage(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// 処理中も残りに数える。
+	// 処理中も残りに数える（サムネイルは解析の後に取り出すので、解析は済ませておく）。
+	probeDone(t, db, videoID)
 	if _, err := db.ClaimJob(ctx, JobThumbnail); err != nil {
 		t.Fatal(err)
 	}
@@ -849,5 +853,39 @@ func TestProcessingCountsRemainingWorkPerStage(t *testing.T) {
 	}
 	if got.Remaining() != 3 {
 		t.Errorf("Remaining = %d, want 3", got.Remaining())
+	}
+}
+
+// サムネイルは解析が終わるまで取り出さない。段階ごとのワーカーは並行して動くので、
+// 解析より先に作ると、動画の長さが分からないまま抽出位置が決まってしまう。
+func TestClaimThumbnailWaitsForProbe(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobThumbnail, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ClaimJob(ctx, JobThumbnail); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("解析前の ClaimJob error = %v, want ErrNoJob", err)
+	}
+
+	probe := domain.Probe{DurationMs: 100_000, VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx, JobThumbnail)
+	if err != nil {
+		t.Fatalf("解析後も取り出せない: %v", err)
+	}
+	if job.VideoID != videoID {
+		t.Fatalf("VideoID = %d, want %d", job.VideoID, videoID)
+	}
+}
+
+// probeDone は解析を済ませた状態にする。サムネイルは解析の後に取り出す。
+func probeDone(t *testing.T, db *DB, videoID int64) {
+	t.Helper()
+	probe := domain.Probe{DurationMs: 100_000, VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.ApplyProbe(context.Background(), videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+		t.Fatal(err)
 	}
 }
