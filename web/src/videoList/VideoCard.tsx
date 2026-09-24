@@ -89,8 +89,8 @@ function SelectCheck({
 }
 
 /**
- * VideoCard は Stash の scene-card と同じ箱型。サムネイルはカードの端まで、
- * 右下に「720P 59:11」の文字（ホバーで消える）、下に題名と日付・大きさ。
+ * VideoCard は箱型。サムネイルはカードの端まで、右下に「720P 59:11」の文字
+ * （ホバーで消える）、下に題名と日付・大きさ。
  */
 function VideoCard(props: VideoCardProps) {
   const {

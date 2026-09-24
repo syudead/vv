@@ -182,14 +182,22 @@ func filteredFrom(spec listSpec, withLocation bool) string {
 
 // countVideos は範囲・検索式・絞り込みをすべて適用した総件数を返す（要件 13）。
 // カーソルには関係しない。
-func (s *LibraryStore) countVideos(ctx context.Context, spec listSpec) (int, error) {
+type queryRower interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func countVideosWith(ctx context.Context, db queryRower, spec listSpec) (int, error) {
 	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
 	var total int
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
-	if err := s.db.sql.QueryRowContext(ctx, cte+` select count(*)`+filteredFrom(spec, false), args...).Scan(&total); err != nil {
+	if err := db.QueryRowContext(ctx, cte+` select count(*)`+filteredFrom(spec, false), args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("件数を数えられません: %w", err)
 	}
 	return total, nil
+}
+
+func (s *LibraryStore) countVideos(ctx context.Context, spec listSpec) (int, error) {
+	return countVideosWith(ctx, s.db.sql, spec)
 }
 
 // listVideoPage は条件に合う動画1ページと総件数を返す。
@@ -211,7 +219,15 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 		}
 	}
 
-	total, err := s.countVideos(ctx, spec)
+	// count とページの行は同じ読み取りスナップショットから返す。別々の接続で
+	// 読むと、その間の取り込みによって total と Items が矛盾する。
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	total, err := countVideosWith(ctx, tx, spec)
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
@@ -232,7 +248,7 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 	// 次のページがあるかを知るために1件多く取る。件数を数え直すより安い。
 	query += ` order by ` + order.orderBy() + ` limit ?`
 
-	rows, err := s.db.sql.QueryContext(ctx, query, append(args, limit+1)...)
+	rows, err := tx.QueryContext(ctx, query, append(args, limit+1)...)
 	if err != nil {
 		return domain.VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
 	}
@@ -252,6 +268,9 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 	if err := rows.Err(); err != nil {
 		return domain.VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧を閉じられません: %w", err)
+	}
 
 	if len(page.Items) > limit {
 		page.Items = page.Items[:limit]
@@ -260,6 +279,9 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 		if err != nil {
 			return domain.VideoPage{}, err
 		}
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
 	}
 	return page, nil
 }

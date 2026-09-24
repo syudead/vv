@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -31,6 +32,7 @@ func DatabasePath(dataDir string) string {
 // （roles.go）がこの接続と知らせの発行先を使って行う。
 type DB struct {
 	sql      *sql.DB
+	read     *sql.DB
 	path     string
 	folderMu sync.Mutex
 
@@ -166,12 +168,12 @@ func collectDeletedVideos(rows *sql.Rows, err error) ([]domain.DeletedVideo, err
 
 // dsn は接続時に適用する PRAGMA を含む DSN を組み立てる。
 // modernc.org/sqlite は _pragma クエリを接続ごとに適用する。
-func dsn(path string) string {
+func dsn(path string, txLock string) string {
 	q := url.Values{}
-	// 書き込みトランザクションは最初に予約する。既定の deferred では、読み取り後に
-	// worker の書き込みが割り込むと write への昇格が SQLITE_BUSY_SNAPSHOT になり、
-	// busy_timeout の待機対象にならない。
-	q.Set("_txlock", "immediate")
+	// 書き込み用には immediate、一覧のスナップショット用には deferred を渡す。
+	// 書き込みを deferred にすると、読み取り後に worker の書き込みが割り込んだ際の
+	// write への昇格が SQLITE_BUSY_SNAPSHOT になり、busy_timeout の待機対象にならない。
+	q.Set("_txlock", txLock)
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout))
 	q.Add("_pragma", "foreign_keys(on)")
@@ -183,14 +185,21 @@ func dsn(path string) string {
 func Open(dataDir string) (*DB, error) {
 	path := DatabasePath(dataDir)
 
-	handle, err := sql.Open("sqlite", dsn(path))
+	handle, err := sql.Open("sqlite", dsn(path, "immediate"))
 	if err != nil {
 		return nil, fmt.Errorf("データベースを開けません (%s): %w", path, err)
 	}
 
-	db := &DB{sql: handle, path: path}
+	read, err := sql.Open("sqlite", dsn(path, "deferred"))
+	if err != nil {
+		_ = handle.Close()
+		return nil, fmt.Errorf("読み取り用データベースを開けません (%s): %w", path, err)
+	}
+
+	db := &DB{sql: handle, read: read, path: path}
 	if err := db.Ping(context.Background()); err != nil {
 		_ = handle.Close()
+		_ = read.Close()
 		return nil, err
 	}
 
@@ -208,10 +217,13 @@ func (db *DB) Ping(ctx context.Context) error {
 	if err := db.sql.PingContext(ctx); err != nil {
 		return fmt.Errorf("データベースへ疎通できません (%s): %w", db.path, err)
 	}
+	if err := db.read.PingContext(ctx); err != nil {
+		return fmt.Errorf("読み取り用データベースへ疎通できません (%s): %w", db.path, err)
+	}
 	return nil
 }
 
 // Close は接続を閉じる。
 func (db *DB) Close() error {
-	return db.sql.Close()
+	return errors.Join(db.read.Close(), db.sql.Close())
 }

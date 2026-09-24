@@ -1,12 +1,11 @@
 import type { FolderRef } from "../api/client";
 import type { VideosState } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
-import type { ListCriteria } from "../videoList/listCriteria";
-import { conditionLabels, summarize } from "../videoList/listSummary";
+import { resultCountText } from "../videoList/listSummary";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import VideoCard from "../videoList/VideoCard";
 import { folderLocationLabel } from "./folderPath";
-import { Grid, rangeLabel } from "./layout";
+import { Grid } from "./layout";
 
 /**
  * FolderSearchResults はフォルダ1件の中で検索語があるときの検索結果である
@@ -15,49 +14,37 @@ import { Grid, rangeLabel } from "./layout";
  */
 export default function FolderSearchResults({
   folder,
-  name,
-  criteria,
   videos,
   zoom,
   backTo,
-  onClearNoMatches,
 }: {
   folder: FolderRef;
-  /** 一致なしのチップに添えるフォルダ名。まだ分からなければ undefined。 */
-  name: string | undefined;
-  criteria: ListCriteria;
   videos: VideosState;
   zoom: Zoom;
   /** 再生画面から戻る先（今の一覧の URL）。 */
   backTo: string;
-  onClearNoMatches: () => void;
 }) {
   const noMatch = !videos.loading && videos.error === null && videos.items.length === 0;
+  const initialLoadError =
+    !videos.loading && videos.items.length === 0 ? videos.error : null;
   return (
     <>
       <h2 className="sr-only">検索結果</h2>
       {noMatch ? (
-        <NoMatches
-          conditions={[
-            ...conditionLabels(criteria),
-            rangeLabel("subtree", name ?? "フォルダ"),
-          ]}
-          note={undefined}
-          onClear={onClearNoMatches}
-        />
+        <NoMatches />
       ) : (
         <>
-          <p
-            role="status"
-            aria-live="polite"
-            className="text-center text-xs text-fg-muted tabular-nums"
-          >
-            {videos.loading
-              ? "読み込み中…"
-              : `「${criteria.query}」 ${summarize(videos.items, videos.total)}`}
-          </p>
-          {videos.error !== null && videos.items.length === 0 ? (
-            <LoadFailed reason={videos.error} onRetry={videos.reload} />
+          {initialLoadError === null && (
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-center text-xs text-fg-muted tabular-nums"
+            >
+              {videos.loading ? "読み込み中…" : resultCountText(videos.total)}
+            </p>
+          )}
+          {initialLoadError !== null ? (
+            <LoadFailed reason={initialLoadError} onRetry={videos.reload} />
           ) : (
             <Grid zoom={zoom}>
               {videos.loading ? (
