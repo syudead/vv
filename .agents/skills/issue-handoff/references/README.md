@@ -1,7 +1,9 @@
 # Issue handoff workflows
 
-This skill is the shared contract for one-stage-at-a-time SDD work. Claude,
-Codex, and other Agent Skills-compatible tools use the same files.
+This skill is the shared contract for explicitly requested, one-stage-at-a-time
+SDD feature work. Claude, Codex, and other Agent Skills-compatible tools use the
+same files. Other changes follow the repository's normal branch-to-`main`
+workflow.
 
 ## Directory ownership
 
@@ -107,6 +109,6 @@ stages through reviewed PRs.
 
 Humans merge every PR. After a stage PR merge, the maintainer updates the
 parent SDD summary. After an implementation PR merge, the maintainer closes
-that child Issue as completed. The integration PR is merged only after all
-children are resolved, latest `main` has been merged through a reviewed
-sub-branch, and the full checks pass.
+that child Issue as completed. Before merging the integration PR, merge the
+latest `main` directly into its feature branch and run the full checks. Updating
+the integration PR branch from its base does not get a separate PR.
