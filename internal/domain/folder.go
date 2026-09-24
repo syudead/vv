@@ -83,8 +83,10 @@ type FolderVideoQuery struct {
 	// PlayableOnly はブラウザで再生できると確定した動画だけにする。
 	PlayableOnly bool
 	Sort         VideoSort
-	Cursor       string
-	Limit        int
+	// Seed は VideoQuery.Seed と同じ。
+	Seed   int64
+	Cursor string
+	Limit  int
 }
 
 // ValidateFolderPath は登録フォルダからの相対パスを検査する。空文字は登録
