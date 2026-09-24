@@ -204,3 +204,78 @@ for (const width of [360, 640, 768]) {
     }
   });
 }
+
+for (const { width, height } of [
+  { width: 360, height: 800 },
+  { width: 640, height: 500 },
+  { width: 768, height: 800 },
+  { width: 1280, height: 800 },
+]) {
+  test(`toast stays clear of playback at ${String(width)}x${String(height)}`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height });
+    await page.route("**/api/media-folders", async (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+    );
+    await page.route("**/api/scans/current", async (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: 21,
+          state: "running",
+          total: 10,
+          completed: 4,
+          failed: 0,
+        }),
+      }),
+    );
+
+    await page.goto("/");
+    await page.getByRole("button", { name: "メニュー" }).click();
+    await page.getByRole("button", { name: "最近追加" }).click();
+    await page.getByRole("button", { name: "最近追加" }).click();
+    await page.getByRole("button", { name: "視聴途中" }).click();
+    if (width < 640) {
+      await page
+        .getByRole("button", { name: "メニューを閉じる" })
+        .evaluate((button: HTMLButtonElement) => button.click());
+    }
+    await expect(page.getByText("「最近追加」は準備中です")).toHaveCount(2);
+    await expect(page.getByText("「視聴途中」は準備中です")).toBeVisible();
+
+    await page.evaluate(() => {
+      window.history.pushState({}, "", "/videos/1");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await expect(page).toHaveURL(/\/videos\/1$/);
+    await expect(page.getByText("「最近追加」は準備中です")).toHaveCount(1);
+    await expect(page.getByText("「視聴途中」は準備中です")).toHaveCount(0);
+    const toast = page.getByText("「最近追加」は準備中です");
+    await expect(toast).toBeVisible();
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+
+    const indicator = page.getByRole("button", { name: /取り込み中 40%/ });
+    await indicator.hover();
+    const summary = page.getByRole("dialog");
+    await expect(summary).toBeVisible();
+    const [toastBox, summaryBox, indicatorBox] = await Promise.all([
+      toast.boundingBox(),
+      summary.boundingBox(),
+      indicator.boundingBox(),
+    ]);
+    expect(toastBox).not.toBeNull();
+    expect(summaryBox).not.toBeNull();
+    expect(indicatorBox).not.toBeNull();
+    expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(52);
+    for (const other of [summaryBox!, indicatorBox!]) {
+      const separate =
+        toastBox!.x + toastBox!.width <= other.x ||
+        other.x + other.width <= toastBox!.x ||
+        toastBox!.y + toastBox!.height <= other.y ||
+        other.y + other.height <= toastBox!.y;
+      expect(separate).toBe(true);
+    }
+  });
+}
