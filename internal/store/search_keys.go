@@ -15,7 +15,7 @@ import (
 // 版は行ごとに書くので、途中で止まっても次の起動で続きから埋まる。
 const searchKeyBatchSize = 500
 
-// queryExecer は *sql.DB と *sql.Tx の両方で鍵を読み書きするための共通部分である。
+// queryExecer は *sql.DB と *sql.Tx の両方で行を読み書きするための共通部分である。
 type queryExecer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -25,7 +25,7 @@ type queryExecer interface {
 //
 // 相対パスは、所在を含む登録メディアフォルダより下のパスで、拡張子を含む。
 // 登録フォルダ自身のパスは入れない。どの登録フォルダにも含まれない所在は
-// 空文字列を返す。登録フォルダは互いに入れ子にならない（ensureFolderMutationAllowed）
+// 空文字列を返す。登録フォルダは互いに入れ子にならない（ensureFolderPlacementAllowed）
 // ので、含むフォルダは高々1つである。
 func locationSearchKey(roots []string, path, title string) string {
 	for _, root := range roots {
@@ -75,20 +75,15 @@ func registeredRelativePath(root, path string) (string, bool) {
 
 // mediaFolderRoots は登録メディアフォルダのパスをすべて返す。
 func mediaFolderRoots(ctx context.Context, q queryExecer) ([]string, error) {
-	rows, err := q.QueryContext(ctx, `select path from media_folders order by id`)
+	folders, err := listMediaFolders(ctx, q)
 	if err != nil {
-		return nil, fmt.Errorf("メディアフォルダを読み出せません: %w", err)
+		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
-	var roots []string
-	for rows.Next() {
-		var root string
-		if err := rows.Scan(&root); err != nil {
-			return nil, fmt.Errorf("メディアフォルダを読み出せません: %w", err)
-		}
-		roots = append(roots, root)
+	roots := make([]string, 0, len(folders))
+	for _, folder := range folders {
+		roots = append(roots, folder.Path)
 	}
-	return roots, rows.Err()
+	return roots, nil
 }
 
 // searchKeyTarget は鍵を作り直す所在1件である。
@@ -175,10 +170,10 @@ func searchKeyTargets(ctx context.Context, q queryExecer, query string, args ...
 // 受け付けより前に呼ぶ。searchKeyBatchSize 件ずつのトランザクションで書き、
 // 版は行ごとに書くので、途中で失敗しても次の呼び出しで続きから埋まる。失敗を
 // 返したら、呼び出し側は起動を止める（古い鍵のまま検索を出さない）。
-func (db *DB) RefreshSearchKeys(ctx context.Context) (int, error) {
+func (s *LibraryStore) RefreshSearchKeys(ctx context.Context) (int, error) {
 	refreshed := 0
 	for {
-		count, err := db.refreshSearchKeyBatch(ctx)
+		count, err := s.refreshSearchKeyBatch(ctx)
 		if err != nil {
 			return refreshed, err
 		}
@@ -189,10 +184,10 @@ func (db *DB) RefreshSearchKeys(ctx context.Context) (int, error) {
 	}
 }
 
-func (db *DB) refreshSearchKeyBatch(ctx context.Context) (int, error) {
-	db.folderMu.Lock()
-	defer db.folderMu.Unlock()
-	tx, err := db.sql.BeginTx(ctx, nil)
+func (s *LibraryStore) refreshSearchKeyBatch(ctx context.Context) (int, error) {
+	s.db.folderMu.Lock()
+	defer s.db.folderMu.Unlock()
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}

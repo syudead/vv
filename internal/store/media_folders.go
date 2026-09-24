@@ -5,78 +5,27 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-var (
-	ErrScanRunning       = domain.ErrScanRunning
-	ErrFolderConflict    = domain.ErrFolderConflict
-	ErrVersionConflict   = domain.ErrVersionConflict
-	ErrInvalidFolder     = domain.ErrInvalidMediaFolder
-	ErrUnsupportedFolder = domain.ErrUnsupportedMediaFolder
-)
-
-// NormalizePath returns a clean absolute path while preserving the filesystem's
-// exact Unicode spelling. Rewriting that spelling can point at another entry on
-// filesystems where normalization forms are distinct.
-func NormalizePath(path string) (string, error) {
-	if path == "" || !filepath.IsAbs(path) {
-		return "", ErrInvalidFolder
-	}
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrInvalidFolder, err)
-	}
-	return filepath.Clean(absolute), nil
+// ListMediaFolders は登録済みのメディアフォルダを返す。走査と設定と閲覧が
+// 同じものを読むので、SQL は listMediaFolders の1か所に置く。
+func (s *SettingsStore) ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error) {
+	return listMediaFolders(ctx, s.db.sql)
 }
 
-// PathWithinRoot reports whether path is root itself or one of its descendants.
-// filepath.Rel supplies the platform's volume, separator and case rules.
-func PathWithinRoot(root, path string) bool {
-	return domain.PathWithinRoot(root, path)
+func (s *ScanIndexStore) ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error) {
+	return listMediaFolders(ctx, s.db.sql)
 }
 
-func validateMediaFolder(path string) (string, error) {
-	cleaned, err := NormalizePath(path)
-	if err != nil {
-		return "", err
-	}
-	info, err := os.Lstat(cleaned)
-	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrInvalidFolder, err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return "", ErrUnsupportedFolder
-		}
-		return "", ErrInvalidFolder
-	}
-	resolved, err := filepath.EvalSymlinks(cleaned)
-	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrInvalidFolder, err)
-	}
-	resolved, err = NormalizePath(resolved)
-	if err != nil || !domain.PathWithinRoot(cleaned, resolved) || !domain.PathWithinRoot(resolved, cleaned) {
-		return "", fmt.Errorf("%w: symbolic link", ErrUnsupportedFolder)
-	}
-	dir, err := os.Open(cleaned)
-	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrInvalidFolder, err)
-	}
-	defer func() { _ = dir.Close() }()
-	if _, err := dir.ReadDir(1); err != nil && !errors.Is(err, io.EOF) {
-		return "", fmt.Errorf("%w: %w", ErrInvalidFolder, err)
-	}
-	return cleaned, nil
+func (s *LibraryStore) ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error) {
+	return listMediaFolders(ctx, s.db.sql)
 }
 
-func (db *DB) ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error) {
-	rows, err := db.sql.QueryContext(ctx, `select id, path, version, created_at, updated_at from media_folders order by id`)
+func listMediaFolders(ctx context.Context, q queryExecer) ([]domain.MediaFolder, error) {
+	rows, err := q.QueryContext(ctx, `select id, path, version, created_at, updated_at from media_folders order by id`)
 	if err != nil {
 		return nil, fmt.Errorf("メディアフォルダを読み出せません: %w", err)
 	}
@@ -95,19 +44,19 @@ func (db *DB) ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error
 	return folders, rows.Err()
 }
 
-func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFolder, error) {
-	db.folderMu.Lock()
-	defer db.folderMu.Unlock()
-	cleaned, err := validateMediaFolder(path)
+func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain.MediaFolder, error) {
+	s.db.folderMu.Lock()
+	defer s.db.folderMu.Unlock()
+	cleaned, err := domain.NormalizeMediaFolderPath(path)
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
-	tx, err := db.sql.BeginTx(ctx, nil)
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := ensureFolderMutationAllowed(ctx, tx, 0, cleaned); err != nil {
+	if err := ensureFolderPlacementAllowed(ctx, tx, 0, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	now := time.Now().Unix()
@@ -123,23 +72,24 @@ func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFold
 	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return domain.MediaFolder{}, err
-	}
 	// 登録外の所在しか無かった待ちの仕事が、この登録で取り出せるようになる。
 	// 眠っているワーカーを起こさないと、次に仕事が積まれるまで止まったままになる。
-	db.notifyJobsChanged(domain.JobKinds...)
+	var c changes
+	c.jobsQueued(domain.JobKinds...)
+	if err := s.db.commit(tx, &c); err != nil {
+		return domain.MediaFolder{}, err
+	}
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: 1, CreatedAt: time.Unix(now, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
-func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64, path string) (domain.MediaFolder, error) {
-	db.folderMu.Lock()
-	defer db.folderMu.Unlock()
-	cleaned, err := validateMediaFolder(path)
+func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64, path string) (domain.MediaFolder, error) {
+	s.db.folderMu.Lock()
+	defer s.db.folderMu.Unlock()
+	cleaned, err := domain.NormalizeMediaFolderPath(path)
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
-	tx, err := db.sql.BeginTx(ctx, nil)
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -148,12 +98,12 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	var createdAt, previousUpdatedAt int64
 	var version int64
 	if err := tx.QueryRowContext(ctx, `select path, version, created_at, updated_at from media_folders where id = ?`, id).Scan(&oldPath, &version, &createdAt, &previousUpdatedAt); errors.Is(err, sql.ErrNoRows) {
-		return domain.MediaFolder{}, ErrNotFound
+		return domain.MediaFolder{}, domain.ErrNotFound
 	} else if err != nil {
 		return domain.MediaFolder{}, err
 	}
 	if version != expectedVersion {
-		return domain.MediaFolder{}, ErrVersionConflict
+		return domain.MediaFolder{}, domain.ErrVersionConflict
 	}
 	if cleaned == oldPath {
 		if err := tx.Commit(); err != nil {
@@ -161,7 +111,7 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 		}
 		return domain.MediaFolder{ID: id, Path: oldPath, Version: version, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(previousUpdatedAt, 0)}, nil
 	}
-	if err := ensureFolderMutationAllowed(ctx, tx, id, cleaned); err != nil {
+	if err := ensureFolderPlacementAllowed(ctx, tx, id, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	now := time.Now().Unix()
@@ -179,19 +129,20 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	var c changes
+	c.videosDeleted(released)
+	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
+	c.jobsQueued(domain.JobKinds...)
+	if err := s.db.commit(tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	db.notifyVideosDeleted(released)
-	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
-	db.notifyJobsChanged(domain.JobKinds...)
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: version + 1, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
-func (db *DB) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error {
-	db.folderMu.Lock()
-	defer db.folderMu.Unlock()
-	tx, err := db.sql.BeginTx(ctx, nil)
+func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error {
+	s.db.folderMu.Lock()
+	defer s.db.folderMu.Unlock()
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -199,14 +150,18 @@ func (db *DB) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) 
 	var path string
 	var version int64
 	if err := tx.QueryRowContext(ctx, `select path, version from media_folders where id = ?`, id).Scan(&path, &version); errors.Is(err, sql.ErrNoRows) {
-		return ErrNotFound
+		return domain.ErrNotFound
 	} else if err != nil {
 		return err
 	}
 	if version != expectedVersion {
-		return ErrVersionConflict
+		return domain.ErrVersionConflict
 	}
-	if err := ensureNoRunningScan(ctx, tx); err != nil {
+	running, err := scanRunning(ctx, tx)
+	if err != nil {
+		return err
+	}
+	if err := domain.CheckMediaFolderMutation(running); err != nil {
 		return err
 	}
 	released, err := removeLocationsUnder(ctx, tx, path)
@@ -216,46 +171,37 @@ func (db *DB) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) 
 	if _, err := tx.ExecContext(ctx, `delete from media_folders where id = ?`, id); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
+	var c changes
 	// 登録を外して消えた動画の生成物を片付けさせる。
-	db.notifyVideosDeleted(released)
+	c.videosDeleted(released)
 	// 動画の行が残っても、登録外になった所在の仕事は残りとして数えなくなる。
-	db.notifyJobsChanged()
-	return nil
+	c.processingChanged()
+	return s.db.commit(tx, &c)
 }
 
-func ensureFolderMutationAllowed(ctx context.Context, tx *sql.Tx, exceptID int64, path string) error {
-	if err := ensureNoRunningScan(ctx, tx); err != nil {
-		return err
-	}
-	rows, err := tx.QueryContext(ctx, `select path from media_folders where id <> ?`, exceptID)
+// ensureFolderPlacementAllowed は取引の中で走査の有無と登録済みのフォルダを
+// 読み、path へフォルダを置いてよいかを domain の規則で判断する。取引の外で
+// 同じ判断を済ませていても、ここで読み直す。その間に別の要求が走査を始めたり
+// フォルダを登録したりしうるためである。
+func ensureFolderPlacementAllowed(ctx context.Context, tx *sql.Tx, id int64, path string) error {
+	running, err := scanRunning(ctx, tx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var existing string
-		if err := rows.Scan(&existing); err != nil {
-			return err
-		}
-		if PathWithinRoot(existing, path) || PathWithinRoot(path, existing) {
-			return ErrFolderConflict
-		}
-	}
-	return rows.Err()
-}
-
-func ensureNoRunningScan(ctx context.Context, tx *sql.Tx) error {
-	var running int
-	if err := tx.QueryRowContext(ctx, `select count(*) from scans where state = 'running'`).Scan(&running); err != nil {
+	folders, err := listMediaFolders(ctx, tx)
+	if err != nil {
 		return err
 	}
-	if running != 0 {
-		return ErrScanRunning
+	return domain.CheckMediaFolderPlacement(running, folders, id, path)
+}
+
+// scanRunning は実行中の走査があるかを返す。
+func scanRunning(ctx context.Context, tx *sql.Tx) (bool, error) {
+	var running int
+	if err := tx.QueryRowContext(ctx, `select count(*) from scans where state = 'running'`).Scan(&running); err != nil {
+		return false, err
 	}
-	return nil
+	return running != 0, nil
 }
 
 // locationsUnder は root 配下の場所の id と、その場所を持つ動画の id を返す。
@@ -290,7 +236,7 @@ func locationsUnder(ctx context.Context, tx *sql.Tx, root string) (ids []int64, 
 
 // removeLocationsUnder は root 以下の所在を消し、所在が無くなった動画の行も消す。
 // 消した動画を返す。
-func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) ([]DeletedVideo, error) {
+func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) ([]domain.DeletedVideo, error) {
 	ids, affected, err := locationsUnder(ctx, tx, root)
 	if err != nil {
 		return nil, err

@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -24,24 +25,30 @@ type Pinger interface {
 	Ping(context.Context) error
 }
 
-// Library は一覧と詳細の問い合わせ先である。internal/store の *DB がこれを
-// 満たす。httpapi は保存の手段を知らないので、必要な操作だけを宣言する。
+// Library は一覧と詳細の問い合わせ先である。httpapi は保存の手段を知らないので、
+// 必要な操作だけを宣言する。
+//
+// 配信と既定アプリで開く操作は、動画の所在と登録フォルダを読んで MediaFiles へ
+// 渡す。開いてよい実体かは MediaFiles が確かめる。
 type Library interface {
 	ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error)
 	GetVideo(ctx context.Context, id int64) (domain.Video, error)
+	VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error)
+	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 }
 
-// Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）
-// なので、動画の行が消えても記録が残る。
+// Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、
+// 動画の行が消えても記録が残る。
 type Playback interface {
 	SaveProgress(ctx context.Context, contentKey string, progress domain.Progress) (domain.Progress, error)
 	ProgressByContentKeys(ctx context.Context, contentKeys []string) (map[string]domain.Progress, error)
 }
 
-// Scans は取り込みの開始と状態の取得である。
+// Scans は取り込みの開始と状態の取得である。internal/app の *Scans がこれを
+// 満たす。
 //
-// StartScan は実行中なら新しく始めず、実行中のものを返す。走査を
-// 実際に動かす組み立ては cmd/mdm が行う。
+// StartScan は実行中なら新しく始めず、実行中のものを返す。走査を実際に
+// 動かすのはアプリケーション層である。
 type Scans interface {
 	StartScan(ctx context.Context) (domain.Scan, error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
@@ -62,36 +69,46 @@ type Transcoder interface {
 	Start(context.Context, string, int64, bool, time.Time) (io.ReadCloser, func() error, func(), error)
 }
 
-// SeekThumbnailReader はbackground jobが生成したJPEGを読み出す。
-type SeekThumbnailReader interface {
-	Read(context.Context, string, int64) ([]byte, error)
+// ArtifactReader は生成物を配信のために読み出す。internal/artifacts の *Store が
+// これを満たす。置き場の並べ方と、生成途中・不完全なものを除く判断はそちらが
+// 持ち、無い・不完全・生成中のものには fs.ErrNotExist を包んだ誤りを返す。
+type ArtifactReader interface {
+	// ThumbnailFile はライブラリ用サムネイルを開く。閉じるのは呼び出し側である。
+	ThumbnailFile(contentKey string) (*os.File, error)
+	// PreviewFile はホバープレビューの MP4 を開く。閉じるのは呼び出し側である。
+	PreviewFile(contentKey string) (*os.File, error)
+	// SeekThumbnail は再生位置を含むシーク用プレビューの1枚を読む。
+	SeekThumbnail(contentKey string, positionMs int64) ([]byte, error)
 }
 
-// ThumbnailJobs はサムネイルのジョブの状態の問い合わせ先である。シーク用
-// プレビューには DB 上の状態が無いので、動画1件の応答を作るときにこれで導く。
-type ThumbnailJobs interface {
-	ThumbnailJobActive(ctx context.Context, videoID int64) (bool, error)
+// VideoCatalog は動画を応答に載せるときの判断と、関連動画の組み立てを行う
+// アプリケーション層である。internal/app の *Catalog がこれを満たす。
+// httpapi は要求の解釈と契約の形への変換だけを持ち、プレビューの作り直しの
+// 予約やシーク用プレビューの状態の導出は行わない。
+type VideoCatalog interface {
+	// PresentVideos は動画たちを応答に載せる形にする。順序は保つ。
+	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
+	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
+	RelatedVideos(ctx context.Context, video domain.Video) (domain.RelatedVideos, error)
+	// RetryProbe は読み取りに失敗した動画を読み取り直す。失敗していなければ
+	// domain.ErrProbeNotFailed を返す。
+	RetryProbe(ctx context.Context, video domain.Video) error
 }
 
-// RelatedLibrary は関連動画の問い合わせ先である。store は行を読むだけで、
-// 並べ方は internal/domain の OrderRelated が決める。
-type RelatedLibrary interface {
-	DirectVideoPaths(ctx context.Context, dir string) ([]domain.RelatedSibling, error)
-	VideosAddedNear(ctx context.Context, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error)
-	VideosByIDs(ctx context.Context, ids []int64) ([]domain.Video, error)
-}
-
-// Reprober は読み取りに失敗した動画を読み取り直す状態へ戻し、ジョブを積む。
-// 状態を戻すことと積むことは、保存層が1つの取引で行う。
-type Reprober interface {
-	RetryProbe(ctx context.Context, id int64, seekThumbnailMissing bool) error
-}
-
-// PreviewRepairer は、作り終えた記録があるのにファイルが無いプレビューの
-// 作り直しを積む。状態を戻すことと積むことは、保存層が1つの取引で行う。
-// 積んだら true を返す。すでに戻っていれば false。
-type PreviewRepairer interface {
-	RequeueMissingPreview(ctx context.Context, id int64, contentKey string) (bool, error)
+// MediaFiles は、メディアファイルとディレクトリへのアクセスを確かめる担当である。
+// internal/mediafs の FS がこれを満たす。開いてよいか（登録フォルダの内側にあり、
+// symlink を辿った先も内側にあり、通常ファイルであること）の判定はそちらが持ち、
+// httpapi は結果を応答へ移すだけである。
+type MediaFiles interface {
+	// OpenMediaFile は roots のどれかの内側にある通常ファイルだけを、symlink を
+	// 辿った先で開く。開けないときは domain.ErrMediaFileUnavailable を包む。
+	OpenMediaFile(roots []string, path string) (*os.File, os.FileInfo, error)
+	// ResolveMediaFile は OpenMediaFile と同じ規則で、辿った先のパスを返す。
+	ResolveMediaFile(roots []string, path string) (string, error)
+	// ListDirectories はディレクトリ選択に path の子ディレクトリを返す。
+	ListDirectories(path string) (domain.DirectoryListing, error)
+	// DirectoryRoots はディレクトリ選択の根を返す。
+	DirectoryRoots() domain.DirectoryListing
 }
 
 // FileOpener はサーバーの PC の既定アプリでファイルを開く。internal/opener の
@@ -118,24 +135,21 @@ type Options struct {
 	MediaFolders MediaFolders
 	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
 	Folders Folders
-	// ThumbnailsDir はサムネイルの置き場所。
-	ThumbnailsDir string
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
 	Transcoder Transcoder
-	// SeekThumbnails は生成済みの任意時刻JPEGを読む。nilなら経路は500を返す。
-	SeekThumbnails SeekThumbnailReader
-	// ThumbnailJobs はシーク用プレビューの状態を導くのに使う。nil ならジョブは
-	// 進行中でないものとして導く。
-	ThumbnailJobs ThumbnailJobs
-	// Related は関連動画の問い合わせ先。nilなら経路は500を返す。
-	Related RelatedLibrary
-	// Reprobe は読み取りのやり直し。nilなら経路は500を返す。
-	Reprobe Reprober
-	// PreviewRepair は消えたプレビューの作り直しを積む。nil なら積まず、
-	// プレビューの URL を省くだけにする。
-	PreviewRepair PreviewRepairer
+	// Artifacts は生成物（サムネイル・シーク用プレビュー・ホバープレビュー）の
+	// 読み出し。nil ならサムネイルとホバープレビューは 404、シーク用プレビューは
+	// 500 を返す。
+	Artifacts ArtifactReader
+	// Catalog は動画の応答に要る判断・関連動画・読み取りのやり直し。nil なら
+	// 関連動画と読み取りのやり直しの経路は 500 を返し、動画の応答にはプレビューの
+	// URL とシーク用プレビューの状態が載らない。
+	Catalog VideoCatalog
 	// Opener はファイルを既定アプリで開く。nil なら開けない環境として扱う。
 	Opener FileOpener
+	// Files はメディアファイルとディレクトリへのアクセス。nil なら配信とライブ変換は
+	// 404、既定アプリで開く操作は 409 file_missing、ディレクトリ選択は 500 を返す。
+	Files MediaFiles
 	// Processing は段階ごとの残りの問い合わせ先。nilなら経路は500を返す。
 	Processing Processing
 	// Events は画面へ送る変化の知らせ。nilなら経路は500を返す。
@@ -149,24 +163,21 @@ type Options struct {
 // server は生成された gen.ServerInterface を満たす。契約（api/openapi.yaml）に
 // 経路を足したらこの型がコンパイルエラーになるため、実装漏れに気付ける。
 type server struct {
-	build          domain.BuildInfo
-	pinger         Pinger
-	videos         Library
-	playback       Playback
-	scans          Scans
-	mediaFolders   MediaFolders
-	folders        Folders
-	thumbnailsDir  string
-	transcoder     Transcoder
-	seekThumbnails SeekThumbnailReader
-	thumbnailJobs  ThumbnailJobs
-	related        RelatedLibrary
-	reprobe        Reprober
-	previewRepair  PreviewRepairer
-	opener         FileOpener
-	processing     Processing
-	events         *Events
-	logger         *slog.Logger
+	build        domain.BuildInfo
+	pinger       Pinger
+	videos       Library
+	playback     Playback
+	scans        Scans
+	mediaFolders MediaFolders
+	folders      Folders
+	transcoder   Transcoder
+	artifacts    ArtifactReader
+	catalog      VideoCatalog
+	opener       FileOpener
+	files        MediaFiles
+	processing   Processing
+	events       *Events
+	logger       *slog.Logger
 }
 
 // NewRouter は経路を分配するハンドラを返す。
@@ -193,24 +204,21 @@ func NewRouter(opts Options) http.Handler {
 	mux.Handle("/", newSPAHandler(opts.Assets, logger))
 
 	srv := &server{
-		build:          opts.Build,
-		pinger:         opts.Pinger,
-		videos:         opts.Videos,
-		playback:       opts.Playback,
-		scans:          opts.Scans,
-		mediaFolders:   opts.MediaFolders,
-		folders:        opts.Folders,
-		thumbnailsDir:  opts.ThumbnailsDir,
-		transcoder:     opts.Transcoder,
-		seekThumbnails: opts.SeekThumbnails,
-		thumbnailJobs:  opts.ThumbnailJobs,
-		related:        opts.Related,
-		reprobe:        opts.Reprobe,
-		previewRepair:  opts.PreviewRepair,
-		opener:         opts.Opener,
-		processing:     opts.Processing,
-		events:         opts.Events,
-		logger:         logger,
+		build:        opts.Build,
+		pinger:       opts.Pinger,
+		videos:       opts.Videos,
+		playback:     opts.Playback,
+		scans:        opts.Scans,
+		mediaFolders: opts.MediaFolders,
+		folders:      opts.Folders,
+		transcoder:   opts.Transcoder,
+		artifacts:    opts.Artifacts,
+		catalog:      opts.Catalog,
+		opener:       opts.Opener,
+		files:        opts.Files,
+		processing:   opts.Processing,
+		events:       opts.Events,
+		logger:       logger,
 	}
 
 	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{

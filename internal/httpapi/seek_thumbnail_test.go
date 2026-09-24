@@ -1,39 +1,26 @@
 package httpapi
 
 import (
-	"context"
 	"errors"
+	"io/fs"
 	"net/http"
-	"os"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-type fakeSeekThumbnailReader struct {
-	image      []byte
-	err        error
-	contentKey string
-	positionMs int64
-}
-
-func (f *fakeSeekThumbnailReader) Read(_ context.Context, contentKey string, positionMs int64) ([]byte, error) {
-	f.contentKey, f.positionMs = contentKey, positionMs
-	return f.image, f.err
-}
-
-func seekThumbnailServer(t *testing.T, reader SeekThumbnailReader) (http.Handler, domain.Video) {
+func seekThumbnailServer(t *testing.T, reader ArtifactReader) (http.Handler, domain.Video) {
 	t.Helper()
 	mediaDir, video, _ := streamFixture(t, "a.mp4", 128)
 	return newTestServer(t, Options{
-		Videos:         &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
-		SeekThumbnails: reader,
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+		Artifacts: reader,
 	}), video
 }
 
 func TestSeekThumbnailReturnsJPEGAndImmutableCache(t *testing.T) {
-	reader := &fakeSeekThumbnailReader{image: []byte{0xff, 0xd8, 0xff, 0xd9}}
+	reader := &fakeArtifacts{image: []byte{0xff, 0xd8, 0xff, 0xd9}}
 	handler, video := seekThumbnailServer(t, reader)
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/seek-thumbnail?positionMs=4000&v=abcdef012345")
 
@@ -52,7 +39,7 @@ func TestSeekThumbnailReturnsJPEGAndImmutableCache(t *testing.T) {
 }
 
 func TestSeekThumbnailWithoutVersionIsNotCached(t *testing.T) {
-	handler, _ := seekThumbnailServer(t, &fakeSeekThumbnailReader{image: []byte("jpeg")})
+	handler, _ := seekThumbnailServer(t, &fakeArtifacts{image: []byte("jpeg")})
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/seek-thumbnail?positionMs=0")
 	if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != cacheNoStore {
 		t.Errorf("status=%d cache=%q", rec.Code, rec.Header().Get("Cache-Control"))
@@ -60,7 +47,7 @@ func TestSeekThumbnailWithoutVersionIsNotCached(t *testing.T) {
 }
 
 func TestSeekThumbnailRejectsInvalidPositionAndProbe(t *testing.T) {
-	reader := &fakeSeekThumbnailReader{image: []byte("jpeg")}
+	reader := &fakeArtifacts{image: []byte("jpeg")}
 	handler, video := seekThumbnailServer(t, reader)
 	for _, target := range []string{
 		"/api/videos/1/seek-thumbnail",
@@ -76,8 +63,8 @@ func TestSeekThumbnailRejectsInvalidPositionAndProbe(t *testing.T) {
 	video.ProbeState = domain.ProbeStatePending
 	mediaDir := t.TempDir()
 	handler = newTestServer(t, Options{
-		Videos:         &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{mediaDir}},
-		SeekThumbnails: reader,
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{mediaDir}},
+		Artifacts: reader,
 	})
 	if rec := do(t, handler, http.MethodGet, "/api/videos/1/seek-thumbnail?positionMs=0"); rec.Code != http.StatusConflict {
 		t.Errorf("probe pending: status=%d", rec.Code)
@@ -86,8 +73,8 @@ func TestSeekThumbnailRejectsInvalidPositionAndProbe(t *testing.T) {
 	video.ProbeState = domain.ProbeStateDone
 	video.VideoCodec = ""
 	handler = newTestServer(t, Options{
-		Videos:         &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{mediaDir}},
-		SeekThumbnails: reader,
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{mediaDir}},
+		Artifacts: reader,
 	})
 	if rec := do(t, handler, http.MethodGet, "/api/videos/1/seek-thumbnail?positionMs=0"); rec.Code != http.StatusConflict {
 		t.Errorf("video stream missing: status=%d", rec.Code)
@@ -97,12 +84,12 @@ func TestSeekThumbnailRejectsInvalidPositionAndProbe(t *testing.T) {
 func TestSeekThumbnailMapsFileAndExtractionFailures(t *testing.T) {
 	tests := []struct {
 		name   string
-		reader *fakeSeekThumbnailReader
+		reader *fakeArtifacts
 		want   int
 	}{
-		{"not generated", &fakeSeekThumbnailReader{err: os.ErrNotExist}, http.StatusConflict},
-		{"read failure", &fakeSeekThumbnailReader{err: errors.New("read failed")}, http.StatusInternalServerError},
-		{"empty image", &fakeSeekThumbnailReader{}, http.StatusInternalServerError},
+		{"not generated", &fakeArtifacts{err: fs.ErrNotExist}, http.StatusConflict},
+		{"read failure", &fakeArtifacts{err: errors.New("read failed")}, http.StatusInternalServerError},
+		{"empty image", &fakeArtifacts{}, http.StatusInternalServerError},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -120,7 +107,7 @@ func TestSeekThumbnailMapsFileAndExtractionFailures(t *testing.T) {
 }
 
 func TestSeekThumbnailForMissingVideo(t *testing.T) {
-	handler := newTestServer(t, Options{Videos: &fakeLibrary{}, SeekThumbnails: &fakeSeekThumbnailReader{}})
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{}, Artifacts: &fakeArtifacts{}})
 	rec := do(t, handler, http.MethodGet, "/api/videos/999/seek-thumbnail?positionMs=0")
 	if rec.Code != http.StatusNotFound || decode[gen.Error](t, rec).Code != codeNotFound {
 		t.Errorf("status=%d body=%s", rec.Code, rec.Body.String())

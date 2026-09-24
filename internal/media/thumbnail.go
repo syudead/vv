@@ -6,9 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -30,20 +28,13 @@ const thumbnailTimeout = 60 * time.Second
 // thumbnailCommand は実行する外部コマンドである。
 const thumbnailCommand = "ffmpeg"
 
-// thumbnailDirPerm はサムネイルの置き場所を作るときの許可属性である。
-const thumbnailDirPerm os.FileMode = 0o755
-
-// Thumbnail は動画から静止画を1枚取り出し、置き場所へ保存してそのパスを返す。
+// Thumbnail は動画から静止画を1枚取り出し、output へ書く。output の置き場所は
+// 呼び出し側（internal/artifacts の一時置き場）が用意する。
 //
 // 形式は JPEG にする。WebP の方が小さいが、libwebp を含む ffmpeg ビルドを
 // 前提にすると実行環境の差で失敗しうる。mjpeg エンコーダはどのビルドにも
 // 含まれる。幅 640px でおおむね 30〜60KB であり、一覧 60 件でも 2〜4MB に収まる。
-func Thumbnail(ctx context.Context, videoPath string, durationMs int64, thumbnailsDir, contentKey string) (string, error) {
-	output := ThumbnailPath(thumbnailsDir, contentKey)
-	if err := os.MkdirAll(filepath.Dir(output), thumbnailDirPerm); err != nil {
-		return "", fmt.Errorf("サムネイルの置き場所を作れません (%s): %w", filepath.Dir(output), err)
-	}
-
+func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output string) error {
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
 
@@ -53,14 +44,13 @@ func Thumbnail(ctx context.Context, videoPath string, durationMs int64, thumbnai
 		// 索引の壊れたファイル）。1枚も無いより先頭の1枚の方がよいので、
 		// 一度だけ先頭から取り直す。
 		if offset == 0 {
-			return "", err
+			return err
 		}
 		if retryErr := runThumbnail(ctx, videoPath, 0, output); retryErr != nil {
-			return "", err
+			return err
 		}
 	}
-
-	return output, nil
+	return nil
 }
 
 // runThumbnail は ffmpeg を1回実行し、画像が実際に書かれたことまで確かめる。
@@ -87,30 +77,6 @@ func runThumbnail(ctx context.Context, videoPath string, offsetSec float64, outp
 		return fmt.Errorf("サムネイルが生成されませんでした (%s、位置 %.3f 秒)", videoPath, offsetSec)
 	}
 	return nil
-}
-
-// ThumbnailPath は content_key から保存先を決める。
-//
-//	<thumbnailsDir>/<先頭2文字>/<content_key>.jpg
-//
-// content_key で名前を決めるので、ファイルの移動・改名では作り直さない。
-// 2文字のディレクトリに分けるのは、1ディレクトリに数万ファイルを
-// 置かないためである。
-func ThumbnailPath(thumbnailsDir, contentKey string) string {
-	safe := thumbnailFileName(contentKey)
-
-	prefix := safe
-	if len(prefix) > 2 {
-		prefix = prefix[:2]
-	}
-	return filepath.Join(thumbnailsDir, prefix, safe+".jpg")
-}
-
-// thumbnailFileName は content_key をファイル名に使える形にする。
-// content_key は "<16進>:<サイズ>" なので、区切りの ":" を置き換える。
-// ":" は Windows 共有や一部のファイルシステムで扱えず、置き場所ごと失敗する。
-func thumbnailFileName(contentKey string) string {
-	return strings.NewReplacer(":", "_", "/", "_", `\`, "_").Replace(contentKey)
 }
 
 // thumbnailOffset は抽出位置（秒）を返す。尺が不明・不正な場合は下限を使う。
@@ -149,45 +115,4 @@ func thumbnailArgs(videoPath string, offsetSec float64, output string) []string 
 		"-y",
 		output,
 	}
-}
-
-// RemoveContentArtifacts は内容の識別子1つに対応する生成物（代表サムネイル・
-// シーク用プレビュー・一覧用プレビュー）をすべて消す。無いものは無視する。
-// その内容を参照する動画が無くなったときに呼ぶ。
-func RemoveContentArtifacts(thumbnailsDir, contentKey string) error {
-	var errs []error
-	if err := os.Remove(ThumbnailPath(thumbnailsDir, contentKey)); err != nil && !errors.Is(err, os.ErrNotExist) {
-		errs = append(errs, fmt.Errorf("サムネイルを削除できません: %w", err))
-	}
-	if err := RemoveSeekThumbnails(thumbnailsDir, contentKey); err != nil {
-		errs = append(errs, err)
-	}
-	if err := RemovePreview(thumbnailsDir, contentKey); err != nil {
-		errs = append(errs, err)
-	}
-	return errors.Join(errs...)
-}
-
-// temporaryDirName は生成途中の成果物を置く場所の名前である。生成物の置き場の
-// 直下に1か所だけ作り、確定するときに同じファイルシステムの中で本来の場所へ
-// 移す。
-const temporaryDirName = ".tmp"
-
-// makeTemporaryDir は生成途中の成果物を置く一時ディレクトリを作る。
-func makeTemporaryDir(thumbnailsDir, pattern string) (string, error) {
-	root := filepath.Join(thumbnailsDir, temporaryDirName)
-	if err := os.MkdirAll(root, thumbnailDirPerm); err != nil {
-		return "", err
-	}
-	return os.MkdirTemp(root, pattern)
-}
-
-// RemoveTemporary は生成途中の成果物の置き場を丸ごと消す。起動時、ワーカーを
-// 動かす前に呼ぶ。生成の途中でプロセスが止まると後片付けが走らず、ここに残る。
-// 一時領域を1か所にまとめてあるので、生成物の置き場全体を読まずに済む。
-func RemoveTemporary(thumbnailsDir string) error {
-	if err := os.RemoveAll(filepath.Join(thumbnailsDir, temporaryDirName)); err != nil {
-		return fmt.Errorf("生成途中の一時領域を削除できません: %w", err)
-	}
-	return nil
 }

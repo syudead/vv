@@ -22,8 +22,7 @@ const eventsKeepAlive = 30 * time.Second
 // eventsRetryMs は、切れたときにブラウザがつなぎ直すまでの待ち時間である。
 const eventsRetryMs = 3000
 
-// Processing は段階ごとの残りの問い合わせ先である。internal/store の *DB が
-// これを満たす。
+// Processing は段階ごとの残りの問い合わせ先である。
 type Processing interface {
 	Processing(ctx context.Context) (domain.Processing, error)
 }
@@ -127,6 +126,19 @@ func (e *Events) ProcessingChanged() {
 // VideoChanged は動画の状態が変わったことを知らせる。
 func (e *Events) VideoChanged(id int64) {
 	e.publish(func(s *eventSubscriber) { s.videos[id] = struct{}{} })
+}
+
+// Handle は状態の変化を、画面へ送る知らせに置き換える。cmd/mdm が
+// domain.Event の購読として登録する。知らせる対象ではない変化は無視する。
+func (e *Events) Handle(event domain.Event) {
+	switch event := event.(type) {
+	case domain.ScanChanged:
+		e.ScanChanged()
+	case domain.ProcessingChanged:
+		e.ProcessingChanged()
+	case domain.VideoIngestChanged:
+		e.VideoChanged(event.VideoID)
+	}
 }
 
 // Close はすべての接続を終わらせる。停止時に呼ぶ。流れ続ける応答が残ると、

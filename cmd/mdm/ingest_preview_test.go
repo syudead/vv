@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-func TestPreviewHandlerMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
+func TestIngestPreviewMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
 	db, err := store.Open(dataDir)
@@ -23,11 +22,11 @@ func TestPreviewHandlerMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	mediaDir := t.TempDir()
-	if _, err := db.AddMediaFolder(ctx, mediaDir); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(mediaDir, "movie.mp4")
-	video, err := db.UpsertVideo(ctx, domain.VideoFile{
+	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 		Path: path, Title: "movie", ContentKey: "zero-duration", SizeBytes: 1,
 		MTime: time.Unix(1, 0), Container: "mp4",
 	})
@@ -35,27 +34,27 @@ func TestPreviewHandlerMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+	if err := db.Ingest().ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, video.ID); err != nil {
+	if err := store.SetJobAttemptsForTest(ctx, db, domain.JobPreview, video.ID, domain.MaxJobAttempts-1); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, domain.JobPreview)
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
-	handleErr := previewHandler(db, newArtifacts(db, Config{DataDir: dataDir}.ThumbnailsDir(), slog.Default()))(ctx, job)
+	handleErr := newTestIngest(db, dataDir).Preview(ctx, job)
 	if handleErr == nil {
 		t.Fatal("zero-duration preview unexpectedly succeeded")
 	}
-	if err := db.FailClaimedJob(ctx, job, handleErr.Error()); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, job, handleErr.Error()); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.GetVideo(ctx, video.ID)
+	got, err := db.Library().GetVideo(ctx, video.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +63,7 @@ func TestPreviewHandlerMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 	}
 }
 
-func TestPreviewHandlerUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
+func TestIngestPreviewUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
 	db, err := store.Open(dataDir)
@@ -76,10 +75,10 @@ func TestPreviewHandlerUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	mediaDir := t.TempDir()
-	if _, err := db.AddMediaFolder(ctx, mediaDir); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.UpsertVideo(ctx, domain.VideoFile{
+	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 		Path: filepath.Join(mediaDir, "missing.mp4"), Title: "missing", ContentKey: "missing-source", SizeBytes: 1,
 		MTime: time.Unix(1, 0), Container: "mp4",
 	})
@@ -87,27 +86,27 @@ func TestPreviewHandlerUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := domain.Probe{DurationMs: 1_000, VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+	if err := db.Ingest().ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, video.ID); err != nil {
+	if err := store.SetJobAttemptsForTest(ctx, db, domain.JobPreview, video.ID, domain.MaxJobAttempts-1); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, domain.JobPreview)
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
-	handleErr := previewHandler(db, newArtifacts(db, Config{DataDir: dataDir}.ThumbnailsDir(), slog.Default()))(ctx, job)
+	handleErr := newTestIngest(db, dataDir).Preview(ctx, job)
 	if handleErr == nil {
 		t.Fatal("preview with missing source unexpectedly succeeded")
 	}
-	if err := db.FailClaimedJob(ctx, job, handleErr.Error()); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, job, handleErr.Error()); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.GetVideo(ctx, video.ID)
+	got, err := db.Library().GetVideo(ctx, video.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

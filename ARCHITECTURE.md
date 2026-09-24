@@ -47,22 +47,55 @@ not duplicate rows, and queues the heavy work. Only a user-started scan walks th
 media folders; nothing reads the whole library at startup or after a scan.
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail, preview —
 each claiming only its own kind of job from the persistent `jobs` queue, one at a time,
-and driving the `internal/media` adapters
+and handing it to `internal/app`, which drives the `internal/media` adapters
 (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, five-second seek-preview frames,
-and a content-keyed hover-preview clip per video). A worker sleeps while its queue is
-empty: `internal/store` reports every committed enqueue, and `cmd/mdm` wakes the worker
-for that stage, so no worker polls the queue. A thumbnail job is not claimed until its
-video's probe has finished, because the frame position depends on the duration; the probe
-worker wakes the thumbnail worker when it records a result. Interrupted scans are closed,
+and a content-keyed hover-preview clip per video) and publishes their output through
+`internal/artifacts`. A worker sleeps while its queue is
+empty: `internal/store` publishes `domain.JobsQueued` after every committed enqueue, and a
+subscription wakes the worker for that stage, so no worker polls the queue. A thumbnail job
+is not claimed until its video's probe has finished, because the frame position depends on
+the duration; `internal/app` publishes `domain.VideoIngestChanged` with the finished stage,
+and a subscription wakes the thumbnail worker as soon as a probe's result is recorded. Interrupted scans are closed,
 running jobs are requeued, and the single `.tmp` directory that holds in-progress
 generation output is removed at the next startup. When a video row is deleted (a scan finds its last
 location gone, its content changes, or its media folder is removed or replaced),
-`internal/store` reports the released content keys after commit, and `cmd/mdm` removes
-that content's thumbnail, seek frames and hover preview unless another video still
-references it; nothing else sweeps the thumbnails directory. A hover preview whose file
-is gone is repaired when it is found: the video API already checks the file before
-exposing `previewUrl`, and when a `done` preview is missing it sets the video back to
-`pending` and queues a preview job in one transaction, once per loss.
+`internal/store` publishes the released content keys (`domain.ContentUnreferenced`) after
+commit, and `internal/app`, subscribed to that event, removes that content's thumbnail, seek frames and hover preview unless another video still
+references it; nothing else sweeps the thumbnails directory. A hover preview that is gone
+or incomplete is repaired when it is found: `internal/app` already checks it before the
+video API exposes `previewUrl`, and when a `done` preview's MP4 is missing or does not match
+the size in its manifest it sets the video back to `pending` and queues a preview job in one
+transaction, once per loss.
+
+Generated files have one owner, `internal/artifacts`. Under `MDM_DATA_DIR/thumbnails`
+(the root comes from `cmd/mdm`'s configuration) it alone decides where each content key's
+files live — the library thumbnail at `<p>/<s>.jpg`, the seek frames under `seek/<p>/<s>/`,
+the hover preview and its size/SHA-256 manifest at `preview/<p>/<s>.mp4[.sha256]`, where
+`<s>` is the content key with `:`, `/` and `\` replaced by `_` and `<p>` its first two
+characters — and it alone creates, checks, opens and removes them. Generation writes into
+a directory under `.tmp` that `internal/artifacts` hands out and then renames into place,
+so a file still being generated is neither reported as present nor served. A content key
+that would point outside the root (empty, or starting with `.`) never becomes a path.
+`internal/media` only runs `ffmpeg` against the output path it is given; `internal/app`
+(deciding when to generate and when to remove, under its per-content lock) and
+`internal/httpapi` (serving the files) reach the store through interfaces they declare.
+Changing that layout would orphan every file an existing data directory already holds.
+
+State changes that trigger side effects are domain events (`internal/domain/event.go`):
+a video's ingest state changed, jobs were queued, the remaining work per stage changed, the
+scan changed, and content keys lost their last reference. Publishers — `internal/store`
+after a transaction commits (never from one that rolled back, and one notice per kind of
+change per transaction, plus one per deleted video) and `internal/app` for job outcomes and scans — call a `Publish`
+interface they declare themselves and know nothing about the subscribers. `internal/eventbus`
+delivers each event to every subscriber on that subscriber's own goroutine and queue, so a
+slow or panicking subscriber never stalls a commit, a worker or a scan. `cmd/mdm/events.go`
+is the one place that registers subscribers (the `/api/events` stream, the worker wake-ups,
+artifact removal); adding one touches only the subscriber and that file. At shutdown the
+stream subscription is dropped before the streams close and the wake-ups before the workers
+stop, and the bus is closed only after the workers and any running scan have stopped, so
+queued artifact removals still run. The scan gets its own 10 second grace, because a read from
+an unresponsive mount does not return on cancellation; past it, shutdown continues and the
+next startup closes the scan.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
 browser polling: `scan` when the current scan changes, `processing` with the remaining
@@ -76,6 +109,18 @@ children and direct videos from the current locations' paths on every request,
 addressing a folder by its registered root's id and a `/`-separated relative path.
 Streaming delegates ranges to `http.ServeContent` and only opens current locations that
 resolve inside a configured media folder.
+
+`internal/mediafs` is the one owner of the rule that keeps arbitrary files from being
+read: a location may be opened only when its cleaned path is inside a registered media
+folder, the path its symbolic links resolve to is inside the same folder, and the file is
+a regular file (not a directory or a device). It opens or hands out the resolved path, so
+what was checked is what gets opened. Streaming, live transcoding, opening in the default
+app, registering a media folder (`CheckMediaFolder`: a readable directory reached without
+symbolic links) and the server-side directory picker all use it through interfaces they
+declare. The containment checks themselves are pure functions in `internal/domain`
+(`PathInsideRoot`, `MediaFileInsideRoot`, `SamePath`), so they are tested without a
+filesystem; `internal/httpapi` only maps the result to a response, and a location that
+points outside is answered like a missing file.
 
 `internal/opener` launches the operating system's default app for a video's
 representative location (`explorer.exe`, `open` or `xdg-open`). It is kept apart from
@@ -96,6 +141,36 @@ cannot be reconstructed. That is why playback positions are keyed by the
 content identifier rather than by `videos.id`, and why that table carries no
 foreign key to `videos`.
 
+`store.DB` is only the foundation: it opens and closes the shared SQLite connection,
+runs migrations (`store.Migrate`), answers the health ping, registers the publisher
+for post-commit events, and hands out the role types. Every business operation is a
+method of the role type that owns it, so calling one through the wrong role does not
+compile:
+
+- `IngestStore` — the job queue (enqueue, claim, complete, fail, requeue, remaining
+  work) and writing each ingest stage's result back to the video row, including the
+  retry of a failed probe and the rebuild of a missing preview.
+- `LibraryStore` — reads of the index: the video list and search, folder browsing,
+  related videos, a video's locations, and the startup refresh of search keys.
+- `ScanStore` — the state of a scan run.
+- `ScanIndexStore` — reflecting a scan's filesystem facts into the index (upserting
+  locations, removing missing ones and the videos they orphan).
+- `SettingsStore` — registering, replacing and removing media folders.
+- `PlaybackStore` — playback positions. It holds only the SQL connection and does not
+  depend on the rebuildable index stores or their notifications.
+
+`store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
+Tests outside the package set up and inspect storage through the role types, and
+through the few test-only functions in `internal/store/storetest.go` (suffixed
+`ForTest`, never called by production code) when no role operation fits.
+
+A role type never calls another role type's public methods. Reads several roles
+need (media folders, one video, whether a content key is still referenced) have a
+single package-private implementation that each role exposes as its own operation.
+Operations that span roles in one transaction — removing a media folder with its
+locations, videos and jobs, or scheduling a preview rebuild — stay atomic and share
+package-private SQL helpers inside that transaction.
+
 Search matches a per-location `search_key` that Go builds from the title and the
 path below the registered media folder, folded with `domain.FoldForMatch`, and
 indexed by the trigram FTS5 table `location_search_fts`. SQL cannot express that
@@ -110,25 +185,61 @@ not persisted.
 
 ## Intended dependency direction
 
-`cmd -> internal/{httpapi,store,media,opener,scanner,jobs} -> internal/domain`, one way
-only. `internal/domain` holds the domain model and use cases and must not depend
-on `net/http`, `database/sql`, or `os/exec`. This constraint is enforced
-mechanically with golangci-lint's depguard in CI.
+`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} -> internal/domain`, one
+way only. The packages under `internal/` fall into three layers:
 
-The depguard rules live in [.golangci.yml](.golangci.yml) and also deny the
-SQLite driver and every other `internal/*` package from `internal/domain`. Each
-rule carries the reason in its message, so a violation explains itself from the
-`task lint` output alone.
+- `internal/domain` holds the domain model: value types and pure rules
+  (`EvaluatePlayability`, `OrderRelated`, search-key folding, …), including the
+  business rules the store enforces: how a claim counts attempts and whether a
+  failed job returns to `queued` or stops as `failed` (`ClaimAttempts`,
+  `JobStateAfterFailure`), which queued jobs may be claimed
+  (`ClaimConditionFor`: a registered location, and a finished probe for
+  thumbnails), and whether a media folder may be added, replaced or removed
+  (`CheckMediaFolderPlacement`, `CheckMediaFolderMutation`). `internal/store`
+  translates these into SQL and writes their results; it re-reads the inputs
+  inside its transaction, and the database constraints (one running scan, one
+  unfinished job per `(kind, video_id)`) remain the final guard against races.
+  It is the end of the chain and must not depend on `net/http`, `database/sql`, `os`, `os/exec`, the
+  SQLite driver, or any other `internal/*` package.
+- `internal/app` is the application layer and holds the use cases: starting,
+  running and closing a scan and recovering an interrupted one at startup
+  (`Scans`); processing one probe, thumbnail or preview job — checking the claimed
+  identity, calling the generator, applying the result, publishing the outcome, and
+  removing artifacts whose content lost its last reference (`Ingest`); and the decisions behind a video response — requeueing a missing hover
+  preview, deriving the seek-preview state — plus assembling related videos
+  (`Catalog`); and adding, replacing and removing media folders after the
+  filesystem adapter has checked the path (`MediaFolders`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
+  through interfaces it declares, so its unit tests run without SQLite, `ffmpeg` or
+  an HTTP server. It must not import `net/http`, `database/sql`, `os/exec`, the
+  SQLite driver, or any adapter package.
+- The adapters — `internal/httpapi`, `internal/store`, `internal/media`,
+  `internal/artifacts`, `internal/mediafs`, `internal/opener`, `internal/scanner` and `internal/jobs` —
+  talk to the outside world. `internal/eventbus` sits beside them and only delivers
+  `domain.Event` values in-process; only `cmd/mdm` imports it. Filesystem checks stay in the adapters: `internal/mediafs` checks
+  media folder paths, the files a request may open and the directories the picker lists, so `internal/store` never touches the filesystem
+  and `internal/httpapi` never decides by itself whether a file may be opened.
+  `internal/httpapi` only parses requests, calls the application layer, the store or
+  `internal/mediafs`, and converts to the generated `gen` types.
 
-The sibling packages under `internal/` do not import each other either, and
-that is not mechanically enforced — it is a convention the code keeps by
-declaring what it needs. `internal/scanner`, `internal/jobs` and
-`internal/httpapi` each define the interfaces they consume (an index to write
-to, a queue to claim from, a library to query), `internal/store` happens to
-satisfy them, and `cmd/mdm` is the only place that knows which concrete type
-goes where. The values crossing those boundaries (`domain.VideoFile`,
-`domain.Job`, `domain.VideoQuery`, …) live in `internal/domain`, which is why
-neither side needs the other.
+`cmd/mdm` is the composition root: it reads the configuration, creates the
+adapters and the application-layer values, wires them together, and starts and
+stops them. It holds no use case of its own.
+
+The sibling packages under `internal/` (the adapters and `internal/app`) do not
+import each other. Each declares the interfaces it consumes — `internal/app` a
+scan store, an ingest store, a generator, an artifact store and an event publisher; `internal/scanner`,
+`internal/jobs` and `internal/httpapi` an index to write to, a queue to claim
+from, a library and a video catalog to query, and generated files to serve — and `cmd/mdm` is the only place
+that knows which concrete type goes where. The values crossing those boundaries
+(`domain.VideoFile`, `domain.Job`, `domain.VideoQuery`, `domain.VideoView`, …)
+live in `internal/domain`, which is why neither side needs the other.
+
+All of this is enforced mechanically with golangci-lint's depguard in CI. The
+rules live in [.golangci.yml](.golangci.yml): one for `internal/domain`, one for
+`internal/app`, and one that forbids the sibling packages from importing each
+other (test files are exempt, because an external `package x_test` imports its
+own package). Each rule carries the reason in its message, so a violation
+explains itself from the `task lint` output alone.
 
 The API contract in `api/openapi.yaml` is the single source of truth for the
 boundary between the Go backend and the TypeScript frontend; both sides are
@@ -156,14 +267,18 @@ holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.
 The list's conditions (search terms, watch state, playable-only, sort and the shuffle
-`seed`) live in the URL; `web/src/library/listCriteria.ts` converts between the URL and
+`seed`) live in the URL; `web/src/videoList/listCriteria.ts` converts between the URL and
 the criteria `useVideos` sends, and the server applies every condition, so the page
 neither filters loaded pages nor reads ahead to find matches.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
 frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`, and
 `web/src/player/` own their respective product flows, while reusable primitives live in
-`web/src/ui/` and formatting helpers live in `web/src/lib/`. The library, folder and settings
+`web/src/ui/` and formatting helpers live in `web/src/lib/`. The video-list pieces the
+library and folder screens share (list criteria and their URL hook, the condition labels
+and count summary, the video card, the empty/loading/error states and the search, filter,
+sort and zoom controls) live in `web/src/videoList/`, which belongs to neither screen, so
+neither screen imports from the other. The library, folder and settings
 screens use the shell: `app/App.tsx` puts `AppShell` around the `/`, `/folders/*` and
 `/settings` routes, and the playback screen
 (`/videos/:id`) deliberately gets no shell at all, because it is a
@@ -177,7 +292,7 @@ React layers stacked in one container above the player, and keyboard shortcuts a
 handled page-wide rather than by video.js. The composition is recorded in
 [docs/design-docs/library-ui.md](docs/design-docs/library-ui.md).
 The shell exposes the library, the folder browser and media-folder settings as routes.
-The folder browser reuses the library's video card and paging (`useVideos` takes the
+The folder browser reuses the shared video card and the library's paging (`useVideos` takes the
 folder as its source) and reads its location from the URL itself: each path segment is
 encoded once when a link is built and decoded once from `location.pathname`, so names
 containing `%`, `#` or `?` round-trip. "Recently added"

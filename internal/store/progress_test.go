@@ -14,7 +14,7 @@ func TestSaveAndLoadProgressByContentKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	saved, err := db.SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000))
+	saved, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +25,7 @@ func TestSaveAndLoadProgressByContentKey(t *testing.T) {
 		t.Error("更新時刻が入っていない")
 	}
 
-	got, err := db.Progress(ctx, "key-a")
+	got, err := db.Playback().Progress(ctx, "key-a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,11 +34,37 @@ func TestSaveAndLoadProgressByContentKey(t *testing.T) {
 	}
 }
 
+func TestPlaybackStoreSavesAndLoadsWithoutVideoRows(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	playback := db.Playback()
+
+	saved, err := playback.SaveProgress(ctx, "detached-key", domain.EvaluateProgress(12_000, 120_000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := playback.Progress(ctx, "detached-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PositionMs != saved.PositionMs || got.DurationMs != saved.DurationMs {
+		t.Fatalf("progress = %+v, want %+v", got, saved)
+	}
+
+	var videos int
+	if err := db.sql.QueryRow(`select count(*) from videos`).Scan(&videos); err != nil {
+		t.Fatal(err)
+	}
+	if videos != 0 {
+		t.Fatalf("videos rows = %d, want 0", videos)
+	}
+}
+
 // 記録が無ければ「無い」と分かる誤りを返す。一覧では省略される。
 func TestProgressWhenNeverPlayed(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.Progress(context.Background(), "key-未再生"); err == nil {
+	if _, err := db.Playback().Progress(context.Background(), "key-未再生"); err == nil {
 		t.Error("記録が無いのに値が返った")
 	}
 }
@@ -50,12 +76,12 @@ func TestSaveProgressKeepsLastWrite(t *testing.T) {
 	ctx := context.Background()
 
 	for _, position := range []int64{1000, 5000, 3000} {
-		if _, err := db.SaveProgress(ctx, "key-a", domain.EvaluateProgress(position, 600_000)); err != nil {
+		if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(position, 600_000)); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	got, err := db.Progress(ctx, "key-a")
+	got, err := db.Playback().Progress(ctx, "key-a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +90,7 @@ func TestSaveProgressKeepsLastWrite(t *testing.T) {
 	}
 
 	var rows int
-	if err := db.SQL().QueryRow(`select count(*) from playback_progress`).Scan(&rows); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from playback_progress`).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
 	if rows != 1 {
@@ -78,19 +104,19 @@ func TestProgressSurvivesVideoDeletion(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	added, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000)); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000)); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := db.DeleteVideos(ctx, []int64{added.ID}); err != nil {
+	if err := db.ScanIndex().DeleteVideos(ctx, []int64{added.ID}); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := db.Progress(ctx, "key-a")
+	got, err := db.Playback().Progress(ctx, "key-a")
 	if err != nil {
 		t.Fatalf("動画を消したら再生位置も消えた: %v", err)
 	}
@@ -105,23 +131,23 @@ func TestProgressFollowsContentAcrossPaths(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/元.mp4", "元", "key-a", 1024, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/元.mp4", "元", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000)); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000)); err != nil {
 		t.Fatal(err)
 	}
 
 	// 消して、同じ内容を別の場所へ置き直す。
-	if err := db.DeleteVideos(ctx, []int64{1}); err != nil {
+	if err := db.ScanIndex().DeleteVideos(ctx, []int64{1}); err != nil {
 		t.Fatal(err)
 	}
-	moved, err := db.UpsertVideo(ctx, sampleFile("/media/2026/別名.mp4", "別名", "key-a", 1024, 0))
+	moved, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/2026/別名.mp4", "別名", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	byKey, err := db.ProgressByContentKeys(ctx, []string{"key-a"})
+	byKey, err := db.Playback().ProgressByContentKeys(ctx, []string{"key-a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,12 +167,12 @@ func TestProgressByContentKeys(t *testing.T) {
 	ctx := context.Background()
 
 	for _, key := range []string{"key-a", "key-b", "key-c"} {
-		if _, err := db.SaveProgress(ctx, key, domain.EvaluateProgress(1000, 600_000)); err != nil {
+		if _, err := db.Playback().SaveProgress(ctx, key, domain.EvaluateProgress(1000, 600_000)); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	got, err := db.ProgressByContentKeys(ctx, []string{"key-a", "key-c", "key-未再生"})
+	got, err := db.Playback().ProgressByContentKeys(ctx, []string{"key-a", "key-c", "key-未再生"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +184,7 @@ func TestProgressByContentKeys(t *testing.T) {
 	}
 
 	// 空の指定で全件を引かない。
-	empty, err := db.ProgressByContentKeys(ctx, nil)
+	empty, err := db.Playback().ProgressByContentKeys(ctx, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,11 +198,11 @@ func TestSaveProgressStoresCompletion(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	if _, err := db.SaveProgress(ctx, "key-a", domain.EvaluateProgress(7_990, 8_000)); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(7_990, 8_000)); err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := db.Progress(ctx, "key-a")
+	got, err := db.Playback().Progress(ctx, "key-a")
 	if err != nil {
 		t.Fatal(err)
 	}

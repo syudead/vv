@@ -1,7 +1,7 @@
 package httpapi
 
 import (
-	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -63,81 +63,47 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 	http.ServeContent(w, r, filepath.Base(path), info.ModTime(), file)
 }
 
-// openMediaFile は配信してよい実体だけを開く。
-//
-// DB の値をそのまま os.Open に渡す実装は、将来 DB へ書き込む経路が増えたときに
-// 任意ファイル読み出しになりうる。次の3つをすべて満たす行だけを開く。
-//
-//  1. filepath.Clean 後のパスが登録済みroot + 区切り文字で始まる
-//  2. filepath.EvalSymlinks 後のパスにも 1 が成り立つ
-//  3. 通常ファイルである（ディレクトリ・デバイスファイルを開かない）
+// openMediaFile は、動画の所在のうち開いてよい実体を開く。開いてよいかは
+// MediaFiles が判定し、ここは所在と登録フォルダを渡すだけである。返すパスは
+// 所在のパス（辿る前）で、Content-Type とファイル名に使う。
 func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, os.FileInfo, string, bool) {
-	type locationLibrary interface {
-		VideoLocations(context.Context, int64) ([]domain.VideoLocation, error)
-		ListMediaFolders(context.Context) ([]domain.MediaFolder, error)
-	}
-	library, ok := s.videos.(locationLibrary)
-	if !ok {
+	if s.files == nil {
 		return nil, nil, "", false
 	}
-	locations, err := library.VideoLocations(r.Context(), video.ID)
+	locations, err := s.videos.VideoLocations(r.Context(), video.ID)
 	if err != nil {
 		return nil, nil, "", false
 	}
-	folders, err := library.ListMediaFolders(r.Context())
+	roots, err := s.mediaFolderPaths(r)
 	if err != nil {
 		return nil, nil, "", false
 	}
 	for _, location := range locations {
-		for _, folder := range folders {
-			if file, info, ok := s.openLocation(video.ID, folder.Path, location.Path); ok {
-				return file, info, location.Path, true
-			}
+		file, info, err := s.files.OpenMediaFile(roots, location.Path)
+		if err == nil {
+			return file, info, location.Path, true
+		}
+		if errors.Is(err, domain.ErrMediaFileOutsideRoot) {
+			s.logger.Warn("リンク先が配信の対象外です",
+				slog.Int64("video", video.ID), slog.String("path", location.Path))
+		} else {
+			s.logger.Debug("実体を開けません", slog.Int64("video", video.ID), slog.Any("error", err))
 		}
 	}
 	return nil, nil, "", false
 }
 
-func (s *server) openLocation(videoID int64, root, path string) (*os.File, os.FileInfo, bool) {
-	cleaned := filepath.Clean(path)
-	if !isInside(root, cleaned) {
-		return nil, nil, false
-	}
-
-	// シンボリックリンクを辿った先にも同じ検証を掛ける。Clean だけでは
-	// 根の外にあるファイルへ辿り着けてしまう。
-	resolved, err := filepath.EvalSymlinks(cleaned)
+// mediaFolderPaths は登録フォルダのパスを返す。
+func (s *server) mediaFolderPaths(r *http.Request) ([]string, error) {
+	folders, err := s.videos.ListMediaFolders(r.Context())
 	if err != nil {
-		s.logger.Debug("実体を辿れません", slog.Int64("video", videoID), slog.Any("error", err))
-		return nil, nil, false
+		return nil, err
 	}
-	if !isInside(root, resolved) {
-		s.logger.Warn("リンク先が配信の対象外です",
-			slog.Int64("video", videoID), slog.String("path", path))
-		return nil, nil, false
+	roots := make([]string, 0, len(folders))
+	for _, folder := range folders {
+		roots = append(roots, folder.Path)
 	}
-
-	file, err := os.Open(resolved)
-	if err != nil {
-		s.logger.Debug("実体を開けません", slog.Int64("video", videoID), slog.Any("error", err))
-		return nil, nil, false
-	}
-
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		_ = file.Close()
-		return nil, nil, false
-	}
-	return file, info, true
-}
-
-// isInside は path が root の内側にあるかを返す。
-//
-// 区切り文字まで含めて比べるのは、"/media" と "/media-other" のように
-// 接頭辞が一致するだけの別ディレクトリを内側と誤判定しないためである。
-// root そのものは「内側のファイル」ではないので false になる。
-func isInside(root, path string) bool {
-	return root != path && domain.PathWithinRoot(root, path)
+	return roots, nil
 }
 
 // streamContentType は拡張子から Content-Type を決める。

@@ -11,31 +11,24 @@ import (
 )
 
 // thumbnailFixture は生成済みのサムネイルを1枚置いた状態を返す。
-func thumbnailFixture(t *testing.T) (string, domain.Video) {
+func thumbnailFixture(t *testing.T) (*fakeArtifacts, domain.Video) {
 	t.Helper()
 
-	dir := t.TempDir()
 	video := sampleVideo(1, "海辺の散歩")
-
-	// internal/media の ThumbnailPath と同じ規則で置く。
-	name := "abcdef0123456789abcdef_1024"
-	path := filepath.Join(dir, name[:2], name+".jpg")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	path := filepath.Join(t.TempDir(), "thumbnail.jpg")
 	// JPEG の先頭バイト列。ServeContent が中身を読む。
 	if err := os.WriteFile(path, []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10}, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	return dir, video
+	return &fakeArtifacts{thumbnails: map[string]string{video.ContentKey: path}}, video
 }
 
 // 生成済みのサムネイルを image/jpeg で返す。
 func TestGetThumbnail(t *testing.T) {
-	dir, video := thumbnailFixture(t)
+	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
-		Videos:        &fakeLibrary{videos: map[int64]domain.Video{1: video}},
-		ThumbnailsDir: dir,
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
 	})
 
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345")
@@ -50,10 +43,10 @@ func TestGetThumbnail(t *testing.T) {
 // v 付きの要求には長期キャッシュを付ける。内容が変われば content_key が
 // 変わり URL も変わるので、古い画像が残らない。
 func TestThumbnailCacheControlWithVersion(t *testing.T) {
-	dir, video := thumbnailFixture(t)
+	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
-		Videos:        &fakeLibrary{videos: map[int64]domain.Video{1: video}},
-		ThumbnailsDir: dir,
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
 	})
 
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345")
@@ -65,10 +58,10 @@ func TestThumbnailCacheControlWithVersion(t *testing.T) {
 // 版付きサムネイルは1年の immutable で配信するが、失敗応答にそれが残ると
 // 壊れた結果が1年キャッシュされる。416 では no-store に戻ることを固定する。
 func TestThumbnailUnsatisfiableRangeIsNotCached(t *testing.T) {
-	dir, video := thumbnailFixture(t)
+	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
-		Videos:        &fakeLibrary{videos: map[int64]domain.Video{1: video}},
-		ThumbnailsDir: dir,
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
 	})
 
 	rec := rangeRequest(t, handler, "/api/videos/1/thumbnail?v=abcdef012345", "bytes=99999999999-")
@@ -83,10 +76,10 @@ func TestThumbnailUnsatisfiableRangeIsNotCached(t *testing.T) {
 // v の無い要求には長期キャッシュを付けない。版が分からないものを1年
 // 抱えさせると、差し替えても古い画像が残る。
 func TestThumbnailCacheControlWithoutVersion(t *testing.T) {
-	dir, video := thumbnailFixture(t)
+	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
-		Videos:        &fakeLibrary{videos: map[int64]domain.Video{1: video}},
-		ThumbnailsDir: dir,
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
 	})
 
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail")
@@ -104,8 +97,8 @@ func TestThumbnailNotGenerated(t *testing.T) {
 	pending.ThumbnailState = domain.ThumbnailStatePending
 
 	handler := newTestServer(t, Options{
-		Videos:        &fakeLibrary{videos: map[int64]domain.Video{2: pending}},
-		ThumbnailsDir: t.TempDir(),
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{2: pending}},
+		Artifacts: &fakeArtifacts{},
 	})
 
 	rec := do(t, handler, http.MethodGet, "/api/videos/2/thumbnail?v=abcdef012345")
@@ -117,7 +110,7 @@ func TestThumbnailNotGenerated(t *testing.T) {
 // 動画そのものが無ければ 404。
 func TestThumbnailForMissingVideo(t *testing.T) {
 	handler := newTestServer(t, Options{
-		Videos: &fakeLibrary{}, ThumbnailsDir: t.TempDir(),
+		Videos: &fakeLibrary{}, Artifacts: &fakeArtifacts{},
 	})
 
 	rec := do(t, handler, http.MethodGet, "/api/videos/999/thumbnail")
@@ -133,8 +126,8 @@ func TestThumbnailForMissingVideo(t *testing.T) {
 // 未生成と同じ扱いにして枠を描かせる方が利用者の損失が小さい。
 func TestThumbnailMissingFileOnDisk(t *testing.T) {
 	handler := newTestServer(t, Options{
-		Videos:        &fakeLibrary{videos: map[int64]domain.Video{1: sampleVideo(1, "a")}},
-		ThumbnailsDir: t.TempDir(),
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: sampleVideo(1, "a")}},
+		Artifacts: &fakeArtifacts{},
 	})
 
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345")

@@ -60,6 +60,10 @@ what this stage adds.
   something the product already does, say so in 要件.
 - **Revising is the same stage.** When the requirement changes, edit this Issue
   rather than recording the change somewhere downstream.
+- **Labels are the requester's call.** Create the Issue with no labels, and
+  add only the ones the requester names. Do not copy labels from other Issues.
+  `ui` decides whether the `design` stage runs, so when the Issue changes the UI
+  and the requester has not said, ask instead of setting it.
 
 ## Preflight
 

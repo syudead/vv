@@ -22,24 +22,24 @@ func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsy)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := provider.UpTo(context.Background(), 2); err != nil {
 		t.Fatal(err)
 	}
-	res, err := db.SQL().Exec(`insert into videos(path, title, size_bytes, mtime, content_key, added_at, updated_at)
+	res, err := db.sql.Exec(`insert into videos(path, title, size_bytes, mtime, content_key, added_at, updated_at)
 		values ('/media/a.mp4', 'a', 10, 20, 'key-a', 30, 40)`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	videoID, _ := res.LastInsertId()
-	if _, err := db.SQL().Exec(`insert into jobs(kind, video_id, state, created_at, updated_at)
+	if _, err := db.sql.Exec(`insert into jobs(kind, video_id, state, created_at, updated_at)
 		values ('probe', ?, 'queued', 1, 1)`, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`insert into playback_progress(content_key, position_ms, completed, updated_at)
+	if _, err := db.sql.Exec(`insert into playback_progress(content_key, position_ms, completed, updated_at)
 		values ('key-a', 99, 0, 1)`); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
 	}
 	var migratedID, locationGeneration int64
 	var migratedPath, migratedKey string
-	if err := db.SQL().QueryRow(`select v.id, l.path, v.content_key, v.location_generation from videos v join video_locations l on l.video_id = v.id where v.id = ?`, videoID).
+	if err := db.sql.QueryRow(`select v.id, l.path, v.content_key, v.location_generation from videos v join video_locations l on l.video_id = v.id where v.id = ?`, videoID).
 		Scan(&migratedID, &migratedPath, &migratedKey, &locationGeneration); err != nil {
 		t.Fatal(err)
 	}
@@ -56,10 +56,10 @@ func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
 		t.Fatalf("migrated video = %d %q %q generation=%d", migratedID, migratedPath, migratedKey, locationGeneration)
 	}
 	var jobs, progress int
-	if err := db.SQL().QueryRow(`select count(*) from jobs where video_id = ?`, videoID).Scan(&jobs); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from jobs where video_id = ?`, videoID).Scan(&jobs); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SQL().QueryRow(`select count(*) from playback_progress where content_key = 'key-a'`).Scan(&progress); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from playback_progress where content_key = 'key-a'`).Scan(&progress); err != nil {
 		t.Fatal(err)
 	}
 	if jobs != 2 || progress != 1 {
@@ -77,7 +77,7 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsy)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 	if _, ok := tableColumns(t, db, "videos")["location_generation"]; ok {
 		t.Fatal("version 3 unexpectedly contains location_generation")
 	}
-	res, err := db.SQL().Exec(`insert into videos(content_key) values ('existing')`)
+	res, err := db.sql.Exec(`insert into videos(content_key) values ('existing')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 		t.Fatalf("migration result = %+v, want four migrations to version 7", result)
 	}
 	var generation int64
-	if err := db.SQL().QueryRow(`select location_generation from videos where id = ?`, videoID).Scan(&generation); err != nil {
+	if err := db.sql.QueryRow(`select location_generation from videos where id = ?`, videoID).Scan(&generation); err != nil {
 		t.Fatal(err)
 	}
 	if generation != 1 {
@@ -122,7 +122,7 @@ func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsy)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,7 +135,7 @@ func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
 		{key: "done", state: "done"},
 		{key: "pending", state: "pending"},
 	} {
-		res, err := db.SQL().Exec(`insert into videos(content_key, probe_state) values (?, ?)`, item.key, item.state)
+		res, err := db.sql.Exec(`insert into videos(content_key, probe_state) values (?, ?)`, item.key, item.state)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -143,7 +143,7 @@ func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.SQL().Exec(`insert into video_locations
+		if _, err := db.sql.Exec(`insert into video_locations
 			(video_id, path, title, size_bytes, mtime, created_at, updated_at)
 			values (?, ?, ?, 1, 1, 1, 1)`, id, "/media/"+item.key+".mp4", item.key); err != nil {
 			t.Fatal(err)
@@ -157,21 +157,21 @@ func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
 		t.Fatalf("migration result = %+v", result)
 	}
 	var jobs int
-	if err := db.SQL().QueryRow(`select count(*) from jobs j join videos v on v.id = j.video_id
+	if err := db.sql.QueryRow(`select count(*) from jobs j join videos v on v.id = j.video_id
 		where j.kind = 'preview' and j.state = 'queued' and v.content_key = 'done'`).Scan(&jobs); err != nil {
 		t.Fatal(err)
 	}
 	if jobs != 1 {
 		t.Fatalf("backfilled preview jobs = %d, want 1", jobs)
 	}
-	if err := db.SQL().QueryRow(`select count(*) from jobs j join videos v on v.id = j.video_id
+	if err := db.sql.QueryRow(`select count(*) from jobs j join videos v on v.id = j.video_id
 		where j.kind = 'preview' and v.content_key = 'pending'`).Scan(&jobs); err != nil {
 		t.Fatal(err)
 	}
 	if jobs != 0 {
 		t.Fatalf("pending probe preview jobs = %d, want 0", jobs)
 	}
-	if _, err := db.SQL().Exec(`update videos set preview_state = 'invalid' where content_key = 'done'`); err == nil {
+	if _, err := db.sql.Exec(`update videos set preview_state = 'invalid' where content_key = 'done'`); err == nil {
 		t.Fatal("preview_state accepted an invalid value")
 	}
 }
@@ -199,7 +199,7 @@ func TestMigrateAppliesSchemaOnEmptyDirectory(t *testing.T) {
 
 	for _, name := range []string{"videos", "location_search_fts", versionTableName} {
 		var count int
-		err := db.SQL().QueryRow(
+		err := db.sql.QueryRow(
 			`select count(*) from sqlite_master where name = ?`, name,
 		).Scan(&count)
 		if err != nil {
@@ -295,7 +295,7 @@ func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 
 	// アプリケーションが知らない将来の版が適用済みである状況を作る。
 	const futureVersion = 9999
-	_, err = db.SQL().Exec(
+	_, err = db.sql.Exec(
 		`insert into `+versionTableName+` (version_id, is_applied, tstamp) values (?, 1, current_timestamp)`,
 		futureVersion,
 	)
@@ -303,7 +303,7 @@ func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 将来の版が触るはずのない印を置き、書き換えられないことを確かめる。
-	if _, err := db.SQL().Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'sentinel', 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'sentinel', 1)`); err != nil {
 		t.Fatal(err)
 	}
 
@@ -319,7 +319,7 @@ func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 	}
 
 	var version int64
-	if err := db.SQL().QueryRow(
+	if err := db.sql.QueryRow(
 		`select max(version_id) from ` + versionTableName,
 	).Scan(&version); err != nil {
 		t.Fatal(err)
@@ -329,7 +329,7 @@ func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 	}
 
 	var rows int
-	if err := db.SQL().QueryRow(`select count(*) from videos`).Scan(&rows); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from videos`).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
 	if rows != 1 {
@@ -385,7 +385,7 @@ func TestMigrateAddsCoreColumnsToVideos(t *testing.T) {
 func TestPlaybackProgressHasNoForeignKeyToVideos(t *testing.T) {
 	db := migratedDB(t)
 
-	rows, err := db.SQL().Query(`select "table" from pragma_foreign_key_list('playback_progress')`)
+	rows, err := db.sql.Query(`select "table" from pragma_foreign_key_list('playback_progress')`)
 	if err != nil {
 		t.Fatalf("外部キーを読み出せない: %v", err)
 	}
@@ -409,22 +409,22 @@ func TestPlaybackProgressHasNoForeignKeyToVideos(t *testing.T) {
 func TestDeletingVideoKeepsPlaybackProgress(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.SQL().Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(
+	if _, err := db.sql.Exec(
 		`insert into playback_progress(content_key, position_ms, completed, updated_at)
 		 values ('key-a', 4000, 0, 1)`,
 	); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := db.SQL().Exec(`delete from videos where content_key = 'key-a'`); err != nil {
+	if _, err := db.sql.Exec(`delete from videos where content_key = 'key-a'`); err != nil {
 		t.Fatal(err)
 	}
 
 	var count int
-	if err := db.SQL().QueryRow(
+	if err := db.sql.QueryRow(
 		`select count(*) from playback_progress where content_key = 'key-a'`,
 	).Scan(&count); err != nil {
 		t.Fatal(err)
@@ -439,12 +439,12 @@ func TestDeletingVideoKeepsPlaybackProgress(t *testing.T) {
 func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.SQL().Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
 		t.Fatal(err)
 	}
 
 	insertJob := func(state string) error {
-		_, err := db.SQL().Exec(
+		_, err := db.sql.Exec(
 			`insert into jobs(kind, video_id, state, created_at, updated_at)
 			 select 'probe', id, ?, 1, 1 from videos where content_key = 'key-a'`, state)
 		return err
@@ -461,7 +461,7 @@ func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 	}
 
 	// 完了した行は制約の対象外。同じ対象を再解析できなければならない。
-	if _, err := db.SQL().Exec(`update jobs set state = 'done' where state = 'queued'`); err != nil {
+	if _, err := db.sql.Exec(`update jobs set state = 'done' where state = 'queued'`); err != nil {
 		t.Fatal(err)
 	}
 	if err := insertJob("queued"); err != nil {
@@ -473,21 +473,21 @@ func TestJobsPartialUniqueIndexRejectsSecondPendingJob(t *testing.T) {
 func TestDeletingVideoCascadesJobs(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.SQL().Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into videos(added_at, content_key, updated_at) values (1, 'key-a', 1)`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(
+	if _, err := db.sql.Exec(
 		`insert into jobs(kind, video_id, state, created_at, updated_at)
 		 select 'probe', id, 'queued', 1, 1 from videos where content_key = 'key-a'`,
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`delete from videos where content_key = 'key-a'`); err != nil {
+	if _, err := db.sql.Exec(`delete from videos where content_key = 'key-a'`); err != nil {
 		t.Fatal(err)
 	}
 
 	var count int
-	if err := db.SQL().QueryRow(`select count(*) from jobs`).Scan(&count); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from jobs`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
@@ -501,7 +501,7 @@ func TestScansAllowOnlyOneRunning(t *testing.T) {
 	db := migratedDB(t)
 
 	insertScan := func(state string) error {
-		_, err := db.SQL().Exec(
+		_, err := db.sql.Exec(
 			`insert into scans(state, started_at) values (?, 1)`, state)
 		return err
 	}
@@ -514,7 +514,7 @@ func TestScansAllowOnlyOneRunning(t *testing.T) {
 	}
 
 	// 終わったスキャンは何件あってもよい。履歴として残る。
-	if _, err := db.SQL().Exec(`update scans set state = 'done' where state = 'running'`); err != nil {
+	if _, err := db.sql.Exec(`update scans set state = 'done' where state = 'running'`); err != nil {
 		t.Fatal(err)
 	}
 	if err := insertScan("running"); err != nil {
@@ -529,7 +529,7 @@ func TestScansAllowOnlyOneRunning(t *testing.T) {
 func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 	db := migratedDB(t)
 
-	_, err := db.SQL().Exec(
+	_, err := db.sql.Exec(
 		`insert into playback_progress(content_key, position_ms, completed, updated_at)
 		 values ('key-a', -1, 0, 1)`)
 	if err == nil {
@@ -551,7 +551,7 @@ func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	// 002 が足した表は消えている。
 	for _, name := range []string{"playback_progress", "jobs", "scans"} {
 		var count int
-		if err := db.SQL().QueryRow(
+		if err := db.sql.QueryRow(
 			`select count(*) from sqlite_master where type = 'table' and name = ?`, name,
 		).Scan(&count); err != nil {
 			t.Fatal(err)
@@ -572,7 +572,7 @@ func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	// 001 の表と索引は残っている。
 	for _, name := range []string{"videos", "videos_fts"} {
 		var count int
-		if err := db.SQL().QueryRow(
+		if err := db.sql.QueryRow(
 			`select count(*) from sqlite_master where name = ?`, name,
 		).Scan(&count); err != nil {
 			t.Fatal(err)
@@ -586,10 +586,10 @@ func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a/movie.mp4", "movie", "shared", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a/movie.mp4", "movie", "shared", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b/movie.mp4", "movie", "shared", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b/movie.mp4", "movie", "shared", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -609,7 +609,7 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 		t.Fatal("multiple locations were silently collapsed by Down")
 	}
 	var locations int
-	if err := db.SQL().QueryRow(`select count(*) from video_locations`).Scan(&locations); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from video_locations`).Scan(&locations); err != nil {
 		t.Fatalf("failed Down did not preserve the new schema: %v", err)
 	}
 	if locations != 2 {
@@ -630,7 +630,7 @@ func migratedDB(t *testing.T) *DB {
 	if _, err := Migrate(context.Background(), db); err != nil {
 		t.Fatalf("マイグレーションに失敗した: %v", err)
 	}
-	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
 		t.Fatalf("テスト用メディアフォルダを登録できない: %v", err)
 	}
 
@@ -643,7 +643,7 @@ func migratedDB(t *testing.T) *DB {
 func tableColumns(t *testing.T, db *DB, table string) map[string]bool {
 	t.Helper()
 
-	rows, err := db.SQL().Query(`select name, "notnull" from pragma_table_info(?)`, table)
+	rows, err := db.sql.Query(`select name, "notnull" from pragma_table_info(?)`, table)
 	if err != nil {
 		t.Fatalf("%s の列を読み出せない: %v", table, err)
 	}

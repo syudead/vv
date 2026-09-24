@@ -28,9 +28,9 @@ type Queue interface {
 
 // Handler は1種類のジョブの処理である。
 //
-// 実体（ffprobe の実行と保存層への反映）は cmd/mdm が組み立てて渡す。
-// internal/jobs から internal/media・internal/store を参照しないのは、
-// 依存の向きを一方向に保つためである（ARCHITECTURE.md）。ここに置くのは
+// 実体（ffprobe の実行と保存層への反映）は internal/app が持ち、cmd/mdm が
+// 渡す。internal/jobs から internal/app・internal/media・internal/store を参照
+// しないのは、依存の向きを一方向に保つためである（ARCHITECTURE.md）。ここに置くのは
 // 「取り出して、成否を記録し、止まったら戻す」という進め方だけである。
 type Handler func(ctx context.Context, job domain.Job) error
 
@@ -53,8 +53,8 @@ type Options struct {
 // 自分の種類の仕事だけを1件ずつ処理する。並列度を上げないのは、初回スキャンで
 // HDD の I/O が飽和し、全体としてはかえって遅くなるためである。
 //
-// 待ち行列が空になったら、Wake が呼ばれるまで何もしない。仕事を積んだ側が
-// Wake を呼ぶので、一定間隔で待ち行列を問い合わせる必要が無い。
+// 待ち行列が空になったら、Wake が呼ばれるまで何もしない。仕事が積まれたことの
+// 購読（cmd/mdm）が Wake を呼ぶので、一定間隔で待ち行列を問い合わせる必要が無い。
 type Worker struct {
 	kind     domain.JobKind
 	queue    Queue

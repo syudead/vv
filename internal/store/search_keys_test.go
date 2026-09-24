@@ -12,13 +12,14 @@ import (
 	"testing"
 
 	"github.com/pressly/goose/v3"
+
 	"github.com/syudead/vv/internal/domain"
 )
 
 // locationKeys は path の所在の search_key・title_key・search_version を返す。
 func locationKeys(t *testing.T, db *DB, path string) (searchKey, titleKey string, version int) {
 	t.Helper()
-	if err := db.SQL().QueryRow(
+	if err := db.sql.QueryRow(
 		`select search_key, title_key, search_version from video_locations where path = ?`, path,
 	).Scan(&searchKey, &titleKey, &version); err != nil {
 		t.Fatalf("所在 %s の鍵を読めない: %v", path, err)
@@ -38,7 +39,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsy)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +47,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	if _, err := provider.UpTo(ctx, 6); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
 		t.Fatal(err)
 	}
 	// バッチの境目を跨ぐよう、searchKeyBatchSize より多く入れる。
@@ -61,7 +62,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 		})
 	}
 	for i, location := range locations {
-		res, err := db.SQL().Exec(`insert into videos(content_key, container) values (?, 'mp4')`, fmt.Sprintf("key-%d", i))
+		res, err := db.sql.Exec(`insert into videos(content_key, container) values (?, 'mp4')`, fmt.Sprintf("key-%d", i))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -69,7 +70,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.SQL().Exec(`insert into video_locations
+		if _, err := db.sql.Exec(`insert into video_locations
 			(video_id, path, title, size_bytes, mtime, created_at, updated_at)
 			values (?, ?, ?, 1, 1, 1, 1)`, videoID, location.path, location.title); err != nil {
 			t.Fatal(err)
@@ -83,7 +84,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 		t.Fatalf("移行直後の鍵 = %q (版 %d), want 空（版 0）", key, version)
 	}
 
-	refreshed, err := db.RefreshSearchKeys(ctx)
+	refreshed, err := db.Library().RefreshSearchKeys(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +92,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 		t.Errorf("作り直した件数 = %d, want %d", refreshed, len(locations))
 	}
 	var stale int
-	if err := db.SQL().QueryRow(`select count(*) from video_locations where search_version < ?`, domain.SearchKeyVersion).Scan(&stale); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from video_locations where search_version < ?`, domain.SearchKeyVersion).Scan(&stale); err != nil {
 		t.Fatal(err)
 	}
 	if stale != 0 {
@@ -115,20 +116,20 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	}
 
 	// 版は行ごとなので、2度目は何も作り直さない。途中で止まった分だけが残る。
-	if refreshed, err := db.RefreshSearchKeys(ctx); err != nil || refreshed != 0 {
+	if refreshed, err := db.Library().RefreshSearchKeys(ctx); err != nil || refreshed != 0 {
 		t.Errorf("2度目の埋め直し = %d (err=%v), want 0", refreshed, err)
 	}
-	if _, err := db.SQL().Exec(`update video_locations set search_version = 0 where path like '/media/bulk/%' and id % 2 = 0`); err != nil {
+	if _, err := db.sql.Exec(`update video_locations set search_version = 0 where path like '/media/bulk/%' and id % 2 = 0`); err != nil {
 		t.Fatal(err)
 	}
 	var staleRows int
-	if err := db.SQL().QueryRow(`select count(*) from video_locations where search_version < ?`, domain.SearchKeyVersion).Scan(&staleRows); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from video_locations where search_version < ?`, domain.SearchKeyVersion).Scan(&staleRows); err != nil {
 		t.Fatal(err)
 	}
 	if staleRows == 0 {
 		t.Fatal("版の古い所在を作れていない")
 	}
-	if refreshed, err := db.RefreshSearchKeys(ctx); err != nil || refreshed != staleRows {
+	if refreshed, err := db.Library().RefreshSearchKeys(ctx); err != nil || refreshed != staleRows {
 		t.Errorf("続きからの埋め直し = %d (err=%v), want %d", refreshed, err, staleRows)
 	}
 }
@@ -137,7 +138,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 func TestSearchKeyExcludesRegisteredFolderPath(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/旅行/movie.mp4", "movie", "key-1", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/旅行/movie.mp4", "movie", "key-1", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -165,10 +166,10 @@ func TestSearchKeyExcludesRegisteredFolderPath(t *testing.T) {
 func TestUpsertVideoRefreshesSearchKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "古い題名", "key-1", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "古い題名", "key-1", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "新しい題名", "key-1", 2, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "新しい題名", "key-1", 2, 0)); err != nil {
 		t.Fatal(err)
 	}
 	key, titleKey, _ := locationKeys(t, db, "/media/a.mp4")
@@ -197,12 +198,12 @@ func TestMediaFolderChangesRebuildSearchKeys(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	oldFolder, err := db.AddMediaFolder(ctx, oldRoot)
+	oldFolder, err := db.Settings().AddMediaFolder(ctx, oldRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	inOld := filepath.Join(oldRoot, "clip.mp4")
-	if _, err := db.UpsertVideo(ctx, sampleFile(inOld, "clip", "key-old", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(inOld, "clip", "key-old", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if key, _, _ := locationKeys(t, db, inOld); key != "clip\nclip.mp4" {
@@ -213,7 +214,7 @@ func TestMediaFolderChangesRebuildSearchKeys(t *testing.T) {
 	inAdded := filepath.Join(addedRoot, "season", "episode.mp4")
 	inWide := filepath.Join(wideRoot, "deep", "season", "finale.mp4")
 	for i, path := range []string{inAdded, inWide} {
-		if _, err := db.UpsertVideo(ctx, sampleFile(path, strings.TrimSuffix(filepath.Base(path), ".mp4"), fmt.Sprintf("key-%d", i), 1, 0)); err != nil {
+		if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(path, strings.TrimSuffix(filepath.Base(path), ".mp4"), fmt.Sprintf("key-%d", i), 1, 0)); err != nil {
 			t.Fatal(err)
 		}
 		if key, _, _ := locationKeys(t, db, path); key != "" {
@@ -222,7 +223,7 @@ func TestMediaFolderChangesRebuildSearchKeys(t *testing.T) {
 	}
 
 	// 追加: 新しい登録の下の所在が、登録からの相対パスで作り直される。
-	if _, err := db.AddMediaFolder(ctx, addedRoot); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, addedRoot); err != nil {
 		t.Fatal(err)
 	}
 	if key, _, _ := locationKeys(t, db, inAdded); key != "episode\nseason/episode.mp4" {
@@ -233,7 +234,7 @@ func TestMediaFolderChangesRebuildSearchKeys(t *testing.T) {
 	}
 
 	// 差し替え: 新しい登録の下の所在が、新しい登録からの相対パスで作り直される。
-	if _, err := db.ReplaceMediaFolder(ctx, oldFolder.ID, oldFolder.Version, wideRoot); err != nil {
+	if _, err := db.Settings().ReplaceMediaFolder(ctx, oldFolder.ID, oldFolder.Version, wideRoot); err != nil {
 		t.Fatal(err)
 	}
 	key, _, _ := locationKeys(t, db, inWide)
@@ -254,7 +255,7 @@ func TestSearchFoldsQueryAndKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	for i, title := range []string{"ＡＢＣ１２３", "たびにっき", "100% 満足", "100 点"} {
-		if _, err := db.UpsertVideo(ctx, sampleFile("/media/"+title+".mp4", title, fmt.Sprintf("key-%d", i), int64(i+1), 0)); err != nil {
+		if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/"+title+".mp4", title, fmt.Sprintf("key-%d", i), int64(i+1), 0)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -282,7 +283,7 @@ func TestSearchFoldsQueryAndKey(t *testing.T) {
 func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/夏休みの旅行.mp4", "夏休みの旅行", "key-1", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/夏休みの旅行.mp4", "夏休みの旅行", "key-1", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -295,7 +296,7 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 		"location_search_fts": 0, "location_search_fts_ai": 0, "location_search_fts_ad": 0, "location_search_fts_au": 0,
 	} {
 		var count int
-		if err := db.SQL().QueryRow(`select count(*) from sqlite_master where name = ?`, name).Scan(&count); err != nil {
+		if err := db.sql.QueryRow(`select count(*) from sqlite_master where name = ?`, name).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != want {
@@ -311,16 +312,16 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 
 	// rebuild で既存の所在が索引に戻り、トリガが以後の書き込みを写す。
 	var count int
-	if err := db.SQL().QueryRow(`select count(*) from videos_fts where videos_fts match '夏休み'`).Scan(&count); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from videos_fts where videos_fts match '夏休み'`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
 		t.Errorf("Down 後の MATCH '夏休み' = %d, want 1", count)
 	}
-	if _, err := db.SQL().Exec(`update video_locations set title = '花火大会'`); err != nil {
+	if _, err := db.sql.Exec(`update video_locations set title = '花火大会'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SQL().QueryRow(`select count(*) from videos_fts where videos_fts match '花火大'`).Scan(&count); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from videos_fts where videos_fts match '花火大'`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
@@ -331,7 +332,7 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 	if _, err := Migrate(ctx, db); err != nil {
 		t.Fatalf("Down の後の再適用に失敗した: %v", err)
 	}
-	if _, err := db.RefreshSearchKeys(ctx); err != nil {
+	if _, err := db.Library().RefreshSearchKeys(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if got := searchTitles(t, db, "花火大会"); len(got) != 1 {
@@ -349,7 +350,7 @@ func TestSearchKeyFollowsListRegistrationRule(t *testing.T) {
 	ctx := context.Background()
 	// 登録フォルダ /media の直後の `\` は区切りではないので、この所在は登録の外である。
 	outside := `/media\film.mp4`
-	if _, err := db.UpsertVideo(ctx, sampleFile(outside, "film", "key-outside", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(outside, "film", "key-outside", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if key, _, _ := locationKeys(t, db, outside); key != "" {
@@ -360,13 +361,13 @@ func TestSearchKeyFollowsListRegistrationRule(t *testing.T) {
 	}
 
 	// 名前が `\` で終わる登録フォルダでは、`\` を削らずにその下だけを登録とみなす。
-	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, `/elsewhere\`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, `/elsewhere\`); err != nil {
 		t.Fatal(err)
 	}
 	inside := `/elsewhere\/clip.mp4`
 	sibling := `/elsewhere\clip2.mp4`
 	for i, path := range []string{inside, sibling} {
-		if _, err := db.UpsertVideo(ctx, sampleFile(path, "clip"+strconv.Itoa(i), "key-x"+strconv.Itoa(i), 1, 0)); err != nil {
+		if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(path, "clip"+strconv.Itoa(i), "key-x"+strconv.Itoa(i), 1, 0)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -385,7 +386,7 @@ func TestSearchKeyFollowsListRegistrationRule(t *testing.T) {
 func TestSearchFindsTitleContainingNewline(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "abc\ndef", "key-newline", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "abc\ndef", "key-newline", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	for _, query := range []string{"abc\ndef", "abc def"} {
@@ -399,7 +400,7 @@ func TestSearchFindsTitleContainingNewline(t *testing.T) {
 func TestSearchDoesNotMatchAcrossTitleAndPath(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/def.mp4", "abc", "key-boundary", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/def.mp4", "abc", "key-boundary", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	// 3文字以上（MATCH）と1〜2文字（instr）の両方の経路を調べる。

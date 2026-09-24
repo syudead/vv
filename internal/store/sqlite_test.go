@@ -17,7 +17,7 @@ func TestWriteTransactionsWaitForTheCurrentWriter(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := db.UpsertVideo(context.Background(), sampleFile("/media/wait.mp4", "wait", "wait-key", 1, 0))
+		_, err := db.ScanIndex().UpsertVideo(context.Background(), sampleFile("/media/wait.mp4", "wait", "wait-key", 1, 0))
 		done <- err
 	}()
 

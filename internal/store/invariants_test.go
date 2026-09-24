@@ -38,7 +38,7 @@ func assertRepresentativeInvariant(t *testing.T, db *DB) {
 	// スキーマそのものはこの不変条件の対象ではない。問い合わせ自体の失敗は
 	// 表の不在と区別する。区別しないと、検査が黙って空振りする。
 	var present int
-	if err := db.SQL().QueryRow(
+	if err := db.sql.QueryRow(
 		`select count(*) from sqlite_master where type = 'table' and name = 'video_locations'`,
 	).Scan(&present); err != nil {
 		t.Fatalf("代表場所の不変条件を検査できない（スキーマを確認できない）: %v", err)
@@ -49,7 +49,7 @@ func assertRepresentativeInvariant(t *testing.T, db *DB) {
 
 	condition := registeredLocationCondition("l")
 	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
-	rows, err := db.SQL().Query(`
+	rows, err := db.sql.Query(`
 		select v.id, coalesce(v.container, ''), v.playable, coalesce(v.unplayable_reason, ''),
 		       v.probe_state, coalesce(v.video_codec, ''), coalesce(v.audio_codec, ''),
 		       (select l.path from video_locations l

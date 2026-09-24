@@ -15,10 +15,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/syudead/vv/internal/app"
+	"github.com/syudead/vv/internal/artifacts"
 	"github.com/syudead/vv/internal/domain"
+	"github.com/syudead/vv/internal/eventbus"
 	"github.com/syudead/vv/internal/httpapi"
+	"github.com/syudead/vv/internal/jobs"
 	"github.com/syudead/vv/internal/media"
+	"github.com/syudead/vv/internal/mediafs"
 	"github.com/syudead/vv/internal/opener"
+	"github.com/syudead/vv/internal/scanner"
 	"github.com/syudead/vv/internal/store"
 	"github.com/syudead/vv/web"
 )
@@ -29,6 +35,10 @@ var version = domain.DefaultVersion
 
 // shutdownGrace は停止指示を受けてから処理中の要求を待つ猶予である。
 const shutdownGrace = 10 * time.Second
+
+// scanStopGrace は停止時に走査の終わりを待つ上限である。走査は取り消しを見て
+// 止まるが、応答しない置き場（切れた NAS など）の読み取りは取り消しでは戻らない。
+const scanStopGrace = 10 * time.Second
 
 // readHeaderTimeout は要求ヘッダの読み取りに与える上限である。
 const readHeaderTimeout = 10 * time.Second
@@ -87,11 +97,12 @@ func run() error {
 		slog.Int("applied", migrated.Applied),
 		slog.Int64("version", migrated.Version),
 	)
+	libraryStore := db.Library()
 
 	// 照合用の鍵が古い規則のままの所在を、ジョブや HTTP を動かす前に作り直す。
 	// 失敗したら起動を止める（古い鍵のまま検索を出さない）。途中まで書いた分は
 	// 版が行ごとに残るので、次の起動で続きから埋まる。
-	refreshed, err := db.RefreshSearchKeys(context.Background())
+	refreshed, err := libraryStore.RefreshSearchKeys(context.Background())
 	if err != nil {
 		return fmt.Errorf("照合用の鍵を作り直せません: %w", err)
 	}
@@ -102,37 +113,67 @@ func run() error {
 	backgroundCtx, stopBackground := context.WithCancel(context.Background())
 	defer stopBackground()
 
-	// 画面へ送る変化の知らせ。走査とワーカーが知らせ、/api/events が配る。
+	// 状態の変化の配り先。保存層・取り込み・走査はここへ発行するだけで、
+	// 誰が受け取るかを知らない。受け取る側は subscribeEvents で登録する。
+	bus := eventbus.New(logger)
+	db.PublishTo(bus)
+	// 画面へ送る変化の知らせ。/api/events が配る。
 	events := httpapi.NewEvents()
 
-	lib := newLibrary(db, logger, events)
-	lib.bindContext(backgroundCtx)
+	ingestStore := db.Ingest()
+	scanStore := db.Scans()
+	scanIndexStore := db.ScanIndex()
+	settingsStore := db.Settings()
+	playbackStore := db.Playback()
+
+	scans := app.NewScans(app.ScansOptions{
+		Store: scanStore,
+		Jobs:  ingestStore,
+		NewScanner: func(reporter app.ScanReporter) app.Scanner {
+			return scanner.New(scanner.Options{
+				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
+			})
+		},
+		Context:   backgroundCtx,
+		Publisher: bus,
+		Logger:    logger,
+	})
 
 	// 前回の停止で running のまま残った走査を閉じ、処理中だった仕事を戻す。
-	if err := lib.recoverInterrupted(backgroundCtx); err != nil {
+	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
 		return err
 	}
 
-	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
-	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
+	// 生成物の置き場。パスの規則・公開・確認・読み出し・削除はここだけが持つ。
+	artifactStore := artifacts.New(cfg.ThumbnailsDir())
 	// 前回の停止で残った生成途中の成果物を消す。ワーカーを動かす前なので、
 	// 生成中のものを消すことはない。
-	if err := media.RemoveTemporary(cfg.ThumbnailsDir()); err != nil {
+	if err := artifactStore.RemoveTemporary(); err != nil {
 		logger.Warn("生成途中の成果物を削除できませんでした", slog.Any("error", err))
 	}
-	assets := newArtifacts(db, cfg.ThumbnailsDir(), logger)
-	workers := newWorkers(db, assets, logger, events)
-	db.OnJobsChanged(wakeWorkers(workers, events))
-	// 動画の行が消えたら、参照の無くなった内容の生成物だけを消し、開いている
-	// 画面へ消えたことを知らせる（取り直すと見つからないので、画面が外す）。
-	db.OnVideosDeleted(func(deleted []store.DeletedVideo) {
-		keys := make([]string, 0, len(deleted))
-		for _, video := range deleted {
-			keys = append(keys, video.ContentKey)
-			events.VideoChanged(video.ID)
-		}
-		assets.release(keys)
-		events.ProcessingChanged()
+	ingest := app.NewIngest(app.IngestOptions{
+		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Publisher: bus, Logger: logger,
+	})
+	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
+	// 段階のワーカーを起こす（subscribeEvents）。ワーカーは待ち行列を一定間隔で
+	// 問い合わせない。
+	workers := make([]*jobs.Worker, 0, len(domain.JobKinds))
+	wakers := make(map[domain.JobKind]waker, len(domain.JobKinds))
+	for _, kind := range domain.JobKinds {
+		worker := jobs.New(jobs.Options{
+			Kind:     kind,
+			Queue:    ingestStore,
+			Handler:  ingest.Handler(kind),
+			Finished: ingest.JobFinished,
+			Logger:   logger,
+		})
+		workers = append(workers, worker)
+		wakers[kind] = worker
+	}
+	subscriptions := subscribeEvents(bus, eventSubscribers{
+		Screen:           events.Handle,
+		Workers:          wakers,
+		ReleaseArtifacts: ingest.ReleaseArtifacts,
 	})
 	var workersDone sync.WaitGroup
 	for _, worker := range workers {
@@ -150,31 +191,41 @@ func run() error {
 	logger.Info("ファイルを開く機能の状態", slog.Bool("available", fileOpener.Available()),
 		slog.String("command", fileOpener.Command()))
 
+	// 動画の応答に要る判断（消えたプレビューの作り直し、シーク用プレビューの
+	// 状態）と関連動画の組み立ては、アプリケーション層が行う。
+	catalog := app.NewCatalog(app.CatalogOptions{
+		Index: libraryStore, Ingest: ingestStore, Files: artifactStore, Logger: logger,
+	})
+	// メディアフォルダとその内側のファイルへのアクセスの規則は mediafs が1か所で
+	// 持ち、配信・既定アプリで開く機能・フォルダの登録・ディレクトリ選択が共有する。
+	mediaFiles := mediafs.New()
+	// 設定画面のメディアフォルダは、パスをファイルシステムで確かめてから保存する。
+	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: settingsStore, Checker: mediaFiles})
+
 	handler := httpapi.NewRouter(httpapi.Options{
-		Build:          build,
-		Pinger:         db,
-		Videos:         db,
-		Playback:       db,
-		Scans:          lib,
-		MediaFolders:   db,
-		Folders:        db,
-		ThumbnailsDir:  cfg.ThumbnailsDir(),
-		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),
-		SeekThumbnails: media.NewSeekThumbnailCache(cfg.ThumbnailsDir()),
-		ThumbnailJobs:  db,
-		Related:        db,
-		Reprobe:        db,
-		PreviewRepair:  db,
-		Opener:         fileOpener,
-		Processing:     db,
-		Events:         events,
-		Assets:         web.Dist(),
-		Logger:         logger,
+		Build:        build,
+		Pinger:       db,
+		Videos:       libraryStore,
+		Playback:     playbackStore,
+		Scans:        scans,
+		MediaFolders: mediaFolders,
+		Folders:      libraryStore,
+		Transcoder:   media.NewLiveTranscoder(requestMediaCtx.Done()),
+		Artifacts:    artifactStore,
+		Catalog:      catalog,
+		Opener:       fileOpener,
+		Files:        mediaFiles,
+		Processing:   ingestStore,
+		Events:       events,
+		Assets:       web.Dist(),
+		Logger:       logger,
 	})
 
 	// 変化の知らせの接続は終わりが無いので、停止の猶予待ちより先に閉じる。
+	// 閉じた接続へ書かないよう、先に画面への知らせの購読をやめる。
 	beforeShutdown := func() {
 		stopRequestMedia()
+		subscriptions.StopScreen()
 		events.Close()
 	}
 	if err := serve(cfg, handler, logger, nil, beforeShutdown); err != nil {
@@ -182,15 +233,44 @@ func run() error {
 	}
 
 	// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
-	// ジョブは running のまま残るが、次の起動で queued へ戻る。
+	// ジョブは running のまま残るが、次の起動で queued へ戻る。止めたワーカーを
+	// 起こさないよう、先に起こす購読をやめる。
+	subscriptions.StopWorkers()
 	stopBackground()
 	workersDone.Wait()
-	// 背後で動いている生成物の削除を、データベースを閉じる前に終える。
-	// 途中で閉じると、消すはずの生成物が残り続ける。
-	assets.wait()
+	// 走査は取り消しを見て止まり、終わりの記録と、消した動画の知らせを出す。
+	// バスを閉じる前に待たないと、その知らせが捨てられて生成物が残り続ける。
+	// 読み取りが戻らないときは待ち切らずに進む。走査の記録は running のまま
+	// 残り、次の起動の RecoverInterrupted が閉じる。
+	if !waitAtMost(scans.Wait, scanStopGrace) {
+		logger.Warn("走査が猶予内に止まりませんでした。走査が消した動画の生成物は残ることがあります",
+			slog.String("grace", scanStopGrace.String()))
+	}
+	// 積んである変化（生成物の削除）を渡し終え、背後で動いている生成物の削除を、
+	// データベースを閉じる前に終える。途中で閉じると、消すはずの生成物が残り続ける。
+	bus.Close()
+	ingest.Wait()
 	logger.Info("取り込みとジョブを停止しました")
 
 	return nil
+}
+
+// waitAtMost は wait の終わりを limit まで待ち、終わったかを返す。終わらなければ
+// wait は背後に残る。
+func waitAtMost(wait func(), limit time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		wait()
+		close(done)
+	}()
+	timer := time.NewTimer(limit)
+	defer timer.Stop()
+	select {
+	case <-done:
+		return true
+	case <-timer.C:
+		return false
+	}
 }
 
 // serve は HTTP サーバーを起動し、停止指示を待つ。

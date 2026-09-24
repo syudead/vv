@@ -1,27 +1,15 @@
 package httpapi
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
-
-// fakeThumbnailJobs はサムネイルのジョブが進行中の動画を決め打ちで返す。
-type fakeThumbnailJobs struct {
-	active map[int64]bool
-	err    error
-}
-
-func (f *fakeThumbnailJobs) ThumbnailJobActive(_ context.Context, videoID int64) (bool, error) {
-	return f.active[videoID], f.err
-}
 
 // fakeOpener は開いたパスを記録する。
 type fakeOpener struct {
@@ -43,14 +31,6 @@ func serve(handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	return rec
 }
 
-// makeSeekThumbnailDir はシーク用プレビューの置き場を作る。
-func makeSeekThumbnailDir(t *testing.T, thumbnailsDir, contentKey string) {
-	t.Helper()
-	if err := os.MkdirAll(seekThumbnailDirPath(thumbnailsDir, contentKey), 0o755); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // 動画1件の応答は代表の所在の絶対パスを返す。一覧の項目には所在も
 // シーク用プレビューの状態も載らない。
 func TestGetVideoReturnsLocationOnlyForSingleVideo(t *testing.T) {
@@ -60,7 +40,7 @@ func TestGetVideoReturnsLocationOnlyForSingleVideo(t *testing.T) {
 		videos: map[int64]domain.Video{1: video},
 		page:   domain.VideoPage{Items: []domain.Video{video}, Total: 1},
 	}
-	handler := newTestServer(t, Options{Videos: library, ThumbnailsDir: t.TempDir()})
+	handler := newTestServer(t, Options{Videos: library, Catalog: &fakeCatalog{}})
 
 	got := decode[gen.Video](t, do(t, handler, http.MethodGet, "/api/videos/1"))
 	if got.Location == nil || got.Location.Path != "/media/旅行/海辺の散歩.mp4" {
@@ -76,33 +56,23 @@ func TestGetVideoReturnsLocationOnlyForSingleVideo(t *testing.T) {
 	}
 }
 
+// アプリケーション層が導いた状態を、そのまま契約の値へ写す。導き方は
+// internal/app の Catalog.SeekThumbnailState で検証する。
 func TestGetVideoSeekThumbnailState(t *testing.T) {
 	cases := []struct {
-		name      string
-		dir       bool
-		thumbnail domain.ThumbnailState
-		active    bool
-		want      gen.VideoSeekThumbnailState
+		state domain.SeekThumbnailState
+		want  gen.VideoSeekThumbnailState
 	}{
-		{name: "置き場あり", dir: true, thumbnail: domain.ThumbnailStateDone, want: gen.VideoSeekThumbnailStateDone},
-		{name: "サムネイル未作成", thumbnail: domain.ThumbnailStatePending, want: gen.VideoSeekThumbnailStatePending},
-		{name: "ジョブが queued・running", thumbnail: domain.ThumbnailStateDone, active: true, want: gen.VideoSeekThumbnailStatePending},
-		{name: "ジョブが failed", thumbnail: domain.ThumbnailStateFailed, want: gen.VideoSeekThumbnailStateFailed},
-		// 失敗したジョブの行が保持期間を過ぎて消えても pending と読まない。
-		{name: "ジョブの行が消えた", thumbnail: domain.ThumbnailStateDone, want: gen.VideoSeekThumbnailStateFailed},
+		{state: domain.SeekThumbnailDone, want: gen.VideoSeekThumbnailStateDone},
+		{state: domain.SeekThumbnailPending, want: gen.VideoSeekThumbnailStatePending},
+		{state: domain.SeekThumbnailFailed, want: gen.VideoSeekThumbnailStateFailed},
 	}
 	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			thumbnailsDir := t.TempDir()
+		t.Run(string(tc.state), func(t *testing.T) {
 			video := sampleVideo(1, "動画")
-			video.ThumbnailState = tc.thumbnail
-			if tc.dir {
-				makeSeekThumbnailDir(t, thumbnailsDir, video.ContentKey)
-			}
 			handler := newTestServer(t, Options{
-				Videos:        &fakeLibrary{videos: map[int64]domain.Video{1: video}},
-				ThumbnailJobs: &fakeThumbnailJobs{active: map[int64]bool{1: tc.active}},
-				ThumbnailsDir: thumbnailsDir,
+				Videos:  &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+				Catalog: &fakeCatalog{seekStates: map[int64]domain.SeekThumbnailState{1: tc.state}},
 			})
 
 			got := decode[gen.Video](t, do(t, handler, http.MethodGet, "/api/videos/1"))
@@ -122,9 +92,8 @@ func TestGetVideoOmitsSeekThumbnailStateWithoutSeekThumbnail(t *testing.T) {
 	audioOnly := sampleVideo(2, "音声のみ")
 	audioOnly.VideoCodec = ""
 	handler := newTestServer(t, Options{
-		Videos:        &fakeLibrary{videos: map[int64]domain.Video{1: pending, 2: audioOnly}},
-		ThumbnailJobs: &fakeThumbnailJobs{},
-		ThumbnailsDir: t.TempDir(),
+		Videos:  &fakeLibrary{videos: map[int64]domain.Video{1: pending, 2: audioOnly}},
+		Catalog: &fakeCatalog{},
 	})
 
 	for _, target := range []string{"/api/videos/1", "/api/videos/2"} {
@@ -141,9 +110,8 @@ func TestGetVideoOmitsSeekThumbnailStateWithoutSeekThumbnail(t *testing.T) {
 func TestGetVideoReportsThumbnailJobFailure(t *testing.T) {
 	video := sampleVideo(1, "動画")
 	handler := newTestServer(t, Options{
-		Videos:        &fakeLibrary{videos: map[int64]domain.Video{1: video}},
-		ThumbnailJobs: &fakeThumbnailJobs{err: errors.New("disk I/O error")},
-		ThumbnailsDir: t.TempDir(),
+		Videos:  &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Catalog: &fakeCatalog{seekErr: errors.New("disk I/O error")},
 	})
 	if rec := do(t, handler, http.MethodGet, "/api/videos/1"); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500", rec.Code)

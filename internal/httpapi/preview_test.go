@@ -1,24 +1,24 @@
 package httpapi
 
 import (
-	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
+// previewUrl は、状態が done で、アプリケーション層がファイルがあると答えた
+// ときだけ出す。
 func TestVideoResponsesExposePreviewStateAndOnlyServeableDoneURL(t *testing.T) {
-	dir := t.TempDir()
 	video := sampleVideo(1, "movie")
 	video.PreviewState = domain.PreviewStateDone
 	fake := &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, page: domain.VideoPage{Items: []domain.Video{video}}}
-	handler := newTestServer(t, Options{Videos: fake, ThumbnailsDir: dir})
+	catalog := &fakeCatalog{previews: map[string]bool{}}
+	handler := newTestServer(t, Options{Videos: fake, Catalog: catalog})
 
 	for _, target := range []string{"/api/videos", "/api/videos/1"} {
 		rec := do(t, handler, http.MethodGet, target)
@@ -30,31 +30,29 @@ func TestVideoResponsesExposePreviewStateAndOnlyServeableDoneURL(t *testing.T) {
 		}
 	}
 
-	path := previewFilePath(dir, video.ContentKey)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("preview-data"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	catalog.previews[video.ContentKey] = true
 	rec := do(t, handler, http.MethodGet, "/api/videos")
 	if !strings.Contains(rec.Body.String(), `"previewUrl":"/api/videos/1/preview?v=`+video.ContentKey+`"`) {
 		t.Fatalf("done preview URL missing: %s", rec.Body.String())
 	}
+
+	// 状態が done でなければ、ファイルがあっても URL は出さない。
+	video.PreviewState = domain.PreviewStatePending
+	fake.videos[video.ID] = video
+	if rec := do(t, handler, http.MethodGet, "/api/videos/1"); strings.Contains(rec.Body.String(), "previewUrl") {
+		t.Fatalf("pending preview exposed URL: %s", rec.Body.String())
+	}
 }
 
 func TestGetVideoPreviewServesRangesAndCachePolicies(t *testing.T) {
-	dir := t.TempDir()
 	video := sampleVideo(1, "movie")
 	video.PreviewState = domain.PreviewStateDone
-	path := previewFilePath(dir, video.ContentKey)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	path := filepath.Join(t.TempDir(), "preview.mp4")
 	if err := os.WriteFile(path, []byte("preview-data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}}, ThumbnailsDir: dir})
+	artifacts := &fakeArtifacts{previews: map[string]string{video.ContentKey: path}}
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}}, Artifacts: artifacts})
 
 	full := do(t, handler, http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey)
 	if full.Code != 200 || full.Body.String() != "preview-data" {
@@ -100,34 +98,22 @@ func TestGetVideoPreviewServesRangesAndCachePolicies(t *testing.T) {
 	}
 }
 
+// 置き場が「無い」と答えたもの（無い・空・manifest と合わない・生成途中）は、
+// no-store の 404 にする。置き場が無い場合も同じである。
 func TestGetVideoPreviewReturnsNoStore404ForUnavailableAssets(t *testing.T) {
-	dir := t.TempDir()
 	video := sampleVideo(1, "movie")
 	video.PreviewState = domain.PreviewStateDone
-	handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}}, ThumbnailsDir: dir})
 
-	for _, zero := range []bool{false, true} {
-		if zero {
-			path := previewFilePath(dir, video.ContentKey)
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(path, nil, 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
+	for name, artifacts := range map[string]ArtifactReader{"無い": &fakeArtifacts{}, "置き場が無い": nil} {
+		handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}}, Artifacts: artifacts})
 		rec := do(t, handler, http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey)
 		if rec.Code != 404 || rec.Header().Get("Cache-Control") != cacheNoStore {
-			t.Fatalf("zero=%t response = %d cache=%q", zero, rec.Code, rec.Header().Get("Cache-Control"))
-		}
-		if zero {
-			_ = os.Remove(previewFilePath(dir, video.ContentKey))
+			t.Fatalf("%s: response = %d cache=%q", name, rec.Code, rec.Header().Get("Cache-Control"))
 		}
 	}
 }
 
 func TestGetVideoPreviewRejectsNonDoneStatesWithoutFallback(t *testing.T) {
-	dir := t.TempDir()
 	transcoder := &fakeTranscoder{body: "must not be used"}
 
 	for _, state := range []domain.PreviewState{domain.PreviewStatePending, domain.PreviewStateFailed} {
@@ -135,9 +121,9 @@ func TestGetVideoPreviewRejectsNonDoneStatesWithoutFallback(t *testing.T) {
 		video.Path = filepath.Join(t.TempDir(), "source-must-not-be-opened.mp4")
 		video.PreviewState = state
 		handler := newTestServer(t, Options{
-			Videos:        &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}},
-			ThumbnailsDir: dir,
-			Transcoder:    transcoder,
+			Videos:     &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}},
+			Artifacts:  &fakeArtifacts{},
+			Transcoder: transcoder,
 		})
 
 		rec := do(t, handler, http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey)
@@ -154,30 +140,16 @@ func TestGetVideoPreviewRejectsNonDoneStatesWithoutFallback(t *testing.T) {
 	}
 }
 
-// fakePreviewRepair は作り直しの要求を記録する。
-type fakePreviewRepair struct {
-	mu    sync.Mutex
-	calls []int64
-}
-
-func (f *fakePreviewRepair) RequeueMissingPreview(_ context.Context, id int64, _ string) (bool, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.calls = append(f.calls, id)
-	return true, nil
-}
-
-// 作り終えた記録があるのにファイルが無ければ、作り直しを積み、応答では準備中と
-// して返す。ファイルがあれば積まない。
-func TestMissingPreviewIsRequeuedWhenFound(t *testing.T) {
-	dir := t.TempDir()
+// アプリケーション層が作り直しを積んで準備中と読み替えた動画は、一覧・詳細・
+// 関連動画のどれでも previewState が pending になり、URL は出ない。
+func TestRequeuedPreviewIsReportedAsPending(t *testing.T) {
 	video := sampleVideo(1, "movie")
 	video.PreviewState = domain.PreviewStateDone
 	fake := &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, page: domain.VideoPage{Items: []domain.Video{video}}}
-	repair := &fakePreviewRepair{}
-	handler := newTestServer(t, Options{Videos: fake, ThumbnailsDir: dir, PreviewRepair: repair})
+	catalog := &fakeCatalog{requeue: true, related: domain.RelatedVideos{Items: []domain.Video{video}}}
+	handler := newTestServer(t, Options{Videos: fake, Catalog: catalog})
 
-	for _, target := range []string{"/api/videos", "/api/videos/1"} {
+	for _, target := range []string{"/api/videos", "/api/videos/1", "/api/videos/1/related"} {
 		rec := do(t, handler, http.MethodGet, target)
 		if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"previewState":"pending"`) {
 			t.Fatalf("GET %s response = %d %s", target, rec.Code, rec.Body.String())
@@ -185,23 +157,5 @@ func TestMissingPreviewIsRequeuedWhenFound(t *testing.T) {
 		if strings.Contains(rec.Body.String(), "previewUrl") {
 			t.Fatalf("GET %s exposed missing preview URL: %s", target, rec.Body.String())
 		}
-	}
-	if len(repair.calls) != 2 || repair.calls[0] != 1 {
-		t.Fatalf("作り直しの要求 = %v, want [1 1]", repair.calls)
-	}
-
-	path := previewFilePath(dir, video.ContentKey)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte("preview-data"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	rec := do(t, handler, http.MethodGet, "/api/videos")
-	if !strings.Contains(rec.Body.String(), `"previewUrl"`) {
-		t.Fatalf("preview URL missing: %s", rec.Body.String())
-	}
-	if len(repair.calls) != 2 {
-		t.Fatalf("ファイルがあるのに作り直しを積んだ: %v", repair.calls)
 	}
 }

@@ -40,6 +40,13 @@ type RelatedOrder struct {
 	NextID int64
 }
 
+// RelatedVideos は関連動画の本体を返す順に並べたものである。
+type RelatedVideos struct {
+	Items []Video
+	// NextID は同じディレクトリで自然順の次の動画。無ければ 0。
+	NextID int64
+}
+
 // OrderRelated は関連動画を並べる。
 //
 // 並びは、同じディレクトリで基準より後のもの、前のもの、それ以外を追加日時の

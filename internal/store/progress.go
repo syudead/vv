@@ -11,9 +11,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// Progress は再生位置の記録である。
-type Progress = domain.Progress
-
 // SaveProgress は再生位置を記録し、記録後の状態を返す。
 //
 // 鍵は content_key（videos.id ではない）。動画の行が消えても記録が残り、
@@ -24,10 +21,12 @@ type Progress = domain.Progress
 //
 // 競合は最後の書き込みが残る（upsert）。複数のタブ・端末での同時再生は
 // この単純化で割り切る。
-func (db *DB) SaveProgress(ctx context.Context, contentKey string, progress Progress) (Progress, error) {
+func (p *PlaybackStore) SaveProgress(
+	ctx context.Context, contentKey string, progress domain.Progress,
+) (domain.Progress, error) {
 	updatedAt := time.Now()
 
-	_, err := db.sql.ExecContext(ctx, `
+	_, err := p.sql.ExecContext(ctx, `
 		insert into playback_progress (content_key, position_ms, duration_ms, completed, updated_at)
 		values (?, ?, ?, ?, ?)
 		on conflict (content_key) do update set
@@ -39,7 +38,7 @@ func (db *DB) SaveProgress(ctx context.Context, contentKey string, progress Prog
 		boolToInt(progress.Completed), updatedAt.Unix(),
 	)
 	if err != nil {
-		return Progress{}, fmt.Errorf("再生位置を記録できません (%s): %w", contentKey, err)
+		return domain.Progress{}, fmt.Errorf("再生位置を記録できません (%s): %w", contentKey, err)
 	}
 
 	progress.UpdatedAt = updatedAt.Truncate(time.Second)
@@ -47,23 +46,23 @@ func (db *DB) SaveProgress(ctx context.Context, contentKey string, progress Prog
 }
 
 // Progress は再生位置を1件返す。記録が無ければ ErrNotFound を返す。
-func (db *DB) Progress(ctx context.Context, contentKey string) (Progress, error) {
+func (p *PlaybackStore) Progress(ctx context.Context, contentKey string) (domain.Progress, error) {
 	var (
-		progress   Progress
+		progress   domain.Progress
 		durationMs sql.NullInt64
 		completed  int
 		updatedAt  int64
 	)
 
-	err := db.sql.QueryRowContext(ctx, `
+	err := p.sql.QueryRowContext(ctx, `
 		select position_ms, duration_ms, completed, updated_at
 		  from playback_progress where content_key = ?`, contentKey,
 	).Scan(&progress.PositionMs, &durationMs, &completed, &updatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Progress{}, ErrNotFound
+		return domain.Progress{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return Progress{}, fmt.Errorf("再生位置を読み出せません (%s): %w", contentKey, err)
+		return domain.Progress{}, fmt.Errorf("再生位置を読み出せません (%s): %w", contentKey, err)
 	}
 
 	progress.DurationMs = durationMs.Int64
@@ -77,11 +76,11 @@ func (db *DB) Progress(ctx context.Context, contentKey string) (Progress, error)
 //
 // 一覧に載せるために要る。1件ずつ引くと、60 件の一覧で 60 回の問い合わせに
 // なる。
-func (db *DB) ProgressByContentKeys(
+func (p *PlaybackStore) ProgressByContentKeys(
 	ctx context.Context, contentKeys []string,
-) (map[string]Progress, error) {
+) (map[string]domain.Progress, error) {
 	if len(contentKeys) == 0 {
-		return map[string]Progress{}, nil
+		return map[string]domain.Progress{}, nil
 	}
 
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(contentKeys)), ",")
@@ -91,7 +90,7 @@ func (db *DB) ProgressByContentKeys(
 	}
 
 	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
-	rows, err := db.sql.QueryContext(ctx, `
+	rows, err := p.sql.QueryContext(ctx, `
 		select content_key, position_ms, duration_ms, completed, updated_at
 		  from playback_progress where content_key in (`+placeholders+`)`, args...)
 	if err != nil {
@@ -99,11 +98,11 @@ func (db *DB) ProgressByContentKeys(
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make(map[string]Progress, len(contentKeys))
+	out := make(map[string]domain.Progress, len(contentKeys))
 	for rows.Next() {
 		var (
 			key        string
-			progress   Progress
+			progress   domain.Progress
 			durationMs sql.NullInt64
 			completed  int
 			updatedAt  int64
