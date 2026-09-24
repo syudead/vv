@@ -203,7 +203,7 @@ func TestListVideosSort(t *testing.T) {
 	}
 
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{}})
-	if rec := do(t, handler, http.MethodGet, "/api/videos?sort=random"); rec.Code != http.StatusBadRequest {
+	if rec := do(t, handler, http.MethodGet, "/api/videos?sort=sideways"); rec.Code != http.StatusBadRequest {
 		t.Errorf("未知の並び順で status = %d, want 400", rec.Code)
 	}
 }

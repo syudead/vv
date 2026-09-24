@@ -84,7 +84,7 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	if params.Sort != nil {
 		sort := domain.VideoSort(*params.Sort)
 		if !sort.Valid() {
-			s.invalidRequest(w, "並び順は addedDesc か titleAsc を指定してください")
+			s.invalidRequest(w, "並び順の値が不明です")
 			return
 		}
 		query.Sort = sort

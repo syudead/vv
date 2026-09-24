@@ -422,7 +422,7 @@ func titlesOf(page VideoPage) []string {
 	return out
 }
 
-// 並び順は「追加が新しい順」と「題名順」の2つ。
+// 並び順のうち、以前からある「追加が新しい順」と「題名順（自然順）」。
 func TestListVideosSortOrders(t *testing.T) {
 	db, _ := listFixture(t)
 	ctx := context.Background()
