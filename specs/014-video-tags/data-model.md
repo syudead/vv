@@ -32,7 +32,11 @@ create table tag_names (
     name      text    primary key,
     tag_id    integer not null references tags (id) on delete cascade,
     -- 1 は表示する元の名前、0 はシノニム。
-    canonical integer not null check (canonical in (0, 1))
+    canonical integer not null check (canonical in (0, 1)),
+    -- 検索欄の照合用の鍵。domain.FoldForMatch(name) を Go が書く（§7）。
+    search_key     text    not null default '',
+    -- search_key を作った規則の版。video_locations.search_version と同じ domain.SearchKeyVersion。
+    search_version integer not null default 0
 ) without rowid;
 
 -- 1つのタグに元の名前は1つだけ。
@@ -117,3 +121,31 @@ exists (select 1 from video_tags vt where vt.content_key = videos.content_key an
 
 主キー `(content_key, tag_id)` がこの条件の索引になる。存在しない `tag_id` は条件から
 落とし、どれを落としたかを一覧の応答で返す（[contracts/tags-api.md §5](contracts/tags-api.md#5-一覧の絞り込みとすべて選択)）。
+
+## 7. 検索欄でのタグ名の照合
+
+#195 の検索は、語1つごとの条件を所在1行に対して組み立てる
+（[013 data-model.md §3](../013-library-search/data-model.md#3-search_key-の規則)、
+`internal/store/search.go` の `searchExprCondition`）。語1つの条件を、次の OR に広げる
+（要件 10）。
+
+```text
+（今の所在の条件: location_search_fts の MATCH か search_key への instr）
+or exists (select 1 from video_tags vt join tag_names tn on tn.tag_id = vt.tag_id
+           where vt.content_key = <その所在の動画の content_key>
+             and instr(tn.search_key, ?) > 0)
+```
+
+- 除外語は、この OR 全体の否定にする。題名・場所・タグ名のどれにも含まない動画だけが残る。
+- タグ名の側は、語の長さに関係なく `instr` で調べる。タグ名は数百までの想定で、動画1本の
+  タグは数個なので、全文索引を足さない。
+- 照合形は題名と同じ `domain.FoldForMatch` である。元の名前とシノニムの両方の行を見るので、
+  シノニムでも当たる。
+- `tag_names.search_key` は、名前の行を足すとき（作成・シノニム登録・付与での作成）と、
+  改名で `name` を書き換えるときに、同じトランザクションで書く。統合で行の `tag_id` を
+  付け替えても鍵は変わらない。
+- 起動時、`RefreshSearchKeys` と同じ時点で、`search_version` が現在の版より小さい
+  `tag_names` の行を作り直す。照合形の規則を変えて版を上げたとき、所在の鍵と一緒に
+  タグ名の鍵も作り直すためである。
+- タグは動画の単位なので、#195 の「語ごとに別の所在で満たしたら当てない」規則には
+  関わらない。どの所在の行から見ても、同じタグ名で当たる。

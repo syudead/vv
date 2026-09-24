@@ -15,7 +15,8 @@
 動画の `id` の集合を受けて1つのトランザクションで反映する。一覧の項目にタグを載せ、
 一覧の問い合わせにタグの AND を足す（[contracts/tags-api.md](contracts/tags-api.md)）。
 画面は、選んだタグを URL に `id` で載せる（[contracts/list-url.md](contracts/list-url.md)）。
-一覧の条件・URL・問い合わせの組み立ては、#195 が作る形の上に足す。
+検索欄の語は、題名と場所に加えてタグの名前とシノニムにも照合する（要件 10）。
+一覧の条件・URL・問い合わせの組み立ては、#195 が作った形の上に足す。
 
 ## Technical Context
 
@@ -161,6 +162,13 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
     - 却下: 統合元の元の名前を消し、シノニム登録に伴う統合だけがその名前をシノニムにする案。
       名前をふさがない利点は、あとからシノニムを解除すれば得られる。一方で、統合元の名前を
       覚えている利用者がその名前で付けると、統合したはずの分類が別のタグとして作り直される。
+12. **検索欄のタグ名の照合は、語ごとの条件に「タグ名の鍵を持つ行がある」の OR を足して
+    行う。タグ名の照合形の鍵は `tag_names` に持つ**
+    （[data-model.md §7](data-model.md#7-検索欄でのタグ名の照合)）。
+    - 却下: 動画のタグ名を、所在ごとの `search_key` に書き足す案。付け外し・改名・統合の
+      たびに、その中身のすべての所在の鍵と全文索引を書き直すことになる。選択バーから
+      1万本へ付けると、1回の操作で1万行以上の索引を書き換える。
+    - 却下: タグ名にも全文索引を張る案。タグ名は数百までで、`instr` でなめても間に合う。
 
 ## Project Structure
 
@@ -189,7 +197,7 @@ specs/014-video-tags/
   一覧の条件、全件の `id`
 - `api/openapi.yaml` と生成物: [contracts/tags-api.md](contracts/tags-api.md) の差分
 - `internal/httpapi/`: タグの経路、`Video.tags`、一覧の `tag`、`/api/videos/ids`
-- `cmd/mdm/`: 新しい interface への `store` の受け渡し
+- `cmd/mdm/`: 新しい interface への `store` の受け渡し、起動時のタグ名の鍵の作り直し
 - `web/src/api/`: 取得と変更の関数、タグの一覧の共有、付け外しの通知、控えの差し替え
 - `web/src/ui/`: combobox、`ModalFrame` の移設
 - `web/src/player/`: タグの表示と付け外し
@@ -222,7 +230,9 @@ specs/014-video-tags/
 **Scope**: `00008_tags.sql` を足す（[data-model.md §1](data-model.md#1-マイグレーション)）。
 `internal/domain` に名前の整え方と誤り（[data-model.md §2](data-model.md#2-名前の規則)）、
 `internal/store/tags.go` に作成・改名・削除・統合・シノニムの登録と解除・本数つきの一覧を
-置く（[data-model.md §3〜§5](data-model.md#3-名前の引き方)）。不変条件の検査を
+置く（[data-model.md §3〜§5](data-model.md#3-名前の引き方)）。名前の行を書くときに照合用の鍵を
+書き、起動時に古い版の鍵を作り直す処理を `internal/store` と `cmd/mdm` に足す
+（[data-model.md §7](data-model.md#7-検索欄でのタグ名の照合)）。不変条件の検査を
 `invariants_test.go` に足す。`ARCHITECTURE.md` の利用者データの記述と、
 `docs/design-docs/tech-stack-selection.md` §3.2 の表の一覧に3つの表を足す。
 
@@ -238,14 +248,17 @@ specs/014-video-tags/
 `anime` が `Anime` のシノニムになる。別の
 タグのシノニムを登録すると `ErrTagNameTaken` になり、そのタグが分かる。本数は、所在が
 消えた動画を数えず、削除・統合はその動画の付与にも及ぶ。統合の途中で失敗させると何も
-変わっていない。00007 の状態から Up・Down が通る。`scripts/migrations-immutable.sh` と
+変わっていない。作成・改名・シノニム登録の後、その行の `search_key` が `FoldForMatch` の
+結果になっている。`search_version` を 0 に戻した行が、起動時の作り直しで埋まる。
+00007 の状態から Up・Down が通る。`scripts/migrations-immutable.sh` と
 `task check` が通る。
 
-### 動画へのタグの付け外しと、タグでの一覧の絞り込みをサーバーに置く
+### 動画へのタグの付け外しと、タグでの一覧の絞り込み・検索をサーバーに置く
 
 **Scope**: `internal/store/tags.go` に、動画の `id` の集合への付与・取り外し（名前での付与は
 引いて無ければ作る）、選んだ動画のタグの要約、`content_key` の集合から項目のタグを引く
-関数を置く（[data-model.md §4](data-model.md#4-書き換えの規則)）。#195 の
+関数を置く（[data-model.md §4](data-model.md#4-書き換えの規則)）。`internal/store/search.go` の
+語ごとの条件に、タグ名の照合の OR を足す（[data-model.md §7](data-model.md#7-検索欄でのタグ名の照合)）。#195 の
 `internal/store/listing.go` にタグの AND の条件を足し（[data-model.md §6](data-model.md#6-タグでの絞り込み)）、
 同じ条件で全件の `id` を返す関数を足す。`VideoQuery` にタグを足す。
 
@@ -258,7 +271,10 @@ specs/014-video-tags/
 返り、`Total` もその数になり、検索語・視聴状態と組み合わさる。無い `tag_id` は無視され、
 どれを無視したかが返る。
 全件の `id` が、同じ条件の全ページの `id` と一致する。所在を移して再スキャンした動画に
-同じタグが付いている。`task check` が通る。
+同じタグが付いている。題名に「旅行」を含まない動画に「旅行」タグを付けると、検索語 `旅行` で
+ライブラリ・フォルダ直下・フォルダ配下のどの範囲でも返り、`-旅行` では返らない。シノニムの名前
+でも返り、改名の後は新しい名前で返って古い名前では返らない。`ﾘｮｺｳ` と `りょこう` のように
+照合形が同じ語は同じ結果になる。既存の検索のテストが通る。`task check` が通る。
 
 ### タグの管理 API を公開する
 
@@ -288,12 +304,14 @@ specs/014-video-tags/
 全件の `id` の関数と、付け外しの結果を読み込み済みの項目と控えへ反映する通知を足す
 （Structural Decisions 7）。`useVideos` に `tag` の条件を渡せるようにする（画面はまだ使わない）。
 
-**Dependencies**: 動画へのタグの付け外しと、タグでの一覧の絞り込みをサーバーに置く。
+**Dependencies**: 動画へのタグの付け外しと、タグでの一覧の絞り込み・検索をサーバーに置く。
 タグの管理 API を公開する
 
 **Acceptance**: `internal/httpapi` のテストで次が通る。`GET /api/videos?tag=1&tag=2` が両方を
 持つ項目と `total` を返し、各項目の `tags` が名前の自然順になる。無い `id` を混ぜると
-`missingTagIds` にそれが入る。関連動画と読み取りのやり直しの応答にも `tags` があり、タグの
+`missingTagIds` にそれが入る。`GET /api/videos?query=旅行` と
+`GET /api/folders/{rootId}/videos?scope=subtree&query=旅行` が、題名に「旅行」を含まず
+「旅行」タグを持つ動画を返す。関連動画と読み取りのやり直しの応答にも `tags` があり、タグの
 無い動画では空の配列になる。17 個の `tag` は 400 になる。
 `GET /api/videos/ids` が同じ条件の全件の `id` を返し、`/api/videos/{id}` に取られない。無い
 `tag.id` での付与は 404 `tag_not_found` になる。Vitest で、付け外しの後に読み込み済みの項目と
@@ -335,7 +353,8 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 `missingTagIds` を受けたときの通知・タグの一覧の取り直し・URL からの取り除きが通る。
 `/?tag=1` から再生画面へ移って戻ると、`/` の控えではなく `/?tag=1` の控えが使われる。
 フォルダ画面のカードは今のメタ情報の行のままである。`web/e2e/tags.e2e.ts` で、受け入れ条件 5・7・8 とシノニムでの
-絞り込み（受け入れ条件 13 の後半）が確かめられる。カードのタグが1行に収まらないとき、
+絞り込み（受け入れ条件 13 の後半）と、検索欄でのタグ名の照合（受け入れ条件 19・20）が
+確かめられる。カードのタグが1行に収まらないとき、
 省略されていることが分かる。`web/src/theme/tokens.test.ts` を含む `task check` と
 `task test-e2e` が通る。`ui-design.md` の観点で視覚・操作・支援技術を確かめる。
 
