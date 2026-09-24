@@ -68,7 +68,7 @@ export default function ScanStatusSection() {
       window.cancelAnimationFrame(raf);
       timers.forEach((timer) => window.clearTimeout(timer));
     };
-  }, [location.hash]);
+  }, [location.hash, location.key]);
 
   return (
     <section id="scan-status" aria-labelledby="scan-status-heading" className="mt-8">

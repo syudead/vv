@@ -11,6 +11,7 @@ export function PopoverContent({
   children,
   align = "end",
   className,
+  onOpenAutoFocus,
   onCloseAutoFocus,
   onPointerEnter,
   onPointerLeave,
@@ -18,6 +19,7 @@ export function PopoverContent({
   children: ReactNode;
   align?: "start" | "center" | "end";
   className?: string;
+  onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
@@ -28,6 +30,7 @@ export function PopoverContent({
         align={align}
         sideOffset={6}
         collisionPadding={8}
+        onOpenAutoFocus={onOpenAutoFocus}
         onCloseAutoFocus={onCloseAutoFocus}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}

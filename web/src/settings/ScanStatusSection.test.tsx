@@ -1,6 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan } from "../api/client";
@@ -18,10 +18,18 @@ function scan(values: Partial<Scan> = {}): Scan {
   return { id: 2, state: "done", total: 0, completed: 0, failed: 0, ...values };
 }
 
-function renderSection() {
+function SameAnchorNavigation() {
+  const navigate = useNavigate();
+  return (
+    <button onClick={() => navigate("/settings#scan-status")}>同じ詳細へ移動</button>
+  );
+}
+
+function renderSection({ navigation = false } = {}) {
   return render(
     <MemoryRouter initialEntries={["/settings#scan-status"]}>
       <ScanProvider>
+        {navigation && <SameAnchorNavigation />}
         <ScanStatusSection />
       </ScanProvider>
     </MemoryRouter>,
@@ -94,5 +102,19 @@ describe("ScanStatusSection", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "再試行" }));
     await waitFor(() => expect(startCalls).toBe(1));
+  });
+
+  it("focuses the heading again when navigating to the same anchor", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(String(input) === "/api/media-folders" ? json([]) : json(scan())),
+    );
+    renderSection({ navigation: true });
+    const heading = await screen.findByRole("heading", { name: "取り込み状況" });
+    const user = userEvent.setup();
+    const navigation = screen.getByRole("button", { name: "同じ詳細へ移動" });
+
+    await user.click(navigation);
+
+    await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 });
