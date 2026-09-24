@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import {
   errorMessage,
@@ -83,6 +83,94 @@ function appendUnique(current: Video[], next: Video[]): Video[] {
   return added.length === 0 ? current : [...current, ...added];
 }
 
+interface VideosData {
+  items: Video[];
+  total: number;
+  cursor: string | undefined;
+  hasMore: boolean;
+  /** inconsistent は異なる時点のページを安全に結合できなかったことを表す。 */
+  inconsistent: boolean;
+}
+
+type VideosDataAction =
+  | { type: "clear" }
+  | { type: "stop" }
+  | { type: "progress"; videoId: number; progress: NonNullable<Video["progress"]> }
+  | { type: "refresh"; videoId: number; video: Video }
+  | { type: "remove"; videoId: number }
+  | {
+      type: "page";
+      page: { items: Video[]; total: number; nextCursor?: string };
+      replace: boolean;
+    };
+
+function videosDataReducer(state: VideosData, action: VideosDataAction): VideosData {
+  switch (action.type) {
+    case "clear":
+      return {
+        items: [],
+        total: 0,
+        cursor: undefined,
+        hasMore: true,
+        inconsistent: false,
+      };
+    case "stop":
+      return state.hasMore ? { ...state, hasMore: false } : state;
+    case "progress":
+      return state.items.some((video) => video.id === action.videoId)
+        ? {
+            ...state,
+            items: state.items.map((video) =>
+              video.id === action.videoId
+                ? { ...video, progress: action.progress }
+                : video,
+            ),
+          }
+        : state;
+    case "refresh":
+      return state.items.some((video) => video.id === action.videoId)
+        ? {
+            ...state,
+            items: state.items.map((video) =>
+              video.id === action.videoId ? mergeRefreshed(video, action.video) : video,
+            ),
+          }
+        : state;
+    case "remove": {
+      if (!state.items.some((video) => video.id === action.videoId)) return state;
+      return {
+        ...state,
+        items: state.items.filter((video) => video.id !== action.videoId),
+        total: Math.max(0, state.total - 1),
+      };
+    }
+    case "page": {
+      if (action.replace) {
+        return {
+          items: action.page.items,
+          total: action.page.total,
+          cursor: action.page.nextCursor,
+          hasMore: action.page.nextCursor !== undefined,
+          inconsistent: false,
+        };
+      }
+      const items = appendUnique(state.items, action.page.items);
+      // ページ間で索引が縮むと、前のページにだけ残る項目と最新の total を
+      // 安全に結合できない。古い整合した状態を保ち、先頭からの再読込を求める。
+      if (items.length > action.page.total) {
+        return { ...state, hasMore: false, inconsistent: true };
+      }
+      return {
+        items,
+        total: action.page.total,
+        cursor: action.page.nextCursor,
+        hasMore: action.page.nextCursor !== undefined,
+        inconsistent: false,
+      };
+    }
+  }
+}
+
 /** VideosState は一覧の状態である。 */
 export interface VideosState {
   items: Video[];
@@ -140,10 +228,17 @@ export function useVideos(
     folder === undefined ? "" : `${String(folder.rootId)}\0${folder.path}`;
   const folderRef = useRef(folder);
   folderRef.current = folder;
-  const [items, setItems] = useState<Video[]>(seed?.items ?? []);
-  const [total, setTotal] = useState(seed?.total ?? 0);
-  const [cursor, setCursor] = useState<string | undefined>(seed?.cursor);
-  const [hasMore, setHasMore] = useState(seed?.hasMore ?? true);
+  const [{ items, total, cursor, hasMore, inconsistent }, dispatch] = useReducer(
+    videosDataReducer,
+    seed,
+    (initial): VideosData => ({
+      items: initial?.items ?? [],
+      total: initial?.total ?? 0,
+      cursor: initial?.cursor,
+      hasMore: initial?.hasMore ?? true,
+      inconsistent: false,
+    }),
+  );
   const [loading, setLoading] = useState(seed === undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,13 +250,7 @@ export function useVideos(
   useEffect(
     () =>
       subscribeProgress((videoId, progress) => {
-        setItems((current) =>
-          current.some((video) => video.id === videoId)
-            ? current.map((video) =>
-                video.id === videoId ? { ...video, progress } : video,
-              )
-            : current,
-        );
+        dispatch({ type: "progress", videoId, progress });
       }),
     [],
   );
@@ -184,22 +273,13 @@ export function useVideos(
           const refreshed = await getVideo(id, controller.signal);
           // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
           if (controller.signal.aborted) return;
-          setItems((current) =>
-            current.map((video) =>
-              video.id === id ? mergeRefreshed(video, refreshed) : video,
-            ),
-          );
+          dispatch({ type: "refresh", videoId: id, video: refreshed });
         } catch (failure) {
           if (isAborted(failure)) return;
           // 動画が索引から消えていたら、一覧からも外す。一時的な失敗は、その
           // 1件だけ諦める（次の知らせか取り込みの完了時の読み直しで直る）。
-          if (
-            failure instanceof RequestFailed &&
-            failure.status === 404 &&
-            itemsRef.current.some((video) => video.id === id)
-          ) {
-            setItems((current) => current.filter((video) => video.id !== id));
-            setTotal((value) => Math.max(0, value - 1));
+          if (failure instanceof RequestFailed && failure.status === 404) {
+            dispatch({ type: "remove", videoId: id });
           }
         }
       }
@@ -303,26 +383,12 @@ export function useVideos(
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
         if (controller.signal.aborted || inFlight.current !== controller) return;
-        const nextItems = replace
-          ? page.items
-          : appendUnique(itemsRef.current, page.items);
-        // ページ間で索引が縮むと、前のページにだけ残る項目と最新の total が
-        // 混ざり、カード数より全件数が少なくなる。件数を丸めず、現在の索引を
-        // 先頭から読み直して一覧と total を同じ時点へ揃える。
-        if (!replace && nextItems.length > page.total) {
-          setHasMore(false);
-          setGeneration((value) => value + 1);
-          return;
-        }
-        setItems((current) => (replace ? page.items : appendUnique(current, page.items)));
+        dispatch({ type: "page", page, replace });
         const changed = page.items
           .map((video) => video.id)
           .filter((id) => changedWhileLoading.current.has(id));
         changedWhileLoading.current.clear();
         if (changed.length > 0) refreshItems(changed);
-        setTotal(page.total);
-        setCursor(page.nextCursor);
-        setHasMore(page.nextCursor !== undefined);
         setError(null);
         setNotFound(false);
       } catch (failure) {
@@ -344,14 +410,14 @@ export function useVideos(
           // 「このフォルダは見つかりません」を出す（list-api.md §5）。
           setNotFound(true);
           setError(null);
-          setHasMore(false);
+          dispatch({ type: "stop" });
           return;
         }
         setError(errorMessage(failure));
         // 前の要求の 404 を残すと、取得の失敗が「見つかりません」に隠れて再試行できない。
         setNotFound(false);
         // 続きが読めない状態で観測点を残すと、同じ要求を繰り返してしまう。
-        setHasMore(false);
+        dispatch({ type: "stop" });
       } finally {
         if (!controller.signal.aborted) {
           pageLoading.current = false;
@@ -371,6 +437,12 @@ export function useVideos(
   // 鍵（条件・フォルダ・読み直しの世代）ごと覚えておけば、何度走っても
   // 同じ判断になる。
   const seeded = useRef(seed === undefined ? null : { key, folderKey, generation: 0 });
+
+  // 異なる時点のページを結合できなかったときは、古い整合した一覧を保ったまま
+  // 世代を進め、通常の先頭ページ取得へ戻す。
+  useEffect(() => {
+    if (inconsistent) setGeneration((value) => value + 1);
+  }, [inconsistent]);
 
   // 条件・フォルダが変わったら先頭から読み直す。カーソルはそれらに紐づくので、
   // 引き継ぐと境界の意味が変わってしまう。
@@ -392,9 +464,7 @@ export function useVideos(
     }
     seeded.current = null;
 
-    setItems([]);
-    setCursor(undefined);
-    setHasMore(true);
+    dispatch({ type: "clear" });
     void fetchPage(undefined, true);
 
     return () => inFlight.current?.abort();
