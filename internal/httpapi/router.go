@@ -147,8 +147,9 @@ type Options struct {
 	Catalog VideoCatalog
 	// Opener はファイルを既定アプリで開く。nil なら開けない環境として扱う。
 	Opener FileOpener
-	// Files はメディアファイルとディレクトリへのアクセス。nil なら配信とライブ変換は
-	// 404、既定アプリで開く操作は 409 file_missing、ディレクトリ選択は 500 を返す。
+	// Files はメディアファイルとディレクトリへのアクセス。nil なら配信・ライブ変換・
+	// 既定アプリで開く操作・ディレクトリ選択は 500 を返す。黙って 404 にしないのは、
+	// つなぎ忘れを「実体が無い」と見分けられなくなるためである。
 	Files MediaFiles
 	// Processing は段階ごとの残りの問い合わせ先。nilなら経路は500を返す。
 	Processing Processing

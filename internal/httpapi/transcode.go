@@ -39,6 +39,10 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		return
 	}
 
+	if s.files == nil {
+		s.internalError(w, "メディアファイルの読み出しが設定されていません", nil)
+		return
+	}
 	file, _, _, ok := s.openMediaFile(r, video)
 	if !ok {
 		s.notFound(w, "この動画の実体を開けません")

@@ -20,7 +20,7 @@ export interface HoverPreview {
 
 /**
  * useHoverPreview は、関連動画のサムネイルにマウスを乗せたときに一覧用プレビューを
- * 流す。一覧のカード（library/VideoCard）と同じ規則にそろえる。
+ * 流す。一覧のカード（videoList/VideoCard）と同じ規則にそろえる。
  *
  * - プレビューが作成済み（previewState=done で previewUrl がある）の動画だけ。
  * - マウスだけ。タッチやペンでは流さない。

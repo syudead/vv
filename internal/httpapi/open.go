@@ -28,6 +28,10 @@ func (s *server) OpenVideoFile(w http.ResponseWriter, r *http.Request, id gen.Vi
 		s.writeError(w, http.StatusForbidden, codeForbidden, "ファイルはサーバーと同じ PC からだけ開けます")
 		return
 	}
+	if s.files == nil {
+		s.internalError(w, "メディアファイルの読み出しが設定されていません", nil)
+		return
+	}
 	path, ok, err := s.openablePath(r, video.Path)
 	if err != nil {
 		s.internalError(w, "登録フォルダを取得できませんでした", err)
@@ -54,9 +58,6 @@ func (s *server) openablePath(r *http.Request, path string) (string, bool, error
 	roots, err := s.mediaFolderPaths(r)
 	if err != nil {
 		return "", false, err
-	}
-	if s.files == nil {
-		return "", false, nil
 	}
 	resolved, err := s.files.ResolveMediaFile(roots, path)
 	if err != nil {

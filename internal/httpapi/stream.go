@@ -47,6 +47,10 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 		return
 	}
 
+	if s.files == nil {
+		s.internalError(w, "メディアファイルの読み出しが設定されていません", nil)
+		return
+	}
 	file, info, path, ok := s.openMediaFile(r, video)
 	if !ok {
 		// 実体を開けない理由（外を指している、消えた、通常ファイルでない）は
@@ -67,9 +71,6 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 // MediaFiles が判定し、ここは所在と登録フォルダを渡すだけである。返すパスは
 // 所在のパス（辿る前）で、Content-Type とファイル名に使う。
 func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, os.FileInfo, string, bool) {
-	if s.files == nil {
-		return nil, nil, "", false
-	}
 	locations, err := s.videos.VideoLocations(r.Context(), video.ID)
 	if err != nil {
 		return nil, nil, "", false

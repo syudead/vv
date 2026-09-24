@@ -363,3 +363,15 @@ func TestStreamPathStaysUnderAPI(t *testing.T) {
 		t.Error("/api/ 配下で HTML が返った")
 	}
 }
+
+// MediaFiles をつなぎ忘れたら、実体が無いこと（404）と見分けられるよう 500 を返す。
+func TestStreamWithoutMediaFilesIsInternalError(t *testing.T) {
+	mediaDir, video, _ := streamFixture(t, "movie.mp4", 16)
+	handler := NewRouter(Options{
+		Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+		Assets: emptyAssets{},
+	})
+	if rec := do(t, handler, http.MethodGet, "/api/videos/1/stream"); rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body)
+	}
+}
