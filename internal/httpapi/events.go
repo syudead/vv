@@ -185,6 +185,18 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 // writePendingEvents はまだ送っていない変化を、今の内容で書き出す。
 func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber) error {
 	scan, processing, videos := sub.take()
+	// 残りを先に送る。スキャンの完了を受けた画面は、その時点で手元にある残りで
+	// 「準備中」か「完了」かを決めるので、完了より後に残りが届くと、準備が
+	// 残っているのに完了を知らせてしまう。
+	if processing && s.processing != nil {
+		remaining, err := s.processing.Processing(ctx)
+		if err != nil {
+			return err
+		}
+		if err := writeEvent(w, "processing", toAPIProcessing(remaining)); err != nil {
+			return err
+		}
+	}
 	if scan && s.scans != nil {
 		current, err := s.scans.CurrentScan(ctx)
 		switch {
@@ -195,15 +207,6 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 			if err := writeEvent(w, "scan", toAPIScan(current)); err != nil {
 				return err
 			}
-		}
-	}
-	if processing && s.processing != nil {
-		remaining, err := s.processing.Processing(ctx)
-		if err != nil {
-			return err
-		}
-		if err := writeEvent(w, "processing", toAPIProcessing(remaining)); err != nil {
-			return err
 		}
 	}
 	for _, id := range videos {

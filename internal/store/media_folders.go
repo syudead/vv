@@ -122,6 +122,9 @@ func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFold
 	if err := tx.Commit(); err != nil {
 		return domain.MediaFolder{}, err
 	}
+	// 登録外の所在しか無かった待ちの仕事が、この登録で取り出せるようになる。
+	// 眠っているワーカーを起こさないと、次に仕事が積まれるまで止まったままになる。
+	db.notifyJobsQueued(domain.JobKinds...)
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: 1, CreatedAt: time.Unix(now, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
@@ -170,6 +173,8 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	if err := tx.Commit(); err != nil {
 		return domain.MediaFolder{}, err
 	}
+	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
+	db.notifyJobsQueued(domain.JobKinds...)
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: version + 1, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 

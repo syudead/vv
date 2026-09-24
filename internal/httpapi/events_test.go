@@ -116,21 +116,11 @@ func TestStreamEventsSendsCurrentStateThenOnlyChanges(t *testing.T) {
 		t.Fatalf("Content-Type = %q, want text/event-stream", got)
 	}
 
-	scanEvent := nextEvent(t, stream)
-	if scanEvent.name != "scan" {
-		t.Fatalf("最初のイベント = %q, want scan", scanEvent.name)
-	}
-	var scan gen.Scan
-	if err := json.Unmarshal([]byte(scanEvent.data), &scan); err != nil {
-		t.Fatal(err)
-	}
-	if scan.Id != 4 || scan.Completed != 2 {
-		t.Errorf("scan = %+v", scan)
-	}
-
+	// 残りをスキャンより先に送る。画面はスキャンの完了を受けた時点の残りで
+	// 完了を知らせるかどうかを決める。
 	processingEvent := nextEvent(t, stream)
 	if processingEvent.name != "processing" {
-		t.Fatalf("2つ目のイベント = %q, want processing", processingEvent.name)
+		t.Fatalf("最初のイベント = %q, want processing", processingEvent.name)
 	}
 	var remaining gen.Processing
 	if err := json.Unmarshal([]byte(processingEvent.data), &remaining); err != nil {
@@ -138,6 +128,18 @@ func TestStreamEventsSendsCurrentStateThenOnlyChanges(t *testing.T) {
 	}
 	if remaining != (gen.Processing{Probe: 3, Thumbnail: 2, Preview: 1}) {
 		t.Errorf("processing = %+v", remaining)
+	}
+
+	scanEvent := nextEvent(t, stream)
+	if scanEvent.name != "scan" {
+		t.Fatalf("2つ目のイベント = %q, want scan", scanEvent.name)
+	}
+	var scan gen.Scan
+	if err := json.Unmarshal([]byte(scanEvent.data), &scan); err != nil {
+		t.Fatal(err)
+	}
+	if scan.Id != 4 || scan.Completed != 2 {
+		t.Errorf("scan = %+v", scan)
 	}
 
 	// 知らせが無ければ何も送らない。

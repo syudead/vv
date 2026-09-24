@@ -70,8 +70,14 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     if (session.trackingScanId !== current.id) return;
     if (session.acknowledgedTerminalScanId === current.id) return;
     // スキャンが終わっても、取り込んだ動画の準備が残っている間は完了を知らせない。
-    // 準備が終わった時点で完了の通知へ移る。
-    if (current.state !== "failed" && processingRemaining(scan.processing) > 0) return;
+    // 準備が終わった時点で完了の通知へ移る。残りをまだ得ていないときも、0 件と
+    // みなさずに待つ。
+    if (
+      current.state !== "failed" &&
+      (scan.processing === null || processingRemaining(scan.processing) > 0)
+    ) {
+      return;
+    }
     if (
       session.completionNotice?.scanId === current.id &&
       (current.state === "failed" || session.completionNotice.pausedRemainingMs !== null)

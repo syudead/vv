@@ -339,4 +339,28 @@ describe("ScanProvider", () => {
 
     await waitFor(() => expect(screen.getByText("開始可否: 可")).toBeDefined());
   });
+
+  it("取得の途中で届いた知らせを、遅れて返った古い応答で上書きしない", async () => {
+    let resolveCurrent: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      return new Promise<Response>((resolve) => {
+        resolveCurrent = resolve;
+      });
+    });
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    await waitFor(() => expect(resolveCurrent).toBeDefined());
+
+    await emitServerEvent("scan", scan(7, "done"));
+    expect(screen.getByText("状態: 7")).toBeDefined();
+
+    // 知らせより前に読んだ実行中の状態が、あとから返る。
+    await act(async () => resolveCurrent?.(json(scan(6, "running"))));
+
+    expect(screen.getByText("状態: 7")).toBeDefined();
+  });
 });

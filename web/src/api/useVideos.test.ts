@@ -295,4 +295,19 @@ describe("useVideos の準備の反映", () => {
     await waitFor(() => expect(result.current.items[1]?.previewState).toBe("done"));
     expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([2]);
   });
+
+  it("ページの取得中に届いた知らせは、ページを反映したあとで取り直す", async () => {
+    const { result } = renderHook(() => useVideos("addedDesc", ""));
+    getVideo.mockResolvedValue({ ...item(2), previewState: "done" });
+
+    // 一覧の応答はまだ返っていない。その間に動画 2 の準備が終わる。
+    await emitServerEvent("video", { id: 2 });
+    expect(getVideo).not.toHaveBeenCalled();
+
+    // 応答は知らせより古い内容（準備中）を持っている。
+    await act(async () => calls[0]?.resolve(page([1, 2])));
+
+    await waitFor(() => expect(result.current.items[1]?.previewState).toBe("done"));
+    expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([2]);
+  });
 });

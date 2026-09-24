@@ -122,7 +122,6 @@ export function useVideos(
     try {
       for (const id of refreshQueue.current) {
         refreshQueue.current.delete(id);
-        if (!itemsRef.current.some((video) => video.id === id)) continue;
         try {
           const refreshed = await getVideo(id, controller.signal);
           setItems((current) =>
@@ -153,10 +152,19 @@ export function useVideos(
     );
   }, [refreshItems]);
 
+  // ページの取得中に届いた知らせは、取得した内容より新しいことがある。まだ一覧に
+  // 無い動画の知らせを覚えておき、ページを反映したあとで取り直す。
+  const pageLoading = useRef(false);
+  const changedWhileLoading = useRef(new Set<number>());
+
   useEffect(() => {
     const unsubscribe = subscribeServerEvents({
       video: (id) => {
-        if (itemsRef.current.some((video) => video.id === id)) refreshItems([id]);
+        if (itemsRef.current.some((video) => video.id === id)) {
+          refreshItems([id]);
+        } else if (pageLoading.current) {
+          changedWhileLoading.current.add(id);
+        }
       },
       // つなぎ直したときは、切れていた間に準備が進んだかもしれない項目を取り直す。
       open: refreshProcessingItems,
@@ -180,6 +188,8 @@ export function useVideos(
       inFlight.current?.abort();
       const controller = new AbortController();
       inFlight.current = controller;
+      pageLoading.current = true;
+      changedWhileLoading.current.clear();
 
       if (replace) {
         setLoading(true);
@@ -199,6 +209,11 @@ export function useVideos(
                 signal: controller.signal,
               });
         setItems((current) => (replace ? page.items : [...current, ...page.items]));
+        const changed = page.items
+          .map((video) => video.id)
+          .filter((id) => changedWhileLoading.current.has(id));
+        changedWhileLoading.current.clear();
+        if (changed.length > 0) refreshItems(changed);
         setTotal(page.total);
         setCursor(page.nextCursor);
         setHasMore(page.nextCursor !== undefined);
@@ -212,13 +227,14 @@ export function useVideos(
         setHasMore(false);
       } finally {
         if (!controller.signal.aborted) {
+          pageLoading.current = false;
           setLoading(false);
           setLoadingMore(false);
         }
       }
     },
     // folderKey は folderRef の中身が変わったことを表す。
-    [folderKey, query, sort],
+    [folderKey, query, refreshItems, sort],
   );
 
   // seeded は「いま持っている中身が復元で埋まったものか」を覚える。

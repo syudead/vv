@@ -84,7 +84,10 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const observedRunningScanId = useRef<number | null>(null);
   const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
   const lastSeenScanId = useRef<number | null | undefined>(undefined);
-  const loadRevision = useRef(0);
+  // 取得と変化の知らせは並行する。知らせの方が新しいことがあるので、取得を
+  // 始めたあとに知らせを受けたら、その取得の応答は捨てる。
+  const scanRevision = useRef(0);
+  const processingRevision = useRef(0);
 
   const updateFolderCount = useCallback((count: number) => {
     folderCountRevision.current += 1;
@@ -152,16 +155,17 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     inFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
-    loadRevision.current += 1;
-    const revision = loadRevision.current;
-    const isLatest = () => revision === loadRevision.current;
+    scanRevision.current += 1;
+    processingRevision.current += 1;
+    const scanAt = scanRevision.current;
+    const processingAt = processingRevision.current;
 
     void (async () => {
       try {
         const nextScan = await getCurrentScan(controller.signal);
-        if (isLatest()) apply(nextScan);
+        if (scanAt === scanRevision.current) apply(nextScan);
       } catch (failure) {
-        if (!isLatest() || isAborted(failure)) return;
+        if (scanAt !== scanRevision.current || isAborted(failure)) return;
         // 最後に得た状態は捨てない。つなぎ直しやウィンドウへの復帰で取り直す。
         setLoadError(errorMessage(failure));
       }
@@ -169,7 +173,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     void (async () => {
       try {
         const nextProcessing = await getProcessing(controller.signal);
-        if (isLatest()) setProcessing(nextProcessing);
+        if (processingAt === processingRevision.current) setProcessing(nextProcessing);
       } catch {
         // 残りの数は補助の情報なので、取れなくても取り込みの状態は示せる。
         // 最後に得た数を残し、次の知らせか取り直しを待つ。
@@ -190,8 +194,14 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
     const unsubscribe = subscribeServerEvents({
-      scan: apply,
-      processing: setProcessing,
+      scan: (next) => {
+        scanRevision.current += 1;
+        apply(next);
+      },
+      processing: (next) => {
+        processingRevision.current += 1;
+        setProcessing(next);
+      },
       open: load,
     });
     load();

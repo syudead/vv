@@ -666,9 +666,10 @@ paths:
         - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
           `GET /api/videos/{id}` で取る
 
-        接続の直後に `scan`（あれば）と `processing` を1回ずつ送るので、つなぎ直した
+        接続の直後に `processing` と `scan`（あれば）を1回ずつ送るので、つなぎ直した
         クライアントは切れていた間の変化を取り戻せる。`video` は切れていた間の分を
-        送り直さない。
+        送り直さない。`processing` と `scan` を同時に送るときは `processing` を先に送る。
+        スキャンの完了を受けた時点で、準備の残りが手元にそろっているようにするためである。
       responses:
         "200":
           description: イベントの流れ

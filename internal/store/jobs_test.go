@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -302,8 +303,15 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 	if got := jobState(t, db, 1); got != "queued" {
 		t.Fatalf("unregistered job state = %s, want queued", got)
 	}
+	recorder := &queuedRecorder{}
+	db.OnJobsQueued(recorder.record)
 	if _, err := db.AddMediaFolder(ctx, root); err != nil {
 		t.Fatal(err)
+	}
+	// 眠っているワーカーを起こす知らせが出ること。登録で取り出せるようになった
+	// 待ちの仕事は、次に仕事が積まれるのを待たずに処理される。
+	if got := recorder.take(); !slices.Contains(got, JobThumbnail) {
+		t.Fatalf("フォルダ登録の知らせ = %v, want thumbnail を含む", got)
 	}
 	job, err := db.ClaimJob(ctx, JobThumbnail)
 	if err != nil {
