@@ -40,14 +40,18 @@ export function ToastProvider({
         className={cn(
           "pointer-events-none fixed inset-x-0 z-50 flex flex-col gap-2",
           placement === "playback"
-            ? "top-16 items-end px-3 sm:top-auto sm:bottom-6 sm:items-center sm:px-0"
+            ? "top-1.5 items-end px-3 sm:items-center sm:px-0"
             : "top-16 items-end px-3 lg:top-auto lg:bottom-20 lg:items-center lg:px-0",
         )}
       >
-        {items.map((item) => (
+        {(placement === "playback" ? items.slice(-1) : items).map((item) => (
           <div
             key={item.id}
-            className="rounded-md bg-elevated px-4 py-2.5 text-sm text-fg shadow-elevated animate-slide-up"
+            className={cn(
+              "rounded-md bg-elevated px-4 py-2.5 text-sm text-fg shadow-elevated animate-slide-up",
+              placement === "playback" &&
+                "max-w-[calc(100vw-8rem)] break-words sm:max-w-72",
+            )}
           >
             {item.message}
           </div>

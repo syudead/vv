@@ -3,15 +3,23 @@ import userEvent from "@testing-library/user-event";
 import { Link } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useToast } from "../ui/Toast";
 import App from "./App";
 
 vi.mock("../library/LibraryPage", () => ({
-  default: () => (
-    <div>
-      <Link to="/folders">フォルダへ</Link>
-      <Link to="/settings">設定へ</Link>
-    </div>
-  ),
+  default: function MockLibraryPage() {
+    const toast = useToast();
+    return (
+      <div>
+        <Link to="/folders">フォルダへ</Link>
+        <Link to="/settings">設定へ</Link>
+        <Link to="/videos/1">動画へ</Link>
+        <button type="button" onClick={() => toast("route toast")}>
+          通知する
+        </button>
+      </div>
+    );
+  },
 }));
 
 vi.mock("../folders/FolderPage", () => ({
@@ -47,6 +55,7 @@ describe("App", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
+    window.history.replaceState({}, "", "/");
     window.sessionStorage.clear();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal(
@@ -97,5 +106,26 @@ describe("App", () => {
     expect(playbackIndicator.getAttribute("aria-label")).toBe(
       "取り込み中 40%。取り込み状況を開く",
     );
+  });
+
+  it("keeps an active toast while a real link changes to playback placement", async () => {
+    render(<App />);
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: /取り込み中 40%/ });
+
+    await user.click(screen.getByRole("button", { name: "通知する" }));
+    const toast = screen.getByText("route toast");
+    const defaultPlacement = toast.parentElement?.classList;
+    expect(defaultPlacement?.contains("top-16")).toBe(true);
+    expect(defaultPlacement?.contains("lg:bottom-20")).toBe(true);
+
+    await user.click(screen.getByRole("link", { name: "動画へ" }));
+    await waitFor(() =>
+      expect(screen.getByRole("link", { name: "ライブラリへ" })).toBeDefined(),
+    );
+    expect(screen.getByText("route toast")).toBe(toast);
+    const playbackPlacement = toast.parentElement?.classList;
+    expect(playbackPlacement?.contains("top-1.5")).toBe(true);
+    expect(playbackPlacement?.contains("lg:bottom-20")).toBe(false);
   });
 });
