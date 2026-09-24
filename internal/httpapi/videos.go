@@ -5,9 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -354,17 +352,6 @@ func (s *server) apiVideo(ctx context.Context, video domain.Video) gen.Video {
 
 func previewURL(video domain.Video) string {
 	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/preview?v=" + video.ContentKey
-}
-
-// previewFilePath は一覧用プレビューの保存先を組み立てる。internal/media の
-// PreviewPath と同じ規則である（thumbnailFilePath と同じ理由で写している）。
-func previewFilePath(thumbnailsDir, contentKey string) string {
-	safe := strings.NewReplacer(":", "_", "/", "_", `\`, "_").Replace(contentKey)
-	prefix := safe
-	if len(prefix) > 2 {
-		prefix = prefix[:2]
-	}
-	return filepath.Join(thumbnailsDir, "preview", prefix, safe+".mp4")
 }
 
 // thumbnailURL はサムネイルの取得先を組み立てる。版は content_key の先頭で、

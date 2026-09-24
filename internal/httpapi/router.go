@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -63,9 +64,16 @@ type Transcoder interface {
 	Start(context.Context, string, int64, bool, time.Time) (io.ReadCloser, func() error, func(), error)
 }
 
-// SeekThumbnailReader はbackground jobが生成したJPEGを読み出す。
-type SeekThumbnailReader interface {
-	Read(context.Context, string, int64) ([]byte, error)
+// ArtifactReader は生成物を配信のために読み出す。internal/artifacts の *Store が
+// これを満たす。置き場の並べ方と、生成途中・不完全なものを除く判断はそちらが
+// 持ち、無い・不完全・生成中のものには fs.ErrNotExist を包んだ誤りを返す。
+type ArtifactReader interface {
+	// ThumbnailFile はライブラリ用サムネイルを開く。閉じるのは呼び出し側である。
+	ThumbnailFile(contentKey string) (*os.File, error)
+	// PreviewFile はホバープレビューの MP4 を開く。閉じるのは呼び出し側である。
+	PreviewFile(contentKey string) (*os.File, error)
+	// SeekThumbnail は再生位置を含むシーク用プレビューの1枚を読む。
+	SeekThumbnail(contentKey string, positionMs int64) ([]byte, error)
 }
 
 // VideoCatalog は動画を応答に載せるときの判断と、関連動画の組み立てを行う
@@ -106,12 +114,12 @@ type Options struct {
 	MediaFolders MediaFolders
 	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
 	Folders Folders
-	// ThumbnailsDir はサムネイルの置き場所。
-	ThumbnailsDir string
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
 	Transcoder Transcoder
-	// SeekThumbnails は生成済みの任意時刻JPEGを読む。nilなら経路は500を返す。
-	SeekThumbnails SeekThumbnailReader
+	// Artifacts は生成物（サムネイル・シーク用プレビュー・ホバープレビュー）の
+	// 読み出し。nil ならサムネイルとホバープレビューは 404、シーク用プレビューは
+	// 500 を返す。
+	Artifacts ArtifactReader
 	// Catalog は動画の応答に要る判断・関連動画・読み取りのやり直し。nil なら
 	// 関連動画と読み取りのやり直しの経路は 500 を返し、動画の応答にはプレビューの
 	// URL とシーク用プレビューの状態が載らない。
@@ -131,21 +139,20 @@ type Options struct {
 // server は生成された gen.ServerInterface を満たす。契約（api/openapi.yaml）に
 // 経路を足したらこの型がコンパイルエラーになるため、実装漏れに気付ける。
 type server struct {
-	build          domain.BuildInfo
-	pinger         Pinger
-	videos         Library
-	playback       Playback
-	scans          Scans
-	mediaFolders   MediaFolders
-	folders        Folders
-	thumbnailsDir  string
-	transcoder     Transcoder
-	seekThumbnails SeekThumbnailReader
-	catalog        VideoCatalog
-	opener         FileOpener
-	processing     Processing
-	events         *Events
-	logger         *slog.Logger
+	build        domain.BuildInfo
+	pinger       Pinger
+	videos       Library
+	playback     Playback
+	scans        Scans
+	mediaFolders MediaFolders
+	folders      Folders
+	transcoder   Transcoder
+	artifacts    ArtifactReader
+	catalog      VideoCatalog
+	opener       FileOpener
+	processing   Processing
+	events       *Events
+	logger       *slog.Logger
 }
 
 // NewRouter は経路を分配するハンドラを返す。
@@ -172,21 +179,20 @@ func NewRouter(opts Options) http.Handler {
 	mux.Handle("/", newSPAHandler(opts.Assets, logger))
 
 	srv := &server{
-		build:          opts.Build,
-		pinger:         opts.Pinger,
-		videos:         opts.Videos,
-		playback:       opts.Playback,
-		scans:          opts.Scans,
-		mediaFolders:   opts.MediaFolders,
-		folders:        opts.Folders,
-		thumbnailsDir:  opts.ThumbnailsDir,
-		transcoder:     opts.Transcoder,
-		seekThumbnails: opts.SeekThumbnails,
-		catalog:        opts.Catalog,
-		opener:         opts.Opener,
-		processing:     opts.Processing,
-		events:         opts.Events,
-		logger:         logger,
+		build:        opts.Build,
+		pinger:       opts.Pinger,
+		videos:       opts.Videos,
+		playback:     opts.Playback,
+		scans:        opts.Scans,
+		mediaFolders: opts.MediaFolders,
+		folders:      opts.Folders,
+		transcoder:   opts.Transcoder,
+		artifacts:    opts.Artifacts,
+		catalog:      opts.Catalog,
+		opener:       opts.Opener,
+		processing:   opts.Processing,
+		events:       opts.Events,
+		logger:       logger,
 	}
 
 	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{

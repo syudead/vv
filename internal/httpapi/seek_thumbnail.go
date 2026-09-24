@@ -3,9 +3,9 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"log/slog"
 	"net/http"
-	"os"
 	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
@@ -31,14 +31,14 @@ func (s *server) GetVideoSeekThumbnail(
 		s.invalidRequest(w, "positionMsは動画の範囲内で指定してください")
 		return
 	}
-	if s.seekThumbnails == nil {
+	if s.artifacts == nil {
 		s.internalError(w, "シークプレビューの保存先が設定されていません", nil)
 		return
 	}
 
-	image, err := s.seekThumbnails.Read(r.Context(), video.ContentKey, params.PositionMs)
+	image, err := s.artifacts.SeekThumbnail(video.ContentKey, params.PositionMs)
 	switch {
-	case errors.Is(err, os.ErrNotExist):
+	case errors.Is(err, fs.ErrNotExist):
 		s.logger.Info("シークプレビューは生成中です",
 			slog.Int64("video", video.ID), slog.Any("error", err))
 		s.writeError(w, http.StatusConflict, codeConflict, "シークプレビューは生成中です")

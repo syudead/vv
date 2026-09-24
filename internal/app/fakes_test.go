@@ -165,7 +165,8 @@ func (f *fakeIngestStore) CompletePreviewForContent(_ context.Context, job domai
 	return true, nil
 }
 
-// fakeGenerator は生成の呼び出しを記録し、決め打ちの結果を返す。
+// fakeGenerator は生成の呼び出しを記録し、決め打ちの結果を返す。生成物の置き場
+// （ArtifactStore）も兼ね、公開は write を呼ぶだけにする。
 type fakeGenerator struct {
 	mu sync.Mutex
 
@@ -175,8 +176,10 @@ type fakeGenerator struct {
 	previewErr   error
 	thumbnailErr error
 	seekErr      error
-	// validated はプレビューの生成中に確かめた元の同一性。
+	// validated はプレビューの公開の直前に確かめた元の同一性。
 	validated []bool
+	// outputs は生成に渡した書き出し先。置き場が渡したものと同じであること。
+	outputs []string
 
 	calls   []string
 	removed []string
@@ -186,6 +189,12 @@ func (f *fakeGenerator) record(call string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls = append(f.calls, call)
+}
+
+func (f *fakeGenerator) recordOutput(output string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.outputs = append(f.outputs, output)
 }
 
 func (f *fakeGenerator) CheckSource(string) error {
@@ -198,24 +207,39 @@ func (f *fakeGenerator) Probe(context.Context, string) (domain.Probe, error) {
 	return f.probe, f.probeErr
 }
 
-func (f *fakeGenerator) Thumbnail(context.Context, string, int64, string) error {
+func (f *fakeGenerator) Thumbnail(_ context.Context, _ string, _ int64, output string) error {
 	f.record("thumbnail")
+	f.recordOutput(output)
 	return f.thumbnailErr
 }
 
-func (f *fakeGenerator) SeekThumbnails(context.Context, string, string) error {
+func (f *fakeGenerator) SeekThumbnails(_ context.Context, _, outputPattern string) error {
 	f.record("seek")
+	f.recordOutput(outputPattern)
 	return f.seekErr
 }
 
-func (f *fakeGenerator) Preview(
-	ctx context.Context, _, _ string, _ int64, validate func(context.Context) (bool, error),
-) error {
+func (f *fakeGenerator) Preview(_ context.Context, _, output string, _ int64) error {
 	f.record("preview")
-	if f.previewErr != nil {
-		return f.previewErr
+	f.recordOutput(output)
+	return f.previewErr
+}
+
+func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string) error) error {
+	return write("tmp/thumbnail/" + contentKey)
+}
+
+func (f *fakeGenerator) PublishSeekThumbnails(contentKey string, write func(string) error) error {
+	return write("tmp/seek/" + contentKey)
+}
+
+func (f *fakeGenerator) PublishPreview(
+	ctx context.Context, contentKey string, write func(string) error, current func(context.Context) (bool, error),
+) error {
+	if err := write("tmp/preview/" + contentKey); err != nil {
+		return err
 	}
-	ok, err := validate(ctx)
+	ok, err := current(ctx)
 	if err != nil {
 		return err
 	}

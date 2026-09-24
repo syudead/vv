@@ -45,17 +45,14 @@ func TestVideoResponsesExposePreviewStateAndOnlyServeableDoneURL(t *testing.T) {
 }
 
 func TestGetVideoPreviewServesRangesAndCachePolicies(t *testing.T) {
-	dir := t.TempDir()
 	video := sampleVideo(1, "movie")
 	video.PreviewState = domain.PreviewStateDone
-	path := previewFilePath(dir, video.ContentKey)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	path := filepath.Join(t.TempDir(), "preview.mp4")
 	if err := os.WriteFile(path, []byte("preview-data"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}}, ThumbnailsDir: dir})
+	artifacts := &fakeArtifacts{previews: map[string]string{video.ContentKey: path}}
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}}, Artifacts: artifacts})
 
 	full := do(t, handler, http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey)
 	if full.Code != 200 || full.Body.String() != "preview-data" {
@@ -101,34 +98,22 @@ func TestGetVideoPreviewServesRangesAndCachePolicies(t *testing.T) {
 	}
 }
 
+// 置き場が「無い」と答えたもの（無い・空・manifest と合わない・生成途中）は、
+// no-store の 404 にする。置き場が無い場合も同じである。
 func TestGetVideoPreviewReturnsNoStore404ForUnavailableAssets(t *testing.T) {
-	dir := t.TempDir()
 	video := sampleVideo(1, "movie")
 	video.PreviewState = domain.PreviewStateDone
-	handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}}, ThumbnailsDir: dir})
 
-	for _, zero := range []bool{false, true} {
-		if zero {
-			path := previewFilePath(dir, video.ContentKey)
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(path, nil, 0o644); err != nil {
-				t.Fatal(err)
-			}
-		}
+	for name, artifacts := range map[string]ArtifactReader{"無い": &fakeArtifacts{}, "置き場が無い": nil} {
+		handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}}, Artifacts: artifacts})
 		rec := do(t, handler, http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey)
 		if rec.Code != 404 || rec.Header().Get("Cache-Control") != cacheNoStore {
-			t.Fatalf("zero=%t response = %d cache=%q", zero, rec.Code, rec.Header().Get("Cache-Control"))
-		}
-		if zero {
-			_ = os.Remove(previewFilePath(dir, video.ContentKey))
+			t.Fatalf("%s: response = %d cache=%q", name, rec.Code, rec.Header().Get("Cache-Control"))
 		}
 	}
 }
 
 func TestGetVideoPreviewRejectsNonDoneStatesWithoutFallback(t *testing.T) {
-	dir := t.TempDir()
 	transcoder := &fakeTranscoder{body: "must not be used"}
 
 	for _, state := range []domain.PreviewState{domain.PreviewStatePending, domain.PreviewStateFailed} {
@@ -136,9 +121,9 @@ func TestGetVideoPreviewRejectsNonDoneStatesWithoutFallback(t *testing.T) {
 		video.Path = filepath.Join(t.TempDir(), "source-must-not-be-opened.mp4")
 		video.PreviewState = state
 		handler := newTestServer(t, Options{
-			Videos:        &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}},
-			ThumbnailsDir: dir,
-			Transcoder:    transcoder,
+			Videos:     &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}},
+			Artifacts:  &fakeArtifacts{},
+			Transcoder: transcoder,
 		})
 
 		rec := do(t, handler, http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey)

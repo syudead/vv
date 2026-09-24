@@ -2,22 +2,11 @@ package media
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/gofrs/flock"
-
-	"github.com/syudead/vv/internal/domain"
 )
 
 const (
@@ -26,16 +15,6 @@ const (
 	previewShortSec     = 9.0
 	previewTimeout      = 30 * time.Minute
 )
-
-type previewManifest struct {
-	Version int    `json:"version"`
-	Size    int64  `json:"size"`
-	SHA256  string `json:"sha256"`
-}
-
-// ErrPreviewStale means the source identity changed while ffmpeg was running.
-// The caller may safely retry the job; no generated asset was published.
-var ErrPreviewStale = domain.ErrPreviewStale
 
 // PreviewSegments returns the deterministic [start,end) windows used for a
 // preview. Short videos are converted once so their timing is preserved.
@@ -52,145 +31,18 @@ func PreviewSegments(durationMs int64) [][2]float64 {
 	return segments
 }
 
-// GeneratePreview atomically publishes a content-keyed MP4 and its integrity
-// manifest. Files in the temporary sibling are invisible to readers.
-func GeneratePreview(
-	ctx context.Context,
-	videoPath, thumbnailsDir, contentKey string,
-	durationMs int64,
-	validate func(context.Context) (bool, error),
-) error {
-	target := PreviewPath(thumbnailsDir, contentKey)
-	manifest := PreviewManifestPath(thumbnailsDir, contentKey)
-	if err := os.MkdirAll(filepath.Dir(target), thumbnailDirPerm); err != nil {
-		return fmt.Errorf("プレビューの置き場所を作れません: %w", err)
-	}
-	// Publishing two files cannot be atomic as a pair, so all processes that
-	// share this preview root use one bounded, persistent publication lock.
-	assetLock := flock.New(filepath.Join(thumbnailsDir, "preview", ".publish.lock"))
-	locked, err := assetLock.TryLockContext(ctx, 100*time.Millisecond)
-	if err != nil {
-		return fmt.Errorf("プレビューの生成ロックを取得できません: %w", err)
-	}
-	if !locked {
-		return errors.New("プレビューの生成ロックを取得できません")
-	}
-	defer func() { _ = assetLock.Unlock() }()
-	if _, err := VerifyPreview(target, manifest); err == nil {
-		return nil
-	}
-	_ = os.Remove(target)
-	_ = os.Remove(manifest)
-	temporary, err := makeTemporaryDir(thumbnailsDir, "preview-*")
-	if err != nil {
-		return fmt.Errorf("プレビューの一時領域を作れません: %w", err)
-	}
-	defer func() { _ = os.RemoveAll(temporary) }()
-	tmpVideo := filepath.Join(temporary, "preview.mp4")
+// GeneratePreview はホバープレビューの MP4 を output へ書く。置き場所、manifest、
+// 公開は呼び出し側（internal/artifacts）が受け持つ。
+func GeneratePreview(ctx context.Context, videoPath, output string, durationMs int64) error {
 	processCtx, cancel := context.WithTimeout(ctx, previewTimeout)
 	defer cancel()
-	if combined, runErr := exec.CommandContext(processCtx, "ffmpeg", previewArgs(videoPath, tmpVideo, durationMs)...).CombinedOutput(); runErr != nil {
+	if combined, runErr := exec.CommandContext(processCtx, "ffmpeg", previewArgs(videoPath, output, durationMs)...).CombinedOutput(); runErr != nil {
 		if processCtx.Err() != nil {
 			return fmt.Errorf("プレビュー生成を中断しました: %w", processCtx.Err())
 		}
 		return fmt.Errorf("ffmpeg がプレビュー生成に失敗しました: %w: %s", runErr, firstLine(combined))
 	}
-	info, err := os.Stat(tmpVideo)
-	if err != nil {
-		return fmt.Errorf("プレビューを確認できません: %w", err)
-	}
-	if info.Size() == 0 {
-		return errors.New("プレビューが生成されませんでした: ファイルが空です")
-	}
-	digest, err := fileSHA256(tmpVideo)
-	if err != nil {
-		return err
-	}
-	data, err := json.Marshal(previewManifest{Version: 1, Size: info.Size(), SHA256: digest})
-	if err != nil {
-		return err
-	}
-	tmpManifest := filepath.Join(temporary, "preview.mp4.sha256")
-	if err := os.WriteFile(tmpManifest, append(data, '\n'), 0o644); err != nil {
-		return err
-	}
-	if validate != nil {
-		current, err := validate(ctx)
-		if err != nil {
-			return fmt.Errorf("プレビューの公開条件を確認できません: %w", err)
-		}
-		if !current {
-			return ErrPreviewStale
-		}
-	}
-	if err := os.Rename(tmpVideo, target); err != nil {
-		if _, verifyErr := VerifyPreview(target, manifest); verifyErr != nil {
-			return fmt.Errorf("プレビューを確定できません: %w", err)
-		}
-		return nil
-	}
-	if err := os.Rename(tmpManifest, manifest); err != nil {
-		_ = os.Remove(target)
-		return fmt.Errorf("プレビューのmanifestを確定できません: %w", err)
-	}
 	return nil
-}
-
-func PreviewPath(thumbnailsDir, contentKey string) string {
-	safe := thumbnailFileName(contentKey)
-	prefix := safe
-	if len(prefix) > 2 {
-		prefix = prefix[:2]
-	}
-	return filepath.Join(thumbnailsDir, "preview", prefix, safe+".mp4")
-}
-
-func PreviewManifestPath(thumbnailsDir, contentKey string) string {
-	return PreviewPath(thumbnailsDir, contentKey) + ".sha256"
-}
-
-// RemovePreview removes both parts of one content-keyed preview asset.
-func RemovePreview(thumbnailsDir, contentKey string) error {
-	var errs []error
-	for _, path := range []string{
-		PreviewPath(thumbnailsDir, contentKey),
-		PreviewManifestPath(thumbnailsDir, contentKey),
-	} {
-		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-			errs = append(errs, err)
-		}
-	}
-	return errors.Join(errs...)
-}
-
-// VerifyPreview checks both the manifest and the complete MP4 payload.
-func VerifyPreview(path, manifestPath string) (int64, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return 0, err
-	}
-	if !info.Mode().IsRegular() || info.Size() == 0 {
-		return 0, errors.New("preview is not a regular file")
-	}
-	var expected previewManifest
-	data, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return 0, err
-	}
-	if err := json.Unmarshal(data, &expected); err != nil {
-		return 0, err
-	}
-	if expected.Version != 1 || expected.Size != info.Size() || len(expected.SHA256) != sha256.Size*2 {
-		return 0, errors.New("preview manifest does not match size")
-	}
-	actual, err := fileSHA256(path)
-	if err != nil {
-		return 0, err
-	}
-	if !strings.EqualFold(expected.SHA256, actual) {
-		return 0, errors.New("preview manifest does not match digest")
-	}
-	return info.Size(), nil
 }
 
 func previewArgs(videoPath, output string, durationMs int64) []string {
@@ -213,16 +65,3 @@ func previewArgs(videoPath, output string, durationMs int64) []string {
 }
 
 func previewFormatSeconds(value float64) string { return strconv.FormatFloat(value, 'f', 3, 64) }
-
-func fileSHA256(path string) (string, error) {
-	f, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = f.Close() }()
-	h := sha256.New()
-	if _, err := io.Copy(h, f); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(h.Sum(nil)), nil
-}

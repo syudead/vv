@@ -49,7 +49,8 @@ media folders; nothing reads the whole library at startup or after a scan.
 each claiming only its own kind of job from the persistent `jobs` queue, one at a time,
 and handing it to `internal/app`, which drives the `internal/media` adapters
 (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, five-second seek-preview frames,
-and a content-keyed hover-preview clip per video). A worker sleeps while its queue is
+and a content-keyed hover-preview clip per video) and publishes their output through
+`internal/artifacts`. A worker sleeps while its queue is
 empty: `internal/store` reports every committed enqueue, and `internal/app` wakes the worker
 for that stage, so no worker polls the queue. A thumbnail job is not claimed until its
 video's probe has finished, because the frame position depends on the duration;
@@ -59,10 +60,25 @@ generation output is removed at the next startup. When a video row is deleted (a
 location gone, its content changes, or its media folder is removed or replaced),
 `internal/store` reports the released content keys after commit, and `internal/app` removes
 that content's thumbnail, seek frames and hover preview unless another video still
-references it; nothing else sweeps the thumbnails directory. A hover preview whose file
-is gone is repaired when it is found: `internal/app` already checks the file before the
-video API exposes `previewUrl`, and when a `done` preview is missing it sets the video back to
-`pending` and queues a preview job in one transaction, once per loss.
+references it; nothing else sweeps the thumbnails directory. A hover preview that is gone
+or incomplete is repaired when it is found: `internal/app` already checks it before the
+video API exposes `previewUrl`, and when a `done` preview's MP4 is missing or does not match
+the size in its manifest it sets the video back to `pending` and queues a preview job in one
+transaction, once per loss.
+
+Generated files have one owner, `internal/artifacts`. Under `MDM_DATA_DIR/thumbnails`
+(the root comes from `cmd/mdm`'s configuration) it alone decides where each content key's
+files live — the library thumbnail at `<p>/<s>.jpg`, the seek frames under `seek/<p>/<s>/`,
+the hover preview and its size/SHA-256 manifest at `preview/<p>/<s>.mp4[.sha256]`, where
+`<s>` is the content key with `:`, `/` and `\` replaced by `_` and `<p>` its first two
+characters — and it alone creates, checks, opens and removes them. Generation writes into
+a directory under `.tmp` that `internal/artifacts` hands out and then renames into place,
+so a file still being generated is neither reported as present nor served. A content key
+that would point outside the root (empty, or starting with `.`) never becomes a path.
+`internal/media` only runs `ffmpeg` against the output path it is given; `internal/app`
+(deciding when to generate and when to remove, under its per-content lock) and
+`internal/httpapi` (serving the files) reach the store through interfaces they declare.
+Changing that layout would orphan every file an existing data directory already holds.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
 browser polling: `scan` when the current scan changes, `processing` with the remaining
@@ -110,7 +126,7 @@ not persisted.
 
 ## Intended dependency direction
 
-`cmd -> internal/{app,httpapi,store,media,opener,scanner,jobs} -> internal/domain`, one
+`cmd -> internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs} -> internal/domain`, one
 way only. The packages under `internal/` fall into three layers:
 
 - `internal/domain` holds the domain model: value types and pure rules
@@ -138,8 +154,8 @@ way only. The packages under `internal/` fall into three layers:
   an HTTP server. It must not import `net/http`, `database/sql`, `os/exec`, the
   SQLite driver, or any adapter package.
 - The adapters — `internal/httpapi`, `internal/store`, `internal/media`,
-  `internal/opener`, `internal/scanner` and `internal/jobs` — talk to the outside
-  world. Filesystem checks stay in the adapters: `internal/scanner` also checks
+  `internal/artifacts`, `internal/opener`, `internal/scanner` and `internal/jobs` —
+  talk to the outside world. Filesystem checks stay in the adapters: `internal/scanner` also checks
   that a media folder path is a readable directory reached without symbolic
   links (`FolderChecker`), so `internal/store` never touches the filesystem.
   `internal/httpapi` only parses requests, calls the application layer or
@@ -151,9 +167,9 @@ stops them. It holds no use case of its own.
 
 The sibling packages under `internal/` (the adapters and `internal/app`) do not
 import each other. Each declares the interfaces it consumes — `internal/app` a
-scan store, an ingest store, a generator and a notifier; `internal/scanner`,
+scan store, an ingest store, a generator, an artifact store and a notifier; `internal/scanner`,
 `internal/jobs` and `internal/httpapi` an index to write to, a queue to claim
-from, a library and a video catalog to query — and `cmd/mdm` is the only place
+from, a library and a video catalog to query, and generated files to serve — and `cmd/mdm` is the only place
 that knows which concrete type goes where. The values crossing those boundaries
 (`domain.VideoFile`, `domain.Job`, `domain.VideoQuery`, `domain.VideoView`, …)
 live in `internal/domain`, which is why neither side needs the other.

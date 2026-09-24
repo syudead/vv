@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/syudead/vv/internal/app"
+	"github.com/syudead/vv/internal/artifacts"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/media"
 	"github.com/syudead/vv/internal/store"
@@ -20,7 +21,8 @@ import (
 func newTestIngest(db *store.DB, dataDir string) *app.Ingest {
 	return app.NewIngest(app.IngestOptions{
 		Store:     db,
-		Generator: media.NewAssets(Config{DataDir: dataDir}.ThumbnailsDir()),
+		Generator: media.NewAssets(),
+		Artifacts: artifacts.New(Config{DataDir: dataDir}.ThumbnailsDir()),
 		Logger:    slog.New(slog.DiscardHandler),
 	})
 }

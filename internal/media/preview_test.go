@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestPreviewSegmentsUsesWholeVideo(t *testing.T) {
@@ -47,171 +45,12 @@ func TestPreviewArgsAreSilentBrowserCompatibleAndFastStart(t *testing.T) {
 	}
 }
 
-func TestVerifyPreviewDetectsManifestMismatch(t *testing.T) {
-	dir := t.TempDir()
-	video := filepath.Join(dir, "preview.mp4")
-	manifest := video + ".sha256"
-	if err := os.WriteFile(video, []byte("preview"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(manifest, []byte(`{"version":1,"size":7,"sha256":"bad"}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := VerifyPreview(video, manifest); err == nil {
-		t.Fatal("corrupt manifest was accepted")
-	}
-}
-
-func TestVerifyPreviewAcceptsCompleteAssetAndRejectsCorruption(t *testing.T) {
-	dir := t.TempDir()
-	video := filepath.Join(dir, "preview.mp4")
-	manifest := video + ".sha256"
-	if err := os.WriteFile(video, []byte("complete-preview"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	digest, err := fileSHA256(video)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.Marshal(previewManifest{Version: 1, Size: 16, SHA256: digest})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(manifest, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if size, err := VerifyPreview(video, manifest); err != nil || size != 16 {
-		t.Fatalf("VerifyPreview() = %d, %v", size, err)
-	}
-	if err := os.WriteFile(video, []byte("corrupt-preview!"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := VerifyPreview(video, manifest); err == nil {
-		t.Fatal("corrupt preview was accepted")
-	}
-}
-
-func TestVerifyPreviewRejectsMissingTruncatedAndBitCorruptAssets(t *testing.T) {
-	tests := []struct {
-		name   string
-		mutate func(t *testing.T, video, manifest string)
-	}{
-		{name: "missing mp4", mutate: func(t *testing.T, video, _ string) {
-			t.Helper()
-			if err := os.Remove(video); err != nil {
-				t.Fatal(err)
-			}
-		}},
-		{name: "missing manifest", mutate: func(t *testing.T, _, manifest string) {
-			t.Helper()
-			if err := os.Remove(manifest); err != nil {
-				t.Fatal(err)
-			}
-		}},
-		{name: "truncated mp4", mutate: func(t *testing.T, video, _ string) {
-			t.Helper()
-			if err := os.Truncate(video, 3); err != nil {
-				t.Fatal(err)
-			}
-		}},
-		{name: "same size bit corruption", mutate: func(t *testing.T, video, _ string) {
-			t.Helper()
-			if err := os.WriteFile(video, []byte("valid-previex"), 0o600); err != nil {
-				t.Fatal(err)
-			}
-		}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			video := filepath.Join(dir, "preview.mp4")
-			manifest := video + ".sha256"
-			writeValidPreviewPair(t, video, manifest, []byte("valid-preview"))
-			tt.mutate(t, video, manifest)
-			if _, err := VerifyPreview(video, manifest); err == nil {
-				t.Fatal("invalid preview pair was accepted")
-			}
-		})
-	}
-}
-
-func TestGeneratePreviewDoesNotPublishStaleOutput(t *testing.T) {
-	requireFFmpeg(t)
-	dir := t.TempDir()
-	source := makePreviewSource(t, dir, 1)
-	err := GeneratePreview(context.Background(), source, dir, "stale", 1000,
-		func(context.Context) (bool, error) { return false, nil })
-	if !errors.Is(err, ErrPreviewStale) {
-		t.Fatalf("GeneratePreview() error = %v, want ErrPreviewStale", err)
-	}
-	for _, path := range []string{PreviewPath(dir, "stale"), PreviewManifestPath(dir, "stale")} {
-		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-			t.Fatalf("stale output was published at %s: %v", path, err)
-		}
-	}
-}
-
-func TestGeneratePreviewSerializesSameContentAcrossCallers(t *testing.T) {
-	requireFFmpeg(t)
-	dir := t.TempDir()
-	source := makePreviewSource(t, dir, 1)
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	firstDone := make(chan error, 1)
-	go func() {
-		firstDone <- GeneratePreview(context.Background(), source, dir, "shared", 1000,
-			func(context.Context) (bool, error) {
-				close(entered)
-				<-release
-				return true, nil
-			})
-	}()
-	select {
-	case <-entered:
-	case <-time.After(10 * time.Second):
-		t.Fatal("first generator did not reach publication")
-	}
-	secondValidated := make(chan struct{}, 1)
-	secondDone := make(chan error, 1)
-	go func() {
-		secondDone <- GeneratePreview(context.Background(), source, dir, "shared", 1000,
-			func(context.Context) (bool, error) {
-				secondValidated <- struct{}{}
-				return true, nil
-			})
-	}()
-	select {
-	case <-secondValidated:
-		t.Fatal("second generator passed the content lock while the first held it")
-	case <-time.After(150 * time.Millisecond):
-	}
-	close(release)
-	if err := <-firstDone; err != nil {
-		t.Fatal(err)
-	}
-	if err := <-secondDone; err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-secondValidated:
-		t.Fatal("second generator regenerated an already complete asset")
-	default:
-	}
-	if _, err := VerifyPreview(PreviewPath(dir, "shared"), PreviewManifestPath(dir, "shared")); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestGeneratePreviewProducesBrowserCompatibleFastStartAsset(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()
 	source := makePreviewSource(t, dir, 10)
-	if err := GeneratePreview(context.Background(), source, dir, "complete", 10000,
-		func(context.Context) (bool, error) { return true, nil }); err != nil {
-		t.Fatal(err)
-	}
-	target := PreviewPath(dir, "complete")
-	if _, err := VerifyPreview(target, PreviewManifestPath(dir, "complete")); err != nil {
+	target := filepath.Join(dir, "preview.mp4")
+	if err := GeneratePreview(context.Background(), source, target, 10000); err != nil {
 		t.Fatal(err)
 	}
 
@@ -277,11 +116,10 @@ func TestGeneratePreviewSamplesAcrossWholeTimeline(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(disposition)) != "1" {
 		t.Fatalf("fixture does not contain an attached cover: %q, %v", disposition, err)
 	}
-	if err := GeneratePreview(context.Background(), source, dir, "timeline", 120000,
-		func(context.Context) (bool, error) { return true, nil }); err != nil {
+	target := filepath.Join(dir, "preview.mp4")
+	if err := GeneratePreview(context.Background(), source, target, 120000); err != nil {
 		t.Fatal(err)
 	}
-	target := PreviewPath(dir, "timeline")
 	samples, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-i", target,
 		"-vf", "fps=4/3,scale=1:1", "-frames:v", "12", "-f", "rawvideo", "-pix_fmt", "gray", "-").Output()
 	if err != nil {
@@ -299,28 +137,14 @@ func TestGeneratePreviewSamplesAcrossWholeTimeline(t *testing.T) {
 	}
 }
 
-func TestGeneratePreviewCancellationLeavesNoPublishedOrTemporaryAsset(t *testing.T) {
+func TestGeneratePreviewCancellationFails(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()
 	source := makePreviewSource(t, dir, 1)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := GeneratePreview(ctx, source, dir, "cancelled", 1000,
-		func(context.Context) (bool, error) { return true, nil })
-	if err == nil {
+	if err := GeneratePreview(ctx, source, filepath.Join(dir, "preview.mp4"), 1000); err == nil {
 		t.Fatal("cancelled generation unexpectedly succeeded")
-	}
-	for _, path := range []string{PreviewPath(dir, "cancelled"), PreviewManifestPath(dir, "cancelled")} {
-		if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
-			t.Fatalf("cancelled output was published at %s: %v", path, statErr)
-		}
-	}
-	temps, err := filepath.Glob(filepath.Join(dir, temporaryDirName, "*"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(temps) != 0 {
-		t.Fatalf("temporary directories remain: %v", temps)
 	}
 }
 
@@ -342,24 +166,6 @@ func makePreviewSource(t *testing.T, dir string, seconds int) string {
 		t.Fatalf("create source: %v: %s", err, out)
 	}
 	return path
-}
-
-func writeValidPreviewPair(t *testing.T, video, manifest string, payload []byte) {
-	t.Helper()
-	if err := os.WriteFile(video, payload, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	digest, err := fileSHA256(video)
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := json.Marshal(previewManifest{Version: 1, Size: int64(len(payload)), SHA256: digest})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(manifest, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func contains(value, want string) bool {

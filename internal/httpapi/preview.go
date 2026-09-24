@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"net/http"
-	"os"
-	"path/filepath"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -22,13 +20,13 @@ func (s *server) GetVideoPreview(
 	if !versioned {
 		w.Header().Set("Cache-Control", cacheNoStore)
 	}
-	if video.PreviewState != domain.PreviewStateDone || s.thumbnailsDir == "" {
+	if video.PreviewState != domain.PreviewStateDone || s.artifacts == nil {
 		s.notFound(w, "プレビューはまだ生成されていません")
 		return
 	}
 
-	path := previewFilePath(s.thumbnailsDir, video.ContentKey)
-	file, err := os.Open(path)
+	// 無い・manifest と合わない・生成途中のものは、置き場が「無い」と答える。
+	file, err := s.artifacts.PreviewFile(video.ContentKey)
 	if err != nil {
 		s.notFound(w, "プレビューはまだ生成されていません")
 		return
@@ -36,7 +34,7 @@ func (s *server) GetVideoPreview(
 	defer func() { _ = file.Close() }()
 
 	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+	if err != nil {
 		s.notFound(w, "プレビューはまだ生成されていません")
 		return
 	}
@@ -47,5 +45,5 @@ func (s *server) GetVideoPreview(
 		w.Header().Set("Cache-Control", cacheNoStore)
 	}
 	w.Header().Set("Content-Type", "video/mp4")
-	http.ServeContent(w, r, filepath.Base(path), info.ModTime(), file)
+	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
 }
