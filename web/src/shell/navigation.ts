@@ -1,4 +1,4 @@
-import { Clock, Folder, History, Library, type LucideIcon } from "lucide-react";
+import { Clock, Folder, History, Library, Tags, type LucideIcon } from "lucide-react";
 
 export interface NavEntry {
   id: string;
@@ -19,6 +19,7 @@ export const navEntries: readonly NavEntry[] = [
     to: "/folders",
     matchDescendants: true,
   },
+  { id: "tags", label: "タグ", icon: Tags, to: "/tags" },
   { id: "recent", label: "最近追加", icon: Clock },
   { id: "in-progress", label: "視聴途中", icon: History },
 ];

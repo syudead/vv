@@ -82,6 +82,9 @@ describe("contrast", () => {
     ["accent", "navbar", 4.5],
     ["success", "navbar", 4.5],
     ["bg", "fg", 4.5],
+    // 選択バーのポップオーバーとタグ管理画面の窓（ModalFrame は bg-elevated）の中の
+    // 理由・失敗の行（specs/014-video-tags/ui-design.md「Accessibility」）。
+    ["danger", "elevated", 4.5],
   ];
 
   it.each(pairs)("%s on %s >= %s", (fg, bg, minimum) => {

@@ -310,15 +310,19 @@ the criteria `useVideos` sends, and the server applies every condition, so the p
 neither filters loaded pages nor reads ahead to find matches.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
-frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`, and
-`web/src/player/` own their respective product flows, while reusable primitives live in
-`web/src/ui/` and formatting helpers live in `web/src/lib/`. The video-list pieces the
-library and folder screens share (list criteria and their URL hook, the condition labels
-and count summary, the video card, the empty/loading/error states and the search, filter,
-sort and zoom controls) live in `web/src/videoList/`, which belongs to neither screen, so
-neither screen imports from the other. The library, folder and settings
-screens use the shell: `app/App.tsx` puts `AppShell` around the `/`, `/folders/*` and
-`/settings` routes, and the playback screen
+frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`,
+`web/src/tags/`, and `web/src/player/` own their respective product flows, while reusable
+primitives live in `web/src/ui/` and formatting helpers live in `web/src/lib/`. The
+video-list pieces the library and folder screens share (list criteria and their URL hook,
+the condition labels and count summary, the video card, the empty/loading/error states and
+the search, filter, sort and zoom controls) live in `web/src/videoList/`, which belongs to
+neither screen, so neither screen imports from the other. `web/src/tags/` is the tag
+admin screen (`/tags`): a list of every tag with its video count, an in-page name/synonym
+search, create, rename and delete. `web/src/shell/navigation.ts` puts its sidebar entry
+right after "フォルダ" (Folders), because unlike "最近追加"/"視聴途中" it has a working
+destination. The library, folder, settings and tag screens use the shell: `app/App.tsx`
+puts `AppShell` around the `/`, `/folders/*`, `/settings` and `/tags` routes, and the
+playback screen
 (`/videos/:id`) deliberately gets no shell at all, because it is a
 two-pane screen of its own: the player with the title, a property strip and the
 file location on the left, related videos on the right, and a close button (×, or
