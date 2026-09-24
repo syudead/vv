@@ -27,6 +27,17 @@ export interface SearchBoxProps {
 }
 
 /**
+ * limitQueryInput は入力を検索語の上限に切る。HTML の maxLength は UTF-16 の単位で
+ * 数えるので使わず、URL・サーバーと同じく符号位置で数える（list-url.md §1）。
+ */
+export function limitQueryInput(value: string): string {
+  const chars = Array.from(value);
+  return chars.length > MAX_QUERY_LENGTH
+    ? chars.slice(0, MAX_QUERY_LENGTH).join("")
+    : value;
+}
+
+/**
  * SearchBox は一覧の条件の `q` を入力する検索欄である。
  * `/` でフォーカス、Esc でクリアしてフォーカスを外す。枠の右端に検索の書き方の手引きを持つ。
  */
@@ -103,7 +114,7 @@ export default function SearchBox({
         ref={field}
         type="search"
         value={input}
-        onChange={(event) => setInput(event.target.value)}
+        onChange={(event) => setInput(limitQueryInput(event.target.value))}
         onFocus={() => session.current.start()}
         onBlur={() => {
           // 待っている確定があれば、続きを閉じる前に済ませる。
@@ -118,7 +129,6 @@ export default function SearchBox({
             field.current?.blur();
           }
         }}
-        maxLength={MAX_QUERY_LENGTH}
         placeholder={placeholder}
         aria-label={label}
         autoComplete="off"
@@ -134,6 +144,9 @@ export default function SearchBox({
         {input !== "" && (
           <button
             type="button"
+            // 押した瞬間に入力欄のフォーカスを外さない。外すと blur が入力途中の語を
+            // 確定して履歴を1つ増やし、続くクリアがもう1つ増やしてしまう。
+            onMouseDown={(event) => event.preventDefault()}
             onClick={clear}
             aria-label="検索語をクリア"
             className="flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
