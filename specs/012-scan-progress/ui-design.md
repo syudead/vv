@@ -12,7 +12,7 @@
 
 - フローティング進捗は route より上に1度だけ配置し、ライブラリ、フォルダ、設定、再生画面で
   同じ表示インスタンスを使う。通常画面では右下に固定する。再生画面は独立したシアターモードの
-  まま保ち、進捗表示だけを player control や詳細と重ならない右上へ固定する。
+  まま保ち、進捗表示だけを360pxでは右下、768px以上では右上へ固定して、player control や詳細を避ける。
 - トップバーの「ライブラリを更新」は待機時の開始操作として残す。取り込み中の割合、件数、
   失敗結果はトップバーへ出さず、開始ボタンは実行中であることだけを短く示す。
 - 設定画面には `id="scan-status"` の section をメディアフォルダ設定より前に置く。`/settings#scan-status`
@@ -24,9 +24,9 @@
 ## Floating Indicator
 
 インジケーターは補助的な運用状態であり、ライブラリカード、検索、フィルタ、フォルダ移動、
-再生への導線より弱く見せる。通常画面は右下、再生画面は右上に `fixed` で置き、本文の layout と
-scroll へ参加しない。route 種別の判定は `app/App.tsx` が所有し、indicator には placement variant
-だけを渡す。
+再生への導線より弱く見せる。通常画面は右下、再生画面は狭幅で右下、768px以上で右上に `fixed` で
+置き、本文の layout と scroll へ参加しない。route 種別の判定は `app/App.tsx` が所有し、indicator
+には placement variant だけを渡す。
 
 - 待機中と一度も取り込みがない状態では表示しない。
 - 実行中はアイコン、状態名、確定している場合だけ割合を1行で表示する。総数が 0 または未確定の
@@ -44,9 +44,9 @@ scroll へ参加しない。route 種別の判定は `app/App.tsx` が所有し�
   contrast pair に追加する。
 - 表面は `bg-elevated`、`border-border-strong`、`shadow-elevated` を使う。角丸は既存の
   compact control に合わせて `rounded-md` までに留め、ページ section のような大きな card にはしない。
-- 360px でも右端と、通常画面では下端、再生画面では上端から安全領域を残す。既存 Toast と同時に
-  出る場合は Toast より上へ逃がし、どちらの文言も読める位置関係にする。再生画面では戻る導線、
-  player control、映像情報、詳細 tab と重ならない。
+- 360px でも右端と下端から安全領域を残す。既存 Toast と同時に出る場合は Toast より上へ逃がし、
+  どちらの文言も読める位置関係にする。768px以上の再生画面では右端と上端から安全領域を残す。
+  再生画面では戻る導線、player control、映像情報、詳細 tab と重ならない。
 
 ## Summary Popover
 
@@ -59,9 +59,9 @@ scroll へ参加しない。route 種別の判定は `app/App.tsx` が所有し�
   総数未確定、開始要求中、取得の一時失敗では indeterminate 表示にし、0% や 100% を連想させる
   数値を出さない。`done(total=0, completed=0)` は完了状態として文言と時刻を表示するが、概要に
   determinate bar や 100% は出さない。
-- Popover は画面中央側へ開くことを基本にし、通常画面の右下では左上、再生画面の右上では左下へ
-  展開する。Radix の collision handling で画面外へはみ出さない。360px 幅では本文を長時間覆わない
-  横幅へ収め、件数は折り返さず表のように読める。
+- Popover は画面中央側へ開くことを基本にし、右下では左上、右上では左下へ展開する。Radix の
+  collision handling で画面外へはみ出さない。360pxの再生画面ではplayer下の空き領域へ開き、本文を
+  長時間覆わない横幅へ収める。件数は折り返さず表のように読める。
 - pointer を trigger から popover へ移しても閉じない。Escape、focus 移動、pointer leave で閉じる。
 - trigger の click、tap、Enter、Space は popover toggle ではなく `/settings#scan-status` への移動に使う。
 
@@ -102,8 +102,9 @@ scroll へ参加しない。route 種別の判定は `app/App.tsx` が所有し�
 
 ## Responsive Layout
 
-- 360px: 通常画面では右下、再生画面では右上に収まる幅にし、本文、戻る導線、モバイルナビゲーション、
-  Toast と重ならない。Popover は画面中央側へ開き、長い文言は2行まで自然に折り返す。設定 section は1列。
+- 360px: 通常画面と再生画面で右下に収まる幅にし、本文、player control、映像情報、詳細 tab、
+  モバイルナビゲーション、Toast と重ならない。再生画面のPopoverはplayer下の空き領域へ開き、
+  長い文言は2行まで自然に折り返す。設定 section は1列。
 - 768px: 通常画面ではサイドバーや toolbar と視覚的に競合しない右下、再生画面では player control と
   詳細を避ける右上に置く。Popover は件数を2列相当で読める幅を取り、主要操作を覆い続けない。
 - 1280px: インジケーターは画面端の補助表示として小さく保つ。Popover が大きな card に見えない
@@ -137,7 +138,7 @@ scroll へ参加しない。route 種別の判定は `app/App.tsx` が所有し�
 
 - 総数未確定の実行中: 割合が出ず、indeterminate と文言で待っていることが分かる。
 - 総数確定の実行中: 通常画面右下の短い表示、概要、設定 section が同じ割合と件数を示す。
-- 再生中: 右上の表示と概要が同じ scan の更新を続け、戻る導線、player control、映像情報、詳細 tab を覆わない。
+- 再生中: 360pxでは右下、768px以上では右上の表示と概要が同じ scan の更新を続け、戻る導線、player control、映像情報、詳細 tab を覆わない。
 - 0件完了: 完了状態と時刻は分かるが、100% の progress として見えない。
 - 完了または一部失敗: 同じ位置で結果へ切り替わり、8秒後に自動で閉じ、一覧や操作より強くなりすぎない。
 - 全体失敗: 見落とさない強さがあり、閉じる button、設定 section の理由と再試行がある。
