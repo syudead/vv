@@ -36,28 +36,25 @@ type DB struct {
 	// 変えた取引の確定後に呼ぶ。ワーカーはこれを受けて起きるので、待ち行列を
 	// 一定間隔で問い合わせない。
 	jobsChangedMu sync.RWMutex
-	jobsChanged   func(kinds []JobKind)
+	jobsChanged   func(kinds []domain.JobKind)
 
 	// videosDeleted は動画の行を消した取引の確定後に、消した動画を渡す。
 	// 生成物の片付けと、画面への知らせに使う。
 	videosDeletedMu sync.RWMutex
-	videosDeleted   func(deleted []DeletedVideo)
+	videosDeleted   func(deleted []domain.DeletedVideo)
 }
-
-// DeletedVideo は行を消した動画である。
-type DeletedVideo = domain.DeletedVideo
 
 // OnVideosDeleted は、動画の行を消した取引が確定したときの知らせ先を設定する。
 // 同じ内容を持つ別の動画が残っていることもあるので、生成物を消す側は参照が
 // 無いことを確かめてから消すこと。
-func (db *DB) OnVideosDeleted(notify func(deleted []DeletedVideo)) {
+func (db *DB) OnVideosDeleted(notify func(deleted []domain.DeletedVideo)) {
 	db.videosDeletedMu.Lock()
 	defer db.videosDeletedMu.Unlock()
 	db.videosDeleted = notify
 }
 
 // notifyVideosDeleted は知らせ先があれば呼ぶ。取引の確定後に呼ぶこと。
-func (db *DB) notifyVideosDeleted(deleted []DeletedVideo) {
+func (db *DB) notifyVideosDeleted(deleted []domain.DeletedVideo) {
 	if len(deleted) == 0 {
 		return
 	}
@@ -70,21 +67,21 @@ func (db *DB) notifyVideosDeleted(deleted []DeletedVideo) {
 }
 
 // deleteOrphanVideos は所在が1つも無くなった動画の行を消し、消した動画を返す。
-func deleteOrphanVideos(ctx context.Context, tx *sql.Tx) ([]DeletedVideo, error) {
+func deleteOrphanVideos(ctx context.Context, tx *sql.Tx) ([]domain.DeletedVideo, error) {
 	return collectDeletedVideos(tx.QueryContext(ctx, `delete from videos where not exists (
 		select 1 from video_locations where video_locations.video_id = videos.id)
 		returning id, content_key`))
 }
 
 // collectDeletedVideos は returning id, content_key の結果を読み切る。
-func collectDeletedVideos(rows *sql.Rows, err error) ([]DeletedVideo, error) {
+func collectDeletedVideos(rows *sql.Rows, err error) ([]domain.DeletedVideo, error) {
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var deleted []DeletedVideo
+	var deleted []domain.DeletedVideo
 	for rows.Next() {
-		var video DeletedVideo
+		var video domain.DeletedVideo
 		if err := rows.Scan(&video.ID, &video.ContentKey); err != nil {
 			return nil, err
 		}
@@ -96,7 +93,7 @@ func collectDeletedVideos(rows *sql.Rows, err error) ([]DeletedVideo, error) {
 // OnJobsChanged は、仕事を積んだ取引、または残りの仕事として数える範囲を
 // 変えた取引（メディアフォルダの登録を外したなど）が確定したときの知らせ先を
 // 設定する。積んだ種類が渡る。同じ種類が重なることもある。積んでいなければ空。
-func (db *DB) OnJobsChanged(notify func(kinds []JobKind)) {
+func (db *DB) OnJobsChanged(notify func(kinds []domain.JobKind)) {
 	db.jobsChangedMu.Lock()
 	defer db.jobsChangedMu.Unlock()
 	db.jobsChanged = notify
@@ -104,7 +101,7 @@ func (db *DB) OnJobsChanged(notify func(kinds []JobKind)) {
 
 // notifyJobsChanged は知らせ先があれば呼ぶ。取引の確定後に呼ぶこと。確定前に
 // 起こすと、ワーカーがまだ見えない行を探して空振りし、そのまま眠る。
-func (db *DB) notifyJobsChanged(kinds ...JobKind) {
+func (db *DB) notifyJobsChanged(kinds ...domain.JobKind) {
 	db.jobsChangedMu.RLock()
 	notify := db.jobsChanged
 	db.jobsChangedMu.RUnlock()

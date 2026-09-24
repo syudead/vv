@@ -114,8 +114,17 @@ not persisted.
 way only. The packages under `internal/` fall into three layers:
 
 - `internal/domain` holds the domain model: value types and pure rules
-  (`EvaluatePlayability`, `OrderRelated`, search-key folding, …). It is the end
-  of the chain and must not depend on `net/http`, `database/sql`, `os/exec`, the
+  (`EvaluatePlayability`, `OrderRelated`, search-key folding, …), including the
+  business rules the store enforces: how a claim counts attempts and whether a
+  failed job returns to `queued` or stops as `failed` (`ClaimAttempts`,
+  `JobStateAfterFailure`), which queued jobs may be claimed
+  (`ClaimConditionFor`: a registered location, and a finished probe for
+  thumbnails), and whether a media folder may be added, replaced or removed
+  (`CheckMediaFolderPlacement`, `CheckMediaFolderMutation`). `internal/store`
+  translates these into SQL and writes their results; it re-reads the inputs
+  inside its transaction, and the database constraints (one running scan, one
+  unfinished job per `(kind, video_id)`) remain the final guard against races.
+  It is the end of the chain and must not depend on `net/http`, `database/sql`, `os/exec`, the
   SQLite driver, or any other `internal/*` package.
 - `internal/app` is the application layer and holds the use cases: starting,
   running and closing a scan and recovering an interrupted one at startup
@@ -123,13 +132,17 @@ way only. The packages under `internal/` fall into three layers:
   identity, calling the generator, applying the result, and waking the next stage
   (`Ingest`); and the decisions behind a video response — requeueing a missing hover
   preview, deriving the seek-preview state — plus assembling related videos
-  (`Catalog`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
+  (`Catalog`); and adding, replacing and removing media folders after the
+  filesystem adapter has checked the path (`MediaFolders`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
   through interfaces it declares, so its unit tests run without SQLite, `ffmpeg` or
   an HTTP server. It must not import `net/http`, `database/sql`, `os/exec`, the
   SQLite driver, or any adapter package.
 - The adapters — `internal/httpapi`, `internal/store`, `internal/media`,
   `internal/opener`, `internal/scanner` and `internal/jobs` — talk to the outside
-  world. `internal/httpapi` only parses requests, calls the application layer or
+  world. Filesystem checks stay in the adapters: `internal/scanner` also checks
+  that a media folder path is a readable directory reached without symbolic
+  links (`FolderChecker`), so `internal/store` never touches the filesystem.
+  `internal/httpapi` only parses requests, calls the application layer or
   the store, and converts to the generated `gen` types.
 
 `cmd/mdm` is the composition root: it reads the configuration, creates the

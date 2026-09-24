@@ -43,7 +43,7 @@ func ftsFixture(t *testing.T) *DB {
 		{"/media/holiday-trip.mp4", "holiday trip"},
 	}
 	for _, row := range rows {
-		_, err := db.UpsertVideo(context.Background(), VideoFile{
+		_, err := db.UpsertVideo(context.Background(), domain.VideoFile{
 			Path: row.path, Title: row.title, ContentKey: row.path,
 			SizeBytes: 1024, MTime: time.Unix(1757000000, 0),
 		})
@@ -233,7 +233,7 @@ func searchFixture(t *testing.T) *DB {
 		{"海辺の散歩", "key-5"},
 	}
 	for i, row := range rows {
-		_, err := db.UpsertVideo(ctx, VideoFile{
+		_, err := db.UpsertVideo(ctx, domain.VideoFile{
 			Path:       "/media/" + row.title + ".mp4",
 			Title:      row.title,
 			ContentKey: row.key,
@@ -253,7 +253,7 @@ func searchFixture(t *testing.T) *DB {
 func searchTitles(t *testing.T, db *DB, query string) []string {
 	t.Helper()
 
-	page, err := db.ListVideos(context.Background(), VideoQuery{Query: query, Limit: MaxLimit})
+	page, err := db.ListVideos(context.Background(), domain.VideoQuery{Query: query, Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatalf("検索に失敗した (%q): %v\n%s", query, err, alternativesHint)
 	}
@@ -300,7 +300,7 @@ func TestSearchNormalizesQuery(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	if _, err := db.UpsertVideo(ctx, VideoFile{
+	if _, err := db.UpsertVideo(ctx, domain.VideoFile{
 		Path: "/media/がっこう.mp4", Title: "がっこう", ContentKey: "key-1",
 		SizeBytes: 1, MTime: fixedTime, AddedAt: fixedTime, Container: "mp4",
 	}); err != nil {
@@ -324,7 +324,7 @@ func TestSearchEscapesSpecialCharacters(t *testing.T) {
 		`夏休み"`, `"夏休み" OR "花火"`, `NEAR(夏 花)`, `title:夏`,
 		`夏休み*`, `夏 AND 花火`, `'; drop table videos; --`,
 	} {
-		page, err := db.ListVideos(context.Background(), VideoQuery{Query: query, Limit: MaxLimit})
+		page, err := db.ListVideos(context.Background(), domain.VideoQuery{Query: query, Limit: domain.MaxLimit})
 		if err != nil {
 			t.Errorf("検索 %q で失敗した: %v\n%s", query, err, alternativesHint)
 			continue
@@ -353,7 +353,7 @@ func TestSearchUsesSameOrderAsListing(t *testing.T) {
 		{"は旅", "key-3"},
 	}
 	for i, row := range rows {
-		if _, err := db.UpsertVideo(ctx, VideoFile{
+		if _, err := db.UpsertVideo(ctx, domain.VideoFile{
 			Path: "/media/" + row.title + ".mp4", Title: row.title, ContentKey: row.key,
 			SizeBytes: int64(i + 1), MTime: fixedTime,
 			AddedAt: fixedTime.Add(time.Duration(i) * time.Minute), Container: "mp4",
@@ -362,7 +362,7 @@ func TestSearchUsesSameOrderAsListing(t *testing.T) {
 		}
 	}
 
-	added, err := db.ListVideos(ctx, VideoQuery{Query: "旅", Sort: SortAddedDesc, Limit: MaxLimit})
+	added, err := db.ListVideos(ctx, domain.VideoQuery{Query: "旅", Sort: domain.SortAddedDesc, Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestSearchUsesSameOrderAsListing(t *testing.T) {
 		t.Errorf("addedDesc = %v, want %v", titlesOf(added), want)
 	}
 
-	byTitle, err := db.ListVideos(ctx, VideoQuery{Query: "旅", Sort: SortTitleAsc, Limit: MaxLimit})
+	byTitle, err := db.ListVideos(ctx, domain.VideoQuery{Query: "旅", Sort: domain.SortTitleAsc, Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestSearchUsesSameOrderAsListing(t *testing.T) {
 func TestSearchTotalIsFiltered(t *testing.T) {
 	db := searchFixture(t)
 
-	page, err := db.ListVideos(context.Background(), VideoQuery{Query: "旅行", Limit: MaxLimit})
+	page, err := db.ListVideos(context.Background(), domain.VideoQuery{Query: "旅行", Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +391,7 @@ func TestSearchTotalIsFiltered(t *testing.T) {
 		t.Errorf("total = %d, want 1（絞り込み後の件数）", page.Total)
 	}
 
-	none, err := db.ListVideos(context.Background(), VideoQuery{Query: "該当しない語", Limit: MaxLimit})
+	none, err := db.ListVideos(context.Background(), domain.VideoQuery{Query: "該当しない語", Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -407,7 +407,7 @@ func TestSearchPagesWithCursor(t *testing.T) {
 
 	for i := 0; i < 7; i++ {
 		title := fmt.Sprintf("旅%d", i)
-		if _, err := db.UpsertVideo(ctx, VideoFile{
+		if _, err := db.UpsertVideo(ctx, domain.VideoFile{
 			Path: "/media/" + title + ".mp4", Title: title,
 			ContentKey: fmt.Sprintf("key-%d", i), SizeBytes: int64(i + 1), MTime: fixedTime,
 			AddedAt: fixedTime.Add(time.Duration(i) * time.Minute), Container: "mp4",
@@ -416,7 +416,7 @@ func TestSearchPagesWithCursor(t *testing.T) {
 		}
 	}
 	// 該当しない行も混ぜる。
-	if _, err := db.UpsertVideo(ctx, VideoFile{
+	if _, err := db.UpsertVideo(ctx, domain.VideoFile{
 		Path: "/media/花火.mp4", Title: "花火", ContentKey: "key-x",
 		SizeBytes: 99, MTime: fixedTime, AddedAt: fixedTime, Container: "mp4",
 	}); err != nil {
@@ -426,7 +426,7 @@ func TestSearchPagesWithCursor(t *testing.T) {
 	var seen []string
 	cursor := ""
 	for page := 0; page < 10; page++ {
-		got, err := db.ListVideos(ctx, VideoQuery{Query: "旅", Limit: 2, Cursor: cursor})
+		got, err := db.ListVideos(ctx, domain.VideoQuery{Query: "旅", Limit: 2, Cursor: cursor})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -455,7 +455,7 @@ func TestSearchWithBlankQuery(t *testing.T) {
 	db := searchFixture(t)
 
 	for _, query := range []string{"", "   ", "\t\n"} {
-		page, err := db.ListVideos(context.Background(), VideoQuery{Query: query, Limit: MaxLimit})
+		page, err := db.ListVideos(context.Background(), domain.VideoQuery{Query: query, Limit: domain.MaxLimit})
 		if err != nil {
 			t.Fatalf("検索 %q で失敗した: %v", query, err)
 		}

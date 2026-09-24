@@ -32,20 +32,20 @@ func jobCounts(t *testing.T, db *DB, videoID int64) map[string]int {
 }
 
 // claimAtLastAttempt は指定の種類のジョブを、最後の試行として専有する。
-func claimAtLastAttempt(t *testing.T, db *DB, kind JobKind, videoID int64) Job {
+func claimAtLastAttempt(t *testing.T, db *DB, kind domain.JobKind, videoID int64) domain.Job {
 	t.Helper()
 	ctx := context.Background()
 	if err := db.EnqueueJob(ctx, kind, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = ? and video_id = ?`, MaxJobAttempts-1, string(kind), videoID); err != nil {
+	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = ? and video_id = ?`, domain.MaxJobAttempts-1, string(kind), videoID); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.ClaimJob(ctx, kind)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.Kind != kind || job.Attempts != MaxJobAttempts || !job.LastLocation {
+	if job.Kind != kind || job.Attempts != domain.MaxJobAttempts || !job.LastLocation {
 		t.Fatalf("claimed = %+v", job)
 	}
 	return job
@@ -57,7 +57,7 @@ func failedVideoFixture(t *testing.T) (*DB, int64) {
 	t.Helper()
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	for _, kind := range []JobKind{JobProbe, JobThumbnail} {
+	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail} {
 		job := claimAtLastAttempt(t, db, kind, videoID)
 		if err := db.FailClaimedJob(ctx, job, string(kind)+" failed"); err != nil {
 			t.Fatal(err)
@@ -151,8 +151,8 @@ func TestRetryProbeRejectsNonFailedAndMissing(t *testing.T) {
 	if err := db.RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("done: err = %v, want ErrProbeNotFailed", err)
 	}
-	if err := db.RetryProbe(ctx, videoID+100, true); !errors.Is(err, ErrNotFound) {
-		t.Fatalf("missing: err = %v, want ErrNotFound", err)
+	if err := db.RetryProbe(ctx, videoID+100, true); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("missing: err = %v, want domain.ErrNotFound", err)
 	}
 	if count := countJobs(t, db); count != 0 {
 		t.Fatalf("jobs = %d, want 0", count)
@@ -165,11 +165,11 @@ func TestFailClaimedJobRecordsProbeAndThumbnailFailure(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	probeJob := claimAtLastAttempt(t, db, JobProbe, videoID)
+	probeJob := claimAtLastAttempt(t, db, domain.JobProbe, videoID)
 	if err := db.FailClaimedJob(ctx, probeJob, "open /media/a.mp4: no such file or directory"); err != nil {
 		t.Fatal(err)
 	}
-	thumbnailJob := claimAtLastAttempt(t, db, JobThumbnail, videoID)
+	thumbnailJob := claimAtLastAttempt(t, db, domain.JobThumbnail, videoID)
 	if err := db.FailClaimedJob(ctx, thumbnailJob, "open /media/a.mp4: no such file or directory"); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestFailClaimedJobRecordsProbeAndThumbnailFailure(t *testing.T) {
 func TestFailClaimedProbeRollsBackJobWhenStateUpdateFails(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	job := claimAtLastAttempt(t, db, JobProbe, videoID)
+	job := claimAtLastAttempt(t, db, domain.JobProbe, videoID)
 	if _, err := db.SQL().Exec(`create trigger reject_probe_failure before update of probe_state on videos
 		when new.probe_state = 'failed' begin select raise(abort, 'reject probe failure'); end`); err != nil {
 		t.Fatal(err)
@@ -207,10 +207,10 @@ func TestFailClaimedProbeRollsBackJobWhenStateUpdateFails(t *testing.T) {
 func TestFailClaimedProbeKeepsPendingWhileRetrying(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobProbe)
+	job, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,7 +233,7 @@ func TestFailClaimedJobKeepsCompletedState(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	probeJob := claimAtLastAttempt(t, db, JobProbe, videoID)
+	probeJob := claimAtLastAttempt(t, db, domain.JobProbe, videoID)
 	probe := domain.Probe{DurationMs: 1_000, VideoCodec: "h264", AudioCodec: "aac"}
 	applied, err := db.ApplyProbeForJob(ctx, probeJob, probe, domain.EvaluatePlayability("mp4", probe))
 	if err != nil || !applied {
@@ -243,7 +243,7 @@ func TestFailClaimedJobKeepsCompletedState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	thumbnailJob := claimAtLastAttempt(t, db, JobThumbnail, videoID)
+	thumbnailJob := claimAtLastAttempt(t, db, domain.JobThumbnail, videoID)
 	if written, err := db.SetThumbnailStateForJob(ctx, thumbnailJob, domain.ThumbnailStateDone); err != nil || !written {
 		t.Fatalf("thumbnail done = %v, %v", written, err)
 	}
@@ -269,7 +269,7 @@ func TestFailClaimedJobKeepsCompletedState(t *testing.T) {
 func TestRetryProbeDuringFinalAttemptWindow(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	job := claimAtLastAttempt(t, db, JobProbe, videoID)
+	job := claimAtLastAttempt(t, db, domain.JobProbe, videoID)
 
 	// ハンドラは失敗を返したが、ワーカーはまだ FailClaimedJob を呼んでいない。
 	if err := db.RetryProbe(ctx, videoID, false); !errors.Is(err, domain.ErrProbeNotFailed) {

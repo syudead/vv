@@ -15,7 +15,7 @@ import (
 // 版は行ごとに書くので、途中で止まっても次の起動で続きから埋まる。
 const searchKeyBatchSize = 500
 
-// queryExecer は *sql.DB と *sql.Tx の両方で鍵を読み書きするための共通部分である。
+// queryExecer は *sql.DB と *sql.Tx の両方で行を読み書きするための共通部分である。
 type queryExecer interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -25,7 +25,7 @@ type queryExecer interface {
 //
 // 相対パスは、所在を含む登録メディアフォルダより下のパスで、拡張子を含む。
 // 登録フォルダ自身のパスは入れない。どの登録フォルダにも含まれない所在は
-// 空文字列を返す。登録フォルダは互いに入れ子にならない（ensureFolderMutationAllowed）
+// 空文字列を返す。登録フォルダは互いに入れ子にならない（ensureFolderPlacementAllowed）
 // ので、含むフォルダは高々1つである。
 func locationSearchKey(roots []string, path, title string) string {
 	for _, root := range roots {

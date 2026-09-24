@@ -75,7 +75,7 @@ type listSpec struct {
 	expr         domain.SearchExpr
 	watch        domain.WatchFilter
 	playableOnly bool
-	sort         VideoSort
+	sort         domain.VideoSort
 	seed         int64
 	cursor       string
 	limit        int
@@ -86,7 +86,7 @@ type listSpec struct {
 // ページングは keyset（カーソル）方式である。offset を使うと、取り込みで行が
 // 増減した瞬間に取りこぼしと重複が起きる。並び順の値と id を境界に使うので、
 // 途中で行が動いても続きが安定して取れる。
-func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
+func (db *DB) ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error) {
 	return db.listVideoPage(ctx, listSpec{
 		scope: libraryScope(), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly,
@@ -97,7 +97,7 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 // ListFolderVideos はフォルダの動画1ページを返す。範囲は q.Scope で直下か配下
 // すべてかを選ぶ。並び順・カーソルの形・絞り込みは ListVideos と同じで、題名は
 // その範囲にある所在の題名である。
-func (db *DB) ListFolderVideos(ctx context.Context, q domain.FolderVideoQuery) (VideoPage, error) {
+func (db *DB) ListFolderVideos(ctx context.Context, q domain.FolderVideoQuery) (domain.VideoPage, error) {
 	return db.listVideoPage(ctx, listSpec{
 		scope: folderScope(q.Dir, q.Scope), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly,
@@ -193,11 +193,11 @@ func (db *DB) countVideos(ctx context.Context, spec listSpec) (int, error) {
 }
 
 // listVideoPage は条件に合う動画1ページと総件数を返す。
-func (db *DB) listVideoPage(ctx context.Context, spec listSpec) (VideoPage, error) {
+func (db *DB) listVideoPage(ctx context.Context, spec listSpec) (domain.VideoPage, error) {
 	limit := normalizeLimit(spec.limit)
 	if !spec.sort.Valid() {
 		// 値の検査は入口（internal/httpapi）が行う。ここに来た未知の値は既定にする。
-		spec.sort = SortAddedDesc
+		spec.sort = domain.SortAddedDesc
 	}
 	order := listOrders[spec.sort]
 
@@ -207,13 +207,13 @@ func (db *DB) listVideoPage(ctx context.Context, spec listSpec) (VideoPage, erro
 		var err error
 		cursorClause, cursorArgs, err = order.cursorCondition(spec, spec.cursor)
 		if err != nil {
-			return VideoPage{}, err
+			return domain.VideoPage{}, err
 		}
 	}
 
 	total, err := db.countVideos(ctx, spec)
 	if err != nil {
-		return VideoPage{}, err
+		return domain.VideoPage{}, err
 	}
 
 	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
@@ -234,23 +234,23 @@ func (db *DB) listVideoPage(ctx context.Context, spec listSpec) (VideoPage, erro
 
 	rows, err := db.sql.QueryContext(ctx, query, append(args, limit+1)...)
 	if err != nil {
-		return VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
+		return domain.VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	page := VideoPage{Total: total, Limit: limit, Items: []domain.Video{}}
+	page := domain.VideoPage{Total: total, Limit: limit, Items: []domain.Video{}}
 	var values []any
 	for rows.Next() {
 		var value any
 		video, err := scanVideo(sortValueScanner{rows: rows, value: &value})
 		if err != nil {
-			return VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
+			return domain.VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
 		}
 		page.Items = append(page.Items, video)
 		values = append(values, value)
 	}
 	if err := rows.Err(); err != nil {
-		return VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
+		return domain.VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
 	}
 
 	if len(page.Items) > limit {
@@ -258,7 +258,7 @@ func (db *DB) listVideoPage(ctx context.Context, spec listSpec) (VideoPage, erro
 		last := page.Items[limit-1]
 		page.NextCursor, err = order.encodeCursor(spec, values[limit-1], last.ID)
 		if err != nil {
-			return VideoPage{}, err
+			return domain.VideoPage{}, err
 		}
 	}
 	return page, nil
@@ -322,13 +322,13 @@ type listOrder struct {
 	seeded bool
 }
 
-var listOrders = map[VideoSort]listOrder{
+var listOrders = map[domain.VideoSort]listOrder{
 	domain.SortAddedAsc:     {value: `videos.added_at`},
-	SortAddedDesc:           {value: `videos.added_at`, desc: true},
+	domain.SortAddedDesc:    {value: `videos.added_at`, desc: true},
 	domain.SortModifiedAsc:  {value: `loc.mtime`},
 	domain.SortModifiedDesc: {value: `loc.mtime`, desc: true},
 	// 題名は保存した title_key のバイト順で、自然順になる（data-model.md §4）。
-	SortTitleAsc:            {value: `loc.title_key`, kind: sortText},
+	domain.SortTitleAsc:     {value: `loc.title_key`, kind: sortText},
 	domain.SortTitleDesc:    {value: `loc.title_key`, kind: sortText, desc: true},
 	domain.SortDurationAsc:  {value: `videos.duration_ms`, nullable: true},
 	domain.SortDurationDesc: {value: `videos.duration_ms`, desc: true, nullable: true},
@@ -380,14 +380,14 @@ func (o listOrder) cursorCondition(spec listSpec, cursor string) (string, []any,
 		return "", nil, err
 	}
 	if c.sort != string(spec.sort) {
-		return "", nil, fmt.Errorf("%w: 別の並び順のカーソルです", ErrInvalidCursor)
+		return "", nil, fmt.Errorf("%w: 別の並び順のカーソルです", domain.ErrInvalidCursor)
 	}
 	if c.seed != o.seedText(spec) {
-		return "", nil, fmt.Errorf("%w: 別の seed のカーソルです", ErrInvalidCursor)
+		return "", nil, fmt.Errorf("%w: 別の seed のカーソルです", domain.ErrInvalidCursor)
 	}
 	if c.isNull {
 		if !o.nullable {
-			return "", nil, fmt.Errorf("%w: 値の無いカーソルです", ErrInvalidCursor)
+			return "", nil, fmt.Errorf("%w: 値の無いカーソルです", domain.ErrInvalidCursor)
 		}
 		clause, args := o.after(true, nil, c.id)
 		return clause, args, nil
@@ -396,7 +396,7 @@ func (o listOrder) cursorCondition(spec listSpec, cursor string) (string, []any,
 	if o.kind == sortInteger {
 		parsed, err := strconv.ParseInt(c.value, 10, 64)
 		if err != nil {
-			return "", nil, fmt.Errorf("%w: 並べ替えの値として解釈できません", ErrInvalidCursor)
+			return "", nil, fmt.Errorf("%w: 並べ替えの値として解釈できません", domain.ErrInvalidCursor)
 		}
 		value = parsed
 	}
@@ -448,19 +448,19 @@ type cursorFields struct {
 func decodeCursor(cursor string) (cursorFields, error) {
 	raw, err := base64.RawURLEncoding.DecodeString(cursor)
 	if err != nil {
-		return cursorFields{}, fmt.Errorf("%w: %w", ErrInvalidCursor, err)
+		return cursorFields{}, fmt.Errorf("%w: %w", domain.ErrInvalidCursor, err)
 	}
 
 	parts := strings.SplitN(string(raw), cursorSeparator, 5)
 	if len(parts) != 5 {
-		return cursorFields{}, fmt.Errorf("%w: 項目が足りません", ErrInvalidCursor)
+		return cursorFields{}, fmt.Errorf("%w: 項目が足りません", domain.ErrInvalidCursor)
 	}
 	if parts[2] != "0" && parts[2] != "1" {
-		return cursorFields{}, fmt.Errorf("%w: 値の有無を解釈できません", ErrInvalidCursor)
+		return cursorFields{}, fmt.Errorf("%w: 値の有無を解釈できません", domain.ErrInvalidCursor)
 	}
 	id, err := strconv.ParseInt(parts[3], 10, 64)
 	if err != nil {
-		return cursorFields{}, fmt.Errorf("%w: 識別子として解釈できません", ErrInvalidCursor)
+		return cursorFields{}, fmt.Errorf("%w: 識別子として解釈できません", domain.ErrInvalidCursor)
 	}
 	return cursorFields{sort: parts[0], seed: parts[1], isNull: parts[2] == "1", id: id, value: parts[4]}, nil
 }
@@ -469,9 +469,9 @@ func decodeCursor(cursor string) (cursorFields, error) {
 func normalizeLimit(limit int) int {
 	switch {
 	case limit <= 0:
-		return DefaultLimit
-	case limit > MaxLimit:
-		return MaxLimit
+		return domain.DefaultLimit
+	case limit > domain.MaxLimit:
+		return domain.MaxLimit
 	default:
 		return limit
 	}

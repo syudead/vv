@@ -14,7 +14,7 @@ import (
 )
 
 // allSorts は contracts/list-api.md §3 の 13 通りの並び順である。
-var allSorts = []VideoSort{
+var allSorts = []domain.VideoSort{
 	domain.SortAddedAsc, domain.SortAddedDesc, domain.SortModifiedAsc, domain.SortModifiedDesc,
 	domain.SortTitleAsc, domain.SortTitleDesc, domain.SortDurationAsc, domain.SortDurationDesc,
 	domain.SortSizeAsc, domain.SortSizeDesc, domain.SortPlayedAsc, domain.SortPlayedDesc, domain.SortRandom,
@@ -51,7 +51,7 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 	ids := make([]int64, 0, len(sortRows))
 	for i, row := range sortRows {
 		key := fmt.Sprintf("key-%d", i)
-		got, err := db.UpsertVideo(ctx, VideoFile{
+		got, err := db.UpsertVideo(ctx, domain.VideoFile{
 			Path: fmt.Sprintf("/media/%d-%s.mp4", i, row.title), Title: row.title, ContentKey: key,
 			SizeBytes: row.size, MTime: fixedTime.Add(time.Duration(row.mtime) * time.Minute),
 			AddedAt: fixedTime.Add(time.Duration(row.added) * time.Minute), Container: "mp4",
@@ -66,7 +66,7 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 			}
 		}
 		if row.played != nil {
-			if _, err := db.SaveProgress(ctx, key, Progress{PositionMs: 1000}); err != nil {
+			if _, err := db.SaveProgress(ctx, key, domain.Progress{PositionMs: 1000}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := db.SQL().Exec(`update playback_progress set updated_at = ? where content_key = ?`, *row.played, key); err != nil {
@@ -78,7 +78,7 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 }
 
 // expectedOrder は contracts/list-api.md §3 の定義どおりに並べた id を返す。
-func expectedOrder(sort VideoSort, seed int64, ids []int64) []int64 {
+func expectedOrder(sort domain.VideoSort, seed int64, ids []int64) []int64 {
 	type entry struct {
 		id     int64
 		isNull bool
@@ -136,7 +136,7 @@ func expectedOrder(sort VideoSort, seed int64, ids []int64) []int64 {
 }
 
 // pageIDs は limit 件ずつカーソルで最後まで読み、出た id を順に返す。
-func pageIDs(t *testing.T, db *DB, q VideoQuery) []int64 {
+func pageIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	t.Helper()
 	var out []int64
 	for range 50 {
@@ -161,7 +161,7 @@ func TestListVideosAllSortsPageInExpectedOrder(t *testing.T) {
 	db, ids := sortFixture(t)
 	for _, sort := range allSorts {
 		for _, limit := range []int{1, 2, 3} {
-			got := pageIDs(t, db, VideoQuery{Sort: sort, Seed: 42, Limit: limit})
+			got := pageIDs(t, db, domain.VideoQuery{Sort: sort, Seed: 42, Limit: limit})
 			if want := expectedOrder(sort, 42, ids); !slices.Equal(got, want) {
 				t.Errorf("%s limit=%d = %v, want %v", sort, limit, got, want)
 			}
@@ -172,7 +172,7 @@ func TestListVideosAllSortsPageInExpectedOrder(t *testing.T) {
 // フォルダの一覧も同じ並び順と seed で並ぶ。
 func TestListFolderVideosSortsWithSeed(t *testing.T) {
 	db, ids := sortFixture(t)
-	for _, sort := range []VideoSort{domain.SortRandom, domain.SortDurationDesc} {
+	for _, sort := range []domain.VideoSort{domain.SortRandom, domain.SortDurationDesc} {
 		var got []int64
 		cursor := ""
 		for range 20 {
@@ -203,7 +203,7 @@ func TestListVideosTitleAscIsNatural(t *testing.T) {
 		listingFile("/media/2話.mp4", "2話", "key-2", 1),
 		listingFile("/media/1話.mp4", "1話", "key-1", 2),
 	)
-	page, err := db.ListVideos(context.Background(), VideoQuery{Sort: domain.SortTitleAsc})
+	page, err := db.ListVideos(context.Background(), domain.VideoQuery{Sort: domain.SortTitleAsc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,11 +217,11 @@ func TestListVideosTitleAscIsNatural(t *testing.T) {
 func TestListVideosMissingValuesComeLast(t *testing.T) {
 	db, ids := sortFixture(t)
 	for _, tc := range []struct {
-		sorts   []VideoSort
+		sorts   []domain.VideoSort
 		missing func(sortRow) bool
 	}{
-		{[]VideoSort{domain.SortDurationAsc, domain.SortDurationDesc}, func(r sortRow) bool { return r.duration == nil }},
-		{[]VideoSort{domain.SortPlayedAsc, domain.SortPlayedDesc}, func(r sortRow) bool { return r.played == nil }},
+		{[]domain.VideoSort{domain.SortDurationAsc, domain.SortDurationDesc}, func(r sortRow) bool { return r.duration == nil }},
+		{[]domain.VideoSort{domain.SortPlayedAsc, domain.SortPlayedDesc}, func(r sortRow) bool { return r.played == nil }},
 	} {
 		missing := map[int64]bool{}
 		for i, row := range sortRows {
@@ -230,7 +230,7 @@ func TestListVideosMissingValuesComeLast(t *testing.T) {
 			}
 		}
 		for _, sort := range tc.sorts {
-			got := pageIDs(t, db, VideoQuery{Sort: sort, Limit: 2})
+			got := pageIDs(t, db, domain.VideoQuery{Sort: sort, Limit: 2})
 			tail := got[len(got)-len(missing):]
 			for _, id := range tail {
 				if !missing[id] {
@@ -244,13 +244,13 @@ func TestListVideosMissingValuesComeLast(t *testing.T) {
 // random は同じ seed なら同じ並び、別の seed なら別の並びになる。
 func TestListVideosRandomDependsOnlyOnSeed(t *testing.T) {
 	db, _ := sortFixture(t)
-	first := pageIDs(t, db, VideoQuery{Sort: domain.SortRandom, Seed: 1, Limit: 3})
-	if again := pageIDs(t, db, VideoQuery{Sort: domain.SortRandom, Seed: 1, Limit: 2}); !slices.Equal(first, again) {
+	first := pageIDs(t, db, domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Limit: 3})
+	if again := pageIDs(t, db, domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Limit: 2}); !slices.Equal(first, again) {
 		t.Errorf("同じ seed で並びが変わった: %v, %v", first, again)
 	}
 	differs := false
 	for seed := int64(2); seed < 6; seed++ {
-		if !slices.Equal(first, pageIDs(t, db, VideoQuery{Sort: domain.SortRandom, Seed: seed, Limit: 3})) {
+		if !slices.Equal(first, pageIDs(t, db, domain.VideoQuery{Sort: domain.SortRandom, Seed: seed, Limit: 3})) {
 			differs = true
 		}
 	}
@@ -265,7 +265,7 @@ func TestListVideosRandomDependsOnlyOnSeed(t *testing.T) {
 func TestListVideosRandomSurvivesAddedLocations(t *testing.T) {
 	db, ids := sortFixture(t)
 	ctx := context.Background()
-	q := VideoQuery{Sort: domain.SortRandom, Seed: 5, Limit: 2}
+	q := domain.VideoQuery{Sort: domain.SortRandom, Seed: 5, Limit: 2}
 	var seen []int64
 	for pageIndex := range 20 {
 		page, err := db.ListVideos(ctx, q)
@@ -302,7 +302,7 @@ func TestListVideosRandomSurvivesAddedLocations(t *testing.T) {
 func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 	db, _ := sortFixture(t)
 	ctx := context.Background()
-	cursorOf := func(q VideoQuery) string {
+	cursorOf := func(q domain.VideoQuery) string {
 		t.Helper()
 		q.Limit = 1
 		page, err := db.ListVideos(ctx, q)
@@ -312,28 +312,28 @@ func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 		return page.NextCursor
 	}
 
-	added := cursorOf(VideoQuery{Sort: domain.SortAddedDesc})
-	random := cursorOf(VideoQuery{Sort: domain.SortRandom, Seed: 1})
+	added := cursorOf(domain.VideoQuery{Sort: domain.SortAddedDesc})
+	random := cursorOf(domain.VideoQuery{Sort: domain.SortRandom, Seed: 1})
 	for _, tc := range []struct {
 		name string
-		q    VideoQuery
+		q    domain.VideoQuery
 	}{
-		{"addedDesc のカーソルを addedAsc に", VideoQuery{Sort: domain.SortAddedAsc, Cursor: added}},
-		{"addedDesc のカーソルを random に", VideoQuery{Sort: domain.SortRandom, Seed: 1, Cursor: added}},
-		{"random のカーソルを addedDesc に", VideoQuery{Sort: domain.SortAddedDesc, Cursor: random}},
-		{"random のカーソルを別の seed に", VideoQuery{Sort: domain.SortRandom, Seed: 2, Cursor: random}},
-		{"値の無いカーソルを値の必ずある並びに", VideoQuery{Sort: domain.SortSizeAsc,
+		{"addedDesc のカーソルを addedAsc に", domain.VideoQuery{Sort: domain.SortAddedAsc, Cursor: added}},
+		{"addedDesc のカーソルを random に", domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Cursor: added}},
+		{"random のカーソルを addedDesc に", domain.VideoQuery{Sort: domain.SortAddedDesc, Cursor: random}},
+		{"random のカーソルを別の seed に", domain.VideoQuery{Sort: domain.SortRandom, Seed: 2, Cursor: random}},
+		{"値の無いカーソルを値の必ずある並びに", domain.VideoQuery{Sort: domain.SortSizeAsc,
 			Cursor: base64.RawURLEncoding.EncodeToString([]byte("sizeAsc\x1f\x1f1\x1f1\x1f"))}},
-		{"数でない値", VideoQuery{Sort: domain.SortSizeAsc,
+		{"数でない値", domain.VideoQuery{Sort: domain.SortSizeAsc,
 			Cursor: base64.RawURLEncoding.EncodeToString([]byte("sizeAsc\x1f\x1f0\x1f1\x1fabc"))}},
 	} {
-		if _, err := db.ListVideos(ctx, tc.q); !errors.Is(err, ErrInvalidCursor) {
-			t.Errorf("%s: err = %v, want ErrInvalidCursor", tc.name, err)
+		if _, err := db.ListVideos(ctx, tc.q); !errors.Is(err, domain.ErrInvalidCursor) {
+			t.Errorf("%s: err = %v, want domain.ErrInvalidCursor", tc.name, err)
 		}
 	}
 
 	// 同じ並び順・同じ seed なら続きが取れる。
-	if _, err := db.ListVideos(ctx, VideoQuery{Sort: domain.SortRandom, Seed: 1, Cursor: random}); err != nil {
+	if _, err := db.ListVideos(ctx, domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Cursor: random}); err != nil {
 		t.Errorf("同じ seed のカーソルで失敗した: %v", err)
 	}
 }

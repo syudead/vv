@@ -14,53 +14,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 走査と保存の間でやり取りする値は internal/domain が持つ。ここでは別名を
-// 置いて、store を使う側が domain を直接 import しなくても読めるようにする。
-type (
-	// VideoFile は走査で分かる事実である。
-	VideoFile = domain.VideoFile
-	// IndexedVideo は差分判定に要る最小限の値である。
-	IndexedVideo = domain.IndexedVideo
-	// UpsertOutcome は取り込み1件の結果である。
-	UpsertOutcome = domain.UpsertOutcome
-	// UpsertResult は取り込み1件の結果である。
-	UpsertResult = domain.UpsertResult
-	// VideoSort は一覧の並び順である。
-	VideoSort = domain.VideoSort
-	// VideoQuery は一覧の問い合わせ条件である。
-	VideoQuery = domain.VideoQuery
-	// VideoPage は一覧1ページ分である。
-	VideoPage = domain.VideoPage
-)
-
-const (
-	// OutcomeAdded は新しく取り込んだ。
-	OutcomeAdded = domain.OutcomeAdded
-	// OutcomeUpdated は既存の行の内容が変わった。
-	OutcomeUpdated = domain.OutcomeUpdated
-	// OutcomeMoved は既知の内容を新しいpathで発見した。
-	OutcomeMoved = domain.OutcomeMoved
-	// OutcomeUnchanged は何も変わらなかった。
-	OutcomeUnchanged = domain.OutcomeUnchanged
-	// SortAddedDesc は追加が新しい順（既定）。
-	SortAddedDesc = domain.SortAddedDesc
-	// SortTitleAsc は題名の自然順。
-	SortTitleAsc = domain.SortTitleAsc
-	// DefaultLimit は limit が指定されなかったときの件数。
-	DefaultLimit = domain.DefaultLimit
-	// MaxLimit は1ページで返す上限。
-	MaxLimit = domain.MaxLimit
-)
-
-// 対象が無い・カーソルが壊れているといった判断は、保存層の都合ではなく
-// 呼び出し側が扱う種類の誤りなので internal/domain が持つ。
-var (
-	// ErrNotFound は対象の行が無いことを表す。
-	ErrNotFound = domain.ErrNotFound
-	// ErrInvalidCursor はカーソルが解釈できないことを表す。
-	ErrInvalidCursor = domain.ErrInvalidCursor
-)
-
 // videoColumns は domain.Video を組み立てるのに要る列である。
 // 並びは scanVideo と対応させる。
 const videoColumnsTemplate = `videos.id,
@@ -120,11 +73,11 @@ func videoColumns() string {
 //
 // 内容が変わったとき（サイズか mtime が変わる）は、解析結果を捨てて
 // probe_state を pending へ戻す。
-func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, error) {
+func (db *DB) UpsertVideo(ctx context.Context, file domain.VideoFile) (domain.UpsertResult, error) {
 	now := time.Now().Unix()
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return UpsertResult{}, err
+		return domain.UpsertResult{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -135,11 +88,11 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 		from video_locations l join videos v on v.id = l.video_id where l.path = ?`, file.Path).
 		Scan(&locationID, &oldVideoID, &oldVersion, &oldSize, &oldMtime, &oldKey)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return UpsertResult{}, err
+		return domain.UpsertResult{}, err
 	}
 	locationExists := err == nil
 	if locationExists && oldKey == file.ContentKey && oldSize == file.SizeBytes && oldMtime == file.MTime.Unix() {
-		return UpsertResult{ID: oldVideoID, Outcome: OutcomeUnchanged}, tx.Commit()
+		return domain.UpsertResult{ID: oldVideoID, Outcome: domain.OutcomeUnchanged}, tx.Commit()
 	}
 
 	var videoID int64
@@ -147,7 +100,7 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 	err = tx.QueryRowContext(ctx, `select id, probe_state, thumbnail_state, preview_state from videos where content_key = ?`, file.ContentKey).
 		Scan(&videoID, &probeState, &thumbnailState, &previewState)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return UpsertResult{}, err
+		return domain.UpsertResult{}, err
 	}
 	newVideo := errors.Is(err, sql.ErrNoRows)
 	addedAt := file.AddedAt
@@ -164,11 +117,11 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 		values (?, ?, ?, ?, 0, 'pending', 'pending')`,
 			addedAt.Unix(), now, file.ContentKey, nullableString(file.Container))
 		if err != nil {
-			return UpsertResult{}, fmt.Errorf("動画を取り込めません (%s): %w", file.Path, err)
+			return domain.UpsertResult{}, fmt.Errorf("動画を取り込めません (%s): %w", file.Path, err)
 		}
 		videoID, err = res.LastInsertId()
 		if err != nil {
-			return UpsertResult{}, err
+			return domain.UpsertResult{}, err
 		}
 	}
 
@@ -180,47 +133,47 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 			videoID, file.Path, file.Title, file.SizeBytes, file.MTime.Unix(), now, now)
 	}
 	if err != nil {
-		return UpsertResult{}, fmt.Errorf("動画の場所を保存できません (%s): %w", file.Path, err)
+		return domain.UpsertResult{}, fmt.Errorf("動画の場所を保存できません (%s): %w", file.Path, err)
 	}
 	// 題名とパスが変わりうるので、照合用の鍵も同じ書き込みの中で作り直す。
 	if err := refreshSearchKeysByPath(ctx, tx, file.Path); err != nil {
-		return UpsertResult{}, err
+		return domain.UpsertResult{}, err
 	}
 	if !locationExists {
 		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id = ?`, videoID); err != nil {
-			return UpsertResult{}, err
+			return domain.UpsertResult{}, err
 		}
 	} else if oldVideoID != videoID {
 		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id in (?, ?)`, oldVideoID, videoID); err != nil {
-			return UpsertResult{}, err
+			return domain.UpsertResult{}, err
 		}
 	}
 	if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
-		return UpsertResult{}, err
+		return domain.UpsertResult{}, err
 	}
-	var released []DeletedVideo
+	var released []domain.DeletedVideo
 	if locationExists && oldVideoID != videoID {
 		if err := syncRepresentativeContainer(ctx, tx, oldVideoID); err != nil {
-			return UpsertResult{}, err
+			return domain.UpsertResult{}, err
 		}
 		released, err = collectDeletedVideos(tx.QueryContext(ctx, `delete from videos where id = ? and not exists (select 1 from video_locations where video_id = ?)
 			returning id, content_key`, oldVideoID, oldVideoID))
 		if err != nil {
-			return UpsertResult{}, err
+			return domain.UpsertResult{}, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return UpsertResult{}, err
+		return domain.UpsertResult{}, err
 	}
 	// 内容が変わって前の動画が消えたら、前の内容の生成物を片付けさせる。
 	db.notifyVideosDeleted(released)
-	outcome := OutcomeMoved
+	outcome := domain.OutcomeMoved
 	if locationExists {
-		outcome = OutcomeUpdated
+		outcome = domain.OutcomeUpdated
 	} else if newVideo {
-		outcome = OutcomeAdded
+		outcome = domain.OutcomeAdded
 	}
-	return UpsertResult{
+	return domain.UpsertResult{
 		ID: videoID, Outcome: outcome,
 		NeedsProbe:     probeState != string(domain.ProbeStateDone),
 		NeedsThumbnail: thumbnailState != string(domain.ThumbnailStateDone),
@@ -442,7 +395,7 @@ func (db *DB) RequeueMissingPreview(ctx context.Context, id int64, contentKey st
 	if err := tx.Commit(); err != nil {
 		return false, fmt.Errorf("プレビューの作り直しを確定できません (id=%d): %w", id, err)
 	}
-	db.notifyJobsChanged(JobPreview)
+	db.notifyJobsChanged(domain.JobPreview)
 	return true, nil
 }
 
@@ -483,7 +436,7 @@ func (db *DB) RetryProbe(ctx context.Context, id int64, seekThumbnailMissing boo
 			return fmt.Errorf("動画の有無を確かめられません (id=%d): %w", id, err)
 		}
 		if exists == 0 {
-			return ErrNotFound
+			return domain.ErrNotFound
 		}
 		return domain.ErrProbeNotFailed
 	}
@@ -502,9 +455,9 @@ func (db *DB) RetryProbe(ctx context.Context, id int64, seekThumbnailMissing boo
 		return fmt.Errorf("プレビューの状態を戻せません (id=%d): %w", id, err)
 	}
 
-	kinds := []JobKind{JobProbe}
+	kinds := []domain.JobKind{domain.JobProbe}
 	if thumbnailReset > 0 || seekThumbnailMissing {
-		kinds = append(kinds, JobThumbnail)
+		kinds = append(kinds, domain.JobThumbnail)
 	}
 	for _, kind := range kinds {
 		if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
@@ -555,7 +508,7 @@ func (db *DB) GetVideo(ctx context.Context, id int64) (domain.Video, error) {
 
 	video, err := scanVideo(row)
 	if errors.Is(err, sql.ErrNoRows) {
-		return domain.Video{}, ErrNotFound
+		return domain.Video{}, domain.ErrNotFound
 	}
 	if err != nil {
 		return domain.Video{}, fmt.Errorf("動画を読み出せません (id=%d): %w", id, err)
@@ -629,17 +582,17 @@ func (db *DB) DeleteVideoLocations(ctx context.Context, ids []int64) error {
 
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
 // 走査はこれと実際のファイルを突き合わせて差分を出す。
-func (db *DB) IndexedVideosByPath(ctx context.Context) (map[string]IndexedVideo, error) {
+func (db *DB) IndexedVideosByPath(ctx context.Context) (map[string]domain.IndexedVideo, error) {
 	rows, err := db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state, v.preview_state from video_locations l join videos v on v.id = l.video_id`)
 	if err != nil {
 		return nil, fmt.Errorf("索引を読み出せません: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := map[string]IndexedVideo{}
+	out := map[string]domain.IndexedVideo{}
 	for rows.Next() {
 		var path string
-		var video IndexedVideo
+		var video domain.IndexedVideo
 		var mtime int64
 		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &video.ProbeState, &video.ThumbnailState, &video.PreviewState); err != nil {
 			return nil, fmt.Errorf("索引を読み出せません: %w", err)

@@ -167,6 +167,8 @@ func run() error {
 	// 動画の応答に要る判断（消えたプレビューの作り直し、シーク用プレビューの
 	// 状態）と関連動画の組み立ては、アプリケーション層が行う。
 	catalog := app.NewCatalog(app.CatalogOptions{Store: db, Files: assets, Logger: logger})
+	// 設定画面のメディアフォルダは、パスをファイルシステムで確かめてから保存する。
+	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: db, Checker: scanner.NewFolderChecker()})
 
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:          build,
@@ -174,7 +176,7 @@ func run() error {
 		Videos:         db,
 		Playback:       db,
 		Scans:          scans,
-		MediaFolders:   db,
+		MediaFolders:   mediaFolders,
 		Folders:        db,
 		ThumbnailsDir:  cfg.ThumbnailsDir(),
 		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),
