@@ -439,18 +439,33 @@ func countOf(values []string, value string) int {
 }
 
 // 検索式は所在1行に対する条件句になる。3文字以上は MATCH、1〜2文字は instr で、
-// 除外は not、OR は括弧で包んだ or、項どうしは and で結ぶ。
+// 除外は not、OR は括弧で包んだ or、項どうしは and で結ぶ。語1つごとの条件は、
+// 所在の条件とタグ名への instr の OR に広がる
+// （specs/014-video-tags/data-model.md §7）。
 func TestSearchExprCondition(t *testing.T) {
 	clause, args := searchExprCondition(domain.ParseSearchQuery(`京都 -2023 夏休み OR 花 -"a b" ab"c`), "l")
-	want := `instr(l.search_key, ?) > 0` +
-		` and not (l.id in (select rowid from location_search_fts where location_search_fts match ?))` +
-		` and (l.id in (select rowid from location_search_fts where location_search_fts match ?) or instr(l.search_key, ?) > 0)` +
-		` and not (l.id in (select rowid from location_search_fts where location_search_fts match ?))` +
-		` and l.id in (select rowid from location_search_fts where location_search_fts match ?)`
+
+	fts := `l.id in (select rowid from location_search_fts where location_search_fts match ?)`
+	instr := `instr(l.search_key, ?) > 0`
+	tag := tagNameMatchCondition("l")
+	want := `(` + instr + ` or ` + tag + `)` +
+		` and not (` + fts + ` or ` + tag + `)` +
+		` and ((` + fts + ` or ` + tag + `) or (` + instr + ` or ` + tag + `))` +
+		` and not (` + fts + ` or ` + tag + `)` +
+		` and (` + fts + ` or ` + tag + `)`
 	if clause != want {
 		t.Errorf("clause =\n%s\nwant\n%s", clause, want)
 	}
-	wantArgs := []any{"京都", `"2023"`, `"夏休ミ"`, "花", `"a b"`, `"ab""c"`}
+	// 所在の条件の引数の直後に、同じ語（FoldForMatch 済みでフレーズの引用は無い）が
+	// タグ名の照合の引数として続く。
+	wantArgs := []any{
+		"京都", "京都",
+		`"2023"`, "2023",
+		`"夏休ミ"`, "夏休ミ",
+		"花", "花",
+		`"a b"`, "a b",
+		`"ab""c"`, `ab"c`,
+	}
 	if fmt.Sprint(args) != fmt.Sprint(wantArgs) {
 		t.Errorf("args = %q, want %q", args, wantArgs)
 	}
@@ -525,4 +540,317 @@ func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
 			t.Errorf("watch=%s: total = %d, want %d", watch, page.Total, want)
 		}
 	}
+}
+
+// タグ A と B で絞ると両方を持つ動画だけが返り、Total もその数になり、検索語・
+// 視聴状態と組み合わさる。無い tag_id は無視され、どれを無視したかが返る
+// （完了の条件、data-model.md §6）。
+func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	tagA, err := db.Tags().CreateTag(ctx, "A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagB, err := db.Tags().CreateTag(ctx, "B")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upsertAll(t, db,
+		listingFile("/media/both.mp4", "both", "key-both", 0),
+		listingFile("/media/a-only.mp4", "a-only", "key-a", 1),
+		listingFile("/media/b-only.mp4", "b-only", "key-b", 2),
+		listingFile("/media/neither.mp4", "neither", "key-neither", 3),
+	)
+	attachTag(t, db, "key-both", tagA.ID)
+	attachTag(t, db, "key-both", tagB.ID)
+	attachTag(t, db, "key-a", tagA.ID)
+	attachTag(t, db, "key-b", tagB.ID)
+
+	page, err := db.Library().ListVideos(ctx, domain.VideoQuery{TagIDs: []int64{tagA.ID, tagB.ID}})
+	if err != nil {
+		t.Fatalf("ListVideos() error = %v", err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Path != "/media/both.mp4" {
+		t.Fatalf("タグ A・B の AND = %+v, want /media/both.mp4 だけ", page)
+	}
+	if len(page.MissingTagIDs) != 0 {
+		t.Errorf("MissingTagIDs = %v, want 空", page.MissingTagIDs)
+	}
+
+	// 視聴状態と組み合わさる。
+	if _, err := db.Playback().SaveProgress(ctx, "key-both", domain.Progress{PositionMs: 100_000, Completed: true}); err != nil {
+		t.Fatal(err)
+	}
+	unwatched, err := db.Library().ListVideos(ctx, domain.VideoQuery{TagIDs: []int64{tagA.ID, tagB.ID}, Watch: domain.WatchUnwatched})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unwatched.Total != 0 {
+		t.Errorf("タグ AND + 未視聴 = %d 件, want 0 (both は視聴済み)", unwatched.Total)
+	}
+
+	// 検索語と組み合わさる。
+	searched, err := db.Library().ListVideos(ctx, domain.VideoQuery{TagIDs: []int64{tagA.ID}, Query: "b-only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if searched.Total != 0 {
+		t.Errorf("タグ A + 検索語 b-only = %d 件, want 0 (a-only と both だけが A を持つ)", searched.Total)
+	}
+
+	// 存在しない tag_id は無視され、どれを無視したかが返る。
+	missing, err := db.Library().ListVideos(ctx, domain.VideoQuery{TagIDs: []int64{tagA.ID, 999999}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(missing.MissingTagIDs, []int64{999999}) {
+		t.Errorf("MissingTagIDs = %v, want [999999]", missing.MissingTagIDs)
+	}
+	wantTitles := sorted("both", "a-only")
+	if got := titlesOf(missing); !slices.Equal(sorted(got...), wantTitles) {
+		t.Errorf("無い tag_id を無視した結果 = %q, want %q", got, wantTitles)
+	}
+	if missing.Total != 2 {
+		t.Errorf("Total = %d, want 2 (無い tag_id は条件から落ちる)", missing.Total)
+	}
+}
+
+// VideoIDs は「すべて選択」用に、同じ条件の全ページの id と同じ集合を返す
+// （完了の条件、Structural Decisions 4）。
+func TestVideoIDsMatchesAllPagesOfListVideosWithTagFilter(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	tag, err := db.Tags().CreateTag(ctx, "対象")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tagged []int64
+	for i := range 5 {
+		key := fmt.Sprintf("key-tagged-%d", i)
+		got := upsertAll(t, db, listingFile(fmt.Sprintf("/media/tagged-%d.mp4", i), fmt.Sprintf("tagged-%d", i), key, i))
+		id := got[fmt.Sprintf("/media/tagged-%d.mp4", i)]
+		tagged = append(tagged, id)
+		attachTag(t, db, key, tag.ID)
+	}
+	// タグが付かない動画も混ぜる。
+	upsertAll(t, db, listingFile("/media/untagged.mp4", "untagged", "key-untagged", 100))
+
+	query := domain.VideoQuery{TagIDs: []int64{tag.ID}}
+
+	ids, missingTagIDs, err := db.Library().VideoIDs(ctx, query)
+	if err != nil {
+		t.Fatalf("VideoIDs() error = %v", err)
+	}
+	if len(missingTagIDs) != 0 {
+		t.Errorf("missingTagIDs = %v, want 空", missingTagIDs)
+	}
+	slices.Sort(ids)
+	wantIDs := slices.Clone(tagged)
+	slices.Sort(wantIDs)
+	if !slices.Equal(ids, wantIDs) {
+		t.Errorf("VideoIDs() = %v, want %v", ids, wantIDs)
+	}
+
+	// ページングを繋いでも同じ集合になる。
+	var paged []int64
+	cursor := ""
+	query.Limit = 2
+	for range 10 {
+		query.Cursor = cursor
+		page, err := db.Library().ListVideos(ctx, query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			paged = append(paged, item.ID)
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	slices.Sort(paged)
+	if !slices.Equal(paged, wantIDs) {
+		t.Errorf("全ページの id = %v, want %v (VideoIDs と同じ集合)", paged, wantIDs)
+	}
+
+	// ランダム並び順でページングを繋いでも同じ集合になる（並びが seed・id
+	// だけで決まるので、タグの絞り込みと組み合わせても取りこぼし・重複が
+	// 無いことを確かめる）。
+	randomQuery := domain.VideoQuery{TagIDs: []int64{tag.ID}, Sort: domain.SortRandom, Seed: 12345, Limit: 2}
+	var randomPaged []int64
+	cursor = ""
+	for range 10 {
+		randomQuery.Cursor = cursor
+		page, err := db.Library().ListVideos(ctx, randomQuery)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			randomPaged = append(randomPaged, item.ID)
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	slices.Sort(randomPaged)
+	if !slices.Equal(randomPaged, wantIDs) {
+		t.Errorf("ランダム並び順の全ページの id = %v, want %v (VideoIDs と同じ集合)", randomPaged, wantIDs)
+	}
+}
+
+// VideoIDs も無い tag_id を無視し、どれを無視したかを返す。
+func TestVideoIDsReportsMissingTagIDs(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
+
+	ids, missingTagIDs, err := db.Library().VideoIDs(ctx, domain.VideoQuery{TagIDs: []int64{999999}})
+	if err != nil {
+		t.Fatalf("VideoIDs() error = %v", err)
+	}
+	if !slices.Equal(missingTagIDs, []int64{999999}) {
+		t.Errorf("missingTagIDs = %v, want [999999]", missingTagIDs)
+	}
+	// 存在しない id は条件から落ちるので、ほかの条件だけで一覧に出る（data-model.md §6）。
+	if len(ids) != 1 {
+		t.Errorf("ids = %v, want 1件 (無い tag_id を落として絞り込む)", ids)
+	}
+}
+
+// 所在を移して再スキャンした動画に同じタグが付いている（完了の条件）。
+// video_tags は content_key で結ぶので、動画の id や所在が変わっても付与は
+// 残る。
+func TestTagAttachmentSurvivesLocationMoveAndRescan(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	tag, err := db.Tags().CreateTag(ctx, "旅行")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := upsertAll(t, db, listingFile("/media/old/a.mp4", "a", "same-key", 0))
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids["/media/old/a.mp4"]}, tag.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	// 再スキャンで所在が移る。同じ content_key なので同じ動画として扱われる。
+	moved := listingFile("/media/new/a.mp4", "a", "same-key", 1)
+	if _, err := db.ScanIndex().UpsertVideo(ctx, moved); err != nil {
+		t.Fatal(err)
+	}
+	var oldLocationID int64
+	if err := db.sql.QueryRow(`select id from video_locations where path = ?`, "/media/old/a.mp4").Scan(&oldLocationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ScanIndex().DeleteVideoLocations(ctx, []int64{oldLocationID}); err != nil {
+		t.Fatal(err)
+	}
+
+	page, err := db.Library().ListVideos(ctx, domain.VideoQuery{TagIDs: []int64{tag.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Path != "/media/new/a.mp4" {
+		t.Errorf("移動後のタグでの絞り込み = %+v, want /media/new/a.mp4 だけ", page)
+	}
+
+	tags, err := db.Tags().TagsByContentKeys(ctx, []string{"same-key"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tags["same-key"]) != 1 || tags["same-key"][0].ID != tag.ID {
+		t.Errorf("TagsByContentKeys(same-key) = %+v, want %s が付いている", tags["same-key"], tag.Name)
+	}
+}
+
+// 題名に「旅行」を含まない動画に「旅行」タグを付けると、検索語 旅行 で
+// ライブラリ・フォルダ直下・フォルダ配下のどの範囲でも返り、-旅行 では返らない。
+// シノニムの名前でも返り、改名の後は新しい名前で返って古い名前では返らない。
+// ﾘｮｺｳ と りょこう のように照合形が同じ語は同じ結果になる（完了の条件、
+// data-model.md §7）。
+func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	if _, err := db.sql.Exec(`update media_folders set path = '/media'`); err != nil {
+		t.Fatal(err)
+	}
+
+	tag, err := db.Tags().CreateTag(ctx, "旅行")
+	if err != nil {
+		t.Fatal(err)
+	}
+	upsertAll(t, db,
+		listingFile("/media/A/no-title-match.mp4", "猫", "tagged-key", 0),
+		listingFile("/media/A/other.mp4", "犬", "other-key", 1),
+	)
+	if _, _, err := db.Tags().AttachTagByID(ctx, mustVideoID(t, db, "/media/A/no-title-match.mp4"), tag.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	assertMatches := func(t *testing.T, query string, want bool) {
+		t.Helper()
+		// ライブラリ。
+		page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Query: query})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := slices.Contains(titlesOf(page), "猫"); got != want {
+			t.Errorf("ライブラリで %q = %v, want %v", query, got, want)
+		}
+		// フォルダ直下。
+		direct, err := db.Library().ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/A", Query: query})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := slices.Contains(titlesOf(direct), "猫"); got != want {
+			t.Errorf("フォルダ直下で %q = %v, want %v", query, got, want)
+		}
+		// フォルダ配下。
+		subtree, err := db.Library().ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media", Scope: domain.FolderScopeSubtree, Query: query})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := slices.Contains(titlesOf(subtree), "猫"); got != want {
+			t.Errorf("フォルダ配下で %q = %v, want %v", query, got, want)
+		}
+	}
+
+	assertMatches(t, "旅行", true)
+	assertMatches(t, "-旅行", false)
+
+	// シノニムの名前でも当たる。
+	if _, err := db.Tags().AddSynonym(ctx, tag.ID, "たび", nil); err != nil {
+		t.Fatal(err)
+	}
+	assertMatches(t, "たび", true)
+
+	// 照合形が同じ語は同じ結果になる（NFKC 半角カナ・カタカナの畳み込み）。
+	assertMatches(t, "ﾀﾋﾞ", true)
+	if _, err := db.Tags().AddSynonym(ctx, tag.ID, "りょこう", nil); err != nil {
+		t.Fatal(err)
+	}
+	assertMatches(t, "りょこう", true)
+	assertMatches(t, "ﾘｮｺｳ", true)
+
+	// 改名の後は新しい名前で返り、古い名前では返らない。
+	if _, err := db.Tags().RenameTag(ctx, tag.ID, "旅"); err != nil {
+		t.Fatal(err)
+	}
+	assertMatches(t, "旅", true)
+	assertMatches(t, "旅行", false)
+}
+
+// mustVideoID は path の動画の id を1件返す。
+func mustVideoID(t *testing.T, db *DB, path string) []int64 {
+	t.Helper()
+	var id int64
+	if err := db.sql.QueryRow(`select video_id from video_locations where path = ?`, path).Scan(&id); err != nil {
+		t.Fatal(err)
+	}
+	return []int64{id}
 }

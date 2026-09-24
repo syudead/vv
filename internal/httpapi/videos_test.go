@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -400,7 +401,9 @@ func TestListVideosPassesFiltersAndReturnsFolders(t *testing.T) {
 	want := domain.VideoQuery{
 		Query: "京都 -2023", Watch: domain.WatchUnwatched, Sort: domain.SortDurationDesc, Limit: domain.DefaultLimit,
 	}
-	if library.lastQuery != want {
+	// domain.VideoQuery に TagIDs（[]int64）が足された（#265）ので struct の
+	// 比較演算子は使えない。reflect.DeepEqual で比較する。
+	if !reflect.DeepEqual(library.lastQuery, want) {
 		t.Errorf("query = %+v, want %+v", library.lastQuery, want)
 	}
 

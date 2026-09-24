@@ -155,7 +155,17 @@ compile:
   work) and writing each ingest stage's result back to the video row, including the
   retry of a failed probe and the rebuild of a missing preview.
 - `LibraryStore` — reads of the index: the video list and search, folder browsing,
-  related videos, a video's locations, and the startup refresh of search keys.
+  related videos, a video's locations, and the startup refresh of search keys. The
+  video list can AND-filter on a set of tag ids and reports which of them do not
+  exist (`VideoQuery.TagIDs`/`VideoPage.MissingTagIDs`), and `VideoIDs` returns the
+  matching id set unpaged for "select all"
+  (`specs/014-video-tags/data-model.md` §6). The search-box term matcher also OR-matches
+  a video's tag names (original name and synonyms) alongside title and path
+  (`specs/014-video-tags/data-model.md` §7). `LibraryStore` resolves which of a set of
+  tag ids currently exist through `existingTagIDs`, and `TagStore` resolves a set of
+  video ids down to the currently-registered videos' content keys through
+  `registeredContentKeysForVideoIDs`; both are unexported package functions
+  (`internal/store/roles.go`), never called as another role's public method.
 - `ScanStore` — the state of a scan run.
 - `ScanIndexStore` — reflecting a scan's filesystem facts into the index (upserting
   locations, removing missing ones and the videos they orphan).
@@ -164,7 +174,11 @@ compile:
   depend on the rebuildable index stores or their notifications.
 - `TagStore` — tags themselves: create, rename, delete, merge, register/remove a
   synonym, the counted listing, and the startup refresh of tag-name search keys
-  (`specs/014-video-tags/data-model.md`). Like `PlaybackStore`, it holds only the SQL
+  (`specs/014-video-tags/data-model.md`). It also attaches and detaches a tag across a
+  set of video ids (resolved to the currently-registered videos' content keys),
+  summarizes the tags on a selected set of videos, and looks up the tags on a set of
+  content keys in bulk for the video list (`TagsByContentKeys`, shaped like
+  `PlaybackStore.ProgressByContentKeys`). Like `PlaybackStore`, it holds only the SQL
   connection and does not depend on the rebuildable index stores or their
   notifications; tag changes have no side effects, so they publish no domain event.
 

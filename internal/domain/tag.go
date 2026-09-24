@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -66,6 +67,25 @@ type Tag struct {
 	Synonyms []string
 	// VideoCount はいまライブラリにある動画の本数（data-model.md §5）。
 	VideoCount int
+}
+
+// TagSummaryItem は選んだ動画のタグの要約1件である
+// （contracts/tags-api.md §4 の summary）。
+type TagSummaryItem struct {
+	Tag TagRef
+	// Count は選んだ動画のうちこのタグが付いている本数。Count が
+	// TagSummary.Total より小さいタグが「一部にだけ付いている」。
+	Count int
+}
+
+// TagSummary は選んだ動画のタグの要約である（contracts/tags-api.md §4 の
+// summary）。
+type TagSummary struct {
+	// Total は選んだ動画のうちいまライブラリにある動画の数。
+	Total int
+	// Items は1本以上に付いているタグだけで、名前の自然順
+	// （SortTagSummaryItems）。
+	Items []TagSummaryItem
 }
 
 // TagNameConflict はその名前を既に持つタグを運ぶ。errors.Is(err,
@@ -144,5 +164,36 @@ func SortTags(tags []Tag) {
 			return order
 		}
 		return strings.Compare(a.Name, b.Name)
+	})
+}
+
+// SortTagRefs は動画に付いたタグ（TagRef）を Name の自然順に並べる。同順位は
+// ID で決着させる（元の名前は tag_names の主キーで一意なので、実際には
+// CompareNatural だけで決まる。ID の比較は同順位が起き得る呼び出し側の入力
+// でも決定的な並びにするための保険である）（contracts/tags-api.md §1 の
+// Video.tags）。
+func SortTagRefs(refs []TagRef) {
+	slices.SortStableFunc(refs, func(a, b TagRef) int {
+		if order := CompareNatural(a.Name, b.Name); order != 0 {
+			return order
+		}
+		if order := strings.Compare(a.Name, b.Name); order != 0 {
+			return order
+		}
+		return cmp.Compare(a.ID, b.ID)
+	})
+}
+
+// SortTagSummaryItems は要約を Tag.Name の自然順に並べる（同順位の決着は
+// SortTagRefs と同じ）。
+func SortTagSummaryItems(items []TagSummaryItem) {
+	slices.SortStableFunc(items, func(a, b TagSummaryItem) int {
+		if order := CompareNatural(a.Tag.Name, b.Tag.Name); order != 0 {
+			return order
+		}
+		if order := strings.Compare(a.Tag.Name, b.Tag.Name); order != 0 {
+			return order
+		}
+		return cmp.Compare(a.Tag.ID, b.Tag.ID)
 	})
 }
