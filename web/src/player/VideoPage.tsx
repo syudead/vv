@@ -97,9 +97,12 @@ export default function VideoPage() {
   const video = detail.kind === "ready" ? detail.video : undefined;
 
   // 一覧をスクロールした位置から来ても、プレイヤーを画面の上に出す。別の動画へ移ったときも
-  // 同じ。一覧へ戻ったときの位置の復元は一覧の側（LibraryPage）が行う。
+  // 同じ。一覧へ戻ったときの位置の復元は一覧の側（LibraryPage）が行う。広い画面では左右の列が
+  // それぞれスクロールするので、左の列も先頭へ戻す。
+  const mainColumnRef = useRef<HTMLDivElement | null>(null);
   useLayoutEffect(() => {
     window.scrollTo(0, 0);
+    mainColumnRef.current?.scrollTo?.(0, 0);
   }, [id]);
 
   const [pageId, setPageId] = useState(id);
@@ -313,9 +316,16 @@ export default function VideoPage() {
   useKeyboardShortcuts(showPlayer ? controls : null, close);
 
   return (
-    <div className="min-h-dvh bg-bg pb-16 lg:px-6 lg:pt-6">
-      <div className="flex w-full flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start lg:gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <div className="flex min-w-0 flex-col gap-5">
+    // 狭い画面はページ全体を 1 つとしてスクロールする。広い画面はページを画面の高さに留め、
+    // 左の列（プレイヤー・題名・属性）と右の列（関連動画）がそれぞれ中でスクロールする。
+    // ページと列の両方がスクロールして二重に動くことがないようにするためである。
+    <div className="min-h-dvh bg-bg pb-16 lg:h-dvh lg:min-h-0 lg:overflow-hidden lg:pb-0">
+      <div className="flex w-full flex-col gap-5 lg:grid lg:h-full lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:px-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div
+          ref={mainColumnRef}
+          // 列の端にあるフォーカスの輪郭が切れないよう、はみ出す分だけ内側に余白を取る。
+          className="flex min-w-0 flex-col gap-5 lg:-mx-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6 lg:pb-16"
+        >
           <div
             ref={frameRef}
             data-player-frame=""
@@ -377,8 +387,8 @@ export default function VideoPage() {
         </div>
 
         <aside
-          // 広い画面では右の列を画面の高さに留め、関連動画の並びだけを中でスクロールさせる。
-          className="min-w-0 px-4 sm:px-6 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100dvh-3rem)] lg:flex-col lg:px-0"
+          // 広い画面では見出しの行を上に留め、関連動画の並びだけを中でスクロールさせる。
+          className="min-w-0 px-4 sm:px-6 lg:flex lg:min-h-0 lg:flex-col lg:px-0 lg:pt-6"
         >
           <RelatedVideos
             state={related}
