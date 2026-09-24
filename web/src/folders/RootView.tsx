@@ -30,7 +30,6 @@ export default function RootView() {
     changePlayable,
     commitQuery,
     clearAll,
-    clearFromNoMatches,
     changeZoom,
   } = useConditions();
   // 再生画面から検索結果へ戻ったときは控えから復元する（FolderView と同じ扱い）。
@@ -108,7 +107,6 @@ export default function RootView() {
           roots={roots}
           zoom={zoom}
           restored={restored}
-          onClearNoMatches={clearFromNoMatches}
         />
       ) : roots.error !== null ? (
         <LoadFailed reason={roots.error} onRetry={roots.reload} />

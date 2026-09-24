@@ -4,7 +4,7 @@
 
 - 境界、API 正本、既存生成処理は [plan.md](plan.md#technical-context) の canonical definitions を継承する。
 - 要求と受け入れ条件は [GitHub Issue #134](https://github.com/syudead/vv/issues/134) を正本とする。
-- 方式の参照元は Stash の公式 [preview generator](https://github.com/stashapp/stash/blob/develop/pkg/scene/generate/preview.go) とする。Stash と同一実装ではなく、全尺 sampling、短尺処理、低解像度 H.264、無音という性質を採用する。
+- preview は全尺 sampling、短尺処理、低解像度 H.264、無音という性質を採用する。
 
 ## Decisions
 

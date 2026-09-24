@@ -67,11 +67,6 @@ export function useConditions() {
     () => update(clearConditions(criteria)),
     [criteria, update],
   );
-  // 一致なしの「条件を解除」は自分自身が消えるので、フォーカスを空になった検索欄へ移す。
-  const clearFromNoMatches = useCallback(() => {
-    clearAll();
-    searchField.current?.focus();
-  }, [clearAll]);
   const changeZoom = useCallback(
     (next: Zoom) => savePreferences({ ...preferences, zoom: next }),
     [preferences, savePreferences],
@@ -87,7 +82,6 @@ export function useConditions() {
     changePlayable,
     commitQuery,
     clearAll,
-    clearFromNoMatches,
     changeZoom,
   };
 }

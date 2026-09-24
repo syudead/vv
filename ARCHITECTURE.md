@@ -143,7 +143,9 @@ That is why playback positions and tag assignments are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
 key to `videos`.
 
-`store.DB` is only the foundation: it opens and closes the shared SQLite connection,
+`store.DB` is only the foundation: it opens and closes the SQLite connection pools,
+routing write transactions through an immediate-lock pool and snapshot list reads through
+a deferred pool so they do not reserve the writer,
 runs migrations (`store.Migrate`), answers the health ping, registers the publisher
 for post-commit events, and hands out the role types. Every business operation is a
 method of the role type that owns it, so calling one through the wrong role does not
