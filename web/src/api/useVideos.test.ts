@@ -354,6 +354,37 @@ describe("useVideos の準備の反映", () => {
     });
   });
 
+  it("条件を変えて読み直したら、前の一覧のために始めた取り直しの応答を重ねない", async () => {
+    const { result, rerender } = renderHook(
+      ({ criteria }: { criteria: VideosCriteria }) => useVideos(criteria),
+      { initialProps: { criteria: { sort: "addedDesc" } as VideosCriteria } },
+    );
+    await act(async () => calls[0]?.resolve(page([1, 2])));
+
+    // 前の一覧で動画 2 の取り直しを始め、応答はまだ返らない。
+    let resolveOld: (video: Video) => void = () => {};
+    getVideo.mockImplementationOnce(
+      () =>
+        new Promise<Video>((resolve) => {
+          resolveOld = resolve;
+        }),
+    );
+    await emitServerEvent("video", { id: 2 });
+    await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(1));
+
+    // 条件を変えると、新しいページには準備の済んだ動画 2 が入っている。
+    rerender({ criteria: { sort: "addedDesc", query: "新" } });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await act(async () =>
+      calls[1]?.resolve({ items: [{ ...item(2), previewState: "done" }], total: 1 }),
+    );
+    expect(result.current.items[0]?.previewState).toBe("done");
+
+    // 遅れて届いた古い取り直し（準備中）は新しい一覧に重ねない。
+    await act(async () => resolveOld({ ...item(2), previewState: "pending" }));
+    expect(result.current.items[0]?.previewState).toBe("done");
+  });
+
   it("一覧に無い動画の知らせでは取りに行かない", async () => {
     renderHook(() => useVideos({ sort: "addedDesc" }));
     await act(async () => calls[0]?.resolve(page([1])));

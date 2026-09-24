@@ -168,6 +168,8 @@ export function useVideos(
         refreshQueue.current.delete(id);
         try {
           const refreshed = await getVideo(id, controller.signal);
+          // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
+          if (controller.signal.aborted) return;
           setItems((current) =>
             current.map((video) =>
               video.id === id ? mergeRefreshed(video, refreshed) : video,
@@ -249,6 +251,12 @@ export function useVideos(
       inFlight.current = controller;
       pageLoading.current = true;
       changedWhileLoading.current.clear();
+      if (replace) {
+        // 前の一覧のために始めた取り直しは捨てる。新しいページの内容の方が新しい。
+        refreshing.current?.abort();
+        refreshing.current = null;
+        refreshQueue.current.clear();
+      }
 
       if (replace) {
         setLoading(true);
