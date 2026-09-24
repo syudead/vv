@@ -103,8 +103,25 @@ describe("ScanProgressIndicator", () => {
     await user.tab();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     expect(await screen.findByRole("dialog")).toBeDefined();
+    expect(document.activeElement).toBe(trigger);
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("keeps the summary open while the pointer moves into its portalled content", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
+    );
+    renderIndicator();
+    const trigger = await screen.findByRole("button", { name: /取り込み中 40%/ });
+
+    fireEvent.pointerEnter(trigger);
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.pointerLeave(trigger.closest(".fixed")!);
+    fireEvent.pointerEnter(dialog);
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+
+    expect(screen.getByRole("dialog")).toBeDefined();
   });
 
   it("shows unknown totals with an indeterminate progress bar", async () => {
@@ -153,6 +170,64 @@ describe("ScanProgressIndicator", () => {
     );
   });
 
+  it("keeps a long failure reason in settings instead of the summary", async () => {
+    let state: Scan["state"] = "running";
+    const reason = "storage endpoint ".repeat(80);
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders"
+          ? json([{}])
+          : json(scan({ state, error: state === "failed" ? reason : undefined })),
+      ),
+    );
+    renderIndicator();
+    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    state = "failed";
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    const trigger = await screen.findByRole("button", {
+      name: /取り込みに失敗しました。取り込み状況を開く/,
+    });
+
+    fireEvent.pointerEnter(trigger);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.textContent).toContain("設定で理由を確認してください");
+    expect(dialog.textContent).not.toContain(reason);
+  });
+
+  it("clears interaction state when a failed notice is dismissed", async () => {
+    let current = scan();
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(current),
+      ),
+    );
+    renderIndicator();
+    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    current = scan({ state: "failed", error: "disk" });
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    const close = await screen.findByRole("button", {
+      name: "取り込み失敗の通知を閉じる",
+    });
+
+    fireEvent.pointerEnter(close);
+    fireEvent.click(close);
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /取り込み状況を開く/ })).toBeNull(),
+    );
+
+    current = scan({ id: 2, state: "running" });
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    expect(screen.queryByRole("dialog")).toBeNull();
+
+    vi.useFakeTimers();
+    current = scan({ id: 2, state: "done", completed: 10 });
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await screen.findByRole("button", { name: /^完了。/ });
+    await act(async () => vi.advanceTimersByTimeAsync(8100));
+    expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+  });
+
   it("pauses a completed notice while the real summary is hovered", async () => {
     let state: Scan["state"] = "running";
     fetchMock.mockImplementation((input) =>
@@ -172,7 +247,8 @@ describe("ScanProgressIndicator", () => {
     expect(screen.getByRole("button", { name: /^完了。/ })).toBeDefined();
 
     await act(async () => fireEvent.pointerLeave(trigger));
-    await act(async () => vi.advanceTimersByTimeAsync(8000));
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    await act(async () => vi.advanceTimersByTimeAsync(8100));
     expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
   });
 

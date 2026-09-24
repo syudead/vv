@@ -144,10 +144,10 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		root := folder.Path
 		rootInfo, rootErr := os.Lstat(root)
 		if rootErr != nil {
-			return result, fmt.Errorf("メディアフォルダを読めません (%s): %w", root, rootErr)
+			return domain.ScanResult{}, fmt.Errorf("メディアフォルダを読めません (%s): %w", root, rootErr)
 		}
 		if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
-			return result, fmt.Errorf("メディアフォルダがディレクトリではありません (%s)", root)
+			return domain.ScanResult{}, fmt.Errorf("メディアフォルダがディレクトリではありません (%s)", root)
 		}
 		walkErr := s.walkDir(root, func(path string, entry fs.DirEntry, err error) error {
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -207,9 +207,9 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		})
 		if walkErr != nil {
 			if ctx.Err() != nil {
-				return result, ctx.Err()
+				return domain.ScanResult{}, ctx.Err()
 			}
-			return result, fmt.Errorf("メディアフォルダを最後まで走査できませんでした (%s): %w", root, walkErr)
+			return domain.ScanResult{}, fmt.Errorf("メディアフォルダを最後まで走査できませんでした (%s): %w", root, walkErr)
 		}
 	}
 	result.Total += len(targets)
@@ -401,7 +401,7 @@ func (s *Scanner) removeMissing(
 	return len(missing), nil
 }
 
-// report は進捗を報告する。報告の失敗で走査を止めない。
+// report は進捗を報告する。進捗と処理結果の整合性を守るため、報告の失敗時は走査を止める。
 func (s *Scanner) report(ctx context.Context, result domain.ScanResult) error {
 	if s.reporter == nil {
 		return nil

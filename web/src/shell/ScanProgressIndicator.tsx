@@ -10,6 +10,8 @@ import ScanProgressBar from "./ScanProgressBar";
 import { useScan } from "./ScanProvider";
 import { presentScan, type ScanPresentation } from "./scanPresentation";
 
+const POINTER_CLOSE_DELAY_MS = 100;
+
 function iconFor(state: ScanPresentation["state"]) {
   if (state === "done") return CheckCircle2;
   if (state === "partial-failed") return AlertTriangle;
@@ -52,9 +54,9 @@ export default function ScanProgressIndicator({
   const navigate = useNavigate();
   const presentation = presentScan(scan);
   const [open, setOpen] = useState(false);
-  const [hovered, setHovered] = useState(false);
-  const [contentHovered, setContentHovered] = useState(false);
+  const [pointerActive, setPointerActive] = useState(false);
   const [focused, setFocused] = useState(false);
+  const pointerCloseTimer = useRef<number | null>(null);
   const navigatingToDetails = useRef(false);
 
   const terminalVisible =
@@ -67,26 +69,45 @@ export default function ScanProgressIndicator({
     terminalVisible;
 
   useEffect(() => {
-    setOpen(hovered || contentHovered || focused);
-  }, [contentHovered, focused, hovered]);
+    setOpen(pointerActive || focused);
+  }, [focused, pointerActive]);
 
   useEffect(() => {
-    const paused = terminalVisible && (hovered || contentHovered || focused);
+    if (visible) return;
+    if (pointerCloseTimer.current !== null) {
+      window.clearTimeout(pointerCloseTimer.current);
+      pointerCloseTimer.current = null;
+    }
+    setPointerActive(false);
+    setFocused(false);
+    setOpen(false);
+    notice.setCompletionNoticePaused(false);
+  }, [notice.setCompletionNoticePaused, visible]);
+
+  useEffect(
+    () => () => {
+      if (pointerCloseTimer.current !== null) {
+        window.clearTimeout(pointerCloseTimer.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const paused = terminalVisible && (pointerActive || focused);
     notice.setCompletionNoticePaused(paused);
     return () => {
       if (paused) notice.setCompletionNoticePaused(false);
     };
-  }, [
-    contentHovered,
-    focused,
-    hovered,
-    notice.setCompletionNoticePaused,
-    terminalVisible,
-  ]);
+  }, [focused, notice.setCompletionNoticePaused, pointerActive, terminalVisible]);
 
   if (!visible) return null;
 
   const Icon = iconFor(presentation.state);
+  const description =
+    presentation.state === "failed"
+      ? "取り込みに失敗しました。設定で理由を確認してください"
+      : presentation.description;
   const label =
     presentation.state === "starting"
       ? "開始中"
@@ -105,6 +126,22 @@ export default function ScanProgressIndicator({
     if (presentation.state === "failed") notice.acknowledgeTerminalScan();
     navigate("/settings#scan-status");
   };
+  const enterPointerArea = () => {
+    if (pointerCloseTimer.current !== null) {
+      window.clearTimeout(pointerCloseTimer.current);
+      pointerCloseTimer.current = null;
+    }
+    setPointerActive(true);
+  };
+  const leavePointerArea = () => {
+    if (pointerCloseTimer.current !== null) {
+      window.clearTimeout(pointerCloseTimer.current);
+    }
+    pointerCloseTimer.current = window.setTimeout(() => {
+      pointerCloseTimer.current = null;
+      setPointerActive(false);
+    }, POINTER_CLOSE_DELAY_MS);
+  };
 
   return (
     <div
@@ -114,8 +151,8 @@ export default function ScanProgressIndicator({
           ? "bottom-4 sm:top-2 sm:bottom-auto"
           : "bottom-4 sm:bottom-5",
       )}
-      onPointerEnter={() => setHovered(true)}
-      onPointerLeave={() => setHovered(false)}
+      onPointerEnter={enterPointerArea}
+      onPointerLeave={leavePointerArea}
     >
       <span role="status" aria-atomic="true" className="sr-only">
         {statusAnnouncement(presentation)}
@@ -151,6 +188,7 @@ export default function ScanProgressIndicator({
         <PopoverContent
           align="end"
           className="w-[min(18rem,calc(100vw-1rem))]"
+          onOpenAutoFocus={(event) => event.preventDefault()}
           onCloseAutoFocus={(event) => {
             if (!navigatingToDetails.current) return;
             event.preventDefault();
@@ -158,8 +196,8 @@ export default function ScanProgressIndicator({
               navigatingToDetails.current = false;
             });
           }}
-          onPointerEnter={() => setContentHovered(true)}
-          onPointerLeave={() => setContentHovered(false)}
+          onPointerEnter={enterPointerArea}
+          onPointerLeave={leavePointerArea}
         >
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
@@ -169,7 +207,7 @@ export default function ScanProgressIndicator({
               </span>
             </div>
             <ScanProgressBar presentation={presentation} className="h-1.5" />
-            <p className="text-sm text-fg-muted">{presentation.description}</p>
+            <p className="text-sm text-fg-muted">{description}</p>
           </div>
         </PopoverContent>
       </PopoverRoot>

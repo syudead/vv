@@ -31,6 +31,14 @@ type fakeIndex struct {
 	ensureErr error
 }
 
+type failingInfoEntry struct {
+	fs.DirEntry
+}
+
+func (failingInfoEntry) Info() (fs.FileInfo, error) {
+	return nil, errors.New("metadata unavailable")
+}
+
 func (f *fakeIndex) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
 	return f.folders, nil
 }
@@ -680,6 +688,33 @@ func TestScanFailsWhenSubdirectoryCannotBeRead(t *testing.T) {
 	}
 	if len(index.deleted) != 0 {
 		t.Fatalf("existing locations were deleted after subtree failure: %v", index.deleted)
+	}
+}
+
+func TestScanDiscardsPartialCountsWhenDiscoveryLaterFails(t *testing.T) {
+	root := mediaTree(t, map[string]string{"unreadable.mp4": "content"})
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedDir := filepath.Join(root, "locked")
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index})
+	scanner.walkDir = func(_ string, walk fs.WalkDirFunc) error {
+		path := filepath.Join(root, entries[0].Name())
+		if err := walk(path, failingInfoEntry{DirEntry: entries[0]}, nil); err != nil {
+			return err
+		}
+		return walk(failedDir, nil, errors.New("permission denied"))
+	}
+
+	result, err := scanner.Scan(context.Background())
+	if err == nil {
+		t.Fatal("later discovery failure was reported as a completed scan")
+	}
+	if result.Total != 0 || result.Failed != 0 {
+		t.Fatalf("partial discovery counts escaped after failure: %+v", result)
 	}
 }
 
