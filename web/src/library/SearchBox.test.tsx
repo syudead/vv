@@ -159,6 +159,12 @@ describe("SearchBox の入力", () => {
     const full = "a".repeat(MAX_QUERY_LENGTH);
     expect(limitQueryInput("X" + full, full)).toBe(full);
     expect(limitQueryInput("a".repeat(50) + "X" + "a".repeat(50), full)).toBe(full);
+    // 上限の語の一文字を選び、その文字で終わる語に置き換えても、入る分だけが入る。
+    expect(limitQueryInput("ba" + "a".repeat(MAX_QUERY_LENGTH - 1), full, 2)).toBe(
+      "b" + "a".repeat(MAX_QUERY_LENGTH - 1),
+    );
+    expect(limitQueryInput("X" + full, full, 1)).toBe(full);
+    expect(limitQueryInput("a".repeat(50) + "X" + "a".repeat(50), full, 51)).toBe(full);
     // 上限の手前での貼り付けは、入る分だけが入る（絵文字を割らない）。
     const almost = "b".repeat(MAX_QUERY_LENGTH - 2);
     expect(
