@@ -135,7 +135,7 @@ func TestUnsubscribeStopsDeliveryAndWaitsForHandler(t *testing.T) {
 		}
 	})
 
-	bus.Publish(domain.ScanChanged{}, domain.ScanChanged{})
+	bus.Publish(domain.ScanChanged{})
 	<-entered
 	stopped := make(chan struct{})
 	go func() {

@@ -85,7 +85,7 @@ State changes that trigger side effects are domain events (`internal/domain/even
 a video's ingest state changed, jobs were queued, the remaining work per stage changed, the
 scan changed, and content keys lost their last reference. Publishers — `internal/store`
 after a transaction commits (never from one that rolled back, and one notice per kind of
-change per transaction) and `internal/app` for job outcomes and scans — call a `Publish`
+change per transaction, plus one per deleted video) and `internal/app` for job outcomes and scans — call a `Publish`
 interface they declare themselves and know nothing about the subscribers. `internal/eventbus`
 delivers each event to every subscriber on that subscriber's own goroutine and queue, so a
 slow or panicking subscriber never stalls a commit, a worker or a scan. `cmd/mdm/events.go`
