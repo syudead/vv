@@ -35,12 +35,29 @@ export default function VideoTags({
 }) {
   const toast = useToast();
 
+  // この画面で確定した付け外しを、動画の情報に重ねて持つ。付け外しの前に
+  // 始まった動画の取り直しが後から届いても、確定したタグを消さない。
+  // 届いた情報がその付け外しをすでに映していれば、重ねる必要は無いので捨てる。
+  const appliedRef = useRef(new Map<number, { tag: TagRef; action: "add" | "remove" }>());
   const [tags, setTags] = useState<readonly TagRef[]>(initialTags);
-  useEffect(() => setTags(initialTags), [initialTags]);
+  useEffect(() => {
+    const applied = appliedRef.current;
+    let next = initialTags;
+    for (const [tagId, change] of applied) {
+      const present = initialTags.some((tag) => tag.id === tagId);
+      if (present === (change.action === "add")) {
+        applied.delete(tagId);
+        continue;
+      }
+      next = applyTagToTags(next, change.tag, change.action);
+    }
+    setTags(next);
+  }, [initialTags]);
   useEffect(
     () =>
       subscribeVideoTags((videoIds, tag, action) => {
         if (!videoIds.includes(videoId)) return;
+        appliedRef.current.set(tag.id, { tag, action });
         setTags((current) => applyTagToTags(current, tag, action));
       }),
     [videoId],
@@ -73,20 +90,32 @@ export default function VideoTags({
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const buttonRefs = useRef(new Map<number, HTMLButtonElement>());
-  const pendingFocusRef = useRef<{ chipId: number } | "input" | null>(null);
+  // removedId は、外すのを待っているチップ。そのチップが並びから消える
+  // （サーバーが外したと応えた）まで、フォーカスを動かさない。
+  const pendingFocusRef = useRef<{
+    target: { chipId: number } | "input";
+    removedId?: number;
+  } | null>(null);
 
   useEffect(() => {
     const pending = pendingFocusRef.current;
     if (pending === null) return;
+    if (
+      pending.removedId !== undefined &&
+      tags.some((tag) => tag.id === pending.removedId)
+    ) {
+      return;
+    }
     // 外せなかったときの戻し先は、まだ disabled のままの、そのチップ自身の ×
     // かもしれない。再び押せるようになるまで（removingIds から消えるまで）待つ。
-    if (pending !== "input" && removingIds.has(pending.chipId)) return;
+    const target = pending.target;
+    if (target !== "input" && removingIds.has(target.chipId)) return;
     pendingFocusRef.current = null;
-    if (pending === "input") {
+    if (target === "input") {
       inputRef.current?.focus();
       return;
     }
-    buttonRefs.current.get(pending.chipId)?.focus();
+    buttonRefs.current.get(target.chipId)?.focus();
   }, [tags, removingIds]);
 
   const attachedIds = new Set(tags.map((tag) => tag.id));
@@ -100,12 +129,14 @@ export default function VideoTags({
     setOpError(null);
     setSubmitting(true);
     const displayName = tag.name;
+    // 応答を待つ間に次の名前を打っていたら、それは消さない。
+    const submittedValue = inputValue;
     const request =
       "id" in tag
         ? attachVideoTagByID([videoId], tag.id)
         : attachVideoTagByName([videoId], tag.name);
     void request
-      .then(() => setInputValue(""))
+      .then(() => setInputValue((current) => (current === submittedValue ? "" : current)))
       .catch((error: unknown) => {
         if (isTagNotFound(error)) {
           toast(`タグ「${displayName}」はもう無いため、一覧を取り直しました`);
@@ -119,7 +150,10 @@ export default function VideoTags({
 
   function removeTag(tag: TagRef, index: number) {
     const next = tags[index + 1] ?? tags[index - 1];
-    pendingFocusRef.current = next !== undefined ? { chipId: next.id } : "input";
+    pendingFocusRef.current = {
+      target: next !== undefined ? { chipId: next.id } : "input",
+      removedId: tag.id,
+    };
     setOpError(null);
     setRemovingIds((current) => new Set(current).add(tag.id));
     void detachVideoTag([videoId], tag.id)
@@ -130,7 +164,7 @@ export default function VideoTags({
           return;
         }
         // 外せなかったときは、次/前のチップではなく、このチップの × へ戻す。
-        pendingFocusRef.current = { chipId: tag.id };
+        pendingFocusRef.current = { target: { chipId: tag.id } };
         setOpError("detach");
       })
       .finally(() => {
