@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -160,4 +161,62 @@ func decode[T any](t *testing.T, rec *httptest.ResponseRecorder) T {
 		t.Fatalf("応答を JSON として読めない (%d): %s", rec.Code, rec.Body.String())
 	}
 	return out
+}
+
+// fakeCatalog はアプリケーション層の代わりに、決め打ちの判断を返す。プレビューの
+// 作り直しやシーク用プレビューの状態の導き方は internal/app で検証するので、
+// ここでは返された判断が応答にどう写るかだけを見る。
+type fakeCatalog struct {
+	mu sync.Mutex
+	// previews はファイルがある一覧用プレビューの内容の識別子。
+	previews map[string]bool
+	// requeue が真なら、ファイルの無い done のプレビューを pending と読み替える。
+	requeue  bool
+	requeued []int64
+
+	seekStates map[int64]domain.SeekThumbnailState
+	seekErr    error
+
+	related      domain.RelatedVideos
+	relatedErr   error
+	relatedAsked []int64
+
+	retry func(domain.Video) error
+}
+
+func (f *fakeCatalog) PresentVideos(_ context.Context, videos []domain.Video) []domain.VideoView {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	views := make([]domain.VideoView, 0, len(videos))
+	for _, video := range videos {
+		available := f.previews[video.ContentKey]
+		if video.PreviewState == domain.PreviewStateDone && !available && f.requeue {
+			f.requeued = append(f.requeued, video.ID)
+			video.PreviewState = domain.PreviewStatePending
+		}
+		views = append(views, domain.VideoView{Video: video, PreviewAvailable: available})
+	}
+	return views
+}
+
+func (f *fakeCatalog) SeekThumbnailState(_ context.Context, video domain.Video) (domain.SeekThumbnailState, error) {
+	if f.seekErr != nil {
+		return "", f.seekErr
+	}
+	if state, ok := f.seekStates[video.ID]; ok {
+		return state, nil
+	}
+	return domain.SeekThumbnailPending, nil
+}
+
+func (f *fakeCatalog) RelatedVideos(_ context.Context, video domain.Video) (domain.RelatedVideos, error) {
+	f.relatedAsked = append(f.relatedAsked, video.ID)
+	return f.related, f.relatedErr
+}
+
+func (f *fakeCatalog) RetryProbe(_ context.Context, video domain.Video) error {
+	if f.retry == nil {
+		return nil
+	}
+	return f.retry(video)
 }

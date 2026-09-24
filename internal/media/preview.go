@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"github.com/gofrs/flock"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 const (
@@ -33,7 +35,7 @@ type previewManifest struct {
 
 // ErrPreviewStale means the source identity changed while ffmpeg was running.
 // The caller may safely retry the job; no generated asset was published.
-var ErrPreviewStale = errors.New("preview source identity changed")
+var ErrPreviewStale = domain.ErrPreviewStale
 
 // PreviewSegments returns the deterministic [start,end) windows used for a
 // preview. Short videos are converted once so their timing is preserved.

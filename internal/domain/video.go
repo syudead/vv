@@ -270,3 +270,42 @@ type UpsertResult struct {
 	NeedsThumbnail bool
 	NeedsPreview   bool
 }
+
+// HasSeekThumbnail はシーク用プレビューを持ちうる動画かを返す。応答の
+// seekThumbnailUrl と seekThumbnailState は、これが true のときだけ載る。
+func (v Video) HasSeekThumbnail() bool {
+	return v.ProbeState == ProbeStateDone && v.DurationMs != nil &&
+		*v.DurationMs > 0 && v.VideoCodec != "" && v.ContentKey != ""
+}
+
+// SeekThumbnailState はシーク用プレビューの状態である。DB 上には持たず、
+// 置き場の有無とサムネイルのジョブの状態から導く。
+type SeekThumbnailState string
+
+const (
+	// SeekThumbnailPending は作成中、または作成を待っている。
+	SeekThumbnailPending SeekThumbnailState = "pending"
+	// SeekThumbnailDone は置き場があり、読み出せる。
+	SeekThumbnailDone SeekThumbnailState = "done"
+	// SeekThumbnailFailed は置き場が無く、作る予定も無い。
+	SeekThumbnailFailed SeekThumbnailState = "failed"
+)
+
+// VideoView は動画1件を応答に載せるときの形である。PreviewAvailable は
+// 一覧用プレビューのファイルが今あるかで、true のときだけ previewUrl を出す。
+// ファイルが消えていて作り直しを積んだ場合、Video.PreviewState は pending に
+// 読み替えてある。
+type VideoView struct {
+	Video            Video
+	PreviewAvailable bool
+}
+
+// DeletedVideo は行を消した動画である。生成物の片付けと、画面への知らせに使う。
+type DeletedVideo struct {
+	ID         int64
+	ContentKey string
+}
+
+// ErrPreviewStale は、プレビューの生成中に元の動画の所在や内容が変わったことを
+// 表す。生成物は公開されていないので、ジョブをやり直してよい。
+var ErrPreviewStale = errors.New("preview source identity changed")

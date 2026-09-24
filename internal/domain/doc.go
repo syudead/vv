@@ -1,4 +1,5 @@
-// Package domain はドメインモデルとユースケースを保持する。
+// Package domain はドメインモデル（値の型と、外部 I/O に依存しない純粋な規則）を
+// 保持する。ユースケースは internal/app に置く。
 //
 // このパッケージは依存の終端であり、他の internal パッケージからは参照されるだけで、
 // 自分からは何も参照しない。外部 I/O にも依存しないため、net/http・database/sql・
@@ -7,7 +8,7 @@
 //
 // 依存の向き:
 //
-//	cmd → internal/{httpapi,store,media,opener,scanner,jobs} → internal/domain
+//	cmd → internal/{app,httpapi,store,media,opener,scanner,jobs} → internal/domain
 //
 // 詳細は ARCHITECTURE.md の "Intended dependency direction" を参照。
 package domain

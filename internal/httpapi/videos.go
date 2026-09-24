@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -84,8 +83,9 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 	progress := s.progressFor(r.Context(), page.Items)
 
 	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
-	for _, video := range page.Items {
-		item := withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey)
+	for _, view := range s.presentVideos(r.Context(), page.Items) {
+		video := view.Video
+		item := withProgress(toAPIVideo(view), progress, video.ContentKey)
 		if folder, ok := domain.LocateVideoFolder(roots, video.Path); ok {
 			item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
 		}
@@ -197,69 +197,18 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	// 所在とシーク用プレビューの状態は、動画1件の応答にだけ載せる。一覧に載せると、
 	// 画面が使わない絶対パスを1ページ 60 件ぶん毎回送ることになる。
 	payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
-	if hasSeekThumbnail(video) {
-		state, err := s.seekThumbnailState(r.Context(), video)
+	if video.HasSeekThumbnail() && s.catalog != nil {
+		state, err := s.catalog.SeekThumbnailState(r.Context(), video)
 		if err != nil {
 			s.internalError(w, "動画を取得できませんでした", err)
 			return
 		}
-		payload.SeekThumbnailState = &state
+		apiState := gen.VideoSeekThumbnailState(state)
+		payload.SeekThumbnailState = &apiState
 	}
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
-}
-
-// seekThumbnailState はシーク用プレビューの状態を導く。DB 上に状態は無い。
-//
-// 置き場があれば done。無ければ、thumbnail_state が pending か、サムネイルの
-// ジョブが queued・running のときだけ pending で、それ以外は failed とする。
-// 失敗したジョブの行は保持期間を過ぎると消えるので、行が無いことを pending と
-// 読まない。そう読むと、画面の作成中の1行と取り直しが止まらなくなる。
-func (s *server) seekThumbnailState(ctx context.Context, video domain.Video) (gen.VideoSeekThumbnailState, error) {
-	if seekThumbnailDirExists(s.thumbnailsDir, video.ContentKey) {
-		return gen.VideoSeekThumbnailStateDone, nil
-	}
-	if video.ThumbnailState == domain.ThumbnailStatePending {
-		return gen.VideoSeekThumbnailStatePending, nil
-	}
-	if s.thumbnailJobs != nil {
-		active, err := s.thumbnailJobs.ThumbnailJobActive(ctx, video.ID)
-		if err != nil {
-			return "", err
-		}
-		if active {
-			return gen.VideoSeekThumbnailStatePending, nil
-		}
-	}
-	return gen.VideoSeekThumbnailStateFailed, nil
-}
-
-// hasSeekThumbnail はシーク用プレビューを持ちうる動画かを返す。seekThumbnailUrl と
-// seekThumbnailState はこの条件のときだけ応答に入る。
-func hasSeekThumbnail(video domain.Video) bool {
-	return video.ProbeState == domain.ProbeStateDone && video.DurationMs != nil &&
-		*video.DurationMs > 0 && video.VideoCodec != "" && video.ContentKey != ""
-}
-
-// seekThumbnailDirExists はシーク用プレビューの置き場
-// （thumbnails/seek/<prefix>/<contentKey>/）があるかを返す。置き場は生成の
-// 完了時に一時ディレクトリから改名して作られるので、あれば完成している。
-func seekThumbnailDirExists(thumbnailsDir, contentKey string) bool {
-	if thumbnailsDir == "" || contentKey == "" {
-		return false
-	}
-	info, err := os.Stat(seekThumbnailDirPath(thumbnailsDir, contentKey))
-	return err == nil && info.IsDir()
-}
-
-func seekThumbnailDirPath(thumbnailsDir, contentKey string) string {
-	safe := strings.NewReplacer(":", "_", "/", "_", `\`, "_").Replace(contentKey)
-	prefix := safe
-	if len(prefix) > 2 {
-		prefix = prefix[:2]
-	}
-	return filepath.Join(thumbnailsDir, "seek", prefix, safe)
 }
 
 // progressFor は動画たちの再生位置をまとめて引く。1件ずつ引くと、60 件の
@@ -320,11 +269,12 @@ func (s *server) lookupVideo(w http.ResponseWriter, r *http.Request, id int64) (
 	return video, true
 }
 
-// toAPIVideo は domain.Video を契約の形へ写す。
+// toAPIVideo は応答に載せる動画を契約の形へ写す。
 //
 // 取得できていない値は省略する。0 で埋めると、一覧で「尺が 0 の動画」と
 // 「尺が分からない動画」を区別できなくなる。
-func toAPIVideo(video domain.Video, previewAvailable bool) gen.Video {
+func toAPIVideo(view domain.VideoView) gen.Video {
+	video := view.Video
 	out := gen.Video{
 		Id:             video.ID,
 		Title:          video.Title,
@@ -371,11 +321,11 @@ func toAPIVideo(video domain.Video, previewAvailable bool) gen.Video {
 		url := thumbnailURL(video)
 		out.ThumbnailUrl = &url
 	}
-	if hasSeekThumbnail(video) {
+	if video.HasSeekThumbnail() {
 		url := seekThumbnailURL(video)
 		out.SeekThumbnailUrl = &url
 	}
-	if video.PreviewState == domain.PreviewStateDone && previewAvailable {
+	if video.PreviewState == domain.PreviewStateDone && view.PreviewAvailable {
 		url := previewURL(video)
 		out.PreviewUrl = &url
 	}
@@ -383,46 +333,31 @@ func toAPIVideo(video domain.Video, previewAvailable bool) gen.Video {
 	return out
 }
 
-// apiVideo は動画を契約の形へ写す。プレビューを作り終えた記録があるのに
-// ファイルが無ければ、作り直しを積み、応答では準備中として返す。
-//
-// ファイルの有無は、URL を出すかどうかを決めるためにもともと確かめている。
-// 見つけたときだけ書くので、ファイルがある通常の場合に書き込みは増えない。
-// 積むのは状態が done の間の1回だけで、作り直しが上限まで失敗すれば failed に
-// なり、それ以上は積まない。
+// presentVideos は動画たちを応答に載せる形にする。消えたプレビューの作り直しの
+// 予約はアプリケーション層（VideoCatalog）が行う。catalog が無ければ、
+// プレビューのファイルは無いものとして扱う。
+func (s *server) presentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView {
+	if s.catalog != nil {
+		return s.catalog.PresentVideos(ctx, videos)
+	}
+	views := make([]domain.VideoView, 0, len(videos))
+	for _, video := range videos {
+		views = append(views, domain.VideoView{Video: video})
+	}
+	return views
+}
+
+// apiVideo は動画1件を契約の形へ写す。
 func (s *server) apiVideo(ctx context.Context, video domain.Video) gen.Video {
-	if video.PreviewState != domain.PreviewStateDone {
-		return toAPIVideo(video, false)
-	}
-	if previewAssetAvailable(s.thumbnailsDir, video.ContentKey) {
-		return toAPIVideo(video, true)
-	}
-	if s.previewRepair != nil && s.thumbnailsDir != "" && video.ContentKey != "" {
-		requeued, err := s.previewRepair.RequeueMissingPreview(ctx, video.ID, video.ContentKey)
-		switch {
-		case err != nil:
-			// 作り直しを積めなくても、応答は URL を省いて返せる。次に見つけたときに積む。
-			s.logger.Warn("消えたプレビューの作り直しを積めませんでした",
-				slog.Int64("videoId", video.ID), slog.Any("error", err))
-		case requeued:
-			video.PreviewState = domain.PreviewStatePending
-		}
-	}
-	return toAPIVideo(video, false)
+	return toAPIVideo(s.presentVideos(ctx, []domain.Video{video})[0])
 }
 
 func previewURL(video domain.Video) string {
 	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/preview?v=" + video.ContentKey
 }
 
-func previewAssetAvailable(thumbnailsDir, contentKey string) bool {
-	if thumbnailsDir == "" || contentKey == "" {
-		return false
-	}
-	info, err := os.Stat(previewFilePath(thumbnailsDir, contentKey))
-	return err == nil && info.Mode().IsRegular() && info.Size() > 0
-}
-
+// previewFilePath は一覧用プレビューの保存先を組み立てる。internal/media の
+// PreviewPath と同じ規則である（thumbnailFilePath と同じ理由で写している）。
 func previewFilePath(thumbnailsDir, contentKey string) string {
 	safe := strings.NewReplacer(":", "_", "/", "_", `\`, "_").Replace(contentKey)
 	prefix := safe

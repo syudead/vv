@@ -38,10 +38,11 @@ type Playback interface {
 	ProgressByContentKeys(ctx context.Context, contentKeys []string) (map[string]domain.Progress, error)
 }
 
-// Scans は取り込みの開始と状態の取得である。
+// Scans は取り込みの開始と状態の取得である。internal/app の *Scans がこれを
+// 満たす。
 //
-// StartScan は実行中なら新しく始めず、実行中のものを返す。走査を
-// 実際に動かす組み立ては cmd/mdm が行う。
+// StartScan は実行中なら新しく始めず、実行中のものを返す。走査を実際に
+// 動かすのはアプリケーション層である。
 type Scans interface {
 	StartScan(ctx context.Context) (domain.Scan, error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
@@ -67,31 +68,18 @@ type SeekThumbnailReader interface {
 	Read(context.Context, string, int64) ([]byte, error)
 }
 
-// ThumbnailJobs はサムネイルのジョブの状態の問い合わせ先である。シーク用
-// プレビューには DB 上の状態が無いので、動画1件の応答を作るときにこれで導く。
-type ThumbnailJobs interface {
-	ThumbnailJobActive(ctx context.Context, videoID int64) (bool, error)
-}
-
-// RelatedLibrary は関連動画の問い合わせ先である。store は行を読むだけで、
-// 並べ方は internal/domain の OrderRelated が決める。
-type RelatedLibrary interface {
-	DirectVideoPaths(ctx context.Context, dir string) ([]domain.RelatedSibling, error)
-	VideosAddedNear(ctx context.Context, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error)
-	VideosByIDs(ctx context.Context, ids []int64) ([]domain.Video, error)
-}
-
-// Reprober は読み取りに失敗した動画を読み取り直す状態へ戻し、ジョブを積む。
-// 状態を戻すことと積むことは、保存層が1つの取引で行う。
-type Reprober interface {
-	RetryProbe(ctx context.Context, id int64, seekThumbnailMissing bool) error
-}
-
-// PreviewRepairer は、作り終えた記録があるのにファイルが無いプレビューの
-// 作り直しを積む。状態を戻すことと積むことは、保存層が1つの取引で行う。
-// 積んだら true を返す。すでに戻っていれば false。
-type PreviewRepairer interface {
-	RequeueMissingPreview(ctx context.Context, id int64, contentKey string) (bool, error)
+// VideoCatalog は動画を応答に載せるときの判断と、関連動画の組み立てを行う
+// アプリケーション層である。internal/app の *Catalog がこれを満たす。
+// httpapi は要求の解釈と契約の形への変換だけを持ち、プレビューの作り直しの
+// 予約やシーク用プレビューの状態の導出は行わない。
+type VideoCatalog interface {
+	// PresentVideos は動画たちを応答に載せる形にする。順序は保つ。
+	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
+	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
+	RelatedVideos(ctx context.Context, video domain.Video) (domain.RelatedVideos, error)
+	// RetryProbe は読み取りに失敗した動画を読み取り直す。失敗していなければ
+	// domain.ErrProbeNotFailed を返す。
+	RetryProbe(ctx context.Context, video domain.Video) error
 }
 
 // FileOpener はサーバーの PC の既定アプリでファイルを開く。internal/opener の
@@ -124,16 +112,10 @@ type Options struct {
 	Transcoder Transcoder
 	// SeekThumbnails は生成済みの任意時刻JPEGを読む。nilなら経路は500を返す。
 	SeekThumbnails SeekThumbnailReader
-	// ThumbnailJobs はシーク用プレビューの状態を導くのに使う。nil ならジョブは
-	// 進行中でないものとして導く。
-	ThumbnailJobs ThumbnailJobs
-	// Related は関連動画の問い合わせ先。nilなら経路は500を返す。
-	Related RelatedLibrary
-	// Reprobe は読み取りのやり直し。nilなら経路は500を返す。
-	Reprobe Reprober
-	// PreviewRepair は消えたプレビューの作り直しを積む。nil なら積まず、
-	// プレビューの URL を省くだけにする。
-	PreviewRepair PreviewRepairer
+	// Catalog は動画の応答に要る判断・関連動画・読み取りのやり直し。nil なら
+	// 関連動画と読み取りのやり直しの経路は 500 を返し、動画の応答にはプレビューの
+	// URL とシーク用プレビューの状態が載らない。
+	Catalog VideoCatalog
 	// Opener はファイルを既定アプリで開く。nil なら開けない環境として扱う。
 	Opener FileOpener
 	// Processing は段階ごとの残りの問い合わせ先。nilなら経路は500を返す。
@@ -159,10 +141,7 @@ type server struct {
 	thumbnailsDir  string
 	transcoder     Transcoder
 	seekThumbnails SeekThumbnailReader
-	thumbnailJobs  ThumbnailJobs
-	related        RelatedLibrary
-	reprobe        Reprober
-	previewRepair  PreviewRepairer
+	catalog        VideoCatalog
 	opener         FileOpener
 	processing     Processing
 	events         *Events
@@ -203,10 +182,7 @@ func NewRouter(opts Options) http.Handler {
 		thumbnailsDir:  opts.ThumbnailsDir,
 		transcoder:     opts.Transcoder,
 		seekThumbnails: opts.SeekThumbnails,
-		thumbnailJobs:  opts.ThumbnailJobs,
-		related:        opts.Related,
-		reprobe:        opts.Reprobe,
-		previewRepair:  opts.PreviewRepair,
+		catalog:        opts.Catalog,
 		opener:         opts.Opener,
 		processing:     opts.Processing,
 		events:         opts.Events,

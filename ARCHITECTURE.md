@@ -47,21 +47,21 @@ not duplicate rows, and queues the heavy work. Only a user-started scan walks th
 media folders; nothing reads the whole library at startup or after a scan.
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail, preview —
 each claiming only its own kind of job from the persistent `jobs` queue, one at a time,
-and driving the `internal/media` adapters
+and handing it to `internal/app`, which drives the `internal/media` adapters
 (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, five-second seek-preview frames,
 and a content-keyed hover-preview clip per video). A worker sleeps while its queue is
-empty: `internal/store` reports every committed enqueue, and `cmd/mdm` wakes the worker
+empty: `internal/store` reports every committed enqueue, and `internal/app` wakes the worker
 for that stage, so no worker polls the queue. A thumbnail job is not claimed until its
-video's probe has finished, because the frame position depends on the duration; the probe
-worker wakes the thumbnail worker when it records a result. Interrupted scans are closed,
+video's probe has finished, because the frame position depends on the duration;
+`internal/app` wakes the thumbnail worker as soon as a probe's result is recorded. Interrupted scans are closed,
 running jobs are requeued, and the single `.tmp` directory that holds in-progress
 generation output is removed at the next startup. When a video row is deleted (a scan finds its last
 location gone, its content changes, or its media folder is removed or replaced),
-`internal/store` reports the released content keys after commit, and `cmd/mdm` removes
+`internal/store` reports the released content keys after commit, and `internal/app` removes
 that content's thumbnail, seek frames and hover preview unless another video still
 references it; nothing else sweeps the thumbnails directory. A hover preview whose file
-is gone is repaired when it is found: the video API already checks the file before
-exposing `previewUrl`, and when a `done` preview is missing it sets the video back to
+is gone is repaired when it is found: `internal/app` already checks the file before the
+video API exposes `previewUrl`, and when a `done` preview is missing it sets the video back to
 `pending` and queues a preview job in one transaction, once per loss.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
@@ -110,25 +110,47 @@ not persisted.
 
 ## Intended dependency direction
 
-`cmd -> internal/{httpapi,store,media,opener,scanner,jobs} -> internal/domain`, one way
-only. `internal/domain` holds the domain model and use cases and must not depend
-on `net/http`, `database/sql`, or `os/exec`. This constraint is enforced
-mechanically with golangci-lint's depguard in CI.
+`cmd -> internal/{app,httpapi,store,media,opener,scanner,jobs} -> internal/domain`, one
+way only. The packages under `internal/` fall into three layers:
 
-The depguard rules live in [.golangci.yml](.golangci.yml) and also deny the
-SQLite driver and every other `internal/*` package from `internal/domain`. Each
-rule carries the reason in its message, so a violation explains itself from the
-`task lint` output alone.
+- `internal/domain` holds the domain model: value types and pure rules
+  (`EvaluatePlayability`, `OrderRelated`, search-key folding, …). It is the end
+  of the chain and must not depend on `net/http`, `database/sql`, `os/exec`, the
+  SQLite driver, or any other `internal/*` package.
+- `internal/app` is the application layer and holds the use cases: starting,
+  running and closing a scan and recovering an interrupted one at startup
+  (`Scans`); processing one probe, thumbnail or preview job — checking the claimed
+  identity, calling the generator, applying the result, and waking the next stage
+  (`Ingest`); and the decisions behind a video response — requeueing a missing hover
+  preview, deriving the seek-preview state — plus assembling related videos
+  (`Catalog`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
+  through interfaces it declares, so its unit tests run without SQLite, `ffmpeg` or
+  an HTTP server. It must not import `net/http`, `database/sql`, `os/exec`, the
+  SQLite driver, or any adapter package.
+- The adapters — `internal/httpapi`, `internal/store`, `internal/media`,
+  `internal/opener`, `internal/scanner` and `internal/jobs` — talk to the outside
+  world. `internal/httpapi` only parses requests, calls the application layer or
+  the store, and converts to the generated `gen` types.
 
-The sibling packages under `internal/` do not import each other either, and
-that is not mechanically enforced — it is a convention the code keeps by
-declaring what it needs. `internal/scanner`, `internal/jobs` and
-`internal/httpapi` each define the interfaces they consume (an index to write
-to, a queue to claim from, a library to query), `internal/store` happens to
-satisfy them, and `cmd/mdm` is the only place that knows which concrete type
-goes where. The values crossing those boundaries (`domain.VideoFile`,
-`domain.Job`, `domain.VideoQuery`, …) live in `internal/domain`, which is why
-neither side needs the other.
+`cmd/mdm` is the composition root: it reads the configuration, creates the
+adapters and the application-layer values, wires them together, and starts and
+stops them. It holds no use case of its own.
+
+The sibling packages under `internal/` (the adapters and `internal/app`) do not
+import each other. Each declares the interfaces it consumes — `internal/app` a
+scan store, an ingest store, a generator and a notifier; `internal/scanner`,
+`internal/jobs` and `internal/httpapi` an index to write to, a queue to claim
+from, a library and a video catalog to query — and `cmd/mdm` is the only place
+that knows which concrete type goes where. The values crossing those boundaries
+(`domain.VideoFile`, `domain.Job`, `domain.VideoQuery`, `domain.VideoView`, …)
+live in `internal/domain`, which is why neither side needs the other.
+
+All of this is enforced mechanically with golangci-lint's depguard in CI. The
+rules live in [.golangci.yml](.golangci.yml): one for `internal/domain`, one for
+`internal/app`, and one that forbids the sibling packages from importing each
+other (test files are exempt, because an external `package x_test` imports its
+own package). Each rule carries the reason in its message, so a violation
+explains itself from the `task lint` output alone.
 
 The API contract in `api/openapi.yaml` is the single source of truth for the
 boundary between the Go backend and the TypeScript frontend; both sides are

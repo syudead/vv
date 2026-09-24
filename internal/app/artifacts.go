@@ -1,16 +1,13 @@
-package main
+package app
 
 import (
 	"context"
 	"log/slog"
 	"sync"
-
-	"github.com/syudead/vv/internal/media"
-	"github.com/syudead/vv/internal/store"
 )
 
 // artifacts は内容ごとの生成物（代表サムネイル・シーク用プレビュー・一覧用
-// プレビュー）の作成と削除を受け持つ。
+// プレビュー）の削除と、作成との直列化を受け持つ。
 //
 // 作成と削除は内容の識別子ごとの錠で直列にする。錠が無いと、削除の側が
 // 「参照が無い」と確かめてからファイルを消すまでの間に同じ内容の動画が取り込まれ、
@@ -18,9 +15,9 @@ import (
 // 消えることがある。錠の中で「参照を確かめて消す」と「生成して完了を記録する」を
 // 行えば、どちらが先でも状態とファイルが食い違わない。
 type artifacts struct {
-	db            *store.DB
-	thumbnailsDir string
-	logger        *slog.Logger
+	index  ContentIndex
+	files  ArtifactRemover
+	logger *slog.Logger
 
 	mu    sync.Mutex
 	locks map[string]*artifactLock
@@ -34,13 +31,8 @@ type artifactLock struct {
 	users int
 }
 
-func newArtifacts(db *store.DB, thumbnailsDir string, logger *slog.Logger) *artifacts {
-	return &artifacts{
-		db:            db,
-		thumbnailsDir: thumbnailsDir,
-		logger:        logger,
-		locks:         map[string]*artifactLock{},
-	}
+func newArtifacts(index ContentIndex, files ArtifactRemover, logger *slog.Logger) *artifacts {
+	return &artifacts{index: index, files: files, logger: logger, locks: map[string]*artifactLock{}}
 }
 
 // lock は内容の識別子の錠を取り、外す関数を返す。使い終わった錠は捨てる。
@@ -69,14 +61,14 @@ func (a *artifacts) lock(contentKey string) func() {
 // removeIfUnreferencedLocked は、内容を参照する動画が無ければその生成物を消す。
 // 呼び出し側がその内容の錠を持っていること。
 func (a *artifacts) removeIfUnreferencedLocked(ctx context.Context, contentKey string) error {
-	referenced, err := a.db.ContentKeyReferenced(ctx, contentKey)
+	referenced, err := a.index.ContentKeyReferenced(ctx, contentKey)
 	if err != nil {
 		return err
 	}
 	if referenced {
 		return nil
 	}
-	return media.RemoveContentArtifacts(a.thumbnailsDir, contentKey)
+	return a.files.RemoveContent(contentKey)
 }
 
 // removeIfUnreferenced は錠を取ってから removeIfUnreferencedLocked を行う。
@@ -87,8 +79,7 @@ func (a *artifacts) removeIfUnreferenced(ctx context.Context, contentKey string)
 }
 
 // release は、動画の行が消えたときに、参照の無くなった内容の生成物を消す。
-// 保存層の OnVideosDeleted の知らせから呼ぶ。消えた動画の分だけを見るので、
-// ライブラリ全体は読まない。
+// 消えた動画の分だけを見るので、ライブラリ全体は読まない。
 //
 // ファイルの削除は呼び出し元（走査やフォルダ設定の要求）を待たせないよう背後で
 // 行い、停止時は wait で終わりを待つ。
@@ -106,7 +97,7 @@ func (a *artifacts) release(contentKeys []string) {
 	}()
 }
 
-// wait は背後で動いている削除の終わりを待つ。データベースを閉じる前に呼ぶ。
+// wait は背後で動いている削除の終わりを待つ。
 func (a *artifacts) wait() {
 	a.releasing.Wait()
 }
