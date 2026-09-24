@@ -86,14 +86,16 @@ Down は3つの表を落とす。
 | 作成 | `tags` に1行、`tag_names` に `canonical = 1` で1行。名前が既にあれば `ErrTagNameTaken` |
 | 改名 | そのタグの `canonical = 1` の行の `name` を書き換える。今と同じ名前なら何も変えない。新しい名前が既にあれば（自分のシノニムでも）`ErrTagNameTaken` |
 | 削除 | `tags` の行を消す。`tag_names` と `video_tags` は連鎖して消える。いまライブラリに無い動画の付与も消える |
-| 統合（元 X → 先 Y） | `insert or ignore into video_tags select content_key, Y, … from video_tags where tag_id = X`、X のシノニムを `tag_id = Y` に付け替える、X を消す。X の元の名前は消える |
-| シノニム登録（名前 n をタグ T に） | n が無ければ `canonical = 0` で1行足す。n が既に T のシノニムなら何も変えない。n が T の元の名前なら `ErrTagNameTaken`。n が別のタグ S のシノニムなら `ErrTagNameTaken`（S を伝える）。n が別のタグ S の元の名前なら、承諾された統合元の `id` が S でなければ（無い場合を含む）`ErrTagMergeRequired`、S なら S → T の統合をしてから n を T のシノニムとして足す |
+| 統合（元 X → 先 Y） | `insert or ignore into video_tags select content_key, Y, … from video_tags where tag_id = X`、X の名前（元の名前とシノニムの両方）を `tag_id = Y`・`canonical = 0` に付け替える、X を消す。X の元の名前は Y のシノニムになる |
+| シノニム登録（名前 n をタグ T に） | n が無ければ `canonical = 0` で1行足す。n が既に T のシノニムなら何も変えない。n が T の元の名前なら `ErrTagNameTaken`。n が別のタグ S のシノニムなら `ErrTagNameTaken`（S を伝える）。n が別のタグ S の元の名前なら、承諾された統合元の `id` が S でなければ（無い場合を含む）`ErrTagMergeRequired`、S なら S → T の統合をする（n は統合で T のシノニムになる） |
 | シノニム解除 | その `canonical = 0` の行を消す。n が T のシノニムでなければ何も変えない |
 | 付与 | 対象の動画の `content_key` ごとに `insert or ignore`。既に付いていれば何も変わらない |
 | 取り外し | 対象の `content_key` ごとに `delete`。付いていなければ何も変わらない |
 
 - 統合では、両方が付いていた中身は `insert or ignore` で1行に収まる（受け入れ条件 12）。
-- シノニム登録に伴う統合でも、S のシノニムは T へ引き継ぐ（Edge Case「統合とシノニム」）。
+- 統合元のシノニムは統合先へ引き継ぐ（Edge Case「統合とシノニム」）。統合元の元の名前も
+  統合先のシノニムになるので、シノニム登録に伴う統合は、ふつうの統合と同じ書き換えになる。
+- 統合の後に統合元の名前を別のタグに使いたいときは、そのシノニムを解除する。
 - 付与・取り外しの対象は、画面が送る動画の `id` を、いまライブラリにある動画の
   `content_key` に引き直したものである。引けない `id`（その間に消えた動画）は飛ばし、
   応答で反映した本数を返す。

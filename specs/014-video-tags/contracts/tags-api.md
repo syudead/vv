@@ -72,15 +72,15 @@ TypeScript の型を扱う前例がリポジトリに無いためである。
 | `POST /api/tags` | `{ name }` | 201 `Tag` | 400、409 `tag_name_taken` |
 | `PATCH /api/tags/{id}` | `{ name }` | 200 `Tag`（今と同じ名前なら何も変えずに返す） | 400、404 `tag_not_found`、409 `tag_name_taken` |
 | `DELETE /api/tags/{id}` | — | 204 | 404 `tag_not_found` |
-| `POST /api/tags/{id}/merge` | `{ sourceId }` | 200 `Tag`（統合先） | 400（`sourceId` が `id` と同じ）、404 `tag_not_found`（どちらかが無い） |
+| `POST /api/tags/{id}/merge` | `{ sourceId }` | 200 `Tag`（統合先。統合元の名前とシノニムは、統合先のシノニムに入る） | 400（`sourceId` が `id` と同じ）、404 `tag_not_found`（どちらかが無い） |
 | `POST /api/tags/{id}/synonyms` | `{ name, mergeTagId? }` | 200 `Tag` | 400、404 `tag_not_found`、409 `tag_name_taken`、409 `tag_merge_required` |
 | `DELETE /api/tags/{id}/synonyms?name=…` | — | 204（その名前がこのタグのシノニムでなければ、何も変えずに 204） | 404 `tag_not_found`（タグが無い） |
 
 - 既にこのタグのシノニムである名前の登録は、何も変えずに 200 を返す。このタグの元の
   名前の登録は 409 `tag_name_taken` にする（[data-model.md §4](../data-model.md#4-書き換えの規則)）。
 - `mergeTagId` は、利用者が統合を承諾したタグの `id` である。名前が別のタグ S の元の名前の
-  とき、`mergeTagId` が S の `id` と一致すれば、同じトランザクションで S をこのタグへ統合して
-  から名前をシノニムにする（受け入れ条件 17）。`mergeTagId` が無いか S と違えば、
+  とき、`mergeTagId` が S の `id` と一致すれば、同じトランザクションで S をこのタグへ統合する。
+  統合で S の名前はこのタグのシノニムになる（受け入れ条件 17）。`mergeTagId` が無いか S と違えば、
   `tag_merge_required` を返して何も変えない。名前が別のタグの元の名前でないときは
   `mergeTagId` を無視する。
 - 画面は、`GET /api/tags` の本数で確認をとり、確認に出したタグの `id` を `mergeTagId` に
