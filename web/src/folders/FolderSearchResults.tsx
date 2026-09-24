@@ -25,6 +25,7 @@ export default function FolderSearchResults({
   backTo: string;
 }) {
   const noMatch = !videos.loading && videos.error === null && videos.items.length === 0;
+  const initialLoadError = videos.items.length === 0 ? videos.error : null;
   return (
     <>
       <h2 className="sr-only">検索結果</h2>
@@ -32,15 +33,17 @@ export default function FolderSearchResults({
         <NoMatches />
       ) : (
         <>
-          <p
-            role="status"
-            aria-live="polite"
-            className="text-center text-xs text-fg-muted tabular-nums"
-          >
-            {videos.loading ? "読み込み中…" : resultCountText(videos.total)}
-          </p>
-          {videos.error !== null && videos.items.length === 0 ? (
-            <LoadFailed reason={videos.error} onRetry={videos.reload} />
+          {initialLoadError === null && (
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-center text-xs text-fg-muted tabular-nums"
+            >
+              {videos.loading ? "読み込み中…" : resultCountText(videos.total)}
+            </p>
+          )}
+          {initialLoadError !== null ? (
+            <LoadFailed reason={initialLoadError} onRetry={videos.reload} />
           ) : (
             <Grid zoom={zoom}>
               {videos.loading ? (

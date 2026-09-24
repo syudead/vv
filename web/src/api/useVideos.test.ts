@@ -116,6 +116,28 @@ describe("useVideos（一覧の読み込み）", () => {
     expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3]);
   });
 
+  it("続きの応答で total がカード数を下回ったら先頭から読み直す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+
+    await act(async () => {
+      calls[0]?.resolve({ items: [item(1), item(2)], total: 3, nextCursor: "next" });
+    });
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+
+    await act(async () => {
+      calls[1]?.resolve({ items: [item(3)], total: 2 });
+    });
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls[2]?.params.cursor).toBeUndefined();
+
+    await act(async () => {
+      calls[2]?.resolve({ items: [item(2), item(3)], total: 2 });
+    });
+    expect(result.current.items.map((video) => video.id)).toEqual([2, 3]);
+    expect(result.current.total).toBe(2);
+  });
+
   it("保存された再生位置を、表示中の該当する項目にだけ反映する", async () => {
     const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
     await waitFor(() => {

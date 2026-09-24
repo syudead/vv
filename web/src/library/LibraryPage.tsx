@@ -272,6 +272,7 @@ export default function LibraryPage() {
   }, [hasMore, loadMore, resetPreview]);
 
   const empty = !loading && error === null && items.length === 0;
+  const initialLoadFailed = error !== null && items.length === 0;
   const conditioned = hasConditions(criteria);
   const selectionMode = selectedIds.size > 0;
   const resultStatus = loading ? "読み込み中…" : resultCountText(total);
@@ -316,17 +317,17 @@ export default function LibraryPage() {
         />
       </TopBarPortal>
 
-      <p
-        role="status"
-        aria-live="polite"
-        className="text-center text-xs text-fg-muted tabular-nums"
-      >
-        {resultStatus}
-      </p>
-
-      {error !== null && items.length === 0 && (
-        <LoadFailed reason={error} onRetry={reload} />
+      {!initialLoadFailed && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="text-center text-xs text-fg-muted tabular-nums"
+        >
+          {resultStatus}
+        </p>
       )}
+
+      {initialLoadFailed && <LoadFailed reason={error} onRetry={reload} />}
 
       {empty &&
         (conditioned ? (

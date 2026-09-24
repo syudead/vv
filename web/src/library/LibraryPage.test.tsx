@@ -196,6 +196,26 @@ describe("LibraryPage", () => {
     renderLibrary();
     expect(await screen.findByText("壊れています")).toBeDefined();
     expect(screen.getByRole("button", { name: "再試行" })).toBeDefined();
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("条件変更後の取得に失敗したら前の件数を残さない", async () => {
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname === "/api/videos" && url.searchParams.get("query") === "broken") {
+        return Promise.resolve(json({ code: "internal", message: "壊れています" }, 500));
+      }
+      return base!(input, init);
+    });
+    const user = userEvent.setup();
+    renderLibrary();
+    expect((await screen.findByRole("status")).textContent).toBe("3件");
+
+    await user.type(screen.getByRole("searchbox", { name: "動画を検索" }), "broken");
+
+    expect(await screen.findByText("壊れています")).toBeDefined();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("視聴状態はサーバーに送り、残りのページを読みに行かず、件数はサーバーの total を出す", async () => {

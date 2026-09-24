@@ -548,6 +548,7 @@ describe("FolderPage", () => {
     await user.type(box, "broken{Enter}");
     expect(await screen.findByText("一覧を取得できません")).toBeDefined();
     expect(screen.queryByText("このフォルダは見つかりません")).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   it("最上位の検索で登録フォルダ一覧が取れないと、置き場所の無い結果ではなく再試行を出す", async () => {
@@ -563,6 +564,7 @@ describe("FolderPage", () => {
     renderFolders("/folders?q=京都");
     expect(await screen.findByText("一覧を取得できません")).toBeDefined();
     expect(screen.queryByRole("link", { name: /^x/ })).toBeNull();
+    expect(screen.queryByRole("status")).toBeNull();
     failRoots = false;
     await user.click(screen.getByRole("button", { name: "再試行" }));
     expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();

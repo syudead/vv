@@ -126,6 +126,8 @@ export default function RootSearchResults({
     if (roots.error !== null) roots.reload();
   };
   const noMatch = !waiting && failure === null && items.length === 0;
+  const initialLoadFailed =
+    failure !== null && (items.length === 0 || roots.error !== null);
   const summaryText = waiting ? "読み込み中…" : resultCountText(total);
 
   return (
@@ -135,14 +137,16 @@ export default function RootSearchResults({
         <NoMatches />
       ) : (
         <>
-          <p
-            role="status"
-            aria-live="polite"
-            className="text-center text-xs text-fg-muted tabular-nums"
-          >
-            {summaryText}
-          </p>
-          {failure !== null && (items.length === 0 || roots.error !== null) ? (
+          {!initialLoadFailed && (
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-center text-xs text-fg-muted tabular-nums"
+            >
+              {summaryText}
+            </p>
+          )}
+          {initialLoadFailed ? (
             <LoadFailed reason={failure} onRetry={retry} />
           ) : (
             <Grid zoom={zoom}>

@@ -301,7 +301,18 @@ export function useVideos(
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
         if (controller.signal.aborted || inFlight.current !== controller) return;
-        setItems((items) => (replace ? page.items : appendUnique(items, page.items)));
+        const nextItems = replace
+          ? page.items
+          : appendUnique(itemsRef.current, page.items);
+        // ページ間で索引が縮むと、前のページにだけ残る項目と最新の total が
+        // 混ざり、カード数より全件数が少なくなる。件数を丸めず、現在の索引を
+        // 先頭から読み直して一覧と total を同じ時点へ揃える。
+        if (!replace && nextItems.length > page.total) {
+          setHasMore(false);
+          setGeneration((value) => value + 1);
+          return;
+        }
+        setItems(nextItems);
         const changed = page.items
           .map((video) => video.id)
           .filter((id) => changedWhileLoading.current.has(id));
