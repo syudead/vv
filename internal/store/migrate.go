@@ -46,7 +46,7 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 		return MigrateResult{}, fmt.Errorf("マイグレーションを読み出せません: %w", err)
 	}
 
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsys)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
 	if err != nil {
 		return MigrateResult{}, fmt.Errorf("マイグレーションを準備できません: %w", err)
 	}
@@ -57,7 +57,7 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 	}
 
 	// 適用の前に将来の版を検出する。ここで止めれば何も書き換えずに済む。
-	current, err := recordedVersion(ctx, db.SQL())
+	current, err := recordedVersion(ctx, db.sql)
 	if err != nil {
 		return MigrateResult{}, err
 	}
@@ -74,7 +74,7 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 		return MigrateResult{}, fmt.Errorf("マイグレーションを適用できません: %w", err)
 	}
 
-	applied, err := recordedVersion(ctx, db.SQL())
+	applied, err := recordedVersion(ctx, db.sql)
 	if err != nil {
 		return MigrateResult{}, err
 	}
@@ -138,7 +138,7 @@ func Down(ctx context.Context, db *DB) error {
 		return fmt.Errorf("マイグレーションを読み出せません: %w", err)
 	}
 
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsys)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
 	if err != nil {
 		return fmt.Errorf("マイグレーションを準備できません: %w", err)
 	}

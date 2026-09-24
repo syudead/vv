@@ -11,7 +11,7 @@ import (
 // jobCounts は種類と状態ごとのジョブの数を返す。
 func jobCounts(t *testing.T, db *DB, videoID int64) map[string]int {
 	t.Helper()
-	rows, err := db.SQL().Query(`select kind || ':' || state, count(*) from jobs where video_id = ? group by kind, state`, videoID)
+	rows, err := db.sql.Query(`select kind || ':' || state, count(*) from jobs where video_id = ? group by kind, state`, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func claimAtLastAttempt(t *testing.T, db *DB, kind domain.JobKind, videoID int64
 	if err := db.Ingest().EnqueueJob(ctx, kind, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = ? and video_id = ?`, domain.MaxJobAttempts-1, string(kind), videoID); err != nil {
+	if _, err := db.sql.Exec(`update jobs set attempts = ? where kind = ? and video_id = ?`, domain.MaxJobAttempts-1, string(kind), videoID); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, kind)
@@ -63,7 +63,7 @@ func failedVideoFixture(t *testing.T) (*DB, int64) {
 			t.Fatal(err)
 		}
 	}
-	if _, err := db.SQL().Exec(`update videos set preview_state = 'failed' where id = ?`, videoID); err != nil {
+	if _, err := db.sql.Exec(`update videos set preview_state = 'failed' where id = ?`, videoID); err != nil {
 		t.Fatal(err)
 	}
 	return db, videoID
@@ -116,7 +116,7 @@ func TestRetryProbeKeepsCompletedThumbnail(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			db, videoID := jobsFixture(t)
 			ctx := context.Background()
-			if _, err := db.SQL().Exec(`update videos set probe_state = 'failed', probe_error = 'broken',
+			if _, err := db.sql.Exec(`update videos set probe_state = 'failed', probe_error = 'broken',
 				thumbnail_state = 'done' where id = ?`, videoID); err != nil {
 				t.Fatal(err)
 			}
@@ -191,7 +191,7 @@ func TestFailClaimedProbeRollsBackJobWhenStateUpdateFails(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	job := claimAtLastAttempt(t, db, domain.JobProbe, videoID)
-	if _, err := db.SQL().Exec(`create trigger reject_probe_failure before update of probe_state on videos
+	if _, err := db.sql.Exec(`create trigger reject_probe_failure before update of probe_state on videos
 		when new.probe_state = 'failed' begin select raise(abort, 'reject probe failure'); end`); err != nil {
 		t.Fatal(err)
 	}

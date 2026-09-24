@@ -72,7 +72,7 @@ func searchExprFixture(t *testing.T) *DB {
 	t.Helper()
 	db := migratedDB(t)
 	// 鍵は取り込み時の登録フォルダから作るので、取り込む前に差し替える。
-	if _, err := db.SQL().Exec(`update media_folders set path = '/media/videos'`); err != nil {
+	if _, err := db.sql.Exec(`update media_folders set path = '/media/videos'`); err != nil {
 		t.Fatal(err)
 	}
 	var files []domain.VideoFile
@@ -148,7 +148,7 @@ func TestListVideosSearchExpressions(t *testing.T) {
 // 9. 登録フォルダより下のフォルダ名では当たる。拡張子も照合の対象である。
 func TestListVideosMatchesRelativeFolderNames(t *testing.T) {
 	db := migratedDB(t)
-	if _, err := db.SQL().Exec(`update media_folders set path = '/media/videos'`); err != nil {
+	if _, err := db.sql.Exec(`update media_folders set path = '/media/videos'`); err != nil {
 		t.Fatal(err)
 	}
 	upsertAll(t, db,
@@ -507,7 +507,7 @@ func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	ids := upsertAll(t, db, listingFile("/media/legacy.mp4", "legacy", "legacy-key", 0))
-	if _, err := db.SQL().Exec(`update videos set content_key = '' where id = ?`, ids["/media/legacy.mp4"]); err != nil {
+	if _, err := db.sql.Exec(`update videos set content_key = '' where id = ?`, ids["/media/legacy.mp4"]); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Playback().SaveProgress(ctx, "", domain.Progress{PositionMs: 100_000, Completed: true}); err != nil {

@@ -116,7 +116,7 @@ func newArtifactsFixture(t *testing.T) artifactsFixture {
 	if err := db.Ingest().SetPreviewState(ctx, video.ID, domain.PreviewStateDone); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().ExecContext(ctx, `delete from jobs`); err != nil {
+	if err := store.DeleteJobsForTest(ctx, db); err != nil {
 		t.Fatal(err)
 	}
 	files := placeExistingArtifacts(t, dataDir)
@@ -172,9 +172,8 @@ func (f artifactsFixture) listed(t *testing.T) gen.Video {
 
 func (f artifactsFixture) previewJobs(t *testing.T) int {
 	t.Helper()
-	var count int
-	if err := f.db.SQL().QueryRowContext(f.ctx,
-		`select count(*) from jobs where kind = 'preview' and video_id = ?`, f.videoID).Scan(&count); err != nil {
+	count, err := store.CountVideoJobsForTest(f.ctx, f.db, domain.JobPreview, f.videoID)
+	if err != nil {
 		t.Fatal(err)
 	}
 	return count
@@ -207,8 +206,8 @@ func TestExistingArtifactsAreServedWithoutRegeneration(t *testing.T) {
 		}
 	}
 
-	var jobs int
-	if err := f.db.SQL().QueryRowContext(f.ctx, `select count(*) from jobs`).Scan(&jobs); err != nil {
+	jobs, err := store.CountJobsForTest(f.ctx, f.db)
+	if err != nil {
 		t.Fatal(err)
 	}
 	if jobs != 0 {

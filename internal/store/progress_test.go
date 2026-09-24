@@ -52,7 +52,7 @@ func TestPlaybackStoreSavesAndLoadsWithoutVideoRows(t *testing.T) {
 	}
 
 	var videos int
-	if err := db.SQL().QueryRow(`select count(*) from videos`).Scan(&videos); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from videos`).Scan(&videos); err != nil {
 		t.Fatal(err)
 	}
 	if videos != 0 {
@@ -90,7 +90,7 @@ func TestSaveProgressKeepsLastWrite(t *testing.T) {
 	}
 
 	var rows int
-	if err := db.SQL().QueryRow(`select count(*) from playback_progress`).Scan(&rows); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from playback_progress`).Scan(&rows); err != nil {
 		t.Fatal(err)
 	}
 	if rows != 1 {

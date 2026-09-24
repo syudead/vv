@@ -1,4 +1,4 @@
-package scanner
+package mediafs
 
 import (
 	"errors"
@@ -12,7 +12,7 @@ import (
 
 func TestCheckMediaFolderReturnsCleanedDirectory(t *testing.T) {
 	root := t.TempDir()
-	got, err := NewFolderChecker().CheckMediaFolder(root + string(os.PathSeparator) + ".")
+	got, err := New().CheckMediaFolder(root + string(os.PathSeparator) + ".")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,7 +26,7 @@ func TestCheckMediaFolderPreservesFilesystemUnicodePath(t *testing.T) {
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	got, err := NewFolderChecker().CheckMediaFolder(path)
+	got, err := New().CheckMediaFolder(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestCheckMediaFolderRejectsInvalidPaths(t *testing.T) {
 		"file":     file,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := NewFolderChecker().CheckMediaFolder(path); !errors.Is(err, domain.ErrInvalidMediaFolder) {
+			if _, err := New().CheckMediaFolder(path); !errors.Is(err, domain.ErrInvalidMediaFolder) {
 				t.Fatalf("error = %v, want domain.ErrInvalidMediaFolder", err)
 			}
 		})
@@ -74,7 +74,7 @@ func TestCheckMediaFolderRejectsSymbolicLinks(t *testing.T) {
 		"parent component": filepath.Join(link, "child"),
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := NewFolderChecker().CheckMediaFolder(path); !errors.Is(err, domain.ErrUnsupportedMediaFolder) {
+			if _, err := New().CheckMediaFolder(path); !errors.Is(err, domain.ErrUnsupportedMediaFolder) {
 				t.Fatalf("error = %v, want domain.ErrUnsupportedMediaFolder", err)
 			}
 		})
