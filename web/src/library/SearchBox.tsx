@@ -4,6 +4,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { MAX_QUERY_LENGTH } from "../api/client";
 import { cn } from "../lib/cn";
 import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
+import SearchSyntaxHelp from "./SearchSyntaxHelp";
 
 /** searchDebounceMs は入力が落ち着くのを待つ時間。打鍵ごとに一覧が入れ替わらないようにする。 */
 export const searchDebounceMs = 250;
@@ -32,15 +33,22 @@ export interface SearchBoxProps {
  * 上限を超えたときは、入力前の値と比べて新しく入った部分だけを切る。先頭や途中への
  * 入力で、もとからあった末尾を消さないためである。上限を超える貼り付けも、入る分
  * だけが入る（Issue の Edge Case「語の長さの上限」）。
+ *
+ * `caret` は入力後のカーソル位置（UTF-16 の単位）で、新しく入った部分はその手前で
+ * 終わる。選択範囲を、選んだ文字で終わる語に置き換えたときも、入った部分を既存の
+ * 末尾と取り違えないよう、共通の先頭と末尾をカーソルの前後に収める。
  */
-export function limitQueryInput(next: string, previous = ""): string {
+export function limitQueryInput(next: string, previous = "", caret?: number): string {
   const after = Array.from(next);
   if (after.length <= MAX_QUERY_LENGTH) return next;
   const before = Array.from(previous);
+  // カーソル位置が分からないときは、先頭と末尾を縛らない。
+  const cursor =
+    caret === undefined ? undefined : Array.from(next.slice(0, caret)).length;
   let prefix = 0;
   while (
     prefix < before.length &&
-    prefix < after.length &&
+    prefix < (cursor ?? after.length) &&
     before[prefix] === after[prefix]
   ) {
     prefix++;
@@ -48,7 +56,7 @@ export function limitQueryInput(next: string, previous = ""): string {
   let suffix = 0;
   while (
     suffix < before.length - prefix &&
-    suffix < after.length - prefix &&
+    suffix < after.length - Math.max(prefix, cursor ?? prefix) &&
     before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
   ) {
     suffix++;
@@ -66,7 +74,7 @@ export function limitQueryInput(next: string, previous = ""): string {
 
 /**
  * SearchBox は一覧の条件の `q` を入力する検索欄である。
- * `/` でフォーカス、Esc でクリアしてフォーカスを外す。
+ * `/` でフォーカス、Esc でクリアしてフォーカスを外す。枠の右端に検索の書き方の手引きを持つ。
  */
 export default function SearchBox({
   query,
@@ -142,7 +150,13 @@ export default function SearchBox({
         type="search"
         value={input}
         onChange={(event) =>
-          setInput(limitQueryInput(event.target.value, latest.current))
+          setInput(
+            limitQueryInput(
+              event.target.value,
+              latest.current,
+              event.target.selectionEnd ?? undefined,
+            ),
+          )
         }
         onFocus={() => session.current.start()}
         onBlur={() => {
@@ -163,30 +177,35 @@ export default function SearchBox({
         autoComplete="off"
         spellCheck={false}
         className={cn(
-          "h-full w-full rounded-md border border-border bg-field pr-9 pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
+          // 右端のボタンの分だけ空ける。検索語が空で sm 未満なら手引きのボタンだけなので狭くてよい。
+          input === "" ? "pr-9 sm:pr-15" : "pr-15",
+          "h-full w-full rounded-md border border-border bg-field pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
           "placeholder:text-fg-subtle transition-[border-color,box-shadow] duration-150",
           "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft",
           "[&::-webkit-search-cancel-button]:hidden",
         )}
       />
-      {input !== "" && (
-        <button
-          type="button"
-          // 押した瞬間に入力欄のフォーカスを外さない。外すと blur が入力途中の語を
-          // 確定して履歴を1つ増やし、続くクリアがもう1つ増やしてしまう。
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={clear}
-          aria-label="検索語をクリア"
-          className="absolute right-1.5 flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
-        >
-          <X className="size-4" />
-        </button>
-      )}
-      {input === "" && (
-        <kbd className="pointer-events-none absolute right-3 hidden rounded-sm border border-border-strong px-1.5 font-sans text-[11px] text-fg-subtle sm:block">
-          /
-        </kbd>
-      )}
+      <div className="absolute right-1.5 flex items-center gap-0.5">
+        {input !== "" && (
+          <button
+            type="button"
+            // 押した瞬間に入力欄のフォーカスを外さない。外すと blur が入力途中の語を
+            // 確定して履歴を1つ増やし、続くクリアがもう1つ増やしてしまう。
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={clear}
+            aria-label="検索語をクリア"
+            className="flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+        {input === "" && (
+          <kbd className="pointer-events-none mr-1 hidden rounded-sm border border-border-strong px-1.5 font-sans text-[11px] text-fg-subtle sm:block">
+            /
+          </kbd>
+        )}
+        <SearchSyntaxHelp />
+      </div>
     </div>
   );
 }
