@@ -505,6 +505,71 @@ func TestScanRemovesIndexedFileDeletedAfterDiscovery(t *testing.T) {
 	}
 }
 
+func TestScanPreservesIndexWhenRootDisappearsAfterDiscovery(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a", "z.mp4": "z"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+
+	z := filepath.Join(root, "z.mp4")
+	if err := os.WriteFile(z, []byte("changed z"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(z, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := New(Options{Index: index})
+	scanner.contentKey = func(string) (string, error) {
+		if err := os.RemoveAll(root); err != nil {
+			return "", err
+		}
+		return "", fs.ErrNotExist
+	}
+	_, err := scanner.Scan(context.Background())
+	if err == nil {
+		t.Fatal("root disappearance was reported as a completed scan")
+	}
+	if len(index.deleted) != 0 {
+		t.Fatalf("indexed locations were deleted after root disappearance: %v", index.deleted)
+	}
+	if len(index.rows) != 2 {
+		t.Fatalf("indexed rows = %d, want 2", len(index.rows))
+	}
+}
+
+func TestScanPreservesIndexWhenParentDisappearsAfterDiscovery(t *testing.T) {
+	root := mediaTree(t, map[string]string{"gone/a.mp4": "a", "z.mp4": "z"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+
+	z := filepath.Join(root, "z.mp4")
+	if err := os.WriteFile(z, []byte("changed z"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(z, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := New(Options{Index: index})
+	scanner.contentKey = func(path string) (string, error) {
+		if path == z {
+			if err := os.RemoveAll(filepath.Join(root, "gone")); err != nil {
+				return "", err
+			}
+		}
+		return ContentKey(path)
+	}
+	_, err := scanner.Scan(context.Background())
+	if err == nil {
+		t.Fatal("parent disappearance was reported as a completed scan")
+	}
+	if len(index.deleted) != 0 {
+		t.Fatalf("indexed locations were deleted after parent disappearance: %v", index.deleted)
+	}
+}
+
 // 新しく取り込んだ動画には、解析とサムネイルのジョブを積む。
 func TestScanEnqueuesJobsForNewVideos(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})
