@@ -65,7 +65,8 @@
   store の役割ごとの型への分割、一覧の部品の `web/src/videoList/` への移動）に合わせて
   改訂した。改訂で足した判断は Structural Decisions 13〜15 で、テーブル・API・URL の
   契約は変えていない。同じ改訂で、名前の検証で制御文字を空白の除去より先に調べる順に
-  直した（[data-model.md §2](data-model.md#2-名前の規則)）。
+  直した（[data-model.md §2](data-model.md#2-名前の規則)）。前後に改行やタブを持つ名前は、
+  API でも誤りになる。
 - マイグレーションを1つ足す（`00008_tags.sql`、[data-model.md §1](data-model.md#1-マイグレーション)）。
   既存の表には触れない。
 - 規模の前提は既存と同じ1万本である。一括の付け外しは、1万本を1回の要求と1つの
@@ -205,11 +206,11 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
     - `TagStore` が持つ操作: タグの作成・改名・削除・統合・シノニムの登録と解除・本数つきの
       一覧、動画の `id` の集合への付け外し、選んだ動画の要約、`content_key` の集合から項目の
       タグを引く操作（`PlaybackStore.ProgressByContentKeys` と同じ形）、起動時のタグ名の鍵の
-      作り直し。`PlaybackStore` と同じく利用者データの型で、共有する SQL 接続だけを持ち、
-      索引の型にも知らせの発行にも依存しない。
+      作り直し。`PlaybackStore` と同じく、索引の役割の型にも知らせの発行にも依存しない。
+      本数・要約・`id` からの引き直しのために `videos` を SQL で読む（下の共有の関数）。
     - `LibraryStore` が持つ操作: `listing.go` のタグの AND、全件の `id`、`search.go` の語ごとの
       条件のタグ名の OR。どれも1つの問い合わせの中の条件なので、ほかの型を呼ばずに
-      `video_tags` と `tag_names` を SQL で読む。
+      `video_tags` と `tag_names` を SQL で読む（視聴状態の条件が `playback_progress` を読むのと同じ）。
     - 両方が使う SQL（`id` からいまライブラリにある動画の `content_key` を引く、ライブラリに
       ある動画だけを数える）は、`registeredVideoCondition` のようなパッケージ内の非公開の
       関数で共有する（`internal/store/roles.go` の決まり）。
@@ -233,8 +234,14 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
     （並びの正規化・16 個の上限、[contracts/list-url.md §1](contracts/list-url.md#1-パラメータ)）と、
     `ListCriteria` に `tag` を組み合わせる関数を置く。共有の部品には、画面の固有の条件を
     運ぶための次の口だけを足す。
-    - `useListCriteria` は、呼び出し側が指定した画面の固有のパラメータを、条件を書き換える
-      ときに URL に残し、読んだ値を返す。中身は解釈しない。
+    - `useListCriteria` は、呼び出し側が指定した画面の固有のパラメータの名前を受け取り、
+      その値を読んで返す。中身は解釈しない。URL を書くすべての経路（`apply`、`sort=random` の
+      `seed` を補う置き換え、並べ替えの push の前の置き換え）で、その値を残す。`apply` は
+      その値の差し替えを任意で受け取り、ライブラリはこれで `tag` を書く（タグを足す・外す
+      ときの push、`missingTagIds` を取り除く replace、「条件を解除」での消去）。
+    - 「条件を解除」を出すか、0 件のときに「該当なし」と「ライブラリが空」のどちらを出すか、
+      「条件を解除」で何を外すかは、ライブラリでは `tag` を含めて決める。`tagCriteria.ts` が
+      共有の `hasConditions`・`clearConditions` に `tag` を足した版を持ち、`LibraryPage` はそれを使う。
     - 一致なしの条件のチップは、フォルダ画面が範囲のチップを足すのと同じく、ライブラリが
       `conditionLabels` の結果にタグのチップを足す。
     - 一覧の控えの鍵（`web/src/api/listSnapshot.ts` の `ListKey`）には、任意の `tags` を足す。
@@ -344,7 +351,8 @@ specs/014-video-tags/
 （Structural Decisions 13）。`internal/store/search.go` の
 語ごとの条件に、タグ名の照合の OR を足す（[data-model.md §7](data-model.md#7-検索欄でのタグ名の照合)）。#195 の
 `internal/store/listing.go` にタグの AND の条件を足し（[data-model.md §6](data-model.md#6-タグでの絞り込み)）、
-同じ条件で全件の `id` を返す関数を足す。`VideoQuery` にタグを足す。
+同じ条件で全件の `id` を返す関数を足す。`VideoQuery` にタグを足す。`ARCHITECTURE.md` の
+`store.DB` の節の `LibraryStore` の記述に、タグの条件を足す。
 
 **Dependencies**: タグを保存し、作成・改名・削除・統合・シノニムの規則をサーバーに置く
 
@@ -449,7 +457,8 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 絞り込み中のタグを外す操作は「<タグ名> の絞り込みを外す」の形で読み上げられ、どちらも
 キーボードで届く。フォルダ画面のカードと表形式の行は今のままである。フォルダ画面の URL に
 `tag` を書いて開き、検索語や絞り込みを変えると、URL から `tag` が消える（フォルダ画面は
-`tag` を読まない）。カードのタグが1行に
+`tag` を読まない）。`/?tag=1&sort=random` を開くと `seed` が補われ、`tag=1` は残る。タグだけで
+絞って 0 件のとき、「該当なし」の状態にタグのチップが出て、「条件を解除」でタグが外れる。カードのタグが1行に
 収まらないとき、省略されていることが分かる。`web/src/theme/tokens.test.ts` を含む
 `task check` と `task test-e2e` が通る。`ui-design.md` の観点で視覚・操作・支援技術を確かめる。
 
