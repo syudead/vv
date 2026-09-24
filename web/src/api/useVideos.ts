@@ -171,6 +171,9 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
   }
 }
 
+const inconsistentPageMessage =
+  "一覧の更新が続いているため取得できません。しばらくしてから再試行してください。";
+
 /** VideosState は一覧の状態である。 */
 export interface VideosState {
   items: Video[];
@@ -244,6 +247,12 @@ export function useVideos(
   const [error, setError] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [generation, setGeneration] = useState(0);
+  const resyncAttempted = useRef(false);
+
+  // 条件や場所が変われば、前の一覧で使った再同期回数は引き継がない。
+  useEffect(() => {
+    resyncAttempted.current = false;
+  }, [folderKey, key]);
 
   // 再生画面で保存された再生位置を、表示中の項目へ反映する。復元した一覧は
   // 再生前の中身なので、戻ったあとに届く離脱時の保存もここで受ける。
@@ -383,6 +392,18 @@ export function useVideos(
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
         if (controller.signal.aborted || inFlight.current !== controller) return;
+        if (replace && page.items.length > page.total) {
+          if (!resyncAttempted.current) {
+            resyncAttempted.current = true;
+            setGeneration((value) => value + 1);
+          } else {
+            dispatch({ type: "clear" });
+            dispatch({ type: "stop" });
+            setError(inconsistentPageMessage);
+          }
+          return;
+        }
+        if (replace) resyncAttempted.current = false;
         dispatch({ type: "page", page, replace });
         const changed = page.items
           .map((video) => video.id)
@@ -441,7 +462,15 @@ export function useVideos(
   // 異なる時点のページを結合できなかったときは、古い整合した一覧を保ったまま
   // 世代を進め、通常の先頭ページ取得へ戻す。
   useEffect(() => {
-    if (inconsistent) setGeneration((value) => value + 1);
+    if (!inconsistent) return;
+    if (!resyncAttempted.current) {
+      resyncAttempted.current = true;
+      setGeneration((value) => value + 1);
+      return;
+    }
+    dispatch({ type: "clear" });
+    dispatch({ type: "stop" });
+    setError(inconsistentPageMessage);
   }, [inconsistent]);
 
   // 条件・フォルダが変わったら先頭から読み直す。カーソルはそれらに紐づくので、
@@ -482,7 +511,10 @@ export function useVideos(
     void fetchPage(cursor, false);
   }, [cursor, fetchPage, loading, loadingMore]);
 
-  const reload = useCallback(() => setGeneration((value) => value + 1), []);
+  const reload = useCallback(() => {
+    resyncAttempted.current = false;
+    setGeneration((value) => value + 1);
+  }, []);
 
   return {
     items,

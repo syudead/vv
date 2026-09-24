@@ -138,6 +138,39 @@ describe("useVideos（一覧の読み込み）", () => {
     expect(result.current.total).toBe(2);
   });
 
+  it("先頭ページで total がカード数を下回ったら1度だけ読み直す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+
+    await act(async () => {
+      calls[0]?.resolve({ items: [item(1), item(2)], total: 1 });
+    });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]?.params.cursor).toBeUndefined();
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      calls[1]?.resolve({ items: [item(1), item(2)], total: 2 });
+    });
+    expect(result.current.items.map((video) => video.id)).toEqual([1, 2]);
+    expect(result.current.total).toBe(2);
+  });
+
+  it("先頭ページの矛盾が続いても再読込を繰り返さない", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+
+    await act(async () => {
+      calls[0]?.resolve({ items: [item(1), item(2)], total: 1 });
+    });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await act(async () => {
+      calls[1]?.resolve({ items: [item(1), item(2)], total: 1 });
+    });
+
+    expect(result.current.items).toEqual([]);
+    expect(result.current.error).toContain("再試行してください");
+    expect(calls).toHaveLength(2);
+  });
+
   it("続きの応答と同じ描画に入った再生位置の更新を保持する", async () => {
     const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
     await act(async () => calls[0]?.resolve(page([1, 2], "next")));
