@@ -59,9 +59,8 @@ function topmostId(list: HTMLElement | null, top: number): number | undefined {
 }
 
 /** resultCountText は検索や絞り込み後の全件数を表示する。 */
-export function resultCountText(shownCount: number, total: number): string {
-  const count = Math.max(total, shownCount);
-  return `${count.toLocaleString("ja-JP")}件`;
+export function resultCountText(total: number): string {
+  return `${total.toLocaleString("ja-JP")}件`;
 }
 
 export default function LibraryPage() {
@@ -279,7 +278,7 @@ export default function LibraryPage() {
   const empty = !loading && error === null && items.length === 0;
   const conditioned = hasConditions(criteria);
   const selectionMode = selectedIds.size > 0;
-  const resultStatus = loading ? "読み込み中…" : resultCountText(items.length, total);
+  const resultStatus = loading ? "読み込み中…" : resultCountText(total);
 
   const rowProps = (video: Video) => ({
     video,

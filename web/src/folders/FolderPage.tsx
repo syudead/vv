@@ -315,7 +315,7 @@ function RootSearchResults({
     if (roots.error !== null) roots.reload();
   };
   const noMatch = !waiting && failure === null && items.length === 0;
-  const summaryText = waiting ? "読み込み中…" : resultCountText(items.length, total);
+  const summaryText = waiting ? "読み込み中…" : resultCountText(total);
 
   return (
     <div onClick={saveSnapshot} className="flex flex-col gap-3">
@@ -664,9 +664,7 @@ function FolderView({ folder }: { folder: FolderRef }) {
               aria-live="polite"
               className="text-center text-xs text-fg-muted tabular-nums"
             >
-              {videos.loading
-                ? "読み込み中…"
-                : resultCountText(videos.items.length, videos.total)}
+              {videos.loading ? "読み込み中…" : resultCountText(videos.total)}
             </p>
             {videos.error !== null && videos.items.length === 0 ? (
               <LoadFailed reason={videos.error} onRetry={videos.reload} />

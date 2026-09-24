@@ -15,7 +15,7 @@ import type { Video, VideoPage } from "../api/client";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
-import LibraryPage from "./LibraryPage";
+import LibraryPage, { resultCountText } from "./LibraryPage";
 
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {
@@ -87,6 +87,13 @@ function renderLibrary(initial = "/") {
     </MemoryRouter>,
   );
 }
+
+describe("resultCountText", () => {
+  it("サーバーの全件数だけを表示する", () => {
+    expect(resultCountText(59)).toBe("59件");
+    expect(resultCountText(1_234)).toBe("1,234件");
+  });
+});
 
 describe("LibraryPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
