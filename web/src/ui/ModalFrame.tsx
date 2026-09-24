@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
+import { isComposingNativeKeyEvent } from "./Combobox";
 import IconButton from "./IconButton";
 
 function focusableElements(container: HTMLElement): HTMLElement[] {
@@ -51,6 +52,19 @@ export function ModalFrame({
     }
     const keydown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
+        // IME の変換中の Esc（変換候補の取り消し）は窓を閉じない（B2）。
+        if (isComposingNativeKeyEvent(event)) return;
+        // 窓の中の要素（Combobox の候補の一覧など）が既に Esc を処理して
+        // preventDefault していれば、窓は閉じない。その要素自身が「一覧を
+        // 閉じるだけ」か「窓を閉じる」かを決め、閉じる側は `onClose` を
+        // 自分で呼ぶ（Combobox の `onEscapeWhenClosed` など。B1）。
+        //
+        // 「窓の中の要素が」に絞るのは、背景は inert のはずでも、フォーカスの
+        // 復元（Radix のメニューなど）が inert を無視して背景の要素へ
+        // フォーカスを戻すことがあり、その要素が自分の理由で Esc を
+        // preventDefault していても、この窓の Esc とは無関係だからである。
+        const insidePanel = panel.current?.contains(event.target as Node | null) ?? false;
+        if (insidePanel && event.defaultPrevented) return;
         event.preventDefault();
         onCloseRef.current();
         return;

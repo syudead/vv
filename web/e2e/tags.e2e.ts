@@ -865,6 +865,42 @@ test.describe.serial("video tags", () => {
       await expect(page.getByText(/を作成/)).toHaveCount(0);
     });
 
+    test("B3: 1280幅で統合先の候補を開くと、8行すべてが見える（ui-design.mdは最大8行）", async ({
+      page,
+      request,
+    }) => {
+      await page.setViewportSize({ width: 1280, height: 800 });
+      await createTag(request, "e2eB3統合元");
+      const names: string[] = [];
+      for (let i = 1; i <= 8; i += 1) {
+        const name = `e2eB3統合先${String(i)}`;
+        names.push(name);
+        await createTag(request, name);
+      }
+
+      await page.goto("/tags");
+      const row = tagRowByName(page, "e2eB3統合元");
+      await row.getByRole("button", { name: "その他の操作" }).click();
+      await page.getByRole("menuitem", { name: "別のタグへ統合…" }).click();
+
+      const dialog = page.getByRole("dialog", { name: "「e2eB3統合元」を統合" });
+      const combo = dialog.getByRole("combobox", { name: "統合先のタグ" });
+      await combo.fill("e2eB3統合先");
+
+      // 8行すべてが、窓の overflow によって切り取られずに見える
+      // （MergeTagDialog.tsx の overflow-y-auto がこの候補の一覧まで
+      // 覆っていたときは、ここが見えないまま timeout していた）。
+      for (const name of names) {
+        await expect(page.getByRole("option", { name: new RegExp(name) })).toBeVisible();
+      }
+
+      // 最後の行（8番目）を実際に選べる（クリックが素通りしないことも確かめる）。
+      await page.getByRole("option", { name: new RegExp(names[7]!) }).click();
+      await expect(
+        dialog.getByText(new RegExp(`「${names[7]!}」が付きます`)),
+      ).toBeVisible();
+    });
+
     test("17: 既存のタグの名前をシノニムとして登録しようとすると統合の確認が出て、承諾すると統合され、取り消すと何も変わらない（受け入れ条件17）", async ({
       page,
       request,

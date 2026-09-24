@@ -29,6 +29,10 @@ const server = {
   failNextGet: false,
   /** true にすると、次の PATCH /api/tags/{id} を tag_name_taken 以外の理由で失敗させる（N2）。 */
   failNextPatch: false,
+  /** true にすると、次の POST /api/tags/{id}/merge を一般の理由で失敗させる（N4）。 */
+  failNextMerge: false,
+  /** true にすると、次の POST /api/tags/{id}/synonyms を一般の理由で失敗させる（N4）。 */
+  failNextSynonymsPost: false,
 };
 
 /** holdNextMutation を true にした次の POST・PATCH は、release() を呼ぶまで応答しない（B3）。 */
@@ -141,6 +145,12 @@ function install() {
           jsonResponse({ code: "tag_not_found", message: "タグはもうありません" }, 404),
         );
       }
+      if (server.failNextMerge) {
+        server.failNextMerge = false;
+        return maybeHold(() =>
+          jsonResponse({ code: "internal", message: "統合できませんでした" }, 500),
+        );
+      }
       return maybeHold(() => {
         target.synonyms = [...target.synonyms, source.name, ...source.synonyms];
         target.videoCount += source.videoCount;
@@ -156,6 +166,12 @@ function install() {
       if (target === undefined) {
         return Promise.resolve(
           jsonResponse({ code: "tag_not_found", message: "タグはもうありません" }, 404),
+        );
+      }
+      if (server.failNextSynonymsPost) {
+        server.failNextSynonymsPost = false;
+        return maybeHold(() =>
+          jsonResponse({ code: "internal", message: "追加できませんでした" }, 500),
         );
       }
       const body = JSON.parse(String(init?.body)) as {
@@ -260,6 +276,8 @@ beforeEach(() => {
   server.getCalls = 0;
   server.failNextGet = false;
   server.failNextPatch = false;
+  server.failNextMerge = false;
+  server.failNextSynonymsPost = false;
   holdNextMutation = false;
   release = null;
 });
@@ -1067,6 +1085,108 @@ describe("TagsPage 統合", () => {
     ).toBeDefined();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
+
+  it("統合先の候補が開いているときのEscは一覧だけを閉じ、窓は閉じない（B1）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "その他の操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "別のタグへ統合…" }));
+    const dialog = await screen.findByRole("dialog", { name: "「旅行」を統合" });
+
+    const combo = within(dialog).getByRole("combobox", { name: "統合先のタグ" });
+    await user.click(combo);
+    await user.type(combo, "A");
+    expect(combo.getAttribute("aria-expanded")).toBe("true");
+
+    // 一覧が開いているときの1回目のEscは、一覧だけを閉じる。窓は開いたまま。
+    await user.keyboard("{Escape}");
+    expect(combo.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.getByRole("dialog", { name: "「旅行」を統合" })).toBeDefined();
+
+    // 一覧が閉じている状態での2回目のEscで、窓が閉じる。
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("IME変換中のEscは窓を閉じない（B2）", async () => {
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const user = userEvent.setup();
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "その他の操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "別のタグへ統合…" }));
+    const dialog = await screen.findByRole("dialog", { name: "「旅行」を統合" });
+    const cancelButton = within(dialog).getByRole("button", { name: "キャンセル" });
+    cancelButton.focus();
+
+    fireEvent.keyDown(cancelButton, { key: "Escape", keyCode: 229 });
+    expect(screen.getByRole("dialog", { name: "「旅行」を統合" })).toBeDefined();
+
+    fireEvent.keyDown(cancelButton, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("統合の要求が届く間はEscや×で閉じない（N3）", async () => {
+    const user = userEvent.setup();
+    install();
+    server.tags = [tag({ id: 1, name: "旅行" }), tag({ id: 2, name: "Anime" })];
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "その他の操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "別のタグへ統合…" }));
+    const dialog = await screen.findByRole("dialog", { name: "「旅行」を統合" });
+    const combo = within(dialog).getByRole("combobox", { name: "統合先のタグ" });
+    await user.type(combo, "Anime");
+    await user.click(await within(dialog).findByRole("option", { name: /Anime/ }));
+
+    holdNextMutation = true;
+    await user.click(within(dialog).getByRole("button", { name: "統合する" }));
+    await waitFor(() =>
+      expect(
+        within(dialog).getByRole("button", { name: "統合する" }).hasAttribute("disabled"),
+      ).toBe(true),
+    );
+
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("dialog", { name: "「旅行」を統合" })).toBeDefined();
+
+    await user.click(within(dialog).getByRole("button", { name: "閉じる" }));
+    expect(screen.getByRole("dialog", { name: "「旅行」を統合" })).toBeDefined();
+
+    release?.();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("統合が失敗すると、フォーカスが「統合する」へ戻る（N4）", async () => {
+    const user = userEvent.setup();
+    install();
+    server.tags = [tag({ id: 1, name: "旅行" }), tag({ id: 2, name: "Anime" })];
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "その他の操作" }));
+    await user.click(await screen.findByRole("menuitem", { name: "別のタグへ統合…" }));
+    const dialog = await screen.findByRole("dialog", { name: "「旅行」を統合" });
+    const combo = within(dialog).getByRole("combobox", { name: "統合先のタグ" });
+    await user.type(combo, "Anime");
+    await user.click(await within(dialog).findByRole("option", { name: /Anime/ }));
+
+    server.failNextMerge = true;
+    const mergeButton = within(dialog).getByRole("button", { name: "統合する" });
+    await user.click(mergeButton);
+
+    expect(await within(dialog).findByRole("alert")).toBeDefined();
+    await waitFor(() => expect(document.activeElement).toBe(mergeButton));
+  });
 });
 
 describe("TagsPage シノニム", () => {
@@ -1259,5 +1379,86 @@ describe("TagsPage シノニム", () => {
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(synonymsButton));
+  });
+
+  it("シノニムの追加の失敗は、入力を打ち直すと消える（N1）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Drama");
+
+    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "シノニム" }));
+    const dialog = await screen.findByRole("dialog", { name: "「Drama」のシノニム" });
+    const input = within(dialog).getByRole("textbox", { name: "シノニムを追加" });
+    await user.type(input, "アニメ");
+    await user.keyboard("{Enter}");
+    await within(dialog).findByText("「アニメ」は「Anime」のシノニムです");
+
+    await user.type(input, "2");
+
+    expect(within(dialog).queryByText("「アニメ」は「Anime」のシノニムです")).toBeNull();
+  });
+
+  it("シノニムを解除すると、次のチップの×、無ければ前、1つも無ければ入力へフォーカスが移る（N2）", async () => {
+    const user = userEvent.setup();
+    install();
+    server.tags = [tag({ id: 1, name: "Anime", synonyms: ["A", "B", "C"] })];
+    renderPage();
+    await screen.findByTitle("Anime");
+
+    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "シノニム" }));
+    const dialog = await screen.findByRole("dialog", { name: "「Anime」のシノニム" });
+    const input = within(dialog).getByRole("textbox", { name: "シノニムを追加" });
+
+    // 中間（B）を解除すると、次（C）の×へ移る。
+    await user.click(within(dialog).getByRole("button", { name: "シノニム「B」を解除" }));
+    await waitFor(() => expect(within(dialog).queryByText("B")).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByRole("button", { name: "シノニム「C」を解除" }),
+      ),
+    );
+
+    // 残りの最後（C）を解除すると、前（A）の×へ移る。
+    await user.click(within(dialog).getByRole("button", { name: "シノニム「C」を解除" }));
+    await waitFor(() => expect(within(dialog).queryByText("C")).toBeNull());
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(dialog).getByRole("button", { name: "シノニム「A」を解除" }),
+      ),
+    );
+
+    // 最後の1つ（A）を解除すると、入力へ移る。
+    await user.click(within(dialog).getByRole("button", { name: "シノニム「A」を解除" }));
+    await waitFor(() => expect(within(dialog).queryByText("A")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(input));
+  });
+
+  it("シノニム登録に伴う統合が失敗すると、フォーカスが「統合する」へ戻る（N4）", async () => {
+    const user = userEvent.setup();
+    install();
+    server.tags = [
+      tag({ id: 1, name: "Anime", videoCount: 2 }),
+      tag({ id: 2, name: "anime", videoCount: 10 }),
+    ];
+    renderPage();
+    await screen.findByTitle("Anime");
+
+    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "シノニム" }));
+    const dialog = await screen.findByRole("dialog", { name: "「Anime」のシノニム" });
+    const input = within(dialog).getByRole("textbox", { name: "シノニムを追加" });
+    await user.type(input, "anime");
+    await user.keyboard("{Enter}");
+    await within(dialog).findByText(/本の動画に付いているタグです/);
+
+    server.failNextSynonymsPost = true;
+    const confirmButton = within(dialog).getByRole("button", { name: "統合する" });
+    await user.click(confirmButton);
+
+    expect(await within(dialog).findByRole("alert")).toBeDefined();
+    await waitFor(() => expect(document.activeElement).toBe(confirmButton));
   });
 });
