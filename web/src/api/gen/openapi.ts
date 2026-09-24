@@ -617,7 +617,7 @@ export interface components {
             previewState: "pending" | "done" | "failed";
             /** @description thumbnailState = done のときだけ入る */
             thumbnailUrl?: string;
-            /** @description previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL */
+            /** @description previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL。done なのに asset が無ければ、サーバーは作り直しを積み、previewState を pending として返す */
             previewUrl?: string;
             /** @description probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL */
             seekThumbnailUrl?: string;

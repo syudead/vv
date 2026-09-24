@@ -48,7 +48,10 @@ generation output is removed at the next startup. When a video row is deleted (a
 location gone, its content changes, or its media folder is removed or replaced),
 `internal/store` reports the released content keys after commit, and `cmd/mdm` removes
 that content's thumbnail, seek frames and hover preview unless another video still
-references it; nothing else sweeps the thumbnails directory.
+references it; nothing else sweeps the thumbnails directory. A hover preview whose file
+is gone is repaired when it is found: the video API already checks the file before
+exposing `previewUrl`, and when a `done` preview is missing it sets the video back to
+`pending` and queues a preview job in one transaction, once per loss.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
 browser polling: `scan` when the current scan changes, `processing` with the remaining

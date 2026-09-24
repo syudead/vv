@@ -415,7 +415,7 @@ type Video struct {
 	Playable     bool              `json:"playable"`
 	PreviewState VideoPreviewState `json:"previewState"`
 
-	// PreviewUrl previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL
+	// PreviewUrl previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL。done なのに asset が無ければ、サーバーは作り直しを積み、previewState を pending として返す
 	PreviewUrl *string `json:"previewUrl,omitempty"`
 
 	// ProbeError probeState = failed のときの理由

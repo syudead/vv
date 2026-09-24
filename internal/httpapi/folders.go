@@ -125,7 +125,7 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	progress := s.progressFor(r.Context(), page.Items)
 	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
 	for _, video := range page.Items {
-		payload.Items = append(payload.Items, withProgress(toAPIVideo(video, s.thumbnailsDir), progress, video.ContentKey))
+		payload.Items = append(payload.Items, withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey))
 	}
 	if page.NextCursor != "" {
 		next := page.NextCursor

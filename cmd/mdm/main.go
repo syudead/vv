@@ -155,6 +155,7 @@ func run() error {
 		ThumbnailJobs:  db,
 		Related:        db,
 		Reprobe:        db,
+		PreviewRepair:  db,
 		Opener:         fileOpener,
 		Processing:     db,
 		Events:         events,

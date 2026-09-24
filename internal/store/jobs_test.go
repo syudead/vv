@@ -980,3 +980,48 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 		t.Errorf("Processing = %+v, %v, want probe 0", got, err)
 	}
 }
+
+// 作り終えたプレビューのファイルが無い動画は、状態を戻して作り直しを1回だけ
+// 積む。何度見つけても重ねて積まない。
+func TestRequeueMissingPreview(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	probeDone(t, db, videoID)
+	if err := db.SetPreviewState(ctx, videoID, domain.PreviewStateDone); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &queuedRecorder{}
+	db.OnJobsChanged(recorder.record)
+
+	if requeued, err := db.RequeueMissingPreview(ctx, videoID, "other-key"); err != nil || requeued {
+		t.Fatalf("内容の違う要求 = %v, %v, want false", requeued, err)
+	}
+	requeued, err := db.RequeueMissingPreview(ctx, videoID, "key-a")
+	if err != nil || !requeued {
+		t.Fatalf("RequeueMissingPreview = %v, %v, want true", requeued, err)
+	}
+	if got := recorder.take(); fmt.Sprint(got) != "[preview]" {
+		t.Errorf("知らせ = %v, want [preview]", got)
+	}
+	var state string
+	if err := db.SQL().QueryRow(`select preview_state from videos where id = ?`, videoID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "pending" {
+		t.Errorf("preview_state = %s, want pending", state)
+	}
+
+	if requeued, err := db.RequeueMissingPreview(ctx, videoID, "key-a"); err != nil || requeued {
+		t.Fatalf("2度目 = %v, %v, want false", requeued, err)
+	}
+	job, err := db.ClaimJob(ctx, JobPreview)
+	if err != nil {
+		t.Fatalf("作り直しのジョブが無い: %v", err)
+	}
+	if job.VideoID != videoID {
+		t.Errorf("VideoID = %d, want %d", job.VideoID, videoID)
+	}
+	if _, err := db.ClaimJob(ctx, JobPreview); !errors.Is(err, ErrNoJob) {
+		t.Errorf("作り直しを重ねて積んだ: %v", err)
+	}
+}

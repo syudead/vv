@@ -383,6 +383,50 @@ func (db *DB) SetPreviewState(ctx context.Context, id int64, state domain.Previe
 	return err
 }
 
+// RequeueMissingPreview は、プレビューを作り終えた記録があるのにファイルが
+// 無い動画を、1つの取引の中で作り直す状態へ戻し、プレビューのジョブを積む。
+// ファイルの有無はファイルの事実なので、呼び出し側が確かめて呼ぶ。
+//
+// preview_state が done で、内容の識別子が今も同じときだけ変える。すでに戻って
+// いる、内容が変わった、動画が消えた場合は何もせず false を返す。同じ動画を
+// 何度見つけても、積むのは1回である。
+func (db *DB) RequeueMissingPreview(ctx context.Context, id int64, contentKey string) (bool, error) {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("プレビューの作り直しを開始できません (id=%d): %w", id, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now().Unix()
+	res, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', updated_at = ?
+		where id = ? and content_key = ? and preview_state = 'done'`, now, id, contentKey)
+	if err != nil {
+		return false, fmt.Errorf("プレビューの状態を戻せません (id=%d): %w", id, err)
+	}
+	reset, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("プレビューの状態の更新件数を確認できません (id=%d): %w", id, err)
+	}
+	if reset == 0 {
+		return false, nil
+	}
+	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = 'preview' and video_id = ? and state in ('done', 'failed')`,
+		id); err != nil {
+		return false, fmt.Errorf("古いプレビューのジョブを掃除できません (id=%d): %w", id, err)
+	}
+	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
+		values ('preview', ?, 'queued', 0, ?, ?)
+		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
+		id, now, now); err != nil {
+		return false, fmt.Errorf("プレビューのジョブを積めません (id=%d): %w", id, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return false, fmt.Errorf("プレビューの作り直しを確定できません (id=%d): %w", id, err)
+	}
+	db.notifyJobsChanged(JobPreview)
+	return true, nil
+}
+
 // RetryProbe は読み取りに失敗した動画を、1つの取引の中で読み取り直す状態へ
 // 戻し、スキャンが新しい内容に積むのと同じジョブを積む。
 //
