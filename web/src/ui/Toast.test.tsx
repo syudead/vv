@@ -61,6 +61,26 @@ describe("ToastProvider", () => {
     expect(toasts.queryByText("fourth")).toBeNull();
   });
 
+  it("shows a new default toast immediately among the latest three", () => {
+    vi.useFakeTimers();
+    render(
+      <ToastProvider>
+        <Harness />
+      </ToastProvider>,
+    );
+    const liveRegion = document.querySelector<HTMLElement>('[aria-live="polite"]');
+    expect(liveRegion).not.toBeNull();
+    const toasts = within(liveRegion!);
+    for (const message of ["first", "second", "third", "fourth"]) {
+      fireEvent.click(screen.getByRole("button", { name: message }));
+    }
+
+    expect(toasts.queryByText("first")).toBeNull();
+    expect(toasts.getByText("second")).toBeDefined();
+    expect(toasts.getByText("third")).toBeDefined();
+    expect(toasts.getByText("fourth")).toBeDefined();
+  });
+
   it("preserves the visible toast's remaining time across placement changes", () => {
     vi.useFakeTimers();
     const { rerender } = render(

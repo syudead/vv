@@ -38,10 +38,19 @@ export function ToastProvider({
       const id = Date.now() + Math.random();
       setItems((current) => {
         const visibleCount = current.filter((item) => item.expiresAt !== null).length;
-        const expiresAt =
-          (placement === "default" && visibleCount < 3) || current.length === 0
-            ? Date.now() + toastDuration
-            : null;
+        if (placement === "default") {
+          let removedOldestVisible = false;
+          const next =
+            visibleCount < 3
+              ? current
+              : current.filter((item) => {
+                  if (item.expiresAt === null || removedOldestVisible) return true;
+                  removedOldestVisible = true;
+                  return false;
+                });
+          return [...next, { id, message, expiresAt: Date.now() + toastDuration }];
+        }
+        const expiresAt = current.length === 0 ? Date.now() + toastDuration : null;
         return [...current, { id, message, expiresAt }];
       });
     },
