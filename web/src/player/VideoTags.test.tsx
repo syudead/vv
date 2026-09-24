@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Tag } from "../api/tags";
@@ -90,9 +91,11 @@ function renderTags(
   onStaleVideo = vi.fn(),
 ) {
   return render(
-    <ToastProvider>
-      <VideoTags videoId={videoId} tags={tags} onStaleVideo={onStaleVideo} />
-    </ToastProvider>,
+    <MemoryRouter>
+      <ToastProvider>
+        <VideoTags videoId={videoId} tags={tags} onStaleVideo={onStaleVideo} />
+      </ToastProvider>
+    </MemoryRouter>,
   );
 }
 
@@ -154,6 +157,14 @@ describe("VideoTags", () => {
     fireEvent.click(removeButton);
     expect((removeButton as HTMLButtonElement).disabled).toBe(true);
     await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
+  });
+
+  it("タグの名前は /?tag=<id> へのリンクで、読み上げ名は「<名>で絞り込む」（issue 269）", async () => {
+    install();
+    renderTags(7, [{ id: 1, name: "旅行" }]);
+
+    const link = await screen.findByRole("link", { name: "旅行で絞り込む" });
+    expect(link.getAttribute("href")).toBe("/?tag=1");
   });
 
   // (7): 外せなかったときは、次や前のチップではなく、そのチップ自身の × へ
@@ -221,15 +232,19 @@ describe("VideoTags", () => {
     install();
     const onStaleVideo = vi.fn();
     const view = render(
-      <ToastProvider>
-        <VideoTags videoId={7} tags={[]} onStaleVideo={onStaleVideo} />
-      </ToastProvider>,
+      <MemoryRouter>
+        <ToastProvider>
+          <VideoTags videoId={7} tags={[]} onStaleVideo={onStaleVideo} />
+        </ToastProvider>
+      </MemoryRouter>,
     );
     const rerenderWith = (tags: { id: number; name: string }[]) =>
       view.rerender(
-        <ToastProvider>
-          <VideoTags videoId={7} tags={tags} onStaleVideo={onStaleVideo} />
-        </ToastProvider>,
+        <MemoryRouter>
+          <ToastProvider>
+            <VideoTags videoId={7} tags={tags} onStaleVideo={onStaleVideo} />
+          </ToastProvider>
+        </MemoryRouter>,
       );
 
     const input = addInput();

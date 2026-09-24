@@ -12,6 +12,8 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-rou
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video, VideoPage } from "../api/client";
+import { clearListSnapshot } from "../api/listSnapshot";
+import { __resetTagsForTest } from "../api/tags";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
@@ -101,6 +103,8 @@ describe("LibraryPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
+    __resetTagsForTest();
+    clearListSnapshot();
     vi.stubGlobal("fetch", fetchMock);
     vi.stubGlobal(
       "IntersectionObserver",
@@ -683,5 +687,293 @@ describe("LibraryPage", () => {
     vi.useRealTimers();
     expect(await screen.findByRole("link", { name: "動画 2" })).toBeDefined();
     expect(listCalls).toBe(2);
+  });
+
+  describe("タグ絞り込み（issue 269）", () => {
+    function tagsResponse(tags: { id: number; name: string }[]) {
+      return json({
+        items: tags.map((tag) => ({ ...tag, synonyms: [], videoCount: 1 })),
+      });
+    }
+
+    function installTagAwareList(
+      tags: { id: number; name: string }[],
+      makeItems: (requestedTag: number[]) => {
+        items: Video[];
+        total: number;
+        missingTagIds?: number[];
+      },
+    ) {
+      fetchMock.mockImplementation((input) => {
+        const url = new URL(String(input), "http://localhost");
+        if (url.pathname === "/api/scans/current") return Promise.resolve(json({}, 404));
+        if (url.pathname === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url.pathname === "/api/processing") {
+          return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+        }
+        if (url.pathname === "/api/tags") return Promise.resolve(tagsResponse(tags));
+        if (url.pathname === "/api/videos") {
+          const requestedTag = url.searchParams.getAll("tag").map(Number);
+          return Promise.resolve(json(makeItems(requestedTag) satisfies VideoPage));
+        }
+        throw new Error(`unexpected request: ${url.toString()}`);
+      });
+    }
+
+    it("/?tag=1&sort=random は seed を補い、tag=1 を残す", async () => {
+      const tag = { id: 1, name: "旅行" };
+      installTagAwareList([tag], () => ({
+        items: [video(1, { tags: [tag] })],
+        total: 1,
+      }));
+      renderLibrary("/?tag=1&sort=random");
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await waitFor(() => {
+        const location = screen.getByTestId("location").textContent ?? "";
+        expect(location).toMatch(/tag=1/);
+        expect(location).toMatch(/sort=random/);
+        expect(location).toMatch(/seed=\d+/);
+      });
+    });
+
+    it("タグの絞り込みを変えると選択を解除する", async () => {
+      const tag = { id: 1, name: "旅行" };
+      installTagAwareList([tag], () => ({
+        items: [video(1, { tags: [tag] })],
+        total: 1,
+      }));
+      const user = userEvent.setup();
+      renderLibrary("/?tag=1");
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      expect(screen.getByText("1 件を選択中")).toBeDefined();
+
+      // 一覧の上のチップでタグの絞り込みを外すと、同じ動画がまだ見えていても
+      // 選択は解除する（検索語・視聴状態・再生可否と同じ扱い）。
+      await user.click(screen.getByRole("button", { name: "旅行の絞り込みを外す" }));
+      await waitFor(() => expect(screen.queryByText("1 件を選択中")).toBeNull());
+    });
+
+    it("カードのタグを押すと絞り込みに加わり、上の行に出る。すでに絞り込み中のタグは変わらない", async () => {
+      const tag = { id: 1, name: "旅行" };
+      installTagAwareList([tag], (requested) => ({
+        items:
+          requested.length === 0
+            ? [video(1, { tags: [tag] })]
+            : [video(1, { tags: [tag] })],
+        total: 1,
+      }));
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("button", { name: "旅行で絞り込む" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).toContain("tag=1"),
+      );
+      expect(
+        within(screen.getByRole("list", { name: "絞り込み中のタグ" })).getByText("旅行"),
+      ).toBeDefined();
+
+      // すでに絞り込み中のタグをカードでもう一度押しても何も変わらない。
+      const before = screen.getByTestId("location").textContent;
+      await user.click(screen.getByRole("button", { name: "旅行で絞り込む" }));
+      expect(screen.getByTestId("location").textContent).toBe(before);
+    });
+
+    it("タグを押しても、検索語・視聴状態などのほかの条件は残る（N1）", async () => {
+      const tag = { id: 1, name: "旅行" };
+      installTagAwareList([tag], () => ({
+        items: [video(1, { tags: [tag] })],
+        total: 1,
+      }));
+      const user = userEvent.setup();
+      renderLibrary("/?q=abc&watch=unwatched");
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("button", { name: "旅行で絞り込む" }));
+
+      await waitFor(() => {
+        const location = screen.getByTestId("location").textContent ?? "";
+        expect(location).toContain("tag=1");
+        expect(location).toContain("q=abc");
+        expect(location).toContain("watch=unwatched");
+      });
+      // 一覧の要求にも、タグと一緒にほかの条件が残る。
+      await waitFor(() => {
+        const request = listRequests(fetchMock).at(-1);
+        expect(request?.searchParams.get("query")).toBe("abc");
+        expect(request?.searchParams.get("watch")).toBe("unwatched");
+        expect(request?.searchParams.getAll("tag")).toEqual(["1"]);
+      });
+    });
+
+    it("16個絞り込んでいるときに17個目を押すと、加えずにトーストで伝える", async () => {
+      const extra = { id: 17, name: "17個目" };
+      installTagAwareList([extra], () => ({
+        items: [video(1, { tags: [extra] })],
+        total: 1,
+      }));
+      const user = userEvent.setup();
+      const search = Array.from(
+        { length: 16 },
+        (_, index) => `tag=${String(index + 1)}`,
+      ).join("&");
+      renderLibrary(`/?${search}`);
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("button", { name: "17個目で絞り込む" }));
+      expect(await screen.findByText("絞り込めるタグは 16 個までです")).toBeDefined();
+      expect(screen.getByTestId("location").textContent).not.toContain("tag=17");
+    });
+
+    it("絞り込み中のタグを外すと、その id だけが消えてほかの条件は残る", async () => {
+      const tagA = { id: 1, name: "旅行" };
+      const tagB = { id: 2, name: "2024" };
+      installTagAwareList([tagA, tagB], () => ({
+        items: [video(1, { tags: [tagA, tagB] })],
+        total: 1,
+      }));
+      const user = userEvent.setup();
+      renderLibrary("/?tag=1&tag=2&q=abc");
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("button", { name: "2024の絞り込みを外す" }));
+      await waitFor(() => {
+        const location = screen.getByTestId("location").textContent ?? "";
+        expect(location).toContain("tag=1");
+        expect(location).not.toContain("tag=2&");
+        expect(location).not.toMatch(/tag=2$/);
+        expect(location).toContain("q=abc");
+      });
+    });
+
+    it("missingTagIds を受けたら伝えて、タグの一覧を取り直し、一覧も取り直して URL から取り除く（N1）", async () => {
+      const tagA = { id: 1, name: "旅行" };
+      installTagAwareList([tagA], (requested) =>
+        requested.includes(1)
+          ? { items: [], total: 0, missingTagIds: [1] }
+          : { items: [video(1)], total: 1 },
+      );
+      renderLibrary("/?tag=1");
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).not.toContain("tag=1"),
+      );
+      expect(
+        await screen.findByText("削除されたタグを絞り込みから外しました"),
+      ).toBeDefined();
+
+      // タグの一覧（/api/tags）を取り直す。
+      await waitFor(() => {
+        const tagRequests = fetchMock.mock.calls.filter((call) =>
+          new URL(String(call[0]), "http://localhost").pathname.startsWith("/api/tags"),
+        );
+        expect(tagRequests.length).toBeGreaterThanOrEqual(2);
+      });
+      // 一覧（/api/videos）も、tag を外した条件で取り直す。
+      await waitFor(() => {
+        const videoRequests = fetchMock.mock.calls.filter((call) => {
+          const url = new URL(String(call[0]), "http://localhost");
+          return url.pathname === "/api/videos" && !url.searchParams.has("tag");
+        });
+        expect(videoRequests.length).toBeGreaterThanOrEqual(1);
+      });
+    });
+
+    it("控えから戻したときも、共有のタグの一覧と突き合わせてもう無い id を取り除く。一覧も取り直す（N1）", async () => {
+      const { saveListSnapshot } = await import("../api/listSnapshot");
+      saveListSnapshot(
+        { query: "", sort: "addedDesc", tags: [1] },
+        { items: [video(1)], total: 1, hasMore: false, scrollY: 0 },
+      );
+      // 共有のタグの一覧にはもう id 1 が無い（別のタブで削除された想定）。
+      installTagAwareList([], () => ({ items: [video(1)], total: 1 }));
+      // sort を明示し、端末に保存された並び順（前のテストの操作の影響）に
+      // 依らず控えの鍵を "addedDesc" に固定する。
+      renderLibrary("/?tag=1&sort=addedDesc");
+
+      // 控えを使うので、最初の /api/videos は要求しない。
+      expect(
+        fetchMock.mock.calls.filter(
+          (call) =>
+            new URL(String(call[0]), "http://localhost").pathname === "/api/videos",
+        ),
+      ).toHaveLength(0);
+
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).not.toContain("tag=1"),
+      );
+      expect(
+        await screen.findByText("削除されたタグを絞り込みから外しました"),
+      ).toBeDefined();
+
+      // タグの一覧を取り直し（画面が開くとき + 突き合わせで最低2回）、条件が
+      // 変わったので一覧（/api/videos）も取り直す。
+      await waitFor(() => {
+        const tagRequests = fetchMock.mock.calls.filter((call) =>
+          new URL(String(call[0]), "http://localhost").pathname.startsWith("/api/tags"),
+        );
+        expect(tagRequests.length).toBeGreaterThanOrEqual(1);
+      });
+      await waitFor(() => {
+        const videoRequests = fetchMock.mock.calls.filter(
+          (call) =>
+            new URL(String(call[0]), "http://localhost").pathname === "/api/videos",
+        );
+        expect(videoRequests.length).toBeGreaterThanOrEqual(1);
+      });
+    });
+
+    it("/ の控えは /?tag=1 のマウントでは使われない（listSnapshot の鍵に tags が要る）", async () => {
+      const { saveListSnapshot } = await import("../api/listSnapshot");
+      // tag の無い「/」の控えを残しておく。
+      saveListSnapshot(
+        { query: "", sort: "addedDesc" },
+        {
+          items: [video(99, { title: "控えの動画" })],
+          total: 1,
+          hasMore: false,
+          scrollY: 0,
+        },
+      );
+      const tag = { id: 1, name: "旅行" };
+      installTagAwareList([tag], () => ({
+        items: [video(1, { tags: [tag] })],
+        total: 1,
+      }));
+
+      renderLibrary("/?tag=1");
+
+      // 控え（控えの動画）ではなく、要求した一覧（動画 1）が出る。
+      expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
+      expect(screen.queryByRole("link", { name: "控えの動画" })).toBeNull();
+      // 控えを使わないので、通常どおり /api/videos を要求する。
+      expect(
+        fetchMock.mock.calls.some(
+          (call) =>
+            new URL(String(call[0]), "http://localhost").pathname === "/api/videos",
+        ),
+      ).toBe(true);
+    });
+
+    it("タグだけで絞って0件のとき、該当なしにタグのチップが出て、条件を解除でタグが外れる", async () => {
+      const tag = { id: 1, name: "旅行" };
+      installTagAwareList([tag], () => ({ items: [], total: 0 }));
+      const user = userEvent.setup();
+      renderLibrary("/?tag=1");
+
+      expect(await screen.findByText("条件に一致する動画はありません")).toBeDefined();
+      expect(
+        within(screen.getByRole("list", { name: "絞り込み中のタグ" })).getByText("旅行"),
+      ).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: "絞り込み" }));
+      await user.click(await screen.findByRole("button", { name: "条件を解除" }));
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).not.toContain("tag="),
+      );
+    });
   });
 });

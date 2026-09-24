@@ -63,6 +63,26 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     expect(takeListSnapshot({ query: "ねこ", sort: "addedDesc" })).toBeUndefined();
   });
 
+  it("tags を含む鍵は、tags の無い鍵や別の tags の鍵と一致しない（/?tag=1 と / の控えを区別する）", () => {
+    saveListSnapshot({ query: "", sort: "addedDesc", tags: [1] }, body([1]));
+
+    expect(takeListSnapshot({ query: "", sort: "addedDesc" })).toBeUndefined();
+    expect(takeListSnapshot({ query: "", sort: "addedDesc", tags: [2] })).toBeUndefined();
+    expect(
+      takeListSnapshot({ query: "", sort: "addedDesc", tags: [1] })?.items.map(
+        (video) => video.id,
+      ),
+    ).toEqual([1]);
+  });
+
+  it("tags の並びは正規化するので、選んだ順が違っても同じ鍵になる", () => {
+    saveListSnapshot({ query: "", sort: "addedDesc", tags: [3, 1] }, body([1]));
+
+    expect(
+      takeListSnapshot({ query: "", sort: "addedDesc", tags: [1, 3] }),
+    ).toBeDefined();
+  });
+
   it("clearListSnapshot のあとは取れない", () => {
     saveListSnapshot({ query: "", sort: "addedDesc" }, body([1]));
     expect(takeListSnapshot({ query: "" })).toBeDefined();

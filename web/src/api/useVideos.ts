@@ -98,6 +98,12 @@ interface VideosData {
   hasMore: boolean;
   /** inconsistent は異なる時点のページを安全に結合できなかったことを表す。 */
   inconsistent: boolean;
+  /**
+   * missingTagIds は、直近の要求で `tag` に指定したがもう無かった id である
+   * （specs/014-video-tags/contracts/tags-api.md §5）。folder を渡す（`tag` を
+   * 送らない）ときは常に空。
+   */
+  missingTagIds: number[];
 }
 
 type VideosDataAction =
@@ -114,7 +120,12 @@ type VideosDataAction =
   | { type: "remove"; videoId: number }
   | {
       type: "page";
-      page: { items: Video[]; total: number; nextCursor?: string };
+      page: {
+        items: Video[];
+        total: number;
+        nextCursor?: string;
+        missingTagIds?: number[];
+      };
       replace: boolean;
     };
 
@@ -127,6 +138,7 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
         cursor: undefined,
         hasMore: true,
         inconsistent: false,
+        missingTagIds: [],
       };
     case "stop":
       return state.hasMore ? { ...state, hasMore: false } : state;
@@ -171,6 +183,7 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
       };
     }
     case "page": {
+      const missingTagIds = action.page.missingTagIds ?? [];
       if (action.replace) {
         return {
           items: action.page.items,
@@ -178,6 +191,7 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
           cursor: action.page.nextCursor,
           hasMore: action.page.nextCursor !== undefined,
           inconsistent: false,
+          missingTagIds,
         };
       }
       const items = appendUnique(state.items, action.page.items);
@@ -192,6 +206,7 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
         cursor: action.page.nextCursor,
         hasMore: action.page.nextCursor !== undefined,
         inconsistent: false,
+        missingTagIds,
       };
     }
   }
@@ -219,6 +234,12 @@ export interface VideosState {
    * list-api.md §5「listFolderVideos でフォルダが無いとき」）。
    */
   notFound: boolean;
+  /**
+   * missingTagIds は、直近の要求の `tag` のうちもう無かった id である
+   * （specs/014-video-tags/contracts/tags-api.md §5）。画面はこれを受けて、
+   * もう無いことを伝え、タグの一覧を取り直し、URL から取り除く。
+   */
+  missingTagIds: number[];
   /** loadMore は次のページを読む。無限スクロールの観測点から呼ぶ。 */
   loadMore: () => void;
   /** retryLoadMore は失敗した続きのページを同じカーソルから再要求する。 */
@@ -257,17 +278,15 @@ export function useVideos(
     folder === undefined ? "" : `${String(folder.rootId)}\0${folder.path}`;
   const folderRef = useRef(folder);
   folderRef.current = folder;
-  const [{ items, total, cursor, hasMore, inconsistent }, dispatch] = useReducer(
-    videosDataReducer,
-    seed,
-    (initial): VideosData => ({
+  const [{ items, total, cursor, hasMore, inconsistent, missingTagIds }, dispatch] =
+    useReducer(videosDataReducer, seed, (initial): VideosData => ({
       items: initial?.items ?? [],
       total: initial?.total ?? 0,
       cursor: initial?.cursor,
       hasMore: initial?.hasMore ?? true,
       inconsistent: false,
-    }),
-  );
+      missingTagIds: [],
+    }));
   const [loading, setLoading] = useState(seed === undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -561,6 +580,7 @@ export function useVideos(
     loadingMore,
     error,
     notFound,
+    missingTagIds,
     loadMore,
     retryLoadMore,
     reload,

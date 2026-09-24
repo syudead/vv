@@ -36,6 +36,12 @@ export interface ListKey {
    * 省いた鍵とフォルダを含む鍵は、検索語と並び順が同じでも一致しない。
    */
   folder?: string;
+  /**
+   * ライブラリのタグ絞り込み（id の並び。順は問わない、鍵の正規化がそろえる）。
+   * `/?tag=1` から戻って `/` の控えが使われないようにする
+   * （specs/014-video-tags/contracts/list-url.md §1）。
+   */
+  tags?: readonly number[];
 }
 
 /** ListSnapshot は一覧を離れる直前の状態である（data-model.md 2.）。 */
@@ -85,12 +91,14 @@ let held: ListSnapshot | undefined;
 function normalize(key: ListKey): string {
   const sort = key.sort ?? defaultSort;
   const seed = sort === "random" ? String(key.seed ?? "") : "";
+  const tags = [...(key.tags ?? [])].sort((a, b) => a - b).join(",");
   const list = [
     key.query.trim(),
     key.watch ?? "all",
     key.playable === true ? "1" : "",
     sort,
     seed,
+    tags,
   ].join("\0");
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }
