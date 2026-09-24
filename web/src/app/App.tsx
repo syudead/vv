@@ -16,7 +16,7 @@ function AppRoutes() {
   const scanPlacement = location.pathname.startsWith("/videos/") ? "playback" : "default";
 
   return (
-    <>
+    <ToastProvider placement={scanPlacement}>
       <ScanProgressIndicator placement={scanPlacement} />
       <Routes>
         <Route
@@ -48,7 +48,7 @@ function AppRoutes() {
         />
         <Route path="/videos/:id" element={<VideoPage />} />
       </Routes>
-    </>
+    </ToastProvider>
   );
 }
 
@@ -62,13 +62,11 @@ export default function App() {
   return (
     <BrowserRouter>
       <TooltipProvider>
-        <ToastProvider>
-          <ScanProvider>
-            <ScanNoticeProvider>
-              <AppRoutes />
-            </ScanNoticeProvider>
-          </ScanProvider>
-        </ToastProvider>
+        <ScanProvider>
+          <ScanNoticeProvider>
+            <AppRoutes />
+          </ScanNoticeProvider>
+        </ScanProvider>
       </TooltipProvider>
     </BrowserRouter>
   );

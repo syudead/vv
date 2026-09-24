@@ -1,5 +1,7 @@
 import { createContext, type ReactNode, useCallback, useContext, useState } from "react";
 
+import { cn } from "../lib/cn";
+
 interface ToastItem {
   id: number;
   message: string;
@@ -12,7 +14,13 @@ export function useToast(): (message: string) => void {
   return useContext(ToastContext);
 }
 
-export function ToastProvider({ children }: { children: ReactNode }) {
+export function ToastProvider({
+  children,
+  placement = "default",
+}: {
+  children: ReactNode;
+  placement?: "default" | "playback";
+}) {
   const [items, setItems] = useState<ToastItem[]>([]);
 
   const show = useCallback((message: string) => {
@@ -29,7 +37,12 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       {children}
       <div
         aria-live="polite"
-        className="pointer-events-none fixed inset-x-0 top-16 z-50 flex flex-col items-end gap-2 px-3 lg:top-auto lg:bottom-20 lg:items-center lg:px-0"
+        className={cn(
+          "pointer-events-none fixed inset-x-0 z-50 flex flex-col gap-2",
+          placement === "playback"
+            ? "top-16 items-end px-3 sm:top-auto sm:bottom-6 sm:items-center sm:px-0"
+            : "top-16 items-end px-3 lg:top-auto lg:bottom-20 lg:items-center lg:px-0",
+        )}
       >
         {items.map((item) => (
           <div
