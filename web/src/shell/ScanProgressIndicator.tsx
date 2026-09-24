@@ -81,8 +81,8 @@ export default function ScanProgressIndicator({
     setPointerActive(false);
     setFocused(false);
     setOpen(false);
-    notice.setCompletionNoticePaused(false);
-  }, [notice.setCompletionNoticePaused, visible]);
+    if (scan.loaded) notice.setCompletionNoticePaused(false);
+  }, [notice.setCompletionNoticePaused, scan.loaded, visible]);
 
   useEffect(
     () => () => {
@@ -94,12 +94,16 @@ export default function ScanProgressIndicator({
   );
 
   useEffect(() => {
+    if (!scan.loaded) return;
     const paused = terminalVisible && (pointerActive || focused);
     notice.setCompletionNoticePaused(paused);
-    return () => {
-      if (paused) notice.setCompletionNoticePaused(false);
-    };
-  }, [focused, notice.setCompletionNoticePaused, pointerActive, terminalVisible]);
+  }, [
+    focused,
+    notice.setCompletionNoticePaused,
+    pointerActive,
+    scan.loaded,
+    terminalVisible,
+  ]);
 
   if (!visible) return null;
 

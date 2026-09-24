@@ -290,11 +290,17 @@ describe("ScanProgressIndicator", () => {
 
   it("preserves a hovered completion notice's remaining time across reload", async () => {
     let state: Scan["state"] = "running";
-    fetchMock.mockImplementation((input) =>
-      Promise.resolve(
-        String(input) === "/api/media-folders" ? json([{}]) : json(scan({ state })),
-      ),
-    );
+    let delayCurrentScan = false;
+    let resolveCurrentScan: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (delayCurrentScan) {
+        return new Promise<Response>((resolve) => {
+          resolveCurrentScan = resolve;
+        });
+      }
+      return Promise.resolve(json(scan({ state })));
+    });
     const first = renderIndicator();
     await screen.findByRole("button", { name: /取り込み中 40%/ });
     state = "done";
@@ -302,14 +308,28 @@ describe("ScanProgressIndicator", () => {
     const trigger = await screen.findByRole("button", { name: /^完了。/ });
     vi.useFakeTimers();
 
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
     await act(async () => fireEvent.pointerEnter(trigger));
     await act(async () => vi.advanceTimersByTimeAsync(10000));
+    const pausedRemainingMs = JSON.parse(
+      window.sessionStorage.getItem("vv.scan-notice") ?? "{}",
+    ).completionNotice?.pausedRemainingMs as number;
+    expect(pausedRemainingMs).toBeGreaterThan(5900);
+    expect(pausedRemainingMs).toBeLessThanOrEqual(6000);
     first.unmount();
+    delayCurrentScan = true;
     renderIndicator();
     await act(async () => Promise.resolve());
+    await act(async () => vi.advanceTimersByTimeAsync(7000));
+    expect(
+      JSON.parse(window.sessionStorage.getItem("vv.scan-notice") ?? "{}").completionNotice
+        ?.pausedRemainingMs,
+    ).toBe(pausedRemainingMs);
+
+    await act(async () => resolveCurrentScan?.(json(scan({ state: "done" }))));
     await screen.findByRole("button", { name: /^完了。/ });
 
-    await act(async () => vi.advanceTimersByTimeAsync(7900));
+    await act(async () => vi.advanceTimersByTimeAsync(pausedRemainingMs - 100));
     expect(screen.getByRole("button", { name: /^完了。/ })).toBeDefined();
     await act(async () => vi.advanceTimersByTimeAsync(100));
     expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
