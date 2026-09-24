@@ -92,7 +92,7 @@ func donePreviewVideo() domain.Video {
 func TestPresentVideosWithPreviewFile(t *testing.T) {
 	video := donePreviewVideo()
 	store := &fakeCatalogStore{previewStates: map[int64]domain.PreviewState{1: domain.PreviewStateDone}}
-	catalog := NewCatalog(CatalogOptions{Store: store, Files: fakeArtifactFiles{previews: map[string]bool{"a": true}}})
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{previews: map[string]bool{"a": true}}})
 
 	views := catalog.PresentVideos(context.Background(), []domain.Video{video})
 	if len(views) != 1 || !views[0].PreviewAvailable || views[0].Video.PreviewState != domain.PreviewStateDone {
@@ -108,7 +108,7 @@ func TestPresentVideosWithPreviewFile(t *testing.T) {
 func TestPresentVideosRequeuesMissingPreviewOnce(t *testing.T) {
 	video := donePreviewVideo()
 	store := &fakeCatalogStore{previewStates: map[int64]domain.PreviewState{1: domain.PreviewStateDone}}
-	catalog := NewCatalog(CatalogOptions{Store: store, Files: fakeArtifactFiles{}, Logger: discardLogger()})
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}, Logger: discardLogger()})
 
 	var wg sync.WaitGroup
 	results := make([]domain.VideoView, 8)
@@ -140,7 +140,7 @@ func TestPresentVideosRequeuesMissingPreviewOnce(t *testing.T) {
 func TestPresentVideosKeepsStateWhenRequeueFails(t *testing.T) {
 	video := donePreviewVideo()
 	store := &fakeCatalogStore{requeueErr: errors.New("database is locked")}
-	catalog := NewCatalog(CatalogOptions{Store: store, Files: fakeArtifactFiles{}, Logger: discardLogger()})
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}, Logger: discardLogger()})
 
 	view := catalog.PresentVideos(context.Background(), []domain.Video{video})[0]
 	if view.PreviewAvailable || view.Video.PreviewState != domain.PreviewStateDone {
@@ -152,7 +152,7 @@ func TestPresentVideosKeepsStateWhenRequeueFails(t *testing.T) {
 func TestPresentVideosIgnoresUnfinishedPreview(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := &fakeCatalogStore{previewStates: map[int64]domain.PreviewState{}}
-	catalog := NewCatalog(CatalogOptions{Store: store, Files: fakeArtifactFiles{previews: map[string]bool{"a": true}}})
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{previews: map[string]bool{"a": true}}})
 
 	view := catalog.PresentVideos(context.Background(), []domain.Video{video})[0]
 	if view.PreviewAvailable || len(store.requeued) != 0 {
@@ -179,8 +179,9 @@ func TestSeekThumbnailState(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			video := probedVideo(1, "a")
 			video.ThumbnailState = tc.thumbnail
+			store := &fakeCatalogStore{thumbnailJobActive: map[int64]bool{1: tc.active}}
 			catalog := NewCatalog(CatalogOptions{
-				Store: &fakeCatalogStore{thumbnailJobActive: map[int64]bool{1: tc.active}},
+				Index: store, Ingest: store,
 				Files: fakeArtifactFiles{seek: map[string]bool{"a": tc.dir}},
 			})
 			got, err := catalog.SeekThumbnailState(context.Background(), video)
@@ -197,9 +198,9 @@ func TestSeekThumbnailState(t *testing.T) {
 func TestSeekThumbnailStateReportsStoreFailure(t *testing.T) {
 	video := probedVideo(1, "a")
 	video.ThumbnailState = domain.ThumbnailStateDone
+	store := &fakeCatalogStore{thumbnailJobErr: errors.New("disk I/O error")}
 	catalog := NewCatalog(CatalogOptions{
-		Store: &fakeCatalogStore{thumbnailJobErr: errors.New("disk I/O error")},
-		Files: fakeArtifactFiles{},
+		Index: store, Ingest: store, Files: fakeArtifactFiles{},
 	})
 	if _, err := catalog.SeekThumbnailState(context.Background(), video); err == nil {
 		t.Fatal("失敗が返らない")
@@ -224,7 +225,7 @@ func TestRelatedVideos(t *testing.T) {
 		neighbors: []domain.RelatedNeighbor{{VideoID: 4, AddedAt: time.Unix(1_757_000_001, 0)}},
 		videos:    videos,
 	}
-	catalog := NewCatalog(CatalogOptions{Store: store, Files: fakeArtifactFiles{}})
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
 
 	got, err := catalog.RelatedVideos(context.Background(), videos[3])
 	if err != nil {
@@ -257,7 +258,7 @@ func TestRelatedVideos(t *testing.T) {
 // 読み取りのやり直しには、シーク用プレビューの置き場の有無を確かめて渡す。
 func TestRetryProbePassesSeekThumbnailPresence(t *testing.T) {
 	store := &fakeCatalogStore{}
-	catalog := NewCatalog(CatalogOptions{Store: store, Files: fakeArtifactFiles{seek: map[string]bool{"present": true}}})
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{seek: map[string]bool{"present": true}}})
 
 	for _, key := range []string{"missing", "present"} {
 		if err := catalog.RetryProbe(context.Background(), probedVideo(1, key)); err != nil {

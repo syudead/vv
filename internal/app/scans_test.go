@@ -137,6 +137,7 @@ func newTestScans(t *testing.T, ctx context.Context, scanner *fakeScanner) (*Sca
 	notifier := &fakeNotifier{}
 	scans := NewScans(ScansOptions{
 		Store: store,
+		Jobs:  store,
 		NewScanner: func(reporter ScanReporter) Scanner {
 			scanner.reporter = reporter
 			return scanner

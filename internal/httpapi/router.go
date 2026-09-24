@@ -25,15 +25,15 @@ type Pinger interface {
 	Ping(context.Context) error
 }
 
-// Library は一覧と詳細の問い合わせ先である。internal/store の *DB がこれを
-// 満たす。httpapi は保存の手段を知らないので、必要な操作だけを宣言する。
+// Library は一覧と詳細の問い合わせ先である。httpapi は保存の手段を知らないので、
+// 必要な操作だけを宣言する。
 type Library interface {
 	ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error)
 	GetVideo(ctx context.Context, id int64) (domain.Video, error)
 }
 
-// Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）
-// なので、動画の行が消えても記録が残る。
+// Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、
+// 動画の行が消えても記録が残る。
 type Playback interface {
 	SaveProgress(ctx context.Context, contentKey string, progress domain.Progress) (domain.Progress, error)
 	ProgressByContentKeys(ctx context.Context, contentKeys []string) (map[string]domain.Progress, error)

@@ -34,6 +34,32 @@ func TestSaveAndLoadProgressByContentKey(t *testing.T) {
 	}
 }
 
+func TestPlaybackStoreSavesAndLoadsWithoutVideoRows(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	playback := db.Playback()
+
+	saved, err := playback.SaveProgress(ctx, "detached-key", domain.EvaluateProgress(12_000, 120_000))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := playback.Progress(ctx, "detached-key")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.PositionMs != saved.PositionMs || got.DurationMs != saved.DurationMs {
+		t.Fatalf("progress = %+v, want %+v", got, saved)
+	}
+
+	var videos int
+	if err := db.SQL().QueryRow(`select count(*) from videos`).Scan(&videos); err != nil {
+		t.Fatal(err)
+	}
+	if videos != 0 {
+		t.Fatalf("videos rows = %d, want 0", videos)
+	}
+}
+
 // 記録が無ければ「無い」と分かる誤りを返す。一覧では省略される。
 func TestProgressWhenNeverPlayed(t *testing.T) {
 	db := migratedDB(t)

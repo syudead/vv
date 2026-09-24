@@ -122,12 +122,14 @@ func newArtifactsFixture(t *testing.T) artifactsFixture {
 
 	logger := slog.New(slog.DiscardHandler)
 	artifactStore := artifacts.New(Config{DataDir: dataDir}.ThumbnailsDir())
-	catalog := app.NewCatalog(app.CatalogOptions{Store: db, Files: artifactStore, Logger: logger})
+	catalog := app.NewCatalog(app.CatalogOptions{
+		Index: db.Library(), Ingest: db.Ingest(), Files: artifactStore, Logger: logger,
+	})
 	handler := httpapi.NewRouter(httpapi.Options{
-		Videos: db, Playback: db, Catalog: catalog, Artifacts: artifactStore,
+		Videos: db.Library(), Playback: db.Playback(), Catalog: catalog, Artifacts: artifactStore,
 		Assets: fstest.MapFS{}, Logger: logger,
 	})
-	ingest := app.NewIngest(app.IngestOptions{Store: db, Artifacts: artifactStore, Logger: logger})
+	ingest := app.NewIngest(app.IngestOptions{Store: db.Ingest(), Artifacts: artifactStore, Logger: logger})
 	return artifactsFixture{ctx: ctx, db: db, videoID: video.ID, files: files, handler: handler, ingest: ingest}
 }
 

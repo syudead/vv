@@ -91,11 +91,12 @@ func run() error {
 		slog.Int("applied", migrated.Applied),
 		slog.Int64("version", migrated.Version),
 	)
+	libraryStore := db.Library()
 
 	// 照合用の鍵が古い規則のままの所在を、ジョブや HTTP を動かす前に作り直す。
 	// 失敗したら起動を止める（古い鍵のまま検索を出さない）。途中まで書いた分は
 	// 版が行ごとに残るので、次の起動で続きから埋まる。
-	refreshed, err := db.RefreshSearchKeys(context.Background())
+	refreshed, err := libraryStore.RefreshSearchKeys(context.Background())
 	if err != nil {
 		return fmt.Errorf("照合用の鍵を作り直せません: %w", err)
 	}
@@ -109,10 +110,19 @@ func run() error {
 	// 画面へ送る変化の知らせ。走査とワーカーが知らせ、/api/events が配る。
 	events := httpapi.NewEvents()
 
+	ingestStore := db.Ingest()
+	scanStore := db.Scans()
+	scanIndexStore := db.ScanIndex()
+	settingsStore := db.Settings()
+	playbackStore := db.Playback()
+
 	scans := app.NewScans(app.ScansOptions{
-		Store: db,
+		Store: scanStore,
+		Jobs:  ingestStore,
 		NewScanner: func(reporter app.ScanReporter) app.Scanner {
-			return scanner.New(scanner.Options{Index: db, Queue: db, Reporter: reporter, Logger: logger})
+			return scanner.New(scanner.Options{
+				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
+			})
 		},
 		Context:  backgroundCtx,
 		Notifier: events,
@@ -132,7 +142,7 @@ func run() error {
 		logger.Warn("生成途中の成果物を削除できませんでした", slog.Any("error", err))
 	}
 	ingest := app.NewIngest(app.IngestOptions{
-		Store: db, Generator: media.NewAssets(), Artifacts: artifactStore, Notifier: events, Logger: logger,
+		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Notifier: events, Logger: logger,
 	})
 	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
 	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
@@ -140,7 +150,7 @@ func run() error {
 	for _, kind := range domain.JobKinds {
 		worker := jobs.New(jobs.Options{
 			Kind:     kind,
-			Queue:    db,
+			Queue:    ingestStore,
 			Handler:  ingest.Handler(kind),
 			Finished: ingest.JobFinished,
 			Logger:   logger,
@@ -168,23 +178,25 @@ func run() error {
 
 	// 動画の応答に要る判断（消えたプレビューの作り直し、シーク用プレビューの
 	// 状態）と関連動画の組み立ては、アプリケーション層が行う。
-	catalog := app.NewCatalog(app.CatalogOptions{Store: db, Files: artifactStore, Logger: logger})
+	catalog := app.NewCatalog(app.CatalogOptions{
+		Index: libraryStore, Ingest: ingestStore, Files: artifactStore, Logger: logger,
+	})
 	// 設定画面のメディアフォルダは、パスをファイルシステムで確かめてから保存する。
-	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: db, Checker: scanner.NewFolderChecker()})
+	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: settingsStore, Checker: scanner.NewFolderChecker()})
 
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:        build,
 		Pinger:       db,
-		Videos:       db,
-		Playback:     db,
+		Videos:       libraryStore,
+		Playback:     playbackStore,
 		Scans:        scans,
 		MediaFolders: mediaFolders,
-		Folders:      db,
+		Folders:      libraryStore,
 		Transcoder:   media.NewLiveTranscoder(requestMediaCtx.Done()),
 		Artifacts:    artifactStore,
 		Catalog:      catalog,
 		Opener:       fileOpener,
-		Processing:   db,
+		Processing:   ingestStore,
 		Events:       events,
 		Assets:       web.Dist(),
 		Logger:       logger,

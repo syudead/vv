@@ -112,6 +112,12 @@ cannot be reconstructed. That is why playback positions are keyed by the
 content identifier rather than by `videos.id`, and why that table carries no
 foreign key to `videos`.
 
+`store.DB` owns the shared SQLite connection and migration lifecycle, but application
+wiring uses responsibility-specific handles: `IngestStore`, `LibraryStore`,
+`ScanStore`/`ScanIndexStore`, `SettingsStore`, and `PlaybackStore`. In particular,
+`PlaybackStore` holds only the SQL connection and does not depend on the rebuildable
+index stores or their notifications.
+
 Search matches a per-location `search_key` that Go builds from the title and the
 path below the registered media folder, folded with `domain.FoldForMatch`, and
 indexed by the trigram FTS5 table `location_search_fts`. SQL cannot express that
