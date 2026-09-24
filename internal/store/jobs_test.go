@@ -30,20 +30,20 @@ func TestJobLifecycle(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
 
-	job, err := db.ClaimJob(ctx, JobProbe)
+	job, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatalf("ジョブを取り出せない: %v", err)
 	}
-	if job.Kind != JobProbe || job.VideoID != videoID {
+	if job.Kind != domain.JobProbe || job.VideoID != videoID {
 		t.Errorf("取り出したジョブ = %+v", job)
 	}
 
 	// 専有したので、2 度目の取り出しでは何も返らない。
-	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
+	if _, err := db.ClaimJob(ctx, domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
 		t.Errorf("同じジョブが二重に取り出せた: %v", err)
 	}
 
@@ -59,8 +59,8 @@ func TestJobLifecycle(t *testing.T) {
 func TestClaimJobOnEmptyQueue(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.ClaimJob(context.Background(), JobProbe); !errors.Is(err, ErrNoJob) {
-		t.Errorf("err = %v, want ErrNoJob", err)
+	if _, err := db.ClaimJob(context.Background(), domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
+		t.Errorf("err = %v, want domain.ErrNoJob", err)
 	}
 }
 
@@ -70,12 +70,12 @@ func TestFailJobRetriesThenGivesUp(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
 
-	for attempt := 1; attempt <= MaxJobAttempts; attempt++ {
-		job, err := db.ClaimJob(ctx, JobProbe)
+	for attempt := 1; attempt <= domain.MaxJobAttempts; attempt++ {
+		job, err := db.ClaimJob(ctx, domain.JobProbe)
 		if err != nil {
 			t.Fatalf("%d 回目の取り出しに失敗した: %v", attempt, err)
 		}
@@ -87,7 +87,7 @@ func TestFailJobRetriesThenGivesUp(t *testing.T) {
 		}
 
 		want := "queued"
-		if attempt == MaxJobAttempts {
+		if attempt == domain.MaxJobAttempts {
 			want = "failed"
 		}
 		if got := jobState(t, db, job.ID); got != want {
@@ -96,12 +96,12 @@ func TestFailJobRetriesThenGivesUp(t *testing.T) {
 	}
 
 	// 諦めたジョブは二度と取り出されない。
-	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
+	if _, err := db.ClaimJob(ctx, domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
 		t.Errorf("failed なジョブが取り出せた: %v", err)
 	}
 
-	if MaxJobAttempts != 3 {
-		t.Errorf("MaxJobAttempts = %d, want 3", MaxJobAttempts)
+	if domain.MaxJobAttempts != 3 {
+		t.Errorf("MaxJobAttempts = %d, want 3", domain.MaxJobAttempts)
 	}
 }
 
@@ -110,10 +110,10 @@ func TestFailJobRecordsReason(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobProbe)
+	job, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +138,7 @@ func TestEnqueueJobIsIdempotentWhilePending(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 			t.Fatalf("%d 回目の投入で失敗した: %v", i, err)
 		}
 	}
@@ -148,7 +148,7 @@ func TestEnqueueJobIsIdempotentWhilePending(t *testing.T) {
 	}
 
 	// 種類が違えば別のジョブである。
-	if err := db.EnqueueJob(ctx, JobThumbnail, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobThumbnail, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if got := countJobs(t, db); got != 2 {
@@ -162,11 +162,11 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i < MaxJobAttempts; i++ {
-		job, err := db.ClaimJob(ctx, JobProbe)
+	for i := 0; i < domain.MaxJobAttempts; i++ {
+		job, err := db.ClaimJob(ctx, domain.JobProbe)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -175,10 +175,10 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 		}
 	}
 
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ClaimJob(ctx, JobProbe); err != nil {
+	if _, err := db.ClaimJob(ctx, domain.JobProbe); err != nil {
 		t.Errorf("再投入したジョブを取り出せない: %v", err)
 	}
 	// 諦めた行は積み上げない。
@@ -191,11 +191,11 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	for range MaxJobAttempts {
-		job, err := db.ClaimJob(ctx, JobProbe)
+	for range domain.MaxJobAttempts {
+		job, err := db.ClaimJob(ctx, domain.JobProbe)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -210,10 +210,10 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 	if probeState != "failed" {
 		t.Fatalf("probe_state = %s, want failed", probeState)
 	}
-	if err := db.EnsureJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnsureJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
+	if _, err := db.ClaimJob(ctx, domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
 		t.Fatalf("terminal failure was revived: %v", err)
 	}
 }
@@ -223,11 +223,11 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 func TestEnsureJobRequeuesLegacyFailureOfPendingVideo(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	for range MaxJobAttempts {
-		job, err := db.ClaimJob(ctx, JobProbe)
+	for range domain.MaxJobAttempts {
+		job, err := db.ClaimJob(ctx, domain.JobProbe)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -238,13 +238,13 @@ func TestEnsureJobRequeuesLegacyFailureOfPendingVideo(t *testing.T) {
 	}
 	recorder := &queuedRecorder{}
 	db.OnJobsChanged(recorder.record)
-	if err := db.EnsureJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnsureJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); fmt.Sprint(got) != "[probe]" {
 		t.Errorf("知らせ = %v, want [probe]", got)
 	}
-	job, err := db.ClaimJob(ctx, JobProbe)
+	job, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatalf("積み直されていない: %v", err)
 	}
@@ -262,10 +262,10 @@ func TestRequeueRunningJobs(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobProbe)
+	job, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,7 +282,7 @@ func TestRequeueRunningJobs(t *testing.T) {
 		t.Errorf("state = %q, want queued", got)
 	}
 
-	if _, err := db.ClaimJob(ctx, JobProbe); err != nil {
+	if _, err := db.ClaimJob(ctx, domain.JobProbe); err != nil {
 		t.Errorf("巻き戻したジョブを取り出せない: %v", err)
 	}
 }
@@ -298,11 +298,11 @@ func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
 		}
 		videoID = result.ID
 	}
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	for i := range 4 * MaxJobAttempts {
-		job, err := db.ClaimJob(ctx, JobProbe)
+	for i := range 4 * domain.MaxJobAttempts {
+		job, err := db.ClaimJob(ctx, domain.JobProbe)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -317,15 +317,15 @@ func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
 			t.Fatal(err)
 		}
 		wantState := "queued"
-		if i == 4*MaxJobAttempts-1 {
+		if i == 4*domain.MaxJobAttempts-1 {
 			wantState = "failed"
 		}
 		if got := jobState(t, db, job.ID); got != wantState {
 			t.Fatalf("location %d state = %s, want %s", i, got, wantState)
 		}
 	}
-	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
-		t.Fatalf("ClaimJob after final cycle error = %v, want ErrNoJob", err)
+	if _, err := db.ClaimJob(ctx, domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("ClaimJob after final cycle error = %v, want domain.ErrNoJob", err)
 	}
 }
 
@@ -342,11 +342,11 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 	}
 	// サムネイルは解析の後に取り出すので、解析は済ませておく。
 	probeDone(t, db, video.ID)
-	if err := db.EnqueueJob(ctx, JobThumbnail, video.ID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobThumbnail, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ClaimJob(ctx, JobThumbnail); !errors.Is(err, ErrNoJob) {
-		t.Fatalf("unregistered ClaimJob error = %v, want ErrNoJob", err)
+	if _, err := db.ClaimJob(ctx, domain.JobThumbnail); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("unregistered ClaimJob error = %v, want domain.ErrNoJob", err)
 	}
 	if got := jobState(t, db, 1); got != "queued" {
 		t.Fatalf("unregistered job state = %s, want queued", got)
@@ -358,10 +358,10 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 	}
 	// 眠っているワーカーを起こす知らせが出ること。登録で取り出せるようになった
 	// 待ちの仕事は、次に仕事が積まれるのを待たずに処理される。
-	if got := recorder.take(); !slices.Contains(got, JobThumbnail) {
+	if got := recorder.take(); !slices.Contains(got, domain.JobThumbnail) {
 		t.Fatalf("フォルダ登録の知らせ = %v, want thumbnail を含む", got)
 	}
-	job, err := db.ClaimJob(ctx, JobThumbnail)
+	job, err := db.ClaimJob(ctx, domain.JobThumbnail)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -373,10 +373,10 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobProbe)
+	job, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	if got := jobState(t, db, job.ID); got != "queued" {
 		t.Fatalf("state = %q, want queued", got)
 	}
-	retried, err := db.ClaimJob(ctx, JobProbe)
+	retried, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -420,10 +420,10 @@ func TestPreviewStateUsesContentIdentityForSuccessAndClaimIdentityForFailure(t *
 	if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability(domain.ContainerFromPath("/media/a.mp4"), probe)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobPreview)
+	job, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,13 +457,13 @@ func TestPreviewStateUsesContentIdentityForSuccessAndClaimIdentityForFailure(t *
 func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, MaxJobAttempts-1, videoID); err != nil {
+	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobPreview)
+	job, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,10 +485,10 @@ func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
 func TestFailClaimedPreviewKeepsPendingWhileRetrying(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobPreview)
+	job, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,13 +510,13 @@ func TestFailClaimedPreviewKeepsPendingWhileRetrying(t *testing.T) {
 func TestFailClaimedPreviewRollsBackJobWhenStateUpdateFails(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, MaxJobAttempts-1, videoID); err != nil {
+	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobPreview)
+	job, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -542,24 +542,24 @@ func TestFailClaimedPreviewRollsBackJobWhenStateUpdateFails(t *testing.T) {
 func TestPreviewRunningJobIsRequeuedAfterRestart(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := db.ClaimJob(ctx, JobPreview)
+	claimed, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claimed.Kind != JobPreview {
+	if claimed.Kind != domain.JobPreview {
 		t.Fatalf("kind = %q", claimed.Kind)
 	}
 	if restored, err := db.RequeueRunningJobs(ctx); err != nil || restored != 1 {
 		t.Fatalf("RequeueRunningJobs() = %d, %v", restored, err)
 	}
-	retried, err := db.ClaimJob(ctx, JobPreview)
+	retried, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if retried.ID != claimed.ID || retried.Kind != JobPreview {
+	if retried.ID != claimed.ID || retried.Kind != domain.JobPreview {
 		t.Fatalf("retried job = %+v, want id %d preview", retried, claimed.ID)
 	}
 }
@@ -567,10 +567,10 @@ func TestPreviewRunningJobIsRequeuedAfterRestart(t *testing.T) {
 func TestPreviewCompletionRejectsChangedContent(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobPreview)
+	job, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -603,10 +603,10 @@ func TestPreviewSourceRejectsReassignedClaimedPathWithOriginalContentRemaining(t
 	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.EnqueueJob(ctx, JobPreview, video.ID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobPreview)
+	job, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -632,10 +632,10 @@ func TestPreviewSourceRejectsReassignedClaimedPathWithOriginalContentRemaining(t
 func TestPreviewSourceAcceptsLocationOnlyChange(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobPreview)
+	job, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -651,10 +651,10 @@ func TestPreviewSourceAcceptsLocationOnlyChange(t *testing.T) {
 func TestCompletePreviewAtomicallyFinishesAssetAndJobAfterCancellation(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobPreview)
+	job, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -699,10 +699,10 @@ func TestClaimedJobBecomesStaleWhenLowerIDLocationIsReassigned(t *testing.T) {
 	if lower.ID >= target.ID {
 		t.Fatalf("fixture IDs = %d, %d; want lower source ID", lower.ID, target.ID)
 	}
-	if err := db.EnqueueJob(ctx, JobProbe, target.ID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, target.ID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobProbe)
+	job, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -760,33 +760,33 @@ func TestClaimJobTakesOnlyTheRequestedKind(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	probeDone(t, db, videoID)
-	if err := db.EnqueueJob(ctx, JobThumbnail, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobThumbnail, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
-		t.Fatalf("別の段階の ClaimJob error = %v, want ErrNoJob", err)
+	if _, err := db.ClaimJob(ctx, domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("別の段階の ClaimJob error = %v, want domain.ErrNoJob", err)
 	}
-	job, err := db.ClaimJob(ctx, JobThumbnail)
+	job, err := db.ClaimJob(ctx, domain.JobThumbnail)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.Kind != JobThumbnail {
+	if job.Kind != domain.JobThumbnail {
 		t.Fatalf("Kind = %s, want thumbnail", job.Kind)
 	}
 }
 
 // queuedRecorder は OnJobsChanged の知らせを記録する。
 type queuedRecorder struct {
-	kinds []JobKind
+	kinds []domain.JobKind
 	calls int
 }
 
-func (r *queuedRecorder) record(kinds []JobKind) {
+func (r *queuedRecorder) record(kinds []domain.JobKind) {
 	r.kinds = append(r.kinds, kinds...)
 	r.calls++
 }
 
-func (r *queuedRecorder) take() []JobKind {
+func (r *queuedRecorder) take() []domain.JobKind {
 	kinds := r.kinds
 	r.kinds = nil
 	return kinds
@@ -798,7 +798,7 @@ func TestJobsQueuedNotification(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	recorder := &queuedRecorder{}
-	db.OnJobsChanged(func(kinds []JobKind) {
+	db.OnJobsChanged(func(kinds []domain.JobKind) {
 		// 知らせを受けた時点で、積んだ行が別の接続から見えていること。
 		var queued int
 		if err := db.SQL().QueryRow(`select count(*) from jobs where state = 'queued'`).Scan(&queued); err != nil {
@@ -810,28 +810,28 @@ func TestJobsQueuedNotification(t *testing.T) {
 		recorder.record(kinds)
 	})
 
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); fmt.Sprint(got) != "[probe]" {
 		t.Errorf("EnqueueJob の知らせ = %v, want [probe]", got)
 	}
 
-	if err := db.EnsureJob(ctx, JobThumbnail, videoID); err != nil {
+	if err := db.EnsureJob(ctx, domain.JobThumbnail, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); fmt.Sprint(got) != "[thumbnail]" {
 		t.Errorf("EnsureJob の知らせ = %v, want [thumbnail]", got)
 	}
 	// 既にあるので何も積まない。
-	if err := db.EnsureJob(ctx, JobThumbnail, videoID); err != nil {
+	if err := db.EnsureJob(ctx, domain.JobThumbnail, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); len(got) != 0 {
 		t.Errorf("積まなかった EnsureJob が知らせた: %v", got)
 	}
 
-	if _, err := db.ClaimJob(ctx, JobProbe); err != nil {
+	if _, err := db.ClaimJob(ctx, domain.JobProbe); err != nil {
 		t.Fatal(err)
 	}
 	restored, err := db.RequeueRunningJobs(ctx)
@@ -867,11 +867,11 @@ func TestProcessingCountsRemainingWorkPerStage(t *testing.T) {
 	}
 
 	for _, job := range []struct {
-		kind JobKind
+		kind domain.JobKind
 		id   int64
 	}{
-		{JobProbe, videoID}, {JobProbe, other.ID}, {JobThumbnail, videoID},
-		{JobPreview, other.ID}, {JobProbe, outside.ID},
+		{domain.JobProbe, videoID}, {domain.JobProbe, other.ID}, {domain.JobThumbnail, videoID},
+		{domain.JobPreview, other.ID}, {domain.JobProbe, outside.ID},
 	} {
 		if err := db.EnqueueJob(ctx, job.kind, job.id); err != nil {
 			t.Fatal(err)
@@ -879,11 +879,11 @@ func TestProcessingCountsRemainingWorkPerStage(t *testing.T) {
 	}
 	// 処理中も残りに数える（サムネイルは解析の後に取り出すので、解析は済ませておく）。
 	probeDone(t, db, videoID)
-	if _, err := db.ClaimJob(ctx, JobThumbnail); err != nil {
+	if _, err := db.ClaimJob(ctx, domain.JobThumbnail); err != nil {
 		t.Fatal(err)
 	}
 	// 終わった仕事は数えない。
-	preview, err := db.ClaimJob(ctx, JobPreview)
+	preview, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -909,18 +909,18 @@ func TestProcessingCountsRemainingWorkPerStage(t *testing.T) {
 func TestClaimThumbnailWaitsForProbe(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobThumbnail, videoID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobThumbnail, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ClaimJob(ctx, JobThumbnail); !errors.Is(err, ErrNoJob) {
-		t.Fatalf("解析前の ClaimJob error = %v, want ErrNoJob", err)
+	if _, err := db.ClaimJob(ctx, domain.JobThumbnail); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("解析前の ClaimJob error = %v, want domain.ErrNoJob", err)
 	}
 
 	probe := domain.Probe{DurationMs: 100_000, VideoCodec: "h264", AudioCodec: "aac"}
 	if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, JobThumbnail)
+	job, err := db.ClaimJob(ctx, domain.JobThumbnail)
 	if err != nil {
 		t.Fatalf("解析後も取り出せない: %v", err)
 	}
@@ -951,7 +951,7 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 	if _, err := db.UpsertVideo(ctx, sampleFile("/legacy/a.mp4", "a", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.EnqueueJob(ctx, JobProbe, video.ID); err != nil {
+	if err := db.EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := db.Processing(ctx); err != nil || got.Probe != 1 {
@@ -965,7 +965,7 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 	recorder := &queuedRecorder{}
 	db.OnJobsChanged(recorder.record)
 	deleted := 0
-	db.OnVideosDeleted(func(videos []DeletedVideo) { deleted += len(videos) })
+	db.OnVideosDeleted(func(videos []domain.DeletedVideo) { deleted += len(videos) })
 	if err := db.DeleteMediaFolder(ctx, folderID, version); err != nil {
 		t.Fatal(err)
 	}
@@ -1014,14 +1014,14 @@ func TestRequeueMissingPreview(t *testing.T) {
 	if requeued, err := db.RequeueMissingPreview(ctx, videoID, "key-a"); err != nil || requeued {
 		t.Fatalf("2度目 = %v, %v, want false", requeued, err)
 	}
-	job, err := db.ClaimJob(ctx, JobPreview)
+	job, err := db.ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatalf("作り直しのジョブが無い: %v", err)
 	}
 	if job.VideoID != videoID {
 		t.Errorf("VideoID = %d, want %d", job.VideoID, videoID)
 	}
-	if _, err := db.ClaimJob(ctx, JobPreview); !errors.Is(err, ErrNoJob) {
+	if _, err := db.ClaimJob(ctx, domain.JobPreview); !errors.Is(err, domain.ErrNoJob) {
 		t.Errorf("作り直しを重ねて積んだ: %v", err)
 	}
 }

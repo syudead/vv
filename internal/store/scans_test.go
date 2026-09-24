@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 func scanDB(t *testing.T) *DB {
@@ -16,8 +18,8 @@ func TestStartScanRejectsEmptyFolderSetWithoutCreatingScan(t *testing.T) {
 	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := db.StartScan(context.Background()); !errors.Is(err, ErrNoMediaFolders) {
-		t.Fatalf("error = %v, want ErrNoMediaFolders", err)
+	if _, _, err := db.StartScan(context.Background()); !errors.Is(err, domain.ErrNoMediaFolders) {
+		t.Fatalf("error = %v, want domain.ErrNoMediaFolders", err)
 	}
 	var count int
 	if err := db.SQL().QueryRow(`select count(*) from scans`).Scan(&count); err != nil {
@@ -41,7 +43,7 @@ func TestStartScanReturnsRunningInsteadOfStartingAnother(t *testing.T) {
 	if !started {
 		t.Error("1件目が開始扱いになっていない")
 	}
-	if first.State != ScanRunning {
+	if first.State != domain.ScanRunning {
 		t.Errorf("State = %q, want running", first.State)
 	}
 	if first.StartedAt.IsZero() {
@@ -70,7 +72,7 @@ func TestUpdateScanProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := db.UpdateScanProgress(ctx, scan.ID, ScanProgress{Total: 10, Completed: 3, Failed: 1}); err != nil {
+	if err := db.UpdateScanProgress(ctx, scan.ID, domain.ScanProgress{Total: 10, Completed: 3, Failed: 1}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -92,7 +94,7 @@ func TestFinishScan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.FinishScan(ctx, scan.ID, ScanDone, ""); err != nil {
+	if err := db.FinishScan(ctx, scan.ID, domain.ScanDone, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -100,7 +102,7 @@ func TestFinishScan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.State != ScanDone {
+	if got.State != domain.ScanDone {
 		t.Errorf("State = %q, want done", got.State)
 	}
 	if got.FinishedAt.IsZero() {
@@ -125,7 +127,7 @@ func TestFinishScanRecordsError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.FinishScan(ctx, scan.ID, ScanFailed, "メディアフォルダを読み取れません"); err != nil {
+	if err := db.FinishScan(ctx, scan.ID, domain.ScanFailed, "メディアフォルダを読み取れません"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -133,7 +135,7 @@ func TestFinishScanRecordsError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.State != ScanFailed {
+	if got.State != domain.ScanFailed {
 		t.Errorf("State = %q, want failed", got.State)
 	}
 	if got.Error == "" {
@@ -150,7 +152,7 @@ func TestCurrentScanPrefersRunning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.FinishScan(ctx, finished.ID, ScanDone, ""); err != nil {
+	if err := db.FinishScan(ctx, finished.ID, domain.ScanDone, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -172,8 +174,8 @@ func TestCurrentScanPrefersRunning(t *testing.T) {
 func TestCurrentScanWhenNeverScanned(t *testing.T) {
 	db := scanDB(t)
 
-	if _, err := db.CurrentScan(context.Background()); !errors.Is(err, ErrNotFound) {
-		t.Errorf("err = %v, want ErrNotFound", err)
+	if _, err := db.CurrentScan(context.Background()); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("err = %v, want domain.ErrNotFound", err)
 	}
 }
 
@@ -200,7 +202,7 @@ func TestFailInterruptedScans(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ID != interrupted.ID || got.State != ScanFailed {
+	if got.ID != interrupted.ID || got.State != domain.ScanFailed {
 		t.Errorf("中断したスキャンが failed になっていない: %+v", got)
 	}
 

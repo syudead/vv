@@ -15,8 +15,8 @@ import (
 var fixedTime = time.Unix(1_757_000_000, 0).UTC()
 
 // sampleFile は走査で分かる事実を1件組み立てる。
-func sampleFile(path, title, key string, size int64, offset time.Duration) VideoFile {
-	return VideoFile{
+func sampleFile(path, title, key string, size int64, offset time.Duration) domain.VideoFile {
+	return domain.VideoFile{
 		Path:       path,
 		Title:      title,
 		ContentKey: key,
@@ -35,8 +35,8 @@ func TestUpsertVideoAddsNewRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("取り込めない: %v", err)
 	}
-	if got.Outcome != OutcomeAdded {
-		t.Errorf("Outcome = %q, want %q", got.Outcome, OutcomeAdded)
+	if got.Outcome != domain.OutcomeAdded {
+		t.Errorf("Outcome = %q, want %q", got.Outcome, domain.OutcomeAdded)
 	}
 	if got.ID == 0 {
 		t.Error("ID が返っていない")
@@ -84,8 +84,8 @@ func TestUpsertVideoIsUnchangedWhenNothingMoved(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if second.Outcome != OutcomeUnchanged {
-		t.Errorf("Outcome = %q, want %q", second.Outcome, OutcomeUnchanged)
+	if second.Outcome != domain.OutcomeUnchanged {
+		t.Errorf("Outcome = %q, want %q", second.Outcome, domain.OutcomeUnchanged)
 	}
 	if second.ID != first.ID {
 		t.Errorf("ID が変わった: %d -> %d", first.ID, second.ID)
@@ -112,8 +112,8 @@ func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updated.Outcome != OutcomeUpdated {
-		t.Errorf("Outcome = %q, want %q", updated.Outcome, OutcomeUpdated)
+	if updated.Outcome != domain.OutcomeUpdated {
+		t.Errorf("Outcome = %q, want %q", updated.Outcome, domain.OutcomeUpdated)
 	}
 	if updated.ID == added.ID {
 		t.Errorf("内容が変わったのに論理動画IDが維持された: %d", added.ID)
@@ -180,8 +180,8 @@ func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if moved.Outcome != OutcomeMoved {
-		t.Errorf("Outcome = %q, want %q", moved.Outcome, OutcomeMoved)
+	if moved.Outcome != domain.OutcomeMoved {
+		t.Errorf("Outcome = %q, want %q", moved.Outcome, domain.OutcomeMoved)
 	}
 	if moved.ID != added.ID {
 		t.Errorf("移動で別の行になった: %d -> %d", added.ID, moved.ID)
@@ -219,11 +219,11 @@ func TestListVideosPagesByRepresentativeLocationTitle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	first, err := db.ListVideos(ctx, VideoQuery{Sort: SortTitleAsc, Limit: 1})
+	first, err := db.ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := db.ListVideos(ctx, VideoQuery{Sort: SortTitleAsc, Limit: 1, Cursor: first.NextCursor})
+	second, err := db.ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1, Cursor: first.NextCursor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,8 +278,8 @@ func TestGetVideoReportsMissing(t *testing.T) {
 	db := migratedDB(t)
 
 	_, err := db.GetVideo(context.Background(), 12345)
-	if !errors.Is(err, ErrNotFound) {
-		t.Errorf("err = %v, want ErrNotFound", err)
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("err = %v, want domain.ErrNotFound", err)
 	}
 }
 
@@ -397,7 +397,7 @@ func listFixture(t *testing.T) (*DB, []int64) {
 	ids := make([]int64, 0, len(rows))
 	for i, row := range rows {
 		// added_at が行ごとに違わないと、追加順の並びが id 頼みになる。
-		got, err := db.UpsertVideo(ctx, VideoFile{
+		got, err := db.UpsertVideo(ctx, domain.VideoFile{
 			Path:       fmt.Sprintf("/media/%s.mp4", row.title),
 			Title:      row.title,
 			ContentKey: row.key,
@@ -415,7 +415,7 @@ func listFixture(t *testing.T) (*DB, []int64) {
 }
 
 // titlesOf は一覧の題名を順に取り出す。
-func titlesOf(page VideoPage) []string {
+func titlesOf(page domain.VideoPage) []string {
 	out := make([]string, 0, len(page.Items))
 	for _, item := range page.Items {
 		out = append(out, item.Title)
@@ -428,7 +428,7 @@ func TestListVideosSortOrders(t *testing.T) {
 	db, _ := listFixture(t)
 	ctx := context.Background()
 
-	added, err := db.ListVideos(ctx, VideoQuery{Sort: SortAddedDesc})
+	added, err := db.ListVideos(ctx, domain.VideoQuery{Sort: domain.SortAddedDesc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestListVideosSortOrders(t *testing.T) {
 		t.Errorf("addedDesc = %v, want %v", got, want)
 	}
 
-	byTitle, err := db.ListVideos(ctx, VideoQuery{Sort: SortTitleAsc})
+	byTitle, err := db.ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -456,14 +456,14 @@ func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 		given int
 		want  int
 	}{
-		{0, DefaultLimit},
-		{-1, DefaultLimit},
+		{0, domain.DefaultLimit},
+		{-1, domain.DefaultLimit},
 		{10, 10},
-		{MaxLimit, MaxLimit},
-		{MaxLimit + 1, MaxLimit},
-		{100000, MaxLimit},
+		{domain.MaxLimit, domain.MaxLimit},
+		{domain.MaxLimit + 1, domain.MaxLimit},
+		{100000, domain.MaxLimit},
 	} {
-		page, err := db.ListVideos(ctx, VideoQuery{Limit: tc.given})
+		page, err := db.ListVideos(ctx, domain.VideoQuery{Limit: tc.given})
 		if err != nil {
 			t.Fatalf("limit=%d: %v", tc.given, err)
 		}
@@ -472,18 +472,18 @@ func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 		}
 	}
 
-	if DefaultLimit != 60 {
-		t.Errorf("DefaultLimit = %d, want 60", DefaultLimit)
+	if domain.DefaultLimit != 60 {
+		t.Errorf("DefaultLimit = %d, want 60", domain.DefaultLimit)
 	}
-	if MaxLimit != 200 {
-		t.Errorf("MaxLimit = %d, want 200", MaxLimit)
+	if domain.MaxLimit != 200 {
+		t.Errorf("MaxLimit = %d, want 200", domain.MaxLimit)
 	}
 }
 
 // カーソルで続きから取れること。並び順の値と id を境界にするので、
 // 途中で行が増減しても取りこぼしと重複が起きない。
 func TestListVideosPagesWithCursor(t *testing.T) {
-	for _, sort := range []VideoSort{SortAddedDesc, SortTitleAsc} {
+	for _, sort := range []domain.VideoSort{domain.SortAddedDesc, domain.SortTitleAsc} {
 		t.Run(string(sort), func(t *testing.T) {
 			db, _ := listFixture(t)
 			ctx := context.Background()
@@ -491,7 +491,7 @@ func TestListVideosPagesWithCursor(t *testing.T) {
 			var seen []string
 			cursor := ""
 			for page := 0; page < 10; page++ {
-				got, err := db.ListVideos(ctx, VideoQuery{Sort: sort, Limit: 2, Cursor: cursor})
+				got, err := db.ListVideos(ctx, domain.VideoQuery{Sort: sort, Limit: 2, Cursor: cursor})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -502,7 +502,7 @@ func TestListVideosPagesWithCursor(t *testing.T) {
 				cursor = got.NextCursor
 			}
 
-			all, err := db.ListVideos(ctx, VideoQuery{Sort: sort, Limit: MaxLimit})
+			all, err := db.ListVideos(ctx, domain.VideoQuery{Sort: sort, Limit: domain.MaxLimit})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -518,7 +518,7 @@ func TestListVideosPagesWithCursor(t *testing.T) {
 func TestListVideosStopsAtLastPage(t *testing.T) {
 	db, _ := listFixture(t)
 
-	page, err := db.ListVideos(context.Background(), VideoQuery{Limit: MaxLimit})
+	page, err := db.ListVideos(context.Background(), domain.VideoQuery{Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +531,7 @@ func TestListVideosStopsAtLastPage(t *testing.T) {
 func TestListVideosTotalIsIndependentOfPageSize(t *testing.T) {
 	db, _ := listFixture(t)
 
-	page, err := db.ListVideos(context.Background(), VideoQuery{Limit: 2})
+	page, err := db.ListVideos(context.Background(), domain.VideoQuery{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -549,9 +549,9 @@ func TestListVideosRejectsBrokenCursor(t *testing.T) {
 	db, _ := listFixture(t)
 
 	for _, cursor := range []string{"not-base64!!", "***", "YWJj", "'; drop table videos; --"} {
-		_, err := db.ListVideos(context.Background(), VideoQuery{Cursor: cursor})
-		if !errors.Is(err, ErrInvalidCursor) {
-			t.Errorf("cursor=%q: err = %v, want ErrInvalidCursor", cursor, err)
+		_, err := db.ListVideos(context.Background(), domain.VideoQuery{Cursor: cursor})
+		if !errors.Is(err, domain.ErrInvalidCursor) {
+			t.Errorf("cursor=%q: err = %v, want domain.ErrInvalidCursor", cursor, err)
 		}
 	}
 }
@@ -697,7 +697,7 @@ type releasedRecorder struct {
 	keys []string
 }
 
-func (r *releasedRecorder) record(deleted []DeletedVideo) {
+func (r *releasedRecorder) record(deleted []domain.DeletedVideo) {
 	for _, video := range deleted {
 		if video.ID == 0 {
 			panic("消した動画の id が無い")
@@ -722,7 +722,7 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 	recorder := &releasedRecorder{}
 	db.OnVideosDeleted(recorder.record)
 
-	for _, file := range []VideoFile{
+	for _, file := range []domain.VideoFile{
 		sampleFile("/media/a.mp4", "a", "key-a", 1, 0),
 		sampleFile("/media/a2.mp4", "a", "key-a", 1, 0),
 		sampleFile("/media/b.mp4", "b", "key-b", 2, 0),

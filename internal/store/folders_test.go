@@ -16,7 +16,7 @@ import (
 
 // folderFixture は /media の下にフォルダ構成を取り込む。鍵が同じファイルは
 // 同じ動画の別の所在になる。
-func folderFixture(t *testing.T, files ...VideoFile) (*DB, map[string]int64) {
+func folderFixture(t *testing.T, files ...domain.VideoFile) (*DB, map[string]int64) {
 	t.Helper()
 	db := migratedDB(t)
 	ids := map[string]int64{}
@@ -160,7 +160,7 @@ func TestListFolderVideosUsesTheLocationInThatFolder(t *testing.T) {
 }
 
 func TestListFolderVideosPagesWithCursor(t *testing.T) {
-	files := make([]VideoFile, 0, 61)
+	files := make([]domain.VideoFile, 0, 61)
 	for index := range 61 {
 		name := fmt.Sprintf("v%02d", index)
 		files = append(files, sampleFile("/media/many/"+name+".mp4", name, "key-"+name, 1, 0))
@@ -200,8 +200,8 @@ func TestListFolderVideosPagesWithCursor(t *testing.T) {
 func TestListFolderVideosRejectsBrokenCursor(t *testing.T) {
 	db, _ := folderFixture(t, sampleFile("/media/A/x.mp4", "x", "key-x", 1, 0))
 	_, err := db.ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media/A", Cursor: "!!"})
-	if !errors.Is(err, ErrInvalidCursor) {
-		t.Errorf("err = %v, want ErrInvalidCursor", err)
+	if !errors.Is(err, domain.ErrInvalidCursor) {
+		t.Errorf("err = %v, want domain.ErrInvalidCursor", err)
 	}
 }
 

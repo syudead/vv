@@ -10,72 +10,50 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 走査の語彙は internal/domain が持つ。ここでは別名を置いて、store を使う側が
-// domain を直接 import しなくても読めるようにする。
-type (
-	// ScanState は走査の状態である。
-	ScanState = domain.ScanState
-	// Scan は走査1回の記録である。
-	Scan = domain.Scan
-	// ScanProgress は進捗の値である。
-	ScanProgress = domain.ScanProgress
-)
-
-const (
-	// ScanRunning は走査中。同時に1件だけ存在できる。
-	ScanRunning = domain.ScanRunning
-	// ScanDone は最後まで走った。
-	ScanDone = domain.ScanDone
-	// ScanFailed は走査そのものが失敗した。
-	ScanFailed = domain.ScanFailed
-)
-
-var ErrNoMediaFolders = domain.ErrNoMediaFolders
-
 // StartScan は走査を始める。すでに実行中のものがあれば、新しく始めずに
 // それを返す（started = false）。
 //
 // 409 にしないのは、利用者の意図が「今の状態を進めたい」であり、進行中なら
 // それを返すのが素直だからである。
-func (db *DB) StartScan(ctx context.Context) (scan Scan, started bool, err error) {
+func (db *DB) StartScan(ctx context.Context) (scan domain.Scan, started bool, err error) {
 	db.folderMu.Lock()
 	defer db.folderMu.Unlock()
 	var folderCount int
 	if err := db.sql.QueryRowContext(ctx, `select count(*) from media_folders`).Scan(&folderCount); err != nil {
-		return Scan{}, false, err
+		return domain.Scan{}, false, err
 	}
 	if folderCount == 0 {
-		return Scan{}, false, ErrNoMediaFolders
+		return domain.Scan{}, false, domain.ErrNoMediaFolders
 	}
 	if running, err := db.scanBy(ctx,
 		`select `+scanColumns+` from scans where state = 'running' limit 1`,
 	); err == nil {
 		return running, false, nil
-	} else if !errors.Is(err, ErrNotFound) {
-		return Scan{}, false, err
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		return domain.Scan{}, false, err
 	}
 
 	res, err := db.sql.ExecContext(ctx,
 		`insert into scans (state, started_at, total, completed, failed) values ('running', ?, 0, 0, 0)`,
 		time.Now().Unix())
 	if err != nil {
-		return Scan{}, false, fmt.Errorf("走査を始められません: %w", err)
+		return domain.Scan{}, false, fmt.Errorf("走査を始められません: %w", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		return Scan{}, false, fmt.Errorf("走査を始められません: %w", err)
+		return domain.Scan{}, false, fmt.Errorf("走査を始められません: %w", err)
 	}
 
 	scan, err = db.scanByID(ctx, id)
 	if err != nil {
-		return Scan{}, false, err
+		return domain.Scan{}, false, err
 	}
 	return scan, true, nil
 }
 
 // UpdateScanProgress は進捗を更新する。走査中も一覧・再生は通常どおり応答する
 // ので、ここでは行を1つ書き換えるだけにする。
-func (db *DB) UpdateScanProgress(ctx context.Context, id int64, progress ScanProgress) error {
+func (db *DB) UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error {
 	_, err := db.sql.ExecContext(ctx,
 		`update scans set total = ?, completed = ?, failed = ? where id = ?`,
 		progress.Total, progress.Completed, progress.Failed, id)
@@ -87,7 +65,7 @@ func (db *DB) UpdateScanProgress(ctx context.Context, id int64, progress ScanPro
 
 // FinishScan は走査を終える。reason は走査そのものが失敗した理由で、
 // 個別のファイルの失敗はここではなく failed の数に入る。
-func (db *DB) FinishScan(ctx context.Context, id int64, state ScanState, reason string) error {
+func (db *DB) FinishScan(ctx context.Context, id int64, state domain.ScanState, reason string) error {
 	_, err := db.sql.ExecContext(ctx,
 		`update scans set state = ?, finished_at = ?, error = ? where id = ?`,
 		string(state), time.Now().Unix(), nullableString(reason), id)
@@ -99,7 +77,7 @@ func (db *DB) FinishScan(ctx context.Context, id int64, state ScanState, reason 
 
 // CurrentScan は直近の走査を返す。実行中のものがあればそれを、無ければ最後に
 // 終わったものを返す。一度も走査していなければ ErrNotFound を返す。
-func (db *DB) CurrentScan(ctx context.Context) (Scan, error) {
+func (db *DB) CurrentScan(ctx context.Context) (domain.Scan, error) {
 	return db.scanBy(ctx, `
 		select `+scanColumns+` from scans
 		 order by (state = 'running') desc, id desc
@@ -131,13 +109,13 @@ func (db *DB) FailInterruptedScans(ctx context.Context) (int64, error) {
 // scanColumns は Scan を組み立てるのに要る列である。並びは scanRow と対応させる。
 const scanColumns = `id, state, started_at, finished_at, total, completed, failed, error`
 
-func (db *DB) scanByID(ctx context.Context, id int64) (Scan, error) {
+func (db *DB) scanByID(ctx context.Context, id int64) (domain.Scan, error) {
 	return db.scanBy(ctx, `select `+scanColumns+` from scans where id = ?`, id)
 }
 
-func (db *DB) scanBy(ctx context.Context, query string, args ...any) (Scan, error) {
+func (db *DB) scanBy(ctx context.Context, query string, args ...any) (domain.Scan, error) {
 	var (
-		scan                  Scan
+		scan                  domain.Scan
 		state                 string
 		startedAt, finishedAt sql.NullInt64
 		reason                sql.NullString
@@ -149,13 +127,13 @@ func (db *DB) scanBy(ctx context.Context, query string, args ...any) (Scan, erro
 		&scan.Total, &scan.Completed, &scan.Failed, &reason,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
-		return Scan{}, ErrNotFound
+		return domain.Scan{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return Scan{}, fmt.Errorf("走査の記録を読み出せません: %w", err)
+		return domain.Scan{}, fmt.Errorf("走査の記録を読み出せません: %w", err)
 	}
 
-	scan.State = ScanState(state)
+	scan.State = domain.ScanState(state)
 	if startedAt.Valid {
 		scan.StartedAt = time.Unix(startedAt.Int64, 0)
 	}

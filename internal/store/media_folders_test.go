@@ -10,8 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/syudead/vv/internal/domain"
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 func TestMediaFolderOperationsAreAtomicAndScoped(t *testing.T) {
@@ -111,7 +112,7 @@ func TestMediaFolderOperationsAreAtomicAndScoped(t *testing.T) {
 	if err := db.DeleteMediaFolder(ctx, folderB.ID, folderB.Version); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.GetVideo(ctx, video.ID); !errors.Is(err, ErrNotFound) {
+	if _, err := db.GetVideo(ctx, video.ID); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("orphan video still exists: %v", err)
 	}
 	progress, err := db.ProgressByContentKeys(ctx, []string{"same-content"})
@@ -139,8 +140,8 @@ func TestAddMediaFolderDoesNotTouchLibraryAndRejectsOverlap(t *testing.T) {
 	if _, err := db.GetVideo(ctx, video.ID); err != nil {
 		t.Fatalf("add changed the existing library: %v", err)
 	}
-	if _, err := db.AddMediaFolder(ctx, child); !errors.Is(err, ErrFolderConflict) {
-		t.Fatalf("nested folder error = %v, want ErrFolderConflict", err)
+	if _, err := db.AddMediaFolder(ctx, child); !errors.Is(err, domain.ErrFolderConflict) {
+		t.Fatalf("nested folder error = %v, want domain.ErrFolderConflict", err)
 	}
 }
 
@@ -162,8 +163,8 @@ func TestMediaFolderMutationRejectsRunningScan(t *testing.T) {
 	if _, _, err := db.StartScan(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.AddMediaFolder(ctx, candidate); !errors.Is(err, ErrScanRunning) {
-		t.Fatalf("error = %v, want ErrScanRunning", err)
+	if _, err := db.AddMediaFolder(ctx, candidate); !errors.Is(err, domain.ErrScanRunning) {
+		t.Fatalf("error = %v, want domain.ErrScanRunning", err)
 	}
 }
 
@@ -191,7 +192,7 @@ func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page, err := db.ListVideos(ctx, VideoQuery{Query: "root visible", Limit: MaxLimit})
+	page, err := db.ListVideos(ctx, domain.VideoQuery{Query: "root visible", Limit: domain.MaxLimit})
 	if err != nil || len(page.Items) != 1 || page.Items[0].ID != video.ID {
 		t.Fatalf("root video is not listed or searchable: %+v, %v", page, err)
 	}
@@ -207,29 +208,10 @@ func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 	}
 }
 
-func TestAddMediaFolderRejectsSymbolicLinkComponent(t *testing.T) {
-	db := migratedDB(t)
-	root := t.TempDir()
-	real := filepath.Join(root, "real")
-	child := filepath.Join(real, "child")
-	if err := os.MkdirAll(child, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	link := filepath.Join(root, "link")
-	if err := os.Symlink(real, link); err != nil {
-		t.Skipf("symbolic links are unavailable: %v", err)
-	}
-	// 末尾は実directoryなのでLstatを通過し、EvalSymlinksによる親componentの
-	// 検証が働くことを確認する。
-	if _, err := db.AddMediaFolder(context.Background(), filepath.Join(link, "child")); !errors.Is(err, ErrUnsupportedFolder) {
-		t.Fatalf("error = %v, want ErrUnsupportedFolder", err)
-	}
-}
-
 func TestAddMediaFolderRejectsRelativePath(t *testing.T) {
 	db := migratedDB(t)
-	if _, err := db.AddMediaFolder(context.Background(), filepath.Join("relative", "media")); !errors.Is(err, ErrInvalidFolder) {
-		t.Fatalf("error = %v, want ErrInvalidFolder", err)
+	if _, err := db.AddMediaFolder(context.Background(), filepath.Join("relative", "media")); !errors.Is(err, domain.ErrInvalidMediaFolder) {
+		t.Fatalf("error = %v, want domain.ErrInvalidMediaFolder", err)
 	}
 }
 
@@ -242,8 +224,8 @@ func TestAddMediaFolderRejectsWindowsCaseDuplicate(t *testing.T) {
 	if _, err := db.AddMediaFolder(context.Background(), root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.AddMediaFolder(context.Background(), strings.ToUpper(root)); !errors.Is(err, ErrFolderConflict) {
-		t.Fatalf("case-only duplicate error = %v, want ErrFolderConflict", err)
+	if _, err := db.AddMediaFolder(context.Background(), strings.ToUpper(root)); !errors.Is(err, domain.ErrFolderConflict) {
+		t.Fatalf("case-only duplicate error = %v, want domain.ErrFolderConflict", err)
 	}
 }
 

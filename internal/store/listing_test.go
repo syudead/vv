@@ -13,8 +13,8 @@ import (
 
 // listingFile は title を題名とする所在1件を組み立てる。追加時刻は offset 分
 // ずらし、追加順の並びが id 頼みにならないようにする。
-func listingFile(path, title, key string, offset int) VideoFile {
-	return VideoFile{
+func listingFile(path, title, key string, offset int) domain.VideoFile {
+	return domain.VideoFile{
 		Path: path, Title: title, ContentKey: key,
 		SizeBytes: int64(1000 + offset), MTime: fixedTime,
 		AddedAt: fixedTime.Add(time.Duration(offset) * time.Minute), Container: "mp4",
@@ -22,7 +22,7 @@ func listingFile(path, title, key string, offset int) VideoFile {
 }
 
 // upsertAll は所在をすべて取り込み、パスごとの動画の id を返す。
-func upsertAll(t *testing.T, db *DB, files ...VideoFile) map[string]int64 {
+func upsertAll(t *testing.T, db *DB, files ...domain.VideoFile) map[string]int64 {
 	t.Helper()
 	ids := map[string]int64{}
 	for _, file := range files {
@@ -36,9 +36,9 @@ func upsertAll(t *testing.T, db *DB, files ...VideoFile) map[string]int64 {
 }
 
 // sortedTitles は全件の題名を並べ替えて返す。並びに依らない比較に使う。
-func sortedTitles(t *testing.T, db *DB, q VideoQuery) []string {
+func sortedTitles(t *testing.T, db *DB, q domain.VideoQuery) []string {
 	t.Helper()
-	q.Limit = MaxLimit
+	q.Limit = domain.MaxLimit
 	page, err := db.ListVideos(context.Background(), q)
 	if err != nil {
 		t.Fatalf("一覧に失敗した (%+v): %v", q, err)
@@ -75,7 +75,7 @@ func searchExprFixture(t *testing.T) *DB {
 	if _, err := db.SQL().Exec(`update media_folders set path = '/media/videos'`); err != nil {
 		t.Fatal(err)
 	}
-	var files []VideoFile
+	var files []domain.VideoFile
 	for i, title := range searchExprTitles {
 		files = append(files, listingFile("/media/videos/"+title+".mp4", title, fmt.Sprintf("key-%d", i), i))
 	}
@@ -139,7 +139,7 @@ func TestListVideosSearchExpressions(t *testing.T) {
 		{"|", without()},
 	}
 	for _, tc := range tests {
-		if got := sortedTitles(t, db, VideoQuery{Query: tc.query}); !slices.Equal(got, tc.want) {
+		if got := sortedTitles(t, db, domain.VideoQuery{Query: tc.query}); !slices.Equal(got, tc.want) {
 			t.Errorf("検索 %q = %q, want %q", tc.query, got, tc.want)
 		}
 	}
@@ -162,7 +162,7 @@ func TestListVideosMatchesRelativeFolderNames(t *testing.T) {
 		"webm":      {"b"},
 		"media":     {},
 	} {
-		if got := sortedTitles(t, db, VideoQuery{Query: query}); !slices.Equal(got, sorted(want...)) {
+		if got := sortedTitles(t, db, domain.VideoQuery{Query: query}); !slices.Equal(got, sorted(want...)) {
 			t.Errorf("検索 %q = %q, want %q", query, got, want)
 		}
 	}
@@ -178,7 +178,7 @@ func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 	)
 	ctx := context.Background()
 
-	none, err := db.ListVideos(ctx, VideoQuery{Query: "京都 2024"})
+	none, err := db.ListVideos(ctx, domain.VideoQuery{Query: "京都 2024"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 		"2024": "/media/B/2024.mp4",
 		"":     "/media/A/京都.mp4", // 検索語が無ければパスの最小の所在
 	} {
-		page, err := db.ListVideos(ctx, VideoQuery{Query: query})
+		page, err := db.ListVideos(ctx, domain.VideoQuery{Query: query})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -222,7 +222,7 @@ func TestListingScopes(t *testing.T) {
 
 	folder := func(scope domain.FolderScope, query string) []string {
 		t.Helper()
-		page, err := db.ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/A", Scope: scope, Query: query, Limit: MaxLimit})
+		page, err := db.ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/A", Scope: scope, Query: query, Limit: domain.MaxLimit})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -246,7 +246,7 @@ func TestListingScopes(t *testing.T) {
 	if got, want := folder(domain.FolderScopeSubtree, ""), sorted("x 京都", "y 京都", "w"); !slices.Equal(got, want) {
 		t.Errorf("A の配下すべて = %q, want %q", got, want)
 	}
-	if got, want := sortedTitles(t, db, VideoQuery{Query: "京都"}), sorted("x 京都", "y 京都", "z 京都", "w 京都"); !slices.Equal(got, want) {
+	if got, want := sortedTitles(t, db, domain.VideoQuery{Query: "京都"}), sorted("x 京都", "y 京都", "z 京都", "w 京都"); !slices.Equal(got, want) {
 		t.Errorf("ライブラリで 京都 = %q, want %q", got, want)
 	}
 }
@@ -258,12 +258,12 @@ func watchFixture(t *testing.T) *DB {
 	ctx := context.Background()
 	states := []struct {
 		name     string
-		progress *Progress
+		progress *domain.Progress
 	}{
 		{"none", nil},
-		{"zero", &Progress{PositionMs: 0}},
-		{"middle", &Progress{PositionMs: 30_000}},
-		{"done", &Progress{PositionMs: 100_000, Completed: true}},
+		{"zero", &domain.Progress{PositionMs: 0}},
+		{"middle", &domain.Progress{PositionMs: 30_000}},
+		{"done", &domain.Progress{PositionMs: 100_000, Completed: true}},
 	}
 	offset := 0
 	for _, state := range states {
@@ -312,7 +312,7 @@ func TestListVideosWatchAndPlayableFilters(t *testing.T) {
 		var seen []string
 		cursor := ""
 		for range 10 {
-			page, err := db.ListVideos(ctx, VideoQuery{Watch: tc.watch, PlayableOnly: tc.playable, Limit: 1, Cursor: cursor})
+			page, err := db.ListVideos(ctx, domain.VideoQuery{Watch: tc.watch, PlayableOnly: tc.playable, Limit: 1, Cursor: cursor})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -332,7 +332,7 @@ func TestListVideosWatchAndPlayableFilters(t *testing.T) {
 	}
 
 	// 検索語とも AND で組み合わさる。
-	if got, want := sortedTitles(t, db, VideoQuery{Query: "none OR done", Watch: domain.WatchWatched, PlayableOnly: true}), sorted("done-true"); !slices.Equal(got, want) {
+	if got, want := sortedTitles(t, db, domain.VideoQuery{Query: "none OR done", Watch: domain.WatchWatched, PlayableOnly: true}), sorted("done-true"); !slices.Equal(got, want) {
 		t.Errorf("検索と絞り込み = %q, want %q", got, want)
 	}
 }
@@ -342,12 +342,12 @@ func TestWatchConditionMatchesDomainClassification(t *testing.T) {
 	db := watchFixture(t)
 	ctx := context.Background()
 	for _, filter := range []domain.WatchFilter{domain.WatchUnwatched, domain.WatchInProgress, domain.WatchWatched} {
-		page, err := db.ListVideos(ctx, VideoQuery{Watch: filter, Limit: MaxLimit})
+		page, err := db.ListVideos(ctx, domain.VideoQuery{Watch: filter, Limit: domain.MaxLimit})
 		if err != nil {
 			t.Fatal(err)
 		}
 		for _, item := range page.Items {
-			var progress *Progress
+			var progress *domain.Progress
 			if got, err := db.Progress(ctx, item.ContentKey); err == nil {
 				progress = &got
 			}
@@ -362,7 +362,7 @@ func TestWatchConditionMatchesDomainClassification(t *testing.T) {
 func TestListFolderVideosFilters(t *testing.T) {
 	db := watchFixture(t)
 	page, err := db.ListFolderVideos(context.Background(), domain.FolderVideoQuery{
-		Dir: "/media", Watch: domain.WatchInProgress, PlayableOnly: true, Limit: MaxLimit,
+		Dir: "/media", Watch: domain.WatchInProgress, PlayableOnly: true, Limit: domain.MaxLimit,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -375,7 +375,7 @@ func TestListFolderVideosFilters(t *testing.T) {
 // ページを送る途中で別の動画の所在を足しても、1ページ目の時点で条件に合い、
 // 並べ替えの値が変わらない動画に重複と取りこぼしが無い（contracts/list-api.md §5）。
 func TestListingPagingSurvivesAddedLocations(t *testing.T) {
-	for _, sort := range []VideoSort{SortAddedDesc, SortTitleAsc} {
+	for _, sort := range []domain.VideoSort{domain.SortAddedDesc, domain.SortTitleAsc} {
 		for _, query := range []string{"", "旅"} {
 			t.Run(fmt.Sprintf("%s/%q", sort, query), func(t *testing.T) {
 				db := migratedDB(t)
@@ -392,7 +392,7 @@ func TestListingPagingSurvivesAddedLocations(t *testing.T) {
 				var seen []string
 				cursor := ""
 				for pageIndex := range 10 {
-					page, err := db.ListVideos(ctx, VideoQuery{Query: query, Sort: sort, Limit: 2, Cursor: cursor})
+					page, err := db.ListVideos(ctx, domain.VideoQuery{Query: query, Sort: sort, Limit: 2, Cursor: cursor})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -467,12 +467,12 @@ func TestSearchExprCondition(t *testing.T) {
 func TestListVideosWithManyTerms(t *testing.T) {
 	db := searchExprFixture(t)
 	query := strings.Repeat("京都 ", 40) + "OR 奈良"
-	page, err := db.ListVideos(context.Background(), VideoQuery{Query: query})
+	page, err := db.ListVideos(context.Background(), domain.VideoQuery{Query: query})
 	if err != nil {
 		t.Fatalf("語の多い検索で失敗した: %v", err)
 	}
 	// 先頭 16 語（すべて「京都」）だけが効き、後ろの OR 奈良 は無視される。
-	want, err := db.ListVideos(context.Background(), VideoQuery{Query: "京都"})
+	want, err := db.ListVideos(context.Background(), domain.VideoQuery{Query: "京都"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +489,7 @@ func TestListVideosExclusionIsEvaluatedPerLocation(t *testing.T) {
 		listingFile("/media/A/京都.mp4", "京都", "same", 0),
 		listingFile("/media/B/x.mp4", "x", "same", 0),
 	)
-	page, err := db.ListVideos(context.Background(), VideoQuery{Query: "-京都"})
+	page, err := db.ListVideos(context.Background(), domain.VideoQuery{Query: "-京都"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -510,14 +510,14 @@ func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
 	if _, err := db.SQL().Exec(`update videos set content_key = '' where id = ?`, ids["/media/legacy.mp4"]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SaveProgress(ctx, "", Progress{PositionMs: 100_000, Completed: true}); err != nil {
+	if _, err := db.SaveProgress(ctx, "", domain.Progress{PositionMs: 100_000, Completed: true}); err != nil {
 		t.Fatal(err)
 	}
 	for watch, want := range map[domain.WatchFilter]int{
 		domain.WatchWatched:   0,
 		domain.WatchUnwatched: 1,
 	} {
-		page, err := db.ListVideos(ctx, VideoQuery{Watch: watch})
+		page, err := db.ListVideos(ctx, domain.VideoQuery{Watch: watch})
 		if err != nil {
 			t.Fatal(err)
 		}
