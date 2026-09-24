@@ -65,7 +65,7 @@ const (
 //   - フレーズを開く `"` は語の先頭（除外の `-` の直後を含む）にあるものだけで、
 //     語の途中の `"` は字面の文字である（`ab"c` は1語）。
 //   - 閉じた `"` の直後に空白を挟まず続く文字は、次の語として扱う。
-//   - 空のフレーズは演算子の判定より前に捨てる（`a OR "" b` は `a OR b`）。
+//   - 空のフレーズと空白だけのフレーズは、演算子の判定より前に捨てる（`a OR "" b` は `a OR b`）。
 func ParseSearchQuery(input string) SearchExpr {
 	tokens := tokenizeSearchQuery(norm.NFKC.String(input))
 
@@ -139,7 +139,8 @@ func tokenizeSearchQuery(s string) []searchToken {
 			if end := strings.IndexByte(body[1:], '"'); end >= 0 {
 				phrase := body[1 : 1+end]
 				s = body[end+2:]
-				if phrase != "" {
+				// 空のフレーズと空白だけのフレーズは捨てる。
+				if strings.TrimFunc(phrase, isSearchSpace) != "" {
 					tokens = append(tokens, searchToken{kind: tokenTerm, text: phrase, negated: negated})
 				}
 				continue

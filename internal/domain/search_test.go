@@ -18,6 +18,7 @@ func and(terms ...SearchTerm) SearchExpr {
 	return expr
 }
 
+// has は含む語、not は除外語、clauses は OR の組を AND で並べた式、anyOf は OR の組を表す。
 func has(text string) SearchTerm { return SearchTerm{Text: text} }
 func not(text string) SearchTerm { return SearchTerm{Text: text, Negated: true} }
 
@@ -38,6 +39,10 @@ func TestParseSearchQuery(t *testing.T) {
 	}{
 		// 親 Issue #195 の受け入れ条件 1〜5 の入力。
 		{`京都 2024`, and(has("京都"), has("2024"))},
+		// 絵文字や ZWJ 連結を含む語でも失敗しない（親 Issue の Edge Case）。
+		{"😀‍👩 x", and(has("😀‍👩"), has("x"))},
+		// 空白だけのフレーズは空のフレーズと同じく捨てる。
+		{`"   "`, SearchExpr{}},
 		{`"京都旅行 2024"`, and(has("京都旅行 2024"))},
 		{`"旅行 20"`, and(has("旅行 20"))},
 		{`京都 -2023`, and(has("京都"), not("2023"))},
