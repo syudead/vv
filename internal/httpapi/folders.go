@@ -85,6 +85,19 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		Dir: domain.FolderDir(root.Path, rel), Scope: domain.FolderScopeDirect,
 		Sort: domain.SortAddedDesc, Limit: domain.DefaultLimit,
 	}
+	// フォルダの有無は条件の検査より先に確かめる。無いフォルダは、条件の値に
+	// 関係なく 404 にする（contracts/list-api.md §5）。
+	if rel != "" {
+		found, err := s.folders.HasFolderLocations(r.Context(), query.Dir)
+		if err != nil {
+			s.folderError(w, r, "フォルダの動画を取得できませんでした", err)
+			return
+		}
+		if !found {
+			s.notFound(w, folderNotFoundMessage)
+			return
+		}
+	}
 	if params.Scope != nil {
 		scope := domain.FolderScope(*params.Scope)
 		if !scope.Valid() {
@@ -112,18 +125,6 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	}
 	if params.Cursor != nil {
 		query.Cursor = *params.Cursor
-	}
-
-	if rel != "" {
-		found, err := s.folders.HasFolderLocations(r.Context(), query.Dir)
-		if err != nil {
-			s.folderError(w, r, "フォルダの動画を取得できませんでした", err)
-			return
-		}
-		if !found {
-			s.notFound(w, folderNotFoundMessage)
-			return
-		}
 	}
 
 	page, err := s.folders.ListFolderVideos(r.Context(), query)

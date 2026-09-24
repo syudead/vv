@@ -281,3 +281,35 @@ func TestDirectChildConditionOnWindows(t *testing.T) {
 		t.Fatalf("直下の所在 = %v, want %v", got, want)
 	}
 }
+
+// Windows の接頭辞は、SQL の lower() と同じく ASCII の英字だけを小文字にする。
+// 非 ASCII の大文字（`Ä`）を含むフォルダでも、直下と配下の所在に一致する。
+func TestFolderPrefixOnWindowsFoldsASCIIOnly(t *testing.T) {
+	prefix := folderPrefixFor(`C:\Media\Ä`, true)
+	if want := `c:\media\Ä\`; prefix != want {
+		t.Fatalf("接頭辞 = %q, want %q", prefix, want)
+	}
+
+	handle, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = handle.Close() })
+	ctx := context.Background()
+	if _, err := handle.ExecContext(ctx, `create table l (path text)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{`C:\Media\Ä\x.mp4`, `C:\Media\Ä\B\y.mp4`} {
+		if _, err := handle.ExecContext(ctx, `insert into l (path) values (?)`, path); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var count int
+	query := `select count(*) from l where instr(` + folderPathExprFor("l", true) + `, ?) = 1`
+	if err := handle.QueryRowContext(ctx, query, prefix).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("配下の所在 = %d 件, want 2 件", count)
+	}
+}

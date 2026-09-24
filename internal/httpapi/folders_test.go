@@ -347,6 +347,9 @@ func TestListFolderVideosMissingFolderIgnoresScope(t *testing.T) {
 		"/api/folders/99/videos?scope=subtree&query=x",
 		"/api/folders/3/videos?path=missing&scope=subtree",
 		"/api/folders/3/videos?path=missing&scope=subtree&query=x",
+		// 条件の値が不正でも、フォルダが無ければ 404 を先に返す。
+		"/api/folders/3/videos?path=missing&scope=everywhere",
+		"/api/folders/3/videos?path=missing&watch=never",
 	} {
 		rec := do(t, handler, http.MethodGet, target)
 		if rec.Code != http.StatusNotFound {

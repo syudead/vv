@@ -57,7 +57,8 @@ func searchKeyPart(s string) string {
 func registeredRelativePath(root, path string) (string, bool) {
 	p, r := path, root
 	if runtime.GOOS == "windows" {
-		p, r = strings.ToLower(p), strings.ToLower(r)
+		// SQL の lower() と同じく ASCII だけを小文字にする（registeredLocationCondition）。
+		p, r = domain.LowerASCII(p), domain.LowerASCII(r)
 	}
 	if p == r {
 		return "", true
