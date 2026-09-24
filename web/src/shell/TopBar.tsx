@@ -4,20 +4,15 @@ import { Link } from "react-router";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import Tooltip from "../ui/Tooltip";
-import { describeScan, useScan } from "./ScanProvider";
+import { useScan } from "./ScanProvider";
 
 function ScanButton() {
   const scan = useScan();
-  const description = describeScan(scan);
   const buttonDescription = scan.canStart
     ? scan.running
-      ? description
+      ? "取り込み中"
       : "ライブラリを更新"
     : "メディアフォルダを設定してください";
-  const progress =
-    scan.scan?.state === "running" && scan.scan.total > 0
-      ? scan.scan.completed / scan.scan.total
-      : null;
 
   return (
     <Tooltip content={buttonDescription}>
@@ -41,16 +36,7 @@ function ScanButton() {
             scan.running && "animate-spin motion-reduce:animate-none",
           )}
         />
-        <span className="hidden tabular-nums md:inline">
-          {scan.running
-            ? progress === null
-              ? "更新中"
-              : `${String(Math.round(progress * 100))}%`
-            : "更新"}
-        </span>
-        <span role="status" aria-live="polite" className="sr-only">
-          {description}
-        </span>
+        <span className="hidden md:inline">{scan.running ? "更新中" : "更新"}</span>
       </button>
     </Tooltip>
   );

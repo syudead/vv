@@ -16,6 +16,7 @@ import IconButton from "../ui/IconButton";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
 import FolderPicker, { ModalFrame } from "./FolderPicker";
+import ScanStatusSection from "./ScanStatusSection";
 
 type Pending = { id: number | "new"; kind: "add" | "change" | "delete" } | null;
 
@@ -195,6 +196,7 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="text-xl font-semibold">設定</h1>
+      <ScanStatusSection />
       <section aria-labelledby="media-folders-heading" className="mt-8">
         <div className="border-b border-border pb-4">
           <h2 id="media-folders-heading" className="text-base font-semibold">
