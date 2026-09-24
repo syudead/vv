@@ -232,15 +232,19 @@ describe("VideoTags", () => {
     install();
     const onStaleVideo = vi.fn();
     const view = render(
-      <ToastProvider>
-        <VideoTags videoId={7} tags={[]} onStaleVideo={onStaleVideo} />
-      </ToastProvider>,
+      <MemoryRouter>
+        <ToastProvider>
+          <VideoTags videoId={7} tags={[]} onStaleVideo={onStaleVideo} />
+        </ToastProvider>
+      </MemoryRouter>,
     );
     const rerenderWith = (tags: { id: number; name: string }[]) =>
       view.rerender(
-        <ToastProvider>
-          <VideoTags videoId={7} tags={tags} onStaleVideo={onStaleVideo} />
-        </ToastProvider>,
+        <MemoryRouter>
+          <ToastProvider>
+            <VideoTags videoId={7} tags={tags} onStaleVideo={onStaleVideo} />
+          </ToastProvider>
+        </MemoryRouter>,
       );
 
     const input = addInput();
