@@ -104,6 +104,8 @@
 
 - query `path`（同上）、`sort`・`cursor`・`limit`（既存 `listVideos` と同じ意味と範囲）
 - 200: 既存の `VideoPage`。`total` は直下の動画の件数（=`videoCount`）
+- 400 `invalid_request`: `path` の不正、並び順の不正、カーソルが解釈できない（013 で足した条件の値の検査は下の追記を参照）
+- 404 `not_found`: `GET /api/folders/{rootId}` と同じ条件
 
 > 追記（013-library-search）: この経路は `scope`（`direct`｜`subtree`、既定 `direct`）・
 > `query`・`watch`・`playable`・`seed` を受けるようになった。`scope=subtree` では
@@ -111,8 +113,6 @@
 > 全件の数である（絞り込みが無い `direct` では、これまでどおり `videoCount` と一致する）。
 > 並び順の値、配下の範囲、絞り込み、`total`、項目の `folder` は
 > [013 の contracts/list-api.md](../../013-library-search/contracts/list-api.md) を正とする。
-- 400 `invalid_request`: `path` の不正、並び順の不正、カーソルが解釈できない
-- 404 `not_found`: `GET /api/folders/{rootId}` と同じ条件
 
 `items` の `Video` は既存の形のままで、次の2点だけが一覧と違う。
 

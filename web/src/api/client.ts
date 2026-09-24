@@ -99,7 +99,8 @@ export type ListVideosParams = ListFilterParams;
 /** setListFilters は共通の条件を問い合わせに載せる。 */
 function setListFilters(query: URLSearchParams, params: ListFilterParams): void {
   if (params.query !== undefined && params.query !== "") {
-    query.set("query", params.query.slice(0, MAX_QUERY_LENGTH));
+    // サーバーと同じく符号位置で数えて切る（サロゲートペアを割らない）。
+    query.set("query", Array.from(params.query).slice(0, MAX_QUERY_LENGTH).join(""));
   }
   if (params.watch !== undefined) query.set("watch", params.watch);
   if (params.playable === true) query.set("playable", "true");

@@ -363,7 +363,7 @@ func pathBelowRoot(root, path, separators string, windows bool) (string, bool) {
 	if windows {
 		// SQLite の lower() と同じく ASCII だけを畳む。長さが変わらないので、
 		// 接頭辞の長さでそのまま切り出せる。
-		equal = func(a, b string) bool { return asciiLower(a) == asciiLower(b) }
+		equal = func(a, b string) bool { return LowerASCII(a) == LowerASCII(b) }
 	}
 	if equal(path, root) {
 		return "", true
@@ -378,7 +378,9 @@ func pathBelowRoot(root, path, separators string, windows bool) (string, bool) {
 	return path[len(trimmed)+1:], true
 }
 
-func asciiLower(s string) string {
+// LowerASCII は ASCII の英大文字だけを小文字にする。SQLite の lower() と同じ
+// 扱いで、Windows で登録フォルダの下かどうかを SQL と Go で同じに判定するために使う。
+func LowerASCII(s string) string {
 	b := []byte(s)
 	for i, c := range b {
 		if 'A' <= c && c <= 'Z' {
