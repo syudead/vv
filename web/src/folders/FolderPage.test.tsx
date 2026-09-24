@@ -179,6 +179,11 @@ describe("FolderPage", () => {
             json({ code: "not_found", message: "そのフォルダは見つかりません" }, 404),
           );
         }
+        if (params.get("query") === "broken") {
+          return Promise.resolve(
+            json({ code: "internal", message: "壊れています" }, 500),
+          );
+        }
         if (params.has("query")) return Promise.resolve(json({ items: [], total: 0 }));
         if (params.get("watch") === "unwatched") {
           const page: VideoPage = { items: [video(1, "x")], total: 1 };
@@ -512,6 +517,35 @@ describe("FolderPage", () => {
     renderFolders("/folders/3/A?q=gone");
     expect(await screen.findByText("このフォルダは見つかりません")).toBeDefined();
     expect(screen.queryByText("条件に一致する動画はありません")).toBeNull();
+  });
+
+  it("404 の後に条件を変えて取得に失敗したら、見つからない案内ではなく再試行を出す", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?q=gone");
+    await screen.findByText("このフォルダは見つかりません");
+    const box = screen.getByRole("searchbox");
+    await user.clear(box);
+    await user.type(box, "broken{Enter}");
+    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
+    expect(screen.queryByText("このフォルダは見つかりません")).toBeNull();
+  });
+
+  it("最上位の検索で登録フォルダ一覧が取れないと、置き場所の無い結果ではなく再試行を出す", async () => {
+    const base = fetchMock.getMockImplementation();
+    let failRoots = true;
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/folders" && failRoots) {
+        return Promise.resolve(json({ code: "internal", message: "壊れています" }, 500));
+      }
+      return base!(input, init);
+    });
+    const user = userEvent.setup();
+    renderFolders("/folders?q=京都");
+    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
+    expect(screen.queryByRole("link", { name: /^x/ })).toBeNull();
+    failRoots = false;
+    await user.click(screen.getByRole("button", { name: "再試行" }));
+    expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();
   });
 
   it("最上位の検索はライブラリ全体を対象にし、置き場所を登録フォルダ名から作る", async () => {

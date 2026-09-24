@@ -230,12 +230,15 @@ function useConditions() {
 function RootSearchResults({
   criteria,
   rootNames,
+  roots,
   zoom,
   restored,
   onClearNoMatches,
 }: {
   criteria: ListCriteria;
   rootNames: Map<number, RootDisplay>;
+  /** 登録フォルダ一覧の取得の状態。置き場所の行はこれが揃ってから出す。 */
+  roots: { loading: boolean; error: string | null; reload: () => void };
   zoom: Zoom;
   /** 呼び出し側（RootView）が取り出した控え。無ければ1ページ目から読む。 */
   restored: ReturnType<typeof takeListSnapshot>;
@@ -281,6 +284,7 @@ function RootSearchResults({
     );
   }, [criteria, cursor, hasMore, items, total]);
 
+  const rootsWaiting = roots.loading;
   const pendingScroll = useRef(restored?.scrollY);
   useEffect(() => {
     const previous = history.scrollRestoration;
@@ -291,11 +295,12 @@ function RootSearchResults({
   }, []);
   useLayoutEffect(() => {
     const top = pendingScroll.current;
-    if (top === undefined || items.length === 0) return;
+    // 登録フォルダ一覧を待つ間は骨組みなので、揃ってから戻す。
+    if (top === undefined || rootsWaiting || items.length === 0) return;
     pendingScroll.current = undefined;
     window.scrollTo({ top, behavior: "auto" });
     requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
-  }, [items.length]);
+  }, [items.length, rootsWaiting]);
 
   const sentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -311,8 +316,13 @@ function RootSearchResults({
     return () => observer.disconnect();
   }, [hasMore, loadMore]);
 
-  const noMatch = !loading && error === null && items.length === 0;
-  const summaryText = loading
+  // 置き場所は登録フォルダの表示名から始まるので、一覧が揃うまでは結果を確定させない。
+  // 取得に失敗したら、同名の動画を見分けられないまま出さず、再試行を促す。
+  const waiting = loading || rootsWaiting;
+  const failure = error ?? roots.error;
+  const retry = error !== null ? reload : roots.reload;
+  const noMatch = !waiting && failure === null && items.length === 0;
+  const summaryText = waiting
     ? "読み込み中…"
     : `「${criteria.query}」 ${summarize(items, total)}`;
 
@@ -333,11 +343,11 @@ function RootSearchResults({
           >
             {summaryText}
           </p>
-          {error !== null && items.length === 0 ? (
-            <LoadFailed reason={error} onRetry={reload} />
+          {failure !== null && (items.length === 0 || roots.error !== null) ? (
+            <LoadFailed reason={failure} onRetry={retry} />
           ) : (
             <Grid zoom={zoom}>
-              {loading ? (
+              {waiting ? (
                 <CardSkeleton count={12} />
               ) : (
                 items.map((video) => (
@@ -463,6 +473,7 @@ function RootView() {
         <RootSearchResults
           criteria={criteria}
           rootNames={rootNames}
+          roots={roots}
           zoom={zoom}
           restored={restored}
           onClearNoMatches={clearFromNoMatches}

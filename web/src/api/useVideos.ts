@@ -215,6 +215,8 @@ export function useVideos(
           return;
         }
         setError(errorMessage(failure));
+        // 前の要求の 404 を残すと、取得の失敗が「見つかりません」に隠れて再試行できない。
+        setNotFound(false);
         // 続きが読めない状態で観測点を残すと、同じ要求を繰り返してしまう。
         setHasMore(false);
       } finally {
