@@ -9,8 +9,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// Folders はフォルダ画面の問い合わせ先である。internal/store の *DB がこれを
-// 満たす。フォルダは保存されておらず、所在のパスから導く。
+// Folders はフォルダ画面の問い合わせ先である。フォルダは保存されておらず、
+// 所在のパスから導く。
 type Folders interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 	FolderLocations(ctx context.Context, dir string) ([]domain.FolderLocation, error)
