@@ -27,19 +27,21 @@ export interface ComboboxOption {
   meta?: ReactNode;
 }
 
+export const newlinePattern = /[\r\n]/;
 const controlCharPattern = /[\u0000-\u001f\u007f-\u009f]/;
-const newlinePattern = /[\r\n]/;
 
 /** codePointLength は前後の空白を除いた符号位置の数を返す（`length` は使わない）。 */
-function codePointLength(value: string): number {
+export function codePointLength(value: string): number {
   return Array.from(value.trim()).length;
 }
 
 /**
  * nameReason は、入力のたびに確かめる名前の検証理由を返す。空や空白だけは
- * 打っている間は理由を出さない（ui-design.md「Combobox」名前の検証）。
+ * 打っている間は理由を出さない（ui-design.md「Combobox」名前の検証）。タグの
+ * 名前を打つすべての入力（この Combobox、管理画面の作成・改名・シノニムの
+ * 追加）が同じ規則を使うので外へ公開する（ui-design.md「Combobox」末尾）。
  */
-function nameReason(raw: string): string | null {
+export function nameReason(raw: string): string | null {
   if (controlCharPattern.test(raw)) return "改行やタブは使えません";
   const length = codePointLength(raw);
   if (length > 100) return `100 文字以内にしてください（今 ${String(length)} 文字）`;
