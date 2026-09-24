@@ -285,11 +285,14 @@ export function generateFolderFixtures(root) {
  *   ときの件数の変化を確かめる）。
  */
 /**
- * generateTagsFixtures は再生画面のタグ（issue 268）とライブラリのカードの
- * タグ・タグでの絞り込み（issue 269、web/e2e/tags.e2e.ts）を確かめるための、
- * 短くて軽い動画を3本作る。タグの付け外し自体は中身を見ないので、短い無音の
- * クリップで足りる。3本目（タグ動画C）は、検索欄がタグ名と題名を別々に扱うことを
- * 確かめるための、タグを持たない対照区である。
+ * generateTagsFixtures は再生画面のタグ（issue 268）、ライブラリのカードの
+ * タグ・タグでの絞り込み（issue 269）、選択バーの一括操作・すべて選択
+ * （issue 270、受け入れ条件3・4は3本以上の選択を要る）を確かめるための、
+ * 短くて軽い動画を4本作る（web/e2e/tags.e2e.ts）。タグの付け外し自体は
+ * 中身を見ないので、短い無音のクリップで足りる。3本目（タグ動画C）は、検索欄が
+ * タグ名と題名を別々に扱うことを確かめるための、タグを持たない対照区である
+ * （issue 269 の受け入れ条件7）。4本目（タグ動画D）は、選択バーの一括操作が
+ * 3本の選択を要る（issue 270）ために足す、C とは別の動画である。
  */
 export function generateTagsFixtures(root) {
   mkdirSync(root, { recursive: true });
@@ -310,6 +313,7 @@ export function generateTagsFixtures(root) {
   clip("タグ動画A.mp4", 20);
   clip("タグ動画B.mp4", 200);
   clip("タグ動画C.mp4", 100);
+  clip("タグ動画D.mp4", 320);
 }
 
 export function generateFolderSearchFixtures(root) {

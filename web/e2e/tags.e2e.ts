@@ -1,9 +1,11 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-// 再生画面のタグ（issue 268、親 Issue #193 の受け入れ条件 1・2・6・13）と、
-// ライブラリのカードのタグ・タグでの絞り込み（issue 269、受け入れ条件 5・7・8・19・20）を
-// 実ブラウザに通す。動画は run-e2e.mjs が generateTagsFixtures で作る 3 本
-// （タグ動画A・タグ動画B・タグ動画C）。タグ動画Cはタグを持たない対照区である。
+// 再生画面のタグ（issue 268、親 Issue #193 の受け入れ条件 1・2・6・13）、
+// ライブラリのカードのタグ・タグでの絞り込み（issue 269、受け入れ条件 5・7・8・19・20）、
+// 選択バーの一括操作・すべて選択（issue 270、受け入れ条件 3・4）を実ブラウザに通す。
+// 動画は run-e2e.mjs が generateTagsFixtures で作る 4 本
+// （タグ動画A・タグ動画B・タグ動画C・タグ動画D）。タグ動画Cはタグを持たない対照区
+// （issue 269 受け入れ条件7）で、issue 270 のテストでは触らない。
 
 interface MediaFolder {
   id: number;
@@ -124,7 +126,7 @@ test.describe.serial("video tags", () => {
 
     const list = await request.get("/api/videos?limit=200");
     const page = (await list.json()) as { items: Video[] };
-    expect(page.items).toHaveLength(3);
+    expect(page.items).toHaveLength(4);
     for (const item of page.items) videos.set(item.title, item);
   });
 
@@ -362,8 +364,8 @@ test.describe.serial("video tags", () => {
       await attachTag(request, b.id, tag.id);
 
       await page.goto("/");
-      // 絞り込み前は、タグの無いタグ動画Cも含めて3件出る。
-      await expect(page.getByRole("article")).toHaveCount(3);
+      // 絞り込み前は、タグの無いタグ動画C・Dも含めて4件出る。
+      await expect(page.getByRole("article")).toHaveCount(4);
 
       await pressCardTag(page, a.id, "e2e旅行");
       await expect(page).toHaveURL(new RegExp(`tag=${String(tag.id)}(&|$)`));
@@ -390,10 +392,10 @@ test.describe.serial("video tags", () => {
       await pressCardTag(page, a.id, "e2e旅行");
       await expect(page.getByRole("article")).toHaveCount(2);
 
-      // 一覧の上のチップを1回押すと外れ、押す前の一覧（タグ動画Cを含む3件）に戻る。
+      // 一覧の上のチップを1回押すと外れ、押す前の一覧（タグ動画C・Dを含む4件）に戻る。
       await activeTagChip(page, "e2e旅行").click();
       await expect(page).not.toHaveURL(/tag=/);
-      await expect(page.getByRole("article")).toHaveCount(3);
+      await expect(page.getByRole("article")).toHaveCount(4);
 
       // 再生画面でタグを押すと、そのタグ1つで絞り込んだライブラリ一覧が開く。
       await page.goto(`/videos/${String(a.id)}`);
@@ -515,6 +517,97 @@ test.describe.serial("video tags", () => {
       await box.fill("e2e検索専用タグ");
       await expect(page.getByRole("link", { name: "タグ動画A" })).toHaveCount(0);
       await box.fill("");
+    });
+  });
+
+  test.describe("選択バーの一括操作・すべて選択（issue 270）", () => {
+    function checkbox(page: Page, title: string) {
+      return page.getByRole("checkbox", { name: `「${title}」を選択` });
+    }
+
+    test("3: 3本を選び選択バーからタグを付けると全部に付く。外す候補で一部にしか付いていないタグが分かる", async ({
+      page,
+      request,
+    }) => {
+      const a = video("タグ動画A");
+      const b = video("タグ動画B");
+      // タグ動画Cは issue 269 の受け入れ条件7の対照区（タグを持たない）なので
+      // ここでは触らず、選択には別の動画（タグ動画D）を使う。
+      const d = video("タグ動画D");
+      await clearVideoTags(request, a.id);
+      await clearVideoTags(request, b.id);
+      await clearVideoTags(request, d.id);
+      const solo = await createTag(request, "e2e一部タグ");
+      await attachTag(request, a.id, solo.id);
+
+      await page.goto("/");
+      await expect(page.getByRole("article")).toHaveCount(4);
+
+      await checkbox(page, "タグ動画A").click();
+      await checkbox(page, "タグ動画B").click();
+      await checkbox(page, "タグ動画D").click();
+      await expect(page.getByText("3 件を選択中")).toBeVisible();
+
+      await page.getByRole("button", { name: "タグを付ける" }).click();
+      const addInput = page.getByRole("combobox", { name: "タグを付ける" });
+      await addInput.fill("e2e全部タグ");
+      await page.getByRole("option", { name: /を作成/ }).click();
+      await expect(page.getByText("3 件に「e2e全部タグ」を付けました")).toBeVisible();
+
+      // 3本すべてのカードに付く（受け入れ条件3）。見える「タグ」の一覧の中だけを
+      // 見る（オーバーフロー計測用の隠れた複製は数えない）。
+      for (const v of [a, b, d]) {
+        await expect(
+          page
+            .locator(`[data-video-id="${String(v.id)}"]`)
+            .getByRole("list", { name: "タグ" })
+            .getByText("e2e全部タグ"),
+        ).toBeVisible();
+      }
+      // 再生画面にも表示される（受け入れ条件3）。
+      await page.goto(`/videos/${String(b.id)}`);
+      await expect(chip(page, "e2e全部タグ")).toBeVisible();
+      await page.goto("/");
+
+      // 「タグを外す」を開くと、一部にしか付いていない e2e一部タグ が分かる。
+      await checkbox(page, "タグ動画A").click();
+      await checkbox(page, "タグ動画B").click();
+      await checkbox(page, "タグ動画D").click();
+      await page.getByRole("button", { name: "タグを外す" }).click();
+      await expect(
+        page.getByRole("option", { name: "e2e一部タグ、一部の動画だけ、3 件中 1 件" }),
+      ).toBeVisible();
+      await expect(page.getByRole("option", { name: /^e2e全部タグ/ })).toBeVisible();
+    });
+
+    test("4: すべて選択で全件を選んでタグを付けると、選択バーの件数どおり全動画に付く", async ({
+      page,
+      request,
+    }) => {
+      await page.goto("/");
+      await expect(page.getByRole("article")).toHaveCount(4);
+
+      await checkbox(page, "タグ動画A").click();
+      await expect(page.getByText("1 件を選択中")).toBeVisible();
+
+      await page.getByRole("button", { name: "すべて選択" }).click();
+      await expect(page.getByText("4 件を選択中")).toBeVisible();
+
+      await page.getByRole("button", { name: "タグを付ける" }).click();
+      await page
+        .getByRole("combobox", { name: "タグを付ける" })
+        .fill("e2eすべて選択タグ");
+      await page.getByRole("option", { name: /を作成/ }).click();
+      await expect(
+        page.getByText("4 件に「e2eすべて選択タグ」を付けました"),
+      ).toBeVisible();
+
+      // 選択バーに出ていた件数（4件、ライブラリの全件）と同じ本数に付いたことを、
+      // タグの本数（GET /api/tags の videoCount）で確かめる（受け入れ条件4）。
+      const tagsResponse = await request.get("/api/tags");
+      const tags = ((await tagsResponse.json()) as { items: Tag[] }).items;
+      const created = tags.find((t) => t.name === "e2eすべて選択タグ");
+      expect(created?.videoCount).toBe(4);
     });
   });
 
