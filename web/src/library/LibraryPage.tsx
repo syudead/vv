@@ -272,7 +272,7 @@ export default function LibraryPage() {
   }, [hasMore, loadMore, resetPreview]);
 
   const empty = !loading && error === null && items.length === 0;
-  const initialLoadFailed = error !== null && items.length === 0;
+  const initialLoadFailed = !loading && error !== null && items.length === 0;
   const conditioned = hasConditions(criteria);
   const selectionMode = selectedIds.size > 0;
   const resultStatus = loading ? "読み込み中…" : resultCountText(total);

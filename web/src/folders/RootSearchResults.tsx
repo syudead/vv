@@ -127,7 +127,7 @@ export default function RootSearchResults({
   };
   const noMatch = !waiting && failure === null && items.length === 0;
   const initialLoadFailed =
-    failure !== null && (items.length === 0 || roots.error !== null);
+    !waiting && failure !== null && (items.length === 0 || roots.error !== null);
   const summaryText = waiting ? "読み込み中…" : resultCountText(total);
 
   return (

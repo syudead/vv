@@ -138,6 +138,38 @@ describe("useVideos（一覧の読み込み）", () => {
     expect(result.current.total).toBe(2);
   });
 
+  it("続きの応答と同じ描画に入った再生位置の更新を保持する", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await act(async () => calls[0]?.resolve(page([1, 2], "next")));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    const progress = {
+      positionMs: 30_000,
+      completed: false,
+      updatedAt: "2026-09-25T00:00:00Z",
+    };
+
+    await act(async () => {
+      recordSavedProgress(2, progress, nextProgressSequence());
+      calls[1]?.resolve(page([3]));
+    });
+
+    expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3]);
+    expect(result.current.items[1]?.progress).toEqual(progress);
+  });
+
+  it("先頭ページの再試行中は前のエラーを消す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await act(async () => calls[0]?.reject(new Error("一時的な失敗")));
+    expect(result.current.error).toBe("一時的な失敗");
+
+    act(() => result.current.reload());
+    await waitFor(() => expect(calls).toHaveLength(2));
+
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
   it("保存された再生位置を、表示中の該当する項目にだけ反映する", async () => {
     const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
     await waitFor(() => {

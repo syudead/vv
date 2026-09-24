@@ -25,7 +25,8 @@ export default function FolderSearchResults({
   backTo: string;
 }) {
   const noMatch = !videos.loading && videos.error === null && videos.items.length === 0;
-  const initialLoadError = videos.items.length === 0 ? videos.error : null;
+  const initialLoadError =
+    !videos.loading && videos.items.length === 0 ? videos.error : null;
   return (
     <>
       <h2 className="sr-only">検索結果</h2>

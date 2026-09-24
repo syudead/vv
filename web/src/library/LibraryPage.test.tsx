@@ -183,20 +183,39 @@ describe("LibraryPage", () => {
     expect(screen.getByRole("button", { name: "取り込む" })).toBeDefined();
   });
 
-  it("失敗なら再試行を出す", async () => {
-    fetchMock.mockImplementation((input) =>
-      Promise.resolve(
-        String(input).startsWith("/api/scans/current")
-          ? json({}, 404)
-          : String(input) === "/api/media-folders"
-            ? json([{}])
-            : json({ code: "internal", message: "壊れています" }, 500),
-      ),
-    );
+  it("失敗なら再試行を出し、再試行中は読み込み表示へ戻す", async () => {
+    let attempts = 0;
+    let resolveRetry: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/processing") {
+        return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+      }
+      attempts++;
+      if (attempts === 1) {
+        return Promise.resolve(json({ code: "internal", message: "壊れています" }, 500));
+      }
+      return new Promise<Response>((resolve) => {
+        resolveRetry = resolve;
+      });
+    });
+    const user = userEvent.setup();
     renderLibrary();
     expect(await screen.findByText("壊れています")).toBeDefined();
     expect(screen.getByRole("button", { name: "再試行" })).toBeDefined();
     expect(screen.queryByRole("status")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(resolveRetry).toBeDefined());
+    expect(screen.getByRole("status").textContent).toBe("読み込み中…");
+    expect(screen.queryByText("壊れています")).toBeNull();
+
+    await act(async () => {
+      resolveRetry?.(json({ items: [video(1)], total: 1 } satisfies VideoPage));
+    });
+    expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
   });
 
   it("条件変更後の取得に失敗したら前の件数を残さない", async () => {

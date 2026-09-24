@@ -274,6 +274,8 @@ export function useVideos(
 
       if (replace) {
         setLoading(true);
+        setError(null);
+        setNotFound(false);
       } else {
         setLoadingMore(true);
       }
@@ -312,7 +314,7 @@ export function useVideos(
           setGeneration((value) => value + 1);
           return;
         }
-        setItems(nextItems);
+        setItems((current) => (replace ? page.items : appendUnique(current, page.items)));
         const changed = page.items
           .map((video) => video.id)
           .filter((id) => changedWhileLoading.current.has(id));

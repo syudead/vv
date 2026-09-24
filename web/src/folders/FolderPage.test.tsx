@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -551,12 +551,63 @@ describe("FolderPage", () => {
     expect(screen.queryByRole("status")).toBeNull();
   });
 
-  it("最上位の検索で登録フォルダ一覧が取れないと、置き場所の無い結果ではなく再試行を出す", async () => {
+  it("フォルダ検索の再試行中は読み込み表示へ戻す", async () => {
     const base = fetchMock.getMockImplementation();
-    let failRoots = true;
+    let attempts = 0;
+    let resolveRetry: ((response: Response) => void) | undefined;
     fetchMock.mockImplementation((input, init) => {
-      if (String(input) === "/api/folders" && failRoots) {
-        return Promise.resolve(json({ code: "internal", message: "壊れています" }, 500));
+      const url = String(input);
+      if (url.startsWith("/api/folders/3/videos?")) {
+        const params = new URL(url, "http://localhost").searchParams;
+        if (params.get("query") === "broken") {
+          attempts++;
+          if (attempts === 1) {
+            return Promise.resolve(
+              json({ code: "internal", message: "壊れています" }, 500),
+            );
+          }
+          return new Promise<Response>((resolve) => {
+            resolveRetry = resolve;
+          });
+        }
+      }
+      return base!(input, init);
+    });
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?q=broken");
+    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(resolveRetry).toBeDefined());
+    expect(screen.getByRole("status").textContent).toBe("読み込み中…");
+    expect(screen.queryByText("一覧を取得できません")).toBeNull();
+
+    await act(async () => {
+      resolveRetry?.(
+        json({
+          items: [video(1, "x", { folder: { rootId: 3, path: "A" } })],
+          total: 1,
+        } satisfies VideoPage),
+      );
+    });
+    expect(await screen.findByRole("link", { name: "x、このフォルダ" })).toBeDefined();
+  });
+
+  it("最上位検索の再試行中は読み込み表示へ戻す", async () => {
+    const base = fetchMock.getMockImplementation();
+    let attempts = 0;
+    let resolveRetry: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/folders") {
+        attempts++;
+        if (attempts === 1) {
+          return Promise.resolve(
+            json({ code: "internal", message: "壊れています" }, 500),
+          );
+        }
+        return new Promise<Response>((resolve) => {
+          resolveRetry = resolve;
+        });
       }
       return base!(input, init);
     });
@@ -565,8 +616,15 @@ describe("FolderPage", () => {
     expect(await screen.findByText("一覧を取得できません")).toBeDefined();
     expect(screen.queryByRole("link", { name: /^x/ })).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
-    failRoots = false;
+
     await user.click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(resolveRetry).toBeDefined());
+    expect(screen.getByRole("status").textContent).toBe("読み込み中…");
+    expect(screen.queryByText("一覧を取得できません")).toBeNull();
+
+    await act(async () => {
+      resolveRetry?.(json(roots));
+    });
     expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();
   });
 
