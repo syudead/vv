@@ -24,6 +24,8 @@ const recoveryPollLimit = 15;
 
 export interface ScanContextValue {
   scan: Scan | null;
+  /** current scan の初回取得が完了している。 */
+  loaded: boolean;
   /** 状態取得や開始の失敗。 */
   error: string | null;
   starting: boolean;
@@ -55,6 +57,7 @@ export function useScan(): ScanContextValue {
  */
 export function ScanProvider({ children }: { children: ReactNode }) {
   const [scan, setScan] = useState<Scan | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [pollError, setPollError] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -75,9 +78,12 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const refreshFolders = () => setFolderWatch((value) => value + 1);
-    window.addEventListener("focus", refreshFolders);
-    return () => window.removeEventListener("focus", refreshFolders);
+    const refreshOnFocus = () => {
+      setFolderWatch((value) => value + 1);
+      setWatch((value) => value + 1);
+    };
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
   }, []);
 
   useEffect(() => {
@@ -122,6 +128,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         const previousScanId = lastSeenScanId.current;
         lastSeenScanId.current = current?.id ?? null;
         setScan(current);
+        setLoaded(true);
         setPollError(null);
 
         if (
@@ -135,16 +142,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       } catch (failure) {
         if (alive && !isAborted(failure)) {
           setPollError(errorMessage(failure));
-          if (
-            observedRunningScanId.current !== null ||
-            (recoveryBaselineScanId.current !== undefined &&
-              recoveryPollsLeft.current > 0)
-          ) {
-            if (recoveryBaselineScanId.current !== undefined) {
-              recoveryPollsLeft.current -= 1;
-            }
-            timer = setTimeout(() => void tick(), pollInterval);
-          }
+          timer = setTimeout(() => void tick(), pollInterval);
         }
         return;
       }
@@ -206,6 +204,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         const started = await startScan();
         requestedScanId.current = started.id;
         setScan(started);
+        setLoaded(true);
         setPollError(null);
         if (started.state === "running") {
           observedRunningScanId.current = started.id;
@@ -241,6 +240,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const value = useMemo<ScanContextValue>(
     () => ({
       scan,
+      loaded,
       error,
       starting,
       running: starting || scan?.state === "running",
@@ -250,7 +250,17 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       setFolderCount: updateFolderCount,
       finished,
     }),
-    [error, finished, folderCount, refresh, scan, start, starting, updateFolderCount],
+    [
+      error,
+      finished,
+      folderCount,
+      loaded,
+      refresh,
+      scan,
+      start,
+      starting,
+      updateFolderCount,
+    ],
   );
 
   return <ScanContext.Provider value={value}>{children}</ScanContext.Provider>;
