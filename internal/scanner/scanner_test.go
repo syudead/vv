@@ -27,6 +27,7 @@ type fakeIndex struct {
 	// 再計算していないことを確かめるために数える。
 	progress  []domain.ScanResult
 	reportErr error
+	ensureErr error
 }
 
 func (f *fakeIndex) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
@@ -108,6 +109,9 @@ func (f *fakeIndex) EnqueueJob(_ context.Context, kind domain.JobKind, videoID i
 }
 
 func (f *fakeIndex) EnsureJob(_ context.Context, kind domain.JobKind, videoID int64) error {
+	if f.ensureErr != nil {
+		return f.ensureErr
+	}
 	for _, job := range f.jobs {
 		if job.kind == kind && job.videoID == videoID {
 			return nil
@@ -326,6 +330,19 @@ func TestScanRequeuesMissingJobsForUnchangedPendingVideo(t *testing.T) {
 	}
 	if len(index.jobs) != 2 {
 		t.Fatalf("requeued jobs = %d, want 2", len(index.jobs))
+	}
+}
+
+func TestScanCountsFailedPendingJobRepairAsTarget(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	index.jobs = nil
+	index.ensureErr = errors.New("queue unavailable")
+
+	result := runScan(t, root, index)
+	if result.Total != 1 || result.Completed() != 0 || result.Failed != 1 {
+		t.Fatalf("failed pending job repair should be 0 / 1 with one failure, got %+v", result)
 	}
 }
 
@@ -584,6 +601,34 @@ func TestScanProgressCountsOnlyFilesThatNeedImport(t *testing.T) {
 	}
 	if first := index.progress[0]; first.Total != 1 || first.Completed() != 0 {
 		t.Fatalf("target discovery progress = %d / %d, want 0 / 1", first.Completed(), first.Total)
+	}
+}
+
+func TestScanRejectsFileChangedWhileContentKeyIsCalculated(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "old"})
+	path := filepath.Join(root, "a.mp4")
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index, Queue: index, Reporter: index})
+	scanner.contentKey = func(path string) (string, error) {
+		if err := os.WriteFile(path, []byte("new and longer"), 0o600); err != nil {
+			return "", err
+		}
+		return ContentKey(path)
+	}
+
+	result, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != 1 || result.Completed() != 0 || result.Failed != 1 {
+		t.Fatalf("changed file should be 0 / 1 with one failure, got %+v", result)
+	}
+	if len(index.upserts) != 0 {
+		t.Fatalf("changed file was indexed with inconsistent metadata: %+v", index.upserts)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "new and longer" {
+		t.Fatalf("fixture change failed: content=%q err=%v", got, err)
 	}
 }
 

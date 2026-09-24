@@ -86,7 +86,6 @@ type Scanner struct {
 
 type scanTarget struct {
 	path string
-	info fs.FileInfo
 }
 
 // New は走査を組み立てる。
@@ -203,12 +202,13 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 					}
 					s.logger.Warn("取り込み済みファイルのjobを確認できませんでした",
 						slog.String("path", path), slog.Any("error", err))
+					result.Total++
 					result.Failed++
 				}
 				return nil
 			}
 
-			targets = append(targets, scanTarget{path: path, info: info})
+			targets = append(targets, scanTarget{path: path})
 			return nil
 		})
 		if walkErr != nil {
@@ -276,17 +276,29 @@ func (s *Scanner) ingest(
 	target scanTarget,
 	result *domain.ScanResult,
 ) error {
+	info, err := stableTargetInfo(target.path)
+	if err != nil {
+		return err
+	}
+
 	key, err := s.contentKey(target.path)
 	if err != nil {
 		return err
+	}
+	after, err := stableTargetInfo(target.path)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(info, after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
+		return fmt.Errorf("取り込み中にファイルが変更されました (%s)", target.path)
 	}
 
 	file := domain.VideoFile{
 		Path:       target.path,
 		Title:      titleOf(target.path),
 		ContentKey: key,
-		SizeBytes:  target.info.Size(),
-		MTime:      target.info.ModTime(),
+		SizeBytes:  info.Size(),
+		MTime:      info.ModTime(),
 		Container:  domain.ContainerFromPath(target.path),
 	}
 
@@ -307,6 +319,17 @@ func (s *Scanner) ingest(
 	}
 
 	return s.enqueue(ctx, upserted)
+}
+
+func stableTargetInfo(path string) (fs.FileInfo, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("取り込み対象の情報を読めません (%s): %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("取り込み対象が通常ファイルではありません (%s)", path)
+	}
+	return info, nil
 }
 
 func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVideo) error {
