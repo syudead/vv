@@ -378,10 +378,14 @@ describe("VideoPage", () => {
       renderPage();
       await ready();
       await screen.findByRole("button", { name: "10 秒進む" });
+      // 画面全体のキー操作がプレイヤーの操作を受け取るのは描画後の effect なので、→ が効く
+      // ようになるのを待ってから Space を確かめる。
+      await waitFor(() => {
+        fireEvent.keyDown(document.body, { key: "ArrowRight" });
+        expect(controls.seekBy).toHaveBeenCalledWith(10);
+      });
       fireEvent.keyDown(document.body, { key: " " });
-      fireEvent.keyDown(document.body, { key: "ArrowRight" });
       expect(controls.togglePlay).toHaveBeenCalledTimes(1);
-      expect(controls.seekBy).toHaveBeenCalledWith(10);
     });
   });
 

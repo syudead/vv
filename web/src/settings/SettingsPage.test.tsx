@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MediaFolder } from "../api/client";
 import AppShell from "../shell/AppShell";
+import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
@@ -33,9 +34,11 @@ function renderPage() {
       <TooltipProvider>
         <ToastProvider>
           <ScanProvider>
-            <AppShell>
-              <SettingsPage />
-            </AppShell>
+            <ScanNoticeProvider>
+              <AppShell>
+                <SettingsPage />
+              </AppShell>
+            </ScanNoticeProvider>
           </ScanProvider>
         </ToastProvider>
       </TooltipProvider>

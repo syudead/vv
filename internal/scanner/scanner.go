@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -82,6 +83,11 @@ type Scanner struct {
 	reporter   Reporter
 	logger     *slog.Logger
 	contentKey func(string) (string, error)
+	walkDir    func(string, fs.WalkDirFunc) error
+}
+
+type scanTarget struct {
+	path string
 }
 
 // New は走査を組み立てる。
@@ -96,6 +102,7 @@ func New(opts Options) *Scanner {
 		reporter:   opts.Reporter,
 		logger:     logger,
 		contentKey: ContentKey,
+		walkDir:    filepath.WalkDir,
 	}
 }
 
@@ -104,10 +111,11 @@ func New(opts Options) *Scanner {
 // 手順は次のとおり。
 //
 //  1. 索引に入っているものをパスで引ける形で読み出す
-//  2. 登録済みの全ルート以下を再帰的に走り、対象のファイルを列挙する
+//  2. 登録済みの全ルート以下を再帰的に走り、取り込み対象を確定する
 //  3. パスが一致する行は、サイズと mtime を比べる。変化が無ければ何もしない
 //     （content_key の再計算もしない）
-//  4. 新しい・変わったファイルだけ content_key を計算して反映する。内容が
+//  4. 対象数を進捗として報告してから、新しい・変わったファイルだけ
+//     content_key を計算して反映する。内容が
 //     同じでパスが違うものは移動・改名として扱われる（重複を作らない）
 //  5. 走査で見つからなかった行を消す
 //
@@ -129,33 +137,27 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	var result domain.ScanResult
 	// seen は走査で見つけたパス。ここに無い索引の行が「消えたファイル」になる。
 	seen := map[string]struct{}{}
+	// targets は metadata の比較で変更なしを除いた、実際に取り込むファイル。
+	// 全ルートを列挙してから処理し、進捗の分母を先に確定させる。
+	targets := []scanTarget{}
 
-	protected := []string{}
-	var fatalErr error
 	for _, folder := range folders {
 		root := folder.Path
 		rootInfo, rootErr := os.Lstat(root)
-		if rootErr != nil || rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
-			protected = append(protected, root)
-			result.Failed++
-			continue
+		if rootErr != nil {
+			return domain.ScanResult{}, fmt.Errorf("メディアフォルダを読めません (%s): %w", root, rootErr)
 		}
-		walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+			return domain.ScanResult{}, fmt.Errorf("メディアフォルダがディレクトリではありません (%s)", root)
+		}
+		walkErr := s.walkDir(root, func(path string, entry fs.DirEntry, err error) error {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
 			}
 			if err != nil {
-				// 根が読めない場合は走査そのものの失敗。途中のディレクトリが
-				// 読めないだけなら、その範囲を保護して続ける。通常
-				// fileではSkipDirを返さない。返すと後続の兄弟まで省略される。
-				protected = append(protected, path)
 				s.logger.Warn("走査中に読み取れない場所がありました",
 					slog.String("path", path), slog.Any("error", err))
-				result.Failed++
-				if walkErrorIsDirectory(path, root, entry, indexed) {
-					return fs.SkipDir
-				}
-				return nil
+				return fmt.Errorf("場所を読めません (%s): %w", path, err)
 			}
 
 			if entry.IsDir() {
@@ -173,43 +175,108 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 			}
 
 			seen[path] = struct{}{}
-			result.Total++
-
-			if err := s.ingest(ctx, path, entry, indexed, &result); err != nil {
-				if ctx.Err() != nil {
-					return err
-				}
-				// 1件の失敗で全体を止めない。理由は記録に残し、次のファイルへ進む。
-				s.logger.Warn("取り込めなかったファイルがあります",
-					slog.String("path", path), slog.Any("error", err))
+			info, infoErr := entry.Info()
+			if infoErr != nil {
+				// media file だと判定できた時点で取り込み候補である。metadata を
+				// 読めない場合も対象件数と失敗件数に含める。
+				result.Total++
 				result.Failed++
+				s.logger.Warn("取り込み対象の情報を読めないファイルがあります",
+					slog.String("path", path), slog.Any("error", infoErr))
+				return nil
 			}
 
-			if result.Total%progressInterval == 0 {
-				if err := s.report(ctx, result); err != nil {
-					fatalErr = err
-					return err
+			if existing, ok := indexed[path]; ok &&
+				existing.SizeBytes == info.Size() &&
+				existing.MTime.Unix() == info.ModTime().Unix() {
+				// 変わっていないファイルは取り込み対象に含めない。欠落した
+				// pending jobだけを補い、terminal failureは復活させない。
+				if err := s.ensurePendingJobs(ctx, existing); err != nil {
+					if ctx.Err() != nil {
+						return err
+					}
+					s.logger.Warn("取り込み済みファイルのjobを確認できませんでした",
+						slog.String("path", path), slog.Any("error", err))
+					result.Total++
+					result.Failed++
 				}
+				return nil
 			}
+
+			targets = append(targets, scanTarget{path: path})
 			return nil
 		})
 		if walkErr != nil {
-			if fatalErr != nil {
-				return result, fatalErr
-			}
 			if ctx.Err() != nil {
-				return result, ctx.Err()
+				return domain.ScanResult{}, ctx.Err()
 			}
-			protected = append(protected, root)
+			return domain.ScanResult{}, fmt.Errorf("メディアフォルダを最後まで走査できませんでした (%s): %w", root, walkErr)
+		}
+	}
+	result.Total += len(targets)
+	// 対象列挙中は total=0 の不確定表示で、ここから確定した 0 / total を示す。
+	if err := s.report(ctx, result); err != nil {
+		return result, err
+	}
+
+	for i, target := range targets {
+		if err := s.ingest(ctx, target, &result); err != nil {
+			if ctx.Err() != nil {
+				return result, err
+			}
+			// 1件の失敗で全体を止めない。理由は記録に残し、次のファイルへ進む。
+			s.logger.Warn("取り込めなかったファイルがあります",
+				slog.String("path", target.path), slog.Any("error", err))
 			result.Failed++
-			s.logger.Warn("メディアフォルダを最後まで走査できませんでした", slog.String("path", root), slog.Any("error", walkErr))
+		} else {
+			result.Processed++
+		}
+
+		if (i+1)%progressInterval == 0 {
+			if err := s.report(ctx, result); err != nil {
+				return result, err
+			}
 		}
 	}
 	if err := s.report(ctx, result); err != nil {
 		return result, err
 	}
 
-	removed, err := s.removeMissing(ctx, folders, seen, protected)
+	checkedDirs := map[string]struct{}{}
+	for _, folder := range folders {
+		if err := ensureReadableDirectory(folder.Path); err != nil {
+			return result, fmt.Errorf("取り込み後にメディアフォルダを確認できません (%s): %w", folder.Path, err)
+		}
+		checkedDirs[folder.Path] = struct{}{}
+	}
+
+	// 列挙後に消えた個別ファイルを、発見済みという理由だけで索引へ残さない。
+	// 親ディレクトリごと消えた場合は列挙結果を信頼できないため、削除せず
+	// 走査全体を失敗させる。
+	for path := range seen {
+		info, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			parent := filepath.Dir(path)
+			if _, ok := checkedDirs[parent]; !ok {
+				if parentErr := ensureReadableDirectory(parent); parentErr != nil {
+					return result, fmt.Errorf("取り込み後に親ディレクトリを確認できません (%s): %w", parent, parentErr)
+				}
+				checkedDirs[parent] = struct{}{}
+			}
+			delete(seen, path)
+			continue
+		}
+		if err != nil {
+			s.logger.Warn("取り込み後のファイル状態を確認できませんでした",
+				slog.String("path", path), slog.Any("error", err))
+			continue
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			delete(seen, path)
+		}
+	}
+
+	removed, err := s.removeMissing(ctx, folders, seen)
 	if err != nil {
 		return result, err
 	}
@@ -218,51 +285,56 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	return result, nil
 }
 
-func walkErrorIsDirectory(path, root string, entry fs.DirEntry, indexed map[string]domain.IndexedVideo) bool {
-	if path == root || entry != nil && entry.IsDir() {
-		return true
+func ensureReadableDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
 	}
-	for indexedPath := range indexed {
-		if indexedPath != path && domain.PathWithinRoot(path, indexedPath) {
-			return true
-		}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("ディレクトリではありません")
 	}
-	return false
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	_, readErr := dir.Readdirnames(1)
+	closeErr := dir.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return readErr
+	}
+	return closeErr
 }
 
 // ingest は1つのファイルを索引に反映する。
 func (s *Scanner) ingest(
 	ctx context.Context,
-	path string,
-	entry fs.DirEntry,
-	indexed map[string]domain.IndexedVideo,
+	target scanTarget,
 	result *domain.ScanResult,
 ) error {
-	info, err := entry.Info()
+	info, err := stableTargetInfo(target.path)
 	if err != nil {
 		return err
 	}
 
-	// 変わっていないファイルは再hashせず、欠落したpending jobだけを補う。
-	// terminal failureは復活させない。
-	if existing, ok := indexed[path]; ok &&
-		existing.SizeBytes == info.Size() &&
-		existing.MTime.Unix() == info.ModTime().Unix() {
-		return s.ensurePendingJobs(ctx, existing)
-	}
-
-	key, err := s.contentKey(path)
+	key, err := s.contentKey(target.path)
 	if err != nil {
 		return err
+	}
+	after, err := stableTargetInfo(target.path)
+	if err != nil {
+		return err
+	}
+	if !os.SameFile(info, after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
+		return fmt.Errorf("取り込み中にファイルが変更されました (%s)", target.path)
 	}
 
 	file := domain.VideoFile{
-		Path:       path,
-		Title:      titleOf(path),
+		Path:       target.path,
+		Title:      titleOf(target.path),
 		ContentKey: key,
 		SizeBytes:  info.Size(),
 		MTime:      info.ModTime(),
-		Container:  domain.ContainerFromPath(path),
+		Container:  domain.ContainerFromPath(target.path),
 	}
 
 	upserted, err := s.index.UpsertVideo(ctx, file)
@@ -282,6 +354,17 @@ func (s *Scanner) ingest(
 	}
 
 	return s.enqueue(ctx, upserted)
+}
+
+func stableTargetInfo(path string) (fs.FileInfo, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("取り込み対象の情報を読めません (%s): %w", path, err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("取り込み対象が通常ファイルではありません (%s)", path)
+	}
+	return info, nil
 }
 
 func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVideo) error {
@@ -335,7 +418,7 @@ func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error
 // そちらへ付け替わっている。その結果このパスは索引から消えているので、ここで
 // 「消えたファイル」として扱われることはない。
 func (s *Scanner) removeMissing(
-	ctx context.Context, folders []domain.MediaFolder, seen map[string]struct{}, protected []string,
+	ctx context.Context, folders []domain.MediaFolder, seen map[string]struct{},
 ) (int, error) {
 	current, err := s.index.IndexedVideosByPath(ctx)
 	if err != nil {
@@ -354,7 +437,7 @@ func (s *Scanner) removeMissing(
 				break
 			}
 		}
-		if !managed || pathProtected(path, protected) {
+		if !managed {
 			continue
 		}
 		locationID := row.LocationID
@@ -373,16 +456,7 @@ func (s *Scanner) removeMissing(
 	return len(missing), nil
 }
 
-func pathProtected(path string, prefixes []string) bool {
-	for _, prefix := range prefixes {
-		if domain.PathWithinRoot(prefix, path) {
-			return true
-		}
-	}
-	return false
-}
-
-// report は進捗を報告する。報告の失敗で走査を止めない。
+// report は進捗を報告する。進捗と処理結果の整合性を守るため、報告の失敗時は走査を止める。
 func (s *Scanner) report(ctx context.Context, result domain.ScanResult) error {
 	if s.reporter == nil {
 		return nil
