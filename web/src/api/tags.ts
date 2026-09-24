@@ -283,14 +283,20 @@ export function attachVideoTagByID(
 
 /**
  * attachVideoTagByName は名前でタグを付ける。名前はシノニムを含めて引き、
- * 無ければ作る（contracts/tags-api.md §4）。
+ * 無ければ作る（contracts/tags-api.md §4）。新しいタグが作られているかも
+ * しれないので、`createTag` と同じく共有のタグの一覧を取り直す
+ * （issue 268 の受け入れ条件1「別の動画の再生画面でタグを追加しようとすると、
+ * そのタグが候補に出る」）。
  */
 export function attachVideoTagByName(
   videoIds: readonly number[],
   name: string,
   signal?: AbortSignal,
 ): Promise<VideoTagsResponse> {
-  return updateVideoTags(videoIds, "add", { name }, signal);
+  return updateVideoTags(videoIds, "add", { name }, signal).then((result) => {
+    afterTagCreated();
+    return result;
+  });
 }
 
 /**

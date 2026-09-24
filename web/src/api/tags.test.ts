@@ -381,6 +381,22 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
     });
   });
 
+  // issue 268 の受け入れ条件1: 名前で付けたタグが新しく作られたかもしれないので、
+  // createTag と同じく共有の一覧を取り直す（別の動画の再生画面の候補にも出る）。
+  it("attachVideoTagByNameは共有のタグの一覧を取り直す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ tag: { id: 9, name: "新規" }, applied: 1 }))
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 9, name: "新規" })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await attachVideoTagByName([1], "新規");
+    await flush();
+
+    expect(fetch.mock.calls[1]?.[0]).toBe("/api/tags");
+    expect(currentTags()).toEqual([tag({ id: 9, name: "新規" })]);
+  });
+
   it("detachVideoTagはaction=removeとid指定で送り、除去の通知を出す", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
