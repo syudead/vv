@@ -18,7 +18,7 @@ export interface SearchBoxProps {
    * （specs/013-library-search/contracts/list-url.md §3）。
    */
   onCommit: (next: string, mode: HistoryMode) => void;
-  /** 入力欄を外から指す（一致なしの「条件を解除」でフォーカスを戻す）。 */
+  /** 入力欄を外から指す。 */
   inputRef?: RefObject<HTMLInputElement | null>;
   /** 読み上げ名。 */
   label?: string;
@@ -106,7 +106,7 @@ export default function SearchBox({
     [onCommit],
   );
 
-  // 戻る・進むや「条件を解除」で URL 側が変わったら入力欄を追従させる
+  // 戻る・進むなどで URL 側が変わったら入力欄を追従させる。
   useEffect(() => {
     if (query !== committed.current) {
       committed.current = query;

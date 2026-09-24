@@ -408,19 +408,13 @@ test.describe.serial("folder search", () => {
     ).toBeVisible();
     await expect(
       page.getByText("中のフォルダも探すには、検索語を入れてください。"),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       page.getByRole("link", { name: "B、動画 1 本、フォルダ 0 件" }),
     ).toBeVisible();
-    const chips = page
-      .getByRole("list", { name: "効いている条件" })
-      .getByRole("listitem");
-    await expect(chips).toHaveText(["視聴済み", "Aの直下"]);
-
-    // 「条件を解除」を押しても同じフォルダに留まる（受け入れ条件 21）。
-    await page.getByRole("button", { name: "条件を解除" }).click();
-    await expect(page).toHaveURL(new RegExp(`${folderUrl(root!.id, "A")}(\\?|$)`));
-    await expect(page.getByRole("link", { name: "x 京都" })).toBeVisible();
+    await expect(page.getByRole("list", { name: "効いている条件" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "条件を解除" })).toHaveCount(0);
+    await expect(page).toHaveURL(/\?watch=watched&sort=addedDesc$/);
   });
 
   test("最上位で検索語が空のときは登録フォルダだけを出し、絞り込み・並べ替え・向きを無効にする", async ({

@@ -16,9 +16,20 @@ fi
 
 cd "${CLAUDE_PROJECT_DIR:-$(dirname "$0")/../..}"
 
-task_version="$(jq -r .task scripts/tool-versions.json)"
+# task の版は mise.toml（CI の mise-action と同じ出どころ）の [tools] から読む。
+task_version="$(sed -n 's/^task *= *"\(.*\)"$/\1/p' mise.toml)"
+if [ -z "$task_version" ]; then
+  echo "session-start: mise.toml に task の版が見つからない" >&2
+  exit 1
+fi
 go install "github.com/go-task/task/v3/cmd/task@v${task_version}"
-"$(go env GOPATH)/bin/task" setup
+gobin="$(go env GOPATH)/bin"
+"$gobin/task" setup
+
+# 以後のコマンドから task をそのまま呼べるように、セッションの PATH に足す。
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  echo "export PATH=\"$gobin:\$PATH\"" >>"$CLAUDE_ENV_FILE"
+fi
 
 # ffmpeg／ffprobe はここでは入れない。task test と task lint には不要で、
 # 必要になるのは bin/mdm を直接起動するときだけである（起動前確認で存在を見る）。

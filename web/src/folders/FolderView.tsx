@@ -44,7 +44,6 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     changePlayable,
     commitQuery,
     clearAll,
-    clearFromNoMatches,
     changeZoom,
   } = useConditions();
   const scan = useScan();
@@ -186,15 +185,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   } else if (searching) {
     // 検索結果（ui-design.md「Search results」）。
     body = (
-      <FolderSearchResults
-        folder={folder}
-        name={name}
-        criteria={criteria}
-        videos={videos}
-        zoom={zoom}
-        backTo={backTo}
-        onClearNoMatches={clearFromNoMatches}
-      />
+      <FolderSearchResults folder={folder} videos={videos} zoom={zoom} backTo={backTo} />
     );
   } else if (noVideosAtAll) {
     body = (
@@ -213,14 +204,12 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     // 直下だけを対象にする通常表示（絞り込みだけのときも同じ形。ui-design.md「Filter only」）。
     body = (
       <FolderContents
-        name={name}
         criteria={criteria}
         listingLoading={listing.loading}
         childFolders={children}
         videos={videos}
         zoom={zoom}
         backTo={backTo}
-        onClearNoMatches={clearFromNoMatches}
       />
     );
   }
