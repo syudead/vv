@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -241,6 +242,40 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		return result, err
 	}
 
+	checkedDirs := map[string]struct{}{}
+	for _, folder := range folders {
+		if err := ensureReadableDirectory(folder.Path); err != nil {
+			return result, fmt.Errorf("取り込み後にメディアフォルダを確認できません (%s): %w", folder.Path, err)
+		}
+		checkedDirs[folder.Path] = struct{}{}
+	}
+
+	// 列挙後に消えた個別ファイルを、発見済みという理由だけで索引へ残さない。
+	// 親ディレクトリごと消えた場合は列挙結果を信頼できないため、削除せず
+	// 走査全体を失敗させる。
+	for path := range seen {
+		info, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			parent := filepath.Dir(path)
+			if _, ok := checkedDirs[parent]; !ok {
+				if parentErr := ensureReadableDirectory(parent); parentErr != nil {
+					return result, fmt.Errorf("取り込み後に親ディレクトリを確認できません (%s): %w", parent, parentErr)
+				}
+				checkedDirs[parent] = struct{}{}
+			}
+			delete(seen, path)
+			continue
+		}
+		if err != nil {
+			s.logger.Warn("取り込み後のファイル状態を確認できませんでした",
+				slog.String("path", path), slog.Any("error", err))
+			continue
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			delete(seen, path)
+		}
+	}
+
 	removed, err := s.removeMissing(ctx, folders, seen)
 	if err != nil {
 		return result, err
@@ -248,6 +283,26 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	result.Removed = removed
 
 	return result, nil
+}
+
+func ensureReadableDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return fmt.Errorf("ディレクトリではありません")
+	}
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	_, readErr := dir.Readdirnames(1)
+	closeErr := dir.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return readErr
+	}
+	return closeErr
 }
 
 // ingest は1つのファイルを索引に反映する。

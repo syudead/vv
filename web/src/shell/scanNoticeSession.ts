@@ -1,6 +1,7 @@
 export interface CompletionNotice {
   scanId: number;
   expiresAt: number;
+  pausedRemainingMs: number | null;
 }
 
 export interface ScanNoticeSession {
@@ -42,7 +43,14 @@ function parse(value: unknown): ScanNoticeSession | null {
   const completionNotice = notice as Record<string, unknown>;
   if (
     !validId(completionNotice.scanId) ||
-    typeof completionNotice.expiresAt !== "number"
+    typeof completionNotice.expiresAt !== "number" ||
+    !(
+      completionNotice.pausedRemainingMs === undefined ||
+      completionNotice.pausedRemainingMs === null ||
+      (typeof completionNotice.pausedRemainingMs === "number" &&
+        Number.isFinite(completionNotice.pausedRemainingMs) &&
+        completionNotice.pausedRemainingMs >= 0)
+    )
   ) {
     return null;
   }
@@ -55,6 +63,7 @@ function parse(value: unknown): ScanNoticeSession | null {
     completionNotice: {
       scanId: completionNotice.scanId,
       expiresAt: completionNotice.expiresAt,
+      pausedRemainingMs: completionNotice.pausedRemainingMs ?? null,
     },
   };
 }
