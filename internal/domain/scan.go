@@ -7,8 +7,11 @@ package domain
 // 「最後まで走った上で取り込めなかった数」を表す。走査そのものが失敗した場合
 // （対象ディレクトリが読めない等）は scans.error に別途記録する。
 type ScanResult struct {
-	// Total は走査で見つけた対象ファイルの数。
+	// Total は追加・更新のために実際の取り込み処理が必要なファイルの数。
+	// 変更のないファイルと、走査後に削除する所在は含めない。
 	Total int
+	// Processed は Total のうち取り込み処理を正常に終えた数。
+	Processed int
 	// Added は新しく取り込んだ数。
 	Added int
 	// Updated は既存の行を更新した数（サイズか mtime が変わったもの）。
@@ -22,9 +25,9 @@ type ScanResult struct {
 	Failed int
 }
 
-// Completed は取り込みを終えた数を返す。進捗の分子として使う。
-// 失敗した分も「もう処理しない」という意味では進んでいるが、利用者に見せる
-// completed は成功した数であるべきなので、ここには含めない。
+// Completed は取り込みを正常に終えた対象数を返す。進捗の分子として使う。
+// 結果の内訳とは独立して数える。内容が同じでも metadata の確認と反映が必要な
+// 対象や、将来追加される結果種別でも、処理を終えれば進捗は進むためである。
 func (r ScanResult) Completed() int {
-	return r.Added + r.Updated + r.Moved
+	return r.Processed
 }
