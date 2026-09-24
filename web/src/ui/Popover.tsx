@@ -10,6 +10,7 @@ export const PopoverClose = RadixPopover.Close;
 export function PopoverContent({
   children,
   align = "end",
+  side = "bottom",
   className,
   container,
   onOpenAutoFocus,
@@ -20,6 +21,8 @@ export function PopoverContent({
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
+  /** 吹き出しを開く向き。既定は下（トリガの下に開く）。選択バーは上に開く。 */
+  side?: "top" | "bottom" | "left" | "right";
   className?: string;
   /** 吹き出しを描く先。全画面の要素の中で開くときに、その要素を渡す。既定は body。 */
   container?: HTMLElement | null;
@@ -34,6 +37,7 @@ export function PopoverContent({
     <RadixPopover.Portal container={container ?? undefined}>
       <RadixPopover.Content
         align={align}
+        side={side}
         sideOffset={6}
         collisionPadding={8}
         onOpenAutoFocus={onOpenAutoFocus}

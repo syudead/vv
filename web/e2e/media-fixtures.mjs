@@ -285,8 +285,9 @@ export function generateFolderFixtures(root) {
  *   ときの件数の変化を確かめる）。
  */
 /**
- * generateTagsFixtures は再生画面のタグ（issue 268、web/e2e/tags.e2e.ts）を
- * 確かめるための、短くて軽い動画を2本作る。タグの付け外し自体は中身を見ないので、
+ * generateTagsFixtures は再生画面のタグ（issue 268、web/e2e/tags.e2e.ts）と
+ * 選択バーの一括操作（issue 270、受け入れ条件3・4は3本以上の選択を要る）を
+ * 確かめるための、短くて軽い動画を3本作る。タグの付け外し自体は中身を見ないので、
  * 短い無音のクリップで足りる。
  */
 export function generateTagsFixtures(root) {
@@ -307,6 +308,7 @@ export function generateTagsFixtures(root) {
 
   clip("タグ動画A.mp4", 20);
   clip("タグ動画B.mp4", 200);
+  clip("タグ動画C.mp4", 320);
 }
 
 export function generateFolderSearchFixtures(root) {

@@ -25,6 +25,13 @@ export interface ComboboxOption {
   hint?: string;
   /** 行の右に置く従の情報（本数など）。 */
   meta?: ReactNode;
+  /**
+   * 行の読み上げ名。指定しなければ行の中の文字（label・hint・meta）から
+   * 決まる既定の名前を使う。選択バーの「タグを外す」の一部の候補のように、
+   * 見た目の文言と読み上げ名を変えたいときに使う
+   * （ui-design.md「Accessibility」の読み上げ名）。
+   */
+  ariaLabel?: string;
 }
 
 const controlCharPattern = /[\u0000-\u001f\u007f-\u009f]/;
@@ -254,6 +261,7 @@ export default function Combobox({
             role="option"
             aria-selected={index === activeIndex}
             aria-disabled={blocked || undefined}
+            aria-label={option.ariaLabel}
             data-index={index}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => {

@@ -877,4 +877,188 @@ describe("LibraryPage", () => {
       );
     });
   });
+
+  describe("選択バーのタグ一括操作・すべて選択（issue 270）", () => {
+    function installSelectionAwareList(options: {
+      tags?: { id: number; name: string }[];
+      total?: number;
+      allIds?: number[];
+      idsMissingTagIds?: number[];
+      idsFail?: boolean;
+    }) {
+      const tags = options.tags ?? [];
+      const total = options.total ?? 3;
+      const attached = new Map<number, Set<number>>();
+      fetchMock.mockImplementation((input, init) => {
+        const url = new URL(String(input), "http://localhost");
+        const method = init?.method ?? "GET";
+        if (url.pathname === "/api/scans/current") return Promise.resolve(json({}, 404));
+        if (url.pathname === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url.pathname === "/api/processing") {
+          return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+        }
+        if (url.pathname === "/api/tags" && method === "GET") {
+          return Promise.resolve(
+            json({ items: tags.map((tag) => ({ ...tag, synonyms: [], videoCount: 1 })) }),
+          );
+        }
+        if (url.pathname === "/api/videos/ids") {
+          if (options.idsFail) return Promise.resolve(json({ code: "internal" }, 500));
+          if (options.idsMissingTagIds !== undefined) {
+            return Promise.resolve(
+              json({ ids: [], missingTagIds: options.idsMissingTagIds }),
+            );
+          }
+          return Promise.resolve(json({ ids: options.allIds ?? [] }));
+        }
+        if (url.pathname === "/api/video-tags" && method === "POST") {
+          const body = JSON.parse(String(init?.body)) as {
+            videoIds: number[];
+            action: "add" | "remove";
+            tag: { id: number } | { name: string };
+          };
+          const requestedTag = body.tag;
+          const found =
+            "id" in requestedTag ? tags.find((t) => t.id === requestedTag.id) : undefined;
+          const resolvedTag = found ?? {
+            id: 999,
+            name: "id" in requestedTag ? "?" : requestedTag.name,
+          };
+          for (const videoId of body.videoIds) {
+            const set = attached.get(videoId) ?? new Set<number>();
+            if (body.action === "add") set.add(resolvedTag.id);
+            else set.delete(resolvedTag.id);
+            attached.set(videoId, set);
+          }
+          return Promise.resolve(
+            json({ tag: resolvedTag, applied: body.videoIds.length }),
+          );
+        }
+        if (url.pathname === "/api/video-tags/summary" && method === "POST") {
+          const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
+          const counts = new Map<number, number>();
+          for (const videoId of body.videoIds) {
+            for (const tagId of attached.get(videoId) ?? []) {
+              counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
+            }
+          }
+          const items = [...counts.entries()].map(([tagId, count]) => ({
+            tag: { id: tagId, name: tags.find((t) => t.id === tagId)?.name ?? "?" },
+            count,
+          }));
+          return Promise.resolve(json({ total: body.videoIds.length, items }));
+        }
+        if (url.pathname === "/api/videos") {
+          return Promise.resolve(
+            json({
+              items: [
+                video(1, {
+                  tags: [...(attached.get(1) ?? [])].map((id) => ({ id, name: "旅行" })),
+                }),
+                video(2),
+                video(3),
+              ],
+              total,
+            } satisfies VideoPage),
+          );
+        }
+        throw new Error(`unexpected request: ${url.toString()}`);
+      });
+    }
+
+    it("すべて選択で、読み込んでいないページを含む全件が選ばれる（受け入れ条件4）", async () => {
+      installSelectionAwareList({
+        total: 50,
+        allIds: Array.from({ length: 50 }, (_, i) => i + 1),
+      });
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      expect(screen.getByText("1 件を選択中")).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: "すべて選択" }));
+      expect(await screen.findByText("50 件を選択中")).toBeDefined();
+    });
+
+    it("すべて選択が失敗したら、選択を変えずにトーストで伝える", async () => {
+      installSelectionAwareList({ total: 50, idsFail: true });
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("button", { name: "すべて選択" }));
+
+      expect(await screen.findByText("すべてを選択できませんでした")).toBeDefined();
+      expect(screen.getByText("1 件を選択中")).toBeDefined();
+    });
+
+    it("絞り込み中のタグを別のタブで消してから「すべて選択」すると、選ばれず、もう無いことが伝わる", async () => {
+      const tag = { id: 1, name: "旅行" };
+      installSelectionAwareList({ tags: [], total: 3, idsMissingTagIds: [1] });
+      const user = userEvent.setup();
+      renderLibrary("/?tag=1");
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("button", { name: "すべて選択" }));
+
+      expect(
+        await screen.findByText("削除されたタグを絞り込みから外しました"),
+      ).toBeDefined();
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).not.toContain("tag=1"),
+      );
+      // 選択は作られない。条件（tag）が変わったことで、押す前の選択も解除される
+      // （検索語・視聴状態・再生可否と同じ扱い。ui-design.md「Active tag filters」）。
+      await waitFor(() => expect(screen.queryByText(/件を選択中/)).toBeNull());
+      void tag;
+    });
+
+    it("選択バーでタグを付けると、読み込み済みのカードにすぐ出て、選択は残る", async () => {
+      const tag = { id: 1, name: "旅行" };
+      installSelectionAwareList({ tags: [tag] });
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("checkbox", { name: "「動画 2」を選択" }));
+      await user.click(screen.getByRole("button", { name: "タグを付ける" }));
+      const input = await screen.findByRole("combobox", { name: "タグを付ける" });
+      await user.type(input, "旅行");
+      await screen.findByRole("option", { name: /旅行/ });
+      await user.keyboard("{Enter}");
+
+      expect(await screen.findByText("2 件に「旅行」を付けました")).toBeDefined();
+      // 選択は残る。
+      expect(screen.getByText("2 件を選択中")).toBeDefined();
+      // 読み込み済みのカード（動画1）にタグがすぐ出る（#267 の通知）。可視の行
+      // （タグの一覧）だけを見る。オーバーフロー計測用の隠れた複製とは別に数える。
+      const card = screen.getByText("動画 1").closest("article");
+      expect(card).not.toBeNull();
+      const tagList = within(card as HTMLElement).getByRole("list", { name: "タグ" });
+      expect(within(tagList).getByText("旅行")).toBeDefined();
+    });
+
+    it("Esc で選択バーのポップオーバーだけを閉じ、選択は残る（キーボード確認 手順2）", async () => {
+      installSelectionAwareList({ tags: [{ id: 1, name: "旅行" }] });
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("button", { name: "タグを外す" }));
+      await screen.findByText("選んだ動画にタグはありません");
+
+      await user.keyboard("{Escape}");
+      await waitFor(() =>
+        expect(screen.queryByText("選んだ動画にタグはありません")).toBeNull(),
+      );
+      // ポップオーバーだけが閉じ、選択バー自体（選択）は残る。
+      expect(screen.getByText("1 件を選択中")).toBeDefined();
+    });
+  });
 });

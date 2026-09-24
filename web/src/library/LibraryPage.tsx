@@ -3,12 +3,19 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import { useLocation } from "react-router";
 
-import type { TagRef, Video, VideoSort, WatchFilter } from "../api/client";
+import {
+  listVideoIds,
+  type TagRef,
+  type Video,
+  type VideoSort,
+  type WatchFilter,
+} from "../api/client";
 import {
   clearListSnapshot,
   saveListSnapshot,
@@ -227,10 +234,28 @@ export default function LibraryPage() {
     });
   }, []);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
-  const selectAll = useCallback(
-    () => setSelectedIds(new Set(items.map((video) => video.id))),
-    [items],
-  );
+
+  // --- 「すべて選択」（Plan の Structural Decisions 4） ---
+  // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。選択は常に id の
+  // 集合として持つ。
+  const [selectingAll, setSelectingAll] = useState(false);
+  const selectAll = useCallback(() => {
+    setSelectingAll(true);
+    listVideoIds({ query, watch, playable, tag: tagIds })
+      .then((response) => {
+        const missing = response.missingTagIds ?? [];
+        if (missing.length > 0) {
+          const remaining = tagIds.filter((id) => !missing.includes(id));
+          toast("削除されたタグを絞り込みから外しました");
+          refreshTags().catch(() => undefined);
+          apply(criteria, "replace", serializeTagIds(remaining));
+          return;
+        }
+        setSelectedIds(new Set(response.ids));
+      })
+      .catch(() => toast("すべてを選択できませんでした"))
+      .finally(() => setSelectingAll(false));
+  }, [apply, criteria, playable, query, tagIds, toast, watch]);
 
   useEffect(() => {
     const visible = new Set(items.map((video) => video.id));
@@ -255,7 +280,11 @@ export default function LibraryPage() {
   useEffect(() => {
     if (selectedIds.size === 0) return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") clearSelection();
+      // 選択バーのタグ操作の Combobox・ポップオーバーが Esc を自分の操作として
+      // 使ったとき（候補の一覧や吹き出しを閉じる）は、preventDefault 済みなので
+      // ここでは見送り、選択を解除しない（ui-design.md「Combobox」・
+      // Visual review criteria の操作の確認 手順2）。
+      if (event.key === "Escape" && !event.defaultPrevented) clearSelection();
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
@@ -375,6 +404,8 @@ export default function LibraryPage() {
       alive = false;
     };
   }, [restored]);
+
+  const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
@@ -511,7 +542,9 @@ export default function LibraryPage() {
 
       <SelectionBar
         count={selectedIds.size}
-        total={items.length}
+        total={total}
+        selectedIds={selectedIdsArray}
+        selectingAll={selectingAll}
         onSelectAll={selectAll}
         onClear={clearSelection}
       />
