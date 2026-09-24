@@ -51,18 +51,6 @@
 - `ui` Issue なので、見た目と操作の配置は、この Plan のあとの design 工程で
   `ui-design.md` に決める。この Plan は、画面が守る URL と API の契約までを決める。
 
-## 親 Issue の食い違いの扱い
-
-要件 5 と受け入れ条件 5 は、`-` と `OR` だけを打つと「その文字を含む動画（無ければ一致
-なし）」を出すとしている。一方で Edge Case は、`-` だけ・`|` だけの入力を「検索語が無いのと
-同じ（全件）」としている。この Plan は、検査できる形で書かれた受け入れ条件 5 に従う。
-単独の `-` と、先頭・末尾・単独の `OR` は字面の語として扱う
-（[contracts/list-api.md §1](contracts/list-api.md#1-検索語の書き方)）。受け入れ条件 5 が
-挙げていない `|` は Edge Case に従い、演算子にならない `|` を捨てる。空白だけの入力と
-`""` だけの入力も、Edge Case のとおり全件を出す。食い違うのは「`-` だけの入力」だけで、
-この扱いは保守者の判断を受けてから plan-to-issues に進み、Edge Case の記述は `issue-spec` で
-親 Issue 側を直す。
-
 ## Constitution Check
 
 - **依存方向**（ARCHITECTURE.md「Intended dependency direction」）: 合格。検索語の解釈、
