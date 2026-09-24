@@ -12,14 +12,16 @@ import type { VideosCriteria } from "./useVideos";
  * **このテストが同じ内容で通ること**が、既存の振る舞いを保った証拠になる。
  */
 
-const { listVideos, getVideo } = vi.hoisted(() => ({
+const { listVideos, listFolderVideos, getVideo } = vi.hoisted(() => ({
   listVideos: vi.fn(),
+  listFolderVideos: vi.fn(),
   getVideo: vi.fn(),
 }));
 
 vi.mock("./client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./client")>()),
   listVideos,
+  listFolderVideos,
   getVideo,
 }));
 
@@ -383,6 +385,39 @@ describe("useVideos の準備の反映", () => {
     // 遅れて届いた古い取り直し（準備中）は新しい一覧に重ねない。
     await act(async () => resolveOld({ ...item(2), previewState: "pending" }));
     expect(result.current.items[0]?.previewState).toBe("done");
+  });
+
+  it("条件を変えた後に古い要求が 404 で失敗しても、新しい一覧を見つからない扱いにしない", async () => {
+    let rejectOld: (reason: unknown) => void = () => {};
+    listFolderVideos.mockImplementationOnce(
+      () =>
+        new Promise<VideoPage>((_, reject) => {
+          rejectOld = reject;
+        }),
+    );
+    listFolderVideos.mockImplementationOnce(() =>
+      Promise.resolve({ items: [item(5)], total: 1 }),
+    );
+    const folder = { rootId: 3, path: "A" };
+    const { result, rerender } = renderHook(
+      ({ criteria }: { criteria: VideosCriteria }) =>
+        useVideos(criteria, undefined, folder),
+      { initialProps: { criteria: { sort: "addedDesc" } as VideosCriteria } },
+    );
+    await waitFor(() => expect(listFolderVideos).toHaveBeenCalledTimes(1));
+
+    rerender({ criteria: { sort: "addedDesc", query: "新", scope: "subtree" } });
+    await waitFor(() =>
+      expect(result.current.items.map((video) => video.id)).toEqual([5]),
+    );
+
+    const { RequestFailed } = await import("./client");
+    await act(async () =>
+      rejectOld(new RequestFailed(404, "not_found", "見つかりません")),
+    );
+    expect(result.current.notFound).toBe(false);
+    expect(result.current.error).toBeNull();
+    expect(result.current.items.map((video) => video.id)).toEqual([5]);
   });
 
   it("一覧に無い動画の知らせでは取りに行かない", async () => {
