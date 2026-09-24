@@ -40,9 +40,10 @@
 
 **Feature-specific context**:
 
-- 規模の前提は既存と同じ1万件である。1〜2文字の語と除外語は、範囲内の所在を `instr` で
-  なめる。1万件ではこれで間に合うので、そのための索引は足さない。
-- 追加する依存は無い。`golang.org/x/text`（`norm`・`cases`）は既に使っている。
+- 規模の前提は既存と同じ1万件である。1〜2文字の語は、除外語も含めて、範囲内の所在を
+  `instr` でなめる。1万件ではこれで間に合うので、そのための索引は足さない。
+- 追加する依存は無い。`golang.org/x/text/unicode/norm` は既に使っている。小文字化は
+  `CompareNatural` と同じ `unicode.ToLower` を使い、`cases` は足さない。
   `modernc.org/sqlite` の `RegisterDeterministicScalarFunction` を初めて使う
   （Structural Decisions 5）。
 - マイグレーションを1つ足す（`00007_location_search.sql`、[data-model.md §2](data-model.md#2-全文索引の付け替え)）。
@@ -55,10 +56,12 @@
 要件 5 と受け入れ条件 5 は、`-` と `OR` だけを打つと「その文字を含む動画（無ければ一致
 なし）」を出すとしている。一方で Edge Case は、`-` だけ・`|` だけの入力を「検索語が無いのと
 同じ（全件）」としている。この Plan は、検査できる形で書かれた受け入れ条件 5 に従う。
-先頭・末尾・単独の `-`・`OR`・`|` は字面の語として扱う
-（[contracts/list-api.md §1](contracts/list-api.md#1-検索語の書き方)）。空白だけの入力と
-`""` だけの入力は、Edge Case のとおり全件を出す。Edge Case の記述は、plan-to-issues の前に
-`issue-spec` で親 Issue 側を直す。
+単独の `-` と、先頭・末尾・単独の `OR` は字面の語として扱う
+（[contracts/list-api.md §1](contracts/list-api.md#1-検索語の書き方)）。受け入れ条件 5 が
+挙げていない `|` は Edge Case に従い、演算子にならない `|` を捨てる。空白だけの入力と
+`""` だけの入力も、Edge Case のとおり全件を出す。食い違うのは「`-` だけの入力」だけで、
+この扱いは保守者の判断を受けてから plan-to-issues に進み、Edge Case の記述は `issue-spec` で
+親 Issue 側を直す。
 
 ## Constitution Check
 
@@ -127,7 +130,9 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
 5. **ランダムの並びは、`seed` と `id` から作る値での keyset にする。** 値は
    `internal/domain` の混ぜ合わせの関数で作る。`internal/store` がそれを決定的な
    スカラー関数として SQLite に登録し、`order by` とカーソルの条件で使う。`seed` は画面が
-   作って URL に載せる。
+   作って URL に載せる。関数は `internal/store` のパッケージ初期化で一度だけ登録する。
+   登録は以後に開く接続にだけ効き、同じ名前の二重登録は誤りになるため、`store.Open` の
+   中では登録しない。
    - 却下: `order by random()` で並べ、並びをサーバーで覚える案。再読み込みや URL の共有で
      同じ並びにならない（要件 15）。サーバーに状態を持つことにもなる。
    - 却下: 同じ混ぜ合わせを SQL の算術だけで書く案。SQLite には排他的論理和の演算子が
@@ -224,8 +229,9 @@ specs/013-library-search/
 
 **Acceptance**: `go test ./internal/domain/...` で次が通る。受け入れ条件 1〜5 の各入力が
 期待する式になる。`ＡＢＣ１２３`・`ｶﾀｶﾅ`・`たび`・NFD の「が」の照合形が、対応する入力の
-照合形と一致する。`2話` の鍵が `10話` の鍵よりバイト順で前に来る。既存の
-`TestCompareNatural` の名前の並びについて、鍵の順序が `CompareNatural` と同じ向きになる。
+照合形と一致する。`2話` の鍵が `10話` の鍵より、`２話` の鍵が `10話` の鍵より、`ア` の鍵が `い` の鍵より
+バイト順で前に来る。既存の `TestCompareNatural` の名前と、かな・全角数字を含む名前の組に
+ついて、鍵の順序が `CompareNatural(fold(a), fold(b))` と同じ向きになる。
 17 個以上の語を並べた入力は、先頭 16 個の語の式になる。`task check` が通る。
 
 ### 所在ごとの照合用の鍵を保存し、既存のライブラリを起動時に埋め直す
@@ -234,8 +240,9 @@ specs/013-library-search/
 （[data-model.md §1・§2](data-model.md#1-video_locations-に足す列)）。取り込みとメディア
 フォルダの追加・変更で鍵を作り、起動時に古い版の行を埋め直す処理を
 `internal/store` と `cmd/mdm` に足す（[data-model.md §5](data-model.md#5-鍵を作る時点と-search_version)）。
-今の `searchFilter` は、新しい索引を引くように最小限だけ書き換える。
-`ARCHITECTURE.md` の `videos_fts` の記述を更新する。
+今の `searchFilter` は、新しい索引を引くように最小限だけ書き換える。`videos_fts` を直接
+調べている `internal/store/fts_test.go` を新しい索引に合わせる。`ARCHITECTURE.md` と
+`docs/design-docs/tech-stack-selection.md` の `videos_fts` の記述を更新する。
 
 **Dependencies**: 検索語の書き方を解釈し、表記の揺れを畳む照合形を作る
 
@@ -284,7 +291,8 @@ specs/013-library-search/
 差分を足し、`task generate` で生成する。`internal/httpapi` でパラメータを
 `VideoQuery`・`FolderVideoQuery` に渡し、一覧の項目に `folder` を組み立てる。`web/src/api/client.ts`
 の取得関数に新しい条件を渡せるようにする（画面はまだ使わない）。`ARCHITECTURE.md` の
-一覧 API の記述を更新する。
+一覧 API の記述を更新する。`specs/011-folder-browser/contracts/folders.md` の並び順・直下
+だけ・`total` の記述に、この feature の契約へのリンクを添える。
 
 **Dependencies**: 一覧の並べ替えを7種に増やし、昇順と降順を選べるようにする
 
@@ -308,13 +316,16 @@ design 工程の `ui-design.md` が feature ブランチに入っていること
 
 **Acceptance**: Vitest で、URL の解釈（古い形式・未知の値・`seed` の補い）と履歴の増え方の
 テストが通る。`web/e2e/search.e2e.ts` で、受け入れ条件 11〜15 と 22 がライブラリで確かめ
-られる。「未視聴」で絞った一覧から再生して戻ると、その動画が同じ位置に残っている。`web/src/theme/tokens.test.ts` を含む `task check` と `task test-e2e` が通る。
+られる。「未視聴」で絞った一覧から再生して戻ると、その動画が同じ位置に残っている。
+Vitest で、要求の途中で条件（検索語・視聴状態・再生可否・並べ替え・`seed`）を変えると、
+遅れて届いた古い応答が捨てられる。`web/src/theme/tokens.test.ts` を含む `task check` と `task test-e2e` が通る。
 画面が変わるので、実装 PR に幅ごとの画像と、視覚・操作・支援技術の確認を添える。
 
 ### 検索欄から検索の書き方の手引きを開けるようにする
 
 **Scope**: 検索欄の横に、書き方（空白・`"…"`・`-`・`OR`）を例つきで示す手引きを開く操作を
-置く。ライブラリとフォルダ画面の検索欄の両方に出る部品として `web/src/library/` に置く。
+置く。検索欄の部品の一部として `web/src/library/` に置き、この単位ではライブラリで
+確かめる。フォルダ画面には、検索欄を置く単位がこの部品ごと持ち込む。
 中身と配置は `ui-design.md` による。
 
 **Dependencies**: ライブラリ一覧の条件を URL に載せ、絞り込みと並べ替えをサーバーに任せる
@@ -333,7 +344,8 @@ design 工程の `ui-design.md` が feature ブランチに入っていること
 フォルダ画面の控えの鍵に条件を足す。`/` と Esc のキー操作、一致なしと「条件を解除」も
 同じにする。配置と見た目は `ui-design.md` による。
 
-**Dependencies**: ライブラリ一覧の条件を URL に載せ、絞り込みと並べ替えをサーバーに任せる
+**Dependencies**: 検索欄から検索の書き方の手引きを開けるようにする（手引きを含む検索欄を
+そのまま使う）
 
 **Acceptance**: `web/src/folders/FolderPage.test.tsx` と `web/e2e/folders.e2e.ts` で、
 受け入れ条件 17〜22 がフォルダ画面で確かめられる。検索中にフォルダが無くなると「この
