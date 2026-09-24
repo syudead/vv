@@ -395,6 +395,60 @@ describe("LibraryPage", () => {
     );
   });
 
+  it("キーボードだけで検索欄 → × → 手引き → 絞り込み → 並べ替え → 向きの順に進み、手引きは Tab で閉じる", async () => {
+    const user = userEvent.setup();
+    renderLibrary("/?q=abc&sort=addedDesc");
+    await screen.findByRole("link", { name: "動画 1" });
+
+    const box = screen.getByRole("searchbox", { name: "動画を検索" });
+    const help = screen.getByRole("button", { name: "検索の書き方" });
+    box.focus();
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "検索語をクリア" }),
+    );
+    await user.tab();
+    expect(document.activeElement).toBe(help);
+
+    await user.keyboard("{Enter}");
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getAllByRole("term")).toHaveLength(4);
+    expect(document.activeElement).toBe(help);
+
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "絞り込み" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect((box as HTMLInputElement).value).toBe("abc");
+    expect(screen.getByTestId("location").textContent).toBe("?q=abc&sort=addedDesc");
+
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "並び順: 追加日" }),
+    );
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("button", { name: "降順（新しい順）。押すと昇順" }),
+    );
+  });
+
+  it("手引きを開いて閉じても検索語と URL は変わらない", async () => {
+    const user = userEvent.setup();
+    renderLibrary("/?q=abc&sort=addedDesc");
+    await screen.findByRole("link", { name: "動画 1" });
+
+    const help = screen.getByRole("button", { name: "検索の書き方" });
+    await user.click(help);
+    await screen.findByRole("dialog");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    expect(document.activeElement).toBe(help);
+    expect(
+      (screen.getByRole("searchbox", { name: "動画を検索" }) as HTMLInputElement).value,
+    ).toBe("abc");
+    expect(screen.getByTestId("location").textContent).toBe("?q=abc&sort=addedDesc");
+  });
+
   it("未視聴で絞った一覧から戻ったとき、再生位置が変わった項目もその場に残す", async () => {
     const { recordSavedProgress, nextProgressSequence } =
       await import("../api/progressEvents");

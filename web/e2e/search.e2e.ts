@@ -408,6 +408,94 @@ test.describe.serial("library search", () => {
     await expect(chips).toHaveCount(3);
   });
 
+  test("16: 検索の書き方を開くと 4 つの書き方が出て、閉じても検索語が残る", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`/?q=${encodeURIComponent("京都")}&sort=addedDesc`);
+    const box = page.getByRole("searchbox", { name: "動画を検索" });
+    await expect(box).toHaveValue("京都");
+    const url = page.url();
+
+    const help = page.getByRole("button", { name: "検索の書き方" });
+    await help.click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByRole("heading", { name: "検索の書き方" })).toBeVisible();
+    await expect(dialog.getByRole("term")).toHaveText([
+      "京都 2024",
+      '"京都旅行 2024"',
+      "京都 -2023",
+      /京都 OR 奈良\s*京都 \| 奈良/,
+    ]);
+    await expect(dialog.getByRole("definition")).toHaveCount(4);
+    await expect(help).toBeFocused();
+
+    // 例を押しても検索欄には入らない。
+    await dialog.getByText("京都 -2023").click();
+    await expect(box).toHaveValue("京都");
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(help).toBeFocused();
+    await expect(box).toHaveValue("京都");
+    expect(page.url()).toBe(url);
+
+    await help.click();
+    await expect(dialog).toBeVisible();
+    await help.click();
+    await expect(dialog).toBeHidden();
+    await expect(box).toHaveValue("京都");
+    expect(page.url()).toBe(url);
+  });
+
+  test("23: キーボードだけで検索欄 → 手引き → 絞り込み → 並べ替えと向き → 結果へ進める", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/?sort=titleAsc");
+    await expect(page.locator("[data-video-id]").first()).toBeVisible();
+
+    const focused = () => page.locator(":focus");
+    await page.keyboard.press("/");
+    await expect(page.getByRole("searchbox", { name: "動画を検索" })).toBeFocused();
+
+    await page.keyboard.press("Tab");
+    const help = page.getByRole("button", { name: "検索の書き方" });
+    await expect(help).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog").getByRole("term")).toHaveCount(4);
+    await expect(help).toBeFocused();
+
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "絞り込み" })).toBeFocused();
+    await expect(page.getByRole("dialog")).toBeHidden();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "並び順: 題名" })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "昇順。押すと降順" })).toBeFocused();
+
+    // 残りのツールバーの操作を越えて、最初の結果のカードへ着く。
+    const first = page.locator("[data-video-id]").first();
+    for (let i = 0; i < 12; i += 1) {
+      await page.keyboard.press("Tab");
+      const inResults = await focused().evaluate(
+        (element) => element.closest("[data-video-id]") !== null,
+      );
+      if (inResults) break;
+    }
+    const target = first.locator(":focus");
+    await expect(target).toHaveCount(1);
+    const visible = await target.evaluate((element) => {
+      const outlined = (candidate: Element | null) =>
+        candidate !== null && getComputedStyle(candidate).outlineStyle !== "none";
+      return (
+        element.matches(":focus-visible") &&
+        (outlined(element) || outlined(element.closest("[data-video-id]")))
+      );
+    });
+    expect(visible).toBe(true);
+  });
+
   test("未視聴で絞った一覧から再生して戻ると、その動画が同じ位置に残る", async ({
     page,
   }) => {
@@ -479,6 +567,10 @@ test.describe.serial("library search", () => {
         `/?q=${encodeURIComponent("存在しない題名")}&watch=watched&playable=1&sort=titleAsc`,
       );
       await shoot(`no-match-${String(width)}`);
+      await page.goto(`/?q=${encodeURIComponent("京都")}&sort=addedDesc`);
+      await page.getByRole("button", { name: "検索の書き方" }).click();
+      await expect(page.getByRole("dialog")).toBeVisible();
+      await shoot(`help-${String(width)}`);
     }
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto(

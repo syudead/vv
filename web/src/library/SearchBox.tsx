@@ -4,6 +4,7 @@ import { type RefObject, useCallback, useEffect, useRef, useState } from "react"
 import { MAX_QUERY_LENGTH } from "../api/client";
 import { cn } from "../lib/cn";
 import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
+import SearchSyntaxHelp from "./SearchSyntaxHelp";
 
 /** searchDebounceMs は入力が落ち着くのを待つ時間。打鍵ごとに一覧が入れ替わらないようにする。 */
 export const searchDebounceMs = 250;
@@ -27,7 +28,7 @@ export interface SearchBoxProps {
 
 /**
  * SearchBox は一覧の条件の `q` を入力する検索欄である。
- * `/` でフォーカス、Esc でクリアしてフォーカスを外す。
+ * `/` でフォーカス、Esc でクリアしてフォーカスを外す。枠の右端に検索の書き方の手引きを持つ。
  */
 export default function SearchBox({
   query,
@@ -123,27 +124,30 @@ export default function SearchBox({
         autoComplete="off"
         spellCheck={false}
         className={cn(
-          "h-full w-full rounded-md border border-border bg-field pr-9 pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
+          "h-full w-full rounded-md border border-border bg-field pr-15 pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
           "placeholder:text-fg-subtle transition-[border-color,box-shadow] duration-150",
           "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft",
           "[&::-webkit-search-cancel-button]:hidden",
         )}
       />
-      {input !== "" && (
-        <button
-          type="button"
-          onClick={clear}
-          aria-label="検索語をクリア"
-          className="absolute right-1.5 flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
-        >
-          <X className="size-4" />
-        </button>
-      )}
-      {input === "" && (
-        <kbd className="pointer-events-none absolute right-3 hidden rounded-sm border border-border-strong px-1.5 font-sans text-[11px] text-fg-subtle sm:block">
-          /
-        </kbd>
-      )}
+      <div className="absolute right-1.5 flex items-center gap-0.5">
+        {input !== "" && (
+          <button
+            type="button"
+            onClick={clear}
+            aria-label="検索語をクリア"
+            className="flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+        {input === "" && (
+          <kbd className="pointer-events-none mr-1 hidden rounded-sm border border-border-strong px-1.5 font-sans text-[11px] text-fg-subtle sm:block">
+            /
+          </kbd>
+        )}
+        <SearchSyntaxHelp />
+      </div>
     </div>
   );
 }
