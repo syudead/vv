@@ -294,5 +294,9 @@ for (const { width, height } of [
         other.y + other.height <= toastBox!.y;
       expect(separate).toBe(true);
     }
+
+    // 概要が開いているときの Esc は概要に任せ、再生画面は閉じない。
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(/\/videos\/1$/);
   });
 }
