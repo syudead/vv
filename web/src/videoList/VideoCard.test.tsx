@@ -21,6 +21,7 @@ function video(extra: Partial<Video> = {}): Video {
     videoCodec: "h264",
     previewState: "done",
     previewUrl: "/api/videos/1/preview?v=key",
+    tags: [],
     ...extra,
   };
 }

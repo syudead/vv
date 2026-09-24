@@ -3,15 +3,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   __resetTagsForTest,
   addTagSynonym,
+  attachVideoTagByID,
+  attachVideoTagByName,
   createTag,
   currentTags,
   deleteTag,
+  detachVideoTag,
   getTags,
   mergeTag,
   refreshTags,
   removeTagSynonym,
   renameTag,
   subscribeTags,
+  summarizeVideoTags,
 } from "./tags";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
@@ -331,5 +335,110 @@ describe("古いタグを使った操作の後始末（S3、Issue #266 項目5�
     await expect(renameTag(1, "重複")).rejects.toMatchObject({ code: "tag_name_taken" });
     expect(fetch).toHaveBeenCalledTimes(1);
     expect(currentTags()).toBeUndefined();
+  });
+});
+
+describe("動画へのタグの付け外し・要約（issue 267）", () => {
+  it("attachVideoTagByIDはPOST /api/video-tagsをid指定で送り、付け外しの通知を出す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ tag: { id: 2, name: "旅行" }, applied: 2 }));
+    vi.stubGlobal("fetch", fetch);
+    const { subscribeVideoTags } = await import("./videoTagsEvents");
+    const notified: unknown[] = [];
+    const unsubscribe = subscribeVideoTags((videoIds, tag, action) => {
+      notified.push({ videoIds, tag, action });
+    });
+
+    const result = await attachVideoTagByID([1, 2], 2);
+
+    expect(result).toEqual({ tag: { id: 2, name: "旅行" }, applied: 2 });
+    const [, init] = fetch.mock.calls[0] ?? [];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      videoIds: [1, 2],
+      action: "add",
+      tag: { id: 2 },
+    });
+    expect(notified).toEqual([
+      { videoIds: [1, 2], tag: { id: 2, name: "旅行" }, action: "add" },
+    ]);
+    unsubscribe();
+  });
+
+  it("attachVideoTagByNameはtag.nameで送る", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ tag: { id: 9, name: "新規" }, applied: 1 }));
+    vi.stubGlobal("fetch", fetch);
+
+    await attachVideoTagByName([1], "新規");
+
+    const [, init] = fetch.mock.calls[0] ?? [];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      videoIds: [1],
+      action: "add",
+      tag: { name: "新規" },
+    });
+  });
+
+  it("detachVideoTagはaction=removeとid指定で送り、除去の通知を出す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ tag: { id: 2, name: "旅行" }, applied: 1 }));
+    vi.stubGlobal("fetch", fetch);
+    const { subscribeVideoTags } = await import("./videoTagsEvents");
+    const notified: unknown[] = [];
+    const unsubscribe = subscribeVideoTags((videoIds, tag, action) => {
+      notified.push({ videoIds, tag, action });
+    });
+
+    await detachVideoTag([2], 2);
+
+    const [, init] = fetch.mock.calls[0] ?? [];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      videoIds: [2],
+      action: "remove",
+      tag: { id: 2 },
+    });
+    expect(notified).toEqual([
+      { videoIds: [2], tag: { id: 2, name: "旅行" }, action: "remove" },
+    ]);
+    unsubscribe();
+  });
+
+  it("tag_not_foundを受けたら共有の一覧を取り直してから投げ直す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ code: "tag_not_found", message: "x" }, 404))
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 4, name: "現存" })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await expect(attachVideoTagByID([1], 999)).rejects.toMatchObject({
+      code: "tag_not_found",
+    });
+    await vi.waitFor(() => {
+      expect(currentTags()).toEqual([tag({ id: 4, name: "現存" })]);
+    });
+  });
+
+  it("summarizeVideoTagsはtotal・itemsを返す", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(
+      jsonResponse({
+        total: 3,
+        items: [{ tag: { id: 1, name: "旅行" }, count: 2 }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await summarizeVideoTags([1, 2, 3]);
+
+    expect(result).toEqual({
+      total: 3,
+      items: [{ tag: { id: 1, name: "旅行" }, count: 2 }],
+    });
+    const [, init] = fetch.mock.calls[0] ?? [];
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      videoIds: [1, 2, 3],
+    });
   });
 });

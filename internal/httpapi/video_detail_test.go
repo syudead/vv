@@ -56,6 +56,24 @@ func TestGetVideoReturnsLocationOnlyForSingleVideo(t *testing.T) {
 	}
 }
 
+// 動画1件の応答にもタグが載り、タグが無ければ空配列になる（#267）。
+func TestGetVideoIncludesTags(t *testing.T) {
+	video := sampleVideo(1, "海辺の散歩")
+	library := &fakeLibrary{
+		videos: map[int64]domain.Video{1: video},
+		page:   domain.VideoPage{Items: []domain.Video{video}, Total: 1},
+	}
+	tags := &fakeTags{byContentKey: map[string][]domain.TagRef{
+		video.ContentKey: {{ID: 3, Name: "海"}},
+	}}
+	handler := newTestServer(t, Options{Videos: library, Catalog: &fakeCatalog{}, Tags: tags})
+
+	got := decode[gen.Video](t, do(t, handler, http.MethodGet, "/api/videos/1"))
+	if len(got.Tags) != 1 || got.Tags[0].Id != 3 || got.Tags[0].Name != "海" {
+		t.Fatalf("tags = %+v", got.Tags)
+	}
+}
+
 // アプリケーション層が導いた状態を、そのまま契約の値へ写す。導き方は
 // internal/app の Catalog.SeekThumbnailState で検証する。
 func TestGetVideoSeekThumbnailState(t *testing.T) {

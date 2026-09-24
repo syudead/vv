@@ -35,6 +35,10 @@ type Library interface {
 	GetVideo(ctx context.Context, id int64) (domain.Video, error)
 	VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error)
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
+	// VideoIDs は listVideos と同じ条件（並び順・カーソル・件数を除く）に合う
+	// 全件の id を返す（GET /api/videos/ids、「すべて選択」用。
+	// specs/014-video-tags/contracts/tags-api.md §5）。
+	VideoIDs(ctx context.Context, q domain.VideoQuery) (ids, missingTagIDs []int64, err error)
 }
 
 // Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、
@@ -73,6 +77,18 @@ type Tags interface {
 	MergeTag(ctx context.Context, targetID, sourceID int64) (domain.Tag, error)
 	AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error)
 	RemoveSynonym(ctx context.Context, tagID int64, name string) error
+
+	// 付与・取り外し・要約・一覧の項目のタグ引き（#267、Plan の Structural
+	// Decisions 5・14）。どの操作も1つのトランザクションで済むので、こちらも
+	// internal/app を通さない。
+	AttachTagByID(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error)
+	AttachTagByName(ctx context.Context, videoIDs []int64, name string) (domain.TagRef, int, error)
+	DetachTag(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error)
+	Summary(ctx context.Context, videoIDs []int64) (domain.TagSummary, error)
+	// TagsByContentKeys は content_key の集合からそれぞれのタグを引く。
+	// progressFor と同じ位置（httpapi）から、一覧・詳細・関連動画・読み取りの
+	// やり直しの応答へ Video.tags を載せるために使う。
+	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.TagRef, error)
 }
 
 // Transcoder は1 request分のfragmented MP4を生成する。
@@ -306,7 +322,8 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 func requiresJSONBody(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost:
-		if r.URL.Path == "/api/media-folders" || r.URL.Path == "/api/scans" || r.URL.Path == "/api/tags" {
+		switch r.URL.Path {
+		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary":
 			return true
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {

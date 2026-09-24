@@ -49,6 +49,7 @@ function item(id: number): Video {
     probeState: "done",
     thumbnailState: "done",
     previewState: "pending",
+    tags: [],
   };
 }
 
@@ -611,5 +612,41 @@ describe("useVideos の準備の反映", () => {
       expect(result.current.items.map((video) => video.id)).toEqual([1]),
     );
     expect(result.current.total).toBe(99);
+  });
+
+  // issue 267: useVideos は tag の条件を listVideos へ渡し、続きのページの取得でも
+  // 同じ条件を渡し続ける。
+  it("tag の条件を最初の取得にも続きの取得にも渡す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc", tag: [3, 8] }));
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.params.tag).toEqual([3, 8]);
+
+    await act(async () => calls[0]?.resolve(page([1, 2], "cursor-1")));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]?.params.tag).toEqual([3, 8]);
+  });
+
+  // issue 267: 付け外しの結果は、表示中の項目の tags へその場で反映される
+  // （一覧を取り直さない。Plan の Structural Decisions 7）。
+  it("付け外しの通知を受けて、表示中の項目の tags を書き換える", async () => {
+    const { recordAppliedVideoTags } = await import("./videoTagsEvents");
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2])));
+
+    act(() => {
+      recordAppliedVideoTags([2], { id: 5, name: "旅行" }, "add");
+    });
+    expect(result.current.items.find((video) => video.id === 2)?.tags).toEqual([
+      { id: 5, name: "旅行" },
+    ]);
+    expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([]);
+
+    act(() => {
+      recordAppliedVideoTags([2], { id: 5, name: "旅行" }, "remove");
+    });
+    expect(result.current.items.find((video) => video.id === 2)?.tags).toEqual([]);
   });
 });

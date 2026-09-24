@@ -15,6 +15,11 @@ import (
 // maxLength と同じ値で、越える要求は誤りとして断る。
 const maxQueryLength = 100
 
+// maxTagFilterCount は一覧の絞り込みに使えるタグの id の最大個数である。
+// api/openapi.yaml の tag パラメータの maxItems と同じ値で、越える要求は
+// invalid_request にする（specs/014-video-tags/contracts/tags-api.md §5）。
+const maxTagFilterCount = 16
+
 // thumbnailVersionLength はサムネイルの URL に付ける版の長さである。
 // content_key の先頭を使う。内容が変われば版も変わるので、長期キャッシュを
 // 安全に効かせられる。
@@ -59,6 +64,9 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	if query.Query, ok = s.parseSearchQuery(w, params.Query); !ok {
 		return
 	}
+	if query.TagIDs, ok = s.parseTagFilter(w, params.Tag); !ok {
+		return
+	}
 
 	page, err := s.videos.ListVideos(r.Context(), query)
 	switch {
@@ -75,15 +83,18 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	s.writeVideoPage(w, r, page, s.registeredRoots(r.Context()))
 }
 
-// writeVideoPage は一覧1ページを応答に書く。各項目には再生位置と、一覧に出す
-// 所在の置かれたフォルダ（Video.folder）を載せる。roots が無ければ folder は省く。
+// writeVideoPage は一覧1ページを応答に書く。各項目には再生位置・タグと、一覧に
+// 出す所在の置かれたフォルダ（Video.folder）を載せる。roots が無ければ folder は
+// 省く。page.MissingTagIDs があれば応答にもそのまま載せる
+// （contracts/tags-api.md §5）。
 func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page domain.VideoPage, roots []domain.MediaFolder) {
 	progress := s.progressFor(r.Context(), page.Items)
+	tags := s.tagsFor(r.Context(), page.Items)
 
 	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
 	for _, view := range s.presentVideos(r.Context(), page.Items) {
 		video := view.Video
-		item := withProgress(toAPIVideo(view), progress, video.ContentKey)
+		item := withTags(withProgress(toAPIVideo(view), progress, video.ContentKey), tags, video.ContentKey)
 		if folder, ok := domain.LocateVideoFolder(roots, video.Path); ok {
 			item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
 		}
@@ -92,6 +103,10 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 	if page.NextCursor != "" {
 		next := page.NextCursor
 		payload.NextCursor = &next
+	}
+	if len(page.MissingTagIDs) > 0 {
+		missing := page.MissingTagIDs
+		payload.MissingTagIds = &missing
 	}
 
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -182,6 +197,20 @@ func (s *server) parseSearchQuery(w http.ResponseWriter, query *string) (string,
 	return *query, true
 }
 
+// parseTagFilter は絞り込みに使うタグの id の個数を検査する。17 個以上は 400 を
+// 書いて false を返す（contracts/tags-api.md §5）。存在しない id は誤りにせず、
+// 保存層（existingTagIDs）が落として応答の missingTagIds に返す。
+func (s *server) parseTagFilter(w http.ResponseWriter, tag *[]int64) ([]int64, bool) {
+	if tag == nil {
+		return nil, true
+	}
+	if len(*tag) > maxTagFilterCount {
+		s.invalidRequest(w, "タグでの絞り込みは 16 個までにしてください")
+		return nil, false
+	}
+	return *tag, true
+}
+
 // GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。
 func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	video, ok := s.lookupVideo(w, r, id)
@@ -190,7 +219,8 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	}
 
 	progress := s.progressFor(r.Context(), []domain.Video{video})
-	payload := withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey)
+	tags := s.tagsFor(r.Context(), []domain.Video{video})
+	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey), tags, video.ContentKey)
 
 	// 所在とシーク用プレビューの状態は、動画1件の応答にだけ載せる。一覧に載せると、
 	// 画面が使わない絶対パスを1ページ 60 件ぶん毎回送ることになる。
@@ -232,6 +262,43 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 		return nil
 	}
 	return progress
+}
+
+// tagsFor は動画たちのタグをまとめて引く（progressFor と同じ形。Plan の
+// Structural Decisions 5・14）。1件ずつ引くと、60 件の一覧で 60 回の問い合わせに
+// なる。
+//
+// 引けなかった場合は一覧を諦めない。タグは「あると嬉しい」情報であって、
+// 無いと動画を見渡せなくなるものではない。
+func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string][]domain.TagRef {
+	if s.tags == nil || len(videos) == 0 {
+		return nil
+	}
+
+	keys := make([]string, 0, len(videos))
+	for _, video := range videos {
+		if video.ContentKey != "" {
+			keys = append(keys, video.ContentKey)
+		}
+	}
+
+	tags, err := s.tags.TagsByContentKeys(ctx, keys)
+	if err != nil {
+		s.logger.Warn("項目のタグを読み出せませんでした", slog.Any("error", err))
+		return nil
+	}
+	return tags
+}
+
+// withTags はタグを載せる。タグが1つも無い動画は空の配列にする（null にしない。
+// contracts/tags-api.md §1）。
+func withTags(video gen.Video, tags map[string][]domain.TagRef, contentKey string) gen.Video {
+	refs := tags[contentKey]
+	video.Tags = make([]gen.TagRef, 0, len(refs))
+	for _, ref := range refs {
+		video.Tags = append(video.Tags, gen.TagRef{Id: ref.ID, Name: ref.Name})
+	}
+	return video
 }
 
 // withProgress は再生位置を載せる。記録の無い動画では省略する。

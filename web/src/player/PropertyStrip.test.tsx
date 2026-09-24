@@ -20,6 +20,7 @@ const video: Video = {
   container: "mkv",
   videoCodec: "h264",
   audioCodec: "aac",
+  tags: [],
 };
 
 function pairs(): [string, string][] {

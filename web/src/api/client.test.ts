@@ -6,6 +6,7 @@ import {
   fetchSeekThumbnail,
   listDirectories,
   listFolderVideos,
+  listVideoIds,
   listVideos,
   beaconProgress,
   listMediaFolders,
@@ -186,6 +187,7 @@ describe("progress API client", () => {
     probeState: "done" as const,
     thumbnailState: "done" as const,
     previewState: "pending" as const,
+    tags: [],
   };
 
   it("保存と離脱時の送信が受け付けられたら、一覧の控えの再生位置を差し替える", async () => {
@@ -396,5 +398,48 @@ describe("list API client", () => {
     const fetch = stubFetch();
     await listFolderVideos({ folder: { rootId: 3, path: "" }, query: "あ".repeat(150) });
     expect(requestedURL(fetch).searchParams.get("query")).toHaveLength(100);
+  });
+
+  // issue 267: tag は listVideos に載るが listFolderVideos には載らない
+  // （フォルダ画面のタグ絞り込みは対象外。contracts/tags-api.md §5）。
+  it("sends tag ids to the library list, one per id, capped at 16", async () => {
+    const fetch = stubFetch();
+    await listVideos({ tag: Array.from({ length: 20 }, (_, i) => i + 1) });
+    const url = requestedURL(fetch);
+    expect(url.searchParams.getAll("tag")).toEqual(
+      Array.from({ length: 16 }, (_, i) => String(i + 1)),
+    );
+  });
+
+  it("does not send tag to the folder list even when given", async () => {
+    const fetch = stubFetch();
+    await listFolderVideos({
+      folder: { rootId: 3, path: "" },
+      // ListFolderVideosParams に tag は無いので渡しようがないが、共通の
+      // setListFilters が誤って読まないことを確かめる。
+    });
+    expect(requestedURL(fetch).searchParams.has("tag")).toBe(false);
+  });
+
+  it("listVideoIds sends query/watch/playable/tag and returns ids and missingTagIds", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ ids: [5, 1, 9], missingTagIds: [7] }));
+    vi.stubGlobal("fetch", fetch);
+
+    const result = await listVideoIds({
+      query: "旅行",
+      watch: "unwatched",
+      playable: true,
+      tag: [3, 7],
+    });
+
+    expect(result).toEqual({ ids: [5, 1, 9], missingTagIds: [7] });
+    const url = requestedURL(fetch);
+    expect(url.pathname).toBe("/api/videos/ids");
+    expect(url.searchParams.get("query")).toBe("旅行");
+    expect(url.searchParams.get("watch")).toBe("unwatched");
+    expect(url.searchParams.get("playable")).toBe("true");
+    expect(url.searchParams.getAll("tag")).toEqual(["3", "7"]);
   });
 });

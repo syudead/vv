@@ -18,6 +18,7 @@ const video: Video = {
   thumbnailState: "done",
   durationMs: 10_000,
   videoCodec: "h264",
+  tags: [],
 };
 
 describe("PlaybackAttempt", () => {

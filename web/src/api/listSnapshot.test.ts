@@ -22,6 +22,7 @@ function item(id: number): Video {
     probeState: "done",
     thumbnailState: "done",
     previewState: "pending",
+    tags: [],
   };
 }
 

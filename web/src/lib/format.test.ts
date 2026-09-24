@@ -22,6 +22,7 @@ const base: Video = {
   previewState: "pending",
   durationMs: 10_000,
   videoCodec: "h264",
+  tags: [],
 };
 
 describe("formatDuration", () => {

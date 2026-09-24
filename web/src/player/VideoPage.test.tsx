@@ -63,6 +63,7 @@ const video: Video = {
   videoCodec: "h264",
   audioCodec: "aac",
   location: { path: "/media/movies/テスト動画.mp4", openable: true },
+  tags: [],
 };
 
 function related(id: number, title: string): Video {
