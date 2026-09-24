@@ -6,15 +6,16 @@
 
 通常の実データ確認には、短い動画を2本以上置いたテスト専用メディアフォルダを用意する。失敗や境界状態は実ファイルを壊さず、component test の mock と `scan-progress.e2e.ts` の `page.route()` で次の応答列を作る。
 
-| Scenario     | `/api/scans/current` の応答列                        |
-| ------------ | ---------------------------------------------------- |
-| 未実行       | 404                                                  |
-| 総数未確定   | `running(total=0, completed=0)`                      |
-| 通常進行     | `running(10, 2)` → `running(10, 7)` → `done(10, 10)` |
-| 対象0件      | `running(0, 0)` → `done(0, 0)`                       |
-| 一部失敗     | `running(10, 5, failed=1)` → `done(10, 9, failed=1)` |
-| 全体失敗     | `failed(error=<長い理由>)`                           |
-| 一時通信失敗 | request failure → 同じ id の `running` → `done`      |
+| Scenario         | `/api/scans/current` の応答列                        |
+| ---------------- | ---------------------------------------------------- |
+| 未実行           | 404                                                  |
+| 総数未確定       | `running(total=0, completed=0)`                      |
+| 通常進行         | `running(10, 2)` → `running(10, 7)` → `done(10, 10)` |
+| 対象0件          | `running(0, 0)` → `done(0, 0)`                       |
+| 一部失敗         | `running(10, 5, failed=1)` → `done(10, 9, failed=1)` |
+| 全体失敗         | `failed(error=<長い理由>)`                           |
+| 一時通信失敗     | request failure → 同じ id の `running` → `done`      |
+| 待機後の通信失敗 | 404 → focus時に request failure → 別tabの `running`  |
 
 時刻を確認する response には固定した `startedAt` / `finishedAt` を含め、DOM と screenshot の期待値を安定させる。重複開始は `POST /api/scans` が同じ running scan id を返す応答で検証する。
 
@@ -40,7 +41,7 @@ npm --prefix web exec -- vitest run src/app/App.test.tsx src/shell/ScanProvider.
 3. 通常進行 response では polling ごとに割合、`completed / total`、失敗件数が同じ scan id のまま更新されることを確認する。
 4. 対象0件 response は 100% と誤表示せず完了し、完了件数0と時刻を設定画面に残すことを確認する。
 5. 一部失敗と全体失敗を区別し、全体失敗は理由と再試行を表示して、利用者が確認する前にフローティング表示が消えないことを確認する。
-6. 初回取得と実行中 polling の一時通信失敗後に、手動更新なしで同じ scan の追跡を再開することを確認する。
+6. 初回取得、待機中のfocus更新、実行中 polling の一時通信失敗後に、手動更新なしで current scan の追跡を再開することを確認する。待機中は 404 成功後に focus 更新を一度失敗させ、別tabで始まった running scan へ自動合流させる。
 7. 状態取得に失敗したまま別画面へ移動しても再試行が続き、回復後に同じ current scan を両表示へ反映することを確認する。
 8. running scan の id を追跡した状態で provider を再 mount し、API が同じ id の terminal scan を返すと結果通知が現れることを確認する。
 9. 全体失敗の通知を閉じるか設定詳細へ移動したあと provider を再 mount し、同じ failed scan の通知が再表示されないことを確認する。新しい id の failed scan は表示されることも確認する。

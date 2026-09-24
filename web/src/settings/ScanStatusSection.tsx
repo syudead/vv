@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef } from "react";
 import { useLocation } from "react-router";
 
 import Button from "../ui/Button";
+import ScanProgressBar from "../shell/ScanProgressBar";
 import { useScan } from "../shell/ScanProvider";
 import { presentScan, type ScanPresentation } from "../shell/scanPresentation";
 
@@ -12,23 +13,6 @@ function formatTime(value?: string) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
-}
-
-function ProgressBar({ presentation }: { presentation: ScanPresentation }) {
-  if (!presentation.determinate || presentation.progress === null) return null;
-  const value = Math.round(presentation.progress * 100);
-  return (
-    <div
-      role="progressbar"
-      aria-label="取り込みの進捗"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={value}
-      className="h-2 overflow-hidden rounded-full bg-bg"
-    >
-      <div className="h-full bg-accent" style={{ width: `${String(value)}%` }} />
-    </div>
-  );
 }
 
 function stateLabel(presentation: ScanPresentation) {
@@ -111,7 +95,7 @@ export default function ScanStatusSection() {
               : presentation.description}
         </p>
         <div className="mt-4 max-w-xl">
-          <ProgressBar presentation={presentation} />
+          <ScanProgressBar presentation={presentation} className="h-2" />
         </div>
         <dl className="mt-4 grid grid-cols-1 gap-2 text-sm text-fg-muted sm:grid-cols-3">
           <div>

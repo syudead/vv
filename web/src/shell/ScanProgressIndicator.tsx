@@ -6,28 +6,9 @@ import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useScanNotice } from "./ScanNoticeProvider";
+import ScanProgressBar from "./ScanProgressBar";
 import { useScan } from "./ScanProvider";
 import { presentScan, type ScanPresentation } from "./scanPresentation";
-
-function ProgressBar({ presentation }: { presentation: ScanPresentation }) {
-  if (!presentation.determinate || presentation.progress === null) return null;
-  const value = Math.round(presentation.progress * 100);
-  return (
-    <div
-      role="progressbar"
-      aria-label="取り込みの進捗"
-      aria-valuemin={0}
-      aria-valuemax={100}
-      aria-valuenow={value}
-      className="h-1.5 overflow-hidden rounded-full bg-bg"
-    >
-      <div
-        className="h-full bg-accent transition-[width] duration-300"
-        style={{ width: `${String(value)}%` }}
-      />
-    </div>
-  );
-}
 
 function iconFor(state: ScanPresentation["state"]) {
   if (state === "done") return CheckCircle2;
@@ -39,6 +20,26 @@ function iconFor(state: ScanPresentation["state"]) {
 function countSummary(presentation: ScanPresentation) {
   const total = presentation.total === null ? "確認中" : String(presentation.total);
   return `${String(presentation.completed)} / ${total} 件（${String(presentation.failed)} 件失敗）`;
+}
+
+function statusAnnouncement(presentation: ScanPresentation) {
+  switch (presentation.state) {
+    case "starting":
+      return "取り込みを開始しています";
+    case "unknown-total":
+      return "取り込み中。総件数を確認しています";
+    case "running":
+      return `取り込み対象は ${String(presentation.total)} 件です`;
+    case "done":
+      return "取り込みが完了しました";
+    case "partial-failed":
+      return "取り込みが一部失敗で完了しました";
+    case "failed":
+      return "取り込みに失敗しました";
+    case "not-run":
+    case "fetch-failed":
+      return "";
+  }
 }
 
 export default function ScanProgressIndicator({
@@ -75,7 +76,13 @@ export default function ScanProgressIndicator({
     return () => {
       if (paused) notice.setCompletionNoticePaused(false);
     };
-  }, [contentHovered, focused, hovered, notice, terminalVisible]);
+  }, [
+    contentHovered,
+    focused,
+    hovered,
+    notice.setCompletionNoticePaused,
+    terminalVisible,
+  ]);
 
   if (!visible) return null;
 
@@ -95,6 +102,7 @@ export default function ScanProgressIndicator({
   const goToDetails = () => {
     navigatingToDetails.current = true;
     setOpen(false);
+    if (presentation.state === "failed") notice.acknowledgeTerminalScan();
     navigate("/settings#scan-status");
   };
 
@@ -109,6 +117,9 @@ export default function ScanProgressIndicator({
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
     >
+      <span role="status" aria-atomic="true" className="sr-only">
+        {statusAnnouncement(presentation)}
+      </span>
       <PopoverRoot open={open} onOpenChange={setOpen}>
         <div className="flex items-center gap-1">
           <PopoverTrigger asChild>
@@ -150,14 +161,14 @@ export default function ScanProgressIndicator({
           onPointerEnter={() => setContentHovered(true)}
           onPointerLeave={() => setContentHovered(false)}
         >
-          <div role="status" className="space-y-3">
+          <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <strong>{label}</strong>
               <span className="tabular-nums text-fg-muted">
                 {countSummary(presentation)}
               </span>
             </div>
-            <ProgressBar presentation={presentation} />
+            <ScanProgressBar presentation={presentation} className="h-1.5" />
             <p className="text-sm text-fg-muted">{presentation.description}</p>
           </div>
         </PopoverContent>

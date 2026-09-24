@@ -45,6 +45,35 @@ describe("ScanStatusSection", () => {
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
+  it("shows an indeterminate bar and unknown count while targets are discovered", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders"
+          ? json([{}])
+          : json(scan({ state: "running" })),
+      ),
+    );
+    renderSection();
+
+    const progress = await screen.findByRole("progressbar", {
+      name: "取り込み対象を確認中",
+    });
+    expect(progress.getAttribute("aria-valuenow")).toBeNull();
+    expect(screen.getByText("確認中")).toBeDefined();
+  });
+
+  it("shows retry text without a progress bar when no scan has loaded", async () => {
+    fetchMock.mockImplementation((input) =>
+      String(input) === "/api/media-folders"
+        ? Promise.resolve(json([{}]))
+        : Promise.reject(new Error("network")),
+    );
+    renderSection();
+
+    expect(await screen.findByText("network")).toBeDefined();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
   it("shows a failed reason and retries through the existing scan action", async () => {
     let startCalls = 0;
     fetchMock.mockImplementation((input, init) => {

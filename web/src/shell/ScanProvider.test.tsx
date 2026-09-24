@@ -171,6 +171,34 @@ describe("ScanProvider", () => {
     expect(await screen.findByText("状態: 4")).toBeDefined();
   });
 
+  it("待機状態の取得成功後に一時失敗しても自動で再試行する", async () => {
+    vi.useFakeTimers();
+    let currentCalls = 0;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      currentCalls += 1;
+      if (currentCalls === 1) return Promise.resolve(json({}, 404));
+      if (currentCalls === 2) return Promise.reject(new Error("一時的な失敗"));
+      return Promise.resolve(json(scan(6, "running")));
+    });
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    await act(async () => Promise.resolve());
+    expect(currentCalls).toBe(1);
+
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await act(async () => Promise.resolve());
+    expect(currentCalls).toBe(2);
+    expect(screen.getByText("一時的な失敗")).toBeDefined();
+
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(screen.getByText("状態: 6")).toBeDefined();
+    expect(screen.getByText("エラーなし")).toBeDefined();
+  });
+
   it("状態取得の一時失敗中も最後の成功状態を保持する", async () => {
     vi.useFakeTimers();
     let currentCalls = 0;

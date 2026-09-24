@@ -21,6 +21,7 @@ function context(
 ): ScanContextValue {
   return {
     scan,
+    loaded: true,
     error: null,
     starting: false,
     running: scan?.state === "running",
@@ -52,5 +53,14 @@ describe("presentScan", () => {
     expect(presentation.state).toBe("running");
     expect(presentation.refreshing).toBe(true);
     expect(presentation.progress).toBe(0.4);
+  });
+
+  it("treats a running zero total as unknown instead of zero items", () => {
+    const presentation = presentScan(
+      context(makeScan("running", { total: 0, completed: 0 })),
+    );
+    expect(presentation.state).toBe("unknown-total");
+    expect(presentation.total).toBeNull();
+    expect(presentation.progress).toBeNull();
   });
 });
