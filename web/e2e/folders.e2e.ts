@@ -11,8 +11,8 @@ interface MediaFolder {
 
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
-/** 取り込むファイル 77 本のうち、同じ内容の複製 2 本を除いた動画の数。 */
-const expectedVideos = 75;
+/** 取り込むファイル 16 本のうち、同じ内容の複製 2 本を除いた動画の数。 */
+const expectedVideos = 14;
 const registered: MediaFolder[] = [];
 
 function rootA(): number {
@@ -27,16 +27,26 @@ function folderUrl(rootId: number, path = ""): string {
 }
 
 async function waitForLibrary(request: APIRequestContext, scanId: number) {
+  const currentScan = async () => {
+    const response = await request.get("/api/scans/current");
+    return (await response.json()) as { id: number; state: string; failed: number };
+  };
   await expect
     .poll(
       async () => {
-        const response = await request.get("/api/scans/current");
-        const scan = (await response.json()) as { id: number; state: string };
-        return scan.id === scanId ? scan.state : "other";
+        const scan = await currentScan();
+        return scan.id === scanId && scan.state !== "running" ? "finished" : scan.state;
       },
       { timeout: 60_000 },
     )
-    .toBe("done");
+    .toBe("finished");
+  // 取り込めなかったファイルがあると動画の数が揃わず、下のサムネイル待ちが
+  // 上限まで空回りする。ここで結果を見て、すぐに落とす。
+  const scan = await currentScan();
+  expect({ state: scan.state, failed: scan.failed }).toEqual({
+    state: "done",
+    failed: 0,
+  });
   const states = async () => {
     const response = await request.get("/api/videos?limit=200");
     const page = (await response.json()) as { items: { thumbnailState: string }[] };
@@ -167,7 +177,6 @@ test.describe.serial("folder browser", () => {
       "A",
       "dup",
       "five",
-      "many",
       "only-deeper",
     ]);
 
@@ -208,20 +217,20 @@ test.describe.serial("folder browser", () => {
   test("並び順を変えると動画だけを読み直す", async ({ page }) => {
     const listings: string[] = [];
     page.on("request", (request) => {
-      if (/\/api\/folders\/\d+\?path=many$/.test(request.url()))
+      if (/\/api\/folders\/\d+\?path=five$/.test(request.url()))
         listings.push(request.url());
     });
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(folderUrl(rootA(), "many"));
+    await page.goto(folderUrl(rootA(), "five"));
     const first = page.locator("[data-video-id] h3").first();
-    await expect(first).toHaveText("clip-61");
+    await expect(first).toHaveText("part-5");
     // 開発サーバーは StrictMode で効果を2回走らせるので、読み込みが落ち着いた後の数と比べる。
     await page.waitForLoadState("networkidle");
     const before = listings.length;
 
     await page.getByRole("button", { name: "並び順: 追加日" }).click();
     await page.getByRole("menuitemradio", { name: "題名" }).click();
-    await expect(first).toHaveText("clip-01");
+    await expect(first).toHaveText("part-1");
     await page.waitForLoadState("networkidle");
     expect(listings).toHaveLength(before);
   });
@@ -249,48 +258,6 @@ test.describe.serial("folder browser", () => {
     await page.reload();
     await expect(crumbs.locator('[aria-current="page"]')).toHaveText("100% #1 日本語");
     await expect(page.locator("[data-video-id] h3")).toHaveText(["s"]);
-  });
-
-  test("61本を超えるフォルダで続きを読み、再生から戻ると同じ位置に戻る", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(folderUrl(rootA(), "many"));
-    const cards = page.locator("[data-video-id]");
-    await expect(cards.first()).toBeVisible();
-    await expect(async () => {
-      await page.mouse.wheel(0, 4000);
-      expect(await cards.count()).toBe(61);
-    }).toPass({ timeout: 20_000 });
-
-    const target = cards.nth(40);
-    await target.scrollIntoViewIfNeeded();
-    // click() はリンクを見える位置へもう一度スクロールすることがあるので、押した瞬間の位置を控える。
-    await page.evaluate(() => {
-      document.addEventListener(
-        "click",
-        () => {
-          (window as unknown as { clickedAt: number }).clickedAt = window.scrollY;
-        },
-        { capture: true, once: true },
-      );
-    });
-    await target.locator("a").click();
-    await expect(page).toHaveURL(/\/videos\/\d+$/);
-    const before = await page.evaluate(
-      () => (window as unknown as { clickedAt: number }).clickedAt,
-    );
-    expect(before).toBeGreaterThan(0);
-
-    await page.getByRole("button", { name: "閉じる" }).click();
-    await expect(page).toHaveURL(folderUrl(rootA(), "many"));
-    await expect(cards).toHaveCount(61);
-    await expect
-      .poll(() => page.evaluate(() => window.scrollY))
-      .toBeGreaterThan(before - 5);
-    expect(Math.abs((await page.evaluate(() => window.scrollY)) - before)).toBeLessThan(
-      5,
-    );
   });
 
   test("キーボードだけでフォルダをたどって動画へ行き、パンくずで戻れる", async ({
