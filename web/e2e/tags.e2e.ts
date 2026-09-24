@@ -1,10 +1,11 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-// 再生画面のタグ（issue 268、親 Issue #193 の受け入れ条件 1・2・6・13）と、
+// 再生画面のタグ（issue 268、親 Issue #193 の受け入れ条件 1・2・6・13）、
 // ライブラリのカードのタグ・タグでの絞り込み（issue 269、受け入れ条件 5・7・8・19・20）、
 // 選択バーの一括操作・すべて選択（issue 270、受け入れ条件 3・4）を実ブラウザに通す。
-// 動画は run-e2e.mjs が generateTagsFixtures で作る 3 本
-// （タグ動画A・タグ動画B・タグ動画C）。
+// 動画は run-e2e.mjs が generateTagsFixtures で作る 4 本
+// （タグ動画A・タグ動画B・タグ動画C・タグ動画D）。タグ動画Cはタグを持たない対照区
+// （issue 269 受け入れ条件7）で、issue 270 のテストでは触らない。
 
 interface MediaFolder {
   id: number;
@@ -64,6 +65,14 @@ async function addSynonym(request: APIRequestContext, id: number, name: string) 
   expect(response.ok()).toBe(true);
 }
 
+async function renameTag(request: APIRequestContext, id: number, name: string) {
+  const response = await request.patch(`/api/tags/${String(id)}`, {
+    headers: mutationHeaders,
+    data: { name },
+  });
+  expect(response.ok()).toBe(true);
+}
+
 async function attachTag(request: APIRequestContext, videoId: number, tagId: number) {
   const response = await request.post("/api/video-tags", {
     headers: mutationHeaders,
@@ -117,7 +126,7 @@ test.describe.serial("video tags", () => {
 
     const list = await request.get("/api/videos?limit=200");
     const page = (await list.json()) as { items: Video[] };
-    expect(page.items).toHaveLength(3);
+    expect(page.items).toHaveLength(4);
     for (const item of page.items) videos.set(item.title, item);
   });
 
@@ -284,9 +293,14 @@ test.describe.serial("video tags", () => {
     async function pressCardTag(page: Page, videoId: number, name: string) {
       const card = page.locator(`[data-video-id="${String(videoId)}"]`);
       const direct = card.getByRole("button", { name: `${name}で絞り込む` });
-      if ((await direct.count()) > 0) {
-        await direct.click();
+      try {
+        // 直に見えていれば、それを押す。レイアウトの計測（B2）が済むまでの
+        // 短い間は「+N」に入っていることもあるので、.count() の1回きりの
+        // 判定ではなく、Playwright の自動待機に判断を委ねる。
+        await direct.click({ timeout: 5000 });
         return;
+      } catch {
+        // 直には無い（本当に収まらず「+N」の中）。
       }
       await card.getByRole("button", { name: /^ほかのタグ \d+ 個を表示$/ }).click();
       await page
@@ -350,19 +364,38 @@ test.describe.serial("video tags", () => {
       await attachTag(request, b.id, tag.id);
 
       await page.goto("/");
-      // ライブラリには3本ある（タグ動画A・B・C）。
-      await expect(page.getByRole("article")).toHaveCount(3);
+      // 絞り込み前は、タグの無いタグ動画C・Dも含めて4件出る。
+      await expect(page.getByRole("article")).toHaveCount(4);
 
       await pressCardTag(page, a.id, "e2e旅行");
       await expect(page).toHaveURL(new RegExp(`tag=${String(tag.id)}(&|$)`));
-      // タグの付いた両方が残り、検索欄は変わらない。
+      // タグの付いた両方が残り、検索欄は変わらない。件数も正しい。
       await expect(page.getByRole("article")).toHaveCount(2);
       await expect(activeTagChip(page, "e2e旅行")).toBeVisible();
+      await expect(page.getByRole("searchbox", { name: "動画を検索" })).toHaveValue("");
+      await expect(page.getByRole("status").first()).toHaveText("2件");
 
-      // 一覧の上のチップを1回押すと外れ、押す前の一覧に戻る。
+      // タグの絞り込みは、題名にその文字列を含むだけのタグの無い動画を出さない
+      // （受け入れ条件7、親 Issue「タグの無い動画」の要求を満たさない例）。ここでは
+      // タグ動画Cの題名そのものを名前に持つタグを作り、Aにだけ付ける。
+      const titleLikeTag = await createTag(request, "タグ動画C");
+      await attachTag(request, a.id, titleLikeTag.id);
       await activeTagChip(page, "e2e旅行").click();
       await expect(page).not.toHaveURL(/tag=/);
+      await pressCardTag(page, a.id, "タグ動画C");
+      await expect(page.getByRole("article")).toHaveCount(1);
+      await expect(page.getByRole("link", { name: "タグ動画A" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "タグ動画C" })).toHaveCount(0);
+      await activeTagChip(page, "タグ動画C").click();
+      await expect(page).not.toHaveURL(/tag=/);
+
+      await pressCardTag(page, a.id, "e2e旅行");
       await expect(page.getByRole("article")).toHaveCount(2);
+
+      // 一覧の上のチップを1回押すと外れ、押す前の一覧（タグ動画C・Dを含む4件）に戻る。
+      await activeTagChip(page, "e2e旅行").click();
+      await expect(page).not.toHaveURL(/tag=/);
+      await expect(page.getByRole("article")).toHaveCount(4);
 
       // 再生画面でタグを押すと、そのタグ1つで絞り込んだライブラリ一覧が開く。
       await page.goto(`/videos/${String(a.id)}`);
@@ -401,6 +434,15 @@ test.describe.serial("video tags", () => {
       // 2024 だけを外すと、旅行だけの絞り込みに戻る（両方見える）。
       await activeTagChip(page, "e2eAND2024").click();
       await expect(page).not.toHaveURL(new RegExp(`tag=${String(year.id)}`));
+      await expect(page.getByRole("article")).toHaveCount(2);
+
+      // タグの絞り込みに加えて、検索欄の題名検索がさらに絞り込む（受け入れ条件8）。
+      const box = page.getByRole("searchbox", { name: "動画を検索" });
+      await box.fill("タグ動画A");
+      await expect(page.getByRole("article")).toHaveCount(1);
+      await expect(page.getByRole("link", { name: "タグ動画A" })).toBeVisible();
+      // 検索語を消すと、タグの絞り込みだけの2件に戻る。
+      await box.fill("");
       await expect(page.getByRole("article")).toHaveCount(2);
 
       // 動画を開いて戻っても、再読み込みしても、新しいタブで開いても同じ絞り込みになる。
@@ -449,6 +491,32 @@ test.describe.serial("video tags", () => {
       await expect(page.getByRole("link", { name: "タグ動画A" })).toHaveCount(0);
 
       await box.fill("");
+
+      // フォルダ画面の検索欄も同じ規則で探す（受け入れ条件19、要件10）。
+      await page.goto("/folders");
+      const folderBox = page.getByRole("searchbox", {
+        name: "すべてのフォルダの動画を検索",
+      });
+      await folderBox.fill("e2e検索専用タグ");
+      await expect(page.getByRole("link", { name: /^タグ動画A/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: /^タグ動画B/ })).toHaveCount(0);
+
+      await folderBox.fill("-e2e検索専用タグ");
+      await expect(page.getByRole("link", { name: /^タグ動画B/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: /^タグ動画A/ })).toHaveCount(0);
+
+      await folderBox.fill("");
+
+      // タグを改名すると、次の検索から新しい名前で当たる（受け入れ条件20）。
+      await renameTag(request, searchable.id, "e2e改名後タグ");
+      await page.goto("/");
+      await box.fill("e2e改名後タグ");
+      await expect(page.getByRole("link", { name: "タグ動画A" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "タグ動画B" })).toHaveCount(0);
+      // 古い名前ではもう当たらない。
+      await box.fill("e2e検索専用タグ");
+      await expect(page.getByRole("link", { name: "タグ動画A" })).toHaveCount(0);
+      await box.fill("");
     });
   });
 
@@ -463,19 +531,21 @@ test.describe.serial("video tags", () => {
     }) => {
       const a = video("タグ動画A");
       const b = video("タグ動画B");
-      const c = video("タグ動画C");
+      // タグ動画Cは issue 269 の受け入れ条件7の対照区（タグを持たない）なので
+      // ここでは触らず、選択には別の動画（タグ動画D）を使う。
+      const d = video("タグ動画D");
       await clearVideoTags(request, a.id);
       await clearVideoTags(request, b.id);
-      await clearVideoTags(request, c.id);
+      await clearVideoTags(request, d.id);
       const solo = await createTag(request, "e2e一部タグ");
       await attachTag(request, a.id, solo.id);
 
       await page.goto("/");
-      await expect(page.getByRole("article")).toHaveCount(3);
+      await expect(page.getByRole("article")).toHaveCount(4);
 
       await checkbox(page, "タグ動画A").click();
       await checkbox(page, "タグ動画B").click();
-      await checkbox(page, "タグ動画C").click();
+      await checkbox(page, "タグ動画D").click();
       await expect(page.getByText("3 件を選択中")).toBeVisible();
 
       await page.getByRole("button", { name: "タグを付ける" }).click();
@@ -486,7 +556,7 @@ test.describe.serial("video tags", () => {
 
       // 3本すべてのカードに付く（受け入れ条件3）。見える「タグ」の一覧の中だけを
       // 見る（オーバーフロー計測用の隠れた複製は数えない）。
-      for (const v of [a, b, c]) {
+      for (const v of [a, b, d]) {
         await expect(
           page
             .locator(`[data-video-id="${String(v.id)}"]`)
@@ -502,7 +572,7 @@ test.describe.serial("video tags", () => {
       // 「タグを外す」を開くと、一部にしか付いていない e2e一部タグ が分かる。
       await checkbox(page, "タグ動画A").click();
       await checkbox(page, "タグ動画B").click();
-      await checkbox(page, "タグ動画C").click();
+      await checkbox(page, "タグ動画D").click();
       await page.getByRole("button", { name: "タグを外す" }).click();
       await expect(
         page.getByRole("option", { name: "e2e一部タグ、一部の動画だけ、3 件中 1 件" }),
@@ -515,13 +585,13 @@ test.describe.serial("video tags", () => {
       request,
     }) => {
       await page.goto("/");
-      await expect(page.getByRole("article")).toHaveCount(3);
+      await expect(page.getByRole("article")).toHaveCount(4);
 
       await checkbox(page, "タグ動画A").click();
       await expect(page.getByText("1 件を選択中")).toBeVisible();
 
       await page.getByRole("button", { name: "すべて選択" }).click();
-      await expect(page.getByText("3 件を選択中")).toBeVisible();
+      await expect(page.getByText("4 件を選択中")).toBeVisible();
 
       await page.getByRole("button", { name: "タグを付ける" }).click();
       await page
@@ -529,15 +599,15 @@ test.describe.serial("video tags", () => {
         .fill("e2eすべて選択タグ");
       await page.getByRole("option", { name: /を作成/ }).click();
       await expect(
-        page.getByText("3 件に「e2eすべて選択タグ」を付けました"),
+        page.getByText("4 件に「e2eすべて選択タグ」を付けました"),
       ).toBeVisible();
 
-      // 選択バーに出ていた件数（3件、ライブラリの全件）と同じ本数に付いたことを、
+      // 選択バーに出ていた件数（4件、ライブラリの全件）と同じ本数に付いたことを、
       // タグの本数（GET /api/tags の videoCount）で確かめる（受け入れ条件4）。
       const tagsResponse = await request.get("/api/tags");
       const tags = ((await tagsResponse.json()) as { items: Tag[] }).items;
       const created = tags.find((t) => t.name === "e2eすべて選択タグ");
-      expect(created?.videoCount).toBe(3);
+      expect(created?.videoCount).toBe(4);
     });
   });
 });
