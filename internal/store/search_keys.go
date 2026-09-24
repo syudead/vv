@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -34,16 +33,24 @@ func locationSearchKey(roots []string, path, title string) string {
 		if !ok {
 			continue
 		}
-		return domain.FoldForMatch(title) + "\n" + domain.FoldForMatch(rel)
+		return searchKeyPart(title) + "\n" + searchKeyPart(rel)
 	}
 	return ""
 }
 
+// searchKeyPart は search_key の片側（題名か相対パス）を照合形にする。
+// 題名や相対パスの中の改行は空白にそろえる。search_key は2つを改行でつなぐので、
+// 改行を境目のためだけに残し、検索語の側も改行を空白として扱う（search.go）。
+// 改行を含む題名も、改行を空白に読み替えた語で見つかる。
+func searchKeyPart(s string) string {
+	return strings.ReplaceAll(domain.FoldForMatch(s), "\n", " ")
+}
+
 // registeredRelativePath は、path が root の下にあるかを一覧の判定
-// （registeredLocationCondition）と同じ規則で調べ、下にあれば root より下の
-// 相対パスを返す。一覧に出る所在が鍵を持たずに検索で見つからない、という
-// ずれを作らないよう、Go 側でも SQL と同じく root 自身・root + OS の区切り・
-// root + `/`・root + `\` を認める。Windows では大文字小文字を区別しない。
+// （registeredLocationCondition）と同じ規則（registrationSeparators）で調べ、
+// 下にあれば root より下の相対パスを返す。一覧に出る所在が鍵を持たずに検索で
+// 見つからない、というずれを作らないためである。Windows では大文字小文字を
+// 区別しない。
 //
 // 相対パスの区切りは `/` にそろえる。Windows では小文字にそろえた綴りから
 // 取るが、鍵には FoldForMatch を掛けるので照合の結果は変わらない。
@@ -55,9 +62,10 @@ func registeredRelativePath(root, path string) (string, bool) {
 	if p == r {
 		return "", true
 	}
-	trimmed := strings.TrimRight(r, `/\`)
-	for _, separator := range []string{string(os.PathSeparator), "/", `\`} {
-		if rest, ok := strings.CutPrefix(p, trimmed+separator); ok {
+	separators := registrationSeparators()
+	trimmed := strings.TrimRight(r, string(separators))
+	for _, separator := range separators {
+		if rest, ok := strings.CutPrefix(p, trimmed+string(separator)); ok {
 			return filepath.ToSlash(rest), true
 		}
 	}

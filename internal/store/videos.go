@@ -73,19 +73,35 @@ const videoColumnsTemplate = `videos.id,
 	videos.height, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.preview_state`
 
+// registrationSeparators は、登録フォルダの下かどうかを調べるときに区切りとして
+// 扱う文字である。Windows では `/` と `\` の両方、それ以外の OS では `/` だけで、
+// `\` はファイル名の一部である。一覧の判定（registeredLocationCondition）と
+// 照合用の鍵（registeredRelativePath）は、この同じ規則を使う。
+func registrationSeparators() []rune {
+	if runtime.GOOS == "windows" {
+		return []rune{'/', '\\'}
+	}
+	return []rune{os.PathSeparator}
+}
+
 func registeredLocationCondition(alias string) string {
-	separator := strconv.Itoa(int(os.PathSeparator))
 	pathExpr := alias + `.path`
 	rootExpr := `mf.path`
 	if runtime.GOOS == "windows" {
 		pathExpr = `lower(` + pathExpr + `)`
 		rootExpr = `lower(` + rootExpr + `)`
 	}
-	trimmedRoot := `rtrim(` + rootExpr + `, char(47) || char(92))`
-	return `exists (select 1 from media_folders mf where ` + pathExpr + ` = ` + rootExpr +
-		` or instr(` + pathExpr + `, ` + trimmedRoot + ` || char(` + separator + `)) = 1` +
-		` or instr(` + pathExpr + `, ` + trimmedRoot + ` || char(47)) = 1` +
-		` or instr(` + pathExpr + `, ` + trimmedRoot + ` || char(92)) = 1)`
+	separators := registrationSeparators()
+	chars := make([]string, 0, len(separators))
+	for _, separator := range separators {
+		chars = append(chars, `char(`+strconv.Itoa(int(separator))+`)`)
+	}
+	trimmedRoot := `rtrim(` + rootExpr + `, ` + strings.Join(chars, ` || `) + `)`
+	condition := `exists (select 1 from media_folders mf where ` + pathExpr + ` = ` + rootExpr
+	for _, char := range chars {
+		condition += ` or instr(` + pathExpr + `, ` + trimmedRoot + ` || ` + char + `) = 1`
+	}
+	return condition + `)`
 }
 
 func registeredVideoCondition(alias string) string {

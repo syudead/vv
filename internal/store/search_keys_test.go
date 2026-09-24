@@ -6,6 +6,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -337,21 +339,59 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 	}
 }
 
-// 一覧に出る所在は、検索でも見つかる。一覧の登録判定（registeredLocationCondition）は
-// どの OS でも root の直後の `\` を区切りとして認めるので、鍵を作る側も同じ規則で
-// 相対パスを取る。
+// 一覧の登録判定と鍵の登録判定は同じ規則に従う。`\` を区切りとして扱うのは
+// Windows だけで、ほかの OS では `\` はファイル名の一部である。
 func TestSearchKeyFollowsListRegistrationRule(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("`\\` is a path separator on this OS")
+	}
 	db := migratedDB(t)
 	ctx := context.Background()
-	path := `/media\film.mp4`
-	if _, err := db.UpsertVideo(ctx, sampleFile(path, "film", "key-backslash", 1, 0)); err != nil {
+	// 登録フォルダ /media の直後の `\` は区切りではないので、この所在は登録の外である。
+	outside := `/media\film.mp4`
+	if _, err := db.UpsertVideo(ctx, sampleFile(outside, "film", "key-outside", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if key, _, _ := locationKeys(t, db, path); key == "" {
-		t.Fatalf("search_key が空です（一覧には出るのに検索で見つからない）")
+	if key, _, _ := locationKeys(t, db, outside); key != "" {
+		t.Errorf("登録の外の search_key = %q, want 空", key)
 	}
-	if got := searchTitles(t, db, "film"); len(got) != 1 {
-		t.Errorf("検索 film = %v, want [film]", got)
+	if got := searchTitles(t, db, ""); len(got) != 0 {
+		t.Errorf("一覧 = %v, want 登録の外の所在は出ない", got)
+	}
+
+	// 名前が `\` で終わる登録フォルダでは、`\` を削らずにその下だけを登録とみなす。
+	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, `/elsewhere\`); err != nil {
+		t.Fatal(err)
+	}
+	inside := `/elsewhere\/clip.mp4`
+	sibling := `/elsewhere\clip2.mp4`
+	for i, path := range []string{inside, sibling} {
+		if _, err := db.UpsertVideo(ctx, sampleFile(path, "clip"+strconv.Itoa(i), "key-x"+strconv.Itoa(i), 1, 0)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if key, _, _ := locationKeys(t, db, inside); key != "clip0\nclip.mp4" {
+		t.Errorf("登録の下の search_key = %q, want %q", key, "clip0\nclip.mp4")
+	}
+	if key, _, _ := locationKeys(t, db, sibling); key != "" {
+		t.Errorf("隣のフォルダの search_key = %q, want 空", key)
+	}
+	if got := searchTitles(t, db, "clip"); len(got) != 1 || got[0] != "clip0" {
+		t.Errorf("検索 clip = %v, want [clip0]", got)
+	}
+}
+
+// 改行を含む題名も、改行を空白に読み替えた語で見つかる。
+func TestSearchFindsTitleContainingNewline(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "abc\ndef", "key-newline", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{"abc\ndef", "abc def"} {
+		if got := searchTitles(t, db, query); len(got) != 1 {
+			t.Errorf("検索 %q = %v, want 1件", query, got)
+		}
 	}
 }
 
