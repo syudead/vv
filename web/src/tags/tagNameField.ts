@@ -3,6 +3,15 @@ import { useState, type ClipboardEvent, type FormEvent } from "react";
 import { nameReason, newlinePattern } from "../ui/Combobox";
 
 /**
+ * TagFieldError は、作成・改名の入力の下に出すサーバー側の失敗を運ぶ。
+ * `tag_name_taken` はその名前を選んだ利用者への案内で `text-xs text-danger`
+ * （ui-design.md「Create and rename」）、それ以外の失敗は
+ * `role="alert"` の `text-sm text-danger`（ui-design.md「States」の
+ * 「操作の失敗」）と、大きさと読み上げの扱いが違う。
+ */
+export type TagFieldError = { kind: "taken" | "other"; message: string };
+
+/**
  * useTagNameField は、タグの名前を打つ入力の検証と、改行を含む貼り付け・
  * 落とし込みの遮断を持つ（ui-design.md「Combobox」名前の検証・改行の扱い）。
  * 管理画面の作成・改名の入力は `ui/Combobox` の候補の一覧を持たないが、

@@ -506,6 +506,11 @@ test.describe.serial("video tags", () => {
           .getByRole("button", { name: "e2e管理改名後で絞り込む" }),
       ).toBeVisible();
 
+      // 再生画面にも新しい名前が出る。
+      await page.goto(`/videos/${String(a.id)}`);
+      await expect(page.locator('[title="e2e管理改名後"]')).toBeVisible();
+      await expect(page.locator('[title="e2e管理改名前"]')).toHaveCount(0);
+
       // 既存のタグ名と重なる改名は拒否され、理由が画面に出る。
       await createTag(request, "e2e管理既存名");
       await page.goto("/tags");
@@ -578,11 +583,28 @@ test.describe.serial("video tags", () => {
       request,
     }) => {
       const created = await createTag(request, "e2e管理移動先");
+      const a = video("タグ動画A");
+      const b = video("タグ動画B");
+      await clearVideoTags(request, a.id);
+      await clearVideoTags(request, b.id);
+      await attachTag(request, a.id, created.id);
+
       await page.goto("/tags");
       await tagRowByName(page, "e2e管理移動先").click();
       await expect(page).toHaveURL(
         new RegExp(`^http://127\\.0\\.0\\.1:15173/\\?tag=${String(created.id)}$`),
       );
+
+      // URL だけでなく、実際にそのタグ1つで絞り込んだ一覧になっている
+      // （タグの付いた A だけが残り、絞り込み中のタグの行にも出る）。
+      await expect(page.getByRole("article")).toHaveCount(1);
+      await expect(page.getByRole("link", { name: "タグ動画A" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "タグ動画B" })).toHaveCount(0);
+      await expect(
+        page
+          .getByRole("list", { name: "絞り込み中のタグ" })
+          .getByRole("button", { name: "e2e管理移動先の絞り込みを外す" }),
+      ).toBeVisible();
     });
 
     test("18: 検索は名前とシノニムに大文字小文字を区別せず当たり、消すと全件に戻る", async ({
@@ -596,8 +618,8 @@ test.describe.serial("video tags", () => {
       await page.goto("/tags");
       const search = page.getByRole("searchbox", { name: "タグを検索" });
 
-      // シノニム「e2eXyz9アニメ管理」に「アニ」が含まれるので、名前にしか出ない
-      // 「Anime」で当たる。
+      // 名前「e2eXyz9Anime管理」自体にはカタカナが無い。シノニム
+      // 「e2eXyz9アニメ管理」が「アニ」を含むので、シノニムでの一致として当たる。
       await search.fill("e2eXyz9アニ");
       await expect(tagRowByName(page, "e2eXyz9Anime管理")).toBeVisible();
       await expect(tagRowByName(page, "e2eXyz9Drama管理")).toHaveCount(0);

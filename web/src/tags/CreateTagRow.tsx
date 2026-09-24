@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 
 import Button from "../ui/Button";
-import { useTagNameField } from "./tagNameField";
+import { isComposingKeyEvent } from "../ui/Combobox";
+import { useTagNameField, type TagFieldError } from "./tagNameField";
 
 /**
  * CreateTagRow は「新しいタグ」で一覧の先頭に差し込む作成の行である
@@ -15,7 +16,7 @@ export default function CreateTagRow({
   onSubmit,
 }: {
   pending: boolean;
-  error: string | null;
+  error: TagFieldError | null;
   onCancel: () => void;
   onSubmit: (name: string) => void;
 }) {
@@ -27,6 +28,7 @@ export default function CreateTagRow({
   }, []);
 
   function submit() {
+    if (pending) return;
     const spelling = field.trySpelling();
     if (spelling !== null) onSubmit(spelling);
   }
@@ -40,6 +42,7 @@ export default function CreateTagRow({
         onPaste={field.onPaste}
         onBeforeInput={field.onBeforeInput}
         onKeyDown={(event) => {
+          if (isComposingKeyEvent(event)) return;
           if (event.key === "Enter") {
             event.preventDefault();
             submit();
@@ -57,7 +60,7 @@ export default function CreateTagRow({
               ? "tag-create-error"
               : undefined
         }
-        disabled={pending}
+        aria-busy={pending || undefined}
         className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none"
       />
       <div className="flex shrink-0 items-center gap-2">
@@ -73,9 +76,14 @@ export default function CreateTagRow({
           {field.reason}
         </p>
       )}
-      {field.reason === null && error !== null && (
-        <p id="tag-create-error" role="alert" className="w-full text-xs text-danger">
-          {error}
+      {field.reason === null && error !== null && error.kind === "taken" && (
+        <p id="tag-create-error" className="w-full text-xs text-danger">
+          {error.message}
+        </p>
+      )}
+      {field.reason === null && error !== null && error.kind === "other" && (
+        <p id="tag-create-error" role="alert" className="w-full text-sm text-danger">
+          {error.message}
         </p>
       )}
     </div>

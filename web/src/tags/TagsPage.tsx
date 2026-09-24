@@ -2,7 +2,7 @@ import { AlertCircle, Plus, SearchX, Tags as TagsIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { errorMessage, RequestFailed } from "../api/client";
-import { compareNatural } from "../api/tagOrder";
+import { compareTagRefs } from "../api/tagOrder";
 import {
   createTag,
   currentTags,
@@ -18,6 +18,7 @@ import { useToast } from "../ui/Toast";
 import { EmptyState } from "../videoList/states";
 import CreateTagRow from "./CreateTagRow";
 import DeleteTagDialog from "./DeleteTagDialog";
+import type { TagFieldError } from "./tagNameField";
 import TagRow, { type TagRowRefs } from "./TagRow";
 import TagSearchBox from "./TagSearchBox";
 
@@ -25,15 +26,26 @@ function isTagNotFound(error: unknown): boolean {
   return error instanceof RequestFailed && error.code === "tag_not_found";
 }
 
+function tagFieldError(failure: unknown): TagFieldError {
+  if (failure instanceof RequestFailed && failure.code === "tag_name_taken") {
+    return { kind: "taken", message: failure.message };
+  }
+  return { kind: "other", message: errorMessage(failure) };
+}
+
+type FocusTarget = "rename" | "name" | "menu";
+
 /**
  * TagsPage はサイドバーの「タグ」から開く管理画面である（ui-design.md「Tag
  * management page」）。一覧・検索・作成・改名・削除を持つ。統合とシノニムは
  * Issue 272 で足す。
  *
  * タグの一覧は共有の保持（`web/src/api/tags.ts`、Plan の Structural
- * Decisions 8）を使う。この画面が開くときは必ず取り直し、作成・改名・削除の
- * あとも取り直した結果でフォーカス先を決める（サーバーが返した最新の並びと
- * 本数を、取り直しを待たずに使い違えないため）。
+ * Decisions 8）を使う。作成・改名・削除の直後は、サーバーが返した最新の1件を
+ * 今の一覧へその場で重ねる（もう1回 `GET /api/tags` を送らない。`createTag`・
+ * `renameTag`・`deleteTag` 自体が共有の保持をバックグラウンドで取り直すので、
+ * 二重の取得にはならない）。タグがもう無いとき（`tag_not_found`）だけ、
+ * ほかのタグも変わっているかもしれないので `reload` で取り直す。
  */
 export default function TagsPage() {
   const toast = useToast();
@@ -43,11 +55,11 @@ export default function TagsPage() {
 
   const [creating, setCreating] = useState(false);
   const [createPending, setCreatePending] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<TagFieldError | null>(null);
 
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renamePending, setRenamePending] = useState(false);
-  const [renameError, setRenameError] = useState<string | null>(null);
+  const [renameError, setRenameError] = useState<TagFieldError | null>(null);
 
   const [deletingTag, setDeletingTag] = useState<Tag | null>(null);
   const [deletePending, setDeletePending] = useState(false);
@@ -58,24 +70,54 @@ export default function TagsPage() {
   const rowRefs = useRef(new Map<number, TagRowRefs>());
 
   const registerRefs = useCallback((id: number, refs: Partial<TagRowRefs>) => {
-    const current = rowRefs.current.get(id) ?? { nameLink: null, renameButton: null };
+    const current = rowRefs.current.get(id) ?? {
+      nameLink: null,
+      renameButton: null,
+      menuButton: null,
+    };
     rowRefs.current.set(id, { ...current, ...refs });
   }, []);
 
-  /** focusRow はタグの行のフォーカス先へ移す。id が無ければ「新しいタグ」へ移す。 */
-  const focusRow = useCallback((id: number | undefined, part: "rename" | "name") => {
+  /**
+   * focusRow はタグの行のフォーカス先へ移す。id が無ければ「新しいタグ」へ
+   * 移す。「新しいタグ」は作成中に disabled になるので、`creating` を false に
+   * 戻す更新が DOM に反映されたあとで移す必要がある（ほかの行への移動と同じく
+   * setTimeout(0) で1呼吸置く。settings/SettingsPage.tsx の focusFolderAction
+   * と同じ）。
+   */
+  const focusRow = useCallback((id: number | undefined, part: FocusTarget) => {
     if (id === undefined) {
-      createButtonRef.current?.focus();
+      setTimeout(() => createButtonRef.current?.focus(), 0);
       return;
     }
-    // DOM が更新されてから移す（settings/SettingsPage.tsx の focusFolderAction と同じ）。
     setTimeout(() => {
       const refs = rowRefs.current.get(id);
-      const target = part === "rename" ? refs?.renameButton : refs?.nameLink;
+      const target =
+        part === "rename"
+          ? refs?.renameButton
+          : part === "menu"
+            ? refs?.menuButton
+            : refs?.nameLink;
       if (target === null || target === undefined) createButtonRef.current?.focus();
       else target.focus();
     }, 0);
   }, []);
+
+  /**
+   * focusAfterRemoval は、行が一覧から消えた（削除、または tag_not_found の
+   * 取り直しで消えた）あとのフォーカス先を決める。次の行の「改名」、無ければ
+   * 前の行、1つも無ければ「新しいタグ」（ui-design.md「Merge and delete」）。
+   * order は消える前の（絞り込み後の）並びである。
+   */
+  const focusAfterRemoval = useCallback(
+    (order: readonly Tag[], removedId: number) => {
+      const index = order.findIndex((tag) => tag.id === removedId);
+      const remaining = order.filter((tag) => tag.id !== removedId);
+      const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)];
+      focusRow(next?.id, "rename");
+    },
+    [focusRow],
+  );
 
   const reload = useCallback(() => {
     setLoadError(null);
@@ -85,6 +127,9 @@ export default function TagsPage() {
         return loaded;
       })
       .catch((failure: unknown) => {
+        // 既に一覧を持っているときは、その一覧を残したまま理由だけを控える
+        // （読み込み失敗の空の状態は、一覧をまだ一度も取れていないときだけ
+        // 出す。N6: 直前の操作は成功しているので、一覧を空白にしない）。
         setLoadError(errorMessage(failure));
         return undefined;
       });
@@ -102,9 +147,12 @@ export default function TagsPage() {
     };
   }, [reload]);
 
+  // 一覧は `GET /api/tags` が返す名前の自然順（contracts/tags-api.md §3）を
+  // 保つが、作成・改名でその場に重ねた1件は並びの外にあるかもしれないので
+  // `compareTagRefs`（カード・再生画面・候補と同じ並び替え）で並べ直す。
   const sorted = useMemo(() => {
     if (tags === undefined) return [];
-    return [...tags].sort((a, b) => compareNatural(a.name, b.name) || a.id - b.id);
+    return [...tags].sort(compareTagRefs);
   }, [tags]);
 
   const normalizedQuery = search.trim().toLowerCase();
@@ -117,7 +165,7 @@ export default function TagsPage() {
     );
   }, [sorted, normalizedQuery]);
 
-  const searching = search !== "";
+  const searching = normalizedQuery !== "";
   const total = tags?.length ?? 0;
   const countText =
     tags === undefined
@@ -142,15 +190,11 @@ export default function TagsPage() {
     setCreatePending(true);
     try {
       const created = await createTag(name);
-      await reload();
+      setTags((current) => (current === undefined ? [created] : [...current, created]));
       setCreating(false);
       focusRow(created.id, "name");
     } catch (failure) {
-      if (failure instanceof RequestFailed && failure.code === "tag_name_taken") {
-        setCreateError(failure.message);
-      } else {
-        setCreateError(errorMessage(failure));
-      }
+      setCreateError(tagFieldError(failure));
     } finally {
       setCreatePending(false);
     }
@@ -160,22 +204,22 @@ export default function TagsPage() {
     setRenameError(null);
     setRenamePending(true);
     try {
-      await renameTag(tag.id, name);
-      await reload();
+      const updated = await renameTag(tag.id, name);
+      setTags((current) =>
+        current?.map((item) => (item.id === updated.id ? updated : item)),
+      );
       setRenamingId(null);
       focusRow(tag.id, "rename");
     } catch (failure) {
       if (isTagNotFound(failure)) {
+        const order = filtered;
         setRenamingId(null);
         toast("このタグはもう無いため、一覧を取り直しました");
-        void reload();
+        await reload();
+        focusAfterRemoval(order, tag.id);
         return;
       }
-      if (failure instanceof RequestFailed && failure.code === "tag_name_taken") {
-        setRenameError(failure.message);
-      } else {
-        setRenameError(errorMessage(failure));
-      }
+      setRenameError(tagFieldError(failure));
     } finally {
       setRenamePending(false);
     }
@@ -185,28 +229,37 @@ export default function TagsPage() {
     if (deletingTag === null) return;
     const target = deletingTag;
     const order = filtered;
-    const index = order.findIndex((tag) => tag.id === target.id);
     setDeleteError(null);
     setDeletePending(true);
     try {
       await deleteTag(target.id);
-      await reload();
+      setTags((current) => current?.filter((item) => item.id !== target.id));
       setDeletingTag(null);
       toast("削除しました");
-      const remaining = order.filter((tag) => tag.id !== target.id);
-      const next = remaining[Math.min(index, remaining.length - 1)];
-      focusRow(next?.id, "rename");
+      focusAfterRemoval(order, target.id);
     } catch (failure) {
       if (isTagNotFound(failure)) {
         setDeletingTag(null);
         toast("このタグはもう無いため、一覧を取り直しました");
-        void reload();
+        await reload();
+        focusAfterRemoval(order, target.id);
         return;
       }
       setDeleteError(errorMessage(failure));
     } finally {
       setDeletePending(false);
     }
+  }
+
+  function cancelDelete() {
+    if (deletePending || deletingTag === null) return;
+    const target = deletingTag;
+    setDeletingTag(null);
+    setDeleteError(null);
+    // 窓は「その他の操作」のメニューの項目から開いた。その項目はメニューが
+    // 閉じるともう無いので、ModalFrame の「前のフォーカスへ戻す」には頼らず、
+    // その行の「その他の操作」へ明示的に戻す（B2）。
+    focusRow(target.id, "menu");
   }
 
   const showEmptyTags = tags !== undefined && tags.length === 0 && !creating;
@@ -218,8 +271,14 @@ export default function TagsPage() {
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="text-xl font-semibold">タグ</h1>
+      {/*
+        h1・操作の行・件数の行の間隔は ui-design.md が固定していない（固定するのは
+        本文の外側の余白と行の py-2 だけ）。「1280×800 でシノニムの行を持つタグと
+        持たないタグが半々のとき、12 行以上が1画面に見える」（ui-design.md「Visual
+        review criteria」情報密度）を満たすため、ここを詰める（B5）。
+      */}
 
-      <div className="mt-6 flex items-center gap-3">
+      <div className="mt-2 flex items-center gap-3">
         <TagSearchBox
           value={search}
           onChange={setSearch}
@@ -241,12 +300,12 @@ export default function TagsPage() {
       <p
         role="status"
         aria-live="polite"
-        className="mt-3 text-xs text-fg-muted tabular-nums"
+        className="mt-1 text-xs text-fg-muted tabular-nums"
       >
         {countText}
       </p>
 
-      <div className="mt-2">
+      <div className="mt-1">
         {tags === undefined && loadError === null && (
           <div className="space-y-2" aria-hidden="true">
             {Array.from({ length: 6 }, (_, index) => (
@@ -295,6 +354,7 @@ export default function TagsPage() {
                 onCancel={() => {
                   setCreating(false);
                   setCreateError(null);
+                  focusRow(undefined, "name");
                 }}
                 onSubmit={(name) => void submitCreate(name)}
               />
@@ -315,6 +375,7 @@ export default function TagsPage() {
                 onCancelRename={() => {
                   setRenamingId(null);
                   setRenameError(null);
+                  focusRow(tag.id, "rename");
                 }}
                 onSubmitRename={(target, name) => void submitRename(target, name)}
                 onDelete={(target) => {
@@ -332,9 +393,7 @@ export default function TagsPage() {
           tag={deletingTag}
           pending={deletePending}
           error={deleteError}
-          onClose={() => {
-            if (!deletePending) setDeletingTag(null);
-          }}
+          onClose={cancelDelete}
           onDelete={() => void performDelete()}
         />
       )}

@@ -2,12 +2,13 @@ import { Search, X } from "lucide-react";
 import { type RefObject, useEffect } from "react";
 
 import { cn } from "../lib/cn";
+import { isComposingKeyEvent } from "../ui/Combobox";
 
 /**
  * TagSearchBox はタグ管理画面の一覧をその場で絞る検索欄である（Issue 271「検索」）。
  * `web/src/videoList/SearchBox.tsx` と同じ外見（枠・アイコン・クリアボタン・`/`
- * ショートカット）だが、URL を読み書きせず、確定も待たずにその場で絞り込む
- * （API は増やさない）。
+ * ショートカット・`/` の kbd の手引き）だが、URL を読み書きせず、確定も待たずに
+ * その場で絞り込む（API は増やさない）。
  */
 export default function TagSearchBox({
   value,
@@ -44,6 +45,7 @@ export default function TagSearchBox({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
+          if (isComposingKeyEvent(event)) return;
           if (event.key === "Escape" && value !== "") {
             event.preventDefault();
             onChange("");
@@ -55,7 +57,7 @@ export default function TagSearchBox({
         autoComplete="off"
         spellCheck={false}
         className={cn(
-          value === "" ? "pr-9" : "pr-9",
+          "pr-9",
           "h-full w-full rounded-md border border-border bg-field pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
           "placeholder:text-fg-subtle transition-[border-color,box-shadow] duration-150",
           "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft",
@@ -63,17 +65,24 @@ export default function TagSearchBox({
           "[&::-webkit-search-cancel-button]:hidden",
         )}
       />
-      {value !== "" && (
-        <button
-          type="button"
-          onMouseDown={(event) => event.preventDefault()}
-          onClick={() => onChange("")}
-          aria-label="検索語をクリア"
-          className="absolute right-1.5 flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
-        >
-          <X className="size-4" />
-        </button>
-      )}
+      <div className="absolute right-1.5 flex items-center gap-0.5">
+        {value !== "" && (
+          <button
+            type="button"
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => onChange("")}
+            aria-label="検索語をクリア"
+            className="flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
+          >
+            <X className="size-4" />
+          </button>
+        )}
+        {value === "" && (
+          <kbd className="pointer-events-none hidden rounded-sm border border-border-strong px-1.5 font-sans text-[11px] text-fg-subtle sm:block">
+            /
+          </kbd>
+        )}
+      </div>
     </div>
   );
 }

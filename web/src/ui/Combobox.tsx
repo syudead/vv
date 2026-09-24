@@ -31,8 +31,19 @@ export const newlinePattern = /[\r\n]/;
 const controlCharPattern = /[\u0000-\u001f\u007f-\u009f]/;
 
 /** codePointLength は前後の空白を除いた符号位置の数を返す（`length` は使わない）。 */
-export function codePointLength(value: string): number {
+function codePointLength(value: string): number {
   return Array.from(value.trim()).length;
+}
+
+/**
+ * isComposingKeyEvent は、IME の変換中に打った特別なキー（Enter・Esc・矢印）かを
+ * 返す。変換の確定・移動のためのキーで、combobox やタグの名前を打つほかの
+ * 入力（管理画面の作成・改名の入力、検索の入力）の操作にしてはいけない
+ * （`web/src/player/keyboard.ts` と同じ判定。keyCode 229 は isComposing を
+ * 実装しない古いブラウザ向けの後方互換）。
+ */
+export function isComposingKeyEvent(event: KeyboardEvent<HTMLInputElement>): boolean {
+  return event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
 }
 
 /**
@@ -157,12 +168,8 @@ export default function Combobox({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    // IME の変換中の Enter・矢印キー・Esc は、変換の確定・移動のためのもので、
-    // combobox の操作にしてはいけない（web/src/player/keyboard.ts と同じ判定。
-    // keyCode 229 は isComposing を実装しない古いブラウザ向けの後方互換）。
-    const composing = event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
     if (
-      composing &&
+      isComposingKeyEvent(event) &&
       (event.key === "ArrowDown" ||
         event.key === "ArrowUp" ||
         event.key === "Enter" ||
