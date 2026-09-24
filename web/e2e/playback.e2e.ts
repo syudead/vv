@@ -98,10 +98,45 @@ async function waitForSeekThumbnails(request: APIRequestContext) {
     );
 }
 
+/**
+ * play は動画のページを開き、大きな再生ボタンで再生を始める。
+ *
+ * 再生を始める前に動画の取得が失敗すると、プレイヤーの上に失敗の層（role="alert"）が
+ * 出て、大きな再生ボタンは隠れたままになる（vjs-has-started）。ボタンだけを待つと、
+ * テストの期限まで「ボタンが見えない」とだけ言って止まる（#256・#259 のマージ後に、
+ * 配信が 404 を返したときがそうだった）。最初の読み込みの成否が決まるまで待ち、
+ * 失敗の層が出たら、その文言と配信の応答を添えてすぐに失敗させる。
+ */
 async function play(page: Page, item: Video) {
+  const mediaResponses: string[] = [];
+  page.on("response", (response) => {
+    const url = new URL(response.url());
+    if (/^\/api\/videos\/\d+\/(stream|transcode\.mp4)$/.test(url.pathname)) {
+      mediaResponses.push(`${String(response.status())} ${url.pathname}${url.search}`);
+    }
+  });
   const started = Date.now();
   await page.goto(`/videos/${String(item.id)}`);
+  // 押す前に、最初の読み込み（preload=metadata）の成否が決まるのを待つ。ボタンが
+  // 見えた直後に取得が失敗すると、押そうとしている間にボタンが隠れるためである。
+  await page.waitForFunction(
+    () => {
+      const failed = document.querySelector('[data-player-frame] [role="alert"]');
+      const element = document.querySelector<HTMLVideoElement>("video.vjs-tech");
+      return failed !== null || (element !== null && element.readyState >= 1);
+    },
+    undefined,
+    { timeout: 10_000 },
+  );
   const button = page.locator(".vjs-big-play-button");
+  const failure = page.locator("[data-player-frame]").getByRole("alert").first();
+  if (await failure.isVisible()) {
+    throw new Error(
+      `${item.title} (id ${String(item.id)}) の再生を始める前に失敗の層が出た: ` +
+        `${(await failure.innerText()).replaceAll("\n", " ")} / 配信の応答: ` +
+        `${mediaResponses.join(", ") || "なし"}`,
+    );
+  }
   await button.click();
   await page.waitForFunction(() => {
     const element = document.querySelector("video");
