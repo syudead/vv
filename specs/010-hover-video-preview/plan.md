@@ -43,7 +43,7 @@ Phase 1 後も例外や Complexity Tracking を必要とする違反はない。
 ## Structural Decisions
 
 1. **preview 専用 job と state を持つ**: probe/thumbnail と失敗・再試行・修復を独立させる。thumbnail job へ同居させる案は、一方の失敗が他方の状態と retry を曖昧にするため採用しない。
-2. **固定の Stash-like sampling policy を使う**: 12 区間 x 0.75 秒を全尺へ分散し、短尺だけ全体変換する。冒頭だけの clip は内容を代表しにくく、設定 UI は親 Issue の対象外なので採用しない。
+2. **固定の sampling policy を使う**: 12 区間 x 0.75 秒を全尺へ分散し、短尺だけ全体変換する。冒頭だけの clip は内容を代表しにくく、設定 UI は親 Issue の対象外なので採用しない。
 3. **content key が成果物を所有する**: DB は path ではなく state を保持し、path は content key から決定する。location change で不要な再生成を起こさず、content change と orphan cleanup を明確にする。
 4. **専用 endpoint だけを UI に渡す**: hover は生成済み MP4 のみを読み、`stream`/`transcode.mp4` への fallback を持たない。ブラウザ非対応の原本でも生成成功後は同じ preview を再生できる。
 5. **media lifecycle は card、排他と reset は library coordinator が所有する**: timer、video element、error fallback、resource cleanup は `VideoCard` が所有する。`LibraryPage` は active card ID と reset epoch だけを渡し、別 card の開始、filter/sort/page/list追加、grid/list 切替、viewport resize で残存 card も停止させる。media element を page state に持たせない。

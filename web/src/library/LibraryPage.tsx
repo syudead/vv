@@ -15,7 +15,6 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import { useVideos } from "../api/useVideos";
-import { formatBytes, formatDuration } from "../lib/format";
 import {
   readViewPreferences,
   type ViewPreferences,
@@ -25,7 +24,7 @@ import {
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import Button from "../ui/Button";
-import LibraryToolbar, { watchOptions } from "./LibraryToolbar";
+import LibraryToolbar from "./LibraryToolbar";
 import {
   clearConditions,
   hasConditions,
@@ -59,40 +58,10 @@ function topmostId(list: HTMLElement | null, top: number): number | undefined {
   return undefined;
 }
 
-/**
- * conditionLabels は一致なしの状態に並べる、効いている条件の名前である。
- * フォルダ画面はこれに範囲のチップを自分で足す（ui-design.md「No-match state」）。
- */
-export function conditionLabels(criteria: ListCriteria): string[] {
-  const labels: string[] = [];
-  if (criteria.query !== "") labels.push(`検索語「${criteria.query}」`);
-  if (criteria.watch !== "all") {
-    const watch = watchOptions.find((option) => option.value === criteria.watch);
-    if (watch !== undefined) labels.push(watch.label);
-  }
-  if (criteria.playable) labels.push("再生できるものだけ");
-  return labels;
-}
-
-/**
- * summarize は Stash の「1-8 of 8 (34m 11s - 263 MB)」に当たる一行。件数はサーバーの
- * total（検索語と絞り込みをすべて適用した全件）、合計時間と大きさは読み込んだ分である。
- * フォルダ画面の検索結果・最上位の検索結果も同じ書式を使う。
- */
-export function summarize(shown: Video[], total: number): string {
-  const count = Math.max(total, shown.length);
-  const durationMs = shown.reduce((sum, video) => sum + (video.durationMs ?? 0), 0);
-  const bytes = shown.reduce((sum, video) => sum + video.sizeBytes, 0);
-  const head =
-    shown.length === 0
-      ? "0 件"
-      : shown.length >= count
-        ? `${count.toLocaleString("ja-JP")} 件`
-        : `1–${shown.length.toLocaleString("ja-JP")} / ${count.toLocaleString("ja-JP")} 件`;
-  const detail = [durationMs > 0 ? formatDuration(durationMs) : "", formatBytes(bytes)]
-    .filter((part) => part !== "")
-    .join(" · ");
-  return detail === "" ? head : `${head}（${detail}）`;
+/** resultCountText は検索や絞り込み後の全件数を表示する。 */
+export function resultCountText(shownCount: number, total: number): string {
+  const count = Math.max(total, shownCount);
+  return `${count.toLocaleString("ja-JP")}件`;
 }
 
 export default function LibraryPage() {
@@ -156,12 +125,6 @@ export default function LibraryPage() {
     () => update(clearConditions(criteria)),
     [criteria, update],
   );
-  // 一致なしの「条件を解除」は自分自身が消えるので、フォーカスを空になった検索欄へ移す。
-  const clearFromNoMatches = useCallback(() => {
-    clearAll();
-    searchField.current?.focus();
-  }, [clearAll]);
-
   // --- 大きさ切替で読んでいた位置を保つ ---
   const anchor = useRef<number | undefined>(undefined);
   const list = useRef<HTMLDivElement | null>(null);
@@ -316,7 +279,7 @@ export default function LibraryPage() {
   const empty = !loading && error === null && items.length === 0;
   const conditioned = hasConditions(criteria);
   const selectionMode = selectedIds.size > 0;
-  const summary = loading ? "読み込み中…" : summarize(items, total);
+  const resultStatus = loading ? "読み込み中…" : resultCountText(items.length, total);
 
   const rowProps = (video: Video) => ({
     video,
@@ -363,7 +326,7 @@ export default function LibraryPage() {
         aria-live="polite"
         className="text-center text-xs text-fg-muted tabular-nums"
       >
-        {query === "" ? summary : `「${query}」 ${summary}`}
+        {resultStatus}
       </p>
 
       {error !== null && items.length === 0 && (
@@ -372,10 +335,7 @@ export default function LibraryPage() {
 
       {empty &&
         (conditioned ? (
-          <NoMatches
-            conditions={conditionLabels(criteria)}
-            onClear={clearFromNoMatches}
-          />
+          <NoMatches />
         ) : (
           <EmptyLibrary onScan={scan.start} scanning={scan.running} />
         ))}
@@ -432,10 +392,6 @@ export default function LibraryPage() {
             再試行
           </Button>
         </div>
-      )}
-
-      {!loading && items.length > 0 && (
-        <p className="text-center text-xs text-fg-muted tabular-nums">{summary}</p>
       )}
 
       <div ref={sentinel} aria-hidden="true" className="h-px" />

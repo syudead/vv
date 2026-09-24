@@ -521,7 +521,9 @@ describe("FolderPage", () => {
     // 検索中は子フォルダのカードと「フォルダ」「動画」の見出しを出さない。
     expect(screen.queryByRole("link", { name: /^B、/ })).toBeNull();
     expect(screen.getByRole("heading", { level: 2, name: "検索結果" })).toBeDefined();
-    expect(screen.getByRole("status").textContent).toContain("「京都」");
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("2件");
+    expect(status.classList.contains("sr-only")).toBe(false);
 
     const box = screen.getByRole("searchbox", { name: "Aの中を検索" });
     await user.clear(box);
@@ -619,33 +621,25 @@ describe("FolderPage", () => {
     expect(screen.getByRole("link", { name: "x" })).toBeDefined();
   });
 
-  it("絞り込みだけで一致が無いと、子フォルダの下に一致なしを出し、条件を解除しても同じフォルダに留まる", async () => {
-    const user = userEvent.setup();
+  it("絞り込みだけで一致が無いと、子フォルダの下に簡潔な一致なしを出す", async () => {
     renderFolders("/folders/3/A?watch=watched");
     await screen.findByRole("link", { name: "B、動画 1 本、フォルダ 1 件" });
     expect(
       screen.getByRole("heading", { name: "条件に一致する動画はありません" }),
     ).toBeDefined();
-    expect(screen.getByText(/中のフォルダも探すには/)).toBeDefined();
-    expect(screen.getByText("視聴済み")).toBeDefined();
-    expect(screen.getByText("Aの直下")).toBeDefined();
-
-    await user.click(screen.getByRole("button", { name: "条件を解除" }));
-    await screen.findByRole("link", { name: "x" });
-    expect(screen.getByTestId("location").textContent).toMatch(/^\/folders\/3\/A(\?|$)/);
+    expect(screen.queryByText(/中のフォルダも探すには/)).toBeNull();
+    expect(screen.queryByText("視聴済み")).toBeNull();
+    expect(screen.queryByText("Aの直下")).toBeNull();
+    expect(screen.queryByRole("button", { name: "条件を解除" })).toBeNull();
   });
 
-  it("検索の一致なしでは範囲のチップを添え、条件を解除しても同じフォルダに留まる", async () => {
-    const user = userEvent.setup();
+  it("検索の一致なしでは検索語や範囲や解除操作を重ねない", async () => {
     renderFolders("/folders/3/A?q=zzz-no-such-video");
     await screen.findByRole("heading", { name: "条件に一致する動画はありません" });
-    expect(screen.getByText("検索語「zzz-no-such-video」")).toBeDefined();
-    expect(screen.getByText("Aとその中")).toBeDefined();
+    expect(screen.queryByText("検索語「zzz-no-such-video」")).toBeNull();
+    expect(screen.queryByText("Aとその中")).toBeNull();
+    expect(screen.queryByRole("button", { name: "条件を解除" })).toBeNull();
     expect(screen.queryByRole("link", { name: /^B、/ })).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "条件を解除" }));
-    await screen.findByRole("link", { name: "x" });
-    expect(screen.getByTestId("location").textContent).toMatch(/^\/folders\/3\/A(\?|$)/);
   });
 
   it("sort=random と seed を URL のまま使う", async () => {

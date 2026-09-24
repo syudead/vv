@@ -1,7 +1,7 @@
 import type { VideoSort } from "../api/client";
 import { isVideoSort } from "../api/client";
 
-/** Zoom はカードの大きさ。0 が最小、3 が最大（Stash のズームスライダーと同じ 4 段）。 */
+/** Zoom はカードの大きさ。0 が最小、3 が最大の 4 段階。 */
 export type Zoom = 0 | 1 | 2 | 3;
 
 /** ViewMode は一覧の表示形式。 */

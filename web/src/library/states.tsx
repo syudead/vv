@@ -2,7 +2,6 @@ import { AlertCircle, FolderOpen, type LucideIcon, SearchX } from "lucide-react"
 import type { ReactNode } from "react";
 
 import Button from "../ui/Button";
-import Chip from "../ui/Chip";
 import Skeleton from "../ui/Skeleton";
 
 export function EmptyState({
@@ -61,45 +60,9 @@ export function EmptyLibrary({
   );
 }
 
-/**
- * NoMatches は条件に一致する動画が無いときの状態である（ui-design.md「No-match state」）。
- * ライブラリとフォルダ画面で同じ部品を使う。conditions は効いている条件の名前
- * （「検索語「京都」」「未視聴」など）で、並べ替えは解除しないので含めない。
- */
-export function NoMatches({
-  conditions,
-  note,
-  onClear,
-}: {
-  conditions: string[];
-  /** 条件のチップの下に添える一文（フォルダ画面の絞り込みだけのときなど）。 */
-  note?: string;
-  onClear: () => void;
-}) {
-  return (
-    <EmptyState
-      icon={SearchX}
-      title="条件に一致する動画はありません"
-      description={
-        <>
-          <ul
-            aria-label="効いている条件"
-            className="flex flex-wrap justify-center gap-1.5"
-          >
-            {conditions.map((condition) => (
-              <li key={condition} className="flex max-w-full min-w-0">
-                <Chip className="max-w-full" title={condition}>
-                  <span className="min-w-0 truncate">{condition}</span>
-                </Chip>
-              </li>
-            ))}
-          </ul>
-          {note !== undefined && <p className="mt-2">{note}</p>}
-        </>
-      }
-      action={<Button onClick={onClear}>条件を解除</Button>}
-    />
-  );
+/** NoMatches は条件に一致する動画が無いことだけを示す。 */
+export function NoMatches() {
+  return <EmptyState icon={SearchX} title="条件に一致する動画はありません" />;
 }
 
 export function LoadFailed({ reason, onRetry }: { reason: string; onRetry: () => void }) {

@@ -26,7 +26,7 @@ import {
   type ListCriteria,
   newSeed,
 } from "../library/listCriteria";
-import { conditionLabels, summarize } from "../library/LibraryPage";
+import { resultCountText } from "../library/LibraryPage";
 import { CardSkeleton, EmptyState, LoadFailed, NoMatches } from "../library/states";
 import { useListCriteria } from "../library/useListCriteria";
 import VideoCard from "../library/VideoCard";
@@ -140,11 +140,6 @@ function FolderNotFound() {
   );
 }
 
-/** rangeLabel は一致なしのチップに添える範囲の名前である（ui-design.md「No-match state」）。 */
-function rangeLabel(kind: "subtree" | "direct", name: string): string {
-  return kind === "subtree" ? `${name}とその中` : `${name}の直下`;
-}
-
 /**
  * useConditions は一覧の条件（検索語・視聴状態・再生可否・並べ替え・seed）を
  * URL から読み書きする口である。ライブラリと同じ `library/listCriteria`・
@@ -197,11 +192,6 @@ function useConditions() {
     () => update(clearConditions(criteria)),
     [criteria, update],
   );
-  // 一致なしの「条件を解除」は自分自身が消えるので、フォーカスを空になった検索欄へ移す。
-  const clearFromNoMatches = useCallback(() => {
-    clearAll();
-    searchField.current?.focus();
-  }, [clearAll]);
   const changeZoom = useCallback(
     (next: Zoom) => savePreferences({ ...preferences, zoom: next }),
     [preferences, savePreferences],
@@ -217,7 +207,6 @@ function useConditions() {
     changePlayable,
     commitQuery,
     clearAll,
-    clearFromNoMatches,
     changeZoom,
   };
 }
@@ -233,7 +222,6 @@ function RootSearchResults({
   roots,
   zoom,
   restored,
-  onClearNoMatches,
 }: {
   criteria: ListCriteria;
   rootNames: Map<number, RootDisplay>;
@@ -242,7 +230,6 @@ function RootSearchResults({
   zoom: Zoom;
   /** 呼び出し側（RootView）が取り出した控え。無ければ1ページ目から読む。 */
   restored: ReturnType<typeof takeListSnapshot>;
-  onClearNoMatches: () => void;
 }) {
   const location = useLocation();
   const backTo = `${location.pathname}${location.search}`;
@@ -328,18 +315,13 @@ function RootSearchResults({
     if (roots.error !== null) roots.reload();
   };
   const noMatch = !waiting && failure === null && items.length === 0;
-  const summaryText = waiting
-    ? "読み込み中…"
-    : `「${criteria.query}」 ${summarize(items, total)}`;
+  const summaryText = waiting ? "読み込み中…" : resultCountText(items.length, total);
 
   return (
     <div onClick={saveSnapshot} className="flex flex-col gap-3">
       <h2 className="sr-only">検索結果</h2>
       {noMatch ? (
-        <NoMatches
-          conditions={[...conditionLabels(criteria), "すべてのフォルダ"]}
-          onClear={onClearNoMatches}
-        />
+        <NoMatches />
       ) : (
         <>
           <p
@@ -404,7 +386,6 @@ function RootView() {
     changePlayable,
     commitQuery,
     clearAll,
-    clearFromNoMatches,
     changeZoom,
   } = useConditions();
   // 再生画面から検索結果へ戻ったときは控えから復元する（FolderView と同じ扱い）。
@@ -482,7 +463,6 @@ function RootView() {
           roots={roots}
           zoom={zoom}
           restored={restored}
-          onClearNoMatches={clearFromNoMatches}
         />
       ) : roots.error !== null ? (
         <LoadFailed reason={roots.error} onRetry={roots.reload} />
@@ -530,7 +510,6 @@ function FolderView({ folder }: { folder: FolderRef }) {
     changePlayable,
     commitQuery,
     clearAll,
-    clearFromNoMatches,
     changeZoom,
   } = useConditions();
   const scan = useScan();
@@ -671,20 +650,13 @@ function FolderView({ folder }: { folder: FolderRef }) {
     body = <LoadFailed reason={listing.error} onRetry={listing.reload} />;
   } else if (searching) {
     // 検索結果（ui-design.md「Search results」）。子フォルダの一群と「動画 N」の
-    // 見出しを出さず、ライブラリと同じ要約行と1つの格子にする。
+    // 見出しを出さず、件数と1つの格子だけを置く。
     const noMatch = !videos.loading && videos.error === null && videos.items.length === 0;
     body = (
       <>
         <h2 className="sr-only">検索結果</h2>
         {noMatch ? (
-          <NoMatches
-            conditions={[
-              ...conditionLabels(criteria),
-              rangeLabel("subtree", name ?? "フォルダ"),
-            ]}
-            note={undefined}
-            onClear={clearFromNoMatches}
-          />
+          <NoMatches />
         ) : (
           <>
             <p
@@ -694,7 +666,7 @@ function FolderView({ folder }: { folder: FolderRef }) {
             >
               {videos.loading
                 ? "読み込み中…"
-                : `「${criteria.query}」 ${summarize(videos.items, videos.total)}`}
+                : resultCountText(videos.items.length, videos.total)}
             </p>
             {videos.error !== null && videos.items.length === 0 ? (
               <LoadFailed reason={videos.error} onRetry={videos.reload} />
@@ -787,19 +759,7 @@ function FolderView({ folder }: { folder: FolderRef }) {
                 : ""}
             </p>
             {filterOnlyNoMatch ? (
-              <NoMatches
-                conditions={[
-                  ...conditionLabels(criteria),
-                  rangeLabel("direct", name ?? "フォルダ"),
-                ]}
-                note={
-                  // 中のフォルダが無ければ、検索語を入れても結果は変わらない。
-                  children.length > 0
-                    ? "中のフォルダも探すには、検索語を入れてください。"
-                    : undefined
-                }
-                onClear={clearFromNoMatches}
-              />
+              <NoMatches />
             ) : (
               <Section title="動画" count={videos.loading ? undefined : videos.total}>
                 {videos.error !== null && videos.items.length === 0 ? (

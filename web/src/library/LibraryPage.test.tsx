@@ -126,17 +126,19 @@ describe("LibraryPage", () => {
     vi.unstubAllGlobals();
   });
 
-  it("一覧と件数を出す", async () => {
+  it("一覧と件数だけを出す", async () => {
     renderLibrary();
     expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
-    expect(screen.getByRole("status").textContent).toBe("3 件（6:00 · 6.0 MB）");
+    const status = screen.getByRole("status");
+    expect(status.textContent).toBe("3件");
+    expect(status.classList.contains("sr-only")).toBe(false);
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
   });
 
-  it("検索語は URL から読んで件数行に出す", async () => {
+  it("検索語は URL から読み、結果件数だけを出す", async () => {
     renderLibrary("/?q=abc");
     await waitFor(() => {
-      expect(screen.getByRole("status").textContent).toMatch(/^「abc」/);
+      expect(screen.getByRole("status").textContent).toBe("3件");
     });
     await waitFor(() => {
       const calls = fetchMock.mock.calls.map((call) => String(call[0]));
@@ -215,7 +217,7 @@ describe("LibraryPage", () => {
     await waitFor(() =>
       expect(screen.queryByRole("link", { name: "動画 2" })).toBeNull(),
     );
-    expect(screen.getByRole("status").textContent).toMatch(/^1–1 \/ 250 件/);
+    expect(screen.getByRole("status").textContent).toBe("250件");
     const requests = listRequests(fetchMock);
     expect(requests.at(-1)?.searchParams.get("watch")).toBe("unwatched");
     // 選んだ瞬間に続きのページを読みに行かない。
@@ -347,7 +349,7 @@ describe("LibraryPage", () => {
     expect((box as HTMLInputElement).value).toBe("");
   });
 
-  it("一致なしでは効いている条件を示し、条件を解除で並べ替えを残して外す", async () => {
+  it("一致なしでは条件や解除操作を重ねない", async () => {
     fetchMock.mockImplementation((input) => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
@@ -363,25 +365,14 @@ describe("LibraryPage", () => {
         ),
       );
     });
-    const user = userEvent.setup();
     renderLibrary("/?q=%E4%BA%AC%E9%83%BD&watch=unwatched&playable=1&sort=titleDesc");
 
     expect(await screen.findByText("条件に一致する動画はありません")).toBeDefined();
-    const chips = within(screen.getByRole("list", { name: "効いている条件" }));
-    expect(chips.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
-      "検索語「京都」",
-      "未視聴",
-      "再生できるものだけ",
-    ]);
-    expect(chips.getByTitle("検索語「京都」")).toBeDefined();
+    expect(screen.queryByText("検索語「京都」")).toBeNull();
+    expect(screen.queryByText("未視聴")).toBeNull();
+    expect(screen.queryByText("再生できるものだけ")).toBeNull();
+    expect(screen.queryByRole("button", { name: "条件を解除" })).toBeNull();
     expect(screen.queryByText("動画がまだありません")).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: "条件を解除" }));
-    expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
-    expect(screen.getByTestId("location").textContent).toBe("?sort=titleDesc");
-    expect(document.activeElement).toBe(
-      screen.getByRole("searchbox", { name: "動画を検索" }),
-    );
   });
 
   it("絞り込みの条件を解除は検索語も外し、ポップオーバーを閉じて絞り込みのボタンへ戻る", async () => {
