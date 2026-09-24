@@ -166,6 +166,23 @@ export default function TagsPage() {
     );
   }, [sorted, normalizedQuery]);
 
+  /**
+   * visibleRows は実際に並べる行である。改名中の行は、検索を変えて一致しなく
+   * なっても一覧から外さない（外すとその行が消え、打っている途中の名前を
+   * 失う）。`filtered` に無ければ `sorted` から拾い、並び（`compareTagRefs`）を
+   * 保つ位置へ差し込む。件数の行はこれを数えず、実際の一致件数（`filtered`）
+   * のまま見せる。
+   */
+  const visibleRows = useMemo(() => {
+    if (renamingId === null) return filtered;
+    if (filtered.some((tag) => tag.id === renamingId)) return filtered;
+    const renamingTag = sorted.find((tag) => tag.id === renamingId);
+    if (renamingTag === undefined) return filtered;
+    const insertAt = filtered.findIndex((tag) => compareTagRefs(tag, renamingTag) > 0);
+    const at = insertAt === -1 ? filtered.length : insertAt;
+    return [...filtered.slice(0, at), renamingTag, ...filtered.slice(at)];
+  }, [filtered, sorted, renamingId]);
+
   const searching = normalizedQuery !== "";
   const total = tags?.length ?? 0;
   const countText =
@@ -176,6 +193,11 @@ export default function TagsPage() {
         : `${String(total)} 個のタグ`;
 
   function openCreate() {
+    // 改名の送信中は、その応答が届くまで新しく作成を始めない（B2 と同じ規則。
+    // 「新しいタグ」自体も createPending・creating では disabled だが、
+    // renamePending はボタンの disabled 条件に含めているので、ここは主に
+    // キーボード操作などボタンを介さない呼び出しへの保険である）。
+    if (renamePending) return;
     setCreating(true);
     setCreateError(null);
     setRenamingId(null);
@@ -213,7 +235,7 @@ export default function TagsPage() {
       focusRow(tag.id, "rename");
     } catch (failure) {
       if (isTagNotFound(failure)) {
-        const order = filtered;
+        const order = visibleRows;
         setRenamingId(null);
         toast("このタグはもう無いため、一覧を取り直しました");
         await reload();
@@ -229,7 +251,7 @@ export default function TagsPage() {
   async function performDelete() {
     if (deletingTag === null) return;
     const target = deletingTag;
-    const order = filtered;
+    const order = visibleRows;
     setDeleteError(null);
     setDeletePending(true);
     try {
@@ -346,9 +368,9 @@ export default function TagsPage() {
 
   const showEmptyTags = tags !== undefined && tags.length === 0 && !creating;
   const showNoMatch =
-    tags !== undefined && tags.length > 0 && filtered.length === 0 && !creating;
+    tags !== undefined && tags.length > 0 && visibleRows.length === 0 && !creating;
   const showRows =
-    tags !== undefined && (filtered.length > 0 || creating) && !showEmptyTags;
+    tags !== undefined && (visibleRows.length > 0 || creating) && !showEmptyTags;
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
@@ -372,7 +394,7 @@ export default function TagsPage() {
           ref={createButtonRef}
           variant="secondary"
           onClick={openCreate}
-          disabled={tags === undefined || creating || createPending}
+          disabled={tags === undefined || creating || createPending || renamePending}
         >
           <Plus />
           新しいタグ
@@ -434,27 +456,38 @@ export default function TagsPage() {
                 pending={createPending}
                 error={createError}
                 onCancel={() => {
+                  // 送信中は、その応答が届くまで閉じない（B2 と同じ規則。
+                  // CreateTagRow 自身の Esc・「キャンセル」も pending を見るが、
+                  // ここでも二重に守る）。
+                  if (createPending) return;
                   setCreating(false);
                   setCreateError(null);
                   focusRow(undefined, "name");
                 }}
                 onSubmit={(name) => void submitCreate(name)}
+                onDraftChange={() => setCreateError(null)}
               />
             )}
-            {filtered.map((tag) => (
+            {visibleRows.map((tag) => (
               <TagRow
                 key={tag.id}
                 tag={tag}
                 renaming={renamingId === tag.id}
                 pending={renamingId === tag.id && renamePending}
+                blockStart={createPending || (renamePending && renamingId !== tag.id)}
                 error={renamingId === tag.id ? renameError : null}
                 registerRefs={registerRefs}
                 onStartRename={(target) => {
+                  // ほかの行の改名や作成が送信中は、新しく改名を始めない
+                  // （B2 と同じ規則）。行の「改名」自体も blockStart で
+                  // disabled だが、ここでも二重に守る。
+                  if (createPending || renamePending) return;
                   setCreating(false);
                   setRenameError(null);
                   setRenamingId(target.id);
                 }}
                 onCancelRename={() => {
+                  if (renamePending) return;
                   setRenamingId(null);
                   setRenameError(null);
                   focusRow(tag.id, "rename");
@@ -466,6 +499,7 @@ export default function TagsPage() {
                   setDeleteError(null);
                   setDeletingTag(target);
                 }}
+                onDraftChange={() => setRenameError(null)}
               />
             ))}
           </div>
