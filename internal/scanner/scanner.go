@@ -82,6 +82,7 @@ type Scanner struct {
 	reporter   Reporter
 	logger     *slog.Logger
 	contentKey func(string) (string, error)
+	walkDir    func(string, fs.WalkDirFunc) error
 }
 
 type scanTarget struct {
@@ -100,6 +101,7 @@ func New(opts Options) *Scanner {
 		reporter:   opts.Reporter,
 		logger:     logger,
 		contentKey: ContentKey,
+		walkDir:    filepath.WalkDir,
 	}
 }
 
@@ -138,31 +140,23 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	// 全ルートを列挙してから処理し、進捗の分母を先に確定させる。
 	targets := []scanTarget{}
 
-	protected := []string{}
 	for _, folder := range folders {
 		root := folder.Path
 		rootInfo, rootErr := os.Lstat(root)
-		if rootErr != nil || rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
-			protected = append(protected, root)
-			result.Failed++
-			continue
+		if rootErr != nil {
+			return result, fmt.Errorf("メディアフォルダを読めません (%s): %w", root, rootErr)
 		}
-		walkErr := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
+		if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
+			return result, fmt.Errorf("メディアフォルダがディレクトリではありません (%s)", root)
+		}
+		walkErr := s.walkDir(root, func(path string, entry fs.DirEntry, err error) error {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
 			}
 			if err != nil {
-				// 根が読めない場合は走査そのものの失敗。途中のディレクトリが
-				// 読めないだけなら、その範囲を保護して続ける。通常
-				// fileではSkipDirを返さない。返すと後続の兄弟まで省略される。
-				protected = append(protected, path)
 				s.logger.Warn("走査中に読み取れない場所がありました",
 					slog.String("path", path), slog.Any("error", err))
-				result.Failed++
-				if walkErrorIsDirectory(path, root, entry, indexed) {
-					return fs.SkipDir
-				}
-				return nil
+				return fmt.Errorf("場所を読めません (%s): %w", path, err)
 			}
 
 			if entry.IsDir() {
@@ -215,9 +209,7 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 			if ctx.Err() != nil {
 				return result, ctx.Err()
 			}
-			protected = append(protected, root)
-			result.Failed++
-			s.logger.Warn("メディアフォルダを最後まで走査できませんでした", slog.String("path", root), slog.Any("error", walkErr))
+			return result, fmt.Errorf("メディアフォルダを最後まで走査できませんでした (%s): %w", root, walkErr)
 		}
 	}
 	result.Total += len(targets)
@@ -249,25 +241,13 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		return result, err
 	}
 
-	removed, err := s.removeMissing(ctx, folders, seen, protected)
+	removed, err := s.removeMissing(ctx, folders, seen)
 	if err != nil {
 		return result, err
 	}
 	result.Removed = removed
 
 	return result, nil
-}
-
-func walkErrorIsDirectory(path, root string, entry fs.DirEntry, indexed map[string]domain.IndexedVideo) bool {
-	if path == root || entry != nil && entry.IsDir() {
-		return true
-	}
-	for indexedPath := range indexed {
-		if indexedPath != path && domain.PathWithinRoot(path, indexedPath) {
-			return true
-		}
-	}
-	return false
 }
 
 // ingest は1つのファイルを索引に反映する。
@@ -383,7 +363,7 @@ func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error
 // そちらへ付け替わっている。その結果このパスは索引から消えているので、ここで
 // 「消えたファイル」として扱われることはない。
 func (s *Scanner) removeMissing(
-	ctx context.Context, folders []domain.MediaFolder, seen map[string]struct{}, protected []string,
+	ctx context.Context, folders []domain.MediaFolder, seen map[string]struct{},
 ) (int, error) {
 	current, err := s.index.IndexedVideosByPath(ctx)
 	if err != nil {
@@ -402,7 +382,7 @@ func (s *Scanner) removeMissing(
 				break
 			}
 		}
-		if !managed || pathProtected(path, protected) {
+		if !managed {
 			continue
 		}
 		locationID := row.LocationID
@@ -419,15 +399,6 @@ func (s *Scanner) removeMissing(
 		return 0, err
 	}
 	return len(missing), nil
-}
-
-func pathProtected(path string, prefixes []string) bool {
-	for _, prefix := range prefixes {
-		if domain.PathWithinRoot(prefix, path) {
-			return true
-		}
-	}
-	return false
 }
 
 // report は進捗を報告する。報告の失敗で走査を止めない。
