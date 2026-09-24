@@ -231,8 +231,9 @@ specs/014-video-tags/
 取れ、空白だけの名前と 101 符号位置の名前は誤りになる。`Anime` があるとき `anime` は別の
 タグとして作れる。既存の名前・シノニムへの改名は `ErrTagNameTaken` になる。X を Y へ統合
 すると、X の付いていた中身すべてに Y が1つだけ付き、X のシノニムが Y に移り、X が消える。
-`anime`（10 本）を `Anime` のシノニムにすると、承諾が無ければ `ErrTagMergeRequired` で何も
-変わらず、承諾があれば 10 本に `Anime` が付いて `anime` が `Anime` のシノニムになる。別の
+`anime`（10 本）を `Anime` のシノニムにすると、統合元の `id` の承諾が無いか `anime` の `id` と
+違えば `ErrTagMergeRequired` で何も変わらず、`anime` の `id` なら 10 本に `Anime` が付いて
+`anime` が `Anime` のシノニムになる。別の
 タグのシノニムを登録すると `ErrTagNameTaken` になり、そのタグが分かる。本数は、所在が
 消えた動画を数えず、削除・統合はその動画の付与にも及ぶ。統合の途中で失敗させると何も
 変わっていない。00007 の状態から Up・Down が通る。`scripts/migrations-immutable.sh` と
@@ -270,8 +271,8 @@ specs/014-video-tags/
 
 **Acceptance**: `internal/httpapi` のテストで次が通る。`POST /api/tags` が 201 を返し、同じ
 名前で 409 `tag_name_taken` を返す。無いタグの `PATCH`・`DELETE`・`merge` が 404
-`tag_not_found` を返す。`merge: false` で既存のタグ名をシノニムにすると 409
-`tag_merge_required` を返す。別オリジンからの変更は 403 になる。`openapi_routes_test.go`
+`tag_not_found` を返す。`mergeTagId` 無しで、または別のタグの `id` で既存のタグ名を
+シノニムにすると 409 `tag_merge_required` を返す。別オリジンからの変更は 403 になる。`openapi_routes_test.go`
 が通る。Vitest で、変更の成功後に共有の一覧が取り直され、控えが消える。`task generate` を
 走らせ直しても差分が出ない。`task check` が通る。
 
@@ -342,7 +343,8 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 **Scope**: 選択バーの件数の直後に、タグを付ける操作と外す操作を置く。外す候補は
 `POST /api/video-tags/summary` から作り、一部にだけ付いたタグを文言かアイコンで示す。
 「すべて選択」を `GET /api/videos/ids` による全件の選択に変え、読み込み済みにない `id` を
-選択から落とさないようにする（Structural Decisions 4）。失敗したときと `tag_not_found` を受けたときは、選択を保ったまま
+選択から落とさないようにする（Structural Decisions 4）。応答に `missingTagIds` があれば
+選択を作らず、一覧と同じく伝えて直す（[contracts/tags-api.md §5](contracts/tags-api.md#5-一覧の絞り込みとすべて選択)）。失敗したときと `tag_not_found` を受けたときは、選択を保ったまま
 伝え、`tag_not_found` ではタグの一覧を取り直す。`docs/design-docs/library-ui.md` §6 の
 選択バーの記述を改める。配置と見た目は `ui-design.md` による。
 
@@ -350,7 +352,8 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 
 **Acceptance**: Vitest と `web/e2e/tags.e2e.ts` で、受け入れ条件 3・4 が確かめられる。
 付けたあと、読み込み済みのカードにタグがすぐ出る。要求を失敗させると、選択が残ったまま
-失敗が伝わり、もう一度押すと付く。`task check` と `task test-e2e` が通る。実装 PR に画像と、
+失敗が伝わり、もう一度押すと付く。絞り込み中のタグを別のタブで消してから「すべて選択」
+すると、何も選ばれず、もう無いことが伝わる。`task check` と `task test-e2e` が通る。実装 PR に画像と、
 視覚・操作・支援技術の確認を添える。
 
 ### サイドバーから開くタグ管理画面で、タグを一覧し、作成・改名・削除する
@@ -376,7 +379,8 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 
 **Scope**: 管理画面に、統合元と統合先を選ぶ統合（影響する本数の確認つき）と、シノニムの
 登録と解除を足す。登録しようとした名前が既存のタグの名前なら、統合することを本数と一緒に
-示して確認をとり、承諾したときだけ `merge: true` で送る
+示して確認をとり、承諾したときだけ確認に出したタグの `id` を `mergeTagId` に入れて送る。
+`tag_merge_required` を受けたら、タグの一覧を取り直して確認をやり直す
 （[contracts/tags-api.md §3](contracts/tags-api.md#3-タグの管理)）。別のタグのシノニムとの
 衝突は、どのタグのシノニムかを示す。配置と見た目は `ui-design.md` による。
 
@@ -384,5 +388,6 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 
 **Acceptance**: Vitest と `web/e2e/tags.e2e.ts` で、受け入れ条件 12・13 の前半（登録）・17 が
 確かめられる。取り消すと何も変わらない。別のタグのシノニムと同じ名前の登録で、そのタグの
-名前が画面に出る。統合は作成と改名より目立たない。`task check` と `task test-e2e` が通る。
+名前が画面に出る。確認の後に別のタブでその名前が別のタグへ移っていると、統合されずに
+確認がやり直しになる。統合は作成と改名より目立たない。`task check` と `task test-e2e` が通る。
 実装 PR に画像と、視覚・操作・支援技術の確認を添える。

@@ -89,7 +89,7 @@ Down は3つの表を落とす。
 | 改名 | そのタグの `canonical = 1` の行の `name` を書き換える。今と同じ名前なら何も変えない。新しい名前が既にあれば（自分のシノニムでも）`ErrTagNameTaken` |
 | 削除 | `tags` の行を消す。`tag_names` と `video_tags` は連鎖して消える。いまライブラリに無い動画の付与も消える |
 | 統合（元 X → 先 Y） | `insert or ignore into video_tags select content_key, Y, … from video_tags where tag_id = X`、X のシノニムを `tag_id = Y` に付け替える、X を消す。X の元の名前は消える |
-| シノニム登録（名前 n をタグ T に） | n が無ければ `canonical = 0` で1行足す。n が既に T のシノニムなら何も変えない。n が T の元の名前なら `ErrTagNameTaken`。n が別のタグ S のシノニムなら `ErrTagNameTaken`（S を伝える）。n が別のタグ S の元の名前なら、統合の承諾が無ければ `ErrTagMergeRequired`、あれば S → T の統合をしてから n を T のシノニムとして足す |
+| シノニム登録（名前 n をタグ T に） | n が無ければ `canonical = 0` で1行足す。n が既に T のシノニムなら何も変えない。n が T の元の名前なら `ErrTagNameTaken`。n が別のタグ S のシノニムなら `ErrTagNameTaken`（S を伝える）。n が別のタグ S の元の名前なら、承諾された統合元の `id` が S でなければ（無い場合を含む）`ErrTagMergeRequired`、S なら S → T の統合をしてから n を T のシノニムとして足す |
 | シノニム解除 | その `canonical = 0` の行を消す。n が T のシノニムでなければ何も変えない |
 | 付与 | 対象の動画の `content_key` ごとに `insert or ignore`。既に付いていれば何も変わらない |
 | 取り外し | 対象の `content_key` ごとに `delete`。付いていなければ何も変わらない |

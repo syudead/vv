@@ -60,7 +60,7 @@ TypeScript の型を扱う前例がリポジトリに無いためである。
 | --- | --- | --- |
 | `tag_not_found` | 404 | 指定したタグがもう無い（別のタブで削除・統合された） |
 | `tag_name_taken` | 409 | その名前は既に別のタグの名前かシノニムである。`message` はどのタグの名前か、どのタグのシノニムかを示す |
-| `tag_merge_required` | 409 | シノニムにしようとした名前が既存のタグの元の名前で、統合の承諾が無い |
+| `tag_merge_required` | 409 | シノニムにしようとした名前が既存のタグの元の名前で、そのタグの統合の承諾が無い（承諾したタグと、いまその名前を持つタグが違う場合を含む） |
 
 名前が空・100 符号位置超は、既存の `invalid_request`（400）にする（[data-model.md §2](../data-model.md#2-名前の規則)）。
 
@@ -73,15 +73,20 @@ TypeScript の型を扱う前例がリポジトリに無いためである。
 | `PATCH /api/tags/{id}` | `{ name }` | 200 `Tag`（今と同じ名前なら何も変えずに返す） | 400、404 `tag_not_found`、409 `tag_name_taken` |
 | `DELETE /api/tags/{id}` | — | 204 | 404 `tag_not_found` |
 | `POST /api/tags/{id}/merge` | `{ sourceId }` | 200 `Tag`（統合先） | 400（`sourceId` が `id` と同じ）、404 `tag_not_found`（どちらかが無い） |
-| `POST /api/tags/{id}/synonyms` | `{ name, merge?: boolean }` | 200 `Tag` | 400、404 `tag_not_found`、409 `tag_name_taken`、409 `tag_merge_required` |
+| `POST /api/tags/{id}/synonyms` | `{ name, mergeTagId? }` | 200 `Tag` | 400、404 `tag_not_found`、409 `tag_name_taken`、409 `tag_merge_required` |
 | `DELETE /api/tags/{id}/synonyms?name=…` | — | 204（その名前がこのタグのシノニムでなければ、何も変えずに 204） | 404 `tag_not_found`（タグが無い） |
 
 - 既にこのタグのシノニムである名前の登録は、何も変えずに 200 を返す。このタグの元の
   名前の登録は 409 `tag_name_taken` にする（[data-model.md §4](../data-model.md#4-書き換えの規則)）。
-- `merge` を省くと偽である。偽で名前が別のタグの元の名前なら `tag_merge_required` を返し、
-  何も変えない。真なら、そのタグをこのタグへ統合してから名前をシノニムにする
-  （受け入れ条件 17）。画面は、`GET /api/tags` の本数で先に確認をとってから `merge: true`
-  で送る。`tag_merge_required` は、確認の後に別のタブで状態が変わったときの守りである。
+- `mergeTagId` は、利用者が統合を承諾したタグの `id` である。名前が別のタグ S の元の名前の
+  とき、`mergeTagId` が S の `id` と一致すれば、同じトランザクションで S をこのタグへ統合して
+  から名前をシノニムにする（受け入れ条件 17）。`mergeTagId` が無いか S と違えば、
+  `tag_merge_required` を返して何も変えない。名前が別のタグの元の名前でないときは
+  `mergeTagId` を無視する。
+- 画面は、`GET /api/tags` の本数で確認をとり、確認に出したタグの `id` を `mergeTagId` に
+  入れて送る。承諾を真偽値にしないのは、確認の後に別のタブで改名や作成が起きて、その
+  名前がほかのタグに移ったとき、確認していないタグを統合してしまうからである。
+  `tag_merge_required` を受けた画面は、タグの一覧を取り直して確認をやり直す。
 - シノニムの解除で名前をパスに置かないのは、`/` や `%` を含む名前を1段のパスとして
   扱う取り決めを増やさないためである。
 - 削除と統合の確認に出す本数は、`GET /api/tags` の `videoCount` を使う。確認のための
@@ -136,9 +141,13 @@ Edge Case「ほかの画面での並行した変更」）。無い `id` を `404
 
 | 経路 | パラメータ | 成功 |
 | --- | --- | --- |
-| `GET /api/videos/ids` | `listVideos` の `query`・`watch`・`playable`・`tag` | 200 `{ ids: integer[] }` |
+| `GET /api/videos/ids` | `listVideos` の `query`・`watch`・`playable`・`tag` | 200 `{ ids: integer[], missingTagIds?: integer[] }` |
 
 - 返す `id` の集合は、同じ条件の `listVideos` の全ページの `id` の集合と同じである。
   並びは決めない。
+- `missingTagIds` の意味は一覧と同じである。画面は、これが空でなければ `ids` で選択を
+  作らない。一覧と同じくもう無いことを伝え、タグの一覧を取り直し、URL から取り除く。
+  選択は、利用者が直った一覧でもう一度「すべて選択」したときに作る。一覧を開いた後に
+  絞り込み中のタグが消えたとき、条件の欠けた広い集合に一括で付け外ししないためである。
 - `/api/videos/{id}` とは、Go の `ServeMux` の「字面の段が優先する」規則で区別される。
   `openapi_routes_test.go` にこの経路が `{id}` に取られないことの検査を足す。
