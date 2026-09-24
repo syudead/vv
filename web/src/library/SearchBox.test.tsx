@@ -36,7 +36,7 @@ describe("SearchBox の検索の書き方", () => {
 
     await user.click(help);
 
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await screen.findByRole("dialog", { name: "検索の書き方" });
     expect(within(dialog).getByRole("heading", { name: "検索の書き方" })).toBeDefined();
     const examples = within(dialog)
       .getAllByRole("term")
@@ -72,6 +72,7 @@ describe("SearchBox の検索の書き方", () => {
     );
     expect(described).not.toBeNull();
     expect(dialog.contains(described)).toBe(true);
+    expect(described?.textContent).not.toContain("検索の書き方");
   });
 
   it("Enter と Space で開き、フォーカスだけでは開かない", async () => {

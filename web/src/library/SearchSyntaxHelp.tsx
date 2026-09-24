@@ -37,6 +37,7 @@ const syntaxRows: { examples: string[]; meaning: ReactNode }[] = [
 export default function SearchSyntaxHelp({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const bodyId = useId();
+  const headingId = useId();
 
   return (
     <PopoverRoot open={open} onOpenChange={setOpen}>
@@ -46,7 +47,7 @@ export default function SearchSyntaxHelp({ className }: { className?: string }) 
           aria-label="検索の書き方"
           aria-describedby={open ? bodyId : undefined}
           className={cn(
-            "flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg",
+            "flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg active:bg-active-wash data-[state=open]:bg-active-wash data-[state=open]:text-fg",
             className,
           )}
         >
@@ -56,10 +57,14 @@ export default function SearchSyntaxHelp({ className }: { className?: string }) 
       <PopoverContent
         align="end"
         className="w-80"
+        aria-labelledby={headingId}
         onOpenAutoFocus={(event) => event.preventDefault()}
       >
+        <h2 id={headingId} className="text-sm font-medium text-fg">
+          検索の書き方
+        </h2>
+        {/* ボタンの説明は見出しを除いた中身にする（名前と同じ語を二度読ませない）。 */}
         <div id={bodyId}>
-          <h2 className="text-sm font-medium text-fg">検索の書き方</h2>
           <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
             {syntaxRows.map((row) => (
               <div key={row.examples.join()} className="contents">

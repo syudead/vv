@@ -134,7 +134,9 @@ export default function SearchBox({
         autoComplete="off"
         spellCheck={false}
         className={cn(
-          "h-full w-full rounded-md border border-border bg-field pr-15 pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
+          // 右端のボタンの分だけ空ける。検索語が空で sm 未満なら手引きのボタンだけなので狭くてよい。
+          input === "" ? "pr-9 sm:pr-15" : "pr-15",
+          "h-full w-full rounded-md border border-border bg-field pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
           "placeholder:text-fg-subtle transition-[border-color,box-shadow] duration-150",
           "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft",
           "[&::-webkit-search-cancel-button]:hidden",

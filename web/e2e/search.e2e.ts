@@ -419,7 +419,7 @@ test.describe.serial("library search", () => {
 
     const help = page.getByRole("button", { name: "検索の書き方" });
     await help.click();
-    const dialog = page.getByRole("dialog");
+    const dialog = page.getByRole("dialog", { name: "検索の書き方" });
     await expect(dialog.getByRole("heading", { name: "検索の書き方" })).toBeVisible();
     await expect(dialog.getByRole("term")).toHaveText([
       "京都 2024",
@@ -463,7 +463,9 @@ test.describe.serial("library search", () => {
     const help = page.getByRole("button", { name: "検索の書き方" });
     await expect(help).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("dialog").getByRole("term")).toHaveCount(4);
+    await expect(
+      page.getByRole("dialog", { name: "検索の書き方" }).getByRole("term"),
+    ).toHaveCount(4);
     await expect(help).toBeFocused();
 
     await page.keyboard.press("Tab");
