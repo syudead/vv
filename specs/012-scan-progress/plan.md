@@ -22,7 +22,7 @@
 
 **Feature-specific context**:
 
-- `Scan` は必要な件数、開始・終了時刻、全体失敗理由を既に返すため、API、生成物、DB schema は変更しない。
+- `Scan` の field、生成物、DB schema は変更しない。`total` は実際の取り込み対象ファイル数、`completed` はそのうち正常に処理した数として既存 field の意味を明確化する。対象集合を確定できないディレクトリ走査エラーは個別ファイルの `failed` に混ぜず、理由付きの全体失敗にする。
 - `ScanProvider` は実行中と開始要求の回復中に加え、状態取得に失敗して current scan を確定できない間も既存の2秒間隔で再試行し、成功時に通常の「実行中だけ polling」へ戻す。最後に取得できた scan は一時失敗で捨てない。
 - 通知状態は `trackingScanId`、`acknowledgedTerminalScanId`、`completionNotice { scanId, expiresAt }` だけを version 付きの `sessionStorage` に保存する。保存値が無い、壊れている、または storage が利用できない場合は空の通知状態へ戻し、server の scan state と設定詳細は失わない。
 - フローティング表示は `Routes` より上に1度だけ置き、ライブラリ、フォルダ、設定、再生画面をまたいで同じインスタンスを維持する。再生画面へシェル全体は持ち込まず、進捗表示だけを再生操作と重ならない位置へ置く。360pxでは再生画面の右下、768px以上では右上を使う。
@@ -37,7 +37,7 @@
 - **スクロールの所有**（ARCHITECTURE.md）: 合格。インジケーターは viewport 固定で本文の flow や `window` scrolling を変更せず、設定画面の詳細は既存 document flow に置く。
 - **UI の正本**（library-ui.md 1・4・5）: 合格。既存 token と CSS breakpoint を使い、raw color や JavaScript の viewport 判定を増やさない。360px・768px・1280px の構図は実ブラウザで確認し、各 UI 実装 PR に画像を添える。
 - **裏側のない入口を増やさない**（library-ui.md 7）: 合格。インジケーターからは同じ変更で追加する設定画面の詳細へ遷移し、操作不能なプレースホルダーを置かない。
-- **利用者データと再構築可能データの保護**（ARCHITECTURE.md）: 合格。表示だけを追加し、動画索引、再生位置、原本を変更しない。
+- **利用者データと再構築可能データの保護**（ARCHITECTURE.md）: 合格。動画索引の保存形式、再生位置、原本を変更しない。対象集合を確定できない走査は所在削除へ進む前に失敗させ、既存索引を保持する。
 
 Phase 1 後も判定は同じで、正当化の必要な違反はない。
 
@@ -60,6 +60,8 @@ Phase 1 後も判定は同じで、正当化の必要な違反はない。
    - 却下: 進捗専用 route や modal を増やす案。親 Issue が設定画面を詳細の置き場と定めており、履歴一覧や個別ログを持たない今回の情報量には別画面が過剰である。
 5. **概要の浮動面は既存 Radix Popover を controlled mode で使う。** pointer hover と focus で同じ概要を開き、collision handling と Portal で右端・狭幅のはみ出しを避ける。trigger の click/tap/Enter/Space は popover の toggle ではなく詳細への移動に割り当てる。
    - 却下: CSS の absolute panel だけで実装する案。viewport collision、Portal の stacking、Escape、focus の扱いを独自に重ねる必要があり、既存依存が提供する土台を捨てることになる。
+6. **進捗の分母を先に確定するため、変更対象のパスだけを列挙してから取り込む。** 保持量は対象数を `n`、平均パス長を `p` として `O(n * p)` で、動画本体や metadata は保持せず取り込み直前に再取得する。既存の規模前提である1万件すべてが対象となり、平均パスが1KiBでもパス本文は約10MiBであり、slice と string header の付帯量を含めても許容範囲に収まる。列挙中にディレクトリを最後まで読めなければ分母を部分確定せず、既存索引を削除しないまま全体失敗にする。
+   - 却下: 列挙と取り込みを1 passで進めながら割合を出す案。処理中に分母が増え続け、利用者が見ている割合が後退または意味を変える。
 
 ## Project Structure
 
@@ -83,6 +85,8 @@ specs/012-scan-progress/
 - `web/src/app/`: route より上へのフローティングインジケーター配置と通常／再生 placement variant の決定
 - `web/src/settings/`: 「取り込み状況」section、再試行、anchor への focus/scroll
 - `web/e2e/`: 画面間の継続、pointer/keyboard/touch 導線、再読み込み、Toast との共存の実ブラウザ検証
+- `internal/scanner/`・`internal/domain/`: 進捗の分母・分子を取り込み対象ファイルの同じ集合で集計し、対象集合を確定できない走査エラーを全体失敗として返す
+- `internal/store/`: 走査と background worker の SQLite 書き込みをトランザクション開始時から直列化し、取り込み対象を競合で欠落させない
 
 **New paths**:
 
@@ -93,6 +97,8 @@ specs/012-scan-progress/
 - `web/src/shell/ScanProgressIndicator.tsx` と対応 test
 - `web/src/settings/ScanStatusSection.tsx` と対応 test
 - `web/e2e/scan-progress.e2e.ts`
+- `web/src/shell/ScanProgressBar.tsx`
+- `internal/store/sqlite_test.go`
 
 ## Implementation Work
 
@@ -111,3 +117,11 @@ specs/012-scan-progress/
 **Dependencies**: 取り込み状態の自動回復と共有表示モデル、Design stage 完了。
 
 **Acceptance**: component tests が、未実行では indicator と空の progress を出さず、実行中は概要と設定詳細を同じ値で更新し、完了後は最終件数と完了時刻を残し、全体失敗では確認まで残る indicator、理由、再試行を表示することを示す。mouse hover と keyboard focus で同じ概要が開き、Escape/focus 移動で閉じ、touch/click/Enter/Space で `/settings#scan-status` へ移動する。`scan-progress.e2e.ts` が直接 URL、実行中の画面移動と再読み込み、Toast との同時表示、完了直前の navigation、完了後の一覧更新、重複開始の合流、取り込み中の動画再生を確認する。`task test-e2e` と `task check` が成功する。UI 変更のため、PR に 360px・768px・1280px の両表示の画像と、視覚・pointer・keyboard・支援技術の review 結果を添える。
+
+### 取り込み対象件数の集計契約を揃える
+
+**Scope**: 親 Issue の要件 3・4・8・11と Edge Case「対象ディレクトリが読めない」に従い、進捗の `total` を実際に取り込む対象数、`completed` を正常に処理済みの対象数、`failed` を同じ対象集合内の失敗数として集計する。変更対象を列挙して分母を確定してから処理し、対象集合を確定できないディレクトリ走査エラーは理由付きの全体失敗として返す。SQLiteの同一process内の書き込みは immediate transaction で待機可能にし、workerとの競合を個別ファイル失敗へ落とさない。
+
+**Dependencies**: 取り込み状態の自動回復と共有表示モデル。
+
+**Acceptance**: scanner tests が、変更なしの再走査、追加・更新・移動、個別ファイル失敗、読めないroot・subdirectoryを区別し、常に `completed + failed = total` または理由付きの全体失敗になることを示す。writer競合テストが先行transactionの終了後に取り込みを再開することを示し、repository CI と Browser E2E が成功する。

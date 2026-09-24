@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -632,18 +633,53 @@ func TestScanRejectsFileChangedWhileContentKeyIsCalculated(t *testing.T) {
 	}
 }
 
-// 読めないrootは失敗として数え、既存索引を保持する。
+// 読めないrootでは対象集合を確定できないため、走査全体を失敗させる。
 func TestScanFailsWhenMediaDirIsUnreadable(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "missing")
 	index := newFakeIndex()
-	index.folders = []domain.MediaFolder{{ID: 1, Path: filepath.Join(t.TempDir(), "missing"), Version: 1}}
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	index.rows[filepath.Join(root, "existing.mp4")] = domain.IndexedVideo{ID: 1, LocationID: 2}
 	scanner := New(Options{Index: index})
 
 	result, err := scanner.Scan(context.Background())
-	if err != nil {
-		t.Fatalf("root I/O failure should be isolated: %v", err)
+	if err == nil {
+		t.Fatal("root I/O failure was reported as a completed scan")
 	}
-	if result.Failed != 1 {
-		t.Errorf("Failed = %d, want 1", result.Failed)
+	if !strings.Contains(err.Error(), root) {
+		t.Fatalf("failure reason does not identify the root: %v", err)
+	}
+	if result.Total != 0 || result.Failed != 0 {
+		t.Fatalf("directory failure was mixed into file counts: %+v", result)
+	}
+	if len(index.deleted) != 0 {
+		t.Fatalf("existing locations were deleted after root failure: %v", index.deleted)
+	}
+}
+
+func TestScanFailsWhenSubdirectoryCannotBeRead(t *testing.T) {
+	root := t.TempDir()
+	protected := filepath.Join(root, "locked", "existing.mp4")
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	index.rows[protected] = domain.IndexedVideo{ID: 1, LocationID: 2}
+	scanner := New(Options{Index: index})
+	failedDir := filepath.Join(root, "locked")
+	scanner.walkDir = func(_ string, walk fs.WalkDirFunc) error {
+		return walk(failedDir, nil, errors.New("permission denied"))
+	}
+
+	result, err := scanner.Scan(context.Background())
+	if err == nil {
+		t.Fatal("subdirectory I/O failure was reported as a completed scan")
+	}
+	if !strings.Contains(err.Error(), failedDir) {
+		t.Fatalf("failure reason does not identify the unreadable directory: %v", err)
+	}
+	if result.Total != 0 || result.Failed != 0 {
+		t.Fatalf("directory failure was mixed into file counts: %+v", result)
+	}
+	if len(index.deleted) != 0 {
+		t.Fatalf("existing locations were deleted after subtree failure: %v", index.deleted)
 	}
 }
 
@@ -695,21 +731,6 @@ func TestSuccessfulScanPreservesMigratedLocationOutsideRegisteredRoots(t *testin
 	}
 	if len(index.deleted) != 0 {
 		t.Fatalf("deleted location outside registered roots: %v", index.deleted)
-	}
-}
-
-func TestWalkErrorOnlySkipsDirectories(t *testing.T) {
-	root := t.TempDir()
-	failedFile := filepath.Join(root, "b.mp4")
-	indexed := map[string]domain.IndexedVideo{
-		failedFile:                             {ID: 1},
-		filepath.Join(root, "locked", "c.mp4"): {ID: 2},
-	}
-	if walkErrorIsDirectory(failedFile, root, nil, indexed) {
-		t.Fatal("file error would skip the remaining siblings")
-	}
-	if !walkErrorIsDirectory(filepath.Join(root, "locked"), root, nil, indexed) {
-		t.Fatal("directory error would not skip its unreadable subtree")
 	}
 }
 
