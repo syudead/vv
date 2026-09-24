@@ -11,6 +11,7 @@ export function PopoverContent({
   children,
   align = "end",
   className,
+  container,
   onOpenAutoFocus,
   onCloseAutoFocus,
   onPointerEnter,
@@ -19,13 +20,15 @@ export function PopoverContent({
   children: ReactNode;
   align?: "start" | "center" | "end";
   className?: string;
+  /** 吹き出しを描く先。全画面の要素の中で開くときに、その要素を渡す。既定は body。 */
+  container?: HTMLElement | null;
   onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
 }) {
   return (
-    <RadixPopover.Portal>
+    <RadixPopover.Portal container={container ?? undefined}>
       <RadixPopover.Content
         align={align}
         sideOffset={6}

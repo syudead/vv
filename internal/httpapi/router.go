@@ -67,6 +67,33 @@ type SeekThumbnailReader interface {
 	Read(context.Context, string, int64) ([]byte, error)
 }
 
+// ThumbnailJobs はサムネイルのジョブの状態の問い合わせ先である。シーク用
+// プレビューには DB 上の状態が無いので、動画1件の応答を作るときにこれで導く。
+type ThumbnailJobs interface {
+	ThumbnailJobActive(ctx context.Context, videoID int64) (bool, error)
+}
+
+// RelatedLibrary は関連動画の問い合わせ先である。store は行を読むだけで、
+// 並べ方は internal/domain の OrderRelated が決める。
+type RelatedLibrary interface {
+	DirectVideoPaths(ctx context.Context, dir string) ([]domain.RelatedSibling, error)
+	VideosAddedNear(ctx context.Context, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error)
+	VideosByIDs(ctx context.Context, ids []int64) ([]domain.Video, error)
+}
+
+// Reprober は読み取りに失敗した動画を読み取り直す状態へ戻し、ジョブを積む。
+// 状態を戻すことと積むことは、保存層が1つの取引で行う。
+type Reprober interface {
+	RetryProbe(ctx context.Context, id int64, seekThumbnailMissing bool) error
+}
+
+// FileOpener はサーバーの PC の既定アプリでファイルを開く。internal/opener の
+// *Opener がこれを満たす。起動できる環境かどうかは起動時に決まっている。
+type FileOpener interface {
+	Available() bool
+	Open(path string) error
+}
+
 // Options は経路の組み立てに必要な依存である。
 type Options struct {
 	// Build は稼働中のバイナリを特定するための情報。
@@ -90,6 +117,15 @@ type Options struct {
 	Transcoder Transcoder
 	// SeekThumbnails は生成済みの任意時刻JPEGを読む。nilなら経路は500を返す。
 	SeekThumbnails SeekThumbnailReader
+	// ThumbnailJobs はシーク用プレビューの状態を導くのに使う。nil ならジョブは
+	// 進行中でないものとして導く。
+	ThumbnailJobs ThumbnailJobs
+	// Related は関連動画の問い合わせ先。nilなら経路は500を返す。
+	Related RelatedLibrary
+	// Reprobe は読み取りのやり直し。nilなら経路は500を返す。
+	Reprobe Reprober
+	// Opener はファイルを既定アプリで開く。nil なら開けない環境として扱う。
+	Opener FileOpener
 	// Assets は SPA のビルド成果物（web/dist に相当）。
 	Assets fs.FS
 	// Logger は応答の過程で出す記録。nil の場合は slog の既定を使う。
@@ -109,6 +145,10 @@ type server struct {
 	thumbnailsDir  string
 	transcoder     Transcoder
 	seekThumbnails SeekThumbnailReader
+	thumbnailJobs  ThumbnailJobs
+	related        RelatedLibrary
+	reprobe        Reprober
+	opener         FileOpener
 	logger         *slog.Logger
 }
 
@@ -144,6 +184,10 @@ func NewRouter(opts Options) http.Handler {
 		thumbnailsDir:  opts.ThumbnailsDir,
 		transcoder:     opts.Transcoder,
 		seekThumbnails: opts.SeekThumbnails,
+		thumbnailJobs:  opts.ThumbnailJobs,
+		related:        opts.Related,
+		reprobe:        opts.Reprobe,
+		opener:         opts.Opener,
 		logger:         logger,
 	}
 
@@ -283,6 +327,9 @@ const (
 	codeConflict                    = gen.ErrorCodeConflict
 	codeMediaFoldersNotConfigured   = gen.ErrorCodeMediaFoldersNotConfigured
 	codeDirectoryUnavailable        = gen.ErrorCodeDirectoryUnavailable
+	codeProbeNotFailed              = gen.ErrorCodeProbeNotFailed
+	codeOpenUnavailable             = gen.ErrorCodeOpenUnavailable
+	codeFileMissing                 = gen.ErrorCodeFileMissing
 )
 
 // writeError は JSON のエラーを書き出す。message は利用者にそのまま提示して

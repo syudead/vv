@@ -18,6 +18,7 @@ import (
 const (
 	ErrorCodeConflict                    ErrorCode = "conflict"
 	ErrorCodeDirectoryUnavailable        ErrorCode = "directory_unavailable"
+	ErrorCodeFileMissing                 ErrorCode = "file_missing"
 	ErrorCodeForbidden                   ErrorCode = "forbidden"
 	ErrorCodeInternal                    ErrorCode = "internal"
 	ErrorCodeInvalidMediaDirectory       ErrorCode = "invalid_media_directory"
@@ -25,7 +26,9 @@ const (
 	ErrorCodeMediaFolderNotFound         ErrorCode = "media_folder_not_found"
 	ErrorCodeMediaFoldersNotConfigured   ErrorCode = "media_folders_not_configured"
 	ErrorCodeNotFound                    ErrorCode = "not_found"
+	ErrorCodeOpenUnavailable             ErrorCode = "open_unavailable"
 	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
+	ErrorCodeProbeNotFailed              ErrorCode = "probe_not_failed"
 	ErrorCodeScanInProgress              ErrorCode = "scan_in_progress"
 	ErrorCodeUnsupportedMediaDirectory   ErrorCode = "unsupported_media_directory"
 )
@@ -36,6 +39,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeConflict:
 		return true
 	case ErrorCodeDirectoryUnavailable:
+		return true
+	case ErrorCodeFileMissing:
 		return true
 	case ErrorCodeForbidden:
 		return true
@@ -51,7 +56,11 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeNotFound:
 		return true
+	case ErrorCodeOpenUnavailable:
+		return true
 	case ErrorCodeOverlappingMediaDirectories:
+		return true
+	case ErrorCodeProbeNotFailed:
 		return true
 	case ErrorCodeScanInProgress:
 		return true
@@ -137,6 +146,27 @@ func (e VideoProbeState) Valid() bool {
 	case VideoProbeStateFailed:
 		return true
 	case VideoProbeStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VideoSeekThumbnailState.
+const (
+	VideoSeekThumbnailStateDone    VideoSeekThumbnailState = "done"
+	VideoSeekThumbnailStateFailed  VideoSeekThumbnailState = "failed"
+	VideoSeekThumbnailStatePending VideoSeekThumbnailState = "pending"
+)
+
+// Valid indicates whether the value is a known member of the VideoSeekThumbnailState enum.
+func (e VideoSeekThumbnailState) Valid() bool {
+	switch e {
+	case VideoSeekThumbnailStateDone:
+		return true
+	case VideoSeekThumbnailStateFailed:
+		return true
+	case VideoSeekThumbnailStatePending:
 		return true
 	default:
 		return false
@@ -311,6 +341,14 @@ type ProgressUpdate struct {
 	PositionMs int64 `json:"positionMs"`
 }
 
+// RelatedVideos defines model for RelatedVideos.
+type RelatedVideos struct {
+	Items []Video `json:"items"`
+
+	// NextId 同じディレクトリで自然順の次の動画。無ければ省く
+	NextId *int64 `json:"nextId,omitempty"`
+}
+
 // RootFolderListing defines model for RootFolderListing.
 type RootFolderListing struct {
 	// Folders 登録済みメディアフォルダ。名前の自然順
@@ -358,6 +396,9 @@ type Video struct {
 	Height     *int   `json:"height,omitempty"`
 	Id         int64  `json:"id"`
 
+	// Location 代表の所在。GET /api/videos/{id} の応答にだけ入る
+	Location *VideoLocation `json:"location,omitempty"`
+
 	// Playable ブラウザでそのまま再生できると判定されたか
 	Playable     bool              `json:"playable"`
 	PreviewState VideoPreviewState `json:"previewState"`
@@ -369,6 +410,12 @@ type Video struct {
 	ProbeError *string         `json:"probeError,omitempty"`
 	ProbeState VideoProbeState `json:"probeState"`
 	Progress   *Progress       `json:"progress,omitempty"`
+
+	// SeekThumbnailState シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
+	// seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
+	// pending = 置き場が無く thumbnailState = pending かサムネイルのジョブが
+	// queued・running、failed = それ以外
+	SeekThumbnailState *VideoSeekThumbnailState `json:"seekThumbnailState,omitempty"`
 
 	// SeekThumbnailUrl probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL
 	SeekThumbnailUrl *string             `json:"seekThumbnailUrl,omitempty"`
@@ -395,11 +442,27 @@ type VideoPreviewState string
 // VideoProbeState defines model for Video.ProbeState.
 type VideoProbeState string
 
+// VideoSeekThumbnailState シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
+// seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
+// pending = 置き場が無く thumbnailState = pending かサムネイルのジョブが
+// queued・running、failed = それ以外
+type VideoSeekThumbnailState string
+
 // VideoThumbnailState defines model for Video.ThumbnailState.
 type VideoThumbnailState string
 
 // VideoUnplayableReason playable = false の理由。判定前は省略される
 type VideoUnplayableReason string
+
+// VideoLocation 代表の所在。GET /api/videos/{id} の応答にだけ入る
+type VideoLocation struct {
+	// Openable 要求元がループバックで、Host がループバックの名前で、サーバーが既定アプリを
+	// 起動できる環境のとき true
+	Openable bool `json:"openable"`
+
+	// Path 代表の所在の絶対パス。サーバーから見たパスで、コンテナ内ならコンテナ内のパス
+	Path string `json:"path"`
+}
 
 // VideoPage defines model for VideoPage.
 type VideoPage struct {
@@ -569,12 +632,21 @@ type ServerInterface interface {
 	// GetVideo 動画1件の詳細を返す
 	// (GET /api/videos/{id})
 	GetVideo(w http.ResponseWriter, r *http.Request, id VideoId)
+	// OpenVideoFile 代表の所在をサーバーの PC の既定アプリで開く
+	// (POST /api/videos/{id}/open)
+	OpenVideoFile(w http.ResponseWriter, r *http.Request, id VideoId)
 	// GetVideoPreview 生成済み hover preview を配信する
 	// (GET /api/videos/{id}/preview)
 	GetVideoPreview(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoPreviewParams)
+	// ReprobeVideo 読み取りに失敗した動画を読み取り直す
+	// (POST /api/videos/{id}/probe)
+	ReprobeVideo(w http.ResponseWriter, r *http.Request, id VideoId)
 	// PutVideoProgress 再生位置を記録する
 	// (PUT /api/videos/{id}/progress)
 	PutVideoProgress(w http.ResponseWriter, r *http.Request, id VideoId)
+	// GetRelatedVideos 関連動画を返す
+	// (GET /api/videos/{id}/related)
+	GetRelatedVideos(w http.ResponseWriter, r *http.Request, id VideoId)
 	// GetVideoSeekThumbnail 指定時刻のシークプレビュー画像を返す
 	// (GET /api/videos/{id}/seek-thumbnail)
 	GetVideoSeekThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoSeekThumbnailParams)
@@ -1004,6 +1076,32 @@ func (siw *ServerInterfaceWrapper) GetVideo(w http.ResponseWriter, r *http.Reque
 	handler.ServeHTTP(w, r)
 }
 
+// OpenVideoFile operation middleware
+func (siw *ServerInterfaceWrapper) OpenVideoFile(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenVideoFile(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetVideoPreview operation middleware
 func (siw *ServerInterfaceWrapper) GetVideoPreview(w http.ResponseWriter, r *http.Request) {
 
@@ -1046,6 +1144,32 @@ func (siw *ServerInterfaceWrapper) GetVideoPreview(w http.ResponseWriter, r *htt
 	handler.ServeHTTP(w, r)
 }
 
+// ReprobeVideo operation middleware
+func (siw *ServerInterfaceWrapper) ReprobeVideo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReprobeVideo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // PutVideoProgress operation middleware
 func (siw *ServerInterfaceWrapper) PutVideoProgress(w http.ResponseWriter, r *http.Request) {
 
@@ -1063,6 +1187,32 @@ func (siw *ServerInterfaceWrapper) PutVideoProgress(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.PutVideoProgress(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRelatedVideos operation middleware
+func (siw *ServerInterfaceWrapper) GetRelatedVideos(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRelatedVideos(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1360,6 +1510,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/related", wrapper.GetRelatedVideos)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/probe", wrapper.ReprobeVideo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/open", wrapper.OpenVideoFile)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/stream", wrapper.StreamVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/preview", wrapper.GetVideoPreview)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/transcode.mp4", wrapper.TranscodeVideo)

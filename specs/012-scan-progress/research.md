@@ -4,7 +4,7 @@
 
 ## フローティング表示の所有
 
-**Decision**: インジケーターは `web/src/shell/` が所有し、`ScanNoticeProvider` 内かつ `Routes` の外に1度だけ描画する。ライブラリ、フォルダ、設定、再生画面で同じインスタンスを維持する。`web/src/app/App.tsx` の route 分岐が placement variant を決め、通常画面では右下、再生画面では360pxの右下と768px以上の右上に置いて player control と詳細を避ける。通知の寿命は route より上の `ScanNoticeProvider` が所有し、再読み込みに必要な最小状態は `sessionStorage` に置く。
+**Decision**: インジケーターは `web/src/shell/` が所有し、`ScanNoticeProvider` 内かつ `Routes` の外に1度だけ描画する。ライブラリ、フォルダ、設定、再生画面で同じインスタンスを維持する。`web/src/app/App.tsx` の route 分岐が placement variant を決め、通常画面では右下、再生画面では360pxの右下と768px以上の右上に置いて player control と詳細を避ける。その後、動画詳細画面の見直し #171 で再生画面の右上に閉じる × が入ったため、再生画面でも右下に置く。通知の寿命は route より上の `ScanNoticeProvider` が所有し、再読み込みに必要な最小状態は `sessionStorage` に置く。
 
 **Rationale**: 表示位置は shell の責務だが、現在の route 構成では画面移動ごとに `AppShell` が mount し直され、再生画面には `AppShell` がない。描画と通知寿命を route より上へ置き、tracking id、確認済み terminal id、完了期限を tab session に保存することで、画面移動と reload の直後も同じ取り込みを追跡し、確認済み失敗と期限切れ完了を復活させない。
 

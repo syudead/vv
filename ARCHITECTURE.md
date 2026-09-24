@@ -21,7 +21,10 @@ worker. Everything ships as one container.
 In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, checks that
 `ffprobe`/`ffmpeg` are on `PATH`, opens SQLite under `MDM_DATA_DIR` and applies
 embedded goose migrations at startup, then starts the job worker. It serves `GET /api/health`,
-the video library API (`/api/videos*`, `/api/scans*`), media-folder settings and
+the video library API (`/api/videos*`, `/api/scans*`; a single video's response also
+carries its representative location and seek-preview state, and
+`/api/videos/{id}/related`, `/probe` and `/open` return related videos, retry a failed
+metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the read-only folder browsing API
 (`/api/folders*`), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
@@ -41,6 +44,14 @@ addressing a folder by its registered root's id and a `/`-separated relative pat
 Streaming delegates ranges to `http.ServeContent` and only opens current locations that
 resolve inside a configured media folder.
 
+`internal/opener` launches the operating system's default app for a video's
+representative location (`explorer.exe`, `open` or `xdg-open`). It is kept apart from
+`internal/media`, which is the entry point for `ffmpeg`/`ffprobe`, and it resolves the
+command once at startup; on Linux and similar systems it also requires `DISPLAY` or
+`WAYLAND_DISPLAY`, so containers and headless servers report it as unavailable. The
+open route only accepts requests whose remote address and `Host` are loopback, and it
+never takes a path from the request.
+
 Shutdown drains in-flight requests within a 10 second grace period, then stops
 the scanner and the worker so a running job returns to the queue.
 
@@ -57,7 +68,7 @@ not persisted.
 
 ## Intended dependency direction
 
-`cmd -> internal/{httpapi,store,media,scanner,jobs} -> internal/domain`, one way
+`cmd -> internal/{httpapi,store,media,opener,scanner,jobs} -> internal/domain`, one way
 only. `internal/domain` holds the domain model and use cases and must not depend
 on `net/http`, `database/sql`, or `os/exec`. This constraint is enforced
 mechanically with golangci-lint's depguard in CI.
@@ -94,7 +105,9 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 `web/src/api/` is the only place that talks to the server. `client.ts` wraps
 `fetch` over the generated types in `web/src/api/gen/` (never hand-edited;
 `task generate` rewrites them from `api/openapi.yaml`), `useVideos.ts` owns
-paging and request cancellation for the library list, and `listSnapshot.ts`
+paging and request cancellation for the library list, `useVideoDetail.ts`
+fetches one video for the playback screen and re-fetches it every two seconds
+only while ingest work is still pending (paused while the page is hidden), and `listSnapshot.ts`
 holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.
@@ -105,9 +118,16 @@ frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings
 `web/src/ui/` and formatting helpers live in `web/src/lib/`. The library, folder and settings
 screens use the shell: `app/App.tsx` puts `AppShell` around the `/`, `/folders/*` and
 `/settings` routes, and the playback screen
-(`/videos/:id`) deliberately gets no sidebar, because it is a
-two-pane screen of its own. Keeping that choice to the one routing
-decision is what lets the shell stay ignorant of which screen it is framing.
+(`/videos/:id`) deliberately gets no shell at all, because it is a
+two-pane screen of its own: the player with the title, a property strip and the
+file location on the left, related videos on the right, and a close button (×, or
+Esc) that returns to the list the screen was opened from. Keeping that choice to
+the one routing decision is what lets the shell stay ignorant of which screen it
+is framing. Inside `web/src/player/`, video.js owns only the control bar; ingest
+stages, read and playback failures, the ended prompt and the touch controls are
+React layers stacked in one container above the player, and keyboard shortcuts are
+handled page-wide rather than by video.js. The composition is recorded in
+[docs/design-docs/library-ui.md](docs/design-docs/library-ui.md).
 The shell exposes the library, the folder browser and media-folder settings as routes.
 The folder browser reuses the library's video card and paging (`useVideos` takes the
 folder as its source) and reads its location from the URL itself: each path segment is

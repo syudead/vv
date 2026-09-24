@@ -17,7 +17,7 @@ function AppRoutes() {
 
   return (
     <ToastProvider placement={scanPlacement}>
-      <ScanProgressIndicator placement={scanPlacement} />
+      <ScanProgressIndicator />
       <Routes>
         <Route
           path="/"

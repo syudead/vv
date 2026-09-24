@@ -100,9 +100,10 @@ describe("App", () => {
     const playbackIndicator = screen.getByRole("button", { name: /取り込み中 40%/ });
     expect(playbackIndicator).toBe(indicator);
     const playbackPlacement = playbackIndicator.closest(".fixed")?.classList;
+    // 再生画面でも右下に置く。右上には閉じる × がある。
     expect(playbackPlacement?.contains("bottom-4")).toBe(true);
-    expect(playbackPlacement?.contains("sm:top-2")).toBe(true);
-    expect(playbackPlacement?.contains("sm:bottom-auto")).toBe(true);
+    expect(playbackPlacement?.contains("sm:bottom-5")).toBe(true);
+    expect(playbackPlacement?.contains("sm:top-2")).toBe(false);
     expect(playbackIndicator.getAttribute("aria-label")).toBe(
       "取り込み中 40%。取り込み状況を開く",
     );
@@ -126,6 +127,9 @@ describe("App", () => {
     expect(screen.getByText("route toast")).toBe(toast);
     const playbackPlacement = toast.parentElement?.classList;
     expect(playbackPlacement?.contains("top-1.5")).toBe(true);
+    // どの幅でも上端の中央に出し、右上の閉じる × を覆わない。
+    expect(playbackPlacement?.contains("items-center")).toBe(true);
+    expect(playbackPlacement?.contains("items-end")).toBe(false);
     expect(playbackPlacement?.contains("lg:bottom-20")).toBe(false);
   });
 });

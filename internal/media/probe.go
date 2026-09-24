@@ -28,8 +28,9 @@ const probeCommand = "ffprobe"
 // 必要な値は -show_format -show_streams の1回ですべて揃う。値ごとに
 // -show_entries で複数回起動すると、プロセス起動が支配的なコストなので遅くなる。
 //
-// os/exec はこのパッケージの外へ漏らさない。再生可否の判定規則は
-// internal/domain にあり、外部プロセスに触れずにテストできる。
+// ffmpeg／ffprobe を起こす os/exec はこのパッケージの外へ漏らさない（OS の
+// 既定アプリの起動だけは別の責務として internal/opener に閉じ込める）。
+// 再生可否の判定規則は internal/domain にあり、外部プロセスに触れずにテストできる。
 func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()

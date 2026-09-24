@@ -121,7 +121,8 @@ export function ToastProvider({
         className={cn(
           "pointer-events-none fixed inset-x-0 z-50 flex flex-col gap-2",
           placement === "playback"
-            ? "top-1.5 items-end px-3 sm:items-center sm:px-0"
+            ? // 再生画面は、どの幅でも上端の中央に出す。右上には閉じる × がある。
+              "top-1.5 items-center"
             : "top-16 items-end px-3 lg:top-auto lg:bottom-20 lg:items-center lg:px-0",
         )}
       >

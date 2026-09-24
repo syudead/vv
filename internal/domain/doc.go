@@ -7,7 +7,7 @@
 //
 // 依存の向き:
 //
-//	cmd → internal/{httpapi,store,media,scanner,jobs} → internal/domain
+//	cmd → internal/{httpapi,store,media,opener,scanner,jobs} → internal/domain
 //
 // 詳細は ARCHITECTURE.md の "Intended dependency direction" を参照。
 package domain

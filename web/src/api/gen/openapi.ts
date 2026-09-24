@@ -63,6 +63,76 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 関連動画を返す
+         * @description 代表の所在と同じディレクトリ直下の動画を、ファイル名の自然順でこの動画より
+         *     後のもの、前のものの順に並べ、足りない分を追加日時の差が小さい順（差が同じなら
+         *     id の大きい方が先）で補う。最大20件で、この動画自身は含めない。同じフォルダの
+         *     順序は全順序で、自然順が同じならファイル名のバイト順、それも同じなら id の
+         *     小さい方を先にする。
+         */
+        get: operations["getRelatedVideos"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/probe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 読み取りに失敗した動画を読み取り直す
+         * @description `probeState = failed` の動画だけを受け付ける。1つの取引の中で読み取りの状態を
+         *     pending に戻し、読み取りのジョブを積む。サムネイルが完成していないとき、または
+         *     シーク用プレビューの置き場が無いときはサムネイルのジョブも積み、失敗した
+         *     一覧用プレビューの状態も pending に戻す。要求の本文は無い。
+         */
+        post: operations["reprobeVideo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/open": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 代表の所在をサーバーの PC の既定アプリで開く
+         * @description 要求の本文は無く、パスも受け取らない。子プロセスを起動した時点で 204 を返す。
+         *     判定は 404 → 409 open_unavailable → 403 → 409 file_missing → 500 の順に行う。
+         *     要求元（RemoteAddr）がループバックで、Host がループバックの名前
+         *     （localhost・127.0.0.1・[::1]）のときだけ受け付ける。
+         */
+        post: operations["openVideoFile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/stream": {
         parameters: {
             query?: never;
@@ -499,6 +569,33 @@ export interface components {
             /** @description probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL */
             seekThumbnailUrl?: string;
             progress?: components["schemas"]["Progress"];
+            location?: components["schemas"]["VideoLocation"];
+            /**
+             * @description シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
+             *     seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
+             *     pending = 置き場が無く thumbnailState = pending かサムネイルのジョブが
+             *     queued・running、failed = それ以外
+             * @enum {string}
+             */
+            seekThumbnailState?: "pending" | "done" | "failed";
+        };
+        /** @description 代表の所在。GET /api/videos/{id} の応答にだけ入る */
+        VideoLocation: {
+            /** @description 代表の所在の絶対パス。サーバーから見たパスで、コンテナ内ならコンテナ内のパス */
+            path: string;
+            /**
+             * @description 要求元がループバックで、Host がループバックの名前で、サーバーが既定アプリを
+             *     起動できる環境のとき true
+             */
+            openable: boolean;
+        };
+        RelatedVideos: {
+            items: components["schemas"]["Video"][];
+            /**
+             * Format: int64
+             * @description 同じディレクトリで自然順の次の動画。無ければ省く
+             */
+            nextId?: number;
         };
         ProgressUpdate: {
             /** Format: int64 */
@@ -533,7 +630,7 @@ export interface components {
              * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing";
             /** @description 人が読むための説明。利用者にそのまま提示してよい文言にする */
             message: string;
         };
@@ -676,6 +773,105 @@ export interface operations {
                 };
             };
             404: components["responses"]["NotFound"];
+        };
+    };
+    getRelatedVideos: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 関連動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedVideos"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    reprobeVideo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 読み取りを積み直した。更新後の動画 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description probeState が failed でない（probe_not_failed） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    openVideoFile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 既定アプリを起動した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description 既定アプリを起動できない環境（open_unavailable）か、ファイルが無い（file_missing） */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description 子プロセスを起動できなかった */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     streamVideo: {
