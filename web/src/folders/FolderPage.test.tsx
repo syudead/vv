@@ -3,6 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
+
 import type {
   FolderListing,
   FolderSummary,
@@ -119,6 +121,7 @@ describe("FolderPage", () => {
   beforeEach(() => {
     requests.length = 0;
     vi.stubGlobal("fetch", fetchMock);
+    installFakeEventSource();
     vi.stubGlobal("scrollTo", vi.fn());
     vi.stubGlobal(
       "IntersectionObserver",
@@ -290,20 +293,18 @@ describe("FolderPage", () => {
 
   it("取り込み後の読み直しが終わる前に動画を開いても、古い子フォルダを控えに残さない", async () => {
     const user = userEvent.setup();
-    let scanPolls = 0;
     let listingCalls = 0;
     const base = fetchMock.getMockImplementation();
     fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) {
-        scanPolls += 1;
         requests.push(url);
         return Promise.resolve(
           json({
             id: 9,
-            state: scanPolls <= 2 ? "running" : "done",
+            state: "running",
             total: 1,
-            completed: scanPolls <= 2 ? 0 : 1,
+            completed: 0,
             failed: 0,
           }),
         );
@@ -320,7 +321,14 @@ describe("FolderPage", () => {
     });
     renderFolders("/folders/3/A");
     await screen.findByRole("link", { name: "x" });
-    await waitFor(() => expect(listingCalls).toBe(2), { timeout: 5000 });
+    await emitServerEvent("scan", {
+      id: 9,
+      state: "done",
+      total: 1,
+      completed: 1,
+      failed: 0,
+    });
+    await waitFor(() => expect(listingCalls).toBe(2));
 
     // 動画は読み直し済みで、子フォルダはまだ古い。
     await user.click(await screen.findByRole("link", { name: "x" }));
@@ -331,18 +339,16 @@ describe("FolderPage", () => {
   }, 10_000);
 
   it("最上位でも取り込みが終わると登録フォルダを読み直す", async () => {
-    let scanPolls = 0;
     const base = fetchMock.getMockImplementation();
     fetchMock.mockImplementation((input, init) => {
       if (String(input).startsWith("/api/scans/current")) {
-        scanPolls += 1;
         requests.push(String(input));
         return Promise.resolve(
           json({
             id: 9,
-            state: scanPolls <= 2 ? "running" : "done",
+            state: "running",
             total: 1,
-            completed: scanPolls <= 2 ? 0 : 1,
+            completed: 0,
             failed: 0,
           }),
         );
@@ -355,25 +361,29 @@ describe("FolderPage", () => {
     });
     expect(requests.filter((url) => url === "/api/folders").length).toBe(1);
 
-    await waitFor(
-      () => expect(requests.filter((url) => url === "/api/folders").length).toBe(2),
-      { timeout: 5000 },
+    await emitServerEvent("scan", {
+      id: 9,
+      state: "done",
+      total: 1,
+      completed: 1,
+      failed: 0,
+    });
+    await waitFor(() =>
+      expect(requests.filter((url) => url === "/api/folders").length).toBe(2),
     );
   }, 10_000);
 
   it("取り込みが終わると子フォルダと動画を読み直す", async () => {
-    let scanPolls = 0;
     const base = fetchMock.getMockImplementation();
     fetchMock.mockImplementation((input, init) => {
       if (String(input).startsWith("/api/scans/current")) {
-        scanPolls += 1;
         requests.push(String(input));
         return Promise.resolve(
           json({
             id: 9,
-            state: scanPolls <= 2 ? "running" : "done",
+            state: "running",
             total: 1,
-            completed: scanPolls <= 2 ? 0 : 1,
+            completed: 0,
             failed: 0,
           }),
         );
@@ -384,10 +394,15 @@ describe("FolderPage", () => {
     await screen.findByRole("link", { name: "x" });
     expect(requests.filter((url) => url === "/api/folders/3?path=A").length).toBe(1);
 
-    await waitFor(
-      () =>
-        expect(requests.filter((url) => url === "/api/folders/3?path=A").length).toBe(2),
-      { timeout: 5000 },
+    await emitServerEvent("scan", {
+      id: 9,
+      state: "done",
+      total: 1,
+      completed: 1,
+      failed: 0,
+    });
+    await waitFor(() =>
+      expect(requests.filter((url) => url === "/api/folders/3?path=A").length).toBe(2),
     );
     await waitFor(() =>
       expect(

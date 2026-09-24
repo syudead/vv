@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -50,7 +48,7 @@ func claimLastAttempt(t *testing.T, ctx context.Context, db *store.DB, kind doma
 		domain.MaxJobAttempts-1, string(kind), videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, kind)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,25 +103,5 @@ func TestProcessingHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 				t.Fatalf("probeError = %q, want %q", video.ProbeError, handleErr.Error())
 			}
 		})
-	}
-}
-
-// 起動時の整合で、pending のまま終端の失敗ジョブを持つ動画が failed になる。
-func TestReconcileProcessingFailuresAtStartup(t *testing.T) {
-	ctx, dataDir, db, videoID := missingSourceFixture(t)
-	job := claimLastAttempt(t, ctx, db, domain.JobProbe, videoID)
-	if _, err := db.SQL().Exec(`update jobs set state = 'failed', last_error = 'legacy' where id = ?`, job.ID); err != nil {
-		t.Fatal(err)
-	}
-
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	newLibrary(Config{DataDir: dataDir}, db, logger).reconcileProcessingFailures(ctx)
-
-	video, err := db.GetVideo(ctx, videoID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if video.ProbeState != domain.ProbeStateFailed || video.ProbeError != "legacy" {
-		t.Fatalf("probe = %q (%q), want failed", video.ProbeState, video.ProbeError)
 	}
 }

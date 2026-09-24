@@ -107,48 +107,6 @@ func TestSeekThumbnailCacheReportsMissingFrame(t *testing.T) {
 	}
 }
 
-func TestRemoveOrphanSeekThumbnails(t *testing.T) {
-	thumbnailsDir := t.TempDir()
-	root := filepath.Join(thumbnailsDir, "seek")
-	kept := SeekThumbnailDir(root, "keep:1")
-	orphan := SeekThumbnailDir(root, "orphan:2")
-	temporary := filepath.Join(filepath.Dir(orphan), ".seek-active")
-	for _, dir := range []string{kept, orphan, temporary} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	removed, err := RemoveOrphanSeekThumbnails(
-		thumbnailsDir, map[string]struct{}{"keep:1": {}},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if removed != 1 {
-		t.Fatalf("removed = %d, want 1", removed)
-	}
-	if _, err := os.Stat(kept); err != nil {
-		t.Fatalf("kept cache: %v", err)
-	}
-	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
-		t.Fatalf("orphan cache error = %v", err)
-	}
-	if _, err := os.Stat(temporary); err != nil {
-		t.Fatalf("active temporary cache: %v", err)
-	}
-}
-
-func TestRemoveOrphanSeekThumbnailsWithoutCache(t *testing.T) {
-	removed, err := RemoveOrphanSeekThumbnails(t.TempDir(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if removed != 0 {
-		t.Fatalf("removed = %d, want 0", removed)
-	}
-}
-
 func TestRemoveSeekThumbnails(t *testing.T) {
 	thumbnailsDir := t.TempDir()
 	target := SeekThumbnailDir(filepath.Join(thumbnailsDir, "seek"), "remove:1")

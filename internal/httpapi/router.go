@@ -126,6 +126,10 @@ type Options struct {
 	Reprobe Reprober
 	// Opener はファイルを既定アプリで開く。nil なら開けない環境として扱う。
 	Opener FileOpener
+	// Processing は段階ごとの残りの問い合わせ先。nilなら経路は500を返す。
+	Processing Processing
+	// Events は画面へ送る変化の知らせ。nilなら経路は500を返す。
+	Events *Events
 	// Assets は SPA のビルド成果物（web/dist に相当）。
 	Assets fs.FS
 	// Logger は応答の過程で出す記録。nil の場合は slog の既定を使う。
@@ -149,6 +153,8 @@ type server struct {
 	related        RelatedLibrary
 	reprobe        Reprober
 	opener         FileOpener
+	processing     Processing
+	events         *Events
 	logger         *slog.Logger
 }
 
@@ -157,6 +163,8 @@ type server struct {
 //	/api/health      → JSON（生成された経路定義から登録する）
 //	/api/videos*     → JSON・動画本体・サムネイル（同上）
 //	/api/scans*      → JSON（同上）
+//	/api/processing  → JSON（同上）
+//	/api/events      → Server-Sent Events（同上）
 //	/api/folders*    → JSON（同上）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
@@ -188,6 +196,8 @@ func NewRouter(opts Options) http.Handler {
 		related:        opts.Related,
 		reprobe:        opts.Reprobe,
 		opener:         opts.Opener,
+		processing:     opts.Processing,
+		events:         opts.Events,
 		logger:         logger,
 	}
 

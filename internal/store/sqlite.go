@@ -29,6 +29,33 @@ type DB struct {
 	sql      *sql.DB
 	path     string
 	folderMu sync.Mutex
+
+	// jobsQueued は仕事を積んだ取引の確定後に呼ぶ。ワーカーはこれを受けて
+	// 起きるので、待ち行列を一定間隔で問い合わせない。
+	jobsQueuedMu sync.RWMutex
+	jobsQueued   func(kinds []JobKind)
+}
+
+// OnJobsQueued は、仕事を積んだ取引が確定したときの知らせ先を設定する。
+// 積んだ種類が渡る。同じ種類が重なることもある。
+func (db *DB) OnJobsQueued(notify func(kinds []JobKind)) {
+	db.jobsQueuedMu.Lock()
+	defer db.jobsQueuedMu.Unlock()
+	db.jobsQueued = notify
+}
+
+// notifyJobsQueued は知らせ先があれば呼ぶ。取引の確定後に呼ぶこと。確定前に
+// 起こすと、ワーカーがまだ見えない行を探して空振りし、そのまま眠る。
+func (db *DB) notifyJobsQueued(kinds ...JobKind) {
+	if len(kinds) == 0 {
+		return
+	}
+	db.jobsQueuedMu.RLock()
+	notify := db.jobsQueued
+	db.jobsQueuedMu.RUnlock()
+	if notify != nil {
+		notify(kinds)
+	}
 }
 
 // dsn は接続時に適用する PRAGMA を含む DSN を組み立てる。

@@ -606,19 +606,19 @@ func TestIndexedVideosByPath(t *testing.T) {
 	}
 }
 
-// サムネイルの掃除に使う。参照されている content_key の一覧を取れること。
-func TestContentKeys(t *testing.T) {
+// 生成中に動画が消えたかどうかを、内容の識別子1つで確かめられること。
+func TestContentKeyReferenced(t *testing.T) {
 	db, _ := listFixture(t)
+	ctx := context.Background()
 
-	keys, err := db.ContentKeys(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(keys) != 5 {
-		t.Errorf("%d 件, want 5", len(keys))
-	}
-	if _, ok := keys["key-3"]; !ok {
-		t.Error("key-3 が含まれていない")
+	for key, want := range map[string]bool{"key-3": true, "消えた内容": false} {
+		got, err := db.ContentKeyReferenced(ctx, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("ContentKeyReferenced(%q) = %v, want %v", key, got, want)
+		}
 	}
 }
 

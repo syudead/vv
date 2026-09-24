@@ -17,6 +17,8 @@ export type FolderListing = components["schemas"]["FolderListing"];
 export type RootFolderListing = components["schemas"]["RootFolderListing"];
 export type RelatedVideos = components["schemas"]["RelatedVideos"];
 export type VideoLocation = components["schemas"]["VideoLocation"];
+export type Processing = components["schemas"]["Processing"];
+export type VideoChanged = components["schemas"]["VideoChanged"];
 
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
 // これだけを待つ。
@@ -194,6 +196,11 @@ export async function getCurrentScan(signal?: AbortSignal): Promise<Scan | null>
     }
     throw error;
   }
+}
+
+/** getProcessing は取り込みの段階ごとに残っている仕事の数を取得する。 */
+export function getProcessing(signal?: AbortSignal): Promise<Processing> {
+  return request<Processing>("/api/processing", { signal });
 }
 
 /** startScan は取り込みを促す。実行中なら、実行中のものがそのまま返る。 */

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   errorMessage,
   type FolderRef,
+  getVideo,
   isAborted,
   listFolderVideos,
   listVideos,
@@ -10,6 +11,18 @@ import {
   type VideoSort,
 } from "./client";
 import { subscribeProgress } from "./progressEvents";
+import { subscribeServerEvents } from "./serverEvents";
+import { isProcessing } from "./useVideoDetail";
+
+/**
+ * mergeRefreshed は取り直した1件を、一覧に出ている項目へ重ねる。
+ *
+ * 題名と大きさは一覧側の値を残す。フォルダ画面の項目は、そのフォルダにある
+ * 所在の題名と大きさを持ち、1件の取得（代表の所在）とは違うことがあるためである。
+ */
+function mergeRefreshed(current: Video, refreshed: Video): Video {
+  return { ...current, ...refreshed, title: current.title, sizeBytes: current.sizeBytes };
+}
 
 /**
  * VideosSeed は復元された一覧の初期状態である。
@@ -94,6 +107,69 @@ export function useVideos(
       }),
     [],
   );
+
+  // 取り込みの準備が進んだ動画を、一覧を読み直さずに1件ずつ取り直す。読み直すと
+  // スクロール位置や読み込んだページが失われる。取り直しは1件ずつ順に行い、
+  // 知らせが重なっても同じ動画を重ねて取りに行かない。
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const refreshQueue = useRef(new Set<number>());
+  const refreshing = useRef<AbortController | null>(null);
+  const drainRefreshQueue = useCallback(async () => {
+    if (refreshing.current !== null) return;
+    const controller = new AbortController();
+    refreshing.current = controller;
+    try {
+      for (const id of refreshQueue.current) {
+        refreshQueue.current.delete(id);
+        if (!itemsRef.current.some((video) => video.id === id)) continue;
+        try {
+          const refreshed = await getVideo(id, controller.signal);
+          setItems((current) =>
+            current.map((video) =>
+              video.id === id ? mergeRefreshed(video, refreshed) : video,
+            ),
+          );
+        } catch (failure) {
+          if (isAborted(failure)) return;
+          // 消えた動画や一時的な失敗は、その1件だけ諦める。一覧からの削除は
+          // 取り込みの完了時の読み直しが受け持つ。
+        }
+      }
+    } finally {
+      if (refreshing.current === controller) refreshing.current = null;
+    }
+  }, []);
+  const refreshItems = useCallback(
+    (ids: Iterable<number>) => {
+      for (const id of ids) refreshQueue.current.add(id);
+      void drainRefreshQueue();
+    },
+    [drainRefreshQueue],
+  );
+  const refreshProcessingItems = useCallback(() => {
+    refreshItems(
+      itemsRef.current.filter((video) => isProcessing(video)).map((video) => video.id),
+    );
+  }, [refreshItems]);
+
+  useEffect(() => {
+    const unsubscribe = subscribeServerEvents({
+      video: (id) => {
+        if (itemsRef.current.some((video) => video.id === id)) refreshItems([id]);
+      },
+      // つなぎ直したときは、切れていた間に準備が進んだかもしれない項目を取り直す。
+      open: refreshProcessingItems,
+    });
+    // 復元した一覧は、別の画面にいた間に準備が進んでいることがある。
+    refreshProcessingItems();
+    return () => {
+      unsubscribe();
+      refreshing.current?.abort();
+      refreshing.current = null;
+      refreshQueue.current.clear();
+    };
+  }, [refreshItems, refreshProcessingItems]);
 
   // 読み込み中の要求を覚えておく。並び順を変えた直後に古い応答が届いても、
   // 新しい一覧を上書きしないようにする。

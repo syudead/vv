@@ -373,50 +373,9 @@ func (db *DB) PreviewSourceCurrent(ctx context.Context, job domain.Job) (bool, e
 	return current != 0, err
 }
 
-func (db *DB) PreviewAssets(ctx context.Context) ([]domain.PreviewAsset, error) {
-	rows, err := db.sql.QueryContext(ctx, `select id, content_key, preview_state from videos`)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = rows.Close() }()
-	var assets []domain.PreviewAsset
-	for rows.Next() {
-		var item domain.PreviewAsset
-		if err := rows.Scan(&item.ID, &item.ContentKey, &item.State); err != nil {
-			return nil, err
-		}
-		assets = append(assets, item)
-	}
-	return assets, rows.Err()
-}
-
 func (db *DB) SetPreviewState(ctx context.Context, id int64, state domain.PreviewState) error {
 	_, err := db.sql.ExecContext(ctx, `update videos set preview_state = ?, updated_at = ? where id = ?`, string(state), time.Now().Unix(), id)
 	return err
-}
-
-// RequeuePreviewRepair atomically makes a corrupt completed asset pending and
-// replaces any retained terminal job with one queued repair.
-func (db *DB) RequeuePreviewRepair(ctx context.Context, id int64) error {
-	tx, err := db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	now := time.Now().Unix()
-	if _, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', updated_at = ? where id = ?`, now, id); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = 'preview' and video_id = ? and state in ('done', 'failed')`, id); err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-		select 'preview', ?, 'queued', 0, ?, ?
-		where exists (select 1 from videos where id = ?)
-		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`, id, now, now, id); err != nil {
-		return err
-	}
-	return tx.Commit()
 }
 
 // RetryProbe は読み取りに失敗した動画を、1つの取引の中で読み取り直す状態へ
@@ -494,6 +453,7 @@ func (db *DB) RetryProbe(ctx context.Context, id int64, seekThumbnailMissing boo
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("読み取りのやり直しを確定できません (id=%d): %w", id, err)
 	}
+	db.notifyJobsQueued(kinds...)
 	return nil
 }
 
@@ -739,27 +699,15 @@ func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64)
 	return nil
 }
 
-// ContentKeys は参照されている内容の識別子を集合で返す。
-// スキャン完了時の孤児サムネイルの掃除に使う。
-func (db *DB) ContentKeys(ctx context.Context) (map[string]struct{}, error) {
-	rows, err := db.sql.QueryContext(ctx, `select content_key from videos`)
-	if err != nil {
-		return nil, fmt.Errorf("識別子を読み出せません: %w", err)
+// ContentKeyReferenced は内容の識別子を持つ動画が今もあるかを返す。生成中に
+// 動画が消えた場合に、書き終えた生成物を残さないために使う。
+func (db *DB) ContentKeyReferenced(ctx context.Context, key string) (bool, error) {
+	var referenced int
+	if err := db.sql.QueryRowContext(ctx, `select exists(select 1 from videos where content_key = ?)`, key).
+		Scan(&referenced); err != nil {
+		return false, fmt.Errorf("識別子の参照を確かめられません: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
-
-	out := map[string]struct{}{}
-	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			return nil, fmt.Errorf("識別子を読み出せません: %w", err)
-		}
-		out[key] = struct{}{}
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("識別子を読み出せません: %w", err)
-	}
-	return out, nil
+	return referenced == 1, nil
 }
 
 // orderBy は並び順の SQL 句を返す。索引（videos_added_at_desc_idx /

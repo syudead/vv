@@ -637,6 +637,46 @@ paths:
         "404":
           description: 一度もスキャンしていない
 
+  /api/processing:
+    get:
+      operationId: getProcessing
+      summary: 取り込みの段階ごとに残っている仕事の数を返す
+      description: |
+        解析・サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
+        登録済みメディアフォルダの外にしか所在が無い動画の仕事は、処理されないので含めない。
+        すべて 0 なら、取り込んだ動画の準備は終わっている。
+      responses:
+        "200":
+          description: 段階ごとの残り
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Processing"
+
+  /api/events:
+    get:
+      operationId: streamEvents
+      summary: 取り込みと動画の変化を Server-Sent Events で送る
+      description: |
+        接続中は、変化が起きたときだけ次のイベントを送る。一定間隔の送信はしない
+        （接続を保つためのコメント行を除く）。
+
+        - `scan`: 直近のスキャンが変わった。data は `Scan`（まだ一度も無ければ送らない）
+        - `processing`: 段階ごとの残りが変わった。data は `Processing`
+        - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
+          `GET /api/videos/{id}` で取る
+
+        接続の直後に `scan`（あれば）と `processing` を1回ずつ送るので、つなぎ直した
+        クライアントは切れていた間の変化を取り戻せる。`video` は切れていた間の分を
+        送り直さない。
+      responses:
+        "200":
+          description: イベントの流れ
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
 components:
   parameters:
     VideoId:
@@ -1035,6 +1075,31 @@ components:
         error:
           type: string
           description: スキャン自体が失敗した理由
+
+    Processing:
+      type: object
+      required: [probe, thumbnail, preview]
+      additionalProperties: false
+      properties:
+        probe:
+          type: integer
+          description: 解析（ffprobe）の残り
+        thumbnail:
+          type: integer
+          description: サムネイルとシーク用プレビューの残り
+        preview:
+          type: integer
+          description: 一覧用プレビューの残り
+
+    VideoChanged:
+      type: object
+      required: [id]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 状態が変わった動画の識別子
 
     Error:
       type: object

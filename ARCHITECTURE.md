@@ -32,11 +32,23 @@ thumbnails, playback progress, and the SPA embedded from `web/dist`.
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
-not duplicate rows, and queues the heavy work. `internal/jobs` runs a single
-serial in-process worker that drives the `internal/media` adapters
+not duplicate rows, and queues the heavy work. Only a user-started scan walks the
+media folders; nothing reads the whole library at startup or after a scan.
+`internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail, preview —
+each claiming only its own kind of job from the persistent `jobs` queue, one at a time,
+and driving the `internal/media` adapters
 (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, five-second seek-preview frames,
-and a content-keyed hover-preview clip per video); interrupted
-jobs are requeued at the next startup. Logical videos are separated from their physical
+and a content-keyed hover-preview clip per video). A worker sleeps while its queue is
+empty: `internal/store` reports every committed enqueue, and `cmd/mdm` wakes the worker
+for that stage, so no worker polls the queue. Interrupted scans are closed and running
+jobs are requeued at the next startup.
+
+`/api/events` pushes changes to the browser as Server-Sent Events instead of the
+browser polling: `scan` when the current scan changes, `processing` with the remaining
+jobs per stage, and `video` when a video's ingest state changes. The payload is read
+at send time, pending notices for a connection are coalesced, and a new connection
+first receives the current `scan` and `processing` so a reconnect recovers what it
+missed. Logical videos are separated from their physical
 locations so the same content may remain available from more than one configured root.
 Folders are not stored: the folder browsing API derives each folder's direct
 children and direct videos from the current locations' paths on every request,
@@ -52,8 +64,8 @@ command once at startup; on Linux and similar systems it also requires `DISPLAY`
 open route only accepts requests whose remote address and `Host` are loopback, and it
 never takes a path from the request.
 
-Shutdown drains in-flight requests within a 10 second grace period, then stops
-the scanner and the worker so a running job returns to the queue.
+Shutdown closes the `/api/events` streams, drains in-flight requests within a 10 second
+grace period, then stops the scanner and the workers so a running job returns to the queue.
 
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
 `videos_fts`, `jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
@@ -104,10 +116,12 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 
 `web/src/api/` is the only place that talks to the server. `client.ts` wraps
 `fetch` over the generated types in `web/src/api/gen/` (never hand-edited;
-`task generate` rewrites them from `api/openapi.yaml`), `useVideos.ts` owns
-paging and request cancellation for the library list, `useVideoDetail.ts`
-fetches one video for the playback screen and re-fetches it every two seconds
-only while ingest work is still pending (paused while the page is hidden), and `listSnapshot.ts`
+`task generate` rewrites them from `api/openapi.yaml`), `serverEvents.ts` shares one
+`EventSource` on `/api/events` among its subscribers, `useVideos.ts` owns
+paging and request cancellation for the library list and re-fetches a listed video in
+place when a `video` event names it, `useVideoDetail.ts`
+fetches one video for the playback screen and re-fetches it when a `video` event names
+it or the event stream reconnects, and `listSnapshot.ts`
 holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.

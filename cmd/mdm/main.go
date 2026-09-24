@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"sync"
 	"syscall"
 	"time"
 
@@ -92,23 +93,25 @@ func run() error {
 	backgroundCtx, stopBackground := context.WithCancel(context.Background())
 	defer stopBackground()
 
-	lib := newLibrary(cfg, db, logger)
+	// 画面へ送る変化の知らせ。走査とワーカーが知らせ、/api/events が配る。
+	events := httpapi.NewEvents()
+
+	lib := newLibrary(db, logger, events)
 	lib.bindContext(backgroundCtx)
 
-	// 前回の停止で running のまま残った走査を閉じる。閉じないと
-	// 「実行中は1件だけ」の制約が働いたまま二度と取り込みを始められない。
+	// 前回の停止で running のまま残った走査を閉じ、処理中だった仕事を戻す。
 	if err := lib.recoverInterrupted(backgroundCtx); err != nil {
 		return err
 	}
-	lib.reconcileProcessingFailures(backgroundCtx)
-	lib.reconcilePreviews(backgroundCtx)
 
-	worker := newWorker(cfg, db, logger)
-	workerDone := make(chan struct{})
-	go func() {
-		defer close(workerDone)
-		worker.Run(backgroundCtx)
-	}()
+	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
+	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
+	workers := newWorkers(cfg, db, logger, events)
+	db.OnJobsQueued(wakeWorkers(workers, events))
+	var workersDone sync.WaitGroup
+	for _, worker := range workers {
+		workersDone.Go(func() { worker.Run(backgroundCtx) })
+	}
 
 	// request単位のtranscode processはHTTP requestより長生きさせない。Shutdownは
 	// 実行中requestのcontextを取り消さないため、server寿命を別に持って先にcancelする。
@@ -136,18 +139,25 @@ func run() error {
 		Related:        db,
 		Reprobe:        db,
 		Opener:         fileOpener,
+		Processing:     db,
+		Events:         events,
 		Assets:         web.Dist(),
 		Logger:         logger,
 	})
 
-	if err := serve(cfg, handler, logger, nil, stopRequestMedia); err != nil {
+	// 変化の知らせの接続は終わりが無いので、停止の猶予待ちより先に閉じる。
+	beforeShutdown := func() {
+		stopRequestMedia()
+		events.Close()
+	}
+	if err := serve(cfg, handler, logger, nil, beforeShutdown); err != nil {
 		return err
 	}
 
 	// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
 	// ジョブは running のまま残るが、次の起動で queued へ戻る。
 	stopBackground()
-	<-workerDone
+	workersDone.Wait()
 	logger.Info("取り込みとジョブを停止しました")
 
 	return nil

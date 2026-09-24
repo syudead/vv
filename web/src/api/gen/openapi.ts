@@ -419,6 +419,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/processing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 取り込みの段階ごとに残っている仕事の数を返す
+         * @description 解析・サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
+         *     登録済みメディアフォルダの外にしか所在が無い動画の仕事は、処理されないので含めない。
+         *     すべて 0 なら、取り込んだ動画の準備は終わっている。
+         */
+        get: operations["getProcessing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 取り込みと動画の変化を Server-Sent Events で送る
+         * @description 接続中は、変化が起きたときだけ次のイベントを送る。一定間隔の送信はしない
+         *     （接続を保つためのコメント行を除く）。
+         *
+         *     - `scan`: 直近のスキャンが変わった。data は `Scan`（まだ一度も無ければ送らない）
+         *     - `processing`: 段階ごとの残りが変わった。data は `Processing`
+         *     - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
+         *       `GET /api/videos/{id}` で取る
+         *
+         *     接続の直後に `scan`（あれば）と `processing` を1回ずつ送るので、つなぎ直した
+         *     クライアントは切れていた間の変化を取り戻せる。`video` は切れていた間の分を
+         *     送り直さない。
+         */
+        get: operations["streamEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -624,6 +676,21 @@ export interface components {
             failed: number;
             /** @description スキャン自体が失敗した理由 */
             error?: string;
+        };
+        Processing: {
+            /** @description 解析（ffprobe）の残り */
+            probe: number;
+            /** @description サムネイルとシーク用プレビューの残り */
+            thumbnail: number;
+            /** @description 一覧用プレビューの残り */
+            preview: number;
+        };
+        VideoChanged: {
+            /**
+             * Format: int64
+             * @description 状態が変わった動画の識別子
+             */
+            id: number;
         };
         Error: {
             /**
@@ -1379,6 +1446,46 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getProcessing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 段階ごとの残り */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Processing"];
+                };
+            };
+        };
+    };
+    streamEvents: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description イベントの流れ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": string;
+                };
             };
         };
     };
