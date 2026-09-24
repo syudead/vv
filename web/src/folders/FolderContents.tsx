@@ -2,28 +2,23 @@ import type { FolderSummary } from "../api/client";
 import type { VideosState } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
 import { hasConditions, type ListCriteria } from "../videoList/listCriteria";
-import { conditionLabels } from "../videoList/listSummary";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import VideoCard from "../videoList/VideoCard";
 import FolderCard, { FolderCardSkeleton } from "./FolderCard";
-import { Grid, rangeLabel, Section } from "./layout";
+import { Grid, Section } from "./layout";
 
 /**
  * FolderContents はフォルダ1件の直下（子フォルダと動画）を並べる通常表示である。
  * 絞り込みだけのときも同じ形にする（ui-design.md「Filter only」）。
  */
 export default function FolderContents({
-  name,
   criteria,
   listingLoading,
   childFolders,
   videos,
   zoom,
   backTo,
-  onClearNoMatches,
 }: {
-  /** 一致なしのチップに添えるフォルダ名。まだ分からなければ undefined。 */
-  name: string | undefined;
   criteria: ListCriteria;
   /** 子フォルダの一覧を読んでいる間は true。 */
   listingLoading: boolean;
@@ -33,7 +28,6 @@ export default function FolderContents({
   zoom: Zoom;
   /** 再生画面から戻る先（今の一覧の URL）。 */
   backTo: string;
-  onClearNoMatches: () => void;
 }) {
   const showFolders = listingLoading || childFolders.length > 0;
   const filterOnly = hasConditions(criteria);
@@ -77,19 +71,7 @@ export default function FolderContents({
               : ""}
           </p>
           {filterOnlyNoMatch ? (
-            <NoMatches
-              conditions={[
-                ...conditionLabels(criteria),
-                rangeLabel("direct", name ?? "フォルダ"),
-              ]}
-              note={
-                // 中のフォルダが無ければ、検索語を入れても結果は変わらない。
-                childFolders.length > 0
-                  ? "中のフォルダも探すには、検索語を入れてください。"
-                  : undefined
-              }
-              onClear={onClearNoMatches}
-            />
+            <NoMatches />
           ) : (
             <Section title="動画" count={videos.loading ? undefined : videos.total}>
               {videos.error !== null && videos.items.length === 0 ? (

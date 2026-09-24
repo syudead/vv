@@ -116,6 +116,93 @@ describe("useVideos（一覧の読み込み）", () => {
     expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3]);
   });
 
+  it("続きの応答で total がカード数を下回ったら先頭から読み直す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+
+    await act(async () => {
+      calls[0]?.resolve({ items: [item(1), item(2)], total: 3, nextCursor: "next" });
+    });
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+
+    await act(async () => {
+      calls[1]?.resolve({ items: [item(3)], total: 2 });
+    });
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls[2]?.params.cursor).toBeUndefined();
+
+    await act(async () => {
+      calls[2]?.resolve({ items: [item(2), item(3)], total: 2 });
+    });
+    expect(result.current.items.map((video) => video.id)).toEqual([2, 3]);
+    expect(result.current.total).toBe(2);
+  });
+
+  it("先頭ページで total がカード数を下回ったら1度だけ読み直す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+
+    await act(async () => {
+      calls[0]?.resolve({ items: [item(1), item(2)], total: 1 });
+    });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]?.params.cursor).toBeUndefined();
+    expect(result.current.loading).toBe(true);
+
+    await act(async () => {
+      calls[1]?.resolve({ items: [item(1), item(2)], total: 2 });
+    });
+    expect(result.current.items.map((video) => video.id)).toEqual([1, 2]);
+    expect(result.current.total).toBe(2);
+  });
+
+  it("先頭ページの矛盾が続いても再読込を繰り返さない", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+
+    await act(async () => {
+      calls[0]?.resolve({ items: [item(1), item(2)], total: 1 });
+    });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await act(async () => {
+      calls[1]?.resolve({ items: [item(1), item(2)], total: 1 });
+    });
+
+    expect(result.current.items).toEqual([]);
+    expect(result.current.error).toContain("再試行してください");
+    expect(calls).toHaveLength(2);
+  });
+
+  it("続きの応答と同じ描画に入った再生位置の更新を保持する", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await act(async () => calls[0]?.resolve(page([1, 2], "next")));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    const progress = {
+      positionMs: 30_000,
+      completed: false,
+      updatedAt: "2026-09-25T00:00:00Z",
+    };
+
+    await act(async () => {
+      recordSavedProgress(2, progress, nextProgressSequence());
+      calls[1]?.resolve(page([3]));
+    });
+
+    expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3]);
+    expect(result.current.items[1]?.progress).toEqual(progress);
+  });
+
+  it("先頭ページの再試行中は前のエラーを消す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await act(async () => calls[0]?.reject(new Error("一時的な失敗")));
+    expect(result.current.error).toBe("一時的な失敗");
+
+    act(() => result.current.reload());
+    await waitFor(() => expect(calls).toHaveLength(2));
+
+    expect(result.current.loading).toBe(true);
+    expect(result.current.error).toBeNull();
+  });
+
   it("保存された再生位置を、表示中の該当する項目にだけ反映する", async () => {
     const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
     await waitFor(() => {
