@@ -266,7 +266,8 @@ specs/013-library-search/
 **Acceptance**: `internal/store` のテストで、受け入れ条件 1〜7・9・10 の題名と所在の組に
 対して期待する動画だけが返る。受け入れ条件 17・18 の配置について、直下と配下の範囲で
 期待する動画が返る。視聴状態と再生可否を指定したとき、`Total` が条件に合う全件の数になる。
-ページを送る途中で所在を足しても、重複と取りこぼしが無い。既存の一覧とフォルダの
+ページを送る途中で別の動画の所在を足しても、並べ替えの値が変わらない動画に重複と
+取りこぼしが無い（[contracts/list-api.md §5](contracts/list-api.md#5-カーソルと誤り)）。既存の一覧とフォルダの
 テストが通る。`task check` が通る。
 
 ### 一覧の並べ替えを7種に増やし、昇順と降順を選べるようにする
@@ -306,7 +307,8 @@ specs/013-library-search/
 
 **Scope**: [contracts/list-url.md](contracts/list-url.md) の解釈と履歴の扱いを
 `web/src/library/listCriteria.ts` に置く。`useVideos` と `listSnapshot` の鍵に条件を足し、
-画面での絞り込みと全ページの読み込みを消す（Structural Decisions 7・9）。ライブラリの
+画面での絞り込みと全ページの読み込みを消す（Structural Decisions 7・9）。続きのページは
+`id` で重複を捨ててから足す（[contracts/list-api.md §5](contracts/list-api.md#5-カーソルと誤り)）。ライブラリの
 ツールバーに、並べ替えの7種・向きの切り替え・並べ直す・視聴状態・再生可否・条件を解除を
 置き、件数を全件の数で出す。配置と見た目は `ui-design.md` による。端末に保存できる並べ
 替えの値を増やす。
@@ -318,7 +320,8 @@ design 工程の `ui-design.md` が feature ブランチに入っていること
 テストが通る。`web/e2e/search.e2e.ts` で、受け入れ条件 11〜15 と 22 がライブラリで確かめ
 られる。「未視聴」で絞った一覧から再生して戻ると、その動画が同じ位置に残っている。
 Vitest で、要求の途中で条件（検索語・視聴状態・再生可否・並べ替え・`seed`）を変えると、
-遅れて届いた古い応答が捨てられる。`web/src/theme/tokens.test.ts` を含む `task check` と `task test-e2e` が通る。
+遅れて届いた古い応答が捨てられる。続きのページに既に出た `id` が含まれていても、一覧に
+2度出ない。`web/src/theme/tokens.test.ts` を含む `task check` と `task test-e2e` が通る。
 画面が変わるので、実装 PR に幅ごとの画像と、視覚・操作・支援技術の確認を添える。
 
 ### 検索欄から検索の書き方の手引きを開けるようにする
