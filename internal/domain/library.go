@@ -115,6 +115,10 @@ type VideoQuery struct {
 	// Cursor は前回の応答が返した NextCursor。空なら先頭から。
 	Cursor string
 	Limit  int
+	// TagIDs は絞り込むタグの id の並び（すべてを持つ動画だけにする AND、
+	// specs/014-video-tags/data-model.md §6）。存在しない id は条件から落とし、
+	// VideoPage.MissingTagIDs に返す。空ならタグで絞り込まない。
+	TagIDs []int64
 }
 
 // VideoPage は一覧1ページ分である。
@@ -126,6 +130,9 @@ type VideoPage struct {
 	NextCursor string
 	// Limit は実際に使われた件数。指定の丸めが効いたかを呼び出し側が見られる。
 	Limit int
+	// MissingTagIDs は VideoQuery.TagIDs のうちいまタグとして存在しなかった id。
+	// 1つも無ければ空（specs/014-video-tags/contracts/tags-api.md §5）。
+	MissingTagIDs []int64
 }
 
 // ScanState は走査の状態である。値は api/openapi.yaml の Scan.state に対応する。

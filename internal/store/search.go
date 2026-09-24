@@ -31,6 +31,11 @@ func termUsesMatch(text string) bool {
 // instr で部分一致を調べる。instr は LIKE と違ってワイルドカードを持たないので、
 // 利用者が打った % や _ を逃がす必要が無い。AND・OR・NOT は SQL の and・or・not で
 // 結ぶ。
+//
+// 語1つごとの条件は、所在の条件（MATCH か instr）と、その所在の動画に付いた
+// タグ名（元の名前・シノニムの両方）への instr の OR に広げる
+// （specs/014-video-tags/data-model.md §7）。除外語はこの OR 全体の否定にする。
+// タグは動画の単位なので、語の長さに関係なく instr で調べ、全文索引は足さない。
 func searchExprCondition(expr domain.SearchExpr, alias string) (string, []any) {
 	if expr.Empty() {
 		return "", nil
@@ -43,16 +48,18 @@ func searchExprCondition(expr domain.SearchExpr, alias string) (string, []any) {
 			// search_key は題名と相対パスを改行でつないでいる。フレーズの中の改行は
 			// 空白にそろえ、2つの境目をまたいで当たらないようにする。
 			text := strings.ReplaceAll(term.Text, "\n", " ")
-			var condition string
+			var locationCondition string
 			if termUsesMatch(text) {
-				condition = alias + `.id in (select rowid from location_search_fts where location_search_fts match ?)`
+				locationCondition = alias + `.id in (select rowid from location_search_fts where location_search_fts match ?)`
 				args = append(args, quoteMatchPhrase(text))
 			} else {
-				condition = `instr(` + alias + `.search_key, ?) > 0`
+				locationCondition = `instr(` + alias + `.search_key, ?) > 0`
 				args = append(args, text)
 			}
+			condition := `(` + locationCondition + ` or ` + tagNameMatchCondition(alias) + `)`
+			args = append(args, text)
 			if term.Negated {
-				condition = `not (` + condition + `)`
+				condition = `not ` + condition
 			}
 			terms = append(terms, condition)
 		}
@@ -63,6 +70,17 @@ func searchExprCondition(expr domain.SearchExpr, alias string) (string, []any) {
 		}
 	}
 	return strings.Join(clauses, " and "), args
+}
+
+// tagNameMatchCondition は、所在（別名 alias）の動画に付いたタグの元の名前か
+// シノニムのどれかが語に当たるかの条件句を返す。video_locations は content_key
+// を持たないので、videos を経て動画に結ぶ（data-model.md §7）。呼び出し側が
+// FoldForMatch 済みの語を1つ引数として渡す。
+func tagNameMatchCondition(alias string) string {
+	return `exists (select 1 from video_tags vt ` +
+		`join tag_names tn on tn.tag_id = vt.tag_id ` +
+		`join videos v on v.content_key = vt.content_key ` +
+		`where v.id = ` + alias + `.video_id and instr(tn.search_key, ?) > 0)`
 }
 
 // quoteMatchPhrase は語を FTS5 の1つのフレーズとして渡せる形にする。

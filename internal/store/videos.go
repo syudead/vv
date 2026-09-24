@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -164,6 +165,46 @@ func contentKeyReferenced(ctx context.Context, q rowQueryer, key string) (bool, 
 		return false, fmt.Errorf("識別子の参照を確かめられません: %w", err)
 	}
 	return referenced == 1, nil
+}
+
+// registeredContentKeysForVideoIDs は動画の id の集合を、いまライブラリにある
+// 動画の content_key へ引き直す。引けない id（その間に消えた動画）は結果に
+// 含めない（specs/014-video-tags/data-model.md §4）。TagStore の付与・取り外し・
+// 要約が使う（Structural Decisions 13：id から content_key を引く SQL の共有）。
+//
+// id の集合は SQLite の引数の上限に掛からないよう、json_each に1つの引数で
+// 渡す（specs/014-video-tags/contracts/tags-api.md §4）。
+func registeredContentKeysForVideoIDs(ctx context.Context, q queryExecer, videoIDs []int64) ([]string, error) {
+	if len(videoIDs) == 0 {
+		return nil, nil
+	}
+	encoded, err := json.Marshal(videoIDs)
+	if err != nil {
+		return nil, fmt.Errorf("動画の id を組み立てられません: %w", err)
+	}
+
+	//nolint:gosec // registeredVideoCondition は定型SQLだけを返す。
+	query := `select v.content_key from json_each(?) je
+		join videos v on v.id = je.value
+		where ` + registeredVideoCondition("v")
+	rows, err := q.QueryContext(ctx, query, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("動画の id を content_key へ引けません: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, fmt.Errorf("動画の id を content_key へ引けません: %w", err)
+		}
+		keys = append(keys, key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("動画の id を content_key へ引けません: %w", err)
+	}
+	return keys, nil
 }
 
 // rowScanner は *sql.Row と *sql.Rows の共通部分である。

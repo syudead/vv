@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -273,6 +275,231 @@ func (s *TagStore) RemoveSynonym(ctx context.Context, tagID int64, name string) 
 	return nil
 }
 
+// AttachTagByID は id で指定したタグを videoIDs の動画へ付ける
+// （data-model.md §4）。videoIDs は、いまライブラリにある動画の content_key へ
+// 引き直したうえで、content_key ごとに insert or ignore する。既に付いていた
+// 動画があっても誤りにしない。引けない id（消えた動画）は飛ばし、反映した
+// 本数（applied）を返す。applied には、既に付いていた・付いていなかった動画も
+// 数に入る。tagID が無ければ domain.ErrTagNotFound。全体を1つのトランザクション
+// で行い、途中で失敗したら何も残さない。
+func (s *TagStore) AttachTagByID(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error) {
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	name, err := canonicalNameByTagID(ctx, tx, tagID)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
+
+	applied, err := attachTagToVideoIDs(ctx, tx, videoIDs, tagID)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.TagRef{}, 0, fmt.Errorf("タグを付けられません: %w", err)
+	}
+	return domain.TagRef{ID: tagID, Name: name}, applied, nil
+}
+
+// AttachTagByName は名前でタグを付ける。名前はシノニムを含めて引き、無ければ
+// 同じトランザクションの中で作る（data-model.md §3・§4、要件 1）。それ以外は
+// AttachTagByID と同じ。
+func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name string) (domain.TagRef, int, error) {
+	normalized, err := domain.NormalizeTagName(name)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
+
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	lookup, found, err := lookupTagName(ctx, tx, normalized)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
+
+	var ref domain.TagRef
+	if found {
+		ref = domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}
+	} else {
+		res, err := tx.ExecContext(ctx, `insert into tags (created_at) values (?)`, time.Now().Unix())
+		if err != nil {
+			return domain.TagRef{}, 0, fmt.Errorf("タグを作成できません: %w", err)
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			return domain.TagRef{}, 0, fmt.Errorf("タグを作成できません: %w", err)
+		}
+		if err := insertTagName(ctx, tx, normalized, id, true); err != nil {
+			return domain.TagRef{}, 0, err
+		}
+		ref = domain.TagRef{ID: id, Name: normalized}
+	}
+
+	applied, err := attachTagToVideoIDs(ctx, tx, videoIDs, ref.ID)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.TagRef{}, 0, fmt.Errorf("タグを付けられません: %w", err)
+	}
+	return ref, applied, nil
+}
+
+// DetachTag は id で指定したタグを videoIDs の動画から外す（data-model.md §4）。
+// 付いていない動画も誤りにしない。tagID が無ければ domain.ErrTagNotFound。
+func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error) {
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	name, err := canonicalNameByTagID(ctx, tx, tagID)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
+
+	applied, err := detachTagFromVideoIDs(ctx, tx, videoIDs, tagID)
+	if err != nil {
+		return domain.TagRef{}, 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.TagRef{}, 0, fmt.Errorf("タグを外せません: %w", err)
+	}
+	return domain.TagRef{ID: tagID, Name: name}, applied, nil
+}
+
+// attachTagToVideoIDs は videoIDs のうちいまライブラリにある動画へ tagID を
+// insert or ignore で付け、反映した本数を返す。
+func attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64) (int, error) {
+	keys, err := registeredContentKeysForVideoIDs(ctx, tx, videoIDs)
+	if err != nil {
+		return 0, err
+	}
+	now := time.Now().Unix()
+	for _, key := range keys {
+		if _, err := tx.ExecContext(ctx,
+			`insert or ignore into video_tags (content_key, tag_id, created_at) values (?, ?, ?)`,
+			key, tagID, now,
+		); err != nil {
+			return 0, fmt.Errorf("タグを付けられません (tag=%d): %w", tagID, err)
+		}
+	}
+	return len(keys), nil
+}
+
+// detachTagFromVideoIDs は videoIDs のうちいまライブラリにある動画から tagID
+// を外し、反映した本数を返す。
+func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64) (int, error) {
+	keys, err := registeredContentKeysForVideoIDs(ctx, tx, videoIDs)
+	if err != nil {
+		return 0, err
+	}
+	for _, key := range keys {
+		if _, err := tx.ExecContext(ctx,
+			`delete from video_tags where content_key = ? and tag_id = ?`, key, tagID,
+		); err != nil {
+			return 0, fmt.Errorf("タグを外せません (tag=%d): %w", tagID, err)
+		}
+	}
+	return len(keys), nil
+}
+
+// Summary は videoIDs のうちいまライブラリにある動画の数（Total）と、1本以上に
+// 付いているタグごとの本数（Items）を、名前の自然順で返す
+// （contracts/tags-api.md §4 の summary）。
+func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSummary, error) {
+	keys, err := registeredContentKeysForVideoIDs(ctx, s.sql, videoIDs)
+	if err != nil {
+		return domain.TagSummary{}, err
+	}
+	summary := domain.TagSummary{Total: len(keys), Items: []domain.TagSummaryItem{}}
+	if len(keys) == 0 {
+		return summary, nil
+	}
+
+	encoded, err := json.Marshal(keys)
+	if err != nil {
+		return domain.TagSummary{}, fmt.Errorf("content_key を組み立てられません: %w", err)
+	}
+
+	rows, err := s.sql.QueryContext(ctx, `
+		select tn.tag_id, tn.name, count(*) from video_tags vt
+		  join tag_names tn on tn.tag_id = vt.tag_id and tn.canonical = 1
+		 where vt.content_key in (select value from json_each(?))
+		 group by vt.tag_id`, string(encoded),
+	)
+	if err != nil {
+		return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var item domain.TagSummaryItem
+		if err := rows.Scan(&item.Tag.ID, &item.Tag.Name, &item.Count); err != nil {
+			return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
+		}
+		summary.Items = append(summary.Items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
+	}
+	domain.SortTagSummaryItems(summary.Items)
+	return summary, nil
+}
+
+// TagsByContentKeys は content_key の集合からそれぞれのタグ（元の名前、
+// domain.CompareNatural の順、同じなら id）をまとめて引く。記録の無い
+// content_key は結果に現れない。PlaybackStore.ProgressByContentKeys と同じ形で、
+// #267 で internal/httpapi が progressFor と同じ位置から一覧の項目にタグを
+// 足すために使う（Plan の Structural Decisions 5・14）。
+func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.TagRef, error) {
+	if len(contentKeys) == 0 {
+		return map[string][]domain.TagRef{}, nil
+	}
+	encoded, err := json.Marshal(contentKeys)
+	if err != nil {
+		return nil, fmt.Errorf("content_key を組み立てられません: %w", err)
+	}
+
+	rows, err := s.sql.QueryContext(ctx, `
+		select vt.content_key, tn.tag_id, tn.name from video_tags vt
+		  join tag_names tn on tn.tag_id = vt.tag_id and tn.canonical = 1
+		 where vt.content_key in (select value from json_each(?))`, string(encoded),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("項目のタグを読み出せません: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make(map[string][]domain.TagRef, len(contentKeys))
+	for rows.Next() {
+		var key string
+		var ref domain.TagRef
+		if err := rows.Scan(&key, &ref.ID, &ref.Name); err != nil {
+			return nil, fmt.Errorf("項目のタグを読み出せません: %w", err)
+		}
+		out[key] = append(out[key], ref)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("項目のタグを読み出せません: %w", err)
+	}
+	for key := range out {
+		domain.SortTagRefs(out[key])
+	}
+	return out, nil
+}
+
 // ListTags はタグを名前の自然順ですべて返す。本数 0 のタグも返す
 // （data-model.md §5）。本数は video_tags を videos.content_key と結び、いま
 // ライブラリにある動画だけを数える。3つの問い合わせ（タグ、シノニム、本数）に
@@ -527,4 +754,54 @@ func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, ca
 		return fmt.Errorf("タグ名を保存できません (%s): %w", name, err)
 	}
 	return nil
+}
+
+// existingTagIDs は ids のうち tags テーブルにあるものと無いものを、それぞれ
+// ids の並びのまま返す（data-model.md §6）。LibraryStore がタグでの絞り込み・
+// 「すべて選択」で使う（Structural Decisions 13：複数の型が読む問い合わせの共有）。
+// ids の重複は1つにまとめる。
+func existingTagIDs(ctx context.Context, q queryExecer, ids []int64) (existing, missing []int64, err error) {
+	seen := make(map[int64]bool, len(ids))
+	deduped := make([]int64, 0, len(ids))
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		deduped = append(deduped, id)
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(deduped)), ",")
+	args := make([]any, 0, len(deduped))
+	for _, id := range deduped {
+		args = append(args, id)
+	}
+
+	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
+	rows, err := q.QueryContext(ctx, `select id from tags where id in (`+placeholders+`)`, args...)
+	if err != nil {
+		return nil, nil, fmt.Errorf("タグの存在を確かめられません: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	found := make(map[int64]bool, len(deduped))
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, nil, fmt.Errorf("タグの存在を確かめられません: %w", err)
+		}
+		found[id] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("タグの存在を確かめられません: %w", err)
+	}
+
+	for _, id := range deduped {
+		if found[id] {
+			existing = append(existing, id)
+		} else {
+			missing = append(missing, id)
+		}
+	}
+	return existing, missing, nil
 }
