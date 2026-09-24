@@ -114,7 +114,7 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("タグの照合用の鍵を作り直せません: %w", err)
 	}
-	logger.Info("タグの照合用の鍵を作り直しました", slog.Int("tags", tagsRefreshed))
+	logger.Info("タグの照合用の鍵を作り直しました", slog.Int("tag_names", tagsRefreshed))
 
 	// 走査とジョブは HTTP とは別の寿命で動く。停止指示でこの context を
 	// 取り消すと、処理中のジョブは queued に残り、次の起動で再開できる。

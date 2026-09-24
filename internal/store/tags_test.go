@@ -300,6 +300,18 @@ func TestAddSynonymMergeRequiredAndAccepted(t *testing.T) {
 	if len(tagsBefore) != 2 {
 		t.Fatalf("len(tagsBefore) = %d, want 2 (何も変わっていない)", len(tagsBefore))
 	}
+	for _, tag := range tagsBefore {
+		switch tag.ID {
+		case upper.ID:
+			if tag.VideoCount != 0 || len(tag.Synonyms) != 0 {
+				t.Errorf("Anime = %+v, want 0 本・シノニム無し (何も変わっていない)", tag)
+			}
+		case lower.ID:
+			if tag.VideoCount != 10 {
+				t.Errorf("anime.VideoCount = %d, want 10 (何も変わっていない)", tag.VideoCount)
+			}
+		}
+	}
 
 	// 正しい承諾。
 	accepted := lower.ID
