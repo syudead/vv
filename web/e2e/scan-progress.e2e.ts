@@ -172,14 +172,20 @@ for (const width of [360, 640, 768]) {
     }
     const toast = page.getByText("「最近追加」は準備中です");
     await expect(toast).toBeVisible();
+    const sidebar = page.getByRole("complementary", { name: "メインナビゲーション" });
+    const expandedSidebarBox = width >= 640 ? await sidebar.boundingBox() : null;
+    if (width >= 640) {
+      await page.getByRole("button", { name: "メニュー" }).click();
+      await expect(sidebar).toHaveClass(/w-sidebar-rail/);
+    }
     await indicator.hover();
     const summary = page.getByRole("dialog");
     await expect(summary).toBeVisible();
-
-    const [toastBox, summaryBox, indicatorBox] = await Promise.all([
+    const [toastBox, summaryBox, indicatorBox, railSidebarBox] = await Promise.all([
       toast.boundingBox(),
       summary.boundingBox(),
       indicator.boundingBox(),
+      width >= 640 ? sidebar.boundingBox() : null,
     ]);
     expect(toastBox).not.toBeNull();
     expect(summaryBox).not.toBeNull();
@@ -191,5 +197,10 @@ for (const width of [360, 640, 768]) {
       summaryBox!.y + summaryBox!.height <= toastBox!.y;
     expect(toastAndSummaryAreSeparate).toBe(true);
     expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(indicatorBox!.y);
+    for (const sidebarBox of [expandedSidebarBox, railSidebarBox]) {
+      if (sidebarBox !== null) {
+        expect(toastBox!.x).toBeGreaterThanOrEqual(sidebarBox.x + sidebarBox.width);
+      }
+    }
   });
 }
