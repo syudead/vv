@@ -127,7 +127,9 @@ function usePreferences() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [preferences, setPreferences] = useState(readViewPreferences);
   const requested = searchParams.get("sort");
-  const sort = isVideoSort(requested) ? requested : preferences.sort;
+  // ランダムはフォルダ画面ではまだ選べない（フォルダ画面に検索を足す単位で、並べ直すと seed を揃える）。
+  const candidate = isVideoSort(requested) ? requested : preferences.sort;
+  const sort: VideoSort = candidate === "random" ? "addedDesc" : candidate;
 
   const save = useCallback((updated: ViewPreferences) => {
     setPreferences(updated);

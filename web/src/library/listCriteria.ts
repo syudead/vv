@@ -1,4 +1,10 @@
-import { MAX_QUERY_LENGTH, type VideoSort, type WatchFilter } from "../api/client";
+import {
+  isVideoSort,
+  MAX_QUERY_LENGTH,
+  videoSorts,
+  type VideoSort,
+  type WatchFilter,
+} from "../api/client";
 
 /**
  * 一覧の条件と URL の相互変換（specs/013-library-search/contracts/list-url.md）。
@@ -23,31 +29,13 @@ export interface ListCriteria {
 /** MAX_SEED は seed に許す最大値である（list-url.md §1）。 */
 export const MAX_SEED = 2147483647;
 
+// 並び順の一覧は api/client が持つ。画面の部品からはここ経由でも使えるようにする。
+export { isVideoSort, videoSorts };
+
 /** DEFAULT_SORT は端末に何も保存していないときの並び順である。 */
 export const DEFAULT_SORT: VideoSort = "addedDesc";
 
-/** videoSorts は API が受け付ける並び順のすべてである（list-api.md §3）。 */
-export const videoSorts: readonly VideoSort[] = [
-  "addedAsc",
-  "addedDesc",
-  "modifiedAsc",
-  "modifiedDesc",
-  "titleAsc",
-  "titleDesc",
-  "durationAsc",
-  "durationDesc",
-  "sizeAsc",
-  "sizeDesc",
-  "playedAsc",
-  "playedDesc",
-  "random",
-];
-
 const watchValues: readonly WatchFilter[] = ["all", "unwatched", "inProgress", "watched"];
-
-export function isVideoSort(value: unknown): value is VideoSort {
-  return typeof value === "string" && (videoSorts as readonly string[]).includes(value);
-}
 
 /** SortKind は並べ替えの種類である（向きを除いたもの）。 */
 export type SortKind =
@@ -233,7 +221,7 @@ export function parseListCriteria(
  *
  * watch=all と playable の偽は書かない。sort は書く — 省略すると「端末に
  * 保存した並び順」の意味になり、並べ替えを変えたあとに戻るで前の並びに
- * 戻れなくなるからである（list-url.md §3）。seed は random のときだけ書く。
+ * 戻れなくなるからである（list-url.md §1）。seed は random のときだけ書く。
  * 順は q・watch・playable・sort・seed で固定し、同じ条件は同じ文字列になる。
  */
 export function serializeListCriteria(criteria: ListCriteria): URLSearchParams {

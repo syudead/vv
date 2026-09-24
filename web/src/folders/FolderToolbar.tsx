@@ -4,6 +4,10 @@ import type { VideoSort } from "../api/client";
 import { sortKindOf } from "../library/listCriteria";
 import { ZoomSlider } from "../library/LibraryToolbar";
 import { sortOptions } from "../library/SortControls";
+
+// ランダムは「並べ直す」と seed が要るので、フォルダ画面に検索を足す単位で
+// ライブラリの部品へ揃えるまで出さない。
+const folderSortOptions = sortOptions.filter((option) => option.value !== "random");
 import { cn } from "../lib/cn";
 import type { Zoom } from "../preferences/viewPreferences";
 import Button from "../ui/Button";
@@ -61,7 +65,7 @@ export default function FolderToolbar({
                 value={activeSort?.initial ?? sort}
                 onValueChange={(value) => onSortChange(value as VideoSort)}
               >
-                {sortOptions.map((option) => (
+                {folderSortOptions.map((option) => (
                   <MenuRadioItem key={option.kind} value={option.value}>
                     <option.icon />
                     {option.label}
@@ -99,7 +103,7 @@ export default function FolderToolbar({
                   並び順
                 </legend>
                 <div className="grid grid-cols-2 gap-1">
-                  {sortOptions.map((option) => (
+                  {folderSortOptions.map((option) => (
                     <label
                       key={option.kind}
                       className={cn(

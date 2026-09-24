@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { videoSorts } from "../library/listCriteria";
+import { videoSorts } from "../api/client";
 import { defaults, readViewPreferences, writeViewPreferences } from "./viewPreferences";
 
 const storageKey = "vv.view.v2";

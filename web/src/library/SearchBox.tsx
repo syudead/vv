@@ -64,6 +64,8 @@ export default function SearchBox({
     if (query !== committed.current) {
       committed.current = query;
       setInput(query);
+      // 外から変わった検索語は、打鍵の一続きの外である。次の入力は履歴を1つ増やす。
+      session.current.end();
     }
   }, [query, setInput]);
 

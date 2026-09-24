@@ -1,5 +1,5 @@
 import type { VideoSort } from "../api/client";
-import { isVideoSort } from "../library/listCriteria";
+import { isVideoSort } from "../api/client";
 
 /** Zoom はカードの大きさ。0 が最小、3 が最大（Stash のズームスライダーと同じ 4 段）。 */
 export type Zoom = 0 | 1 | 2 | 3;

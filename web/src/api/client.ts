@@ -7,6 +7,28 @@ import { nextProgressSequence, recordSavedProgress } from "./progressEvents";
 export type Video = components["schemas"]["Video"];
 export type VideoPage = components["schemas"]["VideoPage"];
 export type VideoSort = components["schemas"]["VideoSort"];
+
+/** videoSorts は API が受け付ける並び順のすべてである（list-api.md §3）。 */
+export const videoSorts: readonly VideoSort[] = [
+  "addedAsc",
+  "addedDesc",
+  "modifiedAsc",
+  "modifiedDesc",
+  "titleAsc",
+  "titleDesc",
+  "durationAsc",
+  "durationDesc",
+  "sizeAsc",
+  "sizeDesc",
+  "playedAsc",
+  "playedDesc",
+  "random",
+];
+
+/** isVideoSort は API が受け付ける並び順かどうかを返す。 */
+export function isVideoSort(value: unknown): value is VideoSort {
+  return typeof value === "string" && (videoSorts as readonly string[]).includes(value);
+}
 export type WatchFilter = components["schemas"]["WatchFilter"];
 export type FolderScope = components["schemas"]["FolderScope"];
 export type VideoFolder = components["schemas"]["VideoFolder"];
