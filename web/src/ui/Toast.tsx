@@ -37,12 +37,12 @@ export function ToastProvider({
     (message: string) => {
       const id = Date.now() + Math.random();
       setItems((current) => {
+        const visibleCount = current.filter((item) => item.expiresAt !== null).length;
         const expiresAt =
-          placement === "default" || current.length === 0
+          (placement === "default" && visibleCount < 3) || current.length === 0
             ? Date.now() + toastDuration
             : null;
-        const next = [...current, { id, message, expiresAt }];
-        return placement === "default" ? next.slice(-3) : next;
+        return [...current, { id, message, expiresAt }];
       });
     },
     [placement],
@@ -52,15 +52,18 @@ export function ToastProvider({
     setItems((current) => {
       if (current.length === 0) return current;
       const now = Date.now();
-      return current.map((item, index) => ({
-        ...item,
-        expiresAt:
-          placement === "playback"
-            ? index === 0
-              ? (item.expiresAt ?? now + toastDuration)
-              : null
-            : (item.expiresAt ?? now + toastDuration),
-      }));
+      if (placement === "playback") {
+        return current.map((item, index) => ({
+          ...item,
+          expiresAt: index === 0 ? (item.expiresAt ?? now + toastDuration) : null,
+        }));
+      }
+      let availableSlots = 3;
+      return current.map((item) => {
+        if (availableSlots === 0) return { ...item, expiresAt: null };
+        availableSlots -= 1;
+        return { ...item, expiresAt: item.expiresAt ?? now + toastDuration };
+      });
     });
   }, [placement]);
 
@@ -78,9 +81,16 @@ export function ToastProvider({
         const now = Date.now();
         setItems((current) => {
           if (placement === "default") {
-            return current.filter(
+            const remaining = current.filter(
               (item) => item.expiresAt === null || item.expiresAt > now,
             );
+            let availableSlots =
+              3 - remaining.filter((item) => item.expiresAt !== null).length;
+            return remaining.map((item) => {
+              if (item.expiresAt !== null || availableSlots === 0) return item;
+              availableSlots -= 1;
+              return { ...item, expiresAt: now + toastDuration };
+            });
           }
           const remaining = current.slice(1);
           if (remaining.length === 0) return remaining;
@@ -106,7 +116,10 @@ export function ToastProvider({
             : "top-16 items-end px-3 lg:top-auto lg:bottom-20 lg:items-center lg:px-0",
         )}
       >
-        {(placement === "playback" ? items.slice(0, 1) : items).map((item) => (
+        {(placement === "playback"
+          ? items.slice(0, 1)
+          : items.filter((item) => item.expiresAt !== null)
+        ).map((item) => (
           <div
             key={item.id}
             className={cn(
