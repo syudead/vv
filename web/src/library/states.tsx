@@ -2,6 +2,7 @@ import { AlertCircle, FolderOpen, type LucideIcon, SearchX } from "lucide-react"
 import type { ReactNode } from "react";
 
 import Button from "../ui/Button";
+import Chip from "../ui/Chip";
 import Skeleton from "../ui/Skeleton";
 
 export function EmptyState({
@@ -13,7 +14,7 @@ export function EmptyState({
 }: {
   icon: LucideIcon;
   title: string;
-  description?: string;
+  description?: ReactNode;
   action?: ReactNode;
   tone?: "neutral" | "danger";
 }) {
@@ -26,9 +27,14 @@ export function EmptyState({
         strokeWidth={1.5}
       />
       <h2 className="text-lg font-semibold text-fg">{title}</h2>
-      {description !== undefined && (
-        <p className="mt-1.5 text-sm text-fg-muted text-balance">{description}</p>
-      )}
+      {description !== undefined &&
+        (typeof description === "string" ? (
+          <p className="mt-1.5 text-sm text-fg-muted text-balance">{description}</p>
+        ) : (
+          <div className="mt-1.5 w-full text-sm text-fg-muted text-balance">
+            {description}
+          </div>
+        ))}
       {action !== undefined && <div className="mt-5 flex gap-2">{action}</div>}
     </div>
   );
@@ -55,24 +61,43 @@ export function EmptyLibrary({
   );
 }
 
-export function NoMatches({ query, onClear }: { query: string; onClear: () => void }) {
-  return (
-    <EmptyState
-      icon={SearchX}
-      title={`「${query}」に一致する動画はありません`}
-      description="別の言葉で探すか、検索語を消してください。"
-      action={<Button onClick={onClear}>検索語をクリア</Button>}
-    />
-  );
-}
-
-export function NoFilterMatches({ onReset }: { onReset: () => void }) {
+/**
+ * NoMatches は条件に一致する動画が無いときの状態である（ui-design.md「No-match state」）。
+ * ライブラリとフォルダ画面で同じ部品を使う。conditions は効いている条件の名前
+ * （「検索語「京都」」「未視聴」など）で、並べ替えは解除しないので含めない。
+ */
+export function NoMatches({
+  conditions,
+  note,
+  onClear,
+}: {
+  conditions: string[];
+  /** 条件のチップの下に添える一文（フォルダ画面の絞り込みだけのときなど）。 */
+  note?: string;
+  onClear: () => void;
+}) {
   return (
     <EmptyState
       icon={SearchX}
       title="条件に一致する動画はありません"
-      description="読み込み済みの範囲に該当がありません。絞り込みを緩めてください。"
-      action={<Button onClick={onReset}>絞り込みを解除</Button>}
+      description={
+        <>
+          <ul
+            aria-label="効いている条件"
+            className="flex flex-wrap justify-center gap-1.5"
+          >
+            {conditions.map((condition) => (
+              <li key={condition} className="flex max-w-full min-w-0">
+                <Chip className="max-w-full" title={condition}>
+                  <span className="min-w-0 truncate">{condition}</span>
+                </Chip>
+              </li>
+            ))}
+          </ul>
+          {note !== undefined && <p className="mt-2">{note}</p>}
+        </>
+      }
+      action={<Button onClick={onClear}>条件を解除</Button>}
     />
   );
 }

@@ -119,6 +119,10 @@ func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFold
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
+	// 登録の無いまま残っていた所在は鍵が空なので、新しい登録の下にある分を作り直す。
+	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
+		return domain.MediaFolder{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -169,6 +173,10 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 		return domain.MediaFolder{}, err
 	}
 	if err := syncLocationsUnder(ctx, tx, cleaned); err != nil {
+		return domain.MediaFolder{}, err
+	}
+	// 相対パスは登録フォルダからの位置なので、新しい登録の下の所在の鍵を作り直す。
+	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	if err := tx.Commit(); err != nil {

@@ -7,6 +7,31 @@ import { nextProgressSequence, recordSavedProgress } from "./progressEvents";
 export type Video = components["schemas"]["Video"];
 export type VideoPage = components["schemas"]["VideoPage"];
 export type VideoSort = components["schemas"]["VideoSort"];
+
+/** videoSorts は API が受け付ける並び順のすべてである（list-api.md §3）。 */
+export const videoSorts: readonly VideoSort[] = [
+  "addedAsc",
+  "addedDesc",
+  "modifiedAsc",
+  "modifiedDesc",
+  "titleAsc",
+  "titleDesc",
+  "durationAsc",
+  "durationDesc",
+  "sizeAsc",
+  "sizeDesc",
+  "playedAsc",
+  "playedDesc",
+  "random",
+];
+
+/** isVideoSort は API が受け付ける並び順かどうかを返す。 */
+export function isVideoSort(value: unknown): value is VideoSort {
+  return typeof value === "string" && (videoSorts as readonly string[]).includes(value);
+}
+export type WatchFilter = components["schemas"]["WatchFilter"];
+export type FolderScope = components["schemas"]["FolderScope"];
+export type VideoFolder = components["schemas"]["VideoFolder"];
 export type Scan = components["schemas"]["Scan"];
 export type Progress = components["schemas"]["Progress"];
 export type MediaFolder = components["schemas"]["MediaFolder"];
@@ -73,29 +98,48 @@ async function toRequestFailed(response: Response): Promise<RequestFailed> {
 /** MAX_QUERY_LENGTH は検索語に許す長さである（api/openapi.yaml の maxLength）。 */
 export const MAX_QUERY_LENGTH = 100;
 
-/** ListVideosParams は一覧の問い合わせ条件である。 */
-export interface ListVideosParams {
+/**
+ * ListFilterParams は2つの一覧（ライブラリとフォルダ）が共通に受ける条件である
+ * （specs/013-library-search/contracts/list-api.md §2・§3）。
+ */
+export interface ListFilterParams {
+  /** 検索語。空なら送らない。100 文字を越える分は切り詰める。 */
   query?: string;
+  /** 視聴状態の絞り込み。省略時はサーバーの既定（all）。 */
+  watch?: WatchFilter;
+  /** true ならブラウザで再生できる動画だけにする。false は既定なので送らない。 */
+  playable?: boolean;
   sort?: VideoSort;
+  /** sort=random の並びを決める値（0 以上 2147483647 以下）。 */
+  seed?: number;
   cursor?: string;
   limit?: number;
   signal?: AbortSignal;
 }
 
-/** listVideos は一覧を1ページ取得する。 */
-export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
-  const query = new URLSearchParams();
+/** ListVideosParams は一覧の問い合わせ条件である。 */
+export type ListVideosParams = ListFilterParams;
+
+/** setListFilters は共通の条件を問い合わせに載せる。 */
+function setListFilters(query: URLSearchParams, params: ListFilterParams): void {
   if (params.query !== undefined && params.query !== "") {
-    query.set("query", params.query.slice(0, MAX_QUERY_LENGTH));
+    // サーバーと同じく符号位置で数えて切る（サロゲートペアを割らない）。
+    query.set("query", Array.from(params.query).slice(0, MAX_QUERY_LENGTH).join(""));
   }
-  if (params.sort !== undefined) {
-    query.set("sort", params.sort);
-  }
+  if (params.watch !== undefined) query.set("watch", params.watch);
+  if (params.playable === true) query.set("playable", "true");
+  if (params.sort !== undefined) query.set("sort", params.sort);
+  if (params.seed !== undefined) query.set("seed", String(params.seed));
   if (params.cursor !== undefined && params.cursor !== "") {
     query.set("cursor", params.cursor);
   }
   query.set("limit", String(params.limit ?? PAGE_SIZE));
+}
 
+/** listVideos は一覧を1ページ取得する。 */
+export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
+  const query = new URLSearchParams();
+  setListFilters(query, params);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
 
@@ -130,22 +174,18 @@ export function getFolder(
   });
 }
 
-/** ListFolderVideosParams はフォルダ直下の動画の問い合わせ条件である。 */
-export interface ListFolderVideosParams {
+/** ListFolderVideosParams はフォルダの動画の問い合わせ条件である。 */
+export interface ListFolderVideosParams extends ListFilterParams {
   folder: FolderRef;
-  sort?: VideoSort;
-  cursor?: string;
-  limit?: number;
-  signal?: AbortSignal;
+  /** direct（既定）は直下だけ、subtree は配下すべて。省略時は送らない。 */
+  scope?: FolderScope;
 }
 
-/** listFolderVideos はフォルダ直下の動画を1ページ取得する。 */
+/** listFolderVideos はフォルダの動画を1ページ取得する。 */
 export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoPage> {
   const query = folderQuery(params.folder);
-  if (params.sort !== undefined) query.set("sort", params.sort);
-  if (params.cursor !== undefined && params.cursor !== "")
-    query.set("cursor", params.cursor);
-  query.set("limit", String(params.limit ?? PAGE_SIZE));
+  if (params.scope !== undefined) query.set("scope", params.scope);
+  setListFilters(query, params);
   return request<VideoPage>(
     `/api/folders/${String(params.folder.rootId)}/videos?${query.toString()}`,
     { signal: params.signal },

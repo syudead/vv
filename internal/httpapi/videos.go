@@ -34,14 +34,13 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 
 	query := domain.VideoQuery{Sort: domain.SortAddedDesc}
 
-	if params.Sort != nil {
-		sort := domain.VideoSort(*params.Sort)
-		if !sort.Valid() {
-			s.invalidRequest(w, "並び順は addedDesc か titleAsc を指定してください")
-			return
-		}
-		query.Sort = sort
+	filters, ok := s.parseListFilters(w, listFilterParams{
+		watch: params.Watch, playable: params.Playable, sort: params.Sort, seed: params.Seed,
+	})
+	if !ok {
+		return
 	}
+	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
 
 	// 件数は入口で丸める。ここで確定させておくと、応答の件数と問い合わせの
 	// 条件が一致し、「limit=1000 を渡したのに 200 件しか来ない」理由が
@@ -60,12 +59,8 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		query.Cursor = *params.Cursor
 	}
 
-	if params.Query != nil {
-		if len([]rune(*params.Query)) > maxQueryLength {
-			s.invalidRequest(w, "検索語は 100 文字までにしてください")
-			return
-		}
-		query.Query = *params.Query
+	if query.Query, ok = s.parseSearchQuery(w, params.Query); !ok {
+		return
 	}
 
 	page, err := s.videos.ListVideos(r.Context(), query)
@@ -80,11 +75,21 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		return
 	}
 
+	s.writeVideoPage(w, r, page, s.registeredRoots(r.Context()))
+}
+
+// writeVideoPage は一覧1ページを応答に書く。各項目には再生位置と、一覧に出す
+// 所在の置かれたフォルダ（Video.folder）を載せる。roots が無ければ folder は省く。
+func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page domain.VideoPage, roots []domain.MediaFolder) {
 	progress := s.progressFor(r.Context(), page.Items)
 
 	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
 	for _, video := range page.Items {
-		payload.Items = append(payload.Items, withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey))
+		item := withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey)
+		if folder, ok := domain.LocateVideoFolder(roots, video.Path); ok {
+			item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
+		}
+		payload.Items = append(payload.Items, item)
 	}
 	if page.NextCursor != "" {
 		next := page.NextCursor
@@ -93,6 +98,90 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// registeredRoots は Video.folder を作るための登録フォルダの一覧を引く。
+//
+// 引けなかった場合は一覧を諦めず、folder を省く。folder は置き場所の手がかりで
+// あって、無いと動画を見渡せなくなるものではない（progressFor と同じ扱い）。
+func (s *server) registeredRoots(ctx context.Context) []domain.MediaFolder {
+	var list func(context.Context) ([]domain.MediaFolder, error)
+	switch {
+	case s.folders != nil:
+		list = s.folders.ListMediaFolders
+	case s.mediaFolders != nil:
+		list = s.mediaFolders.ListMediaFolders
+	default:
+		return nil
+	}
+	roots, err := list(ctx)
+	if err != nil {
+		s.logger.Warn("登録フォルダを読み出せませんでした", slog.Any("error", err))
+		return nil
+	}
+	return roots
+}
+
+// listFilterParams は2つの一覧の経路が共通に受ける絞り込みと並び順である。
+type listFilterParams struct {
+	watch    *gen.WatchFilter
+	playable *bool
+	sort     *gen.VideoSort
+	seed     *int64
+}
+
+type listFilters struct {
+	watch        domain.WatchFilter
+	playableOnly bool
+	sort         domain.VideoSort
+	seed         int64
+}
+
+// parseListFilters は絞り込みと並び順を検査して写す。未知の値と範囲外の seed は
+// 400 を書いて false を返す（contracts/list-api.md §5）。黙って既定へ戻さないのは、
+// 画面の送り間違いを、条件と違う一覧として見せないためである。
+func (s *server) parseListFilters(w http.ResponseWriter, params listFilterParams) (listFilters, bool) {
+	out := listFilters{watch: domain.WatchAll, sort: domain.SortAddedDesc}
+	if params.watch != nil {
+		watch := domain.WatchFilter(*params.watch)
+		if !watch.Valid() {
+			s.invalidRequest(w, "視聴状態の値が不明です")
+			return listFilters{}, false
+		}
+		out.watch = watch
+	}
+	if params.playable != nil {
+		out.playableOnly = *params.playable
+	}
+	if params.sort != nil {
+		sort := domain.VideoSort(*params.sort)
+		if !sort.Valid() {
+			s.invalidRequest(w, "並び順の値が不明です")
+			return listFilters{}, false
+		}
+		out.sort = sort
+	}
+	if params.seed != nil {
+		seed := *params.seed
+		if seed < 0 || seed > domain.MaxShuffleSeed {
+			s.invalidRequest(w, "並びの種は 0 以上 2147483647 以下にしてください")
+			return listFilters{}, false
+		}
+		out.seed = seed
+	}
+	return out, true
+}
+
+// parseSearchQuery は検索語の長さを検査する。越えていれば 400 を書いて false を返す。
+func (s *server) parseSearchQuery(w http.ResponseWriter, query *string) (string, bool) {
+	if query == nil {
+		return "", true
+	}
+	if len([]rune(*query)) > maxQueryLength {
+		s.invalidRequest(w, "検索語は 100 文字までにしてください")
+		return "", false
+	}
+	return *query, true
 }
 
 // GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。

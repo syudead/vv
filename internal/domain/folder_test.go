@@ -179,3 +179,49 @@ func TestSortFoldersNaturalThenRootPath(t *testing.T) {
 		t.Errorf("order = %q, want %q", got, want)
 	}
 }
+
+func TestLocateVideoFolderUnix(t *testing.T) {
+	roots := []MediaFolder{{ID: 1, Path: "/media/a"}, {ID: 2, Path: "/media/b/"}, {ID: 3, Path: "/"}}
+	cases := []struct {
+		roots []MediaFolder
+		path  string
+		want  VideoFolder
+		ok    bool
+	}{
+		{roots[:2], "/media/a/x.mp4", VideoFolder{RootID: 1, Path: ""}, true},
+		{roots[:2], "/media/a/A/B/y.mp4", VideoFolder{RootID: 1, Path: "A/B"}, true},
+		{roots[:2], "/media/b/C/z.mp4", VideoFolder{RootID: 2, Path: "C"}, true},
+		// 名前の前方が一致するだけの兄弟は含まない。
+		{roots[:2], "/media/ab/x.mp4", VideoFolder{}, false},
+		// Unix の `\` はファイル名の一部で、大文字小文字も区別する。
+		{roots[:2], `/media/a/A\B.mp4`, VideoFolder{RootID: 1, Path: ""}, true},
+		{roots[:2], "/MEDIA/a/x.mp4", VideoFolder{}, false},
+		{roots[2:], "/srv/x.mp4", VideoFolder{RootID: 3, Path: "srv"}, true},
+	}
+	for _, tc := range cases {
+		got, ok := locateVideoFolderFor(tc.roots, tc.path, false, '/')
+		if ok != tc.ok || got != tc.want {
+			t.Errorf("locate(%q) = %+v, %v; want %+v, %v", tc.path, got, ok, tc.want, tc.ok)
+		}
+	}
+}
+
+func TestLocateVideoFolderWindows(t *testing.T) {
+	roots := []MediaFolder{{ID: 1, Path: `C:\Media`}, {ID: 2, Path: `D:\`}}
+	cases := []struct {
+		path string
+		want VideoFolder
+		ok   bool
+	}{
+		{`C:\Media\A\B\y.mp4`, VideoFolder{RootID: 1, Path: "A/B"}, true},
+		{`c:\media/A/x.mp4`, VideoFolder{RootID: 1, Path: "A"}, true},
+		{`C:\MediaX\x.mp4`, VideoFolder{}, false},
+		{`D:\x.mp4`, VideoFolder{RootID: 2, Path: ""}, true},
+	}
+	for _, tc := range cases {
+		got, ok := locateVideoFolderFor(roots, tc.path, true, '\\')
+		if ok != tc.ok || got != tc.want {
+			t.Errorf("locate(%q) = %+v, %v; want %+v, %v", tc.path, got, ok, tc.want, tc.ok)
+		}
+	}
+}

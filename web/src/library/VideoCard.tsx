@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, ImageOff } from "lucide-react";
+import { AlertTriangle, Check, Folder, ImageOff } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -36,6 +36,12 @@ export interface VideoCardProps {
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
   onPreviewReset?: () => void;
+  /**
+   * フォルダ画面の検索結果にだけ添える置き場所（ui-design.md「Search results」）。
+   * `label` は表示・読み上げ名に使う文字列（先頭の側を省略して表示する）で、
+   * `title` 属性には省略しない全体を入れる（最上位では登録フォルダの絶対パスから）。
+   */
+  location?: { label: string; title: string };
 }
 
 function useCardState(video: Video) {
@@ -97,6 +103,7 @@ function VideoCard(props: VideoCardProps) {
     previewResetEpoch = 0,
     onPreviewStart,
     onPreviewReset,
+    location,
   } = props;
   const {
     duration,
@@ -226,7 +233,9 @@ function VideoCard(props: VideoCardProps) {
       <Link
         to={`/videos/${String(video.id)}`}
         state={{ from: backTo }}
-        aria-label={video.title}
+        aria-label={
+          location === undefined ? video.title : `${video.title}、${location.label}`
+        }
         onClick={(event) => {
           onPreviewReset?.();
           if (selectionMode && onSelect !== undefined) {
@@ -345,6 +354,20 @@ function VideoCard(props: VideoCardProps) {
           >
             {video.title}
           </h3>
+          {location !== undefined && (
+            <p className="flex min-w-0 items-center gap-1 text-xs text-fg-muted">
+              <Folder aria-hidden="true" className="size-3 shrink-0 text-fg-subtle" />
+              {/* 先頭の側を省略し、末尾のフォルダ名を残す（011 のフォルダカードと同じ扱い）。
+                  title 属性は省略しない全体（最上位では登録フォルダの絶対パスから）。 */}
+              <span
+                dir="rtl"
+                title={location.title}
+                className="min-w-0 truncate text-left"
+              >
+                <bdi dir="ltr">{location.label}</bdi>
+              </span>
+            </p>
+          )}
           <p className="flex items-center gap-2 text-xs text-fg-muted tabular-nums">
             <span>{formatRelative(video.addedAt)}</span>
             <span className="text-fg-subtle">·</span>

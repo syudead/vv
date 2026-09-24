@@ -16,6 +16,7 @@ export function PopoverContent({
   onCloseAutoFocus,
   onPointerEnter,
   onPointerLeave,
+  "aria-labelledby": labelledBy,
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
@@ -26,6 +27,8 @@ export function PopoverContent({
   onCloseAutoFocus?: (event: Event) => void;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
+  /** 吹き出し（dialog）の読み上げ名にする見出しの id。 */
+  "aria-labelledby"?: string;
 }) {
   return (
     <RadixPopover.Portal container={container ?? undefined}>
@@ -37,6 +40,7 @@ export function PopoverContent({
         onCloseAutoFocus={onCloseAutoFocus}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
+        aria-labelledby={labelledBy}
         className={cn(
           "z-50 w-72 rounded-md bg-elevated p-4 shadow-elevated animate-pop-in origin-(--radix-popover-content-transform-origin) outline-none",
           className,

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   breadcrumbsFor,
+  folderLocationLabel,
   folderUrl,
   parseFolderPathname,
   rootDisplayName,
+  topLevelLocationLabel,
 } from "./folderPath";
 
 describe("folderUrl と parseFolderPathname", () => {
@@ -81,5 +83,47 @@ describe("breadcrumbsFor", () => {
       undefined,
       { label: "A" },
     ]);
+  });
+});
+
+describe("folderLocationLabel", () => {
+  it("開いているフォルダの直下は「このフォルダ」にする", () => {
+    expect(
+      folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A" }),
+    ).toEqual({ label: "このフォルダ", title: "このフォルダ" });
+    expect(folderLocationLabel({ rootId: 3, path: "" }, { rootId: 3, path: "" })).toEqual(
+      { label: "このフォルダ", title: "このフォルダ" },
+    );
+  });
+
+  it("配下は開いているフォルダからの相対パスにする（label と title は同じ）", () => {
+    expect(
+      folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A/B" }),
+    ).toEqual({ label: "B", title: "B" });
+    expect(
+      folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A/B/C" }),
+    ).toEqual({ label: "B/C", title: "B/C" });
+    expect(
+      folderLocationLabel({ rootId: 3, path: "" }, { rootId: 3, path: "A/B" }),
+    ).toEqual({ label: "A/B", title: "A/B" });
+  });
+});
+
+describe("topLevelLocationLabel", () => {
+  const root = { name: "movies", rootPath: "/a/movies" };
+
+  it("表示は登録フォルダの表示名から始め、直下ならその名前だけにする", () => {
+    expect(topLevelLocationLabel({ rootId: 3, path: "" }, root)).toEqual({
+      label: "movies",
+      title: "/a/movies",
+    });
+    expect(topLevelLocationLabel({ rootId: 3, path: "A/B" }, root)).toEqual({
+      label: "movies/A/B",
+      title: "/a/movies/A/B",
+    });
+  });
+
+  it("登録フォルダが分からないときは undefined を返し、行ごと出さない", () => {
+    expect(topLevelLocationLabel({ rootId: 3, path: "A" }, undefined)).toBeUndefined();
   });
 });

@@ -29,6 +29,17 @@ server-side directory picker APIs, the read-only folder browsing API
 (`/api/folders*`), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
+Both video lists, the library (`GET /api/videos`) and a folder
+(`GET /api/folders/{rootId}/videos`, direct children by default or the whole
+subtree with `scope=subtree`), accept the same search expression (`query`),
+watch-state and playable filters, thirteen sort orders and a shuffle `seed`.
+`internal/httpapi` validates those parameters at the entry and hands them to
+the store as `domain.VideoQuery` / `domain.FolderVideoQuery`; `total` counts
+every match after all of them apply, and each item carries the folder of the
+location it was listed from (`Video.folder`, built from the registered media
+folders with `domain.LocateVideoFolder`)
+([specs/013-library-search/contracts/list-api.md](specs/013-library-search/contracts/list-api.md)).
+
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
@@ -78,11 +89,20 @@ Shutdown closes the `/api/events` streams, drains in-flight requests within a 10
 grace period, then stops the scanner and the workers so a running job returns to the queue.
 
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
-`videos_fts`, `jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
+`video_locations` (including its per-location search keys), `location_search_fts`,
+`jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
 (deleting them costs a rescan), while `playback_progress` is user data that
 cannot be reconstructed. That is why playback positions are keyed by the
 content identifier rather than by `videos.id`, and why that table carries no
 foreign key to `videos`.
+
+Search matches a per-location `search_key` that Go builds from the title and the
+path below the registered media folder, folded with `domain.FoldForMatch`, and
+indexed by the trigram FTS5 table `location_search_fts`. SQL cannot express that
+folding, so startup refreshes every location whose `search_version` is older than
+`domain.SearchKeyVersion` right after `store.Migrate` and before jobs or HTTP start,
+and aborts startup if that fails
+(`specs/013-library-search/data-model.md` §5).
 
 Not built yet: authentication, subtitles, and multi-user support. Browser-incompatible
 video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is
@@ -135,6 +155,10 @@ it or the event stream reconnects, and `listSnapshot.ts`
 holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.
+The list's conditions (search terms, watch state, playable-only, sort and the shuffle
+`seed`) live in the URL; `web/src/library/listCriteria.ts` converts between the URL and
+the criteria `useVideos` sends, and the server applies every condition, so the page
+neither filters loaded pages nor reads ahead to find matches.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
 frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`, and

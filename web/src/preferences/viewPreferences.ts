@@ -1,4 +1,5 @@
 import type { VideoSort } from "../api/client";
+import { isVideoSort } from "../api/client";
 
 /** Zoom はカードの大きさ。0 が最小、3 が最大（Stash のズームスライダーと同じ 4 段）。 */
 export type Zoom = 0 | 1 | 2 | 3;
@@ -16,7 +17,9 @@ const storageKey = "vv.view.v2";
 
 export const defaults: ViewPreferences = { zoom: 1, view: "grid", sort: "addedDesc" };
 
-const sorts: Record<VideoSort, true> = { addedDesc: true, titleAsc: true };
+// 保存から戻す並び順は、API の VideoSort の 13 の値のどれかに限る
+// （specs/013-library-search/contracts/list-api.md §3）。random を保存しても
+// seed は保存しない。開くたびに画面が新しい seed を作る（list-url.md §3）。
 const views: Record<ViewMode, true> = { grid: true, list: true };
 
 function isKeyOf<T extends string>(table: Record<T, true>, value: unknown): value is T {
@@ -54,7 +57,7 @@ export function readViewPreferences(storage?: Storage): ViewPreferences {
   return {
     zoom: isZoom(value.zoom) ? value.zoom : defaults.zoom,
     view: isKeyOf(views, value.view) ? value.view : defaults.view,
-    sort: isKeyOf(sorts, value.sort) ? value.sort : defaults.sort,
+    sort: isVideoSort(value.sort) ? value.sort : defaults.sort,
   };
 }
 
