@@ -84,7 +84,13 @@ export default function ActiveTagFilters({
                   else buttonRefs.current.delete(id);
                 }}
                 type="button"
-                aria-label={tag === undefined ? undefined : `${tag.name}の絞り込みを外す`}
+                // タグの一覧をまだ取得していない間も、読み上げる名前が無くならない
+                // ようにする（N2）。名前が分かれば「〈名〉の絞り込みを外す」に差し替わる。
+                aria-label={
+                  tag === undefined
+                    ? "タグの絞り込みを外す"
+                    : `${tag.name}の絞り込みを外す`
+                }
                 onClick={() => remove(id)}
                 className={cn(
                   "flex h-6 items-center gap-1 rounded-sm bg-accent-soft px-1.5 text-xs text-link",
@@ -95,7 +101,9 @@ export default function ActiveTagFilters({
                 {tag === undefined ? (
                   <Skeleton className="h-3 w-12" />
                 ) : (
-                  <span className="min-w-0 max-w-48 truncate">{tag.name}</span>
+                  <span title={tag.name} className="min-w-0 max-w-48 truncate">
+                    {tag.name}
+                  </span>
                 )}
                 <X aria-hidden="true" className="size-3 shrink-0" />
               </button>

@@ -50,8 +50,13 @@ export interface VideoCardProps {
    * ライブラリの格子表示はここへタグの行を渡す
    * （specs/014-video-tags/ui-design.md「Tag row」）。タグの行はリンクの**外**、
    * 同じ `article` の中に置かれる（Structural Decisions 10、キーボードの入れ子を避ける）。
+   *
+   * `ReactNode` ではなく関数で受け取るのは、呼び出し側（LibraryPage）が安定した
+   * 参照を渡せるようにするためである。`memo(VideoCard)` は props が前回と同じ
+   * 参照なら再描画しない。ReactNode を直に渡すと、呼び出し側の描画のたびに
+   * 新しい要素になり、無関係な状態変化でも全カードが作り直されてしまう（N4）。
    */
-  tagsRow?: ReactNode;
+  tagsRow?: (video: Video) => ReactNode;
 }
 
 function useCardState(video: Video) {
@@ -125,6 +130,7 @@ function VideoCard(props: VideoCardProps) {
   } = useCardState(video);
   // タグが無い動画は行を出さない（ui-design.md「Tag row」）が、題名の下の余白は
   // 今の pb-3 のまま保つ（タグの有無で高さの余白が変わって見えないように）。
+  const tagsRowNode = tagsRow?.(video);
   const showTagsRow = tagsRow !== undefined && video.tags.length > 0;
   const eligible =
     rawUnplayable === null &&
@@ -400,7 +406,9 @@ function VideoCard(props: VideoCardProps) {
         </div>
       </Link>
       {showTagsRow && (
-        <div className="flex min-w-0 flex-col gap-1 px-3 pb-3">{tagsRow}</div>
+        // タグの行はリンクの外（別の要素）に置くので、題名の下との間隔を今の
+        // gap-1（4px）と同じに保つには、ここで pt-1 を明示する必要がある（B3）。
+        <div className="flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">{tagsRowNode}</div>
       )}
     </article>
   );

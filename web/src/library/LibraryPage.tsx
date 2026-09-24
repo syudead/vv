@@ -40,6 +40,7 @@ import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
 import LibraryToolbar from "./LibraryToolbar";
 import SelectionBar from "./SelectionBar";
+import { TagRowMeasureProvider } from "./TagRowMeasure";
 import {
   addTagId,
   clearConditions as clearTagConditions,
@@ -226,6 +227,17 @@ export default function LibraryPage() {
       return next;
     });
   }, []);
+  // タグの行の選択切り替え（選択中にカードのタグを押したとき）は、今の選択を
+  // 読まずに関数形の更新で決める。依存を持たない安定した参照にし、CardTagRow へ
+  // 渡す関数も再描画のたびに作り直さない（N4、memo(VideoCard) を効かせる）。
+  const toggleSelection = useCallback((id: number) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
   const selectAll = useCallback(
     () => setSelectedIds(new Set(items.map((video) => video.id))),
@@ -382,6 +394,25 @@ export default function LibraryPage() {
   const selectionMode = selectedIds.size > 0;
   const resultStatus = loading ? "読み込み中…" : resultCountText(total);
 
+  // renderTagsRow は VideoCard へ渡す安定した関数である（N4）。VideoCard は
+  // memo で包まれており、props が前回と同じ参照であれば再描画しない。ここで
+  // 毎描画ごとに新しい ReactNode を組み立てて渡すと、プレビューの開始・検索の
+  // 入力など無関係な状態が変わるたびに全カードが作り直されてしまう。依存に
+  // 挙げた値（selectionMode・pressTag・toggleSelection・view）が変わらない
+  // 限り、この関数自体の参照は変わらない。
+  const renderTagsRow = useCallback(
+    (video: Video) =>
+      view === "grid" ? (
+        <CardTagRow
+          tags={video.tags}
+          selectionMode={selectionMode}
+          onPress={pressTag}
+          onToggleSelection={() => toggleSelection(video.id)}
+        />
+      ) : undefined,
+    [pressTag, selectionMode, toggleSelection, view],
+  );
+
   const rowProps = (video: Video) => ({
     video,
     backTo: listUrl,
@@ -392,15 +423,7 @@ export default function LibraryPage() {
     previewResetEpoch,
     onPreviewStart: startPreview,
     onPreviewReset: resetPreview,
-    tagsRow:
-      view === "grid" ? (
-        <CardTagRow
-          tags={video.tags}
-          selectionMode={selectionMode}
-          onPress={pressTag}
-          onToggleSelection={() => changeSelection(video.id, !selectedIds.has(video.id))}
-        />
-      ) : undefined,
+    tagsRow: renderTagsRow,
   });
 
   return (
@@ -460,17 +483,20 @@ export default function LibraryPage() {
 
       <div ref={list} onClick={saveSnapshot}>
         {view === "grid" ? (
-          <div
-            className="flex flex-wrap justify-center gap-2.5 [&>*]:w-[min(var(--card),100%)]"
-            style={{ "--card": cardWidth[zoom] } as CSSProperties}
-          >
-            {loading ? (
-              <CardSkeleton count={skeletonCount} />
-            ) : (
-              items.map((video) => <VideoCard key={video.id} {...rowProps(video)} />)
-            )}
-            {loadingMore && <CardSkeleton count={6} />}
-          </div>
+          // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
+          <TagRowMeasureProvider>
+            <div
+              className="flex flex-wrap justify-center gap-2.5 [&>*]:w-[min(var(--card),100%)]"
+              style={{ "--card": cardWidth[zoom] } as CSSProperties}
+            >
+              {loading ? (
+                <CardSkeleton count={skeletonCount} />
+              ) : (
+                items.map((video) => <VideoCard key={video.id} {...rowProps(video)} />)
+              )}
+              {loadingMore && <CardSkeleton count={6} />}
+            </div>
+          </TagRowMeasureProvider>
         ) : (
           !loading &&
           items.length > 0 && (

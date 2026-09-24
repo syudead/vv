@@ -783,6 +783,33 @@ describe("LibraryPage", () => {
       expect(screen.getByTestId("location").textContent).toBe(before);
     });
 
+    it("タグを押しても、検索語・視聴状態などのほかの条件は残る（N1）", async () => {
+      const tag = { id: 1, name: "旅行" };
+      installTagAwareList([tag], () => ({
+        items: [video(1, { tags: [tag] })],
+        total: 1,
+      }));
+      const user = userEvent.setup();
+      renderLibrary("/?q=abc&watch=unwatched");
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("button", { name: "旅行で絞り込む" }));
+
+      await waitFor(() => {
+        const location = screen.getByTestId("location").textContent ?? "";
+        expect(location).toContain("tag=1");
+        expect(location).toContain("q=abc");
+        expect(location).toContain("watch=unwatched");
+      });
+      // 一覧の要求にも、タグと一緒にほかの条件が残る。
+      await waitFor(() => {
+        const request = listRequests(fetchMock).at(-1);
+        expect(request?.searchParams.get("query")).toBe("abc");
+        expect(request?.searchParams.get("watch")).toBe("unwatched");
+        expect(request?.searchParams.getAll("tag")).toEqual(["1"]);
+      });
+    });
+
     it("16個絞り込んでいるときに17個目を押すと、加えずにトーストで伝える", async () => {
       const extra = { id: 17, name: "17個目" };
       installTagAwareList([extra], () => ({
@@ -823,7 +850,7 @@ describe("LibraryPage", () => {
       });
     });
 
-    it("missingTagIds を受けたら伝えて、タグの一覧を取り直し、URL から取り除く", async () => {
+    it("missingTagIds を受けたら伝えて、タグの一覧を取り直し、一覧も取り直して URL から取り除く（N1）", async () => {
       const tagA = { id: 1, name: "旅行" };
       installTagAwareList([tagA], (requested) =>
         requested.includes(1)
@@ -837,9 +864,25 @@ describe("LibraryPage", () => {
       expect(
         await screen.findByText("削除されたタグを絞り込みから外しました"),
       ).toBeDefined();
+
+      // タグの一覧（/api/tags）を取り直す。
+      await waitFor(() => {
+        const tagRequests = fetchMock.mock.calls.filter((call) =>
+          new URL(String(call[0]), "http://localhost").pathname.startsWith("/api/tags"),
+        );
+        expect(tagRequests.length).toBeGreaterThanOrEqual(2);
+      });
+      // 一覧（/api/videos）も、tag を外した条件で取り直す。
+      await waitFor(() => {
+        const videoRequests = fetchMock.mock.calls.filter((call) => {
+          const url = new URL(String(call[0]), "http://localhost");
+          return url.pathname === "/api/videos" && !url.searchParams.has("tag");
+        });
+        expect(videoRequests.length).toBeGreaterThanOrEqual(1);
+      });
     });
 
-    it("控えから戻したときも、共有のタグの一覧と突き合わせてもう無い id を取り除く", async () => {
+    it("控えから戻したときも、共有のタグの一覧と突き合わせてもう無い id を取り除く。一覧も取り直す（N1）", async () => {
       const { saveListSnapshot } = await import("../api/listSnapshot");
       saveListSnapshot(
         { query: "", sort: "addedDesc", tags: [1] },
@@ -851,12 +894,68 @@ describe("LibraryPage", () => {
       // 依らず控えの鍵を "addedDesc" に固定する。
       renderLibrary("/?tag=1&sort=addedDesc");
 
+      // 控えを使うので、最初の /api/videos は要求しない。
+      expect(
+        fetchMock.mock.calls.filter(
+          (call) =>
+            new URL(String(call[0]), "http://localhost").pathname === "/api/videos",
+        ),
+      ).toHaveLength(0);
+
       await waitFor(() =>
         expect(screen.getByTestId("location").textContent).not.toContain("tag=1"),
       );
       expect(
         await screen.findByText("削除されたタグを絞り込みから外しました"),
       ).toBeDefined();
+
+      // タグの一覧を取り直し（画面が開くとき + 突き合わせで最低2回）、条件が
+      // 変わったので一覧（/api/videos）も取り直す。
+      await waitFor(() => {
+        const tagRequests = fetchMock.mock.calls.filter((call) =>
+          new URL(String(call[0]), "http://localhost").pathname.startsWith("/api/tags"),
+        );
+        expect(tagRequests.length).toBeGreaterThanOrEqual(1);
+      });
+      await waitFor(() => {
+        const videoRequests = fetchMock.mock.calls.filter(
+          (call) =>
+            new URL(String(call[0]), "http://localhost").pathname === "/api/videos",
+        );
+        expect(videoRequests.length).toBeGreaterThanOrEqual(1);
+      });
+    });
+
+    it("/ の控えは /?tag=1 のマウントでは使われない（listSnapshot の鍵に tags が要る）", async () => {
+      const { saveListSnapshot } = await import("../api/listSnapshot");
+      // tag の無い「/」の控えを残しておく。
+      saveListSnapshot(
+        { query: "", sort: "addedDesc" },
+        {
+          items: [video(99, { title: "控えの動画" })],
+          total: 1,
+          hasMore: false,
+          scrollY: 0,
+        },
+      );
+      const tag = { id: 1, name: "旅行" };
+      installTagAwareList([tag], () => ({
+        items: [video(1, { tags: [tag] })],
+        total: 1,
+      }));
+
+      renderLibrary("/?tag=1");
+
+      // 控え（控えの動画）ではなく、要求した一覧（動画 1）が出る。
+      expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
+      expect(screen.queryByRole("link", { name: "控えの動画" })).toBeNull();
+      // 控えを使わないので、通常どおり /api/videos を要求する。
+      expect(
+        fetchMock.mock.calls.some(
+          (call) =>
+            new URL(String(call[0]), "http://localhost").pathname === "/api/videos",
+        ),
+      ).toBe(true);
     });
 
     it("タグだけで絞って0件のとき、該当なしにタグのチップが出て、条件を解除でタグが外れる", async () => {

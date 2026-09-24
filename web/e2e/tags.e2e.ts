@@ -2,8 +2,8 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 
 // 再生画面のタグ（issue 268、親 Issue #193 の受け入れ条件 1・2・6・13）と、
 // ライブラリのカードのタグ・タグでの絞り込み（issue 269、受け入れ条件 5・7・8・19・20）を
-// 実ブラウザに通す。動画は run-e2e.mjs が generateTagsFixtures で作る 2 本
-// （タグ動画A・タグ動画B）。
+// 実ブラウザに通す。動画は run-e2e.mjs が generateTagsFixtures で作る 3 本
+// （タグ動画A・タグ動画B・タグ動画C）。タグ動画Cはタグを持たない対照区である。
 
 interface MediaFolder {
   id: number;
@@ -63,6 +63,14 @@ async function addSynonym(request: APIRequestContext, id: number, name: string) 
   expect(response.ok()).toBe(true);
 }
 
+async function renameTag(request: APIRequestContext, id: number, name: string) {
+  const response = await request.patch(`/api/tags/${String(id)}`, {
+    headers: mutationHeaders,
+    data: { name },
+  });
+  expect(response.ok()).toBe(true);
+}
+
 async function attachTag(request: APIRequestContext, videoId: number, tagId: number) {
   const response = await request.post("/api/video-tags", {
     headers: mutationHeaders,
@@ -116,7 +124,7 @@ test.describe.serial("video tags", () => {
 
     const list = await request.get("/api/videos?limit=200");
     const page = (await list.json()) as { items: Video[] };
-    expect(page.items).toHaveLength(2);
+    expect(page.items).toHaveLength(3);
     for (const item of page.items) videos.set(item.title, item);
   });
 
@@ -283,9 +291,14 @@ test.describe.serial("video tags", () => {
     async function pressCardTag(page: Page, videoId: number, name: string) {
       const card = page.locator(`[data-video-id="${String(videoId)}"]`);
       const direct = card.getByRole("button", { name: `${name}で絞り込む` });
-      if ((await direct.count()) > 0) {
-        await direct.click();
+      try {
+        // 直に見えていれば、それを押す。レイアウトの計測（B2）が済むまでの
+        // 短い間は「+N」に入っていることもあるので、.count() の1回きりの
+        // 判定ではなく、Playwright の自動待機に判断を委ねる。
+        await direct.click({ timeout: 5000 });
         return;
+      } catch {
+        // 直には無い（本当に収まらず「+N」の中）。
       }
       await card.getByRole("button", { name: /^ほかのタグ \d+ 個を表示$/ }).click();
       await page
@@ -349,18 +362,38 @@ test.describe.serial("video tags", () => {
       await attachTag(request, b.id, tag.id);
 
       await page.goto("/");
-      await expect(page.getByRole("article")).toHaveCount(2);
+      // 絞り込み前は、タグの無いタグ動画Cも含めて3件出る。
+      await expect(page.getByRole("article")).toHaveCount(3);
 
       await pressCardTag(page, a.id, "e2e旅行");
       await expect(page).toHaveURL(new RegExp(`tag=${String(tag.id)}(&|$)`));
-      // タグの付いた両方が残り、検索欄は変わらない。
+      // タグの付いた両方が残り、検索欄は変わらない。件数も正しい。
       await expect(page.getByRole("article")).toHaveCount(2);
       await expect(activeTagChip(page, "e2e旅行")).toBeVisible();
+      await expect(page.getByRole("searchbox", { name: "動画を検索" })).toHaveValue("");
+      await expect(page.getByRole("status").first()).toHaveText("2件");
 
-      // 一覧の上のチップを1回押すと外れ、押す前の一覧に戻る。
+      // タグの絞り込みは、題名にその文字列を含むだけのタグの無い動画を出さない
+      // （受け入れ条件7、親 Issue「タグの無い動画」の要求を満たさない例）。ここでは
+      // タグ動画Cの題名そのものを名前に持つタグを作り、Aにだけ付ける。
+      const titleLikeTag = await createTag(request, "タグ動画C");
+      await attachTag(request, a.id, titleLikeTag.id);
       await activeTagChip(page, "e2e旅行").click();
       await expect(page).not.toHaveURL(/tag=/);
+      await pressCardTag(page, a.id, "タグ動画C");
+      await expect(page.getByRole("article")).toHaveCount(1);
+      await expect(page.getByRole("link", { name: "タグ動画A" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "タグ動画C" })).toHaveCount(0);
+      await activeTagChip(page, "タグ動画C").click();
+      await expect(page).not.toHaveURL(/tag=/);
+
+      await pressCardTag(page, a.id, "e2e旅行");
       await expect(page.getByRole("article")).toHaveCount(2);
+
+      // 一覧の上のチップを1回押すと外れ、押す前の一覧（タグ動画Cを含む3件）に戻る。
+      await activeTagChip(page, "e2e旅行").click();
+      await expect(page).not.toHaveURL(/tag=/);
+      await expect(page.getByRole("article")).toHaveCount(3);
 
       // 再生画面でタグを押すと、そのタグ1つで絞り込んだライブラリ一覧が開く。
       await page.goto(`/videos/${String(a.id)}`);
@@ -399,6 +432,15 @@ test.describe.serial("video tags", () => {
       // 2024 だけを外すと、旅行だけの絞り込みに戻る（両方見える）。
       await activeTagChip(page, "e2eAND2024").click();
       await expect(page).not.toHaveURL(new RegExp(`tag=${String(year.id)}`));
+      await expect(page.getByRole("article")).toHaveCount(2);
+
+      // タグの絞り込みに加えて、検索欄の題名検索がさらに絞り込む（受け入れ条件8）。
+      const box = page.getByRole("searchbox", { name: "動画を検索" });
+      await box.fill("タグ動画A");
+      await expect(page.getByRole("article")).toHaveCount(1);
+      await expect(page.getByRole("link", { name: "タグ動画A" })).toBeVisible();
+      // 検索語を消すと、タグの絞り込みだけの2件に戻る。
+      await box.fill("");
       await expect(page.getByRole("article")).toHaveCount(2);
 
       // 動画を開いて戻っても、再読み込みしても、新しいタブで開いても同じ絞り込みになる。
@@ -446,6 +488,32 @@ test.describe.serial("video tags", () => {
       await expect(page.getByRole("link", { name: "タグ動画B" })).toBeVisible();
       await expect(page.getByRole("link", { name: "タグ動画A" })).toHaveCount(0);
 
+      await box.fill("");
+
+      // フォルダ画面の検索欄も同じ規則で探す（受け入れ条件19、要件10）。
+      await page.goto("/folders");
+      const folderBox = page.getByRole("searchbox", {
+        name: "すべてのフォルダの動画を検索",
+      });
+      await folderBox.fill("e2e検索専用タグ");
+      await expect(page.getByRole("link", { name: /^タグ動画A/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: /^タグ動画B/ })).toHaveCount(0);
+
+      await folderBox.fill("-e2e検索専用タグ");
+      await expect(page.getByRole("link", { name: /^タグ動画B/ })).toBeVisible();
+      await expect(page.getByRole("link", { name: /^タグ動画A/ })).toHaveCount(0);
+
+      await folderBox.fill("");
+
+      // タグを改名すると、次の検索から新しい名前で当たる（受け入れ条件20）。
+      await renameTag(request, searchable.id, "e2e改名後タグ");
+      await page.goto("/");
+      await box.fill("e2e改名後タグ");
+      await expect(page.getByRole("link", { name: "タグ動画A" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "タグ動画B" })).toHaveCount(0);
+      // 古い名前ではもう当たらない。
+      await box.fill("e2e検索専用タグ");
+      await expect(page.getByRole("link", { name: "タグ動画A" })).toHaveCount(0);
       await box.fill("");
     });
   });
