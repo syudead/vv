@@ -171,6 +171,10 @@ func contentKeyReferenced(ctx context.Context, q rowQueryer, key string) (bool, 
 // 動画の content_key へ引き直す。引けない id（その間に消えた動画）は結果に
 // 含めない（specs/014-video-tags/data-model.md §4）。TagStore の付与・取り外し・
 // 要約が使う（Structural Decisions 13：id から content_key を引く SQL の共有）。
+// videoIDs の重複は1つにまとめる（contracts/tags-api.md §4「重複は1つとして
+// 扱う」）。videos は id が主キーなので、`in` で1動画1行に自然にまとまる
+// （json_each との join だと重複した id の分だけ行が増える）。内容の識別子が
+// 空の動画（videos.go の他の読み取りと同じ理由で除く）は含めない。
 //
 // id の集合は SQLite の引数の上限に掛からないよう、json_each に1つの引数で
 // 渡す（specs/014-video-tags/contracts/tags-api.md §4）。
@@ -184,9 +188,9 @@ func registeredContentKeysForVideoIDs(ctx context.Context, q queryExecer, videoI
 	}
 
 	//nolint:gosec // registeredVideoCondition は定型SQLだけを返す。
-	query := `select v.content_key from json_each(?) je
-		join videos v on v.id = je.value
-		where ` + registeredVideoCondition("v")
+	query := `select v.content_key from videos v
+		where v.id in (select value from json_each(?)) and v.content_key <> '' and ` +
+		registeredVideoCondition("v")
 	rows, err := q.QueryContext(ctx, query, string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("動画の id を content_key へ引けません: %w", err)

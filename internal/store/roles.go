@@ -34,9 +34,11 @@ type SettingsStore struct{ db *DB }
 type PlaybackStore struct{ sql *sql.DB }
 
 // TagStore はタグそのもの（作成・改名・削除・統合・シノニムの登録と解除・
-// 本数つきの一覧）と、タグ名の照合用の鍵の作り直しを保存する（tags.go）。
-// PlaybackStore と同じく、共有する SQLite 接続だけを持ち、ライブラリ索引の
-// 型や通知には依存しない。
+// 本数つきの一覧）、動画への付与・取り外し・選んだ動画のタグの要約
+// （AttachTagByID・AttachTagByName・DetachTag・Summary）、content_key の集合から
+// 項目のタグをまとめて引く操作（TagsByContentKeys）、タグ名の照合用の鍵の
+// 作り直しを保存する（tags.go）。PlaybackStore と同じく、共有する SQLite
+// 接続だけを持ち、ライブラリ索引の型や通知には依存しない。
 type TagStore struct{ sql *sql.DB }
 
 func (db *DB) Ingest() *IngestStore       { return &IngestStore{db: db} }

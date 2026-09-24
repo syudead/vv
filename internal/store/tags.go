@@ -419,7 +419,15 @@ func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, ta
 // 付いているタグごとの本数（Items）を、名前の自然順で返す
 // （contracts/tags-api.md §4 の summary）。
 func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSummary, error) {
-	keys, err := registeredContentKeysForVideoIDs(ctx, s.sql, videoIDs)
+	// videoIDs → content_key の解決と本数の集計を同じ読み取りスナップショットで
+	// 行う。別々に読むと、その間の付け外しで Total と Items の本数が食い違いうる。
+	tx, err := s.sql.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.TagSummary{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	keys, err := registeredContentKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
 		return domain.TagSummary{}, err
 	}
@@ -433,7 +441,7 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 		return domain.TagSummary{}, fmt.Errorf("content_key を組み立てられません: %w", err)
 	}
 
-	rows, err := s.sql.QueryContext(ctx, `
+	rows, err := tx.QueryContext(ctx, `
 		select tn.tag_id, tn.name, count(*) from video_tags vt
 		  join tag_names tn on tn.tag_id = vt.tag_id and tn.canonical = 1
 		 where vt.content_key in (select value from json_each(?))
@@ -452,6 +460,12 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 		summary.Items = append(summary.Items, item)
 	}
 	if err := rows.Err(); err != nil {
+		return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
 		return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
 	}
 	domain.SortTagSummaryItems(summary.Items)
@@ -759,8 +773,12 @@ func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, ca
 // existingTagIDs は ids のうち tags テーブルにあるものと無いものを、それぞれ
 // ids の並びのまま返す（data-model.md §6）。LibraryStore がタグでの絞り込み・
 // 「すべて選択」で使う（Structural Decisions 13：複数の型が読む問い合わせの共有）。
-// ids の重複は1つにまとめる。
+// ids の重複は1つにまとめる。ids が空なら問い合わせずに両方空を返す（空の
+// in () は誤りになる）。
 func existingTagIDs(ctx context.Context, q queryExecer, ids []int64) (existing, missing []int64, err error) {
+	if len(ids) == 0 {
+		return nil, nil, nil
+	}
 	seen := make(map[int64]bool, len(ids))
 	deduped := make([]int64, 0, len(ids))
 	for _, id := range ids {

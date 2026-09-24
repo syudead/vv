@@ -676,6 +676,31 @@ func TestVideoIDsMatchesAllPagesOfListVideosWithTagFilter(t *testing.T) {
 	if !slices.Equal(paged, wantIDs) {
 		t.Errorf("全ページの id = %v, want %v (VideoIDs と同じ集合)", paged, wantIDs)
 	}
+
+	// ランダム並び順でページングを繋いでも同じ集合になる（並びが seed・id
+	// だけで決まるので、タグの絞り込みと組み合わせても取りこぼし・重複が
+	// 無いことを確かめる）。
+	randomQuery := domain.VideoQuery{TagIDs: []int64{tag.ID}, Sort: domain.SortRandom, Seed: 12345, Limit: 2}
+	var randomPaged []int64
+	cursor = ""
+	for range 10 {
+		randomQuery.Cursor = cursor
+		page, err := db.Library().ListVideos(ctx, randomQuery)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			randomPaged = append(randomPaged, item.ID)
+		}
+		if page.NextCursor == "" {
+			break
+		}
+		cursor = page.NextCursor
+	}
+	slices.Sort(randomPaged)
+	if !slices.Equal(randomPaged, wantIDs) {
+		t.Errorf("ランダム並び順の全ページの id = %v, want %v (VideoIDs と同じ集合)", randomPaged, wantIDs)
+	}
 }
 
 // VideoIDs も無い tag_id を無視し、どれを無視したかを返す。

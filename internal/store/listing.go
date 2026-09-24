@@ -90,18 +90,31 @@ type listSpec struct {
 // ページングは keyset（カーソル）方式である。offset を使うと、取り込みで行が
 // 増減した瞬間に取りこぼしと重複が起きる。並び順の値と id を境界に使うので、
 // 途中で行が動いても続きが安定して取れる。
+//
+// タグの存在確認・件数・ページの行を同じ読み取りスナップショット（s.db.read の
+// 1取引）から返す。別々に読むと、その間の付け外しやタグの削除によって
+// MissingTagIDs・Total・Items が食い違いうる。
 func (s *LibraryStore) ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error) {
-	tagIDs, missingTagIDs, err := s.resolveTagIDs(ctx, q.TagIDs)
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, q.TagIDs)
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
-	page, err := s.listVideoPage(ctx, listSpec{
+	page, err := listVideoPageTx(ctx, tx, listSpec{
 		scope: libraryScope(), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	})
 	if err != nil {
 		return domain.VideoPage{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
 	}
 	page.MissingTagIDs = missingTagIDs
 	return page, nil
@@ -110,39 +123,40 @@ func (s *LibraryStore) ListVideos(ctx context.Context, q domain.VideoQuery) (dom
 // VideoIDs は ListVideos と同じ条件（並び順・カーソル・件数を除く）に合う
 // 全件の id を、ページングせずに返す（「すべて選択」用、Plan の Structural
 // Decisions 4）。並びは決めない。MissingTagIDs の意味は ListVideos と同じ
-// （contracts/tags-api.md §5 の GET /api/videos/ids）。
+// （contracts/tags-api.md §5 の GET /api/videos/ids）。ListVideos と同じく、
+// タグの存在確認と id の読み出しを s.db.read の1取引の中で行う。
 func (s *LibraryStore) VideoIDs(ctx context.Context, q domain.VideoQuery) ([]int64, []int64, error) {
-	tagIDs, missingTagIDs, err := s.resolveTagIDs(ctx, q.TagIDs)
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, nil, fmt.Errorf("id の読み取りを始められません: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, q.TagIDs)
 	if err != nil {
 		return nil, nil, err
 	}
-	ids, err := s.videoIDsForSpec(ctx, listSpec{
+	ids, err := videoIDsForSpec(ctx, tx, listSpec{
 		scope: libraryScope(), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs,
 	})
 	if err != nil {
 		return nil, nil, err
 	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("id の読み取りを終えられません: %w", err)
+	}
 	return ids, missingTagIDs, nil
 }
 
-// resolveTagIDs は ids のうちいまタグとして存在するものと、存在しないものを
-// 返す（data-model.md §6）。ids が空なら両方とも空を返す。
-func (s *LibraryStore) resolveTagIDs(ctx context.Context, ids []int64) (existing, missing []int64, err error) {
-	if len(ids) == 0 {
-		return nil, nil, nil
-	}
-	return existingTagIDs(ctx, s.db.sql, ids)
-}
-
 // videoIDsForSpec は spec に合う全件の id を返す。並びは決めない。
-func (s *LibraryStore) videoIDsForSpec(ctx context.Context, spec listSpec) ([]int64, error) {
+func videoIDsForSpec(ctx context.Context, q queryExecer, spec listSpec) ([]int64, error) {
 	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
 	from, fromArgs := filteredFrom(spec, false)
 	args = append(args, fromArgs...)
 
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
-	rows, err := s.db.sql.QueryContext(ctx, cte+` select videos.id`+from, args...)
+	rows, err := q.QueryContext(ctx, cte+` select videos.id`+from, args...)
 	if err != nil {
 		return nil, fmt.Errorf("id を読み出せません: %w", err)
 	}
@@ -280,8 +294,31 @@ func (s *LibraryStore) countVideos(ctx context.Context, spec listSpec) (int, err
 	return countVideosWith(ctx, s.db.sql, spec)
 }
 
-// listVideoPage は条件に合う動画1ページと総件数を返す。
+// listVideoPage は条件に合う動画1ページと総件数を返す。count とページの行を
+// 同じ読み取りスナップショットから返すため、s.db.read に新しい取引を開いて
+// listVideoPageTx に委ねる。別々の接続で読むと、その間の取り込みによって
+// total と Items が矛盾する。
 func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain.VideoPage, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	page, err := listVideoPageTx(ctx, tx, spec)
+	if err != nil {
+		return domain.VideoPage{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
+	}
+	return page, nil
+}
+
+// listVideoPageTx は tx の中で spec に合う動画1ページと総件数を返す。呼び出し側
+// が取引の開始・commit・rollback を持つ（ListVideos はタグの存在確認と同じ
+// 取引で呼ぶ）。
+func listVideoPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.VideoPage, error) {
 	limit := normalizeLimit(spec.limit)
 	if !spec.sort.Valid() {
 		// 値の検査は入口（internal/httpapi）が行う。ここに来た未知の値は既定にする。
@@ -298,14 +335,6 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 			return domain.VideoPage{}, err
 		}
 	}
-
-	// count とページの行は同じ読み取りスナップショットから返す。別々の接続で
-	// 読むと、その間の取り込みによって total と Items が矛盾する。
-	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
 
 	total, err := countVideosWith(ctx, tx, spec)
 	if err != nil {
@@ -361,9 +390,6 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 		if err != nil {
 			return domain.VideoPage{}, err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
 	}
 	return page, nil
 }

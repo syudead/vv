@@ -81,6 +81,32 @@ func TestAttachTagByIDSkipsUnresolvableVideoIDs(t *testing.T) {
 	}
 }
 
+// TestAttachTagByIDCountsDuplicateVideoIDsOnce は、videoIDs に同じ id が
+// 重複していても applied が1つとして数えることを確かめる
+// （contracts/tags-api.md §4「重複は1つとして扱う」）。
+func TestAttachTagByIDCountsDuplicateVideoIDsOnce(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	tag, err := db.Tags().CreateTag(ctx, "旅行")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
+	id := ids["/media/a.mp4"]
+
+	_, applied, err := db.Tags().AttachTagByID(ctx, []int64{id, id, id}, tag.ID)
+	if err != nil {
+		t.Fatalf("AttachTagByID() error = %v", err)
+	}
+	if applied != 1 {
+		t.Errorf("applied = %d, want 1 (重複した id は1つとして数える)", applied)
+	}
+	if tagCount(t, db, "key-a", tag.ID) != 1 {
+		t.Error("key-a に付いていない")
+	}
+}
+
 // TestAttachTagByIDRejectsMissingTag は、id のタグが無ければ
 // domain.ErrTagNotFound を返すことを確かめる。
 func TestAttachTagByIDRejectsMissingTag(t *testing.T) {
@@ -188,6 +214,35 @@ func TestDetachTagIgnoresAlreadyUnassignedVideos(t *testing.T) {
 	}
 }
 
+// TestDetachTagCountsDuplicateVideoIDsOnce は、videoIDs に同じ id が重複して
+// いても applied が1つとして数えることを確かめる（contracts/tags-api.md §4
+// 「重複は1つとして扱う」）。
+func TestDetachTagCountsDuplicateVideoIDsOnce(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	tag, err := db.Tags().CreateTag(ctx, "旅行")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
+	id := ids["/media/a.mp4"]
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{id}, tag.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	_, applied, err := db.Tags().DetachTag(ctx, []int64{id, id}, tag.ID)
+	if err != nil {
+		t.Fatalf("DetachTag() error = %v", err)
+	}
+	if applied != 1 {
+		t.Errorf("applied = %d, want 1 (重複した id は1つとして数える)", applied)
+	}
+	if tagCount(t, db, "key-a", tag.ID) != 0 {
+		t.Error("key-a にまだ付いている")
+	}
+}
+
 // TestDetachTagRejectsMissingTag は、tagID が無ければ domain.ErrTagNotFound を
 // 返すことを確かめる。
 func TestDetachTagRejectsMissingTag(t *testing.T) {
@@ -278,6 +333,35 @@ func TestSummaryCountsOnlyRegisteredVideosAndPartiallyTaggedTags(t *testing.T) {
 	}
 	if summary.Items[1].Tag.ID != all.ID || summary.Items[1].Count != 3 {
 		t.Errorf("Items[1] = %+v, want id=%d count=3", summary.Items[1], all.ID)
+	}
+}
+
+// TestSummaryCountsDuplicateVideoIDsOnce は、videoIDs に同じ id が重複して
+// いても Total とタグの count が1つとして数えることを確かめる
+// （contracts/tags-api.md §4「重複は1つとして扱う」）。
+func TestSummaryCountsDuplicateVideoIDsOnce(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	tag, err := db.Tags().CreateTag(ctx, "旅行")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
+	id := ids["/media/a.mp4"]
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{id}, tag.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	summary, err := db.Tags().Summary(ctx, []int64{id, id, id})
+	if err != nil {
+		t.Fatalf("Summary() error = %v", err)
+	}
+	if summary.Total != 1 {
+		t.Errorf("Total = %d, want 1 (重複した id は1つとして数える)", summary.Total)
+	}
+	if len(summary.Items) != 1 || summary.Items[0].Count != 1 {
+		t.Errorf("Items = %+v, want [{タグ=%d count=1}]", summary.Items, tag.ID)
 	}
 }
 

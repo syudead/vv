@@ -160,10 +160,11 @@ compile:
   matching id set unpaged for "select all"
   (`specs/014-video-tags/data-model.md` §6). The search-box term matcher also OR-matches
   a video's tag names (original name and synonyms) alongside title and path
-  (`specs/014-video-tags/data-model.md` §7). Both share the SQL that resolves a set of
-  video ids or tag ids down to the ones currently valid with `TagStore` as unexported
-  package functions (`internal/store/roles.go`), never by calling `TagStore`'s public
-  methods.
+  (`specs/014-video-tags/data-model.md` §7). `LibraryStore` resolves which of a set of
+  tag ids currently exist through `existingTagIDs`, and `TagStore` resolves a set of
+  video ids down to the currently-registered videos' content keys through
+  `registeredContentKeysForVideoIDs`; both are unexported package functions
+  (`internal/store/roles.go`), never called as another role's public method.
 - `ScanStore` — the state of a scan run.
 - `ScanIndexStore` — reflecting a scan's filesystem facts into the index (upserting
   locations, removing missing ones and the videos they orphan).

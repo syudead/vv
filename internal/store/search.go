@@ -75,11 +75,13 @@ func searchExprCondition(expr domain.SearchExpr, alias string) (string, []any) {
 // tagNameMatchCondition は、所在（別名 alias）の動画に付いたタグの元の名前か
 // シノニムのどれかが語に当たるかの条件句を返す。video_locations は content_key
 // を持たないので、videos を経て動画に結ぶ（data-model.md §7）。呼び出し側が
-// FoldForMatch 済みの語を1つ引数として渡す。
+// FoldForMatch 済みの語を1つ引数として渡す。内容の識別子が空の動画は
+// 再生位置を持たない（listing.go の playback_progress の join）のと同じ理由で
+// タグの照合からも除く。空文字列どうしが一致して無関係な行を拾わないため。
 func tagNameMatchCondition(alias string) string {
 	return `exists (select 1 from video_tags vt ` +
 		`join tag_names tn on tn.tag_id = vt.tag_id ` +
-		`join videos v on v.content_key = vt.content_key ` +
+		`join videos v on v.content_key = vt.content_key and v.content_key <> '' ` +
 		`where v.id = ` + alias + `.video_id and instr(tn.search_key, ?) > 0)`
 }
 
