@@ -294,8 +294,8 @@ func TestScanSkipsUnchangedFiles(t *testing.T) {
 	upsertsAfterFirst := len(index.upserts)
 	second := runScan(t, root, index)
 
-	if second.Total != 1 {
-		t.Errorf("2 回目: Total = %d, want 1", second.Total)
+	if second.Total != 0 || second.Completed() != 0 {
+		t.Errorf("2 回目の進捗 = %d / %d, want 0 / 0", second.Completed(), second.Total)
 	}
 	if second.Added != 0 || second.Updated != 0 || second.Moved != 0 {
 		t.Errorf("2 回目に変化が記録された: %+v", second)
@@ -384,6 +384,9 @@ func TestScanUpdatesChangedFile(t *testing.T) {
 	result := runScan(t, root, index)
 	if result.Updated != 1 {
 		t.Errorf("Updated = %d, want 1: %+v", result.Updated, result)
+	}
+	if result.Total != 1 || result.Completed() != 1 {
+		t.Errorf("進捗 = %d / %d, want 1 / 1", result.Completed(), result.Total)
 	}
 }
 
@@ -476,8 +479,8 @@ func TestScanContinuesAfterFileFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Total != 3 || result.Failed != 1 || result.Added != 2 {
-		t.Fatalf("want total=3 failed=1 added=2, got %+v", result)
+	if result.Total != 3 || result.Completed() != 2 || result.Failed != 1 || result.Added != 2 {
+		t.Fatalf("want completed=2 total=3 failed=1 added=2, got %+v", result)
 	}
 	paths := index.upsertedPaths()
 	if len(paths) != 2 || paths[0] != filepath.Join(root, "a.mp4") || paths[1] != filepath.Join(root, "c.mp4") {
@@ -544,9 +547,43 @@ func TestScanReportsProgress(t *testing.T) {
 	if len(index.progress) == 0 {
 		t.Fatal("進捗が1度も報告されていない")
 	}
+	first := index.progress[0]
+	if first.Total != 2 || first.Completed() != 0 {
+		t.Errorf("対象確定時の進捗 = %d / %d, want 0 / 2", first.Completed(), first.Total)
+	}
 	last := index.progress[len(index.progress)-1]
-	if last.Total != 2 {
-		t.Errorf("最後に報告した Total = %d, want 2", last.Total)
+	if last.Total != 2 || last.Completed() != 2 {
+		t.Errorf("最後に報告した進捗 = %d / %d, want 2 / 2", last.Completed(), last.Total)
+	}
+}
+
+func TestScanProgressCountsOnlyFilesThatNeedImport(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	for path, row := range index.rows {
+		row.ProbeState = domain.ProbeStateDone
+		row.ThumbnailState = domain.ThumbnailStateDone
+		row.PreviewState = domain.PreviewStateDone
+		index.rows[path] = row
+	}
+
+	changed := filepath.Join(root, "b.mp4")
+	if err := os.WriteFile(changed, []byte("changed length"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(changed, later, later); err != nil {
+		t.Fatal(err)
+	}
+	index.progress = nil
+
+	result := runScan(t, root, index)
+	if result.Total != 1 || result.Completed() != 1 || result.Updated != 1 {
+		t.Fatalf("one changed file should be 1 / 1, got %+v", result)
+	}
+	if first := index.progress[0]; first.Total != 1 || first.Completed() != 0 {
+		t.Fatalf("target discovery progress = %d / %d, want 0 / 1", first.Completed(), first.Total)
 	}
 }
 
