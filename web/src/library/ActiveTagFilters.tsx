@@ -66,7 +66,14 @@ export default function ActiveTagFilters({
   function remove(id: number) {
     const index = ordered.indexOf(id);
     const next = ordered[index + 1] ?? ordered[index - 1];
-    pendingFocus.current = next ?? "search";
+    if (next === undefined) {
+      // 最後の1つを外すと、この行は呼び出し側で描画されなくなり、フォーカスを
+      // 移す効果も走らない。外す前に検索欄へ移しておく。
+      pendingFocus.current = null;
+      searchFieldRef.current?.focus();
+    } else {
+      pendingFocus.current = next;
+    }
     onRemove(id);
   }
 

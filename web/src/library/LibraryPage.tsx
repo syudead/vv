@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -83,7 +84,11 @@ export default function LibraryPage() {
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
   const { criteria, apply } = useListCriteria(preferences.sort, TAG_PARAM);
   const { query, watch, playable, sort } = criteria;
-  const tagIds = parseTagParam(new URLSearchParams(location.search).getAll(TAG_PARAM));
+  // URL が変わらない限り同じ配列を使い、タグの操作の関数とカードの memo を保つ。
+  const rawTagParams = new URLSearchParams(location.search).getAll(TAG_PARAM);
+  const rawTagKey = JSON.stringify(rawTagParams);
+  // rawTagKey が rawTagParams の値を表す。
+  const tagIds = useMemo(() => parseTagParam(rawTagParams), [rawTagKey]);
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const [activePreviewId, setActivePreviewId] = useState<number | null>(null);
@@ -142,17 +147,22 @@ export default function LibraryPage() {
   }, [apply, criteria, resetPreview]);
 
   // --- タグ絞り込み（list-url.md §2） ---
+  // criteria は描画ごとに新しいオブジェクトになる。カードへ渡す pressTag は、
+  // 最新の条件を ref から読んで参照を保ち、無関係な描画でカードを描き直させない。
+  const latestConditions = useRef({ criteria, tagIds });
+  latestConditions.current = { criteria, tagIds };
   const pressTag = useCallback(
     (tag: TagRef) => {
-      if (tagIds.includes(tag.id)) return; // すでに絞り込み中なら何も変わらない。
-      if (tagIds.length >= MAX_TAG_COUNT) {
+      const { criteria: current, tagIds: currentTagIds } = latestConditions.current;
+      if (currentTagIds.includes(tag.id)) return; // すでに絞り込み中なら何も変わらない。
+      if (currentTagIds.length >= MAX_TAG_COUNT) {
         toast("絞り込めるタグは 16 個までです");
         return;
       }
       resetPreview();
-      apply(criteria, "push", serializeTagIds(addTagId(tagIds, tag.id)));
+      apply(current, "push", serializeTagIds(addTagId(currentTagIds, tag.id)));
     },
-    [apply, criteria, resetPreview, tagIds, toast],
+    [apply, resetPreview, toast],
   );
   const removeActiveTag = useCallback(
     (id: number) => {
