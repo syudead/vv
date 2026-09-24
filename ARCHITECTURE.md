@@ -136,10 +136,11 @@ grace period, then stops the scanner and the workers so a running job returns to
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
 `video_locations` (including its per-location search keys), `location_search_fts`,
 `jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
-(deleting them costs a rescan), while `playback_progress` is user data that
-cannot be reconstructed. That is why playback positions are keyed by the
-content identifier rather than by `videos.id`, and why that table carries no
-foreign key to `videos`.
+(deleting them costs a rescan), while `playback_progress` and the tag tables
+(`tags`, `tag_names`, `video_tags`) are user data that cannot be reconstructed.
+That is why playback positions and tag assignments are keyed by the content
+identifier rather than by `videos.id`, and why those tables carry no foreign
+key to `videos`.
 
 `store.DB` is only the foundation: it opens and closes the SQLite connection pools,
 routing write transactions through an immediate-lock pool and snapshot list reads through
@@ -160,6 +161,11 @@ compile:
 - `SettingsStore` — registering, replacing and removing media folders.
 - `PlaybackStore` — playback positions. It holds only the SQL connection and does not
   depend on the rebuildable index stores or their notifications.
+- `TagStore` — tags themselves: create, rename, delete, merge, register/remove a
+  synonym, the counted listing, and the startup refresh of tag-name search keys
+  (`specs/014-video-tags/data-model.md`). Like `PlaybackStore`, it holds only the SQL
+  connection and does not depend on the rebuildable index stores or their
+  notifications; tag changes have no side effects, so they publish no domain event.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and

@@ -27,8 +27,54 @@ import (
 // 派生属性の一致はまだ意味を持たない。
 func checkInvariants(t *testing.T, db *DB) *DB {
 	t.Helper()
-	t.Cleanup(func() { assertRepresentativeInvariant(t, db) })
+	t.Cleanup(func() {
+		assertRepresentativeInvariant(t, db)
+		assertTagCanonicalNameInvariant(t, db)
+	})
 	return db
+}
+
+// assertTagCanonicalNameInvariant は、どの tags の行にも canonical = 1 の
+// tag_names がちょうど1行あることを確かめる（specs/014-video-tags/data-model.md
+// §1）。作成は必ず canonical = 1 の行を1つ添え、改名は canonical = 1 の行を
+// 書き換えるだけで、統合は統合元の名前を canonical = 0 に落としてから統合先へ
+// 付け替える。どの経路も、この不変条件を崩さずに保つ設計になっている
+// （internal/store/tags.go）。
+func assertTagCanonicalNameInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	// down migration を検査するテストは、この時点で表を落としている。
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'tags'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("タグの不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+
+	rows, err := db.sql.Query(`
+		select t.id, (select count(*) from tag_names tn where tn.tag_id = t.id and tn.canonical = 1)
+		  from tags t`)
+	if err != nil {
+		t.Fatalf("タグの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var id int64
+		var canonicalCount int
+		if err := rows.Scan(&id, &canonicalCount); err != nil {
+			t.Fatalf("タグの不変条件を検査できない: %v", err)
+		}
+		if canonicalCount != 1 {
+			t.Errorf("タグ %d の canonical = 1 の tag_names が %d 行ある。ちょうど1行のはず。", id, canonicalCount)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("タグの不変条件を検査できない: %v", err)
+	}
 }
 
 func assertRepresentativeInvariant(t *testing.T, db *DB) {
