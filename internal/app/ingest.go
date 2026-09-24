@@ -36,18 +36,31 @@ type ArtifactRemover interface {
 	RemoveContent(contentKey string) error
 }
 
-// Generator は元の動画を読み、生成物を作る。internal/media の *Assets が
-// これを満たす。
-type Generator interface {
+// ArtifactStore は生成物の置き場である。internal/artifacts の *Store がこれを
+// 満たす。置き場の並べ方と一時置き場からの公開はそちらが持ち、ここは生成を
+// write として渡す。
+type ArtifactStore interface {
 	ArtifactRemover
+	// PublishThumbnail は write に一時置き場のパスを渡して書かせ、公開する。
+	PublishThumbnail(contentKey string, write func(output string) error) error
+	// PublishSeekThumbnails は完成したものがあれば write を呼ばない。write は
+	// 連番のファイル名の型を受ける。
+	PublishSeekThumbnails(contentKey string, write func(outputPattern string) error) error
+	// PublishPreview は完成したものがあれば write を呼ばない。公開の直前に current を
+	// 呼び、false なら公開せずに domain.ErrPreviewStale を返す。
+	PublishPreview(ctx context.Context, contentKey string, write func(output string) error,
+		current func(context.Context) (bool, error)) error
+}
+
+// Generator は元の動画を読み、渡されたパスへ生成物を書く。internal/media の
+// *Assets がこれを満たす。
+type Generator interface {
 	// CheckSource は元の動画が読める通常ファイルかを確かめる。
 	CheckSource(path string) error
 	Probe(ctx context.Context, path string) (domain.Probe, error)
-	Thumbnail(ctx context.Context, path string, durationMs int64, contentKey string) error
-	SeekThumbnails(ctx context.Context, path, contentKey string) error
-	// Preview は validate が false を返したら公開せずに domain.ErrPreviewStale を返す。
-	Preview(ctx context.Context, path, contentKey string, durationMs int64,
-		validate func(context.Context) (bool, error)) error
+	Thumbnail(ctx context.Context, path string, durationMs int64, output string) error
+	SeekThumbnails(ctx context.Context, path, outputPattern string) error
+	Preview(ctx context.Context, path, output string, durationMs int64) error
 }
 
 // Waker は1つの段階のワーカーを起こす。internal/jobs の *Worker がこれを満たす。
@@ -59,6 +72,7 @@ type Waker interface {
 type IngestOptions struct {
 	Store     IngestStore
 	Generator Generator
+	Artifacts ArtifactStore
 	// Notifier は nil なら知らせない。
 	Notifier Notifier
 	// Logger は nil なら slog の既定を使う。
@@ -73,6 +87,7 @@ type IngestOptions struct {
 type Ingest struct {
 	store     IngestStore
 	generator Generator
+	files     ArtifactStore
 	notifier  Notifier
 	artifacts *artifacts
 
@@ -89,8 +104,9 @@ func NewIngest(opts IngestOptions) *Ingest {
 	return &Ingest{
 		store:     opts.Store,
 		generator: opts.Generator,
+		files:     opts.Artifacts,
 		notifier:  opts.Notifier,
-		artifacts: newArtifacts(opts.Store, opts.Generator, logger),
+		artifacts: newArtifacts(opts.Store, opts.Artifacts, logger),
 		wakers:    map[domain.JobKind]Waker{},
 	}
 }
@@ -235,7 +251,9 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 	// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
 	// FailClaimedJob が動画側へ記録する。
 	if video.ThumbnailState != domain.ThumbnailStateDone {
-		if err := i.generator.Thumbnail(ctx, job.LocationPath, durationMs, job.ContentKey); err != nil {
+		if err := i.files.PublishThumbnail(job.ContentKey, func(output string) error {
+			return i.generator.Thumbnail(ctx, job.LocationPath, durationMs, output)
+		}); err != nil {
 			return err
 		}
 		applied, err := i.store.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
@@ -247,7 +265,9 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 			return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
 		}
 	}
-	if err := i.generator.SeekThumbnails(ctx, job.LocationPath, job.ContentKey); err != nil {
+	if err := i.files.PublishSeekThumbnails(job.ContentKey, func(outputPattern string) error {
+		return i.generator.SeekThumbnails(ctx, job.LocationPath, outputPattern)
+	}); err != nil {
 		return err
 	}
 
@@ -285,7 +305,10 @@ func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 	// 生成物の削除と直列にする。
 	unlock := i.artifacts.lock(job.ContentKey)
 	defer unlock()
-	if err := i.generator.Preview(ctx, job.LocationPath, job.ContentKey, *video.DurationMs, validateContent); err != nil {
+	durationMs := *video.DurationMs
+	if err := i.files.PublishPreview(ctx, job.ContentKey, func(output string) error {
+		return i.generator.Preview(ctx, job.LocationPath, output, durationMs)
+	}, validateContent); err != nil {
 		return err
 	}
 	applied, err := i.store.CompletePreviewForContent(context.WithoutCancel(ctx), job)

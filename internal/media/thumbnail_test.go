@@ -2,8 +2,6 @@ package media
 
 import (
 	"math"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -42,38 +40,6 @@ func TestThumbnailOffset(t *testing.T) {
 				t.Errorf("thumbnailOffset(%d) = %v 秒, want %v 秒", tc.durationMs, got, tc.wantSec)
 			}
 		})
-	}
-}
-
-// 保存先は <MDM_DATA_DIR>/thumbnails/<content_key の先頭2文字>/<content_key>.jpg。
-//
-// content_key で名前を決めるので、移動・改名では作り直さない。
-// 2文字のディレクトリに分けるのは、1ディレクトリに数万ファイルを置かないため。
-func TestThumbnailPath(t *testing.T) {
-	got := ThumbnailPath("/data/thumbnails", "ab12cd34:5678")
-	want := filepath.Join("/data/thumbnails", "ab", "ab12cd34_5678.jpg")
-	if got != want {
-		t.Errorf("ThumbnailPath = %q, want %q", got, want)
-	}
-}
-
-// content_key に含まれる ":" はファイル名に使わない。Windows 共有や一部の
-// ファイルシステムで扱えず、置き場所ごと失敗する。
-func TestThumbnailPathAvoidsPathSeparators(t *testing.T) {
-	got := ThumbnailPath("/data/thumbnails", "aa/bb:cc")
-	if strings.Contains(filepath.Base(got), ":") {
-		t.Errorf("ファイル名に : が残っている: %q", got)
-	}
-	if filepath.Dir(got) != filepath.Join("/data/thumbnails", "aa") {
-		t.Errorf("2文字のディレクトリ1段に収まっていない: %q", got)
-	}
-}
-
-// 短すぎる鍵でも置き場所を決められること。実際には 64 文字の 16 進が入るが、
-// ここで落ちると取り込みが止まる。
-func TestThumbnailPathWithShortKey(t *testing.T) {
-	if got := ThumbnailPath("/data/thumbnails", "a"); got == "" {
-		t.Error("置き場所を決められなかった")
 	}
 }
 
@@ -126,38 +92,4 @@ func indexOf(values []string, want string) int {
 		}
 	}
 	return -1
-}
-
-// 生成途中の成果物は1か所にまとまっていて、起動時にそこだけを消せる。
-// 確定した生成物には触れない。
-func TestRemoveTemporaryKeepsPublishedArtifacts(t *testing.T) {
-	dir := t.TempDir()
-	temporary, err := makeTemporaryDir(dir, "preview-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(temporary, "preview.mp4"), []byte("途中"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	published := ThumbnailPath(dir, "kept:1")
-	if err := os.MkdirAll(filepath.Dir(published), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(published, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := RemoveTemporary(dir); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(temporary); !os.IsNotExist(err) {
-		t.Errorf("生成途中の成果物が残っている (err=%v)", err)
-	}
-	if _, err := os.Stat(published); err != nil {
-		t.Errorf("確定した生成物が消えた: %v", err)
-	}
-	// 何も無くても失敗しない。
-	if err := RemoveTemporary(dir); err != nil {
-		t.Fatal(err)
-	}
 }

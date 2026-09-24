@@ -25,8 +25,9 @@ type CatalogStore interface {
 	VideosByIDs(ctx context.Context, ids []int64) ([]domain.Video, error)
 }
 
-// ArtifactFiles は生成物のファイルが今あるかを答える。internal/media の
-// *Assets がこれを満たす。
+// ArtifactFiles は生成物が今あるかを答える。internal/artifacts の *Store が
+// これを満たす。ホバープレビューは manifest と大きさが一致するときだけ、ある
+// とみなす。
 type ArtifactFiles interface {
 	PreviewAvailable(contentKey string) bool
 	SeekThumbnailsAvailable(contentKey string) bool

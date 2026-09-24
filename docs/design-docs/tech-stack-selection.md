@@ -70,6 +70,7 @@ internal/
   httpapi/       # ハンドラ、ルーティング、ストリーミング、SPA の配信
   store/         # SQLite 実装、問い合わせと検索、マイグレーション
   media/         # ffprobe/ffmpeg アダプタ、サムネイル生成
+  artifacts/     # 生成物（サムネイル・シーク用プレビュー・ホバープレビュー）の置き場
   scanner/       # ファイルスキャンと差分検出
   jobs/          # ジョブキューとワーカー
   opener/        # OS の既定アプリでファイルを開く
@@ -78,7 +79,7 @@ api/
 web/             # React SPA。ビルド結果を embed して配信
 ```
 
-依存方向は `cmd → {app, httpapi, store, media, opener, scanner, jobs} → domain` の
+依存方向は `cmd → {app, httpapi, store, media, artifacts, opener, scanner, jobs} → domain` の
 一方向に限定し、`internal/` の兄弟パッケージ同士は import しない。
 `internal/domain` と `internal/app` が `net/http`・`database/sql`・`os/exec` を
 import した時点、`internal/app` がアダプタを import した時点、兄弟パッケージ同士が

@@ -42,27 +42,15 @@ func TestGenerateSeekThumbnailsUsesFixedBucketsAtFractionalFrameRate(t *testing.
 		t.Fatalf("fixture生成に失敗しました: %v: %s", err, output)
 	}
 
-	thumbnailsDir := t.TempDir()
-	if err := GenerateSeekThumbnails(context.Background(), videoPath, thumbnailsDir, "fractional:1"); err != nil {
+	output := t.TempDir()
+	if err := GenerateSeekThumbnails(context.Background(), videoPath, filepath.Join(output, "%06d.jpg")); err != nil {
 		t.Fatal(err)
 	}
-	cache := NewSeekThumbnailCache(thumbnailsDir)
-	for _, position := range []int64{0, 5000, 10_000, 15_000, 15_999} {
-		if _, err := cache.Read(context.Background(), "fractional:1", position); err != nil {
-			t.Fatalf("position %d: %v", position, err)
+	// 16 秒の動画は 0・5・10・15 秒の4つの区間に1枚ずつになる。
+	for _, name := range []string{"000000.jpg", "000001.jpg", "000002.jpg", "000003.jpg"} {
+		if _, err := os.Stat(filepath.Join(output, name)); err != nil {
+			t.Fatalf("%s: %v", name, err)
 		}
-	}
-}
-
-func TestSeekThumbnailPathUsesFiveSecondBucket(t *testing.T) {
-	root := filepath.Join("cache", "seek")
-	first := SeekThumbnailPath(root, "abcdef:12", 4999)
-	second := SeekThumbnailPath(root, "abcdef:12", 5000)
-	if filepath.Base(first) != "000000.jpg" || filepath.Base(second) != "000001.jpg" {
-		t.Fatalf("paths = %q, %q", first, second)
-	}
-	if !strings.Contains(first, filepath.Join("ab", "abcdef_12")) {
-		t.Fatalf("content path = %q", first)
 	}
 }
 
@@ -83,83 +71,17 @@ func TestGenerateAndReadSeekThumbnails(t *testing.T) {
 		t.Fatalf("fixture生成に失敗しました: %v: %s", err, output)
 	}
 
-	thumbnailsDir := t.TempDir()
-	if err := GenerateSeekThumbnails(context.Background(), videoPath, thumbnailsDir, "abcdef:12"); err != nil {
+	output := t.TempDir()
+	if err := GenerateSeekThumbnails(context.Background(), videoPath, filepath.Join(output, "%06d.jpg")); err != nil {
 		t.Fatal(err)
 	}
-	cache := NewSeekThumbnailCache(thumbnailsDir)
-	for _, position := range []int64{0, 4999, 5000, 5999} {
-		data, err := cache.Read(context.Background(), "abcdef:12", position)
+	for _, name := range []string{"000000.jpg", "000001.jpg"} {
+		data, err := os.ReadFile(filepath.Join(output, name))
 		if err != nil {
-			t.Fatalf("position %d: %v", position, err)
+			t.Fatalf("%s: %v", name, err)
 		}
 		if _, err := jpeg.Decode(strings.NewReader(string(data))); err != nil {
-			t.Fatalf("position %d JPEG: %v", position, err)
+			t.Fatalf("%s JPEG: %v", name, err)
 		}
-	}
-}
-
-func TestSeekThumbnailCacheReportsMissingFrame(t *testing.T) {
-	cache := NewSeekThumbnailCache(t.TempDir())
-	_, err := cache.Read(context.Background(), "missing:1", 0)
-	if !os.IsNotExist(err) {
-		t.Fatalf("error = %v", err)
-	}
-}
-
-func TestRemoveSeekThumbnails(t *testing.T) {
-	thumbnailsDir := t.TempDir()
-	target := SeekThumbnailDir(filepath.Join(thumbnailsDir, "seek"), "remove:1")
-	if err := os.MkdirAll(target, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := RemoveSeekThumbnails(thumbnailsDir, "remove:1"); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(target); !os.IsNotExist(err) {
-		t.Fatalf("removed cache error = %v", err)
-	}
-}
-
-// 内容1つ分の生成物（代表サムネイル・シーク用プレビュー・一覧用プレビュー）を
-// まとめて消し、別の内容の生成物には触れない。無いものは無視する。
-func TestRemoveContentArtifacts(t *testing.T) {
-	dir := t.TempDir()
-	write := func(path string) {
-		t.Helper()
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	gone := []string{
-		ThumbnailPath(dir, "gone:1"),
-		SeekThumbnailPath(filepath.Join(dir, "seek"), "gone:1", 0),
-		PreviewPath(dir, "gone:1"),
-		PreviewManifestPath(dir, "gone:1"),
-	}
-	kept := []string{ThumbnailPath(dir, "kept:1"), PreviewPath(dir, "kept:1")}
-	for _, path := range append(append([]string{}, gone...), kept...) {
-		write(path)
-	}
-
-	if err := RemoveContentArtifacts(dir, "gone:1"); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range gone {
-		if _, err := os.Stat(path); !os.IsNotExist(err) {
-			t.Errorf("%s が残っている (err=%v)", path, err)
-		}
-	}
-	for _, path := range kept {
-		if _, err := os.Stat(path); err != nil {
-			t.Errorf("別の内容の %s が消えた: %v", path, err)
-		}
-	}
-	// 2回目は何も無いが失敗しない。
-	if err := RemoveContentArtifacts(dir, "gone:1"); err != nil {
-		t.Fatal(err)
 	}
 }

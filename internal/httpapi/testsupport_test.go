@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +15,40 @@ import (
 
 	"github.com/syudead/vv/internal/domain"
 )
+
+// fakeArtifacts は生成物の置き場の代わりである。thumbnails・previews は content
+// key から配信するファイルのパスへの対応で、無いものは「無い」と答える。
+// シーク用プレビューは image と err を決め打ちで返し、渡された値を控える。
+type fakeArtifacts struct {
+	thumbnails map[string]string
+	previews   map[string]string
+
+	image      []byte
+	err        error
+	contentKey string
+	positionMs int64
+}
+
+func (f *fakeArtifacts) ThumbnailFile(contentKey string) (*os.File, error) {
+	return openFake(f.thumbnails, contentKey)
+}
+
+func (f *fakeArtifacts) PreviewFile(contentKey string) (*os.File, error) {
+	return openFake(f.previews, contentKey)
+}
+
+func (f *fakeArtifacts) SeekThumbnail(contentKey string, positionMs int64) ([]byte, error) {
+	f.contentKey, f.positionMs = contentKey, positionMs
+	return f.image, f.err
+}
+
+func openFake(paths map[string]string, contentKey string) (*os.File, error) {
+	path, ok := paths[contentKey]
+	if !ok {
+		return nil, fs.ErrNotExist
+	}
+	return os.Open(path)
+}
 
 // fakeLibrary は保存層の代わりに、決め打ちの動画を返す。ハンドラの振る舞い
 // （形・状態コード・ヘッダ）だけを検証したいので SQLite には触れない。

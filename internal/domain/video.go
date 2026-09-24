@@ -309,3 +309,9 @@ type DeletedVideo struct {
 // ErrPreviewStale は、プレビューの生成中に元の動画の所在や内容が変わったことを
 // 表す。生成物は公開されていないので、ジョブをやり直してよい。
 var ErrPreviewStale = errors.New("preview source identity changed")
+
+// SeekThumbnailInterval はシーク用プレビューのフレームの間隔である。生成
+// （internal/media の ffmpeg の式）と読み出し（internal/artifacts の位置から
+// フレームの番号への変換）が同じ値を使う。片方だけ変えると、読み出す番号が
+// 別の場面を指す。
+const SeekThumbnailInterval = 5 * time.Second

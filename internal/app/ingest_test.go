@@ -13,7 +13,7 @@ import (
 func newTestIngest(store *fakeIngestStore, generator *fakeGenerator) (*Ingest, *fakeNotifier) {
 	notifier := &fakeNotifier{}
 	return NewIngest(IngestOptions{
-		Store: store, Generator: generator, Notifier: notifier, Logger: discardLogger(),
+		Store: store, Generator: generator, Artifacts: generator, Notifier: notifier, Logger: discardLogger(),
 	}), notifier
 }
 
@@ -113,6 +113,25 @@ func TestIngestThumbnailSuccess(t *testing.T) {
 				t.Fatalf("参照のある生成物を消した: %v", removed)
 			}
 		})
+	}
+}
+
+// 生成は、置き場が渡した一時置き場のパスへ書く。
+func TestIngestWritesIntoPublishedOutputs(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	generator := &fakeGenerator{}
+	ingest, _ := newTestIngest(store, generator)
+
+	if err := ingest.Thumbnail(context.Background(), jobFor(domain.JobThumbnail, video)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ingest.Preview(context.Background(), jobFor(domain.JobPreview, video)); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"tmp/thumbnail/a", "tmp/seek/a", "tmp/preview/a"}
+	if !slices.Equal(generator.outputs, want) {
+		t.Fatalf("書き出し先 = %v, want %v", generator.outputs, want)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/syudead/vv/internal/app"
+	"github.com/syudead/vv/internal/artifacts"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi"
 	"github.com/syudead/vv/internal/jobs"
@@ -123,14 +124,15 @@ func run() error {
 		return err
 	}
 
+	// 生成物の置き場。パスの規則・公開・確認・読み出し・削除はここだけが持つ。
+	artifactStore := artifacts.New(cfg.ThumbnailsDir())
 	// 前回の停止で残った生成途中の成果物を消す。ワーカーを動かす前なので、
 	// 生成中のものを消すことはない。
-	if err := media.RemoveTemporary(cfg.ThumbnailsDir()); err != nil {
+	if err := artifactStore.RemoveTemporary(); err != nil {
 		logger.Warn("生成途中の成果物を削除できませんでした", slog.Any("error", err))
 	}
-	assets := media.NewAssets(cfg.ThumbnailsDir())
 	ingest := app.NewIngest(app.IngestOptions{
-		Store: db, Generator: assets, Notifier: events, Logger: logger,
+		Store: db, Generator: media.NewAssets(), Artifacts: artifactStore, Notifier: events, Logger: logger,
 	})
 	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
 	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
@@ -166,27 +168,26 @@ func run() error {
 
 	// 動画の応答に要る判断（消えたプレビューの作り直し、シーク用プレビューの
 	// 状態）と関連動画の組み立ては、アプリケーション層が行う。
-	catalog := app.NewCatalog(app.CatalogOptions{Store: db, Files: assets, Logger: logger})
+	catalog := app.NewCatalog(app.CatalogOptions{Store: db, Files: artifactStore, Logger: logger})
 	// 設定画面のメディアフォルダは、パスをファイルシステムで確かめてから保存する。
 	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: db, Checker: scanner.NewFolderChecker()})
 
 	handler := httpapi.NewRouter(httpapi.Options{
-		Build:          build,
-		Pinger:         db,
-		Videos:         db,
-		Playback:       db,
-		Scans:          scans,
-		MediaFolders:   mediaFolders,
-		Folders:        db,
-		ThumbnailsDir:  cfg.ThumbnailsDir(),
-		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),
-		SeekThumbnails: media.NewSeekThumbnailCache(cfg.ThumbnailsDir()),
-		Catalog:        catalog,
-		Opener:         fileOpener,
-		Processing:     db,
-		Events:         events,
-		Assets:         web.Dist(),
-		Logger:         logger,
+		Build:        build,
+		Pinger:       db,
+		Videos:       db,
+		Playback:     db,
+		Scans:        scans,
+		MediaFolders: mediaFolders,
+		Folders:      db,
+		Transcoder:   media.NewLiveTranscoder(requestMediaCtx.Done()),
+		Artifacts:    artifactStore,
+		Catalog:      catalog,
+		Opener:       fileOpener,
+		Processing:   db,
+		Events:       events,
+		Assets:       web.Dist(),
+		Logger:       logger,
 	})
 
 	// 変化の知らせの接続は終わりが無いので、停止の猶予待ちより先に閉じる。
