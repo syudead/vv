@@ -138,47 +138,58 @@ test("opening failed scan details acknowledges the notice across reloads", async
   await expect(page.getByRole("button", { name: /取り込み状況を開く/ })).toHaveCount(0);
 });
 
-test("toast stays above the scan indicator on a narrow viewport", async ({ page }) => {
-  await page.setViewportSize({ width: 360, height: 800 });
-  await page.route("**/api/media-folders", async (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
-  );
-  await page.route("**/api/scans/current", async (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        id: 20,
-        state: "running",
-        total: 10,
-        completed: 4,
-        failed: 0,
+for (const width of [360, 640, 768]) {
+  test(`toast stays clear of the scan summary at ${String(width)}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.route("**/api/media-folders", async (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+    );
+    await page.route("**/api/scans/current", async (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          id: 20,
+          state: "running",
+          total: 10,
+          completed: 4,
+          failed: 0,
+        }),
       }),
-    }),
-  );
+    );
 
-  await page.goto("/");
-  const indicator = page.getByRole("button", { name: /取り込み中 40%/ });
-  await expect(indicator).toBeVisible();
-  await page.getByRole("button", { name: "メニュー" }).click();
-  await page.getByRole("button", { name: "最近追加" }).click();
-  await page
-    .getByRole("button", { name: "メニューを閉じる" })
-    .evaluate((button: HTMLButtonElement) => button.click());
-  const toast = page.getByText("「最近追加」は準備中です");
-  await expect(toast).toBeVisible();
-  await indicator.hover();
-  const summary = page.getByRole("dialog");
-  await expect(summary).toBeVisible();
+    await page.goto("/");
+    const indicator = page.getByRole("button", { name: /取り込み中 40%/ });
+    await expect(indicator).toBeVisible();
+    await page.getByRole("button", { name: "メニュー" }).click();
+    await page.getByRole("button", { name: "最近追加" }).click();
+    if (width < 640) {
+      await page
+        .getByRole("button", { name: "メニューを閉じる" })
+        .evaluate((button: HTMLButtonElement) => button.click());
+    }
+    const toast = page.getByText("「最近追加」は準備中です");
+    await expect(toast).toBeVisible();
+    await indicator.hover();
+    const summary = page.getByRole("dialog");
+    await expect(summary).toBeVisible();
 
-  const [toastBox, summaryBox, indicatorBox] = await Promise.all([
-    toast.boundingBox(),
-    summary.boundingBox(),
-    indicator.boundingBox(),
-  ]);
-  expect(toastBox).not.toBeNull();
-  expect(summaryBox).not.toBeNull();
-  expect(indicatorBox).not.toBeNull();
-  expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(summaryBox!.y);
-  expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(indicatorBox!.y);
-});
+    const [toastBox, summaryBox, indicatorBox] = await Promise.all([
+      toast.boundingBox(),
+      summary.boundingBox(),
+      indicator.boundingBox(),
+    ]);
+    expect(toastBox).not.toBeNull();
+    expect(summaryBox).not.toBeNull();
+    expect(indicatorBox).not.toBeNull();
+    const toastAndSummaryAreSeparate =
+      toastBox!.x + toastBox!.width <= summaryBox!.x ||
+      summaryBox!.x + summaryBox!.width <= toastBox!.x ||
+      toastBox!.y + toastBox!.height <= summaryBox!.y ||
+      summaryBox!.y + summaryBox!.height <= toastBox!.y;
+    expect(toastAndSummaryAreSeparate).toBe(true);
+    expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(indicatorBox!.y);
+  });
+}
