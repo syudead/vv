@@ -26,24 +26,30 @@ export default function TagRow({
   tag,
   renaming,
   pending,
+  blockStart,
   error,
   registerRefs,
   onStartRename,
   onCancelRename,
   onSubmitRename,
   onDelete,
+  onDraftChange,
 }: {
   tag: Tag;
   renaming: boolean;
   pending: boolean;
+  /** ほかの行の作成・改名が送信中で、この行では新しく改名や削除を始められない。 */
+  blockStart: boolean;
   error: TagFieldError | null;
   registerRefs: (id: number, refs: Partial<TagRowRefs>) => void;
   onStartRename: (tag: Tag) => void;
   onCancelRename: () => void;
   onSubmitRename: (tag: Tag, name: string) => void;
   onDelete: (tag: Tag) => void;
+  /** 値が変わるたびに呼ぶ。呼び出し元はこれで直前の失敗の表示を消す。 */
+  onDraftChange?: () => void;
 }) {
-  const field = useTagNameField(tag.name);
+  const field = useTagNameField(tag.name, onDraftChange);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -59,6 +65,14 @@ export default function TagRow({
     if (pending) return;
     const spelling = field.trySpelling();
     if (spelling !== null) onSubmitRename(tag, spelling);
+  }
+
+  function cancel() {
+    // 送信中は、その応答が届くまで閉じない（Esc の場合。この行に「キャンセル」
+    // のボタンは無い。ui-design.md「Create and rename」）。閉じたあとに届いた
+    // 応答が、もう無いこの行や別の行の状態を書き換えることを防ぐ。
+    if (pending) return;
+    onCancelRename();
   }
 
   const reasonId = `tag-rename-reason-${String(tag.id)}`;
@@ -81,7 +95,7 @@ export default function TagRow({
                 submit();
               } else if (event.key === "Escape") {
                 event.preventDefault();
-                onCancelRename();
+                cancel();
               }
             }}
             aria-label={`「${tag.name}」の新しい名前`}
@@ -143,7 +157,7 @@ export default function TagRow({
           label="改名"
           size="sm"
           onClick={() => onStartRename(tag)}
-          disabled={renaming}
+          disabled={renaming || blockStart}
         >
           <Pencil />
         </IconButton>
@@ -153,7 +167,7 @@ export default function TagRow({
               ref={(node) => registerRefs(tag.id, { menuButton: node })}
               label="その他の操作"
               size="sm"
-              disabled={renaming}
+              disabled={renaming || blockStart}
             >
               <Ellipsis />
             </IconButton>

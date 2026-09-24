@@ -703,4 +703,148 @@ describe("TagsPage", () => {
     expect(screen.getByTitle("Drama")).toBeDefined();
     expect(screen.queryByText("タグを取得できません")).toBeNull();
   });
+
+  it("改名中に検索でその行が一致しなくなっても行は消えず、打っている途中の名前が残る（Devinの指摘1）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "改名" }));
+    const input = await screen.findByRole("textbox", { name: "「旅行」の新しい名前" });
+    await user.clear(input);
+    await user.type(input, "捨てない下書き");
+
+    // 「旅行」はもう検索に一致しない条件へ変える。
+    const search = screen.getByRole("searchbox", { name: "タグを検索" });
+    await user.type(search, "Anime");
+
+    // 行は消えず、打っている途中の名前もそのまま残る。
+    const stillInput = screen.getByRole("textbox", { name: "「旅行」の新しい名前" });
+    expect(stillInput).toBe(input);
+    expect((stillInput as HTMLInputElement).value).toBe("捨てない下書き");
+    // 件数の行は実際の一致件数（Anime の1件）のままで、ピン留めした分は数えない。
+    expect(screen.getByText("1 / 3 個のタグ")).toBeDefined();
+  });
+
+  it("改名の送信中はEscで閉じない。閉じたあとに応答が届いて状態を書き換えることも無い（Devinの指摘2）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "改名" }));
+    const input = await screen.findByRole("textbox", { name: "「旅行」の新しい名前" });
+    await user.clear(input);
+    await user.type(input, "旅行2024");
+
+    holdNextMutation = true;
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
+
+    // 送信中の Esc は無視される。
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("textbox", { name: "「旅行」の新しい名前" })).toBeDefined();
+
+    release?.();
+    expect(await screen.findByTitle("旅行2024")).toBeDefined();
+  });
+
+  it("作成の送信中はEscで閉じず、キャンセルのボタンもdisabledのまま（Devinの指摘2）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    await user.click(screen.getByRole("button", { name: "新しいタグ" }));
+    const input = screen.getByRole("textbox", { name: "新しいタグの名前" });
+    await user.type(input, "Banana");
+
+    holdNextMutation = true;
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
+
+    expect(
+      screen.getByRole("button", { name: "キャンセル" }).hasAttribute("disabled"),
+    ).toBe(true);
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("textbox", { name: "新しいタグの名前" })).toBeDefined();
+
+    release?.();
+    expect(await screen.findByTitle("Banana")).toBeDefined();
+  });
+
+  it("改名の送信中はほかの行の改名も「新しいタグ」も始められない。応答が届けば再び始められる（Devinの指摘2）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "改名" }));
+    const input = await screen.findByRole("textbox", { name: "「旅行」の新しい名前" });
+    await user.clear(input);
+    await user.type(input, "旅行2024");
+
+    holdNextMutation = true;
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
+
+    const animeRow = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    const animeRenameButton = within(animeRow).getByRole("button", { name: "改名" });
+    expect(animeRenameButton.hasAttribute("disabled")).toBe(true);
+    await user.click(animeRenameButton);
+    expect(screen.queryByRole("textbox", { name: "「Anime」の新しい名前" })).toBeNull();
+
+    expect(
+      screen.getByRole("button", { name: "新しいタグ" }).hasAttribute("disabled"),
+    ).toBe(true);
+
+    release?.();
+    // 「旅行」の改名が終わって初めて、Anime の改名を始められる。応答が
+    // すでに終わった「旅行」の改名を巻き戻すことは無い。
+    expect(await screen.findByTitle("旅行2024")).toBeDefined();
+    await user.click(within(animeRow).getByRole("button", { name: "改名" }));
+    expect(
+      await screen.findByRole("textbox", { name: "「Anime」の新しい名前" }),
+    ).toBeDefined();
+  });
+
+  it("作成の失敗の表示は、入力を打ち直すと消える（Devinの指摘3）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    await user.click(screen.getByRole("button", { name: "新しいタグ" }));
+    const input = screen.getByRole("textbox", { name: "新しいタグの名前" });
+    await user.type(input, "旅行");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByText("「旅行」は既に使われています")).toBeDefined();
+
+    await user.type(input, "2024");
+    expect(screen.queryByText("「旅行」は既に使われています")).toBeNull();
+  });
+
+  it("改名の失敗の表示は、入力を打ち直すと消える（Devinの指摘3）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "改名" }));
+    const input = await screen.findByRole("textbox", { name: "「旅行」の新しい名前" });
+    await user.clear(input);
+    await user.type(input, "アニメ");
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByText("「アニメ」は「Anime」のシノニムです")).toBeDefined();
+
+    await user.type(input, "2024");
+    expect(screen.queryByText("「アニメ」は「Anime」のシノニムです")).toBeNull();
+  });
 });

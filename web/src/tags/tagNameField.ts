@@ -19,14 +19,19 @@ export type TagFieldError = { kind: "taken" | "other"; message: string };
  *
  * 理由は、貼り付け・落とし込みで直接 `setReason` した分も含め、次に値が
  * 実際に変わるまで残る（`setValue` を呼んだときだけ検証をやり直す）。
+ *
+ * `onChange` は、値が実際に変わるたび（`setValue` が呼ばれるたび）に呼ぶ。
+ * 呼び出し元はこれで、直前の送信の失敗（`tag_name_taken` など）を、入力を
+ * 打ち直した時点で消す（Devin の指摘: 失敗の行が編集後も残っていた）。
  */
-export function useTagNameField(initial = "") {
+export function useTagNameField(initial = "", onChange?: () => void) {
   const [value, setValueState] = useState(initial);
   const [reason, setReason] = useState<string | null>(nameReason(initial));
 
   function setValue(next: string): void {
     setValueState(next);
     setReason(nameReason(next));
+    onChange?.();
   }
 
   function onPaste(event: ClipboardEvent<HTMLInputElement>): void {
