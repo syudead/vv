@@ -82,7 +82,10 @@ Codexのlog形式は版によって変わってきたため、実装時に対象
 </details>
 ```
 
-- 行の一意キーは`(tool, session, from)`。同じsessionが同じPRへ再報告したら行を置き換え、
+- 行の一意キーは`(tool, session, model, from)`。一つの期間の中でmodelが切り替わった場合
+  （model変更、subagentが別modelを使う場合）は、応答・turnごとのmodelで分けてmodel別の行を
+  作る。単価はmodelごとに違うため、一行に複数modelのtokenを混ぜない。
+- 同じsessionが同じPRへ再報告したら同じキーの行を置き換え、
   別sessionなら行を足す。review修正で別agentが同じPRに積んだ作業も別行として残る。
 - JSONにはtoken数だけを持ち、金額は表示時に単価表から計算する。`prices`は計算に使った
   単価表の版。
@@ -94,8 +97,12 @@ Codexのlog形式は版によって変わってきたため、実装時に対象
 - 既定では1 session = 1 PRとみなし、sessionの全使用量をそのPRに付ける。handoffの
   「一工程を実行し、PRを一つ開いて終わる」という前提に合う。
 - 一つのsessionで複数のPRを扱った場合は、報告時に`--since <timestamp>`で期間を切り、
-  台帳行に`from`/`to`を残す。合算時に同じsessionの期間が重なれば重なりを一度だけ数える。
-- PRを作らない作業（`issue-spec`でのIssue本文作成など）はそのIssueに台帳commentを置く。
+  台帳行に`from`/`to`を残す。台帳行は期間の合計しか持たず、重なった区間の使用量は後から
+  求められないので、**同じsessionの期間は重ねない**。次のPRへの報告は前のPRへ報告した
+  `to`を`--since`に渡して始める。合算時に同じsessionの期間の重なりを見つけたら、推測で
+  差し引かずに集計結果へ警告として出す。
+- PRを作らない作業はそのIssueに台帳commentを置く。`issue-spec`でのIssue本文作成は
+  そのIssueへ、PRを作らずに終わる`plan-to-issues`工程は親Issueへ記録する。
 - 最後の報告以降のtoken（PR作成そのものや、その後の短い応答）は次の報告まで載らない。
   pushのたびに再報告するので、取りこぼしは最後の一往復程度に収まる。
 
@@ -151,6 +158,7 @@ GitHub toolを使えず、cloud環境ではsession終了後にcontainerが消え
 ## Verification
 
 - collectorのunit test: 重複した`message.id`、subagent file、Codexの累積値、
-  `--since`による分割、未知model、`--merge`での行の置き換え。
+  `--since`による分割、期間内のmodel切り替え、未知model、`--merge`での行の置き換え、
+  期間の重なりの検出。
 - 実機確認: Claude Code（CLI/web）とCodex（CLI）でそれぞれ一工程を実行し、台帳の
   token数がhostの表示（Claudeの`/cost`、Codexの`/status`）と一致すること。
