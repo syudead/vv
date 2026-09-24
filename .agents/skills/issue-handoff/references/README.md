@@ -109,6 +109,7 @@ stages through reviewed PRs.
 
 Humans merge every PR. After a stage PR merge, the maintainer updates the
 parent SDD summary. After an implementation PR merge, the maintainer closes
-that child Issue as completed. Before merging the integration PR, merge the
-latest `main` directly into its feature branch and run the full checks. Updating
-the integration PR branch from its base does not get a separate PR.
+that child Issue as completed. Only after all children are resolved, merge the
+latest `main` directly into the feature branch and run the full checks before
+merging the integration PR. Updating the integration PR branch from its base
+does not get a separate PR.
