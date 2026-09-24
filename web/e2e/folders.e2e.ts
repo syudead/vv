@@ -27,16 +27,26 @@ function folderUrl(rootId: number, path = ""): string {
 }
 
 async function waitForLibrary(request: APIRequestContext, scanId: number) {
+  const currentScan = async () => {
+    const response = await request.get("/api/scans/current");
+    return (await response.json()) as { id: number; state: string; failed: number };
+  };
   await expect
     .poll(
       async () => {
-        const response = await request.get("/api/scans/current");
-        const scan = (await response.json()) as { id: number; state: string };
-        return scan.id === scanId ? scan.state : "other";
+        const scan = await currentScan();
+        return scan.id === scanId && scan.state !== "running" ? "finished" : scan.state;
       },
       { timeout: 60_000 },
     )
-    .toBe("done");
+    .toBe("finished");
+  // 取り込めなかったファイルがあると動画の数が揃わず、下のサムネイル待ちが
+  // 上限まで空回りする。ここで結果を見て、すぐに落とす。
+  const scan = await currentScan();
+  expect({ state: scan.state, failed: scan.failed }).toEqual({
+    state: "done",
+    failed: 0,
+  });
   const states = async () => {
     const response = await request.get("/api/videos?limit=200");
     const page = (await response.json()) as { items: { thumbnailState: string }[] };
