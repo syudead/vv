@@ -284,7 +284,9 @@ function RootSearchResults({
     );
   }, [criteria, cursor, hasMore, items, total]);
 
-  const rootsWaiting = roots.loading;
+  // 置き場所を描けるのは登録フォルダ一覧が揃ったときだけ。それまでは位置の復元も
+  // 続きの読み込みもしない（失敗中に観測点が見え続けて全件を読みに行かないように）。
+  const rootsReady = !roots.loading && roots.error === null;
   const pendingScroll = useRef(restored?.scrollY);
   useEffect(() => {
     const previous = history.scrollRestoration;
@@ -295,17 +297,17 @@ function RootSearchResults({
   }, []);
   useLayoutEffect(() => {
     const top = pendingScroll.current;
-    // 登録フォルダ一覧を待つ間は骨組みなので、揃ってから戻す。
-    if (top === undefined || rootsWaiting || items.length === 0) return;
+    // 登録フォルダ一覧を待つ間や失敗中はカードが無いので、揃ってから戻す。
+    if (top === undefined || !rootsReady || items.length === 0) return;
     pendingScroll.current = undefined;
     window.scrollTo({ top, behavior: "auto" });
     requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
-  }, [items.length, rootsWaiting]);
+  }, [items.length, rootsReady]);
 
   const sentinel = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     const target = sentinel.current;
-    if (target === null || !hasMore) return;
+    if (target === null || !hasMore || !rootsReady) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (entries.some((entry) => entry.isIntersecting)) loadMore();
@@ -314,13 +316,17 @@ function RootSearchResults({
     );
     observer.observe(target);
     return () => observer.disconnect();
-  }, [hasMore, loadMore]);
+  }, [hasMore, loadMore, rootsReady]);
 
   // 置き場所は登録フォルダの表示名から始まるので、一覧が揃うまでは結果を確定させない。
   // 取得に失敗したら、同名の動画を見分けられないまま出さず、再試行を促す。
-  const waiting = loading || rootsWaiting;
+  const waiting = loading || roots.loading;
   const failure = error ?? roots.error;
-  const retry = error !== null ? reload : roots.reload;
+  // 失敗した側だけを取り直す。両方が失敗していれば両方を取り直す。
+  const retry = () => {
+    if (error !== null) reload();
+    if (roots.error !== null) roots.reload();
+  };
   const noMatch = !waiting && failure === null && items.length === 0;
   const summaryText = waiting
     ? "読み込み中…"

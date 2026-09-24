@@ -548,6 +548,24 @@ describe("FolderPage", () => {
     expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();
   });
 
+  it("最上位の検索で動画と登録フォルダ一覧の両方が失敗したら、1度の再試行で両方を取り直す", async () => {
+    const base = fetchMock.getMockImplementation();
+    let fail = true;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (fail && (url === "/api/folders" || url.startsWith("/api/videos?"))) {
+        return Promise.resolve(json({ code: "internal", message: "壊れています" }, 500));
+      }
+      return base!(input, init);
+    });
+    const user = userEvent.setup();
+    renderFolders("/folders?q=京都");
+    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
+    fail = false;
+    await user.click(screen.getByRole("button", { name: "再試行" }));
+    expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();
+  });
+
   it("最上位の検索はライブラリ全体を対象にし、置き場所を登録フォルダ名から作る", async () => {
     renderFolders("/folders?q=京都");
     const x = await screen.findByRole("link", { name: "x、movies/A" });
