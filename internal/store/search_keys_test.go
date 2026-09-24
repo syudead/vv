@@ -19,7 +19,7 @@ import (
 // locationKeys は path の所在の search_key・title_key・search_version を返す。
 func locationKeys(t *testing.T, db *DB, path string) (searchKey, titleKey string, version int) {
 	t.Helper()
-	if err := db.SQL().QueryRow(
+	if err := db.sql.QueryRow(
 		`select search_key, title_key, search_version from video_locations where path = ?`, path,
 	).Scan(&searchKey, &titleKey, &version); err != nil {
 		t.Fatalf("所在 %s の鍵を読めない: %v", path, err)
@@ -39,7 +39,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.SQL(), fsy)
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	if _, err := provider.UpTo(ctx, 6); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
 		t.Fatal(err)
 	}
 	// バッチの境目を跨ぐよう、searchKeyBatchSize より多く入れる。
@@ -62,7 +62,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 		})
 	}
 	for i, location := range locations {
-		res, err := db.SQL().Exec(`insert into videos(content_key, container) values (?, 'mp4')`, fmt.Sprintf("key-%d", i))
+		res, err := db.sql.Exec(`insert into videos(content_key, container) values (?, 'mp4')`, fmt.Sprintf("key-%d", i))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +70,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := db.SQL().Exec(`insert into video_locations
+		if _, err := db.sql.Exec(`insert into video_locations
 			(video_id, path, title, size_bytes, mtime, created_at, updated_at)
 			values (?, ?, ?, 1, 1, 1, 1)`, videoID, location.path, location.title); err != nil {
 			t.Fatal(err)
@@ -92,7 +92,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 		t.Errorf("作り直した件数 = %d, want %d", refreshed, len(locations))
 	}
 	var stale int
-	if err := db.SQL().QueryRow(`select count(*) from video_locations where search_version < ?`, domain.SearchKeyVersion).Scan(&stale); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from video_locations where search_version < ?`, domain.SearchKeyVersion).Scan(&stale); err != nil {
 		t.Fatal(err)
 	}
 	if stale != 0 {
@@ -119,11 +119,11 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	if refreshed, err := db.Library().RefreshSearchKeys(ctx); err != nil || refreshed != 0 {
 		t.Errorf("2度目の埋め直し = %d (err=%v), want 0", refreshed, err)
 	}
-	if _, err := db.SQL().Exec(`update video_locations set search_version = 0 where path like '/media/bulk/%' and id % 2 = 0`); err != nil {
+	if _, err := db.sql.Exec(`update video_locations set search_version = 0 where path like '/media/bulk/%' and id % 2 = 0`); err != nil {
 		t.Fatal(err)
 	}
 	var staleRows int
-	if err := db.SQL().QueryRow(`select count(*) from video_locations where search_version < ?`, domain.SearchKeyVersion).Scan(&staleRows); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from video_locations where search_version < ?`, domain.SearchKeyVersion).Scan(&staleRows); err != nil {
 		t.Fatal(err)
 	}
 	if staleRows == 0 {
@@ -296,7 +296,7 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 		"location_search_fts": 0, "location_search_fts_ai": 0, "location_search_fts_ad": 0, "location_search_fts_au": 0,
 	} {
 		var count int
-		if err := db.SQL().QueryRow(`select count(*) from sqlite_master where name = ?`, name).Scan(&count); err != nil {
+		if err := db.sql.QueryRow(`select count(*) from sqlite_master where name = ?`, name).Scan(&count); err != nil {
 			t.Fatal(err)
 		}
 		if count != want {
@@ -312,16 +312,16 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 
 	// rebuild で既存の所在が索引に戻り、トリガが以後の書き込みを写す。
 	var count int
-	if err := db.SQL().QueryRow(`select count(*) from videos_fts where videos_fts match '夏休み'`).Scan(&count); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from videos_fts where videos_fts match '夏休み'`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
 		t.Errorf("Down 後の MATCH '夏休み' = %d, want 1", count)
 	}
-	if _, err := db.SQL().Exec(`update video_locations set title = '花火大会'`); err != nil {
+	if _, err := db.sql.Exec(`update video_locations set title = '花火大会'`); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SQL().QueryRow(`select count(*) from videos_fts where videos_fts match '花火大'`).Scan(&count); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from videos_fts where videos_fts match '花火大'`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
@@ -361,7 +361,7 @@ func TestSearchKeyFollowsListRegistrationRule(t *testing.T) {
 	}
 
 	// 名前が `\` で終わる登録フォルダでは、`\` を削らずにその下だけを登録とみなす。
-	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, `/elsewhere\`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, `/elsewhere\`); err != nil {
 		t.Fatal(err)
 	}
 	inside := `/elsewhere\/clip.mp4`

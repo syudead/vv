@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
+	"github.com/syudead/vv/internal/mediafs"
 )
 
 // fakeArtifacts は生成物の置き場の代わりである。thumbnails・previews は content
@@ -160,6 +161,9 @@ func newTestServer(t *testing.T, opts Options) http.Handler {
 
 	if opts.Assets == nil {
 		opts.Assets = emptyAssets{}
+	}
+	if opts.Files == nil {
+		opts.Files = mediafs.New()
 	}
 	return NewRouter(opts)
 }

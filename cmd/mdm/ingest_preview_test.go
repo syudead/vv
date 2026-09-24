@@ -40,7 +40,7 @@ func TestIngestPreviewMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, video.ID); err != nil {
+	if err := store.SetJobAttemptsForTest(ctx, db, domain.JobPreview, video.ID, domain.MaxJobAttempts-1); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
@@ -92,7 +92,7 @@ func TestIngestPreviewUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, video.ID); err != nil {
+	if err := store.SetJobAttemptsForTest(ctx, db, domain.JobPreview, video.ID, domain.MaxJobAttempts-1); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)

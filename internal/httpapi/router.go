@@ -28,8 +28,8 @@ type Pinger interface {
 // Library は一覧と詳細の問い合わせ先である。httpapi は保存の手段を知らないので、
 // 必要な操作だけを宣言する。
 //
-// 配信と既定アプリで開く操作は、動画の所在と登録フォルダを読んで、開いてよい
-// 実体かを確かめる。
+// 配信と既定アプリで開く操作は、動画の所在と登録フォルダを読んで MediaFiles へ
+// 渡す。開いてよい実体かは MediaFiles が確かめる。
 type Library interface {
 	ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error)
 	GetVideo(ctx context.Context, id int64) (domain.Video, error)
@@ -95,6 +95,22 @@ type VideoCatalog interface {
 	RetryProbe(ctx context.Context, video domain.Video) error
 }
 
+// MediaFiles は、メディアファイルとディレクトリへのアクセスを確かめる担当である。
+// internal/mediafs の FS がこれを満たす。開いてよいか（登録フォルダの内側にあり、
+// symlink を辿った先も内側にあり、通常ファイルであること）の判定はそちらが持ち、
+// httpapi は結果を応答へ移すだけである。
+type MediaFiles interface {
+	// OpenMediaFile は roots のどれかの内側にある通常ファイルだけを、symlink を
+	// 辿った先で開く。開けないときは domain.ErrMediaFileUnavailable を包む。
+	OpenMediaFile(roots []string, path string) (*os.File, os.FileInfo, error)
+	// ResolveMediaFile は OpenMediaFile と同じ規則で、辿った先のパスを返す。
+	ResolveMediaFile(roots []string, path string) (string, error)
+	// ListDirectories はディレクトリ選択に path の子ディレクトリを返す。
+	ListDirectories(path string) (domain.DirectoryListing, error)
+	// DirectoryRoots はディレクトリ選択の根を返す。
+	DirectoryRoots() domain.DirectoryListing
+}
+
 // FileOpener はサーバーの PC の既定アプリでファイルを開く。internal/opener の
 // *Opener がこれを満たす。起動できる環境かどうかは起動時に決まっている。
 type FileOpener interface {
@@ -131,6 +147,9 @@ type Options struct {
 	Catalog VideoCatalog
 	// Opener はファイルを既定アプリで開く。nil なら開けない環境として扱う。
 	Opener FileOpener
+	// Files はメディアファイルとディレクトリへのアクセス。nil なら配信とライブ変換は
+	// 404、既定アプリで開く操作は 409 file_missing、ディレクトリ選択は 500 を返す。
+	Files MediaFiles
 	// Processing は段階ごとの残りの問い合わせ先。nilなら経路は500を返す。
 	Processing Processing
 	// Events は画面へ送る変化の知らせ。nilなら経路は500を返す。
@@ -155,6 +174,7 @@ type server struct {
 	artifacts    ArtifactReader
 	catalog      VideoCatalog
 	opener       FileOpener
+	files        MediaFiles
 	processing   Processing
 	events       *Events
 	logger       *slog.Logger
@@ -195,6 +215,7 @@ func NewRouter(opts Options) http.Handler {
 		artifacts:    opts.Artifacts,
 		catalog:      opts.Catalog,
 		opener:       opts.Opener,
+		files:        opts.Files,
 		processing:   opts.Processing,
 		events:       opts.Events,
 		logger:       logger,

@@ -30,7 +30,7 @@ linters:
   settings:
     depguard:
       rules:
-        # cmd → internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} → internal/domain の
+        # cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} → internal/domain の
         # 一方向のみを許す。internal/domain は依存の終端なので、外部 I/O にも
         # 他の internal パッケージにも依存してはならない。
         #
@@ -49,6 +49,11 @@ linters:
                 internal/domain から database/sql を import してはならない。ドメインモデルは
                 永続化の手段を知らない。SQL は internal/store に置くこと
                 （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: os$
+              desc: >-
+                internal/domain から os を import してはならない。ファイルシステムに
+                触れる確かめは internal/mediafs などのアダプタに置き、domain にはパスの
+                包含のような純粋な判定だけを置くこと（ARCHITECTURE.md "Intended dependency direction"）。
             - pkg: os/exec
               desc: >-
                 internal/domain から os/exec を import してはならない。外部コマンドの実行は
@@ -62,47 +67,52 @@ linters:
             - pkg: github.com/syudead/vv/internal/httpapi
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/store
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/media
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/artifacts
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/opener
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} →
+                internal/domain の一方向だけである（ARCHITECTURE.md）。
+            - pkg: github.com/syudead/vv/internal/mediafs
+              desc: >-
+                internal/domain から他の internal パッケージを import してはならない。
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/scanner
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/jobs
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/app
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/eventbus
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} →
+                依存は cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
 
         # アプリケーション層（internal/app）はユースケースだけを持つ。外部 I/O の
@@ -157,6 +167,11 @@ linters:
                 internal/app から internal/opener を import してはならない。OS の既定アプリの起動はアダプタの仕事で、
                 アプリケーション層は必要な操作を自身の interface として宣言し、
                 実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/mediafs
+              desc: >-
+                internal/app から internal/mediafs を import してはならない。ファイルシステムでの確かめはアダプタの仕事で、
+                アプリケーション層は必要な操作を自身の interface として宣言し、
+                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
             - pkg: github.com/syudead/vv/internal/scanner
               desc: >-
                 internal/app から internal/scanner を import してはならない。ファイルシステムの走査はアダプタの仕事で、
@@ -183,6 +198,7 @@ linters:
             - "**/internal/httpapi/*.go"
             - "**/internal/store/*.go"
             - "**/internal/media/*.go"
+            - "**/internal/mediafs/*.go"
             - "**/internal/artifacts/*.go"
             - "**/internal/opener/*.go"
             - "**/internal/scanner/*.go"
@@ -206,6 +222,11 @@ linters:
                 使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
                 （ARCHITECTURE.md "Intended dependency direction"）。
             - pkg: github.com/syudead/vv/internal/media$
+              desc: >-
+                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
+                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/mediafs$
               desc: >-
                 internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
                 使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める

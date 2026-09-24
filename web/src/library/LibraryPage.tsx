@@ -23,19 +23,20 @@ import {
 } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
-import Button from "../ui/Button";
-import LibraryToolbar from "./LibraryToolbar";
 import {
   clearConditions,
   hasConditions,
   type HistoryMode,
   type ListCriteria,
   newSeed,
-} from "./listCriteria";
+} from "../videoList/listCriteria";
+import { resultCountText } from "../videoList/listSummary";
+import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
+import { useListCriteria } from "../videoList/useListCriteria";
+import VideoCard, { VideoRow } from "../videoList/VideoCard";
+import EmptyLibrary from "./EmptyLibrary";
+import LibraryToolbar from "./LibraryToolbar";
 import SelectionBar from "./SelectionBar";
-import { CardSkeleton, EmptyLibrary, LoadFailed, NoMatches } from "./states";
-import { useListCriteria } from "./useListCriteria";
-import VideoCard, { VideoRow } from "./VideoCard";
 
 const skeletonCount = 12;
 
@@ -56,11 +57,6 @@ function topmostId(list: HTMLElement | null, top: number): number | undefined {
     }
   }
   return undefined;
-}
-
-/** resultCountText は検索や絞り込み後の全件数を表示する。 */
-export function resultCountText(total: number): string {
-  return `${total.toLocaleString("ja-JP")}件`;
 }
 
 export default function LibraryPage() {
@@ -385,12 +381,7 @@ export default function LibraryPage() {
       </div>
 
       {error !== null && items.length > 0 && (
-        <div className="flex items-center justify-center gap-2 text-sm text-danger">
-          <p>続きを取得できません: {error}</p>
-          <Button size="sm" onClick={retryLoadMore}>
-            再試行
-          </Button>
-        </div>
+        <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
       )}
 
       <div ref={sentinel} aria-hidden="true" className="h-px" />

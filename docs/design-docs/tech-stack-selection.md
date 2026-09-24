@@ -72,6 +72,7 @@ internal/
   media/         # ffprobe/ffmpeg アダプタ、サムネイル生成
   artifacts/     # 生成物（サムネイル・シーク用プレビュー・ホバープレビュー）の置き場
   scanner/       # ファイルスキャンと差分検出
+  mediafs/       # メディアフォルダとその内側のファイルへのアクセスの確かめ
   jobs/          # ジョブキューとワーカー
   eventbus/      # 状態の変化（domain.Event）を購読者へ配る
   opener/        # OS の既定アプリでファイルを開く
@@ -80,7 +81,7 @@ api/
 web/             # React SPA。ビルド結果を embed して配信
 ```
 
-依存方向は `cmd → {app, httpapi, store, media, artifacts, opener, scanner, jobs, eventbus} → domain` の
+依存方向は `cmd → {app, httpapi, store, media, mediafs, artifacts, opener, scanner, jobs, eventbus} → domain` の
 一方向に限定し、`internal/` の兄弟パッケージ同士は import しない。
 `internal/domain` と `internal/app` が `net/http`・`database/sql`・`os/exec` を
 import した時点、`internal/app` がアダプタを import した時点、兄弟パッケージ同士が

@@ -22,6 +22,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi"
 	"github.com/syudead/vv/internal/jobs"
 	"github.com/syudead/vv/internal/media"
+	"github.com/syudead/vv/internal/mediafs"
 	"github.com/syudead/vv/internal/opener"
 	"github.com/syudead/vv/internal/scanner"
 	"github.com/syudead/vv/internal/store"
@@ -195,8 +196,11 @@ func run() error {
 	catalog := app.NewCatalog(app.CatalogOptions{
 		Index: libraryStore, Ingest: ingestStore, Files: artifactStore, Logger: logger,
 	})
+	// メディアフォルダとその内側のファイルへのアクセスの規則は mediafs が1か所で
+	// 持ち、配信・既定アプリで開く機能・フォルダの登録・ディレクトリ選択が共有する。
+	mediaFiles := mediafs.New()
 	// 設定画面のメディアフォルダは、パスをファイルシステムで確かめてから保存する。
-	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: settingsStore, Checker: scanner.NewFolderChecker()})
+	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: settingsStore, Checker: mediaFiles})
 
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:        build,
@@ -210,6 +214,7 @@ func run() error {
 		Artifacts:    artifactStore,
 		Catalog:      catalog,
 		Opener:       fileOpener,
+		Files:        mediaFiles,
 		Processing:   ingestStore,
 		Events:       events,
 		Assets:       web.Dist(),

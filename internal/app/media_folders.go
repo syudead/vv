@@ -17,8 +17,8 @@ type MediaFolderStore interface {
 }
 
 // FolderChecker は、メディアフォルダとして登録するパスがファイルシステム上で
-// 走査できるディレクトリかを確かめ、整えたパスを返す。internal/scanner の
-// FolderChecker がこれを満たす。
+// 走査できるディレクトリかを確かめ、整えたパスを返す。internal/mediafs の
+// FS がこれを満たす。
 type FolderChecker interface {
 	CheckMediaFolder(path string) (string, error)
 }

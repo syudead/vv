@@ -651,7 +651,7 @@ func TestUpsertVideoResyncsWhenAddedLocationBecomesRepresentative(t *testing.T) 
 	}
 
 	var container string
-	if err := db.SQL().QueryRow(
+	if err := db.sql.QueryRow(
 		`select coalesce(container, '') from videos where content_key = 'same'`).Scan(&container); err != nil {
 		t.Fatal(err)
 	}
@@ -674,7 +674,7 @@ func TestDeleteVideoLocationsResyncsRemainingRepresentative(t *testing.T) {
 	}
 
 	var locationID int64
-	if err := db.SQL().QueryRow(
+	if err := db.sql.QueryRow(
 		`select id from video_locations where path = '/media/a.mkv'`).Scan(&locationID); err != nil {
 		t.Fatal(err)
 	}
@@ -683,7 +683,7 @@ func TestDeleteVideoLocationsResyncsRemainingRepresentative(t *testing.T) {
 	}
 
 	var container string
-	if err := db.SQL().QueryRow(
+	if err := db.sql.QueryRow(
 		`select coalesce(container, '') from videos where content_key = 'same'`).Scan(&container); err != nil {
 		t.Fatal(err)
 	}
@@ -739,7 +739,7 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 	location := func(path string) int64 {
 		t.Helper()
 		var id int64
-		if err := db.SQL().QueryRow(`select id from video_locations where path = ?`, path).Scan(&id); err != nil {
+		if err := db.sql.QueryRow(`select id from video_locations where path = ?`, path).Scan(&id); err != nil {
 			t.Fatal(err)
 		}
 		return id

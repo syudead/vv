@@ -15,7 +15,8 @@ import type { Video, VideoPage } from "../api/client";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
-import LibraryPage, { resultCountText } from "./LibraryPage";
+import { resultCountText } from "../videoList/listSummary";
+import LibraryPage from "./LibraryPage";
 
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {

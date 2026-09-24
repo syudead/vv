@@ -2,106 +2,53 @@ package httpapi
 
 import (
 	"errors"
-	"io"
-	"io/fs"
 	"net/http"
-	"os"
-	"path/filepath"
-	"runtime"
-	"sort"
-	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
-	"golang.org/x/text/unicode/norm"
 )
 
+// ListDirectories は設定画面のディレクトリ選択に、サーバーのディレクトリを返す
+// （GET /api/directories）。どのディレクトリを並べるかは MediaFiles が決め、
+// ここは誤りを応答の状態へ移すだけである。
 func (s *server) ListDirectories(w http.ResponseWriter, _ *http.Request, params gen.ListDirectoriesParams) {
-	listing, status, code, err := listDirectories(params.Path)
-	if err != nil {
-		s.writeError(w, status, code, err.Error())
+	if s.files == nil {
+		s.internalError(w, "ディレクトリの読み取りが設定されていません", nil)
 		return
 	}
+	var listing domain.DirectoryListing
+	if params.Path == nil {
+		listing = s.files.DirectoryRoots()
+	} else {
+		var err error
+		listing, err = s.files.ListDirectories(*params.Path)
+		switch {
+		case errors.Is(err, domain.ErrInvalidDirectoryPath):
+			s.writeError(w, http.StatusBadRequest, codeInvalidRequest, err.Error())
+			return
+		case errors.Is(err, domain.ErrDirectoryNotFound):
+			s.writeError(w, http.StatusNotFound, codeNotFound, err.Error())
+			return
+		case err != nil:
+			s.writeError(w, http.StatusBadRequest, codeDirectoryUnavailable, domain.ErrDirectoryUnavailable.Error())
+			return
+		}
+	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, listing, s.logger)
+	writeJSON(w, http.StatusOK, directoryListingResponse(listing), s.logger)
 }
 
-func listDirectories(requested *string) (gen.DirectoryListing, int, gen.ErrorCode, error) {
-	if requested == nil {
-		return directoryRoots(), 0, "", nil
+func directoryListingResponse(listing domain.DirectoryListing) gen.DirectoryListing {
+	directories := make([]gen.DirectoryEntry, 0, len(listing.Directories))
+	for _, entry := range listing.Directories {
+		directories = append(directories, gen.DirectoryEntry{Name: entry.Name, Path: entry.Path})
 	}
-	if *requested == "" || !filepath.IsAbs(*requested) {
-		return gen.DirectoryListing{}, http.StatusBadRequest, codeInvalidRequest, errors.New("絶対pathを指定してください")
+	response := gen.DirectoryListing{Directories: directories}
+	if listing.CurrentPath != "" {
+		response.CurrentPath = &listing.CurrentPath
 	}
-	current := filepath.Clean(*requested)
-	info, err := os.Lstat(current)
-	if errors.Is(err, fs.ErrNotExist) || err == nil && !info.IsDir() {
-		return gen.DirectoryListing{}, http.StatusNotFound, codeNotFound, errors.New("ディレクトリが見つかりません")
+	if listing.ParentPath != "" {
+		response.ParentPath = &listing.ParentPath
 	}
-	if err != nil {
-		return gen.DirectoryListing{}, http.StatusBadRequest, codeDirectoryUnavailable, errors.New("ディレクトリを読み取れません")
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return gen.DirectoryListing{}, http.StatusNotFound, codeNotFound, errors.New("ディレクトリが見つかりません")
-	}
-	resolved, err := filepath.EvalSymlinks(current)
-	resolved = filepath.Clean(resolved)
-	if err != nil || !domain.PathWithinRoot(current, resolved) || !domain.PathWithinRoot(resolved, current) {
-		return gen.DirectoryListing{}, http.StatusNotFound, codeNotFound, errors.New("ディレクトリが見つかりません")
-	}
-	entries, err := os.ReadDir(current)
-	if err != nil {
-		return gen.DirectoryListing{}, http.StatusBadRequest, codeDirectoryUnavailable, errors.New("ディレクトリを読み取れません")
-	}
-	directories := make([]gen.DirectoryEntry, 0, len(entries))
-	for _, entry := range entries {
-		if entry.Type()&os.ModeSymlink != 0 {
-			continue
-		}
-		entryInfo, err := entry.Info()
-		path := filepath.Join(current, entry.Name())
-		if err != nil || !entryInfo.IsDir() || !directoryReadable(path) {
-			continue
-		}
-		directories = append(directories, gen.DirectoryEntry{
-			Name: norm.NFC.String(entry.Name()), Path: path,
-		})
-	}
-	sort.Slice(directories, func(i, j int) bool {
-		left, right := strings.ToLower(directories[i].Name), strings.ToLower(directories[j].Name)
-		if left == right {
-			return directories[i].Name < directories[j].Name
-		}
-		return left < right
-	})
-	listing := gen.DirectoryListing{CurrentPath: &current, Directories: directories}
-	if parent := filepath.Dir(current); parent != current {
-		listing.ParentPath = &parent
-	}
-	return listing, 0, "", nil
-}
-
-func directoryReadable(path string) bool {
-	dir, err := os.Open(path)
-	if err != nil {
-		return false
-	}
-	defer func() { _ = dir.Close() }()
-	_, err = dir.ReadDir(1)
-	return err == nil || errors.Is(err, io.EOF)
-}
-
-func directoryRoots() gen.DirectoryListing {
-	directories := []gen.DirectoryEntry{}
-	if runtime.GOOS != "windows" {
-		directories = append(directories, gen.DirectoryEntry{Name: string(os.PathSeparator), Path: string(os.PathSeparator)})
-		return gen.DirectoryListing{Directories: directories}
-	}
-	for drive := 'A'; drive <= 'Z'; drive++ {
-		path := string(drive) + `:\`
-		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			directories = append(directories, gen.DirectoryEntry{Name: path, Path: path})
-		}
-	}
-	return gen.DirectoryListing{Directories: directories}
+	return response
 }

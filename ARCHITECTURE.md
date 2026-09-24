@@ -110,6 +110,18 @@ addressing a folder by its registered root's id and a `/`-separated relative pat
 Streaming delegates ranges to `http.ServeContent` and only opens current locations that
 resolve inside a configured media folder.
 
+`internal/mediafs` is the one owner of the rule that keeps arbitrary files from being
+read: a location may be opened only when its cleaned path is inside a registered media
+folder, the path its symbolic links resolve to is inside the same folder, and the file is
+a regular file (not a directory or a device). It opens or hands out the resolved path, so
+what was checked is what gets opened. Streaming, live transcoding, opening in the default
+app, registering a media folder (`CheckMediaFolder`: a readable directory reached without
+symbolic links) and the server-side directory picker all use it through interfaces they
+declare. The containment checks themselves are pure functions in `internal/domain`
+(`PathInsideRoot`, `MediaFileInsideRoot`, `SamePath`), so they are tested without a
+filesystem; `internal/httpapi` only maps the result to a response, and a location that
+points outside is answered like a missing file.
+
 `internal/opener` launches the operating system's default app for a video's
 representative location (`explorer.exe`, `open` or `xdg-open`). It is kept apart from
 `internal/media`, which is the entry point for `ffmpeg`/`ffprobe`, and it resolves the
@@ -147,6 +159,11 @@ compile:
 - `PlaybackStore` — playback positions. It holds only the SQL connection and does not
   depend on the rebuildable index stores or their notifications.
 
+`store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
+Tests outside the package set up and inspect storage through the role types, and
+through the few test-only functions in `internal/store/storetest.go` (suffixed
+`ForTest`, never called by production code) when no role operation fits.
+
 A role type never calls another role type's public methods. Reads several roles
 need (media folders, one video, whether a content key is still referenced) have a
 single package-private implementation that each role exposes as its own operation.
@@ -168,7 +185,7 @@ not persisted.
 
 ## Intended dependency direction
 
-`cmd -> internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} -> internal/domain`, one
+`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} -> internal/domain`, one
 way only. The packages under `internal/` fall into three layers:
 
 - `internal/domain` holds the domain model: value types and pure rules
@@ -182,7 +199,7 @@ way only. The packages under `internal/` fall into three layers:
   translates these into SQL and writes their results; it re-reads the inputs
   inside its transaction, and the database constraints (one running scan, one
   unfinished job per `(kind, video_id)`) remain the final guard against races.
-  It is the end of the chain and must not depend on `net/http`, `database/sql`, `os/exec`, the
+  It is the end of the chain and must not depend on `net/http`, `database/sql`, `os`, `os/exec`, the
   SQLite driver, or any other `internal/*` package.
 - `internal/app` is the application layer and holds the use cases: starting,
   running and closing a scan and recovering an interrupted one at startup
@@ -196,13 +213,13 @@ way only. The packages under `internal/` fall into three layers:
   an HTTP server. It must not import `net/http`, `database/sql`, `os/exec`, the
   SQLite driver, or any adapter package.
 - The adapters — `internal/httpapi`, `internal/store`, `internal/media`,
-  `internal/artifacts`, `internal/opener`, `internal/scanner` and `internal/jobs` —
+  `internal/artifacts`, `internal/mediafs`, `internal/opener`, `internal/scanner` and `internal/jobs` —
   talk to the outside world. `internal/eventbus` sits beside them and only delivers
-  `domain.Event` values in-process; only `cmd/mdm` imports it. Filesystem checks stay in the adapters: `internal/scanner` also checks
-  that a media folder path is a readable directory reached without symbolic
-  links (`FolderChecker`), so `internal/store` never touches the filesystem.
-  `internal/httpapi` only parses requests, calls the application layer or
-  the store, and converts to the generated `gen` types.
+  `domain.Event` values in-process; only `cmd/mdm` imports it. Filesystem checks stay in the adapters: `internal/mediafs` checks
+  media folder paths, the files a request may open and the directories the picker lists, so `internal/store` never touches the filesystem
+  and `internal/httpapi` never decides by itself whether a file may be opened.
+  `internal/httpapi` only parses requests, calls the application layer, the store or
+  `internal/mediafs`, and converts to the generated `gen` types.
 
 `cmd/mdm` is the composition root: it reads the configuration, creates the
 adapters and the application-layer values, wires them together, and starts and
@@ -250,14 +267,18 @@ holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.
 The list's conditions (search terms, watch state, playable-only, sort and the shuffle
-`seed`) live in the URL; `web/src/library/listCriteria.ts` converts between the URL and
+`seed`) live in the URL; `web/src/videoList/listCriteria.ts` converts between the URL and
 the criteria `useVideos` sends, and the server applies every condition, so the page
 neither filters loaded pages nor reads ahead to find matches.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
 frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`, and
 `web/src/player/` own their respective product flows, while reusable primitives live in
-`web/src/ui/` and formatting helpers live in `web/src/lib/`. The library, folder and settings
+`web/src/ui/` and formatting helpers live in `web/src/lib/`. The video-list pieces the
+library and folder screens share (list criteria and their URL hook, the condition labels
+and count summary, the video card, the empty/loading/error states and the search, filter,
+sort and zoom controls) live in `web/src/videoList/`, which belongs to neither screen, so
+neither screen imports from the other. The library, folder and settings
 screens use the shell: `app/App.tsx` puts `AppShell` around the `/`, `/folders/*` and
 `/settings` routes, and the playback screen
 (`/videos/:id`) deliberately gets no shell at all, because it is a
@@ -271,7 +292,7 @@ React layers stacked in one container above the player, and keyboard shortcuts a
 handled page-wide rather than by video.js. The composition is recorded in
 [docs/design-docs/library-ui.md](docs/design-docs/library-ui.md).
 The shell exposes the library, the folder browser and media-folder settings as routes.
-The folder browser reuses the library's video card and paging (`useVideos` takes the
+The folder browser reuses the shared video card and the library's paging (`useVideos` takes the
 folder as its source) and reads its location from the URL itself: each path segment is
 encoded once when a link is built and decoded once from `location.pathname`, so names
 containing `%`, `#` or `?` round-trip. "Recently added"

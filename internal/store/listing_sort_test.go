@@ -69,7 +69,7 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 			if _, err := db.Playback().SaveProgress(ctx, key, domain.Progress{PositionMs: 1000}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := db.SQL().Exec(`update playback_progress set updated_at = ? where content_key = ?`, *row.played, key); err != nil {
+			if _, err := db.sql.Exec(`update playback_progress set updated_at = ? where content_key = ?`, *row.played, key); err != nil {
 				t.Fatal(err)
 			}
 		}

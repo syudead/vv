@@ -66,8 +66,7 @@ func claimLastAttempt(t *testing.T, ctx context.Context, db *store.DB, kind doma
 	if err := db.Ingest().EnqueueJob(ctx, kind, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = ? and video_id = ?`,
-		domain.MaxJobAttempts-1, string(kind), videoID); err != nil {
+	if err := store.SetJobAttemptsForTest(ctx, db, kind, videoID, domain.MaxJobAttempts-1); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, kind)

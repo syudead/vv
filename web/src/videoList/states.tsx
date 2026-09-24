@@ -1,4 +1,4 @@
-import { AlertCircle, FolderOpen, type LucideIcon, SearchX } from "lucide-react";
+import { AlertCircle, type LucideIcon, SearchX } from "lucide-react";
 import type { ReactNode } from "react";
 
 import Button from "../ui/Button";
@@ -39,27 +39,6 @@ export function EmptyState({
   );
 }
 
-export function EmptyLibrary({
-  onScan,
-  scanning,
-}: {
-  onScan: () => void;
-  scanning: boolean;
-}) {
-  return (
-    <EmptyState
-      icon={FolderOpen}
-      title="動画がまだありません"
-      description="メディアフォルダに動画を置いて取り込むと、ここに並びます。"
-      action={
-        <Button variant="primary" onClick={onScan} disabled={scanning}>
-          {scanning ? "取り込み中…" : "取り込む"}
-        </Button>
-      }
-    />
-  );
-}
-
 /** NoMatches は条件に一致する動画が無いことだけを示す。 */
 export function NoMatches() {
   return <EmptyState icon={SearchX} title="条件に一致する動画はありません" />;
@@ -74,6 +53,27 @@ export function LoadFailed({ reason, onRetry }: { reason: string; onRetry: () =>
       description={reason}
       action={<Button onClick={onRetry}>再試行</Button>}
     />
+  );
+}
+
+/**
+ * LoadMoreFailed は続きのページを取得できなかったときに一覧の下へ出す一行である。
+ * 読み込んだ分はそのまま残し、続きだけを取り直させる。
+ */
+export function LoadMoreFailed({
+  reason,
+  onRetry,
+}: {
+  reason: string;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-center gap-2 text-sm text-danger">
+      <p>続きを取得できません: {reason}</p>
+      <Button size="sm" onClick={onRetry}>
+        再試行
+      </Button>
+    </div>
   );
 }
 
