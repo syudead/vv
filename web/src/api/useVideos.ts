@@ -7,6 +7,7 @@ import {
   isAborted,
   listFolderVideos,
   listVideos,
+  RequestFailed,
   type Video,
   type VideoSort,
   type WatchFilter,
@@ -82,6 +83,12 @@ export interface VideosState {
   /** loadingMore は続きを読んでいる間 true になる。 */
   loadingMore: boolean;
   error: string | null;
+  /**
+   * notFound は folder を渡したときに、そのフォルダの動画の要求が 404 で
+   * 返ったことを表す（検索中にフォルダが無くなった場合、
+   * list-api.md §5「listFolderVideos でフォルダが無いとき」）。
+   */
+  notFound: boolean;
   /** loadMore は次のページを読む。無限スクロールの観測点から呼ぶ。 */
   loadMore: () => void;
   /** retryLoadMore は失敗した続きのページを同じカーソルから再要求する。 */
@@ -127,6 +134,7 @@ export function useVideos(
   const [loading, setLoading] = useState(seed === undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [generation, setGeneration] = useState(0);
 
   // 再生画面で保存された再生位置を、表示中の項目へ反映する。復元した一覧は
@@ -189,8 +197,21 @@ export function useVideos(
         setCursor(page.nextCursor);
         setHasMore(page.nextCursor !== undefined);
         setError(null);
+        setNotFound(false);
       } catch (failure) {
         if (isAborted(failure)) {
+          return;
+        }
+        if (
+          folderRef.current !== undefined &&
+          failure instanceof RequestFailed &&
+          failure.status === 404
+        ) {
+          // フォルダが無くなった（検索中に配下が削除された等）。一致なしではなく
+          // 「このフォルダは見つかりません」を出す（list-api.md §5）。
+          setNotFound(true);
+          setError(null);
+          setHasMore(false);
           return;
         }
         setError(errorMessage(failure));
@@ -265,6 +286,7 @@ export function useVideos(
     loading,
     loadingMore,
     error,
+    notFound,
     loadMore,
     retryLoadMore,
     reload,

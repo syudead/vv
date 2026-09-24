@@ -58,27 +58,58 @@ export function parseFolderPathname(pathname: string): FolderLocation {
 }
 
 /**
+ * VideoLocationLabel は動画カードに添える置き場所である（ui-design.md
+ * 「Search results」）。`label` は表示・読み上げに使う文字列（先頭の側を
+ * 省略して表示する）、`title` は `title` 属性に入れる省略しない全体である。
+ */
+export interface VideoLocationLabel {
+  label: string;
+  title: string;
+}
+
+/**
  * folderLocationLabel は、開いているフォルダの配下検索結果に添える置き場所を作る
  * （ui-design.md「Search results」）。直下は「このフォルダ」、それ以外は開いている
- * フォルダからの相対パス。
+ * フォルダからの相対パス。相対パス自体が省略しない全体なので、`title` は `label`
+ * と同じにする。
  */
-export function folderLocationLabel(open: FolderRef, target: VideoFolder): string {
-  if (target.path === open.path) return "このフォルダ";
+export function folderLocationLabel(
+  open: FolderRef,
+  target: VideoFolder,
+): VideoLocationLabel {
+  if (target.path === open.path) return { label: "このフォルダ", title: "このフォルダ" };
   const prefix = open.path === "" ? "" : `${open.path}/`;
-  return target.path.startsWith(prefix) ? target.path.slice(prefix.length) : target.path;
+  const relative = target.path.startsWith(prefix)
+    ? target.path.slice(prefix.length)
+    : target.path;
+  return { label: relative, title: relative };
+}
+
+/** RootDisplay は最上位の置き場所を作るのに要る登録フォルダの情報である。 */
+export interface RootDisplay {
+  /** rootDisplayName(rootPath) と同じ規則の表示名。 */
+  name: string;
+  /** 登録フォルダの絶対パス。 */
+  rootPath: string;
 }
 
 /**
  * topLevelLocationLabel は、最上位（`/folders`）の検索結果に添える置き場所を作る。
- * 登録フォルダの表示名から始め、直下ならその名前だけにする（ui-design.md「Search results」）。
+ * 表示は登録フォルダの表示名から始め、直下ならその名前だけにする。`title` は
+ * 省略しない全体として、登録フォルダの絶対パスから始める（ui-design.md
+ * 「Search results」）。登録フォルダが分からない間（取り込み直後の入れ替わりなど）
+ * は undefined を返し、呼び出し側は行ごと出さない。
  */
 export function topLevelLocationLabel(
   target: VideoFolder,
-  rootName: string | undefined,
-): string {
-  const name = rootName ?? "";
-  if (target.path === "") return name;
-  return name === "" ? target.path : `${name}/${target.path}`;
+  root: RootDisplay | undefined,
+): VideoLocationLabel | undefined {
+  if (root === undefined) return undefined;
+  if (target.path === "") return { label: root.name, title: root.rootPath };
+  return {
+    label: `${root.name}/${target.path}`,
+    title: `${root.rootPath}/${target.path}`,
+  };
 }
 
 /** folderKey はフォルダを一意に表す文字列である（控えの鍵・React の key）。 */

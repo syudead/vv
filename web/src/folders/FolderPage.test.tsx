@@ -96,10 +96,18 @@ function Player() {
   );
 }
 
-/** LocationProbe は今の URL を見せる（MemoryRouter は window.location と同期しない）。 */
+/** LocationProbe は今の URL を見せ、履歴を1つ戻る操作を置く（戻る/進むの確認）。 */
 function LocationProbe() {
   const location = useLocation();
-  return <span data-testid="location">{location.pathname}</span>;
+  const navigate = useNavigate();
+  return (
+    <>
+      <span data-testid="location">{`${location.pathname}${location.search}`}</span>
+      <button type="button" onClick={() => void navigate(-1)}>
+        テストで戻る
+      </button>
+    </>
+  );
 }
 
 function renderFolders(initial: string) {
@@ -163,6 +171,13 @@ describe("FolderPage", () => {
             total: 2,
           };
           return Promise.resolve(json(page));
+        }
+        // 検索中にフォルダが無くなった状況を模す（listing は 200 のまま、配下の
+        // 検索だけが 404 を返す）。
+        if (params.get("query") === "gone") {
+          return Promise.resolve(
+            json({ code: "not_found", message: "そのフォルダは見つかりません" }, 404),
+          );
         }
         if (params.has("query")) return Promise.resolve(json({ items: [], total: 0 }));
         if (params.get("watch") === "unwatched") {
@@ -493,6 +508,12 @@ describe("FolderPage", () => {
     ).toBeDefined();
   });
 
+  it("検索中にフォルダが無くなると、一致なしではなく見つからない案内を出す", async () => {
+    renderFolders("/folders/3/A?q=gone");
+    expect(await screen.findByText("このフォルダは見つかりません")).toBeDefined();
+    expect(screen.queryByText("条件に一致する動画はありません")).toBeNull();
+  });
+
   it("最上位の検索はライブラリ全体を対象にし、置き場所を登録フォルダ名から作る", async () => {
     renderFolders("/folders?q=京都");
     const x = await screen.findByRole("link", { name: "x、movies/A" });
@@ -541,7 +562,7 @@ describe("FolderPage", () => {
 
     await user.click(screen.getByRole("button", { name: "条件を解除" }));
     await screen.findByRole("link", { name: "x" });
-    expect(screen.getByTestId("location").textContent).toBe("/folders/3/A");
+    expect(screen.getByTestId("location").textContent).toMatch(/^\/folders\/3\/A(\?|$)/);
   });
 
   it("検索の一致なしでは範囲のチップを添え、条件を解除しても同じフォルダに留まる", async () => {
@@ -554,7 +575,7 @@ describe("FolderPage", () => {
 
     await user.click(screen.getByRole("button", { name: "条件を解除" }));
     await screen.findByRole("link", { name: "x" });
-    expect(screen.getByTestId("location").textContent).toBe("/folders/3/A");
+    expect(screen.getByTestId("location").textContent).toMatch(/^\/folders\/3\/A(\?|$)/);
   });
 
   it("sort=random と seed を URL のまま使う", async () => {
@@ -566,5 +587,62 @@ describe("FolderPage", () => {
         requests.some((url) => url.includes("sort=random") && url.includes("seed=42")),
       ).toBe(true),
     );
+  });
+
+  it("並べ直すは新しい seed で履歴を1つ増やし、戻ると前の seed に戻る", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?sort=random&seed=7");
+    await screen.findByRole("link", { name: "x" });
+
+    await user.click(screen.getByRole("button", { name: "並べ直す" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).not.toBe(
+        "/folders/3/A?sort=random&seed=7",
+      ),
+    );
+    const seed = new URLSearchParams(
+      screen.getByTestId("location").textContent?.split("?")[1] ?? "",
+    ).get("seed");
+    expect(seed).not.toBe("7");
+    await waitFor(() =>
+      expect(requests.some((url) => url.includes(`seed=${seed ?? ""}`))).toBe(true),
+    );
+
+    await user.click(screen.getByRole("button", { name: "テストで戻る" }));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/folders/3/A?sort=random&seed=7",
+    );
+  });
+
+  it("/ でフォルダの検索欄にフォーカスする", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A");
+    await screen.findByRole("link", { name: "x" });
+    const box = screen.getByRole("searchbox", { name: "Aの中を検索" });
+    expect(document.activeElement).not.toBe(box);
+
+    await user.keyboard("/");
+    expect(document.activeElement).toBe(box);
+  });
+
+  it("最上位で検索語が空のときは、表示と並び順のまとめの中でも並べ替え・向きを無効にする", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders");
+    await screen.findAllByRole("link", { name: /^movies、/ });
+
+    await user.click(screen.getByRole("button", { name: "表示と並び順" }));
+    // jsdom は <fieldset disabled> から子孫の入力への継承を実装しないので、
+    // fieldset 自身が disabled を持つことを確かめる（実ブラウザでは子の
+    // input・button にも及ぶ）。絞り込み・並べ替えのメニューボタンは disabled
+    // 属性を自分で持つので、そちらは直接確かめられる。
+    const group = await screen.findByRole("group", { name: "並び順" });
+    expect((group as HTMLFieldSetElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "絞り込み" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "並び順: 追加日" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
   });
 });

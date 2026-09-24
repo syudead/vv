@@ -88,36 +88,42 @@ describe("breadcrumbsFor", () => {
 
 describe("folderLocationLabel", () => {
   it("開いているフォルダの直下は「このフォルダ」にする", () => {
-    expect(folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A" })).toBe(
-      "このフォルダ",
-    );
-    expect(folderLocationLabel({ rootId: 3, path: "" }, { rootId: 3, path: "" })).toBe(
-      "このフォルダ",
+    expect(
+      folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A" }),
+    ).toEqual({ label: "このフォルダ", title: "このフォルダ" });
+    expect(folderLocationLabel({ rootId: 3, path: "" }, { rootId: 3, path: "" })).toEqual(
+      { label: "このフォルダ", title: "このフォルダ" },
     );
   });
 
-  it("配下は開いているフォルダからの相対パスにする", () => {
+  it("配下は開いているフォルダからの相対パスにする（label と title は同じ）", () => {
     expect(
       folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A/B" }),
-    ).toBe("B");
+    ).toEqual({ label: "B", title: "B" });
     expect(
       folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A/B/C" }),
-    ).toBe("B/C");
-    expect(folderLocationLabel({ rootId: 3, path: "" }, { rootId: 3, path: "A/B" })).toBe(
-      "A/B",
-    );
+    ).toEqual({ label: "B/C", title: "B/C" });
+    expect(
+      folderLocationLabel({ rootId: 3, path: "" }, { rootId: 3, path: "A/B" }),
+    ).toEqual({ label: "A/B", title: "A/B" });
   });
 });
 
 describe("topLevelLocationLabel", () => {
-  it("登録フォルダの表示名から始め、直下ならその名前だけにする", () => {
-    expect(topLevelLocationLabel({ rootId: 3, path: "" }, "movies")).toBe("movies");
-    expect(topLevelLocationLabel({ rootId: 3, path: "A/B" }, "movies")).toBe(
-      "movies/A/B",
-    );
+  const root = { name: "movies", rootPath: "/a/movies" };
+
+  it("表示は登録フォルダの表示名から始め、直下ならその名前だけにする", () => {
+    expect(topLevelLocationLabel({ rootId: 3, path: "" }, root)).toEqual({
+      label: "movies",
+      title: "/a/movies",
+    });
+    expect(topLevelLocationLabel({ rootId: 3, path: "A/B" }, root)).toEqual({
+      label: "movies/A/B",
+      title: "/a/movies/A/B",
+    });
   });
 
-  it("登録フォルダの名前が分からないときはパスだけにする", () => {
-    expect(topLevelLocationLabel({ rootId: 3, path: "A" }, undefined)).toBe("A");
+  it("登録フォルダが分からないときは undefined を返し、行ごと出さない", () => {
+    expect(topLevelLocationLabel({ rootId: 3, path: "A" }, undefined)).toBeUndefined();
   });
 });

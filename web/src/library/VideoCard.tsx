@@ -38,10 +38,10 @@ export interface VideoCardProps {
   onPreviewReset?: () => void;
   /**
    * フォルダ画面の検索結果にだけ添える置き場所（ui-design.md「Search results」）。
-   * 開いているフォルダの直下は「このフォルダ」、それ以外は相対パス。先頭の側を
-   * 省略して末尾のフォルダ名を残す。カードのリンクの読み上げ名にも続ける。
+   * `label` は表示・読み上げ名に使う文字列（先頭の側を省略して表示する）で、
+   * `title` 属性には省略しない全体を入れる（最上位では登録フォルダの絶対パスから）。
    */
-  location?: string;
+  location?: { label: string; title: string };
 }
 
 function useCardState(video: Video) {
@@ -233,7 +233,9 @@ function VideoCard(props: VideoCardProps) {
       <Link
         to={`/videos/${String(video.id)}`}
         state={{ from: backTo }}
-        aria-label={location === undefined ? video.title : `${video.title}、${location}`}
+        aria-label={
+          location === undefined ? video.title : `${video.title}、${location.label}`
+        }
         onClick={(event) => {
           onPreviewReset?.();
           if (selectionMode && onSelect !== undefined) {
@@ -355,9 +357,14 @@ function VideoCard(props: VideoCardProps) {
           {location !== undefined && (
             <p className="flex min-w-0 items-center gap-1 text-xs text-fg-muted">
               <Folder aria-hidden="true" className="size-3 shrink-0 text-fg-subtle" />
-              {/* 先頭の側を省略し、末尾のフォルダ名を残す（011 のフォルダカードと同じ扱い）。 */}
-              <span dir="rtl" title={location} className="min-w-0 truncate text-left">
-                <bdi dir="ltr">{location}</bdi>
+              {/* 先頭の側を省略し、末尾のフォルダ名を残す（011 のフォルダカードと同じ扱い）。
+                  title 属性は省略しない全体（最上位では登録フォルダの絶対パスから）。 */}
+              <span
+                dir="rtl"
+                title={location.title}
+                className="min-w-0 truncate text-left"
+              >
+                <bdi dir="ltr">{location.label}</bdi>
               </span>
             </p>
           )}

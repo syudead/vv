@@ -48,6 +48,7 @@ import {
   folderKey,
   folderLocationLabel,
   parseFolderPathname,
+  type RootDisplay,
   rootDisplayName,
   topLevelLocationLabel,
 } from "./folderPath";
@@ -230,18 +231,18 @@ function RootSearchResults({
   criteria,
   rootNames,
   zoom,
+  restored,
   onClearNoMatches,
 }: {
   criteria: ListCriteria;
-  rootNames: Map<number, string>;
+  rootNames: Map<number, RootDisplay>;
   zoom: Zoom;
+  /** 呼び出し側（RootView）が取り出した控え。無ければ1ページ目から読む。 */
+  restored: ReturnType<typeof takeListSnapshot>;
   onClearNoMatches: () => void;
 }) {
   const location = useLocation();
   const backTo = `${location.pathname}${location.search}`;
-  const [restored] = useState(() =>
-    takeListSnapshot({ ...criteria, folder: ROOT_SEARCH_KEY }),
-  );
   const {
     items,
     total,
@@ -377,7 +378,6 @@ function RootSearchResults({
 
 /** RootView はフォルダ画面の最上位で、登録済みメディアフォルダを並べる。 */
 function RootView() {
-  const heading = useArrival();
   const {
     criteria,
     zoom,
@@ -391,10 +391,26 @@ function RootView() {
     clearFromNoMatches,
     changeZoom,
   } = useConditions();
+  // 再生画面から検索結果へ戻ったときは控えから復元する（FolderView と同じ扱い）。
+  // 検索していなければ動画の一覧を持たないので、控えを探さない。
+  const [restored] = useState(() =>
+    criteria.query === ""
+      ? undefined
+      : takeListSnapshot({ ...criteria, folder: ROOT_SEARCH_KEY }),
+  );
+  const heading = useArrival(restored !== undefined);
   const roots = useRootFolders();
   const folders = roots.data?.folders ?? [];
+  // パンくずと同じ規則（rootDisplayName）で表示名を作る。サーバーの
+  // FolderSummary.name も同じ結果になるが、揺らさないよう1か所にそろえる。
   const rootNames = useMemo(
-    () => new Map(folders.map((folder) => [folder.rootId, folder.name])),
+    () =>
+      new Map<number, RootDisplay>(
+        folders.map((folder) => [
+          folder.rootId,
+          { name: rootDisplayName(folder.rootPath), rootPath: folder.rootPath },
+        ]),
+      ),
     [folders],
   );
   const searching = criteria.query !== "";
@@ -448,6 +464,7 @@ function RootView() {
           criteria={criteria}
           rootNames={rootNames}
           zoom={zoom}
+          restored={restored}
           onClearNoMatches={clearFromNoMatches}
         />
       ) : roots.error !== null ? (
@@ -629,7 +646,9 @@ function FolderView({ folder }: { folder: FolderRef }) {
     videos.error === null;
 
   let body: ReactNode;
-  if (listing.notFound) {
+  if (listing.notFound || videos.notFound) {
+    // 検索中にフォルダが無くなった（listFolderVideos が 404）ときも、一致なしでは
+    // なく「このフォルダは見つかりません」を出す（list-api.md §5）。
     body = <FolderNotFound />;
   } else if (listing.error !== null) {
     body = <LoadFailed reason={listing.error} onRetry={listing.reload} />;
@@ -738,34 +757,34 @@ function FolderView({ folder }: { folder: FolderRef }) {
         )}
         {showVideos && (
           <div className={showFolders ? "mt-3" : undefined}>
+            {/*
+              件数の変化は、視覚的に隠した polite の状態の行で知らせる（子フォルダの
+              上に「動画 N」の見出しは出しても、見出しの文字の変化だけでは読み上げ
+              ソフトに伝わらないため）。分岐で作り直さず1つの要素の文字だけを
+              変えることで、更新が確実に読み上げに乗る（絞り込みが無いときと
+              読み込み中は空にする）。
+            */}
+            <p role="status" aria-live="polite" className="sr-only">
+              {filterOnly && !videos.loading
+                ? `直下の動画 ${videos.total.toLocaleString("ja-JP")} 件`
+                : ""}
+            </p>
             {filterOnlyNoMatch ? (
-              <>
-                {/* 件数の変化は、視覚的に隠した polite の状態の行で知らせる（子フォルダの
-                    上の「動画 N」は出さないので、見える要約行は無い）。 */}
-                <p role="status" aria-live="polite" className="sr-only">
-                  直下の動画 {videos.total.toLocaleString("ja-JP")} 件
-                </p>
-                <NoMatches
-                  conditions={[
-                    ...conditionLabels(criteria),
-                    rangeLabel("direct", name ?? "フォルダ"),
-                  ]}
-                  note={
-                    // 中のフォルダが無ければ、検索語を入れても結果は変わらない。
-                    children.length > 0
-                      ? "中のフォルダも探すには、検索語を入れてください。"
-                      : undefined
-                  }
-                  onClear={clearFromNoMatches}
-                />
-              </>
+              <NoMatches
+                conditions={[
+                  ...conditionLabels(criteria),
+                  rangeLabel("direct", name ?? "フォルダ"),
+                ]}
+                note={
+                  // 中のフォルダが無ければ、検索語を入れても結果は変わらない。
+                  children.length > 0
+                    ? "中のフォルダも探すには、検索語を入れてください。"
+                    : undefined
+                }
+                onClear={clearFromNoMatches}
+              />
             ) : (
               <Section title="動画" count={videos.loading ? undefined : videos.total}>
-                {filterOnly && !videos.loading && (
-                  <p role="status" aria-live="polite" className="sr-only">
-                    直下の動画 {videos.total.toLocaleString("ja-JP")} 件
-                  </p>
-                )}
                 {videos.error !== null && videos.items.length === 0 ? (
                   <LoadFailed reason={videos.error} onRetry={videos.reload} />
                 ) : (
@@ -830,11 +849,11 @@ function FolderView({ folder }: { folder: FolderRef }) {
       <Breadcrumbs
         crumbs={
           // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
-          listing.notFound || listing.error !== null
+          listing.notFound || videos.notFound || listing.error !== null
             ? breadcrumbsFor(folder, undefined).filter((crumb) => crumb !== undefined)
             : breadcrumbsFor(folder, rootName)
         }
-        suffix={searching ? "内を検索中" : undefined}
+        suffix={searching && !videos.notFound ? "内を検索中" : undefined}
       />
       {/* 中身を押す直前（再生画面・子フォルダへ移る直前）の状態を控える。 */}
       <div onClick={saveSnapshot} className="flex flex-col gap-3">

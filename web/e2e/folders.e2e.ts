@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
@@ -433,7 +433,7 @@ test.describe.serial("folder search", () => {
     await expect(page.getByRole("button", { name: /^並び順:/ })).toBeDisabled();
   });
 
-  test("検索中にフォルダが無くなると、一致なしではなく見つからない案内を出す", async ({
+  test("無いフォルダの URL に q を付けても、一致なしではなく見つからない案内を出す", async ({
     page,
   }) => {
     await page.goto(`${folderUrl(root!.id, "missing")}?q=x`);
@@ -488,6 +488,46 @@ test.describe.serial("folder search", () => {
         page.getByRole("heading", { name: "条件に一致する動画はありません" }),
       ).toBeVisible();
       await shoot(`no-match-${String(width)}`);
+
+      // 最上位で検索語が空のとき（絞り込み・並べ替え・向きが無効）。
+      await page.goto("/folders");
+      await expect(page.getByRole("button", { name: "絞り込み" })).toBeDisabled();
+      await shoot(`top-level-empty-${String(width)}`);
     }
+
+    // 360px の「表示と並び順」を開いた状態（フォルダ画面）。
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto(`${folderUrl(root!.id, "A")}?q=${encodeURIComponent("京都")}`);
+    await expect.poll(() => cardTitles(page)).toEqual(["x 京都", "y 京都"]);
+    await page.getByRole("button", { name: "表示と並び順" }).click();
+    await shoot("compact-360");
+  });
+
+  test("表示している検索結果のフォルダが取り込みで無くなると、案内が見つからないに切り替わる", async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    const dir = process.env.MDM_E2E_FOLDERS_SEARCH_MEDIA_DIR;
+    if (dir === undefined)
+      throw new Error("MDM_E2E_FOLDERS_SEARCH_MEDIA_DIR is not configured");
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`${folderUrl(root!.id, "A/B")}?q=${encodeURIComponent("京都")}`);
+    await expect(page.getByRole("link", { name: "y 京都、このフォルダ" })).toBeVisible();
+
+    // 表示している間に B が丸ごと無くなる想定で、配下を消してから取り込み直す。
+    // これでこの describe の他のフィクスチャ（x・y・z・大阪）のうち y が無くなるので、
+    // 以後のテストはこれに依存しない（この describe の最後のテストである）。
+    // アプリ自身の「更新」ボタンから取り込みを始める（scan.start が
+    // requestedScanId を覚えるので、取り込みがどれだけ速く終わっても
+    // ScanProvider の finished 判定を取りこぼさない。API を直接叩いて外側から
+    // 取り込むと、ページの ScanProvider が「実行中」を観測する前に終わってしまい
+    // 検知できないことがある）。
+    await rm(`${dir}/movies/A/B`, { recursive: true, force: true });
+    await page.getByRole("button", { name: "ライブラリを更新" }).click();
+
+    await expect(page.getByText("このフォルダは見つかりません")).toBeVisible({
+      timeout: 60_000,
+    });
   });
 });
