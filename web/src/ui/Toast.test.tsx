@@ -26,7 +26,7 @@ describe("ToastProvider", () => {
         <Harness />
       </ToastProvider>,
     );
-    const liveRegion = document.querySelector('[aria-live="polite"]');
+    const liveRegion = document.querySelector<HTMLElement>('[aria-live="polite"]');
     expect(liveRegion).not.toBeNull();
     const toasts = within(liveRegion!);
     for (const message of ["first", "second", "third"]) {
