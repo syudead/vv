@@ -44,7 +44,7 @@ const (
 	OutcomeUnchanged = domain.OutcomeUnchanged
 	// SortAddedDesc は追加が新しい順（既定）。
 	SortAddedDesc = domain.SortAddedDesc
-	// SortTitleAsc は題名順。
+	// SortTitleAsc は題名の自然順。
 	SortTitleAsc = domain.SortTitleAsc
 	// DefaultLimit は limit が指定されなかったときの件数。
 	DefaultLimit = domain.DefaultLimit

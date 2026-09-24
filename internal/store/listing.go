@@ -157,6 +157,9 @@ const listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtim
 
 // filteredFrom は chosen に動画と再生の記録を結び、絞り込みを掛けた from 句と
 // where 句を返す。withLocation が true なら一覧に出す所在を loc として結ぶ。
+// filteredFrom は引数（?）を持たない句だけを返す。random の並べ替えは選択句の
+// vv_shuffle_key(?, …) の引数を CTE の引数の直後に置いており、ここで引数を増やすと
+// その位置がずれる。引数が要る条件を足すときは、引数も返して SQL の順に並べ直す。
 func filteredFrom(spec listSpec, withLocation bool) string {
 	from := ` from chosen join videos on videos.id = chosen.video_id`
 	if withLocation {

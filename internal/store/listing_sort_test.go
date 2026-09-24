@@ -337,3 +337,19 @@ func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 		t.Errorf("同じ seed のカーソルで失敗した: %v", err)
 	}
 }
+
+// 既知の並び順（VideoSort.Valid）はすべて listOrders に定義がある。定義が無いと
+// 空の式で SQL が壊れるので、2つの一覧を揃えて保つ。
+func TestListOrdersCoverEveryValidSort(t *testing.T) {
+	for _, sort := range allSorts {
+		if !sort.Valid() {
+			t.Errorf("%s が Valid ではない", sort)
+		}
+		if _, ok := listOrders[sort]; !ok {
+			t.Errorf("%s の並べ替えの定義が listOrders に無い", sort)
+		}
+	}
+	if len(listOrders) != len(allSorts) {
+		t.Errorf("listOrders = %d 件, want %d 件", len(listOrders), len(allSorts))
+	}
+}
