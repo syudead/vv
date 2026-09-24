@@ -108,6 +108,14 @@ func run() error {
 	}
 	logger.Info("照合用の鍵を作り直しました", slog.Int("locations", refreshed))
 
+	// タグ名の照合用の鍵も同じ時点で作り直す。メディアフォルダに依らないので
+	// folderMu は取らない（specs/014-video-tags/data-model.md §7）。
+	tagsRefreshed, err := db.Tags().RefreshSearchKeys(context.Background())
+	if err != nil {
+		return fmt.Errorf("タグの照合用の鍵を作り直せません: %w", err)
+	}
+	logger.Info("タグの照合用の鍵を作り直しました", slog.Int("tags", tagsRefreshed))
+
 	// 走査とジョブは HTTP とは別の寿命で動く。停止指示でこの context を
 	// 取り消すと、処理中のジョブは queued に残り、次の起動で再開できる。
 	backgroundCtx, stopBackground := context.WithCancel(context.Background())

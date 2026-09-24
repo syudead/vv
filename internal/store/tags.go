@@ -1,0 +1,530 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/syudead/vv/internal/domain"
+)
+
+// タグそのものの保存（specs/014-video-tags/data-model.md §1〜§4・§7）。
+//
+// TagStore は PlaybackStore と同じく、共有する SQLite 接続だけを持ち、
+// ライブラリ索引の役割の型（LibraryStore）にも通知の発行にも依存しない。
+// タグの変更は副作用（生成物の削除・ワーカーの起床・/api/events）を持たない
+// ので、トランザクションのコミットだけで済む（Plan の Constitution Check）。
+
+// tagTx は1つのトランザクションの中で名前とタグの行を読み書きするための
+// 共通部分である。*sql.Tx はこれを満たす。
+type tagTx interface {
+	queryExecer
+	rowQueryer
+}
+
+// CreateTag は新しいタグを作る。名前が既に別のタグの元の名前かシノニムなら
+// *domain.TagNameConflict（domain.ErrTagNameTaken）を返す。
+func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, error) {
+	normalized, err := domain.NormalizeTagName(name)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	lookup, found, err := lookupTagName(ctx, tx, normalized)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	if found {
+		return domain.Tag{}, &domain.TagNameConflict{Tag: domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}}
+	}
+
+	res, err := tx.ExecContext(ctx, `insert into tags (created_at) values (?)`, time.Now().Unix())
+	if err != nil {
+		return domain.Tag{}, fmt.Errorf("タグを作成できません: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return domain.Tag{}, fmt.Errorf("タグを作成できません: %w", err)
+	}
+	if err := insertTagName(ctx, tx, normalized, id, true); err != nil {
+		return domain.Tag{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return domain.Tag{}, fmt.Errorf("タグを作成できません: %w", err)
+	}
+	return domain.Tag{ID: id, Name: normalized, Synonyms: []string{}, VideoCount: 0}, nil
+}
+
+// RenameTag は id の元の名前を書き換える。今と同じ名前なら何も変えずに今の
+// 状態を返す。新しい名前が既にあれば（自分のシノニムでも）
+// *domain.TagNameConflict を返す。id が無ければ domain.ErrTagNotFound を返す。
+func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error) {
+	normalized, err := domain.NormalizeTagName(name)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	current, err := canonicalNameByTagID(ctx, tx, id)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+
+	if current != normalized {
+		lookup, found, err := lookupTagName(ctx, tx, normalized)
+		if err != nil {
+			return domain.Tag{}, err
+		}
+		if found {
+			return domain.Tag{}, &domain.TagNameConflict{Tag: domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}}
+		}
+		if _, err := tx.ExecContext(ctx, `
+			update tag_names set name = ?, search_key = ?, search_version = ?
+			 where tag_id = ? and canonical = 1`,
+			normalized, domain.FoldForMatch(normalized), domain.SearchKeyVersion, id,
+		); err != nil {
+			return domain.Tag{}, fmt.Errorf("タグを改名できません (id=%d): %w", id, err)
+		}
+	}
+
+	tag, err := tagByID(ctx, tx, id)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Tag{}, fmt.Errorf("タグを改名できません: %w", err)
+	}
+	return tag, nil
+}
+
+// DeleteTag はタグを消す。tag_names と video_tags は外部キーの ON DELETE
+// CASCADE で連鎖して消える。いまライブラリに無い動画への付与も消える。
+// id が無ければ domain.ErrTagNotFound を返す。
+func (s *TagStore) DeleteTag(ctx context.Context, id int64) error {
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := canonicalNameByTagID(ctx, tx, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `delete from tags where id = ?`, id); err != nil {
+		return fmt.Errorf("タグを削除できません (id=%d): %w", id, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("タグを削除できません: %w", err)
+	}
+	return nil
+}
+
+// MergeTag は sourceID のタグを targetID へ統合する（data-model.md §4、Plan の
+// Structural Decisions 11）。source の付与は insert or ignore で target へ写り、
+// source の元の名前とシノニムはすべて target のシノニムになり、source は
+// 一覧から消える。どちらかが無ければ domain.ErrTagNotFound を返す。
+func (s *TagStore) MergeTag(ctx context.Context, targetID, sourceID int64) (domain.Tag, error) {
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	tag, err := mergeTagInto(ctx, tx, targetID, sourceID)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Tag{}, fmt.Errorf("タグを統合できません: %w", err)
+	}
+	return tag, nil
+}
+
+// mergeTagInto は同じトランザクションの中で source を target へ統合する。
+// target と source が同じ id なら何もせず、今の target をそのまま返す。
+func mergeTagInto(ctx context.Context, tx *sql.Tx, targetID, sourceID int64) (domain.Tag, error) {
+	if _, err := canonicalNameByTagID(ctx, tx, targetID); err != nil {
+		return domain.Tag{}, err
+	}
+	if targetID == sourceID {
+		return tagByID(ctx, tx, targetID)
+	}
+	if _, err := canonicalNameByTagID(ctx, tx, sourceID); err != nil {
+		return domain.Tag{}, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		insert or ignore into video_tags (content_key, tag_id, created_at)
+		select content_key, ?, created_at from video_tags where tag_id = ?`,
+		targetID, sourceID,
+	); err != nil {
+		return domain.Tag{}, fmt.Errorf("付与を統合先へ写せません (source=%d target=%d): %w", sourceID, targetID, err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `update tag_names set tag_id = ?, canonical = 0 where tag_id = ?`,
+		targetID, sourceID,
+	); err != nil {
+		return domain.Tag{}, fmt.Errorf("タグ名を統合先へ付け替えられません (source=%d target=%d): %w", sourceID, targetID, err)
+	}
+
+	if _, err := tx.ExecContext(ctx, `delete from tags where id = ?`, sourceID); err != nil {
+		return domain.Tag{}, fmt.Errorf("統合元のタグを削除できません (id=%d): %w", sourceID, err)
+	}
+
+	return tagByID(ctx, tx, targetID)
+}
+
+// AddSynonym は名前 name をタグ tagID のシノニムにする（data-model.md §4）。
+//
+//   - name が無ければ canonical = 0 で1行足す。
+//   - name が既に tagID のシノニムなら何も変えない。
+//   - name が tagID 自身の元の名前なら *domain.TagNameConflict を返す。
+//   - name が別のタグ S のシノニムなら *domain.TagNameConflict を返す（S を示す）。
+//   - name が別のタグ S の元の名前なら、mergeTagID が S の id と一致すれば
+//     S を tagID へ統合し、一致しなければ（無い場合を含む）
+//     *domain.TagMergeRequired を返す（S を示す）。
+func (s *TagStore) AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error) {
+	normalized, err := domain.NormalizeTagName(name)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := canonicalNameByTagID(ctx, tx, tagID); err != nil {
+		return domain.Tag{}, err
+	}
+
+	lookup, found, err := lookupTagName(ctx, tx, normalized)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+
+	switch {
+	case !found:
+		if err := insertTagName(ctx, tx, normalized, tagID, false); err != nil {
+			return domain.Tag{}, err
+		}
+	case lookup.tagID == tagID && lookup.isCanonical:
+		return domain.Tag{}, &domain.TagNameConflict{Tag: domain.TagRef{ID: tagID, Name: lookup.canonicalName}}
+	case lookup.tagID == tagID:
+		// 既にこのタグのシノニム。何も変えない。
+	case !lookup.isCanonical:
+		return domain.Tag{}, &domain.TagNameConflict{Tag: domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}}
+	case mergeTagID == nil || *mergeTagID != lookup.tagID:
+		return domain.Tag{}, &domain.TagMergeRequired{Tag: domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}}
+	default:
+		if _, err := mergeTagInto(ctx, tx, tagID, lookup.tagID); err != nil {
+			return domain.Tag{}, err
+		}
+	}
+
+	tag, err := tagByID(ctx, tx, tagID)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.Tag{}, fmt.Errorf("シノニムを登録できません: %w", err)
+	}
+	return tag, nil
+}
+
+// RemoveSynonym はタグ tagID のシノニム name を解除する。name が tagID の
+// シノニムでなければ何も変えない。tagID が無ければ domain.ErrTagNotFound を
+// 返す。
+func (s *TagStore) RemoveSynonym(ctx context.Context, tagID int64, name string) error {
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := canonicalNameByTagID(ctx, tx, tagID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`delete from tag_names where name = ? and tag_id = ? and canonical = 0`, name, tagID,
+	); err != nil {
+		return fmt.Errorf("シノニムを解除できません (tag=%d): %w", tagID, err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("シノニムを解除できません: %w", err)
+	}
+	return nil
+}
+
+// ListTags はタグを名前の自然順ですべて返す。本数 0 のタグも返す
+// （data-model.md §5）。本数は video_tags を videos.content_key と結び、いま
+// ライブラリにある動画だけを数える。3つの問い合わせ（タグ、シノニム、本数）に
+// 分けるのは、タグごとに引き直すと N+1 になるためである。
+func (s *TagStore) ListTags(ctx context.Context) ([]domain.Tag, error) {
+	tags, index, err := listCanonicalTags(ctx, s.sql)
+	if err != nil {
+		return nil, err
+	}
+	if err := addSynonymsToTags(ctx, s.sql, tags, index); err != nil {
+		return nil, err
+	}
+	if err := addVideoCountsToTags(ctx, s.sql, tags, index); err != nil {
+		return nil, err
+	}
+	for i := range tags {
+		domain.SortTagNames(tags[i].Synonyms)
+	}
+	domain.SortTags(tags)
+	return tags, nil
+}
+
+// listCanonicalTags はタグごとの元の名前を読み、id から一覧内の位置への
+// 対応も返す。
+func listCanonicalTags(ctx context.Context, q queryExecer) ([]domain.Tag, map[int64]int, error) {
+	rows, err := q.QueryContext(ctx, `
+		select t.id, tn.name from tags t
+		  join tag_names tn on tn.tag_id = t.id and tn.canonical = 1`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("タグを読み出せません: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	tags := []domain.Tag{}
+	index := make(map[int64]int)
+	for rows.Next() {
+		var tag domain.Tag
+		if err := rows.Scan(&tag.ID, &tag.Name); err != nil {
+			return nil, nil, fmt.Errorf("タグを読み出せません: %w", err)
+		}
+		tag.Synonyms = []string{}
+		index[tag.ID] = len(tags)
+		tags = append(tags, tag)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, fmt.Errorf("タグを読み出せません: %w", err)
+	}
+	return tags, index, nil
+}
+
+// addSynonymsToTags は tags[index[tag_id]].Synonyms にシノニムを足す。
+func addSynonymsToTags(ctx context.Context, q queryExecer, tags []domain.Tag, index map[int64]int) error {
+	rows, err := q.QueryContext(ctx, `select tag_id, name from tag_names where canonical = 0`)
+	if err != nil {
+		return fmt.Errorf("シノニムを読み出せません: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var tagID int64
+		var name string
+		if err := rows.Scan(&tagID, &name); err != nil {
+			return fmt.Errorf("シノニムを読み出せません: %w", err)
+		}
+		if i, ok := index[tagID]; ok {
+			tags[i].Synonyms = append(tags[i].Synonyms, name)
+		}
+	}
+	return rows.Err()
+}
+
+// addVideoCountsToTags は tags[index[tag_id]].VideoCount に、いまライブラリに
+// ある動画だけを数えた本数を足す。
+func addVideoCountsToTags(ctx context.Context, q queryExecer, tags []domain.Tag, index map[int64]int) error {
+	//nolint:gosec // registeredVideoCondition は定型SQLだけを返す。
+	query := `select vt.tag_id, count(*) from video_tags vt
+		join videos v on v.content_key = vt.content_key
+		where ` + registeredVideoCondition("v") + `
+		group by vt.tag_id`
+	rows, err := q.QueryContext(ctx, query)
+	if err != nil {
+		return fmt.Errorf("タグの本数を数えられません: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var tagID int64
+		var count int
+		if err := rows.Scan(&tagID, &count); err != nil {
+			return fmt.Errorf("タグの本数を数えられません: %w", err)
+		}
+		if i, ok := index[tagID]; ok {
+			tags[i].VideoCount = count
+		}
+	}
+	return rows.Err()
+}
+
+// RefreshSearchKeys は search_version が現在の版より小さいタグ名の行の
+// search_key を作り直し、作り直した件数を返す（data-model.md §7）。起動時、
+// LibraryStore.RefreshSearchKeys の隣で呼ぶ。所在の鍵と違ってメディア
+// フォルダに依らないので、folderMu は取らない。
+func (s *TagStore) RefreshSearchKeys(ctx context.Context) (int, error) {
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	names, err := staleTagNames(ctx, tx)
+	if err != nil {
+		return 0, err
+	}
+	for _, name := range names {
+		if _, err := tx.ExecContext(ctx,
+			`update tag_names set search_key = ?, search_version = ? where name = ?`,
+			domain.FoldForMatch(name), domain.SearchKeyVersion, name,
+		); err != nil {
+			return 0, fmt.Errorf("タグの照合用の鍵を保存できません (%s): %w", name, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("タグの照合用の鍵を保存できません: %w", err)
+	}
+	return len(names), nil
+}
+
+func staleTagNames(ctx context.Context, q queryExecer) ([]string, error) {
+	rows, err := q.QueryContext(ctx, `select name from tag_names where search_version < ?`, domain.SearchKeyVersion)
+	if err != nil {
+		return nil, fmt.Errorf("タグ名を読み出せません: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("タグ名を読み出せません: %w", err)
+		}
+		names = append(names, name)
+	}
+	return names, rows.Err()
+}
+
+// nameLookup は tag_names を name で引いた結果である。
+type nameLookup struct {
+	tagID int64
+	// canonicalName はその名前を持つタグの元の名前（表示名）。name 自身が
+	// シノニムのときは、name とは異なる。
+	canonicalName string
+	isCanonical   bool
+}
+
+// lookupTagName は名前からタグを引く（data-model.md §3）。元の名前でも
+// シノニムでも同じタグに着く。無ければ found = false を返す。
+func lookupTagName(ctx context.Context, q tagTx, name string) (nameLookup, bool, error) {
+	var lookup nameLookup
+	var canonicalInt int
+	err := q.QueryRowContext(ctx, `
+		select tn.tag_id, tn.canonical, canon.name
+		  from tag_names tn
+		  join tag_names canon on canon.tag_id = tn.tag_id and canon.canonical = 1
+		 where tn.name = ?`, name,
+	).Scan(&lookup.tagID, &canonicalInt, &lookup.canonicalName)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nameLookup{}, false, nil
+	}
+	if err != nil {
+		return nameLookup{}, false, fmt.Errorf("タグを名前で引けません (%s): %w", name, err)
+	}
+	lookup.isCanonical = canonicalInt != 0
+	return lookup, true, nil
+}
+
+// canonicalNameByTagID はタグ id の元の名前を返す。無ければ
+// domain.ErrTagNotFound を返す。
+func canonicalNameByTagID(ctx context.Context, q rowQueryer, id int64) (string, error) {
+	var name string
+	err := q.QueryRowContext(ctx, `select name from tag_names where tag_id = ? and canonical = 1`, id).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", domain.ErrTagNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("タグの名前を読み出せません (id=%d): %w", id, err)
+	}
+	return name, nil
+}
+
+// tagByID はタグ1件を、シノニムと本数を添えて返す。無ければ
+// domain.ErrTagNotFound を返す。
+func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
+	name, err := canonicalNameByTagID(ctx, q, id)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	count, err := videoCountByTagID(ctx, q, id)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	synonyms, err := synonymsByTagID(ctx, q, id)
+	if err != nil {
+		return domain.Tag{}, err
+	}
+	return domain.Tag{ID: id, Name: name, Synonyms: synonyms, VideoCount: count}, nil
+}
+
+// videoCountByTagID はいまライブラリにある動画のうち id が付いている本数を
+// 数える（data-model.md §5）。
+func videoCountByTagID(ctx context.Context, q rowQueryer, id int64) (int, error) {
+	//nolint:gosec // registeredVideoCondition は定型SQLだけを返す。
+	query := `select count(*) from video_tags vt
+		join videos v on v.content_key = vt.content_key
+		where vt.tag_id = ? and ` + registeredVideoCondition("v")
+	var count int
+	if err := q.QueryRowContext(ctx, query, id).Scan(&count); err != nil {
+		return 0, fmt.Errorf("タグの本数を数えられません (id=%d): %w", id, err)
+	}
+	return count, nil
+}
+
+// synonymsByTagID はタグ id のシノニムを名前の自然順で返す。
+func synonymsByTagID(ctx context.Context, q queryExecer, id int64) ([]string, error) {
+	rows, err := q.QueryContext(ctx, `select name from tag_names where tag_id = ? and canonical = 0`, id)
+	if err != nil {
+		return nil, fmt.Errorf("シノニムを読み出せません (id=%d): %w", id, err)
+	}
+	defer func() { _ = rows.Close() }()
+	names := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("シノニムを読み出せません (id=%d): %w", id, err)
+		}
+		names = append(names, name)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("シノニムを読み出せません (id=%d): %w", id, err)
+	}
+	domain.SortTagNames(names)
+	return names, nil
+}
+
+// insertTagName は tag_names に1行足し、照合用の鍵を同じトランザクションで
+// 書く（data-model.md §7）。
+func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, canonical bool) error {
+	if _, err := tx.ExecContext(ctx, `
+		insert into tag_names (name, tag_id, canonical, search_key, search_version)
+		values (?, ?, ?, ?, ?)`,
+		name, tagID, boolToInt(canonical), domain.FoldForMatch(name), domain.SearchKeyVersion,
+	); err != nil {
+		return fmt.Errorf("タグ名を保存できません (%s): %w", name, err)
+	}
+	return nil
+}

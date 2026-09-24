@@ -33,9 +33,16 @@ type SettingsStore struct{ db *DB }
 // 接続だけを持ち、ライブラリ索引の型や通知には依存しない。
 type PlaybackStore struct{ sql *sql.DB }
 
+// TagStore はタグそのもの（作成・改名・削除・統合・シノニムの登録と解除・
+// 本数つきの一覧）と、タグ名の照合用の鍵の作り直しを保存する（tags.go）。
+// PlaybackStore と同じく、共有する SQLite 接続だけを持ち、ライブラリ索引の
+// 型や通知には依存しない。
+type TagStore struct{ sql *sql.DB }
+
 func (db *DB) Ingest() *IngestStore       { return &IngestStore{db: db} }
 func (db *DB) Library() *LibraryStore     { return &LibraryStore{db: db} }
 func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
 func (db *DB) ScanIndex() *ScanIndexStore { return &ScanIndexStore{db: db} }
 func (db *DB) Settings() *SettingsStore   { return &SettingsStore{db: db} }
 func (db *DB) Playback() *PlaybackStore   { return &PlaybackStore{sql: db.sql} }
+func (db *DB) Tags() *TagStore            { return &TagStore{sql: db.sql} }

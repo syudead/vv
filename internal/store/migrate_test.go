@@ -100,8 +100,8 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Applied != 4 || result.Version != 7 {
-		t.Fatalf("migration result = %+v, want four migrations to version 7", result)
+	if result.Applied != 5 || result.Version != 8 {
+		t.Fatalf("migration result = %+v, want five migrations to version 8", result)
 	}
 	var generation int64
 	if err := db.sql.QueryRow(`select location_generation from videos where id = ?`, videoID).Scan(&generation); err != nil {
@@ -153,7 +153,7 @@ func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Applied != 2 || result.Version != 7 {
+	if result.Applied != 3 || result.Version != 8 {
 		t.Fatalf("migration result = %+v", result)
 	}
 	var jobs int
@@ -542,7 +542,7 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	db := migratedDB(t)
 
-	for range 6 {
+	for range 7 {
 		if err := Down(context.Background(), db); err != nil {
 			t.Fatalf("Down に失敗した: %v", err)
 		}
@@ -593,6 +593,9 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := Down(ctx, db); err != nil {
+		t.Fatalf("tags Down failed: %v", err)
+	}
 	if err := Down(ctx, db); err != nil {
 		t.Fatalf("location search Down failed: %v", err)
 	}
