@@ -6,7 +6,7 @@
 
 ## Summary
 
-既存の `ScanProvider` と `GET /api/scans/current` を状態の正本として使い、状態取得の一時失敗から自動回復できるよう polling を補う。route と再読み込みをまたぐ通知状態を `sessionStorage` に保持し、シェル右下のフローティング進捗、ホバー／フォーカス概要、`/settings#scan-status` の詳細を一貫して導く。設定画面には現在または直近の結果、時刻、失敗理由、再試行を表示する。
+既存の `ScanProvider` と `GET /api/scans/current` を状態の正本として使い、状態取得の一時失敗から自動回復できるよう polling を補う。route と再読み込みをまたぐ通知状態を `sessionStorage` に保持し、通常画面の右下と再生画面の右上に継続するフローティング進捗、ホバー／フォーカス概要、`/settings#scan-status` の詳細を一貫して導く。設定画面には現在または直近の結果、時刻、失敗理由、再試行を表示する。
 
 ## Technical Context
 
@@ -25,7 +25,7 @@
 - `Scan` は必要な件数、開始・終了時刻、全体失敗理由を既に返すため、API、生成物、DB schema は変更しない。
 - `ScanProvider` は実行中と開始要求の回復中に加え、状態取得に失敗して current scan を確定できない間も既存の2秒間隔で再試行し、成功時に通常の「実行中だけ polling」へ戻す。最後に取得できた scan は一時失敗で捨てない。
 - 通知状態は `trackingScanId`、`acknowledgedTerminalScanId`、`completionNotice { scanId, expiresAt }` だけを version 付きの `sessionStorage` に保存する。保存値が無い、壊れている、または storage が利用できない場合は空の通知状態へ戻し、server の scan state と設定詳細は失わない。
-- フローティング表示の対象は `AppShell` が包むライブラリ、フォルダ、設定画面である。独立したシアターモードである再生画面へシェルを持ち込まない。
+- フローティング表示は `Routes` より上に1度だけ置き、ライブラリ、フォルダ、設定、再生画面をまたいで同じインスタンスを維持する。再生画面へシェル全体は持ち込まず、進捗表示だけを再生操作と重ならない右上へ置く。
 - 新しい runtime dependency は追加しない。位置調整、Portal、Escape、focus の土台には既存の `@radix-ui/react-popover` を使う。
 
 方式選択と代案は [research.md](research.md)、feature 固有の実行確認は [quickstart.md](quickstart.md) に置く。
@@ -43,16 +43,16 @@ Phase 1 後も判定は同じで、正当化の必要な違反はない。
 
 ## Structural Decisions
 
-1. **フローティング進捗は `AppShell` が所有し、トップバーや Toast から分離する。** `web/src/shell/ScanProgressIndicator.tsx` を `AppShell` に1度だけ置き、右下の固定表示としてライブラリ、フォルダ、設定画面で共有する。
+1. **フローティング進捗は shell component が所有し、描画は route より上でトップバーや Toast から分離する。** `web/src/shell/ScanProgressIndicator.tsx` を `ScanNoticeProvider` 内かつ `Routes` の外に1度だけ置き、ライブラリ、フォルダ、設定、再生画面で同じインスタンスを共有する。`web/src/app/App.tsx` の route 分岐が通常／再生の placement variant を導き、indicator は pathname を解釈せず、通常画面では右下、再生画面では player control と詳細を避けて右上へ固定する。
    - 却下: `TopBar` の更新ボタンを進捗表示と詳細導線に兼用する案。親 Issue が置き換える現行挙動であり、開始操作と監視操作が同じ狭い場所に戻る。
    - 却下: 既存 Toast を拡張する案。Toast は 2.8 秒で消える短い通知で pointer events も受けないため、継続監視、ホバー概要、詳細への移動、失敗の確認待ちを同じ契約にすると役割が衝突する。
 2. **状態取得の回復は `ScanProvider`、表示解釈は純粋な共有 mapper に置く。** `ScanProvider` は初回を含む取得失敗後も既存間隔で自動再試行し、`web/src/shell/scanPresentation.ts` は `ScanContextValue` から表示状態、確定／不確定 progress、割合、件数、時刻、説明文を導く。
    - 却下: 2つの component が `running`・`done + failed > 0`・`failed` を個別に分岐する案。一部失敗、総数未確定、読み上げ文言が表示面ごとにずれる。
    - 却下: 初回取得失敗を手動 refresh まで止める案。直接表示または再読み込み直後の一時障害から自動回復できない。
-3. **結果通知の寿命は route より上の `ScanNoticeProvider` が所有し、再読み込みに必要な最小状態を `sessionStorage` に保存する。** provider を `ScanProvider` と `Routes` の間に置き、`trackingScanId`、`acknowledgedTerminalScanId`、scan ID と期限を組にした `completionNotice` を version 付きの tab session state として読み書きする。各 `AppShell` のインジケーターはこの安定した状態を描画するだけにする。実行中は current `scan` を追跡して id を保存し、同じ id の terminal scan は再読み込み直後でも結果通知へ移す。確認済みの failed scan と期限切れの完了通知は再表示しない。新しい running scan を観測したら、その id へ追跡状態を切り替え、別 id の `completionNotice` を消す。
+3. **結果通知の寿命は route より上の `ScanNoticeProvider` が所有し、再読み込みに必要な最小状態を `sessionStorage` に保存する。** provider を `ScanProvider` と `Routes` の間に置き、`trackingScanId`、`acknowledgedTerminalScanId`、scan ID と期限を組にした `completionNotice` を version 付きの tab session state として読み書きする。route より上のインジケーターはこの安定した状態を描画するだけにする。実行中は current `scan` を追跡して id を保存し、同じ id の terminal scan は再読み込み直後でも結果通知へ移す。確認済みの failed scan と期限切れの完了通知は再表示しない。新しい running scan を観測したら、その id へ追跡状態を切り替え、別 id の `completionNotice` を消す。
    - 却下: `GET /api/scans/current` が返す過去の `done` を起動のたびに通知する案。前回結果を毎回新着の完了として見せ、待機時には進捗枠を置かない要件に反する。
    - 却下: 成否をすべて同じ timer で消す案。全体失敗が利用者の確認前に失われる。
-   - 却下: timer と確認済み id を `ScanProgressIndicator` に置く案。route ごとに別の `AppShell` が mount されるため、画面移動で timer と確認状態がリセットされる。
+   - 却下: timer と確認済み id を `ScanProgressIndicator` に置く案。route より上の配置でも browser reload では component state が失われ、追跡中の scan が reload 中に完了した場合や確認済み失敗を正しく復元できない。
    - 却下: provider のメモリだけに置く案。browser reload で追跡中と確認済みの id、完了期限が失われ、完了の見逃しまたは確認済み失敗の再表示が起きる。
    - 却下: `localStorage` に置く案。別 tab と後日の browser session まで通知の確認状態を共有する必要はなく、古い state を長期間残す。
 4. **設定詳細への位置指定は `/settings#scan-status` を公開導線にする。** 設定画面の先頭に `id="scan-status"` の「取り込み状況」を置き、インジケーターは URL でそこへ移動する。直接表示と再読み込みでも同じ位置と server state を復元できる。
@@ -79,7 +79,8 @@ specs/012-scan-progress/
 
 **Affected boundaries**:
 
-- `web/src/shell/`: scan 取得の回復、表示 mapper、route／再読み込みをまたぐ通知状態、フローティングインジケーター、`AppShell` への配置、トップバーから進捗表示責務を除く変更
+- `web/src/shell/`: scan 取得の回復、表示 mapper、route／再読み込みをまたぐ通知状態、フローティングインジケーター、トップバーから進捗表示責務を除く変更
+- `web/src/app/`: route より上へのフローティングインジケーター配置と通常／再生 placement variant の決定
 - `web/src/settings/`: 「取り込み状況」section、再試行、anchor への focus/scroll
 - `web/e2e/`: 画面間の継続、pointer/keyboard/touch 導線、再読み込み、Toast との共存の実ブラウザ検証
 
@@ -104,7 +105,7 @@ specs/012-scan-progress/
 
 ### フローティング進捗と設定画面の取り込み詳細を追加する
 
-**Scope**: 親 Issue の要件 1〜12・14、承認済み `ui-design.md`、Structural Decisions 1・4・5に従い、shell 右下のインジケーター、hover/focus 概要、結果表示、設定詳細への操作を追加し、`TopBar` は待機時の開始操作に専念させる。設定画面ではメディアフォルダより前に「取り込み状況」を置き、共有 mapper から未実行、実行中、完了、一部失敗、全体失敗、取得の一時失敗、時刻、件数、失敗理由、再試行を表示する。`/settings#scan-status` の直接表示と再読み込み、画面移動、既存一覧再読込、再生中の非干渉を browser test で検証する。
+**Scope**: 親 Issue の要件 1〜12・14、承認済み `ui-design.md`、Structural Decisions 1・4・5に従い、route をまたいで継続するインジケーター、hover/focus 概要、結果表示、設定詳細への操作を追加し、`TopBar` は待機時の開始操作に専念させる。通常画面では右下、再生画面では右上に配置する。設定画面ではメディアフォルダより前に「取り込み状況」を置き、共有 mapper から未実行、実行中、完了、一部失敗、全体失敗、取得の一時失敗、時刻、件数、失敗理由、再試行を表示する。`/settings#scan-status` の直接表示と再読み込み、画面移動、既存一覧再読込、再生中の非干渉を browser test で検証する。
 
 **Dependencies**: 取り込み状態の自動回復と共有表示モデル、Design stage 完了。
 

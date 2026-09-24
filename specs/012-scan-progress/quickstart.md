@@ -55,14 +55,14 @@ npm --prefix web exec -- vitest run src/shell/ScanProvider.test.tsx src/shell/sc
 3. click、tap、Enter、Space の各操作で `/settings#scan-status` へ移動し、「取り込み状況」が見えて focus の文脈を失わないことを確認する。
 4. ライブラリ、フォルダ、設定画面を移動しても同じ scan の表示と完了期限が続き、完了直前または結果表示中の移動でも通知が再開・重複しないことを確認する。
 5. 実行中に別の開始操作を行っても indicator が増えず、同じ scan id と進捗へ合流することを確認する。
-6. 取り込み中にライブラリの閲覧、検索、filter、フォルダ移動を行い、動画を開いて再生できることを確認する。再生画面にはシェルの indicator を重ねない。
+6. 取り込み中にライブラリの閲覧、検索、filter、フォルダ移動を行い、動画を開いて再生できることを確認する。再生画面でも同じ indicator が右上で更新され、player control や詳細を覆わないことを確認する。
 7. 完了後にライブラリとフォルダの内容が読み直され、設定画面には直近結果が残ることを確認する。
 8. browser を取り込み中に再読み込みし、current scan の追跡が復元されることを確認する。reload 中に同じ scan が完了した場合は結果通知を表示する。
 9. 全体失敗の通知を確認して閉じたあと browser を再読み込みし、同じ failed scan の通知が復活せず、設定詳細だけが直近結果を示すことを確認する。
 
 ## Layout And Accessibility
 
-1. 360px、768px、1280px と高さの狭い viewport で、通常表示と hover/focus 概要を撮影する。右端・下端から安全な余白があり、画面外へはみ出さず、主要操作を隠さないことを確認する。
+1. 360px、768px、1280px と高さの狭い viewport で、通常画面と再生画面の表示、hover/focus 概要を撮影する。右端と、通常画面では下端、再生画面では上端から安全な余白があり、画面外へはみ出さず、戻る導線、player control、映像情報、詳細 tab を隠さないことを確認する。
 2. 既存 Toast を同時に表示し、狭幅を含めて重ならず、両方の文言と操作を利用できることを確認する。
 3. 200% 拡大、長い全体失敗理由、件数の桁が大きい状態で、文字が切れず概要と設定 section が読み取れることを確認する。
 4. Tab 順、focus ring、Escape、Enter、Space を確認し、progress bar の accessible name/value と状態変化が screen reader に伝わる一方、2秒ごとの polling を毎回読み上げないことを確認する。
