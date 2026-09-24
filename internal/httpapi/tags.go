@@ -43,7 +43,7 @@ func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
 	}
 	tag, err := s.tags.CreateTag(r.Context(), body.Name)
 	if err != nil {
-		s.writeTagError(w, err)
+		s.writeTagError(w, err, normalizedTagNameOrRaw(body.Name))
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -61,7 +61,7 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 	}
 	tag, err := s.tags.RenameTag(r.Context(), id, body.Name)
 	if err != nil {
-		s.writeTagError(w, err)
+		s.writeTagError(w, err, normalizedTagNameOrRaw(body.Name))
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -74,7 +74,7 @@ func (s *server) DeleteTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 		return
 	}
 	if err := s.tags.DeleteTag(r.Context(), id); err != nil {
-		s.writeTagError(w, err)
+		s.writeTagError(w, err, "")
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -100,7 +100,7 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 	}
 	tag, err := s.tags.MergeTag(r.Context(), id, body.SourceId)
 	if err != nil {
-		s.writeTagError(w, err)
+		s.writeTagError(w, err, "")
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -118,7 +118,7 @@ func (s *server) AddTagSynonym(w http.ResponseWriter, r *http.Request, id gen.Ta
 	}
 	tag, err := s.tags.AddSynonym(r.Context(), id, body.Name, body.MergeTagId)
 	if err != nil {
-		s.writeTagError(w, err)
+		s.writeTagError(w, err, normalizedTagNameOrRaw(body.Name))
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -141,7 +141,7 @@ func (s *server) RemoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen
 		name = params.Name
 	}
 	if err := s.tags.RemoveSynonym(r.Context(), id, name); err != nil {
-		s.writeTagError(w, err)
+		s.writeTagError(w, err, "")
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -158,7 +158,21 @@ func toAPITag(tag domain.Tag) gen.Tag {
 	}
 }
 
-func (s *server) writeTagError(w http.ResponseWriter, err error) {
+// normalizedTagNameOrRaw は tagNameTakenMessage の比較に使う、要求で送られた
+// 名前の整えた形を返す。domain.TagNameConflict.Tag.Name は常に整えた形
+// （domain.NormalizeTagName の結果）で保存されているので、比較する側もそろえる
+// 必要がある。整えられない入力（空・制御文字・上限超）は、その時点で
+// domain.ErrInvalidTagName になり TagNameConflict は返らないので、ここでの
+// フォールバックは使われない。
+func normalizedTagNameOrRaw(name string) string {
+	normalized, err := domain.NormalizeTagName(name)
+	if err != nil {
+		return name
+	}
+	return normalized
+}
+
+func (s *server) writeTagError(w http.ResponseWriter, err error, submittedName string) {
 	var nameConflict *domain.TagNameConflict
 	var mergeRequired *domain.TagMergeRequired
 	switch {
@@ -167,12 +181,25 @@ func (s *server) writeTagError(w http.ResponseWriter, err error) {
 	case errors.Is(err, domain.ErrTagNotFound):
 		s.writeError(w, http.StatusNotFound, codeTagNotFound, "タグが見つかりません")
 	case errors.As(err, &nameConflict):
-		s.writeError(w, http.StatusConflict, codeTagNameTaken,
-			"「"+nameConflict.Tag.Name+"」という名前のタグ（またはそのシノニム）が既にあります")
+		s.writeError(w, http.StatusConflict, codeTagNameTaken, tagNameTakenMessage(submittedName, nameConflict.Tag))
 	case errors.As(err, &mergeRequired):
 		s.writeError(w, http.StatusConflict, codeTagMergeRequired,
 			"「"+mergeRequired.Tag.Name+"」は既に別のタグの名前です。統合するタグを確かめてください")
 	default:
 		s.internalError(w, "タグを変更できませんでした", err)
 	}
+}
+
+// tagNameTakenMessage は tag_name_taken の message を組み立てる。owner は
+// その名前を既に持つタグ（元の名前としてでもシノニムとしてでも。
+// domain.TagNameConflict.Tag）で、Name は常にそのタグの元の名前である
+// （contracts/tags-api.md §2、親 Issue の Edge Case「シノニム名の衝突」）。
+// submittedName が owner.Name と一致すれば、それはそのタグ自身の元の名前
+// （自分のシノニムとして自分の元の名前を送った場合を含む）。一致しなければ、
+// owner の既存のシノニムである。
+func tagNameTakenMessage(submittedName string, owner domain.TagRef) string {
+	if submittedName == owner.Name {
+		return "「" + owner.Name + "」という名前のタグが既にあります"
+	}
+	return "「" + submittedName + "」は「" + owner.Name + "」のシノニムとして使われています"
 }

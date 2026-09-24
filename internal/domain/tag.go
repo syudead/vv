@@ -16,7 +16,25 @@ const TagNameMaxLength = 100
 
 // ErrInvalidTagName はタグ名として受け付けられない入力を表す。API では
 // invalid_request（400）になる（data-model.md §2）。
+//
+// NormalizeTagName はこれを直接は返さず、具体的な理由（空・制御文字・長さ超過）を
+// 運ぶ *invalidTagNameError を返す。errors.Is(err, ErrInvalidTagName) は真のまま
+// になるが、err.Error() は利用者にそのまま出せる理由を持つ（親 Issue 要件 4、
+// 受け入れ条件 6）。
 var ErrInvalidTagName = errors.New("タグ名が使えません")
+
+// invalidTagNameError はタグ名の規則違反の具体的な理由を運ぶ。
+type invalidTagNameError struct {
+	reason string
+}
+
+func (e *invalidTagNameError) Error() string { return e.reason }
+
+func (e *invalidTagNameError) Unwrap() error { return ErrInvalidTagName }
+
+func invalidTagName(reason string) error {
+	return &invalidTagNameError{reason: reason}
+}
 
 // ErrTagNotFound は指定したタグがもう無いことを表す。API では tag_not_found
 // （404）になる。
@@ -93,17 +111,17 @@ func (e *TagMergeRequired) Unwrap() error { return ErrTagMergeRequired }
 func NormalizeTagName(input string) (string, error) {
 	for _, r := range input {
 		if unicode.Is(unicode.Cc, r) {
-			return "", ErrInvalidTagName
+			return "", invalidTagName("タグ名に制御文字は使えません")
 		}
 	}
 	trimmed := strings.TrimFunc(input, func(r rune) bool {
 		return unicode.Is(unicode.White_Space, r)
 	})
 	if trimmed == "" {
-		return "", ErrInvalidTagName
+		return "", invalidTagName("タグ名を入力してください")
 	}
 	if utf8.RuneCountInString(trimmed) > TagNameMaxLength {
-		return "", ErrInvalidTagName
+		return "", invalidTagName(fmt.Sprintf("タグ名は%d文字以内にしてください", TagNameMaxLength))
 	}
 	return trimmed, nil
 }
