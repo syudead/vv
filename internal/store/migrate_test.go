@@ -100,8 +100,8 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Applied != 3 || result.Version != 6 {
-		t.Fatalf("migration result = %+v, want three migrations to version 6", result)
+	if result.Applied != 4 || result.Version != 7 {
+		t.Fatalf("migration result = %+v, want four migrations to version 7", result)
 	}
 	var generation int64
 	if err := db.SQL().QueryRow(`select location_generation from videos where id = ?`, videoID).Scan(&generation); err != nil {
@@ -153,7 +153,7 @@ func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Applied != 1 || result.Version != 6 {
+	if result.Applied != 2 || result.Version != 7 {
 		t.Fatalf("migration result = %+v", result)
 	}
 	var jobs int
@@ -197,7 +197,7 @@ func TestMigrateAppliesSchemaOnEmptyDirectory(t *testing.T) {
 		t.Errorf("適用後の版 = %d, want >= 1", result.Version)
 	}
 
-	for _, name := range []string{"videos", "videos_fts", versionTableName} {
+	for _, name := range []string{"videos", "location_search_fts", versionTableName} {
 		var count int
 		err := db.SQL().QueryRow(
 			`select count(*) from sqlite_master where name = ?`, name,
@@ -542,7 +542,7 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	db := migratedDB(t)
 
-	for range 5 {
+	for range 6 {
 		if err := Down(context.Background(), db); err != nil {
 			t.Fatalf("Down に失敗した: %v", err)
 		}
@@ -593,6 +593,9 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := Down(ctx, db); err != nil {
+		t.Fatalf("location search Down failed: %v", err)
+	}
 	if err := Down(ctx, db); err != nil {
 		t.Fatalf("hover preview Down failed: %v", err)
 	}

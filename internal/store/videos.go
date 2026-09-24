@@ -167,6 +167,10 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 	if err != nil {
 		return UpsertResult{}, fmt.Errorf("動画の場所を保存できません (%s): %w", file.Path, err)
 	}
+	// 題名とパスが変わりうるので、照合用の鍵も同じ書き込みの中で作り直す。
+	if err := refreshSearchKeysByPath(ctx, tx, file.Path); err != nil {
+		return UpsertResult{}, err
+	}
 	if !locationExists {
 		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id = ?`, videoID); err != nil {
 			return UpsertResult{}, err

@@ -6,13 +6,15 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 // alternativesHint はテストが落ちた開発者に、次に読むべきものを示す。
 // 出力だけで代替手段の検討先が分かる状態にしておく。
 const alternativesHint = "この前提が崩れた場合の代替手段: " +
 	"mattn/go-sqlite3 + -tags sqlite_fts5 への切り替え（CGO が要る）、" +
-	"2文字検索を LIKE 経路へ寄せる範囲の見直し、外部の全文検索エンジンの導入。"
+	"2文字検索を instr 経路へ寄せる範囲の見直し、外部の全文検索エンジンの導入。"
 
 // ftsFixture はマイグレーションを適用したデータベースに検証用の行を入れて返す。
 func ftsFixture(t *testing.T) *DB {
@@ -26,6 +28,10 @@ func ftsFixture(t *testing.T) *DB {
 
 	if _, err := Migrate(context.Background(), db); err != nil {
 		t.Fatalf("マイグレーションに失敗した: %v\n%s", err, alternativesHint)
+	}
+	// 登録フォルダの下に無い所在は search_key が空で、索引に載らない。
+	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
+		t.Fatalf("テスト用メディアフォルダを登録できない: %v", err)
 	}
 
 	rows := []struct {
@@ -49,13 +55,14 @@ func ftsFixture(t *testing.T) *DB {
 	return checkInvariants(t, db)
 }
 
-// countMatch は MATCH での一致件数を返す。
+// countMatch は MATCH での一致件数を返す。search_key は照合形なので、語にも
+// 同じ変換を掛けてから引く。
 func countMatch(t *testing.T, db *DB, query string) int {
 	t.Helper()
 
 	var count int
 	err := db.SQL().QueryRow(
-		`select count(*) from videos_fts where videos_fts match ?`, query,
+		`select count(*) from location_search_fts where location_search_fts match ?`, domain.FoldForMatch(query),
 	).Scan(&count)
 	if err != nil {
 		t.Fatalf("MATCH の問い合わせに失敗した (%q): %v\n%s", query, err, alternativesHint)
@@ -71,14 +78,14 @@ func TestFTS5TrigramIsAvailable(t *testing.T) {
 
 	var sqlText string
 	err := db.SQL().QueryRow(
-		`select sql from sqlite_master where name = 'videos_fts'`,
+		`select sql from sqlite_master where name = 'location_search_fts'`,
 	).Scan(&sqlText)
 	if err != nil {
-		t.Fatalf("videos_fts が作成されていない: %v\n%s", err, alternativesHint)
+		t.Fatalf("location_search_fts が作成されていない: %v\n%s", err, alternativesHint)
 	}
 
 	if !strings.Contains(sqlText, "tokenize='trigram'") {
-		t.Errorf("videos_fts が trigram で作られていない:\n%s\n%s", sqlText, alternativesHint)
+		t.Errorf("location_search_fts が trigram で作られていない:\n%s\n%s", sqlText, alternativesHint)
 	}
 }
 
@@ -108,7 +115,7 @@ func TestFTS5TrigramMatchesThreeCharactersInsideWord(t *testing.T) {
 // 2文字以下の検索語は MATCH の対象になり得ない。
 //
 // 将来 SQLite 側の挙動が変わったらこのテストが落ちて気付ける。落ちた場合は
-// 検索の2経路（MATCH と LIKE）の切り替えを見直す契機になる。
+// 検索の2経路（MATCH と instr）の切り替えを見直す契機になる。
 func TestFTS5TrigramDoesNotMatchTwoCharacterQuery(t *testing.T) {
 	db := ftsFixture(t)
 
@@ -116,57 +123,28 @@ func TestFTS5TrigramDoesNotMatchTwoCharacterQuery(t *testing.T) {
 		if got := countMatch(t, db, query); got != 0 {
 			t.Errorf("MATCH %q = %d 件, want 0。"+
 				"2文字以下の検索語に MATCH が一致しないことを前提に、"+
-				"検索は MATCH と LIKE の2経路に分けている。"+
+				"検索は MATCH と instr の2経路に分けている。"+
 				"一致するようになったのなら、その分岐を見直すこと\n%s",
 				query, got, alternativesHint)
 		}
 	}
 }
 
-// TestFTS5TrigramMatchesTwoCharacterQueryWithLike は、2文字の語でも同じ FTS5 表への
-// LIKE なら一致することを固定する。日本語では「旅行」「花火」のような2文字の
+// TestSearchKeyMatchesTwoCharacterQueryWithInstr は、2文字の語でも search_key への
+// instr なら一致することを固定する。日本語では「旅行」「花火」のような2文字の
 // 検索語が現実に多いため、この経路が成立していることが実装の前提になる。
-func TestFTS5TrigramMatchesTwoCharacterQueryWithLike(t *testing.T) {
+func TestSearchKeyMatchesTwoCharacterQueryWithInstr(t *testing.T) {
 	db := ftsFixture(t)
 
 	var count int
 	err := db.SQL().QueryRow(
-		`select count(*) from videos_fts where title like ?`, "%旅行%",
+		`select count(*) from video_locations where instr(search_key, ?) > 0`, "旅行",
 	).Scan(&count)
 	if err != nil {
-		t.Fatalf("LIKE の問い合わせに失敗した: %v\n%s", err, alternativesHint)
+		t.Fatalf("instr の問い合わせに失敗した: %v\n%s", err, alternativesHint)
 	}
 	if count != 1 {
-		t.Errorf("LIKE '%%旅行%%' = %d 件, want 1。"+
-			"trigram 表への LIKE は索引で処理される前提である\n%s", count, alternativesHint)
-	}
-
-	// 索引が使われていることも確認する。
-	var plan strings.Builder
-	rows, err := db.SQL().Query(
-		`explain query plan select rowid from videos_fts where title like ?`, "%旅行%",
-	)
-	if err != nil {
-		t.Fatalf("実行計画を取得できない: %v\n%s", err, alternativesHint)
-	}
-	defer func() { _ = rows.Close() }()
-
-	for rows.Next() {
-		var id, parent, notUsed int
-		var detail string
-		if err := rows.Scan(&id, &parent, &notUsed, &detail); err != nil {
-			t.Fatalf("実行計画を読めない: %v", err)
-		}
-		plan.WriteString(detail)
-		plan.WriteString("\n")
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("実行計画の読み出しに失敗した: %v", err)
-	}
-
-	if !strings.Contains(plan.String(), "VIRTUAL TABLE INDEX") {
-		t.Errorf("LIKE が trigram 索引で処理されていない:\n%s\n%s",
-			plan.String(), alternativesHint)
+		t.Errorf("instr '旅行' = %d 件, want 1\n%s", count, alternativesHint)
 	}
 }
 
@@ -176,16 +154,16 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	db := ftsFixture(t)
 
 	// トリガを外し、索引へ反映されない行を作る。取りこぼしの状況を再現する。
-	if _, err := db.SQL().Exec(`drop trigger video_locations_ai`); err != nil {
+	if _, err := db.SQL().Exec(`drop trigger location_search_fts_ai`); err != nil {
 		t.Fatalf("トリガを外せない: %v", err)
 	}
-	res, err := db.SQL().Exec(`insert into videos(added_at, updated_at, content_key) values (1, 1, 'sports-day')`)
+	res, err := db.SQL().Exec(`insert into videos(added_at, updated_at, content_key, container) values (1, 1, 'sports-day', 'mp4')`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	videoID, _ := res.LastInsertId()
-	if _, err := db.SQL().Exec(`insert into video_locations(video_id, path, title, size_bytes, mtime, created_at, updated_at)
-		values (?, '/media/運動会.mp4', '運動会', 1, 1, 1, 1)`, videoID); err != nil {
+	if _, err := db.SQL().Exec(`insert into video_locations(video_id, path, title, size_bytes, mtime, created_at, updated_at, search_key)
+		values (?, '/media/運動会.mp4', '運動会', 1, 1, 1, 1, '運動会')`, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if got := countMatch(t, db, "運動会"); got != 0 {
@@ -193,7 +171,7 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	}
 
 	if _, err := db.SQL().Exec(
-		`insert into videos_fts(videos_fts) values ('rebuild')`,
+		`insert into location_search_fts(location_search_fts) values ('rebuild')`,
 	); err != nil {
 		t.Fatalf("再構築に失敗した: %v\n%s", err, alternativesHint)
 	}
@@ -205,7 +183,7 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 }
 
 // 検索の2経路。書記素が3文字以上なら MATCH、
-// 1〜2文字なら同じ FTS5 表への LIKE に振り分ける。
+// 1〜2文字なら search_key への instr に振り分ける。
 //
 // trigram は3文字単位で索引を作るため2文字以下は MATCH に一致せず、
 // 日本語では2文字の検索語が多い。この振り分けが検索の前提である。
@@ -214,19 +192,19 @@ func TestSearchRouteSelection(t *testing.T) {
 		query string
 		want  searchRoute
 	}{
-		{"夏", routeLike},
-		{"旅行", routeLike},
+		{"夏", routeInstr},
+		{"旅行", routeInstr},
 		{"夏休み", routeMatch},
 		{"夏休みの旅行", routeMatch},
-		{"ab", routeLike},
+		{"ab", routeInstr},
 		{"abc", routeMatch},
 		// 数えるのは符号位置ではなく、利用者が1文字と見るまとまりである。
 		// NFD の「が」（か + 濁点）は符号位置では2つだが1文字として数える。
 		// ここを取り違えると、2文字の入力が MATCH 経路へ回って0件になる。
-		{"\u304b\u3099\u3063", routeLike},        // が + っ = 2文字（符号位置では3）
+		{"\u304b\u3099\u3063", routeInstr},       // が + っ = 2文字（符号位置では3）
 		{"\u304b\u3099\u3063\u3053", routeMatch}, // が + っ + こ = 3文字
 		// 絵文字も1文字として数える。
-		{"🎆🎇", routeLike},
+		{"🎆🎇", routeInstr},
 		{"🎆🎇🎈", routeMatch},
 	}
 
@@ -296,7 +274,7 @@ func TestSearchMatchRoute(t *testing.T) {
 	}
 }
 
-// 1〜2文字は LIKE 経路。日本語では2文字の検索語が多く、これが
+// 1〜2文字は instr 経路。日本語では2文字の検索語が多く、これが
 // 取れないと検索が実用にならない。
 func TestSearchLikeRoute(t *testing.T) {
 	db := searchFixture(t)
@@ -314,7 +292,7 @@ func TestSearchLikeRoute(t *testing.T) {
 	}
 }
 
-// 検索語は NFC 正規化する。macOS から送られる NFD の入力でも一致する。
+// 検索語は照合形にする。macOS から送られる NFD の入力でも一致する。
 func TestSearchNormalizesQuery(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -329,7 +307,7 @@ func TestSearchNormalizesQuery(t *testing.T) {
 	// NFD（か + 濁点）で検索する。
 	decomposed := "がっこう"
 	if got := searchTitles(t, db, decomposed); len(got) != 1 {
-		t.Errorf("NFD の検索語で %d 件, want 1（NFC へ正規化していない）", len(got))
+		t.Errorf("NFD の検索語で %d 件, want 1（照合形へ正規化していない）", len(got))
 	}
 }
 
@@ -359,7 +337,7 @@ func TestSearchEscapesSpecialCharacters(t *testing.T) {
 }
 
 // 検索時の並び順は一覧と同じ規則を使う。関連度（bm25）にしないのは、
-// LIKE 経路に関連度が無く、2つの経路で並びが変わると利用者から見て
+// instr 経路に関連度が無く、2つの経路で並びが変わると利用者から見て
 // 不可解になるためである。
 func TestSearchUsesSameOrderAsListing(t *testing.T) {
 	db := migratedDB(t)
