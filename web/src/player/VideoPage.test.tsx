@@ -636,7 +636,8 @@ describe("VideoPage", () => {
       renderPage();
       await ready();
       await screen.findByRole("heading", { level: 2, name: "関連動画" });
-      screen.getByRole("button", { name: "10 秒進む" }).focus();
+      // 操作はプレイヤーが onControls を返してから出るので、出るまで待つ。
+      (await screen.findByRole("button", { name: "10 秒進む" })).focus();
       end();
       expect(document.activeElement).toBe(
         screen.getByRole("button", { name: "次を再生" }),
