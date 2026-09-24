@@ -17,7 +17,7 @@
 - 取り込み状態、ポーリング、完了通知の現行実装: [web/src/shell/ScanProvider.tsx](../../web/src/shell/ScanProvider.tsx)
 - シェルの配置: [web/src/shell/AppShell.tsx](../../web/src/shell/AppShell.tsx)・[web/src/app/App.tsx](../../web/src/app/App.tsx)
 - 設定画面: [web/src/settings/SettingsPage.tsx](../../web/src/settings/SettingsPage.tsx)
-- 視覚規則と検証方針: [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md)・[docs/how-to/ui-change-screenshots.md](../../docs/how-to/ui-change-screenshots.md)
+- 視覚規則と検証方針: [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md)
 - 検査入口: [Taskfile.yml](../../Taskfile.yml)（`task check`・`task test-e2e`）
 
 **Feature-specific context**:

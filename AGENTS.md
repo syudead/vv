@@ -30,11 +30,7 @@ file into a handbook.
   change `api/openapi.yaml` and run `task generate`.
 - Add links to new design documents from `docs/design-docs/index.md`.
 - Give every pushed working branch a pull request as its review target.
-- When a change alters how a screen looks or behaves, attach an image of the
-  result to the pull request; say "UI 変更なし" when it does not. Capturing and
-  embedding one is covered in
-  [docs/how-to/ui-change-screenshots.md](docs/how-to/ui-change-screenshots.md).
-  Renovate の PR はこの対象外。依存更新の運用は
+- 依存更新（Renovate）の運用は
   [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md)。
 - SDD work starts from an explicitly supplied parent Issue or native sub-issue
   and runs `plan → design → plan-to-issues → implement`, with `design` only for

@@ -55,9 +55,7 @@ A technical constraint is never a reason to narrow the design (Q-7).
    rules out "the element is present" as a criterion. An element with no
    behaviour behind it needs its value and its misrecognition risk stated
    (Q-5). Name the widths, the keyboard path, and the assistive-technology
-   check the implementation PR will have to show, so the screenshots asked for
-   in [docs/how-to/ui-change-screenshots.md](../../../../docs/how-to/ui-change-screenshots.md)
-   have something to be judged against.
+   check the implementation will be judged against.
 6. Run the [`self-review` skill](../../self-review/SKILL.md) over the whole diff.
    Reconcile every stated behaviour against the parent Issue and the existing
    design system rules, which this artifact narrows more often than it

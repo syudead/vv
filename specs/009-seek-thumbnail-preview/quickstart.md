@@ -1,7 +1,6 @@
 # Validation Quickstart: 動画シーク時のサムネイルプレビュー
 
-共通の build、test、起動方法は [Taskfile.yml](../../Taskfile.yml) と
-[UI画像手順](../../docs/how-to/ui-change-screenshots.md)を使う。本書はこの機能だけの検証matrixを示す。
+共通の build、test、起動方法は [Taskfile.yml](../../Taskfile.yml) を使う。本書はこの機能だけの検証matrixを示す。
 
 ## Automated validation
 
