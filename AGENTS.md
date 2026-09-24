@@ -9,9 +9,9 @@ file into a handbook.
 1. Read `ARCHITECTURE.md` for system boundaries and dependency direction.
 2. Read `docs/design-docs/index.md` and `docs/product-specs/index.md` for the
    relevant design and product context.
-3. For substantial work, the Plan (`specs/<feature>/plan.md`) carries the goal,
-   the scope, the validation strategy and the notable decisions. Progress lives
-   on the parent Issue and its child Issues, not in a file.
+3. For substantial feature work, the Plan (`specs/<feature>/plan.md`) carries
+   the goal, the scope, the validation strategy and the notable decisions.
+   Progress lives on the parent Issue and its child Issues, not in a file.
 
 ## Working agreements
 
@@ -20,15 +20,16 @@ file into a handbook.
   `.agents/skills/issue-spec`, following
   [docs/product-specs/spec-quality.md](docs/product-specs/spec-quality.md).
   Do not add a `spec.md`.
+- The default workflow is a focused branch and a pull request to `main`. Use
+  Issue-driven SDD only when the maintainer explicitly starts it from a parent
+  Issue or native sub-issue.
 - When writing or changing a Plan and its artifacts, follow
   [docs/design-docs/plan-quality.md](docs/design-docs/plan-quality.md).
 - Prefer focused, reviewable changes with automated checks.
 - Do not hand-edit generated files (`internal/httpapi/gen/`, `web/src/api/gen/`);
   change `api/openapi.yaml` and run `task generate`.
 - Add links to new design documents from `docs/design-docs/index.md`.
-- Every push to a feature branch gets a pull request. After pushing, open a PR
-  against `main` if one does not exist yet, so no pushed branch is left without
-  a review target.
+- Give every pushed working branch a pull request as its review target.
 - When a change alters how a screen looks or behaves, attach an image of the
   result to the pull request; say "UI 変更なし" when it does not. Capturing and
   embedding one is covered in
@@ -41,5 +42,8 @@ file into a handbook.
   and opens or updates one PR. Stage and implementation PRs target the
   long-lived feature branch, and only its integration PR targets `main`.
 - The empty feature-branch push during `plan` is the sole temporary exception
-  to the rule that every pushed feature branch already has a PR to `main`.
-  Open the integration PR immediately after the Plan PR is merged.
+  to having a review target. Open the integration PR immediately after the Plan
+  PR is merged.
+- Refresh an integration PR by merging the latest `main` into its feature
+  branch and rerunning the required checks. Updating an existing PR branch does
+  not get a separate PR.
