@@ -467,7 +467,62 @@ func TestSearchExprCondition(t *testing.T) {
 func TestListVideosWithManyTerms(t *testing.T) {
 	db := searchExprFixture(t)
 	query := strings.Repeat("京都 ", 40) + "OR 奈良"
-	if _, err := db.ListVideos(context.Background(), VideoQuery{Query: query}); err != nil {
+	page, err := db.ListVideos(context.Background(), VideoQuery{Query: query})
+	if err != nil {
 		t.Fatalf("語の多い検索で失敗した: %v", err)
+	}
+	// 先頭 16 語（すべて「京都」）だけが効き、後ろの OR 奈良 は無視される。
+	want, err := db.ListVideos(context.Background(), VideoQuery{Query: "京都"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != want.Total {
+		t.Errorf("語の多い検索: total = %d, want %d（京都 だけと同じ）", page.Total, want.Total)
+	}
+}
+
+// 除外語は所在ごとに評価する（contracts/list-api.md §1-8・§1-9）。除外語を含まない
+// 所在が1つでもあれば動画は当たり、項目の題名と所在はその所在から取る。
+func TestListVideosExclusionIsEvaluatedPerLocation(t *testing.T) {
+	db := migratedDB(t)
+	upsertAll(t, db,
+		listingFile("/media/A/京都.mp4", "京都", "same", 0),
+		listingFile("/media/B/x.mp4", "x", "same", 0),
+	)
+	page, err := db.ListVideos(context.Background(), VideoQuery{Query: "-京都"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 1 || len(page.Items) != 1 {
+		t.Fatalf("-京都: total = %d, items = %d, want 1 件", page.Total, len(page.Items))
+	}
+	if item := page.Items[0]; item.Path != "/media/B/x.mp4" || item.Title != "x" {
+		t.Errorf("-京都: path = %q, title = %q, want /media/B/x.mp4 と x", item.Path, item.Title)
+	}
+}
+
+// 内容の識別子が空の動画は、空の識別子で記録された再生位置があっても未視聴として
+// 絞る。API は空の識別子の再生位置を返さない（httpapi の progressFor）。
+func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	ids := upsertAll(t, db, listingFile("/media/legacy.mp4", "legacy", "legacy-key", 0))
+	if _, err := db.SQL().Exec(`update videos set content_key = '' where id = ?`, ids["/media/legacy.mp4"]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SaveProgress(ctx, "", Progress{PositionMs: 100_000, Completed: true}); err != nil {
+		t.Fatal(err)
+	}
+	for watch, want := range map[domain.WatchFilter]int{
+		domain.WatchWatched:   0,
+		domain.WatchUnwatched: 1,
+	} {
+		page, err := db.ListVideos(ctx, VideoQuery{Watch: watch})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Total != want {
+			t.Errorf("watch=%s: total = %d, want %d", watch, page.Total, want)
+		}
 	}
 }

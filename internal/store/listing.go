@@ -100,8 +100,8 @@ func (db *DB) ListFolderVideos(ctx context.Context, q domain.FolderVideoQuery) (
 	})
 }
 
-// CountVideos はライブラリで検索語に当たる動画の総件数を返す。1万件規模の
-// count(*) は索引走査で数 ms に収まる。
+// CountVideos はライブラリで検索語に当たる動画の総件数を返す。一覧と同じ所在の
+// まとめ（chosen）を数えるので、1万件規模で数十 ms かかる（一覧の1ページも同程度）。
 func (db *DB) CountVideos(ctx context.Context, search string) (int, error) {
 	return db.countVideos(ctx, listSpec{scope: libraryScope(), expr: domain.ParseSearchQuery(search)})
 }
@@ -157,7 +157,8 @@ func filteredFrom(spec listSpec, withLocation bool) string {
 	if withLocation {
 		from += ` join video_locations loc on loc.path = chosen.path`
 	}
-	from += ` left join playback_progress p on p.content_key = videos.content_key`
+	// 内容の識別子が空の動画は再生位置を持たない（API の progressFor と同じ扱い）。
+	from += ` left join playback_progress p on p.content_key = videos.content_key and videos.content_key <> ''`
 	var conditions []string
 	if condition := watchCondition(spec.watch); condition != "" {
 		conditions = append(conditions, condition)
