@@ -1,4 +1,4 @@
-import type { FolderRef } from "../api/client";
+import type { FolderRef, VideoFolder } from "../api/client";
 
 /** FOLDERS_ROOT はフォルダ画面の最上位の URL である。 */
 export const FOLDERS_ROOT = "/folders";
@@ -55,6 +55,30 @@ export function parseFolderPathname(pathname: string): FolderLocation {
     kind: "folder",
     folder: { rootId: Number(rootSegment), path: segments.join("/") },
   };
+}
+
+/**
+ * folderLocationLabel は、開いているフォルダの配下検索結果に添える置き場所を作る
+ * （ui-design.md「Search results」）。直下は「このフォルダ」、それ以外は開いている
+ * フォルダからの相対パス。
+ */
+export function folderLocationLabel(open: FolderRef, target: VideoFolder): string {
+  if (target.path === open.path) return "このフォルダ";
+  const prefix = open.path === "" ? "" : `${open.path}/`;
+  return target.path.startsWith(prefix) ? target.path.slice(prefix.length) : target.path;
+}
+
+/**
+ * topLevelLocationLabel は、最上位（`/folders`）の検索結果に添える置き場所を作る。
+ * 登録フォルダの表示名から始め、直下ならその名前だけにする（ui-design.md「Search results」）。
+ */
+export function topLevelLocationLabel(
+  target: VideoFolder,
+  rootName: string | undefined,
+): string {
+  const name = rootName ?? "";
+  if (target.path === "") return name;
+  return name === "" ? target.path : `${name}/${target.path}`;
 }
 
 /** folderKey はフォルダを一意に表す文字列である（控えの鍵・React の key）。 */

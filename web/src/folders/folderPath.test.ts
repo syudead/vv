@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   breadcrumbsFor,
+  folderLocationLabel,
   folderUrl,
   parseFolderPathname,
   rootDisplayName,
+  topLevelLocationLabel,
 } from "./folderPath";
 
 describe("folderUrl と parseFolderPathname", () => {
@@ -81,5 +83,41 @@ describe("breadcrumbsFor", () => {
       undefined,
       { label: "A" },
     ]);
+  });
+});
+
+describe("folderLocationLabel", () => {
+  it("開いているフォルダの直下は「このフォルダ」にする", () => {
+    expect(folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A" })).toBe(
+      "このフォルダ",
+    );
+    expect(folderLocationLabel({ rootId: 3, path: "" }, { rootId: 3, path: "" })).toBe(
+      "このフォルダ",
+    );
+  });
+
+  it("配下は開いているフォルダからの相対パスにする", () => {
+    expect(
+      folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A/B" }),
+    ).toBe("B");
+    expect(
+      folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A/B/C" }),
+    ).toBe("B/C");
+    expect(folderLocationLabel({ rootId: 3, path: "" }, { rootId: 3, path: "A/B" })).toBe(
+      "A/B",
+    );
+  });
+});
+
+describe("topLevelLocationLabel", () => {
+  it("登録フォルダの表示名から始め、直下ならその名前だけにする", () => {
+    expect(topLevelLocationLabel({ rootId: 3, path: "" }, "movies")).toBe("movies");
+    expect(topLevelLocationLabel({ rootId: 3, path: "A/B" }, "movies")).toBe(
+      "movies/A/B",
+    );
+  });
+
+  it("登録フォルダの名前が分からないときはパスだけにする", () => {
+    expect(topLevelLocationLabel({ rootId: 3, path: "A" }, undefined)).toBe("A");
   });
 });

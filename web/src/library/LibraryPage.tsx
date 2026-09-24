@@ -59,8 +59,11 @@ function topmostId(list: HTMLElement | null, top: number): number | undefined {
   return undefined;
 }
 
-/** conditionLabels は一致なしの状態に並べる、効いている条件の名前である。 */
-function conditionLabels(criteria: ListCriteria): string[] {
+/**
+ * conditionLabels は一致なしの状態に並べる、効いている条件の名前である。
+ * フォルダ画面はこれに範囲のチップを自分で足す（ui-design.md「No-match state」）。
+ */
+export function conditionLabels(criteria: ListCriteria): string[] {
   const labels: string[] = [];
   if (criteria.query !== "") labels.push(`検索語「${criteria.query}」`);
   if (criteria.watch !== "all") {
@@ -74,8 +77,9 @@ function conditionLabels(criteria: ListCriteria): string[] {
 /**
  * summarize は Stash の「1-8 of 8 (34m 11s - 263 MB)」に当たる一行。件数はサーバーの
  * total（検索語と絞り込みをすべて適用した全件）、合計時間と大きさは読み込んだ分である。
+ * フォルダ画面の検索結果・最上位の検索結果も同じ書式を使う。
  */
-function summarize(shown: Video[], total: number): string {
+export function summarize(shown: Video[], total: number): string {
   const count = Math.max(total, shown.length);
   const durationMs = shown.reduce((sum, video) => sum + (video.durationMs ?? 0), 0);
   const bytes = shown.reduce((sum, video) => sum + video.sizeBytes, 0);

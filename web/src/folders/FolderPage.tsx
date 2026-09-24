@@ -5,12 +5,13 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
-import { Link, useLocation, useSearchParams } from "react-router";
+import { Link, useLocation } from "react-router";
 
-import type { FolderRef, VideoSort } from "../api/client";
+import type { FolderRef, FolderScope, VideoSort } from "../api/client";
 import {
   clearListSnapshot,
   saveListSnapshot,
@@ -18,8 +19,16 @@ import {
 } from "../api/listSnapshot";
 import { useFolderListing, useRootFolders } from "../api/useFolderListing";
 import { useVideos } from "../api/useVideos";
-import { isVideoSort } from "../library/listCriteria";
-import { CardSkeleton, EmptyState, LoadFailed } from "../library/states";
+import {
+  clearConditions,
+  hasConditions,
+  type HistoryMode,
+  type ListCriteria,
+  newSeed,
+} from "../library/listCriteria";
+import { conditionLabels, summarize } from "../library/LibraryPage";
+import { CardSkeleton, EmptyState, LoadFailed, NoMatches } from "../library/states";
+import { useListCriteria } from "../library/useListCriteria";
 import VideoCard from "../library/VideoCard";
 import {
   readViewPreferences,
@@ -37,8 +46,10 @@ import {
   breadcrumbsFor,
   FOLDERS_ROOT,
   folderKey,
+  folderLocationLabel,
   parseFolderPathname,
   rootDisplayName,
+  topLevelLocationLabel,
 } from "./folderPath";
 
 const cardWidth: Record<Zoom, string> = {
@@ -47,6 +58,12 @@ const cardWidth: Record<Zoom, string> = {
   2: "var(--spacing-card-2)",
   3: "var(--spacing-card-3)",
 };
+
+/**
+ * ROOT_SEARCH_KEY は最上位の検索結果の控えの鍵である。実在するフォルダの鍵
+ * （folderKey、`<id>\0<path>` の形）とは衝突しない文字列を選ぶ。
+ */
+const ROOT_SEARCH_KEY = "root-search";
 
 /** hasMounted はこのタブで最初の表示が済んだかを覚える。最初の表示ではフォーカスを動かさない。 */
 let hasMounted = false;
@@ -122,47 +139,265 @@ function FolderNotFound() {
   );
 }
 
-/** usePreferences は並び順と表示倍率を、ライブラリと同じ保存値で扱う（要件 13）。 */
-function usePreferences() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [preferences, setPreferences] = useState(readViewPreferences);
-  const requested = searchParams.get("sort");
-  // ランダムはフォルダ画面ではまだ選べない（フォルダ画面に検索を足す単位で、並べ直すと seed を揃える）。
-  const candidate = isVideoSort(requested) ? requested : preferences.sort;
-  const sort: VideoSort = candidate === "random" ? "addedDesc" : candidate;
+/** rangeLabel は一致なしのチップに添える範囲の名前である（ui-design.md「No-match state」）。 */
+function rangeLabel(kind: "subtree" | "direct", name: string): string {
+  return kind === "subtree" ? `${name}とその中` : `${name}の直下`;
+}
 
-  const save = useCallback((updated: ViewPreferences) => {
+/**
+ * useConditions は一覧の条件（検索語・視聴状態・再生可否・並べ替え・seed）を
+ * URL から読み書きする口である。ライブラリと同じ `library/listCriteria`・
+ * `useListCriteria` を使う（Plan の Structural Decisions 9）。端末に保存するのは
+ * 並べ替えだけで、フォルダ画面もライブラリと同じ保存値を読み書きする。
+ */
+function useConditions() {
+  const [preferences, setPreferences] = useState(readViewPreferences);
+  const { criteria, apply } = useListCriteria(preferences.sort);
+  const searchField = useRef<HTMLInputElement | null>(null);
+
+  const savePreferences = useCallback((updated: ViewPreferences) => {
     setPreferences(updated);
     writeViewPreferences(updated);
   }, []);
 
+  const update = useCallback(
+    (next: ListCriteria, mode: HistoryMode = "push") => apply(next, mode),
+    [apply],
+  );
+
   const changeSort = useCallback(
     (next: VideoSort) => {
-      setSearchParams(
-        (current) => {
-          const params = new URLSearchParams(current);
-          params.set("sort", next);
-          return params;
-        },
-        { replace: true },
-      );
-      save({ ...preferences, sort: next });
+      update({
+        ...criteria,
+        sort: next,
+        seed: next === "random" ? newSeed(criteria.seed) : undefined,
+      });
+      savePreferences({ ...preferences, sort: next });
     },
-    [preferences, save, setSearchParams],
+    [criteria, preferences, savePreferences, update],
   );
+  const shuffle = useCallback(
+    () => update({ ...criteria, seed: newSeed(criteria.seed) }),
+    [criteria, update],
+  );
+  const changeWatch = useCallback(
+    (next: ListCriteria["watch"]) => update({ ...criteria, watch: next }),
+    [criteria, update],
+  );
+  const changePlayable = useCallback(
+    (next: boolean) => update({ ...criteria, playable: next }),
+    [criteria, update],
+  );
+  const commitQuery = useCallback(
+    (next: string, mode: HistoryMode) => update({ ...criteria, query: next }, mode),
+    [criteria, update],
+  );
+  const clearAll = useCallback(
+    () => update(clearConditions(criteria)),
+    [criteria, update],
+  );
+  // 一致なしの「条件を解除」は自分自身が消えるので、フォーカスを空になった検索欄へ移す。
+  const clearFromNoMatches = useCallback(() => {
+    clearAll();
+    searchField.current?.focus();
+  }, [clearAll]);
   const changeZoom = useCallback(
-    (next: Zoom) => save({ ...preferences, zoom: next }),
-    [preferences, save],
+    (next: Zoom) => savePreferences({ ...preferences, zoom: next }),
+    [preferences, savePreferences],
   );
-  return { sort, zoom: preferences.zoom, changeSort, changeZoom };
+
+  return {
+    criteria,
+    zoom: preferences.zoom,
+    searchField,
+    changeSort,
+    shuffle,
+    changeWatch,
+    changePlayable,
+    commitQuery,
+    clearAll,
+    clearFromNoMatches,
+    changeZoom,
+  };
+}
+
+/**
+ * RootSearchResults は最上位（`/folders`）で検索語があるときの検索結果である。
+ * ライブラリ全体を `listVideos` で検索し、置き場所は登録フォルダの表示名から
+ * 始める（ui-design.md「Search results」）。
+ */
+function RootSearchResults({
+  criteria,
+  rootNames,
+  zoom,
+  onClearNoMatches,
+}: {
+  criteria: ListCriteria;
+  rootNames: Map<number, string>;
+  zoom: Zoom;
+  onClearNoMatches: () => void;
+}) {
+  const location = useLocation();
+  const backTo = `${location.pathname}${location.search}`;
+  const [restored] = useState(() =>
+    takeListSnapshot({ ...criteria, folder: ROOT_SEARCH_KEY }),
+  );
+  const {
+    items,
+    total,
+    cursor,
+    hasMore,
+    loading,
+    loadingMore,
+    error,
+    loadMore,
+    retryLoadMore,
+    reload,
+  } = useVideos(criteria, restored);
+
+  const scan = useScan();
+  const knownScanId = useRef(restored?.scanId);
+  useEffect(() => scan.refresh(), [scan.refresh]);
+  useEffect(() => {
+    const finished = scan.finished;
+    if (finished === null || knownScanId.current === finished.id) return;
+    knownScanId.current = finished.id;
+    clearListSnapshot();
+    reload();
+  }, [reload, scan.finished]);
+
+  const saveSnapshot = useCallback(() => {
+    saveListSnapshot(
+      { ...criteria, folder: ROOT_SEARCH_KEY },
+      {
+        items,
+        total,
+        cursor,
+        hasMore,
+        scrollY: window.scrollY,
+        scanId: knownScanId.current,
+      },
+    );
+  }, [criteria, cursor, hasMore, items, total]);
+
+  const pendingScroll = useRef(restored?.scrollY);
+  useEffect(() => {
+    const previous = history.scrollRestoration;
+    history.scrollRestoration = "manual";
+    return () => {
+      history.scrollRestoration = previous;
+    };
+  }, []);
+  useLayoutEffect(() => {
+    const top = pendingScroll.current;
+    if (top === undefined || items.length === 0) return;
+    pendingScroll.current = undefined;
+    window.scrollTo({ top, behavior: "auto" });
+    requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
+  }, [items.length]);
+
+  const sentinel = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const target = sentinel.current;
+    if (target === null || !hasMore) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMore();
+      },
+      { rootMargin: "600px" },
+    );
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loadMore]);
+
+  const noMatch = !loading && error === null && items.length === 0;
+  const summaryText = loading
+    ? "読み込み中…"
+    : `「${criteria.query}」 ${summarize(items, total)}`;
+
+  return (
+    <div onClick={saveSnapshot} className="flex flex-col gap-3">
+      <h2 className="sr-only">検索結果</h2>
+      {noMatch ? (
+        <NoMatches
+          conditions={[...conditionLabels(criteria), "すべてのフォルダ"]}
+          onClear={onClearNoMatches}
+        />
+      ) : (
+        <>
+          <p
+            role="status"
+            aria-live="polite"
+            className="text-center text-xs text-fg-muted tabular-nums"
+          >
+            {summaryText}
+          </p>
+          {error !== null && items.length === 0 ? (
+            <LoadFailed reason={error} onRetry={reload} />
+          ) : (
+            <Grid zoom={zoom}>
+              {loading ? (
+                <CardSkeleton count={12} />
+              ) : (
+                items.map((video) => (
+                  <VideoCard
+                    key={video.id}
+                    video={video}
+                    backTo={backTo}
+                    selected={false}
+                    selectionMode={false}
+                    location={
+                      video.folder === undefined
+                        ? undefined
+                        : topLevelLocationLabel(
+                            video.folder,
+                            rootNames.get(video.folder.rootId),
+                          )
+                    }
+                  />
+                ))
+              )}
+              {loadingMore && <CardSkeleton count={6} />}
+            </Grid>
+          )}
+          {error !== null && items.length > 0 && (
+            <div className="flex items-center justify-center gap-2 text-sm text-danger">
+              <p>続きを取得できません: {error}</p>
+              <Button size="sm" onClick={retryLoadMore}>
+                再試行
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+      <div ref={sentinel} aria-hidden="true" className="h-px" />
+    </div>
+  );
 }
 
 /** RootView はフォルダ画面の最上位で、登録済みメディアフォルダを並べる。 */
 function RootView() {
   const heading = useArrival();
-  const { zoom, changeSort, changeZoom } = usePreferences();
+  const {
+    criteria,
+    zoom,
+    searchField,
+    changeSort,
+    shuffle,
+    changeWatch,
+    changePlayable,
+    commitQuery,
+    clearAll,
+    clearFromNoMatches,
+    changeZoom,
+  } = useConditions();
   const roots = useRootFolders();
   const folders = roots.data?.folders ?? [];
+  const rootNames = useMemo(
+    () => new Map(folders.map((folder) => [folder.rootId, folder.name])),
+    [folders],
+  );
+  const searching = criteria.query !== "";
 
   // 取り込みが終わったら登録フォルダの集計を読み直す（Edge Case「取り込み中」）。
   const scan = useScan();
@@ -182,11 +417,40 @@ function RootView() {
         フォルダ
       </h1>
       <TopBarPortal>
-        <FolderToolbar onSortChange={changeSort} zoom={zoom} onZoomChange={changeZoom} />
+        <FolderToolbar
+          query={criteria.query}
+          onQueryCommit={commitQuery}
+          searchRef={searchField}
+          searchLabel="すべてのフォルダの動画を検索"
+          searchPlaceholder="すべてのフォルダを検索"
+          sort={criteria.sort}
+          onSortChange={changeSort}
+          onShuffle={shuffle}
+          watch={criteria.watch}
+          onWatchChange={changeWatch}
+          playable={criteria.playable}
+          onPlayableChange={changePlayable}
+          canClear={hasConditions(criteria)}
+          onClear={clearAll}
+          disabled={!searching}
+          zoom={zoom}
+          onZoomChange={changeZoom}
+        />
       </TopBarPortal>
-      <Breadcrumbs crumbs={[{ label: "フォルダ" }]} />
+      <Breadcrumbs
+        crumbs={
+          searching ? [{ label: "すべてのフォルダを検索中" }] : [{ label: "フォルダ" }]
+        }
+      />
 
-      {roots.error !== null ? (
+      {searching ? (
+        <RootSearchResults
+          criteria={criteria}
+          rootNames={rootNames}
+          zoom={zoom}
+          onClearNoMatches={clearFromNoMatches}
+        />
+      ) : roots.error !== null ? (
         <LoadFailed reason={roots.error} onRetry={roots.reload} />
       ) : !roots.loading && folders.length === 0 ? (
         <EmptyState
@@ -219,21 +483,49 @@ function RootView() {
   );
 }
 
-/** FolderView はフォルダ1件の中身（直下の子フォルダと動画）を並べる。 */
+/** FolderView はフォルダ1件の中身（直下の子フォルダと動画、または検索結果）を並べる。 */
 function FolderView({ folder }: { folder: FolderRef }) {
   const location = useLocation();
-  const { sort, zoom, changeSort, changeZoom } = usePreferences();
+  const {
+    criteria,
+    zoom,
+    searchField,
+    changeSort,
+    shuffle,
+    changeWatch,
+    changePlayable,
+    commitQuery,
+    clearAll,
+    clearFromNoMatches,
+    changeZoom,
+  } = useConditions();
   const scan = useScan();
+  const searching = criteria.query !== "";
+  // 検索語があるときはフォルダとその配下すべてを対象にする。無ければ直下だけを絞る
+  // （Plan の Structural Decisions 8、contracts/list-url.md §2）。direct は既定なので
+  // 送らない（URL・要求を今までと同じ形に保つ）。
+  const scope: FolderScope | undefined = searching ? "subtree" : undefined;
 
   // --- 再生画面から戻ったときは控えから復元する（要件 10） ---
   const key = folderKey(folder);
   const [restored] = useState(() => {
-    const held = takeListSnapshot({ query: "", sort, folder: key });
+    const held = takeListSnapshot({ ...criteria, folder: key });
     return held?.folderListing === undefined ? undefined : held;
   });
   const heading = useArrival(restored !== undefined);
   const listing = useFolderListing(folder, restored?.folderListing);
-  const videos = useVideos({ sort }, restored, folder);
+  const videos = useVideos(
+    {
+      query: criteria.query,
+      watch: criteria.watch,
+      playable: criteria.playable,
+      sort: criteria.sort,
+      seed: criteria.seed,
+      scope,
+    },
+    restored,
+    folder,
+  );
 
   const summary = listing.data?.folder;
   const children = listing.data?.folders ?? [];
@@ -289,7 +581,7 @@ function FolderView({ folder }: { folder: FolderRef }) {
   const saveSnapshot = useCallback(() => {
     if (listing.data === null || reloadPending.current) return;
     saveListSnapshot(
-      { query: "", sort, folder: key },
+      { ...criteria, folder: key },
       {
         items: videos.items,
         total: videos.total,
@@ -301,9 +593,9 @@ function FolderView({ folder }: { folder: FolderRef }) {
       },
     );
   }, [
+    criteria,
     key,
     listing.data,
-    sort,
     videos.cursor,
     videos.hasMore,
     videos.items,
@@ -326,10 +618,12 @@ function FolderView({ folder }: { folder: FolderRef }) {
     return () => observer.disconnect();
   }, [hasMore, loadMore]);
 
-  const empty =
+  const noVideosAtAll =
     !listing.loading &&
     !videos.loading &&
     summary !== undefined &&
+    !searching &&
+    !hasConditions(criteria) &&
     children.length === 0 &&
     videos.items.length === 0 &&
     videos.error === null;
@@ -339,7 +633,71 @@ function FolderView({ folder }: { folder: FolderRef }) {
     body = <FolderNotFound />;
   } else if (listing.error !== null) {
     body = <LoadFailed reason={listing.error} onRetry={listing.reload} />;
-  } else if (empty) {
+  } else if (searching) {
+    // 検索結果（ui-design.md「Search results」）。子フォルダの一群と「動画 N」の
+    // 見出しを出さず、ライブラリと同じ要約行と1つの格子にする。
+    const noMatch = !videos.loading && videos.error === null && videos.items.length === 0;
+    body = (
+      <>
+        <h2 className="sr-only">検索結果</h2>
+        {noMatch ? (
+          <NoMatches
+            conditions={[
+              ...conditionLabels(criteria),
+              rangeLabel("subtree", name ?? "フォルダ"),
+            ]}
+            note={undefined}
+            onClear={clearFromNoMatches}
+          />
+        ) : (
+          <>
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-center text-xs text-fg-muted tabular-nums"
+            >
+              {videos.loading
+                ? "読み込み中…"
+                : `「${criteria.query}」 ${summarize(videos.items, videos.total)}`}
+            </p>
+            {videos.error !== null && videos.items.length === 0 ? (
+              <LoadFailed reason={videos.error} onRetry={videos.reload} />
+            ) : (
+              <Grid zoom={zoom}>
+                {videos.loading ? (
+                  <CardSkeleton count={12} />
+                ) : (
+                  videos.items.map((video) => (
+                    <VideoCard
+                      key={video.id}
+                      video={video}
+                      backTo={backTo}
+                      selected={false}
+                      selectionMode={false}
+                      location={
+                        video.folder === undefined
+                          ? undefined
+                          : folderLocationLabel(folder, video.folder)
+                      }
+                    />
+                  ))
+                )}
+                {videos.loadingMore && <CardSkeleton count={6} />}
+              </Grid>
+            )}
+            {videos.error !== null && videos.items.length > 0 && (
+              <div className="flex items-center justify-center gap-2 text-sm text-danger">
+                <p>続きを取得できません: {videos.error}</p>
+                <Button size="sm" onClick={videos.retryLoadMore}>
+                  再試行
+                </Button>
+              </div>
+            )}
+          </>
+        )}
+      </>
+    );
+  } else if (noVideosAtAll) {
     body = (
       <EmptyState
         icon={FolderOpen}
@@ -353,8 +711,16 @@ function FolderView({ folder }: { folder: FolderRef }) {
       />
     );
   } else {
+    // 直下だけを対象にする通常表示（絞り込みだけのときも同じ形。ui-design.md「Filter only」）。
     const showFolders = listing.loading || children.length > 0;
-    const showVideos = videos.loading || videos.items.length > 0 || videos.error !== null;
+    const filterOnly = hasConditions(criteria);
+    const filterOnlyNoMatch =
+      filterOnly && !videos.loading && videos.error === null && videos.items.length === 0;
+    const showVideos =
+      videos.loading ||
+      videos.items.length > 0 ||
+      videos.error !== null ||
+      filterOnlyNoMatch;
     body = (
       <>
         {showFolders && (
@@ -371,40 +737,61 @@ function FolderView({ folder }: { folder: FolderRef }) {
           </Section>
         )}
         {showVideos && (
-          <Section
-            title="動画"
-            count={videos.loading ? undefined : videos.total}
-            className={showFolders ? "mt-3" : undefined}
-          >
-            {videos.error !== null && videos.items.length === 0 ? (
-              <LoadFailed reason={videos.error} onRetry={videos.reload} />
+          <div className={showFolders ? "mt-3" : undefined}>
+            {filterOnlyNoMatch ? (
+              <>
+                {/* 件数の変化は、視覚的に隠した polite の状態の行で知らせる（子フォルダの
+                    上の「動画 N」は出さないので、見える要約行は無い）。 */}
+                <p role="status" aria-live="polite" className="sr-only">
+                  直下の動画 {videos.total.toLocaleString("ja-JP")} 件
+                </p>
+                <NoMatches
+                  conditions={[
+                    ...conditionLabels(criteria),
+                    rangeLabel("direct", name ?? "フォルダ"),
+                  ]}
+                  note="中のフォルダも探すには、検索語を入れてください。"
+                  onClear={clearFromNoMatches}
+                />
+              </>
             ) : (
-              <Grid zoom={zoom}>
-                {videos.loading ? (
-                  <CardSkeleton count={6} />
-                ) : (
-                  videos.items.map((video) => (
-                    <VideoCard
-                      key={video.id}
-                      video={video}
-                      backTo={backTo}
-                      selected={false}
-                      selectionMode={false}
-                    />
-                  ))
+              <Section title="動画" count={videos.loading ? undefined : videos.total}>
+                {filterOnly && !videos.loading && (
+                  <p role="status" aria-live="polite" className="sr-only">
+                    直下の動画 {videos.total.toLocaleString("ja-JP")} 件
+                  </p>
                 )}
-                {videos.loadingMore && <CardSkeleton count={6} />}
-              </Grid>
+                {videos.error !== null && videos.items.length === 0 ? (
+                  <LoadFailed reason={videos.error} onRetry={videos.reload} />
+                ) : (
+                  <Grid zoom={zoom}>
+                    {videos.loading ? (
+                      <CardSkeleton count={6} />
+                    ) : (
+                      videos.items.map((video) => (
+                        <VideoCard
+                          key={video.id}
+                          video={video}
+                          backTo={backTo}
+                          selected={false}
+                          selectionMode={false}
+                        />
+                      ))
+                    )}
+                    {videos.loadingMore && <CardSkeleton count={6} />}
+                  </Grid>
+                )}
+                {videos.error !== null && videos.items.length > 0 && (
+                  <div className="flex items-center justify-center gap-2 text-sm text-danger">
+                    <p>続きを取得できません: {videos.error}</p>
+                    <Button size="sm" onClick={videos.retryLoadMore}>
+                      再試行
+                    </Button>
+                  </div>
+                )}
+              </Section>
             )}
-            {videos.error !== null && videos.items.length > 0 && (
-              <div className="flex items-center justify-center gap-2 text-sm text-danger">
-                <p>続きを取得できません: {videos.error}</p>
-                <Button size="sm" onClick={videos.retryLoadMore}>
-                  再試行
-                </Button>
-              </div>
-            )}
-          </Section>
+          </div>
         )}
       </>
     );
@@ -417,8 +804,20 @@ function FolderView({ folder }: { folder: FolderRef }) {
       </h1>
       <TopBarPortal>
         <FolderToolbar
-          sort={sort}
+          query={criteria.query}
+          onQueryCommit={commitQuery}
+          searchRef={searchField}
+          searchLabel={`${name ?? "フォルダ"}の中を検索`}
+          searchPlaceholder="このフォルダ内を検索"
+          sort={criteria.sort}
           onSortChange={changeSort}
+          onShuffle={shuffle}
+          watch={criteria.watch}
+          onWatchChange={changeWatch}
+          playable={criteria.playable}
+          onPlayableChange={changePlayable}
+          canClear={hasConditions(criteria)}
+          onClear={clearAll}
           zoom={zoom}
           onZoomChange={changeZoom}
         />
@@ -430,6 +829,7 @@ function FolderView({ folder }: { folder: FolderRef }) {
             ? breadcrumbsFor(folder, undefined).filter((crumb) => crumb !== undefined)
             : breadcrumbsFor(folder, rootName)
         }
+        suffix={searching ? "内を検索中" : undefined}
       />
       {/* 中身を押す直前（再生画面・子フォルダへ移る直前）の状態を控える。 */}
       <div onClick={saveSnapshot} className="flex flex-col gap-3">

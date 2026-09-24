@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   errorMessage,
   type FolderRef,
+  type FolderScope,
   isAborted,
   listFolderVideos,
   listVideos,
@@ -37,6 +38,11 @@ export interface VideosCriteria {
   sort: VideoSort;
   /** sort=random のときだけ送る。 */
   seed?: number;
+  /**
+   * フォルダ画面での検索範囲（direct = 直下だけ、subtree = 配下すべて）。
+   * folder を渡さない（ライブラリ）ときは無視する。省略時は direct と同じ。
+   */
+  scope?: FolderScope;
 }
 
 /** criteriaKey は条件を値で比べるための文字列にする。 */
@@ -47,6 +53,7 @@ function criteriaKey(criteria: VideosCriteria): string {
     criteria.playable === true,
     criteria.sort,
     criteria.sort === "random" ? (criteria.seed ?? null) : null,
+    criteria.scope ?? "direct",
   ]);
 }
 
@@ -169,7 +176,11 @@ export function useVideos(
         const page =
           target === undefined
             ? await listVideos(params)
-            : await listFolderVideos({ folder: target, ...params });
+            : await listFolderVideos({
+                folder: target,
+                scope: current.scope,
+                ...params,
+              });
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
         if (controller.signal.aborted || inFlight.current !== controller) return;

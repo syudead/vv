@@ -272,6 +272,47 @@ export function generateFolderFixtures(root) {
 }
 
 /**
+ * generateFolderSearchFixtures はフォルダ画面・最上位の検索と絞り込みの検証用の
+ * フォルダ構成を作る（specs/013-library-search、親 Issue #195 の受け入れ条件
+ * 17〜21、#228 の完了の条件）。ui-design.md「Visual review criteria」の
+ * `root/A/x 京都.mp4`・`root/A/B/y 京都.mp4`・`root/C/z 京都.mp4` に対応する。
+ *
+ * - `A/x 京都.mp4`・`A/B/y 京都.mp4` は「京都」を含み、A の配下にある
+ *   （A の中を「京都」で検索すると当たる）。
+ * - `C/z 京都.mp4` も「京都」を含むが、A の配下ではなく別の登録フォルダ直下の
+ *   きょうだいフォルダにある（A の中の検索では当たらず、最上位の検索でだけ当たる）。
+ * - `A/大阪.mp4` は「京都」を含まない、A 直下のもう1本の動画（絞り込みだけの
+ *   ときの件数の変化を確かめる）。
+ */
+export function generateFolderSearchFixtures(root) {
+  let count = 0;
+  const make = (relative) => {
+    const file = path.join(root, relative);
+    mkdirSync(path.dirname(file), { recursive: true });
+    count += 1;
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=10:duration=2",
+      "-vf",
+      `hue=h=${String((count * 53) % 360)}`,
+      ...h264,
+      "-an",
+      "-metadata",
+      `title=folder-search-fixture-${String(count)}`,
+      file,
+    ]);
+  };
+
+  make("movies/A/x 京都.mp4");
+  make("movies/A/B/y 京都.mp4");
+  make("movies/A/大阪.mp4");
+  make("movies/C/z 京都.mp4");
+  return count;
+}
+
+/**
  * appendFreeBox は mp4 の末尾に中身の違う free ボックスを足す。再生にも解析にも
  * 影響しないまま末尾の内容が変わるので、同じ映像から別の動画を安く作れる
  * （内容の識別子は先頭と末尾から作る。internal/scanner/content_key.go）。

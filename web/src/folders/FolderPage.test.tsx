@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -36,7 +36,7 @@ function previews(count: number) {
   }));
 }
 
-function video(id: number, title: string): Video {
+function video(id: number, title: string, extra: Partial<Video> = {}): Video {
   return {
     id,
     title,
@@ -46,6 +46,7 @@ function video(id: number, title: string): Video {
     probeState: "done",
     thumbnailState: "done",
     previewState: "pending",
+    ...extra,
   };
 }
 
@@ -95,6 +96,12 @@ function Player() {
   );
 }
 
+/** LocationProbe は今の URL を見せる（MemoryRouter は window.location と同期しない）。 */
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location">{location.pathname}</span>;
+}
+
 function renderFolders(initial: string) {
   return render(
     <MemoryRouter initialEntries={[initial]}>
@@ -102,7 +109,15 @@ function renderFolders(initial: string) {
         <ToastProvider>
           <ScanProvider>
             <Routes>
-              <Route path="/folders/*" element={<FolderPage />} />
+              <Route
+                path="/folders/*"
+                element={
+                  <>
+                    <FolderPage />
+                    <LocationProbe />
+                  </>
+                }
+              />
               <Route path="/videos/:id" element={<Player />} />
             </Routes>
           </ScanProvider>
@@ -135,11 +150,45 @@ describe("FolderPage", () => {
       if (url === "/api/folders") return Promise.resolve(json(roots));
       if (url === "/api/folders/3?path=A") return Promise.resolve(json(folderA));
       if (url === "/api/folders/3") return Promise.resolve(json(folderRoot));
-      if (url.startsWith("/api/folders/3/videos?path=A&")) {
+      if (url.startsWith("/api/folders/3/videos?")) {
+        const params = new URL(url, "http://localhost").searchParams;
+        if (params.get("path") !== "A")
+          return Promise.resolve(json({ items: [], total: 0 }));
+        if (params.get("query") === "京都") {
+          const page: VideoPage = {
+            items: [
+              video(1, "x", { folder: { rootId: 3, path: "A" } }),
+              video(2, "y", { folder: { rootId: 3, path: "A/B" } }),
+            ],
+            total: 2,
+          };
+          return Promise.resolve(json(page));
+        }
+        if (params.has("query")) return Promise.resolve(json({ items: [], total: 0 }));
+        if (params.get("watch") === "unwatched") {
+          const page: VideoPage = { items: [video(1, "x")], total: 1 };
+          return Promise.resolve(json(page));
+        }
+        if (params.get("watch") === "watched") {
+          return Promise.resolve(json({ items: [], total: 0 }));
+        }
+        // 絞り込みなし（直下）は常に x の1件。
         const page: VideoPage = { items: [video(1, "x")], total: 1 };
         return Promise.resolve(json(page));
       }
-      if (url.startsWith("/api/folders/3/videos?")) {
+      if (url.startsWith("/api/videos?")) {
+        const params = new URL(url, "http://localhost").searchParams;
+        if (params.get("query") === "京都") {
+          const page: VideoPage = {
+            items: [
+              video(1, "x", { folder: { rootId: 3, path: "A" } }),
+              video(2, "y", { folder: { rootId: 3, path: "A/B" } }),
+              video(4, "z", { folder: { rootId: 7, path: "" } }),
+            ],
+            total: 3,
+          };
+          return Promise.resolve(json(page));
+        }
         return Promise.resolve(json({ items: [], total: 0 }));
       }
       return Promise.resolve(
@@ -395,4 +444,127 @@ describe("FolderPage", () => {
       ).toBe(2),
     );
   }, 10_000);
+
+  it("URL の q・watch をそのまま送り、q があるときだけ scope=subtree にする", async () => {
+    renderFolders("/folders/3/A?q=京都&watch=unwatched");
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (url) =>
+            url.startsWith("/api/folders/3/videos?path=A&scope=subtree") &&
+            url.includes("query=%E4%BA%AC%E9%83%BD") &&
+            url.includes("watch=unwatched"),
+        ),
+      ).toBe(true),
+    );
+
+    requests.length = 0;
+    renderFolders("/folders/3/A?watch=unwatched");
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (url) =>
+            url.startsWith("/api/folders/3/videos?path=A&watch=unwatched") &&
+            !url.includes("scope=") &&
+            !url.includes("query="),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("検索語があると子フォルダを出さず、配下の検索結果に置き場所を添える。消すと元に戻る", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?q=京都");
+
+    const x = await screen.findByRole("link", { name: "x、このフォルダ" });
+    const y = await screen.findByRole("link", { name: "y、B" });
+    expect(x).toBeDefined();
+    expect(y).toBeDefined();
+    // 検索中は子フォルダのカードと「フォルダ」「動画」の見出しを出さない。
+    expect(screen.queryByRole("link", { name: /^B、/ })).toBeNull();
+    expect(screen.getByRole("heading", { level: 2, name: "検索結果" })).toBeDefined();
+    expect(screen.getByRole("status").textContent).toContain("「京都」");
+
+    const box = screen.getByRole("searchbox", { name: "Aの中を検索" });
+    await user.clear(box);
+    await waitFor(() => expect(screen.getByRole("link", { name: "x" })).toBeDefined());
+    expect(
+      screen.getByRole("link", { name: "B、動画 1 本、フォルダ 1 件" }),
+    ).toBeDefined();
+  });
+
+  it("最上位の検索はライブラリ全体を対象にし、置き場所を登録フォルダ名から作る", async () => {
+    renderFolders("/folders?q=京都");
+    const x = await screen.findByRole("link", { name: "x、movies/A" });
+    const y = await screen.findByRole("link", { name: "y、movies/A/B" });
+    const z = await screen.findByRole("link", { name: "z、movies" });
+    expect(x).toBeDefined();
+    expect(y).toBeDefined();
+    expect(z).toBeDefined();
+    expect(requests.some((url) => url.startsWith("/api/videos?query="))).toBe(true);
+  });
+
+  it("並び順の向きを切り替えられる", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?sort=titleDesc");
+    await screen.findByRole("link", { name: "x" });
+    expect(screen.getByRole("button", { name: "並び順: 題名" })).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "降順。押すと昇順" }));
+    await waitFor(() =>
+      expect(requests.some((url) => url.includes("sort=titleAsc"))).toBe(true),
+    );
+  });
+
+  it("絞り込みだけでは子フォルダのカードが残り、Nは絞った後のtotalになる", async () => {
+    renderFolders("/folders/3/A?watch=unwatched");
+    const b = await screen.findByRole("link", {
+      name: "B、動画 1 本、フォルダ 1 件",
+    });
+    expect(b).toBeDefined();
+    expect(screen.getByRole("heading", { level: 2, name: /^動画/ }).textContent).toBe(
+      "動画 1",
+    );
+    expect(screen.getByRole("link", { name: "x" })).toBeDefined();
+  });
+
+  it("絞り込みだけで一致が無いと、子フォルダの下に一致なしを出し、条件を解除しても同じフォルダに留まる", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?watch=watched");
+    await screen.findByRole("link", { name: "B、動画 1 本、フォルダ 1 件" });
+    expect(
+      screen.getByRole("heading", { name: "条件に一致する動画はありません" }),
+    ).toBeDefined();
+    expect(screen.getByText(/中のフォルダも探すには/)).toBeDefined();
+    expect(screen.getByText("視聴済み")).toBeDefined();
+    expect(screen.getByText("Aの直下")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "条件を解除" }));
+    await screen.findByRole("link", { name: "x" });
+    expect(screen.getByTestId("location").textContent).toBe("/folders/3/A");
+  });
+
+  it("検索の一致なしでは範囲のチップを添え、条件を解除しても同じフォルダに留まる", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?q=zzz-no-such-video");
+    await screen.findByRole("heading", { name: "条件に一致する動画はありません" });
+    expect(screen.getByText("検索語「zzz-no-such-video」")).toBeDefined();
+    expect(screen.getByText("Aとその中")).toBeDefined();
+    expect(screen.queryByRole("link", { name: /^B、/ })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "条件を解除" }));
+    await screen.findByRole("link", { name: "x" });
+    expect(screen.getByTestId("location").textContent).toBe("/folders/3/A");
+  });
+
+  it("sort=random と seed を URL のまま使う", async () => {
+    renderFolders("/folders/3/A?sort=random&seed=42");
+    await screen.findByRole("link", { name: "x" });
+    expect(screen.getByRole("button", { name: "並べ直す" })).toBeDefined();
+    await waitFor(() =>
+      expect(
+        requests.some((url) => url.includes("sort=random") && url.includes("seed=42")),
+      ).toBe(true),
+    );
+  });
 });
