@@ -1,4 +1,4 @@
-package scanner
+package mediafs
 
 import (
 	"errors"
@@ -10,14 +10,6 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// FolderChecker は、メディアフォルダとして登録するパスをファイルシステムで
-// 確かめる。走査が読むのと同じファイルシステムを見るので、このパッケージに
-// 置く。
-type FolderChecker struct{}
-
-// NewFolderChecker はメディアフォルダの確認を返す。
-func NewFolderChecker() FolderChecker { return FolderChecker{} }
-
 // CheckMediaFolder は path を整えた絶対パスにし（domain.NormalizeMediaFolderPath）、
 // 走査できるディレクトリかを確かめて、整えたパスを返す。
 //
@@ -25,7 +17,7 @@ func NewFolderChecker() FolderChecker { return FolderChecker{} }
 // パス自身かその途中の段が symlink なら domain.ErrUnsupportedMediaFolder で断る。
 // 走査は symlink をたどらないので、symlink の先を登録すると、登録と走査で
 // 見えるものが食い違う。
-func (FolderChecker) CheckMediaFolder(path string) (string, error) {
+func (FS) CheckMediaFolder(path string) (string, error) {
 	cleaned, err := domain.NormalizeMediaFolderPath(path)
 	if err != nil {
 		return "", err
@@ -45,7 +37,7 @@ func (FolderChecker) CheckMediaFolder(path string) (string, error) {
 		return "", fmt.Errorf("%w: %w", domain.ErrInvalidMediaFolder, err)
 	}
 	resolved, err = domain.NormalizeMediaFolderPath(resolved)
-	if err != nil || !domain.PathWithinRoot(cleaned, resolved) || !domain.PathWithinRoot(resolved, cleaned) {
+	if err != nil || !domain.SamePath(cleaned, resolved) {
 		return "", fmt.Errorf("%w: symbolic link", domain.ErrUnsupportedMediaFolder)
 	}
 	dir, err := os.Open(cleaned)
