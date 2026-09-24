@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ScanStore は走査の記録先である。internal/store の *DB がこれを満たす。
+// ScanStore は走査の記録先である。
 type ScanStore interface {
 	// StartScan は走査の行を running で作る。実行中のものがあれば作らずに
 	// それを返し、started は false になる。
@@ -19,7 +19,10 @@ type ScanStore interface {
 	FinishScan(ctx context.Context, id int64, state domain.ScanState, reason string) error
 	// FailInterruptedScans は running のまま残った走査を failed で閉じる。
 	FailInterruptedScans(ctx context.Context) (int64, error)
-	// RequeueRunningJobs は running のまま残った仕事を queued へ戻す。
+}
+
+// JobRecoveryStore は中断した取り込みジョブを待ち行列へ戻す保存先である。
+type JobRecoveryStore interface {
 	RequeueRunningJobs(ctx context.Context) (int64, error)
 }
 
@@ -46,6 +49,7 @@ type Notifier interface {
 // ScansOptions は走査の組み立てに必要な依存である。
 type ScansOptions struct {
 	Store ScanStore
+	Jobs  JobRecoveryStore
 	// NewScanner は進捗の報告先を受け取って走査を組み立てる。走査は報告先を、
 	// 報告先は走査を必要とするので、組み立てを関数で受け取る。
 	NewScanner func(ScanReporter) Scanner
@@ -61,6 +65,7 @@ type ScansOptions struct {
 // Scans は走査の開始・実行・進捗の記録と、起動時の中断からの回復を受け持つ。
 type Scans struct {
 	store    ScanStore
+	jobs     JobRecoveryStore
 	scanner  Scanner
 	baseCtx  context.Context
 	notifier Notifier
@@ -79,6 +84,7 @@ type Scans struct {
 func NewScans(opts ScansOptions) *Scans {
 	s := &Scans{
 		store:    opts.Store,
+		jobs:     opts.Jobs,
 		baseCtx:  opts.Context,
 		notifier: opts.Notifier,
 		logger:   opts.Logger,
@@ -166,7 +172,7 @@ func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 		s.logger.Info("中断していた取り込みを閉じました", slog.Int64("count", closed))
 	}
 
-	restored, err := s.store.RequeueRunningJobs(ctx)
+	restored, err := s.jobs.RequeueRunningJobs(ctx)
 	if err != nil {
 		return err
 	}

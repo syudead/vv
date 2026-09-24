@@ -6,8 +6,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// MediaFolderStore はメディアフォルダの保存先である。internal/store の *DB が
-// これを満たす。追加と置き換えは、受け取ったパスが FolderChecker を通った
+// MediaFolderStore はメディアフォルダの保存先である。追加と置き換えは、
+// 受け取ったパスが FolderChecker を通った
 // ものとして保存し、走査中の変更と包含の禁止は取引の中で確かめ直す。
 type MediaFolderStore interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)

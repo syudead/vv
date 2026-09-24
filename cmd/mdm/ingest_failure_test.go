@@ -20,7 +20,7 @@ import (
 // SQLite の取引と組み合わせたときの振る舞いはここで確かめる。
 func newTestIngest(db *store.DB, dataDir string) *app.Ingest {
 	return app.NewIngest(app.IngestOptions{
-		Store:     db,
+		Store:     db.Ingest(),
 		Generator: media.NewAssets(),
 		Artifacts: artifacts.New(Config{DataDir: dataDir}.ThumbnailsDir()),
 		Logger:    slog.New(slog.DiscardHandler),

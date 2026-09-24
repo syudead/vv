@@ -9,8 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// IngestStore は取り込みのジョブが読み書きする保存先である。internal/store の
-// *DB がこれを満たす。
+// IngestStore は取り込みのジョブが読み書きする保存先である。
 type IngestStore interface {
 	ContentIndex
 	GetVideo(ctx context.Context, id int64) (domain.Video, error)

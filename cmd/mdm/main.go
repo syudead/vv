@@ -91,11 +91,12 @@ func run() error {
 		slog.Int("applied", migrated.Applied),
 		slog.Int64("version", migrated.Version),
 	)
+	libraryStore := db.Library()
 
 	// 照合用の鍵が古い規則のままの所在を、ジョブや HTTP を動かす前に作り直す。
 	// 失敗したら起動を止める（古い鍵のまま検索を出さない）。途中まで書いた分は
 	// 版が行ごとに残るので、次の起動で続きから埋まる。
-	refreshed, err := db.RefreshSearchKeys(context.Background())
+	refreshed, err := libraryStore.RefreshSearchKeys(context.Background())
 	if err != nil {
 		return fmt.Errorf("照合用の鍵を作り直せません: %w", err)
 	}
@@ -110,7 +111,6 @@ func run() error {
 	events := httpapi.NewEvents()
 
 	ingestStore := db.Ingest()
-	libraryStore := db.Library()
 	scanStore := db.Scans()
 	scanIndexStore := db.ScanIndex()
 	settingsStore := db.Settings()
@@ -118,6 +118,7 @@ func run() error {
 
 	scans := app.NewScans(app.ScansOptions{
 		Store: scanStore,
+		Jobs:  ingestStore,
 		NewScanner: func(reporter app.ScanReporter) app.Scanner {
 			return scanner.New(scanner.Options{
 				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
@@ -177,7 +178,9 @@ func run() error {
 
 	// 動画の応答に要る判断（消えたプレビューの作り直し、シーク用プレビューの
 	// 状態）と関連動画の組み立ては、アプリケーション層が行う。
-	catalog := app.NewCatalog(app.CatalogOptions{Store: libraryStore, Files: artifactStore, Logger: logger})
+	catalog := app.NewCatalog(app.CatalogOptions{
+		Index: libraryStore, Ingest: ingestStore, Files: artifactStore, Logger: logger,
+	})
 	// 設定画面のメディアフォルダは、パスをファイルシステムで確かめてから保存する。
 	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: settingsStore, Checker: scanner.NewFolderChecker()})
 

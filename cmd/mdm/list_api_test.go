@@ -46,7 +46,8 @@ func newListAPIFixture(t *testing.T) listAPIFixture {
 		t.Fatal(err)
 	}
 	handler := httpapi.NewRouter(httpapi.Options{
-		Videos: db, Playback: db, MediaFolders: db, Folders: db, Assets: fstest.MapFS{},
+		Videos: db.Library(), Playback: db.Playback(), MediaFolders: db.Settings(),
+		Folders: db.Library(), Assets: fstest.MapFS{},
 	})
 	return listAPIFixture{ctx: ctx, db: db, root: root, handler: handler}
 }

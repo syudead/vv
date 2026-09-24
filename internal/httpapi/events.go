@@ -22,8 +22,7 @@ const eventsKeepAlive = 30 * time.Second
 // eventsRetryMs は、切れたときにブラウザがつなぎ直すまでの待ち時間である。
 const eventsRetryMs = 3000
 
-// Processing は段階ごとの残りの問い合わせ先である。internal/store の *DB が
-// これを満たす。
+// Processing は段階ごとの残りの問い合わせ先である。
 type Processing interface {
 	Processing(ctx context.Context) (domain.Processing, error)
 }
