@@ -40,13 +40,16 @@ func searchExprCondition(expr domain.SearchExpr, alias string) (string, []any) {
 	for _, clause := range expr.Clauses {
 		terms := make([]string, 0, len(clause.Terms))
 		for _, term := range clause.Terms {
+			// search_key は題名と相対パスを改行でつないでいる。フレーズの中の改行は
+			// 空白にそろえ、2つの境目をまたいで当たらないようにする。
+			text := strings.ReplaceAll(term.Text, "\n", " ")
 			var condition string
-			if termUsesMatch(term.Text) {
+			if termUsesMatch(text) {
 				condition = alias + `.id in (select rowid from location_search_fts where location_search_fts match ?)`
-				args = append(args, quoteMatchPhrase(term.Text))
+				args = append(args, quoteMatchPhrase(text))
 			} else {
 				condition = `instr(` + alias + `.search_key, ?) > 0`
-				args = append(args, term.Text)
+				args = append(args, text)
 			}
 			if term.Negated {
 				condition = `not (` + condition + `)`

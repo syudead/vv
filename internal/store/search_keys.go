@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -23,38 +24,44 @@ type queryExecer interface {
 
 // locationSearchKey は所在1件の search_key を作る（data-model.md §3）。
 //
-// 相対パスは、所在を含む登録メディアフォルダより下の `/` 区切りのパスで、拡張子を
-// 含む。登録フォルダ自身のパスは入れない。どの登録フォルダにも含まれない所在は
+// 相対パスは、所在を含む登録メディアフォルダより下のパスで、拡張子を含む。
+// 登録フォルダ自身のパスは入れない。どの登録フォルダにも含まれない所在は
 // 空文字列を返す。登録フォルダは互いに入れ子にならない（ensureFolderMutationAllowed）
 // ので、含むフォルダは高々1つである。
 func locationSearchKey(roots []string, path, title string) string {
 	for _, root := range roots {
-		if !domain.PathWithinRoot(root, path) {
+		rel, ok := registeredRelativePath(root, path)
+		if !ok {
 			continue
 		}
-		return domain.FoldForMatch(title) + "\n" + domain.FoldForMatch(relativeLocationPath(root, path))
+		return domain.FoldForMatch(title) + "\n" + domain.FoldForMatch(rel)
 	}
 	return ""
 }
 
-// relativeLocationPath は root の下にある path の相対パスを `/` 区切りで返す。
-// 呼び出し側が domain.PathWithinRoot で含まれることを確かめてから呼ぶ。
+// registeredRelativePath は、path が root の下にあるかを一覧の判定
+// （registeredLocationCondition）と同じ規則で調べ、下にあれば root より下の
+// 相対パスを返す。一覧に出る所在が鍵を持たずに検索で見つからない、という
+// ずれを作らないよう、Go 側でも SQL と同じく root 自身・root + OS の区切り・
+// root + `/`・root + `\` を認める。Windows では大文字小文字を区別しない。
 //
-// Windows の filepath.Rel は段を strings.EqualFold で比べるので、綴りの大小が
-// 違う登録でもふつうは1回目で取れる。strings.ToLower と EqualFold の結果が
-// 食い違う文字（U+0130 など）のときだけ、小文字にそろえて取り直す。鍵には
-// FoldForMatch を掛けるので、小文字にそろえても照合の結果は変わらない。
-func relativeLocationPath(root, path string) string {
-	cleanRoot := filepath.Clean(root)
-	cleanPath := filepath.Clean(path)
-	rel, err := filepath.Rel(cleanRoot, cleanPath)
-	if (err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) && runtime.GOOS == "windows" {
-		rel, err = filepath.Rel(strings.ToLower(cleanRoot), strings.ToLower(cleanPath))
+// 相対パスの区切りは `/` にそろえる。Windows では小文字にそろえた綴りから
+// 取るが、鍵には FoldForMatch を掛けるので照合の結果は変わらない。
+func registeredRelativePath(root, path string) (string, bool) {
+	p, r := path, root
+	if runtime.GOOS == "windows" {
+		p, r = strings.ToLower(p), strings.ToLower(r)
 	}
-	if err != nil || rel == "." {
-		return ""
+	if p == r {
+		return "", true
 	}
-	return filepath.ToSlash(rel)
+	trimmed := strings.TrimRight(r, `/\`)
+	for _, separator := range []string{string(os.PathSeparator), "/", `\`} {
+		if rest, ok := strings.CutPrefix(p, trimmed+separator); ok {
+			return filepath.ToSlash(rest), true
+		}
+	}
+	return "", false
 }
 
 // mediaFolderRoots は登録メディアフォルダのパスをすべて返す。
@@ -118,7 +125,7 @@ func refreshSearchKeysUnder(ctx context.Context, q queryExecer, root string) err
 	}
 	var targets []searchKeyTarget
 	for _, target := range all {
-		if domain.PathWithinRoot(root, target.path) {
+		if _, ok := registeredRelativePath(root, target.path); ok {
 			targets = append(targets, target)
 		}
 	}
