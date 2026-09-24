@@ -329,6 +329,18 @@ type MediaFolder struct {
 	Version   int64     `json:"version"`
 }
 
+// Processing defines model for Processing.
+type Processing struct {
+	// Preview 一覧用プレビューの残り
+	Preview int `json:"preview"`
+
+	// Probe 解析（ffprobe）の残り
+	Probe int `json:"probe"`
+
+	// Thumbnail サムネイルとシーク用プレビューの残り
+	Thumbnail int `json:"thumbnail"`
+}
+
 // Progress defines model for Progress.
 type Progress struct {
 	Completed  bool      `json:"completed"`
@@ -403,7 +415,7 @@ type Video struct {
 	Playable     bool              `json:"playable"`
 	PreviewState VideoPreviewState `json:"previewState"`
 
-	// PreviewUrl previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL
+	// PreviewUrl previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL。done なのに asset が無ければ、サーバーは作り直しを積み、previewState を pending として返す
 	PreviewUrl *string `json:"previewUrl,omitempty"`
 
 	// ProbeError probeState = failed のときの理由
@@ -453,6 +465,12 @@ type VideoThumbnailState string
 
 // VideoUnplayableReason playable = false の理由。判定前は省略される
 type VideoUnplayableReason string
+
+// VideoChanged defines model for VideoChanged.
+type VideoChanged struct {
+	// Id 状態が変わった動画の識別子
+	Id int64 `json:"id"`
+}
 
 // VideoLocation 代表の所在。GET /api/videos/{id} の応答にだけ入る
 type VideoLocation struct {
@@ -596,6 +614,9 @@ type ServerInterface interface {
 	// ListDirectories フォルダ選択用の直下ディレクトリを返す
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
+	// StreamEvents 取り込みと動画の変化を Server-Sent Events で送る
+	// (GET /api/events)
+	StreamEvents(w http.ResponseWriter, r *http.Request)
 	// ListRootFolders フォルダ画面の最上位（登録済みメディアフォルダ）を返す
 	// (GET /api/folders)
 	ListRootFolders(w http.ResponseWriter, r *http.Request)
@@ -620,6 +641,9 @@ type ServerInterface interface {
 	// UpdateMediaFolder メディアフォルダ1件のpathを変更する
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// GetProcessing 取り込みの段階ごとに残っている仕事の数を返す
+	// (GET /api/processing)
+	GetProcessing(w http.ResponseWriter, r *http.Request)
 	// StartScan 取り込みを開始する
 	// (POST /api/scans)
 	StartScan(w http.ResponseWriter, r *http.Request)
@@ -694,6 +718,20 @@ func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListDirectories(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StreamEvents operation middleware
+func (siw *ServerInterfaceWrapper) StreamEvents(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StreamEvents(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -941,6 +979,20 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMediaFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetProcessing operation middleware
+func (siw *ServerInterfaceWrapper) GetProcessing(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetProcessing(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1529,6 +1581,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}/videos", wrapper.ListFolderVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/processing", wrapper.GetProcessing)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/events", wrapper.StreamEvents)
 
 	return m
 }

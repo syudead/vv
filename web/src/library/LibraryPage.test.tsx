@@ -76,6 +76,9 @@ describe("LibraryPage", () => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/processing") {
+        return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+      }
       const page: VideoPage = {
         items: [
           video(1),
@@ -163,6 +166,9 @@ describe("LibraryPage", () => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/processing") {
+        return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+      }
       listCalls += 1;
       return Promise.resolve(
         json(
@@ -217,6 +223,9 @@ describe("LibraryPage", () => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/processing") {
+        return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+      }
       return Promise.resolve(
         json({
           items: [
@@ -257,6 +266,9 @@ describe("LibraryPage", () => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/processing") {
+        return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+      }
       return Promise.resolve(
         json({
           items: [
@@ -325,6 +337,9 @@ describe("LibraryPage", () => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/processing") {
+        return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+      }
       listCalls += 1;
       return Promise.resolve(
         json(

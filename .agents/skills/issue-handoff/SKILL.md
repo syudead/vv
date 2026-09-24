@@ -1,9 +1,12 @@
 ---
 name: issue-handoff
-description: Run one stage of this repository's Issue-driven SDD workflow using an explicitly supplied GitHub Issue, PR, or branch as context. Use for artifact work, Plan-to-issues, implementation, and PR handoff.
+description: Run one explicitly requested stage of this repository's Issue-driven SDD feature workflow using a supplied GitHub Issue, PR, or branch as context.
 ---
 
 # Issue handoff
+
+This is an explicit feature workflow. Other changes use the repository's normal
+branch-to-`main` workflow.
 
 Read [references/README.md](references/README.md) before acting. It is the
 shared contract for artifact work, GitHub context, PR behavior, and stopping

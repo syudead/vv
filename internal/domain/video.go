@@ -248,12 +248,6 @@ type VideoLocation struct {
 	UpdatedAt time.Time
 }
 
-type PreviewAsset struct {
-	ID         int64
-	ContentKey string
-	State      PreviewState
-}
-
 // UpsertOutcome は取り込み1件の結果である。走査の集計（ScanResult）になる。
 type UpsertOutcome string
 

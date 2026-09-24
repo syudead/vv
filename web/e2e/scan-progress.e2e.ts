@@ -1,4 +1,21 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
+
+/**
+ * stubServerEvents は変化の知らせの接続を、何も送らない1本に差し替える。
+ *
+ * この検査は取り込みの状態を route で決めるので、実際のサーバーが送る状態
+ * （先に走った検査の取り込み）を混ぜない。retry を長くして、切れたあとに
+ * つなぎ直さないようにする。
+ */
+async function stubServerEvents(page: Page) {
+  await page.route("**/api/events", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: "retry: 3600000\n\n",
+    }),
+  );
+}
 
 test("scan progress remains one indicator across library, settings, and playback", async ({
   page,
@@ -11,6 +28,7 @@ test("scan progress remains one indicator across library, settings, and playback
       body: JSON.stringify([{ id: 1, path: "/media", version: 1 }]),
     }),
   );
+  await stubServerEvents(page);
   await page.route("**/api/scans/current", async (route) => {
     currentCalls += 1;
     const body = {
@@ -52,6 +70,9 @@ test("scan progress remains one indicator across library, settings, and playback
   await expect(page).toHaveURL(/\/videos\/1$/);
   await expect(routePersistentIndicator).toHaveCount(1);
   const callsAfterPlaybackNavigation = currentCalls;
+  // 状態は一定間隔では取り直さない。ウィンドウへ戻ったときの取り直しが、再生画面でも
+  // 同じインジケーターへ反映されることを確かめる。
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect
     .poll(async () => {
       const label = await routePersistentIndicator.textContent();
@@ -60,12 +81,15 @@ test("scan progress remains one indicator across library, settings, and playback
     .toBeGreaterThan(callsAfterPlaybackNavigation);
 });
 
-test("an idle page recovers from a transient current-scan failure", async ({ page }) => {
+test("an idle page recovers from a transient current-scan failure on the next refresh", async ({
+  page,
+}) => {
   let refreshRequested = false;
   let failedOnce = false;
   await page.route("**/api/media-folders", async (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
   );
+  await stubServerEvents(page);
   await page.route("**/api/scans/current", async (route) => {
     if (!refreshRequested) {
       await route.fulfill({ status: 404, body: "{}" });
@@ -93,6 +117,10 @@ test("an idle page recovers from a transient current-scan failure", async ({ pag
   await expect(page.getByRole("button", { name: /取り込み状況を開く/ })).toHaveCount(0);
   refreshRequested = true;
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  // 一時的な失敗のあとは、一定間隔では取り直さない。次にウィンドウへ戻ったとき
+  // （または変化の知らせの接続をつなぎ直したとき）に取り直して回復する。
+  await expect.poll(() => failedOnce).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 
   const indicator = page.getByRole("button", { name: /^取り込み中。/ });
   await expect(indicator).toBeVisible({ timeout: 5000 });
@@ -110,6 +138,7 @@ test("opening failed scan details acknowledges the notice across reloads", async
   await page.route("**/api/media-folders", async (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
   );
+  await stubServerEvents(page);
   await page.route("**/api/scans/current", async (route) =>
     route.fulfill({
       status: 200,
@@ -146,6 +175,7 @@ for (const width of [360, 640, 768]) {
     await page.route("**/api/media-folders", async (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
     );
+    await stubServerEvents(page);
     await page.route("**/api/scans/current", async (route) =>
       route.fulfill({
         status: 200,
@@ -218,6 +248,7 @@ for (const { width, height } of [
     await page.route("**/api/media-folders", async (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
     );
+    await stubServerEvents(page);
     await page.route("**/api/scans/current", async (route) =>
       route.fulfill({
         status: 200,

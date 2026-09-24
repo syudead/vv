@@ -12,20 +12,25 @@ import {
 import {
   errorMessage,
   getCurrentScan,
+  getProcessing,
   isAborted,
   listMediaFolders,
+  type Processing,
   RequestFailed,
   startScan,
   type Scan,
 } from "../api/client";
-
-const pollInterval = 2000;
-const recoveryPollLimit = 15;
+import { subscribeServerEvents } from "../api/serverEvents";
 
 export interface ScanContextValue {
   scan: Scan | null;
   /** current scan の初回取得が完了している。 */
   loaded: boolean;
+  /**
+   * 取り込みの段階（解析・サムネイル・プレビュー）ごとに残っている仕事の数。
+   * まだ取得していなければ null。
+   */
+  processing: Processing | null;
   /** 状態取得や開始の失敗。 */
   error: string | null;
   starting: boolean;
@@ -51,146 +56,166 @@ export function useScan(): ScanContextValue {
   return value;
 }
 
+/** processingRemaining は全段階の残りの合計である。未取得なら 0。 */
+export function processingRemaining(processing: Processing | null): number {
+  if (processing === null) return 0;
+  return processing.probe + processing.thumbnail + processing.preview;
+}
+
 /**
- * ScanProvider は取り込み状態をひとつ持ち、実行中は 2 秒ごとに追いかける。
- * トップバーのボタンとライブラリの再読込が同じ状態を見る。
+ * ScanProvider は取り込み状態をひとつ持つ。
+ *
+ * 状態は最初に1度取得し、その後はサーバーからの変化の知らせ（`/api/events`）で
+ * 更新する。一定間隔では問い合わせない。つなぎ直したとき、ウィンドウへ戻った
+ * とき、利用者が更新を求めたときは取り直す。トップバーのボタンとライブラリの
+ * 再読込が同じ状態を見る。
  */
 export function ScanProvider({ children }: { children: ReactNode }) {
   const [scan, setScan] = useState<Scan | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [pollError, setPollError] = useState<string | null>(null);
+  const [processing, setProcessing] = useState<Processing | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [finished, setFinished] = useState<Scan | null>(null);
-  const [watch, setWatch] = useState(0);
-  const [folderWatch, setFolderWatch] = useState(0);
   const [folderCount, setFolderCount] = useState<number | null>(null);
   const folderCountRevision = useRef(0);
   const requestedScanId = useRef<number | null>(null);
   const observedRunningScanId = useRef<number | null>(null);
   const recoveryBaselineScanId = useRef<number | null | undefined>(undefined);
-  const recoveryPollsLeft = useRef(0);
   const lastSeenScanId = useRef<number | null | undefined>(undefined);
+  // 取得と変化の知らせは並行する。知らせの方が新しいことがあるので、取得を
+  // 始めたあとに知らせを受けたら、その取得の応答は捨てる。
+  const scanRevision = useRef(0);
+  const processingRevision = useRef(0);
 
   const updateFolderCount = useCallback((count: number) => {
     folderCountRevision.current += 1;
     setFolderCount(count);
   }, []);
 
-  useEffect(() => {
-    const refreshOnFocus = () => {
-      setFolderWatch((value) => value + 1);
-      setWatch((value) => value + 1);
-    };
-    window.addEventListener("focus", refreshOnFocus);
-    return () => window.removeEventListener("focus", refreshOnFocus);
+  /**
+   * apply はサーバーから得たスキャンを取り込み、「終わったのを見た」を決める。
+   * 取得の応答と変化の知らせのどちらから来ても同じ規則で扱う。
+   */
+  const apply = useCallback((current: Scan | null) => {
+    const previousScanId = lastSeenScanId.current;
+    lastSeenScanId.current = current?.id ?? null;
+    setScan(current);
+    setLoaded(true);
+    setLoadError(null);
+    if (current === null) return;
+
+    if (
+      previousScanId !== undefined &&
+      current.id !== previousScanId &&
+      current.state !== "running"
+    ) {
+      setFinished(current);
+    }
+
+    const recoveryBaseline = recoveryBaselineScanId.current;
+    const recovered =
+      recoveryBaseline !== undefined &&
+      (current.state === "running" || current.id !== recoveryBaseline);
+    if (recovered) {
+      recoveryBaselineScanId.current = undefined;
+      setStartError(null);
+    }
+
+    if (current.state === "running") {
+      observedRunningScanId.current = current.id;
+      return;
+    }
+    const completedObservedScan = observedRunningScanId.current === current.id;
+    const completedRequestedScan = requestedScanId.current === current.id;
+    if (completedObservedScan || completedRequestedScan || recovered) {
+      setFinished(current);
+    }
+    if (completedObservedScan) observedRunningScanId.current = null;
+    if (completedRequestedScan) requestedScanId.current = null;
   }, []);
 
-  useEffect(() => {
+  const loadFolders = useCallback(async (signal: AbortSignal) => {
+    const revision = folderCountRevision.current;
+    try {
+      const folders = await listMediaFolders(signal);
+      if (revision === folderCountRevision.current) setFolderCount(folders.length);
+    } catch (failure) {
+      if (isAborted(failure) || revision !== folderCountRevision.current) return;
+      setFolderCount(null);
+    }
+  }, []);
+
+  /**
+   * loadScan はスキャンと段階ごとの残りを取り直す。遅れて届いた古い応答は捨てる。
+   */
+  const inFlight = useRef<AbortController | null>(null);
+  const loadScan = useCallback(() => {
+    inFlight.current?.abort();
     const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let alive = true;
+    inFlight.current = controller;
+    scanRevision.current += 1;
+    processingRevision.current += 1;
+    const scanAt = scanRevision.current;
+    const processingAt = processingRevision.current;
 
-    const load = async () => {
-      const revision = folderCountRevision.current;
-      try {
-        const folders = await listMediaFolders(controller.signal);
-        if (alive && revision === folderCountRevision.current) {
-          setFolderCount(folders.length);
-        }
-      } catch (failure) {
-        if (!alive || isAborted(failure) || revision !== folderCountRevision.current) {
-          return;
-        }
-        setFolderCount(null);
-        timer = setTimeout(() => void load(), pollInterval);
+    // スキャンと残りは同じ描画で反映する。スキャンの完了だけが先に見えると、
+    // 残りを得るまでの間「準備の残りを確認中」がちらつく。
+    void (async () => {
+      const [scanResult, processingResult] = await Promise.allSettled([
+        getCurrentScan(controller.signal),
+        getProcessing(controller.signal),
+      ]);
+      if (processingResult.status === "fulfilled") {
+        if (processingAt === processingRevision.current)
+          setProcessing(processingResult.value);
       }
-    };
+      // 残りの取得の失敗は、最後に得た数を残して次の知らせか取り直しを待つ。
+      // 残りは補助の情報なので、取れなくても取り込みの状態は示せる。
+      if (scanResult.status === "fulfilled") {
+        if (scanAt === scanRevision.current) apply(scanResult.value);
+        return;
+      }
+      const failure: unknown = scanResult.reason;
+      if (scanAt !== scanRevision.current || isAborted(failure)) return;
+      // 最後に得た状態は捨てない。つなぎ直しやウィンドウへの復帰で取り直す。
+      setLoadError(errorMessage(failure));
+    })();
+  }, [apply]);
 
-    void load();
-    return () => {
-      alive = false;
-      controller.abort();
-      if (timer !== undefined) clearTimeout(timer);
-    };
-  }, [folderWatch]);
+  /** load はフォルダの件数も含めて、今の状態をまとめて取り直す。 */
+  const foldersInFlight = useRef<AbortController | null>(null);
+  const load = useCallback(() => {
+    foldersInFlight.current?.abort();
+    const controller = new AbortController();
+    foldersInFlight.current = controller;
+    void loadFolders(controller.signal);
+    loadScan();
+  }, [loadFolders, loadScan]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let alive = true;
-
-    const tick = async () => {
-      let current: Scan | null;
-      try {
-        current = await getCurrentScan(controller.signal);
-        if (!alive) return;
-        const previousScanId = lastSeenScanId.current;
-        lastSeenScanId.current = current?.id ?? null;
-        setScan(current);
-        setLoaded(true);
-        setPollError(null);
-
-        if (
-          previousScanId !== undefined &&
-          current !== null &&
-          current.id !== previousScanId &&
-          current.state !== "running"
-        ) {
-          setFinished(current);
-        }
-      } catch (failure) {
-        if (alive && !isAborted(failure)) {
-          setPollError(errorMessage(failure));
-          timer = setTimeout(() => void tick(), pollInterval);
-        }
-        return;
-      }
-
-      const recoveryBaseline = recoveryBaselineScanId.current;
-      const recovered =
-        recoveryBaseline !== undefined &&
-        current !== null &&
-        (current.state === "running" || current.id !== recoveryBaseline);
-      if (recovered) {
-        recoveryBaselineScanId.current = undefined;
-        recoveryPollsLeft.current = 0;
-        setStartError(null);
-      }
-
-      if (current === null) {
-        if (recoveryBaseline !== undefined && recoveryPollsLeft.current > 0) {
-          recoveryPollsLeft.current -= 1;
-          timer = setTimeout(() => void tick(), pollInterval);
-        }
-        return;
-      }
-      if (current.state === "running") {
-        observedRunningScanId.current = current.id;
-        timer = setTimeout(() => void tick(), pollInterval);
-        return;
-      }
-
-      const completedObservedScan = observedRunningScanId.current === current.id;
-      const completedRequestedScan = requestedScanId.current === current.id;
-      if (completedObservedScan || completedRequestedScan || recovered) {
-        setFinished(current);
-      }
-      if (completedObservedScan) observedRunningScanId.current = null;
-      if (completedRequestedScan) requestedScanId.current = null;
-      if (!recovered && recoveryBaseline !== undefined && recoveryPollsLeft.current > 0) {
-        recoveryPollsLeft.current -= 1;
-        timer = setTimeout(() => void tick(), pollInterval);
-      }
-    };
-
-    void tick();
+    // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
+    const unsubscribe = subscribeServerEvents({
+      scan: (next) => {
+        scanRevision.current += 1;
+        apply(next);
+      },
+      processing: (next) => {
+        processingRevision.current += 1;
+        setProcessing(next);
+      },
+      open: load,
+    });
+    load();
+    window.addEventListener("focus", load);
     return () => {
-      alive = false;
-      controller.abort();
-      if (timer !== undefined) clearTimeout(timer);
+      unsubscribe();
+      window.removeEventListener("focus", load);
+      inFlight.current?.abort();
+      foldersInFlight.current?.abort();
     };
-  }, [watch]);
+  }, [apply, load]);
 
   const start = useCallback(() => {
     if (folderCount === null || folderCount === 0) return;
@@ -198,21 +223,20 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     setStarting(true);
     setStartError(null);
     recoveryBaselineScanId.current = undefined;
-    recoveryPollsLeft.current = 0;
+    // 開始の応答より先に、変化の知らせが届くことがある（すぐ終わる小さな
+    // 取り込み）。そのときは知らせの方が新しいので、応答の状態で戻さない。
+    const requestedAt = scanRevision.current;
     void (async () => {
       try {
         const started = await startScan();
-        requestedScanId.current = started.id;
-        setScan(started);
-        setLoaded(true);
-        setPollError(null);
-        if (started.state === "running") {
-          observedRunningScanId.current = started.id;
-        } else {
-          requestedScanId.current = null;
-          setFinished(started);
+        if (requestedAt === scanRevision.current) {
+          scanRevision.current += 1;
+          requestedScanId.current = started.id;
+          if (started.state === "running") {
+            observedRunningScanId.current = started.id;
+          }
+          apply(started);
         }
-        setWatch((value) => value + 1);
       } catch (failure) {
         if (
           failure instanceof RequestFailed &&
@@ -221,32 +245,30 @@ export function ScanProvider({ children }: { children: ReactNode }) {
           updateFolderCount(0);
         }
         setStartError(`取り込みを始められません: ${errorMessage(failure)}`);
+        // 応答だけを失い、取り込み自体は始まっていることがある。変化の知らせか
+        // 次の取得でそれを見たら、失敗の表示を消して追跡する。
         recoveryBaselineScanId.current = baselineScanId;
-        recoveryPollsLeft.current = recoveryPollLimit;
-        setWatch((value) => value + 1);
       } finally {
         setStarting(false);
       }
+      // 開始の直後に終わる小さな取り込みもある。知らせを待たずに1度取り直す。
+      loadScan();
     })();
-  }, [folderCount, scan?.id, updateFolderCount]);
+  }, [apply, folderCount, loadScan, scan?.id, updateFolderCount]);
 
-  const refresh = useCallback(() => {
-    setWatch((value) => value + 1);
-    setFolderWatch((value) => value + 1);
-  }, []);
-
-  const error = startError ?? pollError;
+  const error = startError ?? loadError;
 
   const value = useMemo<ScanContextValue>(
     () => ({
       scan,
       loaded,
+      processing,
       error,
       starting,
       running: starting || scan?.state === "running",
       canStart: folderCount !== null && folderCount > 0,
       start,
-      refresh,
+      refresh: load,
       setFolderCount: updateFolderCount,
       finished,
     }),
@@ -254,8 +276,9 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       error,
       finished,
       folderCount,
+      load,
       loaded,
-      refresh,
+      processing,
       scan,
       start,
       starting,
@@ -278,10 +301,14 @@ export function describeScan(value: ScanContextValue): string {
       return scan.total > 0
         ? `取り込み中 ${String(scan.completed)} / ${String(scan.total)}${failed}`
         : "取り込み中…";
-    case "done":
+    case "done": {
+      if (value.processing === null) return "取り込んだ動画の準備の残りを確認しています";
+      const remaining = processingRemaining(value.processing);
+      if (remaining > 0) return `取り込んだ動画を準備中（残り ${String(remaining)} 件）`;
       return scan.completed > 0
         ? `前回 ${String(scan.completed)} 件を取り込みました${failed}`
         : `前回の取り込みで変化はありませんでした${failed}`;
+    }
     case "failed":
       return `取り込みに失敗しました: ${scan.error ?? "理由は記録されていません"}`;
   }

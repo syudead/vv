@@ -122,6 +122,9 @@ func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFold
 	if err := tx.Commit(); err != nil {
 		return domain.MediaFolder{}, err
 	}
+	// 登録外の所在しか無かった待ちの仕事が、この登録で取り出せるようになる。
+	// 眠っているワーカーを起こさないと、次に仕事が積まれるまで止まったままになる。
+	db.notifyJobsChanged(domain.JobKinds...)
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: 1, CreatedAt: time.Unix(now, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
@@ -161,7 +164,8 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	if _, err := tx.ExecContext(ctx, `update media_folders set path = ?, version = version + 1, updated_at = ? where id = ?`, cleaned, now, id); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	if err := removeLocationsUnder(ctx, tx, oldPath); err != nil {
+	released, err := removeLocationsUnder(ctx, tx, oldPath)
+	if err != nil {
 		return domain.MediaFolder{}, err
 	}
 	if err := syncLocationsUnder(ctx, tx, cleaned); err != nil {
@@ -170,6 +174,9 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	if err := tx.Commit(); err != nil {
 		return domain.MediaFolder{}, err
 	}
+	db.notifyVideosDeleted(released)
+	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
+	db.notifyJobsChanged(domain.JobKinds...)
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: version + 1, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
@@ -194,13 +201,21 @@ func (db *DB) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) 
 	if err := ensureNoRunningScan(ctx, tx); err != nil {
 		return err
 	}
-	if err := removeLocationsUnder(ctx, tx, path); err != nil {
+	released, err := removeLocationsUnder(ctx, tx, path)
+	if err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `delete from media_folders where id = ?`, id); err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	// 登録を外して消えた動画の生成物を片付けさせる。
+	db.notifyVideosDeleted(released)
+	// 動画の行が残っても、登録外になった所在の仕事は残りとして数えなくなる。
+	db.notifyJobsChanged()
+	return nil
 }
 
 func ensureFolderMutationAllowed(ctx context.Context, tx *sql.Tx, exceptID int64, path string) error {
@@ -265,29 +280,30 @@ func locationsUnder(ctx context.Context, tx *sql.Tx, root string) (ids []int64, 
 	return ids, videoIDs, nil
 }
 
-func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {
+// removeLocationsUnder は root 以下の所在を消し、所在が無くなった動画の行も消す。
+// 消した動画を返す。
+func removeLocationsUnder(ctx context.Context, tx *sql.Tx, root string) ([]DeletedVideo, error) {
 	ids, affected, err := locationsUnder(ctx, tx, root)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, id := range ids {
 		if _, err := tx.ExecContext(ctx, `update jobs set location_id = null, location_version = null, location_path = null where state = 'queued' and location_id = ?`, id); err != nil {
-			return err
+			return nil, err
 		}
 		if _, err := tx.ExecContext(ctx, `delete from video_locations where id = ?`, id); err != nil {
-			return err
+			return nil, err
 		}
 	}
 	for videoID := range affected {
 		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id = ?`, videoID); err != nil {
-			return err
+			return nil, err
 		}
 		if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
-			return err
+			return nil, err
 		}
 	}
-	_, err = tx.ExecContext(ctx, `delete from videos where not exists (select 1 from video_locations where video_locations.video_id = videos.id)`)
-	return err
+	return deleteOrphanVideos(ctx, tx)
 }
 
 func syncLocationsUnder(ctx context.Context, tx *sql.Tx, root string) error {

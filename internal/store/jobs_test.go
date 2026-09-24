@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -34,7 +34,7 @@ func TestJobLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobProbe)
 	if err != nil {
 		t.Fatalf("ジョブを取り出せない: %v", err)
 	}
@@ -43,7 +43,7 @@ func TestJobLifecycle(t *testing.T) {
 	}
 
 	// 専有したので、2 度目の取り出しでは何も返らない。
-	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
 		t.Errorf("同じジョブが二重に取り出せた: %v", err)
 	}
 
@@ -59,7 +59,7 @@ func TestJobLifecycle(t *testing.T) {
 func TestClaimJobOnEmptyQueue(t *testing.T) {
 	db := migratedDB(t)
 
-	if _, err := db.ClaimJob(context.Background()); !errors.Is(err, ErrNoJob) {
+	if _, err := db.ClaimJob(context.Background(), JobProbe); !errors.Is(err, ErrNoJob) {
 		t.Errorf("err = %v, want ErrNoJob", err)
 	}
 }
@@ -75,7 +75,7 @@ func TestFailJobRetriesThenGivesUp(t *testing.T) {
 	}
 
 	for attempt := 1; attempt <= MaxJobAttempts; attempt++ {
-		job, err := db.ClaimJob(ctx)
+		job, err := db.ClaimJob(ctx, JobProbe)
 		if err != nil {
 			t.Fatalf("%d 回目の取り出しに失敗した: %v", attempt, err)
 		}
@@ -96,7 +96,7 @@ func TestFailJobRetriesThenGivesUp(t *testing.T) {
 	}
 
 	// 諦めたジョブは二度と取り出されない。
-	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
 		t.Errorf("failed なジョブが取り出せた: %v", err)
 	}
 
@@ -113,7 +113,7 @@ func TestFailJobRecordsReason(t *testing.T) {
 	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +166,7 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := 0; i < MaxJobAttempts; i++ {
-		job, err := db.ClaimJob(ctx)
+		job, err := db.ClaimJob(ctx, JobProbe)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,7 +178,7 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ClaimJob(ctx); err != nil {
+	if _, err := db.ClaimJob(ctx, JobProbe); err != nil {
 		t.Errorf("再投入したジョブを取り出せない: %v", err)
 	}
 	// 諦めた行は積み上げない。
@@ -187,6 +187,7 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 	}
 }
 
+// 終端の失敗は動画の状態に記録されるので、積み直さない。
 func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -194,30 +195,64 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range MaxJobAttempts {
-		job, err := db.ClaimJob(ctx)
+		job, err := db.ClaimJob(ctx, JobProbe)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := db.FailJob(ctx, job.ID, "unreadable location"); err != nil {
+		if err := db.FailClaimedJob(ctx, job, "unreadable location"); err != nil {
 			t.Fatal(err)
 		}
+	}
+	var probeState string
+	if err := db.SQL().QueryRow(`select probe_state from videos where id = ?`, videoID).Scan(&probeState); err != nil {
+		t.Fatal(err)
+	}
+	if probeState != "failed" {
+		t.Fatalf("probe_state = %s, want failed", probeState)
 	}
 	if err := db.EnsureJob(ctx, JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	old := time.Now().Add(-8 * 24 * time.Hour).Unix()
-	if _, err := db.SQL().Exec(`update jobs set updated_at = ? where video_id = ?`, old, videoID); err != nil {
-		t.Fatal(err)
-	}
-	removed, err := db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-JobRetention))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if removed != 0 {
-		t.Fatalf("pending state retry suppression was garbage-collected: %d", removed)
-	}
-	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
 		t.Fatalf("terminal failure was revived: %v", err)
+	}
+}
+
+// 旧版は失敗を行にだけ記録し、動画を pending のまま残すことがあった。走査が
+// その動画を見つけたら、失敗の行を捨てて積み直す。
+func TestEnsureJobRequeuesLegacyFailureOfPendingVideo(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	for range MaxJobAttempts {
+		job, err := db.ClaimJob(ctx, JobProbe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 旧版と同じく、行にだけ失敗を記録する。
+		if err := db.FailJob(ctx, job.ID, "unreadable location"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recorder := &queuedRecorder{}
+	db.OnJobsChanged(recorder.record)
+	if err := db.EnsureJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); fmt.Sprint(got) != "[probe]" {
+		t.Errorf("知らせ = %v, want [probe]", got)
+	}
+	job, err := db.ClaimJob(ctx, JobProbe)
+	if err != nil {
+		t.Fatalf("積み直されていない: %v", err)
+	}
+	if job.Attempts != 1 {
+		t.Errorf("Attempts = %d, want 1（新しい行から数え直す）", job.Attempts)
+	}
+	if got := countJobs(t, db); got != 1 {
+		t.Errorf("ジョブ = %d 件, want 1（旧版の失敗の行を残さない）", got)
 	}
 }
 
@@ -230,7 +265,7 @@ func TestRequeueRunningJobs(t *testing.T) {
 	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -247,74 +282,8 @@ func TestRequeueRunningJobs(t *testing.T) {
 		t.Errorf("state = %q, want queued", got)
 	}
 
-	if _, err := db.ClaimJob(ctx); err != nil {
+	if _, err := db.ClaimJob(ctx, JobProbe); err != nil {
 		t.Errorf("巻き戻したジョブを取り出せない: %v", err)
-	}
-}
-
-// 完了した行は 7 日で掃除する。取り込み直後に最大 2万行になるため。
-func TestDeleteFinishedJobsBefore(t *testing.T) {
-	db, videoID := jobsFixture(t)
-	ctx := context.Background()
-
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
-		t.Fatal(err)
-	}
-	job, err := db.ClaimJob(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := db.CompleteJob(ctx, job.ID); err != nil {
-		t.Fatal(err)
-	}
-
-	// まだ新しいので消えない。
-	removed, err := db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-JobRetention))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if removed != 0 {
-		t.Errorf("新しい完了行が消えた: %d 件", removed)
-	}
-
-	// 8 日前に完了したことにする。
-	old := time.Now().Add(-8 * 24 * time.Hour).Unix()
-	if _, err := db.SQL().Exec(`update jobs set updated_at = ? where id = ?`, old, job.ID); err != nil {
-		t.Fatal(err)
-	}
-
-	removed, err = db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-JobRetention))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if removed != 1 {
-		t.Errorf("古い完了行が消えなかった: %d 件, want 1", removed)
-	}
-
-	if JobRetention != 7*24*time.Hour {
-		t.Errorf("JobRetention = %v, want 168h", JobRetention)
-	}
-}
-
-// 未完了のジョブは掃除の対象にしない。
-func TestDeleteFinishedJobsKeepsPending(t *testing.T) {
-	db, videoID := jobsFixture(t)
-	ctx := context.Background()
-
-	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
-		t.Fatal(err)
-	}
-	old := time.Now().Add(-30 * 24 * time.Hour).Unix()
-	if _, err := db.SQL().Exec(`update jobs set created_at = ?, updated_at = ?`, old, old); err != nil {
-		t.Fatal(err)
-	}
-
-	removed, err := db.DeleteFinishedJobsBefore(ctx, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if removed != 0 {
-		t.Errorf("未完了のジョブが消えた: %d 件", removed)
 	}
 }
 
@@ -333,7 +302,7 @@ func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	for i := range 4 * MaxJobAttempts {
-		job, err := db.ClaimJob(ctx)
+		job, err := db.ClaimJob(ctx, JobProbe)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -355,7 +324,7 @@ func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
 			t.Fatalf("location %d state = %s, want %s", i, got, wantState)
 		}
 	}
-	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
 		t.Fatalf("ClaimJob after final cycle error = %v, want ErrNoJob", err)
 	}
 }
@@ -371,19 +340,28 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
 		t.Fatal(err)
 	}
+	// サムネイルは解析の後に取り出すので、解析は済ませておく。
+	probeDone(t, db, video.ID)
 	if err := db.EnqueueJob(ctx, JobThumbnail, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ClaimJob(ctx); !errors.Is(err, ErrNoJob) {
+	if _, err := db.ClaimJob(ctx, JobThumbnail); !errors.Is(err, ErrNoJob) {
 		t.Fatalf("unregistered ClaimJob error = %v, want ErrNoJob", err)
 	}
 	if got := jobState(t, db, 1); got != "queued" {
 		t.Fatalf("unregistered job state = %s, want queued", got)
 	}
+	recorder := &queuedRecorder{}
+	db.OnJobsChanged(recorder.record)
 	if _, err := db.AddMediaFolder(ctx, root); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	// 眠っているワーカーを起こす知らせが出ること。登録で取り出せるようになった
+	// 待ちの仕事は、次に仕事が積まれるのを待たずに処理される。
+	if got := recorder.take(); !slices.Contains(got, JobThumbnail) {
+		t.Fatalf("フォルダ登録の知らせ = %v, want thumbnail を含む", got)
+	}
+	job, err := db.ClaimJob(ctx, JobThumbnail)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -398,7 +376,7 @@ func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +404,7 @@ func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	if got := jobState(t, db, job.ID); got != "queued" {
 		t.Fatalf("state = %q, want queued", got)
 	}
-	retried, err := db.ClaimJob(ctx)
+	retried, err := db.ClaimJob(ctx, JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -445,7 +423,7 @@ func TestPreviewStateUsesContentIdentityForSuccessAndClaimIdentityForFailure(t *
 	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,28 +454,6 @@ func TestPreviewStateUsesContentIdentityForSuccessAndClaimIdentityForFailure(t *
 	}
 }
 
-func TestDeleteFinishedJobsRemovesTerminalPreviewFailure(t *testing.T) {
-	db, videoID := jobsFixture(t)
-	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
-		t.Fatal(err)
-	}
-	old := time.Now().Add(-8 * 24 * time.Hour).Unix()
-	if _, err := db.SQL().Exec(`update videos set preview_state = 'failed' where id = ?`, videoID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.SQL().Exec(`update jobs set state = 'failed', attempts = ?, updated_at = ? where video_id = ? and kind = 'preview'`, MaxJobAttempts, old, videoID); err != nil {
-		t.Fatal(err)
-	}
-	removed, err := db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-JobRetention))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if removed != 1 || countJobs(t, db) != 0 {
-		t.Fatalf("removed = %d, jobs = %d", removed, countJobs(t, db))
-	}
-}
-
 func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -507,7 +463,7 @@ func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
 	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, MaxJobAttempts-1, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +488,7 @@ func TestFailClaimedPreviewKeepsPendingWhileRetrying(t *testing.T) {
 	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -560,7 +516,7 @@ func TestFailClaimedPreviewRollsBackJobWhenStateUpdateFails(t *testing.T) {
 	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, MaxJobAttempts-1, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -583,124 +539,13 @@ func TestFailClaimedPreviewRollsBackJobWhenStateUpdateFails(t *testing.T) {
 	}
 }
 
-func TestReconcilePreviewFailuresRequeuesStaleClaim(t *testing.T) {
-	db, videoID := jobsFixture(t)
-	ctx := context.Background()
-	probe := domain.Probe{DurationMs: 1_000, VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
-		t.Fatal(err)
-	}
-	job, err := db.ClaimJob(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.SQL().Exec(`update jobs set state = 'failed', attempts = ? where id = ?`, MaxJobAttempts, job.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.SQL().Exec(`update video_locations set version = version + 1 where id = ?`, job.LocationID); err != nil {
-		t.Fatal(err)
-	}
-	marked, requeued, err := db.ReconcilePreviewFailures(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if marked != 0 || requeued != 1 {
-		t.Fatalf("reconciled marked=%d requeued=%d, want 0/1", marked, requeued)
-	}
-	video, err := db.GetVideo(ctx, videoID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if video.PreviewState != domain.PreviewStatePending {
-		t.Fatalf("preview state = %q, want pending", video.PreviewState)
-	}
-	retry, err := db.ClaimJob(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if retry.Kind != JobPreview || retry.VideoID != videoID || retry.LocationVersion == job.LocationVersion {
-		t.Fatalf("retry job = %+v, stale job = %+v", retry, job)
-	}
-}
-
-func TestReconcilePreviewFailuresRequeuesClaimFromUnregisteredLocation(t *testing.T) {
-	db := migratedDB(t)
-	ctx := context.Background()
-	root := t.TempDir()
-	rootA := filepath.Join(root, "a")
-	rootB := filepath.Join(root, "b")
-	for _, path := range []string{rootA, rootB} {
-		if err := os.Mkdir(path, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	folderA, err := db.AddMediaFolder(ctx, rootA)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.AddMediaFolder(ctx, rootB); err != nil {
-		t.Fatal(err)
-	}
-	video, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootA, "movie.mp4"), "movie", "same", 1, 0))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootB, "movie.mp4"), "movie", "same", 1, 0)); err != nil {
-		t.Fatal(err)
-	}
-	probe := domain.Probe{DurationMs: 1_000, VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.EnqueueJob(ctx, JobPreview, video.ID); err != nil {
-		t.Fatal(err)
-	}
-	job, err := db.ClaimJob(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if job.LocationPath != filepath.Join(rootA, "movie.mp4") {
-		t.Fatalf("claimed location = %q, want location A", job.LocationPath)
-	}
-	if _, err := db.SQL().Exec(`delete from media_folders where id = ?`, folderA.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.SQL().Exec(`update jobs set state = 'failed', attempts = ? where id = ?`, MaxJobAttempts, job.ID); err != nil {
-		t.Fatal(err)
-	}
-	marked, requeued, err := db.ReconcilePreviewFailures(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if marked != 0 || requeued != 1 {
-		t.Fatalf("reconciled marked=%d requeued=%d, want 0/1", marked, requeued)
-	}
-	got, err := db.GetVideo(ctx, video.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got.PreviewState != domain.PreviewStatePending {
-		t.Fatalf("preview state = %q, want pending", got.PreviewState)
-	}
-	retry, err := db.ClaimJob(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if retry.LocationPath != filepath.Join(rootB, "movie.mp4") {
-		t.Fatalf("retry location = %q, want registered location B", retry.LocationPath)
-	}
-}
-
 func TestPreviewRunningJobIsRequeuedAfterRestart(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := db.ClaimJob(ctx)
+	claimed, err := db.ClaimJob(ctx, JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -710,7 +555,7 @@ func TestPreviewRunningJobIsRequeuedAfterRestart(t *testing.T) {
 	if restored, err := db.RequeueRunningJobs(ctx); err != nil || restored != 1 {
 		t.Fatalf("RequeueRunningJobs() = %d, %v", restored, err)
 	}
-	retried, err := db.ClaimJob(ctx)
+	retried, err := db.ClaimJob(ctx, JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -725,7 +570,7 @@ func TestPreviewCompletionRejectsChangedContent(t *testing.T) {
 	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -761,7 +606,7 @@ func TestPreviewSourceRejectsReassignedClaimedPathWithOriginalContentRemaining(t
 	if err := db.EnqueueJob(ctx, JobPreview, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -790,7 +635,7 @@ func TestPreviewSourceAcceptsLocationOnlyChange(t *testing.T) {
 	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -809,7 +654,7 @@ func TestCompletePreviewAtomicallyFinishesAssetAndJobAfterCancellation(t *testin
 	if err := db.EnqueueJob(ctx, JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -857,7 +702,7 @@ func TestClaimedJobBecomesStaleWhenLowerIDLocationIsReassigned(t *testing.T) {
 	if err := db.EnqueueJob(ctx, JobProbe, target.ID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -907,4 +752,276 @@ func countJobs(t *testing.T, db *DB) int {
 		t.Fatal(err)
 	}
 	return count
+}
+
+// ClaimJob は指定した段階の仕事だけを取り出す。段階ごとのワーカーが、別の
+// 段階の仕事を横取りしない。
+func TestClaimJobTakesOnlyTheRequestedKind(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	probeDone(t, db, videoID)
+	if err := db.EnqueueJob(ctx, JobThumbnail, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("別の段階の ClaimJob error = %v, want ErrNoJob", err)
+	}
+	job, err := db.ClaimJob(ctx, JobThumbnail)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.Kind != JobThumbnail {
+		t.Fatalf("Kind = %s, want thumbnail", job.Kind)
+	}
+}
+
+// queuedRecorder は OnJobsChanged の知らせを記録する。
+type queuedRecorder struct {
+	kinds []JobKind
+	calls int
+}
+
+func (r *queuedRecorder) record(kinds []JobKind) {
+	r.kinds = append(r.kinds, kinds...)
+	r.calls++
+}
+
+func (r *queuedRecorder) take() []JobKind {
+	kinds := r.kinds
+	r.kinds = nil
+	return kinds
+}
+
+// 仕事を積んだら、確定したあとでその段階を知らせる。ワーカーはこれで起きる。
+// 何も積まなかったときは知らせない。
+func TestJobsQueuedNotification(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	recorder := &queuedRecorder{}
+	db.OnJobsChanged(func(kinds []JobKind) {
+		// 知らせを受けた時点で、積んだ行が別の接続から見えていること。
+		var queued int
+		if err := db.SQL().QueryRow(`select count(*) from jobs where state = 'queued'`).Scan(&queued); err != nil {
+			t.Error(err)
+		}
+		if queued == 0 {
+			t.Error("確定前に知らせた")
+		}
+		recorder.record(kinds)
+	})
+
+	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); fmt.Sprint(got) != "[probe]" {
+		t.Errorf("EnqueueJob の知らせ = %v, want [probe]", got)
+	}
+
+	if err := db.EnsureJob(ctx, JobThumbnail, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); fmt.Sprint(got) != "[thumbnail]" {
+		t.Errorf("EnsureJob の知らせ = %v, want [thumbnail]", got)
+	}
+	// 既にあるので何も積まない。
+	if err := db.EnsureJob(ctx, JobThumbnail, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); len(got) != 0 {
+		t.Errorf("積まなかった EnsureJob が知らせた: %v", got)
+	}
+
+	if _, err := db.ClaimJob(ctx, JobProbe); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := db.RequeueRunningJobs(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored != 1 {
+		t.Fatalf("戻した数 = %d, want 1", restored)
+	}
+	if got := recorder.take(); len(got) == 0 {
+		t.Error("RequeueRunningJobs が知らせない")
+	}
+	if _, err := db.RequeueRunningJobs(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); len(got) != 0 {
+		t.Errorf("何も戻さなかった RequeueRunningJobs が知らせた: %v", got)
+	}
+}
+
+// 段階ごとの残りは queued と running を数え、終わった仕事と、登録外の所在しか
+// ない動画の仕事は数えない。
+func TestProcessingCountsRemainingWorkPerStage(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	other, err := db.UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-b", 2048, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside, err := db.UpsertVideo(ctx, sampleFile("/elsewhere/c.mp4", "c", "key-c", 4096, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, job := range []struct {
+		kind JobKind
+		id   int64
+	}{
+		{JobProbe, videoID}, {JobProbe, other.ID}, {JobThumbnail, videoID},
+		{JobPreview, other.ID}, {JobProbe, outside.ID},
+	} {
+		if err := db.EnqueueJob(ctx, job.kind, job.id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// 処理中も残りに数える（サムネイルは解析の後に取り出すので、解析は済ませておく）。
+	probeDone(t, db, videoID)
+	if _, err := db.ClaimJob(ctx, JobThumbnail); err != nil {
+		t.Fatal(err)
+	}
+	// 終わった仕事は数えない。
+	preview, err := db.ClaimJob(ctx, JobPreview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.CompleteJob(ctx, preview.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.Processing(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := domain.Processing{Probe: 2, Thumbnail: 1, Preview: 0}
+	if got != want {
+		t.Errorf("Processing = %+v, want %+v", got, want)
+	}
+	if got.Remaining() != 3 {
+		t.Errorf("Remaining = %d, want 3", got.Remaining())
+	}
+}
+
+// サムネイルは解析が終わるまで取り出さない。段階ごとのワーカーは並行して動くので、
+// 解析より先に作ると、動画の長さが分からないまま抽出位置が決まってしまう。
+func TestClaimThumbnailWaitsForProbe(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobThumbnail, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ClaimJob(ctx, JobThumbnail); !errors.Is(err, ErrNoJob) {
+		t.Fatalf("解析前の ClaimJob error = %v, want ErrNoJob", err)
+	}
+
+	probe := domain.Probe{DurationMs: 100_000, VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.ClaimJob(ctx, JobThumbnail)
+	if err != nil {
+		t.Fatalf("解析後も取り出せない: %v", err)
+	}
+	if job.VideoID != videoID {
+		t.Fatalf("VideoID = %d, want %d", job.VideoID, videoID)
+	}
+}
+
+// probeDone は解析を済ませた状態にする。サムネイルは解析の後に取り出す。
+func probeDone(t *testing.T, db *DB, videoID int64) {
+	t.Helper()
+	probe := domain.Probe{DurationMs: 100_000, VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.ApplyProbe(context.Background(), videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// 登録を外しても、登録外の所在が残る動画の行は消えない。それでもその仕事は
+// 残りとして数えなくなるので、変わったことを知らせる。画面の残りの数が古いまま
+// 残らない。
+func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	video, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/legacy/a.mp4", "a", "key-a", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.EnqueueJob(ctx, JobProbe, video.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := db.Processing(ctx); err != nil || got.Probe != 1 {
+		t.Fatalf("Processing = %+v, %v, want probe 1", got, err)
+	}
+	var folderID, version int64
+	if err := db.SQL().QueryRow(`select id, version from media_folders where path = '/media'`).Scan(&folderID, &version); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := &queuedRecorder{}
+	db.OnJobsChanged(recorder.record)
+	deleted := 0
+	db.OnVideosDeleted(func(videos []DeletedVideo) { deleted += len(videos) })
+	if err := db.DeleteMediaFolder(ctx, folderID, version); err != nil {
+		t.Fatal(err)
+	}
+
+	if deleted != 0 {
+		t.Fatalf("消えた動画 = %d, want 0（登録外の所在が残る）", deleted)
+	}
+	if recorder.calls != 1 {
+		t.Errorf("知らせ = %d 回, want 1", recorder.calls)
+	}
+	if got, err := db.Processing(ctx); err != nil || got.Probe != 0 {
+		t.Errorf("Processing = %+v, %v, want probe 0", got, err)
+	}
+}
+
+// 作り終えたプレビューのファイルが無い動画は、状態を戻して作り直しを1回だけ
+// 積む。何度見つけても重ねて積まない。
+func TestRequeueMissingPreview(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	probeDone(t, db, videoID)
+	if err := db.SetPreviewState(ctx, videoID, domain.PreviewStateDone); err != nil {
+		t.Fatal(err)
+	}
+	recorder := &queuedRecorder{}
+	db.OnJobsChanged(recorder.record)
+
+	if requeued, err := db.RequeueMissingPreview(ctx, videoID, "other-key"); err != nil || requeued {
+		t.Fatalf("内容の違う要求 = %v, %v, want false", requeued, err)
+	}
+	requeued, err := db.RequeueMissingPreview(ctx, videoID, "key-a")
+	if err != nil || !requeued {
+		t.Fatalf("RequeueMissingPreview = %v, %v, want true", requeued, err)
+	}
+	if got := recorder.take(); fmt.Sprint(got) != "[preview]" {
+		t.Errorf("知らせ = %v, want [preview]", got)
+	}
+	var state string
+	if err := db.SQL().QueryRow(`select preview_state from videos where id = ?`, videoID).Scan(&state); err != nil {
+		t.Fatal(err)
+	}
+	if state != "pending" {
+		t.Errorf("preview_state = %s, want pending", state)
+	}
+
+	if requeued, err := db.RequeueMissingPreview(ctx, videoID, "key-a"); err != nil || requeued {
+		t.Fatalf("2度目 = %v, %v, want false", requeued, err)
+	}
+	job, err := db.ClaimJob(ctx, JobPreview)
+	if err != nil {
+		t.Fatalf("作り直しのジョブが無い: %v", err)
+	}
+	if job.VideoID != videoID {
+		t.Errorf("VideoID = %d, want %d", job.VideoID, videoID)
+	}
+	if _, err := db.ClaimJob(ctx, JobPreview); !errors.Is(err, ErrNoJob) {
+		t.Errorf("作り直しを重ねて積んだ: %v", err)
+	}
 }

@@ -38,3 +38,21 @@ type Job struct {
 	// Attempts はこの取り出しを含めた試行回数。
 	Attempts int
 }
+
+// JobKinds は取り込みの段階の順に並べたジョブの種類である。段階ごとに
+// ワーカーを1本ずつ置くので、ここに無い種類は処理されない。
+var JobKinds = []JobKind{JobProbe, JobThumbnail, JobPreview}
+
+// Processing は、段階ごとに残っている仕事の数である。待ち行列に積まれている
+// ものと処理中のものを数え、登録外の所在しかない動画の仕事は含めない
+// （ワーカーが取り出さないので、数えると終わらない準備に見える）。
+type Processing struct {
+	Probe     int
+	Thumbnail int
+	Preview   int
+}
+
+// Remaining は全段階の残りの合計である。0 なら準備は終わっている。
+func (p Processing) Remaining() int {
+	return p.Probe + p.Thumbnail + p.Preview
+}
