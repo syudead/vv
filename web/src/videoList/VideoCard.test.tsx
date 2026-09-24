@@ -307,3 +307,37 @@ describe("VideoCard hover preview", () => {
     expect(onSelect).toHaveBeenCalledWith(item.id, true);
   });
 });
+
+describe("VideoCard tagsRow（issue 269）", () => {
+  afterEach(() => cleanup());
+
+  it("tagsRow を渡すと、今の日付・サイズ・コーデックの行の代わりにそれを出す", () => {
+    renderCard(video({ tags: [{ id: 1, name: "旅行" }] }), {
+      tagsRow: <p>タグの行</p>,
+    });
+    expect(screen.getByText("タグの行")).toBeDefined();
+    expect(screen.queryByText("h264")).toBeNull();
+  });
+
+  it("tagsRow を渡さなければ今の行のままにする（フォルダ画面）", () => {
+    renderCard(video());
+    expect(screen.getByText("h264")).toBeDefined();
+  });
+
+  it("tagsRow はリンクの外、同じ article の中に置く", () => {
+    renderCard(video({ tags: [{ id: 1, name: "旅行" }] }), {
+      tagsRow: <button type="button">タグ</button>,
+    });
+    const article = screen.getByRole("article");
+    const link = screen.getByRole("link");
+    const button = screen.getByRole("button", { name: "タグ" });
+    expect(article.contains(link)).toBe(true);
+    expect(article.contains(button)).toBe(true);
+    expect(link.contains(button)).toBe(false);
+  });
+
+  it("タグが無い動画では tagsRow の場所に何も出さない", () => {
+    renderCard(video({ tags: [] }), { tagsRow: <p>タグの行</p> });
+    expect(screen.queryByText("タグの行")).toBeNull();
+  });
+});

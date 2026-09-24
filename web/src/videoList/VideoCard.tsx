@@ -1,6 +1,7 @@
 import { AlertTriangle, Check, Folder, ImageOff } from "lucide-react";
 import {
   memo,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -42,6 +43,15 @@ export interface VideoCardProps {
    * `title` 属性には省略しない全体を入れる（最上位では登録フォルダの絶対パスから）。
    */
   location?: { label: string; title: string };
+  /**
+   * 題名の下に出す行を、呼び出し側の固有のものに差し替える口
+   * （Plan の Structural Decisions 10）。省くと今の「追加日時 · ファイルサイズ ·
+   * コーデック」の行を出す（フォルダ画面のカード、リスト表示の行はこちら）。
+   * ライブラリの格子表示はここへタグの行を渡す
+   * （specs/014-video-tags/ui-design.md「Tag row」）。タグの行はリンクの**外**、
+   * 同じ `article` の中に置かれる（Structural Decisions 10、キーボードの入れ子を避ける）。
+   */
+  tagsRow?: ReactNode;
 }
 
 function useCardState(video: Video) {
@@ -104,6 +114,7 @@ function VideoCard(props: VideoCardProps) {
     onPreviewStart,
     onPreviewReset,
     location,
+    tagsRow,
   } = props;
   const {
     duration,
@@ -112,6 +123,9 @@ function VideoCard(props: VideoCardProps) {
     ratio,
     quality,
   } = useCardState(video);
+  // タグが無い動画は行を出さない（ui-design.md「Tag row」）が、題名の下の余白は
+  // 今の pb-3 のまま保つ（タグの有無で高さの余白が変わって見えないように）。
+  const showTagsRow = tagsRow !== undefined && video.tags.length > 0;
   const eligible =
     rawUnplayable === null &&
     video.previewState === "done" &&
@@ -344,7 +358,9 @@ function VideoCard(props: VideoCardProps) {
           )}
         </div>
 
-        <div className="flex min-w-0 flex-col gap-1 px-3 pt-2 pb-3">
+        <div
+          className={cn("flex min-w-0 flex-col gap-1 px-3 pt-2", !showTagsRow && "pb-3")}
+        >
           <h3
             title={video.title}
             className={cn(
@@ -368,19 +384,24 @@ function VideoCard(props: VideoCardProps) {
               </span>
             </p>
           )}
-          <p className="flex items-center gap-2 text-xs text-fg-muted tabular-nums">
-            <span>{formatRelative(video.addedAt)}</span>
-            <span className="text-fg-subtle">·</span>
-            <span>{formatBytes(video.sizeBytes)}</span>
-            {video.videoCodec !== undefined && (
-              <>
-                <span className="text-fg-subtle">·</span>
-                <span className="uppercase">{video.videoCodec}</span>
-              </>
-            )}
-          </p>
+          {tagsRow === undefined && (
+            <p className="flex items-center gap-2 text-xs text-fg-muted tabular-nums">
+              <span>{formatRelative(video.addedAt)}</span>
+              <span className="text-fg-subtle">·</span>
+              <span>{formatBytes(video.sizeBytes)}</span>
+              {video.videoCodec !== undefined && (
+                <>
+                  <span className="text-fg-subtle">·</span>
+                  <span className="uppercase">{video.videoCodec}</span>
+                </>
+              )}
+            </p>
+          )}
         </div>
       </Link>
+      {showTagsRow && (
+        <div className="flex min-w-0 flex-col gap-1 px-3 pb-3">{tagsRow}</div>
+      )}
     </article>
   );
 }

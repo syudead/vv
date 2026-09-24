@@ -1,5 +1,6 @@
 import { Plus, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 
 import { RequestFailed, type TagRef } from "../api/client";
 import {
@@ -161,7 +162,13 @@ export default function VideoTags({
               title={tag.name}
               className="inline-flex h-6 max-w-full items-center rounded-sm bg-elevated pl-2 text-xs text-fg"
             >
-              <span className="min-w-0 truncate">{tag.name}</span>
+              <Link
+                to={`/?tag=${String(tag.id)}`}
+                aria-label={`${tag.name}で絞り込む`}
+                className="min-w-0 truncate hover:text-link"
+              >
+                {tag.name}
+              </Link>
               <span aria-hidden="true" className="mx-1.5 h-3.5 w-px bg-border-strong" />
               <button
                 ref={(node) => {

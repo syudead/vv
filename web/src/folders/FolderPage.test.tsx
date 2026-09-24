@@ -511,6 +511,26 @@ describe("FolderPage", () => {
     );
   });
 
+  it("URL の tag は読まず、watch を変えると tag が URL から消える（issue 269）", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?tag=1");
+    await screen.findByRole("link", { name: "x" });
+    // tag は読まないので、絞り込みなしと同じ要求になる（tag は送らない）。
+    expect(
+      requests.some(
+        (url) => url.startsWith("/api/folders/3/videos?path=A") && url.includes("tag="),
+      ),
+    ).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "絞り込み" }));
+    await user.click(screen.getByRole("radio", { name: "未視聴" }));
+    await waitFor(() => {
+      const location = screen.getByTestId("location").textContent ?? "";
+      expect(location).toContain("watch=unwatched");
+      expect(location).not.toContain("tag=");
+    });
+  });
+
   it("検索語があると子フォルダを出さず、配下の検索結果に置き場所を添える。消すと元に戻る", async () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A?q=京都");

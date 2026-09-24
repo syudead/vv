@@ -8,12 +8,13 @@ import {
 } from "react";
 import { useLocation } from "react-router";
 
-import type { Video, VideoSort, WatchFilter } from "../api/client";
+import type { TagRef, Video, VideoSort, WatchFilter } from "../api/client";
 import {
   clearListSnapshot,
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
+import { refreshTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import {
   readViewPreferences,
@@ -23,9 +24,9 @@ import {
 } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
+import { useToast } from "../ui/Toast";
 import {
-  clearConditions,
-  hasConditions,
+  criteriaKey,
   type HistoryMode,
   type ListCriteria,
   newSeed,
@@ -34,9 +35,21 @@ import { resultCountText } from "../videoList/listSummary";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { useListCriteria } from "../videoList/useListCriteria";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
+import ActiveTagFilters from "./ActiveTagFilters";
+import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
 import LibraryToolbar from "./LibraryToolbar";
 import SelectionBar from "./SelectionBar";
+import {
+  addTagId,
+  clearConditions as clearTagConditions,
+  hasConditions as hasTagConditions,
+  MAX_TAG_COUNT,
+  parseTagParam,
+  removeTagId,
+  serializeTagIds,
+  TAG_PARAM,
+} from "./tagCriteria";
 
 const skeletonCount = 12;
 
@@ -61,10 +74,15 @@ function topmostId(list: HTMLElement | null, top: number): number | undefined {
 
 export default function LibraryPage() {
   const location = useLocation();
+  const toast = useToast();
   const [preferences, setPreferences] = useState(readViewPreferences);
   // 一覧の条件は URL が持つ（contracts/list-url.md）。端末に保存するのは sort だけ。
-  const { criteria, apply } = useListCriteria(preferences.sort);
+  // タグ絞り込み（`tag`）はライブラリだけが持つ条件で、共有の ListCriteria には
+  // 含めない（Plan の Structural Decisions 1・15）。useListCriteria の画面固有の
+  // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
+  const { criteria, apply } = useListCriteria(preferences.sort, TAG_PARAM);
   const { query, watch, playable, sort } = criteria;
+  const tagIds = parseTagParam(new URLSearchParams(location.search).getAll(TAG_PARAM));
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const [activePreviewId, setActivePreviewId] = useState<number | null>(null);
@@ -116,9 +134,31 @@ export default function LibraryPage() {
     (next: string, mode: HistoryMode) => update({ ...criteria, query: next }, mode),
     [criteria, update],
   );
-  const clearAll = useCallback(
-    () => update(clearConditions(criteria)),
-    [criteria, update],
+  const clearAll = useCallback(() => {
+    resetPreview();
+    const cleared = clearTagConditions(criteria);
+    apply(cleared.criteria, "push", []);
+  }, [apply, criteria, resetPreview]);
+
+  // --- タグ絞り込み（list-url.md §2） ---
+  const pressTag = useCallback(
+    (tag: TagRef) => {
+      if (tagIds.includes(tag.id)) return; // すでに絞り込み中なら何も変わらない。
+      if (tagIds.length >= MAX_TAG_COUNT) {
+        toast("絞り込めるタグは 16 個までです");
+        return;
+      }
+      resetPreview();
+      apply(criteria, "push", serializeTagIds(addTagId(tagIds, tag.id)));
+    },
+    [apply, criteria, resetPreview, tagIds, toast],
+  );
+  const removeActiveTag = useCallback(
+    (id: number) => {
+      resetPreview();
+      apply(criteria, "push", serializeTagIds(removeTagId(tagIds, id)));
+    },
+    [apply, criteria, resetPreview, tagIds],
   );
   // --- 大きさ切替で読んでいた位置を保つ ---
   const anchor = useRef<number | undefined>(undefined);
@@ -155,7 +195,7 @@ export default function LibraryPage() {
   }, [zoom]);
 
   // --- 一覧の取得（戻ってきたときはスナップショットから復元） ---
-  const [restored] = useState(() => takeListSnapshot(criteria));
+  const [restored] = useState(() => takeListSnapshot({ ...criteria, tags: tagIds }));
   const {
     items,
     total,
@@ -164,10 +204,11 @@ export default function LibraryPage() {
     loading,
     loadingMore,
     error,
+    missingTagIds,
     loadMore,
     retryLoadMore,
     reload,
-  } = useVideos(criteria, restored);
+  } = useVideos({ ...criteria, tag: tagIds }, restored);
 
   // 絞り込みはサーバーが一覧の条件として適用する（Plan の Structural Decisions 7）。
   // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
@@ -198,6 +239,18 @@ export default function LibraryPage() {
       return next.size === current.size ? current : next;
     });
   }, [items]);
+
+  // 検索語・視聴状態・再生可否・タグのどれかを変えると選択を解除する
+  // （ui-design.md「Active tag filters」）。条件の違う一覧で選んだ動画が、見えない
+  // まま選択に残らないようにするため。同じ動画がたまたま両方の条件に一致しても
+  // 解除する。
+  const conditionsSignature = `${criteriaKey(criteria)}\u0000${tagIds.join(",")}`;
+  const knownConditionsSignature = useRef(conditionsSignature);
+  useEffect(() => {
+    if (knownConditionsSignature.current === conditionsSignature) return;
+    knownConditionsSignature.current = conditionsSignature;
+    clearSelection();
+  }, [clearSelection, conditionsSignature]);
 
   useEffect(() => {
     if (selectedIds.size === 0) return;
@@ -243,15 +296,18 @@ export default function LibraryPage() {
   }, [reload, scan.finished]);
 
   const saveSnapshot = useCallback(() => {
-    saveListSnapshot(criteria, {
-      items,
-      total,
-      cursor,
-      hasMore,
-      scrollY: window.scrollY,
-      scanId: knownScanId.current,
-    });
-  }, [criteria, cursor, hasMore, items, total]);
+    saveListSnapshot(
+      { ...criteria, tags: tagIds },
+      {
+        items,
+        total,
+        cursor,
+        hasMore,
+        scrollY: window.scrollY,
+        scanId: knownScanId.current,
+      },
+    );
+  }, [criteria, cursor, hasMore, items, tagIds, total]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -271,9 +327,58 @@ export default function LibraryPage() {
     return () => observer.disconnect();
   }, [hasMore, loadMore, resetPreview]);
 
+  // --- もう無いタグ（list-url.md §1、ui-design.md「Stale tags in other screens」） ---
+  // 一覧の応答の missingTagIds を受けたら、もう無いことを伝え、タグの一覧を取り直し、
+  // 履歴を増やさずに URL から取り除く。URL を書き換えて新しい一覧を取りに行くまでの
+  // 数フレームは、同じ missingTagIds を持つ再描画が起きうるので、内容が変わらない
+  // 限り1回だけ処理する。
+  const handledMissingTagIds = useRef<string | null>(null);
+  useEffect(() => {
+    if (missingTagIds.length === 0) {
+      handledMissingTagIds.current = null;
+      return;
+    }
+    const signature = [...missingTagIds].sort((a, b) => a - b).join(",");
+    if (handledMissingTagIds.current === signature) return;
+    handledMissingTagIds.current = signature;
+    const remaining = tagIds.filter((id) => !missingTagIds.includes(id));
+    if (remaining.length === tagIds.length) return;
+    toast("削除されたタグを絞り込みから外しました");
+    refreshTags().catch(() => undefined);
+    apply(criteria, "replace", serializeTagIds(remaining));
+  }, [apply, criteria, missingTagIds, tagIds, toast]);
+
+  // 控えから一覧を戻したときは一覧の要求をしないので missingTagIds が届かない。
+  // 画面が開くときに取り直す共有のタグの一覧と URL の tag を突き合わせ、無い id が
+  // あれば同じく伝えて取り除く。マウント時に1回だけ行う。
+  const mountRef = useRef({ criteria, tagIds, apply, toast });
+  mountRef.current = { criteria, tagIds, apply, toast };
+  useEffect(() => {
+    if (restored === undefined || mountRef.current.tagIds.length === 0) return;
+    let alive = true;
+    refreshTags()
+      .then((tags) => {
+        if (!alive) return;
+        const known = new Set(tags.map((tag) => tag.id));
+        const {
+          tagIds: current,
+          criteria: currentCriteria,
+          apply: currentApply,
+        } = mountRef.current;
+        const remaining = current.filter((id) => known.has(id));
+        if (remaining.length === current.length) return;
+        mountRef.current.toast("削除されたタグを絞り込みから外しました");
+        currentApply(currentCriteria, "replace", serializeTagIds(remaining));
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [restored]);
+
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
-  const conditioned = hasConditions(criteria);
+  const conditioned = hasTagConditions(criteria, tagIds);
   const selectionMode = selectedIds.size > 0;
   const resultStatus = loading ? "読み込み中…" : resultCountText(total);
 
@@ -287,6 +392,15 @@ export default function LibraryPage() {
     previewResetEpoch,
     onPreviewStart: startPreview,
     onPreviewReset: resetPreview,
+    tagsRow:
+      view === "grid" ? (
+        <CardTagRow
+          tags={video.tags}
+          selectionMode={selectionMode}
+          onPress={pressTag}
+          onToggleSelection={() => changeSelection(video.id, !selectedIds.has(video.id))}
+        />
+      ) : undefined,
   });
 
   return (
@@ -316,6 +430,14 @@ export default function LibraryPage() {
           onZoomChange={changeZoom}
         />
       </TopBarPortal>
+
+      {tagIds.length > 0 && (
+        <ActiveTagFilters
+          tagIds={tagIds}
+          onRemove={removeActiveTag}
+          searchFieldRef={searchField}
+        />
+      )}
 
       {!initialLoadFailed && (
         <p
