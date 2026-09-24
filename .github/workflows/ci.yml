@@ -59,9 +59,11 @@ jobs:
       - name: 追加runtimeの要らない検査
         run: task check
 
-  # e2e は一番長いジョブなので、画面にも挙動にも効かない変更（文書、Plan、
-  # エージェントの手順）だけの PR では回さない。if で飛ばしたジョブは成功扱い
-  # なので、必須チェックにしていても PR は止まらない。main への push では常に回す。
+  # e2e は一番長いジョブなので、main 向けの PR と main への push でだけ回す。
+  # feature branch 向けの stage PR は数が多く、実ブラウザでの確認は統合 PR で
+  # まとめて1回行えば足りる。main 向けでも、画面にも挙動にも効かない変更（文書、
+  # Plan、エージェントの手順）だけの PR では回さない。if で飛ばしたジョブは成功扱い
+  # なので、必須チェックにしていても PR は止まらない。
   changes:
     name: Changed paths
     runs-on: ubuntu-latest
@@ -79,9 +81,15 @@ jobs:
         id: filter
         env:
           EVENT: ${{ github.event_name }}
+          BASE: ${{ github.base_ref }}
         run: |
           if [ "$EVENT" != "pull_request" ]; then
             echo "e2e=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$BASE" != "main" ]; then
+            echo "main 向けの PR ではないので e2e を飛ばす"
+            echo "e2e=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # ここに無いものは全部 e2e の対象にする。新しい置き場所を足しても
@@ -196,8 +204,11 @@ jobs:
             web/test-results/
           retention-days: 7
 
+  # イメージのビルドは Checks と検査の中身がほぼ重なり、時間だけが長い。
+  # e2e と同じく、main 向けの PR と main への push でだけ回す。
   docker:
     name: Docker image
+    if: github.event_name != 'pull_request' || github.base_ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

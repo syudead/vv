@@ -617,8 +617,9 @@ export interface components {
             startedAt?: string;
             /** Format: date-time */
             finishedAt?: string;
-            /** @description 走査で見つけたファイル数 */
+            /** @description 変更なしを除いた取り込み対象ファイル数。対象の確定前は0 */
             total: number;
+            /** @description 取り込み処理に成功した対象ファイル数 */
             completed: number;
             failed: number;
             /** @description スキャン自体が失敗した理由 */

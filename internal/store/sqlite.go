@@ -35,6 +35,10 @@ type DB struct {
 // modernc.org/sqlite は _pragma クエリを接続ごとに適用する。
 func dsn(path string) string {
 	q := url.Values{}
+	// 書き込みトランザクションは最初に予約する。既定の deferred では、読み取り後に
+	// worker の書き込みが割り込むと write への昇格が SQLITE_BUSY_SNAPSHOT になり、
+	// busy_timeout の待機対象にならない。
+	q.Set("_txlock", "immediate")
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout))
 	q.Add("_pragma", "foreign_keys(on)")
