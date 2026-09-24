@@ -18,8 +18,7 @@ Read [README.md](README.md) first. Input is one native child Issue.
    unavailable, use an equivalent bounded worker when the host supports one, or
    perform this step locally.
 5. Run focused checks and the repository checks required by the change. For UI
-   work, follow `docs/how-to/ui-change-screenshots.md` and `ui-design.md`, and
-   include screenshots plus visual, interaction, and accessibility review.
+   work, check the result against the review criteria in `ui-design.md`.
 6. Run the [`self-review` skill](../../self-review/SKILL.md) over the whole diff
    against the feature branch. When the selected host provides the
    project-scoped `self-reviewer` worker, delegate the review to that fresh

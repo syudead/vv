@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useNavigate } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
@@ -38,7 +38,7 @@ function previews(count: number) {
   }));
 }
 
-function video(id: number, title: string): Video {
+function video(id: number, title: string, extra: Partial<Video> = {}): Video {
   return {
     id,
     title,
@@ -48,6 +48,7 @@ function video(id: number, title: string): Video {
     probeState: "done",
     thumbnailState: "done",
     previewState: "pending",
+    ...extra,
   };
 }
 
@@ -97,6 +98,20 @@ function Player() {
   );
 }
 
+/** LocationProbe は今の URL を見せ、履歴を1つ戻る操作を置く（戻る/進むの確認）。 */
+function LocationProbe() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <span data-testid="location">{`${location.pathname}${location.search}`}</span>
+      <button type="button" onClick={() => void navigate(-1)}>
+        テストで戻る
+      </button>
+    </>
+  );
+}
+
 function renderFolders(initial: string) {
   return render(
     <MemoryRouter initialEntries={[initial]}>
@@ -104,7 +119,15 @@ function renderFolders(initial: string) {
         <ToastProvider>
           <ScanProvider>
             <Routes>
-              <Route path="/folders/*" element={<FolderPage />} />
+              <Route
+                path="/folders/*"
+                element={
+                  <>
+                    <FolderPage />
+                    <LocationProbe />
+                  </>
+                }
+              />
               <Route path="/videos/:id" element={<Player />} />
             </Routes>
           </ScanProvider>
@@ -138,11 +161,57 @@ describe("FolderPage", () => {
       if (url === "/api/folders") return Promise.resolve(json(roots));
       if (url === "/api/folders/3?path=A") return Promise.resolve(json(folderA));
       if (url === "/api/folders/3") return Promise.resolve(json(folderRoot));
-      if (url.startsWith("/api/folders/3/videos?path=A&")) {
+      if (url.startsWith("/api/folders/3/videos?")) {
+        const params = new URL(url, "http://localhost").searchParams;
+        if (params.get("path") !== "A")
+          return Promise.resolve(json({ items: [], total: 0 }));
+        if (params.get("query") === "京都") {
+          const page: VideoPage = {
+            items: [
+              video(1, "x", { folder: { rootId: 3, path: "A" } }),
+              video(2, "y", { folder: { rootId: 3, path: "A/B" } }),
+            ],
+            total: 2,
+          };
+          return Promise.resolve(json(page));
+        }
+        // 検索中にフォルダが無くなった状況を模す（listing は 200 のまま、配下の
+        // 検索だけが 404 を返す）。
+        if (params.get("query") === "gone") {
+          return Promise.resolve(
+            json({ code: "not_found", message: "そのフォルダは見つかりません" }, 404),
+          );
+        }
+        if (params.get("query") === "broken") {
+          return Promise.resolve(
+            json({ code: "internal", message: "壊れています" }, 500),
+          );
+        }
+        if (params.has("query")) return Promise.resolve(json({ items: [], total: 0 }));
+        if (params.get("watch") === "unwatched") {
+          const page: VideoPage = { items: [video(1, "x")], total: 1 };
+          return Promise.resolve(json(page));
+        }
+        if (params.get("watch") === "watched") {
+          return Promise.resolve(json({ items: [], total: 0 }));
+        }
+        // 絞り込みなし（直下）は常に x の1件。
         const page: VideoPage = { items: [video(1, "x")], total: 1 };
         return Promise.resolve(json(page));
       }
-      if (url.startsWith("/api/folders/3/videos?")) {
+      if (url.startsWith("/api/videos?")) {
+        const params = new URL(url, "http://localhost").searchParams;
+        if (params.get("query") === "京都") {
+          const page: VideoPage = {
+            items: [
+              video(1, "x", { folder: { rootId: 3, path: "A" } }),
+              video(2, "y", { folder: { rootId: 3, path: "A/B" } }),
+              video(4, "z", { folder: { rootId: 7, path: "" } }),
+            ],
+            total: 3,
+          };
+          return Promise.resolve(json(page));
+        }
         return Promise.resolve(json({ items: [], total: 0 }));
       }
       // 準備中の項目は1件ずつ取り直される。実際のサーバーと同じく、その動画を返す。
@@ -413,4 +482,237 @@ describe("FolderPage", () => {
       ).toBe(2),
     );
   }, 10_000);
+
+  it("URL の q・watch をそのまま送り、q があるときだけ scope=subtree にする", async () => {
+    renderFolders("/folders/3/A?q=京都&watch=unwatched");
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (url) =>
+            url.startsWith("/api/folders/3/videos?path=A&scope=subtree") &&
+            url.includes("query=%E4%BA%AC%E9%83%BD") &&
+            url.includes("watch=unwatched"),
+        ),
+      ).toBe(true),
+    );
+
+    requests.length = 0;
+    renderFolders("/folders/3/A?watch=unwatched");
+    await waitFor(() =>
+      expect(
+        requests.some(
+          (url) =>
+            url.startsWith("/api/folders/3/videos?path=A&watch=unwatched") &&
+            !url.includes("scope=") &&
+            !url.includes("query="),
+        ),
+      ).toBe(true),
+    );
+  });
+
+  it("検索語があると子フォルダを出さず、配下の検索結果に置き場所を添える。消すと元に戻る", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?q=京都");
+
+    const x = await screen.findByRole("link", { name: "x、このフォルダ" });
+    const y = await screen.findByRole("link", { name: "y、B" });
+    expect(x).toBeDefined();
+    expect(y).toBeDefined();
+    // 検索中は子フォルダのカードと「フォルダ」「動画」の見出しを出さない。
+    expect(screen.queryByRole("link", { name: /^B、/ })).toBeNull();
+    expect(screen.getByRole("heading", { level: 2, name: "検索結果" })).toBeDefined();
+    expect(screen.getByRole("status").textContent).toContain("「京都」");
+
+    const box = screen.getByRole("searchbox", { name: "Aの中を検索" });
+    await user.clear(box);
+    await waitFor(() => expect(screen.getByRole("link", { name: "x" })).toBeDefined());
+    expect(
+      screen.getByRole("link", { name: "B、動画 1 本、フォルダ 1 件" }),
+    ).toBeDefined();
+  });
+
+  it("検索中にフォルダが無くなると、一致なしではなく見つからない案内を出す", async () => {
+    renderFolders("/folders/3/A?q=gone");
+    expect(await screen.findByText("このフォルダは見つかりません")).toBeDefined();
+    expect(screen.queryByText("条件に一致する動画はありません")).toBeNull();
+  });
+
+  it("404 の後に条件を変えて取得に失敗したら、見つからない案内ではなく再試行を出す", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?q=gone");
+    await screen.findByText("このフォルダは見つかりません");
+    const box = screen.getByRole("searchbox");
+    await user.clear(box);
+    await user.type(box, "broken{Enter}");
+    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
+    expect(screen.queryByText("このフォルダは見つかりません")).toBeNull();
+  });
+
+  it("最上位の検索で登録フォルダ一覧が取れないと、置き場所の無い結果ではなく再試行を出す", async () => {
+    const base = fetchMock.getMockImplementation();
+    let failRoots = true;
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/folders" && failRoots) {
+        return Promise.resolve(json({ code: "internal", message: "壊れています" }, 500));
+      }
+      return base!(input, init);
+    });
+    const user = userEvent.setup();
+    renderFolders("/folders?q=京都");
+    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
+    expect(screen.queryByRole("link", { name: /^x/ })).toBeNull();
+    failRoots = false;
+    await user.click(screen.getByRole("button", { name: "再試行" }));
+    expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();
+  });
+
+  it("最上位の検索で動画と登録フォルダ一覧の両方が失敗したら、1度の再試行で両方を取り直す", async () => {
+    const base = fetchMock.getMockImplementation();
+    let fail = true;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (fail && (url === "/api/folders" || url.startsWith("/api/videos?"))) {
+        return Promise.resolve(json({ code: "internal", message: "壊れています" }, 500));
+      }
+      return base!(input, init);
+    });
+    const user = userEvent.setup();
+    renderFolders("/folders?q=京都");
+    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
+    fail = false;
+    await user.click(screen.getByRole("button", { name: "再試行" }));
+    expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();
+  });
+
+  it("最上位の検索はライブラリ全体を対象にし、置き場所を登録フォルダ名から作る", async () => {
+    renderFolders("/folders?q=京都");
+    const x = await screen.findByRole("link", { name: "x、movies/A" });
+    const y = await screen.findByRole("link", { name: "y、movies/A/B" });
+    const z = await screen.findByRole("link", { name: "z、movies" });
+    expect(x).toBeDefined();
+    expect(y).toBeDefined();
+    expect(z).toBeDefined();
+    expect(requests.some((url) => url.startsWith("/api/videos?query="))).toBe(true);
+  });
+
+  it("並び順の向きを切り替えられる", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?sort=titleDesc");
+    await screen.findByRole("link", { name: "x" });
+    expect(screen.getByRole("button", { name: "並び順: 題名" })).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "降順。押すと昇順" }));
+    await waitFor(() =>
+      expect(requests.some((url) => url.includes("sort=titleAsc"))).toBe(true),
+    );
+  });
+
+  it("絞り込みだけでは子フォルダのカードが残り、Nは絞った後のtotalになる", async () => {
+    renderFolders("/folders/3/A?watch=unwatched");
+    const b = await screen.findByRole("link", {
+      name: "B、動画 1 本、フォルダ 1 件",
+    });
+    expect(b).toBeDefined();
+    expect(screen.getByRole("heading", { level: 2, name: /^動画/ }).textContent).toBe(
+      "動画 1",
+    );
+    expect(screen.getByRole("link", { name: "x" })).toBeDefined();
+  });
+
+  it("絞り込みだけで一致が無いと、子フォルダの下に一致なしを出し、条件を解除しても同じフォルダに留まる", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?watch=watched");
+    await screen.findByRole("link", { name: "B、動画 1 本、フォルダ 1 件" });
+    expect(
+      screen.getByRole("heading", { name: "条件に一致する動画はありません" }),
+    ).toBeDefined();
+    expect(screen.getByText(/中のフォルダも探すには/)).toBeDefined();
+    expect(screen.getByText("視聴済み")).toBeDefined();
+    expect(screen.getByText("Aの直下")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "条件を解除" }));
+    await screen.findByRole("link", { name: "x" });
+    expect(screen.getByTestId("location").textContent).toMatch(/^\/folders\/3\/A(\?|$)/);
+  });
+
+  it("検索の一致なしでは範囲のチップを添え、条件を解除しても同じフォルダに留まる", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?q=zzz-no-such-video");
+    await screen.findByRole("heading", { name: "条件に一致する動画はありません" });
+    expect(screen.getByText("検索語「zzz-no-such-video」")).toBeDefined();
+    expect(screen.getByText("Aとその中")).toBeDefined();
+    expect(screen.queryByRole("link", { name: /^B、/ })).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "条件を解除" }));
+    await screen.findByRole("link", { name: "x" });
+    expect(screen.getByTestId("location").textContent).toMatch(/^\/folders\/3\/A(\?|$)/);
+  });
+
+  it("sort=random と seed を URL のまま使う", async () => {
+    renderFolders("/folders/3/A?sort=random&seed=42");
+    await screen.findByRole("link", { name: "x" });
+    expect(screen.getByRole("button", { name: "並べ直す" })).toBeDefined();
+    await waitFor(() =>
+      expect(
+        requests.some((url) => url.includes("sort=random") && url.includes("seed=42")),
+      ).toBe(true),
+    );
+  });
+
+  it("並べ直すは新しい seed で履歴を1つ増やし、戻ると前の seed に戻る", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A?sort=random&seed=7");
+    await screen.findByRole("link", { name: "x" });
+
+    await user.click(screen.getByRole("button", { name: "並べ直す" }));
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).not.toBe(
+        "/folders/3/A?sort=random&seed=7",
+      ),
+    );
+    const seed = new URLSearchParams(
+      screen.getByTestId("location").textContent?.split("?")[1] ?? "",
+    ).get("seed");
+    expect(seed).not.toBe("7");
+    await waitFor(() =>
+      expect(requests.some((url) => url.includes(`seed=${seed ?? ""}`))).toBe(true),
+    );
+
+    await user.click(screen.getByRole("button", { name: "テストで戻る" }));
+    expect(screen.getByTestId("location").textContent).toBe(
+      "/folders/3/A?sort=random&seed=7",
+    );
+  });
+
+  it("/ でフォルダの検索欄にフォーカスする", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders/3/A");
+    await screen.findByRole("link", { name: "x" });
+    const box = screen.getByRole("searchbox", { name: "Aの中を検索" });
+    expect(document.activeElement).not.toBe(box);
+
+    await user.keyboard("/");
+    expect(document.activeElement).toBe(box);
+  });
+
+  it("最上位で検索語が空のときは、表示と並び順のまとめの中でも並べ替え・向きを無効にする", async () => {
+    const user = userEvent.setup();
+    renderFolders("/folders");
+    await screen.findAllByRole("link", { name: /^movies、/ });
+
+    await user.click(screen.getByRole("button", { name: "表示と並び順" }));
+    // jsdom は <fieldset disabled> から子孫の入力への継承を実装しないので、
+    // fieldset 自身が disabled を持つことを確かめる（実ブラウザでは子の
+    // input・button にも及ぶ）。絞り込み・並べ替えのメニューボタンは disabled
+    // 属性を自分で持つので、そちらは直接確かめられる。
+    const group = await screen.findByRole("group", { name: "並び順" });
+    expect((group as HTMLFieldSetElement).disabled).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "絞り込み" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "並び順: 追加日" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
 });

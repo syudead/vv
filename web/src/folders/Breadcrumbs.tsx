@@ -25,14 +25,23 @@ function Separator({ className }: { className?: string }) {
  * 見せる（最上位へはサイドバーの「フォルダ」から戻れる）。
  * 出し分けは CSS の幅の分岐だけで行い、幅を監視しない（library-ui.md 4）。
  * undefined の段は名前がまだ分からない段で、骨組みで描く。
+ *
+ * suffix は検索中に現在地の直後へ続ける文字（「内を検索中」など、ui-design.md
+ * 「Folder screen」）。段と違って省略しない — 検索中であることを見失わせないためである。
  */
-export default function Breadcrumbs({ crumbs }: { crumbs: (Crumb | undefined)[] }) {
+export default function Breadcrumbs({
+  crumbs,
+  suffix,
+}: {
+  crumbs: (Crumb | undefined)[];
+  suffix?: string;
+}) {
   const collapsible = crumbs.length >= collapseFrom;
   const lastIndex = crumbs.length - 1;
 
   return (
     <div className="sticky top-navbar z-20 -mx-3 -mt-3 flex h-10 items-center border-b border-border bg-bg/90 px-3 backdrop-blur-md sm:-mx-4 sm:px-4">
-      <nav aria-label="パンくず" className="min-w-0 flex-1">
+      <nav aria-label="パンくず" className="flex min-w-0 flex-1 items-center">
         <ol className="flex min-w-0 items-center gap-0.5 text-xs whitespace-nowrap">
           {crumbs.map((crumb, index) => {
             const hiddenWhenNarrow = collapsible && index < lastIndex - 1;
@@ -77,6 +86,9 @@ export default function Breadcrumbs({ crumbs }: { crumbs: (Crumb | undefined)[] 
             );
           })}
         </ol>
+        {suffix !== undefined && (
+          <span className="shrink-0 pl-1 text-fg-muted">{suffix}</span>
+        )}
       </nav>
     </div>
   );

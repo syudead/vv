@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"unicode"
@@ -52,11 +53,39 @@ type FolderListing struct {
 	Folders []FolderSummary
 }
 
-// FolderVideoQuery はフォルダ直下の動画の問い合わせ条件である。
+// FolderScope はフォルダの動画の問い合わせで対象にする所在の範囲である。
+// 値は api/openapi.yaml の scope パラメータに対応する。空は FolderScopeDirect と
+// 同じに扱う。
+type FolderScope string
+
+const (
+	// FolderScopeDirect はフォルダ直下の所在だけを対象にする（既定）。
+	FolderScopeDirect FolderScope = "direct"
+	// FolderScopeSubtree はフォルダとその配下すべての所在を対象にする。
+	FolderScopeSubtree FolderScope = "subtree"
+)
+
+// Valid は既知の値かどうかを返す。
+func (s FolderScope) Valid() bool {
+	return s == FolderScopeDirect || s == FolderScopeSubtree
+}
+
+// FolderVideoQuery はフォルダの動画の問い合わせ条件である。
 type FolderVideoQuery struct {
 	// Dir はフォルダの絶対パス。
-	Dir    string
-	Sort   VideoSort
+	Dir string
+	// Scope は対象にする所在の範囲。空は FolderScopeDirect と同じ。
+	Scope FolderScope
+	// Query は VideoQuery.Query と同じ書き方の検索語。照合は Scope の範囲に
+	// ある所在だけを対象にする。
+	Query string
+	// Watch は視聴状態の絞り込み。空は WatchAll と同じ。
+	Watch WatchFilter
+	// PlayableOnly はブラウザで再生できると確定した動画だけにする。
+	PlayableOnly bool
+	Sort         VideoSort
+	// Seed は VideoQuery.Seed と同じ。
+	Seed   int64
 	Cursor string
 	Limit  int
 }
@@ -282,4 +311,81 @@ func (f *folderAccumulator) summary(root MediaFolder, rel string) FolderSummary 
 		FolderCount: len(f.folders),
 		Previews:    previews,
 	}
+}
+
+// VideoFolder は一覧に出す所在が置かれたフォルダである。値は api/openapi.yaml の
+// VideoFolder に対応する。
+type VideoFolder struct {
+	// RootID は所在を含む登録メディアフォルダの識別子。
+	RootID int64
+	// Path は登録フォルダから所在の置かれたフォルダまでの `/` 区切りの相対パス。
+	// 登録フォルダの直下なら空文字。
+	Path string
+}
+
+// LocateVideoFolder は所在の絶対パスから、それを含む登録フォルダと、そこから
+// 所在の置かれたフォルダまでの相対パスを求める。含む登録フォルダが無ければ
+// false を返す。登録フォルダは入れ子にならない（登録時に断る）ので、含むものは
+// 高々1つである。
+//
+// 含むかどうかは、保存側の「登録フォルダの下にある」条件
+// （internal/store の registeredLocationCondition）と同じ規則で決める。Windows では
+// `/` と `\` の両方を区切りとし、ASCII の大文字小文字を区別しない。ほかの OS では
+// その OS の区切りだけを使う。
+func LocateVideoFolder(roots []MediaFolder, locationPath string) (VideoFolder, bool) {
+	return locateVideoFolderFor(roots, locationPath, runtime.GOOS == "windows", filepath.Separator)
+}
+
+func locateVideoFolderFor(roots []MediaFolder, locationPath string, windows bool, separator rune) (VideoFolder, bool) {
+	separators := string(separator)
+	if windows {
+		separators = `/\`
+	}
+	for _, root := range roots {
+		rest, ok := pathBelowRoot(root.Path, locationPath, separators, windows)
+		if !ok {
+			continue
+		}
+		segments := strings.FieldsFunc(rest, func(r rune) bool { return strings.ContainsRune(separators, r) })
+		if len(segments) > 0 {
+			// 最後の段は所在のファイル名で、フォルダには含めない。
+			segments = segments[:len(segments)-1]
+		}
+		return VideoFolder{RootID: root.ID, Path: strings.Join(segments, "/")}, true
+	}
+	return VideoFolder{}, false
+}
+
+// pathBelowRoot は path が root 自身か root の下にあるとき、root より後ろの部分を
+// 返す。root の末尾の区切りは落としてから比べる。
+func pathBelowRoot(root, path, separators string, windows bool) (string, bool) {
+	equal := func(a, b string) bool { return a == b }
+	if windows {
+		// SQLite の lower() と同じく ASCII だけを畳む。長さが変わらないので、
+		// 接頭辞の長さでそのまま切り出せる。
+		equal = func(a, b string) bool { return LowerASCII(a) == LowerASCII(b) }
+	}
+	if equal(path, root) {
+		return "", true
+	}
+	trimmed := strings.TrimRight(root, separators)
+	if len(path) <= len(trimmed) || !equal(path[:len(trimmed)], trimmed) {
+		return "", false
+	}
+	if !strings.ContainsRune(separators, rune(path[len(trimmed)])) {
+		return "", false
+	}
+	return path[len(trimmed)+1:], true
+}
+
+// LowerASCII は ASCII の英大文字だけを小文字にする。SQLite の lower() と同じ
+// 扱いで、Windows で登録フォルダの下かどうかを SQL と Go で同じに判定するために使う。
+func LowerASCII(s string) string {
+	b := []byte(s)
+	for i, c := range b {
+		if 'A' <= c && c <= 'Z' {
+			b[i] = c + ('a' - 'A')
+		}
+	}
+	return string(b)
 }

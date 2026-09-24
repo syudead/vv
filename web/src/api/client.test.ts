@@ -5,6 +5,8 @@ import {
   deleteMediaFolder,
   fetchSeekThumbnail,
   listDirectories,
+  listFolderVideos,
+  listVideos,
   beaconProgress,
   listMediaFolders,
   startScan,
@@ -303,5 +305,96 @@ describe("progress API client", () => {
     answerBeacon(jsonResponse(progress));
     await next;
     expect(fetch).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("list API client", () => {
+  const emptyPage = { items: [], total: 0 };
+
+  function stubFetch() {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementation(() => Promise.resolve(jsonResponse(emptyPage)));
+    vi.stubGlobal("fetch", fetch);
+    return fetch;
+  }
+
+  function requestedURL(fetch: ReturnType<typeof stubFetch>, call = 0): URL {
+    return new URL(String(fetch.mock.calls[call]?.[0]), "http://localhost");
+  }
+
+  it("keeps the existing library query when no new conditions are given", async () => {
+    const fetch = stubFetch();
+    await listVideos({ query: "京都", sort: "titleAsc", cursor: "c" });
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      "/api/videos?query=%E4%BA%AC%E9%83%BD&sort=titleAsc&cursor=c&limit=60",
+    );
+  });
+
+  it("sends watch, playable and seed to the library list", async () => {
+    const fetch = stubFetch();
+    await listVideos({
+      query: "京都 -2023",
+      watch: "unwatched",
+      playable: true,
+      sort: "random",
+      seed: 42,
+      limit: 10,
+    });
+    const url = requestedURL(fetch);
+    expect(url.pathname).toBe("/api/videos");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      query: "京都 -2023",
+      watch: "unwatched",
+      playable: "true",
+      sort: "random",
+      seed: "42",
+      limit: "10",
+    });
+  });
+
+  it("omits playable when it is false", async () => {
+    const fetch = stubFetch();
+    await listVideos({ playable: false });
+    expect(requestedURL(fetch).searchParams.has("playable")).toBe(false);
+  });
+
+  it("sends scope, query and filters to the folder list", async () => {
+    const fetch = stubFetch();
+    await listFolderVideos({
+      folder: { rootId: 3, path: "A/B" },
+      scope: "subtree",
+      query: "京都",
+      watch: "inProgress",
+      playable: true,
+      sort: "durationDesc",
+      seed: 0,
+    });
+    const url = requestedURL(fetch);
+    expect(url.pathname).toBe("/api/folders/3/videos");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      path: "A/B",
+      scope: "subtree",
+      query: "京都",
+      watch: "inProgress",
+      playable: "true",
+      sort: "durationDesc",
+      seed: "0",
+      limit: "60",
+    });
+  });
+
+  it("keeps the existing folder query when no new conditions are given", async () => {
+    const fetch = stubFetch();
+    await listFolderVideos({ folder: { rootId: 3, path: "" }, sort: "addedDesc" });
+    expect(fetch.mock.calls[0]?.[0]).toBe(
+      "/api/folders/3/videos?sort=addedDesc&limit=60",
+    );
+  });
+
+  it("truncates an overlong folder query to the contract limit", async () => {
+    const fetch = stubFetch();
+    await listFolderVideos({ folder: { rootId: 3, path: "" }, query: "あ".repeat(150) });
+    expect(requestedURL(fetch).searchParams.get("query")).toHaveLength(100);
   });
 });

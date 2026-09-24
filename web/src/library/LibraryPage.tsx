@@ -3,20 +3,19 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation } from "react-router";
 
-import { MAX_QUERY_LENGTH, type Video, type VideoSort } from "../api/client";
+import type { Video, VideoSort, WatchFilter } from "../api/client";
 import {
   clearListSnapshot,
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
 import { useVideos } from "../api/useVideos";
-import { formatBytes, formatDuration, watchState } from "../lib/format";
+import { formatBytes, formatDuration } from "../lib/format";
 import {
   readViewPreferences,
   type ViewPreferences,
@@ -26,15 +25,17 @@ import {
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import Button from "../ui/Button";
-import LibraryToolbar, { sortOptions, type WatchFilter } from "./LibraryToolbar";
-import SelectionBar from "./SelectionBar";
+import LibraryToolbar, { watchOptions } from "./LibraryToolbar";
 import {
-  CardSkeleton,
-  EmptyLibrary,
-  LoadFailed,
-  NoFilterMatches,
-  NoMatches,
-} from "./states";
+  clearConditions,
+  hasConditions,
+  type HistoryMode,
+  type ListCriteria,
+  newSeed,
+} from "./listCriteria";
+import SelectionBar from "./SelectionBar";
+import { CardSkeleton, EmptyLibrary, LoadFailed, NoMatches } from "./states";
+import { useListCriteria } from "./useListCriteria";
 import VideoCard, { VideoRow } from "./VideoCard";
 
 const skeletonCount = 12;
@@ -45,11 +46,6 @@ const cardWidth: Record<Zoom, string> = {
   2: "var(--spacing-card-2)",
   3: "var(--spacing-card-3)",
 };
-
-/** toSort は URL の値を VideoSort に直す。想定外なら undefined。 */
-function toSort(value: string | null): VideoSort | undefined {
-  return sortOptions.find((option) => option.value === value)?.value;
-}
 
 /** topmostId は画面上端に最も近いカードの id を返す（大きさ切替で読んでいた位置を保つ）。 */
 function topmostId(list: HTMLElement | null, top: number): number | undefined {
@@ -63,9 +59,28 @@ function topmostId(list: HTMLElement | null, top: number): number | undefined {
   return undefined;
 }
 
-/** summarize は Stash の「1-8 of 8 (34m 11s - 263 MB)」に当たる一行。 */
-function summarize(shown: Video[], total: number, filtering: boolean): string {
-  const count = filtering ? shown.length : total;
+/**
+ * conditionLabels は一致なしの状態に並べる、効いている条件の名前である。
+ * フォルダ画面はこれに範囲のチップを自分で足す（ui-design.md「No-match state」）。
+ */
+export function conditionLabels(criteria: ListCriteria): string[] {
+  const labels: string[] = [];
+  if (criteria.query !== "") labels.push(`検索語「${criteria.query}」`);
+  if (criteria.watch !== "all") {
+    const watch = watchOptions.find((option) => option.value === criteria.watch);
+    if (watch !== undefined) labels.push(watch.label);
+  }
+  if (criteria.playable) labels.push("再生できるものだけ");
+  return labels;
+}
+
+/**
+ * summarize は Stash の「1-8 of 8 (34m 11s - 263 MB)」に当たる一行。件数はサーバーの
+ * total（検索語と絞り込みをすべて適用した全件）、合計時間と大きさは読み込んだ分である。
+ * フォルダ画面の検索結果・最上位の検索結果も同じ書式を使う。
+ */
+export function summarize(shown: Video[], total: number): string {
+  const count = Math.max(total, shown.length);
   const durationMs = shown.reduce((sum, video) => sum + (video.durationMs ?? 0), 0);
   const bytes = shown.reduce((sum, video) => sum + video.sizeBytes, 0);
   const head =
@@ -81,12 +96,13 @@ function summarize(shown: Video[], total: number, filtering: boolean): string {
 }
 
 export default function LibraryPage() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const query = (searchParams.get("q") ?? "").trim().slice(0, MAX_QUERY_LENGTH);
-
+  const location = useLocation();
   const [preferences, setPreferences] = useState(readViewPreferences);
-  const sort = toSort(searchParams.get("sort")) ?? preferences.sort;
+  // 一覧の条件は URL が持つ（contracts/list-url.md）。端末に保存するのは sort だけ。
+  const { criteria, apply } = useListCriteria(preferences.sort);
+  const { query, watch, playable, sort } = criteria;
   const { zoom, view } = preferences;
+  const searchField = useRef<HTMLInputElement | null>(null);
   const [activePreviewId, setActivePreviewId] = useState<number | null>(null);
   const [previewResetEpoch, setPreviewResetEpoch] = useState(0);
   const resetPreview = useCallback(() => {
@@ -100,33 +116,51 @@ export default function LibraryPage() {
     writeViewPreferences(updated);
   }, []);
 
-  const changeSort = useCallback(
-    (next: VideoSort) => {
-      setSearchParams(
-        (current) => {
-          const params = new URLSearchParams(current);
-          params.set("sort", next);
-          return params;
-        },
-        { replace: true },
-      );
+  // --- 条件の変更（検索語の入力の続き以外は、それぞれ履歴を1つ増やす） ---
+  const update = useCallback(
+    (next: ListCriteria, mode: HistoryMode = "push") => {
       resetPreview();
-      savePreferences({ ...preferences, sort: next });
+      apply(next, mode);
     },
-    [preferences, resetPreview, savePreferences, setSearchParams],
+    [apply, resetPreview],
   );
 
-  const clearQuery = useCallback(() => {
-    resetPreview();
-    setSearchParams(
-      (current) => {
-        const params = new URLSearchParams(current);
-        params.delete("q");
-        return params;
-      },
-      { replace: true },
-    );
-  }, [resetPreview, setSearchParams]);
+  const changeSort = useCallback(
+    (next: VideoSort) => {
+      update({
+        ...criteria,
+        sort: next,
+        seed: next === "random" ? newSeed(criteria.seed) : undefined,
+      });
+      savePreferences({ ...preferences, sort: next });
+    },
+    [criteria, preferences, savePreferences, update],
+  );
+  const shuffle = useCallback(
+    () => update({ ...criteria, seed: newSeed(criteria.seed) }),
+    [criteria, update],
+  );
+  const changeWatch = useCallback(
+    (next: WatchFilter) => update({ ...criteria, watch: next }),
+    [criteria, update],
+  );
+  const changePlayable = useCallback(
+    (next: boolean) => update({ ...criteria, playable: next }),
+    [criteria, update],
+  );
+  const commitQuery = useCallback(
+    (next: string, mode: HistoryMode) => update({ ...criteria, query: next }, mode),
+    [criteria, update],
+  );
+  const clearAll = useCallback(
+    () => update(clearConditions(criteria)),
+    [criteria, update],
+  );
+  // 一致なしの「条件を解除」は自分自身が消えるので、フォーカスを空になった検索欄へ移す。
+  const clearFromNoMatches = useCallback(() => {
+    clearAll();
+    searchField.current?.focus();
+  }, [clearAll]);
 
   // --- 大きさ切替で読んでいた位置を保つ ---
   const anchor = useRef<number | undefined>(undefined);
@@ -163,7 +197,7 @@ export default function LibraryPage() {
   }, [zoom]);
 
   // --- 一覧の取得（戻ってきたときはスナップショットから復元） ---
-  const [restored] = useState(() => takeListSnapshot({ query, sort }));
+  const [restored] = useState(() => takeListSnapshot(criteria));
   const {
     items,
     total,
@@ -175,42 +209,13 @@ export default function LibraryPage() {
     loadMore,
     retryLoadMore,
     reload,
-  } = useVideos(sort, query, restored);
+  } = useVideos(criteria, restored);
 
-  // --- 絞り込み（有効な間は残ページも読み、ライブラリ全体を対象にする） ---
-  const [watch, setWatch] = useState<WatchFilter>("all");
-  const [playableOnly, setPlayableOnly] = useState(false);
-  const filtered = useMemo(
-    () =>
-      items.filter(
-        (video) =>
-          (watch === "all" || watchState(video) === watch) &&
-          (!playableOnly || video.playable),
-      ),
-    [items, playableOnly, watch],
-  );
-  const filtering = watch !== "all" || playableOnly;
-
+  // 絞り込みはサーバーが一覧の条件として適用する（Plan の Structural Decisions 7）。
+  // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
   useEffect(() => {
     resetPreview();
-  }, [
-    filtered,
-    items.length,
-    playableOnly,
-    query,
-    resetPreview,
-    sort,
-    view,
-    watch,
-    zoom,
-  ]);
-
-  useEffect(() => {
-    if (filtering && hasMore && !loading && !loadingMore && error === null) {
-      resetPreview();
-      loadMore();
-    }
-  }, [error, filtering, hasMore, loadMore, loading, loadingMore, resetPreview]);
+  }, [items, playable, query, resetPreview, sort, view, watch, zoom]);
 
   // --- 選択 ---
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
@@ -224,17 +229,17 @@ export default function LibraryPage() {
   }, []);
   const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
   const selectAll = useCallback(
-    () => setSelectedIds(new Set(filtered.map((video) => video.id))),
-    [filtered],
+    () => setSelectedIds(new Set(items.map((video) => video.id))),
+    [items],
   );
 
   useEffect(() => {
-    const visible = new Set(filtered.map((video) => video.id));
+    const visible = new Set(items.map((video) => video.id));
     setSelectedIds((current) => {
       const next = new Set([...current].filter((id) => visible.has(id)));
       return next.size === current.size ? current : next;
     });
-  }, [filtered]);
+  }, [items]);
 
   useEffect(() => {
     if (selectedIds.size === 0) return;
@@ -259,10 +264,13 @@ export default function LibraryPage() {
     if (top === undefined || items.length === 0) return;
     pendingScroll.current = undefined;
     window.scrollTo({ top, behavior: "auto" });
+    // 初回の描画では TopBarPortal がツールバーを本文の流れに置き、直後にトップバーへ
+    // 移す。その分だけ本文が縮み、スクロールの追従で位置がずれるので、描画の前に
+    // もう一度合わせる（フォルダ画面と同じ）。
+    requestAnimationFrame(() => window.scrollTo({ top, behavior: "auto" }));
   }, [items.length]);
 
-  const search = searchParams.toString();
-  const listUrl = search === "" ? "/" : `/?${search}`;
+  const listUrl = `${location.pathname}${location.search}`;
 
   // --- 取り込み完了で一覧を入れ替える ---
   const scan = useScan();
@@ -277,18 +285,15 @@ export default function LibraryPage() {
   }, [reload, scan.finished]);
 
   const saveSnapshot = useCallback(() => {
-    saveListSnapshot(
-      { query, sort },
-      {
-        items,
-        total,
-        cursor,
-        hasMore,
-        scrollY: window.scrollY,
-        scanId: knownScanId.current,
-      },
-    );
-  }, [cursor, hasMore, items, query, sort, total]);
+    saveListSnapshot(criteria, {
+      items,
+      total,
+      cursor,
+      hasMore,
+      scrollY: window.scrollY,
+      scanId: knownScanId.current,
+    });
+  }, [criteria, cursor, hasMore, items, total]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -309,8 +314,9 @@ export default function LibraryPage() {
   }, [hasMore, loadMore, resetPreview]);
 
   const empty = !loading && error === null && items.length === 0;
+  const conditioned = hasConditions(criteria);
   const selectionMode = selectedIds.size > 0;
-  const summary = loading ? "読み込み中…" : summarize(filtered, total, filtering);
+  const summary = loading ? "読み込み中…" : summarize(items, total);
 
   const rowProps = (video: Video) => ({
     video,
@@ -330,12 +336,18 @@ export default function LibraryPage() {
 
       <TopBarPortal>
         <LibraryToolbar
+          query={query}
+          onQueryCommit={commitQuery}
+          searchRef={searchField}
           sort={sort}
           onSortChange={changeSort}
+          onShuffle={shuffle}
           watch={watch}
-          onWatchChange={setWatch}
-          playableOnly={playableOnly}
-          onPlayableOnlyChange={setPlayableOnly}
+          onWatchChange={changeWatch}
+          playable={playable}
+          onPlayableChange={changePlayable}
+          canClear={conditioned}
+          onClear={clearAll}
           view={view}
           onViewChange={(next) => {
             resetPreview();
@@ -359,25 +371,14 @@ export default function LibraryPage() {
       )}
 
       {empty &&
-        (query === "" ? (
-          <EmptyLibrary onScan={scan.start} scanning={scan.running} />
-        ) : (
-          <NoMatches query={query} onClear={clearQuery} />
-        ))}
-
-      {!loading &&
-        !loadingMore &&
-        !hasMore &&
-        error === null &&
-        !empty &&
-        filtered.length === 0 && (
-          <NoFilterMatches
-            onReset={() => {
-              setWatch("all");
-              setPlayableOnly(false);
-            }}
+        (conditioned ? (
+          <NoMatches
+            conditions={conditionLabels(criteria)}
+            onClear={clearFromNoMatches}
           />
-        )}
+        ) : (
+          <EmptyLibrary onScan={scan.start} scanning={scan.running} />
+        ))}
 
       <div ref={list} onClick={saveSnapshot}>
         {view === "grid" ? (
@@ -388,13 +389,13 @@ export default function LibraryPage() {
             {loading ? (
               <CardSkeleton count={skeletonCount} />
             ) : (
-              filtered.map((video) => <VideoCard key={video.id} {...rowProps(video)} />)
+              items.map((video) => <VideoCard key={video.id} {...rowProps(video)} />)
             )}
             {loadingMore && <CardSkeleton count={6} />}
           </div>
         ) : (
           !loading &&
-          filtered.length > 0 && (
+          items.length > 0 && (
             <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg bg-surface shadow-card">
               <thead>
                 <tr className="text-left text-xs text-fg-muted">
@@ -415,7 +416,7 @@ export default function LibraryPage() {
                 </tr>
               </thead>
               <tbody className="[&>tr:nth-child(odd)]:bg-hover-wash/40">
-                {filtered.map((video) => (
+                {items.map((video) => (
                   <VideoRow key={video.id} {...rowProps(video)} />
                 ))}
               </tbody>
@@ -433,7 +434,7 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {!loading && filtered.length > 0 && (
+      {!loading && items.length > 0 && (
         <p className="text-center text-xs text-fg-muted tabular-nums">{summary}</p>
       )}
 
@@ -441,7 +442,7 @@ export default function LibraryPage() {
 
       <SelectionBar
         count={selectedIds.size}
-        total={filtered.length}
+        total={items.length}
         onSelectAll={selectAll}
         onClear={clearSelection}
       />

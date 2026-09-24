@@ -96,7 +96,12 @@ web/             # React SPA。ビルド結果を embed して配信
   依存を1つ増やさずに済み、amd64／arm64 ではハードウェア命令が使われる。
 - `tags` / `video_tags`: 分類。階層は持たせず、命名規約（`series:xxx`）で表現する。
 - `playback_progress`: 再生位置と視聴済みフラグ。プレイヤーから数秒間隔で更新。
-- `videos_fts`: `title` と `path` の FTS5 仮想テーブル（trigram）。
+- `location_search_fts`: 所在ごとの照合用の鍵 `video_locations.search_key` の
+  FTS5 仮想テーブル（trigram）。鍵は題名と登録フォルダより下の相対パスに照合形
+  （NFKC・小文字化・かなの統一）を掛けたもので、SQL では作れないため Go が作り、
+  起動時に規則の版（`search_version`）の古い所在を埋め直す
+  （[specs/013-library-search/data-model.md](../../specs/013-library-search/data-model.md)）。
+  当初の `videos_fts`（生の `title` と `path`）はマイグレーション 00007 で置き換えた。
 - `jobs`: 種別、対象 ID、状態、試行回数、最終エラー。
 
 DB は「再構築可能なインデックス」に限定する。タグ・再生位置などの
@@ -150,8 +155,8 @@ DB は「再構築可能なインデックス」に限定する。タグ・再�
   **追記: 検証済み。** `modernc.org/sqlite` v1.58.0（同梱 SQLite 3.53.4）で
   trigram の作成と検索が動作したため、切り替えは行わない。ただし trigram は
   2文字以下の検索語に `MATCH` が一致しないことが判明したため、検索は
-  「3文字以上は `MATCH`、1〜2文字は FTS5 表への `LIKE`」の2経路にする
-  （振り分けは `internal/store/search.go` の `routeFor`、検証は
+  「3文字以上は `MATCH`、1〜2文字は照合用の鍵 `search_key` への `instr`」の2経路にする
+  （振り分けは `internal/store/search.go` の `termUsesMatch`、検証は
   `internal/store/fts_test.go`）。
 - **非対応コーデックの混入。** H.265/VP9/mkv などはブラウザで再生できない。
   取り込み時に `ffprobe` で判定し、再生不可を UI に明示する。変換は

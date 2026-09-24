@@ -2,102 +2,75 @@ package store
 
 import (
 	"strings"
+	"unicode/utf8"
 
-	"golang.org/x/text/unicode/norm"
+	"github.com/syudead/vv/internal/domain"
 )
 
-// searchRoute は検索に使う経路である。
-type searchRoute int
+// 検索式を所在1行に対する SQL の条件句に組み立てる（specs/013-library-search/plan.md
+// Structural Decisions 2）。どの所在を範囲にし、動画ごとにどうまとめるかは
+// listing.go の chosenLocationsCTE が決める。
 
-const (
-	// routeNone は絞り込まない（検索語が空）。
-	routeNone searchRoute = iota
-	// routeMatch は videos_fts MATCH を使う。3文字以上の検索語。
-	routeMatch
-	// routeLike は同じ FTS5 表への LIKE '%…%' を使う。1〜2文字の検索語。
-	routeLike
-)
-
-// matchMinLength は MATCH 経路に回す最小の文字数である。
+// matchMinLength は MATCH で調べる語の最小の文字数（照合形の符号位置の数）である。
 //
-// trigram は3文字単位で索引を作るため、2文字以下の検索語は MATCH に
-// 一致しない。日本語では「旅行」「花火」のような2文字の検索語が現実に
-// 多いので、そこは LIKE に振り分ける。
+// trigram は3文字単位で索引を作るため、2文字以下の語は MATCH に一致しない。
+// 日本語では「旅行」「花火」のような2文字の語が現実に多いので、そこは instr で
+// 調べる。照合形は NFKC を掛けてあるので、NFD の「が」（か + 濁点）は1文字に
+// 畳まれている。
 const matchMinLength = 3
 
-// routeFor は検索語から経路を選ぶ。
-//
-// 数えるのは符号位置ではなく、利用者が1文字と見るまとまりである。NFC へ
-// 正規化してから符号位置を数えると、結合文字で書かれた「が」（か + 濁点）が
-// 1文字に畳まれる。ここを取り違えると、2文字の入力が MATCH 経路へ回って
-// 何も返らない。
-//
-// 絵文字の ZWJ 連結のように NFC で畳まれない組み合わせは、なお複数として
-// 数える。境界が1文字ずれても、経路の選択が変わるだけで結果が壊れることは
-// ないので、書記素分割の依存を増やしてまで正確にはしない。
-func routeFor(query string) searchRoute {
-	normalized := normalizeQuery(query)
-	if normalized == "" {
-		return routeNone
-	}
-	if len([]rune(normalized)) >= matchMinLength {
-		return routeMatch
-	}
-	return routeLike
+// termUsesMatch は語を location_search_fts の MATCH で調べるかを返す。
+func termUsesMatch(text string) bool {
+	return utf8.RuneCountInString(text) >= matchMinLength
 }
 
-// normalizeQuery は検索語を突き合わせられる形にする。
+// searchExprCondition は検索式を、所在（別名 alias）1行に対する条件句と引数に
+// 組み立てる（Structural Decisions 2）。式が空なら空の句を返す。
 //
-// NFC へ正規化するのは、検索対象の表示用題名をNFCで保存するためである。
-// macOS から NFD で送られた入力も、これで同じ表記に揃う。
-func normalizeQuery(query string) string {
-	return norm.NFC.String(strings.TrimSpace(query))
-}
-
-// searchFilter は検索の条件句と引数を返す。絞り込まない場合は空の句を返す。
-//
-// どちらの経路も videos_fts（trigram）を引く。LIKE 経路も trigram 索引で
-// 処理されることは実行計画で確認済みである（fts_test.go）。
-//
-// 並び順は呼び出し側（一覧）が決める。関連度（bm25）を使わないのは、
-// LIKE 経路に関連度が無く、2つの経路で並びが変わると利用者から見て
-// 不可解になるためである。
-func searchFilter(query string) (condition string, args []any) {
-	normalized := normalizeQuery(query)
-
-	switch routeFor(query) {
-	case routeMatch:
-		return `videos.id in (select l.video_id from video_locations l where ` + registeredLocationCondition("l") +
-				` and l.id in (select rowid from videos_fts where videos_fts match ?))`,
-			[]any{quoteMatchQuery(normalized)}
-
-	case routeLike:
-		// title と path の双方を見る。題名は拡張子を除いたファイル名なので
-		// ほぼ同じだが、ディレクトリ名で絞りたい場合に path が効く。
-		return `videos.id in (select l.video_id from video_locations l where ` + registeredLocationCondition("l") + ` and l.id in (` +
-				`select rowid from videos_fts where title like ? escape '\' or path like ? escape '\'))`,
-			[]any{likePattern(normalized), likePattern(normalized)}
-
-	default:
+// 3文字以上の語は location_search_fts の MATCH、1〜2文字の語は search_key への
+// instr で部分一致を調べる。instr は LIKE と違ってワイルドカードを持たないので、
+// 利用者が打った % や _ を逃がす必要が無い。AND・OR・NOT は SQL の and・or・not で
+// 結ぶ。
+func searchExprCondition(expr domain.SearchExpr, alias string) (string, []any) {
+	if expr.Empty() {
 		return "", nil
 	}
+	var args []any
+	clauses := make([]string, 0, len(expr.Clauses))
+	for _, clause := range expr.Clauses {
+		terms := make([]string, 0, len(clause.Terms))
+		for _, term := range clause.Terms {
+			// search_key は題名と相対パスを改行でつないでいる。フレーズの中の改行は
+			// 空白にそろえ、2つの境目をまたいで当たらないようにする。
+			text := strings.ReplaceAll(term.Text, "\n", " ")
+			var condition string
+			if termUsesMatch(text) {
+				condition = alias + `.id in (select rowid from location_search_fts where location_search_fts match ?)`
+				args = append(args, quoteMatchPhrase(text))
+			} else {
+				condition = `instr(` + alias + `.search_key, ?) > 0`
+				args = append(args, text)
+			}
+			if term.Negated {
+				condition = `not (` + condition + `)`
+			}
+			terms = append(terms, condition)
+		}
+		if len(terms) == 1 {
+			clauses = append(clauses, terms[0])
+		} else {
+			clauses = append(clauses, `(`+strings.Join(terms, " or ")+`)`)
+		}
+	}
+	return strings.Join(clauses, " and "), args
 }
 
-// quoteMatchQuery は検索語を FTS5 の文字列として渡せる形にする。
+// quoteMatchPhrase は語を FTS5 の1つのフレーズとして渡せる形にする。
 //
 // FTS5 の問い合わせ構文では " * : ^ - ( ) や AND / OR / NEAR が演算子に
 // なる。包まないと、利用者が打った記号が構文誤りになって検索そのものが
 // 失敗し、画面には「検索が壊れた」ようにしか見えない。全体を二重引用符で
 // 包み、中の二重引用符は2つ重ねて字面に戻す。
-func quoteMatchQuery(query string) string {
-	return `"` + strings.ReplaceAll(query, `"`, `""`) + `"`
-}
-
-// likePattern は LIKE の部分一致の模様を組み立てる。
-//
-// 利用者が打った % と _ は LIKE のワイルドカードなので、字面として
-// 扱えるよう逃がす。逃がさないと "100%" のような検索語が全件に一致する。
-func likePattern(query string) string {
-	escaped := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
-	return "%" + escaped + "%"
+func quoteMatchPhrase(text string) string {
+	return `"` + strings.ReplaceAll(text, `"`, `""`) + `"`
 }

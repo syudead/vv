@@ -70,4 +70,4 @@ npm --prefix web exec -- vitest run src/app/App.test.tsx src/shell/ScanProvider.
 5. 色を見なくても、実行中、完了、一部失敗、全体失敗を文言または icon で判別できることを確認する。
 6. `prefers-reduced-motion` で装飾的な animation が止まり、状態と進捗は引き続き判別できることを確認する。
 
-実装 PR には [UI 変更の画像手順](../../docs/how-to/ui-change-screenshots.md) に従って画像と visual review、interaction/accessibility の確認結果を添える。
+実装では visual review と interaction/accessibility を確認する。
