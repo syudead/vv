@@ -51,15 +51,16 @@ and handing it to `internal/app`, which drives the `internal/media` adapters
 (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, five-second seek-preview frames,
 and a content-keyed hover-preview clip per video) and publishes their output through
 `internal/artifacts`. A worker sleeps while its queue is
-empty: `internal/store` reports every committed enqueue, and `internal/app` wakes the worker
-for that stage, so no worker polls the queue. A thumbnail job is not claimed until its
-video's probe has finished, because the frame position depends on the duration;
-`internal/app` wakes the thumbnail worker as soon as a probe's result is recorded. Interrupted scans are closed,
+empty: `internal/store` publishes `domain.JobsQueued` after every committed enqueue, and a
+subscription wakes the worker for that stage, so no worker polls the queue. A thumbnail job
+is not claimed until its video's probe has finished, because the frame position depends on
+the duration; `internal/app` publishes `domain.VideoIngestChanged` with the finished stage,
+and a subscription wakes the thumbnail worker as soon as a probe's result is recorded. Interrupted scans are closed,
 running jobs are requeued, and the single `.tmp` directory that holds in-progress
 generation output is removed at the next startup. When a video row is deleted (a scan finds its last
 location gone, its content changes, or its media folder is removed or replaced),
-`internal/store` reports the released content keys after commit, and `internal/app` removes
-that content's thumbnail, seek frames and hover preview unless another video still
+`internal/store` publishes the released content keys (`domain.ContentUnreferenced`) after
+commit, and `internal/app`, subscribed to that event, removes that content's thumbnail, seek frames and hover preview unless another video still
 references it; nothing else sweeps the thumbnails directory. A hover preview that is gone
 or incomplete is repaired when it is found: `internal/app` already checks it before the
 video API exposes `previewUrl`, and when a `done` preview's MP4 is missing or does not match
@@ -79,6 +80,19 @@ that would point outside the root (empty, or starting with `.`) never becomes a 
 (deciding when to generate and when to remove, under its per-content lock) and
 `internal/httpapi` (serving the files) reach the store through interfaces they declare.
 Changing that layout would orphan every file an existing data directory already holds.
+
+State changes that trigger side effects are domain events (`internal/domain/event.go`):
+a video's ingest state changed, jobs were queued, the remaining work per stage changed, the
+scan changed, and content keys lost their last reference. Publishers — `internal/store`
+after a transaction commits (never from one that rolled back, and one notice per kind of
+change per transaction) and `internal/app` for job outcomes and scans — call a `Publish`
+interface they declare themselves and know nothing about the subscribers. `internal/eventbus`
+delivers each event to every subscriber on that subscriber's own goroutine and queue, so a
+slow or panicking subscriber never stalls a commit, a worker or a scan. `cmd/mdm/events.go`
+is the one place that registers subscribers (the `/api/events` stream, the worker wake-ups,
+artifact removal); adding one touches only the subscriber and that file. At shutdown the
+stream subscription is dropped before the streams close and the wake-ups before the workers
+stop, and the bus is closed last so queued artifact removals still run.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
 browser polling: `scan` when the current scan changes, `processing` with the remaining
@@ -132,7 +146,7 @@ not persisted.
 
 ## Intended dependency direction
 
-`cmd -> internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs} -> internal/domain`, one
+`cmd -> internal/{app,httpapi,store,media,artifacts,opener,scanner,jobs,eventbus} -> internal/domain`, one
 way only. The packages under `internal/` fall into three layers:
 
 - `internal/domain` holds the domain model: value types and pure rules
@@ -151,8 +165,8 @@ way only. The packages under `internal/` fall into three layers:
 - `internal/app` is the application layer and holds the use cases: starting,
   running and closing a scan and recovering an interrupted one at startup
   (`Scans`); processing one probe, thumbnail or preview job — checking the claimed
-  identity, calling the generator, applying the result, and waking the next stage
-  (`Ingest`); and the decisions behind a video response — requeueing a missing hover
+  identity, calling the generator, applying the result, publishing the outcome, and
+  removing artifacts whose content lost its last reference (`Ingest`); and the decisions behind a video response — requeueing a missing hover
   preview, deriving the seek-preview state — plus assembling related videos
   (`Catalog`); and adding, replacing and removing media folders after the
   filesystem adapter has checked the path (`MediaFolders`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
@@ -161,7 +175,8 @@ way only. The packages under `internal/` fall into three layers:
   SQLite driver, or any adapter package.
 - The adapters — `internal/httpapi`, `internal/store`, `internal/media`,
   `internal/artifacts`, `internal/opener`, `internal/scanner` and `internal/jobs` —
-  talk to the outside world. Filesystem checks stay in the adapters: `internal/scanner` also checks
+  talk to the outside world. `internal/eventbus` sits beside them and only delivers
+  `domain.Event` values in-process; only `cmd/mdm` imports it. Filesystem checks stay in the adapters: `internal/scanner` also checks
   that a media folder path is a readable directory reached without symbolic
   links (`FolderChecker`), so `internal/store` never touches the filesystem.
   `internal/httpapi` only parses requests, calls the application layer or
@@ -173,7 +188,7 @@ stops them. It holds no use case of its own.
 
 The sibling packages under `internal/` (the adapters and `internal/app`) do not
 import each other. Each declares the interfaces it consumes — `internal/app` a
-scan store, an ingest store, a generator, an artifact store and a notifier; `internal/scanner`,
+scan store, an ingest store, a generator, an artifact store and an event publisher; `internal/scanner`,
 `internal/jobs` and `internal/httpapi` an index to write to, a queue to claim
 from, a library and a video catalog to query, and generated files to serve — and `cmd/mdm` is the only place
 that knows which concrete type goes where. The values crossing those boundaries

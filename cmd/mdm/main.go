@@ -18,6 +18,7 @@ import (
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/artifacts"
 	"github.com/syudead/vv/internal/domain"
+	"github.com/syudead/vv/internal/eventbus"
 	"github.com/syudead/vv/internal/httpapi"
 	"github.com/syudead/vv/internal/jobs"
 	"github.com/syudead/vv/internal/media"
@@ -107,7 +108,11 @@ func run() error {
 	backgroundCtx, stopBackground := context.WithCancel(context.Background())
 	defer stopBackground()
 
-	// 画面へ送る変化の知らせ。走査とワーカーが知らせ、/api/events が配る。
+	// 状態の変化の配り先。保存層・取り込み・走査はここへ発行するだけで、
+	// 誰が受け取るかを知らない。受け取る側は subscribeEvents で登録する。
+	bus := eventbus.New(logger)
+	db.PublishTo(bus)
+	// 画面へ送る変化の知らせ。/api/events が配る。
 	events := httpapi.NewEvents()
 
 	ingestStore := db.Ingest()
@@ -124,9 +129,9 @@ func run() error {
 				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
 			})
 		},
-		Context:  backgroundCtx,
-		Notifier: events,
-		Logger:   logger,
+		Context:   backgroundCtx,
+		Publisher: bus,
+		Logger:    logger,
 	})
 
 	// 前回の停止で running のまま残った走査を閉じ、処理中だった仕事を戻す。
@@ -142,11 +147,13 @@ func run() error {
 		logger.Warn("生成途中の成果物を削除できませんでした", slog.Any("error", err))
 	}
 	ingest := app.NewIngest(app.IngestOptions{
-		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Notifier: events, Logger: logger,
+		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Publisher: bus, Logger: logger,
 	})
 	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
-	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
+	// 段階のワーカーを起こす（subscribeEvents）。ワーカーは待ち行列を一定間隔で
+	// 問い合わせない。
 	workers := make([]*jobs.Worker, 0, len(domain.JobKinds))
+	wakers := make(map[domain.JobKind]waker, len(domain.JobKinds))
 	for _, kind := range domain.JobKinds {
 		worker := jobs.New(jobs.Options{
 			Kind:     kind,
@@ -155,11 +162,14 @@ func run() error {
 			Finished: ingest.JobFinished,
 			Logger:   logger,
 		})
-		ingest.AttachWorker(kind, worker)
 		workers = append(workers, worker)
+		wakers[kind] = worker
 	}
-	db.OnJobsChanged(ingest.JobsChanged)
-	db.OnVideosDeleted(ingest.VideosDeleted)
+	subscriptions := subscribeEvents(bus, eventSubscribers{
+		Screen:           events.Handle,
+		Workers:          wakers,
+		ReleaseArtifacts: ingest.ReleaseArtifacts,
+	})
 	var workersDone sync.WaitGroup
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
@@ -203,8 +213,10 @@ func run() error {
 	})
 
 	// 変化の知らせの接続は終わりが無いので、停止の猶予待ちより先に閉じる。
+	// 閉じた接続へ書かないよう、先に画面への知らせの購読をやめる。
 	beforeShutdown := func() {
 		stopRequestMedia()
+		subscriptions.StopScreen()
 		events.Close()
 	}
 	if err := serve(cfg, handler, logger, nil, beforeShutdown); err != nil {
@@ -212,11 +224,14 @@ func run() error {
 	}
 
 	// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
-	// ジョブは running のまま残るが、次の起動で queued へ戻る。
+	// ジョブは running のまま残るが、次の起動で queued へ戻る。止めたワーカーを
+	// 起こさないよう、先に起こす購読をやめる。
+	subscriptions.StopWorkers()
 	stopBackground()
 	workersDone.Wait()
-	// 背後で動いている生成物の削除を、データベースを閉じる前に終える。
-	// 途中で閉じると、消すはずの生成物が残り続ける。
+	// 積んである変化（生成物の削除）を渡し終え、背後で動いている生成物の削除を、
+	// データベースを閉じる前に終える。途中で閉じると、消すはずの生成物が残り続ける。
+	bus.Close()
 	ingest.Wait()
 	logger.Info("取り込みとジョブを停止しました")
 

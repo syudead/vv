@@ -17,54 +17,22 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// fakeNotifier は画面への知らせを数える。
-type fakeNotifier struct {
-	mu         sync.Mutex
-	scans      int
-	videos     []int64
-	processing int
+// fakePublisher は発行された変化を記録する。
+type fakePublisher struct {
+	mu     sync.Mutex
+	events []domain.Event
 }
 
-func (f *fakeNotifier) ScanChanged() {
+func (f *fakePublisher) Publish(events ...domain.Event) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.scans++
+	f.events = append(f.events, events...)
 }
 
-func (f *fakeNotifier) VideoChanged(id int64) {
+func (f *fakePublisher) published() []domain.Event {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.videos = append(f.videos, id)
-}
-
-func (f *fakeNotifier) ProcessingChanged() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.processing++
-}
-
-func (f *fakeNotifier) counts() (scans int, videos []int64, processing int) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.scans, append([]int64(nil), f.videos...), f.processing
-}
-
-// fakeWaker は起こされた回数を数える。
-type fakeWaker struct {
-	mu    sync.Mutex
-	woken int
-}
-
-func (f *fakeWaker) Wake() {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.woken++
-}
-
-func (f *fakeWaker) count() int {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return f.woken
+	return append([]domain.Event(nil), f.events...)
 }
 
 // fakeIngestStore は取り込みのジョブが読み書きする保存先の偽物である。

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -254,5 +255,36 @@ func TestScanChangedAlsoMarksProcessing(t *testing.T) {
 	scan, processing, _ := sub.take()
 	if !scan || !processing {
 		t.Errorf("scan = %v, processing = %v, want 両方 true", scan, processing)
+	}
+}
+
+// 状態の変化は、従来と同じ知らせ（scan・processing・video）に置き換わる。
+// 走査の変化は残りも一緒に送る。知らせる対象ではない変化は無視する。
+func TestEventsHandleMapsDomainEvents(t *testing.T) {
+	events := NewEvents()
+	sub, unsubscribe := events.subscribe()
+	defer unsubscribe()
+	sub.take() // つないだ直後の送信を除く。
+
+	events.Handle(domain.JobsQueued{Kinds: domain.JobKinds})
+	events.Handle(domain.ContentUnreferenced{ContentKeys: []string{"k"}})
+	if scan, processing, videos := sub.take(); scan || processing || len(videos) != 0 {
+		t.Fatalf("知らせない変化で知らせた: scan=%v processing=%v videos=%v", scan, processing, videos)
+	}
+
+	events.Handle(domain.ScanChanged{})
+	if scan, processing, _ := sub.take(); !scan || !processing {
+		t.Fatalf("ScanChanged: scan=%v processing=%v, want 両方", scan, processing)
+	}
+	events.Handle(domain.ProcessingChanged{})
+	if scan, processing, _ := sub.take(); scan || !processing {
+		t.Fatalf("ProcessingChanged: scan=%v processing=%v", scan, processing)
+	}
+	// 同じ動画の続けての変化は1つにまとまる。
+	events.Handle(domain.VideoIngestChanged{VideoID: 5, Stage: domain.JobProbe})
+	events.Handle(domain.VideoIngestChanged{VideoID: 5, Stage: domain.JobThumbnail})
+	events.Handle(domain.VideoIngestChanged{VideoID: 6})
+	if _, _, videos := sub.take(); !slices.Equal(videos, []int64{5, 6}) {
+		t.Fatalf("videos = %v, want [5 6]", videos)
 	}
 }

@@ -237,7 +237,7 @@ func TestEnsureJobRequeuesLegacyFailureOfPendingVideo(t *testing.T) {
 		}
 	}
 	recorder := &queuedRecorder{}
-	db.OnJobsChanged(recorder.record)
+	db.PublishTo(recorder)
 	if err := db.EnsureJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 		t.Fatalf("unregistered job state = %s, want queued", got)
 	}
 	recorder := &queuedRecorder{}
-	db.OnJobsChanged(recorder.record)
+	db.PublishTo(recorder)
 	if _, err := db.AddMediaFolder(ctx, root); err != nil {
 		t.Fatal(err)
 	}
@@ -775,16 +775,27 @@ func TestClaimJobTakesOnlyTheRequestedKind(t *testing.T) {
 	}
 }
 
-// queuedRecorder は OnJobsChanged の知らせを記録する。
+// queuedRecorder は発行のうち、仕事が積まれた段階を記録する。calls は発行の回数である。
 type queuedRecorder struct {
-	kinds []domain.JobKind
-	calls int
+	kinds  []domain.JobKind
+	events []domain.Event
+	calls  int
 }
 
-func (r *queuedRecorder) record(kinds []domain.JobKind) {
-	r.kinds = append(r.kinds, kinds...)
+func (r *queuedRecorder) Publish(events ...domain.Event) {
+	for _, event := range events {
+		if queued, ok := event.(domain.JobsQueued); ok {
+			r.kinds = append(r.kinds, queued.Kinds...)
+		}
+	}
+	r.events = append(r.events, events...)
 	r.calls++
 }
+
+// publisherFunc は関数を発行先にする。
+type publisherFunc func(events ...domain.Event)
+
+func (f publisherFunc) Publish(events ...domain.Event) { f(events...) }
 
 func (r *queuedRecorder) take() []domain.JobKind {
 	kinds := r.kinds
@@ -798,7 +809,7 @@ func TestJobsQueuedNotification(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	recorder := &queuedRecorder{}
-	db.OnJobsChanged(func(kinds []domain.JobKind) {
+	db.PublishTo(publisherFunc(func(events ...domain.Event) {
 		// 知らせを受けた時点で、積んだ行が別の接続から見えていること。
 		var queued int
 		if err := db.SQL().QueryRow(`select count(*) from jobs where state = 'queued'`).Scan(&queued); err != nil {
@@ -807,8 +818,8 @@ func TestJobsQueuedNotification(t *testing.T) {
 		if queued == 0 {
 			t.Error("確定前に知らせた")
 		}
-		recorder.record(kinds)
-	})
+		recorder.Publish(events...)
+	}))
 
 	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
@@ -963,15 +974,14 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 	}
 
 	recorder := &queuedRecorder{}
-	db.OnJobsChanged(recorder.record)
-	deleted := 0
-	db.OnVideosDeleted(func(videos []domain.DeletedVideo) { deleted += len(videos) })
+	db.PublishTo(recorder)
 	if err := db.DeleteMediaFolder(ctx, folderID, version); err != nil {
 		t.Fatal(err)
 	}
 
-	if deleted != 0 {
-		t.Fatalf("消えた動画 = %d, want 0（登録外の所在が残る）", deleted)
+	// 動画は消えず（登録外の所在が残る）、仕事も積まないので、残りの変化だけを知らせる。
+	if want := []domain.Event{domain.ProcessingChanged{}}; !slices.Equal(recorder.events, want) {
+		t.Fatalf("発行 = %v, want %v", recorder.events, want)
 	}
 	if recorder.calls != 1 {
 		t.Errorf("知らせ = %d 回, want 1", recorder.calls)
@@ -991,7 +1001,7 @@ func TestRequeueMissingPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	recorder := &queuedRecorder{}
-	db.OnJobsChanged(recorder.record)
+	db.PublishTo(recorder)
 
 	if requeued, err := db.RequeueMissingPreview(ctx, videoID, "other-key"); err != nil || requeued {
 		t.Fatalf("内容の違う要求 = %v, %v, want false", requeued, err)

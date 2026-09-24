@@ -692,17 +692,21 @@ func TestDeleteVideoLocationsResyncsRemainingRepresentative(t *testing.T) {
 	}
 }
 
-// releasedRecorder は OnVideosDeleted の知らせのうち、内容の識別子を記録する。
+// releasedRecorder は発行のうち、参照の無くなった内容の識別子を記録する。
 type releasedRecorder struct {
 	keys []string
 }
 
-func (r *releasedRecorder) record(deleted []domain.DeletedVideo) {
-	for _, video := range deleted {
-		if video.ID == 0 {
-			panic("消した動画の id が無い")
+func (r *releasedRecorder) Publish(events ...domain.Event) {
+	for _, event := range events {
+		switch event := event.(type) {
+		case domain.VideoIngestChanged:
+			if event.VideoID == 0 {
+				panic("消した動画の id が無い")
+			}
+		case domain.ContentUnreferenced:
+			r.keys = append(r.keys, event.ContentKeys...)
 		}
-		r.keys = append(r.keys, video.ContentKey)
 	}
 }
 
@@ -720,7 +724,7 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	recorder := &releasedRecorder{}
-	db.OnVideosDeleted(recorder.record)
+	db.PublishTo(recorder)
 
 	for _, file := range []domain.VideoFile{
 		sampleFile("/media/a.mp4", "a", "key-a", 1, 0),

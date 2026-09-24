@@ -162,11 +162,12 @@ func (db *DB) UpsertVideo(ctx context.Context, file domain.VideoFile) (domain.Up
 			return domain.UpsertResult{}, err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	// 内容が変わって前の動画が消えたら、前の内容の生成物を片付けさせる。
+	var c changes
+	c.videosDeleted(released)
+	if err := db.commit(tx, &c); err != nil {
 		return domain.UpsertResult{}, err
 	}
-	// 内容が変わって前の動画が消えたら、前の内容の生成物を片付けさせる。
-	db.notifyVideosDeleted(released)
 	outcome := domain.OutcomeMoved
 	if locationExists {
 		outcome = domain.OutcomeUpdated
@@ -392,10 +393,11 @@ func (db *DB) RequeueMissingPreview(ctx context.Context, id int64, contentKey st
 		id, now, now); err != nil {
 		return false, fmt.Errorf("プレビューのジョブを積めません (id=%d): %w", id, err)
 	}
-	if err := tx.Commit(); err != nil {
+	var c changes
+	c.jobsQueued(domain.JobPreview)
+	if err := db.commit(tx, &c); err != nil {
 		return false, fmt.Errorf("プレビューの作り直しを確定できません (id=%d): %w", id, err)
 	}
-	db.notifyJobsChanged(domain.JobPreview)
 	return true, nil
 }
 
@@ -471,10 +473,11 @@ func (db *DB) RetryProbe(ctx context.Context, id int64, seekThumbnailMissing boo
 			return fmt.Errorf("ジョブを積めません (%s, video=%d): %w", kind, id, err)
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	var c changes
+	c.jobsQueued(kinds...)
+	if err := db.commit(tx, &c); err != nil {
 		return fmt.Errorf("読み取りのやり直しを確定できません (id=%d): %w", id, err)
 	}
-	db.notifyJobsChanged(kinds...)
 	return nil
 }
 
@@ -535,7 +538,9 @@ func (db *DB) DeleteVideos(ctx context.Context, ids []int64) error {
 	if err != nil {
 		return fmt.Errorf("動画を削除できません: %w", err)
 	}
-	db.notifyVideosDeleted(released)
+	var c changes
+	c.videosDeleted(released)
+	db.publish(&c)
 	return nil
 }
 
@@ -573,11 +578,9 @@ func (db *DB) DeleteVideoLocations(ctx context.Context, ids []int64) error {
 	if err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	db.notifyVideosDeleted(released)
-	return nil
+	var c changes
+	c.videosDeleted(released)
+	return db.commit(tx, &c)
 }
 
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。

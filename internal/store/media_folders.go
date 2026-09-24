@@ -62,12 +62,13 @@ func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFold
 	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return domain.MediaFolder{}, err
-	}
 	// 登録外の所在しか無かった待ちの仕事が、この登録で取り出せるようになる。
 	// 眠っているワーカーを起こさないと、次に仕事が積まれるまで止まったままになる。
-	db.notifyJobsChanged(domain.JobKinds...)
+	var c changes
+	c.jobsQueued(domain.JobKinds...)
+	if err := db.commit(tx, &c); err != nil {
+		return domain.MediaFolder{}, err
+	}
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: 1, CreatedAt: time.Unix(now, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
@@ -118,12 +119,13 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	var c changes
+	c.videosDeleted(released)
+	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
+	c.jobsQueued(domain.JobKinds...)
+	if err := db.commit(tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	db.notifyVideosDeleted(released)
-	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
-	db.notifyJobsChanged(domain.JobKinds...)
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: version + 1, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
@@ -159,14 +161,12 @@ func (db *DB) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) 
 	if _, err := tx.ExecContext(ctx, `delete from media_folders where id = ?`, id); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
+	var c changes
 	// 登録を外して消えた動画の生成物を片付けさせる。
-	db.notifyVideosDeleted(released)
+	c.videosDeleted(released)
 	// 動画の行が残っても、登録外になった所在の仕事は残りとして数えなくなる。
-	db.notifyJobsChanged()
-	return nil
+	c.processingChanged()
+	return db.commit(tx, &c)
 }
 
 // ensureFolderPlacementAllowed は取引の中で走査の有無と登録済みのフォルダを

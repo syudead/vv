@@ -20,6 +20,7 @@ import (
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/artifacts"
 	"github.com/syudead/vv/internal/domain"
+	"github.com/syudead/vv/internal/eventbus"
 	"github.com/syudead/vv/internal/httpapi"
 	"github.com/syudead/vv/internal/httpapi/gen"
 	"github.com/syudead/vv/internal/store"
@@ -260,10 +261,13 @@ func TestIncompletePreviewIsRequeuedOnce(t *testing.T) {
 func TestDeletedVideoReleasesOnlyUnreferencedArtifacts(t *testing.T) {
 	t.Run("参照が無い", func(t *testing.T) {
 		f := newArtifactsFixture(t)
-		f.db.OnVideosDeleted(f.ingest.VideosDeleted)
+		bus := eventbus.New(slog.New(slog.DiscardHandler))
+		f.db.PublishTo(bus)
+		subscribeEvents(bus, eventSubscribers{ReleaseArtifacts: f.ingest.ReleaseArtifacts})
 		if err := f.db.DeleteVideos(f.ctx, []int64{f.videoID}); err != nil {
 			t.Fatal(err)
 		}
+		bus.Close()
 		f.ingest.Wait()
 		for _, path := range []string{f.files.thumbnail, filepath.Dir(f.files.frame0), f.files.preview, f.files.manifest} {
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
@@ -274,7 +278,7 @@ func TestDeletedVideoReleasesOnlyUnreferencedArtifacts(t *testing.T) {
 	t.Run("参照が残っている", func(t *testing.T) {
 		f := newArtifactsFixture(t)
 		// 行が消えたという知らせが、同じ内容の動画が取り込み直された後に届いた場合。
-		f.ingest.VideosDeleted([]domain.DeletedVideo{{ID: f.videoID + 1, ContentKey: existingKey}})
+		f.ingest.ReleaseArtifacts(domain.ContentUnreferenced{ContentKeys: []string{existingKey}})
 		f.ingest.Wait()
 		for _, path := range []string{f.files.thumbnail, f.files.frame1, f.files.preview, f.files.manifest} {
 			if _, err := os.Stat(path); err != nil {

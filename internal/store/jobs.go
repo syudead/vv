@@ -34,7 +34,9 @@ func (db *DB) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64
 	if err != nil {
 		return fmt.Errorf("ジョブを積めません (%s, video=%d): %w", kind, videoID, err)
 	}
-	db.notifyJobsChanged(kind)
+	var c changes
+	c.jobsQueued(kind)
+	db.publish(&c)
 	return nil
 }
 
@@ -83,11 +85,12 @@ func (db *DB) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64)
 	if err != nil {
 		return fmt.Errorf("復旧したジョブを数えられません (%s, video=%d): %w", kind, videoID, err)
 	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("欠落ジョブの復旧を確定できません (%s, video=%d): %w", kind, videoID, err)
-	}
+	var c changes
 	if inserted > 0 {
-		db.notifyJobsChanged(kind)
+		c.jobsQueued(kind)
+	}
+	if err := db.commit(tx, &c); err != nil {
+		return fmt.Errorf("欠落ジョブの復旧を確定できません (%s, video=%d): %w", kind, videoID, err)
 	}
 	return nil
 }
@@ -408,7 +411,9 @@ func (db *DB) RequeueRunningJobs(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("中断したジョブを戻せません: %w", err)
 	}
 	if affected > 0 {
-		db.notifyJobsChanged(domain.JobKinds...)
+		var c changes
+		c.jobsQueued(domain.JobKinds...)
+		db.publish(&c)
 	}
 	return affected, nil
 }
