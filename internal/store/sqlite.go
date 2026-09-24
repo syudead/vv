@@ -34,6 +34,58 @@ type DB struct {
 	// 起きるので、待ち行列を一定間隔で問い合わせない。
 	jobsQueuedMu sync.RWMutex
 	jobsQueued   func(kinds []JobKind)
+
+	// contentReleased は動画の行を消した取引の確定後に、消した動画の内容の
+	// 識別子を渡す。生成物（サムネイル・プレビュー）の片付けに使う。
+	contentReleasedMu sync.RWMutex
+	contentReleased   func(contentKeys []string)
+}
+
+// OnContentReleased は、動画の行を消した取引が確定したときの知らせ先を設定する。
+// 消した動画の内容の識別子が渡る。同じ内容を持つ別の動画が残っていることも
+// あるので、受け取った側は参照が無いことを確かめてから生成物を消すこと。
+func (db *DB) OnContentReleased(notify func(contentKeys []string)) {
+	db.contentReleasedMu.Lock()
+	defer db.contentReleasedMu.Unlock()
+	db.contentReleased = notify
+}
+
+// notifyContentReleased は知らせ先があれば呼ぶ。取引の確定後に呼ぶこと。
+func (db *DB) notifyContentReleased(contentKeys []string) {
+	if len(contentKeys) == 0 {
+		return
+	}
+	db.contentReleasedMu.RLock()
+	notify := db.contentReleased
+	db.contentReleasedMu.RUnlock()
+	if notify != nil {
+		notify(contentKeys)
+	}
+}
+
+// deleteOrphanVideos は所在が1つも無くなった動画の行を消し、消した動画の内容の
+// 識別子を返す。
+func deleteOrphanVideos(ctx context.Context, tx *sql.Tx) ([]string, error) {
+	return collectContentKeys(tx.QueryContext(ctx, `delete from videos where not exists (
+		select 1 from video_locations where video_locations.video_id = videos.id)
+		returning content_key`))
+}
+
+// collectContentKeys は returning content_key の結果を読み切る。
+func collectContentKeys(rows *sql.Rows, err error) ([]string, error) {
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var keys []string
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	return keys, rows.Err()
 }
 
 // OnJobsQueued は、仕事を積んだ取引が確定したときの知らせ先を設定する。

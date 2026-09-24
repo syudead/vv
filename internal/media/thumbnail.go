@@ -150,3 +150,20 @@ func thumbnailArgs(videoPath string, offsetSec float64, output string) []string 
 		output,
 	}
 }
+
+// RemoveContentArtifacts は内容の識別子1つに対応する生成物（代表サムネイル・
+// シーク用プレビュー・一覧用プレビュー）をすべて消す。無いものは無視する。
+// その内容を参照する動画が無くなったときに呼ぶ。
+func RemoveContentArtifacts(thumbnailsDir, contentKey string) error {
+	var errs []error
+	if err := os.Remove(ThumbnailPath(thumbnailsDir, contentKey)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		errs = append(errs, fmt.Errorf("サムネイルを削除できません: %w", err))
+	}
+	if err := RemoveSeekThumbnails(thumbnailsDir, contentKey); err != nil {
+		errs = append(errs, err)
+	}
+	if err := RemovePreview(thumbnailsDir, contentKey); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}

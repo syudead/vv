@@ -120,3 +120,46 @@ func TestRemoveSeekThumbnails(t *testing.T) {
 		t.Fatalf("removed cache error = %v", err)
 	}
 }
+
+// 内容1つ分の生成物（代表サムネイル・シーク用プレビュー・一覧用プレビュー）を
+// まとめて消し、別の内容の生成物には触れない。無いものは無視する。
+func TestRemoveContentArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	write := func(path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gone := []string{
+		ThumbnailPath(dir, "gone:1"),
+		SeekThumbnailPath(filepath.Join(dir, "seek"), "gone:1", 0),
+		PreviewPath(dir, "gone:1"),
+		PreviewManifestPath(dir, "gone:1"),
+	}
+	kept := []string{ThumbnailPath(dir, "kept:1"), PreviewPath(dir, "kept:1")}
+	for _, path := range append(append([]string{}, gone...), kept...) {
+		write(path)
+	}
+
+	if err := RemoveContentArtifacts(dir, "gone:1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range gone {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s が残っている (err=%v)", path, err)
+		}
+	}
+	for _, path := range kept {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("別の内容の %s が消えた: %v", path, err)
+		}
+	}
+	// 2回目は何も無いが失敗しない。
+	if err := RemoveContentArtifacts(dir, "gone:1"); err != nil {
+		t.Fatal(err)
+	}
+}

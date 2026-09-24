@@ -108,6 +108,8 @@ func run() error {
 	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
 	workers := newWorkers(cfg, db, logger, events)
 	db.OnJobsQueued(wakeWorkers(workers, events))
+	// 動画の行が消えたら、参照の無くなった内容の生成物だけを消す。
+	db.OnContentReleased(releaseContent(db, cfg.ThumbnailsDir(), logger))
 	var workersDone sync.WaitGroup
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })

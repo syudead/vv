@@ -41,7 +41,11 @@ and driving the `internal/media` adapters
 and a content-keyed hover-preview clip per video). A worker sleeps while its queue is
 empty: `internal/store` reports every committed enqueue, and `cmd/mdm` wakes the worker
 for that stage, so no worker polls the queue. Interrupted scans are closed and running
-jobs are requeued at the next startup.
+jobs are requeued at the next startup. When a video row is deleted (a scan finds its last
+location gone, its content changes, or its media folder is removed or replaced),
+`internal/store` reports the released content keys after commit, and `cmd/mdm` removes
+that content's thumbnail, seek frames and hover preview unless another video still
+references it; nothing else sweeps the thumbnails directory.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
 browser polling: `scan` when the current scan changes, `processing` with the remaining

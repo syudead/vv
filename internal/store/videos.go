@@ -179,17 +179,22 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 	if err := syncRepresentativeContainer(ctx, tx, videoID); err != nil {
 		return UpsertResult{}, err
 	}
+	var released []string
 	if locationExists && oldVideoID != videoID {
 		if err := syncRepresentativeContainer(ctx, tx, oldVideoID); err != nil {
 			return UpsertResult{}, err
 		}
-		if _, err := tx.ExecContext(ctx, `delete from videos where id = ? and not exists (select 1 from video_locations where video_id = ?)`, oldVideoID, oldVideoID); err != nil {
+		released, err = collectContentKeys(tx.QueryContext(ctx, `delete from videos where id = ? and not exists (select 1 from video_locations where video_id = ?)
+			returning content_key`, oldVideoID, oldVideoID))
+		if err != nil {
 			return UpsertResult{}, err
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return UpsertResult{}, err
 	}
+	// 内容が変わって前の動画が消えたら、前の内容の生成物を片付けさせる。
+	db.notifyContentReleased(released)
 	outcome := OutcomeMoved
 	if locationExists {
 		outcome = OutcomeUpdated
@@ -597,10 +602,12 @@ func (db *DB) DeleteVideos(ctx context.Context, ids []int64) error {
 	}
 
 	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
-	if _, err := db.sql.ExecContext(ctx,
-		`delete from videos where id in (`+placeholders+`)`, args...); err != nil {
+	released, err := collectContentKeys(db.sql.QueryContext(ctx,
+		`delete from videos where id in (`+placeholders+`) returning content_key`, args...))
+	if err != nil {
 		return fmt.Errorf("動画を削除できません: %w", err)
 	}
+	db.notifyContentReleased(released)
 	return nil
 }
 
@@ -634,11 +641,15 @@ func (db *DB) DeleteVideoLocations(ctx context.Context, ids []int64) error {
 			return err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `delete from videos where not exists (
-		select 1 from video_locations where video_locations.video_id = videos.id)`); err != nil {
+	released, err := deleteOrphanVideos(ctx, tx)
+	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	db.notifyContentReleased(released)
+	return nil
 }
 
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。

@@ -164,6 +164,10 @@ func previewHandler(cfg Config, db *store.DB) jobs.Handler {
 			return err
 		}
 		if !applied {
+			// 生成中に動画が消えていたら、書き終えたプレビューを残さない。
+			if err := removeUnreferencedArtifacts(context.WithoutCancel(ctx), db, cfg.ThumbnailsDir(), job.ContentKey); err != nil {
+				return err
+			}
 			return media.ErrPreviewStale
 		}
 		return nil
@@ -203,8 +207,12 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 				return err
 			}
 			applied, err := db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
-			if err != nil || !applied {
+			if err != nil {
 				return err
+			}
+			if !applied {
+				// 生成中に動画が消えていたら、書き終えたサムネイルを残さない。
+				return removeUnreferencedArtifacts(context.WithoutCancel(ctx), db, cfg.ThumbnailsDir(), job.ContentKey)
 			}
 		}
 		if err := media.GenerateSeekThumbnails(
@@ -215,14 +223,43 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 
 		// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
 		// 参照の無くなった生成物を残さない。
-		referenced, err := db.ContentKeyReferenced(context.WithoutCancel(ctx), job.ContentKey)
-		if err != nil {
-			return err
-		}
-		if !referenced {
-			return media.RemoveSeekThumbnails(cfg.ThumbnailsDir(), job.ContentKey)
-		}
+		return removeUnreferencedArtifacts(context.WithoutCancel(ctx), db, cfg.ThumbnailsDir(), job.ContentKey)
+	}
+}
+
+// removeUnreferencedArtifacts は、内容を参照する動画が無ければ、その内容の
+// 生成物を消す。参照があれば何もしない。
+//
+// 消すのは参照が無いと確かめた直後である。同じ内容の動画があとから取り込まれても、
+// 新しい行は生成物の状態が pending から始まり、ジョブが作り直す。
+func removeUnreferencedArtifacts(ctx context.Context, db *store.DB, thumbnailsDir, contentKey string) error {
+	referenced, err := db.ContentKeyReferenced(ctx, contentKey)
+	if err != nil {
+		return err
+	}
+	if referenced {
 		return nil
+	}
+	return media.RemoveContentArtifacts(thumbnailsDir, contentKey)
+}
+
+// releaseContent は、動画の行が消えたときに、参照の無くなった内容の生成物を
+// 消す。保存層の OnContentReleased に渡す。消えた動画の分だけを見るので、
+// ライブラリ全体は読まない。
+//
+// ファイルの削除は呼び出し元（走査やフォルダ設定の要求）を待たせないよう、
+// 背後で行う。
+func releaseContent(db *store.DB, thumbnailsDir string, logger *slog.Logger) func(contentKeys []string) {
+	return func(contentKeys []string) {
+		go func() {
+			ctx := context.Background()
+			for _, key := range contentKeys {
+				if err := removeUnreferencedArtifacts(ctx, db, thumbnailsDir, key); err != nil {
+					logger.Warn("消えた動画の生成物を削除できませんでした",
+						slog.String("contentKey", key), slog.Any("error", err))
+				}
+			}
+		}()
 	}
 }
 
