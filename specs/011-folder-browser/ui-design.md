@@ -18,7 +18,9 @@
 - 動画カードは `web/src/library/VideoCard.tsx` をそのまま使う。ただしフォルダ画面は選択を
   持たない（親 Issue 対象外）ので、**選択のチェックを描かない**形で使う。ライブラリの
   カードの見た目と振る舞いは変えない。
-- 表（リスト）表示・視聴状態の絞り込み・検索欄は出さない（親 Issue 対象外）。
+- 表（リスト）表示は出さない。視聴状態の絞り込み・検索欄は #145 の対象外だったが、
+  #228（[specs/013-library-search/ui-design.md「Folder screen」](../013-library-search/ui-design.md#folder-screen)）
+  で足した。
 
 ## Page structure and hierarchy
 
@@ -107,6 +109,11 @@ hover で `-translate-y-0.5` と `shadow-card-hover`）を使い、**上半分�
 - 最上位（`/folders`）では「フォルダ」1段だけで、それが現在地になる。
 
 ## Toolbar
+
+> **この節は #228（[specs/013-library-search/ui-design.md「Folder screen」・「Toolbar」](../013-library-search/ui-design.md#folder-screen)）で置き換えられた。**
+> フォルダ画面のツールバーは検索欄を先頭に置く中央寄せの配置になり、検索欄・絞り込み・
+> 並べ替え（7種・向き・ランダムの並べ直し）を持つ。下の「検索欄が無いので右寄せ」の記述は
+> #228 より前の状態で、もう実装と一致しない。
 
 トップバーの中（`TopBarPortal`）に、ライブラリのツールバーと同じ部品と同じ幅の境界で
 **並び順と表示倍率だけ**を置く。検索欄が無いので、操作は右寄せにしてトップバー右端の

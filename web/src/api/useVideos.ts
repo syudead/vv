@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   errorMessage,
   type FolderRef,
+  type FolderScope,
   getVideo,
   isAborted,
   listFolderVideos,
@@ -51,6 +52,11 @@ export interface VideosCriteria {
   sort: VideoSort;
   /** sort=random のときだけ送る。 */
   seed?: number;
+  /**
+   * フォルダ画面での検索範囲（direct = 直下だけ、subtree = 配下すべて）。
+   * folder を渡さない（ライブラリ）ときは無視する。省略時は direct と同じ。
+   */
+  scope?: FolderScope;
 }
 
 /** criteriaKey は条件を値で比べるための文字列にする。 */
@@ -61,6 +67,7 @@ function criteriaKey(criteria: VideosCriteria): string {
     criteria.playable === true,
     criteria.sort,
     criteria.sort === "random" ? (criteria.seed ?? null) : null,
+    criteria.scope ?? "direct",
   ]);
 }
 
@@ -89,6 +96,12 @@ export interface VideosState {
   /** loadingMore は続きを読んでいる間 true になる。 */
   loadingMore: boolean;
   error: string | null;
+  /**
+   * notFound は folder を渡したときに、そのフォルダの動画の要求が 404 で
+   * 返ったことを表す（検索中にフォルダが無くなった場合、
+   * list-api.md §5「listFolderVideos でフォルダが無いとき」）。
+   */
+  notFound: boolean;
   /** loadMore は次のページを読む。無限スクロールの観測点から呼ぶ。 */
   loadMore: () => void;
   /** retryLoadMore は失敗した続きのページを同じカーソルから再要求する。 */
@@ -134,6 +147,7 @@ export function useVideos(
   const [loading, setLoading] = useState(seed === undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [generation, setGeneration] = useState(0);
 
   // 再生画面で保存された再生位置を、表示中の項目へ反映する。復元した一覧は
@@ -279,7 +293,11 @@ export function useVideos(
         const page =
           target === undefined
             ? await listVideos(params)
-            : await listFolderVideos({ folder: target, ...params });
+            : await listFolderVideos({
+                folder: target,
+                scope: current.scope,
+                ...params,
+              });
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
         if (controller.signal.aborted || inFlight.current !== controller) return;
@@ -293,11 +311,26 @@ export function useVideos(
         setCursor(page.nextCursor);
         setHasMore(page.nextCursor !== undefined);
         setError(null);
+        setNotFound(false);
       } catch (failure) {
         if (isAborted(failure)) {
           return;
         }
+        if (
+          folderRef.current !== undefined &&
+          failure instanceof RequestFailed &&
+          failure.status === 404
+        ) {
+          // フォルダが無くなった（検索中に配下が削除された等）。一致なしではなく
+          // 「このフォルダは見つかりません」を出す（list-api.md §5）。
+          setNotFound(true);
+          setError(null);
+          setHasMore(false);
+          return;
+        }
         setError(errorMessage(failure));
+        // 前の要求の 404 を残すと、取得の失敗が「見つかりません」に隠れて再試行できない。
+        setNotFound(false);
         // 続きが読めない状態で観測点を残すと、同じ要求を繰り返してしまう。
         setHasMore(false);
       } finally {
@@ -370,6 +403,7 @@ export function useVideos(
     loading,
     loadingMore,
     error,
+    notFound,
     loadMore,
     retryLoadMore,
     reload,
