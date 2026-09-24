@@ -16,7 +16,7 @@ probe 完了後の background job で、動画全体から短い区間を等間�
 
 - 境界と依存方向: [ARCHITECTURE.md](../../ARCHITECTURE.md)
 - job と video model: [internal/domain/job.go](../../internal/domain/job.go)・[internal/domain/video.go](../../internal/domain/video.go)・[internal/jobs/worker.go](../../internal/jobs/worker.go)
-- scan と生成処理の既存パターン: [internal/scanner/scanner.go](../../internal/scanner/scanner.go)・[internal/media/seek_thumbnail.go](../../internal/media/seek_thumbnail.go)・[cmd/mdm/library.go](../../cmd/mdm/library.go)
+- scan と生成処理の既存パターン: [internal/scanner/scanner.go](../../internal/scanner/scanner.go)・[internal/media/seek_thumbnail.go](../../internal/media/seek_thumbnail.go)・[internal/app/ingest.go](../../internal/app/ingest.go)（旧 `cmd/mdm/library.go`）
 - API 正本と配信実装: [api/openapi.yaml](../../api/openapi.yaml)・[internal/httpapi/thumbnail.go](../../internal/httpapi/thumbnail.go)・[internal/httpapi/seek_thumbnail.go](../../internal/httpapi/seek_thumbnail.go)
 - 一覧 UI: [library-ui.md](../../docs/design-docs/library-ui.md)・[web/src/library/VideoCard.tsx](../../web/src/library/VideoCard.tsx)・[web/src/library/LibraryPage.tsx](../../web/src/library/LibraryPage.tsx)
 - 検査入口: [Taskfile.yml](../../Taskfile.yml)

@@ -28,9 +28,9 @@ type Queue interface {
 
 // Handler は1種類のジョブの処理である。
 //
-// 実体（ffprobe の実行と保存層への反映）は cmd/mdm が組み立てて渡す。
-// internal/jobs から internal/media・internal/store を参照しないのは、
-// 依存の向きを一方向に保つためである（ARCHITECTURE.md）。ここに置くのは
+// 実体（ffprobe の実行と保存層への反映）は internal/app が持ち、cmd/mdm が
+// 渡す。internal/jobs から internal/app・internal/media・internal/store を参照
+// しないのは、依存の向きを一方向に保つためである（ARCHITECTURE.md）。ここに置くのは
 // 「取り出して、成否を記録し、止まったら戻す」という進め方だけである。
 type Handler func(ctx context.Context, job domain.Job) error
 

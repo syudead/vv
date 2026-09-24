@@ -24,13 +24,13 @@ linters:
     # 原因エラーを %v で埋め込み、errors.Is で辿れなくする誤り。
     - errorlint
     # 背後で動かす処理へ context を渡し忘れる誤り。意図して渡さない箇所は
-    # 理由を添えて nolint で示す（cmd/mdm/library.go の走査開始）。
+    # 理由を添えて nolint で示す（internal/app/scans.go の走査開始）。
     - contextcheck
 
   settings:
     depguard:
       rules:
-        # cmd → internal/{httpapi,store,media,opener,scanner,jobs} → internal/domain の
+        # cmd → internal/{app,httpapi,store,media,opener,scanner,jobs} → internal/domain の
         # 一方向のみを許す。internal/domain は依存の終端なので、外部 I/O にも
         # 他の internal パッケージにも依存してはならない。
         #
@@ -62,33 +62,147 @@ linters:
             - pkg: github.com/syudead/vv/internal/httpapi
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
+                依存は cmd → internal/{app,httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/store
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
+                依存は cmd → internal/{app,httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/media
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
+                依存は cmd → internal/{app,httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/opener
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
+                依存は cmd → internal/{app,httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/scanner
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
+                依存は cmd → internal/{app,httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/jobs
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
+                依存は cmd → internal/{app,httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
+            - pkg: github.com/syudead/vv/internal/app
+              desc: >-
+                internal/domain から他の internal パッケージを import してはならない。
+                依存は cmd → internal/{app,httpapi,store,media,opener,scanner,jobs} →
+                internal/domain の一方向だけである（ARCHITECTURE.md）。
+
+        # アプリケーション層（internal/app）はユースケースだけを持つ。外部 I/O の
+        # 手段にもアダプタにも依存せず、宣言した interface 越しに使う。そのため
+        # SQLite・ffmpeg・HTTP サーバーを起動せずに単体で検証できる。
+        app-uses-adapters-only-through-interfaces:
+          files:
+            - "**/internal/app/*.go"
+          deny:
+            - pkg: net/http
+              desc: >-
+                internal/app から net/http を import してはならない。要求の解釈と
+                応答の形は internal/httpapi が持ち、アプリケーション層は転送方式を
+                知らない（ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: database/sql
+              desc: >-
+                internal/app から database/sql を import してはならない。保存は
+                internal/app が宣言した interface 越しに行い、SQL は internal/store に
+                置くこと（ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: os/exec
+              desc: >-
+                internal/app から os/exec を import してはならない。外部コマンドは
+                internal/media と internal/opener に閉じ込め、internal/app が宣言した
+                interface 越しに使うこと（ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: modernc.org/sqlite
+              desc: >-
+                internal/app から SQLite ドライバを import してはならない。特定の
+                データベースへの依存は internal/store に閉じ込めること
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/httpapi
+              desc: >-
+                internal/app から internal/httpapi を import してはならない。HTTP との変換はアダプタの仕事で、
+                アプリケーション層は必要な操作を自身の interface として宣言し、
+                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/store
+              desc: >-
+                internal/app から internal/store を import してはならない。保存の手段はアダプタの仕事で、
+                アプリケーション層は必要な操作を自身の interface として宣言し、
+                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/media
+              desc: >-
+                internal/app から internal/media を import してはならない。ffmpeg・ffprobe と生成物の置き場はアダプタの仕事で、
+                アプリケーション層は必要な操作を自身の interface として宣言し、
+                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/opener
+              desc: >-
+                internal/app から internal/opener を import してはならない。OS の既定アプリの起動はアダプタの仕事で、
+                アプリケーション層は必要な操作を自身の interface として宣言し、
+                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/scanner
+              desc: >-
+                internal/app から internal/scanner を import してはならない。ファイルシステムの走査はアダプタの仕事で、
+                アプリケーション層は必要な操作を自身の interface として宣言し、
+                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/jobs
+              desc: >-
+                internal/app から internal/jobs を import してはならない。待ち行列の進め方はアダプタの仕事で、
+                アプリケーション層は必要な操作を自身の interface として宣言し、
+                実装は cmd/mdm が渡す（ARCHITECTURE.md "Intended dependency direction"）。
+
+        # internal/ の兄弟パッケージ（アダプタとアプリケーション層）は互いに
+        # import しない。使う側が interface を宣言し、組み立ては cmd/mdm が行う。
+        # 外部テストパッケージ（package x_test）は自分のパッケージを import する
+        # ので、テストのファイルは対象から外す。末尾の $ は完全一致で、
+        # internal/httpapi/gen のような子パッケージは対象に含めない。
+        internal-siblings-do-not-import-each-other:
+          files:
+            - "**/internal/httpapi/*.go"
+            - "**/internal/store/*.go"
+            - "**/internal/media/*.go"
+            - "**/internal/opener/*.go"
+            - "**/internal/scanner/*.go"
+            - "**/internal/jobs/*.go"
+            - "!$test"
+          deny:
+            - pkg: github.com/syudead/vv/internal/app$
+              desc: >-
+                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
+                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/httpapi$
+              desc: >-
+                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
+                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/store$
+              desc: >-
+                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
+                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/media$
+              desc: >-
+                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
+                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/opener$
+              desc: >-
+                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
+                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/scanner$
+              desc: >-
+                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
+                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
+                （ARCHITECTURE.md "Intended dependency direction"）。
+            - pkg: github.com/syudead/vv/internal/jobs$
+              desc: >-
+                internal/ の兄弟パッケージ同士は import してはならない。必要な操作は
+                使う側が interface として宣言し、どの実装を渡すかは cmd/mdm が決める
+                （ARCHITECTURE.md "Intended dependency direction"）。
 
   exclusions:
     generated: lax

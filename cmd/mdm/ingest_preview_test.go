@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -11,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-func TestPreviewHandlerMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
+func TestIngestPreviewMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
 	db, err := store.Open(dataDir)
@@ -48,7 +47,7 @@ func TestPreviewHandlerMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handleErr := previewHandler(db, newArtifacts(db, Config{DataDir: dataDir}.ThumbnailsDir(), slog.Default()))(ctx, job)
+	handleErr := newTestIngest(db, dataDir).Preview(ctx, job)
 	if handleErr == nil {
 		t.Fatal("zero-duration preview unexpectedly succeeded")
 	}
@@ -64,7 +63,7 @@ func TestPreviewHandlerMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 	}
 }
 
-func TestPreviewHandlerUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
+func TestIngestPreviewUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
 	db, err := store.Open(dataDir)
@@ -100,7 +99,7 @@ func TestPreviewHandlerUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handleErr := previewHandler(db, newArtifacts(db, Config{DataDir: dataDir}.ThumbnailsDir(), slog.Default()))(ctx, job)
+	handleErr := newTestIngest(db, dataDir).Preview(ctx, job)
 	if handleErr == nil {
 		t.Fatal("preview with missing source unexpectedly succeeded")
 	}

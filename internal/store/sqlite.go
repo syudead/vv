@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/syudead/vv/internal/domain"
+
 	// CGO を必要としない SQLite ドライバ。CGO_ENABLED=0 を維持するために採用した。
 	_ "modernc.org/sqlite"
 )
@@ -43,10 +45,7 @@ type DB struct {
 }
 
 // DeletedVideo は行を消した動画である。
-type DeletedVideo struct {
-	ID         int64
-	ContentKey string
-}
+type DeletedVideo = domain.DeletedVideo
 
 // OnVideosDeleted は、動画の行を消した取引が確定したときの知らせ先を設定する。
 // 同じ内容を持つ別の動画が残っていることもあるので、生成物を消す側は参照が

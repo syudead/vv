@@ -458,8 +458,8 @@ func (db *DB) RequeueMissingPreview(ctx context.Context, id int64, contentKey st
 // seekThumbnailMissing はシーク用プレビューの置き場が無いことを表す。置き場の
 // 有無はファイルの事実なので、呼び出し側が確かめて渡す。thumbnail_state が
 // done でも置き場が無ければ、状態はそのままでサムネイルのジョブを積む
-// （thumbnailHandler は代表サムネイルがあればシーク用プレビューだけを作る）。
-// 一覧用プレビューのジョブは、読み取りの成功後に probeHandler が積む。
+// （app.Ingest.Thumbnail は代表サムネイルがあればシーク用プレビューだけを作る）。
+// 一覧用プレビューのジョブは、読み取りの成功後に app.Ingest.Probe が積む。
 func (db *DB) RetryProbe(ctx context.Context, id int64, seekThumbnailMissing bool) error {
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {

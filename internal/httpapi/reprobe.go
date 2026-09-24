@@ -18,14 +18,12 @@ func (s *server) ReprobeVideo(w http.ResponseWriter, r *http.Request, id gen.Vid
 	if !ok {
 		return
 	}
-	if s.reprobe == nil {
+	if s.catalog == nil {
 		s.internalError(w, "読み取りのやり直し先が設定されていません", nil)
 		return
 	}
 
-	// シーク用プレビューの置き場の有無はファイルの事実なので、ここで確かめて渡す。
-	seekMissing := !seekThumbnailDirExists(s.thumbnailsDir, video.ContentKey)
-	err := s.reprobe.RetryProbe(r.Context(), video.ID, seekMissing)
+	err := s.catalog.RetryProbe(r.Context(), video)
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, "その動画はありません")

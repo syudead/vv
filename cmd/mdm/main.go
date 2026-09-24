@@ -15,10 +15,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi"
+	"github.com/syudead/vv/internal/jobs"
 	"github.com/syudead/vv/internal/media"
 	"github.com/syudead/vv/internal/opener"
+	"github.com/syudead/vv/internal/scanner"
 	"github.com/syudead/vv/internal/store"
 	"github.com/syudead/vv/web"
 )
@@ -105,35 +108,46 @@ func run() error {
 	// 画面へ送る変化の知らせ。走査とワーカーが知らせ、/api/events が配る。
 	events := httpapi.NewEvents()
 
-	lib := newLibrary(db, logger, events)
-	lib.bindContext(backgroundCtx)
+	scans := app.NewScans(app.ScansOptions{
+		Store: db,
+		NewScanner: func(reporter app.ScanReporter) app.Scanner {
+			return scanner.New(scanner.Options{Index: db, Queue: db, Reporter: reporter, Logger: logger})
+		},
+		Context:  backgroundCtx,
+		Notifier: events,
+		Logger:   logger,
+	})
 
 	// 前回の停止で running のまま残った走査を閉じ、処理中だった仕事を戻す。
-	if err := lib.recoverInterrupted(backgroundCtx); err != nil {
+	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
 		return err
 	}
 
-	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
-	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
 	// 前回の停止で残った生成途中の成果物を消す。ワーカーを動かす前なので、
 	// 生成中のものを消すことはない。
 	if err := media.RemoveTemporary(cfg.ThumbnailsDir()); err != nil {
 		logger.Warn("生成途中の成果物を削除できませんでした", slog.Any("error", err))
 	}
-	assets := newArtifacts(db, cfg.ThumbnailsDir(), logger)
-	workers := newWorkers(db, assets, logger, events)
-	db.OnJobsChanged(wakeWorkers(workers, events))
-	// 動画の行が消えたら、参照の無くなった内容の生成物だけを消し、開いている
-	// 画面へ消えたことを知らせる（取り直すと見つからないので、画面が外す）。
-	db.OnVideosDeleted(func(deleted []store.DeletedVideo) {
-		keys := make([]string, 0, len(deleted))
-		for _, video := range deleted {
-			keys = append(keys, video.ContentKey)
-			events.VideoChanged(video.ID)
-		}
-		assets.release(keys)
-		events.ProcessingChanged()
+	assets := media.NewAssets(cfg.ThumbnailsDir())
+	ingest := app.NewIngest(app.IngestOptions{
+		Store: db, Generator: assets, Notifier: events, Logger: logger,
 	})
+	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
+	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
+	workers := make([]*jobs.Worker, 0, len(domain.JobKinds))
+	for _, kind := range domain.JobKinds {
+		worker := jobs.New(jobs.Options{
+			Kind:     kind,
+			Queue:    db,
+			Handler:  ingest.Handler(kind),
+			Finished: ingest.JobFinished,
+			Logger:   logger,
+		})
+		ingest.AttachWorker(kind, worker)
+		workers = append(workers, worker)
+	}
+	db.OnJobsChanged(ingest.JobsChanged)
+	db.OnVideosDeleted(ingest.VideosDeleted)
 	var workersDone sync.WaitGroup
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
@@ -150,21 +164,22 @@ func run() error {
 	logger.Info("ファイルを開く機能の状態", slog.Bool("available", fileOpener.Available()),
 		slog.String("command", fileOpener.Command()))
 
+	// 動画の応答に要る判断（消えたプレビューの作り直し、シーク用プレビューの
+	// 状態）と関連動画の組み立ては、アプリケーション層が行う。
+	catalog := app.NewCatalog(app.CatalogOptions{Store: db, Files: assets, Logger: logger})
+
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:          build,
 		Pinger:         db,
 		Videos:         db,
 		Playback:       db,
-		Scans:          lib,
+		Scans:          scans,
 		MediaFolders:   db,
 		Folders:        db,
 		ThumbnailsDir:  cfg.ThumbnailsDir(),
 		Transcoder:     media.NewLiveTranscoder(requestMediaCtx.Done()),
 		SeekThumbnails: media.NewSeekThumbnailCache(cfg.ThumbnailsDir()),
-		ThumbnailJobs:  db,
-		Related:        db,
-		Reprobe:        db,
-		PreviewRepair:  db,
+		Catalog:        catalog,
 		Opener:         fileOpener,
 		Processing:     db,
 		Events:         events,
@@ -187,7 +202,7 @@ func run() error {
 	workersDone.Wait()
 	// 背後で動いている生成物の削除を、データベースを閉じる前に終える。
 	// 途中で閉じると、消すはずの生成物が残り続ける。
-	assets.wait()
+	ingest.Wait()
 	logger.Info("取り込みとジョブを停止しました")
 
 	return nil

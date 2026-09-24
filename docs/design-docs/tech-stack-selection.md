@@ -65,20 +65,25 @@
 cmd/
   mdm/           # main。設定読み込みと依存の組み立て
 internal/
-  domain/        # ドメインモデルとユースケース（外部 I/O への依存なし）
+  domain/        # ドメインモデル（値の型と純粋な規則。外部 I/O への依存なし）
+  app/           # ユースケース。保存・外部コマンドは自身の interface 越しに使う
   httpapi/       # ハンドラ、ルーティング、ストリーミング、SPA の配信
   store/         # SQLite 実装、問い合わせと検索、マイグレーション
   media/         # ffprobe/ffmpeg アダプタ、サムネイル生成
   scanner/       # ファイルスキャンと差分検出
   jobs/          # ジョブキューとワーカー
+  opener/        # OS の既定アプリでファイルを開く
 api/
   openapi.yaml   # API 契約（Go/TS 双方のコード生成元）
 web/             # React SPA。ビルド結果を embed して配信
 ```
 
-依存方向は `cmd → {httpapi, store, media, scanner, jobs} → domain` の一方向に
-限定する。`internal/domain` が `net/http`・`database/sql`・`os/exec` を import した
-時点で CI を落とすよう、`golangci-lint` の `depguard` にルールを書く。
+依存方向は `cmd → {app, httpapi, store, media, opener, scanner, jobs} → domain` の
+一方向に限定し、`internal/` の兄弟パッケージ同士は import しない。
+`internal/domain` と `internal/app` が `net/http`・`database/sql`・`os/exec` を
+import した時点、`internal/app` がアダプタを import した時点、兄弟パッケージ同士が
+import した時点で CI を落とすよう、`golangci-lint` の `depguard` にルールを書く
+（詳細は ARCHITECTURE.md）。
 `internal/` 配下に置くこと自体が外部からの import を防ぐので、公開 API の
 境界もコンパイラが守る。
 
