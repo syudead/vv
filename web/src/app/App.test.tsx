@@ -75,6 +75,7 @@ describe("App", () => {
     render(<App />);
     const user = userEvent.setup();
     const indicator = await screen.findByRole("button", { name: /取り込み中 40%/ });
+    expect(indicator.closest(".fixed")?.classList.contains("bottom-4")).toBe(true);
 
     await user.click(screen.getByRole("link", { name: "フォルダへ" }));
     await user.click(screen.getByRole("link", { name: "設定へ" }));
@@ -89,6 +90,10 @@ describe("App", () => {
     );
     const playbackIndicator = screen.getByRole("button", { name: /取り込み中 40%/ });
     expect(playbackIndicator).toBe(indicator);
+    const playbackPlacement = playbackIndicator.closest(".fixed")?.classList;
+    expect(playbackPlacement?.contains("bottom-4")).toBe(true);
+    expect(playbackPlacement?.contains("sm:top-2")).toBe(true);
+    expect(playbackPlacement?.contains("sm:bottom-auto")).toBe(true);
     expect(playbackIndicator.getAttribute("aria-label")).toBe(
       "取り込み中 40%。取り込み状況を開く",
     );

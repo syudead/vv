@@ -44,7 +44,6 @@ test("scan progress remains one indicator across library, settings, and playback
     name: /取り込み状況を開く/,
   });
   await expect(routePersistentIndicator).toHaveCount(1);
-  const progressBeforePlayback = await routePersistentIndicator.textContent();
 
   await page.evaluate(() => {
     window.history.pushState({}, "", "/videos/1");
@@ -52,7 +51,11 @@ test("scan progress remains one indicator across library, settings, and playback
   });
   await expect(page).toHaveURL(/\/videos\/1$/);
   await expect(routePersistentIndicator).toHaveCount(1);
+  const callsAfterPlaybackNavigation = currentCalls;
   await expect
-    .poll(() => routePersistentIndicator.textContent())
-    .not.toBe(progressBeforePlayback);
+    .poll(async () => {
+      const label = await routePersistentIndicator.textContent();
+      return Number(label?.match(/(\d+)%/)?.[1] ?? 0);
+    })
+    .toBeGreaterThan(callsAfterPlaybackNavigation);
 });

@@ -1,6 +1,6 @@
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useNavigate } from "react-router";
 
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
@@ -41,10 +41,13 @@ function countSummary(presentation: ScanPresentation) {
   return `${String(presentation.completed)} / ${total} 件（${String(presentation.failed)} 件失敗）`;
 }
 
-export default function ScanProgressIndicator() {
+export default function ScanProgressIndicator({
+  placement = "default",
+}: {
+  placement?: "default" | "playback";
+}) {
   const scan = useScan();
   const notice = useScanNotice();
-  const location = useLocation();
   const navigate = useNavigate();
   const presentation = presentScan(scan);
   const [open, setOpen] = useState(false);
@@ -99,7 +102,9 @@ export default function ScanProgressIndicator() {
     <div
       className={cn(
         "fixed right-3 z-30 max-w-[calc(100vw-1.5rem)] sm:right-5",
-        location.pathname.startsWith("/videos/") ? "top-2" : "bottom-4 sm:bottom-5",
+        placement === "playback"
+          ? "bottom-4 sm:top-2 sm:bottom-auto"
+          : "bottom-4 sm:bottom-5",
       )}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
