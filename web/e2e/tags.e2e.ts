@@ -234,5 +234,11 @@ test.describe.serial("video tags", () => {
     await page.keyboard.press("Enter");
 
     await expect(chip(page, "e2e候補タグ")).toBeVisible();
+
+    // 一覧が閉じているときの Esc は入力を空にする（ui-design.md「Add input」、B1）。
+    await input.fill("捨てる文字");
+    await page.keyboard.press("Escape"); // 1 回目: 開いている一覧を閉じる
+    await page.keyboard.press("Escape"); // 2 回目: 入力を空にする
+    await expect(input).toHaveValue("");
   });
 });

@@ -7,7 +7,7 @@ import {
   attachVideoTagByName,
   currentTags,
   detachVideoTag,
-  getTags,
+  refreshTags,
   subscribeTags,
   type Tag,
 } from "../api/tags";
@@ -46,12 +46,17 @@ export default function VideoTags({
     [videoId],
   );
 
+  // 画面が開くときは、共有の保持がすでにあっても必ず取り直す（plan の
+  // Structural Decisions 8「画面が開くとき…に refreshTags で取り直す」）。
+  // 取り直す間は、あれば直近の保持を初期値として先に出す。
   const [allTags, setAllTags] = useState<Tag[] | undefined>(currentTags());
   useEffect(() => {
     let alive = true;
-    void getTags().then((loaded) => {
-      if (alive) setAllTags(loaded);
-    });
+    refreshTags()
+      .then((loaded) => {
+        if (alive) setAllTags(loaded);
+      })
+      .catch(() => undefined);
     const unsubscribe = subscribeTags((loaded) => {
       if (alive) setAllTags(loaded);
     });
@@ -73,13 +78,16 @@ export default function VideoTags({
   useEffect(() => {
     const pending = pendingFocusRef.current;
     if (pending === null) return;
+    // 外せなかったときの戻し先は、まだ disabled のままの、そのチップ自身の ×
+    // かもしれない。再び押せるようになるまで（removingIds から消えるまで）待つ。
+    if (pending !== "input" && removingIds.has(pending.chipId)) return;
     pendingFocusRef.current = null;
     if (pending === "input") {
       inputRef.current?.focus();
       return;
     }
     buttonRefs.current.get(pending.chipId)?.focus();
-  }, [tags]);
+  }, [tags, removingIds]);
 
   const attachedIds = new Set(tags.map((tag) => tag.id));
   const { options, exactOption } = buildOptions(allTags ?? [], attachedIds, inputValue);
@@ -121,7 +129,8 @@ export default function VideoTags({
           onStaleVideo();
           return;
         }
-        pendingFocusRef.current = null;
+        // 外せなかったときは、次/前のチップではなく、このチップの × へ戻す。
+        pendingFocusRef.current = { chipId: tag.id };
         setOpError("detach");
       })
       .finally(() => {
@@ -147,12 +156,12 @@ export default function VideoTags({
       <h2 className="sr-only">タグ</h2>
       <ul className="flex flex-wrap items-center gap-1.5">
         {tags.map((tag, index) => (
-          <li key={tag.id}>
+          <li key={tag.id} className="min-w-0 max-w-full">
             <span
               title={tag.name}
-              className="inline-flex h-6 items-center rounded-sm bg-elevated pl-2 text-xs text-fg"
+              className="inline-flex h-6 max-w-full items-center rounded-sm bg-elevated pl-2 text-xs text-fg"
             >
-              <span className="min-w-0 max-w-40 truncate">{tag.name}</span>
+              <span className="min-w-0 truncate">{tag.name}</span>
               <span aria-hidden="true" className="mx-1.5 h-3.5 w-px bg-border-strong" />
               <button
                 ref={(node) => {
@@ -189,6 +198,9 @@ export default function VideoTags({
             busy={submitting}
             aria-label="タグを追加"
             inputRef={inputRef}
+            // 一覧が閉じているときの Esc は、入力を空にする
+            // （ui-design.md「Add input」）。
+            onEscapeWhenClosed={() => setInputValue("")}
           />
         </li>
       </ul>

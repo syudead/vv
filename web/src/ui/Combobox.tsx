@@ -155,6 +155,19 @@ export default function Combobox({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    // IME の変換中の Enter・矢印キー・Esc は、変換の確定・移動のためのもので、
+    // combobox の操作にしてはいけない（web/src/player/keyboard.ts と同じ判定。
+    // keyCode 229 は isComposing を実装しない古いブラウザ向けの後方互換）。
+    const composing = event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
+    if (
+      composing &&
+      (event.key === "ArrowDown" ||
+        event.key === "ArrowUp" ||
+        event.key === "Enter" ||
+        event.key === "Escape")
+    ) {
+      return;
+    }
     if (event.key === "ArrowDown") {
       event.preventDefault();
       if (!open) {
@@ -171,7 +184,9 @@ export default function Combobox({
         setOpen(true);
         return;
       }
-      setActiveIndex((current) => Math.max(current - 1, -1));
+      // 上端（先頭の行）で止まる。まだ何も選んでいなければそのままにする
+      // （ui-design.md「Combobox」端で止まる）。
+      setActiveIndex((current) => (current <= 0 ? current : current - 1));
       return;
     }
     if (event.key === "Enter") {
@@ -223,6 +238,10 @@ export default function Combobox({
   const activeId =
     open && activeIndex >= 0 ? `${listboxId}-option-${String(activeIndex)}` : undefined;
 
+  // 送信中・名前が作れない間は、クリックでも Enter と同じく確定を受けない
+  // （Enter だけを塞いでもクリックはすり抜けてしまう）。
+  const blocked = busy || reason !== null;
+
   const rows = useMemo(() => {
     const items: { key: string; index: number; node: ReactNode }[] = options.map(
       (option, index) => ({
@@ -234,13 +253,18 @@ export default function Combobox({
             id={`${listboxId}-option-${String(index)}`}
             role="option"
             aria-selected={index === activeIndex}
+            aria-disabled={blocked || undefined}
             data-index={index}
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() => commit(option)}
+            onClick={() => {
+              if (blocked) return;
+              commit(option);
+            }}
             onMouseEnter={() => setActiveIndex(index)}
             className={cn(
               "flex min-h-8 cursor-default items-center justify-between gap-2 px-2.5 py-1 text-sm text-fg select-none",
               index === activeIndex && "bg-hover-wash",
+              blocked && "pointer-events-none opacity-50",
             )}
           >
             <span className="flex min-w-0 flex-col">
@@ -269,13 +293,18 @@ export default function Combobox({
             id={`${listboxId}-option-${String(index)}`}
             role="option"
             aria-selected={index === activeIndex}
+            aria-disabled={blocked || undefined}
             data-index={index}
             onMouseDown={(event) => event.preventDefault()}
-            onClick={() => onCreate?.(value.trim())}
+            onClick={() => {
+              if (blocked) return;
+              onCreate?.(value.trim());
+            }}
             onMouseEnter={() => setActiveIndex(index)}
             className={cn(
               "flex h-8 cursor-default items-center gap-2 px-2.5 text-sm text-fg select-none",
               index === activeIndex && "bg-hover-wash",
+              blocked && "pointer-events-none opacity-50",
             )}
           >
             {createLabel}
@@ -284,7 +313,7 @@ export default function Combobox({
       });
     }
     return items;
-  }, [options, showCreateRow, createLabel, activeIndex, listboxId, value]);
+  }, [options, showCreateRow, createLabel, activeIndex, listboxId, value, blocked]);
 
   return (
     <div className={cn("relative", className)}>
@@ -316,7 +345,11 @@ export default function Combobox({
           value={value}
           placeholder={placeholder}
           disabled={disabled}
-          onChange={(event) => onValueChange(event.target.value)}
+          onChange={(event) => {
+            onValueChange(event.target.value);
+            // Esc で一覧を閉じたあとも、打ち直せば一覧を開き直す。
+            setOpen(true);
+          }}
           onFocus={() => setOpen(true)}
           onBlur={() => setOpen(false)}
           onKeyDown={handleKeyDown}
