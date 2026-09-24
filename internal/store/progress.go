@@ -21,14 +21,6 @@ import (
 //
 // 競合は最後の書き込みが残る（upsert）。複数のタブ・端末での同時再生は
 // この単純化で割り切る。
-func (db *DB) SaveProgress(ctx context.Context, contentKey string, progress domain.Progress) (domain.Progress, error) {
-	return db.Playback().SaveProgress(ctx, contentKey, progress)
-}
-
-func (db *DB) Progress(ctx context.Context, contentKey string) (domain.Progress, error) {
-	return db.Playback().Progress(ctx, contentKey)
-}
-
 func (p *PlaybackStore) SaveProgress(
 	ctx context.Context, contentKey string, progress domain.Progress,
 ) (domain.Progress, error) {
@@ -84,12 +76,6 @@ func (p *PlaybackStore) Progress(ctx context.Context, contentKey string) (domain
 //
 // 一覧に載せるために要る。1件ずつ引くと、60 件の一覧で 60 回の問い合わせに
 // なる。
-func (db *DB) ProgressByContentKeys(
-	ctx context.Context, contentKeys []string,
-) (map[string]domain.Progress, error) {
-	return db.Playback().ProgressByContentKeys(ctx, contentKeys)
-}
-
 func (p *PlaybackStore) ProgressByContentKeys(
 	ctx context.Context, contentKeys []string,
 ) (map[string]domain.Progress, error) {

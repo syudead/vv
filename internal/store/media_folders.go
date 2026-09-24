@@ -10,8 +10,18 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-func (db *DB) ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error) {
-	return listMediaFolders(ctx, db.sql)
+// ListMediaFolders は登録済みのメディアフォルダを返す。走査と設定と閲覧が
+// 同じものを読むので、SQL は listMediaFolders の1か所に置く。
+func (s *SettingsStore) ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error) {
+	return listMediaFolders(ctx, s.db.sql)
+}
+
+func (s *ScanIndexStore) ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error) {
+	return listMediaFolders(ctx, s.db.sql)
+}
+
+func (s *LibraryStore) ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error) {
+	return listMediaFolders(ctx, s.db.sql)
 }
 
 func listMediaFolders(ctx context.Context, q queryExecer) ([]domain.MediaFolder, error) {
@@ -34,14 +44,14 @@ func listMediaFolders(ctx context.Context, q queryExecer) ([]domain.MediaFolder,
 	return folders, rows.Err()
 }
 
-func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFolder, error) {
-	db.folderMu.Lock()
-	defer db.folderMu.Unlock()
+func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain.MediaFolder, error) {
+	s.db.folderMu.Lock()
+	defer s.db.folderMu.Unlock()
 	cleaned, err := domain.NormalizeMediaFolderPath(path)
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
-	tx, err := db.sql.BeginTx(ctx, nil)
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -66,20 +76,20 @@ func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFold
 	// 眠っているワーカーを起こさないと、次に仕事が積まれるまで止まったままになる。
 	var c changes
 	c.jobsQueued(domain.JobKinds...)
-	if err := db.commit(tx, &c); err != nil {
+	if err := s.db.commit(tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: 1, CreatedAt: time.Unix(now, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
-func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64, path string) (domain.MediaFolder, error) {
-	db.folderMu.Lock()
-	defer db.folderMu.Unlock()
+func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64, path string) (domain.MediaFolder, error) {
+	s.db.folderMu.Lock()
+	defer s.db.folderMu.Unlock()
 	cleaned, err := domain.NormalizeMediaFolderPath(path)
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
-	tx, err := db.sql.BeginTx(ctx, nil)
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -123,16 +133,16 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	c.videosDeleted(released)
 	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
 	c.jobsQueued(domain.JobKinds...)
-	if err := db.commit(tx, &c); err != nil {
+	if err := s.db.commit(tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: version + 1, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
-func (db *DB) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error {
-	db.folderMu.Lock()
-	defer db.folderMu.Unlock()
-	tx, err := db.sql.BeginTx(ctx, nil)
+func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error {
+	s.db.folderMu.Lock()
+	defer s.db.folderMu.Unlock()
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -166,7 +176,7 @@ func (db *DB) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) 
 	c.videosDeleted(released)
 	// 動画の行が残っても、登録外になった所在の仕事は残りとして数えなくなる。
 	c.processingChanged()
-	return db.commit(tx, &c)
+	return s.db.commit(tx, &c)
 }
 
 // ensureFolderPlacementAllowed は取引の中で走査の有無と登録済みのフォルダを

@@ -51,7 +51,7 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 	ids := make([]int64, 0, len(sortRows))
 	for i, row := range sortRows {
 		key := fmt.Sprintf("key-%d", i)
-		got, err := db.UpsertVideo(ctx, domain.VideoFile{
+		got, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 			Path: fmt.Sprintf("/media/%d-%s.mp4", i, row.title), Title: row.title, ContentKey: key,
 			SizeBytes: row.size, MTime: fixedTime.Add(time.Duration(row.mtime) * time.Minute),
 			AddedAt: fixedTime.Add(time.Duration(row.added) * time.Minute), Container: "mp4",
@@ -61,12 +61,12 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 		}
 		ids = append(ids, got.ID)
 		if row.duration != nil {
-			if err := db.ApplyProbe(ctx, got.ID, domain.Probe{DurationMs: *row.duration, VideoCodec: "h264"}, domain.Playability{Playable: true}); err != nil {
+			if err := db.Ingest().ApplyProbe(ctx, got.ID, domain.Probe{DurationMs: *row.duration, VideoCodec: "h264"}, domain.Playability{Playable: true}); err != nil {
 				t.Fatal(err)
 			}
 		}
 		if row.played != nil {
-			if _, err := db.SaveProgress(ctx, key, domain.Progress{PositionMs: 1000}); err != nil {
+			if _, err := db.Playback().SaveProgress(ctx, key, domain.Progress{PositionMs: 1000}); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := db.SQL().Exec(`update playback_progress set updated_at = ? where content_key = ?`, *row.played, key); err != nil {
@@ -140,7 +140,7 @@ func pageIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	t.Helper()
 	var out []int64
 	for range 50 {
-		page, err := db.ListVideos(context.Background(), q)
+		page, err := db.Library().ListVideos(context.Background(), q)
 		if err != nil {
 			t.Fatalf("%+v: %v", q, err)
 		}
@@ -176,7 +176,7 @@ func TestListFolderVideosSortsWithSeed(t *testing.T) {
 		var got []int64
 		cursor := ""
 		for range 20 {
-			page, err := db.ListFolderVideos(context.Background(), domain.FolderVideoQuery{
+			page, err := db.Library().ListFolderVideos(context.Background(), domain.FolderVideoQuery{
 				Dir: "/media", Sort: sort, Seed: 9, Limit: 2, Cursor: cursor,
 			})
 			if err != nil {
@@ -203,7 +203,7 @@ func TestListVideosTitleAscIsNatural(t *testing.T) {
 		listingFile("/media/2話.mp4", "2話", "key-2", 1),
 		listingFile("/media/1話.mp4", "1話", "key-1", 2),
 	)
-	page, err := db.ListVideos(context.Background(), domain.VideoQuery{Sort: domain.SortTitleAsc})
+	page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Sort: domain.SortTitleAsc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestListVideosRandomSurvivesAddedLocations(t *testing.T) {
 	q := domain.VideoQuery{Sort: domain.SortRandom, Seed: 5, Limit: 2}
 	var seen []int64
 	for pageIndex := range 20 {
-		page, err := db.ListVideos(ctx, q)
+		page, err := db.Library().ListVideos(ctx, q)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -305,7 +305,7 @@ func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 	cursorOf := func(q domain.VideoQuery) string {
 		t.Helper()
 		q.Limit = 1
-		page, err := db.ListVideos(ctx, q)
+		page, err := db.Library().ListVideos(ctx, q)
 		if err != nil || page.NextCursor == "" {
 			t.Fatalf("%+v: cursor = %q, err = %v", q, page.NextCursor, err)
 		}
@@ -327,13 +327,13 @@ func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 		{"数でない値", domain.VideoQuery{Sort: domain.SortSizeAsc,
 			Cursor: base64.RawURLEncoding.EncodeToString([]byte("sizeAsc\x1f\x1f0\x1f1\x1fabc"))}},
 	} {
-		if _, err := db.ListVideos(ctx, tc.q); !errors.Is(err, domain.ErrInvalidCursor) {
+		if _, err := db.Library().ListVideos(ctx, tc.q); !errors.Is(err, domain.ErrInvalidCursor) {
 			t.Errorf("%s: err = %v, want domain.ErrInvalidCursor", tc.name, err)
 		}
 	}
 
 	// 同じ並び順・同じ seed なら続きが取れる。
-	if _, err := db.ListVideos(ctx, domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Cursor: random}); err != nil {
+	if _, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Cursor: random}); err != nil {
 		t.Errorf("同じ seed のカーソルで失敗した: %v", err)
 	}
 }

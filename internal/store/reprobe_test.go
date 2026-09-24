@@ -35,13 +35,13 @@ func jobCounts(t *testing.T, db *DB, videoID int64) map[string]int {
 func claimAtLastAttempt(t *testing.T, db *DB, kind domain.JobKind, videoID int64) domain.Job {
 	t.Helper()
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, kind, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, kind, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = ? and video_id = ?`, domain.MaxJobAttempts-1, string(kind), videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, kind)
+	job, err := db.Ingest().ClaimJob(ctx, kind)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func failedVideoFixture(t *testing.T) (*DB, int64) {
 	ctx := context.Background()
 	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail} {
 		job := claimAtLastAttempt(t, db, kind, videoID)
-		if err := db.FailClaimedJob(ctx, job, string(kind)+" failed"); err != nil {
+		if err := db.Ingest().FailClaimedJob(ctx, job, string(kind)+" failed"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -76,10 +76,10 @@ func TestRetryProbeRequeuesFailedVideoOnce(t *testing.T) {
 	db, videoID := failedVideoFixture(t)
 	ctx := context.Background()
 
-	if err := db.RetryProbe(ctx, videoID, true); err != nil {
+	if err := db.Ingest().RetryProbe(ctx, videoID, true); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestRetryProbeRequeuesFailedVideoOnce(t *testing.T) {
 		t.Fatalf("jobs = %v, want %v", got, want)
 	}
 
-	if err := db.RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
+	if err := db.Ingest().RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("2 回目: err = %v, want ErrProbeNotFailed", err)
 	}
 	if got := jobCounts(t, db, videoID); !equalCounts(got, want) {
@@ -120,10 +120,10 @@ func TestRetryProbeKeepsCompletedThumbnail(t *testing.T) {
 				thumbnail_state = 'done' where id = ?`, videoID); err != nil {
 				t.Fatal(err)
 			}
-			if err := db.RetryProbe(ctx, videoID, tc.seekMissing); err != nil {
+			if err := db.Ingest().RetryProbe(ctx, videoID, tc.seekMissing); err != nil {
 				t.Fatal(err)
 			}
-			video, err := db.GetVideo(ctx, videoID)
+			video, err := db.Library().GetVideo(ctx, videoID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -141,17 +141,17 @@ func TestRetryProbeKeepsCompletedThumbnail(t *testing.T) {
 func TestRetryProbeRejectsNonFailedAndMissing(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
+	if err := db.Ingest().RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("pending: err = %v, want ErrProbeNotFailed", err)
 	}
 	probe := domain.Probe{DurationMs: 1_000, VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+	if err := db.Ingest().ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
+	if err := db.Ingest().RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("done: err = %v, want ErrProbeNotFailed", err)
 	}
-	if err := db.RetryProbe(ctx, videoID+100, true); !errors.Is(err, domain.ErrNotFound) {
+	if err := db.Ingest().RetryProbe(ctx, videoID+100, true); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing: err = %v, want domain.ErrNotFound", err)
 	}
 	if count := countJobs(t, db); count != 0 {
@@ -166,15 +166,15 @@ func TestFailClaimedJobRecordsProbeAndThumbnailFailure(t *testing.T) {
 	ctx := context.Background()
 
 	probeJob := claimAtLastAttempt(t, db, domain.JobProbe, videoID)
-	if err := db.FailClaimedJob(ctx, probeJob, "open /media/a.mp4: no such file or directory"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, probeJob, "open /media/a.mp4: no such file or directory"); err != nil {
 		t.Fatal(err)
 	}
 	thumbnailJob := claimAtLastAttempt(t, db, domain.JobThumbnail, videoID)
-	if err := db.FailClaimedJob(ctx, thumbnailJob, "open /media/a.mp4: no such file or directory"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, thumbnailJob, "open /media/a.mp4: no such file or directory"); err != nil {
 		t.Fatal(err)
 	}
 
-	video, err := db.GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestFailClaimedProbeRollsBackJobWhenStateUpdateFails(t *testing.T) {
 		when new.probe_state = 'failed' begin select raise(abort, 'reject probe failure'); end`); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.FailClaimedJob(ctx, job, "probe failed"); err == nil {
+	if err := db.Ingest().FailClaimedJob(ctx, job, "probe failed"); err == nil {
 		t.Fatal("FailClaimedJob succeeded despite rejected probe state update")
 	}
 	if got := jobState(t, db, job.ID); got != "running" {
@@ -207,17 +207,17 @@ func TestFailClaimedProbeRollsBackJobWhenStateUpdateFails(t *testing.T) {
 func TestFailClaimedProbeKeepsPendingWhileRetrying(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, domain.JobProbe)
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.FailClaimedJob(ctx, job, "retry"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, job, "retry"); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,23 +235,23 @@ func TestFailClaimedJobKeepsCompletedState(t *testing.T) {
 
 	probeJob := claimAtLastAttempt(t, db, domain.JobProbe, videoID)
 	probe := domain.Probe{DurationMs: 1_000, VideoCodec: "h264", AudioCodec: "aac"}
-	applied, err := db.ApplyProbeForJob(ctx, probeJob, probe, domain.EvaluatePlayability("mp4", probe))
+	applied, err := db.Ingest().ApplyProbeForJob(ctx, probeJob, probe, domain.EvaluatePlayability("mp4", probe))
 	if err != nil || !applied {
 		t.Fatalf("apply = %v, %v", applied, err)
 	}
-	if err := db.FailClaimedJob(ctx, probeJob, "プレビューのジョブを積めません"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, probeJob, "プレビューのジョブを積めません"); err != nil {
 		t.Fatal(err)
 	}
 
 	thumbnailJob := claimAtLastAttempt(t, db, domain.JobThumbnail, videoID)
-	if written, err := db.SetThumbnailStateForJob(ctx, thumbnailJob, domain.ThumbnailStateDone); err != nil || !written {
+	if written, err := db.Ingest().SetThumbnailStateForJob(ctx, thumbnailJob, domain.ThumbnailStateDone); err != nil || !written {
 		t.Fatalf("thumbnail done = %v, %v", written, err)
 	}
-	if err := db.FailClaimedJob(ctx, thumbnailJob, "seek thumbnails failed"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, thumbnailJob, "seek thumbnails failed"); err != nil {
 		t.Fatal(err)
 	}
 
-	video, err := db.GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,13 +272,13 @@ func TestRetryProbeDuringFinalAttemptWindow(t *testing.T) {
 	job := claimAtLastAttempt(t, db, domain.JobProbe, videoID)
 
 	// ハンドラは失敗を返したが、ワーカーはまだ FailClaimedJob を呼んでいない。
-	if err := db.RetryProbe(ctx, videoID, false); !errors.Is(err, domain.ErrProbeNotFailed) {
+	if err := db.Ingest().RetryProbe(ctx, videoID, false); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("window: err = %v, want ErrProbeNotFailed", err)
 	}
-	if err := db.FailClaimedJob(ctx, job, "ffprobe failed"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, job, "ffprobe failed"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.RetryProbe(ctx, videoID, false); err != nil {
+	if err := db.Ingest().RetryProbe(ctx, videoID, false); err != nil {
 		t.Fatal(err)
 	}
 	// サムネイルは完成していないので、読み取りと同じ組で積む。

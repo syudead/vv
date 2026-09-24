@@ -32,7 +32,7 @@ func TestDirectVideoPathsReturnsDirectVideosOnce(t *testing.T) {
 		sampleFile("/media/showcase/ep 4.mp4", "ep 4", "key-4", 1, 0),
 	)
 
-	siblings, err := db.DirectVideoPaths(context.Background(), "/media/show")
+	siblings, err := db.Library().DirectVideoPaths(context.Background(), "/media/show")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestVideosAddedNear(t *testing.T) {
 		t.Helper()
 		file := sampleFile(path, key, key, 1, 0)
 		file.AddedAt = base.Add(offset)
-		got, err := db.UpsertVideo(ctx, file)
+		got, err := db.ScanIndex().UpsertVideo(ctx, file)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -84,7 +84,7 @@ func TestVideosAddedNear(t *testing.T) {
 	sameSecond := add("/media/same.mp4", "same", 0)
 	add("/outside/unregistered.mp4", "unregistered", time.Minute)
 
-	neighbors, err := db.VideosAddedNear(ctx, self, base, 3)
+	neighbors, err := db.Library().VideosAddedNear(ctx, self, base, 3)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestVideosByIDsKeepsOrder(t *testing.T) {
 		sampleFile("/media/b.mp4", "b", "key-b", 1, 0),
 		sampleFile("/outside/c.mp4", "c", "key-c", 1, 0),
 	)
-	videos, err := db.VideosByIDs(context.Background(), []int64{ids["/media/b.mp4"], ids["/outside/c.mp4"], ids["/media/a.mp4"]})
+	videos, err := db.Library().VideosByIDs(context.Background(), []int64{ids["/media/b.mp4"], ids["/outside/c.mp4"], ids["/media/a.mp4"]})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestVideosByIDsKeepsOrder(t *testing.T) {
 	if want := []string{"b", "a"}; !slices.Equal(titles, want) {
 		t.Fatalf("titles = %v, want %v", titles, want)
 	}
-	empty, err := db.VideosByIDs(context.Background(), nil)
+	empty, err := db.Library().VideosByIDs(context.Background(), nil)
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("empty = %v, %v", empty, err)
 	}
