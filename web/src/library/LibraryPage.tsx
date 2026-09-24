@@ -15,7 +15,6 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import { useVideos } from "../api/useVideos";
-import { formatBytes, formatDuration } from "../lib/format";
 import {
   readViewPreferences,
   type ViewPreferences,
@@ -24,19 +23,20 @@ import {
 } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
-import Button from "../ui/Button";
-import LibraryToolbar, { watchOptions } from "./LibraryToolbar";
 import {
   clearConditions,
   hasConditions,
   type HistoryMode,
   type ListCriteria,
   newSeed,
-} from "./listCriteria";
+} from "../videoList/listCriteria";
+import { conditionLabels, summarize } from "../videoList/listSummary";
+import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
+import { useListCriteria } from "../videoList/useListCriteria";
+import VideoCard, { VideoRow } from "../videoList/VideoCard";
+import EmptyLibrary from "./EmptyLibrary";
+import LibraryToolbar from "./LibraryToolbar";
 import SelectionBar from "./SelectionBar";
-import { CardSkeleton, EmptyLibrary, LoadFailed, NoMatches } from "./states";
-import { useListCriteria } from "./useListCriteria";
-import VideoCard, { VideoRow } from "./VideoCard";
 
 const skeletonCount = 12;
 
@@ -57,42 +57,6 @@ function topmostId(list: HTMLElement | null, top: number): number | undefined {
     }
   }
   return undefined;
-}
-
-/**
- * conditionLabels は一致なしの状態に並べる、効いている条件の名前である。
- * フォルダ画面はこれに範囲のチップを自分で足す（ui-design.md「No-match state」）。
- */
-export function conditionLabels(criteria: ListCriteria): string[] {
-  const labels: string[] = [];
-  if (criteria.query !== "") labels.push(`検索語「${criteria.query}」`);
-  if (criteria.watch !== "all") {
-    const watch = watchOptions.find((option) => option.value === criteria.watch);
-    if (watch !== undefined) labels.push(watch.label);
-  }
-  if (criteria.playable) labels.push("再生できるものだけ");
-  return labels;
-}
-
-/**
- * summarize は Stash の「1-8 of 8 (34m 11s - 263 MB)」に当たる一行。件数はサーバーの
- * total（検索語と絞り込みをすべて適用した全件）、合計時間と大きさは読み込んだ分である。
- * フォルダ画面の検索結果・最上位の検索結果も同じ書式を使う。
- */
-export function summarize(shown: Video[], total: number): string {
-  const count = Math.max(total, shown.length);
-  const durationMs = shown.reduce((sum, video) => sum + (video.durationMs ?? 0), 0);
-  const bytes = shown.reduce((sum, video) => sum + video.sizeBytes, 0);
-  const head =
-    shown.length === 0
-      ? "0 件"
-      : shown.length >= count
-        ? `${count.toLocaleString("ja-JP")} 件`
-        : `1–${shown.length.toLocaleString("ja-JP")} / ${count.toLocaleString("ja-JP")} 件`;
-  const detail = [durationMs > 0 ? formatDuration(durationMs) : "", formatBytes(bytes)]
-    .filter((part) => part !== "")
-    .join(" · ");
-  return detail === "" ? head : `${head}（${detail}）`;
 }
 
 export default function LibraryPage() {
@@ -426,12 +390,7 @@ export default function LibraryPage() {
       </div>
 
       {error !== null && items.length > 0 && (
-        <div className="flex items-center justify-center gap-2 text-sm text-danger">
-          <p>続きを取得できません: {error}</p>
-          <Button size="sm" onClick={retryLoadMore}>
-            再試行
-          </Button>
-        </div>
+        <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
       )}
 
       {!loading && items.length > 0 && (

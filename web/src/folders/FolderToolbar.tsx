@@ -2,14 +2,15 @@ import { SlidersHorizontal } from "lucide-react";
 import type { RefObject } from "react";
 
 import type { VideoSort, WatchFilter } from "../api/client";
-import { FilterMenu, ZoomSlider } from "../library/LibraryToolbar";
-import type { HistoryMode } from "../library/listCriteria";
-import SearchBox from "../library/SearchBox";
-import { CompactSortControls, SortMenu } from "../library/SortControls";
 import type { Zoom } from "../preferences/viewPreferences";
 import Button from "../ui/Button";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import Tooltip from "../ui/Tooltip";
+import FilterMenu from "../videoList/FilterMenu";
+import type { HistoryMode } from "../videoList/listCriteria";
+import SearchBox from "../videoList/SearchBox";
+import { CompactSortControls, SortMenu } from "../videoList/SortControls";
+import ZoomSlider from "../videoList/ZoomSlider";
 
 export interface FolderToolbarProps {
   query: string;
@@ -40,8 +41,8 @@ export interface FolderToolbarProps {
  * FolderToolbar はフォルダ画面（各フォルダ・最上位）のトップバー内の操作である。
  * ライブラリのツールバーから表示形式の切り替えを除いたもので、部品と幅の境界は
  * 同じにする（ui-design.md「Toolbar」「Screen boundary」）。検索欄・絞り込み・
- * 並べ替え・向きの部品は `web/src/library/` のものを借りる（Plan の
- * Structural Decisions 9）。
+ * 並べ替え・向き・大きさの部品は、ライブラリと共有する `web/src/videoList/` のものを
+ * 使う（Plan の Structural Decisions 9）。
  */
 export default function FolderToolbar({
   query,
