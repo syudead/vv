@@ -10,7 +10,7 @@
   mise tools / container images の 6 グループに分けて PR が出る。脆弱性対応の
   PR は曜日を待たずに出る。
 - マイナー・パッチ・lockfile 保守・ダイジェスト更新は、PR の必須チェック
-  （Checks / Docker image）が通れば Renovate が自動でマージする。Browser E2E は
+  （Checks）が通れば Renovate が自動でマージする。Browser E2E と Docker image は
   マージ後の `main` への push で回る。
 - メジャー更新は PR が残る。破壊的変更を読んで人がマージする。
 - GitHub Actions はコミットハッシュに固定され、コメントでタグ名を併記する

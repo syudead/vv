@@ -231,11 +231,11 @@ jobs:
             web/test-results/
           retention-days: 7
 
-  # イメージはコード変更を含む main 向け PR と main への push でだけ作る。
+  # イメージはコード変更を含む main への push（PR のマージ）でだけ作る。
   docker:
     name: Docker image
     needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.base_ref == 'main')
+    if: needs.changes.outputs.code == 'true' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
