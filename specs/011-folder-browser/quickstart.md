@@ -56,4 +56,4 @@
 `task test-e2e` の `web/e2e/folders.e2e.ts` が 1〜5、7、9 を自動で確かめる。E2E の
 フォルダ構成には `many/` を置かない。6 のページ送りは `internal/store` と
 `internal/httpapi` の単体テストが、戻ったときの復元は `FolderPage.test.tsx` が確かめる。
-8 と見た目は人が確かめ、画像を PR に添える（[ui-change-screenshots.md](../../docs/how-to/ui-change-screenshots.md)）。
+8 と見た目は人が確かめ。

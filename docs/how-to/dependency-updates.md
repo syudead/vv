@@ -9,8 +9,9 @@
 - 毎週月曜の早朝（JST）に、Go modules / web npm / tools npm / GitHub Actions /
   mise tools / container images の 6 グループに分けて PR が出る。脆弱性対応の
   PR は曜日を待たずに出る。
-- マイナー・パッチ・lockfile 保守・ダイジェスト更新は、`main` の必須チェック
-  （Checks / Browser E2E / Docker image）が通れば Renovate が自動でマージする。
+- マイナー・パッチ・lockfile 保守・ダイジェスト更新は、PR の必須チェック
+  （Checks）が通れば Renovate が自動でマージする。Browser E2E と Docker image は
+  マージ後の `main` への push で回る。
 - メジャー更新は PR が残る。破壊的変更を読んで人がマージする。
 - GitHub Actions はコミットハッシュに固定され、コメントでタグ名を併記する
   （`config:best-practices` の既定）。
@@ -33,7 +34,6 @@
 
 ## Renovate の PR に対する扱い
 
-- Bot の PR には「UI 変更なし」の記載や画像添付を求めない。
 - 自動マージが止まっている PR は、CI の失敗か、コンフリクトか、メジャー更新
   のどれか。Renovate の Dependency Dashboard Issue に一覧が出る。
 - 更新を一時的に止めたいときは、PR を閉じる（同じ版は再作成されない）か、
