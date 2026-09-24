@@ -33,15 +33,22 @@ export interface SearchBoxProps {
  * 上限を超えたときは、入力前の値と比べて新しく入った部分だけを切る。先頭や途中への
  * 入力で、もとからあった末尾を消さないためである。上限を超える貼り付けも、入る分
  * だけが入る（Issue の Edge Case「語の長さの上限」）。
+ *
+ * `caret` は入力後のカーソル位置（UTF-16 の単位）で、新しく入った部分はその手前で
+ * 終わる。選択範囲を、選んだ文字で終わる語に置き換えたときも、入った部分を既存の
+ * 末尾と取り違えないよう、共通の先頭と末尾をカーソルの前後に収める。
  */
-export function limitQueryInput(next: string, previous = ""): string {
+export function limitQueryInput(next: string, previous = "", caret?: number): string {
   const after = Array.from(next);
   if (after.length <= MAX_QUERY_LENGTH) return next;
   const before = Array.from(previous);
+  // カーソル位置が分からないときは、先頭と末尾を縛らない。
+  const cursor =
+    caret === undefined ? undefined : Array.from(next.slice(0, caret)).length;
   let prefix = 0;
   while (
     prefix < before.length &&
-    prefix < after.length &&
+    prefix < (cursor ?? after.length) &&
     before[prefix] === after[prefix]
   ) {
     prefix++;
@@ -49,7 +56,7 @@ export function limitQueryInput(next: string, previous = ""): string {
   let suffix = 0;
   while (
     suffix < before.length - prefix &&
-    suffix < after.length - prefix &&
+    suffix < after.length - Math.max(prefix, cursor ?? prefix) &&
     before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
   ) {
     suffix++;
@@ -143,7 +150,13 @@ export default function SearchBox({
         type="search"
         value={input}
         onChange={(event) =>
-          setInput(limitQueryInput(event.target.value, latest.current))
+          setInput(
+            limitQueryInput(
+              event.target.value,
+              latest.current,
+              event.target.selectionEnd ?? undefined,
+            ),
+          )
         }
         onFocus={() => session.current.start()}
         onBlur={() => {
