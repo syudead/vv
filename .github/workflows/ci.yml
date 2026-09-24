@@ -47,7 +47,7 @@ jobs:
           # git diff が失敗した場合は step 自体を失敗させ、検査を誤って飛ばさない。
           changed=$(git diff --no-renames --name-only "$base" HEAD)
           code=$(printf '%s\n' "$changed" |
-            grep -Ev '(\.md$|^docs/|^specs/|^\.agents/|^\.claude/|^renovate\.json$)' || true)
+            grep -Ev '(\.md$|^docs/|^specs/)' || true)
           if [ -n "$code" ]; then
             printf 'コード変更:\n%s\n' "$code"
             echo "code=true" >> "$GITHUB_OUTPUT"
@@ -56,29 +56,23 @@ jobs:
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
 
-      # コード変更では task check が sddguard を含む。文書だけならここで
-      # リンク、行末空白、索引、Plan 成果物の検査だけを軽量に実行する。
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        if: steps.filter.outputs.code == 'false'
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
-        if: steps.filter.outputs.code == 'false'
-        with:
-          install_args: "task"
-
-      - name: 文書を検査する
-        if: steps.filter.outputs.code == 'false'
-        run: task check-docs
-
   check:
     name: Checks
     needs: changes
-    if: needs.changes.outputs.code == 'true'
+    # 必須チェックなので変更判定が失敗しても起動し、自身も失敗として返す。
+    if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: 変更パスの判定結果を確認する
+        env:
+          CODE: ${{ needs.changes.outputs.code }}
+          RESULT: ${{ needs.changes.result }}
+        run: |
+          if [ "$RESULT" != "success" ] || { [ "$CODE" != "true" ] && [ "$CODE" != "false" ]; }; then
+            echo "変更パスを判定できませんでした"
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -91,6 +85,7 @@ jobs:
             tools/go.sum
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.code == 'true'
         with:
           node-version: 24
           cache: npm
@@ -101,22 +96,29 @@ jobs:
           install_args: "task"
 
       - name: Web依存を取得する
+        if: needs.changes.outputs.code == 'true'
         run: npm --prefix web ci
 
       - name: Node開発ツールを取得する
+        if: needs.changes.outputs.code == 'true'
         working-directory: tools
         run: npm ci
 
       # migrations-check が base branch と比べるので取り寄せる。比較先の選択は
       # スクリプトが GITHUB_BASE_REF から行う（引数は渡さない）。
       - name: base branch を取得する
-        if: github.event_name == 'pull_request'
+        if: needs.changes.outputs.code == 'true' && github.event_name == 'pull_request'
         run: git fetch --no-tags --depth=1 origin "$BASE:refs/remotes/origin/$BASE"
         env:
           BASE: ${{ github.base_ref }}
 
       - name: 追加runtimeの要らない検査
+        if: needs.changes.outputs.code == 'true'
         run: task check
+
+      - name: 文書を検査する
+        if: needs.changes.outputs.code == 'false'
+        run: task check-docs
 
   # e2e はコード変更を含む main 向け PR と main への push でだけ回す。
   e2e:
