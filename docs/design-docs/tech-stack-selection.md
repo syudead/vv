@@ -156,7 +156,7 @@ DB は「再構築可能なインデックス」に限定する。タグ・再�
   trigram の作成と検索が動作したため、切り替えは行わない。ただし trigram は
   2文字以下の検索語に `MATCH` が一致しないことが判明したため、検索は
   「3文字以上は `MATCH`、1〜2文字は照合用の鍵 `search_key` への `instr`」の2経路にする
-  （振り分けは `internal/store/search.go` の `routeFor`、検証は
+  （振り分けは `internal/store/search.go` の `termUsesMatch`、検証は
   `internal/store/fts_test.go`）。
 - **非対応コーデックの混入。** H.265/VP9/mkv などはブラウザで再生できない。
   取り込み時に `ffprobe` で判定し、再生不可を UI に明示する。変換は

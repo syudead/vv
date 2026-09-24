@@ -403,7 +403,8 @@ func TestSearchDoesNotMatchAcrossTitleAndPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 3文字以上（MATCH）と1〜2文字（instr）の両方の経路を調べる。
-	for _, query := range []string{"bc\nde", "c\nd"} {
+	// 空白（改行を含む）は語の区切りなので、改行はフレーズの中にだけ現れる。
+	for _, query := range []string{"\"bc\nde\"", "\"c\nd\""} {
 		if got := searchTitles(t, db, query); len(got) != 0 {
 			t.Errorf("検索 %q = %v, want 境目をまたいで当たらない", query, got)
 		}

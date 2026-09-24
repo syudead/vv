@@ -182,35 +182,38 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	}
 }
 
-// 検索の2経路。書記素が3文字以上なら MATCH、
-// 1〜2文字なら search_key への instr に振り分ける。
+// 語の調べ方は2通りある。照合形で3文字以上なら MATCH、1〜2文字なら
+// search_key への instr で調べる。
 //
 // trigram は3文字単位で索引を作るため2文字以下は MATCH に一致せず、
 // 日本語では2文字の検索語が多い。この振り分けが検索の前提である。
-func TestSearchRouteSelection(t *testing.T) {
+func TestSearchTermRouteSelection(t *testing.T) {
 	tests := []struct {
-		query string
-		want  searchRoute
+		query     string
+		wantMatch bool
 	}{
-		{"夏", routeInstr},
-		{"旅行", routeInstr},
-		{"夏休み", routeMatch},
-		{"夏休みの旅行", routeMatch},
-		{"ab", routeInstr},
-		{"abc", routeMatch},
-		// 数えるのは符号位置ではなく、利用者が1文字と見るまとまりである。
-		// NFD の「が」（か + 濁点）は符号位置では2つだが1文字として数える。
-		// ここを取り違えると、2文字の入力が MATCH 経路へ回って0件になる。
-		{"\u304b\u3099\u3063", routeInstr},       // が + っ = 2文字（符号位置では3）
-		{"\u304b\u3099\u3063\u3053", routeMatch}, // が + っ + こ = 3文字
+		{"夏", false},
+		{"旅行", false},
+		{"夏休み", true},
+		{"夏休みの旅行", true},
+		{"ab", false},
+		{"abc", true},
+		// 数えるのは照合形の文字である。NFD の「が」（か + 濁点）は照合形では
+		// 1文字に畳まれる。ここを取り違えると、2文字の入力が MATCH へ回って0件になる。
+		{"\u304b\u3099\u3063", false},      // が + っ = 2文字（符号位置では3）
+		{"\u304b\u3099\u3063\u3053", true}, // が + っ + こ = 3文字
 		// 絵文字も1文字として数える。
-		{"🎆🎇", routeInstr},
-		{"🎆🎇🎈", routeMatch},
+		{"🎆🎇", false},
+		{"🎆🎇🎈", true},
 	}
 
 	for _, tc := range tests {
-		if got := routeFor(tc.query); got != tc.want {
-			t.Errorf("routeFor(%q) = %v, want %v", tc.query, got, tc.want)
+		expr := domain.ParseSearchQuery(tc.query)
+		if len(expr.Clauses) != 1 || len(expr.Clauses[0].Terms) != 1 {
+			t.Fatalf("前提が崩れている: %q が1語にならない: %+v", tc.query, expr)
+		}
+		if got := termUsesMatch(expr.Clauses[0].Terms[0].Text); got != tc.wantMatch {
+			t.Errorf("termUsesMatch(%q) = %v, want %v", tc.query, got, tc.wantMatch)
 		}
 	}
 }
