@@ -376,7 +376,10 @@ export default function VideoPage() {
           </div>
         </div>
 
-        <aside className="min-w-0 px-4 sm:px-6 lg:px-0">
+        <aside
+          // 広い画面では右の列を画面の高さに留め、関連動画の並びだけを中でスクロールさせる。
+          className="min-w-0 px-4 sm:px-6 lg:sticky lg:top-6 lg:flex lg:max-h-[calc(100dvh-3rem)] lg:flex-col lg:px-0"
+        >
           <RelatedVideos
             state={related}
             backTo={backTo}

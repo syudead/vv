@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import type { Video } from "../api/client";
 import type { RelatedState } from "../api/useVideoDetail";
+import { type HoverPreview, useHoverPreview } from "./useHoverPreview";
 import { cn } from "../lib/cn";
 import { formatDuration, watchedRatio } from "../lib/format";
 import Button from "../ui/Button";
@@ -25,9 +26,12 @@ export function videoLinkLabel(video: Video): string {
 export function VideoThumbnail({
   video,
   className,
+  preview,
 }: {
   video: Video;
   className?: string;
+  /** マウスを乗せたときの一覧用プレビュー。関連動画の列だけが渡す。 */
+  preview?: HoverPreview;
 }) {
   const duration = formatDuration(video.durationMs);
   const ratio = watchedRatio(video);
@@ -44,7 +48,10 @@ export function VideoThumbnail({
           alt=""
           loading="lazy"
           decoding="async"
-          className="h-full w-full object-cover object-top"
+          className={cn(
+            "h-full w-full object-cover object-top",
+            preview?.playing === true && "opacity-0",
+          )}
         />
       ) : (
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-fg-subtle">
@@ -53,6 +60,25 @@ export function VideoThumbnail({
             {video.thumbnailState === "failed" ? "画像なし" : "準備中"}
           </span>
         </div>
+      )}
+      {preview?.active === true && preview.previewUrl !== undefined && (
+        <video
+          ref={preview.videoRef}
+          src={preview.previewUrl}
+          muted
+          loop
+          playsInline
+          preload="auto"
+          controls={false}
+          aria-hidden="true"
+          tabIndex={-1}
+          onPlaying={preview.onPlaying}
+          onError={preview.onError}
+          className={cn(
+            "absolute inset-0 h-full w-full object-cover object-top",
+            preview.playing ? "opacity-100" : "opacity-0",
+          )}
+        />
       )}
       {duration !== "" && (
         <span className="absolute right-1 bottom-1 rounded-sm bg-overlay px-1 text-xs text-fg tabular-nums">
@@ -100,7 +126,7 @@ export default function RelatedVideos({
   return (
     <section
       aria-labelledby={empty ? undefined : "related-heading"}
-      className="flex flex-col gap-3"
+      className="flex flex-col gap-3 lg:min-h-0 lg:flex-1"
     >
       <div
         className={cn(
@@ -140,24 +166,37 @@ export default function RelatedVideos({
       )}
 
       {state.kind === "ready" && !empty && (
-        <ul className="flex flex-col gap-3">
+        <ul
+          // 広い画面では並びだけを中でスクロールさせ、端まで来てもページへは送らない。
+          // 行の hover の面と輪郭が切れないよう、はみ出す分だけ内側に余白を取る。
+          className="flex flex-col gap-3 lg:-mx-1.5 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:px-1.5 lg:py-1.5"
+        >
           {state.related.items.map((video) => (
-            <li key={video.id}>
-              <Link
-                to={`/videos/${String(video.id)}`}
-                state={{ from: backTo }}
-                aria-label={videoLinkLabel(video)}
-                className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-hover-wash"
-              >
-                <VideoThumbnail video={video} className="w-40" />
-                <span className="line-clamp-2 min-w-0 text-sm font-medium text-fg [overflow-wrap:anywhere]">
-                  {video.title}
-                </span>
-              </Link>
-            </li>
+            <RelatedItem key={video.id} video={video} backTo={backTo} />
           ))}
         </ul>
       )}
     </section>
+  );
+}
+
+function RelatedItem({ video, backTo }: { video: Video; backTo: string }) {
+  const preview = useHoverPreview(video);
+  return (
+    <li>
+      <Link
+        to={`/videos/${String(video.id)}`}
+        state={{ from: backTo }}
+        aria-label={videoLinkLabel(video)}
+        onPointerEnter={preview.onPointerEnter}
+        onPointerLeave={preview.onPointerLeave}
+        className="-m-1.5 flex gap-3 rounded-lg p-1.5 transition-colors hover:bg-hover-wash"
+      >
+        <VideoThumbnail video={video} className="w-40" preview={preview} />
+        <span className="line-clamp-2 min-w-0 text-sm font-medium text-fg [overflow-wrap:anywhere]">
+          {video.title}
+        </span>
+      </Link>
+    </li>
   );
 }

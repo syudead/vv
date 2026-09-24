@@ -333,6 +333,12 @@
     background-color: var(--color-accent-soft);
   }
 
+  /* Tailwind v4 はボタンのカーソルを既定のままにする。押せるものは指の形にそろえる。 */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
   :focus-visible {
     outline: 2px solid var(--color-link);
     outline-offset: 2px;

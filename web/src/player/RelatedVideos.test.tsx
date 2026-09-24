@@ -1,6 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
 import type { RelatedState } from "../api/useVideoDetail";
@@ -122,5 +122,73 @@ describe("RelatedVideos", () => {
     // リンクの名前は題名と長さだけで、割合は進捗バーとして別に読める。
     expect(screen.getByRole("link", { name: "関連 2 1:05" })).toBeDefined();
     expect(screen.getByRole("progressbar", { name: "再生済みの割合" })).toBeDefined();
+  });
+
+  describe("マウスを乗せたときのプレビュー", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const previewItem = (overrides: Partial<Video> = {}) =>
+      item(2, { previewUrl: "/api/videos/2/preview?v=a", ...overrides });
+    const previewVideo = (container: HTMLElement) =>
+      container.querySelector<HTMLVideoElement>("video");
+
+    it("マウスを乗せて 400ms 後に一覧用プレビューを無音で流し、離すと止める", () => {
+      vi.useFakeTimers();
+      const { container } = renderList({
+        kind: "ready",
+        id: 1,
+        related: { items: [previewItem()], nextId: 2 },
+      });
+      const link = screen.getByRole("link", { name: "関連 2 1:05" });
+
+      fireEvent.pointerEnter(link, { pointerType: "mouse" });
+      act(() => {
+        vi.advanceTimersByTime(399);
+      });
+      expect(previewVideo(container)).toBeNull();
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      const video = previewVideo(container);
+      expect(video?.getAttribute("src")).toBe("/api/videos/2/preview?v=a");
+      expect(video?.muted).toBe(true);
+      expect(video?.loop).toBe(true);
+
+      fireEvent.pointerLeave(link, { pointerType: "mouse" });
+      expect(previewVideo(container)).toBeNull();
+    });
+
+    it("タッチ・ペンや、プレビューが未完成の動画では流さない", () => {
+      vi.useFakeTimers();
+      const { container, unmount } = renderList({
+        kind: "ready",
+        id: 1,
+        related: { items: [previewItem()], nextId: 2 },
+      });
+      const link = screen.getByRole("link", { name: "関連 2 1:05" });
+      for (const pointerType of ["touch", "pen"]) {
+        fireEvent.pointerEnter(link, { pointerType });
+        act(() => {
+          vi.advanceTimersByTime(1000);
+        });
+        expect(previewVideo(container)).toBeNull();
+      }
+      unmount();
+
+      const pending = renderList({
+        kind: "ready",
+        id: 1,
+        related: { items: [previewItem({ previewState: "pending" })], nextId: 2 },
+      });
+      fireEvent.pointerEnter(screen.getByRole("link", { name: "関連 2 1:05" }), {
+        pointerType: "mouse",
+      });
+      act(() => {
+        vi.advanceTimersByTime(1000);
+      });
+      expect(previewVideo(pending.container)).toBeNull();
+    });
   });
 });
