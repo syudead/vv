@@ -1026,9 +1026,10 @@ components:
           format: date-time
         total:
           type: integer
-          description: 走査で見つけたファイル数
+          description: 変更なしを除いた取り込み対象ファイル数。対象の確定前は0
         completed:
           type: integer
+          description: 取り込み処理に成功した対象ファイル数
         failed:
           type: integer
         error:

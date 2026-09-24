@@ -357,6 +357,7 @@ type RootFolderListing struct {
 
 // Scan defines model for Scan.
 type Scan struct {
+	// Completed 取り込み処理に成功した対象ファイル数
 	Completed int `json:"completed"`
 
 	// Error スキャン自体が失敗した理由
@@ -367,7 +368,7 @@ type Scan struct {
 	StartedAt  *time.Time `json:"startedAt,omitempty"`
 	State      ScanState  `json:"state"`
 
-	// Total 走査で見つけたファイル数
+	// Total 変更なしを除いた取り込み対象ファイル数。対象の確定前は0
 	Total int `json:"total"`
 }
 

@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -27,6 +28,15 @@ type fakeIndex struct {
 	// 再計算していないことを確かめるために数える。
 	progress  []domain.ScanResult
 	reportErr error
+	ensureErr error
+}
+
+type failingInfoEntry struct {
+	fs.DirEntry
+}
+
+func (failingInfoEntry) Info() (fs.FileInfo, error) {
+	return nil, errors.New("metadata unavailable")
 }
 
 func (f *fakeIndex) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
@@ -108,6 +118,9 @@ func (f *fakeIndex) EnqueueJob(_ context.Context, kind domain.JobKind, videoID i
 }
 
 func (f *fakeIndex) EnsureJob(_ context.Context, kind domain.JobKind, videoID int64) error {
+	if f.ensureErr != nil {
+		return f.ensureErr
+	}
 	for _, job := range f.jobs {
 		if job.kind == kind && job.videoID == videoID {
 			return nil
@@ -294,8 +307,8 @@ func TestScanSkipsUnchangedFiles(t *testing.T) {
 	upsertsAfterFirst := len(index.upserts)
 	second := runScan(t, root, index)
 
-	if second.Total != 1 {
-		t.Errorf("2 回目: Total = %d, want 1", second.Total)
+	if second.Total != 0 || second.Completed() != 0 {
+		t.Errorf("2 回目の進捗 = %d / %d, want 0 / 0", second.Completed(), second.Total)
 	}
 	if second.Added != 0 || second.Updated != 0 || second.Moved != 0 {
 		t.Errorf("2 回目に変化が記録された: %+v", second)
@@ -326,6 +339,19 @@ func TestScanRequeuesMissingJobsForUnchangedPendingVideo(t *testing.T) {
 	}
 	if len(index.jobs) != 2 {
 		t.Fatalf("requeued jobs = %d, want 2", len(index.jobs))
+	}
+}
+
+func TestScanCountsFailedPendingJobRepairAsTarget(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	index.jobs = nil
+	index.ensureErr = errors.New("queue unavailable")
+
+	result := runScan(t, root, index)
+	if result.Total != 1 || result.Completed() != 0 || result.Failed != 1 {
+		t.Fatalf("failed pending job repair should be 0 / 1 with one failure, got %+v", result)
 	}
 }
 
@@ -385,6 +411,9 @@ func TestScanUpdatesChangedFile(t *testing.T) {
 	if result.Updated != 1 {
 		t.Errorf("Updated = %d, want 1: %+v", result.Updated, result)
 	}
+	if result.Total != 1 || result.Completed() != 1 {
+		t.Errorf("進捗 = %d / %d, want 1 / 1", result.Completed(), result.Total)
+	}
 }
 
 // 移動・改名は、消えたパスと新しいパスの content_key が一致することで
@@ -440,6 +469,107 @@ func TestScanRemovesMissingFiles(t *testing.T) {
 	}
 }
 
+func TestScanRemovesIndexedFileDeletedAfterDiscovery(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a", "z.mp4": "z"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+
+	a := filepath.Join(root, "a.mp4")
+	z := filepath.Join(root, "z.mp4")
+	if err := os.WriteFile(z, []byte("changed z"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(z, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := New(Options{Index: index})
+	scanner.contentKey = func(path string) (string, error) {
+		if path == z {
+			if err := os.Remove(a); err != nil {
+				return "", err
+			}
+		}
+		return ContentKey(path)
+	}
+	result, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Removed != 1 {
+		t.Fatalf("file deleted after discovery was not removed: %+v", result)
+	}
+	if _, ok := index.rows[a]; ok {
+		t.Fatal("indexed location remained after its file disappeared")
+	}
+}
+
+func TestScanPreservesIndexWhenRootDisappearsAfterDiscovery(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a", "z.mp4": "z"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+
+	z := filepath.Join(root, "z.mp4")
+	if err := os.WriteFile(z, []byte("changed z"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(z, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := New(Options{Index: index})
+	scanner.contentKey = func(string) (string, error) {
+		if err := os.RemoveAll(root); err != nil {
+			return "", err
+		}
+		return "", fs.ErrNotExist
+	}
+	_, err := scanner.Scan(context.Background())
+	if err == nil {
+		t.Fatal("root disappearance was reported as a completed scan")
+	}
+	if len(index.deleted) != 0 {
+		t.Fatalf("indexed locations were deleted after root disappearance: %v", index.deleted)
+	}
+	if len(index.rows) != 2 {
+		t.Fatalf("indexed rows = %d, want 2", len(index.rows))
+	}
+}
+
+func TestScanPreservesIndexWhenParentDisappearsAfterDiscovery(t *testing.T) {
+	root := mediaTree(t, map[string]string{"gone/a.mp4": "a", "z.mp4": "z"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+
+	z := filepath.Join(root, "z.mp4")
+	if err := os.WriteFile(z, []byte("changed z"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(z, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := New(Options{Index: index})
+	scanner.contentKey = func(path string) (string, error) {
+		if path == z {
+			if err := os.RemoveAll(filepath.Join(root, "gone")); err != nil {
+				return "", err
+			}
+		}
+		return ContentKey(path)
+	}
+	_, err := scanner.Scan(context.Background())
+	if err == nil {
+		t.Fatal("parent disappearance was reported as a completed scan")
+	}
+	if len(index.deleted) != 0 {
+		t.Fatalf("indexed locations were deleted after parent disappearance: %v", index.deleted)
+	}
+}
+
 // 新しく取り込んだ動画には、解析とサムネイルのジョブを積む。
 func TestScanEnqueuesJobsForNewVideos(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})
@@ -476,8 +606,8 @@ func TestScanContinuesAfterFileFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Total != 3 || result.Failed != 1 || result.Added != 2 {
-		t.Fatalf("want total=3 failed=1 added=2, got %+v", result)
+	if result.Total != 3 || result.Completed() != 2 || result.Failed != 1 || result.Added != 2 {
+		t.Fatalf("want completed=2 total=3 failed=1 added=2, got %+v", result)
 	}
 	paths := index.upsertedPaths()
 	if len(paths) != 2 || paths[0] != filepath.Join(root, "a.mp4") || paths[1] != filepath.Join(root, "c.mp4") {
@@ -544,24 +674,148 @@ func TestScanReportsProgress(t *testing.T) {
 	if len(index.progress) == 0 {
 		t.Fatal("進捗が1度も報告されていない")
 	}
+	first := index.progress[0]
+	if first.Total != 2 || first.Completed() != 0 {
+		t.Errorf("対象確定時の進捗 = %d / %d, want 0 / 2", first.Completed(), first.Total)
+	}
 	last := index.progress[len(index.progress)-1]
-	if last.Total != 2 {
-		t.Errorf("最後に報告した Total = %d, want 2", last.Total)
+	if last.Total != 2 || last.Completed() != 2 {
+		t.Errorf("最後に報告した進捗 = %d / %d, want 2 / 2", last.Completed(), last.Total)
 	}
 }
 
-// 読めないrootは失敗として数え、既存索引を保持する。
-func TestScanFailsWhenMediaDirIsUnreadable(t *testing.T) {
+func TestScanProgressCountsOnlyFilesThatNeedImport(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a", "b.mp4": "b"})
 	index := newFakeIndex()
-	index.folders = []domain.MediaFolder{{ID: 1, Path: filepath.Join(t.TempDir(), "missing"), Version: 1}}
-	scanner := New(Options{Index: index})
+	runScan(t, root, index)
+	for path, row := range index.rows {
+		row.ProbeState = domain.ProbeStateDone
+		row.ThumbnailState = domain.ThumbnailStateDone
+		row.PreviewState = domain.PreviewStateDone
+		index.rows[path] = row
+	}
+
+	changed := filepath.Join(root, "b.mp4")
+	if err := os.WriteFile(changed, []byte("changed length"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(changed, later, later); err != nil {
+		t.Fatal(err)
+	}
+	index.progress = nil
+
+	result := runScan(t, root, index)
+	if result.Total != 1 || result.Completed() != 1 || result.Updated != 1 {
+		t.Fatalf("one changed file should be 1 / 1, got %+v", result)
+	}
+	if first := index.progress[0]; first.Total != 1 || first.Completed() != 0 {
+		t.Fatalf("target discovery progress = %d / %d, want 0 / 1", first.Completed(), first.Total)
+	}
+}
+
+func TestScanRejectsFileChangedWhileContentKeyIsCalculated(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "old"})
+	path := filepath.Join(root, "a.mp4")
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index, Queue: index, Reporter: index})
+	scanner.contentKey = func(path string) (string, error) {
+		if err := os.WriteFile(path, []byte("new and longer"), 0o600); err != nil {
+			return "", err
+		}
+		return ContentKey(path)
+	}
 
 	result, err := scanner.Scan(context.Background())
 	if err != nil {
-		t.Fatalf("root I/O failure should be isolated: %v", err)
+		t.Fatal(err)
 	}
-	if result.Failed != 1 {
-		t.Errorf("Failed = %d, want 1", result.Failed)
+	if result.Total != 1 || result.Completed() != 0 || result.Failed != 1 {
+		t.Fatalf("changed file should be 0 / 1 with one failure, got %+v", result)
+	}
+	if len(index.upserts) != 0 {
+		t.Fatalf("changed file was indexed with inconsistent metadata: %+v", index.upserts)
+	}
+	if got, err := os.ReadFile(path); err != nil || string(got) != "new and longer" {
+		t.Fatalf("fixture change failed: content=%q err=%v", got, err)
+	}
+}
+
+// 読めないrootでは対象集合を確定できないため、走査全体を失敗させる。
+func TestScanFailsWhenMediaDirIsUnreadable(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "missing")
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	index.rows[filepath.Join(root, "existing.mp4")] = domain.IndexedVideo{ID: 1, LocationID: 2}
+	scanner := New(Options{Index: index})
+
+	result, err := scanner.Scan(context.Background())
+	if err == nil {
+		t.Fatal("root I/O failure was reported as a completed scan")
+	}
+	if !strings.Contains(err.Error(), root) {
+		t.Fatalf("failure reason does not identify the root: %v", err)
+	}
+	if result.Total != 0 || result.Failed != 0 {
+		t.Fatalf("directory failure was mixed into file counts: %+v", result)
+	}
+	if len(index.deleted) != 0 {
+		t.Fatalf("existing locations were deleted after root failure: %v", index.deleted)
+	}
+}
+
+func TestScanFailsWhenSubdirectoryCannotBeRead(t *testing.T) {
+	root := t.TempDir()
+	protected := filepath.Join(root, "locked", "existing.mp4")
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	index.rows[protected] = domain.IndexedVideo{ID: 1, LocationID: 2}
+	scanner := New(Options{Index: index})
+	failedDir := filepath.Join(root, "locked")
+	scanner.walkDir = func(_ string, walk fs.WalkDirFunc) error {
+		return walk(failedDir, nil, errors.New("permission denied"))
+	}
+
+	result, err := scanner.Scan(context.Background())
+	if err == nil {
+		t.Fatal("subdirectory I/O failure was reported as a completed scan")
+	}
+	if !strings.Contains(err.Error(), failedDir) {
+		t.Fatalf("failure reason does not identify the unreadable directory: %v", err)
+	}
+	if result.Total != 0 || result.Failed != 0 {
+		t.Fatalf("directory failure was mixed into file counts: %+v", result)
+	}
+	if len(index.deleted) != 0 {
+		t.Fatalf("existing locations were deleted after subtree failure: %v", index.deleted)
+	}
+}
+
+func TestScanDiscardsPartialCountsWhenDiscoveryLaterFails(t *testing.T) {
+	root := mediaTree(t, map[string]string{"unreadable.mp4": "content"})
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	failedDir := filepath.Join(root, "locked")
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index})
+	scanner.walkDir = func(_ string, walk fs.WalkDirFunc) error {
+		path := filepath.Join(root, entries[0].Name())
+		if err := walk(path, failingInfoEntry{DirEntry: entries[0]}, nil); err != nil {
+			return err
+		}
+		return walk(failedDir, nil, errors.New("permission denied"))
+	}
+
+	result, err := scanner.Scan(context.Background())
+	if err == nil {
+		t.Fatal("later discovery failure was reported as a completed scan")
+	}
+	if result.Total != 0 || result.Failed != 0 {
+		t.Fatalf("partial discovery counts escaped after failure: %+v", result)
 	}
 }
 
@@ -613,21 +867,6 @@ func TestSuccessfulScanPreservesMigratedLocationOutsideRegisteredRoots(t *testin
 	}
 	if len(index.deleted) != 0 {
 		t.Fatalf("deleted location outside registered roots: %v", index.deleted)
-	}
-}
-
-func TestWalkErrorOnlySkipsDirectories(t *testing.T) {
-	root := t.TempDir()
-	failedFile := filepath.Join(root, "b.mp4")
-	indexed := map[string]domain.IndexedVideo{
-		failedFile:                             {ID: 1},
-		filepath.Join(root, "locked", "c.mp4"): {ID: 2},
-	}
-	if walkErrorIsDirectory(failedFile, root, nil, indexed) {
-		t.Fatal("file error would skip the remaining siblings")
-	}
-	if !walkErrorIsDirectory(filepath.Join(root, "locked"), root, nil, indexed) {
-		t.Fatal("directory error would not skip its unreadable subtree")
 	}
 }
 
