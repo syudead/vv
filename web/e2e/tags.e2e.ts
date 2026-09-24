@@ -610,4 +610,254 @@ test.describe.serial("video tags", () => {
       expect(created?.videoCount).toBe(4);
     });
   });
+
+  test.describe("タグ管理画面（issue 271）", () => {
+    /** tagRowByName は、名前のリンク（読み上げ名「〈名〉で絞り込んだライブラリを開く」）から行を探す。 */
+    function tagRowByName(page: Page, name: string) {
+      return page
+        .getByRole("link", { name: `${name}で絞り込んだライブラリを開く` })
+        .locator("xpath=ancestor::div[@data-tag-id][1]");
+    }
+
+    test("9: 新しいタグを作ると本数0で一覧に並び、再生画面の候補にも出る", async ({
+      page,
+    }) => {
+      await page.goto("/tags");
+      // 操作の行の「新しいタグ」と、タグが無い状態の primary「新しいタグ」は同じ
+      // 読み上げ名を持つ（ui-design.md「Tag management page」）。ここは常に出て
+      // いる操作の行の1つ目を押す。
+      await page.getByRole("button", { name: "新しいタグ" }).first().click();
+      const input = page.getByRole("textbox", { name: "新しいタグの名前" });
+      await input.fill("e2e管理新規");
+      await page.keyboard.press("Enter");
+
+      const row = tagRowByName(page, "e2e管理新規");
+      await expect(row).toBeVisible();
+      await expect(row).toContainText("0 本");
+
+      const a = video("タグ動画A");
+      await page.goto(`/videos/${String(a.id)}`);
+      await addInput(page).click();
+      await expect(page.getByRole("option", { name: /e2e管理新規/ })).toBeVisible();
+    });
+
+    test("10: 改名すると付いた動画のカードに新しい名前が出て、既存の名前と重なる改名は理由を示す", async ({
+      page,
+      request,
+    }) => {
+      const created = await createTag(request, "e2e管理改名前");
+      const a = video("タグ動画A");
+      await clearVideoTags(request, a.id);
+      await attachTag(request, a.id, created.id);
+
+      await page.goto("/tags");
+      await tagRowByName(page, "e2e管理改名前")
+        .getByRole("button", { name: "改名" })
+        .click();
+      const input = page.getByRole("textbox", { name: "「e2e管理改名前」の新しい名前" });
+      await input.fill("e2e管理改名後");
+      await page.keyboard.press("Enter");
+      await expect(tagRowByName(page, "e2e管理改名後")).toBeVisible();
+
+      // 付いていたカードにも新しい名前が出る。
+      await page.goto("/");
+      await expect(
+        page
+          .locator(`[data-video-id="${String(a.id)}"]`)
+          .getByRole("button", { name: "e2e管理改名後で絞り込む" }),
+      ).toBeVisible();
+
+      // 再生画面にも新しい名前が出る。
+      await page.goto(`/videos/${String(a.id)}`);
+      await expect(page.locator('[title="e2e管理改名後"]')).toBeVisible();
+      await expect(page.locator('[title="e2e管理改名前"]')).toHaveCount(0);
+
+      // 既存のタグ名と重なる改名は拒否され、理由が画面に出る。
+      await createTag(request, "e2e管理既存名");
+      await page.goto("/tags");
+      await tagRowByName(page, "e2e管理改名後")
+        .getByRole("button", { name: "改名" })
+        .click();
+      const renameInput = page.getByRole("textbox", {
+        name: "「e2e管理改名後」の新しい名前",
+      });
+      await renameInput.fill("e2e管理既存名");
+      await page.keyboard.press("Enter");
+      await expect(
+        page.getByText("「e2e管理既存名」という名前のタグが既にあります"),
+      ).toBeVisible();
+      // 入力は残る。
+      await expect(renameInput).toHaveValue("e2e管理既存名");
+    });
+
+    test("11: 削除の確認で外れる本数が示され、確定するとどの動画からもタグが消える", async ({
+      page,
+      request,
+    }) => {
+      const created = await createTag(request, "e2e管理削除対象");
+      const a = video("タグ動画A");
+      await clearVideoTags(request, a.id);
+      await attachTag(request, a.id, created.id);
+
+      await page.goto("/tags");
+      const row = tagRowByName(page, "e2e管理削除対象");
+      await row.getByRole("button", { name: "その他の操作" }).click();
+      await page.getByRole("menuitem", { name: "削除…" }).click();
+
+      const dialog = page.getByRole("dialog", { name: "「e2e管理削除対象」を削除" });
+      await expect(
+        dialog.getByText("1 本の動画からこのタグが外れます。この操作は取り消せません。"),
+      ).toBeVisible();
+      await dialog.getByRole("button", { name: "削除する" }).click();
+
+      await expect(tagRowByName(page, "e2e管理削除対象")).toHaveCount(0);
+      await expect(page.getByText("削除しました")).toBeVisible();
+
+      await page.goto(`/videos/${String(a.id)}`);
+      await expect(page.locator('[title="e2e管理削除対象"]')).toHaveCount(0);
+    });
+
+    test("14: どの動画からも外したタグは本数0で管理画面に残り、候補にも出続ける", async ({
+      page,
+      request,
+    }) => {
+      const created = await createTag(request, "e2e管理残留");
+      const a = video("タグ動画A");
+      await clearVideoTags(request, a.id);
+      await attachTag(request, a.id, created.id);
+      const detached = await request.post("/api/video-tags", {
+        headers: mutationHeaders,
+        data: { videoIds: [a.id], action: "remove", tag: { id: created.id } },
+      });
+      expect(detached.ok()).toBe(true);
+
+      await page.goto("/tags");
+      await expect(tagRowByName(page, "e2e管理残留")).toContainText("0 本");
+
+      await page.goto(`/videos/${String(a.id)}`);
+      await addInput(page).click();
+      await expect(page.getByRole("option", { name: /e2e管理残留/ })).toBeVisible();
+    });
+
+    test("16: 管理画面でタグを選ぶと、そのタグだけで絞り込んだライブラリ一覧が開く", async ({
+      page,
+      request,
+    }) => {
+      const created = await createTag(request, "e2e管理移動先");
+      const a = video("タグ動画A");
+      const b = video("タグ動画B");
+      await clearVideoTags(request, a.id);
+      await clearVideoTags(request, b.id);
+      await attachTag(request, a.id, created.id);
+
+      await page.goto("/tags");
+      await tagRowByName(page, "e2e管理移動先").click();
+      await expect(page).toHaveURL(
+        new RegExp(`^http://127\\.0\\.0\\.1:15173/\\?tag=${String(created.id)}$`),
+      );
+
+      // URL だけでなく、実際にそのタグ1つで絞り込んだ一覧になっている
+      // （タグの付いた A だけが残り、絞り込み中のタグの行にも出る）。
+      await expect(page.getByRole("article")).toHaveCount(1);
+      await expect(page.getByRole("link", { name: "タグ動画A" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "タグ動画B" })).toHaveCount(0);
+      await expect(
+        page
+          .getByRole("list", { name: "絞り込み中のタグ" })
+          .getByRole("button", { name: "e2e管理移動先の絞り込みを外す" }),
+      ).toBeVisible();
+    });
+
+    test("18: 検索は名前とシノニムに大文字小文字を区別せず当たり、消すと全件に戻る", async ({
+      page,
+      request,
+    }) => {
+      const anime = await createTag(request, "e2eXyz9Anime管理");
+      await addSynonym(request, anime.id, "e2eXyz9アニメ管理");
+      await createTag(request, "e2eXyz9Drama管理");
+
+      await page.goto("/tags");
+      const search = page.getByRole("searchbox", { name: "タグを検索" });
+
+      // 名前「e2eXyz9Anime管理」自体にはカタカナが無い。シノニム
+      // 「e2eXyz9アニメ管理」が「アニ」を含むので、シノニムでの一致として当たる。
+      await search.fill("e2eXyz9アニ");
+      await expect(tagRowByName(page, "e2eXyz9Anime管理")).toBeVisible();
+      await expect(tagRowByName(page, "e2eXyz9Drama管理")).toHaveCount(0);
+
+      // 名前「Anime」に「ani」が含まれ、大文字小文字を区別しない。
+      await search.fill("e2eXyz9ani");
+      await expect(tagRowByName(page, "e2eXyz9Anime管理")).toBeVisible();
+      await expect(tagRowByName(page, "e2eXyz9Drama管理")).toHaveCount(0);
+
+      await search.fill("");
+      await expect(tagRowByName(page, "e2eXyz9Anime管理")).toBeVisible();
+      await expect(tagRowByName(page, "e2eXyz9Drama管理")).toBeVisible();
+    });
+
+    test("キーボードだけで検索の入力に届き、一致が無いときはタグが無い状態と別表示になる", async ({
+      page,
+      request,
+    }) => {
+      await createTag(request, "e2e管理キーボード対象");
+      await page.goto("/tags");
+
+      // `/` で検索の入力へ移る（ui-design.md の操作の確認 手順4、ライブラリの検索欄と同じ）。
+      await page.keyboard.press("/");
+      const search = page.getByRole("searchbox", { name: "タグを検索" });
+      await expect(search).toBeFocused();
+
+      await search.fill("e2e管理存在しない語");
+      await expect(
+        page.getByText("「e2e管理存在しない語」に一致するタグはありません"),
+      ).toBeVisible();
+      await expect(page.getByText("タグはまだありません")).toHaveCount(0);
+
+      await page.getByRole("button", { name: "検索をクリア" }).click();
+      await expect(search).toBeFocused();
+      await expect(search).toHaveValue("");
+      await expect(tagRowByName(page, "e2e管理キーボード対象")).toBeVisible();
+    });
+
+    test("削除確認の窓でEscを押すと何も変わらない", async ({ page, request }) => {
+      await createTag(request, "e2e管理Esc確認");
+      await page.goto("/tags");
+      const row = tagRowByName(page, "e2e管理Esc確認");
+      await row.getByRole("button", { name: "その他の操作" }).click();
+      await page.getByRole("menuitem", { name: "削除…" }).click();
+      const dialog = page.getByRole("dialog", { name: "「e2e管理Esc確認」を削除" });
+      await expect(dialog).toBeVisible();
+
+      await page.keyboard.press("Escape");
+
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(tagRowByName(page, "e2e管理Esc確認")).toBeVisible();
+    });
+
+    test("別のタブで消したタグを改名しようとすると、もう無いことが伝わり一覧が取り直される", async ({
+      page,
+      request,
+    }) => {
+      const created = await createTag(request, "e2e管理消滅");
+      await page.goto("/tags");
+      await tagRowByName(page, "e2e管理消滅")
+        .getByRole("button", { name: "改名" })
+        .click();
+      const input = page.getByRole("textbox", { name: "「e2e管理消滅」の新しい名前" });
+
+      const removed = await request.delete(`/api/tags/${String(created.id)}`, {
+        headers: mutationHeaders,
+      });
+      expect(removed.status()).toBe(204);
+
+      await input.fill("e2e管理消滅後");
+      await page.keyboard.press("Enter");
+
+      await expect(
+        page.getByText("このタグはもう無いため、一覧を取り直しました"),
+      ).toBeVisible();
+      await expect(tagRowByName(page, "e2e管理消滅")).toHaveCount(0);
+      await expect(tagRowByName(page, "e2e管理消滅後")).toHaveCount(0);
+    });
+  });
 });

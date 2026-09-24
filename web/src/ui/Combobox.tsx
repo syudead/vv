@@ -34,8 +34,8 @@ export interface ComboboxOption {
   ariaLabel?: string;
 }
 
+export const newlinePattern = /[\r\n]/;
 const controlCharPattern = /[\u0000-\u001f\u007f-\u009f]/;
-const newlinePattern = /[\r\n]/;
 
 /** codePointLength は前後の空白を除いた符号位置の数を返す（`length` は使わない）。 */
 function codePointLength(value: string): number {
@@ -43,10 +43,23 @@ function codePointLength(value: string): number {
 }
 
 /**
- * nameReason は、入力のたびに確かめる名前の検証理由を返す。空や空白だけは
- * 打っている間は理由を出さない（ui-design.md「Combobox」名前の検証）。
+ * isComposingKeyEvent は、IME の変換中に打った特別なキー（Enter・Esc・矢印）かを
+ * 返す。変換の確定・移動のためのキーで、combobox やタグの名前を打つほかの
+ * 入力（管理画面の作成・改名の入力、検索の入力）の操作にしてはいけない
+ * （`web/src/player/keyboard.ts` と同じ判定。keyCode 229 は isComposing を
+ * 実装しない古いブラウザ向けの後方互換）。
  */
-function nameReason(raw: string): string | null {
+export function isComposingKeyEvent(event: KeyboardEvent<HTMLInputElement>): boolean {
+  return event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
+}
+
+/**
+ * nameReason は、入力のたびに確かめる名前の検証理由を返す。空や空白だけは
+ * 打っている間は理由を出さない（ui-design.md「Combobox」名前の検証）。タグの
+ * 名前を打つすべての入力（この Combobox、管理画面の作成・改名・シノニムの
+ * 追加）が同じ規則を使うので外へ公開する（ui-design.md「Combobox」末尾）。
+ */
+export function nameReason(raw: string): string | null {
   if (controlCharPattern.test(raw)) return "改行やタブは使えません";
   const length = codePointLength(raw);
   if (length > 100) return `100 文字以内にしてください（今 ${String(length)} 文字）`;
@@ -182,12 +195,8 @@ export default function Combobox({
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    // IME の変換中の Enter・矢印キー・Esc は、変換の確定・移動のためのもので、
-    // combobox の操作にしてはいけない（web/src/player/keyboard.ts と同じ判定。
-    // keyCode 229 は isComposing を実装しない古いブラウザ向けの後方互換）。
-    const composing = event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
     if (
-      composing &&
+      isComposingKeyEvent(event) &&
       (event.key === "ArrowDown" ||
         event.key === "ArrowUp" ||
         event.key === "Enter" ||
