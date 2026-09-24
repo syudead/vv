@@ -8,6 +8,7 @@ import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useScanNotice } from "./ScanNoticeProvider";
 import ScanProgressBar from "./ScanProgressBar";
 import { useScan } from "./ScanProvider";
+import ProcessingBreakdown from "./ProcessingBreakdown";
 import { presentScan, type ScanPresentation } from "./scanPresentation";
 
 const POINTER_CLOSE_DELAY_MS = 100;
@@ -20,6 +21,11 @@ function iconFor(state: ScanPresentation["state"]) {
 }
 
 function countSummary(presentation: ScanPresentation) {
+  if (presentation.state === "preparing") {
+    return presentation.processing === null
+      ? "残りを確認中"
+      : `残り ${String(presentation.remaining)} 件`;
+  }
   const total = presentation.total === null ? "確認中" : String(presentation.total);
   return `${String(presentation.completed)} / ${total} 件（${String(presentation.failed)} 件失敗）`;
 }
@@ -32,6 +38,8 @@ function statusAnnouncement(presentation: ScanPresentation) {
       return "取り込み中。総件数を確認しています";
     case "running":
       return `取り込み対象は ${String(presentation.total)} 件です`;
+    case "preparing":
+      return "取り込んだ動画を準備しています";
     case "done":
       return "取り込みが完了しました";
     case "partial-failed":
@@ -62,6 +70,7 @@ export default function ScanProgressIndicator() {
     presentation.state === "starting" ||
     presentation.state === "unknown-total" ||
     presentation.state === "running" ||
+    presentation.state === "preparing" ||
     terminalVisible;
 
   useEffect(() => {
@@ -115,11 +124,15 @@ export default function ScanProgressIndicator() {
         ? presentation.progress === null
           ? "取り込み中"
           : `取り込み中 ${String(Math.round(presentation.progress * 100))}%`
-        : presentation.state === "partial-failed"
-          ? "一部失敗"
-          : presentation.state === "failed"
-            ? "取り込みに失敗しました"
-            : "完了";
+        : presentation.state === "preparing"
+          ? presentation.processing === null
+            ? "準備中"
+            : `準備中 残り ${String(presentation.remaining)}`
+          : presentation.state === "partial-failed"
+            ? "一部失敗"
+            : presentation.state === "failed"
+              ? "取り込みに失敗しました"
+              : "完了";
   const goToDetails = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     navigatingToDetails.current = true;
@@ -170,7 +183,7 @@ export default function ScanProgressIndicator() {
               className="inline-flex max-w-full items-center gap-2 rounded-md border border-border-strong bg-elevated px-3 py-2 text-sm text-fg shadow-elevated"
             >
               <Icon
-                className={`size-4 shrink-0 ${presentation.state === "running" || presentation.state === "unknown-total" || presentation.state === "starting" ? "animate-spin motion-reduce:animate-none" : ""}`}
+                className={`size-4 shrink-0 ${presentation.state === "running" || presentation.state === "unknown-total" || presentation.state === "starting" || presentation.state === "preparing" ? "animate-spin motion-reduce:animate-none" : ""}`}
               />
               <span className="min-w-0 break-words tabular-nums">{label}</span>
             </button>
@@ -202,13 +215,22 @@ export default function ScanProgressIndicator() {
         >
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <strong>{label}</strong>
+              <strong>{presentation.state === "preparing" ? "準備中" : label}</strong>
               <span className="tabular-nums text-fg-muted">
                 {countSummary(presentation)}
               </span>
             </div>
             <ScanProgressBar presentation={presentation} className="h-1.5" />
-            <p className="text-sm text-fg-muted">{description}</p>
+            {/* 準備中は件数を見出しと内訳に出しているので、同じ件数の説明文を重ねない。 */}
+            {presentation.state === "preparing" ? (
+              <p className="text-sm text-fg-muted">取り込んだ動画を準備しています</p>
+            ) : (
+              <p className="text-sm text-fg-muted">{description}</p>
+            )}
+            <ProcessingBreakdown
+              processing={presentation.processing}
+              className="text-xs text-fg-muted"
+            />
           </div>
         </PopoverContent>
       </PopoverRoot>

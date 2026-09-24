@@ -87,6 +87,13 @@ type Reprober interface {
 	RetryProbe(ctx context.Context, id int64, seekThumbnailMissing bool) error
 }
 
+// PreviewRepairer は、作り終えた記録があるのにファイルが無いプレビューの
+// 作り直しを積む。状態を戻すことと積むことは、保存層が1つの取引で行う。
+// 積んだら true を返す。すでに戻っていれば false。
+type PreviewRepairer interface {
+	RequeueMissingPreview(ctx context.Context, id int64, contentKey string) (bool, error)
+}
+
 // FileOpener はサーバーの PC の既定アプリでファイルを開く。internal/opener の
 // *Opener がこれを満たす。起動できる環境かどうかは起動時に決まっている。
 type FileOpener interface {
@@ -124,8 +131,15 @@ type Options struct {
 	Related RelatedLibrary
 	// Reprobe は読み取りのやり直し。nilなら経路は500を返す。
 	Reprobe Reprober
+	// PreviewRepair は消えたプレビューの作り直しを積む。nil なら積まず、
+	// プレビューの URL を省くだけにする。
+	PreviewRepair PreviewRepairer
 	// Opener はファイルを既定アプリで開く。nil なら開けない環境として扱う。
 	Opener FileOpener
+	// Processing は段階ごとの残りの問い合わせ先。nilなら経路は500を返す。
+	Processing Processing
+	// Events は画面へ送る変化の知らせ。nilなら経路は500を返す。
+	Events *Events
 	// Assets は SPA のビルド成果物（web/dist に相当）。
 	Assets fs.FS
 	// Logger は応答の過程で出す記録。nil の場合は slog の既定を使う。
@@ -148,7 +162,10 @@ type server struct {
 	thumbnailJobs  ThumbnailJobs
 	related        RelatedLibrary
 	reprobe        Reprober
+	previewRepair  PreviewRepairer
 	opener         FileOpener
+	processing     Processing
+	events         *Events
 	logger         *slog.Logger
 }
 
@@ -157,6 +174,8 @@ type server struct {
 //	/api/health      → JSON（生成された経路定義から登録する）
 //	/api/videos*     → JSON・動画本体・サムネイル（同上）
 //	/api/scans*      → JSON（同上）
+//	/api/processing  → JSON（同上）
+//	/api/events      → Server-Sent Events（同上）
 //	/api/folders*    → JSON（同上）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
@@ -187,7 +206,10 @@ func NewRouter(opts Options) http.Handler {
 		thumbnailJobs:  opts.ThumbnailJobs,
 		related:        opts.Related,
 		reprobe:        opts.Reprobe,
+		previewRepair:  opts.PreviewRepair,
 		opener:         opts.Opener,
+		processing:     opts.Processing,
+		events:         opts.Events,
 		logger:         logger,
 	}
 

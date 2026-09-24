@@ -145,6 +145,19 @@ async function throttle(page: Page, bytesPerSecond: number) {
   });
 }
 
+/**
+ * settleResources は、画面が読み込み始めたフォントと画像を読み終えるまで待つ。
+ * 帯域を絞ったページでは、読み込み途中のフォントや関連動画のサムネイルが帯域と
+ * 接続を使い、次のページへの移動を遅らせる。離脱の速さを測る前に済ませておき、
+ * 変換の停止とは関係のない読み込みを測らない。
+ */
+async function settleResources(page: Page) {
+  await page.waitForFunction(async () => {
+    await document.fonts.ready;
+    return Array.from(document.images).every((image) => image.complete);
+  });
+}
+
 test.describe.serial("live MP4 playback", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(120_000);
@@ -410,6 +423,7 @@ test.describe.serial("live MP4 playback", () => {
       }),
     ]);
 
+    await settleResources(first);
     const leaveStarted = Date.now();
     await first.goto("/");
     expect(Date.now() - leaveStarted).toBeLessThan(5000);

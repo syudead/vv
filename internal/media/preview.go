@@ -23,7 +23,6 @@ const (
 	previewSegmentSec   = 0.75
 	previewShortSec     = 9.0
 	previewTimeout      = 30 * time.Minute
-	previewTempGrace    = time.Minute
 )
 
 type previewManifest struct {
@@ -80,7 +79,7 @@ func GeneratePreview(
 	}
 	_ = os.Remove(target)
 	_ = os.Remove(manifest)
-	temporary, err := os.MkdirTemp(filepath.Dir(target), ".preview-*")
+	temporary, err := makeTemporaryDir(thumbnailsDir, "preview-*")
 	if err != nil {
 		return fmt.Errorf("プレビューの一時領域を作れません: %w", err)
 	}
@@ -190,95 +189,6 @@ func VerifyPreview(path, manifestPath string) (int64, error) {
 		return 0, errors.New("preview manifest does not match digest")
 	}
 	return info.Size(), nil
-}
-
-func RemoveOrphanPreviews(thumbnailsDir string, contentKeys map[string]struct{}) (int, error) {
-	root := filepath.Join(thumbnailsDir, "preview")
-	prefixes, err := os.ReadDir(root)
-	if os.IsNotExist(err) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	keep := map[string]struct{}{}
-	for key := range contentKeys {
-		keep[thumbnailFileName(key)+".mp4"] = struct{}{}
-	}
-	removed := 0
-	for _, prefix := range prefixes {
-		if !prefix.IsDir() {
-			continue
-		}
-		entries, err := os.ReadDir(filepath.Join(root, prefix.Name()))
-		if err != nil {
-			return removed, err
-		}
-		for _, entry := range entries {
-			if strings.HasPrefix(entry.Name(), ".preview-") {
-				continue
-			}
-			name := entry.Name()
-			base := strings.TrimSuffix(name, ".sha256")
-			if !strings.HasSuffix(base, ".mp4") {
-				continue
-			}
-			if _, ok := keep[base]; ok {
-				continue
-			}
-			if err := os.Remove(filepath.Join(root, prefix.Name(), name)); err != nil && !os.IsNotExist(err) {
-				return removed, err
-			}
-			removed++
-		}
-	}
-	return removed, nil
-}
-
-// RemoveAbandonedPreviewTemps removes temporary generation directories older
-// than the supplied cutoff. Callers use the current time before workers start,
-// and a timeout-adjusted cutoff while workers may be active.
-func RemoveAbandonedPreviewTemps(thumbnailsDir string, cutoff time.Time) (int, error) {
-	root := filepath.Join(thumbnailsDir, "preview")
-	prefixes, err := os.ReadDir(root)
-	if errors.Is(err, os.ErrNotExist) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, err
-	}
-	removed := 0
-	for _, prefix := range prefixes {
-		if !prefix.IsDir() {
-			continue
-		}
-		dir := filepath.Join(root, prefix.Name())
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			return removed, err
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() || !strings.HasPrefix(entry.Name(), ".preview-") {
-				continue
-			}
-			info, err := entry.Info()
-			if err != nil {
-				return removed, err
-			}
-			if !info.ModTime().Before(cutoff) {
-				continue
-			}
-			if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
-				return removed, err
-			}
-			removed++
-		}
-	}
-	return removed, nil
-}
-
-func PreviewTempCutoff(now time.Time) time.Time {
-	return now.Add(-previewTimeout - previewTempGrace)
 }
 
 func previewArgs(videoPath, output string, durationMs int64) []string {

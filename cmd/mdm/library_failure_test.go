@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"path/filepath"
 	"testing"
@@ -43,6 +42,13 @@ func missingSourceFixture(t *testing.T) (context.Context, string, *store.DB, int
 
 func claimLastAttempt(t *testing.T, ctx context.Context, db *store.DB, kind domain.JobKind, videoID int64) domain.Job {
 	t.Helper()
+	if kind == domain.JobThumbnail {
+		// サムネイルは解析の後に取り出すので、解析は済ませておく。
+		probe := domain.Probe{DurationMs: 1000, VideoCodec: "h264", AudioCodec: "aac"}
+		if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := db.EnqueueJob(ctx, kind, videoID); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +56,7 @@ func claimLastAttempt(t *testing.T, ctx context.Context, db *store.DB, kind doma
 		domain.MaxJobAttempts-1, string(kind), videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, kind)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +74,9 @@ func TestProcessingHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 	}{
 		{kind: domain.JobProbe, handler: func(_ Config, db *store.DB) jobs.Handler { return probeHandler(db) },
 			state: func(v domain.Video) string { return string(v.ProbeState) }},
-		{kind: domain.JobThumbnail, handler: thumbnailHandler,
+		{kind: domain.JobThumbnail, handler: func(cfg Config, db *store.DB) jobs.Handler {
+			return thumbnailHandler(db, newArtifacts(db, cfg.ThumbnailsDir(), slog.Default()))
+		},
 			state: func(v domain.Video) string { return string(v.ThumbnailState) }},
 	}
 	for _, tc := range cases {
@@ -105,25 +113,5 @@ func TestProcessingHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 				t.Fatalf("probeError = %q, want %q", video.ProbeError, handleErr.Error())
 			}
 		})
-	}
-}
-
-// 起動時の整合で、pending のまま終端の失敗ジョブを持つ動画が failed になる。
-func TestReconcileProcessingFailuresAtStartup(t *testing.T) {
-	ctx, dataDir, db, videoID := missingSourceFixture(t)
-	job := claimLastAttempt(t, ctx, db, domain.JobProbe, videoID)
-	if _, err := db.SQL().Exec(`update jobs set state = 'failed', last_error = 'legacy' where id = ?`, job.ID); err != nil {
-		t.Fatal(err)
-	}
-
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	newLibrary(Config{DataDir: dataDir}, db, logger).reconcileProcessingFailures(ctx)
-
-	video, err := db.GetVideo(ctx, videoID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if video.ProbeState != domain.ProbeStateFailed || video.ProbeError != "legacy" {
-		t.Fatalf("probe = %q (%q), want failed", video.ProbeState, video.ProbeError)
 	}
 }

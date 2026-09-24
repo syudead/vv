@@ -2,6 +2,7 @@ package media
 
 import (
 	"math"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -125,4 +126,38 @@ func indexOf(values []string, want string) int {
 		}
 	}
 	return -1
+}
+
+// 生成途中の成果物は1か所にまとまっていて、起動時にそこだけを消せる。
+// 確定した生成物には触れない。
+func TestRemoveTemporaryKeepsPublishedArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	temporary, err := makeTemporaryDir(dir, "preview-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(temporary, "preview.mp4"), []byte("途中"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	published := ThumbnailPath(dir, "kept:1")
+	if err := os.MkdirAll(filepath.Dir(published), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(published, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := RemoveTemporary(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(temporary); !os.IsNotExist(err) {
+		t.Errorf("生成途中の成果物が残っている (err=%v)", err)
+	}
+	if _, err := os.Stat(published); err != nil {
+		t.Errorf("確定した生成物が消えた: %v", err)
+	}
+	// 何も無くても失敗しない。
+	if err := RemoveTemporary(dir); err != nil {
+		t.Fatal(err)
+	}
 }

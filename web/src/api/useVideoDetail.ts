@@ -9,9 +9,7 @@ import {
   type RelatedVideos,
   type Video,
 } from "./client";
-
-/** pollIntervalMs は取り直しの間隔である。取り込みの状態（ScanProvider）と同じ 2 秒にする。 */
-export const pollIntervalMs = 2000;
+import { subscribeServerEvents } from "./serverEvents";
 
 export type VideoDetailState =
   | { kind: "loading"; id: number }
@@ -22,12 +20,12 @@ export type VideoDetailState =
   | { kind: "failed"; id: number; reason: string };
 
 /**
- * isProcessing は、取り込みの処理が残っていて取り直す必要があるかを返す
- * （plan の Structural Decisions 7・11）。
+ * isProcessing は、取り込みの処理が残っているかを返す（plan の Structural
+ * Decisions 7・11）。
  *
  * 読み取りに失敗した動画は、そこで終わりとして扱う。一覧用プレビューのジョブは読み取りの
  * 成功後にしか積まれないので、失敗した動画の `previewState` は `pending` のまま残る。
- * それを「処理中」と読むと、取り直しが画面を開いている限り続く。
+ * それを「処理中」と読むと、処理中の表示が終わらない。
  */
 export function isProcessing(video: Video): boolean {
   if (video.probeState === "pending") return true;
@@ -40,12 +38,13 @@ export function isProcessing(video: Video): boolean {
 }
 
 /**
- * useVideoDetail は動画 1 件を取得し、処理中の間だけ 2 秒ごとに取り直す。
+ * useVideoDetail は動画 1 件を取得し、その動画が変わったという知らせを受けたら
+ * 取り直す。一定間隔では問い合わせない。
  *
- * - ページが隠れている間は取り直さず、見えるようになったらすぐ取り直す。
+ * - 知らせの接続をつなぎ直したときは、切れていた間の変化を取り戻すために取り直す。
  * - 別の動画へ移ったとき、画面を離れたときは、送信中の要求を打ち切って止める。
  * - 取り直しが 404 を返したら `missing` にする（表示中の動画がライブラリから消えた）。
- *   それ以外の一時的な失敗では、手元の控えを残して取り直しを続ける。
+ *   それ以外の一時的な失敗では、手元の控えを残す。
  *
  * `refresh` はすぐに取り直し、その取得が終わったら解決する。
  */
@@ -66,31 +65,14 @@ export function useVideoDetail(id: number): {
 
     let alive = true;
     let controller: AbortController | null = null;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let waitingForVisible = false;
     let current: Video | undefined;
     const waiters: (() => void)[] = [];
 
     const settle = () => {
       for (const resolve of waiters.splice(0)) resolve();
     };
-    const clearTimer = () => {
-      if (timer !== undefined) clearTimeout(timer);
-      timer = undefined;
-    };
-
-    const scheduleNext = () => {
-      if (!alive) return;
-      if (document.visibilityState === "hidden") {
-        waitingForVisible = true;
-        return;
-      }
-      timer = setTimeout(() => void load(), pollIntervalMs);
-    };
 
     const load = async () => {
-      clearTimer();
-      waitingForVisible = false;
       controller?.abort();
       const mine = new AbortController();
       controller = mine;
@@ -100,7 +82,6 @@ export function useVideoDetail(id: number): {
         current = video;
         setState({ kind: "ready", id, video });
         settle();
-        if (isProcessing(video)) scheduleNext();
       } catch (failure) {
         if (!alive || controller !== mine || isAborted(failure)) return;
         if (failure instanceof RequestFailed && failure.status === 404) {
@@ -111,23 +92,9 @@ export function useVideoDetail(id: number): {
         }
         if (current === undefined) {
           setState({ kind: "failed", id, reason: errorMessage(failure) });
-          settle();
-          return;
         }
         settle();
-        if (isProcessing(current)) scheduleNext();
       }
-    };
-
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") {
-        if (timer !== undefined) {
-          clearTimer();
-          waitingForVisible = true;
-        }
-        return;
-      }
-      if (waitingForVisible) void load();
     };
 
     refreshRef.current = () =>
@@ -140,13 +107,18 @@ export function useVideoDetail(id: number): {
         void load();
       });
 
-    document.addEventListener("visibilitychange", onVisibility);
+    // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
+    const unsubscribe = subscribeServerEvents({
+      video: (changed) => {
+        if (changed === id) void load();
+      },
+      open: () => void load(),
+    });
     void load();
     return () => {
       alive = false;
       controller?.abort();
-      clearTimer();
-      document.removeEventListener("visibilitychange", onVisibility);
+      unsubscribe();
       settle();
     };
   }, [id]);

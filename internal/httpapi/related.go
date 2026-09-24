@@ -44,7 +44,7 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 	progress := s.progressFor(r.Context(), videos)
 	payload := gen.RelatedVideos{Items: make([]gen.Video, 0, len(videos))}
 	for _, item := range videos {
-		payload.Items = append(payload.Items, withProgress(toAPIVideo(item, s.thumbnailsDir), progress, item.ContentKey))
+		payload.Items = append(payload.Items, withProgress(s.apiVideo(r.Context(), item), progress, item.ContentKey))
 	}
 	if order.NextID != 0 {
 		next := order.NextID

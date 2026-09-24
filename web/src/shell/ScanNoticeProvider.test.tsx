@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan } from "../api/client";
+import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { ScanNoticeProvider, useScanNotice } from "./ScanNoticeProvider";
 import { ScanProvider, useScan } from "./ScanProvider";
 
@@ -55,6 +56,7 @@ describe("ScanNoticeProvider", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
     vi.stubGlobal("fetch", fetchMock);
+    installFakeEventSource();
   });
 
   afterEach(() => {
@@ -92,7 +94,7 @@ describe("ScanNoticeProvider", () => {
     vi.useFakeTimers();
     const first = renderProvider();
     await act(async () => Promise.resolve());
-    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    await emitServerEvent("scan", scan(8, "failed"));
     await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("8"));
     await act(async () => screen.getByRole("button", { name: "acknowledge" }).click());
     first.unmount();
@@ -113,7 +115,7 @@ describe("ScanNoticeProvider", () => {
     vi.useFakeTimers();
     renderProvider();
     await act(async () => Promise.resolve());
-    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    await emitServerEvent("scan", scan(11, "failed"));
     expect(screen.getByTestId("notice").textContent).toBe("11");
 
     await act(async () => vi.advanceTimersByTimeAsync(9000));
@@ -187,7 +189,7 @@ describe("ScanNoticeProvider", () => {
     vi.useFakeTimers();
     renderProvider();
     await act(async () => Promise.resolve());
-    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    await emitServerEvent("scan", scan(12, "done"));
     expect(screen.getByTestId("notice").textContent).toBe("12");
 
     await act(async () => vi.advanceTimersByTimeAsync(8000));
@@ -207,7 +209,7 @@ describe("ScanNoticeProvider", () => {
     vi.useFakeTimers();
     renderProvider();
     await act(async () => Promise.resolve());
-    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    await emitServerEvent("scan", scan(13, "done"));
     expect(screen.getByTestId("notice").textContent).toBe("13");
 
     await act(async () => screen.getByRole("button", { name: "pause" }).click());
@@ -271,5 +273,34 @@ describe("ScanNoticeProvider", () => {
     renderProvider();
     await act(async () => Promise.resolve());
     expect(screen.getByTestId("notice").textContent).toBe("10");
+  });
+
+  it("準備の残りをまだ得ていない間は、完了を知らせない", async () => {
+    let processing: Response | null = null;
+    let resolveProcessing: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/processing") {
+        if (processing !== null) return Promise.resolve(processing);
+        return new Promise<Response>((resolve) => {
+          resolveProcessing = resolve;
+        });
+      }
+      return Promise.resolve(json(scan(21, "running")));
+    });
+    renderProvider();
+    // 残りの取得が返らない間も、スキャンは変化の知らせで届く。
+    await emitServerEvent("scan", scan(21, "running"));
+    await waitFor(() => expect(screen.getByTestId("tracking").textContent).toBe("21"));
+
+    await emitServerEvent("scan", scan(21, "done"));
+    expect(screen.getByTestId("notice").textContent).toBe("none");
+
+    await act(async () =>
+      resolveProcessing?.(json({ probe: 0, thumbnail: 0, preview: 0 })),
+    );
+    processing = json({ probe: 0, thumbnail: 0, preview: 0 });
+    await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("21"));
   });
 });
