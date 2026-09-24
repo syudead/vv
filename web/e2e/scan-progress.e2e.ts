@@ -269,6 +269,23 @@ for (const { width, height } of [
     expect(summaryBox).not.toBeNull();
     expect(indicatorBox).not.toBeNull();
     expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(52);
+    // 閉じる × は幅ごとに 1 つずつ DOM にあり、見えている方だけを比べる。
+    const closeButtons = page.getByRole("button", { name: "閉じる" });
+    const closeBoxes = [];
+    for (let index = 0; index < (await closeButtons.count()); index += 1) {
+      const box = await closeButtons.nth(index).boundingBox();
+      if (box !== null && box.width > 0) closeBoxes.push(box);
+    }
+    expect(closeBoxes).toHaveLength(1);
+    const closeBox = closeBoxes[0]!;
+    for (const box of [toastBox!, indicatorBox!]) {
+      const clearOfClose =
+        box.x + box.width <= closeBox.x ||
+        closeBox.x + closeBox.width <= box.x ||
+        box.y + box.height <= closeBox.y ||
+        closeBox.y + closeBox.height <= box.y;
+      expect(clearOfClose).toBe(true);
+    }
     for (const other of [summaryBox!, indicatorBox!]) {
       const separate =
         toastBox!.x + toastBox!.width <= other.x ||
