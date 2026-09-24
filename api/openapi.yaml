@@ -43,20 +43,49 @@ paths:
       operationId: listVideos
       summary: 動画の一覧を返す
       description: |
-        カーソル方式でページングする。`query` を与えると題名の部分一致で絞り込む。
-        `total` は絞り込み後の総件数で、ページングとは独立に返る。
+        カーソル方式でページングする。対象は登録メディアフォルダの下に所在がある動画で、
+        `query`・`watch`・`playable` で絞り込む。`total` は絞り込み後の総件数で、
+        ページングとは独立に返る。
       parameters:
         - name: query
           in: query
-          description: 題名の部分一致。1文字から指定できる
+          description: |
+            検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
+            空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
+            `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
+            ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
+            フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
+            語が残らなければ絞り込まない。書き方の誤りは返さない
           schema:
             type: string
             maxLength: 100
+        - name: watch
+          in: query
+          description: 視聴状態で絞る。all は絞り込まない
+          schema:
+            $ref: "#/components/schemas/WatchFilter"
+        - name: playable
+          in: query
+          description: true ならブラウザでそのまま再生できる（playable = true の）動画だけにする
+          schema:
+            type: boolean
+            default: false
         - name: sort
           in: query
           description: 並び順
           schema:
             $ref: "#/components/schemas/VideoSort"
+        - name: seed
+          in: query
+          description: |
+            `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
+            ほかの並び順では無視する
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 2147483647
+            default: 0
         - name: cursor
           in: query
           description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
@@ -584,19 +613,62 @@ paths:
   /api/folders/{rootId}/videos:
     get:
       operationId: listFolderVideos
-      summary: フォルダ直下の動画を返す
+      summary: フォルダの動画を返す
       description: |
-        孫以降のフォルダにある動画は含めない。ページングと並び順は
-        `listVideos` と同じ。`title` と `sizeBytes` はそのフォルダにある所在のもので、
-        同じ動画の所在が同じフォルダに2つ以上あっても1件だけ返す。
+        `scope` で対象の所在の範囲を選ぶ。`direct`（既定）はフォルダ直下だけで、
+        孫以降のフォルダにある動画は含めない。`subtree` はフォルダとその配下すべてを
+        対象にする。`scope` と `query` は独立していて、照合はその範囲にある所在だけを
+        対象にする。ページング・絞り込み・並び順は `listVideos` と同じ。`title` と
+        `sizeBytes` はその範囲にある所在（検索語があれば当たった所在）のうちパスの
+        昇順で最初のもので、同じ動画の所在が範囲に2つ以上あっても1件だけ返す。
+        フォルダが無いときは `scope`・`query` に関係なく 404 を返す。
       parameters:
         - $ref: "#/components/parameters/FolderRootId"
         - $ref: "#/components/parameters/FolderPath"
+        - name: scope
+          in: query
+          description: direct = フォルダ直下の所在だけ、subtree = フォルダとその配下すべての所在
+          schema:
+            $ref: "#/components/schemas/FolderScope"
+        - name: query
+          in: query
+          description: |
+            検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
+            空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
+            `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
+            ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
+            フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
+            語が残らなければ絞り込まない。書き方の誤りは返さない
+          schema:
+            type: string
+            maxLength: 100
+        - name: watch
+          in: query
+          description: 視聴状態で絞る。all は絞り込まない
+          schema:
+            $ref: "#/components/schemas/WatchFilter"
+        - name: playable
+          in: query
+          description: true ならブラウザでそのまま再生できる（playable = true の）動画だけにする
+          schema:
+            type: boolean
+            default: false
         - name: sort
           in: query
           description: 並び順
           schema:
             $ref: "#/components/schemas/VideoSort"
+        - name: seed
+          in: query
+          description: |
+            `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
+            ほかの並び順では無視する
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 2147483647
+            default: 0
         - name: cursor
           in: query
           description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
@@ -612,7 +684,7 @@ paths:
             default: 60
       responses:
         "200":
-          description: 直下の動画
+          description: フォルダの動画
           content:
             application/json:
               schema:
@@ -792,9 +864,41 @@ components:
 
     VideoSort:
       type: string
-      enum: [addedDesc, titleAsc]
+      enum:
+        - addedAsc
+        - addedDesc
+        - modifiedAsc
+        - modifiedDesc
+        - titleAsc
+        - titleDesc
+        - durationAsc
+        - durationDesc
+        - sizeAsc
+        - sizeDesc
+        - playedAsc
+        - playedDesc
+        - random
       default: addedDesc
-      description: addedDesc = 追加が新しい順、titleAsc = 題名順
+      description: |
+        並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
+        所在の更新日時、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+        動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
+        最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、random = `seed` と
+        動画の識別子から作る順。値が同じなら識別子で決着させる
+
+    WatchFilter:
+      type: string
+      enum: [all, unwatched, inProgress, watched]
+      default: all
+      description: |
+        視聴状態の絞り込み。all = 絞り込まない、unwatched = 未視聴、inProgress = 視聴途中、
+        watched = 視聴済み
+
+    FolderScope:
+      type: string
+      enum: [direct, subtree]
+      default: direct
+      description: direct = フォルダ直下の所在だけ、subtree = フォルダとその配下すべての所在
 
     VideoPage:
       type: object
@@ -807,7 +911,9 @@ components:
             $ref: "#/components/schemas/Video"
         total:
           type: integer
-          description: 絞り込み後の総件数
+          description: |
+            検索語・watch・playable・範囲（listFolderVideos の scope）をすべて適用した
+            全件の数。ページングとは独立に返る
         nextCursor:
           type: string
           description: 次のページの取得に渡す。これ以上無い場合は省略される
@@ -944,6 +1050,8 @@ components:
           $ref: "#/components/schemas/Progress"
         location:
           $ref: "#/components/schemas/VideoLocation"
+        folder:
+          $ref: "#/components/schemas/VideoFolder"
         seekThumbnailState:
           type: string
           enum: [pending, done, failed]
@@ -952,6 +1060,22 @@ components:
             seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
             pending = 置き場が無く thumbnailState = pending かサムネイルのジョブが
             queued・running、failed = それ以外
+
+    VideoFolder:
+      type: object
+      required: [rootId, path]
+      additionalProperties: false
+      description: |
+        一覧に出す所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）の応答に
+        だけ入り、GET /api/videos/{id} には入らない
+      properties:
+        rootId:
+          type: integer
+          format: int64
+          description: 所在を含む登録メディアフォルダの識別子
+        path:
+          type: string
+          description: 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字
 
     VideoLocation:
       type: object

@@ -72,34 +72,21 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 	}, s.logger)
 }
 
-// ListFolderVideos はフォルダ直下の動画を返す（GET /api/folders/{rootId}/videos）。
-// ページングと並び順は ListVideos と同じである。
+// ListFolderVideos はフォルダの動画を返す（GET /api/folders/{rootId}/videos）。
+// 範囲は scope で直下（既定）か配下すべてかを選ぶ。ページング・絞り込み・並び順は
+// ListVideos と同じである。フォルダが無ければ scope・query に関係なく 404 を返す。
 func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID gen.FolderRootId, params gen.ListFolderVideosParams) {
-	root, rel, ok := s.resolveFolderRoot(w, r, rootID, params.Path)
+	roots, root, rel, ok := s.resolveFolderRootIn(w, r, rootID, params.Path)
 	if !ok {
 		return
 	}
 
-	query := domain.FolderVideoQuery{Dir: domain.FolderDir(root.Path, rel), Sort: domain.SortAddedDesc, Limit: domain.DefaultLimit}
-	if params.Sort != nil {
-		sort := domain.VideoSort(*params.Sort)
-		if !sort.Valid() {
-			s.invalidRequest(w, "並び順の値が不明です")
-			return
-		}
-		query.Sort = sort
+	query := domain.FolderVideoQuery{
+		Dir: domain.FolderDir(root.Path, rel), Scope: domain.FolderScopeDirect,
+		Sort: domain.SortAddedDesc, Limit: domain.DefaultLimit,
 	}
-	if params.Limit != nil {
-		if *params.Limit < 1 {
-			s.invalidRequest(w, "1ページの件数は 1 以上を指定してください")
-			return
-		}
-		query.Limit = min(*params.Limit, domain.MaxLimit)
-	}
-	if params.Cursor != nil {
-		query.Cursor = *params.Cursor
-	}
-
+	// フォルダの有無は条件の検査より先に確かめる。無いフォルダは、条件の値に
+	// 関係なく 404 にする（contracts/list-api.md §5）。
 	if rel != "" {
 		found, err := s.folders.HasFolderLocations(r.Context(), query.Dir)
 		if err != nil {
@@ -110,6 +97,34 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 			s.notFound(w, folderNotFoundMessage)
 			return
 		}
+	}
+	if params.Scope != nil {
+		scope := domain.FolderScope(*params.Scope)
+		if !scope.Valid() {
+			s.invalidRequest(w, "検索の範囲の値が不明です")
+			return
+		}
+		query.Scope = scope
+	}
+	if query.Query, ok = s.parseSearchQuery(w, params.Query); !ok {
+		return
+	}
+	filters, ok := s.parseListFilters(w, listFilterParams{
+		watch: params.Watch, playable: params.Playable, sort: params.Sort, seed: params.Seed,
+	})
+	if !ok {
+		return
+	}
+	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
+	if params.Limit != nil {
+		if *params.Limit < 1 {
+			s.invalidRequest(w, "1ページの件数は 1 以上を指定してください")
+			return
+		}
+		query.Limit = min(*params.Limit, domain.MaxLimit)
+	}
+	if params.Cursor != nil {
+		query.Cursor = *params.Cursor
 	}
 
 	page, err := s.folders.ListFolderVideos(r.Context(), query)
@@ -122,26 +137,21 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		return
 	}
 
-	progress := s.progressFor(r.Context(), page.Items)
-	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
-	for _, video := range page.Items {
-		payload.Items = append(payload.Items, withProgress(toAPIVideo(video, s.thumbnailsDir), progress, video.ContentKey))
-	}
-	if page.NextCursor != "" {
-		next := page.NextCursor
-		payload.NextCursor = &next
-	}
-
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, payload, s.logger)
+	s.writeVideoPage(w, r, page, roots)
 }
 
 // resolveFolderRoot は登録フォルダと相対パスを確かめる。不正な相対パスは 400、
 // 登録されていない id は 404 を書いて false を返す。
 func (s *server) resolveFolderRoot(w http.ResponseWriter, r *http.Request, rootID int64, path *string) (domain.MediaFolder, string, bool) {
+	_, root, rel, ok := s.resolveFolderRootIn(w, r, rootID, path)
+	return root, rel, ok
+}
+
+// resolveFolderRootIn は resolveFolderRoot と同じで、引いた登録フォルダの一覧も返す。
+func (s *server) resolveFolderRootIn(w http.ResponseWriter, r *http.Request, rootID int64, path *string) ([]domain.MediaFolder, domain.MediaFolder, string, bool) {
 	if s.folders == nil {
 		s.internalError(w, "フォルダの問い合わせ先が設定されていません", nil)
-		return domain.MediaFolder{}, "", false
+		return nil, domain.MediaFolder{}, "", false
 	}
 	rel := ""
 	if path != nil {
@@ -149,21 +159,21 @@ func (s *server) resolveFolderRoot(w http.ResponseWriter, r *http.Request, rootI
 	}
 	if err := domain.ValidateFolderPath(rel); err != nil {
 		s.invalidRequest(w, "フォルダの指定が正しくありません。空の段・先頭や末尾の / ・ . ・ .. は使えません")
-		return domain.MediaFolder{}, "", false
+		return nil, domain.MediaFolder{}, "", false
 	}
 
 	roots, err := s.folders.ListMediaFolders(r.Context())
 	if err != nil {
 		s.folderError(w, r, "フォルダを取得できませんでした", err)
-		return domain.MediaFolder{}, "", false
+		return nil, domain.MediaFolder{}, "", false
 	}
 	for _, root := range roots {
 		if root.ID == rootID {
-			return root, rel, true
+			return roots, root, rel, true
 		}
 	}
 	s.notFound(w, folderNotFoundMessage)
-	return domain.MediaFolder{}, "", false
+	return nil, domain.MediaFolder{}, "", false
 }
 
 func toAPIFolders(folders []domain.FolderSummary) []gen.FolderSummary {

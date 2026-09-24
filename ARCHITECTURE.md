@@ -29,6 +29,17 @@ server-side directory picker APIs, the read-only folder browsing API
 (`/api/folders*`), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
+Both video lists, the library (`GET /api/videos`) and a folder
+(`GET /api/folders/{rootId}/videos`, direct children by default or the whole
+subtree with `scope=subtree`), accept the same search expression (`query`),
+watch-state and playable filters, thirteen sort orders and a shuffle `seed`.
+`internal/httpapi` validates those parameters at the entry and hands them to
+the store as `domain.VideoQuery` / `domain.FolderVideoQuery`; `total` counts
+every match after all of them apply, and each item carries the folder of the
+location it was listed from (`Video.folder`, built from the registered media
+folders with `domain.LocateVideoFolder`)
+([specs/013-library-search/contracts/list-api.md](specs/013-library-search/contracts/list-api.md)).
+
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
