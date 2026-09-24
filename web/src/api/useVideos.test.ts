@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ListVideosParams, Video, VideoPage, VideoSort } from "./client";
+import type { VideosCriteria } from "./useVideos";
 
 /**
  * 一覧の読み込みの振る舞いを固定する。
@@ -77,7 +78,7 @@ beforeEach(() => {
 
 describe("useVideos（一覧の読み込み）", () => {
   it("loadMore は直前の応答の nextCursor をそのまま次の要求へ渡す", async () => {
-    const { result } = renderHook(() => useVideos("addedDesc", ""));
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
 
     await waitFor(() => {
       expect(calls).toHaveLength(1);
@@ -107,7 +108,7 @@ describe("useVideos（一覧の読み込み）", () => {
   });
 
   it("保存された再生位置を、表示中の該当する項目にだけ反映する", async () => {
-    const { result } = renderHook(() => useVideos("addedDesc", ""));
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
@@ -133,7 +134,7 @@ describe("useVideos（一覧の読み込み）", () => {
   });
 
   it("nextCursor が無ければ hasMore が偽になり、loadMore は要求を出さない", async () => {
-    const { result } = renderHook(() => useVideos("addedDesc", ""));
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
 
     await waitFor(() => {
       expect(calls).toHaveLength(1);
@@ -155,7 +156,7 @@ describe("useVideos（一覧の読み込み）", () => {
   });
 
   it("続きの取得失敗後に同じカーソルから再試行できる", async () => {
-    const { result } = renderHook(() => useVideos("addedDesc", ""));
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
 
     await waitFor(() => expect(calls).toHaveLength(1));
     await act(async () => calls[0]?.resolve(page([1, 2], "cursor-1")));
@@ -176,7 +177,7 @@ describe("useVideos（一覧の読み込み）", () => {
 
   it("並び順や検索語が変わったらカーソルを引き継がず先頭から読み直す", async () => {
     const { result, rerender } = renderHook(
-      ({ sort, query }: { sort: VideoSort; query: string }) => useVideos(sort, query),
+      ({ sort, query }: { sort: VideoSort; query: string }) => useVideos({ sort, query }),
       { initialProps: { sort: "addedDesc" as VideoSort, query: "" } },
     );
 
@@ -210,7 +211,7 @@ describe("useVideos（一覧の読み込み）", () => {
 
   it("連続して変えたとき、古い応答が新しい一覧を上書きしない", async () => {
     const { result, rerender } = renderHook(
-      ({ query }: { query: string }) => useVideos("addedDesc", query),
+      ({ query }: { query: string }) => useVideos({ sort: "addedDesc", query }),
       { initialProps: { query: "ね" } },
     );
 
@@ -234,5 +235,87 @@ describe("useVideos（一覧の読み込み）", () => {
     expect(result.current.error).toBeNull();
     expect(result.current.hasMore).toBe(true);
     expect(result.current.loading).toBe(false);
+  });
+});
+
+describe("useVideos（条件と重複）", () => {
+  it("条件（検索語・視聴状態・再生可否・並び順・seed）をそのまま要求へ渡す", async () => {
+    renderHook(() =>
+      useVideos({
+        query: "京都",
+        watch: "unwatched",
+        playable: true,
+        sort: "random",
+        seed: 42,
+      }),
+    );
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.params).toMatchObject({
+      query: "京都",
+      watch: "unwatched",
+      playable: true,
+      sort: "random",
+      seed: 42,
+    });
+  });
+
+  it("random 以外の並び順では seed を送らない", async () => {
+    renderHook(() => useVideos({ sort: "titleAsc", seed: 42 }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.params.seed).toBeUndefined();
+  });
+
+  const changes: [string, VideosCriteria][] = [
+    ["検索語", { sort: "addedDesc", query: "奈良" }],
+    ["視聴状態", { sort: "addedDesc", watch: "watched" }],
+    ["再生可否", { sort: "addedDesc", playable: true }],
+    ["並び順", { sort: "durationDesc" }],
+    ["seed", { sort: "random", seed: 8 }],
+  ];
+
+  it.each(changes)(
+    "要求の途中で%sを変えると、遅れて届いた古い応答を捨てる",
+    async (_, next) => {
+      const first: VideosCriteria =
+        next.sort === "random" ? { sort: "random", seed: 7 } : { sort: "addedDesc" };
+      const { result, rerender } = renderHook(
+        ({ criteria }: { criteria: VideosCriteria }) => useVideos(criteria),
+        { initialProps: { criteria: first } },
+      );
+      await waitFor(() => expect(calls).toHaveLength(1));
+
+      rerender({ criteria: next });
+      await waitFor(() => expect(calls).toHaveLength(2));
+      expect(calls[0]?.aborted()).toBe(true);
+
+      await act(async () => calls[1]?.resolve(page([9])));
+      // 打ち切られた要求の応答が後から届いても一覧を上書きしない。
+      await act(async () => calls[0]?.resolve(page([1, 2, 3])));
+      expect(result.current.items.map((video) => video.id)).toEqual([9]);
+      expect(result.current.error).toBeNull();
+    },
+  );
+
+  it("同じ条件で描画し直しても読み直さない", async () => {
+    const { rerender } = renderHook(
+      ({ criteria }: { criteria: VideosCriteria }) => useVideos(criteria),
+      { initialProps: { criteria: { sort: "addedDesc", query: "a" } as VideosCriteria } },
+    );
+    await waitFor(() => expect(calls).toHaveLength(1));
+    rerender({ criteria: { sort: "addedDesc", query: "a" } });
+    await act(async () => Promise.resolve());
+    expect(calls).toHaveLength(1);
+  });
+
+  it("続きのページに既に出た id が含まれていても、一覧に2度出さない", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "sizeDesc" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2, 3], "cursor-1")));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await act(async () => calls[1]?.resolve(page([3, 4, 2, 5, 5])));
+
+    expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3, 4, 5]);
   });
 });
