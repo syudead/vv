@@ -5,7 +5,9 @@
  *
  * すべてのタグが収まればその個数を返す（「+N」は要らない）。収まらないときは、
  * 「+N」チップ（`overflowWidth`）を置く分の余白を残して収まる個数を返す。
- * 1つも収まらないときは 0 を返す（呼び出し側は「+N」だけを出す）。
+ * 先頭の1つすら収まらないときも、その1つは縮めてでも出す（`min-w-0` で切り詰めて
+ * 見せる。「+N」だけが並ぶと、どのタグも見えなくなってしまうため）。1つも無ければ
+ * 0 を返す。
  */
 export function computeVisibleTagCount(
   tagWidths: readonly number[],
@@ -32,5 +34,7 @@ export function computeVisibleTagCount(
     used = withThisTag;
     visible += 1;
   }
+  // 先頭の1つすら収まらなくても、「+N」だけにはしない。その1つは縮めて出す。
+  if (visible === 0 && tagWidths.length > 0) return 1;
   return visible;
 }

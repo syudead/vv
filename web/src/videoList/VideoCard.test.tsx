@@ -313,7 +313,7 @@ describe("VideoCard tagsRow（issue 269）", () => {
 
   it("tagsRow を渡すと、今の日付・サイズ・コーデックの行の代わりにそれを出す", () => {
     renderCard(video({ tags: [{ id: 1, name: "旅行" }] }), {
-      tagsRow: <p>タグの行</p>,
+      tagsRow: () => <p>タグの行</p>,
     });
     expect(screen.getByText("タグの行")).toBeDefined();
     expect(screen.queryByText("h264")).toBeNull();
@@ -326,7 +326,7 @@ describe("VideoCard tagsRow（issue 269）", () => {
 
   it("tagsRow はリンクの外、同じ article の中に置く", () => {
     renderCard(video({ tags: [{ id: 1, name: "旅行" }] }), {
-      tagsRow: <button type="button">タグ</button>,
+      tagsRow: () => <button type="button">タグ</button>,
     });
     const article = screen.getByRole("article");
     const link = screen.getByRole("link");
@@ -337,7 +337,53 @@ describe("VideoCard tagsRow（issue 269）", () => {
   });
 
   it("タグが無い動画では tagsRow の場所に何も出さない", () => {
-    renderCard(video({ tags: [] }), { tagsRow: <p>タグの行</p> });
+    renderCard(video({ tags: [] }), { tagsRow: () => <p>タグの行</p> });
     expect(screen.queryByText("タグの行")).toBeNull();
+  });
+
+  it("題名とタグの行の間隔は今の gap-1 と同じ（B3）", () => {
+    renderCard(video({ tags: [{ id: 1, name: "旅行" }] }), {
+      tagsRow: () => <p>タグの行</p>,
+    });
+    const row = screen.getByText("タグの行").parentElement;
+    expect(row?.className).toContain("pt-1");
+  });
+
+  it("同じ参照の props で親が再描画しても memo で再描画せず、tagsRow を呼び直さない（N4）", () => {
+    const item = video({ tags: [{ id: 1, name: "旅行" }] });
+    const stableTagsRow = vi.fn(() => <p>タグの行</p>);
+    const props = {
+      video: item,
+      backTo: "/",
+      selected: false,
+      selectionMode: false,
+      onSelect: vi.fn(),
+      tagsRow: stableTagsRow,
+    };
+    const { rerender } = render(
+      <MemoryRouter>
+        <VideoCard {...props} />
+      </MemoryRouter>,
+    );
+    expect(stableTagsRow).toHaveBeenCalledTimes(1);
+
+    // 親を、まったく同じ props（同じ参照）で再描画する（無関係な状態が変わった
+    // ことを模す）。memo(VideoCard) が効いていれば、VideoCard は再描画されず、
+    // tagsRow はもう一度呼ばれない。
+    rerender(
+      <MemoryRouter>
+        <VideoCard {...props} />
+      </MemoryRouter>,
+    );
+    expect(stableTagsRow).toHaveBeenCalledTimes(1);
+
+    // tagsRow の参照が変われば、当然に再描画され、新しい関数が呼ばれる。
+    const nextTagsRow = vi.fn(() => <p>タグの行</p>);
+    rerender(
+      <MemoryRouter>
+        <VideoCard {...props} tagsRow={nextTagsRow} />
+      </MemoryRouter>,
+    );
+    expect(nextTagsRow).toHaveBeenCalledTimes(1);
   });
 });

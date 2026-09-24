@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import type { TagRef } from "../api/client";
 import { cn } from "../lib/cn";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import { useTagRowMeasure } from "./TagRowMeasure";
 import { computeVisibleTagCount } from "./tagRowOverflow";
 
 /** gap-1（0.25rem、16px 基準）と同じ値。 */
@@ -22,9 +23,25 @@ export interface CardTagRowProps {
   onToggleSelection: () => void;
 }
 
-function chipClassName(pressable: boolean): string {
+/**
+ * chipClassName の shrink は、行に収まらないときに幅を縮めて省略してよいかを
+ * 決める。「+N」と、選ぶ余地の無い唯一の可視タグ（B4）以外は `shrink-0` にし、
+ * 計測した幅のまま出す。
+ *
+ * surface は面の色。既定はカードの `bg-elevated`。ポップオーバーの中
+ * （`PopoverContent` も `bg-elevated`）では `bg-field` にし、チップの面が
+ * 窓の面へ溶けて見えなくならないようにする（N5、Synonym の窓の `bg-bg` と
+ * 同じ理由）。
+ */
+function chipClassName(
+  pressable: boolean,
+  shrink = false,
+  surface: "elevated" | "field" = "elevated",
+): string {
   return cn(
-    "inline-flex h-5 max-w-full shrink-0 items-center rounded-sm bg-elevated px-1.5 text-xs text-fg-muted",
+    "inline-flex h-5 max-w-full min-w-0 items-center rounded-sm px-1.5 text-xs text-fg-muted",
+    surface === "elevated" ? "bg-elevated" : "bg-field",
+    shrink ? "shrink" : "shrink-0",
     pressable &&
       "hover:text-fg hover:ring-1 hover:ring-inset hover:ring-border-strong focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-link",
   );
@@ -33,15 +50,19 @@ function chipClassName(pressable: boolean): string {
 function TagChip({
   tag,
   pressable,
+  shrink,
+  surface,
   onPress,
 }: {
   tag: TagRef;
   pressable: boolean;
+  shrink?: boolean;
+  surface?: "elevated" | "field";
   onPress: () => void;
 }) {
   if (!pressable) {
     return (
-      <span title={tag.name} className={chipClassName(false)}>
+      <span title={tag.name} className={chipClassName(false, shrink, surface)}>
         <span className="min-w-0 truncate">{tag.name}</span>
       </span>
     );
@@ -52,7 +73,7 @@ function TagChip({
       title={tag.name}
       aria-label={`${tag.name}で絞り込む`}
       onClick={onPress}
-      className={chipClassName(true)}
+      className={chipClassName(true, shrink, surface)}
     >
       <span className="min-w-0 truncate">{tag.name}</span>
     </button>
@@ -97,18 +118,23 @@ export default function CardTagRow({
     recompute();
   }, [recompute, tags]);
 
-  useEffect(() => {
+  // カードごとに見張りを作らず、一覧に1つの ResizeObserver へ登録する
+  // （ui-design.md「Overflow」、B2）。Provider の外（単体テストなど）では
+  // useTagRowMeasure が null を返し、初回の layout effect の計測だけになる。
+  const observeRow = useTagRowMeasure();
+  useLayoutEffect(() => {
     const row = rowRef.current;
-    if (row === null || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => recompute());
-    observer.observe(row);
-    return () => observer.disconnect();
-  }, [recompute]);
+    if (row === null || observeRow === null) return;
+    return observeRow(row, recompute);
+  }, [observeRow, recompute]);
 
   const pressable = !selectionMode;
   const clampedVisible = Math.min(visibleCount, tags.length);
   const hidden = tags.slice(clampedVisible);
   const visible = tags.slice(0, clampedVisible);
+  // 先頭の1つすら自然な幅では収まらないのに1つは出しているとき（B4）は、
+  // その1つだけ縮めて省略してよいことにする。
+  const forcedShrink = visible.length === 1 && hidden.length > 0;
 
   return (
     <div
@@ -121,8 +147,16 @@ export default function CardTagRow({
         className="flex flex-nowrap items-center gap-1 overflow-hidden"
       >
         {visible.map((tag) => (
-          <li key={tag.id} className="min-w-0 max-w-full">
-            <TagChip tag={tag} pressable={pressable} onPress={() => onPress(tag)} />
+          <li
+            key={tag.id}
+            className={cn("min-w-0 max-w-full", !forcedShrink && "shrink-0")}
+          >
+            <TagChip
+              tag={tag}
+              pressable={pressable}
+              shrink={forcedShrink}
+              onPress={() => onPress(tag)}
+            />
           </li>
         ))}
         {hidden.length > 0 &&
@@ -145,6 +179,7 @@ export default function CardTagRow({
                         <TagChip
                           tag={tag}
                           pressable
+                          surface="field"
                           onPress={() => {
                             setOpen(false);
                             onPress(tag);

@@ -17,7 +17,12 @@ describe("computeVisibleTagCount", () => {
     expect(computeVisibleTagCount([20, 30, 25], 24, 4, 0)).toBe(3);
   });
 
-  it("1つも収まらないときは 0", () => {
-    expect(computeVisibleTagCount([100], 24, 4, 10)).toBe(0);
+  it("先頭の1つすら収まらなくても、+N だけにはせず縮めてでも1つ出す（B4）", () => {
+    expect(computeVisibleTagCount([100], 24, 4, 10)).toBe(1);
+    expect(computeVisibleTagCount([100, 50], 24, 4, 10)).toBe(1);
+  });
+
+  it("タグが無ければ0", () => {
+    expect(computeVisibleTagCount([], 24, 4, 10)).toBe(0);
   });
 });
