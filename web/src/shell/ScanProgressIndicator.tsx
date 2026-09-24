@@ -44,11 +44,7 @@ function statusAnnouncement(presentation: ScanPresentation) {
   }
 }
 
-export default function ScanProgressIndicator({
-  placement = "default",
-}: {
-  placement?: "default" | "playback";
-}) {
+export default function ScanProgressIndicator() {
   const scan = useScan();
   const notice = useScanNotice();
   const navigate = useNavigate();
@@ -152,9 +148,9 @@ export default function ScanProgressIndicator({
     <div
       className={cn(
         "fixed right-3 z-30 max-w-[calc(100vw-1.5rem)] sm:right-5",
-        placement === "playback"
-          ? "bottom-4 sm:top-2 sm:bottom-auto"
-          : "bottom-4 sm:bottom-5",
+        // 再生画面でも右下に置く。右上は、幅によってプレイヤーの上か関連動画の見出しの行に
+        // 閉じる × があり、そこを覆ってしまう。
+        "bottom-4 sm:bottom-5",
       )}
       onPointerEnter={enterPointerArea}
       onPointerLeave={leavePointerArea}

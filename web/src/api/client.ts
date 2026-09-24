@@ -15,6 +15,8 @@ export type ApiError = components["schemas"]["Error"];
 export type FolderSummary = components["schemas"]["FolderSummary"];
 export type FolderListing = components["schemas"]["FolderListing"];
 export type RootFolderListing = components["schemas"]["RootFolderListing"];
+export type RelatedVideos = components["schemas"]["RelatedVideos"];
+export type VideoLocation = components["schemas"]["VideoLocation"];
 
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
 // これだけを待つ。
@@ -151,6 +153,35 @@ export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoP
 /** getVideo は動画1件の詳細を取得する。 */
 export function getVideo(id: number, signal?: AbortSignal): Promise<Video> {
   return request<Video>(`/api/videos/${id}`, { signal });
+}
+
+/** getRelatedVideos は動画詳細画面の関連動画（最大 20 件と次の動画の id）を取得する。 */
+export function getRelatedVideos(
+  id: number,
+  signal?: AbortSignal,
+): Promise<RelatedVideos> {
+  return request<RelatedVideos>(`/api/videos/${String(id)}/related`, { signal });
+}
+
+/**
+ * reprobeVideo は読み取りに失敗した動画を、もう一度読み取りの処理へ入れる。
+ *
+ * 202 の本文は所在とシーク用プレビューの状態を持たない（動画 1 件の取得にだけ入る）。
+ * 画面はこの本文で控えを置き換えず、取り直して使う。
+ */
+export function reprobeVideo(id: number, signal?: AbortSignal): Promise<Video> {
+  return request<Video>(`/api/videos/${String(id)}/probe`, { method: "POST", signal });
+}
+
+/** openVideoFile はサーバーの PC で、動画の代表の所在を既定のアプリで開く。 */
+export async function openVideoFile(id: number, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/api/videos/${String(id)}/open`, {
+    method: "POST",
+    signal,
+  });
+  if (!response.ok) {
+    throw await toRequestFailed(response);
+  }
 }
 
 /** getCurrentScan は直近の取り込みの状態を取得する。一度も取り込んでいなければ null。 */

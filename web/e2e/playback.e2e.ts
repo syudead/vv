@@ -300,6 +300,17 @@ test.describe.serial("live MP4 playback", () => {
       return element !== null && !element.paused && element.currentTime > 0.1;
     });
 
+    // 絞った回線では再生が始まるまでに 2 秒を超えることがあり、そのあいだに video.js は
+    // 操作バーを隠して押せなくする（vjs-user-inactive）。人と同じく、プレイヤーの上で
+    // マウスを動かして操作バーを出してから再生バーを押す。
+    const playerBox = await page.locator(".video-js").boundingBox();
+    if (playerBox === null) throw new Error("player is not visible");
+    await page.mouse.move(
+      playerBox.x + playerBox.width * 0.75,
+      playerBox.y + playerBox.height / 2,
+      { steps: 3 },
+    );
+    await expect(page.locator(".video-js")).toHaveClass(/vjs-user-active/);
     const seekBar = page.locator(".vjs-progress-control");
     const box = await seekBar.boundingBox();
     if (box === null) throw new Error("seek bar is not visible");
@@ -511,7 +522,8 @@ test.describe.serial("live MP4 playback", () => {
       await expect
         .poll(() => page.locator("video").evaluate((element) => element.currentTime))
         .toBeGreaterThan(beforeSeek);
-      const back = page.getByRole("link", { name: "ライブラリ" });
+      // 上部バーの「← ライブラリ」は無くなり、閉じる × で戻る。幅ごとに見える × は 1 つ。
+      const back = page.getByRole("button", { name: "閉じる" });
       await back.focus();
       await Promise.all([page.waitForURL("/"), back.press("Enter")]);
     }
@@ -568,5 +580,100 @@ test.describe.serial("live MP4 playback", () => {
         fullPage: true,
       });
     }
+  });
+
+  test("画面全体の → で 10 秒進み、操作バーの再生速度が再生に反映される", async ({
+    page,
+  }) => {
+    test.setTimeout(30_000);
+    const item = video("direct-fallback");
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`/videos/${String(item.id)}`);
+    await page.locator(".vjs-big-play-button").click();
+    await page.waitForFunction(() => {
+      const element = document.querySelector("video");
+      return element !== null && !element.paused && element.currentTime > 0.1;
+    });
+
+    // 関連動画のリンクにフォーカスがあっても、画面全体のキー操作が効く。
+    await page.getByRole("link").first().focus();
+    await page.keyboard.press("m");
+    await expect
+      .poll(() => page.locator("video").evaluate((element) => element.muted))
+      .toBe(true);
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press("Space");
+    await expect
+      .poll(() => page.locator("video").evaluate((element) => element.paused))
+      .toBe(true);
+    const before = await page.locator("video").evaluate((element) => element.currentTime);
+    await page.keyboard.press("ArrowRight");
+    await expect
+      .poll(() => page.locator("video").evaluate((element) => element.currentTime))
+      .toBeGreaterThan(before + 9);
+    expect(
+      await page.locator("video").evaluate((element) => element.currentTime),
+    ).toBeLessThan(before + 11);
+    await page.keyboard.press("0");
+    await expect
+      .poll(() => page.locator("video").evaluate((element) => element.currentTime))
+      .toBeLessThan(1);
+
+    await page.keyboard.press("Space");
+    await page.locator(".video-js").hover();
+    await page.locator(".vjs-control-bar > .vjs-playback-rate").hover();
+    await page.getByRole("menuitemradio", { name: /^1\.5x/ }).click();
+    await expect
+      .poll(() => page.locator("video").evaluate((element) => element.playbackRate))
+      .toBe(1.5);
+    const rateStart = await page
+      .locator("video")
+      .evaluate((element) => element.currentTime);
+    await page.waitForTimeout(1000);
+    const rateEnd = await page
+      .locator("video")
+      .evaluate((element) => element.currentTime);
+    expect(rateEnd - rateStart).toBeGreaterThan(1.2);
+    expect(await page.locator("video").evaluate((element) => element.paused)).toBe(false);
+    await expect(page.locator(".vjs-remaining-time")).toHaveCount(0);
+    await expect(page.locator(".vjs-current-time")).toBeVisible();
+    await expect(page.locator(".vjs-duration")).toBeVisible();
+    if (screenshotDir !== undefined) {
+      await mkdir(screenshotDir, { recursive: true });
+      await page.locator(".video-js").hover();
+      await page.screenshot({
+        path: path.join(screenshotDir, "20260923-video-detail-1280.png"),
+        fullPage: true,
+      });
+    }
+  });
+
+  test("関連動画から移ったあとの × と Esc は最初の一覧へ戻る", async ({ page }) => {
+    test.setTimeout(30_000);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto("/?q=direct");
+    const card = page.getByRole("link", { name: "direct", exact: true });
+    await card.click();
+    await expect(page).toHaveURL(new RegExp(`/videos/${String(video("direct").id)}$`));
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("direct");
+    await expect(page.getByRole("heading", { level: 2, name: "関連動画" })).toBeVisible();
+
+    const related = page.locator("aside").getByRole("link").first();
+    const relatedTitle = (await related.textContent()) ?? "";
+    await related.click();
+    await expect(page).not.toHaveURL(
+      new RegExp(`/videos/${String(video("direct").id)}$`),
+    );
+    await expect(page.getByRole("heading", { level: 1 })).not.toHaveText("direct");
+    expect(relatedTitle).toContain(
+      (await page.getByRole("heading", { level: 1 }).textContent()) ?? "missing",
+    );
+    await page.getByRole("button", { name: "閉じる" }).click();
+    await expect(page).toHaveURL(/\/\?q=direct$/);
+
+    await page.goBack();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(/\/\?q=direct$/);
   });
 });

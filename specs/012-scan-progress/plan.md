@@ -25,7 +25,7 @@
 - `Scan` の field、生成物、DB schema は変更しない。`total` は実際の取り込み対象ファイル数、`completed` はそのうち正常に処理した数として既存 field の意味を明確化する。対象集合を確定できないディレクトリ走査エラーは個別ファイルの `failed` に混ぜず、理由付きの全体失敗にする。
 - `ScanProvider` は実行中と開始要求の回復中に加え、状態取得に失敗して current scan を確定できない間も既存の2秒間隔で再試行し、成功時に通常の「実行中だけ polling」へ戻す。最後に取得できた scan は一時失敗で捨てない。
 - 通知状態は `trackingScanId`、`acknowledgedTerminalScanId`、`completionNotice { scanId, expiresAt, pausedRemainingMs }` だけを version 付きの `sessionStorage` に保存する。`pausedRemainingMs` は概要を閲覧中に再読み込みしても残り表示時間を維持するために使う。保存値が無い、壊れている、または storage が利用できない場合は空の通知状態へ戻し、server の scan state と設定詳細は失わない。
-- フローティング表示は `Routes` より上に1度だけ置き、ライブラリ、フォルダ、設定、再生画面をまたいで同じインスタンスを維持する。再生画面へシェル全体は持ち込まず、進捗表示だけを再生操作と重ならない位置へ置く。360pxでは再生画面の右下、768px以上では右上を使う。
+- フローティング表示は `Routes` より上に1度だけ置き、ライブラリ、フォルダ、設定、再生画面をまたいで同じインスタンスを維持する。再生画面へシェル全体は持ち込まず、進捗表示だけを再生操作と重ならない位置へ置く。再生画面でもどの幅でも右下を使う（動画詳細画面の見直し #171 で再生画面の右上に閉じる × が入ったため、再生画面でも右下に置く）。
 - 新しい runtime dependency は追加しない。位置調整、Portal、Escape、focus の土台には既存の `@radix-ui/react-popover` を使う。
 
 方式選択と代案は [research.md](research.md)、feature 固有の実行確認は [quickstart.md](quickstart.md) に置く。
@@ -43,7 +43,7 @@ Phase 1 後も判定は同じで、正当化の必要な違反はない。
 
 ## Structural Decisions
 
-1. **フローティング進捗は shell component が所有し、描画は route より上でトップバーや Toast から分離する。** `web/src/shell/ScanProgressIndicator.tsx` を `ScanNoticeProvider` 内かつ `Routes` の外に1度だけ置き、ライブラリ、フォルダ、設定、再生画面で同じインスタンスを共有する。`web/src/app/App.tsx` の route 分岐が通常／再生の placement variant を導き、indicator は pathname を解釈しない。通常画面では右下、再生画面では360pxの右下と768px以上の右上を使い、player control と詳細を避ける。
+1. **フローティング進捗は shell component が所有し、描画は route より上でトップバーや Toast から分離する。** `web/src/shell/ScanProgressIndicator.tsx` を `ScanNoticeProvider` 内かつ `Routes` の外に1度だけ置き、ライブラリ、フォルダ、設定、再生画面で同じインスタンスを共有する。`web/src/app/App.tsx` の route 分岐が通常／再生の placement variant を導いて Toast へ渡し、indicator は pathname を解釈しない。通常画面・再生画面とも右下を使い、player control と閉じる × を避ける（動画詳細画面の見直し #171 で再生画面の右上に閉じる × が入ったため、再生画面でも右下に置く）。
    - 却下: `TopBar` の更新ボタンを進捗表示と詳細導線に兼用する案。親 Issue が置き換える現行挙動であり、開始操作と監視操作が同じ狭い場所に戻る。
    - 却下: 既存 Toast を拡張する案。Toast は 2.8 秒で消える短い通知で pointer events も受けないため、継続監視、ホバー概要、詳細への移動、失敗の確認待ちを同じ契約にすると役割が衝突する。
 2. **状態取得の回復は `ScanProvider`、表示解釈は純粋な共有 mapper に置く。** `ScanProvider` は初回を含む取得失敗後も既存間隔で自動再試行し、`web/src/shell/scanPresentation.ts` は `ScanContextValue` から表示状態、確定／不確定 progress、割合、件数、時刻、説明文を導く。
@@ -112,7 +112,7 @@ specs/012-scan-progress/
 
 ### フローティング進捗と設定画面の取り込み詳細を追加する
 
-**Scope**: 親 Issue の要件 1〜12・14、承認済み `ui-design.md`、Structural Decisions 1・4・5に従い、route をまたいで継続するインジケーター、hover/focus 概要、結果表示、設定詳細への操作を追加し、`TopBar` は待機時の開始操作に専念させる。通常画面では右下、再生画面では360pxの右下と768px以上の右上に配置する。設定画面ではメディアフォルダより前に「取り込み状況」を置き、共有 mapper から未実行、実行中、完了、一部失敗、全体失敗、取得の一時失敗、時刻、件数、失敗理由、再試行を表示する。`/settings#scan-status` の直接表示と再読み込み、画面移動、既存一覧再読込、再生中の非干渉を browser test で検証する。
+**Scope**: 親 Issue の要件 1〜12・14、承認済み `ui-design.md`、Structural Decisions 1・4・5に従い、route をまたいで継続するインジケーター、hover/focus 概要、結果表示、設定詳細への操作を追加し、`TopBar` は待機時の開始操作に専念させる。通常画面・再生画面とも右下に配置する（動画詳細画面の見直し #171 で再生画面の右上に閉じる × が入ったため、再生画面でも右下に置く）。設定画面ではメディアフォルダより前に「取り込み状況」を置き、共有 mapper から未実行、実行中、完了、一部失敗、全体失敗、取得の一時失敗、時刻、件数、失敗理由、再試行を表示する。`/settings#scan-status` の直接表示と再読み込み、画面移動、既存一覧再読込、再生中の非干渉を browser test で検証する。
 
 **Dependencies**: 取り込み状態の自動回復と共有表示モデル、Design stage 完了。
 

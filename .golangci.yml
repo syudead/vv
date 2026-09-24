@@ -30,7 +30,7 @@ linters:
   settings:
     depguard:
       rules:
-        # cmd → internal/{httpapi,store,media,scanner,jobs} → internal/domain の
+        # cmd → internal/{httpapi,store,media,opener,scanner,jobs} → internal/domain の
         # 一方向のみを許す。internal/domain は依存の終端なので、外部 I/O にも
         # 他の internal パッケージにも依存してはならない。
         #
@@ -52,8 +52,8 @@ linters:
             - pkg: os/exec
               desc: >-
                 internal/domain から os/exec を import してはならない。外部コマンドの実行は
-                internal/media に閉じ込めること
-                （ARCHITECTURE.md "Intended dependency direction"）。
+                internal/media（ffmpeg／ffprobe）と internal/opener（OS の既定アプリ）に
+                閉じ込めること（ARCHITECTURE.md "Intended dependency direction"）。
             - pkg: modernc.org/sqlite
               desc: >-
                 internal/domain から SQLite ドライバを import してはならない。特定の
@@ -62,27 +62,32 @@ linters:
             - pkg: github.com/syudead/vv/internal/httpapi
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,scanner,jobs} →
+                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/store
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,scanner,jobs} →
+                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/media
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,scanner,jobs} →
+                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
+                internal/domain の一方向だけである（ARCHITECTURE.md）。
+            - pkg: github.com/syudead/vv/internal/opener
+              desc: >-
+                internal/domain から他の internal パッケージを import してはならない。
+                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/scanner
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,scanner,jobs} →
+                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
             - pkg: github.com/syudead/vv/internal/jobs
               desc: >-
                 internal/domain から他の internal パッケージを import してはならない。
-                依存は cmd → internal/{httpapi,store,media,scanner,jobs} →
+                依存は cmd → internal/{httpapi,store,media,opener,scanner,jobs} →
                 internal/domain の一方向だけである（ARCHITECTURE.md）。
 
   exclusions:

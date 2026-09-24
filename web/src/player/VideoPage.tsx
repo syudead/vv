@@ -1,32 +1,51 @@
-import { AlertCircle, ArrowLeft } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useParams } from "react-router";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useLocation, useNavigate, useParams } from "react-router";
 
 import {
   beaconProgress,
-  errorMessage,
-  getVideo,
-  isAborted,
+  reprobeVideo,
+  RequestFailed,
   saveProgress,
   type Video,
 } from "../api/client";
-import { formatDuration } from "../lib/format";
-import { buttonClassName } from "../ui/Button";
+import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import Skeleton from "../ui/Skeleton";
-import FileDetails from "./FileDetails";
-import VideoHeader from "./VideoHeader";
-import VideoPlayer, { canStartPlayback } from "./VideoPlayer";
+import CloseButton from "./CloseButton";
+import EndedOverlay from "./EndedOverlay";
+import FileLocation from "./FileLocation";
+import { useKeyboardShortcuts } from "./keyboard";
+import type { PlayerControls } from "./playerControls";
+import PropertyStrip from "./PropertyStrip";
+import RelatedVideos from "./RelatedVideos";
+import {
+  CreatingLine,
+  LoadFailure,
+  LoadingOverlay,
+  MissingVideo,
+  PlaybackFailure,
+  ProcessingStages,
+  ReadFailure,
+  Unplayable,
+} from "./StatusOverlays";
+import TouchControls from "./TouchControls";
+import VideoPlayer, {
+  canStartPlayback,
+  initialPlayerStatus,
+  type PlayerStatus,
+} from "./VideoPlayer";
 
 /** minResumeMs 未満の位置は「見始めたばかり」として先頭から再生する。 */
 const minResumeMs = 5000;
 
-type State =
-  | { kind: "loading" }
-  | { kind: "ready"; video: Video }
-  | { kind: "failed"; reason: string };
-
 /** backTarget は遷移元の一覧 URL。無ければ `/`。外部 URL は受け付けない。 */
-function backTarget(state: unknown): string {
+export function backTarget(state: unknown): string {
   const from: unknown = (state as { from?: unknown } | null)?.from;
   if (typeof from !== "string" || !from.startsWith("/") || from.startsWith("//")) {
     return "/";
@@ -34,56 +53,104 @@ function backTarget(state: unknown): string {
   return from;
 }
 
-/** backLabel は戻り先の画面の名前である。フォルダ画面から来たらフォルダへ戻る。 */
-function backLabel(backTo: string): string {
-  return backTo === "/folders" ||
-    backTo.startsWith("/folders/") ||
-    backTo.startsWith("/folders?")
-    ? "フォルダ"
-    : "ライブラリ";
+/** autoplayRequested は「次を再生」から来たか（移った先で再生を始めるか）を返す。 */
+function autoplayRequested(state: unknown): boolean {
+  return (state as { autoplay?: unknown } | null)?.autoplay === true;
 }
 
+function resumePosition(video: Video): number {
+  const progress = video.progress;
+  return progress === undefined || progress.completed || progress.positionMs < minResumeMs
+    ? 0
+    : progress.positionMs;
+}
+
+/** 再生の試み。再試行と「次を再生」は、位置と自動再生を決めてプレイヤーを作り直す。 */
+interface Attempt {
+  key: number;
+  startMs: number | null;
+  autoplay: boolean;
+}
+
+/**
+ * VideoPage は動画詳細画面（`/videos/:id`）である。
+ *
+ * 構成要素はプレイヤー・題名・属性情報（ファイルの場所を含む）・関連動画の 4 つだけとする
+ * （親 Issue 要件 1）。状態と失敗は、プレイヤーの上の 1 つの入れ物に重ねて伝える
+ * （plan の Structural Decisions 12）。入れ物の中は、上から 状態表示・再生終了・タッチ用の
+ * 中央操作 の順で、同時に出すのは 1 つだけである。
+ */
 export default function VideoPage() {
   const params = useParams();
-  const id = Number(params.id);
-  const backTo = backTarget(useLocation().state);
+  // 形の正しくない id は 0 に寄せる（NaN は自分自身と等しくならず、比べられない）。
+  const parsedId = Number(params.id);
+  const id = Number.isSafeInteger(parsedId) && parsedId > 0 ? parsedId : 0;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const backTo = backTarget(location.state);
 
-  const [state, setState] = useState<State>({ kind: "loading" });
-  const [playbackError, setPlaybackError] = useState<string | null>(null);
-  const [resumedFrom, setResumedFrom] = useState<number | null>(null);
+  const { state: detailState, refresh } = useVideoDetail(id);
+  const { state: relatedState, retry: retryRelated } = useRelatedVideos(id);
+  const detail = detailState.id === id ? detailState : { kind: "loading" as const, id };
+  const related =
+    relatedState.id === id ? relatedState : { kind: "loading" as const, id };
+  const video = detail.kind === "ready" ? detail.video : undefined;
 
-  const lastSent = useRef<{ videoId: number; positionMs: number } | null>(null);
-  const latestPosition = useRef<{ videoId: number; positionMs: number } | null>(null);
-
-  useEffect(() => {
-    setState({ kind: "loading" });
-    setPlaybackError(null);
-    setResumedFrom(null);
-    if (!Number.isSafeInteger(id) || id < 1) {
-      setState({ kind: "failed", reason: "動画の指定が正しくありません" });
-      return;
-    }
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        setState({ kind: "ready", video: await getVideo(id, controller.signal) });
-      } catch (failure) {
-        if (isAborted(failure)) return;
-        setState({ kind: "failed", reason: errorMessage(failure) });
-      }
-    })();
-    return () => controller.abort();
+  // 一覧をスクロールした位置から来ても、プレイヤーを画面の上に出す。別の動画へ移ったときも
+  // 同じ。一覧へ戻ったときの位置の復元は一覧の側（LibraryPage）が行う。広い画面では左右の列が
+  // それぞれスクロールするので、左の列も先頭へ戻す。
+  const mainColumnRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    window.scrollTo(0, 0);
+    mainColumnRef.current?.scrollTo?.(0, 0);
   }, [id]);
 
-  const video = state.kind === "ready" && state.video.id === id ? state.video : undefined;
+  const [pageId, setPageId] = useState(id);
+  const [controls, setControls] = useState<PlayerControls | null>(null);
+  const [status, setStatus] = useState<PlayerStatus>(initialPlayerStatus);
+  const [failure, setFailure] = useState<{ positionMs: number } | null>(null);
+  const [attempt, setAttempt] = useState<Attempt>(() => ({
+    key: 0,
+    startMs: null,
+    autoplay: autoplayRequested(location.state),
+  }));
+  const [endedTakesFocus, setEndedTakesFocus] = useState(false);
+  const frameRef = useRef<HTMLDivElement | null>(null);
+  // 全画面はプレイヤーの上の層ごとにする（状態表示・再生終了・中央操作を全画面でも出す）。
+  const fullscreenTarget = useCallback(() => frameRef.current, []);
 
+  // 別の動画へ移ったら、前の動画の再生の状態を持ち越さない。
+  if (pageId !== id) {
+    setPageId(id);
+    setFailure(null);
+    setStatus(initialPlayerStatus);
+    setEndedTakesFocus(false);
+    setAttempt({ key: 0, startMs: null, autoplay: autoplayRequested(location.state) });
+  }
+
+  // 「次を再生」の自動再生は 1 回だけ使う。再読み込みや履歴の戻りで再生を始めない。
+  useEffect(() => {
+    if (!autoplayRequested(location.state)) return;
+    void navigate(
+      { pathname: location.pathname, search: location.search },
+      { replace: true, state: { from: backTo } },
+    );
+  }, [backTo, location.pathname, location.search, location.state, navigate]);
+
+  const close = useCallback(() => void navigate(backTo), [backTo, navigate]);
+
+  const title = video?.title;
   useEffect(() => {
     const previous = document.title;
-    if (video !== undefined) document.title = `${video.title} - vv`;
+    if (title !== undefined) document.title = `${title} - vv`;
     return () => {
       document.title = previous;
     };
-  }, [video]);
+  }, [title]);
+
+  // --- 再生位置の保存（既存どおり） ---
+  const lastSent = useRef<{ videoId: number; positionMs: number } | null>(null);
+  const latestPosition = useRef<{ videoId: number; positionMs: number } | null>(null);
 
   const send = useCallback(
     (positionMs: number, leaving: boolean, force = false) => {
@@ -139,116 +206,198 @@ export default function VideoPage() {
     };
   }, [id, send]);
 
-  const onError = useCallback(() => {
-    setPlaybackError(
-      "この動画を再生できませんでした。ファイルが移動・削除されたか、ブラウザが対応していない形式の可能性があります。",
-    );
+  // --- プレイヤーの状態 ---
+  const endedRef = useRef(false);
+  const onStatus = useCallback((next: PlayerStatus) => {
+    // 再生終了の層へフォーカスを移すのは、フォーカスがプレイヤーの中にあったときだけにする。
+    if (next.ended && !endedRef.current) {
+      const frame = frameRef.current;
+      setEndedTakesFocus(frame !== null && frame.contains(document.activeElement));
+    }
+    endedRef.current = next.ended;
+    setStatus(next);
   }, []);
 
-  const initialPositionMs =
-    video?.progress === undefined ||
-    video.progress.completed ||
-    video.progress.positionMs < minResumeMs
-      ? 0
-      : video.progress.positionMs;
-
-  return (
-    <div className="flex min-h-dvh flex-col bg-bg">
-      <header className="flex h-navbar shrink-0 items-center border-b border-border bg-bg px-2 sm:px-3">
-        <Link
-          to={backTo}
-          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm text-fg transition-colors hover:bg-hover-wash"
-        >
-          <ArrowLeft className="size-4" />
-          {backLabel(backTo)}
-        </Link>
-      </header>
-
-      {/* プレイヤー領域。幅いっぱい、高さは画面に収まる範囲で 16:9。 */}
-      <div className="flex w-full justify-center bg-navbar">
-        <div className="relative aspect-video w-full max-w-[calc((100dvh-12rem)*16/9)] overflow-hidden bg-navbar">
-          {state.kind === "loading" && (
-            <Skeleton className="absolute inset-0 rounded-none" />
-          )}
-
-          {state.kind === "failed" && (
-            <Blocked
-              title="動画を開けません"
-              description={state.reason}
-              backTo={backTo}
-            />
-          )}
-
-          {video !== undefined && !canStartPlayback(video) && (
-            <Blocked
-              title="この動画は再生できません"
-              description="再生に必要な動画情報を取得できませんでした。"
-              backTo={backTo}
-            />
-          )}
-
-          {video !== undefined && canStartPlayback(video) && (
-            <VideoPlayer
-              video={video}
-              initialPositionMs={initialPositionMs}
-              onPosition={rememberProgress}
-              onProgress={savePlayerProgress}
-              onResumed={setResumedFrom}
-              onError={onError}
-            />
-          )}
-        </div>
-      </div>
-
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-5 sm:px-6">
-        {playbackError !== null && (
-          <div
-            role="alert"
-            className="flex items-start gap-3 rounded-md border border-danger-strong px-4 py-3 text-sm text-fg animate-fade-in"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0" />
-            {playbackError}
-          </div>
-        )}
-
-        {state.kind === "loading" && (
-          <div className="flex flex-col gap-3">
-            <Skeleton className="h-7 w-2/3" />
-            <Skeleton className="h-5 w-1/2" />
-          </div>
-        )}
-
-        {video !== undefined && (
-          <>
-            <VideoHeader
-              video={video}
-              resumedFrom={resumedFrom === null ? null : formatDuration(resumedFrom)}
-            />
-            <FileDetails video={video} />
-          </>
-        )}
-      </div>
-    </div>
+  const onError = useCallback(
+    (positionMs: number) => {
+      setFailure({ positionMs });
+      // 再生の失敗は、動画がライブラリから消えたせいかもしれない。取り直して確かめる。
+      void refresh();
+    },
+    [refresh],
   );
-}
 
-function Blocked({
-  title,
-  description,
-  backTo,
-}: {
-  title: string;
-  description: string;
-  backTo: string;
-}) {
+  const retryPlayback = () => {
+    const startMs = failure?.positionMs ?? 0;
+    setFailure(null);
+    setStatus(initialPlayerStatus);
+    setAttempt((previous) => ({ key: previous.key + 1, startMs, autoplay: true }));
+  };
+
+  const reprobe = useCallback(async () => {
+    try {
+      await reprobeVideo(id);
+    } catch (error) {
+      // 409 は、別のタブや連打ですでにやり直しが始まっている。
+      if (!(error instanceof RequestFailed && error.code === "probe_not_failed"))
+        throw error;
+    }
+    // 202 の本文は所在を持たないので、置き換えずに取り直す。
+    await refresh();
+  }, [id, refresh]);
+
+  const nextVideo =
+    related.kind === "ready" && related.related.nextId !== undefined
+      ? related.related.items.find((item) => item.id === related.related.nextId)
+      : undefined;
+
+  const playNext = () => {
+    if (nextVideo === undefined) return;
+    void navigate(`/videos/${String(nextVideo.id)}`, {
+      state: { from: backTo, autoplay: true },
+    });
+  };
+
+  // --- プレイヤーの上に重ねる層（同時に 1 つだけ） ---
+  const playable =
+    video !== undefined && video.probeState === "done" && canStartPlayback(video);
+  let statusLayer: ReactNode = null;
+  if (detail.kind === "missing") statusLayer = <MissingVideo />;
+  else if (detail.kind === "failed")
+    statusLayer = <LoadFailure reason={detail.reason} onRetry={refresh} />;
+  else if (video === undefined) statusLayer = <LoadingOverlay backdrop />;
+  else if (video.probeState === "pending")
+    statusLayer = <ProcessingStages video={video} />;
+  else if (video.probeState === "failed")
+    statusLayer = <ReadFailure video={video} onReprobe={reprobe} />;
+  else if (!playable) statusLayer = <Unplayable />;
+  else if (failure !== null)
+    statusLayer = (
+      <PlaybackFailure positionMs={failure.positionMs} onRetry={retryPlayback} />
+    );
+
+  const showPlayer = playable && detail.kind === "ready";
+  const chromeVisible = !status.playing || status.userActive;
+  let layer: ReactNode = statusLayer;
+  if (layer === null && status.ended) {
+    layer = (
+      <EndedOverlay
+        next={nextVideo}
+        backTo={backTo}
+        takeFocus={endedTakesFocus}
+        onReplay={() => controls?.restart()}
+        onPlayNext={playNext}
+      />
+    );
+  } else if (layer === null && status.loading) {
+    layer = <LoadingOverlay backdrop={false} />;
+  } else if (layer === null && controls !== null) {
+    layer = (
+      <TouchControls
+        playing={status.playing}
+        visible={chromeVisible}
+        onBack={() => {
+          controls.seekBy(-10);
+          controls.wake();
+        }}
+        onToggle={() => {
+          controls.togglePlay();
+          controls.wake();
+        }}
+        onForward={() => {
+          controls.seekBy(10);
+          controls.wake();
+        }}
+      />
+    );
+  }
+  const overlayShown = statusLayer !== null || (showPlayer && status.ended);
+
+  useKeyboardShortcuts(showPlayer ? controls : null, close);
+
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center animate-fade-in">
-      <AlertCircle className="size-8 text-warning" />
-      <h2 className="text-lg font-semibold tracking-tight text-fg">{title}</h2>
-      <p className="max-w-md text-sm text-fg-muted text-balance">{description}</p>
-      <Link to={backTo} className={buttonClassName("secondary", "md", "mt-2")}>
-        {backLabel(backTo)}へ戻る
-      </Link>
+    // 狭い画面はページ全体を 1 つとしてスクロールする。広い画面はページを画面の高さに留め、
+    // 左の列（プレイヤー・題名・属性）と右の列（関連動画）がそれぞれ中でスクロールする。
+    // ページと列の両方がスクロールして二重に動くことがないようにするためである。
+    <div className="min-h-dvh bg-bg pb-16 lg:h-dvh lg:min-h-0 lg:overflow-hidden lg:pb-0">
+      <div className="flex w-full flex-col gap-5 lg:grid lg:h-full lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:px-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+        <div
+          ref={mainColumnRef}
+          // 列の端にあるフォーカスの輪郭が切れないよう、はみ出す分だけ内側に余白を取る。
+          className="flex min-w-0 flex-col gap-5 lg:-mx-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6 lg:pb-16"
+        >
+          <div
+            ref={frameRef}
+            data-player-frame=""
+            className="relative isolate mx-auto grid w-full grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-9rem)*16/9)] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
+          >
+            {/* 16:9 は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
+                全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
+            <div
+              aria-hidden="true"
+              className="col-start-1 row-start-1 aspect-video [:fullscreen>&]:hidden"
+            />
+            <CloseButton
+              variant="overlay"
+              onClose={close}
+              visible={chromeVisible || overlayShown}
+            />
+            <div
+              data-overlay-layer=""
+              className="pointer-events-none relative z-10 col-start-1 row-start-1 flex min-w-0"
+            >
+              {layer}
+            </div>
+            {showPlayer && (
+              <VideoPlayer
+                key={`${String(id)}:${String(attempt.key)}`}
+                video={video}
+                initialPositionMs={attempt.startMs ?? resumePosition(video)}
+                autoplay={attempt.autoplay}
+                onPosition={rememberProgress}
+                onProgress={savePlayerProgress}
+                onError={onError}
+                onControls={setControls}
+                onStatus={onStatus}
+                fullscreenTarget={fullscreenTarget}
+              />
+            )}
+          </div>
+
+          <div className="flex flex-col gap-5 px-4 sm:px-6 lg:px-0">
+            {detail.kind === "loading" && (
+              <div className="flex flex-col gap-3">
+                <Skeleton className="h-7 w-2/3" />
+                <Skeleton className="h-5 w-1/2" />
+              </div>
+            )}
+            {video !== undefined && (
+              <>
+                <CreatingLine video={video} />
+                <h1 className="text-xl leading-snug font-semibold text-fg [overflow-wrap:anywhere] sm:text-2xl">
+                  {video.title}
+                </h1>
+                <PropertyStrip video={video} />
+                {video.location !== undefined && (
+                  <FileLocation videoId={video.id} location={video.location} />
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        <aside
+          // 広い画面では見出しの行を上に留め、関連動画の並びだけを中でスクロールさせる。
+          className="min-w-0 px-4 sm:px-6 lg:flex lg:min-h-0 lg:flex-col lg:px-0 lg:pt-6"
+        >
+          <RelatedVideos
+            state={related}
+            backTo={backTo}
+            onRetry={retryRelated}
+            closeButton={<CloseButton variant="wide" onClose={close} />}
+          />
+        </aside>
+      </div>
     </div>
   );
 }

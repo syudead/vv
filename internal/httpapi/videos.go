@@ -103,9 +103,74 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	}
 
 	progress := s.progressFor(r.Context(), []domain.Video{video})
+	payload := withProgress(toAPIVideo(video, s.thumbnailsDir), progress, video.ContentKey)
+
+	// 所在とシーク用プレビューの状態は、動画1件の応答にだけ載せる。一覧に載せると、
+	// 画面が使わない絶対パスを1ページ 60 件ぶん毎回送ることになる。
+	payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
+	if hasSeekThumbnail(video) {
+		state, err := s.seekThumbnailState(r.Context(), video)
+		if err != nil {
+			s.internalError(w, "動画を取得できませんでした", err)
+			return
+		}
+		payload.SeekThumbnailState = &state
+	}
 
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, withProgress(toAPIVideo(video, s.thumbnailsDir), progress, video.ContentKey), s.logger)
+	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// seekThumbnailState はシーク用プレビューの状態を導く。DB 上に状態は無い。
+//
+// 置き場があれば done。無ければ、thumbnail_state が pending か、サムネイルの
+// ジョブが queued・running のときだけ pending で、それ以外は failed とする。
+// 失敗したジョブの行は保持期間を過ぎると消えるので、行が無いことを pending と
+// 読まない。そう読むと、画面の作成中の1行と取り直しが止まらなくなる。
+func (s *server) seekThumbnailState(ctx context.Context, video domain.Video) (gen.VideoSeekThumbnailState, error) {
+	if seekThumbnailDirExists(s.thumbnailsDir, video.ContentKey) {
+		return gen.VideoSeekThumbnailStateDone, nil
+	}
+	if video.ThumbnailState == domain.ThumbnailStatePending {
+		return gen.VideoSeekThumbnailStatePending, nil
+	}
+	if s.thumbnailJobs != nil {
+		active, err := s.thumbnailJobs.ThumbnailJobActive(ctx, video.ID)
+		if err != nil {
+			return "", err
+		}
+		if active {
+			return gen.VideoSeekThumbnailStatePending, nil
+		}
+	}
+	return gen.VideoSeekThumbnailStateFailed, nil
+}
+
+// hasSeekThumbnail はシーク用プレビューを持ちうる動画かを返す。seekThumbnailUrl と
+// seekThumbnailState はこの条件のときだけ応答に入る。
+func hasSeekThumbnail(video domain.Video) bool {
+	return video.ProbeState == domain.ProbeStateDone && video.DurationMs != nil &&
+		*video.DurationMs > 0 && video.VideoCodec != "" && video.ContentKey != ""
+}
+
+// seekThumbnailDirExists はシーク用プレビューの置き場
+// （thumbnails/seek/<prefix>/<contentKey>/）があるかを返す。置き場は生成の
+// 完了時に一時ディレクトリから改名して作られるので、あれば完成している。
+func seekThumbnailDirExists(thumbnailsDir, contentKey string) bool {
+	if thumbnailsDir == "" || contentKey == "" {
+		return false
+	}
+	info, err := os.Stat(seekThumbnailDirPath(thumbnailsDir, contentKey))
+	return err == nil && info.IsDir()
+}
+
+func seekThumbnailDirPath(thumbnailsDir, contentKey string) string {
+	safe := strings.NewReplacer(":", "_", "/", "_", `\`, "_").Replace(contentKey)
+	prefix := safe
+	if len(prefix) > 2 {
+		prefix = prefix[:2]
+	}
+	return filepath.Join(thumbnailsDir, "seek", prefix, safe)
 }
 
 // progressFor は動画たちの再生位置をまとめて引く。1件ずつ引くと、60 件の
@@ -217,8 +282,7 @@ func toAPIVideo(video domain.Video, thumbnailsDir string) gen.Video {
 		url := thumbnailURL(video)
 		out.ThumbnailUrl = &url
 	}
-	if video.ProbeState == domain.ProbeStateDone && video.DurationMs != nil &&
-		*video.DurationMs > 0 && video.VideoCodec != "" && video.ContentKey != "" {
+	if hasSeekThumbnail(video) {
 		url := seekThumbnailURL(video)
 		out.SeekThumbnailUrl = &url
 	}
