@@ -27,14 +27,42 @@ export interface SearchBoxProps {
 }
 
 /**
- * limitQueryInput は入力を検索語の上限に切る。HTML の maxLength は UTF-16 の単位で
+ * limitQueryInput は入力を検索語の上限に収める。HTML の maxLength は UTF-16 の単位で
  * 数えるので使わず、URL・サーバーと同じく符号位置で数える（list-url.md §1）。
+ *
+ * 上限を超えたときは、入力前の値と比べて新しく入った部分だけを切る。先頭や途中への
+ * 入力で、もとからあった末尾を消さないためである。上限を超える貼り付けも、入る分
+ * だけが入る（Issue の Edge Case「語の長さの上限」）。
  */
-export function limitQueryInput(value: string): string {
-  const chars = Array.from(value);
-  return chars.length > MAX_QUERY_LENGTH
-    ? chars.slice(0, MAX_QUERY_LENGTH).join("")
-    : value;
+export function limitQueryInput(next: string, previous = ""): string {
+  const after = Array.from(next);
+  if (after.length <= MAX_QUERY_LENGTH) return next;
+  const before = Array.from(previous);
+  let prefix = 0;
+  while (
+    prefix < before.length &&
+    prefix < after.length &&
+    before[prefix] === after[prefix]
+  ) {
+    prefix++;
+  }
+  let suffix = 0;
+  while (
+    suffix < before.length - prefix &&
+    suffix < after.length - prefix &&
+    before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+  const inserted = after.slice(prefix, after.length - suffix);
+  const room = Math.max(MAX_QUERY_LENGTH - prefix - suffix, 0);
+  return [
+    ...after.slice(0, prefix),
+    ...inserted.slice(0, room),
+    ...after.slice(after.length - suffix),
+  ]
+    .slice(0, MAX_QUERY_LENGTH)
+    .join("");
 }
 
 /**
@@ -114,7 +142,9 @@ export default function SearchBox({
         ref={field}
         type="search"
         value={input}
-        onChange={(event) => setInput(limitQueryInput(event.target.value))}
+        onChange={(event) =>
+          setInput(limitQueryInput(event.target.value, latest.current))
+        }
         onFocus={() => session.current.start()}
         onBlur={() => {
           // 待っている確定があれば、続きを閉じる前に済ませる。
