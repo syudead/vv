@@ -521,8 +521,11 @@ test.describe.serial("video tags", () => {
   test.describe("タグ管理画面（issue 271）", () => {
     /** tagRowByName は、名前のリンク（読み上げ名「〈名〉で絞り込んだライブラリを開く」）から行を探す。 */
     function tagRowByName(page: Page, name: string) {
+      // exact: true を付けないと、Playwright の役割名の照合は大文字小文字を
+      // 区別しない部分一致になり、大文字小文字だけが違う別のタグ（`Anime` と
+      // `anime`、要件4）の行を取り違える。
       return page
-        .getByRole("link", { name: `${name}で絞り込んだライブラリを開く` })
+        .getByRole("link", { name: `${name}で絞り込んだライブラリを開く`, exact: true })
         .locator("xpath=ancestor::div[@data-tag-id][1]");
     }
 
@@ -765,6 +768,212 @@ test.describe.serial("video tags", () => {
       ).toBeVisible();
       await expect(tagRowByName(page, "e2e管理消滅")).toHaveCount(0);
       await expect(tagRowByName(page, "e2e管理消滅後")).toHaveCount(0);
+    });
+
+    test("統合と統合先の選択は、その他の操作のメニューの中にあり、削除より先に並ぶ（作成・改名より目立たない）", async ({
+      page,
+      request,
+    }) => {
+      await createTag(request, "e2e管理統合メニュー");
+      await page.goto("/tags");
+      const row = tagRowByName(page, "e2e管理統合メニュー");
+
+      // 行に直接出るのは「改名」と「シノニム」だけで、統合は行に出ない。
+      await expect(row.getByRole("button", { name: "別のタグへ統合…" })).toHaveCount(0);
+
+      await row.getByRole("button", { name: "その他の操作" }).click();
+      const items = page.getByRole("menuitem");
+      await expect(items).toHaveText(["別のタグへ統合…", "削除…"]);
+    });
+
+    test("12: 統合すると統合元が付いていた動画すべてに統合先が付き、統合元は一覧から消えて統合先のシノニムになる", async ({
+      page,
+      request,
+    }) => {
+      const x = await createTag(request, "e2e管理統合元X");
+      const y = await createTag(request, "e2e管理統合先Y");
+      const a = video("タグ動画A");
+      const b = video("タグ動画B");
+      await clearVideoTags(request, a.id);
+      await clearVideoTags(request, b.id);
+      await attachTag(request, a.id, x.id);
+      await attachTag(request, b.id, x.id);
+      await attachTag(request, b.id, y.id);
+
+      await page.goto("/tags");
+      const row = tagRowByName(page, "e2e管理統合元X");
+      await row.getByRole("button", { name: "その他の操作" }).click();
+      await page.getByRole("menuitem", { name: "別のタグへ統合…" }).click();
+
+      const dialog = page.getByRole("dialog", { name: "「e2e管理統合元X」を統合" });
+      await dialog.getByRole("combobox", { name: "統合先のタグ" }).fill("e2e管理統合先Y");
+      await page.getByRole("option", { name: /e2e管理統合先Y/ }).click();
+      await expect(
+        dialog.getByText(
+          "「e2e管理統合元X」が付いた 2 本の動画に「e2e管理統合先Y」が付きます。" +
+            "「e2e管理統合元X」とそのシノニムは「e2e管理統合先Y」のシノニムになり、" +
+            "「e2e管理統合元X」はタグの一覧から消えます。この操作は取り消せません。",
+        ),
+      ).toBeVisible();
+      await dialog.getByRole("button", { name: "統合する" }).click();
+
+      await expect(page.getByText("統合しました")).toBeVisible();
+      await expect(tagRowByName(page, "e2e管理統合元X")).toHaveCount(0);
+      const targetRow = tagRowByName(page, "e2e管理統合先Y");
+      await expect(targetRow).toContainText("シノニム: e2e管理統合元X");
+      // 両方付いていた B には Y が1つだけ付く（重複して並ばない）。
+      await expect(targetRow).toContainText("2 本");
+
+      // A（X だけが付いていた）にも Y が付く。
+      await page.goto(`/videos/${String(a.id)}`);
+      await expect(chip(page, "e2e管理統合先Y")).toBeVisible();
+      await expect(chip(page, "e2e管理統合元X")).toHaveCount(0);
+
+      // 統合後、再生画面で X と入力して確定すると Y が付く（受け入れ条件12）。
+      const c = video("タグ動画C");
+      await clearVideoTags(request, c.id);
+      await page.goto(`/videos/${String(c.id)}`);
+      const input = addInput(page);
+      await input.click();
+      await input.fill("e2e管理統合元X");
+      await page.keyboard.press("Enter");
+      await expect(chip(page, "e2e管理統合先Y")).toBeVisible();
+    });
+
+    test("統合の確認は選ぶまでdisabled、統合先の候補は統合元を除き作成の行を持たない", async ({
+      page,
+      request,
+    }) => {
+      await createTag(request, "e2e管理統合候補元");
+      await createTag(request, "e2e管理統合候補先");
+      await page.goto("/tags");
+      const row = tagRowByName(page, "e2e管理統合候補元");
+      await row.getByRole("button", { name: "その他の操作" }).click();
+      await page.getByRole("menuitem", { name: "別のタグへ統合…" }).click();
+
+      const dialog = page.getByRole("dialog", { name: "「e2e管理統合候補元」を統合" });
+      const mergeButton = dialog.getByRole("button", { name: "統合する" });
+      await expect(mergeButton).toBeDisabled();
+
+      const combo = dialog.getByRole("combobox", { name: "統合先のタグ" });
+      await combo.click();
+      await expect(page.getByRole("option", { name: /e2e管理統合候補元/ })).toHaveCount(
+        0,
+      );
+
+      await combo.fill("e2e管理統合候補先には無い語zzz");
+      await expect(page.getByText(/を作成/)).toHaveCount(0);
+    });
+
+    test("17: 既存のタグの名前をシノニムとして登録しようとすると統合の確認が出て、承諾すると統合され、取り消すと何も変わらない（受け入れ条件17）", async ({
+      page,
+      request,
+    }) => {
+      const upper = await createTag(request, "e2eXyz17Anime");
+      const lower = await createTag(request, "e2eXyz17anime");
+      const a = video("タグ動画A");
+      const b = video("タグ動画B");
+      await clearVideoTags(request, a.id);
+      await clearVideoTags(request, b.id);
+      await attachTag(request, a.id, lower.id);
+      await attachTag(request, b.id, lower.id);
+
+      await page.goto("/tags");
+      await tagRowByName(page, "e2eXyz17Anime")
+        .getByRole("button", { name: "シノニム" })
+        .click();
+      const dialog = page.getByRole("dialog", { name: "「e2eXyz17Anime」のシノニム" });
+      const input = dialog.getByRole("textbox", { name: "シノニムを追加" });
+      await input.fill("e2eXyz17anime");
+      await page.keyboard.press("Enter");
+
+      await expect(
+        dialog.getByText(
+          "「e2eXyz17anime」は 2 本の動画に付いているタグです。「e2eXyz17Anime」に統合すると、" +
+            "その 2 本に「e2eXyz17Anime」が付き、「e2eXyz17anime」は「e2eXyz17Anime」の" +
+            "シノニムになります。「e2eXyz17anime」はタグの一覧から消えます。",
+        ),
+      ).toBeVisible();
+
+      // 取り消す（戻る）と何も変わらない。
+      await dialog.getByRole("button", { name: "戻る" }).click();
+      await expect(dialog.getByText(/本の動画に付いているタグです/)).toHaveCount(0);
+      await expect(input).toHaveValue("e2eXyz17anime");
+      await dialog.getByRole("button", { name: "閉じる" }).click();
+      await expect(tagRowByName(page, "e2eXyz17anime")).toBeVisible();
+
+      // もう一度、今度は承諾する。
+      await tagRowByName(page, "e2eXyz17Anime")
+        .getByRole("button", { name: "シノニム" })
+        .click();
+      const dialog2 = page.getByRole("dialog", { name: "「e2eXyz17Anime」のシノニム" });
+      await dialog2
+        .getByRole("textbox", { name: "シノニムを追加" })
+        .fill("e2eXyz17anime");
+      await page.keyboard.press("Enter");
+      await dialog2.getByRole("button", { name: "統合する" }).click();
+
+      // getByText は大文字小文字を区別しない部分一致なので、窓の見出し
+      // 「「e2eXyz17Anime」のシノニム」と取り違えないよう exact にする。
+      await expect(dialog2.getByText("e2eXyz17anime", { exact: true })).toBeVisible();
+      await dialog2.getByRole("button", { name: "閉じる" }).click();
+      await expect(tagRowByName(page, "e2eXyz17anime")).toHaveCount(0);
+      await expect(tagRowByName(page, "e2eXyz17Anime")).toContainText(
+        "シノニム: e2eXyz17anime",
+      );
+
+      // 承諾したあと、再生画面で `e2eXyz17anime` と入力して確定すると
+      // `e2eXyz17Anime` が付く（受け入れ条件13と同じ仕組み）。
+      const c = video("タグ動画C");
+      await clearVideoTags(request, c.id);
+      await page.goto(`/videos/${String(c.id)}`);
+      const addTagInput = addInput(page);
+      await addTagInput.click();
+      await addTagInput.fill("e2eXyz17anime");
+      await page.keyboard.press("Enter");
+      await expect(chip(page, "e2eXyz17Anime")).toBeVisible();
+    });
+
+    test("別のタグのシノニムと同じ名前の登録で、そのタグの名前が画面に出る（シノニム名の衝突）", async ({
+      page,
+      request,
+    }) => {
+      const anime = await createTag(request, "e2e管理衝突Anime");
+      await addSynonym(request, anime.id, "e2e管理衝突アニメ");
+      await createTag(request, "e2e管理衝突Drama");
+
+      await page.goto("/tags");
+      await tagRowByName(page, "e2e管理衝突Drama")
+        .getByRole("button", { name: "シノニム" })
+        .click();
+      const dialog = page.getByRole("dialog", { name: "「e2e管理衝突Drama」のシノニム" });
+      const input = dialog.getByRole("textbox", { name: "シノニムを追加" });
+      await input.fill("e2e管理衝突アニメ");
+      await page.keyboard.press("Enter");
+
+      await expect(
+        dialog.getByText(
+          "「e2e管理衝突アニメ」は「e2e管理衝突Anime」のシノニムとして使われています",
+        ),
+      ).toBeVisible();
+    });
+
+    test("シノニムの×は確認なしにその場で解除できる", async ({ page, request }) => {
+      const anime = await createTag(request, "e2e管理解除Anime");
+      await addSynonym(request, anime.id, "e2e管理解除アニメ");
+
+      await page.goto("/tags");
+      await tagRowByName(page, "e2e管理解除Anime")
+        .getByRole("button", { name: "シノニム" })
+        .click();
+      const dialog = page.getByRole("dialog", { name: "「e2e管理解除Anime」のシノニム" });
+      await dialog
+        .getByRole("button", { name: "シノニム「e2e管理解除アニメ」を解除" })
+        .click();
+      await expect(dialog.getByText("e2e管理解除アニメ")).toHaveCount(0);
+      await dialog.getByRole("button", { name: "閉じる" }).click();
+
+      await expect(tagRowByName(page, "e2e管理解除Anime")).not.toContainText("シノニム:");
     });
   });
 });
