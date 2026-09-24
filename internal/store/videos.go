@@ -73,19 +73,35 @@ const videoColumnsTemplate = `videos.id,
 	videos.height, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.preview_state`
 
+// registrationSeparators は、登録フォルダの下かどうかを調べるときに区切りとして
+// 扱う文字である。Windows では `/` と `\` の両方、それ以外の OS では `/` だけで、
+// `\` はファイル名の一部である。一覧の判定（registeredLocationCondition）と
+// 照合用の鍵（registeredRelativePath）は、この同じ規則を使う。
+func registrationSeparators() []rune {
+	if runtime.GOOS == "windows" {
+		return []rune{'/', '\\'}
+	}
+	return []rune{os.PathSeparator}
+}
+
 func registeredLocationCondition(alias string) string {
-	separator := strconv.Itoa(int(os.PathSeparator))
 	pathExpr := alias + `.path`
 	rootExpr := `mf.path`
 	if runtime.GOOS == "windows" {
 		pathExpr = `lower(` + pathExpr + `)`
 		rootExpr = `lower(` + rootExpr + `)`
 	}
-	trimmedRoot := `rtrim(` + rootExpr + `, char(47) || char(92))`
-	return `exists (select 1 from media_folders mf where ` + pathExpr + ` = ` + rootExpr +
-		` or instr(` + pathExpr + `, ` + trimmedRoot + ` || char(` + separator + `)) = 1` +
-		` or instr(` + pathExpr + `, ` + trimmedRoot + ` || char(47)) = 1` +
-		` or instr(` + pathExpr + `, ` + trimmedRoot + ` || char(92)) = 1)`
+	separators := registrationSeparators()
+	chars := make([]string, 0, len(separators))
+	for _, separator := range separators {
+		chars = append(chars, `char(`+strconv.Itoa(int(separator))+`)`)
+	}
+	trimmedRoot := `rtrim(` + rootExpr + `, ` + strings.Join(chars, ` || `) + `)`
+	condition := `exists (select 1 from media_folders mf where ` + pathExpr + ` = ` + rootExpr
+	for _, char := range chars {
+		condition += ` or instr(` + pathExpr + `, ` + trimmedRoot + ` || ` + char + `) = 1`
+	}
+	return condition + `)`
 }
 
 func registeredVideoCondition(alias string) string {
@@ -166,6 +182,10 @@ func (db *DB) UpsertVideo(ctx context.Context, file VideoFile) (UpsertResult, er
 	}
 	if err != nil {
 		return UpsertResult{}, fmt.Errorf("動画の場所を保存できません (%s): %w", file.Path, err)
+	}
+	// 題名とパスが変わりうるので、照合用の鍵も同じ書き込みの中で作り直す。
+	if err := refreshSearchKeysByPath(ctx, tx, file.Path); err != nil {
+		return UpsertResult{}, err
 	}
 	if !locationExists {
 		if _, err := tx.ExecContext(ctx, `update videos set location_generation = location_generation + 1 where id = ?`, videoID); err != nil {
@@ -574,7 +594,7 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 		query += ` where ` + strings.Join(conditions, " and ")
 	}
 
-	// 並び順は検索の有無で変えない。関連度（bm25）にすると、LIKE 経路には
+	// 並び順は検索の有無で変えない。関連度（bm25）にすると、instr 経路には
 	// 関連度が無いため2つの経路で並びが変わり、利用者から見て不可解になる。
 	query += ` order by ` + orderBy(sort) + ` limit ?`
 

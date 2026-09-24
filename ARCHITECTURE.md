@@ -56,11 +56,20 @@ Shutdown drains in-flight requests within a 10 second grace period, then stops
 the scanner and the worker so a running job returns to the queue.
 
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
-`videos_fts`, `jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
+`video_locations` (including its per-location search keys), `location_search_fts`,
+`jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
 (deleting them costs a rescan), while `playback_progress` is user data that
 cannot be reconstructed. That is why playback positions are keyed by the
 content identifier rather than by `videos.id`, and why that table carries no
 foreign key to `videos`.
+
+Search matches a per-location `search_key` that Go builds from the title and the
+path below the registered media folder, folded with `domain.FoldForMatch`, and
+indexed by the trigram FTS5 table `location_search_fts`. SQL cannot express that
+folding, so startup refreshes every location whose `search_version` is older than
+`domain.SearchKeyVersion` right after `store.Migrate` and before jobs or HTTP start,
+and aborts startup if that fails
+(`specs/013-library-search/data-model.md` §5).
 
 Not built yet: authentication, subtitles, and multi-user support. Browser-incompatible
 video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is

@@ -87,6 +87,15 @@ func run() error {
 		slog.Int64("version", migrated.Version),
 	)
 
+	// 照合用の鍵が古い規則のままの所在を、ジョブや HTTP を動かす前に作り直す。
+	// 失敗したら起動を止める（古い鍵のまま検索を出さない）。途中まで書いた分は
+	// 版が行ごとに残るので、次の起動で続きから埋まる。
+	refreshed, err := db.RefreshSearchKeys(context.Background())
+	if err != nil {
+		return fmt.Errorf("照合用の鍵を作り直せません: %w", err)
+	}
+	logger.Info("照合用の鍵を作り直しました", slog.Int("locations", refreshed))
+
 	// 走査とジョブは HTTP とは別の寿命で動く。停止指示でこの context を
 	// 取り消すと、処理中のジョブは queued に残り、次の起動で再開できる。
 	backgroundCtx, stopBackground := context.WithCancel(context.Background())
