@@ -169,10 +169,12 @@ func (f *fakeIngestStore) CompletePreviewForContent(_ context.Context, job domai
 type fakeGenerator struct {
 	mu sync.Mutex
 
-	sourceErr  error
-	probe      domain.Probe
-	probeErr   error
-	previewErr error
+	sourceErr    error
+	probe        domain.Probe
+	probeErr     error
+	previewErr   error
+	thumbnailErr error
+	seekErr      error
 	// validated はプレビューの生成中に確かめた元の同一性。
 	validated []bool
 
@@ -198,12 +200,12 @@ func (f *fakeGenerator) Probe(context.Context, string) (domain.Probe, error) {
 
 func (f *fakeGenerator) Thumbnail(context.Context, string, int64, string) error {
 	f.record("thumbnail")
-	return nil
+	return f.thumbnailErr
 }
 
 func (f *fakeGenerator) SeekThumbnails(context.Context, string, string) error {
 	f.record("seek")
-	return nil
+	return f.seekErr
 }
 
 func (f *fakeGenerator) Preview(

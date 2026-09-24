@@ -332,7 +332,7 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job Job, reason stri
 
 	switch job.Kind {
 	case JobProbe:
-		// pending のときだけ書く。probeHandler は結果を保存して done にしたあとで
+		// pending のときだけ書く。app.Ingest.Probe は結果を保存して done にしたあとで
 		// プレビューのジョブを積み、そこで失敗してもエラーを返す。保存済みの結果を
 		// 失敗で上書きしないためである。欠けたプレビューのジョブは、次の手動の
 		// 取り込みで走査が積み直す（Scanner.ensurePendingJobs）。
