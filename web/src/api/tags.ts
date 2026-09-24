@@ -1,6 +1,6 @@
 import { RequestFailed, request, toRequestFailed } from "./client";
 import { clearListSnapshot } from "./listSnapshot";
-import { recordAppliedVideoTags } from "./videoTagsEvents";
+import { nextVideoTagsSequence, recordAppliedVideoTags } from "./videoTagsEvents";
 import type { components } from "./gen/openapi";
 
 // 型は api/openapi.yaml からの生成物を使う（specs/014-video-tags/contracts/tags-api.md §1）。
@@ -256,13 +256,16 @@ async function updateVideoTags(
   tag: { id: number } | { name: string },
   signal?: AbortSignal,
 ): Promise<VideoTagsResponse> {
+  // 通し番号は送信の直前に払い出す。応答が届く順は送った順と限らないので、
+  // 反映するときにこの番号で古い応答を捨てる（N1）。
+  const sequence = nextVideoTagsSequence();
   const result = await request<VideoTagsResponse>("/api/video-tags", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ videoIds: Array.from(videoIds), action, tag }),
     signal,
   }).catch(refreshOnStaleTagError);
-  recordAppliedVideoTags(videoIds, result.tag, action);
+  recordAppliedVideoTags(videoIds, result.tag, action, sequence);
   return result;
 }
 

@@ -136,6 +136,9 @@ func (s *server) ListVideoIds(w http.ResponseWriter, r *http.Request, params gen
 		s.internalError(w, "idを取得できませんでした", err)
 		return
 	}
+	if ids == nil {
+		ids = []int64{}
+	}
 
 	payload := gen.VideoIdsResponse{Ids: ids}
 	if len(missingTagIDs) > 0 {

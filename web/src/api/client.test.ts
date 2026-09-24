@@ -411,13 +411,16 @@ describe("list API client", () => {
     );
   });
 
-  it("does not send tag to the folder list even when given", async () => {
+  it("does not send tag to the folder list even if a caller smuggles one in", async () => {
     const fetch = stubFetch();
-    await listFolderVideos({
+    // ListFolderVideosParams has no `tag` field, so a type-safe caller can't
+    // pass one. Bypass the type system to prove listFolderVideos itself never
+    // reads or forwards it (contracts/tags-api.md §5: フォルダ画面のタグ絞り込みは対象外).
+    const params = {
       folder: { rootId: 3, path: "" },
-      // ListFolderVideosParams に tag は無いので渡しようがないが、共通の
-      // setListFilters が誤って読まないことを確かめる。
-    });
+      tag: [1, 2],
+    } as unknown as Parameters<typeof listFolderVideos>[0];
+    await listFolderVideos(params);
     expect(requestedURL(fetch).searchParams.has("tag")).toBe(false);
   });
 

@@ -15,6 +15,7 @@ import {
 } from "./client";
 import { subscribeProgress } from "./progressEvents";
 import { subscribeServerEvents } from "./serverEvents";
+import { applyTagToTags } from "./tagOrder";
 import { isProcessing } from "./useVideoDetail";
 import { subscribeVideoTags } from "./videoTagsEvents";
 
@@ -26,20 +27,6 @@ import { subscribeVideoTags } from "./videoTagsEvents";
  */
 function mergeRefreshed(current: Video, refreshed: Video): Video {
   return { ...current, ...refreshed, title: current.title, sizeBytes: current.sizeBytes };
-}
-
-/**
- * applyTagToTags は付け外しの結果を1件の tags 配列へ反映する（listSnapshot.ts の
- * 同名の処理と同じ規則）。
- */
-function applyTagToTags(
-  tags: Video["tags"],
-  tag: Video["tags"][number],
-  action: "add" | "remove",
-): Video["tags"] {
-  if (action === "remove") return tags.filter((existing) => existing.id !== tag.id);
-  if (tags.some((existing) => existing.id === tag.id)) return tags;
-  return [...tags, tag];
 }
 
 /**

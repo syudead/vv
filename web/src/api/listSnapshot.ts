@@ -6,6 +6,7 @@ import type {
   VideoSort,
   WatchFilter,
 } from "./client";
+import { applyTagToTags } from "./tagOrder";
 
 /**
  * defaultSort は並び順が指定されていないときの値である（data-model.md 1.）。
@@ -155,10 +156,4 @@ export function applyTagToListSnapshot(
         : video,
     ),
   };
-}
-
-function applyTagToTags(tags: TagRef[], tag: TagRef, action: "add" | "remove"): TagRef[] {
-  if (action === "remove") return tags.filter((existing) => existing.id !== tag.id);
-  if (tags.some((existing) => existing.id === tag.id)) return tags;
-  return [...tags, tag];
 }

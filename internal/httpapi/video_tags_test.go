@@ -178,22 +178,9 @@ func TestListVideoIds(t *testing.T) {
 	}
 }
 
-// GET /api/videos/ids は GET /api/videos/{id} に取られない。ServeMux は字面の
-// 段を優先するため、経路の登録順に関係なく "ids" というただ1件の動画として
-// 解釈されることはない（specs/014-video-tags/contracts/tags-api.md §5）。
-func TestListVideoIdsNotShadowedByVideoIDRoute(t *testing.T) {
-	library := &fakeLibrary{ids: []int64{1}}
-	handler := newTestServer(t, Options{Videos: library})
-
-	rec := do(t, handler, http.MethodGet, "/api/videos/ids")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200 (listVideoIds): %s", rec.Code, rec.Body)
-	}
-	got := decode[gen.VideoIdsResponse](t, rec)
-	if !reflect.DeepEqual(got.Ids, []int64{1}) {
-		t.Errorf("ids = %v, want [1]", got.Ids)
-	}
-}
+// GET /api/videos/ids が GET /api/videos/{id} に取られないことは
+// openapi_routes_test.go の TestVideoIdsRouteNotShadowedByVideoIDRoute で見る
+// （二重に持たない）。
 
 // 17個以上の tag は400。
 func TestListVideoIdsRejectsTooManyTags(t *testing.T) {
