@@ -69,7 +69,7 @@ export class RequestFailed extends Error {
  * 詳細・進捗送信」の3種類しかなく、キャッシュ無効化の関係も単純だからである。
  * 画面をまたぐキャッシュ整合や楽観更新が要る段階で再検討する。
  */
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
 
   if (!response.ok) {
@@ -79,7 +79,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** toRequestFailed は誤りの応答を、画面に出せる形へ変える。 */
-async function toRequestFailed(response: Response): Promise<RequestFailed> {
+export async function toRequestFailed(response: Response): Promise<RequestFailed> {
   try {
     const body = (await response.json()) as ApiError;
     if (typeof body?.message === "string" && body.message !== "") {

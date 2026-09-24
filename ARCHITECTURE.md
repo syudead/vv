@@ -26,7 +26,8 @@ carries its representative location and seek-preview state, and
 `/api/videos/{id}/related`, `/probe` and `/open` return related videos, retry a failed
 metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the read-only folder browsing API
-(`/api/folders*`), byte-range streaming,
+(`/api/folders*`), the tag management API (`/api/tags*`: list, create,
+rename, delete, merge and synonym registration/removal), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
 Both video lists, the library (`GET /api/videos`) and a folder

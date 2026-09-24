@@ -62,6 +62,19 @@ type MediaFolders interface {
 	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
 }
 
+// Tags はタグ管理画面が操作するタグの保存先である（Plan の Structural
+// Decisions 13・14）。どの操作も1つのトランザクションで済むので、
+// internal/app は通さず、internal/store の TagStore をここへ直接渡す。
+type Tags interface {
+	ListTags(ctx context.Context) ([]domain.Tag, error)
+	CreateTag(ctx context.Context, name string) (domain.Tag, error)
+	RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error)
+	DeleteTag(ctx context.Context, id int64) error
+	MergeTag(ctx context.Context, targetID, sourceID int64) (domain.Tag, error)
+	AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error)
+	RemoveSynonym(ctx context.Context, tagID int64, name string) error
+}
+
 // Transcoder は1 request分のfragmented MP4を生成する。
 // startupDeadlineはrequest時probeと初期データ生成の共通期限である。
 // waitは成功したStartにつきちょうど1回呼び、stopは切断時にprocessを止める。
@@ -133,6 +146,8 @@ type Options struct {
 	Scans Scans
 	// MediaFolders は登録rootの取得と個別操作。nilなら該当経路は500を返す。
 	MediaFolders MediaFolders
+	// Tags はタグの取得と個別操作。nilなら該当経路は500を返す。
+	Tags Tags
 	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
 	Folders Folders
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
@@ -170,6 +185,7 @@ type server struct {
 	playback     Playback
 	scans        Scans
 	mediaFolders MediaFolders
+	tags         Tags
 	folders      Folders
 	transcoder   Transcoder
 	artifacts    ArtifactReader
@@ -189,6 +205,7 @@ type server struct {
 //	/api/processing  → JSON（同上）
 //	/api/events      → Server-Sent Events（同上）
 //	/api/folders*    → JSON（同上）
+//	/api/tags*       → JSON（同上）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
 func NewRouter(opts Options) http.Handler {
@@ -211,6 +228,7 @@ func NewRouter(opts Options) http.Handler {
 		playback:     opts.Playback,
 		scans:        opts.Scans,
 		mediaFolders: opts.MediaFolders,
+		tags:         opts.Tags,
 		folders:      opts.Folders,
 		transcoder:   opts.Transcoder,
 		artifacts:    opts.Artifacts,
@@ -288,7 +306,17 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 func requiresJSONBody(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost:
-		return r.URL.Path == "/api/media-folders" || r.URL.Path == "/api/scans"
+		if r.URL.Path == "/api/media-folders" || r.URL.Path == "/api/scans" || r.URL.Path == "/api/tags" {
+			return true
+		}
+		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
+			rest, found := strings.CutSuffix(id, "/merge")
+			if found {
+				return rest != "" && !strings.Contains(rest, "/")
+			}
+			rest, found = strings.CutSuffix(id, "/synonyms")
+			return found && rest != "" && !strings.Contains(rest, "/")
+		}
 	case http.MethodPut:
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/media-folders/"); ok {
 			return id != "" && !strings.Contains(id, "/")
@@ -296,6 +324,10 @@ func requiresJSONBody(r *http.Request) bool {
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/"); ok {
 			id, rest, found := strings.Cut(suffix, "/")
 			return found && id != "" && rest == "progress"
+		}
+	case http.MethodPatch:
+		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
+			return id != "" && !strings.Contains(id, "/")
 		}
 	}
 	return false
@@ -361,6 +393,9 @@ const (
 	codeProbeNotFailed              = gen.ErrorCodeProbeNotFailed
 	codeOpenUnavailable             = gen.ErrorCodeOpenUnavailable
 	codeFileMissing                 = gen.ErrorCodeFileMissing
+	codeTagNotFound                 = gen.ErrorCodeTagNotFound
+	codeTagNameTaken                = gen.ErrorCodeTagNameTaken
+	codeTagMergeRequired            = gen.ErrorCodeTagMergeRequired
 )
 
 // writeError は JSON のエラーを書き出す。message は利用者にそのまま提示して
