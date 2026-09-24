@@ -346,10 +346,38 @@ export default function TagsPage() {
    * 成功したときに、一覧の中のその1件を差し替える（`web/src/api/tags.ts` の
    * 各関数がバックグラウンドで共有の一覧も取り直すが、ここではその結果を
    * 待たずに画面へその場で反映する。作成・改名・削除と同じ扱い）。
+   *
+   * `removedId` は、シノニム登録に伴う統合（承諾したとき）でだけ渡す。統合元
+   * のタグは統合先のシノニムになって一覧から消えるので、そのタグを一覧から
+   * 取り除いてから統合先を差し替える。渡さなければ（素のシノニムの登録・
+   * 解除）何も取り除かない。取り除かないと、統合元がバックグラウンドの
+   * 取り直し（または、それが失敗すれば永久）まで一覧に残ってしまう。
    */
-  function updateSynonymsTag(updated: Tag) {
+  function updateSynonymsTag(updated: Tag, removedId?: number) {
+    setTags((current) => {
+      if (current === undefined) return current;
+      const withoutRemoved =
+        removedId === undefined
+          ? current
+          : current.filter((item) => item.id !== removedId);
+      return withoutRemoved.map((item) => (item.id === updated.id ? updated : item));
+    });
+  }
+
+  /**
+   * removeSynonymFromTag は、1件のシノニムの解除が成功したときに呼ぶ。
+   * `SynonymsDialog` に渡した `tag` の閉じ込め（古いかもしれない）ではなく、
+   * `setTags` の関数形で常に最新の一覧からその名前だけを取り除く。複数の
+   * シノニムをほぼ同時に解除したとき、それぞれの応答が別々にここへ届いても、
+   * 互いの結果を巻き戻さない（N5・並行する解除）。
+   */
+  function removeSynonymFromTag(tagId: number, name: string) {
     setTags((current) =>
-      current?.map((item) => (item.id === updated.id ? updated : item)),
+      current?.map((item) =>
+        item.id === tagId
+          ? { ...item, synonyms: item.synonyms.filter((s) => s !== name) }
+          : item,
+      ),
     );
   }
 
@@ -538,6 +566,7 @@ export default function TagsPage() {
               tag={synonymsTag}
               onClose={cancelSynonyms}
               onTagUpdated={updateSynonymsTag}
+              onSynonymRemoved={removeSynonymFromTag}
               onStale={staleSynonyms}
             />
           );

@@ -43,12 +43,24 @@ export default function SynonymsDialog({
   tag,
   onClose,
   onTagUpdated,
+  onSynonymRemoved,
   onStale,
 }: {
   tag: Tag;
   onClose: () => void;
-  /** 登録・解除・統合のどれかが成功したときに、タグの最新の状態を渡す。 */
-  onTagUpdated: (tag: Tag) => void;
+  /**
+   * 登録・シノニム登録に伴う統合が成功したときに、タグの最新の状態を渡す。
+   * `removedId` は統合元の id で、統合元がタグの一覧から消えたことを
+   * 呼び出し元へ伝える（渡さなければ何も消えていない。TagsPage 参照）。
+   */
+  onTagUpdated: (tag: Tag, removedId?: number) => void;
+  /**
+   * シノニムの解除が成功したときに呼ぶ。呼び出し元は、この呼び出し時点の
+   * 最新の一覧からその名前だけを取り除く（`tag` prop の閉じ込めではなく）。
+   * ほぼ同時に複数のシノニムを解除したとき、互いの結果を巻き戻さないため
+   * （N5）。
+   */
+  onSynonymRemoved: (tagId: number, name: string) => void;
   /** このタグがもう無い（tag_not_found）ときに呼ぶ。 */
   onStale: () => void;
 }) {
@@ -56,6 +68,12 @@ export default function SynonymsDialog({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const backRef = useRef<HTMLButtonElement>(null);
   const confirmMergeButton = useRef<HTMLButtonElement>(null);
+
+  // fieldValueRef は常に最新の入力値を指す。応答が届いた時点で、送信した
+  // ときの値のままなら入力を空にするが、その間に打ち直していれば残す
+  // （N: 送信中に打ち直した名前を消さない）。
+  const fieldValueRef = useRef(field.value);
+  fieldValueRef.current = field.value;
 
   // tagRef は常に最新の tag（props）を指す。解除・統合の応答が届いた時点で
   // シノニムの一覧を作るときは、要求を送った時点で閉じ込めた（古いかもしれ
@@ -134,8 +152,10 @@ export default function SynonymsDialog({
     setAddError(null);
     try {
       await removeTagSynonym(tag.id, name);
-      const current = tagRef.current;
-      onTagUpdated({ ...current, synonyms: current.synonyms.filter((s) => s !== name) });
+      // 呼び出し元（TagsPage）の関数形の更新に任せる。ここで tagRef.current
+      // から組み立てると、ほぼ同時に解除したもう1件の結果を踏みつぶす
+      // （両方とも、送った時点の同じ古い一覧から組み立ててしまうため。N5）。
+      onSynonymRemoved(tag.id, name);
     } catch (failure) {
       if (isTagNotFound(failure)) {
         onStale();
@@ -161,10 +181,12 @@ export default function SynonymsDialog({
    * 添えて送るので、ここで正しい S を確かめ直す（確認の後に別のタブでその
    * 名前が移っていても、確認していないタグを統合しないため）。
    *
-   * `attempt` は、この関数と `submitAdd` の間の自動の行き来（一覧を取り直した
-   * ら名前の持ち主がもう無く、素の登録をやり直したらまた tag_merge_required
-   * になる…という往復）を1回までに区切る（N6b）。それでも収まらないときは、
-   * ループを続けず一般の失敗として見せる。
+   * `attempt` は、`submitAdd` からの自動の再送信（一覧を取り直したら名前の
+   * 持ち主がもう無く、素の登録をやり直す）を1回までに区切る（N6b）。実際に
+   * 送り直した回数だけを数える。この関数を呼ぶこと自体は数えないので、
+   * `submitAdd` からの最初の呼び出しは常に `attempt = 0` で始まり、その中で
+   * 見つからなければ1回だけ送り直せる。それでも見つからなければ、ループを
+   * 続けず一般の失敗として見せる。
    */
   async function openConfirm(name: string, attempt = 0) {
     try {
@@ -176,7 +198,8 @@ export default function SynonymsDialog({
           return;
         }
         // 別のタブでの変更により、この名前を持つタグがもう無い。素の登録を
-        // やり直せば通るはずなので、確認は出さずにもう一度試す。
+        // やり直せば通るはずなので、確認は出さずにもう一度試す（これが
+        // 実際の送り直しなので、ここで attempt を1つ進める）。
         await submitAdd(name, attempt + 1);
         return;
       }
@@ -194,12 +217,15 @@ export default function SynonymsDialog({
   async function submitAdd(spelling?: string, attempt = 0) {
     const name = spelling ?? field.trySpelling();
     if (name === null) return;
+    // 応答が届いたとき、まだこの値のままなら入力を空にする。届くまでの間に
+    // 打ち直していれば、その文字を消さない。
+    const submittedValue = fieldValueRef.current;
     setAddError(null);
     setAddPending(true);
     try {
       const updated = await addTagSynonym(tag.id, name);
       onTagUpdated(updated);
-      field.setValue("");
+      if (fieldValueRef.current === submittedValue) field.setValue("");
       // N6a: openConfirm の素の登録のやり直しが成功したときも含め、確認の
       // ビューを出したままにしない。
       setConfirm(null);
@@ -214,11 +240,9 @@ export default function SynonymsDialog({
         return;
       }
       if (isMergeRequired(failure)) {
-        if (attempt >= 1) {
-          setAddError({ kind: "other", message: "タグを追加できませんでした" });
-          return;
-        }
-        await openConfirm(name, attempt + 1);
+        // openConfirm を呼ぶこと自体は送り直しではないので、attempt は
+        // そのまま渡す（N6b: 実際に送り直した回数だけを数える）。
+        await openConfirm(name, attempt);
         return;
       }
       setAddError(tagFieldError(failure));
@@ -233,13 +257,18 @@ export default function SynonymsDialog({
 
   async function acceptMerge() {
     if (confirm === null) return;
+    const submittedValue = fieldValueRef.current;
     setConfirmError(null);
     setConfirmPending(true);
     try {
       const updated = await addTagSynonym(tag.id, confirm.name, confirm.sourceId);
-      onTagUpdated(updated);
+      // 統合元（confirm.sourceId）は統合先のシノニムになって一覧から消える。
+      // 呼び出し元（TagsPage）へその id を渡し、一覧から取り除いてもらう
+      // （渡さないと、統合元が背景の取り直しか、それが失敗すれば永久に
+      // 一覧へ残ってしまう）。
+      onTagUpdated(updated, confirm.sourceId);
       setConfirm(null);
-      field.setValue("");
+      if (fieldValueRef.current === submittedValue) field.setValue("");
     } catch (failure) {
       if (isTagNotFound(failure)) {
         onStale();

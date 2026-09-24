@@ -27,17 +27,39 @@ const server = {
   getCalls: 0,
   /** true にすると、次の GET /api/tags を 500 で失敗させる（N6: 取り直しの失敗）。 */
   failNextGet: false,
+  /**
+   * true にすると、以後の GET /api/tags をすべて 500 で失敗させ続ける
+   * （自分では戻らない）。バックグラウンドの取り直し（`afterTagChanged` の
+   * `refreshTags`）が、確かめたいその場の反映を上書きしてしまわないように
+   * するためのもの。
+   */
+  failAllGets: false,
   /** true にすると、次の PATCH /api/tags/{id} を tag_name_taken 以外の理由で失敗させる（N2）。 */
   failNextPatch: false,
   /** true にすると、次の POST /api/tags/{id}/merge を一般の理由で失敗させる（N4）。 */
   failNextMerge: false,
   /** true にすると、次の POST /api/tags/{id}/synonyms を一般の理由で失敗させる（N4）。 */
   failNextSynonymsPost: false,
+  /**
+   * true にすると、次の POST /api/tags/{id}/synonyms を、実際の所有者に
+   * かかわらず tag_merge_required で1回だけ失敗させる（自分で消費して false
+   * に戻る）。「確認をとる時点ではもう誰も持っていない名前」を、タイミングを
+   * 作らずに再現するための仕掛け（N6b）。
+   */
+  forceMergeRequiredOnce: false,
 };
 
 /** holdNextMutation を true にした次の POST・PATCH は、release() を呼ぶまで応答しない（B3）。 */
 let holdNextMutation = false;
 let release: (() => void) | null = null;
+
+/**
+ * holdSynonymDeletes を true にした間の DELETE /api/tags/{id}/synonyms は、
+ * それぞれの release を呼ぶまで応答しない。並行する複数の解除を、任意の
+ * 順で・同じタイミングで解決させて確かめる（N5・並行する解除）。
+ */
+let holdSynonymDeletes = false;
+const synonymDeleteReleases: (() => void)[] = [];
 
 function install() {
   const fetchMock = vi.fn<typeof fetch>();
@@ -48,7 +70,7 @@ function install() {
 
     if (path === "/api/tags" && method === "GET") {
       server.getCalls += 1;
-      if (server.failNextGet) {
+      if (server.failAllGets || server.failNextGet) {
         server.failNextGet = false;
         return Promise.resolve(
           jsonResponse({ code: "internal", message: "失敗しました" }, 500),
@@ -174,6 +196,15 @@ function install() {
           jsonResponse({ code: "internal", message: "追加できませんでした" }, 500),
         );
       }
+      if (server.forceMergeRequiredOnce) {
+        server.forceMergeRequiredOnce = false;
+        return maybeHold(() =>
+          jsonResponse(
+            { code: "tag_merge_required", message: "統合の確認が必要です" },
+            409,
+          ),
+        );
+      }
       const body = JSON.parse(String(init?.body)) as {
         name: string;
         mergeTagId?: number;
@@ -243,8 +274,14 @@ function install() {
         );
       }
       const name = url.searchParams.get("name") ?? "";
-      target.synonyms = target.synonyms.filter((s) => s !== name);
-      return Promise.resolve(jsonResponse(null, 204));
+      const respond = () => {
+        target.synonyms = target.synonyms.filter((s) => s !== name);
+        return jsonResponse(null, 204);
+      };
+      if (!holdSynonymDeletes) return Promise.resolve(respond());
+      return new Promise((resolve) => {
+        synonymDeleteReleases.push(() => resolve(respond()));
+      });
     }
 
     throw new Error(`想定しない要求: ${method} ${path}`);
@@ -275,11 +312,15 @@ beforeEach(() => {
   server.nextId = 100;
   server.getCalls = 0;
   server.failNextGet = false;
+  server.failAllGets = false;
   server.failNextPatch = false;
   server.failNextMerge = false;
   server.failNextSynonymsPost = false;
+  server.forceMergeRequiredOnce = false;
   holdNextMutation = false;
   release = null;
+  holdSynonymDeletes = false;
+  synonymDeleteReleases.length = 0;
 });
 
 afterEach(() => {
@@ -1460,5 +1501,142 @@ describe("TagsPage シノニム", () => {
 
     expect(await within(dialog).findByRole("alert")).toBeDefined();
     await waitFor(() => expect(document.activeElement).toBe(confirmButton));
+  });
+
+  it("シノニム登録に伴う統合が成功すると、統合元がその場で一覧から消える（バックグラウンドの取り直しを待たない）", async () => {
+    const user = userEvent.setup();
+    install();
+    server.tags = [
+      tag({ id: 1, name: "Anime", videoCount: 2 }),
+      tag({ id: 2, name: "anime", videoCount: 10 }),
+    ];
+    renderPage();
+    await screen.findByTitle("Anime");
+    await screen.findByTitle("anime");
+
+    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "シノニム" }));
+    const dialog = await screen.findByRole("dialog", { name: "「Anime」のシノニム" });
+    const input = within(dialog).getByRole("textbox", { name: "シノニムを追加" });
+    await user.type(input, "anime");
+    await user.keyboard("{Enter}");
+    await within(dialog).findByText(/本の動画に付いているタグです/);
+
+    // バックグラウンドの取り直し（afterTagChanged の refreshTags）が失敗しても、
+    // その場での反映（統合元を一覧から消す）は変わらないことを確かめる。
+    server.failNextGet = true;
+
+    await user.click(within(dialog).getByRole("button", { name: "統合する" }));
+    await within(dialog).findByText("anime");
+    await user.click(within(dialog).getByRole("button", { name: "閉じる" }));
+
+    expect(screen.queryByTitle("anime")).toBeNull();
+    expect(screen.getByTitle("Anime")).toBeDefined();
+  });
+
+  it("素のシノニムの登録・解除では、ほかのタグを一覧から消さない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Drama");
+
+    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "シノニム" }));
+    const dialog = await screen.findByRole("dialog", { name: "「Drama」のシノニム" });
+    const input = within(dialog).getByRole("textbox", { name: "シノニムを追加" });
+    await user.type(input, "ドラマ");
+    await user.keyboard("{Enter}");
+    await within(dialog).findByText("ドラマ");
+    await user.click(within(dialog).getByRole("button", { name: "閉じる" }));
+
+    expect(screen.getByTitle("旅行")).toBeDefined();
+    expect(screen.getByTitle("Anime")).toBeDefined();
+    expect(screen.getByTitle("Drama")).toBeDefined();
+  });
+
+  it("確認をとる時点で名前の持ち主がもう無ければ、1回だけ送り直して素のまま登録する", async () => {
+    const user = userEvent.setup();
+    install();
+    server.tags = [tag({ id: 1, name: "Anime", videoCount: 2 })];
+    server.forceMergeRequiredOnce = true;
+    renderPage();
+    await screen.findByTitle("Anime");
+
+    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "シノニム" }));
+    const dialog = await screen.findByRole("dialog", { name: "「Anime」のシノニム" });
+    const input = within(dialog).getByRole("textbox", {
+      name: "シノニムを追加",
+    }) as HTMLInputElement;
+    await user.type(input, "anime");
+    await user.keyboard("{Enter}");
+
+    // 確認には切り替わらず、素の登録として直接付く（送り直しが1回だけ
+    // 許される。N6b）。
+    expect(await within(dialog).findByText("anime")).toBeDefined();
+    expect(within(dialog).queryByText(/本の動画に付いているタグです/)).toBeNull();
+    expect(input.value).toBe("");
+  });
+
+  it("シノニムの追加が成功する応答の間に打ち直していたら、入力の文字を消さない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Drama");
+
+    const row = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "シノニム" }));
+    const dialog = await screen.findByRole("dialog", { name: "「Drama」のシノニム" });
+    const input = within(dialog).getByRole("textbox", {
+      name: "シノニムを追加",
+    }) as HTMLInputElement;
+    await user.type(input, "ドラマ");
+
+    holdNextMutation = true;
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(input.getAttribute("aria-busy")).toBe("true"));
+
+    // 応答を待つ間に、別の名前へ打ち直す。
+    await user.clear(input);
+    await user.type(input, "別の下書き");
+
+    release?.();
+
+    await within(dialog).findByText("ドラマ");
+    // 追加した「ドラマ」は付いたが、その後に打ち直した文字は消えない。
+    expect(input.value).toBe("別の下書き");
+  });
+
+  it("並行して複数のシノニムを解除しても、互いの結果を巻き戻さない", async () => {
+    const user = userEvent.setup();
+    install();
+    server.tags = [tag({ id: 1, name: "Anime", synonyms: ["A", "B"] })];
+    renderPage();
+    await screen.findByTitle("Anime");
+
+    const row = screen.getByTitle("Anime").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "シノニム" }));
+    const dialog = await screen.findByRole("dialog", { name: "「Anime」のシノニム" });
+
+    // バックグラウンドの取り直し（各解除の afterTagChanged による
+    // refreshTags）がサーバーの正しい状態で上書きして、クライアント側の
+    // 巻き戻りを覆い隠してしまわないようにする。ここで確かめたいのは、
+    // その場（サーバーの応答を待たない側）の反映が正しいことである。
+    server.failAllGets = true;
+    holdSynonymDeletes = true;
+    await user.click(within(dialog).getByRole("button", { name: "シノニム「A」を解除" }));
+    await user.click(within(dialog).getByRole("button", { name: "シノニム「B」を解除" }));
+    expect(synonymDeleteReleases).toHaveLength(2);
+
+    // 両方の応答を、同じタイミングで（間に描画を挟まず）解決させる。片方の
+    // 結果がもう片方の閉じ込めた古い一覧で上書きされると、どちらか一方が
+    // 生き残ってしまう。
+    synonymDeleteReleases[0]!();
+    synonymDeleteReleases[1]!();
+
+    await waitFor(() => {
+      expect(within(dialog).queryByText("A")).toBeNull();
+      expect(within(dialog).queryByText("B")).toBeNull();
+    });
   });
 });
