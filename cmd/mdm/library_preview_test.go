@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -47,7 +48,7 @@ func TestPreviewHandlerMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handleErr := previewHandler(Config{DataDir: dataDir}, db)(ctx, job)
+	handleErr := previewHandler(db, newArtifacts(db, Config{DataDir: dataDir}.ThumbnailsDir(), slog.Default()))(ctx, job)
 	if handleErr == nil {
 		t.Fatal("zero-duration preview unexpectedly succeeded")
 	}
@@ -99,7 +100,7 @@ func TestPreviewHandlerUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handleErr := previewHandler(Config{DataDir: dataDir}, db)(ctx, job)
+	handleErr := previewHandler(db, newArtifacts(db, Config{DataDir: dataDir}.ThumbnailsDir(), slog.Default()))(ctx, job)
 	if handleErr == nil {
 		t.Fatal("preview with missing source unexpectedly succeeded")
 	}

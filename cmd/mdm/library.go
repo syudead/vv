@@ -55,11 +55,13 @@ func newLibrary(db *store.DB, logger *slog.Logger, events *httpapi.Events) *libr
 //
 // 1件の成否を記録するたびに、その動画と段階ごとの残りが変わったことを画面へ
 // 知らせる。
-func newWorkers(cfg Config, db *store.DB, logger *slog.Logger, events *httpapi.Events) []*jobs.Worker {
+func newWorkers(
+	db *store.DB, assets *artifacts, logger *slog.Logger, events *httpapi.Events,
+) []*jobs.Worker {
 	handlers := map[domain.JobKind]jobs.Handler{
 		domain.JobProbe:     probeHandler(db),
-		domain.JobThumbnail: thumbnailHandler(cfg, db),
-		domain.JobPreview:   previewHandler(cfg, db),
+		domain.JobThumbnail: thumbnailHandler(db, assets),
+		domain.JobPreview:   previewHandler(db, assets),
 	}
 	finished := func(job domain.Job) {
 		if events == nil {
@@ -134,7 +136,7 @@ func probeHandler(db *store.DB) jobs.Handler {
 	}
 }
 
-func previewHandler(cfg Config, db *store.DB) jobs.Handler {
+func previewHandler(db *store.DB, assets *artifacts) jobs.Handler {
 	return func(ctx context.Context, job domain.Job) error {
 		video, err := db.GetVideo(ctx, job.VideoID)
 		if err != nil {
@@ -156,7 +158,11 @@ func previewHandler(cfg Config, db *store.DB) jobs.Handler {
 		validateContent := func(validateCtx context.Context) (bool, error) {
 			return db.PreviewSourceCurrent(validateCtx, job)
 		}
-		if err := media.GeneratePreview(ctx, job.LocationPath, cfg.ThumbnailsDir(), job.ContentKey, *video.DurationMs, validateContent); err != nil {
+		// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
+		// 生成物の削除と直列にする。
+		unlock := assets.lock(job.ContentKey)
+		defer unlock()
+		if err := media.GeneratePreview(ctx, job.LocationPath, assets.thumbnailsDir, job.ContentKey, *video.DurationMs, validateContent); err != nil {
 			return err
 		}
 		applied, err := db.CompletePreviewForContent(context.WithoutCancel(ctx), job)
@@ -165,7 +171,7 @@ func previewHandler(cfg Config, db *store.DB) jobs.Handler {
 		}
 		if !applied {
 			// 生成中に動画が消えていたら、書き終えたプレビューを残さない。
-			if err := removeUnreferencedArtifacts(context.WithoutCancel(ctx), db, cfg.ThumbnailsDir(), job.ContentKey); err != nil {
+			if err := assets.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey); err != nil {
 				return err
 			}
 			return media.ErrPreviewStale
@@ -175,7 +181,7 @@ func previewHandler(cfg Config, db *store.DB) jobs.Handler {
 }
 
 // thumbnailHandler は静止画を1枚生成し、状態を記録する。
-func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
+func thumbnailHandler(db *store.DB, assets *artifacts) jobs.Handler {
 	return func(ctx context.Context, job domain.Job) error {
 		video, err := db.GetVideo(ctx, job.VideoID)
 		if err != nil {
@@ -197,12 +203,16 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 		if err := checkReadableRegularFile(job.LocationPath); err != nil {
 			return err
 		}
+		// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
+		// 生成物の削除と直列にする。
+		unlock := assets.lock(job.ContentKey)
+		defer unlock()
 		// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
 		// FailClaimedJob が動画側へ記録する。
 		hadThumbnail := video.ThumbnailState == domain.ThumbnailStateDone
 		if !hadThumbnail {
 			if _, err := media.Thumbnail(
-				ctx, job.LocationPath, durationMs, cfg.ThumbnailsDir(), job.ContentKey,
+				ctx, job.LocationPath, durationMs, assets.thumbnailsDir, job.ContentKey,
 			); err != nil {
 				return err
 			}
@@ -212,54 +222,18 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 			}
 			if !applied {
 				// 生成中に動画が消えていたら、書き終えたサムネイルを残さない。
-				return removeUnreferencedArtifacts(context.WithoutCancel(ctx), db, cfg.ThumbnailsDir(), job.ContentKey)
+				return assets.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
 			}
 		}
 		if err := media.GenerateSeekThumbnails(
-			ctx, job.LocationPath, cfg.ThumbnailsDir(), job.ContentKey,
+			ctx, job.LocationPath, assets.thumbnailsDir, job.ContentKey,
 		); err != nil {
 			return err
 		}
 
 		// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
 		// 参照の無くなった生成物を残さない。
-		return removeUnreferencedArtifacts(context.WithoutCancel(ctx), db, cfg.ThumbnailsDir(), job.ContentKey)
-	}
-}
-
-// removeUnreferencedArtifacts は、内容を参照する動画が無ければ、その内容の
-// 生成物を消す。参照があれば何もしない。
-//
-// 消すのは参照が無いと確かめた直後である。同じ内容の動画があとから取り込まれても、
-// 新しい行は生成物の状態が pending から始まり、ジョブが作り直す。
-func removeUnreferencedArtifacts(ctx context.Context, db *store.DB, thumbnailsDir, contentKey string) error {
-	referenced, err := db.ContentKeyReferenced(ctx, contentKey)
-	if err != nil {
-		return err
-	}
-	if referenced {
-		return nil
-	}
-	return media.RemoveContentArtifacts(thumbnailsDir, contentKey)
-}
-
-// releaseContent は、動画の行が消えたときに、参照の無くなった内容の生成物を
-// 消す。保存層の OnContentReleased に渡す。消えた動画の分だけを見るので、
-// ライブラリ全体は読まない。
-//
-// ファイルの削除は呼び出し元（走査やフォルダ設定の要求）を待たせないよう、
-// 背後で行う。
-func releaseContent(db *store.DB, thumbnailsDir string, logger *slog.Logger) func(contentKeys []string) {
-	return func(contentKeys []string) {
-		go func() {
-			ctx := context.Background()
-			for _, key := range contentKeys {
-				if err := removeUnreferencedArtifacts(ctx, db, thumbnailsDir, key); err != nil {
-					logger.Warn("消えた動画の生成物を削除できませんでした",
-						slog.String("contentKey", key), slog.Any("error", err))
-				}
-			}
-		}()
+		return assets.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
 	}
 }
 

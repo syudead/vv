@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"path/filepath"
 	"testing"
 	"time"
@@ -66,7 +67,9 @@ func TestProcessingHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 	}{
 		{kind: domain.JobProbe, handler: func(_ Config, db *store.DB) jobs.Handler { return probeHandler(db) },
 			state: func(v domain.Video) string { return string(v.ProbeState) }},
-		{kind: domain.JobThumbnail, handler: thumbnailHandler,
+		{kind: domain.JobThumbnail, handler: func(cfg Config, db *store.DB) jobs.Handler {
+			return thumbnailHandler(db, newArtifacts(db, cfg.ThumbnailsDir(), slog.Default()))
+		},
 			state: func(v domain.Video) string { return string(v.ThumbnailState) }},
 	}
 	for _, tc := range cases {

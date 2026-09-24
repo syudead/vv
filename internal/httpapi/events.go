@@ -135,6 +135,12 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "変化の知らせの経路が設定されていません", nil)
 		return
 	}
+	// 応答を返し始める前に受け口を作る。ブラウザは最初の送信を受けた時点で
+	// つながったとみなして取り直すので、そのあとに登録すると、間に起きた
+	// 動画の変化を取りこぼす。
+	sub, unsubscribe := s.events.subscribe()
+	defer unsubscribe()
+
 	controller := http.NewResponseController(w)
 
 	header := w.Header()
@@ -150,9 +156,6 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 		s.logger.Warn("変化の知らせを送れません", slog.Any("error", err))
 		return
 	}
-
-	sub, unsubscribe := s.events.subscribe()
-	defer unsubscribe()
 
 	keepAlive := time.NewTicker(eventsKeepAlive)
 	defer keepAlive.Stop()

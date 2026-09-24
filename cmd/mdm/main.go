@@ -106,10 +106,11 @@ func run() error {
 
 	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
 	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
-	workers := newWorkers(cfg, db, logger, events)
+	assets := newArtifacts(db, cfg.ThumbnailsDir(), logger)
+	workers := newWorkers(db, assets, logger, events)
 	db.OnJobsQueued(wakeWorkers(workers, events))
 	// 動画の行が消えたら、参照の無くなった内容の生成物だけを消す。
-	db.OnContentReleased(releaseContent(db, cfg.ThumbnailsDir(), logger))
+	db.OnContentReleased(assets.release)
 	var workersDone sync.WaitGroup
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
@@ -160,6 +161,9 @@ func run() error {
 	// ジョブは running のまま残るが、次の起動で queued へ戻る。
 	stopBackground()
 	workersDone.Wait()
+	// 背後で動いている生成物の削除を、データベースを閉じる前に終える。
+	// 途中で閉じると、消すはずの生成物が残り続ける。
+	assets.wait()
 	logger.Info("取り込みとジョブを停止しました")
 
 	return nil
