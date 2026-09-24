@@ -38,12 +38,10 @@ type ScanReporter interface {
 	ReportScanProgress(ctx context.Context, result domain.ScanResult) error
 }
 
-// Notifier は画面へ送る変化の知らせである。internal/httpapi の *Events が
-// これを満たす。
-type Notifier interface {
-	ScanChanged()
-	VideoChanged(id int64)
-	ProcessingChanged()
+// Publisher は状態の変化の発行先である。誰が受け取るか（画面への知らせ・
+// ワーカーの起床など）は知らない。購読者の登録は cmd/mdm が行う。
+type Publisher interface {
+	Publish(events ...domain.Event)
 }
 
 // ScansOptions は走査の組み立てに必要な依存である。
@@ -56,20 +54,20 @@ type ScansOptions struct {
 	// Context は走査に使う寿命の長い context。停止時に取り消され、走査は
 	// failed で閉じる。nil なら context.Background を使う。
 	Context context.Context
-	// Notifier は nil なら知らせない。
-	Notifier Notifier
+	// Publisher は nil なら発行しない。
+	Publisher Publisher
 	// Logger は nil なら slog の既定を使う。
 	Logger *slog.Logger
 }
 
 // Scans は走査の開始・実行・進捗の記録と、起動時の中断からの回復を受け持つ。
 type Scans struct {
-	store    ScanStore
-	jobs     JobRecoveryStore
-	scanner  Scanner
-	baseCtx  context.Context
-	notifier Notifier
-	logger   *slog.Logger
+	store     ScanStore
+	jobs      JobRecoveryStore
+	scanner   Scanner
+	baseCtx   context.Context
+	publisher Publisher
+	logger    *slog.Logger
 
 	// mu は走査の起動が重ならないようにする。実行中かどうかの判断は
 	// scans 表（部分ユニーク索引）が持つので、ここは goroutine を
@@ -83,11 +81,11 @@ type Scans struct {
 // NewScans は走査を組み立てる。
 func NewScans(opts ScansOptions) *Scans {
 	s := &Scans{
-		store:    opts.Store,
-		jobs:     opts.Jobs,
-		baseCtx:  opts.Context,
-		notifier: opts.Notifier,
-		logger:   opts.Logger,
+		store:     opts.Store,
+		jobs:      opts.Jobs,
+		baseCtx:   opts.Context,
+		publisher: opts.Publisher,
+		logger:    opts.Logger,
 	}
 	if s.baseCtx == nil {
 		s.baseCtx = context.Background()
@@ -151,8 +149,9 @@ func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult
 // Wait は背後で走っている走査の終わりを待つ。組み立て時の context を
 // 取り消したあとに呼ぶ。
 //
-// cmd/mdm は停止時にこれを待たない。データベースを閉じたあとに走査が終われば
-// 記録は running のまま残り、次の起動の RecoverInterrupted が failed で閉じる。
+// cmd/mdm は停止時に、変化の配り先を閉じる前にこれを猶予つきで待つ。走査は
+// 取り消しを見て止まるので、通常は長くは待たない。途中で配り先を閉じると、走査が
+// 消した動画の知らせが捨てられ、その生成物が残り続ける。
 func (s *Scans) Wait() {
 	s.done.Wait()
 }
@@ -250,13 +249,12 @@ func (s *Scans) run(scanID int64) {
 	s.scanChanged()
 }
 
-// scanChanged はスキャンの状態が変わったことを画面へ知らせる。走査は仕事を
-// 積みながら進むので、段階ごとの残りも同じ知らせで送られる（Events.ScanChanged）。
+// scanChanged は走査の状態が変わったことを発行する。
 func (s *Scans) scanChanged() {
-	if s.notifier == nil {
+	if s.publisher == nil {
 		return
 	}
-	s.notifier.ScanChanged()
+	s.publisher.Publish(domain.ScanChanged{})
 }
 
 func progressOf(result domain.ScanResult) domain.ScanProgress {

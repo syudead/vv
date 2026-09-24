@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -10,11 +11,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-func newTestIngest(store *fakeIngestStore, generator *fakeGenerator) (*Ingest, *fakeNotifier) {
-	notifier := &fakeNotifier{}
+func newTestIngest(store *fakeIngestStore, generator *fakeGenerator) (*Ingest, *fakePublisher) {
+	publisher := &fakePublisher{}
 	return NewIngest(IngestOptions{
-		Store: store, Generator: generator, Artifacts: generator, Notifier: notifier, Logger: discardLogger(),
-	}), notifier
+		Store: store, Generator: generator, Artifacts: generator, Publisher: publisher, Logger: discardLogger(),
+	}), publisher
 }
 
 // 解析に成功したら結果を反映し、プレビューの仕事を積む。
@@ -215,63 +216,35 @@ func TestIngestPreviewFailure(t *testing.T) {
 	})
 }
 
-// 解析の成否が記録されたら、待たずにサムネイルのワーカーを起こす。他の段階の
-// 終わりでは起こさない。どれも、その動画と残りの変化を画面へ知らせる。
-func TestJobFinishedWakesThumbnailAfterProbe(t *testing.T) {
-	ingest, notifier := newTestIngest(newFakeIngestStore(), &fakeGenerator{})
-	wakers := map[domain.JobKind]*fakeWaker{}
-	for _, kind := range domain.JobKinds {
-		wakers[kind] = &fakeWaker{}
-		ingest.AttachWorker(kind, wakers[kind])
-	}
+// 1件の成否が記録されたら、その動画の状態がどの段階で変わったかと、残りの
+// 変化を発行する。どのワーカーを起こすかは購読する側が決める。
+func TestJobFinishedPublishesStageAndProcessing(t *testing.T) {
+	ingest, publisher := newTestIngest(newFakeIngestStore(), &fakeGenerator{})
 
 	ingest.JobFinished(domain.Job{Kind: domain.JobProbe, VideoID: 7})
-	if wakers[domain.JobThumbnail].count() != 1 {
-		t.Fatal("解析の後にサムネイルのワーカーを起こさない")
+	ingest.JobFinished(domain.Job{Kind: domain.JobThumbnail, VideoID: 8})
+
+	want := []domain.Event{
+		domain.VideoIngestChanged{VideoID: 7, Stage: domain.JobProbe}, domain.ProcessingChanged{},
+		domain.VideoIngestChanged{VideoID: 8, Stage: domain.JobThumbnail}, domain.ProcessingChanged{},
 	}
-	ingest.JobFinished(domain.Job{Kind: domain.JobThumbnail, VideoID: 7})
-	ingest.JobFinished(domain.Job{Kind: domain.JobPreview, VideoID: 7})
-	if wakers[domain.JobThumbnail].count() != 1 || wakers[domain.JobPreview].count() != 0 {
-		t.Fatal("解析以外の終わりでワーカーを起こした")
-	}
-	if _, videos, processing := notifier.counts(); !slices.Equal(videos, []int64{7, 7, 7}) || processing != 3 {
-		t.Fatalf("知らせ = videos %v, processing %d", videos, processing)
+	if got := publisher.published(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("発行 = %#v, want %#v", got, want)
 	}
 }
 
-// 仕事が積まれたら、その段階のワーカーだけを起こし、残りの変化を知らせる。
-func TestJobsChangedWakesOnlyQueuedStages(t *testing.T) {
-	ingest, notifier := newTestIngest(newFakeIngestStore(), &fakeGenerator{})
-	wakers := map[domain.JobKind]*fakeWaker{}
-	for _, kind := range domain.JobKinds {
-		wakers[kind] = &fakeWaker{}
-		ingest.AttachWorker(kind, wakers[kind])
-	}
-
-	ingest.JobsChanged([]domain.JobKind{domain.JobProbe, domain.JobPreview})
-	if wakers[domain.JobProbe].count() != 1 || wakers[domain.JobPreview].count() != 1 || wakers[domain.JobThumbnail].count() != 0 {
-		t.Fatal("積まれた段階だけを起こしていない")
-	}
-	if _, _, processing := notifier.counts(); processing != 1 {
-		t.Fatalf("残りの知らせ = %d, want 1", processing)
-	}
-}
-
-// 動画の行が消えたら、参照の無くなった内容の生成物だけを消し、消えた動画を知らせる。
-func TestVideosDeletedReleasesOnlyUnreferencedArtifacts(t *testing.T) {
+// 参照の無くなった内容の生成物だけを消す。消す直前に参照を確かめ直す。
+func TestReleaseArtifactsRemovesOnlyUnreferencedContent(t *testing.T) {
 	kept := probedVideo(1, "kept")
 	store := newFakeIngestStore(kept)
 	generator := &fakeGenerator{}
-	ingest, notifier := newTestIngest(store, generator)
+	ingest, _ := newTestIngest(store, generator)
 
-	ingest.VideosDeleted([]domain.DeletedVideo{{ID: 1, ContentKey: "kept"}, {ID: 2, ContentKey: "released"}})
+	ingest.ReleaseArtifacts(domain.ContentUnreferenced{ContentKeys: []string{"kept", "released"}})
 	ingest.Wait()
 
 	if _, removed := generator.snapshot(); !slices.Equal(removed, []string{"released"}) {
 		t.Fatalf("消した生成物 = %v, want [released]", removed)
-	}
-	if _, videos, processing := notifier.counts(); !slices.Equal(videos, []int64{1, 2}) || processing != 1 {
-		t.Fatalf("知らせ = videos %v, processing %d", videos, processing)
 	}
 }
 
@@ -283,7 +256,7 @@ func TestReleaseWaitsForGenerationOfSameContent(t *testing.T) {
 	ingest, _ := newTestIngest(store, generator)
 
 	unlock := ingest.artifacts.lock("readded")
-	ingest.VideosDeleted([]domain.DeletedVideo{{ID: 1, ContentKey: "readded"}})
+	ingest.ReleaseArtifacts(domain.ContentUnreferenced{ContentKeys: []string{"readded"}})
 	time.Sleep(50 * time.Millisecond)
 	if _, removed := generator.snapshot(); len(removed) != 0 {
 		t.Fatalf("錠を待たずに消した: %v", removed)

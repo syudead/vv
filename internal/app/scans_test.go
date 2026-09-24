@@ -131,10 +131,10 @@ func (f *fakeScanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	return f.result, f.err
 }
 
-func newTestScans(t *testing.T, ctx context.Context, scanner *fakeScanner) (*Scans, *fakeScanStore, *fakeNotifier) {
+func newTestScans(t *testing.T, ctx context.Context, scanner *fakeScanner) (*Scans, *fakeScanStore, *fakePublisher) {
 	t.Helper()
 	store := newFakeScanStore()
-	notifier := &fakeNotifier{}
+	publisher := &fakePublisher{}
 	scans := NewScans(ScansOptions{
 		Store: store,
 		Jobs:  store,
@@ -142,18 +142,18 @@ func newTestScans(t *testing.T, ctx context.Context, scanner *fakeScanner) (*Sca
 			scanner.reporter = reporter
 			return scanner
 		},
-		Context:  ctx,
-		Notifier: notifier,
-		Logger:   discardLogger(),
+		Context:   ctx,
+		Publisher: publisher,
+		Logger:    discardLogger(),
 	})
-	return scans, store, notifier
+	return scans, store, publisher
 }
 
-// 走査が最後まで走れば、最終の進捗を記録して done で閉じ、画面へ知らせる。
+// 走査が最後まで走れば、最終の進捗を記録して done で閉じ、変化を発行する。
 // 要求の context が応答とともに終わっても、走査は打ち切られない。
 func TestScanCompletes(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 3, Processed: 2, Added: 2, Failed: 1}}
-	scans, store, notifier := newTestScans(t, context.Background(), scanner)
+	scans, store, publisher := newTestScans(t, context.Background(), scanner)
 
 	requestCtx, cancelRequest := context.WithCancel(context.Background())
 	scan, err := scans.StartScan(requestCtx)
@@ -176,8 +176,9 @@ func TestScanCompletes(t *testing.T) {
 		t.Fatalf("進捗 = %+v, want 途中1回と最終 %+v", progress, want)
 	}
 	// 開始・途中の進捗・終了の3回。
-	if got, _, _ := notifier.counts(); got != 3 {
-		t.Fatalf("走査の知らせ = %d, want 3", got)
+	want3 := []domain.Event{domain.ScanChanged{}, domain.ScanChanged{}, domain.ScanChanged{}}
+	if got := publisher.published(); !slices.Equal(got, want3) {
+		t.Fatalf("走査の発行 = %v, want %v", got, want3)
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log/slog"
-	"sync"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -62,24 +61,19 @@ type Generator interface {
 	Preview(ctx context.Context, path, output string, durationMs int64) error
 }
 
-// Waker は1つの段階のワーカーを起こす。internal/jobs の *Worker がこれを満たす。
-type Waker interface {
-	Wake()
-}
-
 // IngestOptions は取り込みの組み立てに必要な依存である。
 type IngestOptions struct {
 	Store     IngestStore
 	Generator Generator
 	Artifacts ArtifactStore
-	// Notifier は nil なら知らせない。
-	Notifier Notifier
+	// Publisher は nil なら発行しない。
+	Publisher Publisher
 	// Logger は nil なら slog の既定を使う。
 	Logger *slog.Logger
 }
 
 // Ingest は取り込みの各段階（解析・サムネイル・プレビュー）のジョブの処理と、
-// 段階の間の受け渡しを受け持つ。
+// 参照の無くなった内容の生成物の削除を受け持つ。
 //
 // ジョブを取り出して成否を記録する進め方は internal/jobs が持ち、1件で何を
 // するかはここが決める。
@@ -87,11 +81,8 @@ type Ingest struct {
 	store     IngestStore
 	generator Generator
 	files     ArtifactStore
-	notifier  Notifier
+	publisher Publisher
 	artifacts *artifacts
-
-	mu     sync.RWMutex
-	wakers map[domain.JobKind]Waker
 }
 
 // NewIngest は取り込みを組み立てる。
@@ -104,9 +95,8 @@ func NewIngest(opts IngestOptions) *Ingest {
 		store:     opts.Store,
 		generator: opts.Generator,
 		files:     opts.Artifacts,
-		notifier:  opts.Notifier,
+		publisher: opts.Publisher,
 		artifacts: newArtifacts(opts.Store, opts.Artifacts, logger),
-		wakers:    map[domain.JobKind]Waker{},
 	}
 }
 
@@ -123,65 +113,26 @@ func (i *Ingest) Handler(kind domain.JobKind) func(context.Context, domain.Job) 
 	return nil
 }
 
-// AttachWorker は kind の段階のワーカーを登録する。仕事が積まれたときと、
-// 前の段階が終わったときに起こす。
-func (i *Ingest) AttachWorker(kind domain.JobKind, worker Waker) {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	i.wakers[kind] = worker
-}
-
-func (i *Ingest) wake(kind domain.JobKind) {
-	i.mu.RLock()
-	worker, ok := i.wakers[kind]
-	i.mu.RUnlock()
-	if ok {
-		worker.Wake()
-	}
-}
-
 // JobFinished は1件の成否が記録されたあとに呼ばれる。ワーカーの Finished に渡す。
 //
-// サムネイルは解析が終わるまで取り出されない（store.ClaimJob）。解析の成否が
-// 決まったら、待っていたサムネイルのワーカーを起こす。そのうえで、その動画と
-// 段階ごとの残りが変わったことを画面へ知らせる。
+// その動画の取り込みの状態と、段階ごとの残りが変わったことを発行する。
+// 解析の成否が決まったら待っていたサムネイルのワーカーを起こす、という段階の
+// 間の受け渡しは、この発行の購読として cmd/mdm が登録する。
 func (i *Ingest) JobFinished(job domain.Job) {
-	if job.Kind == domain.JobProbe {
-		i.wake(domain.JobThumbnail)
-	}
-	if i.notifier == nil {
+	if i.publisher == nil {
 		return
 	}
-	i.notifier.VideoChanged(job.VideoID)
-	i.notifier.ProcessingChanged()
+	i.publisher.Publish(
+		domain.VideoIngestChanged{VideoID: job.VideoID, Stage: job.Kind},
+		domain.ProcessingChanged{},
+	)
 }
 
-// JobsChanged は仕事が積まれた段階のワーカーを起こし、残りが変わったことを
-// 画面へ知らせる。保存層の OnJobsChanged に渡す。
-func (i *Ingest) JobsChanged(kinds []domain.JobKind) {
-	for _, kind := range kinds {
-		i.wake(kind)
-	}
-	if i.notifier != nil {
-		i.notifier.ProcessingChanged()
-	}
-}
-
-// VideosDeleted は、動画の行が消えたときに、参照の無くなった内容の生成物だけを
-// 消し、開いている画面へ消えたことを知らせる（取り直すと見つからないので、画面が
-// 外す）。保存層の OnVideosDeleted に渡す。
-func (i *Ingest) VideosDeleted(deleted []domain.DeletedVideo) {
-	keys := make([]string, 0, len(deleted))
-	for _, video := range deleted {
-		keys = append(keys, video.ContentKey)
-		if i.notifier != nil {
-			i.notifier.VideoChanged(video.ID)
-		}
-	}
-	i.artifacts.release(keys)
-	if i.notifier != nil {
-		i.notifier.ProcessingChanged()
-	}
+// ReleaseArtifacts は、参照の無くなった内容の生成物を消す。消す直前に参照を
+// 確かめ直し、同じ内容の動画が取り込み直されていれば残す。
+// domain.ContentUnreferenced の購読として cmd/mdm が登録する。
+func (i *Ingest) ReleaseArtifacts(event domain.ContentUnreferenced) {
+	i.artifacts.release(event.ContentKeys)
 }
 
 // Wait は背後で動いている生成物の削除の終わりを待つ。データベースを閉じる前に
