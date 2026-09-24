@@ -1,7 +1,8 @@
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { useLocation, useNavigate } from "react-router";
 
+import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useScanNotice } from "./ScanNoticeProvider";
@@ -43,6 +44,7 @@ function countSummary(presentation: ScanPresentation) {
 export default function ScanProgressIndicator() {
   const scan = useScan();
   const notice = useScanNotice();
+  const location = useLocation();
   const navigate = useNavigate();
   const presentation = presentScan(scan);
   const [open, setOpen] = useState(false);
@@ -95,7 +97,10 @@ export default function ScanProgressIndicator() {
 
   return (
     <div
-      className="fixed right-3 bottom-4 z-30 max-w-[calc(100vw-1.5rem)] sm:right-5 sm:bottom-5"
+      className={cn(
+        "fixed right-3 z-30 max-w-[calc(100vw-1.5rem)] sm:right-5",
+        location.pathname.startsWith("/videos/") ? "top-2" : "bottom-4 sm:bottom-5",
+      )}
       onPointerEnter={() => setHovered(true)}
       onPointerLeave={() => setHovered(false)}
     >

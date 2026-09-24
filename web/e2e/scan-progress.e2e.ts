@@ -1,6 +1,8 @@
 import { expect, test } from "@playwright/test";
 
-test("scan progress remains available in the shell and settings", async ({ page }) => {
+test("scan progress remains one indicator across library, settings, and playback", async ({
+  page,
+}) => {
   let currentCalls = 0;
   await page.route("**/api/media-folders", async (route) =>
     route.fulfill({
@@ -14,8 +16,8 @@ test("scan progress remains available in the shell and settings", async ({ page 
     const body = {
       id: 17,
       state: "running",
-      total: 10,
-      completed: Math.min(4, currentCalls),
+      total: 100,
+      completed: currentCalls,
       failed: 0,
     };
     await route.fulfill({
@@ -33,4 +35,24 @@ test("scan progress remains available in the shell and settings", async ({ page 
   await indicator.click();
   await expect(page).toHaveURL(/\/settings#scan-status$/);
   await expect(page.getByRole("heading", { name: "取り込み状況" })).toBeFocused();
+
+  const settingsIndicator = page.getByRole("button", { name: /取り込み状況を開く/ });
+  await expect(settingsIndicator).toHaveText(/取り込み中/);
+  await page.getByRole("link", { name: "vv" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  const routePersistentIndicator = page.getByRole("button", {
+    name: /取り込み状況を開く/,
+  });
+  await expect(routePersistentIndicator).toHaveCount(1);
+  const progressBeforePlayback = await routePersistentIndicator.textContent();
+
+  await page.evaluate(() => {
+    window.history.pushState({}, "", "/videos/1");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page).toHaveURL(/\/videos\/1$/);
+  await expect(routePersistentIndicator).toHaveCount(1);
+  await expect
+    .poll(() => routePersistentIndicator.textContent())
+    .not.toBe(progressBeforePlayback);
 });

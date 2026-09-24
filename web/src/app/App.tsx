@@ -6,6 +6,7 @@ import VideoPage from "../player/VideoPage";
 import SettingsPage from "../settings/SettingsPage";
 import AppShell from "../shell/AppShell";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
+import ScanProgressIndicator from "../shell/ScanProgressIndicator";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
@@ -23,6 +24,7 @@ export default function App() {
         <ToastProvider>
           <ScanProvider>
             <ScanNoticeProvider>
+              <ScanProgressIndicator />
               <Routes>
                 <Route
                   path="/"
