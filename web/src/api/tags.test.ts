@@ -26,11 +26,18 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-const tag = (overrides: Partial<{ id: number; name: string }> = {}) => ({
+const tag = (
+  overrides: Partial<{
+    id: number;
+    name: string;
+    synonyms: string[];
+    videoCount: number;
+  }> = {},
+) => ({
   id: overrides.id ?? 1,
   name: overrides.name ?? "旅行",
-  synonyms: [] as string[],
-  videoCount: 0,
+  synonyms: overrides.synonyms ?? ([] as string[]),
+  videoCount: overrides.videoCount ?? 0,
 });
 
 const key = { query: "", sort: "addedDesc" as const };
@@ -365,6 +372,24 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
     unsubscribe();
   });
 
+  // (5): 本数（videoCount）が変わるので、id 指定の付与でも共有の一覧を
+  // 取り直し、候補の本数を新しく保つ。
+  it("attachVideoTagByIDも共有のタグの一覧を取り直す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ tag: { id: 2, name: "旅行" }, applied: 1 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ items: [tag({ id: 2, name: "旅行", videoCount: 1 })] }),
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    await attachVideoTagByID([1], 2);
+    await flush();
+
+    expect(fetch.mock.calls[1]?.[0]).toBe("/api/tags");
+    expect(currentTags()).toEqual([tag({ id: 2, name: "旅行", videoCount: 1 })]);
+  });
+
   it("attachVideoTagByNameはtag.nameで送る", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -379,6 +404,22 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
       action: "add",
       tag: { name: "新規" },
     });
+  });
+
+  // issue 268 の受け入れ条件1: 名前で付けたタグが新しく作られたかもしれないので、
+  // createTag と同じく共有の一覧を取り直す（別の動画の再生画面の候補にも出る）。
+  it("attachVideoTagByNameは共有のタグの一覧を取り直す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ tag: { id: 9, name: "新規" }, applied: 1 }))
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 9, name: "新規" })] }));
+    vi.stubGlobal("fetch", fetch);
+
+    await attachVideoTagByName([1], "新規");
+    await flush();
+
+    expect(fetch.mock.calls[1]?.[0]).toBe("/api/tags");
+    expect(currentTags()).toEqual([tag({ id: 9, name: "新規" })]);
   });
 
   it("detachVideoTagはaction=removeとid指定で送り、除去の通知を出す", async () => {
@@ -404,6 +445,23 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
       { videoIds: [2], tag: { id: 2, name: "旅行" }, action: "remove" },
     ]);
     unsubscribe();
+  });
+
+  // (5): detachVideoTag も本数が変わるので、共有の一覧を取り直す。
+  it("detachVideoTagも共有のタグの一覧を取り直す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ tag: { id: 2, name: "旅行" }, applied: 1 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ items: [tag({ id: 2, name: "旅行", videoCount: 0 })] }),
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    await detachVideoTag([2], 2);
+    await flush();
+
+    expect(fetch.mock.calls[1]?.[0]).toBe("/api/tags");
+    expect(currentTags()).toEqual([tag({ id: 2, name: "旅行", videoCount: 0 })]);
   });
 
   it("tag_not_foundを受けたら共有の一覧を取り直してから投げ直す", async () => {

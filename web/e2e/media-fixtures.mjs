@@ -284,6 +284,31 @@ export function generateFolderFixtures(root) {
  * - `A/大阪.mp4` は「京都」を含まない、A 直下のもう1本の動画（絞り込みだけの
  *   ときの件数の変化を確かめる）。
  */
+/**
+ * generateTagsFixtures は再生画面のタグ（issue 268、web/e2e/tags.e2e.ts）を
+ * 確かめるための、短くて軽い動画を2本作る。タグの付け外し自体は中身を見ないので、
+ * 短い無音のクリップで足りる。
+ */
+export function generateTagsFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  const file = (name) => path.join(root, name);
+  const clip = (name, hue) =>
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=10:duration=2",
+      "-vf",
+      `hue=h=${String(hue)}`,
+      ...h264,
+      "-an",
+      file(name),
+    ]);
+
+  clip("タグ動画A.mp4", 20);
+  clip("タグ動画B.mp4", 200);
+}
+
 export function generateFolderSearchFixtures(root) {
   let count = 0;
   const make = (relative) => {

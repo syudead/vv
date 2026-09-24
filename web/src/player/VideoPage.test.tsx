@@ -356,7 +356,8 @@ describe("VideoPage", () => {
       await ready();
       await waitFor(() => expect(screen.queryByText("関連動画")).toBeNull());
       await act(async () => undefined);
-      expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+      // タグの並びの見出し（視覚的に隠した h2「タグ」）は関連動画と関係なく常に出る。
+      expect(screen.queryByRole("heading", { level: 2, name: "関連動画" })).toBeNull();
       expect(closeButtons()).toHaveLength(2);
     });
   });

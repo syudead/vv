@@ -148,6 +148,15 @@ function afterTagChanged(): void {
   refreshTags().catch(() => undefined);
 }
 
+/**
+ * refreshTagCounts は、付け外しで本数（`videoCount`）が変わったかもしれない
+ * ときに呼ぶ。動画一覧やその控えには影響しないので `clearListSnapshot` は
+ * 呼ばない。完了は待たず、失敗しても揉み消す（B2）。
+ */
+function refreshTagCounts(): void {
+  refreshTags().catch(() => undefined);
+}
+
 /** createTag はタグを1件作る。 */
 export async function createTag(name: string, signal?: AbortSignal): Promise<Tag> {
   const created = await request<Tag>("/api/tags", {
@@ -271,39 +280,53 @@ async function updateVideoTags(
 
 /**
  * attachVideoTagByID は id で指定したタグを videoIds の動画へ付ける。
- * 再生画面の1本も、選択バーの複数本も、これを使う。
+ * 再生画面の1本も、選択バーの複数本も、これを使う。本数が変わるので、
+ * 共有のタグの一覧も取り直す（自己レビュー B4／(5)。候補の本数を新しく保つ）。
  */
 export function attachVideoTagByID(
   videoIds: readonly number[],
   tagId: number,
   signal?: AbortSignal,
 ): Promise<VideoTagsResponse> {
-  return updateVideoTags(videoIds, "add", { id: tagId }, signal);
+  return updateVideoTags(videoIds, "add", { id: tagId }, signal).then((result) => {
+    refreshTagCounts();
+    return result;
+  });
 }
 
 /**
  * attachVideoTagByName は名前でタグを付ける。名前はシノニムを含めて引き、
- * 無ければ作る（contracts/tags-api.md §4）。
+ * 無ければ作る（contracts/tags-api.md §4）。新しいタグが作られているかも
+ * しれないので、`createTag` と同じく共有のタグの一覧を取り直す
+ * （issue 268 の受け入れ条件1「別の動画の再生画面でタグを追加しようとすると、
+ * そのタグが候補に出る」）。
  */
 export function attachVideoTagByName(
   videoIds: readonly number[],
   name: string,
   signal?: AbortSignal,
 ): Promise<VideoTagsResponse> {
-  return updateVideoTags(videoIds, "add", { name }, signal);
+  return updateVideoTags(videoIds, "add", { name }, signal).then((result) => {
+    afterTagCreated();
+    return result;
+  });
 }
 
 /**
  * detachVideoTag は id で指定したタグを videoIds の動画から外す。外すときは
  * 常に id で指定する（画面が外す候補はいつも付いているタグで、id を
- * 持っているため。contracts/tags-api.md §4）。
+ * 持っているため。contracts/tags-api.md §4）。本数が変わるので、共有の
+ * タグの一覧も取り直す。
  */
 export function detachVideoTag(
   videoIds: readonly number[],
   tagId: number,
   signal?: AbortSignal,
 ): Promise<VideoTagsResponse> {
-  return updateVideoTags(videoIds, "remove", { id: tagId }, signal);
+  return updateVideoTags(videoIds, "remove", { id: tagId }, signal).then((result) => {
+    refreshTagCounts();
+    return result;
+  });
 }
 
 /**
