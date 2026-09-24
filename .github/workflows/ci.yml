@@ -44,12 +44,24 @@ jobs:
 
           # 一覧にないパスはコード扱いにする。--no-renames により、コードを
           # 文書ディレクトリへ移した場合も削除側を検出できる。
+          # NUL 区切りで読み、日本語、空白、改行を含む名前も生のパスで判定する。
           # git diff が失敗した場合は step 自体を失敗させ、検査を誤って飛ばさない。
-          changed=$(git diff --no-renames --name-only "$base" HEAD)
-          code=$(printf '%s\n' "$changed" |
-            grep -Ev '(\.md$|^docs/|^specs/)' || true)
-          if [ -n "$code" ]; then
-            printf 'コード変更:\n%s\n' "$code"
+          changed_file=$(mktemp)
+          trap 'rm -f "$changed_file"' EXIT
+          git diff --no-renames --name-only -z "$base" HEAD > "$changed_file"
+
+          code=false
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              *.md|docs/*|specs/*) ;;
+              *)
+                printf 'コード変更: %s\n' "$path"
+                code=true
+                ;;
+            esac
+          done < "$changed_file"
+
+          if [ "$code" = "true" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
             echo "文書だけの変更なのでコード検査を飛ばす"
