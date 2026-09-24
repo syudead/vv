@@ -254,9 +254,6 @@ export function generateFolderFixtures(root) {
   make("a/movies/1/w1.mp4");
   make("a/movies/2/w2.mp4");
   make("a/movies/10/w10.mp4");
-  for (let index = 1; index <= 61; index += 1) {
-    make(`a/movies/many/clip-${String(index).padStart(2, "0")}.mp4`);
-  }
   for (let index = 1; index <= 5; index += 1)
     make(`a/movies/five/part-${String(index)}.mp4`);
   make("a/movies/only-deeper/inner/d.mp4");
