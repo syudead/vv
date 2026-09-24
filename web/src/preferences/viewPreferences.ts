@@ -16,7 +16,13 @@ const storageKey = "vv.view.v2";
 
 export const defaults: ViewPreferences = { zoom: 1, view: "grid", sort: "addedDesc" };
 
-const sorts: Record<VideoSort, true> = { addedDesc: true, titleAsc: true };
+// 保存から戻す並び順は、画面が選ばせている値に限る。API の VideoSort は
+// 13 の値を持つが（specs/013-library-search/contracts/list-api.md §3）、画面の
+// 選択肢はまだ増えていない。
+const sorts: Record<Extract<VideoSort, "addedDesc" | "titleAsc">, true> = {
+  addedDesc: true,
+  titleAsc: true,
+};
 const views: Record<ViewMode, true> = { grid: true, list: true };
 
 function isKeyOf<T extends string>(table: Record<T, true>, value: unknown): value is T {

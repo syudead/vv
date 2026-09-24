@@ -71,6 +71,24 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for FolderScope.
+const (
+	Direct  FolderScope = "direct"
+	Subtree FolderScope = "subtree"
+)
+
+// Valid indicates whether the value is a known member of the FolderScope enum.
+func (e FolderScope) Valid() bool {
+	switch e {
+	case Direct:
+		return true
+	case Subtree:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Degraded HealthStatus = "degraded"
@@ -217,16 +235,73 @@ func (e VideoUnplayableReason) Valid() bool {
 
 // Defines values for VideoSort.
 const (
-	AddedDesc VideoSort = "addedDesc"
-	TitleAsc  VideoSort = "titleAsc"
+	AddedAsc     VideoSort = "addedAsc"
+	AddedDesc    VideoSort = "addedDesc"
+	DurationAsc  VideoSort = "durationAsc"
+	DurationDesc VideoSort = "durationDesc"
+	ModifiedAsc  VideoSort = "modifiedAsc"
+	ModifiedDesc VideoSort = "modifiedDesc"
+	PlayedAsc    VideoSort = "playedAsc"
+	PlayedDesc   VideoSort = "playedDesc"
+	Random       VideoSort = "random"
+	SizeAsc      VideoSort = "sizeAsc"
+	SizeDesc     VideoSort = "sizeDesc"
+	TitleAsc     VideoSort = "titleAsc"
+	TitleDesc    VideoSort = "titleDesc"
 )
 
 // Valid indicates whether the value is a known member of the VideoSort enum.
 func (e VideoSort) Valid() bool {
 	switch e {
+	case AddedAsc:
+		return true
 	case AddedDesc:
 		return true
+	case DurationAsc:
+		return true
+	case DurationDesc:
+		return true
+	case ModifiedAsc:
+		return true
+	case ModifiedDesc:
+		return true
+	case PlayedAsc:
+		return true
+	case PlayedDesc:
+		return true
+	case Random:
+		return true
+	case SizeAsc:
+		return true
+	case SizeDesc:
+		return true
 	case TitleAsc:
+		return true
+	case TitleDesc:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WatchFilter.
+const (
+	All        WatchFilter = "all"
+	InProgress WatchFilter = "inProgress"
+	Unwatched  WatchFilter = "unwatched"
+	Watched    WatchFilter = "watched"
+)
+
+// Valid indicates whether the value is a known member of the WatchFilter enum.
+func (e WatchFilter) Valid() bool {
+	switch e {
+	case All:
+		return true
+	case InProgress:
+		return true
+	case Unwatched:
+		return true
+	case Watched:
 		return true
 	default:
 		return false
@@ -277,6 +352,9 @@ type FolderPreview struct {
 	ThumbnailUrl string `json:"thumbnailUrl"`
 	VideoId      int64  `json:"videoId"`
 }
+
+// FolderScope direct = フォルダ直下の所在だけ、subtree = フォルダとその配下すべての所在
+type FolderScope string
 
 // FolderSummary defines model for FolderSummary.
 type FolderSummary struct {
@@ -393,8 +471,12 @@ type Video struct {
 
 	// DurationMs 尺。解析前・取得不能の場合は省略される
 	DurationMs *int64 `json:"durationMs,omitempty"`
-	Height     *int   `json:"height,omitempty"`
-	Id         int64  `json:"id"`
+
+	// Folder 一覧に出す所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）の応答に
+	// だけ入り、GET /api/videos/{id} には入らない
+	Folder *VideoFolder `json:"folder,omitempty"`
+	Height *int         `json:"height,omitempty"`
+	Id     int64        `json:"id"`
 
 	// Location 代表の所在。GET /api/videos/{id} の応答にだけ入る
 	Location *VideoLocation `json:"location,omitempty"`
@@ -454,6 +536,16 @@ type VideoThumbnailState string
 // VideoUnplayableReason playable = false の理由。判定前は省略される
 type VideoUnplayableReason string
 
+// VideoFolder 一覧に出す所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）の応答に
+// だけ入り、GET /api/videos/{id} には入らない
+type VideoFolder struct {
+	// Path 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字
+	Path string `json:"path"`
+
+	// RootId 所在を含む登録メディアフォルダの識別子
+	RootId int64 `json:"rootId"`
+}
+
 // VideoLocation 代表の所在。GET /api/videos/{id} の応答にだけ入る
 type VideoLocation struct {
 	// Openable 要求元がループバックで、Host がループバックの名前で、サーバーが既定アプリを
@@ -471,12 +563,21 @@ type VideoPage struct {
 	// NextCursor 次のページの取得に渡す。これ以上無い場合は省略される
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total 絞り込み後の総件数
+	// Total 検索語・watch・playable・範囲（listFolderVideos の scope）をすべて適用した
+	// 全件の数。ページングとは独立に返る
 	Total int `json:"total"`
 }
 
-// VideoSort addedDesc = 追加が新しい順、titleAsc = 題名順
+// VideoSort 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
+// 所在の更新日時、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+// 動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
+// 最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、random = `seed` と
+// 動画の識別子から作る順。値が同じなら識別子で決着させる
 type VideoSort string
+
+// WatchFilter 視聴状態の絞り込み。all = 絞り込まない、unwatched = 未視聴、inProgress = 視聴途中、
+// watched = 視聴済み
+type WatchFilter string
 
 // FolderPath defines model for FolderPath.
 type FolderPath = string
@@ -521,8 +622,29 @@ type ListFolderVideosParams struct {
 	// 登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
 	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
 
+	// Scope direct = フォルダ直下の所在だけ、subtree = フォルダとその配下すべての所在
+	Scope *FolderScope `form:"scope,omitempty" json:"scope,omitempty"`
+
+	// Query 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
+	// 空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
+	// `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
+	// ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
+	// フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
+	// 語が残らなければ絞り込まない。書き方の誤りは返さない
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// Watch 視聴状態で絞る。all は絞り込まない
+	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
+
+	// Playable true ならブラウザでそのまま再生できる（playable = true の）動画だけにする
+	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
+
 	// Sort 並び順
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Seed `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
+	// ほかの並び順では無視する
+	Seed *int64 `form:"seed,omitempty" json:"seed,omitempty"`
 
 	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -541,11 +663,26 @@ type StartScanJSONBody = map[string]interface{}
 
 // ListVideosParams defines parameters for ListVideos.
 type ListVideosParams struct {
-	// Query 題名の部分一致。1文字から指定できる
+	// Query 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
+	// 空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
+	// `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
+	// ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
+	// フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
+	// 語が残らなければ絞り込まない。書き方の誤りは返さない
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// Watch 視聴状態で絞る。all は絞り込まない
+	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
+
+	// Playable true ならブラウザでそのまま再生できる（playable = true の）動画だけにする
+	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Sort 並び順
 	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Seed `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
+	// ほかの並び順では無視する
+	Seed *int64 `form:"seed,omitempty" json:"seed,omitempty"`
 
 	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -602,7 +739,7 @@ type ServerInterface interface {
 	// GetFolder フォルダ1件と、その直下の子フォルダを返す
 	// (GET /api/folders/{rootId})
 	GetFolder(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params GetFolderParams)
-	// ListFolderVideos フォルダ直下の動画を返す
+	// ListFolderVideos フォルダの動画を返す
 	// (GET /api/folders/{rootId}/videos)
 	ListFolderVideos(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params ListFolderVideosParams)
 	// GetHealth 稼働状態とビルド情報を返す
@@ -790,6 +927,58 @@ func (siw *ServerInterfaceWrapper) ListFolderVideos(w http.ResponseWriter, r *ht
 		return
 	}
 
+	// ------------- Optional query parameter "scope" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "scope", r.URL.Query(), &params.Scope, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "scope"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "scope", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "playable" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -799,6 +988,19 @@ func (siw *ServerInterfaceWrapper) ListFolderVideos(w http.ResponseWriter, r *ht
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "seed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "seed", r.URL.Query(), &params.Seed, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "seed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "seed", Err: err})
 		}
 		return
 	}
@@ -1000,6 +1202,32 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "playable" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "sort" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -1009,6 +1237,19 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "seed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "seed", r.URL.Query(), &params.Seed, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "seed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "seed", Err: err})
 		}
 		return
 	}

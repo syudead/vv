@@ -76,6 +76,10 @@
   並べ替えない。
 - 動画は既存の `VideoSort`（`addedDesc`・`titleAsc`）に従う。`titleAsc` の題名は
   そのフォルダにある所在の題名である。
+  - 追記（013-library-search）: `VideoSort` は13の値に増え、`titleAsc` は自然順に
+    なった。値と意味は
+    [013 の contracts/list-api.md §3](../../013-library-search/contracts/list-api.md#3-videosort-の値)
+    を正とする。
 
 ## 経路
 
@@ -100,6 +104,13 @@
 
 - query `path`（同上）、`sort`・`cursor`・`limit`（既存 `listVideos` と同じ意味と範囲）
 - 200: 既存の `VideoPage`。`total` は直下の動画の件数（=`videoCount`）
+
+> 追記（013-library-search）: この経路は `scope`（`direct`｜`subtree`、既定 `direct`）・
+> `query`・`watch`・`playable`・`seed` を受けるようになった。`scope=subtree` では
+> フォルダの配下すべてが対象になり、`total` は検索語・絞り込み・範囲をすべて適用した
+> 全件の数である（絞り込みが無い `direct` では、これまでどおり `videoCount` と一致する）。
+> 並び順の値、配下の範囲、絞り込み、`total`、項目の `folder` は
+> [013 の contracts/list-api.md](../../013-library-search/contracts/list-api.md) を正とする。
 - 400 `invalid_request`: `path` の不正、並び順の不正、カーソルが解釈できない
 - 404 `not_found`: `GET /api/folders/{rootId}` と同じ条件
 

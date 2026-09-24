@@ -217,7 +217,10 @@ func TestListFolderVideosPassesQueryAndReturnsPage(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
-	if want := (domain.FolderVideoQuery{Dir: "/a/movies/A", Sort: domain.SortTitleAsc, Cursor: "abc", Limit: domain.MaxLimit}); folders.lastQuery != want {
+	if want := (domain.FolderVideoQuery{
+		Dir: "/a/movies/A", Scope: domain.FolderScopeDirect, Watch: domain.WatchAll,
+		Sort: domain.SortTitleAsc, Cursor: "abc", Limit: domain.MaxLimit,
+	}); folders.lastQuery != want {
 		t.Errorf("query = %+v, want %+v", folders.lastQuery, want)
 	}
 	page := decode[gen.VideoPage](t, rec)
@@ -238,6 +241,11 @@ func TestListFolderVideosRejectsBadParameters(t *testing.T) {
 	for _, target := range []string{
 		"/api/folders/3/videos?sort=sideways",
 		"/api/folders/3/videos?limit=0",
+		"/api/folders/3/videos?watch=someday",
+		"/api/folders/3/videos?scope=everywhere",
+		"/api/folders/3/videos?seed=-1",
+		"/api/folders/3/videos?seed=2147483648",
+		"/api/folders/3/videos?query=" + url.QueryEscape(strings.Repeat("京", maxQueryLength+1)),
 	} {
 		if rec := do(t, handler, http.MethodGet, target); rec.Code != http.StatusBadRequest {
 			t.Errorf("%s: status = %d, want 400", target, rec.Code)
@@ -288,5 +296,65 @@ func TestFolderRoutesDoNotLogCanceledRequests(t *testing.T) {
 	do(t, handler, http.MethodGet, "/api/folders/3/videos")
 	if !strings.Contains(logs.String(), "disk on fire") {
 		t.Fatalf("保存層の失敗を記録していない: %q", logs.String())
+	}
+}
+
+// 受け入れ条件 17: 配下すべてを検索すると、孫のフォルダにある動画も返り、
+// folder.path は登録フォルダからその所在が置かれたフォルダまでの相対パスになる。
+func TestListFolderVideosSearchesSubtree(t *testing.T) {
+	if filepath.Separator != '/' {
+		t.Skip("fixture uses slash-separated absolute paths")
+	}
+	folders := folderFixture()
+	x := sampleVideo(1, "x 京都")
+	x.Path = "/a/movies/A/x 京都.mp4"
+	y := sampleVideo(2, "y 京都")
+	y.Path = "/a/movies/A/B/y 京都.mp4"
+	folders.page = domain.VideoPage{Items: []domain.Video{x, y}, Total: 2}
+	handler := newTestServer(t, Options{Folders: folders})
+
+	target := "/api/folders/3/videos?path=A&scope=subtree&query=" + url.QueryEscape("京都") +
+		"&watch=inProgress&playable=true&sort=random&seed=2147483647"
+	rec := do(t, handler, http.MethodGet, target)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	want := domain.FolderVideoQuery{
+		Dir: "/a/movies/A", Scope: domain.FolderScopeSubtree, Query: "京都",
+		Watch: domain.WatchInProgress, PlayableOnly: true,
+		Sort: domain.SortRandom, Seed: domain.MaxShuffleSeed, Limit: domain.DefaultLimit,
+	}
+	if folders.lastQuery != want {
+		t.Errorf("query = %+v, want %+v", folders.lastQuery, want)
+	}
+
+	page := decode[gen.VideoPage](t, rec)
+	if page.Total != 2 || len(page.Items) != 2 {
+		t.Fatalf("page = %+v", page)
+	}
+	wantFolders := []gen.VideoFolder{{RootId: 3, Path: "A"}, {RootId: 3, Path: "A/B"}}
+	for i, item := range page.Items {
+		if item.Folder == nil || *item.Folder != wantFolders[i] {
+			t.Errorf("items[%d].folder = %+v, want %+v", i, item.Folder, wantFolders[i])
+		}
+	}
+}
+
+// フォルダが無ければ、scope・query に関係なく 404 を返す。
+func TestListFolderVideosMissingFolderIgnoresScope(t *testing.T) {
+	handler := newTestServer(t, Options{Folders: folderFixture()})
+	for _, target := range []string{
+		"/api/folders/99/videos?scope=subtree&query=x",
+		"/api/folders/3/videos?path=missing&scope=subtree",
+		"/api/folders/3/videos?path=missing&scope=subtree&query=x",
+	} {
+		rec := do(t, handler, http.MethodGet, target)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s: status = %d, want 404", target, rec.Code)
+			continue
+		}
+		if got := decode[gen.Error](t, rec); got.Message != folderNotFoundMessage {
+			t.Errorf("%s: message = %q", target, got.Message)
+		}
 	}
 }

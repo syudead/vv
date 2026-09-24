@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -373,5 +374,90 @@ func TestListVideosCombinesQueryAndCursor(t *testing.T) {
 	}
 	if library.lastQuery.Limit != 2 {
 		t.Errorf("limit = %d, want 2", library.lastQuery.Limit)
+	}
+}
+
+// 検索語・視聴状態・並び順は VideoQuery に渡り、応答は保存側が返した項目と
+// total をそのまま返す。各項目には置き場所（folder）が載る。
+func TestListVideosPassesFiltersAndReturnsFolders(t *testing.T) {
+	if filepath.Separator != '/' {
+		t.Skip("fixture uses slash-separated absolute paths")
+	}
+	top := sampleVideo(1, "京都旅行 2024")
+	top.Path = "/a/movies/京都旅行 2024.mp4"
+	nested := sampleVideo(2, "京都 夜")
+	nested.Path = "/b/movies/X/Y/京都 夜.mp4"
+	outside := sampleVideo(3, "京都 外")
+	outside.Path = "/elsewhere/京都 外.mp4"
+	library := &fakeLibrary{page: domain.VideoPage{Items: []domain.Video{top, nested, outside}, Total: 3}}
+	handler := newTestServer(t, Options{Videos: library, Folders: folderFixture()})
+
+	target := "/api/videos?query=" + url.QueryEscape("京都 -2023") + "&watch=unwatched&sort=durationDesc"
+	rec := do(t, handler, http.MethodGet, target)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	want := domain.VideoQuery{
+		Query: "京都 -2023", Watch: domain.WatchUnwatched, Sort: domain.SortDurationDesc, Limit: domain.DefaultLimit,
+	}
+	if library.lastQuery != want {
+		t.Errorf("query = %+v, want %+v", library.lastQuery, want)
+	}
+
+	page := decode[gen.VideoPage](t, rec)
+	if page.Total != 3 || len(page.Items) != 3 {
+		t.Fatalf("page = %+v", page)
+	}
+	if got := page.Items[0].Folder; got == nil || *got != (gen.VideoFolder{RootId: 3, Path: ""}) {
+		t.Errorf("top folder = %+v", got)
+	}
+	if got := page.Items[1].Folder; got == nil || *got != (gen.VideoFolder{RootId: 7, Path: "X/Y"}) {
+		t.Errorf("nested folder = %+v", got)
+	}
+	// 登録フォルダの外の所在は一覧に出ないはずだが、出ても folder は作らない。
+	if got := page.Items[2].Folder; got != nil {
+		t.Errorf("outside folder = %+v, want omitted", got)
+	}
+
+	rec = do(t, handler, http.MethodGet, "/api/videos?playable=true&sort=random&seed=0")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if q := library.lastQuery; !q.PlayableOnly || q.Sort != domain.SortRandom || q.Seed != 0 || q.Watch != domain.WatchAll {
+		t.Errorf("query = %+v", q)
+	}
+}
+
+// 未知の watch・sort と範囲外の seed は 400 にする。
+func TestListVideosRejectsUnknownFilters(t *testing.T) {
+	library := &fakeLibrary{}
+	handler := newTestServer(t, Options{Videos: library})
+	for _, target := range []string{
+		"/api/videos?watch=someday",
+		"/api/videos?sort=sideways",
+		"/api/videos?seed=-1",
+		"/api/videos?seed=2147483648",
+	} {
+		rec := do(t, handler, http.MethodGet, target)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", target, rec.Code)
+			continue
+		}
+		if got := decode[gen.Error](t, rec); got.Code != gen.ErrorCodeInvalidRequest {
+			t.Errorf("%s: code = %q", target, got.Code)
+		}
+	}
+}
+
+// 登録フォルダの問い合わせ先が無ければ folder を省き、一覧は返す。
+func TestListVideosOmitsFolderWithoutRoots(t *testing.T) {
+	library := &fakeLibrary{page: domain.VideoPage{Items: []domain.Video{sampleVideo(1, "x")}, Total: 1}}
+	handler := newTestServer(t, Options{Videos: library})
+	rec := do(t, handler, http.MethodGet, "/api/videos")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if page := decode[gen.VideoPage](t, rec); len(page.Items) != 1 || page.Items[0].Folder != nil {
+		t.Errorf("page = %+v", page)
 	}
 }

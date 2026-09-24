@@ -34,8 +34,9 @@ export interface paths {
         };
         /**
          * 動画の一覧を返す
-         * @description カーソル方式でページングする。`query` を与えると題名の部分一致で絞り込む。
-         *     `total` は絞り込み後の総件数で、ページングとは独立に返る。
+         * @description カーソル方式でページングする。対象は登録メディアフォルダの下に所在がある動画で、
+         *     `query`・`watch`・`playable` で絞り込む。`total` は絞り込み後の総件数で、
+         *     ページングとは独立に返る。
          */
         get: operations["listVideos"];
         put?: never;
@@ -385,10 +386,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * フォルダ直下の動画を返す
-         * @description 孫以降のフォルダにある動画は含めない。ページングと並び順は
-         *     `listVideos` と同じ。`title` と `sizeBytes` はそのフォルダにある所在のもので、
-         *     同じ動画の所在が同じフォルダに2つ以上あっても1件だけ返す。
+         * フォルダの動画を返す
+         * @description `scope` で対象の所在の範囲を選ぶ。`direct`（既定）はフォルダ直下だけで、
+         *     孫以降のフォルダにある動画は含めない。`subtree` はフォルダとその配下すべてを
+         *     対象にする。`scope` と `query` は独立していて、照合はその範囲にある所在だけを
+         *     対象にする。ページング・絞り込み・並び順は `listVideos` と同じ。`title` と
+         *     `sizeBytes` はその範囲にある所在（検索語があれば当たった所在）のうちパスの
+         *     昇順で最初のもので、同じ動画の所在が範囲に2つ以上あっても1件だけ返す。
+         *     フォルダが無いときは `scope`・`query` に関係なく 404 を返す。
          */
         get: operations["listFolderVideos"];
         put?: never;
@@ -472,14 +477,34 @@ export interface components {
             directories: components["schemas"]["DirectoryEntry"][];
         };
         /**
-         * @description addedDesc = 追加が新しい順、titleAsc = 題名順
+         * @description 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
+         *     所在の更新日時、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+         *     動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
+         *     最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、random = `seed` と
+         *     動画の識別子から作る順。値が同じなら識別子で決着させる
          * @default addedDesc
          * @enum {string}
          */
-        VideoSort: "addedDesc" | "titleAsc";
+        VideoSort: "addedAsc" | "addedDesc" | "modifiedAsc" | "modifiedDesc" | "titleAsc" | "titleDesc" | "durationAsc" | "durationDesc" | "sizeAsc" | "sizeDesc" | "playedAsc" | "playedDesc" | "random";
+        /**
+         * @description 視聴状態の絞り込み。all = 絞り込まない、unwatched = 未視聴、inProgress = 視聴途中、
+         *     watched = 視聴済み
+         * @default all
+         * @enum {string}
+         */
+        WatchFilter: "all" | "unwatched" | "inProgress" | "watched";
+        /**
+         * @description direct = フォルダ直下の所在だけ、subtree = フォルダとその配下すべての所在
+         * @default direct
+         * @enum {string}
+         */
+        FolderScope: "direct" | "subtree";
         VideoPage: {
             items: components["schemas"]["Video"][];
-            /** @description 絞り込み後の総件数 */
+            /**
+             * @description 検索語・watch・playable・範囲（listFolderVideos の scope）をすべて適用した
+             *     全件の数。ページングとは独立に返る
+             */
             total: number;
             /** @description 次のページの取得に渡す。これ以上無い場合は省略される */
             nextCursor?: string;
@@ -570,6 +595,7 @@ export interface components {
             seekThumbnailUrl?: string;
             progress?: components["schemas"]["Progress"];
             location?: components["schemas"]["VideoLocation"];
+            folder?: components["schemas"]["VideoFolder"];
             /**
              * @description シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
              *     seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
@@ -578,6 +604,19 @@ export interface components {
              * @enum {string}
              */
             seekThumbnailState?: "pending" | "done" | "failed";
+        };
+        /**
+         * @description 一覧に出す所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）の応答に
+         *     だけ入り、GET /api/videos/{id} には入らない
+         */
+        VideoFolder: {
+            /**
+             * Format: int64
+             * @description 所在を含む登録メディアフォルダの識別子
+             */
+            rootId: number;
+            /** @description 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字 */
+            path: string;
         };
         /** @description 代表の所在。GET /api/videos/{id} の応答にだけ入る */
         VideoLocation: {
@@ -724,10 +763,26 @@ export interface operations {
     listVideos: {
         parameters: {
             query?: {
-                /** @description 題名の部分一致。1文字から指定できる */
+                /**
+                 * @description 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
+                 *     空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
+                 *     `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
+                 *     ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
+                 *     フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
+                 *     語が残らなければ絞り込まない。書き方の誤りは返さない
+                 */
                 query?: string;
+                /** @description 視聴状態で絞る。all は絞り込まない */
+                watch?: components["schemas"]["WatchFilter"];
+                /** @description true ならブラウザでそのまま再生できる（playable = true の）動画だけにする */
+                playable?: boolean;
                 /** @description 並び順 */
                 sort?: components["schemas"]["VideoSort"];
+                /**
+                 * @description `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
+                 *     ほかの並び順では無視する
+                 */
+                seed?: number;
                 /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
                 cursor?: string;
                 /** @description 1ページの件数 */
@@ -1326,8 +1381,28 @@ export interface operations {
                  *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
                  */
                 path?: components["parameters"]["FolderPath"];
+                /** @description direct = フォルダ直下の所在だけ、subtree = フォルダとその配下すべての所在 */
+                scope?: components["schemas"]["FolderScope"];
+                /**
+                 * @description 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
+                 *     空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
+                 *     `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
+                 *     ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
+                 *     フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
+                 *     語が残らなければ絞り込まない。書き方の誤りは返さない
+                 */
+                query?: string;
+                /** @description 視聴状態で絞る。all は絞り込まない */
+                watch?: components["schemas"]["WatchFilter"];
+                /** @description true ならブラウザでそのまま再生できる（playable = true の）動画だけにする */
+                playable?: boolean;
                 /** @description 並び順 */
                 sort?: components["schemas"]["VideoSort"];
+                /**
+                 * @description `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
+                 *     ほかの並び順では無視する
+                 */
+                seed?: number;
                 /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
                 cursor?: string;
                 /** @description 1ページの件数 */
@@ -1342,7 +1417,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 直下の動画 */
+            /** @description フォルダの動画 */
             200: {
                 headers: {
                     [name: string]: unknown;
