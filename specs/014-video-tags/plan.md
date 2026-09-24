@@ -31,15 +31,23 @@
 - スキーマと利用者データの区別: [internal/store/migrations/](../../internal/store/migrations/)
   （[00002_core.sql](../../internal/store/migrations/00002_core.sql) の冒頭）。既存ファイルは
   変えない（[scripts/migrations-immutable.sh](../../scripts/migrations-immutable.sh)）
-- 利用者データを `content_key` で持つ前例: `playback_progress` と
-  [internal/store/progress.go](../../internal/store/progress.go)、一覧の項目へ載せる前例は
+- store の役割ごとの型と、型どうしで共有する非公開の関数の決まり:
+  [ARCHITECTURE.md](../../ARCHITECTURE.md) の `store.DB` の節と
+  [internal/store/roles.go](../../internal/store/roles.go)
+- 層（`internal/domain`・`internal/app`・アダプタ）と depguard の検査:
+  [ARCHITECTURE.md#intended-dependency-direction](../../ARCHITECTURE.md#intended-dependency-direction)・
+  [.golangci.yml](../../.golangci.yml)。副作用のためのドメインイベント:
+  [internal/domain/event.go](../../internal/domain/event.go)
+- 利用者データを `content_key` で持つ前例: `playback_progress` と `PlaybackStore`
+  （[internal/store/progress.go](../../internal/store/progress.go)）、一覧の項目へ載せる前例は
   [internal/httpapi/videos.go](../../internal/httpapi/videos.go) の `progressFor`
 - いまライブラリにある動画の条件: `registeredVideoCondition`（[internal/store/videos.go](../../internal/store/videos.go)）
 - 一覧の問い合わせ・条件の URL: #195 の
   [plan.md](../013-library-search/plan.md)・
   [contracts/list-api.md](../013-library-search/contracts/list-api.md)・
   [contracts/list-url.md](../013-library-search/contracts/list-url.md)・
-  [ui-design.md](../013-library-search/ui-design.md)
+  [ui-design.md](../013-library-search/ui-design.md)。条件と URL の変換、カード、一致なしの
+  表示は、ライブラリとフォルダ画面が共有する [web/src/videoList/](../../web/src/videoList/) にある
 - Web の所有境界と視覚規則: [ARCHITECTURE.md#web-layer](../../ARCHITECTURE.md#web-layer)・
   [library-ui.md](../../docs/design-docs/library-ui.md)
 - 一覧のページング・復元: [web/src/api/useVideos.ts](../../web/src/api/useVideos.ts)・
@@ -51,8 +59,13 @@
 
 - この feature は、#195（統合 PR #219 で `main` に入った）の一覧の組み立て
   （`internal/store/listing.go`・`VideoQuery` の視聴状態と再生可否）と、条件の URL
-  （`web/src/library/listCriteria.ts`・`useListCriteria.ts`）の上に作る
-  （Structural Decisions 1）。
+  （`web/src/videoList/listCriteria.ts`・`useListCriteria.ts`）の上に作る
+  （Structural Decisions 1・15）。
+- この Plan の承認の後に `main` へ入った構成の変更（#252〜#263: `internal/app` の新設、
+  store の役割ごとの型への分割、一覧の部品の `web/src/videoList/` への移動）に合わせて
+  改訂した。改訂で足した判断は Structural Decisions 13〜15 で、テーブル・API・URL の
+  契約は変えていない。同じ改訂で、名前の検証で制御文字を空白の除去より先に調べる順に
+  直した（[data-model.md §2](data-model.md#2-名前の規則)）。
 - マイグレーションを1つ足す（`00008_tags.sql`、[data-model.md §1](data-model.md#1-マイグレーション)）。
   既存の表には触れない。
 - 規模の前提は既存と同じ1万本である。一括の付け外しは、1万本を1回の要求と1つの
@@ -66,9 +79,17 @@
 ## Constitution Check
 
 - **依存方向**（ARCHITECTURE.md「Intended dependency direction」）: 合格。名前の整え方、
-  タグと付与の値の型、誤りの種類は `internal/domain` に置く。SQL は `internal/store`、
-  経路は `internal/httpapi` で、`httpapi` は自分が使う interface を宣言し、`cmd/mdm` が
-  `store` を渡す。
+  タグと付与の値の型、誤りの種類は `internal/domain` に置く。SQL は `internal/store` の
+  役割の型（Structural Decisions 13）、経路は `internal/httpapi` で、`httpapi` は自分が使う
+  interface を宣言し、組み立ての根の `cmd/mdm` が役割の型を渡す。タグの操作は
+  `internal/app` を通さない（Structural Decisions 14）。兄弟のパッケージを import しない
+  ことは depguard が検査する。
+- **store の役割の型**（ARCHITECTURE.md の `store.DB` の節）: 合格。業務の操作は役割の型の
+  メソッドに置き、型どうしは互いの公開メソッドを呼ばない。複数の型が使う SQL は
+  パッケージ内の非公開の関数で共有する（Structural Decisions 13）。
+- **ドメインイベント**（ARCHITECTURE.md・`internal/domain/event.go`）: 合格。タグの変更には
+  副作用（生成物の削除、ワーカーの起床、`/api/events`）が無いので、イベントを発行しない
+  （Structural Decisions 7・13）。
 - **API の正本**（AGENTS.md・ARCHITECTURE.md）: 合格。経路・スキーマ・誤りの `code` は
   `api/openapi.yaml` に足し、`task generate` で生成する。生成物は手で編集しない。
   本文を持つ経路は `requiresJSONBody` にも足し、`openapi_routes_test.go` が対応を検査する。
@@ -90,8 +111,8 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
 
 1. **タグ絞り込みは、#195 の一覧の組み立てと条件の URL に1つの条件として足す。入口は
    タグを押す操作で、絞り込み中のタグは一覧の上に並べる。** サーバーは `listing.go` の
-   条件にタグの AND を足し、画面は `listCriteria.ts` の条件に `tag` を足す。控えの鍵・
-   履歴・「条件を解除」も #195 の仕組みをそのまま使う。
+   条件にタグの AND を足し、画面はライブラリの条件に `tag` を足す（置き場所は
+   Structural Decisions 15）。控えの鍵・履歴・「条件を解除」も #195 の仕組みをそのまま使う。
    - 却下: タグの絞り込みを別の経路や別の URL の読み書きとして持つ案。検索語・視聴状態・
      再生可否との AND（要件 5）、件数、控えの鍵を2か所で合わせることになる。
    - 却下: タグを押すとタグ名を検索欄の語として足す案。検索欄は部分一致の全文検索なので、
@@ -152,8 +173,8 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
      入っている Radix には combobox が無い。矢印キーと Enter の操作（UI品質の
      「操作の優先順位」）は ARIA 1.2 の combobox の型で足りる。
    - 却下: 管理画面に確認の窓を別に作る案。フォーカスの戻し方と Esc の扱いが2つになる。
-10. **動画カードの題名の下の行は、呼び出し側が選ぶ。ライブラリはタグの行、フォルダ画面は
-    今のメタ情報の行のままにする。** 親 Issue は要件 3 でライブラリ一覧のカードだけを変え、
+10. **共有の動画カード（`web/src/videoList/VideoCard.tsx`）の題名の下の行は、呼び出し側が
+    選ぶ。ライブラリはタグの行、フォルダ画面は今のメタ情報の行のままにする。** 親 Issue は要件 3 でライブラリ一覧のカードだけを変え、
     「フォルダ画面でのタグ表示」を対象外にしている。`Video.tags` はどの経路でも返るが
     （[contracts/tags-api.md §1](contracts/tags-api.md#1-スキーマ)）、フォルダ画面は描かない。
     カードは今、全体が再生画面への1つのリンクなので、押せるタグはリンクの外に置く
@@ -178,6 +199,51 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
       たびに、その中身のすべての所在の鍵と全文索引を書き直すことになる。選択バーから
       1万本へ付けると、1回の操作で1万行以上の索引を書き換える。
     - 却下: タグ名にも全文索引を張る案。タグ名は数百までで、`instr` でなめても間に合う。
+13. **タグの書き換えと付与は、新しい役割の型 `TagStore`（`db.Tags()`）に置く。タグで
+    絞った一覧・全件の `id`・検索欄のタグ名の照合は、一覧の問い合わせの一部として
+    `LibraryStore` に置く。**
+    - `TagStore` が持つ操作: タグの作成・改名・削除・統合・シノニムの登録と解除・本数つきの
+      一覧、動画の `id` の集合への付け外し、選んだ動画の要約、`content_key` の集合から項目の
+      タグを引く操作（`PlaybackStore.ProgressByContentKeys` と同じ形）、起動時のタグ名の鍵の
+      作り直し。`PlaybackStore` と同じく利用者データの型で、共有する SQL 接続だけを持ち、
+      索引の型にも知らせの発行にも依存しない。
+    - `LibraryStore` が持つ操作: `listing.go` のタグの AND、全件の `id`、`search.go` の語ごとの
+      条件のタグ名の OR。どれも1つの問い合わせの中の条件なので、ほかの型を呼ばずに
+      `video_tags` と `tag_names` を SQL で読む。
+    - 両方が使う SQL（`id` からいまライブラリにある動画の `content_key` を引く、ライブラリに
+      ある動画だけを数える）は、`registeredVideoCondition` のようなパッケージ内の非公開の
+      関数で共有する（`internal/store/roles.go` の決まり）。
+    - 起動時は、`cmd/mdm` が `LibraryStore.RefreshSearchKeys` の隣で `TagStore` のタグ名の
+      鍵の作り直しを呼ぶ。所在の鍵と違ってメディアフォルダに依らないので、`folderMu` は取らない。
+    - 却下: タグの操作を `LibraryStore` に足す案。`LibraryStore` は作り直せる索引の読み出しの型で、
+      作り直せない利用者データの書き換えを混ぜると、型が何を持つのかの線が消える。
+    - 却下: `PlaybackStore` に足す案。再生位置とタグは別の利用者データで、どちらの
+      変更も他方に関わらない。
+14. **タグの操作は `internal/app` を通さず、`internal/httpapi` が宣言する interface から
+    `TagStore` と `LibraryStore` を直接呼ぶ。** どの操作も1つのトランザクションで済み、規則は
+    `internal/domain` の名前の整え方と `internal/store` の SQL にある。ファイル・`ffmpeg`・
+    イベントの発行など、アプリケーション層が組み合わせる相手が無い。ARCHITECTURE.md は
+    `httpapi` が store を直接呼ぶことを認めている（再生位置と同じ）。`Video.tags` を項目に
+    足すのも、`progressFor` と同じく `httpapi` で行う（Structural Decisions 5）。
+    - 却下: `internal/app` に `Tags` のユースケースを置く案。どのメソッドも store の1回の
+      呼び出しをそのまま渡すだけになり、同じ interface を `app` と `httpapi` の2か所で
+      宣言して保守することになる。
+15. **Web のタグ絞り込みの条件はライブラリが持ち、共有の `web/src/videoList/` の
+    `ListCriteria` には `tag` を足さない。** `web/src/library/` に `tag` の読み書き
+    （並びの正規化・16 個の上限、[contracts/list-url.md §1](contracts/list-url.md#1-パラメータ)）と、
+    `ListCriteria` に `tag` を組み合わせる関数を置く。共有の部品には、画面の固有の条件を
+    運ぶための次の口だけを足す。
+    - `useListCriteria` は、呼び出し側が指定した画面の固有のパラメータを、条件を書き換える
+      ときに URL に残し、読んだ値を返す。中身は解釈しない。
+    - 一致なしの条件のチップは、フォルダ画面が範囲のチップを足すのと同じく、ライブラリが
+      `conditionLabels` の結果にタグのチップを足す。
+    - 一覧の控えの鍵（`web/src/api/listSnapshot.ts` の `ListKey`）には、任意の `tags` を足す。
+    - 却下: 共有の `ListCriteria` に `tag` を足す案。フォルダ画面も `tag` を読み、条件を
+      書き換えるたびに URL へ残すことになり、フォルダ画面の URL を変えない約束
+      （contracts/list-url.md）と、フォルダ画面にタグ絞り込みを置かない対象外の範囲に反する。
+      `hasConditions`・`clearConditions` の意味も画面ごとに分かれる。
+    - 却下: ライブラリだけの URL の読み書きの hook を別に作る案。`sort=random` の `seed` の
+      補い方と、並べ替えの履歴の扱い（#195 の list-url.md §3）を2か所で保守することになる。
 
 ## Project Structure
 
@@ -202,29 +268,33 @@ specs/014-video-tags/
 **Affected boundaries**:
 
 - `internal/domain/`: 名前の整え方、`Tag`・`TagRef`・付与の値、誤り、`VideoQuery` のタグ
-- `internal/store/`: マイグレーション、タグの書き換え、本数、付け外し、要約、項目のタグ、
-  一覧の条件、全件の `id`
+- `internal/store/`: マイグレーション、役割の型 `TagStore`（タグの書き換え、本数、付け外し、
+  要約、項目のタグ、タグ名の鍵の作り直し）、`LibraryStore` の一覧の条件と全件の `id`
+  （Structural Decisions 13）
 - `api/openapi.yaml` と生成物: [contracts/tags-api.md](contracts/tags-api.md) の差分
 - `internal/httpapi/`: タグの経路、`Video.tags`、一覧の `tag`、`/api/videos/ids`
-- `cmd/mdm/`: 新しい interface への `store` の受け渡し、起動時のタグ名の鍵の作り直し
+- `cmd/mdm/`: 新しい interface への `TagStore` の受け渡し、起動時のタグ名の鍵の作り直しの呼び出し
 - `web/src/api/`: 取得と変更の関数、タグの一覧の共有、付け外しの通知、控えの差し替え
 - `web/src/ui/`: combobox、`ModalFrame` の移設
 - `web/src/player/`: タグの表示と付け外し、タグを押したときの絞り込み
+- `web/src/videoList/`: 共有のカードの題名の下の行を選ぶ口、`useListCriteria` の画面の固有の
+  パラメータの口（Structural Decisions 10・15）
 - `web/src/library/`: カードのタグの行、タグ絞り込みの条件と絞り込み中のタグの並び、選択バーの操作、「すべて選択」
 - `web/src/tags/`（新設）: タグ管理画面
 - `web/src/shell/`・`web/src/app/`: サイドバーの入口と経路
 - `web/e2e/`: 実ブラウザでの検証
-- `ARCHITECTURE.md`: 利用者データの表、API の経路の一覧、Web のディレクトリ・経路・
-  サイドバーの入口
+- `ARCHITECTURE.md`: 利用者データの表、`store.DB` の節の役割の型の一覧、API の経路の一覧、
+  Web のディレクトリ・経路・サイドバーの入口
 - `docs/design-docs/library-ui.md`: §6 のカードと選択バー、§8 の再生画面の構成要素
 
 **New paths**:
 
 - `internal/domain/tag.go` と対応 test
 - `internal/store/migrations/00008_tags.sql`
-- `internal/store/tags.go` と対応 test
+- `internal/store/tags.go` と対応 test（`TagStore`。型の宣言と `db.Tags()` は `roles.go` に足す）
 - `internal/httpapi/tags.go` と対応 test
 - `web/src/api/tags.ts` と対応 test（取得・変更の関数、共有の保持、付け外しの通知）
+- `web/src/library/tagCriteria.ts` と対応 test（URL の `tag` の読み書きと、`ListCriteria` との組み合わせ）
 - `web/src/ui/Combobox.tsx` と対応 test、`web/src/ui/ModalFrame.tsx`
 - `web/src/tags/`（管理画面）
 - `web/e2e/tags.e2e.ts`
@@ -238,17 +308,20 @@ specs/014-video-tags/
 
 **Scope**: `00008_tags.sql` を足す（[data-model.md §1](data-model.md#1-マイグレーション)）。
 `internal/domain` に名前の整え方と誤り（[data-model.md §2](data-model.md#2-名前の規則)）、
-`internal/store/tags.go` に作成・改名・削除・統合・シノニムの登録と解除・本数つきの一覧を
+新しい役割の型 `TagStore`（`internal/store/roles.go` に宣言と `db.Tags()`、Structural Decisions 13）の
+メソッドとして、`internal/store/tags.go` に作成・改名・削除・統合・シノニムの登録と解除・本数つきの一覧を
 置く（[data-model.md §3〜§5](data-model.md#3-名前の引き方)）。名前の行を書くときに照合用の鍵を
-書き、起動時に古い版の鍵を作り直す処理を `internal/store` と `cmd/mdm` に足す
+書き、起動時に古い版の鍵を作り直す処理を `TagStore` に置いて、`cmd/mdm` が
+`LibraryStore.RefreshSearchKeys` の隣で呼ぶ
 （[data-model.md §7](data-model.md#7-検索欄でのタグ名の照合)）。不変条件の検査を
-`invariants_test.go` に足す。`ARCHITECTURE.md` の利用者データの記述と、
-`docs/design-docs/tech-stack-selection.md` §3.2 の表の一覧に3つの表を足す。
+`invariants_test.go` に足す。`ARCHITECTURE.md` の利用者データの記述と `store.DB` の節の
+役割の型の一覧、`docs/design-docs/tech-stack-selection.md` §3.2 の表の一覧に3つの表を足す。
 
 **Dependencies**: None
 
 **Acceptance**: `go test ./internal/domain/... ./internal/store/...` で次が通る。前後の空白は
-取れ、空白だけの名前、改行やタブを含む名前、101 符号位置の名前は誤りになる。`Anime` があるとき `anime` は別の
+取れ、空白だけの名前、改行やタブを含む名前（`"旅行\n"`・`"\t旅行"` のように前後にあるものを
+含む）、101 符号位置の名前は誤りになる。`Anime` があるとき `anime` は別の
 タグとして作れる。既存の名前・シノニムへの改名は `ErrTagNameTaken` になる。X を Y へ統合
 すると、X の付いていた中身すべてに Y が1つだけ付き、X の元の名前とシノニムが Y のシノニムに
 なり、X が一覧から消える。その後 X の名前で付けると Y が付く。
@@ -259,14 +332,16 @@ specs/014-video-tags/
 消えた動画を数えず、削除・統合はその動画の付与にも及ぶ。統合の途中で失敗させると何も
 変わっていない。作成・改名・シノニム登録の後、その行の `search_key` が `FoldForMatch` の
 結果になっている。`search_version` を 0 に戻した行が、起動時の作り直しで埋まる。
-00007 の状態から Up・Down が通る。`scripts/migrations-immutable.sh` と
+00007 の状態から Up・Down が通る。depguard を含む `task lint` が通る。`scripts/migrations-immutable.sh` と
 `task check` が通る。
 
 ### 動画へのタグの付け外しと、タグでの一覧の絞り込み・検索をサーバーに置く
 
-**Scope**: `internal/store/tags.go` に、動画の `id` の集合への付与・取り外し（名前での付与は
+**Scope**: `TagStore`（`internal/store/tags.go`）に、動画の `id` の集合への付与・取り外し（名前での付与は
 引いて無ければ作る）、選んだ動画のタグの要約、`content_key` の集合から項目のタグを引く
-関数を置く（[data-model.md §4](data-model.md#4-書き換えの規則)）。`internal/store/search.go` の
+操作を置く（[data-model.md §4](data-model.md#4-書き換えの規則)）。次の条件と全件の `id` は
+`LibraryStore` に置き、`id` から `content_key` を引く SQL は2つの型で非公開の関数として共有する
+（Structural Decisions 13）。`internal/store/search.go` の
 語ごとの条件に、タグ名の照合の OR を足す（[data-model.md §7](data-model.md#7-検索欄でのタグ名の照合)）。#195 の
 `internal/store/listing.go` にタグの AND の条件を足し（[data-model.md §6](data-model.md#6-タグでの絞り込み)）、
 同じ条件で全件の `id` を返す関数を足す。`VideoQuery` にタグを足す。
@@ -290,7 +365,8 @@ specs/014-video-tags/
 **Scope**: `api/openapi.yaml` に `Tag` と誤りの `code`、[contracts/tags-api.md §1〜§3](contracts/tags-api.md#3-タグの管理)
 の経路を足し、`task generate` で生成する。`internal/httpapi/tags.go` に経路を置き、
 `requiresJSONBody` に本文を持つ経路を足す（`PATCH` の分岐は今は無いので足す）。
-`cmd/mdm` で `store` を渡す。`ARCHITECTURE.md` の API の経路の一覧に `/api/tags*` を足す。`web/src/api/tags.ts`
+`internal/httpapi` がタグの管理の interface を宣言し、`cmd/mdm` が `db.Tags()` を渡す
+（`internal/app` は通さない。Structural Decisions 14）。`ARCHITECTURE.md` の API の経路の一覧に `/api/tags*` を足す。`web/src/api/tags.ts`
 に取得・変更の関数と、タグの一覧の共有の保持（Structural Decisions 8）を置き、管理の
 変更で `clearListSnapshot()` を呼ぶ（画面はまだ使わない）。
 
@@ -308,7 +384,8 @@ specs/014-video-tags/
 **Scope**: `Video.tags`、`POST /api/video-tags`、`POST /api/video-tags/summary`、`listVideos`
 の `tag`、`GET /api/videos/ids` を `api/openapi.yaml` に足して生成する
 （[contracts/tags-api.md §1・§4・§5](contracts/tags-api.md#4-付与と取り外し)）。`Video` を返す5つの経路
-すべてに項目のタグを載せ（Structural Decisions 5）、一覧の応答に `missingTagIds` を載せる。
+すべてに、`progressFor` と同じく `internal/httpapi` で `TagStore` から引いた項目のタグを載せ
+（Structural Decisions 5・14）、一覧の応答に `missingTagIds` を載せる。
 `ARCHITECTURE.md` の API の経路の一覧に `/api/video-tags*` と `/api/videos/ids` を足す。`web/src/api/` に付け外し・要約・
 全件の `id` の関数と、付け外しの結果を読み込み済みの項目と控えへ反映する通知を足す
 （Structural Decisions 7）。`useVideos` に `tag` の条件を渡せるようにする（画面はまだ使わない）。
@@ -341,16 +418,17 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 
 **Acceptance**: Vitest と `web/e2e/tags.e2e.ts` で、受け入れ条件 1・2・6・13 が再生画面で
 確かめられる（13 のシノニムは API で登録しておく）。キーボードだけで「タグを追加」に届き、矢印キーで候補を選んで Enter で
-付けられる。外すボタンの名前が「<タグ名> を外す」の形で読み上げられる。空白だけの入力、改行を
+付けられる。外すボタンの名前が「<タグ名>をこの動画から外す」の形で読み上げられる。空白だけの入力、改行を
 含む入力、101 文字の入力は確定できず、理由が出る。`task check` と `task test-e2e` が通る。`ui-design.md` の観点で視覚・操作・支援技術を確かめる。
 
 ### 一覧のカードにタグを出し、タグを押してタグで一覧を絞り込めるようにする
 
-**Scope**: ライブラリの `VideoCard` の題名の下の「追加日時 · ファイルサイズ · コーデック」の
+**Scope**: ライブラリのカード（共有の `web/src/videoList/VideoCard.tsx`）の題名の下の「追加日時 · ファイルサイズ · コーデック」の
 行を、その動画のタグの1行に置き換え、各タグを押せるようにする。フォルダ画面のカードは今の
 行のままにする（Structural Decisions 10）。`docs/design-docs/library-ui.md` §6 のカードの
-一次情報を改める。[contracts/list-url.md](contracts/list-url.md) の `tag` を #195 の
-`listCriteria.ts` と `listSnapshot` の鍵に足す（Structural Decisions 1）。カードのタグを押すと
+一次情報を改める。[contracts/list-url.md](contracts/list-url.md) の `tag` を、ライブラリの
+`web/src/library/tagCriteria.ts` と `listSnapshot` の鍵に足し、`useListCriteria` に画面の固有の
+パラメータを残す口を足す。共有の `ListCriteria` には足さない（Structural Decisions 1・15）。カードのタグを押すと
 今の条件にそのタグを加え、再生画面のタグを押すとそのタグ1つで絞り込んだ一覧を開く。
 一覧の上に絞り込み中のタグを並べ、それぞれ1回で外せるようにする。件数と「条件を解除」に
 タグ絞り込みを含める。選択中はカードのタグを押しても絞り込まない。16 個を超えるときは
@@ -369,7 +447,9 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 受け入れ条件 5・7・8・19・20 が確かめられる。カードのタグを押しても再生画面へ移らず、
 選択中に押すとそのカードの選択が切り替わる。タグを押す操作は「<タグ名> で絞り込む」、
 絞り込み中のタグを外す操作は「<タグ名> の絞り込みを外す」の形で読み上げられ、どちらも
-キーボードで届く。フォルダ画面のカードと表形式の行は今のままである。カードのタグが1行に
+キーボードで届く。フォルダ画面のカードと表形式の行は今のままである。フォルダ画面の URL に
+`tag` を書いて開き、検索語や絞り込みを変えると、URL から `tag` が消える（フォルダ画面は
+`tag` を読まない）。カードのタグが1行に
 収まらないとき、省略されていることが分かる。`web/src/theme/tokens.test.ts` を含む
 `task check` と `task test-e2e` が通る。`ui-design.md` の観点で視覚・操作・支援技術を確かめる。
 
