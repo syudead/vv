@@ -33,7 +33,7 @@ func GenerateSeekThumbnails(ctx context.Context, videoPath, outputPattern string
 }
 
 func seekThumbnailArgs(videoPath, outputPattern string) []string {
-	interval := strconv.FormatInt(int64(domain.SeekThumbnailInterval/time.Second), 10)
+	interval := strconv.FormatFloat(domain.SeekThumbnailInterval.Seconds(), 'f', -1, 64)
 	return []string{
 		"-nostdin",
 		"-v", "error",

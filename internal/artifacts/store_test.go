@@ -220,8 +220,14 @@ func TestEmptyRootHasNothing(t *testing.T) {
 	if _, err := store.ThumbnailFile(key); !errors.Is(err, fs.ErrNotExist) {
 		t.Fatalf("誤り = %v", err)
 	}
-	if err := store.PublishThumbnail(key, writer([]byte("x"))); err == nil {
-		t.Fatal("根が無いのに公開した")
+	for _, err := range []error{
+		store.PublishThumbnail(key, writer([]byte("x"))),
+		store.PublishSeekThumbnails(key, writer([]byte("x"))),
+		store.PublishPreview(context.Background(), key, writer([]byte("x")), nil),
+	} {
+		if !errors.Is(err, errNotConfigured) {
+			t.Fatalf("根が無いときの誤り = %v", err)
+		}
 	}
 	if err := store.RemoveTemporary(); err != nil {
 		t.Fatal(err)
@@ -246,6 +252,10 @@ func TestPreviewCompleteness(t *testing.T) {
 		}},
 		{name: "manifest の版が違う", mutate: func(t *testing.T, _, manifest string) {
 			writeFile(t, manifest, []byte(`{"version":2,"size":11,"sha256":"`+hex.EncodeToString(make([]byte, 32))+`"}`))
+		}},
+		{name: "MP4 が空で manifest も大きさ 0", mutate: func(t *testing.T, preview, manifest string) {
+			writeFile(t, preview, nil)
+			writeFile(t, manifest, manifestFor(t, nil, 0))
 		}},
 		{name: "manifest が壊れている", mutate: func(t *testing.T, _, manifest string) { writeFile(t, manifest, []byte("{")) }},
 	}

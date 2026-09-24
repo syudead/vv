@@ -64,6 +64,9 @@ const manifestVersion = 1
 // publishLockWait はホバープレビューの公開の錠を待つ間隔である。
 const publishLockWait = 100 * time.Millisecond
 
+// errNotConfigured は、置き場の根が設定されていないことを表す。
+var errNotConfigured = errors.New("生成物の置き場が設定されていません")
+
 // errInvalidKey は、置き場の外を指しうる content key を表す。読み出しでは
 // 「無い」と同じに扱えるよう fs.ErrNotExist を包む。
 var errInvalidKey = fmt.Errorf("生成物の置き場に使えない内容の識別子です: %w", fs.ErrNotExist)
@@ -92,6 +95,18 @@ func fileName(contentKey string) (string, bool) {
 		return "", false
 	}
 	return name, true
+}
+
+// publishTarget は公開の前に置き場と content key を確かめ、使えない理由を返す。
+func (s *Store) publishTarget(locate func(string) (string, bool), contentKey string) (string, error) {
+	if s.root == "" {
+		return "", errNotConfigured
+	}
+	target, ok := locate(contentKey)
+	if !ok {
+		return "", errInvalidKey
+	}
+	return target, nil
 }
 
 // locate は dir（根からの相対）の下で、content key の先頭2文字のディレクトリに
@@ -130,7 +145,7 @@ func (s *Store) previewPaths(contentKey string) (video, manifest string, ok bool
 // 改名する。そのため、生成途中の成果物は確認にも配信にも見えない。
 func (s *Store) makeTemporaryDir(pattern string) (string, error) {
 	if s.root == "" {
-		return "", errors.New("生成物の置き場が設定されていません")
+		return "", errNotConfigured
 	}
 	root := filepath.Join(s.root, temporaryDirName)
 	if err := os.MkdirAll(root, dirPerm); err != nil {
@@ -160,9 +175,9 @@ func (s *Store) RemoveTemporary() error {
 // 置き場のパスを受けて画像を書く。書かれた画像が空でなければ本来の場所へ
 // 改名し、既存の画像を置き換える。
 func (s *Store) PublishThumbnail(contentKey string, write func(output string) error) error {
-	target, ok := s.thumbnailPath(contentKey)
-	if !ok {
-		return errInvalidKey
+	target, err := s.publishTarget(s.thumbnailPath, contentKey)
+	if err != nil {
+		return err
 	}
 	temporary, err := s.makeTemporaryDir("thumbnail-*")
 	if err != nil {
@@ -190,9 +205,9 @@ func (s *Store) PublishThumbnail(contentKey string, write func(output string) er
 // あれば write を呼ばずに成功を返す。write は一時置き場の中の連番のファイル名の
 // 型（ffmpeg の出力にそのまま渡せる形）を受けてフレームを書く。
 func (s *Store) PublishSeekThumbnails(contentKey string, write func(outputPattern string) error) error {
-	target, ok := s.seekDir(contentKey)
-	if !ok {
-		return errInvalidKey
+	target, err := s.publishTarget(s.seekDir, contentKey)
+	if err != nil {
+		return err
 	}
 	if isDir(target) {
 		return nil
@@ -233,10 +248,14 @@ func (s *Store) PublishPreview(
 	write func(output string) error,
 	current func(context.Context) (bool, error),
 ) error {
-	target, manifest, ok := s.previewPaths(contentKey)
-	if !ok {
-		return errInvalidKey
+	target, err := s.publishTarget(func(key string) (string, bool) {
+		video, _, ok := s.previewPaths(key)
+		return video, ok
+	}, contentKey)
+	if err != nil {
+		return err
 	}
+	manifest := target + manifestExt
 	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
 		return fmt.Errorf("プレビューの置き場所を作れません: %w", err)
 	}
@@ -328,7 +347,7 @@ func (s *Store) PreviewFile(contentKey string) (*os.File, error) {
 		return nil, errInvalidKey
 	}
 	return openRegular(path, func(info os.FileInfo) error {
-		return checkManifestSize(manifest, info)
+		return checkPreviewComplete(manifest, info)
 	})
 }
 
@@ -355,10 +374,10 @@ func (s *Store) PreviewAvailable(contentKey string) bool {
 		return false
 	}
 	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
+	if err != nil || !info.Mode().IsRegular() {
 		return false
 	}
-	return checkManifestSize(manifest, info) == nil
+	return checkPreviewComplete(manifest, info) == nil
 }
 
 // SeekThumbnailsAvailable はシーク用プレビューの置き場があるかを返す。置き場は
@@ -416,9 +435,13 @@ func readManifest(path string) (previewManifest, error) {
 	return manifest, nil
 }
 
-// checkManifestSize は manifest が読めて、その大きさが MP4 と一致するかを
-// 確かめる。
-func checkManifestSize(manifestPath string, video os.FileInfo) error {
+// checkPreviewComplete は応答のたびに行う完全性の確認である。MP4 が空でなく、
+// manifest が読めて、その大きさが MP4 と一致すれば完成とみなす。確認
+// （PreviewAvailable）と配信（PreviewFile）は同じこの規則を使う。
+func checkPreviewComplete(manifestPath string, video os.FileInfo) error {
+	if video.Size() == 0 {
+		return errors.New("preview is empty")
+	}
 	manifest, err := readManifest(manifestPath)
 	if err != nil {
 		return err

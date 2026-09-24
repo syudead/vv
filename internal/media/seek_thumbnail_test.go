@@ -6,8 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 func TestSeekThumbnailArgsGenerateFiveSecondFrames(t *testing.T) {
@@ -24,6 +27,15 @@ func TestSeekThumbnailArgsGenerateFiveSecondFrames(t *testing.T) {
 		if !strings.Contains(joined, want) {
 			t.Errorf("生成引数に %q が無い: %v", want, args)
 		}
+	}
+}
+
+// フレームの間隔は、読み出し側（internal/artifacts）と同じ domain の定数から作る。
+func TestSeekThumbnailArgsUseSharedInterval(t *testing.T) {
+	interval := strconv.FormatFloat(domain.SeekThumbnailInterval.Seconds(), 'f', -1, 64)
+	want := "gt(floor(t/" + interval + ")\\,floor(prev_selected_t/" + interval + "))"
+	if joined := strings.Join(seekThumbnailArgs("in.mp4", "out/%06d.jpg"), " "); !strings.Contains(joined, want) {
+		t.Fatalf("生成引数に %q が無い: %s", want, joined)
 	}
 }
 
