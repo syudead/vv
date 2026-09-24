@@ -8,7 +8,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video, VideoPage } from "../api/client";
@@ -43,6 +43,26 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
+/** LocationProbe は今の URL を見せ、履歴を1つ戻る操作を置く（戻る/進むの確認）。 */
+function LocationProbe() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (
+    <>
+      <span data-testid="location">{location.search}</span>
+      <button type="button" onClick={() => void navigate(-1)}>
+        テストで戻る
+      </button>
+    </>
+  );
+}
+
+function listRequests(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): URL[] {
+  return fetchMock.mock.calls
+    .map((call) => new URL(String(call[0]), "http://localhost"))
+    .filter((url) => url.pathname === "/api/videos");
+}
+
 function renderLibrary(initial = "/") {
   return render(
     <MemoryRouter initialEntries={[initial]}>
@@ -50,7 +70,15 @@ function renderLibrary(initial = "/") {
         <ToastProvider>
           <ScanProvider>
             <Routes>
-              <Route path="/" element={<LibraryPage />} />
+              <Route
+                path="/"
+                element={
+                  <>
+                    <LibraryPage />
+                    <LocationProbe />
+                  </>
+                }
+              />
               <Route path="/videos/:id" element={<p>再生画面</p>} />
             </Routes>
           </ScanProvider>
@@ -157,45 +185,229 @@ describe("LibraryPage", () => {
     expect(screen.getByRole("button", { name: "再試行" })).toBeDefined();
   });
 
-  it("絞り込み時は後続ページも取得して全件から探す", async () => {
-    let listCalls = 0;
+  it("視聴状態はサーバーに送り、残りのページを読みに行かず、件数はサーバーの total を出す", async () => {
     fetchMock.mockImplementation((input) => {
       const url = String(input);
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
-      listCalls += 1;
+      const watch = new URL(url, "http://localhost").searchParams.get("watch");
       return Promise.resolve(
-        json(
-          listCalls === 1
-            ? {
-                items: [video(1)],
-                total: 2,
-                nextCursor: "cursor-1",
-              }
-            : {
-                items: [
-                  video(2, {
-                    progress: {
-                      positionMs: 30_000,
-                      completed: false,
-                      updatedAt: "",
-                    },
-                  }),
-                ],
-                total: 2,
-              },
-        ),
+        json({
+          items: watch === "unwatched" ? [video(1)] : [video(1), video(2)],
+          total: watch === "unwatched" ? 250 : 500,
+          nextCursor: "cursor-1",
+        } satisfies VideoPage),
       );
     });
     const user = userEvent.setup();
     renderLibrary();
+    await screen.findByRole("link", { name: "動画 2" });
+
+    await user.click(screen.getByRole("button", { name: "絞り込み" }));
+    await user.click(screen.getByRole("radio", { name: "未視聴" }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("link", { name: "動画 2" })).toBeNull(),
+    );
+    expect(screen.getByRole("status").textContent).toMatch(/^1–1 \/ 250 件/);
+    const requests = listRequests(fetchMock);
+    expect(requests.at(-1)?.searchParams.get("watch")).toBe("unwatched");
+    // 選んだ瞬間に続きのページを読みに行かない。
+    expect(requests.filter((url) => url.searchParams.has("cursor"))).toHaveLength(0);
+    expect(screen.getByTestId("location").textContent).toBe(
+      "?watch=unwatched&sort=addedDesc",
+    );
+    expect(screen.getByRole("button", { name: "絞り込み（1 件適用中）" })).toBeDefined();
+  });
+
+  it("URL の条件をそのまま一覧の要求に載せる", async () => {
+    renderLibrary("/?q=%E4%BA%AC%E9%83%BD&watch=inProgress&playable=1&sort=durationAsc");
+    await screen.findByRole("link", { name: "動画 1" });
+    const request = listRequests(fetchMock).at(-1);
+    expect(request?.searchParams.get("query")).toBe("京都");
+    expect(request?.searchParams.get("watch")).toBe("inProgress");
+    expect(request?.searchParams.get("playable")).toBe("true");
+    expect(request?.searchParams.get("sort")).toBe("durationAsc");
+    expect(screen.getByRole("button", { name: "並び順: 長さ" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "昇順（短い順）。押すと降順" }),
+    ).toBeDefined();
+  });
+
+  it("random で seed が無ければ作って URL に書き足し、履歴は増やさない", async () => {
+    renderLibrary("/?sort=random");
+    await screen.findByRole("link", { name: "動画 1" });
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toMatch(
+        /^\?sort=random&seed=\d+$/,
+      ),
+    );
+    const seed = new URLSearchParams(
+      screen.getByTestId("location").textContent ?? "",
+    ).get("seed");
+    const requests = listRequests(fetchMock);
+    expect(requests.every((url) => url.searchParams.get("seed") === seed)).toBe(true);
+    expect(screen.getByRole("button", { name: "並べ直す" })).toBeDefined();
+  });
+
+  it("並べ直すは新しい seed で読み直し、戻るで前の並びに戻る", async () => {
+    const user = userEvent.setup();
+    renderLibrary("/?sort=random&seed=7");
+    await screen.findByRole("link", { name: "動画 1" });
+
+    await user.click(screen.getAllByRole("button", { name: "並べ直す" })[0]!);
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).not.toBe("?sort=random&seed=7"),
+    );
+    const seed = new URLSearchParams(
+      screen.getByTestId("location").textContent ?? "",
+    ).get("seed");
+    expect(seed).not.toBe("7");
+    await waitFor(() =>
+      expect(listRequests(fetchMock).at(-1)?.searchParams.get("seed")).toBe(seed),
+    );
+
+    await user.click(screen.getByRole("button", { name: "テストで戻る" }));
+    expect(screen.getByTestId("location").textContent).toBe("?sort=random&seed=7");
+  });
+
+  it("向きの切り替えは同じ種類の逆向きにし、履歴を1つ増やす", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+
+    await user.click(
+      screen.getByRole("button", { name: "降順（新しい順）。押すと昇順" }),
+    );
+    expect(screen.getByTestId("location").textContent).toBe("?sort=addedAsc");
+    await waitFor(() =>
+      expect(listRequests(fetchMock).at(-1)?.searchParams.get("sort")).toBe("addedAsc"),
+    );
+    expect(
+      screen.getByRole("button", { name: "昇順（古い順）。押すと降順" }),
+    ).toBeDefined();
+
+    // 最初の URL（sort なし）も戻り先として並び順を持つので、保存した並び順が
+    // 変わっても戻ると前の並びになる。
+    await user.click(screen.getByRole("button", { name: "テストで戻る" }));
+    expect(screen.getByTestId("location").textContent).toBe("?sort=addedDesc");
+    expect(
+      screen.getByRole("button", { name: "降順（新しい順）。押すと昇順" }),
+    ).toBeDefined();
+  });
+
+  it("メニューで種類を選ぶと、その種類の選んだときの向きになる", async () => {
+    const user = userEvent.setup();
+    renderLibrary("/?sort=addedAsc");
+    await screen.findByRole("link", { name: "動画 1" });
+
+    await user.click(screen.getByRole("button", { name: "並び順: 追加日" }));
+    const items = await screen.findAllByRole("menuitemradio");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "追加日",
+      "更新日時",
+      "題名",
+      "長さ",
+      "ファイルサイズ",
+      "最近再生した順",
+      "ランダム",
+    ]);
+    await user.click(screen.getByRole("menuitemradio", { name: "ファイルサイズ" }));
+    expect(screen.getByTestId("location").textContent).toBe("?sort=sizeDesc");
+  });
+
+  it("検索語の入力は一続きで履歴を1つだけ増やす", async () => {
+    const user = userEvent.setup();
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+
+    const box = screen.getByRole("searchbox", { name: "動画を検索" });
+    await user.type(box, "京");
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        `?q=${encodeURIComponent("京")}&sort=addedDesc`,
+      ),
+    );
+    await user.type(box, "都");
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        `?q=${encodeURIComponent("京都")}&sort=addedDesc`,
+      ),
+    );
+
+    // Esc で抜けると続きが閉じる。戻ると入力を始める前の一覧になる。
+    await user.click(screen.getByRole("button", { name: "テストで戻る" }));
+    expect(screen.getByTestId("location").textContent).toBe("?sort=addedDesc");
+    expect((box as HTMLInputElement).value).toBe("");
+  });
+
+  it("一致なしでは効いている条件を示し、条件を解除で並べ替えを残して外す", async () => {
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      const params = new URL(url, "http://localhost").searchParams;
+      const conditioned =
+        params.has("query") || params.has("watch") || params.has("playable");
+      return Promise.resolve(
+        json(
+          conditioned
+            ? ({ items: [], total: 0 } satisfies VideoPage)
+            : ({ items: [video(1)], total: 1 } satisfies VideoPage),
+        ),
+      );
+    });
+    const user = userEvent.setup();
+    renderLibrary("/?q=%E4%BA%AC%E9%83%BD&watch=unwatched&playable=1&sort=titleDesc");
+
+    expect(await screen.findByText("条件に一致する動画はありません")).toBeDefined();
+    const chips = within(screen.getByRole("list", { name: "効いている条件" }));
+    expect(chips.getAllByRole("listitem").map((item) => item.textContent)).toEqual([
+      "検索語「京都」",
+      "未視聴",
+      "再生できるものだけ",
+    ]);
+    expect(chips.getByTitle("検索語「京都」")).toBeDefined();
+    expect(screen.queryByText("動画がまだありません")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "条件を解除" }));
+    expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
+    expect(screen.getByTestId("location").textContent).toBe("?sort=titleDesc");
+    expect(document.activeElement).toBe(
+      screen.getByRole("searchbox", { name: "動画を検索" }),
+    );
+  });
+
+  it("絞り込みの条件を解除は検索語も外し、ポップオーバーを閉じて絞り込みのボタンへ戻る", async () => {
+    const user = userEvent.setup();
+    renderLibrary("/?q=abc&sort=titleAsc");
     await screen.findByRole("link", { name: "動画 1" });
 
     await user.click(screen.getByRole("button", { name: "絞り込み" }));
-    await user.click(screen.getByRole("radio", { name: "視聴途中" }));
+    await user.click(await screen.findByRole("button", { name: "条件を解除" }));
 
-    expect(await screen.findByRole("link", { name: "動画 2" })).toBeDefined();
-    expect(listCalls).toBe(2);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByTestId("location").textContent).toBe("?sort=titleAsc");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "絞り込み" }),
+      ),
+    );
+  });
+
+  it("未視聴で絞った一覧から戻ったとき、再生位置が変わった項目もその場に残す", async () => {
+    const { recordSavedProgress, nextProgressSequence } =
+      await import("../api/progressEvents");
+    renderLibrary("/?watch=unwatched");
+    await screen.findByRole("link", { name: "動画 1" });
+    act(() =>
+      recordSavedProgress(
+        1,
+        { positionMs: 30_000, completed: false, updatedAt: "" },
+        nextProgressSequence(),
+      ),
+    );
+    expect(screen.getByRole("link", { name: "動画 1" })).toBeDefined();
   });
 
   it("選択すると選択バーが出て Esc で消える", async () => {

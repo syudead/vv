@@ -131,6 +131,10 @@ only while ingest work is still pending (paused while the page is hidden), and `
 holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. Pages and components do not call `fetch`
 themselves, so how the server is reached stays changeable in one place.
+The list's conditions (search terms, watch state, playable-only, sort and the shuffle
+`seed`) live in the URL; `web/src/library/listCriteria.ts` converts between the URL and
+the criteria `useVideos` sends, and the server applies every condition, so the page
+neither filters loaded pages nor reads ahead to find matches.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
 frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`, and

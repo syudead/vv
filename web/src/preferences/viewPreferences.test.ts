@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { videoSorts } from "../library/listCriteria";
 import { defaults, readViewPreferences, writeViewPreferences } from "./viewPreferences";
 
 const storageKey = "vv.view.v2";
@@ -41,6 +42,17 @@ describe("readViewPreferences", () => {
         fake(() => JSON.stringify({ zoom: 3, view: "wall", sort: "nope" })),
       ),
     ).toEqual({ zoom: 3, view: "grid", sort: "addedDesc" });
+  });
+});
+
+describe("保存できる並び順", () => {
+  it("API の 13 の並び順をすべて戻す", () => {
+    for (const sort of videoSorts) {
+      expect(
+        readViewPreferences(fake(() => JSON.stringify({ zoom: 1, view: "grid", sort })))
+          .sort,
+      ).toBe(sort);
+    }
   });
 });
 

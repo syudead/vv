@@ -1,55 +1,78 @@
 import { Search, X } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import { MAX_QUERY_LENGTH } from "../api/client";
 import { cn } from "../lib/cn";
+import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
 
 /** searchDebounceMs は入力が落ち着くのを待つ時間。打鍵ごとに一覧が入れ替わらないようにする。 */
 export const searchDebounceMs = 250;
 
+export interface SearchBoxProps {
+  /** URL から読んだ今の検索語。戻る・進むで変わると入力欄が追従する。 */
+  query: string;
+  /**
+   * onCommit は検索語を確定する。mode は履歴の増やし方で、フォーカスが入ってから
+   * 外れるか Esc で抜けるまでの一続きで最初の確定だけが push になる
+   * （specs/013-library-search/contracts/list-url.md §3）。
+   */
+  onCommit: (next: string, mode: HistoryMode) => void;
+  /** 入力欄を外から指す（一致なしの「条件を解除」でフォーカスを戻す）。 */
+  inputRef?: RefObject<HTMLInputElement | null>;
+  /** 読み上げ名。 */
+  label?: string;
+  placeholder?: string;
+  className?: string;
+}
+
 /**
- * SearchBox は URL の `?q=` と結びついた検索欄である。
+ * SearchBox は一覧の条件の `q` を入力する検索欄である。
  * `/` でフォーカス、Esc でクリアしてフォーカスを外す。
  */
-export default function SearchBox({ className }: { className?: string }) {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const query = (searchParams.get("q") ?? "").trim().slice(0, MAX_QUERY_LENGTH);
-
-  const [input, setInput] = useState(query);
+export default function SearchBox({
+  query,
+  onCommit,
+  inputRef,
+  label = "動画を検索",
+  placeholder = "検索",
+  className,
+}: SearchBoxProps) {
+  const [input, setInputState] = useState(query);
+  // 最新の入力。blur は同じ操作の中の setInput より先に走ることがあるので、
+  // 描画を待たずに読める控えを持つ。
+  const latest = useRef(query);
+  const setInput = useCallback((next: string) => {
+    latest.current = next;
+    setInputState(next);
+  }, []);
   const committed = useRef(query);
-  const field = useRef<HTMLInputElement | null>(null);
+  const ownField = useRef<HTMLInputElement | null>(null);
+  const field = inputRef ?? ownField;
+  const session = useRef(new SearchSession());
 
   const commit = useCallback(
     (next: string) => {
+      if (next === committed.current) return;
       committed.current = next;
-      setSearchParams(
-        (current) => {
-          const params = new URLSearchParams(current);
-          if (next === "") params.delete("q");
-          else params.set("q", next);
-          return params;
-        },
-        { replace: true },
-      );
+      onCommit(next, session.current.commit());
     },
-    [setSearchParams],
+    [onCommit],
   );
 
-  // 戻る・進むで URL 側が変わったら入力欄を追従させる
+  // 戻る・進むや「条件を解除」で URL 側が変わったら入力欄を追従させる
   useEffect(() => {
     if (query !== committed.current) {
       committed.current = query;
       setInput(query);
     }
-  }, [query]);
+  }, [query, setInput]);
 
   useEffect(() => {
-    const next = input.trim();
-    if (next === query) return;
+    const next = normalizeQuery(input);
+    if (next === committed.current) return;
     const timer = setTimeout(() => commit(next), searchDebounceMs);
     return () => clearTimeout(timer);
-  }, [commit, input, query]);
+  }, [commit, input]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -62,7 +85,7 @@ export default function SearchBox({ className }: { className?: string }) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, []);
+  }, [field]);
 
   const clear = () => {
     setInput("");
@@ -78,16 +101,23 @@ export default function SearchBox({ className }: { className?: string }) {
         type="search"
         value={input}
         onChange={(event) => setInput(event.target.value)}
+        onFocus={() => session.current.start()}
+        onBlur={() => {
+          // 待っている確定があれば、続きを閉じる前に済ませる。
+          commit(normalizeQuery(latest.current));
+          session.current.end();
+        }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
             event.preventDefault();
-            clear();
+            setInput("");
+            commit("");
             field.current?.blur();
           }
         }}
         maxLength={MAX_QUERY_LENGTH}
-        placeholder="検索"
-        aria-label="動画を検索"
+        placeholder={placeholder}
+        aria-label={label}
         autoComplete="off"
         spellCheck={false}
         className={cn(

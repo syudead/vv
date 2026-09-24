@@ -17,7 +17,9 @@ Structural Decisions 3）。見た目と操作の配置は、design 工程の `u
 | `sort` | [list-api.md §3](list-api.md#3-videosort-の値) の値 | 端末に保存した並べ替え（既定 `addedDesc`） |
 | `seed` | 1 以上 2147483647 以下の整数 | `sort=random` のときは画面が作って足す |
 
-- 既定の値は URL に書かない（`watch=all`、`playable` の偽）。同じ一覧が2つの URL を持たない
+- 既定の値は URL に書かない（`watch=all`、`playable` の偽）。`sort` は、条件を一度でも変えたあとは既定の
+  `addedDesc` でも書く。省くと「端末に保存した並べ替え」の意味になり、戻る/進むで前の並べ替えに
+  戻れないためである。条件を変える前の `/` は、そのまま `sort` を書かない。同じ一覧が2つの URL を持たない
   ようにし、[listSnapshot](../../../web/src/api/listSnapshot.ts) の鍵の一致を保つ。
 - 解釈できない値（未知の `sort`・`watch`、数でない `seed`、`playable` の `1` 以外）は
   既定として扱い、誤りを出さない。今の形式の URL（`?q=…&sort=addedDesc`）は同じ意味の

@@ -18,7 +18,7 @@ import {
 } from "../api/listSnapshot";
 import { useFolderListing, useRootFolders } from "../api/useFolderListing";
 import { useVideos } from "../api/useVideos";
-import { sortOptions } from "../library/LibraryToolbar";
+import { isVideoSort } from "../library/listCriteria";
 import { CardSkeleton, EmptyState, LoadFailed } from "../library/states";
 import VideoCard from "../library/VideoCard";
 import {
@@ -126,9 +126,8 @@ function FolderNotFound() {
 function usePreferences() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [preferences, setPreferences] = useState(readViewPreferences);
-  const sort =
-    sortOptions.find((option) => option.value === searchParams.get("sort"))?.value ??
-    preferences.sort;
+  const requested = searchParams.get("sort");
+  const sort = isVideoSort(requested) ? requested : preferences.sort;
 
   const save = useCallback((updated: ViewPreferences) => {
     setPreferences(updated);
@@ -232,7 +231,7 @@ function FolderView({ folder }: { folder: FolderRef }) {
   });
   const heading = useArrival(restored !== undefined);
   const listing = useFolderListing(folder, restored?.folderListing);
-  const videos = useVideos(sort, "", restored, folder);
+  const videos = useVideos({ sort }, restored, folder);
 
   const summary = listing.data?.folder;
   const children = listing.data?.folders ?? [];

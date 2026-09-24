@@ -1,7 +1,9 @@
 import { ChevronDown, SlidersHorizontal } from "lucide-react";
 
 import type { VideoSort } from "../api/client";
-import { sortOptions, ZoomSlider } from "../library/LibraryToolbar";
+import { sortKindOf } from "../library/listCriteria";
+import { ZoomSlider } from "../library/LibraryToolbar";
+import { sortOptions } from "../library/SortControls";
 import { cn } from "../lib/cn";
 import type { Zoom } from "../preferences/viewPreferences";
 import Button from "../ui/Button";
@@ -35,7 +37,9 @@ export default function FolderToolbar({
   zoom,
   onZoomChange,
 }: FolderToolbarProps) {
-  const activeSort = sortOptions.find((option) => option.value === sort);
+  // 種類だけを選ばせる。向きの切り替えと「並べ直す」は、フォルダ画面の検索を
+  // 足すときにライブラリの部品（library/SortControls）へ揃える。
+  const activeSort = sort === undefined ? undefined : sortKindOf(sort);
 
   return (
     <div className="flex min-w-0 flex-1 items-center justify-end gap-1.5">
@@ -54,11 +58,11 @@ export default function FolderToolbar({
             <MenuContent align="end">
               <MenuLabel>並び順</MenuLabel>
               <MenuRadioGroup
-                value={sort}
+                value={activeSort?.initial ?? sort}
                 onValueChange={(value) => onSortChange(value as VideoSort)}
               >
                 {sortOptions.map((option) => (
-                  <MenuRadioItem key={option.value} value={option.value}>
+                  <MenuRadioItem key={option.kind} value={option.value}>
                     <option.icon />
                     {option.label}
                   </MenuRadioItem>
@@ -97,10 +101,10 @@ export default function FolderToolbar({
                 <div className="grid grid-cols-2 gap-1">
                   {sortOptions.map((option) => (
                     <label
-                      key={option.value}
+                      key={option.kind}
                       className={cn(
                         "flex h-8 cursor-pointer items-center justify-center gap-2 rounded-md text-sm transition-colors",
-                        sort === option.value
+                        activeSort?.kind === option.kind
                           ? "bg-accent text-accent-fg"
                           : "text-fg hover:bg-hover-wash",
                       )}
@@ -109,7 +113,7 @@ export default function FolderToolbar({
                         type="radio"
                         name="folder-compact-sort"
                         value={option.value}
-                        checked={sort === option.value}
+                        checked={activeSort?.kind === option.kind}
                         onChange={() => onSortChange(option.value)}
                         className="sr-only"
                       />

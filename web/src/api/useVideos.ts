@@ -8,6 +8,7 @@ import {
   listVideos,
   type Video,
   type VideoSort,
+  type WatchFilter,
 } from "./client";
 import { subscribeProgress } from "./progressEvents";
 
@@ -22,6 +23,43 @@ export interface VideosSeed {
   total: number;
   cursor?: string;
   hasMore: boolean;
+}
+
+/**
+ * VideosCriteria は一覧を取りに行く条件である
+ * （specs/013-library-search/contracts/list-url.md の q・watch・playable・sort・seed）。
+ * 省略した項目はサーバーの既定になる。
+ */
+export interface VideosCriteria {
+  query?: string;
+  watch?: WatchFilter;
+  playable?: boolean;
+  sort: VideoSort;
+  /** sort=random のときだけ送る。 */
+  seed?: number;
+}
+
+/** criteriaKey は条件を値で比べるための文字列にする。 */
+function criteriaKey(criteria: VideosCriteria): string {
+  return JSON.stringify([
+    criteria.query ?? "",
+    criteria.watch ?? "all",
+    criteria.playable === true,
+    criteria.sort,
+    criteria.sort === "random" ? (criteria.seed ?? null) : null,
+  ]);
+}
+
+/** appendUnique は続きのページから、既に出ている id を捨てて足す（list-api.md §5）。 */
+function appendUnique(current: Video[], next: Video[]): Video[] {
+  const seen = new Set(current.map((video) => video.id));
+  const added: Video[] = [];
+  for (const video of next) {
+    if (seen.has(video.id)) continue;
+    seen.add(video.id);
+    added.push(video);
+  }
+  return added.length === 0 ? current : [...current, ...added];
 }
 
 /** VideosState は一覧の状態である。 */
@@ -46,24 +84,29 @@ export interface VideosState {
 }
 
 /**
- * useVideos は一覧を1ページずつ読む。query を与えると題名で絞り込む。
+ * useVideos は一覧を1ページずつ読む。条件（検索語・視聴状態・再生可否・並び順・
+ * seed）はサーバーが適用し、画面は絞り込みの後処理をしない。
  *
  * 最初の表示は1ページ（60 件）だけを待つ。1万件でも最初の画面が 2 秒以内に
  * 出るのは、全件を読まないことによる。
  *
- * seed を与えると、その並び順・検索語のあいだは1ページ目を取りに行かない
+ * restored を与えると、その条件のあいだは1ページ目を取りに行かない
  * （再生画面から戻ったときの復元。一覧の状態はこの受け渡し口からだけ入る）。
  *
  * folder を与えると、ライブラリ全体ではなくそのフォルダ直下の動画を読む
- * （フォルダ画面）。その場合 query は使わない。ページング・中断・復元の
- * 仕組みはライブラリと同じものを使う。
+ * （フォルダ画面）。ページング・中断・復元の仕組みはライブラリと同じものを使う。
  */
 export function useVideos(
-  sort: VideoSort,
-  query: string,
-  seed?: VideosSeed,
+  criteria: VideosCriteria,
+  restored?: VideosSeed,
   folder?: FolderRef,
 ): VideosState {
+  // 条件は値で比べる。呼び出し側が描画ごとに新しいオブジェクトを渡しても
+  // 読み直さないよう、鍵の文字列だけを依存に使う。
+  const key = criteriaKey(criteria);
+  const criteriaRef = useRef(criteria);
+  criteriaRef.current = criteria;
+  const seed = restored;
   // フォルダは値で比べる。呼び出し側が描画ごとに新しいオブジェクトを渡しても
   // 読み直さないよう、鍵の文字列だけを依存に使う。
   const folderKey =
@@ -95,7 +138,7 @@ export function useVideos(
     [],
   );
 
-  // 読み込み中の要求を覚えておく。並び順を変えた直後に古い応答が届いても、
+  // 読み込み中の要求を覚えておく。条件を変えた直後に古い応答が届いても、
   // 新しい一覧を上書きしないようにする。
   const inFlight = useRef<AbortController | null>(null);
 
@@ -113,16 +156,24 @@ export function useVideos(
 
       try {
         const target = folderRef.current;
+        const current = criteriaRef.current;
+        const params = {
+          query: current.query,
+          watch: current.watch === "all" ? undefined : current.watch,
+          playable: current.playable,
+          sort: current.sort,
+          seed: current.sort === "random" ? current.seed : undefined,
+          cursor: from,
+          signal: controller.signal,
+        };
         const page =
           target === undefined
-            ? await listVideos({ sort, query, cursor: from, signal: controller.signal })
-            : await listFolderVideos({
-                folder: target,
-                sort,
-                cursor: from,
-                signal: controller.signal,
-              });
-        setItems((current) => (replace ? page.items : [...current, ...page.items]));
+            ? await listVideos(params)
+            : await listFolderVideos({ folder: target, ...params });
+        // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
+        // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
+        if (controller.signal.aborted || inFlight.current !== controller) return;
+        setItems((items) => (replace ? page.items : appendUnique(items, page.items)));
         setTotal(page.total);
         setCursor(page.nextCursor);
         setHasMore(page.nextCursor !== undefined);
@@ -141,33 +192,30 @@ export function useVideos(
         }
       }
     },
-    // folderKey は folderRef の中身が変わったことを表す。
-    [folderKey, query, sort],
+    // folderKey と key は folderRef・criteriaRef の中身が変わったことを表す。
+    [folderKey, key],
   );
 
   // seeded は「いま持っている中身が復元で埋まったものか」を覚える。
   //
   // 効果を 1 回で消費する印にしないのは、React が開発時に効果を 2 回走らせる
   // ためである（1 回目で消費すると 2 回目が復元を捨てて読み直してしまう）。
-  // 鍵（並び順・検索語・読み直しの世代）ごと覚えておけば、何度走っても
+  // 鍵（条件・フォルダ・読み直しの世代）ごと覚えておけば、何度走っても
   // 同じ判断になる。
-  const seeded = useRef(
-    seed === undefined ? null : { sort, query, folderKey, generation: 0 },
-  );
+  const seeded = useRef(seed === undefined ? null : { key, folderKey, generation: 0 });
 
-  // 並び順・検索語・フォルダが変わったら先頭から読み直す。カーソルはそれらに
-  // 紐づくので、引き継ぐと境界の意味が変わってしまう。
+  // 条件・フォルダが変わったら先頭から読み直す。カーソルはそれらに紐づくので、
+  // 引き継ぐと境界の意味が変わってしまう。
   //
   // 前の要求は fetchPage が AbortController で打ち切る。入力が連続しても、
   // 古い応答が新しい一覧を上書きすることはない。
   useEffect(() => {
-    const restored = seeded.current;
+    const held = seeded.current;
     if (
-      restored !== null &&
-      restored.sort === sort &&
-      restored.query === query &&
-      restored.folderKey === folderKey &&
-      restored.generation === generation
+      held !== null &&
+      held.key === key &&
+      held.folderKey === folderKey &&
+      held.generation === generation
     ) {
       // 取りに行かなくても打ち切りは要る。復元した一覧で続きを読んでいる
       // 途中に画面を離れると、この経路が後片付けを残さないかぎり要求が
@@ -182,7 +230,7 @@ export function useVideos(
     void fetchPage(undefined, true);
 
     return () => inFlight.current?.abort();
-  }, [fetchPage, folderKey, generation, query, sort]);
+  }, [fetchPage, folderKey, generation, key]);
 
   const loadMore = useCallback(() => {
     if (loading || loadingMore || !hasMore || cursor === undefined) {
