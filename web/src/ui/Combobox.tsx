@@ -78,11 +78,13 @@ export default function Combobox({
   disabled = false,
   side = "bottom",
   onEscapeWhenClosed,
+  onOpenChange,
   describedBy,
   inputRef: externalInputRef,
   "aria-label": ariaLabel,
   className,
   inputClassName,
+  frameClassName,
   ...rest
 }: {
   value: string;
@@ -101,11 +103,22 @@ export default function Combobox({
   side?: "top" | "bottom";
   /** 一覧が閉じているときの Esc。外側へは伝えない（呼び出し元がここで受ける）。 */
   onEscapeWhenClosed?: () => void;
+  /**
+   * 候補の一覧の開閉が変わるたびに呼ぶ。ポップオーバーの中で使うときに、
+   * その一覧が開いているかを外側（PopoverContent の `onEscapeKeyDown`）から
+   * 判定できるようにする（B2: Radix の DismissableLayer は document の
+   * capture 段階で Esc を先に拾うため、combobox 自身の onKeyDown より先に
+   * ポップオーバー全体を閉じてしまう。開いている間は外側で preventDefault
+   * させ、一覧だけを閉じさせる）。
+   */
+  onOpenChange?: (open: boolean) => void;
   describedBy?: string;
   inputRef?: Ref<HTMLInputElement>;
   "aria-label"?: string;
   className?: string;
   inputClassName?: string;
+  /** 入力を囲む枠の幅などを差し替える。既定は再生画面と同じ `w-40`。 */
+  frameClassName?: string;
 } & Omit<
   InputHTMLAttributes<HTMLInputElement>,
   | "value"
@@ -126,6 +139,13 @@ export default function Combobox({
   const [reason, setReason] = useState<string | null>(null);
 
   const listRef = useRef<HTMLUListElement | null>(null);
+
+  // open の変化を外側へ伝える（呼び出し元は effect の commit 後、次の
+  // キー操作より前に確実に最新の値を読める。B2）。
+  useEffect(() => {
+    onOpenChange?.(open);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const showCreateRow = createLabel !== null && exactOption === null;
   const rowCount = options.length + (showCreateRow ? 1 : 0);
@@ -327,9 +347,10 @@ export default function Combobox({
     <div className={cn("relative", className)}>
       <div
         className={cn(
-          "flex h-6 w-40 items-center gap-1 rounded-sm border bg-field px-1.5 text-xs",
+          "flex h-6 items-center gap-1 rounded-sm border bg-field px-1.5 text-xs",
           "focus-within:border-accent",
           disabled ? "border-border opacity-50" : "border-border",
+          frameClassName ?? "w-40",
         )}
       >
         {icon}

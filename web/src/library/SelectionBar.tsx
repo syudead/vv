@@ -157,6 +157,10 @@ function AddTagPopover({
   const toast = useToast();
   const headingId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Radix の DismissableLayer は document の capture 段階で Esc を先に拾う
+  // ため、combobox の候補の一覧が開いているかをここで見張り、開いていれば
+  // PopoverContent の onEscapeKeyDown で既定の「閉じる」を止める（B2）。
+  const listOpenRef = useRef(false);
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -221,6 +225,9 @@ function AddTagPopover({
         event.preventDefault();
         inputRef.current?.focus();
       }}
+      onEscapeKeyDown={(event) => {
+        if (listOpenRef.current) event.preventDefault();
+      }}
     >
       <h2 id={headingId} className="sr-only">
         タグを付ける
@@ -240,8 +247,12 @@ function AddTagPopover({
         aria-label="タグを付ける"
         inputRef={inputRef}
         onEscapeWhenClosed={() => onOpenChange(false)}
+        onOpenChange={(listOpen) => {
+          listOpenRef.current = listOpen;
+        }}
         className="w-full"
         inputClassName="w-full"
+        frameClassName="w-full"
       />
       {failed && (
         <p role="alert" className="mt-1 text-xs text-danger">
@@ -270,6 +281,8 @@ function RemoveTagPopover({
   const toast = useToast();
   const headingId = useId();
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // AddTagPopover と同じく、候補の一覧が開いているかを見張る（B2）。
+  const listOpenRef = useRef(false);
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -343,6 +356,9 @@ function RemoveTagPopover({
         if (loading || fetchFailed || summary?.items.length === 0) event.preventDefault();
         else inputRef.current?.focus();
       }}
+      onEscapeKeyDown={(event) => {
+        if (listOpenRef.current) event.preventDefault();
+      }}
     >
       <h2 id={headingId} className="sr-only">
         タグを外す
@@ -381,8 +397,12 @@ function RemoveTagPopover({
             aria-label="タグを外す"
             inputRef={inputRef}
             onEscapeWhenClosed={() => onOpenChange(false)}
+            onOpenChange={(listOpen) => {
+              listOpenRef.current = listOpen;
+            }}
             className="w-full"
             inputClassName="w-full"
+            frameClassName="w-full"
           />
           {failed && (
             <p role="alert" className="mt-1 text-xs text-danger">
@@ -428,9 +448,23 @@ export default function SelectionBar({
       className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4"
     >
       <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md bg-elevated p-1.5 shadow-elevated animate-slide-up sm:h-11 sm:w-auto sm:flex-nowrap sm:py-0 sm:pr-1.5 sm:pl-4">
-        <span className="order-1 px-1 text-sm text-fg tabular-nums sm:px-0">
+        <span
+          role="status"
+          aria-live="polite"
+          className="order-1 px-1 text-sm text-fg tabular-nums sm:px-0"
+        >
           {count.toLocaleString("ja-JP")} 件を選択中
         </span>
+
+        {/*
+         * sm 未満では常に2段にする（B3）。内容がたまたま1行に収まる幅
+         * （390〜600px など）でも、この行幅いっぱいの見えない仕切りが flex-wrap
+         * を強制する。sm 以上では display:none になり、何も強制しない。
+         */}
+        <span
+          aria-hidden="true"
+          className="order-4 hidden max-sm:block max-sm:h-0 max-sm:w-full max-sm:basis-full"
+        />
 
         <PopoverRoot open={addOpen} onOpenChange={setAddOpen}>
           <PopoverTrigger asChild>
@@ -438,7 +472,7 @@ export default function SelectionBar({
               ref={addTriggerRef}
               variant="ghost"
               size="sm"
-              className="order-4 max-sm:flex-1 sm:order-2"
+              className="order-5 max-sm:flex-1 sm:order-2"
             >
               <Plus aria-hidden="true" />
               タグを付ける
@@ -457,7 +491,7 @@ export default function SelectionBar({
             <Button
               variant="ghost"
               size="sm"
-              className="order-5 max-sm:flex-1 sm:order-3"
+              className="order-6 max-sm:flex-1 sm:order-3"
             >
               <Minus aria-hidden="true" />
               タグを外す

@@ -283,8 +283,9 @@ describe("SelectionBar", () => {
     renderBar();
 
     await user.click(screen.getByRole("button", { name: "タグを外す" }));
-    const status = await screen.findByRole("status");
-    expect(status.textContent).toBe("読み込み中…");
+    // role=status は選択件数の行にもあるので、「読み込み中…」の方だけを見る。
+    const status = await screen.findByText("読み込み中…");
+    expect(status.getAttribute("role")).toBe("status");
 
     await act(async () => {
       server.summaryDelay?.();
@@ -399,20 +400,56 @@ describe("SelectionBar", () => {
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
-  it("一覧が閉じているときのEscでポップオーバーだけを閉じる", async () => {
+  // B2: Radix の DismissableLayer は document の capture 段階で Esc を先に
+  // 拾うため、何もしなければ combobox 自身の Esc 処理より先にポップオーバー
+  // 全体が閉じてしまう。1回目の Esc は候補の一覧だけを閉じ、選択とポップオーバー
+  // は残る。一覧がすでに閉じている2回目の Esc でポップオーバーが閉じ、それでも
+  // 選択は残る（ui-design.md「Combobox」、Visual review criteria 手順2）。
+  it("タグを付ける: 1回目のEscは候補の一覧だけを閉じ、2回目でポップオーバーが閉じても選択は残る", async () => {
     const user = userEvent.setup();
     install();
     renderBar();
 
     const addButton = screen.getByRole("button", { name: "タグを付ける" });
     await user.click(addButton);
-    await screen.findByRole("combobox", { name: "タグを付ける" });
+    const input = await screen.findByRole("combobox", { name: "タグを付ける" });
+    // フォーカスで一覧が開く（全タグが候補になる）。
+    await screen.findByRole("option", { name: /旅行/ });
 
-    await act(async () => {
-      await user.keyboard("{Escape}");
-    });
+    await user.keyboard("{Escape}");
+    // 1回目: 一覧だけが閉じ、ポップオーバー（入力）はまだ残る。
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "タグを付ける" })).toBeDefined();
+    expect(input).toHaveProperty("value", "");
+
+    await user.keyboard("{Escape}");
+    // 2回目: ポップオーバーが閉じる。選択（3 件を選択中）は残る。
     await waitFor(() =>
       expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull(),
     );
+    expect(screen.getByText("3 件を選択中")).toBeDefined();
+  });
+
+  it("タグを外す: 1回目のEscは候補の一覧だけを閉じ、2回目でポップオーバーが閉じても選択は残る", async () => {
+    const user = userEvent.setup();
+    install();
+    server.attached.set(1, new Set([1]));
+    server.attached.set(2, new Set([1]));
+    server.attached.set(3, new Set([1]));
+    renderBar();
+
+    await user.click(screen.getByRole("button", { name: "タグを外す" }));
+    await screen.findByRole("combobox", { name: "タグを外す" });
+    await screen.findByRole("option", { name: /旅行/ });
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("option")).toBeNull();
+    expect(screen.getByRole("combobox", { name: "タグを外す" })).toBeDefined();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() =>
+      expect(screen.queryByRole("combobox", { name: "タグを外す" })).toBeNull(),
+    );
+    expect(screen.getByText("3 件を選択中")).toBeDefined();
   });
 });

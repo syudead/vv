@@ -235,7 +235,12 @@ export default function LibraryPage() {
 
   // --- 選択 ---
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  // 「すべて選択」の進行中の要求を、手動の選択操作や条件の変化が起きたら
+  // 無効にする通し番号（非ブロッキング指摘1）。あとから届く古い応答が、その
+  // あとに起きたもっと新しい選択や条件を上書きしないようにする。
+  const selectAllSeq = useRef(0);
   const changeSelection = useCallback((id: number, selected: boolean) => {
+    selectAllSeq.current += 1;
     setSelectedIds((current) => {
       const next = new Set(current);
       if (selected) next.add(id);
@@ -247,6 +252,7 @@ export default function LibraryPage() {
   // 読まずに関数形の更新で決める。依存を持たない安定した参照にし、CardTagRow へ
   // 渡す関数も再描画のたびに作り直さない（N4、memo(VideoCard) を効かせる）。
   const toggleSelection = useCallback((id: number) => {
+    selectAllSeq.current += 1;
     setSelectedIds((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
@@ -254,37 +260,56 @@ export default function LibraryPage() {
       return next;
     });
   }, []);
-  const clearSelection = useCallback(() => setSelectedIds(new Set()), []);
+  const clearSelection = useCallback(() => {
+    selectAllSeq.current += 1;
+    setSelectedIds(new Set());
+  }, []);
 
   // --- 「すべて選択」（Plan の Structural Decisions 4） ---
   // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。選択は常に id の
   // 集合として持つ。
   const [selectingAll, setSelectingAll] = useState(false);
   const selectAll = useCallback(() => {
+    const seq = (selectAllSeq.current += 1);
     setSelectingAll(true);
     listVideoIds({ query, watch, playable, tag: tagIds })
       .then((response) => {
+        // 応答が届くまでの間に、手動の選択操作・別の「すべて選択」・条件の
+        // 変化（下の conditionsSignature の効果も selectAllSeq を進める）が
+        // 起きていたら、この応答はもう当てはまらないので捨てる（非ブロッキング
+        // 指摘1）。
+        if (selectAllSeq.current !== seq) return;
         const missing = response.missingTagIds ?? [];
         if (missing.length > 0) {
-          const remaining = tagIds.filter((id) => !missing.includes(id));
+          // 取り除く id は、要求を送った時点の tagIds・criteria ではなく、
+          // 応答が届いた時点の最新の値を使う（ref から読む。非ブロッキング
+          // 指摘1）。
+          const { criteria: latestCriteria, tagIds: latestTagIds } =
+            latestConditions.current;
+          const remaining = latestTagIds.filter((id) => !missing.includes(id));
           toast("削除されたタグを絞り込みから外しました");
           refreshTags().catch(() => undefined);
-          apply(criteria, "replace", serializeTagIds(remaining));
+          apply(latestCriteria, "replace", serializeTagIds(remaining));
           return;
         }
         setSelectedIds(new Set(response.ids));
       })
-      .catch(() => toast("すべてを選択できませんでした"))
-      .finally(() => setSelectingAll(false));
-  }, [apply, criteria, playable, query, tagIds, toast, watch]);
+      .catch(() => {
+        if (selectAllSeq.current !== seq) return;
+        toast("すべてを選択できませんでした");
+      })
+      .finally(() => {
+        if (selectAllSeq.current === seq) setSelectingAll(false);
+      });
+  }, [apply, playable, query, tagIds, toast, watch]);
 
-  useEffect(() => {
-    const visible = new Set(items.map((video) => video.id));
-    setSelectedIds((current) => {
-      const next = new Set([...current].filter((id) => visible.has(id)));
-      return next.size === current.size ? current : next;
-    });
-  }, [items]);
+  // 選択は常に id の集合として持ち、読み込み済みの items に合わせて刈り込まない
+  // （Plan の Structural Decisions 4、issue 270 完了の条件2）。以前はここで
+  // items に無い id を選択から落としていたが、items は タグの付け外し・
+  // loadMore・進捗の反映のたびに新しい配列になるため、「すべて選択」で選んだ
+  // まだ読み込んでいない id まで巻き込んで削ってしまっていた（B1）。条件
+  // （検索語・視聴状態・再生可否・タグ）が変わったときの解除は、下の
+  // conditionsSignature の効果が別に担う。
 
   // 検索語・視聴状態・再生可否・タグのどれかを変えると選択を解除する
   // （ui-design.md「Active tag filters」）。条件の違う一覧で選んだ動画が、見えない

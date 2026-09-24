@@ -1159,5 +1159,95 @@ describe("LibraryPage", () => {
       // ポップオーバーだけが閉じ、選択バー自体（選択）は残る。
       expect(screen.getByText("1 件を選択中")).toBeDefined();
     });
+
+    // B1: 以前は items が変わるたびに、選択を items に無い id ごと刈り込んで
+    // いた。タグの付け外しも loadMore も items を新しい配列に置き換えるので、
+    // 「すべて選択」でまだ読み込んでいない id まで選んでいると、それらが
+    // 巻き込まれて消えていた（Plan の Structural Decisions 4、完了の条件2）。
+    it("すべて選択のあとタグを付けても、選択の件数は変わらない（B1）", async () => {
+      installSelectionAwareList({
+        tags: [{ id: 1, name: "旅行" }],
+        total: 50,
+        allIds: Array.from({ length: 50 }, (_, i) => i + 1),
+      });
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("button", { name: "すべて選択" }));
+      expect(await screen.findByText("50 件を選択中")).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: "タグを付ける" }));
+      const input = await screen.findByRole("combobox", { name: "タグを付ける" });
+      await user.type(input, "旅行");
+      await screen.findByRole("option", { name: /旅行/ });
+      await user.keyboard("{Enter}");
+
+      expect(await screen.findByText("50 件に「旅行」を付けました")).toBeDefined();
+      // 読み込み済みのカードにタグが反映されて items が新しい配列になっても、
+      // 選択の件数（読み込んでいない分を含む）はそのまま。
+      expect(screen.getByText("50 件を選択中")).toBeDefined();
+    });
+
+    it("すべて選択のあと loadMore しても、選択の件数は変わらない（B1）", async () => {
+      let intersect: IntersectionObserverCallback | undefined;
+      vi.stubGlobal(
+        "IntersectionObserver",
+        class {
+          constructor(callback: IntersectionObserverCallback) {
+            intersect = callback;
+          }
+          observe() {}
+          disconnect() {}
+        },
+      );
+      let listCalls = 0;
+      fetchMock.mockImplementation((input) => {
+        const url = new URL(String(input), "http://localhost");
+        if (url.pathname === "/api/scans/current") return Promise.resolve(json({}, 404));
+        if (url.pathname === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url.pathname === "/api/processing") {
+          return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+        }
+        if (url.pathname === "/api/tags") return Promise.resolve(json({ items: [] }));
+        if (url.pathname === "/api/videos/ids") {
+          return Promise.resolve(json({ ids: [1, 2, 3, 4, 5] }));
+        }
+        if (url.pathname === "/api/videos") {
+          listCalls += 1;
+          return Promise.resolve(
+            json(
+              listCalls === 1
+                ? {
+                    items: [video(1), video(2), video(3)],
+                    total: 5,
+                    nextCursor: "next",
+                  }
+                : { items: [video(4), video(5)], total: 5 },
+            ),
+          );
+        }
+        throw new Error(`unexpected request: ${url.toString()}`);
+      });
+
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("button", { name: "すべて選択" }));
+      expect(await screen.findByText("5 件を選択中")).toBeDefined();
+
+      act(() =>
+        intersect?.(
+          [{ isIntersecting: true } as IntersectionObserverEntry],
+          {} as IntersectionObserver,
+        ),
+      );
+      expect(await screen.findByRole("link", { name: "動画 4" })).toBeDefined();
+      // loadMore で items が伸びても、選択の件数はそのまま。
+      expect(screen.getByText("5 件を選択中")).toBeDefined();
+    });
   });
 });

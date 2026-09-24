@@ -15,6 +15,7 @@ export function PopoverContent({
   container,
   onOpenAutoFocus,
   onCloseAutoFocus,
+  onEscapeKeyDown,
   onPointerEnter,
   onPointerLeave,
   "aria-labelledby": labelledBy,
@@ -28,6 +29,15 @@ export function PopoverContent({
   container?: HTMLElement | null;
   onOpenAutoFocus?: (event: Event) => void;
   onCloseAutoFocus?: (event: Event) => void;
+  /**
+   * Esc を、この吹き出しが閉じる既定の動作より前に受ける。Radix の
+   * DismissableLayer は document の capture 段階で Esc を拾い、既定では
+   * そのまま閉じる（`event.preventDefault()` してから）。中の部品（combobox の
+   * 候補の一覧など）が Esc を自分の操作として先に使いたいときは、ここで
+   * `event.preventDefault()` を呼んで既定の「閉じる」を止める
+   * （ui-design.md「Combobox」）。
+   */
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
   onPointerEnter?: () => void;
   onPointerLeave?: () => void;
   /** 吹き出し（dialog）の読み上げ名にする見出しの id。 */
@@ -42,6 +52,7 @@ export function PopoverContent({
         collisionPadding={8}
         onOpenAutoFocus={onOpenAutoFocus}
         onCloseAutoFocus={onCloseAutoFocus}
+        onEscapeKeyDown={onEscapeKeyDown}
         onPointerEnter={onPointerEnter}
         onPointerLeave={onPointerLeave}
         aria-labelledby={labelledBy}
