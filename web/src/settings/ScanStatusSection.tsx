@@ -5,6 +5,7 @@ import { useLocation } from "react-router";
 import Button from "../ui/Button";
 import ScanProgressBar from "../shell/ScanProgressBar";
 import { useScan } from "../shell/ScanProvider";
+import ProcessingBreakdown from "../shell/ProcessingBreakdown";
 import { presentScan, type ScanPresentation } from "../shell/scanPresentation";
 
 function formatTime(value?: string) {
@@ -25,6 +26,8 @@ function stateLabel(presentation: ScanPresentation) {
       return "実行中";
     case "running":
       return "実行中";
+    case "preparing":
+      return "準備中";
     case "done":
       return "完了";
     case "partial-failed":
@@ -115,6 +118,15 @@ export default function ScanStatusSection() {
             <dd className="tabular-nums text-fg">{String(presentation.failed)} 件</dd>
           </div>
         </dl>
+        {presentation.remaining > 0 && (
+          <div className="mt-4 text-sm text-fg-muted">
+            <p>準備の残り</p>
+            <ProcessingBreakdown
+              processing={presentation.processing}
+              className="mt-2 max-w-xl"
+            />
+          </div>
+        )}
         <dl className="mt-4 grid grid-cols-1 gap-2 text-sm text-fg-muted sm:grid-cols-2">
           <div>
             <dt>開始時刻</dt>

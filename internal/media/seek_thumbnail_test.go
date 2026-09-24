@@ -107,48 +107,6 @@ func TestSeekThumbnailCacheReportsMissingFrame(t *testing.T) {
 	}
 }
 
-func TestRemoveOrphanSeekThumbnails(t *testing.T) {
-	thumbnailsDir := t.TempDir()
-	root := filepath.Join(thumbnailsDir, "seek")
-	kept := SeekThumbnailDir(root, "keep:1")
-	orphan := SeekThumbnailDir(root, "orphan:2")
-	temporary := filepath.Join(filepath.Dir(orphan), ".seek-active")
-	for _, dir := range []string{kept, orphan, temporary} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	removed, err := RemoveOrphanSeekThumbnails(
-		thumbnailsDir, map[string]struct{}{"keep:1": {}},
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if removed != 1 {
-		t.Fatalf("removed = %d, want 1", removed)
-	}
-	if _, err := os.Stat(kept); err != nil {
-		t.Fatalf("kept cache: %v", err)
-	}
-	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
-		t.Fatalf("orphan cache error = %v", err)
-	}
-	if _, err := os.Stat(temporary); err != nil {
-		t.Fatalf("active temporary cache: %v", err)
-	}
-}
-
-func TestRemoveOrphanSeekThumbnailsWithoutCache(t *testing.T) {
-	removed, err := RemoveOrphanSeekThumbnails(t.TempDir(), nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if removed != 0 {
-		t.Fatalf("removed = %d, want 0", removed)
-	}
-}
-
 func TestRemoveSeekThumbnails(t *testing.T) {
 	thumbnailsDir := t.TempDir()
 	target := SeekThumbnailDir(filepath.Join(thumbnailsDir, "seek"), "remove:1")
@@ -160,5 +118,48 @@ func TestRemoveSeekThumbnails(t *testing.T) {
 	}
 	if _, err := os.Stat(target); !os.IsNotExist(err) {
 		t.Fatalf("removed cache error = %v", err)
+	}
+}
+
+// 内容1つ分の生成物（代表サムネイル・シーク用プレビュー・一覧用プレビュー）を
+// まとめて消し、別の内容の生成物には触れない。無いものは無視する。
+func TestRemoveContentArtifacts(t *testing.T) {
+	dir := t.TempDir()
+	write := func(path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	gone := []string{
+		ThumbnailPath(dir, "gone:1"),
+		SeekThumbnailPath(filepath.Join(dir, "seek"), "gone:1", 0),
+		PreviewPath(dir, "gone:1"),
+		PreviewManifestPath(dir, "gone:1"),
+	}
+	kept := []string{ThumbnailPath(dir, "kept:1"), PreviewPath(dir, "kept:1")}
+	for _, path := range append(append([]string{}, gone...), kept...) {
+		write(path)
+	}
+
+	if err := RemoveContentArtifacts(dir, "gone:1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range gone {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Errorf("%s が残っている (err=%v)", path, err)
+		}
+	}
+	for _, path := range kept {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("別の内容の %s が消えた: %v", path, err)
+		}
+	}
+	// 2回目は何も無いが失敗しない。
+	if err := RemoveContentArtifacts(dir, "gone:1"); err != nil {
+		t.Fatal(err)
 	}
 }

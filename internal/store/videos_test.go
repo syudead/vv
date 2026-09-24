@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -606,19 +607,19 @@ func TestIndexedVideosByPath(t *testing.T) {
 	}
 }
 
-// サムネイルの掃除に使う。参照されている content_key の一覧を取れること。
-func TestContentKeys(t *testing.T) {
+// 生成中に動画が消えたかどうかを、内容の識別子1つで確かめられること。
+func TestContentKeyReferenced(t *testing.T) {
 	db, _ := listFixture(t)
+	ctx := context.Background()
 
-	keys, err := db.ContentKeys(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(keys) != 5 {
-		t.Errorf("%d 件, want 5", len(keys))
-	}
-	if _, ok := keys["key-3"]; !ok {
-		t.Error("key-3 が含まれていない")
+	for key, want := range map[string]bool{"key-3": true, "消えた内容": false} {
+		got, err := db.ContentKeyReferenced(ctx, key)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Errorf("ContentKeyReferenced(%q) = %v, want %v", key, got, want)
+		}
 	}
 }
 
@@ -688,5 +689,91 @@ func TestDeleteVideoLocationsResyncsRemainingRepresentative(t *testing.T) {
 	}
 	if want := domain.ContainerFromPath("/media/b.mp4"); container != want {
 		t.Fatalf("代表場所の削除後に container が古いまま: 得 %q / 期待 %q", container, want)
+	}
+}
+
+// releasedRecorder は OnVideosDeleted の知らせのうち、内容の識別子を記録する。
+type releasedRecorder struct {
+	keys []string
+}
+
+func (r *releasedRecorder) record(deleted []DeletedVideo) {
+	for _, video := range deleted {
+		if video.ID == 0 {
+			panic("消した動画の id が無い")
+		}
+		r.keys = append(r.keys, video.ContentKey)
+	}
+}
+
+func (r *releasedRecorder) take() []string {
+	keys := r.keys
+	r.keys = nil
+	slices.Sort(keys)
+	return keys
+}
+
+// 動画の行を消したら、消した動画の内容の識別子を知らせる。生成物の片付けは
+// この知らせだけで行い、ライブラリ全体は読まない。所在が残っていて動画の行が
+// 消えないときは知らせない。
+func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	recorder := &releasedRecorder{}
+	db.OnVideosDeleted(recorder.record)
+
+	for _, file := range []VideoFile{
+		sampleFile("/media/a.mp4", "a", "key-a", 1, 0),
+		sampleFile("/media/a2.mp4", "a", "key-a", 1, 0),
+		sampleFile("/media/b.mp4", "b", "key-b", 2, 0),
+		sampleFile("/media/c.mp4", "c", "key-c", 3, 0),
+	} {
+		if _, err := db.UpsertVideo(ctx, file); err != nil {
+			t.Fatal(err)
+		}
+	}
+	location := func(path string) int64 {
+		t.Helper()
+		var id int64
+		if err := db.SQL().QueryRow(`select id from video_locations where path = ?`, path).Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+
+	// 同じ内容の所在が残るので、動画の行は消えない。
+	if err := db.DeleteVideoLocations(ctx, []int64{location("/media/a2.mp4")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); len(got) != 0 {
+		t.Fatalf("動画の行が残るのに知らせた: %v", got)
+	}
+
+	// 最後の所在が消えると、動画の行と一緒に知らせる。
+	if err := db.DeleteVideoLocations(ctx, []int64{location("/media/b.mp4")}); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); fmt.Sprint(got) != "[key-b]" {
+		t.Fatalf("DeleteVideoLocations の知らせ = %v, want [key-b]", got)
+	}
+
+	// 同じ所在の内容が変わると、前の内容の動画が消える。
+	if _, err := db.UpsertVideo(ctx, sampleFile("/media/c.mp4", "c", "key-c2", 4, time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); fmt.Sprint(got) != "[key-c]" {
+		t.Fatalf("内容の変更の知らせ = %v, want [key-c]", got)
+	}
+
+	// 登録を外すと、その下の動画がすべて消える。
+	folders, err := db.ListMediaFolders(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.DeleteMediaFolder(ctx, folders[0].ID, folders[0].Version); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); fmt.Sprint(got) != "[key-a key-c2]" {
+		t.Fatalf("DeleteMediaFolder の知らせ = %v, want [key-a key-c2]", got)
 	}
 }

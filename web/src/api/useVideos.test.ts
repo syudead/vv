@@ -2,6 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ListVideosParams, Video, VideoPage, VideoSort } from "./client";
+import { emitServerEvent, installFakeEventSource } from "./fakeEventSource";
 import type { VideosCriteria } from "./useVideos";
 
 /**
@@ -11,11 +12,15 @@ import type { VideosCriteria } from "./useVideos";
  * **このテストが同じ内容で通ること**が、既存の振る舞いを保った証拠になる。
  */
 
-const { listVideos } = vi.hoisted(() => ({ listVideos: vi.fn() }));
+const { listVideos, getVideo } = vi.hoisted(() => ({
+  listVideos: vi.fn(),
+  getVideo: vi.fn(),
+}));
 
 vi.mock("./client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./client")>()),
   listVideos,
+  getVideo,
 }));
 
 const { useVideos } = await import("./useVideos");
@@ -52,6 +57,8 @@ function page(ids: number[], nextCursor?: string): VideoPage {
 
 beforeEach(() => {
   calls = [];
+  installFakeEventSource();
+  getVideo.mockReset();
   listVideos.mockReset();
   listVideos.mockImplementation((params: ListVideosParams = {}) => {
     let settle: ((value: VideoPage) => void) | null = null;
@@ -317,5 +324,139 @@ describe("useVideos（条件と重複）", () => {
     await act(async () => calls[1]?.resolve(page([3, 4, 2, 5, 5])));
 
     expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3, 4, 5]);
+  });
+});
+
+describe("useVideos の準備の反映", () => {
+  it("動画が変わった知らせで、その項目だけを取り直して置き換える", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await act(async () => calls[0]?.resolve(page([1, 2], "next")));
+    expect(result.current.items).toHaveLength(2);
+
+    getVideo.mockResolvedValue({
+      ...item(2),
+      title: "代表の所在の題名",
+      previewState: "done",
+      durationMs: 5000,
+    });
+    await emitServerEvent("video", { id: 2 });
+    await waitFor(() => expect(result.current.items[1]?.previewState).toBe("done"));
+
+    expect(getVideo).toHaveBeenCalledTimes(1);
+    expect(getVideo.mock.calls[0]?.[0]).toBe(2);
+    // 一覧は読み直さず、読み込んだページと続きの位置を保つ。
+    expect(listVideos).toHaveBeenCalledTimes(1);
+    expect(result.current.cursor).toBe("next");
+    expect(result.current.items[1]).toMatchObject({
+      durationMs: 5000,
+      // 題名は一覧側の値を残す（フォルダ画面はそのフォルダの所在の題名を出す）。
+      title: "動画 2",
+    });
+  });
+
+  it("一覧に無い動画の知らせでは取りに行かない", async () => {
+    renderHook(() => useVideos({ sort: "addedDesc" }));
+    await act(async () => calls[0]?.resolve(page([1])));
+
+    await emitServerEvent("video", { id: 99 });
+
+    expect(getVideo).not.toHaveBeenCalled();
+  });
+
+  it("最初につながったら、準備中の項目だけを取り直す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await act(async () =>
+      calls[0]?.resolve({
+        items: [{ ...item(1), previewState: "done" }, item(2)],
+        total: 2,
+      }),
+    );
+    getVideo.mockResolvedValue({ ...item(2), previewState: "done" });
+
+    await emitServerEvent("open");
+
+    await waitFor(() => expect(result.current.items[1]?.previewState).toBe("done"));
+    expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([2]);
+  });
+
+  it("つなぎ直したら、切れていた間に消えた準備済みの動画も一覧から外す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await act(async () =>
+      calls[0]?.resolve({
+        items: [
+          { ...item(1), previewState: "done" },
+          { ...item(2), previewState: "done" },
+        ],
+        total: 2,
+      }),
+    );
+    await emitServerEvent("open");
+    expect(getVideo).not.toHaveBeenCalled();
+
+    const { RequestFailed } = await import("./client");
+    getVideo.mockImplementation((id: number) =>
+      id === 2
+        ? Promise.reject(new RequestFailed(404, "not_found", "見つかりません"))
+        : Promise.resolve({ ...item(1), previewState: "done" }),
+    );
+    await emitServerEvent("open");
+
+    await waitFor(() =>
+      expect(result.current.items.map((video) => video.id)).toEqual([1]),
+    );
+    expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([1, 2]);
+  });
+
+  it("ページの取得中に届いた知らせは、ページを反映したあとで取り直す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    getVideo.mockResolvedValue({ ...item(2), previewState: "done" });
+
+    // 一覧の応答はまだ返っていない。その間に動画 2 の準備が終わる。
+    await emitServerEvent("video", { id: 2 });
+    expect(getVideo).not.toHaveBeenCalled();
+
+    // 応答は知らせより古い内容（準備中）を持っている。
+    await act(async () => calls[0]?.resolve(page([1, 2])));
+
+    await waitFor(() => expect(result.current.items[1]?.previewState).toBe("done"));
+    expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([2]);
+  });
+
+  it("ページの取得中に表示中の動画の知らせが届いたら、ページを反映したあとでも取り直す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await act(async () => calls[0]?.resolve(page([1, 2], "next")));
+    getVideo.mockResolvedValue({ ...item(2), previewState: "done" });
+
+    // 続きの応答がまだ返らない間に、表示中の動画 2 の準備が終わる。
+    act(() => result.current.loadMore());
+    await emitServerEvent("video", { id: 2 });
+    await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(1));
+
+    // 並べ替えの値が変わった動画は続きのページにも現れる。遅れて届いた応答は
+    // 知らせより古い内容（準備中）を持っている。
+    await act(async () => calls[1]?.resolve(page([2, 3])));
+
+    await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        result.current.items
+          .filter((video) => video.id === 2)
+          .every((video) => video.previewState === "done"),
+      ).toBe(true),
+    );
+  });
+
+  it("取り直した動画が索引から消えていたら、一覧から外す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await act(async () => calls[0]?.resolve(page([1, 2])));
+    const { RequestFailed } = await import("./client");
+    getVideo.mockRejectedValue(new RequestFailed(404, "not_found", "見つかりません"));
+
+    await emitServerEvent("video", { id: 2 });
+
+    await waitFor(() =>
+      expect(result.current.items.map((video) => video.id)).toEqual([1]),
+    );
+    expect(result.current.total).toBe(99);
   });
 });

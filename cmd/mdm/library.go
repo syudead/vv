@@ -6,9 +6,9 @@ import (
 	"log/slog"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
+	"github.com/syudead/vv/internal/httpapi"
 	"github.com/syudead/vv/internal/jobs"
 	"github.com/syudead/vv/internal/media"
 	"github.com/syudead/vv/internal/scanner"
@@ -21,10 +21,11 @@ import (
 // internal/scanner と internal/jobs は保存の手段を知らず、interface 越しに
 // ここで渡された *store.DB を使う。
 type library struct {
-	db            *store.DB
-	scanner       *scanner.Scanner
-	logger        *slog.Logger
-	thumbnailsDir string
+	db      *store.DB
+	scanner *scanner.Scanner
+	logger  *slog.Logger
+	// events は画面へ送る変化の知らせ。nil なら知らせない。
+	events *httpapi.Events
 
 	// mu は走査の起動が重ならないようにする。実行中かどうかの判断は
 	// scans 表（部分ユニーク索引）が持つので、ここは goroutine を
@@ -34,9 +35,9 @@ type library struct {
 	baseCtx context.Context
 }
 
-// newLibrary は走査・ジョブの組み立てを行う。
-func newLibrary(cfg Config, db *store.DB, logger *slog.Logger) *library {
-	lib := &library{db: db, logger: logger, thumbnailsDir: cfg.ThumbnailsDir()}
+// newLibrary は走査の組み立てを行う。
+func newLibrary(db *store.DB, logger *slog.Logger, events *httpapi.Events) *library {
+	lib := &library{db: db, logger: logger, events: events}
 	lib.scanner = scanner.New(scanner.Options{
 		Index:    db,
 		Queue:    db,
@@ -46,21 +47,67 @@ func newLibrary(cfg Config, db *store.DB, logger *slog.Logger) *library {
 	return lib
 }
 
-// newWorker は解析とサムネイル生成のハンドラを組み立ててワーカーを返す。
+// newWorkers は取り込みの段階ごとにワーカーを1本ずつ組み立てる。
 //
 // ハンドラをここで組み立てるのは、internal/jobs から internal/media・
-// internal/store を参照させないためである。jobs が持つのは「直列に取り出して
+// internal/store を参照させないためである。jobs が持つのは「取り出して
 // 成否を記録する」進め方だけで、何をするかは cmd/mdm が決める。
-func newWorker(cfg Config, db *store.DB, logger *slog.Logger) *jobs.Worker {
-	return jobs.New(jobs.Options{
-		Queue: db,
-		Handlers: map[domain.JobKind]jobs.Handler{
-			domain.JobProbe:     probeHandler(db),
-			domain.JobThumbnail: thumbnailHandler(cfg, db),
-			domain.JobPreview:   previewHandler(cfg, db),
-		},
-		Logger: logger,
-	})
+//
+// 1件の成否を記録するたびに、その動画と段階ごとの残りが変わったことを画面へ
+// 知らせる。
+func newWorkers(
+	db *store.DB, assets *artifacts, logger *slog.Logger, events *httpapi.Events,
+) []*jobs.Worker {
+	handlers := map[domain.JobKind]jobs.Handler{
+		domain.JobProbe:     probeHandler(db),
+		domain.JobThumbnail: thumbnailHandler(db, assets),
+		domain.JobPreview:   previewHandler(db, assets),
+	}
+	workers := make([]*jobs.Worker, 0, len(domain.JobKinds))
+	byKind := make(map[domain.JobKind]*jobs.Worker, len(domain.JobKinds))
+	finished := func(job domain.Job) {
+		// サムネイルは解析が終わるまで取り出されない（store.ClaimJob）。解析の
+		// 成否が決まったら、待っていたサムネイルのワーカーを起こす。
+		if job.Kind == domain.JobProbe {
+			byKind[domain.JobThumbnail].Wake()
+		}
+		if events == nil {
+			return
+		}
+		events.VideoChanged(job.VideoID)
+		events.ProcessingChanged()
+	}
+	for _, kind := range domain.JobKinds {
+		worker := jobs.New(jobs.Options{
+			Kind:     kind,
+			Queue:    db,
+			Handler:  handlers[kind],
+			Finished: finished,
+			Logger:   logger,
+		})
+		workers = append(workers, worker)
+		byKind[kind] = worker
+	}
+	return workers
+}
+
+// wakeWorkers は仕事が積まれた段階のワーカーを起こし、残りが変わったことを
+// 画面へ知らせる。保存層の OnJobsChanged に渡す。
+func wakeWorkers(workers []*jobs.Worker, events *httpapi.Events) func(kinds []domain.JobKind) {
+	byKind := make(map[domain.JobKind]*jobs.Worker, len(workers))
+	for _, worker := range workers {
+		byKind[worker.Kind()] = worker
+	}
+	return func(kinds []domain.JobKind) {
+		for _, kind := range kinds {
+			if worker, ok := byKind[kind]; ok {
+				worker.Wake()
+			}
+		}
+		if events != nil {
+			events.ProcessingChanged()
+		}
+	}
 }
 
 // probeHandler は ffprobe の結果を索引へ反映する。
@@ -97,7 +144,7 @@ func probeHandler(db *store.DB) jobs.Handler {
 	}
 }
 
-func previewHandler(cfg Config, db *store.DB) jobs.Handler {
+func previewHandler(db *store.DB, assets *artifacts) jobs.Handler {
 	return func(ctx context.Context, job domain.Job) error {
 		video, err := db.GetVideo(ctx, job.VideoID)
 		if err != nil {
@@ -119,7 +166,11 @@ func previewHandler(cfg Config, db *store.DB) jobs.Handler {
 		validateContent := func(validateCtx context.Context) (bool, error) {
 			return db.PreviewSourceCurrent(validateCtx, job)
 		}
-		if err := media.GeneratePreview(ctx, job.LocationPath, cfg.ThumbnailsDir(), job.ContentKey, *video.DurationMs, validateContent); err != nil {
+		// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
+		// 生成物の削除と直列にする。
+		unlock := assets.lock(job.ContentKey)
+		defer unlock()
+		if err := media.GeneratePreview(ctx, job.LocationPath, assets.thumbnailsDir, job.ContentKey, *video.DurationMs, validateContent); err != nil {
 			return err
 		}
 		applied, err := db.CompletePreviewForContent(context.WithoutCancel(ctx), job)
@@ -127,6 +178,10 @@ func previewHandler(cfg Config, db *store.DB) jobs.Handler {
 			return err
 		}
 		if !applied {
+			// 生成中に動画が消えていたら、書き終えたプレビューを残さない。
+			if err := assets.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey); err != nil {
+				return err
+			}
 			return media.ErrPreviewStale
 		}
 		return nil
@@ -134,7 +189,7 @@ func previewHandler(cfg Config, db *store.DB) jobs.Handler {
 }
 
 // thumbnailHandler は静止画を1枚生成し、状態を記録する。
-func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
+func thumbnailHandler(db *store.DB, assets *artifacts) jobs.Handler {
 	return func(ctx context.Context, job domain.Job) error {
 		video, err := db.GetVideo(ctx, job.VideoID)
 		if err != nil {
@@ -156,37 +211,37 @@ func thumbnailHandler(cfg Config, db *store.DB) jobs.Handler {
 		if err := checkReadableRegularFile(job.LocationPath); err != nil {
 			return err
 		}
+		// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
+		// 生成物の削除と直列にする。
+		unlock := assets.lock(job.ContentKey)
+		defer unlock()
 		// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
 		// FailClaimedJob が動画側へ記録する。
 		hadThumbnail := video.ThumbnailState == domain.ThumbnailStateDone
 		if !hadThumbnail {
 			if _, err := media.Thumbnail(
-				ctx, job.LocationPath, durationMs, cfg.ThumbnailsDir(), job.ContentKey,
+				ctx, job.LocationPath, durationMs, assets.thumbnailsDir, job.ContentKey,
 			); err != nil {
 				return err
 			}
 			applied, err := db.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
-			if err != nil || !applied {
+			if err != nil {
 				return err
+			}
+			if !applied {
+				// 生成中に動画が消えていたら、書き終えたサムネイルを残さない。
+				return assets.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
 			}
 		}
 		if err := media.GenerateSeekThumbnails(
-			ctx, job.LocationPath, cfg.ThumbnailsDir(), job.ContentKey,
+			ctx, job.LocationPath, assets.thumbnailsDir, job.ContentKey,
 		); err != nil {
 			return err
 		}
 
-		// A scan can delete the video while ffmpeg is still generating files.
-		// Recheck after the atomic rename so a cache committed after scan cleanup
-		// cannot remain orphaned indefinitely.
-		keys, err := db.ContentKeys(context.WithoutCancel(ctx))
-		if err != nil {
-			return err
-		}
-		if _, referenced := keys[job.ContentKey]; !referenced {
-			return media.RemoveSeekThumbnails(cfg.ThumbnailsDir(), job.ContentKey)
-		}
-		return nil
+		// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
+		// 参照の無くなった生成物を残さない。
+		return assets.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
 	}
 }
 
@@ -233,7 +288,17 @@ func (l *library) StartScan(ctx context.Context) (domain.Scan, error) {
 	//nolint:contextcheck // 要求の ctx を走査へ持ち込まないのは意図した設計である。
 	go l.runScan(scan.ID)
 
+	l.scanChanged()
 	return scan, nil
+}
+
+// scanChanged はスキャンの状態が変わったことを画面へ知らせる。走査は仕事を
+// 積みながら進むので、段階ごとの残りも同じ知らせで送られる（Events.ScanChanged）。
+func (l *library) scanChanged() {
+	if l.events == nil {
+		return
+	}
+	l.events.ScanChanged()
 }
 
 // CurrentScan は直近の走査を返す。
@@ -244,11 +309,15 @@ func (l *library) CurrentScan(ctx context.Context) (domain.Scan, error) {
 // ReportScanProgress は走査の進捗を記録する。走査中も一覧・再生は通常どおり
 // 応答するので、ここでは行を1つ書き換えるだけにする。
 func (l *library) ReportScanProgress(ctx context.Context, result domain.ScanResult) error {
-	return l.db.UpdateScanProgress(ctx, l.currentScanID(ctx), domain.ScanProgress{
+	if err := l.db.UpdateScanProgress(ctx, l.currentScanID(ctx), domain.ScanProgress{
 		Total:     result.Total,
 		Completed: result.Completed(),
 		Failed:    result.Failed,
-	})
+	}); err != nil {
+		return err
+	}
+	l.scanChanged()
+	return nil
 }
 
 // currentScanID は進捗の書き込み先を返す。取れない場合は 0 を返し、
@@ -314,116 +383,9 @@ func (l *library) runScan(scanID int64) {
 		l.logger.Warn("取り込みの終了を記録できませんでした", slog.Any("error", err))
 	}
 
-	// 走査のたびに掃除する。起動時だけだと、長く動かしているうちに完了行が
-	// 積み上がる（取り込み直後は最大 2万行になる）。
-	l.reconcilePreviews(closeCtx)
-	l.cleanFinishedJobs(closeCtx)
-	l.cleanSeekThumbnails(closeCtx)
-	l.cleanPreviews(closeCtx)
-	l.cleanPreviewTemps(media.PreviewTempCutoff(time.Now()))
-}
-
-func (l *library) cleanSeekThumbnails(ctx context.Context) {
-	keys, err := l.db.ContentKeys(ctx)
-	if err != nil {
-		l.logger.Warn("シークサムネイルの参照を読み出せませんでした", slog.Any("error", err))
-		return
-	}
-	removed, err := media.RemoveOrphanSeekThumbnails(l.thumbnailsDir, keys)
-	if err != nil {
-		l.logger.Warn("孤児シークサムネイルを掃除できませんでした", slog.Any("error", err))
-		return
-	}
-	if removed > 0 {
-		l.logger.Info("孤児シークサムネイルを掃除しました", slog.Int("count", removed))
-	}
-}
-
-func (l *library) cleanPreviews(ctx context.Context) {
-	keys, err := l.db.ContentKeys(ctx)
-	if err != nil {
-		l.logger.Warn("プレビューの参照を読み出せませんでした", slog.Any("error", err))
-		return
-	}
-	removed, err := media.RemoveOrphanPreviews(l.thumbnailsDir, keys)
-	if err != nil {
-		l.logger.Warn("孤児プレビューを掃除できませんでした", slog.Any("error", err))
-		return
-	}
-	if removed > 0 {
-		l.logger.Info("孤児プレビューを掃除しました", slog.Int("count", removed))
-	}
-}
-
-func (l *library) cleanPreviewTemps(cutoff time.Time) {
-	removed, err := media.RemoveAbandonedPreviewTemps(l.thumbnailsDir, cutoff)
-	if err != nil {
-		l.logger.Warn("中断したプレビュー生成物を掃除できませんでした", slog.Any("error", err))
-		return
-	}
-	if removed > 0 {
-		l.logger.Info("中断したプレビュー生成物を掃除しました", slog.Int("count", removed))
-	}
-}
-
-// reconcileProcessingFailures は、読み取りとサムネイルの終端失敗がジョブにだけ
-// 記録されて、動画側が pending のまま残った状態を直す。失敗を同じ取引で記録する
-// ようになる前に止まった動画のためで、起動時に1度呼ぶ。
-func (l *library) reconcileProcessingFailures(ctx context.Context) {
-	marked, requeued, err := l.db.ReconcileProcessingFailures(ctx)
-	if err != nil {
-		l.logger.Warn("読み取り・サムネイルの失敗状態を整合できませんでした", slog.Any("error", err))
-		return
-	}
-	if marked > 0 || requeued > 0 {
-		l.logger.Info("読み取り・サムネイルの失敗状態を整合しました",
-			slog.Int64("failed", marked), slog.Int64("requeued", requeued))
-	}
-}
-
-func (l *library) reconcilePreviews(ctx context.Context) {
-	marked, requeued, err := l.db.ReconcilePreviewFailures(ctx)
-	if err != nil {
-		l.logger.Warn("プレビュー失敗状態を整合できませんでした", slog.Any("error", err))
-		return
-	}
-	if marked > 0 || requeued > 0 {
-		l.logger.Info("プレビュー失敗状態を整合しました", slog.Int64("failed", marked), slog.Int64("requeued", requeued))
-	}
-	assets, err := l.db.PreviewAssets(ctx)
-	if err != nil {
-		l.logger.Warn("プレビューの状態を読み出せませんでした", slog.Any("error", err))
-		return
-	}
-	for _, asset := range assets {
-		if asset.State != domain.PreviewStateDone {
-			continue
-		}
-		path := media.PreviewPath(l.thumbnailsDir, asset.ContentKey)
-		manifest := media.PreviewManifestPath(l.thumbnailsDir, asset.ContentKey)
-		if _, err := media.VerifyPreview(path, manifest); err == nil {
-			continue
-		}
-		if err := media.RemovePreview(l.thumbnailsDir, asset.ContentKey); err != nil {
-			l.logger.Warn("壊れたプレビューを削除できませんでした", slog.Any("error", err))
-		}
-		if err := l.db.RequeuePreviewRepair(ctx, asset.ID); err != nil {
-			l.logger.Warn("プレビューの修復ジョブを積めませんでした", slog.Any("error", err))
-		}
-	}
-}
-
-// cleanFinishedJobs は保存期間を過ぎた完了・失敗のジョブを消す。
-// 後始末なので、失敗しても取り込みの成否には影響させない。
-func (l *library) cleanFinishedJobs(ctx context.Context) {
-	removed, err := l.db.DeleteFinishedJobsBefore(ctx, time.Now().Add(-store.JobRetention))
-	if err != nil {
-		l.logger.Warn("完了したジョブを掃除できませんでした", slog.Any("error", err))
-		return
-	}
-	if removed > 0 {
-		l.logger.Info("古いジョブを掃除しました", slog.Int64("count", removed))
-	}
+	// 起動時やスキャンの後にライブラリ全体を見る後始末はしない。全体を読むのは
+	// 利用者が取り込みを始めたときの走査だけである。
+	l.scanChanged()
 }
 
 // scanContext は走査に使う context を返す。
@@ -445,10 +407,12 @@ func (l *library) bindContext(ctx context.Context) {
 	l.baseCtx = ctx
 }
 
-// recoverInterrupted は前回の停止で中途半端に残った状態を片付ける。
+// recoverInterrupted は前回の停止で中途半端に残った状態を戻す。
 //
 // running のまま残った走査を閉じないと、「実行中は1件だけ」の制約が働いた
-// まま二度と取り込みを始められなくなる。ジョブの巻き戻しはワーカーが行う。
+// まま二度と取り込みを始められなくなる。running のまま残った仕事は queued へ
+// 戻し、各段階のワーカーが続きから処理する。どちらも前回の停止で残った行だけを
+// 対象にし、ライブラリ全体は読まない。
 func (l *library) recoverInterrupted(ctx context.Context) error {
 	closed, err := l.db.FailInterruptedScans(ctx)
 	if err != nil {
@@ -458,7 +422,12 @@ func (l *library) recoverInterrupted(ctx context.Context) error {
 		l.logger.Info("中断していた取り込みを閉じました", slog.Int64("count", closed))
 	}
 
-	l.cleanFinishedJobs(ctx)
-	l.cleanPreviewTemps(time.Now())
+	restored, err := l.db.RequeueRunningJobs(ctx)
+	if err != nil {
+		return err
+	}
+	if restored > 0 {
+		l.logger.Info("中断したジョブを待ち行列へ戻しました", slog.Int64("count", restored))
+	}
 	return nil
 }

@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -45,7 +44,7 @@ func GenerateSeekThumbnails(
 		return fmt.Errorf("シークサムネイルの置き場所を作れません: %w", err)
 	}
 
-	temporary, err := os.MkdirTemp(filepath.Dir(target), ".seek-*")
+	temporary, err := makeTemporaryDir(thumbnailsDir, "seek-*")
 	if err != nil {
 		return fmt.Errorf("シークサムネイルの一時領域を作れません: %w", err)
 	}
@@ -95,52 +94,6 @@ func RemoveSeekThumbnails(thumbnailsDir, contentKey string) error {
 		return fmt.Errorf("シークサムネイルを削除できません: %w", err)
 	}
 	return nil
-}
-
-// RemoveOrphanSeekThumbnails removes completed caches that no longer have a
-// video row. Temporary directories are ignored because a worker may still be
-// generating them while a scan is being finalized.
-func RemoveOrphanSeekThumbnails(
-	thumbnailsDir string, contentKeys map[string]struct{},
-) (int, error) {
-	root := filepath.Join(thumbnailsDir, "seek")
-	prefixes, err := os.ReadDir(root)
-	if os.IsNotExist(err) {
-		return 0, nil
-	}
-	if err != nil {
-		return 0, fmt.Errorf("シークサムネイルの置き場所を読めません: %w", err)
-	}
-
-	keep := make(map[string]struct{}, len(contentKeys))
-	for contentKey := range contentKeys {
-		keep[thumbnailFileName(contentKey)] = struct{}{}
-	}
-
-	removed := 0
-	for _, prefix := range prefixes {
-		if !prefix.IsDir() {
-			continue
-		}
-		prefixPath := filepath.Join(root, prefix.Name())
-		entries, err := os.ReadDir(prefixPath)
-		if err != nil {
-			return removed, fmt.Errorf("シークサムネイルを読めません (%s): %w", prefixPath, err)
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".seek-") {
-				continue
-			}
-			if _, ok := keep[entry.Name()]; ok {
-				continue
-			}
-			if err := os.RemoveAll(filepath.Join(prefixPath, entry.Name())); err != nil {
-				return removed, fmt.Errorf("孤児シークサムネイルを削除できません (%s): %w", entry.Name(), err)
-			}
-			removed++
-		}
-	}
-	return removed, nil
 }
 
 func seekThumbnailArgs(videoPath, outputPattern string) []string {

@@ -4,6 +4,7 @@ import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RelatedVideos, Video } from "../api/client";
+import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { TooltipProvider } from "../ui/Tooltip";
 import type { PlayerControls } from "./playerControls";
 import type { PlayerStatus } from "./VideoPlayer";
@@ -159,6 +160,7 @@ describe("VideoPage", () => {
     server.probe.mockReset();
     server.open.mockReset();
     fetchMock.mockReset();
+    installFakeEventSource();
     fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       const method = init?.method ?? "GET";
@@ -442,7 +444,8 @@ describe("VideoPage", () => {
       expect(screen.queryByTestId("video-player")).toBeNull();
       expect(screen.getAllByText("読み取り中")).toHaveLength(4);
 
-      await advance(2000);
+      await emitServerEvent("video", { id: 7 });
+      await advance(0);
       expect(screen.getByTestId("video-player")).toBeDefined();
       expect(screen.queryByText("再生の準備をしています")).toBeNull();
       expect(
@@ -451,12 +454,14 @@ describe("VideoPage", () => {
         ),
       ).toBeDefined();
 
-      await advance(2000);
+      await emitServerEvent("video", { id: 7 });
+      await advance(0);
       expect(screen.getByText("一覧用プレビューを作成中 · 再生はできます")).toBeDefined();
       // thumbnailState などが変わっても、プレイヤーは作り直さない。
       expect(playerMock.mounts).toBe(1);
 
-      await advance(2000);
+      await emitServerEvent("video", { id: 7 });
+      await advance(0);
       expect(screen.queryByText(/を作成中/)).toBeNull();
       const calls = fetchMock.mock.calls.filter(
         ([input]) => String(input) === "/api/videos/7",
@@ -478,7 +483,8 @@ describe("VideoPage", () => {
       ]);
       renderPage();
       await screen.findByText("再生の準備をしています");
-      await advance(2000);
+      await emitServerEvent("video", { id: 7 });
+      await advance(0);
       const alert = await screen.findByRole("alert");
       expect(within(alert).getByText("この動画を読み取れませんでした")).toBeDefined();
       expect(within(alert).getByText("moov atom not found")).toBeDefined();
@@ -530,7 +536,8 @@ describe("VideoPage", () => {
       });
       renderPage("7", "/?q=a");
       await ready();
-      await advance(2000);
+      await emitServerEvent("video", { id: 7 });
+      await advance(0);
       const alert = await screen.findByRole("alert");
       expect(within(alert).getByText("この動画は開けません")).toBeDefined();
       expect(screen.queryByTestId("video-player")).toBeNull();

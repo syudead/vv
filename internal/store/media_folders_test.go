@@ -48,7 +48,7 @@ func TestMediaFolderOperationsAreAtomicAndScoped(t *testing.T) {
 	if err := db.EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := db.ClaimJob(ctx)
+	claimed, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestMediaFolderOperationsAreAtomicAndScoped(t *testing.T) {
 	if err := db.CompleteClaimedJob(ctx, claimed); err != nil {
 		t.Fatal(err)
 	}
-	retried, err := db.ClaimJob(ctx)
+	retried, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,7 +201,7 @@ func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 	if err := db.EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, domain.JobProbe)
 	if err != nil || job.VideoID != video.ID || job.LocationPath != file.Path {
 		t.Fatalf("root video job is not claimable: %+v, %v", job, err)
 	}
