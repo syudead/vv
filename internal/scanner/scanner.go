@@ -297,12 +297,12 @@ func ensureReadableDirectory(path string) error {
 	if err != nil {
 		return err
 	}
-	defer dir.Close()
-	_, err = dir.Readdirnames(1)
-	if errors.Is(err, io.EOF) {
-		return nil
+	_, readErr := dir.Readdirnames(1)
+	closeErr := dir.Close()
+	if readErr != nil && !errors.Is(readErr, io.EOF) {
+		return readErr
 	}
-	return err
+	return closeErr
 }
 
 // ingest は1つのファイルを索引に反映する。
