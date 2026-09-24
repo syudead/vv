@@ -82,6 +82,22 @@ func TestReprobeVideo(t *testing.T) {
 	}
 }
 
+// 読み取りのやり直しの応答にもタグが載る（#267）。
+func TestReprobeVideoIncludesTags(t *testing.T) {
+	video := failedProbeVideo()
+	library := &fakeLibrary{videos: map[int64]domain.Video{1: video}}
+	reprober := &fakeReprober{library: library, jobs: map[domain.JobKind]int{}}
+	tags := &fakeTags{byContentKey: map[string][]domain.TagRef{
+		video.ContentKey: {{ID: 4, Name: "壊れた"}},
+	}}
+	handler := newTestServer(t, Options{Videos: library, Catalog: reprober.catalog(), Tags: tags})
+
+	got := decode[gen.Video](t, do(t, handler, http.MethodPost, "/api/videos/1/probe"))
+	if len(got.Tags) != 1 || got.Tags[0].Name != "壊れた" {
+		t.Fatalf("tags = %+v", got.Tags)
+	}
+}
+
 // 読み取り済みの動画は 409、知らない id は 404 になる。
 func TestReprobeVideoRejectsNonFailedAndUnknown(t *testing.T) {
 	library := &fakeLibrary{videos: map[int64]domain.Video{1: sampleVideo(1, "読み取り済み")}}

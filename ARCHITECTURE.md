@@ -27,7 +27,12 @@ carries its representative location and seek-preview state, and
 metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the read-only folder browsing API
 (`/api/folders*`), the tag management API (`/api/tags*`: list, create,
-rename, delete, merge and synonym registration/removal), byte-range streaming,
+rename, delete, merge and synonym registration/removal), the video-tags API
+(`/api/video-tags` to attach/detach a tag on a set of videos and
+`/api/video-tags/summary` to summarize which tags apply to a selection) and
+`GET /api/videos/ids` (all matching video ids for a listing query, used for
+"select all"; distinguished from `GET /api/videos/{id}` by `ServeMux`'s
+literal-over-wildcard precedence), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
 Both video lists, the library (`GET /api/videos`) and a folder
@@ -40,6 +45,12 @@ every match after all of them apply, and each item carries the folder of the
 location it was listed from (`Video.folder`, built from the registered media
 folders with `domain.LocateVideoFolder`)
 ([specs/013-library-search/contracts/list-api.md](specs/013-library-search/contracts/list-api.md)).
+Every `Video` response (list, single, related, and retried-probe) also carries
+`tags` (an empty array when none), looked up in `internal/httpapi` from
+`TagStore.TagsByContentKeys` the same way `progressFor` looks up playback
+positions. The library list additionally accepts up to 16 `tag` ids (AND) and
+reports any that no longer exist in `missingTagIds`
+([specs/014-video-tags/contracts/tags-api.md](specs/014-video-tags/contracts/tags-api.md)).
 
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content

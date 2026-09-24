@@ -47,6 +47,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 絞り込みに合う動画の全件の id を返す
+         * @description `listVideos` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う全件の
+         *     id を、ページングせずに返す。並びは決めない。「すべて選択」用
+         *     （specs/014-video-tags/contracts/tags-api.md §5）。`/api/videos/{id}` とは
+         *     Go の ServeMux の字面の段の優先で区別される。
+         */
+        get: operations["listVideoIds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}": {
         parameters: {
             query?: never;
@@ -410,6 +433,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/video-tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画へタグを付ける・外す
+         * @description `videoIds` へ `action`（`add`・`remove`）の `tag` を適用する。再生画面の1本も
+         *     選択バーの複数本も、同じこの経路を使う。`remove` は `tag.id` での指定だけを
+         *     受け付け、`name` を送ると400になる。`tag: { name }` の付与は、名前を
+         *     シノニムを含めて引き、無ければ作る。`videoIds` は1件以上20000件以下で、
+         *     重複は1つとして数える。処理は1つのトランザクションで、全部に反映するか
+         *     1つも反映しない（specs/014-video-tags/contracts/tags-api.md §4）。
+         */
+        post: operations["updateVideoTags"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/video-tags/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 選んだ動画に付いたタグの要約を返す
+         * @description `total` は `videoIds` のうちいまライブラリにある動画の数、`count` はそのうち
+         *     そのタグが付いている数。`count < total` のタグが一部にだけ付いている。
+         *     `items` は1本以上に付いているタグだけで、名前の自然順
+         *     （specs/014-video-tags/contracts/tags-api.md §4）。
+         */
+        post: operations["summarizeVideoTags"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/directories": {
         parameters: {
             query?: never;
@@ -648,6 +719,44 @@ export interface components {
              */
             mergeTagId?: number;
         };
+        /**
+         * @description 付与で使うタグの指定。id と name のちょうど一方を持つ。両方あるか、どちらも
+         *     無いときは invalid_request（400）にする（contracts/tags-api.md §1）。
+         */
+        TagInput: {
+            /** Format: int64 */
+            id?: number;
+            name?: string;
+        };
+        /** @enum {string} */
+        VideoTagsAction: "add" | "remove";
+        VideoTagsRequest: {
+            videoIds: number[];
+            action: components["schemas"]["VideoTagsAction"];
+            tag: components["schemas"]["TagInput"];
+        };
+        VideoTagsResponse: {
+            tag: components["schemas"]["TagRef"];
+            /** @description videoIds のうちいまライブラリにある動画の数 */
+            applied: number;
+        };
+        VideoTagsSummaryRequest: {
+            videoIds: number[];
+        };
+        VideoTagsSummaryItem: {
+            tag: components["schemas"]["TagRef"];
+            count: number;
+        };
+        VideoTagsSummary: {
+            total: number;
+            /** @description 1本以上に付いているタグだけ。名前の自然順 */
+            items: components["schemas"]["VideoTagsSummaryItem"][];
+        };
+        VideoIdsResponse: {
+            ids: number[];
+            /** @description tag のうち存在しなかった id。1つも無ければ省略される */
+            missingTagIds?: number[];
+        };
         DirectoryEntry: {
             name: string;
             path: string;
@@ -689,6 +798,11 @@ export interface components {
             total: number;
             /** @description 次のページの取得に渡す。これ以上無い場合は省略される */
             nextCursor?: string;
+            /**
+             * @description tag のうち存在しなかった id。1つも無ければ省略される
+             *     （specs/014-video-tags/contracts/tags-api.md §5）
+             */
+            missingTagIds?: number[];
         };
         FolderPreview: {
             /** Format: int64 */
@@ -777,6 +891,11 @@ export interface components {
             progress?: components["schemas"]["Progress"];
             location?: components["schemas"]["VideoLocation"];
             folder?: components["schemas"]["VideoFolder"];
+            /**
+             * @description 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
+             *     無ければ空配列（contracts/tags-api.md §1）
+             */
+            tags: components["schemas"]["TagRef"][];
             /**
              * @description シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
              *     seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
@@ -985,6 +1104,12 @@ export interface operations {
                 cursor?: string;
                 /** @description 1ページの件数 */
                 limit?: number;
+                /**
+                 * @description タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
+                 *     最大16個、17個以上は400。存在しない id は条件から落とし、応答の
+                 *     missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+                 */
+                tag?: number[];
             };
             header?: never;
             path?: never;
@@ -999,6 +1124,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    listVideoIds: {
+        parameters: {
+            query?: {
+                query?: string;
+                watch?: components["schemas"]["WatchFilter"];
+                playable?: boolean;
+                /** @description 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す */
+                tag?: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 条件に合う全件の id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoIdsResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
@@ -1681,6 +1833,65 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    updateVideoTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoTagsRequest"];
+            };
+        };
+        responses: {
+            /** @description 適用結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoTagsResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            /** @description 指定したタグがもう無い（tag_not_found） */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    summarizeVideoTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoTagsSummaryRequest"];
+            };
+        };
+        responses: {
+            /** @description タグの要約 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoTagsSummary"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
         };
     };
     listDirectories: {

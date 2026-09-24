@@ -18,6 +18,7 @@ function item(id: number, overrides: Partial<Video> = {}): Video {
     thumbnailUrl: `/api/videos/${String(id)}/thumbnail`,
     previewState: "done",
     durationMs: 65_000,
+    tags: [],
     ...overrides,
   };
 }

@@ -21,6 +21,15 @@ type fakeTags struct {
 	lastName  string
 	lastTag   *int64 // MergeTagのsourceID・AddSynonymのmergeTagID
 	err       error
+
+	// #267: 付け外し・要約・一覧のタグ引きの決め打ち。
+	lastVideoIDs  []int64
+	attachRef     domain.TagRef
+	attachApplied int
+	detachRef     domain.TagRef
+	detachApplied int
+	summary       domain.TagSummary
+	byContentKey  map[string][]domain.TagRef
 }
 
 func (f *fakeTags) ListTags(context.Context) ([]domain.Tag, error) {
@@ -72,6 +81,51 @@ func (f *fakeTags) AddSynonym(_ context.Context, tagID int64, name string, merge
 func (f *fakeTags) RemoveSynonym(_ context.Context, tagID int64, name string) error {
 	f.operation, f.lastID, f.lastName = "remove-synonym", tagID, name
 	return f.err
+}
+
+func (f *fakeTags) AttachTagByID(_ context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error) {
+	f.operation, f.lastID, f.lastVideoIDs = "attach-by-id", tagID, videoIDs
+	if f.err != nil {
+		return domain.TagRef{}, 0, f.err
+	}
+	return f.attachRef, f.attachApplied, nil
+}
+
+func (f *fakeTags) AttachTagByName(_ context.Context, videoIDs []int64, name string) (domain.TagRef, int, error) {
+	f.operation, f.lastName, f.lastVideoIDs = "attach-by-name", name, videoIDs
+	if f.err != nil {
+		return domain.TagRef{}, 0, f.err
+	}
+	return f.attachRef, f.attachApplied, nil
+}
+
+func (f *fakeTags) DetachTag(_ context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error) {
+	f.operation, f.lastID, f.lastVideoIDs = "detach", tagID, videoIDs
+	if f.err != nil {
+		return domain.TagRef{}, 0, f.err
+	}
+	return f.detachRef, f.detachApplied, nil
+}
+
+func (f *fakeTags) Summary(_ context.Context, videoIDs []int64) (domain.TagSummary, error) {
+	f.operation, f.lastVideoIDs = "summary", videoIDs
+	if f.err != nil {
+		return domain.TagSummary{}, f.err
+	}
+	return f.summary, nil
+}
+
+func (f *fakeTags) TagsByContentKeys(_ context.Context, contentKeys []string) (map[string][]domain.TagRef, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	out := make(map[string][]domain.TagRef, len(contentKeys))
+	for _, key := range contentKeys {
+		if refs, ok := f.byContentKey[key]; ok {
+			out[key] = refs
+		}
+	}
+	return out, nil
 }
 
 func TestListTagsReturnsItems(t *testing.T) {

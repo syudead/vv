@@ -15,7 +15,9 @@ import {
 } from "./client";
 import { subscribeProgress } from "./progressEvents";
 import { subscribeServerEvents } from "./serverEvents";
+import { applyTagToTags } from "./tagOrder";
 import { isProcessing } from "./useVideoDetail";
+import { subscribeVideoTags } from "./videoTagsEvents";
 
 /**
  * mergeRefreshed は取り直した1件を、一覧に出ている項目へ重ねる。
@@ -57,6 +59,11 @@ export interface VideosCriteria {
    * folder を渡さない（ライブラリ）ときは無視する。省略時は direct と同じ。
    */
   scope?: FolderScope;
+  /**
+   * 絞り込むタグの id（listVideos だけが受け取る。listFolderVideos には渡さない。
+   * specs/014-video-tags/contracts/tags-api.md §5）。
+   */
+  tag?: number[];
 }
 
 /** criteriaKey は条件を値で比べるための文字列にする。 */
@@ -68,6 +75,7 @@ function criteriaKey(criteria: VideosCriteria): string {
     criteria.sort,
     criteria.sort === "random" ? (criteria.seed ?? null) : null,
     criteria.scope ?? "direct",
+    criteria.tag ?? [],
   ]);
 }
 
@@ -96,6 +104,12 @@ type VideosDataAction =
   | { type: "clear" }
   | { type: "stop" }
   | { type: "progress"; videoId: number; progress: NonNullable<Video["progress"]> }
+  | {
+      type: "tags";
+      videoIds: readonly number[];
+      tag: Video["tags"][number];
+      action: "add" | "remove";
+    }
   | { type: "refresh"; videoId: number; video: Video }
   | { type: "remove"; videoId: number }
   | {
@@ -127,6 +141,18 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
             ),
           }
         : state;
+    case "tags": {
+      const targets = new Set(action.videoIds);
+      if (!state.items.some((video) => targets.has(video.id))) return state;
+      return {
+        ...state,
+        items: state.items.map((video) =>
+          targets.has(video.id)
+            ? { ...video, tags: applyTagToTags(video.tags, action.tag, action.action) }
+            : video,
+        ),
+      };
+    }
     case "refresh":
       return state.items.some((video) => video.id === action.videoId)
         ? {
@@ -264,6 +290,16 @@ export function useVideos(
     [],
   );
 
+  // 付け外しの結果を、表示中の項目へ反映する（issue 267、Plan の Structural
+  // Decisions 7）。絞り込みに合わなくなった項目も、その場では一覧から外さない。
+  useEffect(
+    () =>
+      subscribeVideoTags((videoIds, tag, action) => {
+        dispatch({ type: "tags", videoIds, tag, action });
+      }),
+    [],
+  );
+
   // 取り込みの準備が進んだ動画を、一覧を読み直さずに1件ずつ取り直す。読み直すと
   // スクロール位置や読み込んだページが失われる。取り直しは1件ずつ順に行い、
   // 知らせが重なっても同じ動画を重ねて取りに行かない。
@@ -383,7 +419,7 @@ export function useVideos(
         };
         const page =
           target === undefined
-            ? await listVideos(params)
+            ? await listVideos({ ...params, tag: current.tag })
             : await listFolderVideos({
                 folder: target,
                 scope: current.scope,

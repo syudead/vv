@@ -13,6 +13,7 @@ const base: Video = {
   thumbnailState: "done",
   previewState: "done",
   seekThumbnailState: "done",
+  tags: [],
 };
 
 function states(video: Partial<Video>) {

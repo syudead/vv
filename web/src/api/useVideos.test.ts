@@ -49,6 +49,7 @@ function item(id: number): Video {
     probeState: "done",
     thumbnailState: "done",
     previewState: "pending",
+    tags: [],
   };
 }
 
@@ -611,5 +612,77 @@ describe("useVideos の準備の反映", () => {
       expect(result.current.items.map((video) => video.id)).toEqual([1]),
     );
     expect(result.current.total).toBe(99);
+  });
+
+  // issue 267: useVideos は tag の条件を listVideos へ渡し、続きのページの取得でも
+  // 同じ条件を渡し続ける。
+  it("tag の条件を最初の取得にも続きの取得にも渡す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc", tag: [3, 8] }));
+
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.params.tag).toEqual([3, 8]);
+
+    await act(async () => calls[0]?.resolve(page([1, 2], "cursor-1")));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1]?.params.tag).toEqual([3, 8]);
+  });
+
+  // issue 267: 付け外しの結果は、表示中の項目の tags へその場で反映される
+  // （一覧を取り直さない。Plan の Structural Decisions 7）。
+  it("付け外しの通知を受けて、表示中の項目の tags を書き換える", async () => {
+    const { nextVideoTagsSequence, recordAppliedVideoTags } =
+      await import("./videoTagsEvents");
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2])));
+
+    act(() => {
+      recordAppliedVideoTags(
+        [2],
+        { id: 5, name: "旅行" },
+        "add",
+        nextVideoTagsSequence(),
+      );
+    });
+    expect(result.current.items.find((video) => video.id === 2)?.tags).toEqual([
+      { id: 5, name: "旅行" },
+    ]);
+    expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([]);
+
+    act(() => {
+      recordAppliedVideoTags(
+        [2],
+        { id: 5, name: "旅行" },
+        "remove",
+        nextVideoTagsSequence(),
+      );
+    });
+    expect(result.current.items.find((video) => video.id === 2)?.tags).toEqual([]);
+  });
+
+  // N1: 応答が送った順と違う順で届いても、後から送った操作を古い応答で
+  // 巻き戻さない。
+  it("古い応答が後から届いても、同じ動画・タグの新しい結果を巻き戻さない", async () => {
+    const { nextVideoTagsSequence, recordAppliedVideoTags } =
+      await import("./videoTagsEvents");
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1])));
+
+    const first = nextVideoTagsSequence();
+    const second = nextVideoTagsSequence();
+
+    // 2番目に送った「外す」の応答が先に届く。
+    act(() => {
+      recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "remove", second);
+    });
+    expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([]);
+
+    // 1番目に送った「付ける」の応答が遅れて届いても、2番目の結果を上書きしない。
+    act(() => {
+      recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "add", first);
+    });
+    expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([]);
   });
 });

@@ -48,6 +48,7 @@ function video(id: number, title: string, extra: Partial<Video> = {}): Video {
     probeState: "done",
     thumbnailState: "done",
     previewState: "pending",
+    tags: [],
     ...extra,
   };
 }

@@ -30,6 +30,8 @@ export function isVideoSort(value: unknown): value is VideoSort {
   return typeof value === "string" && (videoSorts as readonly string[]).includes(value);
 }
 export type WatchFilter = components["schemas"]["WatchFilter"];
+export type TagRef = components["schemas"]["TagRef"];
+export type VideoIdsResponse = components["schemas"]["VideoIdsResponse"];
 export type FolderScope = components["schemas"]["FolderScope"];
 export type VideoFolder = components["schemas"]["VideoFolder"];
 export type Scan = components["schemas"]["Scan"];
@@ -117,8 +119,18 @@ export interface ListFilterParams {
   signal?: AbortSignal;
 }
 
-/** ListVideosParams は一覧の問い合わせ条件である。 */
-export type ListVideosParams = ListFilterParams;
+/** MAX_TAG_FILTER_COUNT はタグでの絞り込みに使える id の最大個数である。 */
+export const MAX_TAG_FILTER_COUNT = 16;
+
+/**
+ * ListVideosParams は一覧の問い合わせ条件である。`tag` は listFolderVideos には
+ * 無い（フォルダ画面のタグ絞り込みは対象外。
+ * specs/014-video-tags/contracts/tags-api.md §5）。
+ */
+export interface ListVideosParams extends ListFilterParams {
+  /** 絞り込むタグの id（すべて持つ動画だけにする AND）。最大16個。書く順は問わない。 */
+  tag?: number[];
+}
 
 /** setListFilters は共通の条件を問い合わせに載せる。 */
 function setListFilters(query: URLSearchParams, params: ListFilterParams): void {
@@ -136,11 +148,46 @@ function setListFilters(query: URLSearchParams, params: ListFilterParams): void 
   query.set("limit", String(params.limit ?? PAGE_SIZE));
 }
 
+/** setTagFilter はタグの絞り込みを問い合わせに載せる（listVideos・listVideoIds）。 */
+function setTagFilter(query: URLSearchParams, tag?: number[]): void {
+  if (tag === undefined) return;
+  for (const id of tag.slice(0, MAX_TAG_FILTER_COUNT)) {
+    query.append("tag", String(id));
+  }
+}
+
 /** listVideos は一覧を1ページ取得する。 */
 export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   const query = new URLSearchParams();
   setListFilters(query, params);
+  setTagFilter(query, params.tag);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
+}
+
+/** ListVideoIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */
+export interface ListVideoIdsParams {
+  query?: string;
+  watch?: WatchFilter;
+  playable?: boolean;
+  tag?: number[];
+  signal?: AbortSignal;
+}
+
+/**
+ * listVideoIds は listVideos と同じ条件に合う全件の id を、ページングせずに
+ * 取得する（「すべて選択」用。specs/014-video-tags/contracts/tags-api.md §5）。
+ */
+export function listVideoIds(params: ListVideoIdsParams = {}): Promise<VideoIdsResponse> {
+  const query = new URLSearchParams();
+  if (params.query !== undefined && params.query !== "") {
+    query.set("query", Array.from(params.query).slice(0, MAX_QUERY_LENGTH).join(""));
+  }
+  if (params.watch !== undefined) query.set("watch", params.watch);
+  if (params.playable === true) query.set("playable", "true");
+  setTagFilter(query, params.tag);
+  return request<VideoIdsResponse>(`/api/videos/ids?${query.toString()}`, {
+    signal: params.signal,
+  });
 }
 
 /** FolderRef はフォルダを指す。登録フォルダの id と `/` 区切りの相対パスの組である。 */

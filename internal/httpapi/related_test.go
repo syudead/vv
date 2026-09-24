@@ -75,6 +75,24 @@ func TestGetRelatedVideosOmitsNextAtFolderEnd(t *testing.T) {
 	}
 }
 
+// 関連動画の応答にもタグが載り、タグの無い動画は空配列になる（#267）。
+func TestGetRelatedVideosIncludesTags(t *testing.T) {
+	library, catalog := relatedFixture()
+	tags := &fakeTags{byContentKey: map[string][]domain.TagRef{
+		"ep 10:1": {{ID: 1, Name: "旅行"}},
+	}}
+	handler := newTestServer(t, Options{Videos: library, Catalog: catalog, Tags: tags})
+
+	got := decode[gen.RelatedVideos](t, do(t, handler, http.MethodGet, "/api/videos/3/related"))
+	// items[0] は videos[2]（"ep 10"、content key "ep 10:1"）である（relatedFixture 参照）。
+	if len(got.Items[0].Tags) != 1 || got.Items[0].Tags[0].Name != "旅行" {
+		t.Fatalf("tags = %+v", got.Items[0].Tags)
+	}
+	if got.Items[1].Tags == nil || len(got.Items[1].Tags) != 0 {
+		t.Fatalf("tags = %+v, want 空配列", got.Items[1].Tags)
+	}
+}
+
 func TestGetRelatedVideosErrors(t *testing.T) {
 	library, catalog := relatedFixture()
 	handler := newTestServer(t, Options{Videos: library, Catalog: catalog})

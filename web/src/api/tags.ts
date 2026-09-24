@@ -1,9 +1,13 @@
 import { RequestFailed, request, toRequestFailed } from "./client";
 import { clearListSnapshot } from "./listSnapshot";
+import { nextVideoTagsSequence, recordAppliedVideoTags } from "./videoTagsEvents";
 import type { components } from "./gen/openapi";
 
 // 型は api/openapi.yaml からの生成物を使う（specs/014-video-tags/contracts/tags-api.md §1）。
 export type Tag = components["schemas"]["Tag"];
+export type TagRef = components["schemas"]["TagRef"];
+export type VideoTagsResponse = components["schemas"]["VideoTagsResponse"];
+export type VideoTagsSummary = components["schemas"]["VideoTagsSummary"];
 
 /**
  * listTags はタグを名前の自然順で取得する（本数0を含む）。
@@ -238,4 +242,82 @@ export async function removeTagSynonym(
     refreshOnStaleTagError(await toRequestFailed(response));
   }
   afterTagChanged();
+}
+
+/**
+ * updateVideoTags は動画へタグを付ける・外す（POST /api/video-tags、
+ * contracts/tags-api.md §4）。成功したら、読み込み済みの一覧の項目と
+ * listSnapshot の控えの tags へ結果を反映する通知を送る（Structural
+ * Decisions 7）。`tag_not_found` を受けたときは共有のタグの一覧も取り直す。
+ */
+async function updateVideoTags(
+  videoIds: readonly number[],
+  action: "add" | "remove",
+  tag: { id: number } | { name: string },
+  signal?: AbortSignal,
+): Promise<VideoTagsResponse> {
+  // 通し番号は送信の直前に払い出す。応答が届く順は送った順と限らないので、
+  // 反映するときにこの番号で古い応答を捨てる（N1）。
+  const sequence = nextVideoTagsSequence();
+  const result = await request<VideoTagsResponse>("/api/video-tags", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoIds: Array.from(videoIds), action, tag }),
+    signal,
+  }).catch(refreshOnStaleTagError);
+  recordAppliedVideoTags(videoIds, result.tag, action, sequence);
+  return result;
+}
+
+/**
+ * attachVideoTagByID は id で指定したタグを videoIds の動画へ付ける。
+ * 再生画面の1本も、選択バーの複数本も、これを使う。
+ */
+export function attachVideoTagByID(
+  videoIds: readonly number[],
+  tagId: number,
+  signal?: AbortSignal,
+): Promise<VideoTagsResponse> {
+  return updateVideoTags(videoIds, "add", { id: tagId }, signal);
+}
+
+/**
+ * attachVideoTagByName は名前でタグを付ける。名前はシノニムを含めて引き、
+ * 無ければ作る（contracts/tags-api.md §4）。
+ */
+export function attachVideoTagByName(
+  videoIds: readonly number[],
+  name: string,
+  signal?: AbortSignal,
+): Promise<VideoTagsResponse> {
+  return updateVideoTags(videoIds, "add", { name }, signal);
+}
+
+/**
+ * detachVideoTag は id で指定したタグを videoIds の動画から外す。外すときは
+ * 常に id で指定する（画面が外す候補はいつも付いているタグで、id を
+ * 持っているため。contracts/tags-api.md §4）。
+ */
+export function detachVideoTag(
+  videoIds: readonly number[],
+  tagId: number,
+  signal?: AbortSignal,
+): Promise<VideoTagsResponse> {
+  return updateVideoTags(videoIds, "remove", { id: tagId }, signal);
+}
+
+/**
+ * summarizeVideoTags は選んだ動画に付いたタグの要約を返す
+ * （POST /api/video-tags/summary、contracts/tags-api.md §4）。
+ */
+export function summarizeVideoTags(
+  videoIds: readonly number[],
+  signal?: AbortSignal,
+): Promise<VideoTagsSummary> {
+  return request<VideoTagsSummary>("/api/video-tags/summary", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoIds: Array.from(videoIds) }),
+    signal,
+  });
 }

@@ -32,6 +32,7 @@ function video(id: number, extra: Partial<Video> = {}): Video {
     width: 1920,
     height: 1080,
     videoCodec: "h264",
+    tags: [],
     ...extra,
     previewState: extra.previewState ?? "pending",
   };

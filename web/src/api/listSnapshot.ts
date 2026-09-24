@@ -1,4 +1,12 @@
-import type { FolderListing, Progress, Video, VideoSort, WatchFilter } from "./client";
+import type {
+  FolderListing,
+  Progress,
+  TagRef,
+  Video,
+  VideoSort,
+  WatchFilter,
+} from "./client";
+import { applyTagToTags } from "./tagOrder";
 
 /**
  * defaultSort は並び順が指定されていないときの値である（data-model.md 1.）。
@@ -124,4 +132,28 @@ export function applyProgressToListSnapshot(videoId: number, progress: Progress)
  */
 export function clearListSnapshot(): void {
   held = undefined;
+}
+
+/**
+ * applyTagToListSnapshot は控えの中の動画たちのタグを書き換える。付け外しの
+ * 直後に、控えを取り直さず結果を反映するために使う（issue 267、Plan の Structural
+ * Decisions 7）。action = "remove" で絞り込みに合わなくなった項目も、その場では
+ * 一覧から外さない（次の読み込みで反映する。contracts/tags-api.md §5）。
+ */
+export function applyTagToListSnapshot(
+  videoIds: readonly number[],
+  tag: TagRef,
+  action: "add" | "remove",
+): void {
+  if (held === undefined) return;
+  const targets = new Set(videoIds);
+  if (!held.items.some((video) => targets.has(video.id))) return;
+  held = {
+    ...held,
+    items: held.items.map((video) =>
+      targets.has(video.id)
+        ? { ...video, tags: applyTagToTags(video.tags, tag, action) }
+        : video,
+    ),
+  };
 }
