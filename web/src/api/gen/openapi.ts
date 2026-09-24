@@ -319,6 +319,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tags": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * タグを一覧する
+         * @description 名前の自然順で返す。本数0のタグも含む（contracts/tags-api.md §3）。
+         */
+        get: operations["listTags"];
+        put?: never;
+        /** タグを1件作る */
+        post: operations["createTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** タグを1件削除する */
+        delete: operations["deleteTag"];
+        options?: never;
+        head?: never;
+        /**
+         * タグの元の名前を書き換える
+         * @description 今と同じ名前を送ったときは何も変えずに今の状態を返す（contracts/tags-api.md §3）。
+         */
+        patch: operations["renameTag"];
+        trace?: never;
+    };
+    "/api/tags/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * sourceIdのタグをidのタグへ統合する
+         * @description 統合元（sourceId）の付与・元の名前・シノニムはすべて統合先（id）へ移り、
+         *     統合元は一覧から消える。sourceIdがidと同じときは400を返す
+         *     （contracts/tags-api.md §3）。
+         */
+        post: operations["mergeTag"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tags/{id}/synonyms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 名前をidのタグのシノニムにする
+         * @description 既にidのシノニムなら何も変えずに200を返す。idの元の名前なら409
+         *     tag_name_takenを返す。別のタグSの元の名前で、mergeTagIdがSのidと
+         *     一致するときはSをidへ統合し、一致しない（無い場合を含む）ときは409
+         *     tag_merge_requiredを返す（contracts/tags-api.md §3）。
+         */
+        post: operations["addTagSynonym"];
+        /**
+         * nameをidのタグのシノニムから外す
+         * @description nameがidのシノニムでなければ何も変えずに204を返す（contracts/tags-api.md §3）。
+         */
+        delete: operations["removeTagSynonym"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/directories": {
         parameters: {
             query?: never;
@@ -519,6 +610,43 @@ export interface components {
             path: string;
             /** Format: int64 */
             version: number;
+        };
+        /** @description 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。 */
+        TagRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description 管理画面と候補に出す1件（contracts/tags-api.md §1）。 */
+        Tag: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description 名前の自然順 */
+            synonyms: string[];
+            /** @description いまライブラリにある動画の本数 */
+            videoCount: number;
+        };
+        TagList: {
+            items: components["schemas"]["Tag"][];
+        };
+        CreateTagRequest: {
+            name: string;
+        };
+        RenameTagRequest: {
+            name: string;
+        };
+        MergeTagRequest: {
+            /** Format: int64 */
+            sourceId: number;
+        };
+        AddTagSynonymRequest: {
+            name: string;
+            /**
+             * Format: int64
+             * @description 統合を承諾したタグのid（contracts/tags-api.md §3）
+             */
+            mergeTagId?: number;
         };
         DirectoryEntry: {
             name: string;
@@ -737,7 +865,7 @@ export interface components {
              * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required";
             /** @description 人が読むための説明。利用者にそのまま提示してよい文言にする */
             message: string;
         };
@@ -785,6 +913,8 @@ export interface components {
         VideoId: number;
         /** @description メディアフォルダの識別子 */
         MediaFolderId: number;
+        /** @description タグの識別子 */
+        TagId: number;
         /** @description フォルダが属する登録済みメディアフォルダの識別子 */
         FolderRootId: number;
         /**
@@ -1363,6 +1493,194 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listTags: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description タグの一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagList"];
+                };
+            };
+        };
+    };
+    createTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateTagRequest"];
+            };
+        };
+        responses: {
+            /** @description 作成したタグ */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description タグの識別子 */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 削除した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description タグの識別子 */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RenameTagRequest"];
+            };
+        };
+        responses: {
+            /** @description 更新後のタグ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    mergeTag: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description タグの識別子 */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MergeTagRequest"];
+            };
+        };
+        responses: {
+            /** @description 統合後の統合先タグ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addTagSynonym: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description タグの識別子 */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddTagSynonymRequest"];
+            };
+        };
+        responses: {
+            /** @description 更新後のタグ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Tag"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeTagSynonym: {
+        parameters: {
+            query: {
+                /** @description 外すシノニムの名前 */
+                name: string;
+            };
+            header?: never;
+            path: {
+                /** @description タグの識別子 */
+                id: components["parameters"]["TagId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 外した、またはもともとシノニムでなかった */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listDirectories: {

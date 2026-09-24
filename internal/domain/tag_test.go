@@ -17,9 +17,13 @@ func TestNormalizeTagNameTrimsSurroundingWhitespace(t *testing.T) {
 }
 
 func TestNormalizeTagNameRejectsBlank(t *testing.T) {
-	for _, input := range []string{"", " ", "　", "\t \n"} {
-		if _, err := NormalizeTagName(input); !errors.Is(err, ErrInvalidTagName) {
-			t.Errorf("NormalizeTagName(%q) error = %v, want ErrInvalidTagName", input, err)
+	// タブ・改行など Cc に属す White_Space は、先に制御文字として拒む
+	// （TestNormalizeTagNameRejectsControlCharactersBeforeTrimming）。ここでは
+	// Cc を含まない空白（半角スペース・全角スペースなど）だけを確かめる。
+	for _, input := range []string{"", " ", "　"} {
+		err := errNormalizeTagName(t, input)
+		if err.Error() == "" || strings.Contains(err.Error(), "制御文字") || strings.Contains(err.Error(), "文字以内") {
+			t.Errorf("NormalizeTagName(%q) error = %q, want a blank-specific reason", input, err.Error())
 		}
 	}
 }
@@ -28,8 +32,9 @@ func TestNormalizeTagNameRejectsControlCharactersBeforeTrimming(t *testing.T) {
 	// 前後に付いた改行・タブは、White_Space として黙って取り除かれてはならない。
 	// 取り除いてしまうと "旅行\n" と "旅行" が同じ名前になる。
 	for _, input := range []string{"旅行\n", "\t旅行", "旅行\r", "旅\n行", "a\tb"} {
-		if _, err := NormalizeTagName(input); !errors.Is(err, ErrInvalidTagName) {
-			t.Errorf("NormalizeTagName(%q) error = %v, want ErrInvalidTagName", input, err)
+		err := errNormalizeTagName(t, input)
+		if !strings.Contains(err.Error(), "制御文字") {
+			t.Errorf("NormalizeTagName(%q) error = %q, want a control-character-specific reason", input, err.Error())
 		}
 	}
 }
@@ -40,9 +45,21 @@ func TestNormalizeTagNameRejectsOverLongNames(t *testing.T) {
 		t.Errorf("NormalizeTagName(100 符号位置) error = %v, want nil", err)
 	}
 	tooLong := strings.Repeat("あ", TagNameMaxLength+1)
-	if _, err := NormalizeTagName(tooLong); !errors.Is(err, ErrInvalidTagName) {
-		t.Errorf("NormalizeTagName(101 符号位置) error = %v, want ErrInvalidTagName", err)
+	err := errNormalizeTagName(t, tooLong)
+	if !strings.Contains(err.Error(), "文字以内") {
+		t.Errorf("NormalizeTagName(101 符号位置) error = %q, want a length-specific reason", err.Error())
 	}
+}
+
+// errNormalizeTagName は誤りを返すことを確かめたうえでその誤りを返す。
+// errors.Is(err, ErrInvalidTagName) が保たれていることも確かめる。
+func errNormalizeTagName(t *testing.T, input string) error {
+	t.Helper()
+	_, err := NormalizeTagName(input)
+	if !errors.Is(err, ErrInvalidTagName) {
+		t.Fatalf("NormalizeTagName(%q) error = %v, want ErrInvalidTagName", input, err)
+	}
+	return err
 }
 
 func TestNormalizeTagNameDoesNotFoldCase(t *testing.T) {
