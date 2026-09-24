@@ -54,4 +54,12 @@ func TestTransactionHoldsWriteLockFromBegin(t *testing.T) {
 	if err := tx.Commit(); err != nil {
 		t.Fatalf("確定できない: %v", err)
 	}
+
+	// ロックが解けたあとは、拒否された側も書き込める。実運用では busy_timeout
+	// の間待ってからこの状態になる。
+	if _, err := other.ExecContext(ctx, `insert into videos
+		(added_at, updated_at, content_key, playable, probe_state, thumbnail_state)
+		values (1, 1, 'other', 0, 'pending', 'pending')`); err != nil {
+		t.Fatalf("確定後に別の接続が書き込めない: %v", err)
+	}
 }
