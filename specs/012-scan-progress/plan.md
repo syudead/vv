@@ -24,7 +24,7 @@
 
 - `Scan` の field、生成物、DB schema は変更しない。`total` は実際の取り込み対象ファイル数、`completed` はそのうち正常に処理した数として既存 field の意味を明確化する。対象集合を確定できないディレクトリ走査エラーは個別ファイルの `failed` に混ぜず、理由付きの全体失敗にする。
 - `ScanProvider` は実行中と開始要求の回復中に加え、状態取得に失敗して current scan を確定できない間も既存の2秒間隔で再試行し、成功時に通常の「実行中だけ polling」へ戻す。最後に取得できた scan は一時失敗で捨てない。
-- 通知状態は `trackingScanId`、`acknowledgedTerminalScanId`、`completionNotice { scanId, expiresAt }` だけを version 付きの `sessionStorage` に保存する。保存値が無い、壊れている、または storage が利用できない場合は空の通知状態へ戻し、server の scan state と設定詳細は失わない。
+- 通知状態は `trackingScanId`、`acknowledgedTerminalScanId`、`completionNotice { scanId, expiresAt, pausedRemainingMs }` だけを version 付きの `sessionStorage` に保存する。`pausedRemainingMs` は概要を閲覧中に再読み込みしても残り表示時間を維持するために使う。保存値が無い、壊れている、または storage が利用できない場合は空の通知状態へ戻し、server の scan state と設定詳細は失わない。
 - フローティング表示は `Routes` より上に1度だけ置き、ライブラリ、フォルダ、設定、再生画面をまたいで同じインスタンスを維持する。再生画面へシェル全体は持ち込まず、進捗表示だけを再生操作と重ならない位置へ置く。360pxでは再生画面の右下、768px以上では右上を使う。
 - 新しい runtime dependency は追加しない。位置調整、Portal、Escape、focus の土台には既存の `@radix-ui/react-popover` を使う。
 

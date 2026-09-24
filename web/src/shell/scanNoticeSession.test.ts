@@ -33,8 +33,36 @@ describe("scan notice session", () => {
       writeScanNoticeSession({
         trackingScanId: 2,
         acknowledgedTerminalScanId: null,
-        completionNotice: { scanId: 2, expiresAt: Date.now() + 1000 },
+        completionNotice: {
+          scanId: 2,
+          expiresAt: Date.now() + 1000,
+          pausedRemainingMs: null,
+        },
       }),
     ).not.toThrow();
+  });
+
+  it("restores old notices and persisted paused remaining time", () => {
+    window.sessionStorage.setItem(
+      "vv.scan-notice",
+      JSON.stringify({
+        version: 1,
+        trackingScanId: 2,
+        acknowledgedTerminalScanId: null,
+        completionNotice: { scanId: 2, expiresAt: 1000 },
+      }),
+    );
+    expect(readScanNoticeSession().completionNotice?.pausedRemainingMs).toBeNull();
+
+    writeScanNoticeSession({
+      trackingScanId: 2,
+      acknowledgedTerminalScanId: null,
+      completionNotice: {
+        scanId: 2,
+        expiresAt: 1000,
+        pausedRemainingMs: 600,
+      },
+    });
+    expect(readScanNoticeSession().completionNotice?.pausedRemainingMs).toBe(600);
   });
 });

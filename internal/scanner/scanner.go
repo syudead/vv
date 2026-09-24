@@ -241,6 +241,25 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		return result, err
 	}
 
+	// 列挙後に消えたファイルを、発見済みという理由だけで索引へ残さない。
+	// 読み取り不能は一時的な可能性があるため、存在しないか対象外へ変わった
+	// パスだけを missing の判定へ戻す。
+	for path := range seen {
+		info, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			delete(seen, path)
+			continue
+		}
+		if err != nil {
+			s.logger.Warn("取り込み後のファイル状態を確認できませんでした",
+				slog.String("path", path), slog.Any("error", err))
+			continue
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			delete(seen, path)
+		}
+	}
+
 	removed, err := s.removeMissing(ctx, folders, seen)
 	if err != nil {
 		return result, err

@@ -219,6 +219,38 @@ describe("ScanNoticeProvider", () => {
     expect(screen.getByTestId("notice").textContent).toBe("none");
   });
 
+  it("restores the remaining time when a paused notice is reloaded", async () => {
+    let response = scan(16, "running");
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(response),
+      ),
+    );
+    vi.useFakeTimers();
+    const first = renderProvider();
+    await act(async () => Promise.resolve());
+    response = scan(16, "done");
+    await act(async () => screen.getByRole("button", { name: "refresh" }).click());
+    expect(screen.getByTestId("notice").textContent).toBe("16");
+
+    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    await act(async () => screen.getByRole("button", { name: "pause" }).click());
+    expect(window.sessionStorage.getItem("vv.scan-notice")).toContain(
+      '"pausedRemainingMs":6000',
+    );
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
+    first.unmount();
+    renderProvider();
+    await act(async () => Promise.resolve());
+    expect(screen.getByTestId("notice").textContent).toBe("16");
+
+    await act(async () => screen.getByRole("button", { name: "resume" }).click());
+    await act(async () => vi.advanceTimersByTimeAsync(5900));
+    expect(screen.getByTestId("notice").textContent).toBe("16");
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    expect(screen.getByTestId("notice").textContent).toBe("none");
+  });
+
   it("clears A when B starts and assigns B a fresh deadline after reload", async () => {
     vi.useFakeTimers();
     let response = scan(9, "running");

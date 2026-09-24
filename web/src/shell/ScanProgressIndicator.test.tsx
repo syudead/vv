@@ -93,6 +93,19 @@ describe("ScanProgressIndicator", () => {
     );
   });
 
+  it("keeps the summary closed after a focusless click navigates to settings", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
+    );
+    renderIndicator();
+    const trigger = await screen.findByRole("button", { name: /取り込み中 40%/ });
+
+    await act(async () => fireEvent.click(trigger));
+
+    expect(screen.getByTestId("location").textContent).toBe("/settings#scan-status");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("opens the summary on focus and closes it with Escape", async () => {
     fetchMock.mockImplementation((input) =>
       Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
@@ -272,6 +285,33 @@ describe("ScanProgressIndicator", () => {
 
     await act(async () => fireEvent.blur(trigger));
     await act(async () => vi.advanceTimersByTimeAsync(8000));
+    expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+  });
+
+  it("preserves a hovered completion notice's remaining time across reload", async () => {
+    let state: Scan["state"] = "running";
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(scan({ state })),
+      ),
+    );
+    const first = renderIndicator();
+    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    state = "done";
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    const trigger = await screen.findByRole("button", { name: /^完了。/ });
+    vi.useFakeTimers();
+
+    await act(async () => fireEvent.pointerEnter(trigger));
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
+    first.unmount();
+    renderIndicator();
+    await act(async () => Promise.resolve());
+    await screen.findByRole("button", { name: /^完了。/ });
+
+    await act(async () => vi.advanceTimersByTimeAsync(7900));
+    expect(screen.getByRole("button", { name: /^完了。/ })).toBeDefined();
+    await act(async () => vi.advanceTimersByTimeAsync(100));
     expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
   });
 });

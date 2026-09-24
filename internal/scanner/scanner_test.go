@@ -469,6 +469,42 @@ func TestScanRemovesMissingFiles(t *testing.T) {
 	}
 }
 
+func TestScanRemovesIndexedFileDeletedAfterDiscovery(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a", "z.mp4": "z"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+
+	a := filepath.Join(root, "a.mp4")
+	z := filepath.Join(root, "z.mp4")
+	if err := os.WriteFile(z, []byte("changed z"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(z, later, later); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := New(Options{Index: index})
+	scanner.contentKey = func(path string) (string, error) {
+		if path == z {
+			if err := os.Remove(a); err != nil {
+				return "", err
+			}
+		}
+		return ContentKey(path)
+	}
+	result, err := scanner.Scan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Removed != 1 {
+		t.Fatalf("file deleted after discovery was not removed: %+v", result)
+	}
+	if _, ok := index.rows[a]; ok {
+		t.Fatal("indexed location remained after its file disappeared")
+	}
+}
+
 // 新しく取り込んだ動画には、解析とサムネイルのジョブを積む。
 func TestScanEnqueuesJobsForNewVideos(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a"})

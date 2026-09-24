@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router";
 
 import { cn } from "../lib/cn";
@@ -120,7 +120,8 @@ export default function ScanProgressIndicator({
           : presentation.state === "failed"
             ? "取り込みに失敗しました"
             : "完了";
-  const goToDetails = () => {
+  const goToDetails = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
     navigatingToDetails.current = true;
     setOpen(false);
     if (presentation.state === "failed") notice.acknowledgeTerminalScan();

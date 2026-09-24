@@ -36,8 +36,9 @@ export function useScanNotice(): ScanNoticeContextValue {
 export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   const scan = useScan();
   const [session, setSession] = useState<ScanNoticeSession>(readScanNoticeSession);
-  const [completionNoticePaused, setCompletionNoticePausedState] = useState(false);
-  const pausedAt = useRef<number | null>(null);
+  const [completionNoticePaused, setCompletionNoticePausedState] = useState(
+    () => (session.completionNotice?.pausedRemainingMs ?? null) !== null,
+  );
   const sessionRef = useRef(session);
   const scanRef = useRef(scan.scan);
 
@@ -68,7 +69,10 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     }
     if (session.trackingScanId !== current.id) return;
     if (session.acknowledgedTerminalScanId === current.id) return;
-    if (session.completionNotice?.scanId === current.id && current.state === "failed") {
+    if (
+      session.completionNotice?.scanId === current.id &&
+      (current.state === "failed" || session.completionNotice.pausedRemainingMs !== null)
+    ) {
       return;
     }
     if (
@@ -88,6 +92,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     const completionNotice: CompletionNotice = {
       scanId: current.id,
       expiresAt: Date.now() + completionNoticeDuration,
+      pausedRemainingMs: null,
     };
     updateSession({ ...session, completionNotice });
   }, [scan.scan, session, updateSession]);
@@ -97,7 +102,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     if (notice === null) return;
     if (!scan.loaded) return;
     if (scan.scan?.id === notice.scanId && scan.scan.state === "failed") return;
-    if (completionNoticePaused) return;
+    if (completionNoticePaused || notice.pausedRemainingMs !== null) return;
     const remaining = notice.expiresAt - Date.now();
     const expire = () => {
       const currentSession = sessionRef.current;
@@ -119,7 +124,6 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   const acknowledgeTerminalScan = useCallback(() => {
     const currentSession = sessionRef.current;
     if (currentSession.completionNotice === null) return;
-    pausedAt.current = null;
     setCompletionNoticePausedState(false);
     updateSession({
       ...currentSession,
@@ -136,22 +140,30 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
         notice === null ||
         (scanRef.current?.id === notice.scanId && scanRef.current.state === "failed")
       ) {
-        pausedAt.current = null;
         setCompletionNoticePausedState(false);
         return;
       }
       if (paused) {
-        pausedAt.current ??= Date.now();
         setCompletionNoticePausedState(true);
+        if (notice.pausedRemainingMs !== null) return;
+        updateSession({
+          ...currentSession,
+          completionNotice: {
+            ...notice,
+            pausedRemainingMs: Math.max(0, notice.expiresAt - Date.now()),
+          },
+        });
         return;
       }
-      if (pausedAt.current === null) return;
-      const pausedFor = Date.now() - pausedAt.current;
-      pausedAt.current = null;
       setCompletionNoticePausedState(false);
+      if (notice.pausedRemainingMs === null) return;
       updateSession({
         ...currentSession,
-        completionNotice: { ...notice, expiresAt: notice.expiresAt + pausedFor },
+        completionNotice: {
+          ...notice,
+          expiresAt: Date.now() + notice.pausedRemainingMs,
+          pausedRemainingMs: null,
+        },
       });
     },
     [updateSession],
