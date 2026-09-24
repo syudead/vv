@@ -226,10 +226,10 @@ test.describe.serial("video tags", () => {
 
     const input = addInput(page);
     await input.click();
-    // 「候補」に絞ると、この動画にはまだ無いこのタグ1件だけが残る。
+    // 「候補」に絞ると、この動画にはまだ無いこのタグが先頭の候補に出る。
+    // 完全一致が無いので、その後に作成の行が続く。
     await input.fill("候補");
-    await expect(page.getByRole("option", { name: /e2e候補タグ/ })).toBeVisible();
-    await expect(page.getByRole("option")).toHaveCount(1);
+    await expect(page.getByRole("option").first()).toHaveText(/e2e候補タグ/);
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
 
