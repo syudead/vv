@@ -41,10 +41,10 @@ func missingSourceFixture(t *testing.T) (context.Context, string, *store.DB, int
 		t.Fatal(err)
 	}
 	mediaDir := t.TempDir()
-	if _, err := db.AddMediaFolder(ctx, mediaDir); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.UpsertVideo(ctx, domain.VideoFile{
+	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 		Path: filepath.Join(mediaDir, "missing.mp4"), Title: "missing", ContentKey: "missing-source", SizeBytes: 1,
 		MTime: time.Unix(1, 0), Container: "mp4",
 	})
@@ -59,18 +59,18 @@ func claimLastAttempt(t *testing.T, ctx context.Context, db *store.DB, kind doma
 	if kind == domain.JobThumbnail {
 		// サムネイルは解析の後に取り出すので、解析は済ませておく。
 		probe := domain.Probe{DurationMs: 1000, VideoCodec: "h264", AudioCodec: "aac"}
-		if err := db.ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+		if err := db.Ingest().ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := db.EnqueueJob(ctx, kind, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, kind, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = ? and video_id = ?`,
 		domain.MaxJobAttempts-1, string(kind), videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, kind)
+	job, err := db.Ingest().ClaimJob(ctx, kind)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,21 +97,21 @@ func TestIngestHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 			if handleErr == nil {
 				t.Fatal("missing source unexpectedly succeeded")
 			}
-			video, err := db.GetVideo(ctx, videoID)
+			video, err := db.Library().GetVideo(ctx, videoID)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if got := tc.state(video); got != "pending" {
 				t.Fatalf("handler が状態を書いた: %q, want pending", got)
 			}
-			if err := db.RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
+			if err := db.Ingest().RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
 				t.Fatal("失敗の記録前に読み取りのやり直しを受け付けた")
 			}
 
-			if err := db.FailClaimedJob(ctx, job, handleErr.Error()); err != nil {
+			if err := db.Ingest().FailClaimedJob(ctx, job, handleErr.Error()); err != nil {
 				t.Fatal(err)
 			}
-			video, err = db.GetVideo(ctx, videoID)
+			video, err = db.Library().GetVideo(ctx, videoID)
 			if err != nil {
 				t.Fatal(err)
 			}

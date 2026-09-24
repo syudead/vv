@@ -67,9 +67,9 @@ func directChildConditionFor(alias string, windows bool) string {
 
 // FolderLocations はフォルダ配下（深さを問わない）の、登録フォルダの下にある
 // 所在をすべて返す。集計は internal/domain の SummarizeFolder が行う。
-func (db *DB) FolderLocations(ctx context.Context, dir string) ([]domain.FolderLocation, error) {
+func (s *LibraryStore) FolderLocations(ctx context.Context, dir string) ([]domain.FolderLocation, error) {
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
-	rows, err := db.sql.QueryContext(ctx, `select l.path, l.video_id, videos.content_key, videos.thumbnail_state
+	rows, err := s.db.sql.QueryContext(ctx, `select l.path, l.video_id, videos.content_key, videos.thumbnail_state
 		from video_locations l join videos on videos.id = l.video_id
 		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+registeredLocationCondition("l"),
 		folderPrefix(dir))
@@ -96,10 +96,10 @@ func (db *DB) FolderLocations(ctx context.Context, dir string) ([]domain.FolderL
 
 // HasFolderLocations はフォルダ配下（深さを問わない）に、登録フォルダの下に
 // ある所在が1件でもあるかを返す。
-func (db *DB) HasFolderLocations(ctx context.Context, dir string) (bool, error) {
+func (s *LibraryStore) HasFolderLocations(ctx context.Context, dir string) (bool, error) {
 	var found int
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
-	err := db.sql.QueryRowContext(ctx, `select exists (select 1 from video_locations l
+	err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from video_locations l
 		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+registeredLocationCondition("l")+`)`,
 		folderPrefix(dir)).Scan(&found)
 	if err != nil {

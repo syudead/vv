@@ -92,14 +92,14 @@ func newArtifactsFixture(t *testing.T) artifactsFixture {
 		t.Fatal(err)
 	}
 	mediaDir := t.TempDir()
-	if _, err := db.AddMediaFolder(ctx, mediaDir); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(mediaDir, "movie.mp4")
 	if err := os.WriteFile(path, []byte("video"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.UpsertVideo(ctx, domain.VideoFile{
+	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 		Path: path, Title: "movie", ContentKey: existingKey, SizeBytes: 5,
 		MTime: time.Unix(1, 0), Container: "mp4",
 	})
@@ -107,13 +107,13 @@ func newArtifactsFixture(t *testing.T) artifactsFixture {
 		t.Fatal(err)
 	}
 	probe := domain.Probe{DurationMs: 60_000, VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+	if err := db.Ingest().ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SetThumbnailState(ctx, video.ID, domain.ThumbnailStateDone); err != nil {
+	if err := db.Ingest().SetThumbnailState(ctx, video.ID, domain.ThumbnailStateDone); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SetPreviewState(ctx, video.ID, domain.PreviewStateDone); err != nil {
+	if err := db.Ingest().SetPreviewState(ctx, video.ID, domain.PreviewStateDone); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.SQL().ExecContext(ctx, `delete from jobs`); err != nil {
@@ -264,7 +264,7 @@ func TestDeletedVideoReleasesOnlyUnreferencedArtifacts(t *testing.T) {
 		bus := eventbus.New(slog.New(slog.DiscardHandler))
 		f.db.PublishTo(bus)
 		subscribeEvents(bus, eventSubscribers{ReleaseArtifacts: f.ingest.ReleaseArtifacts})
-		if err := f.db.DeleteVideos(f.ctx, []int64{f.videoID}); err != nil {
+		if err := f.db.ScanIndex().DeleteVideos(f.ctx, []int64{f.videoID}); err != nil {
 			t.Fatal(err)
 		}
 		bus.Close()

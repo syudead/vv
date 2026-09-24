@@ -27,7 +27,8 @@ func DatabasePath(dataDir string) string {
 	return filepath.Join(dataDir, DatabaseFileName)
 }
 
-// DB は SQLite への接続を保持する。
+// DB は SQLite への接続を保持する土台である。業務の操作は持たず、役割ごとの型
+// （roles.go）がこの接続と知らせの発行先を使って行う。
 type DB struct {
 	sql      *sql.DB
 	path     string

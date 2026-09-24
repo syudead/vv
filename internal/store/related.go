@@ -13,10 +13,10 @@ import (
 // 同じ動画の所在が直下に2つ以上あるときは、ListFolderVideos と同じく
 // パスの小さい方を1件だけ返す（chosenLocationsCTE）。並べ方は internal/domain の
 // OrderRelated が決める。
-func (db *DB) DirectVideoPaths(ctx context.Context, dir string) ([]domain.RelatedSibling, error) {
+func (s *LibraryStore) DirectVideoPaths(ctx context.Context, dir string) ([]domain.RelatedSibling, error) {
 	cte, args := chosenLocationsCTE(folderScope(dir, domain.FolderScopeDirect), domain.SearchExpr{})
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
-	rows, err := db.sql.QueryContext(ctx, cte+` select video_id, path from chosen`, args...)
+	rows, err := s.db.sql.QueryContext(ctx, cte+` select video_id, path from chosen`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("同じフォルダの動画を読み出せません: %w", err)
 	}
@@ -43,7 +43,7 @@ func (db *DB) DirectVideoPaths(ctx context.Context, dir string) ([]domain.Relate
 // OrderRelated の補い方と同じである。そのため、同じフォルダの動画を除いたあとに
 // 要る件数（limit から同じフォルダの件数を引いた数）は、両側の先頭 limit 件の
 // 中に必ず入っている。
-func (db *DB) VideosAddedNear(ctx context.Context, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error) {
+func (s *LibraryStore) VideosAddedNear(ctx context.Context, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error) {
 	at := addedAt.Unix()
 	registered := registeredVideoCondition("videos")
 	before := `select id, added_at from videos
@@ -55,7 +55,7 @@ func (db *DB) VideosAddedNear(ctx context.Context, id int64, addedAt time.Time, 
 
 	neighbors := []domain.RelatedNeighbor{}
 	for _, query := range []string{before, after} {
-		side, err := db.relatedNeighbors(ctx, query, at, at, id, limit)
+		side, err := s.relatedNeighbors(ctx, query, at, at, id, limit)
 		if err != nil {
 			return nil, fmt.Errorf("追加日時の近い動画を読み出せません: %w", err)
 		}
@@ -64,8 +64,8 @@ func (db *DB) VideosAddedNear(ctx context.Context, id int64, addedAt time.Time, 
 	return neighbors, nil
 }
 
-func (db *DB) relatedNeighbors(ctx context.Context, query string, args ...any) ([]domain.RelatedNeighbor, error) {
-	rows, err := db.sql.QueryContext(ctx, query, args...)
+func (s *LibraryStore) relatedNeighbors(ctx context.Context, query string, args ...any) ([]domain.RelatedNeighbor, error) {
+	rows, err := s.db.sql.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (db *DB) relatedNeighbors(ctx context.Context, query string, args ...any) (
 
 // VideosByIDs は指定した動画の本体を返す。並びは ids と同じで、登録フォルダの
 // 下に所在が無くなった動画は抜ける。
-func (db *DB) VideosByIDs(ctx context.Context, ids []int64) ([]domain.Video, error) {
+func (s *LibraryStore) VideosByIDs(ctx context.Context, ids []int64) ([]domain.Video, error) {
 	if len(ids) == 0 {
 		return []domain.Video{}, nil
 	}
@@ -97,7 +97,7 @@ func (db *DB) VideosByIDs(ctx context.Context, ids []int64) ([]domain.Video, err
 	}
 
 	//nolint:gosec // 組み立てるのは列名・定型の条件句・プレースホルダの数だけで、値は引数で渡す。
-	rows, err := db.sql.QueryContext(ctx, `select `+videoColumns()+` from videos where videos.id in (`+
+	rows, err := s.db.sql.QueryContext(ctx, `select `+videoColumns()+` from videos where videos.id in (`+
 		placeholders+`) and `+registeredVideoCondition("videos"), args...)
 	if err != nil {
 		return nil, fmt.Errorf("関連動画を読み出せません: %w", err)

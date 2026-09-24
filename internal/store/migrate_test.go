@@ -586,10 +586,10 @@ func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a/movie.mp4", "movie", "shared", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a/movie.mp4", "movie", "shared", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b/movie.mp4", "movie", "shared", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b/movie.mp4", "movie", "shared", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 

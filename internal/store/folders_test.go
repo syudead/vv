@@ -22,7 +22,7 @@ func folderFixture(t *testing.T, files ...domain.VideoFile) (*DB, map[string]int
 	ids := map[string]int64{}
 	for index, file := range files {
 		file.MTime = fixedTime.Add(time.Duration(index) * time.Second)
-		got, err := db.UpsertVideo(context.Background(), file)
+		got, err := db.ScanIndex().UpsertVideo(context.Background(), file)
 		if err != nil {
 			t.Fatalf("取り込めない %s: %v", file.Path, err)
 		}
@@ -39,11 +39,11 @@ func TestFolderLocationsReturnsEverythingBelowTheFolder(t *testing.T) {
 		sampleFile("/media/AB/other.mp4", "other", "key-o", 1, 0),
 	)
 	ctx := context.Background()
-	if err := db.SetThumbnailState(ctx, ids["/media/A/B/y.mp4"], domain.ThumbnailStateDone); err != nil {
+	if err := db.Ingest().SetThumbnailState(ctx, ids["/media/A/B/y.mp4"], domain.ThumbnailStateDone); err != nil {
 		t.Fatal(err)
 	}
 
-	locations, err := db.FolderLocations(ctx, "/media/A")
+	locations, err := db.Library().FolderLocations(ctx, "/media/A")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,14 +74,14 @@ func TestFolderLocationsIgnoresUnregisteredLocations(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	locations, err := db.FolderLocations(ctx, "/media")
+	locations, err := db.Library().FolderLocations(ctx, "/media")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(locations) != 0 {
 		t.Errorf("locations = %+v, want none outside registered folders", locations)
 	}
-	found, err := db.HasFolderLocations(ctx, "/media/A")
+	found, err := db.Library().HasFolderLocations(ctx, "/media/A")
 	if err != nil || found {
 		t.Errorf("HasFolderLocations = %v, %v; want false", found, err)
 	}
@@ -96,7 +96,7 @@ func TestHasFolderLocations(t *testing.T) {
 		"/media/only":              false,
 		"/media/missing":           false,
 	} {
-		got, err := db.HasFolderLocations(ctx, dir)
+		got, err := db.Library().HasFolderLocations(ctx, dir)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,7 +114,7 @@ func TestListFolderVideosReturnsDirectVideosOnly(t *testing.T) {
 		sampleFile("/media/AB/other.mp4", "other", "key-o", 10, 0),
 	)
 
-	page, err := db.ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media/A"})
+	page, err := db.Library().ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media/A"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +122,7 @@ func TestListFolderVideosReturnsDirectVideosOnly(t *testing.T) {
 		t.Errorf("titles = %q, total = %d; want only x", got, page.Total)
 	}
 
-	page, err = db.ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media"})
+	page, err = db.Library().ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +139,7 @@ func TestListFolderVideosUsesTheLocationInThatFolder(t *testing.T) {
 	)
 	ctx := context.Background()
 
-	dup, err := db.ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/dup"})
+	dup, err := db.Library().ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/dup"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -147,7 +147,7 @@ func TestListFolderVideosUsesTheLocationInThatFolder(t *testing.T) {
 		t.Errorf("dup = %q (total %d), want one card titled by the first path", got, dup.Total)
 	}
 
-	other, err := db.ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/other"})
+	other, err := db.Library().ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/other"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestListFolderVideosPagesWithCursor(t *testing.T) {
 		var titles []string
 		cursor := ""
 		for {
-			page, err := db.ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/many", Sort: sort, Cursor: cursor})
+			page, err := db.Library().ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/many", Sort: sort, Cursor: cursor})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -199,7 +199,7 @@ func TestListFolderVideosPagesWithCursor(t *testing.T) {
 
 func TestListFolderVideosRejectsBrokenCursor(t *testing.T) {
 	db, _ := folderFixture(t, sampleFile("/media/A/x.mp4", "x", "key-x", 1, 0))
-	_, err := db.ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media/A", Cursor: "!!"})
+	_, err := db.Library().ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media/A", Cursor: "!!"})
 	if !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Errorf("err = %v, want domain.ErrInvalidCursor", err)
 	}
@@ -215,14 +215,14 @@ func TestFolderNamesEndingWithBackslashOnUnix(t *testing.T) {
 		sampleFile("/media/A\\/movie.mp4", "movie", "key-m", 1, 0),
 		sampleFile("/media/A/other.mp4", "other", "key-o", 1, 0),
 	)
-	page, err := db.ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media/A\\"})
+	page, err := db.Library().ListFolderVideos(context.Background(), domain.FolderVideoQuery{Dir: "/media/A\\"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := titlesOf(page); !slices.Equal(got, []string{"movie"}) {
 		t.Errorf("A\\ = %q, want only movie", got)
 	}
-	found, err := db.HasFolderLocations(context.Background(), "/media/A\\")
+	found, err := db.Library().HasFolderLocations(context.Background(), "/media/A\\")
 	if err != nil || !found {
 		t.Errorf("HasFolderLocations(A\\) = %v, %v; want true", found, err)
 	}

@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -72,19 +71,11 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 //  2. filepath.EvalSymlinks 後のパスにも 1 が成り立つ
 //  3. 通常ファイルである（ディレクトリ・デバイスファイルを開かない）
 func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, os.FileInfo, string, bool) {
-	type locationLibrary interface {
-		VideoLocations(context.Context, int64) ([]domain.VideoLocation, error)
-		ListMediaFolders(context.Context) ([]domain.MediaFolder, error)
-	}
-	library, ok := s.videos.(locationLibrary)
-	if !ok {
-		return nil, nil, "", false
-	}
-	locations, err := library.VideoLocations(r.Context(), video.ID)
+	locations, err := s.videos.VideoLocations(r.Context(), video.ID)
 	if err != nil {
 		return nil, nil, "", false
 	}
-	folders, err := library.ListMediaFolders(r.Context())
+	folders, err := s.videos.ListMediaFolders(r.Context())
 	if err != nil {
 		return nil, nil, "", false
 	}

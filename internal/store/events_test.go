@@ -46,7 +46,7 @@ func TestCommitPublishesNothingWhenTransactionRollsBack(t *testing.T) {
 	if len(recorder.events) != 0 {
 		t.Fatalf("ロールバックした取引から発行した: %v", recorder.events)
 	}
-	if _, err := db.GetVideo(context.Background(), videoID); err != nil {
+	if _, err := db.Library().GetVideo(context.Background(), videoID); err != nil {
 		t.Fatalf("ロールバックしたのに動画が消えた: %v", err)
 	}
 }
@@ -55,23 +55,23 @@ func TestCommitPublishesNothingWhenTransactionRollsBack(t *testing.T) {
 func TestRejectedWritesPublishNothing(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	folders, err := db.ListMediaFolders(ctx)
+	folders, err := db.Settings().ListMediaFolders(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := db.StartScan(ctx); err != nil {
+	if _, _, err := db.Scans().StartScan(ctx); err != nil {
 		t.Fatal(err)
 	}
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
 
-	if err := db.DeleteMediaFolder(ctx, folders[0].ID, folders[0].Version); !errors.Is(err, domain.ErrScanRunning) {
+	if err := db.Settings().DeleteMediaFolder(ctx, folders[0].ID, folders[0].Version); !errors.Is(err, domain.ErrScanRunning) {
 		t.Fatalf("走査中の DeleteMediaFolder error = %v, want domain.ErrScanRunning", err)
 	}
-	if err := db.RetryProbe(ctx, videoID, false); !errors.Is(err, domain.ErrProbeNotFailed) {
+	if err := db.Ingest().RetryProbe(ctx, videoID, false); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("RetryProbe error = %v, want domain.ErrProbeNotFailed", err)
 	}
-	if requeued, err := db.RequeueMissingPreview(ctx, videoID, "key-a"); err != nil || requeued {
+	if requeued, err := db.Ingest().RequeueMissingPreview(ctx, videoID, "key-a"); err != nil || requeued {
 		t.Fatalf("RequeueMissingPreview = %v, %v, want false", requeued, err)
 	}
 	if len(recorder.events) != 0 {
@@ -89,13 +89,13 @@ func TestOneTransactionPublishesEachKindOfChangeOnce(t *testing.T) {
 		sampleFile("/media/b.mp4", "b", "key-b", 2, 0),
 		sampleFile("/media/b2.mp4", "b", "key-b", 2, 0),
 	} {
-		added, err := db.UpsertVideo(ctx, file)
+		added, err := db.ScanIndex().UpsertVideo(ctx, file)
 		if err != nil {
 			t.Fatal(err)
 		}
 		ids = append(ids, added.ID)
 	}
-	folders, err := db.ListMediaFolders(ctx)
+	folders, err := db.Settings().ListMediaFolders(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestOneTransactionPublishesEachKindOfChangeOnce(t *testing.T) {
 	db.PublishTo(recorder)
 
 	// 付け替えで2本の動画が消え、すべての段階の仕事が取り出せるようになる。
-	if _, err := db.ReplaceMediaFolder(ctx, folders[0].ID, folders[0].Version, "/other"); err != nil {
+	if _, err := db.Settings().ReplaceMediaFolder(ctx, folders[0].ID, folders[0].Version, "/other"); err != nil {
 		t.Fatal(err)
 	}
 

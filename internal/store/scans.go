@@ -15,17 +15,17 @@ import (
 //
 // 409 にしないのは、利用者の意図が「今の状態を進めたい」であり、進行中なら
 // それを返すのが素直だからである。
-func (db *DB) StartScan(ctx context.Context) (scan domain.Scan, started bool, err error) {
-	db.folderMu.Lock()
-	defer db.folderMu.Unlock()
+func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bool, err error) {
+	s.db.folderMu.Lock()
+	defer s.db.folderMu.Unlock()
 	var folderCount int
-	if err := db.sql.QueryRowContext(ctx, `select count(*) from media_folders`).Scan(&folderCount); err != nil {
+	if err := s.db.sql.QueryRowContext(ctx, `select count(*) from media_folders`).Scan(&folderCount); err != nil {
 		return domain.Scan{}, false, err
 	}
 	if folderCount == 0 {
 		return domain.Scan{}, false, domain.ErrNoMediaFolders
 	}
-	if running, err := db.scanBy(ctx,
+	if running, err := s.scanBy(ctx,
 		`select `+scanColumns+` from scans where state = 'running' limit 1`,
 	); err == nil {
 		return running, false, nil
@@ -33,7 +33,7 @@ func (db *DB) StartScan(ctx context.Context) (scan domain.Scan, started bool, er
 		return domain.Scan{}, false, err
 	}
 
-	res, err := db.sql.ExecContext(ctx,
+	res, err := s.db.sql.ExecContext(ctx,
 		`insert into scans (state, started_at, total, completed, failed) values ('running', ?, 0, 0, 0)`,
 		time.Now().Unix())
 	if err != nil {
@@ -44,7 +44,7 @@ func (db *DB) StartScan(ctx context.Context) (scan domain.Scan, started bool, er
 		return domain.Scan{}, false, fmt.Errorf("走査を始められません: %w", err)
 	}
 
-	scan, err = db.scanByID(ctx, id)
+	scan, err = s.scanByID(ctx, id)
 	if err != nil {
 		return domain.Scan{}, false, err
 	}
@@ -53,8 +53,8 @@ func (db *DB) StartScan(ctx context.Context) (scan domain.Scan, started bool, er
 
 // UpdateScanProgress は進捗を更新する。走査中も一覧・再生は通常どおり応答する
 // ので、ここでは行を1つ書き換えるだけにする。
-func (db *DB) UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error {
-	_, err := db.sql.ExecContext(ctx,
+func (s *ScanStore) UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error {
+	_, err := s.db.sql.ExecContext(ctx,
 		`update scans set total = ?, completed = ?, failed = ? where id = ?`,
 		progress.Total, progress.Completed, progress.Failed, id)
 	if err != nil {
@@ -65,8 +65,8 @@ func (db *DB) UpdateScanProgress(ctx context.Context, id int64, progress domain.
 
 // FinishScan は走査を終える。reason は走査そのものが失敗した理由で、
 // 個別のファイルの失敗はここではなく failed の数に入る。
-func (db *DB) FinishScan(ctx context.Context, id int64, state domain.ScanState, reason string) error {
-	_, err := db.sql.ExecContext(ctx,
+func (s *ScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanState, reason string) error {
+	_, err := s.db.sql.ExecContext(ctx,
 		`update scans set state = ?, finished_at = ?, error = ? where id = ?`,
 		string(state), time.Now().Unix(), nullableString(reason), id)
 	if err != nil {
@@ -77,8 +77,8 @@ func (db *DB) FinishScan(ctx context.Context, id int64, state domain.ScanState, 
 
 // CurrentScan は直近の走査を返す。実行中のものがあればそれを、無ければ最後に
 // 終わったものを返す。一度も走査していなければ ErrNotFound を返す。
-func (db *DB) CurrentScan(ctx context.Context) (domain.Scan, error) {
-	return db.scanBy(ctx, `
+func (s *ScanStore) CurrentScan(ctx context.Context) (domain.Scan, error) {
+	return s.scanBy(ctx, `
 		select `+scanColumns+` from scans
 		 order by (state = 'running') desc, id desc
 		 limit 1`)
@@ -89,8 +89,8 @@ func (db *DB) CurrentScan(ctx context.Context) (domain.Scan, error) {
 //
 // 閉じないと「実行中は1件だけ」の制約が働いたまま、二度と走査を始められなく
 // なる。前回の走査が最後まで走ったかどうかは分からないので、成功とはみなさない。
-func (db *DB) FailInterruptedScans(ctx context.Context) (int64, error) {
-	res, err := db.sql.ExecContext(ctx, `
+func (s *ScanStore) FailInterruptedScans(ctx context.Context) (int64, error) {
+	res, err := s.db.sql.ExecContext(ctx, `
 		update scans
 		   set state = 'failed', finished_at = ?, error = ?
 		 where state = 'running'`,
@@ -109,11 +109,11 @@ func (db *DB) FailInterruptedScans(ctx context.Context) (int64, error) {
 // scanColumns は Scan を組み立てるのに要る列である。並びは scanRow と対応させる。
 const scanColumns = `id, state, started_at, finished_at, total, completed, failed, error`
 
-func (db *DB) scanByID(ctx context.Context, id int64) (domain.Scan, error) {
-	return db.scanBy(ctx, `select `+scanColumns+` from scans where id = ?`, id)
+func (s *ScanStore) scanByID(ctx context.Context, id int64) (domain.Scan, error) {
+	return s.scanBy(ctx, `select `+scanColumns+` from scans where id = ?`, id)
 }
 
-func (db *DB) scanBy(ctx context.Context, query string, args ...any) (domain.Scan, error) {
+func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (domain.Scan, error) {
 	var (
 		scan                  domain.Scan
 		state                 string
@@ -122,7 +122,7 @@ func (db *DB) scanBy(ctx context.Context, query string, args ...any) (domain.Sca
 	)
 
 	//nolint:gosec // scanColumns は定数で、利用者の入力は混ざらない。
-	err := db.sql.QueryRowContext(ctx, query, args...).Scan(
+	err := s.db.sql.QueryRowContext(ctx, query, args...).Scan(
 		&scan.ID, &state, &startedAt, &finishedAt,
 		&scan.Total, &scan.Completed, &scan.Failed, &reason,
 	)

@@ -129,11 +129,30 @@ cannot be reconstructed. That is why playback positions are keyed by the
 content identifier rather than by `videos.id`, and why that table carries no
 foreign key to `videos`.
 
-`store.DB` owns the shared SQLite connection and migration lifecycle, but application
-wiring uses responsibility-specific handles: `IngestStore`, `LibraryStore`,
-`ScanStore`/`ScanIndexStore`, `SettingsStore`, and `PlaybackStore`. In particular,
-`PlaybackStore` holds only the SQL connection and does not depend on the rebuildable
-index stores or their notifications.
+`store.DB` is only the foundation: it opens and closes the shared SQLite connection,
+runs migrations (`store.Migrate`), answers the health ping, registers the publisher
+for post-commit events, and hands out the role types. Every business operation is a
+method of the role type that owns it, so calling one through the wrong role does not
+compile:
+
+- `IngestStore` — the job queue (enqueue, claim, complete, fail, requeue, remaining
+  work) and writing each ingest stage's result back to the video row, including the
+  retry of a failed probe and the rebuild of a missing preview.
+- `LibraryStore` — reads of the index: the video list and search, folder browsing,
+  related videos, a video's locations, and the startup refresh of search keys.
+- `ScanStore` — the state of a scan run.
+- `ScanIndexStore` — reflecting a scan's filesystem facts into the index (upserting
+  locations, removing missing ones and the videos they orphan).
+- `SettingsStore` — registering, replacing and removing media folders.
+- `PlaybackStore` — playback positions. It holds only the SQL connection and does not
+  depend on the rebuildable index stores or their notifications.
+
+A role type never calls another role type's public methods. Reads several roles
+need (media folders, one video, whether a content key is still referenced) have a
+single package-private implementation that each role exposes as its own operation.
+Operations that span roles in one transaction — removing a media folder with its
+locations, videos and jobs, or scheduling a preview rebuild — stay atomic and share
+package-private SQL helpers inside that transaction.
 
 Search matches a per-location `search_key` that Go builds from the title and the
 path below the registered media folder, folded with `domain.FoldForMatch`, and

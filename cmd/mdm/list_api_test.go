@@ -41,7 +41,7 @@ func newListAPIFixture(t *testing.T) listAPIFixture {
 	if _, err := store.Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	root, err := db.AddMediaFolder(ctx, t.TempDir())
+	root, err := db.Settings().AddMediaFolder(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func newListAPIFixture(t *testing.T) listAPIFixture {
 func (f listAPIFixture) add(t *testing.T, rel, title string, durationMs int64) (int64, string) {
 	t.Helper()
 	key := "key-" + rel
-	got, err := f.db.UpsertVideo(f.ctx, domain.VideoFile{
+	got, err := f.db.ScanIndex().UpsertVideo(f.ctx, domain.VideoFile{
 		Path: filepath.Join(f.root.Path, filepath.FromSlash(rel)), Title: title, ContentKey: key,
 		SizeBytes: 1, MTime: time.Unix(1, 0), Container: "mp4",
 	})
@@ -65,7 +65,7 @@ func (f listAPIFixture) add(t *testing.T, rel, title string, durationMs int64) (
 		t.Fatal(err)
 	}
 	if durationMs > 0 {
-		if err := f.db.ApplyProbe(f.ctx, got.ID, domain.Probe{DurationMs: durationMs, VideoCodec: "h264"},
+		if err := f.db.Ingest().ApplyProbe(f.ctx, got.ID, domain.Probe{DurationMs: durationMs, VideoCodec: "h264"},
 			domain.Playability{Playable: true}); err != nil {
 			t.Fatal(err)
 		}
@@ -102,7 +102,7 @@ func TestListVideosAppliesQueryWatchAndSort(t *testing.T) {
 	f.add(t, "sub/京都 散歩.mp4", "京都 散歩", 5_000)
 	_, watchedKey := f.add(t, "京都 夜.mp4", "京都 夜", 7_000)
 	f.add(t, "奈良.mp4", "奈良", 8_000)
-	if _, err := f.db.SaveProgress(f.ctx, watchedKey, domain.Progress{
+	if _, err := f.db.Playback().SaveProgress(f.ctx, watchedKey, domain.Progress{
 		PositionMs: 7_000, DurationMs: 7_000, Completed: true, UpdatedAt: time.Unix(2, 0),
 	}); err != nil {
 		t.Fatal(err)

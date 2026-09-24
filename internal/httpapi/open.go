@@ -1,14 +1,12 @@
 package httpapi
 
 import (
-	"context"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
@@ -58,14 +56,7 @@ func (s *server) OpenVideoFile(w http.ResponseWriter, r *http.Request, id gen.Vi
 // 外を指している場合も「見つからない」と同じに扱い、どのパスが存在するかを漏らさない。
 // 確かめたパスと開くパスを揃えるため、辿った先のパスを opener へ渡す。
 func (s *server) openablePath(r *http.Request, path string) (string, bool, error) {
-	type folderLister interface {
-		ListMediaFolders(context.Context) ([]domain.MediaFolder, error)
-	}
-	library, ok := s.videos.(folderLister)
-	if !ok {
-		return "", false, nil
-	}
-	folders, err := library.ListMediaFolders(r.Context())
+	folders, err := s.videos.ListMediaFolders(r.Context())
 	if err != nil {
 		return "", false, err
 	}

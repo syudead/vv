@@ -16,8 +16,8 @@ import (
 // 一度諦めた行は消してから積み直す。内容が変わった動画を解析し直せないと、
 // 差し替えたファイルが永久に未解析のままになる。諦めた行を残さないのは、
 // 再スキャンのたびに履歴が積み上がるのを避けるためである。
-func (db *DB) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
-	if _, err := db.sql.ExecContext(ctx,
+func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
+	if _, err := s.db.sql.ExecContext(ctx,
 		`delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
 		string(kind), videoID,
 	); err != nil {
@@ -25,7 +25,7 @@ func (db *DB) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64
 	}
 
 	now := time.Now().Unix()
-	_, err := db.sql.ExecContext(ctx, `
+	_, err := s.db.sql.ExecContext(ctx, `
 		insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
 		values (?, ?, 'queued', 0, ?, ?)
 		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
@@ -36,7 +36,7 @@ func (db *DB) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64
 	}
 	var c changes
 	c.jobsQueued(kind)
-	db.publish(&c)
+	s.db.publish(&c)
 	return nil
 }
 
@@ -54,14 +54,14 @@ var jobStateColumns = map[domain.JobKind]string{
 // 動画が failed なら積まない。動画が pending のまま failed の行だけが残って
 // いるのは、失敗を行にだけ記録していた旧版の名残である。その行は捨てて積み
 // 直す。残すと、次の手動の取り込みでも直らない。
-func (db *DB) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
+func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
 	column, ok := jobStateColumns[kind]
 	if !ok {
 		return fmt.Errorf("未知の仕事の種類です: %s", kind)
 	}
 	pending := `exists (select 1 from videos where id = ? and ` + column + ` = 'pending')`
 
-	tx, err := db.sql.BeginTx(ctx, nil)
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("欠落ジョブの復旧を開始できません (%s, video=%d): %w", kind, videoID, err)
 	}
@@ -89,7 +89,7 @@ func (db *DB) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64)
 	if inserted > 0 {
 		c.jobsQueued(kind)
 	}
-	if err := db.commit(tx, &c); err != nil {
+	if err := s.db.commit(tx, &c); err != nil {
 		return fmt.Errorf("欠落ジョブの復旧を確定できません (%s, video=%d): %w", kind, videoID, err)
 	}
 	return nil
@@ -102,8 +102,8 @@ func (db *DB) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64)
 // ワーカーを置くので、種類の違う仕事は別々のワーカーが同時に取り出す。
 //
 // その種類の待ち行列が空なら ErrNoJob を返す。
-func (db *DB) ClaimJob(ctx context.Context, kind domain.JobKind) (domain.Job, error) {
-	conn, err := db.sql.Conn(ctx)
+func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain.Job, error) {
+	conn, err := s.db.sql.Conn(ctx)
 	if err != nil {
 		return domain.Job{}, fmt.Errorf("ジョブを取り出せません: %w", err)
 	}
@@ -216,8 +216,8 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 }
 
 // CompleteJob はジョブを完了にする。
-func (db *DB) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
-	_, err := db.sql.ExecContext(ctx, `
+func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
+	_, err := s.db.sql.ExecContext(ctx, `
 		update jobs set
 		state = case when exists (
 			select 1 from video_locations l join videos v on v.id = l.video_id
@@ -237,15 +237,15 @@ func (db *DB) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
 
 // CompleteJob は専有時点の所在を確かめずに完了を記録する。専有の控えを
 // 持たない呼び出し（テストの準備など）のために残している。
-func (db *DB) CompleteJob(ctx context.Context, id int64) error {
-	_, err := db.sql.ExecContext(ctx, `update jobs set state = 'done', last_error = null, updated_at = ? where id = ?`, time.Now().Unix(), id)
+func (s *IngestStore) CompleteJob(ctx context.Context, id int64) error {
+	_, err := s.db.sql.ExecContext(ctx, `update jobs set state = 'done', last_error = null, updated_at = ? where id = ?`, time.Now().Unix(), id)
 	return err
 }
 
 // FailJob は専有時点の所在を確かめずに失敗を記録する。専有の控えを持たない
 // 呼び出し（テストの準備など）のために残している。
-func (db *DB) FailJob(ctx context.Context, id int64, reason string) error {
-	tx, err := db.sql.BeginTx(ctx, nil)
+func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) error {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -269,8 +269,8 @@ func (db *DB) FailJob(ctx context.Context, id int64, reason string) error {
 // FailClaimedJob は失敗を記録する。queued へ戻すか failed で止めるかは
 // domain.JobStateAfterFailure が決め、ここではその結果を書く。failed なら、
 // 動画側の状態へも同じ取引で記録する（recordTerminalFailure）。
-func (db *DB) FailClaimedJob(ctx context.Context, job domain.Job, reason string) error {
-	tx, err := db.sql.BeginTx(ctx, nil)
+func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, reason string) error {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ジョブの失敗記録を開始できません (id=%d): %w", job.ID, err)
 	}
@@ -374,8 +374,8 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, reas
 
 // JobIdentityCurrent は、専有したときの内容鍵・所在・所在の世代が今も
 // 一致するかを返す。
-func (db *DB) JobIdentityCurrent(ctx context.Context, job domain.Job) (bool, error) {
-	return jobIdentityCurrent(ctx, db.sql, job)
+func (s *IngestStore) JobIdentityCurrent(ctx context.Context, job domain.Job) (bool, error) {
+	return jobIdentityCurrent(ctx, s.db.sql, job)
 }
 
 // rowQueryer は *sql.DB と *sql.Tx の共通部分のうち、1行を読むものである。
@@ -398,8 +398,8 @@ func jobIdentityCurrent(ctx context.Context, q rowQueryer, job domain.Job) (bool
 //
 // これがあるので、取り込みの途中でプロセスを止めても次の起動で再開でき、
 // 同じ処理を二重に行うこともない。
-func (db *DB) RequeueRunningJobs(ctx context.Context) (int64, error) {
-	res, err := db.sql.ExecContext(ctx,
+func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
+	res, err := s.db.sql.ExecContext(ctx,
 		`update jobs set state = 'queued', updated_at = ? where state = 'running'`,
 		time.Now().Unix())
 	if err != nil {
@@ -413,16 +413,16 @@ func (db *DB) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	if affected > 0 {
 		var c changes
 		c.jobsQueued(domain.JobKinds...)
-		db.publish(&c)
+		s.db.publish(&c)
 	}
 	return affected, nil
 }
 
 // ThumbnailJobActive はその動画のサムネイルのジョブが queued か running かを
 // 返す。シーク用プレビューの状態（pending か failed か）を導くのに使う。
-func (db *DB) ThumbnailJobActive(ctx context.Context, videoID int64) (bool, error) {
+func (s *IngestStore) ThumbnailJobActive(ctx context.Context, videoID int64) (bool, error) {
 	var active int
-	err := db.sql.QueryRowContext(ctx, `select exists (select 1 from jobs
+	err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from jobs
 		where kind = 'thumbnail' and video_id = ? and state in ('queued', 'running'))`, videoID).Scan(&active)
 	if err != nil {
 		return false, fmt.Errorf("サムネイルのジョブを確かめられません (video=%d): %w", videoID, err)
@@ -433,13 +433,13 @@ func (db *DB) ThumbnailJobActive(ctx context.Context, videoID int64) (bool, erro
 // Processing は段階ごとに残っている仕事の数を返す。数えるのは queued と
 // running で、ClaimJob と同じく登録済みの所在がある動画に限る。登録外の
 // 所在しかない仕事はワーカーが取り出さないので、数えると準備が終わらない。
-func (db *DB) Processing(ctx context.Context) (domain.Processing, error) {
+func (s *IngestStore) Processing(ctx context.Context) (domain.Processing, error) {
 	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
 	query := `select j.kind, count(*) from jobs j
 		where j.state in ('queued', 'running') and exists (
 			select 1 from video_locations l where l.video_id = j.video_id and ` + registeredLocationCondition("l") + `)
 		group by j.kind`
-	rows, err := db.sql.QueryContext(ctx, query)
+	rows, err := s.db.sql.QueryContext(ctx, query)
 	if err != nil {
 		return domain.Processing{}, fmt.Errorf("残りの仕事を数えられません: %w", err)
 	}

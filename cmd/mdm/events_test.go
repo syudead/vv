@@ -110,7 +110,7 @@ func openTestDB(t *testing.T) (context.Context, *store.DB, string) {
 		t.Fatal(err)
 	}
 	mediaDir := t.TempDir()
-	if _, err := db.AddMediaFolder(ctx, mediaDir); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
 		t.Fatal(err)
 	}
 	return ctx, db, mediaDir
@@ -121,14 +121,14 @@ func openTestDB(t *testing.T) (context.Context, *store.DB, string) {
 // 表されている。
 func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
-	video, err := db.UpsertVideo(ctx, domain.VideoFile{
+	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 		Path: filepath.Join(mediaDir, "movie.mp4"), Title: "movie", ContentKey: "key-movie", SizeBytes: 1,
 		MTime: time.Unix(1, 0), Container: "mp4",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.EnqueueJob(ctx, domain.JobThumbnail, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, video.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -176,7 +176,7 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 	}
 
 	running.Go(func() { probe.Run(runCtx) })
-	if err := db.EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -217,7 +217,7 @@ func (finishedScanner) Scan(context.Context) (domain.ScanResult, error) {
 // 側（保存層・取り込み・走査）は変えずに、定めたすべての変化が届く。
 func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
-	video, err := db.UpsertVideo(ctx, domain.VideoFile{
+	video, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 		Path: filepath.Join(mediaDir, "movie.mp4"), Title: "movie", ContentKey: "key-movie", SizeBytes: 1,
 		MTime: time.Unix(1, 0), Container: "mp4",
 	})
@@ -249,11 +249,11 @@ func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) 
 		t.Fatal(err)
 	}
 	scans.Wait()
-	if err := db.EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
 		t.Fatal(err)
 	}
 	ingest.JobFinished(domain.Job{Kind: domain.JobProbe, VideoID: video.ID})
-	if err := db.DeleteVideos(ctx, []int64{video.ID}); err != nil {
+	if err := db.ScanIndex().DeleteVideos(ctx, []int64{video.ID}); err != nil {
 		t.Fatal(err)
 	}
 	bus.Close()

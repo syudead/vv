@@ -28,94 +28,94 @@ func TestMediaFolderOperationsAreAtomicAndScoped(t *testing.T) {
 		}
 	}
 
-	folderA, err := db.AddMediaFolder(ctx, rootA)
+	folderA, err := db.Settings().AddMediaFolder(ctx, rootA)
 	if err != nil {
 		t.Fatal(err)
 	}
-	folderB, err := db.AddMediaFolder(ctx, rootB)
+	folderB, err := db.Settings().AddMediaFolder(ctx, rootB)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	fileA := sampleFile(filepath.Join(rootA, "movie.mp4"), "movie", "same-content", 10, 0)
 	fileB := sampleFile(filepath.Join(rootB, "movie.mp4"), "movie", "same-content", 10, 0)
-	video, err := db.UpsertVideo(ctx, fileA)
+	video, err := db.ScanIndex().UpsertVideo(ctx, fileA)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpsertVideo(ctx, fileB); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, fileB); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	claimed, err := db.ClaimJob(ctx, domain.JobProbe)
+	claimed, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if claimed.LocationPath != fileA.Path {
 		t.Fatalf("claimed path = %q, want %q", claimed.LocationPath, fileA.Path)
 	}
-	if _, err := db.SaveProgress(ctx, "same-content", domain.Progress{PositionMs: 1234}); err != nil {
+	if _, err := db.Playback().SaveProgress(ctx, "same-content", domain.Progress{PositionMs: 1234}); err != nil {
 		t.Fatal(err)
 	}
-	unchanged, err := db.ReplaceMediaFolder(ctx, folderA.ID, folderA.Version, rootA)
+	unchanged, err := db.Settings().ReplaceMediaFolder(ctx, folderA.ID, folderA.Version, rootA)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if unchanged.Version != folderA.Version {
 		t.Fatalf("same-path replacement changed version: %d", unchanged.Version)
 	}
-	if locations, err := db.VideoLocations(ctx, video.ID); err != nil || len(locations) != 2 {
+	if locations, err := db.Library().VideoLocations(ctx, video.ID); err != nil || len(locations) != 2 {
 		t.Fatalf("same-path replacement changed locations: %+v, %v", locations, err)
 	}
 
-	replaced, err := db.ReplaceMediaFolder(ctx, folderA.ID, folderA.Version, rootC)
+	replaced, err := db.Settings().ReplaceMediaFolder(ctx, folderA.ID, folderA.Version, rootC)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if replaced.Version != 2 {
 		t.Fatalf("version = %d, want 2", replaced.Version)
 	}
-	locations, err := db.VideoLocations(ctx, video.ID)
+	locations, err := db.Library().VideoLocations(ctx, video.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(locations) != 1 || locations[0].Path != fileB.Path {
 		t.Fatalf("remaining locations = %+v", locations)
 	}
-	if _, err := db.GetVideo(ctx, video.ID); err != nil {
+	if _, err := db.Library().GetVideo(ctx, video.ID); err != nil {
 		t.Fatalf("video with another location was removed: %v", err)
 	}
-	current, err := db.JobIdentityCurrent(ctx, claimed)
+	current, err := db.Ingest().JobIdentityCurrent(ctx, claimed)
 	if err != nil || current {
 		t.Fatalf("deleted location identity is current: %v, %v", current, err)
 	}
-	written, err := db.ApplyProbeForJob(ctx, claimed, domain.Probe{VideoCodec: "h264"}, domain.Playability{Playable: true})
+	written, err := db.Ingest().ApplyProbeForJob(ctx, claimed, domain.Probe{VideoCodec: "h264"}, domain.Playability{Playable: true})
 	if err != nil || written {
 		t.Fatalf("stale probe result was written: %v, %v", written, err)
 	}
-	if err := db.CompleteClaimedJob(ctx, claimed); err != nil {
+	if err := db.Ingest().CompleteClaimedJob(ctx, claimed); err != nil {
 		t.Fatal(err)
 	}
-	retried, err := db.ClaimJob(ctx, domain.JobProbe)
+	retried, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if retried.LocationPath != fileB.Path {
 		t.Fatalf("retry path = %q, want %q", retried.LocationPath, fileB.Path)
 	}
-	if err := db.CompleteClaimedJob(ctx, retried); err != nil {
+	if err := db.Ingest().CompleteClaimedJob(ctx, retried); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := db.DeleteMediaFolder(ctx, folderB.ID, folderB.Version); err != nil {
+	if err := db.Settings().DeleteMediaFolder(ctx, folderB.ID, folderB.Version); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.GetVideo(ctx, video.ID); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Library().GetVideo(ctx, video.ID); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("orphan video still exists: %v", err)
 	}
-	progress, err := db.ProgressByContentKeys(ctx, []string{"same-content"})
+	progress, err := db.Playback().ProgressByContentKeys(ctx, []string{"same-content"})
 	if err != nil || progress["same-content"].PositionMs != 1234 {
 		t.Fatalf("playback progress was not preserved: %+v, %v", progress, err)
 	}
@@ -130,17 +130,17 @@ func TestAddMediaFolderDoesNotTouchLibraryAndRejectsOverlap(t *testing.T) {
 		t.Fatal(err)
 	}
 	file := sampleFile(filepath.Join(root, "existing.mp4"), "existing", "existing", 1, time.Second)
-	video, err := db.UpsertVideo(ctx, file)
+	video, err := db.ScanIndex().UpsertVideo(ctx, file)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.AddMediaFolder(ctx, root); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.GetVideo(ctx, video.ID); err != nil {
+	if _, err := db.Library().GetVideo(ctx, video.ID); err != nil {
 		t.Fatalf("add changed the existing library: %v", err)
 	}
-	if _, err := db.AddMediaFolder(ctx, child); !errors.Is(err, domain.ErrFolderConflict) {
+	if _, err := db.Settings().AddMediaFolder(ctx, child); !errors.Is(err, domain.ErrFolderConflict) {
 		t.Fatalf("nested folder error = %v, want domain.ErrFolderConflict", err)
 	}
 }
@@ -157,13 +157,13 @@ func TestMediaFolderMutationRejectsRunningScan(t *testing.T) {
 	if err := os.Mkdir(candidate, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.AddMediaFolder(ctx, existing); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, existing); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := db.StartScan(ctx); err != nil {
+	if _, _, err := db.Scans().StartScan(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.AddMediaFolder(ctx, candidate); !errors.Is(err, domain.ErrScanRunning) {
+	if _, err := db.Settings().AddMediaFolder(ctx, candidate); !errors.Is(err, domain.ErrScanRunning) {
 		t.Fatalf("error = %v, want domain.ErrScanRunning", err)
 	}
 }
@@ -179,7 +179,7 @@ func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 		root = volume + string(os.PathSeparator)
 	}
 
-	folder, err := db.AddMediaFolder(ctx, root)
+	folder, err := db.Settings().AddMediaFolder(ctx, root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,21 +188,21 @@ func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 	}
 
 	file := sampleFile(filepath.Join(t.TempDir(), "root-visible.mp4"), "root visible", "root-content", 1, 0)
-	video, err := db.UpsertVideo(ctx, file)
+	video, err := db.ScanIndex().UpsertVideo(ctx, file)
 	if err != nil {
 		t.Fatal(err)
 	}
-	page, err := db.ListVideos(ctx, domain.VideoQuery{Query: "root visible", Limit: domain.MaxLimit})
+	page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Query: "root visible", Limit: domain.MaxLimit})
 	if err != nil || len(page.Items) != 1 || page.Items[0].ID != video.ID {
 		t.Fatalf("root video is not listed or searchable: %+v, %v", page, err)
 	}
-	if _, err := db.GetVideo(ctx, video.ID); err != nil {
+	if _, err := db.Library().GetVideo(ctx, video.ID); err != nil {
 		t.Fatalf("root video detail is unavailable: %v", err)
 	}
-	if err := db.EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx, domain.JobProbe)
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
 	if err != nil || job.VideoID != video.ID || job.LocationPath != file.Path {
 		t.Fatalf("root video job is not claimable: %+v, %v", job, err)
 	}
@@ -210,7 +210,7 @@ func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 
 func TestAddMediaFolderRejectsRelativePath(t *testing.T) {
 	db := migratedDB(t)
-	if _, err := db.AddMediaFolder(context.Background(), filepath.Join("relative", "media")); !errors.Is(err, domain.ErrInvalidMediaFolder) {
+	if _, err := db.Settings().AddMediaFolder(context.Background(), filepath.Join("relative", "media")); !errors.Is(err, domain.ErrInvalidMediaFolder) {
 		t.Fatalf("error = %v, want domain.ErrInvalidMediaFolder", err)
 	}
 }
@@ -221,10 +221,10 @@ func TestAddMediaFolderRejectsWindowsCaseDuplicate(t *testing.T) {
 	}
 	db := migratedDB(t)
 	root := t.TempDir()
-	if _, err := db.AddMediaFolder(context.Background(), root); err != nil {
+	if _, err := db.Settings().AddMediaFolder(context.Background(), root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.AddMediaFolder(context.Background(), strings.ToUpper(root)); !errors.Is(err, domain.ErrFolderConflict) {
+	if _, err := db.Settings().AddMediaFolder(context.Background(), strings.ToUpper(root)); !errors.Is(err, domain.ErrFolderConflict) {
 		t.Fatalf("case-only duplicate error = %v, want domain.ErrFolderConflict", err)
 	}
 }
@@ -236,7 +236,7 @@ func TestAddMediaFolderPreservesFilesystemUnicodePath(t *testing.T) {
 	if err := os.Mkdir(path, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	folder, err := db.AddMediaFolder(context.Background(), path)
+	folder, err := db.Settings().AddMediaFolder(context.Background(), path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,29 +256,29 @@ func TestDeletingRepresentativeLocationRecomputesContainerAndPlayability(t *test
 			t.Fatal(err)
 		}
 	}
-	folderA, err := db.AddMediaFolder(ctx, rootA)
+	folderA, err := db.Settings().AddMediaFolder(ctx, rootA)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.AddMediaFolder(ctx, rootB); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, rootB); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootA, "movie.mkv"), "movie", "same", 1, 0))
+	video, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(filepath.Join(rootA, "movie.mkv"), "movie", "same", 1, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootB, "movie.mp4"), "movie", "same", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(filepath.Join(rootB, "movie.mp4"), "movie", "same", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	probe := domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mkv", probe)); err != nil {
+	if err := db.Ingest().ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mkv", probe)); err != nil {
 		t.Fatal(err)
 	}
 
-	if err := db.DeleteMediaFolder(ctx, folderA.ID, folderA.Version); err != nil {
+	if err := db.Settings().DeleteMediaFolder(ctx, folderA.ID, folderA.Version); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.GetVideo(ctx, video.ID)
+	got, err := db.Library().GetVideo(ctx, video.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -302,29 +302,29 @@ func TestReplacingFolderSynchronizesLocationsEnabledByNewRoot(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	folderA, err := db.AddMediaFolder(ctx, rootA)
+	folderA, err := db.Settings().AddMediaFolder(ctx, rootA)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.AddMediaFolder(ctx, rootC); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, rootC); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootC, "z.mkv"), "z", "same", 1, 0))
+	video, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(filepath.Join(rootC, "z.mkv"), "z", "same", 1, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpsertVideo(ctx, sampleFile(filepath.Join(rootB, "a.mp4"), "a", "same", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(filepath.Join(rootB, "a.mp4"), "a", "same", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	probe := domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mkv", probe)); err != nil {
+	if err := db.Ingest().ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mkv", probe)); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := db.ReplaceMediaFolder(ctx, folderA.ID, folderA.Version, rootB); err != nil {
+	if _, err := db.Settings().ReplaceMediaFolder(ctx, folderA.ID, folderA.Version, rootB); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.GetVideo(ctx, video.ID)
+	got, err := db.Library().GetVideo(ctx, video.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

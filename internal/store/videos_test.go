@@ -31,7 +31,7 @@ func TestUpsertVideoAddsNewRow(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	got, err := db.UpsertVideo(ctx, sampleFile("/media/海辺の散歩.mp4", "海辺の散歩", "key-a", 1024, 0))
+	got, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/海辺の散歩.mp4", "海辺の散歩", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatalf("取り込めない: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestUpsertVideoAddsNewRow(t *testing.T) {
 		t.Error("ID が返っていない")
 	}
 
-	video, err := db.GetVideo(ctx, got.ID)
+	video, err := db.Library().GetVideo(ctx, got.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,12 +75,12 @@ func TestUpsertVideoIsUnchangedWhenNothingMoved(t *testing.T) {
 	ctx := context.Background()
 
 	file := sampleFile("/media/a.mp4", "a", "key-a", 1024, 0)
-	first, err := db.UpsertVideo(ctx, file)
+	first, err := db.ScanIndex().UpsertVideo(ctx, file)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	second, err := db.UpsertVideo(ctx, file)
+	second, err := db.ScanIndex().UpsertVideo(ctx, file)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,18 +97,18 @@ func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	added, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.ApplyProbe(ctx, added.ID, domain.Probe{
+	if err := db.Ingest().ApplyProbe(ctx, added.ID, domain.Probe{
 		DurationMs: 8000, Width: 640, Height: 360, VideoCodec: "h264", AudioCodec: "aac",
 	}, domain.Playability{Playable: true}); err != nil {
 		t.Fatal(err)
 	}
 
 	// 同じパスで内容が差し替わった（content_key も変わる）。
-	updated, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a2", 2048, time.Hour))
+	updated, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a2", 2048, time.Hour))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 		t.Errorf("内容が変わったのに論理動画IDが維持された: %d", added.ID)
 	}
 
-	video, err := db.GetVideo(ctx, updated.ID)
+	video, err := db.Library().GetVideo(ctx, updated.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,22 +140,22 @@ func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 func TestReassigningRepresentativeLocationSynchronizesOldVideo(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	oldVideo, err := db.UpsertVideo(ctx, sampleFile("/media/a.mkv", "a", "old", 1, 0))
+	oldVideo, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mkv", "a", "old", 1, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "old", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "old", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	probe := domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.ApplyProbe(ctx, oldVideo.ID, probe, domain.EvaluatePlayability("mkv", probe)); err != nil {
+	if err := db.Ingest().ApplyProbe(ctx, oldVideo.ID, probe, domain.EvaluatePlayability("mkv", probe)); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mkv", "replacement", "new", 2, time.Hour)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mkv", "replacement", "new", 2, time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.GetVideo(ctx, oldVideo.ID)
+	got, err := db.Library().GetVideo(ctx, oldVideo.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -170,12 +170,12 @@ func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	added, err := db.UpsertVideo(ctx, sampleFile("/media/海辺の散歩.mp4", "海辺の散歩", "key-a", 1024, 0))
+	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/海辺の散歩.mp4", "海辺の散歩", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	moved, err := db.UpsertVideo(ctx,
+	moved, err := db.ScanIndex().UpsertVideo(ctx,
 		sampleFile("/media/2026/海辺の散歩（編集済み）.mp4", "海辺の散歩（編集済み）", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
@@ -187,7 +187,7 @@ func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 		t.Errorf("移動で別の行になった: %d -> %d", added.ID, moved.ID)
 	}
 
-	total, err := db.CountVideos(ctx, "")
+	total, err := db.Library().CountVideos(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 		t.Errorf("移動で行が増えた: %d 行, want 1", total)
 	}
 
-	video, err := db.GetVideo(ctx, added.ID)
+	video, err := db.Library().GetVideo(ctx, added.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,15 +215,15 @@ func TestListVideosPagesByRepresentativeLocationTitle(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	for i, title := range []string{"charlie", "alpha", "bravo"} {
-		if _, err := db.UpsertVideo(ctx, sampleFile("/media/"+title+".mp4", title, fmt.Sprintf("key-%d", i), int64(i+1), 0)); err != nil {
+		if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/"+title+".mp4", title, fmt.Sprintf("key-%d", i), int64(i+1), 0)); err != nil {
 			t.Fatal(err)
 		}
 	}
-	first, err := db.ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1})
+	first, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := db.ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1, Cursor: first.NextCursor})
+	second, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1, Cursor: first.NextCursor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,17 +235,17 @@ func TestListVideosPagesByRepresentativeLocationTitle(t *testing.T) {
 func TestAddingDuplicateLocationRequestsRecoveryForFailedProcessing(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	first, err := db.UpsertVideo(ctx, sampleFile("/media/a/movie.mp4", "movie", "shared", 1, 0))
+	first, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a/movie.mp4", "movie", "shared", 1, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.MarkProbeFailed(ctx, first.ID, "broken location"); err != nil {
+	if err := db.Ingest().MarkProbeFailed(ctx, first.ID, "broken location"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.SetThumbnailState(ctx, first.ID, domain.ThumbnailStateFailed); err != nil {
+	if err := db.Ingest().SetThumbnailState(ctx, first.ID, domain.ThumbnailStateFailed); err != nil {
 		t.Fatal(err)
 	}
-	second, err := db.UpsertVideo(ctx, sampleFile("/media/b/movie.mp4", "movie", "shared", 1, 0))
+	second, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b/movie.mp4", "movie", "shared", 1, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -257,14 +257,14 @@ func TestAddingDuplicateLocationRequestsRecoveryForFailedProcessing(t *testing.T
 func TestRepresentativeLocationComesFromRegisteredRoot(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	first, err := db.UpsertVideo(ctx, sampleFile("/legacy/movie.mp4", "legacy", "shared-location", 1, 0))
+	first, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/legacy/movie.mp4", "legacy", "shared-location", 1, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/current.mp4", "current", "shared-location", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/current.mp4", "current", "shared-location", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.GetVideo(ctx, first.ID)
+	video, err := db.Library().GetVideo(ctx, first.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestRepresentativeLocationComesFromRegisteredRoot(t *testing.T) {
 func TestGetVideoReportsMissing(t *testing.T) {
 	db := migratedDB(t)
 
-	_, err := db.GetVideo(context.Background(), 12345)
+	_, err := db.Library().GetVideo(context.Background(), 12345)
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("err = %v, want domain.ErrNotFound", err)
 	}
@@ -288,18 +288,18 @@ func TestApplyProbeStoresFactsAndPlayability(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	added, err := db.UpsertVideo(ctx, sampleFile("/media/a.mkv", "a", "key-a", 1024, 0))
+	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mkv", "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	probe := domain.Probe{DurationMs: 8123, Width: 1280, Height: 720, VideoCodec: "h264", AudioCodec: "aac"}
 	play := domain.EvaluatePlayability("mkv", probe)
-	if err := db.ApplyProbe(ctx, added.ID, probe, play); err != nil {
+	if err := db.Ingest().ApplyProbe(ctx, added.ID, probe, play); err != nil {
 		t.Fatal(err)
 	}
 
-	video, err := db.GetVideo(ctx, added.ID)
+	video, err := db.Library().GetVideo(ctx, added.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,16 +326,16 @@ func TestApplyProbeKeepsUnknownDurationNull(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	added, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
 	probe := domain.Probe{VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.ApplyProbe(ctx, added.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+	if err := db.Ingest().ApplyProbe(ctx, added.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
 	}
 
-	video, err := db.GetVideo(ctx, added.ID)
+	video, err := db.Library().GetVideo(ctx, added.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -353,15 +353,15 @@ func TestMarkProbeFailedKeepsRowAndRecordsReason(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	added, err := db.UpsertVideo(ctx, sampleFile("/media/壊れた動画.mp4", "壊れた動画", "key-a", 1024, 0))
+	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/壊れた動画.mp4", "壊れた動画", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.MarkProbeFailed(ctx, added.ID, "ffprobe が尺を返しませんでした"); err != nil {
+	if err := db.Ingest().MarkProbeFailed(ctx, added.ID, "ffprobe が尺を返しませんでした"); err != nil {
 		t.Fatal(err)
 	}
 
-	video, err := db.GetVideo(ctx, added.ID)
+	video, err := db.Library().GetVideo(ctx, added.ID)
 	if err != nil {
 		t.Fatalf("失敗した動画が一覧から消えた: %v", err)
 	}
@@ -397,7 +397,7 @@ func listFixture(t *testing.T) (*DB, []int64) {
 	ids := make([]int64, 0, len(rows))
 	for i, row := range rows {
 		// added_at が行ごとに違わないと、追加順の並びが id 頼みになる。
-		got, err := db.UpsertVideo(ctx, domain.VideoFile{
+		got, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
 			Path:       fmt.Sprintf("/media/%s.mp4", row.title),
 			Title:      row.title,
 			ContentKey: row.key,
@@ -428,7 +428,7 @@ func TestListVideosSortOrders(t *testing.T) {
 	db, _ := listFixture(t)
 	ctx := context.Background()
 
-	added, err := db.ListVideos(ctx, domain.VideoQuery{Sort: domain.SortAddedDesc})
+	added, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: domain.SortAddedDesc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestListVideosSortOrders(t *testing.T) {
 		t.Errorf("addedDesc = %v, want %v", got, want)
 	}
 
-	byTitle, err := db.ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc})
+	byTitle, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -463,7 +463,7 @@ func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 		{domain.MaxLimit + 1, domain.MaxLimit},
 		{100000, domain.MaxLimit},
 	} {
-		page, err := db.ListVideos(ctx, domain.VideoQuery{Limit: tc.given})
+		page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Limit: tc.given})
 		if err != nil {
 			t.Fatalf("limit=%d: %v", tc.given, err)
 		}
@@ -491,7 +491,7 @@ func TestListVideosPagesWithCursor(t *testing.T) {
 			var seen []string
 			cursor := ""
 			for page := 0; page < 10; page++ {
-				got, err := db.ListVideos(ctx, domain.VideoQuery{Sort: sort, Limit: 2, Cursor: cursor})
+				got, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: sort, Limit: 2, Cursor: cursor})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -502,7 +502,7 @@ func TestListVideosPagesWithCursor(t *testing.T) {
 				cursor = got.NextCursor
 			}
 
-			all, err := db.ListVideos(ctx, domain.VideoQuery{Sort: sort, Limit: domain.MaxLimit})
+			all, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: sort, Limit: domain.MaxLimit})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -518,7 +518,7 @@ func TestListVideosPagesWithCursor(t *testing.T) {
 func TestListVideosStopsAtLastPage(t *testing.T) {
 	db, _ := listFixture(t)
 
-	page, err := db.ListVideos(context.Background(), domain.VideoQuery{Limit: domain.MaxLimit})
+	page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -531,7 +531,7 @@ func TestListVideosStopsAtLastPage(t *testing.T) {
 func TestListVideosTotalIsIndependentOfPageSize(t *testing.T) {
 	db, _ := listFixture(t)
 
-	page, err := db.ListVideos(context.Background(), domain.VideoQuery{Limit: 2})
+	page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -549,7 +549,7 @@ func TestListVideosRejectsBrokenCursor(t *testing.T) {
 	db, _ := listFixture(t)
 
 	for _, cursor := range []string{"not-base64!!", "***", "YWJj", "'; drop table videos; --"} {
-		_, err := db.ListVideos(context.Background(), domain.VideoQuery{Cursor: cursor})
+		_, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Cursor: cursor})
 		if !errors.Is(err, domain.ErrInvalidCursor) {
 			t.Errorf("cursor=%q: err = %v, want domain.ErrInvalidCursor", cursor, err)
 		}
@@ -561,11 +561,11 @@ func TestDeleteVideos(t *testing.T) {
 	db, ids := listFixture(t)
 	ctx := context.Background()
 
-	if err := db.DeleteVideos(ctx, ids[:2]); err != nil {
+	if err := db.ScanIndex().DeleteVideos(ctx, ids[:2]); err != nil {
 		t.Fatal(err)
 	}
 
-	total, err := db.CountVideos(ctx, "")
+	total, err := db.Library().CountVideos(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -574,10 +574,10 @@ func TestDeleteVideos(t *testing.T) {
 	}
 
 	// 空の指定で全件消してしまわないこと。
-	if err := db.DeleteVideos(ctx, nil); err != nil {
+	if err := db.ScanIndex().DeleteVideos(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
-	if total, _ := db.CountVideos(ctx, ""); total != 3 {
+	if total, _ := db.Library().CountVideos(ctx, ""); total != 3 {
 		t.Errorf("空の指定で行が消えた: %d 行, want 3", total)
 	}
 }
@@ -587,7 +587,7 @@ func TestDeleteVideos(t *testing.T) {
 func TestIndexedVideosByPath(t *testing.T) {
 	db, _ := listFixture(t)
 
-	indexed, err := db.IndexedVideosByPath(context.Background())
+	indexed, err := db.ScanIndex().IndexedVideosByPath(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -613,7 +613,7 @@ func TestContentKeyReferenced(t *testing.T) {
 	ctx := context.Background()
 
 	for key, want := range map[string]bool{"key-3": true, "消えた内容": false} {
-		got, err := db.ContentKeyReferenced(ctx, key)
+		got, err := db.Library().ContentKeyReferenced(ctx, key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -642,11 +642,11 @@ func TestUpsertVideoResyncsWhenAddedLocationBecomesRepresentative(t *testing.T) 
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b.mkv", "movie", "same", 10, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mkv", "movie", "same", 10, 0)); err != nil {
 		t.Fatal(err)
 	}
 	// /media/a.mp4 はパス順で先にくるので、足した時点で代表場所になる。
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "movie", "same", 10, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "movie", "same", 10, 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -666,10 +666,10 @@ func TestDeleteVideoLocationsResyncsRemainingRepresentative(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/a.mkv", "movie", "same", 10, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mkv", "movie", "same", 10, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/b.mp4", "movie", "same", 10, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "movie", "same", 10, 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -678,7 +678,7 @@ func TestDeleteVideoLocationsResyncsRemainingRepresentative(t *testing.T) {
 		`select id from video_locations where path = '/media/a.mkv'`).Scan(&locationID); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.DeleteVideoLocations(ctx, []int64{locationID}); err != nil {
+	if err := db.ScanIndex().DeleteVideoLocations(ctx, []int64{locationID}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -732,7 +732,7 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 		sampleFile("/media/b.mp4", "b", "key-b", 2, 0),
 		sampleFile("/media/c.mp4", "c", "key-c", 3, 0),
 	} {
-		if _, err := db.UpsertVideo(ctx, file); err != nil {
+		if _, err := db.ScanIndex().UpsertVideo(ctx, file); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -746,7 +746,7 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 	}
 
 	// 同じ内容の所在が残るので、動画の行は消えない。
-	if err := db.DeleteVideoLocations(ctx, []int64{location("/media/a2.mp4")}); err != nil {
+	if err := db.ScanIndex().DeleteVideoLocations(ctx, []int64{location("/media/a2.mp4")}); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); len(got) != 0 {
@@ -754,7 +754,7 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 	}
 
 	// 最後の所在が消えると、動画の行と一緒に知らせる。
-	if err := db.DeleteVideoLocations(ctx, []int64{location("/media/b.mp4")}); err != nil {
+	if err := db.ScanIndex().DeleteVideoLocations(ctx, []int64{location("/media/b.mp4")}); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); fmt.Sprint(got) != "[key-b]" {
@@ -762,7 +762,7 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 	}
 
 	// 同じ所在の内容が変わると、前の内容の動画が消える。
-	if _, err := db.UpsertVideo(ctx, sampleFile("/media/c.mp4", "c", "key-c2", 4, time.Minute)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/c.mp4", "c", "key-c2", 4, time.Minute)); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); fmt.Sprint(got) != "[key-c]" {
@@ -770,11 +770,11 @@ func TestContentReleasedWhenVideoRowsAreDeleted(t *testing.T) {
 	}
 
 	// 登録を外すと、その下の動画がすべて消える。
-	folders, err := db.ListMediaFolders(ctx)
+	folders, err := db.Settings().ListMediaFolders(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.DeleteMediaFolder(ctx, folders[0].ID, folders[0].Version); err != nil {
+	if err := db.Settings().DeleteMediaFolder(ctx, folders[0].ID, folders[0].Version); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); fmt.Sprint(got) != "[key-a key-c2]" {

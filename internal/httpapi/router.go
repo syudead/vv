@@ -27,9 +27,14 @@ type Pinger interface {
 
 // Library は一覧と詳細の問い合わせ先である。httpapi は保存の手段を知らないので、
 // 必要な操作だけを宣言する。
+//
+// 配信と既定アプリで開く操作は、動画の所在と登録フォルダを読んで、開いてよい
+// 実体かを確かめる。
 type Library interface {
 	ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error)
 	GetVideo(ctx context.Context, id int64) (domain.Video, error)
+	VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error)
+	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 }
 
 // Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、

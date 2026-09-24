@@ -75,20 +75,15 @@ func registeredRelativePath(root, path string) (string, bool) {
 
 // mediaFolderRoots は登録メディアフォルダのパスをすべて返す。
 func mediaFolderRoots(ctx context.Context, q queryExecer) ([]string, error) {
-	rows, err := q.QueryContext(ctx, `select path from media_folders order by id`)
+	folders, err := listMediaFolders(ctx, q)
 	if err != nil {
-		return nil, fmt.Errorf("メディアフォルダを読み出せません: %w", err)
+		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
-	var roots []string
-	for rows.Next() {
-		var root string
-		if err := rows.Scan(&root); err != nil {
-			return nil, fmt.Errorf("メディアフォルダを読み出せません: %w", err)
-		}
-		roots = append(roots, root)
+	roots := make([]string, 0, len(folders))
+	for _, folder := range folders {
+		roots = append(roots, folder.Path)
 	}
-	return roots, rows.Err()
+	return roots, nil
 }
 
 // searchKeyTarget は鍵を作り直す所在1件である。
@@ -175,10 +170,10 @@ func searchKeyTargets(ctx context.Context, q queryExecer, query string, args ...
 // 受け付けより前に呼ぶ。searchKeyBatchSize 件ずつのトランザクションで書き、
 // 版は行ごとに書くので、途中で失敗しても次の呼び出しで続きから埋まる。失敗を
 // 返したら、呼び出し側は起動を止める（古い鍵のまま検索を出さない）。
-func (db *DB) RefreshSearchKeys(ctx context.Context) (int, error) {
+func (s *LibraryStore) RefreshSearchKeys(ctx context.Context) (int, error) {
 	refreshed := 0
 	for {
-		count, err := db.refreshSearchKeyBatch(ctx)
+		count, err := s.refreshSearchKeyBatch(ctx)
 		if err != nil {
 			return refreshed, err
 		}
@@ -189,10 +184,10 @@ func (db *DB) RefreshSearchKeys(ctx context.Context) (int, error) {
 	}
 }
 
-func (db *DB) refreshSearchKeyBatch(ctx context.Context) (int, error) {
-	db.folderMu.Lock()
-	defer db.folderMu.Unlock()
-	tx, err := db.sql.BeginTx(ctx, nil)
+func (s *LibraryStore) refreshSearchKeyBatch(ctx context.Context) (int, error) {
+	s.db.folderMu.Lock()
+	defer s.db.folderMu.Unlock()
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, err
 	}

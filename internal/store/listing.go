@@ -86,8 +86,8 @@ type listSpec struct {
 // ページングは keyset（カーソル）方式である。offset を使うと、取り込みで行が
 // 増減した瞬間に取りこぼしと重複が起きる。並び順の値と id を境界に使うので、
 // 途中で行が動いても続きが安定して取れる。
-func (db *DB) ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error) {
-	return db.listVideoPage(ctx, listSpec{
+func (s *LibraryStore) ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error) {
+	return s.listVideoPage(ctx, listSpec{
 		scope: libraryScope(), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
@@ -97,8 +97,8 @@ func (db *DB) ListVideos(ctx context.Context, q domain.VideoQuery) (domain.Video
 // ListFolderVideos はフォルダの動画1ページを返す。範囲は q.Scope で直下か配下
 // すべてかを選ぶ。並び順・カーソルの形・絞り込みは ListVideos と同じで、題名は
 // その範囲にある所在の題名である。
-func (db *DB) ListFolderVideos(ctx context.Context, q domain.FolderVideoQuery) (domain.VideoPage, error) {
-	return db.listVideoPage(ctx, listSpec{
+func (s *LibraryStore) ListFolderVideos(ctx context.Context, q domain.FolderVideoQuery) (domain.VideoPage, error) {
+	return s.listVideoPage(ctx, listSpec{
 		scope: folderScope(q.Dir, q.Scope), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
@@ -107,8 +107,8 @@ func (db *DB) ListFolderVideos(ctx context.Context, q domain.FolderVideoQuery) (
 
 // CountVideos はライブラリで検索語に当たる動画の総件数を返す。一覧と同じ所在の
 // まとめ（chosen）を数えるので、1万件規模で数十 ms かかる（一覧の1ページも同程度）。
-func (db *DB) CountVideos(ctx context.Context, search string) (int, error) {
-	return db.countVideos(ctx, listSpec{scope: libraryScope(), expr: domain.ParseSearchQuery(search)})
+func (s *LibraryStore) CountVideos(ctx context.Context, search string) (int, error) {
+	return s.countVideos(ctx, listSpec{scope: libraryScope(), expr: domain.ParseSearchQuery(search)})
 }
 
 // chosenLocationsCTE は、範囲と検索式を満たす所在を動画ごとにパスの最小の1件へ
@@ -182,18 +182,18 @@ func filteredFrom(spec listSpec, withLocation bool) string {
 
 // countVideos は範囲・検索式・絞り込みをすべて適用した総件数を返す（要件 13）。
 // カーソルには関係しない。
-func (db *DB) countVideos(ctx context.Context, spec listSpec) (int, error) {
+func (s *LibraryStore) countVideos(ctx context.Context, spec listSpec) (int, error) {
 	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
 	var total int
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
-	if err := db.sql.QueryRowContext(ctx, cte+` select count(*)`+filteredFrom(spec, false), args...).Scan(&total); err != nil {
+	if err := s.db.sql.QueryRowContext(ctx, cte+` select count(*)`+filteredFrom(spec, false), args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("件数を数えられません: %w", err)
 	}
 	return total, nil
 }
 
 // listVideoPage は条件に合う動画1ページと総件数を返す。
-func (db *DB) listVideoPage(ctx context.Context, spec listSpec) (domain.VideoPage, error) {
+func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain.VideoPage, error) {
 	limit := normalizeLimit(spec.limit)
 	if !spec.sort.Valid() {
 		// 値の検査は入口（internal/httpapi）が行う。ここに来た未知の値は既定にする。
@@ -211,7 +211,7 @@ func (db *DB) listVideoPage(ctx context.Context, spec listSpec) (domain.VideoPag
 		}
 	}
 
-	total, err := db.countVideos(ctx, spec)
+	total, err := s.countVideos(ctx, spec)
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
@@ -232,7 +232,7 @@ func (db *DB) listVideoPage(ctx context.Context, spec listSpec) (domain.VideoPag
 	// 次のページがあるかを知るために1件多く取る。件数を数え直すより安い。
 	query += ` order by ` + order.orderBy() + ` limit ?`
 
-	rows, err := db.sql.QueryContext(ctx, query, append(args, limit+1)...)
+	rows, err := s.db.sql.QueryContext(ctx, query, append(args, limit+1)...)
 	if err != nil {
 		return domain.VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
 	}
