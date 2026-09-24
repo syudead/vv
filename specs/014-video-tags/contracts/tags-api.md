@@ -119,7 +119,7 @@ TypeScript の型を扱う前例がリポジトリに無いためである。
 
 ## 5. 一覧の絞り込みと「すべて選択」
 
-#195 の `specs/013-library-search/contracts/list-api.md` の一覧に、次を足す。
+#195 の [list-api.md](../../013-library-search/contracts/list-api.md) の一覧に、次を足す。
 
 | 名前 | 型 | 既定 | 意味 |
 | --- | --- | --- | --- |

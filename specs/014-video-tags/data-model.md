@@ -14,10 +14,8 @@
 
 ## 1. マイグレーション
 
-`00008_tags.sql` として新しく足す。番号が 8 なのは、#195（`feature/013-library-search`）が
-`00007_location_search.sql` を足すためである。goose は、適用済みの番号より小さい
-未適用のマイグレーションを誤りとして扱うので、このマイグレーションは 00007 より後に
-`main` へ入る必要がある（Plan の Structural Decisions 1）。
+`00008_tags.sql` として新しく足す。`main` にある最後のマイグレーションは #195 の
+`00007_location_search.sql` である。
 
 ```sql
 -- タグそのもの。名前は tag_names が持つ。

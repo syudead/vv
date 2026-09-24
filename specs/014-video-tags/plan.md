@@ -33,9 +33,10 @@
   [internal/httpapi/videos.go](../../internal/httpapi/videos.go) の `progressFor`
 - いまライブラリにある動画の条件: `registeredVideoCondition`（[internal/store/videos.go](../../internal/store/videos.go)）
 - 一覧の問い合わせ・条件の URL: #195 の
-  `specs/013-library-search/plan.md`・
-  `specs/013-library-search/contracts/list-api.md`・
-  `specs/013-library-search/contracts/list-url.md`（#195 の統合で `main` に入るまではパスで示す）
+  [plan.md](../013-library-search/plan.md)・
+  [contracts/list-api.md](../013-library-search/contracts/list-api.md)・
+  [contracts/list-url.md](../013-library-search/contracts/list-url.md)・
+  [ui-design.md](../013-library-search/ui-design.md)
 - Web の所有境界と視覚規則: [ARCHITECTURE.md#web-layer](../../ARCHITECTURE.md#web-layer)・
   [library-ui.md](../../docs/design-docs/library-ui.md)
 - 一覧のページング・復元: [web/src/api/useVideos.ts](../../web/src/api/useVideos.ts)・
@@ -45,10 +46,10 @@
 
 **Feature-specific context**:
 
-- この feature は #195（`feature/013-library-search`、統合 PR #219）の一覧の組み立て
+- この feature は、#195（統合 PR #219 で `main` に入った）の一覧の組み立て
   （`internal/store/listing.go`・`VideoQuery` の視聴状態と再生可否）と、条件の URL
-  （`web/src/library/listCriteria.ts`）の上に作る。#195 が `main` に入るまで、実装単位は
-  始めない（Structural Decisions 1）。
+  （`web/src/library/listCriteria.ts`・`useListCriteria.ts`）の上に作る
+  （Structural Decisions 1）。
 - マイグレーションを1つ足す（`00008_tags.sql`、[data-model.md §1](data-model.md#1-マイグレーション)）。
   既存の表には触れない。
 - 規模の前提は既存と同じ1万本である。一括の付け外しは、1万本を1回の要求と1つの
@@ -73,7 +74,8 @@
   メディアフォルダの変更の経路は、これらの表に書かない。マイグレーションは新しい
   ファイルとして足す。
 - **UI の正本**（library-ui.md・`web/src/theme/tokens.test.ts`）: 合格の見込み。色と大きさは
-  トークンだけを使う。構図は design 工程で決め、実装 PR に画像を添える。
+  トークンだけを使う。構図は design 工程で決め、実装では `ui-design.md` の観点で視覚・操作・
+  支援技術を確かめる。
 - **裏側の無い入口を増やさない**（library-ui.md §7）: 合格。サイドバーの「タグ」は、
   管理画面ができる単位で初めて足す。
 - **サーバーと話す場所**（ARCHITECTURE.md「Web layer」）: 合格。取得と変更の関数、
@@ -83,16 +85,11 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
 
 ## Structural Decisions
 
-1. **#195 が `main` に入ってから実装を始め、その一覧の組み立てにタグの条件を足す。**
-   feature ブランチは今の `main` から作り、この Plan だけを載せる。最初の実装単位の前に、
-   #195 を含む `main` を feature ブランチへ取り込む。マイグレーションは `00008` とする。
-   - 却下: `feature/013-library-search` から枝分かれする案。統合 PR が #195 の差分を抱え、
-     #195 の統合より先にも後にも独立してレビューできなくなる。
-   - 却下: 今の `main` の `ListVideos` と `LibraryPage` の `useState` の上に作る案。
-     #195 がそれらを `listing.go` と `listCriteria.ts` に置き換えるので、タグの条件を
-     2回書くことになる。今の画面は絞り込みを URL に持たないため、要件 5 の URL の保持を
-     別に作ることにもなる。マイグレーションの番号も #195 の `00007` とぶつかり、goose は
-     適用済みの番号より小さい未適用のマイグレーションを誤りとして扱う。
+1. **タグの絞り込みは、#195 の一覧の組み立てと条件の URL に1つの条件として足す。**
+   サーバーは `listing.go` の条件にタグの AND を足し、画面は `listCriteria.ts` の条件に
+   `tag` を足す。控えの鍵・履歴・「条件を解除」も #195 の仕組みをそのまま使う。
+   - 却下: タグの絞り込みを別の経路や別の URL の読み書きとして持つ案。検索語・視聴状態・
+     再生可否との AND（要件 5）、件数、控えの鍵を2か所で合わせることになる。
 2. **名前とシノニムを1つの表 `tag_names` に置き、名前を主キーにする。** 「元の名前と
    シノニムを通して同じ名前は1つ」を SQLite の一意性で保証する
    （[data-model.md §1](data-model.md#1-マイグレーション)）。
@@ -222,10 +219,10 @@ specs/014-video-tags/
 `internal/domain` に名前の整え方と誤り（[data-model.md §2](data-model.md#2-名前の規則)）、
 `internal/store/tags.go` に作成・改名・削除・統合・シノニムの登録と解除・本数つきの一覧を
 置く（[data-model.md §3〜§5](data-model.md#3-名前の引き方)）。不変条件の検査を
-`invariants_test.go` に足す。`ARCHITECTURE.md` の利用者データの記述に3つの表を足す。
+`invariants_test.go` に足す。`ARCHITECTURE.md` の利用者データの記述と、
+`docs/design-docs/tech-stack-selection.md` §3.2 の表の一覧に3つの表を足す。
 
-**Dependencies**: None。ただし #195 を含む `main` が feature ブランチに取り込まれていること
-（Structural Decisions 1）
+**Dependencies**: None
 
 **Acceptance**: `go test ./internal/domain/... ./internal/store/...` で次が通る。前後の空白は
 取れ、空白だけの名前と 101 符号位置の名前は誤りになる。`Anime` があるとき `anime` は別の
@@ -313,8 +310,7 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 **Acceptance**: Vitest と `web/e2e/tags.e2e.ts` で、受け入れ条件 1・2・6・13 が再生画面で
 確かめられる。キーボードだけで「タグを追加」に届き、矢印キーで候補を選んで Enter で
 付けられる。外すボタンの名前が「<タグ名> を外す」の形で読み上げられる。空白だけの入力は
-確定できない。`task check` と `task test-e2e` が通る。実装 PR に画像と、視覚・操作・支援技術の
-確認を添える。
+確定できない。`task check` と `task test-e2e` が通る。`ui-design.md` の観点で視覚・操作・支援技術を確かめる。
 
 ### 一覧のカードにタグを出し、タグの AND で一覧を絞り込めるようにする
 
@@ -336,7 +332,7 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 フォルダ画面のカードは今のメタ情報の行のままである。`web/e2e/tags.e2e.ts` で、受け入れ条件 5・7・8 とシノニムでの
 絞り込み（受け入れ条件 13 の後半）が確かめられる。カードのタグが1行に収まらないとき、
 省略されていることが分かる。`web/src/theme/tokens.test.ts` を含む `task check` と
-`task test-e2e` が通る。実装 PR に幅ごとの画像と、視覚・操作・支援技術の確認を添える。
+`task test-e2e` が通る。`ui-design.md` の観点で視覚・操作・支援技術を確かめる。
 
 ### 選択バーから、選んだ動画へタグを一括で付けたり外したりできるようにする
 
@@ -353,8 +349,7 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 **Acceptance**: Vitest と `web/e2e/tags.e2e.ts` で、受け入れ条件 3・4 が確かめられる。
 付けたあと、読み込み済みのカードにタグがすぐ出る。要求を失敗させると、選択が残ったまま
 失敗が伝わり、もう一度押すと付く。絞り込み中のタグを別のタブで消してから「すべて選択」
-すると、何も選ばれず、もう無いことが伝わる。`task check` と `task test-e2e` が通る。実装 PR に画像と、
-視覚・操作・支援技術の確認を添える。
+すると、何も選ばれず、もう無いことが伝わる。`task check` と `task test-e2e` が通る。`ui-design.md` の観点で視覚・操作・支援技術を確かめる。
 
 ### サイドバーから開くタグ管理画面で、タグを一覧し、作成・改名・削除する
 
@@ -372,8 +367,7 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 確かめられる。既存の名前やシノニムへの改名で、理由が画面に出る。別のタブで消したタグを
 改名しようとすると、もう無いことが伝わり一覧が取り直される。削除は作成と改名より
 目立たない。`web/src/settings/` のフォルダ選択と削除の確認が、移した `ModalFrame` で
-今までどおり動く。`task check` と `task test-e2e` が通る。実装 PR に幅ごとの画像と、
-視覚・操作・支援技術の確認を添える。
+今までどおり動く。`task check` と `task test-e2e` が通る。`ui-design.md` の観点で視覚・操作・支援技術を確かめる。
 
 ### タグ管理画面で、タグを統合し、シノニムを登録・解除する
 
@@ -390,4 +384,4 @@ combobox は `web/src/ui/Combobox.tsx` に作る（Structural Decisions 9）。�
 確かめられる。取り消すと何も変わらない。別のタグのシノニムと同じ名前の登録で、そのタグの
 名前が画面に出る。確認の後に別のタブでその名前が別のタグへ移っていると、統合されずに
 確認がやり直しになる。統合は作成と改名より目立たない。`task check` と `task test-e2e` が通る。
-実装 PR に画像と、視覚・操作・支援技術の確認を添える。
+`ui-design.md` の観点で視覚・操作・支援技術を確かめる。

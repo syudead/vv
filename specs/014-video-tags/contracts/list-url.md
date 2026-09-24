@@ -3,7 +3,7 @@
 親 Issue: #193。Plan: [plan.md](../plan.md)。
 
 ライブラリ一覧（`/`）の条件の URL は、#195 の
-`specs/013-library-search/contracts/list-url.md` が正本である。この文書は、
+[list-url.md](../../013-library-search/contracts/list-url.md) が正本である。この文書は、
 そこへ足すパラメータと、その扱いの差分だけを書く。フォルダ画面の URL は変えない。
 
 ## 1. パラメータ
