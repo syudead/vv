@@ -88,6 +88,11 @@ tasks:
       - task: build-windows-check
       - 'echo "check: all checks passed (browser checks are in task test-e2e)"'
 
+  check-docs:
+    desc: Check documentation links and repository artifact rules.
+    cmds:
+      - go test ./scripts/sddguard
+
   fmt-check:
     desc: Check Go and Web formatting without changing files.
     cmds:

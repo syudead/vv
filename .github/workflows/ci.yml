@@ -1,5 +1,5 @@
-# 自動検証。最初に変更パスを判定し、コード変更にだけ検査とビルドを実行する。
-# 各検査は同じ Task タスクで手元から再現できる。
+# 自動検証。最初に変更パスを判定し、コード変更には通常検査とビルド、
+# 文書だけの変更には文書検査を実行する。各検査は同じ Task タスクで手元から再現できる。
 name: CI
 
 on:
@@ -55,6 +55,23 @@ jobs:
             echo "文書だけの変更なのでコード検査を飛ばす"
             echo "code=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # コード変更では task check が sddguard を含む。文書だけならここで
+      # リンク、行末空白、索引、Plan 成果物の検査だけを軽量に実行する。
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        if: steps.filter.outputs.code == 'false'
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        if: steps.filter.outputs.code == 'false'
+        with:
+          install_args: "task"
+
+      - name: 文書を検査する
+        if: steps.filter.outputs.code == 'false'
+        run: task check-docs
 
   check:
     name: Checks

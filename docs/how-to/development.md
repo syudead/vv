@@ -48,11 +48,12 @@ mise exec --command "task test-e2e"
 Use `task help` for the full command list. `Taskfile.yml` is the supported entry
 point for developer commands.
 
-CI always performs a lightweight changed-path check. Pull requests and pushes
-that change only Markdown, `docs/`, `specs/`, `.agents/`, `.claude/`, or
-`renovate.json` skip `task check`, browser E2E, and the Docker image build.
-Code changes run `task check`; browser E2E and the Docker build additionally
-require a pull request to `main` or a push to `main`.
+CI always checks the changed paths. Pull requests and pushes that change only
+Markdown, `docs/`, `specs/`, `.agents/`, `.claude/`, or `renovate.json` run
+`task check-docs` for links and repository artifact rules, while skipping
+`task check`, browser E2E, and the Docker image build. Code changes run
+`task check`; browser E2E and the Docker build additionally require a pull
+request to `main` or a push to `main`.
 
 When the OpenAPI contract changes, edit `api/openapi.yaml` and run
 `task generate`. Never edit `internal/httpapi/gen/` or `web/src/api/gen/`
