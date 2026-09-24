@@ -578,7 +578,7 @@ func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
 		query += ` where ` + strings.Join(conditions, " and ")
 	}
 
-	// 並び順は検索の有無で変えない。関連度（bm25）にすると、LIKE 経路には
+	// 並び順は検索の有無で変えない。関連度（bm25）にすると、instr 経路には
 	// 関連度が無いため2つの経路で並びが変わり、利用者から見て不可解になる。
 	query += ` order by ` + orderBy(sort) + ` limit ?`
 

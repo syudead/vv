@@ -276,7 +276,7 @@ func TestSearchMatchRoute(t *testing.T) {
 
 // 1〜2文字は instr 経路。日本語では2文字の検索語が多く、これが
 // 取れないと検索が実用にならない。
-func TestSearchLikeRoute(t *testing.T) {
+func TestSearchInstrRoute(t *testing.T) {
 	db := searchFixture(t)
 
 	for query, want := range map[string]string{

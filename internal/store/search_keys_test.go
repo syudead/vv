@@ -119,8 +119,15 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	if _, err := db.SQL().Exec(`update video_locations set search_version = 0 where path like '/media/bulk/%' and id % 2 = 0`); err != nil {
 		t.Fatal(err)
 	}
-	if refreshed, err := db.RefreshSearchKeys(ctx); err != nil || refreshed == 0 || refreshed >= extra {
-		t.Errorf("続きからの埋め直し = %d (err=%v), want 版の古い所在だけ", refreshed, err)
+	var staleRows int
+	if err := db.SQL().QueryRow(`select count(*) from video_locations where search_version < ?`, domain.SearchKeyVersion).Scan(&staleRows); err != nil {
+		t.Fatal(err)
+	}
+	if staleRows == 0 {
+		t.Fatal("版の古い所在を作れていない")
+	}
+	if refreshed, err := db.RefreshSearchKeys(ctx); err != nil || refreshed != staleRows {
+		t.Errorf("続きからの埋め直し = %d (err=%v), want %d", refreshed, err, staleRows)
 	}
 }
 

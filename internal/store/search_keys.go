@@ -40,8 +40,9 @@ func locationSearchKey(roots []string, path, title string) string {
 // relativeLocationPath は root の下にある path の相対パスを `/` 区切りで返す。
 // 呼び出し側が domain.PathWithinRoot で含まれることを確かめてから呼ぶ。
 //
-// Windows では登録フォルダとの照合が大文字小文字を区別しないので、綴りの違う
-// 登録でも含まれうる。その場合は小文字にそろえて相対パスを取る。鍵には
+// Windows の filepath.Rel は段を strings.EqualFold で比べるので、綴りの大小が
+// 違う登録でもふつうは1回目で取れる。strings.ToLower と EqualFold の結果が
+// 食い違う文字（U+0130 など）のときだけ、小文字にそろえて取り直す。鍵には
 // FoldForMatch を掛けるので、小文字にそろえても照合の結果は変わらない。
 func relativeLocationPath(root, path string) string {
 	cleanRoot := filepath.Clean(root)
