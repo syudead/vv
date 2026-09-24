@@ -52,7 +52,7 @@ TypeScript の型を扱う前例がリポジトリに無いためである。
 - `reprobeVideo`（`POST /api/videos/{id}/probe`）
 
 タグが1つも無い動画は空の配列を返し、`null` にしない。フォルダ画面は、この欄を受け取っても
-表示しない（Plan の Structural Decisions 9）。
+表示しない（Plan の Structural Decisions 10）。
 
 ## 2. 足す誤りの `code`
 
@@ -117,25 +117,44 @@ TypeScript の型を扱う前例がリポジトリに無いためである。
   （要件 2）。`items` は1本以上に付いているタグだけで、名前の自然順に並ぶ。
 - 処理は1つのトランザクションで、全部に反映するか1つも反映しない。
 
-## 5. 検索欄でのタグ名の照合と「すべて選択」
+## 5. 一覧の絞り込みと「すべて選択」
+
+#195 の [list-api.md](../../013-library-search/contracts/list-api.md) の一覧に、次を足す。
+
+| 名前 | 型 | 既定 | 意味 |
+| --- | --- | --- | --- |
+| `tag` | integer の配列（`tag=3&tag=8`、最大 16 個） | 空 | 各タグをすべて持つ動画だけにする（AND）。存在しない `id` は無視する |
+
+`VideoPage` に、任意の `missingTagIds: integer[]` を足す。`tag` のうち存在しなかった
+`id` で、1つも無ければ省く。画面はこれを受けて、そのタグがもう無いことを伝え、タグの
+一覧を取り直し、URL からその `id` を取り除く（[list-url.md §1](list-url.md#1-パラメータ)、
+Edge Case「ほかの画面での並行した変更」）。無い `id` を `404` にしないのは、同じ Edge Case が
+「URL に残った存在しないタグの絞り込みは無視し、ほかの条件だけで一覧を出す」と求めるから
+である。
+
+- `listVideos`（`GET /api/videos`）に足す。`listFolderVideos` には足さない（フォルダ画面の
+  タグ絞り込みは対象外）。
+- `total` は、`tag` も含めたすべての条件を適用した数である。
+- 17 個以上は `400` にする。画面は 16 個を超えて足さない（[list-url.md §2](list-url.md#2-タグを押したときと外したとき)）。
 
 `listVideos` と `listFolderVideos` の `query` は、題名と相対パスに加えて、動画に付いた
-タグの元の名前とシノニムにも照合する（[data-model.md §6](../data-model.md#6-検索欄でのタグ名の照合)）。
+タグの元の名前とシノニムにも照合する（[data-model.md §7](../data-model.md#7-検索欄でのタグ名の照合)）。
 書き方・上限・照合形は #195 の [list-api.md §1](../../013-library-search/contracts/list-api.md#1-検索語の書き方) の
 とおりで変わらない。パラメータと応答の形も変わらない。一覧の項目に出す所在は、#195 の
 [list-api.md §4](../../013-library-search/contracts/list-api.md#4-一覧に出す所在と-videofolder) の
 規則のまま決まる。タグ名だけで式を満たす動画では、範囲の中のパスが最初の所在になる。
 
-一覧の絞り込みにタグのパラメータは足さない。タグを押したときの検索は、画面が `query` に
-語を足すだけである（[tag-search-term.md](tag-search-term.md)）。
-
 「すべて選択」のために、次の経路を足す。
 
 | 経路 | パラメータ | 成功 |
 | --- | --- | --- |
-| `GET /api/videos/ids` | `listVideos` の `query`・`watch`・`playable` | 200 `{ ids: integer[] }` |
+| `GET /api/videos/ids` | `listVideos` の `query`・`watch`・`playable`・`tag` | 200 `{ ids: integer[], missingTagIds?: integer[] }` |
 
 - 返す `id` の集合は、同じ条件の `listVideos` の全ページの `id` の集合と同じである。
   並びは決めない。
+- `missingTagIds` の意味は一覧と同じである。画面は、これが空でなければ `ids` で選択を
+  作らない。一覧と同じくもう無いことを伝え、タグの一覧を取り直し、URL から取り除く。
+  選択は、利用者が直った一覧でもう一度「すべて選択」したときに作る。一覧を開いた後に
+  絞り込み中のタグが消えたとき、条件の欠けた広い集合に一括で付け外ししないためである。
 - `/api/videos/{id}` とは、Go の `ServeMux` の「字面の段が優先する」規則で区別される。
   `openapi_routes_test.go` にこの経路が `{id}` に取られないことの検査を足す。

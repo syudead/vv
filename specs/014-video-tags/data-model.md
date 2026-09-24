@@ -33,7 +33,7 @@ create table tag_names (
     tag_id    integer not null references tags (id) on delete cascade,
     -- 1 は表示する元の名前、0 はシノニム。
     canonical integer not null check (canonical in (0, 1)),
-    -- 検索欄の照合用の鍵。domain.FoldForMatch(name) を Go が書く（§6）。
+    -- 検索欄の照合用の鍵。domain.FoldForMatch(name) を Go が書く（§7）。
     search_key     text    not null default '',
     -- search_key を作った規則の版。video_locations.search_version と同じ domain.SearchKeyVersion。
     search_version integer not null default 0
@@ -71,7 +71,7 @@ Down は3つの表を落とす。
 2. 空になったら誤り（`invalid_request`）。
 3. 制御文字（Unicode の一般カテゴリ Cc。改行とタブを含む）を含む名前は誤り
    （`invalid_request`）。改行を含むタグ名は、カードの1行やツールチップに収まらず、
-   検索語の側は改行を空白にそろえるので、検索でも当たらなくなる（§6）。
+   検索語の側は改行を空白にそろえるので、検索でも当たらなくなる（§7）。
 4. 100 符号位置を超えたら誤り（`invalid_request`）。上限を設けないと、1つの名前で
    カードの行・候補・URL の外にある本文を際限なく大きくできる。数は検索語と同じ 100 に
    そろえ、利用者が覚える上限を1つにする。
@@ -114,7 +114,18 @@ Down は3つの表を落とす。
 動画（`registeredVideoCondition`）だけを数える（Edge Case「ファイルが見えなくなった動画」）。
 本数 0 のタグも一覧に出す（要件 8）。
 
-## 6. 検索欄でのタグ名の照合
+## 6. タグでの絞り込み
+
+選んだタグ1つごとに、次の条件を一覧の動画に AND で掛ける（要件 5）。
+
+```sql
+exists (select 1 from video_tags vt where vt.content_key = videos.content_key and vt.tag_id = ?)
+```
+
+主キー `(content_key, tag_id)` がこの条件の索引になる。存在しない `tag_id` は条件から
+落とし、どれを落としたかを一覧の応答で返す（[contracts/tags-api.md §5](contracts/tags-api.md#5-一覧の絞り込みとすべて選択)）。
+
+## 7. 検索欄でのタグ名の照合
 
 #195 の検索は、語1つごとの条件を所在1行に対して組み立てる
 （[013 data-model.md §3](../013-library-search/data-model.md#3-search_key-の規則)、
