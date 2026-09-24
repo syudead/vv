@@ -15,15 +15,24 @@ import (
 // `/` のように区切りで終わるフォルダには区切りを重ねない。落とすのはその OS の
 // 区切りだけで、Unix では `\` はファイル名の一部なので残す（`A\` という名前の
 // フォルダを `A` と取り違えない）。
+//
+// Windows では大文字小文字を区別しない。比べる相手の SQL の lower() は ASCII の
+// 英字しか小文字にしないので、ここも ASCII だけを小文字にそろえる
+// （strings.ToLower だと `Ä` が `ä` になり、SQL 側の `Ä` と一致しなくなる）。
 func folderPrefix(dir string) string {
+	return folderPrefixFor(dir, runtime.GOOS == "windows")
+}
+
+func folderPrefixFor(dir string, windows bool) string {
 	separator := string(os.PathSeparator)
 	cutset := separator
-	if runtime.GOOS == "windows" {
+	if windows {
+		separator = `\`
 		cutset = `/\`
 	}
 	prefix := strings.TrimRight(dir, cutset) + separator
-	if runtime.GOOS == "windows" {
-		prefix = strings.ToLower(prefix)
+	if windows {
+		prefix = domain.LowerASCII(prefix)
 	}
 	return prefix
 }
