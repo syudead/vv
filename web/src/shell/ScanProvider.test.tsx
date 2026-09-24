@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan } from "../api/client";
+import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { ScanProvider, useScan } from "./ScanProvider";
 
 function json(body: unknown, status = 200): Response {
@@ -31,8 +32,15 @@ function Harness() {
       </button>
       <p>{value.error ?? "エラーなし"}</p>
       <p>状態: {value.scan?.id ?? "なし"}</p>
+      <p>実行中: {value.running ? "はい" : "いいえ"}</p>
       <p>完了: {value.finished?.id ?? "なし"}</p>
       <p>開始可否: {value.canStart ? "可" : "不可"}</p>
+      <p>
+        残り:{" "}
+        {value.processing === null
+          ? "未取得"
+          : `${String(value.processing.probe)}/${String(value.processing.thumbnail)}/${String(value.processing.preview)}`}
+      </p>
     </>
   );
 }
@@ -41,7 +49,15 @@ describe("ScanProvider", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
-    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockReset();
+    // 段階ごとの残りはどの検査でも同じ応答にし、scan の問い合わせの数え方に
+    // 混ぜない。
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === "/api/processing"
+        ? Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }))
+        : fetchMock(input, init),
+    );
+    installFakeEventSource();
   });
 
   afterEach(() => {
@@ -126,15 +142,48 @@ describe("ScanProvider", () => {
     expect(await screen.findByText("完了: 2")).toBeDefined();
   });
 
-  it("通常の取り込み追跡は一時的な状態取得失敗後も再開する", async () => {
+  it("開始の応答より先に届いた完了の知らせを、遅れた応答の実行中で戻さない", async () => {
+    let resolveStart: ((response: Response) => void) | undefined;
+    let currentCalls = 0;
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (init?.method === "POST") {
+        return new Promise<Response>((resolve) => {
+          resolveStart = resolve;
+        });
+      }
+      currentCalls += 1;
+      // 初回は前回の取り込みを返し、開始後の取り直しは一時的に失敗する。
+      if (currentCalls === 1) return Promise.resolve(json(scan(4, "done")));
+      return Promise.resolve(json({ code: "internal", message: "失敗" }, 500));
+    });
+    const user = userEvent.setup();
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    expect(await screen.findByText("状態: 4")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "開始" }));
+    await waitFor(() => expect(resolveStart).toBeDefined());
+    await emitServerEvent("scan", scan(5, "done"));
+    expect(screen.getByText("完了: 5")).toBeDefined();
+
+    await act(async () => resolveStart?.(json(scan(5, "running"), 202)));
+
+    await waitFor(() => expect(currentCalls).toBe(2));
+    expect(screen.getByText("状態: 5")).toBeDefined();
+    expect(screen.getByText("実行中: いいえ")).toBeDefined();
+  });
+
+  it("取り込みの完了を変化の知らせで追跡し、一定間隔では問い合わせない", async () => {
     vi.useFakeTimers();
     let currentCalls = 0;
     fetchMock.mockImplementation((input) => {
       if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
       currentCalls += 1;
-      if (currentCalls === 1) return Promise.resolve(json(scan(3, "running")));
-      if (currentCalls === 2) return Promise.reject(new Error("一時的な失敗"));
-      return Promise.resolve(json(scan(3, "done")));
+      return Promise.resolve(json(scan(3, "running")));
     });
     render(
       <ScanProvider>
@@ -142,17 +191,36 @@ describe("ScanProvider", () => {
       </ScanProvider>,
     );
     await act(async () => Promise.resolve());
+    expect(screen.getByText("状態: 3")).toBeDefined();
+    const callsAfterLoad = currentCalls;
 
-    await act(async () => vi.advanceTimersByTimeAsync(2000));
-    expect(currentCalls).toBe(2);
-    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    await act(async () => vi.advanceTimersByTimeAsync(10000));
+    expect(currentCalls).toBe(callsAfterLoad);
 
+    await emitServerEvent("scan", scan(3, "done"));
     expect(screen.getByText("完了: 3")).toBeDefined();
-    vi.useRealTimers();
+    expect(currentCalls).toBe(callsAfterLoad);
   });
 
-  it("初回の状態取得失敗を手動更新なしで再試行する", async () => {
-    vi.useFakeTimers();
+  it("段階ごとの残りを変化の知らせで更新する", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(scan(1, "done")),
+      ),
+    );
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    expect(await screen.findByText("残り: 0/0/0")).toBeDefined();
+
+    await emitServerEvent("processing", { probe: 3, thumbnail: 2, preview: 1 });
+
+    expect(screen.getByText("残り: 3/2/1")).toBeDefined();
+  });
+
+  it("初回の状態取得に失敗しても、知らせの接続がつながったら取り直す", async () => {
     let currentCalls = 0;
     fetchMock.mockImplementation((input) => {
       if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
@@ -165,42 +233,16 @@ describe("ScanProvider", () => {
         <Harness />
       </ScanProvider>,
     );
-    await act(async () => Promise.resolve());
+    expect(await screen.findByText("一時的な失敗")).toBeDefined();
     expect(screen.getByText("状態: なし")).toBeDefined();
-    await act(async () => vi.advanceTimersByTimeAsync(2000));
+
+    await emitServerEvent("open");
+
     expect(await screen.findByText("状態: 4")).toBeDefined();
-  });
-
-  it("待機状態の取得成功後に一時失敗しても自動で再試行する", async () => {
-    vi.useFakeTimers();
-    let currentCalls = 0;
-    fetchMock.mockImplementation((input) => {
-      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
-      currentCalls += 1;
-      if (currentCalls === 1) return Promise.resolve(json({}, 404));
-      if (currentCalls === 2) return Promise.reject(new Error("一時的な失敗"));
-      return Promise.resolve(json(scan(6, "running")));
-    });
-    render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
-    );
-    await act(async () => Promise.resolve());
-    expect(currentCalls).toBe(1);
-
-    await act(async () => window.dispatchEvent(new Event("focus")));
-    await act(async () => Promise.resolve());
-    expect(currentCalls).toBe(2);
-    expect(screen.getByText("一時的な失敗")).toBeDefined();
-
-    await act(async () => vi.advanceTimersByTimeAsync(2000));
-    expect(screen.getByText("状態: 6")).toBeDefined();
     expect(screen.getByText("エラーなし")).toBeDefined();
   });
 
   it("状態取得の一時失敗中も最後の成功状態を保持する", async () => {
-    vi.useFakeTimers();
     let currentCalls = 0;
     fetchMock.mockImplementation((input) => {
       if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
@@ -213,9 +255,11 @@ describe("ScanProvider", () => {
         <Harness />
       </ScanProvider>,
     );
-    await act(async () => Promise.resolve());
-    expect(screen.getByText("状態: 5")).toBeDefined();
-    await act(async () => vi.advanceTimersByTimeAsync(2000));
+    expect(await screen.findByText("状態: 5")).toBeDefined();
+
+    await act(async () => window.dispatchEvent(new Event("focus")));
+
+    expect(await screen.findByText("一時的な失敗")).toBeDefined();
     expect(screen.getByText("状態: 5")).toBeDefined();
   });
 
@@ -330,5 +374,29 @@ describe("ScanProvider", () => {
     resolveFolders?.(json([]));
 
     await waitFor(() => expect(screen.getByText("開始可否: 可")).toBeDefined());
+  });
+
+  it("取得の途中で届いた知らせを、遅れて返った古い応答で上書きしない", async () => {
+    let resolveCurrent: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      return new Promise<Response>((resolve) => {
+        resolveCurrent = resolve;
+      });
+    });
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    await waitFor(() => expect(resolveCurrent).toBeDefined());
+
+    await emitServerEvent("scan", scan(7, "done"));
+    expect(screen.getByText("状態: 7")).toBeDefined();
+
+    // 知らせより前に読んだ実行中の状態が、あとから返る。
+    await act(async () => resolveCurrent?.(json(scan(6, "running"))));
+
+    expect(screen.getByText("状態: 7")).toBeDefined();
   });
 });

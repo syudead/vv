@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -149,5 +151,57 @@ func TestGetVideoPreviewRejectsNonDoneStatesWithoutFallback(t *testing.T) {
 
 	if transcoder.starts != 0 {
 		t.Fatalf("preview fallback started transcoder %d times", transcoder.starts)
+	}
+}
+
+// fakePreviewRepair は作り直しの要求を記録する。
+type fakePreviewRepair struct {
+	mu    sync.Mutex
+	calls []int64
+}
+
+func (f *fakePreviewRepair) RequeueMissingPreview(_ context.Context, id int64, _ string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls = append(f.calls, id)
+	return true, nil
+}
+
+// 作り終えた記録があるのにファイルが無ければ、作り直しを積み、応答では準備中と
+// して返す。ファイルがあれば積まない。
+func TestMissingPreviewIsRequeuedWhenFound(t *testing.T) {
+	dir := t.TempDir()
+	video := sampleVideo(1, "movie")
+	video.PreviewState = domain.PreviewStateDone
+	fake := &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, page: domain.VideoPage{Items: []domain.Video{video}}}
+	repair := &fakePreviewRepair{}
+	handler := newTestServer(t, Options{Videos: fake, ThumbnailsDir: dir, PreviewRepair: repair})
+
+	for _, target := range []string{"/api/videos", "/api/videos/1"} {
+		rec := do(t, handler, http.MethodGet, target)
+		if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"previewState":"pending"`) {
+			t.Fatalf("GET %s response = %d %s", target, rec.Code, rec.Body.String())
+		}
+		if strings.Contains(rec.Body.String(), "previewUrl") {
+			t.Fatalf("GET %s exposed missing preview URL: %s", target, rec.Body.String())
+		}
+	}
+	if len(repair.calls) != 2 || repair.calls[0] != 1 {
+		t.Fatalf("作り直しの要求 = %v, want [1 1]", repair.calls)
+	}
+
+	path := previewFilePath(dir, video.ContentKey)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("preview-data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rec := do(t, handler, http.MethodGet, "/api/videos")
+	if !strings.Contains(rec.Body.String(), `"previewUrl"`) {
+		t.Fatalf("preview URL missing: %s", rec.Body.String())
+	}
+	if len(repair.calls) != 2 {
+		t.Fatalf("ファイルがあるのに作り直しを積んだ: %v", repair.calls)
 	}
 }

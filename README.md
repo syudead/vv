@@ -176,7 +176,7 @@ Claude Code on the web でセッションを開くと、`.claude/hooks/session-s
 │   ├── store/              # SQLite 接続、マイグレーション、問い合わせと検索
 │   ├── media/              # 外部ツール（ffmpeg／ffprobe）のアダプタ
 │   ├── scanner/            # ファイル走査、内容由来の識別子、移動の検出
-│   └── jobs/               # プロセス内のジョブワーカー（直列）
+│   └── jobs/               # プロセス内のジョブワーカー（段階ごとに1本）
 ├── web/
 │   └── src/
 │       ├── api/            # 生成型を使う fetch ラッパ、一覧のページング、復元用の控え

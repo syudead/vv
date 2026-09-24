@@ -32,10 +32,6 @@ const (
 // ErrNoJob は待ち行列が空であることを表す。
 var ErrNoJob = domain.ErrNoJob
 
-// JobRetention は完了したジョブを残す期間である。取り込み直後に最大 2万行に
-// なるため、放置せず掃除する。
-const JobRetention = 7 * 24 * time.Hour
-
 // EnqueueJob はジョブを積む。同じ (kind, video_id) の未完了ジョブが既に
 // あれば何もしない（部分ユニーク索引がその状態を保証する）。
 //
@@ -60,31 +56,72 @@ func (db *DB) EnqueueJob(ctx context.Context, kind JobKind, videoID int64) error
 	if err != nil {
 		return fmt.Errorf("ジョブを積めません (%s, video=%d): %w", kind, videoID, err)
 	}
+	db.notifyJobsChanged(kind)
 	return nil
 }
 
-// EnsureJob recovers a missing pending job without reviving a terminal failure.
+// jobStateColumns は仕事の種類ごとに、その結果を持つ動画の列である。
+var jobStateColumns = map[JobKind]string{
+	JobProbe:     "probe_state",
+	JobThumbnail: "thumbnail_state",
+	JobPreview:   "preview_state",
+}
+
+// EnsureJob は、状態が pending の動画に欠けている仕事を積み直す。走査が
+// 見つけた pending の動画に対して呼ぶ。
+//
+// 終端の失敗は動画側の状態へ同じ取引で記録する（recordTerminalFailure）ので、
+// 動画が failed なら積まない。動画が pending のまま failed の行だけが残って
+// いるのは、失敗を行にだけ記録していた旧版の名残である。その行は捨てて積み
+// 直す。残すと、次の手動の取り込みでも直らない。
 func (db *DB) EnsureJob(ctx context.Context, kind JobKind, videoID int64) error {
+	column, ok := jobStateColumns[kind]
+	if !ok {
+		return fmt.Errorf("未知の仕事の種類です: %s", kind)
+	}
+	pending := `exists (select 1 from videos where id = ? and ` + column + ` = 'pending')`
+
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("欠落ジョブの復旧を開始できません (%s, video=%d): %w", kind, videoID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	//nolint:gosec // 組み立てるのは定型の列名だけで、値はすべて引数で渡す。
+	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state = 'failed' and `+pending,
+		string(kind), videoID, videoID); err != nil {
+		return fmt.Errorf("旧版の失敗の行を捨てられません (%s, video=%d): %w", kind, videoID, err)
+	}
 	now := time.Now().Unix()
-	_, err := db.sql.ExecContext(ctx, `
+	//nolint:gosec // 組み立てるのは定型の列名だけで、値はすべて引数で渡す。
+	res, err := tx.ExecContext(ctx, `
 		insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
 		select ?, ?, 'queued', 0, ?, ?
-		where not exists (select 1 from jobs where kind = ? and video_id = ?)`,
-		string(kind), videoID, now, now, string(kind), videoID)
+		where not exists (select 1 from jobs where kind = ? and video_id = ?) and `+pending,
+		string(kind), videoID, now, now, string(kind), videoID, videoID)
 	if err != nil {
 		return fmt.Errorf("欠落ジョブを復旧できません (%s, video=%d): %w", kind, videoID, err)
+	}
+	inserted, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("復旧したジョブを数えられません (%s, video=%d): %w", kind, videoID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("欠落ジョブの復旧を確定できません (%s, video=%d): %w", kind, videoID, err)
+	}
+	if inserted > 0 {
+		db.notifyJobsChanged(kind)
 	}
 	return nil
 }
 
-// ClaimJob は待ち行列から1件を専有する。
+// ClaimJob は待ち行列から kind の仕事を1件専有する。
 //
 // 取り出しと状態の書き換えを begin immediate のトランザクションで囲む。
-// select と update を分けると、同じ行を二重に処理する余地が残る。ワーカーは
-// 1本だけだが、将来増やしたときにここが壊れないようにしておく。
+// select と update を分けると、同じ行を二重に処理する余地が残る。段階ごとに
+// ワーカーを置くので、種類の違う仕事は別々のワーカーが同時に取り出す。
 //
-// 待ち行列が空なら ErrNoJob を返す。
-func (db *DB) ClaimJob(ctx context.Context) (Job, error) {
+// その種類の待ち行列が空なら ErrNoJob を返す。
+func (db *DB) ClaimJob(ctx context.Context, kind JobKind) (Job, error) {
 	conn, err := db.sql.Conn(ctx)
 	if err != nil {
 		return Job{}, fmt.Errorf("ジョブを取り出せません: %w", err)
@@ -102,23 +139,29 @@ func (db *DB) ClaimJob(ctx context.Context) (Job, error) {
 	}()
 
 	var job Job
-	var kind string
+	var kindName string
 	var previousPath sql.NullString
 	// 登録前の移行locationは保持するが処理しない。folder登録後に同じqueued
 	// jobをそのまま再開でき、登録外pathをworkerへ渡すこともない。
+	//
+	// サムネイルは解析が終わる（done か failed になる）まで取り出さない。抽出位置は
+	// 動画の長さで決まり、解析より先に作ると長さの分からない位置で固定される。
+	// 段階ごとのワーカーは並行して動くので、積んだ順では解析が先になる保証が無い。
 	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.location_path from jobs j
-		where j.state = 'queued' and exists (
+		where j.state = 'queued' and j.kind = ? and exists (
 			select 1 from video_locations l where l.video_id = j.video_id and ` + registeredLocationCondition("l") + `)
+		and (j.kind <> 'thumbnail' or exists (
+			select 1 from videos v where v.id = j.video_id and v.probe_state <> 'pending'))
 		order by j.id limit 1`
 	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
-	err = conn.QueryRowContext(ctx, queuedJobSQL).Scan(&job.ID, &kind, &job.VideoID, &job.Attempts, &previousPath)
+	err = conn.QueryRowContext(ctx, queuedJobSQL, string(kind)).Scan(&job.ID, &kindName, &job.VideoID, &job.Attempts, &previousPath)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Job{}, ErrNoJob
 	}
 	if err != nil {
 		return Job{}, fmt.Errorf("ジョブを取り出せません: %w", err)
 	}
-	job.Kind = JobKind(kind)
+	job.Kind = JobKind(kindName)
 	if !previousPath.Valid {
 		job.Attempts++
 	}
@@ -206,13 +249,22 @@ func (db *DB) CompleteClaimedJob(ctx context.Context, job Job) error {
 	return nil
 }
 
-// CompleteJob is retained for administrative callers that do not own a claim snapshot.
+// CompleteJob は専有時点の所在を確かめずに完了を記録する。専有の控えを
+// 持たない呼び出し（テストの準備など）のために残している。
 func (db *DB) CompleteJob(ctx context.Context, id int64) error {
 	_, err := db.sql.ExecContext(ctx, `update jobs set state = 'done', last_error = null, updated_at = ? where id = ?`, time.Now().Unix(), id)
 	return err
 }
 
-// FailJob は失敗を記録する。試行回数が上限に達していなければ queued へ戻し、
+// FailJob は専有時点の所在を確かめずに失敗を記録する。専有の控えを持たない
+// 呼び出し（テストの準備など）のために残している。
+func (db *DB) FailJob(ctx context.Context, id int64, reason string) error {
+	_, err := db.sql.ExecContext(ctx, `update jobs set state = case when attempts >= ? then 'failed' else 'queued' end,
+		last_error = ?, updated_at = ? where id = ?`, MaxJobAttempts, reason, time.Now().Unix(), id)
+	return err
+}
+
+// FailClaimedJob は失敗を記録する。試行回数が上限に達していなければ queued へ戻し、
 // 達していれば failed で止める。
 func (db *DB) FailClaimedJob(ctx context.Context, job Job, reason string) error {
 	tx, err := db.sql.BeginTx(ctx, nil)
@@ -282,8 +334,8 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job Job, reason stri
 	case JobProbe:
 		// pending のときだけ書く。probeHandler は結果を保存して done にしたあとで
 		// プレビューのジョブを積み、そこで失敗してもエラーを返す。保存済みの結果を
-		// 失敗で上書きしないためである。欠けたプレビューのジョブは
-		// ReconcilePreviewFailures が積み直す。
+		// 失敗で上書きしないためである。欠けたプレビューのジョブは、次の手動の
+		// 取り込みで走査が積み直す（Scanner.ensurePendingJobs）。
 		if _, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, playable = 0, updated_at = ?
 			where probe_state = 'pending' and `+identity,
 			append([]any{reason, now}, identityArgs...)...); err != nil {
@@ -313,13 +365,6 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job Job, reason stri
 	return nil
 }
 
-// FailJob is retained for administrative callers that do not own a claim snapshot.
-func (db *DB) FailJob(ctx context.Context, id int64, reason string) error {
-	_, err := db.sql.ExecContext(ctx, `update jobs set state = case when attempts >= ? then 'failed' else 'queued' end,
-		last_error = ?, updated_at = ? where id = ?`, MaxJobAttempts, reason, time.Now().Unix(), id)
-	return err
-}
-
 func (db *DB) JobIdentityCurrent(ctx context.Context, job Job) (bool, error) {
 	var current int
 	err := db.sql.QueryRowContext(ctx, `select exists (
@@ -347,70 +392,10 @@ func (db *DB) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("中断したジョブを戻せません: %w", err)
 	}
+	if affected > 0 {
+		db.notifyJobsChanged(domain.JobKinds...)
+	}
 	return affected, nil
-}
-
-// ReconcilePreviewFailures repairs the legacy state where a terminal preview
-// job was recorded without updating videos.preview_state. A single unchanged
-// source is enough to identify the failure; ambiguous or stale claims are
-// queued again so the current locations decide the result.
-func (db *DB) ReconcilePreviewFailures(ctx context.Context) (int64, int64, error) {
-	tx, err := db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, 0, fmt.Errorf("preview failure の整合を開始できません: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	now := time.Now().Unix()
-	registered := registeredLocationCondition("current_location")
-	failedRegistered := registeredLocationCondition("l")
-	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
-	markSQL := `update videos as v set preview_state = 'failed', updated_at = ?
-		where v.preview_state = 'pending'
-		and not exists (select 1 from jobs active where active.kind = 'preview'
-			and active.video_id = v.id and active.state in ('queued', 'running'))
-		and 1 = (select count(*) from video_locations current_location
-			where current_location.video_id = v.id and ` + registered + `)
-		and exists (
-			select 1 from jobs j join video_locations l on l.id = j.location_id
-			where j.kind = 'preview' and j.video_id = v.id and j.state = 'failed'
-			and j.attempts >= ? and l.video_id = v.id
-			and l.version = j.location_version and l.path = j.location_path
-			and ` + failedRegistered + `
-		)`
-	markedResult, err := tx.ExecContext(ctx, markSQL, now, MaxJobAttempts)
-	if err != nil {
-		return 0, 0, fmt.Errorf("current preview failure を反映できません: %w", err)
-	}
-	marked, err := markedResult.RowsAffected()
-	if err != nil {
-		return 0, 0, fmt.Errorf("反映した preview failure を数えられません: %w", err)
-	}
-
-	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = 'preview' and state = 'failed'
-		and exists (select 1 from videos v where v.id = jobs.video_id and v.preview_state = 'pending')`); err != nil {
-		return 0, 0, fmt.Errorf("stale preview failure を削除できません: %w", err)
-	}
-	registered = registeredLocationCondition("l")
-	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
-	requeueSQL := `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-		select 'preview', v.id, 'queued', 0, ?, ? from videos v
-		where v.preview_state = 'pending' and v.probe_state = 'done'
-		and exists (select 1 from video_locations l where l.video_id = v.id and ` + registered + `)
-		and not exists (select 1 from jobs j where j.kind = 'preview' and j.video_id = v.id
-			and j.state in ('queued', 'running'))`
-	requeuedResult, err := tx.ExecContext(ctx, requeueSQL, now, now)
-	if err != nil {
-		return 0, 0, fmt.Errorf("stale preview failure を再投入できません: %w", err)
-	}
-	requeued, err := requeuedResult.RowsAffected()
-	if err != nil {
-		return 0, 0, fmt.Errorf("再投入した preview job を数えられません: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return 0, 0, fmt.Errorf("preview failure の整合を確定できません: %w", err)
-	}
-	return marked, requeued, nil
 }
 
 // ThumbnailJobActive はその動画のサムネイルのジョブが queued か running かを
@@ -425,112 +410,39 @@ func (db *DB) ThumbnailJobActive(ctx context.Context, videoID int64) (bool, erro
 	return active == 1, nil
 }
 
-// ReconcileProcessingFailures は、読み取りとサムネイルの終端失敗がジョブにだけ
-// 記録され、動画側の状態が pending のまま残った動画を直す。FailClaimedJob が
-// 同じ取引で記録するようになる前に止まった動画のためで、起動時に1度呼ぶ。
-//
-// 条件は ReconcilePreviewFailures と同じである。進行中のジョブが無く、登録済みの
-// 所在が1つだけで、claim した所在が今も変わっていない終端の失敗ジョブがあれば
-// failed にする。それ以外（所在が変わった・増えた）の終端の失敗は、今の所在で
-// 決め直すために積み直す。戻り値は failed にした数と積み直した数である。
-func (db *DB) ReconcileProcessingFailures(ctx context.Context) (int64, int64, error) {
-	tx, err := db.sql.BeginTx(ctx, nil)
+// Processing は段階ごとに残っている仕事の数を返す。数えるのは queued と
+// running で、ClaimJob と同じく登録済みの所在がある動画に限る。登録外の
+// 所在しかない仕事はワーカーが取り出さないので、数えると準備が終わらない。
+func (db *DB) Processing(ctx context.Context) (domain.Processing, error) {
+	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
+	query := `select j.kind, count(*) from jobs j
+		where j.state in ('queued', 'running') and exists (
+			select 1 from video_locations l where l.video_id = j.video_id and ` + registeredLocationCondition("l") + `)
+		group by j.kind`
+	rows, err := db.sql.QueryContext(ctx, query)
 	if err != nil {
-		return 0, 0, fmt.Errorf("読み取り・サムネイルの失敗の整合を開始できません: %w", err)
+		return domain.Processing{}, fmt.Errorf("残りの仕事を数えられません: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = rows.Close() }()
 
-	now := time.Now().Unix()
-	registered := registeredLocationCondition("current_location")
-	locationRegistered := registeredLocationCondition("l")
-	var marked, requeued int64
-	for _, target := range []struct {
-		kind JobKind
-		set  string
-		cond string
-	}{
-		{kind: JobProbe, set: `probe_state = 'failed', probe_error = coalesce((
-			select j.last_error from jobs j where j.kind = 'probe' and j.video_id = v.id and j.state = 'failed'
-			order by j.id desc limit 1), probe_error), playable = 0`, cond: `v.probe_state = 'pending'`},
-		{kind: JobThumbnail, set: `thumbnail_state = 'failed'`, cond: `v.thumbnail_state = 'pending'`},
-	} {
-		//nolint:gosec // 組み立てるのは定型の列名と条件句だけで、値はすべて引数で渡す。
-		markSQL := `update videos as v set ` + target.set + `, updated_at = ?
-			where ` + target.cond + `
-			and not exists (select 1 from jobs active where active.kind = ?
-				and active.video_id = v.id and active.state in ('queued', 'running'))
-			and 1 = (select count(*) from video_locations current_location
-				where current_location.video_id = v.id and ` + registered + `)
-			and exists (
-				select 1 from jobs j join video_locations l on l.id = j.location_id
-				where j.kind = ? and j.video_id = v.id and j.state = 'failed'
-				and j.attempts >= ? and l.video_id = v.id
-				and l.version = j.location_version and l.path = j.location_path
-				and ` + locationRegistered + `
-			)`
-		res, err := tx.ExecContext(ctx, markSQL, now, string(target.kind), string(target.kind), MaxJobAttempts)
-		if err != nil {
-			return 0, 0, fmt.Errorf("%s の終端失敗を反映できません: %w", target.kind, err)
+	var out domain.Processing
+	for rows.Next() {
+		var kind string
+		var count int
+		if err := rows.Scan(&kind, &count); err != nil {
+			return domain.Processing{}, fmt.Errorf("残りの仕事を数えられません: %w", err)
 		}
-		count, err := res.RowsAffected()
-		if err != nil {
-			return 0, 0, fmt.Errorf("反映した %s の終端失敗を数えられません: %w", target.kind, err)
-		}
-		marked += count
-
-		// 残った終端の失敗は、所在が変わったあとの古い claim のものである。
-		// 積み直してから消す（挿入の重複防止は queued・running だけに掛かる）。
-		//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
-		requeueSQL := `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-			select ?, v.id, 'queued', 0, ?, ? from videos v
-			where ` + target.cond + `
-			and exists (select 1 from jobs j where j.kind = ? and j.video_id = v.id and j.state = 'failed')
-			and exists (select 1 from video_locations l where l.video_id = v.id and ` + locationRegistered + `)
-			and not exists (select 1 from jobs j where j.kind = ? and j.video_id = v.id
-				and j.state in ('queued', 'running'))`
-		res, err = tx.ExecContext(ctx, requeueSQL, string(target.kind), now, now, string(target.kind), string(target.kind))
-		if err != nil {
-			return 0, 0, fmt.Errorf("%s の古い終端失敗を積み直せません: %w", target.kind, err)
-		}
-		count, err = res.RowsAffected()
-		if err != nil {
-			return 0, 0, fmt.Errorf("積み直した %s のジョブを数えられません: %w", target.kind, err)
-		}
-		requeued += count
-		//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
-		deleteSQL := `delete from jobs where kind = ? and state = 'failed'
-			and exists (select 1 from videos v where v.id = jobs.video_id and ` + target.cond + `)`
-		if _, err := tx.ExecContext(ctx, deleteSQL, string(target.kind)); err != nil {
-			return 0, 0, fmt.Errorf("%s の古い終端失敗を削除できません: %w", target.kind, err)
+		switch JobKind(kind) {
+		case JobProbe:
+			out.Probe = count
+		case JobThumbnail:
+			out.Thumbnail = count
+		case JobPreview:
+			out.Preview = count
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return 0, 0, fmt.Errorf("読み取り・サムネイルの失敗の整合を確定できません: %w", err)
+	if err := rows.Err(); err != nil {
+		return domain.Processing{}, fmt.Errorf("残りの仕事を数えられません: %w", err)
 	}
-	return marked, requeued, nil
-}
-
-// DeleteFinishedJobsBefore は指定時刻より前に完了・失敗した行を消し、その数を
-// 返す。location固有の終端失敗は論理stateがpendingの間は再試行抑止記録として残す。
-func (db *DB) DeleteFinishedJobsBefore(ctx context.Context, cutoff time.Time) (int64, error) {
-	res, err := db.sql.ExecContext(ctx,
-		`delete from jobs where updated_at < ? and (
-			state = 'done' or (state = 'failed' and exists (
-				select 1 from videos v where v.id = jobs.video_id and (
-					(jobs.kind = 'probe' and v.probe_state <> 'pending') or
-					(jobs.kind = 'thumbnail' and v.thumbnail_state <> 'pending') or
-					(jobs.kind = 'preview' and v.preview_state <> 'pending')
-				)
-			))
-		)`,
-		cutoff.Unix())
-	if err != nil {
-		return 0, fmt.Errorf("完了したジョブを掃除できません: %w", err)
-	}
-
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("完了したジョブを掃除できません: %w", err)
-	}
-	return affected, nil
+	return out, nil
 }

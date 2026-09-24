@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Scan } from "../api/client";
+import type { Processing, Scan } from "../api/client";
+import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { TooltipProvider } from "../ui/Tooltip";
 import { ScanNoticeProvider } from "./ScanNoticeProvider";
 import ScanProgressIndicator from "./ScanProgressIndicator";
@@ -52,12 +53,23 @@ function renderIndicator() {
   );
 }
 
+let processing: Processing = { probe: 0, thumbnail: 0, preview: 0 };
+
 describe("ScanProgressIndicator", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
     window.sessionStorage.clear();
-    vi.stubGlobal("fetch", fetchMock);
+    fetchMock.mockReset();
+    // 段階ごとの残りは、各検査が指定しなければ 0 を返す。scan の応答の差し替えに
+    // 混ぜない。
+    processing = { probe: 0, thumbnail: 0, preview: 0 };
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === "/api/processing"
+        ? Promise.resolve(json(processing))
+        : fetchMock(input, init),
+    );
+    installFakeEventSource();
   });
 
   afterEach(() => {
@@ -333,5 +345,30 @@ describe("ScanProgressIndicator", () => {
     expect(screen.getByRole("button", { name: /^完了。/ })).toBeDefined();
     await act(async () => vi.advanceTimersByTimeAsync(100));
     expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+  });
+
+  it("スキャンが終わっても準備が残る間は準備中を示し、終わったら完了を示す", async () => {
+    let state: Scan["state"] = "running";
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(scan({ state })),
+      ),
+    );
+    renderIndicator();
+    await screen.findByRole("button", { name: /取り込み中 40%/ });
+
+    state = "done";
+    await emitServerEvent("processing", { probe: 2, thumbnail: 3, preview: 1 });
+    await emitServerEvent("scan", scan({ state: "done" }));
+
+    const preparing = await screen.findByRole("button", { name: /^準備中 残り 6。/ });
+    expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+    await act(async () => fireEvent.focus(preparing));
+    const list = await screen.findByLabelText("準備の残り");
+    expect(list.textContent).toBe("解析2 件サムネイル3 件プレビュー1 件");
+
+    await emitServerEvent("processing", { probe: 0, thumbnail: 0, preview: 0 });
+
+    expect(await screen.findByRole("button", { name: /^完了。/ })).toBeDefined();
   });
 });

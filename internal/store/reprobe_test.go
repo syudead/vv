@@ -41,7 +41,7 @@ func claimAtLastAttempt(t *testing.T, db *DB, kind JobKind, videoID int64) Job {
 	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = ? and video_id = ?`, MaxJobAttempts-1, string(kind), videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, kind)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,7 +210,7 @@ func TestFailClaimedProbeKeepsPendingWhileRetrying(t *testing.T) {
 	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
-	job, err := db.ClaimJob(ctx)
+	job, err := db.ClaimJob(ctx, JobProbe)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -283,75 +283,6 @@ func TestRetryProbeDuringFinalAttemptWindow(t *testing.T) {
 	}
 	// サムネイルは完成していないので、読み取りと同じ組で積む。
 	if got, want := jobCounts(t, db, videoID), map[string]int{"probe:queued": 1, "thumbnail:queued": 1}; !equalCounts(got, want) {
-		t.Fatalf("jobs = %v, want %v", got, want)
-	}
-}
-
-// 起動時の整合で、pending のまま終端の失敗ジョブを持つ動画が failed になる。
-// claim した所在が変わっていた失敗は、今の所在で決め直すために積み直す。
-func TestReconcileProcessingFailures(t *testing.T) {
-	db, videoID := jobsFixture(t)
-	ctx := context.Background()
-	for _, kind := range []JobKind{JobProbe, JobThumbnail} {
-		job := claimAtLastAttempt(t, db, kind, videoID)
-		// この変更より前の動き：ジョブだけが failed になり、動画は pending のまま。
-		if _, err := db.SQL().Exec(`update jobs set state = 'failed', last_error = ? where id = ?`,
-			string(kind)+" legacy failure", job.ID); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	marked, requeued, err := db.ReconcileProcessingFailures(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if marked != 2 || requeued != 0 {
-		t.Fatalf("marked = %d, requeued = %d, want 2/0", marked, requeued)
-	}
-	video, err := db.GetVideo(ctx, videoID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if video.ProbeState != domain.ProbeStateFailed || video.ProbeError != "probe legacy failure" {
-		t.Fatalf("probe = %q (%q), want failed", video.ProbeState, video.ProbeError)
-	}
-	if video.ThumbnailState != domain.ThumbnailStateFailed {
-		t.Fatalf("thumbnail = %q, want failed", video.ThumbnailState)
-	}
-
-	// 2 度目は何もしない。
-	marked, requeued, err = db.ReconcileProcessingFailures(ctx)
-	if err != nil || marked != 0 || requeued != 0 {
-		t.Fatalf("2 度目: marked = %d, requeued = %d, err = %v", marked, requeued, err)
-	}
-}
-
-func TestReconcileProcessingFailuresRequeuesStaleClaim(t *testing.T) {
-	db, videoID := jobsFixture(t)
-	ctx := context.Background()
-	job := claimAtLastAttempt(t, db, JobProbe, videoID)
-	if _, err := db.SQL().Exec(`update jobs set state = 'failed' where id = ?`, job.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.SQL().Exec(`update video_locations set version = version + 1 where id = ?`, job.LocationID); err != nil {
-		t.Fatal(err)
-	}
-
-	marked, requeued, err := db.ReconcileProcessingFailures(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if marked != 0 || requeued != 1 {
-		t.Fatalf("marked = %d, requeued = %d, want 0/1", marked, requeued)
-	}
-	video, err := db.GetVideo(ctx, videoID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if video.ProbeState != domain.ProbeStatePending {
-		t.Fatalf("probe = %q, want pending", video.ProbeState)
-	}
-	if got, want := jobCounts(t, db, videoID), map[string]int{"probe:queued": 1}; !equalCounts(got, want) {
 		t.Fatalf("jobs = %v, want %v", got, want)
 	}
 }
