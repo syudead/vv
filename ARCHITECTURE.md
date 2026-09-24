@@ -26,7 +26,8 @@ carries its representative location and seek-preview state, and
 `/api/videos/{id}/related`, `/probe` and `/open` return related videos, retry a failed
 metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the read-only folder browsing API
-(`/api/folders*`), byte-range streaming,
+(`/api/folders*`), the tag management API (`/api/tags*`: list, create,
+rename, delete, merge and synonym registration/removal), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
 Both video lists, the library (`GET /api/videos`) and a folder
@@ -272,8 +273,12 @@ place when a `video` event names it, `useVideoDetail.ts`
 fetches one video for the playback screen and re-fetches it when a `video` event names
 it or the event stream reconnects, and `listSnapshot.ts`
 holds the in-memory snapshot that lets the list restore its position after a
-round trip to the playback screen. Pages and components do not call `fetch`
-themselves, so how the server is reached stays changeable in one place.
+round trip to the playback screen. `tags.ts` holds a single shared, last-value-only
+cache of the tag list behind `getTags`/`refreshTags`/`subscribeTags`, so the
+combobox, tag-filter confirmation and the tag admin screen all read and invalidate
+the same list instead of issuing their own `GET /api/tags`. Pages and components do
+not call `fetch` themselves, so how the server is reached stays changeable in one
+place.
 The list's conditions (search terms, watch state, playable-only, sort and the shuffle
 `seed`) live in the URL; `web/src/videoList/listCriteria.ts` converts between the URL and
 the criteria `useVideos` sends, and the server applies every condition, so the page
