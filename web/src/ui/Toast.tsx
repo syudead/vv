@@ -1,11 +1,21 @@
-import { createContext, type ReactNode, useCallback, useContext, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from "react";
 
 import { cn } from "../lib/cn";
 
 interface ToastItem {
   id: number;
   message: string;
+  expiresAt: number | null;
 }
+
+const toastDuration = 2800;
 
 const ToastContext = createContext<(message: string) => void>(() => undefined);
 
@@ -23,14 +33,52 @@ export function ToastProvider({
 }) {
   const [items, setItems] = useState<ToastItem[]>([]);
 
-  const show = useCallback((message: string) => {
-    const id = Date.now() + Math.random();
-    setItems((current) => [...current.slice(-2), { id, message }]);
-    setTimeout(
-      () => setItems((current) => current.filter((item) => item.id !== id)),
-      2800,
+  const show = useCallback(
+    (message: string) => {
+      const id = Date.now() + Math.random();
+      const expiresAt = placement === "default" ? Date.now() + toastDuration : null;
+      setItems((current) => [...current.slice(-2), { id, message, expiresAt }]);
+    },
+    [placement],
+  );
+
+  useEffect(() => {
+    setItems((current) => {
+      if (current.length === 0) return current;
+      const expiresAt = placement === "default" ? Date.now() + toastDuration : null;
+      return current.map((item) => ({ ...item, expiresAt }));
+    });
+  }, [placement]);
+
+  const playbackItemId = placement === "playback" ? items[0]?.id : undefined;
+  useEffect(() => {
+    if (playbackItemId === undefined) return;
+    const timeout = window.setTimeout(() => {
+      setItems((current) => current.filter((item) => item.id !== playbackItemId));
+    }, toastDuration);
+    return () => window.clearTimeout(timeout);
+  }, [playbackItemId]);
+
+  const nextDefaultExpiry =
+    placement === "default"
+      ? items.reduce<number | null>((next, item) => {
+          if (item.expiresAt === null) return next;
+          return next === null ? item.expiresAt : Math.min(next, item.expiresAt);
+        }, null)
+      : null;
+  useEffect(() => {
+    if (nextDefaultExpiry === null) return;
+    const timeout = window.setTimeout(
+      () => {
+        const now = Date.now();
+        setItems((current) =>
+          current.filter((item) => item.expiresAt === null || item.expiresAt > now),
+        );
+      },
+      Math.max(0, nextDefaultExpiry - Date.now()),
     );
-  }, []);
+    return () => window.clearTimeout(timeout);
+  }, [nextDefaultExpiry]);
 
   return (
     <ToastContext.Provider value={show}>
@@ -44,7 +92,7 @@ export function ToastProvider({
             : "top-16 items-end px-3 lg:top-auto lg:bottom-20 lg:items-center lg:px-0",
         )}
       >
-        {(placement === "playback" ? items.slice(-1) : items).map((item) => (
+        {(placement === "playback" ? items.slice(0, 1) : items).map((item) => (
           <div
             key={item.id}
             className={cn(

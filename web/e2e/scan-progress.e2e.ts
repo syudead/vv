@@ -250,8 +250,9 @@ for (const { width, height } of [
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     await expect(page).toHaveURL(/\/videos\/1$/);
-    await expect(page.getByText("「最近追加」は準備中です")).toHaveCount(0);
-    const toast = page.getByText("「視聴途中」は準備中です");
+    await expect(page.getByText("「最近追加」は準備中です")).toHaveCount(1);
+    await expect(page.getByText("「視聴途中」は準備中です")).toHaveCount(0);
+    const toast = page.getByText("「最近追加」は準備中です");
     await expect(toast).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
 
