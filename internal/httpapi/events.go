@@ -108,9 +108,15 @@ func (e *Events) publish(update func(*eventSubscriber)) {
 	}
 }
 
-// ScanChanged は直近のスキャンが変わったことを知らせる。
+// ScanChanged は直近のスキャンが変わったことを知らせる。段階ごとの残りも
+// 同じ知らせで送る。画面はスキャンの完了を受けた時点の残りで完了を知らせる
+// かどうかを決めるので、2つを別々に記録すると、その間に送信が走ってスキャン
+// だけが古い残りとともに届くことがある。
 func (e *Events) ScanChanged() {
-	e.publish(func(s *eventSubscriber) { s.scan = true })
+	e.publish(func(s *eventSubscriber) {
+		s.scan = true
+		s.processing = true
+	})
 }
 
 // ProcessingChanged は段階ごとの残りが変わったかもしれないことを知らせる。

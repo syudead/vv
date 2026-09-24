@@ -240,3 +240,19 @@ func TestGetProcessing(t *testing.T) {
 		t.Errorf("processing = %+v", got)
 	}
 }
+
+// スキャンの知らせは段階ごとの残りと1回で記録する。別々に記録すると、その間に
+// 送信が走り、スキャンだけが古い残りとともに届くことがある。
+func TestScanChangedAlsoMarksProcessing(t *testing.T) {
+	events := NewEvents()
+	sub, unsubscribe := events.subscribe()
+	defer unsubscribe()
+	sub.take()
+
+	events.ScanChanged()
+
+	scan, processing, _ := sub.take()
+	if !scan || !processing {
+		t.Errorf("scan = %v, processing = %v, want 両方 true", scan, processing)
+	}
+}

@@ -160,24 +160,27 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     const scanAt = scanRevision.current;
     const processingAt = processingRevision.current;
 
+    // スキャンと残りは同じ描画で反映する。スキャンの完了だけが先に見えると、
+    // 残りを得るまでの間「準備の残りを確認中」がちらつく。
     void (async () => {
-      try {
-        const nextScan = await getCurrentScan(controller.signal);
-        if (scanAt === scanRevision.current) apply(nextScan);
-      } catch (failure) {
-        if (scanAt !== scanRevision.current || isAborted(failure)) return;
-        // 最後に得た状態は捨てない。つなぎ直しやウィンドウへの復帰で取り直す。
-        setLoadError(errorMessage(failure));
+      const [scanResult, processingResult] = await Promise.allSettled([
+        getCurrentScan(controller.signal),
+        getProcessing(controller.signal),
+      ]);
+      if (processingResult.status === "fulfilled") {
+        if (processingAt === processingRevision.current)
+          setProcessing(processingResult.value);
       }
-    })();
-    void (async () => {
-      try {
-        const nextProcessing = await getProcessing(controller.signal);
-        if (processingAt === processingRevision.current) setProcessing(nextProcessing);
-      } catch {
-        // 残りの数は補助の情報なので、取れなくても取り込みの状態は示せる。
-        // 最後に得た数を残し、次の知らせか取り直しを待つ。
+      // 残りの取得の失敗は、最後に得た数を残して次の知らせか取り直しを待つ。
+      // 残りは補助の情報なので、取れなくても取り込みの状態は示せる。
+      if (scanResult.status === "fulfilled") {
+        if (scanAt === scanRevision.current) apply(scanResult.value);
+        return;
       }
+      const failure: unknown = scanResult.reason;
+      if (scanAt !== scanRevision.current || isAborted(failure)) return;
+      // 最後に得た状態は捨てない。つなぎ直しやウィンドウへの復帰で取り直す。
+      setLoadError(errorMessage(failure));
     })();
   }, [apply]);
 
@@ -299,6 +302,7 @@ export function describeScan(value: ScanContextValue): string {
         ? `取り込み中 ${String(scan.completed)} / ${String(scan.total)}${failed}`
         : "取り込み中…";
     case "done": {
+      if (value.processing === null) return "取り込んだ動画の準備の残りを確認しています";
       const remaining = processingRemaining(value.processing);
       if (remaining > 0) return `取り込んだ動画を準備中（残り ${String(remaining)} 件）`;
       return scan.completed > 0

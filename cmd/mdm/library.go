@@ -293,13 +293,12 @@ func (l *library) StartScan(ctx context.Context) (domain.Scan, error) {
 }
 
 // scanChanged はスキャンの状態が変わったことを画面へ知らせる。走査は仕事を
-// 積みながら進むので、段階ごとの残りも合わせて知らせる。
+// 積みながら進むので、段階ごとの残りも同じ知らせで送られる（Events.ScanChanged）。
 func (l *library) scanChanged() {
 	if l.events == nil {
 		return
 	}
 	l.events.ScanChanged()
-	l.events.ProcessingChanged()
 }
 
 // CurrentScan は直近の走査を返す。

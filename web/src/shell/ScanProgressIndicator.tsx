@@ -22,7 +22,9 @@ function iconFor(state: ScanPresentation["state"]) {
 
 function countSummary(presentation: ScanPresentation) {
   if (presentation.state === "preparing") {
-    return `残り ${String(presentation.remaining)} 件`;
+    return presentation.processing === null
+      ? "残りを確認中"
+      : `残り ${String(presentation.remaining)} 件`;
   }
   const total = presentation.total === null ? "確認中" : String(presentation.total);
   return `${String(presentation.completed)} / ${total} 件（${String(presentation.failed)} 件失敗）`;
@@ -123,7 +125,9 @@ export default function ScanProgressIndicator() {
           ? "取り込み中"
           : `取り込み中 ${String(Math.round(presentation.progress * 100))}%`
         : presentation.state === "preparing"
-          ? `準備中 残り ${String(presentation.remaining)}`
+          ? presentation.processing === null
+            ? "準備中"
+            : `準備中 残り ${String(presentation.remaining)}`
           : presentation.state === "partial-failed"
             ? "一部失敗"
             : presentation.state === "failed"

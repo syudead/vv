@@ -290,6 +290,8 @@ describe("ScanNoticeProvider", () => {
       return Promise.resolve(json(scan(21, "running")));
     });
     renderProvider();
+    // 残りの取得が返らない間も、スキャンは変化の知らせで届く。
+    await emitServerEvent("scan", scan(21, "running"));
     await waitFor(() => expect(screen.getByTestId("tracking").textContent).toBe("21"));
 
     await emitServerEvent("scan", scan(21, "done"));

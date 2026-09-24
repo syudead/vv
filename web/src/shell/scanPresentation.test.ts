@@ -35,14 +35,16 @@ function context(
   };
 }
 
+const idle = { probe: 0, thumbnail: 0, preview: 0 };
+
 describe("presentScan", () => {
   it.each([
     ["not-run", context(null)],
     ["starting", context(null, { starting: true })],
     ["unknown-total", context(makeScan("running", { total: 0 }))],
     ["running", context(makeScan("running"))],
-    ["done", context(makeScan("done"))],
-    ["partial-failed", context(makeScan("done", { failed: 2 }))],
+    ["done", context(makeScan("done"), { processing: idle })],
+    ["partial-failed", context(makeScan("done", { failed: 2 }), { processing: idle })],
     ["failed", context(makeScan("failed", { error: "disk" }))],
     ["fetch-failed", context(null, { error: "network" })],
   ] as const)("maps %s", (expected, value) => {
@@ -84,6 +86,12 @@ describe("presentScan", () => {
       }),
     );
     expect(presentation.state).toBe("done");
+  });
+
+  it("準備の残りをまだ得ていなければ、完了とせずに確認中として示す", () => {
+    const presentation = presentScan(context(makeScan("done")));
+    expect(presentation.state).toBe("preparing");
+    expect(presentation.description).toBe("取り込んだ動画の準備の残りを確認しています");
   });
 
   it("取り込み自体の失敗は、準備の残りがあっても失敗として示す", () => {

@@ -6,7 +6,7 @@ export type ScanPresentationState =
   | "starting"
   | "unknown-total"
   | "running"
-  /** スキャンは終わり、解析・サムネイル・プレビューの残りがある。 */
+  /** スキャンは終わり、解析・サムネイル・プレビューの残りがある（またはまだ分からない）。 */
   | "preparing"
   | "done"
   | "partial-failed"
@@ -37,10 +37,11 @@ function progressFor(scan: Scan): number | null {
   return Math.min(1, Math.max(0, scan.completed / scan.total));
 }
 
-function stateFor(scan: Scan, remaining: number): ScanPresentationState {
+function stateFor(scan: Scan, processing: Processing | null): ScanPresentationState {
   if (scan.state === "running") return scan.total > 0 ? "running" : "unknown-total";
   if (scan.state === "failed") return "failed";
-  if (remaining > 0) return "preparing";
+  // 残りをまだ得ていなければ、0 件とみなして完了を示さない。
+  if (processing === null || processingRemaining(processing) > 0) return "preparing";
   return scan.failed > 0 ? "partial-failed" : "done";
 }
 
@@ -84,7 +85,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
     };
   }
 
-  const state = stateFor(scan, remaining);
+  const state = stateFor(scan, processing);
   // 準備の段階は全体の件数が分からないので、割合を出さない。
   const progress = state === "preparing" ? null : progressFor(scan);
   const description =
@@ -93,7 +94,9 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
       : state === "running"
         ? `取り込み中 ${String(scan.completed)} / ${String(scan.total)}`
         : state === "preparing"
-          ? `取り込んだ動画を準備中（残り ${String(remaining)} 件）`
+          ? processing === null
+            ? "取り込んだ動画の準備の残りを確認しています"
+            : `取り込んだ動画を準備中（残り ${String(remaining)} 件）`
           : state === "partial-failed"
             ? `一部失敗（${String(scan.failed)} 件）`
             : state === "failed"
