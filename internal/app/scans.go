@@ -149,8 +149,9 @@ func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult
 // Wait は背後で走っている走査の終わりを待つ。組み立て時の context を
 // 取り消したあとに呼ぶ。
 //
-// cmd/mdm は停止時にこれを待たない。データベースを閉じたあとに走査が終われば
-// 記録は running のまま残り、次の起動の RecoverInterrupted が failed で閉じる。
+// cmd/mdm は停止時に、変化の配り先を閉じる前にこれを待つ。走査は取り消しを見て
+// 止まるので、長くは待たない。途中で配り先を閉じると、走査が消した動画の
+// 知らせが捨てられ、その生成物が残り続ける。
 func (s *Scans) Wait() {
 	s.done.Wait()
 }

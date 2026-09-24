@@ -189,3 +189,32 @@ func TestCloseDrainsPendingAndDropsLaterEvents(t *testing.T) {
 		t.Fatalf("渡した = %v, want [a b]", keys)
 	}
 }
+
+// 並行した発行も、すべての購読者に同じ順番で届く。
+func TestConcurrentPublishersKeepOneOrderForEverySubscriber(t *testing.T) {
+	bus := newTestBus()
+	first, second := newRecorder(), newRecorder()
+	first.got = make(chan struct{}, 1000)
+	second.got = make(chan struct{}, 1000)
+	bus.Subscribe("first", first.handle)
+	bus.Subscribe("second", second.handle)
+
+	var publishers sync.WaitGroup
+	for publisher := range 4 {
+		publishers.Go(func() {
+			for i := range 100 {
+				bus.Publish(domain.VideoIngestChanged{VideoID: int64(publisher*1000 + i)})
+			}
+		})
+	}
+	publishers.Wait()
+	bus.Close()
+
+	got := first.snapshot()
+	if len(got) != 400 {
+		t.Fatalf("受け取り = %d 件, want 400", len(got))
+	}
+	if !slices.Equal(got, second.snapshot()) {
+		t.Fatal("購読者ごとに順番が違う")
+	}
+}

@@ -92,7 +92,8 @@ slow or panicking subscriber never stalls a commit, a worker or a scan. `cmd/mdm
 is the one place that registers subscribers (the `/api/events` stream, the worker wake-ups,
 artifact removal); adding one touches only the subscriber and that file. At shutdown the
 stream subscription is dropped before the streams close and the wake-ups before the workers
-stop, and the bus is closed last so queued artifact removals still run.
+stop, and the bus is closed only after the workers and any running scan have stopped, so
+queued artifact removals still run.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
 browser polling: `scan` when the current scan changes, `processing` with the remaining

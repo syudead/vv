@@ -47,21 +47,20 @@ type subscription struct {
 }
 
 // Publish は変化を購読者へ配る。購読者の処理は待たない。閉じた後は何もしない。
+//
+// 全購読者の待ち行列へ積み終えるまで Bus の錠を持つ。積むのは待ち行列への
+// 追加だけなので短い。錠を持つので、並行した発行が購読者ごとに違う順番で
+// 届くことはなく、始まった発行の途中に Close が割り込んで取りこぼすこともない。
 func (b *Bus) Publish(events ...domain.Event) {
 	if len(events) == 0 {
 		return
 	}
 	b.mu.Lock()
+	defer b.mu.Unlock()
 	if b.closed {
-		b.mu.Unlock()
 		return
 	}
-	subs := make([]*subscription, 0, len(b.subs))
 	for sub := range b.subs {
-		subs = append(subs, sub)
-	}
-	b.mu.Unlock()
-	for _, sub := range subs {
 		sub.enqueue(events)
 	}
 }

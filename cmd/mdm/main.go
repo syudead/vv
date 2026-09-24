@@ -229,6 +229,9 @@ func run() error {
 	subscriptions.StopWorkers()
 	stopBackground()
 	workersDone.Wait()
+	// 走査は取り消しを見て止まり、終わりの記録と、消した動画の知らせを出す。
+	// バスを閉じる前に待たないと、その知らせが捨てられて生成物が残り続ける。
+	scans.Wait()
 	// 積んである変化（生成物の削除）を渡し終え、背後で動いている生成物の削除を、
 	// データベースを閉じる前に終える。途中で閉じると、消すはずの生成物が残り続ける。
 	bus.Close()
