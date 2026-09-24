@@ -271,12 +271,13 @@ function RemoveTagPopover({
   open,
   onOpenChange,
   selectedIds,
-  onDone,
+  onRemoved,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedIds: readonly number[];
-  onDone: () => void;
+  /** タグを外し終えるたびに、外したタグの id を渡して呼ぶ。 */
+  onRemoved: (tagId: number) => void;
 }) {
   const toast = useToast();
   const headingId = useId();
@@ -290,25 +291,52 @@ function RemoveTagPopover({
   const [fetchFailed, setFetchFailed] = useState(false);
   const [summary, setSummary] = useState<VideoTagsSummary | null>(null);
 
+  // 要約の取得は選ぶたびに通し番号を払い出し、古い応答が新しい選択の結果を
+  // 上書きしないようにする（Devin の指摘2。summarizeVideoTags 自身は要求の
+  // 順・届く順を揃えない）。
+  const summarySeq = useRef(0);
   const fetchSummary = useCallback(() => {
+    // 選択が空になった直後（一括で外したタグが今の絞り込みに含まれていて、
+    // 呼び出し元が選択を解除した直後など）は、このポップオーバーはすぐ閉じる
+    // ので要求しない。`POST /api/video-tags/summary` は videoIds を1件以上
+    // 要る（contracts/tags-api.md §4）。
+    if (selectedIds.length === 0) return;
+    const seq = (summarySeq.current += 1);
     setLoading(true);
     setFetchFailed(false);
     summarizeVideoTags(selectedIds)
-      .then((result) => setSummary(result))
-      .catch(() => setFetchFailed(true))
-      .finally(() => setLoading(false));
+      .then((result) => {
+        if (summarySeq.current !== seq) return;
+        setSummary(result);
+      })
+      .catch(() => {
+        if (summarySeq.current !== seq) return;
+        setFetchFailed(true);
+      })
+      .finally(() => {
+        if (summarySeq.current === seq) setLoading(false);
+      });
   }, [selectedIds]);
 
+  // 開いている間に選択が変わったら（別の動画を選び直す・「すべて選択」の
+  // 結果が届くなど）要約を取り直す。取り直している間は loading が立ち、
+  // 候補（Combobox）ごと隠れるので、古い候補を選べない（Devin の指摘2）。
+  // 開いた瞬間（justOpened）だけ、前回の入力と失敗の文言を消す。
+  const wasOpenRef = useRef(false);
   useEffect(() => {
-    if (!open) return;
-    setValue("");
-    setFailed(false);
+    if (!open) {
+      wasOpenRef.current = false;
+      return;
+    }
+    const justOpened = !wasOpenRef.current;
+    wasOpenRef.current = true;
+    if (justOpened) {
+      setValue("");
+      setFailed(false);
+    }
     setSummary(null);
     fetchSummary();
-    // fetchSummary は selectedIds が変わるたびに作り直されるが、ここでは
-    // ポップオーバーを開いた瞬間だけ呼べばよい（open の変化だけを見る）。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, fetchSummary]);
 
   // 「読み込み中…」から Combobox に切り替わった瞬間（要約が届いたとき）は、
   // ui-design.md「Add」「Remove」と同じくフォーカスを入力へ移す。
@@ -333,7 +361,7 @@ function RemoveTagPopover({
         toast(`${String(result.applied)} 件から「${displayName}」を外しました`);
         setValue("");
         fetchSummary();
-        onDone();
+        onRemoved(tagId);
       })
       .catch((error: unknown) => {
         if (isTagNotFound(error)) {
@@ -424,6 +452,12 @@ export interface SelectionBarProps {
   selectingAll: boolean;
   onSelectAll: () => void;
   onClear: () => void;
+  /**
+   * 「タグを外す」で外し終えるたびに、外したタグの id を渡して呼ぶ。呼び出し元
+   * （LibraryPage）は、そのタグが今の絞り込みに含まれていれば、一覧と選択が
+   * 食い違わないよう選択を解除して一覧を取り直す（Devin の指摘4）。
+   */
+  onTagRemoved: (tagId: number) => void;
 }
 
 /** SelectionBar は 1 件以上選ぶと画面下部に浮く。 */
@@ -434,10 +468,25 @@ export default function SelectionBar({
   selectingAll,
   onSelectAll,
   onClear,
+  onTagRemoved,
 }: SelectionBarProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const addTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  // count===0 のときはバーごと描かない（下の return null）が、SelectionBar
+  // 自身は選択の間ずっと同じインスタンスのまま（アンマウントしない）ので、
+  // addOpen・removeOpen をそのままにすると、選択を解除してまた選び直したときに
+  // ポップオーバーが勝手に開いた状態で戻ってしまう（Devin の指摘3）。0 になった
+  // 時点で両方閉じる。中の AddTagPopover・RemoveTagPopover 自体は、バーが
+  // null を返す間はツリーから外れて（アンマウントして）いるので、内部の状態
+  // （入力・要約など）はこの操作をしなくても次に開くときは白紙に戻る。
+  useEffect(() => {
+    if (count === 0) {
+      setAddOpen(false);
+      setRemoveOpen(false);
+    }
+  }, [count]);
 
   if (count === 0) return null;
 
@@ -501,7 +550,7 @@ export default function SelectionBar({
             open={removeOpen}
             onOpenChange={setRemoveOpen}
             selectedIds={selectedIds}
-            onDone={() => undefined}
+            onRemoved={onTagRemoved}
           />
         </PopoverRoot>
 

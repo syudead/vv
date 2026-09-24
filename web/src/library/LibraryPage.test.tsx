@@ -984,10 +984,16 @@ describe("LibraryPage", () => {
       allIds?: number[];
       idsMissingTagIds?: number[];
       idsFail?: boolean;
+      /** true にすると /api/videos/ids の応答を、呼び出し元が明示的に流すまで止める。 */
+      idsDelay?: boolean;
     }) {
       const tags = options.tags ?? [];
       const total = options.total ?? 3;
       const attached = new Map<number, Set<number>>();
+      let resolveIds: (() => void) | undefined;
+      const idsGate = new Promise<void>((resolve) => {
+        resolveIds = resolve;
+      });
       fetchMock.mockImplementation((input, init) => {
         const url = new URL(String(input), "http://localhost");
         const method = init?.method ?? "GET";
@@ -1002,13 +1008,16 @@ describe("LibraryPage", () => {
           );
         }
         if (url.pathname === "/api/videos/ids") {
-          if (options.idsFail) return Promise.resolve(json({ code: "internal" }, 500));
-          if (options.idsMissingTagIds !== undefined) {
-            return Promise.resolve(
-              json({ ids: [], missingTagIds: options.idsMissingTagIds }),
-            );
-          }
-          return Promise.resolve(json({ ids: options.allIds ?? [] }));
+          const respond = () => {
+            if (options.idsFail) return Promise.resolve(json({ code: "internal" }, 500));
+            if (options.idsMissingTagIds !== undefined) {
+              return Promise.resolve(
+                json({ ids: [], missingTagIds: options.idsMissingTagIds }),
+              );
+            }
+            return Promise.resolve(json({ ids: options.allIds ?? [] }));
+          };
+          return options.idsDelay === true ? idsGate.then(respond) : respond();
         }
         if (url.pathname === "/api/video-tags" && method === "POST") {
           const body = JSON.parse(String(init?.body)) as {
@@ -1063,6 +1072,7 @@ describe("LibraryPage", () => {
         }
         throw new Error(`unexpected request: ${url.toString()}`);
       });
+      return { resolveIds: () => resolveIds?.() };
     }
 
     it("すべて選択で、読み込んでいないページを含む全件が選ばれる（受け入れ条件4）", async () => {
@@ -1092,6 +1102,41 @@ describe("LibraryPage", () => {
 
       expect(await screen.findByText("すべてを選択できませんでした")).toBeDefined();
       expect(screen.getByText("1 件を選択中")).toBeDefined();
+    });
+
+    // Devin の指摘1: すべて選択の要求中に手動で選択を変えると、その要求は無効に
+    // なる（selectAllSeq が進む）。以前は、その無効になった要求の応答（や
+    // finally）が selectAllSeq の不一致で素通りし、selectingAll を false に
+    // 戻す機会が無いまま「選択中…」に固まっていた。
+    it("すべて選択の要求中に選択を手動で変えると、選択中…のまま固まらない", async () => {
+      const { resolveIds } = installSelectionAwareList({
+        total: 50,
+        allIds: Array.from({ length: 50 }, (_, i) => i + 1),
+        idsDelay: true,
+      });
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: "動画 1" });
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("button", { name: "すべて選択" }));
+      expect(await screen.findByRole("button", { name: "選択中…" })).toBeDefined();
+
+      // 応答がまだ届かない間に、手動で選択を変える（この要求はもう当てはまらない）。
+      await user.click(screen.getByRole("checkbox", { name: "「動画 2」を選択" }));
+
+      // ボタンは「選択中…」で固まらず、「すべて選択」に戻る。
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: "すべて選択" })).toBeDefined(),
+      );
+      expect(screen.getByText("2 件を選択中")).toBeDefined();
+
+      // 遅れて届いた応答（もう無効）は、手動で選んだ2件を上書きしない。
+      await act(async () => {
+        resolveIds();
+        await Promise.resolve();
+      });
+      expect(screen.getByText("2 件を選択中")).toBeDefined();
     });
 
     it("絞り込み中のタグを別のタブで消してから「すべて選択」すると、選ばれず、もう無いことが伝わる", async () => {
@@ -1248,6 +1293,85 @@ describe("LibraryPage", () => {
       expect(await screen.findByRole("link", { name: "動画 4" })).toBeDefined();
       // loadMore で items が伸びても、選択の件数はそのまま。
       expect(screen.getByText("5 件を選択中")).toBeDefined();
+    });
+
+    // Devin の指摘4: 一括で外したタグが今の絞り込みに含まれているときは、選択を
+    // 解除して一覧を取り直し、件数と一覧を条件に合わせ直す
+    // （docs/design-docs/library-ui.md §6）。
+    it("一括で外したタグが今の絞り込みに含まれるとき、選択を解除して一覧を取り直す（Devin の指摘4）", async () => {
+      const tag = { id: 1, name: "旅行" };
+      const attached = new Map<number, Set<number>>([[1, new Set([1])]]);
+      fetchMock.mockImplementation((input, init) => {
+        const url = new URL(String(input), "http://localhost");
+        const method = init?.method ?? "GET";
+        if (url.pathname === "/api/scans/current") return Promise.resolve(json({}, 404));
+        if (url.pathname === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url.pathname === "/api/processing") {
+          return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+        }
+        if (url.pathname === "/api/tags" && method === "GET") {
+          return Promise.resolve(
+            json({
+              items: [{ ...tag, synonyms: [], videoCount: attached.get(1)?.size ?? 0 }],
+            }),
+          );
+        }
+        if (url.pathname === "/api/video-tags" && method === "POST") {
+          const body = JSON.parse(String(init?.body)) as {
+            videoIds: number[];
+            action: "add" | "remove";
+          };
+          for (const videoId of body.videoIds) {
+            const set = attached.get(videoId) ?? new Set<number>();
+            if (body.action === "add") set.add(1);
+            else set.delete(1);
+            attached.set(videoId, set);
+          }
+          return Promise.resolve(json({ tag, applied: body.videoIds.length }));
+        }
+        if (url.pathname === "/api/video-tags/summary" && method === "POST") {
+          const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
+          const count = body.videoIds.filter((id) => attached.get(id)?.has(1)).length;
+          return Promise.resolve(
+            json({
+              total: body.videoIds.length,
+              items: count > 0 ? [{ tag, count }] : [],
+            }),
+          );
+        }
+        if (url.pathname === "/api/videos") {
+          const requestedTags = url.searchParams.getAll("tag").map(Number);
+          const matching = [1, 2, 3].filter((id) =>
+            requestedTags.every((t) => attached.get(id)?.has(t)),
+          );
+          return Promise.resolve(
+            json({
+              items: matching.map((id) =>
+                video(id, { tags: attached.get(id)?.has(1) ? [tag] : [] }),
+              ),
+              total: matching.length,
+            } satisfies VideoPage),
+          );
+        }
+        throw new Error(`unexpected request: ${url.toString()}`);
+      });
+
+      const user = userEvent.setup();
+      renderLibrary("/?tag=1");
+      await screen.findByRole("link", { name: "動画 1" });
+      expect(screen.getByRole("article")).toBeDefined();
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      expect(screen.getByText("1 件を選択中")).toBeDefined();
+
+      await user.click(screen.getByRole("button", { name: "タグを外す" }));
+      const removeOption = await screen.findByRole("option", { name: /旅行/ });
+      await user.click(removeOption);
+      expect(await screen.findByText("1 件から「旅行」を外しました")).toBeDefined();
+
+      // 選択は解除され、絞り込み（tag=1）に合う動画が無くなった一覧に取り直す。
+      await waitFor(() => expect(screen.queryByText(/件を選択中/)).toBeNull());
+      expect(await screen.findByText("条件に一致する動画はありません")).toBeDefined();
     });
   });
 });

@@ -36,6 +36,13 @@ const server = {
   removeFails: false,
   summaryFails: false,
   summaryDelay: null as (() => void) | null,
+  /**
+   * true の間、/api/video-tags/summary への要求は resolveNow を呼ばず
+   * summaryQueue に積む。順不同の応答（古い要求が新しい要求より後に届く）を
+   * 再現するテスト専用（Devin の指摘2）。
+   */
+  summaryHold: false,
+  summaryQueue: [] as (() => void)[],
 };
 
 function install() {
@@ -117,6 +124,11 @@ function install() {
           .sort((a, b) => a.tag.name.localeCompare(b.tag.name));
         return jsonResponse({ total: body.videoIds.length, items });
       };
+      if (server.summaryHold) {
+        return new Promise((resolve) => {
+          server.summaryQueue.push(() => resolve(resolveNow()));
+        });
+      }
       if (server.summaryDelay !== null) {
         return new Promise((resolve) => {
           server.summaryDelay = () => resolve(resolveNow());
@@ -130,25 +142,33 @@ function install() {
   return fetchMock;
 }
 
+function barElement(props: React.ComponentProps<typeof SelectionBar>) {
+  return (
+    <TooltipProvider>
+      <ToastProvider>
+        <SelectionBar {...props} />
+      </ToastProvider>
+    </TooltipProvider>
+  );
+}
+
 function renderBar(props: Partial<React.ComponentProps<typeof SelectionBar>> = {}) {
   const onSelectAll = vi.fn();
   const onClear = vi.fn();
+  const onTagRemoved = vi.fn();
   const result = render(
-    <TooltipProvider>
-      <ToastProvider>
-        <SelectionBar
-          count={3}
-          total={10}
-          selectedIds={[1, 2, 3]}
-          selectingAll={false}
-          onSelectAll={onSelectAll}
-          onClear={onClear}
-          {...props}
-        />
-      </ToastProvider>
-    </TooltipProvider>,
+    barElement({
+      count: 3,
+      total: 10,
+      selectedIds: [1, 2, 3],
+      selectingAll: false,
+      onSelectAll,
+      onClear,
+      onTagRemoved,
+      ...props,
+    }),
   );
-  return { ...result, onSelectAll, onClear };
+  return { ...result, onSelectAll, onClear, onTagRemoved };
 }
 
 beforeEach(() => {
@@ -159,6 +179,8 @@ beforeEach(() => {
   server.removeFails = false;
   server.summaryFails = false;
   server.summaryDelay = null;
+  server.summaryHold = false;
+  server.summaryQueue = [];
 });
 
 afterEach(() => {
@@ -451,5 +473,129 @@ describe("SelectionBar", () => {
       expect(screen.queryByRole("combobox", { name: "タグを外す" })).toBeNull(),
     );
     expect(screen.getByText("3 件を選択中")).toBeDefined();
+  });
+
+  // Devin の指摘2: 「タグを外す」が開いたまま選択が変わっても、以前は要約を
+  // 取り直さなかった。submit は最新の selectedIds を使うので、古い候補（前の
+  // 選択の要約）を選ぶと、意図しない動画からタグを外してしまう。
+  it("「タグを外す」を開いたまま選択が変わると、要約を取り直し、届くまで候補を隠す（Devin の指摘2）", async () => {
+    const user = userEvent.setup();
+    install();
+    server.attached.set(1, new Set([1]));
+    server.attached.set(2, new Set([1]));
+    server.attached.set(3, new Set());
+    const { rerender } = renderBar({ selectedIds: [1, 2, 3], count: 3 });
+
+    await user.click(screen.getByRole("button", { name: "タグを外す" }));
+    await screen.findByRole("option", { name: "旅行、一部の動画だけ、3 件中 2 件" });
+
+    // ポップオーバーを開いたまま、選択が動画1だけに変わる（動画2・3の選択を
+    // 外した想定。LibraryPage が selectedIds を新しい配列で渡し直す）。
+    rerender(
+      barElement({
+        count: 1,
+        total: 10,
+        selectedIds: [1],
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+      }),
+    );
+
+    // 取り直している間は候補ごと消え、古い候補（一部2/3件）を選べない。
+    await waitFor(() => expect(screen.queryByRole("option")).toBeNull());
+
+    // 新しい選択（動画1だけ）では「旅行」は全部に付いていて、もう一部ではない。
+    const option = await screen.findByRole("option", { name: /旅行/ });
+    expect(within(option).getByText("1 件")).toBeDefined();
+    expect(screen.queryByText(/一部/)).toBeNull();
+  });
+
+  it("要約の取り直しでは、古い応答が新しい応答を上書きしない（Devin の指摘2）", async () => {
+    install();
+    server.attached.set(1, new Set([1]));
+    server.attached.set(2, new Set([1]));
+    server.summaryHold = true;
+    const { rerender } = renderBar({ selectedIds: [1, 2], count: 2 });
+
+    fireEvent.click(screen.getByRole("button", { name: "タグを外す" }));
+    await waitFor(() => expect(server.summaryQueue).toHaveLength(1));
+
+    // 開いている間に選択が変わり、2回目の要求も止められる。
+    rerender(
+      barElement({
+        count: 1,
+        total: 10,
+        selectedIds: [1],
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+      }),
+    );
+    await waitFor(() => expect(server.summaryQueue).toHaveLength(2));
+
+    // 新しい方（2番目）を先に、古い方（1番目）を後から届かせる。
+    const [first, second] = server.summaryQueue;
+    await act(async () => {
+      second?.();
+      await Promise.resolve();
+    });
+    const optionAfterSecond = await screen.findByRole("option", { name: /旅行/ });
+    expect(within(optionAfterSecond).getByText("1 件")).toBeDefined();
+
+    await act(async () => {
+      first?.();
+      await Promise.resolve();
+    });
+    // 古い応答（選択が[1,2]だった頃、2件中2件）が後から届いても上書きしない。
+    const optionAfterStale = screen.getByRole("option", { name: /旅行/ });
+    expect(within(optionAfterStale).getByText("1 件")).toBeDefined();
+  });
+
+  // Devin の指摘3: addOpen・removeOpen は SelectionBar 自身の状態で、選択が
+  // 0 件になって count===0 return null になっても SelectionBar はアンマウント
+  // しない（呼び出し元は常に描画している）ので、以前はそのまま残った。
+  it("選択が0件になって消えたあと選び直すと、ポップオーバーは開いた状態で戻らない（Devin の指摘3）", async () => {
+    const user = userEvent.setup();
+    install();
+    const { rerender } = renderBar({ selectedIds: [1, 2, 3], count: 3 });
+
+    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
+    await screen.findByRole("combobox", { name: "タグを付ける" });
+
+    // 選択が0件になる（バーは何も描かなくなる）。
+    rerender(
+      barElement({
+        count: 0,
+        total: 10,
+        selectedIds: [],
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+      }),
+    );
+    expect(screen.queryByRole("region", { name: "選択中の操作" })).toBeNull();
+
+    // 選び直す（バーがまた出る）。
+    rerender(
+      barElement({
+        count: 2,
+        total: 10,
+        selectedIds: [4, 5],
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+      }),
+    );
+
+    // ポップオーバーは勝手に開いた状態で戻らない。押せば開く（表示自体は壊れて
+    // いない）ことも確かめる。
+    expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
+    expect(await screen.findByRole("combobox", { name: "タグを付ける" })).toBeDefined();
   });
 });

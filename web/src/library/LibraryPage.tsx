@@ -235,40 +235,56 @@ export default function LibraryPage() {
 
   // --- 選択 ---
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  // 「すべて選択」の要求の間だけ true（下の selectAll が立てる）。
+  const [selectingAll, setSelectingAll] = useState(false);
   // 「すべて選択」の進行中の要求を、手動の選択操作や条件の変化が起きたら
   // 無効にする通し番号（非ブロッキング指摘1）。あとから届く古い応答が、その
   // あとに起きたもっと新しい選択や条件を上書きしないようにする。
   const selectAllSeq = useRef(0);
-  const changeSelection = useCallback((id: number, selected: boolean) => {
+  // 「すべて選択」の要求を無効にする（進行中なら selectingAll も戻す）。無効に
+  // した後は、その要求の応答が届いても selectingAll を戻す側の分岐
+  // （selectAll の finally）が selectAllSeq の不一致で素通りするので、ここで
+  // 戻しておかないと「選択中…」のまま固まる（Devin の指摘1）。
+  const invalidateSelectAll = useCallback(() => {
     selectAllSeq.current += 1;
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      if (selected) next.add(id);
-      else next.delete(id);
-      return next;
-    });
+    setSelectingAll(false);
   }, []);
+  const changeSelection = useCallback(
+    (id: number, selected: boolean) => {
+      invalidateSelectAll();
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        if (selected) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+    },
+    [invalidateSelectAll],
+  );
   // タグの行の選択切り替え（選択中にカードのタグを押したとき）は、今の選択を
-  // 読まずに関数形の更新で決める。依存を持たない安定した参照にし、CardTagRow へ
-  // 渡す関数も再描画のたびに作り直さない（N4、memo(VideoCard) を効かせる）。
-  const toggleSelection = useCallback((id: number) => {
-    selectAllSeq.current += 1;
-    setSelectedIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  // 読まずに関数形の更新で決める。CardTagRow へ渡す関数も再描画のたびに作り
+  // 直さないよう、依存は安定した invalidateSelectAll だけにする（N4、
+  // memo(VideoCard) を効かせる）。
+  const toggleSelection = useCallback(
+    (id: number) => {
+      invalidateSelectAll();
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+    },
+    [invalidateSelectAll],
+  );
   const clearSelection = useCallback(() => {
-    selectAllSeq.current += 1;
+    invalidateSelectAll();
     setSelectedIds(new Set());
-  }, []);
+  }, [invalidateSelectAll]);
 
   // --- 「すべて選択」（Plan の Structural Decisions 4） ---
   // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。選択は常に id の
   // 集合として持つ。
-  const [selectingAll, setSelectingAll] = useState(false);
   const selectAll = useCallback(() => {
     const seq = (selectAllSeq.current += 1);
     setSelectingAll(true);
@@ -302,6 +318,21 @@ export default function LibraryPage() {
         if (selectAllSeq.current === seq) setSelectingAll(false);
       });
   }, [apply, playable, query, tagIds, toast, watch]);
+
+  // 選択バーで一括して外したタグが、今の絞り込み（tagIds）に含まれているとき
+  // の方針（Devin の指摘4、docs/design-docs/library-ui.md §6）。外した動画は
+  // その絞り込みにもう合わなくなるかもしれないので、選択を解除し一覧を取り
+  // 直して、件数と一覧を条件に合わせ直す。タグの絞り込み自体は外さない
+  // （そのタグはまだ有効な絞り込み条件であり続ける）。
+  const onTagRemoved = useCallback(
+    (tagId: number) => {
+      if (!latestConditions.current.tagIds.includes(tagId)) return;
+      clearSelection();
+      clearListSnapshot();
+      reload();
+    },
+    [clearSelection, reload],
+  );
 
   // 選択は常に id の集合として持ち、読み込み済みの items に合わせて刈り込まない
   // （Plan の Structural Decisions 4、issue 270 完了の条件2）。以前はここで
@@ -607,6 +638,7 @@ export default function LibraryPage() {
         selectingAll={selectingAll}
         onSelectAll={selectAll}
         onClear={clearSelection}
+        onTagRemoved={onTagRemoved}
       />
     </div>
   );
