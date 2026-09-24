@@ -121,6 +121,60 @@ describe("ScanNoticeProvider", () => {
     expect(screen.getByTestId("notice").textContent).toBe("11");
   });
 
+  it("does not expire a restored failed notice before the current scan loads", async () => {
+    vi.useFakeTimers();
+    window.sessionStorage.setItem(
+      "vv.scan-notice",
+      JSON.stringify({
+        version: 1,
+        trackingScanId: 14,
+        acknowledgedTerminalScanId: null,
+        completionNotice: { scanId: 14, expiresAt: Date.now() - 1000 },
+      }),
+    );
+    let resolveScan: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      return new Promise<Response>((resolve) => {
+        resolveScan = resolve;
+      });
+    });
+
+    renderProvider();
+    expect(screen.getByTestId("notice").textContent).toBe("14");
+    await act(async () => vi.advanceTimersByTimeAsync(9000));
+    expect(screen.getByTestId("notice").textContent).toBe("14");
+
+    await act(async () => resolveScan?.(json(scan(14, "failed"))));
+    expect(screen.getByTestId("notice").textContent).toBe("14");
+  });
+
+  it("does not let an expired old notice overwrite a newly running scan", async () => {
+    window.sessionStorage.setItem(
+      "vv.scan-notice",
+      JSON.stringify({
+        version: 1,
+        trackingScanId: 14,
+        acknowledgedTerminalScanId: null,
+        completionNotice: { scanId: 14, expiresAt: Date.now() - 1000 },
+      }),
+    );
+    let response = scan(15, "running");
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(response),
+      ),
+    );
+
+    renderProvider();
+    await waitFor(() => expect(screen.getByTestId("tracking").textContent).toBe("15"));
+    expect(screen.getByTestId("notice").textContent).toBe("none");
+
+    response = scan(15, "done");
+    await act(async () => screen.getByRole("button", { name: "refresh" }).click());
+    await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("15"));
+  });
+
   it("expires completed scan notices", async () => {
     let currentCalls = 0;
     fetchMock.mockImplementation((input) =>
