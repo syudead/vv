@@ -173,7 +173,7 @@ test.describe.serial("library search", () => {
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
-    await expect(summary(page)).toContainText(`/ ${String(expectedVideos)} 件`);
+    await expect(summary(page)).toHaveText(`${expectedVideos.toLocaleString("ja-JP")}件`);
 
     const requests: URL[] = [];
     page.on("request", (candidate) => {
@@ -185,7 +185,9 @@ test.describe.serial("library search", () => {
     await page.locator("label", { hasText: "未視聴" }).click();
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\?watch=unwatched&sort=addedDesc$/);
-    await expect(summary(page)).toContainText(`1–60 / ${String(unwatched.total)} 件`);
+    await expect(summary(page)).toHaveText(
+      `${unwatched.total.toLocaleString("ja-JP")}件`,
+    );
     await page.waitForLoadState("networkidle");
 
     // 選んだ瞬間には 1 ページ目だけを読む。
@@ -199,7 +201,9 @@ test.describe.serial("library search", () => {
     expect(new Set(await cardIds(page))).toEqual(
       new Set(unwatched.items.map((item) => item.id)),
     );
-    await expect(summary(page)).toContainText(`${String(unwatched.total)} 件`);
+    await expect(summary(page)).toHaveText(
+      `${unwatched.total.toLocaleString("ja-JP")}件`,
+    );
   });
 
   test("12: 条件を載せた URL は別のタブでも同じ一覧を出し、戻る/進むで前の条件に戻る", async ({
@@ -219,7 +223,7 @@ test.describe.serial("library search", () => {
     await expect
       .poll(() => cardTitles(page))
       .toEqual(expected.items.map((item) => item.title));
-    await expect(summary(page)).toContainText("「旅行 OR 奈良」 3 件");
+    await expect(summary(page)).toHaveText("3件");
     await expect(page.getByRole("searchbox", { name: "動画を検索" })).toHaveValue(
       "旅行 OR 奈良",
     );
@@ -233,7 +237,7 @@ test.describe.serial("library search", () => {
     await expect
       .poll(() => cardTitles(other))
       .toEqual(expected.items.map((item) => item.title));
-    await expect(summary(other)).toContainText("「旅行 OR 奈良」 3 件");
+    await expect(summary(other)).toHaveText("3件");
     await other.close();
 
     // 並べ替えを変えると履歴が 1 つ増え、戻ると前の並びに戻る。
@@ -271,7 +275,7 @@ test.describe.serial("library search", () => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/?q=${encodeURIComponent("旅行 OR 奈良")}&sort=addedDesc`);
-    await expect(summary(page)).toContainText("3 件");
+    await expect(summary(page)).toHaveText("3件");
 
     const kinds: [string, string, string][] = [
       ["追加日", "addedDesc", "addedAsc"],
@@ -378,34 +382,20 @@ test.describe.serial("library search", () => {
     await expect(page).toHaveURL(url);
   });
 
-  test("22: 一致なしで条件を解除すると、検索語・視聴状態・再生可否だけが外れる", async ({
-    page,
-  }) => {
+  test("22: 一致なしでは条件や解除操作を重ねない", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/?q=zzz-no-such-video&watch=unwatched&playable=1&sort=titleDesc");
     await expect(
       page.getByRole("heading", { name: "条件に一致する動画はありません" }),
     ).toBeVisible();
-    const chips = page
-      .getByRole("list", { name: "効いている条件" })
-      .getByRole("listitem");
-    await expect(chips).toHaveText([
-      "検索語「zzz-no-such-video」",
-      "未視聴",
-      "再生できるものだけ",
-    ]);
-
-    await page.getByRole("button", { name: "条件を解除" }).click();
-    await expect(page).toHaveURL(/\/\?sort=titleDesc$/);
+    await expect(page.getByRole("list", { name: "効いている条件" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "条件を解除" })).toHaveCount(0);
+    await expect(page).toHaveURL(
+      /\?q=zzz-no-such-video&watch=unwatched&playable=1&sort=titleDesc$/,
+    );
     const box = page.getByRole("searchbox", { name: "動画を検索" });
-    await expect(box).toBeFocused();
-    await expect(box).toHaveValue("");
+    await expect(box).toHaveValue("zzz-no-such-video");
     await expect(page.getByRole("button", { name: "並び順: 題名" })).toBeVisible();
-    await expect(summary(page)).toContainText(`${String(expectedVideos)} 件`);
-    await expect.poll(async () => (await cardTitles(page))[0]).toBe("長さ不明");
-
-    await page.goBack();
-    await expect(chips).toHaveCount(3);
   });
 
   test("16: 検索の書き方を開くと 4 つの書き方が出て、閉じても検索語が残る", async ({

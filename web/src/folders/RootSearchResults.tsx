@@ -10,7 +10,7 @@ import { useVideos } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
 import type { ListCriteria } from "../videoList/listCriteria";
-import { conditionLabels, summarize } from "../videoList/listSummary";
+import { resultCountText } from "../videoList/listSummary";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import VideoCard from "../videoList/VideoCard";
 import { type RootDisplay, topLevelLocationLabel } from "./folderPath";
@@ -33,7 +33,6 @@ export default function RootSearchResults({
   roots,
   zoom,
   restored,
-  onClearNoMatches,
 }: {
   criteria: ListCriteria;
   rootNames: Map<number, RootDisplay>;
@@ -42,7 +41,6 @@ export default function RootSearchResults({
   zoom: Zoom;
   /** 呼び出し側（RootView）が取り出した控え。無ければ1ページ目から読む。 */
   restored: ReturnType<typeof takeListSnapshot>;
-  onClearNoMatches: () => void;
 }) {
   const location = useLocation();
   const backTo = `${location.pathname}${location.search}`;
@@ -128,28 +126,27 @@ export default function RootSearchResults({
     if (roots.error !== null) roots.reload();
   };
   const noMatch = !waiting && failure === null && items.length === 0;
-  const summaryText = waiting
-    ? "読み込み中…"
-    : `「${criteria.query}」 ${summarize(items, total)}`;
+  const initialLoadFailed =
+    !waiting && failure !== null && (items.length === 0 || roots.error !== null);
+  const summaryText = waiting ? "読み込み中…" : resultCountText(total);
 
   return (
     <div onClick={saveSnapshot} className="flex flex-col gap-3">
       <h2 className="sr-only">検索結果</h2>
       {noMatch ? (
-        <NoMatches
-          conditions={[...conditionLabels(criteria), "すべてのフォルダ"]}
-          onClear={onClearNoMatches}
-        />
+        <NoMatches />
       ) : (
         <>
-          <p
-            role="status"
-            aria-live="polite"
-            className="text-center text-xs text-fg-muted tabular-nums"
-          >
-            {summaryText}
-          </p>
-          {failure !== null && (items.length === 0 || roots.error !== null) ? (
+          {!initialLoadFailed && (
+            <p
+              role="status"
+              aria-live="polite"
+              className="text-center text-xs text-fg-muted tabular-nums"
+            >
+              {summaryText}
+            </p>
+          )}
+          {initialLoadFailed ? (
             <LoadFailed reason={failure} onRetry={retry} />
           ) : (
             <Grid zoom={zoom}>

@@ -30,7 +30,7 @@ import {
   type ListCriteria,
   newSeed,
 } from "../videoList/listCriteria";
-import { conditionLabels, summarize } from "../videoList/listSummary";
+import { resultCountText } from "../videoList/listSummary";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { useListCriteria } from "../videoList/useListCriteria";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
@@ -120,12 +120,6 @@ export default function LibraryPage() {
     () => update(clearConditions(criteria)),
     [criteria, update],
   );
-  // 一致なしの「条件を解除」は自分自身が消えるので、フォーカスを空になった検索欄へ移す。
-  const clearFromNoMatches = useCallback(() => {
-    clearAll();
-    searchField.current?.focus();
-  }, [clearAll]);
-
   // --- 大きさ切替で読んでいた位置を保つ ---
   const anchor = useRef<number | undefined>(undefined);
   const list = useRef<HTMLDivElement | null>(null);
@@ -278,9 +272,10 @@ export default function LibraryPage() {
   }, [hasMore, loadMore, resetPreview]);
 
   const empty = !loading && error === null && items.length === 0;
+  const initialLoadFailed = !loading && error !== null && items.length === 0;
   const conditioned = hasConditions(criteria);
   const selectionMode = selectedIds.size > 0;
-  const summary = loading ? "読み込み中…" : summarize(items, total);
+  const resultStatus = loading ? "読み込み中…" : resultCountText(total);
 
   const rowProps = (video: Video) => ({
     video,
@@ -322,24 +317,21 @@ export default function LibraryPage() {
         />
       </TopBarPortal>
 
-      <p
-        role="status"
-        aria-live="polite"
-        className="text-center text-xs text-fg-muted tabular-nums"
-      >
-        {query === "" ? summary : `「${query}」 ${summary}`}
-      </p>
-
-      {error !== null && items.length === 0 && (
-        <LoadFailed reason={error} onRetry={reload} />
+      {!initialLoadFailed && (
+        <p
+          role="status"
+          aria-live="polite"
+          className="text-center text-xs text-fg-muted tabular-nums"
+        >
+          {resultStatus}
+        </p>
       )}
+
+      {initialLoadFailed && <LoadFailed reason={error} onRetry={reload} />}
 
       {empty &&
         (conditioned ? (
-          <NoMatches
-            conditions={conditionLabels(criteria)}
-            onClear={clearFromNoMatches}
-          />
+          <NoMatches />
         ) : (
           <EmptyLibrary onScan={scan.start} scanning={scan.running} />
         ))}
@@ -391,10 +383,6 @@ export default function LibraryPage() {
 
       {error !== null && items.length > 0 && (
         <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
-      )}
-
-      {!loading && items.length > 0 && (
-        <p className="text-center text-xs text-fg-muted tabular-nums">{summary}</p>
       )}
 
       <div ref={sentinel} aria-hidden="true" className="h-px" />

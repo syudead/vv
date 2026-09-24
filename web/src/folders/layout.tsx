@@ -66,8 +66,3 @@ export function FolderNotFound() {
     />
   );
 }
-
-/** rangeLabel は一致なしのチップに添える範囲の名前である（ui-design.md「No-match state」）。 */
-export function rangeLabel(kind: "subtree" | "direct", name: string): string {
-  return kind === "subtree" ? `${name}とその中` : `${name}の直下`;
-}
