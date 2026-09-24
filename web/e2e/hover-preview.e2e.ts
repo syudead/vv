@@ -327,6 +327,18 @@ test.describe.serial("library hover preview", () => {
         },
       });
     });
+    // 一覧は準備中の項目を1件ずつ取り直すので、1件の応答も同じ状態にそろえる。
+    await page.route(/\/api\/videos\/\d+$/, async (route) => {
+      const id = Number(new URL(route.request().url()).pathname.split("/").at(-1));
+      const variant = variants.find((item) => item.id === id);
+      if (variant === undefined) {
+        await route.fallback();
+        return;
+      }
+      const response = await route.fetch();
+      const body = (await response.json()) as Video;
+      await route.fulfill({ response, json: { ...body, ...variant } });
+    });
 
     const requests = watchRequests(page);
     await page.clock.install();

@@ -5,6 +5,7 @@ function isIndeterminate(presentation: ScanPresentation) {
   return (
     presentation.state === "starting" ||
     presentation.state === "unknown-total" ||
+    presentation.state === "preparing" ||
     (presentation.state === "failed" && presentation.progress === null)
   );
 }
@@ -39,7 +40,11 @@ export default function ScanProgressBar({
   return (
     <div
       role="progressbar"
-      aria-label="取り込み対象を確認中"
+      aria-label={
+        presentation.state === "preparing"
+          ? "取り込んだ動画を準備中"
+          : "取り込み対象を確認中"
+      }
       className={cn("overflow-hidden rounded-full bg-bg", className)}
     >
       <div className="h-full w-1/3 animate-pulse bg-accent motion-reduce:animate-none" />

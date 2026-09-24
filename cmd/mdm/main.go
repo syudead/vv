@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"sync"
 	"syscall"
 	"time"
 
@@ -101,23 +102,42 @@ func run() error {
 	backgroundCtx, stopBackground := context.WithCancel(context.Background())
 	defer stopBackground()
 
-	lib := newLibrary(cfg, db, logger)
+	// 画面へ送る変化の知らせ。走査とワーカーが知らせ、/api/events が配る。
+	events := httpapi.NewEvents()
+
+	lib := newLibrary(db, logger, events)
 	lib.bindContext(backgroundCtx)
 
-	// 前回の停止で running のまま残った走査を閉じる。閉じないと
-	// 「実行中は1件だけ」の制約が働いたまま二度と取り込みを始められない。
+	// 前回の停止で running のまま残った走査を閉じ、処理中だった仕事を戻す。
 	if err := lib.recoverInterrupted(backgroundCtx); err != nil {
 		return err
 	}
-	lib.reconcileProcessingFailures(backgroundCtx)
-	lib.reconcilePreviews(backgroundCtx)
 
-	worker := newWorker(cfg, db, logger)
-	workerDone := make(chan struct{})
-	go func() {
-		defer close(workerDone)
-		worker.Run(backgroundCtx)
-	}()
+	// 取り込みの段階ごとにワーカーを置く。仕事を積んだ取引が確定したら、その
+	// 段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で問い合わせない。
+	// 前回の停止で残った生成途中の成果物を消す。ワーカーを動かす前なので、
+	// 生成中のものを消すことはない。
+	if err := media.RemoveTemporary(cfg.ThumbnailsDir()); err != nil {
+		logger.Warn("生成途中の成果物を削除できませんでした", slog.Any("error", err))
+	}
+	assets := newArtifacts(db, cfg.ThumbnailsDir(), logger)
+	workers := newWorkers(db, assets, logger, events)
+	db.OnJobsChanged(wakeWorkers(workers, events))
+	// 動画の行が消えたら、参照の無くなった内容の生成物だけを消し、開いている
+	// 画面へ消えたことを知らせる（取り直すと見つからないので、画面が外す）。
+	db.OnVideosDeleted(func(deleted []store.DeletedVideo) {
+		keys := make([]string, 0, len(deleted))
+		for _, video := range deleted {
+			keys = append(keys, video.ContentKey)
+			events.VideoChanged(video.ID)
+		}
+		assets.release(keys)
+		events.ProcessingChanged()
+	})
+	var workersDone sync.WaitGroup
+	for _, worker := range workers {
+		workersDone.Go(func() { worker.Run(backgroundCtx) })
+	}
 
 	// request単位のtranscode processはHTTP requestより長生きさせない。Shutdownは
 	// 実行中requestのcontextを取り消さないため、server寿命を別に持って先にcancelする。
@@ -144,19 +164,30 @@ func run() error {
 		ThumbnailJobs:  db,
 		Related:        db,
 		Reprobe:        db,
+		PreviewRepair:  db,
 		Opener:         fileOpener,
+		Processing:     db,
+		Events:         events,
 		Assets:         web.Dist(),
 		Logger:         logger,
 	})
 
-	if err := serve(cfg, handler, logger, nil, stopRequestMedia); err != nil {
+	// 変化の知らせの接続は終わりが無いので、停止の猶予待ちより先に閉じる。
+	beforeShutdown := func() {
+		stopRequestMedia()
+		events.Close()
+	}
+	if err := serve(cfg, handler, logger, nil, beforeShutdown); err != nil {
 		return err
 	}
 
 	// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
 	// ジョブは running のまま残るが、次の起動で queued へ戻る。
 	stopBackground()
-	<-workerDone
+	workersDone.Wait()
+	// 背後で動いている生成物の削除を、データベースを閉じる前に終える。
+	// 途中で閉じると、消すはずの生成物が残り続ける。
+	assets.wait()
 	logger.Info("取り込みとジョブを停止しました")
 
 	return nil

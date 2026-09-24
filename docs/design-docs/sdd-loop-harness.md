@@ -6,14 +6,15 @@ SDDの工程継続をClaude RoutineやPRイベントに任せない。保守者�
 sub-issueを任意のコーディングエージェントへ明示的に渡し、エージェントは一工程だけを実行して
 PRを作り、そこで終了する。
 
-長寿命feature branchとsub-branchの構成は維持する。
+これは保守者が明示的に開始した機能開発用のフローである。それ以外の変更は通常どおり、
+focused branchから`main`向けPRを作る。機能開発では長寿命feature branchとsub-branchの
+構成を使う。
 
 ```text
 main
   <- feature branch                 integration PR（Closes parent）
        <- arbitrary stage branch    Plan / Design PR
        <- arbitrary task branch     implementation PR
-       <- arbitrary sync branch     latest main synchronization PR
 ```
 
 branch名は識別子ではない。Issue番号とfeature directory番号にも対応規則を設けない。
@@ -90,9 +91,9 @@ sub-issuesを確認し、同じ作業が既にあれば作成しない。既存c
 ## Integration
 
 Plan merge直後にfeature branchから`main`へのintegration PRを作り、featureの生存中は同じPRを使う。
-全child解決後、最新`main`を同期用sub-branchへmergeし、そのPRをfeatureへmergeする。feature全体の
-`task check`と必要なUI reviewを再実行してから、人がintegration PRをmergeする。rebaseやforce-pushで
-長寿命feature branchを書き換えない。
+全child解決後、最新`main`を長寿命feature branchへ直接mergeしてintegration PRを更新する。
+既存PRのbranch更新に別のPRは作らない。feature全体の`task check`と必要なUI reviewを再実行してから、
+人がintegration PRをmergeする。rebaseやforce-pushで長寿命feature branchを書き換えない。
 
 ## Automation boundary
 

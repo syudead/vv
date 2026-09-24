@@ -85,7 +85,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 
 	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
 	for _, video := range page.Items {
-		item := withProgress(toAPIVideo(video, s.thumbnailsDir), progress, video.ContentKey)
+		item := withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey)
 		if folder, ok := domain.LocateVideoFolder(roots, video.Path); ok {
 			item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
 		}
@@ -192,7 +192,7 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	}
 
 	progress := s.progressFor(r.Context(), []domain.Video{video})
-	payload := withProgress(toAPIVideo(video, s.thumbnailsDir), progress, video.ContentKey)
+	payload := withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey)
 
 	// 所在とシーク用プレビューの状態は、動画1件の応答にだけ載せる。一覧に載せると、
 	// 画面が使わない絶対パスを1ページ 60 件ぶん毎回送ることになる。
@@ -324,7 +324,7 @@ func (s *server) lookupVideo(w http.ResponseWriter, r *http.Request, id int64) (
 //
 // 取得できていない値は省略する。0 で埋めると、一覧で「尺が 0 の動画」と
 // 「尺が分からない動画」を区別できなくなる。
-func toAPIVideo(video domain.Video, thumbnailsDir string) gen.Video {
+func toAPIVideo(video domain.Video, previewAvailable bool) gen.Video {
 	out := gen.Video{
 		Id:             video.ID,
 		Title:          video.Title,
@@ -375,12 +375,40 @@ func toAPIVideo(video domain.Video, thumbnailsDir string) gen.Video {
 		url := seekThumbnailURL(video)
 		out.SeekThumbnailUrl = &url
 	}
-	if video.PreviewState == domain.PreviewStateDone && previewAssetAvailable(thumbnailsDir, video.ContentKey) {
+	if video.PreviewState == domain.PreviewStateDone && previewAvailable {
 		url := previewURL(video)
 		out.PreviewUrl = &url
 	}
 
 	return out
+}
+
+// apiVideo は動画を契約の形へ写す。プレビューを作り終えた記録があるのに
+// ファイルが無ければ、作り直しを積み、応答では準備中として返す。
+//
+// ファイルの有無は、URL を出すかどうかを決めるためにもともと確かめている。
+// 見つけたときだけ書くので、ファイルがある通常の場合に書き込みは増えない。
+// 積むのは状態が done の間の1回だけで、作り直しが上限まで失敗すれば failed に
+// なり、それ以上は積まない。
+func (s *server) apiVideo(ctx context.Context, video domain.Video) gen.Video {
+	if video.PreviewState != domain.PreviewStateDone {
+		return toAPIVideo(video, false)
+	}
+	if previewAssetAvailable(s.thumbnailsDir, video.ContentKey) {
+		return toAPIVideo(video, true)
+	}
+	if s.previewRepair != nil && s.thumbnailsDir != "" && video.ContentKey != "" {
+		requeued, err := s.previewRepair.RequeueMissingPreview(ctx, video.ID, video.ContentKey)
+		switch {
+		case err != nil:
+			// 作り直しを積めなくても、応答は URL を省いて返せる。次に見つけたときに積む。
+			s.logger.Warn("消えたプレビューの作り直しを積めませんでした",
+				slog.Int64("videoId", video.ID), slog.Any("error", err))
+		case requeued:
+			video.PreviewState = domain.PreviewStatePending
+		}
+	}
+	return toAPIVideo(video, false)
 }
 
 func previewURL(video domain.Video) string {

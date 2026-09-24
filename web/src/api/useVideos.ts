@@ -4,6 +4,7 @@ import {
   errorMessage,
   type FolderRef,
   type FolderScope,
+  getVideo,
   isAborted,
   listFolderVideos,
   listVideos,
@@ -13,6 +14,18 @@ import {
   type WatchFilter,
 } from "./client";
 import { subscribeProgress } from "./progressEvents";
+import { subscribeServerEvents } from "./serverEvents";
+import { isProcessing } from "./useVideoDetail";
+
+/**
+ * mergeRefreshed は取り直した1件を、一覧に出ている項目へ重ねる。
+ *
+ * 題名と大きさは一覧側の値を残す。フォルダ画面の項目は、そのフォルダにある
+ * 所在の題名と大きさを持ち、1件の取得（代表の所在）とは違うことがあるためである。
+ */
+function mergeRefreshed(current: Video, refreshed: Video): Video {
+  return { ...current, ...refreshed, title: current.title, sizeBytes: current.sizeBytes };
+}
 
 /**
  * VideosSeed は復元された一覧の初期状態である。
@@ -153,6 +166,94 @@ export function useVideos(
     [],
   );
 
+  // 取り込みの準備が進んだ動画を、一覧を読み直さずに1件ずつ取り直す。読み直すと
+  // スクロール位置や読み込んだページが失われる。取り直しは1件ずつ順に行い、
+  // 知らせが重なっても同じ動画を重ねて取りに行かない。
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const refreshQueue = useRef(new Set<number>());
+  const refreshing = useRef<AbortController | null>(null);
+  const drainRefreshQueue = useCallback(async () => {
+    if (refreshing.current !== null) return;
+    const controller = new AbortController();
+    refreshing.current = controller;
+    try {
+      for (const id of refreshQueue.current) {
+        refreshQueue.current.delete(id);
+        try {
+          const refreshed = await getVideo(id, controller.signal);
+          // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
+          if (controller.signal.aborted) return;
+          setItems((current) =>
+            current.map((video) =>
+              video.id === id ? mergeRefreshed(video, refreshed) : video,
+            ),
+          );
+        } catch (failure) {
+          if (isAborted(failure)) return;
+          // 動画が索引から消えていたら、一覧からも外す。一時的な失敗は、その
+          // 1件だけ諦める（次の知らせか取り込みの完了時の読み直しで直る）。
+          if (
+            failure instanceof RequestFailed &&
+            failure.status === 404 &&
+            itemsRef.current.some((video) => video.id === id)
+          ) {
+            setItems((current) => current.filter((video) => video.id !== id));
+            setTotal((value) => Math.max(0, value - 1));
+          }
+        }
+      }
+    } finally {
+      if (refreshing.current === controller) refreshing.current = null;
+    }
+  }, []);
+  const refreshItems = useCallback(
+    (ids: Iterable<number>) => {
+      for (const id of ids) refreshQueue.current.add(id);
+      void drainRefreshQueue();
+    },
+    [drainRefreshQueue],
+  );
+  const refreshProcessingItems = useCallback(() => {
+    refreshItems(
+      itemsRef.current.filter((video) => isProcessing(video)).map((video) => video.id),
+    );
+  }, [refreshItems]);
+
+  // ページの取得中に届いた知らせは、取得した内容より新しいことがある。知らせを
+  // 受けた動画を覚えておき、ページを反映したあとで取り直す。
+  const pageLoading = useRef(false);
+  const changedWhileLoading = useRef(new Set<number>());
+
+  useEffect(() => {
+    const unsubscribe = subscribeServerEvents({
+      video: (id) => {
+        // ページの取得中は、表示中の動画でも覚えておく。取り直しの方が先に
+        // 終わると、あとから届いたページの古い内容で上書きされる。
+        if (pageLoading.current) changedWhileLoading.current.add(id);
+        if (itemsRef.current.some((video) => video.id === id)) refreshItems([id]);
+      },
+      // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
+      // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
+      // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
+      open: (reconnected) => {
+        if (reconnected) {
+          refreshItems(itemsRef.current.map((video) => video.id));
+        } else {
+          refreshProcessingItems();
+        }
+      },
+    });
+    // 復元した一覧は、別の画面にいた間に準備が進んでいることがある。
+    refreshProcessingItems();
+    return () => {
+      unsubscribe();
+      refreshing.current?.abort();
+      refreshing.current = null;
+      refreshQueue.current.clear();
+    };
+  }, [refreshItems, refreshProcessingItems]);
+
   // 読み込み中の要求を覚えておく。条件を変えた直後に古い応答が届いても、
   // 新しい一覧を上書きしないようにする。
   const inFlight = useRef<AbortController | null>(null);
@@ -162,6 +263,14 @@ export function useVideos(
       inFlight.current?.abort();
       const controller = new AbortController();
       inFlight.current = controller;
+      pageLoading.current = true;
+      changedWhileLoading.current.clear();
+      if (replace) {
+        // 前の一覧のために始めた取り直しは捨てる。新しいページの内容の方が新しい。
+        refreshing.current?.abort();
+        refreshing.current = null;
+        refreshQueue.current.clear();
+      }
 
       if (replace) {
         setLoading(true);
@@ -193,6 +302,11 @@ export function useVideos(
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
         if (controller.signal.aborted || inFlight.current !== controller) return;
         setItems((items) => (replace ? page.items : appendUnique(items, page.items)));
+        const changed = page.items
+          .map((video) => video.id)
+          .filter((id) => changedWhileLoading.current.has(id));
+        changedWhileLoading.current.clear();
+        if (changed.length > 0) refreshItems(changed);
         setTotal(page.total);
         setCursor(page.nextCursor);
         setHasMore(page.nextCursor !== undefined);
@@ -221,13 +335,14 @@ export function useVideos(
         setHasMore(false);
       } finally {
         if (!controller.signal.aborted) {
+          pageLoading.current = false;
           setLoading(false);
           setLoadingMore(false);
         }
       }
     },
     // folderKey と key は folderRef・criteriaRef の中身が変わったことを表す。
-    [folderKey, key],
+    [folderKey, key, refreshItems],
   );
 
   // seeded は「いま持っている中身が復元で埋まったものか」を覚える。

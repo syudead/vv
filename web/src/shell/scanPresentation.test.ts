@@ -22,6 +22,7 @@ function context(
   return {
     scan,
     loaded: true,
+    processing: null,
     error: null,
     starting: false,
     running: scan?.state === "running",
@@ -34,14 +35,16 @@ function context(
   };
 }
 
+const idle = { probe: 0, thumbnail: 0, preview: 0 };
+
 describe("presentScan", () => {
   it.each([
     ["not-run", context(null)],
     ["starting", context(null, { starting: true })],
     ["unknown-total", context(makeScan("running", { total: 0 }))],
     ["running", context(makeScan("running"))],
-    ["done", context(makeScan("done"))],
-    ["partial-failed", context(makeScan("done", { failed: 2 }))],
+    ["done", context(makeScan("done"), { processing: idle })],
+    ["partial-failed", context(makeScan("done", { failed: 2 }), { processing: idle })],
     ["failed", context(makeScan("failed", { error: "disk" }))],
     ["fetch-failed", context(null, { error: "network" })],
   ] as const)("maps %s", (expected, value) => {
@@ -62,5 +65,41 @@ describe("presentScan", () => {
     expect(presentation.state).toBe("unknown-total");
     expect(presentation.total).toBeNull();
     expect(presentation.progress).toBeNull();
+  });
+
+  it("スキャンが終わっても準備の残りがあれば、準備中として割合を出さない", () => {
+    const presentation = presentScan(
+      context(makeScan("done"), {
+        processing: { probe: 2, thumbnail: 1, preview: 0 },
+      }),
+    );
+    expect(presentation.state).toBe("preparing");
+    expect(presentation.remaining).toBe(3);
+    expect(presentation.progress).toBeNull();
+    expect(presentation.description).toBe("取り込んだ動画を準備中（残り 3 件）");
+  });
+
+  it("準備の残りが無くなれば完了になる", () => {
+    const presentation = presentScan(
+      context(makeScan("done"), {
+        processing: { probe: 0, thumbnail: 0, preview: 0 },
+      }),
+    );
+    expect(presentation.state).toBe("done");
+  });
+
+  it("準備の残りをまだ得ていなければ、完了とせずに確認中として示す", () => {
+    const presentation = presentScan(context(makeScan("done")));
+    expect(presentation.state).toBe("preparing");
+    expect(presentation.description).toBe("取り込んだ動画の準備の残りを確認しています");
+  });
+
+  it("取り込み自体の失敗は、準備の残りがあっても失敗として示す", () => {
+    const presentation = presentScan(
+      context(makeScan("failed", { error: "読めません" }), {
+        processing: { probe: 1, thumbnail: 0, preview: 0 },
+      }),
+    );
+    expect(presentation.state).toBe("failed");
   });
 });

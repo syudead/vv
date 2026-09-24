@@ -2,6 +2,11 @@ import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RequestFailed, type Video } from "./client";
+import {
+  currentEventSource,
+  emitServerEvent,
+  installFakeEventSource,
+} from "./fakeEventSource";
 
 const { getVideo, getRelatedVideos } = vi.hoisted(() => ({
   getVideo: vi.fn(),
@@ -30,13 +35,6 @@ const done: Video = {
   durationMs: 1000,
   videoCodec: "h264",
 };
-
-let visibility: DocumentVisibilityState = "visible";
-
-function setVisibility(next: DocumentVisibilityState) {
-  visibility = next;
-  document.dispatchEvent(new Event("visibilitychange"));
-}
 
 async function flush() {
   await act(async () => {
@@ -68,19 +66,16 @@ describe("isProcessing", () => {
 describe("useVideoDetail", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    visibility = "visible";
-    Object.defineProperty(document, "visibilityState", {
-      configurable: true,
-      get: () => visibility,
-    });
+    installFakeEventSource();
     getVideo.mockReset();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
-  it("処理中だけ 2 秒ごとに取り直し、終わったら止める", async () => {
+  it("その動画が変わったという知らせでだけ取り直し、一定間隔では問い合わせない", async () => {
     getVideo
       .mockResolvedValueOnce({
         ...done,
@@ -96,85 +91,64 @@ describe("useVideoDetail", () => {
       video: { probeState: "pending" },
     });
 
-    await advance(1999);
+    await advance(10_000);
     expect(getVideo).toHaveBeenCalledTimes(1);
-    await advance(1);
+
+    // 別の動画の知らせでは取り直さない。
+    await emitServerEvent("video", { id: 8 });
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(1);
+
+    await emitServerEvent("video", { id: 7 });
+    await flush();
     expect(getVideo).toHaveBeenCalledTimes(2);
     expect(result.current.state).toMatchObject({ video: { previewState: "pending" } });
 
-    await advance(2000);
-    expect(getVideo).toHaveBeenCalledTimes(3);
-    await advance(10_000);
-    expect(getVideo).toHaveBeenCalledTimes(3);
+    await emitServerEvent("video", { id: 7 });
+    await flush();
+    expect(result.current.state).toMatchObject({ video: { previewState: "done" } });
   });
 
-  it("読み取りに失敗したら、プレビューが pending のままでも取り直さない", async () => {
+  it("知らせの接続をつなぎ直したら、切れていた間の変化を取り戻す", async () => {
     getVideo
-      .mockResolvedValueOnce({ ...done, probeState: "pending", previewState: "pending" })
-      .mockResolvedValueOnce({
-        ...done,
-        probeState: "failed",
-        probeError: "moov atom not found",
-        thumbnailState: "failed",
-        previewState: "pending",
-        seekThumbnailState: undefined,
-      });
+      .mockResolvedValueOnce({ ...done, thumbnailState: "pending" })
+      .mockResolvedValueOnce(done);
     const { result } = renderHook(() => useVideoDetail(7));
     await flush();
-    await advance(2000);
-    expect(result.current.state).toMatchObject({ video: { probeState: "failed" } });
-    await advance(10_000);
+
+    await emitServerEvent("open");
+    await flush();
+
     expect(getVideo).toHaveBeenCalledTimes(2);
+    expect(result.current.state).toMatchObject({ video: { thumbnailState: "done" } });
   });
 
-  it("failed だけが残ったら取り直さない", async () => {
-    getVideo.mockResolvedValue({ ...done, seekThumbnailState: "failed" });
-    renderHook(() => useVideoDetail(7));
-    await flush();
-    await advance(10_000);
-    expect(getVideo).toHaveBeenCalledTimes(1);
-  });
-
-  it("ページが隠れている間は止め、見えたらすぐ取り直す", async () => {
-    getVideo.mockResolvedValue({ ...done, thumbnailState: "pending" });
-    renderHook(() => useVideoDetail(7));
-    await flush();
-    setVisibility("hidden");
-    await advance(10_000);
-    expect(getVideo).toHaveBeenCalledTimes(1);
-
-    setVisibility("visible");
-    await flush();
-    expect(getVideo).toHaveBeenCalledTimes(2);
-    await advance(2000);
-    expect(getVideo).toHaveBeenCalledTimes(3);
-  });
-
-  it("取り直しが 404 なら missing にして止める", async () => {
+  it("取り直しが 404 なら missing にする", async () => {
     getVideo
       .mockResolvedValueOnce({ ...done, thumbnailState: "pending" })
       .mockRejectedValueOnce(new RequestFailed(404, "not_found", "見つかりません"));
     const { result } = renderHook(() => useVideoDetail(7));
     await flush();
-    await advance(2000);
+    await emitServerEvent("video", { id: 7 });
+    await flush();
     expect(result.current.state).toEqual({ kind: "missing", id: 7 });
-    await advance(10_000);
-    expect(getVideo).toHaveBeenCalledTimes(2);
   });
 
-  it("取り直しの一時的な失敗では控えを残して続ける", async () => {
+  it("取り直しの一時的な失敗では控えを残す", async () => {
     getVideo
       .mockResolvedValueOnce({ ...done, thumbnailState: "pending" })
       .mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"))
       .mockResolvedValueOnce(done);
     const { result } = renderHook(() => useVideoDetail(7));
     await flush();
-    await advance(2000);
+    await emitServerEvent("video", { id: 7 });
+    await flush();
     expect(result.current.state).toMatchObject({
       kind: "ready",
       video: { thumbnailState: "pending" },
     });
-    await advance(2000);
+    await emitServerEvent("video", { id: 7 });
+    await flush();
     expect(result.current.state).toMatchObject({ video: { thumbnailState: "done" } });
   });
 
@@ -196,7 +170,7 @@ describe("useVideoDetail", () => {
     expect(getVideo).not.toHaveBeenCalled();
   });
 
-  it("画面を離れると要求を打ち切り、取り直しを止める", async () => {
+  it("画面を離れると要求を打ち切り、知らせを受けても取り直さない", async () => {
     let signal: AbortSignal | undefined;
     getVideo.mockResolvedValueOnce({ ...done, thumbnailState: "pending" });
     getVideo.mockImplementationOnce((_id: number, next: AbortSignal) => {
@@ -205,15 +179,16 @@ describe("useVideoDetail", () => {
     });
     const { unmount } = renderHook(() => useVideoDetail(7));
     await flush();
-    await advance(2000);
+    await emitServerEvent("video", { id: 7 });
     expect(signal?.aborted).toBe(false);
+    const source = currentEventSource();
     unmount();
     expect(signal?.aborted).toBe(true);
-    await advance(10_000);
+    await act(async () => source.dispatch("video", { id: 7 }));
     expect(getVideo).toHaveBeenCalledTimes(2);
   });
 
-  it("別の動画へ移ると前の動画の取り直しを止める", async () => {
+  it("別の動画へ移ると前の動画の知らせでは取り直さない", async () => {
     getVideo.mockImplementation((id: number) =>
       Promise.resolve({ ...done, id, thumbnailState: id === 7 ? "pending" : "done" }),
     );
@@ -224,7 +199,8 @@ describe("useVideoDetail", () => {
     rerender({ id: 8 });
     await flush();
     expect(result.current.state).toMatchObject({ kind: "ready", id: 8 });
-    await advance(10_000);
+    await emitServerEvent("video", { id: 7 });
+    await flush();
     expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([7, 8]);
   });
 
@@ -242,9 +218,7 @@ describe("useVideoDetail", () => {
     });
     expect(resolved).toBe(true);
     expect(result.current.state).toMatchObject({ video: { probeState: "pending" } });
-    // pending に戻ったので取り直しが始まる。
-    await advance(2000);
-    expect(getVideo).toHaveBeenCalledTimes(3);
+    expect(getVideo).toHaveBeenCalledTimes(2);
   });
 });
 
