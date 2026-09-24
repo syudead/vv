@@ -189,6 +189,76 @@ describe("VideoTags", () => {
     expect(screen.getByTitle("旅行")).toBeDefined();
   });
 
+  it("外す応答を受けてタグが消えるまで、フォーカスを次のチップへ移さない", async () => {
+    install();
+    server.attachDelay = () => undefined;
+    renderTags(7, [
+      { id: 1, name: "旅行" },
+      { id: 2, name: "Anime" },
+    ]);
+
+    const removeButton = await screen.findByRole("button", {
+      name: "旅行をこの動画から外す",
+    });
+    const nextButton = screen.getByRole("button", { name: "Animeをこの動画から外す" });
+    fireEvent.click(removeButton);
+    await waitFor(() => expect((removeButton as HTMLButtonElement).disabled).toBe(true));
+    expect(document.activeElement).not.toBe(nextButton);
+
+    act(() => server.attachDelay?.());
+    await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
+    expect(document.activeElement).toBe(nextButton);
+  });
+
+  it("応答を待つ間に打った次の名前は、先の付与の成功で消さない", async () => {
+    const user = userEvent.setup();
+    install();
+    server.attachDelay = () => undefined;
+    renderTags(7, []);
+
+    const input = addInput();
+    await user.click(input);
+    await user.type(input, "旅行");
+    await user.keyboard("{Enter}");
+    fireEvent.change(input, { target: { value: "料理" } });
+
+    act(() => server.attachDelay?.());
+    expect(await screen.findByTitle("旅行")).toBeDefined();
+    expect((input as HTMLInputElement).value).toBe("料理");
+  });
+
+  it("付けた後に届いた古い動画の情報では、付けたタグを消さない", async () => {
+    const user = userEvent.setup();
+    install();
+    const onStaleVideo = vi.fn();
+    const view = render(
+      <ToastProvider>
+        <VideoTags videoId={7} tags={[]} onStaleVideo={onStaleVideo} />
+      </ToastProvider>,
+    );
+    const rerenderWith = (tags: { id: number; name: string }[]) =>
+      view.rerender(
+        <ToastProvider>
+          <VideoTags videoId={7} tags={tags} onStaleVideo={onStaleVideo} />
+        </ToastProvider>,
+      );
+
+    const input = addInput();
+    await user.click(input);
+    await user.type(input, "旅行");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByTitle("旅行")).toBeDefined();
+
+    // 付ける前に始まった取り直しが、タグの無い情報を後から届ける。
+    rerenderWith([]);
+    expect(screen.getByTitle("旅行")).toBeDefined();
+
+    // 付与を映した情報が届いた後は、その後の情報に従う（別の画面で外された）。
+    rerenderWith([{ id: 1, name: "旅行" }]);
+    rerenderWith([]);
+    await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
+  });
+
   it("矢印キーで候補を選び、Enter で付けられる（キーボードだけ）", async () => {
     const user = userEvent.setup();
     install();
