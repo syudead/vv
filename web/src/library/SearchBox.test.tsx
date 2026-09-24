@@ -11,6 +11,15 @@ describe("SearchBox", () => {
     expect(limitQueryInput("😀".repeat(MAX_QUERY_LENGTH))).toBe(
       "😀".repeat(MAX_QUERY_LENGTH),
     );
+    // 上限に達した語の先頭や途中に打っても、もとの末尾は消えない。
+    const full = "a".repeat(MAX_QUERY_LENGTH);
+    expect(limitQueryInput("X" + full, full)).toBe(full);
+    expect(limitQueryInput("a".repeat(50) + "X" + "a".repeat(50), full)).toBe(full);
+    // 上限の手前での貼り付けは、入る分だけが入る（絵文字を割らない）。
+    const almost = "b".repeat(MAX_QUERY_LENGTH - 2);
+    expect(
+      limitQueryInput("b" + "😀😀😀" + "b".repeat(MAX_QUERY_LENGTH - 3), almost),
+    ).toBe("b" + "😀😀" + "b".repeat(MAX_QUERY_LENGTH - 3));
 
     render(<SearchBox query="" onCommit={() => {}} />);
     const input = screen.getByRole<HTMLInputElement>("searchbox", { name: "動画を検索" });
