@@ -221,7 +221,7 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 
 	// count とページの行は同じ読み取りスナップショットから返す。別々の接続で
 	// 読むと、その間の取り込みによって total と Items が矛盾する。
-	tx, err := s.db.sql.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
 	}

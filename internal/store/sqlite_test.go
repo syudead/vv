@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 	"time"
 )
@@ -37,5 +38,36 @@ func TestWriteTransactionsWaitForTheCurrentWriter(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("writer解放後も取り込みが再開しない")
+	}
+}
+
+func TestListReadTransactionDoesNotReserveTheWriter(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+
+	tx, err := db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatalf("読み取りトランザクションを開始できない: %v", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var count int
+	if err := tx.QueryRowContext(ctx, `select count(*) from videos`).Scan(&count); err != nil {
+		t.Fatalf("読み取りスナップショットを開始できない: %v", err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/read-does-not-block.mp4", "read", "read-key", 1, 0))
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("読み取り中の取り込みに失敗した: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("読み取りトランザクションが取り込みの書き込みを妨げた")
 	}
 }
