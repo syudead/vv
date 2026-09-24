@@ -93,7 +93,9 @@ is the one place that registers subscribers (the `/api/events` stream, the worke
 artifact removal); adding one touches only the subscriber and that file. At shutdown the
 stream subscription is dropped before the streams close and the wake-ups before the workers
 stop, and the bus is closed only after the workers and any running scan have stopped, so
-queued artifact removals still run.
+queued artifact removals still run. The scan gets its own 10 second grace, because a read from
+an unresponsive mount does not return on cancellation; past it, shutdown continues and the
+next startup closes the scan.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
 browser polling: `scan` when the current scan changes, `processing` with the remaining

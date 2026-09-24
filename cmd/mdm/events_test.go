@@ -280,3 +280,19 @@ func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) 
 		}
 	}
 }
+
+// 停止時の待ちは、終われば真を返し、終わらなければ上限で諦める。
+func TestWaitAtMost(t *testing.T) {
+	if !waitAtMost(func() {}, time.Second) {
+		t.Fatal("終わった待ちを諦めた")
+	}
+	block := make(chan struct{})
+	defer close(block)
+	started := time.Now()
+	if waitAtMost(func() { <-block }, 20*time.Millisecond) {
+		t.Fatal("終わらない待ちが終わったことになった")
+	}
+	if elapsed := time.Since(started); elapsed > 5*time.Second {
+		t.Fatalf("上限で諦めていない: %s", elapsed)
+	}
+}
