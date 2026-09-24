@@ -1,6 +1,5 @@
-# 自動検証。task check を構成するタスクと、追加runtimeを要するtest-e2eを呼ぶ。
-# どの検査も同じTaskタスクで手元から再現できる。ジョブはGoとWebで分けて並行させ、重いイメージビルドは別ジョブにする
-# （目標は 10 分以内）。
+# 自動検証。最初に変更パスを判定し、コード変更には通常検査とビルド、
+# 文書だけの変更には文書検査を実行する。各検査は同じ Task タスクで手元から再現できる。
 name: CI
 
 on:
@@ -16,10 +15,76 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # push が複数 commit を含む場合も before..after を正しく比較する。
+          fetch-depth: 0
+
+      - name: コード変更かを調べる
+        id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            base="HEAD^1"
+          elif [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "比較元がない push なのでコード変更として扱う"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          else
+            base="$BEFORE"
+          fi
+
+          # 一覧にないパスはコード扱いにする。--no-renames により、コードを
+          # 文書ディレクトリへ移した場合も削除側を検出できる。
+          # NUL 区切りで読み、日本語、空白、改行を含む名前も生のパスで判定する。
+          # git diff が失敗した場合は step 自体を失敗させ、検査を誤って飛ばさない。
+          changed_file=$(mktemp)
+          trap 'rm -f "$changed_file"' EXIT
+          git diff --no-renames --name-only -z "$base" HEAD > "$changed_file"
+
+          code=false
+          while IFS= read -r -d '' path; do
+            case "$path" in
+              *.md|docs/*|specs/*) ;;
+              *)
+                printf 'コード変更: %s\n' "$path"
+                code=true
+                ;;
+            esac
+          done < "$changed_file"
+
+          if [ "$code" = "true" ]; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "文書だけの変更なのでコード検査を飛ばす"
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
   check:
     name: Checks
+    needs: changes
+    # 必須チェックなので変更判定が失敗しても起動し、自身も失敗として返す。
+    if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: 変更パスの判定結果を確認する
+        env:
+          CODE: ${{ needs.changes.outputs.code }}
+          RESULT: ${{ needs.changes.result }}
+        run: |
+          if [ "$RESULT" != "success" ] || { [ "$CODE" != "true" ] && [ "$CODE" != "false" ]; }; then
+            echo "変更パスを判定できませんでした"
+            exit 1
+          fi
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -32,6 +97,7 @@ jobs:
             tools/go.sum
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        if: needs.changes.outputs.code == 'true'
         with:
           node-version: 24
           cache: npm
@@ -42,74 +108,35 @@ jobs:
           install_args: "task"
 
       - name: Web依存を取得する
+        if: needs.changes.outputs.code == 'true'
         run: npm --prefix web ci
 
       - name: Node開発ツールを取得する
+        if: needs.changes.outputs.code == 'true'
         working-directory: tools
         run: npm ci
 
       # migrations-check が base branch と比べるので取り寄せる。比較先の選択は
       # スクリプトが GITHUB_BASE_REF から行う（引数は渡さない）。
       - name: base branch を取得する
-        if: github.event_name == 'pull_request'
+        if: needs.changes.outputs.code == 'true' && github.event_name == 'pull_request'
         run: git fetch --no-tags --depth=1 origin "$BASE:refs/remotes/origin/$BASE"
         env:
           BASE: ${{ github.base_ref }}
 
       - name: 追加runtimeの要らない検査
+        if: needs.changes.outputs.code == 'true'
         run: task check
 
-  # e2e は一番長いジョブなので、main 向けの PR と main への push でだけ回す。
-  # feature branch 向けの stage PR は数が多く、実ブラウザでの確認は統合 PR で
-  # まとめて1回行えば足りる。main 向けでも、画面にも挙動にも効かない変更（文書、
-  # Plan、エージェントの手順）だけの PR では回さない。if で飛ばしたジョブは成功扱い
-  # なので、必須チェックにしていても PR は止まらない。
-  changes:
-    name: Changed paths
-    runs-on: ubuntu-latest
-    outputs:
-      e2e: ${{ steps.filter.outputs.e2e }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        if: github.event_name == 'pull_request'
-        with:
-          # pull_request は base との merge commit を取り出す。1つ前の親が
-          # base なので、2世代あれば PR の変更だけを比べられる。
-          fetch-depth: 2
+      - name: 文書を検査する
+        if: needs.changes.outputs.code == 'false'
+        run: task check-docs
 
-      - name: e2e を要する変更かを調べる
-        id: filter
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE: ${{ github.base_ref }}
-        run: |
-          if [ "$EVENT" != "pull_request" ]; then
-            echo "e2e=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [ "$BASE" != "main" ]; then
-            echo "main 向けの PR ではないので e2e を飛ばす"
-            echo "e2e=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          # ここに無いものは全部 e2e の対象にする。新しい置き場所を足しても
-          # 既定で検査される側に倒すためである。
-          # --no-renames: 移動は移動先しか出ないので、コードを docs/ へ移すと
-          # 文書だけの変更に見えてしまう。削除と追加に分けて両方を判定する。
-          code=$(git diff --no-renames --name-only HEAD^1 HEAD |
-            grep -Ev '(\.md$|^docs/|^specs/|^\.agents/|^\.claude/|^renovate\.json$)' || true)
-          if [ -n "$code" ]; then
-            printf 'e2e の対象:\n%s\n' "$code"
-            echo "e2e=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "文書だけの変更なので e2e を飛ばす"
-            echo "e2e=false" >> "$GITHUB_OUTPUT"
-          fi
-
+  # e2e はコード変更を含む main 向け PR と main への push でだけ回す。
   e2e:
     name: Browser E2E
     needs: changes
-    if: needs.changes.outputs.e2e == 'true'
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.base_ref == 'main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -204,11 +231,11 @@ jobs:
             web/test-results/
           retention-days: 7
 
-  # イメージのビルドは Checks と検査の中身がほぼ重なり、時間だけが長い。
-  # e2e と同じく、main 向けの PR と main への push でだけ回す。
+  # イメージはコード変更を含む main 向け PR と main への push でだけ作る。
   docker:
     name: Docker image
-    if: github.event_name != 'pull_request' || github.base_ref == 'main'
+    needs: changes
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || github.base_ref == 'main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

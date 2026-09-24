@@ -88,6 +88,12 @@ tasks:
       - task: build-windows-check
       - 'echo "check: all checks passed (browser checks are in task test-e2e)"'
 
+  check-docs:
+    desc: Check documentation links and repository artifact rules.
+    cmds:
+      # 文書一覧は git ls-files から得るため、Go の成功キャッシュを再利用しない。
+      - go test -count=1 ./scripts/sddguard
+
   fmt-check:
     desc: Check Go and Web formatting without changing files.
     cmds:
