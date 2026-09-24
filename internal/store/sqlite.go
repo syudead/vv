@@ -33,8 +33,16 @@ type DB struct {
 
 // dsn は接続時に適用する PRAGMA を含む DSN を組み立てる。
 // modernc.org/sqlite は _pragma クエリを接続ごとに適用する。
+//
+// _txlock=immediate は BeginTx を begin immediate で始めさせる。既定の
+// deferred では、読み取りから始めたトランザクションが書き込みへ昇格する時点で
+// 別の接続が先に書き込んでいると、busy_timeout を待たずに SQLITE_BUSY で
+// 失敗する（WAL のスナップショットが古くなるため）。走査の取り込みと
+// ジョブの処理が同時に書き込むと、この形で取り込みが落ちていた。開始時に
+// 書き込みロックを取れば、競合は busy_timeout の範囲で待つだけになる。
 func dsn(path string) string {
 	q := url.Values{}
+	q.Add("_txlock", "immediate")
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout))
 	q.Add("_pragma", "foreign_keys(on)")
