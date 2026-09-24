@@ -122,7 +122,7 @@ func TestFailJobRecordsReason(t *testing.T) {
 	}
 
 	var reason string
-	if err := db.SQL().QueryRow(`select last_error from jobs where id = ?`, job.ID).
+	if err := db.sql.QueryRow(`select last_error from jobs where id = ?`, job.ID).
 		Scan(&reason); err != nil {
 		t.Fatal(err)
 	}
@@ -204,7 +204,7 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 		}
 	}
 	var probeState string
-	if err := db.SQL().QueryRow(`select probe_state from videos where id = ?`, videoID).Scan(&probeState); err != nil {
+	if err := db.sql.QueryRow(`select probe_state from videos where id = ?`, videoID).Scan(&probeState); err != nil {
 		t.Fatal(err)
 	}
 	if probeState != "failed" {
@@ -337,7 +337,7 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
+	if _, err := db.sql.Exec(`delete from media_folders`); err != nil {
 		t.Fatal(err)
 	}
 	// サムネイルは解析の後に取り出すので、解析は済ませておく。
@@ -460,7 +460,7 @@ func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, videoID); err != nil {
+	if _, err := db.sql.Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, videoID); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
@@ -513,14 +513,14 @@ func TestFailClaimedPreviewRollsBackJobWhenStateUpdateFails(t *testing.T) {
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, videoID); err != nil {
+	if _, err := db.sql.Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, videoID); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.SQL().Exec(`create trigger reject_preview_failure before update of preview_state on videos
+	if _, err := db.sql.Exec(`create trigger reject_preview_failure before update of preview_state on videos
 		when new.preview_state = 'failed' begin select raise(abort, 'reject preview failure'); end`); err != nil {
 		t.Fatal(err)
 	}
@@ -738,7 +738,7 @@ func jobState(t *testing.T, db *DB, id int64) string {
 	t.Helper()
 
 	var state string
-	if err := db.SQL().QueryRow(`select state from jobs where id = ?`, id).Scan(&state); err != nil {
+	if err := db.sql.QueryRow(`select state from jobs where id = ?`, id).Scan(&state); err != nil {
 		t.Fatal(err)
 	}
 	return state
@@ -748,7 +748,7 @@ func countJobs(t *testing.T, db *DB) int {
 	t.Helper()
 
 	var count int
-	if err := db.SQL().QueryRow(`select count(*) from jobs`).Scan(&count); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from jobs`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	return count
@@ -812,7 +812,7 @@ func TestJobsQueuedNotification(t *testing.T) {
 	db.PublishTo(publisherFunc(func(events ...domain.Event) {
 		// 知らせを受けた時点で、積んだ行が別の接続から見えていること。
 		var queued int
-		if err := db.SQL().QueryRow(`select count(*) from jobs where state = 'queued'`).Scan(&queued); err != nil {
+		if err := db.sql.QueryRow(`select count(*) from jobs where state = 'queued'`).Scan(&queued); err != nil {
 			t.Error(err)
 		}
 		if queued == 0 {
@@ -969,7 +969,7 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 		t.Fatalf("Processing = %+v, %v, want probe 1", got, err)
 	}
 	var folderID, version int64
-	if err := db.SQL().QueryRow(`select id, version from media_folders where path = '/media'`).Scan(&folderID, &version); err != nil {
+	if err := db.sql.QueryRow(`select id, version from media_folders where path = '/media'`).Scan(&folderID, &version); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1014,7 +1014,7 @@ func TestRequeueMissingPreview(t *testing.T) {
 		t.Errorf("知らせ = %v, want [preview]", got)
 	}
 	var state string
-	if err := db.SQL().QueryRow(`select preview_state from videos where id = ?`, videoID).Scan(&state); err != nil {
+	if err := db.sql.QueryRow(`select preview_state from videos where id = ?`, videoID).Scan(&state); err != nil {
 		t.Fatal(err)
 	}
 	if state != "pending" {

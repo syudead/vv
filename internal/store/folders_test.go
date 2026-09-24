@@ -70,7 +70,7 @@ func TestFolderLocationsReturnsEverythingBelowTheFolder(t *testing.T) {
 func TestFolderLocationsIgnoresUnregisteredLocations(t *testing.T) {
 	db, _ := folderFixture(t, sampleFile("/media/A/x.mp4", "x", "key-x", 1, 0))
 	ctx := context.Background()
-	if _, err := db.SQL().Exec(`update media_folders set path = '/elsewhere'`); err != nil {
+	if _, err := db.sql.Exec(`update media_folders set path = '/elsewhere'`); err != nil {
 		t.Fatal(err)
 	}
 

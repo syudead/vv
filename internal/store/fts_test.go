@@ -30,7 +30,7 @@ func ftsFixture(t *testing.T) *DB {
 		t.Fatalf("マイグレーションに失敗した: %v\n%s", err, alternativesHint)
 	}
 	// 登録フォルダの下に無い所在は search_key が空で、索引に載らない。
-	if _, err := db.SQL().Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
 		t.Fatalf("テスト用メディアフォルダを登録できない: %v", err)
 	}
 
@@ -61,7 +61,7 @@ func countMatch(t *testing.T, db *DB, query string) int {
 	t.Helper()
 
 	var count int
-	err := db.SQL().QueryRow(
+	err := db.sql.QueryRow(
 		`select count(*) from location_search_fts where location_search_fts match ?`, domain.FoldForMatch(query),
 	).Scan(&count)
 	if err != nil {
@@ -77,7 +77,7 @@ func TestFTS5TrigramIsAvailable(t *testing.T) {
 	db := ftsFixture(t)
 
 	var sqlText string
-	err := db.SQL().QueryRow(
+	err := db.sql.QueryRow(
 		`select sql from sqlite_master where name = 'location_search_fts'`,
 	).Scan(&sqlText)
 	if err != nil {
@@ -137,7 +137,7 @@ func TestSearchKeyMatchesTwoCharacterQueryWithInstr(t *testing.T) {
 	db := ftsFixture(t)
 
 	var count int
-	err := db.SQL().QueryRow(
+	err := db.sql.QueryRow(
 		`select count(*) from video_locations where instr(search_key, ?) > 0`, "旅行",
 	).Scan(&count)
 	if err != nil {
@@ -154,15 +154,15 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	db := ftsFixture(t)
 
 	// トリガを外し、索引へ反映されない行を作る。取りこぼしの状況を再現する。
-	if _, err := db.SQL().Exec(`drop trigger location_search_fts_ai`); err != nil {
+	if _, err := db.sql.Exec(`drop trigger location_search_fts_ai`); err != nil {
 		t.Fatalf("トリガを外せない: %v", err)
 	}
-	res, err := db.SQL().Exec(`insert into videos(added_at, updated_at, content_key, container) values (1, 1, 'sports-day', 'mp4')`)
+	res, err := db.sql.Exec(`insert into videos(added_at, updated_at, content_key, container) values (1, 1, 'sports-day', 'mp4')`)
 	if err != nil {
 		t.Fatal(err)
 	}
 	videoID, _ := res.LastInsertId()
-	if _, err := db.SQL().Exec(`insert into video_locations(video_id, path, title, size_bytes, mtime, created_at, updated_at, search_key)
+	if _, err := db.sql.Exec(`insert into video_locations(video_id, path, title, size_bytes, mtime, created_at, updated_at, search_key)
 		values (?, '/media/運動会.mp4', '運動会', 1, 1, 1, 1, '運動会')`, videoID); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +170,7 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 		t.Fatalf("前提が崩れている: トリガ無しで MATCH '運動会' = %d 件, want 0", got)
 	}
 
-	if _, err := db.SQL().Exec(
+	if _, err := db.sql.Exec(
 		`insert into location_search_fts(location_search_fts) values ('rebuild')`,
 	); err != nil {
 		t.Fatalf("再構築に失敗した: %v\n%s", err, alternativesHint)

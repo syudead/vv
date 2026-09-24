@@ -15,14 +15,14 @@ func scanDB(t *testing.T) *DB {
 
 func TestStartScanRejectsEmptyFolderSetWithoutCreatingScan(t *testing.T) {
 	db := migratedDB(t)
-	if _, err := db.SQL().Exec(`delete from media_folders`); err != nil {
+	if _, err := db.sql.Exec(`delete from media_folders`); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := db.Scans().StartScan(context.Background()); !errors.Is(err, domain.ErrNoMediaFolders) {
 		t.Fatalf("error = %v, want domain.ErrNoMediaFolders", err)
 	}
 	var count int
-	if err := db.SQL().QueryRow(`select count(*) from scans`).Scan(&count); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from scans`).Scan(&count); err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {

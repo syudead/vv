@@ -197,11 +197,6 @@ func Open(dataDir string) (*DB, error) {
 	return db, nil
 }
 
-// SQL は database/sql のハンドルを返す。マイグレーションと問い合わせで使う。
-func (db *DB) SQL() *sql.DB {
-	return db.sql
-}
-
 // Path はデータベースファイルのパスを返す。記録に出す用途を想定している。
 func (db *DB) Path() string {
 	return db.path
