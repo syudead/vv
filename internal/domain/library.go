@@ -58,9 +58,15 @@ func (s VideoSort) Valid() bool {
 
 // VideoQuery は一覧の問い合わせ条件である。
 type VideoQuery struct {
-	// Query は題名の部分一致。空なら絞り込まない。1文字から指定できる。
+	// Query は検索欄の入力である。ParseSearchQuery の書き方
+	// （specs/013-library-search/contracts/list-api.md §1）で解釈する。
+	// 語が残らなければ絞り込まない。
 	Query string
-	Sort  VideoSort
+	// Watch は視聴状態の絞り込み。空は WatchAll と同じ。
+	Watch WatchFilter
+	// PlayableOnly はブラウザで再生できると確定した動画だけにする。
+	PlayableOnly bool
+	Sort         VideoSort
 	// Cursor は前回の応答が返した NextCursor。空なら先頭から。
 	Cursor string
 	Limit  int

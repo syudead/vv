@@ -52,13 +52,39 @@ type FolderListing struct {
 	Folders []FolderSummary
 }
 
-// FolderVideoQuery はフォルダ直下の動画の問い合わせ条件である。
+// FolderScope はフォルダの動画の問い合わせで対象にする所在の範囲である。
+// 値は api/openapi.yaml の scope パラメータに対応する。空は FolderScopeDirect と
+// 同じに扱う。
+type FolderScope string
+
+const (
+	// FolderScopeDirect はフォルダ直下の所在だけを対象にする（既定）。
+	FolderScopeDirect FolderScope = "direct"
+	// FolderScopeSubtree はフォルダとその配下すべての所在を対象にする。
+	FolderScopeSubtree FolderScope = "subtree"
+)
+
+// Valid は既知の値かどうかを返す。
+func (s FolderScope) Valid() bool {
+	return s == FolderScopeDirect || s == FolderScopeSubtree
+}
+
+// FolderVideoQuery はフォルダの動画の問い合わせ条件である。
 type FolderVideoQuery struct {
 	// Dir はフォルダの絶対パス。
-	Dir    string
-	Sort   VideoSort
-	Cursor string
-	Limit  int
+	Dir string
+	// Scope は対象にする所在の範囲。空は FolderScopeDirect と同じ。
+	Scope FolderScope
+	// Query は VideoQuery.Query と同じ書き方の検索語。照合は Scope の範囲に
+	// ある所在だけを対象にする。
+	Query string
+	// Watch は視聴状態の絞り込み。空は WatchAll と同じ。
+	Watch WatchFilter
+	// PlayableOnly はブラウザで再生できると確定した動画だけにする。
+	PlayableOnly bool
+	Sort         VideoSort
+	Cursor       string
+	Limit        int
 }
 
 // ValidateFolderPath は登録フォルダからの相対パスを検査する。空文字は登録

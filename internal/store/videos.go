@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -539,94 +538,6 @@ func (db *DB) GetVideo(ctx context.Context, id int64) (domain.Video, error) {
 	return video, nil
 }
 
-// ListVideos は一覧1ページを返す。
-//
-// ページングは keyset（カーソル）方式である。offset を使うと、取り込みで行が
-// 増減した瞬間に取りこぼしと重複が起きる。並び順の値と id を境界に使うので、
-// 途中で行が動いても続きが安定して取れる。
-func (db *DB) ListVideos(ctx context.Context, q VideoQuery) (VideoPage, error) {
-	limit := normalizeLimit(q.Limit)
-	sort := q.Sort
-	if sort == "" {
-		sort = SortAddedDesc
-	}
-
-	// 総件数はカーソルに関係なく、絞り込み後の全件である。
-	total, err := db.CountVideos(ctx, q.Query)
-	if err != nil {
-		return VideoPage{}, err
-	}
-
-	search, args := searchFilter(q.Query)
-	conditions := []string{registeredVideoCondition("videos")}
-	if search != "" {
-		conditions = append(conditions, search)
-	}
-
-	if q.Cursor != "" {
-		condition, cursorArgs, err := cursorCondition(sort, q.Cursor)
-		if err != nil {
-			return VideoPage{}, err
-		}
-		conditions = append(conditions, condition)
-		args = append(args, cursorArgs...)
-	}
-
-	//nolint:gosec // 組み立てるのは列名と定型の条件句だけで、値はすべて引数で渡す。
-	query := `select * from (select ` + videoColumns() + ` from videos) as videos`
-	if len(conditions) > 0 {
-		query += ` where ` + strings.Join(conditions, " and ")
-	}
-
-	// 並び順は検索の有無で変えない。関連度（bm25）にすると、instr 経路には
-	// 関連度が無いため2つの経路で並びが変わり、利用者から見て不可解になる。
-	query += ` order by ` + orderBy(sort) + ` limit ?`
-
-	// 次のページがあるかを知るために1件多く取る。件数を数え直すより安い。
-	rows, err := db.sql.QueryContext(ctx, query, append(args, limit+1)...)
-	if err != nil {
-		return VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	page := VideoPage{Total: total, Limit: limit, Items: []domain.Video{}}
-	for rows.Next() {
-		video, err := scanVideo(rows)
-		if err != nil {
-			return VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
-		}
-		page.Items = append(page.Items, video)
-	}
-	if err := rows.Err(); err != nil {
-		return VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
-	}
-
-	if len(page.Items) > limit {
-		page.Items = page.Items[:limit]
-		page.NextCursor = encodeCursor(sort, page.Items[len(page.Items)-1])
-	}
-	return page, nil
-}
-
-// CountVideos は絞り込み後の総件数を返す。1万件規模の count(*) は
-// 索引走査で数 ms に収まる。
-func (db *DB) CountVideos(ctx context.Context, search string) (int, error) {
-	condition, args := searchFilter(search)
-	availability := registeredVideoCondition("videos")
-
-	query := `select count(*) from videos where ` + availability
-	if condition != "" {
-		query += ` and ` + condition
-	}
-
-	var total int
-	//nolint:gosec // condition は組み立て済みの定型句で、値はすべて引数で渡す。
-	if err := db.sql.QueryRowContext(ctx, query, args...).Scan(&total); err != nil {
-		return 0, fmt.Errorf("件数を数えられません: %w", err)
-	}
-	return total, nil
-}
-
 // DeleteVideos は指定した行を消す。連鎖してジョブも消える。
 // 空の指定で全件消さないよう、何も渡されなければ何もしない。
 func (db *DB) DeleteVideos(ctx context.Context, ids []int64) error {
@@ -764,80 +675,6 @@ func (db *DB) ContentKeys(ctx context.Context) (map[string]struct{}, error) {
 		return nil, fmt.Errorf("識別子を読み出せません: %w", err)
 	}
 	return out, nil
-}
-
-// orderBy は並び順の SQL 句を返す。索引（videos_added_at_desc_idx /
-// videos_title_asc_idx）と同じ並びにする。
-func orderBy(sort VideoSort) string {
-	if sort == SortTitleAsc {
-		return `title asc, id asc`
-	}
-	return `added_at desc, id desc`
-}
-
-// cursorCondition はカーソルより後ろだけを取る条件を返す。
-// 並び順の値が同じ行は id で決着させる。
-func cursorCondition(sort VideoSort, cursor string) (string, []any, error) {
-	value, id, err := decodeCursor(cursor)
-	if err != nil {
-		return "", nil, err
-	}
-
-	if sort == SortTitleAsc {
-		return `(title, id) > (?, ?)`, []any{value, id}, nil
-	}
-
-	addedAt, err := strconv.ParseInt(value, 10, 64)
-	if err != nil {
-		return "", nil, fmt.Errorf("%w: 追加時刻として解釈できません", ErrInvalidCursor)
-	}
-	return `(added_at, id) < (?, ?)`, []any{addedAt, id}, nil
-}
-
-// cursorSeparator はカーソルの中で並び順の値と id を区切る。題名に現れない
-// 制御文字を選ぶ。
-const cursorSeparator = "\x1f"
-
-// encodeCursor は「並び順の値 + id」を不透明な文字列に包む。クライアントは
-// 中身を解釈しない。
-func encodeCursor(sort VideoSort, last domain.Video) string {
-	value := strconv.FormatInt(last.AddedAt.Unix(), 10)
-	if sort == SortTitleAsc {
-		value = last.Title
-	}
-	return base64.RawURLEncoding.EncodeToString(
-		[]byte(value + cursorSeparator + strconv.FormatInt(last.ID, 10)))
-}
-
-// decodeCursor は包みを解く。解釈できないものは誤りとして返す。
-func decodeCursor(cursor string) (value string, id int64, err error) {
-	raw, err := base64.RawURLEncoding.DecodeString(cursor)
-	if err != nil {
-		return "", 0, fmt.Errorf("%w: %w", ErrInvalidCursor, err)
-	}
-
-	parts := strings.SplitN(string(raw), cursorSeparator, 2)
-	if len(parts) != 2 {
-		return "", 0, fmt.Errorf("%w: 区切りがありません", ErrInvalidCursor)
-	}
-
-	id, err = strconv.ParseInt(parts[1], 10, 64)
-	if err != nil {
-		return "", 0, fmt.Errorf("%w: 識別子として解釈できません", ErrInvalidCursor)
-	}
-	return parts[0], id, nil
-}
-
-// normalizeLimit は件数を既定値と上限に丸める。
-func normalizeLimit(limit int) int {
-	switch {
-	case limit <= 0:
-		return DefaultLimit
-	case limit > MaxLimit:
-		return MaxLimit
-	default:
-		return limit
-	}
 }
 
 // rowScanner は *sql.Row と *sql.Rows の共通部分である。
