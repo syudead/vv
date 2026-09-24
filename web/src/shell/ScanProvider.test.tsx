@@ -32,6 +32,7 @@ function Harness() {
       </button>
       <p>{value.error ?? "エラーなし"}</p>
       <p>状態: {value.scan?.id ?? "なし"}</p>
+      <p>実行中: {value.running ? "はい" : "いいえ"}</p>
       <p>完了: {value.finished?.id ?? "なし"}</p>
       <p>開始可否: {value.canStart ? "可" : "不可"}</p>
       <p>
@@ -139,6 +140,41 @@ describe("ScanProvider", () => {
     await user.click(screen.getByRole("button", { name: "開始" }));
 
     expect(await screen.findByText("完了: 2")).toBeDefined();
+  });
+
+  it("開始の応答より先に届いた完了の知らせを、遅れた応答の実行中で戻さない", async () => {
+    let resolveStart: ((response: Response) => void) | undefined;
+    let currentCalls = 0;
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (init?.method === "POST") {
+        return new Promise<Response>((resolve) => {
+          resolveStart = resolve;
+        });
+      }
+      currentCalls += 1;
+      // 初回は前回の取り込みを返し、開始後の取り直しは一時的に失敗する。
+      if (currentCalls === 1) return Promise.resolve(json(scan(4, "done")));
+      return Promise.resolve(json({ code: "internal", message: "失敗" }, 500));
+    });
+    const user = userEvent.setup();
+    render(
+      <ScanProvider>
+        <Harness />
+      </ScanProvider>,
+    );
+    expect(await screen.findByText("状態: 4")).toBeDefined();
+
+    await user.click(screen.getByRole("button", { name: "開始" }));
+    await waitFor(() => expect(resolveStart).toBeDefined());
+    await emitServerEvent("scan", scan(5, "done"));
+    expect(screen.getByText("完了: 5")).toBeDefined();
+
+    await act(async () => resolveStart?.(json(scan(5, "running"), 202)));
+
+    await waitFor(() => expect(currentCalls).toBe(2));
+    expect(screen.getByText("状態: 5")).toBeDefined();
+    expect(screen.getByText("実行中: いいえ")).toBeDefined();
   });
 
   it("取り込みの完了を変化の知らせで追跡し、一定間隔では問い合わせない", async () => {

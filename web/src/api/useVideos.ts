@@ -161,22 +161,29 @@ export function useVideos(
     );
   }, [refreshItems]);
 
-  // ページの取得中に届いた知らせは、取得した内容より新しいことがある。まだ一覧に
-  // 無い動画の知らせを覚えておき、ページを反映したあとで取り直す。
+  // ページの取得中に届いた知らせは、取得した内容より新しいことがある。知らせを
+  // 受けた動画を覚えておき、ページを反映したあとで取り直す。
   const pageLoading = useRef(false);
   const changedWhileLoading = useRef(new Set<number>());
 
   useEffect(() => {
     const unsubscribe = subscribeServerEvents({
       video: (id) => {
-        if (itemsRef.current.some((video) => video.id === id)) {
-          refreshItems([id]);
-        } else if (pageLoading.current) {
-          changedWhileLoading.current.add(id);
+        // ページの取得中は、表示中の動画でも覚えておく。取り直しの方が先に
+        // 終わると、あとから届いたページの古い内容で上書きされる。
+        if (pageLoading.current) changedWhileLoading.current.add(id);
+        if (itemsRef.current.some((video) => video.id === id)) refreshItems([id]);
+      },
+      // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
+      // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
+      // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
+      open: (reconnected) => {
+        if (reconnected) {
+          refreshItems(itemsRef.current.map((video) => video.id));
+        } else {
+          refreshProcessingItems();
         }
       },
-      // つなぎ直したときは、切れていた間に準備が進んだかもしれない項目を取り直す。
-      open: refreshProcessingItems,
     });
     // 復元した一覧は、別の画面にいた間に準備が進んでいることがある。
     refreshProcessingItems();

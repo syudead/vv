@@ -458,7 +458,7 @@ func (db *DB) RetryProbe(ctx context.Context, id int64, seekThumbnailMissing boo
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("読み取りのやり直しを確定できません (id=%d): %w", id, err)
 	}
-	db.notifyJobsQueued(kinds...)
+	db.notifyJobsChanged(kinds...)
 	return nil
 }
 

@@ -6,19 +6,27 @@ import type { Processing, Scan, VideoChanged } from "./client";
  * - `scan`: 直近のスキャンが変わった
  * - `processing`: 取り込みの段階ごとの残りが変わった
  * - `video`: 動画の状態が変わった（最新の内容は取り直す）
- * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図
+ * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図。
+ *   `reconnected` は、この購読者がつながった状態を前にも見ていたかを表す。
+ *   つなぎ直しでは、切れていた間の `video` を受け取っていない。
  */
 export interface ServerEventHandlers {
   scan?: (scan: Scan) => void;
   processing?: (processing: Processing) => void;
   video?: (id: number) => void;
-  open?: () => void;
+  open?: (reconnected: boolean) => void;
 }
 
 /** reconnectDelayMs は、ブラウザがつなぎ直しを諦めたときに張り直すまでの待ち時間である。 */
 const reconnectDelayMs = 3000;
 
-const subscribers = new Set<ServerEventHandlers>();
+interface Subscriber {
+  handlers: ServerEventHandlers;
+  /** つながった状態を一度でも見たか。 */
+  opened: boolean;
+}
+
+const subscribers = new Set<Subscriber>();
 let source: EventSource | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -26,9 +34,17 @@ function dispatch<K extends keyof ServerEventHandlers>(
   kind: K,
   ...args: Parameters<NonNullable<ServerEventHandlers[K]>>
 ): void {
-  for (const handlers of [...subscribers]) {
+  for (const { handlers } of [...subscribers]) {
     const handler = handlers[kind] as ((...values: typeof args) => void) | undefined;
     handler?.(...args);
+  }
+}
+
+function dispatchOpen(): void {
+  for (const subscriber of [...subscribers]) {
+    const reconnected = subscriber.opened;
+    subscriber.opened = true;
+    subscriber.handlers.open?.(reconnected);
   }
 }
 
@@ -44,7 +60,7 @@ function connect(): void {
   if (source !== null || typeof EventSource === "undefined") return;
   const current = new EventSource("/api/events");
   source = current;
-  current.addEventListener("open", () => dispatch("open"));
+  current.addEventListener("open", dispatchOpen);
   current.addEventListener("scan", (event) => {
     const scan = parse<Scan>(event);
     if (scan !== undefined) dispatch("scan", scan);
@@ -85,10 +101,16 @@ function disconnect(): void {
  * 変化を取りこぼさない。
  */
 export function subscribeServerEvents(handlers: ServerEventHandlers): () => void {
-  subscribers.add(handlers);
+  // すでにつながっていれば、この購読者が取りこぼした知らせは無い。次の open は
+  // つなぎ直しである。
+  const subscriber: Subscriber = {
+    handlers,
+    opened: source !== null && source.readyState === EventSource.OPEN,
+  };
+  subscribers.add(subscriber);
   connect();
   return () => {
-    subscribers.delete(handlers);
+    subscribers.delete(subscriber);
     if (subscribers.size > 0) return;
     // React の開発時の再実行のように、外してすぐ付け直す場合に張り直さない。
     queueMicrotask(() => {

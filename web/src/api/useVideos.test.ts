@@ -280,7 +280,7 @@ describe("useVideos の準備の反映", () => {
     expect(getVideo).not.toHaveBeenCalled();
   });
 
-  it("つなぎ直したら、準備中の項目だけを取り直す", async () => {
+  it("最初につながったら、準備中の項目だけを取り直す", async () => {
     const { result } = renderHook(() => useVideos("addedDesc", ""));
     await act(async () =>
       calls[0]?.resolve({
@@ -296,6 +296,34 @@ describe("useVideos の準備の反映", () => {
     expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([2]);
   });
 
+  it("つなぎ直したら、切れていた間に消えた準備済みの動画も一覧から外す", async () => {
+    const { result } = renderHook(() => useVideos("addedDesc", ""));
+    await act(async () =>
+      calls[0]?.resolve({
+        items: [
+          { ...item(1), previewState: "done" },
+          { ...item(2), previewState: "done" },
+        ],
+        total: 2,
+      }),
+    );
+    await emitServerEvent("open");
+    expect(getVideo).not.toHaveBeenCalled();
+
+    const { RequestFailed } = await import("./client");
+    getVideo.mockImplementation((id: number) =>
+      id === 2
+        ? Promise.reject(new RequestFailed(404, "not_found", "見つかりません"))
+        : Promise.resolve({ ...item(1), previewState: "done" }),
+    );
+    await emitServerEvent("open");
+
+    await waitFor(() =>
+      expect(result.current.items.map((video) => video.id)).toEqual([1]),
+    );
+    expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([1, 2]);
+  });
+
   it("ページの取得中に届いた知らせは、ページを反映したあとで取り直す", async () => {
     const { result } = renderHook(() => useVideos("addedDesc", ""));
     getVideo.mockResolvedValue({ ...item(2), previewState: "done" });
@@ -309,6 +337,30 @@ describe("useVideos の準備の反映", () => {
 
     await waitFor(() => expect(result.current.items[1]?.previewState).toBe("done"));
     expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([2]);
+  });
+
+  it("ページの取得中に表示中の動画の知らせが届いたら、ページを反映したあとでも取り直す", async () => {
+    const { result } = renderHook(() => useVideos("addedDesc", ""));
+    await act(async () => calls[0]?.resolve(page([1, 2], "next")));
+    getVideo.mockResolvedValue({ ...item(2), previewState: "done" });
+
+    // 続きの応答がまだ返らない間に、表示中の動画 2 の準備が終わる。
+    act(() => result.current.loadMore());
+    await emitServerEvent("video", { id: 2 });
+    await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(1));
+
+    // 並べ替えの値が変わった動画は続きのページにも現れる。遅れて届いた応答は
+    // 知らせより古い内容（準備中）を持っている。
+    await act(async () => calls[1]?.resolve(page([2, 3])));
+
+    await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        result.current.items
+          .filter((video) => video.id === 2)
+          .every((video) => video.previewState === "done"),
+      ).toBe(true),
+    );
   });
 
   it("取り直した動画が索引から消えていたら、一覧から外す", async () => {

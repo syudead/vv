@@ -124,7 +124,7 @@ func (db *DB) AddMediaFolder(ctx context.Context, path string) (domain.MediaFold
 	}
 	// 登録外の所在しか無かった待ちの仕事が、この登録で取り出せるようになる。
 	// 眠っているワーカーを起こさないと、次に仕事が積まれるまで止まったままになる。
-	db.notifyJobsQueued(domain.JobKinds...)
+	db.notifyJobsChanged(domain.JobKinds...)
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: 1, CreatedAt: time.Unix(now, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
@@ -176,7 +176,7 @@ func (db *DB) ReplaceMediaFolder(ctx context.Context, id, expectedVersion int64,
 	}
 	db.notifyVideosDeleted(released)
 	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
-	db.notifyJobsQueued(domain.JobKinds...)
+	db.notifyJobsChanged(domain.JobKinds...)
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: version + 1, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(now, 0)}, nil
 }
 
@@ -213,6 +213,8 @@ func (db *DB) DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) 
 	}
 	// 登録を外して消えた動画の生成物を片付けさせる。
 	db.notifyVideosDeleted(released)
+	// 動画の行が残っても、登録外になった所在の仕事は残りとして数えなくなる。
+	db.notifyJobsChanged()
 	return nil
 }
 

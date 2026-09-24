@@ -56,23 +56,60 @@ func (db *DB) EnqueueJob(ctx context.Context, kind JobKind, videoID int64) error
 	if err != nil {
 		return fmt.Errorf("ジョブを積めません (%s, video=%d): %w", kind, videoID, err)
 	}
-	db.notifyJobsQueued(kind)
+	db.notifyJobsChanged(kind)
 	return nil
 }
 
-// EnsureJob recovers a missing pending job without reviving a terminal failure.
+// jobStateColumns は仕事の種類ごとに、その結果を持つ動画の列である。
+var jobStateColumns = map[JobKind]string{
+	JobProbe:     "probe_state",
+	JobThumbnail: "thumbnail_state",
+	JobPreview:   "preview_state",
+}
+
+// EnsureJob は、状態が pending の動画に欠けている仕事を積み直す。走査が
+// 見つけた pending の動画に対して呼ぶ。
+//
+// 終端の失敗は動画側の状態へ同じ取引で記録する（recordTerminalFailure）ので、
+// 動画が failed なら積まない。動画が pending のまま failed の行だけが残って
+// いるのは、失敗を行にだけ記録していた旧版の名残である。その行は捨てて積み
+// 直す。残すと、次の手動の取り込みでも直らない。
 func (db *DB) EnsureJob(ctx context.Context, kind JobKind, videoID int64) error {
+	column, ok := jobStateColumns[kind]
+	if !ok {
+		return fmt.Errorf("未知の仕事の種類です: %s", kind)
+	}
+	pending := `exists (select 1 from videos where id = ? and ` + column + ` = 'pending')`
+
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("欠落ジョブの復旧を開始できません (%s, video=%d): %w", kind, videoID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	//nolint:gosec // 組み立てるのは定型の列名だけで、値はすべて引数で渡す。
+	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state = 'failed' and `+pending,
+		string(kind), videoID, videoID); err != nil {
+		return fmt.Errorf("旧版の失敗の行を捨てられません (%s, video=%d): %w", kind, videoID, err)
+	}
 	now := time.Now().Unix()
-	res, err := db.sql.ExecContext(ctx, `
+	//nolint:gosec // 組み立てるのは定型の列名だけで、値はすべて引数で渡す。
+	res, err := tx.ExecContext(ctx, `
 		insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
 		select ?, ?, 'queued', 0, ?, ?
-		where not exists (select 1 from jobs where kind = ? and video_id = ?)`,
-		string(kind), videoID, now, now, string(kind), videoID)
+		where not exists (select 1 from jobs where kind = ? and video_id = ?) and `+pending,
+		string(kind), videoID, now, now, string(kind), videoID, videoID)
 	if err != nil {
 		return fmt.Errorf("欠落ジョブを復旧できません (%s, video=%d): %w", kind, videoID, err)
 	}
-	if inserted, err := res.RowsAffected(); err == nil && inserted > 0 {
-		db.notifyJobsQueued(kind)
+	inserted, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("復旧したジョブを数えられません (%s, video=%d): %w", kind, videoID, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("欠落ジョブの復旧を確定できません (%s, video=%d): %w", kind, videoID, err)
+	}
+	if inserted > 0 {
+		db.notifyJobsChanged(kind)
 	}
 	return nil
 }
@@ -356,7 +393,7 @@ func (db *DB) RequeueRunningJobs(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("中断したジョブを戻せません: %w", err)
 	}
 	if affected > 0 {
-		db.notifyJobsQueued(domain.JobKinds...)
+		db.notifyJobsChanged(domain.JobKinds...)
 	}
 	return affected, nil
 }

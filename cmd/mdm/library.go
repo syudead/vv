@@ -92,7 +92,7 @@ func newWorkers(
 }
 
 // wakeWorkers は仕事が積まれた段階のワーカーを起こし、残りが変わったことを
-// 画面へ知らせる。保存層の OnJobsQueued に渡す。
+// 画面へ知らせる。保存層の OnJobsChanged に渡す。
 func wakeWorkers(workers []*jobs.Worker, events *httpapi.Events) func(kinds []domain.JobKind) {
 	byKind := make(map[domain.JobKind]*jobs.Worker, len(workers))
 	for _, worker := range workers {

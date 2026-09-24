@@ -187,6 +187,7 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 	}
 }
 
+// 終端の失敗は動画の状態に記録されるので、積み直さない。
 func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
@@ -198,15 +199,60 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := db.FailJob(ctx, job.ID, "unreadable location"); err != nil {
+		if err := db.FailClaimedJob(ctx, job, "unreadable location"); err != nil {
 			t.Fatal(err)
 		}
+	}
+	var probeState string
+	if err := db.SQL().QueryRow(`select probe_state from videos where id = ?`, videoID).Scan(&probeState); err != nil {
+		t.Fatal(err)
+	}
+	if probeState != "failed" {
+		t.Fatalf("probe_state = %s, want failed", probeState)
 	}
 	if err := db.EnsureJob(ctx, JobProbe, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.ClaimJob(ctx, JobProbe); !errors.Is(err, ErrNoJob) {
 		t.Fatalf("terminal failure was revived: %v", err)
+	}
+}
+
+// 旧版は失敗を行にだけ記録し、動画を pending のまま残すことがあった。走査が
+// その動画を見つけたら、失敗の行を捨てて積み直す。
+func TestEnsureJobRequeuesLegacyFailureOfPendingVideo(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if err := db.EnqueueJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	for range MaxJobAttempts {
+		job, err := db.ClaimJob(ctx, JobProbe)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// 旧版と同じく、行にだけ失敗を記録する。
+		if err := db.FailJob(ctx, job.ID, "unreadable location"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	recorder := &queuedRecorder{}
+	db.OnJobsChanged(recorder.record)
+	if err := db.EnsureJob(ctx, JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if got := recorder.take(); fmt.Sprint(got) != "[probe]" {
+		t.Errorf("知らせ = %v, want [probe]", got)
+	}
+	job, err := db.ClaimJob(ctx, JobProbe)
+	if err != nil {
+		t.Fatalf("積み直されていない: %v", err)
+	}
+	if job.Attempts != 1 {
+		t.Errorf("Attempts = %d, want 1（新しい行から数え直す）", job.Attempts)
+	}
+	if got := countJobs(t, db); got != 1 {
+		t.Errorf("ジョブ = %d 件, want 1（旧版の失敗の行を残さない）", got)
 	}
 }
 
@@ -306,7 +352,7 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 		t.Fatalf("unregistered job state = %s, want queued", got)
 	}
 	recorder := &queuedRecorder{}
-	db.OnJobsQueued(recorder.record)
+	db.OnJobsChanged(recorder.record)
 	if _, err := db.AddMediaFolder(ctx, root); err != nil {
 		t.Fatal(err)
 	}
@@ -729,13 +775,15 @@ func TestClaimJobTakesOnlyTheRequestedKind(t *testing.T) {
 	}
 }
 
-// queuedRecorder は OnJobsQueued の知らせを記録する。
+// queuedRecorder は OnJobsChanged の知らせを記録する。
 type queuedRecorder struct {
 	kinds []JobKind
+	calls int
 }
 
 func (r *queuedRecorder) record(kinds []JobKind) {
 	r.kinds = append(r.kinds, kinds...)
+	r.calls++
 }
 
 func (r *queuedRecorder) take() []JobKind {
@@ -750,7 +798,7 @@ func TestJobsQueuedNotification(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	recorder := &queuedRecorder{}
-	db.OnJobsQueued(func(kinds []JobKind) {
+	db.OnJobsChanged(func(kinds []JobKind) {
 		// 知らせを受けた時点で、積んだ行が別の接続から見えていること。
 		var queued int
 		if err := db.SQL().QueryRow(`select count(*) from jobs where state = 'queued'`).Scan(&queued); err != nil {
@@ -887,5 +935,48 @@ func probeDone(t *testing.T, db *DB, videoID int64) {
 	probe := domain.Probe{DurationMs: 100_000, VideoCodec: "h264", AudioCodec: "aac"}
 	if err := db.ApplyProbe(context.Background(), videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// 登録を外しても、登録外の所在が残る動画の行は消えない。それでもその仕事は
+// 残りとして数えなくなるので、変わったことを知らせる。画面の残りの数が古いまま
+// 残らない。
+func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	video, err := db.UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.UpsertVideo(ctx, sampleFile("/legacy/a.mp4", "a", "key-a", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.EnqueueJob(ctx, JobProbe, video.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := db.Processing(ctx); err != nil || got.Probe != 1 {
+		t.Fatalf("Processing = %+v, %v, want probe 1", got, err)
+	}
+	var folderID, version int64
+	if err := db.SQL().QueryRow(`select id, version from media_folders where path = '/media'`).Scan(&folderID, &version); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := &queuedRecorder{}
+	db.OnJobsChanged(recorder.record)
+	deleted := 0
+	db.OnVideosDeleted(func(videos []DeletedVideo) { deleted += len(videos) })
+	if err := db.DeleteMediaFolder(ctx, folderID, version); err != nil {
+		t.Fatal(err)
+	}
+
+	if deleted != 0 {
+		t.Fatalf("消えた動画 = %d, want 0（登録外の所在が残る）", deleted)
+	}
+	if recorder.calls != 1 {
+		t.Errorf("知らせ = %d 回, want 1", recorder.calls)
+	}
+	if got, err := db.Processing(ctx); err != nil || got.Probe != 0 {
+		t.Errorf("Processing = %+v, %v, want probe 0", got, err)
 	}
 }

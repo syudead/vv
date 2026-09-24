@@ -113,7 +113,7 @@ func run() error {
 	}
 	assets := newArtifacts(db, cfg.ThumbnailsDir(), logger)
 	workers := newWorkers(db, assets, logger, events)
-	db.OnJobsQueued(wakeWorkers(workers, events))
+	db.OnJobsChanged(wakeWorkers(workers, events))
 	// 動画の行が消えたら、参照の無くなった内容の生成物だけを消し、開いている
 	// 画面へ消えたことを知らせる（取り直すと見つからないので、画面が外す）。
 	db.OnVideosDeleted(func(deleted []store.DeletedVideo) {

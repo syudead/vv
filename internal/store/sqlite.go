@@ -30,10 +30,11 @@ type DB struct {
 	path     string
 	folderMu sync.Mutex
 
-	// jobsQueued は仕事を積んだ取引の確定後に呼ぶ。ワーカーはこれを受けて
-	// 起きるので、待ち行列を一定間隔で問い合わせない。
-	jobsQueuedMu sync.RWMutex
-	jobsQueued   func(kinds []JobKind)
+	// jobsChanged は仕事を積んだ取引、または残りの仕事として数える範囲を
+	// 変えた取引の確定後に呼ぶ。ワーカーはこれを受けて起きるので、待ち行列を
+	// 一定間隔で問い合わせない。
+	jobsChangedMu sync.RWMutex
+	jobsChanged   func(kinds []JobKind)
 
 	// videosDeleted は動画の行を消した取引の確定後に、消した動画を渡す。
 	// 生成物の片付けと、画面への知らせに使う。
@@ -93,23 +94,21 @@ func collectDeletedVideos(rows *sql.Rows, err error) ([]DeletedVideo, error) {
 	return deleted, rows.Err()
 }
 
-// OnJobsQueued は、仕事を積んだ取引が確定したときの知らせ先を設定する。
-// 積んだ種類が渡る。同じ種類が重なることもある。
-func (db *DB) OnJobsQueued(notify func(kinds []JobKind)) {
-	db.jobsQueuedMu.Lock()
-	defer db.jobsQueuedMu.Unlock()
-	db.jobsQueued = notify
+// OnJobsChanged は、仕事を積んだ取引、または残りの仕事として数える範囲を
+// 変えた取引（メディアフォルダの登録を外したなど）が確定したときの知らせ先を
+// 設定する。積んだ種類が渡る。同じ種類が重なることもある。積んでいなければ空。
+func (db *DB) OnJobsChanged(notify func(kinds []JobKind)) {
+	db.jobsChangedMu.Lock()
+	defer db.jobsChangedMu.Unlock()
+	db.jobsChanged = notify
 }
 
-// notifyJobsQueued は知らせ先があれば呼ぶ。取引の確定後に呼ぶこと。確定前に
+// notifyJobsChanged は知らせ先があれば呼ぶ。取引の確定後に呼ぶこと。確定前に
 // 起こすと、ワーカーがまだ見えない行を探して空振りし、そのまま眠る。
-func (db *DB) notifyJobsQueued(kinds ...JobKind) {
-	if len(kinds) == 0 {
-		return
-	}
-	db.jobsQueuedMu.RLock()
-	notify := db.jobsQueued
-	db.jobsQueuedMu.RUnlock()
+func (db *DB) notifyJobsChanged(kinds ...JobKind) {
+	db.jobsChangedMu.RLock()
+	notify := db.jobsChanged
+	db.jobsChangedMu.RUnlock()
 	if notify != nil {
 		notify(kinds)
 	}

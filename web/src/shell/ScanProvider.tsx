@@ -220,14 +220,20 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     setStarting(true);
     setStartError(null);
     recoveryBaselineScanId.current = undefined;
+    // 開始の応答より先に、変化の知らせが届くことがある（すぐ終わる小さな
+    // 取り込み）。そのときは知らせの方が新しいので、応答の状態で戻さない。
+    const requestedAt = scanRevision.current;
     void (async () => {
       try {
         const started = await startScan();
-        requestedScanId.current = started.id;
-        if (started.state === "running") {
-          observedRunningScanId.current = started.id;
+        if (requestedAt === scanRevision.current) {
+          scanRevision.current += 1;
+          requestedScanId.current = started.id;
+          if (started.state === "running") {
+            observedRunningScanId.current = started.id;
+          }
+          apply(started);
         }
-        apply(started);
       } catch (failure) {
         if (
           failure instanceof RequestFailed &&
