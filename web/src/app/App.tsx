@@ -1,5 +1,8 @@
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 
+import AuthGate from "../auth/AuthGate";
+import LoginPage from "../auth/LoginPage";
+import SetupPage from "../auth/SetupPage";
 import FolderPage from "../folders/FolderPage";
 import LibraryPage from "../library/LibraryPage";
 import VideoPage from "../player/VideoPage";
@@ -61,22 +64,38 @@ function AppRoutes() {
   );
 }
 
+/** LibraryApp はシェルとプロバイダの内側に置く、ライブラリの画面群である。 */
+function LibraryApp() {
+  return (
+    <TooltipProvider>
+      <ScanProvider>
+        <ScanNoticeProvider>
+          <AppRoutes />
+        </ScanNoticeProvider>
+      </ScanProvider>
+    </TooltipProvider>
+  );
+}
+
 /**
  * App は画面の割り当てである。
  *
- * 一覧・フォルダ・設定をシェル（トップバー + サイドバー）で包み、再生画面は
- * シアターモードとして包まない。この分岐はここ 1 か所に閉じる。
+ * すべての経路をゲート（AuthGate）の内側に置き、見る人の状態が分かるまで何も
+ * 描かない。初回設定（/setup）とログイン（/login）はシェルとプロバイダの外に
+ * 置く（specs/016-single-account-auth/plan.md Structural Decisions 2）。
+ * それ以外は、一覧・フォルダ・設定をシェル（トップバー + サイドバー）で包み、
+ * 再生画面はシアターモードとして包まない。この分岐はここ 1 か所に閉じる。
  */
 export default function App() {
   return (
     <BrowserRouter>
-      <TooltipProvider>
-        <ScanProvider>
-          <ScanNoticeProvider>
-            <AppRoutes />
-          </ScanNoticeProvider>
-        </ScanProvider>
-      </TooltipProvider>
+      <AuthGate>
+        <Routes>
+          <Route path="/setup" element={<SetupPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="*" element={<LibraryApp />} />
+        </Routes>
+      </AuthGate>
     </BrowserRouter>
   );
 }
