@@ -130,3 +130,18 @@ export function watchedRatio(
   const ratio = (video.progress?.positionMs ?? 0) / video.durationMs;
   return ratio <= 0 ? null : Math.min(ratio, 1);
 }
+
+/**
+ * isNarrowVideo は、16:9 の枠に入れると左右の余白が大きく目立つ動画（縦長・正方形に近いもの）
+ * かどうかを返す。表示の比率が分からない既存の動画は解像度の比で判断し、どちらも無ければ偽。
+ */
+export function isNarrowVideo(
+  video: Pick<Video, "width" | "height" | "displayAspectRatio">,
+): boolean {
+  const ratio =
+    video.displayAspectRatio ??
+    (video.width !== undefined && video.height !== undefined && video.height > 0
+      ? video.width / video.height
+      : undefined);
+  return ratio !== undefined && ratio > 0 && ratio < 1.25;
+}

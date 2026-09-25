@@ -106,6 +106,8 @@ interface Props {
   onError: (positionMs: number) => void;
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
+  /** 映像の寸法が分かったら、その横÷縦の比率を知らせる（縦長なら 1 未満）。 */
+  onAspectRatio?: (ratio: number) => void;
   /**
    * 全画面にする要素（プレイヤーと、その上に重ねる層を含む入れ物）。無ければ video.js の
    * 既定どおりプレイヤーだけを全画面にする。
@@ -289,6 +291,11 @@ export default function VideoPlayer(props: Props) {
 
     player.on("loadedmetadata", () => {
       attempt = { ...attempt, state: "ready" };
+      const videoWidth = player.videoWidth();
+      const videoHeight = player.videoHeight();
+      if (videoWidth > 0 && videoHeight > 0) {
+        latest.current.onAspectRatio?.(videoWidth / videoHeight);
+      }
       setHoldControlBar(false);
       if (resumeApplied || initialPositionMs <= 0) return;
       resumeApplied = true;
@@ -491,7 +498,8 @@ function TranscodeIndicator({
       {/* video.js の `.video-js button` が表示・文字の大きさ・色を上書きするので、! で戻す。 */}
       <PopoverTrigger className="inline-flex! items-center gap-1 rounded-sm px-1 text-xs! leading-4! whitespace-nowrap text-fg-muted! transition-colors! hover:text-fg!">
         <Info className="size-3.5 shrink-0" aria-hidden="true" />
-        変換して再生中
+        {/* 縦長の動画などで枠が狭いときは、印だけを残して操作バーの幅に収める。 */}
+        <span className="@max-[22.5rem]:sr-only">変換して再生中</span>
       </PopoverTrigger>
       <PopoverContent container={container} className="w-64 text-sm text-fg">
         ブラウザがそのまま再生できない形式のため、変換しながら再生しています。シークに数秒かかります。

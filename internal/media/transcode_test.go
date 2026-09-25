@@ -87,9 +87,9 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 		{"96kHz AAC", func(m *transcodeMetadata) { m.Audio.SampleRate = 96000 }, "-c:a aac -profile:a aac_low -ac 2 -b:a 192k -ar 48000"},
 		{"unknown video attribute", func(m *transcodeMetadata) { m.Video.BitsPerRawSample = 0 }, "-c:v libx264"},
 		{"variable frame rate", func(m *transcodeMetadata) { m.Video.RealFPS = 120 }, "-c:v libx264"},
-		{"rotated coded height", func(m *transcodeMetadata) {
+		{"rotated oversized coded frame", func(m *transcodeMetadata) {
 			m.Video.Width = 2160
-			m.Video.Height = 3840
+			m.Video.Height = 4096
 			m.Video.Rotation = 90
 		}, "-c:v libx264"},
 	}
@@ -249,7 +249,9 @@ func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 	}{
 		{"odd dimensions", transcodeStream{Width: 641, Height: 359, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1}, "-vf pad=642:360:0:0,setsar=1/1*641/359*360/642:max=1000000"},
 		{"8K60", transcodeStream{Width: 7680, Height: 4320, FPS: 60, RealFPS: 60}, "-vf scale=3840:2160,setsar=1/1*7680/4320*2160/3840:max=1000000,fps=30.340"},
-		{"rotated 4K", transcodeStream{Width: 3840, Height: 2160, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf scale=1214:2160,setsar=1/1*2160/3840*2160/1214:max=1000000"},
+		{"rotated 4K", transcodeStream{Width: 3840, Height: 2160, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf setsar=1/1*2160/3840*3840/2160:max=1000000"},
+		{"portrait 8K", transcodeStream{Width: 4320, Height: 7680, FPS: 30, RealFPS: 30}, "-vf scale=2160:3840,setsar=1/1*4320/7680*3840/2160:max=1000000"},
+		{"rotated 8K", transcodeStream{Width: 7680, Height: 4320, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf scale=2160:3840,setsar=1/1*4320/7680*3840/2160:max=1000000"},
 		{"rotated HD", transcodeStream{Width: 1920, Height: 1080, Rotation: 270, FPS: 30, RealFPS: 30}, "-vf setsar=1/1*1080/1920*1920/1080:max=1000000"},
 		{"unknown rate", transcodeStream{Width: 1920, Height: 1080}, "-vf fps=30.000"},
 		{"VFR peak", transcodeStream{Width: 1920, Height: 1080, FPS: 30, RealFPS: 120}, "-vf fps=30"},
@@ -331,7 +333,7 @@ func TestVideoEncodePreservesDisplayAspectRatioWithFFmpeg(t *testing.T) {
 	}
 }
 
-func TestVideoEncodeRotated4KStaysWithinEnvelopeWithFFmpeg(t *testing.T) {
+func TestTranscodeRotated4KStaysWithinEnvelopeWithFFmpeg(t *testing.T) {
 	if _, err := exec.LookPath(transcodeCommand); err != nil {
 		t.Skip("ffmpegがありません")
 	}
@@ -398,19 +400,17 @@ func TestVideoEncodeRotated4KStaysWithinEnvelopeWithFFmpeg(t *testing.T) {
 		t.Fatal("出力に映像streamがありません")
 	}
 	video := probed.Streams[0]
-	if video.Width > maxVideoWidth || video.Height > maxVideoHeight {
+	if exceedsVideoBounds(video.Width, video.Height) {
 		t.Fatalf("出力寸法 = %dx%d", video.Width, video.Height)
 	}
 	normalized, err := parseTranscodeProbe(probeOutputJSON)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if normalized.Video.Rotation != 0 {
-		t.Fatalf("出力に回転metadataが残っています: %d", normalized.Video.Rotation)
-	}
-	numerator, denominator := parseAspectRatio(video.SampleAspectRatio)
+	// 縦長の 4K は上限に収まるのでそのまま流す。回転の印が残っても、表示される比率は保つ。
+	displayWidth, displayHeight, numerator, denominator := displayGeometry(normalized.Video)
 	inputDAR := float64(2160) / float64(3840)
-	outputDAR := float64(video.Width) * float64(numerator) / (float64(video.Height) * float64(denominator))
+	outputDAR := float64(displayWidth) * float64(numerator) / (float64(displayHeight) * float64(denominator))
 	if math.Abs(inputDAR-outputDAR) > 0.00001 {
 		t.Fatalf("display aspect ratio: input=%f output=%f (SAR=%s)", inputDAR, outputDAR, video.SampleAspectRatio)
 	}

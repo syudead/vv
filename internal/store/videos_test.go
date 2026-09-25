@@ -293,7 +293,7 @@ func TestApplyProbeStoresFactsAndPlayability(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	probe := domain.Probe{DurationMs: 8123, Width: 1280, Height: 720, VideoCodec: "h264", AudioCodec: "aac"}
+	probe := domain.Probe{DurationMs: 8123, Width: 1280, Height: 720, DisplayAspectRatio: 16.0 / 9, VideoCodec: "h264", AudioCodec: "aac"}
 	play := domain.EvaluatePlayability("mkv", probe)
 	if err := db.Ingest().ApplyProbe(ctx, added.ID, probe, play); err != nil {
 		t.Fatal(err)
@@ -311,6 +311,9 @@ func TestApplyProbeStoresFactsAndPlayability(t *testing.T) {
 	}
 	if video.Width == nil || *video.Width != 1280 {
 		t.Errorf("Width = %v, want 1280", video.Width)
+	}
+	if video.DisplayAspectRatio == nil || *video.DisplayAspectRatio != 16.0/9 {
+		t.Errorf("DisplayAspectRatio = %v, want 16/9", video.DisplayAspectRatio)
 	}
 	if video.Playable {
 		t.Error("mkv が再生できる扱いになっている")
