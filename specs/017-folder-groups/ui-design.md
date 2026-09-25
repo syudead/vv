@@ -240,7 +240,9 @@
   - 次のメンバーへのリンク: サムネイル（`w-56`、`sm` 未満では出さない）と題名（`text-base
     font-semibold`、2行で省略）。今の「次の動画」の形と同じ。
   - 面の幅いっぱいの `h-1 rounded-full bg-fg-subtle/50` の帯に、`bg-accent` の残りが 5 秒かけて
-    右から縮む。動きを減らす設定では帯を出さず、秒数の文字だけにする（library-ui.md §4）。
+    右から縮む。動きを減らす設定では帯を残し、なめらかな縮みだけを止めて、秒数が減るたびに
+    段階で縮める（`motion-reduce:transition-none`。状態の見え方は変えず動きだけを止める、
+    library-ui.md §4・012「Interaction details」）。
   - 操作: `secondary` の「取り消す」（lucide `X`）を**左**に、`primary` の「今すぐ再生」（`Play`）を
     その右に置く。DOM の順も同じで、最初に Tab が届くのは「取り消す」である（UI品質
     「操作の優先順位」）。
@@ -289,8 +291,9 @@
   - `MenuLabel`「ライブラリでのまとめ方」
   - `MenuRadioGroup`（今の `grouping.mode`）: 「自動」（`auto`）・「まとめを解除」（`ungroup`）・
     「直下をまとめる」（`groupDirect`）。項目の右の説明は付けず、下の1行で補う。
-  - `text-xs text-fg-muted` の1行「自動: 子フォルダが無く動画が 2 本以上のフォルダをまとめる」
-    （`MenuLabel` と同じ余白、押せない）。
+  - `text-xs text-fg-muted` の1行「自動: 登録フォルダより下で、子フォルダが無く動画が 2 本以上の
+    フォルダをまとめる」（`MenuLabel` と同じ余白、押せない。要件 2 の3条件を全部言い、登録
+    フォルダそのものの画面でも「自動」がまとめないことが読めるようにする）。
   - `taggable` が true のときだけ、区切り線と「グループをタグに変える」（lucide `Tag`）。
     false のときは項目を出さない（contracts/folder-groups-api.md §2。無効の項目を残す案は
     採らない。登録フォルダそのものでは理由を1行で言えないため）。
