@@ -43,6 +43,9 @@ const server = {
    */
   summaryHold: false,
   summaryQueue: [] as (() => void)[],
+  visibilityFails: false,
+  /** 受け取った `PUT /api/video-visibility` の本文。 */
+  visibilityRequests: [] as { videoIds: number[]; public: boolean }[],
 };
 
 function install() {
@@ -136,6 +139,17 @@ function install() {
       }
       return Promise.resolve(resolveNow());
     }
+    if (url === "/api/video-visibility" && method === "PUT") {
+      const body = JSON.parse(String(init?.body)) as {
+        videoIds: number[];
+        public: boolean;
+      };
+      server.visibilityRequests.push(body);
+      if (server.visibilityFails) {
+        return Promise.resolve(jsonResponse({ code: "internal", message: "失敗" }, 500));
+      }
+      return Promise.resolve(jsonResponse({ applied: body.videoIds.length }));
+    }
     throw new Error(`想定しない要求: ${method} ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -181,6 +195,8 @@ beforeEach(() => {
   server.summaryDelay = null;
   server.summaryHold = false;
   server.summaryQueue = [];
+  server.visibilityFails = false;
+  server.visibilityRequests = [];
 });
 
 afterEach(() => {
@@ -232,15 +248,24 @@ describe("SelectionBar", () => {
     const removeButton = screen.getByRole("button", {
       name: "タグを外す",
     }) as HTMLButtonElement;
+    const visibilityButton = screen.getByRole("button", {
+      name: "公開",
+    }) as HTMLButtonElement;
     expect(addButton.disabled).toBe(true);
     expect(removeButton.disabled).toBe(true);
-    expect(addButton.title).toBe("タグの一括操作は 20,000 件までです");
-    expect(removeButton.title).toBe("タグの一括操作は 20,000 件までです");
+    // 公開の一括の切り替えも同じ上限で、同じ理由を添える（016 ui-design.md「Selection bar」）。
+    expect(visibilityButton.disabled).toBe(true);
+    expect(visibilityButton.title).toBe("一括操作は 20,000 件までです");
+    expect(visibilityButton.getAttribute("aria-describedby")).toBe(
+      addButton.getAttribute("aria-describedby"),
+    );
+    expect(addButton.title).toBe("一括操作は 20,000 件までです");
+    expect(removeButton.title).toBe("一括操作は 20,000 件までです");
 
     const addDescribedBy = addButton.getAttribute("aria-describedby");
     expect(addDescribedBy).not.toBeNull();
     expect(document.getElementById(addDescribedBy!)?.textContent).toBe(
-      "タグの一括操作は 20,000 件までです",
+      "一括操作は 20,000 件までです",
     );
 
     // すべて選択はこの上限と無関係なので、ちょうど全件選び終わっていなければ
@@ -317,7 +342,7 @@ describe("SelectionBar", () => {
       }),
     );
 
-    expect(await screen.findByText("タグの一括操作は 20,000 件までです")).toBeDefined();
+    expect(await screen.findByText("一括操作は 20,000 件までです")).toBeDefined();
     expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull();
     expect(
       fetchMock.mock.calls.some(
@@ -351,7 +376,7 @@ describe("SelectionBar", () => {
       }),
     );
 
-    expect(await screen.findByText("タグの一括操作は 20,000 件までです")).toBeDefined();
+    expect(await screen.findByText("一括操作は 20,000 件までです")).toBeDefined();
     expect(screen.queryByRole("combobox", { name: "タグを外す" })).toBeNull();
     const summaryCallsAfter = fetchMock.mock.calls.filter(
       ([input, init]) =>
@@ -741,5 +766,78 @@ describe("SelectionBar", () => {
     expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull();
     await user.click(screen.getByRole("button", { name: "タグを付ける" }));
     expect(await screen.findByRole("combobox", { name: "タグを付ける" })).toBeDefined();
+  });
+});
+
+// 公開の一括の切り替え（specs/016-single-account-auth/ui-design.md「Selection bar」、issue 305）。
+describe("SelectionBar の公開", () => {
+  it("「公開にする」で選んだ動画を1回で送り、applied の件数をトーストで伝えて選択を残す", async () => {
+    const user = userEvent.setup();
+    const fetchMock = install();
+    const { onClear } = renderBar();
+
+    await user.click(screen.getByRole("button", { name: "公開" }));
+    const items = await screen.findAllByRole("menuitem");
+    // 今の状態は示さず、2つとも常に押せる。
+    expect(items.map((item) => item.textContent)).toEqual(["公開にする", "非公開にする"]);
+    expect(items.every((item) => item.getAttribute("aria-disabled") !== "true")).toBe(
+      true,
+    );
+    await user.click(screen.getByRole("menuitem", { name: "公開にする" }));
+
+    expect(await screen.findByText("3 件を公開にしました")).toBeDefined();
+    const puts = fetchMock.mock.calls.filter(
+      ([url, init]) => url === "/api/video-visibility" && init?.method === "PUT",
+    );
+    expect(puts).toHaveLength(1);
+    expect(server.visibilityRequests).toEqual([{ videoIds: [1, 2, 3], public: true }]);
+    expect(onClear).not.toHaveBeenCalled();
+    expect(screen.getByText("3 件を選択中")).toBeDefined();
+  });
+
+  it("「非公開にする」は public: false を送り、非公開にしたと伝える", async () => {
+    const user = userEvent.setup();
+    install();
+    renderBar({ count: 2, selectedIds: [4, 5] });
+
+    await user.click(screen.getByRole("button", { name: "公開" }));
+    await user.click(await screen.findByRole("menuitem", { name: "非公開にする" }));
+
+    expect(await screen.findByText("2 件を非公開にしました")).toBeDefined();
+    expect(server.visibilityRequests).toEqual([{ videoIds: [4, 5], public: false }]);
+  });
+
+  it("失敗したらトースト「変更できませんでした」を出し、選択を残す", async () => {
+    const user = userEvent.setup();
+    install();
+    server.visibilityFails = true;
+    const { onClear } = renderBar();
+
+    await user.click(screen.getByRole("button", { name: "公開" }));
+    await user.click(await screen.findByRole("menuitem", { name: "公開にする" }));
+
+    expect(await screen.findByText("変更できませんでした")).toBeDefined();
+    expect(onClear).not.toHaveBeenCalled();
+    expect(screen.getByText("3 件を選択中")).toBeDefined();
+  });
+
+  // ui/Menu（Radix）はキーボードで開くと先頭の項目にフォーカスを置く。↓ で
+  // 「非公開にする」へ、↑ で「公開にする」へ戻る。
+  it("キーボードだけで「公開」を開き、「公開にする」を選べる", async () => {
+    const user = userEvent.setup();
+    install();
+    renderBar();
+
+    screen.getByRole("button", { name: "公開" }).focus();
+    await user.keyboard("{Enter}");
+    await screen.findByRole("menu");
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("公開にする"));
+    await user.keyboard("{ArrowDown}");
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("非公開にする"));
+    await user.keyboard("{ArrowUp}");
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("公開にする"));
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByText("3 件を公開にしました")).toBeDefined();
   });
 });

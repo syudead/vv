@@ -44,6 +44,7 @@ import VideoPlayer, {
   type PlayerStatus,
 } from "./VideoPlayer";
 import VideoTags from "./VideoTags";
+import VisibilitySwitch from "./VisibilitySwitch";
 
 /** minResumeMs 未満の位置は「見始めたばかり」として先頭から再生する。 */
 const minResumeMs = 5000;
@@ -433,6 +434,15 @@ export default function VideoPage() {
                       videoId={video.id}
                       tags={video.tags}
                       onStaleVideo={() => void refresh()}
+                    />
+                  )}
+                  {owner && (
+                    // 題名 → タグ → 公開の順（ui-design.md「Visibility toggle」）。
+                    // 別の動画へ移ったら失敗の行を持ち越さないよう、id で作り直す。
+                    <VisibilitySwitch
+                      key={video.id}
+                      videoId={video.id}
+                      isPublic={video.public}
                     />
                   )}
                 </div>

@@ -763,6 +763,103 @@ describe("VideoPage", () => {
       expect(screen.queryByText("再生できませんでした")).toBeNull();
     });
   });
+  // 公開の切り替え（specs/016-single-account-auth/ui-design.md「Visibility toggle」、issue 305）。
+  describe("公開の切り替え", () => {
+    /** visibility は PUT /api/video-visibility の応答を1つずつ返す。 */
+    function holdVisibility() {
+      const answers: ((response: Response) => void)[] = [];
+      const bodies: unknown[] = [];
+      const answered = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        if (String(input) !== "/api/video-visibility") return answered!(input, init);
+        bodies.push(JSON.parse(String(init?.body)));
+        return new Promise<Response>((resolve) => answers.push(resolve));
+      });
+      return { answers, bodies };
+    }
+
+    function toggle() {
+      return screen.getByRole("switch", { name: "ログインしていない人に公開する" });
+    }
+
+    it("所有者には非公開の状態で出し、押すと1回だけ送って応答の後に公開中へ変わる", async () => {
+      const { answers, bodies } = holdVisibility();
+      renderPage();
+      await ready();
+      expect(toggle().getAttribute("aria-checked")).toBe("false");
+      expect(toggle().textContent).toBe("非公開");
+
+      fireEvent.click(toggle());
+      // 送信中は押せない印（aria-disabled）で、フォーカスは外さず、応答が来るまで
+      // 状態を変えない。
+      expect(toggle().getAttribute("aria-disabled")).toBe("true");
+      expect(toggle().getAttribute("aria-checked")).toBe("false");
+      fireEvent.click(toggle());
+      expect(bodies).toEqual([{ videoIds: [7], public: true }]);
+
+      await act(async () => answers[0]!(json({ applied: 1 })));
+      await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("true"));
+      expect(toggle().textContent).toBe("公開中");
+      expect(toggle().getAttribute("aria-disabled")).toBeNull();
+      // トーストは出さない。
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    it("公開中を押すと public: false を送り、非公開に戻る", async () => {
+      server.videos.set(7, [{ ...video, public: true }]);
+      const { answers, bodies } = holdVisibility();
+      renderPage();
+      await ready();
+      expect(toggle().textContent).toBe("公開中");
+      fireEvent.click(toggle());
+      expect(bodies).toEqual([{ videoIds: [7], public: false }]);
+      await act(async () => answers[0]!(json({ applied: 1 })));
+      await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("false"));
+    });
+
+    it("失敗したら状態を変えずに理由を出し、次に押すと消える", async () => {
+      const { answers } = holdVisibility();
+      renderPage();
+      await ready();
+
+      fireEvent.click(toggle());
+      await act(async () =>
+        answers[0]!(json({ code: "internal", message: "失敗" }, 500)),
+      );
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toBe("変更できませんでした");
+      expect(toggle().getAttribute("aria-checked")).toBe("false");
+
+      fireEvent.click(toggle());
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("別の動画へ移ると失敗の行を持ち越さない", async () => {
+      server.videos.set(8, [{ ...video, id: 8, title: "後続の動画" }]);
+      const { answers } = holdVisibility();
+      renderPage();
+      await ready();
+      fireEvent.click(toggle());
+      await act(async () =>
+        answers[0]!(json({ code: "internal", message: "失敗" }, 500)),
+      );
+      await screen.findByRole("alert");
+
+      fireEvent.click(screen.getByRole("link", { name: "別の動画" }));
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("後続の動画"),
+      );
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("ゲストには切り替えを出さない", async () => {
+      server.videos.set(7, [{ ...video, location: undefined, public: true }]);
+      renderPage("7", undefined, "guest");
+      await ready();
+      expect(screen.queryByRole("switch")).toBeNull();
+    });
+  });
+
   describe("見る人", () => {
     function guestVideo(overrides: Partial<Video> = {}): Video {
       // ゲストの応答には location・progress・probeError が無く、tags は空である。

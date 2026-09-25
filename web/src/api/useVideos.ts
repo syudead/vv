@@ -19,6 +19,7 @@ import { subscribeServerEvents } from "./serverEvents";
 import { applyTagToTags } from "./tagOrder";
 import { isProcessing } from "./useVideoDetail";
 import { subscribeVideoTags } from "./videoTagsEvents";
+import { subscribeVideoVisibility } from "./visibility";
 
 /**
  * mergeRefreshed は取り直した1件を、一覧に出ている項目へ重ねる。
@@ -117,6 +118,7 @@ type VideosDataAction =
       tag: Video["tags"][number];
       action: "add" | "remove";
     }
+  | { type: "visibility"; videoIds: readonly number[]; isPublic: boolean }
   | { type: "refresh"; videoId: number; video: Video }
   | { type: "remove"; videoId: number }
   | {
@@ -163,6 +165,21 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
           targets.has(video.id)
             ? { ...video, tags: applyTagToTags(video.tags, action.tag, action.action) }
             : video,
+        ),
+      };
+    }
+    case "visibility": {
+      const targets = new Set(action.videoIds);
+      if (
+        !state.items.some(
+          (video) => targets.has(video.id) && video.public !== action.isPublic,
+        )
+      )
+        return state;
+      return {
+        ...state,
+        items: state.items.map((video) =>
+          targets.has(video.id) ? { ...video, public: action.isPublic } : video,
         ),
       };
     }
@@ -352,6 +369,30 @@ export function useVideos(
     [],
   );
 
+  // 公開・非公開の切り替えの結果も、タグの付け外しと同じく一覧を読み直さずに
+  // 表示中の項目へ反映する（issue 305）。ページの取得中に届いた分は動画ごとに
+  // 直近の値を覚え、その後に届いたページにその動画があれば重ねる。
+  const visibilityChangedWhileLoading = useRef(new Map<number, boolean>());
+  useEffect(
+    () =>
+      subscribeVideoVisibility((videoIds, isPublic) => {
+        if (pageLoading.current) {
+          const map = visibilityChangedWhileLoading.current;
+          for (const videoId of videoIds) {
+            map.delete(videoId);
+            map.set(videoId, isPublic);
+          }
+          while (map.size > maxTagsChangedWhileLoading) {
+            const oldest = map.keys().next();
+            if (oldest.done) break;
+            map.delete(oldest.value);
+          }
+        }
+        dispatch({ type: "visibility", videoIds, isPublic });
+      }),
+    [],
+  );
+
   // 取り込みの準備が進んだ動画を、一覧を読み直さずに1件ずつ取り直す。読み直すと
   // スクロール位置や読み込んだページが失われる。取り直しは1件ずつ順に行い、
   // 知らせが重なっても同じ動画を重ねて取りに行かない。
@@ -458,6 +499,7 @@ export function useVideos(
         // ではここを通らないので、まだどのページにも現れていない動画への
         // 変更は消さずに残す（Devin の指摘3。次に読み込まれたページで重ねる）。
         tagsChangedWhileLoading.current.clear();
+        visibilityChangedWhileLoading.current.clear();
       }
 
       if (replace) {
@@ -524,6 +566,14 @@ export function useVideos(
               action: change.action,
             });
             tagsChangedWhileLoading.current.delete(tagKey);
+          }
+        }
+        if (visibilityChangedWhileLoading.current.size > 0) {
+          const pageIds = new Set(page.items.map((video) => video.id));
+          for (const [videoId, isPublic] of visibilityChangedWhileLoading.current) {
+            if (!pageIds.has(videoId)) continue;
+            dispatch({ type: "visibility", videoIds: [videoId], isPublic });
+            visibilityChangedWhileLoading.current.delete(videoId);
           }
         }
         setError(null);
