@@ -44,6 +44,11 @@ const scanStopGrace = 10 * time.Second
 const readHeaderTimeout = 10 * time.Second
 
 func main() {
+	// 引数つきはホスト側のコマンド（mdm account …）で、サーバーは起動しない
+	// （specs/016-single-account-auth/contracts/account-cli.md）。
+	if len(os.Args) > 1 {
+		os.Exit(runCommand(context.Background(), os.Args[1:], osAccountEnv()))
+	}
 	if err := run(); err != nil {
 		// 記録の設定前に失敗する場合もあるため、利用者向けの説明は標準エラーへ出す。
 		fmt.Fprintln(os.Stderr, err)
