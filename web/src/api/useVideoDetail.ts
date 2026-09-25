@@ -13,6 +13,7 @@ import {
 import { subscribeServerEvents } from "./serverEvents";
 import {
   subscribeVideoVisibility,
+  subscribeVideoVisibilityStale,
   visibilityMark,
   withVisibilitySince,
 } from "./visibility";
@@ -126,6 +127,13 @@ export function useVideoDetail(id: number): {
       current = { ...current, public: isPublic };
       setState({ kind: "ready", id, video: current });
     });
+    // 一部にしか反映されなかった切り替えは、どれが切り替わったか分からないので、
+    // この1件を取り直してサーバーの状態を表示する（Devin の指摘、PR 292）。
+    // 再生画面は一覧の控えを取らないので、取り直しの決着は知らせない。
+    const unsubscribeStale = subscribeVideoVisibilityStale((videoIds) => {
+      if (videoIds.includes(id)) void load();
+      return undefined;
+    });
 
     // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
     const unsubscribe = owner
@@ -142,6 +150,7 @@ export function useVideoDetail(id: number): {
       controller?.abort();
       unsubscribe();
       unsubscribeVisibility();
+      unsubscribeStale();
       settle();
     };
   }, [id, owner]);
