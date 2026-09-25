@@ -34,6 +34,5 @@ Read [README.md](README.md) first. Input is one native child Issue.
    closes the child.
 
 If an approved artifact changes, use the selected branch's current artifacts as
-implementation inputs. The parent SDD summary may be updated to communicate the
-revision, but it does not block a user-requested implementation.
+implementation inputs.
 

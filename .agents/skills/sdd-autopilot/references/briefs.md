@@ -43,10 +43,12 @@ Parent Issue: #<parent>   Child Issue: #<child or ->
 Feature branch: <feature or "none yet"> Feature directory: <dir or ->
 Procedure: .agents/skills/issue-handoff/references/README.md and
   .agents/skills/issue-handoff/references/<plan|design|implement>.md.
+The orchestrator selected this stage; do not re-select it.
 
-Phase 1 now: create your sub-branch from origin/<feature> (plan: create and
-push the feature branch from main first), do the stage's work and its checks,
-and commit. Do not push or open a PR. Return STATUS: READY.
+Phase 1 now: create your sub-branch from origin/<feature> (plan: create the
+feature branch from main locally first), do the stage's work and its checks,
+and commit. Push nothing, not even a new feature branch, and open no PR.
+Return STATUS: READY.
 Implement only: if a PR merged into <feature> already Refs this child, change
 nothing and return DONE with that PR. If a dependency named in the child is
 not merged into <feature> yet, change nothing and return BLOCKED naming it.
@@ -58,14 +60,17 @@ Continuation, sent to the same worker after self-review:
 Phase 2. Self-review returned STATUS: <CLEAN | FINDINGS>; the findings are in
 <findings file>.
 Fix the findings that are defects within this stage, re-run your checks,
-commit, push, and open the PR to <feature> as the stage reference says. A
+commit, push (plan: the new feature branch first), and open the PR to
+<feature> as the stage reference says. A
 finding that needs an approved artifact changed: do not push; return BLOCKED.
 Put out-of-scope findings in the PR body and in DEFERRED. Return STATUS: DONE.
 ```
 
-When the original worker is gone, start a fresh one with the stage brief plus
+When the original worker is gone but you still have its `BRANCH` in this
+session, start a fresh one with the stage brief plus
 `Phase 1 is already committed on <branch>; go straight to phase 2.` and the
-continuation text.
+continuation text. After a restart you will not have it; nothing was pushed, so
+§1 selects the same stage again and a fresh worker redoes it.
 
 ## Stage worker: `plan-to-issues`
 
@@ -75,8 +80,7 @@ Stage: plan-to-issues   Parent Issue: #<parent>
 Feature branch: <feature>   Feature directory: <dir>
 Procedure: .agents/skills/issue-handoff/references/README.md and
   .agents/skills/issue-handoff/references/plan-to-issues.md.
-Create the missing native sub-issues in Implementation Work order and remove
-Next from the parent's SDD summary. Return STATUS: DONE, or BLOCKED with the
+Create the missing native sub-issues in Implementation Work order. Return STATUS: DONE, or BLOCKED with the
 question the plan does not settle.
 ```
 
@@ -86,13 +90,10 @@ question the plan does not settle.
 Autopilot stage worker. Repository: <owner/repo>.
 Stage: integrate   Parent Issue: #<parent>   Integration PR: #<pr>
 Feature branch: <feature>   Feature directory: <dir>
-Merge the latest origin/main into <feature> with a merge commit (no rebase, no
-force-push). Resolve conflicts, regenerating generated files with
-`task generate`, never by hand. Run `task check`, plus the browser checks
-<dir>/ui-design.md names when it exists. Push <feature>. Rewrite the
-integration PR body against the repository PR template so it describes the
-whole feature as it now stands, and list there the out-of-scope items the
-merged feature PRs' bodies deferred. Return STATUS: DONE, or BLOCKED when a
+Procedure: .agents/skills/issue-handoff/references/integrate.md, in one phase.
+Regenerate generated files with `task generate` when resolving conflicts,
+never by hand. In the integration PR body, also list the out-of-scope items
+the merged feature PRs' bodies deferred. Return STATUS: DONE, or BLOCKED when a
 conflict needs a product decision.
 ```
 

@@ -11,22 +11,22 @@ for that request. It does not do stage work itself: every stage, review and fix
 runs in a fresh worker context, and the orchestrator only decides what runs
 next, merges what is ready, and keeps the parent Issue's bookkeeping current.
 
-It reuses the one-stage procedures unchanged. Read
+It reuses the one-stage procedures unchanged, including how the next stage is
+selected. Read
 [../issue-handoff/references/README.md](../issue-handoff/references/README.md)
-once for the branch and PR contract; the stage references are read by the
-workers, not by you.
+once for the stage selection and the branch and PR contract; the stage
+references are read by the workers, not by you.
 
 ## What the maintainer delegates
 
 Starting this skill is the maintainer's explicit hand-off of the steps the
 one-stage workflow leaves to them, **for feature-branch PRs only**:
 
+- starting the next stage as soon as the previous one merges, instead of
+  waiting to be handed the Issue URL again
 - merging stage and implementation PRs into the feature branch once they pass
   the gates in [references/loop.md](references/loop.md)
-- updating the parent's `## SDD` summary after a stage merges
-- opening the integration PR after the Plan PR merges
 - closing a child Issue as completed after its PR merges
-- merging the latest `main` into the feature branch at the end
 
 The integration PR is never merged here. The run ends when it is green,
 reviewed and mergeable, and reports that to the maintainer.
@@ -43,9 +43,9 @@ skill; follow them even when reading something yourself looks quicker.
    what happened earlier in the conversation, so compaction or a restarted
    session loses nothing. Do not write a state file, ledger, or tracking
    comment.
-2. **Read summaries, not material.** Request only the fields the decision
-   table needs (`fields`, `minimal_output`, `perPage`). Do not open diffs, CI
-   job logs, review comment bodies, child Issue bodies, or artifact files. When
+2. **Read summaries, not material.** Request only the fields
+   [references/loop.md](references/loop.md) §1 lists (`fields`,
+   `minimal_output`, `perPage`). Do not open diffs, CI job logs, review comment bodies, child Issue bodies, or artifact files. When
    a decision needs one of those, it is a worker's job.
 3. **Brief with pointers, not content.** A worker brief names the Issue, PR,
    branch, base and feature directory, and the worker reads them itself. Do not
@@ -79,8 +79,8 @@ Follow [references/loop.md](references/loop.md). In short:
 
 1. Preflight: Issue read/write, native sub-issues, push, PR create and merge.
    Stop before any mutation when one is missing.
-2. Loop: derive the state, pick the one next action from the decision table,
-   run it through a worker, apply the merge gates, do the bookkeeping. Repeat.
+2. Loop: select the next stage with the one-stage workflow's rules, run it
+   through workers, apply the merge gates, close merged children. Repeat.
 3. Stop on a blocker, or when the integration PR meets the finish line.
 
 Report to the maintainer in one short line per merged PR, and at the end with
@@ -98,13 +98,13 @@ report to the maintainer when:
 - a review finding can only be fixed by changing an approved artifact
 - a PR does not converge (see the round limit in
   [references/loop.md](references/loop.md) §4)
-- a required GitHub capability is missing, or the state matches no row of the
-  decision table
+- a required GitHub capability is missing, or the stage selection would stop
+  and ask
 
-Revising an approved artifact is outside this skill. The loop reads what is
-on the feature branch and does not notice that, for example, `ui-design.md`
-predates a revised Plan. The maintainer reruns the affected stages with
-`issue-handoff` first, as the one-stage contract already requires, and starts
+Revising an approved artifact is outside this skill. The stage selection
+never re-runs a stage whose artifact exists, so it does not notice that, for
+example, `ui-design.md` predates a revised Plan. The maintainer names and
+reruns the affected stages with `issue-handoff` first, and starts
 this skill again afterwards.
 
 Leave everything already merged in place. A later run of this skill on the same

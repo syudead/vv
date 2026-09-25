@@ -1,8 +1,7 @@
 # Autopilot loop
 
-Read [../SKILL.md](../SKILL.md) first. Each iteration: derive the state (§1),
-take the first matching row of the decision table (§2), run it (§3–§6), and
-start the next iteration from §1 again.
+Read [../SKILL.md](../SKILL.md) first. Each iteration: select the next stage
+(§1, §2), run it (§3–§6), and start the next iteration from §1 again.
 
 Everything the loop needs to decide is re-derived from GitHub and the
 repository. Anything you remember from earlier in the session is only a
@@ -11,38 +10,37 @@ already done), never pick a wrong one.
 
 ## 1. Derive the state
 
-Collect only these facts. Each is a small, field-limited read. This traversal
-is the autopilot's own; the one-stage workflow does not do it.
+The stage selection is the one-stage workflow's:
+[Selecting the stage](../../issue-handoff/references/README.md#selecting-the-stage).
+Apply it to the parent Issue on every iteration, with two constraints that keep
+the orchestrator's reads small:
 
-| Fact | Where it comes from |
+- Collect only the facts the rules need, each as a field-limited read: the
+  integration PR (the parent's `closed_by_pull_requests`) or the base of a PR
+  that `Refs #<parent>`; `specs/*/plan.md` and `ui-design.md` on
+  `origin/<feature>` (`git fetch`, then `git diff --name-only` and
+  `git cat-file -e`); the parent's labels; its native sub-issues (number,
+  state, `state_reason`); and the open PRs into the feature branch (number,
+  head ref, head SHA).
+- Do not read the parent Issue body, PR bodies, or child Issue bodies. What a
+  rule needs from a body — whether an open PR belongs to this feature, a
+  child's prerequisites, whether a merged PR already `Refs` a child — is
+  answered by the worker that handles it (§3, §4).
+
+## 2. What autopilot changes in the selection
+
+| Rule in the selection | Autopilot does instead |
 | --- | --- |
-| Feature branch | The supplied branch; otherwise the head of the open PR to `main` that closes the parent (`closed_by_pull_requests` on the parent); otherwise the base of an open or merged PR that `Refs #<parent>` and does not target `main` |
-| Integration PR | The open PR from the feature branch to `main` |
-| Plan merged | `git diff --name-only origin/main...origin/<feature> -- 'specs/*/plan.md'` after `git fetch` names one file; its directory is the feature directory |
-| `ui` label | Labels on the parent |
-| Design merged | `<feature-dir>/ui-design.md` exists on `origin/<feature>` (`git cat-file -e`) |
-| Children | The parent's native sub-issues: number, state, `state_reason` only |
-| Open feature PRs | Open PRs whose base is the feature branch: number, head ref, head SHA |
+| 1, and 6 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge (§4), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN` in this session |
+| 2 `plan`, 4 `design`, 5 `plan-to-issues`, 6 `implement` | Run that stage through workers (§3). For `implement`, take the first child in sub-issue order that is not closed and not already returned `BLOCKED` for a prerequisite in this session; if every such child is blocked, stop |
+| 3: open the integration PR | Open it yourself (feature branch → `main`, `Closes #<parent>`, the parent's title, the repository PR template), then continue |
+| 7 `integrate` | Integration refresh and finish line (§6) |
+| "stop and ask" (ambiguous feature, not a specification) | Stop and report |
 
-Do not read the parent Issue body, PR bodies, or child Issue bodies to derive
-the state. The `## SDD` summary is for humans and may lag; §5 keeps it current
-and the finish line (§6) rewrites it once more.
-
-## 2. Decision table
-
-| # | Condition | Action |
-| --- | --- | --- |
-| 1 | An open feature PR not already returned `FOREIGN` in this session | Drive the lowest-numbered one to merge (§4) |
-| 2 | No feature branch | Stage `plan` (§3) |
-| 3 | Feature branch, Plan not merged, no open feature PR | Stop: an orphaned feature branch ([plan.md](../../issue-handoff/references/plan.md)) is the maintainer's to remove |
-| 4 | Plan merged, no integration PR | Open it (§5), then continue |
-| 5 | `ui` label and Design not merged | Stage `design` (§3) |
-| 6 | No children, or children not yet confirmed complete in this session | Stage `plan-to-issues` (§3). It creates only the missing children, so rerunning it after a restart is safe |
-| 7 | An open child | Implement the lowest-numbered open child not already returned `BLOCKED` for a dependency in this session (§3). If every open child is blocked that way, stop |
-| 8 | Every child closed | Integration refresh (§6) |
-
-A child closed as `not_planned` counts as resolved. Anything the table does not
-cover is a stop: report the facts from §1 and what you expected.
+Phase 1 of a stage pushes nothing (§3), so a restart before its PR exists
+leaves no branch behind and the selection simply picks the stage again. Anything
+the selection does not cover is a stop: report the facts from §1 and what you
+expected.
 
 ## 3. Run a stage
 
@@ -52,7 +50,7 @@ branch. `plan-to-issues` produces no PR and has no self-review.
 1. Start a fresh stage worker with the brief for that stage from
    [briefs.md](briefs.md). It creates its own sub-branch, does the stage's
    work and checks, commits, and returns `READY` with the branch and base.
-   - `plan-to-issues` returns `DONE`; the children are now confirmed. Go to §1.
+   - `plan-to-issues` returns `DONE`. Go to §1.
    - An implementation worker that finds a merged PR into the feature branch
      already referencing its child returns `DONE` with that PR and no branch.
      Close the child (§5) and go to §1.
@@ -91,8 +89,8 @@ Loop:
    A fixer never returns `CLEAN` while a check on the head is not passing.
    It first checks that the PR belongs to this feature: its `Refs` names the
    parent or one of the parent's native children (for the integration PR, it
-   is the feature branch's PR to `main` that `Closes` the parent). Otherwise it changes nothing
-   and returns `FOREIGN`. It also returns the PR's `KIND`, which §5 uses.
+   is the feature branch's PR to `main` that `Closes` the parent). Otherwise
+   it changes nothing and returns `FOREIGN`. It also returns the PR's `KIND`, which §5 uses.
 3. `FIXED`: back to step 1 on the new head. `CLEAN`: merge with a merge
    commit, then §5. `BLOCKED`: stop. `FOREIGN`: leave the PR alone, never
    merge it, and name it in the final report; go to §1.
@@ -105,8 +103,10 @@ when five integration-fix PRs have merged since the last integration refresh
 (§6), or when a fixer returns `BLOCKED` because a finding repeats one it can
 see was already fixed and resolved on the same PR. All three are read from
 GitHub, not remembered: the integration count is the number of PRs merged into
-the feature branch that `Refs #<parent>` after the feature branch's latest
-merge of `main`, which a PR search returns as a total without bodies.
+the feature branch that `Refs #<parent>` after the last child was closed or
+had its PR merged, which a PR search with a `merged:>` date returns as a total
+without bodies. Plan and Design PRs merge before any child exists, so they are
+never counted.
 The integration PR itself has no per-review limit, because every feature PR
 merge moves its head and gets it reviewed again. Hitting a limit means the
 fixes are not converging, and another round spends context without changing
@@ -117,32 +117,23 @@ re-run a test to get past one.
 
 ## 5. Bookkeeping after a merge
 
-Do these right after the merge that makes them true. Which row applies comes
-from the `KIND` and `REFS` lines of the fixer that returned `CLEAN` for the
-merged head (or the stage worker that opened the PR), so a restart loses
-nothing. Read the parent body only
-to rewrite its `## SDD` section, and do not repeat what it says.
-
-| Merged | Do |
-| --- | --- |
-| Plan PR | Mark `Plan` done with the plan path, set `Next` to `design` for a `ui` parent or `plan-to-issues` otherwise, and open the integration PR (feature branch → `main`, `Closes #<parent>`, the parent's title, the repository PR template) |
-| Design PR | Mark `Design` done, set `Next: plan-to-issues` |
-| `plan-to-issues` finished | The worker removes `Next` itself; nothing to do |
-| Implementation PR | Close the child named by `REFS` as `completed` |
-| Integration-fix PR | Nothing; §6 continues |
-
-If a restart lost track of which child a merged PR belonged to, the child is
-still open and row 7 picks it again; its worker returns `DONE` for the merged
-PR (§3 step 1), and you close it then.
+The parent Issue body is never edited: progress is read from GitHub and the
+feature branch, not recorded
+([README](../../issue-handoff/references/README.md#inputs-and-sources-of-truth)).
+The only follow-up is closing a child: when the merged PR's `KIND` is
+`implement`, close the child named by its `REFS` as `completed`. Those lines
+come from the fixer that returned `CLEAN` for the merged head, so a restart
+loses nothing. A child whose close was missed still counts as done for the
+selection, because a merged PR `Refs` it; the implementation worker reports it
+as `DONE` if it is picked again, and you close it then.
 
 ## 6. Integration refresh and the finish line
 
-1. Start a fresh stage worker with the integrate brief. It merges the latest
-   `origin/main` into the feature branch directly (no PR, no rebase), resolves
-   conflicts, runs `task check` and the UI checks the feature's `ui-design.md`
-   names, pushes the feature branch, and rewrites the integration PR's body to
-   describe the feature as it now stands, including the out-of-scope items the
-   feature PRs deferred.
+1. Start a fresh stage worker with the integrate brief. It runs
+   [integrate.md](../../issue-handoff/references/integrate.md): merges the
+   latest `origin/main` into the feature branch directly, runs the checks,
+   pushes, and updates the integration PR body — also listing the
+   out-of-scope items the feature PRs deferred.
 2. Before each round on the integration PR: if it conflicts with `main`, or
    `git rev-list --count origin/<feature>..origin/main` is not `0`, go back to
    step 1. Conflicts with `main` are never a review fixer's job here.
@@ -151,9 +142,8 @@ PR (§3 step 1), and you close it then.
    feature branch, never directly onto the feature branch. It returns that PR
    as `FIXED`; drive that PR with §4 until merged, then return to step 2.
 4. The **finish line**: the integration PR meets every §4 gate on its head, and
-   step 2 finds nothing to do. Do not merge it. Rewrite the parent's `## SDD`
-   summary to its final state (every stage done, no `Next`), report the
-   integration PR link to the maintainer, and stop.
+   step 2 finds nothing to do. Do not merge it. Report the integration PR
+   link to the maintainer, and stop.
 
 ## 7. Waiting
 

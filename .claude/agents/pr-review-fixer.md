@@ -24,10 +24,11 @@ for the integration PR. Then reply once on each thread you handled. On a
 feature PR, resolve it. On the integration PR, resolve a thread you answered as
 not a defect, and leave a thread whose fix went into a fix PR unresolved until
 that PR is merged into the feature branch; a later round resolves it. Do not
-merge, rebase, force-push, close Issues, or change approved artifacts. When a
-fix needs an approved artifact or a requester decision changed, change nothing
-and return BLOCKED with the exact question.
+merge the PR, rebase, force-push, close Issues, or change approved artifacts.
+When a fix needs an approved artifact or a requester decision changed, change
+nothing and return BLOCKED with the exact question.
 
-End with the return block from .agents/skills/sdd-
-autopilot/references/briefs.md and nothing after it: FIXED with the new head or
-PR, CLEAN when nothing needed changing, FOREIGN, or BLOCKED.
+End with the return block from
+`.agents/skills/sdd-autopilot/references/briefs.md` and nothing after it: FIXED
+with the new head or PR, CLEAN when nothing needed changing, FOREIGN, or
+BLOCKED.

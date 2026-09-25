@@ -87,7 +87,8 @@ describe("App", () => {
     expect(indicator.closest(".fixed")?.classList.contains("bottom-4")).toBe(true);
 
     await user.click(screen.getByRole("link", { name: "フォルダへ" }));
-    await user.click(screen.getByRole("link", { name: "設定へ" }));
+    // フォルダと設定の画面は使うときに読み込むので、出てくるのを待つ。
+    await user.click(await screen.findByRole("link", { name: "設定へ" }));
     await waitFor(() =>
       expect(screen.getByRole("link", { name: "動画へ" })).toBeDefined(),
     );
