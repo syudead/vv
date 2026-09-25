@@ -270,6 +270,22 @@ func TestAccountSetPasswordReadsFirstLineWithoutNewline(t *testing.T) {
 	}
 }
 
+func TestAccountSetPasswordKeepsTrailingCRWithoutNewline(t *testing.T) {
+	dataDir := newConfiguredDataDir(t)
+	withCR := newPassword + "\r"
+	run := runAccountCommand(t, dataDir, []string{"account", "set-password"}, withCR, nil)
+	if run.code != exitAccountOK {
+		t.Fatalf("終了コード = %d, 標準エラー = %q", run.code, run.stderr)
+	}
+	account := readAccount(t, dataDir)
+	if !credentialsMatch(t, account, oldUsername, withCR) {
+		t.Fatal("改行なしで終わる入力の末尾の CR が失われた")
+	}
+	if credentialsMatch(t, account, oldUsername, newPassword) {
+		t.Fatal("末尾の CR を除いた値で照合できてしまう")
+	}
+}
+
 func TestAccountSetPasswordOnTerminalAsksTwice(t *testing.T) {
 	dataDir := newConfiguredDataDir(t)
 

@@ -235,7 +235,9 @@ func readFirstLine(r io.Reader) (string, error) {
 	if err != nil && !errors.Is(err, io.EOF) {
 		return "", err
 	}
-	line = strings.TrimSuffix(line, "\n")
-	line = strings.TrimSuffix(line, "\r")
+	// CR を除くのは CRLF の一部のときだけ。改行なしで終わる値の末尾の CR はパスワードの一部。
+	if trimmed, ok := strings.CutSuffix(line, "\n"); ok {
+		line = strings.TrimSuffix(trimmed, "\r")
+	}
 	return line, nil
 }
