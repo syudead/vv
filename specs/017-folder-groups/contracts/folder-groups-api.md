@@ -7,10 +7,11 @@
 
 ```yaml
 FolderGrouping:
-  required: [mode, grouped]
+  required: [mode, grouped, taggable]
   properties:
     mode: { type: string, enum: [auto, ungroup, groupDirect] }  # auto = 例外なし
     grouped: { type: boolean }   # いまこのフォルダの直下がグループか
+    taggable: { type: boolean }  # グループで、登録フォルダそのものではない（§2）
 ```
 
 - `FolderSummary` に `grouping: FolderGrouping` を足す（必須）。フォルダ画面のメニューはこれで出す項目を決める。
@@ -26,7 +27,9 @@ FolderGrouping:
 
 - 200: `{ "tag": TagRef, "created": boolean, "grouping": FolderGrouping }`。`created` は新しく作ったとき true。
 - 400 `invalid_request`: フォルダ名がタグ名の規則（`NormalizeTagName`）に合わない。タグも例外も作らない。
-- 404: フォルダが無い。409 `conflict`: そのフォルダが今グループでない。
+- 404: フォルダが無い。409 `conflict`: そのフォルダが今グループでない、または登録フォルダそのもの
+  （登録フォルダの名前はフォルダ由来のタグの照合に入らないため、[data-model.md §4](../data-model.md#4-フォルダ由来のタグ)）。
+- `FolderGrouping` に `taggable: boolean`（必須）を足し、画面はこれが true のときだけ「グループをタグに変える」を出す。
 - タグの引き当て・作成、`ungroup` の保存、作り直しは1つの取引（[data-model.md §4](../data-model.md#4-フォルダ由来のタグ)）。
 
 ## 3. 動画と関連動画のグループ

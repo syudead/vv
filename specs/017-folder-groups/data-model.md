@@ -24,7 +24,7 @@ create table folder_groups (
     -- フォルダを指す鍵。§2 の folderKey。グループの同一性はこれで決める。
     path_key        text    not null unique,
     -- フォルダの絶対パスの綴り（そのフォルダの下の所在のうちパスの最小のものから取る）。
-    -- 応答の VideoFolder（rootId と相対パス）はこれから LocateVideoFolder で作る。
+    -- 応答の VideoFolder（rootId と相対パス）はこれから domain.LocateFolder で作る（§2）。
     path            text    not null,
     -- フォルダ名（domain.FolderName と同じ最後の段）。
     name            text    not null,
@@ -87,6 +87,11 @@ create table folder_index_state (
 - **folderKey**: パスの末尾の区切りを落とし、Windows では `/` を `\` にそろえて `LowerASCII` を掛ける。
   所在と例外の突き合わせ、例外の主キーの両方に使う。登録フォルダの判定
   （`registeredLocationCondition`・`LocateVideoFolder`）と同じ区切りと大文字小文字の規則である。
+- **フォルダの VideoFolder**: グループや例外の**フォルダそのもの**の絶対パスから `(rootId, path)` を
+  求める関数 `domain.LocateFolder` を足す。今の `LocateVideoFolder` は所在（ファイル）のパスを受けて
+  最後の段をファイル名として落とすので、フォルダのパスを渡すと一段上を指してしまう。両者は
+  `pathBelowRoot` を共有し、違いは最後の段を落とすかどうかだけにする。入れ子のフォルダで、グループの
+  `folder` が `GET /api/folders/{rootId}/group` と `getFolder` の引き当てに一致することをテストする。
 - 例外のパスに一致するフォルダが無くても例外は消さない。同じパスのフォルダが戻れば効く（Edge Case）。
 
 ## 3. 作り直す時点
@@ -128,6 +133,10 @@ create table folder_index_state (
   - タグごとの本数（014 §5）: どちらかの出所で付いている、いまライブラリにある動画を数える。
   - 選択の要約: 本数 `count` はどちらかの出所で、`manualCount` は手で付けた分だけで数える。
 - 取り外し（`DetachTag`）は `video_tags` だけを消す。変更は要らない（要件 13）。
+- 登録フォルダそのものの名前はフォルダ名に入らない（要件 9 の「ルートより下」）。そのため「直下を
+  まとめる」で登録フォルダそのものがグループになっていても、タグ化はできない（409、
+  [contracts/folder-groups-api.md §2](contracts/folder-groups-api.md#2-グループをタグに変える)）。
+  タグを作っても要件 11 の結果（中の動画にそのタグが付く）にならないためである。
 - タグ化（要件 11）は `FolderGroupStore` の1つの取引で、フォルダ名を `NormalizeTagName` に通し
   （誤りなら何も書かない）、名前かシノニムで引けたタグを使うか新しく作り、そのフォルダに `ungroup` を
   書き、§3 の作り直しを行う。
