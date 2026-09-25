@@ -290,6 +290,11 @@ type fakeCatalog struct {
 	relatedErr   error
 	relatedAsked []int64
 
+	// group は VideoGroup が返すグループ。grouped が false ならグループに属さない。
+	group    domain.VideoGroup
+	grouped  bool
+	groupErr error
+
 	retry func(domain.Video) error
 }
 
@@ -324,6 +329,10 @@ func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience,
 	}
 	f.relatedAsked = append(f.relatedAsked, video.ID)
 	return f.related, f.relatedErr
+}
+
+func (f *fakeCatalog) VideoGroup(_ context.Context, _ domain.Audience, _ domain.Video) (domain.VideoGroup, bool, error) {
+	return f.group, f.grouped, f.groupErr
 }
 
 func (f *fakeCatalog) RetryProbe(_ context.Context, video domain.Video) error {

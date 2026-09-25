@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -28,6 +29,9 @@ type CatalogIndexStore interface {
 	DirectVideoPaths(ctx context.Context, audience domain.Audience, dir string) ([]domain.RelatedSibling, error)
 	VideosAddedNear(ctx context.Context, audience domain.Audience, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error)
 	VideosByIDs(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error)
+	// VideoGroup は動画 id が属するグループを、見る人に見せてよいメンバーだけで返す。
+	// 見る人に見せるグループが無ければ false。
+	VideoGroup(ctx context.Context, audience domain.Audience, id int64) (domain.VideoGroup, bool, error)
 }
 
 // ArtifactFiles は生成物が今あるかを答える。internal/artifacts の *Store が
@@ -126,28 +130,61 @@ func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (d
 	return domain.SeekThumbnailFailed, nil
 }
 
+// VideoGroup は動画が属するグループを、見る人に見せてよいメンバーだけで返す
+// （GET /api/videos/{id} の group）。見る人に見せるグループが無ければ false。
+func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video) (domain.VideoGroup, bool, error) {
+	return c.index.VideoGroup(ctx, audience, video.ID)
+}
+
 // RelatedVideos は関連動画を返す順に並べる。
 //
 // 並べ方は internal/domain の OrderRelated が決める。ここは、代表の所在の
 // ディレクトリ直下の動画と、追加日時の近い動画を読み、選ばれた動画の本体を
 // 引くだけである。どれも見る人（audience）として読むので、ゲストには公開の動画
 // だけが並ぶ。
+//
+// 動画がグループのメンバーなら（specs/017-folder-groups/contracts/folder-groups-api.md §3）、
+// グループを載せ、前後をグループの中の並びにする。関連動画は、同じグループのメンバーを
+// OrderRelated の入力から先に除いてから並べるので、上限はその後に掛かり、大きなグループ
+// でも関連動画が残る。追加日時の近い動画は、除く本数を見込んで多めに読む。
 func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error) {
+	group, grouped, err := c.index.VideoGroup(ctx, audience, video.ID)
+	if err != nil {
+		return domain.RelatedVideos{}, err
+	}
+	members := map[int64]struct{}{}
+	if grouped {
+		for _, member := range group.Members {
+			members[member.ID] = struct{}{}
+		}
+	}
+	isMember := func(id int64) bool {
+		_, ok := members[id]
+		return ok
+	}
+
 	siblings, err := c.index.DirectVideoPaths(ctx, audience, filepath.Dir(video.Path))
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
-	neighbors, err := c.index.VideosAddedNear(ctx, audience, video.ID, video.AddedAt, domain.MaxRelatedVideos)
+	neighbors, err := c.index.VideosAddedNear(ctx, audience, video.ID, video.AddedAt, domain.MaxRelatedVideos+len(members))
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
+	siblings = slices.DeleteFunc(slices.Clone(siblings), func(s domain.RelatedSibling) bool { return isMember(s.VideoID) })
+	neighbors = slices.DeleteFunc(slices.Clone(neighbors), func(n domain.RelatedNeighbor) bool { return isMember(n.VideoID) })
+
 	order := domain.OrderRelated(domain.RelatedSelf{VideoID: video.ID, Path: video.Path, AddedAt: video.AddedAt},
 		siblings, neighbors)
 	items, err := c.index.VideosByIDs(ctx, audience, order.IDs)
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
-	return domain.RelatedVideos{Items: items, NextID: order.NextID, PrevID: order.PrevID}, nil
+	if !grouped {
+		return domain.RelatedVideos{Items: items, NextID: order.NextID, PrevID: order.PrevID}, nil
+	}
+	prev, next := group.Neighbors(video.ID)
+	return domain.RelatedVideos{Items: items, NextID: next, PrevID: prev, Group: &group}, nil
 }
 
 // RetryProbe は読み取りに失敗した動画を読み取り直す。状態を戻すこととジョブを

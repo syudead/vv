@@ -611,8 +611,8 @@ type LibraryGroup struct {
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder ではグループの
-	// フォルダそのものを指す
+	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
 	// LastPlayedAt メンバーの最後に再生した時刻の最大。無ければ省く
@@ -724,14 +724,38 @@ type ProgressUpdate struct {
 	PositionMs int64 `json:"positionMs"`
 }
 
-// RelatedVideos defines model for RelatedVideos.
-type RelatedVideos struct {
+// RelatedGroup 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
+// メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
+type RelatedGroup struct {
+	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+	Folder VideoFolder `json:"folder"`
+
+	// Items 全メンバーをグループの中の並びの順に、基準の動画を含めて並べる。上限は無い
 	Items []Video `json:"items"`
 
-	// NextId 同じディレクトリで自然順の次の動画。無ければ省く
+	// Name フォルダ名
+	Name string `json:"name"`
+}
+
+// RelatedVideos defines model for RelatedVideos.
+type RelatedVideos struct {
+	// Group 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
+	// メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
+	Group *RelatedGroup `json:"group,omitempty"`
+
+	// Items 関連動画。基準の動画がグループのメンバーなら、同じグループのメンバーを除いてから
+	// 並べ、上限を掛ける
+	Items []Video `json:"items"`
+
+	// NextId 次の動画。グループのメンバーならグループの中の並びの次（最後のメンバーでは省く）、
+	// そうでなければ同じディレクトリで自然順の次の動画。無ければ省く
 	NextId *int64 `json:"nextId,omitempty"`
 
-	// PrevId 同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
+	// PrevId 前の動画。グループのメンバーならグループの中の並びの前（最初のメンバーでは省く）、
+	// そうでなければ同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
 	PrevId *int64 `json:"prevId,omitempty"`
 }
 
@@ -831,9 +855,15 @@ type Video struct {
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder ではグループの
-	// フォルダそのものを指す
+	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
+
+	// Group 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
+	// （location と同じ扱いで、一覧の項目には入らない）。ゲストの応答では公開のメンバー
+	// だけで数え、公開のメンバーが1本だけなら省く
+	// （specs/017-folder-groups/contracts/folder-groups-api.md §3）
+	Group *VideoGroupRef `json:"group,omitempty"`
 
 	// Height 表示される向きの高さ（回転の印を反映済み）
 	Height *int  `json:"height,omitempty"`
@@ -917,8 +947,8 @@ type VideoChanged struct {
 
 // VideoFolder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 // GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder ではグループの
-// フォルダそのものを指す
+// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
 type VideoFolder struct {
 	// Path 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字
 	Path string `json:"path"`
@@ -927,8 +957,29 @@ type VideoFolder struct {
 	RootId int64 `json:"rootId"`
 
 	// RootName 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-	// 応答にだけ入る
+	// Video.folder にだけ入る（Video.group.folder には入らない）
 	RootName *string `json:"rootName,omitempty"`
+}
+
+// VideoGroupRef 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
+// （location と同じ扱いで、一覧の項目には入らない）。ゲストの応答では公開のメンバー
+// だけで数え、公開のメンバーが1本だけなら省く
+// （specs/017-folder-groups/contracts/folder-groups-api.md §3）
+type VideoGroupRef struct {
+	// Count グループのメンバーの本数
+	Count int `json:"count"`
+
+	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+	Folder VideoFolder `json:"folder"`
+
+	// Name フォルダ名
+	Name string `json:"name"`
+
+	// Position グループの中の並びで何本目か（1 始まり）
+	Position int `json:"position"`
 }
 
 // VideoIdsResponse defines model for VideoIdsResponse.
