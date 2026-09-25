@@ -31,6 +31,16 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   echo "export PATH=\"$gobin:\$PATH\"" >>"$CLAUDE_ENV_FILE"
 fi
 
-# ffmpeg／ffprobe はここでは入れない。task test と task lint には不要で、
-# 必要になるのは bin/mdm を直接起動するときだけである（起動前確認で存在を見る）。
-# 必要なら: apt-get update && apt-get install -y --no-install-recommends ffmpeg
+# ffmpeg／ffprobe は bin/mdm の起動、internal/media の *WithFFmpeg テスト、e2e の
+# メディア fixture 生成（web/e2e/media-fixtures.mjs）で要る。無いとセッションごとに
+# 足りないと気づいて止まるので、ここで入れておく（フック後の状態はキャッシュされる）。
+# 取得に失敗しても lint や単体テストは進められるので、フック全体は失敗させない。
+if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+  sudo=""
+  if [ "$(id -u)" != "0" ]; then sudo="sudo"; fi
+  # 一部の PPA がプロキシで拒否されても update 自体は警告で済む。
+  if ! { $sudo apt-get update -qq &&
+    DEBIAN_FRONTEND=noninteractive $sudo apt-get install -y -qq --no-install-recommends ffmpeg; }; then
+    echo "session-start: ffmpeg を入れられなかった（メディア系のテストと e2e は動かない）" >&2
+  fi
+fi
