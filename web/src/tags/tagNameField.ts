@@ -1,5 +1,6 @@
 import { useState, type ClipboardEvent, type FormEvent } from "react";
 
+import { errorMessage, RequestFailed } from "../api/client";
 import { nameReason, newlinePattern } from "../ui/Combobox";
 
 /**
@@ -10,6 +11,19 @@ import { nameReason, newlinePattern } from "../ui/Combobox";
  * 「操作の失敗」）と、大きさと読み上げの扱いが違う。
  */
 export type TagFieldError = { kind: "taken" | "other"; message: string };
+
+/**
+ * tagFieldError は、タグの名前を打つ入力（作成・改名・シノニムの追加）が
+ * 共通で使う、失敗の分類である。`tag_name_taken`（既存の名前・シノニムとの
+ * 衝突）は理由が分かる `taken`、それ以外は一般の失敗 `other` にする
+ * （ui-design.md「Create and rename」「States」）。
+ */
+export function tagFieldError(failure: unknown): TagFieldError {
+  if (failure instanceof RequestFailed && failure.code === "tag_name_taken") {
+    return { kind: "taken", message: failure.message };
+  }
+  return { kind: "other", message: errorMessage(failure) };
+}
 
 /**
  * useTagNameField は、タグの名前を打つ入力の検証と、改行を含む貼り付け・

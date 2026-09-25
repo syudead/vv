@@ -18,7 +18,9 @@ import { useToast } from "../ui/Toast";
 import { EmptyState } from "../videoList/states";
 import CreateTagRow from "./CreateTagRow";
 import DeleteTagDialog from "./DeleteTagDialog";
-import type { TagFieldError } from "./tagNameField";
+import MergeTagDialog from "./MergeTagDialog";
+import SynonymsDialog from "./SynonymsDialog";
+import { tagFieldError, type TagFieldError } from "./tagNameField";
 import TagRow, { type TagRowRefs } from "./TagRow";
 import TagSearchBox from "./TagSearchBox";
 
@@ -26,19 +28,12 @@ function isTagNotFound(error: unknown): boolean {
   return error instanceof RequestFailed && error.code === "tag_not_found";
 }
 
-function tagFieldError(failure: unknown): TagFieldError {
-  if (failure instanceof RequestFailed && failure.code === "tag_name_taken") {
-    return { kind: "taken", message: failure.message };
-  }
-  return { kind: "other", message: errorMessage(failure) };
-}
-
-type FocusTarget = "rename" | "name" | "menu";
+type FocusTarget = "rename" | "synonyms" | "name" | "menu";
 
 /**
  * TagsPage はサイドバーの「タグ」から開く管理画面である（ui-design.md「Tag
- * management page」）。一覧・検索・作成・改名・削除を持つ。統合とシノニムは
- * Issue 272 で足す。
+ * management page」）。一覧・検索・作成・改名・削除・統合・シノニムの登録と
+ * 解除を持つ。
  *
  * タグの一覧は共有の保持（`web/src/api/tags.ts`、Plan の Structural
  * Decisions 8）を使う。作成・改名・削除の直後は、サーバーが返した最新の1件を
@@ -65,6 +60,9 @@ export default function TagsPage() {
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const [mergingTag, setMergingTag] = useState<Tag | null>(null);
+  const [synonymsTagId, setSynonymsTagId] = useState<number | null>(null);
+
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
   const rowRefs = useRef(new Map<number, TagRowRefs>());
@@ -73,6 +71,7 @@ export default function TagsPage() {
     const current = rowRefs.current.get(id) ?? {
       nameLink: null,
       renameButton: null,
+      synonymsButton: null,
       menuButton: null,
     };
     rowRefs.current.set(id, { ...current, ...refs });
@@ -95,9 +94,11 @@ export default function TagsPage() {
       const target =
         part === "rename"
           ? refs?.renameButton
-          : part === "menu"
-            ? refs?.menuButton
-            : refs?.nameLink;
+          : part === "synonyms"
+            ? refs?.synonymsButton
+            : part === "menu"
+              ? refs?.menuButton
+              : refs?.nameLink;
       if (target === null || target === undefined) createButtonRef.current?.focus();
       else target.focus();
     }, 0);
@@ -284,6 +285,115 @@ export default function TagsPage() {
     focusRow(target.id, "menu");
   }
 
+  /**
+   * cancelMerge は統合の確認の窓を、何も変えずに閉じる（キャンセル・Esc）。
+   * 「別のタグへ統合…」は「その他の操作」のメニューの項目から開いたので、
+   * cancelDelete と同じくその行の「その他の操作」へ明示的に戻す（B2）。
+   */
+  function cancelMerge() {
+    if (mergingTag === null) return;
+    const target = mergingTag;
+    setMergingTag(null);
+    focusRow(target.id, "menu");
+  }
+
+  /**
+   * performMerge は統合が成功したときに呼ぶ。統合元は一覧から消え、統合先は
+   * サーバーが返した最新の状態（シノニムに統合元の名前を含む）に差し替わる
+   * （ui-design.md「Merge and delete」、受け入れ条件 12）。
+   */
+  function performMerge(merged: Tag) {
+    const source = mergingTag;
+    if (source === null) return;
+    setTags((current) =>
+      current
+        ?.filter((item) => item.id !== source.id)
+        .map((item) => (item.id === merged.id ? merged : item)),
+    );
+    setMergingTag(null);
+    toast("統合しました");
+    focusRow(merged.id, "name");
+  }
+
+  /**
+   * staleMerge は統合元・統合先のどちらかがもう無かった（tag_not_found）ときに
+   * 呼ぶ。ほかの操作の tag_not_found と同じく、窓を閉じてトーストを出し、
+   * 一覧を取り直す（ui-design.md「States」）。
+   */
+  function staleMerge() {
+    const source = mergingTag;
+    if (source === null) return;
+    const order = filtered;
+    setMergingTag(null);
+    toast("このタグはもう無いため、一覧を取り直しました");
+    void reload().then(() => focusAfterRemoval(order, source.id));
+  }
+
+  /**
+   * cancelSynonyms はシノニムの窓を閉じる。「シノニム」はその行に直接置いた
+   * ボタンなので（メニューの項目ではない）、その行の「シノニム」へ明示的に
+   * 戻す。
+   */
+  function cancelSynonyms() {
+    if (synonymsTagId === null) return;
+    const id = synonymsTagId;
+    setSynonymsTagId(null);
+    focusRow(id, "synonyms");
+  }
+
+  /**
+   * updateSynonymsTag はシノニムの登録・解除・シノニム登録に伴う統合が
+   * 成功したときに、一覧の中のその1件を差し替える（`web/src/api/tags.ts` の
+   * 各関数がバックグラウンドで共有の一覧も取り直すが、ここではその結果を
+   * 待たずに画面へその場で反映する。作成・改名・削除と同じ扱い）。
+   *
+   * `removedId` は、シノニム登録に伴う統合（承諾したとき）でだけ渡す。統合元
+   * のタグは統合先のシノニムになって一覧から消えるので、そのタグを一覧から
+   * 取り除いてから統合先を差し替える。渡さなければ（素のシノニムの登録・
+   * 解除）何も取り除かない。取り除かないと、統合元がバックグラウンドの
+   * 取り直し（または、それが失敗すれば永久）まで一覧に残ってしまう。
+   */
+  function updateSynonymsTag(updated: Tag, removedId?: number) {
+    setTags((current) => {
+      if (current === undefined) return current;
+      const withoutRemoved =
+        removedId === undefined
+          ? current
+          : current.filter((item) => item.id !== removedId);
+      return withoutRemoved.map((item) => (item.id === updated.id ? updated : item));
+    });
+  }
+
+  /**
+   * removeSynonymFromTag は、1件のシノニムの解除が成功したときに呼ぶ。
+   * `SynonymsDialog` に渡した `tag` の閉じ込め（古いかもしれない）ではなく、
+   * `setTags` の関数形で常に最新の一覧からその名前だけを取り除く。複数の
+   * シノニムをほぼ同時に解除したとき、それぞれの応答が別々にここへ届いても、
+   * 互いの結果を巻き戻さない（N5・並行する解除）。
+   */
+  function removeSynonymFromTag(tagId: number, name: string) {
+    setTags((current) =>
+      current?.map((item) =>
+        item.id === tagId
+          ? { ...item, synonyms: item.synonyms.filter((s) => s !== name) }
+          : item,
+      ),
+    );
+  }
+
+  /**
+   * staleSynonyms は、シノニムの窓を開いていたタグがもう無かった
+   * （tag_not_found）ときに呼ぶ。
+   */
+  function staleSynonyms() {
+    if (synonymsTagId === null) return;
+    const id = synonymsTagId;
+    const order = filtered;
+    setSynonymsTagId(null);
+    toast("このタグはもう無いため、一覧を取り直しました");
+    void reload().then(() => focusAfterRemoval(order, id));
+  }
+
   const showEmptyTags = tags !== undefined && tags.length === 0 && !creating;
   const showNoMatch =
     tags !== undefined && tags.length > 0 && visibleRows.length === 0 && !creating;
@@ -411,6 +521,8 @@ export default function TagsPage() {
                   focusRow(tag.id, "rename");
                 }}
                 onSubmitRename={(target, name) => void submitRename(target, name)}
+                onOpenSynonyms={(target) => setSynonymsTagId(target.id)}
+                onOpenMerge={(target) => setMergingTag(target)}
                 onDelete={(target) => {
                   setDeleteError(null);
                   setDeletingTag(target);
@@ -431,6 +543,34 @@ export default function TagsPage() {
           onDelete={() => void performDelete()}
         />
       )}
+
+      {mergingTag !== null && tags !== undefined && (
+        <MergeTagDialog
+          source={mergingTag}
+          tags={tags}
+          onClose={cancelMerge}
+          onMerged={performMerge}
+          onStale={staleMerge}
+        />
+      )}
+
+      {synonymsTagId !== null &&
+        (() => {
+          const synonymsTag = tags?.find((item) => item.id === synonymsTagId);
+          // 別のタブでの削除・統合と、staleSynonyms による一覧の取り直しの
+          // 間に、そのタグがもう一覧に無い一瞬がありうる。窓はまだ閉じ切って
+          // いないその一瞬だけ何も出さない。
+          if (synonymsTag === undefined) return null;
+          return (
+            <SynonymsDialog
+              tag={synonymsTag}
+              onClose={cancelSynonyms}
+              onTagUpdated={updateSynonymsTag}
+              onSynonymRemoved={removeSynonymFromTag}
+              onStale={staleSynonyms}
+            />
+          );
+        })()}
     </div>
   );
 }

@@ -1,16 +1,17 @@
-import { Ellipsis, Pencil, Trash2 } from "lucide-react";
+import { Ellipsis, Merge, Pencil, Tags as SynonymsIcon, Trash2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 
 import type { Tag } from "../api/tags";
 import { isComposingKeyEvent } from "../ui/Combobox";
 import IconButton from "../ui/IconButton";
-import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
+import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
 
 export interface TagRowRefs {
   nameLink: HTMLAnchorElement | null;
   renameButton: HTMLButtonElement | null;
+  synonymsButton: HTMLButtonElement | null;
   menuButton: HTMLButtonElement | null;
 }
 
@@ -20,7 +21,8 @@ export interface TagRowRefs {
  * 「改名」・「その他の操作」は出したままにし、行の高さも変えない
  * （行全体を作成の行のような別レイアウトに差し替えない）。削除は行に直接
  * 出さず「その他の操作」のメニューへ置く（UI品質「削除と統合を、作成・改名
- * より目立たせない」）。統合とシノニムは Issue 272 で足す。
+ * より目立たせない」）。「シノニム」は改名の右に直接置き、「別のタグへ
+ * 統合…」は「その他の操作」の先頭・区切り線の上に置く（ui-design.md「Rows」）。
  */
 export default function TagRow({
   tag,
@@ -32,6 +34,8 @@ export default function TagRow({
   onStartRename,
   onCancelRename,
   onSubmitRename,
+  onOpenSynonyms,
+  onOpenMerge,
   onDelete,
   onDraftChange,
 }: {
@@ -45,6 +49,8 @@ export default function TagRow({
   onStartRename: (tag: Tag) => void;
   onCancelRename: () => void;
   onSubmitRename: (tag: Tag, name: string) => void;
+  onOpenSynonyms: (tag: Tag) => void;
+  onOpenMerge: (tag: Tag) => void;
   onDelete: (tag: Tag) => void;
   /** 値が変わるたびに呼ぶ。呼び出し元はこれで直前の失敗の表示を消す。 */
   onDraftChange?: () => void;
@@ -161,6 +167,15 @@ export default function TagRow({
         >
           <Pencil />
         </IconButton>
+        <IconButton
+          ref={(node) => registerRefs(tag.id, { synonymsButton: node })}
+          label="シノニム"
+          size="sm"
+          onClick={() => onOpenSynonyms(tag)}
+          disabled={renaming}
+        >
+          <SynonymsIcon />
+        </IconButton>
         <MenuRoot>
           <MenuTrigger asChild>
             <IconButton
@@ -173,6 +188,11 @@ export default function TagRow({
             </IconButton>
           </MenuTrigger>
           <MenuContent>
+            <MenuItem onSelect={() => onOpenMerge(tag)}>
+              <Merge />
+              別のタグへ統合…
+            </MenuItem>
+            <MenuSeparator />
             <MenuItem tone="danger" onSelect={() => onDelete(tag)}>
               <Trash2 />
               削除…
