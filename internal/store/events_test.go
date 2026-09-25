@@ -46,7 +46,7 @@ func TestCommitPublishesNothingWhenTransactionRollsBack(t *testing.T) {
 	if len(recorder.events) != 0 {
 		t.Fatalf("ロールバックした取引から発行した: %v", recorder.events)
 	}
-	if _, err := db.Library().GetVideo(context.Background(), videoID); err != nil {
+	if _, err := db.Library().GetVideo(context.Background(), domain.AudienceOwner, videoID); err != nil {
 		t.Fatalf("ロールバックしたのに動画が消えた: %v", err)
 	}
 }

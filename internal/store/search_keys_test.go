@@ -287,10 +287,8 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 00008（タグ）を先に戻してから、検査対象の00007を戻す。
-	if err := Down(ctx, db); err != nil {
-		t.Fatalf("tags Down に失敗した: %v", err)
-	}
+	// 00008 以降を先に戻してから、検査対象の00007を戻す。
+	downTo(t, db, 7)
 	if err := Down(ctx, db); err != nil {
 		t.Fatalf("Down に失敗した: %v", err)
 	}

@@ -65,13 +65,15 @@ func directChildConditionFor(alias string, windows bool) string {
 	return `instr(` + rest + `, char(` + strconv.Itoa(int(os.PathSeparator)) + `)) = 0`
 }
 
-// FolderLocations はフォルダ配下（深さを問わない）の、登録フォルダの下にある
-// 所在をすべて返す。集計は internal/domain の SummarizeFolder が行う。
-func (s *LibraryStore) FolderLocations(ctx context.Context, dir string) ([]domain.FolderLocation, error) {
+// FolderLocations はフォルダ配下（深さを問わない）の、見る人に見せてよい所在
+// （登録フォルダの下にあり、ゲストには公開の動画のもの）をすべて返す。集計は
+// internal/domain の SummarizeFolder が行うので、ゲストには公開の動画の所在から
+// 導いたフォルダと件数だけが現れる。
+func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error) {
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	rows, err := s.db.sql.QueryContext(ctx, `select l.path, l.video_id, videos.content_key, videos.thumbnail_state
 		from video_locations l join videos on videos.id = l.video_id
-		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+registeredLocationCondition("l"),
+		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience),
 		folderPrefix(dir))
 	if err != nil {
 		return nil, fmt.Errorf("フォルダの中身を読み出せません: %w", err)
@@ -94,13 +96,13 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, dir string) ([]domai
 	return locations, nil
 }
 
-// HasFolderLocations はフォルダ配下（深さを問わない）に、登録フォルダの下に
-// ある所在が1件でもあるかを返す。
-func (s *LibraryStore) HasFolderLocations(ctx context.Context, dir string) (bool, error) {
+// HasFolderLocations はフォルダ配下（深さを問わない）に、見る人に見せてよい
+// 所在が1件でもあるかを返す。
+func (s *LibraryStore) HasFolderLocations(ctx context.Context, audience domain.Audience, dir string) (bool, error) {
 	var found int
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from video_locations l
-		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+registeredLocationCondition("l")+`)`,
+		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience)+`)`,
 		folderPrefix(dir)).Scan(&found)
 	if err != nil {
 		return false, fmt.Errorf("フォルダの有無を確かめられません: %w", err)

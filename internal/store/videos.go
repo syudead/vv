@@ -16,15 +16,17 @@ import (
 )
 
 // videoColumns は domain.Video を組み立てるのに要る列である。
-// 並びは scanVideo と対応させる。
+// 並びは scanVideo と対応させる。代表の所在は {visible}（見る人に見せてよい所在）の
+// うちパスの最小の1件である。
 const videoColumnsTemplate = `videos.id,
-	(select path from video_locations l where video_id = videos.id and {registered} order by path limit 1) as path,
-	(select title from video_locations l where video_id = videos.id and {registered} order by path limit 1) as title,
-	(select size_bytes from video_locations l where video_id = videos.id and {registered} order by path limit 1) as size_bytes,
-	(select mtime from video_locations l where video_id = videos.id and {registered} order by path limit 1) as mtime,
+	(select path from video_locations l where video_id = videos.id and {visible} order by path limit 1) as path,
+	(select title from video_locations l where video_id = videos.id and {visible} order by path limit 1) as title,
+	(select size_bytes from video_locations l where video_id = videos.id and {visible} order by path limit 1) as size_bytes,
+	(select mtime from video_locations l where video_id = videos.id and {visible} order by path limit 1) as mtime,
 	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
 	videos.height, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
-	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.preview_state`
+	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.preview_state,
+	{public} as public`
 
 // registrationSeparators は、登録フォルダの下かどうかを調べるときに区切りとして
 // 扱う文字である。Windows では `/` と `\` の両方、それ以外の OS では `/` だけで、
@@ -62,8 +64,12 @@ func registeredVideoCondition(alias string) string {
 		registeredLocationCondition("l") + `)`
 }
 
-func videoColumns() string {
-	return strings.ReplaceAll(videoColumnsTemplate, "{registered}", registeredLocationCondition("l"))
+// videoColumns は見る人（audience）に見せてよい所在から代表を選ぶ列を返す。
+func videoColumns(audience domain.Audience) string {
+	return strings.NewReplacer(
+		"{visible}", visibleLocationCondition("l", audience),
+		"{public}", publicColumn,
+	).Replace(videoColumnsTemplate)
 }
 
 // VideoLocations は動画の所在をパスの順にすべて返す。配信と既定アプリで開く
@@ -92,18 +98,21 @@ func (s *LibraryStore) VideoLocations(ctx context.Context, videoID int64) ([]dom
 }
 
 // GetVideo は1件を返す。取り込みと閲覧が同じものを読むので、SQL は getVideo の
-// 1か所に置く。
+// 1か所に置く。取り込みは所有者として読む。
 func (s *IngestStore) GetVideo(ctx context.Context, id int64) (domain.Video, error) {
-	return getVideo(ctx, s.db.sql, id)
+	return getVideo(ctx, s.db.sql, domain.AudienceOwner, id)
 }
 
-func (s *LibraryStore) GetVideo(ctx context.Context, id int64) (domain.Video, error) {
-	return getVideo(ctx, s.db.sql, id)
+// GetVideo は見る人（audience）に見せる1件を返す。ゲストに見せない動画
+// （非公開の動画）は、存在しない動画と同じく domain.ErrNotFound にする。
+func (s *LibraryStore) GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error) {
+	return getVideo(ctx, s.db.sql, audience, id)
 }
 
-func getVideo(ctx context.Context, q rowQueryer, id int64) (domain.Video, error) {
-	//nolint:gosec // videoColumns は定数で、利用者の入力は混ざらない。
-	row := q.QueryRowContext(ctx, `select `+videoColumns()+` from videos where videos.id = ? and `+registeredVideoCondition("videos"), id)
+func getVideo(ctx context.Context, q rowQueryer, audience domain.Audience, id int64) (domain.Video, error) {
+	//nolint:gosec // videoColumns は定型の SQL だけを返し、利用者の入力は混ざらない。
+	row := q.QueryRowContext(ctx, `select `+videoColumns(audience)+` from videos where videos.id = ? and `+
+		visibleVideoCondition("videos", audience), id)
 
 	video, err := scanVideo(row)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -227,12 +236,14 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		unplayableReason, probeError             sql.NullString
 		playable                                 int
 		probeState, thumbnailState, previewState string
+		public                                   bool
 	)
 
 	err := row.Scan(
 		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &addedAt, &updatedAt,
 		&video.ContentKey, &durationMs, &width, &height, &container, &videoCodec, &audioCodec,
 		&playable, &unplayableReason, &probeState, &probeError, &thumbnailState, &previewState,
+		&public,
 	)
 	if err != nil {
 		return domain.Video{}, err
@@ -262,6 +273,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.ProbeError = probeError.String
 	video.ThumbnailState = domain.ThumbnailState(thumbnailState)
 	video.PreviewState = domain.PreviewState(previewState)
+	video.Public = public
 
 	return video, nil
 }

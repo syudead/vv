@@ -21,11 +21,13 @@ type CatalogIngestStore interface {
 	RetryProbe(ctx context.Context, id int64, seekThumbnailMissing bool) error
 }
 
-// CatalogIndexStore は関連動画を組み立てるためのライブラリ索引である。
+// CatalogIndexStore は関連動画を組み立てるためのライブラリ索引である。どの
+// 読み出しも見る人（domain.Audience）を取り、ゲストには公開の動画だけを返す
+// （specs/016-single-account-auth/data-model.md §3）。
 type CatalogIndexStore interface {
-	DirectVideoPaths(ctx context.Context, dir string) ([]domain.RelatedSibling, error)
-	VideosAddedNear(ctx context.Context, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error)
-	VideosByIDs(ctx context.Context, ids []int64) ([]domain.Video, error)
+	DirectVideoPaths(ctx context.Context, audience domain.Audience, dir string) ([]domain.RelatedSibling, error)
+	VideosAddedNear(ctx context.Context, audience domain.Audience, id int64, addedAt time.Time, limit int) ([]domain.RelatedNeighbor, error)
+	VideosByIDs(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error)
 }
 
 // ArtifactFiles は生成物が今あるかを答える。internal/artifacts の *Store が
@@ -128,19 +130,20 @@ func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (d
 //
 // 並べ方は internal/domain の OrderRelated が決める。ここは、代表の所在の
 // ディレクトリ直下の動画と、追加日時の近い動画を読み、選ばれた動画の本体を
-// 引くだけである。
-func (c *Catalog) RelatedVideos(ctx context.Context, video domain.Video) (domain.RelatedVideos, error) {
-	siblings, err := c.index.DirectVideoPaths(ctx, filepath.Dir(video.Path))
+// 引くだけである。どれも見る人（audience）として読むので、ゲストには公開の動画
+// だけが並ぶ。
+func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error) {
+	siblings, err := c.index.DirectVideoPaths(ctx, audience, filepath.Dir(video.Path))
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
-	neighbors, err := c.index.VideosAddedNear(ctx, video.ID, video.AddedAt, domain.MaxRelatedVideos)
+	neighbors, err := c.index.VideosAddedNear(ctx, audience, video.ID, video.AddedAt, domain.MaxRelatedVideos)
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
 	order := domain.OrderRelated(domain.RelatedSelf{VideoID: video.ID, Path: video.Path, AddedAt: video.AddedAt},
 		siblings, neighbors)
-	items, err := c.index.VideosByIDs(ctx, order.IDs)
+	items, err := c.index.VideosByIDs(ctx, audience, order.IDs)
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
