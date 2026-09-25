@@ -22,6 +22,10 @@ type LibraryPage struct {
 	Limit int
 	// MissingTagIDs は VideoQuery.TagIDs のうちいまタグとして存在しなかった id。
 	MissingTagIDs []int64
+	// Roots は登録フォルダの一覧である。項目と同じ読み取りスナップショットから読むので、
+	// グループのフォルダはどれもこの中の登録フォルダの下にある（索引は登録フォルダの
+	// 変更と同じ取引で作り直される）。応答の VideoFolder はこれから作る。
+	Roots []MediaFolder
 }
 
 // LibraryGroup はグループの項目である。値はどれも、絞り込みに関係なく、見る人に

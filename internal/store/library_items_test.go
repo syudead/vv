@@ -108,6 +108,15 @@ func libraryPages(t *testing.T, db *DB, audience domain.Audience, q domain.Video
 			t.Fatalf("%+v: %v", q, err)
 		}
 		out = append(out, page.Items...)
+		// グループのフォルダは、同じスナップショットの登録フォルダの下にある。
+		for _, item := range page.Items {
+			if item.Group == nil {
+				continue
+			}
+			if _, ok := domain.LocateFolder(page.Roots, item.Group.Path); !ok {
+				t.Errorf("%+v: グループ %s が登録フォルダ %+v の下に無い", q, item.Group.Path, page.Roots)
+			}
+		}
 		if page.NextCursor == "" {
 			if page.Total != len(out) {
 				t.Errorf("%+v: total = %d, items = %d", q, page.Total, len(out))

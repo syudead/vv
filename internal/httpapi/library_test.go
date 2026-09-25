@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/url"
 	"os"
@@ -42,15 +43,22 @@ type libraryFixture struct {
 
 func newLibraryFixture(t *testing.T) *libraryFixture {
 	t.Helper()
+	return newLibraryFixtureWith(t, func(options Options) Options { return options })
+}
+
+// newLibraryFixtureWith は newLibraryFixture と同じ中身を、経路の問い合わせ先を
+// adjust で差し替えて作る。
+func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryFixture {
+	t.Helper()
 	ctx := context.Background()
 	mediaDir := t.TempDir()
 	f := &libraryFixture{ids: map[string]int64{}}
 	f.env = newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
 		library := db.Library()
-		return Options{
+		return adjust(Options{
 			Videos: library, Folders: library, Library: library,
 			Playback: db.Playback(), Tags: db.Tags(), Visibility: db.Visibility(),
-		}
+		})
 	})
 	db := f.env.db
 	f.owner = f.env.setup()
@@ -215,6 +223,58 @@ func TestListLibraryForOwner(t *testing.T) {
 	}
 	if rec := f.env.get("/api/library?query="+strings.Repeat("a", 101), f.owner); rec.Code != http.StatusBadRequest {
 		t.Errorf("長すぎる検索語: status = %d", rec.Code)
+	}
+}
+
+// failingRootsFolders は登録フォルダの一覧だけを読めないフォルダの問い合わせ先である。
+type failingRootsFolders struct{ Folders }
+
+func (failingRootsFolders) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
+	return nil, errors.New("登録フォルダを読めない")
+}
+
+// strayGroupLibrary は、登録フォルダの下に無いフォルダのグループを返す、索引の
+// 食い違った問い合わせ先である。
+type strayGroupLibrary struct{ LibraryItems }
+
+func (l strayGroupLibrary) ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error) {
+	page, err := l.LibraryItems.ListLibrary(ctx, audience, q)
+	for i := range page.Items {
+		if page.Items[i].Group != nil {
+			group := *page.Items[i].Group
+			group.Path = "/not-registered/" + group.Name
+			page.Items[i].Group = &group
+		}
+	}
+	return page, err
+}
+
+// 一覧の項目・total・カーソルと、グループの folder は同じスナップショットから作る。
+// 登録フォルダを別に読めなくてもグループは落ちず、登録フォルダの下に無いグループは
+// 黙って落とさずに 500 にする（items が total と食い違わない）。
+func TestListLibraryResolvesGroupFoldersFromSameSnapshot(t *testing.T) {
+	f := newLibraryFixtureWith(t, func(options Options) Options {
+		options.Folders = failingRootsFolders{options.Folders}
+		return options
+	})
+	rec := f.env.get("/api/library", f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	page := decode[gen.LibraryPage](t, rec)
+	if names := libraryItemNames(page); !slices.Equal(names, []string{"group:pair", "group:show", "solo"}) || page.Total != 3 {
+		t.Fatalf("項目 = %v・total %d", names, page.Total)
+	}
+	if show := libraryGroupNamed(t, page, "show"); show.Folder.RootId != f.rootID || show.Folder.Path != "show" {
+		t.Errorf("folder = %+v", show.Folder)
+	}
+
+	stray := newLibraryFixtureWith(t, func(options Options) Options {
+		options.Library = strayGroupLibrary{options.Library}
+		return options
+	})
+	if rec := stray.env.get("/api/library", stray.owner); rec.Code != http.StatusInternalServerError {
+		t.Errorf("登録フォルダの下に無いグループ: status = %d: %s", rec.Code, rec.Body)
 	}
 }
 

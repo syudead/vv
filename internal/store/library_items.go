@@ -154,7 +154,7 @@ func itemOrder(sort domain.VideoSort) listOrder {
 // （GET /api/library、contracts/library-api.md §1）。条件（視聴状態・並べ替え・
 // タグ）をゲストが使えるかは呼び出し側が domain.Audience.CheckVideoQuery で確かめる。
 //
-// タグの存在確認・件数・ページの項目・グループのメンバーを同じ読み取り
+// タグの存在確認・件数・ページの項目・グループのメンバー・登録フォルダを同じ読み取り
 // スナップショット（s.db.read の1取引）から返す。
 func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -175,10 +175,15 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
+	roots, err := listMediaFolders(ctx, tx)
+	if err != nil {
+		return domain.LibraryPage{}, err
+	}
 	if err := tx.Commit(); err != nil {
 		return domain.LibraryPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
 	}
 	page.MissingTagIDs = missingTagIDs
+	page.Roots = roots
 	return page, nil
 }
 

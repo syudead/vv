@@ -3,7 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"log/slog"
+	"fmt"
 	"net/http"
 
 	"github.com/syudead/vv/internal/domain"
@@ -50,7 +50,10 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		return
 	}
 
-	roots := s.registeredRoots(r.Context())
+	// 登録フォルダは項目と同じスナップショットから読んだものを使う。別に読むと、
+	// 読み取りの失敗や間に確定した登録フォルダの解除で、total とカーソルに数えた
+	// グループを応答から落としてしまう。
+	roots := page.Roots
 	// 再生位置は動画の項目とグループの cover にだけ載せる。グループの視聴の値は保存層が
 	// 決めているので、全メンバーの再生位置は引かない（ページのメンバーが多いと引数の
 	// 上限に掛かる）。タグは全メンバーの和集合を載せるので、全メンバーを引く。
@@ -75,9 +78,11 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		}
 		group, ok := lookup.group(r.Context(), audience, roots, *item.Group)
 		if !ok {
-			// 登録フォルダを外した直後など、フォルダを引けないグループは指せないので出さない。
-			s.logger.Warn("グループのフォルダを登録フォルダから引けません", slog.String("path", item.Group.Path))
-			continue
+			// 同じスナップショットの登録フォルダの下に無いグループは索引の不整合である。
+			// 黙って落とすと items が total・カーソルと食い違うので、要求を失敗させる。
+			s.internalError(w, "一覧を取得できませんでした",
+				fmt.Errorf("グループのフォルダを登録フォルダから引けません: %s", item.Group.Path))
+			return
 		}
 		payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindGroup, Group: &group})
 	}
