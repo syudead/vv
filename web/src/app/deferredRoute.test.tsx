@@ -2,11 +2,20 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { deferredRoute } from "./deferredRoute";
+import { deferredRoute, matchesPath } from "./deferredRoute";
 
 function Page() {
   return <p>読み込んだ画面</p>;
 }
+
+describe("matchesPath", () => {
+  it("React Router と同じく大文字と小文字を区別せず、その下の場所も当てる", () => {
+    expect(matchesPath("/TAGS", "/tags")).toBe(true);
+    expect(matchesPath("/Folders/1/a", "/folders")).toBe(true);
+    expect(matchesPath("/tagsx", "/tags")).toBe(false);
+    expect(matchesPath("/", "/tags")).toBe(false);
+  });
+});
 
 describe("deferredRoute", () => {
   afterEach(() => window.history.replaceState({}, "", "/"));

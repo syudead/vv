@@ -6,9 +6,14 @@ import { EmptyState } from "../videoList/states";
 
 type PageModule = { default: ComponentType };
 
-/** matchesPath は pathname が path そのものか、その下の場所かを返す。 */
-function matchesPath(pathname: string, path: string) {
-  return pathname === path || pathname.startsWith(`${path}/`);
+/**
+ * matchesPath は pathname が path そのものか、その下の場所かを返す。React Router
+ * の route と同じく、大文字と小文字を区別しない。
+ */
+export function matchesPath(pathname: string, path: string) {
+  const normalized = pathname.toLowerCase();
+  const target = path.toLowerCase();
+  return normalized === target || normalized.startsWith(`${target}/`);
 }
 
 /** RouteLoadFailed は画面の部品を読み込めなかったときに画面の代わりに出す。 */
