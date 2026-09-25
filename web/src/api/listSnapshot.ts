@@ -135,6 +135,27 @@ export function applyProgressToListSnapshot(videoId: number, progress: Progress)
 }
 
 /**
+ * applyVisibilityToListSnapshot は控えの中の動画たちの公開フラグを差し替える。
+ * 公開・非公開の切り替えの直後に、控えを取り直さず結果を反映するために使う
+ * （タグの付け外しの applyTagToListSnapshot と同じ扱い）。
+ */
+export function applyVisibilityToListSnapshot(
+  videoIds: readonly number[],
+  isPublic: boolean,
+): void {
+  if (held === undefined) return;
+  const targets = new Set(videoIds);
+  if (!held.items.some((video) => targets.has(video.id) && video.public !== isPublic))
+    return;
+  held = {
+    ...held,
+    items: held.items.map((video) =>
+      targets.has(video.id) ? { ...video, public: isPublic } : video,
+    ),
+  };
+}
+
+/**
  * clearListSnapshot は控えを捨てる。取り込みが終わって一覧を読み直すときに
  * 呼ぶ — 取り込む前の一覧に戻してはならない（data-model.md 2.）。
  */

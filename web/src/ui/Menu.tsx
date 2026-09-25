@@ -12,16 +12,19 @@ export const MenuTrigger = Dropdown.Trigger;
 export function MenuContent({
   children,
   align = "end",
+  side = "bottom",
   className,
 }: {
   children: ReactNode;
   align?: "start" | "center" | "end";
+  side?: "top" | "bottom" | "left" | "right";
   className?: string;
 }) {
   return (
     <Dropdown.Portal>
       <Dropdown.Content
         align={align}
+        side={side}
         sideOffset={6}
         collisionPadding={8}
         className={cn(

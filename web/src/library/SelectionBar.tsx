@@ -1,4 +1,4 @@
-import { CircleDashed, Minus, Plus, X } from "lucide-react";
+import { ChevronDown, CircleDashed, Globe, Lock, Minus, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
@@ -15,10 +15,12 @@ import {
   type VideoTagsSummary,
 } from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
+import { updateVideoVisibility } from "../api/visibility";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import IconButton from "../ui/IconButton";
+import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useToast } from "../ui/Toast";
 
@@ -35,8 +37,12 @@ function isTagNotFound(error: unknown): boolean {
  * ポップオーバーを開いたまま選択が増える（例:「すべて選択」の応答が届く）と
  * 送れてしまうため、ポップオーバー自身も閉じ・その場の送信も selectedIds の
  * 最新の件数で確かめて理由を示す（Devin の指摘）。
+ *
+ * 公開の一括の切り替え（`PUT /api/video-visibility`）も同じ上限・同じ全部か無しかで
+ * （specs/016-single-account-auth/contracts/guest-api.md §4）、同じ理由を添える
+ * （ui-design.md「Selection bar」）。そのため文言はタグに限らない言い方にする。
  */
-const overLimitMessage = `タグの一括操作は ${maxVideoTagsSelection.toLocaleString("ja-JP")} 件までです`;
+const overLimitMessage = `一括操作は ${maxVideoTagsSelection.toLocaleString("ja-JP")} 件までです`;
 
 /** buildAddOptions は「タグを付ける」の候補（全タグ、各行の右に本数）を作る。 */
 function buildAddOptions(
@@ -511,6 +517,70 @@ function RemoveTagPopover({
   );
 }
 
+/**
+ * VisibilityMenu は選択バーの「公開」である（specs/016-single-account-auth/ui-design.md
+ * 「Visibility toggle」の「Selection bar」）。選んだ動画の今の状態は示さず、
+ * 「公開にする」「非公開にする」の両方を常に押せる。確定したらトーストで結果を伝え、
+ * 選択は残す。カードの印は応答の通知（api/visibility.ts）で一覧が差し替える。
+ */
+function VisibilityMenu({
+  selectedIds,
+  overLimit,
+  overLimitId,
+  className,
+}: {
+  selectedIds: readonly number[];
+  overLimit: boolean;
+  overLimitId: string;
+  className?: string;
+}) {
+  const toast = useToast();
+
+  function apply(isPublic: boolean) {
+    // 送る直前に選択の最新の件数を確かめる（タグの一括操作と同じ理由。上限を超えると
+    // 全部か無しかで 400 になる）。
+    if (selectedIds.length > maxVideoTagsSelection) {
+      toast(overLimitMessage);
+      return;
+    }
+    void updateVideoVisibility(selectedIds, isPublic).then(
+      (result) => {
+        toast(`${String(result.applied)} 件を${isPublic ? "公開" : "非公開"}にしました`);
+      },
+      () => toast("変更できませんでした"),
+    );
+  }
+
+  return (
+    <MenuRoot>
+      <MenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={className}
+          disabled={overLimit}
+          title={overLimit ? overLimitMessage : undefined}
+          aria-describedby={overLimit ? overLimitId : undefined}
+        >
+          <Globe aria-hidden="true" />
+          公開
+          <ChevronDown aria-hidden="true" />
+        </Button>
+      </MenuTrigger>
+      <MenuContent side="top" align="start">
+        <MenuItem onSelect={() => apply(true)}>
+          <Globe aria-hidden="true" />
+          公開にする
+        </MenuItem>
+        <MenuItem onSelect={() => apply(false)}>
+          <Lock aria-hidden="true" />
+          非公開にする
+        </MenuItem>
+      </MenuContent>
+    </MenuRoot>
+  );
+}
+
 export interface SelectionBarProps {
   count: number;
   /** 今の条件に合う全件数（サーバーの total）。「すべて選択」の disabled 判定に使う。 */
@@ -583,7 +653,16 @@ export default function SelectionBar({
       aria-label="選択中の操作"
       className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4"
     >
-      <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md bg-elevated p-1.5 shadow-elevated animate-slide-up sm:h-11 sm:w-auto sm:flex-nowrap sm:py-0 sm:pr-1.5 sm:pl-4">
+      {/*
+       * sm 未満の2段では、下の段を「タグを付ける」「タグを外す」「公開」の3つで
+       * 等分する。3つが1行に収まらない幅（360px など）では、3つの幅を auto にし、
+       * 「公開」をアイコン + 文言のまま右端に置く（ui-design.md「Selection bar」）。
+       * 収まるかどうかはこのバーの幅で決まるので、sm 未満でだけバーを
+       * コンテナにして問い合わせる（sm 以上では幅が内容で決まるので、
+       * コンテナにすると幅が 0 に潰れる）。22.75rem は3つの最小の幅と間隔の和
+       * （116px × 3 + 8px × 2）である。
+       */}
+      <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md bg-elevated p-1.5 shadow-elevated animate-slide-up max-sm:@container sm:h-11 sm:w-auto sm:flex-nowrap sm:py-0 sm:pr-1.5 sm:pl-4">
         <span
           role="status"
           aria-live="polite"
@@ -608,7 +687,7 @@ export default function SelectionBar({
               ref={addTriggerRef}
               variant="ghost"
               size="sm"
-              className="order-5 max-sm:flex-1 sm:order-2"
+              className="order-5 max-sm:flex-1 max-sm:@max-[22.75rem]:flex-none sm:order-2"
               disabled={overLimit}
               title={overLimit ? overLimitMessage : undefined}
               aria-describedby={overLimit ? overLimitId : undefined}
@@ -630,7 +709,7 @@ export default function SelectionBar({
             <Button
               variant="ghost"
               size="sm"
-              className="order-6 max-sm:flex-1 sm:order-3"
+              className="order-6 max-sm:flex-1 max-sm:@max-[22.75rem]:flex-none sm:order-3"
               disabled={overLimit}
               title={overLimit ? overLimitMessage : undefined}
               aria-describedby={overLimit ? overLimitId : undefined}
@@ -646,6 +725,12 @@ export default function SelectionBar({
             onRemoved={onTagRemoved}
           />
         </PopoverRoot>
+        <VisibilityMenu
+          selectedIds={selectedIds}
+          overLimit={overLimit}
+          overLimitId={overLimitId}
+          className="order-7 max-sm:flex-1 max-sm:@max-[22.75rem]:ml-auto max-sm:@max-[22.75rem]:flex-none sm:order-4"
+        />
         {overLimit && (
           <span id={overLimitId} className="sr-only">
             {overLimitMessage}
@@ -654,7 +739,7 @@ export default function SelectionBar({
 
         <span
           aria-hidden="true"
-          className={cn("hidden h-5 w-px bg-border-strong sm:order-4 sm:block")}
+          className={cn("hidden h-5 w-px bg-border-strong sm:order-5 sm:block")}
         />
 
         <Button
@@ -662,7 +747,7 @@ export default function SelectionBar({
           size="sm"
           onClick={onSelectAll}
           disabled={selectingAll || count >= total}
-          className="order-2 sm:order-5"
+          className="order-2 sm:order-6"
         >
           {selectingAll ? "選択中…" : "すべて選択"}
         </Button>
@@ -670,7 +755,7 @@ export default function SelectionBar({
           label="選択を解除 (Esc)"
           size="sm"
           onClick={onClear}
-          className="order-3 sm:order-6"
+          className="order-3 sm:order-7"
         >
           <X />
         </IconButton>

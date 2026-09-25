@@ -122,6 +122,42 @@ describe("useVideoDetail", () => {
     expect(result.current.state).toMatchObject({ video: { previewState: "done" } });
   });
 
+  it("公開を切り替える前に始めた取り直しが後から届いても、公開の表示を巻き戻さない", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ applied: 1 }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      ),
+    );
+    const { updateVideoVisibility } = await import("./visibility");
+    let answer: ((video: Video) => void) | undefined;
+    getVideo
+      .mockResolvedValueOnce(done)
+      .mockImplementationOnce(() => new Promise<Video>((resolve) => (answer = resolve)));
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
+    await flush();
+    expect(result.current.state).toMatchObject({ video: { public: false } });
+
+    // 処理状態の知らせで取り直しが始まり、その応答の前に公開へ切り替わる。
+    await emitServerEvent("video", { id: 7 });
+    expect(getVideo).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await updateVideoVisibility([7], true);
+    });
+    expect(result.current.state).toMatchObject({ video: { public: true } });
+
+    // 切り替える前に読んだ内容（public: false）が遅れて届く。
+    await act(async () => answer?.({ ...done, previewState: "pending" }));
+    expect(result.current.state).toMatchObject({
+      video: { public: true, previewState: "pending" },
+    });
+  });
+
   it("知らせの接続をつなぎ直したら、切れていた間の変化を取り戻す", async () => {
     getVideo
       .mockResolvedValueOnce({ ...done, thumbnailState: "pending" })

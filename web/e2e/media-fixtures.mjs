@@ -428,7 +428,8 @@ export function generateSearchFixtures(root) {
 
 /**
  * generateGuestFixtures は、ゲストの画面（specs/016-single-account-auth、子 #304）を
- * 確かめるための動画を6本作る（web/e2e/guest.e2e.ts）。「公開あり」の5本のうち
+ * 確かめるための動画を6本と、画面写真の本数を満たす非公開の6本を作る
+ * （web/e2e/guest.e2e.ts）。「公開あり」の5本のうち
  * 4本（A・B・E・F）を所有者が公開にし、C と「非公開だけ」の D は非公開のままにする。
  * 再生の途中で操作できるよう 12 秒にし、中身で同じ動画とみなされないよう色合いを変える。
  */
@@ -456,4 +457,10 @@ export function generateGuestFixtures(root) {
   clip(path.join(shown, "ゲスト公開F.mp4"), 220);
   clip(path.join(shown, "ゲスト非公開C.mp4"), 280);
   clip(path.join(hidden, "ゲスト非公開D.mp4"), 340);
+  // 画面写真を ui-design.md「Visual review criteria」の「12 本以上、うち 4 本が公開」で
+  // 撮るための、非公開のままの6本。題名に「ゲスト」を含めず、上の6本を題名で
+  // 数える確かめに混ざらないようにする。
+  for (const [index, name] of ["G", "H", "I", "J", "K", "L"].entries()) {
+    clip(path.join(hidden, `確認用${name}.mp4`), 20 + index * 55);
+  }
 }

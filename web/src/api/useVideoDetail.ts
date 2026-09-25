@@ -11,6 +11,11 @@ import {
   type Video,
 } from "./client";
 import { subscribeServerEvents } from "./serverEvents";
+import {
+  subscribeVideoVisibility,
+  visibilityMark,
+  withVisibilitySince,
+} from "./visibility";
 
 export type VideoDetailState =
   | { kind: "loading"; id: number }
@@ -79,8 +84,11 @@ export function useVideoDetail(id: number): {
       controller?.abort();
       const mine = new AbortController();
       controller = mine;
+      // 取得の間に公開を切り替えたら、切り替える前の `public` を読んだ応答で
+      // 表示を巻き戻さない（切り替えはサーバーから知らせが来ない。PR 328）。
+      const mark = visibilityMark();
       try {
-        const video = await getVideo(id, mine.signal);
+        const video = withVisibilitySince(await getVideo(id, mine.signal), mark);
         if (!alive || controller !== mine) return;
         current = video;
         setState({ kind: "ready", id, video });
@@ -110,6 +118,15 @@ export function useVideoDetail(id: number): {
         void load();
       });
 
+    // 公開・非公開の切り替えの結果は、取り直さずに手元の1件へ重ねる
+    // （issue 305。再生画面の切り替えは応答を受けてからこれで状態が変わる）。
+    const unsubscribeVisibility = subscribeVideoVisibility((videoIds, isPublic) => {
+      if (current === undefined || !videoIds.includes(id)) return;
+      if (current.public === isPublic) return;
+      current = { ...current, public: isPublic };
+      setState({ kind: "ready", id, video: current });
+    });
+
     // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
     const unsubscribe = owner
       ? subscribeServerEvents({
@@ -124,6 +141,7 @@ export function useVideoDetail(id: number): {
       alive = false;
       controller?.abort();
       unsubscribe();
+      unsubscribeVisibility();
       settle();
     };
   }, [id, owner]);

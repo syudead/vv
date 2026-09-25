@@ -870,3 +870,130 @@ describe("useVideos の準備の反映", () => {
     expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([]);
   });
 });
+
+// 公開・非公開の切り替えの後の一覧（issue 305）。読み直さず、該当の項目の public を差し替える。
+describe("useVideos の公開の反映", () => {
+  function stubVisibility() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ applied: 1 }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      ),
+    );
+  }
+
+  it("切り替えの応答を受けて、表示中の該当の項目の public だけを書き換え、読み直さない", async () => {
+    stubVisibility();
+    const { updateVideoVisibility } = await import("./visibility");
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2, 3])));
+
+    await act(async () => {
+      await updateVideoVisibility([1, 3], true);
+    });
+    expect(result.current.items.map((video) => video.public)).toEqual([
+      true,
+      false,
+      true,
+    ]);
+    expect(calls).toHaveLength(1);
+    expect(getVideo).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await updateVideoVisibility([3], false);
+    });
+    expect(result.current.items.map((video) => video.public)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    vi.unstubAllGlobals();
+  });
+
+  it("ページの取得中に届いた切り替えは、その動画を含むページが届いたときに重ねる", async () => {
+    stubVisibility();
+    const { updateVideoVisibility } = await import("./visibility");
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2], "next")));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await act(async () => {
+      await updateVideoVisibility([3], true);
+    });
+    await act(async () => calls[1]?.resolve(page([3])));
+
+    await waitFor(() =>
+      expect(result.current.items.find((video) => video.id === 3)?.public).toBe(true),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("ページの取得中に 500 件を超える一括の切り替えがあっても、遅れて届いたページで印を戻さない", async () => {
+    stubVisibility();
+    const { updateVideoVisibility } = await import("./visibility");
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1000], "next")));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    // 続きの 60 件を取りに行っている間に、ID 1〜600 を公開にする。
+    const ids = Array.from({ length: 600 }, (_, index) => index + 1);
+    await act(async () => {
+      await updateVideoVisibility(ids, true);
+    });
+    // 切り替える前の内容（public: false）のページが後から届く。
+    await act(async () =>
+      calls[1]?.resolve(page(Array.from({ length: 60 }, (_, index) => index + 1))),
+    );
+
+    await waitFor(() => expect(result.current.items).toHaveLength(61));
+    expect(
+      result.current.items
+        .filter((video) => video.id <= 60)
+        .every((video) => video.public),
+    ).toBe(true);
+    vi.unstubAllGlobals();
+  });
+
+  it("切り替えの前に始めた1件の取り直しが後から届いても、公開を巻き戻さない", async () => {
+    stubVisibility();
+    const { updateVideoVisibility } = await import("./visibility");
+    let answer: ((video: Video) => void) | undefined;
+    getVideo.mockImplementation(
+      () => new Promise<Video>((resolve) => (answer = resolve)),
+    );
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([701, 702])));
+
+    // 動画 701 が変わった知らせで取り直しが始まる。
+    await emitServerEvent("video", { id: 701 });
+    await waitFor(() => expect(getVideo).toHaveBeenCalledOnce());
+    await act(async () => {
+      await updateVideoVisibility([701], true);
+    });
+    expect(result.current.items[0]?.public).toBe(true);
+
+    // 切り替える前に読んだ内容が遅れて届く。
+    await act(async () => answer?.({ ...item(701), title: "新しい題名" }));
+    expect(result.current.items[0]?.public).toBe(true);
+    vi.unstubAllGlobals();
+  });
+});

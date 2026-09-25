@@ -15,7 +15,8 @@ import { ownerAccount } from "./owner-account";
 // ゲスト（未ログイン）の画面（specs/016-single-account-auth、子 #304、ui-design.md
 // 「Guest degradation」「Top bar」「Gate」）を実ブラウザに通す。動画は run-e2e.mjs が
 // generateGuestFixtures で作る6本で、所有者が「公開あり」の A・B・E・F を公開にし、
-// 同じフォルダの C と「非公開だけ」の D は非公開のままにする。
+// 同じフォルダの C と「非公開だけ」の D は非公開のままにする。「非公開だけ」には
+// 画面写真の本数を満たすための非公開の6本（確認用G〜L）も置く。
 //
 // ほかの e2e が登録したフォルダの動画はどれも非公開なので、ゲストに見えるのは
 // ここで公開にした4本だけである。
@@ -37,6 +38,9 @@ const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 const screenshotDir = process.env.MDM_E2E_SCREENSHOT_DIR;
 const publicTitles = ["ゲスト公開A", "ゲスト公開B", "ゲスト公開E", "ゲスト公開F"];
 const privateTitles = ["ゲスト非公開C", "ゲスト非公開D"];
+// 画面写真の本数（ui-design.md「Visual review criteria」の 12 本以上）を満たすための、
+// 非公開のままの6本。題名で数える確かめに混ざらないよう「ゲスト」を含めない。
+const fillerTitles = ["確認用G", "確認用H", "確認用I", "確認用J", "確認用K", "確認用L"];
 const videos = new Map<string, Video>();
 let folder: MediaFolder | undefined;
 
@@ -60,16 +64,22 @@ async function waitForScan(request: APIRequestContext, scanId: number) {
 }
 
 /** guestContext は Cookie を持たないブラウザを開く。 */
-function guestContext(browser: Browser): Promise<BrowserContext> {
-  return browser.newContext({ storageState: { cookies: [], origins: [] } });
+function guestContext(
+  browser: Browser,
+  viewport?: { width: number; height: number },
+): Promise<BrowserContext> {
+  return browser.newContext({ storageState: { cookies: [], origins: [] }, viewport });
 }
 
 /**
  * ownerContext は、既存の e2e が使う所有者のセッションとは別に、自分でログインした
  * ブラウザを開く。ここでログアウトしても、ほかの e2e のセッションは続く。
  */
-async function ownerContext(browser: Browser): Promise<BrowserContext> {
-  const context = await guestContext(browser);
+async function ownerContext(
+  browser: Browser,
+  viewport?: { width: number; height: number },
+): Promise<BrowserContext> {
+  const context = await guestContext(browser, viewport);
   const login = await context.request.post("/api/auth/login", {
     headers: mutationHeaders,
     data: ownerAccount,
@@ -126,13 +136,17 @@ test.describe.serial("guest", () => {
     expect(scan.status()).toBe(202);
     await waitForScan(request, ((await scan.json()) as { id: number }).id);
 
-    const titles = [...publicTitles, ...privateTitles];
+    const titles = [...publicTitles, ...privateTitles, ...fillerTitles];
     await expect
       .poll(
         async () => {
-          const response = await request.get("/api/videos?limit=200&query=ゲスト");
-          const page = (await response.json()) as { items: Video[] };
-          for (const item of page.items) videos.set(item.title, item);
+          for (const query of ["ゲスト", "確認用"]) {
+            const response = await request.get(
+              `/api/videos?limit=200&query=${encodeURIComponent(query)}`,
+            );
+            const page = (await response.json()) as { items: Video[] };
+            for (const item of page.items) videos.set(item.title, item);
+          }
           return titles.every((title) => {
             const found = videos.get(title);
             return found?.probeState === "done" && found.thumbnailState !== "pending";
@@ -364,6 +378,98 @@ test.describe.serial("guest", () => {
     await context.close();
   });
 
+  // 公開の切り替え（子 #305、ui-design.md「Visibility toggle」）。所有者が再生画面から
+  // 1本を、選択バーから複数本を公開にすると、別のブラウザのゲストの一覧に現れ、
+  // 非公開に戻すと消える。再スキャンの後も公開のままである。終わったら公開の
+  // 組を最初の4本に戻す。
+  test("所有者が再生画面と選択バーで切り替えた公開が、別のブラウザのゲストの一覧に反映される", async ({
+    browser,
+    request,
+  }) => {
+    test.setTimeout(180_000);
+    const owner = await ownerContext(browser);
+    const ownerPage = await owner.newPage();
+    const guest = await guestContext(browser);
+    const guestPage = await guest.newPage();
+    const guestSees = async () => {
+      await guestPage.goto("/");
+      return cardTitles(guestPage);
+    };
+    const withC = [...publicTitles, "ゲスト非公開C"].sort();
+    const withCD = [...publicTitles, ...privateTitles].sort();
+
+    // 再生画面: キーボードだけで「非公開」→ Space →「公開中」（キーボード確認の手順 4）。
+    await ownerPage.goto(`/videos/${String(video("ゲスト非公開C").id)}`);
+    const toggle = ownerPage.getByRole("switch", {
+      name: "ログインしていない人に公開する",
+    });
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect(toggle).toHaveText("非公開");
+    await toggle.focus();
+    const sent = ownerPage.waitForRequest(
+      (req) => req.method() === "PUT" && req.url().endsWith("/api/video-visibility"),
+    );
+    await ownerPage.keyboard.press("Space");
+    expect((await sent).postDataJSON()).toEqual({
+      videoIds: [video("ゲスト非公開C").id],
+      public: true,
+    });
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+    await expect(toggle).toHaveText("公開中");
+    // 送信の間もフォーカスは切り替えに残る。
+    await expect(toggle).toBeFocused();
+    await expect.poll(guestSees).toEqual(withC);
+
+    // もう一度 Space で戻すと、ゲストの一覧から消える。
+    await ownerPage.keyboard.press("Space");
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+    await expect.poll(guestSees).toEqual(publicTitles);
+
+    // 選択バー: C と D を選んで「公開」→「公開にする」（キーボード確認の手順 5）。
+    await ownerPage.goto(`/?q=${encodeURIComponent("ゲスト")}`);
+    await expect.poll(() => cardTitles(ownerPage)).toEqual(withCD);
+    for (const title of privateTitles) {
+      await ownerPage.getByRole("checkbox", { name: `「${title}」を選択` }).check();
+    }
+    const bar = ownerPage.getByRole("region", { name: "選択中の操作" });
+    await bar.getByRole("button", { name: "公開" }).focus();
+    await ownerPage.keyboard.press("Enter");
+    const menu = ownerPage.getByRole("menu");
+    await expect(menu.getByRole("menuitem")).toHaveText(["公開にする", "非公開にする"]);
+    await expect(
+      menu.getByRole("menuitem", { name: "公開にする", exact: true }),
+    ).toBeFocused();
+    await ownerPage.keyboard.press("Enter");
+    await expect(ownerPage.getByText("2 件を公開にしました")).toBeVisible();
+    // 選択は残り、カードの右下に公開の印が出る。
+    await expect(bar.getByText("2 件を選択中")).toBeVisible();
+    for (const title of privateTitles) {
+      const card = ownerPage.locator("article").filter({ hasText: title });
+      await expect(card.locator(".lucide-globe")).toHaveCount(1);
+      await expect(card.getByText("公開", { exact: true })).toHaveCount(1);
+    }
+    await expect.poll(guestSees).toEqual(withCD);
+
+    // 再スキャンの後も公開のままである。
+    const scan = await request.post("/api/scans", { headers: mutationHeaders, data: {} });
+    expect(scan.status()).toBe(202);
+    await waitForScan(request, ((await scan.json()) as { id: number }).id);
+    await expect.poll(guestSees).toEqual(withCD);
+
+    // 非公開に戻すと消える。
+    await bar.getByRole("button", { name: "公開" }).click();
+    await ownerPage.getByRole("menuitem", { name: "非公開にする", exact: true }).click();
+    await expect(ownerPage.getByText("2 件を非公開にしました")).toBeVisible();
+    for (const title of privateTitles) {
+      const card = ownerPage.locator("article").filter({ hasText: title });
+      await expect(card.locator(".lucide-globe")).toHaveCount(0);
+    }
+    await expect.poll(guestSees).toEqual(publicTitles);
+
+    await owner.close();
+    await guest.close();
+  });
+
   test("画面写真（MDM_E2E_SCREENSHOT_DIR があるときだけ）", async ({ browser }) => {
     test.skip(screenshotDir === undefined, "画面写真の置き場が無い");
     if (screenshotDir === undefined) return;
@@ -441,6 +547,76 @@ test.describe.serial("guest", () => {
       await expect(page.getByText("公開されている動画はありません")).toBeVisible();
       await shot(page, "folders-empty", width);
       await context.close();
+    }
+
+    // 所有者の公開の切り替え（子 #305、ui-design.md「Visual review criteria」）。
+    for (const width of [360, 768, 1280]) {
+      const owner = await ownerContext(browser, { width, height: 800 });
+      const page = await owner.newPage();
+      const ownerShot = (name: string, fullPage = false) =>
+        page.screenshot({
+          path: path.join(
+            screenshotDir,
+            `20260925-visibility-${name}-${String(width)}.png`,
+          ),
+          fullPage,
+        });
+
+      // 公開の印のあるカード。絞り込まない一覧で、12 本以上のうち 4 本が公開である
+      // （ほかの e2e のフォルダの動画はどれも非公開）。
+      await page.goto("/");
+      await expect
+        .poll(async () => {
+          const titles = await cardTitles(page);
+          return [...publicTitles, ...privateTitles, ...fillerTitles].every((title) =>
+            titles.includes(title),
+          );
+        })
+        .toBe(true);
+      expect(await page.locator("article[data-video-id]").count()).toBeGreaterThanOrEqual(
+        12,
+      );
+      await expect(page.locator("article[data-video-id] .lucide-globe")).toHaveCount(4);
+      await ownerShot("library");
+
+      // 選択バーの「公開」を開いた状態（360 は2段のバー）。
+      for (const title of ["ゲスト公開A", "ゲスト非公開C"]) {
+        const checkbox = page.getByRole("checkbox", { name: `「${title}」を選択` });
+        await checkbox.check({ force: true });
+      }
+      const bar = page.getByRole("region", { name: "選択中の操作" });
+      await expect(bar).toBeVisible();
+      await ownerShot("bar");
+      await bar.getByRole("button", { name: "公開" }).click();
+      await expect(page.getByRole("menu")).toBeVisible();
+      await ownerShot("menu");
+      await page.keyboard.press("Escape");
+      await page.keyboard.press("Escape");
+
+      // 再生画面の切り替え: 非公開・公開中・送信中・失敗。
+      await page.goto(`/videos/${String(video("ゲスト非公開C").id)}`);
+      const toggle = page.getByRole("switch", { name: "ログインしていない人に公開する" });
+      await expect(toggle).toHaveText("非公開");
+      await ownerShot("video-private", true);
+      await page.goto(`/videos/${String(video("ゲスト公開A").id)}`);
+      await expect(toggle).toHaveText("公開中");
+      await ownerShot("video-public", true);
+      let release: (() => void) | undefined;
+      await page.route("**/api/video-visibility", async (route) => {
+        await new Promise<void>((resolve) => (release = resolve));
+        await route.fulfill({
+          status: 500,
+          json: { code: "internal", message: "失敗" },
+        });
+      });
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-disabled", "true");
+      await ownerShot("video-sending", true);
+      release?.();
+      await expect(page.getByRole("alert")).toHaveText("変更できませんでした");
+      await expect(toggle).toHaveText("公開中");
+      await ownerShot("video-failed", true);
+      await owner.close();
     }
   });
 });

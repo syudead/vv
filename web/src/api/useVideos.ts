@@ -19,6 +19,11 @@ import { subscribeServerEvents } from "./serverEvents";
 import { applyTagToTags } from "./tagOrder";
 import { isProcessing } from "./useVideoDetail";
 import { subscribeVideoTags } from "./videoTagsEvents";
+import {
+  subscribeVideoVisibility,
+  visibilityMark,
+  withVisibilitySince,
+} from "./visibility";
 
 /**
  * mergeRefreshed は取り直した1件を、一覧に出ている項目へ重ねる。
@@ -117,6 +122,7 @@ type VideosDataAction =
       tag: Video["tags"][number];
       action: "add" | "remove";
     }
+  | { type: "visibility"; videoIds: readonly number[]; isPublic: boolean }
   | { type: "refresh"; videoId: number; video: Video }
   | { type: "remove"; videoId: number }
   | {
@@ -163,6 +169,21 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
           targets.has(video.id)
             ? { ...video, tags: applyTagToTags(video.tags, action.tag, action.action) }
             : video,
+        ),
+      };
+    }
+    case "visibility": {
+      const targets = new Set(action.videoIds);
+      if (
+        !state.items.some(
+          (video) => targets.has(video.id) && video.public !== action.isPublic,
+        )
+      )
+        return state;
+      return {
+        ...state,
+        items: state.items.map((video) =>
+          targets.has(video.id) ? { ...video, public: action.isPublic } : video,
         ),
       };
     }
@@ -352,6 +373,18 @@ export function useVideos(
     [],
   );
 
+  // 公開・非公開の切り替えの結果も、タグの付け外しと同じく一覧を読み直さずに
+  // 表示中の項目へ反映する（issue 305）。取得の間に反映した切り替えは、
+  // 届いたページと取り直した1件へ withVisibilitySince で重ねる（fetchPage・
+  // drainRefreshQueue）。件数の上限で記録を落とさない（PR 328）。
+  useEffect(
+    () =>
+      subscribeVideoVisibility((videoIds, isPublic) => {
+        dispatch({ type: "visibility", videoIds, isPublic });
+      }),
+    [],
+  );
+
   // 取り込みの準備が進んだ動画を、一覧を読み直さずに1件ずつ取り直す。読み直すと
   // スクロール位置や読み込んだページが失われる。取り直しは1件ずつ順に行い、
   // 知らせが重なっても同じ動画を重ねて取りに行かない。
@@ -367,7 +400,11 @@ export function useVideos(
       for (const id of refreshQueue.current) {
         refreshQueue.current.delete(id);
         try {
-          const refreshed = await getVideo(id, controller.signal);
+          const mark = visibilityMark();
+          const refreshed = withVisibilitySince(
+            await getVideo(id, controller.signal),
+            mark,
+          );
           // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
           if (controller.signal.aborted) return;
           dispatch({ type: "refresh", videoId: id, video: refreshed });
@@ -468,6 +505,7 @@ export function useVideos(
         setLoadingMore(true);
       }
 
+      const mark = visibilityMark();
       try {
         const target = folderRef.current;
         const current = criteriaRef.current;
@@ -480,7 +518,7 @@ export function useVideos(
           cursor: from,
           signal: controller.signal,
         };
-        const page =
+        const fetched =
           target === undefined
             ? await listVideos({ ...params, tag: current.tag })
             : await listFolderVideos({
@@ -488,6 +526,10 @@ export function useVideos(
                 scope: current.scope,
                 ...params,
               });
+        const page = {
+          ...fetched,
+          items: fetched.items.map((video) => withVisibilitySince(video, mark)),
+        };
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
         if (controller.signal.aborted || inFlight.current !== controller) return;
