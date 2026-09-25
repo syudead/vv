@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useAudience } from "../auth/audience";
 import {
   errorMessage,
   getRelatedVideos,
@@ -54,6 +55,8 @@ export function useVideoDetail(id: number): {
 } {
   const [state, setState] = useState<VideoDetailState>({ kind: "loading", id });
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない。
+  const owner = useAudience() === "owner";
 
   useEffect(() => {
     setState({ kind: "loading", id });
@@ -108,12 +111,14 @@ export function useVideoDetail(id: number): {
       });
 
     // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
-    const unsubscribe = subscribeServerEvents({
-      video: (changed) => {
-        if (changed === id) void load();
-      },
-      open: () => void load(),
-    });
+    const unsubscribe = owner
+      ? subscribeServerEvents({
+          video: (changed) => {
+            if (changed === id) void load();
+          },
+          open: () => void load(),
+        })
+      : () => undefined;
     void load();
     return () => {
       alive = false;
@@ -121,7 +126,7 @@ export function useVideoDetail(id: number): {
       unsubscribe();
       settle();
     };
-  }, [id]);
+  }, [id, owner]);
 
   const refresh = useCallback(() => refreshRef.current(), []);
   return { state, refresh };

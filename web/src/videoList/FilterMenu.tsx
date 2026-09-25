@@ -2,6 +2,7 @@ import { ListFilter } from "lucide-react";
 import { useState } from "react";
 
 import type { WatchFilter } from "../api/client";
+import { useAudience } from "../auth/audience";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
@@ -22,6 +23,10 @@ export interface FilterMenuProps {
 /**
  * FilterMenu は絞り込みのボタンとポップオーバーである（ui-design.md「Filter menu」）。
  * ボタンの数字は視聴状態と再生可否の数だけを数える。検索語は検索欄に見えている。
+ *
+ * ゲストには「視聴状態」を出さない（再生位置は所有者のもの。
+ * specs/016-single-account-auth/ui-design.md「Guest degradation」）。そのときボタンの
+ * 数字は再生可否だけを数える。
  */
 export default function FilterMenu({
   watch,
@@ -33,7 +38,9 @@ export default function FilterMenu({
   disabled,
 }: FilterMenuProps) {
   const [open, setOpen] = useState(false);
-  const filterCount = disabled ? 0 : (watch === "all" ? 0 : 1) + (playable ? 1 : 0);
+  const owner = useAudience() === "owner";
+  const watchCount = owner && watch !== "all" ? 1 : 0;
+  const filterCount = disabled ? 0 : watchCount + (playable ? 1 : 0);
 
   return (
     <PopoverRoot open={open} onOpenChange={setOpen}>
@@ -51,36 +58,38 @@ export default function FilterMenu({
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start">
-        <fieldset>
-          <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
-            視聴状態
-          </legend>
-          <div className="grid grid-cols-2 gap-1">
-            {watchOptions.map((option) => (
-              <label
-                key={option.value}
-                className={cn(
-                  "flex h-8 cursor-pointer items-center justify-center rounded-md text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-link",
-                  watch === option.value
-                    ? "bg-accent text-accent-fg"
-                    : "text-fg hover:bg-hover-wash",
-                )}
-              >
-                <input
-                  type="radio"
-                  name="watch"
-                  value={option.value}
-                  checked={watch === option.value}
-                  onChange={() => onWatchChange(option.value)}
-                  className="sr-only"
-                />
-                {option.label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        {owner && (
+          <fieldset className="mb-4">
+            <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
+              視聴状態
+            </legend>
+            <div className="grid grid-cols-2 gap-1">
+              {watchOptions.map((option) => (
+                <label
+                  key={option.value}
+                  className={cn(
+                    "flex h-8 cursor-pointer items-center justify-center rounded-md text-sm transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-link",
+                    watch === option.value
+                      ? "bg-accent text-accent-fg"
+                      : "text-fg hover:bg-hover-wash",
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="watch"
+                    value={option.value}
+                    checked={watch === option.value}
+                    onChange={() => onWatchChange(option.value)}
+                    className="sr-only"
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
 
-        <label className="mt-4 flex cursor-pointer items-center gap-2.5 text-sm text-fg">
+        <label className="flex cursor-pointer items-center gap-2.5 text-sm text-fg">
           <input
             type="checkbox"
             checked={playable}

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import type { VideoSort } from "../api/client";
+import { useAudience } from "../auth/audience";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import {
@@ -59,6 +60,16 @@ export const sortOptions = sortKinds.map((info) => ({
   icon: sortIcons[info.kind],
 }));
 
+/**
+ * useSortOptions は今描いている相手に出す並べ替えの種類である。ゲストには
+ * 「最近再生した順」を出さない（再生位置は所有者のもの。
+ * specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+ */
+function useSortOptions(): typeof sortOptions {
+  const owner = useAudience() === "owner";
+  return owner ? sortOptions : sortOptions.filter((option) => option.kind !== "played");
+}
+
 export interface SortControlProps {
   sort: VideoSort;
   /** 種類や向きを変えた。random を選んだときは呼び出し側が新しい seed を作る。 */
@@ -73,6 +84,7 @@ export interface SortControlProps {
  * 向きの切り替え（ランダムのときは「並べ直す」）である。`md` 以上で出す。
  */
 export function SortMenu({ sort, onSortChange, onShuffle, disabled }: SortControlProps) {
+  const options = useSortOptions();
   const active = sortKindOf(sort);
   const direction = sortDirection(sort);
   const toggleLabel = direction === undefined ? "並べ直す" : directionToggleLabel(sort);
@@ -100,7 +112,7 @@ export function SortMenu({ sort, onSortChange, onShuffle, disabled }: SortContro
               if (next.kind !== active.kind) onSortChange(next.initial);
             }}
           >
-            {sortOptions.map((option) => (
+            {options.map((option) => (
               <MenuRadioItem key={option.kind} value={option.value}>
                 <option.icon />
                 {option.label}
@@ -144,6 +156,7 @@ export function CompactSortControls({
   disabled,
   name,
 }: SortControlProps & { /** ラジオの name（画面に1つ）。 */ name: string }) {
+  const options = useSortOptions();
   const active = sortKindOf(sort);
   const direction = sortDirection(sort);
 
@@ -153,7 +166,7 @@ export function CompactSortControls({
         並び順
       </legend>
       <div className="grid grid-cols-2 gap-1">
-        {sortOptions.map((option) => (
+        {options.map((option) => (
           <label
             key={option.kind}
             className={cn(

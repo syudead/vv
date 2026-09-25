@@ -8,14 +8,17 @@ import {
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 
+import { getAuthSession } from "../api/auth";
 import {
   beaconProgress,
+  reloadForViewerChange,
   reprobeVideo,
   RequestFailed,
   saveProgress,
   type Video,
 } from "../api/client";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
+import { useAudience } from "../auth/audience";
 import Skeleton from "../ui/Skeleton";
 import CloseButton from "./CloseButton";
 import EndedOverlay from "./EndedOverlay";
@@ -89,6 +92,11 @@ export default function VideoPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const backTo = backTarget(location.state);
+  // ゲストには所有者のデータ（タグ・ファイルの場所・再生位置）と所有者だけの操作
+  // （読み取りのやり直し・既定アプリで開く）を出さない
+  // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+  const audience = useAudience();
+  const owner = audience === "owner";
 
   const { state: detailState, refresh } = useVideoDetail(id);
   const { state: relatedState, retry: retryRelated } = useRelatedVideos(id);
@@ -155,6 +163,8 @@ export default function VideoPage() {
 
   const send = useCallback(
     (positionMs: number, leaving: boolean, force = false) => {
+      // 再生位置は所有者のものなので、ゲストでは保存を送らない。
+      if (!owner) return;
       if (!Number.isFinite(positionMs) || positionMs < 0) return;
       const rounded = Math.round(positionMs);
       if (
@@ -172,7 +182,7 @@ export default function VideoPage() {
       }
       void saveProgress(id, rounded).catch(() => undefined);
     },
-    [id],
+    [id, owner],
   );
 
   const rememberProgress = useCallback(
@@ -219,13 +229,39 @@ export default function VideoPage() {
     setStatus(next);
   }, []);
 
+  // 再生の失敗は、見る人が変わった（セッションが失効した）せいかもしれない。`video`
+  // 要素の読み込みの失敗には 401 も X-VV-Audience も付かないので、状態を確かめ、
+  // 変わっていれば失敗の層を出さずにページを1度だけ読み直す（ui-design.md
+  // 「Guest degradation」）。変わっていなければ、今の再生失敗の層を出す。
+  const sessionCheck = useRef<AbortController | null>(null);
+  useEffect(() => () => sessionCheck.current?.abort(), []);
   const onError = useCallback(
     (positionMs: number) => {
-      setFailure({ positionMs });
-      // 再生の失敗は、動画がライブラリから消えたせいかもしれない。取り直して確かめる。
-      void refresh();
+      sessionCheck.current?.abort();
+      const controller = new AbortController();
+      sessionCheck.current = controller;
+      const showFailure = () => {
+        setFailure({ positionMs });
+        // 動画がライブラリから消えた（ゲストでは公開でなくなった）せいかもしれない。
+        // 取り直して確かめる。
+        void refresh();
+      };
+      getAuthSession(undefined, controller.signal).then(
+        (session) => {
+          if (controller.signal.aborted) return;
+          if (session.state !== audience) {
+            reloadForViewerChange();
+            return;
+          }
+          showFailure();
+        },
+        () => {
+          if (controller.signal.aborted) return;
+          showFailure();
+        },
+      );
     },
-    [refresh],
+    [audience, refresh],
   );
 
   const retryPlayback = () => {
@@ -270,7 +306,7 @@ export default function VideoPage() {
   else if (video.probeState === "pending")
     statusLayer = <ProcessingStages video={video} />;
   else if (video.probeState === "failed")
-    statusLayer = <ReadFailure video={video} onReprobe={reprobe} />;
+    statusLayer = <ReadFailure video={video} onReprobe={owner ? reprobe : undefined} />;
   else if (!playable) statusLayer = <Unplayable />;
   else if (failure !== null)
     statusLayer = (
@@ -380,19 +416,21 @@ export default function VideoPage() {
                   <h1 className="text-xl leading-snug font-semibold text-fg [overflow-wrap:anywhere] sm:text-2xl">
                     {video.title}
                   </h1>
-                  <VideoTags
-                    // VideoPage 自身が動画ごとに作り直されず（同じ /videos/:id
-                    // ルートのまま次の動画へ移ることがある）使い回されるため、
-                    // VideoTags を videoId で作り直し、前の動画の重ねた
-                    // 付け外し（appliedRef）を持ち越さない（Devin の指摘1）。
-                    key={video.id}
-                    videoId={video.id}
-                    tags={video.tags}
-                    onStaleVideo={() => void refresh()}
-                  />
+                  {owner && (
+                    <VideoTags
+                      // VideoPage 自身が動画ごとに作り直されず（同じ /videos/:id
+                      // ルートのまま次の動画へ移ることがある）使い回されるため、
+                      // VideoTags を videoId で作り直し、前の動画の重ねた
+                      // 付け外し（appliedRef）を持ち越さない（Devin の指摘1）。
+                      key={video.id}
+                      videoId={video.id}
+                      tags={video.tags}
+                      onStaleVideo={() => void refresh()}
+                    />
+                  )}
                 </div>
-                <PropertyStrip video={video} />
-                {video.location !== undefined && (
+                <PropertyStrip video={video} lastPlayed={owner} />
+                {owner && video.location !== undefined && (
                   <FileLocation videoId={video.id} location={video.location} />
                 )}
               </>

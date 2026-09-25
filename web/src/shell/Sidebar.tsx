@@ -148,6 +148,9 @@ export default function Sidebar({
   onClose: () => void;
 }) {
   const drawer = mode === "drawer";
+  const audience = useAudience();
+  const entries =
+    audience === "owner" ? navEntries : navEntries.filter((entry) => !entry.ownerOnly);
 
   return (
     <>
@@ -177,7 +180,7 @@ export default function Sidebar({
             mode === "rail" ? "items-center px-1.5 py-2" : "px-2.5 py-3",
           )}
         >
-          {navEntries.map((entry) => (
+          {entries.map((entry) => (
             <Entry key={entry.id} entry={entry} mode={mode} onNavigate={onClose} />
           ))}
         </nav>

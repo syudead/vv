@@ -1,3 +1,4 @@
+import { reloadPage } from "../auth/pageNavigation";
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 import { nextProgressSequence, recordSavedProgress } from "./progressEvents";
@@ -65,6 +66,58 @@ export class RequestFailed extends Error {
   }
 }
 
+// --- 見る人が変わったときの読み直し（specs/016-single-account-auth/plan.md
+// Structural Decisions 14、ui-design.md「Gate」） ---
+
+/** renderedAudience はゲートが確かめた、今描いている相手である。確かめる前は null。 */
+let renderedAudience: "owner" | "guest" | null = null;
+/** reloading は読み直しを1度始めたかどうか。2度目からは何もしない。 */
+let reloading = false;
+
+/**
+ * setRenderedAudience は、ゲートが確かめた相手を覚える。所有者として描いている間に
+ * 見る人が変わったと分かったら、apiFetch がページを読み直す。
+ */
+export function setRenderedAudience(audience: "owner" | "guest" | null): void {
+  renderedAudience = audience;
+  reloading = false;
+}
+
+/**
+ * reloadForViewerChange は、見る人が変わったときに今の URL をページごと1度だけ
+ * 読み直す。何度呼んでも読み直しは1回である。トーストは出さない。読み直した画面は
+ * ゲートで状態を取り直す。
+ */
+export function reloadForViewerChange(): void {
+  if (reloading) return;
+  reloading = true;
+  reloadPage();
+}
+
+/**
+ * viewerChanged は、所有者として描いている間に、この応答が「もう所有者ではない」
+ * ことを示すか（401 か X-VV-Audience: guest）を返す。
+ */
+function viewerChanged(response: Response): boolean {
+  if (renderedAudience !== "owner") return false;
+  return response.status === 401 || response.headers.get("X-VV-Audience") === "guest";
+}
+
+/**
+ * apiFetch は `/api/*` への fetch である。所有者として描いている間に 401 か
+ * `X-VV-Audience: guest` を受けたら、ページを1度だけ読み直し、応答は返さない
+ * （決して解決しない）。ゲストとして処理した応答を、所有者の画面に一瞬でも
+ * 描かないためである。認証の経路（auth.ts）はこれを通さない。
+ */
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const response = await fetch(path, init);
+  if (viewerChanged(response)) {
+    reloadForViewerChange();
+    return new Promise<Response>(() => undefined);
+  }
+  return response;
+}
+
 /**
  * request は JSON を取りに行く薄いラッパである。
  *
@@ -73,7 +126,7 @@ export class RequestFailed extends Error {
  * 画面をまたぐキャッシュ整合や楽観更新が要る段階で再検討する。
  */
 export async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init);
+  const response = await apiFetch(path, init);
 
   if (!response.ok) {
     throw await toRequestFailed(response);
@@ -265,7 +318,7 @@ export function reprobeVideo(id: number, signal?: AbortSignal): Promise<Video> {
 
 /** openVideoFile はサーバーの PC で、動画の代表の所在を既定のアプリで開く。 */
 export async function openVideoFile(id: number, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/videos/${String(id)}/open`, {
+  const response = await apiFetch(`/api/videos/${String(id)}/open`, {
     method: "POST",
     signal,
   });
@@ -373,7 +426,7 @@ export async function deleteMediaFolder(
   version: number,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await apiFetch(
     `/api/media-folders/${String(id)}?version=${String(version)}`,
     { method: "DELETE", signal },
   );
@@ -466,7 +519,7 @@ export function beaconProgress(id: number, positionMs: number): void {
   const body = JSON.stringify({ positionMs: Math.max(0, Math.round(positionMs)) });
   const sequence = nextProgressSequence();
   const send = () =>
-    fetch(`/api/videos/${String(id)}/progress`, {
+    apiFetch(`/api/videos/${String(id)}/progress`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body,
@@ -500,7 +553,7 @@ export async function fetchSeekThumbnail(
   url: string,
   signal: AbortSignal,
 ): Promise<Blob> {
-  const response = await fetch(url, { signal });
+  const response = await apiFetch(url, { signal });
   if (!response.ok) {
     throw new RequestFailed(
       response.status,

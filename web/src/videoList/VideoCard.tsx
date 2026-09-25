@@ -429,19 +429,22 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         selected && "bg-accent-soft",
       )}
     >
-      <td className="w-10 pl-3">
-        <Checkbox
-          checked={selected}
-          onCheckedChange={(next) => onSelect?.(video.id, next)}
-          label={`「${video.title}」を選択`}
-          className={cn(
-            "transition-opacity",
-            selectionMode || selected
-              ? "opacity-100"
-              : "opacity-40 group-hover:opacity-100",
-          )}
-        />
-      </td>
+      {/* 選択を持たない画面（ゲストの一覧）では、選択の列ごと描かない。 */}
+      {onSelect !== undefined && (
+        <td className="w-10 pl-3">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(next) => onSelect(video.id, next)}
+            label={`「${video.title}」を選択`}
+            className={cn(
+              "transition-opacity",
+              selectionMode || selected
+                ? "opacity-100"
+                : "opacity-40 group-hover:opacity-100",
+            )}
+          />
+        </td>
+      )}
       <td className="w-32 py-1.5 pr-2">
         <div className="relative aspect-video w-28 overflow-hidden rounded-sm bg-navbar">
           {video.thumbnailUrl !== undefined && (

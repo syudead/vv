@@ -4,11 +4,12 @@ import { Link } from "react-router";
 
 import { takeListSnapshot } from "../api/listSnapshot";
 import { useRootFolders } from "../api/useFolderListing";
+import { useAudience } from "../auth/audience";
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import { buttonClassName } from "../ui/Button";
 import { hasConditions } from "../videoList/listCriteria";
-import { EmptyState, LoadFailed } from "../videoList/states";
+import { EmptyState, GuestEmpty, LoadFailed } from "../videoList/states";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderCard, { FolderCardSkeleton } from "./FolderCard";
 import FolderToolbar from "./FolderToolbar";
@@ -32,6 +33,9 @@ export default function RootView() {
     clearAll,
     changeZoom,
   } = useConditions();
+  // ゲストには登録フォルダの絶対パスも、設定への入口も出さない
+  // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+  const owner = useAudience() === "owner";
   // 再生画面から検索結果へ戻ったときは控えから復元する（FolderView と同じ扱い）。
   // 検索していなければ動画の一覧を持たないので、控えを探さない。
   const [restored] = useState(() =>
@@ -111,16 +115,20 @@ export default function RootView() {
       ) : roots.error !== null ? (
         <LoadFailed reason={roots.error} onRetry={roots.reload} />
       ) : !roots.loading && folders.length === 0 ? (
-        <EmptyState
-          icon={FolderOpen}
-          title="メディアフォルダが登録されていません"
-          description="設定でメディアフォルダを登録して取り込むと、ここに並びます。"
-          action={
-            <Link to="/settings" className={buttonClassName("primary")}>
-              設定を開く
-            </Link>
-          }
-        />
+        owner ? (
+          <EmptyState
+            icon={FolderOpen}
+            title="メディアフォルダが登録されていません"
+            description="設定でメディアフォルダを登録して取り込むと、ここに並びます。"
+            action={
+              <Link to="/settings" className={buttonClassName("primary")}>
+                設定を開く
+              </Link>
+            }
+          />
+        ) : (
+          <GuestEmpty />
+        )
       ) : (
         <Section
           title="メディアフォルダ"
@@ -131,7 +139,7 @@ export default function RootView() {
               <FolderCardSkeleton count={6} />
             ) : (
               folders.map((folder) => (
-                <FolderCard key={folder.rootId} folder={folder} showPath />
+                <FolderCard key={folder.rootId} folder={folder} showPath={owner} />
               ))
             )}
           </Grid>

@@ -1,6 +1,7 @@
 import { Menu, RefreshCw } from "lucide-react";
 import { Link } from "react-router";
 
+import { useAudience } from "../auth/audience";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import Tooltip from "../ui/Tooltip";
@@ -42,8 +43,14 @@ function ScanButton() {
   );
 }
 
-/** TopBar は ☰・ロゴ・更新だけを持つ。ナビと設定は Sidebar にある。 */
+/**
+ * TopBar は ☰・ロゴ・更新だけを持つ。ナビと設定は Sidebar にある。
+ *
+ * ゲストには更新を出さない。右端の入れ物ごと省き、道具の入れ物（flex-1）が右へ
+ * 広がる。空の場所埋めは置かない（specs/016-single-account-auth/ui-design.md「Top bar」）。
+ */
 export default function TopBar({ onMenu }: { onMenu: () => void }) {
+  const owner = useAudience() === "owner";
   return (
     <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 border-b border-border bg-bg/90 px-2 backdrop-blur-md sm:px-3">
       <IconButton label="メニュー" onClick={onMenu} tooltip={false}>
@@ -59,9 +66,11 @@ export default function TopBar({ onMenu }: { onMenu: () => void }) {
 
       <div id="topbar-library-tools" className="flex min-w-0 flex-1 items-center" />
 
-      <div className="ml-auto flex shrink-0 items-center gap-0.5">
-        <ScanButton />
-      </div>
+      {owner && (
+        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+          <ScanButton />
+        </div>
+      )}
     </header>
   );
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
+import { useAudience } from "../auth/audience";
 import {
   errorMessage,
   type FolderRef,
@@ -401,25 +402,30 @@ export function useVideos(
   // tagsChangedWhileLoading は上で宣言済み）。
   const changedWhileLoading = useRef(new Set<number>());
 
+  // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない
+  // （specs/016-single-account-auth/ui-design.md「Top bar」）。
+  const owner = useAudience() === "owner";
   useEffect(() => {
-    const unsubscribe = subscribeServerEvents({
-      video: (id) => {
-        // ページの取得中は、表示中の動画でも覚えておく。取り直しの方が先に
-        // 終わると、あとから届いたページの古い内容で上書きされる。
-        if (pageLoading.current) changedWhileLoading.current.add(id);
-        if (itemsRef.current.some((video) => video.id === id)) refreshItems([id]);
-      },
-      // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
-      // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
-      // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
-      open: (reconnected) => {
-        if (reconnected) {
-          refreshItems(itemsRef.current.map((video) => video.id));
-        } else {
-          refreshProcessingItems();
-        }
-      },
-    });
+    const unsubscribe = owner
+      ? subscribeServerEvents({
+          video: (id) => {
+            // ページの取得中は、表示中の動画でも覚えておく。取り直しの方が先に
+            // 終わると、あとから届いたページの古い内容で上書きされる。
+            if (pageLoading.current) changedWhileLoading.current.add(id);
+            if (itemsRef.current.some((video) => video.id === id)) refreshItems([id]);
+          },
+          // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
+          // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
+          // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
+          open: (reconnected) => {
+            if (reconnected) {
+              refreshItems(itemsRef.current.map((video) => video.id));
+            } else {
+              refreshProcessingItems();
+            }
+          },
+        })
+      : () => undefined;
     // 復元した一覧は、別の画面にいた間に準備が進んでいることがある。
     refreshProcessingItems();
     return () => {
@@ -428,7 +434,7 @@ export function useVideos(
       refreshing.current = null;
       refreshQueue.current.clear();
     };
-  }, [refreshItems, refreshProcessingItems]);
+  }, [owner, refreshItems, refreshProcessingItems]);
 
   // 読み込み中の要求を覚えておく。条件を変えた直後に古い応答が届いても、
   // 新しい一覧を上書きしないようにする。
