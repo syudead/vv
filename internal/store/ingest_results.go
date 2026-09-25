@@ -20,12 +20,12 @@ func (s *IngestStore) ApplyProbe(
 ) error {
 	_, err := s.db.sql.ExecContext(ctx, `
 		update videos
-		   set duration_ms = ?, width = ?, height = ?,
+		   set duration_ms = ?, width = ?, height = ?, display_aspect_ratio = ?,
 		       video_codec = ?, audio_codec = ?,
 		       playable = ?, unplayable_reason = ?,
 		       probe_state = 'done', probe_error = null, updated_at = ?
 		 where id = ?`,
-		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height),
+		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height), nullableFloat64(probe.DisplayAspectRatio),
 		nullableString(probe.VideoCodec), nullableString(probe.AudioCodec),
 		boolToInt(play.Playable), nullableString(string(play.Reason)),
 		time.Now().Unix(), id,
@@ -41,12 +41,12 @@ func (s *IngestStore) ApplyProbeForJob(
 	ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability,
 ) (bool, error) {
 	res, err := s.db.sql.ExecContext(ctx, `
-		update videos set duration_ms = ?, width = ?, height = ?, video_codec = ?, audio_codec = ?,
+		update videos set duration_ms = ?, width = ?, height = ?, display_aspect_ratio = ?, video_codec = ?, audio_codec = ?,
 		playable = ?, unplayable_reason = ?, probe_state = 'done', probe_error = null, updated_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
 		and location_generation = ?`,
-		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height),
+		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height), nullableFloat64(probe.DisplayAspectRatio),
 		nullableString(probe.VideoCodec), nullableString(probe.AudioCodec), boolToInt(play.Playable),
 		nullableString(string(play.Reason)), time.Now().Unix(), job.VideoID, job.ContentKey,
 		job.LocationID, job.LocationVersion, job.LocationPath, job.LocationGeneration)

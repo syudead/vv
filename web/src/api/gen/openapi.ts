@@ -849,8 +849,16 @@ export interface components {
              * @description 尺。解析前・取得不能の場合は省略される
              */
             durationMs?: number;
+            /** @description 表示される向きの幅（回転の印を反映済み） */
             width?: number;
+            /** @description 表示される向きの高さ（回転の印を反映済み） */
             height?: number;
+            /**
+             * Format: double
+             * @description 表示される横÷縦の比率。回転と画素の縦横比（SAR）を反映し、縦長の動画は 1 未満になる。
+             *     解析前・取得不能の場合は省略される
+             */
+            displayAspectRatio?: number;
             /**
              * @example mp4
              * @example webm

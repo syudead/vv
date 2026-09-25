@@ -5,6 +5,7 @@ import {
   formatBytes,
   formatDuration,
   formatRelative,
+  isNarrowVideo,
   qualityLabel,
   unplayableText,
   watchState,
@@ -130,5 +131,25 @@ describe("unplayableText", () => {
     expect(unplayableText({ ...base, playable: false, videoCodec: undefined })).toBe(
       "再生に必要な情報がありません",
     );
+  });
+});
+
+describe("isNarrowVideo", () => {
+  it("縦長と正方形に近い動画だけを真にする", () => {
+    expect(isNarrowVideo({ width: 1080, height: 1920 })).toBe(true);
+    expect(isNarrowVideo({ width: 720, height: 720 })).toBe(true);
+    expect(isNarrowVideo({ width: 1920, height: 1080 })).toBe(false);
+    expect(isNarrowVideo({ width: 640, height: 480 })).toBe(false);
+  });
+
+  it("表示の比率があればそれを優先する", () => {
+    expect(isNarrowVideo({ width: 1920, height: 1080, displayAspectRatio: 9 / 16 })).toBe(
+      true,
+    );
+  });
+
+  it("寸法が分からなければ偽", () => {
+    expect(isNarrowVideo({})).toBe(false);
+    expect(isNarrowVideo({ width: 1080, height: 0 })).toBe(false);
   });
 });

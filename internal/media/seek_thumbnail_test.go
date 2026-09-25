@@ -20,7 +20,7 @@ func TestSeekThumbnailArgsGenerateFiveSecondFrames(t *testing.T) {
 		"-i /media/a.mp4",
 		"-map 0:V:0?",
 		"select='isnan(prev_selected_t)+gt(floor(t/5)\\,floor(prev_selected_t/5))'",
-		"scale=min(320\\,iw):-2",
+		"scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2",
 		"-start_number 0",
 		"/cache/%06d.jpg",
 	} {

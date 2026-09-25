@@ -100,8 +100,8 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Applied != 5 || result.Version != 8 {
-		t.Fatalf("migration result = %+v, want five migrations to version 8", result)
+	if result.Applied != 6 || result.Version != 9 {
+		t.Fatalf("migration result = %+v, want six migrations to version 9", result)
 	}
 	var generation int64
 	if err := db.sql.QueryRow(`select location_generation from videos where id = ?`, videoID).Scan(&generation); err != nil {
@@ -153,7 +153,7 @@ func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Applied != 3 || result.Version != 8 {
+	if result.Applied != 4 || result.Version != 9 {
 		t.Fatalf("migration result = %+v", result)
 	}
 	var jobs int
@@ -537,12 +537,41 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 	}
 }
 
+// 00009 の Down で、表示の縦横比の列だけが消え、ほかの列と行は残る。
+func TestDisplayAspectRatioMigrationDown(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tableColumns(t, db, "videos")["display_aspect_ratio"]; !ok {
+		t.Fatal("videos に display_aspect_ratio 列が無い")
+	}
+	if err := Down(ctx, db); err != nil {
+		t.Fatalf("Down に失敗した: %v", err)
+	}
+	columns := tableColumns(t, db, "videos")
+	if _, ok := columns["display_aspect_ratio"]; ok {
+		t.Error("videos に display_aspect_ratio 列が残っている")
+	}
+	if _, ok := columns["width"]; !ok {
+		t.Error("videos の width 列が消えた")
+	}
+	var count int
+	if err := db.sql.QueryRow(`select count(*) from videos`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("videos の行数 = %d, want 1", count)
+	}
+}
+
 // Down で 001 の状態へ戻ること。スキーマ変更を取り消せることは、
 // 適用を自動化している以上（起動時に適用する）必要な出口である。
 func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	db := migratedDB(t)
 
-	for range 7 {
+	for range 8 {
 		if err := Down(context.Background(), db); err != nil {
 			t.Fatalf("Down に失敗した: %v", err)
 		}
@@ -593,6 +622,9 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	if err := Down(ctx, db); err != nil {
+		t.Fatalf("display aspect ratio Down failed: %v", err)
+	}
 	if err := Down(ctx, db); err != nil {
 		t.Fatalf("tags Down failed: %v", err)
 	}
