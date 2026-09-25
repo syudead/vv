@@ -34,6 +34,13 @@ var requiredCommands = []string{"go", "npm", "ffmpeg", "ffprobe"}
 // backendAddress は vv 本体の待ち受けである。外からは中継越しにしか触らせない。
 const backendAddress = "127.0.0.1:18080"
 
+// markerPath と markerHeader は、ポートで応答しているのが preview の中継かどうかを
+// 見分ける目印である。vv の /api/health は task dev でも同じように応答する。
+const (
+	markerPath   = "/__vv-preview"
+	markerHeader = "X-Vv-Preview"
+)
+
 // sample はサンプル動画1本の作り方である。形式を散らしておくと、ブラウザで
 // 再生できるものとできないものの両方の表示を確かめられる。
 type sample struct {
@@ -82,7 +89,10 @@ func main() {
 	}
 	// Codespaces は開き直すたびに task preview を呼ぶ。前のものが動いていれば
 	// ビルドからやり直さずに案内だけする。
-	if running, ok := runningPreview(listen); ok {
+	switch running, err := runningPreview(listen); {
+	case err != nil:
+		devtools.Fail(err)
+	case running != "":
 		fmt.Println("vv preview はすでに動いている:", running)
 		return
 	}
@@ -311,24 +321,26 @@ func backendEnviron(environ []string) []string {
 }
 
 // runningPreview は listen で preview の中継がすでに応答しているかを返す。
-func runningPreview(listen string) (string, bool) {
+// 空きなら空文字を返す。preview 以外のもの（task dev の vv など）が応答したら、
+// それを preview と取り違えないようエラーにする。
+func runningPreview(listen string) (string, error) {
 	host, port, err := net.SplitHostPort(listen)
 	if err != nil {
-		return "", false
+		return "", fmt.Errorf("PREVIEW_ADDR=%q を解釈できません: %w", listen, err)
 	}
 	if host == "" || host == "0.0.0.0" || host == "::" {
 		host = "127.0.0.1"
 	}
 	client := http.Client{Timeout: 2 * time.Second}
-	response, err := client.Get("http://" + net.JoinHostPort(host, port) + "/api/health")
+	response, err := client.Get("http://" + net.JoinHostPort(host, port) + markerPath)
 	if err != nil {
-		return "", false
+		return "", nil
 	}
 	_ = response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return "", false
+	if response.Header.Get(markerHeader) == "" {
+		return "", fmt.Errorf("%s は preview 以外のものが使っている。止めるか PREVIEW_ADDR で別のポートを指定すること。", listen)
 	}
-	return publicURL(port), true
+	return publicURL(port), nil
 }
 
 func callJSON(method string, target *url.URL, body, out any) error {
@@ -368,10 +380,10 @@ func callJSON(method string, target *url.URL, body, out any) error {
 // 通すと https と http が食い違って全部 403 になる。そこで、Origin がブラウザの
 // 見ている公開側の origin と同じときに限り、vv から見た origin（http と受けた
 // Host）へ書き換える。
-// 公開側と異なる Origin（別サイトからの要求）は書き換えずに渡し、vv 自身の確認で
-// 断らせる。vv 本体の確認は緩めない。
+// 書き込みで公開側と一致しない Origin（別サイトからの要求や Origin の無い要求）は
+// vv へ渡さずに断る。vv 本体の確認は緩めない。
 func newProxy(backend *url.URL) http.Handler {
-	return &httputil.ReverseProxy{
+	proxy := &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(backend)
 			// Host は書き換えない。vv はループバックの Host をローカルの操作と
@@ -384,6 +396,24 @@ func newProxy(backend *url.URL) http.Handler {
 		// SSE（/api/events）を溜めずに流す。
 		FlushInterval: -1,
 	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(markerHeader, "1")
+		if r.URL.Path == markerPath {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		// vv は Origin の無い書き込みを通す（同じ機械の CLI などのため）。preview の
+		// ポートは外から届くので、ブラウザが同一オリジンと示した書き込みだけを通す。
+		// ポートを Public にされても、別サイトのフォームからは変更できない。
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+			if !sameSiteOrigin(r) {
+				http.Error(w, "same-originの操作だけを受け付けます", http.StatusForbidden)
+				return
+			}
+		}
+		proxy.ServeHTTP(w, r)
+	})
 }
 
 // sameSiteOrigin は Origin がブラウザの見ている公開側の origin と同じかを返す。

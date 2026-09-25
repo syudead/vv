@@ -69,13 +69,41 @@ func TestProxyRewritesOnlySameSiteOrigin(t *testing.T) {
 		t.Errorf("Origin = %q, want http://x-8080.app.github.dev", gotOrigin)
 	}
 
-	// 別サイトの Origin はそのまま渡し、vv 自身に断らせる。
-	r = httptest.NewRequest(http.MethodPost, "/api/scans", nil)
-	r.Host = "x-8080.app.github.dev"
-	r.Header.Set("Origin", "https://evil.example")
+	// 別サイトからの書き込みと Origin の無い書き込みは、vv へ渡さずに断る。
+	for _, origin := range []string{"https://evil.example", ""} {
+		gotOrigin = "not reached"
+		r = httptest.NewRequest(http.MethodDelete, "/api/tags/1", nil)
+		r.Host = "x-8080.app.github.dev"
+		if origin != "" {
+			r.Header.Set("Origin", origin)
+		}
+		recorder := httptest.NewRecorder()
+		proxy.ServeHTTP(recorder, r)
+		if recorder.Code != http.StatusForbidden || gotOrigin != "not reached" {
+			t.Errorf("Origin=%q の書き込みを通した: status %d", origin, recorder.Code)
+		}
+	}
+
+	// 読み取りは Origin が無くても通す。
+	gotOrigin = "not reached"
+	r = httptest.NewRequest(http.MethodGet, "/api/videos", nil)
 	proxy.ServeHTTP(httptest.NewRecorder(), r)
-	if gotOrigin != "https://evil.example" {
-		t.Errorf("別サイトの Origin を書き換えた: %q", gotOrigin)
+	if gotOrigin == "not reached" {
+		t.Error("読み取りを vv へ渡さなかった")
+	}
+}
+
+func TestRunningPreviewTellsPreviewFromOtherServers(t *testing.T) {
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	defer other.Close()
+	if _, err := runningPreview(other.Listener.Addr().String()); err == nil {
+		t.Error("preview 以外のサーバーをエラーにしなかった")
+	}
+
+	preview := httptest.NewServer(newProxy(&url.URL{Scheme: "http", Host: "127.0.0.1:1"}))
+	defer preview.Close()
+	if running, err := runningPreview(preview.Listener.Addr().String()); err != nil || running == "" {
+		t.Errorf("動いている preview を見つけなかった: %q, %v", running, err)
 	}
 }
 
