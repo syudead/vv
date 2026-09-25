@@ -1,0 +1,17 @@
+{
+  // PR のブランチをブラウザで触って確かめるための環境（GitHub Codespaces）。
+  // 手順は docs/how-to/codespaces-preview.md。
+  "name": "vv preview",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "hostRequirements": { "cpus": 2 },
+  // 作成時に1回だけ。ツールの版は mise.toml から入れる。
+  "onCreateCommand": "bash .devcontainer/on-create.sh",
+  // 開くたびにサンプル動画入りの vv を起動する。
+  "postAttachCommand": "$HOME/.local/bin/mise exec -- task preview",
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": { "label": "vv", "onAutoForward": "openBrowser" }
+  },
+  // vv 本体（18080）は中継越しに使うので、直接は開かせない。
+  "otherPortsAttributes": { "onAutoForward": "ignore" }
+}

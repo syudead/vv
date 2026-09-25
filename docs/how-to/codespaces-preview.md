@@ -1,0 +1,44 @@
+# Codespaces で PR を確かめる
+
+PR のブランチを GitHub Codespaces で開くと、サンプル動画を取り込んだ vv が起動し、
+ブラウザで触って確かめられる。環境は PR ごとに使い捨てにする。
+
+## 開く
+
+1. PR の画面で **Code → Codespaces → Create codespace on <ブランチ名>** を選ぶ。
+2. 初回の作成では ffmpeg と Go・Node の依存を入れるので数分かかる。
+3. 作成が終わると端末で `task preview` が動き、ポート 8080 の vv がブラウザの別タブで開く。
+   開かなかったときは **Ports** タブの `vv` の地球アイコンから開く。
+
+同じ Codespace を開き直すたびに `task preview` が起動する。PR に新しいコミットが
+積まれたら、端末で `git pull` してから Ctrl+C で止め、`mise exec -- task preview` で
+起動し直す。
+
+## 中身
+
+- サンプル動画は `ffmpeg` で作り、`.local/preview/media/` に置く。形式を散らしてあり、
+  ブラウザで再生できない動画の表示も確かめられる。
+- 初回起動ではそのフォルダを登録して取り込みまで済ませる。
+- データベースとサムネイルは `.local/preview/data/` に置く。`.local/preview/` を
+  消すと次の起動で最初からやり直す。
+- 自分の動画で試すときは、エクスプローラーへファイルをドラッグしてアップロードし、
+  そのフォルダを設定画面で追加する。
+
+手元でも `task preview` はそのまま動く（ffmpeg が要る）。
+
+## 公開範囲
+
+vv には認証が無い。Codespaces の転送ポートは既定で **Private**（自分の GitHub
+アカウントでしか開けない）なので、そのまま使う。**Public に変えない。**
+
+`task preview` は vv 本体を `127.0.0.1:18080` で動かし、8080 では中継だけを
+待ち受ける。Codespaces はブラウザからの https を終端して中へ http で渡すので、
+中継が無いと vv の同一オリジン確認で書き込み操作がすべて 403 になる。中継は
+ブラウザが同一オリジンと示した要求に限って Origin を vv 側の値へ書き換え、
+それ以外はそのまま渡して vv 自身に断らせる。
+
+## 費用
+
+個人アカウントには Codespaces の月の無料枠がある。使い終わった Codespace は
+<https://github.com/codespaces> から削除する。停止中でもストレージの枠は減る。
+無料枠と上限の設定は GitHub の **Settings → Billing and licensing** で確かめる。

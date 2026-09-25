@@ -7,4 +7,5 @@ themselves; the reasoning behind a decision belongs in `docs/design-docs/`.
 
 - [vv を実行する](running-vv.md)
 - [ローカル開発](development.md)
+- [Codespaces で PR を確かめる](codespaces-preview.md)
 - [依存の更新（Renovate）](dependency-updates.md)
