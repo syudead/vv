@@ -951,6 +951,65 @@ describe("useVideos の公開の反映", () => {
     vi.unstubAllGlobals();
   });
 
+  it("取り直しに失敗した動画が残るあいだは一覧の控えを取らせない（PR 338）", async () => {
+    stubVisibility(0);
+    const { updateVideoVisibility } = await import("./visibility");
+    const { clearListSnapshot, saveListSnapshot, takeListSnapshot } =
+      await import("./listSnapshot");
+    const { RequestFailed } = await import("./client");
+    clearListSnapshot();
+    // 動画 3 の最初の取り直しは一時的に失敗し、古い public: false のまま残る。
+    let failOnce = true;
+    getVideo.mockImplementation((id: number) => {
+      if (id === 3 && failOnce) {
+        failOnce = false;
+        return Promise.reject(new RequestFailed(500, "internal", "失敗"));
+      }
+      return Promise.resolve({ ...item(id), public: true });
+    });
+    const { result, unmount } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2, 3])));
+
+    await act(async () => {
+      await updateVideoVisibility([1, 3], true);
+    });
+    await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(result.current.items.map((video) => video.public)).toEqual([
+        true,
+        false,
+        false,
+      ]),
+    );
+
+    // 動画 3 の公開状態はまだ確かでないので、控えを取ると戻ったときに古い状態が復元される。
+    const snapshot = { items: [item(3)], total: 1, hasMore: false, scrollY: 0 };
+    saveListSnapshot({ query: "" }, snapshot);
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+
+    // 取り直しが成功すれば、控えを取れるようになる。
+    await act(async () => {
+      await updateVideoVisibility([3], true);
+    });
+    await waitFor(() =>
+      expect(result.current.items.map((video) => video.public)).toEqual([
+        true,
+        false,
+        true,
+      ]),
+    );
+    await waitFor(() => {
+      saveListSnapshot({ query: "" }, snapshot);
+      expect(takeListSnapshot({ query: "" })).toBeDefined();
+    });
+    clearListSnapshot();
+    unmount();
+    vi.unstubAllGlobals();
+  });
+
   it("ページの取得中に届いた切り替えは、その動画を含むページが届いたときに重ねる", async () => {
     stubVisibility();
     const { updateVideoVisibility } = await import("./visibility");
