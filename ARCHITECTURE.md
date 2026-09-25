@@ -142,6 +142,16 @@ command once at startup; on Linux and similar systems it also requires `DISPLAY`
 open route only accepts requests whose remote address and `Host` are loopback, and it
 never takes a path from the request.
 
+`internal/password` hashes and verifies passwords with Argon2id and stores them as PHC
+strings (`$argon2id$v=19$m=…,t=…,p=…$<salt>$<hash>`). New hashes use m=19456 KiB, t=2, p=1,
+a random 16-byte salt and a 32-byte key; verification reads the parameters from the stored
+string, so stronger parameters can be introduced later without invalidating existing hashes.
+It is an adapter rather than part of `internal/domain` because it draws random salts and
+uses an external cryptographic implementation. The pure authentication rules — the
+username and password value rules, the session lifetime, the post-login redirect check,
+`Audience` (whose zero value is the guest) and which list conditions a guest may use —
+live in `internal/domain`.
+
 Shutdown closes the `/api/events` streams, drains in-flight requests within a 10 second
 grace period, then stops the scanner and the workers so a running job returns to the queue.
 
@@ -219,7 +229,7 @@ not persisted.
 
 ## Intended dependency direction
 
-`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} -> internal/domain`, one
+`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password} -> internal/domain`, one
 way only. The packages under `internal/` fall into three layers:
 
 - `internal/domain` holds the domain model: value types and pure rules
@@ -247,8 +257,8 @@ way only. The packages under `internal/` fall into three layers:
   an HTTP server. It must not import `net/http`, `database/sql`, `os/exec`, the
   SQLite driver, or any adapter package.
 - The adapters — `internal/httpapi`, `internal/store`, `internal/media`,
-  `internal/artifacts`, `internal/mediafs`, `internal/opener`, `internal/scanner` and `internal/jobs` —
-  talk to the outside world. `internal/eventbus` sits beside them and only delivers
+  `internal/artifacts`, `internal/mediafs`, `internal/opener`, `internal/scanner`, `internal/jobs` and
+  `internal/password` — talk to the outside world. `internal/eventbus` sits beside them and only delivers
   `domain.Event` values in-process; only `cmd/mdm` imports it. Filesystem checks stay in the adapters: `internal/mediafs` checks
   media folder paths, the files a request may open and the directories the picker lists, so `internal/store` never touches the filesystem
   and `internal/httpapi` never decides by itself whether a file may be opened.
