@@ -20,7 +20,7 @@ to the `self-reviewer` role. In Codex these agents are named
 checkout, branching, full validation, fixes, push, and the pull request.
 
 Then read the stage reference for the workflow requested by the user. The
-parent Issue's `Next` value is a hint, not an execution gate:
+user names the stage; nothing in the parent Issue selects it:
 
 - `plan`: [references/plan.md](references/plan.md)
 - `design`: [references/design.md](references/design.md)

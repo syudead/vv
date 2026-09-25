@@ -32,23 +32,31 @@ branch名は識別子ではない。Issue番号とfeature directory番号にも�
 
 agent固有session、packet、独自JSON、branch命名はどちらにも含めない。
 
+進捗もこの二つから読む。Planの有無はfeature branch上の`plan.md`とintegration PRの有無、
+Designの有無は`ui-design.md`、実装の進み具合はnative sub-issuesのopen/closedで分かる。
+これを親Issue本文へ書き写す進捗欄は持たない。
+
 ## Ownership
 
 ### Parent Issue
 
-親Issueは仕様そのものとSDD成果物の到達点を持つ。要求、要件、受け入れ条件、Edge Cases、
-対象外がここにあり、`.agents/skills/issue-spec`が書く。PR、branch、子Issue一覧、retry、
-agent情報は書かない。
+親Issueは仕様そのものだけを持つ。要求、要件、受け入れ条件、Edge Cases、対象外がここにあり、
+`.agents/skills/issue-spec`が書く。PR、branch、子Issue一覧、retry、agent情報、工程の進捗は
+書かない。
 
-```markdown
-## SDD
+以前は本文末尾に`## SDD`節（Plan/Designのチェックリストと`Next`）を置き、stage PRのmerge
+ごとに保守者が手で更新していた。実際には更新されないまま閉じる親Issueが多く、表示が実態と
+食い違った。同じ情報はfeature branchの成果物とGitHub relationshipから読めるため、節ごと
+廃止した。既存Issueに残る`## SDD`節は意味を持たない。
 
-- [x] Plan: `specs/006-search/plan.md`
-```
+### Labels
 
-UI IssueだけはPlanの後にDesignを持つ。`Next`は
-`plan | design | plan-to-issues`のいずれかで、子Issue作成後に削除する。
-ただしSDD節は人向けの進捗表示であり、指定された工程を許可または禁止する状態機械ではない。
+手順上の意味を持つラベルは`ui`だけである。`ui`付きの親Issueは`## UI品質とアクセシビリティ`
+節を持ち、`plan`と`plan-to-issues`の間で`design`工程を経る。ラベルは要求者が決め、agentは
+推測で付けない。
+
+`sdd`ラベルは廃止した。工程をラベルで起動・判定しないので、付いていても何も起きない。
+それ以外のラベル（`enhancement`など）は人の分類用で、手順は読まない。
 
 ### Feature artifacts
 
@@ -59,7 +67,7 @@ Planが判断の根拠や契約を持つ場合は`research.md`・`data-model.md`
 作らない。要求の正本は親Issueである。
 
 既存の後続成果物が後から改訂された前段成果物を取り込んでいるかは自動推測しない。改訂時は保守者が
-親IssueのSDD summaryを戻し、影響する工程をreviewed PRとして再実行する。
+影響する工程を明示してreviewed PRとして再実行する。
 
 ### GitHub
 
@@ -82,7 +90,8 @@ native sub-issue関係は必要に応じて読むが、親からintegration PR�
 
 通常Issueは`plan -> plan-to-issues`、UI Issueは`plan -> design -> plan-to-issues`で進む。
 仕様は親Issueとして先に書かれているので、工程には含めない。成果物stageは任意名sub-branchから
-feature branch向けPRを一件作って終了し、人がreview、merge、親IssueのSDD節更新を行う。
+feature branch向けPRを一件作って終了し、人がreviewとmergeを行う。次にどの工程を実行するかは
+保守者がagentへ渡すときに指定する。
 
 `plan-to-issues`は承認済みPlanから実装作業を直接native sub-issueとして作る。子Issueを作る直前に親の既存
 sub-issuesを確認し、同じ作業が既にあれば作成しない。既存childの更新やcloseは対象Issueが明示された
@@ -119,7 +128,7 @@ branch、全体検証、review指摘の修正、push、PRは親agentが所有す
 
 ## Failure behavior
 
-親IssueのSDD節、artifact、GitHub relationshipは作業入力として利用できるが、相互の一致を実行条件に
+artifactとGitHub relationshipは作業入力として利用できるが、相互の一致を実行条件に
 しない。review修正は指定されたPR headへ積む。必要な対象が依頼にも現在のcheckoutにも存在しない場合は
 推測せずユーザーへ確認する。
 

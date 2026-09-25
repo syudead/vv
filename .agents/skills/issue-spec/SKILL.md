@@ -24,16 +24,11 @@ files, or open a pull request. Stop when the Issue is written.
 ## 受け入れ条件
 ## Edge Cases
 ## 対象外
-
-## SDD
-
-- [ ] Plan
-- [ ] Design                  <- `ui` ラベルの Issue だけ
-- Next: `plan`
 ```
 
 Leave out a section this feature has nothing for. Do not invent content to
-fill a heading.
+fill a heading. Do not add a workflow-progress section such as `## SDD`;
+progress is read from the feature branch and the native sub-issues.
 
 Write 要件 and 受け入れ条件 as numbered lists. Downstream stages cite an item as
 `要件 3` or `受け入れ条件 5`, and a plan, a child Issue, a checklist, or a review
@@ -62,8 +57,10 @@ what this stage adds.
   rather than recording the change somewhere downstream.
 - **Labels are the requester's call.** Create the Issue with no labels, and
   add only the ones the requester names. Do not copy labels from other Issues.
-  `ui` decides whether the `design` stage runs, so when the Issue changes the UI
-  and the requester has not said, ask instead of setting it.
+  `ui` is the only label with workflow meaning — it decides whether the
+  `design` stage runs — so when the Issue changes the UI and the requester has
+  not said, ask instead of setting it. The `sdd` label is retired; do not add
+  it.
 
 ## Preflight
 

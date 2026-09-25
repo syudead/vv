@@ -35,8 +35,8 @@ when one is available, or perform that part locally.
 
 - An Issue-driven run starts from an explicitly supplied Issue. An explicitly
   supplied PR or branch may provide additional context.
-- The parent Issue is the specification. It carries the requirement, the
-  acceptance criteria, and an `## SDD` summary. The
+- The parent Issue is the specification. It carries the requirement and the
+  acceptance criteria, and nothing about workflow progress. The
   [`issue-spec` skill](../../issue-spec/SKILL.md) writes and revises it; no
   stage here restates it into a repository file.
 - Files on the selected branch describe the available artifacts; their presence
@@ -45,19 +45,16 @@ when one is available, or perform that part locally.
   are relevant. Do not copy PR, branch, or child-Issue lists into the parent
   body or create a second relationship registry in repository files.
 
-The parent summary has this form:
+Progress is read, not recorded. `plan.md` on the feature branch and an open
+integration PR mean Plan is done; `ui-design.md` means Design is done; the
+parent's native sub-issues mean `plan-to-issues` ran, and their open or closed
+state shows implementation. Do not add a progress checklist, a `Next` marker,
+or any other stage record to the parent body. An older parent may still carry an
+`## SDD` section; ignore it and leave it alone unless the user asks otherwise.
 
-```markdown
-## SDD
-
-- [ ] Plan
-- [ ] Design
-- Next: `plan`
-```
-
-Omit `Design` unless the parent has the existing `ui` domain label. Remove
-`Next` after `plan-to-issues` succeeds. The checklist and `Next` communicate
-progress to humans; they do not authorize or block a requested workflow.
+The `ui` label is the only label with workflow meaning: a parent carrying it
+goes through `design` between `plan` and `plan-to-issues`. The `sdd` label is
+retired. Never add or remove labels on your own.
 
 ## GitHub preflight
 
@@ -75,8 +72,8 @@ requested for a PR, update that PR's head. Ask the user only when information
 that is actually required for the requested mutation is unavailable.
 
 After checkout, read `plan.md` and optional `ui-design.md` when they are
-relevant and available. Their metadata and the parent checklist are useful
-context, not identity checks or execution gates.
+relevant and available. Their metadata is useful context, not an identity
+check or an execution gate.
 
 Do not add a `spec.md` to a feature directory; the requirement lives in the
 parent Issue. A feature directory always holds `plan.md`, adds `ui-design.md`
@@ -89,8 +86,8 @@ run.
 
 The skill deliberately does not infer whether an existing downstream
 artifact incorporates a later upstream revision. When an approved artifact is
-revised, the maintainer resets the parent SDD summary and reruns the affected
-stages through reviewed PRs.
+revised, the maintainer names the affected stages and reruns them through
+reviewed PRs.
 
 ## Branch and PR contract
 
@@ -107,9 +104,9 @@ stages through reviewed PRs.
 - A run performs one workflow, opens or updates one PR, and stops. PR merges do
   not start another agent.
 
-Humans merge every PR. After a stage PR merge, the maintainer updates the
-parent SDD summary. After an implementation PR merge, the maintainer closes
-that child Issue as completed. Only after all children are resolved, merge the
+Humans merge every PR. A stage PR merge needs no follow-up edit to the parent
+Issue. After an implementation PR merge, the maintainer closes that child Issue
+as completed. Only after all children are resolved, merge the
 latest `main` directly into the feature branch and run the full checks before
 merging the integration PR. Updating the integration PR branch from its base
 does not get a separate PR.
