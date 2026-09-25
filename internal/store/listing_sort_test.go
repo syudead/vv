@@ -140,7 +140,7 @@ func pageIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	t.Helper()
 	var out []int64
 	for range 50 {
-		page, err := db.Library().ListVideos(context.Background(), q)
+		page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, q)
 		if err != nil {
 			t.Fatalf("%+v: %v", q, err)
 		}
@@ -176,7 +176,7 @@ func TestListFolderVideosSortsWithSeed(t *testing.T) {
 		var got []int64
 		cursor := ""
 		for range 20 {
-			page, err := db.Library().ListFolderVideos(context.Background(), domain.FolderVideoQuery{
+			page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{
 				Dir: "/media", Sort: sort, Seed: 9, Limit: 2, Cursor: cursor,
 			})
 			if err != nil {
@@ -203,7 +203,7 @@ func TestListVideosTitleAscIsNatural(t *testing.T) {
 		listingFile("/media/2話.mp4", "2話", "key-2", 1),
 		listingFile("/media/1話.mp4", "1話", "key-1", 2),
 	)
-	page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Sort: domain.SortTitleAsc})
+	page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestListVideosRandomSurvivesAddedLocations(t *testing.T) {
 	q := domain.VideoQuery{Sort: domain.SortRandom, Seed: 5, Limit: 2}
 	var seen []int64
 	for pageIndex := range 20 {
-		page, err := db.Library().ListVideos(ctx, q)
+		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, q)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -305,7 +305,7 @@ func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 	cursorOf := func(q domain.VideoQuery) string {
 		t.Helper()
 		q.Limit = 1
-		page, err := db.Library().ListVideos(ctx, q)
+		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, q)
 		if err != nil || page.NextCursor == "" {
 			t.Fatalf("%+v: cursor = %q, err = %v", q, page.NextCursor, err)
 		}
@@ -327,13 +327,13 @@ func TestListVideosRejectsCursorOfOtherSortOrSeed(t *testing.T) {
 		{"数でない値", domain.VideoQuery{Sort: domain.SortSizeAsc,
 			Cursor: base64.RawURLEncoding.EncodeToString([]byte("sizeAsc\x1f\x1f0\x1f1\x1fabc"))}},
 	} {
-		if _, err := db.Library().ListVideos(ctx, tc.q); !errors.Is(err, domain.ErrInvalidCursor) {
+		if _, err := db.Library().ListVideos(ctx, domain.AudienceOwner, tc.q); !errors.Is(err, domain.ErrInvalidCursor) {
 			t.Errorf("%s: err = %v, want domain.ErrInvalidCursor", tc.name, err)
 		}
 	}
 
 	// 同じ並び順・同じ seed なら続きが取れる。
-	if _, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Cursor: random}); err != nil {
+	if _, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortRandom, Seed: 1, Cursor: random}); err != nil {
 		t.Errorf("同じ seed のカーソルで失敗した: %v", err)
 	}
 }

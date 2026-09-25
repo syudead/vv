@@ -84,7 +84,20 @@ func (f *fakeLibrary) ListMediaFolders(context.Context) ([]domain.MediaFolder, e
 	return folders, nil
 }
 
-func (f *fakeLibrary) ListVideos(_ context.Context, q domain.VideoQuery) (domain.VideoPage, error) {
+// requireOwner は、見る人を決める境界がまだ無い今、すべての呼び出しが所有者として
+// 読むことを偽物の側で確かめる（specs/016-single-account-auth の #296）。ゲストとして
+// 読んだら誤りを返し、そのテストを失敗させる。
+func requireOwner(audience domain.Audience) error {
+	if !audience.IsOwner() {
+		return errors.New("所有者として読んでいません")
+	}
+	return nil
+}
+
+func (f *fakeLibrary) ListVideos(_ context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error) {
+	if err := requireOwner(audience); err != nil {
+		return domain.VideoPage{}, err
+	}
 	f.lastQuery = q
 	if f.listErr != nil {
 		return domain.VideoPage{}, f.listErr
@@ -98,7 +111,10 @@ func (f *fakeLibrary) ListVideos(_ context.Context, q domain.VideoQuery) (domain
 	return page, nil
 }
 
-func (f *fakeLibrary) GetVideo(_ context.Context, id int64) (domain.Video, error) {
+func (f *fakeLibrary) GetVideo(_ context.Context, audience domain.Audience, id int64) (domain.Video, error) {
+	if err := requireOwner(audience); err != nil {
+		return domain.Video{}, err
+	}
 	video, ok := f.videos[id]
 	if !ok {
 		return domain.Video{}, domain.ErrNotFound
@@ -262,7 +278,10 @@ func (f *fakeCatalog) SeekThumbnailState(_ context.Context, video domain.Video) 
 	return domain.SeekThumbnailPending, nil
 }
 
-func (f *fakeCatalog) RelatedVideos(_ context.Context, video domain.Video) (domain.RelatedVideos, error) {
+func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error) {
+	if err := requireOwner(audience); err != nil {
+		return domain.RelatedVideos{}, err
+	}
 	f.relatedAsked = append(f.relatedAsked, video.ID)
 	return f.related, f.relatedErr
 }

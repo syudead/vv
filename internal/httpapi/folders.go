@@ -10,12 +10,13 @@ import (
 )
 
 // Folders はフォルダ画面の問い合わせ先である。フォルダは保存されておらず、
-// 所在のパスから導く。
+// 所在のパスから導く。所在と動画を返す読み出しは見る人（domain.Audience）を取る
+// （Library と同じく、今はすべて所有者として読む）。
 type Folders interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
-	FolderLocations(ctx context.Context, dir string) ([]domain.FolderLocation, error)
-	HasFolderLocations(ctx context.Context, dir string) (bool, error)
-	ListFolderVideos(ctx context.Context, q domain.FolderVideoQuery) (domain.VideoPage, error)
+	FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error)
+	HasFolderLocations(ctx context.Context, audience domain.Audience, dir string) (bool, error)
+	ListFolderVideos(ctx context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error)
 }
 
 const folderNotFoundMessage = "そのフォルダは見つかりません"
@@ -34,7 +35,7 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 
 	summaries := make([]domain.FolderSummary, 0, len(roots))
 	for _, root := range roots {
-		locations, err := s.folders.FolderLocations(r.Context(), root.Path)
+		locations, err := s.folders.FolderLocations(r.Context(), domain.AudienceOwner, root.Path)
 		if err != nil {
 			s.folderError(w, r, "フォルダを取得できませんでした", err)
 			return
@@ -54,7 +55,7 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 	if !ok {
 		return
 	}
-	locations, err := s.folders.FolderLocations(r.Context(), domain.FolderDir(root.Path, rel))
+	locations, err := s.folders.FolderLocations(r.Context(), domain.AudienceOwner, domain.FolderDir(root.Path, rel))
 	if err != nil {
 		s.folderError(w, r, "フォルダを取得できませんでした", err)
 		return
@@ -88,7 +89,7 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	// フォルダの有無は条件の検査より先に確かめる。無いフォルダは、条件の値に
 	// 関係なく 404 にする（contracts/list-api.md §5）。
 	if rel != "" {
-		found, err := s.folders.HasFolderLocations(r.Context(), query.Dir)
+		found, err := s.folders.HasFolderLocations(r.Context(), domain.AudienceOwner, query.Dir)
 		if err != nil {
 			s.folderError(w, r, "フォルダの動画を取得できませんでした", err)
 			return
@@ -127,7 +128,7 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		query.Cursor = *params.Cursor
 	}
 
-	page, err := s.folders.ListFolderVideos(r.Context(), query)
+	page, err := s.folders.ListFolderVideos(r.Context(), domain.AudienceOwner, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
 		s.invalidRequest(w, "読み込み位置を解釈できません。フォルダを開き直してください")
