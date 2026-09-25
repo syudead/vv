@@ -1,6 +1,6 @@
 name = "pr_review_fixer"
 description = "Handle one round of failed checks, review findings and base conflicts on one pull request for the sdd-autopilot orchestrator."
-model = "gpt-5.6-terra"
+model = "gpt-6-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 

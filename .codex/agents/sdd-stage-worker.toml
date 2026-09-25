@@ -1,6 +1,6 @@
 name = "sdd_stage_worker"
 description = "Run one issue-handoff stage (plan, design, plan-to-issues, implement, or the integration refresh) for the sdd-autopilot orchestrator."
-model = "gpt-5.6-terra"
+model = "gpt-6-sol"
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 
