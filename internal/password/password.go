@@ -13,6 +13,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -105,22 +106,23 @@ func decode(encoded string) (params, []byte, []byte, error) {
 	return p, salt, key, nil
 }
 
-// parseParams は `m=…,t=…,p=…` をこの順で読む。
+// parseParams は `m=…,t=…,p=…` をこの順で読む。各値は型に変換する前に、
+// 定数の上限と比べる。
 func parseParams(s string, p *params) error {
 	fields := strings.Split(s, ",")
 	if len(fields) != 3 {
 		return ErrMalformedHash
 	}
-	m, ok := parseField(fields[0], "m=", maxMemoryKiB)
-	if !ok {
+	m, ok := parseField(fields[0], "m=")
+	if !ok || m > maxMemoryKiB {
 		return ErrMalformedHash
 	}
-	t, ok := parseField(fields[1], "t=", maxIterations)
-	if !ok {
+	t, ok := parseField(fields[1], "t=")
+	if !ok || t > maxIterations {
 		return ErrMalformedHash
 	}
-	par, ok := parseField(fields[2], "p=", 255)
-	if !ok {
+	par, ok := parseField(fields[2], "p=")
+	if !ok || par > math.MaxUint8 {
 		return ErrMalformedHash
 	}
 	// Argon2 はメモリを並列度の 8 倍以上に求める。
@@ -133,9 +135,9 @@ func parseParams(s string, p *params) error {
 	return nil
 }
 
-// parseField は `<prefix><10進の数>` を読み、1 以上 limit 以下なら返す。
-// 先頭の 0 や符号は受け付けない。
-func parseField(field, prefix string, limit uint64) (uint64, bool) {
+// parseField は `<prefix><10進の数>` を読み、32 ビットに収まる 1 以上の数なら返す。
+// 先頭の 0 や符号は受け付けない。上限は呼び出し側が確かめる。
+func parseField(field, prefix string) (uint64, bool) {
 	digits, ok := strings.CutPrefix(field, prefix)
 	if !ok || digits == "" || (len(digits) > 1 && digits[0] == '0') {
 		return 0, false
@@ -145,8 +147,8 @@ func parseField(field, prefix string, limit uint64) (uint64, bool) {
 			return 0, false
 		}
 	}
-	n, err := strconv.ParseUint(digits, 10, 64)
-	if err != nil || n < 1 || n > limit {
+	n, err := strconv.ParseUint(digits, 10, 32)
+	if err != nil || n < 1 {
 		return 0, false
 	}
 	return n, true
