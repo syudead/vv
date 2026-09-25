@@ -161,6 +161,58 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ライブラリの項目（動画とグループ）の一覧を返す
+         * @description `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
+         *     （specs/017-folder-groups/contracts/library-api.md §1・data-model.md §5）。
+         *     グループのメンバーは1件のグループの項目に、それ以外は動画の項目になる。
+         *     `query`・`playable`・`tag` はメンバー単位で掛け（1本の動画が全条件を満たす）、
+         *     当たったメンバーが1本以上あればグループが出る。グループの値は、当たったかどうかに
+         *     関わらず全メンバーから数える。`watch` は項目の視聴状態に掛け、並べ替えは項目の値で
+         *     行う。`total` は絞り込み後の項目（カード）の数。カーソルの形は `listVideos` と同じ。
+         *
+         *     ゲストでは公開のメンバーだけを数え、公開のメンバーが1本のグループは動画の項目に
+         *     し、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
+         *     `playedDesc`、`tag` は `400` `invalid_request` にする（data-model.md §7）。
+         */
+        get: operations["listLibrary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 絞り込みに合う項目の動画の id を返す
+         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う項目の、
+         *     動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
+         *     並びは決めない。「すべて選択」用（specs/017-folder-groups/contracts/library-api.md §2）。
+         */
+        get: operations["listLibraryIds"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}": {
         parameters: {
             query?: never;
@@ -700,6 +752,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/folders/{rootId}/group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * フォルダのグループ1件を返す
+         * @description 一覧に残っているグループのカードを取り直すための経路
+         *     （specs/017-folder-groups/contracts/library-api.md §3）。絞り込みに関係なく、
+         *     グループの全メンバーから作る。そのフォルダが今グループでないか無いときは 404。
+         *
+         *     ゲストでは公開のメンバーだけから作り、公開のメンバーが2本以上なければ 404 にする
+         *     （data-model.md §7）。
+         */
+        get: operations["getFolderGroup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans/current": {
         parameters: {
             query?: never;
@@ -989,6 +1066,73 @@ export interface components {
              */
             missingTagIds?: number[];
         };
+        LibraryPage: {
+            items: components["schemas"]["LibraryItem"][];
+            /** @description 絞り込み後の項目（カード）の数。ページングとは独立に返る */
+            total: number;
+            /** @description 次のページの取得に渡す。これ以上無い場合は省略される */
+            nextCursor?: string;
+            /** @description tag のうち存在しなかった id。1つも無ければ省略される */
+            missingTagIds?: number[];
+        };
+        /** @description ライブラリの項目1件。`kind` に応じて `video` か `group` のちょうど一方が入る */
+        LibraryItem: {
+            /** @enum {string} */
+            kind: "video" | "group";
+            video?: components["schemas"]["Video"];
+            group?: components["schemas"]["LibraryGroup"];
+        };
+        /**
+         * @description グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
+         *     （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
+         *     グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
+         *     `lastPlayedAt` を省き、`tags` を空の配列にする。
+         */
+        LibraryGroup: {
+            folder: components["schemas"]["VideoFolder"];
+            /** @description フォルダ名 */
+            name: string;
+            videoCount: number;
+            /** @description 完了したメンバーの数。所有者の応答にだけ入る */
+            watchedCount?: number;
+            /**
+             * @description 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
+             *     inProgress。所有者の応答にだけ入る
+             * @enum {string}
+             */
+            watchState?: "unwatched" | "inProgress" | "watched";
+            /**
+             * Format: int64
+             * @description 長さの分かっているメンバーの合計。1本も分からなければ省く
+             */
+            durationMs?: number;
+            /**
+             * Format: int64
+             * @description メンバーの代表の所在の大きさの合計
+             */
+            sizeBytes: number;
+            /**
+             * Format: date-time
+             * @description メンバーの追加日時の最大
+             */
+            addedAt: string;
+            /**
+             * Format: date-time
+             * @description メンバーの最後に再生した時刻の最大。無ければ省く
+             */
+            lastPlayedAt?: string;
+            cover: components["schemas"]["Video"];
+            /**
+             * Format: int64
+             * @description 押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の
+             *     未完了のメンバー、全部完了なら最初のメンバー
+             */
+            openVideoId: number;
+            /** @description 全メンバーの id を並びの順に */
+            videoIds: number[];
+            /** @description メンバーのタグの和集合。同じタグの出所は和にする */
+            tags: components["schemas"]["VideoTag"][];
+        };
         FolderPreview: {
             /** Format: int64 */
             videoId: number;
@@ -1117,7 +1261,8 @@ export interface components {
         /**
          * @description 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
          *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-         *     登録フォルダにも含まれなければ省かれる
+         *     登録フォルダにも含まれなければ省かれる。LibraryGroup.folder ではグループの
+         *     フォルダそのものを指す
          */
         VideoFolder: {
             /**
@@ -1497,6 +1642,85 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description 条件に合う全件の id */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoIdsResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    listLibrary: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
+                 *     空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
+                 *     `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
+                 *     ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
+                 *     フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
+                 *     語が残らなければ絞り込まない。書き方の誤りは返さない
+                 */
+                query?: string;
+                /** @description 視聴状態で絞る。all は絞り込まない */
+                watch?: components["schemas"]["WatchFilter"];
+                /** @description true ならブラウザでそのまま再生できる（playable = true の）動画だけにする */
+                playable?: boolean;
+                /** @description 並び順 */
+                sort?: components["schemas"]["VideoSort"];
+                /**
+                 * @description `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
+                 *     ほかの並び順では無視する
+                 */
+                seed?: number;
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+                /**
+                 * @description タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
+                 *     最大16個、17個以上は400。存在しない id は条件から落とし、応答の
+                 *     missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+                 */
+                tag?: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 項目の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    listLibraryIds: {
+        parameters: {
+            query?: {
+                query?: string;
+                watch?: components["schemas"]["WatchFilter"];
+                playable?: boolean;
+                /** @description 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す */
+                tag?: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 条件に合う項目の動画の id */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2419,6 +2643,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getFolderGroup: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+                 */
+                path?: components["parameters"]["FolderPath"];
+            };
+            header?: never;
+            path: {
+                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                rootId: components["parameters"]["FolderRootId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description グループ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryGroup"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

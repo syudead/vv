@@ -53,6 +53,20 @@ positions. The library list additionally accepts up to 16 `tag` ids (AND) and
 reports any that no longer exist in `missingTagIds`
 ([specs/014-video-tags/contracts/tags-api.md](specs/014-video-tags/contracts/tags-api.md)).
 
+`GET /api/library` takes the same parameters as `GET /api/videos` but returns
+library items: a video, or a folder group as one item
+(`LibraryStore.ListLibrary`). The search, playable and tag filters apply per
+member, a group appears when any member matches, its values (count, total
+duration and size, latest dates, watch state and the member to open, decided by
+`domain.GroupWatch` and `domain.GroupOpenIndex`) come from all of its members,
+and the watch filter, sort and `total` apply to items. `GET /api/library/ids`
+returns the matched videos plus every member of matched groups (owner only),
+and `GET /api/folders/{rootId}/group` refetches one group card. A guest sees
+groups built from public members only; a group with one public member is listed
+as that video
+([specs/017-folder-groups/contracts/library-api.md](specs/017-folder-groups/contracts/library-api.md)).
+`GET /api/videos` stays a per-video list for the folder view's root search.
+
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
@@ -192,7 +206,8 @@ compile:
 - `IngestStore` — the job queue (enqueue, claim, complete, fail, requeue, remaining
   work) and writing each ingest stage's result back to the video row, including the
   retry of a failed probe and the rebuild of a missing preview.
-- `LibraryStore` — reads of the index: the video list and search, folder browsing,
+- `LibraryStore` — reads of the index: the video list and search, library items
+  (videos and folder groups, a group's card and the "select all" ids), folder browsing,
   related videos, a video's locations, and the startup refresh of search keys. The
   video list can AND-filter on a set of tag ids and reports which of them do not
   exist (`VideoQuery.TagIDs`/`VideoPage.MissingTagIDs`), and `VideoIDs` returns the

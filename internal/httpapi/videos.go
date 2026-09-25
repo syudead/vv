@@ -34,41 +34,12 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		return
 	}
 
-	query := domain.VideoQuery{Sort: domain.SortAddedDesc}
-
-	filters, ok := s.parseListFilters(w, listFilterParams{
-		watch: params.Watch, playable: params.Playable, sort: params.Sort, seed: params.Seed,
+	audience := audienceFrom(r.Context())
+	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
+		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
+		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 	})
 	if !ok {
-		return
-	}
-	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
-
-	// 件数は入口で丸める。ここで確定させておくと、応答の件数と問い合わせの
-	// 条件が一致し、「limit=1000 を渡したのに 200 件しか来ない」理由が
-	// 契約（api/openapi.yaml の maximum）だけで説明できる。
-	query.Limit = domain.DefaultLimit
-	if params.Limit != nil {
-		limit := *params.Limit
-		if limit < 1 {
-			s.invalidRequest(w, "1ページの件数は 1 以上を指定してください")
-			return
-		}
-		query.Limit = min(limit, domain.MaxLimit)
-	}
-
-	if params.Cursor != nil {
-		query.Cursor = *params.Cursor
-	}
-
-	if query.Query, ok = s.parseSearchQuery(w, params.Query); !ok {
-		return
-	}
-	if query.TagIDs, ok = s.parseTagFilter(w, params.Tag); !ok {
-		return
-	}
-	audience := audienceFrom(r.Context())
-	if !s.checkAudienceQuery(w, audience, query) {
 		return
 	}
 
@@ -85,6 +56,60 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	}
 
 	s.writeVideoPage(w, r, page, s.registeredRoots(r.Context()))
+}
+
+// videoQueryParams は一覧の経路（listVideos・listLibrary）が共通に受けるパラメータである。
+type videoQueryParams struct {
+	query    *string
+	watch    *gen.WatchFilter
+	playable *bool
+	sort     *gen.VideoSort
+	seed     *int64
+	cursor   *string
+	limit    *int
+	tag      *[]int64
+}
+
+// parseVideoQuery は一覧のパラメータを検査して問い合わせにする。誤りなら 400 を書いて
+// false を返す。見る人が使えない条件も 400 にする（checkAudienceQuery）。
+func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience, params videoQueryParams) (domain.VideoQuery, bool) {
+	query := domain.VideoQuery{Sort: domain.SortAddedDesc}
+
+	filters, ok := s.parseListFilters(w, listFilterParams{
+		watch: params.watch, playable: params.playable, sort: params.sort, seed: params.seed,
+	})
+	if !ok {
+		return domain.VideoQuery{}, false
+	}
+	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
+
+	// 件数は入口で丸める。ここで確定させておくと、応答の件数と問い合わせの
+	// 条件が一致し、「limit=1000 を渡したのに 200 件しか来ない」理由が
+	// 契約（api/openapi.yaml の maximum）だけで説明できる。
+	query.Limit = domain.DefaultLimit
+	if params.limit != nil {
+		limit := *params.limit
+		if limit < 1 {
+			s.invalidRequest(w, "1ページの件数は 1 以上を指定してください")
+			return domain.VideoQuery{}, false
+		}
+		query.Limit = min(limit, domain.MaxLimit)
+	}
+
+	if params.cursor != nil {
+		query.Cursor = *params.cursor
+	}
+
+	if query.Query, ok = s.parseSearchQuery(w, params.query); !ok {
+		return domain.VideoQuery{}, false
+	}
+	if query.TagIDs, ok = s.parseTagFilter(w, params.tag); !ok {
+		return domain.VideoQuery{}, false
+	}
+	if !s.checkAudienceQuery(w, audience, query) {
+		return domain.VideoQuery{}, false
+	}
+	return query, true
 }
 
 // writeVideoPage は一覧1ページを応答に書く。各項目には再生位置・タグと、一覧に

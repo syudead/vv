@@ -311,6 +311,142 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
+  /api/library:
+    get:
+      operationId: listLibrary
+      security:
+        - sessionCookie: []
+        - {}
+      summary: ライブラリの項目（動画とグループ）の一覧を返す
+      description: |
+        `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
+        （specs/017-folder-groups/contracts/library-api.md §1・data-model.md §5）。
+        グループのメンバーは1件のグループの項目に、それ以外は動画の項目になる。
+        `query`・`playable`・`tag` はメンバー単位で掛け（1本の動画が全条件を満たす）、
+        当たったメンバーが1本以上あればグループが出る。グループの値は、当たったかどうかに
+        関わらず全メンバーから数える。`watch` は項目の視聴状態に掛け、並べ替えは項目の値で
+        行う。`total` は絞り込み後の項目（カード）の数。カーソルの形は `listVideos` と同じ。
+
+        ゲストでは公開のメンバーだけを数え、公開のメンバーが1本のグループは動画の項目に
+        し、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
+        `playedDesc`、`tag` は `400` `invalid_request` にする（data-model.md §7）。
+      parameters:
+        - name: query
+          in: query
+          description: |
+            検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
+            空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
+            `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
+            ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
+            フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
+            語が残らなければ絞り込まない。書き方の誤りは返さない
+          schema:
+            type: string
+            maxLength: 100
+        - name: watch
+          in: query
+          description: 視聴状態で絞る。all は絞り込まない
+          schema:
+            $ref: "#/components/schemas/WatchFilter"
+        - name: playable
+          in: query
+          description: true ならブラウザでそのまま再生できる（playable = true の）動画だけにする
+          schema:
+            type: boolean
+            default: false
+        - name: sort
+          in: query
+          description: 並び順
+          schema:
+            $ref: "#/components/schemas/VideoSort"
+        - name: seed
+          in: query
+          description: |
+            `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
+            ほかの並び順では無視する
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+            maximum: 2147483647
+            default: 0
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 60
+        - name: tag
+          in: query
+          description: |
+            タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
+            最大16個、17個以上は400。存在しない id は条件から落とし、応答の
+            missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+          schema:
+            type: array
+            maxItems: 16
+            items:
+              type: integer
+              format: int64
+      responses:
+        "200":
+          description: 項目の一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+
+  /api/library/ids:
+    get:
+      operationId: listLibraryIds
+      summary: 絞り込みに合う項目の動画の id を返す
+      description: |
+        `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う項目の、
+        動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
+        並びは決めない。「すべて選択」用（specs/017-folder-groups/contracts/library-api.md §2）。
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: watch
+          in: query
+          schema:
+            $ref: "#/components/schemas/WatchFilter"
+        - name: playable
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: tag
+          in: query
+          description: 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
+          schema:
+            type: array
+            maxItems: 16
+            items:
+              type: integer
+              format: int64
+      responses:
+        "200":
+          description: 条件に合う項目の動画の id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoIdsResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+
   /api/videos/{id}:
     get:
       operationId: getVideo
@@ -1192,6 +1328,35 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/folders/{rootId}/group:
+    get:
+      operationId: getFolderGroup
+      security:
+        - sessionCookie: []
+        - {}
+      summary: フォルダのグループ1件を返す
+      description: |
+        一覧に残っているグループのカードを取り直すための経路
+        （specs/017-folder-groups/contracts/library-api.md §3）。絞り込みに関係なく、
+        グループの全メンバーから作る。そのフォルダが今グループでないか無いときは 404。
+
+        ゲストでは公開のメンバーだけから作り、公開のメンバーが2本以上なければ 404 にする
+        （data-model.md §7）。
+      parameters:
+        - $ref: "#/components/parameters/FolderRootId"
+        - $ref: "#/components/parameters/FolderPath"
+      responses:
+        "200":
+          description: グループ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryGroup"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/scans/current:
     get:
       operationId: getCurrentScan
@@ -1770,6 +1935,104 @@ components:
             type: integer
             format: int64
 
+    LibraryPage:
+      type: object
+      required: [items, total]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibraryItem"
+        total:
+          type: integer
+          description: 絞り込み後の項目（カード）の数。ページングとは独立に返る
+        nextCursor:
+          type: string
+          description: 次のページの取得に渡す。これ以上無い場合は省略される
+        missingTagIds:
+          type: array
+          description: tag のうち存在しなかった id。1つも無ければ省略される
+          items:
+            type: integer
+            format: int64
+
+    LibraryItem:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      description: ライブラリの項目1件。`kind` に応じて `video` か `group` のちょうど一方が入る
+      properties:
+        kind:
+          type: string
+          enum: [video, group]
+        video:
+          $ref: "#/components/schemas/Video"
+        group:
+          $ref: "#/components/schemas/LibraryGroup"
+
+    LibraryGroup:
+      type: object
+      required: [folder, name, videoCount, sizeBytes, addedAt, cover, openVideoId, videoIds, tags]
+      additionalProperties: false
+      description: |
+        グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
+        （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
+        グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
+        `lastPlayedAt` を省き、`tags` を空の配列にする。
+      properties:
+        folder:
+          $ref: "#/components/schemas/VideoFolder"
+        name:
+          type: string
+          description: フォルダ名
+        videoCount:
+          type: integer
+        watchedCount:
+          type: integer
+          description: 完了したメンバーの数。所有者の応答にだけ入る
+        watchState:
+          type: string
+          enum: [unwatched, inProgress, watched]
+          description: |
+            見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
+            inProgress。所有者の応答にだけ入る
+        durationMs:
+          type: integer
+          format: int64
+          description: 長さの分かっているメンバーの合計。1本も分からなければ省く
+        sizeBytes:
+          type: integer
+          format: int64
+          description: メンバーの代表の所在の大きさの合計
+        addedAt:
+          type: string
+          format: date-time
+          description: メンバーの追加日時の最大
+        lastPlayedAt:
+          type: string
+          format: date-time
+          description: メンバーの最後に再生した時刻の最大。無ければ省く
+        cover:
+          $ref: "#/components/schemas/Video"
+        openVideoId:
+          type: integer
+          format: int64
+          description: |
+            押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の
+            未完了のメンバー、全部完了なら最初のメンバー
+        videoIds:
+          type: array
+          description: 全メンバーの id を並びの順に
+          items:
+            type: integer
+            format: int64
+        tags:
+          type: array
+          description: メンバーのタグの和集合。同じタグの出所は和にする
+          items:
+            $ref: "#/components/schemas/VideoTag"
+
     FolderPreview:
       type: object
       required: [videoId, thumbnailUrl]
@@ -1951,7 +2214,8 @@ components:
       description: |
         所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
         GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-        登録フォルダにも含まれなければ省かれる
+        登録フォルダにも含まれなければ省かれる。LibraryGroup.folder ではグループの
+        フォルダそのものを指す
       properties:
         rootId:
           type: integer

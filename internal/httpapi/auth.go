@@ -122,6 +122,8 @@ var accessRoutes = map[string]access{
 	"GET /api/folders":                    accessGuest,
 	"GET /api/folders/{rootId}":           accessGuest,
 	"GET /api/folders/{rootId}/videos":    accessGuest,
+	"GET /api/folders/{rootId}/group":     accessGuest,
+	"GET /api/library":                    accessGuest,
 }
 
 // accessMux は accessRoutes の模様を引き当てるためだけの ServeMux である。
