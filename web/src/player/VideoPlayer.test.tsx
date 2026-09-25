@@ -13,6 +13,7 @@ const mock = vi.hoisted(() => {
     disposed = false;
     errorValue: unknown = null;
     mutedValue = false;
+    volumeValue = 1;
     fullscreen = false;
     rate = 1;
     durationValue = 120;
@@ -80,6 +81,10 @@ const mock = vi.hoisted(() => {
     muted(value?: boolean) {
       if (value !== undefined) this.mutedValue = value;
       return this.mutedValue;
+    }
+    volume(value?: number) {
+      if (value !== undefined) this.volumeValue = value;
+      return this.volumeValue;
     }
     playbackRate(value?: number) {
       if (value !== undefined) this.rate = value;
@@ -185,8 +190,35 @@ function props(overrides: Partial<Video> = {}) {
 
 describe("VideoPlayer", () => {
   afterEach(() => {
+    window.localStorage.clear();
     mock.instances.length = 0;
     vi.clearAllMocks();
+  });
+
+  it("保存した音量を復元し、音量の変更を次のプレイヤーへ引き継ぐ", async () => {
+    window.localStorage.setItem(
+      "vv.playback-volume.v1",
+      JSON.stringify({ volume: 0.4, muted: true }),
+    );
+    const first = render(<VideoPlayer {...props()} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const firstPlayer = mock.instances[0];
+    expect(firstPlayer?.volumeValue).toBe(0.4);
+    expect(firstPlayer?.mutedValue).toBe(true);
+
+    if (firstPlayer === undefined) throw new Error("playerがありません");
+    firstPlayer.volumeValue = 0.7;
+    firstPlayer.mutedValue = false;
+    act(() => firstPlayer.trigger("volumechange"));
+    expect(
+      JSON.parse(window.localStorage.getItem("vv.playback-volume.v1") ?? ""),
+    ).toEqual({ volume: 0.7, muted: false });
+
+    first.unmount();
+    render(<VideoPlayer {...props()} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(2));
+    expect(mock.instances[1]?.volumeValue).toBe(0.7);
+    expect(mock.instances[1]?.mutedValue).toBe(false);
   });
 
   it("direct動画はstream、非対応動画はtranscodeから開始する", async () => {
