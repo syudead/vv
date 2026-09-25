@@ -62,4 +62,6 @@ A technical constraint is never a reason to narrow the design (Q-7).
    contradicts.
 7. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
 8. After human merge, the maintainer marks Design complete and sets
-   `Next: plan-to-issues`.
+   `Next: plan-to-issues`. Under
+   [`sdd-autopilot`](../../sdd-autopilot/SKILL.md) its orchestrator merges and
+   does this step.

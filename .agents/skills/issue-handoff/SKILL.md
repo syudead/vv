@@ -31,4 +31,7 @@ Writing or revising the requirement itself is not a stage here. The parent
 Issue is the specification, and the
 [`issue-spec` skill](../issue-spec/SKILL.md) writes it.
 
-Perform one stage, open or update one pull request, and stop.
+Perform one stage, open or update one pull request, and stop. To run every
+stage up to the integration merge unattended, the maintainer uses the
+[`sdd-autopilot` skill](../sdd-autopilot/SKILL.md) instead, which drives these
+stages through its own workers.

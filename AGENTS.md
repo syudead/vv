@@ -37,6 +37,9 @@ file into a handbook.
   `ui` Issues. Use `.agents/skills/issue-handoff`; each run performs one stage
   and opens or updates one PR. Stage and implementation PRs target the
   long-lived feature branch, and only its integration PR targets `main`.
+- To run a feature unattended up to (not including) the integration merge,
+  the maintainer explicitly starts `.agents/skills/sdd-autopilot` with the
+  parent Issue. It merges feature-branch PRs itself; never the integration PR.
 - The empty feature-branch push during `plan` is the sole temporary exception
   to having a review target. Open the integration PR immediately after the Plan
   PR is merged.

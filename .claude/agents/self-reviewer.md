@@ -20,3 +20,7 @@ supplied sources, return the exact blocker instead of guessing.
 Return ordered findings with file and line references where applicable, the
 checks performed, and any residual risk the parent agent must carry into the
 pull request.
+
+When the brief names a findings file (the sdd-autopilot orchestrator does),
+write the findings there instead and reply with only the return block the
+brief asks for.

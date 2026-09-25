@@ -66,7 +66,8 @@ Planが判断の根拠や契約を持つ場合は`research.md`・`data-model.md`
 - stage PRは親Issueを`Refs`で通常参照し、feature branchをbaseにする。
 - implementation PRは一つの子Issueを`Refs`で参照し、feature branchをbaseにする。
 - integration PRだけが`main`をbaseにし、親Issueを`Closes`で参照する。
-- childはimplementation PRがfeatureへmergeされた時点で人がcompletedとして閉じる。
+- childはimplementation PRがfeatureへmergeされた時点で人（[Autopilot](#autopilot)ではorchestrator）が
+  completedとして閉じる。
 - parentはintegration PRが`main`へmergeされた時点でGitHub標準動作により閉じる。
 
 子Issueのcloseは「feature branchへ実装済み」、親Issueのcloseは「mainへ統合済み」を表す。
@@ -75,14 +76,16 @@ Planが判断の根拠や契約を持つ場合は`research.md`・`data-model.md`
 
 指定されたIssue、PR、branchと現在のcheckoutを作業文脈として使う。GitHub標準のIssue/PR参照や
 native sub-issue関係は必要に応じて読むが、親からintegration PR、feature branch、feature directoryを
-順番に復元するrepository固有の手順は設けない。複数のPRや成果物を照合して一意性を判定しない。
+順番に復元するrepository固有の手順は一工程の実行には設けない（[Autopilot](#autopilot)は次の
+行動を決めるためにだけこれらの事実を読む）。複数のPRや成果物を照合して一意性を判定しない。
 要求された変更に本当に必要な情報が得られない場合だけユーザーへ確認する。
 
 ## Stage transitions
 
 通常Issueは`plan -> plan-to-issues`、UI Issueは`plan -> design -> plan-to-issues`で進む。
 仕様は親Issueとして先に書かれているので、工程には含めない。成果物stageは任意名sub-branchから
-feature branch向けPRを一件作って終了し、人がreview、merge、親IssueのSDD節更新を行う。
+feature branch向けPRを一件作って終了し、人がreview、merge、親IssueのSDD節更新を行う
+（[Autopilot](#autopilot)ではmergeとSDD節更新をorchestratorが行う）。
 
 `plan-to-issues`は承認済みPlanから実装作業を直接native sub-issueとして作る。子Issueを作る直前に親の既存
 sub-issuesを確認し、同じ作業が既にあれば作成しない。既存childの更新やcloseは対象Issueが明示された
@@ -107,7 +110,8 @@ CIはすべてのPRで検証するが、agentや次工程を起動しない。�
 - agent packet、result JSON、session state
 - branch名によるfeature/stage判定
 
-正規手順は`.agents/skills/issue-handoff/`に置く。
+正規手順は`.agents/skills/issue-handoff/`に置く。保守者が明示的に起動する連続実行は
+[Autopilot](#autopilot)を参照。
 
 一工程を担当する親agentは、hostが対応している場合、その工程内の境界が確定した作業を
 project-scoped subagentへ委譲する。repositoryはCodex向けに`.codex/agents/`、Claude向けに
@@ -116,6 +120,32 @@ project-scoped subagentへ委譲する。repositoryはCodex向けに`.codex/agen
 branch、全体検証、review指摘の修正、push、PRは親agentが所有する。この内部委譲は次工程を
 起動せず、handoff stateも追加しない。対応しないhostは同等のbounded workerを使い、なければ
 同じ作業を親agent自身で実行する。
+
+## Autopilot
+
+保守者が親Issueを明示して`.agents/skills/sdd-autopilot`を起動した場合に限り、上の工程を
+統合PRのmerge直前まで連続して進める。これはClaude RoutineやPRイベント購読のworkflowでは
+なく、保守者が開始した一つのsessionであり、終われば何も残らない。
+
+- orchestratorは工程の作業をしない。各工程、self-review、review指摘の一巡ごとに新しい
+  worker（`sdd-stage-worker`、`self-reviewer`、`pr-review-fixer`）を起動し、Issue番号・
+  branch・pathだけを渡して、固定形式の短い結果だけを受け取る。長い会話でもorchestratorの
+  文脈にはdiff、CI log、review本文、Issue本文が溜まらない。
+- 次の行動は毎回GitHubとrepositoryの事実（feature branch、integration PR、`ui-design.md`の
+  有無、native sub-issues、feature branch向けのopen PR）から決める。session stateやledgerは
+  持たないので、会話の要約や再開で失うものがない。`## SDD`節は人向けの表示として更新するが、
+  判断の入力にはしない。
+- feature branch向けPRのmerge、`## SDD`節の更新、integration PRの作成、子Issueのclose、
+  最新`main`のmergeは、この起動によって保守者から委ねられる。merge条件はCIがheadで成功、
+  review botがheadをreview済み、その後のreview対応workerが変更なしを返したこと。
+- PRイベントの購読や定期的な確認は、この起動したsessionが待つための手段としてだけ使う。
+  上のAutomation boundaryが除くのは、repositoryに置いて人の起動なしにagentを動かす仕組みであり、
+  それは引き続き使わない。
+- integration PRはmergeしない。merge可能になった時点で保守者へ報告して止まる。
+- 要求者の判断が要る質問、承認済み成果物の変更が要る指摘、収束しないreview、決定表に
+  当てはまらない状態では止まる。再度起動すれば、GitHub上の事実から続きを進める。
+
+手順は`.agents/skills/sdd-autopilot/references/loop.md`に置く。
 
 ## Failure behavior
 

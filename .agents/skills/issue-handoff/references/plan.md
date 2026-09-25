@@ -23,7 +23,9 @@ stage that creates the feature branch.
 6. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
 7. After human merge, the maintainer opens the feature-to-`main` integration PR
    with `Closes #NNN`, then marks Plan complete. For a `ui` Issue set
-   `Next: design`; otherwise set `Next: plan-to-issues`.
+   `Next: design`; otherwise set `Next: plan-to-issues`. Under
+   [`sdd-autopilot`](../../sdd-autopilot/SKILL.md) its orchestrator merges and
+   does this step.
 
 If execution stops after the empty feature branch is pushed but before the Plan
 PR exists, that branch has no standard GitHub relationship to the Issue. Do not
