@@ -75,6 +75,42 @@ func TestThumbnailCacheControlRevalidates(t *testing.T) {
 	}
 }
 
+// 作り直したサムネイルが前と同じ大きさ・更新時刻でも、内容が違えば ETag が
+// 変わり、古い ETag での確認には新しい画像を返す。
+func TestThumbnailETagFollowsContent(t *testing.T) {
+	artifacts, video := thumbnailFixture(t)
+	handler := newTestServer(t, Options{
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
+	})
+	const target = "/api/videos/1/thumbnail?v=abcdef012345"
+	path := artifacts.thumbnails[video.ContentKey]
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := do(t, handler, http.MethodGet, target).Header().Get("ETag")
+
+	replaced := []byte{0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10}
+	if err := os.WriteFile(path, replaced, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	req.Header.Set("If-None-Match", before)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != string(replaced) {
+		t.Fatalf("古い ETag での確認 = %d %x、新しい画像を返すべき", rec.Code, rec.Body.Bytes())
+	}
+	if after := rec.Header().Get("ETag"); after == before {
+		t.Errorf("内容が変わっても ETag = %q のまま", after)
+	}
+}
+
 // 成功の応答は ETag で確かめさせるが、失敗応答にキャッシュの指示が残ると壊れた
 // 結果が再利用される。416 では no-store に戻ることを固定する。
 func TestThumbnailUnsatisfiableRangeIsNotCached(t *testing.T) {

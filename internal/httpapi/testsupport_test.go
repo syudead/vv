@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -34,8 +37,22 @@ func (f *fakeArtifacts) ThumbnailFile(contentKey string) (*os.File, error) {
 	return openFake(f.thumbnails, contentKey)
 }
 
-func (f *fakeArtifacts) PreviewFile(contentKey string) (*os.File, error) {
-	return openFake(f.previews, contentKey)
+// PreviewFile は本物の置き場と同じく、内容の SHA-256 を添えて返す。
+func (f *fakeArtifacts) PreviewFile(contentKey string) (*os.File, string, error) {
+	file, err := openFake(f.previews, contentKey)
+	if err != nil {
+		return nil, "", err
+	}
+	h := sha256.New()
+	_, err = io.Copy(h, file)
+	if err == nil {
+		_, err = file.Seek(0, io.SeekStart)
+	}
+	if err != nil {
+		_ = file.Close()
+		return nil, "", err
+	}
+	return file, hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (f *fakeArtifacts) SeekThumbnail(contentKey string, positionMs int64) ([]byte, error) {

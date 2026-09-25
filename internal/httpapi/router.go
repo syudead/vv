@@ -110,8 +110,9 @@ type Transcoder interface {
 type ArtifactReader interface {
 	// ThumbnailFile はライブラリ用サムネイルを開く。閉じるのは呼び出し側である。
 	ThumbnailFile(contentKey string) (*os.File, error)
-	// PreviewFile はホバープレビューの MP4 を開く。閉じるのは呼び出し側である。
-	PreviewFile(contentKey string) (*os.File, error)
+	// PreviewFile はホバープレビューの MP4 を開き、内容の SHA-256（manifest に
+	// 記録したもの）と合わせて返す。閉じるのは呼び出し側である。
+	PreviewFile(contentKey string) (*os.File, string, error)
 	// SeekThumbnail は再生位置を含むシーク用プレビューの1枚を読む。
 	SeekThumbnail(contentKey string, positionMs int64) ([]byte, error)
 }

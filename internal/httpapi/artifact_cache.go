@@ -3,9 +3,8 @@ package httpapi
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"io"
 	"net/http"
-	"os"
-	"strconv"
 	"strings"
 )
 
@@ -19,14 +18,26 @@ func setRevalidate(w http.ResponseWriter, etag string) {
 	w.Header().Set("ETag", etag)
 }
 
-// fileETag は置き場のファイルの ETag を作る。生成物の種類・content_key・更新時刻・
-// 大きさのどれかが変われば変わる。content_key をそのまま出さないよう、ハッシュにする。
-func fileETag(kind, contentKey string, info os.FileInfo) string {
-	return hashETag([]byte(strings.Join([]string{
-		kind, contentKey,
-		strconv.FormatInt(info.ModTime().UnixNano(), 10),
-		strconv.FormatInt(info.Size(), 10),
-	}, "\x00")))
+// ETag は内容が変われば必ず変わるものから作る。更新時刻と大きさは、作り直した
+// 生成物でも前と同じになりうるので使わない。
+
+// digestETag は、生成のときに記録した内容のダイジェストから ETag を作る。
+// 中身を読み直さずに済む（ホバープレビュー）。
+func digestETag(kind, digest string) string {
+	return hashETag([]byte(kind + "\x00" + digest))
+}
+
+// readerETag は内容を読み切って ETag を作り、読む位置を先頭へ戻す。小さな
+// 生成物（サムネイル）に使う。
+func readerETag(content io.ReadSeeker) (string, error) {
+	h := sha256.New()
+	if _, err := io.Copy(h, content); err != nil {
+		return "", err
+	}
+	if _, err := content.Seek(0, io.SeekStart); err != nil {
+		return "", err
+	}
+	return hashETag(h.Sum(nil)), nil
 }
 
 // bytesETag は内容そのものから ETag を作る。

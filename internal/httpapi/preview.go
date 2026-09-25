@@ -22,7 +22,7 @@ func (s *server) GetVideoPreview(
 	}
 
 	// 無い・manifest と合わない・生成途中のものは、置き場が「無い」と答える。
-	file, err := s.artifacts.PreviewFile(video.ContentKey)
+	file, digest, err := s.artifacts.PreviewFile(video.ContentKey)
 	if err != nil {
 		s.notFound(w, "プレビューはまだ生成されていません")
 		return
@@ -37,7 +37,7 @@ func (s *server) GetVideoPreview(
 
 	// 版の有無によらず、使うたびに確かめさせる（contracts/guest-api.md §5）。
 	// If-None-Match が一致すれば http.ServeContent が 304 を返す。
-	setRevalidate(w, fileETag("preview", video.ContentKey, info))
+	setRevalidate(w, digestETag("preview", digest))
 	w.Header().Set("Content-Type", "video/mp4")
 	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
 }
