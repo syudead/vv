@@ -31,6 +31,25 @@ if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
   echo "export PATH=\"$gobin:\$PATH\"" >>"$CLAUDE_ENV_FILE"
 fi
 
-# ffmpeg／ffprobe はここでは入れない。task test と task lint には不要で、
-# 必要になるのは bin/mdm を直接起動するときだけである（起動前確認で存在を見る）。
-# 必要なら: apt-get update && apt-get install -y --no-install-recommends ffmpeg
+# ffmpeg／ffprobe は bin/mdm の起動、internal/media の *WithFFmpeg テスト、e2e の
+# メディア fixture 生成（web/e2e/media-fixtures.mjs）で要る。無いとセッションごとに
+# 足りないと気づいて止まるので、ここで入れておく（フック後の状態はキャッシュされる）。
+# 取得に失敗しても lint や単体テストは進められるので、フック全体は失敗させない。
+has_media_tools() { command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null; }
+if ! has_media_tools; then
+  sudo=""
+  if [ "$(id -u)" != "0" ]; then sudo="sudo"; fi
+  # sudo は環境変数を捨てるので、DEBIAN_FRONTEND は env で sudo の内側に渡す。
+  apt_install() {
+    $sudo env DEBIAN_FRONTEND=noninteractive \
+      apt-get install -y -qq --no-install-recommends "$@" ffmpeg
+  }
+  # 一部の PPA がプロキシで拒否されても update 自体は警告で済む。
+  $sudo apt-get update -qq || true
+  apt_install || true
+  # パッケージは入っているのに実行ファイルだけ欠けている場合は再展開する。
+  if ! has_media_tools; then apt_install --reinstall || true; fi
+  if ! has_media_tools; then
+    echo "session-start: ffmpeg／ffprobe を入れられなかった（メディア系のテストと e2e は動かない）" >&2
+  fi
+fi
