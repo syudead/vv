@@ -402,6 +402,7 @@ export function useVideos(
   const changedWhileLoading = useRef(new Set<number>());
 
   useEffect(() => {
+    const queue = refreshQueue.current;
     const unsubscribe = subscribeServerEvents({
       video: (id) => {
         // ページの取得中は、表示中の動画でも覚えておく。取り直しの方が先に
@@ -426,7 +427,7 @@ export function useVideos(
       unsubscribe();
       refreshing.current?.abort();
       refreshing.current = null;
-      refreshQueue.current.clear();
+      queue.clear();
     };
   }, [refreshItems, refreshProcessingItems]);
 
@@ -558,6 +559,7 @@ export function useVideos(
       }
     },
     // folderKey と key は folderRef・criteriaRef の中身が変わったことを表す。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [folderKey, key, refreshItems],
   );
 

@@ -55,6 +55,7 @@ function statusAnnouncement(presentation: ScanPresentation) {
 export default function ScanProgressIndicator() {
   const scan = useScan();
   const notice = useScanNotice();
+  const { setCompletionNoticePaused } = notice;
   const navigate = useNavigate();
   const presentation = presentScan(scan);
   const [open, setOpen] = useState(false);
@@ -86,8 +87,8 @@ export default function ScanProgressIndicator() {
     setPointerActive(false);
     setFocused(false);
     setOpen(false);
-    if (scan.loaded) notice.setCompletionNoticePaused(false);
-  }, [notice.setCompletionNoticePaused, scan.loaded, visible]);
+    if (scan.loaded) setCompletionNoticePaused(false);
+  }, [scan.loaded, setCompletionNoticePaused, visible]);
 
   useEffect(
     () => () => {
@@ -101,14 +102,8 @@ export default function ScanProgressIndicator() {
   useEffect(() => {
     if (!scan.loaded) return;
     const paused = terminalVisible && (pointerActive || focused);
-    notice.setCompletionNoticePaused(paused);
-  }, [
-    focused,
-    notice.setCompletionNoticePaused,
-    pointerActive,
-    scan.loaded,
-    terminalVisible,
-  ]);
+    setCompletionNoticePaused(paused);
+  }, [focused, setCompletionNoticePaused, pointerActive, scan.loaded, terminalVisible]);
 
   if (!visible) return null;
 
