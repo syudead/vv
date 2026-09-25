@@ -6,7 +6,8 @@ import type { Video } from "../api/client";
 import type { RelatedState } from "../api/useVideoDetail";
 import { type HoverPreview, useHoverPreview } from "./useHoverPreview";
 import { cn } from "../lib/cn";
-import { formatDuration, watchedRatio } from "../lib/format";
+import { formatDuration, isNarrowVideo, watchedRatio } from "../lib/format";
+import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 
@@ -42,6 +43,9 @@ export function VideoThumbnail({
         className,
       )}
     >
+      {video.thumbnailUrl !== undefined && isNarrowVideo(video) && (
+        <ThumbnailBackdrop src={video.thumbnailUrl} />
+      )}
       {video.thumbnailUrl !== undefined ? (
         <img
           src={video.thumbnailUrl}
@@ -49,7 +53,7 @@ export function VideoThumbnail({
           loading="lazy"
           decoding="async"
           className={cn(
-            "h-full w-full object-contain",
+            "relative h-full w-full object-contain",
             preview?.playing === true && "opacity-0",
           )}
         />

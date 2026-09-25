@@ -21,9 +21,11 @@ import {
   qualityLabel,
   unplayableText,
   watchState,
+  isNarrowVideo,
   watchedRatio,
 } from "../lib/format";
 import Checkbox from "../ui/Checkbox";
+import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 
 export interface VideoCardProps {
   video: Video;
@@ -136,6 +138,7 @@ function VideoCard(props: VideoCardProps) {
   const [attempting, setAttempting] = useState(false);
   const [playing, setPlaying] = useState(false);
   const showingPreview = playing && previewActive;
+  const narrow = isNarrowVideo(video);
 
   const setVideoElement = useCallback((element: HTMLVideoElement | null) => {
     const previous = videoRef.current;
@@ -261,6 +264,9 @@ function VideoCard(props: VideoCardProps) {
             data-preview-media="true"
             className="absolute inset-0 transition-transform duration-300 ease-out-quart group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
           >
+            {video.thumbnailUrl !== undefined && narrow && (
+              <ThumbnailBackdrop src={video.thumbnailUrl} />
+            )}
             {video.thumbnailUrl !== undefined ? (
               <img
                 src={video.thumbnailUrl}
@@ -268,7 +274,7 @@ function VideoCard(props: VideoCardProps) {
                 loading="lazy"
                 decoding="async"
                 className={cn(
-                  "h-full w-full object-contain",
+                  "relative h-full w-full object-contain",
                   showingPreview && "opacity-0",
                 )}
               />
@@ -409,13 +415,16 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </td>
       <td className="w-32 py-1.5 pr-2">
         <div className="relative aspect-video w-28 overflow-hidden rounded-sm bg-navbar">
+          {video.thumbnailUrl !== undefined && isNarrowVideo(video) && (
+            <ThumbnailBackdrop src={video.thumbnailUrl} />
+          )}
           {video.thumbnailUrl !== undefined && (
             <img
               src={video.thumbnailUrl}
               alt=""
               loading="lazy"
               decoding="async"
-              className="h-full w-full object-contain"
+              className="relative h-full w-full object-contain"
             />
           )}
           {ratio !== null && (

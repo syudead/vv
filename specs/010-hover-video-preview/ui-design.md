@@ -38,7 +38,7 @@
 ## Spacing Rhythm
 
 - `aspect-video`、card width token、grid gap、metadata padding、card radius をそのまま使う。
-- video は `h-full w-full object-contain` で thumbnail と同じ framing にする（縦長の動画も切り抜かず全体を見せる）。開始・停止・buffering で surface 高、card 高、隣接 card、toolbar、selection bar、scroll positionを動かさない。
+- video は `h-full w-full object-contain` で thumbnail と同じ framing にする（縦長の動画も切り抜かず全体を見せる。縦長・正方形に近い動画は、左右の余白に同じサムネイルをぼかして敷く）。開始・停止・buffering で surface 高、card 高、隣接 card、toolbar、selection bar、scroll positionを動かさない。
 - 360px、768px、1280px の各 viewport で、preview 前後の同じ card の bounding box と grid wrapping が変わらないことを画像で確認する。
 
 ## Typography
