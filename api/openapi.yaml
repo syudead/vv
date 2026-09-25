@@ -1003,6 +1003,32 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
+  /api/video-visibility:
+    put:
+      operationId: updateVideoVisibility
+      summary: 動画の公開・非公開を切り替える
+      description: |
+        `videoIds` の公開フラグを `public` にそろえる。詳細画面の1本も選択バーの複数本も、
+        同じこの経路を使う。`videoIds` は1件以上20000件以下で、重複は1つとして数える。
+        既に同じ状態の動画も誤りにせず `applied` に数える。処理は1つのトランザクションで、
+        全部に反映するか1つも反映しない。非公開にした動画をゲストとして配信中の応答は
+        打ち切る（specs/016-single-account-auth/contracts/guest-api.md §4・§6）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoVisibilityRequest"
+      responses:
+        "200":
+          description: 適用結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoVisibilityResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+
   /api/directories:
     get:
       operationId: listDirectories
@@ -1553,6 +1579,31 @@ components:
           type: integer
           description: videoIds のうちいまライブラリにある動画の数
 
+    VideoVisibilityRequest:
+      type: object
+      required: [videoIds, public]
+      additionalProperties: false
+      properties:
+        videoIds:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        public:
+          type: boolean
+          description: true で公開、false で非公開にする
+
+    VideoVisibilityResponse:
+      type: object
+      required: [applied]
+      additionalProperties: false
+      properties:
+        applied:
+          type: integer
+          description: videoIds のうちいまライブラリにある動画の数（既に同じ状態だったものを含む）
+
     VideoTagsSummaryRequest:
       type: object
       required: [videoIds]
@@ -1768,7 +1819,7 @@ components:
         ゲストの応答では `location`・`progress`・`probeError` を省き、`tags` を空の配列にする
         （specs/016-single-account-auth/contracts/guest-api.md §1）。
       required:
-        [id, title, sizeBytes, addedAt, playable, probeState, thumbnailState, previewState, tags]
+        [id, title, sizeBytes, addedAt, playable, probeState, thumbnailState, previewState, tags, public]
       additionalProperties: false
       properties:
         id:
@@ -1841,6 +1892,11 @@ components:
             無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
           items:
             $ref: "#/components/schemas/TagRef"
+        public:
+          type: boolean
+          description: |
+            公開の動画か。公開の動画はログインしていない人にも見える
+            （specs/016-single-account-auth/contracts/guest-api.md §4）
         seekThumbnailState:
           type: string
           enum: [pending, done, failed]

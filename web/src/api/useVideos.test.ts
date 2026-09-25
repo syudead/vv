@@ -43,6 +43,7 @@ function item(id: number): Video {
   return {
     id,
     title: `動画 ${String(id)}`,
+    public: false,
     sizeBytes: 1024,
     addedAt: "2026-09-13T00:00:00Z",
     playable: true,

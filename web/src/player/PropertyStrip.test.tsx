@@ -8,6 +8,7 @@ import { formatCodec, splitPath } from "./properties";
 const video: Video = {
   id: 7,
   title: "テスト動画",
+  public: false,
   sizeBytes: 84_331_821,
   addedAt: "2026-09-20T03:00:00Z",
   playable: true,

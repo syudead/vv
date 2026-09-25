@@ -13,6 +13,7 @@ import {
   startScan,
   transcodeUrl,
   saveProgress,
+  setVideoVisibility,
   updateMediaFolder,
 } from "./client";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
@@ -171,6 +172,46 @@ describe("settings API client", () => {
   });
 });
 
+describe("visibility API client", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("公開・非公開の切り替えを JSON の PUT で送る", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    fetch.mockResolvedValueOnce(jsonResponse({ applied: 2 }));
+
+    await expect(setVideoVisibility([3, 5], false)).resolves.toEqual({ applied: 2 });
+    expect(fetch).toHaveBeenCalledWith("/api/video-visibility", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoIds: [3, 5], public: false }),
+      signal: undefined,
+    });
+  });
+
+  it("切り替えが成功したら一覧の控えを捨て、失敗したら残す", async () => {
+    const key = { query: "", sort: "addedDesc" as const };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+
+    fetch.mockResolvedValueOnce(jsonResponse({ applied: 1 }));
+    hold();
+    await setVideoVisibility([7], false);
+    expect(takeListSnapshot(key)).toBeUndefined();
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "invalid_request", message: "invalid" }, 400),
+    );
+    hold();
+    await expect(setVideoVisibility([7], true)).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+  });
+});
+
 describe("progress API client", () => {
   const key = { query: "", sort: "addedDesc" as const };
   const progress = {
@@ -181,6 +222,7 @@ describe("progress API client", () => {
   const unwatched = {
     id: 7,
     title: "x",
+    public: false,
     sizeBytes: 1,
     addedAt: "2026-09-01T00:00:00Z",
     playable: true,

@@ -9,6 +9,7 @@ function video(extra: Partial<Video> = {}): Video {
   return {
     id: 1,
     title: "動画 1",
+    public: false,
     sizeBytes: 1024,
     addedAt: "2026-09-01T00:00:00Z",
     playable: false,

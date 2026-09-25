@@ -383,6 +383,7 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		ProbeState:     gen.VideoProbeState(video.ProbeState),
 		ThumbnailState: gen.VideoThumbnailState(video.ThumbnailState),
 		PreviewState:   gen.VideoPreviewState(video.PreviewState),
+		Public:         video.Public,
 	}
 
 	if video.DurationMs != nil {

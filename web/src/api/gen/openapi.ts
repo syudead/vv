@@ -580,6 +580,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/video-visibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 動画の公開・非公開を切り替える
+         * @description `videoIds` の公開フラグを `public` にそろえる。詳細画面の1本も選択バーの複数本も、
+         *     同じこの経路を使う。`videoIds` は1件以上20000件以下で、重複は1つとして数える。
+         *     既に同じ状態の動画も誤りにせず `applied` に数える。処理は1つのトランザクションで、
+         *     全部に反映するか1つも反映しない。非公開にした動画をゲストとして配信中の応答は
+         *     打ち切る（specs/016-single-account-auth/contracts/guest-api.md §4・§6）。
+         */
+        put: operations["updateVideoVisibility"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/directories": {
         parameters: {
             query?: never;
@@ -875,6 +899,15 @@ export interface components {
             /** @description videoIds のうちいまライブラリにある動画の数 */
             applied: number;
         };
+        VideoVisibilityRequest: {
+            videoIds: number[];
+            /** @description true で公開、false で非公開にする */
+            public: boolean;
+        };
+        VideoVisibilityResponse: {
+            /** @description videoIds のうちいまライブラリにある動画の数（既に同じ状態だったものを含む） */
+            applied: number;
+        };
         VideoTagsSummaryRequest: {
             videoIds: number[];
         };
@@ -1038,6 +1071,11 @@ export interface components {
              *     無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
              */
             tags: components["schemas"]["TagRef"][];
+            /**
+             * @description 公開の動画か。公開の動画はログインしていない人にも見える
+             *     （specs/016-single-account-auth/contracts/guest-api.md §4）
+             */
+            public: boolean;
             /**
              * @description シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
              *     seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
@@ -2184,6 +2222,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoTagsSummary"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    updateVideoVisibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoVisibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description 適用結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoVisibilityResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

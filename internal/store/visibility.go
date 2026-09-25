@@ -49,23 +49,25 @@ func visibleVideoCondition(alias string, audience domain.Audience) string {
 const publicColumn = `exists (select 1 from public_videos pub where pub.content_key = videos.content_key and videos.content_key <> '')`
 
 // SetVideosPublic は videoIDs のうちいまライブラリにある動画の公開フラグを
-// public にそろえ、反映した本数を返す（data-model.md §5「公開・非公開を切り替える」）。
+// public にそろえ、反映した動画の content_key を返す。その数が反映した本数である
+// （data-model.md §5「公開・非公開を切り替える」）。呼び出し側は非公開にした
+// content_key で、ゲストとして処理中の応答を打ち切る（contracts/guest-api.md §6）。
 //
 // id は content_key へ引き直し（タグの付け外しと同じ
 // registeredContentKeysForVideoIDs、specs/014-video-tags/contracts/tags-api.md §4）、
 // ライブラリに無い id と空の content_key の動画は数えない。既に同じ状態の動画も
 // 反映した本数に入り、誤りにしない。全体を1つの取引で行い、途中で失敗したら
 // 何も残さない。
-func (s *VisibilityStore) SetVideosPublic(ctx context.Context, videoIDs []int64, public bool) (int, error) {
+func (s *VisibilityStore) SetVideosPublic(ctx context.Context, videoIDs []int64, public bool) ([]string, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("公開フラグを書き換えられません: %w", err)
+		return nil, fmt.Errorf("公開フラグを書き換えられません: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	keys, err := registeredContentKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	now := time.Now().Unix()
 	for _, key := range keys {
@@ -76,11 +78,11 @@ func (s *VisibilityStore) SetVideosPublic(ctx context.Context, videoIDs []int64,
 			_, err = tx.ExecContext(ctx, `delete from public_videos where content_key = ?`, key)
 		}
 		if err != nil {
-			return 0, fmt.Errorf("公開フラグを書き換えられません: %w", err)
+			return nil, fmt.Errorf("公開フラグを書き換えられません: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("公開フラグを書き換えられません: %w", err)
+		return nil, fmt.Errorf("公開フラグを書き換えられません: %w", err)
 	}
-	return len(keys), nil
+	return keys, nil
 }
