@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 
 import type { PlayerControls } from "./playerControls";
 
@@ -89,7 +89,9 @@ export function useKeyboardShortcuts(
   onClose: () => void,
 ): void {
   const latest = useRef({ controls, onClose });
-  useEffect(() => {
+  // 描画を確定した時点で最新の値にする。useEffect だと、プレイヤーの操作を
+  // 描いてから反映するまでの間の Esc が「プレイヤー無し」として画面を閉じる。
+  useLayoutEffect(() => {
     latest.current = { controls, onClose };
   }, [controls, onClose]);
 
