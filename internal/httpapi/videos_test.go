@@ -256,6 +256,39 @@ func TestGetVideo(t *testing.T) {
 	}
 }
 
+// 動画1件の応答には、代表の所在が置かれたフォルダが登録フォルダの表示名つきで
+// 載る（再生画面の見出しのパンくず）。登録フォルダの外の所在なら folder は省く。
+func TestGetVideoReturnsFolderWithRootName(t *testing.T) {
+	if filepath.Separator != '/' {
+		t.Skip("fixture uses slash-separated absolute paths")
+	}
+	nested := sampleVideo(2, "京都 夜")
+	nested.Path = "/b/movies/X/Y/京都 夜.mp4"
+	outside := sampleVideo(3, "京都 外")
+	outside.Path = "/elsewhere/京都 外.mp4"
+	handler := newTestServer(t, Options{
+		Videos:  &fakeLibrary{videos: map[int64]domain.Video{2: nested, 3: outside}},
+		Folders: folderFixture(),
+	})
+
+	rec := do(t, handler, http.MethodGet, "/api/videos/2")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	got := decode[gen.Video](t, rec).Folder
+	if got == nil || got.RootId != 7 || got.Path != "X/Y" || got.RootName == nil || *got.RootName != "movies" {
+		t.Errorf("folder = %+v, want rootId 7, path X/Y, rootName movies", got)
+	}
+
+	rec = do(t, handler, http.MethodGet, "/api/videos/3")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Video](t, rec).Folder; got != nil {
+		t.Errorf("outside folder = %+v, want omitted", got)
+	}
+}
+
 // 存在しない id は 404 + not_found。
 func TestGetVideoNotFound(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{}})

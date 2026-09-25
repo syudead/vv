@@ -22,7 +22,8 @@ In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, che
 `ffprobe`/`ffmpeg` are on `PATH`, opens SQLite under `MDM_DATA_DIR` and applies
 embedded goose migrations at startup, then starts the job worker. It serves `GET /api/health`,
 the video library API (`/api/videos*`, `/api/scans*`; a single video's response also
-carries its representative location and seek-preview state, and
+carries its representative location, the folder that holds it (with the registered folder's
+display name, for the playback page's breadcrumb) and seek-preview state, and
 `/api/videos/{id}/related`, `/probe` and `/open` return related videos, retry a failed
 metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the read-only folder browsing API
@@ -324,9 +325,10 @@ destination. The library, folder, settings and tag screens use the shell: `app/A
 puts `AppShell` around the `/`, `/folders/*`, `/settings` and `/tags` routes, and the
 playback screen
 (`/videos/:id`) deliberately gets no shell at all, because it is a
-two-pane screen of its own: the player with the title, a property strip and the
-file location on the left, related videos on the right, and a close button (×, or
-Esc) that returns to the list the screen was opened from. Keeping that choice to
+two-pane screen of its own under its own header band (a logo that goes home, a
+breadcrumb to the video's folder, and a single close button — × or Esc — that
+returns to the list the screen was opened from): the player with the title, tags,
+a file-facts row and a technical row on the left, related videos on the right. Keeping that choice to
 the one routing decision is what lets the shell stay ignorant of which screen it
 is framing. Inside `web/src/player/`, video.js owns only the control bar; ingest
 stages, read and playback failures, the ended prompt and the touch controls are

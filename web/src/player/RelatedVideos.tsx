@@ -1,5 +1,4 @@
 import { ImageOff } from "lucide-react";
-import type { ReactNode } from "react";
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
@@ -111,20 +110,18 @@ export function VideoThumbnail({
 /**
  * RelatedVideos は関連動画の列である（要件 15）。
  *
- * 見出しの行の右端には、広い画面用の × を置く。関連動画が 0 件のときは見出しと並びを出さず、
- * × だけを残す。各項目はサムネイル・長さ・題名だけで、追加日時などの文字は出さない。
+ * 関連動画が 0 件のときは見出しと並びを出さない（閉じる × は見出しの帯 VideoHeader にある）。
+ * 各項目はサムネイル・長さ・題名だけで、追加日時などの文字は出さない。
  * リンクは最初の戻り先を引き継ぐ（plan の Structural Decisions 10）。
  */
 export default function RelatedVideos({
   state,
   backTo,
   onRetry,
-  closeButton,
 }: {
   state: RelatedState;
   backTo: string;
   onRetry: () => void;
-  closeButton: ReactNode;
 }) {
   const empty = state.kind === "ready" && state.related.items.length === 0;
   return (
@@ -132,19 +129,11 @@ export default function RelatedVideos({
       aria-labelledby={empty ? undefined : "related-heading"}
       className="flex flex-col gap-3 lg:min-h-0 lg:flex-1"
     >
-      <div
-        className={cn(
-          "min-h-9 items-center justify-between gap-3",
-          empty ? "hidden lg:flex" : "flex",
-        )}
-      >
-        {!empty && (
-          <h2 id="related-heading" className="text-sm font-semibold text-fg">
-            関連動画
-          </h2>
-        )}
-        <span className="ml-auto">{closeButton}</span>
-      </div>
+      {!empty && (
+        <h2 id="related-heading" className="text-sm font-semibold text-fg">
+          関連動画
+        </h2>
+      )}
 
       {state.kind === "loading" && (
         <ul aria-hidden="true" className="flex flex-col gap-3">

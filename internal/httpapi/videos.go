@@ -225,6 +225,7 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	// 所在とシーク用プレビューの状態は、動画1件の応答にだけ載せる。一覧に載せると、
 	// 画面が使わない絶対パスを1ページ 60 件ぶん毎回送ることになる。
 	payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
+	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
 	if video.HasSeekThumbnail() && s.catalog != nil {
 		state, err := s.catalog.SeekThumbnailState(r.Context(), video)
 		if err != nil {
@@ -237,6 +238,25 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// detailFolder は動画1件の応答に載せる、代表の所在が置かれたフォルダを作る。
+// 再生画面の見出しのパンくずに使うので、一覧と違って登録フォルダの表示名も載せる。
+// 所在がどの登録フォルダにも含まれない（登録を外した直後など）ときは nil を返す。
+func detailFolder(roots []domain.MediaFolder, locationPath string) *gen.VideoFolder {
+	folder, ok := domain.LocateVideoFolder(roots, locationPath)
+	if !ok {
+		return nil
+	}
+	out := &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
+	for _, root := range roots {
+		if root.ID == folder.RootID {
+			name := domain.FolderName(root.Path, "")
+			out.RootName = &name
+			break
+		}
+	}
+	return out
 }
 
 // progressFor は動画たちの再生位置をまとめて引く。1件ずつ引くと、60 件の

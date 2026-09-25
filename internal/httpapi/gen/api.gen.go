@@ -573,8 +573,9 @@ type Video struct {
 	// DurationMs 尺。解析前・取得不能の場合は省略される
 	DurationMs *int64 `json:"durationMs,omitempty"`
 
-	// Folder 一覧に出す所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）の応答に
-	// だけ入り、GET /api/videos/{id} には入らない
+	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+	// 登録フォルダにも含まれなければ省かれる
 	Folder *VideoFolder `json:"folder,omitempty"`
 
 	// Height 表示される向きの高さ（回転の印を反映済み）
@@ -651,14 +652,19 @@ type VideoChanged struct {
 	Id int64 `json:"id"`
 }
 
-// VideoFolder 一覧に出す所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）の応答に
-// だけ入り、GET /api/videos/{id} には入らない
+// VideoFolder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+// 登録フォルダにも含まれなければ省かれる
 type VideoFolder struct {
 	// Path 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字
 	Path string `json:"path"`
 
 	// RootId 所在を含む登録メディアフォルダの識別子
 	RootId int64 `json:"rootId"`
+
+	// RootName 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
+	// 応答にだけ入る
+	RootName *string `json:"rootName,omitempty"`
 }
 
 // VideoIdsResponse defines model for VideoIdsResponse.

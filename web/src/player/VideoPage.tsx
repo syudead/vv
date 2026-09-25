@@ -18,13 +18,10 @@ import {
 } from "../api/client";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import Skeleton from "../ui/Skeleton";
-import CloseButton from "./CloseButton";
 import EndedOverlay from "./EndedOverlay";
-import FileLocation from "./FileLocation";
 import NeighborArrows from "./NeighborArrows";
 import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
-import PropertyStrip from "./PropertyStrip";
 import { playerAspectRatio } from "./aspect";
 import RelatedVideos from "./RelatedVideos";
 import {
@@ -38,6 +35,8 @@ import {
   Unplayable,
 } from "./StatusOverlays";
 import TouchControls from "./TouchControls";
+import VideoFacts from "./VideoFacts";
+import VideoHeader from "./VideoHeader";
 import VideoPlayer, {
   canStartPlayback,
   initialPlayerStatus,
@@ -79,8 +78,9 @@ interface Attempt {
 /**
  * VideoPage は動画詳細画面（`/videos/:id`）である。
  *
- * 構成要素はプレイヤー・題名・属性情報（ファイルの場所を含む）・タグ・関連動画の 5 つと
- * する（親 Issue 要件 1・3、issue 268）。状態と失敗は、プレイヤーの上の 1 つの入れ物に重ねて伝える
+ * 構成要素は見出しの帯（ロゴ・置き場所のパンくず・×）・プレイヤー・題名・タグ・
+ * ファイルの情報・関連動画とする（親 Issue 要件 1・3、issue 268、ui-design「Video header」
+ * 「Video facts」）。状態と失敗は、プレイヤーの上の 1 つの入れ物に重ねて伝える
  * （plan の Structural Decisions 12）。入れ物の中は、上から 状態表示・再生終了・タッチ用の
  * 中央操作 の順で、同時に出すのは 1 つだけである。
  */
@@ -336,16 +336,17 @@ export default function VideoPage() {
       />
     );
   }
-  const overlayShown = statusLayer !== null || (showPlayer && status.ended);
 
   useKeyboardShortcuts(showPlayer ? controls : null, close);
 
   return (
-    // 狭い画面はページ全体を 1 つとしてスクロールする。広い画面はページを画面の高さに留め、
-    // 左の列（プレイヤー・題名・属性）と右の列（関連動画）がそれぞれ中でスクロールする。
-    // ページと列の両方がスクロールして二重に動くことがないようにするためである。
-    <div className="min-h-dvh bg-bg pb-16 lg:h-dvh lg:min-h-0 lg:overflow-hidden lg:pb-0">
-      <div className="flex w-full flex-col gap-5 lg:grid lg:h-full lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:px-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
+    // 狭い画面はページ全体を 1 つとしてスクロールし、見出しの帯は上に留まる。広い画面は
+    // ページを画面の高さに留め、帯の下で左の列（プレイヤー・題名・情報）と右の列（関連動画）が
+    // それぞれ中でスクロールする。ページと列の両方がスクロールして二重に動くことがないように
+    // するためである。
+    <div className="min-h-dvh bg-bg pb-16 lg:flex lg:h-dvh lg:min-h-0 lg:flex-col lg:overflow-hidden lg:pb-0">
+      <VideoHeader folder={video?.folder} onClose={close} />
+      <div className="flex w-full flex-col gap-5 lg:grid lg:min-h-0 lg:flex-1 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[minmax(0,1fr)] lg:gap-6 lg:px-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <div
           ref={mainColumnRef}
           // 列の端にあるフォーカスの輪郭が切れないよう、はみ出す分だけ内側に余白を取る。
@@ -359,18 +360,13 @@ export default function VideoPage() {
             // 前後の動画へのつまみと操作バーは横長のときと同じ位置・幅のままになる。
             // 比率はシークのプレビューも使うので、変数として子孫へ渡す。
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
-            className="relative isolate mx-auto grid w-full shrink-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-9rem)*max(var(--vv-video-aspect),16/9))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
+            className="relative isolate mx-auto grid w-full shrink-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-12.25rem)*max(var(--vv-video-aspect),16/9))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
           >
             {/* 動画の比率（画面の高さまで）は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
                 全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
             <div
               aria-hidden="true"
-              className="col-start-1 row-start-1 aspect-(--vv-video-aspect) max-h-[calc(100dvh-9rem)] [:fullscreen>&]:hidden"
-            />
-            <CloseButton
-              variant="overlay"
-              onClose={close}
-              visible={chromeVisible || overlayShown}
+              className="col-start-1 row-start-1 aspect-(--vv-video-aspect) max-h-[calc(100dvh-12.25rem)] [:fullscreen>&]:hidden"
             />
             <div
               data-overlay-layer=""
@@ -429,10 +425,7 @@ export default function VideoPage() {
                     onStaleVideo={() => void refresh()}
                   />
                 </div>
-                <PropertyStrip video={video} />
-                {video.location !== undefined && (
-                  <FileLocation videoId={video.id} location={video.location} />
-                )}
+                <VideoFacts video={video} />
               </>
             )}
           </div>
@@ -442,12 +435,7 @@ export default function VideoPage() {
           // 広い画面では見出しの行を上に留め、関連動画の並びだけを中でスクロールさせる。
           className="min-w-0 px-4 sm:px-6 lg:flex lg:min-h-0 lg:flex-col lg:px-0 lg:pt-6"
         >
-          <RelatedVideos
-            state={related}
-            backTo={backTo}
-            onRetry={retryRelated}
-            closeButton={<CloseButton variant="wide" onClose={close} />}
-          />
+          <RelatedVideos state={related} backTo={backTo} onRetry={retryRelated} />
         </aside>
       </div>
     </div>
