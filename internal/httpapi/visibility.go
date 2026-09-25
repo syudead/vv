@@ -52,7 +52,7 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 	// 切り替えの確定と打ち切りを、切り替えどうしで1つずつ順に行う。並べないと、
 	// 非公開の確定から打ち切りまでの間に別の要求が再公開し、その後に始まった
 	// ゲストの配信を先の非公開の打ち切りが止めてしまう。
-	s.guests.switching.Lock()
+	s.guests.lockSwitching()
 	defer s.guests.switching.Unlock()
 	keys, err := s.visibility.SetVideosPublic(r.Context(), body.VideoIds, public)
 	if err != nil {
@@ -103,7 +103,10 @@ type guestLedger struct {
 	// switching は公開フラグの切り替え（確定から打ち切りまで）を1つずつにする。
 	// mu とは別で、切り替えの取引の間も配信の出入りを止めない。
 	switching sync.Mutex
-	mu        sync.Mutex
+	// onSwitchWait はテストの差し込み口で、切り替えが先の切り替えの終わりを
+	// 待つときに、待ち始める前に呼ぶ。本番では nil。
+	onSwitchWait func()
+	mu           sync.Mutex
 	// gen は打ち切りのたびに進む世代である。
 	gen      uint64
 	requests map[string]map[*trackedRequest]struct{}
@@ -111,6 +114,19 @@ type guestLedger struct {
 
 func newGuestLedger() *guestLedger {
 	return &guestLedger{requests: map[string]map[*trackedRequest]struct{}{}}
+}
+
+// lockSwitching は switching を取る。先の切り替えが持っていて待つときは、
+// 待つ前に onSwitchWait を呼ぶ（テストが「後の切り替えが先の切り替えを待っている」
+// ことを時間に頼らず確かめるため）。
+func (l *guestLedger) lockSwitching() {
+	if l.switching.TryLock() {
+		return
+	}
+	if l.onSwitchWait != nil {
+		l.onSwitchWait()
+	}
+	l.switching.Lock()
 }
 
 // generation は今の世代を返す。track に渡す。

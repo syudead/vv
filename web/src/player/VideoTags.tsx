@@ -1,5 +1,5 @@
 import { Plus, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import { RequestFailed, type TagRef } from "../api/client";
@@ -146,7 +146,10 @@ export default function VideoTags({
     removedId?: number;
   } | null>(null);
 
-  useEffect(() => {
+  // フォーカスは、チップが消えた（または押せるようになった）のと同じ描画の中で
+  // 移す。useEffect だと描画から効果までの間にフォーカスが body に落ち、
+  // その間に DOM を読んだ側（支援技術やテスト）には行き先が見えない。
+  useLayoutEffect(() => {
     const pending = pendingFocusRef.current;
     if (pending === null) return;
     if (

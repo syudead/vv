@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -280,24 +281,33 @@ func TestGuestLedgerRejectsTrackingAcrossRevocation(t *testing.T) {
 	}
 }
 
-// orderedVisibility は1回目（非公開）の反映を release まで返さず、2回目（再公開）の
-// 反映がどの世代の台帳を見たかを覚える。
+// orderedVisibility は1回目（非公開）の反映の中で、2回目（再公開）の切り替えが
+// 先の切り替えを待つ（contended）か、待たずに反映へ入ってくる（secondEntered）まで
+// 返さない。どちらが先かは時間ではなく出来事で決まる。
 type orderedVisibility struct {
-	ledger    *guestLedger
-	entered   chan struct{}
-	release   chan struct{}
-	calls     int
-	secondGen uint64
+	ledger        *guestLedger
+	entered       chan struct{}
+	contended     chan struct{}
+	secondEntered chan struct{}
+	calls         atomic.Int32
+	overlapped    atomic.Bool
+	secondGen     atomic.Uint64
 }
 
 func (v *orderedVisibility) SetVideosPublic(_ context.Context, _ []int64, public bool) ([]string, error) {
-	v.calls++
+	v.calls.Add(1)
 	if !public {
 		close(v.entered)
-		<-v.release
+		select {
+		case <-v.contended:
+		case <-v.secondEntered:
+			// 並べていないと、再公開が非公開の確定から打ち切りまでの間に反映される。
+			v.overlapped.Store(true)
+		}
 		return []string{"key"}, nil
 	}
-	v.secondGen = v.ledger.generation()
+	v.secondGen.Store(v.ledger.generation())
+	close(v.secondEntered)
 	return []string{"key"}, nil
 }
 
@@ -306,7 +316,17 @@ func (v *orderedVisibility) SetVideosPublic(_ context.Context, _ []int64, public
 func TestVideoVisibilitySwitchesRunOneAtATime(t *testing.T) {
 	ledger := newGuestLedger()
 	visibility := &orderedVisibility{
-		ledger: ledger, entered: make(chan struct{}), release: make(chan struct{}),
+		ledger:        ledger,
+		entered:       make(chan struct{}),
+		contended:     make(chan struct{}),
+		secondEntered: make(chan struct{}),
+	}
+	var waits atomic.Int32
+	ledger.onSwitchWait = func() {
+		// 待つのは、非公開の反映の中にいる間に来た再公開の1回だけである。
+		if waits.Add(1) == 1 {
+			close(visibility.contended)
+		}
 	}
 	srv := &server{
 		visibility: visibility, guests: ledger,
@@ -322,24 +342,25 @@ func TestVideoVisibilitySwitchesRunOneAtATime(t *testing.T) {
 	}
 	before := ledger.generation()
 
-	hidden := make(chan *httptest.ResponseRecorder)
+	hidden := make(chan *httptest.ResponseRecorder, 1)
 	go func() { hidden <- put(false) }()
 	<-visibility.entered
-	published := make(chan *httptest.ResponseRecorder)
+	// 非公開の反映が確定して打ち切りの前にいる間に、再公開を送る。
+	published := make(chan *httptest.ResponseRecorder, 1)
 	go func() { published <- put(true) }()
-	// 並べていなければ、この間に再公開が打ち切りの前の世代で反映される。
-	time.Sleep(50 * time.Millisecond)
-	close(visibility.release)
 
 	for name, ch := range map[string]chan *httptest.ResponseRecorder{"非公開": hidden, "再公開": published} {
 		if rec := <-ch; rec.Code != http.StatusOK {
 			t.Fatalf("%s: status = %d: %s", name, rec.Code, rec.Body)
 		}
 	}
-	if visibility.calls != 2 {
-		t.Fatalf("反映の回数 = %d", visibility.calls)
+	if n := visibility.calls.Load(); n != 2 {
+		t.Fatalf("反映の回数 = %d", n)
 	}
-	if visibility.secondGen == before {
+	if visibility.overlapped.Load() {
+		t.Fatal("再公開が先の非公開の確定から打ち切りまでの間に反映された")
+	}
+	if visibility.secondGen.Load() == before {
 		t.Error("再公開が先の非公開の打ち切りより前に反映された")
 	}
 }
