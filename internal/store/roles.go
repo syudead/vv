@@ -41,6 +41,12 @@ type PlaybackStore struct{ sql *sql.DB }
 // 接続だけを持ち、ライブラリ索引の型や通知には依存しない。
 type TagStore struct{ sql *sql.DB }
 
+// AuthStore は唯一のアカウントとログインセッションを保存する（auth.go）。初回設定、
+// 資格情報の書き換え、セッションの追加・有効性の確認・削除・期限切れの掃除を持つ。
+// PlaybackStore と同じく、共有する SQLite 接続だけを持ち、ライブラリ索引の型や
+// 通知には依存しない。
+type AuthStore struct{ sql *sql.DB }
+
 // VisibilityStore は動画の公開フラグの切り替えを保存する（visibility.go、
 // specs/016-single-account-auth/data-model.md §5）。公開フラグを読んで見せる動画を
 // 絞るのは LibraryStore の読み出しである。TagStore と同じく、共有する SQLite
@@ -54,6 +60,7 @@ func (db *DB) ScanIndex() *ScanIndexStore { return &ScanIndexStore{db: db} }
 func (db *DB) Settings() *SettingsStore   { return &SettingsStore{db: db} }
 func (db *DB) Playback() *PlaybackStore   { return &PlaybackStore{sql: db.sql} }
 func (db *DB) Tags() *TagStore            { return &TagStore{sql: db.sql} }
+func (db *DB) Auth() *AuthStore           { return &AuthStore{sql: db.sql} }
 func (db *DB) Visibility() *VisibilityStore {
 	return &VisibilityStore{sql: db.sql}
 }
