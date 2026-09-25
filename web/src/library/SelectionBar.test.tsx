@@ -216,6 +216,56 @@ describe("SelectionBar", () => {
     ).toBe(true);
   });
 
+  // POST /api/video-tags は videoIds を全部か無しかでしか受け付けず、20000件を
+  // 超えると400になる（contracts/tags-api.md §4）。静かに分割して送らず、
+  // 一括操作を disabled にして理由を伝える（Devin の指摘2）。
+  it("選択が20,000件を超えると、タグの一括操作はdisabledで理由が読める", () => {
+    install();
+    renderBar({
+      count: 20001,
+      total: 30000,
+      selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
+    });
+    const addButton = screen.getByRole("button", {
+      name: "タグを付ける",
+    }) as HTMLButtonElement;
+    const removeButton = screen.getByRole("button", {
+      name: "タグを外す",
+    }) as HTMLButtonElement;
+    expect(addButton.disabled).toBe(true);
+    expect(removeButton.disabled).toBe(true);
+    expect(addButton.title).toBe("タグの一括操作は 20,000 件までです");
+    expect(removeButton.title).toBe("タグの一括操作は 20,000 件までです");
+
+    const addDescribedBy = addButton.getAttribute("aria-describedby");
+    expect(addDescribedBy).not.toBeNull();
+    expect(document.getElementById(addDescribedBy!)?.textContent).toBe(
+      "タグの一括操作は 20,000 件までです",
+    );
+
+    // すべて選択はこの上限と無関係なので、ちょうど全件選び終わっていなければ
+    // 引き続き押せる。
+    expect(
+      (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("選択が20,000件ちょうどなら、タグの一括操作はdisabledにならない", () => {
+    install();
+    renderBar({
+      count: 20000,
+      total: 30000,
+      selectedIds: Array.from({ length: 20000 }, (_, i) => i + 1),
+    });
+    expect(
+      (screen.getByRole("button", { name: "タグを付ける" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "タグを外す" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
   it("タグを付けると、選んだ全動画に付き、トーストが出てポップオーバーが閉じ、フォーカスが戻る（受け入れ条件3）", async () => {
     const user = userEvent.setup();
     install();

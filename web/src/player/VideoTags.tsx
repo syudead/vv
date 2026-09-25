@@ -39,30 +39,13 @@ export default function VideoTags({
   // この画面で確定した付け外しを、動画の情報に重ねて持つ。付け外しの前に
   // 始まった動画の取り直しが後から届いても、確定したタグを消さない。
   // 届いた情報がその付け外しをすでに映していれば、重ねる必要は無いので捨てる。
+  //
+  // VideoPage は videoId ごとに VideoTags を作り直さず使い回すことがあるため
+  // （key を付けない再利用。Devin の指摘1）、videoId が変われば、重ねた分を
+  // 前の動画に残さず必ず捨てる。
   const appliedRef = useRef(new Map<number, { tag: TagRef; action: "add" | "remove" }>());
+  const prevVideoIdRef = useRef(videoId);
   const [tags, setTags] = useState<readonly TagRef[]>(initialTags);
-  useEffect(() => {
-    const applied = appliedRef.current;
-    let next = initialTags;
-    for (const [tagId, change] of applied) {
-      const present = initialTags.some((tag) => tag.id === tagId);
-      if (present === (change.action === "add")) {
-        applied.delete(tagId);
-        continue;
-      }
-      next = applyTagToTags(next, change.tag, change.action);
-    }
-    setTags(next);
-  }, [initialTags]);
-  useEffect(
-    () =>
-      subscribeVideoTags((videoIds, tag, action) => {
-        if (!videoIds.includes(videoId)) return;
-        appliedRef.current.set(tag.id, { tag, action });
-        setTags((current) => applyTagToTags(current, tag, action));
-      }),
-    [videoId],
-  );
 
   // 画面が開くときは、共有の保持がすでにあっても必ず取り直す（plan の
   // Structural Decisions 8「画面が開くとき…に refreshTags で取り直す」）。
@@ -83,6 +66,44 @@ export default function VideoTags({
       unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const applied = appliedRef.current;
+    if (prevVideoIdRef.current !== videoId) {
+      // 動画が替わった（VideoTags を使い回した）。前の動画の重ねを持ち越さない。
+      prevVideoIdRef.current = videoId;
+      applied.clear();
+      setTags(initialTags);
+      return;
+    }
+    let next = initialTags;
+    for (const [tagId, change] of applied) {
+      const present = initialTags.some((tag) => tag.id === tagId);
+      if (present === (change.action === "add")) {
+        applied.delete(tagId);
+        continue;
+      }
+      // 重ねたタグ自体が共有の一覧からもう消えていれば（別画面での削除・
+      // 統合）、その付与を蘇らせない（Devin の指摘1）。allTags をまだ
+      // 取得していない（undefined）ときは、確かめようが無いので今までどおり
+      // 重ねる。
+      if (allTags !== undefined && !allTags.some((tag) => tag.id === tagId)) {
+        applied.delete(tagId);
+        continue;
+      }
+      next = applyTagToTags(next, change.tag, change.action);
+    }
+    setTags(next);
+  }, [initialTags, videoId, allTags]);
+  useEffect(
+    () =>
+      subscribeVideoTags((videoIds, tag, action) => {
+        if (!videoIds.includes(videoId)) return;
+        appliedRef.current.set(tag.id, { tag, action });
+        setTags((current) => applyTagToTags(current, tag, action));
+      }),
+    [videoId],
+  );
 
   const [inputValue, setInputValue] = useState("");
   const [submitting, setSubmitting] = useState(false);

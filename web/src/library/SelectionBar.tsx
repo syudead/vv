@@ -7,6 +7,7 @@ import {
   attachVideoTagByName,
   currentTags,
   detachVideoTag,
+  maxVideoTagsSelection,
   refreshTags,
   subscribeTags,
   summarizeVideoTags,
@@ -474,6 +475,14 @@ export default function SelectionBar({
   const [removeOpen, setRemoveOpen] = useState(false);
   const addTriggerRef = useRef<HTMLButtonElement | null>(null);
 
+  // `POST /api/video-tags` は videoIds 1件以上 maxVideoTagsSelection 件以下を
+  // 全部か無しかで受け付ける（contracts/tags-api.md §4）。それを超える選択は
+  // 静かに分割して送らず、一括操作そのものを disabled にして理由を添える
+  // （Devin の指摘2、docs/design-docs/library-ui.md §6）。
+  const overLimitId = useId();
+  const overLimit = count > maxVideoTagsSelection;
+  const overLimitMessage = `タグの一括操作は ${maxVideoTagsSelection.toLocaleString("ja-JP")} 件までです`;
+
   // count===0 のときはバーごと描かない（下の return null）が、SelectionBar
   // 自身は選択の間ずっと同じインスタンスのまま（アンマウントしない）ので、
   // addOpen・removeOpen をそのままにすると、選択を解除してまた選び直したときに
@@ -522,6 +531,9 @@ export default function SelectionBar({
               variant="ghost"
               size="sm"
               className="order-5 max-sm:flex-1 sm:order-2"
+              disabled={overLimit}
+              title={overLimit ? overLimitMessage : undefined}
+              aria-describedby={overLimit ? overLimitId : undefined}
             >
               <Plus aria-hidden="true" />
               タグを付ける
@@ -541,6 +553,9 @@ export default function SelectionBar({
               variant="ghost"
               size="sm"
               className="order-6 max-sm:flex-1 sm:order-3"
+              disabled={overLimit}
+              title={overLimit ? overLimitMessage : undefined}
+              aria-describedby={overLimit ? overLimitId : undefined}
             >
               <Minus aria-hidden="true" />
               タグを外す
@@ -553,6 +568,11 @@ export default function SelectionBar({
             onRemoved={onTagRemoved}
           />
         </PopoverRoot>
+        {overLimit && (
+          <span id={overLimitId} className="sr-only">
+            {overLimitMessage}
+          </span>
+        )}
 
         <span
           aria-hidden="true"

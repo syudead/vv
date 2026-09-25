@@ -263,6 +263,70 @@ describe("VideoTags", () => {
     await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
   });
 
+  // VideoPage は videoId ごとに VideoTags を作り直すとは限らず、同じ
+  // インスタンスを次の動画にも使い回すことがある（key を付けなければ React
+  // 自身は作り直さない）。そのとき前の動画で重ねた付け外しを次の動画へ
+  // 持ち越してはならない（Devin の指摘1）。
+  it("videoId が変わると、前の動画で重ねた付け外しを持ち越さない（Devinの指摘1）", async () => {
+    const user = userEvent.setup();
+    install();
+    const view = render(
+      <MemoryRouter>
+        <ToastProvider>
+          <VideoTags videoId={7} tags={[]} onStaleVideo={vi.fn()} />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    const rerenderWith = (videoId: number, tags: { id: number; name: string }[]) =>
+      view.rerender(
+        <MemoryRouter>
+          <ToastProvider>
+            <VideoTags videoId={videoId} tags={tags} onStaleVideo={vi.fn()} />
+          </ToastProvider>
+        </MemoryRouter>,
+      );
+
+    const input = addInput();
+    await user.click(input);
+    await user.type(input, "旅行");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByTitle("旅行")).toBeDefined();
+
+    // 同じ VideoTags のまま、次の動画（タグの無い動画8）へ移る。
+    rerenderWith(8, []);
+    expect(screen.queryByTitle("旅行")).toBeNull();
+
+    // 動画8自身のタグの付け外しは、そのまま重なる。
+    await user.click(addInput());
+    await user.type(addInput(), "Anime");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByTitle("Anime")).toBeDefined();
+
+    // 動画7へ戻っても、動画8で付けた「Anime」は映らない。
+    rerenderWith(7, []);
+    expect(screen.queryByTitle("Anime")).toBeNull();
+  });
+
+  // 重ねた付け外しは、そのタグ自体が別画面での削除・統合で共有の一覧から
+  // 消えていれば蘇らせない（Devin の指摘1）。
+  it("重ねたタグが共有の一覧から消えていれば蘇らせない（削除・統合。Devinの指摘1）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderTags(7, []);
+
+    const input = addInput();
+    await user.click(input);
+    await user.type(input, "旅行");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByTitle("旅行")).toBeDefined();
+
+    // 別の画面で「旅行」が削除された（統合で吸収された場合も同じく消える）。
+    server.tags = server.tags.filter((t) => t.name !== "旅行");
+    await act(() => refreshTags());
+
+    await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
+  });
+
   it("矢印キーで候補を選び、Enter で付けられる（キーボードだけ）", async () => {
     const user = userEvent.setup();
     install();

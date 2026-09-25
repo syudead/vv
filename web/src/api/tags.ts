@@ -10,6 +10,15 @@ export type VideoTagsResponse = components["schemas"]["VideoTagsResponse"];
 export type VideoTagsSummary = components["schemas"]["VideoTagsSummary"];
 
 /**
+ * maxVideoTagsSelection は `POST /api/video-tags` の `videoIds` に許される上限
+ * （contracts/tags-api.md §4）。この要求は全部か無しか（1件でも上限を超えると
+ * 400 になり、何も変わらない）なので、選択がこれを超えるときは画面側で
+ * 静かに分割して送らず、選択バーの一括操作を disabled のままにする
+ * （web/src/library/SelectionBar.tsx、docs/design-docs/library-ui.md §6）。
+ */
+export const maxVideoTagsSelection = 20000;
+
+/**
  * listTags はタグを名前の自然順で取得する（本数0を含む）。
  *
  * 呼び出し元ごとの AbortSignal は受け取らない。この要求は複数の呼び出し元で

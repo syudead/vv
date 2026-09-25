@@ -108,7 +108,11 @@ jsdom は CSS を適用しないので、`position: fixed` もメディアクエ
   最初の選択を開始できる。件数の直後に、選んだ動画へタグを一括で付ける・外す操作を置く
   （件数との間に縦線を置かない）。「すべて選択」は、読み込んでいないページを含む今の
   条件の全件を選ぶ。sm 未満ではバーを2段にし、タグの操作を下の段へ回す
-  （specs/014-video-tags/ui-design.md「Selection bar」）。一括で外したタグが今の
+  （specs/014-video-tags/ui-design.md「Selection bar」）。選択が
+  `POST /api/video-tags` の上限（20,000件、全部か無しか。
+  specs/014-video-tags/contracts/tags-api.md §4）を超えるときは、静かに
+  分割して送らず、タグの一括操作そのものを disabled にして理由を添える。
+  一括で外したタグが今の
   タグの絞り込みに含まれているときは、選択を解除して一覧を取り直し、件数と一覧を
   条件に合わせ直す（絞り込み自体は外さない）。
 - **操作状態**: 通常・hover・focus-visible・active・selected・disabled を部品ごとにばらばらに

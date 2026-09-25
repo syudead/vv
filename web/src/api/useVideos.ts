@@ -309,11 +309,36 @@ export function useVideos(
     [],
   );
 
+  // ページの取得中に届いた知らせは、取得した内容より新しいことがある
+  // （下の「取り込みの準備」の取り直しと、その次のタグの付け外しの両方が使う）。
+  const pageLoading = useRef(false);
+
+  // ページの取得中に届いたタグの付け外しは、まだ読み込んでいない動画には
+  // 反映しようが無く、そのまま捨てると後から届くページの古い内容で
+  // 上書きされたことにもならず消えてしまう（Devin の指摘3）。動画・タグの
+  // 組ごとに直近の変更を覚えておき、その後に届いたページにその動画が
+  // あれば重ねる（下の changedWhileLoading と同じ仕組み）。
+  const tagsChangedWhileLoading = useRef(
+    new Map<
+      string,
+      { videoId: number; tag: Video["tags"][number]; action: "add" | "remove" }
+    >(),
+  );
+
   // 付け外しの結果を、表示中の項目へ反映する（issue 267、Plan の Structural
   // Decisions 7）。絞り込みに合わなくなった項目も、その場では一覧から外さない。
   useEffect(
     () =>
       subscribeVideoTags((videoIds, tag, action) => {
+        if (pageLoading.current) {
+          for (const videoId of videoIds) {
+            tagsChangedWhileLoading.current.set(`${String(videoId)}\0${String(tag.id)}`, {
+              videoId,
+              tag,
+              action,
+            });
+          }
+        }
         dispatch({ type: "tags", videoIds, tag, action });
       }),
     [],
@@ -364,9 +389,9 @@ export function useVideos(
     );
   }, [refreshItems]);
 
-  // ページの取得中に届いた知らせは、取得した内容より新しいことがある。知らせを
-  // 受けた動画を覚えておき、ページを反映したあとで取り直す。
-  const pageLoading = useRef(false);
+  // サーバーからの更新の知らせは、取得した内容より新しいことがある。知らせを
+  // 受けた動画を覚えておき、ページを反映したあとで取り直す（pageLoading・
+  // tagsChangedWhileLoading は上で宣言済み）。
   const changedWhileLoading = useRef(new Set<number>());
 
   useEffect(() => {
@@ -409,6 +434,7 @@ export function useVideos(
       inFlight.current = controller;
       pageLoading.current = true;
       changedWhileLoading.current.clear();
+      tagsChangedWhileLoading.current.clear();
       if (replace) {
         // 前の一覧のために始めた取り直しは捨てる。新しいページの内容の方が新しい。
         refreshing.current?.abort();
@@ -465,6 +491,23 @@ export function useVideos(
           .filter((id) => changedWhileLoading.current.has(id));
         changedWhileLoading.current.clear();
         if (changed.length > 0) refreshItems(changed);
+        // このページの取得中に届いたタグの付け外しのうち、このページで
+        // ちょうど読み込んだ動画のものは、取り直さずここで直接重ねる
+        // （サーバーがすでに教えてくれている内容なので、getVideo で1件ずつ
+        // 取り直す必要が無い。Devin の指摘3）。
+        if (tagsChangedWhileLoading.current.size > 0) {
+          const pageIds = new Set(page.items.map((video) => video.id));
+          for (const [tagKey, change] of tagsChangedWhileLoading.current) {
+            if (!pageIds.has(change.videoId)) continue;
+            dispatch({
+              type: "tags",
+              videoIds: [change.videoId],
+              tag: change.tag,
+              action: change.action,
+            });
+            tagsChangedWhileLoading.current.delete(tagKey);
+          }
+        }
         setError(null);
         setNotFound(false);
       } catch (failure) {
