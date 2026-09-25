@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -228,6 +228,44 @@ describe("FolderPage", () => {
     vi.unstubAllGlobals();
     localStorage.clear();
     clearListSnapshot();
+  });
+
+  it("ホバープレビューは同時に 1 件だけ再生する（issue 308）", async () => {
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/folders/3?path=A") return Promise.resolve(json(folderA));
+      const ready = { previewState: "done" as const };
+      const page: VideoPage = {
+        items: [
+          video(1, "x", { ...ready, previewUrl: "/p/1" }),
+          video(2, "y", { ...ready, previewUrl: "/p/2" }),
+        ],
+        total: 2,
+      };
+      return Promise.resolve(json(page));
+    });
+    const hover = async (title: string) => {
+      const card = (await screen.findByRole("link", { name: title })).closest("article");
+      if (card === null) throw new Error("card not found");
+      fireEvent.pointerEnter(card, { pointerType: "mouse" });
+      await act(() => new Promise((resolve) => setTimeout(resolve, 450)));
+    };
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockReturnValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockReturnValue(undefined);
+    renderFolders("/folders/3/A");
+    await screen.findByRole("link", { name: "x" });
+    // 読み込み直後の描画と効果を済ませてから触れる。
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    await hover("x");
+    expect(
+      Array.from(document.querySelectorAll("video"), (v) => v.getAttribute("src")),
+    ).toEqual(["/p/1"]);
+    await hover("y");
+    expect(
+      Array.from(document.querySelectorAll("video"), (v) => v.getAttribute("src")),
+    ).toEqual(["/p/2"]);
   });
 
   it("最上位に登録フォルダをパス付きで並べる", async () => {

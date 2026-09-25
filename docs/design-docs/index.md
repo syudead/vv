@@ -3,6 +3,14 @@
 Design documents explain consequential technical decisions and their context.
 Add each new document to this index.
 
+## 設計文書の方針
+
+- 文書には正しいことだけを書く。今の実装と食い違う記述は残さず、実装を変えた変更の中で
+  直す。
+- 何を出すか、何を置いてよいかを制限するのは、設計文書の役目ではない。「〜だけとする」
+  「〜は出さない」「〜を増やさないこと」のような縛りは書かず、今どうなっているかと、
+  なぜそうしたかを書く。
+
 ## Documents
 
 - [Core beliefs](core-beliefs.md)

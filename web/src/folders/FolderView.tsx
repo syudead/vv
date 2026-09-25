@@ -22,6 +22,8 @@ import TopBarPortal from "../shell/TopBarPortal";
 import Button from "../ui/Button";
 import { hasConditions } from "../videoList/listCriteria";
 import { EmptyState, LoadFailed } from "../videoList/states";
+import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
+import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
 import FolderSearchResults from "./FolderSearchResults";
@@ -44,7 +46,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     changePlayable,
     commitQuery,
     clearAll,
-    changeZoom,
+    changeZoom: saveZoom,
   } = useConditions();
   const scan = useScan();
   const { refresh: refreshScan } = scan;
@@ -73,6 +75,21 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     },
     restored,
     folder,
+  );
+
+  // ホバープレビューは同時に 1 件だけ（ライブラリと同じ）。一覧や倍率が変わったら止める。
+  const { resetPreview, cardProps: preview } = usePreviewCoordination();
+  useEffect(() => {
+    resetPreview();
+  }, [resetPreview, videos.items, zoom]);
+  // 倍率を変えても読んでいた位置を保つ（ライブラリと同じ）。
+  const { listRef, capture } = useZoomAnchor(zoom);
+  const changeZoom = useCallback(
+    (next: typeof zoom) => {
+      capture();
+      saveZoom(next);
+    },
+    [capture, saveZoom],
   );
 
   const summary = listing.data?.folder;
@@ -186,7 +203,13 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   } else if (searching) {
     // 検索結果（ui-design.md「Search results」）。
     body = (
-      <FolderSearchResults folder={folder} videos={videos} zoom={zoom} backTo={backTo} />
+      <FolderSearchResults
+        folder={folder}
+        videos={videos}
+        zoom={zoom}
+        backTo={backTo}
+        preview={preview}
+      />
     );
   } else if (noVideosAtAll) {
     body = (
@@ -211,6 +234,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         videos={videos}
         zoom={zoom}
         backTo={backTo}
+        preview={preview}
       />
     );
   }
@@ -250,7 +274,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         suffix={searching && !videos.notFound ? "内を検索中" : undefined}
       />
       {/* 中身を押す直前（再生画面・子フォルダへ移る直前）の状態を控える。 */}
-      <div onClick={saveSnapshot} className="flex flex-col gap-3">
+      <div ref={listRef} onClick={saveSnapshot} className="flex flex-col gap-3">
         {body}
       </div>
       <div ref={sentinel} aria-hidden="true" className="h-px" />

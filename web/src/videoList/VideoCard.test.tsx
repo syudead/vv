@@ -311,17 +311,11 @@ describe("VideoCard hover preview", () => {
 describe("VideoCard tagsRow（issue 269）", () => {
   afterEach(() => cleanup());
 
-  it("tagsRow を渡すと、今の日付・サイズ・コーデックの行の代わりにそれを出す", () => {
+  it("tagsRow を渡すと、題名の下にそれを出す", () => {
     renderCard(video({ tags: [{ id: 1, name: "旅行" }] }), {
       tagsRow: () => <p>タグの行</p>,
     });
     expect(screen.getByText("タグの行")).toBeDefined();
-    expect(screen.queryByText("h264")).toBeNull();
-  });
-
-  it("tagsRow を渡さなければ今の行のままにする（フォルダ画面）", () => {
-    renderCard(video());
-    expect(screen.getByText("h264")).toBeDefined();
   });
 
   it("tagsRow はリンクの外、同じ article の中に置く", () => {
@@ -386,4 +380,37 @@ describe("VideoCard tagsRow（issue 269）", () => {
     );
     expect(nextTagsRow).toHaveBeenCalledTimes(1);
   });
+});
+
+describe("VideoCard の表示（issue 308）", () => {
+  afterEach(() => cleanup());
+
+  const watched = video({
+    title: "見終えた動画",
+    durationMs: 65_000,
+    progress: { positionMs: 0, completed: true, updatedAt: "" },
+    sizeBytes: 5 * 1024 * 1024,
+  });
+
+  // ライブラリ（tagsRow あり）・フォルダ画面（なし）・検索結果（置き場所あり）の3通り。
+  const variants: [string, Partial<React.ComponentProps<typeof VideoCard>>][] = [
+    ["ライブラリ", { tagsRow: () => null }],
+    ["フォルダ画面", { onSelect: undefined }],
+    ["検索結果", { onSelect: undefined, location: { label: "A/B", title: "/m/A/B" } }],
+  ];
+
+  it.each(variants)(
+    "%s のカードに追加日時・サイズ・コーデック・解像度・視聴済みのマークを出さない",
+    (_, props) => {
+      renderCard(watched, props);
+      const article = screen.getByRole("article");
+      expect(article.textContent).not.toMatch(/h264/i);
+      expect(article.textContent).not.toMatch(/1080p/i);
+      expect(article.textContent).not.toMatch(/MB|KB/);
+      expect(article.textContent).not.toMatch(/前|たった今/);
+      expect(screen.queryByText("視聴済み")).toBeNull();
+      // 再生時間は残す。
+      expect(screen.getByText("1:05")).toBeDefined();
+    },
+  );
 });

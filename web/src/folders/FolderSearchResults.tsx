@@ -1,11 +1,12 @@
 import type { FolderRef } from "../api/client";
 import type { VideosState } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
+import { Grid } from "../videoList/Grid";
 import { resultCountText } from "../videoList/listSummary";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
+import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
 import { folderLocationLabel } from "./folderPath";
-import { Grid } from "./layout";
 
 /**
  * FolderSearchResults はフォルダ1件の中で検索語があるときの検索結果である
@@ -17,12 +18,15 @@ export default function FolderSearchResults({
   videos,
   zoom,
   backTo,
+  preview,
 }: {
   folder: FolderRef;
   videos: VideosState;
   zoom: Zoom;
   /** 再生画面から戻る先（今の一覧の URL）。 */
   backTo: string;
+  /** ホバープレビューを同時に 1 件に絞る調整（usePreviewCoordination）。 */
+  preview: PreviewCardProps;
 }) {
   const noMatch = !videos.loading && videos.error === null && videos.items.length === 0;
   const initialLoadError =
@@ -57,6 +61,7 @@ export default function FolderSearchResults({
                     backTo={backTo}
                     selected={false}
                     selectionMode={false}
+                    {...preview}
                     location={
                       video.folder === undefined
                         ? undefined

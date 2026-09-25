@@ -10,11 +10,12 @@ import { useVideos } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
 import type { ListCriteria } from "../videoList/listCriteria";
+import { Grid } from "../videoList/Grid";
 import { resultCountText } from "../videoList/listSummary";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
+import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
 import { type RootDisplay, topLevelLocationLabel } from "./folderPath";
-import { Grid } from "./layout";
 
 /**
  * ROOT_SEARCH_KEY は最上位の検索結果の控えの鍵である。実在するフォルダの鍵
@@ -56,6 +57,12 @@ export default function RootSearchResults({
     retryLoadMore,
     reload,
   } = useVideos(criteria, restored);
+
+  // ホバープレビューは同時に 1 件だけ（ライブラリと同じ）。一覧や倍率が変わったら止める。
+  const { resetPreview, cardProps: preview } = usePreviewCoordination();
+  useEffect(() => {
+    resetPreview();
+  }, [items, resetPreview, zoom]);
 
   const scan = useScan();
   const { refresh: refreshScan } = scan;
@@ -161,6 +168,7 @@ export default function RootSearchResults({
                     backTo={backTo}
                     selected={false}
                     selectionMode={false}
+                    {...preview}
                     location={
                       video.folder === undefined
                         ? undefined

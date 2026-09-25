@@ -1,11 +1,13 @@
 import type { FolderSummary } from "../api/client";
 import type { VideosState } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
+import { Grid } from "../videoList/Grid";
 import { hasConditions, type ListCriteria } from "../videoList/listCriteria";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
+import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
 import FolderCard, { FolderCardSkeleton } from "./FolderCard";
-import { Grid, Section } from "./layout";
+import { Section } from "./layout";
 
 /**
  * FolderContents はフォルダ1件の直下（子フォルダと動画）を並べる通常表示である。
@@ -18,6 +20,7 @@ export default function FolderContents({
   videos,
   zoom,
   backTo,
+  preview,
 }: {
   criteria: ListCriteria;
   /** 子フォルダの一覧を読んでいる間は true。 */
@@ -28,6 +31,8 @@ export default function FolderContents({
   zoom: Zoom;
   /** 再生画面から戻る先（今の一覧の URL）。 */
   backTo: string;
+  /** ホバープレビューを同時に 1 件に絞る調整（usePreviewCoordination）。 */
+  preview: PreviewCardProps;
 }) {
   const showFolders = listingLoading || childFolders.length > 0;
   const filterOnly = hasConditions(criteria);
@@ -88,6 +93,7 @@ export default function FolderContents({
                         backTo={backTo}
                         selected={false}
                         selectionMode={false}
+                        {...preview}
                       />
                     ))
                   )}

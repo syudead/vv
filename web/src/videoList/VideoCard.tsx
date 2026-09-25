@@ -44,10 +44,8 @@ export interface VideoCardProps {
    */
   location?: { label: string; title: string };
   /**
-   * 題名の下に出す行を、呼び出し側の固有のものに差し替える口
-   * （Plan の Structural Decisions 10）。省くと今の「追加日時 · ファイルサイズ ·
-   * コーデック」の行を出す（フォルダ画面のカード、リスト表示の行はこちら）。
-   * ライブラリの格子表示はここへタグの行を渡す
+   * 題名の下に呼び出し側の行を足す口（Plan の Structural Decisions 10）。省くと
+   * 題名の下には何も足さない。ライブラリの格子表示はここへタグの行を渡す
    * （specs/014-video-tags/ui-design.md「Tag row」）。タグの行はリンクの**外**、
    * 同じ `article` の中に置かれる（Structural Decisions 10、キーボードの入れ子を避ける）。
    *
@@ -104,8 +102,7 @@ function SelectCheck({
 }
 
 /**
- * VideoCard は箱型。サムネイルはカードの端まで、右下に「720P 59:11」の文字
- * （ホバーで消える）、下に題名と日付・大きさ。
+ * VideoCard は箱型。サムネイルはカードの端まで、右下に再生時間、下に題名。
  */
 function VideoCard(props: VideoCardProps) {
   const {
@@ -121,13 +118,7 @@ function VideoCard(props: VideoCardProps) {
     location,
     tagsRow,
   } = props;
-  const {
-    duration,
-    unplayable: rawUnplayable,
-    state,
-    ratio,
-    quality,
-  } = useCardState(video);
+  const { duration, unplayable: rawUnplayable, state, ratio } = useCardState(video);
   // タグが無い動画は行を出さない（ui-design.md「Tag row」）が、題名の下の余白は
   // 今の pb-3 のまま保つ（タグの有無で高さの余白が変わって見えないように）。
   const tagsRowNode = tagsRow?.(video);
@@ -311,27 +302,14 @@ function VideoCard(props: VideoCardProps) {
             )}
           </div>
 
-          {(quality !== "" || duration !== "") && (
+          {duration !== "" && (
             <span
               className={cn(
-                "absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[11px] font-medium tabular-nums backdrop-blur-sm",
+                "absolute right-2 bottom-2 rounded-sm px-1.5 py-0.5 text-[11px] font-medium tabular-nums backdrop-blur-sm",
                 showingPreview ? "bg-navbar text-fg" : "bg-navbar/85 text-fg",
               )}
             >
-              {quality !== "" && <span className="text-accent">{quality}</span>}
-              {duration !== "" && <span>{duration}</span>}
-            </span>
-          )}
-
-          {state === "watched" && (
-            <span
-              className={cn(
-                "absolute top-2 right-2 flex size-6 items-center justify-center text-success backdrop-blur-sm",
-                showingPreview ? "rounded-full bg-navbar" : "rounded-full bg-navbar/85",
-              )}
-            >
-              <Check className="size-3.5" strokeWidth={3} />
-              <span className="sr-only">視聴済み</span>
+              {duration}
             </span>
           )}
 
@@ -388,19 +366,6 @@ function VideoCard(props: VideoCardProps) {
               >
                 <bdi dir="ltr">{location.label}</bdi>
               </span>
-            </p>
-          )}
-          {tagsRow === undefined && (
-            <p className="flex items-center gap-2 text-xs text-fg-muted tabular-nums">
-              <span>{formatRelative(video.addedAt)}</span>
-              <span className="text-fg-subtle">·</span>
-              <span>{formatBytes(video.sizeBytes)}</span>
-              {video.videoCodec !== undefined && (
-                <>
-                  <span className="text-fg-subtle">·</span>
-                  <span className="uppercase">{video.videoCodec}</span>
-                </>
-              )}
             </p>
           )}
         </div>
