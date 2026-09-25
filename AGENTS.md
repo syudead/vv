@@ -11,7 +11,9 @@ file into a handbook.
    relevant design and product context.
 3. For substantial feature work, the Plan (`specs/<feature>/plan.md`) carries
    the goal, the scope, the validation strategy and the notable decisions.
-   Progress lives on the parent Issue and its child Issues, not in a file.
+   Progress is read from the feature branch's artifacts, the integration PR
+   and the native child Issues; it is not recorded in a file or in the parent
+   Issue body.
 
 ## Working agreements
 
