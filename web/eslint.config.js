@@ -6,7 +6,7 @@ import globals from "globals";
 
 export default [
   {
-    ignores: ["dist/**", ".vite-build-check/**", "test-results/**"],
+    ignores: ["dist/**", ".vite-build-check/**", "test-results/**", "src/api/gen/**"],
   },
   {
     files: ["**/*.{js,mjs,cjs,ts,tsx}"],
@@ -34,11 +34,47 @@ export default [
       ...jsxA11y.flatConfigs.recommended.rules,
       "react-hooks/rules-of-hooks": "error",
       "react-hooks/exhaustive-deps": "error",
-      // Delegated containers and composite widgets provide keyboard handling elsewhere.
-      "jsx-a11y/click-events-have-key-events": "off",
-      "jsx-a11y/no-static-element-interactions": "off",
+    },
+  },
+  {
+    files: [
+      "src/**/*.{ts,tsx}",
+      "e2e/**/*.ts",
+      "vite.config.ts",
+      "tailwind.config.ts",
+      "vitest.setup.ts",
+      "playwright.config.ts",
+    ],
+    rules: {
       "no-undef": "off",
       "no-unused-vars": "off",
+    },
+  },
+  {
+    // These containers only observe clicks delegated to their descendant controls.
+    files: [
+      "src/folders/FolderView.tsx",
+      "src/folders/RootSearchResults.tsx",
+      "src/library/CardTagRow.tsx",
+      "src/library/LibraryPage.tsx",
+    ],
+    rules: {
+      "jsx-a11y/click-events-have-key-events": "off",
+      "jsx-a11y/no-static-element-interactions": "off",
+    },
+  },
+  {
+    // The input owns keyboard interaction for the listbox options.
+    files: ["src/ui/Combobox.tsx"],
+    rules: {
+      "jsx-a11y/click-events-have-key-events": "off",
+    },
+  },
+  {
+    // The focusable list region handles keyboard events for its child buttons.
+    files: ["src/settings/FolderPicker.tsx"],
+    rules: {
+      "jsx-a11y/no-static-element-interactions": "off",
     },
   },
 ];

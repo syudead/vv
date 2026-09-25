@@ -470,7 +470,7 @@ test.describe.serial("video tags", () => {
       const searchable = await createTag(request, "e2e検索専用タグ");
       await addSynonym(request, searchable.id, "e2eシノニム検索");
       const a = video("タグ動画A");
-      const b = video("タグ動画B");
+      video("タグ動画B");
       await attachTag(request, a.id, searchable.id);
 
       await page.goto("/");
@@ -998,7 +998,7 @@ test.describe.serial("video tags", () => {
       page,
       request,
     }) => {
-      const upper = await createTag(request, "e2eXyz17Anime");
+      await createTag(request, "e2eXyz17Anime");
       const lower = await createTag(request, "e2eXyz17anime");
       const a = video("タグ動画A");
       const b = video("タグ動画B");
