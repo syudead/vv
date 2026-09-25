@@ -75,7 +75,8 @@ Planが判断の根拠や契約を持つ場合は`research.md`・`data-model.md`
 - stage PRは親Issueを`Refs`で通常参照し、feature branchをbaseにする。
 - implementation PRは一つの子Issueを`Refs`で参照し、feature branchをbaseにする。
 - integration PRだけが`main`をbaseにし、親Issueを`Closes`で参照する。
-- childはimplementation PRがfeatureへmergeされた時点で人がcompletedとして閉じる。
+- childはimplementation PRがfeatureへmergeされた時点で人（[Autopilot](#autopilot)ではorchestrator）が
+  completedとして閉じる。
   閉じ忘れても工程選択は止まらない。
 - parentはintegration PRが`main`へmergeされた時点でGitHub標準動作により閉じる。
 
@@ -118,6 +119,9 @@ merge済みであることを指す。子Issueのcloseは保守者の操作の�
 選んだ工程と根拠はrunの冒頭とPR本文に書き、誤選択をreviewで見つけられるようにする。
 成果物が既にある工程の再実行（改訂）は自動選択しない。保守者が工程を指定する。
 
+[Autopilot](#autopilot)は同じ規則を繰り返し適用し、規則1のstage PRをmerge待ちで止めずに
+自らmergeまで進める。
+
 `plan-to-issues`は承認済みPlanから実装作業を直接native sub-issueとして作る。子Issueを作る直前に親の既存
 sub-issuesを確認し、同じ作業が既にあれば作成しない。既存childの更新やcloseは対象Issueが明示された
 場合だけ行う。
@@ -142,7 +146,8 @@ CIはすべてのPRで検証するが、agentや次工程を起動しない。�
 - agent packet、result JSON、session state
 - branch名によるfeature/stage判定
 
-正規手順は`.agents/skills/issue-handoff/`に置く。
+正規手順は`.agents/skills/issue-handoff/`に置く。保守者が明示的に起動する連続実行は
+[Autopilot](#autopilot)を参照。
 
 一工程を担当する親agentは、hostが対応している場合、その工程内の境界が確定した作業を
 project-scoped subagentへ委譲する。repositoryはCodex向けに`.codex/agents/`、Claude向けに
@@ -150,7 +155,33 @@ project-scoped subagentへ委譲する。repositoryはCodex向けに`.codex/agen
 `subissue-implementer`へ委譲し、self-reviewは実装とは別文脈の`self-reviewer`へ委譲する。
 branch、全体検証、review指摘の修正、push、PRは親agentが所有する。この内部委譲は次工程を
 起動せず、handoff stateも追加しない。対応しないhostは同等のbounded workerを使い、なければ
-同じ作業を親agent自身で実行する。
+同じ作業を親agent自身で実行する。[Autopilot](#autopilot)では例外として、`sdd-stage-worker`と
+`pr-review-fixer`がpushとPR作成まで行う。
+
+## Autopilot
+
+保守者が親Issueを明示して`.agents/skills/sdd-autopilot`を起動した場合に限り、上の工程を
+統合PRのmerge直前まで連続して進める。これはClaude RoutineやPRイベント購読のworkflowでは
+なく、保守者が開始した一つのsessionであり、終われば何も残らない。
+
+- orchestratorは工程の作業をしない。各工程、self-review、review指摘の一巡ごとに新しい
+  worker（`sdd-stage-worker`、`self-reviewer`、`pr-review-fixer`）を起動し、Issue番号・
+  branch・pathだけを渡して、固定形式の短い結果だけを受け取る。長い会話でもorchestratorの
+  文脈にはdiff、CI log、review本文、Issue本文が溜まらない。
+- 次の工程は上の工程選択の規則をそのまま毎回適用して決める。session stateやledgerは持たない
+  ので、会話の要約や再開で失うものがない。orchestratorはIssue本文やPR本文を読まず、本文が要る
+  判断（PRがこのfeatureのものか、子の前提作業、子が既に実装済みか）はworkerが返す。
+- stage PRと実装PRのfeature branchへのmerge、merge直後の次工程の開始、子Issueのcloseは、
+  この起動によって保守者から委ねられる。merge条件の正本は`loop.md`の§4にある
+  （headのcheckがすべて通過、review botのreview、その後のreview対応workerが変更なしを返したこと）。
+- PRイベントの購読や定期的な確認は、この起動したsessionが待つための手段としてだけ使う。
+  上のAutomation boundaryが除くのは、repositoryに置いて人の起動なしにagentを動かす仕組みであり、
+  それは引き続き使わない。
+- integration PRはmergeしない。merge可能になった時点で保守者へ報告して止まる。
+- 要求者の判断が要る質問、承認済み成果物の変更が要る指摘、収束しないreview、工程選択で
+  一意に決まらない状態では止まる。再度起動すれば、GitHub上の事実から続きを進める。
+
+手順は`.agents/skills/sdd-autopilot/references/loop.md`に置く。
 
 ## Failure behavior
 

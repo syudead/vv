@@ -25,9 +25,11 @@ Do not reinstate it.
 Project-scoped workers may perform a bounded part of a run when the selected
 host supports them. The repository provides matching Codex and Claude workers:
 `subissue-implementer` for child-Issue implementation and focused checks, and
-`self-reviewer` for fresh-context review before push. They do not own the
-handoff, persist its state, or start another stage; the parent agent remains
-responsible for the workflow, fixes, full validation, push, and pull request.
+`self-reviewer` for fresh-context review before push. `sdd-stage-worker` and
+`pr-review-fixer` exist for `sdd-autopilot` only, and there they push and open
+PRs themselves. The other workers do not own the handoff, persist its state,
+or start another stage; the parent agent remains responsible for the workflow,
+fixes, full validation, push, and pull request.
 Other Agent Skills-compatible hosts should use an equivalent bounded worker
 when one is available, or perform that part locally.
 
@@ -102,8 +104,8 @@ implementation PR, follow the open-PR rule below for that PR.
 7. **Every child done** → [integrate](integrate.md).
 
 A child is **done** when it is closed as completed or a merged PR into the
-feature branch `Refs` it. Closing children stays a maintainer action; selection
-does not wait for it.
+feature branch `Refs` it. Closing children stays a maintainer action (under
+`sdd-autopilot`, its orchestrator's); selection does not wait for it.
 
 Report the selected stage and the facts behind it at the start of the run and
 in the PR body, so a wrong selection is visible at review. Two runs started at
@@ -159,8 +161,14 @@ reviewed PRs.
 - A run performs one workflow, opens or updates one PR (plus the integration PR
   when rule 3 opens it), and stops. PR merges do not start another agent; the
   maintainer starts the next run by handing over the Issue URL again.
+- The exception is the [`sdd-autopilot` skill](../../sdd-autopilot/SKILL.md),
+  which the maintainer starts explicitly for one parent Issue. It applies the
+  same stage selection in a loop, runs each stage in a fresh worker context,
+  and merges the feature-branch PRs itself. The integration PR is still merged
+  by a human.
 
-Humans merge every PR. A stage PR merge needs no follow-up edit to the parent
-Issue. After an implementation PR merge, the maintainer may close that child
-Issue as completed. After every child is done, the next run
-[integrates](integrate.md) and a human merges the integration PR.
+Humans merge every PR (under `sdd-autopilot`, only the integration PR). A stage
+PR merge needs no follow-up edit to the parent Issue. After an implementation
+PR merge, the maintainer may close that child Issue as completed. After every
+child is done, the next run [integrates](integrate.md) and a human merges the
+integration PR.
