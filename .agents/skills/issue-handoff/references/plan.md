@@ -21,9 +21,9 @@ stage that creates the feature branch.
    over the whole diff. Checks 1 and 5 carry the weight here: a plan is
    reconciled against the parent Issue and against the contracts it supersedes.
 6. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
-7. After human merge, the maintainer opens the feature-to-`main` integration PR
-   with `Closes #NNN`, then marks Plan complete. For a `ui` Issue set
-   `Next: design`; otherwise set `Next: plan-to-issues`.
+7. After human merge, the next run opens the feature-to-`main` integration PR
+   with `Closes #NNN` and continues with `design` for a `ui` Issue or
+   `plan-to-issues` otherwise. The parent Issue body is not edited.
 
 If execution stops after the empty feature branch is pushed but before the Plan
 PR exists, that branch has no standard GitHub relationship to the Issue. Do not

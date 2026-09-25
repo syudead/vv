@@ -9,7 +9,6 @@ function fakeControls(overrides: Partial<PlayerControls> = {}): PlayerControls {
   return {
     togglePlay: vi.fn(),
     play: vi.fn(),
-    seekBy: vi.fn(),
     seekTo: vi.fn(),
     restart: vi.fn(),
     toggleMute: vi.fn(),
@@ -54,20 +53,20 @@ describe("useKeyboardShortcuts", () => {
     });
   });
 
-  it("Space・←/→・F・M・0 がそれぞれの操作を起こす", () => {
+  it("Space・F・M・0 がそれぞれの操作を起こし、←/→ では何もしない", () => {
     const controls = fakeControls();
     setup(controls);
     const target = document.body;
     fireEvent.keyDown(target, { key: " " });
     fireEvent.keyDown(target, { key: "ArrowLeft" });
     fireEvent.keyDown(target, { key: "ArrowRight" });
+    expect(controls.seekTo).not.toHaveBeenCalled();
+    expect(controls.wake).toHaveBeenCalledTimes(1);
     fireEvent.keyDown(target, { key: "f" });
     fireEvent.keyDown(target, { key: "M" });
     fireEvent.keyDown(target, { key: "0" });
 
     expect(controls.togglePlay).toHaveBeenCalledTimes(1);
-    expect(controls.seekBy).toHaveBeenNthCalledWith(1, -10);
-    expect(controls.seekBy).toHaveBeenNthCalledWith(2, 10);
     expect(controls.toggleFullscreen).toHaveBeenCalledTimes(1);
     expect(controls.toggleMute).toHaveBeenCalledTimes(1);
     expect(controls.seekTo).toHaveBeenCalledWith(0);
@@ -78,8 +77,8 @@ describe("useKeyboardShortcuts", () => {
     const { view } = setup(controls);
     const plain = view.getByTestId("plain");
     plain.addEventListener("keydown", (event) => event.stopPropagation());
-    fireEvent.keyDown(plain, { key: "ArrowRight" });
-    expect(controls.seekBy).toHaveBeenCalledWith(10);
+    fireEvent.keyDown(plain, { key: "m" });
+    expect(controls.toggleMute).toHaveBeenCalledTimes(1);
   });
 
   it("ボタンやリンクの上の Space では起きない", () => {
@@ -89,20 +88,19 @@ describe("useKeyboardShortcuts", () => {
     fireEvent.keyDown(view.getByRole("link"), { key: " " });
     expect(controls.togglePlay).not.toHaveBeenCalled();
     // ボタンの上でも Space 以外のキーは効く。
-    fireEvent.keyDown(view.getByRole("button"), { key: "ArrowRight" });
-    expect(controls.seekBy).toHaveBeenCalledWith(10);
+    fireEvent.keyDown(view.getByRole("button"), { key: "m" });
+    expect(controls.toggleMute).toHaveBeenCalledTimes(1);
   });
 
-  it("入力欄では起きず、スライダーの上の ← → はスライダー自身に任せる", () => {
+  it("入力欄では起きない", () => {
     const controls = fakeControls();
     const { view, onClose } = setup(controls);
     const input = view.getByRole("textbox");
     for (const key of [" ", "ArrowRight", "f", "m", "0", "Escape"]) {
       fireEvent.keyDown(input, { key });
     }
-    fireEvent.keyDown(view.getByRole("slider"), { key: "ArrowRight" });
     expect(controls.togglePlay).not.toHaveBeenCalled();
-    expect(controls.seekBy).not.toHaveBeenCalled();
+    expect(controls.seekTo).not.toHaveBeenCalled();
     expect(controls.toggleFullscreen).not.toHaveBeenCalled();
     expect(controls.toggleMute).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
@@ -112,10 +110,10 @@ describe("useKeyboardShortcuts", () => {
     const controls = fakeControls();
     setup(controls);
     fireEvent.keyDown(document.body, { key: "f", ctrlKey: true });
-    fireEvent.keyDown(document.body, { key: "ArrowRight", altKey: true });
+    fireEvent.keyDown(document.body, { key: "0", altKey: true });
     fireEvent.keyDown(document.body, { key: "m", metaKey: true });
     expect(controls.toggleFullscreen).not.toHaveBeenCalled();
-    expect(controls.seekBy).not.toHaveBeenCalled();
+    expect(controls.seekTo).not.toHaveBeenCalled();
     expect(controls.toggleMute).not.toHaveBeenCalled();
   });
 

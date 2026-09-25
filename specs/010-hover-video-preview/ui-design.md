@@ -8,9 +8,9 @@
 
 ## Screen Boundary
 
-- 対象は library の grid `VideoCard` にある 16:9 thumbnail surface だけ。list row、toolbar、selection bar、player は変えない。
+- 対象は grid の `VideoCard` にある 16:9 thumbnail surface である。library と folder 画面（検索結果を含む）の両方で、同時に再生する preview は 1 件である（folder 画面は #308 で揃った）。list row、toolbar、selection bar、player は変えない。
 - preview video は thumbnail と同じ inset、crop、aspect ratio を使う absolute layer とし、card、grid、metadata の寸法計算へ参加しない。
-- title、added/size/codec、quality/duration、watched、progress、selection checkbox、focus ring の意味と位置を維持する。probe pending/failed または duration/codec 不足で既存の全面 warning が出る card は preview job 自体が成立しないため、preview eligibility と排他的である。原本が browser-incompatible でも probe metadata が揃い preview が done なら、現在の `unplayableText` は warning を返さず preview を覆わない。
+- title、duration、progress、selection checkbox、focus ring の意味と位置を維持する（added/size/codec の行、quality、watched の印は #308 で card から無くなった）。probe pending/failed または duration/codec 不足で既存の全面 warning が出る card は preview job 自体が成立しないため、preview eligibility と排他的である。原本が browser-incompatible でも probe metadata が揃い preview が done なら、現在の `unplayableText` は warning を返さず preview を覆わない。
 - 新しい text、badge、spinner、toolbar、audio/seek control は出さない。生成中・未生成・失敗・再生 error は現在の thumbnail/placeholder のまま表す。
 
 ## Interaction

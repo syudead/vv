@@ -23,6 +23,7 @@ import Skeleton from "../ui/Skeleton";
 import CloseButton from "./CloseButton";
 import EndedOverlay from "./EndedOverlay";
 import FileLocation from "./FileLocation";
+import NeighborArrows from "./NeighborArrows";
 import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
 import PropertyStrip from "./PropertyStrip";
@@ -128,6 +129,18 @@ export default function VideoPage() {
   const frameRef = useRef<HTMLDivElement | null>(null);
   // 全画面はプレイヤーの上の層ごとにする（状態表示・再生終了・中央操作を全画面でも出す）。
   const fullscreenTarget = useCallback(() => frameRef.current, []);
+  // 全画面にしている入れ物。前後の矢印の吹き出しは、その間だけ入れ物の中に描く。
+  const [fullscreenFrame, setFullscreenFrame] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const sync = () => {
+      const frame = frameRef.current;
+      setFullscreenFrame(
+        frame !== null && document.fullscreenElement === frame ? frame : null,
+      );
+    };
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
 
   // 別の動画へ移ったら、前の動画の再生の状態を持ち越さない。
   if (pageId !== id) {
@@ -303,6 +316,19 @@ export default function VideoPage() {
     });
   };
 
+  // 左右の端の前後の動画。再生中（または見終えた後）に移ったときは、移った先でも再生を続ける。
+  const neighbors = related.kind === "ready" ? related.related : undefined;
+  const neighbor = (targetId: number | undefined) =>
+    targetId === undefined
+      ? undefined
+      : {
+          title: neighbors?.items.find((item) => item.id === targetId)?.title,
+          go: () =>
+            void navigate(`/videos/${String(targetId)}`, {
+              state: { from: backTo, autoplay: status.playing || status.ended },
+            }),
+        };
+
   // --- プレイヤーの上に重ねる層（同時に 1 つだけ） ---
   const playable =
     video !== undefined && video.probeState === "done" && canStartPlayback(video);
@@ -341,16 +367,8 @@ export default function VideoPage() {
       <TouchControls
         playing={status.playing}
         visible={chromeVisible}
-        onBack={() => {
-          controls.seekBy(-10);
-          controls.wake();
-        }}
         onToggle={() => {
           controls.togglePlay();
-          controls.wake();
-        }}
-        onForward={() => {
-          controls.seekBy(10);
           controls.wake();
         }}
       />
@@ -405,6 +423,14 @@ export default function VideoPage() {
                 onControls={setControls}
                 onStatus={onStatus}
                 fullscreenTarget={fullscreenTarget}
+              />
+            )}
+            {showPlayer && (
+              <NeighborArrows
+                previous={neighbor(neighbors?.prevId)}
+                next={neighbor(neighbors?.nextId)}
+                visible={chromeVisible || status.ended}
+                container={fullscreenFrame}
               />
             )}
           </div>

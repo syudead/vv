@@ -22,6 +22,7 @@ func relatedFixture() (*fakeLibrary, *fakeCatalog) {
 	catalog := &fakeCatalog{related: domain.RelatedVideos{
 		Items:  []domain.Video{videos[2], videos[1], videos[4]},
 		NextID: 2,
+		PrevID: 1,
 	}}
 	return &fakeLibrary{videos: videos}, catalog
 }
@@ -55,6 +56,9 @@ func TestGetRelatedVideos(t *testing.T) {
 	if got.NextId == nil || *got.NextId != 2 {
 		t.Fatalf("nextId = %v, want 2", got.NextId)
 	}
+	if got.PrevId == nil || *got.PrevId != 1 {
+		t.Fatalf("prevId = %v, want 1", got.PrevId)
+	}
 	if got.Items[1].Progress == nil || got.Items[1].Progress.PositionMs != 1000 {
 		t.Errorf("progress = %+v, want 1000", got.Items[1].Progress)
 	}
@@ -63,15 +67,19 @@ func TestGetRelatedVideos(t *testing.T) {
 	}
 }
 
-// 同じフォルダの後続が無いとき nextId は省かれる。
+// 同じフォルダの後続・先行が無いとき nextId・prevId は省かれる。
 func TestGetRelatedVideosOmitsNextAtFolderEnd(t *testing.T) {
 	library, catalog := relatedFixture()
 	catalog.related.NextID = 0
+	catalog.related.PrevID = 0
 	handler := newTestServer(t, Options{Videos: library, Catalog: catalog})
 
 	got := decode[gen.RelatedVideos](t, do(t, handler, http.MethodGet, "/api/videos/2/related"))
 	if got.NextId != nil {
 		t.Fatalf("nextId = %d, want 省略", *got.NextId)
+	}
+	if got.PrevId != nil {
+		t.Fatalf("prevId = %d, want 省略", *got.PrevId)
 	}
 }
 

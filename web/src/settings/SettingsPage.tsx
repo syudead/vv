@@ -63,6 +63,7 @@ function DeleteDialog({
 
 export default function SettingsPage() {
   const scan = useScan();
+  const { setFolderCount } = scan;
   const toast = useToast();
   const [folders, setFolders] = useState<MediaFolder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,7 +84,7 @@ export default function SettingsPage() {
         const result = await listMediaFolders(signal);
         const sorted = [...result].sort((a, b) => a.id - b.id);
         setFolders(sorted);
-        scan.setFolderCount(result.length);
+        setFolderCount(result.length);
         return sorted;
       } catch (failure) {
         if (signal?.aborted) return;
@@ -92,7 +93,7 @@ export default function SettingsPage() {
         if (!signal?.aborted) setLoading(false);
       }
     },
-    [scan.setFolderCount],
+    [setFolderCount],
   );
 
   useEffect(() => {

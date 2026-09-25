@@ -54,8 +54,8 @@ in the parent Issue or the approved artifacts the statement comes from.
    sub-issue API. Do not create an ordinary unparented Issue as a fallback.
 7. Do not update or close existing children unless the user explicitly names
    those Issues.
-8. After all missing children are attached, remove `Next` from the parent's SDD
-   summary and stop. Do not change repository files or open a PR.
+8. After all missing children are attached, stop. Do not edit the parent body,
+   change repository files, or open a PR.
 
 If Issue creation or native sub-issue attachment is unavailable, stop before
 creating anything and report the missing capability.

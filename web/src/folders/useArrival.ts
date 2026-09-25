@@ -17,6 +17,7 @@ export function useArrival(restoring = false) {
     }
     hasMounted = true;
     // 到着はフォルダごとに1回だけ扱う（FolderView は key でフォルダごとに作り直す）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return heading;
 }

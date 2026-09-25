@@ -1,10 +1,11 @@
-import { Info } from "lucide-react";
+import { Info, RotateCcw, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import videojs from "video.js";
 import "video.js/dist/video-js.css";
 
 import { streamUrl, type Video } from "../api/client";
+import { readPlaybackVolume, writePlaybackVolume } from "../preferences/playbackVolume";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { liveSource } from "./liveOffset";
 import {
@@ -29,12 +30,11 @@ export const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 /**
  * 操作バーの並び（要件 6）。残り時間は出さず、現在時刻/長さを出す。再生バーは
- * index.css で操作バーの上へ出す。「変換して再生中」は再生速度の前へ差し込む。
+ * index.css で操作バーの上へ出す。「最初に戻る」は再生の前へ、「変換して再生中」は再生速度の
+ * 前へ差し込む。秒数送りは置かない。前後の動画はプレイヤーの左右の端に置く（NeighborArrows）。
  */
 const controlBarChildren = [
   "playToggle",
-  "skipBackward",
-  "skipForward",
   "volumePanel",
   "currentTimeDisplay",
   "timeDivider",
@@ -56,8 +56,6 @@ videojs.addLanguage(language, {
   Pause: "一時停止（Space）",
   Replay: "もう一度再生（Space）",
   "Play Video": "再生",
-  "Skip backward {1} seconds": "{1} 秒戻る（←）",
-  "Skip forward {1} seconds": "{1} 秒進む（→）",
   Mute: "ミュート（M）",
   Unmute: "ミュートを解除（M）",
   Fullscreen: "全画面（F）",
@@ -75,8 +73,6 @@ videojs.addLanguage(language, {
 /** キーボード操作を持つボタンと、そのキー（aria-keyshortcuts）。 */
 const keyShortcuts: [string, string][] = [
   [".vjs-play-control", "Space"],
-  [".vjs-skip-backward-10", "ArrowLeft"],
-  [".vjs-skip-forward-10", "ArrowRight"],
   [".vjs-mute-control", "M"],
   [".vjs-fullscreen-control", "F"],
 ];
@@ -141,6 +137,7 @@ export default function VideoPlayer(props: Props) {
   const playerRef = useRef<ReturnType<typeof videojs> | null>(null);
   const popoverOpen = useRef(false);
   const [indicatorSlot, setIndicatorSlot] = useState<HTMLElement | null>(null);
+  const [restartSlot, setRestartSlot] = useState<HTMLElement | null>(null);
   const [route, setRoute] = useState<PlaybackRoute | null>(null);
   /** 最初の読み込みが終わるまで操作バーを隠す（自動で再生を始めるとき）。 */
   const [holdControlBar, setHoldControlBar] = useState(true);
@@ -176,15 +173,24 @@ export default function VideoPlayer(props: Props) {
       playbackRates,
       controlBar: {
         children: controlBarChildren,
-        skipButtons: { forward: 10, backward: 10 },
         remainingTimeDisplay: false,
       },
+    });
+    const savedVolume = readPlaybackVolume();
+    player.volume(savedVolume.volume);
+    player.muted(savedVolume.muted);
+    player.on("volumechange", () => {
+      writePlaybackVolume({
+        volume: player.volume() ?? savedVolume.volume,
+        muted: player.muted() ?? savedVolume.muted,
+      });
     });
     playerRef.current = player;
     let attempt: PlaybackAttempt = initialAttempt;
     let switchingSource = false;
     let resumeApplied = false;
     let slot: HTMLElement | null = null;
+    let restart: HTMLElement | null = null;
     let status: PlayerStatus = { ...initialPlayerStatus };
     setRoute(attempt.route);
     setHoldControlBar(true);
@@ -242,6 +248,13 @@ export default function VideoPlayer(props: Props) {
         host.querySelector(selector)?.setAttribute("aria-keyshortcuts", keys);
       }
       const bar = host.querySelector<HTMLElement>(".vjs-control-bar");
+      const playControl = bar?.querySelector<HTMLElement>(":scope > .vjs-play-control");
+      if (bar != null && playControl != null) {
+        restart = document.createElement("div");
+        restart.className = "vv-player-restart flex flex-none";
+        bar.insertBefore(restart, playControl);
+        setRestartSlot(restart);
+      }
       if (bar !== null) {
         slot = document.createElement("div");
         slot.className = "vv-transcode-indicator flex flex-none items-center px-2";
@@ -363,6 +376,8 @@ export default function VideoPlayer(props: Props) {
       setPlayerReady(false);
       slot?.remove();
       setIndicatorSlot(null);
+      restart?.remove();
+      setRestartSlot(null);
       popoverOpen.current = false;
       latest.current.onControls(null);
       attempt = { ...attempt, state: "disposed" };
@@ -403,6 +418,19 @@ export default function VideoPlayer(props: Props) {
       data-loading={holdControlBar ? "true" : undefined}
       className="vv-video-player absolute inset-0"
     >
+      {restartSlot !== null &&
+        createPortal(
+          <BarButton
+            label="最初に戻る"
+            keys="0"
+            icon={RotateCcw}
+            onClick={() => {
+              const player = playerRef.current;
+              if (player !== null && !player.isDisposed()) player.currentTime(0);
+            }}
+          />,
+          restartSlot,
+        )}
       {indicatorSlot !== null &&
         route === "transcode" &&
         createPortal(
@@ -415,6 +443,33 @@ export default function VideoPlayer(props: Props) {
           indicatorSlot,
         )}
     </div>
+  );
+}
+
+/** BarButton は操作バーへ差し込むボタンである。video.js のボタンと同じ見た目と大きさにそろえる。 */
+function BarButton({
+  label,
+  keys,
+  icon: Icon,
+  onClick,
+}: {
+  label: string;
+  keys?: string;
+  icon: LucideIcon;
+  onClick: () => void;
+}) {
+  const title = keys === undefined ? label : `${label}（${keys}）`;
+  return (
+    <button
+      type="button"
+      className="vjs-control vjs-button vv-bar-button"
+      aria-label={label}
+      aria-keyshortcuts={keys}
+      title={title}
+      onClick={onClick}
+    >
+      <Icon className="size-[1.6em]" aria-hidden="true" />
+    </button>
   );
 }
 

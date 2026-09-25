@@ -10,11 +10,14 @@ import { useVideos } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
 import type { ListCriteria } from "../videoList/listCriteria";
+import { Grid } from "../videoList/Grid";
 import { resultCountText } from "../videoList/listSummary";
 import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
+import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
+import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { type RootDisplay, topLevelLocationLabel } from "./folderPath";
-import { Grid } from "./layout";
+import { useFolderTagsRow } from "./useFolderTagsRow";
 
 /**
  * ROOT_SEARCH_KEY は最上位の検索結果の控えの鍵である。実在するフォルダの鍵
@@ -57,9 +60,17 @@ export default function RootSearchResults({
     reload,
   } = useVideos(criteria, restored);
 
+  // ホバープレビューは同時に 1 件だけ（ライブラリと同じ）。一覧や倍率が変わったら止める。
+  const { resetPreview, cardProps: preview } = usePreviewCoordination();
+  const tagsRow = useFolderTagsRow();
+  useEffect(() => {
+    resetPreview();
+  }, [items, resetPreview, zoom]);
+
   const scan = useScan();
+  const { refresh: refreshScan } = scan;
   const knownScanId = useRef(restored?.scanId);
-  useEffect(() => scan.refresh(), [scan.refresh]);
+  useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
     const finished = scan.finished;
     if (finished === null || knownScanId.current === finished.id) return;
@@ -149,30 +160,34 @@ export default function RootSearchResults({
           {initialLoadFailed ? (
             <LoadFailed reason={failure} onRetry={retry} />
           ) : (
-            <Grid zoom={zoom}>
-              {waiting ? (
-                <CardSkeleton count={12} />
-              ) : (
-                items.map((video) => (
-                  <VideoCard
-                    key={video.id}
-                    video={video}
-                    backTo={backTo}
-                    selected={false}
-                    selectionMode={false}
-                    location={
-                      video.folder === undefined
-                        ? undefined
-                        : topLevelLocationLabel(
-                            video.folder,
-                            rootNames.get(video.folder.rootId),
-                          )
-                    }
-                  />
-                ))
-              )}
-              {loadingMore && <CardSkeleton count={6} />}
-            </Grid>
+            <TagRowMeasureProvider>
+              <Grid zoom={zoom}>
+                {waiting ? (
+                  <CardSkeleton count={12} />
+                ) : (
+                  items.map((video) => (
+                    <VideoCard
+                      key={video.id}
+                      video={video}
+                      backTo={backTo}
+                      selected={false}
+                      selectionMode={false}
+                      {...preview}
+                      tagsRow={tagsRow}
+                      location={
+                        video.folder === undefined
+                          ? undefined
+                          : topLevelLocationLabel(
+                              video.folder,
+                              rootNames.get(video.folder.rootId),
+                            )
+                      }
+                    />
+                  ))
+                )}
+                {loadingMore && <CardSkeleton count={6} />}
+              </Grid>
+            </TagRowMeasureProvider>
           )}
           {error !== null && items.length > 0 && (
             <LoadMoreFailed reason={error} onRetry={retryLoadMore} />

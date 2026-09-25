@@ -78,17 +78,16 @@ export default function SetupPage() {
   const [failure, setFailure] = useState<string | null>(null);
   const [invalidField, setInvalidField] = useState<SetupField | null>(null);
   const busy = useRef(false);
-  const refs = {
-    username: useRef<HTMLInputElement>(null),
-    password: useRef<HTMLInputElement>(null),
-    confirm: useRef<HTMLInputElement>(null),
-  };
+  const usernameRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+  const confirmRef = useRef<HTMLInputElement>(null);
+  const refs = { username: usernameRef, password: passwordRef, confirm: confirmRef };
   const loginLink = useRef<HTMLAnchorElement>(null);
 
+  // 初回だけ。ref は描き直しても同じものなので、依存に書いても一度しか動かない。
   useEffect(() => {
-    refs.username.current?.focus();
-    // 初回だけ。refs は描くたびに作り直すが、中の要素は同じである。
-  }, []);
+    usernameRef.current?.focus();
+  }, [usernameRef]);
 
   useEffect(() => {
     if (configured) loginLink.current?.focus();

@@ -443,6 +443,7 @@ export function useVideos(
   // （specs/016-single-account-auth/ui-design.md「Top bar」）。
   const owner = useAudience() === "owner";
   useEffect(() => {
+    const queue = refreshQueue.current;
     const unsubscribe = owner
       ? subscribeServerEvents({
           video: (id) => {
@@ -469,7 +470,7 @@ export function useVideos(
       unsubscribe();
       refreshing.current?.abort();
       refreshing.current = null;
-      refreshQueue.current.clear();
+      queue.clear();
     };
   }, [owner, refreshItems, refreshProcessingItems]);
 
@@ -606,6 +607,7 @@ export function useVideos(
       }
     },
     // folderKey と key は folderRef・criteriaRef の中身が変わったことを表す。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [folderKey, key, refreshItems],
   );
 

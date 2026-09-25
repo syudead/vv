@@ -1,5 +1,4 @@
 import {
-  type CSSProperties,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -39,6 +38,7 @@ import {
   type ListCriteria,
   newSeed,
 } from "../videoList/listCriteria";
+import { Grid } from "../videoList/Grid";
 import { resultCountText } from "../videoList/listSummary";
 import {
   CardSkeleton,
@@ -48,6 +48,8 @@ import {
   NoMatches,
 } from "../videoList/states";
 import { useListCriteria } from "../videoList/useListCriteria";
+import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
+import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import ActiveTagFilters from "./ActiveTagFilters";
 import CardTagRow from "./CardTagRow";
@@ -68,25 +70,6 @@ import {
 
 const skeletonCount = 12;
 
-const cardWidth: Record<Zoom, string> = {
-  0: "var(--spacing-card-0)",
-  1: "var(--spacing-card-1)",
-  2: "var(--spacing-card-2)",
-  3: "var(--spacing-card-3)",
-};
-
-/** topmostId は画面上端に最も近いカードの id を返す（大きさ切替で読んでいた位置を保つ）。 */
-function topmostId(list: HTMLElement | null, top: number): number | undefined {
-  if (list === null) return undefined;
-  for (const child of Array.from(list.querySelectorAll<HTMLElement>("[data-video-id]"))) {
-    if (child.getBoundingClientRect().bottom > top) {
-      const id = Number(child.dataset.videoId);
-      return Number.isNaN(id) ? undefined : id;
-    }
-  }
-  return undefined;
-}
-
 export default function LibraryPage() {
   const location = useLocation();
   const toast = useToast();
@@ -100,24 +83,20 @@ export default function LibraryPage() {
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
   const { criteria, apply } = useListCriteria(preferences.sort, TAG_PARAM);
   const { query, watch, playable, sort } = criteria;
-  // URL が変わらない限り同じ配列を使い、タグの操作の関数とカードの memo を保つ。
-  const rawTagParams = new URLSearchParams(location.search).getAll(TAG_PARAM);
-  const rawTagKey = JSON.stringify(rawTagParams);
-  // rawTagKey が rawTagParams の値を表す。ゲストはタグで絞り込めない（URL に残った
+  // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
+  // タグの操作の関数とカードの memo を保つ。ゲストはタグで絞り込めない（URL に残った
   // `tag` は useListCriteria が取り除く）。
+  const rawTagKey = JSON.stringify(
+    new URLSearchParams(location.search).getAll(TAG_PARAM),
+  );
   const tagIds = useMemo(
-    () => (owner ? parseTagParam(rawTagParams) : []),
+    () => (owner ? parseTagParam(JSON.parse(rawTagKey) as string[]) : []),
     [owner, rawTagKey],
   );
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
-  const [activePreviewId, setActivePreviewId] = useState<number | null>(null);
-  const [previewResetEpoch, setPreviewResetEpoch] = useState(0);
-  const resetPreview = useCallback(() => {
-    setActivePreviewId(null);
-    setPreviewResetEpoch((epoch) => epoch + 1);
-  }, []);
-  const startPreview = useCallback((id: number) => setActivePreviewId(id), []);
+  const { activePreviewId, previewResetEpoch, startPreview, resetPreview } =
+    usePreviewCoordination();
 
   const savePreferences = useCallback((updated: ViewPreferences) => {
     setPreferences(updated);
@@ -192,38 +171,16 @@ export default function LibraryPage() {
     [apply, criteria, resetPreview, tagIds],
   );
   // --- 大きさ切替で読んでいた位置を保つ ---
-  const anchor = useRef<number | undefined>(undefined);
-  const list = useRef<HTMLDivElement | null>(null);
-  const topOffset = () =>
-    parseFloat(
-      getComputedStyle(document.documentElement).getPropertyValue("--spacing-navbar"),
-    ) || 48;
+  const { listRef: list, capture: captureAnchor } = useZoomAnchor(zoom);
 
   const changeZoom = useCallback(
     (next: Zoom) => {
-      anchor.current =
-        window.scrollY > 0 ? topmostId(list.current, topOffset()) : undefined;
+      captureAnchor();
       resetPreview();
       savePreferences({ ...preferences, zoom: next });
     },
-    [preferences, resetPreview, savePreferences],
+    [captureAnchor, preferences, resetPreview, savePreferences],
   );
-
-  useEffect(() => {
-    const onResize = () => resetPreview();
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [resetPreview]);
-
-  useLayoutEffect(() => {
-    const id = anchor.current;
-    if (id === undefined) return;
-    anchor.current = undefined;
-    const target = list.current?.querySelector(`[data-video-id="${String(id)}"]`);
-    if (!target) return;
-    const top = window.scrollY + target.getBoundingClientRect().top - topOffset() - 8;
-    window.scrollTo({ top: Math.max(top, 0), behavior: "auto" });
-  }, [zoom]);
 
   // --- 一覧の取得（戻ってきたときはスナップショットから復元） ---
   const [restored] = useState(() => takeListSnapshot({ ...criteria, tags: tagIds }));
@@ -405,8 +362,9 @@ export default function LibraryPage() {
 
   // --- 取り込み完了で一覧を入れ替える ---
   const scan = useScan();
+  const { refresh: refreshScan } = scan;
   const knownScanId = useRef(restored?.scanId);
-  useEffect(() => scan.refresh(), [scan.refresh]);
+  useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
     const finished = scan.finished;
     if (finished === null || knownScanId.current === finished.id) return;
@@ -597,17 +555,14 @@ export default function LibraryPage() {
         {view === "grid" ? (
           // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
           <TagRowMeasureProvider>
-            <div
-              className="flex flex-wrap justify-center gap-2.5 [&>*]:w-[min(var(--card),100%)]"
-              style={{ "--card": cardWidth[zoom] } as CSSProperties}
-            >
+            <Grid zoom={zoom}>
               {loading ? (
                 <CardSkeleton count={skeletonCount} />
               ) : (
                 items.map((video) => <VideoCard key={video.id} {...rowProps(video)} />)
               )}
               {loadingMore && <CardSkeleton count={6} />}
-            </div>
+            </Grid>
           </TagRowMeasureProvider>
         ) : (
           !loading &&

@@ -13,6 +13,7 @@ const mock = vi.hoisted(() => {
     disposed = false;
     errorValue: unknown = null;
     mutedValue = false;
+    volumeValue = 1;
     fullscreen = false;
     rate = 1;
     durationValue = 120;
@@ -30,7 +31,6 @@ const mock = vi.hoisted(() => {
         '<div class="vjs-control-bar"><div class="vjs-progress-control">' +
         '<div class="vjs-progress-holder"></div></div>' +
         '<button class="vjs-play-control"></button>' +
-        '<button class="vjs-skip-backward-10"></button><button class="vjs-skip-forward-10"></button>' +
         '<button class="vjs-mute-control"></button><div class="vjs-playback-rate"></div>' +
         '<button class="vjs-fullscreen-control"></button></div>';
     }
@@ -73,6 +73,10 @@ const mock = vi.hoisted(() => {
     muted(value?: boolean) {
       if (value !== undefined) this.mutedValue = value;
       return this.mutedValue;
+    }
+    volume(value?: number) {
+      if (value !== undefined) this.volumeValue = value;
+      return this.volumeValue;
     }
     playbackRate(value?: number) {
       if (value !== undefined) this.rate = value;
@@ -179,8 +183,35 @@ function props(overrides: Partial<Video> = {}) {
 
 describe("VideoPlayer", () => {
   afterEach(() => {
+    window.localStorage.clear();
     mock.instances.length = 0;
     vi.clearAllMocks();
+  });
+
+  it("保存した音量を復元し、音量の変更を次のプレイヤーへ引き継ぐ", async () => {
+    window.localStorage.setItem(
+      "vv.playback-volume.v1",
+      JSON.stringify({ volume: 0.4, muted: true }),
+    );
+    const first = render(<VideoPlayer {...props()} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const firstPlayer = mock.instances[0];
+    expect(firstPlayer?.volumeValue).toBe(0.4);
+    expect(firstPlayer?.mutedValue).toBe(true);
+
+    if (firstPlayer === undefined) throw new Error("playerがありません");
+    firstPlayer.volumeValue = 0.7;
+    firstPlayer.mutedValue = false;
+    act(() => firstPlayer.trigger("volumechange"));
+    expect(
+      JSON.parse(window.localStorage.getItem("vv.playback-volume.v1") ?? ""),
+    ).toEqual({ volume: 0.7, muted: false });
+
+    first.unmount();
+    render(<VideoPlayer {...props()} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(2));
+    expect(mock.instances[1]?.volumeValue).toBe(0.7);
+    expect(mock.instances[1]?.mutedValue).toBe(false);
   });
 
   it("direct動画はstream、非対応動画はtranscodeから開始する", async () => {
@@ -250,25 +281,23 @@ describe("VideoPlayer", () => {
     expect(player.disposed).toBe(true);
   });
 
-  it("操作バーは速度・10 秒送り・現在時刻/長さを持ち、残り時間を持たない", async () => {
+  it("操作バーは速度・現在時刻/長さを持ち、秒数送りと残り時間を持たない", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
     const options = mock.instances[0]?.options as {
       playbackRates: number[];
       controlBar: {
         children: string[];
-        skipButtons: { forward: number; backward: number };
+        skipButtons?: unknown;
         remainingTimeDisplay: boolean;
       };
     };
     expect(options.playbackRates).toEqual([0.5, 0.75, 1, 1.25, 1.5, 2]);
-    expect(options.controlBar.skipButtons).toEqual({ forward: 10, backward: 10 });
+    expect(options.controlBar.skipButtons).toBeUndefined();
     expect(options.controlBar.remainingTimeDisplay).toBe(false);
     expect(options.controlBar.children).not.toContain("remainingTimeDisplay");
-    expect(options.controlBar.children.slice(0, 7)).toEqual([
+    expect(options.controlBar.children.slice(0, 5)).toEqual([
       "playToggle",
-      "skipBackward",
-      "skipForward",
       "volumePanel",
       "currentTimeDisplay",
       "timeDivider",
@@ -283,9 +312,23 @@ describe("VideoPlayer", () => {
     expect(
       element?.querySelector(".vjs-play-control")?.getAttribute("aria-keyshortcuts"),
     ).toBe("Space");
-    expect(
-      element?.querySelector(".vjs-skip-forward-10")?.getAttribute("aria-keyshortcuts"),
-    ).toBe("ArrowRight");
+  });
+
+  it("操作バーの再生の前に「最初に戻る」を差し込み、押すと先頭へ戻る", async () => {
+    render(<VideoPlayer {...props()} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    const restart = await screen.findByRole("button", { name: "最初に戻る" });
+    const labels = Array.from(
+      player?.element.querySelectorAll(".vjs-control-bar button") ?? [],
+      (button) => button.getAttribute("aria-label") ?? button.className,
+    );
+    expect(labels.slice(0, 2)).toEqual(["最初に戻る", "vjs-play-control"]);
+    expect(restart.getAttribute("aria-keyshortcuts")).toBe("0");
+
+    player?.currentTime(42);
+    fireEvent.click(restart);
+    expect(player?.time).toBe(0);
   });
 
   it("変換して再生する動画だけ、操作バーの再生速度の前に「変換して再生中」を出す", async () => {
@@ -373,7 +416,7 @@ describe("VideoPlayer", () => {
     expect(mock.instances[0]?.pausedValue).toBe(false);
   });
 
-  it("操作の入口を渡し、10 秒送り・先頭から・ミュート・全画面を動かす", async () => {
+  it("操作の入口を渡し、先頭から・ミュート・全画面を動かす", async () => {
     const values = props();
     const view = render(<VideoPlayer {...values} />);
     await waitFor(() => expect(values.onControls).toHaveBeenCalled());
@@ -384,13 +427,6 @@ describe("VideoPlayer", () => {
       throw new Error("操作の入口がありません");
 
     player.time = 30;
-    controls.seekBy(10);
-    expect(player.time).toBe(40);
-    controls.seekBy(-100);
-    expect(player.time).toBe(0);
-    player.time = 115;
-    controls.seekBy(10);
-    expect(player.time).toBe(120);
     controls.restart();
     expect(player.time).toBe(0);
     expect(player.pausedValue).toBe(false);

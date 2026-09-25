@@ -1951,6 +1951,11 @@ components:
           type: integer
           format: int64
           description: 同じディレクトリで自然順の次の動画。無ければ省く
+        prevId:
+          type: integer
+          format: int64
+          description: |
+            同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
 
     ProgressUpdate:
       type: object

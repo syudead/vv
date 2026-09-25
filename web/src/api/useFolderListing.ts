@@ -59,6 +59,7 @@ function useFolderData<T>(
       });
     return () => controller.abort();
     // load は key が同じ間は同じ要求を表すので、依存は key で足りる。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generation, key]);
 
   const reload = useCallback(() => setGeneration((value) => value + 1), []);

@@ -38,6 +38,10 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 		next := related.NextID
 		payload.NextId = &next
 	}
+	if related.PrevID != 0 {
+		prev := related.PrevID
+		payload.PrevId = &prev
+	}
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)

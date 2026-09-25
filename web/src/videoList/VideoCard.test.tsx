@@ -313,17 +313,11 @@ describe("VideoCard hover preview", () => {
 describe("VideoCard tagsRow（issue 269）", () => {
   afterEach(() => cleanup());
 
-  it("tagsRow を渡すと、今の日付・サイズ・コーデックの行の代わりにそれを出す", () => {
+  it("tagsRow を渡すと、題名の下にそれを出す", () => {
     renderCard(video({ tags: [{ id: 1, name: "旅行" }] }), {
       tagsRow: () => <p>タグの行</p>,
     });
     expect(screen.getByText("タグの行")).toBeDefined();
-    expect(screen.queryByText("h264")).toBeNull();
-  });
-
-  it("tagsRow を渡さなければ今の行のままにする（フォルダ画面）", () => {
-    renderCard(video());
-    expect(screen.getByText("h264")).toBeDefined();
   });
 
   it("tagsRow はリンクの外、同じ article の中に置く", () => {
@@ -409,10 +403,10 @@ describe("VideoCard の公開の印", () => {
     const mark = screen.getByText("公開");
     expect(mark.className).toContain("sr-only");
     const face = mark.parentElement!;
-    // 先頭が地球のアイコン、その後に画質と時間。
+    // 先頭が地球のアイコン、その後に時間。
     expect(face.firstElementChild?.tagName.toLowerCase()).toBe("svg");
     expect(face.firstElementChild?.getAttribute("class")).toContain("lucide-globe");
-    expect(face.textContent).toBe("公開1080p1:00");
+    expect(face.textContent).toBe("公開1:00");
     expect(container.querySelectorAll(".lucide-globe")).toHaveLength(1);
   });
 
@@ -422,7 +416,7 @@ describe("VideoCard の公開の印", () => {
     expect(container.querySelector(".lucide-globe")).toBeNull();
   });
 
-  it("画質も時間も無い公開の動画では、同じ面に地球の印だけを出す", () => {
+  it("時間が無い公開の動画では、同じ面に地球の印だけを出す", () => {
     renderAs(
       "owner",
       video({ public: true, durationMs: undefined, width: undefined, height: undefined }),
@@ -458,4 +452,37 @@ describe("VideoCard の公開の印", () => {
     expect(cell.textContent).toBe("公開1:00");
     expect(cell.querySelector(".lucide-globe")).not.toBeNull();
   });
+});
+
+describe("VideoCard の表示（issue 308）", () => {
+  afterEach(() => cleanup());
+
+  const watched = video({
+    title: "見終えた動画",
+    durationMs: 65_000,
+    progress: { positionMs: 0, completed: true, updatedAt: "" },
+    sizeBytes: 5 * 1024 * 1024,
+  });
+
+  // ライブラリ（tagsRow あり）・フォルダ画面（なし）・検索結果（置き場所あり）の3通り。
+  const variants: [string, Partial<React.ComponentProps<typeof VideoCard>>][] = [
+    ["ライブラリ", { tagsRow: () => null }],
+    ["フォルダ画面", { onSelect: undefined }],
+    ["検索結果", { onSelect: undefined, location: { label: "A/B", title: "/m/A/B" } }],
+  ];
+
+  it.each(variants)(
+    "%s のカードに追加日時・サイズ・コーデック・解像度・視聴済みのマークを出さない",
+    (_, props) => {
+      renderCard(watched, props);
+      const article = screen.getByRole("article");
+      expect(article.textContent).not.toMatch(/h264/i);
+      expect(article.textContent).not.toMatch(/1080p/i);
+      expect(article.textContent).not.toMatch(/MB|KB/);
+      expect(article.textContent).not.toMatch(/前|たった今/);
+      expect(screen.queryByText("視聴済み")).toBeNull();
+      // 再生時間は残す。
+      expect(screen.getByText("1:05")).toBeDefined();
+    },
+  );
 });

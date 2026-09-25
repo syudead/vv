@@ -29,9 +29,10 @@ Read [README.md](README.md) first. Input is one native child Issue.
    risks in the body. Stop.
 8. After human merge, the maintainer closes the child as completed. This means
    implemented on the feature branch; the parent closes only when the
-   integration PR reaches `main`.
+   integration PR reaches `main`. Under
+   [`sdd-autopilot`](../../sdd-autopilot/SKILL.md) its orchestrator merges and
+   closes the child.
 
 If an approved artifact changes, use the selected branch's current artifacts as
-implementation inputs. The parent SDD summary may be updated to communicate the
-revision, but it does not block a user-requested implementation.
+implementation inputs.
 
