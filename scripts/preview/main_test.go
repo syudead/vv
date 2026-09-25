@@ -114,3 +114,33 @@ func TestBackendEnvironDropsDisplay(t *testing.T) {
 		t.Errorf("backendEnviron = %q, want %q", got, want)
 	}
 }
+
+func TestWaitScan(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		// 取り込み自体の失敗は、一覧が欠けたまま案内しないようエラーにする。
+		{"取り込みの失敗", `{"id":1,"state":"failed","total":0,"completed":0,"failed":0,"error":"boom"}`, true},
+		// ファイル単位の失敗は、残りは使えるので止めない。
+		{"一部のファイルだけ失敗", `{"id":1,"state":"done","total":5,"completed":4,"failed":1}`, false},
+		{"成功", `{"id":1,"state":"done","total":5,"completed":5,"failed":0}`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			backend := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(c.body))
+			}))
+			defer backend.Close()
+			target, err := url.Parse(backend.URL)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := waitScan(target); (err != nil) != c.wantErr {
+				t.Errorf("waitScan err = %v, wantErr %v", err, c.wantErr)
+			}
+		})
+	}
+}
