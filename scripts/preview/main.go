@@ -139,7 +139,10 @@ func main() {
 	}
 	// 8080 を開くと Codespaces がブラウザを開くので、先に取り込みを終えておく。
 	// 空の一覧が見えても、取り込み中なのか壊れているのか区別できない。
-	waitScan(backendURL)
+	if err := waitScan(backendURL); err != nil {
+		stopBackend()
+		devtools.Fail(err)
+	}
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		stopBackend()
@@ -262,21 +265,34 @@ func registerSamples(backend *url.URL, mediaDir string) error {
 	return nil
 }
 
-// waitScan は取り込みが終わるまで待つ。待ちきれなくても vv は使えるので、
-// 失敗にはせず案内だけする。
-func waitScan(backend *url.URL) {
+// waitScan は取り込みが終わるまで待つ。取り込み自体が失敗したら、一覧が欠けた
+// ままの preview を案内しないようにエラーを返す。待ちきれないだけなら vv は
+// 使えるので、失敗にはせず案内だけする。
+func waitScan(backend *url.URL) error {
 	deadline := time.Now().Add(2 * time.Minute)
 	for time.Now().Before(deadline) {
 		var scan struct {
-			State string `json:"state"`
+			State  string `json:"state"`
+			Failed int    `json:"failed"`
+			Error  string `json:"error"`
 		}
-		if err := callJSON(http.MethodGet, backend.JoinPath("api", "scans", "current"), nil, &scan); err == nil && scan.State != "running" {
-			fmt.Println("取り込みが終わった:", scan.State)
-			return
+		err := callJSON(http.MethodGet, backend.JoinPath("api", "scans", "current"), nil, &scan)
+		switch {
+		case err != nil || scan.State == "running":
+		case scan.State == "failed":
+			return fmt.Errorf("取り込みが失敗した: %s。上の出力を確認すること。", scan.Error)
+		default:
+			if scan.Failed > 0 {
+				fmt.Printf("取り込みは終わったが、%d 件は取り込めなかった。上の出力を確認すること。\n", scan.Failed)
+			} else {
+				fmt.Println("取り込みが終わった。")
+			}
+			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
 	fmt.Println("取り込みがまだ続いている。一覧は取り込みの進みに合わせて増える。")
+	return nil
 }
 
 // backendEnviron は vv に渡す環境から、ファイルを開く機能を有効にする変数を除く。
