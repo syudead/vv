@@ -1,7 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { Video } from "./client";
-import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
+import {
+  clearListSnapshot,
+  holdListSnapshot,
+  saveListSnapshot,
+  takeListSnapshot,
+} from "./listSnapshot";
 import { nextVideoTagsSequence, recordAppliedVideoTags } from "./videoTagsEvents";
 
 /**
@@ -17,6 +22,7 @@ function item(id: number): Video {
   return {
     id,
     title: `動画 ${String(id)}`,
+    public: false,
     sizeBytes: 1024,
     addedAt: "2026-09-13T00:00:00Z",
     playable: true,
@@ -112,6 +118,27 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     expect(takeListSnapshot({ query: "ねこ" })).toBeDefined();
     // 既定と違う並び順まで吸収してはならない。
     expect(takeListSnapshot({ query: "ねこ", sort: "titleAsc" })).toBeUndefined();
+  });
+});
+
+describe("控えを止める印（holdListSnapshot）", () => {
+  it("止めている間は今の控えを捨て、保存しても取れない。すべて解けば保存できる", () => {
+    saveListSnapshot({ query: "" }, body([1]));
+    const first = holdListSnapshot();
+    const second = holdListSnapshot();
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+
+    saveListSnapshot({ query: "" }, body([1]));
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+
+    first();
+    first();
+    saveListSnapshot({ query: "" }, body([1]));
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+
+    second();
+    saveListSnapshot({ query: "" }, body([1]));
+    expect(takeListSnapshot({ query: "" })?.items.map((video) => video.id)).toEqual([1]);
   });
 });
 

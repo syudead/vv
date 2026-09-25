@@ -54,10 +54,13 @@ func (s *server) GetVideoSeekThumbnail(
 		return
 	}
 
-	if params.V != nil && *params.V != "" {
-		w.Header().Set("Cache-Control", cacheImmutable)
-	} else {
-		w.Header().Set("Cache-Control", cacheNoStore)
+	// 版の有無によらず、使うたびに確かめさせる（contracts/guest-api.md §5）。
+	// If-None-Match が一致すれば 304 を返し、画像は送らない。
+	etag := bytesETag(image)
+	setRevalidate(w, etag)
+	if etagMatches(r.Header.Get("If-None-Match"), etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
 	}
 	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("Content-Length", strconv.Itoa(len(image)))

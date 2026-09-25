@@ -85,6 +85,11 @@ describe("contrast", () => {
     ["accent", "navbar", 4.5],
     ["success", "navbar", 4.5],
     ["bg", "fg", 4.5],
+    // 初回設定画面とログイン画面の面（bg-surface）の上の失敗の行・接続の警告・
+    // 「ログインへ」（specs/016-single-account-auth/ui-design.md「Accessibility」）。
+    ["danger", "surface", 4.5],
+    ["warning", "surface", 4.5],
+    ["link", "surface", 4.5],
   ];
 
   it.each(pairs)("%s on %s >= %s", (fg, bg, minimum) => {

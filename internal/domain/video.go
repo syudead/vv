@@ -186,6 +186,10 @@ type Video struct {
 	ProbeError     string
 	ThumbnailState ThumbnailState
 	PreviewState   PreviewState
+
+	// Public は公開フラグが立っているか（specs/016-single-account-auth/data-model.md §1）。
+	// 保存層が public_videos から埋める。空の content_key の動画は常に false である。
+	Public bool
 }
 
 // PlayableInBrowser はブラウザでそのまま再生できると確定しているかを返す。

@@ -3,7 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
+import {
+  emitServerEvent,
+  FakeEventSource,
+  installFakeEventSource,
+} from "../api/fakeEventSource";
 
 import type {
   FolderListing,
@@ -13,6 +17,7 @@ import type {
   VideoPage,
 } from "../api/client";
 import { clearListSnapshot } from "../api/listSnapshot";
+import { type Audience, AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
@@ -43,6 +48,7 @@ function video(id: number, title: string, extra: Partial<Video> = {}): Video {
   return {
     id,
     title,
+    public: false,
     sizeBytes: 1024,
     addedAt: "2026-09-01T00:00:00Z",
     playable: true,
@@ -122,26 +128,28 @@ function LibraryProbe() {
   );
 }
 
-function renderFolders(initial: string) {
+function renderFolders(initial: string, audience: Audience = "owner") {
   return render(
     <MemoryRouter initialEntries={[initial]}>
       <TooltipProvider>
         <ToastProvider>
-          <ScanProvider>
-            <Routes>
-              <Route
-                path="/folders/*"
-                element={
-                  <>
-                    <FolderPage />
-                    <LocationProbe />
-                  </>
-                }
-              />
-              <Route path="/videos/:id" element={<Player />} />
-              <Route path="/" element={<LibraryProbe />} />
-            </Routes>
-          </ScanProvider>
+          <AudienceProvider audience={audience}>
+            <ScanProvider>
+              <Routes>
+                <Route
+                  path="/folders/*"
+                  element={
+                    <>
+                      <FolderPage />
+                      <LocationProbe />
+                    </>
+                  }
+                />
+                <Route path="/videos/:id" element={<Player />} />
+                <Route path="/" element={<LibraryProbe />} />
+              </Routes>
+            </ScanProvider>
+          </AudienceProvider>
         </ToastProvider>
       </TooltipProvider>
     </MemoryRouter>,
@@ -1070,5 +1078,115 @@ describe("FolderPage", () => {
       (screen.getByRole("button", { name: "並び順: 追加日" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
+  });
+  describe("ゲスト（specs/016-single-account-auth/ui-design.md「Guest degradation」）", () => {
+    /** withoutRootPath はゲストの応答（登録フォルダの絶対パスが無い）を作る。 */
+    function withoutRootPath({ rootPath: _, ...rest }: FolderSummary): FolderSummary {
+      return rest;
+    }
+
+    function guestResponses(extra?: (url: string) => Response | undefined) {
+      fetchMock.mockImplementation((input) => {
+        const url = String(input);
+        requests.push(url);
+        const custom = extra?.(url);
+        if (custom !== undefined) return Promise.resolve(custom);
+        if (url === "/api/folders") {
+          return Promise.resolve(json({ folders: roots.folders.map(withoutRootPath) }));
+        }
+        if (url === "/api/folders/3?path=A") {
+          return Promise.resolve(
+            json({
+              folder: withoutRootPath(folderA.folder),
+              folders: folderA.folders.map(withoutRootPath),
+            }),
+          );
+        }
+        if (url === "/api/folders/3") {
+          return Promise.resolve(
+            json({
+              folder: withoutRootPath(folderRoot.folder),
+              folders: folderRoot.folders.map(withoutRootPath),
+            }),
+          );
+        }
+        if (url.startsWith("/api/folders/3/videos?")) {
+          return Promise.resolve(json({ items: [video(1, "x")], total: 1 }));
+        }
+        return Promise.resolve(json({ code: "unauthorized", message: "x" }, 401));
+      });
+    }
+
+    it("最上位の登録フォルダにパスを添えず、所有者だけの API も /api/events も開かない", async () => {
+      guestResponses();
+      const { container } = renderFolders("/folders", "guest");
+      await screen.findByRole("link", { name: "movies、動画 0 本、フォルダ 9 件" });
+      expect(
+        screen.getByRole("link", { name: "movies、動画 1 本、フォルダ 0 件" }),
+      ).toBeDefined();
+      expect(container.textContent).not.toContain("/a/movies");
+      expect(requests).toEqual(["/api/folders"]);
+      expect(FakeEventSource.instances).toHaveLength(0);
+    });
+
+    it("公開の動画が無ければ、設定でなくログインへの入口を出す", async () => {
+      guestResponses((url) =>
+        url === "/api/folders" ? json({ folders: [] }) : undefined,
+      );
+      renderFolders("/folders", "guest");
+      expect(await screen.findByText("公開されている動画はありません")).toBeDefined();
+      expect(screen.queryByRole("link", { name: "設定を開く" })).toBeNull();
+      expect(screen.getByRole("link", { name: "ログイン" }).getAttribute("href")).toBe(
+        "/login?next=%2Ffolders",
+      );
+    });
+
+    it("子フォルダのパンくずの登録フォルダの段を、登録フォルダの name から作る", async () => {
+      guestResponses();
+      renderFolders("/folders/3/A", "guest");
+      const nav = await screen.findByRole("navigation", { name: "パンくず" });
+      const root = await within(nav).findByRole("link", { name: "movies" });
+      expect(root.getAttribute("href")).toBe("/folders/3");
+      expect(root.getAttribute("title")).toBe("movies");
+      expect(requests).toContain("/api/folders/3");
+    });
+
+    it("登録フォルダの name を読めなければ、その段を骨組みのまま残さずに省く", async () => {
+      guestResponses((url) =>
+        url === "/api/folders/3"
+          ? json({ code: "not_found", message: "見つかりません" }, 404)
+          : undefined,
+      );
+      renderFolders("/folders/3/A", "guest");
+      const nav = await screen.findByRole("navigation", { name: "パンくず" });
+      await waitFor(() => expect(requests).toContain("/api/folders/3"));
+      await waitFor(() =>
+        expect(
+          within(nav)
+            .getAllByRole("link")
+            .map((link) => link.textContent),
+        ).toEqual(["フォルダ"]),
+      );
+      expect(within(nav).getByText("A").getAttribute("aria-current")).toBe("page");
+    });
+
+    it("URL に残った watch と最近再生した順は既定に丸めて要求し、URL も直す", async () => {
+      guestResponses();
+      renderFolders("/folders/3/A?watch=watched&sort=playedAsc", "guest");
+      await screen.findByRole("link", { name: "x" });
+      const videoRequests = requests
+        .filter((url) => url.startsWith("/api/folders/3/videos?"))
+        .map((url) => new URL(url, "http://localhost").searchParams);
+      expect(videoRequests.length).toBeGreaterThan(0);
+      for (const params of videoRequests) {
+        expect(params.get("watch") ?? "all").toBe("all");
+        expect(params.get("sort")).toBe("addedDesc");
+      }
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).toBe(
+          "/folders/3/A?sort=addedDesc",
+        ),
+      );
+    });
   });
 });

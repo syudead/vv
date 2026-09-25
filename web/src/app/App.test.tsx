@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { Link } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { FakeEventSource, installFakeEventSource } from "../api/fakeEventSource";
 import { useToast } from "../ui/Toast";
 import App from "./App";
 
@@ -68,6 +69,7 @@ describe("App", () => {
     );
     fetchMock.mockImplementation((input) => {
       const url = String(input);
+      if (url === "/api/auth/session") return Promise.resolve(json({ state: "owner" }));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
       if (url === "/api/scans/current") {
         return Promise.resolve(
@@ -132,5 +134,95 @@ describe("App", () => {
     expect(playbackPlacement?.contains("items-center")).toBe(true);
     expect(playbackPlacement?.contains("items-end")).toBe(false);
     expect(playbackPlacement?.contains("lg:bottom-20")).toBe(false);
+  });
+
+  it("初回設定画面をシェルとプロバイダの外に描く", async () => {
+    window.history.replaceState({}, "", "/videos/1");
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/auth/session") {
+        return Promise.resolve(json({ state: "setupRequired" }));
+      }
+      return Promise.reject(new Error(`unexpected request: ${String(input)}`));
+    });
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "アカウントを作成" }),
+    ).toBeDefined();
+    expect(window.location.pathname).toBe("/setup");
+    expect(
+      screen.queryByRole("complementary", { name: "メインナビゲーション" }),
+    ).toBeNull();
+    // 取り込みの状態などプロバイダの要求を送らない。
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("ゲストの設定画面はログイン画面へ置き換え、シェルを描かない", async () => {
+    window.history.replaceState({}, "", "/settings");
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/auth/session") {
+        return Promise.resolve(json({ state: "guest" }));
+      }
+      return Promise.reject(new Error(`unexpected request: ${String(input)}`));
+    });
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "ログイン" }),
+    ).toBeDefined();
+    expect(`${window.location.pathname}${window.location.search}`).toBe(
+      "/login?next=%2Fsettings",
+    );
+    expect(
+      screen.queryByRole("complementary", { name: "メインナビゲーション" }),
+    ).toBeNull();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+  it("ゲストには更新・取り込みの進捗・所有者だけのナビを出さず、所有者だけの API と /api/events を開かない", async () => {
+    installFakeEventSource();
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/auth/session" ? json({ state: "guest" }) : json({}),
+      ),
+    );
+    render(<App />);
+    await screen.findByRole("link", { name: "フォルダへ" });
+
+    expect(
+      screen.queryByRole("button", {
+        name: /ライブラリを更新|取り込み中|メディアフォルダを設定/,
+      }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: /取り込み/ })).toBeNull();
+    const main = screen.getByRole("complementary", { name: "メインナビゲーション" });
+    const names = Array.from(main.querySelectorAll("a, button")).map((node) =>
+      node.textContent?.trim(),
+    );
+    expect(names).toEqual(["ライブラリ", "フォルダ", "ログイン"]);
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      "/api/auth/session",
+    ]);
+    expect(FakeEventSource.instances).toHaveLength(0);
+  });
+
+  it("所有者にはサイドバーの全項目と更新を出す", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    const main = screen.getByRole("complementary", { name: "メインナビゲーション" });
+    const names = Array.from(main.querySelectorAll("a, button")).map((node) =>
+      node.textContent?.trim(),
+    );
+    expect(names).toEqual([
+      "ライブラリ",
+      "フォルダ",
+      "タグ",
+      "最近追加",
+      "視聴途中",
+      "設定",
+      "ログアウト",
+    ]);
+    expect(screen.getByRole("button", { name: "取り込み中" })).toBeDefined();
   });
 });

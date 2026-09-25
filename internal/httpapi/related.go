@@ -19,8 +19,9 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 		s.internalError(w, "関連動画の問い合わせ先が設定されていません", nil)
 		return
 	}
+	audience := audienceFrom(r.Context())
 
-	related, err := s.catalog.RelatedVideos(r.Context(), video)
+	related, err := s.catalog.RelatedVideos(r.Context(), audience, video)
 	if err != nil {
 		s.internalError(w, "関連動画を取得できませんでした", err)
 		return
@@ -31,7 +32,7 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 	payload := gen.RelatedVideos{Items: make([]gen.Video, 0, len(related.Items))}
 	for _, view := range s.presentVideos(r.Context(), related.Items) {
 		item := withTags(withProgress(toAPIVideo(view), progress, view.Video.ContentKey), tags, view.Video.ContentKey)
-		payload.Items = append(payload.Items, item)
+		payload.Items = append(payload.Items, forAudience(audience, item))
 	}
 	if related.NextID != 0 {
 		next := related.NextID

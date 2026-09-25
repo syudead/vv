@@ -25,6 +25,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 未設定のサーバーで最初のアカウントを作り、そのままログインする
+         * @description 本文は 8 KiB まで。成立したら `Set-Cookie` でセッションを渡す（contracts/auth-api.md §2・§7）。
+         *     同時の初回設定は1つだけが成立し、他は 409 になる。
+         */
+        post: operations["setupAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ユーザー名とパスワードでログインする
+         * @description 本文は 8 KiB まで。ユーザー名かパスワードの誤り、空欄、上限超え、アカウントの
+         *     未設定は、どれも同じ 401 `invalid_credentials` になる（contracts/auth-api.md §3）。
+         *     `next` は戻り先の候補で、安全でなければ `/` にして `redirectTo` に返す。
+         */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 見る人の状態を返す
+         * @description 未設定なら Cookie によらず `setupRequired` を返す。ユーザー名は返さない。
+         *     `next` を付けると、`owner` のときだけ確かめた戻り先を `redirectTo` に返す
+         *     （contracts/auth-api.md §4）。
+         */
+        get: operations["getAuthSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ログアウトする
+         * @description 要求に付いていたセッションの Cookie（`__Host-vv_session` と `vv_session` の両方）を
+         *     見て、有効なセッションを消し、両方の Cookie を `Max-Age=0` で消す。本文は無い
+         *     （contracts/auth-api.md §4）。
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos": {
         parameters: {
             query?: never;
@@ -37,6 +124,10 @@ export interface paths {
          * @description カーソル方式でページングする。対象は登録メディアフォルダの下に所在がある動画で、
          *     `query`・`watch`・`playable` で絞り込む。`total` は絞り込み後の総件数で、
          *     ページングとは独立に返る。
+         *
+         *     ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
+         *     所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
+         *     `playedDesc`、`tag`）は `400` `invalid_request` にする（guest-api.md §3）。
          */
         get: operations["listVideos"];
         put?: never;
@@ -77,7 +168,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 動画1件の詳細を返す */
+        /**
+         * 動画1件の詳細を返す
+         * @description ゲストでは公開の動画だけを返し、公開でない動画は存在しない動画と同じ 404 にする
+         *     （guest-api.md §2）。この扱いは関連動画・配信・プレビュー・ライブ変換・
+         *     サムネイル・シークプレビューでも同じである。
+         */
         get: operations["getVideo"];
         put?: never;
         post?: never;
@@ -189,8 +285,8 @@ export interface paths {
         /**
          * 生成済み hover preview を配信する
          * @description 保存済みの preview MP4 だけを Range 対応で配信する。元動画の stream や
-         *     live transcode へ fallback しない。`v` が current content key と一致する
-         *     ときだけ immutable cache を許可する。
+         *     live transcode へ fallback しない。成功の応答は `Cache-Control: private, no-cache`
+         *     と `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す（guest-api.md §5）。
          */
         get: operations["getVideoPreview"];
         put?: never;
@@ -231,8 +327,10 @@ export interface paths {
         };
         /**
          * サムネイル画像を返す
-         * @description `v` は内容由来の識別子で、画像が変われば URL も変わる。長期キャッシュを
-         *     前提にしてよい（[http-routes.md](./http-routes.md)）。未生成の場合は 404。
+         * @description `v` は内容由来の識別子で、画像が変われば URL も変わる。未生成の場合は 404。
+         *     成功の応答は `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が
+         *     一致すれば `304` を返す。見るたびにサーバーへ確かめさせ、ログアウト後や非公開に
+         *     した後にキャッシュから出続けないようにする（guest-api.md §5）。
          */
         get: operations["getVideoThumbnail"];
         put?: never;
@@ -253,7 +351,8 @@ export interface paths {
         /**
          * 指定時刻のシークプレビュー画像を返す
          * @description 元動画の論理時刻から1秒以内のJPEGを要求時に生成する。画像は保存しない。
-         *     `v` は内容由来の識別子で、空でない場合だけ長期キャッシュを許可する。
+         *     `v` は内容由来の識別子である。成功の応答は `Cache-Control: private, no-cache` と
+         *     `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す（guest-api.md §5）。
          */
         get: operations["getVideoSeekThumbnail"];
         put?: never;
@@ -481,6 +580,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/video-visibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 動画の公開・非公開を切り替える
+         * @description `videoIds` の公開フラグを `public` にそろえる。詳細画面の1本も選択バーの複数本も、
+         *     同じこの経路を使う。`videoIds` は1件以上20000件以下で、重複は1つとして数える。
+         *     既に同じ状態の動画も誤りにせず `applied` に数える。処理は1つのトランザクションで、
+         *     全部に反映するか1つも反映しない。非公開にした動画をゲストとして配信中の応答は
+         *     打ち切る（specs/016-single-account-auth/contracts/guest-api.md §4・§6）。
+         */
+        put: operations["updateVideoVisibility"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/directories": {
         parameters: {
             query?: never;
@@ -509,6 +632,9 @@ export interface paths {
          * フォルダ画面の最上位（登録済みメディアフォルダ）を返す
          * @description フォルダは保存せず、取り込み済みの所在のパスから導く。登録済みの
          *     メディアフォルダは、動画が無くても含む。並びは名前の自然順。
+         *
+         *     ゲストでは公開の動画だけを数え、公開の動画の所在を1つも含まない登録フォルダは
+         *     省く（guest-api.md §2）。
          */
         get: operations["listRootFolders"];
         put?: never;
@@ -530,6 +656,9 @@ export interface paths {
          * フォルダ1件と、その直下の子フォルダを返す
          * @description フォルダは登録済みメディアフォルダの id と、そこからの `/` 区切りの相対パスで
          *     指す。子フォルダは直下だけを名前の自然順で返す。
+         *
+         *     ゲストでは公開の動画だけを数え、公開の動画の所在を1つも含まないフォルダは、
+         *     登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする（guest-api.md §2）。
          */
         get: operations["getFolder"];
         put?: never;
@@ -556,6 +685,11 @@ export interface paths {
          *     `sizeBytes` はその範囲にある所在（検索語があれば当たった所在）のうちパスの
          *     昇順で最初のもので、同じ動画の所在が範囲に2つ以上あっても1件だけ返す。
          *     フォルダが無いときは `scope`・`query` に関係なく 404 を返す。
+         *
+         *     ゲストでは公開の動画だけを対象にし、公開の動画の所在を1つも含まないフォルダは
+         *     登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする。`watch` が `all`
+         *     以外と、`sort` が `playedAsc`・`playedDesc` は `400` `invalid_request` にする
+         *     （guest-api.md §2・§3）。
          */
         get: operations["listFolderVideos"];
         put?: never;
@@ -643,6 +777,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SetupRequest: {
+            /** @description 1〜128 文字。制御文字を含まず、先頭と末尾に空白を置かない */
+            username: string;
+            /** @description 1〜1024 バイト */
+            password: string;
+        };
+        LoginRequest: {
+            username: string;
+            password: string;
+            /** @description ログイン後に戻る先の候補。省略か安全でなければ `/` */
+            next?: string;
+        };
+        AuthRedirect: {
+            /** @description 画面が遷移する先。サーバーが確かめた同じオリジンのパス */
+            redirectTo: string;
+        };
+        AuthSession: {
+            /**
+             * @description owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
+             * @enum {string}
+             */
+            state: "owner" | "guest" | "setupRequired";
+            /** @description `next` を付けて呼び、state が owner のときだけ返す戻り先 */
+            redirectTo?: string;
+        };
         Health: {
             /**
              * @description ok = 保存層まで疎通、degraded = プロセスのみ生存
@@ -740,6 +899,15 @@ export interface components {
             /** @description videoIds のうちいまライブラリにある動画の数 */
             applied: number;
         };
+        VideoVisibilityRequest: {
+            videoIds: number[];
+            /** @description true で公開、false で非公開にする */
+            public: boolean;
+        };
+        VideoVisibilityResponse: {
+            /** @description videoIds のうちいまライブラリにある動画の数（既に同じ状態だったものを含む） */
+            applied: number;
+        };
         VideoTagsSummaryRequest: {
             videoIds: number[];
         };
@@ -819,9 +987,12 @@ export interface components {
             path: string;
             /** @description 表示名。相対パスの最後の段、登録フォルダ自身は絶対パスの最後の段 */
             name: string;
-            /** @description 登録フォルダの絶対パス */
-            rootPath: string;
-            /** @description 直下の動画の件数 */
+            /**
+             * @description 登録フォルダの絶対パス。ゲストの応答では省く（guest-api.md §1）。画面は
+             *     登録フォルダの表示名を、これが無ければ `name` から作る
+             */
+            rootPath?: string;
+            /** @description 直下の動画の件数（ゲストでは公開の動画だけを数える） */
             videoCount: number;
             /** @description 直下の子フォルダの件数 */
             folderCount: number;
@@ -837,6 +1008,10 @@ export interface components {
             /** @description 登録済みメディアフォルダ。名前の自然順 */
             folders: components["schemas"]["FolderSummary"][];
         };
+        /**
+         * @description ゲストの応答では `location`・`progress`・`probeError` を省き、`tags` を空の配列にする
+         *     （specs/016-single-account-auth/contracts/guest-api.md §1）。
+         */
         Video: {
             /** Format: int64 */
             id: number;
@@ -886,7 +1061,7 @@ export interface components {
             unplayableReason?: "container" | "video_codec" | "audio_codec";
             /** @enum {string} */
             probeState: "pending" | "done" | "failed";
-            /** @description probeState = failed のときの理由 */
+            /** @description probeState = failed のときの理由。ゲストの応答では省く（ファイルの絶対パスを含みうる） */
             probeError?: string;
             /** @enum {string} */
             thumbnailState: "pending" | "done" | "failed";
@@ -903,9 +1078,14 @@ export interface components {
             folder?: components["schemas"]["VideoFolder"];
             /**
              * @description 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-             *     無ければ空配列（contracts/tags-api.md §1）
+             *     無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
              */
             tags: components["schemas"]["TagRef"][];
+            /**
+             * @description 公開の動画か。公開の動画はログインしていない人にも見える
+             *     （specs/016-single-account-auth/contracts/guest-api.md §4）
+             */
+            public: boolean;
             /**
              * @description シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
              *     seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
@@ -1005,7 +1185,7 @@ export interface components {
              * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured";
             /** @description 人が読むための説明。利用者にそのまま提示してよい文言にする */
             message: string;
         };
@@ -1064,7 +1244,14 @@ export interface components {
         FolderPath: string;
     };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /**
+         * @description セッションの Cookie。HTTPS では
+         *     `__Host-vv_session=<ID>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=<期限までの秒>`、
+         *     HTTP では `vv_session=<ID>; HttpOnly; SameSite=Strict; Path=/; Max-Age=<期限までの秒>`
+         */
+        SessionSetCookie: string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -1096,6 +1283,131 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+        };
+    };
+    setupAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            /** @description 初回設定が成立し、ログインした */
+            200: {
+                headers: {
+                    "Set-Cookie": components["headers"]["SessionSetCookie"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthRedirect"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description アカウントは既に設定されている（account_already_configured）。何も書かない */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description ログインした */
+            200: {
+                headers: {
+                    "Set-Cookie": components["headers"]["SessionSetCookie"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthRedirect"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            /** @description ユーザー名またはパスワードが違う（invalid_credentials） */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            /** @description 試行が多すぎる（login_throttled）。照合していない */
+            429: {
+                headers: {
+                    /** @description 再び試せるまでの秒数 */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAuthSession: {
+        parameters: {
+            query?: {
+                /** @description ログイン済みのときに戻る先の候補 */
+                next?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 見る人の状態 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSession"];
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ログアウトした */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
         };
     };
     listVideos: {
@@ -1380,6 +1692,13 @@ export interface operations {
                     "video/mp4": string;
                 };
             };
+            /** @description `If-None-Match` が `ETag` と一致した */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             404: components["responses"]["NotFound"];
             /** @description 範囲指定が不正 */
             416: {
@@ -1451,6 +1770,13 @@ export interface operations {
                     "image/jpeg": string;
                 };
             };
+            /** @description `If-None-Match` が `ETag` と一致した */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description 動画が存在しないか、サムネイルが未生成 */
             404: {
                 headers: {
@@ -1484,6 +1810,13 @@ export interface operations {
                 content: {
                     "image/jpeg": string;
                 };
+            };
+            /** @description `If-None-Match` が `ETag` と一致した */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
@@ -1910,6 +2243,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoTagsSummary"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    updateVideoVisibility: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoVisibilityRequest"];
+            };
+        };
+        responses: {
+            /** @description 適用結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoVisibilityResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

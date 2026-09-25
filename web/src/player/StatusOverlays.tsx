@@ -203,6 +203,34 @@ export function ReadFailure({
   onReprobe,
 }: {
   video: Video;
+  /**
+   * 読み取りのやり直し。省くと（ゲストの画面）、やり直し・ファイルを開く・誤りの文の
+   * 枠を出さない（specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+   */
+  onReprobe?: () => Promise<void>;
+}) {
+  return (
+    <Surface>
+      <Panel role="alert" className="max-w-lg gap-3">
+        <AlertTriangle className="size-8 text-warning" aria-hidden="true" />
+        <h2 className="text-lg font-semibold text-fg">この動画を読み取れませんでした</h2>
+        <p className="text-sm text-fg-muted">
+          ファイルが壊れているか、途中までしか書き込まれていない可能性があります。
+        </p>
+        {onReprobe !== undefined && (
+          <ReadFailureActions video={video} onReprobe={onReprobe} />
+        )}
+      </Panel>
+    </Surface>
+  );
+}
+
+/** ReadFailureActions は所有者にだけ出す、読み取り失敗の詳しい中身と操作である。 */
+function ReadFailureActions({
+  video,
+  onReprobe,
+}: {
+  video: Video;
   onReprobe: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -219,38 +247,31 @@ export function ReadFailure({
   };
 
   return (
-    <Surface>
-      <Panel role="alert" className="max-w-lg gap-3">
-        <AlertTriangle className="size-8 text-warning" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">この動画を読み取れませんでした</h2>
-        <p className="text-sm text-fg-muted">
-          ファイルが壊れているか、途中までしか書き込まれていない可能性があります。
-        </p>
-        {video.probeError !== undefined && video.probeError !== "" && (
-          <pre className="max-h-[calc(3lh+1rem)] overflow-y-auto rounded-md border border-border bg-field px-3 py-2 font-mono text-xs whitespace-pre-wrap break-all text-fg">
-            {video.probeError}
-          </pre>
-        )}
-        <div className="mt-1 flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={reprobe} disabled={busy}>
-            {busy ? (
-              <LoaderCircle className={spin} aria-hidden="true" />
-            ) : (
-              <RefreshCw aria-hidden="true" />
-            )}
-            もう一度読み取る
-          </Button>
-          {openable && (
-            <Button variant="secondary" onClick={open}>
-              <FolderOpen aria-hidden="true" />
-              ファイルを開く
-            </Button>
+    <>
+      {video.probeError !== undefined && video.probeError !== "" && (
+        <pre className="max-h-[calc(3lh+1rem)] overflow-y-auto rounded-md border border-border bg-field px-3 py-2 font-mono text-xs whitespace-pre-wrap break-all text-fg">
+          {video.probeError}
+        </pre>
+      )}
+      <div className="mt-1 flex flex-wrap gap-2">
+        <Button variant="secondary" onClick={reprobe} disabled={busy}>
+          {busy ? (
+            <LoaderCircle className={spin} aria-hidden="true" />
+          ) : (
+            <RefreshCw aria-hidden="true" />
           )}
-        </div>
-        {failed && <p className="text-sm text-danger">読み取りを始められませんでした</p>}
-        {openFailure !== null && <p className="text-sm text-danger">{openFailure}</p>}
-      </Panel>
-    </Surface>
+          もう一度読み取る
+        </Button>
+        {openable && (
+          <Button variant="secondary" onClick={open}>
+            <FolderOpen aria-hidden="true" />
+            ファイルを開く
+          </Button>
+        )}
+      </div>
+      {failed && <p className="text-sm text-danger">読み取りを始められませんでした</p>}
+      {openFailure !== null && <p className="text-sm text-danger">{openFailure}</p>}
+    </>
   );
 }
 

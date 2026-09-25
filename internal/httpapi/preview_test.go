@@ -64,8 +64,11 @@ func TestGetVideoPreviewServesRangesAndCachePolicies(t *testing.T) {
 	if got := full.Header().Get("Accept-Ranges"); got != "bytes" {
 		t.Errorf("Accept-Ranges = %q", got)
 	}
-	if got := full.Header().Get("Cache-Control"); got != cacheImmutable {
+	if got := full.Header().Get("Cache-Control"); got != cacheRevalidate {
 		t.Errorf("versioned Cache-Control = %q", got)
+	}
+	if full.Header().Get("ETag") == "" {
+		t.Error("ETag が無い")
 	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey, nil)
@@ -90,11 +93,24 @@ func TestGetVideoPreviewServesRangesAndCachePolicies(t *testing.T) {
 		t.Errorf("unsatisfiable Content-Range = %q, want %q", got, "bytes */12")
 	}
 
+	// 版の無い要求・古い版の要求も、同じく使うたびに確かめさせる（guest-api.md §5）。
 	for _, target := range []string{"/api/videos/1/preview?v=stale", "/api/videos/1/preview"} {
 		rec := do(t, handler, http.MethodGet, target)
-		if rec.Code != 200 || rec.Header().Get("Cache-Control") != cacheNoStore {
+		if rec.Code != 200 || rec.Header().Get("Cache-Control") != cacheRevalidate {
 			t.Fatalf("unversioned response = %d cache=%q", rec.Code, rec.Header().Get("Cache-Control"))
 		}
+		if got := rec.Header().Get("ETag"); got != full.Header().Get("ETag") {
+			t.Errorf("%s: ETag = %q, want %q", target, got, full.Header().Get("ETag"))
+		}
+	}
+
+	// ETag が一致すれば 304 で、本文を送らない。
+	conditional := httptest.NewRequest(http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey, nil)
+	conditional.Header.Set("If-None-Match", full.Header().Get("ETag"))
+	notModified := httptest.NewRecorder()
+	handler.ServeHTTP(notModified, conditional)
+	if notModified.Code != http.StatusNotModified || notModified.Body.Len() != 0 {
+		t.Errorf("If-None-Match: status = %d, body = %d バイト", notModified.Code, notModified.Body.Len())
 	}
 }
 
@@ -157,5 +173,33 @@ func TestRequeuedPreviewIsReportedAsPending(t *testing.T) {
 		if strings.Contains(rec.Body.String(), "previewUrl") {
 			t.Fatalf("GET %s exposed missing preview URL: %s", target, rec.Body.String())
 		}
+	}
+}
+
+// If-Modified-Since だけの要求には、更新時刻が同じでも本文を返す。確かめは内容の
+// ダイジェストの ETag だけで行う（Devin の指摘、PR 292）。
+func TestGetVideoPreviewIgnoresIfModifiedSince(t *testing.T) {
+	video := sampleVideo(1, "movie")
+	video.PreviewState = domain.PreviewStateDone
+	path := filepath.Join(t.TempDir(), "preview.mp4")
+	if err := os.WriteFile(path, []byte("preview-data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts := &fakeArtifacts{previews: map[string]string{video.ContentKey: path}}
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}}, Artifacts: artifacts})
+	full := do(t, handler, http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey)
+	if got := full.Header().Get("Last-Modified"); got != "" {
+		t.Errorf("Last-Modified = %q, 更新時刻で確かめさせない", got)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey, nil)
+	req.Header.Set("If-Modified-Since", info.ModTime().UTC().Format(http.TimeFormat))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "preview-data" {
+		t.Fatalf("If-Modified-Since だけの要求 = %d %q、本文を返すべき", rec.Code, rec.Body.String())
 	}
 }

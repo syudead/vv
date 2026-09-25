@@ -35,32 +35,36 @@ const (
 	scopeSubtree
 )
 
-// locationScope は一覧が対象にする所在の範囲である。どの形でも登録フォルダの
-// 下にある所在に限る。
+// locationScope は一覧が対象にする所在の範囲である。どの形でも、見る人に見せて
+// よい所在（visibleLocationCondition）に限る。
 type locationScope struct {
 	kind locationScopeKind
 	// dir はフォルダの絶対パス。scopeLibrary では使わない。
 	dir string
+	// audience は見る人。ゲストなら公開の動画の所在だけを範囲にする。
+	audience domain.Audience
 }
 
-func libraryScope() locationScope { return locationScope{kind: scopeLibrary} }
+func libraryScope(audience domain.Audience) locationScope {
+	return locationScope{kind: scopeLibrary, audience: audience}
+}
 
 // folderScope はフォルダの問い合わせの範囲を返す。空の指定は直下として扱う。
-func folderScope(dir string, scope domain.FolderScope) locationScope {
+func folderScope(dir string, scope domain.FolderScope, audience domain.Audience) locationScope {
 	if scope == domain.FolderScopeSubtree {
-		return locationScope{kind: scopeSubtree, dir: dir}
+		return locationScope{kind: scopeSubtree, dir: dir, audience: audience}
 	}
-	return locationScope{kind: scopeDirect, dir: dir}
+	return locationScope{kind: scopeDirect, dir: dir, audience: audience}
 }
 
 // condition は所在（別名 alias）が範囲にあることを表す条件句と引数を返す。
 func (s locationScope) condition(alias string) (string, []any) {
-	registered := registeredLocationCondition(alias)
+	visible := visibleLocationCondition(alias, s.audience)
 	if s.kind == scopeLibrary {
-		return registered, nil
+		return visible, nil
 	}
 	prefix := folderPrefix(s.dir)
-	clause := registered + ` and instr(` + folderPathExpr(alias) + `, ?) = 1`
+	clause := visible + ` and instr(` + folderPathExpr(alias) + `, ?) = 1`
 	args := []any{prefix}
 	if s.kind == scopeDirect {
 		clause += ` and ` + directChildCondition(alias)
@@ -85,7 +89,10 @@ type listSpec struct {
 	limit  int
 }
 
-// ListVideos はライブラリの一覧1ページを返す。
+// ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
+// ゲストには公開の動画だけを返し、件数も公開の動画だけを数える。条件（視聴状態・
+// 並べ替え・タグ）をゲストが使えるかは呼び出し側が domain.Audience.CheckVideoQuery
+// で確かめる。
 //
 // ページングは keyset（カーソル）方式である。offset を使うと、取り込みで行が
 // 増減した瞬間に取りこぼしと重複が起きる。並び順の値と id を境界に使うので、
@@ -94,7 +101,7 @@ type listSpec struct {
 // タグの存在確認・件数・ページの行を同じ読み取りスナップショット（s.db.read の
 // 1取引）から返す。別々に読むと、その間の付け外しやタグの削除によって
 // MissingTagIDs・Total・Items が食い違いうる。
-func (s *LibraryStore) ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error) {
+func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
@@ -106,7 +113,7 @@ func (s *LibraryStore) ListVideos(ctx context.Context, q domain.VideoQuery) (dom
 		return domain.VideoPage{}, err
 	}
 	page, err := listVideoPageTx(ctx, tx, listSpec{
-		scope: libraryScope(), expr: domain.ParseSearchQuery(q.Query),
+		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	})
@@ -125,6 +132,8 @@ func (s *LibraryStore) ListVideos(ctx context.Context, q domain.VideoQuery) (dom
 // Decisions 4）。並びは決めない。MissingTagIDs の意味は ListVideos と同じ
 // （contracts/tags-api.md §5 の GET /api/videos/ids）。ListVideos と同じく、
 // タグの存在確認と id の読み出しを s.db.read の1取引の中で行う。
+//
+// 「すべて選択」は所有者だけの操作なので、所有者として読む。
 func (s *LibraryStore) VideoIDs(ctx context.Context, q domain.VideoQuery) ([]int64, []int64, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -137,7 +146,7 @@ func (s *LibraryStore) VideoIDs(ctx context.Context, q domain.VideoQuery) ([]int
 		return nil, nil, err
 	}
 	ids, err := videoIDsForSpec(ctx, tx, listSpec{
-		scope: libraryScope(), expr: domain.ParseSearchQuery(q.Query),
+		scope: libraryScope(domain.AudienceOwner), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs,
 	})
 	if err != nil {
@@ -178,10 +187,10 @@ func videoIDsForSpec(ctx context.Context, q queryExecer, spec listSpec) ([]int64
 
 // ListFolderVideos はフォルダの動画1ページを返す。範囲は q.Scope で直下か配下
 // すべてかを選ぶ。並び順・カーソルの形・絞り込みは ListVideos と同じで、題名は
-// その範囲にある所在の題名である。
-func (s *LibraryStore) ListFolderVideos(ctx context.Context, q domain.FolderVideoQuery) (domain.VideoPage, error) {
+// その範囲にある所在の題名である。ゲストには公開の動画だけを返す。
+func (s *LibraryStore) ListFolderVideos(ctx context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error) {
 	return s.listVideoPage(ctx, listSpec{
-		scope: folderScope(q.Dir, q.Scope), expr: domain.ParseSearchQuery(q.Query),
+		scope: folderScope(q.Dir, q.Scope, audience), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	})
@@ -189,18 +198,19 @@ func (s *LibraryStore) ListFolderVideos(ctx context.Context, q domain.FolderVide
 
 // CountVideos はライブラリで検索語に当たる動画の総件数を返す。一覧と同じ所在の
 // まとめ（chosen）を数えるので、1万件規模で数十 ms かかる（一覧の1ページも同程度）。
-func (s *LibraryStore) CountVideos(ctx context.Context, search string) (int, error) {
-	return s.countVideos(ctx, listSpec{scope: libraryScope(), expr: domain.ParseSearchQuery(search)})
+// ゲストには公開の動画だけを数える。
+func (s *LibraryStore) CountVideos(ctx context.Context, audience domain.Audience, search string) (int, error) {
+	return s.countVideos(ctx, listSpec{scope: libraryScope(audience), expr: domain.ParseSearchQuery(search)})
 }
 
 // chosenLocationsCTE は、範囲と検索式を満たす所在を動画ごとにパスの最小の1件へ
 // まとめる `chosen(video_id, path)` を返す（contracts/list-api.md §4）。
 // 式は所在1行に対して評価するので、語ごとに別の所在で満たした動画は当たらない
-// （要件 9）。
+// （要件 9）。ゲストの検索はタグの名前に照合しない（searchExprCondition）。
 func chosenLocationsCTE(scope locationScope, expr domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause}
-	if exprClause, exprArgs := searchExprCondition(expr, "l"); exprClause != "" {
+	if exprClause, exprArgs := searchExprCondition(expr, "l", scope.audience); exprClause != "" {
 		clauses = append(clauses, exprClause)
 		args = append(args, exprArgs...)
 	}
@@ -235,7 +245,8 @@ const playableCondition = `videos.playable = 1 and videos.probe_state = 'done'`
 const listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
 	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
-	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.preview_state`
+	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.preview_state,
+	` + publicColumn + ` as public`
 
 // filteredFrom は chosen に動画と再生の記録を結び、絞り込みを掛けた from 句と
 // where 句、その中で使う引数を返す。withLocation が true なら一覧に出す所在を

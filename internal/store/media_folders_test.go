@@ -84,7 +84,7 @@ func TestMediaFolderOperationsAreAtomicAndScoped(t *testing.T) {
 	if len(locations) != 1 || locations[0].Path != fileB.Path {
 		t.Fatalf("remaining locations = %+v", locations)
 	}
-	if _, err := db.Library().GetVideo(ctx, video.ID); err != nil {
+	if _, err := db.Library().GetVideo(ctx, domain.AudienceOwner, video.ID); err != nil {
 		t.Fatalf("video with another location was removed: %v", err)
 	}
 	current, err := db.Ingest().JobIdentityCurrent(ctx, claimed)
@@ -112,7 +112,7 @@ func TestMediaFolderOperationsAreAtomicAndScoped(t *testing.T) {
 	if err := db.Settings().DeleteMediaFolder(ctx, folderB.ID, folderB.Version); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Library().GetVideo(ctx, video.ID); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Library().GetVideo(ctx, domain.AudienceOwner, video.ID); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("orphan video still exists: %v", err)
 	}
 	progress, err := db.Playback().ProgressByContentKeys(ctx, []string{"same-content"})
@@ -137,7 +137,7 @@ func TestAddMediaFolderDoesNotTouchLibraryAndRejectsOverlap(t *testing.T) {
 	if _, err := db.Settings().AddMediaFolder(ctx, root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Library().GetVideo(ctx, video.ID); err != nil {
+	if _, err := db.Library().GetVideo(ctx, domain.AudienceOwner, video.ID); err != nil {
 		t.Fatalf("add changed the existing library: %v", err)
 	}
 	if _, err := db.Settings().AddMediaFolder(ctx, child); !errors.Is(err, domain.ErrFolderConflict) {
@@ -192,11 +192,11 @@ func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Query: "root visible", Limit: domain.MaxLimit})
+	page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: "root visible", Limit: domain.MaxLimit})
 	if err != nil || len(page.Items) != 1 || page.Items[0].ID != video.ID {
 		t.Fatalf("root video is not listed or searchable: %+v, %v", page, err)
 	}
-	if _, err := db.Library().GetVideo(ctx, video.ID); err != nil {
+	if _, err := db.Library().GetVideo(ctx, domain.AudienceOwner, video.ID); err != nil {
 		t.Fatalf("root video detail is unavailable: %v", err)
 	}
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
@@ -278,7 +278,7 @@ func TestDeletingRepresentativeLocationRecomputesContainerAndPlayability(t *test
 	if err := db.Settings().DeleteMediaFolder(ctx, folderA.ID, folderA.Version); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.Library().GetVideo(ctx, video.ID)
+	got, err := db.Library().GetVideo(ctx, domain.AudienceOwner, video.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -324,7 +324,7 @@ func TestReplacingFolderSynchronizesLocationsEnabledByNewRoot(t *testing.T) {
 	if _, err := db.Settings().ReplaceMediaFolder(ctx, folderA.ID, folderA.Version, rootB); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.Library().GetVideo(ctx, video.ID)
+	got, err := db.Library().GetVideo(ctx, domain.AudienceOwner, video.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

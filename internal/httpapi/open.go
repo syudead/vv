@@ -24,7 +24,7 @@ func (s *server) OpenVideoFile(w http.ResponseWriter, r *http.Request, id gen.Vi
 		s.writeError(w, http.StatusConflict, codeOpenUnavailable, "このサーバーではファイルを開けません")
 		return
 	}
-	if !loopbackRequest(r) {
+	if !s.loopbackRequest(r) {
 		s.writeError(w, http.StatusForbidden, codeForbidden, "ファイルはサーバーと同じ PC からだけ開けます")
 		return
 	}
@@ -69,7 +69,7 @@ func (s *server) openablePath(r *http.Request, path string) (string, bool, error
 // canOpen は location.openable を決める。POST /api/videos/{id}/open の 403 と
 // 409 open_unavailable に当たらないときだけ true である。
 func (s *server) canOpen(r *http.Request) bool {
-	return s.opener != nil && s.opener.Available() && loopbackRequest(r)
+	return s.opener != nil && s.opener.Available() && s.loopbackRequest(r)
 }
 
 // loopbackRequest は要求がループバックから、ループバックの Host で来たかを返す。
@@ -77,14 +77,12 @@ func (s *server) canOpen(r *http.Request) bool {
 // 要求元（RemoteAddr）だけでは足りない。既存の POST の同一オリジン確認は Origin と
 // Host を比べるだけなので、DNS rebinding で 127.0.0.1 を指させた他サイトの
 // ページを通してしまう。Host をループバックの名前に限ってこれを塞ぐ。
-// X-Forwarded-For は信用しない。
-func loopbackRequest(r *http.Request) bool {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return false
-	}
-	ip := net.ParseIP(host)
-	if ip == nil || !ip.IsLoopback() {
+//
+// 要求元は clientOrigin で決める。信頼するプロキシが同じ PC にあっても、転送元が
+// 外部なら拒む。信頼しない接続元の X-Forwarded-For は読まない。
+func (s *server) loopbackRequest(r *http.Request) bool {
+	source := s.clientOrigin(r).source
+	if !source.IsValid() || !source.IsLoopback() {
 		return false
 	}
 	return loopbackHostName(r.Host)

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   clearConditions,
   directionToggleLabel,
+  guestListCriteria,
   hasConditions,
   MAX_SEED,
   newSeed,
@@ -236,5 +237,26 @@ describe("SearchSession（検索語の入力の履歴）", () => {
     session.start();
     expect(session.commit()).toBe("push");
     expect(session.commit()).toBe("replace");
+  });
+});
+
+describe("guestListCriteria（ゲストが使えない条件の丸め）", () => {
+  it("視聴状態と最近再生した順を既定に丸め、ほかの条件は残す", () => {
+    for (const sort of ["playedAsc", "playedDesc"] as const) {
+      expect(
+        guestListCriteria({ query: "ab", watch: "watched", playable: true, sort }),
+      ).toEqual({ query: "ab", watch: "all", playable: true, sort: "addedDesc" });
+    }
+  });
+
+  it("丸めるものが無ければ同じ値を返す", () => {
+    const criteria = {
+      query: "",
+      watch: "all",
+      playable: false,
+      sort: "random",
+      seed: 5,
+    } as const;
+    expect(guestListCriteria(criteria)).toBe(criteria);
   });
 });

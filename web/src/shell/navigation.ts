@@ -8,6 +8,11 @@ export interface NavEntry {
   to?: string;
   /** 行き先より下の URL（`/folders/3/A` など）でも選択中にする。 */
   matchDescendants?: boolean;
+  /**
+   * 所有者のデータ（タグ・再生位置）に依る項目。ゲストには出さない
+   * （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+   */
+  ownerOnly?: boolean;
 }
 
 export const navEntries: readonly NavEntry[] = [
@@ -19,7 +24,7 @@ export const navEntries: readonly NavEntry[] = [
     to: "/folders",
     matchDescendants: true,
   },
-  { id: "tags", label: "タグ", icon: Tags, to: "/tags" },
-  { id: "recent", label: "最近追加", icon: Clock },
-  { id: "in-progress", label: "視聴途中", icon: History },
+  { id: "tags", label: "タグ", icon: Tags, to: "/tags", ownerOnly: true },
+  { id: "recent", label: "最近追加", icon: Clock, ownerOnly: true },
+  { id: "in-progress", label: "視聴途中", icon: History, ownerOnly: true },
 ];

@@ -39,7 +39,7 @@ func upsertAll(t *testing.T, db *DB, files ...domain.VideoFile) map[string]int64
 func sortedTitles(t *testing.T, db *DB, q domain.VideoQuery) []string {
 	t.Helper()
 	q.Limit = domain.MaxLimit
-	page, err := db.Library().ListVideos(context.Background(), q)
+	page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, q)
 	if err != nil {
 		t.Fatalf("一覧に失敗した (%+v): %v", q, err)
 	}
@@ -178,7 +178,7 @@ func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 	)
 	ctx := context.Background()
 
-	none, err := db.Library().ListVideos(ctx, domain.VideoQuery{Query: "京都 2024"})
+	none, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: "京都 2024"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,7 +191,7 @@ func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 		"2024": "/media/B/2024.mp4",
 		"":     "/media/A/京都.mp4", // 検索語が無ければパスの最小の所在
 	} {
-		page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Query: query})
+		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: query})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -222,7 +222,7 @@ func TestListingScopes(t *testing.T) {
 
 	folder := func(scope domain.FolderScope, query string) []string {
 		t.Helper()
-		page, err := db.Library().ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/A", Scope: scope, Query: query, Limit: domain.MaxLimit})
+		page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media/A", Scope: scope, Query: query, Limit: domain.MaxLimit})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -312,7 +312,7 @@ func TestListVideosWatchAndPlayableFilters(t *testing.T) {
 		var seen []string
 		cursor := ""
 		for range 10 {
-			page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Watch: tc.watch, PlayableOnly: tc.playable, Limit: 1, Cursor: cursor})
+			page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Watch: tc.watch, PlayableOnly: tc.playable, Limit: 1, Cursor: cursor})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -342,7 +342,7 @@ func TestWatchConditionMatchesDomainClassification(t *testing.T) {
 	db := watchFixture(t)
 	ctx := context.Background()
 	for _, filter := range []domain.WatchFilter{domain.WatchUnwatched, domain.WatchInProgress, domain.WatchWatched} {
-		page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Watch: filter, Limit: domain.MaxLimit})
+		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Watch: filter, Limit: domain.MaxLimit})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -361,7 +361,7 @@ func TestWatchConditionMatchesDomainClassification(t *testing.T) {
 // フォルダの一覧でも視聴状態と再生可否で絞れる。
 func TestListFolderVideosFilters(t *testing.T) {
 	db := watchFixture(t)
-	page, err := db.Library().ListFolderVideos(context.Background(), domain.FolderVideoQuery{
+	page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{
 		Dir: "/media", Watch: domain.WatchInProgress, PlayableOnly: true, Limit: domain.MaxLimit,
 	})
 	if err != nil {
@@ -392,7 +392,7 @@ func TestListingPagingSurvivesAddedLocations(t *testing.T) {
 				var seen []string
 				cursor := ""
 				for pageIndex := range 10 {
-					page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Query: query, Sort: sort, Limit: 2, Cursor: cursor})
+					page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: query, Sort: sort, Limit: 2, Cursor: cursor})
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -443,7 +443,7 @@ func countOf(values []string, value string) int {
 // 所在の条件とタグ名への instr の OR に広がる
 // （specs/014-video-tags/data-model.md §7）。
 func TestSearchExprCondition(t *testing.T) {
-	clause, args := searchExprCondition(domain.ParseSearchQuery(`京都 -2023 夏休み OR 花 -"a b" ab"c`), "l")
+	clause, args := searchExprCondition(domain.ParseSearchQuery(`京都 -2023 夏休み OR 花 -"a b" ab"c`), "l", domain.AudienceOwner)
 
 	fts := `l.id in (select rowid from location_search_fts where location_search_fts match ?)`
 	instr := `instr(l.search_key, ?) > 0`
@@ -470,7 +470,7 @@ func TestSearchExprCondition(t *testing.T) {
 		t.Errorf("args = %q, want %q", args, wantArgs)
 	}
 
-	if clause, args := searchExprCondition(domain.SearchExpr{}, "l"); clause != "" || args != nil {
+	if clause, args := searchExprCondition(domain.SearchExpr{}, "l", domain.AudienceOwner); clause != "" || args != nil {
 		t.Errorf("空の式 = %q %v, want 空", clause, args)
 	}
 	if got := quoteMatchPhrase(`a"b`); got != `"a""b"` {
@@ -482,12 +482,12 @@ func TestSearchExprCondition(t *testing.T) {
 func TestListVideosWithManyTerms(t *testing.T) {
 	db := searchExprFixture(t)
 	query := strings.Repeat("京都 ", 40) + "OR 奈良"
-	page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Query: query})
+	page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Query: query})
 	if err != nil {
 		t.Fatalf("語の多い検索で失敗した: %v", err)
 	}
 	// 先頭 16 語（すべて「京都」）だけが効き、後ろの OR 奈良 は無視される。
-	want, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Query: "京都"})
+	want, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Query: "京都"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -504,7 +504,7 @@ func TestListVideosExclusionIsEvaluatedPerLocation(t *testing.T) {
 		listingFile("/media/A/京都.mp4", "京都", "same", 0),
 		listingFile("/media/B/x.mp4", "x", "same", 0),
 	)
-	page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Query: "-京都"})
+	page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Query: "-京都"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +532,7 @@ func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
 		domain.WatchWatched:   0,
 		domain.WatchUnwatched: 1,
 	} {
-		page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Watch: watch})
+		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Watch: watch})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -568,7 +568,7 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 	attachTag(t, db, "key-a", tagA.ID)
 	attachTag(t, db, "key-b", tagB.ID)
 
-	page, err := db.Library().ListVideos(ctx, domain.VideoQuery{TagIDs: []int64{tagA.ID, tagB.ID}})
+	page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID, tagB.ID}})
 	if err != nil {
 		t.Fatalf("ListVideos() error = %v", err)
 	}
@@ -583,7 +583,7 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 	if _, err := db.Playback().SaveProgress(ctx, "key-both", domain.Progress{PositionMs: 100_000, Completed: true}); err != nil {
 		t.Fatal(err)
 	}
-	unwatched, err := db.Library().ListVideos(ctx, domain.VideoQuery{TagIDs: []int64{tagA.ID, tagB.ID}, Watch: domain.WatchUnwatched})
+	unwatched, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID, tagB.ID}, Watch: domain.WatchUnwatched})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -592,7 +592,7 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 	}
 
 	// 検索語と組み合わさる。
-	searched, err := db.Library().ListVideos(ctx, domain.VideoQuery{TagIDs: []int64{tagA.ID}, Query: "b-only"})
+	searched, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID}, Query: "b-only"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -601,7 +601,7 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 	}
 
 	// 存在しない tag_id は無視され、どれを無視したかが返る。
-	missing, err := db.Library().ListVideos(ctx, domain.VideoQuery{TagIDs: []int64{tagA.ID, 999999}})
+	missing, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID, 999999}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -660,7 +660,7 @@ func TestVideoIDsMatchesAllPagesOfListVideosWithTagFilter(t *testing.T) {
 	query.Limit = 2
 	for range 10 {
 		query.Cursor = cursor
-		page, err := db.Library().ListVideos(ctx, query)
+		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, query)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -685,7 +685,7 @@ func TestVideoIDsMatchesAllPagesOfListVideosWithTagFilter(t *testing.T) {
 	cursor = ""
 	for range 10 {
 		randomQuery.Cursor = cursor
-		page, err := db.Library().ListVideos(ctx, randomQuery)
+		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, randomQuery)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -751,7 +751,7 @@ func TestTagAttachmentSurvivesLocationMoveAndRescan(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	page, err := db.Library().ListVideos(ctx, domain.VideoQuery{TagIDs: []int64{tag.ID}})
+	page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tag.ID}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -795,7 +795,7 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 	assertMatches := func(t *testing.T, query string, want bool) {
 		t.Helper()
 		// ライブラリ。
-		page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Query: query})
+		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: query})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -803,7 +803,7 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 			t.Errorf("ライブラリで %q = %v, want %v", query, got, want)
 		}
 		// フォルダ直下。
-		direct, err := db.Library().ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media/A", Query: query})
+		direct, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media/A", Query: query})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -811,7 +811,7 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 			t.Errorf("フォルダ直下で %q = %v, want %v", query, got, want)
 		}
 		// フォルダ配下。
-		subtree, err := db.Library().ListFolderVideos(ctx, domain.FolderVideoQuery{Dir: "/media", Scope: domain.FolderScopeSubtree, Query: query})
+		subtree, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media", Scope: domain.FolderScopeSubtree, Query: query})
 		if err != nil {
 			t.Fatal(err)
 		}

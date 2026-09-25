@@ -1,6 +1,10 @@
-import { Settings } from "lucide-react";
-import { NavLink } from "react-router";
+import { LogIn, LogOut, Settings } from "lucide-react";
+import { useState } from "react";
+import { NavLink, useLocation } from "react-router";
 
+import { logout } from "../api/auth";
+import { useAudience } from "../auth/audience";
+import { currentPath, loginPath, reloadPage } from "../auth/pageNavigation";
 import { cn } from "../lib/cn";
 import { useToast } from "../ui/Toast";
 import { navEntries, type NavEntry } from "./navigation";
@@ -13,6 +17,20 @@ const settingsEntry: NavEntry = {
   to: "/settings",
 };
 
+function entryClassName(mode: SidebarMode, active: boolean): string {
+  const rail = mode === "rail";
+  return cn(
+    "flex items-center rounded-md transition-colors duration-150 select-none",
+    rail
+      ? "h-14 w-14 flex-col justify-center gap-1 px-0.5 text-[10px] leading-none"
+      : "h-9 gap-3 px-3 text-sm",
+    active
+      ? "bg-active-wash font-medium text-fg"
+      : "text-fg-muted hover:bg-hover-wash hover:text-fg",
+    "[&>svg]:size-[18px] [&>svg]:shrink-0",
+  );
+}
+
 function Entry({
   entry,
   mode,
@@ -23,20 +41,8 @@ function Entry({
   onNavigate: () => void;
 }) {
   const toast = useToast();
-  const rail = mode === "rail";
   const Icon = entry.icon;
-
-  const className = (active: boolean) =>
-    cn(
-      "flex items-center rounded-md transition-colors duration-150 select-none",
-      rail
-        ? "h-14 w-14 flex-col justify-center gap-1 px-0.5 text-[10px] leading-none"
-        : "h-9 gap-3 px-3 text-sm",
-      active
-        ? "bg-active-wash font-medium text-fg"
-        : "text-fg-muted hover:bg-hover-wash hover:text-fg",
-      "[&>svg]:size-[18px] [&>svg]:shrink-0",
-    );
+  const className = (active: boolean) => entryClassName(mode, active);
 
   if (entry.to === undefined) {
     return (
@@ -68,6 +74,69 @@ function Entry({
   );
 }
 
+/**
+ * LogoutEntry はログアウトの項目である。確認の窓は出さず、成功したら今の URL を
+ * ページごと読み直す。読み直した画面はゲストとして描かれる
+ * （specs/016-single-account-auth/ui-design.md「Sidebar」）。
+ */
+function LogoutEntry({ mode }: { mode: SidebarMode }) {
+  const toast = useToast();
+  const [pending, setPending] = useState(false);
+
+  const signOut = async () => {
+    setPending(true);
+    try {
+      await logout();
+      reloadPage();
+    } catch {
+      toast("ログアウトできませんでした");
+      setPending(false);
+    }
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={() => void signOut()}
+      disabled={pending}
+      className={cn(entryClassName(mode, false), "w-full disabled:opacity-50")}
+    >
+      <LogOut strokeWidth={1.75} />
+      <span className="max-w-full truncate">
+        {pending ? "ログアウト中…" : "ログアウト"}
+      </span>
+    </button>
+  );
+}
+
+/** AccountEntries はサイドバーの下段の「アカウントと設定」である。 */
+function AccountEntries({
+  mode,
+  onNavigate,
+}: {
+  mode: SidebarMode;
+  onNavigate: () => void;
+}) {
+  const audience = useAudience();
+  const location = useLocation();
+
+  if (audience === "guest") {
+    const loginEntry: NavEntry = {
+      id: "login",
+      label: "ログイン",
+      icon: LogIn,
+      to: loginPath(currentPath(location)),
+    };
+    return <Entry entry={loginEntry} mode={mode} onNavigate={onNavigate} />;
+  }
+  return (
+    <>
+      <Entry entry={settingsEntry} mode={mode} onNavigate={onNavigate} />
+      <LogoutEntry mode={mode} />
+    </>
+  );
+}
+
 /** Sidebar は左のナビ。展開・レール（アイコンのみ）・ドロワーの 3 態。 */
 export default function Sidebar({
   mode,
@@ -79,6 +148,9 @@ export default function Sidebar({
   onClose: () => void;
 }) {
   const drawer = mode === "drawer";
+  const audience = useAudience();
+  const entries =
+    audience === "owner" ? navEntries : navEntries.filter((entry) => !entry.ownerOnly);
 
   return (
     <>
@@ -108,18 +180,18 @@ export default function Sidebar({
             mode === "rail" ? "items-center px-1.5 py-2" : "px-2.5 py-3",
           )}
         >
-          {navEntries.map((entry) => (
+          {entries.map((entry) => (
             <Entry key={entry.id} entry={entry} mode={mode} onNavigate={onClose} />
           ))}
         </nav>
         <nav
-          aria-label="設定"
+          aria-label="アカウントと設定"
           className={cn(
-            "shrink-0 border-t border-border",
-            mode === "rail" ? "px-1.5 py-2" : "px-2.5 py-3",
+            "flex shrink-0 flex-col gap-0.5 border-t border-border",
+            mode === "rail" ? "items-center px-1.5 py-2" : "px-2.5 py-3",
           )}
         >
-          <Entry entry={settingsEntry} mode={mode} onNavigate={onClose} />
+          <AccountEntries mode={mode} onNavigate={onClose} />
         </nav>
       </aside>
     </>

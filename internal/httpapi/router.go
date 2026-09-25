@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/netip"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -30,9 +32,13 @@ type Pinger interface {
 //
 // 配信と既定アプリで開く操作は、動画の所在と登録フォルダを読んで MediaFiles へ
 // 渡す。開いてよい実体かは MediaFiles が確かめる。
+//
+// 動画を返す読み出しは見る人（domain.Audience）を取り、ゲストには公開の動画だけを
+// 返す（specs/016-single-account-auth/data-model.md §3）。見る人は境界（auth.go）が
+// 要求の context に載せ、ハンドラはそれを読んで渡す。
 type Library interface {
-	ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error)
-	GetVideo(ctx context.Context, id int64) (domain.Video, error)
+	ListVideos(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error)
+	GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error)
 	VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error)
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 	// VideoIDs は listVideos と同じ条件（並び順・カーソル・件数を除く）に合う
@@ -104,8 +110,9 @@ type Transcoder interface {
 type ArtifactReader interface {
 	// ThumbnailFile はライブラリ用サムネイルを開く。閉じるのは呼び出し側である。
 	ThumbnailFile(contentKey string) (*os.File, error)
-	// PreviewFile はホバープレビューの MP4 を開く。閉じるのは呼び出し側である。
-	PreviewFile(contentKey string) (*os.File, error)
+	// PreviewFile はホバープレビューの MP4 を開き、内容の SHA-256（manifest に
+	// 記録したもの）と合わせて返す。閉じるのは呼び出し側である。
+	PreviewFile(contentKey string) (*os.File, string, error)
 	// SeekThumbnail は再生位置を含むシーク用プレビューの1枚を読む。
 	SeekThumbnail(contentKey string, positionMs int64) ([]byte, error)
 }
@@ -118,7 +125,7 @@ type VideoCatalog interface {
 	// PresentVideos は動画たちを応答に載せる形にする。順序は保つ。
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
-	RelatedVideos(ctx context.Context, video domain.Video) (domain.RelatedVideos, error)
+	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error)
 	// RetryProbe は読み取りに失敗した動画を読み取り直す。失敗していなければ
 	// domain.ErrProbeNotFailed を返す。
 	RetryProbe(ctx context.Context, video domain.Video) error
@@ -164,6 +171,8 @@ type Options struct {
 	MediaFolders MediaFolders
 	// Tags はタグの取得と個別操作。nilなら該当経路は500を返す。
 	Tags Tags
+	// Visibility は動画の公開フラグの保存先。nilなら切り替えの経路は500を返す。
+	Visibility Visibility
 	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
 	Folders Folders
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
@@ -190,6 +199,17 @@ type Options struct {
 	Assets fs.FS
 	// Logger は応答の過程で出す記録。nil の場合は slog の既定を使う。
 	Logger *slog.Logger
+	// Auth は初回設定・ログイン・ログアウト・セッションの確認。nil なら「誰でも」以外の
+	// 要求と認証の経路は 500 を返す。所有者とみなして通すことはしない。
+	Auth Authenticator
+	// SessionRecheck は、所有者として長く続く要求のセッションを確かめ直す間隔である。
+	// 0 なら 30 秒。テストが短くする。
+	SessionRecheck time.Duration
+	// Now は今の時刻を返す（Cookie の Max-Age の計算に使う）。nil なら time.Now。
+	Now func() time.Time
+	// TrustedProxies は転送ヘッダー（X-Forwarded-For・X-Forwarded-Proto）を信じてよい
+	// 直接の接続元である（MDM_TRUSTED_PROXIES）。空ならヘッダーを読まない（client_origin.go）。
+	TrustedProxies []netip.Prefix
 }
 
 // server は生成された gen.ServerInterface を満たす。契約（api/openapi.yaml）に
@@ -202,6 +222,7 @@ type server struct {
 	scans        Scans
 	mediaFolders MediaFolders
 	tags         Tags
+	visibility   Visibility
 	folders      Folders
 	transcoder   Transcoder
 	artifacts    ArtifactReader
@@ -211,6 +232,13 @@ type server struct {
 	processing   Processing
 	events       *Events
 	logger       *slog.Logger
+	auth         Authenticator
+	sessions     *sessionLedger
+	// guests はゲストとして処理中の配信の応答を content_key ごとに覚える（visibility.go）。
+	guests *guestLedger
+	now    func() time.Time
+	// trustedProxies は転送ヘッダーを信じてよい直接の接続元である。
+	trustedProxies trustedProxies
 }
 
 // NewRouter は経路を分配するハンドラを返す。
@@ -222,6 +250,7 @@ type server struct {
 //	/api/events      → Server-Sent Events（同上）
 //	/api/folders*    → JSON（同上）
 //	/api/tags*       → JSON（同上）
+//	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
 func NewRouter(opts Options) http.Handler {
@@ -245,6 +274,7 @@ func NewRouter(opts Options) http.Handler {
 		scans:        opts.Scans,
 		mediaFolders: opts.MediaFolders,
 		tags:         opts.Tags,
+		visibility:   opts.Visibility,
 		folders:      opts.Folders,
 		transcoder:   opts.Transcoder,
 		artifacts:    opts.Artifacts,
@@ -254,6 +284,21 @@ func NewRouter(opts Options) http.Handler {
 		processing:   opts.Processing,
 		events:       opts.Events,
 		logger:       logger,
+		auth:         opts.Auth,
+		sessions:     newSessionLedger(opts.SessionRecheck, logger),
+		guests:       newGuestLedger(),
+		now:          opts.Now,
+		// 呼び出し側が後から書き換えても判定が変わらないよう写しを持つ。
+		trustedProxies: slices.Clone(opts.TrustedProxies),
+	}
+	if srv.now == nil {
+		srv.now = time.Now
+	}
+	if opts.Auth != nil {
+		srv.sessions.check = func(ctx context.Context, token string) (bool, error) {
+			_, valid, err := opts.Auth.CheckSession(ctx, token)
+			return valid, err
+		}
 	}
 
 	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
@@ -266,7 +311,7 @@ func NewRouter(opts Options) http.Handler {
 			}, logger)
 		},
 	})
-	return noStoreOnError(srv.mutationBoundary(generated))
+	return noStoreOnError(srv.authBoundary(srv.mutationBoundary(generated)))
 }
 
 // noStoreOnError は 4xx と 5xx の応答に no-store を付け直す。
@@ -323,7 +368,8 @@ func requiresJSONBody(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost:
 		switch r.URL.Path {
-		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary":
+		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary",
+			"/api/auth/setup", "/api/auth/login":
 			return true
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
@@ -335,6 +381,9 @@ func requiresJSONBody(r *http.Request) bool {
 			return found && rest != "" && !strings.Contains(rest, "/")
 		}
 	case http.MethodPut:
+		if r.URL.Path == "/api/video-visibility" {
+			return true
+		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/media-folders/"); ok {
 			return id != "" && !strings.Contains(id, "/")
 		}
@@ -386,9 +435,12 @@ const (
 	// 変わり続けるため、中間キャッシュに残してはならない。
 	cacheNoStore = "no-store"
 	// 動画本体に付ける値は、それを配信する stream.go に置く。
-	// cacheImmutable は v 付きのサムネイルに付ける。v は内容由来の識別子で、
-	// 内容が変われば URL も変わるので古い画像が残らない。
-	cacheImmutable = "public, max-age=31536000, immutable"
+	// cacheRevalidate はサムネイル・シークプレビュー・ホバープレビューの成功の応答に、
+	// 所有者にもゲストにも付ける（specs/016-single-account-auth/contracts/guest-api.md §5）。
+	// private で共有キャッシュに所有者の応答を残さず、no-cache で使うたびにサーバーへ
+	// 確かめさせる。ログアウト後や非公開にした後はその確かめで 404 になり、ブラウザの
+	// キャッシュから出続けない。内容が同じなら ETag で 304 になり、帯域はほぼ増えない。
+	cacheRevalidate = "private, no-cache"
 )
 
 // エラーの code の正本は api/openapi.yaml の Error.code である。gen.ErrorCode*

@@ -36,7 +36,11 @@ func termUsesMatch(text string) bool {
 // タグ名（元の名前・シノニムの両方）への instr の OR に広げる
 // （specs/014-video-tags/data-model.md §7）。除外語はこの OR 全体の否定にする。
 // タグは動画の単位なので、語の長さに関係なく instr で調べ、全文索引は足さない。
-func searchExprCondition(expr domain.SearchExpr, alias string) (string, []any) {
+//
+// ゲストの検索はタグの名前とシノニムに照合せず、所在の条件だけにする
+// （specs/016-single-account-auth/contracts/guest-api.md §3）。ゲストに見せない
+// タグの名前が、当たる動画の有無から漏れないようにするため。
+func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.Audience) (string, []any) {
 	if expr.Empty() {
 		return "", nil
 	}
@@ -56,8 +60,11 @@ func searchExprCondition(expr domain.SearchExpr, alias string) (string, []any) {
 				locationCondition = `instr(` + alias + `.search_key, ?) > 0`
 				args = append(args, text)
 			}
-			condition := `(` + locationCondition + ` or ` + tagNameMatchCondition(alias) + `)`
-			args = append(args, text)
+			condition := `(` + locationCondition + `)`
+			if audience.IsOwner() {
+				condition = `(` + locationCondition + ` or ` + tagNameMatchCondition(alias) + `)`
+				args = append(args, text)
+			}
 			if term.Negated {
 				condition = `not ` + condition
 			}

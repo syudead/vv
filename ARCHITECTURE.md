@@ -143,17 +143,32 @@ command once at startup; on Linux and similar systems it also requires `DISPLAY`
 open route only accepts requests whose remote address and `Host` are loopback, and it
 never takes a path from the request.
 
+`internal/password` hashes and verifies passwords with Argon2id and stores them as PHC
+strings (`$argon2id$v=19$m=…,t=…,p=…$<salt>$<hash>`). New hashes use m=19456 KiB, t=2, p=1,
+a random 16-byte salt and a 32-byte key; verification reads the parameters from the stored
+string, so stronger parameters can be introduced later without invalidating existing hashes.
+It is an adapter rather than part of `internal/domain` because it draws random salts and
+uses an external cryptographic implementation. The pure authentication rules — the
+username and password value rules, the session lifetime, the post-login redirect check,
+`Audience` (whose zero value is the guest) and which list conditions a guest may use —
+live in `internal/domain`.
+
 Shutdown closes the `/api/events` streams, drains in-flight requests within a 10 second
 grace period, then stops the scanner and the workers so a running job returns to the queue.
 
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
 `video_locations` (including its per-location search keys), `location_search_fts`,
 `jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
-(deleting them costs a rescan), while `playback_progress` and the tag tables
-(`tags`, `tag_names`, `video_tags`) are user data that cannot be reconstructed.
-That is why playback positions and tag assignments are keyed by the content
+(deleting them costs a rescan), while `playback_progress`, the tag tables
+(`tags`, `tag_names`, `video_tags`) and the per-video public flag (`public_videos`)
+are user data that cannot be reconstructed.
+That is why playback positions, tag assignments and public flags are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
 key to `videos`.
+The single `account` row (username, Argon2id password hash and credential version) is
+also user data that cannot be reconstructed: deleting it sends the server back to first-run
+setup. `sessions` belongs to neither kind; it is transient state that a fresh login
+restores (`specs/016-single-account-auth/data-model.md` §2).
 
 `store.DB` is only the foundation: it opens and closes the SQLite connection pools,
 routing write transactions through an immediate-lock pool and snapshot list reads through
@@ -173,7 +188,15 @@ compile:
   matching id set unpaged for "select all"
   (`specs/014-video-tags/data-model.md` §6). The search-box term matcher also OR-matches
   a video's tag names (original name and synonyms) alongside title and path
-  (`specs/014-video-tags/data-model.md` §7). `LibraryStore` resolves which of a set of
+  (`specs/014-video-tags/data-model.md` §7). Every read that returns videos, locations
+  or folders (`ListVideos`, `ListFolderVideos`, `DirectVideoPaths`, `GetVideo`,
+  `VideosAddedNear`, `VideosByIDs`, `FolderLocations`, `HasFolderLocations`) takes a
+  `domain.Audience`, and its location condition goes through one function,
+  `visibleLocationCondition`: the owner sees every location under a registered folder,
+  a guest additionally only those of videos with a non-empty content key in
+  `public_videos`, and a guest's search does not match tag names
+  (`specs/016-single-account-auth/data-model.md` §3). The conditions used by ingest,
+  jobs and tag counts stay owner-only. `LibraryStore` resolves which of a set of
   tag ids currently exist through `existingTagIDs`, and `TagStore` resolves a set of
   video ids down to the currently-registered videos' content keys through
   `registeredContentKeysForVideoIDs`; both are unexported package functions
@@ -193,6 +216,19 @@ compile:
   `PlaybackStore.ProgressByContentKeys`). Like `PlaybackStore`, it holds only the SQL
   connection and does not depend on the rebuildable index stores or their
   notifications; tag changes have no side effects, so they publish no domain event.
+- `AuthStore` — the single account and its login sessions: first-run setup (the account
+  row and the first session in one transaction, so concurrent setups resolve by the
+  primary key), changing the username or password (bumping `account.version` and
+  clearing `sessions`), adding, checking, deleting and sweeping expired sessions. It
+  stores only the SHA-256 of a session ID, and a session is valid only while its
+  `account_version` matches `account.version` and it has not expired
+  (`specs/016-single-account-auth/data-model.md` §4, §5). Like `PlaybackStore`, it holds
+  only the SQL connection and publishes no domain event.
+- `VisibilityStore` — switching the public flag of a set of video ids (resolved to the
+  currently-registered videos' content keys, like tag attachment) in one transaction,
+  returning the content keys it applied to
+  (`specs/016-single-account-auth/data-model.md` §5). Like `TagStore`, it holds only the
+  SQL connection.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and
@@ -214,13 +250,61 @@ folding, so startup refreshes every location whose `search_version` is older tha
 and aborts startup if that fails
 (`specs/013-library-search/data-model.md` §5).
 
-Not built yet: authentication, subtitles, and multi-user support. Browser-incompatible
+Every request crosses an authentication boundary at the outermost layer of
+`internal/httpapi` (`auth.go`) before routing. It sorts each request into one of three
+kinds — anyone (`GET /api/health`, `GET /api/auth/session`, `POST /api/auth/setup`,
+`POST /api/auth/login`, `POST /api/auth/logout`, and `GET`/`HEAD` outside `/api/` for
+the SPA build), guests too (the video, stream, artifact and folder reads), and
+owner only (everything else, including undefined `/api/*` paths) — by the
+`path.Clean`ed request path, so the classification matches each operation's
+`security` in `api/openapi.yaml` (a Go test checks that). Because `ServeMux` splits
+the escaped path before decoding each segment, a request whose escaped segments
+differ from its decoded ones (an encoded `/` or `.`, as in `%2F` or `%2E%2E`) is
+classified owner only when either form is under `/api/`, so classification and
+dispatch cannot disagree. It decides the viewer
+(`domain.Audience`) from the session cookie (`__Host-vv_session` over HTTPS,
+`vv_session` over HTTP), puts it on the request context for handlers to read, and
+tags every `/api/*` response with `X-VV-Audience: owner|guest`. Owner-only requests
+without a valid session, and every non-anyone request while no account is configured,
+get `401 unauthenticated`; a failed session lookup is `500`, never an owner.
+Guest-too requests without a valid session are handled as a guest: handlers pass the
+audience to `LibraryStore` and `Catalog`, so only public videos (and folders derived
+from them) appear, hidden videos and folders answer the same `404` as missing ones,
+guest responses omit `location`, `progress`, `probeError` and `rootPath` and carry
+empty `tags`, and list conditions that depend on owner data (`watch`, played-at
+sorts, `tag`) are `400`
+([specs/016-single-account-auth/contracts/guest-api.md](specs/016-single-account-auth/contracts/guest-api.md)).
+Thumbnails, seek previews and hover previews are served `private, no-cache` with an
+`ETag` (`304` on a match) to owners and guests alike, so neither a shared cache nor
+the browser keeps serving them after logout. For
+owner requests the boundary keeps an in-memory ledger that sets the session expiry as
+the context deadline, ends a session's in-flight responses on logout, and re-checks
+requests that run longer than 30 seconds every 30 seconds so a credential change from
+the host command also ends them; ending a response cancels its context and moves the
+write deadline to now. `PUT /api/video-visibility` (owner only) switches the public
+flag through `VisibilityStore`; after the switch commits, making videos private ends
+the in-flight guest stream, live-transcode and hover-preview responses of their content
+keys, which a second in-memory ledger (`visibility.go`) tracks, while owner responses
+continue. Switches run one at a time from commit to cut-off, so a later re-publish
+cannot be cut off by an earlier switch to private. `POST /api/auth/setup` creates the first account and logs in,
+`POST /api/auth/login` and `POST /api/auth/logout` issue and revoke sessions, and
+`GET /api/auth/session` reports `owner`, `guest` or `setupRequired`
+([specs/016-single-account-auth/contracts/auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)).
+`cmd/mdm` wraps `app.Auth` for the boundary, deletes expired sessions at startup, and
+logs a warning while no account is configured.
+The client address and whether a request is HTTPS come from `client_origin.go`, which
+reads `X-Forwarded-For` and `X-Forwarded-Proto` only on connections from the reverse
+proxies in `MDM_TRUSTED_PROXIES` and otherwise uses the connecting address and TLS;
+the login attempt limit, authentication logs, the cookie name and `Secure`, the
+same-origin check and the loopback check for opening a file all use it.
+
+Not built yet: subtitles and multi-user support. Browser-incompatible
 video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is
 not persisted.
 
 ## Intended dependency direction
 
-`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus} -> internal/domain`, one
+`cmd -> internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password} -> internal/domain`, one
 way only. The packages under `internal/` fall into three layers:
 
 - `internal/domain` holds the domain model: value types and pure rules
@@ -243,13 +327,15 @@ way only. The packages under `internal/` fall into three layers:
   removing artifacts whose content lost its last reference (`Ingest`); and the decisions behind a video response — requeueing a missing hover
   preview, deriving the seek-preview state — plus assembling related videos
   (`Catalog`); and adding, replacing and removing media folders after the
-  filesystem adapter has checked the path (`MediaFolders`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
+  filesystem adapter has checked the path (`MediaFolders`); and first-run setup,
+  login verification with per-source throttling, and issuing, checking and
+  revoking login sessions (`Auth`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
   through interfaces it declares, so its unit tests run without SQLite, `ffmpeg` or
   an HTTP server. It must not import `net/http`, `database/sql`, `os/exec`, the
   SQLite driver, or any adapter package.
 - The adapters — `internal/httpapi`, `internal/store`, `internal/media`,
-  `internal/artifacts`, `internal/mediafs`, `internal/opener`, `internal/scanner` and `internal/jobs` —
-  talk to the outside world. `internal/eventbus` sits beside them and only delivers
+  `internal/artifacts`, `internal/mediafs`, `internal/opener`, `internal/scanner`, `internal/jobs` and
+  `internal/password` — talk to the outside world. `internal/eventbus` sits beside them and only delivers
   `domain.Event` values in-process; only `cmd/mdm` imports it. Filesystem checks stay in the adapters: `internal/mediafs` checks
   media folder paths, the files a request may open and the directories the picker lists, so `internal/store` never touches the filesystem
   and `internal/httpapi` never decides by itself whether a file may be opened.
@@ -262,9 +348,11 @@ stops them. It holds no use case of its own.
 
 The sibling packages under `internal/` (the adapters and `internal/app`) do not
 import each other. Each declares the interfaces it consumes — `internal/app` a
-scan store, an ingest store, a generator, an artifact store and an event publisher; `internal/scanner`,
+scan store, an ingest store, a generator, an artifact store, an event publisher,
+an auth store and a password hasher; `internal/scanner`,
 `internal/jobs` and `internal/httpapi` an index to write to, a queue to claim
-from, a library and a video catalog to query, and generated files to serve — and `cmd/mdm` is the only place
+from, a library and a video catalog to query, generated files to serve, and an
+authenticator (`httpapi.Authenticator`, which `cmd/mdm` fills by wrapping `app.Auth`) — and `cmd/mdm` is the only place
 that knows which concrete type goes where. The values crossing those boundaries
 (`domain.VideoFile`, `domain.Job`, `domain.VideoQuery`, `domain.VideoView`, …)
 live in `internal/domain`, which is why neither side needs the other.
@@ -302,13 +390,34 @@ holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. `tags.ts` holds a single shared, last-value-only
 cache of the tag list behind `getTags`/`refreshTags`/`subscribeTags`, so the
 combobox, tag-filter confirmation and the tag admin screen all read and invalidate
-the same list instead of issuing their own `GET /api/tags`. Pages and components do
+the same list instead of issuing their own `GET /api/tags`. `auth.ts` checks who is
+viewing (`GET /api/auth/session`) and sends first-run setup, login and logout. Pages and components do
 not call `fetch` themselves, so how the server is reached stays changeable in one
 place.
 The list's conditions (search terms, watch state, playable-only, sort and the shuffle
 `seed`) live in the URL; `web/src/videoList/listCriteria.ts` converts between the URL and
 the criteria `useVideos` sends, and the server applies every condition, so the page
 neither filters loaded pages nor reads ahead to find matches.
+
+`web/src/auth/` is the gate in front of every route: `AuthGate` renders nothing until
+the session state is known, sends every URL to `/setup` while no account exists, sends a
+guest on an owner-only screen (`/settings`, `/tags`) to `/login?next=…`, and exposes the
+answer to the screens through `useAudience`. The first-run setup (`/setup`) and login
+(`/login`) screens live there too and sit outside the shell and its providers. When the
+viewer changes (setup, login, logout) the page is reloaded rather than re-rendered, so
+nothing read for the previous viewer stays in memory. The gate also tells `client.ts` who
+the page is rendered for; while that is the owner, the first `/api/*` response that is a
+401 or carries `X-VV-Audience: guest` (a logout in another tab, an expired session)
+reloads the page once and is never handed to the screen. The `/api/events` connection
+and the playback screen's video cannot read a status or header when they fail, so when
+the event stream gives up or the video fails to load they check the session instead, and
+reload once if the viewer is no longer the owner rather than retrying forever. A guest gets the same shell and screens with every
+owner-data control left out rather than disabled: the scan button and progress, the
+tag, "recent", "in progress" and settings entries, selection, tag filters, the watch-state
+filter and "recently played" sort (list conditions left in the URL or the stored sort are
+rounded to the defaults), tags, file location, re-probe and saved playback position on the
+playback screen. `ScanProvider`, `useVideos` and `useVideoDetail` neither fetch owner-only
+state nor subscribe to `/api/events` for a guest.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
 frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`,

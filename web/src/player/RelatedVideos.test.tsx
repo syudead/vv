@@ -10,6 +10,7 @@ function item(id: number, overrides: Partial<Video> = {}): Video {
   return {
     id,
     title: `関連 ${String(id)}`,
+    public: false,
     sizeBytes: 1,
     addedAt: "2026-09-01T00:00:00Z",
     playable: true,

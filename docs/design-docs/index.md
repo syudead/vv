@@ -24,3 +24,4 @@ Add each new document to this index.
 - [動画取り込みの進捗表示 UI](../../specs/012-scan-progress/ui-design.md)
 - [一覧とフォルダ画面の検索 UI](../../specs/013-library-search/ui-design.md)
 - [動画のタグとタグでの絞り込み UI](../../specs/014-video-tags/ui-design.md)
+- [単一アカウント認証とゲストの閲覧 UI](../../specs/016-single-account-auth/ui-design.md)

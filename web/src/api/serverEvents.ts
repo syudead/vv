@@ -1,4 +1,10 @@
-import type { Processing, Scan, VideoChanged } from "./client";
+import { getAuthSession } from "./auth";
+import {
+  type Processing,
+  reloadIfNoLongerOwner,
+  type Scan,
+  type VideoChanged,
+} from "./client";
 
 /**
  * ServerEventHandlers はサーバーから届く変化の受け取り先である。
@@ -75,14 +81,25 @@ function connect(): void {
   });
   current.addEventListener("error", () => {
     // 接続中の切断はブラウザが自分でつなぎ直す。CLOSED は諦めた状態
-    // （応答が 200 でない等）なので、少し待って張り直す。
+    // （応答が 200 でない等）である。EventSource からは応答の状態を読めないので、
+    // 見る人の状態を確かめる。セッションが失効して所有者でなくなっていれば、張り直さず
+    // ページを1度だけ読み直す（失敗した要求を無限に再試行しない。
+    // specs/016-single-account-auth/plan.md Structural Decisions 14）。そうでなければ
+    // （サーバーが一時的に落ちている等）、少し待って張り直す。
     if (current.readyState !== EventSource.CLOSED || source !== current) return;
     source = null;
     if (subscribers.size === 0) return;
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = undefined;
-      if (subscribers.size > 0) connect();
-    }, reconnectDelayMs);
+    const scheduleReconnect = () => {
+      if (source !== null || reconnectTimer !== undefined || subscribers.size === 0)
+        return;
+      reconnectTimer = setTimeout(() => {
+        reconnectTimer = undefined;
+        if (subscribers.size > 0) connect();
+      }, reconnectDelayMs);
+    };
+    getAuthSession().then((session) => {
+      if (!reloadIfNoLongerOwner(session.state)) scheduleReconnect();
+    }, scheduleReconnect);
   });
 }
 

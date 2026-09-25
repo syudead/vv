@@ -338,17 +338,24 @@ func (s *Store) ThumbnailFile(contentKey string) (*os.File, error) {
 	return openRegular(path, nil)
 }
 
-// PreviewFile は配信のためにホバープレビューの MP4 を開く。PreviewAvailable と
-// 同じく、manifest と大きさが一致しなければ fs.ErrNotExist を包んだ誤りを返す。
-// 閉じるのは呼び出し側である。
-func (s *Store) PreviewFile(contentKey string) (*os.File, error) {
-	path, manifest, ok := s.previewPaths(contentKey)
+// PreviewFile は配信のためにホバープレビューの MP4 を開き、manifest に記録した
+// 内容の SHA-256 と合わせて返す。PreviewAvailable と同じく、manifest と大きさが
+// 一致しなければ fs.ErrNotExist を包んだ誤りを返す。閉じるのは呼び出し側である。
+func (s *Store) PreviewFile(contentKey string) (*os.File, string, error) {
+	path, manifestPath, ok := s.previewPaths(contentKey)
 	if !ok {
-		return nil, errInvalidKey
+		return nil, "", errInvalidKey
 	}
-	return openRegular(path, func(info os.FileInfo) error {
-		return checkPreviewComplete(manifest, info)
+	var digest string
+	file, err := openRegular(path, func(info os.FileInfo) error {
+		manifest, err := checkPreviewComplete(manifestPath, info)
+		digest = manifest.SHA256
+		return err
 	})
+	if err != nil {
+		return nil, "", err
+	}
+	return file, digest, nil
 }
 
 // SeekThumbnail は再生位置 positionMs を含むシーク用プレビューの1フレームを
@@ -377,7 +384,8 @@ func (s *Store) PreviewAvailable(contentKey string) bool {
 	if err != nil || !info.Mode().IsRegular() {
 		return false
 	}
-	return checkPreviewComplete(manifest, info) == nil
+	_, err = checkPreviewComplete(manifest, info)
+	return err == nil
 }
 
 // SeekThumbnailsAvailable はシーク用プレビューの置き場があるかを返す。置き場は
@@ -438,18 +446,18 @@ func readManifest(path string) (previewManifest, error) {
 // checkPreviewComplete は応答のたびに行う完全性の確認である。MP4 が空でなく、
 // manifest が読めて、その大きさが MP4 と一致すれば完成とみなす。確認
 // （PreviewAvailable）と配信（PreviewFile）は同じこの規則を使う。
-func checkPreviewComplete(manifestPath string, video os.FileInfo) error {
+func checkPreviewComplete(manifestPath string, video os.FileInfo) (previewManifest, error) {
 	if video.Size() == 0 {
-		return errors.New("preview is empty")
+		return previewManifest{}, errors.New("preview is empty")
 	}
 	manifest, err := readManifest(manifestPath)
 	if err != nil {
-		return err
+		return previewManifest{}, err
 	}
 	if manifest.Size != video.Size() {
-		return errors.New("preview manifest does not match size")
+		return previewManifest{}, errors.New("preview manifest does not match size")
 	}
-	return nil
+	return manifest, nil
 }
 
 // verifyPreview は manifest と MP4 の中身全体を照合する。

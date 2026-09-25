@@ -42,7 +42,7 @@ func TestUpsertVideoAddsNewRow(t *testing.T) {
 		t.Error("ID が返っていない")
 	}
 
-	video, err := db.Library().GetVideo(ctx, got.ID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, got.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,7 +119,7 @@ func TestUpsertVideoUpdatesChangedFileAndResetsProbe(t *testing.T) {
 		t.Errorf("内容が変わったのに論理動画IDが維持された: %d", added.ID)
 	}
 
-	video, err := db.Library().GetVideo(ctx, updated.ID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, updated.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestReassigningRepresentativeLocationSynchronizesOldVideo(t *testing.T) {
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mkv", "replacement", "new", 2, time.Hour)); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.Library().GetVideo(ctx, oldVideo.ID)
+	got, err := db.Library().GetVideo(ctx, domain.AudienceOwner, oldVideo.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,7 +187,7 @@ func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 		t.Errorf("移動で別の行になった: %d -> %d", added.ID, moved.ID)
 	}
 
-	total, err := db.Library().CountVideos(ctx, "")
+	total, err := db.Library().CountVideos(ctx, domain.AudienceOwner, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestUpsertVideoTreatsSameContentAtNewPathAsMove(t *testing.T) {
 		t.Errorf("移動で行が増えた: %d 行, want 1", total)
 	}
 
-	video, err := db.Library().GetVideo(ctx, added.ID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, added.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,11 +219,11 @@ func TestListVideosPagesByRepresentativeLocationTitle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	first, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1})
+	first, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
-	second, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1, Cursor: first.NextCursor})
+	second, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc, Limit: 1, Cursor: first.NextCursor})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -264,7 +264,7 @@ func TestRepresentativeLocationComesFromRegisteredRoot(t *testing.T) {
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/current.mp4", "current", "shared-location", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.Library().GetVideo(ctx, first.ID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, first.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +277,7 @@ func TestRepresentativeLocationComesFromRegisteredRoot(t *testing.T) {
 func TestGetVideoReportsMissing(t *testing.T) {
 	db := migratedDB(t)
 
-	_, err := db.Library().GetVideo(context.Background(), 12345)
+	_, err := db.Library().GetVideo(context.Background(), domain.AudienceOwner, 12345)
 	if !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("err = %v, want domain.ErrNotFound", err)
 	}
@@ -299,7 +299,7 @@ func TestApplyProbeStoresFactsAndPlayability(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	video, err := db.Library().GetVideo(ctx, added.ID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, added.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -338,7 +338,7 @@ func TestApplyProbeKeepsUnknownDurationNull(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	video, err := db.Library().GetVideo(ctx, added.ID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, added.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +364,7 @@ func TestMarkProbeFailedKeepsRowAndRecordsReason(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	video, err := db.Library().GetVideo(ctx, added.ID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, added.ID)
 	if err != nil {
 		t.Fatalf("失敗した動画が一覧から消えた: %v", err)
 	}
@@ -431,7 +431,7 @@ func TestListVideosSortOrders(t *testing.T) {
 	db, _ := listFixture(t)
 	ctx := context.Background()
 
-	added, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: domain.SortAddedDesc})
+	added, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortAddedDesc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -440,7 +440,7 @@ func TestListVideosSortOrders(t *testing.T) {
 		t.Errorf("addedDesc = %v, want %v", got, want)
 	}
 
-	byTitle, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: domain.SortTitleAsc})
+	byTitle, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,7 +466,7 @@ func TestListVideosLimitDefaultsAndCaps(t *testing.T) {
 		{domain.MaxLimit + 1, domain.MaxLimit},
 		{100000, domain.MaxLimit},
 	} {
-		page, err := db.Library().ListVideos(ctx, domain.VideoQuery{Limit: tc.given})
+		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Limit: tc.given})
 		if err != nil {
 			t.Fatalf("limit=%d: %v", tc.given, err)
 		}
@@ -494,7 +494,7 @@ func TestListVideosPagesWithCursor(t *testing.T) {
 			var seen []string
 			cursor := ""
 			for page := 0; page < 10; page++ {
-				got, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: sort, Limit: 2, Cursor: cursor})
+				got, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: sort, Limit: 2, Cursor: cursor})
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -505,7 +505,7 @@ func TestListVideosPagesWithCursor(t *testing.T) {
 				cursor = got.NextCursor
 			}
 
-			all, err := db.Library().ListVideos(ctx, domain.VideoQuery{Sort: sort, Limit: domain.MaxLimit})
+			all, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Sort: sort, Limit: domain.MaxLimit})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -521,7 +521,7 @@ func TestListVideosPagesWithCursor(t *testing.T) {
 func TestListVideosStopsAtLastPage(t *testing.T) {
 	db, _ := listFixture(t)
 
-	page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Limit: domain.MaxLimit})
+	page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -534,7 +534,7 @@ func TestListVideosStopsAtLastPage(t *testing.T) {
 func TestListVideosTotalIsIndependentOfPageSize(t *testing.T) {
 	db, _ := listFixture(t)
 
-	page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Limit: 2})
+	page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Limit: 2})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,7 +552,7 @@ func TestListVideosRejectsBrokenCursor(t *testing.T) {
 	db, _ := listFixture(t)
 
 	for _, cursor := range []string{"not-base64!!", "***", "YWJj", "'; drop table videos; --"} {
-		_, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Cursor: cursor})
+		_, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Cursor: cursor})
 		if !errors.Is(err, domain.ErrInvalidCursor) {
 			t.Errorf("cursor=%q: err = %v, want domain.ErrInvalidCursor", cursor, err)
 		}
@@ -568,7 +568,7 @@ func TestDeleteVideos(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	total, err := db.Library().CountVideos(ctx, "")
+	total, err := db.Library().CountVideos(ctx, domain.AudienceOwner, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +580,7 @@ func TestDeleteVideos(t *testing.T) {
 	if err := db.ScanIndex().DeleteVideos(ctx, nil); err != nil {
 		t.Fatal(err)
 	}
-	if total, _ := db.Library().CountVideos(ctx, ""); total != 3 {
+	if total, _ := db.Library().CountVideos(ctx, domain.AudienceOwner, ""); total != 3 {
 		t.Errorf("空の指定で行が消えた: %d 行, want 3", total)
 	}
 }

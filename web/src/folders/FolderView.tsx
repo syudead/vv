@@ -15,8 +15,9 @@ import {
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
-import { useFolderListing } from "../api/useFolderListing";
+import { useFolderListing, useRootFolderName } from "../api/useFolderListing";
 import { useVideos } from "../api/useVideos";
+import { useAudience } from "../auth/audience";
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import Button from "../ui/Button";
@@ -28,7 +29,7 @@ import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
 import FolderSearchResults from "./FolderSearchResults";
 import FolderToolbar from "./FolderToolbar";
-import { breadcrumbsFor, folderKey, rootDisplayName } from "./folderPath";
+import { breadcrumbsFor, folderKey, rootFolderName } from "./folderPath";
 import { FolderNotFound } from "./layout";
 import { useArrival } from "./useArrival";
 import { useConditions } from "./useConditions";
@@ -50,6 +51,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     changeZoom: saveZoom,
   } = useConditions();
   const scan = useScan();
+  const owner = useAudience() === "owner";
   const { refresh: refreshScan } = scan;
   const searching = criteria.query !== "";
   // 検索語があるときはフォルダとその配下すべてを対象にする。無ければ直下だけを絞る
@@ -97,7 +99,25 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
 
   const summary = listing.data?.folder;
   const children = listing.data?.folders ?? [];
-  const rootName = summary === undefined ? undefined : rootDisplayName(summary.rootPath);
+  // 登録フォルダの表示名。絶対パスが無い（ゲストの）応答で子フォルダを開いているときは、
+  // この応答からは分からない（登録フォルダそのものなら name がそれである）ので、
+  // 登録フォルダそのものを別に読んで、その name を使う。
+  const knownFromSummary =
+    summary !== undefined && (summary.rootPath !== undefined || folder.path === "");
+  const rootLookup = useRootFolderName(
+    folder.rootId,
+    summary !== undefined && !knownFromSummary,
+  );
+  const rootName =
+    summary === undefined
+      ? undefined
+      : knownFromSummary
+        ? rootFolderName(summary)
+        : rootLookup.status === "ready"
+          ? rootLookup.name
+          : undefined;
+  // 登録フォルダの名前を読めなかったときは、その段を骨組みのまま残さずに省く。
+  const rootNameFailed = !knownFromSummary && rootLookup.status === "failed";
   const name =
     summary?.name ?? (folder.path === "" ? rootName : folder.path.split("/").at(-1));
   const backTo = `${location.pathname}${location.search}`;
@@ -220,11 +240,14 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
       <EmptyState
         icon={FolderOpen}
         title="このフォルダにはまだ動画がありません"
-        description="取り込むと、ここに並びます。"
+        description={owner ? "取り込むと、ここに並びます。" : undefined}
         action={
-          <Button variant="primary" onClick={scan.start} disabled={scan.running}>
-            {scan.running ? "取り込み中…" : "取り込む"}
-          </Button>
+          // 取り込みは所有者だけの操作である（ui-design.md「Guest degradation」）。
+          owner ? (
+            <Button variant="primary" onClick={scan.start} disabled={scan.running}>
+              {scan.running ? "取り込み中…" : "取り込む"}
+            </Button>
+          ) : undefined
         }
       />
     );
@@ -272,7 +295,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
       <Breadcrumbs
         crumbs={
           // 見つからなかったフォルダでは登録フォルダの名前が分からないので、その段を出さない。
-          listing.notFound || videos.notFound || listing.error !== null
+          listing.notFound || videos.notFound || listing.error !== null || rootNameFailed
             ? breadcrumbsFor(folder, undefined).filter((crumb) => crumb !== undefined)
             : breadcrumbsFor(folder, rootName)
         }

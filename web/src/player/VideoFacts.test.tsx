@@ -31,6 +31,7 @@ const video: Video = {
   location: { path: "/media/a/b.mp4", openable: true },
   progress: { positionMs: 1, completed: false, updatedAt: "2026-09-21T05:06:00Z" },
   tags: [],
+  public: false,
 };
 
 function renderFacts(value: Video) {

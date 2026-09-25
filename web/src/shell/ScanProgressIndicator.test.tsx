@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Processing, Scan } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
+import { OwnerAudience } from "../testing/audience";
 import { TooltipProvider } from "../ui/Tooltip";
 import { ScanNoticeProvider } from "./ScanNoticeProvider";
 import ScanProgressIndicator from "./ScanProgressIndicator";
@@ -42,12 +43,14 @@ function renderIndicator() {
   return render(
     <MemoryRouter initialEntries={["/"]}>
       <TooltipProvider>
-        <ScanProvider>
-          <ScanNoticeProvider>
-            <ScanProgressIndicator />
-            <LocationProbe />
-          </ScanNoticeProvider>
-        </ScanProvider>
+        <OwnerAudience>
+          <ScanProvider>
+            <ScanNoticeProvider>
+              <ScanProgressIndicator />
+              <LocationProbe />
+            </ScanNoticeProvider>
+          </ScanProvider>
+        </OwnerAudience>
       </TooltipProvider>
     </MemoryRouter>,
   );
