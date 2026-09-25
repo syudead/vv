@@ -68,7 +68,7 @@ function transcodePlayer() {
 describe("createPlayerControls", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("変換して再生する経路でも、→ と再生速度の変更が論理上の位置と速度に効く", () => {
+  it("変換して再生する経路でも、位置と再生速度の変更が論理上の位置と速度に効く", () => {
     vi.useFakeTimers();
     const { player, tech, middleware } = transcodePlayer();
     const controls = createPlayerControls(player, () => false);
@@ -76,7 +76,7 @@ describe("createPlayerControls", () => {
     // 変換の開始位置 30 秒 + 技術層の 4 秒 = 論理上の 34 秒。
     expect(player.currentTime()).toBe(34);
     player.playbackRate(1.5);
-    controls.seekBy(10);
+    controls.seekTo(44);
     expect(middleware.currentTime(tech.currentTime())).toBe(44);
 
     vi.advanceTimersByTime(200);
@@ -89,11 +89,11 @@ describe("createPlayerControls", () => {
     expect(tech.setPlaybackRate).toHaveBeenLastCalledWith(1.5);
   });
 
-  it("buffer 済みの範囲への ← は同じ変換の中で戻る", () => {
+  it("buffer 済みの範囲へ戻るときは同じ変換の中で戻る", () => {
     const { player, tech } = transcodePlayer();
     const controls = createPlayerControls(player, () => false);
     tech.buffered.mockReturnValue(ranges([[0, 20]]));
-    controls.seekBy(-3);
+    controls.seekTo(31);
     expect(tech.setCurrentTime).toHaveBeenLastCalledWith(1);
     expect(tech.setSource).not.toHaveBeenCalled();
   });
