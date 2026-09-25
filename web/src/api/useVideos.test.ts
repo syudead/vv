@@ -729,6 +729,49 @@ describe("useVideos の準備の反映", () => {
     );
   });
 
+  // Devin の指摘3（2回目）: ページ2の取得中に届いた付け外しの対象が、
+  // ページ2ではなくさらに次のページ3に現れることがある。ページ2の到着で
+  // tagsChangedWhileLoading を空にしてしまうと、続くページ3の取得が始まる
+  // 前に消えてしまい、ページ3が届いても重ねられない。続きの取得
+  // （loadMore）をまたいで、実際にその動画を含むページが届くまで持ち越す。
+  it("ページ2の取得中に届いた付け外しは、対象がページ3にあっても、ページ3が届いたときに重ねる", async () => {
+    const { nextVideoTagsSequence, recordAppliedVideoTags } =
+      await import("./videoTagsEvents");
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    // ページ1: 動画1つだけ。続きがある。
+    await act(async () => calls[0]?.resolve(page([1], "next-2")));
+
+    // ページ2の取得中に、まだどのページにも現れていない動画121へタグを付ける。
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    act(() => {
+      recordAppliedVideoTags(
+        [121],
+        { id: 5, name: "旅行" },
+        "add",
+        nextVideoTagsSequence(),
+      );
+    });
+    expect(result.current.items.some((video) => video.id === 121)).toBe(false);
+
+    // ページ2が届く（動画121を含まない）。
+    await act(async () => calls[1]?.resolve(page([2], "next-3")));
+    expect(result.current.items.some((video) => video.id === 121)).toBe(false);
+
+    // ページ3の取得が始まり、動画121を含む（付け外し前の、古いタグの
+    // ままの）内容で届く。
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(3));
+    await act(async () => calls[2]?.resolve(page([121])));
+
+    await waitFor(() =>
+      expect(result.current.items.find((video) => video.id === 121)?.tags).toEqual([
+        { id: 5, name: "旅行" },
+      ]),
+    );
+  });
+
   // N1: 応答が送った順と違う順で届いても、後から送った操作を古い応答で
   // 巻き戻さない。
   it("古い応答が後から届いても、同じ動画・タグの新しい結果を巻き戻さない", async () => {

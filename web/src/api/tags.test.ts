@@ -164,6 +164,51 @@ describe("共有のタグの一覧の保持", () => {
     await flush();
     expect(currentTags()).toEqual([tag({ id: 1, name: "改名後" })]);
   });
+
+  // Devin の指摘: 追い越された取得は、`held` がまだ一度も埋まっていなくても
+  // （＝ `held ?? tags` の `tags` が漏れる状況でも）、自分のまだ何も反映して
+  // いない応答をそのまま返してはならない。勝った（今の generation を持つ）
+  // 取得の結果を待って、それに落ち着く。
+  it("heldが空のうちに追い越された取得は、勝った取得の結果に落ち着く（Devinの指摘）", async () => {
+    let resolveFirst: (response: Response) => void = () => undefined;
+    let resolveSecond: (response: Response) => void = () => undefined;
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      // 1回目: getTags() が始める GET。まだ何も返っていない（held は空のまま）。
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      // 2回目: refreshTags() が始める、追い越す側の GET。
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveSecond = resolve;
+          }),
+      );
+    vi.stubGlobal("fetch", fetch);
+
+    const first = getTags();
+    const second = refreshTags();
+
+    // 1回目（追い越された、まだ何も反映していない）の応答が、2回目より先に
+    // 届く。held はまだ一度も埋まっていない。
+    resolveFirst(jsonResponse({ items: [] }));
+    await flush();
+    // 1回目の（空の）中身をそのまま held へ反映してはいない。
+    expect(currentTags()).toBeUndefined();
+
+    // 2回目（勝った、今の generation を持つ）の応答が届く。
+    resolveSecond(jsonResponse({ items: [tag({ id: 1, name: "後から作った" })] }));
+
+    await expect(second).resolves.toEqual([tag({ id: 1, name: "後から作った" })]);
+    // 追い越された1回目も、自分の（空の）応答ではなく、勝った2回目の結果に
+    // 落ち着く。
+    await expect(first).resolves.toEqual([tag({ id: 1, name: "後から作った" })]);
+    expect(currentTags()).toEqual([tag({ id: 1, name: "後から作った" })]);
+  });
 });
 
 describe("タグの変更が成功した後の後始末", () => {

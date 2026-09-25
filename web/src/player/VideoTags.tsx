@@ -43,7 +43,15 @@ export default function VideoTags({
   // VideoPage は videoId ごとに VideoTags を作り直さず使い回すことがあるため
   // （key を付けない再利用。Devin の指摘1）、videoId が変われば、重ねた分を
   // 前の動画に残さず必ず捨てる。
-  const appliedRef = useRef(new Map<number, { tag: TagRef; action: "add" | "remove" }>());
+  //
+  // 重ねた各エントリは、記録した時点の tagsFetchSeqRef（下）の値も
+  // `asOfSeq` として持つ。allTags でその付与を蘇らせない判定（下）に使うのは
+  // 「その付与を記録した後に実際に届いた」allTags に限る。記録する前から
+  // 持っていた allTags（作ったばかりのタグがまだそこに無いだけ）で判定すると、
+  // 別画面での削除と誤認してしまう（Devin の指摘）。
+  const appliedRef = useRef(
+    new Map<number, { tag: TagRef; action: "add" | "remove"; asOfSeq: number }>(),
+  );
   const prevVideoIdRef = useRef(videoId);
   const [tags, setTags] = useState<readonly TagRef[]>(initialTags);
 
@@ -51,15 +59,24 @@ export default function VideoTags({
   // Structural Decisions 8「画面が開くとき…に refreshTags で取り直す」）。
   // 取り直す間は、あれば直近の保持を初期値として先に出す。
   const [allTags, setAllTags] = useState<Tag[] | undefined>(currentTags());
+  // tagsFetchSeqRef は、実際に届いた（=取得が生きたまま tags.ts の held を
+  // 更新した）タグの一覧の回数を数える。マウント時点の allTags の初期値
+  // （currentTags()。今の付け外しより前に取れていたかもしれない）はこれに
+  // 数えない。
+  const tagsFetchSeqRef = useRef(0);
   useEffect(() => {
     let alive = true;
     refreshTags()
       .then((loaded) => {
-        if (alive) setAllTags(loaded);
+        if (!alive) return;
+        tagsFetchSeqRef.current += 1;
+        setAllTags(loaded);
       })
       .catch(() => undefined);
     const unsubscribe = subscribeTags((loaded) => {
-      if (alive) setAllTags(loaded);
+      if (!alive) return;
+      tagsFetchSeqRef.current += 1;
+      setAllTags(loaded);
     });
     return () => {
       alive = false;
@@ -84,10 +101,16 @@ export default function VideoTags({
         continue;
       }
       // 重ねたタグ自体が共有の一覧からもう消えていれば（別画面での削除・
-      // 統合）、その付与を蘇らせない（Devin の指摘1）。allTags をまだ
-      // 取得していない（undefined）ときは、確かめようが無いので今までどおり
-      // 重ねる。
-      if (allTags !== undefined && !allTags.some((tag) => tag.id === tagId)) {
+      // 統合）、その付与を蘇らせない（Devin の指摘1）。ただし、これを判定
+      // できるのは、その付与を記録した後に実際に取得が届いていて
+      // （tagsFetchSeqRef が進んでいて）、かつ allTags を取得済み
+      // （undefined でない）ときだけ。どちらか欠ければ確かめようが無いので、
+      // 今までどおり重ねる。
+      if (
+        allTags !== undefined &&
+        tagsFetchSeqRef.current > change.asOfSeq &&
+        !allTags.some((tag) => tag.id === tagId)
+      ) {
         applied.delete(tagId);
         continue;
       }
@@ -99,7 +122,11 @@ export default function VideoTags({
     () =>
       subscribeVideoTags((videoIds, tag, action) => {
         if (!videoIds.includes(videoId)) return;
-        appliedRef.current.set(tag.id, { tag, action });
+        appliedRef.current.set(tag.id, {
+          tag,
+          action,
+          asOfSeq: tagsFetchSeqRef.current,
+        });
         setTags((current) => applyTagToTags(current, tag, action));
       }),
     [videoId],
