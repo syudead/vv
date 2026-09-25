@@ -4,7 +4,7 @@
 
 **Input**: The parent Issue. It is this feature's specification.
 
-**Note**: This template is filled in by the `/speckit-plan` command; its definition describes the execution workflow.
+**Note**: This template is filled in by the `/sdd-plan` command; its definition describes the execution workflow.
 
 <!--
   WHAT THIS DOCUMENT IS: the decisions for building this feature — the deltas
@@ -99,7 +99,7 @@ out, not filled with invented material.
 
 ```text
 specs/[###-feature]/
-├── plan.md              # This file (/speckit-plan command output)
+├── plan.md              # This file (/sdd-plan command output)
 │                        # No spec.md — the parent Issue is the specification
 ├── research.md          # Phase 0 output — decisions this feature adds [omit if none]
 ├── data-model.md        # Phase 1 output — entity deltas [omit if none]
@@ -107,7 +107,7 @@ specs/[###-feature]/
 └── contracts/           # Phase 1 output — interface deltas [omit if none]
 ```
 
-The `## Implementation Work` section below is the input to `/speckit-plan-to-issues`;
+The `## Implementation Work` section below is the input to `/sdd-plan-to-issues`;
 this workflow has no separate tasks stage and produces no `tasks.md`.
 
 ### Source Code
@@ -151,10 +151,10 @@ layout" with a link]
 
 <!--
   ACTION REQUIRED: One `###` subsection per independently reviewable
-  implementation unit. `/speckit-plan-to-issues` turns each one into a native
+  implementation unit. `/sdd-plan-to-issues` turns each one into a native
   child Issue — the heading becomes the Issue title, and the three fields below
   are its approved input for writing that Issue's body — and
-  `/speckit-implement` then builds one unit per PR working from that Issue.
+  `/sdd-implement` then builds one unit per PR working from that Issue.
 
   What this section settles is the breakdown: what the units are, what each
   covers, what has to land first, and what counts as done. The prose an
