@@ -53,7 +53,9 @@ create index video_folder_names_name_idx on video_folder_names (name, video_id);
 create table folder_index_state (
     id             integer primary key check (id = 1),
     version        integer not null,   -- domain.FolderIndexVersion
-    search_version integer not null    -- domain.SearchKeyVersion
+    search_version integer not null,   -- domain.SearchKeyVersion
+    -- 1 は「前回の作り直しが失敗した」。作り直しが成功すると 0 に戻る（§3）。
+    stale          integer not null default 0 check (stale in (0, 1))
 );
 ```
 
@@ -99,12 +101,15 @@ create table folder_index_state (
 | スキャンを閉じる直前（成功でも失敗でも） | `app.Scans` → `ScanIndexStore.RebuildFolderIndex` | 作り直しだけの取引 |
 | メディアフォルダの追加・置換・削除 | `SettingsStore` | その変更と同じ取引 |
 | 例外の設定・解除、グループのタグ化 | `FolderGroupStore` | その変更と同じ取引 |
-| 起動時、`version` か `search_version` が今の値と違うか行が無いとき | `cmd/mdm` → `ScanIndexStore.RefreshFolderIndex` | 作り直しだけの取引。`RefreshSearchKeys` の後で、HTTP とワーカーの開始より前 |
+| 起動時、`version` か `search_version` が今の値と違うか、`stale = 1` か、行が無いとき | `cmd/mdm` → `ScanIndexStore.RefreshFolderIndex` | 作り直しだけの取引。`RefreshSearchKeys` の後で、HTTP とワーカーの開始より前 |
 | 起動時、前回の停止で中断したスキャンを閉じたとき（`FailInterruptedScans` が 1 件以上） | `app.Scans.RecoverInterrupted` → `ScanIndexStore.RebuildFolderIndex` | 作り直しだけの取引 |
 
 スキャンの途中（閉じる前）に足された動画は単体として、消えた動画のグループは残りのメンバーで出る。
-スキャンを閉じる前の作り直しで正しい形になる。作り直しに失敗したときはログに残してスキャンを閉じ、
-次の作り直しの時点まで前の索引を使う（plan の Structural Decisions 14）。作り直しの前後をまたいだ
+スキャンを閉じる前の作り直しで正しい形になる。作り直しに失敗したときは、その取引は巻き戻り、
+別の取引で `folder_index_state.stale = 1` を書いてログに残し、スキャンを閉じる。次の作り直しの時点
+（次の起動を含む）まで前の索引を使う（plan の Structural Decisions 14）。`stale` の書き込みまで失敗した
+ときは、次のスキャン・例外の変更・メディアフォルダの変更の作り直しで直る。作り直しの取引の途中で
+プロセスが止まった場合は、スキャンが閉じられずに残るので、起動時の中断したスキャンの回復で作り直す。作り直しの前後をまたいだ
 ページングでは、13 の取り込み中と同じく項目の重複や抜けが起こりうる。
 
 ## 4. フォルダ由来のタグ
