@@ -1,6 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import AuthGate from "./AuthGate";
@@ -25,6 +25,10 @@ function LocationProbe() {
   const location = useLocation();
   currentLocation = `${location.pathname}${location.search}`;
   return null;
+}
+
+function LinkToLogin() {
+  return <Link to="/login?next=%2Fsettings">login</Link>;
 }
 
 function renderGate(path: string) {
@@ -188,6 +192,41 @@ describe("AuthGate", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("owner が SPA の中で /login?next=… へ来て確かめ直しが失敗したら、移らずに失敗と「再試行」を出す", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValueOnce(json({ state: "owner" }));
+    fetchMock.mockResolvedValueOnce(
+      json({ code: "internal", message: "DB が応答しません" }, 500),
+    );
+    fetchMock.mockResolvedValueOnce(json({ state: "owner", redirectTo: "/settings" }));
+    render(
+      <MemoryRouter initialEntries={["/"]}>
+        <LocationProbe />
+        <AuthGate>
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="*" element={<LinkToLogin />} />
+          </Routes>
+        </AuthGate>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole("link", { name: "login" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "サーバーに接続できません" }),
+    ).toBeDefined();
+    expect(screen.getByText("DB が応答しません")).toBeDefined();
+    expect(currentLocation).toBe("/login?next=%2Fsettings");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await user.click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(currentLocation).toBe("/settings"));
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe(
+      "/api/auth/session?next=%2Fsettings",
+    );
   });
 
   it("「再試行」で確かめ直す", async () => {

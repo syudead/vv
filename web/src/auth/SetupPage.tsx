@@ -30,7 +30,9 @@ function usernameBreaksRule(username: string): boolean {
   return (
     Array.from(username).length > MAX_USERNAME_LENGTH ||
     /\p{Cc}/u.test(username) ||
-    /^\s|\s$/u.test(username)
+    // 空白の判定はサーバーの unicode.IsSpace と同じ Unicode の White_Space にそろえる。
+    // JavaScript の \s は U+FEFF も含み、サーバーが通す名前を止めてしまう。
+    /^\p{White_Space}|\p{White_Space}$/u.test(username)
   );
 }
 

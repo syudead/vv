@@ -46,6 +46,8 @@ function failureReason(error: unknown): string {
  * OwnerLoginRedirect は、ログイン済みで /login を開いたとき、サーバーが確かめた
  * 戻り先（redirectTo）へ置き換える。戻り先は画面で判定しない
  * （specs/016-single-account-auth/contracts/auth-api.md §4）。
+ * SPA の中で来て確かめ直しが失敗したときは、ゲートと同じく遷移せずに理由と
+ * 「再試行」を出す。自動では確かめ直さない（ui-design.md「Gate」）。
  */
 function OwnerLoginRedirect({
   session,
@@ -56,6 +58,8 @@ function OwnerLoginRedirect({
 }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const [attempt, setAttempt] = useState(0);
+  const [failure, setFailure] = useState<string | null>(null);
 
   useEffect(() => {
     if (checkedSearch === location.search) {
@@ -72,14 +76,24 @@ function OwnerLoginRedirect({
         }
         void navigate(current.redirectTo ?? "/", { replace: true });
       },
-      () => {
-        if (!controller.signal.aborted) void navigate("/", { replace: true });
+      (error: unknown) => {
+        if (controller.signal.aborted) return;
+        setFailure(failureReason(error));
       },
     );
     return () => controller.abort();
-  }, [session, checkedSearch, location.search, navigate]);
+  }, [session, checkedSearch, location.search, navigate, attempt]);
 
-  return null;
+  if (failure === null) return null;
+  return (
+    <GateFailure
+      reason={failure}
+      onRetry={() => {
+        setFailure(null);
+        setAttempt((current) => current + 1);
+      }}
+    />
+  );
 }
 
 function GateFailure({ reason, onRetry }: { reason: string; onRetry: () => void }) {

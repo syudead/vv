@@ -117,6 +117,17 @@ describe("SetupPage", () => {
     expect(validateSetup("所有者 1", "p", "p")).toBeNull();
   });
 
+  it("前後の空白の判定はサーバーの unicode.IsSpace にそろえる", () => {
+    // U+FEFF はサーバーでは空白でないので、先頭・末尾にあっても止めない。
+    expect(validateSetup("\uFEFFowner", "p", "p")).toBeNull();
+    expect(validateSetup("owner\uFEFF", "p", "p")).toBeNull();
+    // U+00A0・U+3000・U+2028 はサーバーでも空白なので止める。
+    for (const space of ["\u00A0", "\u3000", "\u2028"]) {
+      expect(validateSetup(`${space}owner`, "p", "p")?.field).toBe("username");
+      expect(validateSetup(`owner${space}`, "p", "p")?.field).toBe("username");
+    }
+  });
+
   it("空のユーザー名は送らず、その欄を名指しする", async () => {
     render(<SetupPage />);
     await fill("", "secret", "secret");
