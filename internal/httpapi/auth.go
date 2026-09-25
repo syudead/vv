@@ -297,6 +297,11 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 		audience := domain.AudienceGuest
 		if valid {
 			audience = domain.AudienceOwner
+		} else {
+			// 所有者として処理しない要求は、セッションの台帳の context を使わない。
+			// ログアウトで打ち切られていると取り消し済みで、ゲストとして続ける処理の
+			// 問い合わせまで失敗させてしまう（Devin の指摘、PR 335）。
+			ctx = r.Context()
 		}
 		setAudience(audience)
 		switch {

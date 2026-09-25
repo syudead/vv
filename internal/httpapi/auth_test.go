@@ -929,6 +929,57 @@ func TestAuthLogoutBetweenSessionCheckAndResponseIsNotServedAsOwner(t *testing.T
 	assertUnauthenticated(t, "その後の要求", env.get(ownerOnlyTarget, cookie))
 }
 
+// 「ゲストも」の要求でセッションを確かめている間にログアウトされたら、ゲストとして
+// 最後まで処理する（Devin の指摘、PR 335）。打ち切られた台帳の context を引き継ぐと、
+// 公開の動画を引く問い合わせまで取り消されてしまう。
+func TestAuthLogoutDuringSessionCheckServesGuestsTooRequestAsGuest(t *testing.T) {
+	var env *authEnv
+	var cookie *http.Cookie
+	var fired atomic.Bool
+	env = newAuthEnvWrapped(t, t.TempDir(),
+		func(db *store.DB) Options {
+			library := db.Library()
+			return Options{Videos: library, Folders: library, Visibility: db.Visibility()}
+		},
+		func(auth Authenticator) Authenticator {
+			return hookedAuthenticator{Authenticator: auth, afterCheck: func(token string) {
+				if cookie == nil || token != cookie.Value || !fired.CompareAndSwap(false, true) {
+					return
+				}
+				rec := env.serve(authRequest{method: http.MethodPost, target: "/api/auth/logout", cookies: []*http.Cookie{cookie}})
+				if rec.Code != http.StatusNoContent {
+					t.Errorf("割り込んだログアウト: status = %d: %s", rec.Code, rec.Body)
+				}
+			}}
+		})
+	ctx := context.Background()
+	mediaDir := t.TempDir()
+	if _, err := env.db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
+		t.Fatal(err)
+	}
+	result, err := env.db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
+		Path: filepath.Join(mediaDir, "public.mp4"), Title: "公開の動画", ContentKey: "content-key-public",
+		SizeBytes: 1, MTime: time.Unix(0, 0), AddedAt: time.Unix(0, 0), Container: "mp4",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.db.Visibility().SetVideosPublic(ctx, []int64{result.ID}, true); err != nil {
+		t.Fatal(err)
+	}
+	cookie = env.setup()
+
+	target := "/api/videos/" + strconv.FormatInt(result.ID, 10)
+	rec := env.get(target, cookie)
+	if !fired.Load() {
+		t.Fatal("ログアウトが割り込まなかった")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("確かめの最中にログアウトされた公開の動画: status = %d: %s", rec.Code, rec.Body)
+	}
+	assertAudience(t, target, rec, "guest")
+}
+
 // 台帳に載せてから応答を始めるまでの間の打ち切りは、応答を始めさせない。
 func TestSessionLedgerRevokeBeforeServeRefusesRequest(t *testing.T) {
 	ledger := newSessionLedger(time.Hour, slog.Default())
