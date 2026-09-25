@@ -36,7 +36,7 @@ rename, delete, merge and synonym registration/removal), the video-tags API
 the library items API (`/api/library*`, below), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
-Both video lists, the library (`GET /api/videos`) and a folder
+The per-video lists, `GET /api/videos` (the folder view's root search) and a folder
 (`GET /api/folders/{rootId}/videos`, direct children by default or the whole
 subtree with `scope=subtree`), accept the same search expression (`query`),
 watch-state and playable filters, thirteen sort orders and a shuffle `seed`.

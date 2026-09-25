@@ -1817,6 +1817,31 @@ describe("LibraryPage", () => {
       ).toBe(false);
     });
 
+    it("選択が一度消えたら、同じ id を手で選び直しても「すべて選択」を押せる", async () => {
+      installGroupList();
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: ownerLabel });
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("button", { name: "すべて選択" }));
+      expect(await screen.findByText("14 件を選択中")).toBeDefined();
+
+      // Esc で選択を解除する（条件の変更と同じく、選択が消える）。
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByText(/件を選択中/)).toBeNull());
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("checkbox", { name: "「動画 2」を選択" }));
+      await user.click(
+        screen.getByRole("checkbox", { name: "「series」のグループを選択" }),
+      );
+      expect(screen.getByText("14 件を選択中")).toBeDefined();
+      expect(
+        (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+
     it("リスト表示では同じ列にグループの値を出す", async () => {
       localStorage.setItem(
         "vv.view.v2",

@@ -292,6 +292,10 @@ export default function LibraryPage() {
   const clearSelection = useCallback(() => {
     invalidateSelectAll();
     setSelectedIds(new Set());
+    // 選択が消えたら、前の「すべて選択」の応答はもう比べない。条件が変わった後に
+    // 同じ id を手で選び直しても、読んでいない項目が残りうるので押せるままにする
+    // （ui-design.md「Pressing and selection」）。
+    setSelectAllIds(null);
   }, [invalidateSelectAll]);
 
   // --- 「すべて選択」（Plan の Structural Decisions 4） ---
