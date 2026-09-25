@@ -268,49 +268,6 @@ paths:
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
-  /api/videos/ids:
-    get:
-      operationId: listVideoIds
-      summary: 絞り込みに合う動画の全件の id を返す
-      description: |
-        `listVideos` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う全件の
-        id を、ページングせずに返す。並びは決めない。「すべて選択」用
-        （specs/014-video-tags/contracts/tags-api.md §5）。`/api/videos/{id}` とは
-        Go の ServeMux の字面の段の優先で区別される。
-      parameters:
-        - name: query
-          in: query
-          schema:
-            type: string
-            maxLength: 100
-        - name: watch
-          in: query
-          schema:
-            $ref: "#/components/schemas/WatchFilter"
-        - name: playable
-          in: query
-          schema:
-            type: boolean
-            default: false
-        - name: tag
-          in: query
-          description: 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
-          schema:
-            type: array
-            maxItems: 16
-            items:
-              type: integer
-              format: int64
-      responses:
-        "200":
-          description: 条件に合う全件の id
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/VideoIdsResponse"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-
   /api/library:
     get:
       operationId: listLibrary

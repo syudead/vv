@@ -582,9 +582,14 @@ function VisibilityMenu({
 }
 
 export interface SelectionBarProps {
+  /** 選んだ動画の本数（グループはメンバーを数える）。 */
   count: number;
-  /** 今の条件に合う全件数（サーバーの total）。「すべて選択」の disabled 判定に使う。 */
-  total: number;
+  /**
+   * 選択が直前の「すべて選択」の応答と同じ集合のとき true。その間だけ「すべて選択」を
+   * 押せなくする（specs/017-folder-groups/ui-design.md「Pressing and selection」）。
+   * 選んだ本数と項目の数（total）は数えるものが違うので比べない。
+   */
+  allSelected: boolean;
   selectedIds: readonly number[];
   /** 「すべて選択」の要求の間 true（ui-design.md「Selection bar」の「Layout」）。 */
   selectingAll: boolean;
@@ -601,7 +606,7 @@ export interface SelectionBarProps {
 /** SelectionBar は 1 件以上選ぶと画面下部に浮く。 */
 export default function SelectionBar({
   count,
-  total,
+  allSelected,
   selectedIds,
   selectingAll,
   onSelectAll,
@@ -746,7 +751,7 @@ export default function SelectionBar({
           variant="ghost"
           size="sm"
           onClick={onSelectAll}
-          disabled={selectingAll || count >= total}
+          disabled={selectingAll || allSelected}
           className="order-2 sm:order-6"
         >
           {selectingAll ? "選択中…" : "すべて選択"}

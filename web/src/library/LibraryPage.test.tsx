@@ -11,10 +11,11 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Video, VideoPage } from "../api/client";
+import type { LibraryGroup, Video, VideoPage } from "../api/client";
 import { FakeEventSource, installFakeEventSource } from "../api/fakeEventSource";
 import { videoItem } from "../api/libraryItems";
 import { clearListSnapshot } from "../api/listSnapshot";
+import { nextProgressSequence, recordSavedProgress } from "../api/progressEvents";
 import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
@@ -68,7 +69,38 @@ function LocationProbe() {
 function listRequests(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): URL[] {
   return fetchMock.mock.calls
     .map((call) => new URL(String(call[0]), "http://localhost"))
-    .filter((url) => url.pathname === "/api/videos");
+    .filter((url) => url.pathname === "/api/library");
+}
+
+/**
+ * asLibraryResponse は、動画だけの一覧（VideoPage の形）で書いたテストの応答を
+ * GET /api/library の形（items が LibraryItem）に包む。グループを含む応答は
+ * 最初から LibraryItem で書くので、`kind` を持つ項目はそのまま通す。
+ */
+async function asLibraryResponse(response: Response): Promise<Response> {
+  if (!response.ok) return response;
+  const body = (await response.clone().json()) as { items?: unknown[] };
+  if (!Array.isArray(body.items)) return response;
+  return json(
+    {
+      ...body,
+      items: body.items.map((item) =>
+        typeof item === "object" && item !== null && "kind" in item
+          ? item
+          : { kind: "video", video: item },
+      ),
+    },
+    response.status,
+  );
+}
+
+/** libraryFetch は fetchMock の GET /api/library の応答を asLibraryResponse で包む。 */
+function libraryFetch(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): typeof fetch {
+  return (input, init) => {
+    const result = fetchMock(input, init);
+    const path = new URL(String(input), "http://localhost").pathname;
+    return path === "/api/library" ? result.then(asLibraryResponse) : result;
+  };
 }
 
 function renderLibrary(initial = "/", audience: Audience = "owner") {
@@ -111,7 +143,7 @@ describe("LibraryPage", () => {
   beforeEach(() => {
     __resetTagsForTest();
     clearListSnapshot();
-    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("fetch", libraryFetch(fetchMock));
     vi.stubGlobal(
       "IntersectionObserver",
       class {
@@ -233,7 +265,7 @@ describe("LibraryPage", () => {
     const base = fetchMock.getMockImplementation();
     fetchMock.mockImplementation((input, init) => {
       const url = new URL(String(input), "http://localhost");
-      if (url.pathname === "/api/videos" && url.searchParams.get("query") === "broken") {
+      if (url.pathname === "/api/library" && url.searchParams.get("query") === "broken") {
         return Promise.resolve(json({ code: "internal", message: "壊れています" }, 500));
       }
       return base!(input, init);
@@ -757,7 +789,7 @@ describe("LibraryPage", () => {
           return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
         }
         if (url.pathname === "/api/tags") return Promise.resolve(tagsResponse(tags));
-        if (url.pathname === "/api/videos") {
+        if (url.pathname === "/api/library") {
           const requestedTag = url.searchParams.getAll("tag").map(Number);
           return Promise.resolve(json(makeItems(requestedTag) satisfies VideoPage));
         }
@@ -917,11 +949,11 @@ describe("LibraryPage", () => {
         );
         expect(tagRequests.length).toBeGreaterThanOrEqual(2);
       });
-      // 一覧（/api/videos）も、tag を外した条件で取り直す。
+      // 一覧（/api/library）も、tag を外した条件で取り直す。
       await waitFor(() => {
         const videoRequests = fetchMock.mock.calls.filter((call) => {
           const url = new URL(String(call[0]), "http://localhost");
-          return url.pathname === "/api/videos" && !url.searchParams.has("tag");
+          return url.pathname === "/api/library" && !url.searchParams.has("tag");
         });
         expect(videoRequests.length).toBeGreaterThanOrEqual(1);
       });
@@ -939,11 +971,11 @@ describe("LibraryPage", () => {
       // 依らず控えの鍵を "addedDesc" に固定する。
       renderLibrary("/?tag=1&sort=addedDesc");
 
-      // 控えを使うので、最初の /api/videos は要求しない。
+      // 控えを使うので、最初の /api/library は要求しない。
       expect(
         fetchMock.mock.calls.filter(
           (call) =>
-            new URL(String(call[0]), "http://localhost").pathname === "/api/videos",
+            new URL(String(call[0]), "http://localhost").pathname === "/api/library",
         ),
       ).toHaveLength(0);
 
@@ -955,7 +987,7 @@ describe("LibraryPage", () => {
       ).toBeDefined();
 
       // タグの一覧を取り直し（画面が開くとき + 突き合わせで最低2回）、条件が
-      // 変わったので一覧（/api/videos）も取り直す。
+      // 変わったので一覧（/api/library）も取り直す。
       await waitFor(() => {
         const tagRequests = fetchMock.mock.calls.filter((call) =>
           new URL(String(call[0]), "http://localhost").pathname.startsWith("/api/tags"),
@@ -965,7 +997,7 @@ describe("LibraryPage", () => {
       await waitFor(() => {
         const videoRequests = fetchMock.mock.calls.filter(
           (call) =>
-            new URL(String(call[0]), "http://localhost").pathname === "/api/videos",
+            new URL(String(call[0]), "http://localhost").pathname === "/api/library",
         );
         expect(videoRequests.length).toBeGreaterThanOrEqual(1);
       });
@@ -994,11 +1026,11 @@ describe("LibraryPage", () => {
       // 控え（控えの動画）ではなく、要求した一覧（動画 1）が出る。
       expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
       expect(screen.queryByRole("link", { name: "控えの動画" })).toBeNull();
-      // 控えを使わないので、通常どおり /api/videos を要求する。
+      // 控えを使わないので、通常どおり /api/library を要求する。
       expect(
         fetchMock.mock.calls.some(
           (call) =>
-            new URL(String(call[0]), "http://localhost").pathname === "/api/videos",
+            new URL(String(call[0]), "http://localhost").pathname === "/api/library",
         ),
       ).toBe(true);
     });
@@ -1029,7 +1061,7 @@ describe("LibraryPage", () => {
       allIds?: number[];
       idsMissingTagIds?: number[];
       idsFail?: boolean;
-      /** true にすると /api/videos/ids の応答を、呼び出し元が明示的に流すまで止める。 */
+      /** true にすると /api/library/ids の応答を、呼び出し元が明示的に流すまで止める。 */
       idsDelay?: boolean;
     }) {
       const tags = options.tags ?? [];
@@ -1052,7 +1084,7 @@ describe("LibraryPage", () => {
             json({ items: tags.map((tag) => ({ ...tag, synonyms: [], videoCount: 1 })) }),
           );
         }
-        if (url.pathname === "/api/videos/ids") {
+        if (url.pathname === "/api/library/ids") {
           const respond = () => {
             if (options.idsFail) return Promise.resolve(json({ code: "internal" }, 500));
             if (options.idsMissingTagIds !== undefined) {
@@ -1101,7 +1133,7 @@ describe("LibraryPage", () => {
           }));
           return Promise.resolve(json({ total: body.videoIds.length, items }));
         }
-        if (url.pathname === "/api/videos") {
+        if (url.pathname === "/api/library") {
           return Promise.resolve(
             json({
               items: [
@@ -1306,10 +1338,10 @@ describe("LibraryPage", () => {
           return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
         }
         if (url.pathname === "/api/tags") return Promise.resolve(json({ items: [] }));
-        if (url.pathname === "/api/videos/ids") {
+        if (url.pathname === "/api/library/ids") {
           return Promise.resolve(json({ ids: [1, 2, 3, 4, 5] }));
         }
-        if (url.pathname === "/api/videos") {
+        if (url.pathname === "/api/library") {
           listCalls += 1;
           return Promise.resolve(
             json(
@@ -1389,7 +1421,7 @@ describe("LibraryPage", () => {
             }),
           );
         }
-        if (url.pathname === "/api/videos") {
+        if (url.pathname === "/api/library") {
           const requestedTags = url.searchParams.getAll("tag").map(Number);
           const matching = [1, 2, 3].filter((id) =>
             requestedTags.every((t) => attached.get(id)?.has(t)),
@@ -1461,7 +1493,7 @@ describe("LibraryPage", () => {
       const paths = fetchMock.mock.calls.map(
         ([input]) => new URL(String(input), "http://localhost").pathname,
       );
-      expect(paths.every((path) => path === "/api/videos")).toBe(true);
+      expect(paths.every((path) => path === "/api/library")).toBe(true);
       expect(FakeEventSource.instances).toHaveLength(0);
     });
 
@@ -1517,6 +1549,328 @@ describe("LibraryPage", () => {
       expect(screen.queryByRole("button", { name: "取り込む" })).toBeNull();
       const login = screen.getByRole("link", { name: "ログイン" });
       expect(login.getAttribute("href")).toBe("/login?next=%2F");
+    });
+  });
+  describe("グループのカード（specs/017-folder-groups/ui-design.md「Group card」）", () => {
+    const memberIds = Array.from({ length: 12 }, (_, i) => 101 + i);
+
+    function seriesGroup(extra: Partial<LibraryGroup> = {}): LibraryGroup {
+      return {
+        folder: { rootId: 3, path: "series" },
+        name: "series",
+        videoCount: 12,
+        watchedCount: 3,
+        watchState: "inProgress",
+        durationMs: 12 * 60_000,
+        sizeBytes: 12 * 1024 * 1024,
+        addedAt: "2026-09-02T00:00:00Z",
+        cover: video(101, { title: "ep01" }),
+        openVideoId: 104,
+        videoIds: memberIds,
+        tags: [],
+        ...extra,
+      };
+    }
+
+    /** PlayerStub は再生画面の代わりに、開いた id と、元の一覧へ戻る操作を置く。 */
+    function PlayerStub() {
+      const location = useLocation();
+      const navigate = useNavigate();
+      const from = (location.state as { from?: string } | null)?.from ?? "";
+      return (
+        <>
+          <p>{`再生画面 ${location.pathname}`}</p>
+          <button type="button" onClick={() => void navigate(from)}>
+            {`一覧へ戻る ${from}`}
+          </button>
+        </>
+      );
+    }
+
+    function renderWithPlayer(initial = "/", audience: Audience = "owner") {
+      return render(
+        <MemoryRouter initialEntries={[initial]}>
+          <TooltipProvider>
+            <ToastProvider>
+              <AudienceProvider audience={audience}>
+                <ScanProvider>
+                  <Routes>
+                    <Route path="/" element={<LibraryPage />} />
+                    <Route path="/videos/:id" element={<PlayerStub />} />
+                  </Routes>
+                </ScanProvider>
+              </AudienceProvider>
+            </ToastProvider>
+          </TooltipProvider>
+        </MemoryRouter>,
+      );
+    }
+
+    interface Server {
+      group: LibraryGroup;
+      tagRequests: { videoIds: number[] }[];
+    }
+
+    function installGroupList(group: LibraryGroup = seriesGroup()): Server {
+      const server: Server = { group, tagRequests: [] };
+      const tag = { id: 1, name: "旅行" };
+      fetchMock.mockImplementation((input, init) => {
+        const url = new URL(String(input), "http://localhost");
+        const method = init?.method ?? "GET";
+        if (url.pathname === "/api/scans/current") return Promise.resolve(json({}, 404));
+        if (url.pathname === "/api/media-folders") return Promise.resolve(json([{}]));
+        if (url.pathname === "/api/processing") {
+          return Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }));
+        }
+        if (url.pathname === "/api/tags" && method === "GET") {
+          return Promise.resolve(
+            json({ items: [{ ...tag, synonyms: [], videoCount: 0 }] }),
+          );
+        }
+        if (url.pathname === "/api/library") {
+          return Promise.resolve(
+            json({
+              items: [
+                { kind: "video", video: video(1) },
+                { kind: "group", group: server.group },
+                { kind: "video", video: video(2) },
+              ],
+              total: 3,
+            }),
+          );
+        }
+        if (url.pathname === "/api/library/ids") {
+          return Promise.resolve(json({ ids: [1, ...memberIds, 2] }));
+        }
+        if (url.pathname === "/api/folders/3/group") {
+          return Promise.resolve(json(server.group));
+        }
+        if (url.pathname === "/api/video-tags" && method === "POST") {
+          const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
+          server.tagRequests.push({ videoIds: body.videoIds });
+          return Promise.resolve(json({ tag, applied: body.videoIds.length }));
+        }
+        if (url.pathname === "/api/video-tags/summary" && method === "POST") {
+          const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
+          return Promise.resolve(json({ total: body.videoIds.length, items: [] }));
+        }
+        throw new Error(`unexpected request: ${url.toString()}`);
+      });
+      return server;
+    }
+
+    const ownerLabel = "series、12本のグループ、3本を視聴済み";
+
+    it("グループはふつうの動画と同じ格子に1枚のカードで混ざり、件数はカードの枚数（受け入れ条件1・2）", async () => {
+      installGroupList();
+      renderLibrary();
+      const link = await screen.findByRole("link", { name: ownerLabel });
+
+      // 動画・グループ・動画が同じ並びに、区画や見出しなしで3枚並ぶ。
+      const cards = document.querySelectorAll("article");
+      expect(cards).toHaveLength(3);
+      expect(cards[1]?.contains(link)).toBe(true);
+      expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+      // メンバーは1本ずつのカードにならない。
+      expect(screen.queryByRole("link", { name: "ep01" })).toBeNull();
+      expect(screen.getByRole("status").textContent).toBe(resultCountText(3));
+
+      const card = cards[1] as HTMLElement;
+      expect(within(card).getByText("3 / 12 本")).toBeDefined();
+      expect(within(card).getByText("12:00")).toBeDefined();
+      const progress = within(card).getByRole("progressbar", {
+        name: "視聴済みの本数の割合",
+      });
+      expect(progress.getAttribute("aria-valuenow")).toBe("25");
+      expect(within(card).getByRole("heading", { level: 3 }).textContent).toBe("series");
+    });
+
+    it("支援技術向けの名前にグループであることと本数が入る。見始めていなければ視聴済みを足さない", async () => {
+      installGroupList(
+        seriesGroup({ watchedCount: 0, watchState: "unwatched", openVideoId: 101 }),
+      );
+      renderLibrary();
+      const link = await screen.findByRole("link", { name: "series、12本のグループ" });
+      const card = link.closest("article") as HTMLElement;
+      expect(within(card).getByText("12 本")).toBeDefined();
+      expect(within(card).queryByRole("progressbar")).toBeNull();
+      expect(
+        screen.getByRole("checkbox", { name: "「series」のグループを選択" }),
+      ).toBeDefined();
+    });
+
+    it("押すと開くメンバーの再生画面へ移り、戻る先は今の一覧（受け入れ条件14）", async () => {
+      installGroupList();
+      const user = userEvent.setup();
+      renderWithPlayer("/?q=ser");
+      await user.click(await screen.findByRole("link", { name: ownerLabel }));
+      expect(await screen.findByText("再生画面 /videos/104")).toBeDefined();
+      expect(screen.getByRole("button", { name: "一覧へ戻る /?q=ser" })).toBeDefined();
+    });
+
+    it("再生から戻ると、カードの視聴状態と本数がメンバーの変化で変わる（受け入れ条件12）", async () => {
+      const server = installGroupList();
+      const user = userEvent.setup();
+      renderWithPlayer();
+      await user.click(await screen.findByRole("link", { name: ownerLabel }));
+      await screen.findByText("再生画面 /videos/104");
+
+      // 再生画面で 104 を見終えた。サーバーのグループも 4 本視聴済みになる。
+      server.group = seriesGroup({ watchedCount: 4, openVideoId: 105 });
+      act(() => {
+        recordSavedProgress(
+          104,
+          { positionMs: 60_000, completed: true, updatedAt: "" },
+          nextProgressSequence(),
+        );
+      });
+      await user.click(screen.getByRole("button", { name: /^一覧へ戻る/ }));
+
+      const link = await screen.findByRole("link", {
+        name: "series、12本のグループ、4本を視聴済み",
+      });
+      const card = link.closest("article") as HTMLElement;
+      expect(within(card).getByText("4 / 12 本")).toBeDefined();
+      expect(link.getAttribute("href")).toBe("/videos/105");
+      // 一覧は控えから戻し、グループだけを取り直す。
+      const libraryRequests = listRequests(fetchMock);
+      expect(libraryRequests).toHaveLength(1);
+    });
+
+    it("グループを選ぶと全メンバーが選択に入り、タグを付けると全メンバーに付く（受け入れ条件13）", async () => {
+      const server = installGroupList();
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: ownerLabel });
+
+      await user.click(
+        screen.getByRole("checkbox", { name: "「series」のグループを選択" }),
+      );
+      // 選択バーの本数はメンバーを数える。
+      expect(screen.getByText("12 件を選択中")).toBeDefined();
+      const card = screen.getByRole("link", { name: ownerLabel }).closest("article");
+      expect(card?.className).toContain("ring-accent");
+      // 選んだ本数（12）が項目の数（3）を超えても、「すべて選択」は押せる。
+      expect(
+        (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+
+      await user.click(screen.getByRole("button", { name: "タグを付ける" }));
+      const input = await screen.findByRole("combobox", { name: "タグを付ける" });
+      await user.type(input, "旅行");
+      await screen.findByRole("option", { name: /旅行/ });
+      await user.keyboard("{Enter}");
+
+      expect(await screen.findByText("12 件に「旅行」を付けました")).toBeDefined();
+      expect(server.tagRequests).toHaveLength(1);
+      expect([...(server.tagRequests[0]?.videoIds ?? [])].sort((a, b) => a - b)).toEqual(
+        memberIds,
+      );
+
+      // 外すと全メンバーが選択から外れる。
+      await user.click(
+        screen.getByRole("checkbox", { name: "「series」のグループを選択" }),
+      );
+      await waitFor(() => expect(screen.queryByText(/件を選択中/)).toBeNull());
+    });
+
+    it("選択中にグループのカードを押すと、開かずに選択を切り替える", async () => {
+      installGroupList();
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: ownerLabel });
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+
+      await user.click(screen.getByRole("link", { name: ownerLabel }));
+      expect(screen.getByText("13 件を選択中")).toBeDefined();
+      expect(screen.queryByText(/再生画面/)).toBeNull();
+    });
+
+    it("すべて選択は全メンバーを選び、選択がその応答と同じ集合の間だけ押せない", async () => {
+      installGroupList();
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: ownerLabel });
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+
+      await user.click(screen.getByRole("button", { name: "すべて選択" }));
+      expect(await screen.findByText("14 件を選択中")).toBeDefined();
+      expect(
+        (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+      expect(
+        (
+          screen.getByRole("checkbox", {
+            name: "「series」のグループを選択",
+          }) as HTMLButtonElement
+        ).getAttribute("aria-checked"),
+      ).toBe("true");
+
+      // 1本外すと、また押せる。
+      await user.click(screen.getByRole("checkbox", { name: "「動画 2」を選択" }));
+      expect(screen.getByText("13 件を選択中")).toBeDefined();
+      expect(
+        (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+
+    it("選択が一度消えたら、同じ id を手で選び直しても「すべて選択」を押せる", async () => {
+      installGroupList();
+      const user = userEvent.setup();
+      renderLibrary();
+      await screen.findByRole("link", { name: ownerLabel });
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("button", { name: "すべて選択" }));
+      expect(await screen.findByText("14 件を選択中")).toBeDefined();
+
+      // Esc で選択を解除する（条件の変更と同じく、選択が消える）。
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByText(/件を選択中/)).toBeNull());
+
+      await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
+      await user.click(screen.getByRole("checkbox", { name: "「動画 2」を選択" }));
+      await user.click(
+        screen.getByRole("checkbox", { name: "「series」のグループを選択" }),
+      );
+      expect(screen.getByText("14 件を選択中")).toBeDefined();
+      expect(
+        (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(false);
+    });
+
+    it("リスト表示では同じ列にグループの値を出す", async () => {
+      localStorage.setItem(
+        "vv.view.v2",
+        JSON.stringify({ zoom: 1, view: "list", sort: "addedDesc" }),
+      );
+      installGroupList();
+      renderLibrary();
+      const link = await screen.findByRole("link", { name: ownerLabel });
+      const row = link.closest("tr") as HTMLElement;
+      expect(link.getAttribute("href")).toBe("/videos/104");
+      expect(within(row).getByText("12 本")).toBeDefined();
+      expect(within(row).getByText("3 / 12")).toBeDefined();
+      expect(within(row).getByText("12:00")).toBeDefined();
+      expect(within(row).getAllByRole("cell")).toHaveLength(8);
+    });
+
+    it("ゲストのグループのカードには視聴状態と見終えた本数を出さない", async () => {
+      // ゲストの応答では watchedCount・watchState を省く（data-model.md §7）。
+      const guest = seriesGroup();
+      delete guest.watchedCount;
+      delete guest.watchState;
+      installGroupList(guest);
+      renderLibrary("/", "guest");
+      const link = await screen.findByRole("link", { name: "series、12本のグループ" });
+      const card = link.closest("article") as HTMLElement;
+      expect(within(card).getByText("12 本")).toBeDefined();
+      expect(within(card).queryByText(/\/ 12 本/)).toBeNull();
+      expect(within(card).queryByRole("progressbar")).toBeNull();
+      expect(screen.queryByRole("checkbox")).toBeNull();
     });
   });
 });

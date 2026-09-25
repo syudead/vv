@@ -32,13 +32,11 @@ server-side directory picker APIs, the read-only folder browsing API
 (`/api/folders*`), the tag management API (`/api/tags*`: list, create,
 rename, delete, merge and synonym registration/removal), the video-tags API
 (`/api/video-tags` to attach/detach a tag on a set of videos and
-`/api/video-tags/summary` to summarize which tags apply to a selection) and
-`GET /api/videos/ids` (all matching video ids for a listing query, used for
-"select all"; distinguished from `GET /api/videos/{id}` by `ServeMux`'s
-literal-over-wildcard precedence), byte-range streaming,
+`/api/video-tags/summary` to summarize which tags apply to a selection),
+the library items API (`/api/library*`, below), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
-Both video lists, the library (`GET /api/videos`) and a folder
+The per-video lists, `GET /api/videos` (the folder view's root search) and a folder
 (`GET /api/folders/{rootId}/videos`, direct children by default or the whole
 subtree with `scope=subtree`), accept the same search expression (`query`),
 watch-state and playable filters, thirteen sort orders and a shuffle `seed`.
@@ -213,9 +211,10 @@ compile:
   related videos and the folder group a video belongs to (`VideoGroup`), a video's
   locations, and the startup refresh of search keys. The
   video list can AND-filter on a set of tag ids and reports which of them do not
-  exist (`VideoQuery.TagIDs`/`VideoPage.MissingTagIDs`), and `VideoIDs` returns the
-  matching id set unpaged for "select all"
-  (`specs/014-video-tags/data-model.md` §6). The search-box term matcher also OR-matches
+  exist (`VideoQuery.TagIDs`/`VideoPage.MissingTagIDs`), and `LibraryIDs` returns the
+  matching item ids unpaged for the library's "select all"
+  (`specs/014-video-tags/data-model.md` §6,
+  `specs/017-folder-groups/contracts/library-api.md` §2). The search-box term matcher also OR-matches
   a video's tag names (original name and synonyms) alongside title and path
   (`specs/014-video-tags/data-model.md` §7). Every read that returns videos, locations
   or folders (`ListVideos`, `ListFolderVideos`, `DirectVideoPaths`, `GetVideo`,

@@ -47,7 +47,7 @@ func newListAPIFixture(t *testing.T) listAPIFixture {
 	}
 	handler := httpapi.NewRouter(httpapi.Options{
 		Videos: db.Library(), Playback: db.Playback(), MediaFolders: db.Settings(),
-		Folders: db.Library(), Tags: db.Tags(), Assets: fstest.MapFS{}, Auth: ownerAuth{},
+		Folders: db.Library(), Library: db.Library(), Tags: db.Tags(), Assets: fstest.MapFS{}, Auth: ownerAuth{},
 	})
 	return listAPIFixture{ctx: ctx, db: db, root: root, handler: handler}
 }
@@ -113,7 +113,7 @@ func (f listAPIFixture) attach(t *testing.T, videoID, tagID int64) {
 	}
 }
 
-// getIDs は GET /api/videos/ids を呼ぶ。
+// getIDs は GET /api/library/ids を呼ぶ。
 func (f listAPIFixture) getIDs(t *testing.T, target string) gen.VideoIdsResponse {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -136,7 +136,7 @@ func tagNames(refs []gen.VideoTag) []string {
 	return out
 }
 
-// タグでの絞り込み（AND）・名前の自然順・missingTagIds・GET /api/videos/ids・
+// タグでの絞り込み（AND）・名前の自然順・missingTagIds・GET /api/library/ids・
 // タグ名での検索を、本物の保存層と経路をつないで確かめる
 // （specs/014-video-tags/contracts/tags-api.md §4・§5）。
 func TestListVideosFiltersByTagWithStore(t *testing.T) {
@@ -179,8 +179,8 @@ func TestListVideosFiltersByTagWithStore(t *testing.T) {
 		t.Fatalf("query=旅行: items = %+v, want 旅行記（タグ一致）", page.Items)
 	}
 
-	// GET /api/videos/ids は同じ条件の全件の id を返す。
-	ids := f.getIDs(t, "/api/videos/ids?tag="+strconv.FormatInt(epTen, 10)+"&tag="+strconv.FormatInt(epTwo, 10))
+	// GET /api/library/ids は同じ条件の全件の id を返す。
+	ids := f.getIDs(t, "/api/library/ids?tag="+strconv.FormatInt(epTen, 10)+"&tag="+strconv.FormatInt(epTwo, 10))
 	if want := []int64{tenID}; !slices.Equal(ids.Ids, want) {
 		t.Errorf("ids = %v, want %v", ids.Ids, want)
 	}
