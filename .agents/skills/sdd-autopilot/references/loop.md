@@ -32,7 +32,7 @@ and the finish line (§6) rewrites it once more.
 
 | # | Condition | Action |
 | --- | --- | --- |
-| 1 | An open feature PR exists | Drive the lowest-numbered one to merge (§4) |
+| 1 | An open feature PR not already returned `FOREIGN` in this session | Drive the lowest-numbered one to merge (§4) |
 | 2 | No feature branch | Stage `plan` (§3) |
 | 3 | Feature branch, Plan not merged, no open feature PR | Stop: an orphaned feature branch ([plan.md](../../issue-handoff/references/plan.md)) is the maintainer's to remove |
 | 4 | Plan merged, no integration PR | Open it (§5), then continue |
@@ -71,7 +71,9 @@ branch. `plan-to-issues` produces no PR and has no self-review.
 
 A PR is **mergeable here** when all of these hold on its current head SHA:
 
-- every check run has completed and none failed
+- every check run has completed with `success`, `skipped` or `neutral`.
+  `cancelled`, `timed_out`, `action_required`, `stale` and `failure` are not
+  passing, whatever caused them
 - the review bot has reviewed this head (a review whose `commit_id` is the head
   SHA from a bot account that reviews this repository — today
   `devin-ai-integration[bot]`), or 20 minutes have passed since the head was
@@ -86,25 +88,38 @@ Loop:
 2. Start a fresh review fixer with the feature-PR brief. It handles every
    failing check, every unresolved review thread, and a conflict with the
    base, and either pushes (`FIXED`, new head) or changes nothing (`CLEAN`).
-   A fixer never returns `CLEAN` while a check on the head is failing.
+   A fixer never returns `CLEAN` while a check on the head is not passing.
+   It first checks that the PR belongs to this feature: its `Refs` names the
+   parent or one of the parent's native children. Otherwise it changes nothing
+   and returns `FOREIGN`. It also returns the PR's `KIND`, which §5 uses.
 3. `FIXED`: back to step 1 on the new head. `CLEAN`: merge with a merge
-   commit, then §5. `BLOCKED`: stop.
+   commit, then §5. `BLOCKED`: stop. `FOREIGN`: leave the PR alone, never
+   merge it, and name it in the final report; go to §1.
 
 After a restart you do not know whether a fixer already ran on the head; run
 one. It finds nothing new and returns `CLEAN`.
 
-**Round limit.** Stop when the review bot has reviewed the PR six times, or
-when a fixer returns `BLOCKED` because a finding repeats one it can see was
-already fixed and resolved on the same PR. Both are read from the PR, not
-remembered. Either means the fixes are not converging, and another round spends
-context without changing that.
+**Round limit.** Stop when the review bot has reviewed a feature PR six times,
+when five integration-fix PRs have merged since the last integration refresh
+(§6), or when a fixer returns `BLOCKED` because a finding repeats one it can
+see was already fixed and resolved on the same PR. All three are read from
+GitHub, not remembered: the integration count is the number of PRs merged into
+the feature branch that `Refs #<parent>` after the feature branch's latest
+merge of `main`, which a PR search returns as a total without bodies.
+The integration PR itself has no per-review limit, because every feature PR
+merge moves its head and gets it reviewed again. Hitting a limit means the
+fixes are not converging, and another round spends context without changing
+that.
 
-Never merge with a failing or pending check, and never skip, disable, or
+Never merge with a check that has not passed, and never skip, disable, or
 re-run a test to get past one.
 
 ## 5. Bookkeeping after a merge
 
-Do these right after the merge that makes them true. Read the parent body only
+Do these right after the merge that makes them true. Which row applies comes
+from the `KIND` and `REFS` lines of the fixer that returned `CLEAN` for the
+merged head (or the stage worker that opened the PR), so a restart loses
+nothing. Read the parent body only
 to rewrite its `## SDD` section, and do not repeat what it says.
 
 | Merged | Do |
@@ -112,7 +127,7 @@ to rewrite its `## SDD` section, and do not repeat what it says.
 | Plan PR | Mark `Plan` done with the plan path, set `Next` to `design` for a `ui` parent or `plan-to-issues` otherwise, and open the integration PR (feature branch → `main`, `Closes #<parent>`, the parent's title, the repository PR template) |
 | Design PR | Mark `Design` done, set `Next: plan-to-issues` |
 | `plan-to-issues` finished | The worker removes `Next` itself; nothing to do |
-| Implementation PR | Close the child named by the worker's or fixer's `REFS` line as `completed` |
+| Implementation PR | Close the child named by `REFS` as `completed` |
 | Integration-fix PR | Nothing; §6 continues |
 
 If a restart lost track of which child a merged PR belonged to, the child is

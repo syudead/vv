@@ -21,12 +21,13 @@ Every worker ends its reply with this block and nothing after it. Keep each
 line to one line.
 
 ```text
-STATUS: READY | DONE | CLEAN | FINDINGS | FIXED | BLOCKED
+STATUS: READY | DONE | CLEAN | FINDINGS | FIXED | FOREIGN | BLOCKED
 BRANCH: <branch or ->
 BASE: <base branch or ->
 HEAD: <commit SHA or ->
 PR: <#number or ->
 REFS: <#Issue the PR references, or ->
+KIND: <plan | design | implement | integration-fix | integrate | ->
 FEATURE_DIR: <specs/NNN-name or ->
 CHECKS: <commands run and their result>
 DEFERRED: <out-of-scope item for the PR body or the maintainer, or none>
@@ -113,8 +114,11 @@ there is no defect, FINDINGS otherwise.
 ```text
 Autopilot review fixer. Repository: <owner/repo>. PR: #<pr> into <base>.
 Head: <sha>. Parent Issue: #<parent>.
+First: if the PR's Refs names neither #<parent> nor one of #<parent>'s native
+sub-issues, change nothing and return FOREIGN.
 Handle this one round:
-- every failed check on the head: read its log, find the root cause, fix it
+- every check on the head that did not pass (failure, cancelled, timed_out,
+  action_required, stale) on the head: read its log, find the root cause, fix it
 - every unresolved review thread: verify the finding against the code and the
   sources of truth; fix it when it is a real defect, otherwise reply why not
 - a conflict with <base>: merge origin/<base> into the head branch
@@ -122,10 +126,14 @@ Check out the PR's head branch, run the checks the change needs, commit in
 the repository's commit-message style, push to the same branch, then reply
 once on each thread you handled and resolve it.
 Return FIXED with the new head, or CLEAN if nothing needed changing. Never
-return CLEAN while a check on the head is failing. Return BLOCKED when a fix
+return CLEAN while a check on the head has not passed; when you find no cause
+to fix (a cancelled run, for example), return BLOCKED. Return BLOCKED when a fix
 needs an approved artifact or a requester decision changed, or when an
 unresolved finding repeats one this PR already fixed and resolved.
-Put the Issue the PR references in REFS.
+Put the Issue the PR references in REFS, and in KIND what the PR is: `plan`
+(it adds or revises <feature-dir>/plan.md), `design` (ui-design.md),
+`implement` (it Refs a child), or `integration-fix` (it Refs the parent and
+fixes a review of the integration PR).
 ```
 
 ## Review fixer: integration PR

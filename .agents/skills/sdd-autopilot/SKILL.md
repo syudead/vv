@@ -101,5 +101,11 @@ report to the maintainer when:
 - a required GitHub capability is missing, or the state matches no row of the
   decision table
 
+Revising an approved artifact is outside this skill. The loop reads what is
+on the feature branch and does not notice that, for example, `ui-design.md`
+predates a revised Plan. The maintainer reruns the affected stages with
+`issue-handoff` first, as the one-stage contract already requires, and starts
+this skill again afterwards.
+
 Leave everything already merged in place. A later run of this skill on the same
 parent picks up from GitHub where this one stopped.

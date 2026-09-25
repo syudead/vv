@@ -115,8 +115,8 @@ stages through reviewed PRs.
   maintainer's merge and bookkeeping steps below for feature-branch PRs only.
   The integration PR is still merged by a human.
 
-Humans merge every PR (under `sdd-autopilot`, every PR except the integration
-PR). After a stage PR merge, the maintainer updates the parent SDD summary. After an implementation PR merge, the maintainer closes
+Humans merge every PR. Under `sdd-autopilot`, the orchestrator merges the
+feature-branch PRs and humans merge only the integration PR. After a stage PR merge, the maintainer updates the parent SDD summary. After an implementation PR merge, the maintainer closes
 that child Issue as completed. Only after all children are resolved, merge the
 latest `main` directly into the feature branch and run the full checks before
 merging the integration PR. Updating the integration PR branch from its base
