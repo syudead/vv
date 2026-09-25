@@ -21,10 +21,14 @@ to get past it.
 Push only after the checks the change needs pass. Push where the brief says:
 the PR's own head branch for a feature PR, and a new sub-branch with its own PR
 for the integration PR. Then reply once on each thread you handled. On a
-feature PR, resolve it. On the integration PR, resolve a thread you answered as
-not a defect, and leave a thread whose fix went into a fix PR unresolved until
-that PR is merged into the feature branch; a later round resolves it. Do not
-merge the PR, rebase, force-push, close Issues, or change approved artifacts.
+feature PR, resolve it. On the integration PR, fix only blocking findings, as
+the brief and the "Review of the integration PR" section of
+`.agents/skills/issue-handoff/references/integrate.md` define them; answer and
+resolve the rest, listing the real defects among them in the PR body. Resolve
+a thread you answered as not a defect, and leave a thread whose fix went into a
+fix PR unresolved until that PR is merged into the feature branch; a later
+round resolves it. Do not merge the PR, rebase, force-push, close Issues, or
+change approved artifacts.
 When a fix needs an approved artifact or a requester decision changed, change
 nothing and return BLOCKED with the exact question.
 

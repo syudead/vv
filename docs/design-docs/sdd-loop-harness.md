@@ -86,9 +86,9 @@ Planが判断の根拠や契約を持つ場合は`research.md`・`data-model.md`
 
 渡されたIssueから、GitHub標準の関係だけを辿ってfeatureを特定する。
 
-- integration PR: 親を`Closes`する`main`向けのopen PR。そのheadがfeature branch、
+- feature branch: 親を`Refs`し`main`以外を向くmerge済みPR（Plan PR以降のstage PR）のbase。
   そこにある`specs/<dir>/plan.md`がfeature directoryである。
-- integration PRがまだ無いとき: 親を`Refs`し`main`以外を向くmerge済みPRのbaseがfeature branch。
+- integration PR: `integrate`が開いた後は、親を`Closes`する`main`向けのopen PR。そのheadは同じfeature branch。
 
 候補が複数ある場合は推測せずユーザーへ確認する。branch名やdirectory番号には頼らない。
 
@@ -106,11 +106,10 @@ Planが判断の根拠や契約を持つ場合は`research.md`・`data-model.md`
 1. 親を`Refs`するopenなstage PRがある: review指摘が未対応ならそのPR headで直す。
    なければmerge待ちと報告して終了する。
 2. feature branchが無い: `plan`。
-3. integration PRが無い: 作成し、同じrunで次の規則へ進む。
-4. `ui`ラベルがあり`ui-design.md`が無い: `design`。
-5. native sub-issueが無い: `plan-to-issues`。
-6. 未完了の子がある: open PRが無く前提作業が完了済みの最初の子を`implement`。
-7. すべての子が完了: `integrate`。
+3. `ui`ラベルがあり`ui-design.md`が無い: `design`。
+4. native sub-issueが無い: `plan-to-issues`。
+5. 未完了の子がある: open PRが無く前提作業が完了済みの最初の子を`implement`。
+6. すべての子が完了: `integrate`（integration PRが無ければここで開く）。
 
 子の「完了」は、completedでcloseされているか、それを`Refs`するPRがfeature branchへ
 merge済みであることを指す。子Issueのcloseは保守者の操作のまま残すが、工程選択はcloseを
@@ -128,9 +127,21 @@ sub-issuesを確認し、同じ作業が既にあれば作成しない。既存c
 
 ## Integration
 
-Plan merge後の最初のrunがfeature branchから`main`へのintegration PRを作り、featureの生存中は
-同じPRを使う。全child完了後のrunは`integrate`として、最新`main`を長寿命feature branchへ直接
-mergeしてintegration PRを更新する。
+全child完了後のrunが`integrate`として、最新`main`を長寿命feature branchへ直接mergeし、
+feature branchから`main`へのintegration PRを開く（既にあれば更新する）。
+
+以前はPlan merge後の最初のrunでintegration PRを開いていた。するとfeature branchへのmergeの
+たびに作りかけの全体差分がreview botにreviewされ、未着手の子Issueの範囲を欠陥として報告し
+続けた（#135では統合PRへの指摘約40件のうち約30件が「未着手の範囲」「PR本文の進捗」
+「設計どおり」への返答だけで終わった）。個々の変更は子のPRでreviewされるので、統合PRは
+全体が揃ってから開く。
+
+integration PRのreviewでは、必須checkの失敗、code scanningの警告、人の指摘、botが
+bugまたは高重大度のsecurityとした指摘（Devin Reviewの🔴・🟥）だけを直す。それ以外の
+botの指摘は検証して返答・resolveし、本当の欠陥はPR本文の残るリスクに載せて保守者の判断に
+委ねる。全体差分はpushのたびに再reviewされ、botは毎回数件の新しい指摘を出すので、全部を
+直す条件は収束しない。同じ理由で、`main`の再取り込みは`main`との衝突か`main`起因の
+check失敗があるときだけ行う。
 既存PRのbranch更新に別のPRは作らない。feature全体の`task check`と必要なUI reviewを再実行してから、
 人がintegration PRをmergeする。rebaseやforce-pushで長寿命feature branchを書き換えない。
 
@@ -178,6 +189,8 @@ branch、全体検証、review指摘の修正、push、PRは親agentが所有す
   上のAutomation boundaryが除くのは、repositoryに置いて人の起動なしにagentを動かす仕組みであり、
   それは引き続き使わない。
 - integration PRはmergeしない。merge可能になった時点で保守者へ報告して止まる。
+- integration PRの修正PRは、integration PRを開いてから3本まで、`main`の再取り込みは2回までとし、
+  再取り込みで数え直さない。上限に達したら、その時点の状態を報告して止まる。
 - 要求者の判断が要る質問、承認済み成果物の変更が要る指摘、収束しないreview、工程選択で
   一意に決まらない状態では止まる。再度起動すれば、GitHub上の事実から続きを進める。
 

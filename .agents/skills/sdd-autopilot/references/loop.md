@@ -16,9 +16,9 @@ Apply it to the parent Issue on every iteration, with two constraints that keep
 the orchestrator's reads small:
 
 - Collect only the facts the rules need, each as a field-limited read: the
-  integration PR (the parent's `closed_by_pull_requests`) or the base of a PR
-  that `Refs #<parent>`; `specs/*/plan.md` and `ui-design.md` on
-  `origin/<feature>` (`git fetch`, then `git diff --name-only` and
+  base of a merged PR that `Refs #<parent>`, and the integration PR (the
+  parent's `closed_by_pull_requests`) once `integrate` has opened it;
+  `specs/*/plan.md` and `ui-design.md` on `origin/<feature>` (`git fetch`, then `git diff --name-only` and
   `git cat-file -e`); the parent's labels; its native sub-issues (number,
   state, `state_reason`); and the open PRs into the feature branch (number,
   head ref, head SHA).
@@ -31,10 +31,9 @@ the orchestrator's reads small:
 
 | Rule in the selection | Autopilot does instead |
 | --- | --- |
-| 1, and 6 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge (§4), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN` in this session |
-| 2 `plan`, 4 `design`, 5 `plan-to-issues`, 6 `implement` | Run that stage through workers (§3). For `implement`, take the first child in sub-issue order that is not closed and not already returned `BLOCKED` for a prerequisite in this session; if every such child is blocked, stop |
-| 3: open the integration PR | Open it yourself (feature branch → `main`, `Closes #<parent>`, the parent's title, the repository PR template), then continue |
-| 7 `integrate` | Integration refresh and finish line (§6) |
+| 1, and 5 when every remaining child has an open PR: an open PR waits on human merge | Drive the open PRs into the feature branch to merge (§4), stage PRs first and then in sub-issue order, skipping one already returned `FOREIGN` in this session |
+| 2 `plan`, 3 `design`, 4 `plan-to-issues`, 5 `implement` | Run that stage through workers (§3). For `implement`, take the first child in sub-issue order that is not closed and not already returned `BLOCKED` for a prerequisite in this session; if every such child is blocked, stop |
+| 6 `integrate` | Integration refresh, which opens the integration PR, and the finish line (§6) |
 | "stop and ask" (ambiguous feature, not a specification) | Stop and report |
 
 Phase 1 of a stage pushes nothing (§3), so a restart before its PR exists
@@ -102,18 +101,18 @@ After a restart you do not know whether a fixer already ran on the head; run
 one. It finds nothing new and returns `CLEAN`.
 
 **Round limit.** Stop when the review bot has reviewed a feature PR six times,
-when five integration-fix PRs have merged since the last integration refresh
-(§6), or when a fixer returns `BLOCKED` because a finding repeats one it can
-see was already fixed and resolved on the same PR. All three are read from
-GitHub, not remembered: the integration count is the number of PRs merged into
-the feature branch that `Refs #<parent>` after the last child was closed or
-had its PR merged, which a PR search with a `merged:>` date returns as a total
-without bodies. Plan and Design PRs merge before any child exists, so they are
-never counted.
-The integration PR itself has no per-review limit, because every feature PR
-merge moves its head and gets it reviewed again. Hitting a limit means the
-fixes are not converging, and another round spends context without changing
-that.
+when three integration-fix PRs have merged since the integration PR was
+opened, when the integration PR's head has been refreshed from `main` twice
+(§6 step 2), or when a fixer returns `BLOCKED` because a finding repeats one
+it can see was already fixed and resolved on the same PR. All of them are read
+from GitHub, not remembered: the integration-fix count is the number of PRs
+merged into the feature branch that `Refs #<parent>` after the integration
+PR's `created_at`, which a PR search with a `merged:>` date returns as a total
+without bodies; the refresh count is the number of merge commits from `main`
+on the feature branch after that time. Neither count is reset by a refresh.
+Hitting a limit means the fixes are not converging, and another round spends
+context without changing that. Report the integration PR as it stands and
+stop; the maintainer decides what is left.
 
 Never merge with a check that has not passed, and never skip, disable, or
 re-run a test to get past one.
@@ -137,15 +136,21 @@ as `DONE` if it is picked again, and you close it then.
    conflict). It runs
    [integrate.md](../../issue-handoff/references/integrate.md): merges the
    latest `origin/main` into the feature branch directly, runs the checks,
-   pushes, and updates the integration PR body — also listing the
-   out-of-scope items the feature PRs deferred.
-2. Before each round on the integration PR: if it conflicts with `main`, or
-   `git rev-list --count origin/<feature>..origin/main` is not `0`, go back to
-   step 1. Conflicts with `main` are never a review fixer's job here.
-3. Drive the integration PR like §4, with one difference: the review fixer uses
-   the integration brief, and its fixes go to a new sub-branch and a PR to the
-   feature branch, never directly onto the feature branch. It returns that PR
-   as `FIXED`; drive that PR with §4 until merged, then return to step 2.
+   pushes, opens the integration PR on the first refresh, and writes its
+   body — also listing the out-of-scope items the feature PRs deferred.
+2. Before each round on the integration PR: if it conflicts with `main`, or a
+   required check on its head fails because of a change on `main`, go back to
+   step 1. `main` having moved on without either is not a reason: every
+   refresh moves the head and gets the whole feature reviewed again. Conflicts
+   with `main` are never a review fixer's job here.
+3. Drive the integration PR like §4, with two differences. The review fixer
+   uses the integration brief, and only blocking findings
+   ([integrate.md](../../issue-handoff/references/integrate.md#review-of-the-integration-pr))
+   are fixed: it answers and resolves the rest, and lists the real defects
+   among them in the integration PR body. Its fixes go to a new sub-branch and
+   a PR to the feature branch, never directly onto the feature branch. It
+   returns that PR as `FIXED`; drive that PR with §4 until merged, then return
+   to step 2.
 4. The **finish line**: the integration PR meets every §4 gate on its head, and
    step 2 finds nothing to do. Do not merge it. Report the integration PR
    link to the maintainer, and stop.
