@@ -1,6 +1,6 @@
 ---
 name: issue-handoff
-description: Run one explicitly requested stage of this repository's Issue-driven SDD feature workflow using a supplied GitHub Issue, PR, or branch as context.
+description: Run the next stage of this repository's Issue-driven SDD feature workflow. Use when the user hands over a parent Issue or native sub-issue URL, with or without naming a stage; the skill selects the stage from GitHub and feature-branch state.
 ---
 
 # Issue handoff
@@ -19,13 +19,15 @@ to the `self-reviewer` role. In Codex these agents are named
 `subissue-implementer` and `self-reviewer`. The parent agent still owns
 checkout, branching, full validation, fixes, push, and the pull request.
 
-Then read the stage reference for the workflow requested by the user. The
-parent Issue's `Next` value is a hint, not an execution gate:
+Then select the stage as described in
+[Selecting the stage](references/README.md#selecting-the-stage) — or take the
+one the user named — and read its reference:
 
 - `plan`: [references/plan.md](references/plan.md)
 - `design`: [references/design.md](references/design.md)
 - `plan-to-issues`: [references/plan-to-issues.md](references/plan-to-issues.md)
 - child Issue implementation: [references/implement.md](references/implement.md)
+- integration after every child is done: [references/integrate.md](references/integrate.md)
 
 Writing or revising the requirement itself is not a stage here. The parent
 Issue is the specification, and the

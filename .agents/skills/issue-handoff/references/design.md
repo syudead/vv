@@ -61,5 +61,5 @@ A technical constraint is never a reason to narrow the design (Q-7).
    design system rules, which this artifact narrows more often than it
    contradicts.
 7. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
-8. After human merge, the maintainer marks Design complete and sets
-   `Next: plan-to-issues`.
+8. After human merge, the next stage is `plan-to-issues`. The parent Issue body
+   is not edited.
