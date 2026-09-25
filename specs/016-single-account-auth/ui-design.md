@@ -23,7 +23,8 @@
   描かない（Plan の Structural Decisions 2）。答えで次の3つに分かれる。
   - `setupRequired`: どの URL でも初回設定画面（`/setup`）。URL は `/setup` に置き換える。
   - `guest`: 同じシェルと画面構成のまま、ゲスト向けに縮退させて描く。所有者だけの画面
-    （`/settings`・`/tags`）は `/login?next=<今の URL>` へ置き換える。
+    （`/settings`・`/tags`）は `/login?next=<今の URL>` へ置き換える。`/setup` は `/` へ
+    置き換える（設定済みのサーバーでは初回設定画面を二度と出さない、要件 2）。
   - `owner`: 今のとおり。`/login` と `/setup` を開いたときは、`GET /api/auth/session?next=…` の
     `redirectTo`（`/setup` は `/`）へ置き換える。
 - **初回設定画面（`/setup`）とログイン画面（`/login`）**: 新設。シェル（上部バー・サイドバー）
@@ -39,9 +40,9 @@
 
 ## Gate
 
-- 答えが出るまでは `bg-bg` のまま何も描かない（骨組みも出さない）。0.5 秒を超えても答えが
-  無いときだけ、中央に `Skeleton` ではなく `text-fg-muted` の「読み込み中…」（`role="status"`）
-  を出す。すぐ答えが返る通常の場合に、画面が一瞬ちらつくのを避けるためである。
+- 答えが出るまでは `bg-bg` のまま何も描かない。骨組みも「読み込み中」の文字も出さない
+  （Plan の Structural Decisions 2「答えが出るまで何も描かない」）。答えは主キーの
+  引き当て1回で返るので、待たせる表示を要するほど長くならない。
 - 確認が失敗したときは、中央（`EmptyState` と同じ `max-w-lg`・中央寄せ）に lucide `AlertCircle`
   （`text-danger`）、見出し「サーバーに接続できません」（`text-lg font-semibold`）、理由
   （`text-sm text-fg-muted`）、`Button` の secondary「再試行」を出す。一覧も再生画面も描かない。
@@ -78,10 +79,10 @@
 | 見出し（`h1`） | 初回設定「アカウントを作成」、ログイン「ログイン」。`text-xl font-semibold text-fg` |
 | 補足 | 初回設定だけ「このサーバーを使うアカウントを1つ作ります。あとから変えるにはサーバーのコマンドを使います」。`text-sm leading-6 text-fg-muted` |
 | 入力のラベル | `text-xs font-medium text-fg-muted`、入力の上（`mb-1`）。`label` の `htmlFor` で結ぶ |
-| 入力 | 既存の文字入力と同じ（`h-9 rounded-sm border border-border bg-field px-3 text-sm text-fg focus:border-accent focus:outline-none`）。`w-full` |
+| 入力 | 既存の文字入力（`h-8 … px-2`）と同じ枠と面で、この画面だけ主操作に合わせて一段大きい（`h-9 rounded-sm border border-border bg-field px-3 text-sm text-fg focus:border-accent focus:outline-none`）。`w-full` |
 | 失敗の行 | `text-sm text-danger`、先頭に lucide `AlertCircle`（`size-4`）、`role="alert"` |
 | 主操作 | `Button` の primary・`lg`・`w-full`。初回設定「設定してはじめる」、ログイン「ログイン」 |
-| 接続の警告 | `text-sm leading-6 text-warning`、先頭に lucide `ShieldAlert`（`size-4`、`mt-1`）、左に `border-l-2 border-warning-strong pl-3`（設定画面の削除の確認と同じ形） |
+| 接続の警告 | `text-sm leading-6 text-warning`、先頭に lucide `ShieldAlert`（`size-4`、`mt-1`）、左に `border-l-2 border-warning-strong pl-3`（設定画面の「フォルダの変更を確認」の窓と同じ形） |
 
 警告と失敗は、色に加えてアイコンと文で区別する（UI品質「タイポグラフィ」）。
 
@@ -148,8 +149,10 @@
   通信の盗聴を防ぎません」。閉じる操作は置かない。
 - HTTPS では、この行そのものを出さない。「安全な接続です」のような肯定の文も出さない
   （UI品質「HTTP 接続を安全だと誤認させる表現は認めない」）。
-- `form` の `aria-describedby` で警告の要素を指し、キーボードで入力に着いた時点で読まれる
-  ようにする。DOM で主操作より下にあっても、支援技術には先に伝わる。
+- ユーザー名の入力と主操作の `aria-describedby` で警告の要素を指し、キーボードで最初の
+  入力に着いた時点と、送信の直前に読まれるようにする。`form` 自身に付けない（`form` の
+  説明は、その中の入力にフォーカスが移っても読まれない）。DOM で主操作より下にあっても、
+  支援技術には先に伝わる。
 
 ## Shell entries
 
@@ -163,7 +166,10 @@
   | ゲスト | 「ログイン」（lucide `LogIn`） |
 
 - 「ログアウト」は `NavLink` ではなく `button` で、押すと `POST /api/auth/logout` を送り、
-  `204` で `/` へページごと移る（ゲストの一覧が出る、要件 8）。確認の窓は出さない。
+  `204` で**今の URL** へページごと移る（Plan の「初回設定画面とログイン画面を表示し…」の
+  「ログアウトの後は…今の URL へページごと遷移する」）。読み直した画面はゲストの縮退した
+  画面になり（要件 8）、所有者だけの画面にいたときはゲートが `/login?next=…` へ送る。
+  確認の窓は出さない。
   戻すにはログインし直せばよく、失う入力も無い。送信中はその項目を `disabled` にし、
   文言を「ログアウト中…」にする。失敗したときはトースト「ログアウトできませんでした」を
   出し、項目を戻す。
@@ -177,11 +183,16 @@
 ### Top bar
 
 - ゲストでは右端の更新（`ScanButton`）と取り込みの進捗（`ScanProgressIndicator`・
-  `ScanNoticeProvider` の通知）を出さない。`ScanProvider` はゲストでは `GET /api/scans/current` も
-  `/api/events` も呼ばない（どちらも「所有者だけ」で、401 の往復を作らない）。
-- 中央の道具（`#topbar-library-tools`）の位置と幅は変えない。右端が空いた分は `ml-auto` の
-  入れ物が無くなるだけで、中央の道具が右へ寄ることはない（`justify-center` のまま）。
-  上部バーは所有者とゲストで同じ高さ・同じ左端である（UI品質「余白のリズム」）。
+  `ScanNoticeProvider` の通知）を出さない。`ScanProvider` はゲストでは `GET /api/scans/current` を
+  呼ばず、`/api/events` はゲストではどこからも開かない。`subscribeServerEvents` を使う
+  `ScanProvider`・`useVideos`・`useVideoDetail` の3つとも、ゲストでは購読しない
+  （`streamEvents` は「所有者だけ」で、`EventSource` は 401 でも自動で再接続するため。
+  運ぶ知らせ（取り込み・再生位置・タグ）はどれも所有者のものである）。
+- 中央の道具（`#topbar-library-tools`）の左端と高さは変えない。右端の入れ物が無くなった分、
+  道具の入れ物（`flex-1`）は右へ広がり、中の道具はその中で中央に寄る。所有者の画面と
+  比べて道具が更新のボタンの半分の幅だけ右へ動くが、左端の ☰ とロゴは動かない。
+  空の場所埋めは置かない（UI品質「余白のリズム」の「不自然な空白」は、詰まる方向なので
+  起きない）。
 
 ## Guest degradation
 
@@ -191,7 +202,7 @@
 | 場所 | 出さないもの | 代わりに |
 | --- | --- | --- |
 | ツールバー（ライブラリ・フォルダ） | 絞り込みの「視聴状態」の `fieldset` | 絞り込みのポップオーバーは「再生できるものだけ」と「条件を解除」だけになる。ボタンの数は再生可否だけを数える |
-| ツールバー | 並べ替えの「最終再生」 | 6種になる。URL に `sort=playedDesc`・`playedAsc`・`watch`・`tag` が残っていたときは、既定に丸めてから要求し、URL も直す（[guest-api.md §3](contracts/guest-api.md#3-ゲストが使えない条件)） |
+| ツールバー | 並べ替えの「最近再生した順」 | 6種になる。URL に `sort=playedDesc`・`sort=playedAsc`、`watch`、`tag` が残っていたときは、既定に丸めてから要求し、URL も直す（[guest-api.md §3](contracts/guest-api.md#3-ゲストが使えない条件)） |
 | ライブラリのカード | 選択のチェック（hover でも、`hover:none` でも）、タグの行、再生済みの印、再生進捗の帯 | タグの行は `tags` が空なので今の規則で出ない。カードの高さは題名の行までで、行の空白は残さない（今の「タグの無い動画」と同じ） |
 | ライブラリの本文 | 絞り込み中のタグの行、選択バー | — |
 | ライブラリのリスト表示の行 | 選択のチェック、再生済みと進捗 | — |
@@ -205,6 +216,13 @@
 
 - ゲストの再生画面で公開でなくなった動画（`404`）は、今の「動画が消えた」の層
   （`MissingVideo`）をそのまま使う。「非公開になりました」とは言わない（要件 11）。
+- 所有者の再生中にセッションが失効したとき（Edge Case「再生中にセッションが失効」）は、
+  `video` 要素の読み込みの失敗には 401 も `X-VV-Audience` も付かないので、再生画面は
+  動画かライブ変換の読み込みが失敗した時点で `GET /api/auth/session` を確かめ、見る人が
+  変わっていれば、失敗の層を出さずにページを1度だけ読み直す（Plan の「見る人が変わった
+  ときに画面を読み直し…」）。読み直した画面はゲストとして描き、公開の動画なら先頭から
+  再生でき、公開でなければ `MissingVideo` になる。見る人が変わっていなければ、今の
+  再生失敗の層（`PlaybackFailure`）のままである。
 - ゲストの一覧で所有者だけの応答（401）は起きないが、起きたときのゲートの扱いは
   「Gate」のとおりである。
 
@@ -235,7 +253,8 @@
 ### Selection bar
 
 - 「タグを付ける」「タグを外す」の直後、縦線の前に「公開」（lucide `Globe` + 文言 +
-  `ChevronDown`、`Button` の ghost・`sm`）を置く。押すと `ui/Menu` を上に開き、項目は
+  `ChevronDown`、`Button` の ghost・`sm`）を置く。押すと `ui/Menu` を上に開き（今の `MenuContent` は
+  `align` しか受け取らないので、014 の `PopoverContent` と同じく `side` を渡せるようにする）、項目は
   「公開にする」（`Globe`）と「非公開にする」（`Lock`）の2つである。2つのボタンに
   しないのは、`sm` 以上の1行がタグの2つと合わせて4つの文言のボタンになり、「すべて選択」
   との区切りより先に目に入るまとまりが長くなりすぎるためである。
@@ -280,7 +299,8 @@
 
 - 入力はそれぞれ `label` と結び、`autocomplete` は上の表のとおり（UI品質）。
 - 失敗の行と設定済みの案内は `role="alert"` で、出た時点で読まれる。429 の文言も同じ。
-  接続の警告は `role` を付けず、`form` の `aria-describedby` で結ぶ（「Connection warning」）。
+  接続の警告は `role` を付けず、ユーザー名の入力と主操作の `aria-describedby` で結ぶ
+  （「Connection warning」）。
 - ページごと移る遷移の後は、移った先の画面の `h1`（一覧は `sr-only` の「ライブラリ」）が
   今の規則でフォーカスを受ける。ログインの成功を別に読み上げない。
 - `tokens.test.ts` の `pairs` に次を足す。初回設定画面とログイン画面の面が `bg-surface` で、
@@ -331,8 +351,8 @@
 - **余白のリズム**
   - 初回設定画面とログイン画面で、入力どうし、入力と主操作、主操作と警告の間隔が
     `gap-4`・`gap-5` の2段階で、ばらつかない。360px で面が画面端から `16px` 離れている。
-  - ゲストの上部バーは、右端の更新が無くても中央の道具が所有者と同じ位置にあり、
-    右に寄らない。
+  - ゲストの上部バーは、左端の ☰ とロゴが所有者と同じ位置にあり、右端に更新のボタンの
+    跡（空の入れ物や幅だけの空き）が残らない。中央の道具は右端まで使って中央に寄る。
   - 再生画面で、題名とタグ、タグと公開の切り替えの間は同じ狭さで、切り替えと区切り線の
     間は属性の段階と同じである。
 - **タイポグラフィ**
@@ -357,7 +377,8 @@
 1. 未設定のサーバーで `/videos/1` を開く → `/setup` になり、ユーザー名にフォーカスがある →
    打って Tab、Tab で確認を違えて Enter → 失敗の行が出て確認にフォーカスが戻る → 直して
    Enter → `/` の所有者の一覧が出る。
-2. 所有者で Tab をサイドバーの「ログアウト」まで進めて Enter → ゲストの一覧が出る →
+2. 所有者の一覧（`/`）で Tab をサイドバーの「ログアウト」まで進めて Enter → 同じ URL の
+   ゲストの一覧が出る →
    Tab で「ログイン」→ Enter → `/login` でユーザー名にフォーカスがある → 誤ったパスワードで
    Enter → 失敗の行が読まれ、パスワードだけ空でフォーカスがある → 正しく打って Enter →
    一覧が出る。
@@ -372,8 +393,8 @@
 指で操作し、ソフトキーボードが出ても主操作まで届くことを確かめる。
 
 支援技術の確認では、アクセシビリティツリー（Playwright の `locator.ariaSnapshot()` か
-Chromium の DevTools）で、入力の名前と `autocomplete`、失敗の行の `role="alert"`、`form` の
-`aria-describedby` が警告を指すこと、`role="switch"` の `aria-checked`、ゲストのツリーに
+Chromium の DevTools）で、入力の名前と `autocomplete`、失敗の行の `role="alert"`、ユーザー名の入力と
+主操作の `aria-describedby` が警告を指すこと、`role="switch"` の `aria-checked`、ゲストのツリーに
 「視聴状態」「タグ」「設定」「選択」の名前が無いことを確かめる。ブラウザのパスワード保存は、
 Chromium でログインの成功後に保存の提案が出て、次に `/login` を開いたときユーザー名と
 パスワードが一組で自動入力されることを確かめる。実際の読み上げソフトでの確認は
