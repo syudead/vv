@@ -103,9 +103,36 @@ function normalize(key: ListKey): string {
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }
 
-/** saveListSnapshot は一覧を離れる瞬間の状態を控える。前の控えは捨てる。 */
+/**
+ * holds は、表示中の一覧に古いかもしれない項目があり、その取り直しがまだ
+ * 終わっていない数である（holdListSnapshot）。0 でない間は控えを取らない。
+ */
+let holds = 0;
+
+/**
+ * holdListSnapshot は、表示中の一覧の項目が古いかもしれないあいだ控えを取らせない。
+ * 今の控えも捨てる。戻り値を呼ぶと解く（何度呼んでも1回だけ解く）。
+ *
+ * 公開の切り替えが一部の動画にしか反映されなかったとき、取り直しの途中で動画を
+ * 開くと、取り直す前の一覧が控えられて戻ったときに復元されてしまう（Devin の指摘、PR 338）。
+ */
+export function holdListSnapshot(): () => void {
+  holds += 1;
+  held = undefined;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    holds -= 1;
+  };
+}
+
+/**
+ * saveListSnapshot は一覧を離れる瞬間の状態を控える。前の控えは捨てる。
+ * holdListSnapshot で止めている間は控えを取らない（戻ったときは1ページ目から読む）。
+ */
 export function saveListSnapshot(key: ListKey, value: Omit<ListSnapshot, "key">): void {
-  held = { key: normalize(key), ...value };
+  held = holds > 0 ? undefined : { key: normalize(key), ...value };
 }
 
 /**
@@ -130,6 +157,27 @@ export function applyProgressToListSnapshot(videoId: number, progress: Progress)
     ...held,
     items: held.items.map((video) =>
       video.id === videoId ? { ...video, progress } : video,
+    ),
+  };
+}
+
+/**
+ * applyVisibilityToListSnapshot は控えの中の動画たちの公開フラグを差し替える。
+ * 公開・非公開の切り替えの直後に、控えを取り直さず結果を反映するために使う
+ * （タグの付け外しの applyTagToListSnapshot と同じ扱い）。
+ */
+export function applyVisibilityToListSnapshot(
+  videoIds: readonly number[],
+  isPublic: boolean,
+): void {
+  if (held === undefined) return;
+  const targets = new Set(videoIds);
+  if (!held.items.some((video) => targets.has(video.id) && video.public !== isPublic))
+    return;
+  held = {
+    ...held,
+    items: held.items.map((video) =>
+      targets.has(video.id) ? { ...video, public: isPublic } : video,
     ),
   };
 }

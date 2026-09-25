@@ -89,7 +89,7 @@ func TestReadsExistingLayout(t *testing.T) {
 		t.Fatalf("サムネイル = %q", data)
 	}
 	_ = file.Close()
-	file, err = store.PreviewFile(key)
+	file, digest, err := store.PreviewFile(key)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +97,9 @@ func TestReadsExistingLayout(t *testing.T) {
 		t.Fatalf("プレビュー = %q", data)
 	}
 	_ = file.Close()
+	if sum := sha256.Sum256(payload); digest != hex.EncodeToString(sum[:]) {
+		t.Fatalf("プレビューのダイジェスト = %q", digest)
+	}
 	for position, want := range map[int64]string{0: "frame0", 4999: "frame0", 5000: "frame1", 9999: "frame1", -1: "frame0"} {
 		data, err := store.SeekThumbnail(key, position)
 		if err != nil || string(data) != want {
@@ -188,7 +191,7 @@ func TestRejectsKeysOutsideTheStore(t *testing.T) {
 		if _, err := store.ThumbnailFile(bad); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("%q: サムネイルの誤り = %v", bad, err)
 		}
-		if _, err := store.PreviewFile(bad); !errors.Is(err, fs.ErrNotExist) {
+		if _, _, err := store.PreviewFile(bad); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("%q: プレビューの誤り = %v", bad, err)
 		}
 		if _, err := store.SeekThumbnail(bad, 0); !errors.Is(err, fs.ErrNotExist) {
@@ -271,7 +274,7 @@ func TestPreviewCompleteness(t *testing.T) {
 			if got := store.PreviewAvailable(key); got != tt.complete {
 				t.Fatalf("PreviewAvailable = %v, want %v", got, tt.complete)
 			}
-			file, err := store.PreviewFile(key)
+			file, _, err := store.PreviewFile(key)
 			if tt.complete {
 				if err != nil {
 					t.Fatal(err)
@@ -406,7 +409,7 @@ func TestRemoveTemporaryKeepsPublishedArtifacts(t *testing.T) {
 			return err
 		}
 		visible = append(visible, store.PreviewAvailable(key))
-		if _, err := store.PreviewFile(key); err == nil {
+		if _, _, err := store.PreviewFile(key); err == nil {
 			visible = append(visible, true)
 		}
 		return errors.New("stop here")

@@ -181,10 +181,15 @@ function FolderArt({ previews }: { previews: Preview[] }) {
   );
 }
 
-/** folderLabel はフォルダカードの読み上げ名である（親 Issue のアクセシビリティ）。 */
+/**
+ * folderLabel はフォルダカードの読み上げ名である（親 Issue のアクセシビリティ）。
+ * 絶対パスが無い（ゲストの）応答では、パスを添えない。
+ */
 export function folderLabel(folder: FolderSummary, withPath: boolean): string {
   const label = `${folder.name}、動画 ${String(folder.videoCount)} 本、フォルダ ${String(folder.folderCount)} 件`;
-  return withPath ? `${label}、${folder.rootPath}` : label;
+  return withPath && folder.rootPath !== undefined
+    ? `${label}、${folder.rootPath}`
+    : label;
 }
 
 /**
@@ -217,7 +222,7 @@ function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boo
             <span className="text-fg-subtle"> · </span>
             フォルダ {folder.folderCount.toLocaleString("ja-JP")} 件
           </p>
-          {showPath && (
+          {showPath && folder.rootPath !== undefined && (
             // 同名の登録フォルダを見分けるのはパスの末尾なので、先頭の側を省略する。
             <p
               title={folder.rootPath}

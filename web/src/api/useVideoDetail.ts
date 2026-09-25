@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useAudience } from "../auth/audience";
 import {
   errorMessage,
   getRelatedVideos,
@@ -10,6 +11,12 @@ import {
   type Video,
 } from "./client";
 import { subscribeServerEvents } from "./serverEvents";
+import {
+  subscribeVideoVisibility,
+  subscribeVideoVisibilityStale,
+  visibilityMark,
+  withVisibilitySince,
+} from "./visibility";
 
 export type VideoDetailState =
   | { kind: "loading"; id: number }
@@ -54,6 +61,8 @@ export function useVideoDetail(id: number): {
 } {
   const [state, setState] = useState<VideoDetailState>({ kind: "loading", id });
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない。
+  const owner = useAudience() === "owner";
 
   useEffect(() => {
     setState({ kind: "loading", id });
@@ -76,8 +85,11 @@ export function useVideoDetail(id: number): {
       controller?.abort();
       const mine = new AbortController();
       controller = mine;
+      // 取得の間に公開を切り替えたら、切り替える前の `public` を読んだ応答で
+      // 表示を巻き戻さない（切り替えはサーバーから知らせが来ない。PR 328）。
+      const mark = visibilityMark();
       try {
-        const video = await getVideo(id, mine.signal);
+        const video = withVisibilitySince(await getVideo(id, mine.signal), mark);
         if (!alive || controller !== mine) return;
         current = video;
         setState({ kind: "ready", id, video });
@@ -107,21 +119,41 @@ export function useVideoDetail(id: number): {
         void load();
       });
 
-    // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
-    const unsubscribe = subscribeServerEvents({
-      video: (changed) => {
-        if (changed === id) void load();
-      },
-      open: () => void load(),
+    // 公開・非公開の切り替えの結果は、取り直さずに手元の1件へ重ねる
+    // （issue 305。再生画面の切り替えは応答を受けてからこれで状態が変わる）。
+    const unsubscribeVisibility = subscribeVideoVisibility((videoIds, isPublic) => {
+      if (current === undefined || !videoIds.includes(id)) return;
+      if (current.public === isPublic) return;
+      current = { ...current, public: isPublic };
+      setState({ kind: "ready", id, video: current });
     });
+    // 一部にしか反映されなかった切り替えは、どれが切り替わったか分からないので、
+    // この1件を取り直してサーバーの状態を表示する（Devin の指摘、PR 292）。
+    // 再生画面は一覧の控えを取らないので、取り直しの決着は知らせない。
+    const unsubscribeStale = subscribeVideoVisibilityStale((videoIds) => {
+      if (videoIds.includes(id)) void load();
+      return undefined;
+    });
+
+    // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
+    const unsubscribe = owner
+      ? subscribeServerEvents({
+          video: (changed) => {
+            if (changed === id) void load();
+          },
+          open: () => void load(),
+        })
+      : () => undefined;
     void load();
     return () => {
       alive = false;
       controller?.abort();
       unsubscribe();
+      unsubscribeVisibility();
+      unsubscribeStale();
       settle();
     };
-  }, [id]);
+  }, [id, owner]);
 
   const refresh = useCallback(() => refreshRef.current(), []);
   return { state, refresh };

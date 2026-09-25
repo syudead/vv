@@ -87,10 +87,10 @@ export function folderLocationLabel(
 
 /** RootDisplay は最上位の置き場所を作るのに要る登録フォルダの情報である。 */
 export interface RootDisplay {
-  /** rootDisplayName(rootPath) と同じ規則の表示名。 */
+  /** rootFolderName と同じ規則の表示名。 */
   name: string;
-  /** 登録フォルダの絶対パス。 */
-  rootPath: string;
+  /** 登録フォルダの絶対パス。ゲストの応答には無い（guest-api.md §1）。 */
+  rootPath?: string;
 }
 
 /**
@@ -105,10 +105,12 @@ export function topLevelLocationLabel(
   root: RootDisplay | undefined,
 ): VideoLocationLabel | undefined {
   if (root === undefined) return undefined;
-  if (target.path === "") return { label: root.name, title: root.rootPath };
+  // 絶対パスが無い（ゲストの）ときは、表示名から始める。
+  const base = root.rootPath ?? root.name;
+  if (target.path === "") return { label: root.name, title: base };
   return {
     label: `${root.name}/${target.path}`,
-    title: `${root.rootPath}/${target.path}`,
+    title: `${base}/${target.path}`,
   };
 }
 
@@ -130,6 +132,15 @@ export function rootDisplayName(rootPath: string): string {
   const last = segments.at(-1);
   if (last === undefined || /^[A-Za-z]:$/.test(last)) return rootPath;
   return last;
+}
+
+/**
+ * rootFolderName は登録フォルダの集計（`path` が空の FolderSummary）から表示名を作る。
+ * 絶対パスがあれば rootDisplayName で作り、ゲストの応答のように無ければサーバーが
+ * 同じ規則で作った `name` を使う（specs/016-single-account-auth/contracts/guest-api.md §1）。
+ */
+export function rootFolderName(root: { name: string; rootPath?: string }): string {
+  return root.rootPath === undefined ? root.name : rootDisplayName(root.rootPath);
 }
 
 /** Crumb はパンくずの1段である。to が無い段は現在地。 */

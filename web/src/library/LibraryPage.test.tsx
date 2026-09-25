@@ -12,8 +12,10 @@ import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-rou
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video, VideoPage } from "../api/client";
+import { FakeEventSource, installFakeEventSource } from "../api/fakeEventSource";
 import { clearListSnapshot } from "../api/listSnapshot";
 import { __resetTagsForTest } from "../api/tags";
+import { type Audience, AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
@@ -24,6 +26,7 @@ function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
     title: `動画 ${String(id)}`,
+    public: false,
     sizeBytes: 1024 * 1024 * id,
     addedAt: "2026-09-01T00:00:00Z",
     playable: true,
@@ -67,25 +70,27 @@ function listRequests(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): URL[] 
     .filter((url) => url.pathname === "/api/videos");
 }
 
-function renderLibrary(initial = "/") {
+function renderLibrary(initial = "/", audience: Audience = "owner") {
   return render(
     <MemoryRouter initialEntries={[initial]}>
       <TooltipProvider>
         <ToastProvider>
-          <ScanProvider>
-            <Routes>
-              <Route
-                path="/"
-                element={
-                  <>
-                    <LibraryPage />
-                    <LocationProbe />
-                  </>
-                }
-              />
-              <Route path="/videos/:id" element={<p>再生画面</p>} />
-            </Routes>
-          </ScanProvider>
+          <AudienceProvider audience={audience}>
+            <ScanProvider>
+              <Routes>
+                <Route
+                  path="/"
+                  element={
+                    <>
+                      <LibraryPage />
+                      <LocationProbe />
+                    </>
+                  }
+                />
+                <Route path="/videos/:id" element={<p>再生画面</p>} />
+              </Routes>
+            </ScanProvider>
+          </AudienceProvider>
         </ToastProvider>
       </TooltipProvider>
     </MemoryRouter>,
@@ -511,6 +516,45 @@ describe("LibraryPage", () => {
       ),
     );
     expect(screen.getByRole("link", { name: "動画 1" })).toBeDefined();
+  });
+
+  it("一部にしか反映されなかった切り替えの取り直し中に動画を開いても、古い一覧を控えない（PR 338）", async () => {
+    const { saveListSnapshot, takeListSnapshot } = await import("../api/listSnapshot");
+    const { updateVideoVisibility } = await import("../api/visibility");
+    const base = fetchMock.getMockImplementation();
+    let finishRefetch: (() => void) | undefined;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/video-visibility") return Promise.resolve(json({ applied: 1 }));
+      if (url === "/api/videos/1") {
+        // 取り直しを止めておき、その間に動画を開く。
+        return new Promise<Response>((resolve) => {
+          finishRefetch = () => resolve(json(video(1, { public: true })));
+        });
+      }
+      if (url === "/api/videos/2") return Promise.resolve(json(video(2)));
+      return base?.(input, init) ?? Promise.reject(new Error("unexpected"));
+    });
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+
+    await act(async () => {
+      await updateVideoVisibility([1, 2], true);
+    });
+    await waitFor(() => expect(finishRefetch).toBeDefined());
+    fireEvent.click(screen.getByRole("link", { name: "動画 1" }));
+    await screen.findByText("再生画面");
+
+    // 取り直す前の public: false の一覧を控えると、戻ったときに復元されてしまう。
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+
+    // 一覧を離れれば取り直しは打ち切られ、控えを止める印も解ける。
+    finishRefetch?.();
+    saveListSnapshot(
+      { query: "" },
+      { items: [video(1)], total: 1, hasMore: false, scrollY: 0 },
+    );
+    expect(takeListSnapshot({ query: "" })).toBeDefined();
   });
 
   it("選択すると選択バーが出て Esc で消える", async () => {
@@ -1372,6 +1416,101 @@ describe("LibraryPage", () => {
       // 選択は解除され、絞り込み（tag=1）に合う動画が無くなった一覧に取り直す。
       await waitFor(() => expect(screen.queryByText(/件を選択中/)).toBeNull());
       expect(await screen.findByText("条件に一致する動画はありません")).toBeDefined();
+    });
+  });
+  describe("ゲスト（specs/016-single-account-auth/ui-design.md「Guest degradation」）", () => {
+    function guestPage(): VideoPage {
+      // ゲストの応答には progress が無く、tags は空である。
+      return {
+        items: [video(1, { public: true }), video(2, { public: true })],
+        total: 2,
+      };
+    }
+
+    beforeEach(() => {
+      installFakeEventSource();
+      fetchMock.mockImplementation(() => Promise.resolve(json(guestPage())));
+    });
+
+    it("選択・選択バー・視聴状態・最近再生した順を出さず、所有者だけの API を呼ばない", async () => {
+      const user = userEvent.setup();
+      renderLibrary("/", "guest");
+      expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
+      expect(screen.queryByRole("checkbox")).toBeNull();
+
+      await user.click(screen.getByRole("button", { name: "絞り込み" }));
+      const filter = await screen.findByRole("dialog");
+      expect(within(filter).queryByText("視聴状態")).toBeNull();
+      expect(within(filter).queryByRole("radio")).toBeNull();
+      expect(
+        within(filter).getByRole("checkbox", { name: "再生できるものだけ" }),
+      ).toBeDefined();
+      await user.keyboard("{Escape}");
+
+      await user.click(screen.getByRole("button", { name: /^並び順:/ }));
+      const menu = await screen.findByRole("menu");
+      expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(6);
+      expect(within(menu).queryByText("最近再生した順")).toBeNull();
+
+      const paths = fetchMock.mock.calls.map(
+        ([input]) => new URL(String(input), "http://localhost").pathname,
+      );
+      expect(paths.every((path) => path === "/api/videos")).toBe(true);
+      expect(FakeEventSource.instances).toHaveLength(0);
+    });
+
+    it("URL に残った watch・最近再生した順・tag は既定に丸めて要求し、URL も直す", async () => {
+      renderLibrary("/?q=ab&watch=unwatched&sort=playedDesc&tag=3", "guest");
+      await screen.findByRole("link", { name: "動画 1" });
+      const requests = listRequests(fetchMock);
+      expect(requests.length).toBeGreaterThan(0);
+      for (const url of requests) {
+        expect(url.searchParams.get("watch") ?? "all").toBe("all");
+        expect(url.searchParams.get("sort")).toBe("addedDesc");
+        expect(url.searchParams.getAll("tag")).toEqual([]);
+        expect(url.searchParams.get("query")).toBe("ab");
+      }
+      await waitFor(() =>
+        expect(screen.getByTestId("location").textContent).toBe("?q=ab&sort=addedDesc"),
+      );
+    });
+
+    it("端末に保存した並び順が最近再生した順でも既定で要求し、保存値は書き換えない", async () => {
+      localStorage.setItem(
+        "vv.view.v2",
+        JSON.stringify({ zoom: 1, view: "grid", sort: "playedDesc" }),
+      );
+      renderLibrary("/", "guest");
+      await screen.findByRole("link", { name: "動画 1" });
+      for (const url of listRequests(fetchMock)) {
+        expect(url.searchParams.get("sort")).toBe("addedDesc");
+      }
+      expect(JSON.parse(localStorage.getItem("vv.view.v2") ?? "{}")).toMatchObject({
+        sort: "playedDesc",
+      });
+    });
+
+    it("リスト表示の行に選択のチェックを出さない", async () => {
+      localStorage.setItem(
+        "vv.view.v2",
+        JSON.stringify({ zoom: 1, view: "list", sort: "addedDesc" }),
+      );
+      renderLibrary("/", "guest");
+      await screen.findByRole("link", { name: "動画 1" });
+      expect(screen.queryByRole("checkbox")).toBeNull();
+      expect(document.querySelectorAll("thead th")).toHaveLength(7);
+    });
+
+    it("公開の動画が無ければ、取り込みでなくログインへの入口を出す", async () => {
+      fetchMock.mockImplementation(() =>
+        Promise.resolve(json({ items: [], total: 0 } satisfies VideoPage)),
+      );
+      renderLibrary("/", "guest");
+      expect(await screen.findByText("公開されている動画はありません")).toBeDefined();
+      expect(screen.getByText("ログインすると、すべての動画を見られます")).toBeDefined();
+      expect(screen.queryByRole("button", { name: "取り込む" })).toBeNull();
+      const login = screen.getByRole("link", { name: "ログイン" });
+      expect(login.getAttribute("href")).toBe("/login?next=%2F");
     });
   });
 });

@@ -44,6 +44,11 @@ const scanStopGrace = 10 * time.Second
 const readHeaderTimeout = 10 * time.Second
 
 func main() {
+	// 引数つきはホスト側のコマンド（mdm account …）で、サーバーは起動しない
+	// （specs/016-single-account-auth/contracts/account-cli.md）。
+	if len(os.Args) > 1 {
+		os.Exit(runCommand(context.Background(), os.Args[1:], osAccountEnv()))
+	}
 	if err := run(); err != nil {
 		// 記録の設定前に失敗する場合もあるため、利用者向けの説明は標準エラーへ出す。
 		fmt.Fprintln(os.Stderr, err)
@@ -115,6 +120,10 @@ func run() error {
 		return fmt.Errorf("タグの照合用の鍵を作り直せません: %w", err)
 	}
 	logger.Info("タグの照合用の鍵を作り直しました", slog.Int("tag_names", tagsRefreshed))
+
+	// 認証の準備。期限切れのセッションを消し、未設定なら初回設定を促す。
+	authStore := db.Auth()
+	prepareAuth(context.Background(), authStore, time.Now(), logger)
 
 	// 走査とジョブは HTTP とは別の寿命で動く。停止指示でこの context を
 	// 取り消すと、処理中のジョブは queued に残り、次の起動で再開できる。
@@ -218,6 +227,7 @@ func run() error {
 		Scans:        scans,
 		MediaFolders: mediaFolders,
 		Tags:         db.Tags(),
+		Visibility:   db.Visibility(),
 		Folders:      libraryStore,
 		Transcoder:   media.NewLiveTranscoder(requestMediaCtx.Done()),
 		Artifacts:    artifactStore,
@@ -228,6 +238,9 @@ func run() error {
 		Events:       events,
 		Assets:       web.Dist(),
 		Logger:       logger,
+		Auth:         newHTTPAuth(authStore),
+		// 信頼するプロキシからの要求でだけ転送ヘッダーを読む。
+		TrustedProxies: cfg.TrustedProxies,
 	})
 
 	// 変化の知らせの接続は終わりが無いので、停止の猶予待ちより先に閉じる。

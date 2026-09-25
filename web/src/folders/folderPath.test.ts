@@ -6,6 +6,7 @@ import {
   folderUrl,
   parseFolderPathname,
   rootDisplayName,
+  rootFolderName,
   topLevelLocationLabel,
 } from "./folderPath";
 
@@ -125,5 +126,24 @@ describe("topLevelLocationLabel", () => {
 
   it("登録フォルダが分からないときは undefined を返し、行ごと出さない", () => {
     expect(topLevelLocationLabel({ rootId: 3, path: "A" }, undefined)).toBeUndefined();
+  });
+
+  it("絶対パスが無い（ゲストの）ときは、title も表示名から始める", () => {
+    const guestRoot = { name: "movies" };
+    expect(topLevelLocationLabel({ rootId: 3, path: "" }, guestRoot)).toEqual({
+      label: "movies",
+      title: "movies",
+    });
+    expect(topLevelLocationLabel({ rootId: 3, path: "A/B" }, guestRoot)).toEqual({
+      label: "movies/A/B",
+      title: "movies/A/B",
+    });
+  });
+});
+
+describe("rootFolderName", () => {
+  it("絶対パスがあればそこから、無ければ name から表示名を作る", () => {
+    expect(rootFolderName({ name: "ignored", rootPath: "/a/movies" })).toBe("movies");
+    expect(rootFolderName({ name: "movies" })).toBe("movies");
   });
 });

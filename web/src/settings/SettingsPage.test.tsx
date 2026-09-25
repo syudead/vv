@@ -7,6 +7,7 @@ import type { MediaFolder } from "../api/client";
 import AppShell from "../shell/AppShell";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import { ScanProvider } from "../shell/ScanProvider";
+import { OwnerAudience } from "../testing/audience";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
 import SettingsPage from "./SettingsPage";
@@ -33,13 +34,15 @@ function renderPage() {
     <MemoryRouter initialEntries={["/settings"]}>
       <TooltipProvider>
         <ToastProvider>
-          <ScanProvider>
-            <ScanNoticeProvider>
-              <AppShell>
-                <SettingsPage />
-              </AppShell>
-            </ScanNoticeProvider>
-          </ScanProvider>
+          <OwnerAudience>
+            <ScanProvider>
+              <ScanNoticeProvider>
+                <AppShell>
+                  <SettingsPage />
+                </AppShell>
+              </ScanNoticeProvider>
+            </ScanProvider>
+          </OwnerAudience>
         </ToastProvider>
       </TooltipProvider>
     </MemoryRouter>,

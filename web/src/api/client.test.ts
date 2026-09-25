@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { reloadPage } from "../auth/pageNavigation";
 import {
   createMediaFolder,
   deleteMediaFolder,
@@ -13,9 +14,90 @@ import {
   startScan,
   transcodeUrl,
   saveProgress,
+  setRenderedAudience,
   updateMediaFolder,
+  getVideo,
+  getCurrentScan,
 } from "./client";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
+
+vi.mock("../auth/pageNavigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auth/pageNavigation")>()),
+  reloadPage: vi.fn(),
+}));
+
+describe("見る人が変わったときの読み直し（plan.md Structural Decisions 14）", () => {
+  function videoResponse(audience: "owner" | "guest"): Response {
+    return new Response(JSON.stringify({ id: 1 }), {
+      headers: { "Content-Type": "application/json", "X-VV-Audience": audience },
+    });
+  }
+
+  afterEach(() => {
+    setRenderedAudience(null);
+    vi.mocked(reloadPage).mockClear();
+    vi.unstubAllGlobals();
+  });
+
+  it("所有者として描く間に X-VV-Audience: guest か 401 を何度受けても、読み直しは1回で応答を返さない", async () => {
+    setRenderedAudience("owner");
+    let calls = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() => {
+        calls += 1;
+        return Promise.resolve(
+          calls % 2 === 0
+            ? new Response(JSON.stringify({ code: "unauthorized", message: "x" }), {
+                status: 401,
+              })
+            : videoResponse("guest"),
+        );
+      }),
+    );
+    const settled = vi.fn();
+    for (let index = 0; index < 4; index += 1) {
+      getVideo(1).then(settled, settled);
+    }
+    getCurrentScan().then(settled, settled);
+    await vi.waitFor(() => expect(calls).toBe(5));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(reloadPage).toHaveBeenCalledOnce();
+    // ゲストとして処理した応答を所有者の画面へ渡さない。
+    expect(settled).not.toHaveBeenCalled();
+  });
+
+  it("所有者の応答では読み直さない", async () => {
+    setRenderedAudience("owner");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() => Promise.resolve(videoResponse("owner"))),
+    );
+    await expect(getVideo(1)).resolves.toMatchObject({ id: 1 });
+    expect(reloadPage).not.toHaveBeenCalled();
+  });
+
+  it("ゲストとして描いている間は、ゲストの応答でも 401 でも読み直さない", async () => {
+    setRenderedAudience("guest");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() => Promise.resolve(videoResponse("guest"))),
+    );
+    await expect(getVideo(1)).resolves.toMatchObject({ id: 1 });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ code: "unauthorized", message: "要ログイン" }), {
+            status: 401,
+          }),
+        ),
+      ),
+    );
+    await expect(getCurrentScan()).rejects.toMatchObject({ status: 401 });
+    expect(reloadPage).not.toHaveBeenCalled();
+  });
+});
 
 describe("playback URLs", () => {
   it("transcode startMsを省略または整数化する", () => {
@@ -181,6 +263,7 @@ describe("progress API client", () => {
   const unwatched = {
     id: 7,
     title: "x",
+    public: false,
     sizeBytes: 1,
     addedAt: "2026-09-01T00:00:00Z",
     playable: true,

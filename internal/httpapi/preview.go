@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -9,24 +10,23 @@ import (
 
 // GetVideoPreview serves only the persisted, content-keyed preview MP4.
 func (s *server) GetVideoPreview(
-	w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoPreviewParams,
+	w http.ResponseWriter, r *http.Request, id gen.VideoId, _ gen.GetVideoPreviewParams,
 ) {
-	video, ok := s.lookupVideo(w, r, id)
+	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる
+	// （contracts/guest-api.md §6）。
+	video, r, release, ok := s.lookupServedVideo(w, r, id)
 	if !ok {
 		return
 	}
+	defer release()
 
-	versioned := params.V != nil && *params.V == video.ContentKey && *params.V != ""
-	if !versioned {
-		w.Header().Set("Cache-Control", cacheNoStore)
-	}
 	if video.PreviewState != domain.PreviewStateDone || s.artifacts == nil {
 		s.notFound(w, "プレビューはまだ生成されていません")
 		return
 	}
 
 	// 無い・manifest と合わない・生成途中のものは、置き場が「無い」と答える。
-	file, err := s.artifacts.PreviewFile(video.ContentKey)
+	file, digest, err := s.artifacts.PreviewFile(video.ContentKey)
 	if err != nil {
 		s.notFound(w, "プレビューはまだ生成されていません")
 		return
@@ -39,11 +39,11 @@ func (s *server) GetVideoPreview(
 		return
 	}
 
-	if versioned {
-		w.Header().Set("Cache-Control", cacheImmutable)
-	} else {
-		w.Header().Set("Cache-Control", cacheNoStore)
-	}
+	// 版の有無によらず、使うたびに確かめさせる（contracts/guest-api.md §5）。
+	// If-None-Match が一致すれば http.ServeContent が 304 を返す。更新時刻は渡さない。
+	// 渡すと If-Modified-Since だけの要求に更新時刻で 304 を返し、同じ秒に作り直した
+	// プレビューが古いまま残る。確かめは内容のダイジェストの ETag だけで行う。
+	setRevalidate(w, digestETag("preview", digest))
 	w.Header().Set("Content-Type", "video/mp4")
-	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
+	http.ServeContent(w, r, info.Name(), time.Time{}, file)
 }

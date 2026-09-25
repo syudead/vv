@@ -14,15 +14,39 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AuthSessionState.
+const (
+	Guest         AuthSessionState = "guest"
+	Owner         AuthSessionState = "owner"
+	SetupRequired AuthSessionState = "setupRequired"
+)
+
+// Valid indicates whether the value is a known member of the AuthSessionState enum.
+func (e AuthSessionState) Valid() bool {
+	switch e {
+	case Guest:
+		return true
+	case Owner:
+		return true
+	case SetupRequired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
+	ErrorCodeAccountAlreadyConfigured    ErrorCode = "account_already_configured"
 	ErrorCodeConflict                    ErrorCode = "conflict"
 	ErrorCodeDirectoryUnavailable        ErrorCode = "directory_unavailable"
 	ErrorCodeFileMissing                 ErrorCode = "file_missing"
 	ErrorCodeForbidden                   ErrorCode = "forbidden"
 	ErrorCodeInternal                    ErrorCode = "internal"
+	ErrorCodeInvalidCredentials          ErrorCode = "invalid_credentials"
 	ErrorCodeInvalidMediaDirectory       ErrorCode = "invalid_media_directory"
 	ErrorCodeInvalidRequest              ErrorCode = "invalid_request"
+	ErrorCodeLoginThrottled              ErrorCode = "login_throttled"
 	ErrorCodeMediaFolderNotFound         ErrorCode = "media_folder_not_found"
 	ErrorCodeMediaFoldersNotConfigured   ErrorCode = "media_folders_not_configured"
 	ErrorCodeNotFound                    ErrorCode = "not_found"
@@ -33,12 +57,15 @@ const (
 	ErrorCodeTagMergeRequired            ErrorCode = "tag_merge_required"
 	ErrorCodeTagNameTaken                ErrorCode = "tag_name_taken"
 	ErrorCodeTagNotFound                 ErrorCode = "tag_not_found"
+	ErrorCodeUnauthenticated             ErrorCode = "unauthenticated"
 	ErrorCodeUnsupportedMediaDirectory   ErrorCode = "unsupported_media_directory"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
+	case ErrorCodeAccountAlreadyConfigured:
+		return true
 	case ErrorCodeConflict:
 		return true
 	case ErrorCodeDirectoryUnavailable:
@@ -49,9 +76,13 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeInternal:
 		return true
+	case ErrorCodeInvalidCredentials:
+		return true
 	case ErrorCodeInvalidMediaDirectory:
 		return true
 	case ErrorCodeInvalidRequest:
+		return true
+	case ErrorCodeLoginThrottled:
 		return true
 	case ErrorCodeMediaFolderNotFound:
 		return true
@@ -72,6 +103,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeTagNameTaken:
 		return true
 	case ErrorCodeTagNotFound:
+		return true
+	case ErrorCodeUnauthenticated:
 		return true
 	case ErrorCodeUnsupportedMediaDirectory:
 		return true
@@ -342,6 +375,24 @@ type AddTagSynonymRequest struct {
 	Name       string `json:"name"`
 }
 
+// AuthRedirect defines model for AuthRedirect.
+type AuthRedirect struct {
+	// RedirectTo 画面が遷移する先。サーバーが確かめた同じオリジンのパス
+	RedirectTo string `json:"redirectTo"`
+}
+
+// AuthSession defines model for AuthSession.
+type AuthSession struct {
+	// RedirectTo `next` を付けて呼び、state が owner のときだけ返す戻り先
+	RedirectTo *string `json:"redirectTo,omitempty"`
+
+	// State owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
+	State AuthSessionState `json:"state"`
+}
+
+// AuthSessionState owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
+type AuthSessionState string
+
 // CreateMediaFolderRequest defines model for CreateMediaFolderRequest.
 type CreateMediaFolderRequest struct {
 	Path string `json:"path"`
@@ -413,10 +464,11 @@ type FolderSummary struct {
 	Previews []FolderPreview `json:"previews"`
 	RootId   int64           `json:"rootId"`
 
-	// RootPath 登録フォルダの絶対パス
-	RootPath string `json:"rootPath"`
+	// RootPath 登録フォルダの絶対パス。ゲストの応答では省く（guest-api.md §1）。画面は
+	// 登録フォルダの表示名を、これが無ければ `name` から作る
+	RootPath *string `json:"rootPath,omitempty"`
 
-	// VideoCount 直下の動画の件数
+	// VideoCount 直下の動画の件数（ゲストでは公開の動画だけを数える）
 	VideoCount int `json:"videoCount"`
 }
 
@@ -439,6 +491,14 @@ type Health struct {
 
 // HealthStatus ok = 保存層まで疎通、degraded = プロセスのみ生存
 type HealthStatus string
+
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
+	// Next ログイン後に戻る先の候補。省略か安全でなければ `/`
+	Next     *string `json:"next,omitempty"`
+	Password string  `json:"password"`
+	Username string  `json:"username"`
+}
 
 // MediaFolder defines model for MediaFolder.
 type MediaFolder struct {
@@ -520,6 +580,15 @@ type Scan struct {
 // ScanState defines model for Scan.State.
 type ScanState string
 
+// SetupRequest defines model for SetupRequest.
+type SetupRequest struct {
+	// Password 1〜1024 バイト
+	Password string `json:"password"`
+
+	// Username 1〜128 文字。制御文字を含まず、先頭と末尾に空白を置かない
+	Username string `json:"username"`
+}
+
 // Tag 管理画面と候補に出す1件（contracts/tags-api.md §1）。
 type Tag struct {
 	Id   int64  `json:"id"`
@@ -556,7 +625,8 @@ type UpdateMediaFolderRequest struct {
 	Version int64  `json:"version"`
 }
 
-// Video defines model for Video.
+// Video ゲストの応答では `location`・`progress`・`probeError` を省き、`tags` を空の配列にする
+// （specs/016-single-account-auth/contracts/guest-api.md §1）。
 type Video struct {
 	AddedAt time.Time `json:"addedAt"`
 
@@ -591,10 +661,14 @@ type Video struct {
 	// PreviewUrl previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL。done なのに asset が無ければ、サーバーは作り直しを積み、previewState を pending として返す
 	PreviewUrl *string `json:"previewUrl,omitempty"`
 
-	// ProbeError probeState = failed のときの理由
+	// ProbeError probeState = failed のときの理由。ゲストの応答では省く（ファイルの絶対パスを含みうる）
 	ProbeError *string         `json:"probeError,omitempty"`
 	ProbeState VideoProbeState `json:"probeState"`
 	Progress   *Progress       `json:"progress,omitempty"`
+
+	// Public 公開の動画か。公開の動画はログインしていない人にも見える
+	// （specs/016-single-account-auth/contracts/guest-api.md §4）
+	Public bool `json:"public"`
 
 	// SeekThumbnailState シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
 	// seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
@@ -607,7 +681,7 @@ type Video struct {
 	SizeBytes        int64   `json:"sizeBytes"`
 
 	// Tags 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-	// 無ければ空配列（contracts/tags-api.md §1）
+	// 無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
 	Tags           []TagRef            `json:"tags"`
 	ThumbnailState VideoThumbnailState `json:"thumbnailState"`
 
@@ -744,6 +818,19 @@ type VideoTagsSummaryRequest struct {
 	VideoIds []int64 `json:"videoIds"`
 }
 
+// VideoVisibilityRequest defines model for VideoVisibilityRequest.
+type VideoVisibilityRequest struct {
+	// Public true で公開、false で非公開にする
+	Public   bool    `json:"public"`
+	VideoIds []int64 `json:"videoIds"`
+}
+
+// VideoVisibilityResponse defines model for VideoVisibilityResponse.
+type VideoVisibilityResponse struct {
+	// Applied videoIds のうちいまライブラリにある動画の数（既に同じ状態だったものを含む）
+	Applied int `json:"applied"`
+}
+
 // WatchFilter 視聴状態の絞り込み。all = 絞り込まない、unwatched = 未視聴、inProgress = 視聴途中、
 // watched = 視聴済み
 type WatchFilter string
@@ -774,6 +861,12 @@ type InvalidRequest = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// GetAuthSessionParams defines parameters for GetAuthSession.
+type GetAuthSessionParams struct {
+	// Next ログイン済みのときに戻る先の候補
+	Next *string `form:"next,omitempty" json:"next,omitempty"`
+}
 
 // ListDirectoriesParams defines parameters for ListDirectories.
 type ListDirectoriesParams struct {
@@ -909,6 +1002,12 @@ type TranscodeVideoParams struct {
 	StartMs *int64 `form:"startMs,omitempty" json:"startMs,omitempty"`
 }
 
+// LoginJSONRequestBody defines body for Login for application/json ContentType.
+type LoginJSONRequestBody = LoginRequest
+
+// SetupAccountJSONRequestBody defines body for SetupAccount for application/json ContentType.
+type SetupAccountJSONRequestBody = SetupRequest
+
 // CreateMediaFolderJSONRequestBody defines body for CreateMediaFolder for application/json ContentType.
 type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 
@@ -936,11 +1035,26 @@ type UpdateVideoTagsJSONRequestBody = VideoTagsRequest
 // SummarizeVideoTagsJSONRequestBody defines body for SummarizeVideoTags for application/json ContentType.
 type SummarizeVideoTagsJSONRequestBody = VideoTagsSummaryRequest
 
+// UpdateVideoVisibilityJSONRequestBody defines body for UpdateVideoVisibility for application/json ContentType.
+type UpdateVideoVisibilityJSONRequestBody = VideoVisibilityRequest
+
 // PutVideoProgressJSONRequestBody defines body for PutVideoProgress for application/json ContentType.
 type PutVideoProgressJSONRequestBody = ProgressUpdate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Login ユーザー名とパスワードでログインする
+	// (POST /api/auth/login)
+	Login(w http.ResponseWriter, r *http.Request)
+	// Logout ログアウトする
+	// (POST /api/auth/logout)
+	Logout(w http.ResponseWriter, r *http.Request)
+	// GetAuthSession 見る人の状態を返す
+	// (GET /api/auth/session)
+	GetAuthSession(w http.ResponseWriter, r *http.Request, params GetAuthSessionParams)
+	// SetupAccount 未設定のサーバーで最初のアカウントを作り、そのままログインする
+	// (POST /api/auth/setup)
+	SetupAccount(w http.ResponseWriter, r *http.Request)
 	// ListDirectories フォルダ選択用の直下ディレクトリを返す
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
@@ -1007,6 +1121,9 @@ type ServerInterface interface {
 	// SummarizeVideoTags 選んだ動画に付いたタグの要約を返す
 	// (POST /api/video-tags/summary)
 	SummarizeVideoTags(w http.ResponseWriter, r *http.Request)
+	// UpdateVideoVisibility 動画の公開・非公開を切り替える
+	// (PUT /api/video-visibility)
+	UpdateVideoVisibility(w http.ResponseWriter, r *http.Request)
 	// ListVideos 動画の一覧を返す
 	// (GET /api/videos)
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
@@ -1053,6 +1170,81 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// Login operation middleware
+func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Login(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Logout operation middleware
+func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAuthSession operation middleware
+func (siw *ServerInterfaceWrapper) GetAuthSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAuthSessionParams
+
+	// ------------- Optional query parameter "next" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "next", r.URL.Query(), &params.Next, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "next"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "next", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAuthSession(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetupAccount operation middleware
+func (siw *ServerInterfaceWrapper) SetupAccount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetupAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListDirectories operation middleware
 func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *http.Request) {
@@ -1648,6 +1840,20 @@ func (siw *ServerInterfaceWrapper) SummarizeVideoTags(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SummarizeVideoTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateVideoVisibility operation middleware
+func (siw *ServerInterfaceWrapper) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateVideoVisibility(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2311,6 +2517,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/setup", wrapper.SetupAccount)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/login", wrapper.Login)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/session", wrapper.GetAuthSession)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/ids", wrapper.ListVideoIds)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
@@ -2337,6 +2547,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/synonyms", wrapper.AddTagSynonym)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)

@@ -82,3 +82,42 @@ export function useFolderListing(
     seed,
   );
 }
+
+/** RootFolderName は登録フォルダの表示名の取得の結果である。 */
+export type RootFolderName =
+  | { status: "idle" | "loading" }
+  | { status: "ready"; name: string }
+  | { status: "failed" };
+
+/**
+ * useRootFolderName は、enabled のときだけ登録フォルダそのもの（`path` を省いた
+ * getFolder）を読み、その `name` を返す。
+ *
+ * ゲストの応答には登録フォルダの絶対パス（`rootPath`）が無く、子フォルダの応答の
+ * `name` は最後の段なので、子フォルダを開いたときのパンくずの登録フォルダの段は、
+ * その応答からは作れない（specs/016-single-account-auth/contracts/guest-api.md §1）。
+ */
+export function useRootFolderName(rootId: number, enabled: boolean): RootFolderName {
+  const [result, setResult] = useState<{ rootId: number; name: RootFolderName }>({
+    rootId,
+    name: { status: "idle" },
+  });
+
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    setResult({ rootId, name: { status: "loading" } });
+    getFolder({ rootId, path: "" }, controller.signal)
+      .then((listing) =>
+        setResult({ rootId, name: { status: "ready", name: listing.folder.name } }),
+      )
+      .catch((failure: unknown) => {
+        if (isAborted(failure)) return;
+        setResult({ rootId, name: { status: "failed" } });
+      });
+    return () => controller.abort();
+  }, [enabled, rootId]);
+
+  if (!enabled) return { status: "idle" };
+  return result.rootId === rootId ? result.name : { status: "loading" };
+}

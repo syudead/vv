@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
+import { useAudience } from "../auth/audience";
 import {
   errorMessage,
   type FolderRef,
@@ -18,6 +19,12 @@ import { subscribeServerEvents } from "./serverEvents";
 import { applyTagToTags } from "./tagOrder";
 import { isProcessing } from "./useVideoDetail";
 import { subscribeVideoTags } from "./videoTagsEvents";
+import {
+  subscribeVideoVisibility,
+  subscribeVideoVisibilityStale,
+  visibilityMark,
+  withVisibilitySince,
+} from "./visibility";
 
 /**
  * mergeRefreshed は取り直した1件を、一覧に出ている項目へ重ねる。
@@ -116,6 +123,7 @@ type VideosDataAction =
       tag: Video["tags"][number];
       action: "add" | "remove";
     }
+  | { type: "visibility"; videoIds: readonly number[]; isPublic: boolean }
   | { type: "refresh"; videoId: number; video: Video }
   | { type: "remove"; videoId: number }
   | {
@@ -162,6 +170,21 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
           targets.has(video.id)
             ? { ...video, tags: applyTagToTags(video.tags, action.tag, action.action) }
             : video,
+        ),
+      };
+    }
+    case "visibility": {
+      const targets = new Set(action.videoIds);
+      if (
+        !state.items.some(
+          (video) => targets.has(video.id) && video.public !== action.isPublic,
+        )
+      )
+        return state;
+      return {
+        ...state,
+        items: state.items.map((video) =>
+          targets.has(video.id) ? { ...video, public: action.isPublic } : video,
         ),
       };
     }
@@ -358,6 +381,39 @@ export function useVideos(
   itemsRef.current = items;
   const refreshQueue = useRef(new Set<number>());
   const refreshing = useRef<AbortController | null>(null);
+  // idleWaiters は、取り直しとページの取得がすべて終わるのを待つ者である
+  // （一部にしか反映されなかった切り替えの取り直しの決着。下の購読を参照）。
+  // 一覧を離れたときも解く。
+  const idleWaiters = useRef<(() => void)[]>([]);
+  // uncertain は、公開の切り替えが一部にしか反映されず、まだサーバーの状態を
+  // 取り直せていない表示中の動画である。取り直しが一時的に失敗した動画は古い
+  // `public` のまま残るので、ここから外れるまで決着させない（外れると古い一覧が
+  // 控えられ、戻ったときに復元される。Devin の指摘、PR 338）。取り直しが成功する
+  // か、消えたと分かる（404）か、切り替えの後に取ったページで置き換わるか、
+  // 全件に反映された切り替えの結果が届くと外れる。
+  //
+  // 値は、その動画を確かでないとした直近の知らせの番号（staleNotices）である。
+  // 知らせの前に始めた取り直し（更新の知らせ等）は切り替える前の `public` を
+  // 読んでいることがあるので、取り直しは始めた時点の番号を覚えておき、それより
+  // 新しい知らせで確かでないとされた動画は外さない（Devin の指摘、PR 338）。
+  const uncertain = useRef(new Map<number, number>());
+  const staleNotices = useRef(0);
+  // settleUncertain は、`started`（取り直しを始めた時点の知らせの番号）以後の
+  // 知らせで確かでないとされていない動画を、確かになったとして外す。
+  const settleUncertain = useCallback((id: number, started: number) => {
+    if ((uncertain.current.get(id) ?? 0) <= started) uncertain.current.delete(id);
+  }, []);
+  const notifyIfIdle = useCallback(() => {
+    if (
+      pageLoading.current ||
+      refreshing.current !== null ||
+      refreshQueue.current.size > 0 ||
+      uncertain.current.size > 0
+    ) {
+      return;
+    }
+    for (const resolve of idleWaiters.current.splice(0)) resolve();
+  }, []);
   const drainRefreshQueue = useCallback(async () => {
     if (refreshing.current !== null) return;
     const controller = new AbortController();
@@ -365,24 +421,33 @@ export function useVideos(
     try {
       for (const id of refreshQueue.current) {
         refreshQueue.current.delete(id);
+        const started = staleNotices.current;
         try {
-          const refreshed = await getVideo(id, controller.signal);
+          const mark = visibilityMark();
+          const refreshed = withVisibilitySince(
+            await getVideo(id, controller.signal),
+            mark,
+          );
           // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
           if (controller.signal.aborted) return;
+          settleUncertain(id, started);
           dispatch({ type: "refresh", videoId: id, video: refreshed });
         } catch (failure) {
           if (isAborted(failure)) return;
           // 動画が索引から消えていたら、一覧からも外す。一時的な失敗は、その
           // 1件だけ諦める（次の知らせか取り込みの完了時の読み直しで直る）。
+          // 公開状態が確かでない動画は、失敗しても uncertain に残す。
           if (failure instanceof RequestFailed && failure.status === 404) {
+            settleUncertain(id, started);
             dispatch({ type: "remove", videoId: id });
           }
         }
       }
     } finally {
       if (refreshing.current === controller) refreshing.current = null;
+      notifyIfIdle();
     }
-  }, []);
+  }, [notifyIfIdle, settleUncertain]);
   const refreshItems = useCallback(
     (ids: Iterable<number>) => {
       for (const id of ids) refreshQueue.current.add(id);
@@ -401,26 +466,92 @@ export function useVideos(
   // tagsChangedWhileLoading は上で宣言済み）。
   const changedWhileLoading = useRef(new Set<number>());
 
+  // 切り替えが一部の動画にしか反映されなかったときは、どれが切り替わったか
+  // 分からないので、表示中の該当の動画をサーバーから取り直す（更新の知らせと
+  // 同じ扱い。Devin の指摘、PR 292）。取り直しとページの取得が終わる（または
+  // 一覧を離れる）まで解決しない Promise を返し、その間は一覧の控えを取らせない。
+  // 取り直しの途中で動画を開くと、古い項目が控えられて戻ったときに復元される
+  // （Devin の指摘、PR 338）。取り直しが一時的に失敗した動画は古い `public` の
+  // まま残るので、それが取り直せるまでも決着させない（uncertain）。
+  useEffect(() => {
+    const waiters = idleWaiters.current;
+    const pending = uncertain.current;
+    const unsubscribe = subscribeVideoVisibilityStale((videoIds) => {
+      const targets = new Set(videoIds);
+      staleNotices.current += 1;
+      const notice = staleNotices.current;
+      if (pageLoading.current) {
+        // 取得中のページは切り替えの前に読まれたかもしれない。届いたページに
+        // 現れる対象は取り直し、現れない対象はそこで uncertain から外す（fetchPage）。
+        for (const id of targets) {
+          changedWhileLoading.current.add(id);
+          pending.set(id, notice);
+        }
+      }
+      const shown = itemsRef.current
+        .filter((video) => targets.has(video.id))
+        .map((video) => video.id);
+      if (!pageLoading.current && shown.length === 0) return undefined;
+      for (const id of shown) pending.set(id, notice);
+      const settled = new Promise<void>((resolve) => {
+        waiters.push(resolve);
+      });
+      refreshItems(shown);
+      notifyIfIdle();
+      return settled;
+    });
+    return () => {
+      unsubscribe();
+      pending.clear();
+      for (const resolve of waiters.splice(0)) resolve();
+    };
+  }, [notifyIfIdle, refreshItems]);
+
+  // 公開・非公開の切り替えの結果も、タグの付け外しと同じく一覧を読み直さずに
+  // 表示中の項目へ反映する（issue 305）。取得の間に反映した切り替えは、
+  // 届いたページと取り直した1件へ withVisibilitySince で重ねる（fetchPage・
+  // drainRefreshQueue）。件数の上限で記録を落とさない（PR 328）。
+  //
+  // 全件に反映された切り替えの結果は、その動画の確かな公開状態でもある。
+  // 一部反映の取り直しに失敗して uncertain に残った動画も、これで確かになり、
+  // 控えを取れるようになる（Devin の指摘、PR 338）。同じ動画への切り替えは
+  // visibility が要求の通し番号で順序を保ち、後から送った一部反映より古い
+  // 全件反映の結果はここに届かない（recordApplied・recordUncertain の applied）。
+  useEffect(
+    () =>
+      subscribeVideoVisibility((videoIds, isPublic) => {
+        for (const id of videoIds) uncertain.current.delete(id);
+        dispatch({ type: "visibility", videoIds, isPublic });
+        notifyIfIdle();
+      }),
+    [notifyIfIdle],
+  );
+
+  // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない
+  // （specs/016-single-account-auth/ui-design.md「Top bar」）。
+  const owner = useAudience() === "owner";
   useEffect(() => {
     const queue = refreshQueue.current;
-    const unsubscribe = subscribeServerEvents({
-      video: (id) => {
-        // ページの取得中は、表示中の動画でも覚えておく。取り直しの方が先に
-        // 終わると、あとから届いたページの古い内容で上書きされる。
-        if (pageLoading.current) changedWhileLoading.current.add(id);
-        if (itemsRef.current.some((video) => video.id === id)) refreshItems([id]);
-      },
-      // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
-      // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
-      // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
-      open: (reconnected) => {
-        if (reconnected) {
-          refreshItems(itemsRef.current.map((video) => video.id));
-        } else {
-          refreshProcessingItems();
-        }
-      },
-    });
+    const unsubscribe = owner
+      ? subscribeServerEvents({
+          video: (id) => {
+            // ページの取得中は、表示中の動画でも覚えておく。取り直しの方が先に
+            // 終わると、あとから届いたページの古い内容で上書きされる。
+            if (pageLoading.current) changedWhileLoading.current.add(id);
+            if (itemsRef.current.some((video) => video.id === id)) refreshItems([id]);
+          },
+          // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
+          // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
+          // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
+          open: (reconnected) => {
+            if (reconnected) {
+              refreshItems(itemsRef.current.map((video) => video.id));
+            } else {
+              refreshProcessingItems();
+            }
+          },
+        })
+      : () => undefined;
     // 復元した一覧は、別の画面にいた間に準備が進んでいることがある。
     refreshProcessingItems();
     return () => {
@@ -429,7 +560,7 @@ export function useVideos(
       refreshing.current = null;
       queue.clear();
     };
-  }, [refreshItems, refreshProcessingItems]);
+  }, [owner, refreshItems, refreshProcessingItems]);
 
   // 読み込み中の要求を覚えておく。条件を変えた直後に古い応答が届いても、
   // 新しい一覧を上書きしないようにする。
@@ -463,6 +594,7 @@ export function useVideos(
         setLoadingMore(true);
       }
 
+      const mark = visibilityMark();
       try {
         const target = folderRef.current;
         const current = criteriaRef.current;
@@ -475,7 +607,7 @@ export function useVideos(
           cursor: from,
           signal: controller.signal,
         };
-        const page =
+        const fetched =
           target === undefined
             ? await listVideos({ ...params, tag: current.tag })
             : await listFolderVideos({
@@ -483,6 +615,10 @@ export function useVideos(
                 scope: current.scope,
                 ...params,
               });
+        const page = {
+          ...fetched,
+          items: fetched.items.map((video) => withVisibilitySince(video, mark)),
+        };
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
         if (controller.signal.aborted || inFlight.current !== controller) return;
@@ -498,11 +634,22 @@ export function useVideos(
           return;
         }
         if (replace) resyncAttempted.current = false;
+        const shownBefore = new Set(itemsRef.current.map((video) => video.id));
         dispatch({ type: "page", page, replace });
         const changed = page.items
           .map((video) => video.id)
           .filter((id) => changedWhileLoading.current.has(id));
         changedWhileLoading.current.clear();
+        // 公開状態が確かでない動画のうち、このページで取り直す（changed）ものと、
+        // 続きの取得で残る表示中のものだけを uncertain に残す。一から読み直した
+        // ページは切り替えの後に取ったものなので、それ以外はもう確かである。
+        // ページの取得中に届いた知らせの対象は changedWhileLoading に入っている
+        // ので、切り替えの前に読まれたかもしれないページで確かになることはない。
+        const stillShown = new Set(changed);
+        if (!replace) for (const id of shownBefore) stillShown.add(id);
+        for (const id of uncertain.current.keys()) {
+          if (!stillShown.has(id)) uncertain.current.delete(id);
+        }
         if (changed.length > 0) refreshItems(changed);
         // このページの取得中に届いたタグの付け外しのうち、このページで
         // ちょうど読み込んだ動画のものは、取り直さずここで直接重ねる
@@ -555,12 +702,13 @@ export function useVideos(
           pageLoading.current = false;
           setLoading(false);
           setLoadingMore(false);
+          notifyIfIdle();
         }
       }
     },
     // folderKey と key は folderRef・criteriaRef の中身が変わったことを表す。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [folderKey, key, refreshItems],
+    [folderKey, key, notifyIfIdle, refreshItems],
   );
 
   // seeded は「いま持っている中身が復元で埋まったものか」を覚える。

@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Folder, ImageOff } from "lucide-react";
+import { AlertTriangle, Check, Folder, Globe, ImageOff } from "lucide-react";
 import {
   memo,
   type ReactNode,
@@ -13,6 +13,7 @@ import {
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
+import { useAudience } from "../auth/audience";
 import { cn } from "../lib/cn";
 import {
   formatBytes,
@@ -67,6 +68,25 @@ function useCardState(video: Video) {
     ratio: watchedRatio(video),
     quality: qualityLabel(video),
   };
+}
+
+/**
+ * usePublicMark は所有者の一覧で公開の印を出すかを返す
+ * （specs/016-single-account-auth/ui-design.md「Visibility toggle」の「Card」）。
+ * ゲストに見えるのはすべて公開の動画で、印に意味が無いので出さない。
+ */
+function usePublicMark(video: Video): boolean {
+  return useAudience() === "owner" && video.public;
+}
+
+/** PublicMark は公開の印（地球のアイコンと、読み上げ用の「公開」）である。 */
+function PublicMark({ className }: { className?: string }) {
+  return (
+    <>
+      <Globe aria-hidden="true" className={cn("size-3 shrink-0 text-fg", className)} />
+      <span className="sr-only">公開</span>
+    </>
+  );
 }
 
 function SelectCheck({
@@ -124,6 +144,7 @@ function VideoCard(props: VideoCardProps) {
   // タグが無い動画は行を出さない（ui-design.md「Tag row」）が、題名の下の余白は
   // 今の pb-3 のまま保つ（タグの有無で高さの余白が変わって見えないように）。
   const tagsRowNode = tagsRow?.(video);
+  const publicMark = usePublicMark(video);
   const showTagsRow = tagsRow !== undefined && video.tags.length > 0;
   const eligible =
     rawUnplayable === null &&
@@ -308,14 +329,15 @@ function VideoCard(props: VideoCardProps) {
             )}
           </div>
 
-          {duration !== "" && (
+          {(publicMark || duration !== "") && (
             <span
               className={cn(
-                "absolute right-2 bottom-2 rounded-sm px-1.5 py-0.5 text-[11px] font-medium tabular-nums backdrop-blur-sm",
+                "absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[11px] font-medium tabular-nums backdrop-blur-sm",
                 showingPreview ? "bg-navbar text-fg" : "bg-navbar/85 text-fg",
               )}
             >
-              {duration}
+              {publicMark && <PublicMark />}
+              {duration !== "" && <span>{duration}</span>}
             </span>
           )}
 
@@ -391,6 +413,7 @@ export default memo(VideoCard);
 export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
   const { video, backTo, selected, selectionMode, onSelect } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
+  const publicMark = usePublicMark(video);
 
   return (
     <tr
@@ -400,19 +423,22 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         selected && "bg-accent-soft",
       )}
     >
-      <td className="w-10 pl-3">
-        <Checkbox
-          checked={selected}
-          onCheckedChange={(next) => onSelect?.(video.id, next)}
-          label={`「${video.title}」を選択`}
-          className={cn(
-            "transition-opacity",
-            selectionMode || selected
-              ? "opacity-100"
-              : "opacity-40 group-hover:opacity-100",
-          )}
-        />
-      </td>
+      {/* 選択を持たない画面（ゲストの一覧）では、選択の列ごと描かない。 */}
+      {onSelect !== undefined && (
+        <td className="w-10 pl-3">
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(next) => onSelect(video.id, next)}
+            label={`「${video.title}」を選択`}
+            className={cn(
+              "transition-opacity",
+              selectionMode || selected
+                ? "opacity-100"
+                : "opacity-40 group-hover:opacity-100",
+            )}
+          />
+        </td>
+      )}
       <td className="w-32 py-1.5 pr-2">
         <div className="relative aspect-video w-28 overflow-hidden rounded-sm bg-navbar">
           {video.thumbnailUrl !== undefined && isNarrowVideo(video) && (
@@ -466,7 +492,13 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           <Check className="ml-auto size-4 text-success" aria-label="視聴済み" />
         )}
       </td>
-      <td className="w-20 pr-4 text-right text-sm text-fg tabular-nums">{duration}</td>
+      <td className="w-20 pr-4 text-right text-sm text-fg tabular-nums">
+        {/* 公開の印は時間の直前に置く（ui-design.md「Card」）。 */}
+        <span className="inline-flex items-center justify-end gap-1.5">
+          {publicMark && <PublicMark />}
+          {duration}
+        </span>
+      </td>
       <td className="hidden w-20 pr-4 text-right text-sm font-bold text-fg uppercase md:table-cell">
         {quality}
       </td>

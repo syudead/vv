@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -19,7 +20,7 @@ func seekThumbnailServer(t *testing.T, reader ArtifactReader) (http.Handler, dom
 	}), video
 }
 
-func TestSeekThumbnailReturnsJPEGAndImmutableCache(t *testing.T) {
+func TestSeekThumbnailReturnsJPEGAndRevalidatedCache(t *testing.T) {
 	reader := &fakeArtifacts{image: []byte{0xff, 0xd8, 0xff, 0xd9}}
 	handler, video := seekThumbnailServer(t, reader)
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/seek-thumbnail?positionMs=4000&v=abcdef012345")
@@ -30,18 +31,32 @@ func TestSeekThumbnailReturnsJPEGAndImmutableCache(t *testing.T) {
 	if got := rec.Header().Get("Content-Type"); got != "image/jpeg" {
 		t.Errorf("Content-Type = %q", got)
 	}
-	if got := rec.Header().Get("Cache-Control"); got != cacheImmutable {
+	if got := rec.Header().Get("Cache-Control"); got != cacheRevalidate {
 		t.Errorf("Cache-Control = %q", got)
+	}
+	etag := rec.Header().Get("ETag")
+	if etag == "" {
+		t.Fatal("ETag が無い")
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/1/seek-thumbnail?positionMs=4000&v=abcdef012345", nil)
+	req.Header.Set("If-None-Match", `W/"other", `+etag)
+	again := httptest.NewRecorder()
+	handler.ServeHTTP(again, req)
+	if again.Code != http.StatusNotModified || again.Body.Len() != 0 {
+		t.Errorf("If-None-Match: status = %d, body = %d バイト", again.Code, again.Body.Len())
+	}
+	if again.Header().Get("Cache-Control") != cacheRevalidate || again.Header().Get("ETag") != etag {
+		t.Errorf("304 のヘッダー = %v", again.Header())
 	}
 	if reader.positionMs != 4000 || reader.contentKey != video.ContentKey {
 		t.Errorf("reader = %+v", reader)
 	}
 }
 
-func TestSeekThumbnailWithoutVersionIsNotCached(t *testing.T) {
+func TestSeekThumbnailWithoutVersionRevalidates(t *testing.T) {
 	handler, _ := seekThumbnailServer(t, &fakeArtifacts{image: []byte("jpeg")})
 	rec := do(t, handler, http.MethodGet, "/api/videos/1/seek-thumbnail?positionMs=0")
-	if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != cacheNoStore {
+	if rec.Code != http.StatusOK || rec.Header().Get("Cache-Control") != cacheRevalidate {
 		t.Errorf("status=%d cache=%q", rec.Code, rec.Header().Get("Cache-Control"))
 	}
 }

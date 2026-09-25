@@ -79,7 +79,7 @@ func TestRetryProbeRequeuesFailedVideoOnce(t *testing.T) {
 	if err := db.Ingest().RetryProbe(ctx, videoID, true); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.Library().GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestRetryProbeKeepsCompletedThumbnail(t *testing.T) {
 			if err := db.Ingest().RetryProbe(ctx, videoID, tc.seekMissing); err != nil {
 				t.Fatal(err)
 			}
-			video, err := db.Library().GetVideo(ctx, videoID)
+			video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -174,7 +174,7 @@ func TestFailClaimedJobRecordsProbeAndThumbnailFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	video, err := db.Library().GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -217,7 +217,7 @@ func TestFailClaimedProbeKeepsPendingWhileRetrying(t *testing.T) {
 	if err := db.Ingest().FailClaimedJob(ctx, job, "retry"); err != nil {
 		t.Fatal(err)
 	}
-	video, err := db.Library().GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -251,7 +251,7 @@ func TestFailClaimedJobKeepsCompletedState(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	video, err := db.Library().GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
