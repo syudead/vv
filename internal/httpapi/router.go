@@ -8,7 +8,9 @@ import (
 	"log/slog"
 	"mime"
 	"net/http"
+	"net/netip"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -202,6 +204,9 @@ type Options struct {
 	SessionRecheck time.Duration
 	// Now は今の時刻を返す（Cookie の Max-Age の計算に使う）。nil なら time.Now。
 	Now func() time.Time
+	// TrustedProxies は転送ヘッダー（X-Forwarded-For・X-Forwarded-Proto）を信じてよい
+	// 直接の接続元である（MDM_TRUSTED_PROXIES）。空ならヘッダーを読まない（client_origin.go）。
+	TrustedProxies []netip.Prefix
 }
 
 // server は生成された gen.ServerInterface を満たす。契約（api/openapi.yaml）に
@@ -226,6 +231,8 @@ type server struct {
 	auth         Authenticator
 	sessions     *sessionLedger
 	now          func() time.Time
+	// trustedProxies は転送ヘッダーを信じてよい直接の接続元である。
+	trustedProxies trustedProxies
 }
 
 // NewRouter は経路を分配するハンドラを返す。
@@ -273,6 +280,8 @@ func NewRouter(opts Options) http.Handler {
 		auth:         opts.Auth,
 		sessions:     newSessionLedger(opts.SessionRecheck, logger),
 		now:          opts.Now,
+		// 呼び出し側が後から書き換えても判定が変わらないよう写しを持つ。
+		trustedProxies: slices.Clone(opts.TrustedProxies),
 	}
 	if srv.now == nil {
 		srv.now = time.Now

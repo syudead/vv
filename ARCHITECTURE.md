@@ -272,6 +272,11 @@ write deadline to now. `POST /api/auth/setup` creates the first account and logs
 ([specs/016-single-account-auth/contracts/auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)).
 `cmd/mdm` wraps `app.Auth` for the boundary, deletes expired sessions at startup, and
 logs a warning while no account is configured.
+The client address and whether a request is HTTPS come from `client_origin.go`, which
+reads `X-Forwarded-For` and `X-Forwarded-Proto` only on connections from the reverse
+proxies in `MDM_TRUSTED_PROXIES` and otherwise uses the connecting address and TLS;
+the login attempt limit, authentication logs, the cookie name and `Secure`, the
+same-origin check and the loopback check for opening a file all use it.
 
 Not built yet: guest responses, subtitles, and multi-user support. Browser-incompatible
 video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is

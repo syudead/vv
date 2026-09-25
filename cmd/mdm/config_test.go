@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
@@ -77,5 +78,51 @@ func TestThumbnailsDirIsDerivedFromDataDir(t *testing.T) {
 	cfg := Config{DataDir: "/data"}
 	if got, want := cfg.ThumbnailsDir(), filepath.Join("/data", "thumbnails"); got != want {
 		t.Fatalf("ThumbnailsDir() = %q, want %q", got, want)
+	}
+}
+
+func TestLoadConfigReadsTrustedProxies(t *testing.T) {
+	cfg, err := LoadConfig(envFrom(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.TrustedProxies) != 0 {
+		t.Fatalf("既定の TrustedProxies = %v, want 空", cfg.TrustedProxies)
+	}
+
+	cfg, err = LoadConfig(envFrom(map[string]string{
+		"MDM_TRUSTED_PROXIES": " 10.0.0.1/8, 127.0.0.1\n::1/128 ::ffff:192.168.1.0/120 ",
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make([]string, 0, len(cfg.TrustedProxies))
+	for _, prefix := range cfg.TrustedProxies {
+		got = append(got, prefix.String())
+	}
+	want := []string{"10.0.0.0/8", "127.0.0.1/32", "::1/128", "192.168.1.0/24"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("TrustedProxies = %v, want %v", got, want)
+	}
+	if !cfg.TrustedProxies[3].Contains(netip.MustParseAddr("192.168.1.20")) {
+		t.Error("IPv4 射影で書いたプレフィックスが IPv4 の送信元を含まない")
+	}
+}
+
+func TestLoadConfigReportsInvalidTrustedProxiesWithOtherProblems(t *testing.T) {
+	_, err := LoadConfig(envFrom(map[string]string{
+		"MDM_LOG_LEVEL":       "verbose",
+		"MDM_TRUSTED_PROXIES": "10.0.0.0/8,10.0.0.0/33,proxy.example,fe80::1%eth0",
+	}))
+	if err == nil {
+		t.Fatal("invalid configuration succeeded")
+	}
+	for _, want := range []string{"MDM_LOG_LEVEL", `"10.0.0.0/33"`, `"proxy.example"`, `"fe80::1%eth0"`} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error does not mention %s: %v", want, err)
+		}
+	}
+	if strings.Contains(err.Error(), `"10.0.0.0/8"`) {
+		t.Errorf("正しい項まで誤りとした: %v", err)
 	}
 }
