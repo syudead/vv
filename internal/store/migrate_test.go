@@ -606,7 +606,6 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 	}
 }
 
-// migratedDB はマイグレーションを適用したデータベースを返す。
 // latestMigrationVersion は同梱した最後のマイグレーションの版を返す。
 func latestMigrationVersion(t *testing.T, db *DB) int64 {
 	t.Helper()
@@ -637,6 +636,7 @@ func downTo(ctx context.Context, db *DB, version int64) error {
 	return err
 }
 
+// migratedDB はマイグレーションを適用したデータベースを返す。
 func migratedDB(t *testing.T) *DB {
 	t.Helper()
 
