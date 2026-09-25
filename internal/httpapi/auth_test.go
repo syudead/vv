@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -115,6 +116,16 @@ func newAuthEnv(t *testing.T, dataDir string, opts Options) *authEnv {
 // newAuthEnvWith は newAuthEnv と同じで、経路の依存を開いたデータベースから作る。
 func newAuthEnvWith(t *testing.T, dataDir string, build func(db *store.DB) Options) *authEnv {
 	t.Helper()
+	return newAuthEnvWrapped(t, dataDir, build, nil)
+}
+
+// newAuthEnvWrapped は newAuthEnvWith と同じで、wrap があれば本物の Authenticator を
+// それで包んで経路に渡す（確かめの途中に割り込む試験に使う）。
+func newAuthEnvWrapped(
+	t *testing.T, dataDir string, build func(db *store.DB) Options,
+	wrap func(Authenticator) Authenticator,
+) *authEnv {
+	t.Helper()
 	db, err := store.Open(dataDir)
 	if err != nil {
 		t.Fatal(err)
@@ -127,6 +138,9 @@ func newAuthEnvWith(t *testing.T, dataDir string, build func(db *store.DB) Optio
 	opts := build(db)
 	auth := app.NewAuth(app.AuthOptions{Store: db.Auth(), Hasher: passwordHasher{}, Now: env.clock})
 	opts.Auth = appAuthenticator{auth: auth}
+	if wrap != nil {
+		opts.Auth = wrap(opts.Auth)
+	}
 	opts.Now = env.clock
 	opts.Logger = slog.New(slog.NewTextHandler(env.logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	if opts.Pinger == nil {
@@ -851,8 +865,12 @@ func TestAuthRevocationEndsInFlightResponses(t *testing.T) {
 // 所有者として処理する要求の context は、セッションの期限を締め切りに持つ。
 func TestSessionLedgerUsesSessionExpiryAsDeadline(t *testing.T) {
 	ledger := newSessionLedger(time.Hour, slog.Default())
-	ctx, release := ledger.track(context.Background(), httptest.NewRecorder(), "token", time.Now().Add(50*time.Millisecond))
+	ctx, req, release := ledger.open(context.Background(), httptest.NewRecorder(), "token")
 	defer release()
+	ctx, ok := ledger.serve(ctx, req, time.Now().Add(50*time.Millisecond))
+	if !ok {
+		t.Fatal("打ち切られていないのに応答を始められない")
+	}
 	if deadline, ok := ctx.Deadline(); !ok || time.Until(deadline) > time.Second {
 		t.Fatalf("締め切り = %v, %v", deadline, ok)
 	}
@@ -863,5 +881,121 @@ func TestSessionLedgerUsesSessionExpiryAsDeadline(t *testing.T) {
 	}
 	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {
 		t.Errorf("ctx.Err() = %v", ctx.Err())
+	}
+}
+
+// hookedAuthenticator は、有効と確かめた CheckSession の直後に afterCheck を割り込ませる。
+type hookedAuthenticator struct {
+	Authenticator
+	afterCheck func(token string)
+}
+
+func (h hookedAuthenticator) CheckSession(ctx context.Context, token string) (time.Time, bool, error) {
+	expiresAt, valid, err := h.Authenticator.CheckSession(ctx, token)
+	if valid && h.afterCheck != nil {
+		h.afterCheck(token)
+	}
+	return expiresAt, valid, err
+}
+
+// セッションを有効と確かめてから応答を始めるまでの間にログアウトされた要求は、
+// 所有者として応答しない（Devin の指摘、PR 292）。確かめてから台帳に載せると、
+// ログアウトの打ち切りがこの要求を取りこぼす。
+func TestAuthLogoutBetweenSessionCheckAndResponseIsNotServedAsOwner(t *testing.T) {
+	var env *authEnv
+	var cookie *http.Cookie
+	var fired atomic.Bool
+	env = newAuthEnvWrapped(t, t.TempDir(),
+		func(*store.DB) Options { return Options{Videos: sampleLibrary()} },
+		func(auth Authenticator) Authenticator {
+			return hookedAuthenticator{Authenticator: auth, afterCheck: func(token string) {
+				if cookie == nil || token != cookie.Value || !fired.CompareAndSwap(false, true) {
+					return
+				}
+				rec := env.serve(authRequest{method: http.MethodPost, target: "/api/auth/logout", cookies: []*http.Cookie{cookie}})
+				if rec.Code != http.StatusNoContent {
+					t.Errorf("割り込んだログアウト: status = %d: %s", rec.Code, rec.Body)
+				}
+			}}
+		})
+	cookie = env.setup()
+
+	rec := env.get(ownerOnlyTarget, cookie)
+	if !fired.Load() {
+		t.Fatal("ログアウトが割り込まなかった")
+	}
+	assertUnauthenticated(t, "確かめの直後にログアウトされた要求", rec)
+	assertAudience(t, ownerOnlyTarget, rec, "guest")
+	assertUnauthenticated(t, "その後の要求", env.get(ownerOnlyTarget, cookie))
+}
+
+// 「ゲストも」の要求でセッションを確かめている間にログアウトされたら、ゲストとして
+// 最後まで処理する（Devin の指摘、PR 335）。打ち切られた台帳の context を引き継ぐと、
+// 公開の動画を引く問い合わせまで取り消されてしまう。
+func TestAuthLogoutDuringSessionCheckServesGuestsTooRequestAsGuest(t *testing.T) {
+	var env *authEnv
+	var cookie *http.Cookie
+	var fired atomic.Bool
+	env = newAuthEnvWrapped(t, t.TempDir(),
+		func(db *store.DB) Options {
+			library := db.Library()
+			return Options{Videos: library, Folders: library, Visibility: db.Visibility()}
+		},
+		func(auth Authenticator) Authenticator {
+			return hookedAuthenticator{Authenticator: auth, afterCheck: func(token string) {
+				if cookie == nil || token != cookie.Value || !fired.CompareAndSwap(false, true) {
+					return
+				}
+				rec := env.serve(authRequest{method: http.MethodPost, target: "/api/auth/logout", cookies: []*http.Cookie{cookie}})
+				if rec.Code != http.StatusNoContent {
+					t.Errorf("割り込んだログアウト: status = %d: %s", rec.Code, rec.Body)
+				}
+			}}
+		})
+	ctx := context.Background()
+	mediaDir := t.TempDir()
+	if _, err := env.db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
+		t.Fatal(err)
+	}
+	result, err := env.db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
+		Path: filepath.Join(mediaDir, "public.mp4"), Title: "公開の動画", ContentKey: "content-key-public",
+		SizeBytes: 1, MTime: time.Unix(0, 0), AddedAt: time.Unix(0, 0), Container: "mp4",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := env.db.Visibility().SetVideosPublic(ctx, []int64{result.ID}, true); err != nil {
+		t.Fatal(err)
+	}
+	cookie = env.setup()
+
+	target := "/api/videos/" + strconv.FormatInt(result.ID, 10)
+	rec := env.get(target, cookie)
+	if !fired.Load() {
+		t.Fatal("ログアウトが割り込まなかった")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("確かめの最中にログアウトされた公開の動画: status = %d: %s", rec.Code, rec.Body)
+	}
+	assertAudience(t, target, rec, "guest")
+}
+
+// 台帳に載せてから応答を始めるまでの間の打ち切りは、応答を始めさせない。
+func TestSessionLedgerRevokeBeforeServeRefusesRequest(t *testing.T) {
+	ledger := newSessionLedger(time.Hour, slog.Default())
+	ctx, req, release := ledger.open(context.Background(), httptest.NewRecorder(), "token")
+	defer release()
+	if req.revoked() {
+		t.Fatal("載せただけで打ち切られた")
+	}
+	ledger.revoke("token")
+	if !req.revoked() {
+		t.Fatal("打ち切りが届かない")
+	}
+	if !errors.Is(ctx.Err(), context.Canceled) {
+		t.Errorf("ctx.Err() = %v", ctx.Err())
+	}
+	if _, ok := ledger.serve(ctx, req, time.Now().Add(time.Hour)); ok {
+		t.Fatal("打ち切られた要求で応答を始められた")
 	}
 }

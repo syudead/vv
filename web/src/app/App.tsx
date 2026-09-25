@@ -2,8 +2,6 @@ import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 
 import { useAudience } from "../auth/audience";
 import AuthGate from "../auth/AuthGate";
-import LoginPage from "../auth/LoginPage";
-import SetupPage from "../auth/SetupPage";
 import LibraryPage from "../library/LibraryPage";
 import VideoPage from "../player/VideoPage";
 import AppShell from "../shell/AppShell";
@@ -15,13 +13,16 @@ import { TooltipProvider } from "../ui/Tooltip";
 import { deferredRoute } from "./deferredRoute";
 
 // 一覧と再生画面のほかは使うときだけ読み込む（deferredRoute）。再生画面から
-// 一覧へ戻るたびの読み込みに、ほかの画面の部品を加えない。
+// 一覧へ戻るたびの読み込みに、ほかの画面の部品を加えない。初回設定とログインの
+// 画面も同じで、ゲートが送るときに読み込む。読み終えるまでゲートと同じく何も描かない。
 const FolderPage = await deferredRoute(() => import("../folders/FolderPage"), "/folders");
 const SettingsPage = await deferredRoute(
   () => import("../settings/SettingsPage"),
   "/settings",
 );
 const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
+const SetupPage = await deferredRoute(() => import("../auth/SetupPage"), "/setup");
+const LoginPage = await deferredRoute(() => import("../auth/LoginPage"), "/login");
 
 function AppRoutes() {
   const location = useLocation();

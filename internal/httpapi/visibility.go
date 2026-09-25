@@ -143,7 +143,8 @@ func (l *guestLedger) track(
 	ctx context.Context, w http.ResponseWriter, contentKey string, since uint64,
 ) (context.Context, func(), bool) {
 	ctx, cancel := context.WithCancel(ctx)
-	req := &trackedRequest{cancel: cancel, controller: http.NewResponseController(w)}
+	// 公開を確かめてから載せるので、載せた時点で応答を書き始めてよい（serving）。
+	req := &trackedRequest{cancel: cancel, controller: http.NewResponseController(w), serving: true}
 
 	l.mu.Lock()
 	if l.gen != since {

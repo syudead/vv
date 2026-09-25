@@ -255,7 +255,22 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 		}
 
 		token := s.sessionToken(r)
-		expiresAt, valid, err := s.auth.CheckSession(r.Context(), token)
+		// 「誰でも」以外の要求は、セッションを確かめる前に台帳へ載せる。確かめてから
+		// 載せると、その間に届いたログアウトの打ち切りがこの要求を取りこぼし、失効した
+		// セッションのまま所有者として応答を続けてしまう（Devin の指摘、PR 292）。
+		// 確かめる前に届いた打ち切りは、確かめ自体が無効を返す。
+		ctx := r.Context()
+		var tracked *trackedRequest
+		if class != accessPublic {
+			var release func()
+			ctx, tracked, release = s.sessions.open(ctx, w, token)
+			defer release()
+		}
+		expiresAt, valid, err := s.auth.CheckSession(ctx, token)
+		if tracked != nil && tracked.revoked() {
+			// 確かめている間にログアウトされた。確かめの結果によらず、もう有効ではない。
+			valid, err = false, nil
+		}
 		if err != nil {
 			setAudience(domain.AudienceGuest)
 			if class == accessPublic {
@@ -269,9 +284,24 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 			return
 		}
 
+		if valid && tracked != nil {
+			// 有効と確かめてから応答の打ち切りを効かせる。その直前にログアウトされて
+			// いれば、有効ではなかったものとして扱う。
+			var served bool
+			ctx, served = s.sessions.serve(ctx, tracked, expiresAt)
+			if !served {
+				valid = false
+			}
+		}
+
 		audience := domain.AudienceGuest
 		if valid {
 			audience = domain.AudienceOwner
+		} else {
+			// 所有者として処理しない要求は、セッションの台帳の context を使わない。
+			// ログアウトで打ち切られていると取り消し済みで、ゲストとして続ける処理の
+			// 問い合わせまで失敗させてしまう（Devin の指摘、PR 335）。
+			ctx = r.Context()
 		}
 		setAudience(audience)
 		switch {
@@ -293,13 +323,7 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := withAudience(r.Context(), audience)
-		if valid && class != accessPublic {
-			var release func()
-			ctx, release = s.sessions.track(ctx, w, token, expiresAt)
-			defer release()
-		}
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r.WithContext(withAudience(ctx, audience)))
 	})
 }
 
@@ -511,19 +535,27 @@ type sessionLedger struct {
 }
 
 type trackedRequest struct {
+	token      string
 	cancel     context.CancelFunc
 	controller *http.ResponseController
 
 	mu sync.Mutex
+	// serving は serve でセッションの期限と確かめ直しを付け、応答を書き始めてよい
+	// ことを表す。それより前の打ち切りは context を取り消すだけで、書き込みの締め切りは
+	// 触らない。境界はまだ未認証の応答を書けるので、それを壊さない。
+	serving bool
 	// finished はハンドラから戻ったことを表す。戻った後は接続が次の要求に使われうるので、
 	// 書き込みの締め切りを触らない。
 	finished bool
 	aborted  bool
 	timer    *time.Timer
+	// stopWatch は期限の見張りを止める。serve が付ける。
+	stopWatch func() bool
 }
 
-// abort は要求を打ち切る。context を取り消し、書き込みの締め切りを今にする。
-// http.ServeContent は context を見ずに書き続けるので、取り消しだけでは止まらない。
+// abort は要求を打ち切る。context を取り消し、応答を書き始めていれば書き込みの
+// 締め切りを今にする。http.ServeContent は context を見ずに書き続けるので、
+// 取り消しだけでは止まらない。
 func (t *trackedRequest) abort() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -532,10 +564,20 @@ func (t *trackedRequest) abort() {
 	}
 	t.aborted = true
 	t.cancel()
-	_ = t.controller.SetWriteDeadline(time.Now())
+	if t.serving {
+		_ = t.controller.SetWriteDeadline(time.Now())
+	}
 }
 
-// finish はハンドラから戻ったことを記し、確かめ直しを止める。
+// revoked は打ち切られたかを返す。
+func (t *trackedRequest) revoked() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.aborted
+}
+
+// finish はハンドラから戻ったことを記し、確かめ直しと期限の見張りを止め、context を
+// 手放す。
 func (t *trackedRequest) finish() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -543,6 +585,10 @@ func (t *trackedRequest) finish() {
 	if t.timer != nil {
 		t.timer.Stop()
 	}
+	if t.stopWatch != nil {
+		t.stopWatch()
+	}
+	t.cancel()
 }
 
 func newSessionLedger(recheck time.Duration, logger *slog.Logger) *sessionLedger {
@@ -552,19 +598,17 @@ func newSessionLedger(recheck time.Duration, logger *slog.Logger) *sessionLedger
 	return &sessionLedger{requests: map[string]map[*trackedRequest]struct{}{}, recheck: recheck, logger: logger}
 }
 
-// track は要求を台帳に載せ、セッションの期限を締め切りとする context を返す。
-// release は要求の処理を終えたとき（ハンドラから戻る前）に呼ぶ。
+// open は要求を台帳に載せる。載せた時点から revoke の打ち切りが届き、届けば
+// 要求の context が取り消される。release は要求の処理を終えたとき（ハンドラから
+// 戻る前）に呼ぶ。
 //
-// 要求が recheck より長く続いたら、そこから recheck ごとにセッションを確かめ直し、
-// 無効になっていたら打ち切る。ほとんどの要求は数秒で終わるので、確かめ直すのは
-// /api/events・ライブ変換・大きな Range 応答のような長く続くものだけになる。
-func (l *sessionLedger) track(
-	ctx context.Context, w http.ResponseWriter, token string, expiresAt time.Time,
-) (context.Context, func()) {
-	ctx, cancel := context.WithDeadline(ctx, expiresAt)
-	req := &trackedRequest{cancel: cancel, controller: http.NewResponseController(w)}
-	// 期限を迎えたときにも書き込みを止める。
-	stopWatch := context.AfterFunc(ctx, req.abort)
+// セッションを確かめる前に載せる。確かめてから載せる間に届いた打ち切りを
+// 取りこぼさないためである。
+func (l *sessionLedger) open(
+	ctx context.Context, w http.ResponseWriter, token string,
+) (context.Context, *trackedRequest, func()) {
+	ctx, cancel := context.WithCancel(ctx)
+	req := &trackedRequest{token: token, cancel: cancel, controller: http.NewResponseController(w)}
 
 	l.mu.Lock()
 	if l.requests[token] == nil {
@@ -573,7 +617,43 @@ func (l *sessionLedger) track(
 	l.requests[token][req] = struct{}{}
 	l.mu.Unlock()
 
+	release := func() {
+		req.finish()
+		l.mu.Lock()
+		delete(l.requests[token], req)
+		if len(l.requests[token]) == 0 {
+			delete(l.requests, token)
+		}
+		l.mu.Unlock()
+	}
+	return ctx, req, release
+}
+
+// serve は、有効と確かめたセッションで要求を処理し始める。ctx は open が返した
+// context で、それにセッションの期限を締め切りとして付けて返し、期限と打ち切りで
+// 書き込みも止める。open の後に打ち切られていれば false を返し、呼び出し側は
+// 有効ではなかったものとして扱う。
+//
+// 要求が recheck より長く続いたら、そこから recheck ごとにセッションを確かめ直し、
+// 無効になっていたら打ち切る。ほとんどの要求は数秒で終わるので、確かめ直すのは
+// /api/events・ライブ変換・大きな Range 応答のような長く続くものだけになる。
+func (l *sessionLedger) serve(
+	ctx context.Context, req *trackedRequest, expiresAt time.Time,
+) (context.Context, bool) {
+	req.mu.Lock()
+	defer req.mu.Unlock()
+	if req.aborted {
+		return ctx, false
+	}
+	req.serving = true
+	ctx, cancel := context.WithDeadline(ctx, expiresAt)
+	parentCancel := req.cancel
+	req.cancel = func() { cancel(); parentCancel() }
+	// 期限を迎えたときにも書き込みを止める。
+	req.stopWatch = context.AfterFunc(ctx, req.abort)
+
 	if l.check != nil {
+		token := req.token
 		checkCtx := context.WithoutCancel(ctx)
 		recheck := func() {
 			valid, err := l.check(checkCtx, token)
@@ -590,23 +670,9 @@ func (l *sessionLedger) track(
 				req.timer.Reset(l.recheck)
 			}
 		}
-		req.mu.Lock()
 		req.timer = time.AfterFunc(l.recheck, recheck)
-		req.mu.Unlock()
 	}
-
-	release := func() {
-		req.finish()
-		stopWatch()
-		cancel()
-		l.mu.Lock()
-		delete(l.requests[token], req)
-		if len(l.requests[token]) == 0 {
-			delete(l.requests, token)
-		}
-		l.mu.Unlock()
-	}
-	return ctx, release
+	return ctx, true
 }
 
 // revoke は token のセッションで処理中の要求をすべて打ち切る。

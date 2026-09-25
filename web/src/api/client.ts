@@ -33,7 +33,6 @@ export function isVideoSort(value: unknown): value is VideoSort {
 export type WatchFilter = components["schemas"]["WatchFilter"];
 export type TagRef = components["schemas"]["TagRef"];
 export type VideoIdsResponse = components["schemas"]["VideoIdsResponse"];
-export type VideoVisibilityResponse = components["schemas"]["VideoVisibilityResponse"];
 export type FolderScope = components["schemas"]["FolderScope"];
 export type VideoFolder = components["schemas"]["VideoFolder"];
 export type Scan = components["schemas"]["Scan"];
@@ -337,30 +336,6 @@ export async function openVideoFile(id: number, signal?: AbortSignal): Promise<v
   if (!response.ok) {
     throw await toRequestFailed(response);
   }
-}
-
-/**
- * setVideoVisibility は videoIds の動画を公開・非公開にそろえる（PUT
- * /api/video-visibility、specs/016-single-account-auth/contracts/guest-api.md §4）。
- * 詳細画面の1本も選択バーの複数本も、これを使う。`applied` はいまライブラリにある
- * 動画の数で、既に同じ状態だった動画も数える。
- *
- * 成功したら一覧の控えを捨てる。控えは切り替えを知らないので、戻ったときに古い
- * `public` の一覧を出してしまう。
- */
-export async function setVideoVisibility(
-  videoIds: readonly number[],
-  isPublic: boolean,
-  signal?: AbortSignal,
-): Promise<VideoVisibilityResponse> {
-  const result = await request<VideoVisibilityResponse>("/api/video-visibility", {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ videoIds: Array.from(videoIds), public: isPublic }),
-    signal,
-  });
-  clearListSnapshot();
-  return result;
 }
 
 /** getCurrentScan は直近の取り込みの状態を取得する。一度も取り込んでいなければ null。 */
