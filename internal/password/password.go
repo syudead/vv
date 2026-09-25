@@ -30,9 +30,11 @@ const (
 )
 
 // 照合で受け入れるパラメータの上限。壊れた、または悪意のある保存値で、照合が
-// 過大なメモリや時間を使わないようにする。
+// 過大なメモリや時間を使わないようにする。メモリは RFC 9106 の第2推奨（64 MiB）
+// までとする。照合は同時に2つまで行うので（plan の Structural Decisions 6）、
+// 小型機でも 128 MiB に収まり、既定より強いパラメータへ上げる余地も残る。
 const (
-	maxMemoryKiB  = 1 << 22 // 4 GiB
+	maxMemoryKiB  = 1 << 16 // 64 MiB
 	maxIterations = 64
 	maxSaltLength = 1024
 	minKeyLength  = 16

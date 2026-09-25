@@ -72,6 +72,19 @@ func TestVerifyUsesEncodedParameters(t *testing.T) {
 	}
 }
 
+func TestVerifyAcceptsMemoryAtLimit(t *testing.T) {
+	const pw = "パスワード"
+	salt := []byte("0123456789abcdef")
+	key := argon2.IDKey([]byte(pw), salt, 1, 65536, 1, 32)
+	encoded := fmt.Sprintf("$argon2id$v=19$m=65536,t=1,p=1$%s$%s",
+		base64.RawStdEncoding.EncodeToString(salt), base64.RawStdEncoding.EncodeToString(key))
+
+	ok, err := Verify(pw, encoded)
+	if err != nil || !ok {
+		t.Fatalf("Verify(m=65536) = %v, %v; want true, nil", ok, err)
+	}
+}
+
 func TestVerifyRejectsMalformedHash(t *testing.T) {
 	valid, err := Hash("x")
 	if err != nil {
@@ -99,6 +112,8 @@ func TestVerifyRejectsMalformedHash(t *testing.T) {
 		"並列度0":          join("", "argon2id", "v=19", "m=19456,t=2,p=0", salt, key),
 		"並列度が大きすぎる":     join("", "argon2id", "v=19", "m=19456,t=2,p=256", salt, key),
 		"メモリが大きすぎる":     join("", "argon2id", "v=19", "m=99999999999,t=2,p=1", salt, key),
+		"メモリが64MiBを超える": join("", "argon2id", "v=19", "m=65537,t=2,p=1", salt, key),
+		"メモリが4GiB":      join("", "argon2id", "v=19", "m=4194304,t=2,p=1", salt, key),
 		"メモリが並列度に足りない":  join("", "argon2id", "v=19", "m=8,t=1,p=2", salt, key),
 		"先頭の0":          join("", "argon2id", "v=19", "m=019456,t=2,p=1", salt, key),
 		"ソルトが空":         join("", "argon2id", "v=19", "m=19456,t=2,p=1", "", key),
