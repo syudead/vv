@@ -360,7 +360,7 @@ export default function VideoPage() {
             // 枠は動画の比率（縦長も含む）に合わせ、画面の高さに収まる幅に留める。
             // 比率はシークのプレビューも使うので、変数として子孫へ渡す。
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
-            className="relative isolate mx-auto grid w-full shrink-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-9rem)*var(--vv-video-aspect))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
+            className="relative isolate mx-auto grid w-full min-w-[min(100%,18rem)] shrink-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-9rem)*var(--vv-video-aspect))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
           >
             {/* 動画の比率は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
                 全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}

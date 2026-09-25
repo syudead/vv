@@ -18,7 +18,7 @@
 
 ### Browser-compatible な小さい無音 MP4 を生成する
 
-**Decision**: 出力は最大幅 640px、縦横比維持、H.264、`yuv420p`、audio track なし、fast-start MP4 とする。
+**Decision**: 出力は向きを問わず長辺最大 640px、縦横比維持、H.264、`yuv420p`、audio track なし、fast-start MP4 とする。
 
 **Rationale**: 一覧カード以上の解像度を避けながら主要 browser で同じ asset を再生でき、音声 autoplay 制約と不要な転送を避けられる。元動画の container/codec に依存しないため、直接再生不能な原本も preview 可能になる。
 

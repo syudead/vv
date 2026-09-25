@@ -86,8 +86,13 @@
   visibility: hidden;
 }
 
+/* 操作バーの詰め方は画面ではなくプレイヤーの幅で決める。縦長の動画は広い画面でも枠が狭い。 */
+.vv-video-player {
+  container-type: inline-size;
+}
+
 /* 狭い幅では、操作バーのボタンを詰めてプレイヤーの幅に収める。 */
-@media (max-width: 39.99rem) {
+@container (max-width: 39.99rem) {
   /* 再生バー（.vjs-progress-control も .vjs-control）は幅いっぱいのままにする。 */
   .vv-video-player
     .video-js

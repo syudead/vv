@@ -488,7 +488,8 @@ function TranscodeIndicator({
       {/* video.js の `.video-js button` が表示・文字の大きさ・色を上書きするので、! で戻す。 */}
       <PopoverTrigger className="inline-flex! items-center gap-1 rounded-sm px-1 text-xs! leading-4! whitespace-nowrap text-fg-muted! transition-colors! hover:text-fg!">
         <Info className="size-3.5 shrink-0" aria-hidden="true" />
-        変換して再生中
+        {/* 縦長の動画などで枠が狭いときは、印だけを残して操作バーの幅に収める。 */}
+        <span className="@max-[22.5rem]:sr-only">変換して再生中</span>
       </PopoverTrigger>
       <PopoverContent container={container} className="w-64 text-sm text-fg">
         ブラウザがそのまま再生できない形式のため、変換しながら再生しています。シークに数秒かかります。

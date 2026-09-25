@@ -21,7 +21,7 @@ generated file に手編集差分がなく、repository 全体の test/lint が�
 1. migration 前から存在する probe 完了動画を含む DB を起動し、再 import なしで preview job が一度だけ backfill されることを確認する。
 2. 新規動画を scan し、probe 成功後に preview job が queue されることを確認する。
 3. 9 秒超の動画は全尺に分散した 12 x 0.75 秒、短尺は全体一回の出力になっていることを frame/timestamp test で確認する。
-4. `ffprobe` で最大幅 640px、H.264、`yuv420p`、audio stream なしを確認し、先頭 byte range だけで再生開始できる fast-start MP4 であること、manifest の byte length/SHA-256 が一致することを確認する。
+4. `ffprobe` で長辺最大 640px、H.264、`yuv420p`、audio stream なしを確認し、先頭 byte range だけで再生開始できる fast-start MP4 であること、manifest の byte length/SHA-256 が一致することを確認する。
 5. worker を生成途中で終了し、partial file が完成 path に見えず、再起動時に job が queue へ戻ることを確認する。
 6. failure を retry 上限まで発生させ、preview が `failed` でも import、thumbnail、一覧取得が成功することを確認する。
 7. MP4/manifest の片方を削除する、MP4 を truncate/bit-flip する、manifest の size/digest を変更する各 case で、scan/startup reconciliation が state を `pending` に戻して一度だけ再生成することを確認する。metadata が読める MP4 payload corruption も fixture に含める。

@@ -16,7 +16,8 @@ describe("frameAspectRatio", () => {
   });
 
   it("極端に細長い比率は範囲に丸める", () => {
-    expect(frameAspectRatio(100, 1000)).toBeCloseTo(9 / 21);
+    expect(frameAspectRatio(100, 1000)).toBeCloseTo(9 / 16);
+    expect(frameAspectRatio(1080, 2340)).toBeCloseTo(9 / 16);
     expect(frameAspectRatio(1000, 100)).toBeCloseTo(21 / 9);
   });
 });

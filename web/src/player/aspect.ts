@@ -5,7 +5,7 @@ export const defaultAspectRatio = 16 / 9;
  * 枠の比率の範囲。極端に細長い動画で枠が潰れたり、操作バーや状態表示が収まらなく
  * なったりしないよう、この範囲に丸める。範囲の外の動画は枠の中で上下か左右に余白が出る。
  */
-const minAspectRatio = 9 / 21;
+const minAspectRatio = 9 / 16;
 const maxAspectRatio = 21 / 9;
 
 /**
