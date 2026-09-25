@@ -124,6 +124,10 @@ export interface paths {
          * @description カーソル方式でページングする。対象は登録メディアフォルダの下に所在がある動画で、
          *     `query`・`watch`・`playable` で絞り込む。`total` は絞り込み後の総件数で、
          *     ページングとは独立に返る。
+         *
+         *     ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
+         *     所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
+         *     `playedDesc`、`tag`）は `400` `invalid_request` にする（guest-api.md §3）。
          */
         get: operations["listVideos"];
         put?: never;
@@ -164,7 +168,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 動画1件の詳細を返す */
+        /**
+         * 動画1件の詳細を返す
+         * @description ゲストでは公開の動画だけを返し、公開でない動画は存在しない動画と同じ 404 にする
+         *     （guest-api.md §2）。この扱いは関連動画・配信・プレビュー・ライブ変換・
+         *     サムネイル・シークプレビューでも同じである。
+         */
         get: operations["getVideo"];
         put?: never;
         post?: never;
@@ -276,8 +285,8 @@ export interface paths {
         /**
          * 生成済み hover preview を配信する
          * @description 保存済みの preview MP4 だけを Range 対応で配信する。元動画の stream や
-         *     live transcode へ fallback しない。`v` が current content key と一致する
-         *     ときだけ immutable cache を許可する。
+         *     live transcode へ fallback しない。成功の応答は `Cache-Control: private, no-cache`
+         *     と `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す（guest-api.md §5）。
          */
         get: operations["getVideoPreview"];
         put?: never;
@@ -318,8 +327,10 @@ export interface paths {
         };
         /**
          * サムネイル画像を返す
-         * @description `v` は内容由来の識別子で、画像が変われば URL も変わる。長期キャッシュを
-         *     前提にしてよい（[http-routes.md](./http-routes.md)）。未生成の場合は 404。
+         * @description `v` は内容由来の識別子で、画像が変われば URL も変わる。未生成の場合は 404。
+         *     成功の応答は `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が
+         *     一致すれば `304` を返す。見るたびにサーバーへ確かめさせ、ログアウト後や非公開に
+         *     した後にキャッシュから出続けないようにする（guest-api.md §5）。
          */
         get: operations["getVideoThumbnail"];
         put?: never;
@@ -340,7 +351,8 @@ export interface paths {
         /**
          * 指定時刻のシークプレビュー画像を返す
          * @description 元動画の論理時刻から1秒以内のJPEGを要求時に生成する。画像は保存しない。
-         *     `v` は内容由来の識別子で、空でない場合だけ長期キャッシュを許可する。
+         *     `v` は内容由来の識別子である。成功の応答は `Cache-Control: private, no-cache` と
+         *     `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す（guest-api.md §5）。
          */
         get: operations["getVideoSeekThumbnail"];
         put?: never;
@@ -596,6 +608,9 @@ export interface paths {
          * フォルダ画面の最上位（登録済みメディアフォルダ）を返す
          * @description フォルダは保存せず、取り込み済みの所在のパスから導く。登録済みの
          *     メディアフォルダは、動画が無くても含む。並びは名前の自然順。
+         *
+         *     ゲストでは公開の動画だけを数え、公開の動画の所在を1つも含まない登録フォルダは
+         *     省く（guest-api.md §2）。
          */
         get: operations["listRootFolders"];
         put?: never;
@@ -617,6 +632,9 @@ export interface paths {
          * フォルダ1件と、その直下の子フォルダを返す
          * @description フォルダは登録済みメディアフォルダの id と、そこからの `/` 区切りの相対パスで
          *     指す。子フォルダは直下だけを名前の自然順で返す。
+         *
+         *     ゲストでは公開の動画だけを数え、公開の動画の所在を1つも含まないフォルダは、
+         *     登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする（guest-api.md §2）。
          */
         get: operations["getFolder"];
         put?: never;
@@ -643,6 +661,11 @@ export interface paths {
          *     `sizeBytes` はその範囲にある所在（検索語があれば当たった所在）のうちパスの
          *     昇順で最初のもので、同じ動画の所在が範囲に2つ以上あっても1件だけ返す。
          *     フォルダが無いときは `scope`・`query` に関係なく 404 を返す。
+         *
+         *     ゲストでは公開の動画だけを対象にし、公開の動画の所在を1つも含まないフォルダは
+         *     登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする。`watch` が `all`
+         *     以外と、`sort` が `playedAsc`・`playedDesc` は `400` `invalid_request` にする
+         *     （guest-api.md §2・§3）。
          */
         get: operations["listFolderVideos"];
         put?: never;
@@ -929,9 +952,12 @@ export interface components {
             path: string;
             /** @description 表示名。相対パスの最後の段、登録フォルダ自身は絶対パスの最後の段 */
             name: string;
-            /** @description 登録フォルダの絶対パス */
-            rootPath: string;
-            /** @description 直下の動画の件数 */
+            /**
+             * @description 登録フォルダの絶対パス。ゲストの応答では省く（guest-api.md §1）。画面は
+             *     登録フォルダの表示名を、これが無ければ `name` から作る
+             */
+            rootPath?: string;
+            /** @description 直下の動画の件数（ゲストでは公開の動画だけを数える） */
             videoCount: number;
             /** @description 直下の子フォルダの件数 */
             folderCount: number;
@@ -947,6 +973,10 @@ export interface components {
             /** @description 登録済みメディアフォルダ。名前の自然順 */
             folders: components["schemas"]["FolderSummary"][];
         };
+        /**
+         * @description ゲストの応答では `location`・`progress`・`probeError` を省き、`tags` を空の配列にする
+         *     （specs/016-single-account-auth/contracts/guest-api.md §1）。
+         */
         Video: {
             /** Format: int64 */
             id: number;
@@ -988,7 +1018,7 @@ export interface components {
             unplayableReason?: "container" | "video_codec" | "audio_codec";
             /** @enum {string} */
             probeState: "pending" | "done" | "failed";
-            /** @description probeState = failed のときの理由 */
+            /** @description probeState = failed のときの理由。ゲストの応答では省く（ファイルの絶対パスを含みうる） */
             probeError?: string;
             /** @enum {string} */
             thumbnailState: "pending" | "done" | "failed";
@@ -1005,7 +1035,7 @@ export interface components {
             folder?: components["schemas"]["VideoFolder"];
             /**
              * @description 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-             *     無ければ空配列（contracts/tags-api.md §1）
+             *     無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
              */
             tags: components["schemas"]["TagRef"][];
             /**
@@ -1603,6 +1633,13 @@ export interface operations {
                     "video/mp4": string;
                 };
             };
+            /** @description `If-None-Match` が `ETag` と一致した */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             404: components["responses"]["NotFound"];
             /** @description 範囲指定が不正 */
             416: {
@@ -1674,6 +1711,13 @@ export interface operations {
                     "image/jpeg": string;
                 };
             };
+            /** @description `If-None-Match` が `ETag` と一致した */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
             /** @description 動画が存在しないか、サムネイルが未生成 */
             404: {
                 headers: {
@@ -1707,6 +1751,13 @@ export interface operations {
                 content: {
                     "image/jpeg": string;
                 };
+            };
+            /** @description `If-None-Match` が `ETag` と一致した */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];

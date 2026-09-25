@@ -109,6 +109,12 @@ func (e *authEnv) advance(d time.Duration) {
 // ここで決める。
 func newAuthEnv(t *testing.T, dataDir string, opts Options) *authEnv {
 	t.Helper()
+	return newAuthEnvWith(t, dataDir, func(*store.DB) Options { return opts })
+}
+
+// newAuthEnvWith は newAuthEnv と同じで、経路の依存を開いたデータベースから作る。
+func newAuthEnvWith(t *testing.T, dataDir string, build func(db *store.DB) Options) *authEnv {
+	t.Helper()
 	db, err := store.Open(dataDir)
 	if err != nil {
 		t.Fatal(err)
@@ -118,6 +124,7 @@ func newAuthEnv(t *testing.T, dataDir string, opts Options) *authEnv {
 		t.Fatal(err)
 	}
 	env := &authEnv{t: t, db: db, logs: &syncBuffer{}, now: time.Now()}
+	opts := build(db)
 	auth := app.NewAuth(app.AuthOptions{Store: db.Auth(), Hasher: passwordHasher{}, Now: env.clock})
 	opts.Auth = appAuthenticator{auth: auth}
 	opts.Now = env.clock
@@ -271,6 +278,25 @@ func protectedOperations(t *testing.T) []operation {
 	return ops
 }
 
+// ownerOnlyOperations は openapi.yaml の「所有者だけ」の操作を返す。
+func ownerOnlyOperations(t *testing.T) []operation {
+	t.Helper()
+	var ops []operation
+	for op, class := range openAPISecurity(t) {
+		if class == accessOwner {
+			ops = append(ops, op)
+		}
+	}
+	if len(ops) == 0 {
+		t.Fatal("所有者だけの操作を読み取れていない")
+	}
+	return ops
+}
+
+// ownerOnlyTarget は、所有者として扱われないことを確かめるのに使う「所有者だけ」の経路である。
+// 「ゲストも」の経路は、有効なセッションが無ければゲストとして 200 を返す。
+const ownerOnlyTarget = "/api/scans/current"
+
 func operationTarget(op operation) string {
 	return operationRequest(op).URL.Path
 }
@@ -345,16 +371,18 @@ func TestAuthSetupRejectsInvalidValues(t *testing.T) {
 	}
 }
 
+// 所有者だけの要求は、有効なセッションが無ければ未認証になる。「ゲストも」の要求を
+// ゲストとして処理することは guest_test.go が確かめる。
 func TestAuthWithoutCookieIsUnauthenticated(t *testing.T) {
 	env := newAuthEnv(t, t.TempDir(), Options{Videos: sampleLibrary()})
 	env.setup()
 
-	for _, op := range protectedOperations(t) {
+	for _, op := range ownerOnlyOperations(t) {
 		rec := env.serve(authRequest{method: op.method, target: operationTarget(op), body: operationBody(op)})
 		assertUnauthenticated(t, op.method+" "+op.path, rec)
 		assertAudience(t, op.method+" "+op.path, rec, "guest")
 	}
-	for _, target := range []string{"//api/videos", "/./api/scans", "/%61pi/scans", "/api/../api/scans", "/api/x", "/api/", "/api"} {
+	for _, target := range []string{"//api/scans/current", "/./api/scans", "/%61pi/scans", "/api/../api/scans", "/api/x", "/api/", "/api"} {
 		rec := env.get(target)
 		assertUnauthenticated(t, target, rec)
 		assertAudience(t, target, rec, "guest")
@@ -364,12 +392,12 @@ func TestAuthWithoutCookieIsUnauthenticated(t *testing.T) {
 		{Name: sessionCookieHTTP, Value: "not-a-token"},
 		{Name: sessionCookieHTTP, Value: strings.Repeat("A", 43)},
 	} {
-		rec := env.get("/api/videos", cookie)
+		rec := env.get(ownerOnlyTarget, cookie)
 		assertUnauthenticated(t, "Cookie "+cookie.Value, rec)
 	}
 	// HTTP の要求は __Host- の Cookie を読まない。
 	valid := env.login(true)
-	rec := env.get("/api/videos", &http.Cookie{Name: sessionCookieHTTPS, Value: valid.Value})
+	rec := env.get(ownerOnlyTarget, &http.Cookie{Name: sessionCookieHTTPS, Value: valid.Value})
 	assertUnauthenticated(t, "HTTP の要求に __Host-vv_session", rec)
 
 	// SPA のビルド成果物は誰にでも配り、X-VV-Audience は付けない。
@@ -637,9 +665,9 @@ func TestAuthLogoutEndsBothSessionsOverHTTPS(t *testing.T) {
 		}
 	}
 
-	assertUnauthenticated(t, "ログアウト後の HTTP の Cookie", env.get("/api/videos", httpCookie))
+	assertUnauthenticated(t, "ログアウト後の HTTP の Cookie", env.get(ownerOnlyTarget, httpCookie))
 	assertUnauthenticated(t, "ログアウト後の HTTPS の Cookie",
-		env.serve(authRequest{method: http.MethodGet, target: "/api/videos", https: true, cookies: []*http.Cookie{httpsCookie}}))
+		env.serve(authRequest{method: http.MethodGet, target: ownerOnlyTarget, https: true, cookies: []*http.Cookie{httpsCookie}}))
 }
 
 func TestAuthSessionSurvivesRebuildAndExpires(t *testing.T) {
@@ -662,7 +690,7 @@ func TestAuthSessionSurvivesRebuildAndExpires(t *testing.T) {
 		t.Fatalf("期限の直前: status = %d", rec.Code)
 	}
 	second.advance(2 * time.Minute)
-	assertUnauthenticated(t, "90 日を過ぎた Cookie", second.get("/api/videos", cookie))
+	assertUnauthenticated(t, "90 日を過ぎた Cookie", second.get(ownerOnlyTarget, cookie))
 }
 
 func TestAuthSessionCheckFailureIsInternalError(t *testing.T) {
@@ -815,7 +843,7 @@ func TestAuthRevocationEndsInFlightResponses(t *testing.T) {
 				}
 			})
 
-			assertUnauthenticated(t, "打ち切り後の Cookie", env.get("/api/videos", cookie))
+			assertUnauthenticated(t, "打ち切り後の Cookie", env.get(ownerOnlyTarget, cookie))
 		})
 	}
 }

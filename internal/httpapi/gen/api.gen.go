@@ -461,10 +461,11 @@ type FolderSummary struct {
 	Previews []FolderPreview `json:"previews"`
 	RootId   int64           `json:"rootId"`
 
-	// RootPath 登録フォルダの絶対パス
-	RootPath string `json:"rootPath"`
+	// RootPath 登録フォルダの絶対パス。ゲストの応答では省く（guest-api.md §1）。画面は
+	// 登録フォルダの表示名を、これが無ければ `name` から作る
+	RootPath *string `json:"rootPath,omitempty"`
 
-	// VideoCount 直下の動画の件数
+	// VideoCount 直下の動画の件数（ゲストでは公開の動画だけを数える）
 	VideoCount int `json:"videoCount"`
 }
 
@@ -618,7 +619,8 @@ type UpdateMediaFolderRequest struct {
 	Version int64  `json:"version"`
 }
 
-// Video defines model for Video.
+// Video ゲストの応答では `location`・`progress`・`probeError` を省き、`tags` を空の配列にする
+// （specs/016-single-account-auth/contracts/guest-api.md §1）。
 type Video struct {
 	AddedAt time.Time `json:"addedAt"`
 
@@ -647,7 +649,7 @@ type Video struct {
 	// PreviewUrl previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL。done なのに asset が無ければ、サーバーは作り直しを積み、previewState を pending として返す
 	PreviewUrl *string `json:"previewUrl,omitempty"`
 
-	// ProbeError probeState = failed のときの理由
+	// ProbeError probeState = failed のときの理由。ゲストの応答では省く（ファイルの絶対パスを含みうる）
 	ProbeError *string         `json:"probeError,omitempty"`
 	ProbeState VideoProbeState `json:"probeState"`
 	Progress   *Progress       `json:"progress,omitempty"`
@@ -663,7 +665,7 @@ type Video struct {
 	SizeBytes        int64   `json:"sizeBytes"`
 
 	// Tags 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-	// 無ければ空配列（contracts/tags-api.md §1）
+	// 無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
 	Tags           []TagRef            `json:"tags"`
 	ThumbnailState VideoThumbnailState `json:"thumbnailState"`
 

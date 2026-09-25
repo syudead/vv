@@ -262,10 +262,19 @@ classified owner only when either form is under `/api/`, so classification and
 dispatch cannot disagree. It decides the viewer
 (`domain.Audience`) from the session cookie (`__Host-vv_session` over HTTPS,
 `vv_session` over HTTP), puts it on the request context for handlers to read, and
-tags every `/api/*` response with `X-VV-Audience: owner|guest`. Requests without a
-valid session, and every non-anyone request while no account is configured, get
-`401 unauthenticated`; a failed session lookup is `500`, never an owner. Guests do
-not yet receive guest responses: the guest-too kind still answers them with 401. For
+tags every `/api/*` response with `X-VV-Audience: owner|guest`. Owner-only requests
+without a valid session, and every non-anyone request while no account is configured,
+get `401 unauthenticated`; a failed session lookup is `500`, never an owner.
+Guest-too requests without a valid session are handled as a guest: handlers pass the
+audience to `LibraryStore` and `Catalog`, so only public videos (and folders derived
+from them) appear, hidden videos and folders answer the same `404` as missing ones,
+guest responses omit `location`, `progress`, `probeError` and `rootPath` and carry
+empty `tags`, and list conditions that depend on owner data (`watch`, played-at
+sorts, `tag`) are `400`
+([specs/016-single-account-auth/contracts/guest-api.md](specs/016-single-account-auth/contracts/guest-api.md)).
+Thumbnails, seek previews and hover previews are served `private, no-cache` with an
+`ETag` (`304` on a match) to owners and guests alike, so neither a shared cache nor
+the browser keeps serving them after logout. For
 owner requests the boundary keeps an in-memory ledger that sets the session expiry as
 the context deadline, ends a session's in-flight responses on logout, and re-checks
 requests that run longer than 30 seconds every 30 seconds so a credential change from
@@ -282,7 +291,7 @@ proxies in `MDM_TRUSTED_PROXIES` and otherwise uses the connecting address and T
 the login attempt limit, authentication logs, the cookie name and `Secure`, the
 same-origin check and the loopback check for opening a file all use it.
 
-Not built yet: guest responses, subtitles, and multi-user support. Browser-incompatible
+Not built yet: subtitles and multi-user support. Browser-incompatible
 video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is
 not persisted.
 

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -40,23 +41,78 @@ func TestGetThumbnail(t *testing.T) {
 	}
 }
 
-// v 付きの要求には長期キャッシュを付ける。内容が変われば content_key が
-// 変わり URL も変わるので、古い画像が残らない。
-func TestThumbnailCacheControlWithVersion(t *testing.T) {
+// 版の有無によらず、使うたびに確かめさせる（specs/016-single-account-auth/
+// contracts/guest-api.md §5）。ETag が一致すれば 304 になる。
+func TestThumbnailCacheControlRevalidates(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
 		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
 		Artifacts: artifacts,
 	})
 
-	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail?v=abcdef012345")
-	if got := rec.Header().Get("Cache-Control"); got != cacheImmutable {
-		t.Errorf("Cache-Control = %q, want %q", got, cacheImmutable)
+	for _, target := range []string{"/api/videos/1/thumbnail?v=abcdef012345", "/api/videos/1/thumbnail"} {
+		rec := do(t, handler, http.MethodGet, target)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d", target, rec.Code)
+		}
+		if got := rec.Header().Get("Cache-Control"); got != cacheRevalidate {
+			t.Errorf("%s: Cache-Control = %q, want %q", target, got, cacheRevalidate)
+		}
+		etag := rec.Header().Get("ETag")
+		if etag == "" {
+			t.Fatalf("%s: ETag が無い", target)
+		}
+		req := httptest.NewRequest(http.MethodGet, target, nil)
+		req.Header.Set("If-None-Match", etag)
+		again := httptest.NewRecorder()
+		handler.ServeHTTP(again, req)
+		if again.Code != http.StatusNotModified || again.Body.Len() != 0 {
+			t.Errorf("%s: If-None-Match の status = %d, body = %d バイト", target, again.Code, again.Body.Len())
+		}
+		if got := again.Header().Get("Cache-Control"); got != cacheRevalidate {
+			t.Errorf("%s: 304 の Cache-Control = %q", target, got)
+		}
 	}
 }
 
-// 版付きサムネイルは1年の immutable で配信するが、失敗応答にそれが残ると
-// 壊れた結果が1年キャッシュされる。416 では no-store に戻ることを固定する。
+// 作り直したサムネイルが前と同じ大きさ・更新時刻でも、内容が違えば ETag が
+// 変わり、古い ETag での確認には新しい画像を返す。
+func TestThumbnailETagFollowsContent(t *testing.T) {
+	artifacts, video := thumbnailFixture(t)
+	handler := newTestServer(t, Options{
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
+	})
+	const target = "/api/videos/1/thumbnail?v=abcdef012345"
+	path := artifacts.thumbnails[video.ContentKey]
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := do(t, handler, http.MethodGet, target).Header().Get("ETag")
+
+	replaced := []byte{0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10}
+	if err := os.WriteFile(path, replaced, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	req.Header.Set("If-None-Match", before)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != string(replaced) {
+		t.Fatalf("古い ETag での確認 = %d %x、新しい画像を返すべき", rec.Code, rec.Body.Bytes())
+	}
+	if after := rec.Header().Get("ETag"); after == before {
+		t.Errorf("内容が変わっても ETag = %q のまま", after)
+	}
+}
+
+// 成功の応答は ETag で確かめさせるが、失敗応答にキャッシュの指示が残ると壊れた
+// 結果が再利用される。416 では no-store に戻ることを固定する。
 func TestThumbnailUnsatisfiableRangeIsNotCached(t *testing.T) {
 	artifacts, video := thumbnailFixture(t)
 	handler := newTestServer(t, Options{
@@ -70,24 +126,6 @@ func TestThumbnailUnsatisfiableRangeIsNotCached(t *testing.T) {
 	}
 	if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
 		t.Errorf("416 の Cache-Control = %q, want %q", got, cacheNoStore)
-	}
-}
-
-// v の無い要求には長期キャッシュを付けない。版が分からないものを1年
-// 抱えさせると、差し替えても古い画像が残る。
-func TestThumbnailCacheControlWithoutVersion(t *testing.T) {
-	artifacts, video := thumbnailFixture(t)
-	handler := newTestServer(t, Options{
-		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
-		Artifacts: artifacts,
-	})
-
-	rec := do(t, handler, http.MethodGet, "/api/videos/1/thumbnail")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", rec.Code)
-	}
-	if got := rec.Header().Get("Cache-Control"); got == cacheImmutable {
-		t.Errorf("v の無い要求に長期キャッシュが付いた: %q", got)
 	}
 }
 

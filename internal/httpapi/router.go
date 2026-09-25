@@ -110,8 +110,9 @@ type Transcoder interface {
 type ArtifactReader interface {
 	// ThumbnailFile はライブラリ用サムネイルを開く。閉じるのは呼び出し側である。
 	ThumbnailFile(contentKey string) (*os.File, error)
-	// PreviewFile はホバープレビューの MP4 を開く。閉じるのは呼び出し側である。
-	PreviewFile(contentKey string) (*os.File, error)
+	// PreviewFile はホバープレビューの MP4 を開き、内容の SHA-256（manifest に
+	// 記録したもの）と合わせて返す。閉じるのは呼び出し側である。
+	PreviewFile(contentKey string) (*os.File, string, error)
 	// SeekThumbnail は再生位置を含むシーク用プレビューの1枚を読む。
 	SeekThumbnail(contentKey string, positionMs int64) ([]byte, error)
 }
@@ -424,9 +425,12 @@ const (
 	// 変わり続けるため、中間キャッシュに残してはならない。
 	cacheNoStore = "no-store"
 	// 動画本体に付ける値は、それを配信する stream.go に置く。
-	// cacheImmutable は v 付きのサムネイルに付ける。v は内容由来の識別子で、
-	// 内容が変われば URL も変わるので古い画像が残らない。
-	cacheImmutable = "public, max-age=31536000, immutable"
+	// cacheRevalidate はサムネイル・シークプレビュー・ホバープレビューの成功の応答に、
+	// 所有者にもゲストにも付ける（specs/016-single-account-auth/contracts/guest-api.md §5）。
+	// private で共有キャッシュに所有者の応答を残さず、no-cache で使うたびにサーバーへ
+	// 確かめさせる。ログアウト後や非公開にした後はその確かめで 404 になり、ブラウザの
+	// キャッシュから出続けない。内容が同じなら ETag で 304 になり、帯域はほぼ増えない。
+	cacheRevalidate = "private, no-cache"
 )
 
 // エラーの code の正本は api/openapi.yaml の Error.code である。gen.ErrorCode*

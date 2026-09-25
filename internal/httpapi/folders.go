@@ -33,20 +33,26 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	audience := audienceFrom(r.Context())
 	summaries := make([]domain.FolderSummary, 0, len(roots))
 	for _, root := range roots {
-		locations, err := s.folders.FolderLocations(r.Context(), audienceFrom(r.Context()), root.Path)
+		locations, err := s.folders.FolderLocations(r.Context(), audience, root.Path)
 		if err != nil {
 			s.folderError(w, r, "フォルダを取得できませんでした", err)
 			return
 		}
 		listing, _ := domain.SummarizeFolder(root, "", locations)
+		// ゲストには、公開の動画の所在を1つも含まない登録フォルダを見せない
+		// （contracts/guest-api.md §2）。
+		if !audience.IsOwner() && !listingHasVideos(listing) {
+			continue
+		}
 		summaries = append(summaries, listing.Folder)
 	}
 	domain.SortFolders(summaries)
 
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.RootFolderListing{Folders: toAPIFolders(summaries)}, s.logger)
+	writeJSON(w, http.StatusOK, gen.RootFolderListing{Folders: toAPIFolders(audience, summaries)}, s.logger)
 }
 
 // GetFolder はフォルダ1件と直下の子フォルダを返す（GET /api/folders/{rootId}）。
@@ -55,21 +61,25 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 	if !ok {
 		return
 	}
-	locations, err := s.folders.FolderLocations(r.Context(), audienceFrom(r.Context()), domain.FolderDir(root.Path, rel))
+	audience := audienceFrom(r.Context())
+	locations, err := s.folders.FolderLocations(r.Context(), audience, domain.FolderDir(root.Path, rel))
 	if err != nil {
 		s.folderError(w, r, "フォルダを取得できませんでした", err)
 		return
 	}
 	listing, found := domain.SummarizeFolder(root, rel, locations)
-	if !found {
+	// 登録フォルダそのものは動画が無くても「ある」と答えるが、ゲストには、公開の動画を
+	// 含まないなら存在しないフォルダと同じにする。登録フォルダの rootId を数え上げられない
+	// ようにする（contracts/guest-api.md §2）。
+	if !found || (!audience.IsOwner() && !listingHasVideos(listing)) {
 		s.notFound(w, folderNotFoundMessage)
 		return
 	}
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.FolderListing{
-		Folder:  toAPIFolder(listing.Folder),
-		Folders: toAPIFolders(listing.Folders),
+		Folder:  toAPIFolder(audience, listing.Folder),
+		Folders: toAPIFolders(audience, listing.Folders),
 	}, s.logger)
 }
 
@@ -87,9 +97,12 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		Sort: domain.SortAddedDesc, Limit: domain.DefaultLimit,
 	}
 	// フォルダの有無は条件の検査より先に確かめる。無いフォルダは、条件の値に
-	// 関係なく 404 にする（contracts/list-api.md §5）。
-	if rel != "" {
-		found, err := s.folders.HasFolderLocations(r.Context(), audienceFrom(r.Context()), query.Dir)
+	// 関係なく 404 にする（contracts/list-api.md §5）。登録フォルダそのものは所有者には
+	// 動画が無くても「ある」が、ゲストには公開の動画を含むときだけある
+	// （contracts/guest-api.md §2）。
+	audience := audienceFrom(r.Context())
+	if rel != "" || !audience.IsOwner() {
+		found, err := s.folders.HasFolderLocations(r.Context(), audience, query.Dir)
 		if err != nil {
 			s.folderError(w, r, "フォルダの動画を取得できませんでした", err)
 			return
@@ -117,6 +130,9 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		return
 	}
 	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
+	if !s.checkAudienceQuery(w, audience, domain.VideoQuery{Watch: query.Watch, Sort: query.Sort}) {
+		return
+	}
 	if params.Limit != nil {
 		if *params.Limit < 1 {
 			s.invalidRequest(w, "1ページの件数は 1 以上を指定してください")
@@ -128,7 +144,7 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 		query.Cursor = *params.Cursor
 	}
 
-	page, err := s.folders.ListFolderVideos(r.Context(), audienceFrom(r.Context()), query)
+	page, err := s.folders.ListFolderVideos(r.Context(), audience, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
 		s.invalidRequest(w, "読み込み位置を解釈できません。フォルダを開き直してください")
@@ -177,15 +193,23 @@ func (s *server) resolveFolderRootIn(w http.ResponseWriter, r *http.Request, roo
 	return nil, domain.MediaFolder{}, "", false
 }
 
-func toAPIFolders(folders []domain.FolderSummary) []gen.FolderSummary {
+// listingHasVideos は、フォルダの配下（深さを問わない）に見せてよい動画があるかを返す。
+// 子フォルダは所在のあるものだけが導かれるので、直下の動画か子フォルダがあれば足りる。
+func listingHasVideos(listing domain.FolderListing) bool {
+	return listing.Folder.VideoCount > 0 || len(listing.Folders) > 0
+}
+
+func toAPIFolders(audience domain.Audience, folders []domain.FolderSummary) []gen.FolderSummary {
 	out := make([]gen.FolderSummary, 0, len(folders))
 	for _, folder := range folders {
-		out = append(out, toAPIFolder(folder))
+		out = append(out, toAPIFolder(audience, folder))
 	}
 	return out
 }
 
-func toAPIFolder(folder domain.FolderSummary) gen.FolderSummary {
+// toAPIFolder はフォルダを契約の形へ写す。登録フォルダの絶対パス（rootPath）は
+// ゲストの応答から外す（contracts/guest-api.md §1）。
+func toAPIFolder(audience domain.Audience, folder domain.FolderSummary) gen.FolderSummary {
 	previews := make([]gen.FolderPreview, 0, len(folder.Previews))
 	for _, preview := range folder.Previews {
 		previews = append(previews, gen.FolderPreview{
@@ -193,15 +217,19 @@ func toAPIFolder(folder domain.FolderSummary) gen.FolderSummary {
 			ThumbnailUrl: thumbnailURL(domain.Video{ID: preview.VideoID, ContentKey: preview.ContentKey}),
 		})
 	}
-	return gen.FolderSummary{
+	out := gen.FolderSummary{
 		RootId:      folder.RootID,
 		Path:        folder.Path,
 		Name:        folder.Name,
-		RootPath:    folder.RootPath,
 		VideoCount:  folder.VideoCount,
 		FolderCount: folder.FolderCount,
 		Previews:    previews,
 	}
+	if audience.IsOwner() {
+		rootPath := folder.RootPath
+		out.RootPath = &rootPath
+	}
+	return out
 }
 
 // folderError は保存層の失敗を 500 で返す。要求が打ち切られた（画面が先へ

@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -34,8 +37,22 @@ func (f *fakeArtifacts) ThumbnailFile(contentKey string) (*os.File, error) {
 	return openFake(f.thumbnails, contentKey)
 }
 
-func (f *fakeArtifacts) PreviewFile(contentKey string) (*os.File, error) {
-	return openFake(f.previews, contentKey)
+// PreviewFile は本物の置き場と同じく、内容の SHA-256 を添えて返す。
+func (f *fakeArtifacts) PreviewFile(contentKey string) (*os.File, string, error) {
+	file, err := openFake(f.previews, contentKey)
+	if err != nil {
+		return nil, "", err
+	}
+	h := sha256.New()
+	_, err = io.Copy(h, file)
+	if err == nil {
+		_, err = file.Seek(0, io.SeekStart)
+	}
+	if err != nil {
+		_ = file.Close()
+		return nil, "", err
+	}
+	return file, hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (f *fakeArtifacts) SeekThumbnail(contentKey string, positionMs int64) ([]byte, error) {
@@ -84,9 +101,9 @@ func (f *fakeLibrary) ListMediaFolders(context.Context) ([]domain.MediaFolder, e
 	return folders, nil
 }
 
-// requireOwner は、見る人を決める境界がまだ無い今、すべての呼び出しが所有者として
-// 読むことを偽物の側で確かめる（specs/016-single-account-auth の #296）。ゲストとして
-// 読んだら誤りを返し、そのテストを失敗させる。
+// requireOwner は、偽物を使う経路のテストが所有者として読むことを偽物の側で確かめる。
+// それらのテストは ownerAuth で境界を越えるので、ゲストとして読んだら取り違えである。
+// ゲストとしての読み出しは guest_test.go が本物の保存層で確かめる。
 func requireOwner(audience domain.Audience) error {
 	if !audience.IsOwner() {
 		return errors.New("所有者として読んでいません")

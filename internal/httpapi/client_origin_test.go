@@ -238,18 +238,19 @@ func TestTrustedProxyForwardedHeadersAreUsed(t *testing.T) {
 }
 
 // HTTP の要求は、認証に __Host-vv_session を読まない。偽った X-Forwarded-Proto でも同じである。
+// 「ゲストも」の経路はゲストとして返るので、所有者だけの経路で確かめる。
 func TestHTTPRequestDoesNotReadHostCookie(t *testing.T) {
 	env := newAuthEnv(t, t.TempDir(), Options{TrustedProxies: testTrustedProxies, Videos: sampleLibrary()})
 	env.setup()
 	cookie := env.login(true)
 
-	assertUnauthenticated(t, "HTTP の要求の __Host-vv_session", env.get("/api/videos", cookie))
+	assertUnauthenticated(t, "HTTP の要求の __Host-vv_session", env.get(ownerOnlyTarget, cookie))
 	assertUnauthenticated(t, "信頼するプロキシの http の要求の __Host-vv_session", env.serve(authRequest{
-		method: http.MethodGet, target: "/api/videos", remote: proxyRemote, cookies: []*http.Cookie{cookie},
+		method: http.MethodGet, target: ownerOnlyTarget, remote: proxyRemote, cookies: []*http.Cookie{cookie},
 		header: map[string]string{"X-Forwarded-For": "198.51.100.1", "X-Forwarded-Proto": "http"},
 	}))
 	if rec := env.serve(authRequest{
-		method: http.MethodGet, target: "/api/videos", remote: directRemote, cookies: []*http.Cookie{cookie},
+		method: http.MethodGet, target: ownerOnlyTarget, remote: directRemote, cookies: []*http.Cookie{cookie},
 		header: forgedHeaders("198.51.100.1"),
 	}); rec.Code != http.StatusUnauthorized {
 		t.Errorf("偽った https の __Host-vv_session: status = %d, want 401", rec.Code)
