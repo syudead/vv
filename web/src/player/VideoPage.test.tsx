@@ -832,6 +832,9 @@ describe("VideoPage", () => {
 
       fireEvent.click(toggle());
       expect(screen.queryByRole("alert")).toBeNull();
+      // 切り替えは1つずつ順に送るので、決着させないと後のテストの要求が待たされる。
+      await act(async () => answers[1]!(json({ applied: 1 })));
+      await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("true"));
     });
 
     it("別の動画へ移ると失敗の行を持ち越さない", async () => {

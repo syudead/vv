@@ -15,7 +15,8 @@ import { ownerAccount } from "./owner-account";
 // ゲスト（未ログイン）の画面（specs/016-single-account-auth、子 #304、ui-design.md
 // 「Guest degradation」「Top bar」「Gate」）を実ブラウザに通す。動画は run-e2e.mjs が
 // generateGuestFixtures で作る6本で、所有者が「公開あり」の A・B・E・F を公開にし、
-// 同じフォルダの C と「非公開だけ」の D は非公開のままにする。
+// 同じフォルダの C と「非公開だけ」の D は非公開のままにする。「非公開だけ」には
+// 画面写真の本数を満たすための非公開の6本（確認用G〜L）も置く。
 //
 // ほかの e2e が登録したフォルダの動画はどれも非公開なので、ゲストに見えるのは
 // ここで公開にした4本だけである。
@@ -37,6 +38,9 @@ const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 const screenshotDir = process.env.MDM_E2E_SCREENSHOT_DIR;
 const publicTitles = ["ゲスト公開A", "ゲスト公開B", "ゲスト公開E", "ゲスト公開F"];
 const privateTitles = ["ゲスト非公開C", "ゲスト非公開D"];
+// 画面写真の本数（ui-design.md「Visual review criteria」の 12 本以上）を満たすための、
+// 非公開のままの6本。題名で数える確かめに混ざらないよう「ゲスト」を含めない。
+const fillerTitles = ["確認用G", "確認用H", "確認用I", "確認用J", "確認用K", "確認用L"];
 const videos = new Map<string, Video>();
 let folder: MediaFolder | undefined;
 
@@ -132,13 +136,17 @@ test.describe.serial("guest", () => {
     expect(scan.status()).toBe(202);
     await waitForScan(request, ((await scan.json()) as { id: number }).id);
 
-    const titles = [...publicTitles, ...privateTitles];
+    const titles = [...publicTitles, ...privateTitles, ...fillerTitles];
     await expect
       .poll(
         async () => {
-          const response = await request.get("/api/videos?limit=200&query=ゲスト");
-          const page = (await response.json()) as { items: Video[] };
-          for (const item of page.items) videos.set(item.title, item);
+          for (const query of ["ゲスト", "確認用"]) {
+            const response = await request.get(
+              `/api/videos?limit=200&query=${encodeURIComponent(query)}`,
+            );
+            const page = (await response.json()) as { items: Video[] };
+            for (const item of page.items) videos.set(item.title, item);
+          }
           return titles.every((title) => {
             const found = videos.get(title);
             return found?.probeState === "done" && found.thumbnailState !== "pending";
@@ -554,11 +562,21 @@ test.describe.serial("guest", () => {
           fullPage,
         });
 
-      // 公開の印のあるカード（4本が公開、2本が非公開）。
-      await page.goto(`/?q=${encodeURIComponent("ゲスト")}`);
+      // 公開の印のあるカード。絞り込まない一覧で、12 本以上のうち 4 本が公開である
+      // （ほかの e2e のフォルダの動画はどれも非公開）。
+      await page.goto("/");
       await expect
-        .poll(() => cardTitles(page))
-        .toEqual([...publicTitles, ...privateTitles].sort());
+        .poll(async () => {
+          const titles = await cardTitles(page);
+          return [...publicTitles, ...privateTitles, ...fillerTitles].every((title) =>
+            titles.includes(title),
+          );
+        })
+        .toBe(true);
+      expect(await page.locator("article[data-video-id]").count()).toBeGreaterThanOrEqual(
+        12,
+      );
+      await expect(page.locator("article[data-video-id] .lucide-globe")).toHaveCount(4);
       await ownerShot("library");
 
       // 選択バーの「公開」を開いた状態（360 は2段のバー）。

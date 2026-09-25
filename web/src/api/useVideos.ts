@@ -19,7 +19,11 @@ import { subscribeServerEvents } from "./serverEvents";
 import { applyTagToTags } from "./tagOrder";
 import { isProcessing } from "./useVideoDetail";
 import { subscribeVideoTags } from "./videoTagsEvents";
-import { subscribeVideoVisibility } from "./visibility";
+import {
+  subscribeVideoVisibility,
+  visibilityMark,
+  withVisibilitySince,
+} from "./visibility";
 
 /**
  * mergeRefreshed は取り直した1件を、一覧に出ている項目へ重ねる。
@@ -370,24 +374,12 @@ export function useVideos(
   );
 
   // 公開・非公開の切り替えの結果も、タグの付け外しと同じく一覧を読み直さずに
-  // 表示中の項目へ反映する（issue 305）。ページの取得中に届いた分は動画ごとに
-  // 直近の値を覚え、その後に届いたページにその動画があれば重ねる。
-  const visibilityChangedWhileLoading = useRef(new Map<number, boolean>());
+  // 表示中の項目へ反映する（issue 305）。取得の間に反映した切り替えは、
+  // 届いたページと取り直した1件へ withVisibilitySince で重ねる（fetchPage・
+  // drainRefreshQueue）。件数の上限で記録を落とさない（PR 328）。
   useEffect(
     () =>
       subscribeVideoVisibility((videoIds, isPublic) => {
-        if (pageLoading.current) {
-          const map = visibilityChangedWhileLoading.current;
-          for (const videoId of videoIds) {
-            map.delete(videoId);
-            map.set(videoId, isPublic);
-          }
-          while (map.size > maxTagsChangedWhileLoading) {
-            const oldest = map.keys().next();
-            if (oldest.done) break;
-            map.delete(oldest.value);
-          }
-        }
         dispatch({ type: "visibility", videoIds, isPublic });
       }),
     [],
@@ -408,7 +400,11 @@ export function useVideos(
       for (const id of refreshQueue.current) {
         refreshQueue.current.delete(id);
         try {
-          const refreshed = await getVideo(id, controller.signal);
+          const mark = visibilityMark();
+          const refreshed = withVisibilitySince(
+            await getVideo(id, controller.signal),
+            mark,
+          );
           // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
           if (controller.signal.aborted) return;
           dispatch({ type: "refresh", videoId: id, video: refreshed });
@@ -499,7 +495,6 @@ export function useVideos(
         // ではここを通らないので、まだどのページにも現れていない動画への
         // 変更は消さずに残す（Devin の指摘3。次に読み込まれたページで重ねる）。
         tagsChangedWhileLoading.current.clear();
-        visibilityChangedWhileLoading.current.clear();
       }
 
       if (replace) {
@@ -510,6 +505,7 @@ export function useVideos(
         setLoadingMore(true);
       }
 
+      const mark = visibilityMark();
       try {
         const target = folderRef.current;
         const current = criteriaRef.current;
@@ -522,7 +518,7 @@ export function useVideos(
           cursor: from,
           signal: controller.signal,
         };
-        const page =
+        const fetched =
           target === undefined
             ? await listVideos({ ...params, tag: current.tag })
             : await listFolderVideos({
@@ -530,6 +526,10 @@ export function useVideos(
                 scope: current.scope,
                 ...params,
               });
+        const page = {
+          ...fetched,
+          items: fetched.items.map((video) => withVisibilitySince(video, mark)),
+        };
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
         if (controller.signal.aborted || inFlight.current !== controller) return;
@@ -566,14 +566,6 @@ export function useVideos(
               action: change.action,
             });
             tagsChangedWhileLoading.current.delete(tagKey);
-          }
-        }
-        if (visibilityChangedWhileLoading.current.size > 0) {
-          const pageIds = new Set(page.items.map((video) => video.id));
-          for (const [videoId, isPublic] of visibilityChangedWhileLoading.current) {
-            if (!pageIds.has(videoId)) continue;
-            dispatch({ type: "visibility", videoIds: [videoId], isPublic });
-            visibilityChangedWhileLoading.current.delete(videoId);
           }
         }
         setError(null);

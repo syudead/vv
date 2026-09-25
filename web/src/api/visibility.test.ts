@@ -2,7 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "./client";
 import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
-import { subscribeVideoVisibility, updateVideoVisibility } from "./visibility";
+import {
+  subscribeVideoVisibility,
+  updateVideoVisibility,
+  visibilityMark,
+  withVisibilitySince,
+} from "./visibility";
 
 /**
  * 公開・非公開の切り替え（specs/016-single-account-auth/contracts/guest-api.md §4、
@@ -96,7 +101,7 @@ describe("updateVideoVisibility", () => {
     ]);
   });
 
-  it("古い応答が後から届いても、同じ動画の新しい結果を巻き戻さない", async () => {
+  it("前の切り替えが決着するまで次を送らず、押した順にサーバーへ届ける", async () => {
     const answers: ((response: Response) => void)[] = [];
     fetchMock.mockImplementation(
       () => new Promise<Response>((resolve) => answers.push(resolve)),
@@ -106,12 +111,50 @@ describe("updateVideoVisibility", () => {
 
     const first = updateVideoVisibility([9], true);
     const second = updateVideoVisibility([9], false);
-    answers[1]!(json({ applied: 1 }));
-    await second;
+    await Promise.resolve();
+    // 2つを同時に送ると、サーバーに届く順が押した順と入れ替わりうる。
+    expect(fetchMock).toHaveBeenCalledOnce();
+
     answers[0]!(json({ applied: 1 }));
     await first;
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(String(fetchMock.mock.calls[1]![1]?.body))).toEqual({
+      videoIds: [9],
+      public: false,
+    });
+    answers[1]!(json({ applied: 1 }));
+    await second;
 
-    expect(seen).toEqual([false]);
+    // 最後に押した「非公開」が最後に反映される。
+    expect(seen).toEqual([true, false]);
     unsubscribe();
+  });
+
+  it("前の切り替えが失敗しても、次の切り替えは送る", async () => {
+    fetchMock
+      .mockResolvedValueOnce(json({ code: "internal", message: "失敗" }, 500))
+      .mockResolvedValueOnce(json({ applied: 1 }));
+    const first = updateVideoVisibility([5], true);
+    const second = updateVideoVisibility([5], true);
+    await expect(first).rejects.toBeDefined();
+    await expect(second).resolves.toEqual({ applied: 1 });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("withVisibilitySince", () => {
+  it("印を取った後に反映した切り替えだけを、取得した動画に重ねる", async () => {
+    fetchMock.mockResolvedValue(json({ applied: 1 }));
+    const before = visibilityMark();
+    await updateVideoVisibility([11], true);
+    const after = visibilityMark();
+
+    // 切り替えの前に始めた取得は、切り替える前の値を読んでいることがある。
+    expect(withVisibilitySince(item(11), before).public).toBe(true);
+    // 切り替えの後に始めた取得は、サーバーの値をそのまま使う。
+    expect(withVisibilitySince(item(11), after).public).toBe(false);
+    // 切り替えていない動画は変えない。
+    const other = item(12);
+    expect(withVisibilitySince(other, before)).toBe(other);
   });
 });

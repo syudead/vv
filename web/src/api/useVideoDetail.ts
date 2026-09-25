@@ -11,7 +11,11 @@ import {
   type Video,
 } from "./client";
 import { subscribeServerEvents } from "./serverEvents";
-import { subscribeVideoVisibility } from "./visibility";
+import {
+  subscribeVideoVisibility,
+  visibilityMark,
+  withVisibilitySince,
+} from "./visibility";
 
 export type VideoDetailState =
   | { kind: "loading"; id: number }
@@ -80,8 +84,11 @@ export function useVideoDetail(id: number): {
       controller?.abort();
       const mine = new AbortController();
       controller = mine;
+      // 取得の間に公開を切り替えたら、切り替える前の `public` を読んだ応答で
+      // 表示を巻き戻さない（切り替えはサーバーから知らせが来ない。PR 328）。
+      const mark = visibilityMark();
       try {
-        const video = await getVideo(id, mine.signal);
+        const video = withVisibilitySince(await getVideo(id, mine.signal), mark);
         if (!alive || controller !== mine) return;
         current = video;
         setState({ kind: "ready", id, video });
