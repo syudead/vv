@@ -77,12 +77,17 @@ function SheetPreview({ src }: { src: string }) {
     if (!armed || failed) return;
     const element = videoRef.current;
     if (element === null) return;
-    try {
-      element.play()?.catch(() => setFailed(true));
-    } catch {
+    // 再生を断られたら、要素を外す前に読み込みを解く（外した後は ref が届かない）。
+    const fail = () => {
+      release();
       setFailed(true);
+    };
+    try {
+      element.play()?.catch(fail);
+    } catch {
+      fail();
     }
-  }, [armed, failed]);
+  }, [armed, failed, release]);
 
   if (!armed || failed) return null;
   return (

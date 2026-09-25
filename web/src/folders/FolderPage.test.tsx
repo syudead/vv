@@ -459,6 +459,54 @@ describe("FolderPage", () => {
     }
   });
 
+  it("再生を断られたら、読み込みを解いてサムネイルのまま前に出しておく", async () => {
+    vi.useFakeTimers();
+    let played: HTMLMediaElement | null = null;
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (
+      this: HTMLMediaElement,
+    ) {
+      played = this;
+      return Promise.reject(new Error("denied"));
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockReturnValue(undefined);
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockReturnValue(undefined);
+    try {
+      const folder = summary({
+        path: "one",
+        name: "one",
+        videoCount: 1,
+        previews: [
+          {
+            videoId: 1,
+            thumbnailUrl: "/api/videos/1/thumbnail?v=x",
+            previewUrl: "/api/videos/1/preview?v=x",
+          },
+        ],
+      });
+      const { container } = render(
+        <MemoryRouter>
+          <FolderCard folder={folder} showPath={false} />
+        </MemoryRouter>,
+      );
+      const art = container.querySelector<HTMLElement>("[data-folder-art]");
+      if (art === null) throw new Error("folder art not found");
+      art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+      fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+      await act(async () => {
+        vi.advanceTimersByTime(450);
+        await Promise.resolve();
+      });
+      const video = played as HTMLMediaElement | null;
+      if (video === null) throw new Error("play was not called");
+      expect(art.querySelector("video")).toBeNull();
+      expect(video.hasAttribute("src")).toBe(false);
+      expect(load).toHaveBeenCalled();
+      expect(art.querySelector("[data-folder-front] img")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("プレビュー動画が読めなければ、サムネイルのまま前に出しておく", () => {
     vi.useFakeTimers();
     vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(new Error("nope"));
