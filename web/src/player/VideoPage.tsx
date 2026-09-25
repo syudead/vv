@@ -354,16 +354,18 @@ export default function VideoPage() {
           <div
             ref={frameRef}
             data-player-frame=""
-            // 枠は動画の比率（縦長も含む）に合わせ、画面の高さに収まる幅に留める。
+            // 枠の幅は 16:9 の動画と同じ（それより横長なら動画の比率）で、高さは動画の比率に
+            // 合わせて画面に収まるまで伸ばす。縦長の動画は枠の中央に左右の余白付きで出るので、
+            // 前後の動画へのつまみと操作バーは横長のときと同じ位置・幅のままになる。
             // 比率はシークのプレビューも使うので、変数として子孫へ渡す。
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
-            className="relative isolate mx-auto grid w-full min-w-[min(100%,18rem)] shrink-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-9rem)*var(--vv-video-aspect))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
+            className="relative isolate mx-auto grid w-full shrink-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-9rem)*max(var(--vv-video-aspect),16/9))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
           >
-            {/* 動画の比率は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
+            {/* 動画の比率（画面の高さまで）は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
                 全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
             <div
               aria-hidden="true"
-              className="col-start-1 row-start-1 aspect-(--vv-video-aspect) [:fullscreen>&]:hidden"
+              className="col-start-1 row-start-1 aspect-(--vv-video-aspect) max-h-[calc(100dvh-9rem)] [:fullscreen>&]:hidden"
             />
             <CloseButton
               variant="overlay"
