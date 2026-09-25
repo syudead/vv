@@ -50,8 +50,12 @@ export function useOpenFile(videoId: number): {
   return { open, failure };
 }
 
-/** copyWithSelection は見えない入力欄に文字を置いて選び、コピーの命令で写す。 */
+/**
+ * copyWithSelection は見えない入力欄に文字を置いて選び、コピーの命令で写す。
+ * 選ぶと入力欄にフォーカスが移るので、終わったら元の要素（「パスをコピー」）へ戻す。
+ */
 function copyWithSelection(text: string): boolean {
+  const previous = document.activeElement;
   const field = document.createElement("textarea");
   field.value = text;
   field.setAttribute("readonly", "");
@@ -66,6 +70,7 @@ function copyWithSelection(text: string): boolean {
     return false;
   } finally {
     field.remove();
+    if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
   }
 }
 

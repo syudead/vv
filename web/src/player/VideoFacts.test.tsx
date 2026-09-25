@@ -120,7 +120,10 @@ describe("VideoFacts", () => {
     vi.stubGlobal("navigator", { ...navigator, clipboard: undefined });
     let copied = "";
     const execCommand = vi.fn(() => {
-      copied = document.querySelector("textarea")?.value ?? "";
+      const field = document.querySelector("textarea");
+      // 実際のブラウザでは select() で入力欄にフォーカスが移る。jsdom は移さないので模す。
+      field?.focus();
+      copied = field?.value ?? "";
       return true;
     });
     Object.defineProperty(document, "execCommand", {
@@ -128,10 +131,14 @@ describe("VideoFacts", () => {
       configurable: true,
     });
     renderFacts(video);
-    fireEvent.click(screen.getByRole("button", { name: "パスをコピー" }));
+    const button = screen.getByRole("button", { name: "パスをコピー" });
+    button.focus();
+    fireEvent.click(button);
     expect(execCommand).toHaveBeenCalledWith("copy");
     expect(copied).toBe("/media/a/b.mp4");
     expect(document.querySelector("textarea")).toBeNull();
+    // 選ぶために入力欄へ移ったフォーカスを、押したボタンへ戻す。
+    expect(document.activeElement).toBe(button);
   });
 
   it("「ファイルを開く」は開く要求を送る", async () => {
