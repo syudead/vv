@@ -216,6 +216,150 @@ describe("SelectionBar", () => {
     ).toBe(true);
   });
 
+  // POST /api/video-tags は videoIds を全部か無しかでしか受け付けず、20000件を
+  // 超えると400になる（contracts/tags-api.md §4）。静かに分割して送らず、
+  // 一括操作を disabled にして理由を伝える（Devin の指摘2）。
+  it("選択が20,000件を超えると、タグの一括操作はdisabledで理由が読める", () => {
+    install();
+    renderBar({
+      count: 20001,
+      total: 30000,
+      selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
+    });
+    const addButton = screen.getByRole("button", {
+      name: "タグを付ける",
+    }) as HTMLButtonElement;
+    const removeButton = screen.getByRole("button", {
+      name: "タグを外す",
+    }) as HTMLButtonElement;
+    expect(addButton.disabled).toBe(true);
+    expect(removeButton.disabled).toBe(true);
+    expect(addButton.title).toBe("タグの一括操作は 20,000 件までです");
+    expect(removeButton.title).toBe("タグの一括操作は 20,000 件までです");
+
+    const addDescribedBy = addButton.getAttribute("aria-describedby");
+    expect(addDescribedBy).not.toBeNull();
+    expect(document.getElementById(addDescribedBy!)?.textContent).toBe(
+      "タグの一括操作は 20,000 件までです",
+    );
+
+    // すべて選択はこの上限と無関係なので、ちょうど全件選び終わっていなければ
+    // 引き続き押せる。
+    expect(
+      (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  it("選択が20,000件ちょうどなら、タグの一括操作はdisabledにならない", () => {
+    install();
+    renderBar({
+      count: 20000,
+      total: 30000,
+      selectedIds: Array.from({ length: 20000 }, (_, i) => i + 1),
+    });
+    expect(
+      (screen.getByRole("button", { name: "タグを付ける" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "タグを外す" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
+  // トリガを disabled にするだけでは、すでに開いているポップオーバーから
+  // 送れてしまう。選択が上限を超えたら、開いているポップオーバー自体を
+  // 閉じる（Devin の指摘）。
+  it("開いているポップオーバーは、選択が上限を超えると自動で閉じる", async () => {
+    const user = userEvent.setup();
+    install();
+    const { rerender } = renderBar({ count: 3, total: 30000, selectedIds: [1, 2, 3] });
+
+    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
+    await screen.findByRole("combobox", { name: "タグを付ける" });
+
+    rerender(
+      barElement({
+        count: 20001,
+        total: 30000,
+        selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+      }),
+    );
+
+    expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  // 親の自動で閉じる効果が走るまでのごく短い間の保険として、ポップオーバー
+  // 自身も送る直前に selectedIds の最新の件数を確かめる。ここでは親の count
+  // をわざと上限内のままにし（自動では閉じない）、selectedIds だけが上限を
+  // 超えた状況を作って、その保険が単独で効くことを確かめる（Devin の指摘）。
+  it("タグを付ける: 開いたまま selectedIds が上限を超えると、送らず理由を示す", async () => {
+    const user = userEvent.setup();
+    const fetchMock = install();
+    const { rerender } = renderBar({ count: 3, total: 30000, selectedIds: [1, 2, 3] });
+
+    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
+    await screen.findByRole("combobox", { name: "タグを付ける" });
+
+    rerender(
+      barElement({
+        count: 3,
+        total: 30000,
+        selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+      }),
+    );
+
+    expect(await screen.findByText("タグの一括操作は 20,000 件までです")).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull();
+    expect(
+      fetchMock.mock.calls.some(
+        ([input, init]) => String(input) === "/api/video-tags" && init?.method === "POST",
+      ),
+    ).toBe(false);
+  });
+
+  it("タグを外す: 開いたまま selectedIds が上限を超えると、要約を取りに行かず理由を示す", async () => {
+    const user = userEvent.setup();
+    const fetchMock = install();
+    server.attached.set(1, new Set([1]));
+    const { rerender } = renderBar({ count: 3, total: 30000, selectedIds: [1, 2, 3] });
+
+    await user.click(screen.getByRole("button", { name: "タグを外す" }));
+    await screen.findByRole("combobox", { name: "タグを外す" });
+    const summaryCallsBefore = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input) === "/api/video-tags/summary" && init?.method === "POST",
+    ).length;
+
+    rerender(
+      barElement({
+        count: 3,
+        total: 30000,
+        selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+      }),
+    );
+
+    expect(await screen.findByText("タグの一括操作は 20,000 件までです")).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: "タグを外す" })).toBeNull();
+    const summaryCallsAfter = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        String(input) === "/api/video-tags/summary" && init?.method === "POST",
+    ).length;
+    expect(summaryCallsAfter).toBe(summaryCallsBefore);
+  });
+
   it("タグを付けると、選んだ全動画に付き、トーストが出てポップオーバーが閉じ、フォーカスが戻る（受け入れ条件3）", async () => {
     const user = userEvent.setup();
     install();

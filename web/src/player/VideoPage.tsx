@@ -381,6 +381,11 @@ export default function VideoPage() {
                     {video.title}
                   </h1>
                   <VideoTags
+                    // VideoPage 自身が動画ごとに作り直されず（同じ /videos/:id
+                    // ルートのまま次の動画へ移ることがある）使い回されるため、
+                    // VideoTags を videoId で作り直し、前の動画の重ねた
+                    // 付け外し（appliedRef）を持ち越さない（Devin の指摘1）。
+                    key={video.id}
                     videoId={video.id}
                     tags={video.tags}
                     onStaleVideo={() => void refresh()}

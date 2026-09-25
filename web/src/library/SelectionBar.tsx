@@ -7,6 +7,7 @@ import {
   attachVideoTagByName,
   currentTags,
   detachVideoTag,
+  maxVideoTagsSelection,
   refreshTags,
   subscribeTags,
   summarizeVideoTags,
@@ -26,6 +27,16 @@ type VideoTagsSummaryItem = VideoTagsSummary["items"][number];
 function isTagNotFound(error: unknown): boolean {
   return error instanceof RequestFailed && error.code === "tag_not_found";
 }
+
+/**
+ * `POST /api/video-tags`・`POST /api/video-tags/summary` は videoIds を全部か
+ * 無しかでしか受け付けず、maxVideoTagsSelection を超えると400になる
+ * （contracts/tags-api.md §4）。トリガのボタンを disabled にするだけでは、
+ * ポップオーバーを開いたまま選択が増える（例:「すべて選択」の応答が届く）と
+ * 送れてしまうため、ポップオーバー自身も閉じ・その場の送信も selectedIds の
+ * 最新の件数で確かめて理由を示す（Devin の指摘）。
+ */
+const overLimitMessage = `タグの一括操作は ${maxVideoTagsSelection.toLocaleString("ja-JP")} 件までです`;
 
 /** buildAddOptions は「タグを付ける」の候補（全タグ、各行の右に本数）を作る。 */
 function buildAddOptions(
@@ -163,7 +174,7 @@ function AddTagPopover({
   const listOpenRef = useRef(false);
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [allTags, setAllTags] = useState<Tag[] | undefined>(currentTags());
 
   useEffect(() => {
@@ -176,9 +187,13 @@ function AddTagPopover({
   useEffect(() => {
     if (!open) return;
     setValue("");
-    setFailed(false);
+    setErrorMessage(null);
     refreshTags().catch(() => undefined);
   }, [open]);
+
+  // 開いている間に選択が増えて上限を超えたら、候補も送信も止める（親の
+  // SelectionBar がこのポップオーバー自体を閉じるまでの間の保険）。
+  const overLimit = selectedIds.length > maxVideoTagsSelection;
 
   const { options, exactOption } = buildAddOptions(allTags ?? [], value);
   const trimmed = value.trim();
@@ -191,7 +206,14 @@ function AddTagPopover({
     ) : null;
 
   function submit(tag: { id: number; name: string } | { name: string }) {
-    setFailed(false);
+    setErrorMessage(null);
+    // 送る直前に selectedIds の最新の件数を確かめる。ポップオーバーを開いた
+    // ままの間に選択が増えて上限を超えていれば、静かに送らず理由を示す
+    // （contracts/tags-api.md §4: 全部か無しかで、超えると400になる）。
+    if (selectedIds.length > maxVideoTagsSelection) {
+      setErrorMessage(overLimitMessage);
+      return;
+    }
     setSubmitting(true);
     const displayName = tag.name;
     const request =
@@ -210,7 +232,7 @@ function AddTagPopover({
           refreshTags().catch(() => undefined);
           return;
         }
-        setFailed(true);
+        setErrorMessage("付けられませんでした。もう一度お試しください");
       })
       .finally(() => setSubmitting(false));
   }
@@ -223,7 +245,7 @@ function AddTagPopover({
       className="w-72 p-3"
       onOpenAutoFocus={(event) => {
         event.preventDefault();
-        inputRef.current?.focus();
+        if (!overLimit) inputRef.current?.focus();
       }}
       onEscapeKeyDown={(event) => {
         if (listOpenRef.current) event.preventDefault();
@@ -232,32 +254,40 @@ function AddTagPopover({
       <h2 id={headingId} className="sr-only">
         タグを付ける
       </h2>
-      <Combobox
-        value={value}
-        onValueChange={setValue}
-        options={options}
-        exactOption={exactOption}
-        onSelect={(option) => submit({ id: Number(option.id), name: option.label })}
-        createLabel={createLabel}
-        onCreate={(spelling) => submit({ name: spelling })}
-        placeholder="タグを付ける"
-        icon={<Plus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />}
-        busy={submitting}
-        side="top"
-        aria-label="タグを付ける"
-        inputRef={inputRef}
-        onEscapeWhenClosed={() => onOpenChange(false)}
-        onOpenChange={(listOpen) => {
-          listOpenRef.current = listOpen;
-        }}
-        className="w-full"
-        inputClassName="w-full"
-        frameClassName="w-full"
-      />
-      {failed && (
-        <p role="alert" className="mt-1 text-xs text-danger">
-          付けられませんでした。もう一度お試しください
+      {overLimit ? (
+        <p role="alert" className="text-xs text-danger">
+          {overLimitMessage}
         </p>
+      ) : (
+        <>
+          <Combobox
+            value={value}
+            onValueChange={setValue}
+            options={options}
+            exactOption={exactOption}
+            onSelect={(option) => submit({ id: Number(option.id), name: option.label })}
+            createLabel={createLabel}
+            onCreate={(spelling) => submit({ name: spelling })}
+            placeholder="タグを付ける"
+            icon={<Plus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />}
+            busy={submitting}
+            side="top"
+            aria-label="タグを付ける"
+            inputRef={inputRef}
+            onEscapeWhenClosed={() => onOpenChange(false)}
+            onOpenChange={(listOpen) => {
+              listOpenRef.current = listOpen;
+            }}
+            className="w-full"
+            inputClassName="w-full"
+            frameClassName="w-full"
+          />
+          {errorMessage !== null && (
+            <p role="alert" className="mt-1 text-xs text-danger">
+              {errorMessage}
+            </p>
+          )}
+        </>
       )}
     </PopoverContent>
   );
@@ -286,10 +316,14 @@ function RemoveTagPopover({
   const listOpenRef = useRef(false);
   const [value, setValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [fetchFailed, setFetchFailed] = useState(false);
   const [summary, setSummary] = useState<VideoTagsSummary | null>(null);
+
+  // 開いている間に選択が増えて上限を超えたら、要約の取得も送信も止める
+  // （親の SelectionBar がこのポップオーバー自体を閉じるまでの間の保険）。
+  const overLimit = selectedIds.length > maxVideoTagsSelection;
 
   // 要約の取得は選ぶたびに通し番号を払い出し、古い応答が新しい選択の結果を
   // 上書きしないようにする（Devin の指摘2。summarizeVideoTags 自身は要求の
@@ -301,6 +335,15 @@ function RemoveTagPopover({
     // ので要求しない。`POST /api/video-tags/summary` は videoIds を1件以上
     // 要る（contracts/tags-api.md §4）。
     if (selectedIds.length === 0) return;
+    if (selectedIds.length > maxVideoTagsSelection) {
+      // 進行中の（上限内だった頃に始めた）取得を無効にする。その応答が
+      // 後から届いても、上限超過の表示を古い要約で上書きしない。
+      summarySeq.current += 1;
+      setLoading(false);
+      setFetchFailed(false);
+      setSummary(null);
+      return;
+    }
     const seq = (summarySeq.current += 1);
     setLoading(true);
     setFetchFailed(false);
@@ -332,7 +375,7 @@ function RemoveTagPopover({
     wasOpenRef.current = true;
     if (justOpened) {
       setValue("");
-      setFailed(false);
+      setErrorMessage(null);
     }
     setSummary(null);
     fetchSummary();
@@ -341,7 +384,8 @@ function RemoveTagPopover({
   // 「読み込み中…」から Combobox に切り替わった瞬間（要約が届いたとき）は、
   // ui-design.md「Add」「Remove」と同じくフォーカスを入力へ移す。
   // `onOpenAutoFocus` は最初のマウント時にしか働かないため、ここで補う。
-  const ready = open && !loading && !fetchFailed && (summary?.items.length ?? 0) > 0;
+  const ready =
+    open && !overLimit && !loading && !fetchFailed && (summary?.items.length ?? 0) > 0;
   useEffect(() => {
     if (ready) inputRef.current?.focus();
   }, [ready]);
@@ -352,7 +396,13 @@ function RemoveTagPopover({
       : buildRemoveOptions(summary, value);
 
   function submit(option: ComboboxOption) {
-    setFailed(false);
+    setErrorMessage(null);
+    // 送る直前に selectedIds の最新の件数を確かめる（AddTagPopover.submit と
+    // 同じ理由。contracts/tags-api.md §4）。
+    if (selectedIds.length > maxVideoTagsSelection) {
+      setErrorMessage(overLimitMessage);
+      return;
+    }
     setSubmitting(true);
     const tagId = Number(option.id);
     const displayName = option.label;
@@ -369,7 +419,7 @@ function RemoveTagPopover({
           fetchSummary();
           return;
         }
-        setFailed(true);
+        setErrorMessage("外せませんでした。もう一度お試しください");
       })
       .finally(() => setSubmitting(false));
   }
@@ -381,8 +431,11 @@ function RemoveTagPopover({
       aria-labelledby={headingId}
       className="w-72 p-3"
       onOpenAutoFocus={(event) => {
-        if (loading || fetchFailed || summary?.items.length === 0) event.preventDefault();
-        else inputRef.current?.focus();
+        if (overLimit || loading || fetchFailed || summary?.items.length === 0) {
+          event.preventDefault();
+        } else {
+          inputRef.current?.focus();
+        }
       }}
       onEscapeKeyDown={(event) => {
         if (listOpenRef.current) event.preventDefault();
@@ -391,12 +444,17 @@ function RemoveTagPopover({
       <h2 id={headingId} className="sr-only">
         タグを外す
       </h2>
-      {loading && (
+      {overLimit && (
+        <p role="alert" className="text-xs text-danger">
+          {overLimitMessage}
+        </p>
+      )}
+      {!overLimit && loading && (
         <p role="status" className="text-xs text-fg-muted">
           読み込み中…
         </p>
       )}
-      {!loading && fetchFailed && (
+      {!overLimit && !loading && fetchFailed && (
         <div className="flex flex-col items-start gap-2">
           <p role="alert" className="text-xs text-danger">
             タグを取得できませんでした
@@ -406,39 +464,49 @@ function RemoveTagPopover({
           </Button>
         </div>
       )}
-      {!loading && !fetchFailed && summary !== null && summary.items.length === 0 && (
-        <p className="text-xs text-fg-muted">選んだ動画にタグはありません</p>
-      )}
-      {!loading && !fetchFailed && summary !== null && summary.items.length > 0 && (
-        <>
-          <Combobox
-            value={value}
-            onValueChange={setValue}
-            options={options}
-            exactOption={exactOption}
-            onSelect={submit}
-            createLabel={null}
-            placeholder="タグを外す"
-            icon={<Minus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />}
-            busy={submitting}
-            side="top"
-            aria-label="タグを外す"
-            inputRef={inputRef}
-            onEscapeWhenClosed={() => onOpenChange(false)}
-            onOpenChange={(listOpen) => {
-              listOpenRef.current = listOpen;
-            }}
-            className="w-full"
-            inputClassName="w-full"
-            frameClassName="w-full"
-          />
-          {failed && (
-            <p role="alert" className="mt-1 text-xs text-danger">
-              外せませんでした。もう一度お試しください
-            </p>
-          )}
-        </>
-      )}
+      {!overLimit &&
+        !loading &&
+        !fetchFailed &&
+        summary !== null &&
+        summary.items.length === 0 && (
+          <p className="text-xs text-fg-muted">選んだ動画にタグはありません</p>
+        )}
+      {!overLimit &&
+        !loading &&
+        !fetchFailed &&
+        summary !== null &&
+        summary.items.length > 0 && (
+          <>
+            <Combobox
+              value={value}
+              onValueChange={setValue}
+              options={options}
+              exactOption={exactOption}
+              onSelect={submit}
+              createLabel={null}
+              placeholder="タグを外す"
+              icon={
+                <Minus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />
+              }
+              busy={submitting}
+              side="top"
+              aria-label="タグを外す"
+              inputRef={inputRef}
+              onEscapeWhenClosed={() => onOpenChange(false)}
+              onOpenChange={(listOpen) => {
+                listOpenRef.current = listOpen;
+              }}
+              className="w-full"
+              inputClassName="w-full"
+              frameClassName="w-full"
+            />
+            {errorMessage !== null && (
+              <p role="alert" className="mt-1 text-xs text-danger">
+                {errorMessage}
+              </p>
+            )}
+          </>
+        )}
     </PopoverContent>
   );
 }
@@ -474,6 +542,13 @@ export default function SelectionBar({
   const [removeOpen, setRemoveOpen] = useState(false);
   const addTriggerRef = useRef<HTMLButtonElement | null>(null);
 
+  // `POST /api/video-tags` は videoIds 1件以上 maxVideoTagsSelection 件以下を
+  // 全部か無しかで受け付ける（contracts/tags-api.md §4）。それを超える選択は
+  // 静かに分割して送らず、一括操作そのものを disabled にして理由を添える
+  // （Devin の指摘2、docs/design-docs/library-ui.md §6）。
+  const overLimitId = useId();
+  const overLimit = count > maxVideoTagsSelection;
+
   // count===0 のときはバーごと描かない（下の return null）が、SelectionBar
   // 自身は選択の間ずっと同じインスタンスのまま（アンマウントしない）ので、
   // addOpen・removeOpen をそのままにすると、選択を解除してまた選び直したときに
@@ -487,6 +562,18 @@ export default function SelectionBar({
       setRemoveOpen(false);
     }
   }, [count]);
+
+  // ポップオーバーを開いたままの間に選択が増えて上限を超えたら、両方閉じる
+  // （トリガを disabled にするだけでは、開いている最中の分は防げない。
+  // Devin の指摘）。ポップオーバー自身の送信前の確かめ（AddTagPopover・
+  // RemoveTagPopover の submit・fetchSummary）は、この効果が走るまでの
+  // ごく短い間の保険である。
+  useEffect(() => {
+    if (overLimit) {
+      setAddOpen(false);
+      setRemoveOpen(false);
+    }
+  }, [overLimit]);
 
   if (count === 0) return null;
 
@@ -522,6 +609,9 @@ export default function SelectionBar({
               variant="ghost"
               size="sm"
               className="order-5 max-sm:flex-1 sm:order-2"
+              disabled={overLimit}
+              title={overLimit ? overLimitMessage : undefined}
+              aria-describedby={overLimit ? overLimitId : undefined}
             >
               <Plus aria-hidden="true" />
               タグを付ける
@@ -541,6 +631,9 @@ export default function SelectionBar({
               variant="ghost"
               size="sm"
               className="order-6 max-sm:flex-1 sm:order-3"
+              disabled={overLimit}
+              title={overLimit ? overLimitMessage : undefined}
+              aria-describedby={overLimit ? overLimitId : undefined}
             >
               <Minus aria-hidden="true" />
               タグを外す
@@ -553,6 +646,11 @@ export default function SelectionBar({
             onRemoved={onTagRemoved}
           />
         </PopoverRoot>
+        {overLimit && (
+          <span id={overLimitId} className="sr-only">
+            {overLimitMessage}
+          </span>
+        )}
 
         <span
           aria-hidden="true"

@@ -4,7 +4,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Tag } from "../api/tags";
-import { __resetTagsForTest } from "../api/tags";
+import { __resetTagsForTest, refreshTags } from "../api/tags";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
 import TagsPage from "./TagsPage";
@@ -61,6 +61,16 @@ let release: (() => void) | null = null;
 let holdSynonymDeletes = false;
 const synonymDeleteReleases: (() => void)[] = [];
 
+/**
+ * holdGetsFrom を GET /api/tags の何回目（1始まり）から止めるかに設定すると、
+ * それ以降の GET は release を呼ぶまで応答しない。応答の中身は、要求を
+ * 受けた時点の `server.tags` を写し取って持つ（release を呼んだ時点の
+ * `server.tags` ではない。Devin の指摘4のテストで、追い越された古い取得の
+ * 応答が「その要求を送った時点でのサーバーの状態」を持つようにするため）。
+ */
+let holdGetsFrom: number | null = null;
+const heldGetReleases: (() => void)[] = [];
+
 function install() {
   const fetchMock = vi.fn<typeof fetch>();
   fetchMock.mockImplementation((input, init) => {
@@ -76,7 +86,13 @@ function install() {
           jsonResponse({ code: "internal", message: "失敗しました" }, 500),
         );
       }
-      return Promise.resolve(jsonResponse({ items: server.tags }));
+      const snapshot = [...server.tags];
+      if (holdGetsFrom !== null && server.getCalls >= holdGetsFrom) {
+        return new Promise((resolve) => {
+          heldGetReleases.push(() => resolve(jsonResponse({ items: snapshot })));
+        });
+      }
+      return Promise.resolve(jsonResponse({ items: snapshot }));
     }
 
     function maybeHold(respond: () => Response): Promise<Response> {
@@ -321,6 +337,8 @@ beforeEach(() => {
   release = null;
   holdSynonymDeletes = false;
   synonymDeleteReleases.length = 0;
+  holdGetsFrom = null;
+  heldGetReleases.length = 0;
 });
 
 afterEach(() => {
@@ -411,6 +429,55 @@ describe("TagsPage", () => {
     });
     await waitFor(() => expect(document.activeElement).toBe(created));
     expect(screen.getByText("4 個のタグ")).toBeDefined();
+  });
+
+  // Devin の指摘4: 開いたときにすでに共有の一覧を持っていると（別の画面から
+  // 移ってきた等）、画面が開くたびの取り直し（reload）が作成の前に始まり、
+  // 追い越されたまま作成の後に届くことがある。その追い越された取得の
+  // 戻り値をそのまま画面へ反映すると、確定した作成をその場で消してしまう。
+  // `refreshTags` の generation ガードは「held を実際に更新した、最新の
+  // 取得」だけを `subscribeTags` へ通知するので、そちらだけを信頼していれば
+  // 消えない（TagsPage.tsx の `reload`）。
+  it("追い越された取り直しの戻り値で、確定済みの作成を消さない（Devinの指摘4）", async () => {
+    const user = userEvent.setup();
+    install();
+    // 別の画面ですでに一覧を取得済み（held あり）のまま、この画面を開く
+    // （マウント時の1回目の GET を数えておく）。
+    await refreshTags();
+    expect(server.getCalls).toBe(1);
+
+    // マウントの reload（2回目の GET）を止める。
+    holdGetsFrom = 2;
+    renderPage();
+    await screen.findByTitle("旅行");
+    await waitFor(() => expect(heldGetReleases).toHaveLength(1));
+
+    // 作成の POST は止めない。成功後の afterTagCreated の取り直し（3回目の
+    // GET）も同じく止め、まだ新しいタグを含まない2回目の応答が
+    // 追い越されたまま先に届く状況を作る。
+    await user.click(screen.getByRole("button", { name: "新しいタグ" }));
+    const input = screen.getByRole("textbox", { name: "新しいタグの名前" });
+    await user.type(input, "新規タグ");
+    await user.keyboard("{Enter}");
+
+    const created = await screen.findByRole("link", {
+      name: "新規タグで絞り込んだライブラリを開く",
+    });
+    await waitFor(() => expect(heldGetReleases).toHaveLength(2));
+
+    // 追い越された2回目（作成前のスナップショット）を、3回目より先に解決する。
+    heldGetReleases[0]!();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(created.isConnected).toBe(true);
+    expect(screen.getByRole("link", { name: "新規タグで絞り込んだライブラリを開く" }));
+
+    // 3回目（作成を含む、最新の取得）が届いても、引き続き出ている。
+    heldGetReleases[1]!();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("link", { name: "新規タグで絞り込んだライブラリを開く" }),
+      ).toBeDefined(),
+    );
   });
 
   it("既存の名前と重なる作成は理由を出し、入力を残す", async () => {

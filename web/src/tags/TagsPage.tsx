@@ -122,11 +122,17 @@ export default function TagsPage() {
 
   const reload = useCallback(() => {
     setLoadError(null);
+    // 一覧への反映は下の mount の subscribeTags に一本化し、ここでは
+    // `refreshTags` の戻り値を直接 `setTags` へは使わない。この呼び出しが
+    // 別の（後から始まった）取り直しに追い越されると、`refreshTags` の
+    // generation ガードはこの呼び出し自身の取得結果ではなく、その時点の
+    // `held`（追い越した側がまだ終わっていなければ、さらに古い値）を返す。
+    // 直前に作成したタグをその場で重ねた直後にこれが起きると、その重ねを
+    // 古い一覧で上書きしてしまう（Devin の指摘4）。`subscribeTags` の通知は
+    // 常に「実際に held を更新した、最新の取得」でしか呼ばれないので、
+    // そちらだけを信頼する。
     return refreshTags()
-      .then((loaded) => {
-        setTags(loaded);
-        return loaded;
-      })
+      .then(() => undefined)
       .catch((failure: unknown) => {
         // 既に一覧を持っているときは、その一覧を残したまま理由だけを控える
         // （読み込み失敗の空の状態は、一覧をまだ一度も取れていないときだけ

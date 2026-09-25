@@ -10,6 +10,15 @@ export type VideoTagsResponse = components["schemas"]["VideoTagsResponse"];
 export type VideoTagsSummary = components["schemas"]["VideoTagsSummary"];
 
 /**
+ * maxVideoTagsSelection は `POST /api/video-tags` の `videoIds` に許される上限
+ * （contracts/tags-api.md §4）。この要求は全部か無しか（1件でも上限を超えると
+ * 400 になり、何も変わらない）なので、選択がこれを超えるときは画面側で
+ * 静かに分割して送らず、選択バーの一括操作を disabled のままにする
+ * （web/src/library/SelectionBar.tsx、docs/design-docs/library-ui.md §6）。
+ */
+export const maxVideoTagsSelection = 20000;
+
+/**
  * listTags はタグを名前の自然順で取得する（本数0を含む）。
  *
  * 呼び出し元ごとの AbortSignal は受け取らない。この要求は複数の呼び出し元で
@@ -34,6 +43,14 @@ type TagsListener = (tags: Tag[]) => void;
 let held: Tag[] | undefined;
 /** generation は最後に始めた取得の通し番号。取得のたびに増える。 */
 let generation = 0;
+/**
+ * latestFetch は、今の generation を持つ取得（進行中、または直近に held へ
+ * 反映した取得）の Promise を指す。追い越された取得（下の startFetch の
+ * stale 分岐）が「自分より新しい、今まさに勝っている取得」の結果を待つのに使う
+ * （Devin の指摘: 追い越された取得は自分の――まだ変更を映していない――
+ * 応答をそのまま返してはならない）。
+ */
+let latestFetch: Promise<Tag[]> | undefined;
 /** pendingGet は getTags 同士（held がまだ無いときの同時呼び出し）だけをまとめる。 */
 let pendingGet: Promise<Tag[]> | undefined;
 const listeners = new Set<TagsListener>();
@@ -47,16 +64,31 @@ function notify(tags: Tag[]): void {
  * 別の取得が始まっていれば（応答が届く順にかかわらず）、この結果は古いので
  * `held` に反映しない（B1）。取り直しのたびに独立した取得になるので、先に
  * 始まっていた取得（進行中の GET）を巻き込む・巻き込まれることもない（B1・B2）。
+ *
+ * 追い越された取得は、自分の（まだその後の変更を映していない）応答を
+ * 呼び出し元へそのまま返さない。`held` がまだ一度も埋まっていない最初の
+ * 取得の間は `held` が無いので、それで代えると古い応答がそのまま漏れて
+ * しまう（Devin の指摘）。代わりに、そのとき勝っている最新の取得
+ * （`latestFetch`）の結果を待って、それを返す。勝っている取得自身がさらに
+ * 追い越されていれば、そちらも同じように次を待つので、最終的には常に
+ * 「実際に held を更新した取得」の結果に行き着く。
  */
 function startFetch(): Promise<Tag[]> {
   generation += 1;
   const myGeneration = generation;
-  return listTags().then((tags) => {
-    if (myGeneration !== generation) return held ?? tags;
+  const fetchPromise: Promise<Tag[]> = listTags().then((tags): Tag[] | Promise<Tag[]> => {
+    if (myGeneration !== generation) {
+      // startFetch は generation を上げた直後に必ず latestFetch を自分の
+      // Promise へ差し替えるので、ここに来た時点で latestFetch は必ず
+      // 埋まっている（自分より後の呼び出しが少なくとも1つある）。
+      return latestFetch!;
+    }
     held = tags;
     notify(tags);
     return tags;
   });
+  latestFetch = fetchPromise;
+  return fetchPromise;
 }
 
 /**
@@ -105,6 +137,7 @@ export function subscribeTags(listener: TagsListener): () => void {
 export function __resetTagsForTest(): void {
   held = undefined;
   generation = 0;
+  latestFetch = undefined;
   pendingGet = undefined;
   listeners.clear();
 }

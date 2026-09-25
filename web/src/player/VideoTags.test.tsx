@@ -26,13 +26,33 @@ const server = {
   detachFails: false,
 };
 
+/**
+ * holdGetIndices を GET /api/tags の何回目（1始まり）を止めるかの集合に
+ * 設定すると、その回だけ release を呼ぶまで応答しない。応答の中身は、要求を
+ * 受けた時点の `server.tags` を写し取って持つ（release を呼んだ時点の
+ * `server.tags` ではない。tags.ts の generation ガードのテストで、追い越された
+ * 古い取得の応答が「その要求を送った時点でのサーバーの状態」を持つように
+ * するため）。
+ */
+let holdGetIndices: Set<number> | null = null;
+let getCallCount = 0;
+const heldGetReleases: (() => void)[] = [];
+
 function install() {
   const fetchMock = vi.fn<typeof fetch>();
   fetchMock.mockImplementation((input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     if (url === "/api/tags" && method === "GET") {
-      return Promise.resolve(jsonResponse({ items: server.tags }));
+      getCallCount += 1;
+      const index = getCallCount;
+      const snapshot = [...server.tags];
+      if (holdGetIndices?.has(index) === true) {
+        return new Promise((resolve) => {
+          heldGetReleases.push(() => resolve(jsonResponse({ items: snapshot })));
+        });
+      }
+      return Promise.resolve(jsonResponse({ items: snapshot }));
     }
     if (url === "/api/video-tags" && method === "POST") {
       const body = JSON.parse(String(init?.body)) as {
@@ -112,6 +132,9 @@ beforeEach(() => {
   ];
   server.attachDelay = null;
   server.detachFails = false;
+  holdGetIndices = null;
+  getCallCount = 0;
+  heldGetReleases.length = 0;
 });
 
 afterEach(() => {
@@ -261,6 +284,105 @@ describe("VideoTags", () => {
     rerenderWith([{ id: 1, name: "旅行" }]);
     rerenderWith([]);
     await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
+  });
+
+  // VideoPage は videoId ごとに VideoTags を作り直すとは限らず、同じ
+  // インスタンスを次の動画にも使い回すことがある（key を付けなければ React
+  // 自身は作り直さない）。そのとき前の動画で重ねた付け外しを次の動画へ
+  // 持ち越してはならない（Devin の指摘1）。
+  it("videoId が変わると、前の動画で重ねた付け外しを持ち越さない（Devinの指摘1）", async () => {
+    const user = userEvent.setup();
+    install();
+    const view = render(
+      <MemoryRouter>
+        <ToastProvider>
+          <VideoTags videoId={7} tags={[]} onStaleVideo={vi.fn()} />
+        </ToastProvider>
+      </MemoryRouter>,
+    );
+    const rerenderWith = (videoId: number, tags: { id: number; name: string }[]) =>
+      view.rerender(
+        <MemoryRouter>
+          <ToastProvider>
+            <VideoTags videoId={videoId} tags={tags} onStaleVideo={vi.fn()} />
+          </ToastProvider>
+        </MemoryRouter>,
+      );
+
+    const input = addInput();
+    await user.click(input);
+    await user.type(input, "旅行");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByTitle("旅行")).toBeDefined();
+
+    // 同じ VideoTags のまま、次の動画（タグの無い動画8）へ移る。
+    rerenderWith(8, []);
+    expect(screen.queryByTitle("旅行")).toBeNull();
+
+    // 動画8自身のタグの付け外しは、そのまま重なる。
+    await user.click(addInput());
+    await user.type(addInput(), "Anime");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByTitle("Anime")).toBeDefined();
+
+    // 動画7へ戻っても、動画8で付けた「Anime」は映らない。
+    rerenderWith(7, []);
+    expect(screen.queryByTitle("Anime")).toBeNull();
+  });
+
+  // 重ねた付け外しは、そのタグ自体が別画面での削除・統合で共有の一覧から
+  // 消えていれば蘇らせない（Devin の指摘1）。
+  it("重ねたタグが共有の一覧から消えていれば蘇らせない（削除・統合。Devinの指摘1）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderTags(7, []);
+
+    const input = addInput();
+    await user.click(input);
+    await user.type(input, "旅行");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByTitle("旅行")).toBeDefined();
+
+    // 別の画面で「旅行」が削除された（統合で吸収された場合も同じく消える）。
+    server.tags = server.tags.filter((t) => t.name !== "旅行");
+    await act(() => refreshTags());
+
+    await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
+  });
+
+  // tags.ts の generation ガードは、追い越された取得が「まだ何も反映して
+  // いない自分の応答」をそのまま返してはならない（held がまだ空のうちは
+  // 特に、それがそのまま漏れる）。初回の GET が保留の間に名前で新しいタグを
+  // 付け、その古い（タグを含まない）GET があとから届いても、チップは
+  // 消えたまま戻らなくなってはいけない（Devinの指摘）。
+  it("初回取得が保留の間に名前で付けたタグは、後から届く古い一覧に消されない（Devinの指摘）", async () => {
+    const user = userEvent.setup();
+    install();
+    // マウントの初回 GET（1回目）と、作成成功後の afterTagCreated の取り直し
+    // （2回目）の両方を止める。
+    holdGetIndices = new Set([1, 2]);
+    renderTags(7, []);
+    await waitFor(() => expect(heldGetReleases).toHaveLength(1));
+
+    // 初回 GET が保留（＝ tags.ts の held がまだ空）の間に、新しい名前で
+    // タグを付ける。POST 自体は止めていないので、その場で反映される。
+    const input = addInput();
+    await user.click(input);
+    await user.type(input, "新しいタグ");
+    await user.keyboard("{Enter}");
+    const chip = await screen.findByTitle("新しいタグ");
+    await waitFor(() => expect(heldGetReleases).toHaveLength(2));
+
+    // 1回目（作成より前に始まった、タグを含まない）GET が先に届く。
+    heldGetReleases[0]!();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTitle("新しいタグ")).toBe(chip);
+
+    // 2回目（作成を含む、最新の）GET が届いても、引き続き出ている。
+    heldGetReleases[1]!();
+    await waitFor(() => expect(screen.getByTitle("新しいタグ")).toBeDefined());
   });
 
   it("矢印キーで候補を選び、Enter で付けられる（キーボードだけ）", async () => {
