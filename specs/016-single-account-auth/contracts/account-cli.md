@@ -20,6 +20,8 @@
   （[data-model.md §4](../data-model.md#4-書き換えの規則)）。サーバーが動いていても
   止まっていても実行できる。動いているサーバーは次の要求から古いセッションを拒否し、
   処理中の長い応答も打ち切る（[plan.md Structural Decisions 5](../plan.md#structural-decisions)）。
+- 要るのは `MDM_DATA_DIR` だけで、サーバーの起動前確認（`ffmpeg`・`ffprobe` の有無）は
+  行わない。`ffmpeg` の無いホストでもパスワードを再設定できるようにするためである。
 - 起動時と同じくマイグレーションを適用してから書くので、サーバーを一度も起動して
   いないデータディレクトリにも使える。
 - Docker Compose では `docker compose exec mdm mdm account set-password` の形で呼ぶ。
