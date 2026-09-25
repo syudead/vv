@@ -180,7 +180,10 @@ export default function VideoPlayer(props: Props) {
     player.volume(savedVolume.volume);
     player.muted(savedVolume.muted);
     player.on("volumechange", () => {
-      writePlaybackVolume({ volume: player.volume(), muted: player.muted() });
+      writePlaybackVolume({
+        volume: player.volume() ?? savedVolume.volume,
+        muted: player.muted() ?? savedVolume.muted,
+      });
     });
     playerRef.current = player;
     let attempt: PlaybackAttempt = initialAttempt;

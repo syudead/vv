@@ -420,8 +420,7 @@ describe("VideoPlayer", () => {
     const view = render(<VideoPlayer {...values} />);
     await waitFor(() => expect(values.onControls).toHaveBeenCalled());
     const controls = values.onControls.mock.calls.at(-1)?.[0] as
-      | import("./playerControls").PlayerControls
-      | null;
+      import("./playerControls").PlayerControls | null;
     const player = mock.instances[0];
     if (controls == null || player === undefined)
       throw new Error("操作の入口がありません");
@@ -474,8 +473,7 @@ describe("VideoPlayer", () => {
     render(<VideoPlayer {...values} />);
     await waitFor(() => expect(values.onControls).toHaveBeenCalled());
     const controls = values.onControls.mock.calls.at(-1)?.[0] as
-      | import("./playerControls").PlayerControls
-      | null;
+      import("./playerControls").PlayerControls | null;
     const player = mock.instances[0];
     if (controls == null || player === undefined)
       throw new Error("操作の入口がありません");
