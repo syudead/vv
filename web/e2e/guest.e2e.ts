@@ -207,13 +207,15 @@ test.describe.serial("guest", () => {
     const crumbs = page.getByRole("navigation", { name: "パンくず" });
     await expect(crumbs.getByRole("link", { name: "guest-media" })).toBeVisible();
 
-    // 関連動画: 同じフォルダの公開の動画だけが並ぶ。
+    // 関連動画の列: 「公開あり」はグループなので、公開のメンバーだけが「続けて再生」の
+    // 並びに出る（specs/017-folder-groups/data-model.md §7）。非公開の動画は並びにも
+    // 関連動画にも出ない。
     await page.goto(`/videos/${String(video("ゲスト公開A").id)}`);
-    const related = page.getByRole("complementary").filter({
-      has: page.getByRole("heading", { name: "関連動画" }),
-    });
-    await expect(related.getByRole("link", { name: /^ゲスト公開B/ })).toBeVisible();
-    await expect(related.getByRole("link", { name: /ゲスト非公開/ })).toHaveCount(0);
+    const column = page.getByRole("complementary");
+    const members = column.getByRole("region", { name: "続けて再生" });
+    await expect(members.getByRole("link", { name: /^ゲスト公開B/ })).toBeVisible();
+    await expect(members.locator('li[aria-current="true"]')).toContainText("ゲスト公開A");
+    await expect(column.getByRole("link", { name: /ゲスト非公開/ })).toHaveCount(0);
 
     await context.close();
   });

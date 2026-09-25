@@ -72,6 +72,8 @@ function isPopoverOpen(): boolean {
  * - プレイヤーが無い（取り込み中・読み取り失敗など）ときは、Esc だけが効く。
  * - 全画面中の Esc は何もしない。全画面の解除はブラウザが行う。
  * - 再生速度のメニューや吹き出しが開いているときの Esc は、それを閉じるだけにする。
+ * - Esc で呼ぶのは `onClose` なので、呼び出し側が別の操作を渡せる。再生画面は自動再生の
+ *   予告が出ている間、画面を閉じる代わりに予告の取り消しを渡す。
  */
 export function useKeyboardShortcuts(
   controls: PlayerControls | null,
