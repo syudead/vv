@@ -1,4 +1,12 @@
-import { memo, type PointerEvent, useState } from "react";
+import {
+  memo,
+  type PointerEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router";
 
 import type { FolderSummary } from "../api/client";
@@ -35,10 +43,82 @@ const sheetLayout: Record<number, { left: number; top: number; rotate: number }[
 /** frontPlace は指した1枚を前に出すときの位置（背板の中央）である。 */
 const frontPlace = { left: 16, top: 6 };
 
+/** previewDelayMs は前に出た1枚が動画を流し始めるまでの待ち時間（動画カードと同じ）。 */
+const previewDelayMs = 400;
+
+/**
+ * SheetPreview は前に出た1枚の上で、一覧用のプレビュー動画を無音でくり返し流す。
+ * 前に出てから previewDelayMs 待って読み込み、流れ始めるまではサムネイルを見せる。
+ * 読めなければ何も出さず、サムネイルのまま残す。外れるときは読み込みを止める。
+ */
+function SheetPreview({ src }: { src: string }) {
+  const [armed, setArmed] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setArmed(true), previewDelayMs);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const release = useCallback(() => {
+    const element = videoRef.current;
+    if (element === null) return;
+    element.pause();
+    element.removeAttribute("src");
+    element.load();
+  }, []);
+
+  // レイアウトの後始末は ref が外れる前に走るので、ここで読み込みを止められる。
+  useLayoutEffect(() => release, [release]);
+
+  useEffect(() => {
+    if (!armed || failed) return;
+    const element = videoRef.current;
+    if (element === null) return;
+    // 再生を断られたら、要素を外す前に読み込みを解く（外した後は ref が届かない）。
+    const fail = () => {
+      release();
+      setFailed(true);
+    };
+    try {
+      element.play()?.catch(fail);
+    } catch {
+      fail();
+    }
+  }, [armed, failed, release]);
+
+  if (!armed || failed) return null;
+  return (
+    <video
+      ref={videoRef}
+      src={src}
+      data-folder-video=""
+      muted
+      playsInline
+      loop
+      preload="auto"
+      controls={false}
+      tabIndex={-1}
+      onPlaying={() => setPlaying(true)}
+      onError={() => {
+        release();
+        setFailed(true);
+      }}
+      className={cn(
+        "absolute inset-0 h-full w-full bg-navbar object-contain",
+        playing ? "opacity-100" : "opacity-0",
+      )}
+    />
+  );
+}
+
 /**
  * FolderArt はタブ付きのフォルダの外形と、背板に斜めに重ねたサムネイルを描く。
  * マウスを横に動かすと、位置に応じた1枚が傾きを戻し、少し大きくなって中央の
- * 最前面に出る（フォルダの中身の下見）。装飾なので読み上げない。
+ * 最前面に出て、プレビュー動画があればそれを流す（フォルダの中身の下見）。
+ * 装飾なので読み上げない。
  */
 function FolderArt({ previews }: { previews: Preview[] }) {
   const shown = previews.slice(0, 4);
@@ -90,6 +170,9 @@ function FolderArt({ previews }: { previews: Preview[] }) {
                 decoding="async"
                 className="h-full w-full object-contain"
               />
+              {isFront && preview.previewUrl !== undefined && (
+                <SheetPreview key={preview.videoId} src={preview.previewUrl} />
+              )}
             </div>
           );
         })}

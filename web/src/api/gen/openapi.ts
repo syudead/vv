@@ -809,6 +809,8 @@ export interface components {
             videoId: number;
             /** @description Video.thumbnailUrl と同じ版付き URL */
             thumbnailUrl: string;
+            /** @description Video.previewUrl と同じ版付き URL。一覧用プレビューが生成済みで、保存済み asset が配信可能なときだけ入る */
+            previewUrl?: string;
         };
         FolderSummary: {
             /** Format: int64 */
