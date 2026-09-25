@@ -19,18 +19,33 @@ export default function NeighborArrows({
   previous,
   next,
   visible,
+  container,
 }: {
   previous: Neighbor | undefined;
   next: Neighbor | undefined;
   visible: boolean;
+  /** 全画面にしている入れ物。題名の吹き出しはその中に描かないと全画面の間に見えない。 */
+  container: HTMLElement | null;
 }) {
   return (
     <>
       {previous !== undefined && (
-        <Arrow side="left" label="前の動画" neighbor={previous} visible={visible} />
+        <Arrow
+          side="left"
+          label="前の動画"
+          neighbor={previous}
+          visible={visible}
+          container={container}
+        />
       )}
       {next !== undefined && (
-        <Arrow side="right" label="次の動画" neighbor={next} visible={visible} />
+        <Arrow
+          side="right"
+          label="次の動画"
+          neighbor={next}
+          visible={visible}
+          container={container}
+        />
       )}
     </>
   );
@@ -41,16 +56,22 @@ function Arrow({
   label,
   neighbor,
   visible,
+  container,
 }: {
   side: "left" | "right";
   label: string;
   neighbor: Neighbor;
   visible: boolean;
+  container: HTMLElement | null;
 }) {
   const Icon = side === "left" ? ChevronLeft : ChevronRight;
   const tip = neighbor.title === undefined ? label : `${label}: ${neighbor.title}`;
   return (
-    <Tooltip content={tip} side={side === "left" ? "right" : "left"}>
+    <Tooltip
+      content={tip}
+      side={side === "left" ? "right" : "left"}
+      container={container}
+    >
       <button
         type="button"
         aria-label={tip}

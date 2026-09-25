@@ -425,6 +425,30 @@ describe("VideoPage", () => {
       expect(previous.className).toContain("pointer-events-none");
     });
 
+    it("全画面の間は、前後の矢印の題名の吹き出しを全画面の入れ物の中に描く", async () => {
+      renderPage();
+      await ready();
+      const next = await screen.findByRole("button", { name: "次の動画: 後続の動画" });
+      const frame = document.querySelector<HTMLElement>("[data-player-frame]");
+      Object.defineProperty(document, "fullscreenElement", {
+        configurable: true,
+        value: frame,
+      });
+      try {
+        act(() => {
+          document.dispatchEvent(new Event("fullscreenchange"));
+        });
+        act(() => next.focus());
+        const tip = await screen.findByRole("tooltip");
+        expect(frame?.contains(tip)).toBe(true);
+      } finally {
+        Object.defineProperty(document, "fullscreenElement", {
+          configurable: true,
+          value: null,
+        });
+      }
+    });
+
     it("関連動画の並びに無い前の動画も、題名無しで移れる", async () => {
       server.related.set(7, { items: [related(8, "後続の動画")], nextId: 8, prevId: 99 });
       renderPage();

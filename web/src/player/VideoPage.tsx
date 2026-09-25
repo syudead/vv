@@ -120,6 +120,18 @@ export default function VideoPage() {
   const frameRef = useRef<HTMLDivElement | null>(null);
   // 全画面はプレイヤーの上の層ごとにする（状態表示・再生終了・中央操作を全画面でも出す）。
   const fullscreenTarget = useCallback(() => frameRef.current, []);
+  // 全画面にしている入れ物。前後の矢印の吹き出しは、その間だけ入れ物の中に描く。
+  const [fullscreenFrame, setFullscreenFrame] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const sync = () => {
+      const frame = frameRef.current;
+      setFullscreenFrame(
+        frame !== null && document.fullscreenElement === frame ? frame : null,
+      );
+    };
+    document.addEventListener("fullscreenchange", sync);
+    return () => document.removeEventListener("fullscreenchange", sync);
+  }, []);
 
   // 別の動画へ移ったら、前の動画の再生の状態を持ち越さない。
   if (pageId !== id) {
@@ -374,6 +386,7 @@ export default function VideoPage() {
                 previous={neighbor(neighbors?.prevId)}
                 next={neighbor(neighbors?.nextId)}
                 visible={chromeVisible || status.ended}
+                container={fullscreenFrame}
               />
             )}
           </div>
