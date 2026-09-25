@@ -91,7 +91,7 @@ type Probe struct {
 	// DurationMs は尺（ミリ秒）。取得できなかった場合は 0 で、
 	// 保存側はこれを null として扱う（0 で代用しない）。
 	DurationMs int64
-	// Width / Height は映像の解像度。取得できなければ 0。
+	// Width / Height は表示される向きの映像の解像度（回転の印を反映済み）。取得できなければ 0。
 	Width  int
 	Height int
 	// VideoCodec は先頭の映像ストリームの codec_name。映像が無ければ空。

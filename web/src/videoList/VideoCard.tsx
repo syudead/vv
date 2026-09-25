@@ -268,7 +268,7 @@ function VideoCard(props: VideoCardProps) {
                 loading="lazy"
                 decoding="async"
                 className={cn(
-                  "h-full w-full object-cover object-top",
+                  "h-full w-full object-contain",
                   showingPreview && "opacity-0",
                 )}
               />
@@ -295,7 +295,7 @@ function VideoCard(props: VideoCardProps) {
                 onPlaying={() => setPlaying(true)}
                 onError={releasePreview}
                 className={cn(
-                  "absolute inset-0 h-full w-full object-cover object-top",
+                  "absolute inset-0 h-full w-full object-contain",
                   showingPreview ? "opacity-100" : "opacity-0",
                 )}
               />
@@ -415,7 +415,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
               alt=""
               loading="lazy"
               decoding="async"
-              className="h-full w-full object-cover object-top"
+              className="h-full w-full object-contain"
             />
           )}
           {ratio !== null && (

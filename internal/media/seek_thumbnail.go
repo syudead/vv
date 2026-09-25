@@ -39,7 +39,7 @@ func seekThumbnailArgs(videoPath, outputPattern string) []string {
 		"-v", "error",
 		"-i", videoPath,
 		"-map", "0:V:0?",
-		"-vf", "select='isnan(prev_selected_t)+gt(floor(t/" + interval + ")\\,floor(prev_selected_t/" + interval + "))',scale=min(320\\,iw):-2,format=yuvj420p",
+		"-vf", "select='isnan(prev_selected_t)+gt(floor(t/" + interval + ")\\,floor(prev_selected_t/" + interval + "))',scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuvj420p",
 		"-fps_mode", "vfr",
 		"-q:v", "4",
 		"-start_number", "0",

@@ -61,6 +61,38 @@ func TestParseProbeOutputDoesNotTreatAttachedPictureAsVideo(t *testing.T) {
 	}
 }
 
+// 回転の印が付いた動画は、表示される向きの解像度を記録する。
+func TestParseProbeOutputAppliesRotation(t *testing.T) {
+	tests := []struct {
+		name   string
+		stream string
+		width  int
+		height int
+	}{
+		{"display matrix", `"side_data_list": [{"side_data_type": "Display Matrix", "rotation": -90}]`, 1080, 1920},
+		{"rotate tag", `"tags": {"rotate": "270"}`, 1080, 1920},
+		{"upside down", `"side_data_list": [{"side_data_type": "Display Matrix", "rotation": 180}]`, 1920, 1080},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			output := `{
+			  "streams": [
+			    {"index": 0, "codec_type": "video", "codec_name": "h264",
+			     "width": 1920, "height": 1080, ` + tc.stream + `}
+			  ],
+			  "format": {"duration": "3.0", "format_name": "mov,mp4"}
+			}`
+			got, err := parseProbeOutput([]byte(output))
+			if err != nil {
+				t.Fatalf("解析に失敗した: %v", err)
+			}
+			if got.Width != tc.width || got.Height != tc.height {
+				t.Errorf("解像度 = %dx%d, want %dx%d", got.Width, got.Height, tc.width, tc.height)
+			}
+		})
+	}
+}
+
 // 音声が無い動画も取り込める。音声コーデックが空になるだけで、失敗ではない。
 func TestParseProbeOutputWithoutAudio(t *testing.T) {
 	const output = `{

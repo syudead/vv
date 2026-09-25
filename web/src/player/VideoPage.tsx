@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
@@ -24,6 +25,7 @@ import NeighborArrows from "./NeighborArrows";
 import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
 import PropertyStrip from "./PropertyStrip";
+import { frameAspectRatio } from "./aspect";
 import RelatedVideos from "./RelatedVideos";
 import {
   CreatingLine,
@@ -117,6 +119,8 @@ export default function VideoPage() {
     autoplay: autoplayRequested(location.state),
   }));
   const [endedTakesFocus, setEndedTakesFocus] = useState(false);
+  // 再生を始めて分かった映像の比率。解析の値より確かなので、分かればこちらを使う。
+  const [mediaAspect, setMediaAspect] = useState<number | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   // 全画面はプレイヤーの上の層ごとにする（状態表示・再生終了・中央操作を全画面でも出す）。
   const fullscreenTarget = useCallback(() => frameRef.current, []);
@@ -139,6 +143,7 @@ export default function VideoPage() {
     setFailure(null);
     setStatus(initialPlayerStatus);
     setEndedTakesFocus(false);
+    setMediaAspect(null);
     setAttempt({ key: 0, startMs: null, autoplay: autoplayRequested(location.state) });
   }
 
@@ -304,6 +309,10 @@ export default function VideoPage() {
     );
 
   const showPlayer = playable && detail.kind === "ready";
+  const aspect =
+    mediaAspect !== null
+      ? frameAspectRatio(mediaAspect, 1)
+      : frameAspectRatio(video?.width, video?.height);
   const chromeVisible = !status.playing || status.userActive;
   let layer: ReactNode = statusLayer;
   if (layer === null && status.ended) {
@@ -348,13 +357,16 @@ export default function VideoPage() {
           <div
             ref={frameRef}
             data-player-frame=""
-            className="relative isolate mx-auto grid w-full grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-9rem)*16/9)] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
+            // 枠は動画の比率（縦長も含む）に合わせ、画面の高さに収まる幅に留める。
+            // 比率はシークのプレビューも使うので、変数として子孫へ渡す。
+            style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
+            className="relative isolate mx-auto grid w-full shrink-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-9rem)*var(--vv-video-aspect))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
           >
-            {/* 16:9 は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
+            {/* 動画の比率は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
                 全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
             <div
               aria-hidden="true"
-              className="col-start-1 row-start-1 aspect-video [:fullscreen>&]:hidden"
+              className="col-start-1 row-start-1 aspect-(--vv-video-aspect) [:fullscreen>&]:hidden"
             />
             <CloseButton
               variant="overlay"
@@ -378,6 +390,7 @@ export default function VideoPage() {
                 onError={onError}
                 onControls={setControls}
                 onStatus={onStatus}
+                onAspectRatio={setMediaAspect}
                 fullscreenTarget={fullscreenTarget}
               />
             )}

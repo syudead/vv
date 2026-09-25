@@ -99,6 +99,10 @@ func thumbnailOffset(durationMs int64) float64 {
 	return offset
 }
 
+// thumbnailScale は、向きを問わず長辺を 640px に揃える。縦長の動画でも横長と同じ
+// 大きさの枠に収まるので、縦長だけ画像が大きくなることがない。
+const thumbnailScale = "scale=640:640:force_original_aspect_ratio=decrease:force_divisible_by=2"
+
 // thumbnailArgs は ffmpeg に渡す1回分の引数を組み立てる。
 //
 // -ss を -i の前に置くとキーフレーム単位の高速シークになり、長い動画でも
@@ -110,7 +114,7 @@ func thumbnailArgs(videoPath string, offsetSec float64, output string) []string 
 		"-ss", strconv.FormatFloat(offsetSec, 'f', 3, 64),
 		"-i", videoPath,
 		"-frames:v", "1",
-		"-vf", "scale=640:-2",
+		"-vf", thumbnailScale,
 		"-q:v", "4",
 		"-y",
 		output,

@@ -24,7 +24,7 @@ probe 完了後の background job で、動画全体から短い区間を等間�
 **Feature-specific context**:
 
 - preview generation は duration を必要とするため probe 成功後に enqueue する。migration は既存の probe 完了動画を `pending` にして backfill し、scan/startup reconciliation は DB state と生成ファイルの欠落・破損を修復する。
-- 9 秒を超える動画は全尺から等間隔に 12 区間を選び、各 0.75 秒を時系列に連結する。9 秒以下は全体を一度だけ変換する。出力は最大幅 640px、H.264、`yuv420p`、無音、fast-start MP4 とし、設定 UI は追加しない。
+- 9 秒を超える動画は全尺から等間隔に 12 区間を選び、各 0.75 秒を時系列に連結する。9 秒以下は全体を一度だけ変換する。出力は向きを問わず長辺が最大 640px、H.264、`yuv420p`、無音、fast-start MP4 とし、設定 UI は追加しない。
 - 生成中は sibling temporary path を使い、MP4 と size/SHA-256 integrity manifest を個別に atomic rename してから `done` にする。完了判定は source location の generation と asset の content identity を分け、current video が同じ content key を参照する限り location-only change 後も成果物を利用する。scan/startup reconciliation は manifest と MP4 の size/digest を照合し、欠落・破損を再生成へ戻す。
 - `Video` API は required な `previewState` と、`done` のときだけ optional な `previewUrl` を返す。`GET /api/videos/{id}/preview` は保存済み MP4 を Range 対応で配信し、source stream や live transcode へ fallback しない。
 - UI 対象はグリッドカードだけ。開始イベント自身の `pointerType === "mouse"` を確認し、生成済み `previewUrl` だけを source にする。
@@ -84,7 +84,7 @@ specs/010-hover-video-preview/
 
 **Dependencies**: なし。
 
-**Acceptance**: 新規動画は probe 成功後に一度だけ preview job が queue され、既存の probe 完了動画も再 import なしで backfill される。9 秒超は全尺から 12 x 0.75 秒、9 秒以下は全体を一度だけ変換し、最大幅 640px、H.264/`yuv420p`、無音、fast-start MP4 と size/SHA-256 manifest を content-key path へ公開し、両方が完成するまで `done` にしない。中断 job は再開可能で、retry 中は `pending`、上限到達時は `failed` となるが import/thumbnail/listing は成功を保つ。生成中に source location が変わっても current video の content key が同じなら完成 asset を採用し、content key が変わった場合は temporary output だけを破棄する。MP4 または manifest の欠落、size/digest 不一致は reconciliation が `pending` に戻して再生成し、未参照の両 file は cleanup する。対象 unit/integration tests と `task check` が成功する。
+**Acceptance**: 新規動画は probe 成功後に一度だけ preview job が queue され、既存の probe 完了動画も再 import なしで backfill される。9 秒超は全尺から 12 x 0.75 秒、9 秒以下は全体を一度だけ変換し、長辺最大 640px、H.264/`yuv420p`、無音、fast-start MP4 と size/SHA-256 manifest を content-key path へ公開し、両方が完成するまで `done` にしない。中断 job は再開可能で、retry 中は `pending`、上限到達時は `failed` となるが import/thumbnail/listing は成功を保つ。生成中に source location が変わっても current video の content key が同じなら完成 asset を採用し、content key が変わった場合は temporary output だけを破棄する。MP4 または manifest の欠落、size/digest 不一致は reconciliation が `pending` に戻して再生成し、未参照の両 file は cleanup する。対象 unit/integration tests と `task check` が成功する。
 
 ### 生成済み hover preview の API 配信
 

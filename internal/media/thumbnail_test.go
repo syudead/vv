@@ -73,7 +73,7 @@ func TestThumbnailArgs(t *testing.T) {
 
 	joined := strings.Join(got, " ")
 	for _, want := range []string{
-		"-nostdin", "-v error", "-frames:v 1", "-vf scale=640:-2", "-q:v 4", "-y",
+		"-nostdin", "-v error", "-frames:v 1", "-vf scale=640:640:force_original_aspect_ratio=decrease:force_divisible_by=2", "-q:v 4", "-y",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("引数に %q が無い: %v", want, got)

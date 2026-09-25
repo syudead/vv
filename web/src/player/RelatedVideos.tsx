@@ -49,7 +49,7 @@ export function VideoThumbnail({
           loading="lazy"
           decoding="async"
           className={cn(
-            "h-full w-full object-cover object-top",
+            "h-full w-full object-contain",
             preview?.playing === true && "opacity-0",
           )}
         />
@@ -75,7 +75,7 @@ export function VideoThumbnail({
           onPlaying={preview.onPlaying}
           onError={preview.onError}
           className={cn(
-            "absolute inset-0 h-full w-full object-cover object-top",
+            "absolute inset-0 h-full w-full object-contain",
             preview.playing ? "opacity-100" : "opacity-0",
           )}
         />

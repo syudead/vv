@@ -64,6 +64,12 @@ func probeArgs(path string) []string {
 	}
 }
 
+// probeSideData は stream の side_data_list の 1 件である。
+type probeSideData struct {
+	SideDataType string  `json:"side_data_type"`
+	Rotation     float64 `json:"rotation"`
+}
+
 // probeOutput は ffprobe の JSON のうち、取り出す部分だけを写す。
 type probeOutput struct {
 	Streams []struct {
@@ -84,11 +90,8 @@ type probeOutput struct {
 		Tags              struct {
 			Rotate string `json:"rotate"`
 		} `json:"tags"`
-		SideDataList []struct {
-			SideDataType string  `json:"side_data_type"`
-			Rotation     float64 `json:"rotation"`
-		} `json:"side_data_list"`
-		Disposition struct {
+		SideDataList []probeSideData `json:"side_data_list"`
+		Disposition  struct {
 			AttachedPicture int `json:"attached_pic"`
 		} `json:"disposition"`
 	} `json:"streams"`
@@ -129,8 +132,12 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 		case "video":
 			if probe.VideoCodec == "" && stream.Disposition.AttachedPicture == 0 {
 				probe.VideoCodec = stream.CodecName
-				probe.Width = stream.Width
-				probe.Height = stream.Height
+				// 表示される向きの解像度を記録する。スマートフォンの縦動画は横長で記録し
+				// 90 度回転の印を付けていることが多く、そのままでは横長に見えてしまう。
+				probe.Width, probe.Height = stream.Width, stream.Height
+				if rotation := streamRotation(stream.Tags.Rotate, stream.SideDataList); rotation == 90 || rotation == 270 {
+					probe.Width, probe.Height = stream.Height, stream.Width
+				}
 			}
 		case "audio":
 			if probe.AudioCodec == "" {
