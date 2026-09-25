@@ -389,13 +389,22 @@ holds the in-memory snapshot that lets the list restore its position after a
 round trip to the playback screen. `tags.ts` holds a single shared, last-value-only
 cache of the tag list behind `getTags`/`refreshTags`/`subscribeTags`, so the
 combobox, tag-filter confirmation and the tag admin screen all read and invalidate
-the same list instead of issuing their own `GET /api/tags`. Pages and components do
+the same list instead of issuing their own `GET /api/tags`. `auth.ts` checks who is
+viewing (`GET /api/auth/session`) and sends first-run setup, login and logout. Pages and components do
 not call `fetch` themselves, so how the server is reached stays changeable in one
 place.
 The list's conditions (search terms, watch state, playable-only, sort and the shuffle
 `seed`) live in the URL; `web/src/videoList/listCriteria.ts` converts between the URL and
 the criteria `useVideos` sends, and the server applies every condition, so the page
 neither filters loaded pages nor reads ahead to find matches.
+
+`web/src/auth/` is the gate in front of every route: `AuthGate` renders nothing until
+the session state is known, sends every URL to `/setup` while no account exists, sends a
+guest on an owner-only screen (`/settings`, `/tags`) to `/login?next=…`, and exposes the
+answer to the screens through `useAudience`. The first-run setup (`/setup`) and login
+(`/login`) screens live there too and sit outside the shell and its providers. When the
+viewer changes (setup, login, logout) the page is reloaded rather than re-rendered, so
+nothing read for the previous viewer stays in memory.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
 frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`,

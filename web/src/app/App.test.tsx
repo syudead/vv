@@ -68,6 +68,7 @@ describe("App", () => {
     );
     fetchMock.mockImplementation((input) => {
       const url = String(input);
+      if (url === "/api/auth/session") return Promise.resolve(json({ state: "owner" }));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
       if (url === "/api/scans/current") {
         return Promise.resolve(
@@ -131,5 +132,48 @@ describe("App", () => {
     expect(playbackPlacement?.contains("items-center")).toBe(true);
     expect(playbackPlacement?.contains("items-end")).toBe(false);
     expect(playbackPlacement?.contains("lg:bottom-20")).toBe(false);
+  });
+
+  it("初回設定画面をシェルとプロバイダの外に描く", async () => {
+    window.history.replaceState({}, "", "/videos/1");
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/auth/session") {
+        return Promise.resolve(json({ state: "setupRequired" }));
+      }
+      return Promise.reject(new Error(`unexpected request: ${String(input)}`));
+    });
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "アカウントを作成" }),
+    ).toBeDefined();
+    expect(window.location.pathname).toBe("/setup");
+    expect(
+      screen.queryByRole("complementary", { name: "メインナビゲーション" }),
+    ).toBeNull();
+    // 取り込みの状態などプロバイダの要求を送らない。
+    expect(fetchMock).toHaveBeenCalledOnce();
+  });
+
+  it("ゲストの設定画面はログイン画面へ置き換え、シェルを描かない", async () => {
+    window.history.replaceState({}, "", "/settings");
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/auth/session") {
+        return Promise.resolve(json({ state: "guest" }));
+      }
+      return Promise.reject(new Error(`unexpected request: ${String(input)}`));
+    });
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "ログイン" }),
+    ).toBeDefined();
+    expect(`${window.location.pathname}${window.location.search}`).toBe(
+      "/login?next=%2Fsettings",
+    );
+    expect(
+      screen.queryByRole("complementary", { name: "メインナビゲーション" }),
+    ).toBeNull();
+    expect(fetchMock).toHaveBeenCalledOnce();
   });
 });
