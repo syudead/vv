@@ -355,6 +355,32 @@ describe("FolderPage", () => {
     expect(deeper?.textContent).toContain("動画 0 本");
   });
 
+  it("フォルダの絵柄の上でマウスを横に動かすと、位置に応じたサムネイルを大きく映す", async () => {
+    const { container } = renderFolders("/folders/3");
+    await screen.findByRole("link", { name: "five、動画 6 本、フォルダ 0 件" });
+    const art = container.querySelector<HTMLElement>(
+      '[data-folder-path="five"] [data-folder-art]',
+    );
+    if (art === null) throw new Error("folder art not found");
+    art.getBoundingClientRect = () => new DOMRect(100, 0, 200, 100);
+    const scrubbed = () => art.querySelector("[data-folder-scrub]");
+
+    fireEvent.pointerMove(art, { pointerType: "touch", clientX: 290 });
+    expect(scrubbed()).toBeNull();
+
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 110 });
+    expect(scrubbed()?.getAttribute("data-folder-scrub")).toBe("0");
+    expect(scrubbed()?.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/videos/1/thumbnail?v=x",
+    );
+
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 290 });
+    expect(scrubbed()?.getAttribute("data-folder-scrub")).toBe("3");
+
+    fireEvent.pointerLeave(art);
+    expect(scrubbed()).toBeNull();
+  });
+
   it("特殊な文字を含む名前のフォルダへ、段を1回だけ符号化したリンクを張る", async () => {
     renderFolders("/folders/3");
     const link = await screen.findByRole("link", {
