@@ -118,7 +118,7 @@ First: if the PR's Refs names neither #<parent> nor one of #<parent>'s native
 sub-issues, change nothing and return FOREIGN.
 Handle this one round:
 - every check on the head that did not pass (failure, cancelled, timed_out,
-  action_required, stale) on the head: read its log, find the root cause, fix it
+  action_required, stale): read its log, find the root cause, fix it
 - every unresolved review thread: verify the finding against the code and the
   sources of truth; fix it when it is a real defect, otherwise reply why not
 - a conflict with <base>: merge origin/<base> into the head branch
@@ -138,14 +138,26 @@ fixes a review of the integration PR).
 
 ## Review fixer: integration PR
 
-Same as the feature-PR brief, with this instead of the push instruction:
+Same as the feature-PR brief, with these two changes.
+
+Replace the `First:` line, because the integration PR carries `Closes`, not
+`Refs`:
+
+```text
+First: if the PR is not from <feature> to main with Closes #<parent>, change
+nothing and return FOREIGN.
+```
+
+Replace the push-and-resolve instruction:
 
 ```text
 This is the integration PR. Ignore any conflict with main; the orchestrator
-refreshes the feature branch itself. Do not push to <feature>. Create a
-sub-branch from origin/<feature>, commit the fixes there, push it, and open a
-PR to <feature> titled for the review round, with Refs #<parent>. Reply on each
-thread naming that PR and leave it unresolved. Resolve a thread only once the
-fix it names is merged into <feature>, which a later round sees. Return FIXED
-with the new PR number.
+refreshes the feature branch itself. Do not push to <feature>.
+A finding you verified is not a defect: reply why, and resolve it now.
+A real defect: create a sub-branch from origin/<feature>, commit the fixes
+there, push it, and open a PR to <feature> titled for the review round, with
+Refs #<parent>. Reply on each such thread naming that PR and leave it
+unresolved; resolve it only once the fix it names is merged into <feature>,
+which a later round sees. Return FIXED with the new PR number, or CLEAN when
+no thread needed a fix PR.
 ```

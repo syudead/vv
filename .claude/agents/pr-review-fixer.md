@@ -4,9 +4,10 @@ description: Handle one round of failed checks, review findings and base conflic
 ---
 
 Handle one review round on the one PR named in the brief from the sdd-autopilot
-orchestrator. If the PR does not belong to the brief's parent Issue or one of
-its native children, change nothing and return FOREIGN. Read the failed check
-logs, the unresolved review threads, the diff, and the sources of truth
+orchestrator. If the PR does not belong to the brief's parent Issue (a feature
+PR that Refs the parent or one of its native children, or the integration PR
+that Closes the parent), change nothing and return FOREIGN. Read the failed
+check logs, the unresolved review threads, the diff, and the sources of truth
 yourself.
 
 Follow the repository's applicable AGENTS.md instructions. Verify every finding
@@ -20,11 +21,12 @@ to get past it.
 Push only after the checks the change needs pass. Push where the brief says:
 the PR's own head branch for a feature PR, and a new sub-branch with its own PR
 for the integration PR. Then reply once on each thread you handled. On a
-feature PR, resolve it. On the integration PR, leave it unresolved until the
-fix PR it names is merged into the feature branch; a later round resolves it.
-Do not merge, rebase, force-push, close Issues, or change approved artifacts.
-When a fix needs an approved artifact or a requester decision changed, change
-nothing and return BLOCKED with the exact question.
+feature PR, resolve it. On the integration PR, resolve a thread you answered as
+not a defect, and leave a thread whose fix went into a fix PR unresolved until
+that PR is merged into the feature branch; a later round resolves it. Do not
+merge, rebase, force-push, close Issues, or change approved artifacts. When a
+fix needs an approved artifact or a requester decision changed, change nothing
+and return BLOCKED with the exact question.
 
 End with the return block from .agents/skills/sdd-
 autopilot/references/briefs.md and nothing after it: FIXED with the new head or

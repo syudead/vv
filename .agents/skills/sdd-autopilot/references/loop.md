@@ -90,7 +90,8 @@ Loop:
    base, and either pushes (`FIXED`, new head) or changes nothing (`CLEAN`).
    A fixer never returns `CLEAN` while a check on the head is not passing.
    It first checks that the PR belongs to this feature: its `Refs` names the
-   parent or one of the parent's native children. Otherwise it changes nothing
+   parent or one of the parent's native children (for the integration PR, it
+   is the feature branch's PR to `main` that `Closes` the parent). Otherwise it changes nothing
    and returns `FOREIGN`. It also returns the PR's `KIND`, which §5 uses.
 3. `FIXED`: back to step 1 on the new head. `CLEAN`: merge with a merge
    commit, then §5. `BLOCKED`: stop. `FOREIGN`: leave the PR alone, never
