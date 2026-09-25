@@ -227,6 +227,7 @@ func run() error {
 		Scans:        scans,
 		MediaFolders: mediaFolders,
 		Tags:         db.Tags(),
+		Visibility:   db.Visibility(),
 		Folders:      libraryStore,
 		Transcoder:   media.NewLiveTranscoder(requestMediaCtx.Done()),
 		Artifacts:    artifactStore,

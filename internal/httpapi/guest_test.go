@@ -66,6 +66,7 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			Folders:    library,
 			Playback:   db.Playback(),
 			Tags:       db.Tags(),
+			Visibility: db.Visibility(),
 			Catalog:    app.NewCatalog(app.CatalogOptions{Index: library, Ingest: db.Ingest(), Files: guestArtifactFiles{}}),
 			Artifacts:  artifacts,
 			Transcoder: f.transcode,

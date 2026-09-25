@@ -151,6 +151,7 @@ import VideoPlayer from "./VideoPlayer";
 const video: Video = {
   id: 7,
   title: "test",
+  public: false,
   sizeBytes: 100,
   addedAt: "2026-09-01T00:00:00Z",
   playable: true,

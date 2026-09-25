@@ -42,6 +42,7 @@ function video(id: number, title: string, extra: Partial<Video> = {}): Video {
   return {
     id,
     title,
+    public: false,
     sizeBytes: 1024,
     addedAt: "2026-09-01T00:00:00Z",
     playable: true,

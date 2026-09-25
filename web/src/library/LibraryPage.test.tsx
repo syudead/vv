@@ -24,6 +24,7 @@ function video(id: number, extra: Partial<Video> = {}): Video {
   return {
     id,
     title: `動画 ${String(id)}`,
+    public: false,
     sizeBytes: 1024 * 1024 * id,
     addedAt: "2026-09-01T00:00:00Z",
     playable: true,

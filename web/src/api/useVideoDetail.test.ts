@@ -25,6 +25,7 @@ const { isProcessing, useRelatedVideos, useVideoDetail } =
 const done: Video = {
   id: 7,
   title: "動画",
+  public: false,
   sizeBytes: 1,
   addedAt: "2026-09-01T00:00:00Z",
   playable: true,
