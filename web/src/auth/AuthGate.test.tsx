@@ -104,6 +104,28 @@ describe("AuthGate", () => {
     }
   });
 
+  it.each([
+    ["guest", "/Settings", "/login?next=%2FSettings"],
+    ["guest", "/TAGS/", "/login?next=%2FTAGS%2F"],
+    ["guest", "/Setup", "/"],
+    ["owner", "/setup/", "/"],
+  ] as const)(
+    "経路の大文字小文字と末尾の / を区別せずに振り分ける（%s で %s）",
+    async (state, path, expected) => {
+      answer({ state });
+      renderGate(path);
+      await waitFor(() => expect(currentLocation).toBe(expected));
+    },
+  );
+
+  it("owner で /Login を開いても、next を送ってサーバーの redirectTo へ移る", async () => {
+    answer({ state: "owner", redirectTo: "/tags" });
+    renderGate("/Login?next=%2Ftags");
+
+    await waitFor(() => expect(currentLocation).toBe("/tags"));
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe("/api/auth/session?next=%2Ftags");
+  });
+
   it("guest は同じ画面をゲストとして描く", async () => {
     answer({ state: "guest" });
     renderGate("/folders");

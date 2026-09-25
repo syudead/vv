@@ -15,7 +15,17 @@ type GateState =
   // search は、確かめたときの /login の問い合わせ（next を送ったか）である。
   | { status: "ready"; session: AuthSession; search: string | null };
 
-/** ownerOnlyPath は所有者だけの画面（設定・タグの管理）かを返す。 */
+/**
+ * routePath は、経路の判定に使う形へパスを揃える。画面の経路（React Router）は
+ * 大文字と小文字を区別せず、末尾の / も無視するので、ここでも同じに扱う。
+ * そうしないと /Settings や /setup/ がゲートの判定をすり抜けて描かれる。
+ */
+export function routePath(pathname: string): string {
+  const lowered = pathname.toLowerCase().replace(/\/+$/, "");
+  return lowered === "" ? "/" : lowered;
+}
+
+/** ownerOnlyPath は所有者だけの画面（設定・タグの管理）かを返す。pathname は routePath 済み。 */
 function ownerOnlyPath(pathname: string): boolean {
   return ["/settings", "/tags"].some(
     (path) => pathname === path || pathname.startsWith(`${path}/`),
@@ -106,7 +116,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   const [initialLocation] = useState(location);
   useEffect(() => {
     const controller = new AbortController();
-    const onLogin = initialLocation.pathname === "/login";
+    const onLogin = routePath(initialLocation.pathname) === "/login";
     const next = onLogin ? loginNext(initialLocation.search) : undefined;
     getAuthSession(next, controller.signal).then(
       (session) =>
@@ -137,7 +147,7 @@ export default function AuthGate({ children }: { children: ReactNode }) {
   }
 
   const { session } = state;
-  const { pathname } = location;
+  const pathname = routePath(location.pathname);
 
   if (session.state === "setupRequired") {
     if (pathname !== "/setup") return <Navigate replace to="/setup" />;
