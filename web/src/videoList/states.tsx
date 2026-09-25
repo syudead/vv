@@ -1,7 +1,9 @@
-import { AlertCircle, type LucideIcon, SearchX } from "lucide-react";
+import { AlertCircle, FolderOpen, type LucideIcon, SearchX } from "lucide-react";
 import type { ReactNode } from "react";
+import { Link, useLocation } from "react-router";
 
-import Button from "../ui/Button";
+import { currentPath, loginPath } from "../auth/pageNavigation";
+import Button, { buttonClassName } from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 
 export function EmptyState({
@@ -36,6 +38,30 @@ export function EmptyState({
         ))}
       {action !== undefined && <div className="mt-5 flex gap-2">{action}</div>}
     </div>
+  );
+}
+
+/**
+ * GuestEmpty はゲストに公開の動画が1本も無いときの状態である。取り込みや設定の
+ * 代わりに、ログインへの入口を置く（specs/016-single-account-auth/ui-design.md
+ * 「Guest degradation」）。ライブラリとフォルダ画面の最上位で同じ文言を使う。
+ */
+export function GuestEmpty() {
+  const location = useLocation();
+  return (
+    <EmptyState
+      icon={FolderOpen}
+      title="公開されている動画はありません"
+      description="ログインすると、すべての動画を見られます"
+      action={
+        <Link
+          to={loginPath(currentPath(location))}
+          className={buttonClassName("secondary")}
+        >
+          ログイン
+        </Link>
+      }
+    />
   );
 }
 

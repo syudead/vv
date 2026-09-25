@@ -445,7 +445,7 @@ func TestPreviewStateUsesContentIdentityForSuccessAndClaimIdentityForFailure(t *
 	if written {
 		t.Fatal("stale location claim marked preview failed")
 	}
-	video, err := db.Library().GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -473,7 +473,7 @@ func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
 	if got := jobState(t, db, job.ID); got != "failed" {
 		t.Fatalf("job state = %q, want failed", got)
 	}
-	video, err := db.Library().GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -498,7 +498,7 @@ func TestFailClaimedPreviewKeepsPendingWhileRetrying(t *testing.T) {
 	if got := jobState(t, db, job.ID); got != "queued" {
 		t.Fatalf("job state = %q, want queued", got)
 	}
-	video, err := db.Library().GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +530,7 @@ func TestFailClaimedPreviewRollsBackJobWhenStateUpdateFails(t *testing.T) {
 	if got := jobState(t, db, job.ID); got != "running" {
 		t.Fatalf("job state = %q, want running after rollback", got)
 	}
-	video, err := db.Library().GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -670,7 +670,7 @@ func TestCompletePreviewAtomicallyFinishesAssetAndJobAfterCancellation(t *testin
 	if got := jobState(t, db, job.ID); got != "done" {
 		t.Fatalf("job state = %q, want done", got)
 	}
-	video, err := db.Library().GetVideo(ctx, videoID)
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 	if err != nil {
 		t.Fatal(err)
 	}

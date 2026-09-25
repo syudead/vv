@@ -8,11 +8,18 @@ import { videoProperties } from "./properties";
  * `xl` 以上は縦線で区切った折り返さない 1 行、それ未満は線の無い格子にする。折り返す幅で
  * 縦線を使うと、行頭に線と余白が残るからである（ui-design）。
  */
-export default function PropertyStrip({ video }: { video: Video }) {
+export default function PropertyStrip({
+  video,
+  lastPlayed = true,
+}: {
+  video: Video;
+  /** LAST PLAYED を出すか。再生位置は所有者のものなので、ゲストでは省く。 */
+  lastPlayed?: boolean;
+}) {
   return (
     <div className="border-t border-border pt-5">
       <dl className="grid grid-cols-3 gap-x-6 gap-y-4 sm:grid-cols-4 xl:flex xl:flex-nowrap xl:gap-0">
-        {videoProperties(video).map((property) => (
+        {videoProperties(video, { lastPlayed }).map((property) => (
           <div
             key={property.label}
             className="flex min-w-0 flex-col gap-1 xl:border-l xl:border-border xl:px-4 xl:first:border-l-0 xl:first:pl-0"

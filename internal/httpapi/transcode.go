@@ -17,10 +17,13 @@ const transcodeStartupTimeout = 6 * time.Second
 
 // TranscodeVideo streams one request-scoped fragmented MP4 process.
 func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.TranscodeVideoParams) {
-	video, ok := s.lookupVideo(w, r, id)
+	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる
+	// （contracts/guest-api.md §6）。
+	video, r, release, ok := s.lookupServedVideo(w, r, id)
 	if !ok {
 		return
 	}
+	defer release()
 	if video.ProbeState != domain.ProbeStateDone || video.DurationMs == nil || *video.DurationMs <= 0 {
 		s.writeError(w, http.StatusConflict, codeConflict, "この動画はライブ変換に必要な解析情報がありません")
 		return

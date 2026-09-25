@@ -22,6 +22,7 @@ import {
 } from "../api/listSnapshot";
 import { refreshTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
+import { useAudience } from "../auth/audience";
 import {
   readViewPreferences,
   type ViewPreferences,
@@ -39,7 +40,13 @@ import {
 } from "../videoList/listCriteria";
 import { Grid } from "../videoList/Grid";
 import { resultCountText } from "../videoList/listSummary";
-import { CardSkeleton, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
+import {
+  CardSkeleton,
+  GuestEmpty,
+  LoadFailed,
+  LoadMoreFailed,
+  NoMatches,
+} from "../videoList/states";
 import { useListCriteria } from "../videoList/useListCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
@@ -66,6 +73,9 @@ const skeletonCount = 12;
 export default function LibraryPage() {
   const location = useLocation();
   const toast = useToast();
+  // ゲストには所有者のデータに依る操作（選択・タグの絞り込み・選択バー）を出さない
+  // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+  const owner = useAudience() === "owner";
   const [preferences, setPreferences] = useState(readViewPreferences);
   // 一覧の条件は URL が持つ（contracts/list-url.md）。端末に保存するのは sort だけ。
   // タグ絞り込み（`tag`）はライブラリだけが持つ条件で、共有の ListCriteria には
@@ -74,13 +84,14 @@ export default function LibraryPage() {
   const { criteria, apply } = useListCriteria(preferences.sort, TAG_PARAM);
   const { query, watch, playable, sort } = criteria;
   // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
-  // タグの操作の関数とカードの memo を保つ。
+  // タグの操作の関数とカードの memo を保つ。ゲストはタグで絞り込めない（URL に残った
+  // `tag` は useListCriteria が取り除く）。
   const rawTagKey = JSON.stringify(
     new URLSearchParams(location.search).getAll(TAG_PARAM),
   );
   const tagIds = useMemo(
-    () => parseTagParam(JSON.parse(rawTagKey) as string[]),
-    [rawTagKey],
+    () => (owner ? parseTagParam(JSON.parse(rawTagKey) as string[]) : []),
+    [owner, rawTagKey],
   );
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
@@ -475,7 +486,7 @@ export default function LibraryPage() {
     backTo: listUrl,
     selected: selectedIds.has(video.id),
     selectionMode,
-    onSelect: changeSelection,
+    onSelect: owner ? changeSelection : undefined,
     activePreviewId,
     previewResetEpoch,
     onPreviewStart: startPreview,
@@ -534,8 +545,10 @@ export default function LibraryPage() {
       {empty &&
         (conditioned ? (
           <NoMatches />
-        ) : (
+        ) : owner ? (
           <EmptyLibrary onScan={scan.start} scanning={scan.running} />
+        ) : (
+          <GuestEmpty />
         ))}
 
       <div ref={list} onClick={saveSnapshot}>
@@ -557,7 +570,7 @@ export default function LibraryPage() {
             <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg bg-surface shadow-card">
               <thead>
                 <tr className="text-left text-xs text-fg-muted">
-                  <th className="w-10" />
+                  {owner && <th className="w-10" />}
                   <th className="w-32 py-2" />
                   <th className="py-2 pr-4 font-medium">題名</th>
                   <th className="hidden w-16 py-2 pr-4 sm:table-cell" />
@@ -589,15 +602,17 @@ export default function LibraryPage() {
 
       <div ref={sentinel} aria-hidden="true" className="h-px" />
 
-      <SelectionBar
-        count={selectedIds.size}
-        total={total}
-        selectedIds={selectedIdsArray}
-        selectingAll={selectingAll}
-        onSelectAll={selectAll}
-        onClear={clearSelection}
-        onTagRemoved={onTagRemoved}
-      />
+      {owner && (
+        <SelectionBar
+          count={selectedIds.size}
+          total={total}
+          selectedIds={selectedIdsArray}
+          selectingAll={selectingAll}
+          onSelectAll={selectAll}
+          onClear={clearSelection}
+          onTagRemoved={onTagRemoved}
+        />
+      )}
     </div>
   );
 }

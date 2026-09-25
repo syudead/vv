@@ -3,12 +3,14 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
-import VideoCard from "./VideoCard";
+import { type Audience, AudienceProvider } from "../auth/audience";
+import VideoCard, { VideoRow } from "./VideoCard";
 
 function video(extra: Partial<Video> = {}): Video {
   return {
     id: 1,
     title: "動画 1",
+    public: false,
     sizeBytes: 1024,
     addedAt: "2026-09-01T00:00:00Z",
     playable: false,
@@ -379,6 +381,76 @@ describe("VideoCard tagsRow（issue 269）", () => {
       </MemoryRouter>,
     );
     expect(nextTagsRow).toHaveBeenCalledTimes(1);
+  });
+});
+
+// 公開の印（specs/016-single-account-auth/ui-design.md「Visibility toggle」の「Card」、issue 305）。
+describe("VideoCard の公開の印", () => {
+  afterEach(() => cleanup());
+
+  function renderAs(audience: Audience, item: Video) {
+    return render(
+      <MemoryRouter>
+        <AudienceProvider audience={audience}>
+          <VideoCard video={item} backTo="/" selected={false} selectionMode={false} />
+        </AudienceProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("所有者の公開の動画には、時間の面の先頭に地球の印と読み上げの「公開」を出す", () => {
+    const { container } = renderAs("owner", video({ public: true }));
+    const mark = screen.getByText("公開");
+    expect(mark.className).toContain("sr-only");
+    const face = mark.parentElement!;
+    // 先頭が地球のアイコン、その後に時間。
+    expect(face.firstElementChild?.tagName.toLowerCase()).toBe("svg");
+    expect(face.firstElementChild?.getAttribute("class")).toContain("lucide-globe");
+    expect(face.textContent).toBe("公開1:00");
+    expect(container.querySelectorAll(".lucide-globe")).toHaveLength(1);
+  });
+
+  it("非公開の動画には印を出さない", () => {
+    const { container } = renderAs("owner", video({ public: false }));
+    expect(screen.queryByText("公開")).toBeNull();
+    expect(container.querySelector(".lucide-globe")).toBeNull();
+  });
+
+  it("時間が無い公開の動画では、同じ面に地球の印だけを出す", () => {
+    renderAs(
+      "owner",
+      video({ public: true, durationMs: undefined, width: undefined, height: undefined }),
+    );
+    const face = screen.getByText("公開").parentElement!;
+    expect(face.textContent).toBe("公開");
+  });
+
+  it("ゲストには印を出さない", () => {
+    const { container } = renderAs("guest", video({ public: true }));
+    expect(screen.queryByText("公開")).toBeNull();
+    expect(container.querySelector(".lucide-globe")).toBeNull();
+  });
+
+  it("リスト表示の行では時間の直前に同じ印を置く", () => {
+    render(
+      <MemoryRouter>
+        <AudienceProvider audience="owner">
+          <table>
+            <tbody>
+              <VideoRow
+                video={video({ public: true })}
+                backTo="/"
+                selected={false}
+                selectionMode={false}
+              />
+            </tbody>
+          </table>
+        </AudienceProvider>
+      </MemoryRouter>,
+    );
+    const cell = screen.getByText("公開").closest("td")!;
+    expect(cell.textContent).toBe("公開1:00");
+    expect(cell.querySelector(".lucide-globe")).not.toBeNull();
   });
 });
 

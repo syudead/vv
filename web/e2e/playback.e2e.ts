@@ -422,7 +422,7 @@ test.describe.serial("live MP4 playback", () => {
   test("離脱とreloadは自分の変換だけを止め、別tabの再生を継続する", async ({
     browser,
   }) => {
-    test.setTimeout(30_000);
+    test.setTimeout(60_000);
     const context = await browser.newContext();
     const first = await context.newPage();
     const second = await context.newPage();
@@ -479,7 +479,9 @@ test.describe.serial("live MP4 playback", () => {
     const reloadStarted = Date.now();
     await second.reload();
     await restarted;
-    expect(Date.now() - reloadStarted).toBeLessThan(5000);
+    // reload は認証のゲートが GET /api/auth/session を待ってから描くので、その1往復と
+    // ゲートのモジュールの分だけ長い。メンテナーの判断で上限を 8000ms にした（PR 335）。
+    expect(Date.now() - reloadStarted).toBeLessThan(8000);
     await context.close();
   });
 

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
@@ -11,7 +12,7 @@ import (
 // 未生成の場合は 404 を返し、クライアントは枠だけを描く。壊れた
 // 応答を返すより、未生成と同じ扱いにする方が利用者の損失が小さい。
 func (s *server) GetVideoThumbnail(
-	w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoThumbnailParams,
+	w http.ResponseWriter, r *http.Request, id gen.VideoId, _ gen.GetVideoThumbnailParams,
 ) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
@@ -38,15 +39,19 @@ func (s *server) GetVideoThumbnail(
 		return
 	}
 
-	// 版付きの要求だけ長期キャッシュを許す。版は内容由来なので、内容が
-	// 変われば URL も変わり、古い画像が残らない。版の無い要求に
-	// 1年のキャッシュを付けると、差し替えても更新されなくなる。
-	if params.V != nil && *params.V != "" {
-		w.Header().Set("Cache-Control", cacheImmutable)
-	} else {
-		w.Header().Set("Cache-Control", cacheNoStore)
+	// 版の有無によらず、使うたびに確かめさせる（contracts/guest-api.md §5）。
+	// If-None-Match が一致すれば http.ServeContent が 304 を返す。ETag は内容から
+	// 作る。作り直しで大きさと更新時刻が前と同じになっても、古い画像を使わせない。
+	etag, err := readerETag(file)
+	if err != nil {
+		s.notFound(w, "サムネイルはまだ生成されていません")
+		return
 	}
+	setRevalidate(w, etag)
 	w.Header().Set("Content-Type", "image/jpeg")
 
-	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
+	// 更新時刻は渡さない。渡すと ServeContent が Last-Modified を付け、If-Modified-Since
+	// だけの要求に更新時刻で 304 を返すので、同じ秒に作り直した画像が古いまま残る。
+	// 確かめは内容の ETag だけで行う。
+	http.ServeContent(w, r, info.Name(), time.Time{}, file)
 }

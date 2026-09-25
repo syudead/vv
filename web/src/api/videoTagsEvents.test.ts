@@ -11,6 +11,7 @@ function item(id: number, tags: { id: number; name: string }[] = []) {
   return {
     id,
     title: `動画 ${String(id)}`,
+    public: false,
     sizeBytes: 1,
     addedAt: "2026-09-01T00:00:00Z",
     playable: true,

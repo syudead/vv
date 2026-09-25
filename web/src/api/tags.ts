@@ -1,4 +1,4 @@
-import { RequestFailed, request, toRequestFailed } from "./client";
+import { apiFetch, RequestFailed, request, toRequestFailed } from "./client";
 import { clearListSnapshot } from "./listSnapshot";
 import { nextVideoTagsSequence, recordAppliedVideoTags } from "./videoTagsEvents";
 import type { components } from "./gen/openapi";
@@ -220,7 +220,10 @@ export async function renameTag(
 
 /** deleteTag はタグを1件削除する。 */
 export async function deleteTag(id: number, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`/api/tags/${String(id)}`, { method: "DELETE", signal });
+  const response = await apiFetch(`/api/tags/${String(id)}`, {
+    method: "DELETE",
+    signal,
+  });
   if (!response.ok) {
     refreshOnStaleTagError(await toRequestFailed(response));
   }
@@ -276,10 +279,13 @@ export async function removeTagSynonym(
   signal?: AbortSignal,
 ): Promise<void> {
   const query = new URLSearchParams({ name });
-  const response = await fetch(`/api/tags/${String(id)}/synonyms?${query.toString()}`, {
-    method: "DELETE",
-    signal,
-  });
+  const response = await apiFetch(
+    `/api/tags/${String(id)}/synonyms?${query.toString()}`,
+    {
+      method: "DELETE",
+      signal,
+    },
+  );
   if (!response.ok) {
     refreshOnStaleTagError(await toRequestFailed(response));
   }

@@ -2,10 +2,13 @@ import { useCallback, useEffect, useRef } from "react";
 import { useLocation, useNavigate } from "react-router";
 
 import type { VideoSort } from "../api/client";
+import { useAudience } from "../auth/audience";
 import {
+  guestListCriteria,
   type HistoryMode,
   type ListCriteria,
   newSeed,
+  ownerOnlySort,
   parseListCriteria,
   serializeListCriteria,
 } from "./listCriteria";
@@ -32,6 +35,12 @@ export interface ListCriteriaState {
  * （Plan の Structural Decisions 15）。中身は解釈せず、この経路が書き換える URL の
  * すべての経路（apply・seed の補完・sort を確定する置き換え）で値を残す。省略する
  * 画面（フォルダ画面）では、そのパラメータには一切触れない。
+ *
+ * ゲストとして描くときは、所有者のデータに依る条件（視聴状態・最近再生した順・
+ * `extraParam` のタグ）を既定に丸めて返す。URL に残っていたら履歴を増やさずに
+ * URL も直す。端末に保存した並び順（preferredSort）が最近再生した順のときも丸めるが、
+ * 保存値そのものは書き換えない（specs/016-single-account-auth/ui-design.md
+ * 「Guest degradation」、contracts/guest-api.md §3）。
  */
 export function useListCriteria(
   preferredSort: VideoSort,
@@ -39,14 +48,22 @@ export function useListCriteria(
 ): ListCriteriaState {
   const location = useLocation();
   const navigate = useNavigate();
+  const guest = useAudience() === "guest";
   const searchParams = new URLSearchParams(location.search);
   const parsed = parseListCriteria(searchParams, preferredSort);
-  const extra = extraParam === undefined ? [] : searchParams.getAll(extraParam);
+  const rawExtra = extraParam === undefined ? [] : searchParams.getAll(extraParam);
+  // ゲストの URL に残った、使えない条件。丸めた条件で URL を書き直す。
+  const guestLeftovers =
+    guest &&
+    (parsed.criteria.watch !== "all" ||
+      (parsed.hasExplicitSort && ownerOnlySort(parsed.criteria.sort)) ||
+      rawExtra.length > 0);
+  const extra = guest ? [] : rawExtra;
 
   // sort=random で seed が無いときは、ここで作って URL に書き足す（履歴は増やさない）。
   // 書き足すまでの描画でも同じ値を使うよう、URL ごとに1つだけ作って覚える。
   const supplied = useRef<{ search: string; seed: number } | null>(null);
-  let criteria = parsed.criteria;
+  let criteria = guest ? guestListCriteria(parsed.criteria) : parsed.criteria;
   if (parsed.needsSeed) {
     if (supplied.current?.search !== location.search) {
       supplied.current = { search: location.search, seed: newSeed() };
@@ -82,8 +99,8 @@ export function useListCriteria(
 
   const needsSeed = parsed.needsSeed;
   useEffect(() => {
-    if (needsSeed) write(latest.current.criteria, "replace");
-  }, [needsSeed, location.search, write]);
+    if (needsSeed || guestLeftovers) write(latest.current.criteria, "replace");
+  }, [needsSeed, guestLeftovers, location.search, write]);
 
   const apply = useCallback(
     (next: ListCriteria, mode: HistoryMode, extraValues?: readonly string[]) => {

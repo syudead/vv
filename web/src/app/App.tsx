@@ -1,5 +1,7 @@
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 
+import { useAudience } from "../auth/audience";
+import AuthGate from "../auth/AuthGate";
 import LibraryPage from "../library/LibraryPage";
 import VideoPage from "../player/VideoPage";
 import AppShell from "../shell/AppShell";
@@ -11,21 +13,26 @@ import { TooltipProvider } from "../ui/Tooltip";
 import { deferredRoute } from "./deferredRoute";
 
 // 一覧と再生画面のほかは使うときだけ読み込む（deferredRoute）。再生画面から
-// 一覧へ戻るたびの読み込みに、ほかの画面の部品を加えない。
+// 一覧へ戻るたびの読み込みに、ほかの画面の部品を加えない。初回設定とログインの
+// 画面も同じで、ゲートが送るときに読み込む。読み終えるまでゲートと同じく何も描かない。
 const FolderPage = await deferredRoute(() => import("../folders/FolderPage"), "/folders");
 const SettingsPage = await deferredRoute(
   () => import("../settings/SettingsPage"),
   "/settings",
 );
 const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
+const SetupPage = await deferredRoute(() => import("../auth/SetupPage"), "/setup");
+const LoginPage = await deferredRoute(() => import("../auth/LoginPage"), "/login");
 
 function AppRoutes() {
   const location = useLocation();
+  const owner = useAudience() === "owner";
   const scanPlacement = location.pathname.startsWith("/videos/") ? "playback" : "default";
 
   return (
     <ToastProvider placement={scanPlacement}>
-      <ScanProgressIndicator />
+      {/* 取り込みの進捗と通知は所有者だけに出す（ui-design.md「Top bar」）。 */}
+      {owner && <ScanProgressIndicator />}
       <Routes>
         <Route
           path="/"
@@ -68,22 +75,38 @@ function AppRoutes() {
   );
 }
 
+/** LibraryApp はシェルとプロバイダの内側に置く、ライブラリの画面群である。 */
+function LibraryApp() {
+  return (
+    <TooltipProvider>
+      <ScanProvider>
+        <ScanNoticeProvider>
+          <AppRoutes />
+        </ScanNoticeProvider>
+      </ScanProvider>
+    </TooltipProvider>
+  );
+}
+
 /**
  * App は画面の割り当てである。
  *
- * 一覧・フォルダ・設定をシェル（トップバー + サイドバー）で包み、再生画面は
- * シアターモードとして包まない。この分岐はここ 1 か所に閉じる。
+ * すべての経路をゲート（AuthGate）の内側に置き、見る人の状態が分かるまで何も
+ * 描かない。初回設定（/setup）とログイン（/login）はシェルとプロバイダの外に
+ * 置く（specs/016-single-account-auth/plan.md Structural Decisions 2）。
+ * それ以外は、一覧・フォルダ・設定をシェル（トップバー + サイドバー）で包み、
+ * 再生画面はシアターモードとして包まない。この分岐はここ 1 か所に閉じる。
  */
 export default function App() {
   return (
     <BrowserRouter>
-      <TooltipProvider>
-        <ScanProvider>
-          <ScanNoticeProvider>
-            <AppRoutes />
-          </ScanNoticeProvider>
-        </ScanProvider>
-      </TooltipProvider>
+      <AuthGate>
+        <Routes>
+          <Route path="/setup" element={<SetupPage />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="*" element={<LibraryApp />} />
+        </Routes>
+      </AuthGate>
     </BrowserRouter>
   );
 }

@@ -21,6 +21,7 @@ import {
   type Scan,
 } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
+import { useAudience } from "../auth/audience";
 
 export interface ScanContextValue {
   scan: Scan | null;
@@ -69,8 +70,14 @@ export function processingRemaining(processing: Processing | null): number {
  * 更新する。一定間隔では問い合わせない。つなぎ直したとき、ウィンドウへ戻った
  * とき、利用者が更新を求めたときは取り直す。トップバーのボタンとライブラリの
  * 再読込が同じ状態を見る。
+ *
+ * 取り込みは所有者だけのものなので、ゲストとして描くときは状態を取りに行かず
+ * （`GET /api/scans/current` を呼ばない）、`/api/events` も購読しない。取り込みの
+ * 状態は「まだ取り込んでいない」のまま動かず、開始も取り直しも何もしない
+ * （specs/016-single-account-auth/ui-design.md「Top bar」）。
  */
 export function ScanProvider({ children }: { children: ReactNode }) {
+  const owner = useAudience() === "owner";
   const [scan, setScan] = useState<Scan | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [processing, setProcessing] = useState<Processing | null>(null);
@@ -195,6 +202,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   }, [loadFolders, loadScan]);
 
   useEffect(() => {
+    if (!owner) return;
     // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
     const unsubscribe = subscribeServerEvents({
       scan: (next) => {
@@ -215,10 +223,14 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       inFlight.current?.abort();
       foldersInFlight.current?.abort();
     };
-  }, [apply, load]);
+  }, [apply, load, owner]);
+
+  const refresh = useCallback(() => {
+    if (owner) load();
+  }, [load, owner]);
 
   const start = useCallback(() => {
-    if (folderCount === null || folderCount === 0) return;
+    if (!owner || folderCount === null || folderCount === 0) return;
     const baselineScanId = scan?.id ?? null;
     setStarting(true);
     setStartError(null);
@@ -254,7 +266,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       // 開始の直後に終わる小さな取り込みもある。知らせを待たずに1度取り直す。
       loadScan();
     })();
-  }, [apply, folderCount, loadScan, scan?.id, updateFolderCount]);
+  }, [apply, folderCount, loadScan, owner, scan?.id, updateFolderCount]);
 
   const error = startError ?? loadError;
 
@@ -268,7 +280,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       running: starting || scan?.state === "running",
       canStart: folderCount !== null && folderCount > 0,
       start,
-      refresh: load,
+      refresh,
       setFolderCount: updateFolderCount,
       finished,
     }),
@@ -276,9 +288,9 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       error,
       finished,
       folderCount,
-      load,
       loaded,
       processing,
+      refresh,
       scan,
       start,
       starting,

@@ -2,8 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/http/httptest"
@@ -34,8 +37,22 @@ func (f *fakeArtifacts) ThumbnailFile(contentKey string) (*os.File, error) {
 	return openFake(f.thumbnails, contentKey)
 }
 
-func (f *fakeArtifacts) PreviewFile(contentKey string) (*os.File, error) {
-	return openFake(f.previews, contentKey)
+// PreviewFile は本物の置き場と同じく、内容の SHA-256 を添えて返す。
+func (f *fakeArtifacts) PreviewFile(contentKey string) (*os.File, string, error) {
+	file, err := openFake(f.previews, contentKey)
+	if err != nil {
+		return nil, "", err
+	}
+	h := sha256.New()
+	_, err = io.Copy(h, file)
+	if err == nil {
+		_, err = file.Seek(0, io.SeekStart)
+	}
+	if err != nil {
+		_ = file.Close()
+		return nil, "", err
+	}
+	return file, hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func (f *fakeArtifacts) SeekThumbnail(contentKey string, positionMs int64) ([]byte, error) {
@@ -84,7 +101,20 @@ func (f *fakeLibrary) ListMediaFolders(context.Context) ([]domain.MediaFolder, e
 	return folders, nil
 }
 
-func (f *fakeLibrary) ListVideos(_ context.Context, q domain.VideoQuery) (domain.VideoPage, error) {
+// requireOwner は、偽物を使う経路のテストが所有者として読むことを偽物の側で確かめる。
+// それらのテストは ownerAuth で境界を越えるので、ゲストとして読んだら取り違えである。
+// ゲストとしての読み出しは guest_test.go が本物の保存層で確かめる。
+func requireOwner(audience domain.Audience) error {
+	if !audience.IsOwner() {
+		return errors.New("所有者として読んでいません")
+	}
+	return nil
+}
+
+func (f *fakeLibrary) ListVideos(_ context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error) {
+	if err := requireOwner(audience); err != nil {
+		return domain.VideoPage{}, err
+	}
 	f.lastQuery = q
 	if f.listErr != nil {
 		return domain.VideoPage{}, f.listErr
@@ -98,7 +128,10 @@ func (f *fakeLibrary) ListVideos(_ context.Context, q domain.VideoQuery) (domain
 	return page, nil
 }
 
-func (f *fakeLibrary) GetVideo(_ context.Context, id int64) (domain.Video, error) {
+func (f *fakeLibrary) GetVideo(_ context.Context, audience domain.Audience, id int64) (domain.Video, error) {
+	if err := requireOwner(audience); err != nil {
+		return domain.Video{}, err
+	}
 	video, ok := f.videos[id]
 	if !ok {
 		return domain.Video{}, domain.ErrNotFound
@@ -179,8 +212,31 @@ func newTestServer(t *testing.T, opts Options) http.Handler {
 	if opts.Files == nil {
 		opts.Files = mediafs.New()
 	}
+	if opts.Auth == nil {
+		opts.Auth = ownerAuth{}
+	}
 	return NewRouter(opts)
 }
+
+// ownerAuth はどの要求も所有者として通す認証の代わりである。認証の境界そのものは
+// auth_test.go が本物の Auth で確かめるので、他の経路のテストはこれで境界を越える。
+type ownerAuth struct{}
+
+func (ownerAuth) Setup(context.Context, string, string) (IssuedSession, error) {
+	return IssuedSession{}, domain.ErrAccountAlreadyConfigured
+}
+
+func (ownerAuth) Login(context.Context, LoginAttempt) (IssuedSession, error) {
+	return IssuedSession{}, domain.ErrInvalidCredentials
+}
+
+func (ownerAuth) CheckSession(context.Context, string) (time.Time, bool, error) {
+	return time.Now().Add(time.Hour), true, nil
+}
+
+func (ownerAuth) Logout(context.Context, string) error { return nil }
+
+func (ownerAuth) State(context.Context, string) (AuthState, error) { return AuthStateOwner, nil }
 
 // emptyAssets は SPA を持たないファイルシステムである。API の検証では
 // index.html を要らない。
@@ -262,7 +318,10 @@ func (f *fakeCatalog) SeekThumbnailState(_ context.Context, video domain.Video) 
 	return domain.SeekThumbnailPending, nil
 }
 
-func (f *fakeCatalog) RelatedVideos(_ context.Context, video domain.Video) (domain.RelatedVideos, error) {
+func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error) {
+	if err := requireOwner(audience); err != nil {
+		return domain.RelatedVideos{}, err
+	}
 	f.relatedAsked = append(f.relatedAsked, video.ID)
 	return f.related, f.relatedErr
 }

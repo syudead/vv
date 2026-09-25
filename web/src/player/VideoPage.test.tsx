@@ -3,8 +3,11 @@ import { useEffect } from "react";
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { RelatedVideos, Video } from "../api/client";
+import type { AuthState } from "../api/auth";
+import { type RelatedVideos, setRenderedAudience, type Video } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
+import { type Audience, AudienceProvider } from "../auth/audience";
+import { reloadPage } from "../auth/pageNavigation";
 import { TooltipProvider } from "../ui/Tooltip";
 import type { PlayerControls } from "./playerControls";
 import type { PlayerStatus } from "./VideoPlayer";
@@ -20,6 +23,11 @@ interface PlayerProps {
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
 }
+
+vi.mock("../auth/pageNavigation", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../auth/pageNavigation")>()),
+  reloadPage: vi.fn(),
+}));
 
 const playerMock = vi.hoisted(() => ({
   props: undefined as PlayerProps | undefined,
@@ -49,6 +57,7 @@ vi.mock("./VideoPlayer", () => ({
 const video: Video = {
   id: 7,
   title: "テスト動画",
+  public: false,
   sizeBytes: 84_331_821,
   addedAt: "2026-09-01T00:00:00Z",
   playable: true,
@@ -84,6 +93,8 @@ const server = {
   related: new Map<number, RelatedVideos>(),
   probe: vi.fn<() => Response>(),
   open: vi.fn<() => Response>(),
+  /** GET /api/auth/session が答える見る人の状態。 */
+  session: "owner" as AuthState,
 };
 
 function fakeControls(): PlayerControls {
@@ -110,7 +121,7 @@ function Screen({ name }: { name: string }) {
   );
 }
 
-function renderPage(id = "7", from?: string) {
+function renderPage(id = "7", from?: string, audience: Audience = "owner") {
   return render(
     <TooltipProvider>
       <MemoryRouter
@@ -118,13 +129,15 @@ function renderPage(id = "7", from?: string) {
           { pathname: `/videos/${id}`, state: from === undefined ? undefined : { from } },
         ]}
       >
-        <Link to="/videos/8">別の動画</Link>
-        <Link to="/videos/invalid">無効な動画</Link>
-        <Routes>
-          <Route path="/videos/:id" element={<VideoPage />} />
-          <Route path="/" element={<Screen name="ライブラリ" />} />
-          <Route path="/folders/*" element={<Screen name="フォルダ" />} />
-        </Routes>
+        <AudienceProvider audience={audience}>
+          <Link to="/videos/8">別の動画</Link>
+          <Link to="/videos/invalid">無効な動画</Link>
+          <Routes>
+            <Route path="/videos/:id" element={<VideoPage />} />
+            <Route path="/" element={<Screen name="ライブラリ" />} />
+            <Route path="/folders/*" element={<Screen name="フォルダ" />} />
+          </Routes>
+        </AudienceProvider>
       </MemoryRouter>
     </TooltipProvider>,
   );
@@ -163,9 +176,14 @@ describe("VideoPage", () => {
     server.open.mockReset();
     fetchMock.mockReset();
     installFakeEventSource();
+    server.session = "owner";
+    vi.mocked(reloadPage).mockClear();
+    setRenderedAudience(null);
     fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       const method = init?.method ?? "GET";
+      if (url === "/api/auth/session")
+        return Promise.resolve(json({ state: server.session }));
       const match = /^\/api\/videos\/(\d+)(\/[a-z]+)?$/.exec(url);
       if (match === null) return Promise.resolve(json({}));
       const id = Number(match[1]);
@@ -823,6 +841,208 @@ describe("VideoPage", () => {
       fireEvent.click(screen.getByRole("link", { name: "無効な動画" }));
       expect(await screen.findByText("この動画は開けません")).toBeDefined();
       expect(screen.queryByText("再生できませんでした")).toBeNull();
+    });
+  });
+  // 公開の切り替え（specs/016-single-account-auth/ui-design.md「Visibility toggle」、issue 305）。
+  describe("公開の切り替え", () => {
+    /** visibility は PUT /api/video-visibility の応答を1つずつ返す。 */
+    function holdVisibility() {
+      const answers: ((response: Response) => void)[] = [];
+      const bodies: unknown[] = [];
+      const answered = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        if (String(input) !== "/api/video-visibility") return answered!(input, init);
+        bodies.push(JSON.parse(String(init?.body)));
+        return new Promise<Response>((resolve) => answers.push(resolve));
+      });
+      return { answers, bodies };
+    }
+
+    function toggle() {
+      return screen.getByRole("switch", { name: "ログインしていない人に公開する" });
+    }
+
+    it("所有者には非公開の状態で出し、押すと1回だけ送って応答の後に公開中へ変わる", async () => {
+      const { answers, bodies } = holdVisibility();
+      renderPage();
+      await ready();
+      expect(toggle().getAttribute("aria-checked")).toBe("false");
+      expect(toggle().textContent).toBe("非公開");
+
+      fireEvent.click(toggle());
+      // 送信中は押せない印（aria-disabled）で、フォーカスは外さず、応答が来るまで
+      // 状態を変えない。
+      expect(toggle().getAttribute("aria-disabled")).toBe("true");
+      expect(toggle().getAttribute("aria-checked")).toBe("false");
+      fireEvent.click(toggle());
+      expect(bodies).toEqual([{ videoIds: [7], public: true }]);
+
+      await act(async () => answers[0]!(json({ applied: 1 })));
+      await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("true"));
+      expect(toggle().textContent).toBe("公開中");
+      expect(toggle().getAttribute("aria-disabled")).toBeNull();
+      // トーストは出さない。
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+
+    it("公開中を押すと public: false を送り、非公開に戻る", async () => {
+      server.videos.set(7, [{ ...video, public: true }]);
+      const { answers, bodies } = holdVisibility();
+      renderPage();
+      await ready();
+      expect(toggle().textContent).toBe("公開中");
+      fireEvent.click(toggle());
+      expect(bodies).toEqual([{ videoIds: [7], public: false }]);
+      await act(async () => answers[0]!(json({ applied: 1 })));
+      await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("false"));
+    });
+
+    it("失敗したら状態を変えずに理由を出し、次に押すと消える", async () => {
+      const { answers } = holdVisibility();
+      renderPage();
+      await ready();
+
+      fireEvent.click(toggle());
+      await act(async () =>
+        answers[0]!(json({ code: "internal", message: "失敗" }, 500)),
+      );
+      const alert = await screen.findByRole("alert");
+      expect(alert.textContent).toBe("変更できませんでした");
+      expect(toggle().getAttribute("aria-checked")).toBe("false");
+
+      fireEvent.click(toggle());
+      expect(screen.queryByRole("alert")).toBeNull();
+      // 切り替えは1つずつ順に送るので、決着させないと後のテストの要求が待たされる。
+      await act(async () => answers[1]!(json({ applied: 1 })));
+      await waitFor(() => expect(toggle().getAttribute("aria-checked")).toBe("true"));
+    });
+
+    it("別の動画へ移ると失敗の行を持ち越さない", async () => {
+      server.videos.set(8, [{ ...video, id: 8, title: "後続の動画" }]);
+      const { answers } = holdVisibility();
+      renderPage();
+      await ready();
+      fireEvent.click(toggle());
+      await act(async () =>
+        answers[0]!(json({ code: "internal", message: "失敗" }, 500)),
+      );
+      await screen.findByRole("alert");
+
+      fireEvent.click(screen.getByRole("link", { name: "別の動画" }));
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("後続の動画"),
+      );
+      expect(screen.queryByRole("alert")).toBeNull();
+    });
+
+    it("ゲストには切り替えを出さない", async () => {
+      server.videos.set(7, [{ ...video, location: undefined, public: true }]);
+      renderPage("7", undefined, "guest");
+      await ready();
+      expect(screen.queryByRole("switch")).toBeNull();
+    });
+  });
+
+  describe("見る人", () => {
+    function guestVideo(overrides: Partial<Video> = {}): Video {
+      // ゲストの応答には location・progress・probeError が無く、tags は空である。
+      return { ...video, location: undefined, tags: [], public: true, ...overrides };
+    }
+
+    it("ゲストにはタグ・ファイルの場所・LAST PLAYED を出さず、再生位置を送らない", async () => {
+      server.videos.set(7, [guestVideo()]);
+      const { unmount } = renderPage("7", undefined, "guest");
+      await ready();
+      expect(screen.getByText("ADDED")).toBeDefined();
+      expect(screen.queryByText("LAST PLAYED")).toBeNull();
+      expect(screen.queryByRole("heading", { name: "タグ" })).toBeNull();
+      expect(screen.queryByPlaceholderText("タグを追加")).toBeNull();
+      expect(screen.queryByRole("button", { name: /ファイルを開く/ })).toBeNull();
+
+      act(() => player().onProgress(30_000, true));
+      act(() => player().onPosition(31_000));
+      unmount();
+      const progressCalls = fetchMock.mock.calls.filter(([input]) =>
+        String(input).endsWith("/progress"),
+      );
+      expect(progressCalls).toHaveLength(0);
+    });
+
+    it("所有者には LAST PLAYED とタグの並びを出す", async () => {
+      renderPage();
+      await ready();
+      expect(screen.getByText("LAST PLAYED")).toBeDefined();
+      expect(screen.getByRole("heading", { name: "タグ" })).toBeDefined();
+    });
+
+    it("ゲストの読み取り失敗には、やり直し・ファイルを開く・誤りの文を出さない", async () => {
+      server.videos.set(7, [guestVideo({ probeState: "failed" })]);
+      renderPage("7", undefined, "guest");
+      const alert = await screen.findByRole("alert");
+      expect(within(alert).getByText("この動画を読み取れませんでした")).toBeDefined();
+      expect(within(alert).queryByRole("button")).toBeNull();
+      expect(alert.querySelector("pre")).toBeNull();
+    });
+
+    it("再生に失敗したとき見る人が変わっていれば、失敗の層を出さずに1度だけ読み直す", async () => {
+      renderPage();
+      await ready();
+      server.session = "guest";
+      act(() => player().onError(1000));
+      act(() => player().onError(2000));
+      await waitFor(() => expect(reloadPage).toHaveBeenCalledOnce());
+      expect(screen.queryByText("再生できませんでした")).toBeNull();
+    });
+
+    it("再生に失敗しても見る人が同じなら、今の再生失敗の層を出す", async () => {
+      server.videos.set(7, [guestVideo()]);
+      server.session = "guest";
+      renderPage("7", undefined, "guest");
+      await ready();
+      act(() => player().onError(1000));
+      expect(await screen.findByText("再生できませんでした")).toBeDefined();
+      expect(reloadPage).not.toHaveBeenCalled();
+    });
+
+    it("前の動画の再生失敗の確かめが別の動画へ移った後に返っても、次の動画に失敗の層を出さない", async () => {
+      server.videos.set(8, [{ ...video, id: 8, title: "後続の動画" }]);
+      let answerSession: (() => void) | undefined;
+      const answered = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        if (String(input) !== "/api/auth/session") return answered!(input, init);
+        return new Promise<Response>((resolve) => {
+          answerSession = () => resolve(json({ state: "owner" }));
+        });
+      });
+      renderPage();
+      await ready();
+      act(() => player().onError(1000));
+      await waitFor(() => expect(answerSession).toBeDefined());
+      fireEvent.click(screen.getByRole("link", { name: "別の動画" }));
+      expect((await ready()).textContent).toBe("後続の動画");
+      const detailFetches = () =>
+        fetchMock.mock.calls.filter(([input]) => String(input) === "/api/videos/8")
+          .length;
+      const before = detailFetches();
+      await act(async () => {
+        answerSession!();
+        await Promise.resolve();
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(screen.queryByText("再生できませんでした")).toBeNull();
+      expect(detailFetches()).toBe(before);
+      expect(reloadPage).not.toHaveBeenCalled();
+    });
+
+    it("ゲストで公開でなくなった動画は「開けません」を出す", async () => {
+      server.videos.set(7, [guestVideo()]);
+      server.session = "guest";
+      renderPage("7", undefined, "guest");
+      await ready();
+      server.videos.delete(7);
+      act(() => player().onError(1000));
+      expect(await screen.findByText("この動画は開けません")).toBeDefined();
+      expect(reloadPage).not.toHaveBeenCalled();
     });
   });
 });

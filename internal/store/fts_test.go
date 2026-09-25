@@ -253,7 +253,7 @@ func searchFixture(t *testing.T) *DB {
 func searchTitles(t *testing.T, db *DB, query string) []string {
 	t.Helper()
 
-	page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Query: query, Limit: domain.MaxLimit})
+	page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Query: query, Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatalf("検索に失敗した (%q): %v\n%s", query, err, alternativesHint)
 	}
@@ -324,7 +324,7 @@ func TestSearchEscapesSpecialCharacters(t *testing.T) {
 		`夏休み"`, `"夏休み" OR "花火"`, `NEAR(夏 花)`, `title:夏`,
 		`夏休み*`, `夏 AND 花火`, `'; drop table videos; --`,
 	} {
-		page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Query: query, Limit: domain.MaxLimit})
+		page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Query: query, Limit: domain.MaxLimit})
 		if err != nil {
 			t.Errorf("検索 %q で失敗した: %v\n%s", query, err, alternativesHint)
 			continue
@@ -334,7 +334,7 @@ func TestSearchEscapesSpecialCharacters(t *testing.T) {
 	}
 
 	// 表が壊れていないことを確かめる。
-	if total, err := db.Library().CountVideos(context.Background(), ""); err != nil || total != 5 {
+	if total, err := db.Library().CountVideos(context.Background(), domain.AudienceOwner, ""); err != nil || total != 5 {
 		t.Errorf("検索のあと total = %d (err=%v), want 5", total, err)
 	}
 }
@@ -362,7 +362,7 @@ func TestSearchUsesSameOrderAsListing(t *testing.T) {
 		}
 	}
 
-	added, err := db.Library().ListVideos(ctx, domain.VideoQuery{Query: "旅", Sort: domain.SortAddedDesc, Limit: domain.MaxLimit})
+	added, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: "旅", Sort: domain.SortAddedDesc, Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -370,7 +370,7 @@ func TestSearchUsesSameOrderAsListing(t *testing.T) {
 		t.Errorf("addedDesc = %v, want %v", titlesOf(added), want)
 	}
 
-	byTitle, err := db.Library().ListVideos(ctx, domain.VideoQuery{Query: "旅", Sort: domain.SortTitleAsc, Limit: domain.MaxLimit})
+	byTitle, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: "旅", Sort: domain.SortTitleAsc, Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,7 +383,7 @@ func TestSearchUsesSameOrderAsListing(t *testing.T) {
 func TestSearchTotalIsFiltered(t *testing.T) {
 	db := searchFixture(t)
 
-	page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Query: "旅行", Limit: domain.MaxLimit})
+	page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Query: "旅行", Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -391,7 +391,7 @@ func TestSearchTotalIsFiltered(t *testing.T) {
 		t.Errorf("total = %d, want 1（絞り込み後の件数）", page.Total)
 	}
 
-	none, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Query: "該当しない語", Limit: domain.MaxLimit})
+	none, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Query: "該当しない語", Limit: domain.MaxLimit})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -426,7 +426,7 @@ func TestSearchPagesWithCursor(t *testing.T) {
 	var seen []string
 	cursor := ""
 	for page := 0; page < 10; page++ {
-		got, err := db.Library().ListVideos(ctx, domain.VideoQuery{Query: "旅", Limit: 2, Cursor: cursor})
+		got, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: "旅", Limit: 2, Cursor: cursor})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -455,7 +455,7 @@ func TestSearchWithBlankQuery(t *testing.T) {
 	db := searchFixture(t)
 
 	for _, query := range []string{"", "   ", "\t\n"} {
-		page, err := db.Library().ListVideos(context.Background(), domain.VideoQuery{Query: query, Limit: domain.MaxLimit})
+		page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Query: query, Limit: domain.MaxLimit})
 		if err != nil {
 			t.Fatalf("検索 %q で失敗した: %v", query, err)
 		}

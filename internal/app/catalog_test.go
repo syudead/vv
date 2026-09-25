@@ -29,6 +29,8 @@ type fakeCatalogStore struct {
 	neighbors []domain.RelatedNeighbor
 	videos    map[int64]domain.Video
 	lastDir   string
+	// audiences は関連動画の読み出しが受け取った見る人を、呼ばれた順に持つ。
+	audiences []domain.Audience
 }
 
 func (f *fakeCatalogStore) RequeueMissingPreview(_ context.Context, id int64, _ string) (bool, error) {
@@ -54,16 +56,19 @@ func (f *fakeCatalogStore) RetryProbe(_ context.Context, _ int64, seekThumbnailM
 	return nil
 }
 
-func (f *fakeCatalogStore) DirectVideoPaths(_ context.Context, dir string) ([]domain.RelatedSibling, error) {
+func (f *fakeCatalogStore) DirectVideoPaths(_ context.Context, audience domain.Audience, dir string) ([]domain.RelatedSibling, error) {
+	f.audiences = append(f.audiences, audience)
 	f.lastDir = dir
 	return f.siblings[dir], nil
 }
 
-func (f *fakeCatalogStore) VideosAddedNear(context.Context, int64, time.Time, int) ([]domain.RelatedNeighbor, error) {
+func (f *fakeCatalogStore) VideosAddedNear(_ context.Context, audience domain.Audience, _ int64, _ time.Time, _ int) ([]domain.RelatedNeighbor, error) {
+	f.audiences = append(f.audiences, audience)
 	return f.neighbors, nil
 }
 
-func (f *fakeCatalogStore) VideosByIDs(_ context.Context, ids []int64) ([]domain.Video, error) {
+func (f *fakeCatalogStore) VideosByIDs(_ context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error) {
+	f.audiences = append(f.audiences, audience)
 	out := []domain.Video{}
 	for _, id := range ids {
 		if video, ok := f.videos[id]; ok {
@@ -227,7 +232,7 @@ func TestRelatedVideos(t *testing.T) {
 	}
 	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
 
-	got, err := catalog.RelatedVideos(context.Background(), videos[3])
+	got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, videos[3])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -246,12 +251,33 @@ func TestRelatedVideos(t *testing.T) {
 	}
 
 	// 同じフォルダの後続が無いとき NextID は 0 で、先行の先頭から並ぶ。
-	got, err = catalog.RelatedVideos(context.Background(), videos[2])
+	got, err = catalog.RelatedVideos(context.Background(), domain.AudienceOwner, videos[2])
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.NextID != 0 || len(got.Items) == 0 || got.Items[0].ID != 1 {
 		t.Fatalf("フォルダの末尾: next = %d, items = %+v", got.NextID, got.Items)
+	}
+}
+
+// 関連動画は、受け取った見る人のまま3つの読み出しすべてに渡す
+// （specs/016-single-account-auth/data-model.md §3）。ゲストの関連動画に非公開の
+// 動画を混ぜないため。
+func TestRelatedVideosPassesAudience(t *testing.T) {
+	for _, audience := range []domain.Audience{domain.AudienceGuest, domain.AudienceOwner} {
+		video := probedVideo(1, "a")
+		video.Path = "/media/show/a.mp4"
+		store := &fakeCatalogStore{
+			siblings: map[string][]domain.RelatedSibling{"/media/show": {{VideoID: 1, Path: video.Path}, {VideoID: 2, Path: "/media/show/b.mp4"}}},
+			videos:   map[int64]domain.Video{2: probedVideo(2, "b")},
+		}
+		catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
+		if _, err := catalog.RelatedVideos(context.Background(), audience, video); err != nil {
+			t.Fatal(err)
+		}
+		if want := []domain.Audience{audience, audience, audience}; !slices.Equal(store.audiences, want) {
+			t.Errorf("%s: audiences = %v, want %v", audience, store.audiences, want)
+		}
 	}
 }
 

@@ -52,7 +52,7 @@
 | 全文検索 | SQLite FTS5（`tokenize='trigram'`） | 日本語をトークナイザ追加なしで部分一致検索できる。外部検索エンジン不要 |
 | メディア解析 | `ffprobe` / `ffmpeg` を `os/exec` で実行（`context` でタイムアウト） | ラッパーを挟まず引数と失敗理由が明示的になる。プロセス停止の制御も標準機能で足りる |
 | 字幕 | 外部 `.srt`/`.ass` をサーバーで WebVTT に変換して配信 | ブラウザは WebVTT のみ対応するため変換は必須 |
-| 認証 | パスワード1つ（`golang.org/x/crypto/argon2` の Argon2id）＋ HttpOnly Cookie セッション（セッションは SQLite に保存） | 単一ユーザーに必要十分。外部公開は Tailscale / Cloudflare Tunnel 前提 |
+| 認証 | ユーザー名とパスワードの組（`golang.org/x/crypto/argon2` の Argon2id）＋ HttpOnly Cookie セッション（セッションは SQLite に保存） | 単一ユーザーに必要十分。外部公開は HTTPS の逆プロキシを必須とする |
 | 非同期処理 | SQLite のジョブテーブル + goroutine のワーカー（`context` でグレースフル停止） | 別プロセスもブローカーも不要。再起動後にジョブを再開できる |
 | ログ | 標準ライブラリ `log/slog`（JSON ハンドラ） | 追加依存なしで構造化ログになる |
 | テスト | Go 標準 `testing` + `net/http/httptest`（Range の検証）+ Playwright（再生の E2E） | 「実際に再生が始まる」ことは E2E でしか担保できない |
@@ -81,7 +81,7 @@ api/
 web/             # React SPA。ビルド結果を embed して配信
 ```
 
-依存方向は `cmd → {app, httpapi, store, media, mediafs, artifacts, opener, scanner, jobs, eventbus} → domain` の
+依存方向は `cmd → {app, httpapi, store, media, mediafs, artifacts, opener, scanner, jobs, eventbus, password} → domain` の
 一方向に限定し、`internal/` の兄弟パッケージ同士は import しない。
 `internal/domain` と `internal/app` が `net/http`・`database/sql`・`os/exec` を
 import した時点、`internal/app` がアダプタを import した時点、兄弟パッケージ同士が

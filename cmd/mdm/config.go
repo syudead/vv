@@ -6,8 +6,11 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
+	"unicode"
 )
 
 // 設定は環境変数のみで与える。設定ファイルは持たない。
@@ -16,6 +19,10 @@ const (
 	envAddr     = "MDM_ADDR"
 	envDataDir  = "MDM_DATA_DIR"
 	envLogLevel = "MDM_LOG_LEVEL"
+	// envTrustedProxies は転送ヘッダーを信じてよいリバースプロキシのアドレスの一覧である
+	// （specs/016-single-account-auth/plan.md Structural Decisions 7）。既定は空で、
+	// 転送ヘッダーを読まない。
+	envTrustedProxies = "MDM_TRUSTED_PROXIES"
 )
 
 // 既定値。すべて未設定でも起動できる。
@@ -38,6 +45,8 @@ type Config struct {
 	Addr     string
 	DataDir  string
 	LogLevel string
+	// TrustedProxies は MDM_TRUSTED_PROXIES を解釈したもの。空なら転送ヘッダーを読まない。
+	TrustedProxies []netip.Prefix
 }
 
 // logLevels は受け付ける記録の詳細度である。
@@ -78,6 +87,10 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 			"%s=%q は未知の値です（debug / info / warn / error のいずれか）",
 			envLogLevel, cfg.LogLevel))
 	}
+
+	proxies, proxyProblems := parseTrustedProxies(getenv(envTrustedProxies))
+	cfg.TrustedProxies = proxies
+	problems = append(problems, proxyProblems...)
 
 	if len(problems) > 0 {
 		return cfg, joinProblems("設定が正しくありません", problems)
@@ -133,7 +146,59 @@ func (c Config) LogAttrs() []slog.Attr {
 		slog.String(envAddr, c.Addr),
 		slog.String(envDataDir, c.DataDir),
 		slog.String(envLogLevel, c.LogLevel),
+		slog.String(envTrustedProxies, formatPrefixes(c.TrustedProxies)),
 	}
+}
+
+// parseTrustedProxies は MDM_TRUSTED_PROXIES を読む。値はカンマか空白で区切った CIDR
+// （例: 127.0.0.1/32,10.0.0.0/8）で、1つのアドレスだけの項はその1つだけを表す。
+// 解釈できない項はすべて誤りとして返す。
+func parseTrustedProxies(value string) ([]netip.Prefix, []error) {
+	var (
+		prefixes []netip.Prefix
+		problems []error
+	)
+	fields := strings.FieldsFunc(value, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
+	for _, field := range fields {
+		prefix, err := parseTrustedProxy(field)
+		if err != nil {
+			problems = append(problems, fmt.Errorf(
+				"%s の %q は CIDR として解釈できません（例: 127.0.0.1/32、10.0.0.0/8、::1/128）",
+				envTrustedProxies, field))
+			continue
+		}
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes, problems
+}
+
+func parseTrustedProxy(field string) (netip.Prefix, error) {
+	if prefix, err := netip.ParsePrefix(field); err == nil {
+		return normalizePrefix(prefix), nil
+	}
+	addr, err := netip.ParseAddr(field)
+	if err != nil || addr.Zone() != "" {
+		return netip.Prefix{}, errors.New("CIDR ではありません")
+	}
+	return normalizePrefix(netip.PrefixFrom(addr, addr.BitLen())), nil
+}
+
+// normalizePrefix はホスト部を落とし、IPv4 射影の IPv6（::ffff:a.b.c.d/n）を IPv4 に直す。
+// 送信元のアドレスは IPv4 に直してから比べるため、射影のままでは一致しない。
+func normalizePrefix(prefix netip.Prefix) netip.Prefix {
+	addr := prefix.Addr()
+	if addr.Is4In6() && prefix.Bits() >= 96 {
+		prefix = netip.PrefixFrom(addr.Unmap(), prefix.Bits()-96)
+	}
+	return prefix.Masked()
+}
+
+func formatPrefixes(prefixes []netip.Prefix) string {
+	parts := make([]string, 0, len(prefixes))
+	for _, prefix := range prefixes {
+		parts = append(parts, prefix.String())
+	}
+	return strings.Join(parts, ",")
 }
 
 // ThumbnailsDir はサムネイルの置き場所を返す（MDM_DATA_DIR/thumbnails）。

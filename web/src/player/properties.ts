@@ -41,8 +41,15 @@ export function formatDate(iso: string): string {
 
 const missing = "—";
 
-/** videoProperties は属性の一列の項目を、表示する順に返す。 */
-export function videoProperties(video: Video): Property[] {
+/**
+ * videoProperties は属性の一列の項目を、表示する順に返す。`lastPlayed` が偽なら
+ * LAST PLAYED を抜く（ゲストの再生画面。specs/016-single-account-auth/ui-design.md
+ * 「Guest degradation」）。
+ */
+export function videoProperties(
+  video: Video,
+  { lastPlayed = true }: { lastPlayed?: boolean } = {},
+): Property[] {
   const technical: Property[] = (() => {
     if (video.probeState === "failed") {
       return [{ label: "MEDIA", value: "読み取れませんでした", tone: "warning" }];
@@ -72,10 +79,14 @@ export function videoProperties(video: Video): Property[] {
     ];
   })();
 
-  return [
+  const common: Property[] = [
     ...technical,
     { label: "SIZE", value: formatBytes(video.sizeBytes) },
     { label: "ADDED", value: formatDate(video.addedAt) },
+  ];
+  if (!lastPlayed) return common;
+  return [
+    ...common,
     video.progress === undefined
       ? { label: "LAST PLAYED", value: missing, tone: "muted" }
       : { label: "LAST PLAYED", value: formatDateTime(video.progress.updatedAt) },

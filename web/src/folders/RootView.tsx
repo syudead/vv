@@ -4,17 +4,18 @@ import { Link } from "react-router";
 
 import { takeListSnapshot } from "../api/listSnapshot";
 import { useRootFolders } from "../api/useFolderListing";
+import { useAudience } from "../auth/audience";
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import { buttonClassName } from "../ui/Button";
 import { Grid } from "../videoList/Grid";
 import { hasConditions } from "../videoList/listCriteria";
-import { EmptyState, LoadFailed } from "../videoList/states";
+import { EmptyState, GuestEmpty, LoadFailed } from "../videoList/states";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderCard, { FolderCardSkeleton } from "./FolderCard";
 import FolderToolbar from "./FolderToolbar";
-import { type RootDisplay, rootDisplayName } from "./folderPath";
+import { type RootDisplay, rootFolderName } from "./folderPath";
 import { Section } from "./layout";
 import RootSearchResults, { ROOT_SEARCH_KEY } from "./RootSearchResults";
 import { useArrival } from "./useArrival";
@@ -34,6 +35,9 @@ export default function RootView() {
     clearAll,
     changeZoom: saveZoom,
   } = useConditions();
+  // ゲストには登録フォルダの絶対パスも、設定への入口も出さない
+  // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+  const owner = useAudience() === "owner";
   // 倍率を変えても読んでいた位置を保つ（ライブラリと同じ）。
   const { listRef, capture } = useZoomAnchor(zoom);
   const changeZoom = (next: typeof zoom) => {
@@ -50,14 +54,14 @@ export default function RootView() {
   const heading = useArrival(restored !== undefined);
   const roots = useRootFolders();
   const folders = useMemo(() => roots.data?.folders ?? [], [roots.data?.folders]);
-  // パンくずと同じ規則（rootDisplayName）で表示名を作る。サーバーの
-  // FolderSummary.name も同じ結果になるが、揺らさないよう1か所にそろえる。
+  // パンくずと同じ規則（rootFolderName）で表示名を作る。絶対パスがあれば
+  // rootDisplayName で、ゲストの応答のように無ければサーバーの FolderSummary.name を使う。
   const rootNames = useMemo(
     () =>
       new Map<number, RootDisplay>(
         folders.map((folder) => [
           folder.rootId,
-          { name: rootDisplayName(folder.rootPath), rootPath: folder.rootPath },
+          { name: rootFolderName(folder), rootPath: folder.rootPath },
         ]),
       ),
     [folders],
@@ -121,16 +125,20 @@ export default function RootView() {
         ) : roots.error !== null ? (
           <LoadFailed reason={roots.error} onRetry={roots.reload} />
         ) : !roots.loading && folders.length === 0 ? (
-          <EmptyState
-            icon={FolderOpen}
-            title="メディアフォルダが登録されていません"
-            description="設定でメディアフォルダを登録して取り込むと、ここに並びます。"
-            action={
-              <Link to="/settings" className={buttonClassName("primary")}>
-                設定を開く
-              </Link>
-            }
-          />
+          owner ? (
+            <EmptyState
+              icon={FolderOpen}
+              title="メディアフォルダが登録されていません"
+              description="設定でメディアフォルダを登録して取り込むと、ここに並びます。"
+              action={
+                <Link to="/settings" className={buttonClassName("primary")}>
+                  設定を開く
+                </Link>
+              }
+            />
+          ) : (
+            <GuestEmpty />
+          )
         ) : (
           <Section
             title="メディアフォルダ"
@@ -141,7 +149,7 @@ export default function RootView() {
                 <FolderCardSkeleton count={6} />
               ) : (
                 folders.map((folder) => (
-                  <FolderCard key={folder.rootId} folder={folder} showPath />
+                  <FolderCard key={folder.rootId} folder={folder} showPath={owner} />
                 ))
               )}
             </Grid>
