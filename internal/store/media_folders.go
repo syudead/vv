@@ -72,6 +72,10 @@ func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain
 	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
+	// 新しい登録の下の所在がグループに入りうる。
+	if err := rebuildFolderIndex(ctx, tx); err != nil {
+		return domain.MediaFolder{}, err
+	}
 	// 登録外の所在しか無かった待ちの仕事が、この登録で取り出せるようになる。
 	// 眠っているワーカーを起こさないと、次に仕事が積まれるまで止まったままになる。
 	var c changes
@@ -129,6 +133,9 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
+	if err := rebuildFolderIndex(ctx, tx); err != nil {
+		return domain.MediaFolder{}, err
+	}
 	var c changes
 	c.videosDeleted(released)
 	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
@@ -169,6 +176,10 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `delete from media_folders where id = ?`, id); err != nil {
+		return err
+	}
+	// 登録外になった所在はグループにもフォルダ名にも入らない。
+	if err := rebuildFolderIndex(ctx, tx); err != nil {
 		return err
 	}
 	var c changes

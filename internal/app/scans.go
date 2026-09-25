@@ -26,6 +26,13 @@ type JobRecoveryStore interface {
 	RequeueRunningJobs(ctx context.Context) (int64, error)
 }
 
+// FolderIndexStore はフォルダの索引（グループの割り当てと祖先フォルダ名）の
+// 作り直し先である。作り直しに失敗したら、保存側が索引を古いと記録してから
+// 失敗を返す（specs/017-folder-groups/data-model.md §3）。
+type FolderIndexStore interface {
+	RebuildFolderIndex(ctx context.Context) error
+}
+
 // Scanner は登録済みのメディアフォルダを1回走査する。internal/scanner の
 // *Scanner がこれを満たす。
 type Scanner interface {
@@ -48,6 +55,9 @@ type Publisher interface {
 type ScansOptions struct {
 	Store ScanStore
 	Jobs  JobRecoveryStore
+	// FolderIndex はスキャンを閉じる直前と、中断したスキャンを閉じたときに
+	// フォルダの索引を作り直す。nil なら作り直さない。
+	FolderIndex FolderIndexStore
 	// NewScanner は進捗の報告先を受け取って走査を組み立てる。走査は報告先を、
 	// 報告先は走査を必要とするので、組み立てを関数で受け取る。
 	NewScanner func(ScanReporter) Scanner
@@ -64,6 +74,7 @@ type ScansOptions struct {
 type Scans struct {
 	store     ScanStore
 	jobs      JobRecoveryStore
+	folders   FolderIndexStore
 	scanner   Scanner
 	baseCtx   context.Context
 	publisher Publisher
@@ -83,6 +94,7 @@ func NewScans(opts ScansOptions) *Scans {
 	s := &Scans{
 		store:     opts.Store,
 		jobs:      opts.Jobs,
+		folders:   opts.FolderIndex,
 		baseCtx:   opts.Context,
 		publisher: opts.Publisher,
 		logger:    opts.Logger,
@@ -159,9 +171,10 @@ func (s *Scans) Wait() {
 // RecoverInterrupted は前回の停止で中途半端に残った状態を戻す。
 //
 // running のまま残った走査を閉じないと、「実行中は1件だけ」の制約が働いた
-// まま二度と取り込みを始められなくなる。running のまま残った仕事は queued へ
-// 戻し、各段階のワーカーが続きから処理する。どちらも前回の停止で残った行だけを
-// 対象にし、ライブラリ全体は読まない。
+// まま二度と取り込みを始められなくなる。閉じた走査があれば、閉じる直前の
+// フォルダの索引の作り直しも済んでいないので、ここで作り直す（索引の表だけを
+// 読み、ファイルシステムは読まない）。running のまま残った仕事は queued へ
+// 戻し、各段階のワーカーが続きから処理する。
 func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 	closed, err := s.store.FailInterruptedScans(ctx)
 	if err != nil {
@@ -169,6 +182,7 @@ func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 	}
 	if closed > 0 {
 		s.logger.Info("中断していた取り込みを閉じました", slog.Int64("count", closed))
+		s.rebuildFolderIndex(ctx)
 	}
 
 	restored, err := s.jobs.RequeueRunningJobs(ctx)
@@ -240,13 +254,27 @@ func (s *Scans) run(scanID int64) {
 		s.logger.Warn("取り込みの進捗を記録できませんでした", slog.Any("error", err))
 	}
 
+	// 成功でも失敗でも、閉じる直前にフォルダの索引を作り直す。読むのは索引の
+	// 表（SQLite）だけで、ファイルシステムは読まない。ファイルシステムを歩くのは
+	// 利用者が取り込みを始めたときの走査だけである。
+	s.rebuildFolderIndex(closeCtx)
+
 	if err := s.store.FinishScan(closeCtx, scanID, state, reason); err != nil {
 		s.logger.Warn("取り込みの終了を記録できませんでした", slog.Any("error", err))
 	}
-
-	// 起動時やスキャンの後にライブラリ全体を見る後始末はしない。全体を読むのは
-	// 利用者が取り込みを始めたときの走査だけである。
 	s.scanChanged()
+}
+
+// rebuildFolderIndex はフォルダの索引を作り直す。失敗してもスキャンは失敗に
+// せず、ログに残すだけにする。保存側が索引を古いと記録しているので、次の作り直しの
+// 時点（次の起動を含む）で直る（specs/017-folder-groups/plan.md Structural Decisions 14）。
+func (s *Scans) rebuildFolderIndex(ctx context.Context) {
+	if s.folders == nil {
+		return
+	}
+	if err := s.folders.RebuildFolderIndex(ctx); err != nil {
+		s.logger.Warn("フォルダの索引を作り直せませんでした", slog.Any("error", err))
+	}
 }
 
 // scanChanged は走査の状態が変わったことを発行する。

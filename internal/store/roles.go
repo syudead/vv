@@ -7,8 +7,8 @@ import "database/sql"
 //
 // 役割の型は、別の役割の型の公開メソッドを呼ばない。複数の役割が同じデータを
 // 読む操作（listMediaFolders・getVideo・contentKeyReferenced）と、役割をまたぐ
-// 1取引の中で使う SQL の断片（removeLocationsUnder・refreshSearchKeysUnder など）は、
-// パッケージ内の非公開の関数として共有する。
+// 1取引の中で使う SQL の断片（removeLocationsUnder・refreshSearchKeysUnder・
+// rebuildFolderIndex など）は、パッケージ内の非公開の関数として共有する。
 
 // IngestStore はジョブの待ち行列と、取り込みの段階の結果の索引への反映を
 // 受け持つ（jobs.go・ingest_results.go）。
@@ -23,11 +23,17 @@ type LibraryStore struct{ db *DB }
 type ScanStore struct{ db *DB }
 
 // ScanIndexStore はファイルシステムの走査結果を再構築可能な索引へ反映する
-// （scan_index.go）。
+// （scan_index.go）。スキャンを閉じる直前と起動時のフォルダの索引の作り直しも
+// 受け持つ（folder_groups.go）。
 type ScanIndexStore struct{ db *DB }
 
 // SettingsStore はメディアフォルダの登録を保存する（media_folders.go）。
 type SettingsStore struct{ db *DB }
+
+// FolderGroupStore はフォルダごとの例外（まとめを解除・直下をまとめる）の設定と
+// 解除を、フォルダの索引の作り直しと同じ取引で保存する（folder_groups.go、
+// specs/017-folder-groups/data-model.md §1〜§3）。
+type FolderGroupStore struct{ db *DB }
 
 // PlaybackStore は利用者の再生位置を保存する（progress.go）。共有する SQLite
 // 接続だけを持ち、ライブラリ索引の型や通知には依存しない。
@@ -64,3 +70,4 @@ func (db *DB) Auth() *AuthStore           { return &AuthStore{sql: db.sql} }
 func (db *DB) Visibility() *VisibilityStore {
 	return &VisibilityStore{sql: db.sql}
 }
+func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db} }

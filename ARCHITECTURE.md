@@ -57,7 +57,14 @@ reports any that no longer exist in `missingTagIds`
 a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
 not duplicate rows, and queues the heavy work. Only a user-started scan walks the
-media folders; nothing reads the whole library at startup or after a scan.
+media folders. Just before a scan closes (done or failed), `internal/app` asks
+`ScanIndexStore.RebuildFolderIndex` to rebuild the folder index — folder groups and each
+video's ancestor folder names — by reading every location row in SQLite, never the
+filesystem; a failed rebuild does not fail the scan but marks the index stale. At startup
+the folder index is rebuilt only when its rule version is out of date or it is stale
+(`RefreshFolderIndex`, after the search-key refresh and before HTTP and the workers
+start), or when an interrupted scan was closed
+([specs/017-folder-groups/data-model.md](specs/017-folder-groups/data-model.md) §3).
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail, preview —
 each claiming only its own kind of job from the persistent `jobs` queue, one at a time,
 and handing it to `internal/app`, which drives the `internal/media` adapters
@@ -158,13 +165,17 @@ grace period, then stops the scanner and the workers so a running job returns to
 
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
 `video_locations` (including its per-location search keys), `location_search_fts`,
-`jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
-(deleting them costs a rescan), while `playback_progress`, the tag tables
-(`tags`, `tag_names`, `video_tags`) and the per-video public flag (`public_videos`)
-are user data that cannot be reconstructed.
+`jobs`, `scans`, thumbnail files, hover-preview MP4/manifest pairs, and the folder index
+(`folder_groups`, `folder_group_members`, `video_folder_names`, `folder_index_state`) are a
+rebuildable index (deleting them costs a rescan), while `playback_progress`, the tag tables
+(`tags`, `tag_names`, `video_tags`), the per-video public flag (`public_videos`) and the
+per-folder grouping exceptions (`folder_group_overrides`) are user data that cannot be
+reconstructed.
 That is why playback positions, tag assignments and public flags are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
-key to `videos`.
+key to `videos`. Grouping exceptions are keyed by the folder's absolute path
+(`domain.FolderKey`) and carry no foreign key to `videos` or `media_folders`, so they
+survive rescans and media-folder changes.
 The single `account` row (username, Argon2id password hash and credential version) is
 also user data that cannot be reconstructed: deleting it sends the server back to first-run
 setup. `sessions` belongs to neither kind; it is transient state that a fresh login
@@ -203,8 +214,15 @@ compile:
   (`internal/store/roles.go`), never called as another role's public method.
 - `ScanStore` — the state of a scan run.
 - `ScanIndexStore` — reflecting a scan's filesystem facts into the index (upserting
-  locations, removing missing ones and the videos they orphan).
-- `SettingsStore` — registering, replacing and removing media folders.
+  locations, removing missing ones and the videos they orphan), rebuilding the folder
+  index before a scan closes, and the startup refresh of an out-of-date folder index.
+- `SettingsStore` — registering, replacing and removing media folders, rebuilding the
+  folder index in the same transaction.
+- `FolderGroupStore` — setting and clearing a folder's grouping exception (`ungroup`,
+  `group_direct`) and rebuilding the folder index in the same transaction. The rebuild
+  itself is the package-private `rebuildFolderIndex`, shared by `ScanIndexStore`,
+  `SettingsStore` and `FolderGroupStore`; the assignment rule is the pure
+  `domain.BuildFolderIndex` (`specs/017-folder-groups/data-model.md` §2).
 - `PlaybackStore` — playback positions. It holds only the SQL connection and does not
   depend on the rebuildable index stores or their notifications.
 - `TagStore` — tags themselves: create, rename, delete, merge, register/remove a
