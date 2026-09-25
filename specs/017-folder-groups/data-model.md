@@ -21,14 +21,15 @@ create table folder_group_overrides (
 -- 以下は索引。§3 の作り直しが丸ごと置き換える。
 create table folder_groups (
     id              integer primary key,
-    -- フォルダの絶対パス（所在のパスから取った綴りのまま）。
-    path            text    not null unique,
+    -- フォルダを指す鍵。§2 の folderKey。グループの同一性はこれで決める。
+    path_key        text    not null unique,
+    -- フォルダの絶対パスの綴り（そのフォルダの下の所在のうちパスの最小のものから取る）。
+    -- 応答の VideoFolder（rootId と相対パス）はこれから LocateVideoFolder で作る。
+    path            text    not null,
     -- フォルダ名（domain.FolderName と同じ最後の段）。
     name            text    not null,
     -- 題名順の並べ替えの鍵。domain.NaturalSortKey(name)。
-    title_key       text    not null,
-    -- 並びで最初のメンバー。項目の id とサムネイルに使う（§5）。
-    first_video_id  integer not null
+    title_key       text    not null
 );
 
 create table folder_group_members (
@@ -47,15 +48,19 @@ create table video_folder_names (
 ) without rowid;
 create index video_folder_names_name_idx on video_folder_names (name, video_id);
 
--- 索引を作った規則の版。domain.FolderIndexVersion より古ければ起動時に作り直す（§3）。
+-- 索引を作った規則の版。どちらかが今の値と違えば起動時に作り直す（§3）。
+-- title_key は domain.NaturalSortKey で作るので、その版（SearchKeyVersion）も持つ。
 create table folder_index_state (
-    id      integer primary key check (id = 1),
-    version integer not null
+    id             integer primary key check (id = 1),
+    version        integer not null,   -- domain.FolderIndexVersion
+    search_version integer not null    -- domain.SearchKeyVersion
 );
 ```
 
 `videos` の行が消えると、メンバーとフォルダ名の行は連鎖で消える。それでメンバーが1本になった
-グループは、次の作り直しまで1本のグループとして残る（§3）。
+グループは、次の作り直しまで1本のグループとして残る（§3）。カードのサムネイル（`cover`）と項目の `id` は
+保存せず、残っているメンバーのうち `position` の最小のものから読み出しのたびに取るので、最初のメンバーが
+消えても消えた動画を指さない。
 
 ## 2. 割り当ての規則
 
@@ -63,6 +68,9 @@ create table folder_index_state (
 動画ごとの祖先フォルダ名を返す。store はこの結果を表へ書くだけである。
 
 - 入力: 登録フォルダ、登録フォルダの下にある全所在（動画の `id` とパス）、例外（`folderKey` → `mode`）。
+- フォルダ `D` は、グループ分け（`direct`・`hasChild`・ルートかどうか）でも、例外の突き合わせでも、
+  API の `(rootId, path)` からの引き当てでも、`folderKey(D)` で同一視する。Windows で綴りの大文字小文字が
+  違う所在は同じフォルダに入る。
 - **代表の所在**: 動画の所在のうちパスのバイト順で最小のもの（`videoColumnsTemplate` の `order by path limit 1` と同じ）。
 - **直下の動画** `direct(D)`: 代表の所在の親フォルダが `D` である動画。同じ内容の別の所在は数えない（要件 6）。
 - **子フォルダを持つ** `hasChild(D)`: どれかの所在（代表に限らない）が `D` の子フォルダの下にある。
@@ -70,7 +78,9 @@ create table folder_index_state (
 - **グループになる**: `len(direct(D)) >= 2` かつ、次のどちらか。
   - `mode(D) = group_direct`
   - `mode(D)` が無く、`hasChild(D)` が偽で、`D` が登録フォルダそのものではない
-- **並び**: `compareSiblings`（ファイル名の自然順、バイト順、`id`）と同じ全順序。今の同じフォルダの前後と同じになる（要件 4）。
+- **並び**: `compareSiblings`（ファイル名の自然順、バイト順、`id`）と同じ全順序で、今の同じフォルダの前後と
+  同じ比べ方である（要件 4）。ただし対象は `direct(D)` だけで、代表の所在が別のフォルダにある動画は、
+  今の同じフォルダの前後（`DirectVideoPaths`）には入ってもグループには入らない（要件 6）。
 - **名前**: `domain.FolderName` と同じく、フォルダの最後の段（要件 5）。
 - **folderKey**: パスの末尾の区切りを落とし、Windows では `/` を `\` にそろえて `LowerASCII` を掛ける。
   所在と例外の突き合わせ、例外の主キーの両方に使う。登録フォルダの判定
@@ -81,7 +91,7 @@ create table folder_index_state (
 
 `rebuildFolderIndex(tx)` は、登録フォルダの下の全所在と例外を読み、§2 の関数を通し、
 `folder_groups`・`folder_group_members`・`video_folder_names` を消して書き直し、
-`folder_index_state.version` を `domain.FolderIndexVersion` にする。1つの書き込み取引の中で行うので、
+`folder_index_state` を今の `domain.FolderIndexVersion` と `domain.SearchKeyVersion` にする。1つの書き込み取引の中で行うので、
 読み出しは作り直しの前か後のどちらかだけを見る。
 
 | 時点 | 呼ぶ側 | 取引 |
@@ -89,11 +99,13 @@ create table folder_index_state (
 | スキャンを閉じる直前（成功でも失敗でも） | `app.Scans` → `ScanIndexStore.RebuildFolderIndex` | 作り直しだけの取引 |
 | メディアフォルダの追加・置換・削除 | `SettingsStore` | その変更と同じ取引 |
 | 例外の設定・解除、グループのタグ化 | `FolderGroupStore` | その変更と同じ取引 |
-| 起動時、`version` が古いか行が無いとき | `cmd/mdm` → `ScanIndexStore.RefreshFolderIndex` | 作り直しだけの取引。`RefreshSearchKeys` の隣で、HTTP とワーカーの開始より前 |
+| 起動時、`version` か `search_version` が今の値と違うか行が無いとき | `cmd/mdm` → `ScanIndexStore.RefreshFolderIndex` | 作り直しだけの取引。`RefreshSearchKeys` の後で、HTTP とワーカーの開始より前 |
+| 起動時、前回の停止で中断したスキャンを閉じたとき（`FailInterruptedScans` が 1 件以上） | `app.Scans.RecoverInterrupted` → `ScanIndexStore.RebuildFolderIndex` | 作り直しだけの取引 |
 
 スキャンの途中（閉じる前）に足された動画は単体として、消えた動画のグループは残りのメンバーで出る。
 スキャンを閉じる前の作り直しで正しい形になる。作り直しに失敗したときはログに残してスキャンを閉じ、
-次の作り直しの時点まで前の索引を使う。
+次の作り直しの時点まで前の索引を使う（plan の Structural Decisions 14）。作り直しの前後をまたいだ
+ページングでは、13 の取り込み中と同じく項目の重複や抜けが起こりうる。
 
 ## 4. フォルダ由来のタグ
 
@@ -139,7 +151,7 @@ create table folder_index_state (
 
 4. **項目単位の絞り込み**: 視聴状態の絞り込みを、上の視聴状態に掛ける（要件 19）。
 5. **並べ替えと keyset**: 並び順の値は上の表の値。値が同じときの決着と keyset の `id` は、動画の項目は
-   動画の `id`、グループの項目は `folder_groups.first_video_id` である。メンバーは重ならないので項目どうしで
+   動画の `id`、グループの項目は残っているメンバーのうち `position` の最小のものの動画の `id` である。メンバーは重ならないので項目どうしで
    重ならない。シャッフルの鍵は `vv_shuffle_key(seed, その id)`。カーソルの形は 013 と同じ。
 6. **件数**: 4 を通った項目の数（要件 20）。
 7. **「すべて選択」**: 4 を通った項目の、動画の `id` とグループの全メンバーの `id`（要件 21）。

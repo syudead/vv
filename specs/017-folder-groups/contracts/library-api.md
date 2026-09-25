@@ -42,13 +42,14 @@ LibraryGroup:
     sizeBytes: { type: integer, format: int64 }
     addedAt: { type: string, format: date-time }
     lastPlayedAt: { type: string, format: date-time }  # 無ければ省く
-    cover: { $ref: Video }          # 並びで最初のメンバー。サムネイルと hover プレビューに使う
+    cover: { $ref: Video }          # 残っているメンバーのうち並びで最初のもの。サムネイルと hover プレビューに使う
     openVideoId: { type: integer, format: int64 }  # 押したときに開くメンバー（data-model.md §6）
     videoIds: { type: array, items: { type: integer, format: int64 } }  # 全メンバー、並びの順
     tags: { type: array, items: { $ref: VideoTag } }  # メンバーのタグの和集合（出所も和）
 ```
 
-グループの `id` は応答に出さない。作り直しで変わるためで、グループは `folder` で指す。
+グループの `id` は応答に出さず、グループは `folder` で指す。`id` を出すと、作り直しのたびに振り直される
+値を画面が選択や取り直しの鍵に持つことになる（却下）。
 
 ## 2. `GET /api/library/ids`
 
