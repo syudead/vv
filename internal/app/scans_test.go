@@ -23,6 +23,12 @@ type fakeScanStore struct {
 	interrupted int64
 	requeued    int64
 	recovered   []string
+
+	// rebuilds はフォルダの索引を作り直した回数、rebuildErr はその失敗である。
+	rebuilds   int
+	rebuildErr error
+	// rebuiltBeforeFinish は閉じる時点までに作り直した回数である。
+	rebuiltBeforeFinish []int
 }
 
 func newFakeScanStore() *fakeScanStore {
@@ -67,6 +73,7 @@ func (f *fakeScanStore) FinishScan(ctx context.Context, id int64, state domain.S
 	}
 	f.mu.Lock()
 	f.current.State, f.current.Error = state, reason
+	f.rebuiltBeforeFinish = append(f.rebuiltBeforeFinish, f.rebuilds)
 	scan := f.current
 	f.mu.Unlock()
 	f.finished <- scan
@@ -76,6 +83,14 @@ func (f *fakeScanStore) FinishScan(ctx context.Context, id int64, state domain.S
 func (f *fakeScanStore) FailInterruptedScans(context.Context) (int64, error) {
 	f.recovered = append(f.recovered, "scans")
 	return f.interrupted, nil
+}
+
+func (f *fakeScanStore) RebuildFolderIndex(context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.rebuilds++
+	f.recovered = append(f.recovered, "folders")
+	return f.rebuildErr
 }
 
 func (f *fakeScanStore) RequeueRunningJobs(context.Context) (int64, error) {
@@ -136,8 +151,9 @@ func newTestScans(t *testing.T, ctx context.Context, scanner *fakeScanner) (*Sca
 	store := newFakeScanStore()
 	publisher := &fakePublisher{}
 	scans := NewScans(ScansOptions{
-		Store: store,
-		Jobs:  store,
+		Store:       store,
+		Jobs:        store,
+		FolderIndex: store,
 		NewScanner: func(reporter ScanReporter) Scanner {
 			scanner.reporter = reporter
 			return scanner
@@ -249,14 +265,64 @@ func TestScanStoppedByShutdownIsClosedAsFailed(t *testing.T) {
 	}
 }
 
-// 起動時の回復は、残った走査を閉じ、残った仕事を戻すことを保存層へ頼む。
+// 起動時の回復は、残った走査を閉じ、閉じた走査があればフォルダの索引を作り直し、
+// 残った仕事を戻すことを保存層へ頼む。作り直しの失敗で起動は止めない。
 func TestRecoverInterrupted(t *testing.T) {
-	scans, store, _ := newTestScans(t, context.Background(), &fakeScanner{})
-	store.interrupted, store.requeued = 1, 2
-	if err := scans.RecoverInterrupted(context.Background()); err != nil {
-		t.Fatal(err)
+	cases := []struct {
+		name        string
+		interrupted int64
+		rebuildErr  error
+		want        []string
+	}{
+		{"閉じた走査があれば作り直す", 1, nil, []string{"scans", "folders", "jobs"}},
+		{"作り直しに失敗しても続ける", 1, errors.New("壊れた索引"), []string{"scans", "folders", "jobs"}},
+		{"閉じた走査が無ければ作り直さない", 0, nil, []string{"scans", "jobs"}},
 	}
-	if want := []string{"scans", "jobs"}; !slices.Equal(store.recovered, want) {
-		t.Fatalf("回復の順 = %v, want %v", store.recovered, want)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scans, store, _ := newTestScans(t, context.Background(), &fakeScanner{})
+			store.interrupted, store.requeued, store.rebuildErr = tc.interrupted, 2, tc.rebuildErr
+			if err := scans.RecoverInterrupted(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(store.recovered, tc.want) {
+				t.Fatalf("回復の順 = %v, want %v", store.recovered, tc.want)
+			}
+		})
+	}
+}
+
+// スキャンは成功でも失敗でも、閉じる直前にフォルダの索引を作り直す。作り直しに
+// 失敗してもスキャンは失敗にしない。
+func TestScanRebuildsFolderIndexBeforeClosing(t *testing.T) {
+	cases := []struct {
+		name       string
+		scanErr    error
+		rebuildErr error
+		want       domain.ScanState
+	}{
+		{"成功", nil, nil, domain.ScanDone},
+		{"走査の失敗", errors.New("読めない"), nil, domain.ScanFailed},
+		{"作り直しの失敗", nil, errors.New("壊れた索引"), domain.ScanDone},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}, err: tc.scanErr}
+			scans, store, _ := newTestScans(t, context.Background(), scanner)
+			store.rebuildErr = tc.rebuildErr
+			if _, err := scans.StartScan(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			closed := store.waitFinished(t)
+			scans.Wait()
+			if closed.State != tc.want {
+				t.Fatalf("閉じた状態 = %q, want %q", closed.State, tc.want)
+			}
+			store.mu.Lock()
+			defer store.mu.Unlock()
+			if !slices.Equal(store.rebuiltBeforeFinish, []int{1}) {
+				t.Fatalf("閉じる時点の作り直しの回数 = %v, want [1]", store.rebuiltBeforeFinish)
+			}
+		})
 	}
 }
