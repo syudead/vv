@@ -350,7 +350,7 @@ export default function VideoPage() {
         <div
           ref={mainColumnRef}
           // 列の端にあるフォーカスの輪郭が切れないよう、はみ出す分だけ内側に余白を取る。
-          className="flex min-w-0 flex-col gap-5 lg:-mx-1 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6 lg:pb-16"
+          className="flex min-w-0 flex-col gap-5 lg:-mx-1 lg:min-h-0 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6 lg:pb-16"
         >
           <div
             ref={frameRef}

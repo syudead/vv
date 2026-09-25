@@ -130,7 +130,7 @@ export default function VideoFacts({ video }: { video: Video }) {
           <Fact icon={CalendarPlus} label="追加日" value={formatDate(video.addedAt)} />
         </ul>
         {location !== undefined && (
-          <div className="-mr-1.5 ml-auto flex shrink-0 items-center">
+          <div className="ml-auto flex shrink-0 items-center">
             {location.openable && (
               <IconButton
                 label="ファイルを開く"

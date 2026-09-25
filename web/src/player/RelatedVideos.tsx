@@ -162,7 +162,7 @@ export default function RelatedVideos({
         <ul
           // 広い画面では並びだけを中でスクロールさせ、端まで来てもページへは送らない。
           // 行の hover の面と輪郭が切れないよう、はみ出す分だけ内側に余白を取る。
-          className="flex flex-col gap-3 lg:-mx-1.5 lg:min-h-0 lg:overflow-y-auto lg:overscroll-contain lg:px-1.5 lg:pt-1.5 lg:pb-6"
+          className="flex flex-col gap-3 lg:-mx-1.5 lg:min-h-0 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:px-1.5 lg:pt-1.5 lg:pb-6"
         >
           {state.related.items.map((video) => (
             <RelatedItem key={video.id} video={video} backTo={backTo} />

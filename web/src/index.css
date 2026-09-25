@@ -379,3 +379,18 @@
 @utility text-balance {
   text-wrap: balance;
 }
+
+/*
+ * 再生画面の左右の列のように、画面の中で独立してスクロールする領域のスクロールバー。
+ * 常に出ると列ごとに線が並んで騒がしいので、細くし、ふだんは透明にして、領域に
+ * マウスが乗っているかフォーカスがあるときだけ見せる。スクロール自体はいつでもできる。
+ */
+@utility scrollbar-on-hover {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+
+  &:hover,
+  &:focus-within {
+    scrollbar-color: var(--color-fg-subtle) transparent;
+  }
+}
