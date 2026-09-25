@@ -6,7 +6,7 @@
 
 ## 1. マイグレーション
 
-`internal/store/migrations/00009_folder_groups.sql` を足す。
+`internal/store/migrations/00010_folder_groups.sql` を足す。
 
 ```sql
 -- 利用者データ。再スキャン・メディアフォルダの変更・再起動で消えてはならない。

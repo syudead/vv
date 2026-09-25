@@ -54,7 +54,7 @@
 
 **Feature-specific context**:
 
-- マイグレーションを1つ足す（`00009_folder_groups.sql`、[data-model.md §1](data-model.md#1-マイグレーション)）。
+- マイグレーションを1つ足す（`00010_folder_groups.sql`、[data-model.md §1](data-model.md#1-マイグレーション)）。
   既存の表は変えない。
 - 規模の前提は既存と同じ1万本である。グループの作り直しは索引の全所在を1回読んで Go で割り当てを
   決め、1つの書き込み取引で置き換える。1万本・数千フォルダで1秒未満を目安にし、単位の PR で
@@ -227,7 +227,7 @@ specs/017-folder-groups/
 - `cmd/mdm`: `FolderGroupStore` の組み立てと、起動時の版の古い索引の作り直し。
 - `web/src/api`・`web/src/library`・`web/src/player`・`web/src/folders`・`web/src/videoList`: 画面。
 
-**New paths**: `internal/store/migrations/00009_folder_groups.sql`・`internal/store/folder_groups.go`・
+**New paths**: `internal/store/migrations/00010_folder_groups.sql`・`internal/store/folder_groups.go`・
 `internal/domain/folder_group.go`・`internal/httpapi/folder_groups.go`・`internal/httpapi/library.go`。
 Web の新しいファイルの名前は各単位で決める。
 
@@ -243,7 +243,7 @@ Web の新しいファイルの名前は各単位で決める。
 
 ### フォルダからグループを割り当てる索引と、フォルダごとの例外をサーバーに置く
 
-**Scope**: マイグレーション `00009_folder_groups.sql`、`internal/domain` の割り当ての規則とフォルダ名の
+**Scope**: マイグレーション `00010_folder_groups.sql`、`internal/domain` の割り当ての規則とフォルダ名の
 取り出し、`rebuildFolderIndex` と4つの作り直しの時点（スキャンを閉じる前・メディアフォルダの変更・
 例外の変更・起動時の版・中断したスキャンの回復）、`FolderGroupStore` の例外の設定と解除。
 ARCHITECTURE.md の「スキャンの後に全体を読まない」の記述（と `internal/app/scans.go` の注記）、
