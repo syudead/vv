@@ -249,6 +249,9 @@ export interface paths {
          *     id の大きい方が先）で補う。最大20件で、この動画自身は含めない。同じフォルダの
          *     順序は全順序で、自然順が同じならファイル名のバイト順、それも同じなら id の
          *     小さい方を先にする。
+         *     この動画がグループのメンバーなら、group にグループの全メンバーを載せ、nextId・prevId を
+         *     グループの中の並びにし、同じグループのメンバーを除いてから並べる
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）。
          */
         get: operations["getRelatedVideos"];
         put?: never;
@@ -1311,6 +1314,7 @@ export interface components {
             progress?: components["schemas"]["Progress"];
             location?: components["schemas"]["VideoLocation"];
             folder?: components["schemas"]["VideoFolder"];
+            group?: components["schemas"]["VideoGroupRef"];
             /**
              * @description 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
              *     無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
@@ -1335,8 +1339,8 @@ export interface components {
         /**
          * @description 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
          *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-         *     登録フォルダにも含まれなければ省かれる。LibraryGroup.folder ではグループの
-         *     フォルダそのものを指す
+         *     登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+         *     （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
          */
         VideoFolder: {
             /**
@@ -1348,7 +1352,7 @@ export interface components {
             path: string;
             /**
              * @description 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-             *     応答にだけ入る
+             *     Video.folder にだけ入る（Video.group.folder には入らない）
              */
             rootName?: string;
         };
@@ -1362,18 +1366,51 @@ export interface components {
              */
             openable: boolean;
         };
+        /**
+         * @description 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
+         *     （location と同じ扱いで、一覧の項目には入らない）。ゲストの応答では公開のメンバー
+         *     だけで数え、公開のメンバーが1本だけなら省く
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）
+         */
+        VideoGroupRef: {
+            folder: components["schemas"]["VideoFolder"];
+            /** @description フォルダ名 */
+            name: string;
+            /** @description グループの中の並びで何本目か（1 始まり） */
+            position: number;
+            /** @description グループのメンバーの本数 */
+            count: number;
+        };
+        /**
+         * @description 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
+         *     メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
+         */
+        RelatedGroup: {
+            folder: components["schemas"]["VideoFolder"];
+            /** @description フォルダ名 */
+            name: string;
+            /** @description 全メンバーをグループの中の並びの順に、基準の動画を含めて並べる。上限は無い */
+            items: components["schemas"]["Video"][];
+        };
         RelatedVideos: {
+            /**
+             * @description 関連動画。基準の動画がグループのメンバーなら、同じグループのメンバーを除いてから
+             *     並べ、上限を掛ける
+             */
             items: components["schemas"]["Video"][];
             /**
              * Format: int64
-             * @description 同じディレクトリで自然順の次の動画。無ければ省く
+             * @description 次の動画。グループのメンバーならグループの中の並びの次（最後のメンバーでは省く）、
+             *     そうでなければ同じディレクトリで自然順の次の動画。無ければ省く
              */
             nextId?: number;
             /**
              * Format: int64
-             * @description 同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
+             * @description 前の動画。グループのメンバーならグループの中の並びの前（最初のメンバーでは省く）、
+             *     そうでなければ同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
              */
             prevId?: number;
+            group?: components["schemas"]["RelatedGroup"];
         };
         ProgressUpdate: {
             /** Format: int64 */

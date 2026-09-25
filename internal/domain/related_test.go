@@ -147,3 +147,24 @@ func TestOrderRelatedCapsAtMax(t *testing.T) {
 		t.Fatalf("ids = %v", got.IDs)
 	}
 }
+
+// VideoGroup の位置は 1 始まりで、前後はグループの中の並びで決まる。
+func TestVideoGroupPositionAndNeighbors(t *testing.T) {
+	group := VideoGroup{Members: []Video{{ID: 5}, {ID: 3}, {ID: 9}}}
+	for _, tc := range []struct {
+		id, position int64
+		prev, next   int64
+	}{
+		{id: 5, position: 1, prev: 0, next: 3},
+		{id: 3, position: 2, prev: 5, next: 9},
+		{id: 9, position: 3, prev: 3, next: 0},
+		{id: 7, position: 0, prev: 0, next: 0},
+	} {
+		if got := group.Position(tc.id); int64(got) != tc.position {
+			t.Errorf("Position(%d) = %d, want %d", tc.id, got, tc.position)
+		}
+		if prev, next := group.Neighbors(tc.id); prev != tc.prev || next != tc.next {
+			t.Errorf("Neighbors(%d) = %d・%d, want %d・%d", tc.id, prev, next, tc.prev, tc.next)
+		}
+	}
+}

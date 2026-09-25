@@ -281,6 +281,23 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	// forAudience がゲストの応答から外す。
 	payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
 	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
+	// グループも動画1件の応答にだけ載せる。ゲストには公開のメンバーだけで数えたものが
+	// 返り、公開のメンバーが1本なら無い（specs/017-folder-groups/contracts/folder-groups-api.md §3）。
+	if s.catalog != nil {
+		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video)
+		if err != nil {
+			s.internalError(w, "動画を取得できませんでした", err)
+			return
+		}
+		if grouped {
+			payload.Group = &gen.VideoGroupRef{
+				Folder:   gen.VideoFolder{RootId: group.Folder.RootID, Path: group.Folder.Path},
+				Name:     group.Name,
+				Position: group.Position(video.ID),
+				Count:    len(group.Members),
+			}
+		}
+	}
 	if video.HasSeekThumbnail() && s.catalog != nil {
 		state, err := s.catalog.SeekThumbnailState(r.Context(), video)
 		if err != nil {

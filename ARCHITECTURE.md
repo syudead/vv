@@ -23,8 +23,10 @@ In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, che
 embedded goose migrations at startup, then starts the job worker. It serves `GET /api/health`,
 the video library API (`/api/videos*`, `/api/scans*`; a single video's response also
 carries its representative location, the folder that holds it (with the registered folder's
-display name, for the playback page's breadcrumb) and seek-preview state, and
-`/api/videos/{id}/related`, `/probe` and `/open` return related videos, retry a failed
+display name, for the playback page's breadcrumb), seek-preview state and, for a folder-group
+member, the group and its position in it, and
+`/api/videos/{id}/related`, `/probe` and `/open` return related videos (for a group member,
+also every member in group order, with next/previous inside the group), retry a failed
 metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the read-only folder browsing API
 (`/api/folders*`), the tag management API (`/api/tags*`: list, create,
@@ -208,7 +210,8 @@ compile:
   retry of a failed probe and the rebuild of a missing preview.
 - `LibraryStore` — reads of the index: the video list and search, library items
   (videos and folder groups, a group's card and the "select all" ids), folder browsing,
-  related videos, a video's locations, and the startup refresh of search keys. The
+  related videos and the folder group a video belongs to (`VideoGroup`), a video's
+  locations, and the startup refresh of search keys. The
   video list can AND-filter on a set of tag ids and reports which of them do not
   exist (`VideoQuery.TagIDs`/`VideoPage.MissingTagIDs`), and `VideoIDs` returns the
   matching id set unpaged for "select all"
@@ -216,7 +219,7 @@ compile:
   a video's tag names (original name and synonyms) alongside title and path
   (`specs/014-video-tags/data-model.md` §7). Every read that returns videos, locations
   or folders (`ListVideos`, `ListFolderVideos`, `DirectVideoPaths`, `GetVideo`,
-  `VideosAddedNear`, `VideosByIDs`, `FolderLocations`, `HasFolderLocations`) takes a
+  `VideosAddedNear`, `VideosByIDs`, `VideoGroup`, `FolderLocations`, `HasFolderLocations`) takes a
   `domain.Audience`, and its location condition goes through one function,
   `visibleLocationCondition`: the owner sees every location under a registered folder,
   a guest additionally only those of videos with a non-empty content key in
@@ -362,8 +365,9 @@ way only. The packages under `internal/` fall into three layers:
   (`Scans`); processing one probe, thumbnail or preview job — checking the claimed
   identity, calling the generator, applying the result, publishing the outcome, and
   removing artifacts whose content lost its last reference (`Ingest`); and the decisions behind a video response — requeueing a missing hover
-  preview, deriving the seek-preview state — plus assembling related videos
-  (`Catalog`); and adding, replacing and removing media folders after the
+  preview, deriving the seek-preview state — plus assembling related videos, which for a
+  folder-group member orders next/previous inside the group and leaves its members out of
+  the related list (`Catalog`); and adding, replacing and removing media folders after the
   filesystem adapter has checked the path (`MediaFolders`); and first-run setup,
   login verification with per-source throttling, and issuing, checking and
   revoking login sessions (`Auth`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
