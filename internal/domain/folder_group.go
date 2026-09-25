@@ -2,6 +2,7 @@ package domain
 
 import (
 	"cmp"
+	"errors"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -29,6 +30,30 @@ const (
 // Valid は既知の値かどうかを返す。
 func (m FolderGroupMode) Valid() bool {
 	return m == FolderGroupUngroup || m == FolderGroupDirect
+}
+
+// ErrNotFolderGroup は、グループに対する操作（グループをタグに変える）の対象の
+// フォルダが今グループでないことを表す（specs/017-folder-groups/contracts/folder-groups-api.md §2）。
+var ErrNotFolderGroup = errors.New("そのフォルダは今グループではありません")
+
+// FolderGrouping はフォルダ1つのまとめ方の今の状態である
+// （specs/017-folder-groups/contracts/folder-groups-api.md §1）。
+type FolderGrouping struct {
+	// Mode はそのフォルダに付いた例外。例外が無ければ空（自動）である。
+	Mode FolderGroupMode
+	// Grouped は、いまそのフォルダの直下がグループかどうかである。
+	Grouped bool
+}
+
+// FolderGroupTag はグループをタグに変えた結果である
+// （specs/017-folder-groups/contracts/folder-groups-api.md §2）。
+type FolderGroupTag struct {
+	// Tag は使ったタグ（名前かシノニムで引けたもの、または新しく作ったもの）。
+	Tag TagRef
+	// Created はタグを新しく作ったかどうかである。
+	Created bool
+	// Grouping は変更後のまとめ方である。
+	Grouping FolderGrouping
 }
 
 // FolderIndexLocation は索引を作るのに要る所在1件である。

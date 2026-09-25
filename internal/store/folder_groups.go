@@ -8,6 +8,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -22,36 +23,169 @@ func (s *FolderGroupStore) SetOverride(ctx context.Context, folderPath string, m
 	if !mode.Valid() {
 		return fmt.Errorf("フォルダのまとめ方が正しくありません: %q", mode)
 	}
-	return s.writeOverride(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `insert into folder_group_overrides (path, mode, updated_at) values (?, ?, ?)
-			on conflict (path) do update set mode = excluded.mode, updated_at = excluded.updated_at`,
-			domain.FolderKey(folderPath), string(mode), time.Now().Unix())
-		return err
-	})
+	_, err := s.SetFolderGrouping(ctx, folderPath, mode)
+	return err
 }
 
 // ClearOverride はフォルダ folderPath（絶対パス）の例外を外し、同じ取引で索引を
 // 作り直す。例外が無ければ何も変えずに作り直す。
 func (s *FolderGroupStore) ClearOverride(ctx context.Context, folderPath string) error {
-	return s.writeOverride(ctx, func(tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `delete from folder_group_overrides where path = ?`, domain.FolderKey(folderPath))
-		return err
-	})
+	_, err := s.SetFolderGrouping(ctx, folderPath, "")
+	return err
 }
 
-func (s *FolderGroupStore) writeOverride(ctx context.Context, write func(*sql.Tx) error) error {
+// SetFolderGrouping はフォルダ folderPath（絶対パス）の例外を mode にし、同じ取引で
+// 索引を作り直して、変更後のまとめ方を返す（PUT /api/folders/{rootId}/grouping、
+// specs/017-folder-groups/contracts/folder-groups-api.md §1）。mode が空なら例外を
+// 外す（自動）。同じ値の再設定も誤りにしない。
+func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath string, mode domain.FolderGroupMode) (domain.FolderGrouping, error) {
+	if mode != "" && !mode.Valid() {
+		return domain.FolderGrouping{}, fmt.Errorf("フォルダのまとめ方が正しくありません: %q", mode)
+	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return domain.FolderGrouping{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := write(tx); err != nil {
-		return fmt.Errorf("フォルダのまとめ方を保存できません: %w", err)
+	if err := writeOverride(ctx, tx, folderPath, mode); err != nil {
+		return domain.FolderGrouping{}, err
 	}
 	if err := rebuildFolderIndex(ctx, tx); err != nil {
-		return err
+		return domain.FolderGrouping{}, err
 	}
-	return tx.Commit()
+	groupings, err := folderGroupings(ctx, tx, []string{folderPath})
+	if err != nil {
+		return domain.FolderGrouping{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.FolderGrouping{}, fmt.Errorf("フォルダのまとめ方を保存できません: %w", err)
+	}
+	return groupings[0], nil
+}
+
+// TagFolderGroup はフォルダ folderPath（絶対パス）のグループをタグに変える
+// （POST /api/folders/{rootId}/grouping/tag、specs/017-folder-groups/data-model.md §4）。
+// 1つの取引で、フォルダ名を domain.NormalizeTagName に通し、名前かシノニムで引けた
+// タグを使うか新しく作り、そのフォルダに ungroup を書き、索引を作り直す。
+//
+// そのフォルダが今グループでなければ domain.ErrNotFolderGroup、フォルダ名がタグ名の
+// 規則に合わなければ domain.ErrInvalidTagName を返し、どちらも何も書かない。
+// 登録フォルダそのものかどうかは呼び出し側が確かめる。
+func (s *FolderGroupStore) TagFolderGroup(ctx context.Context, folderPath string) (domain.FolderGroupTag, error) {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.FolderGroupTag{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var name string
+	err = tx.QueryRowContext(ctx, `select name from folder_groups where path_key = ?`, domain.FolderKey(folderPath)).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.FolderGroupTag{}, domain.ErrNotFolderGroup
+	}
+	if err != nil {
+		return domain.FolderGroupTag{}, fmt.Errorf("グループを読み出せません: %w", err)
+	}
+	normalized, err := domain.NormalizeTagName(name)
+	if err != nil {
+		return domain.FolderGroupTag{}, err
+	}
+	tag, created, err := findOrCreateTag(ctx, tx, normalized)
+	if err != nil {
+		return domain.FolderGroupTag{}, err
+	}
+	if err := writeOverride(ctx, tx, folderPath, domain.FolderGroupUngroup); err != nil {
+		return domain.FolderGroupTag{}, err
+	}
+	if err := rebuildFolderIndex(ctx, tx); err != nil {
+		return domain.FolderGroupTag{}, err
+	}
+	groupings, err := folderGroupings(ctx, tx, []string{folderPath})
+	if err != nil {
+		return domain.FolderGroupTag{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.FolderGroupTag{}, fmt.Errorf("グループをタグに変えられません: %w", err)
+	}
+	return domain.FolderGroupTag{Tag: tag, Created: created, Grouping: groupings[0]}, nil
+}
+
+// FolderGroupings はフォルダ folderPaths（絶対パス）それぞれのまとめ方を、同じ
+// 読み取りのスナップショットから folderPaths と同じ順で返す（FolderSummary.grouping）。
+func (s *FolderGroupStore) FolderGroupings(ctx context.Context, folderPaths []string) ([]domain.FolderGrouping, error) {
+	if len(folderPaths) == 0 {
+		return []domain.FolderGrouping{}, nil
+	}
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("フォルダのまとめ方の読み取りを始められません: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	groupings, err := folderGroupings(ctx, tx, folderPaths)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("フォルダのまとめ方の読み取りを終えられません: %w", err)
+	}
+	return groupings, nil
+}
+
+// folderGroupings はフォルダそれぞれの例外と、いまグループかどうかを引く。
+func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]domain.FolderGrouping, error) {
+	keys := make([]string, len(folderPaths))
+	for i, path := range folderPaths {
+		keys[i] = domain.FolderKey(path)
+	}
+	encoded, err := json.Marshal(keys)
+	if err != nil {
+		return nil, fmt.Errorf("フォルダの鍵を組み立てられません: %w", err)
+	}
+	rows, err := tx.QueryContext(ctx, `
+		with wanted(folder_key) as (select distinct value from json_each(?))
+		select w.folder_key, o.mode, g.id is not null
+		  from wanted w
+		  left join folder_group_overrides o on o.path = w.folder_key
+		  left join folder_groups g on g.path_key = w.folder_key`, string(encoded))
+	if err != nil {
+		return nil, fmt.Errorf("フォルダのまとめ方を読み出せません: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	byKey := map[string]domain.FolderGrouping{}
+	for rows.Next() {
+		var key string
+		var mode sql.NullString
+		var grouping domain.FolderGrouping
+		if err := rows.Scan(&key, &mode, &grouping.Grouped); err != nil {
+			return nil, fmt.Errorf("フォルダのまとめ方を読み出せません: %w", err)
+		}
+		grouping.Mode = domain.FolderGroupMode(mode.String)
+		byKey[key] = grouping
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("フォルダのまとめ方を読み出せません: %w", err)
+	}
+	out := make([]domain.FolderGrouping, len(keys))
+	for i, key := range keys {
+		out[i] = byKey[key]
+	}
+	return out, nil
+}
+
+// writeOverride はフォルダ folderPath の例外を mode にする。mode が空なら外す。
+func writeOverride(ctx context.Context, tx *sql.Tx, folderPath string, mode domain.FolderGroupMode) error {
+	var err error
+	if mode == "" {
+		_, err = tx.ExecContext(ctx, `delete from folder_group_overrides where path = ?`, domain.FolderKey(folderPath))
+	} else {
+		_, err = tx.ExecContext(ctx, `insert into folder_group_overrides (path, mode, updated_at) values (?, ?, ?)
+			on conflict (path) do update set mode = excluded.mode, updated_at = excluded.updated_at`,
+			domain.FolderKey(folderPath), string(mode), time.Now().Unix())
+	}
+	if err != nil {
+		return fmt.Errorf("フォルダのまとめ方を保存できません: %w", err)
+	}
+	return nil
 }
 
 // RebuildFolderIndex はフォルダの索引を作り直す。スキャンを閉じる直前と、起動時に

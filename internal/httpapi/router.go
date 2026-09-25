@@ -175,6 +175,9 @@ type Options struct {
 	Visibility Visibility
 	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
 	Folders Folders
+	// FolderGroups はフォルダのまとめ方の保存先。nilならまとめ方の変更とグループの
+	// タグ化の経路は500を返し、フォルダの応答には grouping が載らない。
+	FolderGroups FolderGroups
 	// Library はライブラリの項目（動画とグループ）の問い合わせ先。nilなら
 	// /api/library*・グループ1件の経路は500を返す。
 	Library LibraryItems
@@ -227,6 +230,7 @@ type server struct {
 	tags         Tags
 	visibility   Visibility
 	folders      Folders
+	folderGroups FolderGroups
 	library      LibraryItems
 	transcoder   Transcoder
 	artifacts    ArtifactReader
@@ -281,6 +285,7 @@ func NewRouter(opts Options) http.Handler {
 		tags:         opts.Tags,
 		visibility:   opts.Visibility,
 		folders:      opts.Folders,
+		folderGroups: opts.FolderGroups,
 		library:      opts.Library,
 		transcoder:   opts.Transcoder,
 		artifacts:    opts.Artifacts,
@@ -389,6 +394,10 @@ func requiresJSONBody(r *http.Request) bool {
 	case http.MethodPut:
 		if r.URL.Path == "/api/video-visibility" {
 			return true
+		}
+		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/folders/"); ok {
+			id, rest, found := strings.Cut(suffix, "/")
+			return found && id != "" && rest == "grouping"
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/media-folders/"); ok {
 			return id != "" && !strings.Contains(id, "/")

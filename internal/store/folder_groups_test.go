@@ -3,8 +3,11 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -379,5 +382,79 @@ func BenchmarkRebuildFolderIndex(b *testing.B) {
 		if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+// まとめ方の読み出しと、グループのタグ化（specs/017-folder-groups/data-model.md §4）。
+// タグ化はグループでないフォルダと、タグ名に使えないフォルダ名では何も書かない。
+func TestFolderGroupingsAndTagFolderGroup(t *testing.T) {
+	db, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	ctx := context.Background()
+	if _, err := Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Settings().AddMediaFolder(ctx, "/media"); err != nil {
+		t.Fatal(err)
+	}
+	long := strings.Repeat("a", domain.TagNameMaxLength+1)
+	for _, path := range []string{"/media/Show/a.mp4", "/media/Show/b.mp4", "/media/" + long + "/c.mp4", "/media/" + long + "/d.mp4", "/media/x.mp4"} {
+		upsertFolderVideo(t, db, path, filepath.Base(path))
+	}
+	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
+		t.Fatal(err)
+	}
+	groups := db.FolderGroups()
+
+	got, err := groups.FolderGroupings(ctx, []string{"/media/Show/", "/media", "/media/Gone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.FolderGrouping{{Grouped: true}, {}, {}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("groupings = %+v, want %+v", got, want)
+	}
+	grouping, err := groups.SetFolderGrouping(ctx, "/media", domain.FolderGroupDirect)
+	if err != nil || grouping != (domain.FolderGrouping{Mode: domain.FolderGroupDirect, Grouped: false}) {
+		// /media の直下は x だけなので、1本ではグループにならない。
+		t.Fatalf("groupDirect = %+v, %v", grouping, err)
+	}
+	if grouping, err := groups.SetFolderGrouping(ctx, "/media", ""); err != nil || grouping != (domain.FolderGrouping{}) {
+		t.Fatalf("auto = %+v, %v", grouping, err)
+	}
+
+	countRows := func(table string) int {
+		t.Helper()
+		var n int
+		if err := db.sql.QueryRow(`select count(*) from ` + table).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if _, err := groups.TagFolderGroup(ctx, "/media/"+long); !errors.Is(err, domain.ErrInvalidTagName) {
+		t.Fatalf("タグ名に使えない名前: err = %v", err)
+	}
+	if _, err := groups.TagFolderGroup(ctx, "/media/Gone"); !errors.Is(err, domain.ErrNotFolderGroup) {
+		t.Fatalf("グループでないフォルダ: err = %v", err)
+	}
+	if tags, overrides := countRows("tags"), countRows("folder_group_overrides"); tags != 0 || overrides != 0 {
+		t.Fatalf("失敗したタグ化で書かれた: tags %d, overrides %d", tags, overrides)
+	}
+
+	result, err := groups.TagFolderGroup(ctx, "/media/Show")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Created || result.Tag.Name != "Show" || result.Grouping != (domain.FolderGrouping{Mode: domain.FolderGroupUngroup}) {
+		t.Fatalf("result = %+v", result)
+	}
+	if remaining := storedGroups(t, db); len(remaining) != 1 || remaining[0].Name != long {
+		t.Fatalf("タグ化の後のグループ = %+v, want %s だけ", remaining, long)
+	}
+	if _, err := groups.TagFolderGroup(ctx, "/media/Show"); !errors.Is(err, domain.ErrNotFolderGroup) {
+		t.Fatalf("2回目: err = %v", err)
 	}
 }

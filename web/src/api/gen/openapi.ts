@@ -777,6 +777,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/folders/{rootId}/grouping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * フォルダのまとめ方の例外を付ける・外す
+         * @description `auto` は例外を外し、`ungroup` は「まとめを解除」、`groupDirect` は「直下をまとめる」を付ける
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §1）。同じ値の再設定も 200。
+         *     例外の保存と索引の作り直しは1つの取引で、後の要求が勝つ。フォルダの有無は
+         *     `getFolder` と同じ判定で、無ければ 404。
+         */
+        put: operations["setFolderGrouping"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/folders/{rootId}/grouping/tag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * グループをタグに変える
+         * @description 1つの取引で、フォルダ名を `NormalizeTagName` に通し、名前かシノニムで引けたタグを使うか
+         *     新しく作り、そのフォルダに `ungroup` を書き、索引を作り直す
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §2）。本文は無い。
+         *     フォルダ名がタグ名の規則に合わなければ `400` `invalid_request` で、タグも例外も作らない。
+         *     そのフォルダが今グループでないか、登録フォルダそのものなら `409` `conflict`。
+         */
+        post: operations["tagFolderGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans/current": {
         parameters: {
             query?: never;
@@ -1159,6 +1206,33 @@ export interface components {
             folderCount: number;
             /** @description 直下の動画のうちサムネイル生成済みのもの。所在のパスの昇順で最大4件 */
             previews: components["schemas"]["FolderPreview"][];
+            grouping?: components["schemas"]["FolderGrouping"];
+        };
+        /**
+         * @description フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
+         *     `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+         * @enum {string}
+         */
+        FolderGroupingMode: "auto" | "ungroup" | "groupDirect";
+        /**
+         * @description フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
+         *     ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+         */
+        FolderGrouping: {
+            mode: components["schemas"]["FolderGroupingMode"];
+            /** @description いまこのフォルダの直下がグループか */
+            grouped: boolean;
+            /** @description グループで、登録フォルダそのものではない（グループをタグに変えられる） */
+            taggable: boolean;
+        };
+        FolderGroupingRequest: {
+            mode: components["schemas"]["FolderGroupingMode"];
+        };
+        FolderGroupTagResult: {
+            tag: components["schemas"]["TagRef"];
+            /** @description タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false */
+            created: boolean;
+            grouping: components["schemas"]["FolderGrouping"];
         };
         FolderListing: {
             folder: components["schemas"]["FolderSummary"];
@@ -2678,6 +2752,73 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    setFolderGrouping: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+                 */
+                path?: components["parameters"]["FolderPath"];
+            };
+            header?: never;
+            path: {
+                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                rootId: components["parameters"]["FolderRootId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FolderGroupingRequest"];
+            };
+        };
+        responses: {
+            /** @description 変更後のまとめ方 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderGrouping"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    tagFolderGroup: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+                 */
+                path?: components["parameters"]["FolderPath"];
+            };
+            header?: never;
+            path: {
+                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                rootId: components["parameters"]["FolderRootId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 使ったタグと、変更後のまとめ方 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderGroupTagResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getCurrentScan: {

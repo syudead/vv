@@ -113,6 +113,27 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for FolderGroupingMode.
+const (
+	Auto        FolderGroupingMode = "auto"
+	GroupDirect FolderGroupingMode = "groupDirect"
+	Ungroup     FolderGroupingMode = "ungroup"
+)
+
+// Valid indicates whether the value is a known member of the FolderGroupingMode enum.
+func (e FolderGroupingMode) Valid() bool {
+	switch e {
+	case Auto:
+		return true
+	case GroupDirect:
+		return true
+	case Ungroup:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FolderScope.
 const (
 	Direct  FolderScope = "direct"
@@ -467,6 +488,44 @@ type Error struct {
 // ErrorCode 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 type ErrorCode string
 
+// FolderGroupTagResult defines model for FolderGroupTagResult.
+type FolderGroupTagResult struct {
+	// Created タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false
+	Created bool `json:"created"`
+
+	// Grouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
+	// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	Grouping FolderGrouping `json:"grouping"`
+
+	// Tag 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+	Tag TagRef `json:"tag"`
+}
+
+// FolderGrouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
+// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+type FolderGrouping struct {
+	// Grouped いまこのフォルダの直下がグループか
+	Grouped bool `json:"grouped"`
+
+	// Mode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
+	// `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	Mode FolderGroupingMode `json:"mode"`
+
+	// Taggable グループで、登録フォルダそのものではない（グループをタグに変えられる）
+	Taggable bool `json:"taggable"`
+}
+
+// FolderGroupingMode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
+// `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+type FolderGroupingMode string
+
+// FolderGroupingRequest defines model for FolderGroupingRequest.
+type FolderGroupingRequest struct {
+	// Mode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
+	// `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	Mode FolderGroupingMode `json:"mode"`
+}
+
 // FolderListing defines model for FolderListing.
 type FolderListing struct {
 	Folder FolderSummary `json:"folder"`
@@ -492,6 +551,10 @@ type FolderScope string
 type FolderSummary struct {
 	// FolderCount 直下の子フォルダの件数
 	FolderCount int `json:"folderCount"`
+
+	// Grouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
+	// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	Grouping *FolderGrouping `json:"grouping,omitempty"`
 
 	// Name 表示名。相対パスの最後の段、登録フォルダ自身は絶対パスの最後の段
 	Name string `json:"name"`
@@ -1038,6 +1101,20 @@ type GetFolderGroupParams struct {
 	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
 }
 
+// SetFolderGroupingParams defines parameters for SetFolderGrouping.
+type SetFolderGroupingParams struct {
+	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+	// 登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// TagFolderGroupParams defines parameters for TagFolderGroup.
+type TagFolderGroupParams struct {
+	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+	// 登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
+}
+
 // ListFolderVideosParams defines parameters for ListFolderVideos.
 type ListFolderVideosParams struct {
 	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
@@ -1210,6 +1287,9 @@ type LoginJSONRequestBody = LoginRequest
 // SetupAccountJSONRequestBody defines body for SetupAccount for application/json ContentType.
 type SetupAccountJSONRequestBody = SetupRequest
 
+// SetFolderGroupingJSONRequestBody defines body for SetFolderGrouping for application/json ContentType.
+type SetFolderGroupingJSONRequestBody = FolderGroupingRequest
+
 // CreateMediaFolderJSONRequestBody defines body for CreateMediaFolder for application/json ContentType.
 type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 
@@ -1272,6 +1352,12 @@ type ServerInterface interface {
 	// GetFolderGroup フォルダのグループ1件を返す
 	// (GET /api/folders/{rootId}/group)
 	GetFolderGroup(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params GetFolderGroupParams)
+	// SetFolderGrouping フォルダのまとめ方の例外を付ける・外す
+	// (PUT /api/folders/{rootId}/grouping)
+	SetFolderGrouping(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params SetFolderGroupingParams)
+	// TagFolderGroup グループをタグに変える
+	// (POST /api/folders/{rootId}/grouping/tag)
+	TagFolderGroup(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params TagFolderGroupParams)
 	// ListFolderVideos フォルダの動画を返す
 	// (GET /api/folders/{rootId}/videos)
 	ListFolderVideos(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params ListFolderVideosParams)
@@ -1593,6 +1679,90 @@ func (siw *ServerInterfaceWrapper) GetFolderGroup(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetFolderGroup(w, r, rootId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetFolderGrouping operation middleware
+func (siw *ServerInterfaceWrapper) SetFolderGrouping(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "rootId" -------------
+	var rootId FolderRootId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rootId", r.PathValue("rootId"), &rootId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rootId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SetFolderGroupingParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetFolderGrouping(w, r, rootId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TagFolderGroup operation middleware
+func (siw *ServerInterfaceWrapper) TagFolderGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "rootId" -------------
+	var rootId FolderRootId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rootId", r.PathValue("rootId"), &rootId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rootId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params TagFolderGroupParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TagFolderGroup(w, r, rootId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3004,6 +3174,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}/videos", wrapper.ListFolderVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}/group", wrapper.GetFolderGroup)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/folders/{rootId}/grouping/tag", wrapper.TagFolderGroup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/processing", wrapper.GetProcessing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/events", wrapper.StreamEvents)
