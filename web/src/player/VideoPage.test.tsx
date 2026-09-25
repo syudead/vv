@@ -92,7 +92,6 @@ function fakeControls(): PlayerControls {
   return {
     togglePlay: vi.fn(),
     play: vi.fn(),
-    seekBy: vi.fn(),
     seekTo: vi.fn(),
     restart: vi.fn(),
     toggleMute: vi.fn(),
@@ -418,17 +417,17 @@ describe("VideoPage", () => {
       expect(player().onNext).toBeUndefined();
     });
 
-    it("画面のどこでも Space・→ がプレイヤーに効く", async () => {
+    it("画面のどこでも Space・0 がプレイヤーに効く", async () => {
       const controls = fakeControls();
       playerMock.controls = controls;
       renderPage();
       await ready();
       await screen.findByRole("button", { name: "再生" });
-      // 画面全体のキー操作がプレイヤーの操作を受け取るのは描画後の effect なので、→ が効く
+      // 画面全体のキー操作がプレイヤーの操作を受け取るのは描画後の effect なので、0 が効く
       // ようになるのを待ってから Space を確かめる。
       await waitFor(() => {
-        fireEvent.keyDown(document.body, { key: "ArrowRight" });
-        expect(controls.seekBy).toHaveBeenCalledWith(10);
+        fireEvent.keyDown(document.body, { key: "0" });
+        expect(controls.seekTo).toHaveBeenCalledWith(0);
       });
       fireEvent.keyDown(document.body, { key: " " });
       expect(controls.togglePlay).toHaveBeenCalledTimes(1);

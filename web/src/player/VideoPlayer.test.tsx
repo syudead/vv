@@ -394,7 +394,7 @@ describe("VideoPlayer", () => {
     expect(mock.instances[0]?.pausedValue).toBe(false);
   });
 
-  it("操作の入口を渡し、10 秒送り・先頭から・ミュート・全画面を動かす", async () => {
+  it("操作の入口を渡し、先頭から・ミュート・全画面を動かす", async () => {
     const values = props();
     const view = render(<VideoPlayer {...values} />);
     await waitFor(() => expect(values.onControls).toHaveBeenCalled());
@@ -405,13 +405,6 @@ describe("VideoPlayer", () => {
       throw new Error("操作の入口がありません");
 
     player.time = 30;
-    controls.seekBy(10);
-    expect(player.time).toBe(40);
-    controls.seekBy(-100);
-    expect(player.time).toBe(0);
-    player.time = 115;
-    controls.seekBy(10);
-    expect(player.time).toBe(120);
     controls.restart();
     expect(player.time).toBe(0);
     expect(player.pausedValue).toBe(false);

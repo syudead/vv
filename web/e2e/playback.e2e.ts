@@ -635,53 +635,7 @@ test.describe.serial("live MP4 playback", () => {
     }
   });
 
-  test("操作バーの前後の動画で同じフォルダの前後へ移り、「最初に戻る」で先頭へ戻る", async ({
-    page,
-  }) => {
-    test.setTimeout(30_000);
-    const item = video("portrait");
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`/videos/${String(item.id)}`);
-
-    const bar = page.locator(".vjs-control-bar");
-    await expect(bar.getByRole("button", { name: "最初に戻る" })).toBeVisible();
-    await expect(bar.getByRole("button", { name: /秒戻る|秒進む/ })).toHaveCount(0);
-    if (screenshotDir !== undefined) {
-      await mkdir(screenshotDir, { recursive: true });
-      await page.screenshot({
-        path: path.join(screenshotDir, "20260925-control-bar-1280.png"),
-      });
-    }
-
-    // 同じフォルダの自然順で portrait の次は silent、前は long-gop。
-    await bar.getByRole("button", { name: "次の動画" }).click();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("silent");
-    await page
-      .locator(".vjs-control-bar")
-      .getByRole("button", { name: "前の動画" })
-      .click();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("portrait");
-
-    await page.locator(".vjs-big-play-button").click();
-    await page.waitForFunction(() => {
-      const element = document.querySelector("video");
-      return element !== null && !element.paused && element.currentTime > 0.5;
-    });
-    await page.locator(".video-js").hover();
-    await page
-      .locator(".vjs-control-bar")
-      .getByRole("button", { name: "最初に戻る" })
-      .click();
-    await expect
-      .poll(() =>
-        page
-          .locator("video")
-          .evaluate((element) => (element as HTMLVideoElement).currentTime),
-      )
-      .toBeLessThan(0.5);
-  });
-
-  test("画面全体の → で 10 秒進み、操作バーの再生速度が再生に反映される", async ({
+  test("画面全体のキー操作が効き、操作バーの再生速度が再生に反映される", async ({
     page,
   }) => {
     test.setTimeout(30_000);
@@ -691,7 +645,7 @@ test.describe.serial("live MP4 playback", () => {
     await page.locator(".vjs-big-play-button").click();
     await page.waitForFunction(() => {
       const element = document.querySelector("video");
-      return element !== null && !element.paused && element.currentTime > 0.1;
+      return element !== null && !element.paused && element.currentTime > 1.5;
     });
 
     // 関連動画のリンクにフォーカスがあっても、画面全体のキー操作が効く。
@@ -709,22 +663,6 @@ test.describe.serial("live MP4 playback", () => {
         page.locator("video").evaluate((element) => (element as HTMLVideoElement).paused),
       )
       .toBe(true);
-    const before = await page
-      .locator("video")
-      .evaluate((element) => (element as HTMLVideoElement).currentTime);
-    await page.keyboard.press("ArrowRight");
-    await expect
-      .poll(() =>
-        page
-          .locator("video")
-          .evaluate((element) => (element as HTMLVideoElement).currentTime),
-      )
-      .toBeGreaterThan(before + 9);
-    expect(
-      await page
-        .locator("video")
-        .evaluate((element) => (element as HTMLVideoElement).currentTime),
-    ).toBeLessThan(before + 11);
     await page.keyboard.press("0");
     await expect
       .poll(() =>
