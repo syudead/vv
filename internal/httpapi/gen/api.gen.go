@@ -563,14 +563,20 @@ type Video struct {
 	// Container Examples: mp4, webm, mkv
 	Container *string `json:"container,omitempty"`
 
+	// DisplayAspectRatio 表示される横÷縦の比率。回転と画素の縦横比（SAR）を反映し、縦長の動画は 1 未満になる。
+	// 解析前・取得不能の場合は省略される
+	DisplayAspectRatio *float64 `json:"displayAspectRatio,omitempty"`
+
 	// DurationMs 尺。解析前・取得不能の場合は省略される
 	DurationMs *int64 `json:"durationMs,omitempty"`
 
 	// Folder 一覧に出す所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）の応答に
 	// だけ入り、GET /api/videos/{id} には入らない
 	Folder *VideoFolder `json:"folder,omitempty"`
-	Height *int         `json:"height,omitempty"`
-	Id     int64        `json:"id"`
+
+	// Height 表示される向きの高さ（回転の印を反映済み）
+	Height *int  `json:"height,omitempty"`
+	Id     int64 `json:"id"`
 
 	// Location 代表の所在。GET /api/videos/{id} の応答にだけ入る
 	Location *VideoLocation `json:"location,omitempty"`
@@ -613,7 +619,9 @@ type Video struct {
 
 	// VideoCodec Examples: h264, vp9
 	VideoCodec *string `json:"videoCodec,omitempty"`
-	Width      *int    `json:"width,omitempty"`
+
+	// Width 表示される向きの幅（回転の印を反映済み）
+	Width *int `json:"width,omitempty"`
 }
 
 // VideoPreviewState defines model for Video.PreviewState.

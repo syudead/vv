@@ -25,7 +25,7 @@ import NeighborArrows from "./NeighborArrows";
 import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
 import PropertyStrip from "./PropertyStrip";
-import { frameAspectRatio } from "./aspect";
+import { playerAspectRatio } from "./aspect";
 import RelatedVideos from "./RelatedVideos";
 import {
   CreatingLine,
@@ -309,10 +309,7 @@ export default function VideoPage() {
     );
 
   const showPlayer = playable && detail.kind === "ready";
-  const aspect =
-    mediaAspect !== null
-      ? frameAspectRatio(mediaAspect, 1)
-      : frameAspectRatio(video?.width, video?.height);
+  const aspect = playerAspectRatio(video, mediaAspect);
   const chromeVisible = !status.playing || status.userActive;
   let layer: ReactNode = statusLayer;
   if (layer === null && status.ended) {

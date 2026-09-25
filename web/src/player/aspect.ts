@@ -1,3 +1,5 @@
+import type { Video } from "../api/client";
+
 /** 解像度が分からないときに枠が使う比率。 */
 export const defaultAspectRatio = 16 / 9;
 
@@ -21,4 +23,18 @@ export function frameAspectRatio(
     return defaultAspectRatio;
   }
   return Math.min(maxAspectRatio, Math.max(minAspectRatio, width / height));
+}
+
+/**
+ * playerAspectRatio は、プレイヤーの枠に使う比率を選ぶ。再生を始めて分かった映像の比率が
+ * いちばん確かで、次に解析が記録した表示の比率（画素の縦横比を反映済み）、最後に解像度の比を使う。
+ */
+export function playerAspectRatio(
+  video: Pick<Video, "width" | "height" | "displayAspectRatio"> | undefined,
+  mediaAspect: number | null,
+): number {
+  if (mediaAspect !== null) return frameAspectRatio(mediaAspect, 1);
+  if (video?.displayAspectRatio !== undefined)
+    return frameAspectRatio(video.displayAspectRatio, 1);
+  return frameAspectRatio(video?.width, video?.height);
 }

@@ -1,6 +1,7 @@
 package media
 
 import (
+	"math"
 	"strings"
 	"testing"
 )
@@ -88,6 +89,36 @@ func TestParseProbeOutputAppliesRotation(t *testing.T) {
 			}
 			if got.Width != tc.width || got.Height != tc.height {
 				t.Errorf("解像度 = %dx%d, want %dx%d", got.Width, got.Height, tc.width, tc.height)
+			}
+		})
+	}
+}
+
+// 表示の縦横比は、画素の縦横比（SAR）と回転を反映する。
+func TestParseProbeOutputDisplayAspectRatio(t *testing.T) {
+	tests := []struct {
+		name   string
+		stream string
+		want   float64
+	}{
+		{"square pixels", `"width": 1920, "height": 1080, "sample_aspect_ratio": "1:1"`, 16.0 / 9},
+		{"no SAR", `"width": 1920, "height": 1080`, 16.0 / 9},
+		{"anamorphic PAL", `"width": 720, "height": 576, "sample_aspect_ratio": "16:15"`, 4.0 / 3},
+		{"rotated anamorphic", `"width": 720, "height": 576, "sample_aspect_ratio": "16:15", "tags": {"rotate": "90"}`, 3.0 / 4},
+		{"unknown SAR", `"width": 1280, "height": 720, "sample_aspect_ratio": "0:1"`, 16.0 / 9},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			output := `{
+			  "streams": [{"index": 0, "codec_type": "video", "codec_name": "h264", ` + tc.stream + `}],
+			  "format": {"duration": "3.0", "format_name": "mov,mp4"}
+			}`
+			got, err := parseProbeOutput([]byte(output))
+			if err != nil {
+				t.Fatalf("解析に失敗した: %v", err)
+			}
+			if math.Abs(got.DisplayAspectRatio-tc.want) > 1e-9 {
+				t.Errorf("DisplayAspectRatio = %f, want %f", got.DisplayAspectRatio, tc.want)
 			}
 		})
 	}

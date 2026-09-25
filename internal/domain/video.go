@@ -94,6 +94,9 @@ type Probe struct {
 	// Width / Height は表示される向きの映像の解像度（回転の印を反映済み）。取得できなければ 0。
 	Width  int
 	Height int
+	// DisplayAspectRatio は表示される横÷縦の比率（回転と画素の縦横比を反映済み）。
+	// 取得できなければ 0。
+	DisplayAspectRatio float64
 	// VideoCodec は先頭の映像ストリームの codec_name。映像が無ければ空。
 	VideoCodec string
 	// AudioCodec は先頭の音声ストリームの codec_name。音声が無ければ空。
@@ -169,6 +172,8 @@ type Video struct {
 	DurationMs *int64
 	Width      *int
 	Height     *int
+	// DisplayAspectRatio は表示される横÷縦の比率。解析前・取得不能なら nil。
+	DisplayAspectRatio *float64
 
 	Container  string
 	VideoCodec string
