@@ -172,20 +172,24 @@ function TechnicalLine({ summary }: { summary: ReturnType<typeof technicalSummar
     return <p className={cn(base, "text-warning")}>技術情報を読み取れませんでした</p>;
   }
   if (summary.values.length === 0) return null;
+  // どの項目も左に縦線と余白を持ち、並び全体をその幅だけ左へずらして外側で切る。
+  // 折り返した行の先頭の項目も、線と余白が切り落とされて行頭に残らない。
   return (
-    <ul
-      aria-label="技術情報"
-      lang="en"
-      className={cn(base, "flex flex-wrap items-center gap-y-1 text-fg-muted uppercase")}
-    >
-      {summary.values.map((value) => (
-        <li
-          key={value}
-          className="border-l border-border-strong px-2.5 leading-none first:border-l-0 first:pl-0"
-        >
-          {value}
-        </li>
-      ))}
-    </ul>
+    <div className="overflow-hidden">
+      <ul
+        aria-label="技術情報"
+        lang="en"
+        className={cn(
+          base,
+          "-ml-[calc(0.625rem+1px)] flex flex-wrap items-center gap-y-1 text-fg-muted uppercase",
+        )}
+      >
+        {summary.values.map((value) => (
+          <li key={value} className="border-l border-border-strong px-2.5 leading-none">
+            {value}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
