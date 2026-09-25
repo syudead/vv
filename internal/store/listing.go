@@ -263,21 +263,13 @@ func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	// 内容の識別子が空の動画は再生位置を持たない（API の progressFor と同じ扱い）。
 	from += ` left join playback_progress p on p.content_key = videos.content_key and videos.content_key <> ''`
 	var conditions []string
-	var args []any
 	if condition := watchCondition(spec.watch); condition != "" {
 		conditions = append(conditions, condition)
 	}
-	if spec.playableOnly {
-		conditions = append(conditions, playableCondition)
-	}
-	// タグでの絞り込み（data-model.md §6）。存在の確認は呼び出し側
+	// 再生可否とタグ（data-model.md §6）。タグの存在の確認は呼び出し側
 	// （resolveTagIDs）が済ませているので、ここでは AND を掛けるだけでよい。
-	// 手で付けた分とフォルダ名から付いている分のどちらでも当たる
-	// （017 の data-model.md §4）。
-	for _, tagID := range spec.tagIDs {
-		conditions = append(conditions, videoHasTagCondition("videos"))
-		args = append(args, tagID, tagID)
-	}
+	member, args := memberConditions(spec)
+	conditions = append(conditions, member...)
 	if len(conditions) > 0 {
 		from += ` where ` + strings.Join(conditions, " and ")
 	}

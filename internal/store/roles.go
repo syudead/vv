@@ -14,9 +14,9 @@ import "database/sql"
 // 受け持つ（jobs.go・ingest_results.go）。
 type IngestStore struct{ db *DB }
 
-// LibraryStore はライブラリ索引の読み出し（一覧・検索・フォルダ閲覧・関連動画・
-// 所在）と、照合用の鍵の作り直しを受け持つ（listing.go・folders.go・related.go・
-// search_keys.go）。
+// LibraryStore はライブラリ索引の読み出し（一覧・ライブラリの項目・検索・フォルダ
+// 閲覧・関連動画・所在）と、照合用の鍵の作り直しを受け持つ（listing.go・
+// library_items.go・folders.go・related.go・search_keys.go）。
 type LibraryStore struct{ db *DB }
 
 // ScanStore は走査の実行状態を保存する（scans.go）。

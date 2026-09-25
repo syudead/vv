@@ -119,28 +119,41 @@ func (s *server) ListVideoIds(w http.ResponseWriter, r *http.Request, params gen
 		return
 	}
 
-	query := domain.VideoQuery{}
-	filters, ok := s.parseListFilters(w, listFilterParams{watch: params.Watch, playable: params.Playable})
+	query, ok := s.parseIDsQuery(w, params.Query, params.Watch, params.Playable, params.Tag)
 	if !ok {
 		return
 	}
-	query.Watch, query.PlayableOnly = filters.watch, filters.playableOnly
-	if query.Query, ok = s.parseSearchQuery(w, params.Query); !ok {
-		return
-	}
-	if query.TagIDs, ok = s.parseTagFilter(w, params.Tag); !ok {
-		return
-	}
-
 	ids, missingTagIDs, err := s.videos.VideoIDs(r.Context(), query)
 	if err != nil {
 		s.internalError(w, "idを取得できませんでした", err)
 		return
 	}
+	s.writeVideoIDs(w, ids, missingTagIDs)
+}
+
+// parseIDsQuery は「すべて選択」の経路（listVideoIds・listLibraryIds）のパラメータを
+// 検査して問い合わせにする。誤りなら 400 を書いて false を返す。
+func (s *server) parseIDsQuery(w http.ResponseWriter, search *string, watch *gen.WatchFilter, playable *bool, tag *[]int64) (domain.VideoQuery, bool) {
+	query := domain.VideoQuery{}
+	filters, ok := s.parseListFilters(w, listFilterParams{watch: watch, playable: playable})
+	if !ok {
+		return domain.VideoQuery{}, false
+	}
+	query.Watch, query.PlayableOnly = filters.watch, filters.playableOnly
+	if query.Query, ok = s.parseSearchQuery(w, search); !ok {
+		return domain.VideoQuery{}, false
+	}
+	if query.TagIDs, ok = s.parseTagFilter(w, tag); !ok {
+		return domain.VideoQuery{}, false
+	}
+	return query, true
+}
+
+// writeVideoIDs は「すべて選択」の id を応答に書く。
+func (s *server) writeVideoIDs(w http.ResponseWriter, ids, missingTagIDs []int64) {
 	if ids == nil {
 		ids = []int64{}
 	}
-
 	payload := gen.VideoIdsResponse{Ids: ids}
 	if len(missingTagIDs) > 0 {
 		payload.MissingTagIds = &missingTagIDs

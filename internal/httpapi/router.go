@@ -175,6 +175,9 @@ type Options struct {
 	Visibility Visibility
 	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
 	Folders Folders
+	// Library はライブラリの項目（動画とグループ）の問い合わせ先。nilなら
+	// /api/library*・グループ1件の経路は500を返す。
+	Library LibraryItems
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
 	Transcoder Transcoder
 	// Artifacts は生成物（サムネイル・シーク用プレビュー・ホバープレビュー）の
@@ -224,6 +227,7 @@ type server struct {
 	tags         Tags
 	visibility   Visibility
 	folders      Folders
+	library      LibraryItems
 	transcoder   Transcoder
 	artifacts    ArtifactReader
 	catalog      VideoCatalog
@@ -249,6 +253,7 @@ type server struct {
 //	/api/processing  → JSON（同上）
 //	/api/events      → Server-Sent Events（同上）
 //	/api/folders*    → JSON（同上）
+//	/api/library*    → JSON（同上）
 //	/api/tags*       → JSON（同上）
 //	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
@@ -276,6 +281,7 @@ func NewRouter(opts Options) http.Handler {
 		tags:         opts.Tags,
 		visibility:   opts.Visibility,
 		folders:      opts.Folders,
+		library:      opts.Library,
 		transcoder:   opts.Transcoder,
 		artifacts:    opts.Artifacts,
 		catalog:      opts.Catalog,
