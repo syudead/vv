@@ -9,17 +9,13 @@ import (
 
 // GetVideoPreview serves only the persisted, content-keyed preview MP4.
 func (s *server) GetVideoPreview(
-	w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoPreviewParams,
+	w http.ResponseWriter, r *http.Request, id gen.VideoId, _ gen.GetVideoPreviewParams,
 ) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
 		return
 	}
 
-	versioned := params.V != nil && *params.V == video.ContentKey && *params.V != ""
-	if !versioned {
-		w.Header().Set("Cache-Control", cacheNoStore)
-	}
 	if video.PreviewState != domain.PreviewStateDone || s.artifacts == nil {
 		s.notFound(w, "プレビューはまだ生成されていません")
 		return
@@ -39,11 +35,9 @@ func (s *server) GetVideoPreview(
 		return
 	}
 
-	if versioned {
-		w.Header().Set("Cache-Control", cacheImmutable)
-	} else {
-		w.Header().Set("Cache-Control", cacheNoStore)
-	}
+	// 版の有無によらず、使うたびに確かめさせる（contracts/guest-api.md §5）。
+	// If-None-Match が一致すれば http.ServeContent が 304 を返す。
+	setRevalidate(w, fileETag("preview", video.ContentKey, info))
 	w.Header().Set("Content-Type", "video/mp4")
 	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
 }

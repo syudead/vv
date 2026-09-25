@@ -12,7 +12,7 @@ import { EmptyState, LoadFailed } from "../videoList/states";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderCard, { FolderCardSkeleton } from "./FolderCard";
 import FolderToolbar from "./FolderToolbar";
-import { type RootDisplay, rootDisplayName } from "./folderPath";
+import { type RootDisplay, rootFolderName } from "./folderPath";
 import { Grid, Section } from "./layout";
 import RootSearchResults, { ROOT_SEARCH_KEY } from "./RootSearchResults";
 import { useArrival } from "./useArrival";
@@ -42,14 +42,14 @@ export default function RootView() {
   const heading = useArrival(restored !== undefined);
   const roots = useRootFolders();
   const folders = roots.data?.folders ?? [];
-  // パンくずと同じ規則（rootDisplayName）で表示名を作る。サーバーの
-  // FolderSummary.name も同じ結果になるが、揺らさないよう1か所にそろえる。
+  // パンくずと同じ規則（rootFolderName）で表示名を作る。絶対パスがあれば
+  // rootDisplayName で、ゲストの応答のように無ければサーバーの FolderSummary.name を使う。
   const rootNames = useMemo(
     () =>
       new Map<number, RootDisplay>(
         folders.map((folder) => [
           folder.rootId,
-          { name: rootDisplayName(folder.rootPath), rootPath: folder.rootPath },
+          { name: rootFolderName(folder), rootPath: folder.rootPath },
         ]),
       ),
     [folders],

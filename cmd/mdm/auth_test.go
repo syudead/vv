@@ -82,8 +82,12 @@ func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	if run := runAccountCommand(t, dataDir, []string{"account", "set-password"}, newPassword+"\n", nil); run.code != exitAccountOK {
 		t.Fatalf("set-password: code = %d: %s", run.code, run.stderr)
 	}
-	if rec := serve(http.MethodGet, "/api/videos", "", cookie); rec.Code != http.StatusUnauthorized {
+	// 「ゲストも」の一覧はゲストとして返るので、所有者だけの経路で確かめる。
+	if rec := serve(http.MethodGet, "/api/scans/current", "", cookie); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("再設定後の Cookie: status = %d", rec.Code)
+	}
+	if rec := serve(http.MethodGet, "/api/videos", "", cookie); rec.Header().Get("X-VV-Audience") != "guest" {
+		t.Fatalf("再設定後の Cookie の一覧: status = %d, X-VV-Audience = %q", rec.Code, rec.Header().Get("X-VV-Audience"))
 	}
 	login := serve(http.MethodPost, "/api/auth/login", `{"username":"alice","password":"`+newPassword+`"}`, nil)
 	if login.Code != http.StatusOK {

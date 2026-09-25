@@ -26,7 +26,7 @@ import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
 import FolderSearchResults from "./FolderSearchResults";
 import FolderToolbar from "./FolderToolbar";
-import { breadcrumbsFor, folderKey, rootDisplayName } from "./folderPath";
+import { breadcrumbsFor, folderKey, rootFolderName } from "./folderPath";
 import { FolderNotFound } from "./layout";
 import { useArrival } from "./useArrival";
 import { useConditions } from "./useConditions";
@@ -76,7 +76,14 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
 
   const summary = listing.data?.folder;
   const children = listing.data?.folders ?? [];
-  const rootName = summary === undefined ? undefined : rootDisplayName(summary.rootPath);
+  // 登録フォルダの表示名。絶対パスが無い（ゲストの）応答で子フォルダを開いているときは、
+  // この応答からは分からない（登録フォルダそのものなら name がそれである）。
+  const rootName =
+    summary === undefined
+      ? undefined
+      : summary.rootPath !== undefined || folder.path === ""
+        ? rootFolderName(summary)
+        : undefined;
   const name =
     summary?.name ?? (folder.path === "" ? rootName : folder.path.split("/").at(-1));
   const backTo = `${location.pathname}${location.search}`;

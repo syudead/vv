@@ -102,7 +102,10 @@ func TestListRootFoldersIncludesEveryRegisteredFolder(t *testing.T) {
 	listing := decode[gen.RootFolderListing](t, rec)
 	var got []string
 	for _, folder := range listing.Folders {
-		got = append(got, folder.Name+"@"+folder.RootPath)
+		if folder.RootPath == nil {
+			t.Fatalf("所有者の応答に rootPath が無い: %+v", folder)
+		}
+		got = append(got, folder.Name+"@"+*folder.RootPath)
 		if folder.Path != "" {
 			t.Errorf("root path = %q, want empty", folder.Path)
 		}
@@ -158,7 +161,7 @@ func TestGetFolderOrdersChildrenNaturally(t *testing.T) {
 	if want := []string{"1", "2", "10", "A"}; !slices.Equal(names, want) {
 		t.Errorf("children = %q, want %q", names, want)
 	}
-	if listing.Folder.Name != "movies" || listing.Folder.RootPath != "/a/movies" {
+	if listing.Folder.Name != "movies" || listing.Folder.RootPath == nil || *listing.Folder.RootPath != "/a/movies" {
 		t.Errorf("root = %+v", listing.Folder)
 	}
 }

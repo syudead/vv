@@ -84,9 +84,9 @@ func (f *fakeLibrary) ListMediaFolders(context.Context) ([]domain.MediaFolder, e
 	return folders, nil
 }
 
-// requireOwner は、見る人を決める境界がまだ無い今、すべての呼び出しが所有者として
-// 読むことを偽物の側で確かめる（specs/016-single-account-auth の #296）。ゲストとして
-// 読んだら誤りを返し、そのテストを失敗させる。
+// requireOwner は、偽物を使う経路のテストが所有者として読むことを偽物の側で確かめる。
+// それらのテストは ownerAuth で境界を越えるので、ゲストとして読んだら取り違えである。
+// ゲストとしての読み出しは guest_test.go が本物の保存層で確かめる。
 func requireOwner(audience domain.Audience) error {
 	if !audience.IsOwner() {
 		return errors.New("所有者として読んでいません")

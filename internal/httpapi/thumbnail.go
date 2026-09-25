@@ -11,7 +11,7 @@ import (
 // 未生成の場合は 404 を返し、クライアントは枠だけを描く。壊れた
 // 応答を返すより、未生成と同じ扱いにする方が利用者の損失が小さい。
 func (s *server) GetVideoThumbnail(
-	w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoThumbnailParams,
+	w http.ResponseWriter, r *http.Request, id gen.VideoId, _ gen.GetVideoThumbnailParams,
 ) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
@@ -38,14 +38,9 @@ func (s *server) GetVideoThumbnail(
 		return
 	}
 
-	// 版付きの要求だけ長期キャッシュを許す。版は内容由来なので、内容が
-	// 変われば URL も変わり、古い画像が残らない。版の無い要求に
-	// 1年のキャッシュを付けると、差し替えても更新されなくなる。
-	if params.V != nil && *params.V != "" {
-		w.Header().Set("Cache-Control", cacheImmutable)
-	} else {
-		w.Header().Set("Cache-Control", cacheNoStore)
-	}
+	// 版の有無によらず、使うたびに確かめさせる（contracts/guest-api.md §5）。
+	// If-None-Match が一致すれば http.ServeContent が 304 を返す。
+	setRevalidate(w, fileETag("thumbnail", video.ContentKey, info))
 	w.Header().Set("Content-Type", "image/jpeg")
 
 	http.ServeContent(w, r, info.Name(), info.ModTime(), file)

@@ -203,8 +203,8 @@ func sessionToken(r *http.Request) string {
 // authBoundary は要求を3つの扱いに振り分け、見る人を決めて context に載せる
 // （Structural Decisions 1）。/api/* の応答には処理した見る人を X-VV-Audience で付ける。
 //
-// この単位では「ゲストも」の要求もゲストには未認証の応答を返す（ゲストの応答は
-// まだ公開しない）。
+// 「ゲストも」の要求は、有効なセッションが無ければゲストとして処理する
+// （contracts/guest-api.md）。アカウントが未設定の間は未認証の応答を返す。
 func (s *server) authBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		class, api := classifyRequest(r)
@@ -248,7 +248,21 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 			audience = domain.AudienceOwner
 		}
 		setAudience(audience)
-		if class != accessPublic && !valid {
+		switch {
+		case valid || class == accessPublic:
+		case class == accessGuest:
+			// 「ゲストも」の要求はゲストとして処理する。ただしアカウントが未設定の間は
+			// 公開フラグも効かせず、未認証にする（contracts/auth-api.md §1、親 Issue 要件 2）。
+			configured, err := s.accountConfigured(r.Context())
+			if err != nil {
+				s.internalError(w, "ログインの状態を確かめられませんでした", err)
+				return
+			}
+			if !configured {
+				s.unauthenticated(w)
+				return
+			}
+		default:
 			s.unauthenticated(w)
 			return
 		}
@@ -261,6 +275,16 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// accountConfigured はアカウントが設定済みかを返す。セッションを持たない状態を
+// 問い合わせ、未設定かどうかだけを読む。
+func (s *server) accountConfigured(ctx context.Context) (bool, error) {
+	state, err := s.auth.State(ctx, "")
+	if err != nil {
+		return false, err
+	}
+	return state != AuthStateSetupRequired, nil
 }
 
 // unauthenticated は未認証の応答である。原因は区別せず、WWW-Authenticate は付けない。

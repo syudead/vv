@@ -67,8 +67,12 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	if query.TagIDs, ok = s.parseTagFilter(w, params.Tag); !ok {
 		return
 	}
+	audience := audienceFrom(r.Context())
+	if !s.checkAudienceQuery(w, audience, query) {
+		return
+	}
 
-	page, err := s.videos.ListVideos(r.Context(), audienceFrom(r.Context()), query)
+	page, err := s.videos.ListVideos(r.Context(), audience, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
 		// 黙って先頭から返さない。無限スクロールが巻き戻って同じ内容を
@@ -91,6 +95,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 	progress := s.progressFor(r.Context(), page.Items)
 	tags := s.tagsFor(r.Context(), page.Items)
 
+	audience := audienceFrom(r.Context())
 	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
 	for _, view := range s.presentVideos(r.Context(), page.Items) {
 		video := view.Video
@@ -98,7 +103,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 		if folder, ok := domain.LocateVideoFolder(roots, video.Path); ok {
 			item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
 		}
-		payload.Items = append(payload.Items, item)
+		payload.Items = append(payload.Items, forAudience(audience, item))
 	}
 	if page.NextCursor != "" {
 		next := page.NextCursor
@@ -111,6 +116,30 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// checkAudienceQuery は、見る人がこの一覧の条件を使えるかを確かめる。ゲストが所有者の
+// データに依る条件を指定したら 400 を書いて false を返す（contracts/guest-api.md §3）。
+func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audience, query domain.VideoQuery) bool {
+	if err := audience.CheckVideoQuery(query); err != nil {
+		s.invalidRequest(w, "視聴状態・再生日時の並べ替え・タグの絞り込みは、ログインしてから使えます")
+		return false
+	}
+	return true
+}
+
+// forAudience は応答に載せる動画を見る人に合わせる。ゲストには所在（絶対パス）・
+// 再生位置・読み取りの誤り（絶対パスを含みうる）を出さず、タグを空の配列にする
+// （contracts/guest-api.md §1、親 Issue 要件 18）。所有者にはそのまま返す。
+func forAudience(audience domain.Audience, video gen.Video) gen.Video {
+	if audience.IsOwner() {
+		return video
+	}
+	video.Location = nil
+	video.Progress = nil
+	video.ProbeError = nil
+	video.Tags = []gen.TagRef{}
+	return video
 }
 
 // registeredRoots は Video.folder を作るための登録フォルダの一覧を引く。
@@ -223,7 +252,8 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey), tags, video.ContentKey)
 
 	// 所在とシーク用プレビューの状態は、動画1件の応答にだけ載せる。一覧に載せると、
-	// 画面が使わない絶対パスを1ページ 60 件ぶん毎回送ることになる。
+	// 画面が使わない絶対パスを1ページ 60 件ぶん毎回送ることになる。所在は
+	// forAudience がゲストの応答から外す。
 	payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
 	if video.HasSeekThumbnail() && s.catalog != nil {
 		state, err := s.catalog.SeekThumbnailState(r.Context(), video)
@@ -236,7 +266,7 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	}
 
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, payload, s.logger)
+	writeJSON(w, http.StatusOK, forAudience(audienceFrom(r.Context()), payload), s.logger)
 }
 
 // progressFor は動画たちの再生位置をまとめて引く。1件ずつ引くと、60 件の
@@ -244,8 +274,10 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 //
 // 引けなかった場合は一覧を諦めない。再生位置は一覧に「あると嬉しい」情報で
 // あって、無いと動画を見渡せなくなるものではない。
+//
+// ゲストには再生位置を出さないので、読みもしない（contracts/guest-api.md §1）。
 func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[string]domain.Progress {
-	if s.playback == nil || len(videos) == 0 {
+	if s.playback == nil || len(videos) == 0 || !audienceFrom(ctx).IsOwner() {
 		return nil
 	}
 
@@ -270,8 +302,10 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 //
 // 引けなかった場合は一覧を諦めない。タグは「あると嬉しい」情報であって、
 // 無いと動画を見渡せなくなるものではない。
+//
+// ゲストにはタグを出さないので、読みもしない（contracts/guest-api.md §1）。
 func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string][]domain.TagRef {
-	if s.tags == nil || len(videos) == 0 {
+	if s.tags == nil || len(videos) == 0 || !audienceFrom(ctx).IsOwner() {
 		return nil
 	}
 
