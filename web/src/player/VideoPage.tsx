@@ -350,7 +350,7 @@ export default function VideoPage() {
         <div
           ref={mainColumnRef}
           // 列の端にあるフォーカスの輪郭が切れないよう、はみ出す分だけ内側に余白を取る。
-          className="flex min-w-0 flex-col gap-5 lg:-mx-1 lg:min-h-0 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6 lg:pb-16"
+          className="flex min-w-0 flex-col gap-5 lg:-mx-1 lg:min-h-0 lg:scrollbar-none lg:overflow-y-auto lg:overscroll-contain lg:px-1 lg:pt-6 lg:pb-6"
         >
           <div
             ref={frameRef}
@@ -359,14 +359,17 @@ export default function VideoPage() {
             // 合わせて画面に収まるまで伸ばす。縦長の動画は枠の中央に左右の余白付きで出るので、
             // 前後の動画へのつまみと操作バーは横長のときと同じ位置・幅のままになる。
             // 比率はシークのプレビューも使うので、変数として子孫へ渡す。
+            // 広い画面では、題名・タグ・情報の 2 行までが左の列に収まる高さ（帯・上下の余白・
+            // 下の情報で 17rem）を上限にし、ふだんは列をスクロールさせない。上限で列より細く
+            // なったときは、題名と左端をそろえるため左に寄せる。
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
-            className="relative isolate mx-auto grid w-full shrink-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-12.25rem)*max(var(--vv-video-aspect),16/9))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
+            className="relative isolate mx-auto grid w-full shrink-0 lg:ml-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-12.25rem)*max(var(--vv-video-aspect),16/9))] lg:max-w-[calc((100dvh-17rem)*max(var(--vv-video-aspect),16/9))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
           >
             {/* 動画の比率（画面の高さまで）は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
                 全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
             <div
               aria-hidden="true"
-              className="col-start-1 row-start-1 aspect-(--vv-video-aspect) max-h-[calc(100dvh-12.25rem)] [:fullscreen>&]:hidden"
+              className="col-start-1 row-start-1 aspect-(--vv-video-aspect) max-h-[calc(100dvh-12.25rem)] lg:max-h-[calc(100dvh-17rem)] [:fullscreen>&]:hidden"
             />
             <div
               data-overlay-layer=""
