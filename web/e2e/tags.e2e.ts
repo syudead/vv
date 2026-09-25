@@ -804,6 +804,9 @@ test.describe.serial("video tags", () => {
     }) => {
       await createTag(request, "e2e管理キーボード対象");
       await page.goto("/tags");
+      // 画面は必要になったときに読み込む（web/src/app/deferredRoute.tsx）。利用者と
+      // 同じく、画面が出てからキーを押す。
+      await expect(page.getByRole("heading", { level: 1, name: "タグ" })).toBeVisible();
 
       // `/` で検索の入力へ移る（ui-design.md の操作の確認 手順4、ライブラリの検索欄と同じ）。
       await page.keyboard.press("/");
