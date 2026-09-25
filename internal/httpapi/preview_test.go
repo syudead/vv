@@ -175,3 +175,31 @@ func TestRequeuedPreviewIsReportedAsPending(t *testing.T) {
 		}
 	}
 }
+
+// If-Modified-Since だけの要求には、更新時刻が同じでも本文を返す。確かめは内容の
+// ダイジェストの ETag だけで行う（Devin の指摘、PR 292）。
+func TestGetVideoPreviewIgnoresIfModifiedSince(t *testing.T) {
+	video := sampleVideo(1, "movie")
+	video.PreviewState = domain.PreviewStateDone
+	path := filepath.Join(t.TempDir(), "preview.mp4")
+	if err := os.WriteFile(path, []byte("preview-data"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifacts := &fakeArtifacts{previews: map[string]string{video.ContentKey: path}}
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}}, Artifacts: artifacts})
+	full := do(t, handler, http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey)
+	if got := full.Header().Get("Last-Modified"); got != "" {
+		t.Errorf("Last-Modified = %q, 更新時刻で確かめさせない", got)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/api/videos/1/preview?v="+video.ContentKey, nil)
+	req.Header.Set("If-Modified-Since", info.ModTime().UTC().Format(http.TimeFormat))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != "preview-data" {
+		t.Fatalf("If-Modified-Since だけの要求 = %d %q、本文を返すべき", rec.Code, rec.Body.String())
+	}
+}

@@ -173,3 +173,38 @@ func TestThumbnailMissingFileOnDisk(t *testing.T) {
 		t.Errorf("status = %d, want 404", rec.Code)
 	}
 }
+
+// If-Modified-Since だけの要求には、更新時刻が同じでも新しい画像を返す。更新時刻で
+// 304 にすると、同じ秒に作り直した画像が古いまま残る（Devin の指摘、PR 292）。
+func TestThumbnailIgnoresIfModifiedSince(t *testing.T) {
+	artifacts, video := thumbnailFixture(t)
+	handler := newTestServer(t, Options{
+		Videos:    &fakeLibrary{videos: map[int64]domain.Video{1: video}},
+		Artifacts: artifacts,
+	})
+	const target = "/api/videos/1/thumbnail?v=abcdef012345"
+	path := artifacts.thumbnails[video.ContentKey]
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := do(t, handler, http.MethodGet, target).Header().Get("Last-Modified"); got != "" {
+		t.Errorf("Last-Modified = %q, 更新時刻で確かめさせない", got)
+	}
+
+	replaced := []byte{0xff, 0xd8, 0xff, 0xe1, 0x00, 0x10}
+	if err := os.WriteFile(path, replaced, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	req.Header.Set("If-Modified-Since", info.ModTime().UTC().Format(http.TimeFormat))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || rec.Body.String() != string(replaced) {
+		t.Fatalf("If-Modified-Since だけの要求 = %d %x、新しい画像を返すべき", rec.Code, rec.Body.Bytes())
+	}
+}

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -39,8 +40,10 @@ func (s *server) GetVideoPreview(
 	}
 
 	// 版の有無によらず、使うたびに確かめさせる（contracts/guest-api.md §5）。
-	// If-None-Match が一致すれば http.ServeContent が 304 を返す。
+	// If-None-Match が一致すれば http.ServeContent が 304 を返す。更新時刻は渡さない。
+	// 渡すと If-Modified-Since だけの要求に更新時刻で 304 を返し、同じ秒に作り直した
+	// プレビューが古いまま残る。確かめは内容のダイジェストの ETag だけで行う。
 	setRevalidate(w, digestETag("preview", digest))
 	w.Header().Set("Content-Type", "video/mp4")
-	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
+	http.ServeContent(w, r, info.Name(), time.Time{}, file)
 }

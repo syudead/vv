@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
@@ -49,5 +50,8 @@ func (s *server) GetVideoThumbnail(
 	setRevalidate(w, etag)
 	w.Header().Set("Content-Type", "image/jpeg")
 
-	http.ServeContent(w, r, info.Name(), info.ModTime(), file)
+	// 更新時刻は渡さない。渡すと ServeContent が Last-Modified を付け、If-Modified-Since
+	// だけの要求に更新時刻で 304 を返すので、同じ秒に作り直した画像が古いまま残る。
+	// 確かめは内容の ETag だけで行う。
+	http.ServeContent(w, r, info.Name(), time.Time{}, file)
 }
