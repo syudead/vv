@@ -163,6 +163,10 @@ Two kinds of data live in SQLite and they are not equivalent: `videos`,
 That is why playback positions and tag assignments are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
 key to `videos`.
+The single `account` row (username, Argon2id password hash and credential version) is
+also user data that cannot be reconstructed: deleting it sends the server back to first-run
+setup. `sessions` belongs to neither kind; it is transient state that a fresh login
+restores (`specs/016-single-account-auth/data-model.md` §2).
 
 `store.DB` is only the foundation: it opens and closes the SQLite connection pools,
 routing write transactions through an immediate-lock pool and snapshot list reads through
@@ -202,6 +206,14 @@ compile:
   `PlaybackStore.ProgressByContentKeys`). Like `PlaybackStore`, it holds only the SQL
   connection and does not depend on the rebuildable index stores or their
   notifications; tag changes have no side effects, so they publish no domain event.
+- `AuthStore` — the single account and its login sessions: first-run setup (the account
+  row and the first session in one transaction, so concurrent setups resolve by the
+  primary key), changing the username or password (bumping `account.version` and
+  clearing `sessions`), adding, checking, deleting and sweeping expired sessions. It
+  stores only the SHA-256 of a session ID, and a session is valid only while its
+  `account_version` matches `account.version` and it has not expired
+  (`specs/016-single-account-auth/data-model.md` §4, §5). Like `PlaybackStore`, it holds
+  only the SQL connection and publishes no domain event.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and

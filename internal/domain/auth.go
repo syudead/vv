@@ -41,6 +41,16 @@ const (
 // 延長しない（親 Issue #135 要件 7）。
 const SessionLifetime = 90 * 24 * time.Hour
 
+// Account は設定済みの唯一のアカウントである。
+type Account struct {
+	Username string
+	// PasswordHash は Argon2id の PHC 文字列。平文のパスワードは持たない。
+	PasswordHash string
+	// Version は資格情報を書き換えるたびに 1 増える。これと一致しない版で発行した
+	// セッションは無効である（specs/016-single-account-auth/data-model.md §4）。
+	Version int64
+}
+
 // ValidateUsername はユーザー名が規則を満たすかを確かめる。1〜128 文字で、
 // 制御文字を含まず、先頭と末尾に空白を置かない。正規化や大文字小文字の畳み込みは
 // しないので、規則を満たす値はそのまま保存する。外れたら ErrInvalidUsername を返す。
