@@ -58,8 +58,9 @@ export default function RootSearchResults({
   } = useVideos(criteria, restored);
 
   const scan = useScan();
+  const { refresh: refreshScan } = scan;
   const knownScanId = useRef(restored?.scanId);
-  useEffect(() => scan.refresh(), [scan.refresh]);
+  useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
     const finished = scan.finished;
     if (finished === null || knownScanId.current === finished.id) return;

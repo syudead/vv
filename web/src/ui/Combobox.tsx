@@ -1,5 +1,6 @@
 import { LoaderCircle } from "lucide-react";
 import {
+  useCallback,
   useEffect,
   useId,
   useMemo,
@@ -35,6 +36,7 @@ export interface ComboboxOption {
 }
 
 export const newlinePattern = /[\r\n]/;
+// eslint-disable-next-line no-control-regex -- タグ名では C0/C1 制御文字をすべて拒む。
 const controlCharPattern = /[\u0000-\u001f\u007f-\u009f]/;
 
 /** codePointLength は前後の空白を除いた符号位置の数を返す（`length` は使わない）。 */
@@ -195,9 +197,7 @@ export default function Combobox({
     row?.scrollIntoView?.({ block: "nearest" });
   }, [activeIndex, open]);
 
-  function commit(option: ComboboxOption) {
-    onSelect(option);
-  }
+  const commit = useCallback((option: ComboboxOption) => onSelect(option), [onSelect]);
 
   function tryCommitSpelling() {
     const trimmed = value.trim();
@@ -368,7 +368,17 @@ export default function Combobox({
       });
     }
     return items;
-  }, [options, showCreateRow, createLabel, activeIndex, listboxId, value, blocked]);
+  }, [
+    options,
+    showCreateRow,
+    createLabel,
+    activeIndex,
+    listboxId,
+    value,
+    blocked,
+    commit,
+    onCreate,
+  ]);
 
   return (
     <div className={cn("relative", className)}>

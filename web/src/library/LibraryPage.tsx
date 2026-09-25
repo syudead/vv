@@ -90,11 +90,15 @@ export default function LibraryPage() {
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
   const { criteria, apply } = useListCriteria(preferences.sort, TAG_PARAM);
   const { query, watch, playable, sort } = criteria;
-  // URL が変わらない限り同じ配列を使い、タグの操作の関数とカードの memo を保つ。
-  const rawTagParams = new URLSearchParams(location.search).getAll(TAG_PARAM);
-  const rawTagKey = JSON.stringify(rawTagParams);
-  // rawTagKey が rawTagParams の値を表す。
-  const tagIds = useMemo(() => parseTagParam(rawTagParams), [rawTagKey]);
+  // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
+  // タグの操作の関数とカードの memo を保つ。
+  const rawTagKey = JSON.stringify(
+    new URLSearchParams(location.search).getAll(TAG_PARAM),
+  );
+  const tagIds = useMemo(
+    () => parseTagParam(JSON.parse(rawTagKey) as string[]),
+    [rawTagKey],
+  );
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const [activePreviewId, setActivePreviewId] = useState<number | null>(null);
@@ -391,8 +395,9 @@ export default function LibraryPage() {
 
   // --- 取り込み完了で一覧を入れ替える ---
   const scan = useScan();
+  const { refresh: refreshScan } = scan;
   const knownScanId = useRef(restored?.scanId);
-  useEffect(() => scan.refresh(), [scan.refresh]);
+  useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
     const finished = scan.finished;
     if (finished === null || knownScanId.current === finished.id) return;

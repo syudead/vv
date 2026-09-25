@@ -47,6 +47,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     changeZoom,
   } = useConditions();
   const scan = useScan();
+  const { refresh: refreshScan } = scan;
   const searching = criteria.query !== "";
   // 検索語があるときはフォルダとその配下すべてを対象にする。無ければ直下だけを絞る
   // （Plan の Structural Decisions 8、contracts/list-url.md §2）。direct は既定なので
@@ -114,7 +115,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   }, [listing.loading, videos.loading]);
   const { reload: reloadListing } = listing;
   const { reload: reloadVideos } = videos;
-  useEffect(() => scan.refresh(), [scan.refresh]);
+  useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
     const finished = scan.finished;
     if (finished === null || knownScanId.current === finished.id) return;

@@ -465,7 +465,7 @@ test.describe.serial("live MP4 playback", () => {
     await expect(first.locator("video")).toHaveCount(0);
     const before = await second
       .locator("video")
-      .evaluate((element) => element.currentTime);
+      .evaluate((element) => (element as HTMLVideoElement).currentTime);
     await second.waitForFunction((time) => {
       const element = document.querySelector("video");
       return element !== null && !element.paused && element.currentTime > time + 0.2;
@@ -564,12 +564,16 @@ test.describe.serial("live MP4 playback", () => {
       await page.locator(".video-js").press("Space");
       const beforeSeek = await page
         .locator("video")
-        .evaluate((element) => element.currentTime);
+        .evaluate((element) => (element as HTMLVideoElement).currentTime);
       const progressHolder = page.locator(".vjs-progress-holder");
       await progressHolder.focus();
       await progressHolder.press("ArrowRight");
       await expect
-        .poll(() => page.locator("video").evaluate((element) => element.currentTime))
+        .poll(() =>
+          page
+            .locator("video")
+            .evaluate((element) => (element as HTMLVideoElement).currentTime),
+        )
         .toBeGreaterThan(beforeSeek);
       // 上部バーの「← ライブラリ」は無くなり、閉じる × で戻る。幅ごとに見える × は 1 つ。
       const back = page.getByRole("button", { name: "閉じる" });
@@ -648,24 +652,40 @@ test.describe.serial("live MP4 playback", () => {
     await page.getByRole("link").first().focus();
     await page.keyboard.press("m");
     await expect
-      .poll(() => page.locator("video").evaluate((element) => element.muted))
+      .poll(() =>
+        page.locator("video").evaluate((element) => (element as HTMLVideoElement).muted),
+      )
       .toBe(true);
     await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
     await page.keyboard.press("Space");
     await expect
-      .poll(() => page.locator("video").evaluate((element) => element.paused))
+      .poll(() =>
+        page.locator("video").evaluate((element) => (element as HTMLVideoElement).paused),
+      )
       .toBe(true);
-    const before = await page.locator("video").evaluate((element) => element.currentTime);
+    const before = await page
+      .locator("video")
+      .evaluate((element) => (element as HTMLVideoElement).currentTime);
     await page.keyboard.press("ArrowRight");
     await expect
-      .poll(() => page.locator("video").evaluate((element) => element.currentTime))
+      .poll(() =>
+        page
+          .locator("video")
+          .evaluate((element) => (element as HTMLVideoElement).currentTime),
+      )
       .toBeGreaterThan(before + 9);
     expect(
-      await page.locator("video").evaluate((element) => element.currentTime),
+      await page
+        .locator("video")
+        .evaluate((element) => (element as HTMLVideoElement).currentTime),
     ).toBeLessThan(before + 11);
     await page.keyboard.press("0");
     await expect
-      .poll(() => page.locator("video").evaluate((element) => element.currentTime))
+      .poll(() =>
+        page
+          .locator("video")
+          .evaluate((element) => (element as HTMLVideoElement).currentTime),
+      )
       .toBeLessThan(1);
 
     await page.keyboard.press("Space");
@@ -673,17 +693,25 @@ test.describe.serial("live MP4 playback", () => {
     await page.locator(".vjs-control-bar > .vjs-playback-rate").hover();
     await page.getByRole("menuitemradio", { name: /^1\.5x/ }).click();
     await expect
-      .poll(() => page.locator("video").evaluate((element) => element.playbackRate))
+      .poll(() =>
+        page
+          .locator("video")
+          .evaluate((element) => (element as HTMLVideoElement).playbackRate),
+      )
       .toBe(1.5);
     const rateStart = await page
       .locator("video")
-      .evaluate((element) => element.currentTime);
+      .evaluate((element) => (element as HTMLVideoElement).currentTime);
     await page.waitForTimeout(1000);
     const rateEnd = await page
       .locator("video")
-      .evaluate((element) => element.currentTime);
+      .evaluate((element) => (element as HTMLVideoElement).currentTime);
     expect(rateEnd - rateStart).toBeGreaterThan(1.2);
-    expect(await page.locator("video").evaluate((element) => element.paused)).toBe(false);
+    expect(
+      await page
+        .locator("video")
+        .evaluate((element) => (element as HTMLVideoElement).paused),
+    ).toBe(false);
     await expect(page.locator(".vjs-remaining-time")).toHaveCount(0);
     await expect(page.locator(".vjs-current-time")).toBeVisible();
     await expect(page.locator(".vjs-duration")).toBeVisible();

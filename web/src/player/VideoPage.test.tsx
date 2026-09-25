@@ -28,13 +28,14 @@ const playerMock = vi.hoisted(() => ({
 }));
 
 vi.mock("./VideoPlayer", () => ({
-  default: (props: PlayerProps) => {
+  default: function VideoPlayerMock(props: PlayerProps) {
     playerMock.props = props;
     useEffect(() => {
       playerMock.mounts += 1;
       if (playerMock.controls !== undefined) props.onControls(playerMock.controls);
       return () => props.onControls(null);
       // プレイヤーは作ったときの値だけを使う。
+      // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
     return <div data-testid="video-player" />;
   },
