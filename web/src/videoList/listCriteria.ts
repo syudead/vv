@@ -237,6 +237,28 @@ export function serializeListCriteria(criteria: ListCriteria): URLSearchParams {
   return params;
 }
 
+/**
+ * ownerOnlySort は、所有者の再生位置に依る並び順（最近再生した順）かを返す。
+ * ゲストには出さず、サーバーも受け付けない
+ * （specs/016-single-account-auth/contracts/guest-api.md §3）。
+ */
+export function ownerOnlySort(sort: VideoSort): boolean {
+  return sort === "playedAsc" || sort === "playedDesc";
+}
+
+/**
+ * guestListCriteria は、ゲストが使えない条件（視聴状態・最近再生した順）を既定に
+ * 丸める（guest-api.md §3）。丸めるものが無ければ同じ値を返す。
+ */
+export function guestListCriteria(criteria: ListCriteria): ListCriteria {
+  if (criteria.watch === "all" && !ownerOnlySort(criteria.sort)) return criteria;
+  return {
+    ...criteria,
+    watch: "all",
+    sort: ownerOnlySort(criteria.sort) ? DEFAULT_SORT : criteria.sort,
+  };
+}
+
 /** hasConditions は「条件を解除」で外せる条件（検索語・視聴状態・再生可否）があるか。 */
 export function hasConditions(criteria: ListCriteria): boolean {
   return criteria.query !== "" || criteria.watch !== "all" || criteria.playable;

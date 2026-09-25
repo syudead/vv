@@ -404,7 +404,19 @@ guest on an owner-only screen (`/settings`, `/tags`) to `/login?next=…`, and e
 answer to the screens through `useAudience`. The first-run setup (`/setup`) and login
 (`/login`) screens live there too and sit outside the shell and its providers. When the
 viewer changes (setup, login, logout) the page is reloaded rather than re-rendered, so
-nothing read for the previous viewer stays in memory.
+nothing read for the previous viewer stays in memory. The gate also tells `client.ts` who
+the page is rendered for; while that is the owner, the first `/api/*` response that is a
+401 or carries `X-VV-Audience: guest` (a logout in another tab, an expired session)
+reloads the page once and is never handed to the screen. The `/api/events` connection
+and the playback screen's video cannot read a status or header when they fail, so when
+the event stream gives up or the video fails to load they check the session instead, and
+reload once if the viewer is no longer the owner rather than retrying forever. A guest gets the same shell and screens with every
+owner-data control left out rather than disabled: the scan button and progress, the
+tag, "recent", "in progress" and settings entries, selection, tag filters, the watch-state
+filter and "recently played" sort (list conditions left in the URL or the stored sort are
+rounded to the defaults), tags, file location, re-probe and saved playback position on the
+playback screen. `ScanProvider`, `useVideos` and `useVideoDetail` neither fetch owner-only
+state nor subscribe to `/api/events` for a guest.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
 frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`,

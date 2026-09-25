@@ -1,10 +1,12 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { OwnerAudience } from "../testing/audience";
 import { RequestFailed, type Video } from "./client";
 import {
   currentEventSource,
   emitServerEvent,
+  FakeEventSource,
   installFakeEventSource,
 } from "./fakeEventSource";
 
@@ -77,6 +79,15 @@ describe("useVideoDetail", () => {
     vi.unstubAllGlobals();
   });
 
+  it("ゲストでは変化の知らせ（/api/events）を購読しない", async () => {
+    getVideo.mockResolvedValue(done);
+    // AudienceProvider の外の既定はゲストである。
+    const { result } = renderHook(() => useVideoDetail(7));
+    await flush();
+    expect(result.current.state).toMatchObject({ kind: "ready" });
+    expect(FakeEventSource.instances).toHaveLength(0);
+  });
+
   it("その動画が変わったという知らせでだけ取り直し、一定間隔では問い合わせない", async () => {
     getVideo
       .mockResolvedValueOnce({
@@ -86,7 +97,7 @@ describe("useVideoDetail", () => {
       })
       .mockResolvedValueOnce({ ...done, previewState: "pending" })
       .mockResolvedValueOnce(done);
-    const { result } = renderHook(() => useVideoDetail(7));
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
     await flush();
     expect(result.current.state).toMatchObject({
       kind: "ready",
@@ -115,7 +126,7 @@ describe("useVideoDetail", () => {
     getVideo
       .mockResolvedValueOnce({ ...done, thumbnailState: "pending" })
       .mockResolvedValueOnce(done);
-    const { result } = renderHook(() => useVideoDetail(7));
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
     await flush();
 
     await emitServerEvent("open");
@@ -129,7 +140,7 @@ describe("useVideoDetail", () => {
     getVideo
       .mockResolvedValueOnce({ ...done, thumbnailState: "pending" })
       .mockRejectedValueOnce(new RequestFailed(404, "not_found", "見つかりません"));
-    const { result } = renderHook(() => useVideoDetail(7));
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
     await flush();
     await emitServerEvent("video", { id: 7 });
     await flush();
@@ -141,7 +152,7 @@ describe("useVideoDetail", () => {
       .mockResolvedValueOnce({ ...done, thumbnailState: "pending" })
       .mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"))
       .mockResolvedValueOnce(done);
-    const { result } = renderHook(() => useVideoDetail(7));
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
     await flush();
     await emitServerEvent("video", { id: 7 });
     await flush();
@@ -156,7 +167,7 @@ describe("useVideoDetail", () => {
 
   it("最初の取得の失敗は理由を持つ", async () => {
     getVideo.mockRejectedValue(new RequestFailed(500, "internal", "壊れています"));
-    const { result } = renderHook(() => useVideoDetail(7));
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
     await flush();
     expect(result.current.state).toEqual({
       kind: "failed",
@@ -166,7 +177,9 @@ describe("useVideoDetail", () => {
   });
 
   it("id の形が正しくなければ要求せずに missing にする", async () => {
-    const { result } = renderHook(() => useVideoDetail(Number.NaN));
+    const { result } = renderHook(() => useVideoDetail(Number.NaN), {
+      wrapper: OwnerAudience,
+    });
     await flush();
     expect(result.current.state.kind).toBe("missing");
     expect(getVideo).not.toHaveBeenCalled();
@@ -179,7 +192,7 @@ describe("useVideoDetail", () => {
       signal = next;
       return new Promise(() => undefined);
     });
-    const { unmount } = renderHook(() => useVideoDetail(7));
+    const { unmount } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
     await flush();
     await emitServerEvent("video", { id: 7 });
     expect(signal?.aborted).toBe(false);
@@ -196,6 +209,7 @@ describe("useVideoDetail", () => {
     );
     const { result, rerender } = renderHook(({ id }) => useVideoDetail(id), {
       initialProps: { id: 7 },
+      wrapper: OwnerAudience,
     });
     await flush();
     rerender({ id: 8 });
@@ -210,7 +224,7 @@ describe("useVideoDetail", () => {
     getVideo
       .mockResolvedValueOnce({ ...done, probeState: "failed" })
       .mockResolvedValueOnce({ ...done, probeState: "pending" });
-    const { result } = renderHook(() => useVideoDetail(7));
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
     await flush();
     let resolved = false;
     await act(async () => {
@@ -231,7 +245,7 @@ describe("useRelatedVideos", () => {
     getRelatedVideos
       .mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"))
       .mockResolvedValueOnce({ items: [done], nextId: 7 });
-    const { result } = renderHook(() => useRelatedVideos(3));
+    const { result } = renderHook(() => useRelatedVideos(3), { wrapper: OwnerAudience });
     await act(async () => undefined);
     expect(result.current.state.kind).toBe("failed");
     act(() => result.current.retry());

@@ -3,7 +3,7 @@ import { type ReactNode, useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router";
 
 import { type AuthSession, getAuthSession } from "../api/auth";
-import { RequestFailed } from "../api/client";
+import { RequestFailed, setRenderedAudience } from "../api/client";
 import Button from "../ui/Button";
 import { EmptyState } from "../videoList/states";
 import { AudienceProvider } from "./audience";
@@ -133,12 +133,17 @@ export default function AuthGate({ children }: { children: ReactNode }) {
     const onLogin = routePath(initialLocation.pathname) === "/login";
     const next = onLogin ? loginNext(initialLocation.search) : undefined;
     getAuthSession(next, controller.signal).then(
-      (session) =>
+      (session) => {
+        // 所有者として描く間に見る人が変わったら、client.ts が1度だけ読み直す。
+        setRenderedAudience(
+          session.state === "owner" || session.state === "guest" ? session.state : null,
+        );
         setState({
           status: "ready",
           session,
           search: onLogin ? initialLocation.search : null,
-        }),
+        });
+      },
       (error: unknown) => {
         if (controller.signal.aborted) return;
         setState({ status: "failed", reason: failureReason(error) });

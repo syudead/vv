@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
+import { OwnerAudience } from "../testing/audience";
 import { ScanNoticeProvider, useScanNotice } from "./ScanNoticeProvider";
 import { ScanProvider, useScan } from "./ScanProvider";
 
@@ -42,11 +43,13 @@ function Harness() {
 
 function renderProvider() {
   return render(
-    <ScanProvider>
-      <ScanNoticeProvider>
-        <Harness />
-      </ScanNoticeProvider>
-    </ScanProvider>,
+    <OwnerAudience>
+      <ScanProvider>
+        <ScanNoticeProvider>
+          <Harness />
+        </ScanNoticeProvider>
+      </ScanProvider>
+    </OwnerAudience>,
   );
 }
 

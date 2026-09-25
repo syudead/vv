@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
+import { OwnerAudience } from "../testing/audience";
 import { ScanProvider, useScan } from "./ScanProvider";
 
 function json(body: unknown, status = 200): Response {
@@ -77,9 +78,11 @@ describe("ScanProvider", () => {
     });
     const user = userEvent.setup();
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     await screen.findByText("エラーなし");
 
@@ -108,9 +111,11 @@ describe("ScanProvider", () => {
     });
     const user = userEvent.setup();
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     await waitFor(() => expect(currentCalls).toBe(1));
 
@@ -131,9 +136,11 @@ describe("ScanProvider", () => {
     });
     const user = userEvent.setup();
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     await waitFor(() => expect(currentCalls).toBe(1));
 
@@ -159,9 +166,11 @@ describe("ScanProvider", () => {
     });
     const user = userEvent.setup();
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     expect(await screen.findByText("状態: 4")).toBeDefined();
 
@@ -186,9 +195,11 @@ describe("ScanProvider", () => {
       return Promise.resolve(json(scan(3, "running")));
     });
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     await act(async () => Promise.resolve());
     expect(screen.getByText("状態: 3")).toBeDefined();
@@ -209,9 +220,11 @@ describe("ScanProvider", () => {
       ),
     );
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     expect(await screen.findByText("残り: 0/0/0")).toBeDefined();
 
@@ -229,9 +242,11 @@ describe("ScanProvider", () => {
       return Promise.resolve(json(scan(4, "done")));
     });
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     expect(await screen.findByText("一時的な失敗")).toBeDefined();
     expect(screen.getByText("状態: なし")).toBeDefined();
@@ -251,9 +266,11 @@ describe("ScanProvider", () => {
       return Promise.reject(new Error("一時的な失敗"));
     });
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     expect(await screen.findByText("状態: 5")).toBeDefined();
 
@@ -274,9 +291,11 @@ describe("ScanProvider", () => {
     );
     const user = userEvent.setup();
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     await screen.findByText("完了: なし");
 
@@ -292,9 +311,11 @@ describe("ScanProvider", () => {
     );
     const user = userEvent.setup();
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
 
     expect(await screen.findByText("開始可否: 不可")).toBeDefined();
@@ -311,9 +332,11 @@ describe("ScanProvider", () => {
       ),
     );
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     expect(await screen.findByText("開始可否: 可")).toBeDefined();
 
@@ -341,9 +364,11 @@ describe("ScanProvider", () => {
     });
     const user = userEvent.setup();
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     expect(await screen.findByText("開始可否: 可")).toBeDefined();
 
@@ -364,9 +389,11 @@ describe("ScanProvider", () => {
     });
     const user = userEvent.setup();
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
 
     await user.click(screen.getByRole("button", { name: "フォルダ追加を反映" }));
@@ -385,9 +412,11 @@ describe("ScanProvider", () => {
       });
     });
     render(
-      <ScanProvider>
-        <Harness />
-      </ScanProvider>,
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
     );
     await waitFor(() => expect(resolveCurrent).toBeDefined());
 

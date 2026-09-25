@@ -425,3 +425,35 @@ export function generateSearchFixtures(root) {
   rmSync(file("base.tmp.mp4"));
   writeFileSync(file("長さ不明.mp4"), "この中身は動画ではない\n".repeat(64));
 }
+
+/**
+ * generateGuestFixtures は、ゲストの画面（specs/016-single-account-auth、子 #304）を
+ * 確かめるための動画を6本作る（web/e2e/guest.e2e.ts）。「公開あり」の5本のうち
+ * 4本（A・B・E・F）を所有者が公開にし、C と「非公開だけ」の D は非公開のままにする。
+ * 再生の途中で操作できるよう 12 秒にし、中身で同じ動画とみなされないよう色合いを変える。
+ */
+export function generateGuestFixtures(root) {
+  const shown = path.join(root, "公開あり");
+  const hidden = path.join(root, "非公開だけ");
+  mkdirSync(shown, { recursive: true });
+  mkdirSync(hidden, { recursive: true });
+  const clip = (file, hue) =>
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=15:duration=12",
+      "-vf",
+      `hue=h=${String(hue)}`,
+      ...h264,
+      "-an",
+      file,
+    ]);
+
+  clip(path.join(shown, "ゲスト公開A.mp4"), 40);
+  clip(path.join(shown, "ゲスト公開B.mp4"), 100);
+  clip(path.join(shown, "ゲスト公開E.mp4"), 160);
+  clip(path.join(shown, "ゲスト公開F.mp4"), 220);
+  clip(path.join(shown, "ゲスト非公開C.mp4"), 280);
+  clip(path.join(hidden, "ゲスト非公開D.mp4"), 340);
+}

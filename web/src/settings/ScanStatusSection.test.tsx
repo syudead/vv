@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan } from "../api/client";
 import { ScanProvider } from "../shell/ScanProvider";
+import { OwnerAudience } from "../testing/audience";
 import ScanStatusSection from "./ScanStatusSection";
 
 function json(body: unknown, status = 200) {
@@ -28,10 +29,12 @@ function SameAnchorNavigation() {
 function renderSection({ navigation = false } = {}) {
   return render(
     <MemoryRouter initialEntries={["/settings#scan-status"]}>
-      <ScanProvider>
-        {navigation && <SameAnchorNavigation />}
-        <ScanStatusSection />
-      </ScanProvider>
+      <OwnerAudience>
+        <ScanProvider>
+          {navigation && <SameAnchorNavigation />}
+          <ScanStatusSection />
+        </ScanProvider>
+      </OwnerAudience>
     </MemoryRouter>,
   );
 }

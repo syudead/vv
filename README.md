@@ -17,7 +17,9 @@ cd vv
 task up
 ```
 
-Open <http://localhost:8080>, add a media folder in Settings, and start a scan.
+Open <http://localhost:8080> and create the single account on the setup screen
+right away: until it exists, anyone who can reach the server can create it.
+Then add a media folder in Settings and start a scan.
 To use a host directory other than `./media`:
 
 ```bash
@@ -27,8 +29,12 @@ MDM_MEDIA_HOST_DIR=/path/to/videos task up
 Stop the application with `task down`.
 
 > [!WARNING]
-> vv does not provide authentication yet. Run it only on a trusted network and
-> do not expose it directly to the internet.
+> Plain HTTP sends the password and session cookie unencrypted. Use it only on a
+> trusted network; to reach vv from the internet, put it behind a reverse proxy
+> that serves HTTPS (see
+> [Network exposure](docs/how-to/running-vv.md#network-exposure)).
+> Visitors who are not signed in can browse and play only the videos you mark as
+> public.
 
 Runtime settings, storage behavior, and backup cautions are documented in
 [Running vv](docs/how-to/running-vv.md).

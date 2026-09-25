@@ -1,5 +1,6 @@
 import { BrowserRouter, Route, Routes, useLocation } from "react-router";
 
+import { useAudience } from "../auth/audience";
 import AuthGate from "../auth/AuthGate";
 import LoginPage from "../auth/LoginPage";
 import SetupPage from "../auth/SetupPage";
@@ -17,11 +18,13 @@ import { TooltipProvider } from "../ui/Tooltip";
 
 function AppRoutes() {
   const location = useLocation();
+  const owner = useAudience() === "owner";
   const scanPlacement = location.pathname.startsWith("/videos/") ? "playback" : "default";
 
   return (
     <ToastProvider placement={scanPlacement}>
-      <ScanProgressIndicator />
+      {/* 取り込みの進捗と通知は所有者だけに出す（ui-design.md「Top bar」）。 */}
+      {owner && <ScanProgressIndicator />}
       <Routes>
         <Route
           path="/"
