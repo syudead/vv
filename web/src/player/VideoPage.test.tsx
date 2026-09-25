@@ -824,6 +824,36 @@ describe("VideoPage", () => {
       expect(reloadPage).not.toHaveBeenCalled();
     });
 
+    it("前の動画の再生失敗の確かめが別の動画へ移った後に返っても、次の動画に失敗の層を出さない", async () => {
+      server.videos.set(8, [{ ...video, id: 8, title: "後続の動画" }]);
+      let answerSession: (() => void) | undefined;
+      const answered = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        if (String(input) !== "/api/auth/session") return answered!(input, init);
+        return new Promise<Response>((resolve) => {
+          answerSession = () => resolve(json({ state: "owner" }));
+        });
+      });
+      renderPage();
+      await ready();
+      act(() => player().onError(1000));
+      await waitFor(() => expect(answerSession).toBeDefined());
+      fireEvent.click(screen.getByRole("link", { name: "別の動画" }));
+      expect((await ready()).textContent).toBe("後続の動画");
+      const detailFetches = () =>
+        fetchMock.mock.calls.filter(([input]) => String(input) === "/api/videos/8")
+          .length;
+      const before = detailFetches();
+      await act(async () => {
+        answerSession!();
+        await Promise.resolve();
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(screen.queryByText("再生できませんでした")).toBeNull();
+      expect(detailFetches()).toBe(before);
+      expect(reloadPage).not.toHaveBeenCalled();
+    });
+
     it("ゲストで公開でなくなった動画は「開けません」を出す", async () => {
       server.videos.set(7, [guestVideo()]);
       server.session = "guest";

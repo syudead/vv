@@ -233,13 +233,20 @@ export default function VideoPage() {
   // 要素の読み込みの失敗には 401 も X-VV-Audience も付かないので、状態を確かめ、
   // 変わっていれば失敗の層を出さずにページを1度だけ読み直す（ui-design.md
   // 「Guest degradation」）。変わっていなければ、今の再生失敗の層を出す。
+  // 同じ route で別の動画へ移るとこの部品は使い回されるので、確かめは動画が変わったときにも
+  // 止め、返ってきたときに始めた動画のままのときだけ結果を使う。前の動画の失敗を次の動画に
+  // 出さないためである。
   const sessionCheck = useRef<AbortController | null>(null);
-  useEffect(() => () => sessionCheck.current?.abort(), []);
+  const currentId = useRef(id);
+  currentId.current = id;
+  useEffect(() => () => sessionCheck.current?.abort(), [id]);
   const onError = useCallback(
     (positionMs: number) => {
       sessionCheck.current?.abort();
       const controller = new AbortController();
       sessionCheck.current = controller;
+      const checkedId = id;
+      const stale = () => controller.signal.aborted || currentId.current !== checkedId;
       const showFailure = () => {
         setFailure({ positionMs });
         // 動画がライブラリから消えた（ゲストでは公開でなくなった）せいかもしれない。
@@ -248,7 +255,7 @@ export default function VideoPage() {
       };
       getAuthSession(undefined, controller.signal).then(
         (session) => {
-          if (controller.signal.aborted) return;
+          if (stale()) return;
           if (session.state !== audience) {
             reloadForViewerChange();
             return;
@@ -256,12 +263,12 @@ export default function VideoPage() {
           showFailure();
         },
         () => {
-          if (controller.signal.aborted) return;
+          if (stale()) return;
           showFailure();
         },
       );
     },
-    [audience, refresh],
+    [audience, id, refresh],
   );
 
   const retryPlayback = () => {
