@@ -46,6 +46,15 @@ export type FolderListing = components["schemas"]["FolderListing"];
 export type RootFolderListing = components["schemas"]["RootFolderListing"];
 export type RelatedVideos = components["schemas"]["RelatedVideos"];
 export type VideoLocation = components["schemas"]["VideoLocation"];
+export type LibraryGroup = components["schemas"]["LibraryGroup"];
+
+/**
+ * LibraryItem は一覧の項目1件である（api/openapi.yaml の LibraryItem）。生成した型は
+ * `video` と `group` をどちらも省略可能にしているので、`kind` で読み分けられる形にする
+ * （specs/017-folder-groups/plan.md の Structural Decisions 13）。
+ */
+export type LibraryItem =
+  { kind: "video"; video: Video } | { kind: "group"; group: LibraryGroup };
 export type Processing = components["schemas"]["Processing"];
 export type VideoChanged = components["schemas"]["VideoChanged"];
 
@@ -303,6 +312,22 @@ export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoP
     `/api/folders/${String(params.folder.rootId)}/videos?${query.toString()}`,
     { signal: params.signal },
   );
+}
+
+/**
+ * getFolderGroup はフォルダのグループ1件を、絞り込みに関係なく全メンバーから取得する
+ * （一覧に残っているグループの項目の取り直し。specs/017-folder-groups/contracts/library-api.md §3）。
+ * そのフォルダが今グループでないか無いときは 404 の RequestFailed で失敗する。
+ */
+export function getFolderGroup(
+  folder: FolderRef,
+  signal?: AbortSignal,
+): Promise<LibraryGroup> {
+  const query = folderQuery(folder);
+  const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+  return request<LibraryGroup>(`/api/folders/${String(folder.rootId)}/group${suffix}`, {
+    signal,
+  });
 }
 
 /** getVideo は動画1件の詳細を取得する。 */

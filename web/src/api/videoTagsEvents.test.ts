@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import type { VideoTag } from "./client";
+import { itemVideos, videoItem } from "./libraryItems";
 import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 import {
   nextVideoTagsSequence,
@@ -52,24 +53,24 @@ describe("videoTagsEvents", () => {
   it("順番どおりに届けば両方反映する", () => {
     saveListSnapshot(
       { query: "" },
-      { items: [item(1)], total: 1, hasMore: false, scrollY: 0 },
+      { items: [videoItem(item(1))], total: 1, hasMore: false, scrollY: 0 },
     );
 
     const first = nextVideoTagsSequence();
     recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "add", first);
-    expect(takeListSnapshot({ query: "" })?.items[0]?.tags).toEqual([
+    expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[0]?.tags).toEqual([
       { id: 5, name: "旅行", manual: true, fromFolder: false },
     ]);
 
     const second = nextVideoTagsSequence();
     recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "remove", second);
-    expect(takeListSnapshot({ query: "" })?.items[0]?.tags).toEqual([]);
+    expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[0]?.tags).toEqual([]);
   });
 
   it("古い通し番号の応答が後から届いても、新しい結果を巻き戻さない", () => {
     saveListSnapshot(
       { query: "" },
-      { items: [item(1)], total: 1, hasMore: false, scrollY: 0 },
+      { items: [videoItem(item(1))], total: 1, hasMore: false, scrollY: 0 },
     );
 
     const first = nextVideoTagsSequence();
@@ -77,18 +78,23 @@ describe("videoTagsEvents", () => {
 
     // 2番目（外す）の応答が先に届く。
     recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "remove", second);
-    expect(takeListSnapshot({ query: "" })?.items[0]?.tags).toEqual([]);
+    expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[0]?.tags).toEqual([]);
 
     // 1番目（付ける）の応答が遅れて届いても、2番目の結果（外れた状態）を
     // 上書きしない。
     recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "add", first);
-    expect(takeListSnapshot({ query: "" })?.items[0]?.tags).toEqual([]);
+    expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[0]?.tags).toEqual([]);
   });
 
   it("別のタグ・別の動画は互いのsequenceに影響しない", () => {
     saveListSnapshot(
       { query: "" },
-      { items: [item(1), item(2)], total: 2, hasMore: false, scrollY: 0 },
+      {
+        items: [videoItem(item(1)), videoItem(item(2))],
+        total: 2,
+        hasMore: false,
+        scrollY: 0,
+      },
     );
 
     // 動画2・タグ9への新しい操作を先に払い出しても、動画1・タグ5の古い操作の
@@ -98,10 +104,10 @@ describe("videoTagsEvents", () => {
     recordAppliedVideoTags([2], { id: 9, name: "観光" }, "add", unrelated);
     recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "add", target);
 
-    expect(takeListSnapshot({ query: "" })?.items[0]?.tags).toEqual([
+    expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[0]?.tags).toEqual([
       { id: 5, name: "旅行", manual: true, fromFolder: false },
     ]);
-    expect(takeListSnapshot({ query: "" })?.items[1]?.tags).toEqual([
+    expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[1]?.tags).toEqual([
       { id: 9, name: "観光", manual: true, fromFolder: false },
     ]);
   });

@@ -13,6 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video, VideoPage } from "../api/client";
 import { FakeEventSource, installFakeEventSource } from "../api/fakeEventSource";
+import { videoItem } from "../api/libraryItems";
 import { clearListSnapshot } from "../api/listSnapshot";
 import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
@@ -552,7 +553,7 @@ describe("LibraryPage", () => {
     finishRefetch?.();
     saveListSnapshot(
       { query: "" },
-      { items: [video(1)], total: 1, hasMore: false, scrollY: 0 },
+      { items: [videoItem(video(1))], total: 1, hasMore: false, scrollY: 0 },
     );
     expect(takeListSnapshot({ query: "" })).toBeDefined();
   });
@@ -930,7 +931,7 @@ describe("LibraryPage", () => {
       const { saveListSnapshot } = await import("../api/listSnapshot");
       saveListSnapshot(
         { query: "", sort: "addedDesc", tags: [1] },
-        { items: [video(1)], total: 1, hasMore: false, scrollY: 0 },
+        { items: [videoItem(video(1))], total: 1, hasMore: false, scrollY: 0 },
       );
       // 共有のタグの一覧にはもう id 1 が無い（別のタブで削除された想定）。
       installTagAwareList([], () => ({ items: [video(1)], total: 1 }));
@@ -976,7 +977,7 @@ describe("LibraryPage", () => {
       saveListSnapshot(
         { query: "", sort: "addedDesc" },
         {
-          items: [video(99, { title: "控えの動画" })],
+          items: [videoItem(video(99, { title: "控えの動画" }))],
           total: 1,
           hasMore: false,
           scrollY: 0,

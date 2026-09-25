@@ -20,6 +20,7 @@ import {
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
+import { itemVideos } from "../api/libraryItems";
 import { refreshTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
@@ -196,6 +197,7 @@ export default function LibraryPage() {
     loadMore,
     retryLoadMore,
     reload,
+    staleGroups,
   } = useVideos({ ...criteria, tag: tagIds }, restored);
 
   // 絞り込みはサーバーが一覧の条件として適用する（Plan の Structural Decisions 7）。
@@ -383,9 +385,10 @@ export default function LibraryPage() {
         hasMore,
         scrollY: window.scrollY,
         scanId: knownScanId.current,
+        staleGroups: staleGroups(),
       },
     );
-  }, [criteria, cursor, hasMore, items, tagIds, total]);
+  }, [criteria, cursor, hasMore, items, staleGroups, tagIds, total]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -559,7 +562,9 @@ export default function LibraryPage() {
               {loading ? (
                 <CardSkeleton count={skeletonCount} />
               ) : (
-                items.map((video) => <VideoCard key={video.id} {...rowProps(video)} />)
+                itemVideos(items).map((video) => (
+                  <VideoCard key={video.id} {...rowProps(video)} />
+                ))
               )}
               {loadingMore && <CardSkeleton count={6} />}
             </Grid>
@@ -587,7 +592,7 @@ export default function LibraryPage() {
                 </tr>
               </thead>
               <tbody className="[&>tr:nth-child(odd)]:bg-hover-wash/40">
-                {items.map((video) => (
+                {itemVideos(items).map((video) => (
                   <VideoRow key={video.id} {...rowProps(video)} />
                 ))}
               </tbody>

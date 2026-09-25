@@ -2,12 +2,20 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OwnerAudience } from "../testing/audience";
-import type { ListVideosParams, Video, VideoPage, VideoSort } from "./client";
+import type {
+  LibraryGroup,
+  LibraryItem,
+  ListVideosParams,
+  Video,
+  VideoPage,
+  VideoSort,
+} from "./client";
 import {
   emitServerEvent,
   FakeEventSource,
   installFakeEventSource,
 } from "./fakeEventSource";
+import { itemVideos, videoItem } from "./libraryItems";
 import type { VideosCriteria } from "./useVideos";
 
 /**
@@ -17,10 +25,11 @@ import type { VideosCriteria } from "./useVideos";
  * **このテストが同じ内容で通ること**が、既存の振る舞いを保った証拠になる。
  */
 
-const { listVideos, listFolderVideos, getVideo } = vi.hoisted(() => ({
+const { listVideos, listFolderVideos, getVideo, getFolderGroup } = vi.hoisted(() => ({
   listVideos: vi.fn(),
   listFolderVideos: vi.fn(),
   getVideo: vi.fn(),
+  getFolderGroup: vi.fn(),
 }));
 
 vi.mock("./client", async (importOriginal) => ({
@@ -28,6 +37,7 @@ vi.mock("./client", async (importOriginal) => ({
   listVideos,
   listFolderVideos,
   getVideo,
+  getFolderGroup,
 }));
 
 const { useVideos } = await import("./useVideos");
@@ -68,6 +78,7 @@ beforeEach(() => {
   calls = [];
   installFakeEventSource();
   getVideo.mockReset();
+  getFolderGroup.mockReset();
   listVideos.mockReset();
   listVideos.mockImplementation((params: ListVideosParams = {}) => {
     let settle: ((value: VideoPage) => void) | null = null;
@@ -115,7 +126,7 @@ describe("useVideos（一覧の読み込み）", () => {
     await act(async () => {
       calls[0]?.resolve(page([1, 2], "cursor-1"));
     });
-    expect(result.current.items.map((video) => video.id)).toEqual([1, 2]);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 2]);
     expect(result.current.hasMore).toBe(true);
 
     act(() => {
@@ -131,7 +142,7 @@ describe("useVideos（一覧の読み込み）", () => {
     await act(async () => {
       calls[1]?.resolve(page([3], "cursor-2"));
     });
-    expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3]);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 2, 3]);
   });
 
   it("続きの応答で total がカード数を下回ったら先頭から読み直す", async () => {
@@ -154,7 +165,7 @@ describe("useVideos（一覧の読み込み）", () => {
     await act(async () => {
       calls[2]?.resolve({ items: [item(2), item(3)], total: 2 });
     });
-    expect(result.current.items.map((video) => video.id)).toEqual([2, 3]);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([2, 3]);
     expect(result.current.total).toBe(2);
   });
 
@@ -173,7 +184,7 @@ describe("useVideos（一覧の読み込み）", () => {
     await act(async () => {
       calls[1]?.resolve({ items: [item(1), item(2)], total: 2 });
     });
-    expect(result.current.items.map((video) => video.id)).toEqual([1, 2]);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 2]);
     expect(result.current.total).toBe(2);
   });
 
@@ -190,7 +201,7 @@ describe("useVideos（一覧の読み込み）", () => {
       calls[1]?.resolve({ items: [item(1), item(2)], total: 1 });
     });
 
-    expect(result.current.items).toEqual([]);
+    expect(itemVideos(result.current.items)).toEqual([]);
     expect(result.current.error).toContain("再試行してください");
     expect(calls).toHaveLength(2);
   });
@@ -213,8 +224,8 @@ describe("useVideos（一覧の読み込み）", () => {
       calls[1]?.resolve(page([3]));
     });
 
-    expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3]);
-    expect(result.current.items[1]?.progress).toEqual(progress);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 2, 3]);
+    expect(itemVideos(result.current.items)[1]?.progress).toEqual(progress);
   });
 
   it("先頭ページの再試行中は前のエラーを消す", async () => {
@@ -251,11 +262,11 @@ describe("useVideos（一覧の読み込み）", () => {
       recordSavedProgress(2, progress, nextProgressSequence());
     });
 
-    expect(result.current.items.find((video) => video.id === 2)?.progress).toEqual(
-      progress,
-    );
     expect(
-      result.current.items.find((video) => video.id === 1)?.progress,
+      itemVideos(result.current.items).find((video) => video.id === 2)?.progress,
+    ).toEqual(progress);
+    expect(
+      itemVideos(result.current.items).find((video) => video.id === 1)?.progress,
     ).toBeUndefined();
   });
 
@@ -301,7 +312,7 @@ describe("useVideos（一覧の読み込み）", () => {
     await waitFor(() => expect(calls).toHaveLength(3));
     expect(calls[2]?.params.cursor).toBe("cursor-1");
     await act(async () => calls[2]?.resolve(page([3])));
-    expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3]);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 2, 3]);
     expect(result.current.error).toBeNull();
   });
 
@@ -332,7 +343,7 @@ describe("useVideos（一覧の読み込み）", () => {
     await act(async () => {
       calls[1]?.resolve(page([7], "cursor-9"));
     });
-    expect(result.current.items.map((video) => video.id)).toEqual([7]);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([7]);
 
     rerender({ sort: "titleAsc", query: "ねこ" });
     await waitFor(() => {
@@ -363,7 +374,7 @@ describe("useVideos（一覧の読み込み）", () => {
       calls[1]?.resolve(page([42], "cursor-1"));
     });
 
-    expect(result.current.items.map((video) => video.id)).toEqual([42]);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([42]);
     // 打ち切りは「利用者が先に進んだ」だけで、失敗ではない。
     expect(result.current.error).toBeNull();
     expect(result.current.hasMore).toBe(true);
@@ -426,7 +437,7 @@ describe("useVideos（条件と重複）", () => {
       await act(async () => calls[1]?.resolve(page([9])));
       // 打ち切られた要求の応答が後から届いても一覧を上書きしない。
       await act(async () => calls[0]?.resolve(page([1, 2, 3])));
-      expect(result.current.items.map((video) => video.id)).toEqual([9]);
+      expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([9]);
       expect(result.current.error).toBeNull();
     },
   );
@@ -456,7 +467,9 @@ describe("useVideos（条件と重複）", () => {
     await waitFor(() => expect(calls).toHaveLength(2));
     await act(async () => calls[1]?.resolve(page([3, 4, 2, 5, 5])));
 
-    expect(result.current.items.map((video) => video.id)).toEqual([1, 2, 3, 4, 5]);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([
+      1, 2, 3, 4, 5,
+    ]);
   });
 });
 
@@ -466,7 +479,7 @@ describe("useVideos の準備の反映", () => {
       wrapper: OwnerAudience,
     });
     await act(async () => calls[0]?.resolve(page([1, 2], "next")));
-    expect(result.current.items).toHaveLength(2);
+    expect(itemVideos(result.current.items)).toHaveLength(2);
 
     getVideo.mockResolvedValue({
       ...item(2),
@@ -475,14 +488,16 @@ describe("useVideos の準備の反映", () => {
       durationMs: 5000,
     });
     await emitServerEvent("video", { id: 2 });
-    await waitFor(() => expect(result.current.items[1]?.previewState).toBe("done"));
+    await waitFor(() =>
+      expect(itemVideos(result.current.items)[1]?.previewState).toBe("done"),
+    );
 
     expect(getVideo).toHaveBeenCalledTimes(1);
     expect(getVideo.mock.calls[0]?.[0]).toBe(2);
     // 一覧は読み直さず、読み込んだページと続きの位置を保つ。
     expect(listVideos).toHaveBeenCalledTimes(1);
     expect(result.current.cursor).toBe("next");
-    expect(result.current.items[1]).toMatchObject({
+    expect(itemVideos(result.current.items)[1]).toMatchObject({
       durationMs: 5000,
       // 題名は一覧側の値を残す（フォルダ画面はそのフォルダの所在の題名を出す）。
       title: "動画 2",
@@ -516,11 +531,11 @@ describe("useVideos の準備の反映", () => {
     await act(async () =>
       calls[1]?.resolve({ items: [{ ...item(2), previewState: "done" }], total: 1 }),
     );
-    expect(result.current.items[0]?.previewState).toBe("done");
+    expect(itemVideos(result.current.items)[0]?.previewState).toBe("done");
 
     // 遅れて届いた古い取り直し（準備中）は新しい一覧に重ねない。
     await act(async () => resolveOld({ ...item(2), previewState: "pending" }));
-    expect(result.current.items[0]?.previewState).toBe("done");
+    expect(itemVideos(result.current.items)[0]?.previewState).toBe("done");
   });
 
   it("条件を変えた後に古い要求が 404 で失敗しても、新しい一覧を見つからない扱いにしない", async () => {
@@ -547,7 +562,7 @@ describe("useVideos の準備の反映", () => {
 
     rerender({ criteria: { sort: "addedDesc", query: "新", scope: "subtree" } });
     await waitFor(() =>
-      expect(result.current.items.map((video) => video.id)).toEqual([5]),
+      expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([5]),
     );
 
     const { RequestFailed } = await import("./client");
@@ -556,7 +571,7 @@ describe("useVideos の準備の反映", () => {
     );
     expect(result.current.notFound).toBe(false);
     expect(result.current.error).toBeNull();
-    expect(result.current.items.map((video) => video.id)).toEqual([5]);
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([5]);
   });
 
   it("一覧に無い動画の知らせでは取りに行かない", async () => {
@@ -582,7 +597,9 @@ describe("useVideos の準備の反映", () => {
 
     await emitServerEvent("open");
 
-    await waitFor(() => expect(result.current.items[1]?.previewState).toBe("done"));
+    await waitFor(() =>
+      expect(itemVideos(result.current.items)[1]?.previewState).toBe("done"),
+    );
     expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([2]);
   });
 
@@ -611,7 +628,7 @@ describe("useVideos の準備の反映", () => {
     await emitServerEvent("open");
 
     await waitFor(() =>
-      expect(result.current.items.map((video) => video.id)).toEqual([1]),
+      expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1]),
     );
     expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([1, 2]);
   });
@@ -629,7 +646,9 @@ describe("useVideos の準備の反映", () => {
     // 応答は知らせより古い内容（準備中）を持っている。
     await act(async () => calls[0]?.resolve(page([1, 2])));
 
-    await waitFor(() => expect(result.current.items[1]?.previewState).toBe("done"));
+    await waitFor(() =>
+      expect(itemVideos(result.current.items)[1]?.previewState).toBe("done"),
+    );
     expect(getVideo.mock.calls.map(([id]) => id as number)).toEqual([2]);
   });
 
@@ -652,7 +671,7 @@ describe("useVideos の準備の反映", () => {
     await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
     await waitFor(() =>
       expect(
-        result.current.items
+        itemVideos(result.current.items)
           .filter((video) => video.id === 2)
           .every((video) => video.previewState === "done"),
       ).toBe(true),
@@ -670,7 +689,7 @@ describe("useVideos の準備の反映", () => {
     await emitServerEvent("video", { id: 2 });
 
     await waitFor(() =>
-      expect(result.current.items.map((video) => video.id)).toEqual([1]),
+      expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1]),
     );
     expect(result.current.total).toBe(99);
   });
@@ -710,10 +729,12 @@ describe("useVideos の準備の反映", () => {
         nextVideoTagsSequence(),
       );
     });
-    expect(result.current.items.find((video) => video.id === 2)?.tags).toEqual([
-      { id: 5, name: "旅行", manual: true, fromFolder: false },
-    ]);
-    expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([]);
+    expect(
+      itemVideos(result.current.items).find((video) => video.id === 2)?.tags,
+    ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]);
+    expect(
+      itemVideos(result.current.items).find((video) => video.id === 1)?.tags,
+    ).toEqual([]);
 
     act(() => {
       recordAppliedVideoTags(
@@ -723,7 +744,9 @@ describe("useVideos の準備の反映", () => {
         nextVideoTagsSequence(),
       );
     });
-    expect(result.current.items.find((video) => video.id === 2)?.tags).toEqual([]);
+    expect(
+      itemVideos(result.current.items).find((video) => video.id === 2)?.tags,
+    ).toEqual([]);
   });
 
   // Devin の指摘3: ページの取得中に届いた付け外しは、まだ読み込んでいない
@@ -752,15 +775,15 @@ describe("useVideos の準備の反映", () => {
       );
     });
     // まだ一覧に無いので、この時点では何も変わらない。
-    expect(result.current.items.some((video) => video.id === 3)).toBe(false);
+    expect(itemVideos(result.current.items).some((video) => video.id === 3)).toBe(false);
 
     // 続きの応答は、その付け外しより古い（タグの付いていない）内容を持つ。
     await act(async () => calls[1]?.resolve(page([3])));
 
     await waitFor(() =>
-      expect(result.current.items.find((video) => video.id === 3)?.tags).toEqual([
-        { id: 5, name: "旅行", manual: true, fromFolder: false },
-      ]),
+      expect(
+        itemVideos(result.current.items).find((video) => video.id === 3)?.tags,
+      ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]),
     );
   });
 
@@ -785,16 +808,16 @@ describe("useVideos の準備の反映", () => {
       );
     });
     // 動画1は表示中なので、その場で反映される（従来どおり）。
-    expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([
-      { id: 5, name: "旅行", manual: true, fromFolder: false },
-    ]);
+    expect(
+      itemVideos(result.current.items).find((video) => video.id === 1)?.tags,
+    ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]);
 
     await act(async () => calls[1]?.resolve(page([3])));
 
     await waitFor(() =>
-      expect(result.current.items.find((video) => video.id === 3)?.tags).toEqual([
-        { id: 5, name: "旅行", manual: true, fromFolder: false },
-      ]),
+      expect(
+        itemVideos(result.current.items).find((video) => video.id === 3)?.tags,
+      ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]),
     );
   });
 
@@ -824,11 +847,15 @@ describe("useVideos の準備の反映", () => {
         nextVideoTagsSequence(),
       );
     });
-    expect(result.current.items.some((video) => video.id === 121)).toBe(false);
+    expect(itemVideos(result.current.items).some((video) => video.id === 121)).toBe(
+      false,
+    );
 
     // ページ2が届く（動画121を含まない）。
     await act(async () => calls[1]?.resolve(page([2], "next-3")));
-    expect(result.current.items.some((video) => video.id === 121)).toBe(false);
+    expect(itemVideos(result.current.items).some((video) => video.id === 121)).toBe(
+      false,
+    );
 
     // ページ3の取得が始まり、動画121を含む（付け外し前の、古いタグの
     // ままの）内容で届く。
@@ -837,9 +864,9 @@ describe("useVideos の準備の反映", () => {
     await act(async () => calls[2]?.resolve(page([121])));
 
     await waitFor(() =>
-      expect(result.current.items.find((video) => video.id === 121)?.tags).toEqual([
-        { id: 5, name: "旅行", manual: true, fromFolder: false },
-      ]),
+      expect(
+        itemVideos(result.current.items).find((video) => video.id === 121)?.tags,
+      ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]),
     );
   });
 
@@ -861,13 +888,17 @@ describe("useVideos の準備の反映", () => {
     act(() => {
       recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "remove", second);
     });
-    expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([]);
+    expect(
+      itemVideos(result.current.items).find((video) => video.id === 1)?.tags,
+    ).toEqual([]);
 
     // 1番目に送った「付ける」の応答が遅れて届いても、2番目の結果を上書きしない。
     act(() => {
       recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "add", first);
     });
-    expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([]);
+    expect(
+      itemVideos(result.current.items).find((video) => video.id === 1)?.tags,
+    ).toEqual([]);
   });
 });
 
@@ -902,7 +933,7 @@ describe("useVideos の公開の反映", () => {
     await act(async () => {
       await updateVideoVisibility([1, 3], true);
     });
-    expect(result.current.items.map((video) => video.public)).toEqual([
+    expect(itemVideos(result.current.items).map((video) => video.public)).toEqual([
       true,
       false,
       true,
@@ -913,7 +944,7 @@ describe("useVideos の公開の反映", () => {
     await act(async () => {
       await updateVideoVisibility([3], false);
     });
-    expect(result.current.items.map((video) => video.public)).toEqual([
+    expect(itemVideos(result.current.items).map((video) => video.public)).toEqual([
       true,
       false,
       false,
@@ -941,7 +972,7 @@ describe("useVideos の公開の反映", () => {
     await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
     expect(getVideo.mock.calls.map(([id]) => id as number).sort()).toEqual([1, 3]);
     await waitFor(() =>
-      expect(result.current.items.map((video) => video.public)).toEqual([
+      expect(itemVideos(result.current.items).map((video) => video.public)).toEqual([
         true,
         false,
         false,
@@ -978,7 +1009,7 @@ describe("useVideos の公開の反映", () => {
     });
     await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
     await waitFor(() =>
-      expect(result.current.items.map((video) => video.public)).toEqual([
+      expect(itemVideos(result.current.items).map((video) => video.public)).toEqual([
         true,
         false,
         false,
@@ -986,7 +1017,12 @@ describe("useVideos の公開の反映", () => {
     );
 
     // 動画 3 の公開状態はまだ確かでないので、控えを取ると戻ったときに古い状態が復元される。
-    const snapshot = { items: [item(3)], total: 1, hasMore: false, scrollY: 0 };
+    const snapshot = {
+      items: [videoItem(item(3))],
+      total: 1,
+      hasMore: false,
+      scrollY: 0,
+    };
     saveListSnapshot({ query: "" }, snapshot);
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
 
@@ -995,7 +1031,7 @@ describe("useVideos の公開の反映", () => {
       await updateVideoVisibility([3], true);
     });
     await waitFor(() =>
-      expect(result.current.items.map((video) => video.public)).toEqual([
+      expect(itemVideos(result.current.items).map((video) => video.public)).toEqual([
         true,
         false,
         true,
@@ -1046,16 +1082,21 @@ describe("useVideos の公開の反映", () => {
     // 切り替える前に読んだ public: false が届き、続く取り直しは失敗する。
     await act(async () => answerFirst?.(item(3)));
     await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(result.current.items[2]?.public).toBe(false));
+    await waitFor(() => expect(itemVideos(result.current.items)[2]?.public).toBe(false));
 
     // 動画 3 の公開状態はまだ確かでないので、控えを取らせない。
-    const snapshot = { items: [item(3)], total: 1, hasMore: false, scrollY: 0 };
+    const snapshot = {
+      items: [videoItem(item(3))],
+      total: 1,
+      hasMore: false,
+      scrollY: 0,
+    };
     saveListSnapshot({ query: "" }, snapshot);
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
 
     // 知らせの後に始めた取り直しが成功すれば確かになる。
     await emitServerEvent("video", { id: 3 });
-    await waitFor(() => expect(result.current.items[2]?.public).toBe(true));
+    await waitFor(() => expect(itemVideos(result.current.items)[2]?.public).toBe(true));
     await waitFor(() => {
       saveListSnapshot({ query: "" }, snapshot);
       expect(takeListSnapshot({ query: "" })).toBeDefined();
@@ -1092,10 +1133,15 @@ describe("useVideos の公開の反映", () => {
     // 切り替える前に読んだ public: false のページが届く。
     await act(async () => calls[1]?.resolve(page([3])));
     await waitFor(() => expect(getVideo).toHaveBeenCalledWith(3, expect.anything()));
-    await waitFor(() => expect(result.current.items).toHaveLength(3));
-    expect(result.current.items[2]?.public).toBe(false);
+    await waitFor(() => expect(itemVideos(result.current.items)).toHaveLength(3));
+    expect(itemVideos(result.current.items)[2]?.public).toBe(false);
 
-    const snapshot = { items: [item(3)], total: 1, hasMore: false, scrollY: 0 };
+    const snapshot = {
+      items: [videoItem(item(3))],
+      total: 1,
+      hasMore: false,
+      scrollY: 0,
+    };
     saveListSnapshot({ query: "" }, snapshot);
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
     clearListSnapshot();
@@ -1125,7 +1171,12 @@ describe("useVideos の公開の反映", () => {
       await updateVideoVisibility([3], true);
     });
     await waitFor(() => expect(getVideo).toHaveBeenCalledWith(3, expect.anything()));
-    const snapshot = { items: [item(3)], total: 1, hasMore: false, scrollY: 0 };
+    const snapshot = {
+      items: [videoItem(item(3))],
+      total: 1,
+      hasMore: false,
+      scrollY: 0,
+    };
     saveListSnapshot({ query: "" }, snapshot);
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
 
@@ -1134,7 +1185,7 @@ describe("useVideos の公開の反映", () => {
     await act(async () => {
       await updateVideoVisibility([3], true);
     });
-    expect(result.current.items[2]?.public).toBe(true);
+    expect(itemVideos(result.current.items)[2]?.public).toBe(true);
     await waitFor(() => {
       saveListSnapshot({ query: "" }, snapshot);
       expect(takeListSnapshot({ query: "" })).toBeDefined();
@@ -1162,7 +1213,9 @@ describe("useVideos の公開の反映", () => {
     await act(async () => calls[1]?.resolve(page([3])));
 
     await waitFor(() =>
-      expect(result.current.items.find((video) => video.id === 3)?.public).toBe(true),
+      expect(
+        itemVideos(result.current.items).find((video) => video.id === 3)?.public,
+      ).toBe(true),
     );
     vi.unstubAllGlobals();
   });
@@ -1188,9 +1241,9 @@ describe("useVideos の公開の反映", () => {
       calls[1]?.resolve(page(Array.from({ length: 60 }, (_, index) => index + 1))),
     );
 
-    await waitFor(() => expect(result.current.items).toHaveLength(61));
+    await waitFor(() => expect(itemVideos(result.current.items)).toHaveLength(61));
     expect(
-      result.current.items
+      itemVideos(result.current.items)
         .filter((video) => video.id <= 60)
         .every((video) => video.public),
     ).toBe(true);
@@ -1216,11 +1269,295 @@ describe("useVideos の公開の反映", () => {
     await act(async () => {
       await updateVideoVisibility([701], true);
     });
-    expect(result.current.items[0]?.public).toBe(true);
+    expect(itemVideos(result.current.items)[0]?.public).toBe(true);
 
     // 切り替える前に読んだ内容が遅れて届く。
     await act(async () => answer?.({ ...item(701), title: "新しい題名" }));
-    expect(result.current.items[0]?.public).toBe(true);
+    expect(itemVideos(result.current.items)[0]?.public).toBe(true);
     vi.unstubAllGlobals();
+  });
+});
+
+// specs/017-folder-groups/plan.md の Structural Decisions 10・13、ui-design.md
+// 「Refresh and removal」: グループの項目はメンバーの変化で1件取り直し、404 なら外す。
+// 今の一覧の経路はグループを返さないので、控えからの復元でグループの項目を入れる。
+describe("useVideos のグループの項目", () => {
+  /** group はフォルダ A/B の、動画 10・11・12 をメンバーに持つグループを作る。 */
+  function group(overrides: Partial<LibraryGroup> = {}): LibraryGroup {
+    return {
+      folder: { rootId: 3, path: "A/B" },
+      name: "B",
+      videoCount: 3,
+      watchedCount: 0,
+      watchState: "unwatched",
+      sizeBytes: 3072,
+      addedAt: "2026-09-13T00:00:00Z",
+      cover: ready(10),
+      openVideoId: 10,
+      videoIds: [10, 11, 12],
+      tags: [],
+      ...overrides,
+    };
+  }
+
+  /** ready は準備の済んだ動画である（復元したときに1件ずつ取り直さない）。 */
+  function ready(id: number): Video {
+    return { ...item(id), previewState: "done" };
+  }
+
+  /** restoredWithGroup は動画 1、グループ、動画 2 の順の控えを作る。 */
+  function restoredWithGroup(staleGroups?: { rootId: number; path: string }[]) {
+    const items: LibraryItem[] = [
+      videoItem(ready(1)),
+      { kind: "group", group: group() },
+      videoItem(ready(2)),
+    ];
+    return { items, total: 40, cursor: "next", hasMore: true, staleGroups };
+  }
+
+  function groups(items: readonly LibraryItem[]): LibraryGroup[] {
+    return items.flatMap((entry) => (entry.kind === "group" ? [entry.group] : []));
+  }
+
+  /** deferredGroup は応答を後から決められる getFolderGroup の1回分である。 */
+  function deferredGroup() {
+    let settle: (value: LibraryGroup) => void = () => undefined;
+    let fail: (reason: unknown) => void = () => undefined;
+    getFolderGroup.mockImplementationOnce(
+      () =>
+        new Promise<LibraryGroup>((resolve, reject) => {
+          settle = resolve;
+          fail = reject;
+        }),
+    );
+    return {
+      resolve: (value: LibraryGroup) => settle(value),
+      reject: (reason: unknown) => fail(reason),
+    };
+  }
+
+  it("メンバーの再生位置が保存されたら、そのグループを取り直して差し替え、取り直しの間は変えない", async () => {
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+      { wrapper: OwnerAudience },
+    );
+    const before = groups(result.current.items)[0];
+    const pending = deferredGroup();
+
+    act(() => {
+      recordSavedProgress(
+        11,
+        { positionMs: 1000, completed: false, updatedAt: "2026-09-23T00:00:00Z" },
+        nextProgressSequence(),
+      );
+    });
+
+    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+    expect(getFolderGroup.mock.calls[0]?.[0]).toEqual({ rootId: 3, path: "A/B" });
+    // 取り直しの間、項目は変えない（骨組みにもしない）。
+    expect(groups(result.current.items)[0]).toBe(before);
+
+    await act(async () => {
+      pending.resolve(group({ watchState: "inProgress", openVideoId: 11 }));
+    });
+    expect(result.current.items.map((entry) => entry.kind)).toEqual([
+      "video",
+      "group",
+      "video",
+    ]);
+    expect(groups(result.current.items)[0]).toMatchObject({
+      watchState: "inProgress",
+      openVideoId: 11,
+    });
+    // 一覧は読み直さず、読み込んだページと続きの位置を保つ。
+    expect(listVideos).not.toHaveBeenCalled();
+    expect(result.current.cursor).toBe("next");
+    expect(result.current.total).toBe(40);
+  });
+
+  it("メンバーのタグの付け外しで、そのグループを取り直す", async () => {
+    const { nextVideoTagsSequence, recordAppliedVideoTags } =
+      await import("./videoTagsEvents");
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+      { wrapper: OwnerAudience },
+    );
+    const tag = { id: 5, name: "旅行", manual: true, fromFolder: false };
+    getFolderGroup.mockResolvedValueOnce(group({ tags: [tag] }));
+
+    act(() => {
+      recordAppliedVideoTags(
+        [12],
+        { id: 5, name: "旅行" },
+        "add",
+        nextVideoTagsSequence(),
+      );
+    });
+
+    await waitFor(() => expect(groups(result.current.items)[0]?.tags).toEqual([tag]));
+    expect(getFolderGroup).toHaveBeenCalledTimes(1);
+  });
+
+  it("メンバーの video イベントで、そのグループを取り直す", async () => {
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+      { wrapper: OwnerAudience },
+    );
+    getFolderGroup.mockResolvedValueOnce(group({ durationMs: 9000 }));
+
+    await emitServerEvent("video", { id: 10 });
+
+    await waitFor(() => expect(groups(result.current.items)[0]?.durationMs).toBe(9000));
+    expect(getFolderGroup).toHaveBeenCalledTimes(1);
+    // メンバーは動画の項目ではないので、動画1件の取り直しはしない。
+    expect(getVideo).not.toHaveBeenCalled();
+  });
+
+  it("メンバーでない動画の変化では取りに行かない", async () => {
+    const { nextVideoTagsSequence, recordAppliedVideoTags } =
+      await import("./videoTagsEvents");
+    renderHook(() => useVideos({ sort: "addedDesc" }, restoredWithGroup()), {
+      wrapper: OwnerAudience,
+    });
+
+    act(() => {
+      recordSavedProgress(
+        1,
+        { positionMs: 1000, completed: false, updatedAt: "2026-09-23T00:00:00Z" },
+        nextProgressSequence(),
+      );
+      recordAppliedVideoTags(
+        [2],
+        { id: 5, name: "旅行" },
+        "add",
+        nextVideoTagsSequence(),
+      );
+    });
+    await emitServerEvent("video", { id: 99 });
+
+    expect(getFolderGroup).not.toHaveBeenCalled();
+  });
+
+  it("取り直しが 404 なら、その項目を一覧から外し、total は次に読むまで変えない", async () => {
+    const { RequestFailed } = await import("./client");
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+      { wrapper: OwnerAudience },
+    );
+    getFolderGroup.mockRejectedValueOnce(
+      new RequestFailed(404, "not_found", "見つかりません"),
+    );
+
+    await emitServerEvent("video", { id: 11 });
+
+    await waitFor(() => expect(groups(result.current.items)).toHaveLength(0));
+    expect(itemVideos(result.current.items).map((video) => video.id)).toEqual([1, 2]);
+    expect(result.current.total).toBe(40);
+    expect(result.current.error).toBeNull();
+  });
+
+  it("取り直しが一時的に失敗したら、項目をそのまま残す", async () => {
+    const { RequestFailed } = await import("./client");
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+      { wrapper: OwnerAudience },
+    );
+    getFolderGroup.mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"));
+
+    await emitServerEvent("video", { id: 11 });
+
+    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+    expect(groups(result.current.items)).toEqual([group()]);
+  });
+
+  it("控えの後にメンバーが変わったグループは、戻ったときに取り直す", async () => {
+    getFolderGroup.mockResolvedValueOnce(group({ watchedCount: 1 }));
+    const { result } = renderHook(
+      () =>
+        useVideos(
+          { sort: "addedDesc" },
+          restoredWithGroup([
+            { rootId: 3, path: "A/B" },
+            // 一覧に無いグループは取りに行かない。
+            { rootId: 3, path: "gone" },
+          ]),
+        ),
+      { wrapper: OwnerAudience },
+    );
+
+    await waitFor(() => expect(groups(result.current.items)[0]?.watchedCount).toBe(1));
+    expect(getFolderGroup).toHaveBeenCalledTimes(1);
+    expect(getFolderGroup.mock.calls[0]?.[0]).toEqual({ rootId: 3, path: "A/B" });
+    expect(listVideos).not.toHaveBeenCalled();
+  });
+
+  it("取り直しが済むまでは、控えに残す取り直しの印としてグループを返す", async () => {
+    const pending = deferredGroup();
+    const { result } = renderHook(
+      () =>
+        useVideos({ sort: "addedDesc" }, restoredWithGroup([{ rootId: 3, path: "A/B" }])),
+      { wrapper: OwnerAudience },
+    );
+    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+
+    // 取り直しの途中で動画を開いても、次の控えから戻ったときに取り直せる。
+    expect(result.current.staleGroups()).toEqual([{ rootId: 3, path: "A/B" }]);
+
+    await act(async () => {
+      pending.resolve(group({ watchedCount: 1 }));
+    });
+    expect(result.current.staleGroups()).toEqual([]);
+  });
+
+  it("取り直しが一時的に失敗したグループは、控えに残す印として返し続ける", async () => {
+    const { RequestFailed } = await import("./client");
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+      { wrapper: OwnerAudience },
+    );
+    expect(result.current.staleGroups()).toEqual([]);
+    getFolderGroup.mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"));
+
+    await emitServerEvent("video", { id: 11 });
+    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+
+    await waitFor(() =>
+      expect(result.current.staleGroups()).toEqual([{ rootId: 3, path: "A/B" }]),
+    );
+  });
+
+  it("取り直しが 404 で外れたグループは、印として返さない", async () => {
+    const { RequestFailed } = await import("./client");
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+      { wrapper: OwnerAudience },
+    );
+    getFolderGroup.mockRejectedValueOnce(
+      new RequestFailed(404, "not_found", "見つかりません"),
+    );
+
+    await emitServerEvent("video", { id: 11 });
+
+    await waitFor(() => expect(groups(result.current.items)).toHaveLength(0));
+    expect(result.current.staleGroups()).toEqual([]);
+  });
+
+  it("条件を変えて読み直したら、前の一覧のグループの取り直しの応答を重ねない", async () => {
+    const { result, rerender } = renderHook(
+      ({ sort }: { sort: VideoSort }) => useVideos({ sort }, restoredWithGroup()),
+      { wrapper: OwnerAudience, initialProps: { sort: "addedDesc" } },
+    );
+    const pending = deferredGroup();
+    await emitServerEvent("video", { id: 11 });
+    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+
+    rerender({ sort: "titleAsc" });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([7])));
+    await act(async () => {
+      pending.resolve(group({ name: "古い応答" }));
+    });
+
+    expect(result.current.items).toEqual([videoItem(item(7))]);
   });
 });
