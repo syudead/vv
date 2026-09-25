@@ -382,31 +382,52 @@ describe("FolderPage", () => {
     expect(scrubbed()).toBeNull();
   });
 
-  it("下見の途中でプレビューが1件に減ったら、下見をやめてモザイクに戻す", () => {
-    const two = summary({
-      path: "two",
-      name: "two",
-      videoCount: 2,
-      previews: previews(2),
+  it("1件だけのフォルダでも、マウスを乗せるとサムネイルを大きく映す", () => {
+    const one = summary({
+      path: "one",
+      name: "one",
+      videoCount: 1,
+      previews: previews(1),
     });
-    const { container, rerender } = render(
+    const { container } = render(
       <MemoryRouter>
-        <FolderCard folder={two} showPath={false} />
+        <FolderCard folder={one} showPath={false} />
       </MemoryRouter>,
     );
     const art = container.querySelector<HTMLElement>("[data-folder-art]");
     if (art === null) throw new Error("folder art not found");
     art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
-    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 150 });
+    expect(
+      art.querySelector("[data-folder-scrub]")?.getAttribute("data-folder-scrub"),
+    ).toBe("0");
+  });
+
+  it("下見の位置がプレビューの件数を超えたら、下見をやめる", () => {
+    const four = summary({
+      path: "four",
+      name: "four",
+      videoCount: 4,
+      previews: previews(4),
+    });
+    const { container, rerender } = render(
+      <MemoryRouter>
+        <FolderCard folder={four} showPath={false} />
+      </MemoryRouter>,
+    );
+    const art = container.querySelector<HTMLElement>("[data-folder-art]");
+    if (art === null) throw new Error("folder art not found");
+    art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 190 });
     expect(art.querySelector("[data-folder-scrub]")).not.toBeNull();
 
     rerender(
       <MemoryRouter>
-        <FolderCard folder={{ ...two, previews: previews(1) }} showPath={false} />
+        <FolderCard folder={{ ...four, previews: previews(2) }} showPath={false} />
       </MemoryRouter>,
     );
     expect(art.querySelector("[data-folder-scrub]")).toBeNull();
-    expect(art.querySelectorAll("[data-folder-preview]").length).toBe(1);
+    expect(art.querySelectorAll("[data-folder-preview]").length).toBe(2);
   });
 
   it("特殊な文字を含む名前のフォルダへ、段を1回だけ符号化したリンクを張る", async () => {
