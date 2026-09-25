@@ -154,10 +154,12 @@ Replace the push-and-resolve instruction:
 This is the integration PR. Ignore any conflict with main; the orchestrator
 refreshes the feature branch itself. Do not push to <feature>.
 A finding you verified is not a defect: reply why, and resolve it now.
-A real defect: create a sub-branch from origin/<feature>, commit the fixes
-there, push it, and open a PR to <feature> titled for the review round, with
-Refs #<parent>. Reply on each such thread naming that PR and leave it
-unresolved; resolve it only once the fix it names is merged into <feature>,
-which a later round sees. Return FIXED with the new PR number, or CLEAN when
-no thread needed a fix PR.
+A real defect or a check on the head that did not pass: create a sub-branch
+from origin/<feature>, commit the fixes there, push it, and open a PR to
+<feature> titled for the review round, with Refs #<parent>. Reply on each
+thread it fixes naming that PR and leave it unresolved; resolve it only once
+the fix it names is merged into <feature>, which a later round sees.
+Return FIXED with the new PR number. Return CLEAN only when every check on the
+head passed and no thread needed a fix; a check that did not pass with no
+cause to fix is BLOCKED, as in the feature-PR brief.
 ```
