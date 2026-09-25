@@ -250,7 +250,8 @@ and aborts startup if that fails
 
 Every request crosses an authentication boundary at the outermost layer of
 `internal/httpapi` (`auth.go`) before routing. It sorts each request into one of three
-kinds — anyone (`GET /api/health`, `/api/auth/*`, and `GET`/`HEAD` outside `/api/` for
+kinds — anyone (`GET /api/health`, `GET /api/auth/session`, `POST /api/auth/setup`,
+`POST /api/auth/login`, `POST /api/auth/logout`, and `GET`/`HEAD` outside `/api/` for
 the SPA build), guests too (the video, stream, artifact and folder reads), and
 owner only (everything else, including undefined `/api/*` paths) — by the
 `path.Clean`ed request path, so the classification matches each operation's
