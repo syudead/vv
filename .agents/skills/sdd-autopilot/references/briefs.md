@@ -88,13 +88,16 @@ question the plan does not settle.
 
 ```text
 Autopilot stage worker. Repository: <owner/repo>.
-Stage: integrate   Parent Issue: #<parent>   Integration PR: #<pr>
+Stage: integrate   Parent Issue: #<parent>   Integration PR: #<pr or "none yet">
 Feature branch: <feature>   Feature directory: <dir>
 Procedure: .agents/skills/issue-handoff/references/integrate.md, in one phase.
 Regenerate generated files with `task generate` when resolving conflicts,
-never by hand. In the integration PR body, also list the out-of-scope items
-the merged feature PRs' bodies deferred. Return STATUS: DONE, or BLOCKED when a
-conflict needs a product decision.
+never by hand. Open the integration PR if it does not exist yet. In its body,
+also list the out-of-scope items the merged feature PRs' bodies deferred, and
+keep the remaining risks it already lists. Do not handle its review here; the
+review fixer does.
+Return STATUS: DONE with the integration PR in PR, or BLOCKED when a conflict
+needs a product decision.
 ```
 
 ## Self reviewer
@@ -154,13 +157,17 @@ Replace the push-and-resolve instruction:
 ```text
 This is the integration PR. Ignore any conflict with main; the orchestrator
 refreshes the feature branch itself. Do not push to <feature>.
-A finding you verified is not a defect: reply why, and resolve it now.
-A real defect or a check on the head that did not pass: create a sub-branch
-from origin/<feature>, commit the fixes there, push it, and open a PR to
+Triage every finding first, as the "Review of the integration PR" section of
+.agents/skills/issue-handoff/references/integrate.md says. A finding that is
+not blocking: reply in one line and resolve it now; when it is a real defect,
+add it to the integration PR body's remaining risks instead of fixing it.
+A blocking finding you verified is not a defect: reply why, and resolve it now.
+A real blocking defect or a check on the head that did not pass: create a
+sub-branch from origin/<feature>, commit the fixes there, push it, open a PR to
 <feature> titled for the review round, with Refs #<parent>. Reply on each
 thread it fixes naming that PR and leave it unresolved; resolve it only once
 the fix it names is merged into <feature>, which a later round sees.
 Return FIXED with the new PR number. Return CLEAN only when every check on the
-head passed and no thread needed a fix; a check that did not pass with no
-cause to fix is BLOCKED, as in the feature-PR brief.
+head passed and no blocking thread needed a fix; a check that did not pass
+with no cause to fix is BLOCKED, as in the feature-PR brief.
 ```

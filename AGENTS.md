@@ -44,9 +44,13 @@ file into a handbook.
 - To run a feature unattended up to (not including) the integration merge,
   the maintainer explicitly starts `.agents/skills/sdd-autopilot` with the
   parent Issue. It merges feature-branch PRs itself; never the integration PR.
-- The empty feature-branch push during `plan` is the sole temporary exception
-  to having a review target. The first run after the Plan PR is merged opens the
-  integration PR.
+- The long-lived feature branch is the one exception to giving every pushed
+  branch its own pull request: until `integrate`, its review targets are the
+  stage and implementation PRs into it. `integrate` opens its integration PR
+  once every child is done.
 - Refresh an integration PR by merging the latest `main` into its feature
-  branch and rerunning the required checks. Updating an existing PR branch does
-  not get a separate PR.
+  branch and rerunning the required checks, when it conflicts with `main` or a
+  check fails because of `main`. Updating an existing PR branch does not get a
+  separate PR. On the integration PR, fix only blocking review findings and
+  list the rest for the maintainer
+  ([integrate](.agents/skills/issue-handoff/references/integrate.md#review-of-the-integration-pr)).
