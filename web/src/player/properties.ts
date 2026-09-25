@@ -1,19 +1,14 @@
 import type { Video } from "../api/client";
-import { formatBytes, formatDateTime, formatResolution } from "../lib/format";
+import { formatResolution } from "../lib/format";
 
 /**
- * 題名の下の属性の一列に並べる値（ui-design「Property strip and file location」）。
+ * 題名の下の技術情報の行に並べる値（ui-design「Video facts」）。
  *
- * ラベルは英語の大文字、値は大文字の表記にそろえる。読み取り前・読み取り失敗・音声なしの
- * 書き方もここで決める。
+ * 解像度・コンテナ・映像・音声の順に、大文字の表記で並べる。分からない値は並べない。
+ * 読み取り前・読み取り失敗は、値の代わりにその状態を 1 つだけ返す。
  */
-
-export interface Property {
-  label: string;
-  value: string;
-  /** muted は控えめな色（読み取り中・未再生）、warning は読み取り失敗。 */
-  tone?: "muted" | "warning";
-}
+export type TechnicalSummary =
+  { kind: "values"; values: string[] } | { kind: "pending" } | { kind: "failed" };
 
 const codecNames: Record<string, string> = {
   h264: "H.264",
@@ -39,62 +34,15 @@ export function formatDate(iso: string): string {
   });
 }
 
-const missing = "—";
-
-/**
- * videoProperties は属性の一列の項目を、表示する順に返す。`lastPlayed` が偽なら
- * LAST PLAYED を抜く（ゲストの再生画面。specs/016-single-account-auth/ui-design.md
- * 「Guest degradation」）。
- */
-export function videoProperties(
-  video: Video,
-  { lastPlayed = true }: { lastPlayed?: boolean } = {},
-): Property[] {
-  const technical: Property[] = (() => {
-    if (video.probeState === "failed") {
-      return [{ label: "MEDIA", value: "読み取れませんでした", tone: "warning" }];
-    }
-    if (video.probeState === "pending") {
-      return ["RESOLUTION", "CONTAINER", "VIDEO", "AUDIO"].map((label) => ({
-        label,
-        value: "読み取り中",
-        tone: "muted",
-      }));
-    }
-    const resolution = formatResolution(video);
-    return [
-      { label: "RESOLUTION", value: resolution === "" ? missing : resolution },
-      {
-        label: "CONTAINER",
-        value: video.container === undefined ? missing : video.container.toUpperCase(),
-      },
-      {
-        label: "VIDEO",
-        value: video.videoCodec === undefined ? missing : formatCodec(video.videoCodec),
-      },
-      {
-        label: "AUDIO",
-        value: video.audioCodec === undefined ? missing : formatCodec(video.audioCodec),
-      },
-    ];
-  })();
-
-  const common: Property[] = [
-    ...technical,
-    { label: "SIZE", value: formatBytes(video.sizeBytes) },
-    { label: "ADDED", value: formatDate(video.addedAt) },
-  ];
-  if (!lastPlayed) return common;
-  return [
-    ...common,
-    video.progress === undefined
-      ? { label: "LAST PLAYED", value: missing, tone: "muted" }
-      : { label: "LAST PLAYED", value: formatDateTime(video.progress.updatedAt) },
-  ];
-}
-
-/** splitPath はファイルの場所を、フォルダ部分（区切りを含む）とファイル名に分ける。 */
-export function splitPath(path: string): { folder: string; name: string } {
-  const index = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return { folder: path.slice(0, index + 1), name: path.slice(index + 1) };
+/** technicalSummary は技術情報の行の中身を返す。 */
+export function technicalSummary(video: Video): TechnicalSummary {
+  if (video.probeState === "failed") return { kind: "failed" };
+  if (video.probeState === "pending") return { kind: "pending" };
+  const values = [
+    formatResolution(video),
+    video.container?.toUpperCase(),
+    video.videoCodec === undefined ? undefined : formatCodec(video.videoCodec),
+    video.audioCodec === undefined ? undefined : formatCodec(video.audioCodec),
+  ].filter((value): value is string => value !== undefined && value !== "");
+  return { kind: "values", values };
 }

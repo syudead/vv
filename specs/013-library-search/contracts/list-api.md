@@ -106,7 +106,8 @@ API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文�
 検索語が無いライブラリの一覧では、今の「登録フォルダの下で最初の所在」と同じである。
 検索語があると、当たった所在の題名が出る。
 
-2つの経路の項目に、次の任意の欄を足す。`GET /api/videos/{id}` には入らない。
+2つの経路の項目に、次の任意の欄を足す。`GET /api/videos/{id}` にも、代表の所在のフォルダとして
+入る（再生画面の見出しのパンくず。そのときだけ登録フォルダの表示名 `rootName` も入る）。
 
 ```yaml
 VideoFolder:
@@ -115,6 +116,7 @@ VideoFolder:
   properties:
     rootId: { type: integer, format: int64 }   # 所在を含む登録メディアフォルダ
     path:   { type: string }                    # そこからフォルダまでの `/` 区切りの相対パス。直下は空文字
+    rootName: { type: string }                  # 登録フォルダの表示名。GET /api/videos/{id} だけ
 ```
 
 `Video.folder` は上の所在が置かれたフォルダを指す。フォルダ画面は、開いているフォルダ

@@ -20,6 +20,7 @@
 | `location` | object | 代表の所在。登録フォルダの下に所在が無い動画はそもそも 404 なので、この応答では常に入る |
 | `location.path` | string | 代表の所在の絶対パス。サーバーから見たパスで、コンテナ内ならコンテナ内のパスになる |
 | `location.openable` | boolean | 次のすべてを満たすとき `true`。要求元がループバックであること、`Host` がループバックの名前であること、サーバーが既定アプリを起動できる環境であること（「ファイルを開く」の 403・409 `open_unavailable` と同じ条件） |
+| `folder` | object | 代表の所在が置かれたフォルダ（`rootId`・`path`・`rootName`）。再生画面の見出しのパンくずに使う。`rootName` は登録フォルダの表示名（`FolderSummary.name` と同じ規則）で、この応答にだけ入る。所在がどの登録フォルダにも含まれなければ省く。`folder` 自体は一覧の応答にも入る（013 の list-api.md） |
 | `seekThumbnailState` | `pending` \| `done` \| `failed` | シーク用プレビューの状態。既存の `seekThumbnailUrl` と同じ条件（読み取り済み・長さが正・映像コーデックあり・内容鍵あり）のときだけ入る |
 
 代表の所在の選び方は、既存の `GetVideo` と同じとする。登録フォルダの下にある所在のうち、

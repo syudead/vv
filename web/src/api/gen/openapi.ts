@@ -1096,8 +1096,9 @@ export interface components {
             seekThumbnailState?: "pending" | "done" | "failed";
         };
         /**
-         * @description 一覧に出す所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）の応答に
-         *     だけ入り、GET /api/videos/{id} には入らない
+         * @description 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+         *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+         *     登録フォルダにも含まれなければ省かれる
          */
         VideoFolder: {
             /**
@@ -1107,6 +1108,11 @@ export interface components {
             rootId: number;
             /** @description 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字 */
             path: string;
+            /**
+             * @description 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
+             *     応答にだけ入る
+             */
+            rootName?: string;
         };
         /** @description 代表の所在。GET /api/videos/{id} の応答にだけ入る */
         VideoLocation: {

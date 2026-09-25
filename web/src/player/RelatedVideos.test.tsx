@@ -27,12 +27,7 @@ function item(id: number, overrides: Partial<Video> = {}): Video {
 function renderList(state: RelatedState) {
   return render(
     <MemoryRouter>
-      <RelatedVideos
-        state={state}
-        backTo="/folders/1/a"
-        onRetry={vi.fn()}
-        closeButton={<button type="button">閉じる</button>}
-      />
+      <RelatedVideos state={state} backTo="/folders/1/a" onRetry={vi.fn()} />
     </MemoryRouter>,
   );
 }
@@ -81,11 +76,10 @@ describe("RelatedVideos", () => {
     expect(within(third).queryByRole("progressbar")).toBeNull();
   });
 
-  it("0 件のときは見出しも並びも出さず、× だけを残す", () => {
+  it("0 件のときは見出しも並びも出さない", () => {
     renderList({ kind: "ready", id: 1, related: { items: [] } });
     expect(screen.queryByRole("heading")).toBeNull();
     expect(screen.queryByRole("list")).toBeNull();
-    expect(screen.getByRole("button", { name: "閉じる" })).toBeDefined();
   });
 
   it("読み込み失敗では文言と再試行を出す", () => {

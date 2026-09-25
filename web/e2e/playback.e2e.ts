@@ -577,7 +577,7 @@ test.describe.serial("live MP4 playback", () => {
             .evaluate((element) => (element as HTMLVideoElement).currentTime),
         )
         .toBeGreaterThan(beforeSeek);
-      // 上部バーの「← ライブラリ」は無くなり、閉じる × で戻る。幅ごとに見える × は 1 つ。
+      // 見出しの帯の右端の閉じる × で戻る。× は帯の 1 か所だけにある。
       const back = page.getByRole("button", { name: "閉じる" });
       await back.focus();
       await Promise.all([page.waitForURL("/"), back.press("Enter")]);
@@ -651,7 +651,7 @@ test.describe.serial("live MP4 playback", () => {
     });
 
     // 関連動画のリンクにフォーカスがあっても、画面全体のキー操作が効く。
-    await page.getByRole("link").first().focus();
+    await page.locator("aside").getByRole("link").first().focus();
     await page.keyboard.press("m");
     await expect
       .poll(() =>

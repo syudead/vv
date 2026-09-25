@@ -281,12 +281,12 @@ test.describe.serial("guest", () => {
     await page.goto("/folders");
     await expect(page.locator("[data-folder-path]")).toHaveCount(1);
 
-    // 再生画面: タグ・ファイルの場所・LAST PLAYED・公開の切り替えを出さず、
+    // 再生画面: タグ・ファイルの操作・公開の切り替えを出さず、
     // 再生しても止めても再生位置を送らない。
     await page.goto(`/videos/${String(video("ゲスト公開B").id)}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト公開B");
-    await expect(page.getByText("ADDED")).toBeVisible();
-    await expect(page.getByText("LAST PLAYED")).toHaveCount(0);
+    await expect(page.getByRole("list", { name: "ファイルの情報" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "パスをコピー" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "タグ" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /ファイルを開く/ })).toHaveCount(0);
     await expect(page.getByRole("switch")).toHaveCount(0);
@@ -357,7 +357,7 @@ test.describe.serial("guest", () => {
     const page = await context.newPage();
     await page.goto(`/videos/${String(video("ゲスト非公開C").id)}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト非公開C");
-    await expect(page.getByText("LAST PLAYED")).toBeVisible();
+    await expect(page.getByRole("button", { name: "パスをコピー" })).toBeVisible();
     await startPlayback(page);
 
     // 同じ Cookie の別の接続からログアウトして、サーバー側でだけセッションを消す。
@@ -374,7 +374,7 @@ test.describe.serial("guest", () => {
     // 読み直す。非公開の動画なので、ゲストの画面では「開けません」になる。
     await page.keyboard.press("Space");
     await expect(page.getByText("この動画は開けません")).toBeVisible();
-    await expect(page.getByText("LAST PLAYED")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "パスをコピー" })).toHaveCount(0);
     await context.close();
   });
 
@@ -527,7 +527,7 @@ test.describe.serial("guest", () => {
 
       await page.goto(`/videos/${String(video("ゲスト公開A").id)}`);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト公開A");
-      await expect(page.getByText("ADDED")).toBeVisible();
+      await expect(page.getByRole("list", { name: "ファイルの情報" })).toBeVisible();
       await page.screenshot({
         path: path.join(screenshotDir, `20260925-guest-video-${String(width)}.png`),
         fullPage: true,
