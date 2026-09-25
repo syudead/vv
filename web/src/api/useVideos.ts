@@ -393,6 +393,20 @@ export function useVideos(
   itemsRef.current = items;
   const refreshQueue = useRef(new Set<number>());
   const refreshing = useRef<AbortController | null>(null);
+  // idleWaiters は、取り直しとページの取得がすべて終わるのを待つ者である
+  // （一部にしか反映されなかった切り替えの取り直しの決着。下の購読を参照）。
+  // 一覧を離れたときも解く。
+  const idleWaiters = useRef<(() => void)[]>([]);
+  const notifyIfIdle = useCallback(() => {
+    if (
+      pageLoading.current ||
+      refreshing.current !== null ||
+      refreshQueue.current.size > 0
+    ) {
+      return;
+    }
+    for (const resolve of idleWaiters.current.splice(0)) resolve();
+  }, []);
   const drainRefreshQueue = useCallback(async () => {
     if (refreshing.current !== null) return;
     const controller = new AbortController();
@@ -420,8 +434,9 @@ export function useVideos(
       }
     } finally {
       if (refreshing.current === controller) refreshing.current = null;
+      notifyIfIdle();
     }
-  }, []);
+  }, [notifyIfIdle]);
   const refreshItems = useCallback(
     (ids: Iterable<number>) => {
       for (const id of ids) refreshQueue.current.add(id);
@@ -442,22 +457,33 @@ export function useVideos(
 
   // 切り替えが一部の動画にしか反映されなかったときは、どれが切り替わったか
   // 分からないので、表示中の該当の動画をサーバーから取り直す（更新の知らせと
-  // 同じ扱い。Devin の指摘、PR 292）。
-  useEffect(
-    () =>
-      subscribeVideoVisibilityStale((videoIds) => {
-        const targets = new Set(videoIds);
-        if (pageLoading.current) {
-          for (const id of targets) changedWhileLoading.current.add(id);
-        }
-        refreshItems(
-          itemsRef.current
-            .filter((video) => targets.has(video.id))
-            .map((video) => video.id),
-        );
-      }),
-    [refreshItems],
-  );
+  // 同じ扱い。Devin の指摘、PR 292）。取り直しとページの取得が終わる（または
+  // 一覧を離れる）まで解決しない Promise を返し、その間は一覧の控えを取らせない。
+  // 取り直しの途中で動画を開くと、古い項目が控えられて戻ったときに復元される
+  // （Devin の指摘、PR 338）。
+  useEffect(() => {
+    const waiters = idleWaiters.current;
+    const unsubscribe = subscribeVideoVisibilityStale((videoIds) => {
+      const targets = new Set(videoIds);
+      if (pageLoading.current) {
+        for (const id of targets) changedWhileLoading.current.add(id);
+      }
+      const shown = itemsRef.current
+        .filter((video) => targets.has(video.id))
+        .map((video) => video.id);
+      if (!pageLoading.current && shown.length === 0) return undefined;
+      const settled = new Promise<void>((resolve) => {
+        waiters.push(resolve);
+      });
+      refreshItems(shown);
+      notifyIfIdle();
+      return settled;
+    });
+    return () => {
+      unsubscribe();
+      for (const resolve of waiters.splice(0)) resolve();
+    };
+  }, [notifyIfIdle, refreshItems]);
 
   // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない
   // （specs/016-single-account-auth/ui-design.md「Top bar」）。
@@ -623,12 +649,13 @@ export function useVideos(
           pageLoading.current = false;
           setLoading(false);
           setLoadingMore(false);
+          notifyIfIdle();
         }
       }
     },
     // folderKey と key は folderRef・criteriaRef の中身が変わったことを表す。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [folderKey, key, refreshItems],
+    [folderKey, key, notifyIfIdle, refreshItems],
   );
 
   // seeded は「いま持っている中身が復元で埋まったものか」を覚える。

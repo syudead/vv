@@ -1,6 +1,6 @@
 import { request } from "./client";
 import type { components } from "./gen/openapi";
-import { applyVisibilityToListSnapshot, clearListSnapshot } from "./listSnapshot";
+import { applyVisibilityToListSnapshot, holdListSnapshot } from "./listSnapshot";
 
 // 型は api/openapi.yaml からの生成物を使う
 // （specs/016-single-account-auth/contracts/guest-api.md §4）。
@@ -21,7 +21,7 @@ const listeners = new Set<Listener>();
  * 動画・ライブラリから消えた id は数えない、contracts/guest-api.md §4）。そのときは
  * 手元で切り替え済みにせず、これで知らせて該当の動画を取り直させる（Devin の指摘、PR 292）。
  */
-type StaleListener = (videoIds: readonly number[]) => void;
+type StaleListener = (videoIds: readonly number[]) => Promise<void> | undefined;
 
 const staleListeners = new Set<StaleListener>();
 
@@ -74,7 +74,9 @@ function recordApplied(
  * recordUncertain は一部にしか反映されなかった要求の動画を、切り替え済みとして
  * 記録せずに取り直させる。前の切り替えの結果（latest）はもう確かでないので捨て、
  * 取り直した内容をそのまま表示させる。一覧の控えも、どの動画が切り替わったか
- * 分からないまま復元しないよう捨てる（戻ったときは1ページ目から読む。Devin の指摘、PR 338）。
+ * 分からないまま復元しないよう捨てる（戻ったときは1ページ目から読む）。購読者が
+ * 取り直しの Promise を返したら、それが決着するまで控えを取らせない。取り直しの
+ * 途中で動画を開くと、古い一覧が控えられて戻ったときに復元されるため（Devin の指摘、PR 338）。
  */
 function recordUncertain(videoIds: readonly number[], sequence: number): void {
   const fresh = videoIds.filter((videoId) => {
@@ -84,13 +86,21 @@ function recordUncertain(videoIds: readonly number[], sequence: number): void {
     return true;
   });
   if (fresh.length === 0) return;
-  clearListSnapshot();
-  for (const listener of staleListeners) listener(fresh);
+  const release = holdListSnapshot();
+  for (const listener of staleListeners) {
+    const refetch = listener(fresh);
+    if (refetch === undefined) continue;
+    const releaseOne = holdListSnapshot();
+    void refetch.then(releaseOne, releaseOne);
+  }
+  release();
 }
 
 /**
  * subscribeVideoVisibilityStale は、切り替えが一部の動画にしか反映されず、
- * 該当の動画をサーバーから取り直すべきときに呼ばれる。戻り値で購読をやめる。
+ * 該当の動画をサーバーから取り直すべきときに呼ばれる。一覧の購読者は、表示中の
+ * 項目の取り直しが決着する（または一覧を離れる）と解決する Promise を返す。
+ * それまでは一覧の控えを取らない。戻り値で購読をやめる。
  */
 export function subscribeVideoVisibilityStale(listener: StaleListener): () => void {
   staleListeners.add(listener);

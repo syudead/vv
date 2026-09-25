@@ -518,6 +518,45 @@ describe("LibraryPage", () => {
     expect(screen.getByRole("link", { name: "動画 1" })).toBeDefined();
   });
 
+  it("一部にしか反映されなかった切り替えの取り直し中に動画を開いても、古い一覧を控えない（PR 338）", async () => {
+    const { saveListSnapshot, takeListSnapshot } = await import("../api/listSnapshot");
+    const { updateVideoVisibility } = await import("../api/visibility");
+    const base = fetchMock.getMockImplementation();
+    let finishRefetch: (() => void) | undefined;
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/video-visibility") return Promise.resolve(json({ applied: 1 }));
+      if (url === "/api/videos/1") {
+        // 取り直しを止めておき、その間に動画を開く。
+        return new Promise<Response>((resolve) => {
+          finishRefetch = () => resolve(json(video(1, { public: true })));
+        });
+      }
+      if (url === "/api/videos/2") return Promise.resolve(json(video(2)));
+      return base?.(input, init) ?? Promise.reject(new Error("unexpected"));
+    });
+    renderLibrary();
+    await screen.findByRole("link", { name: "動画 1" });
+
+    await act(async () => {
+      await updateVideoVisibility([1, 2], true);
+    });
+    await waitFor(() => expect(finishRefetch).toBeDefined());
+    fireEvent.click(screen.getByRole("link", { name: "動画 1" }));
+    await screen.findByText("再生画面");
+
+    // 取り直す前の public: false の一覧を控えると、戻ったときに復元されてしまう。
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+
+    // 一覧を離れれば取り直しは打ち切られ、控えを止める印も解ける。
+    finishRefetch?.();
+    saveListSnapshot(
+      { query: "" },
+      { items: [video(1)], total: 1, hasMore: false, scrollY: 0 },
+    );
+    expect(takeListSnapshot({ query: "" })).toBeDefined();
+  });
+
   it("選択すると選択バーが出て Esc で消える", async () => {
     const user = userEvent.setup();
     renderLibrary();
