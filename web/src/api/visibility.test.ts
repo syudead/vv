@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "./client";
+import { itemVideos, videoItem } from "./libraryItems";
 import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 import {
   subscribeVideoVisibility,
@@ -78,14 +79,16 @@ describe("updateVideoVisibility", () => {
     fetchMock.mockResolvedValue(json({ code: "internal", message: "失敗" }, 500));
     saveListSnapshot(
       { query: "" },
-      { items: [item(1)], total: 1, hasMore: false, scrollY: 0 },
+      { items: [videoItem(item(1))], total: 1, hasMore: false, scrollY: 0 },
     );
     const listener = vi.fn();
     const unsubscribe = subscribeVideoVisibility(listener);
 
     await expect(updateVideoVisibility([1], true)).rejects.toBeDefined();
     expect(listener).not.toHaveBeenCalled();
-    expect(takeListSnapshot({ query: "" })?.items[0]?.public).toBe(false);
+    expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[0]?.public).toBe(
+      false,
+    );
     unsubscribe();
   });
 
@@ -93,13 +96,19 @@ describe("updateVideoVisibility", () => {
     fetchMock.mockResolvedValue(json({ applied: 1 }));
     saveListSnapshot(
       { query: "" },
-      { items: [item(1), item(2)], total: 2, hasMore: false, scrollY: 0 },
+      {
+        items: [videoItem(item(1)), videoItem(item(2))],
+        total: 2,
+        hasMore: false,
+        scrollY: 0,
+      },
     );
     await updateVideoVisibility([2], true);
-    expect(takeListSnapshot({ query: "" })?.items.map((video) => video.public)).toEqual([
-      false,
-      true,
-    ]);
+    expect(
+      itemVideos(takeListSnapshot({ query: "" })?.items ?? []).map(
+        (video) => video.public,
+      ),
+    ).toEqual([false, true]);
   });
 
   it("前の切り替えが決着するまで次を送らず、押した順にサーバーへ届ける", async () => {
@@ -149,7 +158,12 @@ describe("一部にしか反映されなかった切り替え", () => {
     fetchMock.mockResolvedValue(json({ applied: 1 }));
     saveListSnapshot(
       { query: "" },
-      { items: [item(21), item(22)], total: 2, hasMore: false, scrollY: 0 },
+      {
+        items: [videoItem(item(21)), videoItem(item(22))],
+        total: 2,
+        hasMore: false,
+        scrollY: 0,
+      },
     );
     const listener = vi.fn();
     const stale = vi.fn();

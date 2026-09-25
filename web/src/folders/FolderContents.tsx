@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { FolderSummary, Video } from "../api/client";
+import { itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
 import { Grid } from "../videoList/Grid";
@@ -93,7 +94,7 @@ export default function FolderContents({
                     {videos.loading ? (
                       <CardSkeleton count={6} />
                     ) : (
-                      videos.items.map((video) => (
+                      itemVideos(videos.items).map((video) => (
                         <VideoCard
                           key={video.id}
                           video={video}

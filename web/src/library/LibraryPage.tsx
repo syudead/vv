@@ -20,6 +20,7 @@ import {
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
+import { itemVideos } from "../api/libraryItems";
 import { refreshTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
@@ -559,7 +560,9 @@ export default function LibraryPage() {
               {loading ? (
                 <CardSkeleton count={skeletonCount} />
               ) : (
-                items.map((video) => <VideoCard key={video.id} {...rowProps(video)} />)
+                itemVideos(items).map((video) => (
+                  <VideoCard key={video.id} {...rowProps(video)} />
+                ))
               )}
               {loadingMore && <CardSkeleton count={6} />}
             </Grid>
@@ -587,7 +590,7 @@ export default function LibraryPage() {
                 </tr>
               </thead>
               <tbody className="[&>tr:nth-child(odd)]:bg-hover-wash/40">
-                {items.map((video) => (
+                {itemVideos(items).map((video) => (
                   <VideoRow key={video.id} {...rowProps(video)} />
                 ))}
               </tbody>

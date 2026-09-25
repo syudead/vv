@@ -6,6 +6,7 @@ import {
   saveListSnapshot,
   type takeListSnapshot,
 } from "../api/listSnapshot";
+import { itemVideos } from "../api/libraryItems";
 import { useVideos } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
@@ -165,7 +166,7 @@ export default function RootSearchResults({
                 {waiting ? (
                   <CardSkeleton count={12} />
                 ) : (
-                  items.map((video) => (
+                  itemVideos(items).map((video) => (
                     <VideoCard
                       key={video.id}
                       video={video}
