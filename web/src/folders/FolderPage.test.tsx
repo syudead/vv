@@ -16,6 +16,7 @@ import { clearListSnapshot } from "../api/listSnapshot";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
+import FolderCard from "./FolderCard";
 import FolderPage from "./FolderPage";
 
 function summary(extra: Partial<FolderSummary>): FolderSummary {
@@ -379,6 +380,33 @@ describe("FolderPage", () => {
 
     fireEvent.pointerLeave(art);
     expect(scrubbed()).toBeNull();
+  });
+
+  it("下見の途中でプレビューが1件に減ったら、下見をやめてモザイクに戻す", () => {
+    const two = summary({
+      path: "two",
+      name: "two",
+      videoCount: 2,
+      previews: previews(2),
+    });
+    const { container, rerender } = render(
+      <MemoryRouter>
+        <FolderCard folder={two} showPath={false} />
+      </MemoryRouter>,
+    );
+    const art = container.querySelector<HTMLElement>("[data-folder-art]");
+    if (art === null) throw new Error("folder art not found");
+    art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+    expect(art.querySelector("[data-folder-scrub]")).not.toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <FolderCard folder={{ ...two, previews: previews(1) }} showPath={false} />
+      </MemoryRouter>,
+    );
+    expect(art.querySelector("[data-folder-scrub]")).toBeNull();
+    expect(art.querySelectorAll("[data-folder-preview]").length).toBe(1);
   });
 
   it("特殊な文字を含む名前のフォルダへ、段を1回だけ符号化したリンクを張る", async () => {

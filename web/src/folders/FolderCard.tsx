@@ -29,7 +29,8 @@ function FolderArt({ previews }: { previews: Preview[] }) {
   const cells = mosaicCells[shown.length] ?? [];
   const [scrub, setScrub] = useState<number | null>(null);
   const scrubbable = shown.length > 1;
-  const focused = scrub === null ? undefined : shown[scrub];
+  // 取り込み後の再取得で件数が1件以下に減っても、残った位置で下見を出し続けない。
+  const focused = !scrubbable || scrub === null ? undefined : shown[scrub];
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
     if (!scrubbable || event.pointerType !== "mouse") return;
