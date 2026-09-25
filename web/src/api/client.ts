@@ -95,6 +95,18 @@ export function reloadForViewerChange(): void {
 }
 
 /**
+ * reloadIfNoLongerOwner は、所有者として描いている間に確かめた見る人の状態が所有者で
+ * なくなっていたら、ページを1度だけ読み直して true を返す。応答の本文や状態を
+ * 読めない経路（`/api/events` の EventSource、`video` 要素）が、状態の確認
+ * （GET /api/auth/session）の答えを渡すために使う。
+ */
+export function reloadIfNoLongerOwner(state: string): boolean {
+  if (renderedAudience !== "owner" || state === "owner") return false;
+  reloadForViewerChange();
+  return true;
+}
+
+/**
  * viewerChanged は、所有者として描いている間に、この応答が「もう所有者ではない」
  * ことを示すか（401 か X-VV-Audience: guest）を返す。
  */
