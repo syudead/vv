@@ -238,6 +238,8 @@ func run() error {
 		Assets:       web.Dist(),
 		Logger:       logger,
 		Auth:         newHTTPAuth(authStore),
+		// 信頼するプロキシからの要求でだけ転送ヘッダーを読む。
+		TrustedProxies: cfg.TrustedProxies,
 	})
 
 	// 変化の知らせの接続は終わりが無いので、停止の猶予待ちより先に閉じる。

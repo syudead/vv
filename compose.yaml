@@ -15,6 +15,9 @@ services:
       MDM_ADDR: ":8080"
       MDM_DATA_DIR: "/data"
       MDM_LOG_LEVEL: "${MDM_LOG_LEVEL:-info}"
+      # HTTPS の逆プロキシの後ろで公開するときに、そのプロキシのアドレスを書く
+      # （docs/how-to/running-vv.md「Network exposure」）。既定は空で転送ヘッダーを読まない。
+      MDM_TRUSTED_PROXIES: "${MDM_TRUSTED_PROXIES:-}"
     volumes:
       # 設定画面で選べるコンテナ内の候補。ホスト側は差し替えられる。
       - "${MDM_MEDIA_HOST_DIR:-./media}:/media:ro"
