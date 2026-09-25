@@ -136,15 +136,29 @@ var accessMux = func() *http.ServeMux {
 
 // classifyRequest は要求の扱いと、それが /api/ 以下かを返す。判定は path.Clean した
 // 復号済みの経路で行うので、//api/…・/./api/…・/%61pi/…・/api/../api/… も /api/ 以下になる。
+//
+// 実際に振り分ける ServeMux は、エスケープ済みの経路を段に分けてから段ごとに復号する。
+// %2F は区切りにならず、段の中の %2E%2E も畳まれない。エスケープ済みの経路の段が
+// 復号済みの経路の段と食い違う要求は、判定した経路と実際に動く操作がずれ得るので、
+// 「所有者だけ」に倒す（例: /api/videos/x%2F..%2F..%2Fa は復号すると /a だが、
+// ServeMux は GET /api/videos/{id} に振り分ける）。
 func classifyRequest(r *http.Request) (access, bool) {
 	cleaned := path.Clean("/" + r.URL.Path)
+	segmentsAgree := escapedSegmentsMatch(r.URL, cleaned)
 	// Clean は末尾の / を落とすので、/api/ そのものは /api になる。
 	if cleaned != "/api" && !strings.HasPrefix(cleaned, "/api/") {
+		if !segmentsAgree && escapedUnderAPI(r.URL) {
+			// 復号すると /api の外でも、ServeMux は /api/ 以下の操作に振り分け得る。
+			return accessOwner, true
+		}
 		// SPA のビルド成果物は利用者データを含まないので、GET・HEAD だけ誰にでも配る。
 		if r.Method == http.MethodGet || r.Method == http.MethodHead {
 			return accessPublic, false
 		}
 		return accessOwner, false
+	}
+	if !segmentsAgree {
+		return accessOwner, true
 	}
 	probe := &http.Request{Method: r.Method, URL: &url.URL{Path: cleaned}, Host: r.Host}
 	if _, pattern := accessMux.Handler(probe); pattern != "" {
@@ -153,6 +167,31 @@ func classifyRequest(r *http.Request) (access, bool) {
 		}
 	}
 	return accessOwner, true
+}
+
+// escapedSegmentsMatch は、ServeMux が照らすエスケープ済みの経路を path.Clean して段ごとに
+// 復号したものが、復号済みの経路 cleaned と同じ段に分かれるかを返す。段が / を含む
+// （%2F）、. か .. になる（%2E）、または復号できない経路は一致しない。
+func escapedSegmentsMatch(u *url.URL, cleaned string) bool {
+	escaped := path.Clean("/" + u.EscapedPath())
+	segments := strings.Split(strings.TrimPrefix(escaped, "/"), "/")
+	for i, segment := range segments {
+		decoded, err := url.PathUnescape(segment)
+		if err != nil || strings.Contains(decoded, "/") || decoded == "." || decoded == ".." {
+			return false
+		}
+		segments[i] = decoded
+	}
+	return "/"+strings.Join(segments, "/") == cleaned
+}
+
+// escapedUnderAPI は、ServeMux が照らすエスケープ済みの経路の先頭の段が、復号すると
+// api になるかを返す。復号できなければ、狭い側に倒して真を返す。
+func escapedUnderAPI(u *url.URL) bool {
+	escaped := path.Clean("/" + u.EscapedPath())
+	first, _, _ := strings.Cut(strings.TrimPrefix(escaped, "/"), "/")
+	decoded, err := url.PathUnescape(first)
+	return err != nil || decoded == "api"
 }
 
 type audienceKey struct{}
