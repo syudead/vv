@@ -401,19 +401,19 @@ export function useVideos(
     const controller = new AbortController();
     groupRefreshing.current = controller;
     try {
-      for (const [folderKey, folder] of groupQueue.current) {
-        groupQueue.current.delete(folderKey);
+      for (const [groupKey, folder] of groupQueue.current) {
+        groupQueue.current.delete(groupKey);
         try {
           const group = await getFolderGroup(folder, controller.signal);
           // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
           if (controller.signal.aborted) return;
-          dispatch({ type: "refreshGroup", folderKey, group });
+          dispatch({ type: "refreshGroup", folderKey: groupKey, group });
         } catch (failure) {
           if (isAborted(failure) || controller.signal.aborted) return;
           // 今はグループでない（例外で単体に戻った等）か、フォルダが無い。何も伝えずに
           // 外す。一時的な失敗は、その1件だけ諦める（次の変化か読み直しで直る）。
           if (failure instanceof RequestFailed && failure.status === 404) {
-            dispatch({ type: "removeGroup", folderKey });
+            dispatch({ type: "removeGroup", folderKey: groupKey });
           }
         }
       }
