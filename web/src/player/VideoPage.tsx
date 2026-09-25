@@ -361,15 +361,16 @@ export default function VideoPage() {
             // 比率はシークのプレビューも使うので、変数として子孫へ渡す。
             // 広い画面では、題名・タグ・情報の 2 行までが左の列に収まる高さ（帯・上下の余白・
             // 下の情報で 17rem）を上限にし、ふだんは列をスクロールさせない。上限で列より細く
-            // なったときは、題名と左端をそろえるため左に寄せる。
+            // なったときは、題名と左端をそろえるため左に寄せる。背の低い窓でも消えないよう、
+            // 高さの上限は 15rem を下回らせない（はみ出す分は左の列がスクロールする）。
             style={{ "--vv-video-aspect": String(aspect) } as CSSProperties}
-            className="relative isolate mx-auto grid w-full shrink-0 lg:ml-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-12.25rem)*max(var(--vv-video-aspect),16/9))] lg:max-w-[calc((100dvh-17rem)*max(var(--vv-video-aspect),16/9))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
+            className="relative isolate mx-auto grid w-full shrink-0 lg:ml-0 grid-cols-[minmax(0,1fr)] max-w-[calc((100dvh-12.25rem)*max(var(--vv-video-aspect),16/9))] lg:max-w-[calc(max(100dvh-17rem,15rem)*max(var(--vv-video-aspect),16/9))] overflow-hidden bg-navbar lg:rounded-lg [&:fullscreen]:rounded-none"
           >
             {/* 動画の比率（画面の高さまで）は下限。状態表示が収まらない幅では、内容に合わせて伸びる。
                 全画面では入れ物が画面いっぱいになるので、下限は要らない。 */}
             <div
               aria-hidden="true"
-              className="col-start-1 row-start-1 aspect-(--vv-video-aspect) max-h-[calc(100dvh-12.25rem)] lg:max-h-[calc(100dvh-17rem)] [:fullscreen>&]:hidden"
+              className="col-start-1 row-start-1 aspect-(--vv-video-aspect) max-h-[calc(100dvh-12.25rem)] lg:max-h-[max(100dvh-17rem,15rem)] [:fullscreen>&]:hidden"
             />
             <div
               data-overlay-layer=""
