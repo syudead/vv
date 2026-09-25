@@ -66,16 +66,30 @@ ARCHITECTURE.md の区分の段落にこの3つを書き足す。
 
 要求ごとに、見る人は「所有者」（有効なセッションを持つ）か「ゲスト」（持たない）の
 どちらかになる。`internal/domain` に `Audience` として置き、ゼロ値をゲストにする
-（付け忘れたら狭い側に倒れる）。
+（付け忘れたら狭い側に倒れる）。空の `content_key`（まだ内容を読めていない動画）は
+`public_videos` に入れず、ゲストにも見せない。
 
 ゲストに見せる動画は、次の両方を満たすものだけである。
 
-1. `videos.content_key` が `public_videos` にある。
+1. `videos.content_key` が空でなく、`public_videos` にある。
 2. 今の一覧と同じく、登録したメディアフォルダの下に所在がある。
 
-この条件は `internal/store` の一覧の問い合わせの組み立て（`listing.go` の所在の範囲）に
-1か所で足し、動画・所在・フォルダを返す `LibraryStore` の読み出しはすべて
-`Audience` を引数に取る（[plan.md Structural Decisions 11](plan.md#structural-decisions)）。
+この条件は、`Audience` を受け取って所在の条件を返す1つの関数（例:
+`visibleLocationCondition(alias, audience)`）に置く（[plan.md Structural Decisions 11](plan.md#structural-decisions)）。
+所有者では今の「登録フォルダの下」の条件をそのまま返し、ゲストでは 1 を足す。
+今それぞれの場所で条件を組み立てている次の読み出しを、すべてこの関数に通す。
+
+| 読み出し | 今の条件の場所 |
+| --- | --- |
+| `ListVideos`・`ListFolderVideos`・`DirectVideoPaths` | `listing.go` の `locationScope.condition` |
+| `GetVideo` | `videos.go` の `registeredVideoCondition` と `videoColumns` の副問い合わせ |
+| `VideosAddedNear`・`VideosByIDs` | `related.go` |
+| `FolderLocations`・`HasFolderLocations` | `folders.go` |
+
+取り込み・ジョブ・タグの本数（`videos.go`・`jobs.go`・`tags.go`）が使う条件の関数は
+所有者のものとして残し、ゲストの条件を入れない。
+
+動画・所在・フォルダを返す `LibraryStore` の読み出しは、すべて `Audience` を引数に取る。
 フォルダは今どおり所在のパスから導くので、ゲストには公開の動画の所在から導いた
 フォルダだけが現れ、件数も公開の動画だけを数える。
 

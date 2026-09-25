@@ -117,6 +117,11 @@ HTTPS の要求には、同じホストの HTTP でログインした `vv_sessio
   `WWW-Authenticate` は付けない（ブラウザの Basic 認証の窓を出さない）。
 - 「ゲストも」の要求に不正・期限切れの Cookie が付いていたら、401 にせずゲストとして
   処理する。
+- `/api/*` のすべての応答に、その要求をどちらとして処理したかを `X-VV-Audience: owner` か
+  `X-VV-Audience: guest` で付ける。画面は、所有者として描いている間に `guest` の応答を
+  受けたら、401 と同じく1度だけページを読み直す（[plan.md Structural Decisions 14](../plan.md#structural-decisions)）。
+  「ゲストも」の要求は失効しても 401 にならないので、別のタブでのログアウトをこれで
+  次の操作のときに知る（Edge Case「複数タブ」）。
 - どれも `Cache-Control: no-store` で、HTML を返さない（要件 11）。
 - DB の失敗を 401 にしないのは、画面がログイン画面へ送り、そこでも失敗する往復を
   作らないためである。

@@ -14,8 +14,10 @@ HttpOnly Cookie に入れ、SQLite に置いたセッションを要求ごとに
 
 要求は「誰でも」「ゲストも」「所有者だけ」の3つに分け、`internal/httpapi` の一番外側で
 振り分ける。ゲスト（未ログイン）には、動画ごとの公開フラグが付いた動画だけを、同じ画面で
-縮退させて見せる。公開の条件は保存層の一覧の問い合わせに1か所で入れ、ゲストの応答からは
-絶対パス・タグ・再生位置を外す（親 Issue #135）。
+縮退させて見せる。公開の条件は、見る人を受け取る保存層の1つの条件の関数に置いて
+ゲストが読むすべての問い合わせに通し、ゲストの応答からは絶対パス・タグ・再生位置を外す。
+サムネイルなどの生成物は、共有キャッシュにもブラウザのキャッシュにも所有者の応答を
+残さないよう、使うたびにサーバーへ確かめさせる（親 Issue #135）。
 
 HTTP の差分は [contracts/auth-api.md](contracts/auth-api.md)、ゲストへの応答と公開フラグの API は
 [contracts/guest-api.md](contracts/guest-api.md)、ホストのコマンドは
@@ -177,8 +179,9 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
     - 却下: 画面で `next` を確かめる案。オープンリダイレクトの判定が TypeScript と Go の
       2か所に分かれる。
 11. **動画・所在・フォルダを返す `LibraryStore` の読み出しは、すべて `domain.Audience` を
-    引数に取り、ゲストでは公開の条件を一覧の問い合わせの組み立てに1か所で足す**
-    （[data-model.md §3](data-model.md#3-見る人と公開の動画の条件)）。引数にするので、
+    引数に取る。所在の条件は `Audience` を受け取る1つの関数に置き、ゲストが読む7つの
+    読み出しをすべてそこに通す**（[data-model.md §3](data-model.md#3-見る人と公開の動画の条件)）。
+    取り込み・ジョブ・タグの本数が使う条件の関数には、ゲストの条件を入れない。引数にするので、
     呼び出し側は1つ残らずどちらで読むかをコンパイル時に決めることになる。`Audience` の
     ゼロ値はゲストにする。
     - 却下: 問い合わせの構造体に「非公開も含める」欄を足す案。書き忘れても黙って
@@ -200,12 +203,27 @@ Phase 1 のあとも判定は同じで、正当化の要る違反は無い。
     - 却下: そのまま受け付ける案。結果の件数や順序から、非公開の再生位置とタグの名前が
       漏れる（要件 18）。
 14. **見る人が変わるとき（ログイン・ログアウト・失効）は、画面をページごと読み直す。**
-    `web/src/api/client.ts` が所有者として送った要求に 401 を受けたら、1度だけ今の URL を
-    読み直す。読み直した画面はゲートで状態を取り直し、ゲストとして描く（所有者だけの画面は
-    ログイン画面へ送る）。
+    サーバーは `/api/*` のすべての応答に、どちらとして処理したかを `X-VV-Audience` で付ける
+    （[contracts/auth-api.md §5](contracts/auth-api.md#5-未認証とその他の応答)）。
+    `web/src/api/client.ts` は、所有者として描いている間に 401 か `X-VV-Audience: guest` を
+    受けたら、1度だけ今の URL を読み直す。読み直した画面はゲートで状態を取り直し、ゲストとして
+    描く（所有者だけの画面はログイン画面へ送る）。「ゲストも」の要求は失効しても 401 に
+    ならないので、ヘッダーが無いと別のタブでのログアウトを知れない。
     - 却下: 読み直さずに画面の状態だけを切り替える案。一覧の控え（`listSnapshot`）や
       タグの控えなど、所有者として読んだ非公開のデータがメモリに残り、ゲストの画面に
       出うる（UI 品質「一瞬表示してから切り替える挙動は認めない」）。
+    - 却下: 画面が「所有者のつもり」を要求ヘッダーで送り、失効していたら「ゲストも」の
+      要求も 401 にする案。同じ要求が送り手の申告で 200 と 401 に分かれ、境界の分類が
+      2通りになる。
+15. **サムネイル・シークプレビュー・ホバープレビューの成功の応答は、所有者にもゲストにも
+    `private, no-cache` と `ETag` で返す**（[contracts/guest-api.md §5](contracts/guest-api.md#5-生成物のキャッシュ)）。
+    - 却下: 今の `public, max-age=31536000, immutable` のまま置く案。逆プロキシの共有
+      キャッシュが所有者の応答を覚えてゲストに返し、ログアウト後もブラウザのキャッシュから
+      1年間出続ける。
+    - 却下: `private, max-age=31536000, immutable` にする案。共有キャッシュは防げるが、
+      ログアウト後と非公開にした後にブラウザのキャッシュから出続ける（受け入れ条件 12）。
+    - 却下: 所有者は `no-cache`、ゲストだけ長く覚えさせる案。非公開にした後もゲストの
+      ブラウザから出続ける（Edge Case「非公開にした場合」）。
 
 ## Project Structure
 
@@ -302,8 +320,8 @@ PHC 文字列は誤りになる。戻り先は `/videos/1?t=2` を保ち、`//ev
 
 ### 公開フラグを保存し、ゲストには公開の動画だけを返す問い合わせにする
 
-**Scope**: マイグレーション `00010_public_videos.sql` と、公開・非公開の一括の切り替えを足す
-（[data-model.md §1・§5](data-model.md#5-書き換えの規則)）。動画・所在・フォルダを返す
+**Scope**: マイグレーション `00010_public_videos.sql`（[data-model.md §1](data-model.md#1-マイグレーション)）と、
+公開・非公開の一括の切り替え（[data-model.md §5](data-model.md#5-書き換えの規則)）を足す。動画・所在・フォルダを返す
 `LibraryStore` の読み出しに `domain.Audience` を足し、ゲストでは公開の条件を一覧の
 問い合わせの組み立てに入れる（Structural Decisions 11、[data-model.md §3](data-model.md#3-見る人と公開の動画の条件)）。
 ゲストの検索はタグの名前に照合しない。`internal/app` の関連動画の組み立ても `Audience` を
@@ -317,7 +335,8 @@ PHC 文字列は誤りになる。戻り先は `/videos/1?t=2` を保ち、`//ev
 件数・フォルダの動画・関連動画・1本の読み出しに公開の動画だけが現れ、所有者では全件が
 現れる。非公開の動画だけを含むフォルダはゲストに現れない。ゲストの検索は、タグの名前にだけ
 当たる動画を返さない。公開にした動画は、所在を移しても、内容が同じ別の所在を足しても
-公開のままで、最後の所在が消えるとゲストに現れない。切り替えは、ライブラリに無い id を
+公開のままで、最後の所在が消えるとゲストに現れない。空の `content_key` の動画は、
+`public_videos` に空の行があってもゲストに現れない。切り替えは、ライブラリに無い id を
 数えず、全部に反映するか何も反映しない。既存の一覧・フォルダ・関連動画のテストが通る。
 `task check` が通る。
 
@@ -332,9 +351,10 @@ PHC 文字列は誤りになる。戻り先は `/videos/1?t=2` を保ち、`//ev
 
 **Acceptance**: `cmd/mdm` のテストで次が通る。設定済みのデータディレクトリに対して
 2つのコマンドを実行すると、ユーザー名とパスワードが変わり、既存のセッションが無効になる。
+変えた後は、旧ユーザー名と旧パスワードの照合が失敗し、新しいものだけが通る。
 標準入力から渡したパスワードが照合に通り、DB と標準出力・標準エラーに平文が現れない。
-未設定のデータディレクトリ、空のユーザー名、未知の下位コマンドは終了コード 2 で何も
-書かない。`ffmpeg` を `PATH` から外しても動く。`task check` が通る。
+未設定のデータディレクトリ、空のユーザー名、未知の下位コマンドは終了コード 2 で
+`account`・`sessions` に何も書かない。`ffmpeg` を `PATH` から外しても動く。`task check` が通る。
 
 ### 初回設定・ログインの照合・試行制限・セッションの発行と失効をアプリケーション層に置く
 
@@ -355,40 +375,37 @@ PHC 文字列は誤りになる。戻り先は `/videos/1?t=2` を保ち、`//ev
 32バイトで、保存されるのはそのハッシュだけである。有効なセッションの Cookie を持ったまま
 ログインすると、古いセッションは消える。`task check` が通る。
 
-### 要求を3つの扱いに振り分け、初回設定・ログインの API とゲストの応答を公開する
+### 要求を3つの扱いに振り分け、初回設定・ログイン・ログアウトの API を公開する
 
-**Scope**: `api/openapi.yaml` に [contracts/auth-api.md](contracts/auth-api.md) の §1〜§7 と
-[contracts/guest-api.md](contracts/guest-api.md) の §1〜§3 の差分を足し、`task generate` で生成する。
-`internal/httpapi/auth.go` に3つの扱いの境界（Structural Decisions 1）、初回設定・ログイン・
-ログアウト・状態の経路、Cookie、処理中の応答の打ち切りのうちセッションの分（Structural
-Decisions 5）、認証の記録（auth-api §9）を置く。ゲストの応答から絶対パス・タグ・再生位置を
-外し、ゲストの条件を 400 にする。この単位では接続元のアドレスと `r.TLS` をそのまま送信元と
-HTTPS の判定に使う。`/api/auth/setup`・`/api/auth/login` を `requiresJSONBody` に足す。境界は
-`path.Clean` した経路で判定する。`cmd/mdm` で組み立て、起動時に期限切れのセッションを消し、
-未設定なら警告を記録する。e2e は Playwright のセットアップが `POST /api/auth/setup` で
-アカウントを作り、そのログインした状態を既存の全テストに渡す。e2e の失敗の試行は、同じ
-送信元の試行制限に掛からない回数に収める。`ARCHITECTURE.md` に認証の境界を書き、
-「Not built yet」から認証を外す。
+**Scope**: `api/openapi.yaml` に [contracts/auth-api.md](contracts/auth-api.md) の §1〜§7 の差分を
+足し、`task generate` で生成する。`internal/httpapi/auth.go` に3つの扱いの境界（Structural
+Decisions 1）、`X-VV-Audience`、初回設定・ログイン・ログアウト・状態の経路、Cookie、処理中の
+応答の打ち切りのうちセッションの分（Structural Decisions 5）、認証の記録（auth-api §9）を置く。
+この単位では「ゲストも」の要求もゲストには 401 を返し（ゲストの応答はまだ公開しない）、
+接続元のアドレスと `r.TLS` をそのまま送信元と HTTPS の判定に使う。`/api/auth/setup`・
+`/api/auth/login` を `requiresJSONBody` に足す。境界は `path.Clean` した経路で判定する。
+`cmd/mdm` で組み立て、起動時に期限切れのセッションを消し、未設定なら警告を記録する。
+e2e は Playwright のプロジェクトを順に走らせる。最初のプロジェクトが未設定のサーバーでの
+確かめ（どの URL も初回設定を求めること）を行い、次のセットアップが `POST /api/auth/setup`
+でアカウントを作る（409 ならログインに切り替える。CI の再実行に備える）。そのログインした
+状態を既存の全テストに渡す。e2e の失敗の試行は、同じ送信元の試行制限に掛からない回数に
+収める。`ARCHITECTURE.md` に認証の境界を書き、「Not built yet」から認証を外す。
 
-**Dependencies**: 公開フラグを保存し、ゲストには公開の動画だけを返す問い合わせにする。
-初回設定・ログインの照合・試行制限・セッションの発行と失効をアプリケーション層に置く
+**Dependencies**: 初回設定・ログインの照合・試行制限・セッションの発行と失効をアプリケーション層に置く
 
 **Acceptance**: `internal/httpapi` のテストで次が通る。
-- 未設定では、`/api/auth/session` が `setupRequired` を返し、それ以外の保護対象は
-  「ゲストも」の経路を含めて 401 になる。初回設定が 200 と Cookie を返し、その Cookie で
-  所有者になる。2回目の初回設定は 409 `account_already_configured` になる。
-- Cookie なしで、スキャン・設定・タグ・再生位置・`/api/events`・`/api/videos/ids`・読み取りの
-  やり直し・既定アプリで開く・定義の無い `/api/x` を要求すると 401 `unauthenticated` の JSON が
-  返る。`//api/videos`・`/./api/scans`・`/%61pi/scans`・`/api/../api/scans` も同じになる。
-- Cookie なしの一覧・フォルダ・関連動画には公開の動画だけが出て、`location`・`progress`・
-  `rootPath` が無く `tags` が空である。非公開の動画の詳細・Range 再生・サムネイル・シーク
-  プレビュー・ホバープレビュー・ライブ変換は、存在しない動画と同じ 404 になる。ゲストの
-  `watch=watched`・`sort=playedAsc`・`tag` は 400 になる。
-- ログインした Cookie ではすべてが既存どおり返る。ログアウト後、パスワードの再設定後、
-  ユーザー名の変更後は、同じ Cookie が所有者として扱われず、処理中の `/api/events` と Range
-  応答が終わる。HTTPS で `__Host-vv_session` と `vv_session` を両方付けてログアウトすると、
-  どちらのセッションも所有者として扱われない。同じデータディレクトリで組み立て直した
-  サーバーでも、期限内の Cookie は通る。90 日を過ぎたセッションは所有者として扱われない。
+- 未設定では、`/api/auth/session` が `setupRequired` を返し、それ以外の保護対象は 401 になる。
+  初回設定が 200 と Cookie を返し、その Cookie で所有者になる。2回目の初回設定は 409
+  `account_already_configured` になる。
+- Cookie なしでは「ゲストも」を含む保護対象がすべて 401 `unauthenticated` の JSON を返し、
+  応答に `X-VV-Audience: guest` が付く。`//api/videos`・`/./api/scans`・`/%61pi/scans`・
+  `/api/../api/scans`・定義の無い `/api/x` も同じになる。
+- ログインした Cookie ではすべてが既存どおり返り、`X-VV-Audience: owner` が付く。
+  ログアウト後、パスワードの再設定後、ユーザー名の変更後は、同じ Cookie が所有者として
+  扱われず、処理中の `/api/events` と Range 応答が終わる。HTTPS で `__Host-vv_session` と
+  `vv_session` を両方付けてログアウトすると、どちらのセッションも所有者として扱われない。
+  同じデータディレクトリで組み立て直したサーバーでも、期限内の Cookie は通る。90 日を
+  過ぎたセッションは所有者として扱われない。
 - セッションの確認で DB が失敗すると 500 になり、保護対象を返さない。
 - 3通りの誤りのログインが同じ状態・本文になる。同じ送信元の6回目の誤りは 429
   `login_throttled` と `Retry-After` になる。HTTP のログインの `Set-Cookie` は `vv_session` に
@@ -399,15 +416,46 @@ HTTPS の判定に使う。`/api/auth/setup`・`/api/auth/login` を `requiresJS
 
 既存の e2e を含む `task check` と `task test-e2e` が通る。
 
+### ゲストの要求に公開の動画だけを返し、絶対パス・タグ・再生位置を外す
+
+**Scope**: 「ゲストも」の要求を、有効なセッションが無ければゲストとして処理する。
+[contracts/guest-api.md](contracts/guest-api.md) の §1〜§3 と §5 を `openapi.yaml` に足して
+生成し、`internal/httpapi` のハンドラが要求の `Audience` で `LibraryStore` と `Catalog` を読む
+ようにする。ゲストの応答から `location`・`progress`・`probeError`・`rootPath` を外して `tags` を
+空にし、ゲストの条件を 400 にし、公開の動画を含まない登録フォルダを省く・404 にする。
+サムネイル・シークプレビュー・ホバープレビューのキャッシュの指示を変える（Structural
+Decisions 15）。`FolderSummary.rootPath` を任意にしたことに合わせて、`web/src/folders/` の
+型の扱いを直す（ゲストの表示名は `name` から作る。画面の出し分けはまだしない）。
+
+**Dependencies**: 要求を3つの扱いに振り分け、初回設定・ログイン・ログアウトの API を公開する。
+公開フラグを保存し、ゲストには公開の動画だけを返す問い合わせにする
+
+**Acceptance**: `internal/httpapi` のテストで次が通る。
+- Cookie なしの一覧・`total`・フォルダ・関連動画には公開の動画だけが出て、`location`・
+  `progress`・`probeError`・`rootPath` が無く `tags` が空である。公開の動画を含まない登録
+  フォルダは `listRootFolders` に出ず、その `rootId` の `getFolder`・`listFolderVideos` は
+  存在しない `rootId` と同じ 404 になる。
+- Cookie なしで公開の動画の詳細・Range 再生（`206`）・サムネイル・シークプレビュー・
+  ホバープレビュー・ライブ変換が返る。非公開の動画のそれらは、存在しない動画と同じ
+  状態・本文・ヘッダーの 404 になる。
+- ゲストの `watch=watched`・`sort=playedAsc`・`tag` は 400 になる。
+- サムネイル・シークプレビュー・ホバープレビューの成功の応答は、所有者にもゲストにも
+  `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が一致すれば 304 になる。
+  ログアウトした Cookie で非公開の動画のサムネイルを `If-None-Match` 付きで求めると 404 になる。
+- アカウントが未設定なら、「ゲストも」の要求も 401 になる。
+
+`task check` と `task test-e2e` が通る。
+
 ### 公開・非公開を切り替える API を足し、非公開にした動画のゲストへの配信を止める
 
 **Scope**: `PUT /api/video-visibility` と `Video.public` を `openapi.yaml` に足して生成し
 （[contracts/guest-api.md §4](contracts/guest-api.md#4-公開フラグの切り替え)）、`internal/httpapi/visibility.go` に
 置く。非公開にしたとき、ゲストとして処理中のその動画の応答を台帳から打ち切る（Structural
-Decisions 5、[contracts/guest-api.md §5](contracts/guest-api.md#5-公開をやめたときの配信)）。
-`web/src/api/client.ts` に切り替えの関数を足す（画面はまだ使わない）。
+Decisions 5、[contracts/guest-api.md §6](contracts/guest-api.md#6-公開をやめたときの配信)）。
+`web/src/api/client.ts` に切り替えの関数を足し、必須になった `Video.public` に合わせて Web の
+テストの `Video` の用意を直す（画面はまだ使わない）。
 
-**Dependencies**: 要求を3つの扱いに振り分け、初回設定・ログインの API とゲストの応答を公開する
+**Dependencies**: ゲストの要求に公開の動画だけを返し、絶対パス・タグ・再生位置を外す
 
 **Acceptance**: `internal/httpapi` のテストで次が通る。所有者が `PUT /api/video-visibility` で
 公開にすると、Cookie なしの一覧と詳細にその動画が現れ、`Video.public` が `true` になる。
@@ -426,7 +474,7 @@ HTTPS の逆プロキシで公開するための要件（HTTPS 必須、`Host` �
 書き忘れると、全員がプロキシのアドレスとして試行制限を共有し、HTTPS の `Origin` の
 `POST` が 403 になることも書く。`compose.yaml` で環境変数を渡せるようにする。
 
-**Dependencies**: 要求を3つの扱いに振り分け、初回設定・ログインの API とゲストの応答を公開する
+**Dependencies**: 要求を3つの扱いに振り分け、初回設定・ログイン・ログアウトの API を公開する
 
 **Acceptance**: `internal/httpapi` と `cmd/mdm` のテストで次が通る。信頼しない接続元が
 付けた `X-Forwarded-For` と `X-Forwarded-Proto: https` は無視され、試行制限は接続元の
@@ -441,19 +489,24 @@ HTTPS の逆プロキシで公開するための要件（HTTPS 必須、`Host` �
 **Scope**: `web/src/api/auth.ts` に状態の確認・初回設定・ログイン・ログアウトを置く。
 `web/src/auth/` に、確認が済むまで何も描かないゲート、見る人の文脈、初回設定画面（ユーザー名・
 パスワード・確認用パスワード、HTTP の警告）、ログイン画面（HTTP の警告、失敗と試行制限の
-表示）を置く。`App.tsx` で `/setup`・`/login` をシェルとプロバイダの外に出し、他の経路を
-ゲートの内側に入れる（Structural Decisions 2）。ゲストでは所有者だけの画面（設定・タグ）を
-`/login?next=…` へ送る。初回設定とログインの成功後、ログアウトの後は、返った `redirectTo` か
+表示）を置く。HTTP の警告は `location.protocol` が `https:` でないときに出す
+（`isSecureContext` は `http://127.0.0.1` でも真になるので使わない）。`App.tsx` で `/setup`・
+`/login` をシェルとプロバイダの外に出し、他の経路をゲートの内側に入れる（Structural
+Decisions 2）。ゲストでは所有者だけの画面（設定・タグ）を `/login?next=…` へ送る。設定済みの
+サーバーで `/setup` を開いたら `/` へ送る。初回設定が 409 を受けたら、設定済みであることを
+伝えてログイン画面へ進める。初回設定とログインの成功後、ログアウトの後は、返った `redirectTo` か
 今の URL へページごと遷移する（Structural Decisions 14）。シェルにログインとログアウトの
 入口を置く。配置・文言・見た目は `ui-design.md` による。
 
-**Dependencies**: 要求を3つの扱いに振り分け、初回設定・ログインの API とゲストの応答を公開する。
+**Dependencies**: ゲストの要求に公開の動画だけを返し、絶対パス・タグ・再生位置を外す。
 design 工程の `ui-design.md` が feature ブランチに入っていること
 
 **Acceptance**: Vitest で、確認中は何も描かれず、`setupRequired` でどの経路も初回設定画面に、
 `guest` で `/settings`・`/tags` が `/login?next=…` に、`owner` で `/login` からサーバーが返した
 `redirectTo` へ移ることが確かめられる。確認が 500 や通信の失敗のときは、シェルを描かず、
 遷移せず、確認を自動で繰り返さない。確認用パスワードが一致しなければ初回設定を送らない。
+`owner`・`guest` で `/setup` を開くと `/` へ移り、初回設定の 409 で設定済みの旨とログインへの
+入口が出る。`location.protocol` が `https:` なら両画面に警告が出ない。
 `web/e2e/auth.e2e.ts` で次が確かめられる。
 - 未設定のサーバーでどの URL も初回設定画面になり、設定するとログイン済みの一覧になる。
 - ゲストで `/settings` を開くとログイン画面になり、ログインすると `/settings` に戻る。
@@ -474,21 +527,26 @@ design 工程の `ui-design.md` が feature ブランチに入っていること
 再生位置の表示と保存・視聴状態の絞り込み・再生日時の並べ替えを出さない。
 `ScanProvider` などの所有者だけのプロバイダを付けず、`/api/events` を開かない。URL に残った
 ゲストで使えない条件は既定に丸めてから要求する（[contracts/guest-api.md §3](contracts/guest-api.md#3-ゲストが使えない条件)）。
-`client.ts` は所有者として送った要求の 401 で、1度だけページを読み直す（Structural Decisions 14）。
+`client.ts` は、所有者として描いている間に 401 か `X-VV-Audience: guest` を受けたら、1度だけ
+ページを読み直す（Structural Decisions 14）。
 再生画面は、動画・変換の読み込みの失敗で状態を確かめ、見る人が変わっていれば読み直す。
 `README.md` の「認証が無い」警告を、初回設定と HTTPS の案内に改め、
 `docs/design-docs/tech-stack-selection.md` の認証の行を更新する。省き方と見た目は `ui-design.md` による。
 
-**Dependencies**: 初回設定画面とログイン画面を表示し、見る人に応じて画面を出し分ける
+**Dependencies**: 初回設定画面とログイン画面を表示し、見る人に応じて画面を出し分ける。
+公開・非公開を切り替える API を足し、非公開にした動画のゲストへの配信を止める（e2e で公開の
+動画を用意するため）
 
 **Acceptance**: Vitest で、ゲストの文脈ではシェル・一覧・再生画面に上の操作が描かれず、
-所有者の文脈では描かれることが確かめられる。401 を返す取得が何度あっても読み直しは1回で、
-ゲストでは `/api/events` を開かない。`web/e2e/guest.e2e.ts` で次が確かめられる。
+所有者の文脈では描かれることが確かめられる。401 か `X-VV-Audience: guest` を返す取得が何度
+あっても読み直しは1回で、ゲストでは `/api/events` を開かない。`web/e2e/guest.e2e.ts` で次が確かめられる。
 - 所有者が公開にした動画だけが、ゲストの一覧・検索・フォルダ・関連動画に出て、件数も
   それに合う。非公開の動画だけのフォルダは出ない。
 - ゲストで公開の動画を再生でき、非公開の動画の再生 URL は「見つからない」表示になる。
 - ゲストの画面に、設定・スキャン・タグ・選択・公開の切り替え・再生位置が一度も出ない。
-- 再生中に別のブラウザでログアウトしたセッションの画面は、次の操作でゲストの画面になる。
+- 同じブラウザの2つのタブで、一方でログアウトすると、もう一方は次の一覧の取得で
+  ゲストの画面になり、所有者の一覧の項目も選択も残らない。
+- 再生中にそのセッションがサーバー側で失効すると、次の操作でゲストの画面になる。
 
 `task check` と `task test-e2e` が通る。画面が変わるので、実装 PR に 360・768・1280 px の
 画像と、視覚・操作・支援技術の確認を添える。
