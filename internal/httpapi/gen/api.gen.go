@@ -387,6 +387,9 @@ type FolderListing struct {
 
 // FolderPreview defines model for FolderPreview.
 type FolderPreview struct {
+	// PreviewUrl Video.previewUrl と同じ版付き URL。一覧用プレビューが生成済みで、保存済み asset が配信可能なときだけ入る
+	PreviewUrl *string `json:"previewUrl,omitempty"`
+
 	// ThumbnailUrl Video.thumbnailUrl と同じ版付き URL
 	ThumbnailUrl string `json:"thumbnailUrl"`
 	VideoId      int64  `json:"videoId"`
