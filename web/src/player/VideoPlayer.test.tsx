@@ -30,7 +30,6 @@ const mock = vi.hoisted(() => {
         '<div class="vjs-control-bar"><div class="vjs-progress-control">' +
         '<div class="vjs-progress-holder"></div></div>' +
         '<button class="vjs-play-control"></button>' +
-        '<button class="vjs-skip-backward-10"></button><button class="vjs-skip-forward-10"></button>' +
         '<button class="vjs-mute-control"></button><div class="vjs-playback-rate"></div>' +
         '<button class="vjs-fullscreen-control"></button></div>';
     }
@@ -249,25 +248,23 @@ describe("VideoPlayer", () => {
     expect(player.disposed).toBe(true);
   });
 
-  it("操作バーは速度・10 秒送り・現在時刻/長さを持ち、残り時間を持たない", async () => {
+  it("操作バーは速度・現在時刻/長さを持ち、秒数送りと残り時間を持たない", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
     const options = mock.instances[0]?.options as {
       playbackRates: number[];
       controlBar: {
         children: string[];
-        skipButtons: { forward: number; backward: number };
+        skipButtons?: unknown;
         remainingTimeDisplay: boolean;
       };
     };
     expect(options.playbackRates).toEqual([0.5, 0.75, 1, 1.25, 1.5, 2]);
-    expect(options.controlBar.skipButtons).toEqual({ forward: 10, backward: 10 });
+    expect(options.controlBar.skipButtons).toBeUndefined();
     expect(options.controlBar.remainingTimeDisplay).toBe(false);
     expect(options.controlBar.children).not.toContain("remainingTimeDisplay");
-    expect(options.controlBar.children.slice(0, 7)).toEqual([
+    expect(options.controlBar.children.slice(0, 5)).toEqual([
       "playToggle",
-      "skipBackward",
-      "skipForward",
       "volumePanel",
       "currentTimeDisplay",
       "timeDivider",
@@ -282,9 +279,34 @@ describe("VideoPlayer", () => {
     expect(
       element?.querySelector(".vjs-play-control")?.getAttribute("aria-keyshortcuts"),
     ).toBe("Space");
-    expect(
-      element?.querySelector(".vjs-skip-forward-10")?.getAttribute("aria-keyshortcuts"),
-    ).toBe("ArrowRight");
+  });
+
+  it("操作バーの再生の前に「最初に戻る」「前の動画」、後に「次の動画」を差し込む", async () => {
+    const onPrevious = vi.fn();
+    render(<VideoPlayer {...props()} onPrevious={onPrevious} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    const restart = await screen.findByRole("button", { name: "最初に戻る" });
+    const previous = screen.getByRole("button", { name: "前の動画" });
+    const next = screen.getByRole("button", { name: "次の動画" });
+    const labels = Array.from(
+      player?.element.querySelectorAll(".vjs-control-bar button") ?? [],
+      (button) => button.getAttribute("aria-label") ?? button.className,
+    );
+    expect(labels.slice(0, 4)).toEqual([
+      "最初に戻る",
+      "前の動画",
+      "vjs-play-control",
+      "次の動画",
+    ]);
+    expect(restart.getAttribute("aria-keyshortcuts")).toBe("0");
+
+    player?.currentTime(42);
+    fireEvent.click(restart);
+    expect(player?.time).toBe(0);
+    fireEvent.click(previous);
+    expect(onPrevious).toHaveBeenCalledTimes(1);
+    expect((next as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("変換して再生する動画だけ、操作バーの再生速度の前に「変換して再生中」を出す", async () => {

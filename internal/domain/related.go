@@ -38,6 +38,8 @@ type RelatedOrder struct {
 	IDs []int64
 	// NextID は同じディレクトリで自然順の次の動画。無ければ 0。
 	NextID int64
+	// PrevID は同じディレクトリで自然順の前の動画。無ければ 0。
+	PrevID int64
 }
 
 // RelatedVideos は関連動画の本体を返す順に並べたものである。
@@ -45,6 +47,8 @@ type RelatedVideos struct {
 	Items []Video
 	// NextID は同じディレクトリで自然順の次の動画。無ければ 0。
 	NextID int64
+	// PrevID は同じディレクトリで自然順の前の動画。無ければ 0。
+	PrevID int64
 }
 
 // OrderRelated は関連動画を並べる。
@@ -77,6 +81,9 @@ func OrderRelated(self RelatedSelf, siblings []RelatedSibling, neighbors []Relat
 	order := RelatedOrder{IDs: make([]int64, 0, MaxRelatedVideos)}
 	if len(successors) > 0 {
 		order.NextID = successors[0].id
+	}
+	if len(predecessors) > 0 {
+		order.PrevID = predecessors[len(predecessors)-1].id
 	}
 	for _, entry := range slices.Concat(successors, predecessors) {
 		if len(order.IDs) == MaxRelatedVideos {

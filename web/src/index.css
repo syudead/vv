@@ -26,8 +26,8 @@
 
 /*
  * 操作バーの並び（specs/012-video-detail-ia/ui-design.md「Control bar」）。
- * 再生バーは操作バーの上に置き、バーの中は 再生・10 秒戻る/進む・音量・現在時刻/長さ・
- * 右寄せの空き・変換中の表示・再生速度・PiP・全画面 の順にする。
+ * 再生バーは操作バーの上に置き、バーの中は 最初に戻る・前の動画・再生・次の動画・音量・
+ * 現在時刻/長さ・右寄せの空き・変換中の表示・再生速度・PiP・全画面 の順にする。
  * 操作バーはプレイヤーの上に重ねる層（再生失敗・再生終了）より上に出し、押せるままにする。
  * video.js の CSS は index.css より後に読まれるので、.video-js を挟んで詳細度で勝つ。
  */
@@ -67,6 +67,18 @@
 .vv-video-player .video-js .vjs-custom-control-spacer {
   display: flex;
   flex: auto;
+}
+
+/* 操作バーへ差し込んだボタン（最初に戻る・前後の動画）を video.js のボタンにそろえる。 */
+.vv-video-player .video-js .vv-bar-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vv-video-player .video-js .vv-bar-button:disabled {
+  cursor: default;
+  opacity: 0.4;
 }
 
 /* 読み込み中は video.js の輪ではなく、プレイヤーの上の層の輪を出す。 */

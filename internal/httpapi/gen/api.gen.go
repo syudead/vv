@@ -481,6 +481,9 @@ type RelatedVideos struct {
 
 	// NextId 同じディレクトリで自然順の次の動画。無ければ省く
 	NextId *int64 `json:"nextId,omitempty"`
+
+	// PrevId 同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
+	PrevId *int64 `json:"prevId,omitempty"`
 }
 
 // RenameTagRequest defines model for RenameTagRequest.

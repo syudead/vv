@@ -144,7 +144,7 @@ func (c *Catalog) RelatedVideos(ctx context.Context, video domain.Video) (domain
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}
-	return domain.RelatedVideos{Items: items, NextID: order.NextID}, nil
+	return domain.RelatedVideos{Items: items, NextID: order.NextID, PrevID: order.PrevID}, nil
 }
 
 // RetryProbe は読み取りに失敗した動画を読み取り直す。状態を戻すこととジョブを

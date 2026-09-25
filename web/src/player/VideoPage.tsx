@@ -259,6 +259,18 @@ export default function VideoPage() {
     });
   };
 
+  // 操作バーの前後の動画。再生中（または見終えた後）に移ったときは、移った先でも再生を続ける。
+  const goTo = (targetId: number | undefined) =>
+    targetId === undefined
+      ? undefined
+      : () =>
+          void navigate(`/videos/${String(targetId)}`, {
+            state: { from: backTo, autoplay: status.playing || status.ended },
+          });
+  const neighbors = related.kind === "ready" ? related.related : undefined;
+  const goPrevious = goTo(neighbors?.prevId);
+  const goNext = goTo(neighbors?.nextId);
+
   // --- プレイヤーの上に重ねる層（同時に 1 つだけ） ---
   const playable =
     video !== undefined && video.probeState === "done" && canStartPlayback(video);
@@ -297,16 +309,8 @@ export default function VideoPage() {
       <TouchControls
         playing={status.playing}
         visible={chromeVisible}
-        onBack={() => {
-          controls.seekBy(-10);
-          controls.wake();
-        }}
         onToggle={() => {
           controls.togglePlay();
-          controls.wake();
-        }}
-        onForward={() => {
-          controls.seekBy(10);
           controls.wake();
         }}
       />
@@ -361,6 +365,8 @@ export default function VideoPage() {
                 onControls={setControls}
                 onStatus={onStatus}
                 fullscreenTarget={fullscreenTarget}
+                onPrevious={goPrevious}
+                onNext={goNext}
               />
             )}
           </div>
