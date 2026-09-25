@@ -45,11 +45,11 @@ export interface VideoCardProps {
   location?: { label: string; title: string };
   /**
    * 題名の下に呼び出し側の行を足す口（Plan の Structural Decisions 10）。省くと
-   * 題名の下には何も足さない。ライブラリの格子表示はここへタグの行を渡す
-   * （specs/014-video-tags/ui-design.md「Tag row」）。タグの行はリンクの**外**、
+   * 題名の下には何も足さない。ライブラリの格子表示とフォルダ画面はここへタグの行を
+   * 渡す（specs/014-video-tags/ui-design.md「Tag row」）。タグの行はリンクの**外**、
    * 同じ `article` の中に置かれる（Structural Decisions 10、キーボードの入れ子を避ける）。
    *
-   * `ReactNode` ではなく関数で受け取るのは、呼び出し側（LibraryPage）が安定した
+   * `ReactNode` ではなく関数で受け取るのは、呼び出し側が安定した
    * 参照を渡せるようにするためである。`memo(VideoCard)` は props が前回と同じ
    * 参照なら再描画しない。ReactNode を直に渡すと、呼び出し側の描画のたびに
    * 新しい要素になり、無関係な状態変化でも全カードが作り直されてしまう（N4）。

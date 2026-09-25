@@ -113,6 +113,14 @@ function LocationProbe() {
   );
 }
 
+/** LibraryProbe はライブラリの代わりで、移ってきた URL を見せる。 */
+function LibraryProbe() {
+  const location = useLocation();
+  return (
+    <span data-testid="library-location">{`${location.pathname}${location.search}`}</span>
+  );
+}
+
 function renderFolders(initial: string) {
   return render(
     <MemoryRouter initialEntries={[initial]}>
@@ -130,6 +138,7 @@ function renderFolders(initial: string) {
                 }
               />
               <Route path="/videos/:id" element={<Player />} />
+              <Route path="/" element={<LibraryProbe />} />
             </Routes>
           </ScanProvider>
         </ToastProvider>
@@ -228,6 +237,23 @@ describe("FolderPage", () => {
     vi.unstubAllGlobals();
     localStorage.clear();
     clearListSnapshot();
+  });
+
+  it("動画のカードにタグを出し、押すとそのタグで絞ったライブラリへ移る（issue 308）", async () => {
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/folders/3?path=A") return Promise.resolve(json(folderA));
+      const page: VideoPage = {
+        items: [video(1, "x", { tags: [{ id: 5, name: "旅行" }] })],
+        total: 1,
+      };
+      return Promise.resolve(json(page));
+    });
+    renderFolders("/folders/3/A");
+    const tag = await screen.findByRole("button", { name: "旅行で絞り込む" });
+    await userEvent.setup().click(tag);
+    expect(screen.getByTestId("library-location").textContent).toBe("/?tag=5");
   });
 
   it("ホバープレビューは同時に 1 件だけ再生する（issue 308）", async () => {

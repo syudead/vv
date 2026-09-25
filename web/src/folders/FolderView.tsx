@@ -32,6 +32,7 @@ import { breadcrumbsFor, folderKey, rootDisplayName } from "./folderPath";
 import { FolderNotFound } from "./layout";
 import { useArrival } from "./useArrival";
 import { useConditions } from "./useConditions";
+import { useFolderTagsRow } from "./useFolderTagsRow";
 
 /** FolderView はフォルダ1件の中身（直下の子フォルダと動画、または検索結果）を並べる。 */
 export default function FolderView({ folder }: { folder: FolderRef }) {
@@ -91,6 +92,8 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     },
     [capture, saveZoom],
   );
+
+  const tagsRow = useFolderTagsRow();
 
   const summary = listing.data?.folder;
   const children = listing.data?.folders ?? [];
@@ -209,6 +212,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         zoom={zoom}
         backTo={backTo}
         preview={preview}
+        tagsRow={tagsRow}
       />
     );
   } else if (noVideosAtAll) {
@@ -235,6 +239,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         zoom={zoom}
         backTo={backTo}
         preview={preview}
+        tagsRow={tagsRow}
       />
     );
   }
