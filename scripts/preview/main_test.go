@@ -55,13 +55,18 @@ func TestProxyRewritesOnlySameSiteOrigin(t *testing.T) {
 	}
 	proxy := newProxy(target)
 
-	// 公開側と同じ Origin は、vv から見た origin に書き換わる。
+	// 公開側と同じ Origin は、vv から見た origin（http と受けた Host）に書き換わる。
+	// Host はそのまま渡す。ループバックに書き換えると、vv がローカル限定の操作を
+	// 外からの要求にも許してしまう。
 	r := httptest.NewRequest(http.MethodPost, "/api/scans", nil)
 	r.Host = "x-8080.app.github.dev"
 	r.Header.Set("Origin", "https://x-8080.app.github.dev")
 	proxy.ServeHTTP(httptest.NewRecorder(), r)
-	if want := "http://" + target.Host; gotOrigin != want || gotHost != target.Host {
-		t.Errorf("Origin=%q Host=%q, want both to match %q", gotOrigin, gotHost, want)
+	if gotHost != "x-8080.app.github.dev" {
+		t.Errorf("Host を書き換えた: %q", gotHost)
+	}
+	if gotOrigin != "http://x-8080.app.github.dev" {
+		t.Errorf("Origin = %q, want http://x-8080.app.github.dev", gotOrigin)
 	}
 
 	// 別サイトの Origin はそのまま渡し、vv 自身に断らせる。
@@ -71,5 +76,13 @@ func TestProxyRewritesOnlySameSiteOrigin(t *testing.T) {
 	proxy.ServeHTTP(httptest.NewRecorder(), r)
 	if gotOrigin != "https://evil.example" {
 		t.Errorf("別サイトの Origin を書き換えた: %q", gotOrigin)
+	}
+}
+
+func TestBackendEnvironDropsDisplay(t *testing.T) {
+	got := backendEnviron([]string{"PATH=/bin", "DISPLAY=:0", "WAYLAND_DISPLAY=wayland-0", "HOME=/root"})
+	want := []string{"PATH=/bin", "HOME=/root"}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Errorf("backendEnviron = %q, want %q", got, want)
 	}
 }

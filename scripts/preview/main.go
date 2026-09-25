@@ -76,6 +76,17 @@ func main() {
 		}
 	}
 
+	listen := os.Getenv("PREVIEW_ADDR")
+	if listen == "" {
+		listen = ":8080"
+	}
+	// Codespaces は開き直すたびに task preview を呼ぶ。前のものが動いていれば
+	// ビルドからやり直さずに案内だけする。
+	if running, ok := runningPreview(listen); ok {
+		fmt.Println("vv preview はすでに動いている:", running)
+		return
+	}
+
 	previewDir := filepath.Join(root, ".local", "preview")
 	mediaDir := filepath.Join(previewDir, "media")
 	dataDir := filepath.Join(previewDir, "data")
@@ -94,25 +105,31 @@ func main() {
 
 	backend := exec.Command(filepath.Join(root, "bin", "mdm"))
 	backend.Dir = root
-	backend.Env = append(os.Environ(), "MDM_ADDR="+backendAddress, "MDM_DATA_DIR="+dataDir)
+	backend.Env = append(backendEnviron(os.Environ()), "MDM_ADDR="+backendAddress, "MDM_DATA_DIR="+dataDir)
 	backend.Stdout = os.Stdout
 	backend.Stderr = os.Stderr
 	if err := backend.Start(); err != nil {
 		devtools.Fail(fmt.Errorf("vv を起動できません: %w", err))
 	}
-	backendExit := make(chan error, 1)
-	go func() { backendExit <- backend.Wait() }()
+	// 終了は起動待ちと停止処理と最後の select の3か所で見るので、値を送るのではなく
+	// close で知らせる。送った値は1か所でしか受け取れない。
+	backendDone := make(chan struct{})
+	var backendErr error
+	go func() {
+		backendErr = backend.Wait()
+		close(backendDone)
+	}()
 	stopBackend := func() {
 		_ = backend.Process.Signal(syscall.SIGTERM)
 		select {
-		case <-backendExit:
+		case <-backendDone:
 		case <-time.After(20 * time.Second):
 			_ = backend.Process.Kill()
 		}
 	}
 
 	backendURL := &url.URL{Scheme: "http", Host: backendAddress}
-	if err := waitHealthy(backendURL, backendExit); err != nil {
+	if err := waitHealthy(backendURL, backendDone, &backendErr); err != nil {
 		stopBackend()
 		devtools.Fail(err)
 	}
@@ -120,11 +137,9 @@ func main() {
 		stopBackend()
 		devtools.Fail(err)
 	}
-
-	listen := os.Getenv("PREVIEW_ADDR")
-	if listen == "" {
-		listen = ":8080"
-	}
+	// 8080 を開くと Codespaces がブラウザを開くので、先に取り込みを終えておく。
+	// 空の一覧が見えても、取り込み中なのか壊れているのか区別できない。
+	waitScan(backendURL)
 	listener, err := net.Listen("tcp", listen)
 	if err != nil {
 		stopBackend()
@@ -135,7 +150,7 @@ func main() {
 	go func() { proxyExit <- proxy.Serve(listener) }()
 
 	fmt.Println()
-	fmt.Println("vv preview:", publicURL(listener.Addr()))
+	fmt.Println("vv preview:", publicURL(listenPort(listener.Addr())))
 	fmt.Println("Media:     ", mediaDir)
 	fmt.Println("Data:      ", dataDir)
 	fmt.Println("Ctrl+C で止める。")
@@ -144,9 +159,9 @@ func main() {
 	case <-interrupts:
 		shutdown(proxy)
 		stopBackend()
-	case err := <-backendExit:
+	case <-backendDone:
 		shutdown(proxy)
-		devtools.Fail(fmt.Errorf("vv が停止した（%s）。上の出力を確認すること。", exitReason(err)))
+		devtools.Fail(fmt.Errorf("vv が停止した（%s）。上の出力を確認すること。", exitReason(backendErr)))
 	case err := <-proxyExit:
 		stopBackend()
 		devtools.Fail(fmt.Errorf("中継が停止した: %w", err))
@@ -198,7 +213,7 @@ func ensureSamples(mediaDir string) error {
 	return nil
 }
 
-func waitHealthy(backend *url.URL, exited <-chan error) error {
+func waitHealthy(backend *url.URL, exited <-chan struct{}, exitErr *error) error {
 	health := backend.JoinPath("api", "health").String()
 	deadline := time.After(60 * time.Second)
 	for {
@@ -210,8 +225,8 @@ func waitHealthy(backend *url.URL, exited <-chan error) error {
 			}
 		}
 		select {
-		case err := <-exited:
-			return fmt.Errorf("vv が起動中に停止した（%s）。上の出力を確認すること。", exitReason(err))
+		case <-exited:
+			return fmt.Errorf("vv が起動中に停止した（%s）。上の出力を確認すること。", exitReason(*exitErr))
 		case <-deadline:
 			return errors.New("vv が 60 秒以内に応答しなかった")
 		case <-time.After(300 * time.Millisecond):
@@ -220,7 +235,8 @@ func waitHealthy(backend *url.URL, exited <-chan error) error {
 }
 
 // registerSamples はサンプルのフォルダが未登録なら登録し、取り込みを始める。
-// 2回目以降の起動では登録済みなので、取り込みの開始は利用者に任せる。
+// 取り込みは毎回始める。前回が途中で止まっていても、利用者がファイルを足して
+// いても、開いたときの一覧が手元のファイルと揃う。
 func registerSamples(backend *url.URL, mediaDir string) error {
 	var folders []struct {
 		Path string `json:"path"`
@@ -228,19 +244,75 @@ func registerSamples(backend *url.URL, mediaDir string) error {
 	if err := callJSON(http.MethodGet, backend.JoinPath("api", "media-folders"), nil, &folders); err != nil {
 		return err
 	}
+	registered := false
 	for _, folder := range folders {
 		if filepath.Clean(folder.Path) == filepath.Clean(mediaDir) {
-			return nil
+			registered = true
 		}
 	}
-	if err := callJSON(http.MethodPost, backend.JoinPath("api", "media-folders"), map[string]string{"path": mediaDir}, nil); err != nil {
-		return fmt.Errorf("サンプルのフォルダを登録できません: %w", err)
+	if !registered {
+		if err := callJSON(http.MethodPost, backend.JoinPath("api", "media-folders"), map[string]string{"path": mediaDir}, nil); err != nil {
+			return fmt.Errorf("サンプルのフォルダを登録できません: %w", err)
+		}
+		fmt.Println("サンプルのフォルダを登録した。")
 	}
 	if err := callJSON(http.MethodPost, backend.JoinPath("api", "scans"), map[string]string{}, nil); err != nil {
 		return fmt.Errorf("取り込みを開始できません: %w", err)
 	}
-	fmt.Println("サンプルのフォルダを登録し、取り込みを開始した。")
 	return nil
+}
+
+// waitScan は取り込みが終わるまで待つ。待ちきれなくても vv は使えるので、
+// 失敗にはせず案内だけする。
+func waitScan(backend *url.URL) {
+	deadline := time.Now().Add(2 * time.Minute)
+	for time.Now().Before(deadline) {
+		var scan struct {
+			State string `json:"state"`
+		}
+		if err := callJSON(http.MethodGet, backend.JoinPath("api", "scans", "current"), nil, &scan); err == nil && scan.State != "running" {
+			fmt.Println("取り込みが終わった:", scan.State)
+			return
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+	fmt.Println("取り込みがまだ続いている。一覧は取り込みの進みに合わせて増える。")
+}
+
+// backendEnviron は vv に渡す環境から、ファイルを開く機能を有効にする変数を除く。
+// その機能はループバックからの要求にだけ許されるが、中継越しの要求はすべて
+// ループバックから届くので、preview では最初から使えなくしておく。
+func backendEnviron(environ []string) []string {
+	kept := make([]string, 0, len(environ))
+	for _, entry := range environ {
+		name, _, _ := strings.Cut(entry, "=")
+		if name == "DISPLAY" || name == "WAYLAND_DISPLAY" {
+			continue
+		}
+		kept = append(kept, entry)
+	}
+	return kept
+}
+
+// runningPreview は listen で preview の中継がすでに応答しているかを返す。
+func runningPreview(listen string) (string, bool) {
+	host, port, err := net.SplitHostPort(listen)
+	if err != nil {
+		return "", false
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		host = "127.0.0.1"
+	}
+	client := http.Client{Timeout: 2 * time.Second}
+	response, err := client.Get("http://" + net.JoinHostPort(host, port) + "/api/health")
+	if err != nil {
+		return "", false
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", false
+	}
+	return publicURL(port), true
 }
 
 func callJSON(method string, target *url.URL, body, out any) error {
@@ -278,16 +350,19 @@ func callJSON(method string, target *url.URL, body, out any) error {
 // Codespaces のポート転送はブラウザの https を終端し、中へは http で渡す。vv の
 // 書き込み操作は Origin の scheme と host を自分の要求と突き合わせるので、そのまま
 // 通すと https と http が食い違って全部 403 になる。そこで、Origin がブラウザの
-// 見ている公開側の origin と同じときに限り、vv から見た origin へ書き換える。
+// 見ている公開側の origin と同じときに限り、vv から見た origin（http と受けた
+// Host）へ書き換える。
 // 公開側と異なる Origin（別サイトからの要求）は書き換えずに渡し、vv 自身の確認で
 // 断らせる。vv 本体の確認は緩めない。
 func newProxy(backend *url.URL) http.Handler {
 	return &httputil.ReverseProxy{
 		Rewrite: func(r *httputil.ProxyRequest) {
 			r.SetURL(backend)
-			r.Out.Host = backend.Host
+			// Host は書き換えない。vv はループバックの Host をローカルの操作と
+			// みなすので、外からの要求をループバック扱いにしてしまう。
+			r.Out.Host = r.In.Host
 			if sameSiteOrigin(r.In) {
-				r.Out.Header.Set("Origin", backend.Scheme+"://"+backend.Host)
+				r.Out.Header.Set("Origin", "http://"+r.In.Host)
 			}
 		},
 		// SSE（/api/events）を溜めずに流す。
@@ -329,12 +404,15 @@ func sameSiteOrigin(r *http.Request) bool {
 	return false
 }
 
-// publicURL は開く先を案内する。Codespaces では転送先の URL を組み立てる。
-func publicURL(addr net.Addr) string {
-	port := "8080"
+func listenPort(addr net.Addr) string {
 	if tcp, ok := addr.(*net.TCPAddr); ok {
-		port = fmt.Sprint(tcp.Port)
+		return fmt.Sprint(tcp.Port)
 	}
+	return "8080"
+}
+
+// publicURL は開く先を案内する。Codespaces では転送先の URL を組み立てる。
+func publicURL(port string) string {
 	name := os.Getenv("CODESPACE_NAME")
 	domain := os.Getenv("GITHUB_CODESPACES_PORT_FORWARDING_DOMAIN")
 	if name != "" && domain != "" {
