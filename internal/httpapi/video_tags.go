@@ -101,8 +101,9 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 	items := make([]gen.VideoTagsSummaryItem, 0, len(summary.Items))
 	for _, item := range summary.Items {
 		items = append(items, gen.VideoTagsSummaryItem{
-			Tag:   gen.TagRef{Id: item.Tag.ID, Name: item.Tag.Name},
-			Count: item.Count,
+			Tag:         gen.TagRef{Id: item.Tag.ID, Name: item.Tag.Name},
+			Count:       item.Count,
+			ManualCount: item.ManualCount,
 		})
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)

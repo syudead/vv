@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import type { VideoTag } from "./client";
 import { applyTagToTags, compareNatural, compareTagRefs } from "./tagOrder";
 
 describe("compareNatural", () => {
@@ -42,53 +43,61 @@ describe("compareTagRefs", () => {
 });
 
 describe("applyTagToTags", () => {
+  const manual = (id: number, name: string): VideoTag => ({
+    id,
+    name,
+    manual: true,
+    fromFolder: false,
+  });
+  const folder = (id: number, name: string): VideoTag => ({
+    id,
+    name,
+    manual: false,
+    fromFolder: true,
+  });
+
   it("addは名前の自然順を保つ位置へ挿す", () => {
-    const tags = [
-      { id: 1, name: "2話" },
-      { id: 3, name: "10話" },
-    ];
+    const tags = [manual(1, "2話"), manual(3, "10話")];
     const result = applyTagToTags(tags, { id: 2, name: "5話" }, "add");
-    expect(result).toEqual([
-      { id: 1, name: "2話" },
-      { id: 2, name: "5話" },
-      { id: 3, name: "10話" },
-    ]);
+    expect(result).toEqual([manual(1, "2話"), manual(2, "5話"), manual(3, "10話")]);
     // 元の配列は変えない。
     expect(tags).toHaveLength(2);
   });
 
   it("addは既に付いていた同じidの行を、最新のnameで差し替える（N6）", () => {
-    const tags = [
-      { id: 1, name: "Banana" },
-      { id: 2, name: "Cherry" },
-    ];
+    const tags = [manual(1, "Banana"), manual(2, "Cherry")];
     const result = applyTagToTags(tags, { id: 1, name: "Date" }, "add");
     // 改名で並びが変わる（"Date" は "Cherry" より後）ことも、この差し替えは
     // 正しく反映する。
-    expect(result).toEqual([
-      { id: 2, name: "Cherry" },
-      { id: 1, name: "Date" },
-    ]);
+    expect(result).toEqual([manual(2, "Cherry"), manual(1, "Date")]);
   });
 
   it("addで同じidかつ同じnameなら変えない（新しい配列でも中身は同じ）", () => {
-    const tags = [{ id: 1, name: "旅行" }];
+    const tags = [manual(1, "旅行")];
     const result = applyTagToTags(tags, { id: 1, name: "旅行" }, "add");
     expect(result).toEqual(tags);
     expect(result).not.toBe(tags);
   });
 
+  it("addはフォルダ名から付いている行に手で付けた分を足し、出所を両方持つ", () => {
+    const result = applyTagToTags([folder(1, "旅行")], { id: 1, name: "旅行" }, "add");
+    expect(result).toEqual([{ id: 1, name: "旅行", manual: true, fromFolder: true }]);
+  });
+
   it("removeは同じidの行を取り除く", () => {
-    const tags = [
-      { id: 1, name: "旅行" },
-      { id: 2, name: "観光" },
-    ];
+    const tags = [manual(1, "旅行"), manual(2, "観光")];
     const result = applyTagToTags(tags, { id: 1, name: "旅行" }, "remove");
-    expect(result).toEqual([{ id: 2, name: "観光" }]);
+    expect(result).toEqual([manual(2, "観光")]);
+  });
+
+  it("removeはフォルダ名からも付いている行を残し、手で付けた分だけを外す", () => {
+    const tags: VideoTag[] = [{ id: 1, name: "旅行", manual: true, fromFolder: true }];
+    const result = applyTagToTags(tags, { id: 1, name: "旅行" }, "remove");
+    expect(result).toEqual([folder(1, "旅行")]);
   });
 
   it("removeで無いidを渡しても変えない", () => {
-    const tags = [{ id: 1, name: "旅行" }];
+    const tags = [manual(1, "旅行")];
     const result = applyTagToTags(tags, { id: 99, name: "無関係" }, "remove");
     expect(result).toEqual(tags);
     expect(result).not.toBe(tags);

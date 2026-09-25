@@ -32,6 +32,7 @@ export function isVideoSort(value: unknown): value is VideoSort {
 }
 export type WatchFilter = components["schemas"]["WatchFilter"];
 export type TagRef = components["schemas"]["TagRef"];
+export type VideoTag = components["schemas"]["VideoTag"];
 export type VideoIdsResponse = components["schemas"]["VideoIdsResponse"];
 export type FolderScope = components["schemas"]["FolderScope"];
 export type VideoFolder = components["schemas"]["VideoFolder"];

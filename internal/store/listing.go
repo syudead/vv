@@ -272,10 +272,11 @@ func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	}
 	// タグでの絞り込み（data-model.md §6）。存在の確認は呼び出し側
 	// （resolveTagIDs）が済ませているので、ここでは AND を掛けるだけでよい。
+	// 手で付けた分とフォルダ名から付いている分のどちらでも当たる
+	// （017 の data-model.md §4）。
 	for _, tagID := range spec.tagIDs {
-		conditions = append(conditions,
-			`exists (select 1 from video_tags vt where vt.content_key = videos.content_key and vt.tag_id = ?)`)
-		args = append(args, tagID)
+		conditions = append(conditions, videoHasTagCondition("videos"))
+		args = append(args, tagID, tagID)
 	}
 	if len(conditions) > 0 {
 		from += ` where ` + strings.Join(conditions, " and ")

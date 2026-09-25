@@ -63,8 +63,8 @@ func TestGetVideoIncludesTags(t *testing.T) {
 		videos: map[int64]domain.Video{1: video},
 		page:   domain.VideoPage{Items: []domain.Video{video}, Total: 1},
 	}
-	tags := &fakeTags{byContentKey: map[string][]domain.TagRef{
-		video.ContentKey: {{ID: 3, Name: "海"}},
+	tags := &fakeTags{byContentKey: map[string][]domain.VideoTag{
+		video.ContentKey: {manualTag(3, "海")},
 	}}
 	handler := newTestServer(t, Options{Videos: library, Catalog: &fakeCatalog{}, Tags: tags})
 

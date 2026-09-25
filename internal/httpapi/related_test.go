@@ -86,8 +86,8 @@ func TestGetRelatedVideosOmitsNextAtFolderEnd(t *testing.T) {
 // 関連動画の応答にもタグが載り、タグの無い動画は空配列になる（#267）。
 func TestGetRelatedVideosIncludesTags(t *testing.T) {
 	library, catalog := relatedFixture()
-	tags := &fakeTags{byContentKey: map[string][]domain.TagRef{
-		"ep 10:1": {{ID: 1, Name: "旅行"}},
+	tags := &fakeTags{byContentKey: map[string][]domain.VideoTag{
+		"ep 10:1": {manualTag(1, "旅行")},
 	}}
 	handler := newTestServer(t, Options{Videos: library, Catalog: catalog, Tags: tags})
 

@@ -138,7 +138,7 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.Location = nil
 	video.Progress = nil
 	video.ProbeError = nil
-	video.Tags = []gen.TagRef{}
+	video.Tags = []gen.VideoTag{}
 	return video
 }
 
@@ -324,7 +324,7 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 // 無いと動画を見渡せなくなるものではない。
 //
 // ゲストにはタグを出さないので、読みもしない（contracts/guest-api.md §1）。
-func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string][]domain.TagRef {
+func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string][]domain.VideoTag {
 	if s.tags == nil || len(videos) == 0 || !audienceFrom(ctx).IsOwner() {
 		return nil
 	}
@@ -346,11 +346,13 @@ func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string]
 
 // withTags はタグを載せる。タグが1つも無い動画は空の配列にする（null にしない。
 // contracts/tags-api.md §1）。
-func withTags(video gen.Video, tags map[string][]domain.TagRef, contentKey string) gen.Video {
+func withTags(video gen.Video, tags map[string][]domain.VideoTag, contentKey string) gen.Video {
 	refs := tags[contentKey]
-	video.Tags = make([]gen.TagRef, 0, len(refs))
+	video.Tags = make([]gen.VideoTag, 0, len(refs))
 	for _, ref := range refs {
-		video.Tags = append(video.Tags, gen.TagRef{Id: ref.ID, Name: ref.Name})
+		video.Tags = append(video.Tags, gen.VideoTag{
+			Id: ref.ID, Name: ref.Name, Manual: ref.Manual, FromFolder: ref.FromFolder,
+		})
 	}
 	return video
 }

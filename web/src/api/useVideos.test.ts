@@ -711,7 +711,7 @@ describe("useVideos の準備の反映", () => {
       );
     });
     expect(result.current.items.find((video) => video.id === 2)?.tags).toEqual([
-      { id: 5, name: "旅行" },
+      { id: 5, name: "旅行", manual: true, fromFolder: false },
     ]);
     expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([]);
 
@@ -759,7 +759,7 @@ describe("useVideos の準備の反映", () => {
 
     await waitFor(() =>
       expect(result.current.items.find((video) => video.id === 3)?.tags).toEqual([
-        { id: 5, name: "旅行" },
+        { id: 5, name: "旅行", manual: true, fromFolder: false },
       ]),
     );
   });
@@ -786,14 +786,14 @@ describe("useVideos の準備の反映", () => {
     });
     // 動画1は表示中なので、その場で反映される（従来どおり）。
     expect(result.current.items.find((video) => video.id === 1)?.tags).toEqual([
-      { id: 5, name: "旅行" },
+      { id: 5, name: "旅行", manual: true, fromFolder: false },
     ]);
 
     await act(async () => calls[1]?.resolve(page([3])));
 
     await waitFor(() =>
       expect(result.current.items.find((video) => video.id === 3)?.tags).toEqual([
-        { id: 5, name: "旅行" },
+        { id: 5, name: "旅行", manual: true, fromFolder: false },
       ]),
     );
   });
@@ -838,7 +838,7 @@ describe("useVideos の準備の反映", () => {
 
     await waitFor(() =>
       expect(result.current.items.find((video) => video.id === 121)?.tags).toEqual([
-        { id: 5, name: "旅行" },
+        { id: 5, name: "旅行", manual: true, fromFolder: false },
       ]),
     );
   });

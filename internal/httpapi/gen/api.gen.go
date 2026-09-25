@@ -682,8 +682,10 @@ type Video struct {
 	SizeBytes        int64   `json:"sizeBytes"`
 
 	// Tags 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-	// 無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
-	Tags           []TagRef            `json:"tags"`
+	// 無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
+	// フォルダ名から付いている分も含む
+	// （specs/017-folder-groups/contracts/folder-groups-api.md §4）
+	Tags           []VideoTag          `json:"tags"`
 	ThumbnailState VideoThumbnailState `json:"thumbnailState"`
 
 	// ThumbnailUrl thumbnailState = done のときだけ入る
@@ -782,6 +784,19 @@ type VideoPage struct {
 // 動画の識別子から作る順。値が同じなら識別子で決着させる
 type VideoSort string
 
+// VideoTag 動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
+// フォルダ名からも付いていれば1件にまとめて両方を真にする
+// （specs/017-folder-groups/contracts/folder-groups-api.md §4）。
+type VideoTag struct {
+	// FromFolder 祖先のフォルダ名がこのタグの名前かシノニムに一致する
+	FromFolder bool  `json:"fromFolder"`
+	Id         int64 `json:"id"`
+
+	// Manual 手で付けた分がある
+	Manual bool   `json:"manual"`
+	Name   string `json:"name"`
+}
+
 // VideoTagsAction defines model for VideoTagsAction.
 type VideoTagsAction string
 
@@ -813,7 +828,11 @@ type VideoTagsSummary struct {
 
 // VideoTagsSummaryItem defines model for VideoTagsSummaryItem.
 type VideoTagsSummaryItem struct {
+	// Count 手で付けた分とフォルダ名から付いている分のどちらかで付いている本数
 	Count int `json:"count"`
+
+	// ManualCount 手で付けた本数
+	ManualCount int `json:"manualCount"`
 
 	// Tag 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
 	Tag TagRef `json:"tag"`

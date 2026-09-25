@@ -847,6 +847,20 @@ export interface components {
             id: number;
             name: string;
         };
+        /**
+         * @description 動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
+         *     フォルダ名からも付いていれば1件にまとめて両方を真にする
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §4）。
+         */
+        VideoTag: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description 手で付けた分がある */
+            manual: boolean;
+            /** @description 祖先のフォルダ名がこのタグの名前かシノニムに一致する */
+            fromFolder: boolean;
+        };
         /** @description 管理画面と候補に出す1件（contracts/tags-api.md §1）。 */
         Tag: {
             /** Format: int64 */
@@ -913,7 +927,10 @@ export interface components {
         };
         VideoTagsSummaryItem: {
             tag: components["schemas"]["TagRef"];
+            /** @description 手で付けた分とフォルダ名から付いている分のどちらかで付いている本数 */
             count: number;
+            /** @description 手で付けた本数 */
+            manualCount: number;
         };
         VideoTagsSummary: {
             total: number;
@@ -1078,9 +1095,11 @@ export interface components {
             folder?: components["schemas"]["VideoFolder"];
             /**
              * @description 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-             *     無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
+             *     無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
+             *     フォルダ名から付いている分も含む
+             *     （specs/017-folder-groups/contracts/folder-groups-api.md §4）
              */
-            tags: components["schemas"]["TagRef"][];
+            tags: components["schemas"]["VideoTag"][];
             /**
              * @description 公開の動画か。公開の動画はログインしていない人にも見える
              *     （specs/016-single-account-auth/contracts/guest-api.md §4）

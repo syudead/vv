@@ -314,16 +314,22 @@ describe("VideoCard tagsRow（issue 269）", () => {
   afterEach(() => cleanup());
 
   it("tagsRow を渡すと、題名の下にそれを出す", () => {
-    renderCard(video({ tags: [{ id: 1, name: "旅行" }] }), {
-      tagsRow: () => <p>タグの行</p>,
-    });
+    renderCard(
+      video({ tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }] }),
+      {
+        tagsRow: () => <p>タグの行</p>,
+      },
+    );
     expect(screen.getByText("タグの行")).toBeDefined();
   });
 
   it("tagsRow はリンクの外、同じ article の中に置く", () => {
-    renderCard(video({ tags: [{ id: 1, name: "旅行" }] }), {
-      tagsRow: () => <button type="button">タグ</button>,
-    });
+    renderCard(
+      video({ tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }] }),
+      {
+        tagsRow: () => <button type="button">タグ</button>,
+      },
+    );
     const article = screen.getByRole("article");
     const link = screen.getByRole("link");
     const button = screen.getByRole("button", { name: "タグ" });
@@ -338,15 +344,20 @@ describe("VideoCard tagsRow（issue 269）", () => {
   });
 
   it("題名とタグの行の間隔は今の gap-1 と同じ（B3）", () => {
-    renderCard(video({ tags: [{ id: 1, name: "旅行" }] }), {
-      tagsRow: () => <p>タグの行</p>,
-    });
+    renderCard(
+      video({ tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }] }),
+      {
+        tagsRow: () => <p>タグの行</p>,
+      },
+    );
     const row = screen.getByText("タグの行").parentElement;
     expect(row?.className).toContain("pt-1");
   });
 
   it("同じ参照の props で親が再描画しても memo で再描画せず、tagsRow を呼び直さない（N4）", () => {
-    const item = video({ tags: [{ id: 1, name: "旅行" }] });
+    const item = video({
+      tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }],
+    });
     const stableTagsRow = vi.fn(() => <p>タグの行</p>);
     const props = {
       video: item,

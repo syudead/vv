@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { VideoTag } from "../api/client";
 import type { Tag } from "../api/tags";
 import { __resetTagsForTest, refreshTags } from "../api/tags";
 import { ToastProvider } from "../ui/Toast";
@@ -105,11 +106,7 @@ function install() {
   return fetchMock;
 }
 
-function renderTags(
-  videoId: number,
-  tags: { id: number; name: string }[],
-  onStaleVideo = vi.fn(),
-) {
+function renderTags(videoId: number, tags: VideoTag[], onStaleVideo = vi.fn()) {
   return render(
     <MemoryRouter>
       <ToastProvider>
@@ -172,7 +169,7 @@ describe("VideoTags", () => {
 
   it("外すボタンを押すとタグが消える。読み上げ名は「<名>をこの動画から外す」（受け入れ条件2）", async () => {
     install();
-    renderTags(7, [{ id: 1, name: "旅行" }]);
+    renderTags(7, [{ id: 1, name: "旅行", manual: true, fromFolder: false }]);
 
     const removeButton = await screen.findByRole("button", {
       name: "旅行をこの動画から外す",
@@ -184,7 +181,7 @@ describe("VideoTags", () => {
 
   it("タグの名前は /?tag=<id> へのリンクで、読み上げ名は「<名>で絞り込む」（issue 269）", async () => {
     install();
-    renderTags(7, [{ id: 1, name: "旅行" }]);
+    renderTags(7, [{ id: 1, name: "旅行", manual: true, fromFolder: false }]);
 
     const link = await screen.findByRole("link", { name: "旅行で絞り込む" });
     expect(link.getAttribute("href")).toBe("/?tag=1");
@@ -196,8 +193,8 @@ describe("VideoTags", () => {
     install();
     server.detachFails = true;
     renderTags(7, [
-      { id: 1, name: "旅行" },
-      { id: 2, name: "Anime" },
+      { id: 1, name: "旅行", manual: true, fromFolder: false },
+      { id: 2, name: "Anime", manual: true, fromFolder: false },
     ]);
 
     const removeButton = await screen.findByRole("button", {
@@ -216,8 +213,8 @@ describe("VideoTags", () => {
     install();
     server.attachDelay = () => undefined;
     renderTags(7, [
-      { id: 1, name: "旅行" },
-      { id: 2, name: "Anime" },
+      { id: 1, name: "旅行", manual: true, fromFolder: false },
+      { id: 2, name: "Anime", manual: true, fromFolder: false },
     ]);
 
     const removeButton = await screen.findByRole("button", {
@@ -261,7 +258,7 @@ describe("VideoTags", () => {
         </ToastProvider>
       </MemoryRouter>,
     );
-    const rerenderWith = (tags: { id: number; name: string }[]) =>
+    const rerenderWith = (tags: VideoTag[]) =>
       view.rerender(
         <MemoryRouter>
           <ToastProvider>
@@ -281,7 +278,7 @@ describe("VideoTags", () => {
     expect(screen.getByTitle("旅行")).toBeDefined();
 
     // 付与を映した情報が届いた後は、その後の情報に従う（別の画面で外された）。
-    rerenderWith([{ id: 1, name: "旅行" }]);
+    rerenderWith([{ id: 1, name: "旅行", manual: true, fromFolder: false }]);
     rerenderWith([]);
     await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
   });
@@ -300,7 +297,7 @@ describe("VideoTags", () => {
         </ToastProvider>
       </MemoryRouter>,
     );
-    const rerenderWith = (videoId: number, tags: { id: number; name: string }[]) =>
+    const rerenderWith = (videoId: number, tags: VideoTag[]) =>
       view.rerender(
         <MemoryRouter>
           <ToastProvider>
@@ -509,7 +506,11 @@ describe("VideoTags", () => {
   it("tag_not_foundのときはトーストを出し、この動画を取り直す", async () => {
     install();
     const onStaleVideo = vi.fn();
-    renderTags(7, [{ id: 99, name: "もう無いタグ" }], onStaleVideo);
+    renderTags(
+      7,
+      [{ id: 99, name: "もう無いタグ", manual: true, fromFolder: false }],
+      onStaleVideo,
+    );
 
     const removeButton = await screen.findByRole("button", {
       name: "もう無いタグをこの動画から外す",
@@ -525,7 +526,7 @@ describe("VideoTags", () => {
   it("すでに付いているタグは候補に出ない", async () => {
     const user = userEvent.setup();
     install();
-    renderTags(7, [{ id: 1, name: "旅行" }]);
+    renderTags(7, [{ id: 1, name: "旅行", manual: true, fromFolder: false }]);
 
     await user.click(addInput());
     await screen.findByRole("option", { name: /Anime/ });

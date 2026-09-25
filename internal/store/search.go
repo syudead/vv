@@ -63,7 +63,8 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 			condition := `(` + locationCondition + `)`
 			if audience.IsOwner() {
 				condition = `(` + locationCondition + ` or ` + tagNameMatchCondition(alias) + `)`
-				args = append(args, text)
+				// 手で付けた分とフォルダ名の分で、同じ語を1つずつ渡す。
+				args = append(args, text, text)
 			}
 			if term.Negated {
 				condition = `not ` + condition
@@ -80,16 +81,25 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 }
 
 // tagNameMatchCondition は、所在（別名 alias）の動画に付いたタグの元の名前か
-// シノニムのどれかが語に当たるかの条件句を返す。video_locations は content_key
-// を持たないので、videos を経て動画に結ぶ（data-model.md §7）。呼び出し側が
-// FoldForMatch 済みの語を1つ引数として渡す。内容の識別子が空の動画は
-// 再生位置を持たない（listing.go の playback_progress の join）のと同じ理由で
-// タグの照合からも除く。空文字列どうしが一致して無関係な行を拾わないため。
+// シノニムのどれかが語に当たるかの条件句を返す。タグは手で付けた分
+// （video_tags）とフォルダ名から付いている分（video_folder_names、017 の
+// data-model.md §4）のどちらでもよい。video_locations は content_key を持たない
+// ので、videos を経て動画に結ぶ（data-model.md §7）。呼び出し側が FoldForMatch
+// 済みの語を、2つの出所のために同じものを2つ引数として渡す。内容の識別子が
+// 空の動画は再生位置を持たない（listing.go の playback_progress の join）のと
+// 同じ理由でタグの照合からも除く。空文字列どうしが一致して無関係な行を拾わない
+// ため。フォルダ名の分も同じ扱いにして、Video.tags（content_key で引く）と
+// 食い違わないようにする。
 func tagNameMatchCondition(alias string) string {
-	return `exists (select 1 from video_tags vt ` +
+	return `(exists (select 1 from video_tags vt ` +
 		`join tag_names tn on tn.tag_id = vt.tag_id ` +
 		`join videos v on v.content_key = vt.content_key and v.content_key <> '' ` +
-		`where v.id = ` + alias + `.video_id and instr(tn.search_key, ?) > 0)`
+		`where v.id = ` + alias + `.video_id and instr(tn.search_key, ?) > 0) ` +
+		`or exists (select 1 from video_folder_names vfn ` +
+		`join tag_names folder_tn on folder_tn.name = vfn.name ` +
+		`join tag_names tn on tn.tag_id = folder_tn.tag_id ` +
+		`join videos v on v.id = vfn.video_id and v.content_key <> '' ` +
+		`where vfn.video_id = ` + alias + `.video_id and instr(tn.search_key, ?) > 0))`
 }
 
 // quoteMatchPhrase は語を FTS5 の1つのフレーズとして渡せる形にする。

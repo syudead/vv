@@ -124,8 +124,8 @@ func TestSummarizeVideoTags(t *testing.T) {
 	tags := &fakeTags{summary: domain.TagSummary{
 		Total: 3,
 		Items: []domain.TagSummaryItem{
-			{Tag: domain.TagRef{ID: 1, Name: "旅行"}, Count: 2},
-			{Tag: domain.TagRef{ID: 2, Name: "観光"}, Count: 3},
+			{Tag: domain.TagRef{ID: 1, Name: "旅行"}, Count: 2, ManualCount: 1},
+			{Tag: domain.TagRef{ID: 2, Name: "観光"}, Count: 3, ManualCount: 3},
 		},
 	}}
 	handler := newTestServer(t, Options{Tags: tags})
@@ -138,7 +138,7 @@ func TestSummarizeVideoTags(t *testing.T) {
 	if got.Total != 3 || len(got.Items) != 2 {
 		t.Fatalf("summary = %+v", got)
 	}
-	if got.Items[0].Tag.Name != "旅行" || got.Items[0].Count != 2 {
+	if got.Items[0].Tag.Name != "旅行" || got.Items[0].Count != 2 || got.Items[0].ManualCount != 1 {
 		t.Errorf("items[0] = %+v", got.Items[0])
 	}
 	if !reflect.DeepEqual(tags.lastVideoIDs, []int64{1, 2, 3}) {

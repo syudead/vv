@@ -2,7 +2,7 @@ import { Plus, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
-import { RequestFailed, type TagRef } from "../api/client";
+import { RequestFailed, type TagRef, type VideoTag } from "../api/client";
 import {
   attachVideoTagByID,
   attachVideoTagByName,
@@ -30,7 +30,7 @@ export default function VideoTags({
   onStaleVideo,
 }: {
   videoId: number;
-  tags: readonly TagRef[];
+  tags: readonly VideoTag[];
   /** タグがもう無い（tag_not_found）ときに、この動画を取り直すために呼ぶ。 */
   onStaleVideo: () => void;
 }) {
@@ -53,7 +53,7 @@ export default function VideoTags({
     new Map<number, { tag: TagRef; action: "add" | "remove"; asOfSeq: number }>(),
   );
   const prevVideoIdRef = useRef(videoId);
-  const [tags, setTags] = useState<readonly TagRef[]>(initialTags);
+  const [tags, setTags] = useState<readonly VideoTag[]>(initialTags);
 
   // 画面が開くときは、共有の保持がすでにあっても必ず取り直す（plan の
   // Structural Decisions 8「画面が開くとき…に refreshTags で取り直す」）。

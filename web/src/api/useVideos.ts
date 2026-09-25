@@ -10,6 +10,7 @@ import {
   listFolderVideos,
   listVideos,
   RequestFailed,
+  type TagRef,
   type Video,
   type VideoSort,
   type WatchFilter,
@@ -120,7 +121,7 @@ type VideosDataAction =
   | {
       type: "tags";
       videoIds: readonly number[];
-      tag: Video["tags"][number];
+      tag: TagRef;
       action: "add" | "remove";
     }
   | { type: "visibility"; videoIds: readonly number[]; isPublic: boolean }
@@ -345,10 +346,7 @@ export function useVideos(
   // loadMore（続きの取得）をまたいで持ち越す（下の fetchPage 参照）。
   // 無限に育たないよう、件数の上限を超えたら古い順に間引く。
   const tagsChangedWhileLoading = useRef(
-    new Map<
-      string,
-      { videoId: number; tag: Video["tags"][number]; action: "add" | "remove" }
-    >(),
+    new Map<string, { videoId: number; tag: TagRef; action: "add" | "remove" }>(),
   );
   const maxTagsChangedWhileLoading = 500;
 

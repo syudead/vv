@@ -1464,6 +1464,27 @@ components:
         name:
           type: string
 
+    VideoTag:
+      type: object
+      required: [id, name, manual, fromFolder]
+      additionalProperties: false
+      description: |
+        動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
+        フォルダ名からも付いていれば1件にまとめて両方を真にする
+        （specs/017-folder-groups/contracts/folder-groups-api.md §4）。
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        manual:
+          type: boolean
+          description: 手で付けた分がある
+        fromFolder:
+          type: boolean
+          description: 祖先のフォルダ名がこのタグの名前かシノニムに一致する
+
     Tag:
       type: object
       required: [id, name, synonyms, videoCount]
@@ -1619,13 +1640,17 @@ components:
 
     VideoTagsSummaryItem:
       type: object
-      required: [tag, count]
+      required: [tag, count, manualCount]
       additionalProperties: false
       properties:
         tag:
           $ref: "#/components/schemas/TagRef"
         count:
           type: integer
+          description: 手で付けた分とフォルダ名から付いている分のどちらかで付いている本数
+        manualCount:
+          type: integer
+          description: 手で付けた本数
 
     VideoTagsSummary:
       type: object
@@ -1900,9 +1925,11 @@ components:
           type: array
           description: |
             付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-            無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
+            無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
+            フォルダ名から付いている分も含む
+            （specs/017-folder-groups/contracts/folder-groups-api.md §4）
           items:
-            $ref: "#/components/schemas/TagRef"
+            $ref: "#/components/schemas/VideoTag"
         public:
           type: boolean
           description: |

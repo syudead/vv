@@ -529,8 +529,8 @@ func TestListVideosTagsOmittedWithoutTagsRoute(t *testing.T) {
 // TagStore が返したタグが一覧・詳細・関連動画・読み取りのやり直しの応答に載る。
 func TestListVideosIncludesTagsFromTagStore(t *testing.T) {
 	video := sampleVideo(1, "京都旅行")
-	tags := &fakeTags{byContentKey: map[string][]domain.TagRef{
-		video.ContentKey: {{ID: 2, Name: "旅行"}, {ID: 5, Name: "観光"}},
+	tags := &fakeTags{byContentKey: map[string][]domain.VideoTag{
+		video.ContentKey: {manualTag(2, "旅行"), manualTag(5, "観光")},
 	}}
 	library := &fakeLibrary{page: domain.VideoPage{Items: []domain.Video{video}, Total: 1}}
 	handler := newTestServer(t, Options{Videos: library, Tags: tags})
