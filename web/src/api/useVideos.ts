@@ -21,6 +21,7 @@ import { isProcessing } from "./useVideoDetail";
 import { subscribeVideoTags } from "./videoTagsEvents";
 import {
   subscribeVideoVisibility,
+  subscribeVideoVisibilityStale,
   visibilityMark,
   withVisibilitySince,
 } from "./visibility";
@@ -438,6 +439,25 @@ export function useVideos(
   // 受けた動画を覚えておき、ページを反映したあとで取り直す（pageLoading・
   // tagsChangedWhileLoading は上で宣言済み）。
   const changedWhileLoading = useRef(new Set<number>());
+
+  // 切り替えが一部の動画にしか反映されなかったときは、どれが切り替わったか
+  // 分からないので、表示中の該当の動画をサーバーから取り直す（更新の知らせと
+  // 同じ扱い。Devin の指摘、PR 292）。
+  useEffect(
+    () =>
+      subscribeVideoVisibilityStale((videoIds) => {
+        const targets = new Set(videoIds);
+        if (pageLoading.current) {
+          for (const id of targets) changedWhileLoading.current.add(id);
+        }
+        refreshItems(
+          itemsRef.current
+            .filter((video) => targets.has(video.id))
+            .map((video) => video.id),
+        );
+      }),
+    [refreshItems],
+  );
 
   // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない
   // （specs/016-single-account-auth/ui-design.md「Top bar」）。

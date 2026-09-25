@@ -4,6 +4,7 @@ import type { Video } from "./client";
 import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 import {
   subscribeVideoVisibility,
+  subscribeVideoVisibilityStale,
   updateVideoVisibility,
   visibilityMark,
   withVisibilitySince,
@@ -139,6 +140,65 @@ describe("updateVideoVisibility", () => {
     await expect(first).rejects.toBeDefined();
     await expect(second).resolves.toEqual({ applied: 1 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("一部にしか反映されなかった切り替え", () => {
+  it("applied が異なる id の数より少なければ切り替え済みにせず、取り直しを求める", async () => {
+    // 空の content_key の動画やライブラリから消えた id は数えない（guest-api.md §4）。
+    fetchMock.mockResolvedValue(json({ applied: 1 }));
+    saveListSnapshot(
+      { query: "" },
+      { items: [item(21), item(22)], total: 2, hasMore: false, scrollY: 0 },
+    );
+    const listener = vi.fn();
+    const stale = vi.fn();
+    const unsubscribe = subscribeVideoVisibility(listener);
+    const unsubscribeStale = subscribeVideoVisibilityStale(stale);
+    const before = visibilityMark();
+
+    await expect(updateVideoVisibility([21, 22], true)).resolves.toEqual({ applied: 1 });
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(stale).toHaveBeenCalledWith([21, 22]);
+    expect(takeListSnapshot({ query: "" })?.items.map((video) => video.public)).toEqual([
+      false,
+      false,
+    ]);
+    // 取り直した内容をそのまま使う。
+    expect(withVisibilitySince(item(21), before).public).toBe(false);
+    unsubscribe();
+    unsubscribeStale();
+  });
+
+  it("applied が 0 の1本は切り替え済みにしない", async () => {
+    fetchMock.mockResolvedValue(json({ applied: 0 }));
+    const listener = vi.fn();
+    const stale = vi.fn();
+    const unsubscribe = subscribeVideoVisibility(listener);
+    const unsubscribeStale = subscribeVideoVisibilityStale(stale);
+
+    await updateVideoVisibility([23], true);
+
+    expect(listener).not.toHaveBeenCalled();
+    expect(stale).toHaveBeenCalledWith([23]);
+    unsubscribe();
+    unsubscribeStale();
+  });
+
+  it("重複した id は1つとして数える", async () => {
+    fetchMock.mockResolvedValue(json({ applied: 1 }));
+    const listener = vi.fn();
+    const stale = vi.fn();
+    const unsubscribe = subscribeVideoVisibility(listener);
+    const unsubscribeStale = subscribeVideoVisibilityStale(stale);
+
+    await updateVideoVisibility([24, 24], true);
+
+    expect(listener).toHaveBeenCalledWith([24], true);
+    expect(stale).not.toHaveBeenCalled();
+    unsubscribe();
+    unsubscribeStale();
   });
 });
 

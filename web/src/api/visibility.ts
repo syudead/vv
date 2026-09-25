@@ -15,6 +15,16 @@ type Listener = (videoIds: readonly number[], isPublic: boolean) => void;
 
 const listeners = new Set<Listener>();
 
+/**
+ * サーバーが要求より少ない本数にしか反映しなかった（`applied` が異なる id の数より
+ * 少ない）とき、どの動画が切り替わったかは応答から分からない（空の content_key の
+ * 動画・ライブラリから消えた id は数えない、contracts/guest-api.md §4）。そのときは
+ * 手元で切り替え済みにせず、これで知らせて該当の動画を取り直させる（Devin の指摘、PR 292）。
+ */
+type StaleListener = (videoIds: readonly number[]) => void;
+
+const staleListeners = new Set<StaleListener>();
+
 /** sent は要求を送る直前に払い出す通し番号で、送った順に増える。 */
 let sent = 0;
 
@@ -60,6 +70,33 @@ function recordApplied(
   for (const listener of listeners) listener(fresh, isPublic);
 }
 
+/**
+ * recordUncertain は一部にしか反映されなかった要求の動画を、切り替え済みとして
+ * 記録せずに取り直させる。前の切り替えの結果（latest）はもう確かでないので捨て、
+ * 取り直した内容をそのまま表示させる。
+ */
+function recordUncertain(videoIds: readonly number[], sequence: number): void {
+  const fresh = videoIds.filter((videoId) => {
+    if (sequence <= (applied.get(videoId) ?? 0)) return false;
+    applied.set(videoId, sequence);
+    latest.delete(videoId);
+    return true;
+  });
+  if (fresh.length === 0) return;
+  for (const listener of staleListeners) listener(fresh);
+}
+
+/**
+ * subscribeVideoVisibilityStale は、切り替えが一部の動画にしか反映されず、
+ * 該当の動画をサーバーから取り直すべきときに呼ばれる。戻り値で購読をやめる。
+ */
+export function subscribeVideoVisibilityStale(listener: StaleListener): () => void {
+  staleListeners.add(listener);
+  return () => {
+    staleListeners.delete(listener);
+  };
+}
+
 /** subscribeVideoVisibility は切り替えの結果を受け取る。戻り値で購読をやめる。 */
 export function subscribeVideoVisibility(listener: Listener): () => void {
   listeners.add(listener);
@@ -94,7 +131,8 @@ export function withVisibilitySince<T extends { id: number; public: boolean }>(
  * updateVideoVisibility は `videoIds` の公開フラグを `isPublic` にそろえる
  * （PUT /api/video-visibility、contracts/guest-api.md §4）。再生画面の1本も、
  * 選択バーの複数本も、これを使う。前の切り替えが決着するまで送るのを待ち、
- * 成功したら、受け付けた結果を画面へ知らせる。
+ * 成功したら、受け付けた結果を画面へ知らせる。`applied` が異なる id の数より
+ * 少なければ、どれが切り替わったか分からないので、取り直しを求める。
  */
 export function updateVideoVisibility(
   videoIds: readonly number[],
@@ -110,7 +148,9 @@ export function updateVideoVisibility(
       body: JSON.stringify({ videoIds: Array.from(videoIds), public: isPublic }),
       signal,
     });
-    recordApplied(videoIds, isPublic, sequence);
+    const unique = Array.from(new Set(videoIds));
+    if (result.applied < unique.length) recordUncertain(unique, sequence);
+    else recordApplied(videoIds, isPublic, sequence);
     return result;
   };
   // 待っている切り替えが無ければすぐに送る（押した直後に送信中になる）。

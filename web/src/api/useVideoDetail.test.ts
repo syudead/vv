@@ -158,6 +158,36 @@ describe("useVideoDetail", () => {
     });
   });
 
+  it("切り替えが反映されなかった（applied が 0）なら公開にせず、取り直す", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ applied: 0 }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          }),
+        ),
+      ),
+    );
+    const { updateVideoVisibility } = await import("./visibility");
+    getVideo.mockResolvedValue(done);
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await updateVideoVisibility([7], true);
+    });
+    await flush();
+
+    expect(getVideo).toHaveBeenCalledTimes(2);
+    expect(result.current.state).toMatchObject({
+      kind: "ready",
+      video: { public: false },
+    });
+  });
+
   it("知らせの接続をつなぎ直したら、切れていた間の変化を取り戻す", async () => {
     getVideo
       .mockResolvedValueOnce({ ...done, thumbnailState: "pending" })

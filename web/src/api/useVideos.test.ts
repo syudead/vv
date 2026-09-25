@@ -873,17 +873,20 @@ describe("useVideos の準備の反映", () => {
 
 // 公開・非公開の切り替えの後の一覧（issue 305）。読み直さず、該当の項目の public を差し替える。
 describe("useVideos の公開の反映", () => {
-  function stubVisibility() {
+  // サーバーは要求したすべての動画に反映したと答える（applied は異なる id の数）。
+  // partial を渡すと、その本数だけに反映したと答える。
+  function stubVisibility(partial?: number) {
     vi.stubGlobal(
       "fetch",
-      vi.fn<typeof fetch>(() =>
-        Promise.resolve(
-          new Response(JSON.stringify({ applied: 1 }), {
+      vi.fn<typeof fetch>((_, init) => {
+        const { videoIds } = JSON.parse(String(init?.body)) as { videoIds: number[] };
+        return Promise.resolve(
+          new Response(JSON.stringify({ applied: partial ?? new Set(videoIds).size }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           }),
-        ),
-      ),
+        );
+      }),
     );
   }
 
@@ -915,6 +918,36 @@ describe("useVideos の公開の反映", () => {
       false,
       false,
     ]);
+    vi.unstubAllGlobals();
+  });
+
+  it("一部にしか反映されなかった切り替えは、該当の項目を公開にせず取り直す", async () => {
+    stubVisibility(1);
+    const { updateVideoVisibility } = await import("./visibility");
+    // 動画 1 は反映され、動画 3（空の content_key）は反映されなかった。
+    getVideo.mockImplementation((id: number) =>
+      Promise.resolve({ ...item(id), public: id === 1 }),
+    );
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2, 3])));
+
+    await act(async () => {
+      await updateVideoVisibility([1, 3], true);
+    });
+
+    await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
+    expect(getVideo.mock.calls.map(([id]) => id as number).sort()).toEqual([1, 3]);
+    await waitFor(() =>
+      expect(result.current.items.map((video) => video.public)).toEqual([
+        true,
+        false,
+        false,
+      ]),
+    );
+    expect(calls).toHaveLength(1);
     vi.unstubAllGlobals();
   });
 
