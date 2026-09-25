@@ -99,7 +99,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 }
 
 // ListLibraryIds は絞り込みに合う項目の動画の id を返す（GET /api/library/ids、
-// 「すべて選択」用）。上限と誤りは listVideoIds と同じである。
+// 「すべて選択」用。specs/017-folder-groups/contracts/library-api.md §2）。
 func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params gen.ListLibraryIdsParams) {
 	if s.library == nil {
 		s.internalError(w, "一覧の問い合わせ先が設定されていません", nil)

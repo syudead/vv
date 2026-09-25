@@ -11,6 +11,7 @@ import {
   type LibraryGroup,
   type LibraryItem,
   listFolderVideos,
+  listLibrary,
   listVideos,
   RequestFailed,
   type TagRef,
@@ -65,6 +66,16 @@ export interface VideosSeed {
    */
   staleGroups?: readonly FolderRef[];
 }
+
+/**
+ * VideosSource は useVideos が読む一覧である。
+ *
+ * - `"videos"`: 1本ずつの一覧（`GET /api/videos`）。フォルダ画面の最上位の検索結果が使う。
+ * - `"library"`: 動画とグループの項目の一覧（`GET /api/library`）。ライブラリが使う
+ *   （specs/017-folder-groups/contracts/library-api.md §1）。
+ * - フォルダ: そのフォルダの動画（`GET /api/folders/{rootId}/videos`）。フォルダ画面が使う。
+ */
+export type VideosSource = "videos" | "library" | FolderRef;
 
 /**
  * VideosCriteria は一覧を取りに行く条件である
@@ -347,14 +358,17 @@ export interface VideosState {
  * restored を与えると、その条件のあいだは1ページ目を取りに行かない
  * （再生画面から戻ったときの復元。一覧の状態はこの受け渡し口からだけ入る）。
  *
- * folder を与えると、ライブラリ全体ではなくそのフォルダ直下の動画を読む
- * （フォルダ画面）。ページング・中断・復元の仕組みはライブラリと同じものを使う。
+ * source は読む一覧である（VideosSource）。フォルダを与えると、ライブラリ全体ではなく
+ * そのフォルダの動画を読む（フォルダ画面）。ページング・中断・復元の仕組みはどれも
+ * 同じものを使う。
  */
 export function useVideos(
   criteria: VideosCriteria,
   restored?: VideosSeed,
-  folder?: FolderRef,
+  source: VideosSource = "videos",
 ): VideosState {
+  const folder = typeof source === "string" ? undefined : source;
+  const library = source === "library";
   // 条件は値で比べる。呼び出し側が描画ごとに新しいオブジェクトを渡しても
   // 読み直さないよう、鍵の文字列だけを依存に使う。
   const key = criteriaKey(criteria);
@@ -364,9 +378,11 @@ export function useVideos(
   // フォルダは値で比べる。呼び出し側が描画ごとに新しいオブジェクトを渡しても
   // 読み直さないよう、鍵の文字列だけを依存に使う。
   const folderKey =
-    folder === undefined ? "" : `${String(folder.rootId)}\0${folder.path}`;
+    folder === undefined ? (library ? "library" : "") : folderRefKey(folder);
   const folderRef = useRef(folder);
   folderRef.current = folder;
+  const libraryRef = useRef(library);
+  libraryRef.current = library;
   const [{ items, total, cursor, hasMore, inconsistent, missingTagIds }, dispatch] =
     useReducer(videosDataReducer, seed, (initial): VideosData => ({
       items: initial?.items ?? [],
@@ -785,18 +801,21 @@ export function useVideos(
           signal: controller.signal,
         };
         const fetched =
-          target === undefined
-            ? await listVideos({ ...params, tag: current.tag })
-            : await listFolderVideos({
-                folder: target,
-                scope: current.scope,
-                ...params,
-              });
+          target !== undefined
+            ? await listFolderVideos({ folder: target, scope: current.scope, ...params })
+            : libraryRef.current
+              ? await listLibrary({ ...params, tag: current.tag })
+              : await listVideos({ ...params, tag: current.tag });
         const page = {
           ...fetched,
-          items: fetched.items.map((video) =>
-            videoItem(withVisibilitySince(video, mark)),
-          ),
+          items: fetched.items.map((item): LibraryItem => {
+            if ("kind" in item) {
+              return item.kind === "video"
+                ? videoItem(withVisibilitySince(item.video, mark))
+                : item;
+            }
+            return videoItem(withVisibilitySince(item, mark));
+          }),
         };
         // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
         // 応答の本文を読み終えた後に打ち切られた場合はここに来る。

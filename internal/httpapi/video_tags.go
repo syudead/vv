@@ -110,28 +110,7 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.VideoTagsSummary{Total: summary.Total, Items: items}, s.logger)
 }
 
-// ListVideoIds は絞り込みに合う動画の全件の id を返す（GET /api/videos/ids、
-// 「すべて選択」用。contracts/tags-api.md §5）。パラメータは listVideos の
-// query・watch・playable・tag と同じ。
-func (s *server) ListVideoIds(w http.ResponseWriter, r *http.Request, params gen.ListVideoIdsParams) {
-	if s.videos == nil {
-		s.internalError(w, "一覧の問い合わせ先が設定されていません", nil)
-		return
-	}
-
-	query, ok := s.parseIDsQuery(w, params.Query, params.Watch, params.Playable, params.Tag)
-	if !ok {
-		return
-	}
-	ids, missingTagIDs, err := s.videos.VideoIDs(r.Context(), query)
-	if err != nil {
-		s.internalError(w, "idを取得できませんでした", err)
-		return
-	}
-	s.writeVideoIDs(w, ids, missingTagIDs)
-}
-
-// parseIDsQuery は「すべて選択」の経路（listVideoIds・listLibraryIds）のパラメータを
+// parseIDsQuery は「すべて選択」の経路（listLibraryIds）のパラメータを
 // 検査して問い合わせにする。誤りなら 400 を書いて false を返す。
 func (s *server) parseIDsQuery(w http.ResponseWriter, search *string, watch *gen.WatchFilter, playable *bool, tag *[]int64) (domain.VideoQuery, bool) {
 	query := domain.VideoQuery{}

@@ -173,7 +173,7 @@ function renderBar(props: Partial<React.ComponentProps<typeof SelectionBar>> = {
   const result = render(
     barElement({
       count: 3,
-      total: 10,
+      allSelected: false,
       selectedIds: [1, 2, 3],
       selectingAll: false,
       onSelectAll,
@@ -220,16 +220,32 @@ describe("SelectionBar", () => {
     expect(screen.getByRole("button", { name: "選択を解除 (Esc)" })).toBeDefined();
   });
 
-  it("全件選び終わっている（count>=total）ときは、すべて選択がdisabled", () => {
+  it("選択が直前の「すべて選択」と同じ集合（allSelected）のときだけ、すべて選択がdisabled", () => {
     install();
-    renderBar({
+    const { rerender } = renderBar({
       count: 10,
-      total: 10,
+      allSelected: true,
       selectedIds: Array.from({ length: 10 }, (_, i) => i + 1),
     });
     expect(
       (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement).disabled,
     ).toBe(true);
+    // 選んだ本数が項目の数（total）を超えていても、集合が違えば押せる
+    // （specs/017-folder-groups/ui-design.md「Pressing and selection」）。
+    rerender(
+      barElement({
+        count: 9,
+        allSelected: false,
+        selectedIds: Array.from({ length: 9 }, (_, i) => i + 1),
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+      }),
+    );
+    expect(
+      (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   // POST /api/video-tags は videoIds を全部か無しかでしか受け付けず、20000件を
@@ -239,7 +255,7 @@ describe("SelectionBar", () => {
     install();
     renderBar({
       count: 20001,
-      total: 30000,
+      allSelected: false,
       selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
     });
     const addButton = screen.getByRole("button", {
@@ -279,7 +295,7 @@ describe("SelectionBar", () => {
     install();
     renderBar({
       count: 20000,
-      total: 30000,
+      allSelected: false,
       selectedIds: Array.from({ length: 20000 }, (_, i) => i + 1),
     });
     expect(
@@ -297,7 +313,11 @@ describe("SelectionBar", () => {
   it("開いているポップオーバーは、選択が上限を超えると自動で閉じる", async () => {
     const user = userEvent.setup();
     install();
-    const { rerender } = renderBar({ count: 3, total: 30000, selectedIds: [1, 2, 3] });
+    const { rerender } = renderBar({
+      count: 3,
+      allSelected: false,
+      selectedIds: [1, 2, 3],
+    });
 
     await user.click(screen.getByRole("button", { name: "タグを付ける" }));
     await screen.findByRole("combobox", { name: "タグを付ける" });
@@ -305,7 +325,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 20001,
-        total: 30000,
+        allSelected: false,
         selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
         selectingAll: false,
         onSelectAll: vi.fn(),
@@ -325,7 +345,11 @@ describe("SelectionBar", () => {
   it("タグを付ける: 開いたまま selectedIds が上限を超えると、送らず理由を示す", async () => {
     const user = userEvent.setup();
     const fetchMock = install();
-    const { rerender } = renderBar({ count: 3, total: 30000, selectedIds: [1, 2, 3] });
+    const { rerender } = renderBar({
+      count: 3,
+      allSelected: false,
+      selectedIds: [1, 2, 3],
+    });
 
     await user.click(screen.getByRole("button", { name: "タグを付ける" }));
     await screen.findByRole("combobox", { name: "タグを付ける" });
@@ -333,7 +357,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 3,
-        total: 30000,
+        allSelected: false,
         selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
         selectingAll: false,
         onSelectAll: vi.fn(),
@@ -355,7 +379,11 @@ describe("SelectionBar", () => {
     const user = userEvent.setup();
     const fetchMock = install();
     server.attached.set(1, new Set([1]));
-    const { rerender } = renderBar({ count: 3, total: 30000, selectedIds: [1, 2, 3] });
+    const { rerender } = renderBar({
+      count: 3,
+      allSelected: false,
+      selectedIds: [1, 2, 3],
+    });
 
     await user.click(screen.getByRole("button", { name: "タグを外す" }));
     await screen.findByRole("combobox", { name: "タグを外す" });
@@ -367,7 +395,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 3,
-        total: 30000,
+        allSelected: false,
         selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
         selectingAll: false,
         onSelectAll: vi.fn(),
@@ -663,7 +691,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 1,
-        total: 10,
+        allSelected: false,
         selectedIds: [1],
         selectingAll: false,
         onSelectAll: vi.fn(),
@@ -695,7 +723,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 1,
-        total: 10,
+        allSelected: false,
         selectedIds: [1],
         selectingAll: false,
         onSelectAll: vi.fn(),
@@ -738,7 +766,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 0,
-        total: 10,
+        allSelected: false,
         selectedIds: [],
         selectingAll: false,
         onSelectAll: vi.fn(),
@@ -752,7 +780,7 @@ describe("SelectionBar", () => {
     rerender(
       barElement({
         count: 2,
-        total: 10,
+        allSelected: false,
         selectedIds: [4, 5],
         selectingAll: false,
         onSelectAll: vi.fn(),

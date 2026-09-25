@@ -80,7 +80,7 @@ type listSpec struct {
 	watch        domain.WatchFilter
 	playableOnly bool
 	// tagIDs はすでに存在を確かめたタグの id（data-model.md §6）。呼び出し側
-	// （ListVideos・VideoIDs）が resolveTagIDs で存在しない id を落としたうえで
+	// （ListVideos）が resolveTagIDs で存在しない id を落としたうえで
 	// 渡す。
 	tagIDs []int64
 	sort   domain.VideoSort
@@ -125,64 +125,6 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 	}
 	page.MissingTagIDs = missingTagIDs
 	return page, nil
-}
-
-// VideoIDs は ListVideos と同じ条件（並び順・カーソル・件数を除く）に合う
-// 全件の id を、ページングせずに返す（「すべて選択」用、Plan の Structural
-// Decisions 4）。並びは決めない。MissingTagIDs の意味は ListVideos と同じ
-// （contracts/tags-api.md §5 の GET /api/videos/ids）。ListVideos と同じく、
-// タグの存在確認と id の読み出しを s.db.read の1取引の中で行う。
-//
-// 「すべて選択」は所有者だけの操作なので、所有者として読む。
-func (s *LibraryStore) VideoIDs(ctx context.Context, q domain.VideoQuery) ([]int64, []int64, error) {
-	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, nil, fmt.Errorf("id の読み取りを始められません: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, q.TagIDs)
-	if err != nil {
-		return nil, nil, err
-	}
-	ids, err := videoIDsForSpec(ctx, tx, listSpec{
-		scope: libraryScope(domain.AudienceOwner), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs,
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-	if err := tx.Commit(); err != nil {
-		return nil, nil, fmt.Errorf("id の読み取りを終えられません: %w", err)
-	}
-	return ids, missingTagIDs, nil
-}
-
-// videoIDsForSpec は spec に合う全件の id を返す。並びは決めない。
-func videoIDsForSpec(ctx context.Context, q queryExecer, spec listSpec) ([]int64, error) {
-	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
-	from, fromArgs := filteredFrom(spec, false)
-	args = append(args, fromArgs...)
-
-	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
-	rows, err := q.QueryContext(ctx, cte+` select videos.id`+from, args...)
-	if err != nil {
-		return nil, fmt.Errorf("id を読み出せません: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	ids := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			return nil, fmt.Errorf("id を読み出せません: %w", err)
-		}
-		ids = append(ids, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("id を読み出せません: %w", err)
-	}
-	return ids, nil
 }
 
 // ListFolderVideos はフォルダの動画1ページを返す。範囲は q.Scope で直下か配下

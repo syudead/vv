@@ -138,29 +138,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/videos/ids": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 絞り込みに合う動画の全件の id を返す
-         * @description `listVideos` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う全件の
-         *     id を、ページングせずに返す。並びは決めない。「すべて選択」用
-         *     （specs/014-video-tags/contracts/tags-api.md §5）。`/api/videos/{id}` とは
-         *     Go の ServeMux の字面の段の優先で区別される。
-         */
-        get: operations["listVideoIds"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/library": {
         parameters: {
             query?: never;
@@ -1732,33 +1709,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VideoPage"];
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-        };
-    };
-    listVideoIds: {
-        parameters: {
-            query?: {
-                query?: string;
-                watch?: components["schemas"]["WatchFilter"];
-                playable?: boolean;
-                /** @description 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す */
-                tag?: number[];
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 条件に合う全件の id */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["VideoIdsResponse"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

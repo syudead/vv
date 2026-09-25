@@ -1,4 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -969,6 +977,22 @@ describe("FolderPage", () => {
     expect(y).toBeDefined();
     expect(z).toBeDefined();
     expect(requests.some((url) => url.startsWith("/api/videos?query="))).toBe(true);
+  });
+
+  // 受け入れ条件 18: グループはライブラリでだけ1件にまとまる。フォルダ画面の一覧と
+  // 最上位の検索結果は、今のまま動画を1本ずつ出す（GET /api/library を使わない。
+  // specs/017-folder-groups/plan.md の Structural Decisions 6）。
+  it("フォルダの一覧と最上位の検索結果は、グループにまとめず1本ずつ出す", async () => {
+    renderFolders("/folders?q=京都");
+    expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "y、movies/A/B" })).toBeDefined();
+    cleanup();
+
+    renderFolders("/folders/3/A");
+    expect(await screen.findByRole("link", { name: "x" })).toBeDefined();
+    expect(requests.some((url) => url.startsWith("/api/folders/3/videos?"))).toBe(true);
+    expect(requests.some((url) => url.startsWith("/api/library"))).toBe(false);
+    expect(document.querySelector("[data-group-root]")).toBeNull();
   });
 
   it("並び順の向きを切り替えられる", async () => {

@@ -1297,16 +1297,6 @@ type ListVideosParams struct {
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
 }
 
-// ListVideoIdsParams defines parameters for ListVideoIds.
-type ListVideoIdsParams struct {
-	Query    *string      `form:"query,omitempty" json:"query,omitempty"`
-	Watch    *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-	Playable *bool        `form:"playable,omitempty" json:"playable,omitempty"`
-
-	// Tag 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
-	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
-}
-
 // GetVideoPreviewParams defines parameters for GetVideoPreview.
 type GetVideoPreviewParams struct {
 	// V 一覧・詳細が返した current content key
@@ -1475,9 +1465,6 @@ type ServerInterface interface {
 	// ListVideos 動画の一覧を返す
 	// (GET /api/videos)
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
-	// ListVideoIds 絞り込みに合う動画の全件の id を返す
-	// (GET /api/videos/ids)
-	ListVideoIds(w http.ResponseWriter, r *http.Request, params ListVideoIdsParams)
 	// GetVideo 動画1件の詳細を返す
 	// (GET /api/videos/{id})
 	GetVideo(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -2657,78 +2644,6 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
-// ListVideoIds operation middleware
-func (siw *ServerInterfaceWrapper) ListVideoIds(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListVideoIdsParams
-
-	// ------------- Optional query parameter "query" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "tag" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListVideoIds(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetVideo operation middleware
 func (siw *ServerInterfaceWrapper) GetVideo(w http.ResponseWriter, r *http.Request) {
 
@@ -3192,7 +3107,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/session", wrapper.GetAuthSession)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/ids", wrapper.ListVideoIds)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library", wrapper.ListLibrary)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library/ids", wrapper.ListLibraryIds)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)

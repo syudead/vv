@@ -223,7 +223,7 @@ function setListFilters(query: URLSearchParams, params: ListFilterParams): void 
   query.set("limit", String(params.limit ?? PAGE_SIZE));
 }
 
-/** setTagFilter はタグの絞り込みを問い合わせに載せる（listVideos・listVideoIds）。 */
+/** setTagFilter はタグの絞り込みを問い合わせに載せる（listVideos・listLibrary・listLibraryIds）。 */
 function setTagFilter(query: URLSearchParams, tag?: number[]): void {
   if (tag === undefined) return;
   for (const id of tag.slice(0, MAX_TAG_FILTER_COUNT)) {
@@ -239,8 +239,53 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
 
-/** ListVideoIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */
-export interface ListVideoIdsParams {
+/**
+ * LibraryPageResponse はライブラリの一覧1ページである（GET /api/library）。項目は
+ * `kind` で読み分けられる LibraryItem にそろえてある。
+ */
+export type LibraryPageResponse = Omit<components["schemas"]["LibraryPage"], "items"> & {
+  items: LibraryItem[];
+};
+
+/**
+ * toLibraryItem は生成した型の項目を、`kind` で読み分けられる形にする。契約に反して
+ * 中身の欠けた項目は捨てる（null）。
+ */
+function toLibraryItem(item: components["schemas"]["LibraryItem"]): LibraryItem | null {
+  if (item.kind === "video" && item.video !== undefined) {
+    return { kind: "video", video: item.video };
+  }
+  if (item.kind === "group" && item.group !== undefined) {
+    return { kind: "group", group: item.group };
+  }
+  return null;
+}
+
+/**
+ * listLibrary はライブラリの一覧を1ページ取得する。項目は動画か、フォルダの
+ * グループ1件である（specs/017-folder-groups/contracts/library-api.md §1）。
+ */
+export async function listLibrary(
+  params: ListVideosParams = {},
+): Promise<LibraryPageResponse> {
+  const query = new URLSearchParams();
+  setListFilters(query, params);
+  setTagFilter(query, params.tag);
+  const page = await request<components["schemas"]["LibraryPage"]>(
+    `/api/library?${query.toString()}`,
+    { signal: params.signal },
+  );
+  return {
+    ...page,
+    items: page.items.flatMap((item) => {
+      const converted = toLibraryItem(item);
+      return converted === null ? [] : [converted];
+    }),
+  };
+}
+
+/** ListLibraryIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */
+export interface ListLibraryIdsParams {
   query?: string;
   watch?: WatchFilter;
   playable?: boolean;
@@ -249,10 +294,13 @@ export interface ListVideoIdsParams {
 }
 
 /**
- * listVideoIds は listVideos と同じ条件に合う全件の id を、ページングせずに
- * 取得する（「すべて選択」用。specs/014-video-tags/contracts/tags-api.md §5）。
+ * listLibraryIds は listLibrary と同じ条件に合う項目の動画の id（グループは全メンバー）を、
+ * ページングせずに取得する（「すべて選択」用。
+ * specs/017-folder-groups/contracts/library-api.md §2）。
  */
-export function listVideoIds(params: ListVideoIdsParams = {}): Promise<VideoIdsResponse> {
+export function listLibraryIds(
+  params: ListLibraryIdsParams = {},
+): Promise<VideoIdsResponse> {
   const query = new URLSearchParams();
   if (params.query !== undefined && params.query !== "") {
     query.set("query", Array.from(params.query).slice(0, MAX_QUERY_LENGTH).join(""));
@@ -260,7 +308,7 @@ export function listVideoIds(params: ListVideoIdsParams = {}): Promise<VideoIdsR
   if (params.watch !== undefined) query.set("watch", params.watch);
   if (params.playable === true) query.set("playable", "true");
   setTagFilter(query, params.tag);
-  return request<VideoIdsResponse>(`/api/videos/ids?${query.toString()}`, {
+  return request<VideoIdsResponse>(`/api/library/ids?${query.toString()}`, {
     signal: params.signal,
   });
 }

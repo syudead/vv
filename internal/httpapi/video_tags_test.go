@@ -152,39 +152,3 @@ func TestSummarizeVideoTagsRejectsEmptyVideoIDs(t *testing.T) {
 	rec := postJSON(t, handler, "/api/video-tags/summary", `{"videoIds":[]}`)
 	assertErrorCode(t, rec, http.StatusBadRequest, codeInvalidRequest)
 }
-
-// GET /api/videos/ids は同じ条件の全件の id を返し、missingTagIds も渡す。
-func TestListVideoIds(t *testing.T) {
-	library := &fakeLibrary{ids: []int64{5, 1, 9}, missingTagIDs: []int64{7}}
-	handler := newTestServer(t, Options{Videos: library})
-
-	rec := do(t, handler, http.MethodGet, "/api/videos/ids?query=旅行&watch=unwatched&playable=true&tag=3&tag=7")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
-	}
-	got := decode[gen.VideoIdsResponse](t, rec)
-	if !reflect.DeepEqual(got.Ids, []int64{5, 1, 9}) {
-		t.Errorf("ids = %v", got.Ids)
-	}
-	if got.MissingTagIds == nil || !reflect.DeepEqual(*got.MissingTagIds, []int64{7}) {
-		t.Errorf("missingTagIds = %v", got.MissingTagIds)
-	}
-
-	want := domain.VideoQuery{
-		Query: "旅行", Watch: domain.WatchUnwatched, PlayableOnly: true, TagIDs: []int64{3, 7},
-	}
-	if !reflect.DeepEqual(library.lastIDsQuery, want) {
-		t.Errorf("query = %+v, want %+v", library.lastIDsQuery, want)
-	}
-}
-
-// GET /api/videos/ids が GET /api/videos/{id} に取られないことは
-// openapi_routes_test.go の TestVideoIdsRouteNotShadowedByVideoIDRoute で見る
-// （二重に持たない）。
-
-// 17個以上の tag は400。
-func TestListVideoIdsRejectsTooManyTags(t *testing.T) {
-	handler := newTestServer(t, Options{Videos: &fakeLibrary{}})
-	target := "/api/videos/ids?" + strings.TrimSuffix(strings.Repeat("tag=1&", 17), "&")
-	assertErrorCode(t, do(t, handler, http.MethodGet, target), http.StatusBadRequest, codeInvalidRequest)
-}

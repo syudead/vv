@@ -41,10 +41,6 @@ type Library interface {
 	GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error)
 	VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error)
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
-	// VideoIDs は listVideos と同じ条件（並び順・カーソル・件数を除く）に合う
-	// 全件の id を返す（GET /api/videos/ids、「すべて選択」用。
-	// specs/014-video-tags/contracts/tags-api.md §5）。
-	VideoIDs(ctx context.Context, q domain.VideoQuery) (ids, missingTagIDs []int64, err error)
 }
 
 // Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、
