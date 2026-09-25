@@ -60,7 +60,7 @@ func TestTasksStageArtifactsAreAbsent(t *testing.T) {
 			return err
 		}
 		if d.Name() == "tasks.md" {
-			t.Errorf("%s exists. Implementation work belongs in the Implementation Work section of plan.md, which /speckit-plan-to-issues turns into child Issues", filepath.ToSlash(rel))
+			t.Errorf("%s exists. Implementation work belongs in the Implementation Work section of plan.md, which /sdd-plan-to-issues turns into child Issues", filepath.ToSlash(rel))
 		}
 		if !strings.HasSuffix(d.Name(), ".md") {
 			return nil
@@ -79,13 +79,24 @@ func TestTasksStageArtifactsAreAbsent(t *testing.T) {
 	}
 }
 
+// TestSpecifyDirectoryIsAbsent keeps the retired Spec Kit scaffolding out. The
+// Plan template lives in the sdd-plan skill, so nothing belongs under .specify/.
+func TestSpecifyDirectoryIsAbsent(t *testing.T) {
+	path := filepath.Join(repositoryRoot(t), ".specify")
+	if _, err := os.Stat(path); err == nil {
+		t.Errorf(".specify exists. The Plan template lives at .agents/skills/sdd-plan/assets/plan-template.md; do not reinstate Spec Kit scaffolding")
+	} else if !os.IsNotExist(err) {
+		t.Errorf("cannot verify that .specify is absent: %v", err)
+	}
+}
+
 // placeholders are fragments the templates carry for the author to replace.
 // Finding one in a delivered artifact means a section was shipped unfilled.
 //
 // `[NEEDS CLARIFICATION: ...]` is deliberately not on this list. It is a
-// legitimate state, not residue: /speckit-clarify records a product ambiguity
-// it could not ask this round as such a marker, so the spec carries it between
-// rounds. Whether a marker may still be open is a question about the stage the
+// legitimate state, not residue: a Plan records an open question as such a
+// marker and resolves it in Phase 0, so the marker can sit on the feature
+// branch between rounds. Whether a marker may still be open is a question about the stage the
 // feature is in, which this repository-wide check cannot see.
 var placeholders = []string{
 	"[REMOVE IF UNUSED]",

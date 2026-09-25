@@ -13,7 +13,7 @@ stage that creates the feature branch.
    For a revision, use the existing feature branch.
 3. Create an arbitrary-name sub-branch from the current feature branch. Read any
    existing `plan.md` as an input.
-4. Run the installed Spec Kit plan procedure for the explicit feature path.
+4. Run the [`sdd-plan` skill](../../sdd-plan/SKILL.md) for the explicit feature path.
    Resolve all consequential choices and include an implementation-work section
    detailed enough to create native child Issues directly from the plan. Do not
    create a `spec.md`.

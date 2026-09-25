@@ -1,9 +1,6 @@
 ---
-name: "speckit-implement"
+name: "sdd-implement"
 description: "Implement one explicitly requested unit of work using the feature specification and plan as context."
-metadata:
-  author: "github-spec-kit"
-  source: "templates/commands/implement.md"
 ---
 
 ## Repository workflow
@@ -35,7 +32,7 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 1. For feature-directory work, the directory is given to you. List what it holds — `plan.md`, and any of `ui-design.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md` — and use that as the available-documents list. Run no script for this. For a plain-text implementation request, skip this step and use the current checkout and relevant repository files.
 
-2. Load and analyze the implementation context. For Spec Kit feature work:
+2. Load and analyze the implementation context. For feature-directory work:
    - **REQUIRED**: Read the parent Issue for requirements and acceptance criteria
    - **REQUIRED**: Read plan.md for tech stack, architecture, and file structure
    - **IF EXISTS**: Read data-model.md for entities and relationships

@@ -12,15 +12,10 @@ workflow.
 | `.agents/skills/` | This repository | Shared Agent Skills and handoff procedures |
 | `.codex/agents/` | This repository | Project-scoped Codex workers used inside a handoff run |
 | `.claude/agents/` | This repository | Project-scoped Claude workers used inside a handoff run |
-| `.specify/templates/` | This repository | Artifact templates, edited directly |
 
-Spec Kit is not upgraded any more, so nothing under `.specify/` is treated as
-vendored. `.specify/templates/plan-template.md` is the only part this workflow
-still uses, and it is edited in place like any other file here.
-
-The rest of Spec Kit's scaffolding (`.specify/scripts/`, `.specify/workflows/`,
-the integration manifests) was removed because this workflow never invoked it.
-Do not reinstate it.
+The Plan template lives with the skill that fills it, at
+`.agents/skills/sdd-plan/assets/plan-template.md`. There is no `.specify/`
+directory; do not reinstate one.
 
 Project-scoped workers may perform a bounded part of a run when the selected
 host supports them. The repository provides matching Codex and Claude workers:

@@ -1,9 +1,6 @@
 ---
-name: "speckit-plan"
+name: "sdd-plan"
 description: "Execute the implementation planning workflow using the plan template to generate design artifacts."
-metadata:
-  author: "github-spec-kit"
-  source: "templates/commands/plan.md"
 ---
 
 ## Repository issue handoff
@@ -46,7 +43,7 @@ satisfy. The three that decide whether the output is usable:
 
 ## Outline
 
-1. **Setup**: The feature directory is given to you. The plan is `<feature-dir>/plan.md`, and the other artifacts sit beside it. Copy [`.specify/templates/plan-template.md`](../../../.specify/templates/plan-template.md) to `<feature-dir>/plan.md` when no plan exists yet. Run no script for this.
+1. **Setup**: The feature directory is given to you. The plan is `<feature-dir>/plan.md`, and the other artifacts sit beside it. Copy [`assets/plan-template.md`](assets/plan-template.md) to `<feature-dir>/plan.md` when no plan exists yet. Run no script for this.
 
 2. **Load context**: Read the parent Issue — it is the specification. Then read this repository's governance, which is where the gates come from — [ARCHITECTURE.md](../../../ARCHITECTURE.md) for boundaries and dependency direction, [docs/design-docs/core-beliefs.md](../../../docs/design-docs/core-beliefs.md) for the judgement criteria, and [AGENTS.md](../../../AGENTS.md) for the working agreements. Those documents are the source of truth, and the plan names which of their rules it checked.
 
@@ -178,7 +175,7 @@ something to say, is worse than an absent one.
      correctly" is not evidence (P-5)
    - The heading becomes the child Issue's title verbatim, so write one that
      still means something outside this plan. The three fields are the approved
-     input `/speckit-plan-to-issues` writes the Issue body from — not a draft of
+     input `/sdd-plan-to-issues` writes the Issue body from — not a draft of
      that body, so keep them short: name dependencies by the other unit's
      heading, and point to the artifact section holding the detail rather than
      copying it
