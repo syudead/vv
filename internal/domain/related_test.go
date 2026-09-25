@@ -31,6 +31,9 @@ func TestOrderRelatedUsesNaturalOrder(t *testing.T) {
 	if got.NextID != 2 {
 		t.Fatalf("nextId = %d, want 2 (#10)", got.NextID)
 	}
+	if got.PrevID != 1 {
+		t.Fatalf("prevId = %d, want 1 (#2)", got.PrevID)
+	}
 
 	got = OrderRelated(relatedSelf(1, "ep #2.mp4"), siblings, nil)
 	if want := []int64{3, 2}; !slices.Equal(got.IDs, want) {
@@ -38,6 +41,9 @@ func TestOrderRelatedUsesNaturalOrder(t *testing.T) {
 	}
 	if got.NextID != 3 {
 		t.Fatalf("nextId = %d, want 3 (#9)", got.NextID)
+	}
+	if got.PrevID != 0 {
+		t.Fatalf("prevId = %d, want 0 (先頭)", got.PrevID)
 	}
 }
 

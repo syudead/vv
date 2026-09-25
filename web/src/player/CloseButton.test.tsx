@@ -32,15 +32,7 @@ describe("CloseButton", () => {
 
 describe("TouchControls", () => {
   it("見えない間は押せず、Tab でフォーカスが来たら見せる", () => {
-    const view = render(
-      <TouchControls
-        playing
-        visible={false}
-        onBack={vi.fn()}
-        onToggle={vi.fn()}
-        onForward={vi.fn()}
-      />,
-    );
+    const view = render(<TouchControls playing visible={false} onToggle={vi.fn()} />);
     const classes =
       view.container.querySelector("[data-touch-controls]")?.className.split(" ") ?? [];
     expect(classes).toContain("opacity-0");

@@ -635,7 +635,7 @@ test.describe.serial("live MP4 playback", () => {
     }
   });
 
-  test("画面全体の → で 10 秒進み、操作バーの再生速度が再生に反映される", async ({
+  test("画面全体のキー操作が効き、操作バーの再生速度が再生に反映される", async ({
     page,
   }) => {
     test.setTimeout(30_000);
@@ -645,7 +645,7 @@ test.describe.serial("live MP4 playback", () => {
     await page.locator(".vjs-big-play-button").click();
     await page.waitForFunction(() => {
       const element = document.querySelector("video");
-      return element !== null && !element.paused && element.currentTime > 0.1;
+      return element !== null && !element.paused && element.currentTime > 1.5;
     });
 
     // 関連動画のリンクにフォーカスがあっても、画面全体のキー操作が効く。
@@ -663,22 +663,6 @@ test.describe.serial("live MP4 playback", () => {
         page.locator("video").evaluate((element) => (element as HTMLVideoElement).paused),
       )
       .toBe(true);
-    const before = await page
-      .locator("video")
-      .evaluate((element) => (element as HTMLVideoElement).currentTime);
-    await page.keyboard.press("ArrowRight");
-    await expect
-      .poll(() =>
-        page
-          .locator("video")
-          .evaluate((element) => (element as HTMLVideoElement).currentTime),
-      )
-      .toBeGreaterThan(before + 9);
-    expect(
-      await page
-        .locator("video")
-        .evaluate((element) => (element as HTMLVideoElement).currentTime),
-    ).toBeLessThan(before + 11);
     await page.keyboard.press("0");
     await expect
       .poll(() =>

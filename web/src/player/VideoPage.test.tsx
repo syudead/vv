@@ -90,7 +90,6 @@ function fakeControls(): PlayerControls {
   return {
     togglePlay: vi.fn(),
     play: vi.fn(),
-    seekBy: vi.fn(),
     seekTo: vi.fn(),
     restart: vi.fn(),
     toggleMute: vi.fn(),
@@ -158,6 +157,7 @@ describe("VideoPage", () => {
     server.related.set(7, {
       items: [related(8, "後続の動画"), related(3, "前の動画")],
       nextId: 8,
+      prevId: 3,
     });
     server.probe.mockReset();
     server.open.mockReset();
@@ -261,7 +261,7 @@ describe("VideoPage", () => {
       playerMock.controls = controls;
       renderPage("7", "/?q=abc");
       await ready();
-      await screen.findByRole("button", { name: "10 秒進む" });
+      await screen.findByRole("button", { name: "再生" });
       fireEvent.keyDown(document.body, { key: "Escape" });
       expect(screen.queryByTestId("screen")).toBeNull();
       expect(controls.isFullscreen).toHaveBeenCalled();
@@ -364,30 +364,109 @@ describe("VideoPage", () => {
   });
 
   describe("プレイヤーの操作", () => {
-    it("タッチ用の中央の 10 秒戻る/進む で再生位置が 10 秒動く", async () => {
+    it("タッチ用の中央は再生/一時停止だけで、秒数送りのボタンを出さない", async () => {
       const controls = fakeControls();
       playerMock.controls = controls;
       renderPage();
       await ready();
-      fireEvent.click(await screen.findByRole("button", { name: "10 秒進む" }));
-      fireEvent.click(screen.getByRole("button", { name: "10 秒戻る" }));
-      fireEvent.click(screen.getByRole("button", { name: "再生" }));
-      expect(controls.seekBy).toHaveBeenNthCalledWith(1, 10);
-      expect(controls.seekBy).toHaveBeenNthCalledWith(2, -10);
+      fireEvent.click(await screen.findByRole("button", { name: "再生" }));
       expect(controls.togglePlay).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole("button", { name: /秒戻る|秒進む/ })).toBeNull();
     });
 
-    it("画面のどこでも Space・→ がプレイヤーに効く", async () => {
+    it("左右の端の矢印で、戻り先付きで同じフォルダの前後へ移る", async () => {
+      server.videos.set(3, [{ ...related(3, "前の動画"), location: video.location }]);
+      renderPage("7", "/folders/1/movies");
+      await ready();
+      const previous = await screen.findByRole("button", { name: "前の動画: 前の動画" });
+      expect(screen.getByRole("button", { name: "次の動画: 後続の動画" })).toBeDefined();
+      // 止まっている間に移ったときは、移った先で再生を始めない。
+      fireEvent.click(previous);
+      await waitFor(() => expect(player().video.id).toBe(3));
+      expect(player().autoplay).toBe(false);
+      fireEvent.click(closeButtons()[0] as HTMLElement);
+      expect(screen.getByTestId("screen").textContent).toBe("フォルダ /folders/1/movies");
+    });
+
+    it("再生中に「次の動画」で移ると、移った先でも再生を続ける", async () => {
+      server.videos.set(8, [{ ...related(8, "後続の動画"), location: video.location }]);
+      renderPage();
+      await ready();
+      const next = await screen.findByRole("button", { name: "次の動画: 後続の動画" });
+      act(() =>
+        player().onStatus({
+          loading: false,
+          playing: true,
+          userActive: true,
+          ended: false,
+        }),
+      );
+      fireEvent.click(next);
+      await waitFor(() => expect(player().video.id).toBe(8));
+      expect(player().autoplay).toBe(true);
+    });
+
+    it("前後の矢印は操作バーと同じ時期に見せ、前後が無い側は出さない", async () => {
+      server.related.set(7, { items: [related(3, "前の動画")], prevId: 3 });
+      renderPage();
+      await ready();
+      const previous = await screen.findByRole("button", { name: "前の動画: 前の動画" });
+      expect(screen.queryByRole("button", { name: /^次の動画/ })).toBeNull();
+      expect(previous.className).toContain("opacity-100");
+      act(() =>
+        player().onStatus({
+          loading: false,
+          playing: true,
+          userActive: false,
+          ended: false,
+        }),
+      );
+      expect(previous.className).toContain("opacity-0");
+      expect(previous.className).toContain("pointer-events-none");
+    });
+
+    it("全画面の間は、前後の矢印の題名の吹き出しを全画面の入れ物の中に描く", async () => {
+      renderPage();
+      await ready();
+      const next = await screen.findByRole("button", { name: "次の動画: 後続の動画" });
+      const frame = document.querySelector<HTMLElement>("[data-player-frame]");
+      Object.defineProperty(document, "fullscreenElement", {
+        configurable: true,
+        value: frame,
+      });
+      try {
+        act(() => {
+          document.dispatchEvent(new Event("fullscreenchange"));
+        });
+        act(() => next.focus());
+        const tip = await screen.findByRole("tooltip");
+        expect(frame?.contains(tip)).toBe(true);
+      } finally {
+        Object.defineProperty(document, "fullscreenElement", {
+          configurable: true,
+          value: null,
+        });
+      }
+    });
+
+    it("関連動画の並びに無い前の動画も、題名無しで移れる", async () => {
+      server.related.set(7, { items: [related(8, "後続の動画")], nextId: 8, prevId: 99 });
+      renderPage();
+      await ready();
+      expect(await screen.findByRole("button", { name: "前の動画" })).toBeDefined();
+    });
+
+    it("画面のどこでも Space・0 がプレイヤーに効く", async () => {
       const controls = fakeControls();
       playerMock.controls = controls;
       renderPage();
       await ready();
-      await screen.findByRole("button", { name: "10 秒進む" });
-      // 画面全体のキー操作がプレイヤーの操作を受け取るのは描画後の effect なので、→ が効く
+      await screen.findByRole("button", { name: "再生" });
+      // 画面全体のキー操作がプレイヤーの操作を受け取るのは描画後の effect なので、0 が効く
       // ようになるのを待ってから Space を確かめる。
       await waitFor(() => {
-        fireEvent.keyDown(document.body, { key: "ArrowRight" });
-        expect(controls.seekBy).toHaveBeenCalledWith(10);
+        fireEvent.keyDown(document.body, { key: "0" });
+        expect(controls.seekTo).toHaveBeenCalledWith(0);
       });
       fireEvent.keyDown(document.body, { key: " " });
       expect(controls.togglePlay).toHaveBeenCalledTimes(1);
@@ -640,7 +719,7 @@ describe("VideoPage", () => {
       await ready();
       await screen.findByRole("heading", { level: 2, name: "関連動画" });
       // 操作はプレイヤーが onControls を返してから出るので、出るまで待つ。
-      (await screen.findByRole("button", { name: "10 秒進む" })).focus();
+      (await screen.findByRole("button", { name: "再生" })).focus();
       end();
       expect(document.activeElement).toBe(
         screen.getByRole("button", { name: "次を再生" }),

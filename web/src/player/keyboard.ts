@@ -10,10 +10,7 @@ import type { PlayerControls } from "./playerControls";
  * 操作になるキーはここで見送る。
  */
 
-export type ShortcutAction =
-  "togglePlay" | "back" | "forward" | "fullscreen" | "mute" | "start" | "close";
-
-const seekStepSeconds = 10;
+export type ShortcutAction = "togglePlay" | "fullscreen" | "mute" | "start" | "close";
 
 /** 入力欄など、文字の入力を受ける要素。 */
 function isEditable(element: Element): boolean {
@@ -24,10 +21,6 @@ function isEditable(element: Element): boolean {
 /** Space で自分の操作をする要素（ボタン・リンク・スライダー・メニュー項目）。 */
 const spaceOwners =
   "button, a[href], summary, [role='button'], [role='link'], [role='slider'], [role='checkbox'], [role='switch'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='option'], [role='tab']";
-
-/** ←/→ で自分の操作をする要素（スライダー・メニュー）。 */
-const arrowOwners =
-  "[role='slider'], [role='menu'], [role='menuitem'], [role='menuitemradio'], [role='menuitemcheckbox'], [role='listbox'], [role='tablist'], [role='radiogroup']";
 
 /** shortcutFor は押されたキーが起こす操作を返す。この画面が扱わないキーは null。 */
 export function shortcutFor(event: KeyboardEvent): ShortcutAction | null {
@@ -40,10 +33,6 @@ export function shortcutFor(event: KeyboardEvent): ShortcutAction | null {
     case "Spacebar":
       if (event.shiftKey) return null;
       return target?.closest(spaceOwners) != null ? null : "togglePlay";
-    case "ArrowLeft":
-    case "ArrowRight":
-      if (event.shiftKey || target?.closest(arrowOwners) != null) return null;
-      return event.key === "ArrowLeft" ? "back" : "forward";
     case "f":
     case "F":
       return "fullscreen";
@@ -78,7 +67,7 @@ function isPopoverOpen(): boolean {
 }
 
 /**
- * useKeyboardShortcuts は Space・←/→・F・M・0・Esc を画面全体で受ける。
+ * useKeyboardShortcuts は Space・F・M・0・Esc を画面全体で受ける。
  *
  * - プレイヤーが無い（取り込み中・読み取り失敗など）ときは、Esc だけが効く。
  * - 全画面中の Esc は何もしない。全画面の解除はブラウザが行う。
@@ -112,12 +101,6 @@ export function useKeyboardShortcuts(
       switch (action) {
         case "togglePlay":
           player.togglePlay();
-          break;
-        case "back":
-          player.seekBy(-seekStepSeconds);
-          break;
-        case "forward":
-          player.seekBy(seekStepSeconds);
           break;
         case "fullscreen":
           player.toggleFullscreen();

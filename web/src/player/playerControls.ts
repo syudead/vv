@@ -9,8 +9,6 @@
 export interface PlayerControls {
   togglePlay(): void;
   play(): void;
-  /** seekBy は論理上の再生位置を seconds 秒動かす。先頭と長さで止める。 */
-  seekBy(seconds: number): void;
   /** seekTo は論理上の再生位置を seconds 秒の位置にする。 */
   seekTo(seconds: number): void;
   /** restart は先頭から再生し直す。 */
@@ -63,15 +61,6 @@ export function createPlayerControls(
       else player.pause();
     },
     play,
-    seekBy(seconds) {
-      const now = player.currentTime() ?? 0;
-      const duration = player.duration();
-      let target = Math.max(0, now + seconds);
-      if (duration !== undefined && Number.isFinite(duration) && duration > 0) {
-        target = Math.min(duration, target);
-      }
-      player.currentTime(target);
-    },
     seekTo(seconds) {
       player.currentTime(Math.max(0, seconds));
     },

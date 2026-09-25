@@ -935,6 +935,11 @@ export interface components {
              * @description 同じディレクトリで自然順の次の動画。無ければ省く
              */
             nextId?: number;
+            /**
+             * Format: int64
+             * @description 同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
+             */
+            prevId?: number;
         };
         ProgressUpdate: {
             /** Format: int64 */
