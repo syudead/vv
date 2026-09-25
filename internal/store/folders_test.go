@@ -42,6 +42,9 @@ func TestFolderLocationsReturnsEverythingBelowTheFolder(t *testing.T) {
 	if err := db.Ingest().SetThumbnailState(ctx, ids["/media/A/B/y.mp4"], domain.ThumbnailStateDone); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.sql.Exec(`update videos set preview_state = 'done' where id = ?`, ids["/media/A/B/y.mp4"]); err != nil {
+		t.Fatal(err)
+	}
 
 	locations, err := db.Library().FolderLocations(ctx, domain.AudienceOwner, "/media/A")
 	if err != nil {
@@ -52,6 +55,13 @@ func TestFolderLocationsReturnsEverythingBelowTheFolder(t *testing.T) {
 		paths = append(paths, location.Path)
 		if location.Path == "/media/A/B/y.mp4" && location.ThumbnailState != domain.ThumbnailStateDone {
 			t.Errorf("thumbnail state = %q", location.ThumbnailState)
+		}
+		wantPreview := domain.PreviewStatePending
+		if location.Path == "/media/A/B/y.mp4" {
+			wantPreview = domain.PreviewStateDone
+		}
+		if location.PreviewState != wantPreview {
+			t.Errorf("%s preview state = %q, want %q", location.Path, location.PreviewState, wantPreview)
 		}
 	}
 	slices.Sort(paths)

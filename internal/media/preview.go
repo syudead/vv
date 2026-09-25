@@ -45,17 +45,21 @@ func GeneratePreview(ctx context.Context, videoPath, output string, durationMs i
 	return nil
 }
 
+// previewScale は、向きを問わず 640x640 の枠に収める（元より大きくはしない）。
+// 縦長の動画でも横長と同じくらいの大きさに留まる。
+const previewScale = "scale='min(640,iw)':'min(640,ih)':force_original_aspect_ratio=decrease:force_divisible_by=2"
+
 func previewArgs(videoPath, output string, durationMs int64) []string {
 	args := []string{"-nostdin", "-v", "error", "-i", videoPath}
 	segments := PreviewSegments(durationMs)
 	if len(segments) == 1 {
-		args = append(args, "-map", "0:V:0?", "-vf", "scale='trunc(min(640,iw)/2)*2':-2", "-an")
+		args = append(args, "-map", "0:V:0?", "-vf", previewScale, "-an")
 	} else {
 		filters := make([]string, 0, len(segments)+1)
 		labels := make([]string, 0, len(segments))
 		for i, segment := range segments {
 			label := fmt.Sprintf("v%d", i)
-			filters = append(filters, fmt.Sprintf("[0:V:0]trim=start=%s:end=%s,setpts=PTS-STARTPTS,scale='trunc(min(640,iw)/2)*2':-2,format=yuv420p[%s]", previewFormatSeconds(segment[0]), previewFormatSeconds(segment[1]), label))
+			filters = append(filters, fmt.Sprintf("[0:V:0]trim=start=%s:end=%s,setpts=PTS-STARTPTS,%s,format=yuv420p[%s]", previewFormatSeconds(segment[0]), previewFormatSeconds(segment[1]), previewScale, label))
 			labels = append(labels, "["+label+"]")
 		}
 		filters = append(filters, strings.Join(labels, "")+fmt.Sprintf("concat=n=%d:v=1:a=0[v]", len(labels)))

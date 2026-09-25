@@ -17,6 +17,8 @@ const mock = vi.hoisted(() => {
     fullscreen = false;
     rate = 1;
     durationValue = 120;
+    videoWidthValue = 1920;
+    videoHeightValue = 1080;
     posterValue: string | undefined;
     userActiveValue = true;
     element: HTMLElement;
@@ -40,6 +42,12 @@ const mock = vi.hoisted(() => {
     }
     ready(callback: Callback) {
       callback();
+    }
+    videoWidth() {
+      return this.videoWidthValue;
+    }
+    videoHeight() {
+      return this.videoHeightValue;
     }
     one(event: string, callback: Callback) {
       const once = () => {
@@ -408,6 +416,18 @@ describe("VideoPlayer", () => {
     expect(player.errorValue).toBeNull();
     // 変換へ切り替えたあとの失敗でも、操作バーを出す印を付け直す。
     expect(player.started).toBe(true);
+  });
+
+  it("読み込んだ映像の比率を知らせる", async () => {
+    const onAspectRatio = vi.fn();
+    render(<VideoPlayer {...props()} onAspectRatio={onAspectRatio} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    if (player === undefined) throw new Error("playerがありません");
+    player.videoWidthValue = 1080;
+    player.videoHeightValue = 1920;
+    act(() => player.trigger("loadedmetadata"));
+    expect(onAspectRatio).toHaveBeenCalledWith(1080 / 1920);
   });
 
   it("autoplayなら作ってすぐ再生を始める", async () => {

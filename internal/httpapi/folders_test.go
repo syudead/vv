@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -368,5 +369,57 @@ func TestListFolderVideosMissingFolderIgnoresScope(t *testing.T) {
 		if got := decode[gen.Error](t, rec); got.Message != folderNotFoundMessage {
 			t.Errorf("%s: message = %q", target, got.Message)
 		}
+	}
+}
+
+func TestFolderPreviewsExposeOnlyServeablePreviewURL(t *testing.T) {
+	if filepath.Separator != '/' {
+		t.Skip("fixture uses slash-separated absolute paths")
+	}
+	loc := func(path string, id int64, key string, preview domain.PreviewState) domain.FolderLocation {
+		return domain.FolderLocation{
+			Path: path, VideoID: id, ContentKey: key,
+			ThumbnailState: domain.ThumbnailStateDone, PreviewState: preview,
+		}
+	}
+	folders := &fakeFolders{
+		roots: []domain.MediaFolder{{ID: 3, Path: "/a/movies"}},
+		locations: []domain.FolderLocation{
+			loc("/a/movies/A/1.mp4", 1, "1111111111111111:1", domain.PreviewStateDone),
+			loc("/a/movies/A/2.mp4", 2, "2222222222222222:1", domain.PreviewStateDone),
+			loc("/a/movies/A/3.mp4", 3, "3333333333333333:1", domain.PreviewStatePending),
+		},
+	}
+	catalog := &fakeCatalog{
+		previews: map[string]bool{"1111111111111111:1": true, "3333333333333333:1": true},
+		requeue:  true,
+	}
+	handler := newTestServer(t, Options{Folders: folders, Catalog: catalog})
+
+	// 子フォルダのカードとしても、フォルダ自身としても同じ扱いになる。
+	for _, target := range []string{"/api/folders/3", "/api/folders/3?path=A"} {
+		rec := do(t, handler, http.MethodGet, target)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("GET %s status = %d: %s", target, rec.Code, rec.Body)
+		}
+		listing := decode[gen.FolderListing](t, rec)
+		previews := listing.Folder.Previews
+		if !strings.Contains(target, "path=") {
+			previews = listing.Folders[0].Previews
+		}
+		urls := map[int64]string{}
+		for _, preview := range previews {
+			if preview.PreviewUrl != nil {
+				urls[preview.VideoId] = *preview.PreviewUrl
+			}
+		}
+		// 1 は done でファイルがある。2 は done でもファイルが無く、3 は pending。
+		want := map[int64]string{1: "/api/videos/1/preview?v=1111111111111111:1"}
+		if len(previews) != 3 || !maps.Equal(urls, want) {
+			t.Errorf("GET %s previews = %+v, preview URLs = %v, want %v", target, previews, urls, want)
+		}
+	}
+	if !slices.Contains(catalog.requeued, 2) {
+		t.Errorf("requeued = %v, want the missing done preview 2 requeued", catalog.requeued)
 	}
 }

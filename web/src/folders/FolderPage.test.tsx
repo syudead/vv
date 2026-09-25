@@ -21,6 +21,7 @@ import { type Audience, AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
+import FolderCard from "./FolderCard";
 import FolderPage from "./FolderPage";
 
 function summary(extra: Partial<FolderSummary>): FolderSummary {
@@ -361,6 +362,222 @@ describe("FolderPage", () => {
     expect(five?.querySelectorAll("img").length).toBe(4);
     expect(deeper?.querySelectorAll("img").length).toBe(0);
     expect(deeper?.textContent).toContain("動画 0 本");
+  });
+
+  it("フォルダの絵柄の上でマウスを横に動かすと、位置に応じたサムネイルを前に出す", async () => {
+    const { container } = renderFolders("/folders/3");
+    await screen.findByRole("link", { name: "five、動画 6 本、フォルダ 0 件" });
+    const art = container.querySelector<HTMLElement>(
+      '[data-folder-path="five"] [data-folder-art]',
+    );
+    if (art === null) throw new Error("folder art not found");
+    art.getBoundingClientRect = () => new DOMRect(100, 0, 200, 100);
+    const front = () => art.querySelector("[data-folder-front]");
+
+    fireEvent.pointerMove(art, { pointerType: "touch", clientX: 290 });
+    expect(front()).toBeNull();
+
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 110 });
+    expect(art.querySelectorAll("[data-folder-front]").length).toBe(1);
+    expect(front()?.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/videos/1/thumbnail?v=x",
+    );
+
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 290 });
+    expect(front()?.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/videos/4/thumbnail?v=x",
+    );
+
+    fireEvent.pointerLeave(art);
+    expect(front()).toBeNull();
+  });
+
+  it("1件だけのフォルダでも、マウスを乗せるとサムネイルを前に出す", () => {
+    const one = summary({
+      path: "one",
+      name: "one",
+      videoCount: 1,
+      previews: previews(1),
+    });
+    const { container } = render(
+      <MemoryRouter>
+        <FolderCard folder={one} showPath={false} />
+      </MemoryRouter>,
+    );
+    const art = container.querySelector<HTMLElement>("[data-folder-art]");
+    if (art === null) throw new Error("folder art not found");
+    art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 150 });
+    expect(art.querySelector("[data-folder-front]")).not.toBeNull();
+  });
+
+  it("前に出た1枚は、少し待ってからプレビュー動画を流し、外れると止める", async () => {
+    vi.useFakeTimers();
+    const play = vi
+      .spyOn(HTMLMediaElement.prototype, "play")
+      .mockResolvedValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockReturnValue(undefined);
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockReturnValue(undefined);
+    try {
+      const folder = summary({
+        path: "two",
+        name: "two",
+        videoCount: 2,
+        previews: [
+          {
+            videoId: 1,
+            thumbnailUrl: "/api/videos/1/thumbnail?v=x",
+            previewUrl: "/api/videos/1/preview?v=x",
+          },
+          { videoId: 2, thumbnailUrl: "/api/videos/2/thumbnail?v=x" },
+        ],
+      });
+      const { container } = render(
+        <MemoryRouter>
+          <FolderCard folder={folder} showPath={false} />
+        </MemoryRouter>,
+      );
+      const art = container.querySelector<HTMLElement>("[data-folder-art]");
+      if (art === null) throw new Error("folder art not found");
+      art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+      const videos = () =>
+        Array.from(art.querySelectorAll("video"), (video) => video.getAttribute("src"));
+
+      fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+      act(() => vi.advanceTimersByTime(300));
+      expect(videos()).toEqual([]);
+      act(() => vi.advanceTimersByTime(150));
+      expect(videos()).toEqual(["/api/videos/1/preview?v=x"]);
+      expect(art.querySelector("[data-folder-front] video")).not.toBeNull();
+      expect(play).toHaveBeenCalled();
+
+      // プレビュー動画の無い1枚に移ると、前には出すが動画は流さない。
+      fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 190 });
+      act(() => vi.advanceTimersByTime(500));
+      expect(videos()).toEqual([]);
+      expect(load).toHaveBeenCalled();
+
+      fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+      act(() => vi.advanceTimersByTime(500));
+      expect(videos()).toHaveLength(1);
+      fireEvent.pointerLeave(art);
+      expect(videos()).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("再生を断られたら、読み込みを解いてサムネイルのまま前に出しておく", async () => {
+    vi.useFakeTimers();
+    let played: HTMLMediaElement | null = null;
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockImplementation(function (
+      this: HTMLMediaElement,
+    ) {
+      played = this;
+      return Promise.reject(new Error("denied"));
+    });
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockReturnValue(undefined);
+    const load = vi.spyOn(HTMLMediaElement.prototype, "load").mockReturnValue(undefined);
+    try {
+      const folder = summary({
+        path: "one",
+        name: "one",
+        videoCount: 1,
+        previews: [
+          {
+            videoId: 1,
+            thumbnailUrl: "/api/videos/1/thumbnail?v=x",
+            previewUrl: "/api/videos/1/preview?v=x",
+          },
+        ],
+      });
+      const { container } = render(
+        <MemoryRouter>
+          <FolderCard folder={folder} showPath={false} />
+        </MemoryRouter>,
+      );
+      const art = container.querySelector<HTMLElement>("[data-folder-art]");
+      if (art === null) throw new Error("folder art not found");
+      art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+      fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+      await act(async () => {
+        vi.advanceTimersByTime(450);
+        await Promise.resolve();
+      });
+      const video = played as HTMLMediaElement | null;
+      if (video === null) throw new Error("play was not called");
+      expect(art.querySelector("video")).toBeNull();
+      expect(video.hasAttribute("src")).toBe(false);
+      expect(load).toHaveBeenCalled();
+      expect(art.querySelector("[data-folder-front] img")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("プレビュー動画が読めなければ、サムネイルのまま前に出しておく", () => {
+    vi.useFakeTimers();
+    vi.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(new Error("nope"));
+    vi.spyOn(HTMLMediaElement.prototype, "pause").mockReturnValue(undefined);
+    vi.spyOn(HTMLMediaElement.prototype, "load").mockReturnValue(undefined);
+    try {
+      const folder = summary({
+        path: "one",
+        name: "one",
+        videoCount: 1,
+        previews: [
+          {
+            videoId: 1,
+            thumbnailUrl: "/api/videos/1/thumbnail?v=x",
+            previewUrl: "/api/videos/1/preview?v=x",
+          },
+        ],
+      });
+      const { container } = render(
+        <MemoryRouter>
+          <FolderCard folder={folder} showPath={false} />
+        </MemoryRouter>,
+      );
+      const art = container.querySelector<HTMLElement>("[data-folder-art]");
+      if (art === null) throw new Error("folder art not found");
+      art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+      fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 10 });
+      act(() => vi.advanceTimersByTime(450));
+      const video = art.querySelector("video");
+      if (video === null) throw new Error("video not mounted");
+      fireEvent.error(video);
+      expect(art.querySelector("video")).toBeNull();
+      expect(art.querySelector("[data-folder-front] img")).not.toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("下見の位置がプレビューの件数を超えたら、下見をやめる", () => {
+    const four = summary({
+      path: "four",
+      name: "four",
+      videoCount: 4,
+      previews: previews(4),
+    });
+    const { container, rerender } = render(
+      <MemoryRouter>
+        <FolderCard folder={four} showPath={false} />
+      </MemoryRouter>,
+    );
+    const art = container.querySelector<HTMLElement>("[data-folder-art]");
+    if (art === null) throw new Error("folder art not found");
+    art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 190 });
+    expect(art.querySelector("[data-folder-front]")).not.toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <FolderCard folder={{ ...four, previews: previews(2) }} showPath={false} />
+      </MemoryRouter>,
+    );
+    expect(art.querySelector("[data-folder-front]")).toBeNull();
+    expect(art.querySelectorAll("[data-folder-preview]").length).toBe(2);
   });
 
   it("特殊な文字を含む名前のフォルダへ、段を1回だけ符号化したリンクを張る", async () => {

@@ -10,7 +10,8 @@ services:
       args:
         VERSION: ${VV_VERSION:-dev}
     ports:
-      - "8080:8080"
+      # ホスト側の公開ポートだけを差し替えられる。コンテナ内は 8080 のまま。
+      - "${MDM_HOST_PORT:-8080}:8080"
     environment:
       MDM_ADDR: ":8080"
       MDM_DATA_DIR: "/data"

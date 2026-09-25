@@ -537,6 +537,37 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 	}
 }
 
+// 00009 の Down で、表示の縦横比の列だけが消え、ほかの列と行は残る。
+func TestDisplayAspectRatioMigrationDown(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tableColumns(t, db, "videos")["display_aspect_ratio"]; !ok {
+		t.Fatal("videos に display_aspect_ratio 列が無い")
+	}
+	// 00010 以降を先に戻してから、検査対象の 00009 を戻す。
+	downTo(t, db, 9)
+	if err := Down(ctx, db); err != nil {
+		t.Fatalf("Down に失敗した: %v", err)
+	}
+	columns := tableColumns(t, db, "videos")
+	if _, ok := columns["display_aspect_ratio"]; ok {
+		t.Error("videos に display_aspect_ratio 列が残っている")
+	}
+	if _, ok := columns["width"]; !ok {
+		t.Error("videos の width 列が消えた")
+	}
+	var count int
+	if err := db.sql.QueryRow(`select count(*) from videos`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Errorf("videos の行数 = %d, want 1", count)
+	}
+}
+
 // Down で 001 の状態へ戻ること。スキーマ変更を取り消せることは、
 // 適用を自動化している以上（起動時に適用する）必要な出口である。
 func TestMigrateDownReturnsToInitialSchema(t *testing.T) {

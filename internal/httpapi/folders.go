@@ -52,7 +52,7 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	domain.SortFolders(summaries)
 
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.RootFolderListing{Folders: toAPIFolders(audience, summaries)}, s.logger)
+	writeJSON(w, http.StatusOK, gen.RootFolderListing{Folders: s.apiFolders(r.Context(), audience, summaries)}, s.logger)
 }
 
 // GetFolder はフォルダ1件と直下の子フォルダを返す（GET /api/folders/{rootId}）。
@@ -78,8 +78,8 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.FolderListing{
-		Folder:  toAPIFolder(audience, listing.Folder),
-		Folders: toAPIFolders(audience, listing.Folders),
+		Folder:  s.apiFolder(r.Context(), audience, listing.Folder),
+		Folders: s.apiFolders(r.Context(), audience, listing.Folders),
 	}, s.logger)
 }
 
@@ -199,23 +199,37 @@ func listingHasVideos(listing domain.FolderListing) bool {
 	return listing.Folder.VideoCount > 0 || len(listing.Folders) > 0
 }
 
-func toAPIFolders(audience domain.Audience, folders []domain.FolderSummary) []gen.FolderSummary {
+func (s *server) apiFolders(ctx context.Context, audience domain.Audience, folders []domain.FolderSummary) []gen.FolderSummary {
 	out := make([]gen.FolderSummary, 0, len(folders))
 	for _, folder := range folders {
-		out = append(out, toAPIFolder(audience, folder))
+		out = append(out, s.apiFolder(ctx, audience, folder))
 	}
 	return out
 }
 
-// toAPIFolder はフォルダを契約の形へ写す。登録フォルダの絶対パス（rootPath）は
-// ゲストの応答から外す（contracts/guest-api.md §1）。
-func toAPIFolder(audience domain.Audience, folder domain.FolderSummary) gen.FolderSummary {
-	previews := make([]gen.FolderPreview, 0, len(folder.Previews))
+// apiFolder はフォルダ1件を契約の形へ写す。差し込むサムネイルの previewUrl は
+// 動画一覧と同じ presentVideos を通し、ファイルが今あるときだけ出す（消えていれば
+// 作り直しを積む）。登録フォルダの絶対パス（rootPath）はゲストの応答から外す
+// （contracts/guest-api.md §1）。
+func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder domain.FolderSummary) gen.FolderSummary {
+	videos := make([]domain.Video, 0, len(folder.Previews))
 	for _, preview := range folder.Previews {
-		previews = append(previews, gen.FolderPreview{
-			VideoId:      preview.VideoID,
-			ThumbnailUrl: thumbnailURL(domain.Video{ID: preview.VideoID, ContentKey: preview.ContentKey}),
+		videos = append(videos, domain.Video{
+			ID: preview.VideoID, ContentKey: preview.ContentKey, PreviewState: preview.PreviewState,
 		})
+	}
+	views := s.presentVideos(ctx, videos)
+	previews := make([]gen.FolderPreview, 0, len(views))
+	for _, view := range views {
+		item := gen.FolderPreview{
+			VideoId:      view.Video.ID,
+			ThumbnailUrl: thumbnailURL(view.Video),
+		}
+		if view.Video.PreviewState == domain.PreviewStateDone && view.PreviewAvailable {
+			url := previewURL(view.Video)
+			item.PreviewUrl = &url
+		}
+		previews = append(previews, item)
 	}
 	out := gen.FolderSummary{
 		RootId:      folder.RootID,

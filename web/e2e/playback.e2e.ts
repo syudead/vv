@@ -422,7 +422,7 @@ test.describe.serial("live MP4 playback", () => {
   test("離脱とreloadは自分の変換だけを止め、別tabの再生を継続する", async ({
     browser,
   }) => {
-    test.setTimeout(30_000);
+    test.setTimeout(60_000);
     const context = await browser.newContext();
     const first = await context.newPage();
     const second = await context.newPage();

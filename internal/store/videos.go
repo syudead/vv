@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"strconv"
@@ -24,7 +25,7 @@ const videoColumnsTemplate = `videos.id,
 	(select size_bytes from video_locations l where video_id = videos.id and {visible} order by path limit 1) as size_bytes,
 	(select mtime from video_locations l where video_id = videos.id and {visible} order by path limit 1) as mtime,
 	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
-	videos.height, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
+	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.preview_state,
 	{public} as public`
 
@@ -232,6 +233,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		mtime, addedAt, updatedAt                int64
 		durationMs                               sql.NullInt64
 		width, height                            sql.NullInt64
+		displayAspectRatio                       sql.NullFloat64
 		container, videoCodec, audioCodec        sql.NullString
 		unplayableReason, probeError             sql.NullString
 		playable                                 int
@@ -241,7 +243,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 
 	err := row.Scan(
 		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &addedAt, &updatedAt,
-		&video.ContentKey, &durationMs, &width, &height, &container, &videoCodec, &audioCodec,
+		&video.ContentKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
 		&playable, &unplayableReason, &probeState, &probeError, &thumbnailState, &previewState,
 		&public,
 	)
@@ -263,6 +265,10 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	if height.Valid {
 		value := int(height.Int64)
 		video.Height = &value
+	}
+	if displayAspectRatio.Valid && displayAspectRatio.Float64 > 0 {
+		value := displayAspectRatio.Float64
+		video.DisplayAspectRatio = &value
 	}
 	video.Container = container.String
 	video.VideoCodec = videoCodec.String
@@ -297,6 +303,13 @@ func nullableInt64(value int64) any {
 
 func nullableInt(value int) any {
 	if value <= 0 {
+		return nil
+	}
+	return value
+}
+
+func nullableFloat64(value float64) any {
+	if value <= 0 || math.IsNaN(value) || math.IsInf(value, 0) {
 		return nil
 	}
 	return value

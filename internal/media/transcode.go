@@ -20,8 +20,8 @@ const (
 	transcodeStopDelay = 5 * time.Second
 	stderrTailLimit    = 32 * 1024
 	liveX264Preset     = "superfast"
-	maxVideoWidth      = 3840
-	maxVideoHeight     = 2160
+	maxVideoLongSide   = 3840
+	maxVideoShortSide  = 2160
 	maxVideoFPS        = 60
 	maxMacroblocksSec  = 983040
 )
@@ -162,13 +162,7 @@ func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
 	result := transcodeMetadata{FormatName: strings.ToLower(parsed.Format.FormatName)}
 	for _, stream := range parsed.Streams {
 		sampleAspectNum, sampleAspectDen := parseAspectRatio(stream.SampleAspectRatio)
-		rotation := parseRotation(stream.Tags.Rotate)
-		for _, sideData := range stream.SideDataList {
-			if strings.EqualFold(sideData.SideDataType, "Display Matrix") {
-				rotation = normalizeRotation(sideData.Rotation)
-				break
-			}
-		}
+		rotation := streamRotation(stream.Tags.Rotate, stream.SideDataList)
 		converted := transcodeStream{
 			Index:            stream.Index,
 			CodecType:        stream.CodecType,
@@ -277,7 +271,7 @@ func videoCanCopy(stream transcodeStream) bool {
 		stream.BitsPerRawSample != 8 || !constantFrameRate(stream) {
 		return false
 	}
-	if stream.Width > maxVideoWidth || stream.Height > maxVideoHeight {
+	if exceedsVideoBounds(stream.Width, stream.Height) {
 		return false
 	}
 	displayWidth, displayHeight, _, _ := displayGeometry(stream)
@@ -298,7 +292,7 @@ func videoEncodeArgs(stream transcodeStream) []string {
 	filters := make([]string, 0, 2)
 	dimensionsChanged := width != displayWidth || height != displayHeight
 	if dimensionsChanged {
-		if displayWidth > maxVideoWidth || displayHeight > maxVideoHeight {
+		if exceedsVideoBounds(displayWidth, displayHeight) {
 			filters = append(filters, fmt.Sprintf("scale=%d:%d", width, height))
 		} else {
 			filters = append(filters, fmt.Sprintf("pad=%d:%d:0:0", width, height))
@@ -334,8 +328,16 @@ func constantFrameRate(stream transcodeStream) bool {
 	return stream.FPS > 0 && stream.RealFPS > 0 && math.Abs(stream.FPS-stream.RealFPS) < 0.0001
 }
 
+// exceedsVideoBounds は、長辺・短辺のどちらかが上限を超えるかを返す。上限は向きを問わず
+// 長辺 maxVideoLongSide・短辺 maxVideoShortSide とし、縦長の 2160x3840 も横長の 3840x2160 と
+// 同じく縮めずに通す（どちらも H.264 Level 5.1 の 1 フレームの上限に収まる）。
+func exceedsVideoBounds(width, height int) bool {
+	return max(width, height) > maxVideoLongSide || min(width, height) > maxVideoShortSide
+}
+
 func outputDimensions(width, height int) (int, int) {
-	ratio := math.Min(1, math.Min(float64(maxVideoWidth)/float64(width), float64(maxVideoHeight)/float64(height)))
+	longSide, shortSide := max(width, height), min(width, height)
+	ratio := math.Min(1, math.Min(float64(maxVideoLongSide)/float64(longSide), float64(maxVideoShortSide)/float64(shortSide)))
 	if ratio < 1 {
 		width = max(2, int(math.Floor(float64(width)*ratio))&^1)
 		height = max(2, int(math.Floor(float64(height)*ratio))&^1)
@@ -413,6 +415,17 @@ func outputSampleAspectRatio(numerator, denominator int64, sourceWidth, sourceHe
 		height,
 		width,
 	)
+}
+
+// streamRotation は stream の回転（0/90/180/270）を返す。Display Matrix が
+// あればそれを、無ければ旧来の rotate タグを採る。
+func streamRotation(tag string, sideDataList []probeSideData) int {
+	for _, sideData := range sideDataList {
+		if strings.EqualFold(sideData.SideDataType, "Display Matrix") {
+			return normalizeRotation(sideData.Rotation)
+		}
+	}
+	return parseRotation(tag)
 }
 
 func parseRotation(value string) int {

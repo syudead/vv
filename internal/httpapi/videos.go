@@ -395,6 +395,9 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 	if video.Height != nil {
 		out.Height = video.Height
 	}
+	if video.DisplayAspectRatio != nil {
+		out.DisplayAspectRatio = video.DisplayAspectRatio
+	}
 	if video.Container != "" {
 		container := video.Container
 		out.Container = &container
