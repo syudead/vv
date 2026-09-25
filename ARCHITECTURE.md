@@ -287,7 +287,7 @@ proxies in `MDM_TRUSTED_PROXIES` and otherwise uses the connecting address and T
 the login attempt limit, authentication logs, the cookie name and `Secure`, the
 same-origin check and the loopback check for opening a file all use it.
 
-Not built yet: guest responses, subtitles, and multi-user support. Browser-incompatible
+Not built yet: subtitles and multi-user support. Browser-incompatible
 video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is
 not persisted.
 
