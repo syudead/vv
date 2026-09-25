@@ -5,6 +5,7 @@ import videojs from "video.js";
 import "video.js/dist/video-js.css";
 
 import { streamUrl, type Video } from "../api/client";
+import { readPlaybackVolume, writePlaybackVolume } from "../preferences/playbackVolume";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { liveSource } from "./liveOffset";
 import {
@@ -174,6 +175,12 @@ export default function VideoPlayer(props: Props) {
         children: controlBarChildren,
         remainingTimeDisplay: false,
       },
+    });
+    const savedVolume = readPlaybackVolume();
+    player.volume(savedVolume.volume);
+    player.muted(savedVolume.muted);
+    player.on("volumechange", () => {
+      writePlaybackVolume({ volume: player.volume(), muted: player.muted() });
     });
     playerRef.current = player;
     let attempt: PlaybackAttempt = initialAttempt;
