@@ -81,7 +81,7 @@ api/
 web/             # React SPA。ビルド結果を embed して配信
 ```
 
-依存方向は `cmd → {app, httpapi, store, media, mediafs, artifacts, opener, scanner, jobs, eventbus} → domain` の
+依存方向は `cmd → {app, httpapi, store, media, mediafs, artifacts, opener, scanner, jobs, eventbus, password} → domain` の
 一方向に限定し、`internal/` の兄弟パッケージ同士は import しない。
 `internal/domain` と `internal/app` が `net/http`・`database/sql`・`os/exec` を
 import した時点、`internal/app` がアダプタを import した時点、兄弟パッケージ同士が

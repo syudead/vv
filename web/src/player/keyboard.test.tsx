@@ -1,4 +1,5 @@
 import { fireEvent, render } from "@testing-library/react";
+import { useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useKeyboardShortcuts } from "./keyboard";
@@ -137,6 +138,32 @@ describe("useKeyboardShortcuts", () => {
     });
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(other.onClose).not.toHaveBeenCalled();
+  });
+
+  it("プレイヤーの操作が描かれた直後の Esc から、全画面を見て閉じない", () => {
+    // 描画の確定と同時に押された Esc を、後に並ぶ部品のレイアウト効果で再現する。
+    function EscapeOnCommit({ when }: { when: boolean }) {
+      useLayoutEffect(() => {
+        if (when) fireEvent.keyDown(document.body, { key: "Escape" });
+      }, [when]);
+      return null;
+    }
+    const onClose = vi.fn();
+    const controls = fakeControls({ isFullscreen: vi.fn(() => true) });
+    const view = render(
+      <>
+        <Harness controls={null} onClose={onClose} />
+        <EscapeOnCommit when={false} />
+      </>,
+    );
+    view.rerender(
+      <>
+        <Harness controls={controls} onClose={onClose} />
+        <EscapeOnCommit when />
+      </>,
+    );
+    expect(controls.isFullscreen).toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("再生速度のメニューが開いているときの Esc はメニューに任せる", () => {
