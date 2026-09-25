@@ -255,7 +255,11 @@ kinds — anyone (`GET /api/health`, `GET /api/auth/session`, `POST /api/auth/se
 the SPA build), guests too (the video, stream, artifact and folder reads), and
 owner only (everything else, including undefined `/api/*` paths) — by the
 `path.Clean`ed request path, so the classification matches each operation's
-`security` in `api/openapi.yaml` (a Go test checks that). It decides the viewer
+`security` in `api/openapi.yaml` (a Go test checks that). Because `ServeMux` splits
+the escaped path before decoding each segment, a request whose escaped segments
+differ from its decoded ones (an encoded `/` or `.`, as in `%2F` or `%2E%2E`) is
+classified owner only when either form is under `/api/`, so classification and
+dispatch cannot disagree. It decides the viewer
 (`domain.Audience`) from the session cookie (`__Host-vv_session` over HTTPS,
 `vv_session` over HTTP), puts it on the request context for handlers to read, and
 tags every `/api/*` response with `X-VV-Audience: owner|guest`. Owner-only requests
