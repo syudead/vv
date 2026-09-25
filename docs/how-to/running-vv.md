@@ -25,8 +25,9 @@ port when 8080 is already in use (for example by a NAS management UI):
 MDM_HOST_PORT=18080 task up
 ```
 
-The application inside the container keeps listening on 8080, so only the host
-side of the mapping changes.
+Then open <http://localhost:18080> instead. The application inside the
+container keeps listening on 8080, so only the host side of the mapping
+changes.
 
 Add the mounted folder in Settings and start a scan. Scans are manual: adding
 files does not trigger one automatically. Source videos are read-only and are
