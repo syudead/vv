@@ -1010,6 +1010,141 @@ describe("useVideos の公開の反映", () => {
     vi.unstubAllGlobals();
   });
 
+  it("一部反映の前に始めた取り直しが後から成功しても、その動画を確かにしない（PR 338）", async () => {
+    stubVisibility(0);
+    const { updateVideoVisibility } = await import("./visibility");
+    const { clearListSnapshot, saveListSnapshot, takeListSnapshot } =
+      await import("./listSnapshot");
+    const { RequestFailed } = await import("./client");
+    clearListSnapshot();
+    // 動画 3 の1回目の取得（更新の知らせ）は切り替えの前に始まり、後から届く。
+    // 2回目（一部反映の取り直し）は一時的に失敗し、3回目（次の知らせ）は成功する。
+    let answerFirst: ((video: Video) => void) | undefined;
+    let attempts = 0;
+    getVideo.mockImplementation((id: number) => {
+      if (id !== 3) return Promise.resolve(item(id));
+      attempts += 1;
+      if (attempts === 1) {
+        return new Promise<Video>((resolve) => (answerFirst = resolve));
+      }
+      if (attempts === 2) {
+        return Promise.reject(new RequestFailed(500, "internal", "失敗"));
+      }
+      return Promise.resolve({ ...item(3), public: true });
+    });
+    const { result, unmount } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2, 3])));
+
+    await emitServerEvent("video", { id: 3 });
+    await waitFor(() => expect(getVideo).toHaveBeenCalledOnce());
+    await act(async () => {
+      await updateVideoVisibility([3], true);
+    });
+    // 切り替える前に読んだ public: false が届き、続く取り直しは失敗する。
+    await act(async () => answerFirst?.(item(3)));
+    await waitFor(() => expect(getVideo).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.items[2]?.public).toBe(false));
+
+    // 動画 3 の公開状態はまだ確かでないので、控えを取らせない。
+    const snapshot = { items: [item(3)], total: 1, hasMore: false, scrollY: 0 };
+    saveListSnapshot({ query: "" }, snapshot);
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+
+    // 知らせの後に始めた取り直しが成功すれば確かになる。
+    await emitServerEvent("video", { id: 3 });
+    await waitFor(() => expect(result.current.items[2]?.public).toBe(true));
+    await waitFor(() => {
+      saveListSnapshot({ query: "" }, snapshot);
+      expect(takeListSnapshot({ query: "" })).toBeDefined();
+    });
+    clearListSnapshot();
+    unmount();
+    vi.unstubAllGlobals();
+  });
+
+  it("一部反映の前に始めたページが後から届いても、その動画を確かにしない（PR 338）", async () => {
+    stubVisibility(0);
+    const { updateVideoVisibility } = await import("./visibility");
+    const { clearListSnapshot, saveListSnapshot, takeListSnapshot } =
+      await import("./listSnapshot");
+    const { RequestFailed } = await import("./client");
+    clearListSnapshot();
+    // 届いたページで動画 3 を取り直すが、一時的に失敗する。
+    getVideo.mockImplementation((id: number) =>
+      id === 3
+        ? Promise.reject(new RequestFailed(500, "internal", "失敗"))
+        : Promise.resolve(item(id)),
+    );
+    const { result, unmount } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2], "next")));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await act(async () => {
+      await updateVideoVisibility([3], true);
+    });
+    // 切り替える前に読んだ public: false のページが届く。
+    await act(async () => calls[1]?.resolve(page([3])));
+    await waitFor(() => expect(getVideo).toHaveBeenCalledWith(3, expect.anything()));
+    await waitFor(() => expect(result.current.items).toHaveLength(3));
+    expect(result.current.items[2]?.public).toBe(false);
+
+    const snapshot = { items: [item(3)], total: 1, hasMore: false, scrollY: 0 };
+    saveListSnapshot({ query: "" }, snapshot);
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    clearListSnapshot();
+    unmount();
+    vi.unstubAllGlobals();
+  });
+
+  it("取り直しに失敗した動画も、全件に反映された切り替えの結果が届けば確かになる（PR 338）", async () => {
+    stubVisibility(0);
+    const { updateVideoVisibility } = await import("./visibility");
+    const { clearListSnapshot, saveListSnapshot, takeListSnapshot } =
+      await import("./listSnapshot");
+    const { RequestFailed } = await import("./client");
+    clearListSnapshot();
+    getVideo.mockImplementation((id: number) =>
+      id === 3
+        ? Promise.reject(new RequestFailed(500, "internal", "失敗"))
+        : Promise.resolve(item(id)),
+    );
+    const { result, unmount } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1, 2, 3])));
+
+    await act(async () => {
+      await updateVideoVisibility([3], true);
+    });
+    await waitFor(() => expect(getVideo).toHaveBeenCalledWith(3, expect.anything()));
+    const snapshot = { items: [item(3)], total: 1, hasMore: false, scrollY: 0 };
+    saveListSnapshot({ query: "" }, snapshot);
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+
+    // 動画 3 だけを切り替え、全件に反映された。取り直さなくても確かである。
+    stubVisibility();
+    await act(async () => {
+      await updateVideoVisibility([3], true);
+    });
+    expect(result.current.items[2]?.public).toBe(true);
+    await waitFor(() => {
+      saveListSnapshot({ query: "" }, snapshot);
+      expect(takeListSnapshot({ query: "" })).toBeDefined();
+    });
+    expect(getVideo).toHaveBeenCalledTimes(1);
+    clearListSnapshot();
+    unmount();
+    vi.unstubAllGlobals();
+  });
+
   it("ページの取得中に届いた切り替えは、その動画を含むページが届いたときに重ねる", async () => {
     stubVisibility();
     const { updateVideoVisibility } = await import("./visibility");
