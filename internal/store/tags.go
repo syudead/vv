@@ -48,15 +48,8 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 		return domain.Tag{}, &domain.TagNameConflict{Tag: domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}}
 	}
 
-	res, err := tx.ExecContext(ctx, `insert into tags (created_at) values (?)`, time.Now().Unix())
+	id, err := insertTag(ctx, tx, normalized)
 	if err != nil {
-		return domain.Tag{}, fmt.Errorf("タグを作成できません: %w", err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return domain.Tag{}, fmt.Errorf("タグを作成できません: %w", err)
-	}
-	if err := insertTagName(ctx, tx, normalized, id, true); err != nil {
 		return domain.Tag{}, err
 	}
 	// 作ったばかりのタグでも、同じ名前の祖先フォルダの下の動画にはもう付いて
@@ -326,27 +319,9 @@ func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name s
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	lookup, found, err := lookupTagName(ctx, tx, normalized)
+	ref, _, err := findOrCreateTag(ctx, tx, normalized)
 	if err != nil {
 		return domain.TagRef{}, 0, err
-	}
-
-	var ref domain.TagRef
-	if found {
-		ref = domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}
-	} else {
-		res, err := tx.ExecContext(ctx, `insert into tags (created_at) values (?)`, time.Now().Unix())
-		if err != nil {
-			return domain.TagRef{}, 0, fmt.Errorf("タグを作成できません: %w", err)
-		}
-		id, err := res.LastInsertId()
-		if err != nil {
-			return domain.TagRef{}, 0, fmt.Errorf("タグを作成できません: %w", err)
-		}
-		if err := insertTagName(ctx, tx, normalized, id, true); err != nil {
-			return domain.TagRef{}, 0, err
-		}
-		ref = domain.TagRef{ID: id, Name: normalized}
 	}
 
 	applied, err := attachTagToVideoIDs(ctx, tx, videoIDs, ref.ID)
@@ -358,6 +333,42 @@ func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name s
 		return domain.TagRef{}, 0, fmt.Errorf("タグを付けられません: %w", err)
 	}
 	return ref, applied, nil
+}
+
+// findOrCreateTag は整えた名前 normalized をシノニムを含めて引き、無ければ同じ
+// トランザクションの中で作る。作ったかどうかも返す。名前でタグを付ける操作と、
+// グループをタグに変える操作（folder_groups.go、017 の Plan の Structural
+// Decisions 8）が共有する。
+func findOrCreateTag(ctx context.Context, tx *sql.Tx, normalized string) (domain.TagRef, bool, error) {
+	lookup, found, err := lookupTagName(ctx, tx, normalized)
+	if err != nil {
+		return domain.TagRef{}, false, err
+	}
+	if found {
+		return domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}, false, nil
+	}
+	id, err := insertTag(ctx, tx, normalized)
+	if err != nil {
+		return domain.TagRef{}, false, err
+	}
+	return domain.TagRef{ID: id, Name: normalized}, true, nil
+}
+
+// insertTag は整えた名前 normalized を元の名前に持つタグを作り、その id を返す。
+// 名前がまだ無いことは呼び出し側が確かめる。
+func insertTag(ctx context.Context, tx *sql.Tx, normalized string) (int64, error) {
+	res, err := tx.ExecContext(ctx, `insert into tags (created_at) values (?)`, time.Now().Unix())
+	if err != nil {
+		return 0, fmt.Errorf("タグを作成できません: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("タグを作成できません: %w", err)
+	}
+	if err := insertTagName(ctx, tx, normalized, id, true); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 // DetachTag は id で指定したタグを videoIDs の動画から外す（data-model.md §4）。

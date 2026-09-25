@@ -33,12 +33,13 @@ import (
 // show と pair はグループになる。フォルダ名 show と同じ名前のタグがあり、show の
 // メンバーにはフォルダ由来で付く。
 type libraryFixture struct {
-	env    *authEnv
-	owner  *http.Cookie
-	ids    map[string]int64
-	rootID int64
-	manual int64
-	folder int64
+	env      *authEnv
+	owner    *http.Cookie
+	ids      map[string]int64
+	rootID   int64
+	mediaDir string
+	manual   int64
+	folder   int64
 }
 
 func newLibraryFixture(t *testing.T) *libraryFixture {
@@ -52,11 +53,11 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 	t.Helper()
 	ctx := context.Background()
 	mediaDir := t.TempDir()
-	f := &libraryFixture{ids: map[string]int64{}}
+	f := &libraryFixture{ids: map[string]int64{}, mediaDir: mediaDir}
 	f.env = newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
 		library := db.Library()
 		return adjust(Options{
-			Videos: library, Folders: library, Library: library,
+			Videos: library, Folders: library, Library: library, FolderGroups: db.FolderGroups(),
 			Playback: db.Playback(), Tags: db.Tags(), Visibility: db.Visibility(),
 		})
 	})

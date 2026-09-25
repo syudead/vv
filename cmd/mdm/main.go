@@ -241,6 +241,7 @@ func run() error {
 		Tags:         db.Tags(),
 		Visibility:   db.Visibility(),
 		Folders:      libraryStore,
+		FolderGroups: db.FolderGroups(),
 		Library:      libraryStore,
 		Transcoder:   media.NewLiveTranscoder(requestMediaCtx.Done()),
 		Artifacts:    artifactStore,

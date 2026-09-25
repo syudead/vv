@@ -31,8 +31,8 @@ type ScanIndexStore struct{ db *DB }
 type SettingsStore struct{ db *DB }
 
 // FolderGroupStore はフォルダごとの例外（まとめを解除・直下をまとめる）の設定と
-// 解除を、フォルダの索引の作り直しと同じ取引で保存する（folder_groups.go、
-// specs/017-folder-groups/data-model.md §1〜§3）。
+// 解除、グループのタグ化を、フォルダの索引の作り直しと同じ取引で保存し、フォルダの
+// まとめ方を読み出す（folder_groups.go、specs/017-folder-groups/data-model.md §1〜§4）。
 type FolderGroupStore struct{ db *DB }
 
 // PlaybackStore は利用者の再生位置を保存する（progress.go）。共有する SQLite

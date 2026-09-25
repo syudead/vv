@@ -1357,6 +1357,63 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/folders/{rootId}/grouping:
+    put:
+      operationId: setFolderGrouping
+      summary: フォルダのまとめ方の例外を付ける・外す
+      description: |
+        `auto` は例外を外し、`ungroup` は「まとめを解除」、`groupDirect` は「直下をまとめる」を付ける
+        （specs/017-folder-groups/contracts/folder-groups-api.md §1）。同じ値の再設定も 200。
+        例外の保存と索引の作り直しは1つの取引で、後の要求が勝つ。フォルダの有無は
+        `getFolder` と同じ判定で、無ければ 404。
+      parameters:
+        - $ref: "#/components/parameters/FolderRootId"
+        - $ref: "#/components/parameters/FolderPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FolderGroupingRequest"
+      responses:
+        "200":
+          description: 変更後のまとめ方
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolderGrouping"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/folders/{rootId}/grouping/tag:
+    post:
+      operationId: tagFolderGroup
+      summary: グループをタグに変える
+      description: |
+        1つの取引で、フォルダ名を `NormalizeTagName` に通し、名前かシノニムで引けたタグを使うか
+        新しく作り、そのフォルダに `ungroup` を書き、索引を作り直す
+        （specs/017-folder-groups/contracts/folder-groups-api.md §2）。本文は無い。
+        フォルダ名がタグ名の規則に合わなければ `400` `invalid_request` で、タグも例外も作らない。
+        そのフォルダが今グループでないか、登録フォルダそのものなら `409` `conflict`。
+      parameters:
+        - $ref: "#/components/parameters/FolderRootId"
+        - $ref: "#/components/parameters/FolderPath"
+      responses:
+        "200":
+          description: 使ったタグと、変更後のまとめ方
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolderGroupTagResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/scans/current:
     get:
       operationId: getCurrentScan
@@ -2079,6 +2136,53 @@ components:
           description: 直下の動画のうちサムネイル生成済みのもの。所在のパスの昇順で最大4件
           items:
             $ref: "#/components/schemas/FolderPreview"
+        grouping:
+          $ref: "#/components/schemas/FolderGrouping"
+
+    FolderGroupingMode:
+      type: string
+      enum: [auto, ungroup, groupDirect]
+      description: |
+        フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
+        `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+
+    FolderGrouping:
+      type: object
+      required: [mode, grouped, taggable]
+      additionalProperties: false
+      description: |
+        フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
+        ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+      properties:
+        mode:
+          $ref: "#/components/schemas/FolderGroupingMode"
+        grouped:
+          type: boolean
+          description: いまこのフォルダの直下がグループか
+        taggable:
+          type: boolean
+          description: グループで、登録フォルダそのものではない（グループをタグに変えられる）
+
+    FolderGroupingRequest:
+      type: object
+      required: [mode]
+      additionalProperties: false
+      properties:
+        mode:
+          $ref: "#/components/schemas/FolderGroupingMode"
+
+    FolderGroupTagResult:
+      type: object
+      required: [tag, created, grouping]
+      additionalProperties: false
+      properties:
+        tag:
+          $ref: "#/components/schemas/TagRef"
+        created:
+          type: boolean
+          description: タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false
+        grouping:
+          $ref: "#/components/schemas/FolderGrouping"
 
     FolderListing:
       type: object
