@@ -168,32 +168,19 @@ func audienceFrom(ctx context.Context) domain.Audience {
 	return audience
 }
 
-// requestIsHTTPS は要求が HTTPS で届いたかを返す。
-func requestIsHTTPS(r *http.Request) bool { return r.TLS != nil }
-
-// requestSource は要求の送信元のアドレスである。解釈できなければゼロ値を返す。
-func requestSource(r *http.Request) netip.Addr {
-	if addrPort, err := netip.ParseAddrPort(r.RemoteAddr); err == nil {
-		return addrPort.Addr().Unmap()
-	}
-	if addr, err := netip.ParseAddr(r.RemoteAddr); err == nil {
-		return addr.Unmap()
-	}
-	return netip.Addr{}
-}
-
 // sessionCookieName は認証で読む Cookie の名前である。HTTPS では __Host-vv_session
-// だけを、HTTP では vv_session だけを読む（contracts/auth-api.md §7）。
-func sessionCookieName(r *http.Request) string {
-	if requestIsHTTPS(r) {
+// だけを、HTTP では vv_session だけを読む（contracts/auth-api.md §7）。HTTPS かどうかは
+// clientOrigin で決める。
+func sessionCookieName(https bool) string {
+	if https {
 		return sessionCookieHTTPS
 	}
 	return sessionCookieHTTP
 }
 
 // sessionToken は要求の認証に使う Cookie の値である。無ければ空を返す。
-func sessionToken(r *http.Request) string {
-	cookie, err := r.Cookie(sessionCookieName(r))
+func (s *server) sessionToken(r *http.Request) string {
+	cookie, err := r.Cookie(sessionCookieName(s.clientOrigin(r).https))
 	if err != nil {
 		return ""
 	}
@@ -228,7 +215,7 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 			return
 		}
 
-		token := sessionToken(r)
+		token := s.sessionToken(r)
 		expiresAt, valid, err := s.auth.CheckSession(r.Context(), token)
 		if err != nil {
 			setAudience(domain.AudienceGuest)
@@ -335,11 +322,11 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	if !s.readAuthBody(w, r, &body) {
 		return
 	}
-	current := sessionToken(r)
+	current := s.sessionToken(r)
 	session, err := s.auth.Login(r.Context(), LoginAttempt{
 		Username:     body.Username,
 		Password:     body.Password,
-		Source:       requestSource(r),
+		Source:       s.clientOrigin(r).source,
 		CurrentToken: current,
 	})
 	var throttled interface{ RetryAfterSeconds() int }
@@ -383,7 +370,7 @@ func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params g
 		s.internalError(w, "ログインの状態を確かめられません", errors.New("認証がつながっていません"))
 		return
 	}
-	state, err := s.auth.State(r.Context(), sessionToken(r))
+	state, err := s.auth.State(r.Context(), s.sessionToken(r))
 	if err != nil {
 		s.internalError(w, "ログインの状態を確かめられませんでした", err)
 		return
@@ -443,17 +430,18 @@ func (s *server) readAuthBody(w http.ResponseWriter, r *http.Request, target any
 
 // setSessionCookie はセッションの Cookie を付ける（contracts/auth-api.md §7）。
 func (s *server) setSessionCookie(w http.ResponseWriter, r *http.Request, session IssuedSession) {
+	https := s.clientOrigin(r).https
 	maxAge := int(session.ExpiresAt.Sub(s.now()) / time.Second)
 	if maxAge < 1 {
 		maxAge = 1
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name:     sessionCookieName(r),
+		Name:     sessionCookieName(https),
 		Value:    session.Token,
 		Path:     "/",
 		MaxAge:   maxAge,
 		HttpOnly: true,
-		Secure:   requestIsHTTPS(r),
+		Secure:   https,
 		SameSite: http.SameSiteStrictMode,
 	})
 }
@@ -462,7 +450,7 @@ func (s *server) setSessionCookie(w http.ResponseWriter, r *http.Request, sessio
 // 種類と送信元だけで、送られたユーザー名・パスワード・セッション ID・Cookie は出さない。
 func (s *server) logAuthEvent(r *http.Request, event string) {
 	source := "unknown"
-	if addr := requestSource(r); addr.IsValid() {
+	if addr := s.clientOrigin(r).source; addr.IsValid() {
 		source = addr.String()
 	}
 	s.logger.LogAttrs(r.Context(), slog.LevelInfo, "認証の出来事",

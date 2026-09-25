@@ -143,6 +143,8 @@ type authRequest struct {
 	https   bool
 	cookies []*http.Cookie
 	header  map[string]string
+	// remote は直接の接続元（RemoteAddr）である。空なら httptest の既定。
+	remote string
 }
 
 func (e *authEnv) serve(req authRequest) *httptest.ResponseRecorder {
@@ -157,6 +159,9 @@ func (e *authEnv) serve(req authRequest) *httptest.ResponseRecorder {
 	}
 	if req.https {
 		r.TLS = &tls.ConnectionState{}
+	}
+	if req.remote != "" {
+		r.RemoteAddr = req.remote
 	}
 	for _, cookie := range req.cookies {
 		r.AddCookie(cookie)
