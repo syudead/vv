@@ -19,8 +19,6 @@ interface PlayerProps {
   onError: (positionMs: number) => void;
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
-  onPrevious?: () => void;
-  onNext?: () => void;
 }
 
 const playerMock = vi.hoisted(() => ({
@@ -376,25 +374,25 @@ describe("VideoPage", () => {
       expect(screen.queryByRole("button", { name: /秒戻る|秒進む/ })).toBeNull();
     });
 
-    it("操作バーの前後の動画で、戻り先付きで同じフォルダの前後へ移る", async () => {
+    it("左右の端の矢印で、戻り先付きで同じフォルダの前後へ移る", async () => {
       server.videos.set(3, [{ ...related(3, "前の動画"), location: video.location }]);
       renderPage("7", "/folders/1/movies");
       await ready();
-      await waitFor(() => expect(player().onNext).toBeDefined());
-      expect(player().onPrevious).toBeDefined();
+      const previous = await screen.findByRole("button", { name: "前の動画: 前の動画" });
+      expect(screen.getByRole("button", { name: "次の動画: 後続の動画" })).toBeDefined();
       // 止まっている間に移ったときは、移った先で再生を始めない。
-      act(() => player().onPrevious?.());
+      fireEvent.click(previous);
       await waitFor(() => expect(player().video.id).toBe(3));
       expect(player().autoplay).toBe(false);
       fireEvent.click(closeButtons()[0] as HTMLElement);
       expect(screen.getByTestId("screen").textContent).toBe("フォルダ /folders/1/movies");
     });
 
-    it("再生中に操作バーの「次の動画」で移ると、移った先でも再生を続ける", async () => {
+    it("再生中に「次の動画」で移ると、移った先でも再生を続ける", async () => {
       server.videos.set(8, [{ ...related(8, "後続の動画"), location: video.location }]);
       renderPage();
       await ready();
-      await waitFor(() => expect(player().onNext).toBeDefined());
+      const next = await screen.findByRole("button", { name: "次の動画: 後続の動画" });
       act(() =>
         player().onStatus({
           loading: false,
@@ -403,18 +401,35 @@ describe("VideoPage", () => {
           ended: false,
         }),
       );
-      act(() => player().onNext?.());
+      fireEvent.click(next);
       await waitFor(() => expect(player().video.id).toBe(8));
       expect(player().autoplay).toBe(true);
     });
 
-    it("前後の動画が無ければ、操作バーの前後の動画を押せなくする", async () => {
-      server.related.set(7, { items: [related(9, "別のフォルダの動画")] });
+    it("前後の矢印は操作バーと同じ時期に見せ、前後が無い側は出さない", async () => {
+      server.related.set(7, { items: [related(3, "前の動画")], prevId: 3 });
       renderPage();
       await ready();
-      await screen.findByRole("heading", { level: 2, name: "関連動画" });
-      expect(player().onPrevious).toBeUndefined();
-      expect(player().onNext).toBeUndefined();
+      const previous = await screen.findByRole("button", { name: "前の動画: 前の動画" });
+      expect(screen.queryByRole("button", { name: /^次の動画/ })).toBeNull();
+      expect(previous.className).toContain("opacity-100");
+      act(() =>
+        player().onStatus({
+          loading: false,
+          playing: true,
+          userActive: false,
+          ended: false,
+        }),
+      );
+      expect(previous.className).toContain("opacity-0");
+      expect(previous.className).toContain("pointer-events-none");
+    });
+
+    it("関連動画の並びに無い前の動画も、題名無しで移れる", async () => {
+      server.related.set(7, { items: [related(8, "後続の動画")], nextId: 8, prevId: 99 });
+      renderPage();
+      await ready();
+      expect(await screen.findByRole("button", { name: "前の動画" })).toBeDefined();
     });
 
     it("画面のどこでも Space・0 がプレイヤーに効く", async () => {

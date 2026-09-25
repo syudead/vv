@@ -281,32 +281,21 @@ describe("VideoPlayer", () => {
     ).toBe("Space");
   });
 
-  it("操作バーの再生の前に「最初に戻る」「前の動画」、後に「次の動画」を差し込む", async () => {
-    const onPrevious = vi.fn();
-    render(<VideoPlayer {...props()} onPrevious={onPrevious} />);
+  it("操作バーの再生の前に「最初に戻る」を差し込み、押すと先頭へ戻る", async () => {
+    render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
     const player = mock.instances[0];
     const restart = await screen.findByRole("button", { name: "最初に戻る" });
-    const previous = screen.getByRole("button", { name: "前の動画" });
-    const next = screen.getByRole("button", { name: "次の動画" });
     const labels = Array.from(
       player?.element.querySelectorAll(".vjs-control-bar button") ?? [],
       (button) => button.getAttribute("aria-label") ?? button.className,
     );
-    expect(labels.slice(0, 4)).toEqual([
-      "最初に戻る",
-      "前の動画",
-      "vjs-play-control",
-      "次の動画",
-    ]);
+    expect(labels.slice(0, 2)).toEqual(["最初に戻る", "vjs-play-control"]);
     expect(restart.getAttribute("aria-keyshortcuts")).toBe("0");
 
     player?.currentTime(42);
     fireEvent.click(restart);
     expect(player?.time).toBe(0);
-    fireEvent.click(previous);
-    expect(onPrevious).toHaveBeenCalledTimes(1);
-    expect((next as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("変換して再生する動画だけ、操作バーの再生速度の前に「変換して再生中」を出す", async () => {
