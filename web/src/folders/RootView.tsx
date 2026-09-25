@@ -7,13 +7,15 @@ import { useRootFolders } from "../api/useFolderListing";
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import { buttonClassName } from "../ui/Button";
+import { Grid } from "../videoList/Grid";
 import { hasConditions } from "../videoList/listCriteria";
 import { EmptyState, LoadFailed } from "../videoList/states";
+import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderCard, { FolderCardSkeleton } from "./FolderCard";
 import FolderToolbar from "./FolderToolbar";
 import { type RootDisplay, rootDisplayName } from "./folderPath";
-import { Grid, Section } from "./layout";
+import { Section } from "./layout";
 import RootSearchResults, { ROOT_SEARCH_KEY } from "./RootSearchResults";
 import { useArrival } from "./useArrival";
 import { useConditions } from "./useConditions";
@@ -30,8 +32,14 @@ export default function RootView() {
     changePlayable,
     commitQuery,
     clearAll,
-    changeZoom,
+    changeZoom: saveZoom,
   } = useConditions();
+  // 倍率を変えても読んでいた位置を保つ（ライブラリと同じ）。
+  const { listRef, capture } = useZoomAnchor(zoom);
+  const changeZoom = (next: typeof zoom) => {
+    capture();
+    saveZoom(next);
+  };
   // 再生画面から検索結果へ戻ったときは控えから復元する（FolderView と同じ扱い）。
   // 検索していなければ動画の一覧を持たないので、控えを探さない。
   const [restored] = useState(() =>
@@ -101,43 +109,45 @@ export default function RootView() {
         }
       />
 
-      {searching ? (
-        <RootSearchResults
-          criteria={criteria}
-          rootNames={rootNames}
-          roots={roots}
-          zoom={zoom}
-          restored={restored}
-        />
-      ) : roots.error !== null ? (
-        <LoadFailed reason={roots.error} onRetry={roots.reload} />
-      ) : !roots.loading && folders.length === 0 ? (
-        <EmptyState
-          icon={FolderOpen}
-          title="メディアフォルダが登録されていません"
-          description="設定でメディアフォルダを登録して取り込むと、ここに並びます。"
-          action={
-            <Link to="/settings" className={buttonClassName("primary")}>
-              設定を開く
-            </Link>
-          }
-        />
-      ) : (
-        <Section
-          title="メディアフォルダ"
-          count={roots.loading ? undefined : folders.length}
-        >
-          <Grid zoom={zoom}>
-            {roots.loading ? (
-              <FolderCardSkeleton count={6} />
-            ) : (
-              folders.map((folder) => (
-                <FolderCard key={folder.rootId} folder={folder} showPath />
-              ))
-            )}
-          </Grid>
-        </Section>
-      )}
+      <div ref={listRef} className="flex flex-col gap-3">
+        {searching ? (
+          <RootSearchResults
+            criteria={criteria}
+            rootNames={rootNames}
+            roots={roots}
+            zoom={zoom}
+            restored={restored}
+          />
+        ) : roots.error !== null ? (
+          <LoadFailed reason={roots.error} onRetry={roots.reload} />
+        ) : !roots.loading && folders.length === 0 ? (
+          <EmptyState
+            icon={FolderOpen}
+            title="メディアフォルダが登録されていません"
+            description="設定でメディアフォルダを登録して取り込むと、ここに並びます。"
+            action={
+              <Link to="/settings" className={buttonClassName("primary")}>
+                設定を開く
+              </Link>
+            }
+          />
+        ) : (
+          <Section
+            title="メディアフォルダ"
+            count={roots.loading ? undefined : folders.length}
+          >
+            <Grid zoom={zoom}>
+              {roots.loading ? (
+                <FolderCardSkeleton count={6} />
+              ) : (
+                folders.map((folder) => (
+                  <FolderCard key={folder.rootId} folder={folder} showPath />
+                ))
+              )}
+            </Grid>
+          </Section>
+        )}
+      </div>
     </>
   );
 }

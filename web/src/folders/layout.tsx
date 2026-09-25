@@ -1,30 +1,10 @@
 import { FolderX } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Link } from "react-router";
 
-import type { Zoom } from "../preferences/viewPreferences";
 import { buttonClassName } from "../ui/Button";
 import { EmptyState } from "../videoList/states";
 import { FOLDERS_ROOT } from "./folderPath";
-
-const cardWidth: Record<Zoom, string> = {
-  0: "var(--spacing-card-0)",
-  1: "var(--spacing-card-1)",
-  2: "var(--spacing-card-2)",
-  3: "var(--spacing-card-3)",
-};
-
-/** Grid はライブラリと同じ格子（同じ幅・同じ間隔）である。 */
-export function Grid({ zoom, children }: { zoom: Zoom; children: ReactNode }) {
-  return (
-    <div
-      className="flex flex-wrap justify-center gap-2.5 [&>*]:w-[min(var(--card),100%)]"
-      style={{ "--card": cardWidth[zoom] } as CSSProperties}
-    >
-      {children}
-    </div>
-  );
-}
 
 /** Section は見出し付きの一群である。見出しの件数も読み上げる。 */
 export function Section({
