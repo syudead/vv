@@ -75,8 +75,13 @@ Go のテストで、`security: []` の操作の集合と境界の許可リス�
 付けて呼ぶと、`authenticated` のときだけ §2 と同じ規則で確かめた `redirectTo` も返す。
 認証済みで `/login` を開いた画面は、この値へ遷移する。
 
-`POST /api/auth/logout` は `204` を返し、Cookie を消す（`Max-Age=0`）。Cookie が
-有効なセッションを指していれば、そのセッションを削除し、同じセッションで処理中の
+`POST /api/auth/logout` は `204` を返し、要求に付いていた認証の Cookie をすべて消す
+（`Max-Age=0`）。§6 の読み分けと違い、ログアウトは届いた両方の名前の Cookie を見る。
+HTTPS の要求には、同じホストの HTTP でログインした `vv_session`（`Secure` なし）も
+届くので、HTTPS でのログアウトは HTTP のセッションも終わらせる。HTTP の要求には
+`__Host-vv_session` が届かないので、HTTP でのログアウトは HTTP のセッションだけを
+終わらせる。そのセッションは HTTPS でしか使えず、HTTP の経路からは読めない。
+届いた Cookie が有効なセッションを指していれば、そのセッションを削除し、同じセッションで処理中の
 応答を打ち切る（[plan.md Structural Decisions 5](../plan.md#structural-decisions)）。同一オリジンの確認は他の
 状態変更と同じく掛かる。
 
@@ -108,7 +113,8 @@ Go のテストで、`security: []` の操作の集合と境界の許可リス�
 
 - 値はセッション ID（32 バイトの暗号学的乱数の base64url）である（要件 5）。
 - `Max-Age` を付けるので、ブラウザを閉じても期限まで残る（受け入れ条件 6）。
-- HTTPS の要求では `__Host-vv_session` だけを、HTTP の要求では `vv_session` だけを読む。
+- 認証では、HTTPS の要求は `__Host-vv_session` だけを、HTTP の要求は `vv_session` だけを
+  読む（ログアウトは例外で、§3 のとおり届いた両方を見る）。
   名前を分けるので、HTTP の応答が HTTPS 用の Cookie を上書きしたり、HTTPS 用の
   Cookie が HTTP で送られたりしない（Edge Case「HTTP と HTTPS」）。
 - 接続が HTTPS かどうかは、TLS で受けたか、信頼するプロキシの `X-Forwarded-Proto` で
