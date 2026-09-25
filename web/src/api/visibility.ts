@@ -1,6 +1,6 @@
 import { request } from "./client";
 import type { components } from "./gen/openapi";
-import { applyVisibilityToListSnapshot } from "./listSnapshot";
+import { applyVisibilityToListSnapshot, clearListSnapshot } from "./listSnapshot";
 
 // 型は api/openapi.yaml からの生成物を使う
 // （specs/016-single-account-auth/contracts/guest-api.md §4）。
@@ -73,7 +73,8 @@ function recordApplied(
 /**
  * recordUncertain は一部にしか反映されなかった要求の動画を、切り替え済みとして
  * 記録せずに取り直させる。前の切り替えの結果（latest）はもう確かでないので捨て、
- * 取り直した内容をそのまま表示させる。
+ * 取り直した内容をそのまま表示させる。一覧の控えも、どの動画が切り替わったか
+ * 分からないまま復元しないよう捨てる（戻ったときは1ページ目から読む。Devin の指摘、PR 338）。
  */
 function recordUncertain(videoIds: readonly number[], sequence: number): void {
   const fresh = videoIds.filter((videoId) => {
@@ -83,6 +84,7 @@ function recordUncertain(videoIds: readonly number[], sequence: number): void {
     return true;
   });
   if (fresh.length === 0) return;
+  clearListSnapshot();
   for (const listener of staleListeners) listener(fresh);
 }
 

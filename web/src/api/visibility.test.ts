@@ -144,7 +144,7 @@ describe("updateVideoVisibility", () => {
 });
 
 describe("一部にしか反映されなかった切り替え", () => {
-  it("applied が異なる id の数より少なければ切り替え済みにせず、取り直しを求める", async () => {
+  it("applied が異なる id の数より少なければ切り替え済みにせず、控えを捨て、取り直しを求める", async () => {
     // 空の content_key の動画やライブラリから消えた id は数えない（guest-api.md §4）。
     fetchMock.mockResolvedValue(json({ applied: 1 }));
     saveListSnapshot(
@@ -161,10 +161,8 @@ describe("一部にしか反映されなかった切り替え", () => {
 
     expect(listener).not.toHaveBeenCalled();
     expect(stale).toHaveBeenCalledWith([21, 22]);
-    expect(takeListSnapshot({ query: "" })?.items.map((video) => video.public)).toEqual([
-      false,
-      false,
-    ]);
+    // どれが切り替わったか分からない控えは、再生画面から戻ったときに復元させない。
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
     // 取り直した内容をそのまま使う。
     expect(withVisibilitySince(item(21), before).public).toBe(false);
     unsubscribe();
