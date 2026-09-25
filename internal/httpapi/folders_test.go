@@ -31,7 +31,10 @@ func (f *fakeFolders) ListMediaFolders(context.Context) ([]domain.MediaFolder, e
 	return f.roots, nil
 }
 
-func (f *fakeFolders) FolderLocations(_ context.Context, dir string) ([]domain.FolderLocation, error) {
+func (f *fakeFolders) FolderLocations(_ context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error) {
+	if err := requireOwner(audience); err != nil {
+		return nil, err
+	}
 	var out []domain.FolderLocation
 	for _, location := range f.locations {
 		if strings.HasPrefix(location.Path, strings.TrimRight(dir, "/")+"/") {
@@ -41,12 +44,15 @@ func (f *fakeFolders) FolderLocations(_ context.Context, dir string) ([]domain.F
 	return out, nil
 }
 
-func (f *fakeFolders) HasFolderLocations(ctx context.Context, dir string) (bool, error) {
-	locations, _ := f.FolderLocations(ctx, dir)
-	return len(locations) > 0, nil
+func (f *fakeFolders) HasFolderLocations(ctx context.Context, audience domain.Audience, dir string) (bool, error) {
+	locations, err := f.FolderLocations(ctx, audience, dir)
+	return len(locations) > 0, err
 }
 
-func (f *fakeFolders) ListFolderVideos(_ context.Context, q domain.FolderVideoQuery) (domain.VideoPage, error) {
+func (f *fakeFolders) ListFolderVideos(_ context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error) {
+	if err := requireOwner(audience); err != nil {
+		return domain.VideoPage{}, err
+	}
 	f.lastQuery = q
 	if f.listErr != nil {
 		return domain.VideoPage{}, f.listErr

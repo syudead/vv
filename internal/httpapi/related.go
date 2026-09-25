@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
@@ -20,7 +21,7 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 		return
 	}
 
-	related, err := s.catalog.RelatedVideos(r.Context(), video)
+	related, err := s.catalog.RelatedVideos(r.Context(), domain.AudienceOwner, video)
 	if err != nil {
 		s.internalError(w, "関連動画を取得できませんでした", err)
 		return

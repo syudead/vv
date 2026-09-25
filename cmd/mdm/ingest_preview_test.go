@@ -54,7 +54,7 @@ func TestIngestPreviewMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 	if err := db.Ingest().FailClaimedJob(ctx, job, handleErr.Error()); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.Library().GetVideo(ctx, video.ID)
+	got, err := db.Library().GetVideo(ctx, domain.AudienceOwner, video.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestIngestPreviewUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
 	if err := db.Ingest().FailClaimedJob(ctx, job, handleErr.Error()); err != nil {
 		t.Fatal(err)
 	}
-	got, err := db.Library().GetVideo(ctx, video.ID)
+	got, err := db.Library().GetVideo(ctx, domain.AudienceOwner, video.ID)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -30,9 +30,13 @@ type Pinger interface {
 //
 // 配信と既定アプリで開く操作は、動画の所在と登録フォルダを読んで MediaFiles へ
 // 渡す。開いてよい実体かは MediaFiles が確かめる。
+//
+// 動画を返す読み出しは見る人（domain.Audience）を取り、ゲストには公開の動画だけを
+// 返す（specs/016-single-account-auth/data-model.md §3）。見る人を決める境界は
+// まだ無いので、今の呼び出しはすべて所有者として読む。
 type Library interface {
-	ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error)
-	GetVideo(ctx context.Context, id int64) (domain.Video, error)
+	ListVideos(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error)
+	GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error)
 	VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error)
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 	// VideoIDs は listVideos と同じ条件（並び順・カーソル・件数を除く）に合う
@@ -118,7 +122,7 @@ type VideoCatalog interface {
 	// PresentVideos は動画たちを応答に載せる形にする。順序は保つ。
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
-	RelatedVideos(ctx context.Context, video domain.Video) (domain.RelatedVideos, error)
+	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error)
 	// RetryProbe は読み取りに失敗した動画を読み取り直す。失敗していなければ
 	// domain.ErrProbeNotFailed を返す。
 	RetryProbe(ctx context.Context, video domain.Video) error

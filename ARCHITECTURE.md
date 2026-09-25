@@ -158,9 +158,10 @@ grace period, then stops the scanner and the workers so a running job returns to
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
 `video_locations` (including its per-location search keys), `location_search_fts`,
 `jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
-(deleting them costs a rescan), while `playback_progress` and the tag tables
-(`tags`, `tag_names`, `video_tags`) are user data that cannot be reconstructed.
-That is why playback positions and tag assignments are keyed by the content
+(deleting them costs a rescan), while `playback_progress`, the tag tables
+(`tags`, `tag_names`, `video_tags`) and the per-video public flag (`public_videos`)
+are user data that cannot be reconstructed.
+That is why playback positions, tag assignments and public flags are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
 key to `videos`.
 The single `account` row (username, Argon2id password hash and credential version) is
@@ -186,7 +187,15 @@ compile:
   matching id set unpaged for "select all"
   (`specs/014-video-tags/data-model.md` §6). The search-box term matcher also OR-matches
   a video's tag names (original name and synonyms) alongside title and path
-  (`specs/014-video-tags/data-model.md` §7). `LibraryStore` resolves which of a set of
+  (`specs/014-video-tags/data-model.md` §7). Every read that returns videos, locations
+  or folders (`ListVideos`, `ListFolderVideos`, `DirectVideoPaths`, `GetVideo`,
+  `VideosAddedNear`, `VideosByIDs`, `FolderLocations`, `HasFolderLocations`) takes a
+  `domain.Audience`, and its location condition goes through one function,
+  `visibleLocationCondition`: the owner sees every location under a registered folder,
+  a guest additionally only those of videos with a non-empty content key in
+  `public_videos`, and a guest's search does not match tag names
+  (`specs/016-single-account-auth/data-model.md` §3). The conditions used by ingest,
+  jobs and tag counts stay owner-only. `LibraryStore` resolves which of a set of
   tag ids currently exist through `existingTagIDs`, and `TagStore` resolves a set of
   video ids down to the currently-registered videos' content keys through
   `registeredContentKeysForVideoIDs`; both are unexported package functions
@@ -214,6 +223,10 @@ compile:
   `account_version` matches `account.version` and it has not expired
   (`specs/016-single-account-auth/data-model.md` §4, §5). Like `PlaybackStore`, it holds
   only the SQL connection and publishes no domain event.
+- `VisibilityStore` — switching the public flag of a set of video ids (resolved to the
+  currently-registered videos' content keys, like tag attachment) in one transaction
+  (`specs/016-single-account-auth/data-model.md` §5). Like `TagStore`, it holds only the
+  SQL connection.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and

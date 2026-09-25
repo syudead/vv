@@ -96,7 +96,7 @@ func TestIngestHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 			if handleErr == nil {
 				t.Fatal("missing source unexpectedly succeeded")
 			}
-			video, err := db.Library().GetVideo(ctx, videoID)
+			video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -110,7 +110,7 @@ func TestIngestHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 			if err := db.Ingest().FailClaimedJob(ctx, job, handleErr.Error()); err != nil {
 				t.Fatal(err)
 			}
-			video, err = db.Library().GetVideo(ctx, videoID)
+			video, err = db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
 			if err != nil {
 				t.Fatal(err)
 			}

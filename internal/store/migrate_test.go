@@ -100,8 +100,8 @@ func TestLocationGenerationMigrationUpgradesExistingVersionThreeDatabase(t *test
 	if err != nil {
 		t.Fatal(err)
 	}
-	if latest := latestMigrationVersion(t, db); result.Applied != int(latest-3) || result.Version != latest {
-		t.Fatalf("migration result = %+v, want every migration after 3 up to version %d", result, latest)
+	if applied, latest := migrationsAbove(t, 3); result.Applied != applied || result.Version != latest {
+		t.Fatalf("migration result = %+v, want %d migrations to version %d", result, applied, latest)
 	}
 	var generation int64
 	if err := db.sql.QueryRow(`select location_generation from videos where id = ?`, videoID).Scan(&generation); err != nil {
@@ -153,8 +153,8 @@ func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if latest := latestMigrationVersion(t, db); result.Applied != int(latest-5) || result.Version != latest {
-		t.Fatalf("migration result = %+v, want every migration after 5 up to version %d", result, latest)
+	if applied, latest := migrationsAbove(t, 5); result.Applied != applied || result.Version != latest {
+		t.Fatalf("migration result = %+v, want %d migrations to version %d", result, applied, latest)
 	}
 	var jobs int
 	if err := db.sql.QueryRow(`select count(*) from jobs j join videos v on v.id = j.video_id
@@ -542,9 +542,7 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 	db := migratedDB(t)
 
-	if err := downTo(context.Background(), db, 1); err != nil {
-		t.Fatalf("Down に失敗した: %v", err)
-	}
+	downTo(t, db, 1)
 
 	// 002 が足した表は消えている。
 	for _, name := range []string{"playback_progress", "jobs", "scans"} {
@@ -591,9 +589,8 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := downTo(ctx, db, 3); err != nil {
-		t.Fatalf("Down to media folders failed: %v", err)
-	}
+	// 00004 より後を戻してから、検査対象の 00003 を戻す。
+	downTo(t, db, 3)
 	if err := Down(ctx, db); err == nil {
 		t.Fatal("multiple locations were silently collapsed by Down")
 	}
@@ -606,34 +603,49 @@ func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 	}
 }
 
-// latestMigrationVersion は同梱した最後のマイグレーションの版を返す。
-func latestMigrationVersion(t *testing.T, db *DB) int64 {
+// migrationsAbove は、埋め込み済みのマイグレーションのうち版 version より後の数と、
+// 最大の版を返す。マイグレーションを足すたびに数を書き換えずに済むようにする。
+func migrationsAbove(t *testing.T, version int64) (int, int64) {
 	t.Helper()
-	fsy, err := fs.Sub(migrationsFS, "migrations")
+	fsys, err := fs.Sub(migrationsFS, "migrations")
 	if err != nil {
 		t.Fatal(err)
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
+	db, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources := provider.ListSources()
-	return sources[len(sources)-1].Version
+	t.Cleanup(func() { _ = db.Close() })
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	count, latest := 0, int64(0)
+	for _, source := range provider.ListSources() {
+		if source.Version > version {
+			count++
+		}
+		latest = max(latest, source.Version)
+	}
+	return count, latest
 }
 
-// downTo は版 version まで Down する。後の版が増えても、テストが戻す段数を
-// 数え直さずに済むようにする。
-func downTo(ctx context.Context, db *DB, version int64) error {
-	fsy, err := fs.Sub(migrationsFS, "migrations")
-	if err != nil {
-		return err
+// downTo は、記録された版が version になるまでマイグレーションを1つずつ戻す。
+func downTo(t *testing.T, db *DB, version int64) {
+	t.Helper()
+	ctx := context.Background()
+	for {
+		current, err := recordedVersion(ctx, db.sql)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if current <= version {
+			return
+		}
+		if err := Down(ctx, db); err != nil {
+			t.Fatalf("版 %d の Down に失敗した: %v", current, err)
+		}
 	}
-	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
-	if err != nil {
-		return err
-	}
-	_, err = provider.DownTo(ctx, version)
-	return err
 }
 
 // migratedDB はマイグレーションを適用したデータベースを返す。

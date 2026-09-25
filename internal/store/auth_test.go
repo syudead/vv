@@ -354,9 +354,7 @@ func TestAuthMigrationDownDropsTables(t *testing.T) {
 	if err := db.Auth().Setup(ctx, "owner", "hash", "t", authNow); err != nil {
 		t.Fatal(err)
 	}
-	if err := downTo(ctx, db, 8); err != nil {
-		t.Fatal(err)
-	}
+	downTo(t, db, 8)
 	for _, name := range []string{"account", "sessions", "sessions_expires_at"} {
 		var count int
 		if err := db.sql.QueryRow(`select count(*) from sqlite_master where name = ?`, name).Scan(&count); err != nil {

@@ -287,8 +287,9 @@ func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// 後の版を先に戻してから、検査対象の00007を戻す。
-	if err := downTo(ctx, db, 6); err != nil {
+	// 00008 以降を先に戻してから、検査対象の00007を戻す。
+	downTo(t, db, 7)
+	if err := Down(ctx, db); err != nil {
 		t.Fatalf("Down に失敗した: %v", err)
 	}
 
