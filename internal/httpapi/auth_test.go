@@ -425,6 +425,35 @@ func TestAuthSessionReturnsRedirectOnlyForOwner(t *testing.T) {
 	}
 }
 
+// logoutBeforeState は、境界の確認と状態の確認の間に別のタブでログアウトされた
+// 場合を再現する。
+type logoutBeforeState struct{ appAuthenticator }
+
+func (a logoutBeforeState) State(ctx context.Context, token string) (AuthState, error) {
+	if err := a.Logout(ctx, token); err != nil {
+		return "", err
+	}
+	return a.appAuthenticator.State(ctx, token)
+}
+
+func TestAuthSessionAudienceMatchesStateAfterConcurrentLogout(t *testing.T) {
+	env := newAuthEnv(t, t.TempDir(), Options{})
+	cookie := env.setup()
+	auth := app.NewAuth(app.AuthOptions{Store: env.db.Auth(), Hasher: passwordHasher{}, Now: env.clock})
+	env.handler = newTestServer(t, Options{
+		Auth:   logoutBeforeState{appAuthenticator{auth: auth}},
+		Now:    env.clock,
+		Pinger: env.db,
+		Logger: slog.New(slog.NewTextHandler(env.logs, nil)),
+	})
+
+	rec := env.get("/api/auth/session", cookie)
+	if got := authState(t, rec); got != "guest" {
+		t.Fatalf("state = %q, want guest", got)
+	}
+	assertAudience(t, "状態の確認", rec, "guest")
+}
+
 func TestAuthLoginSetsCookieAndRedirect(t *testing.T) {
 	env := newAuthEnv(t, t.TempDir(), Options{Videos: sampleLibrary()})
 	env.setup()

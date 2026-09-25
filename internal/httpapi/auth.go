@@ -364,6 +364,13 @@ func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params g
 		s.internalError(w, "ログインの状態を確かめられませんでした", err)
 		return
 	}
+	// 境界の確認のあとに別のタブでログアウトされると、ここでの確認は境界と食い違う。
+	// X-VV-Audience は本文と同じこの確認から付け直し、応答の中で矛盾させない。
+	audience := domain.AudienceGuest
+	if state == AuthStateOwner {
+		audience = domain.AudienceOwner
+	}
+	w.Header().Set(audienceHeader, audience.String())
 	body := gen.AuthSession{State: gen.AuthSessionState(state)}
 	if state == AuthStateOwner && params.Next != nil {
 		redirect := domain.SafeRedirectTarget(*params.Next)
