@@ -90,10 +90,14 @@ export default function LibraryPage() {
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
   const { criteria, apply } = useListCriteria(preferences.sort, TAG_PARAM);
   const { query, watch, playable, sort } = criteria;
-  // URL が変わらない限り同じ配列を使い、タグの操作の関数とカードの memo を保つ。
+  // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
+  // タグの操作の関数とカードの memo を保つ。
+  const rawTagKey = JSON.stringify(
+    new URLSearchParams(location.search).getAll(TAG_PARAM),
+  );
   const tagIds = useMemo(
-    () => parseTagParam(new URLSearchParams(location.search).getAll(TAG_PARAM)),
-    [location.search],
+    () => parseTagParam(JSON.parse(rawTagKey) as string[]),
+    [rawTagKey],
   );
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
