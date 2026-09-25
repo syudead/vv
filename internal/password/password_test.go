@@ -111,6 +111,8 @@ func TestVerifyRejectsMalformedHash(t *testing.T) {
 		"0回":            join("", "argon2id", "v=19", "m=19456,t=0,p=1", salt, key),
 		"並列度0":          join("", "argon2id", "v=19", "m=19456,t=2,p=0", salt, key),
 		"並列度が大きすぎる":     join("", "argon2id", "v=19", "m=19456,t=2,p=256", salt, key),
+		"並列度が32ビットを超える": join("", "argon2id", "v=19", "m=19456,t=2,p=4294967297", salt, key),
+		"回数が大きすぎる":      join("", "argon2id", "v=19", "m=19456,t=65,p=1", salt, key),
 		"メモリが大きすぎる":     join("", "argon2id", "v=19", "m=99999999999,t=2,p=1", salt, key),
 		"メモリが64MiBを超える": join("", "argon2id", "v=19", "m=65537,t=2,p=1", salt, key),
 		"メモリが4GiB":      join("", "argon2id", "v=19", "m=4194304,t=2,p=1", salt, key),
