@@ -14,7 +14,7 @@ import type { Video } from "../api/client";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
 import Button from "../ui/Button";
-import { useOpenFile } from "./FileLocation";
+import { useOpenFile } from "./VideoFacts";
 import { creatingLine, processingStages, type StageState } from "./processing";
 
 /**

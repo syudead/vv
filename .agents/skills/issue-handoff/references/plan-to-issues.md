@@ -3,7 +3,7 @@
 Read [README.md](README.md) first. Input is a parent Issue and an approved
 `plan.md` containing one `## Implementation Work` section.
 
-A child Issue created here is what `/speckit-implement` builds from, and nothing
+A child Issue created here is what `/sdd-implement` builds from, and nothing
 downstream re-reads the plan on its own. So this stage does not transcribe: it
 **writes each unit up for the person who will implement it**, in full sentences,
 with the links and the ordering they need.
@@ -42,7 +42,7 @@ in the parent Issue or the approved artifacts the statement comes from.
      the [`issue-spec` skill](../../issue-spec/SKILL.md). Rerun `plan` when the
      new requirement moves the breakdown or the acceptance evidence.
    - It is a structural or technical decision the plan should have made: it goes
-     into `plan.md` through `/speckit-plan`
+     into `plan.md` through `/sdd-plan`
      ([P-5](../../../../docs/design-docs/plan-quality.md)).
 
    Create no child Issue until the artifact that owns the answer carries it and

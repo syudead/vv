@@ -379,3 +379,27 @@
 @utility text-balance {
   text-wrap: balance;
 }
+
+/*
+ * 再生画面の左右の列のように、画面の中で独立してスクロールする領域のスクロールバー。
+ * 常に出ると列ごとに線が並んで騒がしいので、細くし、ふだんは透明にして、領域に
+ * マウスが乗っているかフォーカスがあるときだけ見せる。スクロール自体はいつでもできる。
+ */
+@utility scrollbar-on-hover {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+
+  &:hover,
+  &:focus-within {
+    scrollbar-color: var(--color-fg-subtle) transparent;
+  }
+}
+
+/*
+ * スクロールはできるがスクロールバーを描かない領域。再生画面の左の列のように、ふだんは
+ * はみ出さず、題名の折り返しなどで少しだけはみ出す領域に使う。マウスは動画の上に
+ * あることが多く、乗せたときに見せる方式でも線が出続けてしまうためである。
+ */
+@utility scrollbar-none {
+  scrollbar-width: none;
+}

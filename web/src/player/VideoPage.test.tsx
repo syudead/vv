@@ -147,8 +147,8 @@ async function ready() {
   return screen.findByRole("heading", { level: 1 });
 }
 
-function closeButtons() {
-  return screen.getAllByRole("button", { name: "閉じる" });
+function closeButton() {
+  return screen.getByRole("button", { name: "閉じる" });
 }
 
 function player(): PlayerProps {
@@ -215,18 +215,15 @@ describe("VideoPage", () => {
   });
 
   describe("画面の構成", () => {
-    it("題名・属性の一列・場所・関連動画を出し、廃止した項目を出さない", async () => {
+    it("題名・ファイルの情報・技術情報・関連動画を出し、廃止した項目を出さない", async () => {
       renderPage("7", "/?q=abc");
       expect((await ready()).textContent).toBe("テスト動画");
       // 題名は描画後の effect で入るので、h1 が出た直後ではなく反映を待つ。
       await waitFor(() => expect(document.title).toBe("テスト動画 - vv"));
-      expect(screen.getByText("RESOLUTION")).toBeDefined();
+      expect(screen.getByRole("list", { name: "ファイルの情報" })).toBeDefined();
       expect(screen.getByText("H.264")).toBeDefined();
-      expect(
-        screen.getByRole("button", {
-          name: "ファイルを開く: /media/movies/テスト動画.mp4",
-        }),
-      ).toBeDefined();
+      expect(screen.getByRole("button", { name: "ファイルを開く" })).toBeDefined();
+      expect(screen.getByRole("button", { name: "パスをコピー" })).toBeDefined();
       expect(
         await screen.findByRole("heading", { level: 2, name: "関連動画" }),
       ).toBeDefined();
@@ -244,16 +241,14 @@ describe("VideoPage", () => {
       ]) {
         expect(text).not.toContain(removed);
       }
-      // 幅ごとに 1 つずつ、× を 2 つ置く（見せる方は CSS で決める）。
-      expect(closeButtons()).toHaveLength(2);
+      // × は見出しの帯に 1 つだけ置く。
+      expect(screen.getAllByRole("button", { name: "閉じる" })).toHaveLength(1);
     });
 
     it("× で遷移元の一覧へ、無ければ / へ戻る", async () => {
       renderPage("7", "/folders/3/A%20B?sort=titleAsc");
       await ready();
-      const [overlay] = closeButtons();
-      if (overlay === undefined) throw new Error("× がありません");
-      fireEvent.click(overlay);
+      fireEvent.click(closeButton());
       expect(screen.getByTestId("screen").textContent).toBe(
         "フォルダ /folders/3/A%20B?sort=titleAsc",
       );
@@ -262,7 +257,7 @@ describe("VideoPage", () => {
     it("直接開いたら × は / へ、外部 URL は戻り先にしない", async () => {
       renderPage("7", "//evil.example");
       await ready();
-      fireEvent.click(closeButtons()[1] as HTMLElement);
+      fireEvent.click(closeButton());
       expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /");
     });
 
@@ -285,49 +280,58 @@ describe("VideoPage", () => {
       expect(controls.isFullscreen).toHaveBeenCalled();
     });
 
-    it("開けない環境では場所をただの文字にする", async () => {
+    it("開けない環境では「ファイルを開く」を出さない", async () => {
       server.videos.set(7, [
         { ...video, location: { path: "/media/a.mp4", openable: false } },
       ]);
       renderPage();
       await ready();
-      expect(screen.queryByRole("button", { name: /ファイルを開く/ })).toBeNull();
-      expect(screen.getByTitle("/media/a.mp4").tagName).toBe("P");
+      expect(screen.queryByRole("button", { name: "ファイルを開く" })).toBeNull();
+      expect(screen.getByRole("button", { name: "パスをコピー" })).toBeDefined();
     });
 
-    it("開く要求が file_missing なら場所の下に出し、画面の他の部分は変えない", async () => {
+    it("見出しの帯に置き場所のパンくずを出し、段からそのフォルダ画面へ移る", async () => {
+      server.videos.set(7, [
+        { ...video, folder: { rootId: 1, path: "movies", rootName: "media" } },
+      ]);
+      renderPage("7", "/?q=abc");
+      await ready();
+      const nav = screen.getByRole("navigation", { name: "フォルダ" });
+      fireEvent.click(within(nav).getByRole("link", { name: "movies" }));
+      expect(screen.getByTestId("screen").textContent).toBe("フォルダ /folders/1/movies");
+    });
+
+    it("ロゴからホームへ移る", async () => {
+      renderPage("7", "/folders/1/movies");
+      await ready();
+      fireEvent.click(screen.getByRole("link", { name: "ホーム" }));
+      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /");
+    });
+
+    it("開く要求が file_missing なら情報の行の下に出し、画面の他の部分は変えない", async () => {
       server.open.mockReturnValue(json({ code: "file_missing", message: "無い" }, 409));
       renderPage();
       await ready();
       await screen.findByRole("heading", { level: 2, name: "関連動画" });
       const snapshot = () => ({
+        header: document.querySelector("header")?.outerHTML,
         frame: document.querySelector("[data-player-frame]")?.outerHTML,
         title: document.querySelector("h1")?.outerHTML,
-        properties: document.querySelector("dl")?.outerHTML,
+        facts: screen.getByRole("list", { name: "ファイルの情報" }).outerHTML,
+        technical: screen.getByRole("list", { name: "技術情報" }).outerHTML,
         related: document.querySelector("aside")?.outerHTML,
-        location: screen.getByRole("button", { name: /ファイルを開く/ }).parentElement
-          ?.outerHTML,
-        text: document.body.textContent,
       });
       const before = snapshot();
-      fireEvent.click(screen.getByRole("button", { name: /ファイルを開く/ }));
+      fireEvent.click(screen.getByRole("button", { name: "ファイルを開く" }));
       const alert = await screen.findByRole("alert");
       expect(alert.textContent).toBe("開けませんでした: ファイルが見つかりません");
       expect(screen.getAllByRole("alert")).toHaveLength(1);
       expect(screen.getByTestId("video-player")).toBeDefined();
-      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("テスト動画");
-      // 場所の行のすぐ下に出る。
-      const location = screen.getByRole("button", {
-        name: /ファイルを開く/,
-      }).parentElement;
-      expect(location?.nextElementSibling).toBe(alert);
-      // 足されるのはその 1 行だけで、プレイヤー・題名・属性・場所の行・関連動画は変わらない。
-      const after = snapshot();
-      expect({ ...after, text: undefined }).toEqual({ ...before, text: undefined });
-      const path = "/media/movies/テスト動画.mp4";
-      expect(after.text).toBe(
-        (before.text ?? "").replace(path, `${path}${alert.textContent ?? ""}`),
-      );
+      // 情報の行のすぐ下（技術情報の上）に出る。
+      const row = screen.getByRole("list", { name: "ファイルの情報" }).parentElement;
+      expect(row?.nextElementSibling).toBe(alert);
+      // 足されるのはその 1 行だけで、帯・プレイヤー・題名・情報・関連動画は変わらない。
+      expect(snapshot()).toEqual(before);
     });
   });
 
@@ -365,11 +369,11 @@ describe("VideoPage", () => {
       await waitFor(() =>
         expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("後続の動画"),
       );
-      fireEvent.click(closeButtons()[0] as HTMLElement);
+      fireEvent.click(closeButton());
       expect(screen.getByTestId("screen").textContent).toBe("フォルダ /folders/1/movies");
     });
 
-    it("0 件のとき見出しを出さず、× は広い画面用も残す", async () => {
+    it("0 件のとき見出しを出さず、× は残す", async () => {
       server.related.set(7, { items: [] });
       renderPage();
       await ready();
@@ -377,7 +381,7 @@ describe("VideoPage", () => {
       await act(async () => undefined);
       // タグの並びの見出し（視覚的に隠した h2「タグ」）は関連動画と関係なく常に出る。
       expect(screen.queryByRole("heading", { level: 2, name: "関連動画" })).toBeNull();
-      expect(closeButtons()).toHaveLength(2);
+      expect(closeButton()).toBeDefined();
     });
   });
 
@@ -402,7 +406,7 @@ describe("VideoPage", () => {
       fireEvent.click(previous);
       await waitFor(() => expect(player().video.id).toBe(3));
       expect(player().autoplay).toBe(false);
-      fireEvent.click(closeButtons()[0] as HTMLElement);
+      fireEvent.click(closeButton());
       expect(screen.getByTestId("screen").textContent).toBe("フォルダ /folders/1/movies");
     });
 
@@ -542,7 +546,7 @@ describe("VideoPage", () => {
       ]);
       expect(screen.getByText("再生の準備をしています")).toBeDefined();
       expect(screen.queryByTestId("video-player")).toBeNull();
-      expect(screen.getAllByText("読み取り中")).toHaveLength(4);
+      expect(screen.getByText("技術情報を読み取り中")).toBeDefined();
 
       await emitServerEvent("video", { id: 7 });
       await advance(0);
@@ -589,7 +593,7 @@ describe("VideoPage", () => {
       expect(within(alert).getByText("この動画を読み取れませんでした")).toBeDefined();
       expect(within(alert).getByText("moov atom not found")).toBeDefined();
       expect(within(alert).getByRole("button", { name: "ファイルを開く" })).toBeDefined();
-      expect(screen.getByText("MEDIA")).toBeDefined();
+      expect(screen.getByText("技術情報を読み取れませんでした")).toBeDefined();
       // 読み取りの失敗は終わりとして扱い、プレビューが pending でも取り直さない。
       await advance(10_000);
       expect(
@@ -641,8 +645,8 @@ describe("VideoPage", () => {
       const alert = await screen.findByRole("alert");
       expect(within(alert).getByText("この動画は開けません")).toBeDefined();
       expect(screen.queryByTestId("video-player")).toBeNull();
-      expect(closeButtons()).toHaveLength(2);
-      fireEvent.click(closeButtons()[0] as HTMLElement);
+      expect(closeButton()).toBeDefined();
+      fireEvent.click(closeButton());
       expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=a");
     });
 
@@ -777,7 +781,7 @@ describe("VideoPage", () => {
       await waitFor(() => expect(player().video.id).toBe(8));
       expect(player().autoplay).toBe(true);
       expect(screen.queryByText("再生が終わりました")).toBeNull();
-      fireEvent.click(closeButtons()[0] as HTMLElement);
+      fireEvent.click(closeButton());
       expect(screen.getByTestId("screen").textContent).toBe("フォルダ /folders/1/movies");
     });
   });
@@ -949,15 +953,16 @@ describe("VideoPage", () => {
       return { ...video, location: undefined, tags: [], public: true, ...overrides };
     }
 
-    it("ゲストにはタグ・ファイルの場所・LAST PLAYED を出さず、再生位置を送らない", async () => {
+    it("ゲストにはタグ・ファイルの操作を出さず、再生位置を送らない", async () => {
       server.videos.set(7, [guestVideo()]);
       const { unmount } = renderPage("7", undefined, "guest");
       await ready();
-      expect(screen.getByText("ADDED")).toBeDefined();
-      expect(screen.queryByText("LAST PLAYED")).toBeNull();
+      expect(screen.getByRole("list", { name: "ファイルの情報" })).toBeDefined();
+      expect(screen.getByRole("list", { name: "技術情報" })).toBeDefined();
       expect(screen.queryByRole("heading", { name: "タグ" })).toBeNull();
       expect(screen.queryByPlaceholderText("タグを追加")).toBeNull();
       expect(screen.queryByRole("button", { name: /ファイルを開く/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: "パスをコピー" })).toBeNull();
 
       act(() => player().onProgress(30_000, true));
       act(() => player().onPosition(31_000));
@@ -968,11 +973,11 @@ describe("VideoPage", () => {
       expect(progressCalls).toHaveLength(0);
     });
 
-    it("所有者には LAST PLAYED とタグの並びを出す", async () => {
+    it("所有者にはタグの並びとファイルの操作を出す", async () => {
       renderPage();
       await ready();
-      expect(screen.getByText("LAST PLAYED")).toBeDefined();
       expect(screen.getByRole("heading", { name: "タグ" })).toBeDefined();
+      expect(screen.getByRole("button", { name: "パスをコピー" })).toBeDefined();
     });
 
     it("ゲストの読み取り失敗には、やり直し・ファイルを開く・誤りの文を出さない", async () => {

@@ -12,15 +12,10 @@ workflow.
 | `.agents/skills/` | This repository | Shared Agent Skills and handoff procedures |
 | `.codex/agents/` | This repository | Project-scoped Codex workers used inside a handoff run |
 | `.claude/agents/` | This repository | Project-scoped Claude workers used inside a handoff run |
-| `.specify/templates/` | This repository | Artifact templates, edited directly |
 
-Spec Kit is not upgraded any more, so nothing under `.specify/` is treated as
-vendored. `.specify/templates/plan-template.md` is the only part this workflow
-still uses, and it is edited in place like any other file here.
-
-The rest of Spec Kit's scaffolding (`.specify/scripts/`, `.specify/workflows/`,
-the integration manifests) was removed because this workflow never invoked it.
-Do not reinstate it.
+The Plan template lives with the skill that fills it, at
+`.agents/skills/sdd-plan/assets/plan-template.md`. There is no `.specify/`
+directory; do not reinstate one.
 
 Project-scoped workers may perform a bounded part of a run when the selected
 host supports them. The repository provides matching Codex and Claude workers:
@@ -49,10 +44,9 @@ when one is available, or perform that part locally.
   are relevant. Do not copy PR, branch, or child-Issue lists into the parent
   body or create a second relationship registry in repository files.
 
-Progress is read, not recorded. `plan.md` on the feature branch and an open
-integration PR mean Plan is done; `ui-design.md` means Design is done; the
-parent's native sub-issues mean `plan-to-issues` ran, and their open or closed
-state shows implementation. Do not add a progress checklist, a `Next` marker,
+Progress is read, not recorded. `plan.md` on the feature branch means Plan is
+done; `ui-design.md` means Design is done; the parent's native sub-issues mean
+`plan-to-issues` ran, and their open or closed state shows implementation. Do not add a progress checklist, a `Next` marker,
 or any other stage record to the parent body. An older parent may still carry an
 `## SDD` section; ignore it and leave it alone unless the user asks otherwise.
 
@@ -68,11 +62,12 @@ state fresh on every run — never from a prior conversation.
 
 **Locate the feature** from a parent Issue:
 
-- The integration PR is the open PR into `main` whose closing references
-  include the parent. Its head is the feature branch, and the
+- The feature branch is the base of the merged PR that `Refs` the parent and
+  does not target `main` (the Plan PR, and every later stage PR). The
   `specs/<dir>/plan.md` on that branch names the feature directory.
-- Before the integration PR exists, the feature branch is the base of the
-  merged PR that `Refs` the parent and does not target `main`.
+- Once `integrate` has opened it, the integration PR is the open PR into
+  `main` whose closing references include the parent; its head is the same
+  feature branch.
 - If either lookup finds more than one candidate, stop and ask. Never fall back
   to branch names or directory numbers.
 
@@ -90,18 +85,16 @@ implementation PR, follow the open-PR rule below for that PR.
    changes-requested review with no later push, or unresolved threads — fix it
    on that PR's head. Otherwise report that it waits on human merge and stop.
 2. **No feature branch yet** → `plan`.
-3. **Feature branch without an integration PR** → open it (feature branch →
-   `main`, `Closes #<parent>`), then continue with the next rule in the same
-   run. This is housekeeping, not the run's one stage.
-4. **`ui` label and no `ui-design.md` on the feature branch** → `design`.
-5. **No native sub-issues** → `plan-to-issues`.
-6. **A child that is not done** → `implement` the first such child, in
+3. **`ui` label and no `ui-design.md` on the feature branch** → `design`.
+4. **No native sub-issues** → `plan-to-issues`.
+5. **A child that is not done** → `implement` the first such child, in
    sub-issue order, that has no open PR and whose prerequisites (the "has to
    land first" part of its body) are done. When every remaining child has an
    open PR, apply rule 1's review check to those PRs in order, and otherwise
    report what is waiting on merge and stop. When the rest are blocked only by
    prerequisites, report that and stop.
-7. **Every child done** → [integrate](integrate.md).
+6. **Every child done** → [integrate](integrate.md), which opens the
+   integration PR if it does not exist yet.
 
 A child is **done** when it is closed as completed or a merged PR into the
 feature branch `Refs` it. Closing children stays a maintainer action (under
@@ -153,14 +146,18 @@ reviewed PRs.
 - Every stage and implementation runs on an arbitrary-name sub-branch created
   from the current feature branch.
 - Stage and implementation PRs target the feature branch. The integration PR
-  targets `main` and remains open after the Plan PR is merged.
+  targets `main` and is opened by `integrate`, once every child is done. Until
+  then the feature branch's review targets are its stage and implementation
+  PRs: an integration PR opened earlier is reviewed on every feature-branch
+  merge while the feature is half-built, and those reviews report the
+  unfinished parts as defects.
 - Stage PRs use `Refs #<parent>`. Implementation PRs use `Refs #<child>`.
   Only the integration PR uses `Closes #<parent>`.
 - Do not derive hidden identity rules from branch names, Issue numbers,
   feature-directory numbers, labels, JSON packets, or session IDs.
-- A run performs one workflow, opens or updates one PR (plus the integration PR
-  when rule 3 opens it), and stops. PR merges do not start another agent; the
-  maintainer starts the next run by handing over the Issue URL again.
+- A run performs one workflow, opens or updates one PR, and stops. PR merges
+  do not start another agent; the maintainer starts the next run by handing
+  over the Issue URL again.
 - The exception is the [`sdd-autopilot` skill](../../sdd-autopilot/SKILL.md),
   which the maintainer starts explicitly for one parent Issue. It applies the
   same stage selection in a loop, runs each stage in a fresh worker context,

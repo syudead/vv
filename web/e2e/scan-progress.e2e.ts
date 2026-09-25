@@ -300,7 +300,7 @@ for (const { width, height } of [
     expect(summaryBox).not.toBeNull();
     expect(indicatorBox).not.toBeNull();
     expect(toastBox!.y + toastBox!.height).toBeLessThanOrEqual(52);
-    // 閉じる × は幅ごとに 1 つずつ DOM にあり、見えている方だけを比べる。
+    // 閉じる × は見出しの帯に 1 つだけあり、見えていることも確かめる。
     const closeButtons = page.getByRole("button", { name: "閉じる" });
     const closeBoxes = [];
     for (let index = 0; index < (await closeButtons.count()); index += 1) {
