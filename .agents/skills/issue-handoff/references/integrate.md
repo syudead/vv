@@ -13,11 +13,17 @@ parent is done.
    the repository PR template. Otherwise the push updates it; do not open a
    separate PR for it.
 4. Write the integration PR body with the checks you ran and any remaining
-   risk. Stop. A human merges the integration PR, and GitHub closes the parent.
+   risk. When the body already lists remaining risks, including those recorded
+   from its review, keep them. Stop. A human merges the integration PR, and
+   GitHub closes the parent.
 
-If the feature branch already contains the latest `main` and the checks already
-passed on its head, report that the integration PR waits on human merge and
-stop.
+When the integration PR already exists, handle its review first, as
+[below](#review-of-the-integration-pr) says: a blocking finding with no fix PR
+yet gets one to the feature branch that `Refs #<parent>`, and that PR is this
+run's one PR. If the integration PR exists, has no unresolved blocking thread,
+the feature branch already contains the latest `main` or needs no refresh (see
+the end of the next section), and the checks passed on its head, report that
+it waits on human merge and stop.
 
 ## Review of the integration PR
 

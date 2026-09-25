@@ -108,7 +108,8 @@ it can see was already fixed and resolved on the same PR. All of them are read
 from GitHub, not remembered: the integration-fix count is the number of PRs
 merged into the feature branch that `Refs #<parent>` after the integration
 PR's `created_at`, which a PR search with a `merged:>` date returns as a total
-without bodies; the refresh count is the number of merge commits from `main`
+without bodies, less those that change `plan.md` or `ui-design.md` (a Plan or
+Design revision the maintainer ran, read from the PR's file list); the refresh count is the number of merge commits from `main`
 on the feature branch after that time. Neither count is reset by a refresh.
 Hitting a limit means the fixes are not converging, and another round spends
 context without changing that. Report the integration PR as it stands and

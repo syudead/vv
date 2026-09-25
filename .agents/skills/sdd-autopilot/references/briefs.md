@@ -93,7 +93,9 @@ Feature branch: <feature>   Feature directory: <dir>
 Procedure: .agents/skills/issue-handoff/references/integrate.md, in one phase.
 Regenerate generated files with `task generate` when resolving conflicts,
 never by hand. Open the integration PR if it does not exist yet. In its body,
-also list the out-of-scope items the merged feature PRs' bodies deferred.
+also list the out-of-scope items the merged feature PRs' bodies deferred, and
+keep the remaining risks it already lists. Do not handle its review here; the
+review fixer does.
 Return STATUS: DONE with the integration PR in PR, or BLOCKED when a conflict
 needs a product decision.
 ```
