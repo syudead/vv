@@ -485,8 +485,9 @@ returns to the list the screen was opened from): the player with the title, tags
 a file-facts row and a technical row on the left, related videos on the right. Keeping that choice to
 the one routing decision is what lets the shell stay ignorant of which screen it
 is framing. Inside `web/src/player/`, video.js owns only the control bar; ingest
-stages, read and playback failures, the ended prompt and the touch controls are
-React layers stacked in one container above the player, and keyboard shortcuts are
+stages, read and playback failures, the ended prompt (for a folder-group member with
+a next member, a five-second autoplay notice that re-checks that member before moving on)
+and the touch controls are React layers stacked in one container above the player, and keyboard shortcuts are
 handled page-wide rather than by video.js. The composition is recorded in
 [docs/design-docs/library-ui.md](docs/design-docs/library-ui.md).
 The shell exposes the library, the folder browser and media-folder settings as routes.

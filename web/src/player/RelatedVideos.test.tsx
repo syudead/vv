@@ -187,4 +187,138 @@ describe("RelatedVideos", () => {
       expect(previewVideo(pending.container)).toBeNull();
     });
   });
+
+  describe("グループのメンバーの並び", () => {
+    const folder = { rootId: 1, path: "series" };
+    const watched = {
+      positionMs: 65_000,
+      completed: true,
+      updatedAt: "2026-09-02T00:00:00Z",
+    };
+    const halfway = {
+      positionMs: 13_000,
+      completed: false,
+      updatedAt: "2026-09-02T00:00:00Z",
+    };
+    const members = [
+      item(11, { title: "ep01", progress: watched }),
+      item(12, { title: "ep02", progress: halfway }),
+      item(13, { title: "ep03" }),
+      item(14, { title: "ep04" }),
+    ];
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    function renderGroup(current: number, items: Video[] = [item(2)]) {
+      return renderList({
+        kind: "ready",
+        id: current,
+        related: {
+          items,
+          group: { folder, name: "series", items: members },
+        },
+      });
+    }
+
+    it("「続けて再生」と何本目かの下に全メンバーを順に出し、境目の下に関連動画を別の並びで出す（受け入れ条件 15）", () => {
+      renderGroup(13);
+      const heading = screen.getByRole("heading", { level: 2, name: "続けて再生" });
+      expect(heading.parentElement?.textContent).toBe("続けて再生3 / 4");
+      const lists = screen.getAllByRole("list");
+      expect(lists).toHaveLength(2);
+      const [memberList, relatedList] = lists as [HTMLElement, HTMLElement];
+      const rows = within(memberList).getAllByRole("listitem");
+      expect(rows.map((row) => row.textContent)).toEqual([
+        "11:05ep01",
+        "21:05ep02",
+        "31:05再生中ep03",
+        "41:05ep04",
+      ]);
+      // 境目は「関連動画」の見出しの前にある。
+      const separator = screen.getByRole("separator");
+      const related = screen.getByRole("heading", { level: 2, name: "関連動画" });
+      expect(
+        separator.compareDocumentPosition(related) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      expect(
+        within(relatedList).getByRole("link", { name: "関連 2 1:05" }),
+      ).toBeDefined();
+    });
+
+    it("今のメンバーはリンクにせず aria-current で示し、面と左の線で強調する", () => {
+      renderGroup(13);
+      const current = screen
+        .getAllByRole("listitem")
+        .find((row) => row.getAttribute("aria-current") === "true");
+      expect(current?.textContent).toContain("ep03");
+      expect(current && within(current).queryByRole("link")).toBeNull();
+      const surface = current?.firstElementChild;
+      expect(surface?.className).toContain("bg-active-wash");
+      expect(surface?.className).toContain("border-l-2");
+      expect(surface?.className).toContain("border-accent");
+      expect(screen.queryByRole("link", { name: /ep03/ })).toBeNull();
+    });
+
+    it("視聴済みは読み上げ名に「視聴済み」を足し、途中のメンバーは進捗バーを出す", () => {
+      renderGroup(13);
+      const done = screen.getByRole("link", { name: "ep01 1:05 視聴済み" });
+      expect(done.getAttribute("href")).toBe("/videos/11");
+      expect(within(done).queryByRole("progressbar")).toBeNull();
+      const partial = screen.getByRole("link", { name: "ep02 1:05" });
+      expect(within(partial).getByRole("progressbar")).toBeDefined();
+      expect(screen.getByRole("link", { name: "ep04 1:05" })).toBeDefined();
+    });
+
+    it("関連動画が 0 件なら、境目と「関連動画」の見出しを出さない", () => {
+      renderGroup(11, []);
+      expect(screen.getByRole("heading", { name: "続けて再生" })).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "関連動画" })).toBeNull();
+      expect(screen.queryByRole("separator")).toBeNull();
+      expect(screen.getAllByRole("list")).toHaveLength(1);
+    });
+
+    it("数百本でも切らずに出し、広い画面では今のメンバーの行を入れ物の中で見える位置へ動かす", () => {
+      const many = Array.from({ length: 300 }, (_, index) =>
+        item(100 + index, { title: `big ${String(index + 1)}` }),
+      );
+      vi.stubGlobal("matchMedia", (query: string) => ({
+        matches: query === "(min-width: 64rem)",
+      }));
+      const scrolled: Element[] = [];
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = function (this: Element, options) {
+        expect(options).toEqual({ block: "nearest" });
+        scrolled.push(this);
+      };
+      try {
+        renderList({
+          kind: "ready",
+          id: 299,
+          related: { items: [], group: { folder, name: "big", items: many } },
+        });
+        expect(screen.getAllByRole("listitem")).toHaveLength(300);
+        expect(screen.getByText("200 / 300")).toBeDefined();
+        expect(scrolled).toHaveLength(1);
+        expect(scrolled[0]?.getAttribute("aria-current")).toBe("true");
+        expect(scrolled[0]?.textContent).toContain("big 200");
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
+
+    it("狭い画面ではページを動かさない", () => {
+      vi.stubGlobal("matchMedia", () => ({ matches: false }));
+      const scrollIntoView = vi.fn();
+      const original = Element.prototype.scrollIntoView;
+      Element.prototype.scrollIntoView = scrollIntoView;
+      try {
+        renderGroup(14);
+        expect(scrollIntoView).not.toHaveBeenCalled();
+      } finally {
+        Element.prototype.scrollIntoView = original;
+      }
+    });
+  });
 });

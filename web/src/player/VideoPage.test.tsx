@@ -786,6 +786,290 @@ describe("VideoPage", () => {
     });
   });
 
+  describe("グループのメンバー", () => {
+    const folder = { rootId: 1, path: "series" };
+    const member = (id: number, title: string, position: number): Video => ({
+      ...video,
+      id,
+      title,
+      group: { folder, name: "series", position, count: 3 },
+    });
+    const ep01 = member(11, "ep01", 1);
+    const ep02 = member(12, "ep02", 2);
+    const ep03 = member(13, "ep03", 3);
+    const listed = (value: Video): Video => ({ ...value, group: undefined });
+    const group = { folder, name: "series", items: [ep01, ep02, ep03].map(listed) };
+
+    beforeEach(() => {
+      server.videos.set(11, [ep01]);
+      server.videos.set(12, [ep02]);
+      server.videos.set(13, [ep03]);
+      server.related.set(11, { items: [related(8, "後続の動画")], nextId: 12, group });
+      server.related.set(12, {
+        items: [related(8, "後続の動画")],
+        nextId: 13,
+        prevId: 11,
+        group,
+      });
+      server.related.set(13, { items: [related(8, "後続の動画")], prevId: 12, group });
+    });
+
+    function end() {
+      act(() =>
+        player().onStatus({
+          loading: false,
+          playing: false,
+          userActive: true,
+          ended: true,
+        }),
+      );
+    }
+
+    async function advance(ms: number) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    }
+
+    async function openMember(id = "12") {
+      renderPage(id, "/?q=series");
+      await ready();
+      await screen.findByRole("heading", { level: 2, name: "続けて再生" });
+    }
+
+    const announcement = "再生が終わりました。5 秒後に次の動画「ep03」を再生します";
+
+    function videoRequests(id: number) {
+      return fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input) === `/api/videos/${String(id)}` &&
+          (init?.method ?? "GET") === "GET",
+      ).length;
+    }
+
+    it("題名の上にグループ名と何本目かの1行を出し、グループに属さない動画には出さない", async () => {
+      await openMember();
+      const title = screen.getByRole("heading", { level: 1 });
+      const line = title.previousElementSibling;
+      expect(line?.textContent).toBe("series·2 / 3");
+      expect(within(line as HTMLElement).queryByRole("button")).toBeNull();
+      expect(within(line as HTMLElement).queryByRole("link")).toBeNull();
+      expect(screen.getByTitle("series")).toBeDefined();
+    });
+
+    it("グループに属さない動画は題名の上に何も出さない", async () => {
+      renderPage();
+      const title = await ready();
+      expect(title.previousElementSibling).toBeNull();
+    });
+
+    it("関連動画の列の上位にメンバーを順に並べ、今のメンバーを示し、境目の下にメンバーを出さない（受け入れ条件 15）", async () => {
+      await openMember();
+      const heading = screen.getByRole("heading", { level: 2, name: "続けて再生" });
+      const section = heading.closest("section");
+      if (section === null) throw new Error("列がありません");
+      const [members, others] = within(section).getAllByRole("list") as [
+        HTMLElement,
+        HTMLElement,
+      ];
+      expect(
+        within(members)
+          .getAllByRole("listitem")
+          .map((row) => row.getAttribute("aria-current") === "true"),
+      ).toEqual([false, true, false]);
+      expect(within(members).getByRole("link", { name: /ep01/ })).toBeDefined();
+      expect(within(members).getByRole("link", { name: /ep03/ })).toBeDefined();
+      expect(
+        within(others)
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["準備中4:02後続の動画"]);
+      expect(within(others).queryByRole("link", { name: /ep0/ })).toBeNull();
+    });
+
+    it("前後のつまみはグループの中の前後で、題名をメンバーの並びから引く", async () => {
+      await openMember();
+      expect(screen.getByRole("button", { name: "前の動画: ep01" })).toBeDefined();
+      expect(screen.getByRole("button", { name: "次の動画: ep03" })).toBeDefined();
+    });
+
+    it("再生が終わると予告を一度だけ読み上げ、5 秒後に確かめてから次のメンバーを再生する（受け入れ条件 16・19）", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember();
+      (await screen.findByRole("button", { name: "再生" })).focus();
+      end();
+      const statuses = screen
+        .getAllByRole("status")
+        .filter((node) => node.textContent === announcement);
+      expect(statuses).toHaveLength(1);
+      // フォーカスがプレイヤーの中にあったので「取り消す」へ移る。
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "取り消す" }),
+      );
+      // DOM の順でも「取り消す」が先。
+      const cancel = screen.getByRole("button", { name: "取り消す" });
+      const now = screen.getByRole("button", { name: "今すぐ再生" });
+      expect(
+        cancel.compareDocumentPosition(now) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // 残り秒数は読み上げさせない。
+      const seconds = screen.getByText("5 秒後");
+      expect(seconds.getAttribute("aria-hidden")).toBe("true");
+      // タッチ用の中央操作は出さない。
+      expect(screen.queryByRole("button", { name: "再生" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "一時停止" })).toBeNull();
+
+      await advance(2000);
+      expect(screen.getByText("3 秒後")).toBeDefined();
+      // 秒数が減っても読み上げの文は増えない。
+      expect(
+        screen.getAllByRole("status").filter((node) => node.textContent === announcement),
+      ).toHaveLength(1);
+      const before = videoRequests(13);
+      await advance(3000);
+      await waitFor(() => expect(player().video.id).toBe(13));
+      expect(videoRequests(13)).toBeGreaterThan(before);
+      expect(player().autoplay).toBe(true);
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("ep03");
+      // メンバーを移っても × は開く前の一覧へ戻る。
+      fireEvent.click(closeButton());
+      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=series");
+    });
+
+    it("「取り消す」で今の再生終了の層に戻り、フォーカスを「次を再生」へ移す", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember();
+      (await screen.findByRole("button", { name: "再生" })).focus();
+      end();
+      fireEvent.click(screen.getByRole("button", { name: "取り消す" }));
+      expect(screen.queryByText(announcement)).toBeNull();
+      expect(screen.getByText("再生が終わりました")).toBeDefined();
+      const playNext = screen.getByRole("button", { name: "次を再生" });
+      expect(document.activeElement).toBe(playNext);
+      expect(screen.getByRole("button", { name: "もう一度見る" })).toBeDefined();
+      await advance(6000);
+      expect(player().video.id).toBe(12);
+    });
+
+    it("予告中の Esc は取り消しで画面を閉じず、取り消した後の Esc は閉じる", async () => {
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      fireEvent.keyDown(screen.getByRole("button", { name: "取り消す" }), {
+        key: "Escape",
+      });
+      expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull();
+      expect(screen.getByRole("button", { name: "次を再生" })).toBeDefined();
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("ep02");
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=series");
+    });
+
+    it("「今すぐ再生」で戻り先付きで次のメンバーへ移る", async () => {
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      fireEvent.click(screen.getByRole("button", { name: "今すぐ再生" }));
+      await waitFor(() => expect(player().video.id).toBe(13));
+      expect(player().autoplay).toBe(true);
+    });
+
+    it("最後のメンバーでは予告を出さず、「もう一度見る」だけの層を出す（受け入れ条件 16）", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember("13");
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull();
+      expect(screen.getByRole("button", { name: "もう一度見る" })).toBeDefined();
+      expect(screen.queryByRole("button", { name: "次を再生" })).toBeNull();
+      await advance(6000);
+      expect(player().video.id).toBe(13);
+    });
+
+    it("グループに属さない動画は、終わっても予告を出さず自動で進まない（受け入れ条件 17）", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderPage();
+      await ready();
+      await screen.findByRole("heading", { level: 2, name: "関連動画" });
+      end();
+      expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull();
+      expect(screen.getByRole("button", { name: "次を再生" })).toBeDefined();
+      await advance(6000);
+      expect(player().video.id).toBe(7);
+    });
+
+    it("予告の終わりに次のメンバーが無ければ、先へ進まず「もう一度見る」だけの層にする", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      server.videos.delete(13);
+      await advance(5000);
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull(),
+      );
+      expect(screen.getByRole("button", { name: "もう一度見る" })).toBeDefined();
+      expect(screen.queryByRole("button", { name: "次を再生" })).toBeNull();
+      expect(player().video.id).toBe(12);
+    });
+
+    it("予告中に次のメンバーが消えた知らせが届いたら、確かめて予告をやめる", async () => {
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      server.videos.delete(13);
+      // ほかの動画の知らせでは確かめない。
+      const before = videoRequests(13);
+      await emitServerEvent("video", { id: 8 });
+      expect(videoRequests(13)).toBe(before);
+      await emitServerEvent("video", { id: 13 });
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull(),
+      );
+      expect(screen.getByRole("button", { name: "もう一度見る" })).toBeDefined();
+      expect(screen.queryByRole("button", { name: "次を再生" })).toBeNull();
+    });
+
+    it("自動で開いたメンバーが再生に失敗したら、再生失敗の層で止まり先へ進まない", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      await advance(5000);
+      await waitFor(() => expect(player().video.id).toBe(13));
+      act(() => player().onError(12_000));
+      const alert = await screen.findByRole("alert");
+      expect(within(alert).getByText("再生できませんでした")).toBeDefined();
+      await advance(6000);
+      expect(player().video.id).toBe(13);
+      expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull();
+    });
+
+    it("メンバーの並びから別のメンバーへ移っても、Esc で開く前の一覧へ戻る（受け入れ条件 19）", async () => {
+      await openMember();
+      fireEvent.click(screen.getByRole("link", { name: /ep01/ }));
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("ep01"),
+      );
+      await screen.findByRole("heading", { level: 2, name: "続けて再生" });
+      fireEvent.click(screen.getByRole("link", { name: /ep03/ }));
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("ep03"),
+      );
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=series");
+    });
+
+    it("ゲストにも公開のメンバーの並びと予告を出す", async () => {
+      renderPage("12", "/", "guest");
+      await ready();
+      await screen.findByRole("heading", { level: 2, name: "続けて再生" });
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      expect(screen.getByRole("button", { name: "取り消す" })).toBeDefined();
+    });
+  });
+
   describe("再生位置の保存", () => {
     it("playerの即時保存通知をprogress APIへ送る", async () => {
       renderPage();
