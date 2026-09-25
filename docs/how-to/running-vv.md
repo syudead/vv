@@ -42,6 +42,55 @@ Docker Compose sets these values for the container. Media folders themselves
 are managed in the application rather than with a configuration file.
 Invalid environment values are reported together when the application starts.
 
+## Account setup
+
+vv has a single account. Until it is configured, the first person to reach the
+server can create it, so finish the initial setup in the browser right after
+installing vv, before the server is reachable by anyone else. Open vv and
+choose the username and password on the setup screen.
+
+## Changing the username or resetting the password
+
+After the initial setup, the username and password can be changed only from a
+shell on the host. Both commands read `MDM_DATA_DIR` alone, apply migrations,
+and do not need `ffmpeg`; they work whether the server is running or stopped.
+Each change signs out every existing session.
+
+With Docker Compose, while the container is running:
+
+```bash
+docker compose exec mdm mdm account set-username NEW_NAME
+docker compose exec mdm mdm account set-password
+```
+
+When the container is stopped:
+
+```bash
+docker compose run --rm mdm account set-password
+```
+
+`set-password` asks for the new password twice with echo turned off. When
+standard input is not a terminal, it reads the first line (without the
+trailing newline) instead, which suits scripts:
+
+```bash
+docker compose exec -T mdm mdm account set-password < new-password.txt
+```
+
+The password is never accepted as an argument or an environment variable, so
+it does not end up in shell history, process listings or `docker inspect`.
+
+The username must be 1 to 128 characters without control characters or
+leading and trailing spaces; the password must be 1 to 1024 bytes. The
+commands never create the account: on an unconfigured server they change
+nothing and ask you to use the setup screen.
+
+| Exit code | Meaning |
+| --------- | ------- |
+| `0`       | The change was saved and existing sessions were signed out |
+| `1`       | The database could not be opened or written |
+| `2`       | Not configured yet, an invalid value, a mismatched confirmation, or an unknown command |
+
 ## Data and recovery
 
 The Docker setup stores application data in the `vv_data` volume. The SQLite
