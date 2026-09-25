@@ -33,8 +33,10 @@ when one is available, or perform that part locally.
 
 ## Inputs and sources of truth
 
-- An Issue-driven run starts from an explicitly supplied Issue. An explicitly
-  supplied PR or branch may provide additional context.
+- An Issue-driven run starts from a supplied Issue URL. That URL is normally
+  the whole request: the run selects its own stage (see
+  [Selecting the stage](#selecting-the-stage)). A stage, PR, or branch the user
+  names explicitly overrides the selection.
 - The parent Issue is the specification. It carries the requirement and the
   acceptance criteria, and nothing about workflow progress. The
   [`issue-spec` skill](../../issue-spec/SKILL.md) writes and revises it; no
@@ -56,6 +58,61 @@ The `ui` label is the only label with workflow meaning: a parent carrying it
 goes through `design` between `plan` and `plan-to-issues`. The `sdd` label is
 retired. Never add or remove labels on your own.
 
+## Selecting the stage
+
+The user supplies an Issue and nothing else; the run works out what comes next
+from GitHub and the feature branch, does that one thing, and stops. Read
+state fresh on every run — never from a prior conversation.
+
+**Locate the feature** from a parent Issue:
+
+- The integration PR is the open PR into `main` whose closing references
+  include the parent. Its head is the feature branch, and the
+  `specs/<dir>/plan.md` on that branch names the feature directory.
+- Before the integration PR exists, the feature branch is the base of the
+  merged PR that `Refs` the parent and does not target `main`.
+- If either lookup finds more than one candidate, stop and ask. Never fall back
+  to branch names or directory numbers.
+
+An Issue that is neither a native child nor a parent written as a
+specification (no `要件` or `受け入れ条件`) is not SDD work; ask before doing
+anything.
+
+**Child Issue** (it has a native parent): run `implement` for that child. If it
+is already done (see below), report that and stop. If it has an open
+implementation PR, follow the open-PR rule below for that PR.
+
+**Parent Issue**: take the first rule that applies.
+
+1. **An open stage PR** (`Refs` the parent and does not target `main`). If it has unaddressed review feedback — a
+   changes-requested review with no later push, or unresolved threads — fix it
+   on that PR's head. Otherwise report that it waits on human merge and stop.
+2. **No feature branch yet** → `plan`.
+3. **Feature branch without an integration PR** → open it (feature branch →
+   `main`, `Closes #<parent>`), then continue with the next rule in the same
+   run. This is housekeeping, not the run's one stage.
+4. **`ui` label and no `ui-design.md` on the feature branch** → `design`.
+5. **No native sub-issues** → `plan-to-issues`.
+6. **A child that is not done** → `implement` the first such child, in
+   sub-issue order, that has no open PR and whose prerequisites (the "has to
+   land first" part of its body) are done. When every remaining child has an
+   open PR, apply rule 1's review check to those PRs in order, and otherwise
+   report what is waiting on merge and stop. When the rest are blocked only by
+   prerequisites, report that and stop.
+7. **Every child done** → [integrate](integrate.md).
+
+A child is **done** when it is closed as completed or a merged PR into the
+feature branch `Refs` it. Closing children stays a maintainer action; selection
+does not wait for it.
+
+Report the selected stage and the facts behind it at the start of the run and
+in the PR body, so a wrong selection is visible at review. Two runs started at
+the same time on the same parent can pick the same child; the second PR is
+closed at review.
+
+A revision is the exception: re-running a stage whose artifact already exists
+is never selected automatically. The maintainer names that stage.
+
 ## GitHub preflight
 
 Verify only the capabilities needed by the requested workflow. Every workflow
@@ -64,12 +121,11 @@ push and PR creation access. `plan-to-issues` needs Issue write
 access and native sub-issue operations but does not require push or PR creation.
 Stop before mutation when a required capability is missing.
 
-Use the supplied Issue, PR, branch, and current checkout directly. Read their
-standard GitHub relationships as ordinary context; do not run a repository-
-specific traversal to recover a branch or feature directory, compare multiple
-records for consistency, or require a unique candidate. When review fixes are
-requested for a PR, update that PR's head. Ask the user only when information
-that is actually required for the requested mutation is unavailable.
+Recover the feature branch and directory only through the standard GitHub
+relationships in [Selecting the stage](#selecting-the-stage). When review fixes
+are made for a PR, update that PR's head. Ask the user only when information
+that is actually required for the selected mutation is unavailable or
+ambiguous.
 
 After checkout, read `plan.md` and optional `ui-design.md` when they are
 relevant and available. Their metadata is useful context, not an identity
@@ -80,9 +136,8 @@ parent Issue. A feature directory always holds `plan.md`, adds `ui-design.md`
 for a `ui` Issue, and carries `research.md`, `data-model.md`, `contracts/` or
 `quickstart.md` when the Plan has that content of its own (P-2).
 
-Name the feature directory explicitly; never select work from a branch name or
-a prior conversation. Use a separate checkout or worktree for each concurrent
-run.
+Never select work from a branch name or a prior conversation. Use a separate
+checkout or worktree for each concurrent run.
 
 The skill deliberately does not infer whether an existing downstream
 artifact incorporates a later upstream revision. When an approved artifact is
@@ -101,12 +156,11 @@ reviewed PRs.
   Only the integration PR uses `Closes #<parent>`.
 - Do not derive hidden identity rules from branch names, Issue numbers,
   feature-directory numbers, labels, JSON packets, or session IDs.
-- A run performs one workflow, opens or updates one PR, and stops. PR merges do
-  not start another agent.
+- A run performs one workflow, opens or updates one PR (plus the integration PR
+  when rule 3 opens it), and stops. PR merges do not start another agent; the
+  maintainer starts the next run by handing over the Issue URL again.
 
 Humans merge every PR. A stage PR merge needs no follow-up edit to the parent
-Issue. After an implementation PR merge, the maintainer closes that child Issue
-as completed. Only after all children are resolved, merge the
-latest `main` directly into the feature branch and run the full checks before
-merging the integration PR. Updating the integration PR branch from its base
-does not get a separate PR.
+Issue. After an implementation PR merge, the maintainer may close that child
+Issue as completed. After every child is done, the next run
+[integrates](integrate.md) and a human merges the integration PR.
