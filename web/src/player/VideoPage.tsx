@@ -40,6 +40,7 @@ import VideoPlayer, {
   initialPlayerStatus,
   type PlayerStatus,
 } from "./VideoPlayer";
+import VideoTags from "./VideoTags";
 
 /** minResumeMs 未満の位置は「見始めたばかり」として先頭から再生する。 */
 const minResumeMs = 5000;
@@ -75,8 +76,8 @@ interface Attempt {
 /**
  * VideoPage は動画詳細画面（`/videos/:id`）である。
  *
- * 構成要素はプレイヤー・題名・属性情報（ファイルの場所を含む）・関連動画の 4 つだけとする
- * （親 Issue 要件 1）。状態と失敗は、プレイヤーの上の 1 つの入れ物に重ねて伝える
+ * 構成要素はプレイヤー・題名・属性情報（ファイルの場所を含む）・タグ・関連動画の 5 つと
+ * する（親 Issue 要件 1・3、issue 268）。状態と失敗は、プレイヤーの上の 1 つの入れ物に重ねて伝える
  * （plan の Structural Decisions 12）。入れ物の中は、上から 状態表示・再生終了・タッチ用の
  * 中央操作 の順で、同時に出すのは 1 つだけである。
  */
@@ -374,9 +375,22 @@ export default function VideoPage() {
             {video !== undefined && (
               <>
                 <CreatingLine video={video} />
-                <h1 className="text-xl leading-snug font-semibold text-fg [overflow-wrap:anywhere] sm:text-2xl">
-                  {video.title}
-                </h1>
+                {/* 題名とタグは1つのまとまり（ui-design.md「Video page tags」Placement）。 */}
+                <div className="flex flex-col gap-2">
+                  <h1 className="text-xl leading-snug font-semibold text-fg [overflow-wrap:anywhere] sm:text-2xl">
+                    {video.title}
+                  </h1>
+                  <VideoTags
+                    // VideoPage 自身が動画ごとに作り直されず（同じ /videos/:id
+                    // ルートのまま次の動画へ移ることがある）使い回されるため、
+                    // VideoTags を videoId で作り直し、前の動画の重ねた
+                    // 付け外し（appliedRef）を持ち越さない（Devin の指摘1）。
+                    key={video.id}
+                    videoId={video.id}
+                    tags={video.tags}
+                    onStaleVideo={() => void refresh()}
+                  />
+                </div>
                 <PropertyStrip video={video} />
                 {video.location !== undefined && (
                   <FileLocation videoId={video.id} location={video.location} />

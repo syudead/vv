@@ -30,6 +30,9 @@ const (
 	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
 	ErrorCodeProbeNotFailed              ErrorCode = "probe_not_failed"
 	ErrorCodeScanInProgress              ErrorCode = "scan_in_progress"
+	ErrorCodeTagMergeRequired            ErrorCode = "tag_merge_required"
+	ErrorCodeTagNameTaken                ErrorCode = "tag_name_taken"
+	ErrorCodeTagNotFound                 ErrorCode = "tag_not_found"
 	ErrorCodeUnsupportedMediaDirectory   ErrorCode = "unsupported_media_directory"
 )
 
@@ -63,6 +66,12 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeProbeNotFailed:
 		return true
 	case ErrorCodeScanInProgress:
+		return true
+	case ErrorCodeTagMergeRequired:
+		return true
+	case ErrorCodeTagNameTaken:
+		return true
+	case ErrorCodeTagNotFound:
 		return true
 	case ErrorCodeUnsupportedMediaDirectory:
 		return true
@@ -284,6 +293,24 @@ func (e VideoSort) Valid() bool {
 	}
 }
 
+// Defines values for VideoTagsAction.
+const (
+	Add    VideoTagsAction = "add"
+	Remove VideoTagsAction = "remove"
+)
+
+// Valid indicates whether the value is a known member of the VideoTagsAction enum.
+func (e VideoTagsAction) Valid() bool {
+	switch e {
+	case Add:
+		return true
+	case Remove:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WatchFilter.
 const (
 	All        WatchFilter = "all"
@@ -308,9 +335,21 @@ func (e WatchFilter) Valid() bool {
 	}
 }
 
+// AddTagSynonymRequest defines model for AddTagSynonymRequest.
+type AddTagSynonymRequest struct {
+	// MergeTagId 統合を承諾したタグのid（contracts/tags-api.md §3）
+	MergeTagId *int64 `json:"mergeTagId,omitempty"`
+	Name       string `json:"name"`
+}
+
 // CreateMediaFolderRequest defines model for CreateMediaFolderRequest.
 type CreateMediaFolderRequest struct {
 	Path string `json:"path"`
+}
+
+// CreateTagRequest defines model for CreateTagRequest.
+type CreateTagRequest struct {
+	Name string `json:"name"`
 }
 
 // DirectoryEntry defines model for DirectoryEntry.
@@ -407,6 +446,11 @@ type MediaFolder struct {
 	Version   int64     `json:"version"`
 }
 
+// MergeTagRequest defines model for MergeTagRequest.
+type MergeTagRequest struct {
+	SourceId int64 `json:"sourceId"`
+}
+
 // Processing defines model for Processing.
 type Processing struct {
 	// Preview 一覧用プレビューの残り
@@ -439,6 +483,11 @@ type RelatedVideos struct {
 	NextId *int64 `json:"nextId,omitempty"`
 }
 
+// RenameTagRequest defines model for RenameTagRequest.
+type RenameTagRequest struct {
+	Name string `json:"name"`
+}
+
 // RootFolderListing defines model for RootFolderListing.
 type RootFolderListing struct {
 	// Folders 登録済みメディアフォルダ。名前の自然順
@@ -464,6 +513,36 @@ type Scan struct {
 
 // ScanState defines model for Scan.State.
 type ScanState string
+
+// Tag 管理画面と候補に出す1件（contracts/tags-api.md §1）。
+type Tag struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+
+	// Synonyms 名前の自然順
+	Synonyms []string `json:"synonyms"`
+
+	// VideoCount いまライブラリにある動画の本数
+	VideoCount int `json:"videoCount"`
+}
+
+// TagInput 付与で使うタグの指定。id と name のちょうど一方を持つ。両方あるか、どちらも
+// 無いときは invalid_request（400）にする（contracts/tags-api.md §1）。
+type TagInput struct {
+	Id   *int64  `json:"id,omitempty"`
+	Name *string `json:"name,omitempty"`
+}
+
+// TagList defines model for TagList.
+type TagList struct {
+	Items []Tag `json:"items"`
+}
+
+// TagRef 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+type TagRef struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
 
 // UpdateMediaFolderRequest defines model for UpdateMediaFolderRequest.
 type UpdateMediaFolderRequest struct {
@@ -512,9 +591,13 @@ type Video struct {
 	SeekThumbnailState *VideoSeekThumbnailState `json:"seekThumbnailState,omitempty"`
 
 	// SeekThumbnailUrl probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL
-	SeekThumbnailUrl *string             `json:"seekThumbnailUrl,omitempty"`
-	SizeBytes        int64               `json:"sizeBytes"`
-	ThumbnailState   VideoThumbnailState `json:"thumbnailState"`
+	SeekThumbnailUrl *string `json:"seekThumbnailUrl,omitempty"`
+	SizeBytes        int64   `json:"sizeBytes"`
+
+	// Tags 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
+	// 無ければ空配列（contracts/tags-api.md §1）
+	Tags           []TagRef            `json:"tags"`
+	ThumbnailState VideoThumbnailState `json:"thumbnailState"`
 
 	// ThumbnailUrl thumbnailState = done のときだけ入る
 	ThumbnailUrl *string `json:"thumbnailUrl,omitempty"`
@@ -564,6 +647,14 @@ type VideoFolder struct {
 	RootId int64 `json:"rootId"`
 }
 
+// VideoIdsResponse defines model for VideoIdsResponse.
+type VideoIdsResponse struct {
+	Ids []int64 `json:"ids"`
+
+	// MissingTagIds tag のうち存在しなかった id。1つも無ければ省略される
+	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
+}
+
 // VideoLocation 代表の所在。GET /api/videos/{id} の応答にだけ入る
 type VideoLocation struct {
 	// Openable 要求元がループバックで、Host がループバックの名前で、サーバーが既定アプリを
@@ -577,6 +668,10 @@ type VideoLocation struct {
 // VideoPage defines model for VideoPage.
 type VideoPage struct {
 	Items []Video `json:"items"`
+
+	// MissingTagIds tag のうち存在しなかった id。1つも無ければ省略される
+	// （specs/014-video-tags/contracts/tags-api.md §5）
+	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
 
 	// NextCursor 次のページの取得に渡す。これ以上無い場合は省略される
 	NextCursor *string `json:"nextCursor,omitempty"`
@@ -593,6 +688,48 @@ type VideoPage struct {
 // 動画の識別子から作る順。値が同じなら識別子で決着させる
 type VideoSort string
 
+// VideoTagsAction defines model for VideoTagsAction.
+type VideoTagsAction string
+
+// VideoTagsRequest defines model for VideoTagsRequest.
+type VideoTagsRequest struct {
+	Action VideoTagsAction `json:"action"`
+
+	// Tag 付与で使うタグの指定。id と name のちょうど一方を持つ。両方あるか、どちらも
+	// 無いときは invalid_request（400）にする（contracts/tags-api.md §1）。
+	Tag      TagInput `json:"tag"`
+	VideoIds []int64  `json:"videoIds"`
+}
+
+// VideoTagsResponse defines model for VideoTagsResponse.
+type VideoTagsResponse struct {
+	// Applied videoIds のうちいまライブラリにある動画の数
+	Applied int `json:"applied"`
+
+	// Tag 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+	Tag TagRef `json:"tag"`
+}
+
+// VideoTagsSummary defines model for VideoTagsSummary.
+type VideoTagsSummary struct {
+	// Items 1本以上に付いているタグだけ。名前の自然順
+	Items []VideoTagsSummaryItem `json:"items"`
+	Total int                    `json:"total"`
+}
+
+// VideoTagsSummaryItem defines model for VideoTagsSummaryItem.
+type VideoTagsSummaryItem struct {
+	Count int `json:"count"`
+
+	// Tag 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+	Tag TagRef `json:"tag"`
+}
+
+// VideoTagsSummaryRequest defines model for VideoTagsSummaryRequest.
+type VideoTagsSummaryRequest struct {
+	VideoIds []int64 `json:"videoIds"`
+}
+
 // WatchFilter 視聴状態の絞り込み。all = 絞り込まない、unwatched = 未視聴、inProgress = 視聴途中、
 // watched = 視聴済み
 type WatchFilter string
@@ -605,6 +742,9 @@ type FolderRootId = int64
 
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
+
+// TagId defines model for TagId.
+type TagId = int64
 
 // VideoId defines model for VideoId.
 type VideoId = int64
@@ -679,6 +819,12 @@ type DeleteMediaFolderParams struct {
 // StartScanJSONBody defines parameters for StartScan.
 type StartScanJSONBody = map[string]interface{}
 
+// RemoveTagSynonymParams defines parameters for RemoveTagSynonym.
+type RemoveTagSynonymParams struct {
+	// Name 外すシノニムの名前
+	Name string `form:"name" json:"name"`
+}
+
 // ListVideosParams defines parameters for ListVideos.
 type ListVideosParams struct {
 	// Query 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
@@ -707,6 +853,21 @@ type ListVideosParams struct {
 
 	// Limit 1ページの件数
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Tag タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
+	// 最大16個、17個以上は400。存在しない id は条件から落とし、応答の
+	// missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+}
+
+// ListVideoIdsParams defines parameters for ListVideoIds.
+type ListVideoIdsParams struct {
+	Query    *string      `form:"query,omitempty" json:"query,omitempty"`
+	Watch    *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
+	Playable *bool        `form:"playable,omitempty" json:"playable,omitempty"`
+
+	// Tag 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
+	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
 }
 
 // GetVideoPreviewParams defines parameters for GetVideoPreview.
@@ -742,6 +903,24 @@ type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
 
 // StartScanJSONRequestBody defines body for StartScan for application/json ContentType.
 type StartScanJSONRequestBody = StartScanJSONBody
+
+// CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
+type CreateTagJSONRequestBody = CreateTagRequest
+
+// RenameTagJSONRequestBody defines body for RenameTag for application/json ContentType.
+type RenameTagJSONRequestBody = RenameTagRequest
+
+// MergeTagJSONRequestBody defines body for MergeTag for application/json ContentType.
+type MergeTagJSONRequestBody = MergeTagRequest
+
+// AddTagSynonymJSONRequestBody defines body for AddTagSynonym for application/json ContentType.
+type AddTagSynonymJSONRequestBody = AddTagSynonymRequest
+
+// UpdateVideoTagsJSONRequestBody defines body for UpdateVideoTags for application/json ContentType.
+type UpdateVideoTagsJSONRequestBody = VideoTagsRequest
+
+// SummarizeVideoTagsJSONRequestBody defines body for SummarizeVideoTags for application/json ContentType.
+type SummarizeVideoTagsJSONRequestBody = VideoTagsSummaryRequest
 
 // PutVideoProgressJSONRequestBody defines body for PutVideoProgress for application/json ContentType.
 type PutVideoProgressJSONRequestBody = ProgressUpdate
@@ -787,9 +966,39 @@ type ServerInterface interface {
 	// GetCurrentScan 直近のスキャンの状態を返す
 	// (GET /api/scans/current)
 	GetCurrentScan(w http.ResponseWriter, r *http.Request)
+	// ListTags タグを一覧する
+	// (GET /api/tags)
+	ListTags(w http.ResponseWriter, r *http.Request)
+	// CreateTag タグを1件作る
+	// (POST /api/tags)
+	CreateTag(w http.ResponseWriter, r *http.Request)
+	// DeleteTag タグを1件削除する
+	// (DELETE /api/tags/{id})
+	DeleteTag(w http.ResponseWriter, r *http.Request, id TagId)
+	// RenameTag タグの元の名前を書き換える
+	// (PATCH /api/tags/{id})
+	RenameTag(w http.ResponseWriter, r *http.Request, id TagId)
+	// MergeTag sourceIdのタグをidのタグへ統合する
+	// (POST /api/tags/{id}/merge)
+	MergeTag(w http.ResponseWriter, r *http.Request, id TagId)
+	// RemoveTagSynonym nameをidのタグのシノニムから外す
+	// (DELETE /api/tags/{id}/synonyms)
+	RemoveTagSynonym(w http.ResponseWriter, r *http.Request, id TagId, params RemoveTagSynonymParams)
+	// AddTagSynonym 名前をidのタグのシノニムにする
+	// (POST /api/tags/{id}/synonyms)
+	AddTagSynonym(w http.ResponseWriter, r *http.Request, id TagId)
+	// UpdateVideoTags 動画へタグを付ける・外す
+	// (POST /api/video-tags)
+	UpdateVideoTags(w http.ResponseWriter, r *http.Request)
+	// SummarizeVideoTags 選んだ動画に付いたタグの要約を返す
+	// (POST /api/video-tags/summary)
+	SummarizeVideoTags(w http.ResponseWriter, r *http.Request)
 	// ListVideos 動画の一覧を返す
 	// (GET /api/videos)
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
+	// ListVideoIds 絞り込みに合う動画の全件の id を返す
+	// (GET /api/videos/ids)
+	ListVideoIds(w http.ResponseWriter, r *http.Request, params ListVideoIdsParams)
 	// GetVideo 動画1件の詳細を返す
 	// (GET /api/videos/{id})
 	GetVideo(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -1232,6 +1441,208 @@ func (siw *ServerInterfaceWrapper) GetCurrentScan(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListTags operation middleware
+func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTag operation middleware
+func (siw *ServerInterfaceWrapper) CreateTag(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTag(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTag operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTag(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameTag operation middleware
+func (siw *ServerInterfaceWrapper) RenameTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameTag(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MergeTag operation middleware
+func (siw *ServerInterfaceWrapper) MergeTag(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergeTag(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveTagSynonym operation middleware
+func (siw *ServerInterfaceWrapper) RemoveTagSynonym(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params RemoveTagSynonymParams
+
+	// ------------- Required query parameter "name" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "name", r.URL.Query(), &params.Name, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "name"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "name", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveTagSynonym(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// AddTagSynonym operation middleware
+func (siw *ServerInterfaceWrapper) AddTagSynonym(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AddTagSynonym(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateVideoTags operation middleware
+func (siw *ServerInterfaceWrapper) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateVideoTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SummarizeVideoTags operation middleware
+func (siw *ServerInterfaceWrapper) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SummarizeVideoTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListVideos operation middleware
 func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Request) {
 
@@ -1332,8 +1743,93 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListVideos(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVideoIds operation middleware
+func (siw *ServerInterfaceWrapper) ListVideoIds(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVideoIdsParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "playable" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVideoIds(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1802,6 +2298,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/ids", wrapper.ListVideoIds)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/related", wrapper.GetRelatedVideos)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/probe", wrapper.ReprobeVideo)
@@ -1817,6 +2314,15 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/media-folders", wrapper.CreateMediaFolder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.DeleteMediaFolder)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.UpdateMediaFolder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags", wrapper.ListTags)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags", wrapper.CreateTag)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}", wrapper.DeleteTag)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/tags/{id}", wrapper.RenameTag)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/merge", wrapper.MergeTag)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}/synonyms", wrapper.RemoveTagSynonym)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/synonyms", wrapper.AddTagSynonym)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)

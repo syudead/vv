@@ -1,4 +1,12 @@
-import type { FolderListing, Progress, Video, VideoSort, WatchFilter } from "./client";
+import type {
+  FolderListing,
+  Progress,
+  TagRef,
+  Video,
+  VideoSort,
+  WatchFilter,
+} from "./client";
+import { applyTagToTags } from "./tagOrder";
 
 /**
  * defaultSort は並び順が指定されていないときの値である（data-model.md 1.）。
@@ -28,6 +36,12 @@ export interface ListKey {
    * 省いた鍵とフォルダを含む鍵は、検索語と並び順が同じでも一致しない。
    */
   folder?: string;
+  /**
+   * ライブラリのタグ絞り込み（id の並び。順は問わない、鍵の正規化がそろえる）。
+   * `/?tag=1` から戻って `/` の控えが使われないようにする
+   * （specs/014-video-tags/contracts/list-url.md §1）。
+   */
+  tags?: readonly number[];
 }
 
 /** ListSnapshot は一覧を離れる直前の状態である（data-model.md 2.）。 */
@@ -77,12 +91,14 @@ let held: ListSnapshot | undefined;
 function normalize(key: ListKey): string {
   const sort = key.sort ?? defaultSort;
   const seed = sort === "random" ? String(key.seed ?? "") : "";
+  const tags = [...(key.tags ?? [])].sort((a, b) => a - b).join(",");
   const list = [
     key.query.trim(),
     key.watch ?? "all",
     key.playable === true ? "1" : "",
     sort,
     seed,
+    tags,
   ].join("\0");
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }
@@ -124,4 +140,28 @@ export function applyProgressToListSnapshot(videoId: number, progress: Progress)
  */
 export function clearListSnapshot(): void {
   held = undefined;
+}
+
+/**
+ * applyTagToListSnapshot は控えの中の動画たちのタグを書き換える。付け外しの
+ * 直後に、控えを取り直さず結果を反映するために使う（issue 267、Plan の Structural
+ * Decisions 7）。action = "remove" で絞り込みに合わなくなった項目も、その場では
+ * 一覧から外さない（次の読み込みで反映する。contracts/tags-api.md §5）。
+ */
+export function applyTagToListSnapshot(
+  videoIds: readonly number[],
+  tag: TagRef,
+  action: "add" | "remove",
+): void {
+  if (held === undefined) return;
+  const targets = new Set(videoIds);
+  if (!held.items.some((video) => targets.has(video.id))) return;
+  held = {
+    ...held,
+    items: held.items.map((video) =>
+      targets.has(video.id)
+        ? { ...video, tags: applyTagToTags(video.tags, tag, action) }
+        : video,
+    ),
+  };
 }

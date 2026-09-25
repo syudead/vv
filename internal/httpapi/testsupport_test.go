@@ -60,6 +60,12 @@ type fakeLibrary struct {
 	// lastQuery は最後に渡された問い合わせ条件。丸めの検証に使う。
 	lastQuery domain.VideoQuery
 	listErr   error
+
+	// #267: GET /api/videos/ids の決め打ち。
+	ids           []int64
+	missingTagIDs []int64
+	idsErr        error
+	lastIDsQuery  domain.VideoQuery
 }
 
 func (f *fakeLibrary) VideoLocations(_ context.Context, videoID int64) ([]domain.VideoLocation, error) {
@@ -98,6 +104,14 @@ func (f *fakeLibrary) GetVideo(_ context.Context, id int64) (domain.Video, error
 		return domain.Video{}, domain.ErrNotFound
 	}
 	return video, nil
+}
+
+func (f *fakeLibrary) VideoIDs(_ context.Context, q domain.VideoQuery) ([]int64, []int64, error) {
+	f.lastIDsQuery = q
+	if f.idsErr != nil {
+		return nil, nil, f.idsErr
+	}
+	return f.ids, f.missingTagIDs, nil
 }
 
 // fakeScans は走査の制御を差し替える。

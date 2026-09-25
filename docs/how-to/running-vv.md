@@ -49,9 +49,10 @@ database is `MDM_DATA_DIR/mdm.db`; generated thumbnails live below
 `MDM_DATA_DIR/thumbnails/`.
 
 Most stored data is a rebuildable index and can be recreated by scanning the
-media folders again. Playback positions in `playback_progress` are user data
-and cannot be reconstructed. Removing the `vv_data` volume deletes both, so
-back it up before resetting the application.
+media folders again. Playback positions in `playback_progress` and tags
+(`tags`, `tag_names`, `video_tags`) are user data and cannot be reconstructed.
+Removing the `vv_data` volume deletes both, so back it up before resetting the
+application.
 
 ## Network exposure
 

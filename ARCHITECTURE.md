@@ -26,7 +26,13 @@ carries its representative location and seek-preview state, and
 `/api/videos/{id}/related`, `/probe` and `/open` return related videos, retry a failed
 metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the read-only folder browsing API
-(`/api/folders*`), byte-range streaming,
+(`/api/folders*`), the tag management API (`/api/tags*`: list, create,
+rename, delete, merge and synonym registration/removal), the video-tags API
+(`/api/video-tags` to attach/detach a tag on a set of videos and
+`/api/video-tags/summary` to summarize which tags apply to a selection) and
+`GET /api/videos/ids` (all matching video ids for a listing query, used for
+"select all"; distinguished from `GET /api/videos/{id}` by `ServeMux`'s
+literal-over-wildcard precedence), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
 Both video lists, the library (`GET /api/videos`) and a folder
@@ -39,6 +45,12 @@ every match after all of them apply, and each item carries the folder of the
 location it was listed from (`Video.folder`, built from the registered media
 folders with `domain.LocateVideoFolder`)
 ([specs/013-library-search/contracts/list-api.md](specs/013-library-search/contracts/list-api.md)).
+Every `Video` response (list, single, related, and retried-probe) also carries
+`tags` (an empty array when none), looked up in `internal/httpapi` from
+`TagStore.TagsByContentKeys` the same way `progressFor` looks up playback
+positions. The library list additionally accepts up to 16 `tag` ids (AND) and
+reports any that no longer exist in `missingTagIds`
+([specs/014-video-tags/contracts/tags-api.md](specs/014-video-tags/contracts/tags-api.md)).
 
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
@@ -136,10 +148,11 @@ grace period, then stops the scanner and the workers so a running job returns to
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
 `video_locations` (including its per-location search keys), `location_search_fts`,
 `jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
-(deleting them costs a rescan), while `playback_progress` is user data that
-cannot be reconstructed. That is why playback positions are keyed by the
-content identifier rather than by `videos.id`, and why that table carries no
-foreign key to `videos`.
+(deleting them costs a rescan), while `playback_progress` and the tag tables
+(`tags`, `tag_names`, `video_tags`) are user data that cannot be reconstructed.
+That is why playback positions and tag assignments are keyed by the content
+identifier rather than by `videos.id`, and why those tables carry no foreign
+key to `videos`.
 
 `store.DB` is only the foundation: it opens and closes the SQLite connection pools,
 routing write transactions through an immediate-lock pool and snapshot list reads through
@@ -153,13 +166,32 @@ compile:
   work) and writing each ingest stage's result back to the video row, including the
   retry of a failed probe and the rebuild of a missing preview.
 - `LibraryStore` — reads of the index: the video list and search, folder browsing,
-  related videos, a video's locations, and the startup refresh of search keys.
+  related videos, a video's locations, and the startup refresh of search keys. The
+  video list can AND-filter on a set of tag ids and reports which of them do not
+  exist (`VideoQuery.TagIDs`/`VideoPage.MissingTagIDs`), and `VideoIDs` returns the
+  matching id set unpaged for "select all"
+  (`specs/014-video-tags/data-model.md` §6). The search-box term matcher also OR-matches
+  a video's tag names (original name and synonyms) alongside title and path
+  (`specs/014-video-tags/data-model.md` §7). `LibraryStore` resolves which of a set of
+  tag ids currently exist through `existingTagIDs`, and `TagStore` resolves a set of
+  video ids down to the currently-registered videos' content keys through
+  `registeredContentKeysForVideoIDs`; both are unexported package functions
+  (`internal/store/roles.go`), never called as another role's public method.
 - `ScanStore` — the state of a scan run.
 - `ScanIndexStore` — reflecting a scan's filesystem facts into the index (upserting
   locations, removing missing ones and the videos they orphan).
 - `SettingsStore` — registering, replacing and removing media folders.
 - `PlaybackStore` — playback positions. It holds only the SQL connection and does not
   depend on the rebuildable index stores or their notifications.
+- `TagStore` — tags themselves: create, rename, delete, merge, register/remove a
+  synonym, the counted listing, and the startup refresh of tag-name search keys
+  (`specs/014-video-tags/data-model.md`). It also attaches and detaches a tag across a
+  set of video ids (resolved to the currently-registered videos' content keys),
+  summarizes the tags on a selected set of videos, and looks up the tags on a set of
+  content keys in bulk for the video list (`TagsByContentKeys`, shaped like
+  `PlaybackStore.ProgressByContentKeys`). Like `PlaybackStore`, it holds only the SQL
+  connection and does not depend on the rebuildable index stores or their
+  notifications; tag changes have no side effects, so they publish no domain event.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and
@@ -266,23 +298,31 @@ place when a `video` event names it, `useVideoDetail.ts`
 fetches one video for the playback screen and re-fetches it when a `video` event names
 it or the event stream reconnects, and `listSnapshot.ts`
 holds the in-memory snapshot that lets the list restore its position after a
-round trip to the playback screen. Pages and components do not call `fetch`
-themselves, so how the server is reached stays changeable in one place.
+round trip to the playback screen. `tags.ts` holds a single shared, last-value-only
+cache of the tag list behind `getTags`/`refreshTags`/`subscribeTags`, so the
+combobox, tag-filter confirmation and the tag admin screen all read and invalidate
+the same list instead of issuing their own `GET /api/tags`. Pages and components do
+not call `fetch` themselves, so how the server is reached stays changeable in one
+place.
 The list's conditions (search terms, watch state, playable-only, sort and the shuffle
 `seed`) live in the URL; `web/src/videoList/listCriteria.ts` converts between the URL and
 the criteria `useVideos` sends, and the server applies every condition, so the page
 neither filters loaded pages nor reads ahead to find matches.
 
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
-frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`, and
-`web/src/player/` own their respective product flows, while reusable primitives live in
-`web/src/ui/` and formatting helpers live in `web/src/lib/`. The video-list pieces the
-library and folder screens share (list criteria and their URL hook, the condition labels
-and count summary, the video card, the empty/loading/error states and the search, filter,
-sort and zoom controls) live in `web/src/videoList/`, which belongs to neither screen, so
-neither screen imports from the other. The library, folder and settings
-screens use the shell: `app/App.tsx` puts `AppShell` around the `/`, `/folders/*` and
-`/settings` routes, and the playback screen
+frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`,
+`web/src/tags/`, and `web/src/player/` own their respective product flows, while reusable
+primitives live in `web/src/ui/` and formatting helpers live in `web/src/lib/`. The
+video-list pieces the library and folder screens share (list criteria and their URL hook,
+the condition labels and count summary, the video card, the empty/loading/error states and
+the search, filter, sort and zoom controls) live in `web/src/videoList/`, which belongs to
+neither screen, so neither screen imports from the other. `web/src/tags/` is the tag
+admin screen (`/tags`): a list of every tag with its video count, an in-page name/synonym
+search, create, rename and delete. `web/src/shell/navigation.ts` puts its sidebar entry
+right after "フォルダ" (Folders), because unlike "最近追加"/"視聴途中" it has a working
+destination. The library, folder, settings and tag screens use the shell: `app/App.tsx`
+puts `AppShell` around the `/`, `/folders/*`, `/settings` and `/tags` routes, and the
+playback screen
 (`/videos/:id`) deliberately gets no shell at all, because it is a
 two-pane screen of its own: the player with the title, a property strip and the
 file location on the left, related videos on the right, and a close button (×, or

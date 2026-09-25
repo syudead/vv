@@ -99,6 +99,18 @@ paths:
             minimum: 1
             maximum: 200
             default: 60
+        - name: tag
+          in: query
+          description: |
+            タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
+            最大16個、17個以上は400。存在しない id は条件から落とし、応答の
+            missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+          schema:
+            type: array
+            maxItems: 16
+            items:
+              type: integer
+              format: int64
       responses:
         "200":
           description: 一覧
@@ -106,6 +118,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/VideoPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+
+  /api/videos/ids:
+    get:
+      operationId: listVideoIds
+      summary: 絞り込みに合う動画の全件の id を返す
+      description: |
+        `listVideos` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う全件の
+        id を、ページングせずに返す。並びは決めない。「すべて選択」用
+        （specs/014-video-tags/contracts/tags-api.md §5）。`/api/videos/{id}` とは
+        Go の ServeMux の字面の段の優先で区別される。
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+            maxLength: 100
+        - name: watch
+          in: query
+          schema:
+            $ref: "#/components/schemas/WatchFilter"
+        - name: playable
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: tag
+          in: query
+          description: 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
+          schema:
+            type: array
+            maxItems: 16
+            items:
+              type: integer
+              format: int64
+      responses:
+        "200":
+          description: 条件に合う全件の id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoIdsResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
 
@@ -551,6 +606,222 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/tags:
+    get:
+      operationId: listTags
+      summary: タグを一覧する
+      description: 名前の自然順で返す。本数0のタグも含む（contracts/tags-api.md §3）。
+      responses:
+        "200":
+          description: タグの一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagList"
+    post:
+      operationId: createTag
+      summary: タグを1件作る
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTagRequest"
+      responses:
+        "201":
+          description: 作成したタグ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tags/{id}:
+    patch:
+      operationId: renameTag
+      summary: タグの元の名前を書き換える
+      description: 今と同じ名前を送ったときは何も変えずに今の状態を返す（contracts/tags-api.md §3）。
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RenameTagRequest"
+      responses:
+        "200":
+          description: 更新後のタグ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteTag
+      summary: タグを1件削除する
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      responses:
+        "204":
+          description: 削除した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tags/{id}/merge:
+    post:
+      operationId: mergeTag
+      summary: sourceIdのタグをidのタグへ統合する
+      description: |
+        統合元（sourceId）の付与・元の名前・シノニムはすべて統合先（id）へ移り、
+        統合元は一覧から消える。sourceIdがidと同じときは400を返す
+        （contracts/tags-api.md §3）。
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MergeTagRequest"
+      responses:
+        "200":
+          description: 統合後の統合先タグ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/tags/{id}/synonyms:
+    post:
+      operationId: addTagSynonym
+      summary: 名前をidのタグのシノニムにする
+      description: |
+        既にidのシノニムなら何も変えずに200を返す。idの元の名前なら409
+        tag_name_takenを返す。別のタグSの元の名前で、mergeTagIdがSのidと
+        一致するときはSをidへ統合し、一致しない（無い場合を含む）ときは409
+        tag_merge_requiredを返す（contracts/tags-api.md §3）。
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddTagSynonymRequest"
+      responses:
+        "200":
+          description: 更新後のタグ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: removeTagSynonym
+      summary: nameをidのタグのシノニムから外す
+      description: nameがidのシノニムでなければ何も変えずに204を返す（contracts/tags-api.md §3）。
+      parameters:
+        - $ref: "#/components/parameters/TagId"
+        - name: name
+          in: query
+          required: true
+          description: 外すシノニムの名前
+          schema:
+            type: string
+      responses:
+        "204":
+          description: 外した、またはもともとシノニムでなかった
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/video-tags:
+    post:
+      operationId: updateVideoTags
+      summary: 動画へタグを付ける・外す
+      description: |
+        `videoIds` へ `action`（`add`・`remove`）の `tag` を適用する。再生画面の1本も
+        選択バーの複数本も、同じこの経路を使う。`remove` は `tag.id` での指定だけを
+        受け付け、`name` を送ると400になる。`tag: { name }` の付与は、名前を
+        シノニムを含めて引き、無ければ作る。`videoIds` は1件以上20000件以下で、
+        重複は1つとして数える。処理は1つのトランザクションで、全部に反映するか
+        1つも反映しない（specs/014-video-tags/contracts/tags-api.md §4）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoTagsRequest"
+      responses:
+        "200":
+          description: 適用結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoTagsResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          description: 指定したタグがもう無い（tag_not_found）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/video-tags/summary:
+    post:
+      operationId: summarizeVideoTags
+      summary: 選んだ動画に付いたタグの要約を返す
+      description: |
+        `total` は `videoIds` のうちいまライブラリにある動画の数、`count` はそのうち
+        そのタグが付いている数。`count < total` のタグが一部にだけ付いている。
+        `items` は1本以上に付いているタグだけで、名前の自然順
+        （specs/014-video-tags/contracts/tags-api.md §4）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoTagsSummaryRequest"
+      responses:
+        "200":
+          description: タグの要約
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoTagsSummary"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+
   /api/directories:
     get:
       operationId: listDirectories
@@ -770,6 +1041,15 @@ components:
         type: integer
         format: int64
         minimum: 1
+    TagId:
+      name: id
+      in: path
+      required: true
+      description: タグの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
     FolderRootId:
       name: rootId
       in: path
@@ -879,6 +1159,186 @@ components:
           format: int64
           minimum: 1
 
+    TagRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      description: 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+
+    Tag:
+      type: object
+      required: [id, name, synonyms, videoCount]
+      additionalProperties: false
+      description: 管理画面と候補に出す1件（contracts/tags-api.md §1）。
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        synonyms:
+          type: array
+          description: 名前の自然順
+          items:
+            type: string
+        videoCount:
+          type: integer
+          description: いまライブラリにある動画の本数
+
+    TagList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+
+    CreateTagRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+
+    RenameTagRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+
+    MergeTagRequest:
+      type: object
+      required: [sourceId]
+      additionalProperties: false
+      properties:
+        sourceId:
+          type: integer
+          format: int64
+
+    AddTagSynonymRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+        mergeTagId:
+          type: integer
+          format: int64
+          description: 統合を承諾したタグのid（contracts/tags-api.md §3）
+
+    TagInput:
+      type: object
+      additionalProperties: false
+      description: |
+        付与で使うタグの指定。id と name のちょうど一方を持つ。両方あるか、どちらも
+        無いときは invalid_request（400）にする（contracts/tags-api.md §1）。
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+
+    VideoTagsAction:
+      type: string
+      enum: [add, remove]
+
+    VideoTagsRequest:
+      type: object
+      required: [videoIds, action, tag]
+      additionalProperties: false
+      properties:
+        videoIds:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        action:
+          $ref: "#/components/schemas/VideoTagsAction"
+        tag:
+          $ref: "#/components/schemas/TagInput"
+
+    VideoTagsResponse:
+      type: object
+      required: [tag, applied]
+      additionalProperties: false
+      properties:
+        tag:
+          $ref: "#/components/schemas/TagRef"
+        applied:
+          type: integer
+          description: videoIds のうちいまライブラリにある動画の数
+
+    VideoTagsSummaryRequest:
+      type: object
+      required: [videoIds]
+      additionalProperties: false
+      properties:
+        videoIds:
+          type: array
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    VideoTagsSummaryItem:
+      type: object
+      required: [tag, count]
+      additionalProperties: false
+      properties:
+        tag:
+          $ref: "#/components/schemas/TagRef"
+        count:
+          type: integer
+
+    VideoTagsSummary:
+      type: object
+      required: [total, items]
+      additionalProperties: false
+      properties:
+        total:
+          type: integer
+        items:
+          type: array
+          description: 1本以上に付いているタグだけ。名前の自然順
+          items:
+            $ref: "#/components/schemas/VideoTagsSummaryItem"
+
+    VideoIdsResponse:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        missingTagIds:
+          type: array
+          description: tag のうち存在しなかった id。1つも無ければ省略される
+          items:
+            type: integer
+            format: int64
+
     DirectoryEntry:
       type: object
       required: [name, path]
@@ -958,6 +1418,14 @@ components:
         nextCursor:
           type: string
           description: 次のページの取得に渡す。これ以上無い場合は省略される
+        missingTagIds:
+          type: array
+          description: |
+            tag のうち存在しなかった id。1つも無ければ省略される
+            （specs/014-video-tags/contracts/tags-api.md §5）
+          items:
+            type: integer
+            format: int64
 
     FolderPreview:
       type: object
@@ -1027,7 +1495,8 @@ components:
 
     Video:
       type: object
-      required: [id, title, sizeBytes, addedAt, playable, probeState, thumbnailState, previewState]
+      required:
+        [id, title, sizeBytes, addedAt, playable, probeState, thumbnailState, previewState, tags]
       additionalProperties: false
       properties:
         id:
@@ -1093,6 +1562,13 @@ components:
           $ref: "#/components/schemas/VideoLocation"
         folder:
           $ref: "#/components/schemas/VideoFolder"
+        tags:
+          type: array
+          description: |
+            付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
+            無ければ空配列（contracts/tags-api.md §1）
+          items:
+            $ref: "#/components/schemas/TagRef"
         seekThumbnailState:
           type: string
           enum: [pending, done, failed]
@@ -1252,6 +1728,9 @@ components:
             - probe_not_failed
             - open_unavailable
             - file_missing
+            - tag_not_found
+            - tag_name_taken
+            - tag_merge_required
         message:
           type: string
           description: 人が読むための説明。利用者にそのまま提示してよい文言にする

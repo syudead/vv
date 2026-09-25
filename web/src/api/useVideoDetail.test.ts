@@ -34,6 +34,7 @@ const done: Video = {
   seekThumbnailState: "done",
   durationMs: 1000,
   videoCodec: "h264",
+  tags: [],
 };
 
 async function flush() {

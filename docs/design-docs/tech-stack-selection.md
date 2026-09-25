@@ -102,7 +102,13 @@ import した時点で CI を落とすよう、`golangci-lint` の `depguard` �
   あたり 2MiB に固定されているため、ハッシュ関数の速度は取り込み時間を
   律速しない（律速は `ffprobe` の起動とディスク I/O）。標準ライブラリなら
   依存を1つ増やさずに済み、amd64／arm64 ではハードウェア命令が使われる。
-- `tags` / `video_tags`: 分類。階層は持たせず、命名規約（`series:xxx`）で表現する。
+- `tags`: タグそのもの（`id`・`created_at`）。名前は持たない。`id` は
+  autoincrement で、削除したタグの `id` を別のタグに再利用しない。
+- `tag_names`: タグの元の名前とシノニムを1つの名前空間で持つ（`name` が主キー、
+  `tag_id`、`canonical`、`search_key`、`search_version`）。階層は持たせない
+  （[specs/014-video-tags/data-model.md](../../specs/014-video-tags/data-model.md)）。
+- `video_tags`: 動画の中身（`content_key`）とタグの対応。`videos` への外部キーは
+  張らない（下の「DB は…」の段落）。
 - `playback_progress`: 再生位置と視聴済みフラグ。プレイヤーから数秒間隔で更新。
 - `location_search_fts`: 所在ごとの照合用の鍵 `video_locations.search_key` の
   FTS5 仮想テーブル（trigram）。鍵は題名と登録フォルダより下の相対パスに照合形

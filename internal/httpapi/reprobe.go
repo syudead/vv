@@ -41,6 +41,8 @@ func (s *server) ReprobeVideo(w http.ResponseWriter, r *http.Request, id gen.Vid
 		return
 	}
 	progress := s.progressFor(r.Context(), []domain.Video{updated})
+	tags := s.tagsFor(r.Context(), []domain.Video{updated})
+	payload := withTags(withProgress(s.apiVideo(r.Context(), updated), progress, updated.ContentKey), tags, updated.ContentKey)
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusAccepted, withProgress(s.apiVideo(r.Context(), updated), progress, updated.ContentKey), s.logger)
+	writeJSON(w, http.StatusAccepted, payload, s.logger)
 }

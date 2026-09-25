@@ -15,7 +15,9 @@ import {
 } from "./client";
 import { subscribeProgress } from "./progressEvents";
 import { subscribeServerEvents } from "./serverEvents";
+import { applyTagToTags } from "./tagOrder";
 import { isProcessing } from "./useVideoDetail";
+import { subscribeVideoTags } from "./videoTagsEvents";
 
 /**
  * mergeRefreshed は取り直した1件を、一覧に出ている項目へ重ねる。
@@ -57,6 +59,11 @@ export interface VideosCriteria {
    * folder を渡さない（ライブラリ）ときは無視する。省略時は direct と同じ。
    */
   scope?: FolderScope;
+  /**
+   * 絞り込むタグの id（listVideos だけが受け取る。listFolderVideos には渡さない。
+   * specs/014-video-tags/contracts/tags-api.md §5）。
+   */
+  tag?: number[];
 }
 
 /** criteriaKey は条件を値で比べるための文字列にする。 */
@@ -68,6 +75,7 @@ function criteriaKey(criteria: VideosCriteria): string {
     criteria.sort,
     criteria.sort === "random" ? (criteria.seed ?? null) : null,
     criteria.scope ?? "direct",
+    criteria.tag ?? [],
   ]);
 }
 
@@ -90,17 +98,34 @@ interface VideosData {
   hasMore: boolean;
   /** inconsistent は異なる時点のページを安全に結合できなかったことを表す。 */
   inconsistent: boolean;
+  /**
+   * missingTagIds は、直近の要求で `tag` に指定したがもう無かった id である
+   * （specs/014-video-tags/contracts/tags-api.md §5）。folder を渡す（`tag` を
+   * 送らない）ときは常に空。
+   */
+  missingTagIds: number[];
 }
 
 type VideosDataAction =
   | { type: "clear" }
   | { type: "stop" }
   | { type: "progress"; videoId: number; progress: NonNullable<Video["progress"]> }
+  | {
+      type: "tags";
+      videoIds: readonly number[];
+      tag: Video["tags"][number];
+      action: "add" | "remove";
+    }
   | { type: "refresh"; videoId: number; video: Video }
   | { type: "remove"; videoId: number }
   | {
       type: "page";
-      page: { items: Video[]; total: number; nextCursor?: string };
+      page: {
+        items: Video[];
+        total: number;
+        nextCursor?: string;
+        missingTagIds?: number[];
+      };
       replace: boolean;
     };
 
@@ -113,6 +138,7 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
         cursor: undefined,
         hasMore: true,
         inconsistent: false,
+        missingTagIds: [],
       };
     case "stop":
       return state.hasMore ? { ...state, hasMore: false } : state;
@@ -127,6 +153,18 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
             ),
           }
         : state;
+    case "tags": {
+      const targets = new Set(action.videoIds);
+      if (!state.items.some((video) => targets.has(video.id))) return state;
+      return {
+        ...state,
+        items: state.items.map((video) =>
+          targets.has(video.id)
+            ? { ...video, tags: applyTagToTags(video.tags, action.tag, action.action) }
+            : video,
+        ),
+      };
+    }
     case "refresh":
       return state.items.some((video) => video.id === action.videoId)
         ? {
@@ -145,6 +183,7 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
       };
     }
     case "page": {
+      const missingTagIds = action.page.missingTagIds ?? [];
       if (action.replace) {
         return {
           items: action.page.items,
@@ -152,6 +191,7 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
           cursor: action.page.nextCursor,
           hasMore: action.page.nextCursor !== undefined,
           inconsistent: false,
+          missingTagIds,
         };
       }
       const items = appendUnique(state.items, action.page.items);
@@ -166,6 +206,7 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
         cursor: action.page.nextCursor,
         hasMore: action.page.nextCursor !== undefined,
         inconsistent: false,
+        missingTagIds,
       };
     }
   }
@@ -193,6 +234,12 @@ export interface VideosState {
    * list-api.md §5「listFolderVideos でフォルダが無いとき」）。
    */
   notFound: boolean;
+  /**
+   * missingTagIds は、直近の要求の `tag` のうちもう無かった id である
+   * （specs/014-video-tags/contracts/tags-api.md §5）。画面はこれを受けて、
+   * もう無いことを伝え、タグの一覧を取り直し、URL から取り除く。
+   */
+  missingTagIds: number[];
   /** loadMore は次のページを読む。無限スクロールの観測点から呼ぶ。 */
   loadMore: () => void;
   /** retryLoadMore は失敗した続きのページを同じカーソルから再要求する。 */
@@ -231,17 +278,15 @@ export function useVideos(
     folder === undefined ? "" : `${String(folder.rootId)}\0${folder.path}`;
   const folderRef = useRef(folder);
   folderRef.current = folder;
-  const [{ items, total, cursor, hasMore, inconsistent }, dispatch] = useReducer(
-    videosDataReducer,
-    seed,
-    (initial): VideosData => ({
+  const [{ items, total, cursor, hasMore, inconsistent, missingTagIds }, dispatch] =
+    useReducer(videosDataReducer, seed, (initial): VideosData => ({
       items: initial?.items ?? [],
       total: initial?.total ?? 0,
       cursor: initial?.cursor,
       hasMore: initial?.hasMore ?? true,
       inconsistent: false,
-    }),
-  );
+      missingTagIds: [],
+    }));
   const [loading, setLoading] = useState(seed === undefined);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -260,6 +305,48 @@ export function useVideos(
     () =>
       subscribeProgress((videoId, progress) => {
         dispatch({ type: "progress", videoId, progress });
+      }),
+    [],
+  );
+
+  // ページの取得中に届いた知らせは、取得した内容より新しいことがある
+  // （下の「取り込みの準備」の取り直しと、その次のタグの付け外しの両方が使う）。
+  const pageLoading = useRef(false);
+
+  // ページの取得中に届いたタグの付け外しは、まだ読み込んでいない動画には
+  // 反映しようが無く、そのまま捨てると後から届くページの古い内容で
+  // 上書きされたことにもならず消えてしまう（Devin の指摘3）。動画・タグの
+  // 組ごとに直近の変更を覚えておき、その後に届いたページにその動画が
+  // あれば重ねる（下の changedWhileLoading と同じ仕組み）。対象の動画が
+  // どのページで読み込まれるか（続きのどのページか）は分からないので、
+  // loadMore（続きの取得）をまたいで持ち越す（下の fetchPage 参照）。
+  // 無限に育たないよう、件数の上限を超えたら古い順に間引く。
+  const tagsChangedWhileLoading = useRef(
+    new Map<
+      string,
+      { videoId: number; tag: Video["tags"][number]; action: "add" | "remove" }
+    >(),
+  );
+  const maxTagsChangedWhileLoading = 500;
+
+  // 付け外しの結果を、表示中の項目へ反映する（issue 267、Plan の Structural
+  // Decisions 7）。絞り込みに合わなくなった項目も、その場では一覧から外さない。
+  useEffect(
+    () =>
+      subscribeVideoTags((videoIds, tag, action) => {
+        if (pageLoading.current) {
+          const map = tagsChangedWhileLoading.current;
+          for (const videoId of videoIds) {
+            map.set(`${String(videoId)}\0${String(tag.id)}`, { videoId, tag, action });
+          }
+          // Map は挿入順を保つので、先頭から（一番古い記録から）間引く。
+          while (map.size > maxTagsChangedWhileLoading) {
+            const oldest = map.keys().next();
+            if (oldest.done) break;
+            map.delete(oldest.value);
+          }
+        }
+        dispatch({ type: "tags", videoIds, tag, action });
       }),
     [],
   );
@@ -309,9 +396,9 @@ export function useVideos(
     );
   }, [refreshItems]);
 
-  // ページの取得中に届いた知らせは、取得した内容より新しいことがある。知らせを
-  // 受けた動画を覚えておき、ページを反映したあとで取り直す。
-  const pageLoading = useRef(false);
+  // サーバーからの更新の知らせは、取得した内容より新しいことがある。知らせを
+  // 受けた動画を覚えておき、ページを反映したあとで取り直す（pageLoading・
+  // tagsChangedWhileLoading は上で宣言済み）。
   const changedWhileLoading = useRef(new Set<number>());
 
   useEffect(() => {
@@ -359,6 +446,12 @@ export function useVideos(
         refreshing.current?.abort();
         refreshing.current = null;
         refreshQueue.current.clear();
+        // 条件やフォルダを変えた一から読み直し（または不整合からの再同期）
+        // でだけ、それまでに記録した付け外しを捨てる。古い条件のときの変更は
+        // 新しい一覧に持ち越さない。続きの取得（loadMore、replace===false）
+        // ではここを通らないので、まだどのページにも現れていない動画への
+        // 変更は消さずに残す（Devin の指摘3。次に読み込まれたページで重ねる）。
+        tagsChangedWhileLoading.current.clear();
       }
 
       if (replace) {
@@ -383,7 +476,7 @@ export function useVideos(
         };
         const page =
           target === undefined
-            ? await listVideos(params)
+            ? await listVideos({ ...params, tag: current.tag })
             : await listFolderVideos({
                 folder: target,
                 scope: current.scope,
@@ -410,6 +503,23 @@ export function useVideos(
           .filter((id) => changedWhileLoading.current.has(id));
         changedWhileLoading.current.clear();
         if (changed.length > 0) refreshItems(changed);
+        // このページの取得中に届いたタグの付け外しのうち、このページで
+        // ちょうど読み込んだ動画のものは、取り直さずここで直接重ねる
+        // （サーバーがすでに教えてくれている内容なので、getVideo で1件ずつ
+        // 取り直す必要が無い。Devin の指摘3）。
+        if (tagsChangedWhileLoading.current.size > 0) {
+          const pageIds = new Set(page.items.map((video) => video.id));
+          for (const [tagKey, change] of tagsChangedWhileLoading.current) {
+            if (!pageIds.has(change.videoId)) continue;
+            dispatch({
+              type: "tags",
+              videoIds: [change.videoId],
+              tag: change.tag,
+              action: change.action,
+            });
+            tagsChangedWhileLoading.current.delete(tagKey);
+          }
+        }
         setError(null);
         setNotFound(false);
       } catch (failure) {
@@ -525,6 +635,7 @@ export function useVideos(
     loadingMore,
     error,
     notFound,
+    missingTagIds,
     loadMore,
     retryLoadMore,
     reload,

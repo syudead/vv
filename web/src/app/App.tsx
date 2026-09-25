@@ -8,6 +8,7 @@ import AppShell from "../shell/AppShell";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import ScanProgressIndicator from "../shell/ScanProgressIndicator";
 import { ScanProvider } from "../shell/ScanProvider";
+import TagsPage from "../tags/TagsPage";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
 
@@ -43,6 +44,14 @@ function AppRoutes() {
           element={
             <AppShell>
               <SettingsPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/tags"
+          element={
+            <AppShell>
+              <TagsPage />
             </AppShell>
           }
         />

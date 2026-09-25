@@ -112,6 +112,21 @@ func openAPIOperations(t *testing.T) (withBody, withoutBody []operation) {
 	return withBody, withoutBody
 }
 
+// TestVideoIdsRouteNotShadowedByVideoIDRoute は GET /api/videos/ids が
+// GET /api/videos/{id} に取られないことを確かめる。net/http の ServeMux は
+// 字面の段を優先するので、登録順に関係なくこの経路が"ids"という動画のidとして
+// 解釈されることはない（specs/014-video-tags/contracts/tags-api.md §5）。
+func TestVideoIdsRouteNotShadowedByVideoIDRoute(t *testing.T) {
+	handler := newTestServer(t, Options{Videos: &fakeLibrary{}})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/videos/ids", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /api/videos/ids: status = %d, want 200 (listVideoIds に届いていない): %s",
+			rec.Code, rec.Body)
+	}
+}
+
 func repositoryRoot(t *testing.T) string {
 	t.Helper()
 	_, sourceFile, _, ok := runtime.Caller(0)

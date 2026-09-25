@@ -75,10 +75,14 @@ type listSpec struct {
 	expr         domain.SearchExpr
 	watch        domain.WatchFilter
 	playableOnly bool
-	sort         domain.VideoSort
-	seed         int64
-	cursor       string
-	limit        int
+	// tagIDs はすでに存在を確かめたタグの id（data-model.md §6）。呼び出し側
+	// （ListVideos・VideoIDs）が resolveTagIDs で存在しない id を落としたうえで
+	// 渡す。
+	tagIDs []int64
+	sort   domain.VideoSort
+	seed   int64
+	cursor string
+	limit  int
 }
 
 // ListVideos はライブラリの一覧1ページを返す。
@@ -86,12 +90,90 @@ type listSpec struct {
 // ページングは keyset（カーソル）方式である。offset を使うと、取り込みで行が
 // 増減した瞬間に取りこぼしと重複が起きる。並び順の値と id を境界に使うので、
 // 途中で行が動いても続きが安定して取れる。
+//
+// タグの存在確認・件数・ページの行を同じ読み取りスナップショット（s.db.read の
+// 1取引）から返す。別々に読むと、その間の付け外しやタグの削除によって
+// MissingTagIDs・Total・Items が食い違いうる。
 func (s *LibraryStore) ListVideos(ctx context.Context, q domain.VideoQuery) (domain.VideoPage, error) {
-	return s.listVideoPage(ctx, listSpec{
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, q.TagIDs)
+	if err != nil {
+		return domain.VideoPage{}, err
+	}
+	page, err := listVideoPageTx(ctx, tx, listSpec{
 		scope: libraryScope(), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly,
+		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	})
+	if err != nil {
+		return domain.VideoPage{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
+	}
+	page.MissingTagIDs = missingTagIDs
+	return page, nil
+}
+
+// VideoIDs は ListVideos と同じ条件（並び順・カーソル・件数を除く）に合う
+// 全件の id を、ページングせずに返す（「すべて選択」用、Plan の Structural
+// Decisions 4）。並びは決めない。MissingTagIDs の意味は ListVideos と同じ
+// （contracts/tags-api.md §5 の GET /api/videos/ids）。ListVideos と同じく、
+// タグの存在確認と id の読み出しを s.db.read の1取引の中で行う。
+func (s *LibraryStore) VideoIDs(ctx context.Context, q domain.VideoQuery) ([]int64, []int64, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, nil, fmt.Errorf("id の読み取りを始められません: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	tagIDs, missingTagIDs, err := existingTagIDs(ctx, tx, q.TagIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+	ids, err := videoIDsForSpec(ctx, tx, listSpec{
+		scope: libraryScope(), expr: domain.ParseSearchQuery(q.Query),
+		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, nil, fmt.Errorf("id の読み取りを終えられません: %w", err)
+	}
+	return ids, missingTagIDs, nil
+}
+
+// videoIDsForSpec は spec に合う全件の id を返す。並びは決めない。
+func videoIDsForSpec(ctx context.Context, q queryExecer, spec listSpec) ([]int64, error) {
+	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
+	from, fromArgs := filteredFrom(spec, false)
+	args = append(args, fromArgs...)
+
+	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
+	rows, err := q.QueryContext(ctx, cte+` select videos.id`+from, args...)
+	if err != nil {
+		return nil, fmt.Errorf("id を読み出せません: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	ids := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("id を読み出せません: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("id を読み出せません: %w", err)
+	}
+	return ids, nil
 }
 
 // ListFolderVideos はフォルダの動画1ページを返す。範囲は q.Scope で直下か配下
@@ -156,11 +238,13 @@ const listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtim
 	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.preview_state`
 
 // filteredFrom は chosen に動画と再生の記録を結び、絞り込みを掛けた from 句と
-// where 句を返す。withLocation が true なら一覧に出す所在を loc として結ぶ。
-// filteredFrom は引数（?）を持たない句だけを返す。random の並べ替えは選択句の
-// vv_shuffle_key(?, …) の引数を CTE の引数の直後に置いており、ここで引数を増やすと
-// その位置がずれる。引数が要る条件を足すときは、引数も返して SQL の順に並べ直す。
-func filteredFrom(spec listSpec, withLocation bool) string {
+// where 句、その中で使う引数を返す。withLocation が true なら一覧に出す所在を
+// loc として結ぶ。
+//
+// random の並べ替えは選択句の vv_shuffle_key(?, …) の引数を CTE の引数の直後に
+// 置いており、呼び出し側はこの関数が返す引数を SQL の文字列の中でこの句が
+// 現れる位置（CTE の引数のあと、カーソルの引数の前）にそろえて並べる。
+func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	from := ` from chosen join videos on videos.id = chosen.video_id`
 	if withLocation {
 		from += ` join video_locations loc on loc.path = chosen.path`
@@ -168,16 +252,24 @@ func filteredFrom(spec listSpec, withLocation bool) string {
 	// 内容の識別子が空の動画は再生位置を持たない（API の progressFor と同じ扱い）。
 	from += ` left join playback_progress p on p.content_key = videos.content_key and videos.content_key <> ''`
 	var conditions []string
+	var args []any
 	if condition := watchCondition(spec.watch); condition != "" {
 		conditions = append(conditions, condition)
 	}
 	if spec.playableOnly {
 		conditions = append(conditions, playableCondition)
 	}
+	// タグでの絞り込み（data-model.md §6）。存在の確認は呼び出し側
+	// （resolveTagIDs）が済ませているので、ここでは AND を掛けるだけでよい。
+	for _, tagID := range spec.tagIDs {
+		conditions = append(conditions,
+			`exists (select 1 from video_tags vt where vt.content_key = videos.content_key and vt.tag_id = ?)`)
+		args = append(args, tagID)
+	}
 	if len(conditions) > 0 {
 		from += ` where ` + strings.Join(conditions, " and ")
 	}
-	return from
+	return from, args
 }
 
 // countVideos は範囲・検索式・絞り込みをすべて適用した総件数を返す（要件 13）。
@@ -188,9 +280,11 @@ type queryRower interface {
 
 func countVideosWith(ctx context.Context, db queryRower, spec listSpec) (int, error) {
 	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
+	from, fromArgs := filteredFrom(spec, false)
+	args = append(args, fromArgs...)
 	var total int
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
-	if err := db.QueryRowContext(ctx, cte+` select count(*)`+filteredFrom(spec, false), args...).Scan(&total); err != nil {
+	if err := db.QueryRowContext(ctx, cte+` select count(*)`+from, args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("件数を数えられません: %w", err)
 	}
 	return total, nil
@@ -200,8 +294,31 @@ func (s *LibraryStore) countVideos(ctx context.Context, spec listSpec) (int, err
 	return countVideosWith(ctx, s.db.sql, spec)
 }
 
-// listVideoPage は条件に合う動画1ページと総件数を返す。
+// listVideoPage は条件に合う動画1ページと総件数を返す。count とページの行を
+// 同じ読み取りスナップショットから返すため、s.db.read に新しい取引を開いて
+// listVideoPageTx に委ねる。別々の接続で読むと、その間の取り込みによって
+// total と Items が矛盾する。
 func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain.VideoPage, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	page, err := listVideoPageTx(ctx, tx, spec)
+	if err != nil {
+		return domain.VideoPage{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
+	}
+	return page, nil
+}
+
+// listVideoPageTx は tx の中で spec に合う動画1ページと総件数を返す。呼び出し側
+// が取引の開始・commit・rollback を持つ（ListVideos はタグの存在確認と同じ
+// 取引で呼ぶ）。
+func listVideoPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.VideoPage, error) {
 	limit := normalizeLimit(spec.limit)
 	if !spec.sort.Valid() {
 		// 値の検査は入口（internal/httpapi）が行う。ここに来た未知の値は既定にする。
@@ -219,14 +336,6 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 		}
 	}
 
-	// count とページの行は同じ読み取りスナップショットから返す。別々の接続で
-	// 読むと、その間の取り込みによって total と Items が矛盾する。
-	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
-	}
-	defer func() { _ = tx.Rollback() }()
-
 	total, err := countVideosWith(ctx, tx, spec)
 	if err != nil {
 		return domain.VideoPage{}, err
@@ -236,9 +345,11 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 	if order.seeded {
 		args = append(args, spec.seed)
 	}
+	from, fromArgs := filteredFrom(spec, true)
+	args = append(args, fromArgs...)
 	//nolint:gosec // 組み立てるのは列名と定型の条件句だけで、値はすべて引数で渡す。
 	query := cte + ` select * from (select ` + listColumns + `, ` + order.value + ` as sort_value` +
-		filteredFrom(spec, true) + `) as videos`
+		from + `) as videos`
 	if cursorClause != "" {
 		query += ` where ` + cursorClause
 		args = append(args, cursorArgs...)
@@ -279,9 +390,6 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 		if err != nil {
 			return domain.VideoPage{}, err
 		}
-	}
-	if err := tx.Commit(); err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
 	}
 	return page, nil
 }

@@ -160,6 +160,7 @@ const video: Video = {
   durationMs: 120_000,
   videoCodec: "h264",
   container: "mp4",
+  tags: [],
 };
 
 function props(overrides: Partial<Video> = {}) {

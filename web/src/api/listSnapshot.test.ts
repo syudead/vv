@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { Video } from "./client";
 import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
+import { nextVideoTagsSequence, recordAppliedVideoTags } from "./videoTagsEvents";
 
 /**
  * 一覧の復元状態。
@@ -22,6 +23,7 @@ function item(id: number): Video {
     probeState: "done",
     thumbnailState: "done",
     previewState: "pending",
+    tags: [],
   };
 }
 
@@ -59,6 +61,26 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     expect(takeListSnapshot({ query: "いぬ", sort: "titleAsc" })).toBeUndefined();
     // 並び順が違う。並びが違えば同じ項目でも順序が違う。
     expect(takeListSnapshot({ query: "ねこ", sort: "addedDesc" })).toBeUndefined();
+  });
+
+  it("tags を含む鍵は、tags の無い鍵や別の tags の鍵と一致しない（/?tag=1 と / の控えを区別する）", () => {
+    saveListSnapshot({ query: "", sort: "addedDesc", tags: [1] }, body([1]));
+
+    expect(takeListSnapshot({ query: "", sort: "addedDesc" })).toBeUndefined();
+    expect(takeListSnapshot({ query: "", sort: "addedDesc", tags: [2] })).toBeUndefined();
+    expect(
+      takeListSnapshot({ query: "", sort: "addedDesc", tags: [1] })?.items.map(
+        (video) => video.id,
+      ),
+    ).toEqual([1]);
+  });
+
+  it("tags の並びは正規化するので、選んだ順が違っても同じ鍵になる", () => {
+    saveListSnapshot({ query: "", sort: "addedDesc", tags: [3, 1] }, body([1]));
+
+    expect(
+      takeListSnapshot({ query: "", sort: "addedDesc", tags: [1, 3] }),
+    ).toBeDefined();
   });
 
   it("clearListSnapshot のあとは取れない", () => {
@@ -110,5 +132,55 @@ describe("フォルダ画面の控え", () => {
   it("ライブラリ一覧の控えはフォルダ画面で拾わない", () => {
     saveListSnapshot({ query: "" }, body([1]));
     expect(takeListSnapshot({ query: "", folder: "3\0" })).toBeUndefined();
+  });
+});
+
+// issue 267: 付け外しの結果は、一覧を取り直さず控えの tags へ反映する
+// （Plan の Structural Decisions 7）。
+describe("付け外しの結果の反映", () => {
+  it("recordAppliedVideoTagsのaddで、対象の項目のtagsだけが変わる", () => {
+    saveListSnapshot({ query: "" }, body([1, 2]));
+
+    recordAppliedVideoTags([2], { id: 5, name: "旅行" }, "add", nextVideoTagsSequence());
+
+    const restored = takeListSnapshot({ query: "" });
+    expect(restored?.items.find((video) => video.id === 2)?.tags).toEqual([
+      { id: 5, name: "旅行" },
+    ]);
+    // 対象でない項目は変わらない。
+    expect(restored?.items.find((video) => video.id === 1)?.tags).toEqual([]);
+    // tags 以外は変わらない。
+    expect(restored?.total).toBe(2);
+    expect(restored?.cursor).toBe("cursor-1");
+  });
+
+  it("recordAppliedVideoTagsのremoveで、付いていたタグだけを外す", () => {
+    saveListSnapshot(
+      { query: "" },
+      {
+        items: [
+          { ...item(1), tags: [{ id: 5, name: "旅行" }] },
+          { ...item(2), tags: [{ id: 5, name: "旅行" }] },
+        ],
+        total: 2,
+        cursor: "cursor-1",
+        hasMore: true,
+        scrollY: 0,
+      },
+    );
+
+    recordAppliedVideoTags(
+      [2],
+      { id: 5, name: "旅行" },
+      "remove",
+      nextVideoTagsSequence(),
+    );
+
+    const restored = takeListSnapshot({ query: "" });
+    expect(restored?.items.find((video) => video.id === 2)?.tags).toEqual([]);
+    // 対象でない項目にはまだ付いている。
+    expect(restored?.items.find((video) => video.id === 1)?.tags).toEqual([
+      { id: 5, name: "旅行" },
+    ]);
   });
 });

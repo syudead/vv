@@ -47,7 +47,7 @@ func newListAPIFixture(t *testing.T) listAPIFixture {
 	}
 	handler := httpapi.NewRouter(httpapi.Options{
 		Videos: db.Library(), Playback: db.Playback(), MediaFolders: db.Settings(),
-		Folders: db.Library(), Assets: fstest.MapFS{},
+		Folders: db.Library(), Tags: db.Tags(), Assets: fstest.MapFS{},
 	})
 	return listAPIFixture{ctx: ctx, db: db, root: root, handler: handler}
 }
@@ -93,6 +93,114 @@ func titles(page gen.VideoPage) []string {
 		out = append(out, item.Title)
 	}
 	return out
+}
+
+// tag はタグを1件作り、そのidを返す。
+func (f listAPIFixture) tag(t *testing.T, name string) int64 {
+	t.Helper()
+	created, err := f.db.Tags().CreateTag(f.ctx, name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return created.ID
+}
+
+// attach は tagID を videoID へ付ける。
+func (f listAPIFixture) attach(t *testing.T, videoID, tagID int64) {
+	t.Helper()
+	if _, _, err := f.db.Tags().AttachTagByID(f.ctx, []int64{videoID}, tagID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// getIDs は GET /api/videos/ids を呼ぶ。
+func (f listAPIFixture) getIDs(t *testing.T, target string) gen.VideoIdsResponse {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	f.handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, target, nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s: status = %d: %s", target, rec.Code, rec.Body)
+	}
+	var out gen.VideoIdsResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func tagNames(refs []gen.TagRef) []string {
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, ref.Name)
+	}
+	return out
+}
+
+// タグでの絞り込み（AND）・名前の自然順・missingTagIds・GET /api/videos/ids・
+// タグ名での検索を、本物の保存層と経路をつないで確かめる
+// （specs/014-video-tags/contracts/tags-api.md §4・§5）。
+func TestListVideosFiltersByTagWithStore(t *testing.T) {
+	f := newListAPIFixture(t)
+	tenID, _ := f.add(t, "10話.mp4", "10話", 1_000)
+	f.add(t, "2話.mp4", "2話", 1_000)
+	travelID, _ := f.add(t, "旅行記.mp4", "旅行記", 1_000)
+
+	epTen := f.tag(t, "10話")
+	epTwo := f.tag(t, "2話")
+	travel := f.tag(t, "旅行")
+
+	// 「10話」の動画に両方のタグを付ける。もう1件は片方だけ。
+	f.attach(t, tenID, epTen)
+	f.attach(t, tenID, epTwo)
+	f.attach(t, travelID, travel)
+
+	page := f.get(t, "/api/videos?tag="+strconv.FormatInt(epTen, 10)+"&tag="+strconv.FormatInt(epTwo, 10))
+	if len(page.Items) != 1 || page.Total != 1 {
+		t.Fatalf("items = %+v, total = %d, want 1 件", page.Items, page.Total)
+	}
+	if page.Items[0].Title != "10話" {
+		t.Fatalf("title = %q, want 10話", page.Items[0].Title)
+	}
+	// タグは名前の自然順（domain.CompareNatural）で並ぶ: "2話" < "10話"。
+	if want := []string{"2話", "10話"}; !slices.Equal(tagNames(page.Items[0].Tags), want) {
+		t.Errorf("tags = %q, want %q", tagNames(page.Items[0].Tags), want)
+	}
+
+	// 存在しない id は絞り込みから落ち、missingTagIds に返る。
+	page = f.get(t, "/api/videos?tag="+strconv.FormatInt(epTen, 10)+"&tag=999")
+	if page.MissingTagIds == nil || !slices.Equal(*page.MissingTagIds, []int64{999}) {
+		t.Fatalf("missingTagIds = %v, want [999]", page.MissingTagIds)
+	}
+
+	// query はタグの元の名前・シノニムにも照合する。題名に「旅行」を含まない
+	// 「旅行記」ではなく、タグに「旅行」を持つ動画が当たる。
+	page = f.get(t, "/api/videos?query="+url.QueryEscape("旅行"))
+	if len(page.Items) != 1 || page.Items[0].Title != "旅行記" {
+		t.Fatalf("query=旅行: items = %+v, want 旅行記（タグ一致）", page.Items)
+	}
+
+	// GET /api/videos/ids は同じ条件の全件の id を返す。
+	ids := f.getIDs(t, "/api/videos/ids?tag="+strconv.FormatInt(epTen, 10)+"&tag="+strconv.FormatInt(epTwo, 10))
+	if want := []int64{tenID}; !slices.Equal(ids.Ids, want) {
+		t.Errorf("ids = %v, want %v", ids.Ids, want)
+	}
+}
+
+// フォルダの配下検索でも、題名に語を含まずタグに語を持つ動画が当たる
+// （specs/014-video-tags/data-model.md §7）。
+func TestListFolderVideosSearchesByTagNameWithStore(t *testing.T) {
+	f := newListAPIFixture(t)
+	videoID, _ := f.add(t, "A/x.mp4", "x", 1_000)
+	f.add(t, "A/y.mp4", "y", 1_000)
+	travel := f.tag(t, "旅行")
+	f.attach(t, videoID, travel)
+
+	base := "/api/folders/" + strconv.FormatInt(f.root.ID, 10) + "/videos?path=A&scope=subtree&query=" +
+		url.QueryEscape("旅行")
+	page := f.get(t, base)
+	if len(page.Items) != 1 || page.Items[0].Title != "x" {
+		t.Fatalf("items = %+v, want x（タグ一致）", page.Items)
+	}
 }
 
 func TestListVideosAppliesQueryWatchAndSort(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -400,7 +401,9 @@ func TestListVideosPassesFiltersAndReturnsFolders(t *testing.T) {
 	want := domain.VideoQuery{
 		Query: "京都 -2023", Watch: domain.WatchUnwatched, Sort: domain.SortDurationDesc, Limit: domain.DefaultLimit,
 	}
-	if library.lastQuery != want {
+	// domain.VideoQuery に TagIDs（[]int64）が足された（#265）ので struct の
+	// 比較演算子は使えない。reflect.DeepEqual で比較する。
+	if !reflect.DeepEqual(library.lastQuery, want) {
 		t.Errorf("query = %+v, want %+v", library.lastQuery, want)
 	}
 
@@ -459,5 +462,91 @@ func TestListVideosOmitsFolderWithoutRoots(t *testing.T) {
 	}
 	if page := decode[gen.VideoPage](t, rec); len(page.Items) != 1 || page.Items[0].Folder != nil {
 		t.Errorf("page = %+v", page)
+	}
+}
+
+// #267: Video.tags は必須で、タグの無い動画では空配列（null ではない）。
+func TestListVideosTagsIsEmptyArrayWithoutTags(t *testing.T) {
+	video := sampleVideo(1, "タグなし")
+	library := &fakeLibrary{page: domain.VideoPage{Items: []domain.Video{video}, Total: 1}}
+	handler := newTestServer(t, Options{Videos: library, Tags: &fakeTags{}})
+
+	rec := do(t, handler, http.MethodGet, "/api/videos")
+	if !strings.Contains(rec.Body.String(), `"tags":[]`) {
+		t.Fatalf("tags が空配列で出ていない: %s", rec.Body)
+	}
+	page := decode[gen.VideoPage](t, rec)
+	if page.Items[0].Tags == nil || len(page.Items[0].Tags) != 0 {
+		t.Errorf("tags = %+v, want 空配列", page.Items[0].Tags)
+	}
+}
+
+// タグの経路（Tags）が設定されていなくても一覧は諦めない（progressFor と同じ扱い）。
+func TestListVideosTagsOmittedWithoutTagsRoute(t *testing.T) {
+	video := sampleVideo(1, "x")
+	library := &fakeLibrary{page: domain.VideoPage{Items: []domain.Video{video}, Total: 1}}
+	handler := newTestServer(t, Options{Videos: library})
+
+	page := decode[gen.VideoPage](t, do(t, handler, http.MethodGet, "/api/videos"))
+	if len(page.Items[0].Tags) != 0 {
+		t.Errorf("tags = %+v, want 空配列", page.Items[0].Tags)
+	}
+}
+
+// TagStore が返したタグが一覧・詳細・関連動画・読み取りのやり直しの応答に載る。
+func TestListVideosIncludesTagsFromTagStore(t *testing.T) {
+	video := sampleVideo(1, "京都旅行")
+	tags := &fakeTags{byContentKey: map[string][]domain.TagRef{
+		video.ContentKey: {{ID: 2, Name: "旅行"}, {ID: 5, Name: "観光"}},
+	}}
+	library := &fakeLibrary{page: domain.VideoPage{Items: []domain.Video{video}, Total: 1}}
+	handler := newTestServer(t, Options{Videos: library, Tags: tags})
+
+	page := decode[gen.VideoPage](t, do(t, handler, http.MethodGet, "/api/videos"))
+	got := page.Items[0].Tags
+	if len(got) != 2 || got[0].Id != 2 || got[0].Name != "旅行" || got[1].Id != 5 || got[1].Name != "観光" {
+		t.Fatalf("tags = %+v", got)
+	}
+}
+
+// tag は VideoQuery.TagIDs に渡り、17個以上は 400 にする。
+func TestListVideosTagFilter(t *testing.T) {
+	library := &fakeLibrary{}
+	handler := newTestServer(t, Options{Videos: library})
+
+	rec := do(t, handler, http.MethodGet, "/api/videos?tag=3&tag=8")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if want := []int64{3, 8}; !reflect.DeepEqual([]int64(library.lastQuery.TagIDs), want) {
+		t.Errorf("tagIDs = %v, want %v", library.lastQuery.TagIDs, want)
+	}
+
+	many := "/api/videos?" + strings.Repeat("tag=1&", 17)
+	rec = do(t, handler, http.MethodGet, strings.TrimSuffix(many, "&"))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("17個: status = %d, want 400: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Error](t, rec).Code; got != codeInvalidRequest {
+		t.Errorf("17個: code = %q", got)
+	}
+}
+
+// 存在しなかった tag の id は VideoPage.missingTagIds に返る。1つも無ければ省く。
+func TestListVideosMissingTagIDs(t *testing.T) {
+	library := &fakeLibrary{page: domain.VideoPage{
+		Items: []domain.Video{sampleVideo(1, "x")}, Total: 1, MissingTagIDs: []int64{9},
+	}}
+	handler := newTestServer(t, Options{Videos: library})
+
+	page := decode[gen.VideoPage](t, do(t, handler, http.MethodGet, "/api/videos?tag=9"))
+	if page.MissingTagIds == nil || !reflect.DeepEqual(*page.MissingTagIds, []int64{9}) {
+		t.Fatalf("missingTagIds = %v, want [9]", page.MissingTagIds)
+	}
+
+	library.page.MissingTagIDs = nil
+	rec := do(t, handler, http.MethodGet, "/api/videos")
+	if strings.Contains(rec.Body.String(), "missingTagIds") {
+		t.Fatalf("missingTagIds が省略されていない: %s", rec.Body)
 	}
 }

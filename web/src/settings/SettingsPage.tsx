@@ -13,9 +13,10 @@ import {
 import { useScan } from "../shell/ScanProvider";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
+import { ModalFrame } from "../ui/ModalFrame";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
-import FolderPicker, { ModalFrame } from "./FolderPicker";
+import FolderPicker from "./FolderPicker";
 import ScanStatusSection from "./ScanStatusSection";
 
 type Pending = { id: number | "new"; kind: "add" | "change" | "delete" } | null;

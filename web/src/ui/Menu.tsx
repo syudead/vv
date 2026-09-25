@@ -47,21 +47,37 @@ export function MenuSeparator() {
   return <Dropdown.Separator className="my-1.5 h-px bg-border" />;
 }
 
-const itemClass =
-  "relative flex h-8 cursor-default items-center gap-2.5 rounded-sm px-2.5 text-sm text-fg outline-none select-none " +
-  "data-highlighted:bg-hover-wash data-disabled:opacity-50 [&>svg]:size-4 [&>svg]:text-fg-muted";
+const itemBase =
+  "relative flex h-8 cursor-default items-center gap-2.5 rounded-sm px-2.5 text-sm outline-none select-none " +
+  "data-highlighted:bg-hover-wash data-disabled:opacity-50 [&>svg]:size-4";
+
+/**
+ * itemTone は項目の面ごとの文字とアイコンの色。取り消せない操作（削除など）は
+ * `danger` にする。`[&>svg]:*` の組を variant ごとに1つだけ出すことで、
+ * `cn` が単純結合のためクラスの重なりで色が決まらなくなるのを避ける。
+ */
+const itemTone = {
+  default: "text-fg [&>svg]:text-fg-muted",
+  danger: "text-danger [&>svg]:text-danger",
+} as const;
 
 export function MenuItem({
   children,
   onSelect,
   disabled,
+  tone = "default",
 }: {
   children: ReactNode;
   onSelect?: () => void;
   disabled?: boolean;
+  tone?: keyof typeof itemTone;
 }) {
   return (
-    <Dropdown.Item className={itemClass} onSelect={onSelect} disabled={disabled}>
+    <Dropdown.Item
+      className={cn(itemBase, itemTone[tone])}
+      onSelect={onSelect}
+      disabled={disabled}
+    >
       {children}
     </Dropdown.Item>
   );
@@ -91,7 +107,7 @@ export function MenuRadioItem({
   children: ReactNode;
 }) {
   return (
-    <Dropdown.RadioItem value={value} className={cn(itemClass, "pr-9")}>
+    <Dropdown.RadioItem value={value} className={cn(itemBase, itemTone.default, "pr-9")}>
       {children}
       <Dropdown.ItemIndicator className="absolute right-2.5 text-accent">
         <Check className="size-4" />
