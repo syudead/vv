@@ -329,6 +329,12 @@ export interface VideosState {
   retryLoadMore: () => void;
   /** reload は先頭から読み直す。取り込みのあとに使う。 */
   reload: () => void;
+  /**
+   * staleGroups は、取り直しを求めたがまだ済んでいない表示中のグループの項目の
+   * フォルダを返す（取り直しの待ち・途中・一時的な失敗）。一覧の控えを取るときに
+   * ListSnapshot.staleGroups へ渡し、戻ったときに取り直させる。
+   */
+  staleGroups: () => FolderRef[];
 }
 
 /**
@@ -396,6 +402,13 @@ export function useVideos(
   const groupRefreshing = useRef<AbortController | null>(null);
   // staleGroups は、控えから戻った一覧のうち、控えの後にメンバーが変わったグループである。
   const staleGroups = useRef<readonly FolderRef[]>(seed?.staleGroups ?? []);
+  // unsettledGroups は、取り直しを求めたがまだ差し替えも除外もしていないグループである
+  // （待ち・取り直し中・一時的な失敗）。一覧を離れるときの控えに印として残し、戻った
+  // ときに取り直す。取り直しの途中で動画を開くと要求は打ち切られるので、印を残さないと
+  // 古いグループがそのまま復元される（Devin の指摘、PR 357）。
+  const unsettledGroups = useRef(
+    new Map((seed?.staleGroups ?? []).map((folder) => [folderRefKey(folder), folder])),
+  );
   const drainGroupQueue = useCallback(async () => {
     if (groupRefreshing.current !== null) return;
     const controller = new AbortController();
@@ -407,12 +420,16 @@ export function useVideos(
           const group = await getFolderGroup(folder, controller.signal);
           // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
           if (controller.signal.aborted) return;
+          // 取り直しの途中に同じグループがまた変わっていれば、次の取り直しまで印を残す。
+          if (!groupQueue.current.has(groupKey)) unsettledGroups.current.delete(groupKey);
           dispatch({ type: "refreshGroup", folderKey: groupKey, group });
         } catch (failure) {
           if (isAborted(failure) || controller.signal.aborted) return;
           // 今はグループでない（例外で単体に戻った等）か、フォルダが無い。何も伝えずに
           // 外す。一時的な失敗は、その1件だけ諦める（次の変化か読み直しで直る）。
+          // 一時的な失敗のグループは unsettledGroups に残し、控えの印で戻ったときに取り直す。
           if (failure instanceof RequestFailed && failure.status === 404) {
+            unsettledGroups.current.delete(groupKey);
             dispatch({ type: "removeGroup", folderKey: groupKey });
           }
         }
@@ -425,7 +442,9 @@ export function useVideos(
     (folders: Iterable<FolderRef>) => {
       let queued = false;
       for (const folder of folders) {
-        groupQueue.current.set(folderRefKey(folder), folder);
+        const groupKey = folderRefKey(folder);
+        groupQueue.current.set(groupKey, folder);
+        unsettledGroups.current.set(groupKey, folder);
         queued = true;
       }
       if (queued) void drainGroupQueue();
@@ -439,21 +458,37 @@ export function useVideos(
     },
     [refreshGroups],
   );
+  // unsettledGroupRefs は控えに残す取り直しの印である（表示中のグループだけ）。
+  const unsettledGroupRefs = useCallback((): FolderRef[] => {
+    const pending = unsettledGroups.current;
+    if (pending.size === 0) return [];
+    return itemsRef.current.flatMap((item) => {
+      if (item.kind !== "group") return [];
+      const folder = groupRef(item.group);
+      return pending.has(folderRefKey(folder)) ? [folder] : [];
+    });
+  }, []);
+
+  // ページの取得中に届いた知らせは、取得した内容より新しいことがある
+  // （下の「取り込みの準備」の取り直しと、その次のタグの付け外しの両方が使う）。
+  const pageLoading = useRef(false);
+
+  // ページの取得中に再生位置が保存された動画である。取得中のページに初めて現れる
+  // グループは保存前の値を持つことがあるので、ページを反映したあとでメンバーに
+  // 当たるグループを取り直す（fetchPage。Devin の指摘、PR 357）。
+  const progressChangedWhileLoading = useRef(new Set<number>());
 
   // 再生画面で保存された再生位置を、表示中の項目へ反映する。復元した一覧は
   // 再生前の中身なので、戻ったあとに届く離脱時の保存もここで受ける。
   useEffect(
     () =>
       subscribeProgress((videoId, progress) => {
+        if (pageLoading.current) progressChangedWhileLoading.current.add(videoId);
         dispatch({ type: "progress", videoId, progress });
         refreshGroupsWith([videoId]);
       }),
     [refreshGroupsWith],
   );
-
-  // ページの取得中に届いた知らせは、取得した内容より新しいことがある
-  // （下の「取り込みの準備」の取り直しと、その次のタグの付け外しの両方が使う）。
-  const pageLoading = useRef(false);
 
   // ページの取得中に届いたタグの付け外しは、まだ読み込んでいない動画には
   // 反映しようが無く、そのまま捨てると後から届くページの古い内容で
@@ -709,6 +744,7 @@ export function useVideos(
       inFlight.current = controller;
       pageLoading.current = true;
       changedWhileLoading.current.clear();
+      progressChangedWhileLoading.current.clear();
       if (replace) {
         // 前の一覧のために始めた取り直しは捨てる。新しいページの内容の方が新しい。
         refreshing.current?.abort();
@@ -718,6 +754,7 @@ export function useVideos(
         groupRefreshing.current = null;
         groupQueue.current.clear();
         staleGroups.current = [];
+        unsettledGroups.current.clear();
         // 条件やフォルダを変えた一から読み直し（または不整合からの再同期）
         // でだけ、それまでに記録した付け外しを捨てる。古い条件のときの変更は
         // 新しい一覧に持ち越さない。続きの取得（loadMore、replace===false）
@@ -782,8 +819,15 @@ export function useVideos(
           changedWhileLoading.current.has(id),
         );
         // ページの取得中にメンバーが変わったグループは、ページを反映したあとで取り直す。
-        refreshGroups(groupsWithMembers(page.items, changedWhileLoading.current));
+        // 再生位置の保存も同じく、ページの内容より新しいことがある。
+        refreshGroups(
+          groupsWithMembers(page.items, [
+            ...changedWhileLoading.current,
+            ...progressChangedWhileLoading.current,
+          ]),
+        );
         changedWhileLoading.current.clear();
+        progressChangedWhileLoading.current.clear();
         // 公開状態が確かでない動画のうち、このページで取り直す（changed）ものと、
         // 続きの取得で残る表示中のものだけを uncertain に残す。一から読み直した
         // ページは切り替えの後に取ったものなので、それ以外はもう確かである。
@@ -946,5 +990,6 @@ export function useVideos(
     loadMore,
     retryLoadMore,
     reload,
+    staleGroups: unsettledGroupRefs,
   };
 }

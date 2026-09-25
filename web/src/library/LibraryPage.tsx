@@ -197,6 +197,7 @@ export default function LibraryPage() {
     loadMore,
     retryLoadMore,
     reload,
+    staleGroups,
   } = useVideos({ ...criteria, tag: tagIds }, restored);
 
   // 絞り込みはサーバーが一覧の条件として適用する（Plan の Structural Decisions 7）。
@@ -384,9 +385,10 @@ export default function LibraryPage() {
         hasMore,
         scrollY: window.scrollY,
         scanId: knownScanId.current,
+        staleGroups: staleGroups(),
       },
     );
-  }, [criteria, cursor, hasMore, items, tagIds, total]);
+  }, [criteria, cursor, hasMore, items, staleGroups, tagIds, total]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);

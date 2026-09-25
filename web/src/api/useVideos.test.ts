@@ -1491,6 +1491,57 @@ describe("useVideos のグループの項目", () => {
     expect(listVideos).not.toHaveBeenCalled();
   });
 
+  it("取り直しが済むまでは、控えに残す取り直しの印としてグループを返す", async () => {
+    const pending = deferredGroup();
+    const { result } = renderHook(
+      () =>
+        useVideos({ sort: "addedDesc" }, restoredWithGroup([{ rootId: 3, path: "A/B" }])),
+      { wrapper: OwnerAudience },
+    );
+    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+
+    // 取り直しの途中で動画を開いても、次の控えから戻ったときに取り直せる。
+    expect(result.current.staleGroups()).toEqual([{ rootId: 3, path: "A/B" }]);
+
+    await act(async () => {
+      pending.resolve(group({ watchedCount: 1 }));
+    });
+    expect(result.current.staleGroups()).toEqual([]);
+  });
+
+  it("取り直しが一時的に失敗したグループは、控えに残す印として返し続ける", async () => {
+    const { RequestFailed } = await import("./client");
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+      { wrapper: OwnerAudience },
+    );
+    expect(result.current.staleGroups()).toEqual([]);
+    getFolderGroup.mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"));
+
+    await emitServerEvent("video", { id: 11 });
+    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+
+    await waitFor(() =>
+      expect(result.current.staleGroups()).toEqual([{ rootId: 3, path: "A/B" }]),
+    );
+  });
+
+  it("取り直しが 404 で外れたグループは、印として返さない", async () => {
+    const { RequestFailed } = await import("./client");
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+      { wrapper: OwnerAudience },
+    );
+    getFolderGroup.mockRejectedValueOnce(
+      new RequestFailed(404, "not_found", "見つかりません"),
+    );
+
+    await emitServerEvent("video", { id: 11 });
+
+    await waitFor(() => expect(groups(result.current.items)).toHaveLength(0));
+    expect(result.current.staleGroups()).toEqual([]);
+  });
+
   it("条件を変えて読み直したら、前の一覧のグループの取り直しの応答を重ねない", async () => {
     const { result, rerender } = renderHook(
       ({ sort }: { sort: VideoSort }) => useVideos({ sort }, restoredWithGroup()),

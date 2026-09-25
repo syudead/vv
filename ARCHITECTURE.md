@@ -426,7 +426,9 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 paging and request cancellation for the library list and re-fetches a listed video in
 place when a `video` event names it. Its items are `LibraryItem`s (a video or a folder
 group, `libraryItems.ts`); a group item is re-fetched from `GET /api/folders/{rootId}/group`
-when a member's progress, tags or `video` event changes, and dropped on 404.
+when a member's progress, tags or `video` event changes, and dropped on 404; a group
+whose re-fetch has not settled is kept in the list snapshot's `staleGroups` and
+re-fetched when the list is restored.
 `useVideoDetail.ts`
 fetches one video for the playback screen and re-fetches it when a `video` event names
 it or the event stream reconnects, and `listSnapshot.ts`
