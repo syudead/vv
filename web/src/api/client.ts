@@ -279,18 +279,23 @@ export async function openVideoFile(id: number, signal?: AbortSignal): Promise<v
  * /api/video-visibility、specs/016-single-account-auth/contracts/guest-api.md §4）。
  * 詳細画面の1本も選択バーの複数本も、これを使う。`applied` はいまライブラリにある
  * 動画の数で、既に同じ状態だった動画も数える。
+ *
+ * 成功したら一覧の控えを捨てる。控えは切り替えを知らないので、戻ったときに古い
+ * `public` の一覧を出してしまう。
  */
-export function setVideoVisibility(
+export async function setVideoVisibility(
   videoIds: readonly number[],
   isPublic: boolean,
   signal?: AbortSignal,
 ): Promise<VideoVisibilityResponse> {
-  return request<VideoVisibilityResponse>("/api/video-visibility", {
+  const result = await request<VideoVisibilityResponse>("/api/video-visibility", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ videoIds: Array.from(videoIds), public: isPublic }),
     signal,
   });
+  clearListSnapshot();
+  return result;
 }
 
 /** getCurrentScan は直近の取り込みの状態を取得する。一度も取り込んでいなければ null。 */

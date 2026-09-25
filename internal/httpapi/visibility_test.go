@@ -3,12 +3,14 @@ package httpapi
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -275,5 +277,69 @@ func TestGuestLedgerRejectsTrackingAcrossRevocation(t *testing.T) {
 	release()
 	if len(ledger.requests) != 0 {
 		t.Errorf("release の後に台帳に残った: %v", ledger.requests)
+	}
+}
+
+// orderedVisibility は1回目（非公開）の反映を release まで返さず、2回目（再公開）の
+// 反映がどの世代の台帳を見たかを覚える。
+type orderedVisibility struct {
+	ledger    *guestLedger
+	entered   chan struct{}
+	release   chan struct{}
+	calls     int
+	secondGen uint64
+}
+
+func (v *orderedVisibility) SetVideosPublic(_ context.Context, _ []int64, public bool) ([]string, error) {
+	v.calls++
+	if !public {
+		close(v.entered)
+		<-v.release
+		return []string{"key"}, nil
+	}
+	v.secondGen = v.ledger.generation()
+	return []string{"key"}, nil
+}
+
+// 非公開の確定から打ち切りまでの間に再公開が割り込まない。割り込むと、再公開の後に
+// 始まったゲストの配信を先の非公開の打ち切りが止めてしまう。
+func TestVideoVisibilitySwitchesRunOneAtATime(t *testing.T) {
+	ledger := newGuestLedger()
+	visibility := &orderedVisibility{
+		ledger: ledger, entered: make(chan struct{}), release: make(chan struct{}),
+	}
+	srv := &server{
+		visibility: visibility, guests: ledger,
+		logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}
+	put := func(public bool) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodPut, "/api/video-visibility",
+			strings.NewReader(visibilityBody(public, 7)))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		srv.UpdateVideoVisibility(rec, req)
+		return rec
+	}
+	before := ledger.generation()
+
+	hidden := make(chan *httptest.ResponseRecorder)
+	go func() { hidden <- put(false) }()
+	<-visibility.entered
+	published := make(chan *httptest.ResponseRecorder)
+	go func() { published <- put(true) }()
+	// 並べていなければ、この間に再公開が打ち切りの前の世代で反映される。
+	time.Sleep(50 * time.Millisecond)
+	close(visibility.release)
+
+	for name, ch := range map[string]chan *httptest.ResponseRecorder{"非公開": hidden, "再公開": published} {
+		if rec := <-ch; rec.Code != http.StatusOK {
+			t.Fatalf("%s: status = %d: %s", name, rec.Code, rec.Body)
+		}
+	}
+	if visibility.calls != 2 {
+		t.Fatalf("反映の回数 = %d", visibility.calls)
+	}
+	if visibility.secondGen == before {
+		t.Error("再公開が先の非公開の打ち切りより前に反映された")
 	}
 }

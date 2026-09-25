@@ -49,6 +49,11 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 切り替えの確定と打ち切りを、切り替えどうしで1つずつ順に行う。並べないと、
+	// 非公開の確定から打ち切りまでの間に別の要求が再公開し、その後に始まった
+	// ゲストの配信を先の非公開の打ち切りが止めてしまう。
+	s.guests.switching.Lock()
+	defer s.guests.switching.Unlock()
 	keys, err := s.visibility.SetVideosPublic(r.Context(), body.VideoIds, public)
 	if err != nil {
 		s.internalError(w, "公開フラグを切り替えられませんでした", err)
@@ -95,7 +100,10 @@ func (s *server) lookupServedVideo(
 // 打ち切りの仕組み（context の取り消しと書き込みの締め切り）はセッションの台帳と
 // 同じ trackedRequest を使う。
 type guestLedger struct {
-	mu sync.Mutex
+	// switching は公開フラグの切り替え（確定から打ち切りまで）を1つずつにする。
+	// mu とは別で、切り替えの取引の間も配信の出入りを止めない。
+	switching sync.Mutex
+	mu        sync.Mutex
 	// gen は打ち切りのたびに進む世代である。
 	gen      uint64
 	requests map[string]map[*trackedRequest]struct{}

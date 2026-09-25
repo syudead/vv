@@ -284,7 +284,8 @@ write deadline to now. `PUT /api/video-visibility` (owner only) switches the pub
 flag through `VisibilityStore`; after the switch commits, making videos private ends
 the in-flight guest stream, live-transcode and hover-preview responses of their content
 keys, which a second in-memory ledger (`visibility.go`) tracks, while owner responses
-continue. `POST /api/auth/setup` creates the first account and logs in,
+continue. Switches run one at a time from commit to cut-off, so a later re-publish
+cannot be cut off by an earlier switch to private. `POST /api/auth/setup` creates the first account and logs in,
 `POST /api/auth/login` and `POST /api/auth/logout` issue and revoke sessions, and
 `GET /api/auth/session` reports `owner`, `guest` or `setupRequired`
 ([specs/016-single-account-auth/contracts/auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)).
