@@ -45,8 +45,9 @@ skill; follow them even when reading something yourself looks quicker.
    comment.
 2. **Read summaries, not material.** Request only the fields
    [references/loop.md](references/loop.md) §1 lists (`fields`,
-   `minimal_output`, `perPage`). Do not open diffs, CI job logs, review comment bodies, child Issue bodies, or artifact files. When
-   a decision needs one of those, it is a worker's job.
+   `minimal_output`, `perPage`). Do not open diffs, CI job logs, review
+   comment bodies, child Issue bodies, or artifact files. When a decision
+   needs one of those, it is a worker's job.
 3. **Brief with pointers, not content.** A worker brief names the Issue, PR,
    branch, base and feature directory, and the worker reads them itself. Do not
    paste Issue text, findings, or diffs into a brief. The templates are in
