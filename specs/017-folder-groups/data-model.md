@@ -1,12 +1,12 @@
 # Data model: フォルダのグループとフォルダ由来のタグ
 
 親 Issue #326 の要件のうち、保存するもの・導くもの・その規則だけを書く。既存の表
-（`videos`・`video_locations`・`playback_progress`・`tags`・`tag_names`・`video_tags`・`media_folders`）は
-変えない。表の区分（索引と利用者データ）は [ARCHITECTURE.md](../../ARCHITECTURE.md) の「Two kinds of data」に従う。
+（`videos`・`video_locations`・`playback_progress`・`tags`・`tag_names`・`video_tags`・`media_folders`・
+`public_videos`）は変えない。表の区分（索引と利用者データ）は [ARCHITECTURE.md](../../ARCHITECTURE.md) の「Two kinds of data」に従う。
 
 ## 1. マイグレーション
 
-`internal/store/migrations/00010_folder_groups.sql` を足す。
+`internal/store/migrations/00012_folder_groups.sql` を足す。
 
 ```sql
 -- 利用者データ。再スキャン・メディアフォルダの変更・再起動で消えてはならない。
@@ -180,3 +180,22 @@ create table folder_index_state (
 - **開くメンバー**: 並びの順で、位置が 0 より大きく完了していない最初のメンバー。無ければ最初の未完了の
   メンバー。全部完了なら最初のメンバー（要件 23）。
 - 項目の SQL の視聴状態（§5 の 4）と同じ結果になることを、同じ入力でテストする。
+
+## 7. 見る人ごとの見え方
+
+索引（§1〜§3）は見る人に依らず、所有者から見た全所在で1つだけ作る。ゲストへの応答は、読み出しの時点で
+016 の公開の条件（`visibleLocationCondition`、[016 data-model.md §3](../016-single-account-auth/data-model.md#3-見る人と公開の動画の条件)）を
+メンバーに掛けて作る。
+
+- **グループのメンバー**: ゲストでは公開のメンバーだけを数える。`videoCount`・`videoIds`・`cover`・
+  長さと大きさの合計・追加日時と更新日時の最大・`Video.group` の `position` と `count`・関連動画の `group.items`・
+  グループの中の前後は、どれも公開のメンバーだけから作る。公開のメンバーが1本だけのグループは、ゲストには
+  動画の項目として出す（1本のグループのカードは出さない）。1本も無いグループは出さない。
+- **視聴とタグ**: ゲストには再生位置もタグも返さない（016 の guest-api §1）。`LibraryGroup` の
+  `watchedCount`・`watchState`・`lastPlayedAt` は省き、`tags` は空にする。`openVideoId` は公開のメンバーの
+  並びで最初のもの。フォルダ由来のタグも同じく、ゲストの応答・絞り込み・検索には使わない
+  （`tag` の条件はゲストでは 400、検索はタグ名に照合しない）。
+- **例外とグループ化の判定**: どのフォルダがグループかは所有者の全所在で決まる（§2）。ゲストに
+  返すのは、その判定の結果を公開のメンバーで絞ったものだけで、非公開の動画の本数や名前は出さない。
+- `GET /api/folders/{rootId}/group`: 公開のメンバーが2本以上なければ、ゲストには 404。
+

@@ -14,7 +14,9 @@ FolderGrouping:
     taggable: { type: boolean }  # グループで、登録フォルダそのものではない（§2）
 ```
 
-- `FolderSummary` に `grouping: FolderGrouping` を足す（必須）。フォルダ画面のメニューはこれで出す項目を決める。
+- `FolderSummary` に `grouping: FolderGrouping` を足す。所有者の応答には必ず入り、ゲストでは省く（任意の欄）。
+  フォルダ画面のメニューはこれで出す項目を決め、ゲストには出さない。
+- この節と §2 の変更の経路は所有者だけ（既定の `security`）。
 - `PUT /api/folders/{rootId}/grouping?path=…`、本文 `{ "mode": "auto" | "ungroup" | "groupDirect" }`
   - 200: 変更後の `FolderGrouping`。`auto` は例外を消す。同じ値の再設定も 200。
   - 400: パスや `mode` の誤り。404: そのフォルダが無い（`getFolder` と同じ判定）。
@@ -52,6 +54,8 @@ RelatedGroup:           # RelatedVideos.group（メンバーのときだけ）
 ```
 
 - `Video.group` は `GET /api/videos/{id}` の応答にだけ入る（`location` と同じ扱い）。一覧の項目には入らない。
+- ゲストでは、`position`・`count`・`group.items`・前後を公開のメンバーだけで作る。公開のメンバーが1本だけなら
+  `group` を省き、グループに属さない動画と同じ応答にする（[data-model.md §7](../data-model.md#7-見る人ごとの見え方)）。
 - メンバーの `GET /api/videos/{id}/related`:
   - `group` を入れる。`items` の上限 20 はグループには掛けない（Edge Case「大きなグループ」）。
   - `nextId`・`prevId` はグループの中の並びの次と前。最後のメンバーに `nextId`、最初のメンバーに `prevId` は無い。
@@ -72,6 +76,7 @@ VideoTag:               # Video.tags と LibraryGroup.tags の要素（TagRef �
     fromFolder: { type: boolean } # 祖先フォルダの名前から付いている
 ```
 
+- ゲストの `Video.tags`・`LibraryGroup.tags` は今のまま空の配列で、フォルダ由来のタグも入れない。
 - `VideoTagsSummaryItem` に `manualCount`（必須、手で付けた本数）を足す。`count` はどちらかの出所で付いている本数。
 - `Tag.videoCount`、`tag` での絞り込み、検索欄のタグ名の照合は、フォルダ由来の分を含む
   （[data-model.md §4](../data-model.md#4-フォルダ由来のタグ)）。

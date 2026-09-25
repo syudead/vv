@@ -50,11 +50,14 @@
   [docs/design-docs/library-ui.md](../../docs/design-docs/library-ui.md)・
   [specs/012-video-detail-ia/ui-design.md](../012-video-detail-ia/ui-design.md)・
   [specs/014-video-tags/ui-design.md](../014-video-tags/ui-design.md)
+- 見る人（所有者とゲスト）と公開の動画の条件、ゲストへの応答の差、経路の `security`:
+  [ARCHITECTURE.md](../../ARCHITECTURE.md) の認証の境界の節・`visibleLocationCondition`（[internal/store/visibility.go](../../internal/store/visibility.go)）・
+  [specs/016-single-account-auth/contracts/guest-api.md](../016-single-account-auth/contracts/guest-api.md)
 - 検査入口: [Taskfile.yml](../../Taskfile.yml)（`task check`・`task test-e2e`）
 
 **Feature-specific context**:
 
-- マイグレーションを1つ足す（`00010_folder_groups.sql`、[data-model.md §1](data-model.md#1-マイグレーション)）。
+- マイグレーションを1つ足す（`00012_folder_groups.sql`、[data-model.md §1](data-model.md#1-マイグレーション)）。
   既存の表は変えない。
 - 規模の前提は既存と同じ1万本である。グループの作り直しは索引の全所在を1回読んで Go で割り当てを
   決め、1つの書き込み取引で置き換える。1万本・数千フォルダで1秒未満を目安にし、単位の PR で
@@ -88,6 +91,9 @@
   `task generate` で生成する。本文を持つ経路は `requiresJSONBody` に足す。
 - **UI の正本**（library-ui.md・`web/src/theme/tokens.test.ts`）: 合格の見込み。トークンだけを使い、
   構図は design 工程で決める。画面の単位は視覚・操作・支援技術を確かめる。
+- **認証の境界とゲストへの応答**（ARCHITECTURE.md の認証の節・016 guest-api）: 合格。新しい経路は
+  `api/openapi.yaml` の `security` で所有者だけかゲストもかを決め、境界の分類のテストに載せる。ゲストには
+  公開のメンバーだけを見せ、所有者のデータ（再生位置・タグ・例外）を返さない（Structural Decisions 16）。
 - **サーバーと話す場所**（ARCHITECTURE.md「Web layer」）: 合格。新しい経路の呼び出しは
   `web/src/api/` に置く。
 
@@ -202,6 +208,13 @@ Phase 1 のあとも判定は同じである。
     - 却下: 登録フォルダのタグ化のときだけ、その名前を直下の動画のフォルダ名に足す案。要件 9 が
       照合から外した登録フォルダの名前が、この操作をしたときだけ効くことになり、規則が2つになる。
 
+16. **グループの索引は所有者の全所在から1つだけ作り、ゲストへの応答は読み出しのときに公開のメンバーへ
+    絞る。公開のメンバーが1本だけのグループは、ゲストには動画として出す**（[data-model.md §7](data-model.md#7-見る人ごとの見え方)）。
+    - 却下: ゲスト用に公開の動画だけで別の索引を作る案。公開の切り替えのたびに作り直しが要り、
+      016 の公開の切り替え（`VisibilityStore`）に索引の書き込みを足すことになる。
+    - 却下: ゲストにも全メンバーの本数・合計を見せる案。非公開の動画の存在と本数が漏れ、016 の要件
+      （ゲストには公開の動画だけ）に反する。
+
 ## Project Structure
 
 ### Documentation (this feature)
@@ -231,7 +244,7 @@ specs/017-folder-groups/
 - `cmd/mdm`: `FolderGroupStore` の組み立てと、起動時の版の古い索引の作り直し。
 - `web/src/api`・`web/src/library`・`web/src/player`・`web/src/folders`・`web/src/videoList`: 画面。
 
-**New paths**: `internal/store/migrations/00010_folder_groups.sql`・`internal/store/folder_groups.go`・
+**New paths**: `internal/store/migrations/00012_folder_groups.sql`・`internal/store/folder_groups.go`・
 `internal/domain/folder_group.go`・`internal/httpapi/folder_groups.go`・`internal/httpapi/library.go`。
 Web の新しいファイルの名前は各単位で決める。
 
@@ -247,7 +260,7 @@ Web の新しいファイルの名前は各単位で決める。
 
 ### フォルダからグループを割り当てる索引と、フォルダごとの例外をサーバーに置く
 
-**Scope**: マイグレーション `00010_folder_groups.sql`、`internal/domain` の割り当ての規則とフォルダ名の
+**Scope**: マイグレーション `00012_folder_groups.sql`、`internal/domain` の割り当ての規則とフォルダ名の
 取り出しとフォルダのパスから `VideoFolder` を求める `LocateFolder`（[data-model.md §2](data-model.md#2-割り当ての規則)）、`rebuildFolderIndex` と4つの作り直しの時点（スキャンを閉じる前・メディアフォルダの変更・
 例外の変更・起動時の版・中断したスキャンの回復）、`FolderGroupStore` の例外の設定と解除。
 ARCHITECTURE.md の「スキャンの後に全体を読まない」の記述（と `internal/app/scans.go` の注記）、
@@ -275,6 +288,7 @@ ARCHITECTURE.md の「スキャンの後に全体を読まない」の記述（�
 **Acceptance**: store と httpapi のテストが、受け入れ条件 6・7・8（シノニムの登録で再スキャンなしに付く）と
 Edge Cases（タグの削除・統合がすぐ効く、同名のフォルダが別の場所にある、複数の所在の祖先を両方使う）を
 確かめて通る。取り外しの経路で外れるのが手で付けた分だけであること（受け入れ条件 9 のサーバー側）を
+テストが確かめる。ゲストの `Video.tags` が空のままで、ゲストの検索がフォルダ名のタグに当たらないことを
 テストが確かめる。`task check` が通る。
 
 ### ライブラリの一覧でグループを1件として動画と混ぜて返す API を足す
@@ -289,8 +303,10 @@ Edge Cases（タグの削除・統合がすぐ効く、同名のフォルダが�
 
 **Acceptance**: store と httpapi のテストが、受け入れ条件 1・2・10（13 種類の並び順（`VideoSort`）とシャッフルで項目が
 要件 18 の値で並び、`total` が項目の数と一致し、ページをまたいで重複と抜けが無い）・11・12（視聴状態と
-その絞り込み）・14 の開くメンバー、`ids` がグループの全メンバーを含むことを確かめて通る。
-`task check` が通る。
+その絞り込み）・14 の開くメンバー、`ids` がグループの全メンバーを含むことを確かめて通る。ゲストでは
+公開のメンバーだけで数えた項目になり、公開のメンバーが1本のグループが動画の項目になり、`watch`・played の並び・
+`tag` が 400 になり、`GET /api/library/ids` が 401 になることをテストが確かめる。認証の境界の分類のテストが
+新しい経路の `security` と一致して通る。`task check` が通る。
 
 ### フォルダの例外の付け外しと、グループをタグに変える操作を API で公開する
 
@@ -304,7 +320,8 @@ Edge Cases（タグの削除・統合がすぐ効く、同名のフォルダが�
 **Acceptance**: httpapi のテストが、受け入れ条件 3・4・5 のサーバー側（例外の直後の `GET /api/library` の
 項目、タグ化の後にメンバーが単体に戻りそれぞれにタグが付く、同名のタグやシノニムがあればそれを使う）、
 タグ名に使えないフォルダ名で 400 になり例外もタグも増えないこと、グループでないフォルダのタグ化が
-409 になること、登録フォルダそのもののタグ化が 409 になることを確かめて通る。`openapi_routes_test.go` が通る。`task check` が通る。
+409 になること、登録フォルダそのもののタグ化が 409 になること、ゲストの2つの変更の経路が 401 になり
+ゲストの `FolderSummary` に `grouping` が入らないことを確かめて通る。`openapi_routes_test.go` が通る。`task check` が通る。
 
 ### 動画と関連動画の応答にグループを載せ、前後をグループの中の並びにする
 
@@ -316,7 +333,8 @@ Edge Cases（タグの削除・統合がすぐ効く、同名のフォルダが�
 
 **Acceptance**: `internal/app` と httpapi のテストが、メンバーの応答にグループの全メンバーが並びの順で
 入ること、最初のメンバーに `prevId` が無く最後のメンバーに `nextId` が無いこと、`items` に同じグループの
-メンバーが無いこと、グループに属さない動画の応答が変わらないことを確かめて通る。`task check` が通る。
+メンバーが無いこと、グループに属さない動画の応答が変わらないこと、ゲストでは `group` と前後が公開のメンバー
+だけで作られ、公開のメンバーが1本なら `group` が無いことを確かめて通る。`task check` が通る。
 
 ### 画面の一覧の保持の項目を、動画とグループの両方を運べる形にそろえる
 
@@ -342,7 +360,8 @@ Decisions 13）、フォルダ画面の応答と、切り替え前のライブ�
 
 **Acceptance**: 画面が変わる単位で、実装で視覚・操作・支援技術を確かめる。Vitest が、受け入れ条件 1・2・
 12（再生から戻るとカードの視聴状態と本数が変わる）・13・14（押すと開くメンバーの再生画面へ移る）と、
-カードの支援技術向けの名前にグループであることと本数が入ることを確かめて通る。フォルダ画面の一覧と
+カードの支援技術向けの名前にグループであることと本数が入ること、ゲストのグループのカードに視聴状態と
+見終えた本数が出ないことを確かめて通る。フォルダ画面の一覧と
 ルートの検索結果が今のまま1本ずつ出ること（受け入れ条件 18）をテストが確かめる。`GET /api/videos/ids` を
 消したあとの Go のテストと `openapi_routes_test.go` を含めて `task check` が通る。
 
@@ -371,8 +390,8 @@ Decisions 13）、フォルダ画面の応答と、切り替え前のライブ�
 ライブラリでグループを1枚のカードで出し、押すと続きのメンバーから再生する
 
 **Acceptance**: 画面が変わる単位で、実装で視覚・操作・支援技術を確かめる。Vitest が、受け入れ条件 3・4・5 の
-画面側（操作の直後にライブラリへ戻ると再スキャンなしにカードが変わる）と、タグ化の失敗を伝えることを
-確かめて通る。`task check` が通る。
+画面側（操作の直後にライブラリへ戻ると再スキャンなしにカードが変わる）と、タグ化の失敗を伝えること、
+ゲストにはこれらの操作が出ないことを確かめて通る。`task check` が通る。
 
 ### フォルダ由来のタグを手で付けたタグと区別して出し、選択バーでは手で付けた分だけを外す
 

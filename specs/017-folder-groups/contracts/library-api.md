@@ -5,6 +5,11 @@
 [014 の tags-api.md §5](../../014-video-tags/contracts/tags-api.md) に従う。問い合わせの中身は
 [data-model.md §5](../data-model.md#5-ライブラリの項目)。
 
+経路ごとの「だれが使えるか」（`security`）は `GET /api/videos` と同じ扱いに合わせる。`GET /api/library` と
+グループ1件は所有者とゲスト（`security` に `{}` を含める）、`GET /api/library/ids` は所有者だけ（今の
+`listVideoIds` と同じ）。ゲストへの応答の差は [data-model.md §7](../data-model.md#7-見る人ごとの見え方) と
+[016 guest-api.md](../../016-single-account-auth/contracts/guest-api.md) に従う（`watch`・played の並び・`tag` は 400）。
+
 `GET /api/videos` は1本ずつの一覧のまま変えない（フォルダ画面のルートの検索結果が使う）。
 `GET /api/videos/ids` は、ライブラリを `GET /api/library/ids` に切り替える単位で消す。
 
@@ -30,8 +35,8 @@ LibraryItem:
     group: { $ref: LibraryGroup }   # kind = group のときだけ
 
 LibraryGroup:
-  required: [folder, name, videoCount, watchedCount, watchState, sizeBytes, addedAt,
-             cover, openVideoId, videoIds, tags]
+  required: [folder, name, videoCount, sizeBytes, addedAt, cover, openVideoId, videoIds, tags]
+  # watchedCount・watchState は所有者の応答では必ず入り、ゲストでは省く（data-model.md §7）
   properties:
     folder: { $ref: VideoFolder }   # グループのフォルダ。これがグループを指す鍵
     name: { type: string }
