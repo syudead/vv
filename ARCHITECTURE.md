@@ -234,7 +234,11 @@ compile:
 - `SettingsStore` — registering, replacing and removing media folders, rebuilding the
   folder index in the same transaction.
 - `FolderGroupStore` — setting and clearing a folder's grouping exception (`ungroup`,
-  `group_direct`) and rebuilding the folder index in the same transaction. The rebuild
+  `group_direct`), turning a folder's group into a tag (finding or creating the tag by
+  name or synonym and writing `ungroup`), each rebuilding the folder index in the same
+  transaction, and reading folders' groupings for `FolderSummary.grouping`. The tag
+  lookup and creation are the package-private `findOrCreateTag` and `insertTag`
+  (`internal/store/tags.go`), shared with `TagStore`. The rebuild
   itself is the package-private `rebuildFolderIndex`, shared by `ScanIndexStore`,
   `SettingsStore` and `FolderGroupStore`; the assignment rule is the pure
   `domain.BuildFolderIndex` (`specs/017-folder-groups/data-model.md` §2).
