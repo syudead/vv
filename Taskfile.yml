@@ -48,6 +48,11 @@ tasks:
     cmds:
       - go run ./scripts/dev
 
+  preview:
+    desc: Build vv and run it with generated sample videos (used by Codespaces).
+    cmds:
+      - go run ./scripts/preview
+
   build:
     desc: Build the SPA and the single Go binary.
     cmds:
