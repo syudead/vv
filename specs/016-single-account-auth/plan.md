@@ -55,7 +55,7 @@ HTTP の差分は [contracts/auth-api.md](contracts/auth-api.md)、ゲストへ�
   tech-stack-selection.md のその行を実装で直す。
 - 追加する依存: `golang.org/x/crypto`（`argon2`。選定済み）と `golang.org/x/term`
   （コマンドでパスワードをエコーせずに読む）。Web の依存は足さない。
-- マイグレーションを2つ足す（`00009_auth.sql`・`00010_public_videos.sql`、
+- マイグレーションを2つ足す（`00010_auth.sql`・`00011_public_videos.sql`、
   [data-model.md §1](data-model.md#1-マイグレーション)）。
 - 環境変数を1つ足す: `MDM_TRUSTED_PROXIES`（Structural Decisions 7）。
 - HTTP でも全機能が動くよう、HTTPS を前提にする仕組み（Secure だけの Cookie、
@@ -268,8 +268,8 @@ HTTPS で公開するための手順は、実装で運用文書（`docs/how-to/r
   `docs/design-docs/tech-stack-selection.md`・`compose.yaml`
 
 **New paths**: `internal/domain/auth.go`・`internal/password/`・`internal/store/auth.go`・
-`internal/store/visibility.go`・`internal/store/migrations/00009_auth.sql`・
-`internal/store/migrations/00010_public_videos.sql`・`internal/app/auth.go`・
+`internal/store/visibility.go`・`internal/store/migrations/00010_auth.sql`・
+`internal/store/migrations/00011_public_videos.sql`・`internal/app/auth.go`・
 `internal/httpapi/auth.go`・`internal/httpapi/visibility.go`・`internal/httpapi/client_origin.go`・
 `cmd/mdm/account.go`・`web/src/api/auth.ts`・`web/src/auth/`・`web/e2e/auth.e2e.ts`・
 `web/e2e/guest.e2e.ts`（それぞれ対応する test を含む）
@@ -302,7 +302,7 @@ PHC 文字列は誤りになる。戻り先は `/videos/1?t=2` を保ち、`//ev
 
 ### アカウントとログインセッションを SQLite に保存する
 
-**Scope**: マイグレーション `00009_auth.sql` と役割の型 `AuthStore` を足す
+**Scope**: マイグレーション `00010_auth.sql` と役割の型 `AuthStore` を足す
 （[data-model.md](data-model.md) の §1・§4・§5）。初回設定（アカウントと最初のセッションを
 1つの取引で作る）、ユーザー名とパスワードの変更、アカウントの読み出し、セッションの追加・
 有効性の確認・削除・期限切れの掃除を持つ。`ARCHITECTURE.md` の役割の型の一覧とデータの
@@ -320,7 +320,7 @@ PHC 文字列は誤りになる。戻り先は `/videos/1?t=2` を保ち、`//ev
 
 ### 公開フラグを保存し、ゲストには公開の動画だけを返す問い合わせにする
 
-**Scope**: マイグレーション `00010_public_videos.sql`（[data-model.md §1](data-model.md#1-マイグレーション)）と、
+**Scope**: マイグレーション `00011_public_videos.sql`（[data-model.md §1](data-model.md#1-マイグレーション)）と、
 公開・非公開の一括の切り替え（[data-model.md §5](data-model.md#5-書き換えの規則)）を足す。動画・所在・フォルダを返す
 `LibraryStore` の読み出しに `domain.Audience` を足し、ゲストでは公開の条件を一覧の
 問い合わせの組み立てに入れる（Structural Decisions 11、[data-model.md §3](data-model.md#3-見る人と公開の動画の条件)）。

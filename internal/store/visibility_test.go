@@ -552,7 +552,7 @@ func TestGuestReadsFailWhenVisibilityCannotBeRead(t *testing.T) {
 	}
 }
 
-// 00010 の Up は public_videos を作り、Down は落とす。
+// 00011 の Up は public_videos を作り、Down は落とす。
 func TestPublicVideosMigrationDown(t *testing.T) {
 	db := migratedDB(t)
 	tableCount := func() int {
@@ -567,7 +567,7 @@ func TestPublicVideosMigrationDown(t *testing.T) {
 	if tableCount() != 1 {
 		t.Fatal("public_videos が無い")
 	}
-	downTo(t, db, 9)
+	downTo(t, db, 10)
 	if tableCount() != 0 {
 		t.Error("Down の後に public_videos が残っている")
 	}

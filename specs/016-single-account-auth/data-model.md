@@ -9,9 +9,9 @@
 
 ## 1. マイグレーション
 
-2つ足す。`main` にある最後のマイグレーションは `00008_tags.sql` である。
+2つ足す。`main` にある最後のマイグレーションは `00009_display_aspect_ratio.sql` である。
 
-`00009_auth.sql`:
+`00010_auth.sql`:
 
 ```sql
 -- 唯一のアカウント。行が無ければ「未設定」、あれば「設定済み」である（要件 2）。
@@ -41,7 +41,7 @@ create table sessions (
 create index sessions_expires_at on sessions (expires_at);
 ```
 
-`00010_public_videos.sql`:
+`00011_public_videos.sql`:
 
 ```sql
 -- 公開フラグ。行があれば公開、無ければ非公開（既定）である（要件 15）。
