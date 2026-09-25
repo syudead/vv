@@ -6,7 +6,6 @@ import {
   expect,
   test,
   type APIRequestContext,
-  type Browser,
   type Page,
   type Request,
 } from "@playwright/test";
@@ -161,7 +160,10 @@ async function hoverAndWaitForPlayback(page: Page, item: Video) {
   const preview = card(page, item).locator("video");
   await expect(preview).toHaveCount(1, { timeout: 5_000 });
   await expect
-    .poll(() => preview.evaluate((element) => element.currentTime), { timeout: 10_000 })
+    .poll(
+      () => preview.evaluate((element) => (element as HTMLVideoElement).currentTime),
+      { timeout: 10_000 },
+    )
     .toBeGreaterThan(0.1);
   return preview;
 }
@@ -170,8 +172,9 @@ async function seekPreviewFrame(preview: ReturnType<Page["locator"]>, seconds: n
   await preview.evaluate(
     (element, target) =>
       new Promise<void>((resolve) => {
-        element.addEventListener("seeked", () => resolve(), { once: true });
-        element.currentTime = target;
+        const video = element as HTMLVideoElement;
+        video.addEventListener("seeked", () => resolve(), { once: true });
+        video.currentTime = target;
       }),
     seconds,
   );
@@ -272,9 +275,13 @@ test.describe.serial("library hover preview", () => {
 
     const firstPreview = card(page, first).locator("video");
     await expect(firstPreview).toHaveCount(1, { timeout: 5_000 });
-    const firstTime = await firstPreview.evaluate((element) => element.currentTime);
+    const firstTime = await firstPreview.evaluate(
+      (element) => (element as HTMLVideoElement).currentTime,
+    );
     await expect
-      .poll(() => firstPreview.evaluate((element) => element.currentTime))
+      .poll(() =>
+        firstPreview.evaluate((element) => (element as HTMLVideoElement).currentTime),
+      )
       .toBeGreaterThan(firstTime + 0.1);
     await expect(card(page, first).getByText("読み取れませんでした")).toHaveCount(0);
 
@@ -461,7 +468,9 @@ test.describe.serial("library hover preview", () => {
       expect(seconds).toBeLessThanOrEqual(0.001);
     }
     await expect
-      .poll(() => preview.evaluate((element) => element.currentTime))
+      .poll(() =>
+        preview.evaluate((element) => (element as HTMLVideoElement).currentTime),
+      )
       .toBeGreaterThan(0.1);
   });
 

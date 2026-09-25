@@ -41,7 +41,7 @@ export default function RootView() {
   );
   const heading = useArrival(restored !== undefined);
   const roots = useRootFolders();
-  const folders = roots.data?.folders ?? [];
+  const folders = useMemo(() => roots.data?.folders ?? [], [roots.data?.folders]);
   // パンくずと同じ規則（rootDisplayName）で表示名を作る。サーバーの
   // FolderSummary.name も同じ結果になるが、揺らさないよう1か所にそろえる。
   const rootNames = useMemo(
@@ -58,9 +58,10 @@ export default function RootView() {
 
   // 取り込みが終わったら登録フォルダの集計を読み直す（Edge Case「取り込み中」）。
   const scan = useScan();
+  const { refresh: refreshScan } = scan;
   const knownScanId = useRef(scan.finished?.id);
   const { reload } = roots;
-  useEffect(() => scan.refresh(), [scan.refresh]);
+  useEffect(() => refreshScan(), [refreshScan]);
   useEffect(() => {
     const finished = scan.finished;
     if (finished === null || knownScanId.current === finished.id) return;
