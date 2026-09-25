@@ -1,9 +1,10 @@
 // Package app はユースケース（アプリケーション層）を保持する。
 //
 // 走査の開始と実行、取り込みの各ジョブの処理、動画1件の応答に要る判断と
-// 関連動画の組み立てがここにある。保存・外部コマンド・生成物の操作は、この
-// パッケージが宣言する interface 越しに使い、どの実装が渡されるかは cmd/mdm が
-// 決める。そのため net/http・database/sql・os/exec・SQLite ドライバと、
+// 関連動画の組み立て、初回設定・ログイン・試行制限・セッションの確認がここにある。
+// 保存・外部コマンド・生成物の操作は、このパッケージが宣言する interface 越しに
+// 使い、どの実装が渡されるかは cmd/mdm が決める。そのため net/http・
+// database/sql・os/exec・SQLite ドライバと、
 // internal/ 配下のアダプタ（httpapi・store・media・artifacts・opener・scanner・jobs）と
 // 変化の配り先（eventbus）の import は禁止されている。この禁止は
 // .golangci.yml の depguard で機械的に強制される。
