@@ -230,6 +230,29 @@ describe("VideoTags", () => {
     expect(document.activeElement).toBe(nextButton);
   });
 
+  // フォルダ名からも付いているタグは、手で付けた分を外してもチップが残る。
+  // チップが消えるのを待たず、外れた時点でフォーカスを次のチップへ移す。
+  it("フォルダ名からも付いているタグを外すと、チップが残っても次のチップへフォーカスを移す", async () => {
+    install();
+    server.attachDelay = () => undefined;
+    renderTags(7, [
+      { id: 2, name: "Anime", manual: true, fromFolder: true },
+      { id: 1, name: "旅行", manual: true, fromFolder: false },
+    ]);
+
+    const removeButton = await screen.findByRole("button", {
+      name: "Animeをこの動画から外す",
+    });
+    const nextButton = screen.getByRole("button", { name: "旅行をこの動画から外す" });
+    fireEvent.click(removeButton);
+    await waitFor(() => expect((removeButton as HTMLButtonElement).disabled).toBe(true));
+    expect(document.activeElement).not.toBe(nextButton);
+
+    act(() => server.attachDelay?.());
+    await waitFor(() => expect(document.activeElement).toBe(nextButton));
+    expect(screen.getByTitle("Anime")).toBeDefined();
+  });
+
   it("応答を待つ間に打った次の名前は、先の付与の成功で消さない", async () => {
     const user = userEvent.setup();
     install();

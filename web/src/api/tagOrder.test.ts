@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { VideoTag } from "./client";
-import { applyTagToTags, compareNatural, compareTagRefs } from "./tagOrder";
+import {
+  applyTagToTags,
+  compareNatural,
+  compareTagRefs,
+  tagsReflectChange,
+} from "./tagOrder";
 
 describe("compareNatural", () => {
   it("数字の連続を数値として比べる（2話 < 10話）", () => {
@@ -101,5 +106,21 @@ describe("applyTagToTags", () => {
     const result = applyTagToTags(tags, { id: 99, name: "無関係" }, "remove");
     expect(result).toEqual(tags);
     expect(result).not.toBe(tags);
+  });
+});
+
+describe("tagsReflectChange", () => {
+  const folderOnly: VideoTag = { id: 1, name: "Anime", manual: false, fromFolder: true };
+  const both: VideoTag = { id: 1, name: "Anime", manual: true, fromFolder: true };
+
+  it("フォルダ名からだけ付いている行は、手で付けた結果をまだ映していない", () => {
+    expect(tagsReflectChange([folderOnly], 1, "add")).toBe(false);
+    expect(tagsReflectChange([both], 1, "add")).toBe(true);
+  });
+
+  it("手で外した結果は、フォルダ名からの行が残っていても映している", () => {
+    expect(tagsReflectChange([both], 1, "remove")).toBe(false);
+    expect(tagsReflectChange([folderOnly], 1, "remove")).toBe(true);
+    expect(tagsReflectChange([], 1, "remove")).toBe(true);
   });
 });

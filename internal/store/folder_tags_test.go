@@ -257,3 +257,24 @@ func TestSearchMatchesFolderTagNamesForOwnerOnly(t *testing.T) {
 		t.Errorf("ゲストの検索 = %v, want なし", got)
 	}
 }
+
+// 既存のフォルダと同じ名前のタグを作ると、作成の応答の本数にもフォルダ由来の
+// 動画が入り、続く一覧の本数と食い違わない。
+func TestCreateTagCountsVideosUnderSameNamedFolder(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	upsertFolderVideo(t, db, "/media/Anime/1.mp4", "k1")
+	upsertFolderVideo(t, db, "/media/Drama/1.mp4", "k2")
+	rebuildIndexForTest(t, db)
+
+	tag, err := db.Tags().CreateTag(ctx, "Anime")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tag.VideoCount != 1 {
+		t.Errorf("CreateTag().VideoCount = %d, want 1", tag.VideoCount)
+	}
+	if got := tagVideoCount(t, db, tag.ID); got != tag.VideoCount {
+		t.Errorf("一覧の本数 = %d, 作成の応答 = %d", got, tag.VideoCount)
+	}
+}

@@ -59,11 +59,17 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 	if err := insertTagName(ctx, tx, normalized, id, true); err != nil {
 		return domain.Tag{}, err
 	}
+	// 作ったばかりのタグでも、同じ名前の祖先フォルダの下の動画にはもう付いて
+	// いる（017 の data-model.md §4）ので、本数は数える。
+	count, err := videoCountByTagID(ctx, tx, id)
+	if err != nil {
+		return domain.Tag{}, err
+	}
 
 	if err := tx.Commit(); err != nil {
 		return domain.Tag{}, fmt.Errorf("タグを作成できません: %w", err)
 	}
-	return domain.Tag{ID: id, Name: normalized, Synonyms: []string{}, VideoCount: 0}, nil
+	return domain.Tag{ID: id, Name: normalized, Synonyms: []string{}, VideoCount: count}, nil
 }
 
 // RenameTag は id の元の名前を書き換える。今と同じ名前なら何も変えずに今の

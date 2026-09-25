@@ -105,3 +105,18 @@ export function applyTagToTags(
   const at = insertAt === -1 ? withoutExisting.length : insertAt;
   return [...withoutExisting.slice(0, at), added, ...withoutExisting.slice(at)];
 }
+
+/**
+ * tagsReflectChange は、動画の `tags` がすでに付け外しの結果を映しているかを
+ * 返す。付け外しが変えるのは手で付けた分（`manual`）だけなので、同じ id の行が
+ * あるかではなく、その行の `manual` で判断する。フォルダ名からだけ付いている行
+ * （`manual: false`）は、手で付けた結果をまだ映していない。
+ */
+export function tagsReflectChange(
+  tags: readonly VideoTag[],
+  tagId: number,
+  action: "add" | "remove",
+): boolean {
+  const manual = tags.some((tag) => tag.id === tagId && tag.manual);
+  return manual === (action === "add");
+}
