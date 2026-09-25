@@ -51,15 +51,20 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	}
 
 	roots := s.registeredRoots(r.Context())
-	var videos []domain.Video
+	// 再生位置は動画の項目とグループの cover にだけ載せる。グループの視聴の値は保存層が
+	// 決めているので、全メンバーの再生位置は引かない（ページのメンバーが多いと引数の
+	// 上限に掛かる）。タグは全メンバーの和集合を載せるので、全メンバーを引く。
+	var shown, tagged []domain.Video
 	for _, item := range page.Items {
 		if item.Video != nil {
-			videos = append(videos, *item.Video)
+			shown = append(shown, *item.Video)
+			tagged = append(tagged, *item.Video)
 		} else {
-			videos = append(videos, item.Group.Members...)
+			shown = append(shown, item.Group.Members[0])
+			tagged = append(tagged, item.Group.Members...)
 		}
 	}
-	lookup := s.itemLookups(r.Context(), videos)
+	lookup := s.itemLookups(r.Context(), shown, tagged)
 
 	payload := gen.LibraryPage{Items: make([]gen.LibraryItem, 0, len(page.Items)), Total: page.Total}
 	for _, item := range page.Items {
@@ -129,7 +134,7 @@ func (s *server) GetFolderGroup(w http.ResponseWriter, r *http.Request, rootID g
 		return
 	}
 
-	payload, ok := s.itemLookups(r.Context(), group.Members).group(r.Context(), audience, roots, group)
+	payload, ok := s.itemLookups(r.Context(), group.Members[:1], group.Members).group(r.Context(), audience, roots, group)
 	if !ok {
 		s.notFound(w, "そのフォルダはグループではありません")
 		return
@@ -145,10 +150,10 @@ type itemLookup struct {
 	tags     map[string][]domain.VideoTag
 }
 
-// itemLookups は動画たちの再生位置とタグをまとめて引く。ゲストには読まない
-// （progressFor・tagsFor と同じ）。
-func (s *server) itemLookups(ctx context.Context, videos []domain.Video) itemLookup {
-	return itemLookup{s: s, progress: s.progressFor(ctx, videos), tags: s.tagsFor(ctx, videos)}
+// itemLookups は、応答に載せる動画（shown）の再生位置と、tagged のタグをまとめて引く。
+// ゲストには読まない（progressFor・tagsFor と同じ）。
+func (s *server) itemLookups(ctx context.Context, shown, tagged []domain.Video) itemLookup {
+	return itemLookup{s: s, progress: s.progressFor(ctx, shown), tags: s.tagsFor(ctx, tagged)}
 }
 
 // video は動画の項目を応答の形にする。一覧（writeVideoPage）と同じく、再生位置・タグ・
