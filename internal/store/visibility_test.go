@@ -22,11 +22,11 @@ var (
 // setPublic は公開フラグを切り替え、反映した本数を返す。
 func setPublic(t *testing.T, db *DB, public bool, ids ...int64) int {
 	t.Helper()
-	applied, err := db.Visibility().SetVideosPublic(context.Background(), ids, public)
+	keys, err := db.Visibility().SetVideosPublic(context.Background(), ids, public)
 	if err != nil {
 		t.Fatalf("公開フラグを切り替えられない: %v", err)
 	}
-	return applied
+	return len(keys)
 }
 
 // visibilityFixture は公開と非公開の動画を混ぜた索引を作る。

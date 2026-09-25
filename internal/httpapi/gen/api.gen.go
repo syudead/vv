@@ -654,6 +654,10 @@ type Video struct {
 	ProbeState VideoProbeState `json:"probeState"`
 	Progress   *Progress       `json:"progress,omitempty"`
 
+	// Public 公開の動画か。公開の動画はログインしていない人にも見える
+	// （specs/016-single-account-auth/contracts/guest-api.md §4）
+	Public bool `json:"public"`
+
 	// SeekThumbnailState シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
 	// seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
 	// pending = 置き場が無く thumbnailState = pending かサムネイルのジョブが
@@ -798,6 +802,19 @@ type VideoTagsSummaryItem struct {
 // VideoTagsSummaryRequest defines model for VideoTagsSummaryRequest.
 type VideoTagsSummaryRequest struct {
 	VideoIds []int64 `json:"videoIds"`
+}
+
+// VideoVisibilityRequest defines model for VideoVisibilityRequest.
+type VideoVisibilityRequest struct {
+	// Public true で公開、false で非公開にする
+	Public   bool    `json:"public"`
+	VideoIds []int64 `json:"videoIds"`
+}
+
+// VideoVisibilityResponse defines model for VideoVisibilityResponse.
+type VideoVisibilityResponse struct {
+	// Applied videoIds のうちいまライブラリにある動画の数（既に同じ状態だったものを含む）
+	Applied int `json:"applied"`
 }
 
 // WatchFilter 視聴状態の絞り込み。all = 絞り込まない、unwatched = 未視聴、inProgress = 視聴途中、
@@ -1004,6 +1021,9 @@ type UpdateVideoTagsJSONRequestBody = VideoTagsRequest
 // SummarizeVideoTagsJSONRequestBody defines body for SummarizeVideoTags for application/json ContentType.
 type SummarizeVideoTagsJSONRequestBody = VideoTagsSummaryRequest
 
+// UpdateVideoVisibilityJSONRequestBody defines body for UpdateVideoVisibility for application/json ContentType.
+type UpdateVideoVisibilityJSONRequestBody = VideoVisibilityRequest
+
 // PutVideoProgressJSONRequestBody defines body for PutVideoProgress for application/json ContentType.
 type PutVideoProgressJSONRequestBody = ProgressUpdate
 
@@ -1087,6 +1107,9 @@ type ServerInterface interface {
 	// SummarizeVideoTags 選んだ動画に付いたタグの要約を返す
 	// (POST /api/video-tags/summary)
 	SummarizeVideoTags(w http.ResponseWriter, r *http.Request)
+	// UpdateVideoVisibility 動画の公開・非公開を切り替える
+	// (PUT /api/video-visibility)
+	UpdateVideoVisibility(w http.ResponseWriter, r *http.Request)
 	// ListVideos 動画の一覧を返す
 	// (GET /api/videos)
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
@@ -1812,6 +1835,20 @@ func (siw *ServerInterfaceWrapper) SummarizeVideoTags(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateVideoVisibility operation middleware
+func (siw *ServerInterfaceWrapper) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateVideoVisibility(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListVideos operation middleware
 func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Request) {
 
@@ -2496,6 +2533,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/{id}/synonyms", wrapper.AddTagSynonym)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)

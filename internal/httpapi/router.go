@@ -171,6 +171,8 @@ type Options struct {
 	MediaFolders MediaFolders
 	// Tags はタグの取得と個別操作。nilなら該当経路は500を返す。
 	Tags Tags
+	// Visibility は動画の公開フラグの保存先。nilなら切り替えの経路は500を返す。
+	Visibility Visibility
 	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
 	Folders Folders
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
@@ -220,6 +222,7 @@ type server struct {
 	scans        Scans
 	mediaFolders MediaFolders
 	tags         Tags
+	visibility   Visibility
 	folders      Folders
 	transcoder   Transcoder
 	artifacts    ArtifactReader
@@ -231,7 +234,9 @@ type server struct {
 	logger       *slog.Logger
 	auth         Authenticator
 	sessions     *sessionLedger
-	now          func() time.Time
+	// guests はゲストとして処理中の配信の応答を content_key ごとに覚える（visibility.go）。
+	guests *guestLedger
+	now    func() time.Time
 	// trustedProxies は転送ヘッダーを信じてよい直接の接続元である。
 	trustedProxies trustedProxies
 }
@@ -269,6 +274,7 @@ func NewRouter(opts Options) http.Handler {
 		scans:        opts.Scans,
 		mediaFolders: opts.MediaFolders,
 		tags:         opts.Tags,
+		visibility:   opts.Visibility,
 		folders:      opts.Folders,
 		transcoder:   opts.Transcoder,
 		artifacts:    opts.Artifacts,
@@ -280,6 +286,7 @@ func NewRouter(opts Options) http.Handler {
 		logger:       logger,
 		auth:         opts.Auth,
 		sessions:     newSessionLedger(opts.SessionRecheck, logger),
+		guests:       newGuestLedger(),
 		now:          opts.Now,
 		// 呼び出し側が後から書き換えても判定が変わらないよう写しを持つ。
 		trustedProxies: slices.Clone(opts.TrustedProxies),
@@ -374,6 +381,9 @@ func requiresJSONBody(r *http.Request) bool {
 			return found && rest != "" && !strings.Contains(rest, "/")
 		}
 	case http.MethodPut:
+		if r.URL.Path == "/api/video-visibility" {
+			return true
+		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/media-folders/"); ok {
 			return id != "" && !strings.Contains(id, "/")
 		}

@@ -11,10 +11,13 @@ import (
 func (s *server) GetVideoPreview(
 	w http.ResponseWriter, r *http.Request, id gen.VideoId, _ gen.GetVideoPreviewParams,
 ) {
-	video, ok := s.lookupVideo(w, r, id)
+	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる
+	// （contracts/guest-api.md §6）。
+	video, r, release, ok := s.lookupServedVideo(w, r, id)
 	if !ok {
 		return
 	}
+	defer release()
 
 	if video.PreviewState != domain.PreviewStateDone || s.artifacts == nil {
 		s.notFound(w, "プレビューはまだ生成されていません")
