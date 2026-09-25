@@ -32,8 +32,7 @@ describe("useZoomAnchor", () => {
 
   it("倍率を変える前に上端にあったカードを、変えた後も上端へ戻す", () => {
     let scrollY = 500;
-    vi.stubGlobal("scrollY", scrollY);
-    Object.defineProperty(window, "scrollY", { configurable: true, get: () => scrollY });
+    vi.spyOn(window, "scrollY", "get").mockImplementation(() => scrollY);
     const scrollTo = vi.fn((options: ScrollToOptions) => {
       scrollY = options.top ?? scrollY;
     });
@@ -59,7 +58,7 @@ describe("useZoomAnchor", () => {
   });
 
   it("一番上にいるときは位置を動かさない", () => {
-    Object.defineProperty(window, "scrollY", { configurable: true, get: () => 0 });
+    vi.spyOn(window, "scrollY", "get").mockReturnValue(0);
     const scrollTo = vi.fn();
     vi.stubGlobal("scrollTo", scrollTo);
     let change: (zoom: Zoom) => void = () => undefined;

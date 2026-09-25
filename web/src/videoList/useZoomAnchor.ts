@@ -13,12 +13,28 @@ function topOffset(): number {
   );
 }
 
-/** topmostIndex は画面上端に最も近いカードが、一覧の中で何番目かを返す。 */
-function topmostIndex(list: HTMLElement | null, top: number): number | undefined {
+/**
+ * Anchor は目印にしたカードである。動画のカードは id で探し直し、フォルダのカード
+ * （最上位では path が重なる）は一覧の中の順番で探し直す。
+ */
+type Anchor = { videoId: string } | { index: number };
+
+/** topmostAnchor は画面上端に最も近いカードを返す。 */
+function topmostAnchor(list: HTMLElement | null, top: number): Anchor | undefined {
   if (list === null) return undefined;
   const cards = Array.from(list.querySelectorAll<HTMLElement>(ANCHOR_SELECTOR));
   const index = cards.findIndex((card) => card.getBoundingClientRect().bottom > top);
-  return index < 0 ? undefined : index;
+  if (index < 0) return undefined;
+  const videoId = cards[index]?.dataset.videoId;
+  return videoId === undefined ? { index } : { videoId };
+}
+
+function findAnchor(list: HTMLElement | null, anchor: Anchor): Element | undefined {
+  if (list === null) return undefined;
+  if ("videoId" in anchor) {
+    return list.querySelector(`[data-video-id="${anchor.videoId}"]`) ?? undefined;
+  }
+  return list.querySelectorAll(ANCHOR_SELECTOR)[anchor.index];
 }
 
 /**
@@ -28,18 +44,18 @@ function topmostIndex(list: HTMLElement | null, top: number): number | undefined
  */
 export function useZoomAnchor(zoom: Zoom) {
   const listRef = useRef<HTMLDivElement | null>(null);
-  const anchor = useRef<number | undefined>(undefined);
+  const anchor = useRef<Anchor | undefined>(undefined);
 
   const capture = useCallback(() => {
     anchor.current =
-      window.scrollY > 0 ? topmostIndex(listRef.current, topOffset()) : undefined;
+      window.scrollY > 0 ? topmostAnchor(listRef.current, topOffset()) : undefined;
   }, []);
 
   useLayoutEffect(() => {
-    const index = anchor.current;
-    if (index === undefined) return;
+    const current = anchor.current;
+    if (current === undefined) return;
     anchor.current = undefined;
-    const target = listRef.current?.querySelectorAll(ANCHOR_SELECTOR)[index];
+    const target = findAnchor(listRef.current, current);
     if (target === undefined) return;
     const top = window.scrollY + target.getBoundingClientRect().top - topOffset() - 8;
     window.scrollTo({ top: Math.max(top, 0), behavior: "auto" });
