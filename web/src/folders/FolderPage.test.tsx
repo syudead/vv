@@ -16,6 +16,7 @@ import { clearListSnapshot } from "../api/listSnapshot";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
+import FolderCard from "./FolderCard";
 import FolderPage from "./FolderPage";
 
 function summary(extra: Partial<FolderSummary>): FolderSummary {
@@ -353,6 +354,80 @@ describe("FolderPage", () => {
     expect(five?.querySelectorAll("img").length).toBe(4);
     expect(deeper?.querySelectorAll("img").length).toBe(0);
     expect(deeper?.textContent).toContain("動画 0 本");
+  });
+
+  it("フォルダの絵柄の上でマウスを横に動かすと、位置に応じたサムネイルを前に出す", async () => {
+    const { container } = renderFolders("/folders/3");
+    await screen.findByRole("link", { name: "five、動画 6 本、フォルダ 0 件" });
+    const art = container.querySelector<HTMLElement>(
+      '[data-folder-path="five"] [data-folder-art]',
+    );
+    if (art === null) throw new Error("folder art not found");
+    art.getBoundingClientRect = () => new DOMRect(100, 0, 200, 100);
+    const front = () => art.querySelector("[data-folder-front]");
+
+    fireEvent.pointerMove(art, { pointerType: "touch", clientX: 290 });
+    expect(front()).toBeNull();
+
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 110 });
+    expect(art.querySelectorAll("[data-folder-front]").length).toBe(1);
+    expect(front()?.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/videos/1/thumbnail?v=x",
+    );
+
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 290 });
+    expect(front()?.querySelector("img")?.getAttribute("src")).toBe(
+      "/api/videos/4/thumbnail?v=x",
+    );
+
+    fireEvent.pointerLeave(art);
+    expect(front()).toBeNull();
+  });
+
+  it("1件だけのフォルダでも、マウスを乗せるとサムネイルを前に出す", () => {
+    const one = summary({
+      path: "one",
+      name: "one",
+      videoCount: 1,
+      previews: previews(1),
+    });
+    const { container } = render(
+      <MemoryRouter>
+        <FolderCard folder={one} showPath={false} />
+      </MemoryRouter>,
+    );
+    const art = container.querySelector<HTMLElement>("[data-folder-art]");
+    if (art === null) throw new Error("folder art not found");
+    art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 150 });
+    expect(art.querySelector("[data-folder-front]")).not.toBeNull();
+  });
+
+  it("下見の位置がプレビューの件数を超えたら、下見をやめる", () => {
+    const four = summary({
+      path: "four",
+      name: "four",
+      videoCount: 4,
+      previews: previews(4),
+    });
+    const { container, rerender } = render(
+      <MemoryRouter>
+        <FolderCard folder={four} showPath={false} />
+      </MemoryRouter>,
+    );
+    const art = container.querySelector<HTMLElement>("[data-folder-art]");
+    if (art === null) throw new Error("folder art not found");
+    art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+    fireEvent.pointerMove(art, { pointerType: "mouse", clientX: 190 });
+    expect(art.querySelector("[data-folder-front]")).not.toBeNull();
+
+    rerender(
+      <MemoryRouter>
+        <FolderCard folder={{ ...four, previews: previews(2) }} showPath={false} />
+      </MemoryRouter>,
+    );
+    expect(art.querySelector("[data-folder-front]")).toBeNull();
+    expect(art.querySelectorAll("[data-folder-preview]").length).toBe(2);
   });
 
   it("特殊な文字を含む名前のフォルダへ、段を1回だけ符号化したリンクを張る", async () => {
