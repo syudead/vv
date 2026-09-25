@@ -10,16 +10,29 @@ info:
   summary: セルフホストの動画管理システム API
   description: |
     取り込み（スキャン）・一覧・再生・題名検索までを公開する。
-    認証は掛けていない（Phase 3 の範囲）。信頼できるネットワークの内側で使う前提。
+
+    すべての要求は「誰でも」「ゲストも」「所有者だけ」のどれかに入る
+    （specs/016-single-account-auth/contracts/auth-api.md §1）。各操作の `security` がその
+    分類で、`[]` は誰でも、`[{sessionCookie: []}, {}]` はゲストも、既定（全体の
+    `security`）は所有者だけである。所有者だけの要求に有効なセッションが無いとき、
+    アカウントが未設定のときの誰でも以外の要求には、`401` `unauthenticated` を返す。
+    `/api/*` のすべての応答は、その要求を所有者とゲストのどちらとして処理したかを
+    `X-VV-Audience: owner` か `guest` で示す。
 
 servers:
   - url: /
     description: アプリケーション自身が配信する
 
+# 既定は所有者だけ（ログインしたセッションが要る）。誰でも・ゲストもの操作は
+# 操作ごとの security で上書きする。定義の無い経路も所有者だけとして扱う。
+security:
+  - sessionCookie: []
+
 paths:
   /api/health:
     get:
       operationId: getHealth
+      security: []
       summary: 稼働状態とビルド情報を返す
       description: |
         認証を必要としない。外形監視とコンテナのヘルスチェックから参照される。
@@ -38,9 +51,133 @@ paths:
               schema:
                 $ref: "#/components/schemas/Health"
 
+  /api/auth/setup:
+    post:
+      operationId: setupAccount
+      summary: 未設定のサーバーで最初のアカウントを作り、そのままログインする
+      description: |
+        本文は 8 KiB まで。成立したら `Set-Cookie` でセッションを渡す（contracts/auth-api.md §2・§7）。
+        同時の初回設定は1つだけが成立し、他は 409 になる。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetupRequest"
+      responses:
+        "200":
+          description: 初回設定が成立し、ログインした
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionSetCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRedirect"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: アカウントは既に設定されている（account_already_configured）。何も書かない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: ユーザー名とパスワードでログインする
+      description: |
+        本文は 8 KiB まで。ユーザー名かパスワードの誤り、空欄、上限超え、アカウントの
+        未設定は、どれも同じ 401 `invalid_credentials` になる（contracts/auth-api.md §3）。
+        `next` は戻り先の候補で、安全でなければ `/` にして `redirectTo` に返す。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: ログインした
+          headers:
+            Set-Cookie:
+              $ref: "#/components/headers/SessionSetCookie"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthRedirect"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "401":
+          description: ユーザー名またはパスワードが違う（invalid_credentials）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "429":
+          description: 試行が多すぎる（login_throttled）。照合していない
+          headers:
+            Retry-After:
+              description: 再び試せるまでの秒数
+              schema:
+                type: integer
+                minimum: 1
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/auth/session:
+    get:
+      operationId: getAuthSession
+      summary: 見る人の状態を返す
+      description: |
+        未設定なら Cookie によらず `setupRequired` を返す。ユーザー名は返さない。
+        `next` を付けると、`owner` のときだけ確かめた戻り先を `redirectTo` に返す
+        （contracts/auth-api.md §4）。
+      security: []
+      parameters:
+        - name: next
+          in: query
+          description: ログイン済みのときに戻る先の候補
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 見る人の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+
+  /api/auth/logout:
+    post:
+      operationId: logout
+      summary: ログアウトする
+      description: |
+        要求に付いていたセッションの Cookie（`__Host-vv_session` と `vv_session` の両方）を
+        見て、有効なセッションを消し、両方の Cookie を `Max-Age=0` で消す。本文は無い
+        （contracts/auth-api.md §4）。
+      security: []
+      responses:
+        "204":
+          description: ログアウトした
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/videos:
     get:
       operationId: listVideos
+      security:
+        - sessionCookie: []
+        - {}
       summary: 動画の一覧を返す
       description: |
         カーソル方式でページングする。対象は登録メディアフォルダの下に所在がある動画で、
@@ -167,6 +304,9 @@ paths:
   /api/videos/{id}:
     get:
       operationId: getVideo
+      security:
+        - sessionCookie: []
+        - {}
       summary: 動画1件の詳細を返す
       parameters:
         - $ref: "#/components/parameters/VideoId"
@@ -183,6 +323,9 @@ paths:
   /api/videos/{id}/related:
     get:
       operationId: getRelatedVideos
+      security:
+        - sessionCookie: []
+        - {}
       summary: 関連動画を返す
       description: |
         代表の所在と同じディレクトリ直下の動画を、ファイル名の自然順でこの動画より
@@ -265,6 +408,9 @@ paths:
   /api/videos/{id}/stream:
     get:
       operationId: streamVideo
+      security:
+        - sessionCookie: []
+        - {}
       summary: 動画本体を配信する
       description: |
         `Range` 要求に対応し、`206 Partial Content` と `Content-Range` を返す。
@@ -311,6 +457,9 @@ paths:
   /api/videos/{id}/preview:
     get:
       operationId: getVideoPreview
+      security:
+        - sessionCookie: []
+        - {}
       summary: 生成済み hover preview を配信する
       description: |
         保存済みの preview MP4 だけを Range 対応で配信する。元動画の stream や
@@ -357,6 +506,9 @@ paths:
   /api/videos/{id}/transcode.mp4:
     get:
       operationId: transcodeVideo
+      security:
+        - sessionCookie: []
+        - {}
       summary: 動画をMP4へライブ変換して配信する
       description: |
         指定位置からfragmented MP4を生成し、保存せずレスポンスへ直送する。
@@ -395,6 +547,9 @@ paths:
   /api/videos/{id}/thumbnail:
     get:
       operationId: getVideoThumbnail
+      security:
+        - sessionCookie: []
+        - {}
       summary: サムネイル画像を返す
       description: |
         `v` は内容由来の識別子で、画像が変われば URL も変わる。長期キャッシュを
@@ -420,6 +575,9 @@ paths:
   /api/videos/{id}/seek-thumbnail:
     get:
       operationId: getVideoSeekThumbnail
+      security:
+        - sessionCookie: []
+        - {}
       summary: 指定時刻のシークプレビュー画像を返す
       description: |
         元動画の論理時刻から1秒以内のJPEGを要求時に生成する。画像は保存しない。
@@ -847,6 +1005,9 @@ paths:
   /api/folders:
     get:
       operationId: listRootFolders
+      security:
+        - sessionCookie: []
+        - {}
       summary: フォルダ画面の最上位（登録済みメディアフォルダ）を返す
       description: |
         フォルダは保存せず、取り込み済みの所在のパスから導く。登録済みの
@@ -862,6 +1023,9 @@ paths:
   /api/folders/{rootId}:
     get:
       operationId: getFolder
+      security:
+        - sessionCookie: []
+        - {}
       summary: フォルダ1件と、その直下の子フォルダを返す
       description: |
         フォルダは登録済みメディアフォルダの id と、そこからの `/` 区切りの相対パスで
@@ -884,6 +1048,9 @@ paths:
   /api/folders/{rootId}/videos:
     get:
       operationId: listFolderVideos
+      security:
+        - sessionCookie: []
+        - {}
       summary: フォルダの動画を返す
       description: |
         `scope` で対象の所在の範囲を選ぶ。`direct`（既定）はフォルダ直下だけで、
@@ -1022,6 +1189,25 @@ paths:
                 type: string
 
 components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: vv_session
+      description: |
+        ログインで発行するセッション ID。HTTPS では `__Host-vv_session`、HTTP では
+        `vv_session` の名前で送る（contracts/auth-api.md §7）。OpenAPI の apiKey は名前を
+        1つしか書けないので、ここには HTTP の名前を書く。
+
+  headers:
+    SessionSetCookie:
+      description: |
+        セッションの Cookie。HTTPS では
+        `__Host-vv_session=<ID>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=<期限までの秒>`、
+        HTTP では `vv_session=<ID>; HttpOnly; SameSite=Strict; Path=/; Max-Age=<期限までの秒>`
+      schema:
+        type: string
+
   parameters:
     VideoId:
       name: id
@@ -1095,6 +1281,53 @@ components:
             $ref: "#/components/schemas/Error"
 
   schemas:
+    SetupRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+          description: 1〜128 文字。制御文字を含まず、先頭と末尾に空白を置かない
+        password:
+          type: string
+          description: 1〜1024 バイト
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      additionalProperties: false
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+        next:
+          type: string
+          description: ログイン後に戻る先の候補。省略か安全でなければ `/`
+
+    AuthRedirect:
+      type: object
+      required: [redirectTo]
+      additionalProperties: false
+      properties:
+        redirectTo:
+          type: string
+          description: 画面が遷移する先。サーバーが確かめた同じオリジンのパス
+
+    AuthSession:
+      type: object
+      required: [state]
+      additionalProperties: false
+      properties:
+        state:
+          type: string
+          enum: [owner, guest, setupRequired]
+          description: owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
+        redirectTo:
+          type: string
+          description: "`next` を付けて呼び、state が owner のときだけ返す戻り先"
+
     Health:
       type: object
       required: [status, version]
@@ -1731,6 +1964,10 @@ components:
             - tag_not_found
             - tag_name_taken
             - tag_merge_required
+            - unauthenticated
+            - invalid_credentials
+            - login_throttled
+            - account_already_configured
         message:
           type: string
           description: 人が読むための説明。利用者にそのまま提示してよい文言にする

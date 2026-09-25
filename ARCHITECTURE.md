@@ -248,7 +248,32 @@ folding, so startup refreshes every location whose `search_version` is older tha
 and aborts startup if that fails
 (`specs/013-library-search/data-model.md` §5).
 
-Not built yet: authentication, subtitles, and multi-user support. Browser-incompatible
+Every request crosses an authentication boundary at the outermost layer of
+`internal/httpapi` (`auth.go`) before routing. It sorts each request into one of three
+kinds — anyone (`GET /api/health`, `GET /api/auth/session`, `POST /api/auth/setup`,
+`POST /api/auth/login`, `POST /api/auth/logout`, and `GET`/`HEAD` outside `/api/` for
+the SPA build), guests too (the video, stream, artifact and folder reads), and
+owner only (everything else, including undefined `/api/*` paths) — by the
+`path.Clean`ed request path, so the classification matches each operation's
+`security` in `api/openapi.yaml` (a Go test checks that). It decides the viewer
+(`domain.Audience`) from the session cookie (`__Host-vv_session` over HTTPS,
+`vv_session` over HTTP), puts it on the request context for handlers to read, and
+tags every `/api/*` response with `X-VV-Audience: owner|guest`. Requests without a
+valid session, and every non-anyone request while no account is configured, get
+`401 unauthenticated`; a failed session lookup is `500`, never an owner. Guests do
+not yet receive guest responses: the guest-too kind still answers them with 401. For
+owner requests the boundary keeps an in-memory ledger that sets the session expiry as
+the context deadline, ends a session's in-flight responses on logout, and re-checks
+requests that run longer than 30 seconds every 30 seconds so a credential change from
+the host command also ends them; ending a response cancels its context and moves the
+write deadline to now. `POST /api/auth/setup` creates the first account and logs in,
+`POST /api/auth/login` and `POST /api/auth/logout` issue and revoke sessions, and
+`GET /api/auth/session` reports `owner`, `guest` or `setupRequired`
+([specs/016-single-account-auth/contracts/auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)).
+`cmd/mdm` wraps `app.Auth` for the boundary, deletes expired sessions at startup, and
+logs a warning while no account is configured.
+
+Not built yet: guest responses, subtitles, and multi-user support. Browser-incompatible
 video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is
 not persisted.
 
@@ -301,7 +326,8 @@ import each other. Each declares the interfaces it consumes — `internal/app` a
 scan store, an ingest store, a generator, an artifact store, an event publisher,
 an auth store and a password hasher; `internal/scanner`,
 `internal/jobs` and `internal/httpapi` an index to write to, a queue to claim
-from, a library and a video catalog to query, and generated files to serve — and `cmd/mdm` is the only place
+from, a library and a video catalog to query, generated files to serve, and an
+authenticator (`httpapi.Authenticator`, which `cmd/mdm` fills by wrapping `app.Auth`) — and `cmd/mdm` is the only place
 that knows which concrete type goes where. The values crossing those boundaries
 (`domain.VideoFile`, `domain.Job`, `domain.VideoQuery`, `domain.VideoView`, …)
 live in `internal/domain`, which is why neither side needs the other.

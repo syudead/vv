@@ -14,15 +14,39 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for AuthSessionState.
+const (
+	Guest         AuthSessionState = "guest"
+	Owner         AuthSessionState = "owner"
+	SetupRequired AuthSessionState = "setupRequired"
+)
+
+// Valid indicates whether the value is a known member of the AuthSessionState enum.
+func (e AuthSessionState) Valid() bool {
+	switch e {
+	case Guest:
+		return true
+	case Owner:
+		return true
+	case SetupRequired:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
+	ErrorCodeAccountAlreadyConfigured    ErrorCode = "account_already_configured"
 	ErrorCodeConflict                    ErrorCode = "conflict"
 	ErrorCodeDirectoryUnavailable        ErrorCode = "directory_unavailable"
 	ErrorCodeFileMissing                 ErrorCode = "file_missing"
 	ErrorCodeForbidden                   ErrorCode = "forbidden"
 	ErrorCodeInternal                    ErrorCode = "internal"
+	ErrorCodeInvalidCredentials          ErrorCode = "invalid_credentials"
 	ErrorCodeInvalidMediaDirectory       ErrorCode = "invalid_media_directory"
 	ErrorCodeInvalidRequest              ErrorCode = "invalid_request"
+	ErrorCodeLoginThrottled              ErrorCode = "login_throttled"
 	ErrorCodeMediaFolderNotFound         ErrorCode = "media_folder_not_found"
 	ErrorCodeMediaFoldersNotConfigured   ErrorCode = "media_folders_not_configured"
 	ErrorCodeNotFound                    ErrorCode = "not_found"
@@ -33,12 +57,15 @@ const (
 	ErrorCodeTagMergeRequired            ErrorCode = "tag_merge_required"
 	ErrorCodeTagNameTaken                ErrorCode = "tag_name_taken"
 	ErrorCodeTagNotFound                 ErrorCode = "tag_not_found"
+	ErrorCodeUnauthenticated             ErrorCode = "unauthenticated"
 	ErrorCodeUnsupportedMediaDirectory   ErrorCode = "unsupported_media_directory"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
 func (e ErrorCode) Valid() bool {
 	switch e {
+	case ErrorCodeAccountAlreadyConfigured:
+		return true
 	case ErrorCodeConflict:
 		return true
 	case ErrorCodeDirectoryUnavailable:
@@ -49,9 +76,13 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeInternal:
 		return true
+	case ErrorCodeInvalidCredentials:
+		return true
 	case ErrorCodeInvalidMediaDirectory:
 		return true
 	case ErrorCodeInvalidRequest:
+		return true
+	case ErrorCodeLoginThrottled:
 		return true
 	case ErrorCodeMediaFolderNotFound:
 		return true
@@ -72,6 +103,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeTagNameTaken:
 		return true
 	case ErrorCodeTagNotFound:
+		return true
+	case ErrorCodeUnauthenticated:
 		return true
 	case ErrorCodeUnsupportedMediaDirectory:
 		return true
@@ -342,6 +375,24 @@ type AddTagSynonymRequest struct {
 	Name       string `json:"name"`
 }
 
+// AuthRedirect defines model for AuthRedirect.
+type AuthRedirect struct {
+	// RedirectTo 画面が遷移する先。サーバーが確かめた同じオリジンのパス
+	RedirectTo string `json:"redirectTo"`
+}
+
+// AuthSession defines model for AuthSession.
+type AuthSession struct {
+	// RedirectTo `next` を付けて呼び、state が owner のときだけ返す戻り先
+	RedirectTo *string `json:"redirectTo,omitempty"`
+
+	// State owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
+	State AuthSessionState `json:"state"`
+}
+
+// AuthSessionState owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
+type AuthSessionState string
+
 // CreateMediaFolderRequest defines model for CreateMediaFolderRequest.
 type CreateMediaFolderRequest struct {
 	Path string `json:"path"`
@@ -437,6 +488,14 @@ type Health struct {
 // HealthStatus ok = 保存層まで疎通、degraded = プロセスのみ生存
 type HealthStatus string
 
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
+	// Next ログイン後に戻る先の候補。省略か安全でなければ `/`
+	Next     *string `json:"next,omitempty"`
+	Password string  `json:"password"`
+	Username string  `json:"username"`
+}
+
 // MediaFolder defines model for MediaFolder.
 type MediaFolder struct {
 	CreatedAt time.Time `json:"createdAt"`
@@ -513,6 +572,15 @@ type Scan struct {
 
 // ScanState defines model for Scan.State.
 type ScanState string
+
+// SetupRequest defines model for SetupRequest.
+type SetupRequest struct {
+	// Password 1〜1024 バイト
+	Password string `json:"password"`
+
+	// Username 1〜128 文字。制御文字を含まず、先頭と末尾に空白を置かない
+	Username string `json:"username"`
+}
 
 // Tag 管理画面と候補に出す1件（contracts/tags-api.md §1）。
 type Tag struct {
@@ -761,6 +829,12 @@ type InvalidRequest = Error
 // NotFound defines model for NotFound.
 type NotFound = Error
 
+// GetAuthSessionParams defines parameters for GetAuthSession.
+type GetAuthSessionParams struct {
+	// Next ログイン済みのときに戻る先の候補
+	Next *string `form:"next,omitempty" json:"next,omitempty"`
+}
+
 // ListDirectoriesParams defines parameters for ListDirectories.
 type ListDirectoriesParams struct {
 	// Path 列挙する絶対path。省略時はnavigation rootを返す
@@ -895,6 +969,12 @@ type TranscodeVideoParams struct {
 	StartMs *int64 `form:"startMs,omitempty" json:"startMs,omitempty"`
 }
 
+// LoginJSONRequestBody defines body for Login for application/json ContentType.
+type LoginJSONRequestBody = LoginRequest
+
+// SetupAccountJSONRequestBody defines body for SetupAccount for application/json ContentType.
+type SetupAccountJSONRequestBody = SetupRequest
+
 // CreateMediaFolderJSONRequestBody defines body for CreateMediaFolder for application/json ContentType.
 type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 
@@ -927,6 +1007,18 @@ type PutVideoProgressJSONRequestBody = ProgressUpdate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Login ユーザー名とパスワードでログインする
+	// (POST /api/auth/login)
+	Login(w http.ResponseWriter, r *http.Request)
+	// Logout ログアウトする
+	// (POST /api/auth/logout)
+	Logout(w http.ResponseWriter, r *http.Request)
+	// GetAuthSession 見る人の状態を返す
+	// (GET /api/auth/session)
+	GetAuthSession(w http.ResponseWriter, r *http.Request, params GetAuthSessionParams)
+	// SetupAccount 未設定のサーバーで最初のアカウントを作り、そのままログインする
+	// (POST /api/auth/setup)
+	SetupAccount(w http.ResponseWriter, r *http.Request)
 	// ListDirectories フォルダ選択用の直下ディレクトリを返す
 	// (GET /api/directories)
 	ListDirectories(w http.ResponseWriter, r *http.Request, params ListDirectoriesParams)
@@ -1039,6 +1131,81 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// Login operation middleware
+func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Login(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// Logout operation middleware
+func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAuthSession operation middleware
+func (siw *ServerInterfaceWrapper) GetAuthSession(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetAuthSessionParams
+
+	// ------------- Optional query parameter "next" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "next", r.URL.Query(), &params.Next, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "next"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "next", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAuthSession(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetupAccount operation middleware
+func (siw *ServerInterfaceWrapper) SetupAccount(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetupAccount(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListDirectories operation middleware
 func (siw *ServerInterfaceWrapper) ListDirectories(w http.ResponseWriter, r *http.Request) {
@@ -2297,6 +2464,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	}
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/health", wrapper.GetHealth)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/setup", wrapper.SetupAccount)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/login", wrapper.Login)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/session", wrapper.GetAuthSession)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/ids", wrapper.ListVideoIds)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)

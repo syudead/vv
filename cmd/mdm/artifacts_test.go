@@ -128,7 +128,7 @@ func newArtifactsFixture(t *testing.T) artifactsFixture {
 	})
 	handler := httpapi.NewRouter(httpapi.Options{
 		Videos: db.Library(), Playback: db.Playback(), Catalog: catalog, Artifacts: artifactStore,
-		Assets: fstest.MapFS{}, Logger: logger,
+		Assets: fstest.MapFS{}, Logger: logger, Auth: ownerAuth{},
 	})
 	ingest := app.NewIngest(app.IngestOptions{Store: db.Ingest(), Artifacts: artifactStore, Logger: logger})
 	return artifactsFixture{ctx: ctx, db: db, videoID: video.ID, files: files, handler: handler, ingest: ingest}

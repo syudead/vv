@@ -38,7 +38,30 @@ func newTestRouter(t *testing.T, pinger httpapi.Pinger) http.Handler {
 		},
 		Pinger: pinger,
 		Assets: testAssets(),
+		Auth:   ownerAuthenticator{},
 	})
+}
+
+// ownerAuthenticator はどの要求も所有者として通す。この外部テストは経路の分配と
+// 稼働確認を見るもので、認証の境界は auth_test.go が確かめる。
+type ownerAuthenticator struct{}
+
+func (ownerAuthenticator) Setup(context.Context, string, string) (httpapi.IssuedSession, error) {
+	return httpapi.IssuedSession{}, domain.ErrAccountAlreadyConfigured
+}
+
+func (ownerAuthenticator) Login(context.Context, httpapi.LoginAttempt) (httpapi.IssuedSession, error) {
+	return httpapi.IssuedSession{}, domain.ErrInvalidCredentials
+}
+
+func (ownerAuthenticator) CheckSession(context.Context, string) (time.Time, bool, error) {
+	return time.Now().Add(time.Hour), true, nil
+}
+
+func (ownerAuthenticator) Logout(context.Context, string) error { return nil }
+
+func (ownerAuthenticator) State(context.Context, string) (httpapi.AuthState, error) {
+	return httpapi.AuthStateOwner, nil
 }
 
 func TestHealthReturnsOKWhenStoreIsReachable(t *testing.T) {

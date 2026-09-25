@@ -121,6 +121,10 @@ func run() error {
 	}
 	logger.Info("タグの照合用の鍵を作り直しました", slog.Int("tag_names", tagsRefreshed))
 
+	// 認証の準備。期限切れのセッションを消し、未設定なら初回設定を促す。
+	authStore := db.Auth()
+	prepareAuth(context.Background(), authStore, time.Now(), logger)
+
 	// 走査とジョブは HTTP とは別の寿命で動く。停止指示でこの context を
 	// 取り消すと、処理中のジョブは queued に残り、次の起動で再開できる。
 	backgroundCtx, stopBackground := context.WithCancel(context.Background())
@@ -233,6 +237,7 @@ func run() error {
 		Events:       events,
 		Assets:       web.Dist(),
 		Logger:       logger,
+		Auth:         newHTTPAuth(authStore),
 	})
 
 	// 変化の知らせの接続は終わりが無いので、停止の猶予待ちより先に閉じる。

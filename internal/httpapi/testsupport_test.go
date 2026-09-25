@@ -195,8 +195,31 @@ func newTestServer(t *testing.T, opts Options) http.Handler {
 	if opts.Files == nil {
 		opts.Files = mediafs.New()
 	}
+	if opts.Auth == nil {
+		opts.Auth = ownerAuth{}
+	}
 	return NewRouter(opts)
 }
+
+// ownerAuth はどの要求も所有者として通す認証の代わりである。認証の境界そのものは
+// auth_test.go が本物の Auth で確かめるので、他の経路のテストはこれで境界を越える。
+type ownerAuth struct{}
+
+func (ownerAuth) Setup(context.Context, string, string) (IssuedSession, error) {
+	return IssuedSession{}, domain.ErrAccountAlreadyConfigured
+}
+
+func (ownerAuth) Login(context.Context, LoginAttempt) (IssuedSession, error) {
+	return IssuedSession{}, domain.ErrInvalidCredentials
+}
+
+func (ownerAuth) CheckSession(context.Context, string) (time.Time, bool, error) {
+	return time.Now().Add(time.Hour), true, nil
+}
+
+func (ownerAuth) Logout(context.Context, string) error { return nil }
+
+func (ownerAuth) State(context.Context, string) (AuthState, error) { return AuthStateOwner, nil }
 
 // emptyAssets は SPA を持たないファイルシステムである。API の検証では
 // index.html を要らない。
