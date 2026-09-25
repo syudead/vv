@@ -128,7 +128,7 @@ func (f listAPIFixture) getIDs(t *testing.T, target string) gen.VideoIdsResponse
 	return out
 }
 
-func tagNames(refs []gen.TagRef) []string {
+func tagNames(refs []gen.VideoTag) []string {
 	out := make([]string, 0, len(refs))
 	for _, ref := range refs {
 		out = append(out, ref.Name)

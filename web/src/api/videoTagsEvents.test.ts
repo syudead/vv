@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import type { VideoTag } from "./client";
 import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 import {
   nextVideoTagsSequence,
@@ -7,7 +8,7 @@ import {
   subscribeVideoTags,
 } from "./videoTagsEvents";
 
-function item(id: number, tags: { id: number; name: string }[] = []) {
+function item(id: number, tags: VideoTag[] = []) {
   return {
     id,
     title: `動画 ${String(id)}`,
@@ -57,7 +58,7 @@ describe("videoTagsEvents", () => {
     const first = nextVideoTagsSequence();
     recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "add", first);
     expect(takeListSnapshot({ query: "" })?.items[0]?.tags).toEqual([
-      { id: 5, name: "旅行" },
+      { id: 5, name: "旅行", manual: true, fromFolder: false },
     ]);
 
     const second = nextVideoTagsSequence();
@@ -98,10 +99,10 @@ describe("videoTagsEvents", () => {
     recordAppliedVideoTags([1], { id: 5, name: "旅行" }, "add", target);
 
     expect(takeListSnapshot({ query: "" })?.items[0]?.tags).toEqual([
-      { id: 5, name: "旅行" },
+      { id: 5, name: "旅行", manual: true, fromFolder: false },
     ]);
     expect(takeListSnapshot({ query: "" })?.items[1]?.tags).toEqual([
-      { id: 9, name: "観光" },
+      { id: 9, name: "観光", manual: true, fromFolder: false },
     ]);
   });
 

@@ -59,6 +59,18 @@ type TagRef struct {
 	Name string
 }
 
+// VideoTag は動画に付いたタグ1件と、その出所である（017 の
+// contracts/folder-groups-api.md §4 の VideoTag）。同じタグが手でもフォルダ名
+// からも付いていれば、1件にまとめて両方を真にする。
+type VideoTag struct {
+	TagRef
+	// Manual は手で付けた分（video_tags の行）があること。
+	Manual bool
+	// FromFolder は祖先のフォルダ名がこのタグの名前かシノニムに一致すること
+	// （017 の data-model.md §4）。
+	FromFolder bool
+}
+
 // Tag は管理画面と候補に出す1件である（contracts/tags-api.md §1 の Tag）。
 type Tag struct {
 	ID   int64
@@ -74,8 +86,11 @@ type Tag struct {
 type TagSummaryItem struct {
 	Tag TagRef
 	// Count は選んだ動画のうちこのタグが付いている本数。Count が
-	// TagSummary.Total より小さいタグが「一部にだけ付いている」。
+	// TagSummary.Total より小さいタグが「一部にだけ付いている」。手で付けた分と
+	// フォルダ名から付いている分のどちらかで数える（017 の data-model.md §4）。
 	Count int
+	// ManualCount は選んだ動画のうちこのタグを手で付けた本数。
+	ManualCount int
 }
 
 // TagSummary は選んだ動画のタグの要約である（contracts/tags-api.md §4 の
@@ -173,27 +188,30 @@ func SortTags(tags []Tag) {
 // でも決定的な並びにするための保険である）（contracts/tags-api.md §1 の
 // Video.tags）。
 func SortTagRefs(refs []TagRef) {
-	slices.SortStableFunc(refs, func(a, b TagRef) int {
-		if order := CompareNatural(a.Name, b.Name); order != 0 {
-			return order
-		}
-		if order := strings.Compare(a.Name, b.Name); order != 0 {
-			return order
-		}
-		return cmp.Compare(a.ID, b.ID)
+	slices.SortStableFunc(refs, compareTagRefs)
+}
+
+// SortVideoTags は動画に付いたタグ（VideoTag）を SortTagRefs と同じ規則で並べる。
+func SortVideoTags(tags []VideoTag) {
+	slices.SortStableFunc(tags, func(a, b VideoTag) int {
+		return compareTagRefs(a.TagRef, b.TagRef)
 	})
+}
+
+func compareTagRefs(a, b TagRef) int {
+	if order := CompareNatural(a.Name, b.Name); order != 0 {
+		return order
+	}
+	if order := strings.Compare(a.Name, b.Name); order != 0 {
+		return order
+	}
+	return cmp.Compare(a.ID, b.ID)
 }
 
 // SortTagSummaryItems は要約を Tag.Name の自然順に並べる（同順位の決着は
 // SortTagRefs と同じ）。
 func SortTagSummaryItems(items []TagSummaryItem) {
 	slices.SortStableFunc(items, func(a, b TagSummaryItem) int {
-		if order := CompareNatural(a.Tag.Name, b.Tag.Name); order != 0 {
-			return order
-		}
-		if order := strings.Compare(a.Tag.Name, b.Tag.Name); order != 0 {
-			return order
-		}
-		return cmp.Compare(a.Tag.ID, b.Tag.ID)
+		return compareTagRefs(a.Tag, b.Tag)
 	})
 }

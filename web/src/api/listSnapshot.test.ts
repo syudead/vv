@@ -172,7 +172,7 @@ describe("付け外しの結果の反映", () => {
 
     const restored = takeListSnapshot({ query: "" });
     expect(restored?.items.find((video) => video.id === 2)?.tags).toEqual([
-      { id: 5, name: "旅行" },
+      { id: 5, name: "旅行", manual: true, fromFolder: false },
     ]);
     // 対象でない項目は変わらない。
     expect(restored?.items.find((video) => video.id === 1)?.tags).toEqual([]);
@@ -186,8 +186,14 @@ describe("付け外しの結果の反映", () => {
       { query: "" },
       {
         items: [
-          { ...item(1), tags: [{ id: 5, name: "旅行" }] },
-          { ...item(2), tags: [{ id: 5, name: "旅行" }] },
+          {
+            ...item(1),
+            tags: [{ id: 5, name: "旅行", manual: true, fromFolder: false }],
+          },
+          {
+            ...item(2),
+            tags: [{ id: 5, name: "旅行", manual: true, fromFolder: false }],
+          },
         ],
         total: 2,
         cursor: "cursor-1",
@@ -207,7 +213,7 @@ describe("付け外しの結果の反映", () => {
     expect(restored?.items.find((video) => video.id === 2)?.tags).toEqual([]);
     // 対象でない項目にはまだ付いている。
     expect(restored?.items.find((video) => video.id === 1)?.tags).toEqual([
-      { id: 5, name: "旅行" },
+      { id: 5, name: "旅行", manual: true, fromFolder: false },
     ]);
   });
 });

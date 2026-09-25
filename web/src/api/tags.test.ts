@@ -221,7 +221,7 @@ describe("タグの変更が成功した後の後始末", () => {
     return fetch;
   }
 
-  it("createTagは成功後に共有の一覧を取り直すが、一覧の控えは捨てない（N1）", async () => {
+  it("createTagは成功後に共有の一覧を取り直し、一覧の控えを捨てる", async () => {
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
     stubMutation(jsonResponse(tag({ id: 9, name: "新しいタグ" })), [
       tag({ id: 9, name: "新しいタグ" }),
@@ -229,9 +229,9 @@ describe("タグの変更が成功した後の後始末", () => {
 
     const created = await createTag("新しいタグ");
     expect(created.name).toBe("新しいタグ");
-    // 作成は既存の動画一覧に影響しないので、控えは残る（Structural Decisions 7
-    // は改名・削除・統合・シノニムの変更だけを挙げている）。
-    expect(takeListSnapshot(key)).toBeDefined();
+    // 作ったタグは同じ名前のフォルダの下の既存の動画にもすぐ付くので
+    // （017 の data-model.md §4）、控えを復元すると古いタグが戻ってしまう。
+    expect(takeListSnapshot(key)).toBeUndefined();
     await vi.waitFor(() => {
       expect(currentTags()).toEqual([tag({ id: 9, name: "新しいタグ" })]);
     });
@@ -465,6 +465,47 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
 
     expect(fetch.mock.calls[1]?.[0]).toBe("/api/tags");
     expect(currentTags()).toEqual([tag({ id: 9, name: "新規" })]);
+  });
+
+  // 名前で付けて新しいタグが作られたら、フォルダ名から既存の動画にも付くので
+  // 一覧の控えを捨てる（017 の data-model.md §4）。既存のタグなら控えは残す。
+  it("attachVideoTagByNameは新しく作られたタグなら一覧の控えを捨てる", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 2, name: "旅行" })] }))
+      .mockResolvedValueOnce(jsonResponse({ tag: { id: 9, name: "新規" }, applied: 1 }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [tag({ id: 2, name: "旅行" }), tag({ id: 9, name: "新規" })],
+        }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    await refreshTags();
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+
+    await attachVideoTagByName([1], "新規");
+    await flush();
+
+    expect(takeListSnapshot(key)).toBeUndefined();
+  });
+
+  it("attachVideoTagByNameは既存のタグなら一覧の控えを残す", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse({ items: [tag({ id: 2, name: "旅行" })] }))
+      .mockResolvedValueOnce(jsonResponse({ tag: { id: 2, name: "旅行" }, applied: 1 }))
+      .mockResolvedValueOnce(
+        jsonResponse({ items: [tag({ id: 2, name: "旅行", videoCount: 1 })] }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    await refreshTags();
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+
+    await attachVideoTagByName([1], "旅行");
+    await flush();
+
+    expect(takeListSnapshot(key)).toBeDefined();
+    expect(fetch.mock.calls[2]?.[0]).toBe("/api/tags");
   });
 
   it("detachVideoTagはaction=removeとid指定で送り、除去の通知を出す", async () => {

@@ -94,7 +94,7 @@ type Tags interface {
 	// TagsByContentKeys は content_key の集合からそれぞれのタグを引く。
 	// progressFor と同じ位置（httpapi）から、一覧・詳細・関連動画・読み取りの
 	// やり直しの応答へ Video.tags を載せるために使う。
-	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.TagRef, error)
+	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error)
 }
 
 // Transcoder は1 request分のfragmented MP4を生成する。

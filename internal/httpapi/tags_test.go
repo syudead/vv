@@ -29,7 +29,7 @@ type fakeTags struct {
 	detachRef     domain.TagRef
 	detachApplied int
 	summary       domain.TagSummary
-	byContentKey  map[string][]domain.TagRef
+	byContentKey  map[string][]domain.VideoTag
 }
 
 func (f *fakeTags) ListTags(context.Context) ([]domain.Tag, error) {
@@ -115,11 +115,16 @@ func (f *fakeTags) Summary(_ context.Context, videoIDs []int64) (domain.TagSumma
 	return f.summary, nil
 }
 
-func (f *fakeTags) TagsByContentKeys(_ context.Context, contentKeys []string) (map[string][]domain.TagRef, error) {
+// manualTag は手で付けただけのタグ1件を作る。
+func manualTag(id int64, name string) domain.VideoTag {
+	return domain.VideoTag{TagRef: domain.TagRef{ID: id, Name: name}, Manual: true}
+}
+
+func (f *fakeTags) TagsByContentKeys(_ context.Context, contentKeys []string) (map[string][]domain.VideoTag, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	out := make(map[string][]domain.TagRef, len(contentKeys))
+	out := make(map[string][]domain.VideoTag, len(contentKeys))
 	for _, key := range contentKeys {
 		if refs, ok := f.byContentKey[key]; ok {
 			out[key] = refs

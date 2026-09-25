@@ -254,7 +254,11 @@ describe("FolderPage", () => {
       if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
       if (url === "/api/folders/3?path=A") return Promise.resolve(json(folderA));
       const page: VideoPage = {
-        items: [video(1, "x", { tags: [{ id: 5, name: "旅行" }] })],
+        items: [
+          video(1, "x", {
+            tags: [{ id: 5, name: "旅行", manual: true, fromFolder: false }],
+          }),
+        ],
         total: 1,
       };
       return Promise.resolve(json(page));

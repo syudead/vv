@@ -765,7 +765,7 @@ describe("LibraryPage", () => {
     }
 
     it("/?tag=1&sort=random は seed を補い、tag=1 を残す", async () => {
-      const tag = { id: 1, name: "旅行" };
+      const tag = { id: 1, name: "旅行", manual: true, fromFolder: false };
       installTagAwareList([tag], () => ({
         items: [video(1, { tags: [tag] })],
         total: 1,
@@ -782,7 +782,7 @@ describe("LibraryPage", () => {
     });
 
     it("タグの絞り込みを変えると選択を解除する", async () => {
-      const tag = { id: 1, name: "旅行" };
+      const tag = { id: 1, name: "旅行", manual: true, fromFolder: false };
       installTagAwareList([tag], () => ({
         items: [video(1, { tags: [tag] })],
         total: 1,
@@ -801,7 +801,7 @@ describe("LibraryPage", () => {
     });
 
     it("カードのタグを押すと絞り込みに加わり、上の行に出る。すでに絞り込み中のタグは変わらない", async () => {
-      const tag = { id: 1, name: "旅行" };
+      const tag = { id: 1, name: "旅行", manual: true, fromFolder: false };
       installTagAwareList([tag], (requested) => ({
         items:
           requested.length === 0
@@ -828,7 +828,7 @@ describe("LibraryPage", () => {
     });
 
     it("タグを押しても、検索語・視聴状態などのほかの条件は残る（N1）", async () => {
-      const tag = { id: 1, name: "旅行" };
+      const tag = { id: 1, name: "旅行", manual: true, fromFolder: false };
       installTagAwareList([tag], () => ({
         items: [video(1, { tags: [tag] })],
         total: 1,
@@ -855,7 +855,7 @@ describe("LibraryPage", () => {
     });
 
     it("16個絞り込んでいるときに17個目を押すと、加えずにトーストで伝える", async () => {
-      const extra = { id: 17, name: "17個目" };
+      const extra = { id: 17, name: "17個目", manual: true, fromFolder: false };
       installTagAwareList([extra], () => ({
         items: [video(1, { tags: [extra] })],
         total: 1,
@@ -874,8 +874,8 @@ describe("LibraryPage", () => {
     });
 
     it("絞り込み中のタグを外すと、その id だけが消えてほかの条件は残る", async () => {
-      const tagA = { id: 1, name: "旅行" };
-      const tagB = { id: 2, name: "2024" };
+      const tagA = { id: 1, name: "旅行", manual: true, fromFolder: false };
+      const tagB = { id: 2, name: "2024", manual: true, fromFolder: false };
       installTagAwareList([tagA, tagB], () => ({
         items: [video(1, { tags: [tagA, tagB] })],
         total: 1,
@@ -895,7 +895,7 @@ describe("LibraryPage", () => {
     });
 
     it("missingTagIds を受けたら伝えて、タグの一覧を取り直し、一覧も取り直して URL から取り除く（N1）", async () => {
-      const tagA = { id: 1, name: "旅行" };
+      const tagA = { id: 1, name: "旅行", manual: true, fromFolder: false };
       installTagAwareList([tagA], (requested) =>
         requested.includes(1)
           ? { items: [], total: 0, missingTagIds: [1] }
@@ -982,7 +982,7 @@ describe("LibraryPage", () => {
           scrollY: 0,
         },
       );
-      const tag = { id: 1, name: "旅行" };
+      const tag = { id: 1, name: "旅行", manual: true, fromFolder: false };
       installTagAwareList([tag], () => ({
         items: [video(1, { tags: [tag] })],
         total: 1,
@@ -1003,7 +1003,7 @@ describe("LibraryPage", () => {
     });
 
     it("タグだけで絞って0件のとき、該当なしにタグのチップが出て、条件を解除でタグが外れる", async () => {
-      const tag = { id: 1, name: "旅行" };
+      const tag = { id: 1, name: "旅行", manual: true, fromFolder: false };
       installTagAwareList([tag], () => ({ items: [], total: 0 }));
       const user = userEvent.setup();
       renderLibrary("/?tag=1");
@@ -1105,7 +1105,12 @@ describe("LibraryPage", () => {
             json({
               items: [
                 video(1, {
-                  tags: [...(attached.get(1) ?? [])].map((id) => ({ id, name: "旅行" })),
+                  tags: [...(attached.get(1) ?? [])].map((id) => ({
+                    id,
+                    name: "旅行",
+                    manual: true,
+                    fromFolder: false,
+                  })),
                 }),
                 video(2),
                 video(3),
@@ -1184,7 +1189,7 @@ describe("LibraryPage", () => {
     });
 
     it("絞り込み中のタグを別のタブで消してから「すべて選択」すると、選ばれず、もう無いことが伝わる", async () => {
-      const tag = { id: 1, name: "旅行" };
+      const tag = { id: 1, name: "旅行", manual: true, fromFolder: false };
       installSelectionAwareList({ tags: [], total: 3, idsMissingTagIds: [1] });
       const user = userEvent.setup();
       renderLibrary("/?tag=1");
@@ -1206,7 +1211,7 @@ describe("LibraryPage", () => {
     });
 
     it("選択バーでタグを付けると、読み込み済みのカードにすぐ出て、選択は残る", async () => {
-      const tag = { id: 1, name: "旅行" };
+      const tag = { id: 1, name: "旅行", manual: true, fromFolder: false };
       installSelectionAwareList({ tags: [tag] });
       const user = userEvent.setup();
       renderLibrary();
@@ -1343,7 +1348,7 @@ describe("LibraryPage", () => {
     // 解除して一覧を取り直し、件数と一覧を条件に合わせ直す
     // （docs/design-docs/library-ui.md §6）。
     it("一括で外したタグが今の絞り込みに含まれるとき、選択を解除して一覧を取り直す（Devin の指摘4）", async () => {
-      const tag = { id: 1, name: "旅行" };
+      const tag = { id: 1, name: "旅行", manual: true, fromFolder: false };
       const attached = new Map<number, Set<number>>([[1, new Set([1])]]);
       fetchMock.mockImplementation((input, init) => {
         const url = new URL(String(input), "http://localhost");

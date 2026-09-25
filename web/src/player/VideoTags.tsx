@@ -2,7 +2,7 @@ import { Plus, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
-import { RequestFailed, type TagRef } from "../api/client";
+import { RequestFailed, type TagRef, type VideoTag } from "../api/client";
 import {
   attachVideoTagByID,
   attachVideoTagByName,
@@ -12,7 +12,7 @@ import {
   subscribeTags,
   type Tag,
 } from "../api/tags";
-import { applyTagToTags, compareNatural } from "../api/tagOrder";
+import { applyTagToTags, compareNatural, tagsReflectChange } from "../api/tagOrder";
 import { subscribeVideoTags } from "../api/videoTagsEvents";
 import { cn } from "../lib/cn";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
@@ -30,7 +30,7 @@ export default function VideoTags({
   onStaleVideo,
 }: {
   videoId: number;
-  tags: readonly TagRef[];
+  tags: readonly VideoTag[];
   /** タグがもう無い（tag_not_found）ときに、この動画を取り直すために呼ぶ。 */
   onStaleVideo: () => void;
 }) {
@@ -53,7 +53,7 @@ export default function VideoTags({
     new Map<number, { tag: TagRef; action: "add" | "remove"; asOfSeq: number }>(),
   );
   const prevVideoIdRef = useRef(videoId);
-  const [tags, setTags] = useState<readonly TagRef[]>(initialTags);
+  const [tags, setTags] = useState<readonly VideoTag[]>(initialTags);
 
   // 画面が開くときは、共有の保持がすでにあっても必ず取り直す（plan の
   // Structural Decisions 8「画面が開くとき…に refreshTags で取り直す」）。
@@ -95,8 +95,7 @@ export default function VideoTags({
     }
     let next = initialTags;
     for (const [tagId, change] of applied) {
-      const present = initialTags.some((tag) => tag.id === tagId);
-      if (present === (change.action === "add")) {
+      if (tagsReflectChange(initialTags, tagId, change.action)) {
         applied.delete(tagId);
         continue;
       }
@@ -139,7 +138,7 @@ export default function VideoTags({
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const buttonRefs = useRef(new Map<number, HTMLButtonElement>());
-  // removedId は、外すのを待っているチップ。そのチップが並びから消える
+  // removedId は、外すのを待っているチップ。そのチップの手で付けた分が外れる
   // （サーバーが外したと応えた）まで、フォーカスを動かさない。
   const pendingFocusRef = useRef<{
     target: { chipId: number } | "input";
@@ -152,9 +151,12 @@ export default function VideoTags({
   useLayoutEffect(() => {
     const pending = pendingFocusRef.current;
     if (pending === null) return;
+    // 外すのは手で付けた分だけで、フォルダ名からも付いているチップは残る
+    // （017 の contracts/folder-groups-api.md §4）。待つのは手で付けた分が
+    // 外れるまでで、チップが消えるまでではない。
     if (
       pending.removedId !== undefined &&
-      tags.some((tag) => tag.id === pending.removedId)
+      !tagsReflectChange(tags, pending.removedId, "remove")
     ) {
       return;
     }
