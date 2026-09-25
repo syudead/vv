@@ -68,7 +68,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		return
 	}
 
-	page, err := s.videos.ListVideos(r.Context(), domain.AudienceOwner, query)
+	page, err := s.videos.ListVideos(r.Context(), audienceFrom(r.Context()), query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
 		// 黙って先頭から返さない。無限スクロールが巻き戻って同じ内容を
@@ -322,7 +322,7 @@ func (s *server) lookupVideo(w http.ResponseWriter, r *http.Request, id int64) (
 		return domain.Video{}, false
 	}
 
-	video, err := s.videos.GetVideo(r.Context(), domain.AudienceOwner, id)
+	video, err := s.videos.GetVideo(r.Context(), audienceFrom(r.Context()), id)
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, "その動画はありません")

@@ -32,8 +32,8 @@ type Pinger interface {
 // 渡す。開いてよい実体かは MediaFiles が確かめる。
 //
 // 動画を返す読み出しは見る人（domain.Audience）を取り、ゲストには公開の動画だけを
-// 返す（specs/016-single-account-auth/data-model.md §3）。見る人を決める境界は
-// まだ無いので、今の呼び出しはすべて所有者として読む。
+// 返す（specs/016-single-account-auth/data-model.md §3）。見る人は境界（auth.go）が
+// 要求の context に載せ、ハンドラはそれを読んで渡す。
 type Library interface {
 	ListVideos(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error)
 	GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error)
@@ -194,6 +194,14 @@ type Options struct {
 	Assets fs.FS
 	// Logger は応答の過程で出す記録。nil の場合は slog の既定を使う。
 	Logger *slog.Logger
+	// Auth は初回設定・ログイン・ログアウト・セッションの確認。nil なら「誰でも」以外の
+	// 要求と認証の経路は 500 を返す。所有者とみなして通すことはしない。
+	Auth Authenticator
+	// SessionRecheck は、所有者として長く続く要求のセッションを確かめ直す間隔である。
+	// 0 なら 30 秒。テストが短くする。
+	SessionRecheck time.Duration
+	// Now は今の時刻を返す（Cookie の Max-Age の計算に使う）。nil なら time.Now。
+	Now func() time.Time
 }
 
 // server は生成された gen.ServerInterface を満たす。契約（api/openapi.yaml）に
@@ -215,6 +223,9 @@ type server struct {
 	processing   Processing
 	events       *Events
 	logger       *slog.Logger
+	auth         Authenticator
+	sessions     *sessionLedger
+	now          func() time.Time
 }
 
 // NewRouter は経路を分配するハンドラを返す。
@@ -226,6 +237,7 @@ type server struct {
 //	/api/events      → Server-Sent Events（同上）
 //	/api/folders*    → JSON（同上）
 //	/api/tags*       → JSON（同上）
+//	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
 func NewRouter(opts Options) http.Handler {
@@ -258,6 +270,18 @@ func NewRouter(opts Options) http.Handler {
 		processing:   opts.Processing,
 		events:       opts.Events,
 		logger:       logger,
+		auth:         opts.Auth,
+		sessions:     newSessionLedger(opts.SessionRecheck, logger),
+		now:          opts.Now,
+	}
+	if srv.now == nil {
+		srv.now = time.Now
+	}
+	if opts.Auth != nil {
+		srv.sessions.check = func(ctx context.Context, token string) (bool, error) {
+			_, valid, err := opts.Auth.CheckSession(ctx, token)
+			return valid, err
+		}
 	}
 
 	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
@@ -270,7 +294,7 @@ func NewRouter(opts Options) http.Handler {
 			}, logger)
 		},
 	})
-	return noStoreOnError(srv.mutationBoundary(generated))
+	return noStoreOnError(srv.authBoundary(srv.mutationBoundary(generated)))
 }
 
 // noStoreOnError は 4xx と 5xx の応答に no-store を付け直す。
@@ -327,7 +351,8 @@ func requiresJSONBody(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost:
 		switch r.URL.Path {
-		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary":
+		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary",
+			"/api/auth/setup", "/api/auth/login":
 			return true
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {

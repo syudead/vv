@@ -370,6 +370,7 @@ func TestStreamWithoutMediaFilesIsInternalError(t *testing.T) {
 	handler := NewRouter(Options{
 		Videos: &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
 		Assets: emptyAssets{},
+		Auth:   ownerAuth{},
 	})
 	if rec := do(t, handler, http.MethodGet, "/api/videos/1/stream"); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d, want 500: %s", rec.Code, rec.Body)

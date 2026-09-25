@@ -25,6 +25,93 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 未設定のサーバーで最初のアカウントを作り、そのままログインする
+         * @description 本文は 8 KiB まで。成立したら `Set-Cookie` でセッションを渡す（contracts/auth-api.md §2・§7）。
+         *     同時の初回設定は1つだけが成立し、他は 409 になる。
+         */
+        post: operations["setupAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ユーザー名とパスワードでログインする
+         * @description 本文は 8 KiB まで。ユーザー名かパスワードの誤り、空欄、上限超え、アカウントの
+         *     未設定は、どれも同じ 401 `invalid_credentials` になる（contracts/auth-api.md §3）。
+         *     `next` は戻り先の候補で、安全でなければ `/` にして `redirectTo` に返す。
+         */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 見る人の状態を返す
+         * @description 未設定なら Cookie によらず `setupRequired` を返す。ユーザー名は返さない。
+         *     `next` を付けると、`owner` のときだけ確かめた戻り先を `redirectTo` に返す
+         *     （contracts/auth-api.md §4）。
+         */
+        get: operations["getAuthSession"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ログアウトする
+         * @description 要求に付いていたセッションの Cookie（`__Host-vv_session` と `vv_session` の両方）を
+         *     見て、有効なセッションを消し、両方の Cookie を `Max-Age=0` で消す。本文は無い
+         *     （contracts/auth-api.md §4）。
+         */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos": {
         parameters: {
             query?: never;
@@ -643,6 +730,31 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SetupRequest: {
+            /** @description 1〜128 文字。制御文字を含まず、先頭と末尾に空白を置かない */
+            username: string;
+            /** @description 1〜1024 バイト */
+            password: string;
+        };
+        LoginRequest: {
+            username: string;
+            password: string;
+            /** @description ログイン後に戻る先の候補。省略か安全でなければ `/` */
+            next?: string;
+        };
+        AuthRedirect: {
+            /** @description 画面が遷移する先。サーバーが確かめた同じオリジンのパス */
+            redirectTo: string;
+        };
+        AuthSession: {
+            /**
+             * @description owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
+             * @enum {string}
+             */
+            state: "owner" | "guest" | "setupRequired";
+            /** @description `next` を付けて呼び、state が owner のときだけ返す戻り先 */
+            redirectTo?: string;
+        };
         Health: {
             /**
              * @description ok = 保存層まで疎通、degraded = プロセスのみ生存
@@ -984,7 +1096,7 @@ export interface components {
              * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured";
             /** @description 人が読むための説明。利用者にそのまま提示してよい文言にする */
             message: string;
         };
@@ -1043,7 +1155,14 @@ export interface components {
         FolderPath: string;
     };
     requestBodies: never;
-    headers: never;
+    headers: {
+        /**
+         * @description セッションの Cookie。HTTPS では
+         *     `__Host-vv_session=<ID>; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=<期限までの秒>`、
+         *     HTTP では `vv_session=<ID>; HttpOnly; SameSite=Strict; Path=/; Max-Age=<期限までの秒>`
+         */
+        SessionSetCookie: string;
+    };
     pathItems: never;
 }
 export type $defs = Record<string, never>;
@@ -1075,6 +1194,131 @@ export interface operations {
                     "application/json": components["schemas"]["Health"];
                 };
             };
+        };
+    };
+    setupAccount: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupRequest"];
+            };
+        };
+        responses: {
+            /** @description 初回設定が成立し、ログインした */
+            200: {
+                headers: {
+                    "Set-Cookie": components["headers"]["SessionSetCookie"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthRedirect"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description アカウントは既に設定されている（account_already_configured）。何も書かない */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description ログインした */
+            200: {
+                headers: {
+                    "Set-Cookie": components["headers"]["SessionSetCookie"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthRedirect"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            /** @description ユーザー名またはパスワードが違う（invalid_credentials） */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            /** @description 試行が多すぎる（login_throttled）。照合していない */
+            429: {
+                headers: {
+                    /** @description 再び試せるまでの秒数 */
+                    "Retry-After"?: number;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAuthSession: {
+        parameters: {
+            query?: {
+                /** @description ログイン済みのときに戻る先の候補 */
+                next?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 見る人の状態 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthSession"];
+                };
+            };
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ログアウトした */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
         };
     };
     listVideos: {
