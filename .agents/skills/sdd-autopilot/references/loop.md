@@ -83,7 +83,10 @@ Loop:
 
 1. Wait for the checks and the bot review on the head (§7). A check still
    pending an hour after the head was pushed is a stop.
-2. Start a fresh review fixer with the feature-PR brief. It handles every
+2. Start a fresh review fixer with the feature-PR brief (on `fable` once the
+   review bot has reviewed the PR three times, the same count the round limit
+   reads; see the model table in
+   [../SKILL.md](../SKILL.md#which-model-runs-what)). It handles every
    failing check, every unresolved review thread, and a conflict with the
    base, and either pushes (`FIXED`, new head) or changes nothing (`CLEAN`).
    A fixer never returns `CLEAN` while a check on the head is not passing.
@@ -129,7 +132,9 @@ as `DONE` if it is picked again, and you close it then.
 
 ## 6. Integration refresh and the finish line
 
-1. Start a fresh stage worker with the integrate brief. It runs
+1. Start a fresh stage worker with the integrate brief (on `fable` when
+   `git merge-tree --write-tree origin/<feature> origin/main` reports a
+   conflict). It runs
    [integrate.md](../../issue-handoff/references/integrate.md): merges the
    latest `origin/main` into the feature branch directly, runs the checks,
    pushes, and updates the integration PR body — also listing the

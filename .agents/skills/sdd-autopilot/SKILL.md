@@ -74,6 +74,25 @@ and the review fixer push and call GitHub themselves. When the host has no
 workers, or its workers have no network access, this skill does not apply: run
 the stages one at a time with `issue-handoff`.
 
+## Which model runs what
+
+On Claude, pass the model on each worker call; the agent definitions leave it
+unset so that one-stage runs keep inheriting the session's model. Fable costs
+about 2.5 times Opus per token, so it goes only where a better answer changes
+everything downstream or a miss is expensive to find later.
+
+| Work | Model | Why |
+| --- | --- | --- |
+| `plan` and `design` stage workers | `fable` | One run per feature, and every child Issue, implementation and review is built on its decisions |
+| Self reviewer | `fable` | Its value is finding what the author missed; each finding it reaches here saves a review round on the PR |
+| Review fixer on a PR the review bot has already reviewed three times | `fable` | Findings that keep coming back need the root cause, not another local patch |
+| Integrate worker when merging `main` conflicts | `fable` | Keeping both sides' behaviour is a judgement across two changes |
+| Implementation, `plan-to-issues`, other review-fixer rounds, conflict-free integrate | inherit | Bounded by an approved artifact or a child Issue; high volume |
+
+The orchestrator itself stays on the session's model. It only reads short
+facts and return blocks, so a more capable model buys it nothing. Codex keeps
+the models in `.codex/agents/`.
+
 ## Procedure
 
 Follow [references/loop.md](references/loop.md). In short:
