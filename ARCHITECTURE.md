@@ -277,7 +277,9 @@ way only. The packages under `internal/` fall into three layers:
   removing artifacts whose content lost its last reference (`Ingest`); and the decisions behind a video response — requeueing a missing hover
   preview, deriving the seek-preview state — plus assembling related videos
   (`Catalog`); and adding, replacing and removing media folders after the
-  filesystem adapter has checked the path (`MediaFolders`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
+  filesystem adapter has checked the path (`MediaFolders`); and first-run setup,
+  login verification with per-source throttling, and issuing, checking and
+  revoking login sessions (`Auth`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
   through interfaces it declares, so its unit tests run without SQLite, `ffmpeg` or
   an HTTP server. It must not import `net/http`, `database/sql`, `os/exec`, the
   SQLite driver, or any adapter package.
@@ -296,7 +298,8 @@ stops them. It holds no use case of its own.
 
 The sibling packages under `internal/` (the adapters and `internal/app`) do not
 import each other. Each declares the interfaces it consumes — `internal/app` a
-scan store, an ingest store, a generator, an artifact store and an event publisher; `internal/scanner`,
+scan store, an ingest store, a generator, an artifact store, an event publisher,
+an auth store and a password hasher; `internal/scanner`,
 `internal/jobs` and `internal/httpapi` an index to write to, a queue to claim
 from, a library and a video catalog to query, and generated files to serve — and `cmd/mdm` is the only place
 that knows which concrete type goes where. The values crossing those boundaries
