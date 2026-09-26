@@ -71,20 +71,19 @@ A PR is **mergeable here** when all of these hold on its current head SHA:
 - every check run has completed with `success`, `skipped` or `neutral`.
   `cancelled`, `timed_out`, `action_required`, `stale` and `failure` are not
   passing, whatever caused them
-- an automated code-review account has reviewed this head (a GitHub review
-  whose `commit_id` is the head SHA and whose author's GitHub actor type is
-  `Bot`, regardless of its login), or 20 minutes have passed since the head
-  was pushed with no bot review
-- a review fixer has run on this head after the bot review or 20-minute wait
+- a reviewer other than the PR author has reviewed this head (a GitHub review
+  whose `commit_id` is the head SHA, regardless of the reviewer's account
+  type), or 20 minutes have passed since the head was pushed with no such review
+- a review fixer has run on this head after the review or 20-minute wait
   and returned `CLEAN`
 - GitHub reports it mergeable with no conflict
 
 Loop:
 
-1. Wait for the checks and the bot review on the head (§7). A check still
+1. Wait for the checks and a review on the head (§7). A check still
    pending an hour after the head was pushed is a stop.
 2. Start a fresh review fixer with the feature-PR brief (on `fable` once
-   three distinct head SHAs on this PR have received a bot review, the same
+   three distinct head SHAs on this PR have received such a review, the same
    count the round limit reads; see the model table in
    [../SKILL.md](../SKILL.md#which-model-runs-what)). It handles every
    failing check, every unresolved review thread, and a conflict with the
@@ -102,7 +101,7 @@ After a restart you do not know whether a fixer already ran on the head; run
 one. It finds nothing new and returns `CLEAN`.
 
 **Round limit.** Stop when six distinct head SHAs on a feature PR have received
-a bot review (multiple bots or reviews on one head count once),
+such a review (multiple reviews on one head count once),
 when three integration-fix PRs have merged since the integration PR was
 opened, when the integration PR's head has been refreshed from `main` twice
 (§6 step 2), or when a fixer returns `BLOCKED` because a finding repeats one
