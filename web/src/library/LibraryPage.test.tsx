@@ -1866,12 +1866,9 @@ describe("LibraryPage", () => {
       const row = link.closest("tr") as HTMLElement;
       expect(link.getAttribute("href")).toBe("/videos/104");
       expect(within(row).getByText("12 本")).toBeDefined();
-      expect(within(row).queryByText("3 / 12")).toBeNull();
-      expect(
-        row.querySelectorAll("[data-folder-art] [data-folder-preview]"),
-      ).toHaveLength(4);
+      expect(within(row).getByText("3 / 12")).toBeDefined();
       expect(within(row).getByText("12:00")).toBeDefined();
-      expect(within(row).getAllByRole("cell")).toHaveLength(7);
+      expect(within(row).getAllByRole("cell")).toHaveLength(8);
     });
 
     it("ゲストのグループのカードには視聴状態と見終えた本数を出さない", async () => {

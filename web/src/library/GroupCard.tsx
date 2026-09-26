@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, Folder } from "lucide-react";
 import { memo, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 
@@ -7,7 +7,7 @@ import { useAudience } from "../auth/audience";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration, formatRelative } from "../lib/format";
 import Checkbox from "../ui/Checkbox";
-import FolderArt, { FolderStrip } from "../videoList/FolderArt";
+import FolderArt from "../videoList/FolderArt";
 
 /**
  * GroupCardProps はライブラリのグループのカードと行の props である
@@ -37,8 +37,8 @@ export interface GroupCardProps {
 
 /**
  * useGroupFacts は見る人に見せるグループの視聴の値である。ゲストでは視聴状態を出さない
- * （ui-design.md「Screen boundary」の「ゲスト」）。見終えた本数は数字では出さず、
- * 見ている途中の帯の長さと読み上げ名にだけ使う。
+ * （ui-design.md「Screen boundary」の「ゲスト」）。格子のカードは見終えた本数を数字では
+ * 出さず、見ている途中の帯の長さと読み上げ名にだけ使う。
  */
 function useGroupFacts(group: LibraryGroup) {
   const owner = useAudience() === "owner";
@@ -49,6 +49,7 @@ function useGroupFacts(group: LibraryGroup) {
       ? Math.min(watchedCount / group.videoCount, 1)
       : null;
   return {
+    watchedCount,
     state,
     ratio,
     duration: formatDuration(group.durationMs),
@@ -57,7 +58,7 @@ function useGroupFacts(group: LibraryGroup) {
   };
 }
 
-/** groupCountText はカードと行の本数の文字（「12 本」）である。 */
+/** groupCountText はカードの本数の文字（「12 本」）である。 */
 export function groupCountText(videoCount: number): string {
   return `${String(videoCount)} 本`;
 }
@@ -200,13 +201,13 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 
 /**
  * GroupRow はリスト表示のグループの行である。動画の行（VideoRow）と同じ列に
- * グループの値を出す。題名と画像の列を1つのセルにまとめ、題名の右に、メンバーの
- * サムネイルを横に並べたフォルダの絵柄（FolderStrip）を右寄せで題名の側へ広げる
- * （ui-design.md「List view row」）。
+ * グループの値を出す（ui-design.md「List view row」）。
  */
 export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
   const { group, backTo, selected, selectionMode, onSelect } = props;
-  const { state, ratio, duration, countText, label } = useGroupFacts(group);
+  const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
+  // リスト表示は今回変えない。サムネイルは先頭のメンバーの1枚（previews の先頭）を使う。
+  const cover = group.previews[0];
 
   return (
     <tr
@@ -232,48 +233,56 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           />
         </td>
       )}
-      <td colSpan={2} className={cn("py-1.5 pr-4", onSelect === undefined && "pl-3")}>
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="min-w-0 flex-1">
-            <Link
-              to={groupPath(group)}
-              state={{ from: backTo }}
-              aria-label={label}
-              onClick={(event) => {
-                if (selectionMode) {
-                  event.preventDefault();
-                  onSelect?.(group.videoIds, !selected);
-                }
-              }}
-              className={cn(
-                "line-clamp-2 text-sm font-medium break-all hover:text-link",
-                state === "watched" ? "text-fg-muted" : "text-fg",
-              )}
-            >
-              {group.name}
-            </Link>
-            <span className="mt-0.5 block text-xs text-fg-muted tabular-nums">
-              {countText}
+      <td className="w-32 py-1.5 pr-2">
+        <div className="relative aspect-video w-28 overflow-hidden rounded-sm bg-navbar">
+          {cover !== undefined && (
+            <img
+              src={cover.thumbnailUrl}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="relative h-full w-full object-contain"
+            />
+          )}
+          {ratio !== null && (
+            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50">
+              <span
+                className="block h-full bg-accent"
+                style={{ width: `${String(Math.round(ratio * 100))}%` }}
+              />
             </span>
-          </div>
-          <div className="flex max-w-[70%] min-w-28 shrink-0 justify-end">
-            <FolderStrip previews={group.previews}>
-              {ratio !== null && (
-                <span className="absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50">
-                  <span
-                    className="block h-full bg-accent"
-                    style={{ width: `${String(Math.round(ratio * 100))}%` }}
-                  />
-                </span>
-              )}
-            </FolderStrip>
-          </div>
+          )}
         </div>
+      </td>
+      <td className="min-w-0 py-1.5 pr-4">
+        <Link
+          to={groupPath(group)}
+          state={{ from: backTo }}
+          aria-label={label}
+          onClick={(event) => {
+            if (selectionMode) {
+              event.preventDefault();
+              onSelect?.(group.videoIds, !selected);
+            }
+          }}
+          className={cn(
+            "line-clamp-2 text-sm font-medium break-all hover:text-link",
+            state === "watched" ? "text-fg-muted" : "text-fg",
+          )}
+        >
+          {group.name}
+        </Link>
+        <span className="mt-0.5 flex items-center gap-1 text-xs text-fg-muted tabular-nums">
+          <Folder aria-hidden="true" className="size-3 shrink-0" />
+          {`${String(group.videoCount)} 本`}
+        </span>
       </td>
       <td className="hidden w-16 pr-4 text-right text-xs text-fg-muted tabular-nums sm:table-cell">
         {state === "watched" && (
           <Check className="ml-auto size-4 text-success" aria-label="視聴済み" />
         )}
+        {state === "inProgress" &&
+          `${String(watchedCount)} / ${String(group.videoCount)}`}
       </td>
       <td className="w-20 pr-4 text-right text-sm text-fg tabular-nums">{duration}</td>
       <td className="hidden w-20 pr-4 md:table-cell" />

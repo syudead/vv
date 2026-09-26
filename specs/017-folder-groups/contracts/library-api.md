@@ -47,7 +47,7 @@ LibraryGroup:
     sizeBytes: { type: integer, format: int64 }
     addedAt: { type: string, format: date-time }
     lastPlayedAt: { type: string, format: date-time }  # 無ければ省く
-    previews: { type: array, maxItems: 8, items: { $ref: FolderPreview } }  # サムネイル生成済みのメンバーを並びの順に最大8件。格子のカードは先頭4件を重ね、リストの行は入る分を横に並べる
+    previews: { type: array, maxItems: 4, items: { $ref: FolderPreview } }  # サムネイル生成済みのメンバーを並びの順に最大4件。カードのフォルダの絵柄に使い、リストの行は先頭の1件をサムネイルに使う
     openVideoId: { type: integer, format: int64 }  # 押したときに開くメンバー（data-model.md §6）
     videoIds: { type: array, items: { type: integer, format: int64 } }  # 全メンバー、並びの順
     tags: { type: array, items: { $ref: VideoTag } }  # メンバーのタグの和集合（出所も和）

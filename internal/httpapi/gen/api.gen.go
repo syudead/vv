@@ -621,9 +621,9 @@ type LibraryGroup struct {
 	// 未完了のメンバー、全部完了なら最初のメンバー
 	OpenVideoId int64 `json:"openVideoId"`
 
-	// Previews フォルダの絵柄に差し込むサムネイル。メンバーのうちサムネイル生成済みのものを
-	// 並びの順に最大8件（フォルダカードの previews と同じ形）。格子のカードは先頭の
-	// 4件を重ね、リスト表示の行は入る分を横に並べる
+	// Previews カードのフォルダの絵柄に差し込むサムネイル。メンバーのうちサムネイル生成済みのものを
+	// 並びの順に最大4件（フォルダカードの previews と同じ形）。リスト表示の行は先頭の
+	// 1件をサムネイルに使う
 	Previews []FolderPreview `json:"previews"`
 
 	// SizeBytes メンバーの代表の所在の大きさの合計

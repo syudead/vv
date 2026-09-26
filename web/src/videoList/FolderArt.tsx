@@ -1,6 +1,5 @@
 import {
   type PointerEvent,
-  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -11,7 +10,7 @@ import {
 import type { FolderPreview } from "../api/client";
 import { cn } from "../lib/cn";
 
-// フォルダの絵柄は、フォルダ画面のフォルダカードとライブラリのグループのカード・行が
+// フォルダの絵柄は、フォルダ画面のフォルダカードとライブラリのグループのカードが
 // 共有する（どちらの画面にも属さないので videoList に置く）。
 
 /**
@@ -249,47 +248,6 @@ export default function FolderArt({
             </div>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-/**
- * FolderStrip はリスト表示の行のフォルダの絵柄である。タブ付きの背板の中に、`previews` を
- * 傾けず重ねず同じ大きさで横一列に並べる。幅は並べた分だけで、置き場所の幅
- * （`max-w-*` など）を超える分は折り返されて1行の高さの外に出るので見えない
- * （入る分だけ並べ、入らない分は省く）。下見はしない。装飾なので読み上げない。
- * `children` は背板の下端に重ねるもの（見ている途中の帯など）である。
- */
-export function FolderStrip({
-  previews,
-  children,
-}: {
-  previews: readonly FolderPreview[];
-  children?: ReactNode;
-}) {
-  return (
-    <div aria-hidden="true" data-folder-art="" className="relative max-w-full pt-1.5">
-      <div className="absolute top-0 left-0 h-2 w-12 rounded-t-sm bg-elevated" />
-      <div className="relative overflow-hidden rounded-sm rounded-tl-none bg-elevated p-1">
-        <div className="flex h-9 min-w-16 flex-wrap gap-x-1 gap-y-2 overflow-hidden">
-          {previews.map((preview) => (
-            <div
-              key={preview.videoId}
-              data-folder-preview=""
-              className="aspect-video h-full shrink-0 overflow-hidden rounded-[2px] border border-border-strong bg-navbar"
-            >
-              <img
-                src={preview.thumbnailUrl}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className="h-full w-full object-contain"
-              />
-            </div>
-          ))}
-        </div>
-        {children}
       </div>
     </div>
   );

@@ -100,8 +100,9 @@
 | 列 | グループの行 |
 | --- | --- |
 | 選択 | 動画の行と同じチェック。意味は「Pressing and selection」のとおり |
-| 題名と画像 | リスト表示の列は、動画の行もグループの行も題名 → 画像の順で、画像は「長さ」の列の手前に右寄せで置く。グループの行は2つの列を1つのセル（`colSpan=2`）にまとめ、画像の枠を題名の側へ広げる。左はグループ名（リンク、`/videos/{openVideoId}`）と、その下の `text-xs text-fg-muted` の1行「12 本」。右はフォルダの絵柄（`FolderStrip`、下見なし）で、タブ付きの背板の中に `previews`（最大8件）を傾けず重ねず同じ大きさで横一列に並べる。枠はセルの幅の70%までで、入らない分は省く。背板の下端の進捗は `inProgress` のとき `watchedCount / videoCount` |
-| 視聴済み | `watched` は動画と同じ `Check`。`inProgress`・`unwatched` は空 |
+| サムネイル | 先頭のメンバーのサムネイル（`previews` の先頭）。下端の進捗は `inProgress` のとき `watchedCount / videoCount` |
+| 題名 | グループ名（リンク、`/videos/{openVideoId}`）。その下に `text-xs text-fg-muted` の1行で lucide `Folder`（`size-3`）と「12 本」 |
+| 視聴済み | `watched` は動画と同じ `Check`。`inProgress` は `tabular-nums` で「3 / 12」。`unwatched` は空 |
 | 長さ | 合計の長さ（無ければ空） |
 | 画質 | 空（メンバーごとに違うので出さない） |
 | 大きさ | 合計 |
