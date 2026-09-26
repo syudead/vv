@@ -120,8 +120,9 @@ specs/019-preview-input-seek/
 **Scope**: `scripts/previewbench`（`go run ./scripts/previewbench [-runs N] <video>...` で、入力ごとに
 `media.GeneratePreview` を一時ディレクトリの出力へ N 回走らせ、各回の壁時計時間と ffmpeg のピーク
 メモリ（Linux/macOS では `RUSAGE_CHILDREN` の maxrss、Windows では壁時計時間のみ）を表示する）と
-`docs/how-to/preview-benchmark.md`（比較用の入力を ffmpeg で作るコマンド、改善前後のコミットで同じ
-入力を測る手順、結果を PR に残す形）、`docs/how-to/README.md` からのリンク。詳細は
+`docs/how-to/preview-benchmark.md`（比較用の入力と回転情報を持つ縦長の入力を ffmpeg で作るコマンド、
+改善前後のコミットで同じ入力を測る手順、結果を PR に残す形、作った入力を `.local/preview/media/` に
+置いて `task preview` を起動し直し hover で確かめる手順）、`docs/how-to/README.md` からのリンク。詳細は
 [research.md R-4](research.md#r-4-計測の方法)。生成コードは変えない。
 
 **Dependencies**: None.
@@ -147,6 +148,7 @@ specs/019-preview-input-seek/
 （この単位の base）と変更後を同じ環境で測った 2 時間・H.264 の入力と 2 分・720p の入力の壁時計時間と
 ピークメモリが PR 本文にある。2 時間の入力で生成が完了し、ピークメモリが 30 分の入力と同程度
 （長さに比例しない）で、壁時計時間が変更前より短い。2 分の入力で変更前より明らかに遅くならない
-（Linux と Windows の両方の数字、または Windows で測れない場合はその旨）。生成物を `task preview` の
-長尺サンプルで hover 再生すると、冒頭から末尾まで分散した場面が時系列順に約 9 秒で無音・ループで流れ、
-縦長の入力の縦横比が保たれる。
+（Linux と Windows の両方の数字、または Windows で測れない場合はその旨）。how-to の手順で 2 時間の入力と
+縦長の入力を `.local/preview/media/` に置いて `task preview` を起動し直し（起動のたびにそのフォルダを
+取り込む。組み込みのサンプルは 20 秒以下なので長尺の確認には使わない）、それぞれを hover 再生すると、
+冒頭から末尾まで分散した場面が時系列順に約 9 秒で無音・ループで流れ、縦長の入力の縦横比が保たれる。
