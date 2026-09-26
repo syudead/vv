@@ -44,8 +44,9 @@ from the internet.
 
 ## Update
 
-Pull `ghcr.io/syudead/vv:latest` again and recreate the container, with the
-container manager's pull or recreate action or with:
+First pull `ghcr.io/syudead/vv:latest` again, then recreate the container.
+Recreating alone reuses the image already on the host, so do both, in the
+container manager or with:
 
 ```bash
 docker compose pull
