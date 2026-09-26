@@ -19,9 +19,27 @@ function groupingPath(folder: FolderRef, suffix: string): string {
 }
 
 /**
+ * sendGrouping はまとめ方の要求を送る。成功しても 409 でも一覧の控えを捨てる。
+ *
+ * 409 は、ほかのタブで先にまとめ方が変わったことを表す。そのときライブラリの控えは
+ * 変わる前のカードを持っているので、成功したときと同じく次に開いたときに読み直させる
+ * （plan の Structural Decisions 10）。
+ */
+async function sendGrouping<T>(path: string, init: RequestInit): Promise<T> {
+  try {
+    const result = await request<T>(path, init);
+    clearListSnapshot();
+    return result;
+  } catch (failure) {
+    if (failure instanceof RequestFailed && failure.status === 409) clearListSnapshot();
+    throw failure;
+  }
+}
+
+/**
  * setFolderGrouping はフォルダのまとめ方の例外を付ける・外す（`auto` は外す）。
  *
- * 成功したら一覧の控えを捨てる。ライブラリのカードは例外で変わるので、次にライブラリを
+ * 成功したら（409 でも）一覧の控えを捨てる。ライブラリのカードは例外で変わるので、次にライブラリを
  * 開いたときに読み直させる（plan の Structural Decisions 10、受け入れ条件 3・4・5）。
  */
 export async function setFolderGrouping(
@@ -29,30 +47,27 @@ export async function setFolderGrouping(
   mode: FolderGroupingMode,
   signal?: AbortSignal,
 ): Promise<FolderGrouping> {
-  const grouping = await request<FolderGrouping>(groupingPath(folder, ""), {
+  return sendGrouping<FolderGrouping>(groupingPath(folder, ""), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode }),
     signal,
   });
-  clearListSnapshot();
-  return grouping;
 }
 
 /**
  * tagFolderGroup はグループをタグに変える（フォルダ名のタグを使うか作り、まとめを解除する）。
  *
- * 成功したら一覧の控えを捨て、共有のタグの一覧も取り直す（タグが増えるか、本数が変わる）。
+ * 成功したら（409 でも）一覧の控えを捨て、成功したときは共有のタグの一覧も取り直す（タグが増えるか、本数が変わる）。
  */
 export async function tagFolderGroup(
   folder: FolderRef,
   signal?: AbortSignal,
 ): Promise<FolderGroupTagResult> {
-  const result = await request<FolderGroupTagResult>(groupingPath(folder, "/tag"), {
+  const result = await sendGrouping<FolderGroupTagResult>(groupingPath(folder, "/tag"), {
     method: "POST",
     signal,
   });
-  clearListSnapshot();
   refreshTags().catch(() => undefined);
   return result;
 }

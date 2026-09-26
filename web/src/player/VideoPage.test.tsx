@@ -996,6 +996,10 @@ describe("VideoPage", () => {
           json({ code: "conflict", message: "x" }, 409),
         );
         await openMember();
+        saveListSnapshot(
+          { query: "series" },
+          { items: [], total: 0, hasMore: false, scrollY: 0 },
+        );
         const before = videoRequests(12);
         ungroupOnServer();
         await user.click(await lineButton());
@@ -1003,6 +1007,8 @@ describe("VideoPage", () => {
         expect(
           await screen.findByText("このフォルダはもうグループではありません"),
         ).toBeDefined();
+        // ほかのタブで先に変わったので、ライブラリの控えも古い。次に開くときは読み直させる。
+        expect(takeListSnapshot({ query: "series" })).toBeUndefined();
         await waitFor(() => expect(videoRequests(12)).toBe(before + 1));
         await waitFor(() =>
           expect(

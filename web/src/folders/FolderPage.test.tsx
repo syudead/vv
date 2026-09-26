@@ -1397,6 +1397,63 @@ describe("FolderPage", () => {
       expect(takeListSnapshot({ query: "" })).toBeUndefined();
     });
 
+    it("タグ化の後、元の位置が続きのページにあれば、そこに届くまで読んでスクロールの位置を戻す", async () => {
+      const pageHeight = 3000;
+      let loadedPages = 0;
+      respond(() =>
+        json({
+          tag: { id: 5, name: "series" },
+          created: true,
+          grouping: { mode: "ungroup", grouped: false, taggable: false },
+        }),
+      );
+      const base = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (!url.startsWith("/api/folders/3/videos?")) return base!(input, init);
+        requests.push(url);
+        const cursor = new URL(url, "http://localhost").searchParams.get("cursor");
+        const index = cursor === null ? 0 : Number(cursor);
+        loadedPages = index + 1;
+        const page: VideoPage = {
+          items: [
+            video(index * 2 + 1, `ep${String(index)}a`),
+            video(index * 2 + 2, `ep${String(index)}b`),
+          ],
+          total: 8,
+          ...(index < 3 ? { nextCursor: String(index + 1) } : {}),
+        };
+        return Promise.resolve(json(page));
+      });
+      const scrollTo = vi.fn();
+      vi.stubGlobal("scrollTo", scrollTo);
+      Object.defineProperty(document.documentElement, "scrollHeight", {
+        configurable: true,
+        get: () => loadedPages * pageHeight,
+      });
+      Object.defineProperty(window, "scrollY", { configurable: true, value: 7000 });
+      try {
+        const user = userEvent.setup();
+        renderFolders("/folders/3/series");
+        await user.click(await trigger(true));
+        await user.click(
+          await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+        );
+        // 7000px に届くのは 3 ページ目を読んだ後（3 × 3000 − 768）。4 ページ目は読まない。
+        await waitFor(() => expect(loadedPages).toBe(3));
+        await waitFor(() =>
+          expect(scrollTo).toHaveBeenLastCalledWith({ top: 7000, behavior: "auto" }),
+        );
+        const calls = scrollTo.mock.calls.length;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(loadedPages).toBe(3);
+        expect(scrollTo.mock.calls.length).toBe(calls);
+      } finally {
+        Reflect.deleteProperty(document.documentElement, "scrollHeight");
+        Reflect.deleteProperty(window, "scrollY");
+      }
+    });
+
     it("タグ化の失敗をトーストで伝え、引き金を戻す", async () => {
       respond(() =>
         json({ code: "invalid_request", message: "タグの名前に使えません" }, 400),
@@ -1424,12 +1481,15 @@ describe("FolderPage", () => {
       const listingReads = requests.filter(
         (url) => url === "/api/folders/3?path=series",
       ).length;
+      holdLibrarySnapshot();
       await user.click(
         await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
       );
       expect(
         await screen.findByText("このフォルダはもうグループではありません"),
       ).toBeDefined();
+      // ほかのタブで先に変わったので、ライブラリの控えも古い。次に開くときは読み直させる。
+      expect(takeListSnapshot({ query: "" })).toBeUndefined();
       await waitFor(() =>
         expect(
           requests.filter((url) => url === "/api/folders/3?path=series").length,
