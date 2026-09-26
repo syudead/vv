@@ -85,7 +85,7 @@ everything downstream or a miss is expensive to find later.
 | --- | --- | --- |
 | `plan` and `design` stage workers | `fable` | One run per feature, and every child Issue, implementation and review is built on its decisions |
 | Self reviewer | `fable` | Its value is finding what the author missed; each finding it reaches here saves a review round on the PR |
-| Review fixer on a PR the review bot has already reviewed three times | `fable` | Findings that keep coming back need the root cause, not another local patch |
+| Review fixer on a PR with three distinct head SHAs reviewed by a bot | `fable` | Findings that keep coming back need the root cause, not another local patch |
 | Integrate worker when merging `main` conflicts | `fable` | Keeping both sides' behaviour is a judgement across two changes |
 | Implementation, `plan-to-issues`, other review-fixer rounds, conflict-free integrate | inherit | Bounded by an approved artifact or a child Issue; high volume |
 
