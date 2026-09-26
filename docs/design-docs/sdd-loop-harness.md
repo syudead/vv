@@ -184,7 +184,8 @@ branch、全体検証、review指摘の修正、push、PRは親agentが所有す
   判断（PRがこのfeatureのものか、子の前提作業、子が既に実装済みか）はworkerが返す。
 - stage PRと実装PRのfeature branchへのmerge、merge直後の次工程の開始、子Issueのcloseは、
   この起動によって保守者から委ねられる。merge条件の正本は`loop.md`の§4にある
-  （headのcheckがすべて通過、PR作者以外のreviewerのreview、その後のreview対応workerが変更なしを返したこと）。
+  （最初のheadのcheckとreviewを受けてreview対応workerを一度動かす。修正push後は同じPRの
+  check・review・workerを繰り返さず、GitHubが衝突なしでmerge可能なら進める）。
 - PRイベントの購読や定期的な確認は、この起動したsessionが待つための手段としてだけ使う。
   上のAutomation boundaryが除くのは、repositoryに置いて人の起動なしにagentを動かす仕組みであり、
   それは引き続き使わない。

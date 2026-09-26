@@ -57,44 +57,33 @@ branch. `plan-to-issues` produces no PR.
 
 ## 4. Drive a feature PR to merge
 
-A PR is **mergeable here** when all of these hold on its current head SHA:
+Handle each PR with one review-fix pass:
 
-- every check run has completed with `success`, `skipped` or `neutral`.
-  `cancelled`, `timed_out`, `action_required`, `stale` and `failure` are not
-  passing, whatever caused them
-- a reviewer other than the PR author has reviewed this head (a GitHub review
-  whose `commit_id` is the head SHA, regardless of the reviewer's account
-  type), or 20 minutes have passed since the head was pushed with no such review
-- a review fixer has run on this head after the review or 20-minute wait
-  and returned `CLEAN`
-- GitHub reports it mergeable with no conflict
-
-Loop:
-
-1. Wait for the checks and a review on the head (§7). A check still
-   pending an hour after the head was pushed is a stop.
-2. Start a fresh review fixer with the feature-PR brief (on `fable` once
-   three distinct head SHAs on this PR have received such a review, the same
-   count the round limit reads; see the model table in
-   [../SKILL.md](../SKILL.md#which-model-runs-what)). It handles every
+1. On the head first handled for this PR, wait for every check to complete and
+   for a review by someone other than the PR author (a GitHub review whose
+   `commit_id` is that head SHA), or for 20 minutes to pass without a review.
+   A check still pending an hour after the head was pushed is a stop.
+2. Start a fresh review fixer with the feature-PR brief. It handles every
    failing check, every unresolved review thread, and a conflict with the
    base, and either pushes (`FIXED`, new head) or changes nothing (`CLEAN`).
-   A fixer never returns `CLEAN` while a check on the head is not passing.
+   A fixer never returns `CLEAN` while a check on that head is not passing.
+   It runs the checks its change needs before pushing a fix.
    It first checks that the PR belongs to this feature: its `Refs` names the
    parent or one of the parent's native children (for the integration PR, it
    is the feature branch's PR to `main` that `Closes` the parent). Otherwise
    it changes nothing and returns `FOREIGN`. It also returns the PR's `KIND`, which §5 uses.
-3. `FIXED`: back to step 1 on the new head. `CLEAN`: merge with a merge
-   commit, then §5. `BLOCKED`: stop. `FOREIGN`: leave the PR alone, never
-   merge it, and name it in the final report; go to §1.
+3. For `FIXED` or `CLEAN`, confirm only that GitHub reports the current PR
+   conflict-free and mergeable, then merge with a merge commit and go to §5.
+   After `FIXED`, do not wait for checks or reviews on the new head or run
+   another fixer. If GitHub branch protection prevents the merge, stop and
+   report it; do not bypass the protection. `BLOCKED`: stop. `FOREIGN`: leave
+   the PR alone, never merge it, and name it in the final report; go to §1.
 
-After a restart you do not know whether a fixer already ran on the head; run
-one. It finds nothing new and returns `CLEAN`.
+After a restart, if GitHub state does not establish whether the one fixer pass
+already happened, stop and report that ambiguity instead of repeating it.
 
-**Round limit.** Stop when six distinct head SHAs on a feature PR have received
-such a review (multiple reviews on one head count once),
-when three integration-fix PRs have merged since the integration PR was
-opened, when the integration PR's head has been refreshed from `main` twice
+**Limits.** Stop when three integration-fix PRs have merged since the
+integration PR was opened, when its head has been refreshed from `main` twice
 (§6 step 2), or when a fixer returns `BLOCKED` because a finding repeats one
 it can see was already fixed and resolved on the same PR. All of them are read
 from GitHub, not remembered: the integration-fix count is the number of PRs
@@ -103,12 +92,8 @@ PR's `created_at`, which a PR search with a `merged:>` date returns as a total
 without bodies, less those that change `plan.md` or `ui-design.md` (a Plan or
 Design revision the maintainer ran, read from the PR's file list); the refresh count is the number of merge commits from `main`
 on the feature branch after that time. Neither count is reset by a refresh.
-Hitting a limit means the fixes are not converging, and another round spends
-context without changing that. Report the integration PR as it stands and
-stop; the maintainer decides what is left.
-
-Never merge with a check that has not passed, and never skip, disable, or
-re-run a test to get past one.
+Hitting a limit means the fixes are not converging. Report the integration PR
+as it stands and stop; the maintainer decides what is left.
 
 ## 5. Bookkeeping after a merge
 
@@ -117,9 +102,9 @@ feature branch, not recorded
 ([README](../../issue-handoff/references/README.md#inputs-and-sources-of-truth)).
 The only follow-up is closing a child: when the merged PR's `KIND` is
 `implement`, close the child named by its `REFS` as `completed`. Those lines
-come from the fixer that returned `CLEAN` for the merged head, so a restart
-loses nothing. A child whose close was missed still counts as done for the
-selection, because a merged PR `Refs` it; the implementation worker reports it
+come from the fixer that handled the PR. A child whose close was missed still
+counts as done for the selection, because a merged PR `Refs` it; the
+implementation worker reports it
 as `DONE` if it is picked again, and you close it then.
 
 ## 6. Integration refresh and the finish line
@@ -131,7 +116,7 @@ as `DONE` if it is picked again, and you close it then.
    latest `origin/main` into the feature branch directly, runs the checks,
    pushes, opens the integration PR on the first refresh, and writes its
    body — also listing the out-of-scope items the feature PRs deferred.
-2. Before each round on the integration PR: if it conflicts with `main`, or a
+2. Before the integration PR's review pass: if it conflicts with `main`, or a
    required check on its head fails because of a change on `main`, go back to
    step 1. `main` having moved on without either is not a reason: every
    refresh moves the head and gets the whole feature reviewed again. Conflicts
@@ -142,11 +127,14 @@ as `DONE` if it is picked again, and you close it then.
    are fixed: it answers and resolves the rest, and lists the real defects
    among them in the integration PR body. Its fixes go to a new sub-branch and
    a PR to the feature branch, never directly onto the feature branch. It
-   returns that PR as `FIXED`; drive that PR with §4 until merged, then return
-   to step 2.
-4. The **finish line**: the integration PR meets every §4 gate on its head, and
-   step 2 finds nothing to do. Do not merge it. Report the integration PR
-   link to the maintainer, and stop.
+   returns that PR as `FIXED`; drive that PR with §4 until merged, then go
+   to step 4. Do not repeat checks, review, or fixer work on the updated
+   integration PR head.
+4. The **finish line**: after the initial review pass and any fix PR merge,
+   confirm only that GitHub reports the integration PR conflict-free and
+   mergeable. If branch protection blocks it, stop and report the blocker
+   without rerunning checks or review. Do not merge it. Report the integration
+   PR link to the maintainer, and stop.
 
 ## 7. Waiting
 

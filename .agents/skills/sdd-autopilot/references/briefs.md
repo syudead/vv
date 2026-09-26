@@ -128,8 +128,9 @@ A blocking finding you verified is not a defect: reply why, and resolve it now.
 A real blocking defect or a check on the head that did not pass: create a
 sub-branch from origin/<feature>, commit the fixes there, push it, open a PR to
 <feature> titled for the review round, with Refs #<parent>. Reply on each
-thread it fixes naming that PR and leave it unresolved; resolve it only once
-the fix it names is merged into <feature>, which a later round sees.
+thread it fixes naming that PR and leave it unresolved. List those threads in
+DEFERRED for the maintainer; this workflow does not review the integration PR
+again after the fix PR merges.
 Return FIXED with the new PR number. Return CLEAN only when every check on the
 head passed and no blocking thread needed a fix; a check that did not pass
 with no cause to fix is BLOCKED, as in the feature-PR brief.

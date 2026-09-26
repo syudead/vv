@@ -28,8 +28,9 @@ one-stage workflow leaves to them, **for feature-branch PRs only**:
   the gates in [references/loop.md](references/loop.md)
 - closing a child Issue as completed after its PR merges
 
-The integration PR is never merged here. The run ends when it is green,
-reviewed and mergeable, and reports that to the maintainer.
+The integration PR is never merged here. The run ends after its initial review
+pass and any fix PR merge when GitHub reports it conflict-free and mergeable,
+and reports that to the maintainer.
 
 ## Keeping the orchestrator's context small
 
@@ -80,9 +81,8 @@ everything downstream or a miss is expensive to find later.
 | Work | Model | Why |
 | --- | --- | --- |
 | `plan` and `design` stage workers | `fable` | One run per feature, and every child Issue, implementation and review is built on its decisions |
-| Review fixer on a PR with three distinct head SHAs reviewed by someone other than the PR author | `fable` | Findings that keep coming back need the root cause, not another local patch |
 | Integrate worker when merging `main` conflicts | `fable` | Keeping both sides' behaviour is a judgement across two changes |
-| Implementation, `plan-to-issues`, other review-fixer rounds, conflict-free integrate | inherit | Bounded by an approved artifact or a child Issue; high volume |
+| Implementation, `plan-to-issues`, review fixers, conflict-free integrate | inherit | Bounded by an approved artifact or a child Issue; high volume |
 
 The orchestrator itself stays on the session's model. It only reads short
 facts and return blocks, so a more capable model buys it nothing. Codex keeps
@@ -111,8 +111,8 @@ report to the maintainer when:
   [docs/product-specs/spec-quality.md](../../../docs/product-specs/spec-quality.md))
   or to an approved artifact
 - a review finding can only be fixed by changing an approved artifact
-- a PR does not converge (see the round limit in
-  [references/loop.md](references/loop.md) §4)
+- an integration fix or refresh reaches a limit in
+  [references/loop.md](references/loop.md) §4
 - a required GitHub capability is missing, or the stage selection would stop
   and ask
 
