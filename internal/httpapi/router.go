@@ -348,6 +348,22 @@ func (w *errorCacheWriter) Flush() {
 	}
 }
 
+// ReadFrom は下の ResponseWriter の io.ReaderFrom へ中継する。これが無いと
+// http.ServeContent の io.Copy が包みの Write しか見つけられず、sendfile を
+// 使えずに 32KB ずつユーザー空間を通る。
+func (w *errorCacheWriter) ReadFrom(src io.Reader) (int64, error) {
+	if readerFrom, ok := w.ResponseWriter.(io.ReaderFrom); ok {
+		return readerFrom.ReadFrom(src)
+	}
+	// 包みの ReadFrom へ戻らないよう、Write だけを見せて写す。
+	return io.Copy(writerOnly{w.ResponseWriter}, src)
+}
+
+// writerOnly は io.Copy に ReadFrom を見つけさせないための包みである。
+type writerOnly struct {
+	io.Writer
+}
+
 func (w *errorCacheWriter) WriteHeader(status int) {
 	if status >= http.StatusBadRequest {
 		w.Header().Set("Cache-Control", cacheNoStore)

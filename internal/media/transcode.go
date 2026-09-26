@@ -24,6 +24,10 @@ const (
 	maxVideoShortSide  = 2160
 	maxVideoFPS        = 60
 	maxMacroblocksSec  = 983040
+	// liveKeyframeInterval は映像をエンコードするときのキーフレームの間隔（秒）。
+	// 出力は frag_keyframe でキーフレームごとに fragment を区切るので、最初の
+	// データはこの間隔分をエンコードし終えるまで出ない。
+	liveKeyframeInterval = 2
 )
 
 // LiveTranscoder starts one FFmpeg process for each HTTP request. Its output is
@@ -318,6 +322,9 @@ func videoEncodeArgs(stream transcodeStream) []string {
 	}
 
 	args := []string{"-c:v", "libx264", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p", "-preset", liveX264Preset, "-crf", "23"}
+	// フレーム数ではなく出力の時刻で揃えるため、fps フィルターで間引いたあとも
+	// 入力のフレームレートによらず同じ間隔になる。
+	args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", liveKeyframeInterval))
 	if len(filters) > 0 {
 		args = append(args, "-vf", strings.Join(filters, ","))
 	}
