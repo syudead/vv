@@ -1292,7 +1292,7 @@ describe("useVideos のグループの項目", () => {
       watchState: "unwatched",
       sizeBytes: 3072,
       addedAt: "2026-09-13T00:00:00Z",
-      cover: ready(10),
+      previews: [],
       openVideoId: 10,
       videoIds: [10, 11, 12],
       tags: [],

@@ -1148,7 +1148,11 @@ export interface components {
              * @description メンバーの最後に再生した時刻の最大。無ければ省く
              */
             lastPlayedAt?: string;
-            cover: components["schemas"]["Video"];
+            /**
+             * @description カードのフォルダの絵柄に差し込むサムネイル。メンバーのうちサムネイル生成済みのものを
+             *     並びの順に最大4件（フォルダカードの previews と同じ形）
+             */
+            previews: components["schemas"]["FolderPreview"][];
             /**
              * Format: int64
              * @description 押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の

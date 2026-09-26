@@ -35,7 +35,7 @@ LibraryItem:
     group: { $ref: LibraryGroup }   # kind = group のときだけ
 
 LibraryGroup:
-  required: [folder, name, videoCount, sizeBytes, addedAt, cover, openVideoId, videoIds, tags]
+  required: [folder, name, videoCount, sizeBytes, addedAt, previews, openVideoId, videoIds, tags]
   # watchedCount・watchState は所有者の応答では必ず入り、ゲストでは省く（data-model.md §7）
   properties:
     folder: { $ref: VideoFolder }   # グループのフォルダ。これがグループを指す鍵
@@ -47,7 +47,7 @@ LibraryGroup:
     sizeBytes: { type: integer, format: int64 }
     addedAt: { type: string, format: date-time }
     lastPlayedAt: { type: string, format: date-time }  # 無ければ省く
-    cover: { $ref: Video }          # 残っているメンバーのうち並びで最初のもの。サムネイルと hover プレビューに使う
+    previews: { type: array, maxItems: 4, items: { $ref: FolderPreview } }  # サムネイル生成済みのメンバーを並びの順に最大4件。カードのフォルダの絵柄に使う
     openVideoId: { type: integer, format: int64 }  # 押したときに開くメンバー（data-model.md §6）
     videoIds: { type: array, items: { type: integer, format: int64 } }  # 全メンバー、並びの順
     tags: { type: array, items: { $ref: VideoTag } }  # メンバーのタグの和集合（出所も和）

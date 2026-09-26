@@ -1990,7 +1990,7 @@ components:
 
     LibraryGroup:
       type: object
-      required: [folder, name, videoCount, sizeBytes, addedAt, cover, openVideoId, videoIds, tags]
+      required: [folder, name, videoCount, sizeBytes, addedAt, previews, openVideoId, videoIds, tags]
       additionalProperties: false
       description: |
         グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
@@ -2030,8 +2030,14 @@ components:
           type: string
           format: date-time
           description: メンバーの最後に再生した時刻の最大。無ければ省く
-        cover:
-          $ref: "#/components/schemas/Video"
+        previews:
+          type: array
+          maxItems: 4
+          description: |
+            カードのフォルダの絵柄に差し込むサムネイル。メンバーのうちサムネイル生成済みのものを
+            並びの順に最大4件（フォルダカードの previews と同じ形）
+          items:
+            $ref: "#/components/schemas/FolderPreview"
         openVideoId:
           type: integer
           format: int64

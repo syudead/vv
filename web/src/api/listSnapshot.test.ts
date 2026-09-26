@@ -239,7 +239,7 @@ describe("控えの中のグループの項目", () => {
       videoCount: 2,
       sizeBytes: 2048,
       addedAt: "2026-09-13T00:00:00Z",
-      cover: item(10),
+      previews: [],
       openVideoId: 10,
       videoIds: [10, 11],
       tags: [],

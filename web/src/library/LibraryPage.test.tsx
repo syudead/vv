@@ -1565,7 +1565,10 @@ describe("LibraryPage", () => {
         durationMs: 12 * 60_000,
         sizeBytes: 12 * 1024 * 1024,
         addedAt: "2026-09-02T00:00:00Z",
-        cover: video(101, { title: "ep01" }),
+        previews: [101, 102, 103, 104].map((id) => ({
+          videoId: id,
+          thumbnailUrl: `/api/videos/${String(id)}/thumbnail`,
+        })),
         openVideoId: 104,
         videoIds: memberIds,
         tags: [],
@@ -1677,8 +1680,13 @@ describe("LibraryPage", () => {
       expect(screen.getByRole("status").textContent).toBe(resultCountText(3));
 
       const card = cards[1] as HTMLElement;
-      expect(within(card).getByText("3 / 12 本")).toBeDefined();
+      // 本数と長さはフォルダの絵柄の上に重ね、見終えた本数は数字では出さない。
+      expect(within(card).getByText("12 本")).toBeDefined();
+      expect(within(card).queryByText(/\/ 12/)).toBeNull();
       expect(within(card).getByText("12:00")).toBeDefined();
+      expect(
+        card.querySelectorAll("[data-folder-art] [data-folder-preview]"),
+      ).toHaveLength(4);
       const progress = within(card).getByRole("progressbar", {
         name: "視聴済みの本数の割合",
       });
@@ -1709,7 +1717,7 @@ describe("LibraryPage", () => {
       expect(screen.getByRole("button", { name: "一覧へ戻る /?q=ser" })).toBeDefined();
     });
 
-    it("再生から戻ると、カードの視聴状態と本数がメンバーの変化で変わる（受け入れ条件12）", async () => {
+    it("再生から戻ると、カードの視聴状態がメンバーの変化で変わる（受け入れ条件12）", async () => {
       const server = installGroupList();
       const user = userEvent.setup();
       renderWithPlayer();
@@ -1731,7 +1739,11 @@ describe("LibraryPage", () => {
         name: "series、12本のグループ、4本を視聴済み",
       });
       const card = link.closest("article") as HTMLElement;
-      expect(within(card).getByText("4 / 12 本")).toBeDefined();
+      expect(
+        within(card)
+          .getByRole("progressbar", { name: "視聴済みの本数の割合" })
+          .getAttribute("aria-valuenow"),
+      ).toBe("33");
       expect(link.getAttribute("href")).toBe("/videos/105");
       // 一覧は控えから戻し、グループだけを取り直す。
       const libraryRequests = listRequests(fetchMock);
@@ -1854,7 +1866,10 @@ describe("LibraryPage", () => {
       const row = link.closest("tr") as HTMLElement;
       expect(link.getAttribute("href")).toBe("/videos/104");
       expect(within(row).getByText("12 本")).toBeDefined();
-      expect(within(row).getByText("3 / 12")).toBeDefined();
+      expect(within(row).queryByText("3 / 12")).toBeNull();
+      expect(
+        row.querySelectorAll("[data-folder-art] [data-folder-preview]"),
+      ).toHaveLength(4);
       expect(within(row).getByText("12:00")).toBeDefined();
       expect(within(row).getAllByRole("cell")).toHaveLength(8);
     });
