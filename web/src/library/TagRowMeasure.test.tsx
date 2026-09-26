@@ -1,12 +1,17 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { TagRef } from "../api/client";
+import type { VideoTag } from "../api/client";
 import CardTagRow from "./CardTagRow";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
 
-function tags(...names: string[]): TagRef[] {
-  return names.map((name, index) => ({ id: index + 1, name }));
+function tags(...names: string[]): VideoTag[] {
+  return names.map((name, index) => ({
+    id: index + 1,
+    name,
+    manual: true,
+    fromFolder: false,
+  }));
 }
 
 afterEach(() => cleanup());

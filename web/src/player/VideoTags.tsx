@@ -1,4 +1,4 @@
-import { Plus, X } from "lucide-react";
+import { Folder, Plus, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -12,7 +12,12 @@ import {
   subscribeTags,
   type Tag,
 } from "../api/tags";
-import { applyTagToTags, compareNatural, tagsReflectChange } from "../api/tagOrder";
+import {
+  applyTagToTags,
+  compareNatural,
+  isFolderOnly,
+  tagsReflectChange,
+} from "../api/tagOrder";
 import { subscribeVideoTags } from "../api/videoTagsEvents";
 import { cn } from "../lib/cn";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
@@ -172,7 +177,10 @@ export default function VideoTags({
     buttonRefs.current.get(target.chipId)?.focus();
   }, [tags, removingIds]);
 
-  const attachedIds = new Set(tags.map((tag) => tag.id));
+  // 候補から除くのは手で付けたタグだけ。フォルダ名からだけ付いているタグは
+  // 候補に出し、確定すると手でも付いて面のある形に変わる（017 の ui-design.md
+  // 「Folder-derived tag chip」）。
+  const attachedIds = new Set(tags.filter((tag) => tag.manual).map((tag) => tag.id));
   const { options, exactOption } = buildOptions(allTags ?? [], attachedIds, inputValue);
 
   function isTagNotFound(error: unknown): boolean {
@@ -203,7 +211,15 @@ export default function VideoTags({
   }
 
   function removeTag(tag: TagRef, index: number) {
-    const next = tags[index + 1] ?? tags[index - 1];
+    // 移す先は × を持つ（手で付けた）チップだけ。フォルダ名からだけ付いている
+    // 破線のチップは × を持たないので飛ばす（017 の ui-design.md
+    // 「Folder-derived tag chip」、014 と同じ次 → 前 → 入力の規則）。
+    const next =
+      tags.slice(index + 1).find((candidate) => candidate.manual) ??
+      tags
+        .slice(0, index)
+        .reverse()
+        .find((candidate) => candidate.manual);
     pendingFocusRef.current = {
       target: next !== undefined ? { chipId: next.id } : "input",
       removedId: tag.id,
@@ -245,35 +261,51 @@ export default function VideoTags({
       <ul className="flex flex-wrap items-center gap-1.5">
         {tags.map((tag, index) => (
           <li key={tag.id} className="min-w-0 max-w-full">
-            <span
-              title={tag.name}
-              className="inline-flex h-6 max-w-full items-center rounded-sm bg-elevated pl-2 text-xs text-fg"
-            >
+            {isFolderOnly(tag) ? (
+              // フォルダ名からだけ付いているタグは動画ごとには外せないので、×
+              // を出さず、破線の枠と Folder の目印で出す。大きさ（h-6・text-xs）と
+              // 文字の色は面のあるチップと同じ（017 の ui-design.md
+              // 「Folder-derived tag chip」「Interaction states」）。
               <Link
                 to={`/?tag=${String(tag.id)}`}
-                aria-label={`${tag.name}で絞り込む`}
-                className="min-w-0 truncate hover:text-link"
+                title={tag.name}
+                aria-label={`${tag.name}で絞り込む（フォルダ名から）`}
+                className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm border border-dashed border-border-strong px-2 text-xs text-fg hover:border-solid hover:text-fg"
               >
-                {tag.name}
+                <Folder className="size-3 shrink-0 text-fg-subtle" aria-hidden="true" />
+                <span className="min-w-0 truncate">{tag.name}</span>
               </Link>
-              <span aria-hidden="true" className="mx-1.5 h-3.5 w-px bg-border-strong" />
-              <button
-                ref={(node) => {
-                  if (node) buttonRefs.current.set(tag.id, node);
-                  else buttonRefs.current.delete(tag.id);
-                }}
-                type="button"
-                aria-label={`${tag.name}をこの動画から外す`}
-                disabled={removingIds.has(tag.id)}
-                onClick={() => removeTag(tag, index)}
-                className={cn(
-                  "flex size-6 items-center justify-center rounded-r-sm hover:bg-hover-wash",
-                  "disabled:pointer-events-none disabled:opacity-50",
-                )}
+            ) : (
+              <span
+                title={tag.name}
+                className="inline-flex h-6 max-w-full items-center rounded-sm bg-elevated pl-2 text-xs text-fg"
               >
-                <X className="size-3" aria-hidden="true" />
-              </button>
-            </span>
+                <Link
+                  to={`/?tag=${String(tag.id)}`}
+                  aria-label={`${tag.name}で絞り込む`}
+                  className="min-w-0 truncate hover:text-link"
+                >
+                  {tag.name}
+                </Link>
+                <span aria-hidden="true" className="mx-1.5 h-3.5 w-px bg-border-strong" />
+                <button
+                  ref={(node) => {
+                    if (node) buttonRefs.current.set(tag.id, node);
+                    else buttonRefs.current.delete(tag.id);
+                  }}
+                  type="button"
+                  aria-label={`${tag.name}をこの動画から外す`}
+                  disabled={removingIds.has(tag.id)}
+                  onClick={() => removeTag(tag, index)}
+                  className={cn(
+                    "flex size-6 items-center justify-center rounded-r-sm hover:bg-hover-wash",
+                    "disabled:pointer-events-none disabled:opacity-50",
+                  )}
+                >
+                  <X className="size-3" aria-hidden="true" />
+                </button>
+              </span>
+            )}
           </li>
         ))}
         <li>

@@ -32,6 +32,8 @@ const server = {
   tags: [] as Tag[],
   /** videoId ごとに付いているタグの id（要約の作成に使う）。 */
   attached: new Map<number, Set<number>>(),
+  /** videoId ごとに、フォルダ名から付いているタグの id（手で付けた分とは別）。 */
+  fromFolder: new Map<number, Set<number>>(),
   addFails: false,
   removeFails: false,
   summaryFails: false,
@@ -107,23 +109,27 @@ function install() {
         if (server.summaryFails) {
           return jsonResponse({ code: "internal", message: "失敗" }, 500);
         }
-        const counts = new Map<number, number>();
+        // count はどちらかの出所で付いている本数、manualCount は手で付けた本数
+        // （017 の contracts/folder-groups-api.md §4）。
+        const counts = new Map<number, { count: number; manualCount: number }>();
         for (const videoId of body.videoIds) {
-          for (const tagId of server.attached.get(videoId) ?? []) {
-            counts.set(tagId, (counts.get(tagId) ?? 0) + 1);
+          const manual = server.attached.get(videoId) ?? new Set<number>();
+          const folder = server.fromFolder.get(videoId) ?? new Set<number>();
+          for (const tagId of new Set([...manual, ...folder])) {
+            const current = counts.get(tagId) ?? { count: 0, manualCount: 0 };
+            counts.set(tagId, {
+              count: current.count + 1,
+              manualCount: current.manualCount + (manual.has(tagId) ? 1 : 0),
+            });
           }
         }
         const items = [...counts.entries()]
-          .map(([tagId, count]) => {
+          .flatMap(([tagId, value]) => {
             const found = server.tags.find((t) => t.id === tagId);
             return found === undefined
-              ? null
-              : { tag: { id: found.id, name: found.name }, count };
+              ? []
+              : [{ tag: { id: found.id, name: found.name }, ...value }];
           })
-          .filter(
-            (value): value is { tag: { id: number; name: string }; count: number } =>
-              value !== null,
-          )
           .sort((a, b) => a.tag.name.localeCompare(b.tag.name));
         return jsonResponse({ total: body.videoIds.length, items });
       };
@@ -189,6 +195,7 @@ beforeEach(() => {
   __resetTagsForTest();
   server.tags = [tag({ id: 1, name: "旅行" }), tag({ id: 2, name: "Drama" })];
   server.attached = new Map();
+  server.fromFolder = new Map();
   server.addFails = false;
   server.removeFails = false;
   server.summaryFails = false;
@@ -574,13 +581,57 @@ describe("SelectionBar", () => {
     expect(await screen.findByText("3 件から「旅行」を外しました")).toBeDefined();
   });
 
-  it("選んだ動画にタグが無いときは、その旨を出す", async () => {
+  it("選んだ動画にタグが無いときは、外せるタグが無いことを出す", async () => {
     const user = userEvent.setup();
     install();
     renderBar();
 
     await user.click(screen.getByRole("button", { name: "タグを外す" }));
-    expect(await screen.findByText("選んだ動画にタグはありません")).toBeDefined();
+    expect(await screen.findByText("選んだ動画に、外せるタグはありません")).toBeDefined();
+  });
+
+  // 017 の ui-design.md「Folder-derived tag chip」: フォルダ名から付いているだけの
+  // タグは外せないので候補に出さず、「一部」の判定と本数は手で付けた本数で行う。
+  it("タグを外す: 候補は手で付けたタグだけで、一部の本数は手で付けた本数で数える", async () => {
+    const user = userEvent.setup();
+    install();
+    server.tags = [
+      tag({ id: 1, name: "旅行" }),
+      tag({ id: 2, name: "Drama" }),
+      tag({ id: 3, name: "京都" }),
+    ];
+    // 旅行: 3本ともフォルダ名から付き、手では1本だけ。
+    // 京都: フォルダ名からだけ（3本とも）。
+    // Drama: 手で3本。
+    for (const id of [1, 2, 3]) server.fromFolder.set(id, new Set([1, 3]));
+    server.attached.set(1, new Set([1, 2]));
+    server.attached.set(2, new Set([2]));
+    server.attached.set(3, new Set([2]));
+    renderBar();
+
+    await user.click(screen.getByRole("button", { name: "タグを外す" }));
+    const input = await screen.findByRole("combobox", { name: "タグを外す" });
+    await user.click(input);
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "Drama3 件",
+      "旅行一部 1 / 3 件",
+    ]);
+    expect(
+      screen.getByRole("option", { name: "旅行、一部の動画だけ、3 件中 1 件" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("option", { name: /京都/ })).toBeNull();
+  });
+
+  it("タグを外す: フォルダ名から付いたタグしか無いときは、外せるタグが無いことを出す", async () => {
+    const user = userEvent.setup();
+    install();
+    for (const id of [1, 2, 3]) server.fromFolder.set(id, new Set([1]));
+    renderBar();
+
+    await user.click(screen.getByRole("button", { name: "タグを外す" }));
+    expect(await screen.findByText("選んだ動画に、外せるタグはありません")).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: "タグを外す" })).toBeNull();
   });
 
   it("要約を取れないときは理由と再試行を出し、再試行で取り直す", async () => {

@@ -253,6 +253,122 @@ describe("VideoTags", () => {
     expect(screen.getByTitle("Anime")).toBeDefined();
   });
 
+  // 017 の ui-design.md「Folder-derived tag chip」・受け入れ条件 6・9。
+  describe("フォルダ由来のタグ", () => {
+    it("フォルダ由来だけのタグは×を出さず、破線の形のリンクで出す（受け入れ条件6）", async () => {
+      install();
+      renderTags(7, [
+        { id: 4, name: "京都", manual: false, fromFolder: true },
+        { id: 1, name: "旅行", manual: true, fromFolder: false },
+      ]);
+
+      const link = await screen.findByRole("link", {
+        name: "京都で絞り込む（フォルダ名から）",
+      });
+      expect(link.getAttribute("href")).toBe("/?tag=4");
+      expect(link.className).toContain("border-dashed");
+      expect(link.className).not.toContain("bg-elevated");
+      expect(link.querySelector("svg[aria-hidden='true']")).not.toBeNull();
+      expect(screen.queryByRole("button", { name: "京都をこの動画から外す" })).toBeNull();
+
+      // 手で付けたタグは今の形（面あり・×あり）。大きさは同じ h-6・text-xs。
+      const manualChip = screen.getByTitle("旅行");
+      expect(manualChip.className).toContain("bg-elevated");
+      expect(
+        screen.getByRole("button", { name: "旅行をこの動画から外す" }),
+      ).toBeDefined();
+      for (const chip of [link, manualChip]) {
+        expect(chip.className).toContain("h-6");
+        expect(chip.className).toContain("text-xs");
+        expect(chip.className).toContain("text-fg");
+      }
+    });
+
+    it("両方から付いたタグの×は手の分だけを外し、同じ位置で破線の形に変わる（受け入れ条件9）", async () => {
+      install();
+      server.attachDelay = () => undefined;
+      renderTags(7, [
+        { id: 2, name: "Anime", manual: true, fromFolder: false },
+        { id: 1, name: "旅行", manual: true, fromFolder: true },
+        { id: 3, name: "Drama", manual: true, fromFolder: false },
+      ]);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "旅行をこの動画から外す" }),
+      );
+      // 応答を受けるまでは今の形のまま。
+      expect(screen.queryByRole("link", { name: /旅行.*フォルダ名から/ })).toBeNull();
+
+      act(() => server.attachDelay?.());
+      const link = await screen.findByRole("link", {
+        name: "旅行で絞り込む（フォルダ名から）",
+      });
+      expect(link.className).toContain("border-dashed");
+      expect(screen.queryByRole("button", { name: "旅行をこの動画から外す" })).toBeNull();
+      const list = screen.getAllByRole("listitem");
+      expect(list.slice(0, 3).map((item) => item.textContent)).toEqual([
+        "Anime",
+        "旅行",
+        "Drama",
+      ]);
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "Dramaをこの動画から外す" }),
+      );
+    });
+
+    it("外した後のフォーカスは破線のチップを飛ばして次の×へ移る", async () => {
+      install();
+      renderTags(7, [
+        { id: 2, name: "Anime", manual: true, fromFolder: false },
+        { id: 4, name: "京都", manual: false, fromFolder: true },
+        { id: 1, name: "旅行", manual: true, fromFolder: false },
+      ]);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Animeをこの動画から外す" }),
+      );
+      await waitFor(() => expect(screen.queryByTitle("Anime")).toBeNull());
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "旅行をこの動画から外す" }),
+      );
+    });
+
+    it("次にも前にも×が無ければ、破線のチップを飛ばして「タグを追加」の入力へ移る", async () => {
+      install();
+      renderTags(7, [
+        { id: 4, name: "京都", manual: false, fromFolder: true },
+        { id: 1, name: "旅行", manual: true, fromFolder: false },
+        { id: 5, name: "夏", manual: false, fromFolder: true },
+      ]);
+
+      fireEvent.click(
+        await screen.findByRole("button", { name: "旅行をこの動画から外す" }),
+      );
+      await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
+      expect(document.activeElement).toBe(addInput());
+    });
+
+    it("フォルダ由来だけのタグは「タグを追加」の候補に出し、確定すると面のある形に変わる", async () => {
+      const user = userEvent.setup();
+      install();
+      renderTags(7, [
+        { id: 1, name: "旅行", manual: false, fromFolder: true },
+        { id: 3, name: "Drama", manual: true, fromFolder: false },
+      ]);
+
+      await user.click(addInput());
+      await screen.findByRole("option", { name: /旅行/ });
+      expect(screen.queryByRole("option", { name: /Drama/ })).toBeNull();
+      await user.click(screen.getByRole("option", { name: /旅行/ }));
+
+      expect(
+        await screen.findByRole("button", { name: "旅行をこの動画から外す" }),
+      ).toBeDefined();
+      expect(screen.getByTitle("旅行").className).toContain("bg-elevated");
+      expect(screen.queryByRole("link", { name: /フォルダ名から/ })).toBeNull();
+    });
+  });
+
   it("応答を待つ間に打った次の名前は、先の付与の成功で消さない", async () => {
     const user = userEvent.setup();
     install();

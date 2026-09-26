@@ -120,3 +120,12 @@ export function tagsReflectChange(
   const manual = tags.some((tag) => tag.id === tagId && tag.manual);
   return manual === (action === "add");
 }
+
+/**
+ * isFolderOnly は、フォルダ名からだけ付いている（手では付けていない）タグかを
+ * 返す。この形だけを破線のチップにし、再生画面では × を出さない
+ * （specs/017-folder-groups/ui-design.md「Folder-derived tag chip」）。
+ */
+export function isFolderOnly(tag: VideoTag): boolean {
+  return tag.fromFolder && !tag.manual;
+}

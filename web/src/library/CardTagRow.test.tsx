@@ -1,15 +1,20 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { TagRef } from "../api/client";
+import type { VideoTag } from "../api/client";
 import CardTagRow from "./CardTagRow";
 
-function tags(...names: string[]): TagRef[] {
-  return names.map((name, index) => ({ id: index + 1, name }));
+function tags(...names: string[]): VideoTag[] {
+  return names.map((name, index) => ({
+    id: index + 1,
+    name,
+    manual: true,
+    fromFolder: false,
+  }));
 }
 
 function renderRow(
-  props: Partial<React.ComponentProps<typeof CardTagRow>> & { tags: TagRef[] },
+  props: Partial<React.ComponentProps<typeof CardTagRow>> & { tags: VideoTag[] },
 ) {
   const onPress = vi.fn();
   const onToggleSelection = vi.fn();
@@ -85,5 +90,70 @@ describe("CardTagRow", () => {
     expect(
       within(screen.getByRole("list", { name: "タグ" })).getByText("旅行"),
     ).toBeDefined();
+  });
+
+  // 受け入れ条件 6（specs/017-folder-groups/ui-design.md「Folder-derived tag chip」）:
+  // フォルダ名からだけ付いたタグは面の無い破線の枠と Folder の目印で出し、
+  // 読み上げ名に「フォルダ名から」を添える。手でも付いていれば今の形のまま。
+  describe("フォルダ由来のタグ", () => {
+    const mixed: VideoTag[] = [
+      { id: 1, name: "京都", manual: false, fromFolder: true },
+      { id: 2, name: "旅行", manual: true, fromFolder: true },
+      { id: 3, name: "夏", manual: true, fromFolder: false },
+    ];
+
+    it("フォルダ由来だけのタグを破線の形で出し、ほかは面のある形のまま出す", () => {
+      renderRow({ tags: mixed });
+      const folderOnly = screen.getByRole("button", {
+        name: "京都で絞り込む（フォルダ名から）",
+      });
+      expect(folderOnly.className).toContain("border-dashed");
+      expect(folderOnly.className).not.toContain("bg-elevated");
+      expect(folderOnly.querySelector("svg[aria-hidden='true']")).not.toBeNull();
+
+      for (const name of ["旅行", "夏"]) {
+        const chip = screen.getByRole("button", { name: `${name}で絞り込む` });
+        expect(chip.className).toContain("bg-elevated");
+        expect(chip.className).not.toContain("border-dashed");
+        expect(chip.querySelector("svg")).toBeNull();
+      }
+    });
+
+    it("区別は文字の大きさではなく形で行う（同じ h-5・text-xs）", () => {
+      renderRow({ tags: mixed });
+      const folderOnly = screen.getByRole("button", { name: /京都/ });
+      const manual = screen.getByRole("button", { name: "夏で絞り込む" });
+      for (const chip of [folderOnly, manual]) {
+        expect(chip.className).toContain("h-5");
+        expect(chip.className).toContain("text-xs");
+        expect(chip.className).toContain("text-fg-muted");
+      }
+    });
+
+    it("押したときは出所によらず、そのタグで絞り込む", () => {
+      const { onPress } = renderRow({ tags: mixed });
+      fireEvent.click(
+        screen.getByRole("button", { name: "京都で絞り込む（フォルダ名から）" }),
+      );
+      expect(onPress).toHaveBeenCalledWith(mixed[0]);
+    });
+
+    it("API の順のまま並べ、出所で分けない", () => {
+      renderRow({ tags: mixed });
+      const list = screen.getByRole("list", { name: "タグ" });
+      expect(
+        within(list)
+          .getAllByRole("button")
+          .map((button) => button.getAttribute("title")),
+      ).toEqual(["京都", "旅行", "夏"]);
+    });
+
+    it("選択中の形でも破線の形で出し、隠した「フォルダ名から」を添える", () => {
+      renderRow({ tags: mixed, selectionMode: true });
+      const list = screen.getByRole("list", { name: "タグ" });
+      const chip = within(list).getByTitle("京都");
+      expect(chip.className).toContain("border-dashed");
+      expect(chip.textContent).toBe("京都（フォルダ名から）");
+    });
   });
 });

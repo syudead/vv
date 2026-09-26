@@ -1130,6 +1130,7 @@ describe("LibraryPage", () => {
           const items = [...counts.entries()].map(([tagId, count]) => ({
             tag: { id: tagId, name: tags.find((t) => t.id === tagId)?.name ?? "?" },
             count,
+            manualCount: count,
           }));
           return Promise.resolve(json({ total: body.videoIds.length, items }));
         }
@@ -1277,11 +1278,11 @@ describe("LibraryPage", () => {
 
       await user.click(screen.getByRole("checkbox", { name: "「動画 1」を選択" }));
       await user.click(screen.getByRole("button", { name: "タグを外す" }));
-      await screen.findByText("選んだ動画にタグはありません");
+      await screen.findByText("選んだ動画に、外せるタグはありません");
 
       await user.keyboard("{Escape}");
       await waitFor(() =>
-        expect(screen.queryByText("選んだ動画にタグはありません")).toBeNull(),
+        expect(screen.queryByText("選んだ動画に、外せるタグはありません")).toBeNull(),
       );
       // ポップオーバーだけが閉じ、選択バー自体（選択）は残る。
       expect(screen.getByText("1 件を選択中")).toBeDefined();
@@ -1417,7 +1418,7 @@ describe("LibraryPage", () => {
           return Promise.resolve(
             json({
               total: body.videoIds.length,
-              items: count > 0 ? [{ tag, count }] : [],
+              items: count > 0 ? [{ tag, count, manualCount: count }] : [],
             }),
           );
         }
