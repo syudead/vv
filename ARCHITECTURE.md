@@ -179,9 +179,10 @@ grace period, then stops the scanner and the workers so a running job returns to
 
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
 `video_locations` (including its per-location search keys), `location_search_fts`,
-`jobs`, `scans`, thumbnail files, hover-preview MP4/manifest pairs, and the folder index
-(`folder_groups`, `folder_group_members`, `video_folder_names`, `folder_index_state`) are a
-rebuildable index (deleting them costs a rescan), while `playback_progress`, the tag tables
+`jobs`, `scans`, thumbnail files, hover-preview MP4/manifest pairs, the folder index
+(`folder_groups`, `folder_group_members`, `video_folder_names`, `folder_index_state`) and
+the per-video live-transcode probe (`video_transcode_probes`, refilled by the next probe or
+live transcode) are a rebuildable index (deleting them costs a rescan), while `playback_progress`, the tag tables
 (`tags`, `tag_names`, `video_tags`), the per-video public flag (`public_videos`) and the
 per-folder grouping exceptions (`folder_group_overrides`) are user data that cannot be
 reconstructed.
@@ -205,11 +206,17 @@ compile:
 
 - `IngestStore` — the job queue (enqueue, claim, complete, fail, requeue, remaining
   work) and writing each ingest stage's result back to the video row, including the
-  retry of a failed probe and the rebuild of a missing preview.
+  retry of a failed probe and the rebuild of a missing preview. A probe's result also
+  upserts the video's live-transcode probe (`video_transcode_probes`: a versioned
+  `domain.TranscodeProbe` JSON plus the probed file's size and nanosecond mtime) in the
+  same transaction, and `SaveTranscodeProbe` upserts one probed at request time
+  (`specs/018-live-transcode-seek/data-model.md`).
 - `LibraryStore` — reads of the index: the video list and search, library items
   (videos and folder groups, a group's card and the "select all" ids), folder browsing,
   related videos and the folder group a video belongs to (`VideoGroup`), a video's
-  locations, and the startup refresh of search keys. The
+  locations, a video's stored live-transcode probe (`TranscodeProbe`, read one video at a
+  time and never part of the list or detail reads; `domain.TranscodeProbeUsable` decides
+  whether it may be used), and the startup refresh of search keys. The
   video list can AND-filter on a set of tag ids and reports which of them do not
   exist (`VideoQuery.TagIDs`/`VideoPage.MissingTagIDs`), and `LibraryIDs` returns the
   matching item ids unpaged for the library's "select all"
@@ -340,7 +347,14 @@ same-origin check and the loopback check for opening a file all use it.
 
 Not built yet: subtitles and multi-user support. Browser-incompatible
 video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is
-not persisted.
+not persisted. The transcode route reuses the video's stored live-transcode probe when it
+still matches the opened file, and saves the one `internal/media` probed otherwise.
+A seek copies the video when it can and starts at the previous keyframe; `internal/media`
+reads that actual start from the output's `moov` edit lists and falls back to encoding
+when it is more than `domain.CopySeekAllowance` before the requested position.
+The player learns that start from `GET /api/videos/{id}/transcode-start`, keyed by the
+`attempt` it put on the transcode URL and served from an in-memory ledger in `internal/httpapi`
+([live-transcode-seek.md](docs/design-docs/live-transcode-seek.md)).
 
 ## Intended dependency direction
 

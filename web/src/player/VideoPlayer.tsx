@@ -299,8 +299,14 @@ export default function VideoPlayer(props: Props) {
       setHoldControlBar(false);
       if (resumeApplied || initialPositionMs <= 0) return;
       resumeApplied = true;
-      if (attempt.route === "direct") player.currentTime(initialPositionMs / 1000);
-      latest.current.onPosition(initialPositionMs);
+      if (attempt.route === "direct") {
+        player.currentTime(initialPositionMs / 1000);
+        latest.current.onPosition(initialPositionMs);
+        return;
+      }
+      // ライブ変換はコピーで始めると直前のキーフレームから映る。仲立ちが実際の開始位置に
+      // 合わせた論理時刻を伝える（contracts/transcode-start-api.md §3）。
+      reportPosition();
     });
     player.on("timeupdate", reportPosition);
     player.on("play", () => {

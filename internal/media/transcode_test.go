@@ -10,18 +10,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-func compatibleMetadata() transcodeMetadata {
-	audio := transcodeStream{Index: 2, CodecType: "audio", CodecName: "aac", Profile: "LC", SampleRate: 48000, Channels: 2}
-	return transcodeMetadata{
+func compatibleMetadata() domain.TranscodeProbe {
+	audio := domain.TranscodeAudio{Index: 2, CodecName: "aac", Profile: "LC", SampleRate: 48000, Channels: 2}
+	return domain.TranscodeProbe{
 		FormatName: "matroska,webm",
-		Video:      transcodeStream{Index: 1, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1},
+		Video:      domain.TranscodeVideo{Index: 1, CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1},
 		Audio:      &audio,
 	}
 }
@@ -75,19 +79,19 @@ func TestTranscodeArgsCopiesCompatibleStreams(t *testing.T) {
 func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*transcodeMetadata)
+		mutate func(*domain.TranscodeProbe)
 		want   string
 	}{
-		{"10-bit H264", func(m *transcodeMetadata) { m.Video.PixelFormat = "yuv420p10le" }, "-c:v libx264"},
-		{"High 4:4:4 10-bit", func(m *transcodeMetadata) {
+		{"10-bit H264", func(m *domain.TranscodeProbe) { m.Video.PixelFormat = "yuv420p10le" }, "-c:v libx264"},
+		{"High 4:4:4 10-bit", func(m *domain.TranscodeProbe) {
 			m.Video.Profile = "High 4:4:4 Predictive"
 			m.Video.PixelFormat = "yuv444p10le"
 			m.Video.BitsPerRawSample = 10
 		}, "-c:v libx264"},
-		{"96kHz AAC", func(m *transcodeMetadata) { m.Audio.SampleRate = 96000 }, "-c:a aac -profile:a aac_low -ac 2 -b:a 192k -ar 48000"},
-		{"unknown video attribute", func(m *transcodeMetadata) { m.Video.BitsPerRawSample = 0 }, "-c:v libx264"},
-		{"variable frame rate", func(m *transcodeMetadata) { m.Video.RealFPS = 120 }, "-c:v libx264"},
-		{"rotated oversized coded frame", func(m *transcodeMetadata) {
+		{"96kHz AAC", func(m *domain.TranscodeProbe) { m.Audio.SampleRate = 96000 }, "-c:a aac -profile:a aac_low -ac 2 -b:a 192k -ar 48000"},
+		{"unknown video attribute", func(m *domain.TranscodeProbe) { m.Video.BitsPerRawSample = 0 }, "-c:v libx264"},
+		{"variable frame rate", func(m *domain.TranscodeProbe) { m.Video.RealFPS = 120 }, "-c:v libx264"},
+		{"rotated oversized coded frame", func(m *domain.TranscodeProbe) {
 			m.Video.Width = 2160
 			m.Video.Height = 4096
 			m.Video.Rotation = 90
@@ -105,9 +109,72 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 	}
 }
 
-func TestTranscodeArgsNormalizesSeek(t *testing.T) {
+// 映像がコピーできる動画は途中からでもコピーし、実際の開始位置を moov に書かせる引数に
+// する（research.md R-1）。
+func TestTranscodeArgsCopiesSeek(t *testing.T) {
 	args := strings.Join(transcodeArgs("movie.mkv", 25000, compatibleMetadata(), false), " ")
+	for _, want := range []string{
+		"-noaccurate_seek -ss 25.000 -i movie.mkv", "-c:v copy", "-c:a copy", "-copyts -start_at_zero",
+		"-movflags frag_keyframe+empty_moov+default_base_moof+delay_moov",
+	} {
+		if !strings.Contains(args, want) {
+			t.Errorf("argsに %q がない: %s", want, args)
+		}
+	}
+}
+
+// 直接再生から切り替えた変換は、途中からでも映像と音声をエンコードする（要件 5）。
+func TestTranscodeArgsNormalizesSeek(t *testing.T) {
+	args := strings.Join(transcodeArgs("movie.mkv", 25000, compatibleMetadata(), true), " ")
 	for _, want := range []string{"-ss 25.000 -i movie.mkv", "-c:v libx264", "-preset superfast", "-c:a aac"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("argsに %q がない: %s", want, args)
+		}
+	}
+	for _, unwanted := range []string{"-noaccurate_seek", "-copyts", "delay_moov"} {
+		if strings.Contains(args, unwanted) {
+			t.Errorf("argsに %q がある: %s", unwanted, args)
+		}
+	}
+}
+
+// 映像をエンコードする途中からの変換は、コピーからの切り替えでも、映像がコピーできない
+// 動画でも同じ引数で、今までどおり音声もエンコードする（受け入れ条件 4）。
+func TestTranscodeArgsEncodesSeekLikeBefore(t *testing.T) {
+	fallback := buildTranscodeArgs("movie.mkv", 25000, compatibleMetadata(), false, false)
+	args := strings.Join(fallback, " ")
+	for _, want := range []string{"-ss 25.000 -i movie.mkv", "-c:v libx264", "-force_key_frames", "-c:a aac", "-movflags frag_keyframe+empty_moov+default_base_moof -f"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("argsに %q がない: %s", want, args)
+		}
+	}
+	for _, unwanted := range []string{"-noaccurate_seek", "-copyts", "delay_moov"} {
+		if strings.Contains(args, unwanted) {
+			t.Errorf("argsに %q がある: %s", unwanted, args)
+		}
+	}
+	if normalized := transcodeArgs("movie.mkv", 25000, compatibleMetadata(), true); !reflect.DeepEqual(normalized, fallback) {
+		t.Errorf("切り替えの引数 = %v, 直接再生からの切り替え = %v", fallback, normalized)
+	}
+
+	uncopyable := compatibleMetadata()
+	uncopyable.Video.PixelFormat = "yuv420p10le"
+	want := buildTranscodeArgs("movie.mkv", 25000, uncopyable, false, false)
+	if got := transcodeArgs("movie.mkv", 25000, uncopyable, false); !reflect.DeepEqual(got, want) {
+		t.Errorf("videoCanCopy が偽の動画の引数 = %v, want %v", got, want)
+	}
+	if got := buildTranscodeArgs("movie.mkv", 25000, uncopyable, false, true); !reflect.DeepEqual(got, want) {
+		t.Errorf("コピーできない映像をコピーする引数を作った: %v", got)
+	}
+}
+
+// 映像をコピーして途中から始めるとき、コピーできない音声はエンコードし、キーフレームの
+// 時刻から始める。
+func TestTranscodeArgsCopySeekEncodesUncopyableAudio(t *testing.T) {
+	metadata := compatibleMetadata()
+	metadata.Audio.CodecName = "ac3"
+	args := strings.Join(transcodeArgs("movie.mkv", 25000, metadata, false), " ")
+	for _, want := range []string{"-noaccurate_seek -ss 25.000", "-c:v copy", "-c:a aac", "delay_moov"} {
 		if !strings.Contains(args, want) {
 			t.Errorf("argsに %q がない: %s", want, args)
 		}
@@ -117,17 +184,22 @@ func TestTranscodeArgsNormalizesSeek(t *testing.T) {
 func TestTranscodeArgsReadsMOVTracksSeparately(t *testing.T) {
 	metadata := compatibleMetadata()
 	metadata.FormatName = "mov,mp4,m4a,3gp,3g2,mj2"
-	args := strings.Join(transcodeArgs("movie.mov", 25000, metadata, false), " ")
-	for _, want := range []string{
-		"-ss 25.000 -an -i movie.mov -ss 25.000 -vn -i movie.mov",
-		"-map 0:1 -map 1:2",
+	for _, tc := range []struct {
+		normalize bool
+		inputs    string
+	}{
+		{false, "-noaccurate_seek -ss 25.000 -an -i movie.mov -noaccurate_seek -ss 25.000 -vn -i movie.mov"},
+		{true, "-ss 25.000 -an -i movie.mov -ss 25.000 -vn -i movie.mov"},
 	} {
-		if !strings.Contains(args, want) {
-			t.Fatalf("argsに %q がない: %s", want, args)
+		args := strings.Join(transcodeArgs("movie.mov", 25000, metadata, tc.normalize), " ")
+		for _, want := range []string{tc.inputs, "-map 0:1 -map 1:2"} {
+			if !strings.Contains(args, want) {
+				t.Fatalf("normalize=%v: argsに %q がない: %s", tc.normalize, want, args)
+			}
 		}
-	}
-	if strings.Contains(args, "-interleaved_read") {
-		t.Fatalf("再生を損なう可能性のあるMOV demuxer optionがある: %s", args)
+		if strings.Contains(args, "-interleaved_read") {
+			t.Fatalf("再生を損なう可能性のあるMOV demuxer optionがある: %s", args)
+		}
 	}
 }
 
@@ -213,24 +285,31 @@ func TestMOVTranscodeStopsAfterClientCancellation(t *testing.T) {
 		t.Fatalf("MOV fixture生成: %v: %s", err, output)
 	}
 
-	transcoder := NewLiveTranscoder(nil)
-	stream, wait, stop, err := transcoder.Start(
-		context.Background(), input, 0, true, time.Now().Add(5*time.Second),
-	)
+	info, err := os.Stat(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readInitialBytes(stream); err != nil {
+	transcoder := NewLiveTranscoder(nil)
+	started, err := transcoder.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: input, Source: domain.FileStampOf(info), Normalize: true, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.Probed == nil {
+		t.Error("その場で解析したのに結果を返さない")
+	}
+	if _, err := readInitialBytes(started.Stream); err != nil {
 		t.Fatalf("初期データ取得: %v", err)
 	}
 
-	started := time.Now()
-	stop()
-	_ = stream.Close()
-	if err := wait(); err == nil {
+	stoppedAt := time.Now()
+	started.Stop()
+	_ = started.Stream.Close()
+	if err := started.Wait(); err == nil {
 		t.Fatal("cancelしたFFmpegが成功終了しました")
 	}
-	if elapsed := time.Since(started); elapsed > 2*time.Second {
+	if elapsed := time.Since(stoppedAt); elapsed > 2*time.Second {
 		t.Fatalf("cancel後のFFmpeg終了に %s かかりました", elapsed)
 	}
 }
@@ -244,18 +323,18 @@ func readInitialBytes(stream io.Reader) ([]byte, error) {
 func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 	tests := []struct {
 		name   string
-		stream transcodeStream
+		stream domain.TranscodeVideo
 		want   string
 	}{
-		{"odd dimensions", transcodeStream{Width: 641, Height: 359, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1}, "-vf pad=642:360:0:0,setsar=1/1*641/359*360/642:max=1000000"},
-		{"8K60", transcodeStream{Width: 7680, Height: 4320, FPS: 60, RealFPS: 60}, "-vf scale=3840:2160,setsar=1/1*7680/4320*2160/3840:max=1000000,fps=30.340"},
-		{"rotated 4K", transcodeStream{Width: 3840, Height: 2160, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf setsar=1/1*2160/3840*3840/2160:max=1000000"},
-		{"portrait 8K", transcodeStream{Width: 4320, Height: 7680, FPS: 30, RealFPS: 30}, "-vf scale=2160:3840,setsar=1/1*4320/7680*3840/2160:max=1000000"},
-		{"rotated 8K", transcodeStream{Width: 7680, Height: 4320, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf scale=2160:3840,setsar=1/1*4320/7680*3840/2160:max=1000000"},
-		{"rotated HD", transcodeStream{Width: 1920, Height: 1080, Rotation: 270, FPS: 30, RealFPS: 30}, "-vf setsar=1/1*1080/1920*1920/1080:max=1000000"},
-		{"unknown rate", transcodeStream{Width: 1920, Height: 1080}, "-vf fps=30.000"},
-		{"VFR peak", transcodeStream{Width: 1920, Height: 1080, FPS: 30, RealFPS: 120}, "-vf fps=30"},
-		{"very low VFR", transcodeStream{Width: 1920, Height: 1080, FPS: 0.0005, RealFPS: 1}, "-vf fps=0.0005"},
+		{"odd dimensions", domain.TranscodeVideo{Width: 641, Height: 359, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1}, "-vf pad=642:360:0:0,setsar=1/1*641/359*360/642:max=1000000"},
+		{"8K60", domain.TranscodeVideo{Width: 7680, Height: 4320, FPS: 60, RealFPS: 60}, "-vf scale=3840:2160,setsar=1/1*7680/4320*2160/3840:max=1000000,fps=30.340"},
+		{"rotated 4K", domain.TranscodeVideo{Width: 3840, Height: 2160, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf setsar=1/1*2160/3840*3840/2160:max=1000000"},
+		{"portrait 8K", domain.TranscodeVideo{Width: 4320, Height: 7680, FPS: 30, RealFPS: 30}, "-vf scale=2160:3840,setsar=1/1*4320/7680*3840/2160:max=1000000"},
+		{"rotated 8K", domain.TranscodeVideo{Width: 7680, Height: 4320, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf scale=2160:3840,setsar=1/1*4320/7680*3840/2160:max=1000000"},
+		{"rotated HD", domain.TranscodeVideo{Width: 1920, Height: 1080, Rotation: 270, FPS: 30, RealFPS: 30}, "-vf setsar=1/1*1080/1920*1920/1080:max=1000000"},
+		{"unknown rate", domain.TranscodeVideo{Width: 1920, Height: 1080}, "-vf fps=30.000"},
+		{"VFR peak", domain.TranscodeVideo{Width: 1920, Height: 1080, FPS: 30, RealFPS: 120}, "-vf fps=30"},
+		{"very low VFR", domain.TranscodeVideo{Width: 1920, Height: 1080, FPS: 0.0005, RealFPS: 1}, "-vf fps=0.0005"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -516,11 +595,13 @@ func TestLiveTranscoderStopsOnCancellation(t *testing.T) {
 			defer cancelServer()
 			transcoder := helperTranscoder(serverCtx.Done())
 
-			stream, wait, _, err := transcoder.Start(requestCtx, "movie.mkv", 0, false, time.Now().Add(time.Second))
+			started, err := transcoder.Start(requestCtx, domain.LiveTranscodeRequest{
+				Path: "movie.mkv", StartupDeadline: time.Now().Add(10 * time.Second),
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = stream.Close() }()
+			defer func() { _ = started.Stream.Close() }()
 			if target == "request" {
 				cancelRequest()
 			} else {
@@ -528,7 +609,7 @@ func TestLiveTranscoderStopsOnCancellation(t *testing.T) {
 			}
 
 			done := make(chan error, 1)
-			go func() { done <- wait() }()
+			go func() { done <- started.Wait() }()
 			select {
 			case err := <-done:
 				if err == nil {
@@ -550,9 +631,9 @@ func TestLiveTranscoderBoundsProbeByStartupDeadline(t *testing.T) {
 	}
 
 	started := time.Now()
-	_, _, _, err := transcoder.Start(
-		context.Background(), "movie.mkv", 0, false, time.Now().Add(30*time.Millisecond),
-	)
+	_, err := transcoder.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: "movie.mkv", StartupDeadline: time.Now().Add(30 * time.Millisecond),
+	})
 	if err == nil {
 		t.Fatal("停止するprobeが成功した")
 	}
@@ -594,6 +675,24 @@ func TestTranscodeHelperProcess(t *testing.T) {
 		_, _ = io.WriteString(os.Stdout, `{"streams":[{"index":0,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":640,"height":360,"level":31,"avg_frame_rate":"30/1","r_frame_rate":"30/1"}],"format":{"duration":"10.0"}}`)
 		os.Exit(0)
 	}
+	if mode == "ffmpeg-fail" {
+		_, _ = fmt.Fprintln(os.Stderr, "decode failed")
+		os.Exit(1)
+	}
+	if mode == "ffmpeg-silent" {
+		for {
+			time.Sleep(time.Second)
+		}
+	}
+	if delay, ok := strings.CutPrefix(mode, "ffmpeg-mp4:"); ok {
+		// 途中からのコピーの出力を模す。映像はこの時刻から、音声は 3 ms 遅れて始まる。
+		delayMs, _ := strconv.ParseUint(delay, 10, 32)
+		_, _ = os.Stdout.Write(testInitSegment(1000, []uint32{uint32(delayMs), uint32(delayMs) + 3}))
+		_, _ = io.WriteString(os.Stdout, "fragment")
+		for {
+			time.Sleep(time.Second)
+		}
+	}
 	if mode != "ffmpeg" {
 		_, _ = fmt.Fprintln(os.Stderr, "unknown helper mode")
 		os.Exit(2)
@@ -601,5 +700,507 @@ func TestTranscodeHelperProcess(t *testing.T) {
 	_, _ = io.WriteString(os.Stdout, "fragment")
 	for {
 		time.Sleep(time.Second)
+	}
+}
+
+// 同じ ffprobe の出力から、取り込みの解析が保存する値と要求時の解析が作る値が等しく、
+// 保存（JSON）を経て読み戻した値も同じ ffmpeg の引数を生む（親 Issue #371 受け入れ条件 10）。
+func TestIngestAndRequestProbeShareTranscodeProbe(t *testing.T) {
+	outputs := map[string]string{
+		"MOV with cover art and rotation": `{"streams":[
+			{"index":0,"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}},
+			{"index":1,"codec_type":"video","codec_name":"H264","profile":"High","pix_fmt":"YUV420P","bits_per_raw_sample":"8","width":1920,"height":1080,"level":41,"avg_frame_rate":"30000/1001","r_frame_rate":"30000/1001","sample_aspect_ratio":"4:3","side_data_list":[{"side_data_type":"Display Matrix","rotation":-90}]},
+			{"index":2,"codec_type":"audio","codec_name":"aac","profile":"LC","sample_rate":"48000","channels":2}
+		],"format":{"duration":"12.5","format_name":"MOV,MP4,M4A,3GP,3G2,MJ2"}}`,
+		"MKV without audio": `{"streams":[
+			{"index":0,"codec_type":"video","codec_name":"hevc","profile":"Main 10","pix_fmt":"yuv420p10le","width":3840,"height":2160,"level":153,"avg_frame_rate":"24/1","r_frame_rate":"48/1","tags":{"rotate":"180"}}
+		],"format":{"duration":"60.0","format_name":"matroska,webm"}}`,
+	}
+	for name, output := range outputs {
+		t.Run(name, func(t *testing.T) {
+			ingest, err := parseProbeOutput([]byte(output))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ingest.Transcode == nil {
+				t.Fatal("取り込みの解析が変換用の情報を持たない")
+			}
+			request, err := parseTranscodeProbe([]byte(output))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(*ingest.Transcode, request) {
+				t.Fatalf("ingest = %+v, request = %+v", *ingest.Transcode, request)
+			}
+
+			encoded, err := json.Marshal(ingest.Transcode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stamp := domain.FileStamp{SizeBytes: 1024, ModTimeNs: 1_700_000_000_123_456_789}
+			stored, ok := domain.TranscodeProbeUsable(&domain.StoredTranscodeProbe{
+				Version: domain.TranscodeProbeVersion, Source: stamp, Probe: string(encoded),
+			}, stamp)
+			if !ok || !reflect.DeepEqual(stored, request) {
+				t.Fatalf("stored = %+v (usable=%v), request = %+v", stored, ok, request)
+			}
+			for _, startMs := range []int64{0, 25000} {
+				want := transcodeArgs("movie", startMs, request, false)
+				if got := transcodeArgs("movie", startMs, stored, false); !reflect.DeepEqual(got, want) {
+					t.Fatalf("args differ at %d: stored=%v request=%v", startMs, got, want)
+				}
+			}
+		})
+	}
+}
+
+// 使える映像 stream（非添付で寸法がある）が無い動画では、取り込みの解析は成功しても
+// 変換用の情報を持たない。
+func TestParseProbeOutputOmitsTranscodeWithoutUsableVideo(t *testing.T) {
+	outputs := map[string]string{
+		"attached picture only": `{"streams":[{"index":0,"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}},{"index":1,"codec_type":"audio","codec_name":"aac"}],"format":{"duration":"12.5"}}`,
+		"no dimensions":         `{"streams":[{"index":0,"codec_type":"video","codec_name":"h264"}],"format":{"duration":"12.5"}}`,
+		"audio only":            `{"streams":[{"index":0,"codec_type":"audio","codec_name":"mp3"}],"format":{"duration":"12.5"}}`,
+	}
+	for name, output := range outputs {
+		t.Run(name, func(t *testing.T) {
+			got, err := parseProbeOutput([]byte(output))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Transcode != nil {
+				t.Fatalf("Transcode = %+v, want nil", got.Transcode)
+			}
+			if _, err := parseTranscodeProbe([]byte(output)); err == nil {
+				t.Fatal("要求時の解析が成功した")
+			}
+		})
+	}
+}
+
+// Probe は ffprobe の直前に取ったファイルの大きさと更新時刻を Source に載せる。
+func TestProbeRecordsSourceStamp(t *testing.T) {
+	if _, err := exec.LookPath(transcodeCommand); err != nil {
+		t.Skip("ffmpegがありません")
+	}
+	if _, err := exec.LookPath(probeCommand); err != nil {
+		t.Skip("ffprobeがありません")
+	}
+	input := filepath.Join(t.TempDir(), "clip.mp4")
+	generate := exec.Command(transcodeCommand,
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc=size=160x90:rate=15:duration=1",
+		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", input,
+	)
+	if output, err := generate.CombinedOutput(); err != nil {
+		t.Fatalf("fixture生成: %v: %s", err, output)
+	}
+	info, err := os.Stat(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Probe(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Source != domain.FileStampOf(info) || got.Source.ModTimeNs == 0 {
+		t.Fatalf("Source = %+v, want %+v", got.Source, domain.FileStampOf(info))
+	}
+	if got.Transcode == nil || got.Transcode.Video.Width != 160 || got.Transcode.Audio != nil {
+		t.Fatalf("Transcode = %+v", got.Transcode)
+	}
+}
+
+// scriptedTranscoder は起動したコマンドを数える。ffprobe は probeMode、FFmpeg は
+// ffmpegModes を順に使い（尽きたら最後のもの）、helper process で代わりに動かす。
+type scriptedTranscoder struct {
+	*LiveTranscoder
+	mu          sync.Mutex
+	commands    []string
+	args        [][]string
+	probeMode   string
+	ffmpegModes []string
+}
+
+func newScriptedTranscoder(ffmpegModes ...string) *scriptedTranscoder {
+	scripted := &scriptedTranscoder{LiveTranscoder: NewLiveTranscoder(nil), probeMode: "probe", ffmpegModes: ffmpegModes}
+	scripted.commandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		scripted.mu.Lock()
+		mode := scripted.probeMode
+		if name != probeCommand {
+			index := min(len(scripted.ffmpegCommands()), len(scripted.ffmpegModes)-1)
+			mode = scripted.ffmpegModes[index]
+			scripted.args = append(scripted.args, args)
+		}
+		scripted.commands = append(scripted.commands, name)
+		scripted.mu.Unlock()
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestTranscodeHelperProcess", "--", mode)
+		cmd.Env = append(os.Environ(), "VV_TRANSCODE_HELPER=1")
+		return cmd
+	}
+	return scripted
+}
+
+func (s *scriptedTranscoder) ffmpegCommands() []string {
+	var ffmpeg []string
+	for _, name := range s.commands {
+		if name != probeCommand {
+			ffmpeg = append(ffmpeg, name)
+		}
+	}
+	return ffmpeg
+}
+
+func (s *scriptedTranscoder) started() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.commands)
+}
+
+// arguments は起動した FFmpeg の引数を順に返す。
+func (s *scriptedTranscoder) arguments() [][]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.args)
+}
+
+// videoCodecs は起動した FFmpeg ごとの -c:v の値を返す。
+func (s *scriptedTranscoder) videoCodecs() []string {
+	var codecs []string
+	for _, args := range s.arguments() {
+		if index := slices.Index(args, "-c:v"); index >= 0 && index+1 < len(args) {
+			codecs = append(codecs, args[index+1])
+		}
+	}
+	return codecs
+}
+
+// sourceFile は開いたファイルの代わりに実在するファイルを作り、その印を返す。
+func sourceFile(t *testing.T) (string, domain.FileStamp) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "movie.mkv")
+	if err := os.WriteFile(path, []byte("movie"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path, domain.FileStampOf(info)
+}
+
+// helperProbe は helper process の "probe" が出す ffprobe の出力を解釈した値である。
+func helperProbe() domain.TranscodeProbe {
+	return domain.TranscodeProbe{Video: domain.TranscodeVideo{
+		CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8,
+		Width: 640, Height: 360, Level: 31, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1,
+	}}
+}
+
+func finishStarted(t *testing.T, started domain.LiveTranscode) []byte {
+	t.Helper()
+	first, err := readInitialBytes(started.Stream)
+	if err != nil {
+		t.Fatalf("初期データ: %v", err)
+	}
+	started.Stop()
+	_ = started.Stream.Close()
+	_ = started.Wait()
+	return first
+}
+
+// 保存済みの解析情報があれば ffprobe を起動しない。先頭からでも途中からでも同じ
+// （親 Issue #371 受け入れ条件 7）。
+func TestLiveTranscoderSkipsProbeWithStoredProbe(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	for _, startMs := range []int64{0, 4000} {
+		scripted := newScriptedTranscoder("ffmpeg-mp4:3000")
+		started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+			Path: path, Source: stamp, Probe: &stored, StartMs: startMs, StartupDeadline: time.Now().Add(5 * time.Second),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(finishStarted(t, started)) == 0 {
+			t.Errorf("startMs=%d: 初期データが無い", startMs)
+		}
+		if started.Probed != nil {
+			t.Errorf("startMs=%d: 解析していないのに Probed がある", startMs)
+		}
+		if got := scripted.started(); !slices.Equal(got, []string{transcodeCommand}) {
+			t.Errorf("startMs=%d: 起動したコマンド = %v", startMs, got)
+		}
+	}
+}
+
+// 解析情報が無ければ ffprobe を 1 回だけ実行し、その結果を返す（受け入れ条件 8）。
+func TestLiveTranscoderProbesWithoutStoredProbe(t *testing.T) {
+	path, stamp := sourceFile(t)
+	scripted := newScriptedTranscoder("ffmpeg")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishStarted(t, started)
+	if started.Probed == nil || !reflect.DeepEqual(*started.Probed, helperProbe()) {
+		t.Errorf("Probed = %+v", started.Probed)
+	}
+	if got := scripted.started(); !slices.Equal(got, []string{probeCommand, transcodeCommand}) {
+		t.Errorf("起動したコマンド = %v", got)
+	}
+}
+
+// 解析のあとにファイルが開いたときと違っていたら、変換はするが結果を保存用に返さない。
+func TestLiveTranscoderDoesNotReturnProbeOfChangedFile(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stamp.ModTimeNs++
+	scripted := newScriptedTranscoder("ffmpeg")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishStarted(t, started)
+	if started.Probed != nil {
+		t.Errorf("変わったファイルの解析結果を返した: %+v", started.Probed)
+	}
+}
+
+// 保存値で始めた変換がコピーでもエンコードでもデータを出さずに終わったら、その場で
+// 解析してコピーから 1 回だけやり直す（Structural Decision 3、research.md R-3）。
+func TestLiveTranscoderRetriesWithFreshProbeWhenStoredProbeFails(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	stored.Video.Index = 7
+	scripted := newScriptedTranscoder("ffmpeg-fail", "ffmpeg-fail", "ffmpeg")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, Probe: &stored, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishStarted(t, started)
+	if started.Probed == nil || !reflect.DeepEqual(*started.Probed, helperProbe()) {
+		t.Errorf("Probed = %+v", started.Probed)
+	}
+	want := []string{transcodeCommand, transcodeCommand, probeCommand, transcodeCommand}
+	if got := scripted.started(); !slices.Equal(got, want) {
+		t.Errorf("起動したコマンド = %v, want %v", got, want)
+	}
+	if got := scripted.videoCodecs(); !slices.Equal(got, []string{"copy", "libx264", "copy"}) {
+		t.Errorf("映像の扱い = %v", got)
+	}
+}
+
+// コピーが最初のデータを出さずに終わったら、同じ解析情報で映像をエンコードし、指定位置から
+// 始める（Edge Case「キーフレームの位置が取れない、または壊れている動画」）。
+func TestLiveTranscoderFallsBackToEncodeWhenCopyFails(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	for _, startMs := range []int64{0, 4000} {
+		scripted := newScriptedTranscoder("ffmpeg-fail", "ffmpeg")
+		started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+			Path: path, Source: stamp, Probe: &stored, StartMs: startMs, StartupDeadline: time.Now().Add(5 * time.Second),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		finishStarted(t, started)
+		if started.StartMs != startMs {
+			t.Errorf("startMs=%d: StartMs = %d", startMs, started.StartMs)
+		}
+		if got := scripted.videoCodecs(); !slices.Equal(got, []string{"copy", "libx264"}) {
+			t.Errorf("startMs=%d: 映像の扱い = %v", startMs, got)
+		}
+	}
+}
+
+// 途中からのコピーの先頭が moov でなければ、壊れた出力として同じ要求の中でエンコードに
+// 切り替える。
+func TestLiveTranscoderFallsBackToEncodeWhenCopyOutputIsNotMP4(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	scripted := newScriptedTranscoder("ffmpeg")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, Probe: &stored, StartMs: 4000, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(finishStarted(t, started)); got != "fragment" {
+		t.Errorf("初期データ = %q", got)
+	}
+	if started.StartMs != 4000 {
+		t.Errorf("StartMs = %d", started.StartMs)
+	}
+	if got := scripted.videoCodecs(); !slices.Equal(got, []string{"copy", "libx264"}) {
+		t.Errorf("映像の扱い = %v", got)
+	}
+}
+
+// 先頭からのコピーは今までの引数のまま（-copyts も delay_moov も付けない）で、実際の
+// 開始位置は 0 である。
+func TestLiveTranscoderCopiesFromStartWithoutRebasing(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	scripted := newScriptedTranscoder("ffmpeg")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, Probe: &stored, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(finishStarted(t, started)); got != "fragment" || started.StartMs != 0 {
+		t.Errorf("初期データ = %q, StartMs = %d", got, started.StartMs)
+	}
+	args := strings.Join(scripted.arguments()[0], " ")
+	if !strings.Contains(args, "-c:v copy") || strings.Contains(args, "-copyts") || strings.Contains(args, "delay_moov") {
+		t.Errorf("args = %s", args)
+	}
+}
+
+// 直接再生から切り替えた変換（Normalize）は、コピーを試さずにエンコードする（要件 5）。
+func TestLiveTranscoderEncodesWhenNormalizing(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	scripted := newScriptedTranscoder("ffmpeg")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, Probe: &stored, StartMs: 4000, Normalize: true, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishStarted(t, started)
+	if got := scripted.videoCodecs(); !slices.Equal(got, []string{"libx264"}) || started.StartMs != 4000 {
+		t.Errorf("映像の扱い = %v, StartMs = %d", got, started.StartMs)
+	}
+}
+
+// やり直しは 1 回だけで、その場の解析で始めた FFmpeg の失敗は切り替えない。
+func TestLiveTranscoderRetriesOnlyOnce(t *testing.T) {
+	path, stamp := sourceFile(t)
+	for _, tc := range []struct {
+		name   string
+		stored bool
+		want   []string
+	}{
+		{"stored", true, []string{transcodeCommand, transcodeCommand, probeCommand, transcodeCommand, transcodeCommand}},
+		{"fresh", false, []string{probeCommand, transcodeCommand, transcodeCommand}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := domain.LiveTranscodeRequest{Path: path, Source: stamp, StartupDeadline: time.Now().Add(5 * time.Second)}
+			if tc.stored {
+				stored := helperProbe()
+				request.Probe = &stored
+			}
+			scripted := newScriptedTranscoder("ffmpeg-fail")
+			if _, err := scripted.Start(context.Background(), request); err == nil {
+				t.Fatal("失敗し続ける FFmpeg で成功した")
+			}
+			if got := scripted.started(); !slices.Equal(got, tc.want) {
+				t.Errorf("起動したコマンド = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// 最初のデータを待つ期限切れはやり直さずに失敗にする。期限は切り替え全体で 1 つである。
+func TestLiveTranscoderDoesNotRetryAfterStartupTimeout(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	scripted := newScriptedTranscoder("ffmpeg-silent")
+	began := time.Now()
+	_, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, Probe: &stored, StartupDeadline: time.Now().Add(200 * time.Millisecond),
+	})
+	if err == nil {
+		t.Fatal("データを出さない FFmpeg で成功した")
+	}
+	if elapsed := time.Since(began); elapsed > 2*time.Second {
+		t.Errorf("期限切れまで %s かかった", elapsed)
+	}
+	if got := scripted.started(); !slices.Equal(got, []string{transcodeCommand}) {
+		t.Errorf("起動したコマンド = %v", got)
+	}
+}
+
+// 要求の取り消しで打ち切られた ffprobe は誤りで終わり、結果を返さない。
+func TestLiveTranscoderReturnsNoProbeWhenProbeIsCanceled(t *testing.T) {
+	path, stamp := sourceFile(t)
+	scripted := newScriptedTranscoder("ffmpeg")
+	scripted.probeMode = "probe-hang"
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+	started, err := scripted.Start(ctx, domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+	if started.Probed != nil {
+		t.Errorf("打ち切られた解析の結果を返した: %+v", started.Probed)
+	}
+	if got := scripted.started(); !slices.Equal(got, []string{probeCommand}) {
+		t.Errorf("起動したコマンド = %v", got)
+	}
+}
+
+// 途中からのコピーは moov の edit list から実際の開始位置を得て、書き換えた moov を最初に
+// 送る（Structural Decision 1）。
+func TestLiveTranscoderResolvesCopyStartFromEditList(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	scripted := newScriptedTranscoder("ffmpeg-mp4:25000")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, Probe: &stored, StartMs: 27000, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		started.Stop()
+		_ = started.Stream.Close()
+		_ = started.Wait()
+	}()
+	if started.StartMs != 25000 {
+		t.Errorf("StartMs = %d, want 25000", started.StartMs)
+	}
+	want := append(testInitSegment(1000, []uint32{0, 3}), "fragment"...)
+	got := make([]byte, len(want))
+	if _, err := io.ReadFull(started.Stream, got); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("出力の先頭 = %x, want %x", got, want)
+	}
+	if codecs := scripted.videoCodecs(); !slices.Equal(codecs, []string{"copy"}) {
+		t.Errorf("映像の扱い = %v", codecs)
+	}
+}
+
+// 直前のキーフレームが差の上限より前なら、同じ要求の中でエンコードに切り替えて指定位置から
+// 始める（要件 3）。
+func TestLiveTranscoderEncodesWhenKeyframeIsTooFar(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	scripted := newScriptedTranscoder("ffmpeg-mp4:5000", "ffmpeg")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, Probe: &stored, StartMs: 20001, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(finishStarted(t, started)); got != "fragment" || started.StartMs != 20001 {
+		t.Errorf("初期データ = %q, StartMs = %d", got, started.StartMs)
+	}
+	if codecs := scripted.videoCodecs(); !slices.Equal(codecs, []string{"copy", "libx264"}) {
+		t.Errorf("映像の扱い = %v", codecs)
+	}
+	if got := scripted.started(); !slices.Equal(got, []string{transcodeCommand, transcodeCommand}) {
+		t.Errorf("起動したコマンド = %v", got)
 	}
 }

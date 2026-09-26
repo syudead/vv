@@ -87,6 +87,12 @@ func (f *fakeLibrary) VideoLocations(_ context.Context, videoID int64) ([]domain
 	return []domain.VideoLocation{{ID: 1, VideoID: videoID, Path: video.Path, Version: 1}}, nil
 }
 
+// TranscodeProbe は保存済みの解析情報が無いと答える。保存と再利用は
+// transcode_test.go が本物の保存層で確かめる。
+func (f *fakeLibrary) TranscodeProbe(context.Context, int64) (*domain.StoredTranscodeProbe, error) {
+	return nil, nil
+}
+
 func (f *fakeLibrary) ListMediaFolders(context.Context) ([]domain.MediaFolder, error) {
 	folders := make([]domain.MediaFolder, 0, len(f.roots))
 	for i, root := range f.roots {

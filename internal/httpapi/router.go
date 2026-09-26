@@ -41,6 +41,9 @@ type Library interface {
 	GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error)
 	VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error)
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
+	// TranscodeProbe は保存済みのライブ変換用の解析情報を解釈せずに返す。行が無ければ
+	// nil。使ってよいかはライブ変換の経路が domain.TranscodeProbeUsable で決める。
+	TranscodeProbe(ctx context.Context, videoID int64) (*domain.StoredTranscodeProbe, error)
 }
 
 // Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、
@@ -93,11 +96,20 @@ type Tags interface {
 	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error)
 }
 
-// Transcoder は1 request分のfragmented MP4を生成する。
-// startupDeadlineはrequest時probeと初期データ生成の共通期限である。
-// waitは成功したStartにつきちょうど1回呼び、stopは切断時にprocessを止める。
+// Transcoder は1 request分のfragmented MP4を生成する。internal/media の
+// *LiveTranscoder がこれを満たす。Start は最初のデータが出たところで返す。
+// 保存済みの解析情報（request.Probe）が nil ならその場で ffprobe を実行し、結果を
+// Probed に載せる。StartupDeadline はその場の解析と初期データ生成の共通期限である。
+// Wait は成功した Start につきちょうど1回呼び、Stop は切断時にprocessを止める。
 type Transcoder interface {
-	Start(context.Context, string, int64, bool, time.Time) (io.ReadCloser, func() error, func(), error)
+	Start(ctx context.Context, request domain.LiveTranscodeRequest) (domain.LiveTranscode, error)
+}
+
+// TranscodeProbeWriter は、ライブ変換がその場で解析した結果を保存する。
+// internal/store の *IngestStore がこれを満たす（specs/018-live-transcode-seek/
+// data-model.md §4）。
+type TranscodeProbeWriter interface {
+	SaveTranscodeProbe(ctx context.Context, videoID int64, source domain.FileStamp, probe domain.TranscodeProbe) error
 }
 
 // ArtifactReader は生成物を配信のために読み出す。internal/artifacts の *Store が
@@ -182,6 +194,9 @@ type Options struct {
 	Library LibraryItems
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
 	Transcoder Transcoder
+	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
+	// 解析情報の無い動画は変換のたびに解析する。
+	TranscodeProbes TranscodeProbeWriter
 	// Artifacts は生成物（サムネイル・シーク用プレビュー・ホバープレビュー）の
 	// 読み出し。nil ならサムネイルとホバープレビューは 404、シーク用プレビューは
 	// 500 を返す。
@@ -232,15 +247,19 @@ type server struct {
 	folderGroups FolderGroups
 	library      LibraryItems
 	transcoder   Transcoder
-	artifacts    ArtifactReader
-	catalog      VideoCatalog
-	opener       FileOpener
-	files        MediaFiles
-	processing   Processing
-	events       *Events
-	logger       *slog.Logger
-	auth         Authenticator
-	sessions     *sessionLedger
+	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
+	transcodeProbes TranscodeProbeWriter
+	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
+	transcodeStarts *transcodeStarts
+	artifacts       ArtifactReader
+	catalog         VideoCatalog
+	opener          FileOpener
+	files           MediaFiles
+	processing      Processing
+	events          *Events
+	logger          *slog.Logger
+	auth            Authenticator
+	sessions        *sessionLedger
 	// guests はゲストとして処理中の配信の応答を content_key ごとに覚える（visibility.go）。
 	guests *guestLedger
 	now    func() time.Time
@@ -275,29 +294,31 @@ func NewRouter(opts Options) http.Handler {
 	mux.Handle("/", newSPAHandler(opts.Assets, logger))
 
 	srv := &server{
-		build:        opts.Build,
-		pinger:       opts.Pinger,
-		videos:       opts.Videos,
-		playback:     opts.Playback,
-		scans:        opts.Scans,
-		mediaFolders: opts.MediaFolders,
-		tags:         opts.Tags,
-		visibility:   opts.Visibility,
-		folders:      opts.Folders,
-		folderGroups: opts.FolderGroups,
-		library:      opts.Library,
-		transcoder:   opts.Transcoder,
-		artifacts:    opts.Artifacts,
-		catalog:      opts.Catalog,
-		opener:       opts.Opener,
-		files:        opts.Files,
-		processing:   opts.Processing,
-		events:       opts.Events,
-		logger:       logger,
-		auth:         opts.Auth,
-		sessions:     newSessionLedger(opts.SessionRecheck, logger),
-		guests:       newGuestLedger(),
-		now:          opts.Now,
+		build:           opts.Build,
+		pinger:          opts.Pinger,
+		videos:          opts.Videos,
+		playback:        opts.Playback,
+		scans:           opts.Scans,
+		mediaFolders:    opts.MediaFolders,
+		tags:            opts.Tags,
+		visibility:      opts.Visibility,
+		folders:         opts.Folders,
+		folderGroups:    opts.FolderGroups,
+		library:         opts.Library,
+		transcoder:      opts.Transcoder,
+		transcodeProbes: opts.TranscodeProbes,
+		transcodeStarts: newTranscodeStarts(),
+		artifacts:       opts.Artifacts,
+		catalog:         opts.Catalog,
+		opener:          opts.Opener,
+		files:           opts.Files,
+		processing:      opts.Processing,
+		events:          opts.Events,
+		logger:          logger,
+		auth:            opts.Auth,
+		sessions:        newSessionLedger(opts.SessionRecheck, logger),
+		guests:          newGuestLedger(),
+		now:             opts.Now,
 		// 呼び出し側が後から書き換えても判定が変わらないよう写しを持つ。
 		trustedProxies: slices.Clone(opts.TrustedProxies),
 	}

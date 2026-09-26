@@ -207,6 +207,46 @@ export function generateMediaFixtures(mediaDir) {
     "-shortest",
     file("long-gop.mkv"),
   ]);
+  // コピーで途中から始める変換の確かめ（specs/018-live-transcode-seek、#380）。
+  // キーフレームは 0・8・16 秒だけで、その区間ごとに赤・緑・青にする。途中へシークすると
+  // 変換は直前のキーフレームから映像をコピーして始まり、映っている色で場面がわかる。
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=red:size=320x180:rate=15:duration=8",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=green:size=320x180:rate=15:duration=8",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=blue:size=320x180:rate=15:duration=8",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=330:sample_rate=48000:duration=24",
+    "-filter_complex",
+    "[0:v][1:v][2:v]concat=n=3:v=1:a=0[v]",
+    "-map",
+    "[v]",
+    "-map",
+    "3:a",
+    ...h264,
+    "-g",
+    "120",
+    "-keyint_min",
+    "120",
+    "-sc_threshold",
+    "0",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "96k",
+    "-shortest",
+    file("sparse-keyframes.mkv"),
+  ]);
 
   const expected = {
     "direct.mp4": { video: "h264", audio: "aac" },
@@ -219,6 +259,7 @@ export function generateMediaFixtures(mediaDir) {
     "silent.mkv": { video: "mpeg4", audio: undefined },
     "portrait.mp4": { video: "h264", audio: undefined },
     "long-gop.mkv": { video: "h264", audio: "aac" },
+    "sparse-keyframes.mkv": { video: "h264", audio: "aac" },
   };
   for (const [name, codecs] of Object.entries(expected)) {
     assertFixture(file(name), codecs);

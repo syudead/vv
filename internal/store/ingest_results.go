@@ -4,6 +4,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -11,14 +12,22 @@ import (
 )
 
 // ApplyProbe は解析の結果を反映する。再生可否の判定は domain が行い、
-// ここはその結果を書き込むだけである。
+// ここはその結果を書き込むだけである。ライブ変換用の解析情報（probe.Transcode）が
+// あれば、同じ取引で video_transcode_probes へ upsert する。
 //
 // 取得できなかった値は null のままにする。0 で代用すると、一覧で
 // 「尺が 0 の動画」と「尺が分からない動画」を区別できなくなる。
 func (s *IngestStore) ApplyProbe(
 	ctx context.Context, id int64, probe domain.Probe, play domain.Playability,
 ) error {
-	_, err := s.db.sql.ExecContext(ctx, `
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("解析の結果を反映できません (id=%d): %w", id, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now()
+	res, err := tx.ExecContext(ctx, `
 		update videos
 		   set duration_ms = ?, width = ?, height = ?, display_aspect_ratio = ?,
 		       video_codec = ?, audio_codec = ?,
@@ -28,19 +37,37 @@ func (s *IngestStore) ApplyProbe(
 		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height), nullableFloat64(probe.DisplayAspectRatio),
 		nullableString(probe.VideoCodec), nullableString(probe.AudioCodec),
 		boolToInt(play.Playable), nullableString(string(play.Reason)),
-		time.Now().Unix(), id,
+		now.Unix(), id,
 	)
 	if err != nil {
+		return fmt.Errorf("解析の結果を反映できません (id=%d): %w", id, err)
+	}
+	if count, err := res.RowsAffected(); err != nil {
+		return fmt.Errorf("解析の結果を反映できません (id=%d): %w", id, err)
+	} else if count == 1 && probe.Transcode != nil {
+		if err := upsertTranscodeProbe(ctx, tx, id, probe.Source, *probe.Transcode, now); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("解析の結果を反映できません (id=%d): %w", id, err)
 	}
 	return nil
 }
 
 // ApplyProbeForJob writes only while the file identity captured at claim time is current.
+// The live-transcode probe is upserted in the same transaction, only when the video row was written.
 func (s *IngestStore) ApplyProbeForJob(
 	ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability,
 ) (bool, error) {
-	res, err := s.db.sql.ExecContext(ctx, `
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now()
+	res, err := tx.ExecContext(ctx, `
 		update videos set duration_ms = ?, width = ?, height = ?, display_aspect_ratio = ?, video_codec = ?, audio_codec = ?,
 		playable = ?, unplayable_reason = ?, probe_state = 'done', probe_error = null, updated_at = ?
 		where id = ? and content_key = ? and exists (
@@ -48,13 +75,54 @@ func (s *IngestStore) ApplyProbeForJob(
 		and location_generation = ?`,
 		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height), nullableFloat64(probe.DisplayAspectRatio),
 		nullableString(probe.VideoCodec), nullableString(probe.AudioCodec), boolToInt(play.Playable),
-		nullableString(string(play.Reason)), time.Now().Unix(), job.VideoID, job.ContentKey,
+		nullableString(string(play.Reason)), now.Unix(), job.VideoID, job.ContentKey,
 		job.LocationID, job.LocationVersion, job.LocationPath, job.LocationGeneration)
 	if err != nil {
 		return false, err
 	}
 	count, err := res.RowsAffected()
-	return count == 1, err
+	if err != nil || count != 1 {
+		return false, err
+	}
+	if probe.Transcode != nil {
+		if err := upsertTranscodeProbe(ctx, tx, job.VideoID, probe.Source, *probe.Transcode, now); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// SaveTranscodeProbe は、ライブ変換の要求時にその場で解析した結果を保存する。
+// source は変換で開いたファイルの大きさと更新時刻である。upsert 1 文なので、取り込みと
+// 変換が同時に書いても後に書いた行が残る（specs/018-live-transcode-seek/data-model.md §4）。
+func (s *IngestStore) SaveTranscodeProbe(
+	ctx context.Context, videoID int64, source domain.FileStamp, probe domain.TranscodeProbe,
+) error {
+	return upsertTranscodeProbe(ctx, s.db.sql, videoID, source, probe, time.Now())
+}
+
+// upsertTranscodeProbe は video_transcode_probes の 1 行を今の版で置き換える。
+func upsertTranscodeProbe(
+	ctx context.Context, db queryExecer, videoID int64, source domain.FileStamp, probe domain.TranscodeProbe, now time.Time,
+) error {
+	encoded, err := json.Marshal(probe)
+	if err != nil {
+		return fmt.Errorf("ライブ変換用の解析情報を JSON にできません (id=%d): %w", videoID, err)
+	}
+	if _, err := db.ExecContext(ctx, `
+		insert into video_transcode_probes (video_id, version, size_bytes, mtime_ns, probe, updated_at)
+		values (?, ?, ?, ?, ?, ?)
+		on conflict (video_id) do update
+		   set version = excluded.version, size_bytes = excluded.size_bytes, mtime_ns = excluded.mtime_ns,
+		       probe = excluded.probe, updated_at = excluded.updated_at`,
+		videoID, domain.TranscodeProbeVersion, source.SizeBytes, source.ModTimeNs, string(encoded), now.Unix(),
+	); err != nil {
+		return fmt.Errorf("ライブ変換用の解析情報を保存できません (id=%d): %w", videoID, err)
+	}
+	return nil
 }
 
 // MarkProbeFailed は解析に失敗したことを記録する。行は残す。個別のファイルの

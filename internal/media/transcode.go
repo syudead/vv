@@ -1,11 +1,13 @@
 package media
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -47,17 +49,22 @@ func NewLiveTranscoder(serverDone <-chan struct{}) *LiveTranscoder {
 	}
 }
 
-// Start returns FFmpeg stdout, a wait function, and an idempotent stop function.
-// startupDeadline bounds the request-time probe; the caller uses the same
-// deadline while waiting for the first output. The caller must call wait
-// exactly once after a successful start.
+// Start は変換を始め、最初のデータが出たところで返す（specs/018-live-transcode-seek/
+// plan.md Structural Decisions 1〜3・6）。request.Probe があれば ffprobe を起動せず、
+// 無ければその場で ffprobe を実行して結果を Probed に載せる。
+//
+// 映像がコピーできる動画（videoCanCopy が真で Normalize でない）は、まず映像をコピーして
+// 始める。途中からのコピーは直前のキーフレームから始まるので、出力の moov から実際の
+// 開始位置を読み、指定位置との差が domain.CopySeekAllowance を超えたら映像をエンコード
+// し直して指定位置から始める。コピーが最初のデータを出さずに終わったときも同じ要求の中で
+// エンコードに切り替える。保存済みの解析情報で始めた変換がそれでも最初のデータを出さずに
+// 終わったときは、その場の ffprobe を実行し、コピーから 1 回だけやり直す。期限
+// （StartupDeadline）は解析と切り替えを含めて 1 つで、期限切れは切り替えずに失敗にする。
+// 成功したら Wait をちょうど 1 回呼ぶこと。
 func (t *LiveTranscoder) Start(
 	requestContext context.Context,
-	path string,
-	startMs int64,
-	normalize bool,
-	startupDeadline time.Time,
-) (io.ReadCloser, func() error, func(), error) {
+	request domain.LiveTranscodeRequest,
+) (domain.LiveTranscode, error) {
 	ctx, cancel := context.WithCancel(requestContext)
 	watchDone := make(chan struct{})
 	go func() {
@@ -72,145 +79,298 @@ func (t *LiveTranscoder) Start(
 		cancel()
 	})
 
-	metadata, err := t.probe(ctx, path, startupDeadline)
-	if err != nil {
-		cleanup()
-		return nil, nil, nil, err
+	metadata := request.Probe
+	var probed *domain.TranscodeProbe
+	if metadata == nil {
+		fresh, err := t.probeSource(ctx, request)
+		if err != nil {
+			cleanup()
+			return domain.LiveTranscode{}, err
+		}
+		metadata, probed = &fresh.probe, fresh.saved
 	}
 
-	cmd := t.commandContext(ctx, transcodeCommand, transcodeArgs(path, startMs, metadata, normalize)...)
+	for {
+		started, err := t.startWithProbe(ctx, request, *metadata)
+		if err == nil {
+			var once sync.Once
+			var waitErr error
+			wait := func() error {
+				once.Do(func() {
+					waitErr = started.process.wait()
+					cleanup()
+				})
+				return waitErr
+			}
+			return domain.LiveTranscode{
+				Stream: &prefixedReadCloser{
+					Reader: io.MultiReader(bytes.NewReader(started.first), started.process.stdout),
+					closer: started.process.stdout,
+				},
+				Wait:    wait,
+				Stop:    sync.OnceFunc(cancel),
+				StartMs: started.startMs,
+				Probed:  probed,
+			}, nil
+		}
+
+		// その場の解析に切り替えるのは、保存済みの解析情報で始めたプロセスがデータを
+		// 出さずに終わったときだけである。取り消しと期限切れはそのまま失敗にする。
+		if ctx.Err() != nil || !errors.Is(err, errNoInitialData) || metadata != request.Probe {
+			cleanup()
+			return domain.LiveTranscode{}, fmt.Errorf("ライブ変換が初期データを生成できませんでした: %w", err)
+		}
+		fresh, probeErr := t.probeSource(ctx, request)
+		if probeErr != nil {
+			cleanup()
+			return domain.LiveTranscode{}, fmt.Errorf("保存済みの解析情報で変換できず、解析し直せませんでした: %w; 最初の変換: %w", probeErr, err)
+		}
+		metadata, probed = &fresh.probe, fresh.saved
+	}
+}
+
+var (
+	// errNoInitialData はプロセスが最初のデータ（途中からのコピーでは moov まで）を
+	// 出さずに終わったことを表す。
+	errNoInitialData = errors.New("FFmpeg が最初のデータを出さずに終わりました")
+	// errCopySeekTooFar はコピーの実際の開始位置が指定位置から離れすぎていることを表す。
+	errCopySeekTooFar = errors.New("直前のキーフレームが指定位置から離れすぎています")
+)
+
+// startedTranscode は最初のデータを出した FFmpeg 1 本である。
+type startedTranscode struct {
+	process transcodeProcess
+	first   []byte
+	startMs int64
+}
+
+// startWithProbe は 1 つの解析情報で変換を始める。映像をコピーできればコピーを試し、
+// 最初のデータを出さずに終わるか差の上限を超えたら、映像をエンコードして始め直す。
+func (t *LiveTranscoder) startWithProbe(
+	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
+) (startedTranscode, error) {
+	if !request.Normalize && videoCanCopy(metadata.Video) {
+		started, err := t.startAttempt(ctx, request, metadata, true)
+		if err == nil {
+			return started, nil
+		}
+		switchable := errors.Is(err, errNoInitialData) || errors.Is(err, errCopySeekTooFar)
+		if ctx.Err() != nil || !switchable {
+			return startedTranscode{}, err
+		}
+		copyErr := err
+		started, err = t.startAttempt(ctx, request, metadata, false)
+		if err != nil {
+			// その場の解析へ切り替えるかはエンコードの失敗だけで決めるので、コピーの
+			// 誤りは文字列として添える。
+			return startedTranscode{}, fmt.Errorf("%w; 映像のコピー: %s", err, copyErr.Error())
+		}
+		return started, nil
+	}
+	return t.startAttempt(ctx, request, metadata, false)
+}
+
+// startAttempt は FFmpeg を 1 本起動し、最初のデータを待つ。途中からのコピーでは moov
+// までを読み、edit list から実際の開始位置を得て書き換える（fmp4.go）。
+func (t *LiveTranscoder) startAttempt(
+	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe, copyVideo bool,
+) (startedTranscode, error) {
+	args := buildTranscodeArgs(request.Path, request.StartMs, metadata, request.Normalize, copyVideo)
+	process, err := t.startProcess(ctx, args)
+	if err != nil {
+		return startedTranscode{}, err
+	}
+	seekCopy := copyVideo && request.StartMs > 0
+	read := readAtLeastOneByte
+	if seekCopy {
+		read = readInitSegment
+	}
+	first, readErr := readFirstOutput(ctx, process.stdout, time.Until(request.StartupDeadline), read)
+	startMs := request.StartMs
+	if copyVideo && !seekCopy {
+		startMs = 0
+	}
+	if readErr == nil && seekCopy {
+		first, startMs, readErr = rebaseEditLists(first)
+		if readErr == nil && !domain.CopySeekWithinAllowance(request.StartMs, startMs) {
+			readErr = fmt.Errorf("%w: 指定位置 %d ms、実際の開始位置 %d ms", errCopySeekTooFar, request.StartMs, startMs)
+		}
+	}
+	if readErr == nil && len(first) > 0 {
+		return startedTranscode{process: process, first: first, startMs: startMs}, nil
+	}
+
+	process.stop()
+	closeErr := process.stdout.Close()
+	waitErr := process.wait()
+	if errors.Is(readErr, io.EOF) || errors.Is(readErr, io.ErrUnexpectedEOF) || errors.Is(readErr, errInvalidInitSegment) {
+		readErr = fmt.Errorf("%w: %w", errNoInitialData, readErr)
+	}
+	return startedTranscode{}, errors.Join(readErr, closeErr, waitErr)
+}
+
+// transcodeProcess は起動した FFmpeg 1 本である。
+type transcodeProcess struct {
+	stdout io.ReadCloser
+	wait   func() error
+	stop   func()
+}
+
+// startProcess は FFmpeg を 1 本起動する。プロセスは自分の context を持ち、stop で
+// そのプロセスだけを止める。
+func (t *LiveTranscoder) startProcess(ctx context.Context, args []string) (transcodeProcess, error) {
+	processCtx, cancel := context.WithCancel(ctx)
+	cmd := t.commandContext(processCtx, transcodeCommand, args...)
 	cmd.WaitDelay = transcodeStopDelay
 	stderr := &tailWriter{limit: stderrTailLimit}
 	cmd.Stderr = stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		cleanup()
-		return nil, nil, nil, fmt.Errorf("FFmpeg の出力を開けません: %w", err)
+		cancel()
+		return transcodeProcess{}, fmt.Errorf("FFmpeg の出力を開けません: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
-		cleanup()
+		cancel()
 		_ = stdout.Close()
-		return nil, nil, nil, fmt.Errorf("FFmpeg を開始できません: %w", err)
+		return transcodeProcess{}, fmt.Errorf("FFmpeg を開始できません: %w", err)
 	}
-
-	var once sync.Once
-	var waitErr error
 	wait := func() error {
-		once.Do(func() {
-			waitErr = cmd.Wait()
-			cleanup()
-			if waitErr != nil {
-				waitErr = fmt.Errorf("FFmpeg が終了しました: %w; stderr: %s", waitErr, stderr.String())
-			}
-		})
-		return waitErr
+		err := cmd.Wait()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("FFmpeg が終了しました: %w; stderr: %s", err, stderr.String())
+		}
+		return nil
 	}
-	stop := sync.OnceFunc(cancel)
-	return stdout, wait, stop, nil
+	return transcodeProcess{stdout: stdout, wait: wait, stop: cancel}, nil
 }
 
-type transcodeStream struct {
-	Index            int
-	CodecType        string
-	CodecName        string
-	Profile          string
-	PixelFormat      string
-	BitsPerRawSample int
-	Width            int
-	Height           int
-	Level            int
-	FPS              float64
-	RealFPS          float64
-	SampleAspectNum  int64
-	SampleAspectDen  int64
-	Rotation         int
-	SampleRate       int
-	Channels         int
-	AttachedPicture  bool
+type firstOutput struct {
+	data []byte
+	err  error
 }
 
-type transcodeMetadata struct {
-	FormatName string
-	Video      transcodeStream
-	Audio      *transcodeStream
+// readFirstOutput は read で最初のデータを待つ。期限切れと取り消しでは、読みかけの
+// goroutine はプロセスを止めて出力を閉じたところで終わる。
+func readFirstOutput(
+	ctx context.Context, stdout io.Reader, timeout time.Duration, read func(io.Reader) ([]byte, error),
+) ([]byte, error) {
+	result := make(chan firstOutput, 1)
+	go func() {
+		data, err := read(stdout)
+		result <- firstOutput{data: data, err: err}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case read := <-result:
+		return read.data, read.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+		return nil, fmt.Errorf("初期データ待機が%sでタイムアウトしました", timeout)
+	}
 }
 
-func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline time.Time) (transcodeMetadata, error) {
+func readAtLeastOneByte(stdout io.Reader) ([]byte, error) {
+	buffer := make([]byte, 32*1024)
+	length, err := io.ReadAtLeast(stdout, buffer, 1)
+	return buffer[:length], err
+}
+
+// prefixedReadCloser は先に読んだ最初のデータに続けて FFmpeg の出力を読ませる。
+type prefixedReadCloser struct {
+	io.Reader
+	closer io.Closer
+}
+
+func (r *prefixedReadCloser) Close() error { return r.closer.Close() }
+
+type sourceProbe struct {
+	probe domain.TranscodeProbe
+	// saved は保存してよい結果で、解析のあとにファイルが変わっていたら nil。
+	saved *domain.TranscodeProbe
+}
+
+// probeSource はその場で ffprobe を実行する。解析のあとにファイルの大きさか
+// 更新時刻が開いたときと違っていたら、変換には使うが保存用には返さない
+// （data-model.md §4）。
+func (t *LiveTranscoder) probeSource(ctx context.Context, request domain.LiveTranscodeRequest) (sourceProbe, error) {
+	metadata, err := t.probe(ctx, request.Path, request.StartupDeadline)
+	if err != nil {
+		return sourceProbe{}, err
+	}
+	result := sourceProbe{probe: metadata}
+	if info, err := os.Stat(request.Path); err == nil && domain.FileStampOf(info) == request.Source {
+		saved := metadata
+		result.saved = &saved
+	}
+	return result, nil
+}
+
+// probe はその場で ffprobe を実行する。期限は変換の開始と共通で、期限切れと
+// 取り消しは動画固有の誤りにしない。
+func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline time.Time) (domain.TranscodeProbe, error) {
 	probeCtx, cancel := context.WithDeadline(ctx, startupDeadline)
 	defer cancel()
 
 	output, err := t.commandContext(probeCtx, probeCommand, probeArgs(path)...).Output()
 	if err != nil {
 		if contextErr := probeCtx.Err(); contextErr != nil {
-			return transcodeMetadata{}, fmt.Errorf("request時probeが期限内に完了しませんでした: %w", contextErr)
+			return domain.TranscodeProbe{}, fmt.Errorf("要求時の ffprobe が期限内に完了しませんでした: %w", contextErr)
 		}
-		return transcodeMetadata{}, fmt.Errorf("%w: request時probeに失敗しました: %w", domain.ErrUnprocessableMedia, err)
+		return domain.TranscodeProbe{}, fmt.Errorf("%w: 要求時の ffprobe に失敗しました: %w", domain.ErrUnprocessableMedia, err)
 	}
 	metadata, err := parseTranscodeProbe(output)
 	if err != nil {
-		return transcodeMetadata{}, fmt.Errorf("%w: %w", domain.ErrUnprocessableMedia, err)
+		return domain.TranscodeProbe{}, fmt.Errorf("%w: %w", domain.ErrUnprocessableMedia, err)
 	}
 	return metadata, nil
 }
 
-func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
-	var parsed probeOutput
-	if err := json.Unmarshal(output, &parsed); err != nil {
-		return transcodeMetadata{}, fmt.Errorf("probe出力をJSONとして読めません: %w", err)
+// parseTranscodeProbe は要求時の ffprobe の出力を、取り込みと同じ parseProbeOutput で
+// 解釈し、ライブ変換に要る値を返す。尺が正でない動画と、使える映像 stream（非添付で
+// 寸法がある）の無い動画は変換できない。
+func parseTranscodeProbe(output []byte) (domain.TranscodeProbe, error) {
+	probe, err := parseProbeOutput(output)
+	if err != nil {
+		return domain.TranscodeProbe{}, err
 	}
-	duration, err := strconv.ParseFloat(parsed.Format.Duration, 64)
-	if err != nil || duration <= 0 || math.IsInf(duration, 0) || math.IsNaN(duration) {
-		return transcodeMetadata{}, fmt.Errorf("動画の尺がありません")
+	if probe.DurationMs <= 0 {
+		return domain.TranscodeProbe{}, fmt.Errorf("動画の尺がありません")
 	}
-
-	result := transcodeMetadata{FormatName: strings.ToLower(parsed.Format.FormatName)}
-	for _, stream := range parsed.Streams {
-		sampleAspectNum, sampleAspectDen := parseAspectRatio(stream.SampleAspectRatio)
-		rotation := streamRotation(stream.Tags.Rotate, stream.SideDataList)
-		converted := transcodeStream{
-			Index:            stream.Index,
-			CodecType:        stream.CodecType,
-			CodecName:        strings.ToLower(stream.CodecName),
-			Profile:          stream.Profile,
-			PixelFormat:      strings.ToLower(stream.PixelFormat),
-			BitsPerRawSample: parsePositiveInt(stream.BitsPerRawSample),
-			Width:            stream.Width,
-			Height:           stream.Height,
-			Level:            stream.Level,
-			FPS:              parseFrameRate(stream.AverageFrameRate),
-			RealFPS:          parseFrameRate(stream.RealFrameRate),
-			SampleAspectNum:  sampleAspectNum,
-			SampleAspectDen:  sampleAspectDen,
-			Rotation:         rotation,
-			SampleRate:       parsePositiveInt(stream.SampleRate),
-			Channels:         stream.Channels,
-			AttachedPicture:  stream.Disposition.AttachedPicture != 0,
-		}
-		switch stream.CodecType {
-		case "video":
-			if result.Video.CodecType == "" && !converted.AttachedPicture {
-				result.Video = converted
-			}
-		case "audio":
-			if result.Audio == nil {
-				result.Audio = &converted
-			}
-		}
+	if probe.Transcode == nil {
+		return domain.TranscodeProbe{}, fmt.Errorf("寸法のある非添付の映像streamがありません")
 	}
-	if result.Video.CodecType == "" {
-		return transcodeMetadata{}, fmt.Errorf("非添付の映像streamがありません")
-	}
-	if result.Video.Width <= 0 || result.Video.Height <= 0 {
-		return transcodeMetadata{}, fmt.Errorf("映像の寸法がありません")
-	}
-	return result, nil
+	return *probe.Transcode, nil
 }
 
-func transcodeArgs(path string, startMs int64, metadata transcodeMetadata, normalize bool) []string {
-	normalize = normalize || startMs > 0
+// transcodeArgs は最初に試す引数を返す。映像はコピーできればコピーする。
+func transcodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, normalize bool) []string {
+	return buildTranscodeArgs(path, startMs, metadata, normalize, !normalize && videoCanCopy(metadata.Video))
+}
+
+// buildTranscodeArgs は FFmpeg の引数を組み立てる。copyVideo は映像をコピーするかで、
+// normalize でなく videoCanCopy が真のときだけ効く。
+//
+// 音声は normalize でなく audioCanCopy が真ならコピーする（親 Issue #371 要件 4）。ただし
+// 映像をエンコードして途中から始めるときは、今までどおり音声もエンコードする。入力側の
+// -ss は、エンコードする stream では指定位置より前を捨てるが、コピーする stream では
+// demuxer が着いたキーフレームからの区間を残すので、音声だけが指定位置より前から始まる。
+//
+// 途中からのコピーだけ -copyts -start_at_zero と delay_moov を付け、mp4 muxer が各 track の
+// 開始時刻を moov の edit list に書くようにする（research.md R-1）。-noaccurate_seek は、
+// エンコードする音声もコピーする映像と同じくキーフレームの時刻から始めるためのものである。
+func buildTranscodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, normalize, copyVideo bool) []string {
+	copyVideo = copyVideo && !normalize && videoCanCopy(metadata.Video)
+	seekCopy := copyVideo && startMs > 0
 	args := []string{"-hide_banner", "-loglevel", "warning"}
 	appendInput := func(disableStream string) {
 		if startMs > 0 {
+			if seekCopy {
+				args = append(args, "-noaccurate_seek")
+			}
 			args = append(args, "-ss", formatSeconds(startMs))
 		}
 		if disableStream != "" {
@@ -236,23 +396,28 @@ func transcodeArgs(path string, startMs int64, metadata transcodeMetadata, norma
 		}
 	}
 
-	encodeVideo := normalize || !videoCanCopy(metadata.Video)
-	if encodeVideo {
-		args = append(args, videoEncodeArgs(metadata.Video)...)
-	} else {
+	if copyVideo {
 		args = append(args, "-c:v", "copy")
+	} else {
+		args = append(args, videoEncodeArgs(metadata.Video)...)
 	}
 
 	if metadata.Audio != nil {
-		if normalize || !audioCanCopy(*metadata.Audio) {
+		encodeAudio := normalize || !audioCanCopy(*metadata.Audio) || (startMs > 0 && !copyVideo)
+		if encodeAudio {
 			args = append(args, "-c:a", "aac", "-profile:a", "aac_low", "-ac", "2", "-b:a", "192k", "-ar", "48000")
 		} else {
 			args = append(args, "-c:a", "copy")
 		}
 	}
 
+	movflags := "frag_keyframe+empty_moov+default_base_moof"
+	if seekCopy {
+		args = append(args, "-copyts", "-start_at_zero")
+		movflags += "+delay_moov"
+	}
 	return append(args,
-		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
+		"-movflags", movflags,
 		"-f", "mp4", "pipe:1",
 	)
 }
@@ -266,7 +431,7 @@ func usesMOVDemuxer(formatName string) bool {
 	return false
 }
 
-func videoCanCopy(stream transcodeStream) bool {
+func videoCanCopy(stream domain.TranscodeVideo) bool {
 	profiles := map[string]bool{
 		"baseline": true, "constrained baseline": true, "main": true, "high": true,
 	}
@@ -284,13 +449,13 @@ func videoCanCopy(stream transcodeStream) bool {
 		stream.FPS <= maxOutputFPS(width, height)+0.0001
 }
 
-func audioCanCopy(stream transcodeStream) bool {
+func audioCanCopy(stream domain.TranscodeAudio) bool {
 	return stream.CodecName == "aac" && strings.EqualFold(stream.Profile, "LC") &&
 		stream.Channels >= 1 && stream.Channels <= 2 &&
 		stream.SampleRate >= 8000 && stream.SampleRate <= 48000
 }
 
-func videoEncodeArgs(stream transcodeStream) []string {
+func videoEncodeArgs(stream domain.TranscodeVideo) []string {
 	displayWidth, displayHeight, sampleAspectNum, sampleAspectDen := displayGeometry(stream)
 	width, height := outputDimensions(displayWidth, displayHeight)
 	filters := make([]string, 0, 2)
@@ -331,7 +496,7 @@ func videoEncodeArgs(stream transcodeStream) []string {
 	return args
 }
 
-func constantFrameRate(stream transcodeStream) bool {
+func constantFrameRate(stream domain.TranscodeVideo) bool {
 	return stream.FPS > 0 && stream.RealFPS > 0 && math.Abs(stream.FPS-stream.RealFPS) < 0.0001
 }
 
@@ -399,7 +564,7 @@ func parseAspectRatio(value string) (int64, int64) {
 	return n, d
 }
 
-func displayGeometry(stream transcodeStream) (int, int, int64, int64) {
+func displayGeometry(stream domain.TranscodeVideo) (int, int, int64, int64) {
 	width, height := stream.Width, stream.Height
 	numerator, denominator := stream.SampleAspectNum, stream.SampleAspectDen
 	if numerator <= 0 || denominator <= 0 {

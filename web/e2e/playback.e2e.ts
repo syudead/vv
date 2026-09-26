@@ -73,7 +73,7 @@ async function waitForVideos(request: APIRequestContext) {
       },
       { timeout: 60_000 },
     )
-    .toBe(10);
+    .toBe(11);
 }
 
 async function waitForSeekThumbnails(request: APIRequestContext) {
@@ -158,6 +158,45 @@ function mediaRequests(page: Page): Request[] {
     }
   });
   return requests;
+}
+
+/**
+ * reportedStart は変換の要求に付いた attempt の、実際の開始位置の報告を待って返す
+ * （specs/018-live-transcode-seek/contracts/transcode-start-api.md）。
+ */
+async function reportedStart(page: Page, transcode: Request): Promise<number> {
+  const attempt = new URL(transcode.url()).searchParams.get("attempt");
+  if (attempt === null) throw new Error(`attempt が無い: ${transcode.url()}`);
+  const response = await page.waitForResponse(
+    (candidate) =>
+      candidate.url().includes("/transcode-start?") &&
+      new URL(candidate.url()).searchParams.get("attempt") === attempt,
+  );
+  expect(response.status()).toBe(200);
+  return ((await response.json()) as { startMs: number }).startMs;
+}
+
+/** frameColor は再生中の映像の左上の 1 画素の RGBA を返す。 */
+async function frameColor(page: Page): Promise<number[]> {
+  return page.evaluate(() => {
+    const element = document.querySelector("video");
+    if (element === null) throw new Error("video is missing");
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext("2d");
+    if (context === null) throw new Error("2d context is missing");
+    context.drawImage(element, 0, 0, 1, 1);
+    return [...context.getImageData(0, 0, 1, 1).data];
+  });
+}
+
+/** displayedSeconds は操作バーの現在時刻の表示（m:ss）を秒で返す。 */
+async function displayedSeconds(page: Page): Promise<number> {
+  const text = await page.locator(".vjs-current-time-display").innerText();
+  const match = /(\d+):(\d{2})/.exec(text);
+  if (match === null) throw new Error(`現在時刻を読めない: ${text}`);
+  return Number(match[1]) * 60 + Number(match[2]);
 }
 
 async function saveProgress(request: APIRequestContext, item: Video, positionMs: number) {
@@ -380,6 +419,10 @@ test.describe.serial("live MP4 playback", () => {
     const seekStart = Number(new URL(seekRequest.url()).searchParams.get("startMs"));
     expect(seekStart).toBeGreaterThan(20_000);
     expect(seekStart).toBeLessThan(25_500);
+    // 映像はコピーで直前のキーフレーム（20 秒）から始まる。
+    const actualStart = await reportedStart(page, seekRequest);
+    expect(actualStart).toBeGreaterThan(19_500);
+    expect(actualStart).toBeLessThanOrEqual(seekStart);
     await page.waitForFunction(() => {
       const element = document.querySelector("video");
       return (
@@ -391,17 +434,7 @@ test.describe.serial("live MP4 playback", () => {
     });
     expect(Date.now() - seekStarted).toBeLessThan(2000);
 
-    const color = await page.evaluate(() => {
-      const element = document.querySelector("video");
-      if (element === null) throw new Error("video is missing");
-      const canvas = document.createElement("canvas");
-      canvas.width = 1;
-      canvas.height = 1;
-      const context = canvas.getContext("2d");
-      if (context === null) throw new Error("2d context is missing");
-      context.drawImage(element, 0, 0, 1, 1);
-      return [...context.getImageData(0, 0, 1, 1).data];
-    });
+    const color = await frameColor(page);
     expect(color[2]).toBeGreaterThan(color[0] ?? 255);
     expect(color[2]).toBeGreaterThan(color[1] ?? 255);
 
@@ -412,11 +445,91 @@ test.describe.serial("live MP4 playback", () => {
     );
     await page.locator(".vjs-play-control").click();
     const body = (await progress).postDataJSON() as { positionMs: number };
-    expect(body.positionMs).toBeGreaterThanOrEqual(seekStart);
+    expect(body.positionMs).toBeGreaterThanOrEqual(actualStart);
     expect(body.positionMs).toBeLessThan(seekStart + 5000);
     expect(
       requests.filter((candidate) => candidate.url().includes("/stream")),
     ).toHaveLength(0);
+  });
+
+  test("コピーで始めた変換は直前のキーフレームの時刻を表示し、再読み込みで同じ場面から再開する", async ({
+    page,
+  }) => {
+    test.setTimeout(45_000);
+    const item = video("sparse-keyframes");
+    expect(item.playable).toBe(false);
+    await play(page, item);
+
+    // 14 秒付近（緑の区間、直前のキーフレームは 8 秒）へシークする。
+    const playerBox = await page.locator(".video-js").boundingBox();
+    if (playerBox === null) throw new Error("player is not visible");
+    await page.mouse.move(
+      playerBox.x + playerBox.width * 0.6,
+      playerBox.y + playerBox.height / 2,
+      { steps: 3 },
+    );
+    const seekBar = page.locator(".vjs-progress-control");
+    const box = await seekBar.boundingBox();
+    if (box === null) throw new Error("seek bar is not visible");
+    const seekRequestPromise = page.waitForRequest((candidate) =>
+      candidate.url().includes(`/api/videos/${String(item.id)}/transcode.mp4?startMs=`),
+    );
+    await page.mouse.click(box.x + box.width * (14 / 24), box.y + box.height / 2);
+    const seekRequest = await seekRequestPromise;
+    const seekStart = Number(new URL(seekRequest.url()).searchParams.get("startMs"));
+    expect(seekStart).toBeGreaterThan(11_000);
+    expect(seekStart).toBeLessThan(16_000);
+    const actualStart = await reportedStart(page, seekRequest);
+    expect(actualStart).toBeGreaterThan(7_900);
+    expect(actualStart).toBeLessThan(8_100);
+
+    await page.waitForFunction(() => {
+      const element = document.querySelector("video");
+      return element !== null && !element.paused && element.readyState >= 2;
+    });
+    const progress = page.waitForRequest(
+      (candidate) =>
+        candidate.url().endsWith(`/api/videos/${String(item.id)}/progress`) &&
+        candidate.method() === "PUT",
+    );
+    await page.locator(".vjs-play-control").click();
+    const saved = ((await progress).postDataJSON() as { positionMs: number }).positionMs;
+    // 表示も保存も、映っている内容の時刻（キーフレーム + 再生した分）になる。
+    const elementSeconds = await page
+      .locator("video")
+      .evaluate((element) => (element as HTMLVideoElement).currentTime);
+    expect(saved).toBeGreaterThanOrEqual(actualStart);
+    expect(saved).toBeLessThan(seekStart);
+    expect(Math.abs(saved - (actualStart + elementSeconds * 1000))).toBeLessThan(1000);
+    expect(Math.abs((await displayedSeconds(page)) - saved / 1000)).toBeLessThanOrEqual(
+      1,
+    );
+    const paused = await frameColor(page);
+    expect(paused[1]).toBeGreaterThan(paused[0] ?? 255);
+    expect(paused[1]).toBeGreaterThan(paused[2] ?? 255);
+
+    // 再読み込みすると保存した位置から始まり、同じキーフレームからの同じ場面が映る。
+    const resumedPromise = page.waitForRequest((candidate) =>
+      candidate
+        .url()
+        .includes(
+          `/api/videos/${String(item.id)}/transcode.mp4?startMs=${String(saved)}`,
+        ),
+    );
+    await page.reload();
+    const resumed = await resumedPromise;
+    expect(await reportedStart(page, resumed)).toBe(actualStart);
+    await page.locator(".vjs-big-play-button").click();
+    await page.waitForFunction(() => {
+      const element = document.querySelector("video");
+      return element !== null && !element.paused && element.readyState >= 2;
+    });
+    const color = await frameColor(page);
+    expect(color[1]).toBeGreaterThan(color[0] ?? 255);
+    expect(color[1]).toBeGreaterThan(color[2] ?? 255);
+    const shown = await displayedSeconds(page);
+    expect(shown).toBeGreaterThanOrEqual(Math.floor(actualStart / 1000));
+    expect(shown).toBeLessThan(seekStart / 1000);
   });
 
   test("離脱とreloadは自分の変換だけを止め、別tabの再生を継続する", async ({
