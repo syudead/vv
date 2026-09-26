@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -135,6 +136,142 @@ func TestGeneratePreviewSamplesAcrossWholeTimeline(t *testing.T) {
 	if len(unique) < 10 {
 		t.Fatalf("preview did not sample across the source timeline: values=%v", samples)
 	}
+}
+
+func TestPreviewArgsSeekEachSegmentOnInput(t *testing.T) {
+	args := previewArgs("input.mkv", "output.mp4", 120000)
+	segments := PreviewSegments(120000)
+	var seeks, inputs int
+	for i, arg := range args {
+		switch arg {
+		case "-ss":
+			if i+5 >= len(args) || args[i+2] != "-t" || args[i+4] != "-i" || args[i+5] != "input.mkv" {
+				t.Fatalf("-ss is not an input-side seek with -t at %d: %v", i, args)
+			}
+			want := segments[seeks]
+			if args[i+1] != previewFormatSeconds(want[0]) || args[i+3] != previewFormatSeconds(want[1]-want[0]) {
+				t.Fatalf("segment %d seek = %s/%s, want %v", seeks, args[i+1], args[i+3], want)
+			}
+			seeks++
+		case "-i":
+			inputs++
+		}
+		if strings.Contains(arg, "trim") {
+			t.Fatalf("args still use trim: %v", args)
+		}
+		if arg == "-noaccurate_seek" {
+			t.Fatalf("args disable accurate seek: %v", args)
+		}
+	}
+	if seeks != previewSegmentCount || inputs != previewSegmentCount {
+		t.Fatalf("seeks = %d, inputs = %d, want %d: %v", seeks, inputs, previewSegmentCount, args)
+	}
+	filter := args[slicesIndex(args, "-filter_complex")+1]
+	for i := range previewSegmentCount {
+		if want := "[" + strconv.Itoa(i) + ":V:0]setpts=PTS-STARTPTS,"; !strings.Contains(filter, want) {
+			t.Errorf("filter does not read input %d: %s", i, filter)
+		}
+	}
+}
+
+func TestGeneratePreviewSkipsSegmentsPastVideoEnd(t *testing.T) {
+	requireFFmpeg(t)
+	dir := t.TempDir()
+	// 映像 10 秒・音声 12 秒。容器の長さ 12 秒で区間を選ぶと、末尾の 2 区間は映像の後ろになる。
+	source := filepath.Join(dir, "longer-container.mp4")
+	video := "nullsrc=size=64x64:rate=8:duration=10,geq=lum='16+floor(N/8)*20':cb=128:cr=128"
+	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", video,
+		"-f", "lavfi", "-i", "sine=frequency=440:duration=12",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", source).CombinedOutput(); err != nil {
+		t.Fatalf("create source: %v: %s", err, out)
+	}
+	target := filepath.Join(dir, "preview.mp4")
+	if err := GeneratePreview(context.Background(), source, target, 12000); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("ffprobe", "-v", "error", "-show_entries", "format=duration",
+		"-of", "default=nw=1:nk=1", target).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	duration, err := strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	// 区間の開始は 0, 1.02, ..., 9.20 秒の 10 本が映像の中にある。
+	if err != nil || duration < 7.0 || duration > 8.2 {
+		t.Fatalf("duration = %q, err = %v, want about 10 segments", out, err)
+	}
+	samples, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-i", target,
+		"-vf", "fps=4/3,scale=1:1", "-frames:v", "10", "-f", "rawvideo", "-pix_fmt", "gray", "-").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(samples) != 10 {
+		t.Fatalf("sample bytes = %d, want 10", len(samples))
+	}
+	for i := 1; i < len(samples); i++ {
+		if samples[i] < samples[i-1] {
+			t.Fatalf("segments are not in timeline order: %v", samples)
+		}
+	}
+	if samples[len(samples)-1] <= samples[0] {
+		t.Fatalf("segments do not advance through the video: %v", samples)
+	}
+}
+
+func TestGeneratePreviewFailsWhenNoSegmentHasFrames(t *testing.T) {
+	requireFFmpeg(t)
+	dir := t.TempDir()
+	// 4fps・15 秒でキーフレームが先頭だけの MPEG-TS。索引が無いのでシークが
+	// キーフレームに着かず、どの区間もフレームを出さない。
+	source := filepath.Join(dir, "sparse-keyframes.ts")
+	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi",
+		"-i", "testsrc2=size=320x240:rate=4:duration=15",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-f", "mpegts", "-y", source).CombinedOutput(); err != nil {
+		t.Fatalf("create source: %v: %s", err, out)
+	}
+	if err := GeneratePreview(context.Background(), source, filepath.Join(dir, "preview.mp4"), 15000); err == nil {
+		t.Fatal("generation without any video frame unexpectedly succeeded")
+	}
+}
+
+func TestGeneratePreviewKeepsRotatedPortrait(t *testing.T) {
+	requireFFmpeg(t)
+	dir := t.TempDir()
+	landscape := filepath.Join(dir, "landscape.mp4")
+	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi",
+		"-i", "testsrc2=size=1280x720:rate=8:duration=12",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", landscape).CombinedOutput(); err != nil {
+		t.Fatalf("create landscape: %v: %s", err, out)
+	}
+	source := filepath.Join(dir, "portrait.mp4")
+	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-display_rotation", "90",
+		"-i", landscape, "-c", "copy", "-y", source).CombinedOutput(); err != nil {
+		t.Skipf("ffmpeg cannot write display rotation: %v: %s", err, out)
+	}
+	target := filepath.Join(dir, "preview.mp4")
+	if err := GeneratePreview(context.Background(), source, target, 12000); err != nil {
+		t.Fatal(err)
+	}
+	out, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:0",
+		"-show_entries", "stream=width,height", "-of", "csv=p=0", target).Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var width, height int
+	if _, err := fmt.Sscanf(strings.TrimSpace(string(out)), "%d,%d", &width, &height); err != nil {
+		t.Fatalf("parse size %q: %v", out, err)
+	}
+	if width != 360 || height != 640 {
+		t.Fatalf("preview size = %dx%d, want portrait 360x640", width, height)
+	}
+}
+
+func slicesIndex(values []string, want string) int {
+	for i, value := range values {
+		if value == want {
+			return i
+		}
+	}
+	return -1
 }
 
 func TestGeneratePreviewCancellationFails(t *testing.T) {
