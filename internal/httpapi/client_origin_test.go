@@ -102,7 +102,8 @@ func TestClientOrigin(t *testing.T) {
 	}
 }
 
-// 既定（MDM_TRUSTED_PROXIES が空）では、ループバックの接続元でも転送ヘッダーを読まない。
+// 信頼するプロキシが無いとき（MDM_TRUSTED_PROXIES=none）は、ループバックの接続元でも
+// 転送ヘッダーを読まない。
 func TestClientOriginIgnoresHeadersWithoutTrustedProxies(t *testing.T) {
 	srv := &server{}
 	r := httptest.NewRequest(http.MethodGet, "/api/health", nil)
