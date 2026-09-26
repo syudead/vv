@@ -102,7 +102,8 @@ func TestClientOrigin(t *testing.T) {
 	}
 }
 
-// 既定（MDM_TRUSTED_PROXIES が空）では、ループバックの接続元でも転送ヘッダーを読まない。
+// 信頼するプロキシが無いとき（MDM_TRUSTED_PROXIES=none）は、ループバックの接続元でも
+// 転送ヘッダーを読まない。
 func TestClientOriginIgnoresHeadersWithoutTrustedProxies(t *testing.T) {
 	srv := &server{}
 	r := httptest.NewRequest(http.MethodGet, "/api/health", nil)
@@ -286,6 +287,18 @@ func TestOpenVideoFileBehindLoopbackProxy(t *testing.T) {
 	}
 	if len(opener.opened) != 1 || opener.opened[0] != video.Path {
 		t.Fatalf("opened = %q", opener.opened)
+	}
+
+	// LAN のプロキシを信頼していても、LAN の機器がループバックを名乗るだけでは開けない。
+	lanHandler := newTestServer(t, Options{
+		Videos: library, Opener: opener,
+		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/16")},
+	})
+	lan := openRequest("/api/videos/1/open", "192.168.1.20:50000", "localhost:8080")
+	lan.Header.Set("X-Forwarded-For", "127.0.0.1")
+	assertErrorCode(t, serve(lanHandler, lan), http.StatusForbidden, codeForbidden)
+	if len(opener.opened) != 1 {
+		t.Fatalf("LAN の機器の偽装で開いた: opened = %q", opener.opened)
 	}
 
 	// 動画の応答の openable も同じ判定による。

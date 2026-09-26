@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -20,7 +21,8 @@ const (
 	envDataDir  = "MDM_DATA_DIR"
 	envLogLevel = "MDM_LOG_LEVEL"
 	// envTrustedProxies は転送ヘッダーを信じてよいリバースプロキシのアドレスの一覧である
-	// （specs/016-single-account-auth/plan.md Structural Decisions 7）。既定は空で、
+	// （specs/016-single-account-auth/plan.md Structural Decisions 7）。未設定なら
+	// ループバックとプライベートアドレス（defaultTrustedProxies）を信じ、none なら
 	// 転送ヘッダーを読まない。
 	envTrustedProxies = "MDM_TRUSTED_PROXIES"
 )
@@ -31,6 +33,22 @@ const (
 	defaultDataDir  = "/data"
 	defaultLogLevel = "info"
 )
+
+// defaultTrustedProxies は MDM_TRUSTED_PROXIES が未設定のときに信じる接続元である。
+// 家庭の LAN や Docker のネットワークにある逆プロキシを、設定なしで使えるようにする。
+// 同じ LAN の機器は送信元を偽れるが、インターネットからの要求はプロキシが付けた
+// アドレスで数える。
+var defaultTrustedProxies = []netip.Prefix{
+	netip.MustParsePrefix("127.0.0.0/8"),
+	netip.MustParsePrefix("10.0.0.0/8"),
+	netip.MustParsePrefix("172.16.0.0/12"),
+	netip.MustParsePrefix("192.168.0.0/16"),
+	netip.MustParsePrefix("::1/128"),
+	netip.MustParsePrefix("fc00::/7"),
+}
+
+// noTrustedProxies は、転送ヘッダーを読まないことを表す MDM_TRUSTED_PROXIES の値である。
+const noTrustedProxies = "none"
 
 // dataDirPerm は MDM_DATA_DIR とその配下を作成するときの許可属性である。
 const dataDirPerm os.FileMode = 0o755
@@ -46,6 +64,7 @@ type Config struct {
 	DataDir  string
 	LogLevel string
 	// TrustedProxies は MDM_TRUSTED_PROXIES を解釈したもの。空なら転送ヘッダーを読まない。
+	// 未設定なら defaultTrustedProxies になる。
 	TrustedProxies []netip.Prefix
 }
 
@@ -152,8 +171,15 @@ func (c Config) LogAttrs() []slog.Attr {
 
 // parseTrustedProxies は MDM_TRUSTED_PROXIES を読む。値はカンマか空白で区切った CIDR
 // （例: 127.0.0.1/32,10.0.0.0/8）で、1つのアドレスだけの項はその1つだけを表す。
+// 空なら defaultTrustedProxies、none なら空の集合を返す。
 // 解釈できない項はすべて誤りとして返す。
 func parseTrustedProxies(value string) ([]netip.Prefix, []error) {
+	switch trimmed := strings.TrimSpace(value); {
+	case trimmed == "":
+		return slices.Clone(defaultTrustedProxies), nil
+	case strings.EqualFold(trimmed, noTrustedProxies):
+		return nil, nil
+	}
 	var (
 		prefixes []netip.Prefix
 		problems []error
@@ -163,8 +189,8 @@ func parseTrustedProxies(value string) ([]netip.Prefix, []error) {
 		prefix, err := parseTrustedProxy(field)
 		if err != nil {
 			problems = append(problems, fmt.Errorf(
-				"%s の %q は CIDR として解釈できません（例: 127.0.0.1/32、10.0.0.0/8、::1/128）",
-				envTrustedProxies, field))
+				"%s の %q は CIDR として解釈できません（例: 127.0.0.1/32、10.0.0.0/8、::1/128。転送ヘッダーを読まないなら %s）",
+				envTrustedProxies, field, noTrustedProxies))
 			continue
 		}
 		prefixes = append(prefixes, prefix)

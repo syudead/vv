@@ -51,7 +51,7 @@ During and after a scan:
 | `MDM_ADDR`            | `:8080` | Server listen address                                                                           |
 | `MDM_DATA_DIR`        | `/data` | Absolute path for the database and generated media                                              |
 | `MDM_LOG_LEVEL`       | `info`  | `debug`, `info`, `warn`, or `error`                                                             |
-| `MDM_TRUSTED_PROXIES` | empty   | Reverse proxies whose forwarding headers are trusted; see [Network exposure](#network-exposure) |
+| `MDM_TRUSTED_PROXIES` | private | Reverse proxies whose forwarding headers are trusted; see [Network exposure](#network-exposure) |
 
 Docker Compose sets these values for the container. Media folders themselves
 are managed in the application rather than with a configuration file.
@@ -133,29 +133,38 @@ The reverse proxy must:
 - set or append the client address in `X-Forwarded-For` and set `X-Forwarded-Proto`
   to `https`.
 
-Then list the proxy's address in `MDM_TRUSTED_PROXIES`, as CIDR ranges or
-single addresses separated by commas or spaces:
+vv trusts forwarding headers from loopback and private addresses by default
+(`127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `::1`,
+`fc00::/7`), so a proxy on the same PC, on the home network or in the same
+Docker network works without any setting. Set `MDM_TRUSTED_PROXIES` only to
+narrow this, as CIDR ranges or single addresses separated by commas or spaces,
+or to `none` to never read forwarding headers:
 
 ```bash
-MDM_TRUSTED_PROXIES=172.16.0.0/12 task up
+MDM_TRUSTED_PROXIES=172.18.0.0/16 task up
 ```
 
 vv reads the forwarding headers only on connections from those addresses.
 There it takes the client address by walking `X-Forwarded-For` from the right
 to the first untrusted address, and decides HTTPS from the last
 `X-Forwarded-Proto` value. On every other connection it uses the connecting
-address and whether the connection itself was TLS, so a client that reaches vv
-directly cannot fake either. The `Forwarded` header (RFC 7239) is not read.
-Invalid entries are reported together with other invalid settings at startup.
+address and whether the connection itself was TLS, so a client on the internet
+cannot fake either. With the default, a device on the home network can: it can
+claim another address and so get around the login attempt limit. Narrow
+`MDM_TRUSTED_PROXIES` to the proxy's address if you do not trust every device
+on the network. The `Forwarded` header (RFC 7239) is not read. Invalid entries
+are reported together with other invalid settings at startup.
 
 The client address and HTTPS decide the login attempt limit, the address in
 authentication logs, the session cookie (`__Host-vv_session` with `Secure`
 over HTTPS, `vv_session` over HTTP), the same-origin check, and whether the
 "open in default app" action counts as coming from the server's own PC. That
 action stays refused for remote clients even when the proxy runs on the same
-PC.
+PC, and it also requires the connection itself to come from loopback, so a
+device on the network cannot claim `127.0.0.1` in `X-Forwarded-For`.
 
-If the proxy is missing from `MDM_TRUSTED_PROXIES`:
+If the proxy's address is not trusted (it has a public address, or
+`MDM_TRUSTED_PROXIES` leaves it out):
 
 - every client is seen as the proxy's address, so all of them share one login
   attempt limit, and one person's failed attempts lock everyone out for a while;
@@ -172,8 +181,5 @@ vv.example.com {
 ```
 
 Caddy obtains the certificate, passes `Host` through, and sets
-`X-Forwarded-For` and `X-Forwarded-Proto` by default. Set
-`MDM_TRUSTED_PROXIES` to the address range of the network Caddy connects from
-(for Compose, the subnet shown by `docker network inspect`). When Caddy runs on
-the host and vv also runs on the host without a container, use
-`MDM_TRUSTED_PROXIES=127.0.0.1,::1`.
+`X-Forwarded-For` and `X-Forwarded-Proto` by default. Docker networks use
+private addresses, so no `MDM_TRUSTED_PROXIES` setting is needed.

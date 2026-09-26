@@ -37,8 +37,9 @@ Container Manager and similar), or save it as `compose.yaml` on the host and run
 Open `http://<host>:<port>/api/health` to check that vv is up. Then open vv in a
 browser, finish the account setup right away
 ([Account setup](running-vv.md#account-setup)), add folders below `/media` in
-Settings and start a scan. `MDM_LOG_LEVEL` and `MDM_TRUSTED_PROXIES` work as in
-[Runtime settings](running-vv.md#runtime-settings); see
+Settings and start a scan. `MDM_LOG_LEVEL` works as in
+[Runtime settings](running-vv.md#runtime-settings). A reverse proxy on the NAS
+or the home network works without further settings; see
 [Network exposure](running-vv.md#network-exposure) before making vv reachable
 from the internet.
 

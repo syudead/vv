@@ -333,7 +333,8 @@ cannot be cut off by an earlier switch to private. `POST /api/auth/setup` create
 logs a warning while no account is configured.
 The client address and whether a request is HTTPS come from `client_origin.go`, which
 reads `X-Forwarded-For` and `X-Forwarded-Proto` only on connections from the reverse
-proxies in `MDM_TRUSTED_PROXIES` and otherwise uses the connecting address and TLS;
+proxies in `MDM_TRUSTED_PROXIES` (loopback and private addresses when unset) and
+otherwise uses the connecting address and TLS;
 the login attempt limit, authentication logs, the cookie name and `Secure`, the
 same-origin check and the loopback check for opening a file all use it.
 

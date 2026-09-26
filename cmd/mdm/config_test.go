@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -86,8 +87,28 @@ func TestLoadConfigReadsTrustedProxies(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.TrustedProxies) != 0 {
-		t.Fatalf("既定の TrustedProxies = %v, want 空", cfg.TrustedProxies)
+	if !slices.Equal(cfg.TrustedProxies, defaultTrustedProxies) {
+		t.Fatalf("既定の TrustedProxies = %v, want %v", cfg.TrustedProxies, defaultTrustedProxies)
+	}
+	for _, addr := range []string{"127.0.0.1", "10.1.2.3", "172.17.0.2", "192.168.1.20", "::1", "fd00::1"} {
+		if !slices.ContainsFunc(cfg.TrustedProxies, func(p netip.Prefix) bool { return p.Contains(netip.MustParseAddr(addr)) }) {
+			t.Errorf("既定の TrustedProxies が %s を含まない", addr)
+		}
+	}
+	for _, addr := range []string{"198.51.100.1", "8.8.8.8", "2001:db8::1"} {
+		if slices.ContainsFunc(cfg.TrustedProxies, func(p netip.Prefix) bool { return p.Contains(netip.MustParseAddr(addr)) }) {
+			t.Errorf("既定の TrustedProxies が公開アドレス %s を含む", addr)
+		}
+	}
+
+	for _, value := range []string{"none", " NONE "} {
+		cfg, err = LoadConfig(envFrom(map[string]string{"MDM_TRUSTED_PROXIES": value}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(cfg.TrustedProxies) != 0 {
+			t.Errorf("MDM_TRUSTED_PROXIES=%q: TrustedProxies = %v, want 空", value, cfg.TrustedProxies)
+		}
 	}
 
 	cfg, err = LoadConfig(envFrom(map[string]string{
