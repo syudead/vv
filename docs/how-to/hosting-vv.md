@@ -41,6 +41,8 @@ docker compose up -d
 curl -fsS http://localhost:8080/api/health
 ```
 
+Replace `8080` in the URL with `MDM_HOST_PORT` when you changed it.
+
 Nothing is built on the host. Open vv in a browser, finish the account setup
 right away ([Account setup](running-vv.md#account-setup)), add `/media` in
 Settings and start a scan. `MDM_LOG_LEVEL` and `MDM_TRUSTED_PROXIES` work as in
@@ -72,11 +74,24 @@ Stop vv so that the SQLite database is not written during the copy, then copy
 
 ```bash
 docker compose stop
-# Host folder:
+```
+
+Run only the command for where the data lives. With `MDM_DATA_HOST_DIR`:
+
+```bash
 tar -C /volume1/docker/vv -czf vv-data-$(date +%F).tar.gz data
-# vv_data volume:
+```
+
+With the `vv_data` volume (`MDM_DATA_HOST_DIR` unset):
+
+```bash
 docker run --rm -v vv_data:/data -v "$PWD":/backup alpine \
   tar -C /data -czf /backup/vv-data-$(date +%F).tar.gz .
+```
+
+Then start vv again:
+
+```bash
 docker compose start
 ```
 
