@@ -200,8 +200,9 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 
 /**
  * GroupRow はリスト表示のグループの行である。動画の行（VideoRow）と同じ列に
- * グループの値を出す。サムネイルと題名の列を1つのセルにまとめ、メンバーのサムネイルを
- * 横に並べたフォルダの絵柄（FolderStrip）を題名の側へ広げる（ui-design.md「List view row」）。
+ * グループの値を出す。題名と画像の列を1つのセルにまとめ、題名の右に、メンバーの
+ * サムネイルを横に並べたフォルダの絵柄（FolderStrip）を右寄せで題名の側へ広げる
+ * （ui-design.md「List view row」）。
  */
 export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
   const { group, backTo, selected, selectionMode, onSelect } = props;
@@ -231,21 +232,9 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           />
         </td>
       )}
-      <td colSpan={2} className="py-1.5 pr-4">
+      <td colSpan={2} className={cn("py-1.5 pr-4", onSelect === undefined && "pl-3")}>
         <div className="flex min-w-0 items-center gap-3">
-          <div className="flex max-w-[70%] min-w-28 shrink-0">
-            <FolderStrip previews={group.previews}>
-              {ratio !== null && (
-                <span className="absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50">
-                  <span
-                    className="block h-full bg-accent"
-                    style={{ width: `${String(Math.round(ratio * 100))}%` }}
-                  />
-                </span>
-              )}
-            </FolderStrip>
-          </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <Link
               to={groupPath(group)}
               state={{ from: backTo }}
@@ -266,6 +255,18 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
             <span className="mt-0.5 block text-xs text-fg-muted tabular-nums">
               {countText}
             </span>
+          </div>
+          <div className="flex max-w-[70%] min-w-28 shrink-0 justify-end">
+            <FolderStrip previews={group.previews}>
+              {ratio !== null && (
+                <span className="absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50">
+                  <span
+                    className="block h-full bg-accent"
+                    style={{ width: `${String(Math.round(ratio * 100))}%` }}
+                  />
+                </span>
+              )}
+            </FolderStrip>
           </div>
         </div>
       </td>

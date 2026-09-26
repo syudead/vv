@@ -302,31 +302,8 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           />
         </td>
       )}
-      <td className="w-32 py-1.5 pr-2">
-        <div className="relative aspect-video w-28 overflow-hidden rounded-sm bg-navbar">
-          {video.thumbnailUrl !== undefined && isNarrowVideo(video) && (
-            <ThumbnailBackdrop src={video.thumbnailUrl} />
-          )}
-          {video.thumbnailUrl !== undefined && (
-            <img
-              src={video.thumbnailUrl}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="relative h-full w-full object-contain"
-            />
-          )}
-          {ratio !== null && (
-            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50">
-              <span
-                className="block h-full bg-accent"
-                style={{ width: `${String(Math.round(ratio * 100))}%` }}
-              />
-            </span>
-          )}
-        </div>
-      </td>
-      <td className="min-w-0 py-1.5 pr-4">
+      {/* リスト表示は題名を先に、画像を後に置く（グループの行と同じ並び）。 */}
+      <td className={cn("min-w-0 py-1.5 pr-4", onSelect === undefined && "pl-3")}>
         <Link
           to={`/videos/${String(video.id)}`}
           state={{ from: backTo }}
@@ -349,6 +326,30 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
             {unplayable}
           </span>
         )}
+      </td>
+      <td className="w-32 py-1.5 pr-4">
+        <div className="relative ml-auto aspect-video w-28 overflow-hidden rounded-sm bg-navbar">
+          {video.thumbnailUrl !== undefined && isNarrowVideo(video) && (
+            <ThumbnailBackdrop src={video.thumbnailUrl} />
+          )}
+          {video.thumbnailUrl !== undefined && (
+            <img
+              src={video.thumbnailUrl}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="relative h-full w-full object-contain"
+            />
+          )}
+          {ratio !== null && (
+            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50">
+              <span
+                className="block h-full bg-accent"
+                style={{ width: `${String(Math.round(ratio * 100))}%` }}
+              />
+            </span>
+          )}
+        </div>
       </td>
       <td className="hidden w-16 pr-4 text-right text-xs text-fg-muted tabular-nums sm:table-cell">
         {state === "watched" && (

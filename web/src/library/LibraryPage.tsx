@@ -25,6 +25,7 @@ import { itemKey } from "../api/libraryItems";
 import { refreshTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
+import { cn } from "../lib/cn";
 import {
   readViewPreferences,
   type ViewPreferences,
@@ -661,8 +662,8 @@ export default function LibraryPage() {
               <thead>
                 <tr className="text-left text-xs text-fg-muted">
                   {owner && <th className="w-10" />}
-                  <th className="w-32 py-2" />
-                  <th className="py-2 pr-4 font-medium">題名</th>
+                  <th className={cn("py-2 pr-4 font-medium", !owner && "pl-3")}>題名</th>
+                  <th className="w-32 py-2 pr-4" />
                   <th className="hidden w-16 py-2 pr-4 sm:table-cell" />
                   <th className="w-20 py-2 pr-4 text-right font-medium">長さ</th>
                   <th className="hidden w-20 py-2 pr-4 text-right font-medium md:table-cell">
