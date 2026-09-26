@@ -10,23 +10,36 @@ import { FOLDERS_ROOT } from "./folderPath";
 export function Section({
   title,
   count,
+  action,
   className,
   children,
 }: {
   title: string;
   count?: number;
+  /** 見出しの行の右端に置く操作（フォルダ画面の「Folder grouping menu」）。 */
+  action?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
+  const heading = (
+    <h2 className="px-0.5 text-xs font-semibold text-fg-muted">
+      {title}
+      {count !== undefined && (
+        // 読み上げで名前と件数が続けて読まれないよう、余白ではなく空白で区切る。
+        <span className="tabular-nums"> {count.toLocaleString("ja-JP")}</span>
+      )}
+    </h2>
+  );
   return (
     <section className={"flex flex-col gap-2 " + (className ?? "")}>
-      <h2 className="px-0.5 text-xs font-semibold text-fg-muted">
-        {title}
-        {count !== undefined && (
-          // 読み上げで名前と件数が続けて読まれないよう、余白ではなく空白で区切る。
-          <span className="tabular-nums"> {count.toLocaleString("ja-JP")}</span>
-        )}
-      </h2>
+      {action === undefined ? (
+        heading
+      ) : (
+        <div className="flex items-center justify-between gap-2">
+          {heading}
+          {action}
+        </div>
+      )}
       {children}
     </section>
   );

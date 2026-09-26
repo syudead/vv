@@ -192,6 +192,22 @@ describe("useKeyboardShortcuts", () => {
     }
   });
 
+  it("開いているメニュー（Group line のまとめ方など）の Esc では閉じない", () => {
+    const { onClose } = setup(null);
+    const wrapper = document.createElement("div");
+    wrapper.setAttribute("data-radix-popper-content-wrapper", "");
+    const content = document.createElement("div");
+    content.setAttribute("role", "menu");
+    wrapper.append(content);
+    document.body.append(wrapper);
+    try {
+      fireEvent.keyDown(content, { key: "Escape" });
+      expect(onClose).not.toHaveBeenCalled();
+    } finally {
+      wrapper.remove();
+    }
+  });
+
   it("プレイヤーが無いときは再生の操作をしない", () => {
     setup(null);
     expect(() => fireEvent.keyDown(document.body, { key: " " })).not.toThrow();

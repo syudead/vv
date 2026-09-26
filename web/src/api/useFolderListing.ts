@@ -18,6 +18,11 @@ export interface FolderListingState<T> {
   notFound: boolean;
   error: string | null;
   reload: () => void;
+  /**
+   * update は読み込み済みの値を書き換える（取り直さない）。まだ値が無ければ何もしない。
+   * 操作の応答で一部だけが変わったとき（フォルダのまとめ方）に使う。
+   */
+  update: (change: (data: T) => T) => void;
 }
 
 /**
@@ -63,7 +68,12 @@ function useFolderData<T>(
   }, [generation, key]);
 
   const reload = useCallback(() => setGeneration((value) => value + 1), []);
-  return { data, loading, notFound, error, reload };
+  const update = useCallback(
+    (change: (data: T) => T) =>
+      setData((current) => (current === null ? current : change(current))),
+    [],
+  );
+  return { data, loading, notFound, error, reload, update };
 }
 
 /** useRootFolders はフォルダ画面の最上位（登録済みメディアフォルダ）を読む。 */

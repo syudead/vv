@@ -26,6 +26,7 @@ export default function FolderContents({
   backTo,
   preview,
   tagsRow,
+  groupingMenu,
 }: {
   criteria: ListCriteria;
   /** 子フォルダの一覧を読んでいる間は true。 */
@@ -40,6 +41,11 @@ export default function FolderContents({
   preview: PreviewCardProps;
   /** カードの題名の下に出すタグの行（useFolderTagsRow）。 */
   tagsRow: (video: Video) => ReactNode;
+  /**
+   * 「動画 N」の見出しの行の右端に置く、まとめ方のメニュー（ui-design.md
+   * 「Folder grouping menu」）。ゲストでは渡さない。
+   */
+  groupingMenu?: ReactNode;
 }) {
   const showFolders = listingLoading || childFolders.length > 0;
   const filterOnly = hasConditions(criteria);
@@ -85,7 +91,11 @@ export default function FolderContents({
           {filterOnlyNoMatch ? (
             <NoMatches />
           ) : (
-            <Section title="動画" count={videos.loading ? undefined : videos.total}>
+            <Section
+              title="動画"
+              count={videos.loading ? undefined : videos.total}
+              action={groupingMenu}
+            >
               {videos.error !== null && videos.items.length === 0 ? (
                 <LoadFailed reason={videos.error} onRetry={videos.reload} />
               ) : (

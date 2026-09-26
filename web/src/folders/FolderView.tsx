@@ -27,6 +27,7 @@ import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
+import FolderGroupingMenu from "./FolderGroupingMenu";
 import FolderSearchResults from "./FolderSearchResults";
 import FolderToolbar from "./FolderToolbar";
 import { breadcrumbsFor, folderKey, rootFolderName } from "./folderPath";
@@ -166,6 +167,39 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     reloadVideos();
   }, [reloadListing, reloadVideos, scan.finished]);
 
+  // --- まとめ方のメニュー（ui-design.md「Folder grouping menu」） ---
+  // タグ化の後は動画の一覧を読み直す（表示中のカードのタグは応答に含まれず古いため）。
+  // 読み直しの間は骨組みで背が縮むので、読み終えたら元のスクロール位置へ戻す。
+  const scrollAfterReload = useRef<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const top = scrollAfterReload.current;
+    if (top === undefined || videos.loading) return;
+    scrollAfterReload.current = undefined;
+    window.scrollTo({ top, behavior: "auto" });
+  }, [videos.loading]);
+  const { update: updateListing } = listing;
+  const grouping = summary?.grouping;
+  const groupingMenu =
+    // ゲストの応答には grouping が無いので、引き金を出さない。
+    owner && grouping !== undefined ? (
+      <FolderGroupingMenu
+        folder={folder}
+        name={name ?? summary?.name ?? ""}
+        grouping={grouping}
+        onGroupingChange={(next) =>
+          updateListing((data) => ({
+            ...data,
+            folder: { ...data.folder, grouping: next },
+          }))
+        }
+        onTagged={() => {
+          scrollAfterReload.current = window.scrollY;
+          reloadVideos();
+        }}
+        onConflict={reloadListing}
+      />
+    ) : undefined;
+
   const saveSnapshot = useCallback(() => {
     if (listing.data === null || reloadPending.current) return;
     saveListSnapshot(
@@ -263,6 +297,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         backTo={backTo}
         preview={preview}
         tagsRow={tagsRow}
+        groupingMenu={groupingMenu}
       />
     );
   }
