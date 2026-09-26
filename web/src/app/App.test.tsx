@@ -214,13 +214,7 @@ describe("App", () => {
     const names = Array.from(main.querySelectorAll("a, button")).map((node) =>
       node.textContent?.trim(),
     );
-    expect(names).toEqual([
-      "ライブラリ",
-      "フォルダ",
-      "タグ",
-      "設定",
-      "ログアウト",
-    ]);
+    expect(names).toEqual(["ライブラリ", "フォルダ", "タグ", "設定", "ログアウト"]);
     expect(screen.getByRole("button", { name: "取り込み中" })).toBeDefined();
   });
 });
