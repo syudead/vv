@@ -230,18 +230,10 @@ func (s *server) apiFolders(ctx context.Context, audience domain.Audience, folde
 	return out
 }
 
-// apiFolder はフォルダ1件を契約の形へ写す。差し込むサムネイルの previewUrl は
-// 動画一覧と同じ presentVideos を通し、ファイルが今あるときだけ出す（消えていれば
-// 作り直しを積む）。登録フォルダの絶対パス（rootPath）はゲストの応答から外す
-// （contracts/guest-api.md §1）。まとめ方（grouping）は所有者にだけ載せる
-// （017 の contracts/folder-groups-api.md §1）。
-func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder domain.FolderSummary, grouping *gen.FolderGrouping) gen.FolderSummary {
-	videos := make([]domain.Video, 0, len(folder.Previews))
-	for _, preview := range folder.Previews {
-		videos = append(videos, domain.Video{
-			ID: preview.VideoID, ContentKey: preview.ContentKey, PreviewState: preview.PreviewState,
-		})
-	}
+// folderPreviews は、フォルダの絵柄に差し込むサムネイル（サムネイル生成済みの動画）を
+// 契約の形へ写す。previewUrl は動画一覧と同じ presentVideos を通し、ファイルが今ある
+// ときだけ出す（消えていれば作り直しを積む）。フォルダカードとグループのカードが使う。
+func (s *server) folderPreviews(ctx context.Context, videos []domain.Video) []gen.FolderPreview {
 	views := s.presentVideos(ctx, videos)
 	previews := make([]gen.FolderPreview, 0, len(views))
 	for _, view := range views {
@@ -255,6 +247,22 @@ func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder
 		}
 		previews = append(previews, item)
 	}
+	return previews
+}
+
+// apiFolder はフォルダ1件を契約の形へ写す。差し込むサムネイルの previewUrl は
+// 動画一覧と同じ presentVideos を通し、ファイルが今あるときだけ出す（消えていれば
+// 作り直しを積む）。登録フォルダの絶対パス（rootPath）はゲストの応答から外す
+// （contracts/guest-api.md §1）。まとめ方（grouping）は所有者にだけ載せる
+// （017 の contracts/folder-groups-api.md §1）。
+func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder domain.FolderSummary, grouping *gen.FolderGrouping) gen.FolderSummary {
+	videos := make([]domain.Video, 0, len(folder.Previews))
+	for _, preview := range folder.Previews {
+		videos = append(videos, domain.Video{
+			ID: preview.VideoID, ContentKey: preview.ContentKey, PreviewState: preview.PreviewState,
+		})
+	}
+	previews := s.folderPreviews(ctx, videos)
 	out := gen.FolderSummary{
 		RootId:      folder.RootID,
 		Path:        folder.Path,

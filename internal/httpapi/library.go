@@ -54,16 +54,15 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	// 読み取りの失敗や間に確定した登録フォルダの解除で、total とカーソルに数えた
 	// グループを応答から落としてしまう。
 	roots := page.Roots
-	// 再生位置は動画の項目とグループの cover にだけ載せる。グループの視聴の値は保存層が
-	// 決めているので、全メンバーの再生位置は引かない（ページのメンバーが多いと引数の
-	// 上限に掛かる）。タグは全メンバーの和集合を載せるので、全メンバーを引く。
+	// 再生位置は動画の項目にだけ載せる。グループの視聴の値は保存層が決めているので、
+	// メンバーの再生位置は引かない（ページのメンバーが多いと引数の上限に掛かる）。
+	// タグは全メンバーの和集合を載せるので、全メンバーを引く。
 	var shown, tagged []domain.Video
 	for _, item := range page.Items {
 		if item.Video != nil {
 			shown = append(shown, *item.Video)
 			tagged = append(tagged, *item.Video)
 		} else {
-			shown = append(shown, item.Group.Members[0])
 			tagged = append(tagged, item.Group.Members...)
 		}
 	}
@@ -139,7 +138,7 @@ func (s *server) GetFolderGroup(w http.ResponseWriter, r *http.Request, rootID g
 		return
 	}
 
-	payload, ok := s.itemLookups(r.Context(), group.Members[:1], group.Members).group(r.Context(), audience, roots, group)
+	payload, ok := s.itemLookups(r.Context(), nil, group.Members).group(r.Context(), audience, roots, group)
 	if !ok {
 		s.notFound(w, "そのフォルダはグループではありません")
 		return
@@ -191,7 +190,7 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		DurationMs:  group.DurationMs,
 		SizeBytes:   group.SizeBytes,
 		AddedAt:     group.AddedAt,
-		Cover:       l.video(ctx, audience, roots, group.Members[0]),
+		Previews:    l.s.folderPreviews(ctx, groupPreviewMembers(group.Members)),
 		OpenVideoId: group.OpenVideoID,
 		VideoIds:    ids,
 		Tags:        []gen.VideoTag{},
@@ -210,6 +209,21 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		out.Tags = append(out.Tags, gen.VideoTag{Id: tag.ID, Name: tag.Name, Manual: tag.Manual, FromFolder: tag.FromFolder})
 	}
 	return out, true
+}
+
+// groupPreviewMembers は、グループのカードのフォルダの絵柄に差し込むメンバーを返す。
+// サムネイル生成済みのメンバーを並びの順に、フォルダカードと同じ上限まで取る。
+func groupPreviewMembers(members []domain.Video) []domain.Video {
+	out := make([]domain.Video, 0, domain.MaxFolderPreviews)
+	for _, member := range members {
+		if len(out) == domain.MaxFolderPreviews {
+			break
+		}
+		if member.HasThumbnail() {
+			out = append(out, member)
+		}
+	}
+	return out
 }
 
 // unionMemberTags はメンバーのタグの和集合を返す。同じタグは1件にまとめ、出所は
