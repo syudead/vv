@@ -28,10 +28,10 @@ file into a handbook.
 - When writing or changing a Plan and its artifacts, follow
   [docs/design-docs/plan-quality.md](docs/design-docs/plan-quality.md).
 - Prefer focused, reviewable changes with automated checks.
-- Before every push, run the check CI runs for the change: `task check` when
-  any path outside `*.md`, `docs/` and `specs/` changed, otherwise
-  `task check-docs`. Fix formatting failures with `task fmt`. Focused tests
-  alone do not catch formatting or lint drift.
+- Before every push, run `task check` when any path outside `*.md`, `docs/`
+  and `specs/` changed, and `task check-docs` when any path inside them
+  changed (both for a mixed change). Fix formatting failures with `task fmt`.
+  Focused tests alone do not catch formatting or lint drift.
 - Do not hand-edit generated files (`internal/httpapi/gen/`, `web/src/api/gen/`);
   change `api/openapi.yaml` and run `task generate`.
 - Add links to new design documents from `docs/design-docs/index.md`.

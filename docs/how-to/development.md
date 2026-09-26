@@ -39,10 +39,10 @@ mise exec --command "task check"
 
 `task check` runs formatting checks, static analysis, unit tests, generated-file
 checks, migration checks, and the Windows build check. Run it before every push
-of a code or configuration change, and `task check-docs` before a
-documentation-only push; CI runs the same check, so a push that skips it tends
-to come back as a formatting or lint fix. `task fmt` rewrites Go and Web
-sources into the checked format.
+of a code or configuration change, and `task check-docs` as well whenever the
+push changes Markdown, `docs/` or `specs/`; a push that skips them tends to come
+back as a formatting or lint fix from CI. `task fmt` rewrites Go and Web sources
+into the checked format.
 
 Browser tests are a separate command:
 
