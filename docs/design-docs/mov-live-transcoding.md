@@ -16,7 +16,8 @@ FFmpegのMOV demuxerには`interleaved_read`があるが、これを無効にす
 
 ## Decision
 
-`ffprobe`が返すformat名に`mov`を含み、選択対象の音声streamがある場合だけ、FFmpegに
+ライブ変換の解析情報（取り込み時に保存した値か、要求時の`ffprobe`の結果。
+[解析情報の再利用](live-transcode-seek.md#解析情報の再利用)）のformat名に`mov`を含み、選択対象の音声streamがある場合だけ、FFmpegに
 同じpathを二つのinputとして渡す。
 
 - input 0は`-an`で音声を無効にし、選択した映像streamだけをmapする。
@@ -26,7 +27,7 @@ FFmpegのMOV demuxerには`interleaved_read`があるが、これを無効にす
 
 各demuxerが一方のtrackだけを追うため、映像と音声の間を往復するseekを避けられる。
 非MOV、または音声のないMOVは単一inputのままとする。複数の映像・音声がある場合も、
-request時probeが選んだ最初の非添付映像と最初の音声だけを出力する既存規則は変えない。
+解析情報が選んだ最初の非添付映像と最初の音声だけを出力する既存規則は変えない。
 実装は`internal/media/transcode.go`の`transcodeArgs`に閉じる。
 
 ## Trade-offs

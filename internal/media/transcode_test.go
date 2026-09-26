@@ -11,7 +11,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -214,24 +216,31 @@ func TestMOVTranscodeStopsAfterClientCancellation(t *testing.T) {
 		t.Fatalf("MOV fixture生成: %v: %s", err, output)
 	}
 
-	transcoder := NewLiveTranscoder(nil)
-	stream, wait, stop, err := transcoder.Start(
-		context.Background(), input, 0, true, time.Now().Add(5*time.Second),
-	)
+	info, err := os.Stat(input)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := readInitialBytes(stream); err != nil {
+	transcoder := NewLiveTranscoder(nil)
+	started, err := transcoder.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: input, Source: domain.FileStampOf(info), Normalize: true, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.Probed == nil {
+		t.Error("その場で解析したのに結果を返さない")
+	}
+	if _, err := readInitialBytes(started.Stream); err != nil {
 		t.Fatalf("初期データ取得: %v", err)
 	}
 
-	started := time.Now()
-	stop()
-	_ = stream.Close()
-	if err := wait(); err == nil {
+	stoppedAt := time.Now()
+	started.Stop()
+	_ = started.Stream.Close()
+	if err := started.Wait(); err == nil {
 		t.Fatal("cancelしたFFmpegが成功終了しました")
 	}
-	if elapsed := time.Since(started); elapsed > 2*time.Second {
+	if elapsed := time.Since(stoppedAt); elapsed > 2*time.Second {
 		t.Fatalf("cancel後のFFmpeg終了に %s かかりました", elapsed)
 	}
 }
@@ -517,11 +526,13 @@ func TestLiveTranscoderStopsOnCancellation(t *testing.T) {
 			defer cancelServer()
 			transcoder := helperTranscoder(serverCtx.Done())
 
-			stream, wait, _, err := transcoder.Start(requestCtx, "movie.mkv", 0, false, time.Now().Add(time.Second))
+			started, err := transcoder.Start(requestCtx, domain.LiveTranscodeRequest{
+				Path: "movie.mkv", StartupDeadline: time.Now().Add(10 * time.Second),
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = stream.Close() }()
+			defer func() { _ = started.Stream.Close() }()
 			if target == "request" {
 				cancelRequest()
 			} else {
@@ -529,7 +540,7 @@ func TestLiveTranscoderStopsOnCancellation(t *testing.T) {
 			}
 
 			done := make(chan error, 1)
-			go func() { done <- wait() }()
+			go func() { done <- started.Wait() }()
 			select {
 			case err := <-done:
 				if err == nil {
@@ -551,9 +562,9 @@ func TestLiveTranscoderBoundsProbeByStartupDeadline(t *testing.T) {
 	}
 
 	started := time.Now()
-	_, _, _, err := transcoder.Start(
-		context.Background(), "movie.mkv", 0, false, time.Now().Add(30*time.Millisecond),
-	)
+	_, err := transcoder.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: "movie.mkv", StartupDeadline: time.Now().Add(30 * time.Millisecond),
+	})
 	if err == nil {
 		t.Fatal("停止するprobeが成功した")
 	}
@@ -594,6 +605,15 @@ func TestTranscodeHelperProcess(t *testing.T) {
 	if mode == "probe" {
 		_, _ = io.WriteString(os.Stdout, `{"streams":[{"index":0,"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","bits_per_raw_sample":"8","width":640,"height":360,"level":31,"avg_frame_rate":"30/1","r_frame_rate":"30/1"}],"format":{"duration":"10.0"}}`)
 		os.Exit(0)
+	}
+	if mode == "ffmpeg-fail" {
+		_, _ = fmt.Fprintln(os.Stderr, "decode failed")
+		os.Exit(1)
+	}
+	if mode == "ffmpeg-silent" {
+		for {
+			time.Sleep(time.Second)
+		}
 	}
 	if mode != "ffmpeg" {
 		_, _ = fmt.Fprintln(os.Stderr, "unknown helper mode")
@@ -710,5 +730,236 @@ func TestProbeRecordsSourceStamp(t *testing.T) {
 	}
 	if got.Transcode == nil || got.Transcode.Video.Width != 160 || got.Transcode.Audio != nil {
 		t.Fatalf("Transcode = %+v", got.Transcode)
+	}
+}
+
+// scriptedTranscoder は起動したコマンドを数える。ffprobe は probeMode、FFmpeg は
+// ffmpegModes を順に使い（尽きたら最後のもの）、helper process で代わりに動かす。
+type scriptedTranscoder struct {
+	*LiveTranscoder
+	mu          sync.Mutex
+	commands    []string
+	probeMode   string
+	ffmpegModes []string
+}
+
+func newScriptedTranscoder(ffmpegModes ...string) *scriptedTranscoder {
+	scripted := &scriptedTranscoder{LiveTranscoder: NewLiveTranscoder(nil), probeMode: "probe", ffmpegModes: ffmpegModes}
+	scripted.commandContext = func(ctx context.Context, name string, _ ...string) *exec.Cmd {
+		scripted.mu.Lock()
+		mode := scripted.probeMode
+		if name != probeCommand {
+			index := min(len(scripted.ffmpegCommands()), len(scripted.ffmpegModes)-1)
+			mode = scripted.ffmpegModes[index]
+		}
+		scripted.commands = append(scripted.commands, name)
+		scripted.mu.Unlock()
+		cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=TestTranscodeHelperProcess", "--", mode)
+		cmd.Env = append(os.Environ(), "VV_TRANSCODE_HELPER=1")
+		return cmd
+	}
+	return scripted
+}
+
+func (s *scriptedTranscoder) ffmpegCommands() []string {
+	var ffmpeg []string
+	for _, name := range s.commands {
+		if name != probeCommand {
+			ffmpeg = append(ffmpeg, name)
+		}
+	}
+	return ffmpeg
+}
+
+func (s *scriptedTranscoder) started() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.commands)
+}
+
+// sourceFile は開いたファイルの代わりに実在するファイルを作り、その印を返す。
+func sourceFile(t *testing.T) (string, domain.FileStamp) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "movie.mkv")
+	if err := os.WriteFile(path, []byte("movie"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return path, domain.FileStampOf(info)
+}
+
+// helperProbe は helper process の "probe" が出す ffprobe の出力を解釈した値である。
+func helperProbe() domain.TranscodeProbe {
+	return domain.TranscodeProbe{Video: domain.TranscodeVideo{
+		CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8,
+		Width: 640, Height: 360, Level: 31, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1,
+	}}
+}
+
+func finishStarted(t *testing.T, started domain.LiveTranscode) []byte {
+	t.Helper()
+	first, err := readInitialBytes(started.Stream)
+	if err != nil {
+		t.Fatalf("初期データ: %v", err)
+	}
+	started.Stop()
+	_ = started.Stream.Close()
+	_ = started.Wait()
+	return first
+}
+
+// 保存済みの解析情報があれば ffprobe を起動しない。先頭からでも途中からでも同じ
+// （親 Issue #371 受け入れ条件 7）。
+func TestLiveTranscoderSkipsProbeWithStoredProbe(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	for _, startMs := range []int64{0, 4000} {
+		scripted := newScriptedTranscoder("ffmpeg")
+		started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+			Path: path, Source: stamp, Probe: &stored, StartMs: startMs, StartupDeadline: time.Now().Add(5 * time.Second),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := string(finishStarted(t, started)); got != "fragment" {
+			t.Errorf("startMs=%d: 初期データ = %q", startMs, got)
+		}
+		if started.Probed != nil {
+			t.Errorf("startMs=%d: 解析していないのに Probed がある", startMs)
+		}
+		if got := scripted.started(); !slices.Equal(got, []string{transcodeCommand}) {
+			t.Errorf("startMs=%d: 起動したコマンド = %v", startMs, got)
+		}
+	}
+}
+
+// 解析情報が無ければ ffprobe を 1 回だけ実行し、その結果を返す（受け入れ条件 8）。
+func TestLiveTranscoderProbesWithoutStoredProbe(t *testing.T) {
+	path, stamp := sourceFile(t)
+	scripted := newScriptedTranscoder("ffmpeg")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishStarted(t, started)
+	if started.Probed == nil || !reflect.DeepEqual(*started.Probed, helperProbe()) {
+		t.Errorf("Probed = %+v", started.Probed)
+	}
+	if got := scripted.started(); !slices.Equal(got, []string{probeCommand, transcodeCommand}) {
+		t.Errorf("起動したコマンド = %v", got)
+	}
+}
+
+// 解析のあとにファイルが開いたときと違っていたら、変換はするが結果を保存用に返さない。
+func TestLiveTranscoderDoesNotReturnProbeOfChangedFile(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stamp.ModTimeNs++
+	scripted := newScriptedTranscoder("ffmpeg")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishStarted(t, started)
+	if started.Probed != nil {
+		t.Errorf("変わったファイルの解析結果を返した: %+v", started.Probed)
+	}
+}
+
+// 保存値で始めた FFmpeg がデータを出さずに終わったら、その場で解析して 1 回だけ
+// やり直す（Structural Decision 3）。
+func TestLiveTranscoderRetriesWithFreshProbeWhenStoredProbeFails(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	stored.Video.Index = 7
+	scripted := newScriptedTranscoder("ffmpeg-fail", "ffmpeg")
+	started, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, Probe: &stored, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	finishStarted(t, started)
+	if started.Probed == nil || !reflect.DeepEqual(*started.Probed, helperProbe()) {
+		t.Errorf("Probed = %+v", started.Probed)
+	}
+	want := []string{transcodeCommand, probeCommand, transcodeCommand}
+	if got := scripted.started(); !slices.Equal(got, want) {
+		t.Errorf("起動したコマンド = %v, want %v", got, want)
+	}
+}
+
+// やり直しは 1 回だけで、その場の解析で始めた FFmpeg の失敗は切り替えない。
+func TestLiveTranscoderRetriesOnlyOnce(t *testing.T) {
+	path, stamp := sourceFile(t)
+	for _, tc := range []struct {
+		name   string
+		stored bool
+		want   []string
+	}{
+		{"stored", true, []string{transcodeCommand, probeCommand, transcodeCommand}},
+		{"fresh", false, []string{probeCommand, transcodeCommand}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			request := domain.LiveTranscodeRequest{Path: path, Source: stamp, StartupDeadline: time.Now().Add(5 * time.Second)}
+			if tc.stored {
+				stored := helperProbe()
+				request.Probe = &stored
+			}
+			scripted := newScriptedTranscoder("ffmpeg-fail")
+			if _, err := scripted.Start(context.Background(), request); err == nil {
+				t.Fatal("失敗し続ける FFmpeg で成功した")
+			}
+			if got := scripted.started(); !slices.Equal(got, tc.want) {
+				t.Errorf("起動したコマンド = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+// 最初のデータを待つ期限切れはやり直さずに失敗にする。期限は切り替え全体で 1 つである。
+func TestLiveTranscoderDoesNotRetryAfterStartupTimeout(t *testing.T) {
+	path, stamp := sourceFile(t)
+	stored := helperProbe()
+	scripted := newScriptedTranscoder("ffmpeg-silent")
+	began := time.Now()
+	_, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, Probe: &stored, StartupDeadline: time.Now().Add(200 * time.Millisecond),
+	})
+	if err == nil {
+		t.Fatal("データを出さない FFmpeg で成功した")
+	}
+	if elapsed := time.Since(began); elapsed > 2*time.Second {
+		t.Errorf("期限切れまで %s かかった", elapsed)
+	}
+	if got := scripted.started(); !slices.Equal(got, []string{transcodeCommand}) {
+		t.Errorf("起動したコマンド = %v", got)
+	}
+}
+
+// 要求の取り消しで打ち切られた ffprobe は誤りで終わり、結果を返さない。
+func TestLiveTranscoderReturnsNoProbeWhenProbeIsCanceled(t *testing.T) {
+	path, stamp := sourceFile(t)
+	scripted := newScriptedTranscoder("ffmpeg")
+	scripted.probeMode = "probe-hang"
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(50*time.Millisecond, cancel)
+	started, err := scripted.Start(ctx, domain.LiveTranscodeRequest{
+		Path: path, Source: stamp, StartupDeadline: time.Now().Add(5 * time.Second),
+	})
+	if err == nil || !errors.Is(err, context.Canceled) {
+		t.Fatalf("err = %v", err)
+	}
+	if started.Probed != nil {
+		t.Errorf("打ち切られた解析の結果を返した: %+v", started.Probed)
+	}
+	if got := scripted.started(); !slices.Equal(got, []string{probeCommand}) {
+		t.Errorf("起動したコマンド = %v", got)
 	}
 }

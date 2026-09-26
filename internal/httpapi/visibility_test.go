@@ -131,8 +131,8 @@ func (zeroReader) Read(p []byte) (int, error) {
 	return len(p), nil
 }
 
-func (endlessTranscoder) Start(context.Context, string, int64, bool, time.Time) (io.ReadCloser, func() error, func(), error) {
-	return io.NopCloser(zeroReader{}), func() error { return nil }, func() {}, nil
+func (endlessTranscoder) Start(context.Context, domain.LiveTranscodeRequest) (domain.LiveTranscode, error) {
+	return domain.LiveTranscode{Stream: io.NopCloser(zeroReader{}), Wait: func() error { return nil }, Stop: func() {}}, nil
 }
 
 // 非公開に戻すと、ゲストとして処理中のその動画の Range 応答とライブ変換が終わり、

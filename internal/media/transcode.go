@@ -1,10 +1,13 @@
 package media
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -46,17 +49,17 @@ func NewLiveTranscoder(serverDone <-chan struct{}) *LiveTranscoder {
 	}
 }
 
-// Start returns FFmpeg stdout, a wait function, and an idempotent stop function.
-// startupDeadline bounds the request-time probe; the caller uses the same
-// deadline while waiting for the first output. The caller must call wait
-// exactly once after a successful start.
+// Start は変換を始め、最初のデータが出たところで返す（specs/018-live-transcode-seek/
+// plan.md Structural Decisions 3・6）。request.Probe があれば ffprobe を起動せず、
+// 無ければその場で ffprobe を実行して結果を Probed に載せる。保存済みの解析情報で
+// 始めた FFmpeg が最初のデータを出さずに終わったときは、同じ要求の中でその場の
+// ffprobe を実行し、1 回だけやり直す。期限（StartupDeadline）は解析とやり直しを
+// 含めて 1 つで、期限切れはやり直さずに失敗にする。成功したら Wait をちょうど
+// 1 回呼ぶこと。
 func (t *LiveTranscoder) Start(
 	requestContext context.Context,
-	path string,
-	startMs int64,
-	normalize bool,
-	startupDeadline time.Time,
-) (io.ReadCloser, func() error, func(), error) {
+	request domain.LiveTranscodeRequest,
+) (domain.LiveTranscode, error) {
 	ctx, cancel := context.WithCancel(requestContext)
 	watchDone := make(chan struct{})
 	go func() {
@@ -71,43 +74,160 @@ func (t *LiveTranscoder) Start(
 		cancel()
 	})
 
-	metadata, err := t.probe(ctx, path, startupDeadline)
-	if err != nil {
-		cleanup()
-		return nil, nil, nil, err
+	metadata := request.Probe
+	var probed *domain.TranscodeProbe
+	if metadata == nil {
+		fresh, err := t.probeSource(ctx, request)
+		if err != nil {
+			cleanup()
+			return domain.LiveTranscode{}, err
+		}
+		metadata, probed = &fresh.probe, fresh.saved
 	}
 
-	cmd := t.commandContext(ctx, transcodeCommand, transcodeArgs(path, startMs, metadata, normalize)...)
+	for {
+		process, err := t.startProcess(ctx, request, *metadata)
+		if err != nil {
+			cleanup()
+			return domain.LiveTranscode{}, err
+		}
+		first, readErr := readFirstOutput(ctx, process.stdout, time.Until(request.StartupDeadline))
+		if len(first) > 0 {
+			var once sync.Once
+			var waitErr error
+			wait := func() error {
+				once.Do(func() {
+					waitErr = process.wait()
+					cleanup()
+				})
+				return waitErr
+			}
+			return domain.LiveTranscode{
+				Stream: &prefixedReadCloser{Reader: io.MultiReader(bytes.NewReader(first), process.stdout), closer: process.stdout},
+				Wait:   wait,
+				Stop:   sync.OnceFunc(cancel),
+				Probed: probed,
+			}, nil
+		}
+
+		process.stop()
+		closeErr := process.stdout.Close()
+		waitErr := process.wait()
+		failure := errors.Join(readErr, closeErr, waitErr)
+		// 切り替えるのは、保存済みの解析情報で始めたプロセスがデータを出さずに
+		// 終わったときだけである。取り消しと期限切れはそのまま失敗にする。
+		exited := errors.Is(readErr, io.EOF)
+		if ctx.Err() != nil || !exited || metadata != request.Probe {
+			cleanup()
+			return domain.LiveTranscode{}, fmt.Errorf("ライブ変換が初期データを生成できませんでした: %w", failure)
+		}
+		fresh, err := t.probeSource(ctx, request)
+		if err != nil {
+			cleanup()
+			return domain.LiveTranscode{}, fmt.Errorf("保存済みの解析情報で変換できず、解析し直せませんでした: %w; 最初の変換: %w", err, failure)
+		}
+		metadata, probed = &fresh.probe, fresh.saved
+	}
+}
+
+// transcodeProcess は起動した FFmpeg 1 本である。
+type transcodeProcess struct {
+	stdout io.ReadCloser
+	wait   func() error
+	stop   func()
+}
+
+// startProcess は FFmpeg を 1 本起動する。プロセスは自分の context を持ち、stop で
+// そのプロセスだけを止める。
+func (t *LiveTranscoder) startProcess(
+	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
+) (transcodeProcess, error) {
+	processCtx, cancel := context.WithCancel(ctx)
+	cmd := t.commandContext(processCtx, transcodeCommand,
+		transcodeArgs(request.Path, request.StartMs, metadata, request.Normalize)...)
 	cmd.WaitDelay = transcodeStopDelay
 	stderr := &tailWriter{limit: stderrTailLimit}
 	cmd.Stderr = stderr
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		cleanup()
-		return nil, nil, nil, fmt.Errorf("FFmpeg の出力を開けません: %w", err)
+		cancel()
+		return transcodeProcess{}, fmt.Errorf("FFmpeg の出力を開けません: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
-		cleanup()
+		cancel()
 		_ = stdout.Close()
-		return nil, nil, nil, fmt.Errorf("FFmpeg を開始できません: %w", err)
+		return transcodeProcess{}, fmt.Errorf("FFmpeg を開始できません: %w", err)
 	}
-
-	var once sync.Once
-	var waitErr error
 	wait := func() error {
-		once.Do(func() {
-			waitErr = cmd.Wait()
-			cleanup()
-			if waitErr != nil {
-				waitErr = fmt.Errorf("FFmpeg が終了しました: %w; stderr: %s", waitErr, stderr.String())
-			}
-		})
-		return waitErr
+		err := cmd.Wait()
+		cancel()
+		if err != nil {
+			return fmt.Errorf("FFmpeg が終了しました: %w; stderr: %s", err, stderr.String())
+		}
+		return nil
 	}
-	stop := sync.OnceFunc(cancel)
-	return stdout, wait, stop, nil
+	return transcodeProcess{stdout: stdout, wait: wait, stop: cancel}, nil
 }
 
+type firstOutput struct {
+	data []byte
+	err  error
+}
+
+// readFirstOutput は最初のデータを待つ。期限切れと取り消しでは、読みかけの
+// goroutine はプロセスを止めて出力を閉じたところで終わる。
+func readFirstOutput(ctx context.Context, stdout io.Reader, timeout time.Duration) ([]byte, error) {
+	result := make(chan firstOutput, 1)
+	go func() {
+		buffer := make([]byte, 32*1024)
+		length, err := io.ReadAtLeast(stdout, buffer, 1)
+		result <- firstOutput{data: buffer[:length], err: err}
+	}()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case read := <-result:
+		return read.data, read.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-timer.C:
+		return nil, fmt.Errorf("初期データ待機が%sでタイムアウトしました", timeout)
+	}
+}
+
+// prefixedReadCloser は先に読んだ最初のデータに続けて FFmpeg の出力を読ませる。
+type prefixedReadCloser struct {
+	io.Reader
+	closer io.Closer
+}
+
+func (r *prefixedReadCloser) Close() error { return r.closer.Close() }
+
+type sourceProbe struct {
+	probe domain.TranscodeProbe
+	// saved は保存してよい結果で、解析のあとにファイルが変わっていたら nil。
+	saved *domain.TranscodeProbe
+}
+
+// probeSource はその場で ffprobe を実行する。解析のあとにファイルの大きさか
+// 更新時刻が開いたときと違っていたら、変換には使うが保存用には返さない
+// （data-model.md §4）。
+func (t *LiveTranscoder) probeSource(ctx context.Context, request domain.LiveTranscodeRequest) (sourceProbe, error) {
+	metadata, err := t.probe(ctx, request.Path, request.StartupDeadline)
+	if err != nil {
+		return sourceProbe{}, err
+	}
+	result := sourceProbe{probe: metadata}
+	if info, err := os.Stat(request.Path); err == nil && domain.FileStampOf(info) == request.Source {
+		saved := metadata
+		result.saved = &saved
+	}
+	return result, nil
+}
+
+// probe はその場で ffprobe を実行する。期限は変換の開始と共通で、期限切れと
+// 取り消しは動画固有の誤りにしない。
 func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline time.Time) (domain.TranscodeProbe, error) {
 	probeCtx, cancel := context.WithDeadline(ctx, startupDeadline)
 	defer cancel()
@@ -115,9 +235,9 @@ func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline
 	output, err := t.commandContext(probeCtx, probeCommand, probeArgs(path)...).Output()
 	if err != nil {
 		if contextErr := probeCtx.Err(); contextErr != nil {
-			return domain.TranscodeProbe{}, fmt.Errorf("request時probeが期限内に完了しませんでした: %w", contextErr)
+			return domain.TranscodeProbe{}, fmt.Errorf("要求時の ffprobe が期限内に完了しませんでした: %w", contextErr)
 		}
-		return domain.TranscodeProbe{}, fmt.Errorf("%w: request時probeに失敗しました: %w", domain.ErrUnprocessableMedia, err)
+		return domain.TranscodeProbe{}, fmt.Errorf("%w: 要求時の ffprobe に失敗しました: %w", domain.ErrUnprocessableMedia, err)
 	}
 	metadata, err := parseTranscodeProbe(output)
 	if err != nil {

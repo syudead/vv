@@ -347,7 +347,9 @@ same-origin check and the loopback check for opening a file all use it.
 
 Not built yet: subtitles and multi-user support. Browser-incompatible
 video can be transcoded to a request-scoped fragmented MP4 stream; transcoded output is
-not persisted.
+not persisted. The transcode route reuses the video's stored live-transcode probe when it
+still matches the opened file, and saves the one `internal/media` probed otherwise
+([live-transcode-seek.md](docs/design-docs/live-transcode-seek.md)).
 
 ## Intended dependency direction
 
