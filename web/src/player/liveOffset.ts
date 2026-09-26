@@ -88,6 +88,9 @@ export function createLiveOffsetMiddleware(player: Player) {
   let reloadGeneration = 0;
   let disposed = false;
   let startReport: AbortController | undefined;
+  // offsetNotifyDeferred は、未 buffer シークの予約中に届いた報告の通知を保留していることを表す。
+  // 予約が実行されれば選んだ位置を通知するので捨て、予約が取り消されたら通知する。
+  let offsetNotifyDeferred = false;
 
   const clearReload = () => {
     if (reloadTimer !== undefined) clearTimeout(reloadTimer);
@@ -125,6 +128,12 @@ export function createLiveOffsetMiddleware(player: Player) {
         startReport = undefined;
         const actual = startMs / 1000;
         offsetSeconds = actual;
+        if (reloadTimer !== undefined) {
+          // 未 buffer シークの予約中は、選んだ位置を保存する位置として保つ。古い開始位置を
+          // 通知すると、予約の実行前に離れたとき選んだ位置ではなくその位置から再開する。
+          if (actual !== requested) offsetNotifyDeferred = true;
+          return;
+        }
         if (pendingOffsetSeconds === requested) pendingOffsetSeconds = undefined;
         if (actual !== requested) source.vvOffsetChanged?.(actual);
         tech?.trigger("timeupdate");
@@ -155,6 +164,7 @@ export function createLiveOffsetMiddleware(player: Player) {
       const playbackRate = tech.playbackRate();
       offsetSeconds = seconds;
       pendingOffsetSeconds = undefined;
+      offsetNotifyDeferred = false;
       source.vvOffsetChanged?.(seconds);
       source = liveSource(
         source.vvVideoId as number,
@@ -194,6 +204,7 @@ export function createLiveOffsetMiddleware(player: Player) {
       source = nextSource;
       offsetSeconds = nextSource.vvLive ? (nextSource.vvOffsetSeconds ?? 0) : undefined;
       pendingOffsetSeconds = undefined;
+      offsetNotifyDeferred = false;
       next(null, nextSource);
       awaitActualStart(nextSource);
     },
@@ -229,6 +240,10 @@ export function createLiveOffsetMiddleware(player: Player) {
           clearReload();
           reloadGeneration += 1;
           pendingOffsetSeconds = undefined;
+          if (offsetNotifyDeferred) {
+            offsetNotifyDeferred = false;
+            source.vvOffsetChanged?.(offsetSeconds);
+          }
           return relative;
         }
       }

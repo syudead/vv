@@ -340,6 +340,43 @@ describe("live offset middleware", () => {
     await vi.waitFor(() => expect(middleware.currentTime(0)).toBe(75));
   });
 
+  it("未buffer seekの予約中に届いた古い報告は選んだ位置の保存を上書きしない", async () => {
+    vi.useFakeTimers();
+    const reports = deferredReports();
+    const changed = vi.fn();
+    const { middleware } = fixture();
+    middleware.setSource(liveSource(7, 120_000, 30_000, changed), () => undefined);
+
+    middleware.setCurrentTime(80);
+    reports[0]?.resolve(20_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(middleware.currentTime(0)).toBe(80);
+    expect(changed).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(200);
+    expect(changed).toHaveBeenLastCalledWith(80);
+    expect(changed).not.toHaveBeenCalledWith(20);
+  });
+
+  it("予約を取り消してbuffer内へ戻したら保留した報告を通知する", async () => {
+    vi.useFakeTimers();
+    const reports = deferredReports();
+    const changed = vi.fn();
+    const { middleware } = fixture();
+    middleware.setSource(liveSource(7, 120_000, 30_000, changed), () => undefined);
+
+    middleware.setCurrentTime(80);
+    reports[0]?.resolve(20_000);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(changed).not.toHaveBeenCalled();
+
+    expect(middleware.setCurrentTime(25)).toBe(5);
+    expect(changed).toHaveBeenLastCalledWith(20);
+    vi.advanceTimersByTime(200);
+    expect(changed).toHaveBeenCalledTimes(1);
+    expect(middleware.currentTime(5)).toBe(25);
+  });
+
   it("disposeのあとに届いた報告は位置を変えない", async () => {
     const reports = deferredReports();
     const changed = vi.fn();
