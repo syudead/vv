@@ -267,6 +267,88 @@ func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 	}
 }
 
+func TestVideoEncodeArgsForcesKeyframesByTime(t *testing.T) {
+	args := strings.Join(videoEncodeArgs(compatibleMetadata().Video), " ")
+	if want := "-force_key_frames expr:gte(t,n_forced*2)"; !strings.Contains(args, want) {
+		t.Fatalf("argsに %q がない: %s", want, args)
+	}
+}
+
+func TestTranscodeKeyframeIntervalWithFFmpeg(t *testing.T) {
+	if _, err := exec.LookPath(transcodeCommand); err != nil {
+		t.Skip("ffmpegがありません")
+	}
+	if _, err := exec.LookPath(probeCommand); err != nil {
+		t.Skip("ffprobeがありません")
+	}
+
+	for _, rate := range []int{24, 30, 60} {
+		t.Run(fmt.Sprintf("%dfps", rate), func(t *testing.T) {
+			directory := t.TempDir()
+			input := filepath.Join(directory, "input.mkv")
+			// 入力のキーフレームは疎にし、出力の間隔がエンコード側で決まることを確かめる。
+			generate := exec.Command(transcodeCommand,
+				"-hide_banner", "-loglevel", "error", "-y",
+				"-f", "lavfi", "-i", fmt.Sprintf("testsrc=size=320x180:rate=%d:duration=10", rate),
+				"-c:v", "libx264", "-preset", "ultrafast", "-g", "600", "-pix_fmt", "yuv420p", input,
+			)
+			if output, err := generate.CombinedOutput(); err != nil {
+				t.Fatalf("fixture生成: %v: %s", err, output)
+			}
+			probeInput, err := exec.Command(probeCommand, probeArgs(input)...).Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			metadata, err := parseTranscodeProbe(probeInput)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			output := filepath.Join(directory, "output.mp4")
+			outputFile, err := os.Create(output)
+			if err != nil {
+				t.Fatal(err)
+			}
+			command := exec.Command(transcodeCommand, transcodeArgs(input, 1500, metadata, true)...)
+			command.Stdout = outputFile
+			var stderr strings.Builder
+			command.Stderr = &stderr
+			runErr := command.Run()
+			closeErr := outputFile.Close()
+			if runErr != nil || closeErr != nil {
+				t.Fatalf("変換: run=%v close=%v stderr=%s", runErr, closeErr, stderr.String())
+			}
+
+			packets, err := exec.Command(probeCommand,
+				"-v", "error", "-select_streams", "v:0",
+				"-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", output,
+			).Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			var keyframes []float64
+			last := 0.0
+			for line := range strings.SplitSeq(strings.TrimSpace(string(packets)), "\n") {
+				ptsText, flags, _ := strings.Cut(line, ",")
+				pts := parseFrameRate(ptsText)
+				last = max(last, pts)
+				if strings.Contains(flags, "K") {
+					keyframes = append(keyframes, pts)
+				}
+			}
+			if len(keyframes) < 2 {
+				t.Fatalf("キーフレームが少なすぎます: %v", keyframes)
+			}
+			keyframes = append(keyframes, last)
+			for i := 1; i < len(keyframes); i++ {
+				if gap := keyframes[i] - keyframes[i-1]; gap > liveKeyframeInterval+0.001 {
+					t.Fatalf("キーフレームの間隔 %.3f 秒が %d 秒を超えます: %v", gap, liveKeyframeInterval, keyframes)
+				}
+			}
+		})
+	}
+}
+
 func TestVideoEncodePreservesDisplayAspectRatioWithFFmpeg(t *testing.T) {
 	if _, err := exec.LookPath(transcodeCommand); err != nil {
 		t.Skip("ffmpegがありません")
