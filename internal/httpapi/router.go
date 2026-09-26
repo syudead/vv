@@ -249,6 +249,8 @@ type server struct {
 	transcoder   Transcoder
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
 	transcodeProbes TranscodeProbeWriter
+	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
+	transcodeStarts *transcodeStarts
 	artifacts       ArtifactReader
 	catalog         VideoCatalog
 	opener          FileOpener
@@ -305,6 +307,7 @@ func NewRouter(opts Options) http.Handler {
 		library:         opts.Library,
 		transcoder:      opts.Transcoder,
 		transcodeProbes: opts.TranscodeProbes,
+		transcodeStarts: newTranscodeStarts(),
 		artifacts:       opts.Artifacts,
 		catalog:         opts.Catalog,
 		opener:          opts.Opener,

@@ -351,7 +351,9 @@ not persisted. The transcode route reuses the video's stored live-transcode prob
 still matches the opened file, and saves the one `internal/media` probed otherwise.
 A seek copies the video when it can and starts at the previous keyframe; `internal/media`
 reads that actual start from the output's `moov` edit lists and falls back to encoding
-when it is more than `domain.CopySeekAllowance` before the requested position
+when it is more than `domain.CopySeekAllowance` before the requested position.
+The player learns that start from `GET /api/videos/{id}/transcode-start`, keyed by the
+`attempt` it put on the transcode URL and served from an in-memory ledger in `internal/httpapi`
 ([live-transcode-seek.md](docs/design-docs/live-transcode-seek.md)).
 
 ## Intended dependency direction

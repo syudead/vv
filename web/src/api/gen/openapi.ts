@@ -350,6 +350,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/transcode-start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ライブ変換の実際の開始位置を返す
+         * @description 同じ `attempt` を付けた `transcodeVideo` の出力の時間軸の 0 が、元動画のどの時刻かを
+         *     ミリ秒で返す。`attempt` がまだ無いか開始位置が未決なら、決まるまで最大 6 秒待つ。
+         *     それまでに決まらないか、変換が最初のデータを出せずに失敗したら 404。応答は
+         *     `Cache-Control: no-store`（specs/018-live-transcode-seek/contracts/transcode-start-api.md）。
+         */
+        get: operations["getTranscodeStart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/thumbnail": {
         parameters: {
             query?: never;
@@ -1393,6 +1416,13 @@ export interface components {
             /** Format: int64 */
             positionMs: number;
         };
+        TranscodeStart: {
+            /**
+             * Format: int64
+             * @description 変換の出力の時間軸の 0 に当たる元動画の時刻（ミリ秒）
+             */
+            startMs: number;
+        };
         Progress: {
             /** Format: int64 */
             positionMs: number;
@@ -2017,6 +2047,11 @@ export interface operations {
         parameters: {
             query?: {
                 startMs?: number;
+                /**
+                 * @description プレイヤーが要求ごとに作る識別子。付けると、実際の開始位置を
+                 *     `getTranscodeStart` で引けるよう台帳に載る。形式が違えば 400。
+                 */
+                attempt?: string;
             };
             header?: never;
             path: {
@@ -2048,6 +2083,34 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getTranscodeStart: {
+        parameters: {
+            query: {
+                /** @description `transcodeVideo` に付けた識別子 */
+                attempt: string;
+            };
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 実際の開始位置 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscodeStart"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     getVideoThumbnail: {

@@ -418,6 +418,29 @@ func TestGuestMediaRoutesServeOnlyPublicVideos(t *testing.T) {
 	}
 }
 
+// ゲストは公開の動画の変換の開始位置を引け、非公開の動画のそれは存在しない動画と同じ
+// 404 になる（specs/018-live-transcode-seek/contracts/transcode-start-api.md §2）。
+func TestGuestTranscodeStartServesOnlyPublicVideos(t *testing.T) {
+	f := newGuestFixture(t, true)
+	env := f.env
+	f.transcode.actualStartMs = 0
+
+	transcode := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("a", "/transcode.mp4?attempt=guest-a")})
+	assertStatus(t, "公開の動画の変換", transcode, http.StatusOK)
+	public := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("a", "/transcode-start?attempt=guest-a")})
+	assertStatus(t, "公開の動画の開始位置", public, http.StatusOK)
+	assertAudience(t, "公開の動画の開始位置", public, "guest")
+
+	// 所有者が非公開の動画を変換していても、ゲストはその開始位置を引けない。
+	owner := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", "/transcode.mp4?attempt=guest-b"), cookies: []*http.Cookie{f.owner}})
+	assertStatus(t, "所有者の非公開の動画の変換", owner, http.StatusOK)
+	hidden := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", "/transcode-start?attempt=guest-b")})
+	missing := env.serve(authRequest{method: http.MethodGet, target: "/api/videos/9999/transcode-start?attempt=guest-b"})
+	assertSameResponse(t, "非公開の動画の開始位置", hidden, missing, http.StatusNotFound)
+	ownerStart := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", "/transcode-start?attempt=guest-b"), cookies: []*http.Cookie{f.owner}})
+	assertStatus(t, "所有者の非公開の動画の開始位置", ownerStart, http.StatusOK)
+}
+
 // ゲストは所有者のデータに依る一覧の条件を使えない（guest-api.md §3）。
 func TestGuestRejectsOwnerOnlyListConditions(t *testing.T) {
 	f := newGuestFixture(t, true)

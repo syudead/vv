@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createLiveOffsetMiddleware, liveSource } from "./liveOffset";
+
+// 変換の実際の開始位置は、指定位置と同じ値が報告されるものとする。
+vi.mock("../api/client", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/client")>()),
+  getTranscodeStart: vi.fn(() => Promise.resolve(30_000)),
+}));
 import { createPlayerControls, type ControllablePlayer } from "./playerControls";
 
 function ranges(values: [number, number][]): TimeRanges {
@@ -15,7 +21,7 @@ function ranges(values: [number, number][]): TimeRanges {
  * transcodePlayer は、video.js が行うのと同じ順で仲立ち（liveOffset）を通す
  * プレイヤーである。位置と速度の読み書きは、仲立ちを経て技術層（tech）へ届く。
  */
-function transcodePlayer() {
+async function transcodePlayer() {
   let techTime = 4;
   let techRate = 1;
   const tech = {
@@ -41,6 +47,8 @@ function transcodePlayer() {
   } as never);
   middleware.setTech(tech);
   middleware.setSource(liveSource(7, 120_000, 30_000), () => undefined);
+  // 報告が届いて offset が決まるまで待つ。
+  for (let index = 0; index < 3; index += 1) await Promise.resolve();
 
   const player: ControllablePlayer & { playbackRate(rate?: number): number } = {
     paused: () => false,
@@ -68,9 +76,9 @@ function transcodePlayer() {
 describe("createPlayerControls", () => {
   afterEach(() => vi.useRealTimers());
 
-  it("変換して再生する経路でも、位置と再生速度の変更が論理上の位置と速度に効く", () => {
+  it("変換して再生する経路でも、位置と再生速度の変更が論理上の位置と速度に効く", async () => {
     vi.useFakeTimers();
-    const { player, tech, middleware } = transcodePlayer();
+    const { player, tech, middleware } = await transcodePlayer();
     const controls = createPlayerControls(player, () => false);
 
     // 変換の開始位置 30 秒 + 技術層の 4 秒 = 論理上の 34 秒。
@@ -82,15 +90,15 @@ describe("createPlayerControls", () => {
     vi.advanceTimersByTime(200);
     expect(tech.setSource).toHaveBeenCalledTimes(1);
     expect(tech.setSource.mock.calls[0]?.[0]).toMatchObject({
-      src: "/api/videos/7/transcode.mp4?startMs=44000",
+      src: expect.stringMatching(/\/transcode\.mp4\?startMs=44000&attempt=/) as unknown,
       vvOffsetSeconds: 44,
     });
     // 作り直した変換でも、選んだ速度のまま再生を続ける。
     expect(tech.setPlaybackRate).toHaveBeenLastCalledWith(1.5);
   });
 
-  it("buffer 済みの範囲へ戻るときは同じ変換の中で戻る", () => {
-    const { player, tech } = transcodePlayer();
+  it("buffer 済みの範囲へ戻るときは同じ変換の中で戻る", async () => {
+    const { player, tech } = await transcodePlayer();
     const controls = createPlayerControls(player, () => false);
     tech.buffered.mockReturnValue(ranges([[0, 20]]));
     controls.seekTo(31);
@@ -98,9 +106,9 @@ describe("createPlayerControls", () => {
     expect(tech.setSource).not.toHaveBeenCalled();
   });
 
-  it("先頭へ戻る操作は論理上の 0 秒へ移る", () => {
+  it("先頭へ戻る操作は論理上の 0 秒へ移る", async () => {
     vi.useFakeTimers();
-    const { player, tech } = transcodePlayer();
+    const { player, tech } = await transcodePlayer();
     const controls = createPlayerControls(player, () => false);
     controls.seekTo(0);
     vi.advanceTimersByTime(200);

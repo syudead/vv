@@ -1,6 +1,6 @@
 import videojs from "video.js";
 
-import { transcodeUrl } from "../api/client";
+import { getTranscodeStart, transcodeUrl } from "../api/client";
 import { clampTranscodeStart } from "./playbackAttempt";
 
 const reloadDelayMs = 200;
@@ -12,6 +12,7 @@ export interface LiveSource {
   vvVideoId: number;
   vvDurationSeconds: number;
   vvOffsetSeconds: number;
+  vvAttempt?: string;
   vvOffsetChanged?: (seconds: number) => void;
 }
 
@@ -22,6 +23,7 @@ interface SourceObject {
   vvVideoId?: number;
   vvDurationSeconds?: number;
   vvOffsetSeconds?: number;
+  vvAttempt?: string;
   vvOffsetChanged?: (seconds: number) => void;
 }
 
@@ -40,6 +42,22 @@ interface OffsetTech {
 
 type Player = ReturnType<typeof videojs>;
 
+/**
+ * newAttempt は変換の要求ごとの識別子（`[A-Za-z0-9_-]{1,64}`）を作る。
+ * crypto.randomUUID は安全でない文脈（LAN の http）で使えないので、乱数から作る。
+ */
+function newAttempt(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * liveSource は元動画の startMs からのライブ変換の source を作る。途中から始めるときは
+ * attempt を付け、仲立ちが実際の開始位置を引けるようにする。コピーで始めた変換は
+ * 直前のキーフレームから始まり、指定位置とずれるためである
+ * （specs/018-live-transcode-seek/contracts/transcode-start-api.md §3）。
+ */
 export function liveSource(
   videoId: number,
   durationMs: number,
@@ -47,13 +65,15 @@ export function liveSource(
   offsetChanged?: (seconds: number) => void,
 ): LiveSource {
   const safeStart = clampTranscodeStart(startMs, durationMs);
+  const attempt = safeStart > 0 ? newAttempt() : undefined;
   return {
-    src: transcodeUrl(videoId, safeStart),
+    src: transcodeUrl(videoId, safeStart, attempt),
     type: "video/mp4",
     vvLive: true,
     vvVideoId: videoId,
     vvDurationSeconds: durationMs / 1000,
     vvOffsetSeconds: safeStart / 1000,
+    vvAttempt: attempt,
     vvOffsetChanged: offsetChanged,
   };
 }
@@ -67,6 +87,7 @@ export function createLiveOffsetMiddleware(player: Player) {
   let playIntended = !player.paused();
   let reloadGeneration = 0;
   let disposed = false;
+  let startReport: AbortController | undefined;
 
   const clearReload = () => {
     if (reloadTimer !== undefined) clearTimeout(reloadTimer);
@@ -79,7 +100,43 @@ export function createLiveOffsetMiddleware(player: Player) {
     disposed = true;
     reloadGeneration += 1;
     clearReload();
+    startReport?.abort();
   });
+
+  // awaitActualStart は source を設定した直後に呼び、実際の開始位置の報告を取りに行く。
+  // 届くまでは現在時刻に指定位置を返し、届いたら offset をその値に置き換える。404 か
+  // 誤りなら指定位置のまま（報告の無い変換と同じ表示）にする。source を差し替えたあとに
+  // 届いた古い attempt の報告は捨てる。
+  const awaitActualStart = (current: SourceObject) => {
+    startReport?.abort();
+    startReport = undefined;
+    const attempt = current.vvAttempt;
+    if (!current.vvLive || attempt === undefined || current.vvVideoId === undefined)
+      return;
+    const requested = current.vvOffsetSeconds ?? 0;
+    pendingOffsetSeconds = requested;
+    const controller = new AbortController();
+    startReport = controller;
+    const isCurrent = () =>
+      !disposed && !controller.signal.aborted && source.vvAttempt === attempt;
+    getTranscodeStart(current.vvVideoId, attempt, controller.signal).then(
+      (startMs) => {
+        if (!isCurrent()) return;
+        startReport = undefined;
+        const actual = startMs / 1000;
+        offsetSeconds = actual;
+        if (pendingOffsetSeconds === requested) pendingOffsetSeconds = undefined;
+        if (actual !== requested) source.vvOffsetChanged?.(actual);
+        tech?.trigger("timeupdate");
+      },
+      () => {
+        if (!isCurrent()) return;
+        startReport = undefined;
+        if (pendingOffsetSeconds === requested) pendingOffsetSeconds = undefined;
+        tech?.trigger("timeupdate");
+      },
+    );
+  };
 
   const reloadAt = (seconds: number) => {
     if (
@@ -114,6 +171,7 @@ export function createLiveOffsetMiddleware(player: Player) {
         }
       });
       tech.setSource(source);
+      awaitActualStart(source);
       tech.setPlaybackRate(playbackRate);
       tech.trigger("timeupdate");
       // A paused HTML media element with preload=metadata may not consume enough
@@ -137,6 +195,7 @@ export function createLiveOffsetMiddleware(player: Player) {
       offsetSeconds = nextSource.vvLive ? (nextSource.vvOffsetSeconds ?? 0) : undefined;
       pendingOffsetSeconds = undefined;
       next(null, nextSource);
+      awaitActualStart(nextSource);
     },
     duration(seconds: number) {
       return source.vvLive && source.vvDurationSeconds !== undefined

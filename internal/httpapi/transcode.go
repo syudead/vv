@@ -30,6 +30,19 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		return
 	}
 	defer release()
+	// attempt 付きの要求は始めた時点で台帳に載せ、最初のデータを持って本文を書き始める
+	// 前に実際の開始位置を記録する。記録の前に終われば、報告の経路は 404 を返す
+	// （contracts/transcode-start-api.md §1）。
+	resolveStart := func(int64) {}
+	if params.Attempt != nil {
+		if !validTranscodeAttempt(*params.Attempt) {
+			s.invalidRequest(w, "attemptの形式が正しくありません")
+			return
+		}
+		resolve, end := s.transcodeStarts.begin(transcodeStartKey{videoID: video.ID, attempt: *params.Attempt})
+		defer end()
+		resolveStart = resolve
+	}
 	if video.ProbeState != domain.ProbeStateDone || video.DurationMs == nil || *video.DurationMs <= 0 {
 		s.writeError(w, http.StatusConflict, codeConflict, "この動画はライブ変換に必要な解析情報がありません")
 		return
@@ -85,7 +98,6 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.internalError(w, "ライブ変換を開始できませんでした", err)
 		return
 	}
-	// 実際の開始位置はまだ記録だけする（プレイヤーへの報告は次の実装単位）。
 	s.logger.Debug("ライブ変換を開始しました",
 		slog.Int64("video", video.ID), slog.Int64("requested_ms", startMs), slog.Int64("start_ms", started.StartMs))
 	stream, wait, stop := started.Stream, started.Wait, started.Stop
@@ -98,6 +110,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.internalError(w, "ライブ変換が初期データを生成できませんでした", err)
 		return
 	}
+	resolveStart(started.StartMs)
 	if started.Probed != nil {
 		// 保存は配信と並べて行い、書き込みの待ちで初期データの期限を使わない。
 		// 解析は終わっているので、要求が取り消されても独立した期限の中で保存は済ませ、

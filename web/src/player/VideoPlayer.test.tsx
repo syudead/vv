@@ -251,7 +251,9 @@ describe("VideoPlayer", () => {
 
     expect(player.sources).toHaveLength(2);
     expect(player.sources[1]).toMatchObject({
-      src: "/api/videos/7/transcode.mp4?startMs=12345",
+      src: expect.stringMatching(
+        /^\/api\/videos\/7\/transcode\.mp4\?startMs=12345&attempt=[0-9a-f]{32}$/,
+      ) as unknown,
       vvOffsetSeconds: 12.345,
     });
     player.trigger("error");
@@ -269,7 +271,9 @@ describe("VideoPlayer", () => {
     player.trigger("error");
 
     expect(player.sources[1]).toMatchObject({
-      src: "/api/videos/7/transcode.mp4?startMs=12345",
+      src: expect.stringMatching(
+        /^\/api\/videos\/7\/transcode\.mp4\?startMs=12345&attempt=[0-9a-f]{32}$/,
+      ) as unknown,
       vvOffsetSeconds: 12.345,
     });
   });
