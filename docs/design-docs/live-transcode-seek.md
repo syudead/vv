@@ -1,7 +1,8 @@
 # ライブ変換のシークと解析情報の再利用
 
 - ステータス: 採用
-- スコープ: `GET /api/videos/{id}/transcode.mp4` の開始（解析情報の用意、FFmpeg の起動、途中からの開始位置）
+- スコープ: `GET /api/videos/{id}/transcode.mp4` の開始（解析情報の用意、FFmpeg の起動、途中からの開始位置）と、
+  実際の開始位置をプレイヤーへ伝える `GET /api/videos/{id}/transcode-start`
 - 経緯: 親 Issue #371、[Plan](../../specs/018-live-transcode-seek/plan.md)・
   [data-model.md](../../specs/018-live-transcode-seek/data-model.md)
 
@@ -104,8 +105,8 @@
    1 からもう 1 度だけやり直す（[解析情報の再利用](#解析情報の再利用)）。
 
 期限（`transcodeStartupTimeout`、6 秒）は解析と切り替え全体で 1 つで、期限切れと取り消しでは
-切り替えない。`Start` は実際の開始位置を `LiveTranscode.StartMs` で返し、経路はまだ記録
-（debug ログ）だけする。
+切り替えない。`Start` は実際の開始位置を `LiveTranscode.StartMs` で返し、経路はそれを
+[報告の経路](#報告の経路)の台帳に記録する。
 
 音声は `Normalize` でなく `audioCanCopy` ならコピーし、そうでなければ AAC にエンコードする。
 映像をコピーして途中から始めるときは、エンコードする音声も `-noaccurate_seek` で映像と同じ
@@ -135,8 +136,7 @@ x264/x265 の既定のキーフレーム間隔は 250 フレームで、30fps �
   コピーと同じ）。上限を超える動画では、その区間を読んでからエンコードに切り替える。
 - 実際の開始位置は、音声が映像のキーフレームより少し前から始まる動画では音声の開始時刻に
   なる。表示の時刻は `elst` の書き換えと同じ基準なので、映っている内容とずれない。
-- 実際の開始位置をプレイヤーへ伝える経路は、次の実装単位（`GET /api/videos/{id}/transcode-start`）
-  で足す。それまでは、コピーで始めた変換の表示時刻が最大で差の上限だけ進んで見える。
+- 実際の開始位置がプレイヤーに届くまでは指定位置を表示する（[報告の経路](#報告の経路)）。
 
 ### Alternatives
 
@@ -156,3 +156,71 @@ x264/x265 の既定のキーフレーム間隔は 250 フレームで、30fps �
 - `internal/media/transcode_test.go`: 引数（途中からのコピー、先頭からのコピー、エンコードの
   切り替え、直接再生からの切り替え）と、切り替えの順序（コピー → エンコード → その場の解析）。
 
+## 報告の経路
+
+### Context
+
+コピーで途中から始めた変換は、指定位置ではなく直前のキーフレームから映る。プレイヤーが指定
+位置を現在時刻として表示すると、表示と保存する再生位置が映っている内容より最大で差の上限だけ
+進む。`<video src>` の再生は応答ヘッダーも本文の構造も JavaScript に見せないので、変換の応答
+そのものでは開始位置を伝えられない
+（[research.md R-4](../../specs/018-live-transcode-seek/research.md#r-4-実際の開始位置をプレイヤーへ伝える経路)）。
+
+### Decision
+
+プレイヤーが要求ごとの識別子 `attempt` を変換の URL に付け、同じ `attempt` で別の経路
+`GET /api/videos/{id}/transcode-start` を呼ぶ
+（[contracts/transcode-start-api.md](../../specs/018-live-transcode-seek/contracts/transcode-start-api.md)）。
+
+- **台帳**（`internal/httpapi/transcode_start.go`）: 鍵は動画の識別子と `attempt` の組で、
+  別の動画の経路から同じ `attempt` を引けない。`attempt` 付きの変換の要求は、動画を引けて
+  `attempt` の形式を確かめた時点で台帳に載り、`Start` が最初のデータを持って戻り、本文を書き
+  始める前に `StartMs` を記録する。同じ `attempt` の後の記録は前の値を上書きする。記録の前に
+  要求が終われば（409・500・取り消し）失敗として印を付ける。行は変換の要求が終わってから
+  `transcodeStartRetention`（60 秒）残して消す。`attempt` の無い要求は台帳に載らない。
+- **報告の経路**: `transcodeVideo` と同じ `lookupServedVideo` で動画を引くので、ゲストが公開で
+  ない動画を指すと存在しない動画と同じ 404 になる（境界の扱いは「ゲストも」）。`attempt` が
+  まだ無ければ載るまで、載っていて未決なら決まるまで、`transcodeStartupTimeout`（6 秒）を上限に
+  待つ。ブラウザは動画の要求と報告の要求のどちらを先に送るとも限らないためである。決まれば
+  `{ "startMs": … }` を `Cache-Control: no-store` で返し、失敗したか上限を過ぎたら 404 を返す。
+  報告の要求が作っただけの行は、待ち手が居なくなれば消す。
+- **プレイヤー**（`web/src/player/liveOffset.ts`）: `liveSource` は `startMs > 0` のときだけ
+  `attempt`（16 バイトの乱数の 16 進。`crypto.randomUUID` は LAN の http では使えない）を作る。
+  仲立ちは source を設定した直後（player の `src` と、未 buffer シークの作り直しの両方）に
+  `getTranscodeStart` を呼び、届くまでは現在時刻に指定位置を返す。200 が届いたら offset を
+  `startMs` に置き換えて `vvOffsetChanged` で `VideoPlayer` に伝え、再生位置の保存も同じ値に
+  そろえる。404 か誤りなら指定位置のまま（報告の無い変換と同じ表示）にする。source を差し
+  替えたあとに届いた古い `attempt` の報告は捨てる。未 buffer シークの作り直しを待つ間に届いた
+  報告は offset だけ置き換え、`vvOffsetChanged` は呼ばない。保存する位置を選んだ位置のまま
+  保つためで、作り直しが buffer 内へのシークで取り消されたときに通知する。
+
+### Trade-offs
+
+- 台帳はプロセスのメモリにあり、サーバーを再起動すると消える。再起動のあとは変換の要求も
+  作り直されるので、新しい `attempt` で引き直される。
+- 報告が届くまで現在時刻は指定位置で止まる。台帳への記録は最初のデータより前なので、報告は
+  映像が動き出す前に届く。
+- 報告の要求は変換 1 回につき 1 往復増える。先頭から（`startMs = 0`）の変換では開始位置が
+  常に 0 なので要求しない。
+
+### Alternatives
+
+- **`/api/events` の SSE で配る**: ゲストの再生でも要り、購読の有無と届く順序を再生画面が
+  扱うことになる。
+- **先に開始位置を返す経路が ffmpeg を起動し、動画の要求がそれに接続する**: プロセスの寿命が
+  2 つの要求にまたがり、接続されなかったプロセスの後始末が要る。
+- **MSE で `fetch` して応答ヘッダーを読む**: 配信の仕組みの作り直しで、親 Issue の対象外。
+
+### Validation
+
+- `internal/httpapi/transcode_start_test.go`: 変換のあとの報告、変換より先に届いた報告の待ち、
+  未決の間の待ち、失敗した変換は上限を待たずに 404、上限までに現れない `attempt` と別の動画の
+  経路は 404、形式の違う `attempt` は両方の経路で 400、後の値での上書き、保持時間のあとの消去。
+- `internal/httpapi/guest_test.go`・`openapi_routes_test.go`: ゲストは公開の動画の開始位置だけを
+  引け、非公開の動画は存在しない動画と同じ 404。境界の扱いが `openapi.yaml` の `security` と一致する。
+- `web/src/player/liveOffset.test.ts`: 報告が届くまで指定位置、届いたら実際の開始位置、404 なら
+  指定位置のまま、未 buffer シークの作り直しでも新しい `attempt` で合わせる、古い `attempt` の
+  報告を捨てる、作り直しを待つ間に届いた報告は選んだ位置の保存を上書きしない。
+- `web/e2e/playback.e2e.ts`: キーフレームが 0・8・16 秒だけの H.264 の MKV で 14 秒付近へ
+  シークすると、報告は 8 秒、表示と保存も 8 秒台になり、再読み込みすると同じ場面（同じ色）から
+  8 秒台の表示で再開する。

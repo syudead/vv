@@ -635,6 +635,15 @@ paths:
             format: int64
             minimum: 0
             default: 0
+        - name: attempt
+          in: query
+          required: false
+          description: |
+            プレイヤーが要求ごとに作る識別子。付けると、実際の開始位置を
+            `getTranscodeStart` で引けるよう台帳に載る。形式が違えば 400。
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9_-]{1,64}$"
       responses:
         "200":
           description: fragmented MP4 stream
@@ -655,6 +664,39 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/videos/{id}/transcode-start:
+    get:
+      operationId: getTranscodeStart
+      security:
+        - sessionCookie: []
+        - {}
+      summary: ライブ変換の実際の開始位置を返す
+      description: |
+        同じ `attempt` を付けた `transcodeVideo` の出力の時間軸の 0 が、元動画のどの時刻かを
+        ミリ秒で返す。`attempt` がまだ無いか開始位置が未決なら、決まるまで最大 6 秒待つ。
+        それまでに決まらないか、変換が最初のデータを出せずに失敗したら 404。応答は
+        `Cache-Control: no-store`（specs/018-live-transcode-seek/contracts/transcode-start-api.md）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - name: attempt
+          in: query
+          required: true
+          description: "`transcodeVideo` に付けた識別子"
+          schema:
+            type: string
+            pattern: "^[A-Za-z0-9_-]{1,64}$"
+      responses:
+        "200":
+          description: 実際の開始位置
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscodeStart"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/videos/{id}/thumbnail:
     get:
@@ -2391,6 +2433,17 @@ components:
           type: integer
           format: int64
           minimum: 0
+
+    TranscodeStart:
+      type: object
+      required: [startMs]
+      additionalProperties: false
+      properties:
+        startMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 変換の出力の時間軸の 0 に当たる元動画の時刻（ミリ秒）
 
     Progress:
       type: object

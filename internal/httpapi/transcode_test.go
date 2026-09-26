@@ -37,6 +37,8 @@ type fakeTranscoder struct {
 	stops     int
 	// beforeReturn は Start が戻る直前に呼ばれる（期限の間際に戻る変換を模す）。
 	beforeReturn func(domain.LiveTranscodeRequest)
+	// actualStartMs は Start が返す実際の開始位置である。
+	actualStartMs int64
 }
 
 func (f *fakeTranscoder) Start(_ context.Context, request domain.LiveTranscodeRequest) (domain.LiveTranscode, error) {
@@ -60,10 +62,11 @@ func (f *fakeTranscoder) Start(_ context.Context, request domain.LiveTranscodeRe
 		stream = io.NopCloser(strings.NewReader(f.body))
 	}
 	return domain.LiveTranscode{
-		Stream: stream,
-		Wait:   func() error { f.waits++; return f.waitErr },
-		Stop:   func() { f.stops++ },
-		Probed: probed,
+		Stream:  stream,
+		Wait:    func() error { f.waits++; return f.waitErr },
+		Stop:    func() { f.stops++ },
+		Probed:  probed,
+		StartMs: f.actualStartMs,
 	}, nil
 }
 

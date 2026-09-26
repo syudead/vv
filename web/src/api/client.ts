@@ -38,6 +38,7 @@ export type FolderScope = components["schemas"]["FolderScope"];
 export type VideoFolder = components["schemas"]["VideoFolder"];
 export type Scan = components["schemas"]["Scan"];
 export type Progress = components["schemas"]["Progress"];
+export type TranscodeStart = components["schemas"]["TranscodeStart"];
 export type MediaFolder = components["schemas"]["MediaFolder"];
 export type DirectoryListing = components["schemas"]["DirectoryListing"];
 export type ApiError = components["schemas"]["Error"];
@@ -601,12 +602,35 @@ export function streamUrl(id: number): string {
   return `/api/videos/${id}/stream`;
 }
 
-/** transcodeUrl は指定した元動画時刻からライブ変換する取得先を返す。 */
-export function transcodeUrl(id: number, startMs = 0): string {
+/**
+ * transcodeUrl は指定した元動画時刻からライブ変換する取得先を返す。attempt を渡すと、
+ * 実際の開始位置を getTranscodeStart で引けるよう URL に付ける
+ * （specs/018-live-transcode-seek/contracts/transcode-start-api.md §1）。
+ */
+export function transcodeUrl(id: number, startMs = 0, attempt?: string): string {
   const query = new URLSearchParams();
   if (startMs > 0) query.set("startMs", String(Math.round(startMs)));
+  if (attempt !== undefined) query.set("attempt", attempt);
   const suffix = query.size === 0 ? "" : `?${query.toString()}`;
   return `/api/videos/${String(id)}/transcode.mp4${suffix}`;
+}
+
+/**
+ * getTranscodeStart は、同じ attempt を付けたライブ変換の出力の時間軸の 0 が元動画の
+ * どの時刻か（ミリ秒）を取得する。サーバーは決まるまで最大 6 秒待ち、決まらなければ
+ * 404 を返す（contracts/transcode-start-api.md §2）。
+ */
+export async function getTranscodeStart(
+  id: number,
+  attempt: string,
+  signal?: AbortSignal,
+): Promise<number> {
+  const query = new URLSearchParams({ attempt });
+  const body = await request<TranscodeStart>(
+    `/api/videos/${String(id)}/transcode-start?${query.toString()}`,
+    { signal },
+  );
+  return body.startMs;
 }
 
 /** fetchSeekThumbnail はシークプレビュー用のJPEGを取得する。 */
