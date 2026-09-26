@@ -17,8 +17,9 @@ Read [README.md](README.md) first. Input is one native child Issue.
    and keep ownership of every later step in this workflow. If that worker is
    unavailable, use an equivalent bounded worker when the host supports one, or
    perform this step locally.
-5. Run focused checks and the repository checks required by the change. For UI
-   work, check the result against the review criteria in `ui-design.md`.
+5. Run focused checks, then the pre-push check from `AGENTS.md` (`task check`
+   for code changes). For UI work, check the result against the review
+   criteria in `ui-design.md`.
 6. Push and open a feature-branch PR with `Refs #<child>`, checks, and remaining
    risks in the body. Stop.
 7. After human merge, the maintainer closes the child as completed. This means

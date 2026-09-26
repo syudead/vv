@@ -102,7 +102,7 @@ You **MUST** consider the user input before proceeding (if not empty).
    - Respect dependencies without expanding the scope to unrelated work
    - Follow TDD when required by the specification or request
    - Include only setup, integration, and documentation changes necessary for this work
-   - Run focused validation and any repository checks required by the change
+   - Run focused validation, then the pre-push check from `AGENTS.md` (`task check` for code changes) before pushing
 
 6. Progress tracking and error handling:
    - Report progress for the requested work
