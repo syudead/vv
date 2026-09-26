@@ -212,11 +212,11 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 }
 
 // groupPreviewMembers は、グループのカードのフォルダの絵柄に差し込むメンバーを返す。
-// サムネイル生成済みのメンバーを並びの順に、フォルダカードと同じ上限まで取る。
+// サムネイル生成済みのメンバーを並びの順に、MaxGroupPreviews 件まで取る。
 func groupPreviewMembers(members []domain.Video) []domain.Video {
-	out := make([]domain.Video, 0, domain.MaxFolderPreviews)
+	out := make([]domain.Video, 0, domain.MaxGroupPreviews)
 	for _, member := range members {
-		if len(out) == domain.MaxFolderPreviews {
+		if len(out) == domain.MaxGroupPreviews {
 			break
 		}
 		if member.HasThumbnail() {

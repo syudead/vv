@@ -13,6 +13,11 @@ import (
 // MaxFolderPreviews はフォルダカードに差し込むサムネイルの上限である。
 const MaxFolderPreviews = 4
 
+// MaxGroupPreviews はグループの項目に載せるメンバーのサムネイルの上限である。ライブラリの
+// 格子のカードはフォルダカードと同じく先頭の MaxFolderPreviews 件を重ね、リスト表示の
+// 行は入る分を横に並べる。
+const MaxGroupPreviews = 8
+
 // ErrInvalidFolderPath はフォルダの相対パスが規則に反することを表す。
 var ErrInvalidFolderPath = errors.New("フォルダの指定が正しくありません")
 

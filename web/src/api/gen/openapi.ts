@@ -1149,8 +1149,9 @@ export interface components {
              */
             lastPlayedAt?: string;
             /**
-             * @description カードのフォルダの絵柄に差し込むサムネイル。メンバーのうちサムネイル生成済みのものを
-             *     並びの順に最大4件（フォルダカードの previews と同じ形）
+             * @description フォルダの絵柄に差し込むサムネイル。メンバーのうちサムネイル生成済みのものを
+             *     並びの順に最大8件（フォルダカードの previews と同じ形）。格子のカードは先頭の
+             *     4件を重ね、リスト表示の行は入る分を横に並べる
              */
             previews: components["schemas"]["FolderPreview"][];
             /**

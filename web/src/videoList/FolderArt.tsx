@@ -1,5 +1,6 @@
 import {
   type PointerEvent,
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -126,8 +127,7 @@ function SheetPreview({ src, onStart }: { src: string; onStart?: () => void }) {
  * 最前面に出て、プレビュー動画があればそれを流す（フォルダの中身の下見）。
  * 装飾なので読み上げない。
  *
- * 置き場所（`relative` で 16:9 の箱）いっぱいに描く。`size="row"` はリスト表示の行の
- * 小さなサムネイルの枠に描く形で、外形を詰め、下見をしない。
+ * 置き場所（`relative` で 16:9 の箱）いっぱいに描く。先頭の4件だけを重ねる。
  *
  * ライブラリの格子では、動画のカードと同じ一覧のプレビューの調整
  * （usePreviewCoordination）に加わる。`onPreviewStart` を渡すと、流し始めた1枚の
@@ -137,20 +137,17 @@ function SheetPreview({ src, onStart }: { src: string; onStart?: () => void }) {
  */
 export default function FolderArt({
   previews,
-  size = "card",
   selectionMode = false,
   activePreviewId,
   previewResetEpoch,
   onPreviewStart,
 }: {
   previews: readonly FolderPreview[];
-  size?: "card" | "row";
   selectionMode?: boolean;
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
 }) {
-  const row = size === "row";
   const shown = previews.slice(0, 4);
   const layout = sheetLayout[shown.length] ?? [];
   // 取り込み後の再取得で件数が減って範囲外になった位置は、どの1枚にも当たらない。
@@ -188,7 +185,7 @@ export default function FolderArt({
   ]);
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (row || selectionMode || shown.length === 0 || event.pointerType !== "mouse") {
+    if (selectionMode || shown.length === 0 || event.pointerType !== "mouse") {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
@@ -209,23 +206,10 @@ export default function FolderArt({
       data-folder-art=""
       onPointerMove={onPointerMove}
       onPointerLeave={putBack}
-      className={cn(
-        "absolute",
-        row ? "inset-x-1 inset-y-0.5" : "inset-x-3 top-3 bottom-2",
-      )}
+      className="absolute inset-x-3 top-3 bottom-2"
     >
-      <div
-        className={cn(
-          "absolute top-0 left-0 w-2/5 bg-elevated",
-          row ? "h-2 rounded-t-sm" : "h-3 rounded-t-md",
-        )}
-      />
-      <div
-        className={cn(
-          "absolute inset-x-0 bottom-0 overflow-hidden bg-elevated",
-          row ? "top-1.5 rounded-sm rounded-tl-none" : "top-2 rounded-md rounded-tl-none",
-        )}
-      >
+      <div className="absolute top-0 left-0 h-3 w-2/5 rounded-t-md bg-elevated" />
+      <div className="absolute inset-x-0 top-2 bottom-0 overflow-hidden rounded-md rounded-tl-none bg-elevated">
         {shown.map((preview, index) => {
           const place = layout[index];
           if (place === undefined) return null;
@@ -265,6 +249,47 @@ export default function FolderArt({
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * FolderStrip はリスト表示の行のフォルダの絵柄である。タブ付きの背板の中に、`previews` を
+ * 傾けず重ねず同じ大きさで横一列に並べる。幅は並べた分だけで、置き場所の幅
+ * （`max-w-*` など）を超える分は折り返されて1行の高さの外に出るので見えない
+ * （入る分だけ並べ、入らない分は省く）。下見はしない。装飾なので読み上げない。
+ * `children` は背板の下端に重ねるもの（見ている途中の帯など）である。
+ */
+export function FolderStrip({
+  previews,
+  children,
+}: {
+  previews: readonly FolderPreview[];
+  children?: ReactNode;
+}) {
+  return (
+    <div aria-hidden="true" data-folder-art="" className="relative max-w-full pt-1.5">
+      <div className="absolute top-0 left-0 h-2 w-12 rounded-t-sm bg-elevated" />
+      <div className="relative overflow-hidden rounded-sm rounded-tl-none bg-elevated p-1">
+        <div className="flex h-9 min-w-16 flex-wrap gap-x-1 gap-y-2 overflow-hidden">
+          {previews.map((preview) => (
+            <div
+              key={preview.videoId}
+              data-folder-preview=""
+              className="aspect-video h-full shrink-0 overflow-hidden rounded-[2px] border border-border-strong bg-navbar"
+            >
+              <img
+                src={preview.thumbnailUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="h-full w-full object-contain"
+              />
+            </div>
+          ))}
+        </div>
+        {children}
       </div>
     </div>
   );

@@ -1871,7 +1871,7 @@ describe("LibraryPage", () => {
         row.querySelectorAll("[data-folder-art] [data-folder-preview]"),
       ).toHaveLength(4);
       expect(within(row).getByText("12:00")).toBeDefined();
-      expect(within(row).getAllByRole("cell")).toHaveLength(8);
+      expect(within(row).getAllByRole("cell")).toHaveLength(7);
     });
 
     it("ゲストのグループのカードには視聴状態と見終えた本数を出さない", async () => {
