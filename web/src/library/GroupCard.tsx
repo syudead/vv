@@ -26,6 +26,11 @@ export interface GroupCardProps {
    * 省き、チェックを描かない。
    */
   onSelect?: (videoIds: readonly number[], selected: boolean) => void;
+  /** 一覧のホバープレビューの調整（usePreviewCoordination）。格子のフォルダの絵柄が加わる。 */
+  activePreviewId?: number | null;
+  previewResetEpoch?: number;
+  onPreviewStart?: (id: number) => void;
+  onPreviewReset?: () => void;
   /** 題名の下のタグの行（格子表示だけ）。VideoCard の tagsRow と同じく関数で受ける。 */
   tagsRow?: (group: LibraryGroup) => ReactNode;
 }
@@ -78,7 +83,18 @@ function groupPath(group: LibraryGroup): string {
  * カード全体が開くメンバーの再生画面への1つのリンクである（要件 16・17・23）。
  */
 export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
-  const { group, backTo, selected, selectionMode, onSelect, tagsRow } = props;
+  const {
+    group,
+    backTo,
+    selected,
+    selectionMode,
+    onSelect,
+    activePreviewId,
+    previewResetEpoch,
+    onPreviewStart,
+    onPreviewReset,
+    tagsRow,
+  } = props;
   const { state, ratio, duration, countText, label } = useGroupFacts(group);
   const tagsRowNode = tagsRow?.(group);
   const showTagsRow = tagsRow !== undefined && group.tags.length > 0;
@@ -120,6 +136,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         state={{ from: backTo }}
         aria-label={label}
         onClick={(event) => {
+          onPreviewReset?.();
           if (selectionMode && onSelect !== undefined) {
             event.preventDefault();
             onSelect(group.videoIds, !selected);
@@ -128,7 +145,13 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         className="flex min-w-0 flex-col outline-none"
       >
         <div className="relative aspect-video w-full">
-          <FolderArt previews={group.previews} />
+          <FolderArt
+            previews={group.previews}
+            selectionMode={selectionMode}
+            activePreviewId={activePreviewId}
+            previewResetEpoch={previewResetEpoch}
+            onPreviewStart={onPreviewStart}
+          />
 
           {/* 本数と長さは、フォルダの背板の右下に、動画のカードの長さと同じ面で重ねる。
               前に出たサムネイルより上に置き、絵柄の下見の操作を妨げない。 */}

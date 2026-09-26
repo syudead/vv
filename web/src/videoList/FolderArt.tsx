@@ -47,15 +47,24 @@ const previewDelayMs = 400;
  * SheetPreview は前に出た1枚の上で、一覧用のプレビュー動画を無音でくり返し流す。
  * 前に出てから previewDelayMs 待って読み込み、流れ始めるまではサムネイルを見せる。
  * 読めなければ何も出さず、サムネイルのまま残す。外れるときは読み込みを止める。
+ * 読み込みを始めるときに onStart を呼ぶ（一覧の同時に1件の調整に知らせる）。
  */
-function SheetPreview({ src }: { src: string }) {
+function SheetPreview({ src, onStart }: { src: string; onStart?: () => void }) {
   const [armed, setArmed] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  // 待ち時間は前に出たときに1回だけ数える。onStart が変わっても数え直さない。
+  const onStartRef = useRef(onStart);
+  useLayoutEffect(() => {
+    onStartRef.current = onStart;
+  });
 
   useEffect(() => {
-    const timer = setTimeout(() => setArmed(true), previewDelayMs);
+    const timer = setTimeout(() => {
+      onStartRef.current?.();
+      setArmed(true);
+    }, previewDelayMs);
     return () => clearTimeout(timer);
   }, []);
 
@@ -119,26 +128,79 @@ function SheetPreview({ src }: { src: string }) {
  *
  * 置き場所（`relative` で 16:9 の箱）いっぱいに描く。`size="row"` はリスト表示の行の
  * 小さなサムネイルの枠に描く形で、外形を詰め、下見をしない。
+ *
+ * ライブラリの格子では、動画のカードと同じ一覧のプレビューの調整
+ * （usePreviewCoordination）に加わる。`onPreviewStart` を渡すと、流し始めた1枚の
+ * 動画の id を知らせ、ほかのカードが流し始めたとき（`activePreviewId` が変わる）と
+ * 止める指示（`previewResetEpoch` が進む）で前の1枚を戻す。選択中（`selectionMode`）は
+ * 前に出さない。
  */
 export default function FolderArt({
   previews,
   size = "card",
+  selectionMode = false,
+  activePreviewId,
+  previewResetEpoch,
+  onPreviewStart,
 }: {
   previews: readonly FolderPreview[];
   size?: "card" | "row";
+  selectionMode?: boolean;
+  activePreviewId?: number | null;
+  previewResetEpoch?: number;
+  onPreviewStart?: (id: number) => void;
 }) {
   const row = size === "row";
   const shown = previews.slice(0, 4);
   const layout = sheetLayout[shown.length] ?? [];
   // 取り込み後の再取得で件数が減って範囲外になった位置は、どの1枚にも当たらない。
   const [front, setFront] = useState<number | null>(null);
+  // 一覧の調整に知らせて流している1枚の動画の id。
+  const [playingId, setPlayingId] = useState<number | null>(null);
+  const observedResetEpoch = useRef(previewResetEpoch);
+  const observedActiveId = useRef(activePreviewId);
+
+  const putBack = useCallback(() => {
+    setFront(null);
+    setPlayingId(null);
+  }, []);
+
+  useEffect(() => {
+    const resetChanged = observedResetEpoch.current !== previewResetEpoch;
+    observedResetEpoch.current = previewResetEpoch;
+    // ほかのカードが流し始めたこと（流している1枚と違う id への変化）だけで戻す。
+    // 知らせた id が届く前の古い値では戻さない。
+    const activeChanged = observedActiveId.current !== activePreviewId;
+    observedActiveId.current = activePreviewId;
+    const replaced =
+      onPreviewStart !== undefined &&
+      activeChanged &&
+      playingId !== null &&
+      activePreviewId !== playingId;
+    if (resetChanged || selectionMode || replaced) putBack();
+  }, [
+    activePreviewId,
+    onPreviewStart,
+    playingId,
+    previewResetEpoch,
+    putBack,
+    selectionMode,
+  ]);
 
   const onPointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    if (row || shown.length === 0 || event.pointerType !== "mouse") return;
+    if (row || selectionMode || shown.length === 0 || event.pointerType !== "mouse") {
+      return;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     if (rect.width <= 0) return;
     const ratio = (event.clientX - rect.left) / rect.width;
-    setFront(Math.min(shown.length - 1, Math.max(0, Math.floor(ratio * shown.length))));
+    const next = Math.min(
+      shown.length - 1,
+      Math.max(0, Math.floor(ratio * shown.length)),
+    );
+    if (next === front) return;
+    setFront(next);
+    setPlayingId(null);
   };
 
   return (
@@ -146,7 +208,7 @@ export default function FolderArt({
       aria-hidden="true"
       data-folder-art=""
       onPointerMove={onPointerMove}
-      onPointerLeave={() => setFront(null)}
+      onPointerLeave={putBack}
       className={cn(
         "absolute",
         row ? "inset-x-1 inset-y-0.5" : "inset-x-3 top-3 bottom-2",
@@ -191,7 +253,14 @@ export default function FolderArt({
                 className="h-full w-full object-contain"
               />
               {isFront && preview.previewUrl !== undefined && (
-                <SheetPreview key={preview.videoId} src={preview.previewUrl} />
+                <SheetPreview
+                  key={preview.videoId}
+                  src={preview.previewUrl}
+                  onStart={() => {
+                    setPlayingId(preview.videoId);
+                    onPreviewStart?.(preview.videoId);
+                  }}
+                />
               )}
             </div>
           );

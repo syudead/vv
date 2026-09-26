@@ -556,6 +556,10 @@ export default function LibraryPage() {
       group.videoIds.length > 0 && group.videoIds.every((id) => selectedIds.has(id)),
     selectionMode,
     onSelect: owner ? changeGroupSelection : undefined,
+    activePreviewId,
+    previewResetEpoch,
+    onPreviewStart: startPreview,
+    onPreviewReset: resetPreview,
     tagsRow: renderGroupTagsRow,
   });
 
