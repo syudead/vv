@@ -1,25 +1,23 @@
-# ソースのない Docker ホスト向け。公開イメージを pull して起動し、ビルドはしない
+# ソースのない Docker ホスト（NAS など）向け。公開イメージを pull して起動し、ビルドはしない
 # （docs/how-to/hosting-vv.md）。開発時の task up は compose.yaml を使う。
-
-name: vv
+# NAS のコンテナ管理画面にそのまま貼れるよう、値は直接書く。「変える」の行を環境に合わせる。
 
 services:
   mdm:
-    image: "ghcr.io/syudead/vv:${VV_IMAGE_TAG:-latest}"
-    pull_policy: always
+    image: ghcr.io/syudead/vv:latest
     ports:
-      - "${MDM_HOST_PORT:-8080}:8080"
+      # 変える: 左がブラウザで開くポート。NAS の管理画面が 8080 を使うなら 18080 などにする。
+      - "8080:8080"
     environment:
       MDM_ADDR: ":8080"
       MDM_DATA_DIR: "/data"
-      MDM_LOG_LEVEL: "${MDM_LOG_LEVEL:-info}"
-      MDM_TRUSTED_PROXIES: "${MDM_TRUSTED_PROXIES:-}"
+      MDM_LOG_LEVEL: "info"
+      # HTTPS の逆プロキシの後ろに置くときだけ、そのプロキシのアドレスを書く。
+      MDM_TRUSTED_PROXIES: ""
     volumes:
-      - "${MDM_MEDIA_HOST_DIR:-./media}:/media:ro"
-      # 既定は名前付きボリューム vv_data。ホストのフォルダに置くときは絶対パスを書く。
-      - "${MDM_DATA_HOST_DIR:-data}:/data"
+      # 変える: 左が動画のあるフォルダ。設定画面では /media 以下を選ぶ。
+      - "/share/Multimedia:/media:ro"
+      # 変える: 左がデータベースとサムネイルを置くフォルダ。バックアップするのはここ。
+      - "/share/Container/vv/data:/data"
     stop_grace_period: 15s
     restart: unless-stopped
-
-volumes:
-  data:
