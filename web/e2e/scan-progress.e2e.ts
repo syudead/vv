@@ -17,6 +17,18 @@ async function stubServerEvents(page: Page) {
   );
 }
 
+/**
+ * failLogout はログアウトの要求を失敗させる。押すたびに「ログアウトできませんでした」の
+ * トーストが出るので、トーストの置き場所を確かめるきっかけに使う。
+ */
+async function failLogout(page: Page) {
+  await page.route("**/api/auth/logout", (route) =>
+    route.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
+  );
+}
+
+const logoutFailed = "ログアウトできませんでした";
+
 test("scan progress remains one indicator across library, settings, and playback", async ({
   page,
 }) => {
@@ -190,17 +202,19 @@ for (const width of [360, 640, 768]) {
       }),
     );
 
+    await failLogout(page);
+
     await page.goto("/");
     const indicator = page.getByRole("button", { name: /取り込み中 40%/ });
     await expect(indicator).toBeVisible();
     await page.getByRole("button", { name: "メニュー" }).click();
-    await page.getByRole("button", { name: "最近追加" }).click();
+    await page.getByRole("button", { name: "ログアウト" }).click();
     if (width < 640) {
       await page
         .getByRole("button", { name: "メニューを閉じる" })
         .evaluate((button: HTMLButtonElement) => button.click());
     }
-    const toast = page.getByText("「最近追加」は準備中です");
+    const toast = page.getByText(logoutFailed);
     await expect(toast).toBeVisible();
     const sidebar = page.getByRole("complementary", { name: "メインナビゲーション" });
     const expandedSidebarBox = width >= 640 ? await sidebar.boundingBox() : null;
@@ -263,27 +277,30 @@ for (const { width, height } of [
       }),
     );
 
+    await failLogout(page);
+
     await page.goto("/");
     await page.getByRole("button", { name: "メニュー" }).click();
-    await page.getByRole("button", { name: "最近追加" }).click();
-    await page.getByRole("button", { name: "最近追加" }).click();
-    await page.getByRole("button", { name: "視聴途中" }).click();
+    // ログアウトは失敗するまで押せないので、トーストが出るのを待ってから次を押す。
+    const logoutButton = page.getByRole("button", { name: "ログアウト" });
+    for (let count = 1; count <= 3; count += 1) {
+      await logoutButton.click();
+      await expect(page.getByText(logoutFailed)).toHaveCount(count);
+    }
     if (width < 640) {
       await page
         .getByRole("button", { name: "メニューを閉じる" })
         .evaluate((button: HTMLButtonElement) => button.click());
     }
-    await expect(page.getByText("「最近追加」は準備中です")).toHaveCount(2);
-    await expect(page.getByText("「視聴途中」は準備中です")).toBeVisible();
 
     await page.evaluate(() => {
       window.history.pushState({}, "", "/videos/1");
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     await expect(page).toHaveURL(/\/videos\/1$/);
-    await expect(page.getByText("「最近追加」は準備中です")).toHaveCount(1);
-    await expect(page.getByText("「視聴途中」は準備中です")).toHaveCount(0);
-    const toast = page.getByText("「最近追加」は準備中です");
+    // 再生画面では、溜まったトーストを一度に 1 つだけ出す。
+    await expect(page.getByText(logoutFailed)).toHaveCount(1);
+    const toast = page.getByText(logoutFailed);
     await expect(toast).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
 
