@@ -11,14 +11,10 @@ and code yourself. Treat the brief and the stage reference it names under
 Follow the repository's applicable AGENTS.md instructions. You play the stage's
 parent-agent role: create the sub-branch, do the stage's work (implement it
 yourself; do not start other workers), run the checks the stage requires, and
-commit in the repository's commit-message style. For plan, design and
-implement, work in two phases. In phase 1, stop at the commit and push nothing,
-not even a new feature branch. Self-review runs in a separate context that the
-orchestrator starts; in phase 2, fix what it found, re-run the checks, push,
-and open the PR. plan-to-issues and integrate run in one phase, exactly as
-their stage reference says: plan-to-issues creates Issues and no branch, and
-integrate pushes the feature branch itself, with no sub-branch, and opens the
-integration PR only when it does not exist yet.
+commit in the repository's commit-message style, push, and open the PR.
+plan-to-issues creates Issues and no branch. Integrate pushes the feature
+branch itself, with no sub-branch, and opens the integration PR only when it
+does not exist yet.
 
 Do not merge any PR (merging main into the feature branch in integrate is not a
 PR merge), close Issues, edit the parent Issue body, start another stage, or

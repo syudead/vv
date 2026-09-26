@@ -1,8 +1,8 @@
 # Self review procedure
 
-Run this after the change is complete and the repository checks pass, and
-before the push. Review the whole diff against the base branch, not the file
-currently open.
+When the user requests self-review, run this after the change is complete and
+the repository checks pass, before the push. Review the whole diff against the
+base branch, not the file currently open.
 
 ## How to run it
 

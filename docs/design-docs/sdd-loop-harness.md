@@ -163,7 +163,7 @@ CIはすべてのPRで検証するが、agentや次工程を起動しない。�
 一工程を担当する親agentは、hostが対応している場合、その工程内の境界が確定した作業を
 project-scoped subagentへ委譲する。repositoryはCodex向けに`.codex/agents/`、Claude向けに
 `.claude/agents/`の同じ役割のworkerを持つ。子Issueの実装とfocused testは
-`subissue-implementer`へ委譲し、self-reviewは実装とは別文脈の`self-reviewer`へ委譲する。
+`subissue-implementer`へ委譲する。
 branch、全体検証、review指摘の修正、push、PRは親agentが所有する。この内部委譲は次工程を
 起動せず、handoff stateも追加しない。対応しないhostは同等のbounded workerを使い、なければ
 同じ作業を親agent自身で実行する。[Autopilot](#autopilot)では例外として、`sdd-stage-worker`と
@@ -175,8 +175,8 @@ branch、全体検証、review指摘の修正、push、PRは親agentが所有す
 統合PRのmerge直前まで連続して進める。これはClaude RoutineやPRイベント購読のworkflowでは
 なく、保守者が開始した一つのsessionであり、終われば何も残らない。
 
-- orchestratorは工程の作業をしない。各工程、self-review、review指摘の一巡ごとに新しい
-  worker（`sdd-stage-worker`、`self-reviewer`、`pr-review-fixer`）を起動し、Issue番号・
+- orchestratorは工程の作業をしない。各工程とreview指摘の一巡ごとに新しい
+  worker（`sdd-stage-worker`、`pr-review-fixer`）を起動し、Issue番号・
   branch・pathだけを渡して、固定形式の短い結果だけを受け取る。長い会話でもorchestratorの
   文脈にはdiff、CI log、review本文、Issue本文が溜まらない。
 - 次の工程は上の工程選択の規則をそのまま毎回適用して決める。session stateやledgerは持たない

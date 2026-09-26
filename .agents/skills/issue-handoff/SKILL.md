@@ -13,11 +13,10 @@ shared contract for artifact work, GitHub context, PR behavior, and stopping
 conditions.
 
 When the selected host provides the repository's bounded workers, delegate the
-implementation step to the `subissue-implementer` role and the self-review step
-to the `self-reviewer` role. In Codex these agents are named
-`subissue_implementer` and `self_reviewer`; in Claude they are named
-`subissue-implementer` and `self-reviewer`. The parent agent still owns
-checkout, branching, full validation, fixes, push, and the pull request.
+implementation step to the `subissue-implementer` role. In Codex this agent is
+named `subissue_implementer`; in Claude it is named `subissue-implementer`.
+The parent agent still owns checkout, branching, full validation, fixes, push,
+and the pull request.
 
 Then select the stage as described in
 [Selecting the stage](references/README.md#selecting-the-stage) — or take the

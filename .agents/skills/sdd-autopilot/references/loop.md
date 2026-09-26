@@ -36,33 +36,24 @@ the orchestrator's reads small:
 | 6 `integrate` | Integration refresh, which opens the integration PR, and the finish line (§6) |
 | "stop and ask" (ambiguous feature, not a specification) | Stop and report |
 
-Phase 1 of a stage pushes nothing (§3), so a restart before its PR exists
-leaves no branch behind and the selection simply picks the stage again. Anything
+If a stage stops before its PR exists, selection picks the stage again. Anything
 the selection does not cover is a stop: report the facts from §1 and what you
 expected.
 
 ## 3. Run a stage
 
 Stages `plan`, `design` and implementation each produce one PR to the feature
-branch. `plan-to-issues` produces no PR and has no self-review.
+branch. `plan-to-issues` produces no PR.
 
 1. Start a fresh stage worker with the brief for that stage from
    [briefs.md](briefs.md). It creates its own sub-branch, does the stage's
-   work and checks, commits, and returns `READY` with the branch and base.
+   work and checks, commits, pushes, opens the PR, and returns `DONE` with
+   the PR number.
    - `plan-to-issues` returns `DONE`. Go to §1.
    - An implementation worker that finds a merged PR into the feature branch
      already referencing its child returns `DONE` with that PR and no branch.
      Close the child (§5) and go to §1.
-2. Start a fresh self reviewer with the self-review brief, pointing at the
-   worker's branch and base. It writes its findings to a file and returns
-   `CLEAN` or `FINDINGS`; do not open the file.
-3. Continue the **same** stage worker with the phase 2 brief naming that file.
-   It fixes what is in scope, re-runs its checks, pushes, opens the PR, and
-   returns `DONE` with the PR number. If a finding needs an approved artifact
-   changed, it returns `BLOCKED` without pushing: stop.
-4. If the worker can no longer be continued (a restarted session), start a
-   fresh stage worker in continuation mode with the branch name instead.
-5. Go to §4 with the new PR.
+2. Go to §4 with the new PR.
 
 ## 4. Drive a feature PR to merge
 

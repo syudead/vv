@@ -57,21 +57,17 @@ skill; follow them even when reading something yourself looks quicker.
    keep only the numbers you need (PR, commit, blocker). Do not restate a
    worker's report to the maintainer.
 5. **One worker per unit of work.** A new stage, a new review round, and the
-   integration refresh each get a fresh worker. Continue an existing worker
-   only to hand it the self-review result for the change it just made.
+   integration refresh each get a fresh worker.
 
 ## Workers
 
 | Role | Claude | Codex | Does |
 | --- | --- | --- | --- |
-| Stage worker | `sdd-stage-worker` | `sdd_stage_worker` | One `issue-handoff` stage on its own sub-branch, up to commit; then fixes, push, PR |
-| Self reviewer | `self-reviewer` | `self_reviewer` | Fresh-context review of the committed stage diff |
+| Stage worker | `sdd-stage-worker` | `sdd_stage_worker` | One `issue-handoff` stage on its own sub-branch through push and PR |
 | Review fixer | `pr-review-fixer` | `pr_review_fixer` | One round of CI failures and review findings on one PR |
 
-Workers cannot start workers on every host, so the orchestrator starts the
-self reviewer itself between the stage worker's two phases. The stage worker
-and the review fixer push and call GitHub themselves. When the host has no
-workers, or its workers have no network access, this skill does not apply: run
+The stage worker and the review fixer push and call GitHub themselves. When the
+host has no workers, or its workers have no network access, this skill does not apply: run
 the stages one at a time with `issue-handoff`.
 
 ## Which model runs what
@@ -84,7 +80,6 @@ everything downstream or a miss is expensive to find later.
 | Work | Model | Why |
 | --- | --- | --- |
 | `plan` and `design` stage workers | `fable` | One run per feature, and every child Issue, implementation and review is built on its decisions |
-| Self reviewer | `fable` | Its value is finding what the author missed; each finding it reaches here saves a review round on the PR |
 | Review fixer on a PR with three distinct head SHAs reviewed by someone other than the PR author | `fable` | Findings that keep coming back need the root cause, not another local patch |
 | Integrate worker when merging `main` conflicts | `fable` | Keeping both sides' behaviour is a judgement across two changes |
 | Implementation, `plan-to-issues`, other review-fixer rounds, conflict-free integrate | inherit | Bounded by an approved artifact or a child Issue; high volume |
