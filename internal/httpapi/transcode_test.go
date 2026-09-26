@@ -35,6 +35,8 @@ type fakeTranscoder struct {
 	probes    int
 	waits     int
 	stops     int
+	// beforeReturn は Start が戻る直前に呼ばれる（期限の間際に戻る変換を模す）。
+	beforeReturn func(domain.LiveTranscodeRequest)
 }
 
 func (f *fakeTranscoder) Start(_ context.Context, request domain.LiveTranscodeRequest) (domain.LiveTranscode, error) {
@@ -49,6 +51,9 @@ func (f *fakeTranscoder) Start(_ context.Context, request domain.LiveTranscodeRe
 	}
 	if f.err != nil {
 		return domain.LiveTranscode{}, f.err
+	}
+	if f.beforeReturn != nil {
+		f.beforeReturn(request)
 	}
 	stream := f.stream
 	if stream == nil {
@@ -220,30 +225,18 @@ func TestTranscodeSilentlyStopsWhenRequestIsCanceledBeforeInitialData(t *testing
 	}
 }
 
-func TestInitialTranscodeDataTimesOut(t *testing.T) {
-	reader, writer := io.Pipe()
-	t.Cleanup(func() {
-		_ = writer.Close()
-	})
-	stops := 0
-	waits := 0
+// Start が期限の間際に最初のデータを持って戻っても、経路は期限をかけ直さずに配信する。
+func TestTranscodeServesStreamStartedAtDeadline(t *testing.T) {
+	saved := transcodeStartupTimeout
+	transcodeStartupTimeout = 20 * time.Millisecond
+	t.Cleanup(func() { transcodeStartupTimeout = saved })
 
-	started := time.Now()
-	data, err := awaitInitialTranscodeData(
-		context.Background(),
-		reader,
-		func() error { waits++; return nil },
-		func() { stops++ },
-		20*time.Millisecond,
-	)
-	if err == nil || len(data) != 0 {
-		t.Fatalf("data=%q err=%v", data, err)
-	}
-	if stops != 1 || waits != 1 {
-		t.Fatalf("stops=%d waits=%d", stops, waits)
-	}
-	if elapsed := time.Since(started); elapsed > time.Second {
-		t.Fatalf("timeoutまで %s かかった", elapsed)
+	fake := &fakeTranscoder{body: "fragmented-mp4", beforeReturn: func(request domain.LiveTranscodeRequest) {
+		time.Sleep(time.Until(request.StartupDeadline) + 20*time.Millisecond)
+	}}
+	rec := do(t, transcodeServer(t, false, fake), http.MethodGet, "/api/videos/1/transcode.mp4")
+	if rec.Code != http.StatusOK || rec.Body.String() != fake.body || fake.stops != 0 {
+		t.Fatalf("response = %d %q stops=%d", rec.Code, rec.Body.String(), fake.stops)
 	}
 }
 

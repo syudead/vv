@@ -3,7 +3,6 @@ package httpapi
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,7 +12,10 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-const transcodeStartupTimeout = 6 * time.Second
+// transcodeStartupTimeout はその場の解析と最初のデータまでの期限で、Transcoder.Start
+// の中だけで使う。Start は最初のデータを持って戻るので、経路は同じ期限をかけ直さない。
+// テストが短くできるよう変数にしている。
+var transcodeStartupTimeout = 6 * time.Second
 
 // transcodeProbeSaveTimeout はその場で解析した結果の保存にかける期限である。
 // SQLite の書き込み待ち（busy_timeout 5 秒）より長く、配信の期限とは独立している。
@@ -83,7 +85,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	}
 	stream, wait, stop := started.Stream, started.Wait, started.Stop
 	defer func() { _ = stream.Close() }()
-	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop, time.Until(request.StartupDeadline))
+	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop)
 	if err != nil {
 		if errors.Is(r.Context().Err(), context.Canceled) {
 			return
@@ -169,7 +171,10 @@ type initialTranscodeRead struct {
 	err  error
 }
 
-func readInitialTranscodeData(ctx context.Context, stream io.Reader, timeout time.Duration) ([]byte, error) {
+// readInitialTranscodeData は Start が読んでおいた最初のデータを取り出す。開始の期限は
+// Start の中で済んでいるので、ここでは要求の取り消しだけで打ち切る。期限をかけ直すと、
+// 期限の間際に始まった変換が、データを持っているのに期限切れで止められる。
+func readInitialTranscodeData(ctx context.Context, stream io.Reader) ([]byte, error) {
 	result := make(chan initialTranscodeRead, 1)
 	go func() {
 		buffer := make([]byte, 32*1024)
@@ -177,15 +182,11 @@ func readInitialTranscodeData(ctx context.Context, stream io.Reader, timeout tim
 		result <- initialTranscodeRead{data: buffer[:length], err: err}
 	}()
 
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
 	select {
 	case read := <-result:
 		return read.data, read.err
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case <-timer.C:
-		return nil, fmt.Errorf("初期データ待機が%sでタイムアウトしました", timeout)
 	}
 }
 
@@ -194,9 +195,8 @@ func awaitInitialTranscodeData(
 	stream io.ReadCloser,
 	wait func() error,
 	stop func(),
-	timeout time.Duration,
 ) ([]byte, error) {
-	data, readErr := readInitialTranscodeData(ctx, stream, timeout)
+	data, readErr := readInitialTranscodeData(ctx, stream)
 	if len(data) > 0 {
 		return data, nil
 	}
