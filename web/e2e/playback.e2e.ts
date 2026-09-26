@@ -624,7 +624,9 @@ test.describe.serial("live MP4 playback", () => {
     await expect(preview).toBeVisible({ timeout: 5000 });
     const previewBounds = await preview.boundingBox();
     if (previewBounds === null) throw new Error("seek preview is not visible");
-    expect(previewBounds.width / previewBounds.height).toBeCloseTo(16 / 9, 1);
+    // 画像は動画の縦横比を保つ（specs/009-seek-thumbnail-preview/ui-design.md）。
+    // fixture の portrait.mp4 は 180x320 なので 9:16 になる。
+    expect(previewBounds.width / previewBounds.height).toBeCloseTo(9 / 16, 1);
     const image = preview.locator("img");
     await expect(image).toHaveAttribute("src", /\/seek-thumbnail\?.*positionMs=/);
     expect(await image.getAttribute("src")).not.toContain("blob:");
