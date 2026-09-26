@@ -14,89 +14,59 @@ The image is published to `ghcr.io/syudead/vv` for `linux/amd64` and
 | `latest`         | The latest build of `main`                         |
 | `sha-<12 chars>` | The build of that commit; use it to pin a version |
 
-The CI `Docker image` job publishes it. Hosts pull it without logging in only
-while the package's visibility is Public (set once in the GitHub package
-settings after the first publish).
+The CI `Docker image` job publishes it, and the package is public, so hosts
+pull it without logging in.
 
 ## Start
 
-Copy [`compose.hosting.yaml`](../../compose.hosting.yaml) to a directory on the
-host, for example `/opt/vv/compose.yaml`, and create an `.env` file beside it:
+Take [`compose.hosting.yaml`](../../compose.hosting.yaml) and change the lines
+marked `変える` to match the host:
 
-```dotenv
-# Host port that serves vv (the container listens on 8080).
-MDM_HOST_PORT=8080
-# Host folder with the videos; mounted read-only at /media.
-MDM_MEDIA_HOST_DIR=/volume1/videos
-# Host folder for the database and thumbnails. Leave unset to use the vv_data volume.
-MDM_DATA_HOST_DIR=/volume1/docker/vv/data
-# Image tag; see the table above.
-VV_IMAGE_TAG=latest
-```
+- the host port on the left of `8080:8080` (QNAP and some other NAS use 8080
+  for their own management page, so pick another port such as `18080`);
+- the host folder with the videos on the left of `:/media:ro`; mount a folder
+  high enough that every video folder you want is below it, then choose the
+  folders below `/media` in vv's Settings;
+- the host folder for the database and thumbnails on the left of `:/data`.
 
-Then start vv from that directory:
+Create the data folder first. Then either paste the file into the NAS's
+container manager as a new application (QNAP Container Station, Synology
+Container Manager and similar), or save it as `compose.yaml` on the host and run
+`docker compose up -d` in its folder. Nothing is built on the host.
 
-```bash
-docker compose up -d
-curl -fsS http://localhost:8080/api/health
-```
-
-Replace `8080` in the URL with `MDM_HOST_PORT` when you changed it.
-
-Nothing is built on the host. Open vv in a browser, finish the account setup
-right away ([Account setup](running-vv.md#account-setup)), add `/media` in
+Open `http://<host>:<port>/api/health` to check that vv is up. Then open vv in a
+browser, finish the account setup right away
+([Account setup](running-vv.md#account-setup)), add folders below `/media` in
 Settings and start a scan. `MDM_LOG_LEVEL` and `MDM_TRUSTED_PROXIES` work as in
 [Runtime settings](running-vv.md#runtime-settings); see
 [Network exposure](running-vv.md#network-exposure) before making vv reachable
 from the internet.
 
-`MDM_DATA_HOST_DIR` must be an absolute path. When it is unset, the data lives
-in the Docker volume `vv_data`.
-
 ## Update
+
+First pull `ghcr.io/syudead/vv:latest` again, then recreate the container.
+Recreating alone reuses the image already on the host, so do both, in the
+container manager or with:
 
 ```bash
 docker compose pull
 docker compose up -d
 ```
 
-The container is recreated with the new image. Playback positions, tags and
-the account are stored under `/data`, which is the host folder or the
-`vv_data` volume, so they survive the update. Migrations run when the new
-version starts. To stay on a version or go back to one, set `VV_IMAGE_TAG` to
-its `sha-` tag; a database already migrated by a newer version may not open
-with an older one, so back up before updating.
+Playback positions, tags and the account live in the data folder, so they
+survive the update. Migrations run when the new version starts. To stay on a
+version or go back to one, replace `latest` in `image:` with its `sha-` tag; a
+database already migrated by a newer version may not open with an older one,
+so back up before updating.
 
 ## Back up and restore
 
-Stop vv so that the SQLite database is not written during the copy, then copy
-`/data`:
-
-```bash
-docker compose stop
-```
-
-Run only the command for where the data lives. With `MDM_DATA_HOST_DIR`:
-
-```bash
-tar -C /volume1/docker/vv -czf vv-data-$(date +%F).tar.gz data
-```
-
-With the `vv_data` volume (`MDM_DATA_HOST_DIR` unset):
-
-```bash
-docker run --rm -v vv_data:/data -v "$PWD":/backup alpine \
-  tar -C /data -czf /backup/vv-data-$(date +%F).tar.gz .
-```
-
-Then start vv again:
-
-```bash
-docker compose start
-```
+Stop the container so that the SQLite database is not written during the copy,
+copy the data folder (for example with the NAS's file manager or backup tool),
+and start the container again.
 
 Thumbnails and the index can be rebuilt by scanning again; the account,
 playback positions and tags cannot
-([Data and recovery](running-vv.md#data-and-recovery)). To restore, stop vv,
-replace the contents of the data folder or volume with the archive, and start
-vv again.
+([Data and recovery](running-vv.md#data-and-recovery)). To restore, stop the
+container, replace the contents of the data folder with the copy, and start it
+again.
