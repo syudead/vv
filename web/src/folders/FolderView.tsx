@@ -194,6 +194,8 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         }
         onTagged={() => {
           scrollAfterReload.current = window.scrollY;
+          // 読み直しの途中の空の一覧を控えに残さない（取り込み後の読み直しと同じ）。
+          reloadPending.current = true;
           reloadVideos();
         }}
         onConflict={reloadListing}
