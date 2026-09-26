@@ -55,14 +55,18 @@ function isDocumentFullscreen(): boolean {
 }
 
 /**
- * isPopoverOpen は、画面のどこかで吹き出し（Radix の Popover）が開いているかを返す。
- * 取り込み状況の概要のように、再生画面の外の部品が開く吹き出しも含む。そのときの Esc は
- * 吹き出しを閉じるためのもので、画面を閉じてはいけない。ツールチップ（role="tooltip"）は含めない。
+ * isPopoverOpen は、画面のどこかで吹き出し（Radix の Popover）かメニュー（`ui/Menu`、
+ * role="menu"）が開いているかを返す。取り込み状況の概要のように、再生画面の外の部品が開く
+ * 吹き出しや、Group line のまとめ方のメニュー（specs/017-folder-groups/ui-design.md
+ * 「Group line」）も含む。そのときの Esc はそれを閉じるためのもので、画面を閉じてはいけない。
+ * ツールチップ（role="tooltip"）は含めない。
  */
 function isPopoverOpen(): boolean {
   return (
     typeof document !== "undefined" &&
-    document.querySelector('[data-radix-popper-content-wrapper] [role="dialog"]') !== null
+    document.querySelector(
+      '[data-radix-popper-content-wrapper] [role="dialog"], [data-radix-popper-content-wrapper] [role="menu"]',
+    ) !== null
   );
 }
 
@@ -71,7 +75,7 @@ function isPopoverOpen(): boolean {
  *
  * - プレイヤーが無い（取り込み中・読み取り失敗など）ときは、Esc だけが効く。
  * - 全画面中の Esc は何もしない。全画面の解除はブラウザが行う。
- * - 再生速度のメニューや吹き出しが開いているときの Esc は、それを閉じるだけにする。
+ * - 再生速度のメニューや吹き出し・メニューが開いているときの Esc は、それを閉じるだけにする。
  * - Esc で呼ぶのは `onClose` なので、呼び出し側が別の操作を渡せる。再生画面は自動再生の
  *   予告が出ている間、画面を閉じる代わりに予告の取り消しを渡す。
  */

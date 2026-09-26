@@ -7,7 +7,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { Folder } from "lucide-react";
+import { ChevronDown, Folder, Tag, Ungroup } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router";
 
 import { getAuthSession } from "../api/auth";
@@ -19,9 +19,19 @@ import {
   saveProgress,
   type Video,
 } from "../api/client";
+import {
+  groupingFailure,
+  setFolderGrouping,
+  taggedMessage,
+  tagFolderGroup,
+  ungroupedMessage,
+} from "../api/folderGrouping";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
+import Button from "../ui/Button";
+import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
 import Skeleton from "../ui/Skeleton";
+import { useToast } from "../ui/Toast";
 import AutoplayNotice from "./AutoplayNotice";
 import EndedOverlay from "./EndedOverlay";
 import NeighborArrows from "./NeighborArrows";
@@ -514,7 +524,18 @@ export default function VideoPage() {
                 <CreatingLine video={video} />
                 {/* 題名とタグは1つのまとまり（ui-design.md「Video page tags」Placement）。 */}
                 <div className="flex flex-col gap-2">
-                  {video.group !== undefined && <GroupLine group={video.group} />}
+                  {video.group !== undefined && (
+                    <GroupLine
+                      group={video.group}
+                      owner={owner}
+                      onChanged={() => {
+                        // group が無くなるので、この行・メンバーの並び・前後が
+                        // ふつうの動画の形に戻る（ui-design.md「Group line」）。
+                        void refresh();
+                        retryRelated();
+                      }}
+                    />
+                  )}
                   <h1 className="text-xl leading-snug font-semibold text-fg [overflow-wrap:anywhere] sm:text-2xl">
                     {video.title}
                   </h1>
@@ -561,12 +582,23 @@ export default function VideoPage() {
 /**
  * GroupLine は題名の上に置く、グループ名と何本目かの1行である（要件 25、ui-design.md
  * 「Group line」）。題名より小さく従の色にし、題名より先に目に入らないようにする。
- * 見出しの帯のパンくずが同じフォルダへのリンクを持つので、ここはリンクにしない。
+ * 見出しの帯のパンくずが同じフォルダへのリンクを持つので、グループ名はリンクにしない。
+ *
+ * 所有者では行全体をまとめ方のメニューの引き金にする（要件 29）。ゲストでは押せない文字の行。
  */
-function GroupLine({ group }: { group: NonNullable<Video["group"]> }) {
-  return (
-    <p className="flex min-w-0 items-center gap-1.5 text-xs text-fg-muted sm:text-sm">
-      <Folder className="size-3.5 shrink-0 text-fg-subtle" aria-hidden="true" />
+function GroupLine({
+  group,
+  owner,
+  onChanged,
+}: {
+  group: NonNullable<Video["group"]>;
+  owner: boolean;
+  /** まとめ方を変えた後（と 409 の後）に、動画と関連動画を取り直させる。 */
+  onChanged: () => void;
+}) {
+  const content = (
+    <>
+      <Folder className="size-3.5! shrink-0 text-fg-subtle" aria-hidden="true" />
       <span className="truncate" title={group.name}>
         {group.name}
       </span>
@@ -576,6 +608,83 @@ function GroupLine({ group }: { group: NonNullable<Video["group"]> }) {
       <span className="shrink-0 tabular-nums">
         {group.position} / {group.count}
       </span>
-    </p>
+    </>
+  );
+  if (!owner) {
+    return (
+      <p className="flex min-w-0 items-center gap-1.5 text-xs text-fg-muted sm:text-sm">
+        {content}
+      </p>
+    );
+  }
+  return <GroupLineMenu group={group} onChanged={onChanged} content={content} />;
+}
+
+/** GroupLineMenu は所有者の Group line で、「まとめを解除」「グループをタグに変える」を開く。 */
+function GroupLineMenu({
+  group,
+  onChanged,
+  content,
+}: {
+  group: NonNullable<Video["group"]>;
+  onChanged: () => void;
+  content: ReactNode;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const folder = { rootId: group.folder.rootId, path: group.folder.path };
+
+  const run = async (tagging: boolean) => {
+    setBusy(true);
+    try {
+      if (tagging) {
+        toast(taggedMessage(await tagFolderGroup(folder)));
+      } else {
+        await setFolderGrouping(folder, "ungroup");
+        toast(ungroupedMessage(group.name));
+      }
+      onChanged();
+    } catch (failure) {
+      const { message, conflict } = groupingFailure(failure, {
+        name: group.name,
+        tagging,
+        notFoundMessage: "変更できませんでした",
+      });
+      toast(message);
+      if (conflict) onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <MenuRoot>
+      <MenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          aria-label={`グループ「${group.name}」、${String(group.count)} 本中 ${String(group.position)} 本目。まとめ方のメニュー`}
+          // 文字の左端を題名にそろえ、行は題名より小さく従の色のままにする。
+          className="-ml-2 max-w-full min-w-0 self-start gap-1.5! font-normal! text-fg-muted! sm:text-sm!"
+        >
+          {content}
+          <ChevronDown className="size-3.5! shrink-0" aria-hidden="true" />
+        </Button>
+      </MenuTrigger>
+      <MenuContent align="start">
+        <MenuItem onSelect={() => void run(false)}>
+          <Ungroup aria-hidden="true" />
+          まとめを解除
+        </MenuItem>
+        {/* 登録フォルダそのもののグループはタグに変えられない（contracts §2）。 */}
+        {group.folder.path !== "" && (
+          <MenuItem onSelect={() => void run(true)}>
+            <Tag aria-hidden="true" />
+            グループをタグに変える
+          </MenuItem>
+        )}
+      </MenuContent>
+    </MenuRoot>
   );
 }

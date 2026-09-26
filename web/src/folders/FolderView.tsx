@@ -27,6 +27,7 @@ import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import Breadcrumbs from "./Breadcrumbs";
 import FolderContents from "./FolderContents";
+import FolderGroupingMenu from "./FolderGroupingMenu";
 import FolderSearchResults from "./FolderSearchResults";
 import FolderToolbar from "./FolderToolbar";
 import { breadcrumbsFor, folderKey, rootFolderName } from "./folderPath";
@@ -166,6 +167,59 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     reloadVideos();
   }, [reloadListing, reloadVideos, scan.finished]);
 
+  // --- まとめ方のメニュー（ui-design.md「Folder grouping menu」） ---
+  // タグ化の後は動画の一覧を読み直す（表示中のカードのタグは応答に含まれず古いため）。
+  // 読み直しの間は骨組みで背が縮むので、読み終えたら元のスクロール位置へ戻す。
+  // 読み直しは先頭のページだけを返すので、元の位置が続きのページにあったときは、
+  // 位置に届くまで続きを読み、ページごとに合わせ直す。一覧が尽きたか続きの取得に
+  // 失敗したら、届いたところで終える。
+  const scrollAfterReload = useRef<number | undefined>(undefined);
+  const { hasMore, loadMore } = videos;
+  useLayoutEffect(() => {
+    const top = scrollAfterReload.current;
+    if (top === undefined || videos.loading || videos.loadingMore) return;
+    window.scrollTo({ top, behavior: "auto" });
+    const reachable = document.documentElement.scrollHeight - window.innerHeight;
+    if (top <= reachable || !hasMore || videos.error !== null) {
+      scrollAfterReload.current = undefined;
+      return;
+    }
+    loadMore();
+  }, [
+    hasMore,
+    loadMore,
+    videos.error,
+    // 長さではなく一覧そのもので見る。読み直しの先頭のページが待たずに届くと、
+    // loading が true の描画を挟まず、長さも前と同じになることがある。
+    videos.items,
+    videos.loading,
+    videos.loadingMore,
+  ]);
+  const { update: updateListing } = listing;
+  const grouping = summary?.grouping;
+  const groupingMenu =
+    // ゲストの応答には grouping が無いので、引き金を出さない。
+    owner && grouping !== undefined ? (
+      <FolderGroupingMenu
+        folder={folder}
+        name={name ?? summary?.name ?? ""}
+        grouping={grouping}
+        onGroupingChange={(next) =>
+          updateListing((data) => ({
+            ...data,
+            folder: { ...data.folder, grouping: next },
+          }))
+        }
+        onTagged={() => {
+          scrollAfterReload.current = window.scrollY;
+          // 読み直しの途中の空の一覧を控えに残さない（取り込み後の読み直しと同じ）。
+          reloadPending.current = true;
+          reloadVideos();
+        }}
+        onConflict={reloadListing}
+      />
+    ) : undefined;
+
   const saveSnapshot = useCallback(() => {
     if (listing.data === null || reloadPending.current) return;
     saveListSnapshot(
@@ -192,7 +246,6 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
 
   // --- 無限スクロール（ライブラリと同じ観測点） ---
   const sentinel = useRef<HTMLDivElement | null>(null);
-  const { hasMore, loadMore } = videos;
   useEffect(() => {
     const target = sentinel.current;
     if (target === null || !hasMore) return;
@@ -263,6 +316,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         backTo={backTo}
         preview={preview}
         tagsRow={tagsRow}
+        groupingMenu={groupingMenu}
       />
     );
   }

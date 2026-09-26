@@ -24,7 +24,11 @@ import type {
   Video,
   VideoPage,
 } from "../api/client";
-import { clearListSnapshot } from "../api/listSnapshot";
+import {
+  clearListSnapshot,
+  saveListSnapshot,
+  takeListSnapshot,
+} from "../api/listSnapshot";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
@@ -1215,6 +1219,347 @@ describe("FolderPage", () => {
           "/folders/3/A?sort=addedDesc",
         ),
       );
+    });
+  });
+  describe("まとめ方のメニュー（specs/017-folder-groups/ui-design.md「Folder grouping menu」）", () => {
+    const series: FolderListing = {
+      folder: summary({
+        path: "series",
+        name: "series",
+        videoCount: 2,
+        grouping: { mode: "auto", grouped: true, taggable: true },
+      }),
+      folders: [],
+    };
+    const rootWithVideos: FolderListing = {
+      folder: summary({
+        videoCount: 1,
+        grouping: { mode: "auto", grouped: false, taggable: false },
+      }),
+      folders: [],
+    };
+    const writes: { method: string; url: string; body: unknown }[] = [];
+
+    /** respond は、まとめ方の経路の応答を差し替えた偽のサーバーを入れる。 */
+    function respond(grouping: (method: string, url: string) => Response) {
+      writes.length = 0;
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        requests.push(url);
+        if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+        if (url.includes("/grouping")) {
+          writes.push({
+            method,
+            url,
+            body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+          });
+          return Promise.resolve(grouping(method, url));
+        }
+        if (url === "/api/folders/3?path=series") return Promise.resolve(json(series));
+        if (url === "/api/folders/3") return Promise.resolve(json(rootWithVideos));
+        if (url.startsWith("/api/folders/3/videos?")) {
+          return Promise.resolve(
+            json({ items: [video(1, "ep01"), video(2, "ep02")], total: 2 }),
+          );
+        }
+        if (url === "/api/tags") return Promise.resolve(json([]));
+        return Promise.resolve(json({ code: "not_found", message: "x" }, 404));
+      });
+    }
+
+    /** holdLibrarySnapshot はライブラリの一覧の控えを置く（再生画面から戻る前の状態）。 */
+    function holdLibrarySnapshot() {
+      saveListSnapshot(
+        { query: "" },
+        {
+          items: [{ kind: "video", video: video(1, "ep01") }],
+          total: 1,
+          hasMore: false,
+          scrollY: 0,
+        },
+      );
+      expect(takeListSnapshot({ query: "" })).toBeDefined();
+    }
+
+    function trigger(grouped: boolean) {
+      return screen.findByRole("button", {
+        name: `ライブラリでのまとめ方: ${grouped ? "1 件にまとめて表示" : "1 本ずつ表示"}。メニューを開く`,
+      });
+    }
+
+    it("「動画 N」の行に今のまとめ方を出し、ラジオで PUT を送って応答で文言を変え、ライブラリの控えを捨てる（受け入れ条件 3・4・5）", async () => {
+      respond(() => json({ mode: "ungroup", grouped: false, taggable: false }));
+      const user = userEvent.setup();
+      renderFolders("/folders/3/series");
+      const button = await trigger(true);
+      expect(button.textContent).toBe("ライブラリで 1 件");
+      expect(button.closest("section")?.querySelector("h2")?.textContent).toBe("動画 2");
+      const listingReads = requests.filter(
+        (url) => url === "/api/folders/3?path=series",
+      ).length;
+      const videoReads = requests.filter((url) =>
+        url.startsWith("/api/folders/3/videos?"),
+      ).length;
+      holdLibrarySnapshot();
+
+      await user.click(button);
+      const menu = await screen.findByRole("menu");
+      expect(within(menu).getByText("ライブラリでのまとめ方")).toBeDefined();
+      expect(
+        within(menu)
+          .getAllByRole("menuitemradio")
+          .map((item) => [item.textContent, item.getAttribute("aria-checked")]),
+      ).toEqual([
+        ["自動", "true"],
+        ["まとめを解除", "false"],
+        ["直下をまとめる", "false"],
+      ]);
+      expect(
+        within(menu).getByRole("menuitem", { name: "グループをタグに変える" }),
+      ).toBeDefined();
+      await user.click(within(menu).getByRole("menuitemradio", { name: "まとめを解除" }));
+
+      expect((await trigger(false)).textContent).toBe("ライブラリで 1 本ずつ");
+      expect(writes).toEqual([
+        {
+          method: "PUT",
+          url: "/api/folders/3/grouping?path=series",
+          body: { mode: "ungroup" },
+        },
+      ]);
+      // 次にライブラリを開くと、控えではなく読み直した一覧が出る。
+      expect(takeListSnapshot({ query: "" })).toBeUndefined();
+      // フォルダ画面の一覧は1本ずつのままなので読み直さない。
+      expect(requests.filter((url) => url === "/api/folders/3?path=series").length).toBe(
+        listingReads,
+      );
+      expect(
+        requests.filter((url) => url.startsWith("/api/folders/3/videos?")).length,
+      ).toBe(videoReads);
+      // タグに変えられないフォルダでは項目を出さない。
+      await user.click(await trigger(false));
+      expect(
+        within(await screen.findByRole("menu")).queryByRole("menuitem", {
+          name: "グループをタグに変える",
+        }),
+      ).toBeNull();
+    });
+
+    it("同じ値を選び直しても送る", async () => {
+      respond(() => json({ mode: "auto", grouped: true, taggable: true }));
+      const user = userEvent.setup();
+      renderFolders("/folders/3/series");
+      await user.click(await trigger(true));
+      await user.click(await screen.findByRole("menuitemradio", { name: "自動" }));
+      await waitFor(() =>
+        expect(writes).toEqual([
+          {
+            method: "PUT",
+            url: "/api/folders/3/grouping?path=series",
+            body: { mode: "auto" },
+          },
+        ]),
+      );
+    });
+
+    it("グループをタグに変えるとトーストで伝え、動画の一覧を読み直し、ライブラリの控えを捨てる", async () => {
+      respond(() =>
+        json({
+          tag: { id: 5, name: "series" },
+          created: true,
+          grouping: { mode: "ungroup", grouped: false, taggable: false },
+        }),
+      );
+      const user = userEvent.setup();
+      renderFolders("/folders/3/series");
+      await user.click(await trigger(true));
+      const videoReads = requests.filter((url) =>
+        url.startsWith("/api/folders/3/videos?"),
+      ).length;
+      holdLibrarySnapshot();
+      await user.click(
+        await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+      );
+
+      expect(
+        await screen.findByText("タグ「series」を作り、まとめを解除しました"),
+      ).toBeDefined();
+      expect(writes.map(({ method, url }) => [method, url])).toEqual([
+        ["POST", "/api/folders/3/grouping/tag?path=series"],
+      ]);
+      expect(await trigger(false)).toBeDefined();
+      await waitFor(() =>
+        expect(
+          requests.filter((url) => url.startsWith("/api/folders/3/videos?")).length,
+        ).toBe(videoReads + 1),
+      );
+      expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    });
+
+    it("タグ化の後、元の位置が続きのページにあれば、そこに届くまで読んでスクロールの位置を戻す", async () => {
+      const pageHeight = 3000;
+      let loadedPages = 0;
+      respond(() =>
+        json({
+          tag: { id: 5, name: "series" },
+          created: true,
+          grouping: { mode: "ungroup", grouped: false, taggable: false },
+        }),
+      );
+      const base = fetchMock.getMockImplementation();
+      fetchMock.mockImplementation((input, init) => {
+        const url = String(input);
+        if (!url.startsWith("/api/folders/3/videos?")) return base!(input, init);
+        requests.push(url);
+        const cursor = new URL(url, "http://localhost").searchParams.get("cursor");
+        const index = cursor === null ? 0 : Number(cursor);
+        loadedPages = index + 1;
+        const page: VideoPage = {
+          items: [
+            video(index * 2 + 1, `ep${String(index)}a`),
+            video(index * 2 + 2, `ep${String(index)}b`),
+          ],
+          total: 8,
+          ...(index < 3 ? { nextCursor: String(index + 1) } : {}),
+        };
+        return Promise.resolve(json(page));
+      });
+      const scrollTo = vi.fn();
+      vi.stubGlobal("scrollTo", scrollTo);
+      Object.defineProperty(document.documentElement, "scrollHeight", {
+        configurable: true,
+        get: () => loadedPages * pageHeight,
+      });
+      Object.defineProperty(window, "scrollY", { configurable: true, value: 7000 });
+      try {
+        const user = userEvent.setup();
+        renderFolders("/folders/3/series");
+        await user.click(await trigger(true));
+        await user.click(
+          await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+        );
+        // 7000px に届くのは 3 ページ目を読んだ後（3 × 3000 − 768）。4 ページ目は読まない。
+        await waitFor(() => expect(loadedPages).toBe(3));
+        await waitFor(() =>
+          expect(scrollTo).toHaveBeenLastCalledWith({ top: 7000, behavior: "auto" }),
+        );
+        const calls = scrollTo.mock.calls.length;
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(loadedPages).toBe(3);
+        expect(scrollTo.mock.calls.length).toBe(calls);
+      } finally {
+        Reflect.deleteProperty(document.documentElement, "scrollHeight");
+        Reflect.deleteProperty(window, "scrollY");
+      }
+    });
+
+    it("タグ化の失敗をトーストで伝え、引き金を戻す", async () => {
+      respond(() =>
+        json({ code: "invalid_request", message: "タグの名前に使えません" }, 400),
+      );
+      const user = userEvent.setup();
+      renderFolders("/folders/3/series");
+      await user.click(await trigger(true));
+      await user.click(
+        await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+      );
+      expect(
+        await screen.findByText(
+          "「series」はタグの名前に使えないため、タグに変えられません",
+        ),
+      ).toBeDefined();
+      const button = await trigger(true);
+      await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    });
+
+    it("409 では「もうグループではありません」と伝え、フォルダの一覧を取り直す", async () => {
+      respond(() => json({ code: "conflict", message: "x" }, 409));
+      const user = userEvent.setup();
+      renderFolders("/folders/3/series");
+      await user.click(await trigger(true));
+      const listingReads = requests.filter(
+        (url) => url === "/api/folders/3?path=series",
+      ).length;
+      holdLibrarySnapshot();
+      await user.click(
+        await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+      );
+      expect(
+        await screen.findByText("このフォルダはもうグループではありません"),
+      ).toBeDefined();
+      // ほかのタブで先に変わったので、ライブラリの控えも古い。次に開くときは読み直させる。
+      expect(takeListSnapshot({ query: "" })).toBeUndefined();
+      await waitFor(() =>
+        expect(
+          requests.filter((url) => url === "/api/folders/3?path=series").length,
+        ).toBe(listingReads + 1),
+      );
+    });
+
+    it("404 は「このフォルダは見つかりません」、ほかは「変更できませんでした」", async () => {
+      let status = 404;
+      respond(() => json({ code: "x", message: "x" }, status));
+      const user = userEvent.setup();
+      renderFolders("/folders/3/series");
+      await user.click(await trigger(true));
+      await user.click(
+        await screen.findByRole("menuitemradio", { name: "まとめを解除" }),
+      );
+      expect(await screen.findByText("このフォルダは見つかりません")).toBeDefined();
+      status = 500;
+      await user.click(await trigger(true));
+      await user.click(
+        await screen.findByRole("menuitemradio", { name: "まとめを解除" }),
+      );
+      expect(await screen.findByText("変更できませんでした")).toBeDefined();
+    });
+
+    it("登録フォルダそのものの画面にも出し、送るときは path を省く", async () => {
+      respond(() => json({ mode: "groupDirect", grouped: true, taggable: false }));
+      const user = userEvent.setup();
+      renderFolders("/folders/3");
+      await user.click(await trigger(false));
+      await user.click(
+        await screen.findByRole("menuitemradio", { name: "直下をまとめる" }),
+      );
+      expect(await trigger(true)).toBeDefined();
+      expect(writes.map(({ url }) => url)).toEqual(["/api/folders/3/grouping"]);
+    });
+
+    it("検索結果と最上位には出さない", async () => {
+      respond(() => json({}));
+      renderFolders("/folders/3/series?q=ep");
+      await screen.findByRole("status");
+      await waitFor(() =>
+        expect(requests.some((url) => url.includes("query=ep"))).toBe(true),
+      );
+      expect(screen.queryByRole("button", { name: /ライブラリでのまとめ方/ })).toBeNull();
+    });
+
+    it("ゲストの応答には grouping が無いので、引き金を出さない", async () => {
+      fetchMock.mockImplementation((input) => {
+        const url = String(input);
+        requests.push(url);
+        if (url === "/api/folders/3?path=series") {
+          const { grouping: _, rootPath: __, ...folder } = series.folder;
+          return Promise.resolve(json({ folder, folders: [] }));
+        }
+        if (url === "/api/folders/3") {
+          const { grouping: _, rootPath: __, ...folder } = rootWithVideos.folder;
+          return Promise.resolve(json({ folder, folders: [] }));
+        }
+        if (url.startsWith("/api/folders/3/videos?")) {
+          return Promise.resolve(json({ items: [video(1, "ep01")], total: 1 }));
+        }
+        return Promise.resolve(json({ code: "unauthorized", message: "x" }, 401));
+      });
+      renderFolders("/folders/3/series", "guest");
+      await screen.findByRole("link", { name: /ep01/ });
+      expect(
+        screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
+      ).toContain("動画 1");
+      expect(screen.queryByRole("button", { name: /まとめ方/ })).toBeNull();
     });
   });
 });
