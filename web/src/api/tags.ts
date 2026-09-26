@@ -161,13 +161,13 @@ function refreshOnStaleTagError(error: unknown): never {
 }
 
 /**
- * afterTagCreated は、タグを新しく作る操作が成功した後に呼ぶ。共有のタグの
- * 一覧を取り直す（Structural Decisions 8）。作成は既存の動画の一覧に影響
- * しないので、`clearListSnapshot` は呼ばない（Structural Decisions 7 は改名・
- * 削除・統合・シノニムの変更だけを挙げている。N1）。
+ * afterTagCreated は、タグを新しく作る操作が成功した後に呼ぶ。作ったタグは
+ * 同じ名前の祖先フォルダの下にある既存の動画にもすぐ付く（017 の
+ * data-model.md §4）ので、改名などと同じく動画一覧の控えを捨て、共有の
+ * タグの一覧も取り直す（Structural Decisions 7・8）。
  */
 function afterTagCreated(): void {
-  refreshTags().catch(() => undefined);
+  afterTagChanged();
 }
 
 /**
@@ -336,17 +336,24 @@ export function attachVideoTagByID(
 /**
  * attachVideoTagByName は名前でタグを付ける。名前はシノニムを含めて引き、
  * 無ければ作る（contracts/tags-api.md §4）。新しいタグが作られているかも
- * しれないので、`createTag` と同じく共有のタグの一覧を取り直す
+ * しれないので、共有のタグの一覧を取り直す
  * （issue 268 の受け入れ条件1「別の動画の再生画面でタグを追加しようとすると、
- * そのタグが候補に出る」）。
+ * そのタグが候補に出る」）。送る前の共有の一覧に無いタグが返ったときは
+ * 作られたとみなし、`createTag` と同じく動画一覧の控えも捨てる（作った
+ * タグはフォルダ名から既存の動画にも付くため。017 の data-model.md §4）。
  */
 export function attachVideoTagByName(
   videoIds: readonly number[],
   name: string,
   signal?: AbortSignal,
 ): Promise<VideoTagsResponse> {
+  const known = currentTags();
   return updateVideoTags(videoIds, "add", { name }, signal).then((result) => {
-    afterTagCreated();
+    if (known?.some((tag) => tag.id === result.tag.id)) {
+      refreshTagCounts();
+    } else {
+      afterTagCreated();
+    }
     return result;
   });
 }

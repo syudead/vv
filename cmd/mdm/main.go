@@ -121,6 +121,17 @@ func run() error {
 	}
 	logger.Info("タグの照合用の鍵を作り直しました", slog.Int("tag_names", tagsRefreshed))
 
+	// フォルダの索引（グループとフォルダ名）を、規則の版が古いか前回の作り直しが
+	// 失敗していたときだけ作り直す。title_key は照合用の鍵の規則で作るので、その
+	// 作り直しの後に行う。失敗しても前の索引のまま起動し、次のスキャン・例外の
+	// 変更・メディアフォルダの変更か次の起動で作り直す
+	// （specs/017-folder-groups/data-model.md §3）。
+	if rebuilt, err := db.ScanIndex().RefreshFolderIndex(context.Background()); err != nil {
+		logger.Warn("フォルダの索引を作り直せませんでした", slog.Any("error", err))
+	} else if rebuilt {
+		logger.Info("フォルダの索引を作り直しました")
+	}
+
 	// 認証の準備。期限切れのセッションを消し、未設定なら初回設定を促す。
 	authStore := db.Auth()
 	prepareAuth(context.Background(), authStore, time.Now(), logger)
@@ -144,8 +155,9 @@ func run() error {
 	playbackStore := db.Playback()
 
 	scans := app.NewScans(app.ScansOptions{
-		Store: scanStore,
-		Jobs:  ingestStore,
+		Store:       scanStore,
+		Jobs:        ingestStore,
+		FolderIndex: scanIndexStore,
 		NewScanner: func(reporter app.ScanReporter) app.Scanner {
 			return scanner.New(scanner.Options{
 				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
@@ -229,6 +241,8 @@ func run() error {
 		Tags:         db.Tags(),
 		Visibility:   db.Visibility(),
 		Folders:      libraryStore,
+		FolderGroups: db.FolderGroups(),
+		Library:      libraryStore,
 		Transcoder:   media.NewLiveTranscoder(requestMediaCtx.Done()),
 		Artifacts:    artifactStore,
 		Catalog:      catalog,

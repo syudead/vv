@@ -341,23 +341,47 @@ func LocateVideoFolder(roots []MediaFolder, locationPath string) (VideoFolder, b
 }
 
 func locateVideoFolderFor(roots []MediaFolder, locationPath string, windows bool, separator rune) (VideoFolder, bool) {
-	separators := string(separator)
-	if windows {
-		separators = `/\`
-	}
+	// 最後の段は所在のファイル名で、フォルダには含めない。
+	return locateFor(roots, locationPath, windows, separator, true)
+}
+
+// LocateFolder はフォルダそのものの絶対パスから、それを含む登録フォルダと、
+// そこからそのフォルダまでの相対パスを求める。登録フォルダそのものなら相対パスは
+// 空文字である。含む登録フォルダが無ければ false を返す。
+//
+// LocateVideoFolder と同じ規則で含むかどうかを決め、違いは最後の段を落とさない
+// ことだけである（specs/017-folder-groups/data-model.md §2）。
+func LocateFolder(roots []MediaFolder, folderPath string) (VideoFolder, bool) {
+	return locateFolderFor(roots, folderPath, runtime.GOOS == "windows", filepath.Separator)
+}
+
+func locateFolderFor(roots []MediaFolder, folderPath string, windows bool, separator rune) (VideoFolder, bool) {
+	return locateFor(roots, folderPath, windows, separator, false)
+}
+
+func locateFor(roots []MediaFolder, path string, windows bool, separator rune, dropLast bool) (VideoFolder, bool) {
+	separators := registrationSeparatorsFor(windows, separator)
 	for _, root := range roots {
-		rest, ok := pathBelowRoot(root.Path, locationPath, separators, windows)
+		rest, ok := pathBelowRoot(root.Path, path, separators, windows)
 		if !ok {
 			continue
 		}
 		segments := strings.FieldsFunc(rest, func(r rune) bool { return strings.ContainsRune(separators, r) })
-		if len(segments) > 0 {
-			// 最後の段は所在のファイル名で、フォルダには含めない。
+		if dropLast && len(segments) > 0 {
 			segments = segments[:len(segments)-1]
 		}
 		return VideoFolder{RootID: root.ID, Path: strings.Join(segments, "/")}, true
 	}
 	return VideoFolder{}, false
+}
+
+// registrationSeparatorsFor は登録フォルダの下かどうかを調べるときの区切りである。
+// Windows では `/` と `\` の両方、ほかの OS ではその OS の区切りだけを使う。
+func registrationSeparatorsFor(windows bool, separator rune) string {
+	if windows {
+		return `/\`
+	}
+	return string(separator)
 }
 
 // pathBelowRoot は path が root 自身か root の下にあるとき、root より後ろの部分を

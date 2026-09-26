@@ -113,6 +113,27 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for FolderGroupingMode.
+const (
+	Auto        FolderGroupingMode = "auto"
+	GroupDirect FolderGroupingMode = "groupDirect"
+	Ungroup     FolderGroupingMode = "ungroup"
+)
+
+// Valid indicates whether the value is a known member of the FolderGroupingMode enum.
+func (e FolderGroupingMode) Valid() bool {
+	switch e {
+	case Auto:
+		return true
+	case GroupDirect:
+		return true
+	case Ungroup:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FolderScope.
 const (
 	Direct  FolderScope = "direct"
@@ -143,6 +164,45 @@ func (e HealthStatus) Valid() bool {
 	case Degraded:
 		return true
 	case Ok:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LibraryGroupWatchState.
+const (
+	LibraryGroupWatchStateInProgress LibraryGroupWatchState = "inProgress"
+	LibraryGroupWatchStateUnwatched  LibraryGroupWatchState = "unwatched"
+	LibraryGroupWatchStateWatched    LibraryGroupWatchState = "watched"
+)
+
+// Valid indicates whether the value is a known member of the LibraryGroupWatchState enum.
+func (e LibraryGroupWatchState) Valid() bool {
+	switch e {
+	case LibraryGroupWatchStateInProgress:
+		return true
+	case LibraryGroupWatchStateUnwatched:
+		return true
+	case LibraryGroupWatchStateWatched:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LibraryItemKind.
+const (
+	LibraryItemKindGroup LibraryItemKind = "group"
+	LibraryItemKindVideo LibraryItemKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the LibraryItemKind enum.
+func (e LibraryItemKind) Valid() bool {
+	switch e {
+	case LibraryItemKindGroup:
+		return true
+	case LibraryItemKindVideo:
 		return true
 	default:
 		return false
@@ -346,22 +406,22 @@ func (e VideoTagsAction) Valid() bool {
 
 // Defines values for WatchFilter.
 const (
-	All        WatchFilter = "all"
-	InProgress WatchFilter = "inProgress"
-	Unwatched  WatchFilter = "unwatched"
-	Watched    WatchFilter = "watched"
+	WatchFilterAll        WatchFilter = "all"
+	WatchFilterInProgress WatchFilter = "inProgress"
+	WatchFilterUnwatched  WatchFilter = "unwatched"
+	WatchFilterWatched    WatchFilter = "watched"
 )
 
 // Valid indicates whether the value is a known member of the WatchFilter enum.
 func (e WatchFilter) Valid() bool {
 	switch e {
-	case All:
+	case WatchFilterAll:
 		return true
-	case InProgress:
+	case WatchFilterInProgress:
 		return true
-	case Unwatched:
+	case WatchFilterUnwatched:
 		return true
-	case Watched:
+	case WatchFilterWatched:
 		return true
 	default:
 		return false
@@ -428,6 +488,44 @@ type Error struct {
 // ErrorCode 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 type ErrorCode string
 
+// FolderGroupTagResult defines model for FolderGroupTagResult.
+type FolderGroupTagResult struct {
+	// Created タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false
+	Created bool `json:"created"`
+
+	// Grouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
+	// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	Grouping FolderGrouping `json:"grouping"`
+
+	// Tag 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+	Tag TagRef `json:"tag"`
+}
+
+// FolderGrouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
+// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+type FolderGrouping struct {
+	// Grouped いまこのフォルダの直下がグループか
+	Grouped bool `json:"grouped"`
+
+	// Mode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
+	// `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	Mode FolderGroupingMode `json:"mode"`
+
+	// Taggable グループで、登録フォルダそのものではない（グループをタグに変えられる）
+	Taggable bool `json:"taggable"`
+}
+
+// FolderGroupingMode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
+// `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+type FolderGroupingMode string
+
+// FolderGroupingRequest defines model for FolderGroupingRequest.
+type FolderGroupingRequest struct {
+	// Mode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
+	// `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	Mode FolderGroupingMode `json:"mode"`
+}
+
 // FolderListing defines model for FolderListing.
 type FolderListing struct {
 	Folder FolderSummary `json:"folder"`
@@ -453,6 +551,10 @@ type FolderScope string
 type FolderSummary struct {
 	// FolderCount 直下の子フォルダの件数
 	FolderCount int `json:"folderCount"`
+
+	// Grouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
+	// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	Grouping *FolderGrouping `json:"grouping,omitempty"`
 
 	// Name 表示名。相対パスの最後の段、登録フォルダ自身は絶対パスの最後の段
 	Name string `json:"name"`
@@ -491,6 +593,90 @@ type Health struct {
 
 // HealthStatus ok = 保存層まで疎通、degraded = プロセスのみ生存
 type HealthStatus string
+
+// LibraryGroup グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
+// （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
+// グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
+// `lastPlayedAt` を省き、`tags` を空の配列にする。
+type LibraryGroup struct {
+	// AddedAt メンバーの追加日時の最大
+	AddedAt time.Time `json:"addedAt"`
+
+	// Cover ゲストの応答では `location`・`progress`・`probeError` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1）。
+	Cover Video `json:"cover"`
+
+	// DurationMs 長さの分かっているメンバーの合計。1本も分からなければ省く
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+	Folder VideoFolder `json:"folder"`
+
+	// LastPlayedAt メンバーの最後に再生した時刻の最大。無ければ省く
+	LastPlayedAt *time.Time `json:"lastPlayedAt,omitempty"`
+
+	// Name フォルダ名
+	Name string `json:"name"`
+
+	// OpenVideoId 押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の
+	// 未完了のメンバー、全部完了なら最初のメンバー
+	OpenVideoId int64 `json:"openVideoId"`
+
+	// SizeBytes メンバーの代表の所在の大きさの合計
+	SizeBytes int64 `json:"sizeBytes"`
+
+	// Tags メンバーのタグの和集合。同じタグの出所は和にする
+	Tags       []VideoTag `json:"tags"`
+	VideoCount int        `json:"videoCount"`
+
+	// VideoIds 全メンバーの id を並びの順に
+	VideoIds []int64 `json:"videoIds"`
+
+	// WatchState 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
+	// inProgress。所有者の応答にだけ入る
+	WatchState *LibraryGroupWatchState `json:"watchState,omitempty"`
+
+	// WatchedCount 完了したメンバーの数。所有者の応答にだけ入る
+	WatchedCount *int `json:"watchedCount,omitempty"`
+}
+
+// LibraryGroupWatchState 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
+// inProgress。所有者の応答にだけ入る
+type LibraryGroupWatchState string
+
+// LibraryItem ライブラリの項目1件。`kind` に応じて `video` か `group` のちょうど一方が入る
+type LibraryItem struct {
+	// Group グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
+	// （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
+	// グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
+	// `lastPlayedAt` を省き、`tags` を空の配列にする。
+	Group *LibraryGroup   `json:"group,omitempty"`
+	Kind  LibraryItemKind `json:"kind"`
+
+	// Video ゲストの応答では `location`・`progress`・`probeError` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1）。
+	Video *Video `json:"video,omitempty"`
+}
+
+// LibraryItemKind defines model for LibraryItem.Kind.
+type LibraryItemKind string
+
+// LibraryPage defines model for LibraryPage.
+type LibraryPage struct {
+	Items []LibraryItem `json:"items"`
+
+	// MissingTagIds tag のうち存在しなかった id。1つも無ければ省略される
+	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
+
+	// NextCursor 次のページの取得に渡す。これ以上無い場合は省略される
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 絞り込み後の項目（カード）の数。ページングとは独立に返る
+	Total int `json:"total"`
+}
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
@@ -538,14 +724,38 @@ type ProgressUpdate struct {
 	PositionMs int64 `json:"positionMs"`
 }
 
-// RelatedVideos defines model for RelatedVideos.
-type RelatedVideos struct {
+// RelatedGroup 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
+// メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
+type RelatedGroup struct {
+	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+	Folder VideoFolder `json:"folder"`
+
+	// Items 全メンバーをグループの中の並びの順に、基準の動画を含めて並べる。上限は無い
 	Items []Video `json:"items"`
 
-	// NextId 同じディレクトリで自然順の次の動画。無ければ省く
+	// Name フォルダ名
+	Name string `json:"name"`
+}
+
+// RelatedVideos defines model for RelatedVideos.
+type RelatedVideos struct {
+	// Group 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
+	// メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
+	Group *RelatedGroup `json:"group,omitempty"`
+
+	// Items 関連動画。基準の動画がグループのメンバーなら、同じグループのメンバーを除いてから
+	// 並べ、上限を掛ける
+	Items []Video `json:"items"`
+
+	// NextId 次の動画。グループのメンバーならグループの中の並びの次（最後のメンバーでは省く）、
+	// そうでなければ同じディレクトリで自然順の次の動画。無ければ省く
 	NextId *int64 `json:"nextId,omitempty"`
 
-	// PrevId 同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
+	// PrevId 前の動画。グループのメンバーならグループの中の並びの前（最初のメンバーでは省く）、
+	// そうでなければ同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
 	PrevId *int64 `json:"prevId,omitempty"`
 }
 
@@ -645,8 +855,15 @@ type Video struct {
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる
+	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
+
+	// Group 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
+	// （location と同じ扱いで、一覧の項目には入らない）。ゲストの応答では公開のメンバー
+	// だけで数え、公開のメンバーが1本だけなら省く
+	// （specs/017-folder-groups/contracts/folder-groups-api.md §3）
+	Group *VideoGroupRef `json:"group,omitempty"`
 
 	// Height 表示される向きの高さ（回転の印を反映済み）
 	Height *int  `json:"height,omitempty"`
@@ -682,8 +899,10 @@ type Video struct {
 	SizeBytes        int64   `json:"sizeBytes"`
 
 	// Tags 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-	// 無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
-	Tags           []TagRef            `json:"tags"`
+	// 無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
+	// フォルダ名から付いている分も含む
+	// （specs/017-folder-groups/contracts/folder-groups-api.md §4）
+	Tags           []VideoTag          `json:"tags"`
 	ThumbnailState VideoThumbnailState `json:"thumbnailState"`
 
 	// ThumbnailUrl thumbnailState = done のときだけ入る
@@ -728,7 +947,8 @@ type VideoChanged struct {
 
 // VideoFolder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 // GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-// 登録フォルダにも含まれなければ省かれる
+// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
 type VideoFolder struct {
 	// Path 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字
 	Path string `json:"path"`
@@ -737,8 +957,29 @@ type VideoFolder struct {
 	RootId int64 `json:"rootId"`
 
 	// RootName 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-	// 応答にだけ入る
+	// Video.folder にだけ入る（Video.group.folder には入らない）
 	RootName *string `json:"rootName,omitempty"`
+}
+
+// VideoGroupRef 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
+// （location と同じ扱いで、一覧の項目には入らない）。ゲストの応答では公開のメンバー
+// だけで数え、公開のメンバーが1本だけなら省く
+// （specs/017-folder-groups/contracts/folder-groups-api.md §3）
+type VideoGroupRef struct {
+	// Count グループのメンバーの本数
+	Count int `json:"count"`
+
+	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+	Folder VideoFolder `json:"folder"`
+
+	// Name フォルダ名
+	Name string `json:"name"`
+
+	// Position グループの中の並びで何本目か（1 始まり）
+	Position int `json:"position"`
 }
 
 // VideoIdsResponse defines model for VideoIdsResponse.
@@ -782,6 +1023,19 @@ type VideoPage struct {
 // 動画の識別子から作る順。値が同じなら識別子で決着させる
 type VideoSort string
 
+// VideoTag 動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
+// フォルダ名からも付いていれば1件にまとめて両方を真にする
+// （specs/017-folder-groups/contracts/folder-groups-api.md §4）。
+type VideoTag struct {
+	// FromFolder 祖先のフォルダ名がこのタグの名前かシノニムに一致する
+	FromFolder bool  `json:"fromFolder"`
+	Id         int64 `json:"id"`
+
+	// Manual 手で付けた分がある
+	Manual bool   `json:"manual"`
+	Name   string `json:"name"`
+}
+
 // VideoTagsAction defines model for VideoTagsAction.
 type VideoTagsAction string
 
@@ -813,7 +1067,11 @@ type VideoTagsSummary struct {
 
 // VideoTagsSummaryItem defines model for VideoTagsSummaryItem.
 type VideoTagsSummaryItem struct {
+	// Count 手で付けた分とフォルダ名から付いている分のどちらかで付いている本数
 	Count int `json:"count"`
+
+	// ManualCount 手で付けた本数
+	ManualCount int `json:"manualCount"`
 
 	// Tag 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
 	Tag TagRef `json:"tag"`
@@ -887,6 +1145,27 @@ type GetFolderParams struct {
 	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
 }
 
+// GetFolderGroupParams defines parameters for GetFolderGroup.
+type GetFolderGroupParams struct {
+	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+	// 登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// SetFolderGroupingParams defines parameters for SetFolderGrouping.
+type SetFolderGroupingParams struct {
+	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+	// 登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
+}
+
+// TagFolderGroupParams defines parameters for TagFolderGroup.
+type TagFolderGroupParams struct {
+	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+	// 登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
+}
+
 // ListFolderVideosParams defines parameters for ListFolderVideos.
 type ListFolderVideosParams struct {
 	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
@@ -922,6 +1201,51 @@ type ListFolderVideosParams struct {
 
 	// Limit 1ページの件数
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListLibraryParams defines parameters for ListLibrary.
+type ListLibraryParams struct {
+	// Query 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
+	// 空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
+	// `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
+	// ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
+	// フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
+	// 語が残らなければ絞り込まない。書き方の誤りは返さない
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// Watch 視聴状態で絞る。all は絞り込まない
+	Watch *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
+
+	// Playable true ならブラウザでそのまま再生できる（playable = true の）動画だけにする
+	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
+
+	// Sort 並び順
+	Sort *VideoSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Seed `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
+	// ほかの並び順では無視する
+	Seed *int64 `form:"seed,omitempty" json:"seed,omitempty"`
+
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Tag タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
+	// 最大16個、17個以上は400。存在しない id は条件から落とし、応答の
+	// missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+}
+
+// ListLibraryIdsParams defines parameters for ListLibraryIds.
+type ListLibraryIdsParams struct {
+	Query    *string      `form:"query,omitempty" json:"query,omitempty"`
+	Watch    *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
+	Playable *bool        `form:"playable,omitempty" json:"playable,omitempty"`
+
+	// Tag 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
+	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
 }
 
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
@@ -973,16 +1297,6 @@ type ListVideosParams struct {
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
 }
 
-// ListVideoIdsParams defines parameters for ListVideoIds.
-type ListVideoIdsParams struct {
-	Query    *string      `form:"query,omitempty" json:"query,omitempty"`
-	Watch    *WatchFilter `form:"watch,omitempty" json:"watch,omitempty"`
-	Playable *bool        `form:"playable,omitempty" json:"playable,omitempty"`
-
-	// Tag 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
-	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
-}
-
 // GetVideoPreviewParams defines parameters for GetVideoPreview.
 type GetVideoPreviewParams struct {
 	// V 一覧・詳細が返した current content key
@@ -1013,6 +1327,9 @@ type LoginJSONRequestBody = LoginRequest
 
 // SetupAccountJSONRequestBody defines body for SetupAccount for application/json ContentType.
 type SetupAccountJSONRequestBody = SetupRequest
+
+// SetFolderGroupingJSONRequestBody defines body for SetFolderGrouping for application/json ContentType.
+type SetFolderGroupingJSONRequestBody = FolderGroupingRequest
 
 // CreateMediaFolderJSONRequestBody defines body for CreateMediaFolder for application/json ContentType.
 type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
@@ -1073,12 +1390,27 @@ type ServerInterface interface {
 	// GetFolder フォルダ1件と、その直下の子フォルダを返す
 	// (GET /api/folders/{rootId})
 	GetFolder(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params GetFolderParams)
+	// GetFolderGroup フォルダのグループ1件を返す
+	// (GET /api/folders/{rootId}/group)
+	GetFolderGroup(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params GetFolderGroupParams)
+	// SetFolderGrouping フォルダのまとめ方の例外を付ける・外す
+	// (PUT /api/folders/{rootId}/grouping)
+	SetFolderGrouping(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params SetFolderGroupingParams)
+	// TagFolderGroup グループをタグに変える
+	// (POST /api/folders/{rootId}/grouping/tag)
+	TagFolderGroup(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params TagFolderGroupParams)
 	// ListFolderVideos フォルダの動画を返す
 	// (GET /api/folders/{rootId}/videos)
 	ListFolderVideos(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params ListFolderVideosParams)
 	// GetHealth 稼働状態とビルド情報を返す
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// ListLibrary ライブラリの項目（動画とグループ）の一覧を返す
+	// (GET /api/library)
+	ListLibrary(w http.ResponseWriter, r *http.Request, params ListLibraryParams)
+	// ListLibraryIds 絞り込みに合う項目の動画の id を返す
+	// (GET /api/library/ids)
+	ListLibraryIds(w http.ResponseWriter, r *http.Request, params ListLibraryIdsParams)
 	// ListMediaFolders 登録済みメディアフォルダを返す
 	// (GET /api/media-folders)
 	ListMediaFolders(w http.ResponseWriter, r *http.Request)
@@ -1133,9 +1465,6 @@ type ServerInterface interface {
 	// ListVideos 動画の一覧を返す
 	// (GET /api/videos)
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
-	// ListVideoIds 絞り込みに合う動画の全件の id を返す
-	// (GET /api/videos/ids)
-	ListVideoIds(w http.ResponseWriter, r *http.Request, params ListVideoIdsParams)
 	// GetVideo 動画1件の詳細を返す
 	// (GET /api/videos/{id})
 	GetVideo(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -1355,6 +1684,132 @@ func (siw *ServerInterfaceWrapper) GetFolder(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
+// GetFolderGroup operation middleware
+func (siw *ServerInterfaceWrapper) GetFolderGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "rootId" -------------
+	var rootId FolderRootId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rootId", r.PathValue("rootId"), &rootId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rootId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetFolderGroupParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetFolderGroup(w, r, rootId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetFolderGrouping operation middleware
+func (siw *ServerInterfaceWrapper) SetFolderGrouping(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "rootId" -------------
+	var rootId FolderRootId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rootId", r.PathValue("rootId"), &rootId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rootId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params SetFolderGroupingParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetFolderGrouping(w, r, rootId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// TagFolderGroup operation middleware
+func (siw *ServerInterfaceWrapper) TagFolderGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "rootId" -------------
+	var rootId FolderRootId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rootId", r.PathValue("rootId"), &rootId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rootId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params TagFolderGroupParams
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TagFolderGroup(w, r, rootId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListFolderVideos operation middleware
 func (siw *ServerInterfaceWrapper) ListFolderVideos(w http.ResponseWriter, r *http.Request) {
 
@@ -1506,6 +1961,202 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListLibrary operation middleware
+func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListLibraryParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "playable" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "seed" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "seed", r.URL.Query(), &params.Seed, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "seed"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "seed", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListLibrary(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListLibraryIds operation middleware
+func (siw *ServerInterfaceWrapper) ListLibraryIds(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListLibraryIdsParams
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "watch" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "playable" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListLibraryIds(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1993,78 +2644,6 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 	handler.ServeHTTP(w, r)
 }
 
-// ListVideoIds operation middleware
-func (siw *ServerInterfaceWrapper) ListVideoIds(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListVideoIdsParams
-
-	// ------------- Optional query parameter "query" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "query", r.URL.Query(), &params.Query, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "query"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "watch" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "watch", r.URL.Query(), &params.Watch, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "watch"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "watch", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "playable" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "playable", r.URL.Query(), &params.Playable, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "playable"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "playable", Err: err})
-		}
-		return
-	}
-
-	// ------------- Optional query parameter "tag" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListVideoIds(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetVideo operation middleware
 func (siw *ServerInterfaceWrapper) GetVideo(w http.ResponseWriter, r *http.Request) {
 
@@ -2528,7 +3107,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/auth/session", wrapper.GetAuthSession)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auth/logout", wrapper.Logout)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos", wrapper.ListVideos)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/ids", wrapper.ListVideoIds)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library", wrapper.ListLibrary)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/library/ids", wrapper.ListLibraryIds)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}", wrapper.GetVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/related", wrapper.GetRelatedVideos)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/probe", wrapper.ReprobeVideo)
@@ -2558,6 +3138,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}/videos", wrapper.ListFolderVideos)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}/group", wrapper.GetFolderGroup)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/folders/{rootId}/grouping/tag", wrapper.TagFolderGroup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/processing", wrapper.GetProcessing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/events", wrapper.StreamEvents)

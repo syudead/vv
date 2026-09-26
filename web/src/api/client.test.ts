@@ -7,7 +7,8 @@ import {
   fetchSeekThumbnail,
   listDirectories,
   listFolderVideos,
-  listVideoIds,
+  listLibrary,
+  listLibraryIds,
   listVideos,
   beaconProgress,
   listMediaFolders,
@@ -19,6 +20,7 @@ import {
   getVideo,
   getCurrentScan,
 } from "./client";
+import { itemVideos, videoItem } from "./libraryItems";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
 vi.mock("../auth/pageNavigation", async (importOriginal) => ({
@@ -277,21 +279,38 @@ describe("progress API client", () => {
     const fetch = vi.fn<typeof globalThis.fetch>();
     vi.stubGlobal("fetch", fetch);
 
-    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    saveListSnapshot(key, {
+      items: [videoItem(unwatched)],
+      total: 1,
+      hasMore: false,
+      scrollY: 0,
+    });
     fetch.mockResolvedValueOnce(jsonResponse(progress));
     await saveProgress(7, 60_000);
-    expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(progress);
+    expect(itemVideos(takeListSnapshot(key)?.items ?? [])[0]?.progress).toEqual(progress);
 
-    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    saveListSnapshot(key, {
+      items: [videoItem(unwatched)],
+      total: 1,
+      hasMore: false,
+      scrollY: 0,
+    });
     fetch.mockResolvedValueOnce(jsonResponse(progress));
     beaconProgress(7, 60_000);
     await vi.waitFor(() => {
-      expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(progress);
+      expect(itemVideos(takeListSnapshot(key)?.items ?? [])[0]?.progress).toEqual(
+        progress,
+      );
     });
 
     // ページが隠れるときの送信は待たずに出るので、応答の順が入れ替わりうる。
     // その場合も、後から送った保存の位置を残す。
-    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    saveListSnapshot(key, {
+      items: [videoItem(unwatched)],
+      total: 1,
+      hasMore: false,
+      scrollY: 0,
+    });
     const older = {
       positionMs: 10_000,
       completed: false,
@@ -318,18 +337,23 @@ describe("progress API client", () => {
     beaconProgress(7, 20_000);
     hidden.mockRestore();
     await vi.waitFor(() => {
-      expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(newer);
+      expect(itemVideos(takeListSnapshot(key)?.items ?? [])[0]?.progress).toEqual(newer);
     });
     answerOlder(jsonResponse(older));
     await first;
-    expect(takeListSnapshot(key)?.items[0]?.progress).toEqual(newer);
+    expect(itemVideos(takeListSnapshot(key)?.items ?? [])[0]?.progress).toEqual(newer);
 
     // 失敗した送信では控えを書き換えない。
-    saveListSnapshot(key, { items: [unwatched], total: 1, hasMore: false, scrollY: 0 });
+    saveListSnapshot(key, {
+      items: [videoItem(unwatched)],
+      total: 1,
+      hasMore: false,
+      scrollY: 0,
+    });
     fetch.mockResolvedValueOnce(jsonResponse({ code: "not_found", message: "x" }, 404));
     beaconProgress(7, 60_000);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(takeListSnapshot(key)?.items[0]?.progress).toBeUndefined();
+    expect(itemVideos(takeListSnapshot(key)?.items ?? [])[0]?.progress).toBeUndefined();
   });
 
   it("同じ動画の保存は、前の保存が終わってから送る", async () => {
@@ -507,13 +531,13 @@ describe("list API client", () => {
     expect(requestedURL(fetch).searchParams.has("tag")).toBe(false);
   });
 
-  it("listVideoIds sends query/watch/playable/tag and returns ids and missingTagIds", async () => {
+  it("listLibraryIds sends query/watch/playable/tag and returns ids and missingTagIds", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(jsonResponse({ ids: [5, 1, 9], missingTagIds: [7] }));
     vi.stubGlobal("fetch", fetch);
 
-    const result = await listVideoIds({
+    const result = await listLibraryIds({
       query: "旅行",
       watch: "unwatched",
       playable: true,
@@ -522,10 +546,36 @@ describe("list API client", () => {
 
     expect(result).toEqual({ ids: [5, 1, 9], missingTagIds: [7] });
     const url = requestedURL(fetch);
-    expect(url.pathname).toBe("/api/videos/ids");
+    expect(url.pathname).toBe("/api/library/ids");
     expect(url.searchParams.get("query")).toBe("旅行");
     expect(url.searchParams.get("watch")).toBe("unwatched");
     expect(url.searchParams.get("playable")).toBe("true");
     expect(url.searchParams.getAll("tag")).toEqual(["3", "7"]);
+  });
+  it("listLibrary sends the list filters and tag, and narrows items by kind", async () => {
+    const video = { id: 1 };
+    const group = { name: "series", videoIds: [2, 3] };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(
+      jsonResponse({
+        items: [{ kind: "video", video }, { kind: "group", group }, { kind: "group" }],
+        total: 2,
+        nextCursor: "c2",
+      }),
+    );
+    vi.stubGlobal("fetch", fetch);
+
+    const page = await listLibrary({ query: "京都", sort: "titleAsc", tag: [4] });
+
+    expect(page.items).toEqual([
+      { kind: "video", video },
+      { kind: "group", group },
+    ]);
+    expect(page.total).toBe(2);
+    expect(page.nextCursor).toBe("c2");
+    const url = requestedURL(fetch);
+    expect(url.pathname).toBe("/api/library");
+    expect(url.searchParams.get("query")).toBe("京都");
+    expect(url.searchParams.get("sort")).toBe("titleAsc");
+    expect(url.searchParams.getAll("tag")).toEqual(["4"]);
   });
 });

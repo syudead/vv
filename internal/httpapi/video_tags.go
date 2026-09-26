@@ -101,45 +101,38 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 	items := make([]gen.VideoTagsSummaryItem, 0, len(summary.Items))
 	for _, item := range summary.Items {
 		items = append(items, gen.VideoTagsSummaryItem{
-			Tag:   gen.TagRef{Id: item.Tag.ID, Name: item.Tag.Name},
-			Count: item.Count,
+			Tag:         gen.TagRef{Id: item.Tag.ID, Name: item.Tag.Name},
+			Count:       item.Count,
+			ManualCount: item.ManualCount,
 		})
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.VideoTagsSummary{Total: summary.Total, Items: items}, s.logger)
 }
 
-// ListVideoIds は絞り込みに合う動画の全件の id を返す（GET /api/videos/ids、
-// 「すべて選択」用。contracts/tags-api.md §5）。パラメータは listVideos の
-// query・watch・playable・tag と同じ。
-func (s *server) ListVideoIds(w http.ResponseWriter, r *http.Request, params gen.ListVideoIdsParams) {
-	if s.videos == nil {
-		s.internalError(w, "一覧の問い合わせ先が設定されていません", nil)
-		return
-	}
-
+// parseIDsQuery は「すべて選択」の経路（listLibraryIds）のパラメータを
+// 検査して問い合わせにする。誤りなら 400 を書いて false を返す。
+func (s *server) parseIDsQuery(w http.ResponseWriter, search *string, watch *gen.WatchFilter, playable *bool, tag *[]int64) (domain.VideoQuery, bool) {
 	query := domain.VideoQuery{}
-	filters, ok := s.parseListFilters(w, listFilterParams{watch: params.Watch, playable: params.Playable})
+	filters, ok := s.parseListFilters(w, listFilterParams{watch: watch, playable: playable})
 	if !ok {
-		return
+		return domain.VideoQuery{}, false
 	}
 	query.Watch, query.PlayableOnly = filters.watch, filters.playableOnly
-	if query.Query, ok = s.parseSearchQuery(w, params.Query); !ok {
-		return
+	if query.Query, ok = s.parseSearchQuery(w, search); !ok {
+		return domain.VideoQuery{}, false
 	}
-	if query.TagIDs, ok = s.parseTagFilter(w, params.Tag); !ok {
-		return
+	if query.TagIDs, ok = s.parseTagFilter(w, tag); !ok {
+		return domain.VideoQuery{}, false
 	}
+	return query, true
+}
 
-	ids, missingTagIDs, err := s.videos.VideoIDs(r.Context(), query)
-	if err != nil {
-		s.internalError(w, "idを取得できませんでした", err)
-		return
-	}
+// writeVideoIDs は「すべて選択」の id を応答に書く。
+func (s *server) writeVideoIDs(w http.ResponseWriter, ids, missingTagIDs []int64) {
 	if ids == nil {
 		ids = []int64{}
 	}
-
 	payload := gen.VideoIdsResponse{Ids: ids}
 	if len(missingTagIDs) > 0 {
 		payload.MissingTagIds = &missingTagIDs

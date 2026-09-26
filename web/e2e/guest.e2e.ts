@@ -20,6 +20,11 @@ import { ownerAccount } from "./owner-account";
 //
 // ほかの e2e が登録したフォルダの動画はどれも非公開なので、ゲストに見えるのは
 // ここで公開にした4本だけである。
+//
+// 「公開あり」と「非公開だけ」はどちらもグループになる（specs/017-folder-groups、親 #326
+// 要件 2）。ライブラリ（検索を含む）ではそれぞれ1枚のグループのカードで、ゲストには
+// 公開のメンバーだけで数えたカードが出る（data-model.md §7）。フォルダ画面は今のまま
+// 1本ずつ出す（要件 22）。
 
 interface MediaFolder {
   id: number;
@@ -41,6 +46,12 @@ const privateTitles = ["ゲスト非公開C", "ゲスト非公開D"];
 // 画面写真の本数（ui-design.md「Visual review criteria」の 12 本以上）を満たすための、
 // 非公開のままの6本。題名で数える確かめに混ざらないよう「ゲスト」を含めない。
 const fillerTitles = ["確認用G", "確認用H", "確認用I", "確認用J", "確認用K", "確認用L"];
+// ライブラリのグループのカードの読み上げ名（ui-design.md「Pressing and selection」）。
+// ゲストは公開のメンバーだけを数える。所有者は全メンバーを数える。
+const guestGroup = "公開あり、4本のグループ";
+// 所有者が「ゲスト」で検索したときの項目。「非公開だけ」は D だけが検索語に当たるが、
+// グループは当たったメンバーが1本あれば1件で、本数は全メンバーで数える（data-model.md §5）。
+const ownerGroups = ["公開あり、5本のグループ", "非公開だけ、7本のグループ"];
 const videos = new Map<string, Video>();
 let folder: MediaFolder | undefined;
 
@@ -103,6 +114,34 @@ function apiRequests(page: Page): string[] {
 async function cardTitles(page: Page): Promise<string[]> {
   const titles = await page.locator("article[data-video-id] h3").allTextContents();
   return titles.sort();
+}
+
+/**
+ * libraryItems はライブラリの項目を、並びに依らず比べられるよう並べ替えて返す。
+ * 動画のカードは題名、グループのカードはリンクの読み上げ名（名前と本数）で表す。
+ */
+async function libraryItems(page: Page): Promise<string[]> {
+  const videoTitles = await page.locator("article[data-video-id] h3").allTextContents();
+  const groupLabels = await page
+    .locator("article[data-group-root] a[aria-label]")
+    .evaluateAll((links) => links.map((link) => link.getAttribute("aria-label") ?? ""));
+  return [...videoTitles, ...groupLabels].sort();
+}
+
+/** openGuestFolder はフォルダ画面を開き、guest-media の下の name のフォルダへ進む。 */
+async function openGuestFolder(page: Page, name: string) {
+  await page.goto("/folders");
+  await page
+    .locator("[data-folder-path]")
+    .filter({ has: page.locator("h3", { hasText: /^guest-media$/ }) })
+    .getByRole("link")
+    .click();
+  await page
+    .locator("[data-folder-path]")
+    .filter({ has: page.locator("h3", { hasText: name }) })
+    .getByRole("link")
+    .click();
+  await expect(page.getByRole("heading", { level: 2, name: /^動画/ })).toBeVisible();
 }
 
 async function sidebarNames(page: Page): Promise<string[]> {
@@ -178,14 +217,17 @@ test.describe.serial("guest", () => {
     const context = await guestContext(browser);
     const page = await context.newPage();
 
+    // ライブラリ: 「公開あり」は公開の4本で数えた1枚のグループのカードで、件数は
+    // カードの枚数（要件 20）。「非公開だけ」は公開のメンバーが無いので出ない。
     await page.goto("/");
-    await expect.poll(() => cardTitles(page)).toEqual(publicTitles);
-    await expect(page.getByText("4件", { exact: true })).toBeVisible();
+    await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
+    await expect(page.getByText("1件", { exact: true })).toBeVisible();
+    await expect(page.locator("article[data-group-root]")).toContainText("4 本");
 
     // 検索: 公開の動画だけに当たり、非公開の題名では何も出ない。
     await page.goto(`/?q=${encodeURIComponent("ゲスト")}`);
-    await expect.poll(() => cardTitles(page)).toEqual(publicTitles);
-    await expect(page.getByText("4件", { exact: true })).toBeVisible();
+    await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
+    await expect(page.getByText("1件", { exact: true })).toBeVisible();
     await page.goto(`/?q=${encodeURIComponent("ゲスト非公開")}`);
     await expect(page.getByText("条件に一致する動画はありません")).toBeVisible();
 
@@ -207,13 +249,15 @@ test.describe.serial("guest", () => {
     const crumbs = page.getByRole("navigation", { name: "パンくず" });
     await expect(crumbs.getByRole("link", { name: "guest-media" })).toBeVisible();
 
-    // 関連動画: 同じフォルダの公開の動画だけが並ぶ。
+    // 関連動画の列: 「公開あり」はグループなので、公開のメンバーだけが「続けて再生」の
+    // 並びに出る（specs/017-folder-groups/data-model.md §7）。非公開の動画は並びにも
+    // 関連動画にも出ない。
     await page.goto(`/videos/${String(video("ゲスト公開A").id)}`);
-    const related = page.getByRole("complementary").filter({
-      has: page.getByRole("heading", { name: "関連動画" }),
-    });
-    await expect(related.getByRole("link", { name: /^ゲスト公開B/ })).toBeVisible();
-    await expect(related.getByRole("link", { name: /ゲスト非公開/ })).toHaveCount(0);
+    const column = page.getByRole("complementary");
+    const members = column.getByRole("region", { name: "続けて再生" });
+    await expect(members.getByRole("link", { name: /^ゲスト公開B/ })).toBeVisible();
+    await expect(members.locator('li[aria-current="true"]')).toContainText("ゲスト公開A");
+    await expect(column.getByRole("link", { name: /ゲスト非公開/ })).toHaveCount(0);
 
     await context.close();
   });
@@ -244,13 +288,13 @@ test.describe.serial("guest", () => {
     const requests = apiRequests(page);
 
     await page.goto("/");
-    await expect.poll(() => cardTitles(page)).toEqual(publicTitles);
+    await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
     expect(await sidebarNames(page)).toEqual(["ライブラリ", "フォルダ", "ログイン"]);
     await expect(
       page.getByRole("button", { name: /ライブラリを更新|取り込み/ }),
     ).toHaveCount(0);
     await expect(page.getByRole("checkbox")).toHaveCount(0);
-    await page.locator("article[data-video-id]").first().hover();
+    await page.locator("article[data-group-root]").first().hover();
     await expect(page.getByRole("checkbox")).toHaveCount(0);
 
     await page.getByRole("button", { name: "絞り込み" }).click();
@@ -294,7 +338,7 @@ test.describe.serial("guest", () => {
     await page.keyboard.press("Space");
     await page.waitForFunction(() => document.querySelector("video")?.paused === true);
     await page.goto("/");
-    await expect.poll(() => cardTitles(page)).toEqual(publicTitles);
+    await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
 
     const ownerOnly = requests.filter((request) =>
       /\/api\/(events|scans|processing|media-folders|tags|video-tags|video-visibility)|\/progress$/.test(
@@ -315,12 +359,12 @@ test.describe.serial("guest", () => {
     const second = await context.newPage();
     const search = `/?q=${encodeURIComponent("ゲスト")}`;
     await Promise.all([first.goto(search), second.goto(search)]);
-    await expect
-      .poll(() => cardTitles(second))
-      .toEqual([...publicTitles, ...privateTitles].sort());
+    await expect.poll(() => libraryItems(second)).toEqual(ownerGroups);
 
-    // 所有者の一覧で非公開の動画を選んでおく。
-    await second.getByRole("checkbox", { name: "「ゲスト非公開C」を選択" }).check();
+    // 所有者の一覧で、非公開の動画だけのグループを選んでおく。
+    await second
+      .getByRole("checkbox", { name: "「非公開だけ」のグループを選択" })
+      .check();
     await expect(second.getByRole("region", { name: "選択中の操作" })).toBeVisible();
 
     await first.getByRole("button", { name: "ログアウト" }).click();
@@ -331,7 +375,7 @@ test.describe.serial("guest", () => {
           name: "ログイン",
         }),
     ).toBeVisible();
-    await expect.poll(() => cardTitles(first)).toEqual(publicTitles);
+    await expect.poll(() => libraryItems(first)).toEqual([guestGroup]);
 
     // もう一方のタブは、次の一覧の取得（並び順の向きの切り替え）で読み直される。
     await second.getByRole("button", { name: /押すと/ }).click();
@@ -342,10 +386,10 @@ test.describe.serial("guest", () => {
           name: "ログイン",
         }),
     ).toBeVisible();
-    await expect.poll(() => cardTitles(second)).toEqual(publicTitles);
+    await expect.poll(() => libraryItems(second)).toEqual([guestGroup]);
     await expect(second.getByRole("checkbox")).toHaveCount(0);
     await expect(second.getByRole("region", { name: "選択中の操作" })).toHaveCount(0);
-    await expect(second.getByText("ゲスト非公開C")).toHaveCount(0);
+    await expect(second.getByText("非公開だけ")).toHaveCount(0);
     await context.close();
   });
 
@@ -379,9 +423,9 @@ test.describe.serial("guest", () => {
   });
 
   // 公開の切り替え（子 #305、ui-design.md「Visibility toggle」）。所有者が再生画面から
-  // 1本を、選択バーから複数本を公開にすると、別のブラウザのゲストの一覧に現れ、
-  // 非公開に戻すと消える。再スキャンの後も公開のままである。終わったら公開の
-  // 組を最初の4本に戻す。
+  // 1本を、選択バーからグループ（全メンバー。017 の要件 21）を公開にすると、別の
+  // ブラウザのゲストの一覧に現れ、非公開に戻すと消える。再スキャンの後も公開のままで
+  // ある。終わったら公開の組を最初の4本に戻す。
   test("所有者が再生画面と選択バーで切り替えた公開が、別のブラウザのゲストの一覧に反映される", async ({
     browser,
     request,
@@ -389,14 +433,19 @@ test.describe.serial("guest", () => {
     test.setTimeout(180_000);
     const owner = await ownerContext(browser);
     const ownerPage = await owner.newPage();
+    const folderPage = await owner.newPage();
     const guest = await guestContext(browser);
     const guestPage = await guest.newPage();
     const guestSees = async () => {
       await guestPage.goto("/");
-      return cardTitles(guestPage);
+      return libraryItems(guestPage);
     };
-    const withC = [...publicTitles, "ゲスト非公開C"].sort();
-    const withCD = [...publicTitles, ...privateTitles].sort();
+    // 「非公開だけ」のフォルダ画面は1本ずつのカードで、公開の印を数えられる（要件 22）。
+    const publicMarksInHidden = async () => {
+      await openGuestFolder(folderPage, "非公開だけ");
+      await expect(folderPage.locator("article[data-video-id]")).toHaveCount(7);
+      return folderPage.locator("article[data-video-id] .lucide-globe").count();
+    };
 
     // 再生画面: キーボードだけで「非公開」→ Space →「公開中」（キーボード確認の手順 4）。
     await ownerPage.goto(`/videos/${String(video("ゲスト非公開C").id)}`);
@@ -418,19 +467,21 @@ test.describe.serial("guest", () => {
     await expect(toggle).toHaveText("公開中");
     // 送信の間もフォーカスは切り替えに残る。
     await expect(toggle).toBeFocused();
-    await expect.poll(guestSees).toEqual(withC);
+    // ゲストのグループのカードの本数が、公開になった C の分だけ増える。
+    await expect.poll(guestSees).toEqual(["公開あり、5本のグループ"]);
 
-    // もう一度 Space で戻すと、ゲストの一覧から消える。
+    // もう一度 Space で戻すと、ゲストのカードの本数も戻る。
     await ownerPage.keyboard.press("Space");
     await expect(toggle).toHaveAttribute("aria-checked", "false");
-    await expect.poll(guestSees).toEqual(publicTitles);
+    await expect.poll(guestSees).toEqual([guestGroup]);
 
-    // 選択バー: C と D を選んで「公開」→「公開にする」（キーボード確認の手順 5）。
+    // 選択バー: 「非公開だけ」のグループを選んで「公開」→「公開にする」（キーボード確認の
+    // 手順 5）。グループの選択は全メンバーの選択なので、7本が公開になる。
     await ownerPage.goto(`/?q=${encodeURIComponent("ゲスト")}`);
-    await expect.poll(() => cardTitles(ownerPage)).toEqual(withCD);
-    for (const title of privateTitles) {
-      await ownerPage.getByRole("checkbox", { name: `「${title}」を選択` }).check();
-    }
+    await expect.poll(() => libraryItems(ownerPage)).toEqual(ownerGroups);
+    await ownerPage
+      .getByRole("checkbox", { name: "「非公開だけ」のグループを選択" })
+      .check();
     const bar = ownerPage.getByRole("region", { name: "選択中の操作" });
     await bar.getByRole("button", { name: "公開" }).focus();
     await ownerPage.keyboard.press("Enter");
@@ -440,31 +491,25 @@ test.describe.serial("guest", () => {
       menu.getByRole("menuitem", { name: "公開にする", exact: true }),
     ).toBeFocused();
     await ownerPage.keyboard.press("Enter");
-    await expect(ownerPage.getByText("2 件を公開にしました")).toBeVisible();
-    // 選択は残り、カードの右下に公開の印が出る。
-    await expect(bar.getByText("2 件を選択中")).toBeVisible();
-    for (const title of privateTitles) {
-      const card = ownerPage.locator("article").filter({ hasText: title });
-      await expect(card.locator(".lucide-globe")).toHaveCount(1);
-      await expect(card.getByText("公開", { exact: true })).toHaveCount(1);
-    }
-    await expect.poll(guestSees).toEqual(withCD);
+    await expect(ownerPage.getByText("7 件を公開にしました")).toBeVisible();
+    // 選択は残り、メンバーのカード（フォルダ画面）の右下に公開の印が出る。
+    await expect(bar.getByText("7 件を選択中")).toBeVisible();
+    await expect.poll(publicMarksInHidden).toBe(7);
+    const withHidden = [guestGroup, "非公開だけ、7本のグループ"];
+    await expect.poll(guestSees).toEqual(withHidden);
 
     // 再スキャンの後も公開のままである。
     const scan = await request.post("/api/scans", { headers: mutationHeaders, data: {} });
     expect(scan.status()).toBe(202);
     await waitForScan(request, ((await scan.json()) as { id: number }).id);
-    await expect.poll(guestSees).toEqual(withCD);
+    await expect.poll(guestSees).toEqual(withHidden);
 
     // 非公開に戻すと消える。
     await bar.getByRole("button", { name: "公開" }).click();
     await ownerPage.getByRole("menuitem", { name: "非公開にする", exact: true }).click();
-    await expect(ownerPage.getByText("2 件を非公開にしました")).toBeVisible();
-    for (const title of privateTitles) {
-      const card = ownerPage.locator("article").filter({ hasText: title });
-      await expect(card.locator(".lucide-globe")).toHaveCount(0);
-    }
-    await expect.poll(guestSees).toEqual(publicTitles);
+    await expect(ownerPage.getByText("7 件を非公開にしました")).toBeVisible();
+    await expect.poll(publicMarksInHidden).toBe(0);
+    await expect.poll(guestSees).toEqual([guestGroup]);
 
     await owner.close();
     await guest.close();
@@ -488,7 +533,7 @@ test.describe.serial("guest", () => {
       const page = await context.newPage();
 
       await page.goto("/");
-      await expect.poll(() => cardTitles(page)).toEqual(publicTitles);
+      await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
       await shot(page, "library", width);
 
       if (width >= 768) {
@@ -533,8 +578,9 @@ test.describe.serial("guest", () => {
         fullPage: true,
       });
 
-      // 公開が0本の空の状態（一覧とフォルダ画面の最上位）は、応答を差し替えて撮る。
-      await page.route("**/api/videos?*", (route) =>
+      // 公開が0本の空の状態（一覧とフォルダ画面の最上位）は、応答を差し替えて撮る。ライブラリは
+      // GET /api/library で読む（017）。
+      await page.route("**/api/library?*", (route) =>
         route.fulfill({ json: { items: [], total: 0 } }),
       );
       await page.route("**/api/folders", (route) =>
@@ -562,26 +608,21 @@ test.describe.serial("guest", () => {
           fullPage,
         });
 
-      // 公開の印のあるカード。絞り込まない一覧で、12 本以上のうち 4 本が公開である
-      // （ほかの e2e のフォルダの動画はどれも非公開）。
-      await page.goto("/");
-      await expect
-        .poll(async () => {
-          const titles = await cardTitles(page);
-          return [...publicTitles, ...privateTitles, ...fillerTitles].every((title) =>
-            titles.includes(title),
-          );
-        })
-        .toBe(true);
-      expect(await page.locator("article[data-video-id]").count()).toBeGreaterThanOrEqual(
-        12,
-      );
+      // 公開の印のあるカード。ライブラリではこの e2e の動画はグループのカードに
+      // まとまり、グループには公開の印を出さない（017 ui-design.md「Structure」）ので、
+      // 1本ずつ出るフォルダ画面の「公開あり」で撮る。5本のうち 4 本が公開である。
+      await openGuestFolder(page, "公開あり");
+      await expect(page.locator("article[data-video-id]")).toHaveCount(5);
       await expect(page.locator("article[data-video-id] .lucide-globe")).toHaveCount(4);
-      await ownerShot("library");
+      await ownerShot("folder");
 
-      // 選択バーの「公開」を開いた状態（360 は2段のバー）。
-      for (const title of ["ゲスト公開A", "ゲスト非公開C"]) {
-        const checkbox = page.getByRole("checkbox", { name: `「${title}」を選択` });
+      // 選択バーの「公開」を開いた状態（360 は2段のバー）。ライブラリで2つのグループを選ぶ。
+      await page.goto(`/?q=${encodeURIComponent("ゲスト")}`);
+      await expect.poll(() => libraryItems(page)).toEqual(ownerGroups);
+      for (const name of ["公開あり", "非公開だけ"]) {
+        const checkbox = page.getByRole("checkbox", {
+          name: `「${name}」のグループを選択`,
+        });
         await checkbox.check({ force: true });
       }
       const bar = page.getByRole("region", { name: "選択中の操作" });

@@ -45,10 +45,50 @@ type RelatedOrder struct {
 // RelatedVideos は関連動画の本体を返す順に並べたものである。
 type RelatedVideos struct {
 	Items []Video
-	// NextID は同じディレクトリで自然順の次の動画。無ければ 0。
+	// NextID は次の動画。グループのメンバーならグループの中の並びの次、そうでなければ
+	// 同じディレクトリで自然順の次。無ければ 0。
 	NextID int64
-	// PrevID は同じディレクトリで自然順の前の動画。無ければ 0。
+	// PrevID は前の動画。NextID と同じ規則で決まる。無ければ 0。
 	PrevID int64
+	// Group は基準の動画が属するグループ。見る人に見せるグループが無ければ nil。
+	Group *VideoGroup
+}
+
+// VideoGroup は動画1本が属するグループを、見る人に見せてよいメンバーだけで表したもの
+// である（specs/017-folder-groups/contracts/folder-groups-api.md §3・data-model.md §7）。
+type VideoGroup struct {
+	// Folder はグループのフォルダそのもの（LocateFolder）。
+	Folder VideoFolder
+	// Name はフォルダ名。
+	Name string
+	// Members は見せてよいメンバーをグループの中の並びで持つ。基準の動画を含む。
+	Members []Video
+}
+
+// Position は動画 id のグループの中の位置（1 始まり）を返す。メンバーでなければ 0。
+func (g VideoGroup) Position(id int64) int {
+	for i, member := range g.Members {
+		if member.ID == id {
+			return i + 1
+		}
+	}
+	return 0
+}
+
+// Neighbors はメンバー id のグループの中の前と次の動画 id を返す。最初のメンバーに
+// 前は無く、最後のメンバーに次は無い（無ければ 0）。
+func (g VideoGroup) Neighbors(id int64) (prev, next int64) {
+	position := g.Position(id)
+	if position == 0 {
+		return 0, 0
+	}
+	if position > 1 {
+		prev = g.Members[position-2].ID
+	}
+	if position < len(g.Members) {
+		next = g.Members[position].ID
+	}
+	return prev, next
 }
 
 // OrderRelated は関連動画を並べる。

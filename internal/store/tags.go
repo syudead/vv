@@ -48,22 +48,21 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 		return domain.Tag{}, &domain.TagNameConflict{Tag: domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}}
 	}
 
-	res, err := tx.ExecContext(ctx, `insert into tags (created_at) values (?)`, time.Now().Unix())
+	id, err := insertTag(ctx, tx, normalized)
 	if err != nil {
-		return domain.Tag{}, fmt.Errorf("タグを作成できません: %w", err)
+		return domain.Tag{}, err
 	}
-	id, err := res.LastInsertId()
+	// 作ったばかりのタグでも、同じ名前の祖先フォルダの下の動画にはもう付いて
+	// いる（017 の data-model.md §4）ので、本数は数える。
+	count, err := videoCountByTagID(ctx, tx, id)
 	if err != nil {
-		return domain.Tag{}, fmt.Errorf("タグを作成できません: %w", err)
-	}
-	if err := insertTagName(ctx, tx, normalized, id, true); err != nil {
 		return domain.Tag{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
 		return domain.Tag{}, fmt.Errorf("タグを作成できません: %w", err)
 	}
-	return domain.Tag{ID: id, Name: normalized, Synonyms: []string{}, VideoCount: 0}, nil
+	return domain.Tag{ID: id, Name: normalized, Synonyms: []string{}, VideoCount: count}, nil
 }
 
 // RenameTag は id の元の名前を書き換える。今と同じ名前なら何も変えずに今の
@@ -320,27 +319,9 @@ func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name s
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	lookup, found, err := lookupTagName(ctx, tx, normalized)
+	ref, _, err := findOrCreateTag(ctx, tx, normalized)
 	if err != nil {
 		return domain.TagRef{}, 0, err
-	}
-
-	var ref domain.TagRef
-	if found {
-		ref = domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}
-	} else {
-		res, err := tx.ExecContext(ctx, `insert into tags (created_at) values (?)`, time.Now().Unix())
-		if err != nil {
-			return domain.TagRef{}, 0, fmt.Errorf("タグを作成できません: %w", err)
-		}
-		id, err := res.LastInsertId()
-		if err != nil {
-			return domain.TagRef{}, 0, fmt.Errorf("タグを作成できません: %w", err)
-		}
-		if err := insertTagName(ctx, tx, normalized, id, true); err != nil {
-			return domain.TagRef{}, 0, err
-		}
-		ref = domain.TagRef{ID: id, Name: normalized}
 	}
 
 	applied, err := attachTagToVideoIDs(ctx, tx, videoIDs, ref.ID)
@@ -352,6 +333,42 @@ func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name s
 		return domain.TagRef{}, 0, fmt.Errorf("タグを付けられません: %w", err)
 	}
 	return ref, applied, nil
+}
+
+// findOrCreateTag は整えた名前 normalized をシノニムを含めて引き、無ければ同じ
+// トランザクションの中で作る。作ったかどうかも返す。名前でタグを付ける操作と、
+// グループをタグに変える操作（folder_groups.go、017 の Plan の Structural
+// Decisions 8）が共有する。
+func findOrCreateTag(ctx context.Context, tx *sql.Tx, normalized string) (domain.TagRef, bool, error) {
+	lookup, found, err := lookupTagName(ctx, tx, normalized)
+	if err != nil {
+		return domain.TagRef{}, false, err
+	}
+	if found {
+		return domain.TagRef{ID: lookup.tagID, Name: lookup.canonicalName}, false, nil
+	}
+	id, err := insertTag(ctx, tx, normalized)
+	if err != nil {
+		return domain.TagRef{}, false, err
+	}
+	return domain.TagRef{ID: id, Name: normalized}, true, nil
+}
+
+// insertTag は整えた名前 normalized を元の名前に持つタグを作り、その id を返す。
+// 名前がまだ無いことは呼び出し側が確かめる。
+func insertTag(ctx context.Context, tx *sql.Tx, normalized string) (int64, error) {
+	res, err := tx.ExecContext(ctx, `insert into tags (created_at) values (?)`, time.Now().Unix())
+	if err != nil {
+		return 0, fmt.Errorf("タグを作成できません: %w", err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("タグを作成できません: %w", err)
+	}
+	if err := insertTagName(ctx, tx, normalized, id, true); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 // DetachTag は id で指定したタグを videoIDs の動画から外す（data-model.md §4）。
@@ -441,11 +458,25 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 		return domain.TagSummary{}, fmt.Errorf("content_key を組み立てられません: %w", err)
 	}
 
+	// count はどちらかの出所で、manualCount は手で付けた分だけで数える（017 の
+	// data-model.md §4）。1本の動画に同じタグが複数のフォルダ名（元の名前と
+	// シノニムなど）から当たりうるので、content_key の重複を除いて数える。
 	rows, err := tx.QueryContext(ctx, `
-		select tn.tag_id, tn.name, count(*) from video_tags vt
-		  join tag_names tn on tn.tag_id = vt.tag_id and tn.canonical = 1
-		 where vt.content_key in (select value from json_each(?))
-		 group by vt.tag_id`, string(encoded),
+		with selected(content_key) as (select value from json_each(?)),
+		tagged(content_key, tag_id, manual) as (
+			select vt.content_key, vt.tag_id, 1 from video_tags vt
+			 where vt.content_key in (select content_key from selected)
+			union all
+			select v.content_key, folder_tn.tag_id, 0 from videos v
+			  join video_folder_names vfn on vfn.video_id = v.id
+			  join tag_names folder_tn on folder_tn.name = vfn.name
+			 where v.content_key in (select content_key from selected)
+		)
+		select t.tag_id, tn.name, count(distinct t.content_key),
+		       count(distinct case when t.manual = 1 then t.content_key end)
+		  from tagged t
+		  join tag_names tn on tn.tag_id = t.tag_id and tn.canonical = 1
+		 group by t.tag_id`, string(encoded),
 	)
 	if err != nil {
 		return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
@@ -454,7 +485,7 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 
 	for rows.Next() {
 		var item domain.TagSummaryItem
-		if err := rows.Scan(&item.Tag.ID, &item.Tag.Name, &item.Count); err != nil {
+		if err := rows.Scan(&item.Tag.ID, &item.Tag.Name, &item.Count, &item.ManualCount); err != nil {
 			return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
 		}
 		summary.Items = append(summary.Items, item)
@@ -473,13 +504,15 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 }
 
 // TagsByContentKeys は content_key の集合からそれぞれのタグ（元の名前、
-// domain.CompareNatural の順、同じなら id）をまとめて引く。記録の無い
-// content_key は結果に現れない。PlaybackStore.ProgressByContentKeys と同じ形で、
-// #267 で internal/httpapi が progressFor と同じ位置から一覧の項目にタグを
-// 足すために使う（Plan の Structural Decisions 5・14）。
-func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.TagRef, error) {
+// domain.CompareNatural の順、同じなら id）を出所つきでまとめて引く。手で
+// 付けた分とフォルダ名から付いている分の和で、同じタグが両方から付けば1件に
+// まとめて出所を両方持つ（017 の data-model.md §4）。タグの無い content_key は
+// 結果に現れない。PlaybackStore.ProgressByContentKeys と同じ形で、
+// internal/httpapi が progressFor と同じ位置から一覧の項目にタグを足すために
+// 使う（Plan の Structural Decisions 5・14）。
+func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error) {
 	if len(contentKeys) == 0 {
-		return map[string][]domain.TagRef{}, nil
+		return map[string][]domain.VideoTag{}, nil
 	}
 	encoded, err := json.Marshal(contentKeys)
 	if err != nil {
@@ -487,29 +520,40 @@ func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) 
 	}
 
 	rows, err := s.sql.QueryContext(ctx, `
-		select vt.content_key, tn.tag_id, tn.name from video_tags vt
-		  join tag_names tn on tn.tag_id = vt.tag_id and tn.canonical = 1
-		 where vt.content_key in (select value from json_each(?))`, string(encoded),
+		with selected(content_key) as (select value from json_each(?)),
+		tagged(content_key, tag_id, manual, from_folder) as (
+			select vt.content_key, vt.tag_id, 1, 0 from video_tags vt
+			 where vt.content_key in (select content_key from selected)
+			union all
+			select v.content_key, folder_tn.tag_id, 0, 1 from videos v
+			  join video_folder_names vfn on vfn.video_id = v.id
+			  join tag_names folder_tn on folder_tn.name = vfn.name
+			 where v.content_key in (select content_key from selected) and v.content_key <> ''
+		)
+		select t.content_key, t.tag_id, tn.name, max(t.manual), max(t.from_folder)
+		  from tagged t
+		  join tag_names tn on tn.tag_id = t.tag_id and tn.canonical = 1
+		 group by t.content_key, t.tag_id`, string(encoded),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("項目のタグを読み出せません: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make(map[string][]domain.TagRef, len(contentKeys))
+	out := make(map[string][]domain.VideoTag, len(contentKeys))
 	for rows.Next() {
 		var key string
-		var ref domain.TagRef
-		if err := rows.Scan(&key, &ref.ID, &ref.Name); err != nil {
+		var tag domain.VideoTag
+		if err := rows.Scan(&key, &tag.ID, &tag.Name, &tag.Manual, &tag.FromFolder); err != nil {
 			return nil, fmt.Errorf("項目のタグを読み出せません: %w", err)
 		}
-		out[key] = append(out[key], ref)
+		out[key] = append(out[key], tag)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("項目のタグを読み出せません: %w", err)
 	}
 	for key := range out {
-		domain.SortTagRefs(out[key])
+		domain.SortVideoTags(out[key])
 	}
 	return out, nil
 }
@@ -586,13 +630,11 @@ func addSynonymsToTags(ctx context.Context, q queryExecer, tags []domain.Tag, in
 }
 
 // addVideoCountsToTags は tags[index[tag_id]].VideoCount に、いまライブラリに
-// ある動画だけを数えた本数を足す。
+// ある動画だけを数えた本数を足す。手で付けた分とフォルダ名から付いている分の
+// どちらかで付いていれば1本と数える（017 の data-model.md §4）。
 func addVideoCountsToTags(ctx context.Context, q queryExecer, tags []domain.Tag, index map[int64]int) error {
 	//nolint:gosec // registeredVideoCondition は定型SQLだけを返す。
-	query := `select vt.tag_id, count(*) from video_tags vt
-		join videos v on v.content_key = vt.content_key
-		where ` + registeredVideoCondition("v") + `
-		group by vt.tag_id`
+	query := `select tag_id, count(*) from (` + taggedVideosSQL("") + `) group by tag_id`
 	rows, err := q.QueryContext(ctx, query)
 	if err != nil {
 		return fmt.Errorf("タグの本数を数えられません: %w", err)
@@ -722,14 +764,13 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 }
 
 // videoCountByTagID はいまライブラリにある動画のうち id が付いている本数を
-// 数える（data-model.md §5）。
+// 数える（data-model.md §5）。フォルダ名から付いている分も含む（017 の
+// data-model.md §4）。
 func videoCountByTagID(ctx context.Context, q rowQueryer, id int64) (int, error) {
 	//nolint:gosec // registeredVideoCondition は定型SQLだけを返す。
-	query := `select count(*) from video_tags vt
-		join videos v on v.content_key = vt.content_key
-		where vt.tag_id = ? and ` + registeredVideoCondition("v")
+	query := `select count(*) from (` + taggedVideosSQL(` and tag_id = ?`) + `)`
 	var count int
-	if err := q.QueryRowContext(ctx, query, id).Scan(&count); err != nil {
+	if err := q.QueryRowContext(ctx, query, id, id).Scan(&count); err != nil {
 		return 0, fmt.Errorf("タグの本数を数えられません (id=%d): %w", id, err)
 	}
 	return count, nil

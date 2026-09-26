@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { FolderSummary, Video } from "../api/client";
+import { itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
 import { Grid } from "../videoList/Grid";
@@ -25,6 +26,7 @@ export default function FolderContents({
   backTo,
   preview,
   tagsRow,
+  groupingMenu,
 }: {
   criteria: ListCriteria;
   /** 子フォルダの一覧を読んでいる間は true。 */
@@ -39,6 +41,11 @@ export default function FolderContents({
   preview: PreviewCardProps;
   /** カードの題名の下に出すタグの行（useFolderTagsRow）。 */
   tagsRow: (video: Video) => ReactNode;
+  /**
+   * 「動画 N」の見出しの行の右端に置く、まとめ方のメニュー（ui-design.md
+   * 「Folder grouping menu」）。ゲストでは渡さない。
+   */
+  groupingMenu?: ReactNode;
 }) {
   const showFolders = listingLoading || childFolders.length > 0;
   const filterOnly = hasConditions(criteria);
@@ -84,7 +91,11 @@ export default function FolderContents({
           {filterOnlyNoMatch ? (
             <NoMatches />
           ) : (
-            <Section title="動画" count={videos.loading ? undefined : videos.total}>
+            <Section
+              title="動画"
+              count={videos.loading ? undefined : videos.total}
+              action={groupingMenu}
+            >
               {videos.error !== null && videos.items.length === 0 ? (
                 <LoadFailed reason={videos.error} onRetry={videos.reload} />
               ) : (
@@ -93,7 +104,7 @@ export default function FolderContents({
                     {videos.loading ? (
                       <CardSkeleton count={6} />
                     ) : (
-                      videos.items.map((video) => (
+                      itemVideos(videos.items).map((video) => (
                         <VideoCard
                           key={video.id}
                           video={video}

@@ -87,8 +87,8 @@ func TestReprobeVideoIncludesTags(t *testing.T) {
 	video := failedProbeVideo()
 	library := &fakeLibrary{videos: map[int64]domain.Video{1: video}}
 	reprober := &fakeReprober{library: library, jobs: map[domain.JobKind]int{}}
-	tags := &fakeTags{byContentKey: map[string][]domain.TagRef{
-		video.ContentKey: {{ID: 4, Name: "壊れた"}},
+	tags := &fakeTags{byContentKey: map[string][]domain.VideoTag{
+		video.ContentKey: {manualTag(4, "壊れた")},
 	}}
 	handler := newTestServer(t, Options{Videos: library, Catalog: reprober.catalog(), Tags: tags})
 

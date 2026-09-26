@@ -41,10 +41,6 @@ type Library interface {
 	GetVideo(ctx context.Context, audience domain.Audience, id int64) (domain.Video, error)
 	VideoLocations(ctx context.Context, videoID int64) ([]domain.VideoLocation, error)
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
-	// VideoIDs は listVideos と同じ条件（並び順・カーソル・件数を除く）に合う
-	// 全件の id を返す（GET /api/videos/ids、「すべて選択」用。
-	// specs/014-video-tags/contracts/tags-api.md §5）。
-	VideoIDs(ctx context.Context, q domain.VideoQuery) (ids, missingTagIDs []int64, err error)
 }
 
 // Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、
@@ -94,7 +90,7 @@ type Tags interface {
 	// TagsByContentKeys は content_key の集合からそれぞれのタグを引く。
 	// progressFor と同じ位置（httpapi）から、一覧・詳細・関連動画・読み取りの
 	// やり直しの応答へ Video.tags を載せるために使う。
-	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.TagRef, error)
+	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error)
 }
 
 // Transcoder は1 request分のfragmented MP4を生成する。
@@ -126,6 +122,9 @@ type VideoCatalog interface {
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
 	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video) (domain.RelatedVideos, error)
+	// VideoGroup は動画が属するグループを、見る人に見せてよいメンバーだけで返す。
+	// 見る人に見せるグループが無ければ false。
+	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video) (domain.VideoGroup, bool, error)
 	// RetryProbe は読み取りに失敗した動画を読み取り直す。失敗していなければ
 	// domain.ErrProbeNotFailed を返す。
 	RetryProbe(ctx context.Context, video domain.Video) error
@@ -175,6 +174,12 @@ type Options struct {
 	Visibility Visibility
 	// Folders はフォルダ画面の問い合わせ先。nilなら該当経路は500を返す。
 	Folders Folders
+	// FolderGroups はフォルダのまとめ方の保存先。nilならまとめ方の変更とグループの
+	// タグ化の経路は500を返し、フォルダの応答には grouping が載らない。
+	FolderGroups FolderGroups
+	// Library はライブラリの項目（動画とグループ）の問い合わせ先。nilなら
+	// /api/library*・グループ1件の経路は500を返す。
+	Library LibraryItems
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
 	Transcoder Transcoder
 	// Artifacts は生成物（サムネイル・シーク用プレビュー・ホバープレビュー）の
@@ -224,6 +229,8 @@ type server struct {
 	tags         Tags
 	visibility   Visibility
 	folders      Folders
+	folderGroups FolderGroups
+	library      LibraryItems
 	transcoder   Transcoder
 	artifacts    ArtifactReader
 	catalog      VideoCatalog
@@ -249,6 +256,7 @@ type server struct {
 //	/api/processing  → JSON（同上）
 //	/api/events      → Server-Sent Events（同上）
 //	/api/folders*    → JSON（同上）
+//	/api/library*    → JSON（同上）
 //	/api/tags*       → JSON（同上）
 //	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
@@ -276,6 +284,8 @@ func NewRouter(opts Options) http.Handler {
 		tags:         opts.Tags,
 		visibility:   opts.Visibility,
 		folders:      opts.Folders,
+		folderGroups: opts.FolderGroups,
+		library:      opts.Library,
 		transcoder:   opts.Transcoder,
 		artifacts:    opts.Artifacts,
 		catalog:      opts.Catalog,
@@ -383,6 +393,10 @@ func requiresJSONBody(r *http.Request) bool {
 	case http.MethodPut:
 		if r.URL.Path == "/api/video-visibility" {
 			return true
+		}
+		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/folders/"); ok {
+			id, rest, found := strings.Cut(suffix, "/")
+			return found && id != "" && rest == "grouping"
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/media-folders/"); ok {
 			return id != "" && !strings.Contains(id, "/")

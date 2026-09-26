@@ -50,9 +50,14 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 		summaries = append(summaries, listing.Folder)
 	}
 	domain.SortFolders(summaries)
+	groupings, err := s.folderGroupings(r.Context(), audience, summaries)
+	if err != nil {
+		s.folderError(w, r, "フォルダを取得できませんでした", err)
+		return
+	}
 
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.RootFolderListing{Folders: s.apiFolders(r.Context(), audience, summaries)}, s.logger)
+	writeJSON(w, http.StatusOK, gen.RootFolderListing{Folders: s.apiFolders(r.Context(), audience, summaries, groupings)}, s.logger)
 }
 
 // GetFolder はフォルダ1件と直下の子フォルダを返す（GET /api/folders/{rootId}）。
@@ -76,10 +81,22 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 		return
 	}
 
+	// 開いたフォルダと子フォルダのまとめ方を、同じ読み取りから引く。
+	groupings, err := s.folderGroupings(r.Context(), audience, append([]domain.FolderSummary{listing.Folder}, listing.Folders...))
+	if err != nil {
+		s.folderError(w, r, "フォルダを取得できませんでした", err)
+		return
+	}
+	var folderGrouping *gen.FolderGrouping
+	var childGroupings []*gen.FolderGrouping
+	if groupings != nil {
+		folderGrouping, childGroupings = groupings[0], groupings[1:]
+	}
+
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.FolderListing{
-		Folder:  s.apiFolder(r.Context(), audience, listing.Folder),
-		Folders: s.apiFolders(r.Context(), audience, listing.Folders),
+		Folder:  s.apiFolder(r.Context(), audience, listing.Folder, folderGrouping),
+		Folders: s.apiFolders(r.Context(), audience, listing.Folders, childGroupings),
 	}, s.logger)
 }
 
@@ -199,10 +216,16 @@ func listingHasVideos(listing domain.FolderListing) bool {
 	return listing.Folder.VideoCount > 0 || len(listing.Folders) > 0
 }
 
-func (s *server) apiFolders(ctx context.Context, audience domain.Audience, folders []domain.FolderSummary) []gen.FolderSummary {
+// apiFolders はフォルダたちを契約の形へ写す。groupings は folderGroupings の結果で、
+// nil なら grouping を省く。
+func (s *server) apiFolders(ctx context.Context, audience domain.Audience, folders []domain.FolderSummary, groupings []*gen.FolderGrouping) []gen.FolderSummary {
 	out := make([]gen.FolderSummary, 0, len(folders))
-	for _, folder := range folders {
-		out = append(out, s.apiFolder(ctx, audience, folder))
+	for i, folder := range folders {
+		var grouping *gen.FolderGrouping
+		if groupings != nil {
+			grouping = groupings[i]
+		}
+		out = append(out, s.apiFolder(ctx, audience, folder, grouping))
 	}
 	return out
 }
@@ -210,8 +233,9 @@ func (s *server) apiFolders(ctx context.Context, audience domain.Audience, folde
 // apiFolder はフォルダ1件を契約の形へ写す。差し込むサムネイルの previewUrl は
 // 動画一覧と同じ presentVideos を通し、ファイルが今あるときだけ出す（消えていれば
 // 作り直しを積む）。登録フォルダの絶対パス（rootPath）はゲストの応答から外す
-// （contracts/guest-api.md §1）。
-func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder domain.FolderSummary) gen.FolderSummary {
+// （contracts/guest-api.md §1）。まとめ方（grouping）は所有者にだけ載せる
+// （017 の contracts/folder-groups-api.md §1）。
+func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder domain.FolderSummary, grouping *gen.FolderGrouping) gen.FolderSummary {
 	videos := make([]domain.Video, 0, len(folder.Previews))
 	for _, preview := range folder.Previews {
 		videos = append(videos, domain.Video{
@@ -242,6 +266,7 @@ func (s *server) apiFolder(ctx context.Context, audience domain.Audience, folder
 	if audience.IsOwner() {
 		rootPath := folder.RootPath
 		out.RootPath = &rootPath
+		out.Grouping = grouping
 	}
 	return out
 }

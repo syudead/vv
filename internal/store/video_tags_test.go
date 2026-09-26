@@ -407,11 +407,14 @@ func TestTagsByContentKeysReturnsOriginalNamesInNaturalOrder(t *testing.T) {
 	if _, ok := got["key-none"]; ok {
 		t.Error("記録の無い content_key が結果に現れている")
 	}
-	wantA := []domain.TagRef{{ID: tag2.ID, Name: "tag2"}, {ID: tag10.ID, Name: "tag10"}}
+	wantA := []domain.VideoTag{
+		{TagRef: domain.TagRef{ID: tag2.ID, Name: "tag2"}, Manual: true},
+		{TagRef: domain.TagRef{ID: tag10.ID, Name: "tag10"}, Manual: true},
+	}
 	if len(got["key-a"]) != 2 || got["key-a"][0] != wantA[0] || got["key-a"][1] != wantA[1] {
 		t.Errorf("key-a = %+v, want %+v (自然順、シノニムでなく元の名前)", got["key-a"], wantA)
 	}
-	wantB := []domain.TagRef{{ID: tag2.ID, Name: "tag2"}}
+	wantB := []domain.VideoTag{{TagRef: domain.TagRef{ID: tag2.ID, Name: "tag2"}, Manual: true}}
 	if len(got["key-b"]) != 1 || got["key-b"][0] != wantB[0] {
 		t.Errorf("key-b = %+v, want %+v", got["key-b"], wantB)
 	}

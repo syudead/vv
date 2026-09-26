@@ -89,7 +89,7 @@ function summary(page: Page) {
 function listed(page: Page, sort: string) {
   return page.waitForResponse((response) => {
     const url = new URL(response.url());
-    return url.pathname === "/api/videos" && url.searchParams.get("sort") === sort;
+    return url.pathname === "/api/library" && url.searchParams.get("sort") === sort;
   });
 }
 
@@ -178,7 +178,7 @@ test.describe.serial("library search", () => {
     const requests: URL[] = [];
     page.on("request", (candidate) => {
       const url = new URL(candidate.url());
-      if (url.pathname === "/api/videos") requests.push(url);
+      if (url.pathname === "/api/library") requests.push(url);
     });
 
     await page.getByRole("button", { name: "絞り込み" }).click();

@@ -138,7 +138,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/videos/ids": {
+    "/api/library": {
         parameters: {
             query?: never;
             header?: never;
@@ -146,13 +146,42 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 絞り込みに合う動画の全件の id を返す
-         * @description `listVideos` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う全件の
-         *     id を、ページングせずに返す。並びは決めない。「すべて選択」用
-         *     （specs/014-video-tags/contracts/tags-api.md §5）。`/api/videos/{id}` とは
-         *     Go の ServeMux の字面の段の優先で区別される。
+         * ライブラリの項目（動画とグループ）の一覧を返す
+         * @description `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
+         *     （specs/017-folder-groups/contracts/library-api.md §1・data-model.md §5）。
+         *     グループのメンバーは1件のグループの項目に、それ以外は動画の項目になる。
+         *     `query`・`playable`・`tag` はメンバー単位で掛け（1本の動画が全条件を満たす）、
+         *     当たったメンバーが1本以上あればグループが出る。グループの値は、当たったかどうかに
+         *     関わらず全メンバーから数える。`watch` は項目の視聴状態に掛け、並べ替えは項目の値で
+         *     行う。`total` は絞り込み後の項目（カード）の数。カーソルの形は `listVideos` と同じ。
+         *
+         *     ゲストでは公開のメンバーだけを数え、公開のメンバーが1本のグループは動画の項目に
+         *     し、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
+         *     `playedDesc`、`tag` は `400` `invalid_request` にする（data-model.md §7）。
          */
-        get: operations["listVideoIds"];
+        get: operations["listLibrary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/library/ids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 絞り込みに合う項目の動画の id を返す
+         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う項目の、
+         *     動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
+         *     並びは決めない。「すべて選択」用（specs/017-folder-groups/contracts/library-api.md §2）。
+         */
+        get: operations["listLibraryIds"];
         put?: never;
         post?: never;
         delete?: never;
@@ -197,6 +226,9 @@ export interface paths {
          *     id の大きい方が先）で補う。最大20件で、この動画自身は含めない。同じフォルダの
          *     順序は全順序で、自然順が同じならファイル名のバイト順、それも同じなら id の
          *     小さい方を先にする。
+         *     この動画がグループのメンバーなら、group にグループの全メンバーを載せ、nextId・prevId を
+         *     グループの中の並びにし、同じグループのメンバーを除いてから並べる
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）。
          */
         get: operations["getRelatedVideos"];
         put?: never;
@@ -700,6 +732,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/folders/{rootId}/group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * フォルダのグループ1件を返す
+         * @description 一覧に残っているグループのカードを取り直すための経路
+         *     （specs/017-folder-groups/contracts/library-api.md §3）。絞り込みに関係なく、
+         *     グループの全メンバーから作る。そのフォルダが今グループでないか無いときは 404。
+         *
+         *     ゲストでは公開のメンバーだけから作り、公開のメンバーが2本以上なければ 404 にする
+         *     （data-model.md §7）。
+         */
+        get: operations["getFolderGroup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/folders/{rootId}/grouping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * フォルダのまとめ方の例外を付ける・外す
+         * @description `auto` は例外を外し、`ungroup` は「まとめを解除」、`groupDirect` は「直下をまとめる」を付ける
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §1）。同じ値の再設定も 200。
+         *     例外の保存と索引の作り直しは1つの取引で、後の要求が勝つ。フォルダの有無は
+         *     `getFolder` と同じ判定で、無ければ 404。
+         */
+        put: operations["setFolderGrouping"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/folders/{rootId}/grouping/tag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * グループをタグに変える
+         * @description 1つの取引で、フォルダ名を `NormalizeTagName` に通し、名前かシノニムで引けたタグを使うか
+         *     新しく作り、そのフォルダに `ungroup` を書き、索引を作り直す
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §2）。本文は無い。
+         *     フォルダ名がタグ名の規則に合わなければ `400` `invalid_request` で、タグも例外も作らない。
+         *     そのフォルダが今グループでないか、登録フォルダそのものなら `409` `conflict`。
+         */
+        post: operations["tagFolderGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/scans/current": {
         parameters: {
             query?: never;
@@ -847,6 +951,20 @@ export interface components {
             id: number;
             name: string;
         };
+        /**
+         * @description 動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
+         *     フォルダ名からも付いていれば1件にまとめて両方を真にする
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §4）。
+         */
+        VideoTag: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description 手で付けた分がある */
+            manual: boolean;
+            /** @description 祖先のフォルダ名がこのタグの名前かシノニムに一致する */
+            fromFolder: boolean;
+        };
         /** @description 管理画面と候補に出す1件（contracts/tags-api.md §1）。 */
         Tag: {
             /** Format: int64 */
@@ -913,7 +1031,10 @@ export interface components {
         };
         VideoTagsSummaryItem: {
             tag: components["schemas"]["TagRef"];
+            /** @description 手で付けた分とフォルダ名から付いている分のどちらかで付いている本数 */
             count: number;
+            /** @description 手で付けた本数 */
+            manualCount: number;
         };
         VideoTagsSummary: {
             total: number;
@@ -972,6 +1093,73 @@ export interface components {
              */
             missingTagIds?: number[];
         };
+        LibraryPage: {
+            items: components["schemas"]["LibraryItem"][];
+            /** @description 絞り込み後の項目（カード）の数。ページングとは独立に返る */
+            total: number;
+            /** @description 次のページの取得に渡す。これ以上無い場合は省略される */
+            nextCursor?: string;
+            /** @description tag のうち存在しなかった id。1つも無ければ省略される */
+            missingTagIds?: number[];
+        };
+        /** @description ライブラリの項目1件。`kind` に応じて `video` か `group` のちょうど一方が入る */
+        LibraryItem: {
+            /** @enum {string} */
+            kind: "video" | "group";
+            video?: components["schemas"]["Video"];
+            group?: components["schemas"]["LibraryGroup"];
+        };
+        /**
+         * @description グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
+         *     （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
+         *     グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
+         *     `lastPlayedAt` を省き、`tags` を空の配列にする。
+         */
+        LibraryGroup: {
+            folder: components["schemas"]["VideoFolder"];
+            /** @description フォルダ名 */
+            name: string;
+            videoCount: number;
+            /** @description 完了したメンバーの数。所有者の応答にだけ入る */
+            watchedCount?: number;
+            /**
+             * @description 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
+             *     inProgress。所有者の応答にだけ入る
+             * @enum {string}
+             */
+            watchState?: "unwatched" | "inProgress" | "watched";
+            /**
+             * Format: int64
+             * @description 長さの分かっているメンバーの合計。1本も分からなければ省く
+             */
+            durationMs?: number;
+            /**
+             * Format: int64
+             * @description メンバーの代表の所在の大きさの合計
+             */
+            sizeBytes: number;
+            /**
+             * Format: date-time
+             * @description メンバーの追加日時の最大
+             */
+            addedAt: string;
+            /**
+             * Format: date-time
+             * @description メンバーの最後に再生した時刻の最大。無ければ省く
+             */
+            lastPlayedAt?: string;
+            cover: components["schemas"]["Video"];
+            /**
+             * Format: int64
+             * @description 押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の
+             *     未完了のメンバー、全部完了なら最初のメンバー
+             */
+            openVideoId: number;
+            /** @description 全メンバーの id を並びの順に */
+            videoIds: number[];
+            /** @description メンバーのタグの和集合。同じタグの出所は和にする */
+            tags: components["schemas"]["VideoTag"][];
+        };
         FolderPreview: {
             /** Format: int64 */
             videoId: number;
@@ -998,6 +1186,33 @@ export interface components {
             folderCount: number;
             /** @description 直下の動画のうちサムネイル生成済みのもの。所在のパスの昇順で最大4件 */
             previews: components["schemas"]["FolderPreview"][];
+            grouping?: components["schemas"]["FolderGrouping"];
+        };
+        /**
+         * @description フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
+         *     `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+         * @enum {string}
+         */
+        FolderGroupingMode: "auto" | "ungroup" | "groupDirect";
+        /**
+         * @description フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
+         *     ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+         */
+        FolderGrouping: {
+            mode: components["schemas"]["FolderGroupingMode"];
+            /** @description いまこのフォルダの直下がグループか */
+            grouped: boolean;
+            /** @description グループで、登録フォルダそのものではない（グループをタグに変えられる） */
+            taggable: boolean;
+        };
+        FolderGroupingRequest: {
+            mode: components["schemas"]["FolderGroupingMode"];
+        };
+        FolderGroupTagResult: {
+            tag: components["schemas"]["TagRef"];
+            /** @description タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false */
+            created: boolean;
+            grouping: components["schemas"]["FolderGrouping"];
         };
         FolderListing: {
             folder: components["schemas"]["FolderSummary"];
@@ -1076,11 +1291,14 @@ export interface components {
             progress?: components["schemas"]["Progress"];
             location?: components["schemas"]["VideoLocation"];
             folder?: components["schemas"]["VideoFolder"];
+            group?: components["schemas"]["VideoGroupRef"];
             /**
              * @description 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-             *     無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列
+             *     無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
+             *     フォルダ名から付いている分も含む
+             *     （specs/017-folder-groups/contracts/folder-groups-api.md §4）
              */
-            tags: components["schemas"]["TagRef"][];
+            tags: components["schemas"]["VideoTag"][];
             /**
              * @description 公開の動画か。公開の動画はログインしていない人にも見える
              *     （specs/016-single-account-auth/contracts/guest-api.md §4）
@@ -1098,7 +1316,8 @@ export interface components {
         /**
          * @description 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
          *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-         *     登録フォルダにも含まれなければ省かれる
+         *     登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
+         *     （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
          */
         VideoFolder: {
             /**
@@ -1110,7 +1329,7 @@ export interface components {
             path: string;
             /**
              * @description 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-             *     応答にだけ入る
+             *     Video.folder にだけ入る（Video.group.folder には入らない）
              */
             rootName?: string;
         };
@@ -1124,18 +1343,51 @@ export interface components {
              */
             openable: boolean;
         };
+        /**
+         * @description 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
+         *     （location と同じ扱いで、一覧の項目には入らない）。ゲストの応答では公開のメンバー
+         *     だけで数え、公開のメンバーが1本だけなら省く
+         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）
+         */
+        VideoGroupRef: {
+            folder: components["schemas"]["VideoFolder"];
+            /** @description フォルダ名 */
+            name: string;
+            /** @description グループの中の並びで何本目か（1 始まり） */
+            position: number;
+            /** @description グループのメンバーの本数 */
+            count: number;
+        };
+        /**
+         * @description 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
+         *     メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
+         */
+        RelatedGroup: {
+            folder: components["schemas"]["VideoFolder"];
+            /** @description フォルダ名 */
+            name: string;
+            /** @description 全メンバーをグループの中の並びの順に、基準の動画を含めて並べる。上限は無い */
+            items: components["schemas"]["Video"][];
+        };
         RelatedVideos: {
+            /**
+             * @description 関連動画。基準の動画がグループのメンバーなら、同じグループのメンバーを除いてから
+             *     並べ、上限を掛ける
+             */
             items: components["schemas"]["Video"][];
             /**
              * Format: int64
-             * @description 同じディレクトリで自然順の次の動画。無ければ省く
+             * @description 次の動画。グループのメンバーならグループの中の並びの次（最後のメンバーでは省く）、
+             *     そうでなければ同じディレクトリで自然順の次の動画。無ければ省く
              */
             nextId?: number;
             /**
              * Format: int64
-             * @description 同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
+             * @description 前の動画。グループのメンバーならグループの中の並びの前（最初のメンバーでは省く）、
+             *     そうでなければ同じディレクトリで自然順の前の動画。無ければ省く。items に入るとは限らない
              */
             prevId?: number;
+            group?: components["schemas"]["RelatedGroup"];
         };
         ProgressUpdate: {
             /** Format: int64 */
@@ -1462,7 +1714,59 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
         };
     };
-    listVideoIds: {
+    listLibrary: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
+                 *     空白を含めて1語（フレーズ）、先頭の `-` はその語を含まない（除外）、単独の
+                 *     `OR` と `|` は前後の語のどちらかを含む（和）。全角・半角、大文字・小文字、
+                 *     ひらがな・カタカナなどの表記の揺れは吸収する。照合するのは題名と、登録
+                 *     フォルダより下の相対パスで、いずれも部分一致。先頭から 16 語までを使い、
+                 *     語が残らなければ絞り込まない。書き方の誤りは返さない
+                 */
+                query?: string;
+                /** @description 視聴状態で絞る。all は絞り込まない */
+                watch?: components["schemas"]["WatchFilter"];
+                /** @description true ならブラウザでそのまま再生できる（playable = true の）動画だけにする */
+                playable?: boolean;
+                /** @description 並び順 */
+                sort?: components["schemas"]["VideoSort"];
+                /**
+                 * @description `sort=random` の並びを決める値。同じ値ならページをまたいでも同じ並びになる。
+                 *     ほかの並び順では無視する
+                 */
+                seed?: number;
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+                /**
+                 * @description タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
+                 *     最大16個、17個以上は400。存在しない id は条件から落とし、応答の
+                 *     missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+                 */
+                tag?: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 項目の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    listLibraryIds: {
         parameters: {
             query?: {
                 query?: string;
@@ -1477,7 +1781,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 条件に合う全件の id */
+            /** @description 条件に合う項目の動画の id */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2404,6 +2708,104 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    getFolderGroup: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+                 */
+                path?: components["parameters"]["FolderPath"];
+            };
+            header?: never;
+            path: {
+                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                rootId: components["parameters"]["FolderRootId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description グループ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryGroup"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setFolderGrouping: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+                 */
+                path?: components["parameters"]["FolderPath"];
+            };
+            header?: never;
+            path: {
+                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                rootId: components["parameters"]["FolderRootId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FolderGroupingRequest"];
+            };
+        };
+        responses: {
+            /** @description 変更後のまとめ方 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderGrouping"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    tagFolderGroup: {
+        parameters: {
+            query?: {
+                /**
+                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
+                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+                 */
+                path?: components["parameters"]["FolderPath"];
+            };
+            header?: never;
+            path: {
+                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
+                rootId: components["parameters"]["FolderRootId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 使ったタグと、変更後のまとめ方 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FolderGroupTagResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     getCurrentScan: {

@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { ChevronDown, Folder, Tag, Ungroup } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router";
 
 import { getAuthSession } from "../api/auth";
@@ -18,9 +19,20 @@ import {
   saveProgress,
   type Video,
 } from "../api/client";
+import {
+  groupingFailure,
+  setFolderGrouping,
+  taggedMessage,
+  tagFolderGroup,
+  ungroupedMessage,
+} from "../api/folderGrouping";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
+import Button from "../ui/Button";
+import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
 import Skeleton from "../ui/Skeleton";
+import { useToast } from "../ui/Toast";
+import AutoplayNotice from "./AutoplayNotice";
 import EndedOverlay from "./EndedOverlay";
 import NeighborArrows from "./NeighborArrows";
 import { useKeyboardShortcuts } from "./keyboard";
@@ -71,6 +83,16 @@ function resumePosition(video: Video): number {
     ? 0
     : progress.positionMs;
 }
+
+/**
+ * AutoplayPhase は、グループのメンバーの再生が終わったときの層の段階である
+ * （specs/017-folder-groups/ui-design.md「Autoplay notice」）。
+ *
+ * - `notice`: 次のメンバーを自動で再生する予告
+ * - `cancelled`: 予告を取り消した。今の再生終了の層を出す
+ * - `gone`: 予告の間に次のメンバーが消えた。「もう一度見る」だけの層を出す
+ */
+type AutoplayPhase = "notice" | "cancelled" | "gone";
 
 /** 再生の試み。再試行と「次を再生」は、位置と自動再生を決めてプレイヤーを作り直す。 */
 interface Attempt {
@@ -128,6 +150,7 @@ export default function VideoPage() {
     autoplay: autoplayRequested(location.state),
   }));
   const [endedTakesFocus, setEndedTakesFocus] = useState(false);
+  const [autoplayPhase, setAutoplayPhase] = useState<AutoplayPhase>("notice");
   // 再生を始めて分かった映像の比率。解析の値より確かなので、分かればこちらを使う。
   const [mediaAspect, setMediaAspect] = useState<number | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -152,6 +175,7 @@ export default function VideoPage() {
     setFailure(null);
     setStatus(initialPlayerStatus);
     setEndedTakesFocus(false);
+    setAutoplayPhase("notice");
     setMediaAspect(null);
     setAttempt({ key: 0, startMs: null, autoplay: autoplayRequested(location.state) });
   }
@@ -243,6 +267,8 @@ export default function VideoPage() {
     if (next.ended && !endedRef.current) {
       const frame = frameRef.current;
       setEndedTakesFocus(frame !== null && frame.contains(document.activeElement));
+      // 終わるたびに、グループのメンバーなら予告から始める。
+      setAutoplayPhase("notice");
     }
     endedRef.current = next.ended;
     setStatus(next);
@@ -309,10 +335,14 @@ export default function VideoPage() {
     await refresh();
   }, [id, refresh]);
 
+  // グループのメンバーなら、前後はグループの中の並びで、題名はメンバーの並びから引く
+  // （関連動画の items は同じグループのメンバーを含まない）。
+  const neighbors = related.kind === "ready" ? related.related : undefined;
+  const group = neighbors?.group;
+  const findVideo = (targetId: number) =>
+    (group?.items ?? neighbors?.items)?.find((item) => item.id === targetId);
   const nextVideo =
-    related.kind === "ready" && related.related.nextId !== undefined
-      ? related.related.items.find((item) => item.id === related.related.nextId)
-      : undefined;
+    neighbors?.nextId !== undefined ? findVideo(neighbors.nextId) : undefined;
 
   const playNext = () => {
     if (nextVideo === undefined) return;
@@ -322,17 +352,26 @@ export default function VideoPage() {
   };
 
   // 左右の端の前後の動画。再生中（または見終えた後）に移ったときは、移った先でも再生を続ける。
-  const neighbors = related.kind === "ready" ? related.related : undefined;
   const neighbor = (targetId: number | undefined) =>
     targetId === undefined
       ? undefined
       : {
-          title: neighbors?.items.find((item) => item.id === targetId)?.title,
+          title: findVideo(targetId)?.title,
           go: () =>
             void navigate(`/videos/${String(targetId)}`, {
               state: { from: backTo, autoplay: status.playing || status.ended },
             }),
         };
+
+  // 予告を取り消したら今の再生終了の層を出す。フォーカスが予告の中にあったなら、
+  // 次の層の主な操作（「次を再生」）へ移す。
+  // 次のメンバーが消えたときも同じく、「もう一度見る」だけの層へフォーカスを渡す。
+  const leaveNotice = (phase: Exclude<AutoplayPhase, "notice">) => {
+    const frame = frameRef.current;
+    setEndedTakesFocus(frame !== null && frame.contains(document.activeElement));
+    setAutoplayPhase(phase);
+  };
+  const cancelAutoplay = () => leaveNotice("cancelled");
 
   // --- プレイヤーの上に重ねる層（同時に 1 つだけ） ---
   const playable =
@@ -356,10 +395,32 @@ export default function VideoPage() {
   const aspect = playerAspectRatio(video, mediaAspect);
   const chromeVisible = !status.playing || status.userActive;
   let layer: ReactNode = statusLayer;
-  if (layer === null && status.ended) {
+  // グループのメンバーで次のメンバーがあるときは、今の再生終了の層の代わりに予告を出す。
+  // グループに属さない動画は今のまま（受け入れ条件 17）。
+  const noticeShown =
+    layer === null &&
+    status.ended &&
+    group !== undefined &&
+    nextVideo !== undefined &&
+    autoplayPhase === "notice";
+  if (noticeShown) {
+    layer = (
+      <AutoplayNotice
+        key={`${String(id)}:${String(nextVideo.id)}`}
+        next={nextVideo}
+        backTo={backTo}
+        takeFocus={endedTakesFocus}
+        watchEvents={owner}
+        onCancel={cancelAutoplay}
+        onPlayNow={playNext}
+        onAdvance={playNext}
+        onGone={() => leaveNotice("gone")}
+      />
+    );
+  } else if (layer === null && status.ended) {
     layer = (
       <EndedOverlay
-        next={nextVideo}
+        next={autoplayPhase === "gone" ? undefined : nextVideo}
         backTo={backTo}
         takeFocus={endedTakesFocus}
         onReplay={() => controls?.restart()}
@@ -381,7 +442,11 @@ export default function VideoPage() {
     );
   }
 
-  useKeyboardShortcuts(showPlayer ? controls : null, close);
+  // 予告の間の Esc は取り消しにし、画面を閉じない（ui-design.md「Autoplay notice」）。
+  useKeyboardShortcuts(
+    showPlayer ? controls : null,
+    noticeShown ? cancelAutoplay : close,
+  );
 
   return (
     // 狭い画面はページ全体を 1 つとしてスクロールし、見出しの帯は上に留まる。広い画面は
@@ -459,6 +524,18 @@ export default function VideoPage() {
                 <CreatingLine video={video} />
                 {/* 題名とタグは1つのまとまり（ui-design.md「Video page tags」Placement）。 */}
                 <div className="flex flex-col gap-2">
+                  {video.group !== undefined && (
+                    <GroupLine
+                      group={video.group}
+                      owner={owner}
+                      onChanged={() => {
+                        // group が無くなるので、この行・メンバーの並び・前後が
+                        // ふつうの動画の形に戻る（ui-design.md「Group line」）。
+                        void refresh();
+                        retryRelated();
+                      }}
+                    />
+                  )}
                   <h1 className="text-xl leading-snug font-semibold text-fg [overflow-wrap:anywhere] sm:text-2xl">
                     {video.title}
                   </h1>
@@ -468,7 +545,7 @@ export default function VideoPage() {
                       // ルートのまま次の動画へ移ることがある）使い回されるため、
                       // VideoTags を videoId で作り直し、前の動画の重ねた
                       // 付け外し（appliedRef）を持ち越さない（Devin の指摘1）。
-                      key={video.id}
+                      key={`tags:${String(video.id)}`}
                       videoId={video.id}
                       tags={video.tags}
                       onStaleVideo={() => void refresh()}
@@ -478,7 +555,7 @@ export default function VideoPage() {
                     // 題名 → タグ → 公開の順（ui-design.md「Visibility toggle」）。
                     // 別の動画へ移ったら失敗の行を持ち越さないよう、id で作り直す。
                     <VisibilitySwitch
-                      key={video.id}
+                      key={`visibility:${String(video.id)}`}
                       videoId={video.id}
                       isPublic={video.public}
                     />
@@ -499,5 +576,115 @@ export default function VideoPage() {
         </aside>
       </div>
     </div>
+  );
+}
+
+/**
+ * GroupLine は題名の上に置く、グループ名と何本目かの1行である（要件 25、ui-design.md
+ * 「Group line」）。題名より小さく従の色にし、題名より先に目に入らないようにする。
+ * 見出しの帯のパンくずが同じフォルダへのリンクを持つので、グループ名はリンクにしない。
+ *
+ * 所有者では行全体をまとめ方のメニューの引き金にする（要件 29）。ゲストでは押せない文字の行。
+ */
+function GroupLine({
+  group,
+  owner,
+  onChanged,
+}: {
+  group: NonNullable<Video["group"]>;
+  owner: boolean;
+  /** まとめ方を変えた後（と 409 の後）に、動画と関連動画を取り直させる。 */
+  onChanged: () => void;
+}) {
+  const content = (
+    <>
+      <Folder className="size-3.5! shrink-0 text-fg-subtle" aria-hidden="true" />
+      <span className="truncate" title={group.name}>
+        {group.name}
+      </span>
+      <span className="shrink-0 text-fg-subtle" aria-hidden="true">
+        ·
+      </span>
+      <span className="shrink-0 tabular-nums">
+        {group.position} / {group.count}
+      </span>
+    </>
+  );
+  if (!owner) {
+    return (
+      <p className="flex min-w-0 items-center gap-1.5 text-xs text-fg-muted sm:text-sm">
+        {content}
+      </p>
+    );
+  }
+  return <GroupLineMenu group={group} onChanged={onChanged} content={content} />;
+}
+
+/** GroupLineMenu は所有者の Group line で、「まとめを解除」「グループをタグに変える」を開く。 */
+function GroupLineMenu({
+  group,
+  onChanged,
+  content,
+}: {
+  group: NonNullable<Video["group"]>;
+  onChanged: () => void;
+  content: ReactNode;
+}) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+  const folder = { rootId: group.folder.rootId, path: group.folder.path };
+
+  const run = async (tagging: boolean) => {
+    setBusy(true);
+    try {
+      if (tagging) {
+        toast(taggedMessage(await tagFolderGroup(folder)));
+      } else {
+        await setFolderGrouping(folder, "ungroup");
+        toast(ungroupedMessage(group.name));
+      }
+      onChanged();
+    } catch (failure) {
+      const { message, conflict } = groupingFailure(failure, {
+        name: group.name,
+        tagging,
+        notFoundMessage: "変更できませんでした",
+      });
+      toast(message);
+      if (conflict) onChanged();
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <MenuRoot>
+      <MenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          aria-label={`グループ「${group.name}」、${String(group.count)} 本中 ${String(group.position)} 本目。まとめ方のメニュー`}
+          // 文字の左端を題名にそろえ、行は題名より小さく従の色のままにする。
+          className="-ml-2 max-w-full min-w-0 self-start gap-1.5! font-normal! text-fg-muted! sm:text-sm!"
+        >
+          {content}
+          <ChevronDown className="size-3.5! shrink-0" aria-hidden="true" />
+        </Button>
+      </MenuTrigger>
+      <MenuContent align="start">
+        <MenuItem onSelect={() => void run(false)}>
+          <Ungroup aria-hidden="true" />
+          まとめを解除
+        </MenuItem>
+        {/* 登録フォルダそのもののグループはタグに変えられない（contracts §2）。 */}
+        {group.folder.path !== "" && (
+          <MenuItem onSelect={() => void run(true)}>
+            <Tag aria-hidden="true" />
+            グループをタグに変える
+          </MenuItem>
+        )}
+      </MenuContent>
+    </MenuRoot>
   );
 }

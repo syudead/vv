@@ -6,6 +6,7 @@ import {
   saveListSnapshot,
   type takeListSnapshot,
 } from "../api/listSnapshot";
+import { itemVideos } from "../api/libraryItems";
 import { useVideos } from "../api/useVideos";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
@@ -58,6 +59,7 @@ export default function RootSearchResults({
     loadMore,
     retryLoadMore,
     reload,
+    staleGroups,
   } = useVideos(criteria, restored);
 
   // ホバープレビューは同時に 1 件だけ（ライブラリと同じ）。一覧や倍率が変わったら止める。
@@ -89,9 +91,10 @@ export default function RootSearchResults({
         hasMore,
         scrollY: window.scrollY,
         scanId: knownScanId.current,
+        staleGroups: staleGroups(),
       },
     );
-  }, [criteria, cursor, hasMore, items, total]);
+  }, [criteria, cursor, hasMore, items, staleGroups, total]);
 
   // 置き場所を描けるのは登録フォルダ一覧が揃ったときだけ。それまでは位置の復元も
   // 続きの読み込みもしない（失敗中に観測点が見え続けて全件を読みに行かないように）。
@@ -165,7 +168,7 @@ export default function RootSearchResults({
                 {waiting ? (
                   <CardSkeleton count={12} />
                 ) : (
-                  items.map((video) => (
+                  itemVideos(items).map((video) => (
                     <VideoCard
                       key={video.id}
                       video={video}

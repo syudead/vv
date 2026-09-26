@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import type { Video } from "./client";
+import type { LibraryItem, Video } from "./client";
+import { itemVideos, videoItem } from "./libraryItems";
 import {
+  applyProgressToListSnapshot,
   clearListSnapshot,
   holdListSnapshot,
   saveListSnapshot,
@@ -36,7 +38,7 @@ function item(id: number): Video {
 /** body は鍵以外の中身を作る。 */
 function body(ids: number[], scrollY = 0) {
   return {
-    items: ids.map(item),
+    items: ids.map((id) => videoItem(item(id))),
     total: ids.length,
     cursor: "cursor-1",
     hasMore: true,
@@ -53,7 +55,7 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     saveListSnapshot({ query: "ねこ", sort: "titleAsc" }, body([1, 2], 640));
 
     const restored = takeListSnapshot({ query: "ねこ", sort: "titleAsc" });
-    expect(restored?.items.map((video) => video.id)).toEqual([1, 2]);
+    expect(itemVideos(restored?.items ?? []).map((video) => video.id)).toEqual([1, 2]);
     expect(restored?.total).toBe(2);
     expect(restored?.cursor).toBe("cursor-1");
     expect(restored?.hasMore).toBe(true);
@@ -75,9 +77,9 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     expect(takeListSnapshot({ query: "", sort: "addedDesc" })).toBeUndefined();
     expect(takeListSnapshot({ query: "", sort: "addedDesc", tags: [2] })).toBeUndefined();
     expect(
-      takeListSnapshot({ query: "", sort: "addedDesc", tags: [1] })?.items.map(
-        (video) => video.id,
-      ),
+      itemVideos(
+        takeListSnapshot({ query: "", sort: "addedDesc", tags: [1] })?.items ?? [],
+      ).map((video) => video.id),
     ).toEqual([1]);
   });
 
@@ -102,9 +104,11 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     saveListSnapshot({ query: "ねこ" }, body([1, 2]));
     saveListSnapshot({ query: "いぬ" }, body([3]));
 
-    expect(takeListSnapshot({ query: "いぬ" })?.items.map((video) => video.id)).toEqual([
-      3,
-    ]);
+    expect(
+      itemVideos(takeListSnapshot({ query: "いぬ" })?.items ?? []).map(
+        (video) => video.id,
+      ),
+    ).toEqual([3]);
     // 鍵ごとに溜めない。持つのは直近の 1 件だけである。
     expect(takeListSnapshot({ query: "ねこ" })).toBeUndefined();
   });
@@ -138,7 +142,9 @@ describe("控えを止める印（holdListSnapshot）", () => {
 
     second();
     saveListSnapshot({ query: "" }, body([1]));
-    expect(takeListSnapshot({ query: "" })?.items.map((video) => video.id)).toEqual([1]);
+    expect(
+      itemVideos(takeListSnapshot({ query: "" })?.items ?? []).map((video) => video.id),
+    ).toEqual([1]);
   });
 });
 
@@ -171,11 +177,13 @@ describe("付け外しの結果の反映", () => {
     recordAppliedVideoTags([2], { id: 5, name: "旅行" }, "add", nextVideoTagsSequence());
 
     const restored = takeListSnapshot({ query: "" });
-    expect(restored?.items.find((video) => video.id === 2)?.tags).toEqual([
-      { id: 5, name: "旅行" },
-    ]);
+    expect(
+      itemVideos(restored?.items ?? []).find((video) => video.id === 2)?.tags,
+    ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]);
     // 対象でない項目は変わらない。
-    expect(restored?.items.find((video) => video.id === 1)?.tags).toEqual([]);
+    expect(
+      itemVideos(restored?.items ?? []).find((video) => video.id === 1)?.tags,
+    ).toEqual([]);
     // tags 以外は変わらない。
     expect(restored?.total).toBe(2);
     expect(restored?.cursor).toBe("cursor-1");
@@ -186,8 +194,14 @@ describe("付け外しの結果の反映", () => {
       { query: "" },
       {
         items: [
-          { ...item(1), tags: [{ id: 5, name: "旅行" }] },
-          { ...item(2), tags: [{ id: 5, name: "旅行" }] },
+          videoItem({
+            ...item(1),
+            tags: [{ id: 5, name: "旅行", manual: true, fromFolder: false }],
+          }),
+          videoItem({
+            ...item(2),
+            tags: [{ id: 5, name: "旅行", manual: true, fromFolder: false }],
+          }),
         ],
         total: 2,
         cursor: "cursor-1",
@@ -204,10 +218,85 @@ describe("付け外しの結果の反映", () => {
     );
 
     const restored = takeListSnapshot({ query: "" });
-    expect(restored?.items.find((video) => video.id === 2)?.tags).toEqual([]);
+    expect(
+      itemVideos(restored?.items ?? []).find((video) => video.id === 2)?.tags,
+    ).toEqual([]);
     // 対象でない項目にはまだ付いている。
-    expect(restored?.items.find((video) => video.id === 1)?.tags).toEqual([
+    expect(
+      itemVideos(restored?.items ?? []).find((video) => video.id === 1)?.tags,
+    ).toEqual([{ id: 5, name: "旅行", manual: true, fromFolder: false }]);
+  });
+});
+
+// specs/017-folder-groups/plan.md の Structural Decisions 10・13: グループの値はメンバーから
+// 数えるので、控えの中では書き換えず、戻ったときに取り直す印を付ける。
+describe("控えの中のグループの項目", () => {
+  const groupItem: LibraryItem = {
+    kind: "group",
+    group: {
+      folder: { rootId: 3, path: "A/B" },
+      name: "B",
+      videoCount: 2,
+      sizeBytes: 2048,
+      addedAt: "2026-09-13T00:00:00Z",
+      cover: item(10),
+      openVideoId: 10,
+      videoIds: [10, 11],
+      tags: [],
+    },
+  };
+
+  function saveWithGroup() {
+    saveListSnapshot(
+      { query: "" },
+      {
+        items: [videoItem(item(1)), groupItem],
+        total: 2,
+        hasMore: false,
+        scrollY: 0,
+      },
+    );
+  }
+
+  it("メンバーの再生位置の保存で、グループに取り直しの印を付け、項目は変えない", () => {
+    saveWithGroup();
+    applyProgressToListSnapshot(11, {
+      positionMs: 1000,
+      completed: false,
+      updatedAt: "2026-09-23T00:00:00Z",
+    });
+
+    const restored = takeListSnapshot({ query: "" });
+    expect(restored?.staleGroups).toEqual([{ rootId: 3, path: "A/B" }]);
+    expect(restored?.items[1]).toBe(groupItem);
+    expect(itemVideos(restored?.items ?? [])[0]?.progress).toBeUndefined();
+  });
+
+  it("メンバーのタグの付け外しで、グループに取り直しの印を1つだけ付ける", () => {
+    saveWithGroup();
+    recordAppliedVideoTags(
+      [10, 11],
       { id: 5, name: "旅行" },
-    ]);
+      "add",
+      nextVideoTagsSequence(),
+    );
+    recordAppliedVideoTags([11], { id: 6, name: "山" }, "add", nextVideoTagsSequence());
+
+    const restored = takeListSnapshot({ query: "" });
+    expect(restored?.staleGroups).toEqual([{ rootId: 3, path: "A/B" }]);
+    expect(restored?.items[1]).toBe(groupItem);
+  });
+
+  it("メンバーでない動画の変化では印を付けない", () => {
+    saveWithGroup();
+    applyProgressToListSnapshot(1, {
+      positionMs: 1000,
+      completed: true,
+      updatedAt: "2026-09-23T00:00:00Z",
+    });
+
+    const restored = takeListSnapshot({ query: "" });
+    expect(restored?.staleGroups).toBeUndefined();
+    expect(itemVideos(restored?.items ?? [])[0]?.progress?.completed).toBe(true);
   });
 });

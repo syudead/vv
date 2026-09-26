@@ -102,7 +102,21 @@ function buildAddOptions(
   return { options, exactOption };
 }
 
-/** buildRemoveOptions は「タグを外す」の候補（要約のタグだけ）を作る。作成の行は持たない。 */
+/**
+ * removableSummary は要約から、選んだ動画のどれかに手で付けたタグ
+ * （`manualCount >= 1`）だけを残す。フォルダ名から付いているだけのタグは
+ * 外せないので、候補にも `disabled` の行にも出さない
+ * （specs/017-folder-groups/ui-design.md「Folder-derived tag chip」）。
+ */
+function removableSummary(summary: VideoTagsSummary): VideoTagsSummary {
+  return { ...summary, items: summary.items.filter((item) => item.manualCount >= 1) };
+}
+
+/**
+ * buildRemoveOptions は「タグを外す」の候補（要約のタグだけ）を作る。作成の行は持たない。
+ * 外れるのは手で付けた分だけなので、「一部」の判定と本数は `manualCount` で行い、
+ * 分母は選んだ本数（`total`）のままにする。
+ */
 function buildRemoveOptions(
   summary: VideoTagsSummary,
   input: string,
@@ -111,7 +125,7 @@ function buildRemoveOptions(
   const query = trimmed.toLowerCase();
 
   function toOption(item: VideoTagsSummaryItem): ComboboxOption {
-    const partial = item.count < summary.total;
+    const partial = item.manualCount < summary.total;
     return {
       id: String(item.tag.id),
       label: item.tag.name,
@@ -119,14 +133,14 @@ function buildRemoveOptions(
         <span className="inline-flex items-center gap-1">
           <CircleDashed className="size-3" aria-hidden="true" />
           <span>
-            一部 {item.count} / {summary.total} 件
+            一部 {item.manualCount} / {summary.total} 件
           </span>
         </span>
       ) : (
         `${String(summary.total)} 件`
       ),
       ariaLabel: partial
-        ? `${item.tag.name}、一部の動画だけ、${String(summary.total)} 件中 ${String(item.count)} 件`
+        ? `${item.tag.name}、一部の動画だけ、${String(summary.total)} 件中 ${String(item.manualCount)} 件`
         : undefined,
     };
   }
@@ -356,7 +370,7 @@ function RemoveTagPopover({
     summarizeVideoTags(selectedIds)
       .then((result) => {
         if (summarySeq.current !== seq) return;
-        setSummary(result);
+        setSummary(removableSummary(result));
       })
       .catch(() => {
         if (summarySeq.current !== seq) return;
@@ -475,7 +489,7 @@ function RemoveTagPopover({
         !fetchFailed &&
         summary !== null &&
         summary.items.length === 0 && (
-          <p className="text-xs text-fg-muted">選んだ動画にタグはありません</p>
+          <p className="text-xs text-fg-muted">選んだ動画に、外せるタグはありません</p>
         )}
       {!overLimit &&
         !loading &&
@@ -582,9 +596,14 @@ function VisibilityMenu({
 }
 
 export interface SelectionBarProps {
+  /** 選んだ動画の本数（グループはメンバーを数える）。 */
   count: number;
-  /** 今の条件に合う全件数（サーバーの total）。「すべて選択」の disabled 判定に使う。 */
-  total: number;
+  /**
+   * 選択が直前の「すべて選択」の応答と同じ集合のとき true。その間だけ「すべて選択」を
+   * 押せなくする（specs/017-folder-groups/ui-design.md「Pressing and selection」）。
+   * 選んだ本数と項目の数（total）は数えるものが違うので比べない。
+   */
+  allSelected: boolean;
   selectedIds: readonly number[];
   /** 「すべて選択」の要求の間 true（ui-design.md「Selection bar」の「Layout」）。 */
   selectingAll: boolean;
@@ -601,7 +620,7 @@ export interface SelectionBarProps {
 /** SelectionBar は 1 件以上選ぶと画面下部に浮く。 */
 export default function SelectionBar({
   count,
-  total,
+  allSelected,
   selectedIds,
   selectingAll,
   onSelectAll,
@@ -746,7 +765,7 @@ export default function SelectionBar({
           variant="ghost"
           size="sm"
           onClick={onSelectAll}
-          disabled={selectingAll || count >= total}
+          disabled={selectingAll || allSelected}
           className="order-2 sm:order-6"
         >
           {selectingAll ? "選択中…" : "すべて選択"}

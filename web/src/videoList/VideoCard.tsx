@@ -1,15 +1,5 @@
-import { AlertTriangle, Check, Folder, Globe, ImageOff } from "lucide-react";
-import {
-  memo,
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type MouseEvent,
-  type PointerEvent,
-} from "react";
+import { AlertTriangle, Check, Folder, Globe } from "lucide-react";
+import { memo, type MouseEvent, type ReactNode } from "react";
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
@@ -27,6 +17,7 @@ import {
 } from "../lib/format";
 import Checkbox from "../ui/Checkbox";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
+import { CardMedia, useCardPreview } from "./cardPreview";
 
 export interface VideoCardProps {
   video: Video;
@@ -133,8 +124,8 @@ function VideoCard(props: VideoCardProps) {
     selected,
     selectionMode,
     onSelect,
-    activePreviewId = null,
-    previewResetEpoch = 0,
+    activePreviewId,
+    previewResetEpoch,
     onPreviewStart,
     onPreviewReset,
     location,
@@ -146,96 +137,14 @@ function VideoCard(props: VideoCardProps) {
   const tagsRowNode = tagsRow?.(video);
   const publicMark = usePublicMark(video);
   const showTagsRow = tagsRow !== undefined && video.tags.length > 0;
-  const eligible =
-    rawUnplayable === null &&
-    video.previewState === "done" &&
-    video.previewUrl !== undefined;
-  const coordinated = props.activePreviewId !== undefined && onPreviewStart !== undefined;
-  const previewActive = !coordinated || activePreviewId === video.id;
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-  const lifecycle = useRef(0);
-  const observedResetEpoch = useRef(previewResetEpoch);
-  const [attempting, setAttempting] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const showingPreview = playing && previewActive;
-  const narrow = isNarrowVideo(video);
-
-  const setVideoElement = useCallback((element: HTMLVideoElement | null) => {
-    const previous = videoRef.current;
-    videoRef.current = element;
-    if (element === null && previous !== null) {
-      queueMicrotask(() => {
-        if (videoRef.current === previous || !previous.hasAttribute("src")) return;
-        previous.pause();
-        previous.removeAttribute("src");
-        previous.load();
-      });
-    }
-  }, []);
-
-  const releasePreview = useCallback(() => {
-    lifecycle.current += 1;
-    if (timer.current !== null) {
-      clearTimeout(timer.current);
-      timer.current = null;
-    }
-    const element = videoRef.current;
-    if (element !== null) {
-      element.pause();
-      element.removeAttribute("src");
-      element.load();
-    }
-    setAttempting(false);
-    setPlaying(false);
-  }, []);
-
-  useEffect(() => {
-    const resetChanged = observedResetEpoch.current !== previewResetEpoch;
-    observedResetEpoch.current = previewResetEpoch;
-    if (resetChanged || selectionMode || activePreviewId !== video.id) releasePreview();
-  }, [activePreviewId, previewResetEpoch, releasePreview, selectionMode, video.id]);
-
-  // Layout cleanup runs before React detaches videoRef, so navigation/unmount
-  // can still pause the element and release its resource.
-  useLayoutEffect(() => () => releasePreview(), [releasePreview]);
-
-  useEffect(() => {
-    if (!attempting) return;
-    const element = videoRef.current;
-    if (element === null) return;
-    const currentLifecycle = lifecycle.current;
-    try {
-      const result = element.play();
-      result?.catch(() => {
-        if (lifecycle.current === currentLifecycle) releasePreview();
-      });
-    } catch {
-      releasePreview();
-    }
-  }, [attempting, releasePreview]);
-
-  const startPreview = useCallback(
-    (event: PointerEvent<HTMLElement>) => {
-      const target = event.target;
-      if (
-        !eligible ||
-        selectionMode ||
-        event.pointerType !== "mouse" ||
-        (target instanceof Element && target.closest("[data-preview-checkbox]"))
-      ) {
-        releasePreview();
-        return;
-      }
-      if (timer.current !== null) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        timer.current = null;
-        onPreviewStart?.(video.id);
-        setAttempting(true);
-      }, 400);
-    },
-    [eligible, onPreviewStart, releasePreview, selectionMode, video.id],
-  );
+  const preview = useCardPreview({
+    video,
+    selectionMode,
+    activePreviewId,
+    previewResetEpoch,
+    onPreviewStart,
+  });
+  const { showingPreview, releasePreview, startPreview } = preview;
 
   return (
     <article
@@ -281,53 +190,7 @@ function VideoCard(props: VideoCardProps) {
         className="flex min-w-0 flex-col outline-none"
       >
         <div className="relative aspect-video w-full overflow-hidden bg-navbar">
-          <div
-            data-preview-media="true"
-            className="absolute inset-0 transition-transform duration-300 ease-out-quart group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100"
-          >
-            {video.thumbnailUrl !== undefined && narrow && (
-              <ThumbnailBackdrop src={video.thumbnailUrl} />
-            )}
-            {video.thumbnailUrl !== undefined ? (
-              <img
-                src={video.thumbnailUrl}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                className={cn(
-                  "relative h-full w-full object-contain",
-                  showingPreview && "opacity-0",
-                )}
-              />
-            ) : (
-              <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-fg-subtle">
-                <ImageOff className="size-6" strokeWidth={1.5} />
-                <span className="text-xs">
-                  {video.thumbnailState === "failed" ? "画像なし" : "準備中"}
-                </span>
-              </div>
-            )}
-
-            {attempting && previewActive && video.previewUrl !== undefined && (
-              <video
-                ref={setVideoElement}
-                src={video.previewUrl}
-                muted
-                playsInline
-                loop
-                preload="auto"
-                controls={false}
-                aria-hidden="true"
-                tabIndex={-1}
-                onPlaying={() => setPlaying(true)}
-                onError={releasePreview}
-                className={cn(
-                  "absolute inset-0 h-full w-full object-contain",
-                  showingPreview ? "opacity-100" : "opacity-0",
-                )}
-              />
-            )}
-          </div>
+          <CardMedia video={video} preview={preview} />
 
           {(publicMark || duration !== "") && (
             <span

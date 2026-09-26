@@ -1,11 +1,13 @@
 import type {
   FolderListing,
+  FolderRef,
+  LibraryItem,
   Progress,
   TagRef,
-  Video,
   VideoSort,
   WatchFilter,
 } from "./client";
+import { folderRefKey, groupsWithMembers } from "./libraryItems";
 import { applyTagToTags } from "./tagOrder";
 
 /**
@@ -48,8 +50,11 @@ export interface ListKey {
 export interface ListSnapshot {
   /** 鍵。ListKey を正規化して連結したもの。 */
   key: string;
-  /** 読み込み済みの項目（ページをまたいで連結済み）。 */
-  items: Video[];
+  /**
+   * 読み込み済みの項目（ページをまたいで連結済み）。動画の項目とグループの項目がある
+   * （specs/017-folder-groups/plan.md の Structural Decisions 13）。
+   */
+  items: LibraryItem[];
   /** 総件数（件数の表示に使う）。 */
   total: number;
   /** 次のページの続き位置。 */
@@ -68,6 +73,12 @@ export interface ListSnapshot {
    * 一度も取り込みを観測していなければ未設定。
    */
   scanId?: number;
+  /**
+   * 控えを取った後にメンバーの再生位置かタグが変わったグループの項目のフォルダである。
+   * グループの値はメンバーから数えるので、ここでは書き換えずに印だけ付け、一覧が
+   * 控えから戻ったときに `GET /api/folders/{rootId}/group` で取り直す（useVideos）。
+   */
+  staleGroups?: FolderRef[];
 }
 
 /**
@@ -148,23 +159,47 @@ export function takeListSnapshot(key: ListKey): ListSnapshot | undefined {
 }
 
 /**
+ * markStaleGroups は、`videoIds` をメンバーに持つ控えの中のグループに取り直しの印を付ける。
+ * 印の付いた控えを返す（当たるグループが無ければ受け取った控えのまま）。
+ */
+function markStaleGroups(
+  snapshot: ListSnapshot,
+  videoIds: readonly number[],
+): ListSnapshot {
+  const stale = groupsWithMembers(snapshot.items, videoIds);
+  if (stale.length === 0) return snapshot;
+  const merged = new Map(
+    (snapshot.staleGroups ?? []).map((folder) => [folderRefKey(folder), folder]),
+  );
+  for (const folder of stale) merged.set(folderRefKey(folder), folder);
+  return { ...snapshot, staleGroups: [...merged.values()] };
+}
+
+/**
  * applyProgressToListSnapshot は控えの中の動画1件の再生位置を差し替える。
  * 再生画面から戻ったとき、見終えた動画を未視聴のまま復元しないためである。
+ * その動画をメンバーに持つグループの項目には、戻ったときに取り直す印を付ける。
  */
 export function applyProgressToListSnapshot(videoId: number, progress: Progress): void {
-  if (held === undefined || !held.items.some((video) => video.id === videoId)) return;
-  held = {
-    ...held,
-    items: held.items.map((video) =>
-      video.id === videoId ? { ...video, progress } : video,
-    ),
-  };
+  if (held === undefined) return;
+  let next = markStaleGroups(held, [videoId]);
+  if (next.items.some((item) => item.kind === "video" && item.video.id === videoId)) {
+    next = {
+      ...next,
+      items: next.items.map((item) =>
+        item.kind === "video" && item.video.id === videoId
+          ? { kind: "video", video: { ...item.video, progress } }
+          : item,
+      ),
+    };
+  }
+  held = next;
 }
 
 /**
  * applyVisibilityToListSnapshot は控えの中の動画たちの公開フラグを差し替える。
  * 公開・非公開の切り替えの直後に、控えを取り直さず結果を反映するために使う
- * （タグの付け外しの applyTagToListSnapshot と同じ扱い）。
+ * （タグの付け外しの applyTagToListSnapshot と同じ扱い）。動画の項目だけが対象である。
  */
 export function applyVisibilityToListSnapshot(
   videoIds: readonly number[],
@@ -172,12 +207,21 @@ export function applyVisibilityToListSnapshot(
 ): void {
   if (held === undefined) return;
   const targets = new Set(videoIds);
-  if (!held.items.some((video) => targets.has(video.id) && video.public !== isPublic))
+  if (
+    !held.items.some(
+      (item) =>
+        item.kind === "video" &&
+        targets.has(item.video.id) &&
+        item.video.public !== isPublic,
+    )
+  )
     return;
   held = {
     ...held,
-    items: held.items.map((video) =>
-      targets.has(video.id) ? { ...video, public: isPublic } : video,
+    items: held.items.map((item) =>
+      item.kind === "video" && targets.has(item.video.id)
+        ? { kind: "video", video: { ...item.video, public: isPublic } }
+        : item,
     ),
   };
 }
@@ -195,6 +239,7 @@ export function clearListSnapshot(): void {
  * 直後に、控えを取り直さず結果を反映するために使う（issue 267、Plan の Structural
  * Decisions 7）。action = "remove" で絞り込みに合わなくなった項目も、その場では
  * 一覧から外さない（次の読み込みで反映する。contracts/tags-api.md §5）。
+ * 対象の動画をメンバーに持つグループの項目には、戻ったときに取り直す印を付ける。
  */
 export function applyTagToListSnapshot(
   videoIds: readonly number[],
@@ -203,13 +248,22 @@ export function applyTagToListSnapshot(
 ): void {
   if (held === undefined) return;
   const targets = new Set(videoIds);
-  if (!held.items.some((video) => targets.has(video.id))) return;
-  held = {
-    ...held,
-    items: held.items.map((video) =>
-      targets.has(video.id)
-        ? { ...video, tags: applyTagToTags(video.tags, tag, action) }
-        : video,
-    ),
-  };
+  let next = markStaleGroups(held, videoIds);
+  if (next.items.some((item) => item.kind === "video" && targets.has(item.video.id))) {
+    next = {
+      ...next,
+      items: next.items.map((item) =>
+        item.kind === "video" && targets.has(item.video.id)
+          ? {
+              kind: "video",
+              video: {
+                ...item.video,
+                tags: applyTagToTags(item.video.tags, tag, action),
+              },
+            }
+          : item,
+      ),
+    };
+  }
+  held = next;
 }

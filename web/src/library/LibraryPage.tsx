@@ -9,7 +9,8 @@ import {
 import { useLocation } from "react-router";
 
 import {
-  listVideoIds,
+  type LibraryGroup,
+  listLibraryIds,
   type TagRef,
   type Video,
   type VideoSort,
@@ -20,6 +21,7 @@ import {
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
+import { itemKey } from "../api/libraryItems";
 import { refreshTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
@@ -54,6 +56,7 @@ import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import ActiveTagFilters from "./ActiveTagFilters";
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
+import { GroupCard, GroupRow } from "./GroupCard";
 import LibraryToolbar from "./LibraryToolbar";
 import SelectionBar from "./SelectionBar";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
@@ -196,7 +199,8 @@ export default function LibraryPage() {
     loadMore,
     retryLoadMore,
     reload,
-  } = useVideos({ ...criteria, tag: tagIds }, restored);
+    staleGroups,
+  } = useVideos({ ...criteria, tag: tagIds }, restored, "library");
 
   // 絞り込みはサーバーが一覧の条件として適用する（Plan の Structural Decisions 7）。
   // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
@@ -206,6 +210,10 @@ export default function LibraryPage() {
 
   // --- 選択 ---
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set());
+  // selectAllIds は直前の「すべて選択」（GET /api/library/ids）の応答の ids である。
+  // 選択がこれと同じ集合の間だけ「すべて選択」を押せなくする（ui-design.md
+  // 「Pressing and selection」。選んだ本数と total は数えるものが違うので比べない）。
+  const [selectAllIds, setSelectAllIds] = useState<ReadonlySet<number> | null>(null);
   // 「すべて選択」の要求の間だけ true（下の selectAll が立てる）。
   const [selectingAll, setSelectingAll] = useState(false);
   // 「すべて選択」の進行中の要求を、手動の選択操作や条件の変化が起きたら
@@ -248,9 +256,46 @@ export default function LibraryPage() {
     },
     [invalidateSelectAll],
   );
+  // グループのカードのチェックは、全メンバー（videoIds）を選択に入れる・外す
+  // （specs/017-folder-groups/ui-design.md「Pressing and selection」）。
+  const changeGroupSelection = useCallback(
+    (ids: readonly number[], selected: boolean) => {
+      invalidateSelectAll();
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        for (const id of ids) {
+          if (selected) next.add(id);
+          else next.delete(id);
+        }
+        return next;
+      });
+    },
+    [invalidateSelectAll],
+  );
+  // 選択中にグループのカードのタグを押したときの切り替え。全メンバーが選択に
+  // 入っていれば外し、そうでなければ入れる。
+  const toggleGroupSelection = useCallback(
+    (ids: readonly number[]) => {
+      invalidateSelectAll();
+      setSelectedIds((current) => {
+        const next = new Set(current);
+        const all = ids.length > 0 && ids.every((id) => current.has(id));
+        for (const id of ids) {
+          if (all) next.delete(id);
+          else next.add(id);
+        }
+        return next;
+      });
+    },
+    [invalidateSelectAll],
+  );
   const clearSelection = useCallback(() => {
     invalidateSelectAll();
     setSelectedIds(new Set());
+    // 選択が消えたら、前の「すべて選択」の応答はもう比べない。条件が変わった後に
+    // 同じ id を手で選び直しても、読んでいない項目が残りうるので押せるままにする
+    // （ui-design.md「Pressing and selection」）。
+    setSelectAllIds(null);
   }, [invalidateSelectAll]);
 
   // --- 「すべて選択」（Plan の Structural Decisions 4） ---
@@ -259,7 +304,7 @@ export default function LibraryPage() {
   const selectAll = useCallback(() => {
     const seq = (selectAllSeq.current += 1);
     setSelectingAll(true);
-    listVideoIds({ query, watch, playable, tag: tagIds })
+    listLibraryIds({ query, watch, playable, tag: tagIds })
       .then((response) => {
         // 応答が届くまでの間に、手動の選択操作・別の「すべて選択」・条件の
         // 変化（下の conditionsSignature の効果も selectAllSeq を進める）が
@@ -279,7 +324,9 @@ export default function LibraryPage() {
           apply(latestCriteria, "replace", serializeTagIds(remaining));
           return;
         }
-        setSelectedIds(new Set(response.ids));
+        const selected = new Set(response.ids);
+        setSelectedIds(selected);
+        setSelectAllIds(selected);
       })
       .catch(() => {
         if (selectAllSeq.current !== seq) return;
@@ -383,9 +430,10 @@ export default function LibraryPage() {
         hasMore,
         scrollY: window.scrollY,
         scanId: knownScanId.current,
+        staleGroups: staleGroups(),
       },
     );
-  }, [criteria, cursor, hasMore, items, tagIds, total]);
+  }, [criteria, cursor, hasMore, items, staleGroups, tagIds, total]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -455,6 +503,13 @@ export default function LibraryPage() {
   }, [restored]);
 
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
+  const allSelected = useMemo(
+    () =>
+      selectAllIds !== null &&
+      selectAllIds.size === selectedIds.size &&
+      Array.from(selectedIds).every((id) => selectAllIds.has(id)),
+    [selectAllIds, selectedIds],
+  );
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
@@ -480,6 +535,33 @@ export default function LibraryPage() {
       ) : undefined,
     [pressTag, selectionMode, toggleSelection, view],
   );
+
+  const renderGroupTagsRow = useCallback(
+    (group: LibraryGroup) =>
+      view === "grid" ? (
+        <CardTagRow
+          tags={group.tags}
+          selectionMode={selectionMode}
+          onPress={pressTag}
+          onToggleSelection={() => toggleGroupSelection(group.videoIds)}
+        />
+      ) : undefined,
+    [pressTag, selectionMode, toggleGroupSelection, view],
+  );
+
+  const groupProps = (group: LibraryGroup) => ({
+    group,
+    backTo: listUrl,
+    selected:
+      group.videoIds.length > 0 && group.videoIds.every((id) => selectedIds.has(id)),
+    selectionMode,
+    onSelect: owner ? changeGroupSelection : undefined,
+    activePreviewId,
+    previewResetEpoch,
+    onPreviewStart: startPreview,
+    onPreviewReset: resetPreview,
+    tagsRow: renderGroupTagsRow,
+  });
 
   const rowProps = (video: Video) => ({
     video,
@@ -559,7 +641,15 @@ export default function LibraryPage() {
               {loading ? (
                 <CardSkeleton count={skeletonCount} />
               ) : (
-                items.map((video) => <VideoCard key={video.id} {...rowProps(video)} />)
+                // グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
+                // 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。
+                items.map((item) =>
+                  item.kind === "video" ? (
+                    <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
+                  ) : (
+                    <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
+                  ),
+                )
               )}
               {loadingMore && <CardSkeleton count={6} />}
             </Grid>
@@ -587,9 +677,13 @@ export default function LibraryPage() {
                 </tr>
               </thead>
               <tbody className="[&>tr:nth-child(odd)]:bg-hover-wash/40">
-                {items.map((video) => (
-                  <VideoRow key={video.id} {...rowProps(video)} />
-                ))}
+                {items.map((item) =>
+                  item.kind === "video" ? (
+                    <VideoRow key={itemKey(item)} {...rowProps(item.video)} />
+                  ) : (
+                    <GroupRow key={itemKey(item)} {...groupProps(item.group)} />
+                  ),
+                )}
               </tbody>
             </table>
           )
@@ -605,7 +699,7 @@ export default function LibraryPage() {
       {owner && (
         <SelectionBar
           count={selectedIds.size}
-          total={total}
+          allSelected={allSelected}
           selectedIds={selectedIdsArray}
           selectingAll={selectingAll}
           onSelectAll={selectAll}

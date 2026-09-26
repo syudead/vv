@@ -23,20 +23,20 @@ In place today: `cmd/mdm` reads the remaining `MDM_*` environment variables, che
 embedded goose migrations at startup, then starts the job worker. It serves `GET /api/health`,
 the video library API (`/api/videos*`, `/api/scans*`; a single video's response also
 carries its representative location, the folder that holds it (with the registered folder's
-display name, for the playback page's breadcrumb) and seek-preview state, and
-`/api/videos/{id}/related`, `/probe` and `/open` return related videos, retry a failed
+display name, for the playback page's breadcrumb), seek-preview state and, for a folder-group
+member, the group and its position in it, and
+`/api/videos/{id}/related`, `/probe` and `/open` return related videos (for a group member,
+also every member in group order, with next/previous inside the group), retry a failed
 metadata read, and open the file in the server PC's default app), media-folder settings and
 server-side directory picker APIs, the read-only folder browsing API
 (`/api/folders*`), the tag management API (`/api/tags*`: list, create,
 rename, delete, merge and synonym registration/removal), the video-tags API
 (`/api/video-tags` to attach/detach a tag on a set of videos and
-`/api/video-tags/summary` to summarize which tags apply to a selection) and
-`GET /api/videos/ids` (all matching video ids for a listing query, used for
-"select all"; distinguished from `GET /api/videos/{id}` by `ServeMux`'s
-literal-over-wildcard precedence), byte-range streaming,
+`/api/video-tags/summary` to summarize which tags apply to a selection),
+the library items API (`/api/library*`, below), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
-Both video lists, the library (`GET /api/videos`) and a folder
+The per-video lists, `GET /api/videos` (the folder view's root search) and a folder
 (`GET /api/folders/{rootId}/videos`, direct children by default or the whole
 subtree with `scope=subtree`), accept the same search expression (`query`),
 watch-state and playable filters, thirteen sort orders and a shuffle `seed`.
@@ -53,11 +53,32 @@ positions. The library list additionally accepts up to 16 `tag` ids (AND) and
 reports any that no longer exist in `missingTagIds`
 ([specs/014-video-tags/contracts/tags-api.md](specs/014-video-tags/contracts/tags-api.md)).
 
+`GET /api/library` takes the same parameters as `GET /api/videos` but returns
+library items: a video, or a folder group as one item
+(`LibraryStore.ListLibrary`). The search, playable and tag filters apply per
+member, a group appears when any member matches, its values (count, total
+duration and size, latest dates, watch state and the member to open, decided by
+`domain.GroupWatch` and `domain.GroupOpenIndex`) come from all of its members,
+and the watch filter, sort and `total` apply to items. `GET /api/library/ids`
+returns the matched videos plus every member of matched groups (owner only),
+and `GET /api/folders/{rootId}/group` refetches one group card. A guest sees
+groups built from public members only; a group with one public member is listed
+as that video
+([specs/017-folder-groups/contracts/library-api.md](specs/017-folder-groups/contracts/library-api.md)).
+`GET /api/videos` stays a per-video list for the folder view's root search.
+
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
 (`sha256` over the first and last 1MiB plus the size) so moves and renames do
 not duplicate rows, and queues the heavy work. Only a user-started scan walks the
-media folders; nothing reads the whole library at startup or after a scan.
+media folders. Just before a scan closes (done or failed), `internal/app` asks
+`ScanIndexStore.RebuildFolderIndex` to rebuild the folder index — folder groups and each
+video's ancestor folder names — by reading every location row in SQLite, never the
+filesystem; a failed rebuild does not fail the scan but marks the index stale. At startup
+the folder index is rebuilt only when its rule version is out of date or it is stale
+(`RefreshFolderIndex`, after the search-key refresh and before HTTP and the workers
+start), or when an interrupted scan was closed
+([specs/017-folder-groups/data-model.md](specs/017-folder-groups/data-model.md) §3).
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail, preview —
 each claiming only its own kind of job from the persistent `jobs` queue, one at a time,
 and handing it to `internal/app`, which drives the `internal/media` adapters
@@ -158,13 +179,17 @@ grace period, then stops the scanner and the workers so a running job returns to
 
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
 `video_locations` (including its per-location search keys), `location_search_fts`,
-`jobs`, `scans`, thumbnail files, and hover-preview MP4/manifest pairs are a rebuildable index
-(deleting them costs a rescan), while `playback_progress`, the tag tables
-(`tags`, `tag_names`, `video_tags`) and the per-video public flag (`public_videos`)
-are user data that cannot be reconstructed.
+`jobs`, `scans`, thumbnail files, hover-preview MP4/manifest pairs, and the folder index
+(`folder_groups`, `folder_group_members`, `video_folder_names`, `folder_index_state`) are a
+rebuildable index (deleting them costs a rescan), while `playback_progress`, the tag tables
+(`tags`, `tag_names`, `video_tags`), the per-video public flag (`public_videos`) and the
+per-folder grouping exceptions (`folder_group_overrides`) are user data that cannot be
+reconstructed.
 That is why playback positions, tag assignments and public flags are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
-key to `videos`.
+key to `videos`. Grouping exceptions are keyed by the folder's absolute path
+(`domain.FolderKey`) and carry no foreign key to `videos` or `media_folders`, so they
+survive rescans and media-folder changes.
 The single `account` row (username, Argon2id password hash and credential version) is
 also user data that cannot be reconstructed: deleting it sends the server back to first-run
 setup. `sessions` belongs to neither kind; it is transient state that a fresh login
@@ -181,16 +206,19 @@ compile:
 - `IngestStore` — the job queue (enqueue, claim, complete, fail, requeue, remaining
   work) and writing each ingest stage's result back to the video row, including the
   retry of a failed probe and the rebuild of a missing preview.
-- `LibraryStore` — reads of the index: the video list and search, folder browsing,
-  related videos, a video's locations, and the startup refresh of search keys. The
+- `LibraryStore` — reads of the index: the video list and search, library items
+  (videos and folder groups, a group's card and the "select all" ids), folder browsing,
+  related videos and the folder group a video belongs to (`VideoGroup`), a video's
+  locations, and the startup refresh of search keys. The
   video list can AND-filter on a set of tag ids and reports which of them do not
-  exist (`VideoQuery.TagIDs`/`VideoPage.MissingTagIDs`), and `VideoIDs` returns the
-  matching id set unpaged for "select all"
-  (`specs/014-video-tags/data-model.md` §6). The search-box term matcher also OR-matches
+  exist (`VideoQuery.TagIDs`/`VideoPage.MissingTagIDs`), and `LibraryIDs` returns the
+  matching item ids unpaged for the library's "select all"
+  (`specs/014-video-tags/data-model.md` §6,
+  `specs/017-folder-groups/contracts/library-api.md` §2). The search-box term matcher also OR-matches
   a video's tag names (original name and synonyms) alongside title and path
   (`specs/014-video-tags/data-model.md` §7). Every read that returns videos, locations
   or folders (`ListVideos`, `ListFolderVideos`, `DirectVideoPaths`, `GetVideo`,
-  `VideosAddedNear`, `VideosByIDs`, `FolderLocations`, `HasFolderLocations`) takes a
+  `VideosAddedNear`, `VideosByIDs`, `VideoGroup`, `FolderLocations`, `HasFolderLocations`) takes a
   `domain.Audience`, and its location condition goes through one function,
   `visibleLocationCondition`: the owner sees every location under a registered folder,
   a guest additionally only those of videos with a non-empty content key in
@@ -203,8 +231,19 @@ compile:
   (`internal/store/roles.go`), never called as another role's public method.
 - `ScanStore` — the state of a scan run.
 - `ScanIndexStore` — reflecting a scan's filesystem facts into the index (upserting
-  locations, removing missing ones and the videos they orphan).
-- `SettingsStore` — registering, replacing and removing media folders.
+  locations, removing missing ones and the videos they orphan), rebuilding the folder
+  index before a scan closes, and the startup refresh of an out-of-date folder index.
+- `SettingsStore` — registering, replacing and removing media folders, rebuilding the
+  folder index in the same transaction.
+- `FolderGroupStore` — setting and clearing a folder's grouping exception (`ungroup`,
+  `group_direct`), turning a folder's group into a tag (finding or creating the tag by
+  name or synonym and writing `ungroup`), each rebuilding the folder index in the same
+  transaction, and reading folders' groupings for `FolderSummary.grouping`. The tag
+  lookup and creation are the package-private `findOrCreateTag` and `insertTag`
+  (`internal/store/tags.go`), shared with `TagStore`. The rebuild
+  itself is the package-private `rebuildFolderIndex`, shared by `ScanIndexStore`,
+  `SettingsStore` and `FolderGroupStore`; the assignment rule is the pure
+  `domain.BuildFolderIndex` (`specs/017-folder-groups/data-model.md` §2).
 - `PlaybackStore` — playback positions. It holds only the SQL connection and does not
   depend on the rebuildable index stores or their notifications.
 - `TagStore` — tags themselves: create, rename, delete, merge, register/remove a
@@ -325,8 +364,9 @@ way only. The packages under `internal/` fall into three layers:
   (`Scans`); processing one probe, thumbnail or preview job — checking the claimed
   identity, calling the generator, applying the result, publishing the outcome, and
   removing artifacts whose content lost its last reference (`Ingest`); and the decisions behind a video response — requeueing a missing hover
-  preview, deriving the seek-preview state — plus assembling related videos
-  (`Catalog`); and adding, replacing and removing media folders after the
+  preview, deriving the seek-preview state — plus assembling related videos, which for a
+  folder-group member orders next/previous inside the group and leaves its members out of
+  the related list (`Catalog`); and adding, replacing and removing media folders after the
   filesystem adapter has checked the path (`MediaFolders`); and first-run setup,
   login verification with per-source throttling, and issuing, checking and
   revoking login sessions (`Auth`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
@@ -383,7 +423,12 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 `task generate` rewrites them from `api/openapi.yaml`), `serverEvents.ts` shares one
 `EventSource` on `/api/events` among its subscribers, `useVideos.ts` owns
 paging and request cancellation for the library list and re-fetches a listed video in
-place when a `video` event names it, `useVideoDetail.ts`
+place when a `video` event names it. Its items are `LibraryItem`s (a video or a folder
+group, `libraryItems.ts`); a group item is re-fetched from `GET /api/folders/{rootId}/group`
+when a member's progress, tags or `video` event changes, and dropped on 404; a group
+whose re-fetch has not settled is kept in the list snapshot's `staleGroups` and
+re-fetched when the list is restored.
+`useVideoDetail.ts`
 fetches one video for the playback screen and re-fetches it when a `video` event names
 it or the event stream reconnects, and `listSnapshot.ts`
 holds the in-memory snapshot that lets the list restore its position after a
@@ -440,8 +485,9 @@ returns to the list the screen was opened from): the player with the title, tags
 a file-facts row and a technical row on the left, related videos on the right. Keeping that choice to
 the one routing decision is what lets the shell stay ignorant of which screen it
 is framing. Inside `web/src/player/`, video.js owns only the control bar; ingest
-stages, read and playback failures, the ended prompt and the touch controls are
-React layers stacked in one container above the player, and keyboard shortcuts are
+stages, read and playback failures, the ended prompt (for a folder-group member with
+a next member, a five-second autoplay notice that re-checks that member before moving on)
+and the touch controls are React layers stacked in one container above the player, and keyboard shortcuts are
 handled page-wide rather than by video.js. The composition is recorded in
 [docs/design-docs/library-ui.md](docs/design-docs/library-ui.md).
 The shell exposes the library, the folder browser and media-folder settings as routes.

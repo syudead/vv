@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -125,4 +127,56 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 		}
 	}
 	return videos, nil
+}
+
+// VideoGroup は動画 id が属するグループを、見る人に見せてよいメンバーだけで返す
+// （GET /api/videos/{id} の group と関連動画の group、specs/017-folder-groups/contracts/folder-groups-api.md §3）。
+// メンバーは loadGroups と同じくグループの中の並びで、見せ方はライブラリの項目と同じである
+// （minGroupMembers）。グループに属さない動画、見せてよいメンバーが足りないグループ、
+// この動画自身を見せられないときは false を返す。
+//
+// グループのフォルダは、メンバーと同じ読み取りのスナップショットの登録フォルダから求める。
+// 索引は登録フォルダの変更と同じ取引で作り直されるので、求められなければ索引の不整合として
+// 失敗を返す。
+func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience, id int64) (domain.VideoGroup, bool, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.VideoGroup{}, false, fmt.Errorf("動画のグループの読み取りを始められません: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var groupID int64
+	err = tx.QueryRowContext(ctx, `select group_id from folder_group_members where video_id = ?`, id).Scan(&groupID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.VideoGroup{}, false, nil
+	}
+	if err != nil {
+		return domain.VideoGroup{}, false, fmt.Errorf("動画のグループを読み出せません: %w", err)
+	}
+	groups, err := loadGroups(ctx, tx, audience, []int64{groupID})
+	if err != nil {
+		return domain.VideoGroup{}, false, err
+	}
+	roots, err := listMediaFolders(ctx, tx)
+	if err != nil {
+		return domain.VideoGroup{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.VideoGroup{}, false, fmt.Errorf("動画のグループの読み取りを終えられません: %w", err)
+	}
+
+	group, ok := groups[groupID]
+	if !ok || len(group.Members) < minGroupMembers(audience) {
+		return domain.VideoGroup{}, false, nil
+	}
+	out := domain.VideoGroup{Name: group.Name, Members: group.Members}
+	if out.Position(id) == 0 {
+		return domain.VideoGroup{}, false, nil
+	}
+	folder, located := domain.LocateFolder(roots, group.Path)
+	if !located {
+		return domain.VideoGroup{}, false, fmt.Errorf("グループのフォルダが登録フォルダの下にありません: %s", group.Path)
+	}
+	out.Folder = folder
+	return out, true, nil
 }

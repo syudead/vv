@@ -29,6 +29,23 @@ interface VideoPage {
   nextCursor?: string;
 }
 
+/** LibraryPage はライブラリの一覧（`GET /api/library`）の応答。ここでは動画の項目だけを差し替える。 */
+interface LibraryPage {
+  items: { kind: "video" | "group"; video?: Video }[];
+  total: number;
+  nextCursor?: string;
+}
+
+/** replaceVideos はライブラリの一覧の動画の項目を replace の結果に置き換える。 */
+function replaceVideos(body: LibraryPage, replace: (item: Video) => Video): LibraryPage {
+  return {
+    ...body,
+    items: body.items.map((item) =>
+      item.video === undefined ? item : { ...item, video: replace(item.video) },
+    ),
+  };
+}
+
 interface MediaFolder {
   id: number;
   version: number;
@@ -322,16 +339,13 @@ test.describe.serial("library hover preview", () => {
       return copy;
     });
 
-    await page.route("**/api/videos?*", async (route) => {
+    await page.route("**/api/library?*", async (route) => {
       const response = await route.fetch();
-      const body = (await response.json()) as VideoPage;
+      const body = (await response.json()) as LibraryPage;
       const byID = new Map(variants.map((item) => [item.id, item]));
       await route.fulfill({
         response,
-        json: {
-          ...body,
-          items: body.items.map((item) => byID.get(item.id) ?? item),
-        },
+        json: replaceVideos(body, (item) => byID.get(item.id) ?? item),
       });
     });
     // 一覧は準備中の項目を1件ずつ取り直すので、1件の応答も同じ状態にそろえる。
@@ -483,25 +497,22 @@ test.describe.serial("library hover preview", () => {
       const context = await browser.newContext({ viewport: { width, height: 800 } });
       const page = await context.newPage();
       try {
-        await page.route("**/api/videos?*", async (route) => {
+        await page.route("**/api/library?*", async (route) => {
           const response = await route.fetch();
-          const body = (await response.json()) as VideoPage;
+          const body = (await response.json()) as LibraryPage;
           await route.fulfill({
             response,
-            json: {
-              ...body,
-              items: body.items.map((candidate) =>
-                candidate.id === item.id
-                  ? {
-                      ...candidate,
-                      progress:
-                        width === 768
-                          ? { positionMs: 0, completed: true, updatedAt: "" }
-                          : { positionMs: 3_000, completed: false, updatedAt: "" },
-                    }
-                  : candidate,
-              ),
-            },
+            json: replaceVideos(body, (candidate) =>
+              candidate.id === item.id
+                ? {
+                    ...candidate,
+                    progress:
+                      width === 768
+                        ? { positionMs: 0, completed: true, updatedAt: "" }
+                        : { positionMs: 3_000, completed: false, updatedAt: "" },
+                  }
+                : candidate,
+            ),
           });
         });
         await page.goto("/");

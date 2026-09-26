@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,8 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuthState } from "../api/auth";
 import { type RelatedVideos, setRenderedAudience, type Video } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
+import { saveListSnapshot, takeListSnapshot } from "../api/listSnapshot";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { reloadPage } from "../auth/pageNavigation";
+import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
 import type { PlayerControls } from "./playerControls";
 import type { PlayerStatus } from "./VideoPlayer";
@@ -93,6 +96,8 @@ const server = {
   related: new Map<number, RelatedVideos>(),
   probe: vi.fn<() => Response>(),
   open: vi.fn<() => Response>(),
+  /** フォルダのまとめ方の経路（PUT …/grouping・POST …/grouping/tag）の応答。 */
+  grouping: vi.fn<(method: string, url: string, body: unknown) => Response>(),
   /** GET /api/auth/session が答える見る人の状態。 */
   session: "owner" as AuthState,
 };
@@ -124,21 +129,26 @@ function Screen({ name }: { name: string }) {
 function renderPage(id = "7", from?: string, audience: Audience = "owner") {
   return render(
     <TooltipProvider>
-      <MemoryRouter
-        initialEntries={[
-          { pathname: `/videos/${id}`, state: from === undefined ? undefined : { from } },
-        ]}
-      >
-        <AudienceProvider audience={audience}>
-          <Link to="/videos/8">別の動画</Link>
-          <Link to="/videos/invalid">無効な動画</Link>
-          <Routes>
-            <Route path="/videos/:id" element={<VideoPage />} />
-            <Route path="/" element={<Screen name="ライブラリ" />} />
-            <Route path="/folders/*" element={<Screen name="フォルダ" />} />
-          </Routes>
-        </AudienceProvider>
-      </MemoryRouter>
+      <ToastProvider>
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: `/videos/${id}`,
+              state: from === undefined ? undefined : { from },
+            },
+          ]}
+        >
+          <AudienceProvider audience={audience}>
+            <Link to="/videos/8">別の動画</Link>
+            <Link to="/videos/invalid">無効な動画</Link>
+            <Routes>
+              <Route path="/videos/:id" element={<VideoPage />} />
+              <Route path="/" element={<Screen name="ライブラリ" />} />
+              <Route path="/folders/*" element={<Screen name="フォルダ" />} />
+            </Routes>
+          </AudienceProvider>
+        </MemoryRouter>
+      </ToastProvider>
     </TooltipProvider>,
   );
 }
@@ -174,6 +184,7 @@ describe("VideoPage", () => {
     });
     server.probe.mockReset();
     server.open.mockReset();
+    server.grouping.mockReset();
     fetchMock.mockReset();
     installFakeEventSource();
     server.session = "owner";
@@ -184,6 +195,11 @@ describe("VideoPage", () => {
       const method = init?.method ?? "GET";
       if (url === "/api/auth/session")
         return Promise.resolve(json({ state: server.session }));
+      if (url.startsWith("/api/folders/")) {
+        const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+        return Promise.resolve(server.grouping(method, url, body));
+      }
+      if (url === "/api/tags") return Promise.resolve(json([]));
       const match = /^\/api\/videos\/(\d+)(\/[a-z]+)?$/.exec(url);
       if (match === null) return Promise.resolve(json({}));
       const id = Number(match[1]);
@@ -783,6 +799,505 @@ describe("VideoPage", () => {
       expect(screen.queryByText("再生が終わりました")).toBeNull();
       fireEvent.click(closeButton());
       expect(screen.getByTestId("screen").textContent).toBe("フォルダ /folders/1/movies");
+    });
+  });
+
+  describe("グループのメンバー", () => {
+    const folder = { rootId: 1, path: "series" };
+    const member = (id: number, title: string, position: number): Video => ({
+      ...video,
+      id,
+      title,
+      group: { folder, name: "series", position, count: 3 },
+    });
+    const ep01 = member(11, "ep01", 1);
+    const ep02 = member(12, "ep02", 2);
+    const ep03 = member(13, "ep03", 3);
+    const listed = (value: Video): Video => ({ ...value, group: undefined });
+    const group = { folder, name: "series", items: [ep01, ep02, ep03].map(listed) };
+
+    beforeEach(() => {
+      server.videos.set(11, [ep01]);
+      server.videos.set(12, [ep02]);
+      server.videos.set(13, [ep03]);
+      server.related.set(11, { items: [related(8, "後続の動画")], nextId: 12, group });
+      server.related.set(12, {
+        items: [related(8, "後続の動画")],
+        nextId: 13,
+        prevId: 11,
+        group,
+      });
+      server.related.set(13, { items: [related(8, "後続の動画")], prevId: 12, group });
+    });
+
+    function end() {
+      act(() =>
+        player().onStatus({
+          loading: false,
+          playing: false,
+          userActive: true,
+          ended: true,
+        }),
+      );
+    }
+
+    async function advance(ms: number) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    }
+
+    async function openMember(id = "12") {
+      renderPage(id, "/?q=series");
+      await ready();
+      await screen.findByRole("heading", { level: 2, name: "続けて再生" });
+    }
+
+    const announcement = "再生が終わりました。5 秒後に次の動画「ep03」を再生します";
+
+    function videoRequests(id: number) {
+      return fetchMock.mock.calls.filter(
+        ([input, init]) =>
+          String(input) === `/api/videos/${String(id)}` &&
+          (init?.method ?? "GET") === "GET",
+      ).length;
+    }
+
+    it("題名の上にグループ名と何本目かの1行を出す。所有者ではまとめ方のメニューの引き金にする", async () => {
+      await openMember();
+      const title = screen.getByRole("heading", { level: 1 });
+      const line = title.previousElementSibling;
+      expect(line?.textContent).toBe("series·2 / 3");
+      expect(line?.tagName).toBe("BUTTON");
+      expect(line?.getAttribute("aria-label")).toBe(
+        "グループ「series」、3 本中 2 本目。まとめ方のメニュー",
+      );
+      expect(within(line as HTMLElement).queryByRole("link")).toBeNull();
+      expect(screen.getByTitle("series")).toBeDefined();
+    });
+
+    it("ゲストでは Group line を押せない文字の行にする", async () => {
+      renderPage("12", "/", "guest");
+      const title = await ready();
+      const line = title.previousElementSibling;
+      expect(line?.textContent).toBe("series·2 / 3");
+      expect(line?.tagName).toBe("P");
+      expect(screen.queryByRole("button", { name: /まとめ方のメニュー/ })).toBeNull();
+    });
+
+    describe("Group line のメニュー（ui-design.md「Group line」）", () => {
+      const single = (value: Video): Video => ({ ...value, group: undefined });
+      const lineButton = () =>
+        screen.findByRole("button", {
+          name: "グループ「series」、3 本中 2 本目。まとめ方のメニュー",
+        });
+
+      /** ungroupOnServer は、操作の後の取り直しでグループでなくなった応答を返させる。 */
+      function ungroupOnServer() {
+        server.videos.set(12, [single(ep02)]);
+        server.related.set(12, { items: [related(8, "後続の動画")], nextId: 8 });
+      }
+
+      it("「まとめを解除」で PUT を送り、トーストで伝え、動画と関連動画を取り直してふつうの形に戻す（受け入れ条件 3）", async () => {
+        const user = userEvent.setup();
+        server.grouping.mockImplementation(() =>
+          json({ mode: "ungroup", grouped: false, taggable: false }),
+        );
+        await openMember();
+        saveListSnapshot(
+          { query: "series" },
+          { items: [], total: 0, hasMore: false, scrollY: 0 },
+        );
+        ungroupOnServer();
+        await user.click(await lineButton());
+        const menu = await screen.findByRole("menu");
+        expect(
+          within(menu)
+            .getAllByRole("menuitem")
+            .map((item) => item.textContent),
+        ).toEqual(["まとめを解除", "グループをタグに変える"]);
+        await user.click(within(menu).getByRole("menuitem", { name: "まとめを解除" }));
+
+        expect(await screen.findByText("「series」のまとめを解除しました")).toBeDefined();
+        expect(server.grouping).toHaveBeenCalledWith(
+          "PUT",
+          "/api/folders/1/grouping?path=series",
+          { mode: "ungroup" },
+        );
+        await waitFor(() =>
+          expect(
+            screen.getByRole("heading", { level: 1 }).previousElementSibling,
+          ).toBeNull(),
+        );
+        await waitFor(() =>
+          expect(
+            screen.queryByRole("heading", { level: 2, name: "続けて再生" }),
+          ).toBeNull(),
+        );
+        // 閉じてライブラリを開くと、控えではなく読み直した一覧が出る。
+        expect(takeListSnapshot({ query: "series" })).toBeUndefined();
+      });
+
+      it("「グループをタグに変える」で POST を送り、既存のタグなら「付け」と伝える（受け入れ条件 5）", async () => {
+        const user = userEvent.setup();
+        server.grouping.mockImplementation(() =>
+          json({
+            tag: { id: 4, name: "series" },
+            created: false,
+            grouping: { mode: "ungroup", grouped: false, taggable: false },
+          }),
+        );
+        await openMember();
+        ungroupOnServer();
+        await user.click(await lineButton());
+        await user.click(
+          await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+        );
+        expect(
+          await screen.findByText("タグ「series」を付け、まとめを解除しました"),
+        ).toBeDefined();
+        expect(server.grouping).toHaveBeenCalledWith(
+          "POST",
+          "/api/folders/1/grouping/tag?path=series",
+          undefined,
+        );
+        await waitFor(() =>
+          expect(
+            screen.getByRole("heading", { level: 1 }).previousElementSibling,
+          ).toBeNull(),
+        );
+      });
+
+      it("タグ化の失敗をトーストで伝え、画面を変えない", async () => {
+        const user = userEvent.setup();
+        server.grouping.mockImplementation(() =>
+          json({ code: "invalid_request", message: "x" }, 400),
+        );
+        await openMember();
+        await user.click(await lineButton());
+        await user.click(
+          await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+        );
+        expect(
+          await screen.findByText(
+            "「series」はタグの名前に使えないため、タグに変えられません",
+          ),
+        ).toBeDefined();
+        const button = await lineButton();
+        await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+        expect(
+          screen.getByRole("heading", { level: 2, name: "続けて再生" }),
+        ).toBeDefined();
+      });
+
+      it("409 では「もうグループではありません」と伝え、動画と関連動画を取り直す", async () => {
+        const user = userEvent.setup();
+        server.grouping.mockImplementation(() =>
+          json({ code: "conflict", message: "x" }, 409),
+        );
+        await openMember();
+        saveListSnapshot(
+          { query: "series" },
+          { items: [], total: 0, hasMore: false, scrollY: 0 },
+        );
+        const before = videoRequests(12);
+        ungroupOnServer();
+        await user.click(await lineButton());
+        await user.click(await screen.findByRole("menuitem", { name: "まとめを解除" }));
+        expect(
+          await screen.findByText("このフォルダはもうグループではありません"),
+        ).toBeDefined();
+        // ほかのタブで先に変わったので、ライブラリの控えも古い。次に開くときは読み直させる。
+        expect(takeListSnapshot({ query: "series" })).toBeUndefined();
+        await waitFor(() => expect(videoRequests(12)).toBe(before + 1));
+        await waitFor(() =>
+          expect(
+            screen.queryByRole("heading", { level: 2, name: "続けて再生" }),
+          ).toBeNull(),
+        );
+      });
+
+      it("404 やほかの失敗は「変更できませんでした」", async () => {
+        const user = userEvent.setup();
+        server.grouping.mockImplementation(() =>
+          json({ code: "not_found", message: "x" }, 404),
+        );
+        await openMember();
+        await user.click(await lineButton());
+        await user.click(await screen.findByRole("menuitem", { name: "まとめを解除" }));
+        expect(await screen.findByText("変更できませんでした")).toBeDefined();
+      });
+
+      it("登録フォルダそのもののグループでは「グループをタグに変える」を出さない", async () => {
+        const user = userEvent.setup();
+        const rootFolder = { rootId: 1, path: "" };
+        server.videos.set(12, [
+          {
+            ...ep02,
+            group: { folder: rootFolder, name: "movies", position: 2, count: 3 },
+          },
+        ]);
+        await openMember();
+        await user.click(
+          await screen.findByRole("button", {
+            name: "グループ「movies」、3 本中 2 本目。まとめ方のメニュー",
+          }),
+        );
+        const menu = await screen.findByRole("menu");
+        expect(
+          within(menu)
+            .getAllByRole("menuitem")
+            .map((item) => item.textContent),
+        ).toEqual(["まとめを解除"]);
+      });
+
+      it("メニューが開いている間の Esc はメニューだけを閉じ、再生画面のままフォーカスを引き金へ戻す", async () => {
+        const user = userEvent.setup();
+        await openMember();
+        const button = await lineButton();
+        button.focus();
+        await user.keyboard("{Enter}");
+        await screen.findByRole("menu");
+        await user.keyboard("{Escape}");
+        await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+        expect(screen.queryByTestId("screen")).toBeNull();
+        expect(document.activeElement).toBe(button);
+        await user.keyboard("{Escape}");
+        expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=series");
+      });
+    });
+
+    it("グループに属さない動画は題名の上に何も出さない", async () => {
+      renderPage();
+      const title = await ready();
+      expect(title.previousElementSibling).toBeNull();
+    });
+
+    it("関連動画の列の上位にメンバーを順に並べ、今のメンバーを示し、境目の下にメンバーを出さない（受け入れ条件 15）", async () => {
+      await openMember();
+      const heading = screen.getByRole("heading", { level: 2, name: "続けて再生" });
+      const section = heading.closest("section");
+      if (section === null) throw new Error("列がありません");
+      const [members, others] = within(section).getAllByRole("list") as [
+        HTMLElement,
+        HTMLElement,
+      ];
+      expect(
+        within(members)
+          .getAllByRole("listitem")
+          .map((row) => row.getAttribute("aria-current") === "true"),
+      ).toEqual([false, true, false]);
+      expect(within(members).getByRole("link", { name: /ep01/ })).toBeDefined();
+      expect(within(members).getByRole("link", { name: /ep03/ })).toBeDefined();
+      expect(
+        within(others)
+          .getAllByRole("link")
+          .map((link) => link.textContent),
+      ).toEqual(["準備中4:02後続の動画"]);
+      expect(within(others).queryByRole("link", { name: /ep0/ })).toBeNull();
+    });
+
+    it("前後のつまみはグループの中の前後で、題名をメンバーの並びから引く", async () => {
+      await openMember();
+      expect(screen.getByRole("button", { name: "前の動画: ep01" })).toBeDefined();
+      expect(screen.getByRole("button", { name: "次の動画: ep03" })).toBeDefined();
+    });
+
+    it("再生が終わると予告を一度だけ読み上げ、5 秒後に確かめてから次のメンバーを再生する（受け入れ条件 16・19）", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember();
+      (await screen.findByRole("button", { name: "再生" })).focus();
+      end();
+      const statuses = screen
+        .getAllByRole("status")
+        .filter((node) => node.textContent === announcement);
+      expect(statuses).toHaveLength(1);
+      // フォーカスがプレイヤーの中にあったので「取り消す」へ移る。
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", { name: "取り消す" }),
+      );
+      // DOM の順でも「取り消す」が先。
+      const cancel = screen.getByRole("button", { name: "取り消す" });
+      const now = screen.getByRole("button", { name: "今すぐ再生" });
+      expect(
+        cancel.compareDocumentPosition(now) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      // 残り秒数は読み上げさせない。
+      const seconds = screen.getByText("5 秒後");
+      expect(seconds.getAttribute("aria-hidden")).toBe("true");
+      // タッチ用の中央操作は出さない。
+      expect(screen.queryByRole("button", { name: "再生" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "一時停止" })).toBeNull();
+
+      await advance(2000);
+      expect(screen.getByText("3 秒後")).toBeDefined();
+      // 秒数が減っても読み上げの文は増えない。
+      expect(
+        screen.getAllByRole("status").filter((node) => node.textContent === announcement),
+      ).toHaveLength(1);
+      const before = videoRequests(13);
+      await advance(3000);
+      await waitFor(() => expect(player().video.id).toBe(13));
+      expect(videoRequests(13)).toBeGreaterThan(before);
+      expect(player().autoplay).toBe(true);
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("ep03");
+      // メンバーを移っても × は開く前の一覧へ戻る。
+      fireEvent.click(closeButton());
+      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=series");
+    });
+
+    it("隠れたタブでタイマーが間引かれても、期限を過ぎていれば見えたときに次のメンバーを再生する", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      expect(screen.getByText("5 秒後")).toBeDefined();
+      // タイマーが一度も呼ばれないまま 30 秒経ったことにする。
+      const now = performance.now.bind(performance);
+      const skipped = now() + 30_000;
+      const clock = vi.spyOn(performance, "now").mockImplementation(() => skipped);
+      try {
+        act(() => {
+          document.dispatchEvent(new Event("visibilitychange"));
+        });
+        await waitFor(() => expect(player().video.id).toBe(13));
+        expect(player().autoplay).toBe(true);
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
+    it("「取り消す」で今の再生終了の層に戻り、フォーカスを「次を再生」へ移す", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember();
+      (await screen.findByRole("button", { name: "再生" })).focus();
+      end();
+      fireEvent.click(screen.getByRole("button", { name: "取り消す" }));
+      expect(screen.queryByText(announcement)).toBeNull();
+      expect(screen.getByText("再生が終わりました")).toBeDefined();
+      const playNext = screen.getByRole("button", { name: "次を再生" });
+      expect(document.activeElement).toBe(playNext);
+      expect(screen.getByRole("button", { name: "もう一度見る" })).toBeDefined();
+      await advance(6000);
+      expect(player().video.id).toBe(12);
+    });
+
+    it("予告中の Esc は取り消しで画面を閉じず、取り消した後の Esc は閉じる", async () => {
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      fireEvent.keyDown(screen.getByRole("button", { name: "取り消す" }), {
+        key: "Escape",
+      });
+      expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull();
+      expect(screen.getByRole("button", { name: "次を再生" })).toBeDefined();
+      expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("ep02");
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=series");
+    });
+
+    it("「今すぐ再生」で戻り先付きで次のメンバーへ移る", async () => {
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      fireEvent.click(screen.getByRole("button", { name: "今すぐ再生" }));
+      await waitFor(() => expect(player().video.id).toBe(13));
+      expect(player().autoplay).toBe(true);
+    });
+
+    it("最後のメンバーでは予告を出さず、「もう一度見る」だけの層を出す（受け入れ条件 16）", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember("13");
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull();
+      expect(screen.getByRole("button", { name: "もう一度見る" })).toBeDefined();
+      expect(screen.queryByRole("button", { name: "次を再生" })).toBeNull();
+      await advance(6000);
+      expect(player().video.id).toBe(13);
+    });
+
+    it("グループに属さない動画は、終わっても予告を出さず自動で進まない（受け入れ条件 17）", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      renderPage();
+      await ready();
+      await screen.findByRole("heading", { level: 2, name: "関連動画" });
+      end();
+      expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull();
+      expect(screen.getByRole("button", { name: "次を再生" })).toBeDefined();
+      await advance(6000);
+      expect(player().video.id).toBe(7);
+    });
+
+    it("予告の終わりに次のメンバーが無ければ、先へ進まず「もう一度見る」だけの層にする", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      server.videos.delete(13);
+      await advance(5000);
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull(),
+      );
+      expect(screen.getByRole("button", { name: "もう一度見る" })).toBeDefined();
+      expect(screen.queryByRole("button", { name: "次を再生" })).toBeNull();
+      expect(player().video.id).toBe(12);
+    });
+
+    it("予告中に次のメンバーが消えた知らせが届いたら、確かめて予告をやめる", async () => {
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      server.videos.delete(13);
+      // ほかの動画の知らせでは確かめない。
+      const before = videoRequests(13);
+      await emitServerEvent("video", { id: 8 });
+      expect(videoRequests(13)).toBe(before);
+      await emitServerEvent("video", { id: 13 });
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull(),
+      );
+      expect(screen.getByRole("button", { name: "もう一度見る" })).toBeDefined();
+      expect(screen.queryByRole("button", { name: "次を再生" })).toBeNull();
+    });
+
+    it("自動で開いたメンバーが再生に失敗したら、再生失敗の層で止まり先へ進まない", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      await advance(5000);
+      await waitFor(() => expect(player().video.id).toBe(13));
+      act(() => player().onError(12_000));
+      const alert = await screen.findByRole("alert");
+      expect(within(alert).getByText("再生できませんでした")).toBeDefined();
+      await advance(6000);
+      expect(player().video.id).toBe(13);
+      expect(screen.queryByRole("button", { name: "取り消す" })).toBeNull();
+    });
+
+    it("メンバーの並びから別のメンバーへ移っても、Esc で開く前の一覧へ戻る（受け入れ条件 19）", async () => {
+      await openMember();
+      fireEvent.click(screen.getByRole("link", { name: /ep01/ }));
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("ep01"),
+      );
+      await screen.findByRole("heading", { level: 2, name: "続けて再生" });
+      fireEvent.click(screen.getByRole("link", { name: /ep03/ }));
+      await waitFor(() =>
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("ep03"),
+      );
+      fireEvent.keyDown(document.body, { key: "Escape" });
+      expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=series");
+    });
+
+    it("ゲストにも公開のメンバーの並びと予告を出す", async () => {
+      renderPage("12", "/", "guest");
+      await ready();
+      await screen.findByRole("heading", { level: 2, name: "続けて再生" });
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      expect(screen.getByRole("button", { name: "取り消す" })).toBeDefined();
     });
   });
 

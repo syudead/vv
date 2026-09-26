@@ -457,14 +457,15 @@ func TestSearchExprCondition(t *testing.T) {
 		t.Errorf("clause =\n%s\nwant\n%s", clause, want)
 	}
 	// 所在の条件の引数の直後に、同じ語（FoldForMatch 済みでフレーズの引用は無い）が
-	// タグ名の照合の引数として続く。
+	// タグ名の照合の引数として、手で付けた分とフォルダ名の分の2つ続く
+	// （017 の data-model.md §4）。
 	wantArgs := []any{
-		"京都", "京都",
-		`"2023"`, "2023",
-		`"夏休ミ"`, "夏休ミ",
-		"花", "花",
-		`"a b"`, "a b",
-		`"ab""c"`, `ab"c`,
+		"京都", "京都", "京都",
+		`"2023"`, "2023", "2023",
+		`"夏休ミ"`, "夏休ミ", "夏休ミ",
+		"花", "花", "花",
+		`"a b"`, "a b", "a b",
+		`"ab""c"`, `ab"c`, `ab"c`,
 	}
 	if fmt.Sprint(args) != fmt.Sprint(wantArgs) {
 		t.Errorf("args = %q, want %q", args, wantArgs)
@@ -617,9 +618,9 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 	}
 }
 
-// VideoIDs は「すべて選択」用に、同じ条件の全ページの id と同じ集合を返す
-// （完了の条件、Structural Decisions 4）。
-func TestVideoIDsMatchesAllPagesOfListVideosWithTagFilter(t *testing.T) {
+// タグで絞り込んだ一覧は、ページングを繋ぐと条件に合う動画を取りこぼしも重複も
+// なく返す（specs/014-video-tags の完了の条件、Structural Decisions 4）。
+func TestListVideosPagesWithTagFilterCoverEveryMatch(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
@@ -639,20 +640,8 @@ func TestVideoIDsMatchesAllPagesOfListVideosWithTagFilter(t *testing.T) {
 	upsertAll(t, db, listingFile("/media/untagged.mp4", "untagged", "key-untagged", 100))
 
 	query := domain.VideoQuery{TagIDs: []int64{tag.ID}}
-
-	ids, missingTagIDs, err := db.Library().VideoIDs(ctx, query)
-	if err != nil {
-		t.Fatalf("VideoIDs() error = %v", err)
-	}
-	if len(missingTagIDs) != 0 {
-		t.Errorf("missingTagIDs = %v, want 空", missingTagIDs)
-	}
-	slices.Sort(ids)
 	wantIDs := slices.Clone(tagged)
 	slices.Sort(wantIDs)
-	if !slices.Equal(ids, wantIDs) {
-		t.Errorf("VideoIDs() = %v, want %v", ids, wantIDs)
-	}
 
 	// ページングを繋いでも同じ集合になる。
 	var paged []int64
@@ -674,7 +663,7 @@ func TestVideoIDsMatchesAllPagesOfListVideosWithTagFilter(t *testing.T) {
 	}
 	slices.Sort(paged)
 	if !slices.Equal(paged, wantIDs) {
-		t.Errorf("全ページの id = %v, want %v (VideoIDs と同じ集合)", paged, wantIDs)
+		t.Errorf("全ページの id = %v, want %v (タグの付いた動画の集合)", paged, wantIDs)
 	}
 
 	// ランダム並び順でページングを繋いでも同じ集合になる（並びが seed・id
@@ -699,26 +688,7 @@ func TestVideoIDsMatchesAllPagesOfListVideosWithTagFilter(t *testing.T) {
 	}
 	slices.Sort(randomPaged)
 	if !slices.Equal(randomPaged, wantIDs) {
-		t.Errorf("ランダム並び順の全ページの id = %v, want %v (VideoIDs と同じ集合)", randomPaged, wantIDs)
-	}
-}
-
-// VideoIDs も無い tag_id を無視し、どれを無視したかを返す。
-func TestVideoIDsReportsMissingTagIDs(t *testing.T) {
-	db := migratedDB(t)
-	ctx := context.Background()
-	upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
-
-	ids, missingTagIDs, err := db.Library().VideoIDs(ctx, domain.VideoQuery{TagIDs: []int64{999999}})
-	if err != nil {
-		t.Fatalf("VideoIDs() error = %v", err)
-	}
-	if !slices.Equal(missingTagIDs, []int64{999999}) {
-		t.Errorf("missingTagIDs = %v, want [999999]", missingTagIDs)
-	}
-	// 存在しない id は条件から落ちるので、ほかの条件だけで一覧に出る（data-model.md §6）。
-	if len(ids) != 1 {
-		t.Errorf("ids = %v, want 1件 (無い tag_id を落として絞り込む)", ids)
+		t.Errorf("ランダム並び順の全ページの id = %v, want %v (タグの付いた動画の集合)", randomPaged, wantIDs)
 	}
 }
 

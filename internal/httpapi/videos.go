@@ -34,41 +34,12 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		return
 	}
 
-	query := domain.VideoQuery{Sort: domain.SortAddedDesc}
-
-	filters, ok := s.parseListFilters(w, listFilterParams{
-		watch: params.Watch, playable: params.Playable, sort: params.Sort, seed: params.Seed,
+	audience := audienceFrom(r.Context())
+	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
+		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
+		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 	})
 	if !ok {
-		return
-	}
-	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
-
-	// 件数は入口で丸める。ここで確定させておくと、応答の件数と問い合わせの
-	// 条件が一致し、「limit=1000 を渡したのに 200 件しか来ない」理由が
-	// 契約（api/openapi.yaml の maximum）だけで説明できる。
-	query.Limit = domain.DefaultLimit
-	if params.Limit != nil {
-		limit := *params.Limit
-		if limit < 1 {
-			s.invalidRequest(w, "1ページの件数は 1 以上を指定してください")
-			return
-		}
-		query.Limit = min(limit, domain.MaxLimit)
-	}
-
-	if params.Cursor != nil {
-		query.Cursor = *params.Cursor
-	}
-
-	if query.Query, ok = s.parseSearchQuery(w, params.Query); !ok {
-		return
-	}
-	if query.TagIDs, ok = s.parseTagFilter(w, params.Tag); !ok {
-		return
-	}
-	audience := audienceFrom(r.Context())
-	if !s.checkAudienceQuery(w, audience, query) {
 		return
 	}
 
@@ -85,6 +56,60 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	}
 
 	s.writeVideoPage(w, r, page, s.registeredRoots(r.Context()))
+}
+
+// videoQueryParams は一覧の経路（listVideos・listLibrary）が共通に受けるパラメータである。
+type videoQueryParams struct {
+	query    *string
+	watch    *gen.WatchFilter
+	playable *bool
+	sort     *gen.VideoSort
+	seed     *int64
+	cursor   *string
+	limit    *int
+	tag      *[]int64
+}
+
+// parseVideoQuery は一覧のパラメータを検査して問い合わせにする。誤りなら 400 を書いて
+// false を返す。見る人が使えない条件も 400 にする（checkAudienceQuery）。
+func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience, params videoQueryParams) (domain.VideoQuery, bool) {
+	query := domain.VideoQuery{Sort: domain.SortAddedDesc}
+
+	filters, ok := s.parseListFilters(w, listFilterParams{
+		watch: params.watch, playable: params.playable, sort: params.sort, seed: params.seed,
+	})
+	if !ok {
+		return domain.VideoQuery{}, false
+	}
+	query.Watch, query.PlayableOnly, query.Sort, query.Seed = filters.watch, filters.playableOnly, filters.sort, filters.seed
+
+	// 件数は入口で丸める。ここで確定させておくと、応答の件数と問い合わせの
+	// 条件が一致し、「limit=1000 を渡したのに 200 件しか来ない」理由が
+	// 契約（api/openapi.yaml の maximum）だけで説明できる。
+	query.Limit = domain.DefaultLimit
+	if params.limit != nil {
+		limit := *params.limit
+		if limit < 1 {
+			s.invalidRequest(w, "1ページの件数は 1 以上を指定してください")
+			return domain.VideoQuery{}, false
+		}
+		query.Limit = min(limit, domain.MaxLimit)
+	}
+
+	if params.cursor != nil {
+		query.Cursor = *params.cursor
+	}
+
+	if query.Query, ok = s.parseSearchQuery(w, params.query); !ok {
+		return domain.VideoQuery{}, false
+	}
+	if query.TagIDs, ok = s.parseTagFilter(w, params.tag); !ok {
+		return domain.VideoQuery{}, false
+	}
+	if !s.checkAudienceQuery(w, audience, query) {
+		return domain.VideoQuery{}, false
+	}
+	return query, true
 }
 
 // writeVideoPage は一覧1ページを応答に書く。各項目には再生位置・タグと、一覧に
@@ -138,7 +163,7 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.Location = nil
 	video.Progress = nil
 	video.ProbeError = nil
-	video.Tags = []gen.TagRef{}
+	video.Tags = []gen.VideoTag{}
 	return video
 }
 
@@ -256,6 +281,23 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	// forAudience がゲストの応答から外す。
 	payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
 	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
+	// グループも動画1件の応答にだけ載せる。ゲストには公開のメンバーだけで数えたものが
+	// 返り、公開のメンバーが1本なら無い（specs/017-folder-groups/contracts/folder-groups-api.md §3）。
+	if s.catalog != nil {
+		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video)
+		if err != nil {
+			s.internalError(w, "動画を取得できませんでした", err)
+			return
+		}
+		if grouped {
+			payload.Group = &gen.VideoGroupRef{
+				Folder:   gen.VideoFolder{RootId: group.Folder.RootID, Path: group.Folder.Path},
+				Name:     group.Name,
+				Position: group.Position(video.ID),
+				Count:    len(group.Members),
+			}
+		}
+	}
 	if video.HasSeekThumbnail() && s.catalog != nil {
 		state, err := s.catalog.SeekThumbnailState(r.Context(), video)
 		if err != nil {
@@ -324,7 +366,7 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 // 無いと動画を見渡せなくなるものではない。
 //
 // ゲストにはタグを出さないので、読みもしない（contracts/guest-api.md §1）。
-func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string][]domain.TagRef {
+func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string][]domain.VideoTag {
 	if s.tags == nil || len(videos) == 0 || !audienceFrom(ctx).IsOwner() {
 		return nil
 	}
@@ -346,11 +388,13 @@ func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string]
 
 // withTags はタグを載せる。タグが1つも無い動画は空の配列にする（null にしない。
 // contracts/tags-api.md §1）。
-func withTags(video gen.Video, tags map[string][]domain.TagRef, contentKey string) gen.Video {
+func withTags(video gen.Video, tags map[string][]domain.VideoTag, contentKey string) gen.Video {
 	refs := tags[contentKey]
-	video.Tags = make([]gen.TagRef, 0, len(refs))
+	video.Tags = make([]gen.VideoTag, 0, len(refs))
 	for _, ref := range refs {
-		video.Tags = append(video.Tags, gen.TagRef{Id: ref.ID, Name: ref.Name})
+		video.Tags = append(video.Tags, gen.VideoTag{
+			Id: ref.ID, Name: ref.Name, Manual: ref.Manual, FromFolder: ref.FromFolder,
+		})
 	}
 	return video
 }

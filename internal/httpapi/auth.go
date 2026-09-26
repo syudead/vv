@@ -101,16 +101,12 @@ func (a access) String() string {
 // accessRoutes は「誰でも」と「ゲストも」の API 経路である。ここに無い /api/* は
 // すべて「所有者だけ」である。正本は api/openapi.yaml の各操作の security で、
 // 一致は openapi_routes_test.go が確かめる。
-//
-// GET /api/videos/ids は GET /api/videos/{id} に取られないよう、「所有者だけ」として
-// 明示する（ServeMux は字面の段を優先する）。
 var accessRoutes = map[string]access{
 	"GET /api/health":                     accessPublic,
 	"GET /api/auth/session":               accessPublic,
 	"POST /api/auth/setup":                accessPublic,
 	"POST /api/auth/login":                accessPublic,
 	"POST /api/auth/logout":               accessPublic,
-	"GET /api/videos/ids":                 accessOwner,
 	"GET /api/videos":                     accessGuest,
 	"GET /api/videos/{id}":                accessGuest,
 	"GET /api/videos/{id}/related":        accessGuest,
@@ -122,6 +118,8 @@ var accessRoutes = map[string]access{
 	"GET /api/folders":                    accessGuest,
 	"GET /api/folders/{rootId}":           accessGuest,
 	"GET /api/folders/{rootId}/videos":    accessGuest,
+	"GET /api/folders/{rootId}/group":     accessGuest,
+	"GET /api/library":                    accessGuest,
 }
 
 // accessMux は accessRoutes の模様を引き当てるためだけの ServeMux である。
