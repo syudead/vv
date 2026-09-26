@@ -18,9 +18,8 @@ stage that creates the feature branch.
    Resolve all consequential choices and include an implementation-work section
    detailed enough to create native child Issues directly from the plan. Do not
    create a `spec.md`.
-5. Run the plan's checks, then the [`self-review` skill](../../self-review/SKILL.md)
-   over the whole diff. Checks 1 and 5 carry the weight here: a plan is
-   reconciled against the parent Issue and against the contracts it supersedes.
+5. Run the plan's checks and reconcile it against the parent Issue and the
+   contracts it supersedes.
 6. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
 7. After human merge, the next run continues with `design` for a `ui` Issue
    or `plan-to-issues` otherwise. The feature-to-`main` integration PR is

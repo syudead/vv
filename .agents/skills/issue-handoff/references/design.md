@@ -56,8 +56,7 @@ A technical constraint is never a reason to narrow the design (Q-7).
    behaviour behind it needs its value and its misrecognition risk stated
    (Q-5). Name the widths, the keyboard path, and the assistive-technology
    check the implementation will be judged against.
-6. Run the [`self-review` skill](../../self-review/SKILL.md) over the whole diff.
-   Reconcile every stated behaviour against the parent Issue and the existing
+6. Reconcile every stated behaviour against the parent Issue and the existing
    design system rules, which this artifact narrows more often than it
    contradicts.
 7. Push and open a feature-branch PR with `Refs #<parent>`. Stop.

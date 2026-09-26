@@ -1,6 +1,6 @@
 ---
 name: "self-review"
-description: "Reconcile a finished change against its sources of truth before pushing. Use after implementation or artifact work is complete and the repository checks pass, and before opening or updating a pull request."
+description: "Reconcile a finished change against its sources of truth when the user explicitly requests self-review."
 ---
 
 # Self review
@@ -9,8 +9,8 @@ Read [references/README.md](references/README.md) before acting. It defines the
 five checks, the evidence each one has to produce, and which findings stop the
 push.
 
-This runs between the repository checks and the push. When the selected host
-provides the repository's `self-reviewer` worker, delegate the review to that
+When explicitly requested, run this between the repository checks and the push.
+When the selected host provides the repository's `self-reviewer` worker, delegate the review to that
 fresh context and give it the diff, base branch, sources of truth, and
 acceptance evidence. A reviewer that did not write the change is less likely to
 inherit the implementation's assumptions. If no such worker or fresh context is

@@ -36,33 +36,24 @@ the orchestrator's reads small:
 | 6 `integrate` | Integration refresh, which opens the integration PR, and the finish line (§6) |
 | "stop and ask" (ambiguous feature, not a specification) | Stop and report |
 
-Phase 1 of a stage pushes nothing (§3), so a restart before its PR exists
-leaves no branch behind and the selection simply picks the stage again. Anything
+If a stage stops before its PR exists, selection picks the stage again. Anything
 the selection does not cover is a stop: report the facts from §1 and what you
 expected.
 
 ## 3. Run a stage
 
 Stages `plan`, `design` and implementation each produce one PR to the feature
-branch. `plan-to-issues` produces no PR and has no self-review.
+branch. `plan-to-issues` produces no PR.
 
 1. Start a fresh stage worker with the brief for that stage from
    [briefs.md](briefs.md). It creates its own sub-branch, does the stage's
-   work and checks, commits, and returns `READY` with the branch and base.
+   work and checks, commits, pushes, opens the PR, and returns `DONE` with
+   the PR number.
    - `plan-to-issues` returns `DONE`. Go to §1.
    - An implementation worker that finds a merged PR into the feature branch
      already referencing its child returns `DONE` with that PR and no branch.
      Close the child (§5) and go to §1.
-2. Start a fresh self reviewer with the self-review brief, pointing at the
-   worker's branch and base. It writes its findings to a file and returns
-   `CLEAN` or `FINDINGS`; do not open the file.
-3. Continue the **same** stage worker with the phase 2 brief naming that file.
-   It fixes what is in scope, re-runs its checks, pushes, opens the PR, and
-   returns `DONE` with the PR number. If a finding needs an approved artifact
-   changed, it returns `BLOCKED` without pushing: stop.
-4. If the worker can no longer be continued (a restarted session), start a
-   fresh stage worker in continuation mode with the branch name instead.
-5. Go to §4 with the new PR.
+2. Go to §4 with the new PR.
 
 ## 4. Drive a feature PR to merge
 
@@ -71,20 +62,20 @@ A PR is **mergeable here** when all of these hold on its current head SHA:
 - every check run has completed with `success`, `skipped` or `neutral`.
   `cancelled`, `timed_out`, `action_required`, `stale` and `failure` are not
   passing, whatever caused them
-- the review bot has reviewed this head (a review whose `commit_id` is the head
-  SHA from a bot account that reviews this repository — today
-  `devin-ai-integration[bot]`), or 20 minutes have passed since the head was
-  pushed with no bot review
-- a review fixer has run on this head after that review and returned `CLEAN`
+- a reviewer other than the PR author has reviewed this head (a GitHub review
+  whose `commit_id` is the head SHA, regardless of the reviewer's account
+  type), or 20 minutes have passed since the head was pushed with no such review
+- a review fixer has run on this head after the review or 20-minute wait
+  and returned `CLEAN`
 - GitHub reports it mergeable with no conflict
 
 Loop:
 
-1. Wait for the checks and the bot review on the head (§7). A check still
+1. Wait for the checks and a review on the head (§7). A check still
    pending an hour after the head was pushed is a stop.
-2. Start a fresh review fixer with the feature-PR brief (on `fable` once the
-   review bot has reviewed the PR three times, the same count the round limit
-   reads; see the model table in
+2. Start a fresh review fixer with the feature-PR brief (on `fable` once
+   three distinct head SHAs on this PR have received such a review, the same
+   count the round limit reads; see the model table in
    [../SKILL.md](../SKILL.md#which-model-runs-what)). It handles every
    failing check, every unresolved review thread, and a conflict with the
    base, and either pushes (`FIXED`, new head) or changes nothing (`CLEAN`).
@@ -100,7 +91,8 @@ Loop:
 After a restart you do not know whether a fixer already ran on the head; run
 one. It finds nothing new and returns `CLEAN`.
 
-**Round limit.** Stop when the review bot has reviewed a feature PR six times,
+**Round limit.** Stop when six distinct head SHAs on a feature PR have received
+such a review (multiple reviews on one head count once),
 when three integration-fix PRs have merged since the integration PR was
 opened, when the integration PR's head has been refreshed from `main` twice
 (§6 step 2), or when a fixer returns `BLOCKED` because a finding repeats one

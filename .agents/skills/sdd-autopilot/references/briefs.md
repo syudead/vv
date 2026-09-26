@@ -7,21 +7,14 @@ them itself, in its own context. Add nothing else unless a previous worker's
 
 ## Return block
 
-Anything longer than the return block goes into a file, not into the reply.
-Findings files live under `$(git rev-parse --git-common-dir)/sdd-autopilot/`,
-which every worker in the checkout can read and nothing commits. Name one per
-branch and round, for example `review-<branch>-1.md`.
-
-The one accepted exception is a reviewer whose sandbox cannot write that file
-(Codex's read-only `self_reviewer`). It returns the findings in its reply;
-pass that reply to the stage worker's phase 2 unchanged, and do not read,
-summarise, or act on it yourself.
+Anything longer than the return block goes into the PR body or a file, not
+into the reply.
 
 Every worker ends its reply with this block and nothing after it. Keep each
 line to one line.
 
 ```text
-STATUS: READY | DONE | CLEAN | FINDINGS | FIXED | FOREIGN | BLOCKED
+STATUS: DONE | CLEAN | FIXED | FOREIGN | BLOCKED
 BRANCH: <branch or ->
 BASE: <base branch or ->
 HEAD: <commit SHA or ->
@@ -45,32 +38,15 @@ Procedure: .agents/skills/issue-handoff/references/README.md and
   .agents/skills/issue-handoff/references/<plan|design|implement>.md.
 The orchestrator selected this stage; do not re-select it.
 
-Phase 1 now: create your sub-branch from origin/<feature> (plan: create the
-feature branch from main locally first), do the stage's work and its checks,
-and commit. Push nothing, not even a new feature branch, and open no PR.
-Return STATUS: READY.
+Create your sub-branch from origin/<feature> (plan: create the feature branch
+from main first), do the stage's work and checks, commit, push (plan: the new
+feature branch first), and open the PR to <feature> as the stage reference says.
+Put out-of-scope findings in the PR body and in DEFERRED. Return STATUS: DONE.
+If the work needs an approved artifact changed, return BLOCKED without pushing.
 Implement only: if a PR merged into <feature> already Refs this child, change
 nothing and return DONE with that PR. If a dependency named in the child is
 not merged into <feature> yet, change nothing and return BLOCKED naming it.
 ```
-
-Continuation, sent to the same worker after self-review:
-
-```text
-Phase 2. Self-review returned STATUS: <CLEAN | FINDINGS>; the findings are in
-<findings file>.
-Fix the findings that are defects within this stage, re-run your checks,
-commit, push (plan: the new feature branch first), and open the PR to
-<feature> as the stage reference says. A
-finding that needs an approved artifact changed: do not push; return BLOCKED.
-Put out-of-scope findings in the PR body and in DEFERRED. Return STATUS: DONE.
-```
-
-When the original worker is gone but you still have its `BRANCH` in this
-session, start a fresh one with the stage brief plus
-`Phase 1 is already committed on <branch>; go straight to phase 2.` and the
-continuation text. After a restart you will not have it; nothing was pushed, so
-§1 selects the same stage again and a fresh worker redoes it.
 
 ## Stage worker: `plan-to-issues`
 
@@ -98,19 +74,6 @@ keep the remaining risks it already lists. Do not handle its review here; the
 review fixer does.
 Return STATUS: DONE with the integration PR in PR, or BLOCKED when a conflict
 needs a product decision.
-```
-
-## Self reviewer
-
-```text
-Self-review for an autopilot stage. Repository: <owner/repo>.
-Diff: origin/<base>...<branch> (committed locally; read it with git).
-Parent Issue: #<parent>   Child Issue: #<child or ->
-Feature directory: <dir>
-Procedure: .agents/skills/self-review/references/README.md.
-Write the numbered findings (file:line, source cited, defect or deferred) to
-<findings file>, and reply with the return block only: STATUS: CLEAN when
-there is no defect, FINDINGS otherwise.
 ```
 
 ## Review fixer: feature PR
