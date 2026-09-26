@@ -20,8 +20,8 @@ export function autoplayAnnouncement(title: string): string {
  * AutoplayNotice は、グループのメンバーの再生が終わったときに、次のメンバーを自動で
  * 再生するまでの予告の層である（親 Issue 要件 27、plan の Structural Decisions 12）。
  *
- * - 出ている間だけ数え、0 になったら次のメンバーがまだあるかを `GET /api/videos/{id}` で
- *   確かめてから `onAdvance` を呼ぶ。404 なら `onGone` を呼び、先へ進まない。
+ * - 出たときから 5 秒の期限までを経過時間で数え（タイマーの間引きで延ばさない）、
+ *   0 になったら次のメンバーがまだあるかを `GET /api/videos/{id}` で確かめてから `onAdvance` を呼ぶ。404 なら `onGone` を呼び、先へ進まない。
  * - 出ている間は、次のメンバーを名指しする `video` イベント（所有者だけ）を見張り、
  *   届いたら同じく確かめる。次のメンバーは開いたときの関連動画の応答で決まり、
  *   ここでは差し替えない。
@@ -64,13 +64,25 @@ export default function AutoplayNotice({
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => setStarted(true));
-    // 描画の遅れで秒が延びないよう、出たときから1秒ごとに数える。
-    const timer = setInterval(() => {
-      setRemaining((value) => Math.max(value - 1, 0));
-    }, 1000);
+    // 残り秒数はタイマーが呼ばれた回数ではなく、出たときに決めた期限との差から出す。
+    // 隠れたタブではブラウザーがタイマーを間引くので、回数で数えると 5 秒を過ぎても
+    // 先へ進まない。呼ばれるたびと、タブが見えるようになったときに期限と比べ直す。
+    const deadline = performance.now() + autoplayNoticeSeconds * 1000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const update = () => {
+      const left = deadline - performance.now();
+      const seconds = Math.max(Math.ceil(left / 1000), 0);
+      setRemaining(seconds);
+      clearTimeout(timer);
+      // 次の秒の境目で呼ばれるようにする。
+      if (seconds > 0) timer = setTimeout(update, left - (seconds - 1) * 1000);
+    };
+    timer = setTimeout(update, 1000);
+    document.addEventListener("visibilitychange", update);
     return () => {
       cancelAnimationFrame(frame);
-      clearInterval(timer);
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", update);
     };
   }, []);
 

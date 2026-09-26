@@ -936,6 +936,27 @@ describe("VideoPage", () => {
       expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=series");
     });
 
+    it("隠れたタブでタイマーが間引かれても、期限を過ぎていれば見えたときに次のメンバーを再生する", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      await openMember();
+      await screen.findByRole("button", { name: "再生" });
+      end();
+      expect(screen.getByText("5 秒後")).toBeDefined();
+      // タイマーが一度も呼ばれないまま 30 秒経ったことにする。
+      const now = performance.now.bind(performance);
+      const skipped = now() + 30_000;
+      const clock = vi.spyOn(performance, "now").mockImplementation(() => skipped);
+      try {
+        act(() => {
+          document.dispatchEvent(new Event("visibilitychange"));
+        });
+        await waitFor(() => expect(player().video.id).toBe(13));
+        expect(player().autoplay).toBe(true);
+      } finally {
+        clock.mockRestore();
+      }
+    });
+
     it("「取り消す」で今の再生終了の層に戻り、フォーカスを「次を再生」へ移す", async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       await openMember();
