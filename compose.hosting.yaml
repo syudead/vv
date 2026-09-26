@@ -12,8 +12,6 @@ services:
       MDM_ADDR: ":8080"
       MDM_DATA_DIR: "/data"
       MDM_LOG_LEVEL: "info"
-      # HTTPS の逆プロキシの後ろに置くときだけ、そのプロキシのアドレスを書く。
-      MDM_TRUSTED_PROXIES: ""
     volumes:
       # 変える: 左が動画のあるフォルダ。設定画面では /media 以下を選ぶ。
       - "/share/Multimedia:/media:ro"

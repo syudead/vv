@@ -79,8 +79,13 @@ func (s *server) canOpen(r *http.Request) bool {
 // ページを通してしまう。Host をループバックの名前に限ってこれを塞ぐ。
 //
 // 要求元は clientOrigin で決める。信頼するプロキシが同じ PC にあっても、転送元が
-// 外部なら拒む。信頼しない接続元の X-Forwarded-For は読まない。
+// 外部なら拒む。直接の接続元もループバックに限る。既定では LAN のアドレスも信頼する
+// プロキシに含まれるので、LAN の機器が X-Forwarded-For に 127.0.0.1 と書いて
+// ループバックに見せかけるのをここで塞ぐ。
 func (s *server) loopbackRequest(r *http.Request) bool {
+	if !parseForwardedAddr(r.RemoteAddr).IsLoopback() {
+		return false
+	}
 	source := s.clientOrigin(r).source
 	if !source.IsValid() || !source.IsLoopback() {
 		return false

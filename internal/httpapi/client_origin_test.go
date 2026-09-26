@@ -288,6 +288,18 @@ func TestOpenVideoFileBehindLoopbackProxy(t *testing.T) {
 		t.Fatalf("opened = %q", opener.opened)
 	}
 
+	// LAN のプロキシを信頼していても、LAN の機器がループバックを名乗るだけでは開けない。
+	lanHandler := newTestServer(t, Options{
+		Videos: library, Opener: opener,
+		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/16")},
+	})
+	lan := openRequest("/api/videos/1/open", "192.168.1.20:50000", "localhost:8080")
+	lan.Header.Set("X-Forwarded-For", "127.0.0.1")
+	assertErrorCode(t, serve(lanHandler, lan), http.StatusForbidden, codeForbidden)
+	if len(opener.opened) != 1 {
+		t.Fatalf("LAN の機器の偽装で開いた: opened = %q", opener.opened)
+	}
+
 	// 動画の応答の openable も同じ判定による。
 	detail := httptest.NewRequest(http.MethodGet, "/api/videos/1", nil)
 	detail.RemoteAddr = "127.0.0.1:50000"
