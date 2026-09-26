@@ -21,6 +21,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/syudead/vv/internal/media"
@@ -165,8 +166,17 @@ func run(ctx context.Context, args []string, d deps, stdout, stderr io.Writer) i
 	return 0
 }
 
+// stopSignals はベンチマークを中断する信号である。SIGTERM も受けないと、Go の既定の
+// 動作で親だけが終わり、GeneratePreview の ffmpeg が動き続けて一時出力も残る。
+// どちらもコンテキストのキャンセルに変えて、ffmpeg を止め一時ディレクトリを消す。
+var stopSignals = []os.Signal{os.Interrupt, syscall.SIGTERM}
+
+func signalContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return signal.NotifyContext(parent, stopSignals...)
+}
+
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
+	ctx, stop := signalContext(context.Background())
 	code := run(ctx, os.Args[1:], productionDeps(), os.Stdout, os.Stderr)
 	stop()
 	os.Exit(code)
