@@ -14,6 +14,10 @@ The image is published to `ghcr.io/syudead/vv` for `linux/amd64` and
 | `latest`         | The latest build of `main`                         |
 | `sha-<12 chars>` | The build of that commit; use it to pin a version |
 
+The CI `Docker image` job publishes it. Hosts pull it without logging in only
+while the package's visibility is Public (set once in the GitHub package
+settings after the first publish).
+
 ## Start
 
 Copy [`compose.hosting.yaml`](../../compose.hosting.yaml) to a directory on the
