@@ -14,12 +14,13 @@ import { isNarrowVideo, unplayableText } from "../lib/format";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 
 /**
- * CardPreviewOptions は一覧のカードの hover プレビューの条件である。動画のカード
- * （VideoCard）とグループのカード（GroupCard、`cover` を流す）が同じ規則で使う
- * （400ms、同時に1件。specs/017-folder-groups/ui-design.md「Group card」）。
+ * CardPreviewOptions は一覧の動画のカード（VideoCard）の hover プレビューの条件である
+ * （400ms、同時に1件）。グループのカードはフォルダの絵柄（FolderArt）が前に出した1枚を
+ * 流し、同じ usePreviewCoordination の調整に加わる（specs/017-folder-groups/ui-design.md
+ * 「Group card」）。
  */
 export interface CardPreviewOptions {
-  /** プレビューを流す動画（グループのカードでは `cover`）。 */
+  /** プレビューを流す動画。 */
   video: Video;
   selectionMode: boolean;
   activePreviewId?: number | null;

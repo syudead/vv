@@ -5,15 +5,9 @@ import { Link } from "react-router";
 import type { LibraryGroup } from "../api/client";
 import { useAudience } from "../auth/audience";
 import { cn } from "../lib/cn";
-import {
-  formatBytes,
-  formatDuration,
-  formatRelative,
-  isNarrowVideo,
-} from "../lib/format";
+import { formatBytes, formatDuration, formatRelative } from "../lib/format";
 import Checkbox from "../ui/Checkbox";
-import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
-import { CardMedia, useCardPreview } from "../videoList/cardPreview";
+import FolderArt from "../videoList/FolderArt";
 
 /**
  * GroupCardProps はライブラリのグループのカードと行の props である
@@ -32,6 +26,7 @@ export interface GroupCardProps {
    * 省き、チェックを描かない。
    */
   onSelect?: (videoIds: readonly number[], selected: boolean) => void;
+  /** 一覧のホバープレビューの調整（usePreviewCoordination）。格子のフォルダの絵柄が加わる。 */
   activePreviewId?: number | null;
   previewResetEpoch?: number;
   onPreviewStart?: (id: number) => void;
@@ -41,8 +36,9 @@ export interface GroupCardProps {
 }
 
 /**
- * useGroupFacts は見る人に見せるグループの視聴の値である。ゲストでは視聴状態と
- * 見終えた本数を出さない（ui-design.md「Screen boundary」の「ゲスト」）。
+ * useGroupFacts は見る人に見せるグループの視聴の値である。ゲストでは視聴状態を出さない
+ * （ui-design.md「Screen boundary」の「ゲスト」）。格子のカードは見終えた本数を数字では
+ * 出さず、見ている途中の帯の長さと読み上げ名にだけ使う。
  */
 function useGroupFacts(group: LibraryGroup) {
   const owner = useAudience() === "owner";
@@ -57,16 +53,14 @@ function useGroupFacts(group: LibraryGroup) {
     state,
     ratio,
     duration: formatDuration(group.durationMs),
-    countText: groupCountText(group.videoCount, watchedCount),
+    countText: groupCountText(group.videoCount),
     label: groupLinkLabel(group.name, group.videoCount, watchedCount),
   };
 }
 
-/** groupCountText はカードの本数の文字（「12 本」「3 / 12 本」）である。 */
-export function groupCountText(videoCount: number, watchedCount: number): string {
-  return watchedCount >= 1
-    ? `${String(watchedCount)} / ${String(videoCount)} 本`
-    : `${String(videoCount)} 本`;
+/** groupCountText はカードの本数の文字（「12 本」）である。 */
+export function groupCountText(videoCount: number): string {
+  return `${String(videoCount)} 本`;
 }
 
 /** groupLinkLabel はカードのリンクの読み上げ名である（ui-design.md「Accessibility」）。 */
@@ -85,7 +79,8 @@ function groupPath(group: LibraryGroup): string {
 
 /**
  * GroupCard はライブラリの格子でグループを1枚で出すカードである。動画のカード
- * （VideoCard）と同じ箱・同じ大きさで、右下の時間の面にフォルダの目印と本数を足す。
+ * （VideoCard）と同じ箱・同じ大きさで、サムネイルの枠にはフォルダ画面のフォルダカードと
+ * 同じフォルダの絵柄（FolderArt）を描き、右下の面に本数と合計の長さを重ねる。
  * カード全体が開くメンバーの再生画面への1つのリンクである（要件 16・17・23）。
  */
 export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
@@ -101,16 +96,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
     onPreviewReset,
     tagsRow,
   } = props;
-  const cover = group.cover;
   const { state, ratio, duration, countText, label } = useGroupFacts(group);
-  const preview = useCardPreview({
-    video: cover,
-    selectionMode,
-    activePreviewId,
-    previewResetEpoch,
-    onPreviewStart,
-  });
-  const { showingPreview, releasePreview, startPreview } = preview;
   const tagsRowNode = tagsRow?.(group);
   const showTagsRow = tagsRow !== undefined && group.tags.length > 0;
 
@@ -118,8 +104,6 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
     <article
       data-group-root={group.folder.rootId}
       data-group-path={group.folder.path}
-      onPointerEnter={startPreview}
-      onPointerLeave={releasePreview}
       className={cn(
         "group relative flex flex-col overflow-hidden rounded-lg bg-surface shadow-card transition-[box-shadow,transform] duration-200 ease-out-quart",
         "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link",
@@ -132,10 +116,8 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
     >
       {onSelect !== undefined && (
         <div
-          data-preview-checkbox="true"
-          onPointerEnter={releasePreview}
           className={cn(
-            "absolute top-2 left-2 z-20 transition-opacity duration-150",
+            "absolute top-2 left-2 z-30 transition-opacity duration-150",
             selectionMode || selected
               ? "opacity-100"
               : "opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
@@ -145,7 +127,6 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
             checked={selected}
             onCheckedChange={(next) => onSelect(group.videoIds, next)}
             label={`「${group.name}」のグループを選択`}
-            className={showingPreview ? "!bg-navbar" : undefined}
             onClick={(event: MouseEvent) => event.stopPropagation()}
           />
         </div>
@@ -164,18 +145,18 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         }}
         className="flex min-w-0 flex-col outline-none"
       >
-        <div className="relative aspect-video w-full overflow-hidden bg-navbar">
-          <CardMedia video={cover} preview={preview} />
+        <div className="relative aspect-video w-full">
+          <FolderArt
+            previews={group.previews}
+            selectionMode={selectionMode}
+            activePreviewId={activePreviewId}
+            previewResetEpoch={previewResetEpoch}
+            onPreviewStart={onPreviewStart}
+          />
 
-          {/* フォルダの目印と本数は、長さと同じ面の中に同じ小ささで置く（ui-design.md
-              「Structure」）。題名より先に目に入らないよう、accent の色は使わない。 */}
-          <span
-            className={cn(
-              "absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[11px] font-medium tabular-nums backdrop-blur-sm",
-              showingPreview ? "bg-navbar text-fg" : "bg-navbar/85 text-fg",
-            )}
-          >
-            <Folder aria-hidden="true" className="size-3 shrink-0" />
+          {/* 本数と長さは、フォルダの背板の右下に、動画のカードの長さと同じ面で重ねる。
+              前に出たサムネイルより上に置き、絵柄の下見の操作を妨げない。 */}
+          <span className="pointer-events-none absolute right-5 bottom-4 z-20 flex items-center gap-1.5 rounded-sm bg-navbar/85 px-1.5 py-0.5 text-[11px] font-medium text-fg tabular-nums backdrop-blur-sm">
             <span>{countText}</span>
             {duration !== "" && <span>{duration}</span>}
           </span>
@@ -187,10 +168,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
               aria-valuemax={100}
               aria-valuenow={Math.round(ratio * 100)}
               aria-label="視聴済みの本数の割合"
-              className={cn(
-                "absolute inset-x-0 bottom-0 h-[5px]",
-                showingPreview ? "bg-fg-subtle" : "bg-fg-subtle/50",
-              )}
+              className="absolute inset-x-0 bottom-0 z-20 h-[5px] bg-fg-subtle/50"
             >
               <span
                 className="block h-full bg-accent"
@@ -228,7 +206,8 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
   const { group, backTo, selected, selectionMode, onSelect } = props;
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
-  const cover = group.cover;
+  // リスト表示は今回変えない。サムネイルは先頭のメンバーの1枚（previews の先頭）を使う。
+  const cover = group.previews[0];
 
   return (
     <tr
@@ -256,10 +235,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
       )}
       <td className="w-32 py-1.5 pr-2">
         <div className="relative aspect-video w-28 overflow-hidden rounded-sm bg-navbar">
-          {cover.thumbnailUrl !== undefined && isNarrowVideo(cover) && (
-            <ThumbnailBackdrop src={cover.thumbnailUrl} />
-          )}
-          {cover.thumbnailUrl !== undefined && (
+          {cover !== undefined && (
             <img
               src={cover.thumbnailUrl}
               alt=""

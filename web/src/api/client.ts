@@ -43,6 +43,7 @@ export type MediaFolder = components["schemas"]["MediaFolder"];
 export type DirectoryListing = components["schemas"]["DirectoryListing"];
 export type ApiError = components["schemas"]["Error"];
 export type FolderSummary = components["schemas"]["FolderSummary"];
+export type FolderPreview = components["schemas"]["FolderPreview"];
 export type FolderListing = components["schemas"]["FolderListing"];
 export type RootFolderListing = components["schemas"]["RootFolderListing"];
 export type RelatedVideos = components["schemas"]["RelatedVideos"];

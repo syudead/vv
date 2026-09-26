@@ -602,10 +602,6 @@ type LibraryGroup struct {
 	// AddedAt メンバーの追加日時の最大
 	AddedAt time.Time `json:"addedAt"`
 
-	// Cover ゲストの応答では `location`・`progress`・`probeError` を省き、`tags` を空の配列にする
-	// （specs/016-single-account-auth/contracts/guest-api.md §1）。
-	Cover Video `json:"cover"`
-
 	// DurationMs 長さの分かっているメンバーの合計。1本も分からなければ省く
 	DurationMs *int64 `json:"durationMs,omitempty"`
 
@@ -624,6 +620,11 @@ type LibraryGroup struct {
 	// OpenVideoId 押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の
 	// 未完了のメンバー、全部完了なら最初のメンバー
 	OpenVideoId int64 `json:"openVideoId"`
+
+	// Previews カードのフォルダの絵柄に差し込むサムネイル。メンバーのうちサムネイル生成済みのものを
+	// 並びの順に最大4件（フォルダカードの previews と同じ形）。リスト表示の行は先頭の
+	// 1件をサムネイルに使う
+	Previews []FolderPreview `json:"previews"`
 
 	// SizeBytes メンバーの代表の所在の大きさの合計
 	SizeBytes int64 `json:"sizeBytes"`

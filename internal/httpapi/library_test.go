@@ -89,6 +89,12 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 			t.Fatal(err)
 		}
 	}
+	// ep1 にはサムネイルが無い。グループの絵柄はサムネイル生成済みのメンバーだけを差し込む。
+	for _, name := range []string{"ep2", "ep10"} {
+		if err := db.Ingest().SetThumbnailState(ctx, f.ids[name], domain.ThumbnailStateDone); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -115,6 +121,15 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 		t.Fatal(err)
 	}
 	return f
+}
+
+// previewIDs はグループの絵柄に差し込むサムネイルの動画の id を並びの順に返す。
+func previewIDs(previews []gen.FolderPreview) []int64 {
+	ids := make([]int64, 0, len(previews))
+	for _, preview := range previews {
+		ids = append(ids, preview.VideoId)
+	}
+	return ids
 }
 
 func (f *libraryFixture) groupPath(rel string) string {
@@ -151,7 +166,7 @@ func libraryGroupNamed(t *testing.T, page gen.LibraryPage, name string) gen.Libr
 }
 
 // 受け入れ条件 1・2・12・14: 所有者にはグループが1件の項目で出て、全メンバーの本数・
-// 合計・cover・並んだ id・視聴状態・見終えた本数・開くメンバー・タグの和集合が入る。
+// 合計・絵柄のサムネイル・並んだ id・視聴状態・見終えた本数・開くメンバー・タグの和集合が入る。
 func TestListLibraryForOwner(t *testing.T) {
 	f := newLibraryFixture(t)
 	rec := f.env.get("/api/library?limit=1&sort=titleAsc", f.owner)
@@ -176,8 +191,8 @@ func TestListLibraryForOwner(t *testing.T) {
 	if show.DurationMs == nil || *show.DurationMs != 180_000 || show.SizeBytes != 300 {
 		t.Errorf("長さ・大きさ = %v・%d", show.DurationMs, show.SizeBytes)
 	}
-	if show.Cover.Id != f.ids["ep1"] || show.Cover.Folder == nil || show.Cover.Progress == nil {
-		t.Errorf("cover = %+v", show.Cover)
+	if ids := previewIDs(show.Previews); !slices.Equal(ids, []int64{f.ids["ep2"], f.ids["ep10"]}) {
+		t.Errorf("絵柄のサムネイル = %v, want ep2・ep10（サムネイルの無い ep1 は差し込まない）", ids)
 	}
 	if show.OpenVideoId != f.ids["ep2"] {
 		t.Errorf("開くメンバー = %d, want ep2", show.OpenVideoId)
@@ -346,11 +361,13 @@ func TestListLibraryForGuest(t *testing.T) {
 		if got := string(group["tags"]); got != "[]" {
 			t.Errorf("ゲストのグループの tags = %s", got)
 		}
-		var cover map[string]json.RawMessage
-		if err := json.Unmarshal(group["cover"], &cover); err != nil {
+		var previews []gen.FolderPreview
+		if err := json.Unmarshal(group["previews"], &previews); err != nil {
 			t.Fatal(err)
 		}
-		assertGuestVideo(t, "ゲストの cover", cover)
+		if ids := previewIDs(previews); !slices.Equal(ids, []int64{f.ids["ep2"]}) {
+			t.Errorf("ゲストのグループの絵柄のサムネイル = %v, want 公開の ep2 だけ", ids)
+		}
 	}
 
 	for _, query := range []string{"watch=watched", "sort=playedAsc", "sort=playedDesc", "tag=" + strconv.FormatInt(f.manual, 10)} {
