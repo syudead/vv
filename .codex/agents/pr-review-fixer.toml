@@ -20,8 +20,9 @@ finding that is not a defect with one line citing why. For a failed check, find
 the root cause; never skip, disable or loosen a test, and never re-run a check
 to get past it.
 
-Push only after the pre-push check from `AGENTS.md` passes (`task check` for
-code changes). Push where the brief says:
+Push only after the checks the change needs pass, including the pre-push check
+from `AGENTS.md` and any browser checks the change or plan requires. Push where
+the brief says:
 the PR's own head branch for a feature PR, and a new sub-branch with its own PR
 for the integration PR. Then reply once on each thread you handled. On a
 feature PR, resolve it. On the integration PR, fix only blocking findings, as
