@@ -36,7 +36,8 @@ const probeCommand = "ffprobe"
 //
 // ffprobe の直前にファイルの大きさと更新時刻を取り、Probe.Source に載せる。
 // 保存したライブ変換用の解析情報が、変換で開いたファイルと同じ内容かを比べる鍵になる
-// （specs/018-live-transcode-seek/data-model.md §4）。
+// （specs/018-live-transcode-seek/data-model.md §4）。ffprobe の後にも取り直し、
+// 途中で差し替わっていたら解析情報を持たせない（stampProbe）。
 func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
@@ -60,8 +61,25 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	if err != nil {
 		return domain.Probe{}, fmt.Errorf("%s の出力を解釈できません (%s): %w", probeCommand, path, err)
 	}
-	probe.Source = domain.FileStampOf(info)
-	return probe, nil
+	after, err := os.Stat(path)
+	if err != nil {
+		return domain.Probe{}, fmt.Errorf("解析したファイルを確かめられません (%s): %w", path, err)
+	}
+	return stampProbe(probe, domain.FileStampOf(info), domain.FileStampOf(after)), nil
+}
+
+// stampProbe は ffprobe の前後に取ったファイルの印を解析結果に結び付ける。
+//
+// 前後で大きさか更新時刻が違えば、ffprobe が読んだ内容は前の印のファイルと同じとは
+// 限らない。その印で保存すると、同じ印を持つ別の所在の変換に別の内容の解析情報が
+// 使われるので、ライブ変換用の解析情報を持たせない（行を書かず、変換の要求時に
+// その場で解析させる）。索引の値はこれまでどおり反映する。
+func stampProbe(probe domain.Probe, before, after domain.FileStamp) domain.Probe {
+	probe.Source = before
+	if before != after {
+		probe.Transcode = nil
+	}
+	return probe
 }
 
 // probeArgs は ffprobe に渡す1回分の引数を組み立てる。
@@ -142,16 +160,26 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 		FormatName: parsed.Format.FormatName,
 	}
 
-	// 映像は最初の非添付stream、音声は最初のstreamを採る。アルバムアートや
+	// ライブ変換用の値は、映像は最初の非添付stream、音声は最初のstreamから採る
+	// （specs/018-live-transcode-seek/data-model.md §2）。アルバムアートや
 	// posterはvideoとして現れるため、attached_picを本編にしてはならない。
+	//
+	// 索引のコーデック・寸法はこれまでどおり、codec_name が空の stream を飛ばして
+	// 次の同種の stream を採る。再生可否（EvaluatePlayability）はこの値で決まるので、
+	// 名前の無い先頭の音声のために後ろの非対応の音声を見落とさない。
 	transcode := domain.TranscodeProbe{FormatName: strings.ToLower(parsed.Format.FormatName)}
 	videoFound := false
 	for _, stream := range parsed.Streams {
 		switch stream.CodecType {
 		case "video":
-			if !videoFound && stream.Disposition.AttachedPicture == 0 {
+			if stream.Disposition.AttachedPicture != 0 {
+				continue
+			}
+			if !videoFound {
 				videoFound = true
 				transcode.Video = transcodeVideo(stream)
+			}
+			if probe.VideoCodec == "" {
 				probe.VideoCodec = stream.CodecName
 				// 表示される向きの解像度を記録する。スマートフォンの縦動画は横長で記録し
 				// 90 度回転の印を付けていることが多く、そのままでは横長に見えてしまう。
@@ -167,6 +195,8 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 			if transcode.Audio == nil {
 				audio := transcodeAudio(stream)
 				transcode.Audio = &audio
+			}
+			if probe.AudioCodec == "" {
 				probe.AudioCodec = stream.CodecName
 			}
 		}

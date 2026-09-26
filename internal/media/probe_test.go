@@ -4,6 +4,8 @@ import (
 	"math"
 	"strings"
 	"testing"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 // ffprobe を起動せずに解析部分だけを検証する。外部プロセスに依存しない形で
@@ -59,6 +61,54 @@ func TestParseProbeOutputDoesNotTreatAttachedPictureAsVideo(t *testing.T) {
 	}
 	if got.VideoCodec != "" || got.Width != 0 || got.Height != 0 {
 		t.Errorf("添付画像を本編として採った: %+v", got)
+	}
+}
+
+// 索引のコーデックは codec_name が空の stream を飛ばして次の同種の stream を採る。
+// 名前の無い先頭の音声のために後ろの ac3 を見落とすと、再生できない動画を
+// 直接再生できると判定してしまう。ライブ変換用の値は data-model.md §2 のとおり
+// 最初の非添付映像・最初の音声のままである。
+func TestParseProbeOutputSkipsStreamsWithoutCodecName(t *testing.T) {
+	const output = `{
+	  "streams": [
+	    {"index": 0, "codec_type": "video", "codec_name": "", "width": 640, "height": 360},
+	    {"index": 1, "codec_type": "video", "codec_name": "h264", "width": 1280, "height": 720},
+	    {"index": 2, "codec_type": "audio", "codec_name": ""},
+	    {"index": 3, "codec_type": "audio", "codec_name": "ac3"}
+	  ],
+	  "format": {"duration": "4.0", "format_name": "mov,mp4"}
+	}`
+
+	got, err := parseProbeOutput([]byte(output))
+	if err != nil {
+		t.Fatalf("解析に失敗した: %v", err)
+	}
+	if got.VideoCodec != "h264" || got.Width != 1280 || got.Height != 720 {
+		t.Errorf("映像 = %q %dx%d, want h264 1280x720", got.VideoCodec, got.Width, got.Height)
+	}
+	if got.AudioCodec != "ac3" {
+		t.Errorf("AudioCodec = %q, want ac3", got.AudioCodec)
+	}
+	if play := domain.EvaluatePlayability(domain.ContainerFromPath("clip.mp4"), got); play.Playable {
+		t.Errorf("ac3 の音声を持つ動画を直接再生できると判定した: %+v", play)
+	}
+	if got.Transcode == nil || got.Transcode.Video.Index != 0 || got.Transcode.Audio == nil || got.Transcode.Audio.Index != 2 {
+		t.Errorf("Transcode = %+v, want 映像 0・音声 2", got.Transcode)
+	}
+}
+
+// ffprobe の前後でファイルの印が変わったら、ライブ変換用の解析情報を持たせない。
+func TestStampProbeDropsTranscodeWhenFileChanged(t *testing.T) {
+	probe := domain.Probe{Transcode: &domain.TranscodeProbe{}}
+	before := domain.FileStamp{SizeBytes: 10, ModTimeNs: 1}
+
+	same := stampProbe(probe, before, before)
+	if same.Source != before || same.Transcode == nil {
+		t.Errorf("変わらないファイル: %+v", same)
+	}
+	changed := stampProbe(probe, before, domain.FileStamp{SizeBytes: 12, ModTimeNs: 2})
+	if changed.Source != before || changed.Transcode != nil {
+		t.Errorf("差し替わったファイル: %+v", changed)
 	}
 }
 
