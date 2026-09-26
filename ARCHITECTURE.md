@@ -458,7 +458,7 @@ and the playback screen's video cannot read a status or header when they fail, s
 the event stream gives up or the video fails to load they check the session instead, and
 reload once if the viewer is no longer the owner rather than retrying forever. A guest gets the same shell and screens with every
 owner-data control left out rather than disabled: the scan button and progress, the
-tag, "recent", "in progress" and settings entries, selection, tag filters, the watch-state
+tag and settings entries, selection, tag filters, the watch-state
 filter and "recently played" sort (list conditions left in the URL or the stored sort are
 rounded to the defaults), tags, file location, re-probe and saved playback position on the
 playback screen. `ScanProvider`, `useVideos` and `useVideoDetail` neither fetch owner-only
@@ -474,8 +474,7 @@ the search, filter, sort and zoom controls) live in `web/src/videoList/`, which 
 neither screen, so neither screen imports from the other. `web/src/tags/` is the tag
 admin screen (`/tags`): a list of every tag with its video count, an in-page name/synonym
 search, create, rename and delete. `web/src/shell/navigation.ts` puts its sidebar entry
-right after "フォルダ" (Folders), because unlike "最近追加"/"視聴途中" it has a working
-destination. The library, folder, settings and tag screens use the shell: `app/App.tsx`
+right after "フォルダ" (Folders). Every sidebar entry links to a working screen. The library, folder, settings and tag screens use the shell: `app/App.tsx`
 puts `AppShell` around the `/`, `/folders/*`, `/settings` and `/tags` routes, and the
 playback screen
 (`/videos/:id`) deliberately gets no shell at all, because it is a

@@ -40,22 +40,8 @@ function Entry({
   mode: SidebarMode;
   onNavigate: () => void;
 }) {
-  const toast = useToast();
   const Icon = entry.icon;
   const className = (active: boolean) => entryClassName(mode, active);
-
-  if (entry.to === undefined) {
-    return (
-      <button
-        type="button"
-        onClick={() => toast(`「${entry.label}」は準備中です`)}
-        className={cn(className(false), "w-full")}
-      >
-        <Icon strokeWidth={1.75} />
-        <span className="max-w-full truncate">{entry.label}</span>
-      </button>
-    );
-  }
 
   return (
     <NavLink
