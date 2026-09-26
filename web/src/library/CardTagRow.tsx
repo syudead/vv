@@ -1,6 +1,8 @@
+import { Folder } from "lucide-react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
-import type { TagRef } from "../api/client";
+import type { VideoTag } from "../api/client";
+import { isFolderOnly } from "../api/tagOrder";
 import { cn } from "../lib/cn";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useTagRowMeasure } from "./TagRowMeasure";
@@ -10,7 +12,7 @@ import { computeVisibleTagCount } from "./tagRowOverflow";
 const GAP_PX = 4;
 
 export interface CardTagRowProps {
-  tags: readonly TagRef[];
+  tags: readonly VideoTag[];
   /**
    * 選択中（1件以上選んでいる）ときは、チップをボタンとして描かず Tab の順からも
    * 外し、押すとカードの選択を切り替える（ui-design.md「Card structure and
@@ -18,7 +20,7 @@ export interface CardTagRowProps {
    */
   selectionMode: boolean;
   /** チップを押したとき、そのタグで絞り込む。 */
-  onPress: (tag: TagRef) => void;
+  onPress: (tag: VideoTag) => void;
   /** 選択中にチップを押したとき、カードの選択を切り替える。 */
   onToggleSelection: () => void;
 }
@@ -32,19 +34,38 @@ export interface CardTagRowProps {
  * （`PopoverContent` も `bg-elevated`）では `bg-field` にし、チップの面が
  * 窓の面へ溶けて見えなくならないようにする（N5、Synonym の窓の `bg-bg` と
  * 同じ理由）。
+ *
+ * folderOnly のチップは面を持たず、破線の枠と Folder の目印で区別する。
+ * 大きさ（`h-5`・`text-xs`）と文字の色は面のあるチップと同じにし、hover では
+ * `ring` を重ねず枠を実線にする（017 の ui-design.md「Folder-derived tag chip」
+ * 「Interaction states」）。
  */
 function chipClassName(
   pressable: boolean,
   shrink = false,
   surface: "elevated" | "field" = "elevated",
+  folderOnly = false,
 ): string {
   return cn(
     "inline-flex h-5 max-w-full min-w-0 items-center rounded-sm px-1.5 text-xs text-fg-muted",
-    surface === "elevated" ? "bg-elevated" : "bg-field",
+    folderOnly
+      ? "gap-1 border border-dashed border-border-strong"
+      : surface === "elevated"
+        ? "bg-elevated"
+        : "bg-field",
     shrink ? "shrink" : "shrink-0",
     pressable &&
-      "hover:text-fg hover:ring-1 hover:ring-inset hover:ring-border-strong focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-link",
+      (folderOnly
+        ? "hover:border-solid hover:text-fg"
+        : "hover:text-fg hover:ring-1 hover:ring-inset hover:ring-border-strong"),
+    pressable &&
+      "focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-link",
   );
+}
+
+/** FolderMark は破線のチップの名前の前に置く目印である。 */
+function FolderMark() {
+  return <Folder className="size-3 shrink-0 text-fg-subtle" aria-hidden="true" />;
 }
 
 function TagChip({
@@ -54,16 +75,27 @@ function TagChip({
   surface,
   onPress,
 }: {
-  tag: TagRef;
+  tag: VideoTag;
   pressable: boolean;
   shrink?: boolean;
   surface?: "elevated" | "field";
   onPress: () => void;
 }) {
+  const folderOnly = isFolderOnly(tag);
+  const content = (
+    <>
+      {folderOnly && <FolderMark />}
+      <span className="min-w-0 truncate">{tag.name}</span>
+    </>
+  );
   if (!pressable) {
     return (
-      <span title={tag.name} className={chipClassName(false, shrink, surface)}>
-        <span className="min-w-0 truncate">{tag.name}</span>
+      <span
+        title={tag.name}
+        className={chipClassName(false, shrink, surface, folderOnly)}
+      >
+        {content}
+        {folderOnly && <span className="sr-only">（フォルダ名から）</span>}
       </span>
     );
   }
@@ -71,11 +103,13 @@ function TagChip({
     <button
       type="button"
       title={tag.name}
-      aria-label={`${tag.name}で絞り込む`}
+      aria-label={
+        folderOnly ? `${tag.name}で絞り込む（フォルダ名から）` : `${tag.name}で絞り込む`
+      }
       onClick={onPress}
-      className={chipClassName(true, shrink, surface)}
+      className={chipClassName(true, shrink, surface, folderOnly)}
     >
-      <span className="min-w-0 truncate">{tag.name}</span>
+      {content}
     </button>
   );
 }
@@ -207,7 +241,11 @@ export default function CardTagRow({
       >
         <div ref={measureRowRef} className="flex flex-nowrap items-center gap-1">
           {tags.map((tag) => (
-            <span key={tag.id} className={chipClassName(true)}>
+            <span
+              key={tag.id}
+              className={chipClassName(true, false, "elevated", isFolderOnly(tag))}
+            >
+              {isFolderOnly(tag) && <FolderMark />}
               <span>{tag.name}</span>
             </span>
           ))}
