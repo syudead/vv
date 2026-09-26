@@ -37,7 +37,8 @@ const defaultStreamContentType = "application/octet-stream"
 // Range の解釈・206・Content-Range・Accept-Ranges・416・If-Range は
 // http.ServeContent に任せ、自前で組み立てない（技術選定文書 3.3）。
 // Linux では io.Copy が sendfile に落ちるため、大きなファイルでもユーザー
-// 空間のコピーが起きない。
+// 空間のコピーが起きない。応答を包む層（errorCacheWriter）は io.ReaderFrom を
+// 中継し、この経路を塞がないようにしている。
 //
 // 再生できない形式（playable = false）でも配信自体は行う。ブラウザが再生
 // できるかどうかと、ファイルを取得できるかは別の話である。

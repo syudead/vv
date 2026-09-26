@@ -134,6 +134,8 @@ DB は「再構築可能なインデックス」に限定する。タグ・再�
 - Linux では `http.ServeContent` からの `io.Copy` が `sendfile` に落ちるため、
   大きなファイルでもユーザー空間のコピーが発生しない。Node 構成で検討して
   いたリバースプロキシへの委譲（`X-Accel-Redirect`）は初版では不要。
+  `ResponseWriter` を包むミドルウェアは `io.ReaderFrom` を下へ中継する。中継が
+  無いと `io.Copy` は包みの `Write` を使い、`sendfile` に落ちない。
 - ブラウザの `<video>` は Cookie を送るため、ストリームも通常のセッション認証で
   保護できる（署名付き URL は不要）。
 

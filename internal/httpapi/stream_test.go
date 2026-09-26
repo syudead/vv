@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -126,6 +128,56 @@ func TestStreamRejectsUnsatisfiableRange(t *testing.T) {
 	// 失敗応答に配信用の Cache-Control が残らないことを固定する。
 	if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
 		t.Errorf("416 の Cache-Control = %q, want %q", got, cacheNoStore)
+	}
+}
+
+// readerFromRecorder は、下の ResponseWriter の ReadFrom が呼ばれたかを記録する。
+// 本物の http.response では ReadFrom が sendfile の入口になる。
+type readerFromRecorder struct {
+	*httptest.ResponseRecorder
+	readFromCalls int
+}
+
+func (r *readerFromRecorder) ReadFrom(src io.Reader) (int64, error) {
+	r.readFromCalls++
+	return io.Copy(r.ResponseRecorder, src)
+}
+
+// 応答を包む層が io.ReaderFrom を塞ぐと、ServeContent のコピーが sendfile を
+// 使えず 32KB ずつユーザー空間を通る。包みの下の ReadFrom まで届くことを固定する。
+func TestStreamPassesReadFromToUnderlyingWriter(t *testing.T) {
+	const size = 64 * 1024
+	mediaDir, video, content := streamFixture(t, "a.mp4", size)
+	handler := streamServer(t, mediaDir, video)
+
+	for _, rangeHeader := range []string{"", "bytes=1024-4095"} {
+		rec := &readerFromRecorder{ResponseRecorder: httptest.NewRecorder()}
+		req := httptest.NewRequest(http.MethodGet, "/api/videos/1/stream", nil)
+		if rangeHeader != "" {
+			req.Header.Set("Range", rangeHeader)
+		}
+		handler.ServeHTTP(rec, req)
+
+		if rec.readFromCalls == 0 {
+			t.Errorf("Range %q: 下の ResponseWriter の ReadFrom が呼ばれていない", rangeHeader)
+		}
+		want := content
+		if rangeHeader != "" {
+			want = content[1024:4096]
+		}
+		if !bytes.Equal(rec.Body.Bytes(), want) {
+			t.Errorf("Range %q: 本文 = %d バイト, want %d", rangeHeader, rec.Body.Len(), len(want))
+		}
+	}
+}
+
+// ReadFrom を持たない ResponseWriter でも、包みの ReadFrom は自分へ戻らずに写す。
+func TestErrorCacheWriterReadFromWithoutReaderFrom(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writer := &errorCacheWriter{ResponseWriter: struct{ http.ResponseWriter }{rec}}
+	n, err := writer.ReadFrom(strings.NewReader("hello"))
+	if err != nil || n != 5 || rec.Body.String() != "hello" {
+		t.Fatalf("ReadFrom = %d, %v; body %q", n, err, rec.Body.String())
 	}
 }
 
