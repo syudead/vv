@@ -3,17 +3,23 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
+	"github.com/syudead/vv/internal/store"
 )
 
+// fakeTranscoder は media.LiveTranscoder の代わりである。保存済みの解析情報が
+// 渡されなければ「その場で解析した」とみなして probes を数え、probed を返す。
 type fakeTranscoder struct {
 	body      string
 	stream    io.ReadCloser
@@ -22,22 +28,38 @@ type fakeTranscoder struct {
 	path      string
 	startMs   int64
 	normalize bool
+	source    domain.FileStamp
+	probe     *domain.TranscodeProbe
+	probed    domain.TranscodeProbe
 	starts    int
+	probes    int
 	waits     int
 	stops     int
 }
 
-func (f *fakeTranscoder) Start(_ context.Context, path string, startMs int64, normalize bool, _ time.Time) (io.ReadCloser, func() error, func(), error) {
+func (f *fakeTranscoder) Start(_ context.Context, request domain.LiveTranscodeRequest) (domain.LiveTranscode, error) {
 	f.starts++
-	f.path, f.startMs, f.normalize = path, startMs, normalize
+	f.path, f.startMs, f.normalize = request.Path, request.StartMs, request.Normalize
+	f.source, f.probe = request.Source, request.Probe
+	var probed *domain.TranscodeProbe
+	if request.Probe == nil {
+		f.probes++
+		result := f.probed
+		probed = &result
+	}
 	if f.err != nil {
-		return nil, nil, nil, f.err
+		return domain.LiveTranscode{}, f.err
 	}
 	stream := f.stream
 	if stream == nil {
 		stream = io.NopCloser(strings.NewReader(f.body))
 	}
-	return stream, func() error { f.waits++; return f.waitErr }, func() { f.stops++ }, nil
+	return domain.LiveTranscode{
+		Stream: stream,
+		Wait:   func() error { f.waits++; return f.waitErr },
+		Stop:   func() { f.stops++ },
+		Probed: probed,
+	}, nil
 }
 
 type blockingReadCloser struct {
@@ -222,6 +244,190 @@ func TestInitialTranscodeDataTimesOut(t *testing.T) {
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("timeoutまで %s かかった", elapsed)
+	}
+}
+
+// transcodeProbeEnv は本物の保存層に動画を 2 本入れる。"ingested" は取り込みの解析で
+// ライブ変換用の解析情報を保存済み、"bare" は保存が無い。
+type transcodeProbeEnv struct {
+	db      *store.DB
+	handler http.Handler
+	fake    *fakeTranscoder
+	ids     map[string]int64
+	paths   map[string]string
+}
+
+func newTranscodeProbeEnv(t *testing.T) *transcodeProbeEnv {
+	t.Helper()
+	ctx := context.Background()
+	db, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := store.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	mediaDir := t.TempDir()
+	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
+		t.Fatal(err)
+	}
+	env := &transcodeProbeEnv{
+		db:    db,
+		fake:  &fakeTranscoder{body: "fragmented-mp4", probed: transcodeProbeFixture("fresh")},
+		ids:   map[string]int64{},
+		paths: map[string]string{},
+	}
+	for _, name := range []string{"ingested", "bare"} {
+		path := filepath.Join(mediaDir, name+".mkv")
+		if err := os.WriteFile(path, []byte(strings.Repeat(name, 1024)), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		result, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
+			Path: path, Title: name, ContentKey: "key-" + name, SizeBytes: info.Size(),
+			MTime: info.ModTime(), AddedAt: info.ModTime(), Container: "mkv",
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		probe := domain.Probe{DurationMs: 60_000, Width: 640, Height: 360, VideoCodec: "h264"}
+		if name == "ingested" {
+			stored := transcodeProbeFixture("ingest")
+			probe.Transcode, probe.Source = &stored, domain.FileStampOf(info)
+		}
+		if err := db.Ingest().ApplyProbe(ctx, result.ID, probe, domain.Playability{}); err != nil {
+			t.Fatal(err)
+		}
+		env.ids[name], env.paths[name] = result.ID, path
+	}
+	env.handler = newTestServer(t, Options{
+		Videos:          db.Library(),
+		Transcoder:      env.fake,
+		TranscodeProbes: db.Ingest(),
+	})
+	return env
+}
+
+// transcodeProbeFixture は由来を FormatName に記した解析情報である。
+func transcodeProbeFixture(origin string) domain.TranscodeProbe {
+	return domain.TranscodeProbe{FormatName: origin, Video: domain.TranscodeVideo{
+		CodecName: "h264", Width: 640, Height: 360, FPS: 30, RealFPS: 30,
+	}}
+}
+
+// transcode は動画 1 本を変換させ、その要求で解析したか（probes の増分）と、
+// 変換に渡された解析情報を返す。
+func (e *transcodeProbeEnv) transcode(t *testing.T, name, query string) (bool, *domain.TranscodeProbe) {
+	t.Helper()
+	before := e.fake.probes
+	rec := do(t, e.handler, http.MethodGet, fmt.Sprintf("/api/videos/%d/transcode.mp4%s", e.ids[name], query))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("%s%s: status = %d: %s", name, query, rec.Code, rec.Body.String())
+	}
+	return e.fake.probes != before, e.fake.probe
+}
+
+func (e *transcodeProbeEnv) stored(t *testing.T, name string) *domain.StoredTranscodeProbe {
+	t.Helper()
+	stored, err := e.db.Library().TranscodeProbe(context.Background(), e.ids[name])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return stored
+}
+
+// 取り込み済みの動画は、1 回目もシーク後も解析しない（親 Issue #371 受け入れ条件 7）。
+func TestTranscodeUsesIngestedProbe(t *testing.T) {
+	env := newTranscodeProbeEnv(t)
+	for _, query := range []string{"", "?startMs=30000"} {
+		probed, probe := env.transcode(t, "ingested", query)
+		if probed || probe == nil || probe.FormatName != "ingest" {
+			t.Errorf("%q: probed=%v probe=%+v", query, probed, probe)
+		}
+	}
+	info, err := os.Stat(env.paths["ingested"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if env.fake.source != domain.FileStampOf(info) {
+		t.Errorf("source = %+v", env.fake.source)
+	}
+}
+
+// 解析情報が無い動画は 1 回目だけ解析し、結果を保存して 2 回目は解析しない（受け入れ条件 8）。
+func TestTranscodeSavesFreshProbe(t *testing.T) {
+	env := newTranscodeProbeEnv(t)
+	if probed, _ := env.transcode(t, "bare", ""); !probed {
+		t.Fatal("解析情報が無いのに解析しなかった")
+	}
+	info, err := os.Stat(env.paths["bare"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := env.stored(t, "bare")
+	if probe, ok := domain.TranscodeProbeUsable(stored, domain.FileStampOf(info)); !ok || probe.FormatName != "fresh" {
+		t.Fatalf("保存された解析情報 = %+v", stored)
+	}
+	if probed, probe := env.transcode(t, "bare", "?startMs=1000"); probed || probe == nil || probe.FormatName != "fresh" {
+		t.Errorf("2 回目: probed=%v probe=%+v", probed, probe)
+	}
+}
+
+// 大きさか更新時刻が違うファイルでは解析して保存を置き換え、次は解析しない（受け入れ条件 9）。
+func TestTranscodeReprobesChangedFile(t *testing.T) {
+	for _, change := range []string{"mtime", "size"} {
+		t.Run(change, func(t *testing.T) {
+			env := newTranscodeProbeEnv(t)
+			path := env.paths["ingested"]
+			if change == "mtime" {
+				later := time.Now().Add(time.Hour)
+				if err := os.Chtimes(path, later, later); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				info, err := os.Stat(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(path, []byte("changed"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if probed, _ := env.transcode(t, "ingested", ""); !probed {
+				t.Fatal("変わったファイルで保存値を使った")
+			}
+			info, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stored := env.stored(t, "ingested")
+			if stored == nil || stored.Source != domain.FileStampOf(info) {
+				t.Fatalf("保存が置き換わっていない: %+v", stored)
+			}
+			if probed, probe := env.transcode(t, "ingested", ""); probed || probe == nil || probe.FormatName != "fresh" {
+				t.Errorf("次の変換: probed=%v probe=%+v", probed, probe)
+			}
+		})
+	}
+}
+
+// 変換が始められなかったとき（打ち切られた解析を含む）は何も保存しない。
+func TestTranscodeDoesNotSaveProbeWhenStartFails(t *testing.T) {
+	env := newTranscodeProbeEnv(t)
+	env.fake.err = context.Canceled
+	rec := do(t, env.handler, http.MethodGet, fmt.Sprintf("/api/videos/%d/transcode.mp4", env.ids["bare"]))
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d", rec.Code)
+	}
+	if stored := env.stored(t, "bare"); stored != nil {
+		t.Errorf("失敗した変換の解析情報を保存した: %+v", stored)
 	}
 }
 

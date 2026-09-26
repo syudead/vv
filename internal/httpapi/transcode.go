@@ -46,18 +46,29 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.internalError(w, "メディアファイルの読み出しが設定されていません", nil)
 		return
 	}
-	file, _, _, ok := s.openMediaFile(r, video)
+	file, info, _, ok := s.openMediaFile(r, video)
 	if !ok {
 		s.notFound(w, "この動画の実体を開けません")
 		return
 	}
 	defer func() { _ = file.Close() }()
 
-	startupDeadline := time.Now().Add(transcodeStartupTimeout)
-	stream, wait, stop, err := s.transcoder.Start(
-		r.Context(), file.Name(), startMs, video.Playable || startMs > 0, startupDeadline,
-	)
+	// 比べるのは変換で実際に開いた所在の印である。同じ content_key の別の所在が
+	// あっても、開いた所在で決める（specs/018-live-transcode-seek/data-model.md §3）。
+	source := domain.FileStampOf(info)
+	request := domain.LiveTranscodeRequest{
+		Path:            file.Name(),
+		Source:          source,
+		Probe:           s.usableTranscodeProbe(r.Context(), video.ID, source),
+		StartMs:         startMs,
+		Normalize:       video.Playable || startMs > 0,
+		StartupDeadline: time.Now().Add(transcodeStartupTimeout),
+	}
+	started, err := s.transcoder.Start(r.Context(), request)
 	if err != nil {
+		if errors.Is(r.Context().Err(), context.Canceled) {
+			return
+		}
 		if errors.Is(err, domain.ErrUnprocessableMedia) {
 			s.logger.Info("動画をライブ変換できません", slog.Int64("video", video.ID), slog.Any("error", err))
 			s.writeError(w, http.StatusConflict, codeConflict, "この動画をライブ変換できません")
@@ -66,8 +77,13 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.internalError(w, "ライブ変換を開始できませんでした", err)
 		return
 	}
+	stream, wait, stop := started.Stream, started.Wait, started.Stop
+	if started.Probed != nil {
+		// 解析は終わっているので、この後で要求が取り消されても保存は済ませる。
+		s.saveTranscodeProbe(context.WithoutCancel(r.Context()), video.ID, source, *started.Probed)
+	}
 	defer func() { _ = stream.Close() }()
-	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop, time.Until(startupDeadline))
+	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop, time.Until(request.StartupDeadline))
 	if err != nil {
 		if errors.Is(r.Context().Err(), context.Canceled) {
 			return
@@ -102,6 +118,34 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	if copyErr != nil || waitErr != nil {
 		s.logger.Warn("ライブ変換streamが途中で終了しました",
 			slog.Int64("video", video.ID), slog.Any("copy_error", copyErr), slog.Any("process_error", waitErr))
+	}
+}
+
+// usableTranscodeProbe は保存済みの解析情報のうち、開いたファイルの変換に使って
+// よいものを返す。無い・合わない・読めないときは nil で、変換がその場で解析する。
+func (s *server) usableTranscodeProbe(ctx context.Context, videoID int64, source domain.FileStamp) *domain.TranscodeProbe {
+	stored, err := s.videos.TranscodeProbe(ctx, videoID)
+	if err != nil {
+		s.logger.Warn("保存済みの解析情報を読めません。その場で解析します",
+			slog.Int64("video", videoID), slog.Any("error", err))
+		return nil
+	}
+	probe, ok := domain.TranscodeProbeUsable(stored, source)
+	if !ok {
+		return nil
+	}
+	return &probe
+}
+
+// saveTranscodeProbe はその場で解析した結果を保存する。保存できなくても変換は続け、
+// 次の変換がまた解析する。
+func (s *server) saveTranscodeProbe(ctx context.Context, videoID int64, source domain.FileStamp, probe domain.TranscodeProbe) {
+	if s.transcodeProbes == nil {
+		return
+	}
+	if err := s.transcodeProbes.SaveTranscodeProbe(ctx, videoID, source, probe); err != nil {
+		s.logger.Warn("ライブ変換用の解析情報を保存できません",
+			slog.Int64("video", videoID), slog.Any("error", err))
 	}
 }
 
