@@ -15,6 +15,10 @@ import (
 
 const transcodeStartupTimeout = 6 * time.Second
 
+// transcodeProbeSaveTimeout はその場で解析した結果の保存にかける期限である。
+// SQLite の書き込み待ち（busy_timeout 5 秒）より長く、配信の期限とは独立している。
+const transcodeProbeSaveTimeout = 10 * time.Second
+
 // TranscodeVideo streams one request-scoped fragmented MP4 process.
 func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.TranscodeVideoParams) {
 	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる
@@ -78,10 +82,6 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		return
 	}
 	stream, wait, stop := started.Stream, started.Wait, started.Stop
-	if started.Probed != nil {
-		// 解析は終わっているので、この後で要求が取り消されても保存は済ませる。
-		s.saveTranscodeProbe(context.WithoutCancel(r.Context()), video.ID, source, *started.Probed)
-	}
 	defer func() { _ = stream.Close() }()
 	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop, time.Until(request.StartupDeadline))
 	if err != nil {
@@ -90,6 +90,21 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		}
 		s.internalError(w, "ライブ変換が初期データを生成できませんでした", err)
 		return
+	}
+	if started.Probed != nil {
+		// 保存は配信と並べて行い、書き込みの待ちで初期データの期限を使わない。
+		// 解析は終わっているので、要求が取り消されても独立した期限の中で保存は済ませ、
+		// 経路はその保存を待ってから戻る。
+		saved := make(chan struct{})
+		saveCtx, cancelSave := context.WithTimeout(context.WithoutCancel(r.Context()), transcodeProbeSaveTimeout)
+		go func(ctx context.Context, probe domain.TranscodeProbe) {
+			defer close(saved)
+			s.saveTranscodeProbe(ctx, video.ID, source, probe)
+		}(saveCtx, *started.Probed)
+		defer func() {
+			<-saved
+			cancelSave()
+		}()
 	}
 
 	w.Header().Set("Content-Type", "video/mp4")

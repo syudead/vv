@@ -431,6 +431,63 @@ func TestTranscodeDoesNotSaveProbeWhenStartFails(t *testing.T) {
 	}
 }
 
+// firstChunkReader は最初の Read で初期データを返し、そのことを read で知らせる。
+type firstChunkReader struct {
+	read chan struct{}
+	done bool
+}
+
+func (r *firstChunkReader) Read(p []byte) (int, error) {
+	if r.done {
+		return 0, io.EOF
+	}
+	r.done = true
+	close(r.read)
+	return copy(p, "init"), nil
+}
+
+func (r *firstChunkReader) Close() error { return nil }
+
+// slowProbeWriter は初期データが読まれるまで保存を終えない。保存が初期データの
+// 読み出しより先に同期で走ると、期限まで待って失敗を記録する。
+type slowProbeWriter struct {
+	firstRead   chan struct{}
+	blocked     bool
+	hasDeadline bool
+	saves       int
+}
+
+func (w *slowProbeWriter) SaveTranscodeProbe(ctx context.Context, _ int64, _ domain.FileStamp, _ domain.TranscodeProbe) error {
+	w.saves++
+	_, w.hasDeadline = ctx.Deadline()
+	select {
+	case <-w.firstRead:
+		return nil
+	case <-time.After(2 * time.Second):
+		w.blocked = true
+		return errors.New("初期データより先に保存を待たされた")
+	}
+}
+
+// その場の解析結果の保存は初期データの読み出しを待たせず、独立した期限で行う。
+func TestTranscodeSavesFreshProbeWithoutDelayingInitialData(t *testing.T) {
+	mediaDir, video, _ := streamFixture(t, "a.mkv", 128)
+	stream := &firstChunkReader{read: make(chan struct{})}
+	writer := &slowProbeWriter{firstRead: stream.read}
+	handler := newTestServer(t, Options{
+		Videos:          &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+		Transcoder:      &fakeTranscoder{stream: stream, probed: transcodeProbeFixture("fresh")},
+		TranscodeProbes: writer,
+	})
+	rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4")
+	if rec.Code != http.StatusOK || rec.Body.String() != "init" {
+		t.Fatalf("response = %d %q", rec.Code, rec.Body.String())
+	}
+	if writer.saves != 1 || writer.blocked || !writer.hasDeadline {
+		t.Errorf("saves=%d blocked=%v hasDeadline=%v", writer.saves, writer.blocked, writer.hasDeadline)
+	}
+}
+
 func doRequest(handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
