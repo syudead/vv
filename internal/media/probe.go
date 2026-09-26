@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -31,9 +33,19 @@ const probeCommand = "ffprobe"
 // ffmpeg／ffprobe を起こす os/exec はこのパッケージの外へ漏らさない（OS の
 // 既定アプリの起動だけは別の責務として internal/opener に閉じ込める）。
 // 再生可否の判定規則は internal/domain にあり、外部プロセスに触れずにテストできる。
+//
+// ffprobe の直前にファイルの大きさと更新時刻を取り、Probe.Source に載せる。
+// 保存したライブ変換用の解析情報が、変換で開いたファイルと同じ内容かを比べる鍵になる
+// （specs/018-live-transcode-seek/data-model.md §4）。ffprobe の後にも取り直し、
+// 途中で差し替わっていたら解析情報を持たせない（stampProbe）。
 func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		return domain.Probe{}, fmt.Errorf("解析するファイルを確かめられません (%s): %w", path, err)
+	}
 
 	output, err := exec.CommandContext(ctx, probeCommand, probeArgs(path)...).Output()
 	if err != nil {
@@ -49,7 +61,25 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	if err != nil {
 		return domain.Probe{}, fmt.Errorf("%s の出力を解釈できません (%s): %w", probeCommand, path, err)
 	}
-	return probe, nil
+	after, err := os.Stat(path)
+	if err != nil {
+		return domain.Probe{}, fmt.Errorf("解析したファイルを確かめられません (%s): %w", path, err)
+	}
+	return stampProbe(probe, domain.FileStampOf(info), domain.FileStampOf(after)), nil
+}
+
+// stampProbe は ffprobe の前後に取ったファイルの印を解析結果に結び付ける。
+//
+// 前後で大きさか更新時刻が違えば、ffprobe が読んだ内容は前の印のファイルと同じとは
+// 限らない。その印で保存すると、同じ印を持つ別の所在の変換に別の内容の解析情報が
+// 使われるので、ライブ変換用の解析情報を持たせない（行を書かず、変換の要求時に
+// その場で解析させる）。索引の値はこれまでどおり反映する。
+func stampProbe(probe domain.Probe, before, after domain.FileStamp) domain.Probe {
+	probe.Source = before
+	if before != after {
+		probe.Transcode = nil
+	}
+	return probe
 }
 
 // probeArgs は ffprobe に渡す1回分の引数を組み立てる。
@@ -72,36 +102,41 @@ type probeSideData struct {
 
 // probeOutput は ffprobe の JSON のうち、取り出す部分だけを写す。
 type probeOutput struct {
-	Streams []struct {
-		Index             int    `json:"index"`
-		CodecType         string `json:"codec_type"`
-		CodecName         string `json:"codec_name"`
-		Profile           string `json:"profile"`
-		PixelFormat       string `json:"pix_fmt"`
-		BitsPerRawSample  string `json:"bits_per_raw_sample"`
-		Width             int    `json:"width"`
-		Height            int    `json:"height"`
-		Level             int    `json:"level"`
-		AverageFrameRate  string `json:"avg_frame_rate"`
-		RealFrameRate     string `json:"r_frame_rate"`
-		SampleAspectRatio string `json:"sample_aspect_ratio"`
-		SampleRate        string `json:"sample_rate"`
-		Channels          int    `json:"channels"`
-		Tags              struct {
-			Rotate string `json:"rotate"`
-		} `json:"tags"`
-		SideDataList []probeSideData `json:"side_data_list"`
-		Disposition  struct {
-			AttachedPicture int `json:"attached_pic"`
-		} `json:"disposition"`
-	} `json:"streams"`
-	Format struct {
+	Streams []probeStream `json:"streams"`
+	Format  struct {
 		Duration   string `json:"duration"`
 		FormatName string `json:"format_name"`
 	} `json:"format"`
 }
 
-// parseProbeOutput は JSON から domain.Probe を組み立てる。
+// probeStream は ffprobe の streams の 1 件のうち、取り出す部分だけを写す。
+type probeStream struct {
+	Index             int    `json:"index"`
+	CodecType         string `json:"codec_type"`
+	CodecName         string `json:"codec_name"`
+	Profile           string `json:"profile"`
+	PixelFormat       string `json:"pix_fmt"`
+	BitsPerRawSample  string `json:"bits_per_raw_sample"`
+	Width             int    `json:"width"`
+	Height            int    `json:"height"`
+	Level             int    `json:"level"`
+	AverageFrameRate  string `json:"avg_frame_rate"`
+	RealFrameRate     string `json:"r_frame_rate"`
+	SampleAspectRatio string `json:"sample_aspect_ratio"`
+	SampleRate        string `json:"sample_rate"`
+	Channels          int    `json:"channels"`
+	Tags              struct {
+		Rotate string `json:"rotate"`
+	} `json:"tags"`
+	SideDataList []probeSideData `json:"side_data_list"`
+	Disposition  struct {
+		AttachedPicture int `json:"attached_pic"`
+	} `json:"disposition"`
+}
+
+// parseProbeOutput は JSON から domain.Probe を組み立てる。取り込みの解析もライブ変換の
+// 要求時の解析もこの関数だけで ffprobe の出力を解釈し、同じ出力から同じ
+// domain.TranscodeProbe を得る（specs/018-live-transcode-seek/plan.md Structural Decisions 6）。
 //
 // 外部プロセスを起動しないので、「どの値を取り出すか」を単体テストで固定できる。
 // 尺が取れないものは誤りとして返す。尺が分からない動画は一覧で長さを出せず、
@@ -125,12 +160,26 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 		FormatName: parsed.Format.FormatName,
 	}
 
-	// 映像は最初の非添付stream、音声は最初のstreamを採る。アルバムアートや
+	// ライブ変換用の値は、映像は最初の非添付stream、音声は最初のstreamから採る
+	// （specs/018-live-transcode-seek/data-model.md §2）。アルバムアートや
 	// posterはvideoとして現れるため、attached_picを本編にしてはならない。
+	//
+	// 索引のコーデック・寸法はこれまでどおり、codec_name が空の stream を飛ばして
+	// 次の同種の stream を採る。再生可否（EvaluatePlayability）はこの値で決まるので、
+	// 名前の無い先頭の音声のために後ろの非対応の音声を見落とさない。
+	transcode := domain.TranscodeProbe{FormatName: strings.ToLower(parsed.Format.FormatName)}
+	videoFound := false
 	for _, stream := range parsed.Streams {
 		switch stream.CodecType {
 		case "video":
-			if probe.VideoCodec == "" && stream.Disposition.AttachedPicture == 0 {
+			if stream.Disposition.AttachedPicture != 0 {
+				continue
+			}
+			if !videoFound {
+				videoFound = true
+				transcode.Video = transcodeVideo(stream)
+			}
+			if probe.VideoCodec == "" {
 				probe.VideoCodec = stream.CodecName
 				// 表示される向きの解像度を記録する。スマートフォンの縦動画は横長で記録し
 				// 90 度回転の印を付けていることが多く、そのままでは横長に見えてしまう。
@@ -143,13 +192,52 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 				probe.DisplayAspectRatio = displayAspectRatio(stream.Width, stream.Height, stream.SampleAspectRatio, rotated)
 			}
 		case "audio":
+			if transcode.Audio == nil {
+				audio := transcodeAudio(stream)
+				transcode.Audio = &audio
+			}
 			if probe.AudioCodec == "" {
 				probe.AudioCodec = stream.CodecName
 			}
 		}
 	}
+	// 寸法の無い映像はライブ変換できないので、変換用の情報を持たない（保存もしない）。
+	if videoFound && transcode.Video.Width > 0 && transcode.Video.Height > 0 {
+		probe.Transcode = &transcode
+	}
 
 	return probe, nil
+}
+
+// transcodeVideo は映像 stream からライブ変換に要る値を取り出す。
+func transcodeVideo(stream probeStream) domain.TranscodeVideo {
+	sampleAspectNum, sampleAspectDen := parseAspectRatio(stream.SampleAspectRatio)
+	return domain.TranscodeVideo{
+		Index:            stream.Index,
+		CodecName:        strings.ToLower(stream.CodecName),
+		Profile:          stream.Profile,
+		Level:            stream.Level,
+		PixelFormat:      strings.ToLower(stream.PixelFormat),
+		BitsPerRawSample: parsePositiveInt(stream.BitsPerRawSample),
+		Width:            stream.Width,
+		Height:           stream.Height,
+		SampleAspectNum:  sampleAspectNum,
+		SampleAspectDen:  sampleAspectDen,
+		Rotation:         streamRotation(stream.Tags.Rotate, stream.SideDataList),
+		FPS:              parseFrameRate(stream.AverageFrameRate),
+		RealFPS:          parseFrameRate(stream.RealFrameRate),
+	}
+}
+
+// transcodeAudio は音声 stream からライブ変換に要る値を取り出す。
+func transcodeAudio(stream probeStream) domain.TranscodeAudio {
+	return domain.TranscodeAudio{
+		Index:      stream.Index,
+		CodecName:  strings.ToLower(stream.CodecName),
+		Profile:    stream.Profile,
+		SampleRate: parsePositiveInt(stream.SampleRate),
+		Channels:   stream.Channels,
+	}
 }
 
 // displayAspectRatio は、符号化した寸法と画素の縦横比（SAR）から表示される横÷縦の比率を

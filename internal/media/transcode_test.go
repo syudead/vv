@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -17,11 +18,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-func compatibleMetadata() transcodeMetadata {
-	audio := transcodeStream{Index: 2, CodecType: "audio", CodecName: "aac", Profile: "LC", SampleRate: 48000, Channels: 2}
-	return transcodeMetadata{
+func compatibleMetadata() domain.TranscodeProbe {
+	audio := domain.TranscodeAudio{Index: 2, CodecName: "aac", Profile: "LC", SampleRate: 48000, Channels: 2}
+	return domain.TranscodeProbe{
 		FormatName: "matroska,webm",
-		Video:      transcodeStream{Index: 1, CodecType: "video", CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1},
+		Video:      domain.TranscodeVideo{Index: 1, CodecName: "h264", Profile: "High", PixelFormat: "yuv420p", BitsPerRawSample: 8, Width: 1920, Height: 1080, Level: 41, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1},
 		Audio:      &audio,
 	}
 }
@@ -75,19 +76,19 @@ func TestTranscodeArgsCopiesCompatibleStreams(t *testing.T) {
 func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*transcodeMetadata)
+		mutate func(*domain.TranscodeProbe)
 		want   string
 	}{
-		{"10-bit H264", func(m *transcodeMetadata) { m.Video.PixelFormat = "yuv420p10le" }, "-c:v libx264"},
-		{"High 4:4:4 10-bit", func(m *transcodeMetadata) {
+		{"10-bit H264", func(m *domain.TranscodeProbe) { m.Video.PixelFormat = "yuv420p10le" }, "-c:v libx264"},
+		{"High 4:4:4 10-bit", func(m *domain.TranscodeProbe) {
 			m.Video.Profile = "High 4:4:4 Predictive"
 			m.Video.PixelFormat = "yuv444p10le"
 			m.Video.BitsPerRawSample = 10
 		}, "-c:v libx264"},
-		{"96kHz AAC", func(m *transcodeMetadata) { m.Audio.SampleRate = 96000 }, "-c:a aac -profile:a aac_low -ac 2 -b:a 192k -ar 48000"},
-		{"unknown video attribute", func(m *transcodeMetadata) { m.Video.BitsPerRawSample = 0 }, "-c:v libx264"},
-		{"variable frame rate", func(m *transcodeMetadata) { m.Video.RealFPS = 120 }, "-c:v libx264"},
-		{"rotated oversized coded frame", func(m *transcodeMetadata) {
+		{"96kHz AAC", func(m *domain.TranscodeProbe) { m.Audio.SampleRate = 96000 }, "-c:a aac -profile:a aac_low -ac 2 -b:a 192k -ar 48000"},
+		{"unknown video attribute", func(m *domain.TranscodeProbe) { m.Video.BitsPerRawSample = 0 }, "-c:v libx264"},
+		{"variable frame rate", func(m *domain.TranscodeProbe) { m.Video.RealFPS = 120 }, "-c:v libx264"},
+		{"rotated oversized coded frame", func(m *domain.TranscodeProbe) {
 			m.Video.Width = 2160
 			m.Video.Height = 4096
 			m.Video.Rotation = 90
@@ -244,18 +245,18 @@ func readInitialBytes(stream io.Reader) ([]byte, error) {
 func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 	tests := []struct {
 		name   string
-		stream transcodeStream
+		stream domain.TranscodeVideo
 		want   string
 	}{
-		{"odd dimensions", transcodeStream{Width: 641, Height: 359, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1}, "-vf pad=642:360:0:0,setsar=1/1*641/359*360/642:max=1000000"},
-		{"8K60", transcodeStream{Width: 7680, Height: 4320, FPS: 60, RealFPS: 60}, "-vf scale=3840:2160,setsar=1/1*7680/4320*2160/3840:max=1000000,fps=30.340"},
-		{"rotated 4K", transcodeStream{Width: 3840, Height: 2160, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf setsar=1/1*2160/3840*3840/2160:max=1000000"},
-		{"portrait 8K", transcodeStream{Width: 4320, Height: 7680, FPS: 30, RealFPS: 30}, "-vf scale=2160:3840,setsar=1/1*4320/7680*3840/2160:max=1000000"},
-		{"rotated 8K", transcodeStream{Width: 7680, Height: 4320, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf scale=2160:3840,setsar=1/1*4320/7680*3840/2160:max=1000000"},
-		{"rotated HD", transcodeStream{Width: 1920, Height: 1080, Rotation: 270, FPS: 30, RealFPS: 30}, "-vf setsar=1/1*1080/1920*1920/1080:max=1000000"},
-		{"unknown rate", transcodeStream{Width: 1920, Height: 1080}, "-vf fps=30.000"},
-		{"VFR peak", transcodeStream{Width: 1920, Height: 1080, FPS: 30, RealFPS: 120}, "-vf fps=30"},
-		{"very low VFR", transcodeStream{Width: 1920, Height: 1080, FPS: 0.0005, RealFPS: 1}, "-vf fps=0.0005"},
+		{"odd dimensions", domain.TranscodeVideo{Width: 641, Height: 359, FPS: 30, RealFPS: 30, SampleAspectNum: 1, SampleAspectDen: 1}, "-vf pad=642:360:0:0,setsar=1/1*641/359*360/642:max=1000000"},
+		{"8K60", domain.TranscodeVideo{Width: 7680, Height: 4320, FPS: 60, RealFPS: 60}, "-vf scale=3840:2160,setsar=1/1*7680/4320*2160/3840:max=1000000,fps=30.340"},
+		{"rotated 4K", domain.TranscodeVideo{Width: 3840, Height: 2160, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf setsar=1/1*2160/3840*3840/2160:max=1000000"},
+		{"portrait 8K", domain.TranscodeVideo{Width: 4320, Height: 7680, FPS: 30, RealFPS: 30}, "-vf scale=2160:3840,setsar=1/1*4320/7680*3840/2160:max=1000000"},
+		{"rotated 8K", domain.TranscodeVideo{Width: 7680, Height: 4320, Rotation: 90, FPS: 30, RealFPS: 30}, "-vf scale=2160:3840,setsar=1/1*4320/7680*3840/2160:max=1000000"},
+		{"rotated HD", domain.TranscodeVideo{Width: 1920, Height: 1080, Rotation: 270, FPS: 30, RealFPS: 30}, "-vf setsar=1/1*1080/1920*1920/1080:max=1000000"},
+		{"unknown rate", domain.TranscodeVideo{Width: 1920, Height: 1080}, "-vf fps=30.000"},
+		{"VFR peak", domain.TranscodeVideo{Width: 1920, Height: 1080, FPS: 30, RealFPS: 120}, "-vf fps=30"},
+		{"very low VFR", domain.TranscodeVideo{Width: 1920, Height: 1080, FPS: 0.0005, RealFPS: 1}, "-vf fps=0.0005"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -601,5 +602,113 @@ func TestTranscodeHelperProcess(t *testing.T) {
 	_, _ = io.WriteString(os.Stdout, "fragment")
 	for {
 		time.Sleep(time.Second)
+	}
+}
+
+// 同じ ffprobe の出力から、取り込みの解析が保存する値と要求時の解析が作る値が等しく、
+// 保存（JSON）を経て読み戻した値も同じ ffmpeg の引数を生む（親 Issue #371 受け入れ条件 10）。
+func TestIngestAndRequestProbeShareTranscodeProbe(t *testing.T) {
+	outputs := map[string]string{
+		"MOV with cover art and rotation": `{"streams":[
+			{"index":0,"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}},
+			{"index":1,"codec_type":"video","codec_name":"H264","profile":"High","pix_fmt":"YUV420P","bits_per_raw_sample":"8","width":1920,"height":1080,"level":41,"avg_frame_rate":"30000/1001","r_frame_rate":"30000/1001","sample_aspect_ratio":"4:3","side_data_list":[{"side_data_type":"Display Matrix","rotation":-90}]},
+			{"index":2,"codec_type":"audio","codec_name":"aac","profile":"LC","sample_rate":"48000","channels":2}
+		],"format":{"duration":"12.5","format_name":"MOV,MP4,M4A,3GP,3G2,MJ2"}}`,
+		"MKV without audio": `{"streams":[
+			{"index":0,"codec_type":"video","codec_name":"hevc","profile":"Main 10","pix_fmt":"yuv420p10le","width":3840,"height":2160,"level":153,"avg_frame_rate":"24/1","r_frame_rate":"48/1","tags":{"rotate":"180"}}
+		],"format":{"duration":"60.0","format_name":"matroska,webm"}}`,
+	}
+	for name, output := range outputs {
+		t.Run(name, func(t *testing.T) {
+			ingest, err := parseProbeOutput([]byte(output))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if ingest.Transcode == nil {
+				t.Fatal("取り込みの解析が変換用の情報を持たない")
+			}
+			request, err := parseTranscodeProbe([]byte(output))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(*ingest.Transcode, request) {
+				t.Fatalf("ingest = %+v, request = %+v", *ingest.Transcode, request)
+			}
+
+			encoded, err := json.Marshal(ingest.Transcode)
+			if err != nil {
+				t.Fatal(err)
+			}
+			stamp := domain.FileStamp{SizeBytes: 1024, ModTimeNs: 1_700_000_000_123_456_789}
+			stored, ok := domain.TranscodeProbeUsable(&domain.StoredTranscodeProbe{
+				Version: domain.TranscodeProbeVersion, Source: stamp, Probe: string(encoded),
+			}, stamp)
+			if !ok || !reflect.DeepEqual(stored, request) {
+				t.Fatalf("stored = %+v (usable=%v), request = %+v", stored, ok, request)
+			}
+			for _, startMs := range []int64{0, 25000} {
+				want := transcodeArgs("movie", startMs, request, false)
+				if got := transcodeArgs("movie", startMs, stored, false); !reflect.DeepEqual(got, want) {
+					t.Fatalf("args differ at %d: stored=%v request=%v", startMs, got, want)
+				}
+			}
+		})
+	}
+}
+
+// 使える映像 stream（非添付で寸法がある）が無い動画では、取り込みの解析は成功しても
+// 変換用の情報を持たない。
+func TestParseProbeOutputOmitsTranscodeWithoutUsableVideo(t *testing.T) {
+	outputs := map[string]string{
+		"attached picture only": `{"streams":[{"index":0,"codec_type":"video","codec_name":"mjpeg","width":600,"height":600,"disposition":{"attached_pic":1}},{"index":1,"codec_type":"audio","codec_name":"aac"}],"format":{"duration":"12.5"}}`,
+		"no dimensions":         `{"streams":[{"index":0,"codec_type":"video","codec_name":"h264"}],"format":{"duration":"12.5"}}`,
+		"audio only":            `{"streams":[{"index":0,"codec_type":"audio","codec_name":"mp3"}],"format":{"duration":"12.5"}}`,
+	}
+	for name, output := range outputs {
+		t.Run(name, func(t *testing.T) {
+			got, err := parseProbeOutput([]byte(output))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Transcode != nil {
+				t.Fatalf("Transcode = %+v, want nil", got.Transcode)
+			}
+			if _, err := parseTranscodeProbe([]byte(output)); err == nil {
+				t.Fatal("要求時の解析が成功した")
+			}
+		})
+	}
+}
+
+// Probe は ffprobe の直前に取ったファイルの大きさと更新時刻を Source に載せる。
+func TestProbeRecordsSourceStamp(t *testing.T) {
+	if _, err := exec.LookPath(transcodeCommand); err != nil {
+		t.Skip("ffmpegがありません")
+	}
+	if _, err := exec.LookPath(probeCommand); err != nil {
+		t.Skip("ffprobeがありません")
+	}
+	input := filepath.Join(t.TempDir(), "clip.mp4")
+	generate := exec.Command(transcodeCommand,
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-f", "lavfi", "-i", "testsrc=size=160x90:rate=15:duration=1",
+		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", input,
+	)
+	if output, err := generate.CombinedOutput(); err != nil {
+		t.Fatalf("fixture生成: %v: %s", err, output)
+	}
+	info, err := os.Stat(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := Probe(context.Background(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Source != domain.FileStampOf(info) || got.Source.ModTimeNs == 0 {
+		t.Fatalf("Source = %+v, want %+v", got.Source, domain.FileStampOf(info))
+	}
+	if got.Transcode == nil || got.Transcode.Video.Width != 160 || got.Transcode.Audio != nil {
+		t.Fatalf("Transcode = %+v", got.Transcode)
 	}
 }

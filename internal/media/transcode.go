@@ -2,7 +2,6 @@ package media
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"math"
@@ -109,104 +108,42 @@ func (t *LiveTranscoder) Start(
 	return stdout, wait, stop, nil
 }
 
-type transcodeStream struct {
-	Index            int
-	CodecType        string
-	CodecName        string
-	Profile          string
-	PixelFormat      string
-	BitsPerRawSample int
-	Width            int
-	Height           int
-	Level            int
-	FPS              float64
-	RealFPS          float64
-	SampleAspectNum  int64
-	SampleAspectDen  int64
-	Rotation         int
-	SampleRate       int
-	Channels         int
-	AttachedPicture  bool
-}
-
-type transcodeMetadata struct {
-	FormatName string
-	Video      transcodeStream
-	Audio      *transcodeStream
-}
-
-func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline time.Time) (transcodeMetadata, error) {
+func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline time.Time) (domain.TranscodeProbe, error) {
 	probeCtx, cancel := context.WithDeadline(ctx, startupDeadline)
 	defer cancel()
 
 	output, err := t.commandContext(probeCtx, probeCommand, probeArgs(path)...).Output()
 	if err != nil {
 		if contextErr := probeCtx.Err(); contextErr != nil {
-			return transcodeMetadata{}, fmt.Errorf("request時probeが期限内に完了しませんでした: %w", contextErr)
+			return domain.TranscodeProbe{}, fmt.Errorf("request時probeが期限内に完了しませんでした: %w", contextErr)
 		}
-		return transcodeMetadata{}, fmt.Errorf("%w: request時probeに失敗しました: %w", domain.ErrUnprocessableMedia, err)
+		return domain.TranscodeProbe{}, fmt.Errorf("%w: request時probeに失敗しました: %w", domain.ErrUnprocessableMedia, err)
 	}
 	metadata, err := parseTranscodeProbe(output)
 	if err != nil {
-		return transcodeMetadata{}, fmt.Errorf("%w: %w", domain.ErrUnprocessableMedia, err)
+		return domain.TranscodeProbe{}, fmt.Errorf("%w: %w", domain.ErrUnprocessableMedia, err)
 	}
 	return metadata, nil
 }
 
-func parseTranscodeProbe(output []byte) (transcodeMetadata, error) {
-	var parsed probeOutput
-	if err := json.Unmarshal(output, &parsed); err != nil {
-		return transcodeMetadata{}, fmt.Errorf("probe出力をJSONとして読めません: %w", err)
+// parseTranscodeProbe は要求時の ffprobe の出力を、取り込みと同じ parseProbeOutput で
+// 解釈し、ライブ変換に要る値を返す。尺が正でない動画と、使える映像 stream（非添付で
+// 寸法がある）の無い動画は変換できない。
+func parseTranscodeProbe(output []byte) (domain.TranscodeProbe, error) {
+	probe, err := parseProbeOutput(output)
+	if err != nil {
+		return domain.TranscodeProbe{}, err
 	}
-	duration, err := strconv.ParseFloat(parsed.Format.Duration, 64)
-	if err != nil || duration <= 0 || math.IsInf(duration, 0) || math.IsNaN(duration) {
-		return transcodeMetadata{}, fmt.Errorf("動画の尺がありません")
+	if probe.DurationMs <= 0 {
+		return domain.TranscodeProbe{}, fmt.Errorf("動画の尺がありません")
 	}
-
-	result := transcodeMetadata{FormatName: strings.ToLower(parsed.Format.FormatName)}
-	for _, stream := range parsed.Streams {
-		sampleAspectNum, sampleAspectDen := parseAspectRatio(stream.SampleAspectRatio)
-		rotation := streamRotation(stream.Tags.Rotate, stream.SideDataList)
-		converted := transcodeStream{
-			Index:            stream.Index,
-			CodecType:        stream.CodecType,
-			CodecName:        strings.ToLower(stream.CodecName),
-			Profile:          stream.Profile,
-			PixelFormat:      strings.ToLower(stream.PixelFormat),
-			BitsPerRawSample: parsePositiveInt(stream.BitsPerRawSample),
-			Width:            stream.Width,
-			Height:           stream.Height,
-			Level:            stream.Level,
-			FPS:              parseFrameRate(stream.AverageFrameRate),
-			RealFPS:          parseFrameRate(stream.RealFrameRate),
-			SampleAspectNum:  sampleAspectNum,
-			SampleAspectDen:  sampleAspectDen,
-			Rotation:         rotation,
-			SampleRate:       parsePositiveInt(stream.SampleRate),
-			Channels:         stream.Channels,
-			AttachedPicture:  stream.Disposition.AttachedPicture != 0,
-		}
-		switch stream.CodecType {
-		case "video":
-			if result.Video.CodecType == "" && !converted.AttachedPicture {
-				result.Video = converted
-			}
-		case "audio":
-			if result.Audio == nil {
-				result.Audio = &converted
-			}
-		}
+	if probe.Transcode == nil {
+		return domain.TranscodeProbe{}, fmt.Errorf("寸法のある非添付の映像streamがありません")
 	}
-	if result.Video.CodecType == "" {
-		return transcodeMetadata{}, fmt.Errorf("非添付の映像streamがありません")
-	}
-	if result.Video.Width <= 0 || result.Video.Height <= 0 {
-		return transcodeMetadata{}, fmt.Errorf("映像の寸法がありません")
-	}
-	return result, nil
+	return *probe.Transcode, nil
 }
 
-func transcodeArgs(path string, startMs int64, metadata transcodeMetadata, normalize bool) []string {
+func transcodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, normalize bool) []string {
 	normalize = normalize || startMs > 0
 	args := []string{"-hide_banner", "-loglevel", "warning"}
 	appendInput := func(disableStream string) {
@@ -266,7 +203,7 @@ func usesMOVDemuxer(formatName string) bool {
 	return false
 }
 
-func videoCanCopy(stream transcodeStream) bool {
+func videoCanCopy(stream domain.TranscodeVideo) bool {
 	profiles := map[string]bool{
 		"baseline": true, "constrained baseline": true, "main": true, "high": true,
 	}
@@ -284,13 +221,13 @@ func videoCanCopy(stream transcodeStream) bool {
 		stream.FPS <= maxOutputFPS(width, height)+0.0001
 }
 
-func audioCanCopy(stream transcodeStream) bool {
+func audioCanCopy(stream domain.TranscodeAudio) bool {
 	return stream.CodecName == "aac" && strings.EqualFold(stream.Profile, "LC") &&
 		stream.Channels >= 1 && stream.Channels <= 2 &&
 		stream.SampleRate >= 8000 && stream.SampleRate <= 48000
 }
 
-func videoEncodeArgs(stream transcodeStream) []string {
+func videoEncodeArgs(stream domain.TranscodeVideo) []string {
 	displayWidth, displayHeight, sampleAspectNum, sampleAspectDen := displayGeometry(stream)
 	width, height := outputDimensions(displayWidth, displayHeight)
 	filters := make([]string, 0, 2)
@@ -331,7 +268,7 @@ func videoEncodeArgs(stream transcodeStream) []string {
 	return args
 }
 
-func constantFrameRate(stream transcodeStream) bool {
+func constantFrameRate(stream domain.TranscodeVideo) bool {
 	return stream.FPS > 0 && stream.RealFPS > 0 && math.Abs(stream.FPS-stream.RealFPS) < 0.0001
 }
 
@@ -399,7 +336,7 @@ func parseAspectRatio(value string) (int64, int64) {
 	return n, d
 }
 
-func displayGeometry(stream transcodeStream) (int, int, int64, int64) {
+func displayGeometry(stream domain.TranscodeVideo) (int, int, int64, int64) {
 	width, height := stream.Width, stream.Height
 	numerator, denominator := stream.SampleAspectNum, stream.SampleAspectDen
 	if numerator <= 0 || denominator <= 0 {

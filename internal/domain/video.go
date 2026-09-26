@@ -105,6 +105,12 @@ type Probe struct {
 	// mov,mp4,m4a,3gp,3g2,mj2 のようにまとめて返るため、再生可否の判定には
 	// 使わない。
 	FormatName string
+	// Transcode はライブ変換に要る stream の情報。使える映像 stream（非添付で寸法が
+	// ある）が無い動画では nil で、保存しない。
+	Transcode *TranscodeProbe
+	// Source は ffprobe の直前に取ったファイルの大きさと更新時刻。Transcode を
+	// 保存するときの同一性に使う。
+	Source FileStamp
 }
 
 // Playability は再生可否の判定結果である。Playable が true のとき Reason は空、
