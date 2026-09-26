@@ -217,6 +217,22 @@ func TestGeneratePreviewSkipsSegmentsPastVideoEnd(t *testing.T) {
 	}
 }
 
+func TestGeneratePreviewFailsWhenNoSegmentHasFrames(t *testing.T) {
+	requireFFmpeg(t)
+	dir := t.TempDir()
+	// 4fps・15 秒でキーフレームが先頭だけの MPEG-TS。索引が無いのでシークが
+	// キーフレームに着かず、どの区間もフレームを出さない。
+	source := filepath.Join(dir, "sparse-keyframes.ts")
+	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi",
+		"-i", "testsrc2=size=320x240:rate=4:duration=15",
+		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-f", "mpegts", "-y", source).CombinedOutput(); err != nil {
+		t.Fatalf("create source: %v: %s", err, out)
+	}
+	if err := GeneratePreview(context.Background(), source, filepath.Join(dir, "preview.mp4"), 15000); err == nil {
+		t.Fatal("generation without any video frame unexpectedly succeeded")
+	}
+}
+
 func TestGeneratePreviewKeepsRotatedPortrait(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()

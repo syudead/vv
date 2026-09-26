@@ -55,7 +55,10 @@ const previewScale = "scale='min(640,iw)':'min(640,ih)':force_original_aspect_ra
 // 区間の数と長さで決まり、動画の長さに比例しない（specs/019-preview-input-seek
 // research.md R-1）。-ss は既定の accurate seek のままにし、区間と映る場面の対応を
 // 保つ（R-3）。フレームの無い区間は concat が飛ばすので、その区間が無いだけの短い
-// 出力になる。全部が空なら公開側の検査（空ファイルを公開しない）で失敗になる（R-2）。
+// 出力になる（R-2）。全部が空だと ffmpeg は映像の無い MP4 を終了コード 0 で書くので、
+// -abort_on empty_output で失敗にし、映像の無いプレビューを公開しない。索引の無い
+// MPEG-TS ではシークがキーフレームに着かず、キーフレームの疎な入力で全区間が空になる
+// ことがある（親 Issue の Edge Cases: 不完全な出力を公開せず、ジョブの失敗として扱う）。
 func previewArgs(videoPath, output string, durationMs int64) []string {
 	args := []string{"-nostdin", "-v", "error"}
 	segments := PreviewSegments(durationMs)
@@ -71,7 +74,7 @@ func previewArgs(videoPath, output string, durationMs int64) []string {
 			labels = append(labels, "["+label+"]")
 		}
 		filters = append(filters, strings.Join(labels, "")+fmt.Sprintf("concat=n=%d:v=1:a=0[v]", len(labels)))
-		args = append(args, "-filter_complex", strings.Join(filters, ";"), "-map", "[v]")
+		args = append(args, "-filter_complex", strings.Join(filters, ";"), "-map", "[v]", "-abort_on", "empty_output")
 	}
 	return append(args, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an", "-y", output)
 }
