@@ -474,8 +474,7 @@ the search, filter, sort and zoom controls) live in `web/src/videoList/`, which 
 neither screen, so neither screen imports from the other. `web/src/tags/` is the tag
 admin screen (`/tags`): a list of every tag with its video count, an in-page name/synonym
 search, create, rename and delete. `web/src/shell/navigation.ts` puts its sidebar entry
-right after "フォルダ" (Folders). Every sidebar entry has a working destination; an entry
-is added only when its screen exists. The library, folder, settings and tag screens use the shell: `app/App.tsx`
+right after "フォルダ" (Folders). Every sidebar entry links to a working screen. The library, folder, settings and tag screens use the shell: `app/App.tsx`
 puts `AppShell` around the `/`, `/folders/*`, `/settings` and `/tags` routes, and the
 playback screen
 (`/videos/:id`) deliberately gets no shell at all, because it is a
