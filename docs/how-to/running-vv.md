@@ -8,6 +8,9 @@ vv requires Task and Docker. From the repository root:
 task up
 ```
 
+To run vv on a Docker host without the source, such as a NAS, use the
+published image instead: see [Hosting vv](hosting-vv.md).
+
 Open <http://localhost:8080>. The health endpoint is available at
 `http://localhost:8080/api/health`. Stop the application with `task down`.
 

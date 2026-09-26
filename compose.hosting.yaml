@@ -1,0 +1,25 @@
+# ソースのない Docker ホスト向け。公開イメージを pull して起動し、ビルドはしない
+# （docs/how-to/hosting-vv.md）。開発時の task up は compose.yaml を使う。
+
+name: vv
+
+services:
+  mdm:
+    image: "ghcr.io/syudead/vv:${VV_IMAGE_TAG:-latest}"
+    pull_policy: always
+    ports:
+      - "${MDM_HOST_PORT:-8080}:8080"
+    environment:
+      MDM_ADDR: ":8080"
+      MDM_DATA_DIR: "/data"
+      MDM_LOG_LEVEL: "${MDM_LOG_LEVEL:-info}"
+      MDM_TRUSTED_PROXIES: "${MDM_TRUSTED_PROXIES:-}"
+    volumes:
+      - "${MDM_MEDIA_HOST_DIR:-./media}:/media:ro"
+      # 既定は名前付きボリューム vv_data。ホストのフォルダに置くときは絶対パスを書く。
+      - "${MDM_DATA_HOST_DIR:-data}:/data"
+    stop_grace_period: 15s
+    restart: unless-stopped
+
+volumes:
+  data:
