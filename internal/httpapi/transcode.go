@@ -63,11 +63,13 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	// あっても、開いた所在で決める（specs/018-live-transcode-seek/data-model.md §3）。
 	source := domain.FileStampOf(info)
 	request := domain.LiveTranscodeRequest{
-		Path:            file.Name(),
-		Source:          source,
-		Probe:           s.usableTranscodeProbe(r.Context(), video.ID, source),
-		StartMs:         startMs,
-		Normalize:       video.Playable || startMs > 0,
+		Path:    file.Name(),
+		Source:  source,
+		Probe:   s.usableTranscodeProbe(r.Context(), video.ID, source),
+		StartMs: startMs,
+		// 直接再生から切り替えた変換だけエンコードを強いる。シークでは映像がコピー
+		// できればコピーする（plan.md Structural Decision 7）。
+		Normalize:       video.Playable,
 		StartupDeadline: time.Now().Add(transcodeStartupTimeout),
 	}
 	started, err := s.transcoder.Start(r.Context(), request)
@@ -83,6 +85,9 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.internalError(w, "ライブ変換を開始できませんでした", err)
 		return
 	}
+	// 実際の開始位置はまだ記録だけする（プレイヤーへの報告は次の実装単位）。
+	s.logger.Debug("ライブ変換を開始しました",
+		slog.Int64("video", video.ID), slog.Int64("requested_ms", startMs), slog.Int64("start_ms", started.StartMs))
 	stream, wait, stop := started.Stream, started.Wait, started.Stop
 	defer func() { _ = stream.Close() }()
 	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop)

@@ -50,12 +50,17 @@ func NewLiveTranscoder(serverDone <-chan struct{}) *LiveTranscoder {
 }
 
 // Start は変換を始め、最初のデータが出たところで返す（specs/018-live-transcode-seek/
-// plan.md Structural Decisions 3・6）。request.Probe があれば ffprobe を起動せず、
-// 無ければその場で ffprobe を実行して結果を Probed に載せる。保存済みの解析情報で
-// 始めた FFmpeg が最初のデータを出さずに終わったときは、同じ要求の中でその場の
-// ffprobe を実行し、1 回だけやり直す。期限（StartupDeadline）は解析とやり直しを
-// 含めて 1 つで、期限切れはやり直さずに失敗にする。成功したら Wait をちょうど
-// 1 回呼ぶこと。
+// plan.md Structural Decisions 1〜3・6）。request.Probe があれば ffprobe を起動せず、
+// 無ければその場で ffprobe を実行して結果を Probed に載せる。
+//
+// 映像がコピーできる動画（videoCanCopy が真で Normalize でない）は、まず映像をコピーして
+// 始める。途中からのコピーは直前のキーフレームから始まるので、出力の moov から実際の
+// 開始位置を読み、指定位置との差が domain.CopySeekAllowance を超えたら映像をエンコード
+// し直して指定位置から始める。コピーが最初のデータを出さずに終わったときも同じ要求の中で
+// エンコードに切り替える。保存済みの解析情報で始めた変換がそれでも最初のデータを出さずに
+// 終わったときは、その場の ffprobe を実行し、コピーから 1 回だけやり直す。期限
+// （StartupDeadline）は解析と切り替えを含めて 1 つで、期限切れは切り替えずに失敗にする。
+// 成功したら Wait をちょうど 1 回呼ぶこと。
 func (t *LiveTranscoder) Start(
 	requestContext context.Context,
 	request domain.LiveTranscodeRequest,
@@ -86,48 +91,122 @@ func (t *LiveTranscoder) Start(
 	}
 
 	for {
-		process, err := t.startProcess(ctx, request, *metadata)
-		if err != nil {
-			cleanup()
-			return domain.LiveTranscode{}, err
-		}
-		first, readErr := readFirstOutput(ctx, process.stdout, time.Until(request.StartupDeadline))
-		if len(first) > 0 {
+		started, err := t.startWithProbe(ctx, request, *metadata)
+		if err == nil {
 			var once sync.Once
 			var waitErr error
 			wait := func() error {
 				once.Do(func() {
-					waitErr = process.wait()
+					waitErr = started.process.wait()
 					cleanup()
 				})
 				return waitErr
 			}
 			return domain.LiveTranscode{
-				Stream: &prefixedReadCloser{Reader: io.MultiReader(bytes.NewReader(first), process.stdout), closer: process.stdout},
-				Wait:   wait,
-				Stop:   sync.OnceFunc(cancel),
-				Probed: probed,
+				Stream: &prefixedReadCloser{
+					Reader: io.MultiReader(bytes.NewReader(started.first), started.process.stdout),
+					closer: started.process.stdout,
+				},
+				Wait:    wait,
+				Stop:    sync.OnceFunc(cancel),
+				StartMs: started.startMs,
+				Probed:  probed,
 			}, nil
 		}
 
-		process.stop()
-		closeErr := process.stdout.Close()
-		waitErr := process.wait()
-		failure := errors.Join(readErr, closeErr, waitErr)
-		// 切り替えるのは、保存済みの解析情報で始めたプロセスがデータを出さずに
-		// 終わったときだけである。取り消しと期限切れはそのまま失敗にする。
-		exited := errors.Is(readErr, io.EOF)
-		if ctx.Err() != nil || !exited || metadata != request.Probe {
+		// その場の解析に切り替えるのは、保存済みの解析情報で始めたプロセスがデータを
+		// 出さずに終わったときだけである。取り消しと期限切れはそのまま失敗にする。
+		if ctx.Err() != nil || !errors.Is(err, errNoInitialData) || metadata != request.Probe {
 			cleanup()
-			return domain.LiveTranscode{}, fmt.Errorf("ライブ変換が初期データを生成できませんでした: %w", failure)
+			return domain.LiveTranscode{}, fmt.Errorf("ライブ変換が初期データを生成できませんでした: %w", err)
 		}
-		fresh, err := t.probeSource(ctx, request)
-		if err != nil {
+		fresh, probeErr := t.probeSource(ctx, request)
+		if probeErr != nil {
 			cleanup()
-			return domain.LiveTranscode{}, fmt.Errorf("保存済みの解析情報で変換できず、解析し直せませんでした: %w; 最初の変換: %w", err, failure)
+			return domain.LiveTranscode{}, fmt.Errorf("保存済みの解析情報で変換できず、解析し直せませんでした: %w; 最初の変換: %w", probeErr, err)
 		}
 		metadata, probed = &fresh.probe, fresh.saved
 	}
+}
+
+var (
+	// errNoInitialData はプロセスが最初のデータ（途中からのコピーでは moov まで）を
+	// 出さずに終わったことを表す。
+	errNoInitialData = errors.New("FFmpeg が最初のデータを出さずに終わりました")
+	// errCopySeekTooFar はコピーの実際の開始位置が指定位置から離れすぎていることを表す。
+	errCopySeekTooFar = errors.New("直前のキーフレームが指定位置から離れすぎています")
+)
+
+// startedTranscode は最初のデータを出した FFmpeg 1 本である。
+type startedTranscode struct {
+	process transcodeProcess
+	first   []byte
+	startMs int64
+}
+
+// startWithProbe は 1 つの解析情報で変換を始める。映像をコピーできればコピーを試し、
+// 最初のデータを出さずに終わるか差の上限を超えたら、映像をエンコードして始め直す。
+func (t *LiveTranscoder) startWithProbe(
+	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
+) (startedTranscode, error) {
+	if !request.Normalize && videoCanCopy(metadata.Video) {
+		started, err := t.startAttempt(ctx, request, metadata, true)
+		if err == nil {
+			return started, nil
+		}
+		switchable := errors.Is(err, errNoInitialData) || errors.Is(err, errCopySeekTooFar)
+		if ctx.Err() != nil || !switchable {
+			return startedTranscode{}, err
+		}
+		copyErr := err
+		started, err = t.startAttempt(ctx, request, metadata, false)
+		if err != nil {
+			// その場の解析へ切り替えるかはエンコードの失敗だけで決めるので、コピーの
+			// 誤りは文字列として添える。
+			return startedTranscode{}, fmt.Errorf("%w; 映像のコピー: %s", err, copyErr.Error())
+		}
+		return started, nil
+	}
+	return t.startAttempt(ctx, request, metadata, false)
+}
+
+// startAttempt は FFmpeg を 1 本起動し、最初のデータを待つ。途中からのコピーでは moov
+// までを読み、edit list から実際の開始位置を得て書き換える（fmp4.go）。
+func (t *LiveTranscoder) startAttempt(
+	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe, copyVideo bool,
+) (startedTranscode, error) {
+	args := buildTranscodeArgs(request.Path, request.StartMs, metadata, request.Normalize, copyVideo)
+	process, err := t.startProcess(ctx, args)
+	if err != nil {
+		return startedTranscode{}, err
+	}
+	seekCopy := copyVideo && request.StartMs > 0
+	read := readAtLeastOneByte
+	if seekCopy {
+		read = readInitSegment
+	}
+	first, readErr := readFirstOutput(ctx, process.stdout, time.Until(request.StartupDeadline), read)
+	startMs := request.StartMs
+	if copyVideo && !seekCopy {
+		startMs = 0
+	}
+	if readErr == nil && seekCopy {
+		first, startMs, readErr = rebaseEditLists(first)
+		if readErr == nil && !domain.CopySeekWithinAllowance(request.StartMs, startMs) {
+			readErr = fmt.Errorf("%w: 指定位置 %d ms、実際の開始位置 %d ms", errCopySeekTooFar, request.StartMs, startMs)
+		}
+	}
+	if readErr == nil && len(first) > 0 {
+		return startedTranscode{process: process, first: first, startMs: startMs}, nil
+	}
+
+	process.stop()
+	closeErr := process.stdout.Close()
+	waitErr := process.wait()
+	if errors.Is(readErr, io.EOF) || errors.Is(readErr, io.ErrUnexpectedEOF) || errors.Is(readErr, errInvalidInitSegment) {
+		readErr = fmt.Errorf("%w: %w", errNoInitialData, readErr)
+	}
+	return startedTranscode{}, errors.Join(readErr, closeErr, waitErr)
 }
 
 // transcodeProcess は起動した FFmpeg 1 本である。
@@ -139,12 +218,9 @@ type transcodeProcess struct {
 
 // startProcess は FFmpeg を 1 本起動する。プロセスは自分の context を持ち、stop で
 // そのプロセスだけを止める。
-func (t *LiveTranscoder) startProcess(
-	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
-) (transcodeProcess, error) {
+func (t *LiveTranscoder) startProcess(ctx context.Context, args []string) (transcodeProcess, error) {
 	processCtx, cancel := context.WithCancel(ctx)
-	cmd := t.commandContext(processCtx, transcodeCommand,
-		transcodeArgs(request.Path, request.StartMs, metadata, request.Normalize)...)
+	cmd := t.commandContext(processCtx, transcodeCommand, args...)
 	cmd.WaitDelay = transcodeStopDelay
 	stderr := &tailWriter{limit: stderrTailLimit}
 	cmd.Stderr = stderr
@@ -174,14 +250,15 @@ type firstOutput struct {
 	err  error
 }
 
-// readFirstOutput は最初のデータを待つ。期限切れと取り消しでは、読みかけの
+// readFirstOutput は read で最初のデータを待つ。期限切れと取り消しでは、読みかけの
 // goroutine はプロセスを止めて出力を閉じたところで終わる。
-func readFirstOutput(ctx context.Context, stdout io.Reader, timeout time.Duration) ([]byte, error) {
+func readFirstOutput(
+	ctx context.Context, stdout io.Reader, timeout time.Duration, read func(io.Reader) ([]byte, error),
+) ([]byte, error) {
 	result := make(chan firstOutput, 1)
 	go func() {
-		buffer := make([]byte, 32*1024)
-		length, err := io.ReadAtLeast(stdout, buffer, 1)
-		result <- firstOutput{data: buffer[:length], err: err}
+		data, err := read(stdout)
+		result <- firstOutput{data: data, err: err}
 	}()
 
 	timer := time.NewTimer(timeout)
@@ -194,6 +271,12 @@ func readFirstOutput(ctx context.Context, stdout io.Reader, timeout time.Duratio
 	case <-timer.C:
 		return nil, fmt.Errorf("初期データ待機が%sでタイムアウトしました", timeout)
 	}
+}
+
+func readAtLeastOneByte(stdout io.Reader) ([]byte, error) {
+	buffer := make([]byte, 32*1024)
+	length, err := io.ReadAtLeast(stdout, buffer, 1)
+	return buffer[:length], err
 }
 
 // prefixedReadCloser は先に読んだ最初のデータに続けて FFmpeg の出力を読ませる。
@@ -263,11 +346,31 @@ func parseTranscodeProbe(output []byte) (domain.TranscodeProbe, error) {
 	return *probe.Transcode, nil
 }
 
+// transcodeArgs は最初に試す引数を返す。映像はコピーできればコピーする。
 func transcodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, normalize bool) []string {
-	normalize = normalize || startMs > 0
+	return buildTranscodeArgs(path, startMs, metadata, normalize, !normalize && videoCanCopy(metadata.Video))
+}
+
+// buildTranscodeArgs は FFmpeg の引数を組み立てる。copyVideo は映像をコピーするかで、
+// normalize でなく videoCanCopy が真のときだけ効く。
+//
+// 音声は normalize でなく audioCanCopy が真ならコピーする（親 Issue #371 要件 4）。ただし
+// 映像をエンコードして途中から始めるときは、今までどおり音声もエンコードする。入力側の
+// -ss は、エンコードする stream では指定位置より前を捨てるが、コピーする stream では
+// demuxer が着いたキーフレームからの区間を残すので、音声だけが指定位置より前から始まる。
+//
+// 途中からのコピーだけ -copyts -start_at_zero と delay_moov を付け、mp4 muxer が各 track の
+// 開始時刻を moov の edit list に書くようにする（research.md R-1）。-noaccurate_seek は、
+// エンコードする音声もコピーする映像と同じくキーフレームの時刻から始めるためのものである。
+func buildTranscodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, normalize, copyVideo bool) []string {
+	copyVideo = copyVideo && !normalize && videoCanCopy(metadata.Video)
+	seekCopy := copyVideo && startMs > 0
 	args := []string{"-hide_banner", "-loglevel", "warning"}
 	appendInput := func(disableStream string) {
 		if startMs > 0 {
+			if seekCopy {
+				args = append(args, "-noaccurate_seek")
+			}
 			args = append(args, "-ss", formatSeconds(startMs))
 		}
 		if disableStream != "" {
@@ -293,23 +396,28 @@ func transcodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, n
 		}
 	}
 
-	encodeVideo := normalize || !videoCanCopy(metadata.Video)
-	if encodeVideo {
-		args = append(args, videoEncodeArgs(metadata.Video)...)
-	} else {
+	if copyVideo {
 		args = append(args, "-c:v", "copy")
+	} else {
+		args = append(args, videoEncodeArgs(metadata.Video)...)
 	}
 
 	if metadata.Audio != nil {
-		if normalize || !audioCanCopy(*metadata.Audio) {
+		encodeAudio := normalize || !audioCanCopy(*metadata.Audio) || (startMs > 0 && !copyVideo)
+		if encodeAudio {
 			args = append(args, "-c:a", "aac", "-profile:a", "aac_low", "-ac", "2", "-b:a", "192k", "-ar", "48000")
 		} else {
 			args = append(args, "-c:a", "copy")
 		}
 	}
 
+	movflags := "frag_keyframe+empty_moov+default_base_moof"
+	if seekCopy {
+		args = append(args, "-copyts", "-start_at_zero")
+		movflags += "+delay_moov"
+	}
 	return append(args,
-		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
+		"-movflags", movflags,
 		"-f", "mp4", "pipe:1",
 	)
 }

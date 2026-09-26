@@ -126,7 +126,8 @@ func TestTranscodeStreamsMP4WithoutRangeHeaders(t *testing.T) {
 	if got := rec.Header().Get("Content-Length"); got != "" {
 		t.Errorf("Content-Length = %q", got)
 	}
-	if fake.startMs != 1000 || !fake.normalize || fake.waits != 1 {
+	// シークだけではエンコードを強いない（plan.md Structural Decision 7）。
+	if fake.startMs != 1000 || fake.normalize || fake.waits != 1 {
 		t.Errorf("transcoder = %+v", fake)
 	}
 }

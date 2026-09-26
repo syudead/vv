@@ -19,7 +19,8 @@ type LiveTranscodeRequest struct {
 	Probe *TranscodeProbe
 	// StartMs は変換を始める位置（ミリ秒）である。
 	StartMs int64
-	// Normalize は映像と音声を必ずエンコードし直すかである。
+	// Normalize は映像と音声を必ずエンコードし直すかである。直接再生から切り替えた
+	// 変換だけが真で、シークや途中からの再開では立てない（plan.md Structural Decision 7）。
 	Normalize bool
 	// StartupDeadline はその場の解析と最初のデータまでを合わせた期限である。
 	StartupDeadline time.Time
@@ -33,6 +34,10 @@ type LiveTranscode struct {
 	Wait func() error
 	// Stop は処理を止める。何度呼んでもよい。
 	Stop func()
+	// StartMs は出力の時刻 0 が元動画のどの時刻（ミリ秒、動画の先頭からの相対）に
+	// 当たるかである。映像をエンコードしたときは指定位置そのもの、先頭からのコピーは
+	// 0、途中からのコピーは直前のキーフレームの時刻になる。
+	StartMs int64
 	// Probed は変換の中でその場の ffprobe を実行したときの結果である。保存済みの
 	// 解析情報だけで始められたとき、または解析のあとにファイルが変わっていたときは
 	// nil で、呼び出し側はこれがあるときだけ保存する。
