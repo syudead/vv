@@ -89,7 +89,8 @@ Handle this one round:
 - every unresolved review thread: verify the finding against the code and the
   sources of truth; fix it when it is a real defect, otherwise reply why not
 - a conflict with <base>: merge origin/<base> into the head branch
-Check out the PR's head branch, run the checks the change needs, commit in
+Check out the PR's head branch, run the checks the change needs,
+including the pre-push check from AGENTS.md, commit in
 the repository's commit-message style, push to the same branch, then reply
 once on each thread you handled and resolve it.
 Return FIXED with the new head, or CLEAN if nothing needed changing. Never
