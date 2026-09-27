@@ -27,7 +27,7 @@
 ## Visual Hierarchy
 
 - thumbnail または preview が card の一次視覚情報、title と duration/progress が判別を支える情報である。preview は surface の外へ出ず、title より強い外枠や label を追加しない。
-- quality/duration badge、watched mark、progress bar、selection checkbox は preview layer より前面に置く。preview 中の quality/duration badge と watched mark は半透明 `navbar` 背景を不透明な `navbar` 背景へ、progress track は半透明 `fg-subtle` を不透明な `fg-subtle` へ、未選択 checkbox は半透明 `navbar` を不透明な `navbar` へ切り替え、frame の明暗に依存しない識別性を持つ。実装は text/icon contrast の `fg/navbar`、`accent/navbar`、`success/navbar` を `tokens.test.ts` の pairs に追加する。checked checkbox の `accent-fg/accent` は既存 pair を使う。通常 thumbnail 状態の見た目は変えない。
+- 公開マークと再生時間、progress bar、selection checkbox は preview layer より前面に置く。preview 中は再生時間の背景を不透明な `navbar`、progress track を不透明な `fg-subtle` に切り替え、frame の明暗に依存しない識別性を保つ。通常の thumbnail 状態の見た目は変えない。
 - preview 中も card hover shadow とわずかな lift は現行どおりで、feature 固有の glow、色変更、拡大は足さない。thumbnail と video は同じ media-layer wrapper 内に置き、既存の hover scale を wrapper へ適用するため、`playing` への交換で crop/scale が跳ねない。
 
 ## Information Density

@@ -1,6 +1,6 @@
 # UI Design: 動画シーク時のサムネイルプレビュー
 
-**Feature**: [parent Issue #117](https://github.com/syudead/vv/issues/117) | **Plan**: [plan.md](plan.md)
+**Feature**: [parent Issue #117](https://github.com/syudead/vv/issues/117)
 
 既存の再生画面、Video.js の操作構造、役割トークンは
 [ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と

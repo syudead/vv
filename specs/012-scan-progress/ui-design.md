@@ -1,6 +1,6 @@
 # UI Design: 動画取り込みの進捗表示
 
-**Feature**: [parent Issue #170](https://github.com/syudead/vv/issues/170) | **Plan**: [plan.md](plan.md)
+**Feature**: [parent Issue #170](https://github.com/syudead/vv/issues/170)
 
 見た目の規則、シェル、一覧の密度は
 [ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
@@ -118,7 +118,7 @@
 - trigger は Tab で到達でき、focus-visible outline は既存の `link` 色を使う。Enter と Space は
   `/settings#scan-status` へ移動する。
 - 概要は hover だけに依存せず、focus で同じ内容を表示する。Escape で閉じる。
-- 進捗の通知は `role="status"` を使い、2秒ごとの polling を毎回読み上げない。状態変化、総数確定、
+- 進捗の通知は `role="status"` を使い、状態の更新を毎回読み上げない。状態変化、総数確定、
   完了、一部失敗、全体失敗のような意味のある節目を優先する。
 - progress bar は accessible name と value を持つ。indeterminate では `aria-valuenow` を付けず、
   文言で総数未確定を伝える。
@@ -132,7 +132,7 @@
 
 ## Observable Review Criteria
 
-実装 PR は [quickstart.md](quickstart.md) の mock 応答列を使い、360px、768px、1280px で
+実装 PR は `ScanProvider.test.tsx` と `scan-progress.e2e.ts` の状態を使い、360px、768px、1280px で
 通常画面と再生画面の表示、概要表示を撮る。UI 画像は次を含める。
 
 - 総数未確定の実行中: 割合が出ず、indeterminate と文言で待っていることが分かる。
@@ -161,6 +161,6 @@
 操作の確認では、mouse hover、keyboard focus、Escape、click、tap、Enter、Space、失敗通知の
 閉じる button、8秒の完了通知期限、画面移動、reload、重複開始、完了直前の navigation を通す。
 支援技術の確認では、trigger と閉じる button の accessible name、hash 遷移後の focus、progress bar
-の name/value、概要に重複した操作がないこと、polling のたびに読み上げを割り込まないことを
+の name/value、概要に重複した操作がないこと、状態の更新ごとに読み上げを割り込まないことを
 アクセシビリティツリーまたは screen reader で確認する。native screen reader の実音声を確認できない
 環境では、PR の残余リスクに明記する。
