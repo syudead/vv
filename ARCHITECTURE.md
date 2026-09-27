@@ -83,12 +83,16 @@ start), or when an interrupted scan was closed
 seek_thumbnail, preview — each claiming only its own kind of job from the persistent `jobs`
 queue, one at a time, and handing it to `internal/app`, which drives the `internal/media`
 adapters (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, seek-preview sprite
-sheets from a full decode, and a content-keyed hover-preview clip per video)
+sheets from batched input seeks for long HD videos or a full decode for other inputs,
+and a content-keyed hover-preview clip per video)
 and publishes their output through `internal/artifacts`. The seek preview is at most 600
 frames on at most six 10 × 10 sheets; `domain.NewSeekSpriteLayout` derives the interval
 (five seconds, widened only for videos longer than 50 minutes), frame count and sheet
 count from the duration
 ([specs/021-seek-thumbnail-sprite/research.md](specs/021-seek-thumbnail-sprite/research.md)).
+Long HD generation uses at most ten independent seek inputs per process and checks every
+extracted frame before tiling. Missing frames fall back to the sequential decoder
+([seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md)).
 The library thumbnail and the seek
 sprite are separate stages with their own state columns, so a library thumbnail never waits
 for any video's seek sprite. A worker sleeps while its queue is
@@ -97,7 +101,7 @@ subscription wakes the worker for that stage, so no worker polls the queue. A th
 is not claimed until its video's probe has finished, because the frame position depends on
 the duration. A seek_thumbnail job is not claimed until its video's probe has finished and
 no claimable thumbnail job remains, so after a scan every library thumbnail comes first and
-no more than two full-decode `ffmpeg` processes (seek sprite and hover preview) run at
+no more than two generation `ffmpeg` processes (seek sprite and hover preview) run at
 once; the condition applies only at claim time, and a running seek_thumbnail job is not
 stopped when new thumbnail jobs arrive. `internal/app` publishes `domain.VideoIngestChanged`
 with the finished stage, and subscriptions wake the thumbnail worker as soon as a probe's

@@ -125,3 +125,31 @@ task preview   # 動いていれば Ctrl+C で止めてから起動し直す
 - 2 時間の入力: 冒頭から末尾まで分散した場面（`testsrc2` の時刻表示で分かる）が、
   時系列順に約 9 秒で、無音でループして流れる。
 - 縦長の入力: 縦長のまま流れ、縦横比が崩れない。
+
+### 長尺HDの入力側シーク
+
+長尺HD向けの方式を比較するときは、上の360p入力に加えて次の1080p入力を使う。
+30秒の素材をストリームコピーで反復するため、2時間を再エンコードする必要はない。
+映像内容は合成素材の繰り返しで、実動画やNASのI/O性能を再現するものではない。
+
+```sh
+ffmpeg -nostdin -v error -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=30 \
+  -c:v libx264 -preset veryfast -crf 28 -g 75 -keyint_min 75 -sc_threshold 0 \
+  -pix_fmt yuv420p .local/bench/h264-hd-seed.mp4
+ffmpeg -nostdin -v error -stream_loop -1 -i .local/bench/h264-hd-seed.mp4 \
+  -t 7200 -c copy .local/bench/h264-hd-2h.mp4
+
+ffmpeg -nostdin -v error -f lavfi -i testsrc2=size=1920x1080:rate=30:duration=30 \
+  -c:v libx265 -preset veryfast -crf 28 -g 75 \
+  -x265-params keyint=75:min-keyint=75:scenecut=0:pools=8 \
+  -pix_fmt yuv420p10le .local/bench/hevc-hd-seed.mp4
+ffmpeg -nostdin -v error -stream_loop -1 -i .local/bench/hevc-hd-seed.mp4 \
+  -t 7200 -c copy .local/bench/hevc-hd-2h.mp4
+
+go run ./scripts/previewbench -kind seek .local/bench/h264-hd-2h.mp4
+go run ./scripts/previewbench -kind seek .local/bench/hevc-hd-2h.mp4
+```
+
+コピー時のフレーム境界によって長さが7200秒を少し超える場合もある。手計算した
+7200秒を渡さず、ベンチマークがffprobeから得た実際の長さを使う。
+方式の選択条件と欠落時の動作は[設計文書](../design-docs/seek-sprite-generation.md)を参照。

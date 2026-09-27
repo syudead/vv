@@ -229,7 +229,7 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 	return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
 }
 
-// SeekThumbnails はシーク用サムネイル（全編デコードでスプライトシート）を生成し、
+// SeekThumbnails はシーク用サムネイル（スプライトシート）を生成し、
 // 状態を記録する。配置は動画の長さから domain.NewSeekSpriteLayout で決める。
 // 置き場に完成したものがあれば生成せず、状態だけを記録する。
 //

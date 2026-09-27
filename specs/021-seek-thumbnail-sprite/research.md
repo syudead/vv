@@ -1,5 +1,8 @@
 # Research: シーク用サムネイルをスプライトシートにし、枚数とファイル数に上限を設ける
 
+> 生成方式は、その後の[長尺動画のシーク用スプライト生成](../../docs/design-docs/seek-sprite-generation.md)で更新した。
+> 以下の全編デコードの記述は初期実装の判断で、現在も短尺・低解像度・区間抽出失敗時に使う。
+
 技術スタック、境界、生成物の所有、`seek_thumbnail` ジョブと状態は既存の正本
 （[ARCHITECTURE.md](../../ARCHITECTURE.md)、
 [specs/020-seek-thumbnail-stage/data-model.md](../020-seek-thumbnail-stage/data-model.md)）を
