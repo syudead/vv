@@ -23,9 +23,9 @@
 ## R-302: clientとserverは同じ区間の規則を使う
 
 **Decision**: clientとserverは対象時刻から画像を選ぶ同じ規則（[021 の契約](../021-seek-thumbnail-sprite/contracts/seek-sprite-api.md)）を使う。画像が変わるときに
-即時要求し、中断、最新位置の照合、decode後の差し替え、版付きimmutable cacheを使う。
+即時要求する。取得・中断・再利用は[021 の R-5](../021-seek-thumbnail-sprite/research.md#r-5-プレイヤーの取得と切り出し)、cacheは[021 の契約](../021-seek-thumbnail-sprite/contracts/seek-sprite-api.md)に従う。
 
-**Rationale**: 同じ区間のpointer移動を同じURLへまとめ、不要なreadと描画競合を避ける。時刻表示自体は
+**Rationale**: 同じ区間のpointer移動で同じ画像を使い回し、不要なreadと描画競合を避ける。時刻表示自体は
 実際のpointer位置へ即時追従するため、シーク精度は粗くならない。次画像のdecode完了までは表示済み画像を
 維持し、通信・decode待ちの黒い面を連続操作へ挟まない。
 

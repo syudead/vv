@@ -21,7 +21,7 @@ filesystem path、content key、process command、stderrを返さない。
 
 ## Generation lifecycle
 
-- 既存の直列thumbnail workerで動画ごとに一度生成する
+- 直列の`seek_thumbnail` worker（[020-seek-thumbnail-stage](../../020-seek-thumbnail-stage/plan.md)）で動画ごとに生成する
 - 間隔と画像の形式は[021 の契約](../../021-seek-thumbnail-sprite/contracts/seek-sprite-api.md)に従う
 - 一時directoryへ全画像を生成し、成功後にcontent keyのdirectoryへatomicにrenameする
 - 中断・失敗時は一時directoryを削除し、不完全な画像群を公開しない
@@ -33,7 +33,6 @@ filesystem path、content key、process command、stderrを返さない。
 ## Client lifecycle
 
 - 表示する画像は[021 の契約](../../021-seek-thumbnail-sprite/contracts/seek-sprite-api.md)の規則で決め、時刻表示は実際のpointer/touch位置へ即時追従する
-- 取得と中断の規則は[021 の契約](../../021-seek-thumbnail-sprite/contracts/seek-sprite-api.md)に従う
-- シークバー離脱、drag終了、動画変更、page離脱で不要な要求を中断する
+- 取得と中断の規則は[021 の R-5](../../021-seek-thumbnail-sprite/research.md#r-5-プレイヤーの取得と切り出し)に従う
 - 応答時の画像が最新対象と異なる場合は表示しない
 - cache生成中または失敗時も時刻、再生、シークを維持する
