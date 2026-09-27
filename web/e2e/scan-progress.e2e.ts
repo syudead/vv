@@ -68,7 +68,7 @@ test("scan progress remains one indicator across library, settings, and playback
 
   const settingsIndicator = page.getByRole("button", { name: /取り込み状況を開く/ });
   await expect(settingsIndicator).toHaveText(/取り込み中/);
-  await page.getByRole("link", { name: "vv" }).click();
+  await page.getByRole("link", { name: "VVMDM ホーム" }).click();
   await expect(page).toHaveURL(/\/$/);
   const routePersistentIndicator = page.getByRole("button", {
     name: /取り込み状況を開く/,
