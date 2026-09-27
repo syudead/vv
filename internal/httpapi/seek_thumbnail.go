@@ -39,7 +39,7 @@ func (s *server) GetVideoSeekThumbnail(
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		s.internalError(w, "シークプレビューの配置情報を組み立てられませんでした", err)
+		s.internalError(w, "Could not build the seek preview layout.", err)
 		return
 	}
 	body = append(body, '\n')
@@ -55,7 +55,7 @@ func (s *server) GetVideoSeekThumbnail(
 	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(body); err != nil {
-		s.logger.Debug("シークプレビューの配置情報を書き出せませんでした", slog.Int64("video", video.ID), slog.Any("error", err))
+		s.logger.Debug("could not write the seek preview layout", slog.Int64("video", video.ID), slog.Any("error", err))
 	}
 }
 
@@ -69,7 +69,7 @@ func (s *server) GetVideoSeekThumbnailSheet(
 	_ gen.GetVideoSeekThumbnailSheetParams,
 ) {
 	if sheet < 0 {
-		s.invalidRequest(w, "sheetは0以上の整数で指定してください")
+		s.invalidRequest(w, "sheet must be a non-negative integer.")
 		return
 	}
 	video, sprite, ok := s.lookupSeekSprite(w, r, id)
@@ -77,7 +77,7 @@ func (s *server) GetVideoSeekThumbnailSheet(
 		return
 	}
 	if sheet >= sprite.SheetCount {
-		s.notFound(w, "そのシートはありません")
+		s.notFound(w, "No such sheet.")
 		return
 	}
 	image, err := s.artifacts.SeekSpriteSheet(video.ContentKey, sheet)
@@ -85,10 +85,10 @@ func (s *server) GetVideoSeekThumbnailSheet(
 	case err != nil && errors.Is(r.Context().Err(), context.Canceled):
 		return
 	case err != nil:
-		s.internalError(w, "シークプレビューを読み出せませんでした", err)
+		s.internalError(w, "Could not read the seek preview.", err)
 		return
 	case len(image) == 0:
-		s.internalError(w, "シークプレビューを読み出せませんでした", errors.New("シートが空です"))
+		s.internalError(w, "Could not read the seek preview.", errors.New("sheet is empty"))
 		return
 	}
 
@@ -102,7 +102,7 @@ func (s *server) GetVideoSeekThumbnailSheet(
 	w.Header().Set("Content-Length", strconv.Itoa(len(image)))
 	w.WriteHeader(http.StatusOK)
 	if _, err := w.Write(image); err != nil {
-		s.logger.Debug("シークプレビューを書き出せませんでした", slog.Int64("video", video.ID), slog.Any("error", err))
+		s.logger.Debug("could not write the seek preview", slog.Int64("video", video.ID), slog.Any("error", err))
 	}
 }
 
@@ -118,24 +118,24 @@ func (s *server) lookupSeekSprite(
 		return domain.Video{}, domain.SeekSprite{}, false
 	}
 	if !video.HasSeekThumbnail() {
-		s.writeError(w, http.StatusConflict, codeConflict, "この動画はプレビューに必要な解析情報がありません")
+		s.conflictReason(w, reasonProbeInfoMissing, "This video lacks the media information needed for the seek preview.")
 		return domain.Video{}, domain.SeekSprite{}, false
 	}
 	if s.artifacts == nil {
-		s.internalError(w, "シークプレビューの保存先が設定されていません", nil)
+		s.internalError(w, "Seek preview storage is not configured.", nil)
 		return domain.Video{}, domain.SeekSprite{}, false
 	}
 	sprite, err := s.artifacts.SeekSprite(video.ContentKey)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		s.logger.Info("シークプレビューは生成中です",
+		s.logger.Info("seek preview is being generated",
 			slog.Int64("video", video.ID), slog.Any("error", err))
-		s.writeError(w, http.StatusConflict, codeConflict, "シークプレビューは生成中です")
+		s.conflictReason(w, reasonSeekPreviewGenerating, "The seek preview is being generated.")
 		return domain.Video{}, domain.SeekSprite{}, false
 	case err != nil && errors.Is(r.Context().Err(), context.Canceled):
 		return domain.Video{}, domain.SeekSprite{}, false
 	case err != nil:
-		s.internalError(w, "シークプレビューの配置情報を読み出せませんでした", err)
+		s.internalError(w, "Could not read the seek preview layout.", err)
 		return domain.Video{}, domain.SeekSprite{}, false
 	}
 	return video, sprite, true

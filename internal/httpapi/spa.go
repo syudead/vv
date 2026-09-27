@@ -40,8 +40,8 @@ func newSPAHandler(assets fs.FS, logger *slog.Logger) http.Handler {
 //   - それ以外 → index.html（クライアント側ルーティングのためのフォールバック）
 func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if h.assets == nil {
-		h.logger.Error("SPA のビルド成果物が設定されていません")
-		http.Error(w, "SPA のビルド成果物がありません", http.StatusInternalServerError)
+		h.logger.Error("SPA build output is not configured")
+		http.Error(w, "The SPA build output is missing.", http.StatusInternalServerError)
 		return
 	}
 
@@ -66,8 +66,8 @@ func (h *spaHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // serveIndex は SPA の入口を返す。
 func (h *spaHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
 	if !h.isRegularFile(indexFileName) {
-		h.logger.Error("index.html が埋め込まれていません", slog.String("path", r.URL.Path))
-		http.Error(w, "index.html がありません（task build を実行してください）",
+		h.logger.Error("index.html is not embedded", slog.String("path", r.URL.Path))
+		http.Error(w, "index.html is missing (run task build).",
 			http.StatusInternalServerError)
 		return
 	}

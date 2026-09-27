@@ -138,9 +138,9 @@ func TestSeekThumbnailRequiresProbe(t *testing.T) {
 			Artifacts: reader,
 		})
 		for _, target := range []string{"/api/videos/1/seek-thumbnail", "/api/videos/1/seek-thumbnail/0"} {
-			if rec := do(t, handler, http.MethodGet, target); rec.Code != http.StatusConflict {
-				t.Errorf("%s %s: status=%d", name, target, rec.Code)
-			}
+			rec := do(t, handler, http.MethodGet, target)
+			assertErrorBody(t, name+" "+target, rec.Code, rec.Body.Bytes(),
+				wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonProbeInfoMissing})
 		}
 	}
 }
@@ -169,6 +169,10 @@ func TestSeekThumbnailMapsFileFailures(t *testing.T) {
 			}
 			if rec.Header().Get("Cache-Control") != cacheNoStore {
 				t.Errorf("error cache=%q", rec.Header().Get("Cache-Control"))
+			}
+			if tc.want == http.StatusConflict {
+				assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(),
+					wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonSeekPreviewGenerating})
 			}
 		})
 	}

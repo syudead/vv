@@ -41,7 +41,7 @@ func (s *server) SetFolderGrouping(w http.ResponseWriter, r *http.Request, rootI
 		return
 	}
 	if body.Mode == nil || !body.Mode.Valid() {
-		s.invalidRequest(w, "modeはauto・ungroup・groupDirectのどれかを指定してください")
+		s.invalidRequest(w, "mode must be one of auto, ungroup, or groupDirect.")
 		return
 	}
 	dir, ok := s.existingFolderDir(w, r, root, rel)
@@ -49,13 +49,13 @@ func (s *server) SetFolderGrouping(w http.ResponseWriter, r *http.Request, rootI
 		return
 	}
 	if s.folderGroups == nil {
-		s.internalError(w, "フォルダのまとめ方の保存先が設定されていません", nil)
+		s.internalError(w, "Folder grouping storage is not configured.", nil)
 		return
 	}
 
 	grouping, err := s.folderGroups.SetFolderGrouping(r.Context(), dir, domainFolderGroupMode(*body.Mode))
 	if err != nil {
-		s.folderError(w, r, "フォルダのまとめ方を変えられませんでした", err)
+		s.folderError(w, r, "Could not change the folder grouping.", err)
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -77,24 +77,24 @@ func (s *server) TagFolderGroup(w http.ResponseWriter, r *http.Request, rootID g
 	// 登録フォルダの名前はフォルダ由来のタグの照合に入らないので、タグにしても中の
 	// 動画にそのタグが付かない（data-model.md §4）。
 	if rel == "" {
-		s.writeError(w, http.StatusConflict, codeConflict, "登録したフォルダそのもののグループはタグに変えられません")
+		s.conflictReason(w, reasonRootGroupNotTaggable, "The group of a media folder itself cannot be turned into a tag.")
 		return
 	}
 	if s.folderGroups == nil {
-		s.internalError(w, "フォルダのまとめ方の保存先が設定されていません", nil)
+		s.internalError(w, "Folder grouping storage is not configured.", nil)
 		return
 	}
 
 	result, err := s.folderGroups.TagFolderGroup(r.Context(), dir)
 	switch {
 	case errors.Is(err, domain.ErrNotFolderGroup):
-		s.writeError(w, http.StatusConflict, codeConflict, "このフォルダは今グループではありません。フォルダを開き直してください")
+		s.conflictReason(w, reasonFolderNotGroup, "This folder is no longer a group. Reopen the folder.")
 		return
 	case errors.Is(err, domain.ErrInvalidTagName):
-		s.invalidRequest(w, "このフォルダ名はタグ名に使えません: "+err.Error())
+		s.invalidTagName(w, err, "This folder name cannot be used as a tag name. ")
 		return
 	case err != nil:
-		s.folderError(w, r, "グループをタグに変えられませんでした", err)
+		s.folderError(w, r, "Could not turn the group into a tag.", err)
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
@@ -115,11 +115,11 @@ func (s *server) existingFolderDir(w http.ResponseWriter, r *http.Request, root 
 	}
 	found, err := s.folders.HasFolderLocations(r.Context(), audienceFrom(r.Context()), dir)
 	if err != nil {
-		s.folderError(w, r, "フォルダを取得できませんでした", err)
+		s.folderError(w, r, "Could not load folders.", err)
 		return "", false
 	}
 	if !found {
-		s.notFound(w, folderNotFoundMessage)
+		s.notFoundReason(w, reasonFolderNotFound, folderNotFoundMessage)
 		return "", false
 	}
 	return dir, true

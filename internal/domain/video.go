@@ -9,11 +9,11 @@ import (
 
 // ErrUnprocessableMedia は動画をbrowser互換streamへ変換するための情報または
 // 本編映像が得られないことを表す。HTTP層は409へ写す。
-var ErrUnprocessableMedia = errors.New("動画をライブ変換できません")
+var ErrUnprocessableMedia = errors.New("video cannot be transcoded live")
 
 // ErrSeekFrameUnavailable は指定時刻から許容範囲内の本編映像を
 // 取り出せないことを表す。HTTP層は409へ写す。
-var ErrSeekFrameUnavailable = errors.New("シークプレビュー用の映像を取得できません")
+var ErrSeekFrameUnavailable = errors.New("cannot extract frames for the seek preview")
 
 // ProbeState はメタデータ取得（ffprobe）の状態である。
 // 値は api/openapi.yaml の Video.probeState に対応する。

@@ -172,13 +172,8 @@ func TestFolderRoutesRejectInvalidPaths(t *testing.T) {
 	for _, path := range []string{"..", "A/../B", "/A", "A/", "A//B", "."} {
 		for _, route := range []string{"/api/folders/3", "/api/folders/3/videos"} {
 			rec := do(t, handler, http.MethodGet, route+"?path="+url.QueryEscape(path))
-			if rec.Code != http.StatusBadRequest {
-				t.Errorf("%s path=%q: status = %d, want 400", route, path, rec.Code)
-				continue
-			}
-			if got := decode[gen.Error](t, rec); got.Code != gen.ErrorCodeInvalidRequest {
-				t.Errorf("%s path=%q: code = %q", route, path, got.Code)
-			}
+			assertErrorBody(t, route+" path="+path, rec.Code, rec.Body.Bytes(),
+				wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidFolderPath})
 		}
 	}
 }
@@ -193,13 +188,8 @@ func TestFolderRoutesReturnNotFound(t *testing.T) {
 		"/api/folders/3?path=" + url.QueryEscape("A/B/C/z.mp4"),
 	} {
 		rec := do(t, handler, http.MethodGet, target)
-		if rec.Code != http.StatusNotFound {
-			t.Errorf("%s: status = %d, want 404", target, rec.Code)
-			continue
-		}
-		if got := decode[gen.Error](t, rec); got.Code != gen.ErrorCodeNotFound {
-			t.Errorf("%s: code = %q", target, got.Code)
-		}
+		assertErrorBody(t, target, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFolderNotFound})
 	}
 
 	// 登録フォルダ自身は動画が無くても存在する。
@@ -263,9 +253,9 @@ func TestListFolderVideosRejectsBadParameters(t *testing.T) {
 	}
 
 	folders.listErr = domain.ErrInvalidCursor
-	if rec := do(t, handler, http.MethodGet, "/api/folders/3/videos?cursor=broken"); rec.Code != http.StatusBadRequest {
-		t.Errorf("broken cursor: status = %d, want 400", rec.Code)
-	}
+	rec := do(t, handler, http.MethodGet, "/api/folders/3/videos?cursor=broken")
+	assertErrorBody(t, "broken cursor", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor})
 
 	folders.listErr = errors.New("disk on fire")
 	if rec := do(t, handler, http.MethodGet, "/api/folders/3/videos"); rec.Code != http.StatusInternalServerError {

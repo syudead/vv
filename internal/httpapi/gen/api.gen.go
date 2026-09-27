@@ -113,6 +113,105 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for ErrorReason.
+const (
+	CrossOrigin              ErrorReason = "cross_origin"
+	DirectoryNotFound        ErrorReason = "directory_not_found"
+	FileUnavailable          ErrorReason = "file_unavailable"
+	FolderNotFound           ErrorReason = "folder_not_found"
+	FolderNotGroup           ErrorReason = "folder_not_group"
+	GuestFilterNotAllowed    ErrorReason = "guest_filter_not_allowed"
+	InvalidCursor            ErrorReason = "invalid_cursor"
+	InvalidFolderPath        ErrorReason = "invalid_folder_path"
+	MediaFoldersChanged      ErrorReason = "media_folders_changed"
+	MergeSameTag             ErrorReason = "merge_same_tag"
+	NameIsSynonym            ErrorReason = "name_is_synonym"
+	NameIsTag                ErrorReason = "name_is_tag"
+	NoScan                   ErrorReason = "no_scan"
+	NotFolderGroup           ErrorReason = "not_folder_group"
+	OpenNotLocal             ErrorReason = "open_not_local"
+	PasswordLength           ErrorReason = "password_length"
+	ProbeInfoMissing         ErrorReason = "probe_info_missing"
+	RelativeDirectoryPath    ErrorReason = "relative_directory_path"
+	RootGroupNotTaggable     ErrorReason = "root_group_not_taggable"
+	SearchTooLong            ErrorReason = "search_too_long"
+	SeekPreviewGenerating    ErrorReason = "seek_preview_generating"
+	TagNameControlCharacters ErrorReason = "tag_name_control_characters"
+	TagNameEmpty             ErrorReason = "tag_name_empty"
+	TagNameTooLong           ErrorReason = "tag_name_too_long"
+	TooManyTagFilters        ErrorReason = "too_many_tag_filters"
+	TooManyVideos            ErrorReason = "too_many_videos"
+	TranscodeUnavailable     ErrorReason = "transcode_unavailable"
+	UsernameLength           ErrorReason = "username_length"
+	VideoNotFound            ErrorReason = "video_not_found"
+)
+
+// Valid indicates whether the value is a known member of the ErrorReason enum.
+func (e ErrorReason) Valid() bool {
+	switch e {
+	case CrossOrigin:
+		return true
+	case DirectoryNotFound:
+		return true
+	case FileUnavailable:
+		return true
+	case FolderNotFound:
+		return true
+	case FolderNotGroup:
+		return true
+	case GuestFilterNotAllowed:
+		return true
+	case InvalidCursor:
+		return true
+	case InvalidFolderPath:
+		return true
+	case MediaFoldersChanged:
+		return true
+	case MergeSameTag:
+		return true
+	case NameIsSynonym:
+		return true
+	case NameIsTag:
+		return true
+	case NoScan:
+		return true
+	case NotFolderGroup:
+		return true
+	case OpenNotLocal:
+		return true
+	case PasswordLength:
+		return true
+	case ProbeInfoMissing:
+		return true
+	case RelativeDirectoryPath:
+		return true
+	case RootGroupNotTaggable:
+		return true
+	case SearchTooLong:
+		return true
+	case SeekPreviewGenerating:
+		return true
+	case TagNameControlCharacters:
+		return true
+	case TagNameEmpty:
+		return true
+	case TagNameTooLong:
+		return true
+	case TooManyTagFilters:
+		return true
+	case TooManyVideos:
+		return true
+	case TranscodeUnavailable:
+		return true
+	case UsernameLength:
+		return true
+	case VideoNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FolderGroupingMode.
 const (
 	Auto        FolderGroupingMode = "auto"
@@ -481,12 +580,24 @@ type Error struct {
 	// Code 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 	Code ErrorCode `json:"code"`
 
-	// Message 人が読むための説明。利用者にそのまま提示してよい文言にする
+	// Limit reason の上限値。契約の表で limit を返す reason のときだけ入る （specs/023-english-i18n/contracts/error-api.md §1）
+	Limit *int `json:"limit,omitempty"`
+
+	// Message 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0）
 	Message string `json:"message"`
+
+	// Reason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+	Reason *ErrorReason `json:"reason,omitempty"`
+
+	// TagName 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1）
+	TagName *string `json:"tagName,omitempty"`
 }
 
 // ErrorCode 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 type ErrorCode string
+
+// ErrorReason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+type ErrorReason string
 
 // FolderGroupTagResult defines model for FolderGroupTagResult.
 type FolderGroupTagResult struct {

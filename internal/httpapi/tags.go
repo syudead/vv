@@ -2,7 +2,9 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -16,12 +18,12 @@ import (
 
 func (s *server) ListTags(w http.ResponseWriter, r *http.Request) {
 	if s.tags == nil {
-		s.internalError(w, "タグの経路が設定されていません", nil)
+		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
 	tags, err := s.tags.ListTags(r.Context())
 	if err != nil {
-		s.internalError(w, "タグを取得できませんでした", err)
+		s.internalError(w, "Could not load tags.", err)
 		return
 	}
 	out := make([]gen.Tag, 0, len(tags))
@@ -38,7 +40,7 @@ func (s *server) CreateTag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.tags == nil {
-		s.internalError(w, "タグの経路が設定されていません", nil)
+		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
 	tag, err := s.tags.CreateTag(r.Context(), body.Name)
@@ -56,7 +58,7 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 		return
 	}
 	if s.tags == nil {
-		s.internalError(w, "タグの経路が設定されていません", nil)
+		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
 	tag, err := s.tags.RenameTag(r.Context(), id, body.Name)
@@ -70,7 +72,7 @@ func (s *server) RenameTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 
 func (s *server) DeleteTag(w http.ResponseWriter, r *http.Request, id gen.TagId) {
 	if s.tags == nil {
-		s.internalError(w, "タグの経路が設定されていません", nil)
+		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
 	if err := s.tags.DeleteTag(r.Context(), id); err != nil {
@@ -91,11 +93,11 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 	// 400 invalid_requestにする — 統合は違う2つのタグを1つにする操作であり、
 	// 同じidを送るのは要求の誤りだからである。
 	if body.SourceId == id {
-		s.invalidRequest(w, "統合元と統合先に同じタグは指定できません")
+		s.invalidRequestReason(w, reasonMergeSameTag, "The source and target of a merge must be different tags.")
 		return
 	}
 	if s.tags == nil {
-		s.internalError(w, "タグの経路が設定されていません", nil)
+		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
 	tag, err := s.tags.MergeTag(r.Context(), id, body.SourceId)
@@ -113,7 +115,7 @@ func (s *server) AddTagSynonym(w http.ResponseWriter, r *http.Request, id gen.Ta
 		return
 	}
 	if s.tags == nil {
-		s.internalError(w, "タグの経路が設定されていません", nil)
+		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
 	tag, err := s.tags.AddSynonym(r.Context(), id, body.Name, body.MergeTagId)
@@ -127,7 +129,7 @@ func (s *server) AddTagSynonym(w http.ResponseWriter, r *http.Request, id gen.Ta
 
 func (s *server) RemoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen.TagId, params gen.RemoveTagSynonymParams) {
 	if s.tags == nil {
-		s.internalError(w, "タグの経路が設定されていません", nil)
+		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
 	// store.RemoveSynonymは受け取ったnameをそのまま照合する。前後の空白などで
@@ -158,7 +160,7 @@ func toAPITag(tag domain.Tag) gen.Tag {
 	}
 }
 
-// normalizedTagNameOrRaw は tagNameTakenMessage の比較に使う、要求で送られた
+// normalizedTagNameOrRaw は writeTagNameTaken の比較に使う、要求で送られた
 // 名前の整えた形を返す。domain.TagNameConflict.Tag.Name は常に整えた形
 // （domain.NormalizeTagName の結果）で保存されているので、比較する側もそろえる
 // 必要がある。整えられない入力（空・制御文字・上限超）は、その時点で
@@ -177,29 +179,64 @@ func (s *server) writeTagError(w http.ResponseWriter, err error, submittedName s
 	var mergeRequired *domain.TagMergeRequired
 	switch {
 	case errors.Is(err, domain.ErrInvalidTagName):
-		s.invalidRequest(w, err.Error())
+		s.invalidTagName(w, err, "")
 	case errors.Is(err, domain.ErrTagNotFound):
-		s.writeError(w, http.StatusNotFound, codeTagNotFound, "タグが見つかりません")
+		s.writeError(w, http.StatusNotFound, codeTagNotFound, "Tag not found.")
 	case errors.As(err, &nameConflict):
-		s.writeError(w, http.StatusConflict, codeTagNameTaken, tagNameTakenMessage(submittedName, nameConflict.Tag))
+		s.writeTagNameTaken(w, submittedName, nameConflict.Tag)
 	case errors.As(err, &mergeRequired):
-		s.writeError(w, http.StatusConflict, codeTagMergeRequired,
-			"「"+mergeRequired.Tag.Name+"」は既に別のタグの名前です。統合するタグを確かめてください")
+		tagName := mergeRequired.Tag.Name
+		s.writeErrorBody(w, http.StatusConflict, gen.Error{
+			Code:    codeTagMergeRequired,
+			TagName: &tagName,
+			Message: fmt.Sprintf("%q is already the name of another tag. Confirm the tag to merge.", tagName),
+		})
 	default:
-		s.internalError(w, "タグを変更できませんでした", err)
+		s.internalError(w, "Could not update the tag.", err)
 	}
 }
 
-// tagNameTakenMessage は tag_name_taken の message を組み立てる。owner は
-// その名前を既に持つタグ（元の名前としてでもシノニムとしてでも。
-// domain.TagNameConflict.Tag）で、Name は常にそのタグの元の名前である
-// （contracts/tags-api.md §2、親 Issue の Edge Case「シノニム名の衝突」）。
-// submittedName が owner.Name と一致すれば、それはそのタグ自身の元の名前
-// （自分のシノニムとして自分の元の名前を送った場合を含む）。一致しなければ、
-// owner の既存のシノニムである。
-func tagNameTakenMessage(submittedName string, owner domain.TagRef) string {
+// writeTagNameTaken は tag_name_taken を返す。owner はその名前を既に持つタグ
+// （元の名前としてでもシノニムとしてでも。domain.TagNameConflict.Tag）で、Name は
+// 常にそのタグの元の名前である（contracts/tags-api.md §2、親 Issue の Edge Case
+// 「シノニム名の衝突」）。submittedName が owner.Name と一致すれば、それはその
+// タグ自身の元の名前（自分のシノニムとして自分の元の名前を送った場合を含む）で
+// reason は name_is_tag、一致しなければ owner の既存のシノニムで name_is_synonym
+// になる。tagName はどちらも owner の元の名前を翻訳せずに返す
+// （specs/023-english-i18n/contracts/error-api.md §1）。
+func (s *server) writeTagNameTaken(w http.ResponseWriter, submittedName string, owner domain.TagRef) {
+	tagName := owner.Name
+	body := gen.Error{Code: codeTagNameTaken, TagName: &tagName}
+	var reason gen.ErrorReason
 	if submittedName == owner.Name {
-		return "「" + owner.Name + "」という名前のタグが既にあります"
+		reason = reasonNameIsTag
+		body.Message = fmt.Sprintf("A tag named %q already exists.", owner.Name)
+	} else {
+		reason = reasonNameIsSynonym
+		body.Message = fmt.Sprintf("%q is already a synonym of %q.", submittedName, owner.Name)
 	}
-	return "「" + submittedName + "」は「" + owner.Name + "」のシノニムとして使われています"
+	body.Reason = &reason
+	s.writeErrorBody(w, http.StatusConflict, body)
+}
+
+// invalidTagName は domain.NormalizeTagName の失敗を、その理由に応じた reason の
+// invalid_request へ写す（specs/023-english-i18n/contracts/error-api.md §1）。
+// prefix は message の前に置く英語の説明で、要らなければ空にする。
+func (s *server) invalidTagName(w http.ResponseWriter, err error, prefix string) {
+	var invalid *domain.InvalidTagNameError
+	if !errors.As(err, &invalid) {
+		s.invalidRequest(w, prefix+"The tag name cannot be used.")
+		return
+	}
+	switch invalid.Problem {
+	case domain.TagNameEmpty:
+		s.invalidRequestReason(w, reasonTagNameEmpty, prefix+"Enter a tag name.")
+	case domain.TagNameControlCharacters:
+		s.invalidRequestReason(w, reasonTagNameControlCharacters, prefix+"Tag names cannot contain control characters.")
+	case domain.TagNameTooLong:
+		s.invalidRequestLimit(w, reasonTagNameTooLong, domain.TagNameMaxLength,
+			prefix+"Tag names must be at most "+strconv.Itoa(domain.TagNameMaxLength)+" characters.")
+	default:
+		s.invalidRequest(w, prefix+"The tag name cannot be used.")
+	}
 }

@@ -53,6 +53,15 @@ positions. The library list additionally accepts up to 16 `tag` ids (AND) and
 reports any that no longer exist in `missingTagIds`
 ([specs/014-video-tags/contracts/tags-api.md](specs/014-video-tags/contracts/tags-api.md)).
 
+Every API error is a JSON `Error` with a machine-readable `code` and an English
+`message`. Where one `code` covers several situations the UI can cause, the
+response also carries a `reason` (`ErrorReason`), and for some reasons a server
+`limit` or the conflicting tag's original name (`tagName`); the UI builds its text
+from `code` and `reason`, and the `message` is the fallback for API clients and
+unknown codes. `internal/httpapi` fills `limit` from the server's own constants and
+maps `domain.InvalidTagNameError` to the tag-name reasons
+([specs/023-english-i18n/contracts/error-api.md](specs/023-english-i18n/contracts/error-api.md)).
+
 `GET /api/library` takes the same parameters as `GET /api/videos` but returns
 library items: a video, or a folder group as one item
 (`LibraryStore.ListLibrary`). The search, playable and tag filters apply per

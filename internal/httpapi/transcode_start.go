@@ -164,7 +164,7 @@ func (s *server) GetTranscodeStart(w http.ResponseWriter, r *http.Request, id ge
 	}
 	defer release()
 	if !validTranscodeAttempt(params.Attempt) {
-		s.invalidRequest(w, "attemptの形式が正しくありません")
+		s.invalidRequest(w, "Invalid attempt.")
 		return
 	}
 	startMs, ok := s.transcodeStarts.wait(r.Context(),
@@ -173,7 +173,7 @@ func (s *server) GetTranscodeStart(w http.ResponseWriter, r *http.Request, id ge
 		if r.Context().Err() != nil {
 			return
 		}
-		s.notFound(w, "この変換の開始位置はありません")
+		s.notFound(w, "No start position for this transcode.")
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)

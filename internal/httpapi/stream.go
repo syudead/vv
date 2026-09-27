@@ -52,7 +52,7 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 	defer release()
 
 	if s.files == nil {
-		s.internalError(w, "メディアファイルの読み出しが設定されていません", nil)
+		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
 	file, info, path, ok := s.openMediaFile(r, video)
@@ -60,7 +60,7 @@ func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.Vide
 		// 実体を開けない理由（外を指している、消えた、通常ファイルでない）は
 		// 応答で区別しない。403 と 404 を出し分けると、どのパスが存在するかを
 		// 漏らすことになる。
-		s.notFound(w, "この動画の実体を開けません")
+		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -89,10 +89,10 @@ func (s *server) openMediaFile(r *http.Request, video domain.Video) (*os.File, o
 			return file, info, location.Path, true
 		}
 		if errors.Is(err, domain.ErrMediaFileOutsideRoot) {
-			s.logger.Warn("リンク先が配信の対象外です",
+			s.logger.Warn("link target is outside the media folders",
 				slog.Int64("video", video.ID), slog.String("path", location.Path))
 		} else {
-			s.logger.Debug("実体を開けません", slog.Int64("video", video.ID), slog.Any("error", err))
+			s.logger.Debug("cannot open the media file", slog.Int64("video", video.ID), slog.Any("error", err))
 		}
 	}
 	return nil, nil, "", false

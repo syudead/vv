@@ -16,12 +16,12 @@ func (s *server) GetHealth(w http.ResponseWriter, r *http.Request) {
 	reachable := false
 	if s.pinger != nil {
 		if err := s.pinger.Ping(r.Context()); err != nil {
-			s.logger.Warn("保存層へ疎通できません", slog.Any("error", err))
+			s.logger.Warn("cannot reach the store", slog.Any("error", err))
 		} else {
 			reachable = true
 		}
 	} else {
-		s.logger.Warn("保存層への疎通確認が設定されていません")
+		s.logger.Warn("store health check is not configured")
 	}
 
 	health := domain.NewHealth(s.build, reachable)

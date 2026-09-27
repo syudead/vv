@@ -249,7 +249,7 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 				next.ServeHTTP(w, r.WithContext(withAudience(r.Context(), domain.AudienceGuest)))
 				return
 			}
-			s.internalError(w, "認証を確かめられません", errors.New("認証がつながっていません"))
+			s.internalError(w, "Cannot verify authentication.", errors.New("authentication is not configured"))
 			return
 		}
 
@@ -279,7 +279,7 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 				return
 			}
 			// 所有者ともゲストともみなさない（contracts/auth-api.md §5）。
-			s.internalError(w, "ログインの状態を確かめられませんでした", err)
+			s.internalError(w, "Could not check the sign-in status.", err)
 			return
 		}
 
@@ -310,7 +310,7 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 			// 公開フラグも効かせず、未認証にする（contracts/auth-api.md §1、親 Issue 要件 2）。
 			configured, err := s.accountConfigured(r.Context())
 			if err != nil {
-				s.internalError(w, "ログインの状態を確かめられませんでした", err)
+				s.internalError(w, "Could not check the sign-in status.", err)
 				return
 			}
 			if !configured {
@@ -338,13 +338,17 @@ func (s *server) accountConfigured(ctx context.Context) (bool, error) {
 
 // unauthenticated は未認証の応答である。原因は区別せず、WWW-Authenticate は付けない。
 func (s *server) unauthenticated(w http.ResponseWriter) {
-	s.writeError(w, http.StatusUnauthorized, gen.ErrorCodeUnauthenticated, "ログインが必要です")
+	s.writeError(w, http.StatusUnauthorized, gen.ErrorCodeUnauthenticated, "Sign-in required.")
 }
 
 // SetupAccount は初回設定である（contracts/auth-api.md §2）。
+// invalidUsernameMessage はユーザー名の規則を外れたときの英語の説明である。
+var invalidUsernameMessage = "Usernames must be 1 to " + strconv.Itoa(domain.MaxUsernameLength) +
+	" characters, with no control characters or leading or trailing spaces."
+
 func (s *server) SetupAccount(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
-		s.internalError(w, "初回設定を行えません", errors.New("認証がつながっていません"))
+		s.internalError(w, "Cannot run the initial setup.", errors.New("authentication is not configured"))
 		return
 	}
 	var body gen.SetupRequest
@@ -355,17 +359,22 @@ func (s *server) SetupAccount(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case err == nil:
 	case errors.Is(err, domain.ErrAccountAlreadyConfigured):
-		s.writeError(w, http.StatusConflict, gen.ErrorCodeAccountAlreadyConfigured, "アカウントは既に設定されています")
+		s.writeError(w, http.StatusConflict, gen.ErrorCodeAccountAlreadyConfigured, "The account is already set up.")
+		return
+	case errors.Is(err, domain.ErrUsernameLength):
+		s.invalidRequestLimit(w, reasonUsernameLength, domain.MaxUsernameLength, invalidUsernameMessage)
 		return
 	case errors.Is(err, domain.ErrInvalidUsername):
-		s.invalidRequest(w, "ユーザー名は1〜"+strconv.Itoa(domain.MaxUsernameLength)+
-			"文字で、制御文字を含まず、先頭と末尾に空白を置かないでください")
+		// 長さ以外（制御文字・前後の空白）の違反には対応する reason が無いので、
+		// username_length を付けない（contracts/error-api.md §1）。
+		s.invalidRequest(w, invalidUsernameMessage)
 		return
 	case errors.Is(err, domain.ErrInvalidPassword):
-		s.invalidRequest(w, "パスワードは1〜"+strconv.Itoa(domain.MaxPasswordBytes)+"バイトにしてください")
+		s.invalidRequestLimit(w, reasonPasswordLength, domain.MaxPasswordBytes,
+			"Passwords must be 1 to "+strconv.Itoa(domain.MaxPasswordBytes)+" bytes.")
 		return
 	default:
-		s.internalError(w, "初回設定を行えませんでした", err)
+		s.internalError(w, "Could not complete the initial setup.", err)
 		return
 	}
 	s.logAuthEvent(r, "setup")
@@ -377,7 +386,7 @@ func (s *server) SetupAccount(w http.ResponseWriter, r *http.Request) {
 // Login はログインである（contracts/auth-api.md §3）。
 func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
-		s.internalError(w, "ログインできません", errors.New("認証がつながっていません"))
+		s.internalError(w, "Cannot sign in.", errors.New("authentication is not configured"))
 		return
 	}
 	var body gen.LoginRequest
@@ -396,7 +405,7 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	case err == nil:
 	case errors.Is(err, domain.ErrInvalidCredentials):
 		s.logAuthEvent(r, "login_failed")
-		s.writeError(w, http.StatusUnauthorized, gen.ErrorCodeInvalidCredentials, "ユーザー名またはパスワードが違います")
+		s.writeError(w, http.StatusUnauthorized, gen.ErrorCodeInvalidCredentials, "Incorrect username or password.")
 		return
 	case errors.Is(err, domain.ErrLoginThrottled):
 		s.logAuthEvent(r, "login_throttled")
@@ -406,10 +415,10 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 		s.writeError(w, http.StatusTooManyRequests, gen.ErrorCodeLoginThrottled,
-			"ログインの試行が多すぎます。しばらく待ってから試してください")
+			"Too many sign-in attempts. Wait a moment and try again.")
 		return
 	default:
-		s.internalError(w, "ログインできませんでした", err)
+		s.internalError(w, "Could not sign in.", err)
 		return
 	}
 	// 付いていた古いセッションは Login が消した。それで処理中の要求も打ち切る。
@@ -429,12 +438,12 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 // GetAuthSession は見る人の状態を返す（contracts/auth-api.md §4）。
 func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params gen.GetAuthSessionParams) {
 	if s.auth == nil {
-		s.internalError(w, "ログインの状態を確かめられません", errors.New("認証がつながっていません"))
+		s.internalError(w, "Cannot check the sign-in status.", errors.New("authentication is not configured"))
 		return
 	}
 	state, err := s.auth.State(r.Context(), s.sessionToken(r))
 	if err != nil {
-		s.internalError(w, "ログインの状態を確かめられませんでした", err)
+		s.internalError(w, "Could not check the sign-in status.", err)
 		return
 	}
 	// 境界の確認のあとに別のタブでログアウトされると、ここでの確認は境界と食い違う。
@@ -457,7 +466,7 @@ func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params g
 // 両方の名前の Cookie を見て、それぞれのセッションを消し、処理中の要求を打ち切る。
 func (s *server) Logout(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
-		s.internalError(w, "ログアウトできません", errors.New("認証がつながっていません"))
+		s.internalError(w, "Cannot sign out.", errors.New("authentication is not configured"))
 		return
 	}
 	for _, cookie := range r.Cookies() {
@@ -465,7 +474,7 @@ func (s *server) Logout(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := s.auth.Logout(r.Context(), cookie.Value); err != nil {
-			s.internalError(w, "ログアウトできませんでした", err)
+			s.internalError(w, "Could not sign out.", err)
 			return
 		}
 		s.sessions.revoke(cookie.Value)
@@ -515,7 +524,7 @@ func (s *server) logAuthEvent(r *http.Request, event string) {
 	if addr := s.clientOrigin(r).source; addr.IsValid() {
 		source = addr.String()
 	}
-	s.logger.LogAttrs(r.Context(), slog.LevelInfo, "認証の出来事",
+	s.logger.LogAttrs(r.Context(), slog.LevelInfo, "auth event",
 		slog.String("event", event), slog.String("source", source))
 }
 
@@ -658,7 +667,7 @@ func (l *sessionLedger) serve(
 			valid, err := l.check(checkCtx, token)
 			if err != nil {
 				// 確かめられないときは打ち切らず、次の間隔で確かめ直す。
-				l.logger.Warn("処理中の要求のセッションを確かめ直せませんでした", slog.Any("error", err))
+				l.logger.Warn("could not recheck the session of an in-flight request", slog.Any("error", err))
 			} else if !valid {
 				req.abort()
 				return

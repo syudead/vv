@@ -190,18 +190,19 @@ func TestTagNameTakenMessageDistinguishesOwnNameFromSynonym(t *testing.T) {
 	t.Run("送った名前が衝突したタグ自身の元の名前", func(t *testing.T) {
 		fake := &fakeTags{err: &domain.TagNameConflict{Tag: domain.TagRef{ID: 5, Name: "Bar"}}}
 		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags", `{"name":"Bar"}`)
-		got := decode[gen.Error](t, rec)
-		if want := "「Bar」という名前のタグが既にあります"; got.Message != want {
-			t.Fatalf("message = %q, want %q", got.Message, want)
-		}
+		assertErrorBody(t, "自分の元の名前", rec.Code, rec.Body.Bytes(), wantError{
+			status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: reasonNameIsTag, tagName: "Bar",
+		})
 	})
 
 	t.Run("送った名前が衝突したタグのシノニム", func(t *testing.T) {
 		fake := &fakeTags{err: &domain.TagNameConflict{Tag: domain.TagRef{ID: 5, Name: "Bar"}}}
 		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags", `{"name":"foo"}`)
-		got := decode[gen.Error](t, rec)
-		if want := "「foo」は「Bar」のシノニムとして使われています"; got.Message != want {
-			t.Fatalf("message = %q, want %q", got.Message, want)
+		assertErrorBody(t, "シノニム", rec.Code, rec.Body.Bytes(), wantError{
+			status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: reasonNameIsSynonym, tagName: "Bar",
+		})
+		if got := decode[gen.Error](t, rec); !strings.Contains(got.Message, `"foo"`) || !strings.Contains(got.Message, `"Bar"`) {
+			t.Errorf("message = %q, want 送った名前とタグの名前を含む", got.Message)
 		}
 	})
 
@@ -211,10 +212,9 @@ func TestTagNameTakenMessageDistinguishesOwnNameFromSynonym(t *testing.T) {
 		// なのにシノニムだと誤って報告してしまう。
 		fake := &fakeTags{err: &domain.TagNameConflict{Tag: domain.TagRef{ID: 5, Name: "Bar"}}}
 		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags", `{"name":"  Bar  "}`)
-		got := decode[gen.Error](t, rec)
-		if want := "「Bar」という名前のタグが既にあります"; got.Message != want {
-			t.Fatalf("message = %q, want %q", got.Message, want)
-		}
+		assertErrorBody(t, "自分の元の名前", rec.Code, rec.Body.Bytes(), wantError{
+			status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: reasonNameIsTag, tagName: "Bar",
+		})
 	})
 
 	t.Run("自分自身の元の名前を自分のシノニムに登録", func(t *testing.T) {
@@ -224,34 +224,32 @@ func TestTagNameTakenMessageDistinguishesOwnNameFromSynonym(t *testing.T) {
 		fake := &fakeTags{err: &domain.TagNameConflict{Tag: domain.TagRef{ID: 5, Name: "Bar"}}}
 		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/5/synonyms",
 			`{"name":"Bar"}`)
-		got := decode[gen.Error](t, rec)
-		if want := "「Bar」という名前のタグが既にあります"; got.Message != want {
-			t.Fatalf("message = %q, want %q", got.Message, want)
-		}
+		assertErrorBody(t, "自分の元の名前", rec.Code, rec.Body.Bytes(), wantError{
+			status: http.StatusConflict, code: gen.ErrorCodeTagNameTaken, reason: reasonNameIsTag, tagName: "Bar",
+		})
 	})
 }
 
 func TestInvalidTagNameMessageStatesTheReason(t *testing.T) {
 	tests := []struct {
-		name     string
-		body     string
-		contains string
+		name string
+		body string
+		want wantError
 	}{
-		{"空", `{"name":""}`, "入力してください"},
-		{"制御文字", `{"name":"a\u0007b"}`, "制御文字"},
-		{"101文字", `{"name":"` + strings.Repeat("あ", 101) + `"}`, "文字以内"},
+		{"空", `{"name":""}`, wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTagNameEmpty}},
+		{"制御文字", `{"name":"a\u0007b"}`, wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTagNameControlCharacters,
+		}},
+		{"101文字", `{"name":"` + strings.Repeat("あ", 101) + `"}`, wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+			reason: reasonTagNameTooLong, limit: domain.TagNameMaxLength,
+		}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeTags{}
 			rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags", tc.body)
-			if rec.Code != http.StatusBadRequest {
-				t.Fatalf("response = %d %s", rec.Code, rec.Body)
-			}
-			got := decode[gen.Error](t, rec)
-			if got.Code != codeInvalidRequest || !strings.Contains(got.Message, tc.contains) {
-				t.Fatalf("error = %#v, want message containing %q", got, tc.contains)
-			}
+			assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(), tc.want)
 		})
 	}
 }
@@ -288,13 +286,8 @@ func TestTagMutationsReturnNotFoundForMissingTag(t *testing.T) {
 func TestMergeTagSameIDIsInvalidRequest(t *testing.T) {
 	fake := &fakeTags{}
 	rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/3/merge", `{"sourceId":3}`)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("response = %d %s", rec.Code, rec.Body)
-	}
-	got := decode[gen.Error](t, rec)
-	if got.Code != codeInvalidRequest {
-		t.Fatalf("code = %s", got.Code)
-	}
+	assertErrorBody(t, "同じタグの統合", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonMergeSameTag})
 	if fake.operation != "" {
 		t.Fatal("MergeTag was called for sourceId == id")
 	}
@@ -311,13 +304,8 @@ func TestMergeTagCallsStoreForDifferentIDs(t *testing.T) {
 func TestAddTagSynonymWithoutMergeTagIDReturnsMergeRequired(t *testing.T) {
 	fake := &fakeTags{err: &domain.TagMergeRequired{Tag: domain.TagRef{ID: 7, Name: "旧名"}}}
 	rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/3/synonyms", `{"name":"旧名"}`)
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("response = %d %s", rec.Code, rec.Body)
-	}
-	got := decode[gen.Error](t, rec)
-	if got.Code != codeTagMergeRequired {
-		t.Fatalf("code = %s", got.Code)
-	}
+	assertErrorBody(t, "統合の承諾が無い", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodeTagMergeRequired, tagName: "旧名"})
 	if fake.lastTag != nil {
 		t.Fatalf("mergeTagId should be nil, got %v", *fake.lastTag)
 	}

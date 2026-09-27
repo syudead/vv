@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/syudead/vv/internal/domain"
@@ -27,16 +28,16 @@ func (s *server) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validVideoTagsIDs(body.VideoIds) {
-		s.invalidRequest(w, "videoIdsは1件以上20000件以下で指定してください")
+		s.tooManyVideos(w)
 		return
 	}
 	tagID, tagName, ok := parseTagInput(body.Tag)
 	if !ok {
-		s.invalidRequest(w, "tagはidとnameのどちらか一方だけを指定してください")
+		s.invalidRequest(w, "tag must have exactly one of id or name.")
 		return
 	}
 	if s.tags == nil {
-		s.internalError(w, "タグの経路が設定されていません", nil)
+		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
 
@@ -56,12 +57,12 @@ func (s *server) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 		// 取り外しは id での指定だけを受け付ける。画面が外す候補はいつも付いている
 		// タグで、id を持っているからである（contracts/tags-api.md §4）。
 		if tagID == nil {
-			s.invalidRequest(w, "取り外しはtag.idで指定してください")
+			s.invalidRequest(w, "Removing a tag requires tag.id.")
 			return
 		}
 		ref, applied, err = s.tags.DetachTag(r.Context(), body.VideoIds, *tagID)
 	default:
-		s.invalidRequest(w, "actionの値が不明です")
+		s.invalidRequest(w, "Unknown action.")
 		return
 	}
 	if err != nil {
@@ -84,17 +85,17 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validVideoTagsIDs(body.VideoIds) {
-		s.invalidRequest(w, "videoIdsは1件以上20000件以下で指定してください")
+		s.tooManyVideos(w)
 		return
 	}
 	if s.tags == nil {
-		s.internalError(w, "タグの経路が設定されていません", nil)
+		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
 
 	summary, err := s.tags.Summary(r.Context(), body.VideoIds)
 	if err != nil {
-		s.internalError(w, "タグの要約を取得できませんでした", err)
+		s.internalError(w, "Could not load the tag summary.", err)
 		return
 	}
 
@@ -156,14 +157,21 @@ func parseTagInput(tag gen.TagInput) (id *int64, name *string, ok bool) {
 	return tag.Id, tag.Name, true
 }
 
+// tooManyVideos は一括操作の videoIds が 0 件か maxVideoTagsIDs を超えることを
+// 返す（specs/023-english-i18n/contracts/error-api.md §1 の too_many_videos）。
+func (s *server) tooManyVideos(w http.ResponseWriter) {
+	s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
+		fmt.Sprintf("videoIds must contain between 1 and %d items.", maxVideoTagsIDs))
+}
+
 // writeVideoTagsError は付け外しの保存層の誤りを応答へ写す。
 func (s *server) writeVideoTagsError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrInvalidTagName):
-		s.invalidRequest(w, err.Error())
+		s.invalidTagName(w, err, "")
 	case errors.Is(err, domain.ErrTagNotFound):
-		s.writeError(w, http.StatusNotFound, codeTagNotFound, "タグが見つかりません")
+		s.writeError(w, http.StatusNotFound, codeTagNotFound, "Tag not found.")
 	default:
-		s.internalError(w, "タグを変更できませんでした", err)
+		s.internalError(w, "Could not update the tag.", err)
 	}
 }
