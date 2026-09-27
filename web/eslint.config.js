@@ -56,9 +56,6 @@ const i18nRestrictedSyntax = [
 // まだ英語のカタログへ移していないディレクトリである。各領域の単位が自分の
 // ディレクトリをここから外し、最後の単位で一覧を無くす（R-3）。
 const untranslatedDirectories = [
-  "src/auth/**",
-  "src/shell/**",
-  "src/settings/**",
   "src/library/**",
   "src/videoList/**",
   "src/folders/**",

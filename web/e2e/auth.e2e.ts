@@ -13,8 +13,8 @@ import { ownerAccount } from "./owner-account";
 test.use({ storageState: { cookies: [], origins: [] } });
 
 async function expectCredentialFields(page: Page) {
-  await expect(page.getByLabel("ユーザー名")).toHaveAttribute("autocomplete", "username");
-  await expect(page.getByLabel("パスワード")).toHaveAttribute(
+  await expect(page.getByLabel("Username")).toHaveAttribute("autocomplete", "username");
+  await expect(page.getByLabel("Password")).toHaveAttribute(
     "autocomplete",
     "current-password",
   );
@@ -25,38 +25,38 @@ test("ゲストで設定画面を開くとログイン画面になり、キー�
 }) => {
   await page.goto("/settings");
   await expect(page).toHaveURL("/login?next=%2Fsettings");
-  await expect(page.getByRole("heading", { level: 1, name: "ログイン" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
   await expectCredentialFields(page);
   // e2e は HTTP で配るので、主操作の下に警告が出て、ユーザー名と主操作から指される。
-  await expect(page.getByText(/この接続は暗号化されていません/)).toBeVisible();
-  await expect(page.getByLabel("ユーザー名")).toHaveAttribute(
+  await expect(page.getByText(/This connection isn't encrypted/)).toBeVisible();
+  await expect(page.getByLabel("Username")).toHaveAttribute(
     "aria-describedby",
     "connection-warning",
   );
-  await expect(page.getByRole("button", { name: "ログイン" })).toHaveAttribute(
+  await expect(page.getByRole("button", { name: "Sign in" })).toHaveAttribute(
     "aria-describedby",
     "connection-warning",
   );
 
-  await expect(page.getByLabel("ユーザー名")).toBeFocused();
+  await expect(page.getByLabel("Username")).toBeFocused();
   await page.keyboard.type(ownerAccount.username);
   await page.keyboard.press("Tab");
-  await expect(page.getByLabel("パスワード")).toBeFocused();
+  await expect(page.getByLabel("Password")).toBeFocused();
   await page.keyboard.type(ownerAccount.password);
   await page.keyboard.press("Tab");
-  await expect(page.getByRole("button", { name: "ログイン" })).toBeFocused();
+  await expect(page.getByRole("button", { name: "Sign in" })).toBeFocused();
   await page.keyboard.press("Enter");
 
   await expect(page).toHaveURL("/settings");
-  await expect(page.getByRole("heading", { level: 1, name: "設定" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
 });
 
 test("ログインの送信中は再送信できず、失敗するとパスワードだけが空になる", async ({
   page,
 }) => {
   await page.goto("/login");
-  await page.getByLabel("ユーザー名").fill(ownerAccount.username);
-  await page.getByLabel("パスワード").fill("wrong-password");
+  await page.getByLabel("Username").fill(ownerAccount.username);
+  await page.getByLabel("Password").fill("wrong-password");
 
   // 応答を止めて、送信中の状態を確かめる。
   let release: () => void = () => undefined;
@@ -68,26 +68,26 @@ test("ログインの送信中は再送信できず、失敗するとパスワ�
     await route.continue();
   });
 
-  await page.getByLabel("パスワード").press("Enter");
-  const submit = page.getByRole("button", { name: "ログイン" });
+  await page.getByLabel("Password").press("Enter");
+  const submit = page.getByRole("button", { name: "Sign in" });
   await expect(submit).toBeDisabled();
-  await page.getByLabel("パスワード").press("Enter");
+  await page.getByLabel("Password").press("Enter");
   await submit.click({ force: true });
   expect(attempts).toBe(1);
 
   release();
   await expect(page.getByRole("alert")).toHaveText(
-    "ユーザー名またはパスワードが違います",
+    "The username or password is incorrect.",
   );
-  await expect(page.getByLabel("ユーザー名")).toHaveValue(ownerAccount.username);
-  await expect(page.getByLabel("パスワード")).toHaveValue("");
-  await expect(page.getByLabel("パスワード")).toBeFocused();
+  await expect(page.getByLabel("Username")).toHaveValue(ownerAccount.username);
+  await expect(page.getByLabel("Password")).toHaveValue("");
+  await expect(page.getByLabel("Password")).toBeFocused();
   expect(attempts).toBe(1);
 
   // 正しいパスワードで入れる。成功で、この送信元の失敗の記録は消える。
   await page.unroute("**/api/auth/login");
-  await page.getByLabel("パスワード").fill(ownerAccount.password);
-  await page.getByLabel("パスワード").press("Enter");
+  await page.getByLabel("Password").fill(ownerAccount.password);
+  await page.getByLabel("Password").press("Enter");
   await expect(page).toHaveURL("/");
 });
 
@@ -96,11 +96,11 @@ test("ログアウトするとゲストの画面になり、前の Cookie を付
   context,
 }) => {
   await page.goto("/login");
-  await page.getByLabel("ユーザー名").fill(ownerAccount.username);
-  await page.getByLabel("パスワード").fill(ownerAccount.password);
-  await page.getByRole("button", { name: "ログイン" }).click();
+  await page.getByLabel("Username").fill(ownerAccount.username);
+  await page.getByLabel("Password").fill(ownerAccount.password);
+  await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL("/");
-  const logout = page.getByRole("button", { name: "ログアウト" });
+  const logout = page.getByRole("button", { name: "Sign out" });
   await expect(logout).toBeVisible();
 
   const cookies = await context.cookies();
@@ -116,16 +116,16 @@ test("ログアウトするとゲストの画面になり、前の Cookie を付
   expect(stored).not.toContain(session?.value ?? "");
 
   await page.goto("/folders?query=x");
-  await page.getByRole("button", { name: "ログアウト" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
 
   // 同じ URL がゲストの画面として読み直される。
   await expect(page).toHaveURL("/folders?query=x");
   const login = page
-    .getByRole("navigation", { name: "アカウントと設定" })
-    .getByRole("link", { name: "ログイン" });
+    .getByRole("navigation", { name: "Account and settings" })
+    .getByRole("link", { name: "Sign in" });
   await expect(login).toBeVisible();
   await expect(login).toHaveAttribute("href", "/login?next=%2Ffolders%3Fquery%3Dx");
-  await expect(page.getByRole("button", { name: "ログアウト" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sign out" })).toHaveCount(0);
   expect(await context.cookies()).toEqual([]);
 
   // ログアウト前の Cookie を付け直しても、所有者として扱われない。

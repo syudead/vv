@@ -86,7 +86,7 @@ describe("App", () => {
   it("keeps one indicator instance and shared progress across library, settings, and playback routes", async () => {
     render(<App />);
     const user = userEvent.setup();
-    const indicator = await screen.findByRole("button", { name: /取り込み中 40%/ });
+    const indicator = await screen.findByRole("button", { name: /Scanning 40%/ });
     expect(indicator.closest(".fixed")?.classList.contains("bottom-4")).toBe(true);
 
     await user.click(screen.getByRole("link", { name: "フォルダへ" }));
@@ -95,13 +95,13 @@ describe("App", () => {
     await waitFor(() =>
       expect(screen.getByRole("link", { name: "動画へ" })).toBeDefined(),
     );
-    expect(screen.getByRole("button", { name: /取り込み中 40%/ })).toBe(indicator);
+    expect(screen.getByRole("button", { name: /Scanning 40%/ })).toBe(indicator);
 
     await user.click(screen.getByRole("link", { name: "動画へ" }));
     await waitFor(() =>
       expect(screen.getByRole("link", { name: "ライブラリへ" })).toBeDefined(),
     );
-    const playbackIndicator = screen.getByRole("button", { name: /取り込み中 40%/ });
+    const playbackIndicator = screen.getByRole("button", { name: /Scanning 40%/ });
     expect(playbackIndicator).toBe(indicator);
     const playbackPlacement = playbackIndicator.closest(".fixed")?.classList;
     // 再生画面でも右下に置く。右上には閉じる × がある。
@@ -109,14 +109,14 @@ describe("App", () => {
     expect(playbackPlacement?.contains("sm:bottom-5")).toBe(true);
     expect(playbackPlacement?.contains("sm:top-2")).toBe(false);
     expect(playbackIndicator.getAttribute("aria-label")).toBe(
-      "取り込み中 40%。取り込み状況を開く",
+      "Scanning 40%. Open the scan status",
     );
   });
 
   it("keeps an active toast while a real link changes to playback placement", async () => {
     render(<App />);
     const user = userEvent.setup();
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
 
     await user.click(screen.getByRole("button", { name: "通知する" }));
     const toast = screen.getByText("route toast");
@@ -148,12 +148,10 @@ describe("App", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "アカウントを作成" }),
+      await screen.findByRole("heading", { level: 1, name: "Create an account" }),
     ).toBeDefined();
     expect(window.location.pathname).toBe("/setup");
-    expect(
-      screen.queryByRole("complementary", { name: "メインナビゲーション" }),
-    ).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull();
     // 取り込みの状態などプロバイダの要求を送らない。
     expect(fetchMock).toHaveBeenCalledOnce();
   });
@@ -169,14 +167,12 @@ describe("App", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "ログイン" }),
+      await screen.findByRole("heading", { level: 1, name: "Sign in" }),
     ).toBeDefined();
     expect(`${window.location.pathname}${window.location.search}`).toBe(
       "/login?next=%2Fsettings",
     );
-    expect(
-      screen.queryByRole("complementary", { name: "メインナビゲーション" }),
-    ).toBeNull();
+    expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull();
     expect(fetchMock).toHaveBeenCalledOnce();
   });
   it("ゲストには更新・取り込みの進捗・所有者だけのナビを出さず、所有者だけの API と /api/events を開かない", async () => {
@@ -191,15 +187,15 @@ describe("App", () => {
 
     expect(
       screen.queryByRole("button", {
-        name: /ライブラリを更新|取り込み中|メディアフォルダを設定/,
+        name: /Refresh library|Scanning|Add a media folder/,
       }),
     ).toBeNull();
-    expect(screen.queryByRole("button", { name: /取り込み/ })).toBeNull();
-    const main = screen.getByRole("complementary", { name: "メインナビゲーション" });
+    expect(screen.queryByRole("button", { name: /scan/i })).toBeNull();
+    const main = screen.getByRole("complementary", { name: "Main navigation" });
     const names = Array.from(main.querySelectorAll("a, button")).map((node) =>
       node.textContent?.trim(),
     );
-    expect(names).toEqual(["ライブラリ", "フォルダ", "ログイン"]);
+    expect(names).toEqual(["Library", "Folders", "Sign in"]);
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
@@ -210,12 +206,12 @@ describe("App", () => {
 
   it("所有者にはサイドバーの全項目と更新を出す", async () => {
     render(<App />);
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
-    const main = screen.getByRole("complementary", { name: "メインナビゲーション" });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
+    const main = screen.getByRole("complementary", { name: "Main navigation" });
     const names = Array.from(main.querySelectorAll("a, button")).map((node) =>
       node.textContent?.trim(),
     );
-    expect(names).toEqual(["ライブラリ", "フォルダ", "タグ", "設定", "ログアウト"]);
-    expect(screen.getByRole("button", { name: "取り込み中" })).toBeDefined();
+    expect(names).toEqual(["Library", "Folders", "Tags", "Settings", "Sign out"]);
+    expect(screen.getByRole("button", { name: "Scanning" })).toBeDefined();
   });
 });

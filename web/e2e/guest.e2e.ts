@@ -145,7 +145,7 @@ async function openGuestFolder(page: Page, name: string) {
 }
 
 async function sidebarNames(page: Page): Promise<string[]> {
-  const sidebar = page.getByRole("complementary", { name: "メインナビゲーション" });
+  const sidebar = page.getByRole("complementary", { name: "Main navigation" });
   const names = await sidebar.locator("a, button").allTextContents();
   return names.map((name) => name.trim());
 }
@@ -289,10 +289,10 @@ test.describe.serial("guest", () => {
 
     await page.goto("/");
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
-    expect(await sidebarNames(page)).toEqual(["ライブラリ", "フォルダ", "ログイン"]);
-    await expect(
-      page.getByRole("button", { name: /ライブラリを更新|取り込み/ }),
-    ).toHaveCount(0);
+    expect(await sidebarNames(page)).toEqual(["Library", "Folders", "Sign in"]);
+    await expect(page.getByRole("button", { name: /Refresh library|Scan/ })).toHaveCount(
+      0,
+    );
     await expect(page.getByRole("checkbox")).toHaveCount(0);
     await page.locator("article[data-group-root]").first().hover();
     await expect(page.getByRole("checkbox")).toHaveCount(0);
@@ -316,11 +316,11 @@ test.describe.serial("guest", () => {
       "最近再生した順",
       "を選択",
       "タグを追加",
-      "ライブラリを更新",
+      "Refresh library",
     ]) {
       expect(tree).not.toContain(name);
     }
-    expect(tree).not.toMatch(/link "設定"|link "タグ"/);
+    expect(tree).not.toMatch(/link "Settings"|link "Tags"/);
 
     await page.goto("/folders");
     await expect(page.locator("[data-folder-path]")).toHaveCount(1);
@@ -367,24 +367,20 @@ test.describe.serial("guest", () => {
       .check();
     await expect(second.getByRole("region", { name: "選択中の操作" })).toBeVisible();
 
-    await first.getByRole("button", { name: "ログアウト" }).click();
+    await first.getByRole("button", { name: "Sign out" }).click();
     await expect(
-      first
-        .getByRole("complementary", { name: "メインナビゲーション" })
-        .getByRole("link", {
-          name: "ログイン",
-        }),
+      first.getByRole("complementary", { name: "Main navigation" }).getByRole("link", {
+        name: "Sign in",
+      }),
     ).toBeVisible();
     await expect.poll(() => libraryItems(first)).toEqual([guestGroup]);
 
     // もう一方のタブは、次の一覧の取得（並び順の向きの切り替え）で読み直される。
     await second.getByRole("button", { name: /押すと/ }).click();
     await expect(
-      second
-        .getByRole("complementary", { name: "メインナビゲーション" })
-        .getByRole("link", {
-          name: "ログイン",
-        }),
+      second.getByRole("complementary", { name: "Main navigation" }).getByRole("link", {
+        name: "Sign in",
+      }),
     ).toBeVisible();
     await expect.poll(() => libraryItems(second)).toEqual([guestGroup]);
     await expect(second.getByRole("checkbox")).toHaveCount(0);
@@ -558,9 +554,9 @@ test.describe.serial("guest", () => {
 
       // サイドバー（1280 は展開、768 はレール、360 はドロワーを開いた状態）。
       if (width === 360) {
-        await page.getByRole("button", { name: "メニュー" }).click();
+        await page.getByRole("button", { name: "Menu" }).click();
         await expect(
-          page.getByRole("complementary", { name: "メインナビゲーション" }),
+          page.getByRole("complementary", { name: "Main navigation" }),
         ).toBeVisible();
       }
       await shot(page, "sidebar", width);

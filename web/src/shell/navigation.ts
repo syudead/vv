@@ -1,8 +1,10 @@
 import { Folder, Library, Tags, type LucideIcon } from "lucide-react";
 
+import { t, type UiText } from "../i18n";
+
 export interface NavEntry {
   id: string;
-  label: string;
+  label: UiText;
   icon: LucideIcon;
   /** 行き先。 */
   to: string;
@@ -15,14 +17,20 @@ export interface NavEntry {
   ownerOnly?: boolean;
 }
 
-export const navEntries: readonly NavEntry[] = [
-  { id: "library", label: "ライブラリ", icon: Library, to: "/" },
-  {
-    id: "folders",
-    label: "フォルダ",
-    icon: Folder,
-    to: "/folders",
-    matchDescendants: true,
-  },
-  { id: "tags", label: "タグ", icon: Tags, to: "/tags", ownerOnly: true },
-];
+/**
+ * navEntries はサイドバーの上段の項目である。文言はカタログから描画のたびに引く
+ * （疑似ロケールへの差し替えが届くよう、モジュールの読み込み時に固めない）。
+ */
+export function navEntries(): readonly NavEntry[] {
+  return [
+    { id: "library", label: t.shell.nav.library, icon: Library, to: "/" },
+    {
+      id: "folders",
+      label: t.shell.nav.folders,
+      icon: Folder,
+      to: "/folders",
+      matchDescendants: true,
+    },
+    { id: "tags", label: t.shell.nav.tags, icon: Tags, to: "/tags", ownerOnly: true },
+  ];
+}

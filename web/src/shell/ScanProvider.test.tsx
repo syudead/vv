@@ -90,7 +90,7 @@ describe("ScanProvider", () => {
 
     expect(
       await screen.findByText(
-        "取り込みを始められません: Something went wrong on the server.",
+        "Couldn't start the scan: Something went wrong on the server.",
       ),
     ).toBeDefined();
     const currentCalls = fetchMock.mock.calls.filter(
@@ -369,7 +369,7 @@ describe("ScanProvider", () => {
           json(
             {
               code: "media_folders_not_configured",
-              message: "メディアフォルダが設定されていません",
+              message: "No media folders yet",
             },
             409,
           ),

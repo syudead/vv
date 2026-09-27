@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import AuthGate from "./AuthGate";
 import { useAudience } from "./audience";
 import LoginPage from "./LoginPage";
@@ -82,7 +83,7 @@ describe("AuthGate", () => {
       renderGate(path);
 
       expect(
-        await screen.findByRole("heading", { level: 1, name: "アカウントを作成" }),
+        await screen.findByRole("heading", { level: 1, name: "Create an account" }),
       ).toBeDefined();
       expect(currentLocation).toBe("/setup");
       expect(screen.queryByText(/library/)).toBeNull();
@@ -103,7 +104,7 @@ describe("AuthGate", () => {
       expect(await screen.findByText("library as guest")).toBeDefined();
     } else {
       expect(
-        await screen.findByRole("heading", { level: 1, name: "ログイン" }),
+        await screen.findByRole("heading", { level: 1, name: "Sign in" }),
       ).toBeDefined();
     }
   });
@@ -180,7 +181,7 @@ describe("AuthGate", () => {
       renderGate("/settings");
 
       expect(
-        await screen.findByRole("heading", { name: "サーバーに接続できません" }),
+        await screen.findByRole("heading", { name: "Can't connect to the server" }),
       ).toBeDefined();
       expect(screen.queryByText(/library/)).toBeNull();
       expect(currentLocation).toBe("/settings");
@@ -216,13 +217,13 @@ describe("AuthGate", () => {
     await user.click(await screen.findByRole("link", { name: "login" }));
 
     expect(
-      await screen.findByRole("heading", { name: "サーバーに接続できません" }),
+      await screen.findByRole("heading", { name: "Can't connect to the server" }),
     ).toBeDefined();
     expect(screen.getByText("Something went wrong on the server.")).toBeDefined();
     expect(currentLocation).toBe("/login?next=%2Fsettings");
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
-    await user.click(screen.getByRole("button", { name: "再試行" }));
+    await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(currentLocation).toBe("/settings"));
     expect(String(fetchMock.mock.calls[2]?.[0])).toBe(
       "/api/auth/session?next=%2Fsettings",
@@ -235,9 +236,16 @@ describe("AuthGate", () => {
     fetchMock.mockResolvedValueOnce(json({ state: "owner" }));
     renderGate("/");
 
-    await user.click(await screen.findByRole("button", { name: "再試行" }));
+    await user.click(await screen.findByRole("button", { name: "Retry" }));
 
     expect(await screen.findByText("library as owner")).toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+  it("疑似ロケールで確認の失敗はカタログの文言だけを描く", async () => {
+    enablePseudoLocale();
+    fetchMock.mockImplementation(() => Promise.reject(new TypeError("Failed to fetch")));
+    const { container } = renderGate("/");
+    await screen.findByRole("heading");
+    expectCatalogTextOnly(container);
   });
 });

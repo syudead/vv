@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import type { Processing, Scan } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { OwnerAudience } from "../testing/audience";
@@ -86,7 +87,7 @@ describe("ScanProgressIndicator", () => {
     );
     renderIndicator();
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /取り込み状況を開く/ })).toBeNull(),
+      expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull(),
     );
   });
 
@@ -96,10 +97,12 @@ describe("ScanProgressIndicator", () => {
     );
     renderIndicator();
     const user = userEvent.setup();
-    const trigger = await screen.findByRole("button", { name: /取り込み中 40%/ });
+    const trigger = await screen.findByRole("button", { name: /Scanning 40%/ });
 
     await user.hover(trigger);
-    expect((await screen.findByRole("dialog")).textContent).toContain("4 / 10 件");
+    expect((await screen.findByRole("dialog")).textContent).toContain(
+      "4 / 10 (0 failed)",
+    );
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("40");
     await user.unhover(trigger);
     await user.click(trigger);
@@ -113,7 +116,7 @@ describe("ScanProgressIndicator", () => {
       Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
     );
     renderIndicator();
-    const trigger = await screen.findByRole("button", { name: /取り込み中 40%/ });
+    const trigger = await screen.findByRole("button", { name: /Scanning 40%/ });
 
     await act(async () => fireEvent.click(trigger));
 
@@ -127,7 +130,7 @@ describe("ScanProgressIndicator", () => {
     );
     renderIndicator();
     const user = userEvent.setup();
-    const trigger = await screen.findByRole("button", { name: /取り込み中 40%/ });
+    const trigger = await screen.findByRole("button", { name: /Scanning 40%/ });
     await user.tab();
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     expect(await screen.findByRole("dialog")).toBeDefined();
@@ -141,7 +144,7 @@ describe("ScanProgressIndicator", () => {
       Promise.resolve(String(input) === "/api/media-folders" ? json([{}]) : json(scan())),
     );
     renderIndicator();
-    const trigger = await screen.findByRole("button", { name: /取り込み中 40%/ });
+    const trigger = await screen.findByRole("button", { name: /Scanning 40%/ });
 
     fireEvent.pointerEnter(trigger);
     const dialog = await screen.findByRole("dialog");
@@ -162,14 +165,14 @@ describe("ScanProgressIndicator", () => {
     );
     renderIndicator();
     const user = userEvent.setup();
-    const trigger = await screen.findByRole("button", { name: /^取り込み中。/ });
+    const trigger = await screen.findByRole("button", { name: /^Scanning\./ });
     await user.hover(trigger);
 
     const progress = await screen.findByRole("progressbar", {
-      name: "取り込み対象を確認中",
+      name: "Checking what to scan",
     });
     expect(progress.getAttribute("aria-valuenow")).toBeNull();
-    expect(screen.getByRole("dialog").textContent).toContain("0 / 確認中 件");
+    expect(screen.getByRole("dialog").textContent).toContain("0 / counting");
   });
 
   it("acknowledges a failed notice before navigating to its details", async () => {
@@ -182,17 +185,17 @@ describe("ScanProgressIndicator", () => {
       ),
     );
     renderIndicator();
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
     state = "failed";
     await act(async () => window.dispatchEvent(new Event("focus")));
     const trigger = await screen.findByRole("button", {
-      name: /取り込みに失敗しました。取り込み状況を開く/,
+      name: /The scan failed\. Open the scan status/,
     });
 
     fireEvent.click(trigger);
 
     expect(screen.getByTestId("location").textContent).toBe("/settings#scan-status");
-    expect(screen.queryByRole("button", { name: /取り込み状況を開く/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
     expect(window.sessionStorage.getItem("vv.scan-notice")).toContain(
       '"acknowledgedTerminalScanId":1',
     );
@@ -209,16 +212,16 @@ describe("ScanProgressIndicator", () => {
       ),
     );
     renderIndicator();
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
     state = "failed";
     await act(async () => window.dispatchEvent(new Event("focus")));
     const trigger = await screen.findByRole("button", {
-      name: /取り込みに失敗しました。取り込み状況を開く/,
+      name: /The scan failed\. Open the scan status/,
     });
 
     fireEvent.pointerEnter(trigger);
     const dialog = await screen.findByRole("dialog");
-    expect(dialog.textContent).toContain("設定で理由を確認してください");
+    expect(dialog.textContent).toContain("See Settings for the reason");
     expect(dialog.textContent).not.toContain(reason);
   });
 
@@ -230,30 +233,30 @@ describe("ScanProgressIndicator", () => {
       ),
     );
     renderIndicator();
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
     current = scan({ state: "failed", error: "disk" });
     await act(async () => window.dispatchEvent(new Event("focus")));
     const close = await screen.findByRole("button", {
-      name: "取り込み失敗の通知を閉じる",
+      name: "Dismiss the scan failure notice",
     });
 
     fireEvent.pointerEnter(close);
     fireEvent.click(close);
     await waitFor(() =>
-      expect(screen.queryByRole("button", { name: /取り込み状況を開く/ })).toBeNull(),
+      expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull(),
     );
 
     current = scan({ id: 2, state: "running" });
     await act(async () => window.dispatchEvent(new Event("focus")));
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
     expect(screen.queryByRole("dialog")).toBeNull();
 
     vi.useFakeTimers();
     current = scan({ id: 2, state: "done", completed: 10 });
     await act(async () => window.dispatchEvent(new Event("focus")));
-    await screen.findByRole("button", { name: /^完了。/ });
+    await screen.findByRole("button", { name: /^Done\./ });
     await act(async () => vi.advanceTimersByTimeAsync(8100));
-    expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Done\./ })).toBeNull();
   });
 
   it("pauses a completed notice while the real summary is hovered", async () => {
@@ -264,20 +267,20 @@ describe("ScanProgressIndicator", () => {
       ),
     );
     renderIndicator();
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
     state = "done";
     await act(async () => window.dispatchEvent(new Event("focus")));
-    const trigger = await screen.findByRole("button", { name: /^完了。/ });
+    const trigger = await screen.findByRole("button", { name: /^Done\./ });
     vi.useFakeTimers();
 
     await act(async () => fireEvent.pointerEnter(trigger));
     await act(async () => vi.advanceTimersByTimeAsync(9000));
-    expect(screen.getByRole("button", { name: /^完了。/ })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^Done\./ })).toBeDefined();
 
     await act(async () => fireEvent.pointerLeave(trigger));
     await act(async () => vi.advanceTimersByTimeAsync(100));
     await act(async () => vi.advanceTimersByTimeAsync(8100));
-    expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Done\./ })).toBeNull();
   });
 
   it("pauses a completed notice while the real summary is focused", async () => {
@@ -288,19 +291,19 @@ describe("ScanProgressIndicator", () => {
       ),
     );
     renderIndicator();
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
     state = "done";
     await act(async () => window.dispatchEvent(new Event("focus")));
-    const trigger = await screen.findByRole("button", { name: /^完了。/ });
+    const trigger = await screen.findByRole("button", { name: /^Done\./ });
     vi.useFakeTimers();
 
     await act(async () => fireEvent.focus(trigger));
     await act(async () => vi.advanceTimersByTimeAsync(9000));
-    expect(screen.getByRole("button", { name: /^完了。/ })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^Done\./ })).toBeDefined();
 
     await act(async () => fireEvent.blur(trigger));
     await act(async () => vi.advanceTimersByTimeAsync(8000));
-    expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Done\./ })).toBeNull();
   });
 
   it("preserves a hovered completion notice's remaining time across reload", async () => {
@@ -317,10 +320,10 @@ describe("ScanProgressIndicator", () => {
       return Promise.resolve(json(scan({ state })));
     });
     const first = renderIndicator();
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
     state = "done";
     await act(async () => window.dispatchEvent(new Event("focus")));
-    const trigger = await screen.findByRole("button", { name: /^完了。/ });
+    const trigger = await screen.findByRole("button", { name: /^Done\./ });
     vi.useFakeTimers();
 
     await act(async () => vi.advanceTimersByTimeAsync(2000));
@@ -342,12 +345,12 @@ describe("ScanProgressIndicator", () => {
     ).toBe(pausedRemainingMs);
 
     await act(async () => resolveCurrentScan?.(json(scan({ state: "done" }))));
-    await screen.findByRole("button", { name: /^完了。/ });
+    await screen.findByRole("button", { name: /^Done\./ });
 
     await act(async () => vi.advanceTimersByTimeAsync(pausedRemainingMs - 100));
-    expect(screen.getByRole("button", { name: /^完了。/ })).toBeDefined();
+    expect(screen.getByRole("button", { name: /^Done\./ })).toBeDefined();
     await act(async () => vi.advanceTimersByTimeAsync(100));
-    expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Done\./ })).toBeNull();
   });
 
   it("スキャンが終わっても準備が残る間は準備中を示し、終わったら完了を示す", async () => {
@@ -358,7 +361,7 @@ describe("ScanProgressIndicator", () => {
       ),
     );
     renderIndicator();
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
 
     state = "done";
     await emitServerEvent("processing", {
@@ -369,11 +372,13 @@ describe("ScanProgressIndicator", () => {
     });
     await emitServerEvent("scan", scan({ state: "done" }));
 
-    const preparing = await screen.findByRole("button", { name: /^準備中 残り 10。/ });
-    expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+    const preparing = await screen.findByRole("button", {
+      name: /^Preparing, 10 left\./,
+    });
+    expect(screen.queryByRole("button", { name: /^Done\./ })).toBeNull();
     await act(async () => fireEvent.focus(preparing));
-    const list = await screen.findByLabelText("準備の残り");
-    expect(list.textContent).toBe("解析2 件サムネイル3 件シーク用4 件プレビュー1 件");
+    const list = await screen.findByLabelText("Preparation left");
+    expect(list.textContent).toBe("Analysis2Thumbnails3Seek4Previews1");
 
     await emitServerEvent("processing", {
       probe: 0,
@@ -382,7 +387,7 @@ describe("ScanProgressIndicator", () => {
       preview: 0,
     });
 
-    expect(await screen.findByRole("button", { name: /^完了。/ })).toBeDefined();
+    expect(await screen.findByRole("button", { name: /^Done\./ })).toBeDefined();
   });
 
   it("シーク用サムネイルだけが残っていても準備中を示し、4 段階の内訳を出す", async () => {
@@ -393,7 +398,7 @@ describe("ScanProgressIndicator", () => {
       ),
     );
     renderIndicator();
-    await screen.findByRole("button", { name: /取り込み中 40%/ });
+    await screen.findByRole("button", { name: /Scanning 40%/ });
 
     state = "done";
     await emitServerEvent("processing", {
@@ -404,16 +409,16 @@ describe("ScanProgressIndicator", () => {
     });
     await emitServerEvent("scan", scan({ state: "done" }));
 
-    const preparing = await screen.findByRole("button", { name: /^準備中 残り 5。/ });
-    expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+    const preparing = await screen.findByRole("button", { name: /^Preparing, 5 left\./ });
+    expect(screen.queryByRole("button", { name: /^Done\./ })).toBeNull();
     await act(async () => fireEvent.focus(preparing));
-    const list = await screen.findByLabelText("準備の残り");
-    expect(list.textContent).toBe("解析0 件サムネイル0 件シーク用5 件プレビュー0 件");
+    const list = await screen.findByLabelText("Preparation left");
+    expect(list.textContent).toBe("Analysis0Thumbnails0Seek5Previews0");
     expect(
       within(list)
         .getAllByRole("term")
         .map((term) => term.textContent),
-    ).toEqual(["解析", "サムネイル", "シーク用", "プレビュー"]);
+    ).toEqual(["Analysis", "Thumbnails", "Seek", "Previews"]);
 
     await emitServerEvent("processing", {
       probe: 0,
@@ -422,6 +427,37 @@ describe("ScanProgressIndicator", () => {
       preview: 0,
     });
 
-    expect(await screen.findByRole("button", { name: /^完了。/ })).toBeDefined();
+    expect(await screen.findByRole("button", { name: /^Done\./ })).toBeDefined();
+  });
+  it("疑似ロケールで処理中・準備中・失敗の表示はカタログの文言だけを描く", async () => {
+    enablePseudoLocale();
+    let current = scan();
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(current),
+      ),
+    );
+    renderIndicator();
+    const open = async (name: RegExp) => {
+      const trigger = await screen.findByRole("button", { name });
+      await act(async () => fireEvent.focus(trigger));
+      await screen.findByRole("dialog");
+      expectCatalogTextOnly(document.body, ["/settings#scan-status", "/"]);
+      await act(async () => fireEvent.blur(trigger));
+    };
+    await open(/Scanning/);
+
+    processing = { probe: 1, thumbnail: 2, seekThumbnail: 0, preview: 0 };
+    current = scan({ state: "done", completed: 10 });
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await open(/Preparing/);
+
+    current = scan({
+      state: "failed",
+      errorCode: "media_folder_unreadable",
+      errorPath: "/media/動画",
+    });
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await open(/The scan failed/);
   });
 });

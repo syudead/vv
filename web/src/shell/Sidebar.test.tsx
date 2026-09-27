@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { reloadPage } from "../auth/pageNavigation";
 import { ToastProvider } from "../ui/Toast";
@@ -37,7 +38,7 @@ function renderSidebar({
 }
 
 function accountNav() {
-  return screen.getByRole("navigation", { name: "アカウントと設定" });
+  return screen.getByRole("navigation", { name: "Account and settings" });
 }
 
 describe("Sidebar", () => {
@@ -75,9 +76,9 @@ describe("Sidebar", () => {
     renderSidebar({ onClose });
 
     const sidebar = screen.getByRole("complementary", {
-      name: "メインナビゲーション",
+      name: "Main navigation",
     });
-    const settings = within(sidebar).getByRole("link", { name: "設定" });
+    const settings = within(sidebar).getByRole("link", { name: "Settings" });
 
     await user.click(settings);
 
@@ -94,7 +95,7 @@ describe("Sidebar", () => {
       const names = Array.from(nav.querySelectorAll("a, button")).map(
         (element) => element.textContent,
       );
-      expect(names).toEqual(["設定", "ログアウト"]);
+      expect(names).toEqual(["Settings", "Sign out"]);
     },
   );
 
@@ -103,12 +104,12 @@ describe("Sidebar", () => {
     (mode) => {
       renderSidebar({ audience: "guest", mode, path: "/folders/3/A%20B?query=x" });
       const nav = accountNav();
-      const login = within(nav).getByRole("link", { name: "ログイン" });
+      const login = within(nav).getByRole("link", { name: "Sign in" });
       expect(login.getAttribute("href")).toBe(
         `/login?next=${encodeURIComponent("/folders/3/A%20B?query=x")}`,
       );
-      expect(within(nav).queryByRole("link", { name: "設定" })).toBeNull();
-      expect(within(nav).queryByRole("button", { name: "ログアウト" })).toBeNull();
+      expect(within(nav).queryByRole("link", { name: "Settings" })).toBeNull();
+      expect(within(nav).queryByRole("button", { name: "Sign out" })).toBeNull();
     },
   );
 
@@ -118,8 +119,8 @@ describe("Sidebar", () => {
     fetchMock.mockReturnValue(new Promise((resolve) => (finish = resolve)));
     renderSidebar();
 
-    await user.click(screen.getByRole("button", { name: "ログアウト" }));
-    const pending = screen.getByRole("button", { name: "ログアウト中…" });
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
+    const pending = screen.getByRole("button", { name: "Signing out…" });
     expect((pending as HTMLButtonElement).disabled).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", { method: "POST" });
 
@@ -132,11 +133,33 @@ describe("Sidebar", () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 500 }));
     renderSidebar();
 
-    await user.click(screen.getByRole("button", { name: "ログアウト" }));
+    await user.click(screen.getByRole("button", { name: "Sign out" }));
 
-    expect(await screen.findByText("ログアウトできませんでした")).toBeDefined();
-    const entry = screen.getByRole("button", { name: "ログアウト" });
+    expect(await screen.findByText("Couldn't sign out")).toBeDefined();
+    const entry = screen.getByRole("button", { name: "Sign out" });
     expect((entry as HTMLButtonElement).disabled).toBe(false);
     expect(reloadPage).not.toHaveBeenCalled();
+  });
+  it.each<Audience>(["owner", "guest"])(
+    "疑似ロケールで %s のサイドバーはカタログの文言だけを描く",
+    (audience) => {
+      enablePseudoLocale();
+      const { container } = renderSidebar({ audience });
+      expectCatalogTextOnly(container);
+    },
+  );
+
+  it("疑似ロケールでログアウトの送信中と失敗はカタログの文言だけを描く", async () => {
+    enablePseudoLocale();
+    const user = userEvent.setup();
+    let fail: (response: Response) => void = () => undefined;
+    fetchMock.mockReturnValue(new Promise((resolve) => (fail = resolve)));
+    renderSidebar();
+    await user.click(screen.getByRole("button", { name: /Sign out/ }));
+    await screen.findByRole("button", { name: /Signing out/ });
+    expectCatalogTextOnly(document.body);
+    fail(new Response(null, { status: 500 }));
+    await screen.findByText(/Couldn't sign out/);
+    expectCatalogTextOnly(document.body);
   });
 });

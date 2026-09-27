@@ -4,6 +4,7 @@ import { useLocation } from "react-router";
 
 import { login, LoginThrottled } from "../api/auth";
 import { RequestFailed } from "../api/client";
+import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import {
   connectionWarningId,
@@ -16,18 +17,17 @@ import {
 import { assignPage } from "./pageNavigation";
 
 /** loginFailureMessage は、ログインの失敗を失敗の行の文言にする（ui-design.md「Login behaviour」）。 */
-function loginFailureMessage(error: unknown): string {
-  if (error instanceof LoginThrottled) {
-    return error.retryAfterSeconds === null
-      ? "試行が多すぎます。しばらくしてからやり直してください"
-      : `試行が多すぎます。${error.retryAfterSeconds} 秒後にやり直してください`;
+function loginFailureMessage(error: unknown): UiText {
+  if (error instanceof LoginThrottled && error.retryAfterSeconds !== null) {
+    return t.auth.login.throttledFor(error.retryAfterSeconds);
   }
-  if (error instanceof RequestFailed) {
-    // どの欄が違うかは示さない（要件 12）。
-    if (error.status === 401) return "ユーザー名またはパスワードが違います";
-    return "ログインできませんでした。もう一度お試しください";
+  // どの欄が違うかは示さない（要件 12）。本文を読めない 401 も同じ文にする。
+  if (error instanceof RequestFailed && error.status === 401) {
+    return t.errors.code.invalid_credentials;
   }
-  return "サーバーに接続できません";
+  // 試行の制限（待ち時間なし）・その他の API エラー・届かなかった失敗は、API エラーの
+  // 表示（reason → code → message → HTTP 状態）に任せる。
+  return errorText(error);
 }
 
 /**
@@ -42,7 +42,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [throttled, setThrottled] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<UiText | null>(null);
   // Enter の二重送信を、描き直しを待たずに止める。
   const busy = useRef(false);
   const usernameRef = useRef<HTMLInputElement>(null);
@@ -89,7 +89,7 @@ export default function LoginPage() {
   const warning = connectionWarningId();
 
   return (
-    <CredentialScreen title="ログイン" onSubmit={() => void submit()}>
+    <CredentialScreen title={t.auth.login.title} onSubmit={() => void submit()}>
       <div className="flex flex-col gap-4">
         <UsernameField
           ref={usernameRef}
@@ -101,7 +101,7 @@ export default function LoginPage() {
         <CredentialField
           ref={passwordRef}
           id="login-password"
-          label="パスワード"
+          label={t.auth.fields.password}
           name="password"
           type="password"
           autoComplete="current-password"
@@ -124,7 +124,7 @@ export default function LoginPage() {
             aria-hidden="true"
           />
         )}
-        ログイン
+        {t.auth.login.submit}
       </Button>
       <ConnectionWarning />
     </CredentialScreen>

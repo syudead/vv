@@ -26,7 +26,7 @@ test("未設定のサーバーはどの要求にも初回設定を求める", as
     expect(response.headers()["x-vv-audience"], target).toBe("guest");
     expect(await response.json(), target).toEqual({
       code: "unauthenticated",
-      message: "ログインが必要です",
+      message: "Sign-in required.",
     });
   }
 
@@ -48,21 +48,21 @@ test("未設定のサーバーはどの URL も初回設定画面にし、設定
     await page.goto(target);
     await expect(page).toHaveURL("/setup");
     await expect(
-      page.getByRole("heading", { level: 1, name: "アカウントを作成" }),
+      page.getByRole("heading", { level: 1, name: "Create an account" }),
     ).toBeVisible();
   }
 
   await page.goto("/videos/1");
   await expect(page).toHaveURL("/setup");
-  const username = page.getByLabel("ユーザー名");
-  const password = page.getByLabel("パスワード", { exact: true });
-  const confirm = page.getByLabel("パスワード（確認）");
+  const username = page.getByLabel("Username");
+  const password = page.getByLabel("Password", { exact: true });
+  const confirm = page.getByLabel("Confirm password");
   await expect(username).toBeFocused();
   await expect(username).toHaveAttribute("autocomplete", "username");
   await expect(password).toHaveAttribute("autocomplete", "new-password");
   await expect(confirm).toHaveAttribute("autocomplete", "new-password");
   // e2e は HTTP で配るので、主操作の下に警告が出る。
-  await expect(page.getByText(/この接続は暗号化されていません/)).toBeVisible();
+  await expect(page.getByText(/This connection isn't encrypted/)).toBeVisible();
   await expect(username).toHaveAttribute("aria-describedby", "connection-warning");
 
   // キーボードだけで入力する。確認を違えると送らず、確認の欄へ戻る。
@@ -76,7 +76,7 @@ test("未設定のサーバーはどの URL も初回設定画面にし、設定
   await page.keyboard.press("Tab");
   await page.keyboard.type(`${ownerAccount.password}-typo`);
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("alert")).toHaveText("確認用のパスワードが一致しません");
+  await expect(page.getByRole("alert")).toHaveText("The passwords don't match.");
   await expect(confirm).toBeFocused();
   await expect(confirm).toHaveValue("");
   expect(requests).toEqual([]);
@@ -87,7 +87,7 @@ test("未設定のサーバーはどの URL も初回設定画面にし、設定
   await expect(
     page.getByRole("heading", { level: 1, name: "ライブラリ" }),
   ).toBeAttached();
-  await expect(page.getByRole("button", { name: "ログアウト" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   expect(requests).toEqual(["POST"]);
 
   // 設定済みのサーバーでは、初回設定画面を二度と出さない。
