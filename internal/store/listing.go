@@ -14,8 +14,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 一覧の問い合わせの組み立て（specs/013-library-search/plan.md Structural
-// Decisions 2・3・7）。ライブラリ・フォルダ直下・フォルダ配下の3つの一覧を、
+// 一覧の問い合わせの組み立て。ライブラリ・フォルダ直下・フォルダ配下の3つの一覧を、
 // 次の1つの流れで返す。
 //
 //  1. 範囲と検索式を満たす所在を選ぶ
@@ -355,7 +354,7 @@ func (s sortValueScanner) Scan(dest ...any) error {
 const shuffleFunction = "vv_shuffle_key"
 
 // 登録は以後に開く接続にだけ効き、同じ名前の二重登録は誤りになるので、Open の
-// 中ではなくパッケージの初期化で一度だけ行う（plan.md Structural Decisions 5）。
+// 中ではなくパッケージの初期化で一度だけ行う。
 // select の中でしか使わず、スキーマには残らない。
 func init() {
 	err := sqlite.RegisterDeterministicScalarFunction(shuffleFunction, 2,

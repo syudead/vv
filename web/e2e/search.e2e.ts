@@ -176,15 +176,15 @@ test.describe.serial("library search", () => {
     await expect(summary(page)).toHaveText(`${expectedVideos.toLocaleString("ja-JP")}件`);
 
     await page
-      .getByRole("group", { name: "表示形式" })
-      .getByRole("button", { name: "リスト" })
+      .getByRole("radiogroup", { name: "表示形式" })
+      .getByRole("radio", { name: "リスト" })
       .click();
     const videoCells = page.locator("tr[data-video-id]").first().locator("td:visible");
     await expect(videoCells.first()).toHaveCSS("border-bottom-width", "1px");
     await expect(videoCells.last()).toHaveCSS("border-bottom-width", "1px");
     await page
-      .getByRole("group", { name: "表示形式" })
-      .getByRole("button", { name: "グリッド" })
+      .getByRole("radiogroup", { name: "表示形式" })
+      .getByRole("radio", { name: "グリッド" })
       .click();
 
     const requests: URL[] = [];

@@ -4,7 +4,7 @@
 （[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)・
 [ARCHITECTURE.md](../../ARCHITECTURE.md)「Generated files have one owner」）。ここにはこの feature が足す
 決定だけを書く。計測値は、親 Issue #387 に載っているもの（Windows、および Linux・ffmpeg 6.1.1・4 コア・
-16GB）と、この Plan を書くときに開発コンテナ（Linux・ffmpeg 6.1.1・4 コア・16GB）で `testsrc2` から作った
+16GB）と、開発コンテナ（Linux・ffmpeg 6.1.1・4 コア・16GB）で `testsrc2` から作った
 入力（2 分・1280×720・30fps・H.264/AAC、30 分・640×360・30fps・H.264、`-g 250`）で取ったものである。
 どちらも合成した映像で、実ライブラリの動画の速度の保証ではない。
 

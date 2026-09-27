@@ -14,8 +14,7 @@ function focusableElements(container: HTMLElement): HTMLElement[] {
 }
 
 /**
- * ModalFrame は確認・選択の窓の共通の骨組みである（Plan の Structural
- * Decisions 9）。フォーカスの取り込み・Esc での閉じ方・背景の inert 化を持ち、
+ * ModalFrame は確認・選択の窓の共通の骨組みである。フォーカスの取り込み・Esc での閉じ方・背景の inert 化を持ち、
  * 設定画面のフォルダ選択・削除の確認とタグ管理画面の確認の窓が共有する。
  */
 export function ModalFrame({

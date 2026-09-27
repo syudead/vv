@@ -13,7 +13,7 @@ import (
 //
 // 付け外し・要約は internal/store.TagStore（s.tags）、全件の id は
 // internal/store.LibraryStore（s.videos）を、httpapi が直接呼ぶ。internal/app は
-// 通さない（Plan の Structural Decisions 14）。
+// 通さない。
 
 // maxVideoTagsIDs は付け外し・要約が受け付ける videoIds の最大件数である。
 // api/openapi.yaml の VideoTagsRequest/VideoTagsSummaryRequest の maxItems と

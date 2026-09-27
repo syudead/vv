@@ -84,8 +84,10 @@ func (probeOnlyGenerator) Probe(context.Context, string) (domain.Probe, error) {
 	return domain.Probe{DurationMs: 60_000, VideoCodec: "h264", AudioCodec: "aac"}, nil
 }
 func (probeOnlyGenerator) Thumbnail(context.Context, string, int64, string) error { return nil }
-func (probeOnlyGenerator) SeekThumbnails(context.Context, string, string) error   { return nil }
-func (probeOnlyGenerator) Preview(context.Context, string, string, int64) error   { return nil }
+func (probeOnlyGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) error {
+	return nil
+}
+func (probeOnlyGenerator) Preview(context.Context, string, string, int64) error { return nil }
 
 // emptyClaims は、取り出しが空振りしたことを知らせる待ち行列である。
 type emptyClaims struct {

@@ -1,20 +1,32 @@
-import { fetchSeekThumbnail } from "../api/client";
+import {
+  fetchSeekThumbnailSheet,
+  fetchSeekThumbnailSprite,
+  type SeekThumbnailSprite,
+} from "../api/client";
 import { formatDuration } from "../lib/format";
 
-const bucketMs = 5000;
-const cacheLimit = 12;
+/** 取得に失敗した配置情報・シートを始め直すまでの待ち時間。 */
 const unavailableRetryMs = 5000;
 
 interface PreviewOptions {
   durationMs: number;
+  /** Video.seekThumbnailUrl。スプライトの配置情報を返す。 */
   thumbnailUrl: string;
-  fetchImage?: (url: string, signal: AbortSignal) => Promise<Blob>;
+  fetchSprite?: (url: string, signal: AbortSignal) => Promise<SeekThumbnailSprite>;
+  fetchSheet?: (url: string, signal: AbortSignal) => Promise<Blob>;
 }
 
 export interface PreviewTarget {
   positionMs: number;
-  requestPositionMs: number;
   leftPx: number;
+}
+
+/** SpriteCell は位置を受け持つコマと、それが載るシートの中の升目である。 */
+export interface SpriteCell {
+  frame: number;
+  sheet: number;
+  column: number;
+  row: number;
 }
 
 export function seekPreviewTarget(
@@ -27,15 +39,46 @@ export function seekPreviewTarget(
   const ratio = rect.width > 0 ? localX / rect.width : 0;
   const lastPositionMs = Math.max(0, Math.ceil(durationMs) - 1);
   const positionMs = Math.min(lastPositionMs, Math.round(ratio * durationMs));
-  const requestPositionMs = Math.floor(positionMs / bucketMs) * bucketMs;
   const halfWidth = Math.min(previewWidth / 2, rect.width / 2);
   return {
     positionMs,
-    requestPositionMs,
     leftPx: Math.min(Math.max(localX, halfWidth), rect.width - halfWidth),
   };
 }
 
+/**
+ * seekSpriteCell は元動画の論理時刻 positionMs（ミリ秒）のコマを、配置情報の間隔で
+ * 決める（specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。間隔を
+ * 固定値としては持たない。
+ */
+export function seekSpriteCell(
+  sprite: Pick<SeekThumbnailSprite, "intervalMs" | "frameCount" | "columns" | "rows">,
+  positionMs: number,
+): SpriteCell {
+  const frame = Math.min(
+    Math.max(0, Math.floor(positionMs / sprite.intervalMs)),
+    sprite.frameCount - 1,
+  );
+  const perSheet = sprite.columns * sprite.rows;
+  const index = frame % perSheet;
+  return {
+    frame,
+    sheet: Math.floor(frame / perSheet),
+    column: index % sprite.columns,
+    row: Math.floor(index / sprite.columns),
+  };
+}
+
+type PreviewState = "hidden" | "loading" | "ready" | "unavailable";
+
+/**
+ * attachSeekPreview はシークバーにプレビューを取り付ける
+ * （specs/021-seek-thumbnail-sprite/research.md R-5）。
+ *
+ * 最初に出すときに配置情報を取得し、必要になったシートを 1 回だけ取得して object URL
+ * で持つ。持っているシートは取り付けの間ずっと保持し、取り外しで解放する。取得は
+ * シートごとに高々 1 つで、進行中の取得を中断するのは取り外しのときだけである。
+ */
 export function attachSeekPreview(
   progress: HTMLElement,
   options: PreviewOptions,
@@ -48,54 +91,143 @@ export function attachSeekPreview(
 
   const frame = document.createElement("div");
   frame.className = "vv-seek-preview-frame";
-  const image = document.createElement("img");
-  image.alt = "";
+  const image = document.createElement("div");
+  image.className = "vv-seek-preview-image";
   const time = document.createElement("span");
   time.className = "vv-seek-preview-time";
   frame.append(image, time);
   preview.append(frame);
   progress.append(preview);
 
-  const fetchImage = options.fetchImage ?? fetchThumbnail;
-  const cache = new Map<number, string>();
-  const unavailableUntil = new Map<number, number>();
-  let activeBucket: number | null = null;
-  let activePointer: number | null = null;
-  let visible = false;
-  let request: AbortController | null = null;
+  const fetchSprite = options.fetchSprite ?? fetchSeekThumbnailSprite;
+  const fetchSheet = options.fetchSheet ?? fetchSeekThumbnailSheet;
 
-  const cancelPending = () => {
-    request?.abort();
-    request = null;
-  };
-  const setState = (state: "hidden" | "loading" | "ready" | "unavailable") => {
+  let sprite: SeekThumbnailSprite | null = null;
+  let spriteRequest: AbortController | null = null;
+  let spriteRetryAt = 0;
+  const sheets = new Map<number, string>();
+  const pendingSheets = new Map<number, AbortController>();
+  const sheetRetryAt = new Map<number, number>();
+
+  let visible = false;
+  let detached = false;
+  let activePointer: number | null = null;
+  let positionMs = 0;
+  let activeSheet: number | null = null;
+
+  const setState = (state: PreviewState) => {
     preview.dataset.state = state;
   };
+  const clearImage = () => {
+    image.style.removeProperty("background-image");
+  };
+
+  // 表示中の位置のコマを出す。シートを持っていなければ取得を始め、進行中なら
+  // その完了を待つ。
+  const render = () => {
+    if (!visible) return;
+    if (sprite === null) {
+      activeSheet = null;
+      clearImage();
+      if (spriteRequest !== null) {
+        setState("loading");
+      } else if (Date.now() < spriteRetryAt) {
+        setState("unavailable");
+      } else {
+        setState("loading");
+        loadSprite();
+      }
+      return;
+    }
+    const cell = seekSpriteCell(sprite, positionMs);
+    activeSheet = cell.sheet;
+    const url = sheets.get(cell.sheet);
+    if (url !== undefined) {
+      showCell(url, cell, sprite);
+      return;
+    }
+    clearImage();
+    if (pendingSheets.has(cell.sheet)) {
+      setState("loading");
+      return;
+    }
+    const retryAt = sheetRetryAt.get(cell.sheet);
+    if (retryAt !== undefined && Date.now() < retryAt) {
+      setState("unavailable");
+      return;
+    }
+    sheetRetryAt.delete(cell.sheet);
+    setState("loading");
+    loadSheet(sprite, cell.sheet);
+  };
+
+  // 枠を 1 コマの箱とし、シートを横 columns 倍・縦 rows 倍で敷いて、列と行の分だけ
+  // ずらす。背景の位置の割合は（箱 − シート）の大きさに対する割合なので、
+  // column / (columns − 1) で箱の整数倍のずれになる。
+  const showCell = (url: string, cell: SpriteCell, layout: SeekThumbnailSprite) => {
+    image.style.backgroundImage = `url("${url}")`;
+    image.style.backgroundSize = `${String(layout.columns * 100)}% ${String(layout.rows * 100)}%`;
+    image.style.backgroundPosition = `${String(offsetPercent(cell.column, layout.columns))}% ${String(offsetPercent(cell.row, layout.rows))}%`;
+    setState("ready");
+  };
+
+  const loadSprite = () => {
+    const controller = new AbortController();
+    spriteRequest = controller;
+    fetchSprite(options.thumbnailUrl, controller.signal)
+      .then((loaded) => {
+        if (controller.signal.aborted || detached) return;
+        spriteRequest = null;
+        sprite = loaded;
+        preview.style.setProperty(
+          "--vv-seek-frame-aspect",
+          `${String(loaded.frameWidth)} / ${String(loaded.frameHeight)}`,
+        );
+        render();
+      })
+      .catch(() => {
+        if (controller.signal.aborted || detached) return;
+        spriteRequest = null;
+        spriteRetryAt = Date.now() + unavailableRetryMs;
+        if (visible && sprite === null) setState("unavailable");
+      });
+  };
+
+  const loadSheet = (layout: SeekThumbnailSprite, sheet: number) => {
+    const url = layout.sheets[sheet];
+    if (url === undefined) {
+      setState("unavailable");
+      return;
+    }
+    const controller = new AbortController();
+    pendingSheets.set(sheet, controller);
+    fetchSheet(url, controller.signal)
+      .then((blob) => {
+        if (controller.signal.aborted || detached) return;
+        pendingSheets.delete(sheet);
+        sheets.set(sheet, URL.createObjectURL(blob));
+        // 表示中でないシートの取得が終わっても、表示は切り替えない。
+        if (activeSheet === sheet) render();
+      })
+      .catch(() => {
+        if (controller.signal.aborted || detached) return;
+        pendingSheets.delete(sheet);
+        sheetRetryAt.set(sheet, Date.now() + unavailableRetryMs);
+        if (visible && activeSheet === sheet) setState("unavailable");
+      });
+  };
+
   const hide = () => {
     visible = false;
-    activeBucket = null;
-    cancelPending();
-    image.removeAttribute("src");
+    activeSheet = null;
+    clearImage();
     setState("hidden");
   };
   const show = (event: PointerEvent) => {
     const rect = progress.getBoundingClientRect();
     if (rect.width <= 0) return;
     visible = true;
-    setState(
-      preview.dataset.state === "hidden"
-        ? "loading"
-        : (preview.dataset.state as "loading" | "ready" | "unavailable"),
-    );
-    const nextBucket = seekPreviewTarget(
-      event.clientX,
-      rect,
-      options.durationMs,
-      0,
-    ).requestPositionMs;
-    if (activeBucket !== nextBucket && preview.dataset.state === "unavailable") {
-      setState("loading");
-    }
+    if (preview.dataset.state === "hidden") setState("loading");
     const target = seekPreviewTarget(
       event.clientX,
       rect,
@@ -104,54 +236,8 @@ export function attachSeekPreview(
     );
     preview.style.left = `${String(target.leftPx)}px`;
     time.textContent = formatDuration(target.positionMs);
-
-    if (activeBucket === target.requestPositionMs) return;
-    activeBucket = target.requestPositionMs;
-    cancelPending();
-
-    const cached = cache.get(activeBucket);
-    if (cached !== undefined) {
-      image.src = cached;
-      setState("ready");
-      return;
-    }
-    const retryAt = unavailableUntil.get(activeBucket);
-    if (retryAt !== undefined && retryAt > Date.now()) {
-      activeBucket = null;
-      image.removeAttribute("src");
-      setState("unavailable");
-      return;
-    }
-    unavailableUntil.delete(activeBucket);
-
-    setState("loading");
-    const requestedBucket = activeBucket;
-    const controller = new AbortController();
-    request = controller;
-    const url = thumbnailRequestUrl(options.thumbnailUrl, requestedBucket);
-    void fetchImage(url, controller.signal)
-      .then(() => {
-        if (controller.signal.aborted) return;
-        // Reuse the validated and decoded HTTP response from browser cache.
-        remember(cache, requestedBucket, url);
-        unavailableUntil.delete(requestedBucket);
-        if (!visible || activeBucket !== requestedBucket) return;
-        image.src = url;
-        setState("ready");
-      })
-      .catch((error: unknown) => {
-        if (controller.signal.aborted) return;
-        unavailableUntil.set(requestedBucket, Date.now() + unavailableRetryMs);
-        if (visible && activeBucket === requestedBucket) {
-          activeBucket = null;
-          image.removeAttribute("src");
-          setState("unavailable");
-        }
-        if (error instanceof Error && error.name === "AbortError") return;
-      })
-      .finally(() => {
-        if (request === controller) request = null;
-      });
+    positionMs = target.positionMs;
+    render();
   };
 
   const onPointerEnter = (event: PointerEvent) => {
@@ -200,6 +286,13 @@ export function attachSeekPreview(
 
   return () => {
     hide();
+    detached = true;
+    spriteRequest?.abort();
+    spriteRequest = null;
+    for (const controller of pendingSheets.values()) controller.abort();
+    pendingSheets.clear();
+    for (const url of sheets.values()) URL.revokeObjectURL(url);
+    sheets.clear();
     interactionTarget.removeEventListener("pointerenter", onPointerEnter);
     interactionTarget.removeEventListener("pointermove", onPointerMove);
     interactionTarget.removeEventListener("pointerleave", onPointerLeave);
@@ -210,30 +303,6 @@ export function attachSeekPreview(
   };
 }
 
-function thumbnailRequestUrl(base: string, positionMs: number): string {
-  const separator = base.includes("?") ? "&" : "?";
-  return `${base}${separator}positionMs=${String(positionMs)}`;
-}
-
-async function fetchThumbnail(url: string, signal: AbortSignal): Promise<Blob> {
-  const blob = await fetchSeekThumbnail(url, signal);
-  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-
-  const decoded = new Image();
-  decoded.src = url;
-  await decoded.decode();
-  if (signal.aborted) throw new DOMException("Aborted", "AbortError");
-  return blob;
-}
-
-function remember(
-  cache: Map<number, string>,
-  positionMs: number,
-  imageUrl: string,
-): void {
-  cache.set(positionMs, imageUrl);
-  if (cache.size <= cacheLimit) return;
-  const oldest = cache.entries().next().value as [number, string] | undefined;
-  if (oldest === undefined) return;
-  cache.delete(oldest[0]);
+function offsetPercent(index: number, count: number): number {
+  return count > 1 ? (index / (count - 1)) * 100 : 0;
 }

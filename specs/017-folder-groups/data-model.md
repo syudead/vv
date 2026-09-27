@@ -2,7 +2,7 @@
 
 親 Issue #326 の要件のうち、保存するもの・導くもの・その規則だけを書く。既存の表
 （`videos`・`video_locations`・`playback_progress`・`tags`・`tag_names`・`video_tags`・`media_folders`・
-`public_videos`）は変えない。表の区分（索引と利用者データ）は [ARCHITECTURE.md](../../ARCHITECTURE.md) の「Two kinds of data」に従う。
+`public_videos`）は変えない。表の区分（索引と利用者データ）は [ARCHITECTURE.md](../../ARCHITECTURE.md) の「Rebuildable and user data」に従う。
 
 ## 1. マイグレーション
 

@@ -42,9 +42,10 @@ type ArtifactStore interface {
 	ArtifactRemover
 	// PublishThumbnail は write に一時置き場のパスを渡して書かせ、公開する。
 	PublishThumbnail(contentKey string, write func(output string) error) error
-	// PublishSeekThumbnails は完成したものがあれば write を呼ばない。write は
-	// 連番のファイル名の型を受ける。
-	PublishSeekThumbnails(contentKey string, write func(outputPattern string) error) error
+	// PublishSeekThumbnails は完成したもの（配置情報のある置き場）があれば write を
+	// 呼ばない。write は一時置き場のディレクトリを受け、layout の配置でシートを書く。
+	// 配置情報の無い置き場（旧形式・途中で壊れたもの）は公開の直前に消す。
+	PublishSeekThumbnails(contentKey string, layout domain.SeekSpriteLayout, write func(outputDir string) error) error
 	// PublishPreview は完成したものがあれば write を呼ばない。公開の直前に current を
 	// 呼び、false なら公開せずに domain.ErrPreviewStale を返す。
 	PublishPreview(ctx context.Context, contentKey string, write func(output string) error,
@@ -58,7 +59,8 @@ type Generator interface {
 	CheckSource(path string) error
 	Probe(ctx context.Context, path string) (domain.Probe, error)
 	Thumbnail(ctx context.Context, path string, durationMs int64, output string) error
-	SeekThumbnails(ctx context.Context, path, outputPattern string) error
+	// SeekSprite はシーク用サムネイルのシートを layout の配置で outputDir へ書く。
+	SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) error
 	Preview(ctx context.Context, path, output string, durationMs int64) error
 }
 
@@ -227,14 +229,16 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 	return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
 }
 
-// SeekThumbnails はシーク用サムネイル（全編デコード）を生成し、状態を記録する。
+// SeekThumbnails はシーク用サムネイル（スプライトシート）を生成し、
+// 状態を記録する。配置は動画の長さから domain.NewSeekSpriteLayout で決める。
 // 置き場に完成したものがあれば生成せず、状態だけを記録する。
 //
 // 代表サムネイルと同じく、完了は専有した時点の内容・所在・所在の世代が今も
 // 同じときだけ記録する。上限まで試して駄目なときの失敗は、FailClaimedJob が
 // seek_thumbnail_state だけへ記録し、代表サムネイルの状態には触れない。
 func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
-	if _, err := i.store.GetVideo(ctx, job.VideoID); err != nil {
+	video, err := i.store.GetVideo(ctx, job.VideoID)
+	if err != nil {
 		return err
 	}
 	current, err := i.store.JobIdentityCurrent(ctx, job)
@@ -251,8 +255,13 @@ func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 	// 生成物の削除と直列にする。
 	unlock := i.artifacts.lock(job.ContentKey)
 	defer unlock()
-	if err := i.files.PublishSeekThumbnails(job.ContentKey, func(outputPattern string) error {
-		return i.generator.SeekThumbnails(ctx, job.LocationPath, outputPattern)
+	var durationMs int64
+	if video.DurationMs != nil {
+		durationMs = *video.DurationMs
+	}
+	layout := domain.NewSeekSpriteLayout(durationMs)
+	if err := i.files.PublishSeekThumbnails(job.ContentKey, layout, func(outputDir string) error {
+		return i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
 	}); err != nil {
 		return err
 	}

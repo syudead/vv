@@ -82,18 +82,26 @@ start), or when an interrupted scan was closed
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail,
 seek_thumbnail, preview — each claiming only its own kind of job from the persistent `jobs`
 queue, one at a time, and handing it to `internal/app`, which drives the `internal/media`
-adapters (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, five-second
-seek-preview frames from a full decode, and a content-keyed hover-preview clip per video)
-and publishes their output through `internal/artifacts`. The library thumbnail and the seek
-frames are separate stages with their own state columns, so a library thumbnail never waits
-for any video's seek frames. A worker sleeps while its queue is
+adapters (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, seek-preview sprite
+sheets from up to four concurrent input seeks,
+and a content-keyed hover-preview clip per video)
+and publishes their output through `internal/artifacts`. New seek previews use at most 81
+frames on one 9 × 9 sheet with cells up to 160 px. `domain.NewSeekSpriteLayout` derives
+the interval from the duration, keeping five seconds for short videos and widening it
+for longer videos. Each frame uses an input seek; missing frames fall back to the
+sequential decoder. Existing completed six-sheet sprites remain readable
+([seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md)).
+The library thumbnail and the seek
+sprite are separate stages with their own state columns, so a library thumbnail never waits
+for any video's seek sprite. A worker sleeps while its queue is
 empty: `internal/store` publishes `domain.JobsQueued` after every committed enqueue, and a
 subscription wakes the worker for that stage, so no worker polls the queue. A thumbnail job
 is not claimed until its video's probe has finished, because the frame position depends on
 the duration. A seek_thumbnail job is not claimed until its video's probe has finished and
 no claimable thumbnail job remains, so after a scan every library thumbnail comes first and
-no more than two full-decode `ffmpeg` processes (seek frames and hover preview) run at
-once; the condition applies only at claim time, and a running seek_thumbnail job is not
+up to four generation `ffmpeg` processes can run within one seek job. Hover preview and
+newly claimed thumbnail work may overlap; the condition applies only at claim time, and a
+running seek_thumbnail job is not
 stopped when new thumbnail jobs arrive. `internal/app` publishes `domain.VideoIngestChanged`
 with the finished stage, and subscriptions wake the thumbnail worker as soon as a probe's
 result is recorded, and the seek_thumbnail worker when a probe or thumbnail result is
@@ -105,7 +113,7 @@ running jobs are requeued, and the single `.tmp` directory that holds in-progres
 generation output is removed at the next startup. When a video row is deleted (a scan finds its last
 location gone, its content changes, or its media folder is removed or replaced),
 `internal/store` publishes the released content keys (`domain.ContentUnreferenced`) after
-commit, and `internal/app`, subscribed to that event, removes that content's thumbnail, seek frames and hover preview unless another video still
+commit, and `internal/app`, subscribed to that event, removes that content's thumbnail, seek sprite and hover preview unless another video still
 references it; nothing else sweeps the thumbnails directory. A hover preview that is gone
 or incomplete is repaired when it is found: `internal/app` already checks it before the
 video API exposes `previewUrl`, and when a `done` preview's MP4 is missing or does not match
@@ -114,12 +122,16 @@ transaction, once per loss.
 
 Generated files have one owner, `internal/artifacts`. Under `MDM_DATA_DIR/thumbnails`
 (the root comes from `cmd/mdm`'s configuration) it alone decides where each content key's
-files live — the library thumbnail at `<p>/<s>.jpg`, the seek frames under `seek/<p>/<s>/`,
+files live — the library thumbnail at `<p>/<s>.jpg`, the seek sprite under `seek/<p>/<s>/`
+(sheets `000.jpg`… and the `sprite.json` layout, whose presence marks the sprite complete),
 the hover preview and its size/SHA-256 manifest at `preview/<p>/<s>.mp4[.sha256]`, where
 `<s>` is the content key with `:`, `/` and `\` replaced by `_` and `<p>` its first two
 characters — and it alone creates, checks, opens and removes them. Generation writes into
 a directory under `.tmp` that `internal/artifacts` hands out and then renames into place,
-so a file still being generated is neither reported as present nor served. A content key
+so a file still being generated is neither reported as present nor served. The seek
+sprite's layout records the frame size read from the first sheet, and publishing it first
+removes a directory without `sprite.json` (the earlier one-JPEG-per-frame layout or a broken
+one) under the caller's per-content lock. A content key
 that would point outside the root (empty, or starting with `.`) never becomes a path.
 `internal/media` only runs `ffmpeg` against the output path it is given; `internal/app`
 (deciding when to generate and when to remove, under its per-content lock) and
@@ -188,24 +200,28 @@ live in `internal/domain`.
 Shutdown closes the `/api/events` streams, drains in-flight requests within a 10 second
 grace period, then stops the scanner and the workers so a running job returns to the queue.
 
-Two kinds of data live in SQLite and they are not equivalent: `videos`,
-`video_locations` (including its per-location search keys), `location_search_fts`,
-`jobs`, `scans`, thumbnail files, hover-preview MP4/manifest pairs, the folder index
-(`folder_groups`, `folder_group_members`, `video_folder_names`, `folder_index_state`) and
-the per-video live-transcode probe (`video_transcode_probes`, refilled by the next probe or
-live transcode) are a rebuildable index (deleting them costs a rescan), while `playback_progress`, the tag tables
-(`tags`, `tag_names`, `video_tags`), the per-video public flag (`public_videos`) and the
-per-folder grouping exceptions (`folder_group_overrides`) are user data that cannot be
-reconstructed.
+### Rebuildable and user data
+
+Stored data falls into three recovery categories. `videos`, `video_locations`
+(including their search keys), `location_search_fts`, `jobs`, `scans`, generated
+thumbnails and previews, the folder index (`folder_groups`, `folder_group_members`,
+`video_folder_names`, `folder_index_state`), and `video_transcode_probes` are
+rebuildable from registered media folders by scanning and processing the files again.
+`playback_progress`, the tag tables (`tags`, `tag_names`, `video_tags`),
+`public_videos`, `folder_group_overrides`, `account`, and `media_folders` are
+user or configuration data that a scan cannot restore. In particular, a scan
+cannot start with no registered `media_folders`; after database loss those folders
+must be registered again before scanning. `sessions` is transient and a fresh
+login restores it.
 That is why playback positions, tag assignments and public flags are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
 key to `videos`. Grouping exceptions are keyed by the folder's absolute path
 (`domain.FolderKey`) and carry no foreign key to `videos` or `media_folders`, so they
 survive rescans and media-folder changes.
-The single `account` row (username, Argon2id password hash and credential version) is
-also user data that cannot be reconstructed: deleting it sends the server back to first-run
-setup. `sessions` belongs to neither kind; it is transient state that a fresh login
-restores (`specs/016-single-account-auth/data-model.md` §2).
+The single `account` row holds the username, Argon2id password hash and credential
+version; deleting it sends the server back to first-run setup
+(`specs/016-single-account-auth/data-model.md` §2). The operational backup and
+restore procedure is in [Running vv](docs/how-to/running-vv.md#data-and-recovery).
 
 `store.DB` is only the foundation: it opens and closes the SQLite connection pools,
 routing write transactions through an immediate-lock pool and snapshot list reads through
@@ -392,7 +408,7 @@ way only. The packages under `internal/` fall into three layers:
   identity, calling the generator, applying the result, publishing the outcome, and
   removing artifacts whose content lost its last reference (`Ingest`); and the decisions behind a video response — requeueing a missing hover
   preview, deriving the seek-preview state from its stored state and requeueing a `done`
-  one whose frames are missing — plus assembling related videos, which for a
+  one whose sprite is missing or incomplete — plus assembling related videos, which for a
   folder-group member orders next/previous inside the group and leaves its members out of
   the related list (`Catalog`); and adding, replacing and removing media folders after the
   filesystem adapter has checked the path (`MediaFolders`); and first-run setup,

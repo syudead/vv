@@ -10,7 +10,7 @@ import (
 
 // タグの管理API（specs/014-video-tags/contracts/tags-api.md §1〜§3）。
 //
-// internal/app は通さない（Plan の Structural Decisions 14）。どの操作も
+// internal/app は通さない。どの操作も
 // internal/store.TagStore の1つのトランザクションで済み、httpapi は要求の
 // 解釈と契約の形への変換だけを持つ。
 

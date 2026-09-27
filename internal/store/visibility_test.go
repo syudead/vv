@@ -42,19 +42,19 @@ func visibilityFixture(t *testing.T) (*DB, map[string]int64) {
 	t.Helper()
 	db := migratedDB(t)
 	files := []domain.VideoFile{
-		listingFile("/media/pub/a.mp4", "a", "key-a", 1),
-		listingFile("/media/pub/b.mp4", "b", "key-b", 2),
-		listingFile("/media/pub/deep/c.mp4", "c", "key-c", 3),
-		listingFile("/media/pub/deep/d.mp4", "d", "key-d", 4),
-		listingFile("/media/private/e.mp4", "e", "key-e", 5),
-		listingFile("/media/f.mp4", "f", "key-f", 6),
-		listingFile("/media/g.mp4", "g", "key-g", 7),
+		listingFile(fixturePath("/media/pub/a.mp4"), "a", "key-a", 1),
+		listingFile(fixturePath("/media/pub/b.mp4"), "b", "key-b", 2),
+		listingFile(fixturePath("/media/pub/deep/c.mp4"), "c", "key-c", 3),
+		listingFile(fixturePath("/media/pub/deep/d.mp4"), "d", "key-d", 4),
+		listingFile(fixturePath("/media/private/e.mp4"), "e", "key-e", 5),
+		listingFile(fixturePath("/media/f.mp4"), "f", "key-f", 6),
+		listingFile(fixturePath("/media/g.mp4"), "g", "key-g", 7),
 	}
 	for index := range files {
 		files[index].MTime = fixedTime.Add(time.Duration(len(files)-index) * time.Second)
 	}
 	ids := upsertAll(t, db, files...)
-	if applied := setPublic(t, db, true, ids["/media/pub/a.mp4"], ids["/media/pub/deep/c.mp4"], ids["/media/f.mp4"]); applied != 3 {
+	if applied := setPublic(t, db, true, ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/deep/c.mp4")], ids[fixturePath("/media/f.mp4")]); applied != 3 {
 		t.Fatalf("applied = %d, want 3", applied)
 	}
 	return db, ids
@@ -121,7 +121,7 @@ func TestListVideosByAudience(t *testing.T) {
 // ゲストが使える並べ替えのすべてで、ページをまたいで公開の動画だけが1度ずつ現れる。
 func TestListVideosGuestPagesEverySort(t *testing.T) {
 	db, ids := visibilityFixture(t)
-	public := []int64{ids["/media/pub/a.mp4"], ids["/media/pub/deep/c.mp4"], ids["/media/f.mp4"]}
+	public := []int64{ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/deep/c.mp4")], ids[fixturePath("/media/f.mp4")]}
 	slices.Sort(public)
 
 	sorts := slices.Collect(maps.Keys(listOrders))
@@ -160,7 +160,7 @@ func TestListVideosGuestPagesEverySort(t *testing.T) {
 func TestFoldersByAudience(t *testing.T) {
 	db, _ := visibilityFixture(t)
 	ctx := context.Background()
-	root := domain.MediaFolder{ID: 1, Path: "/media"}
+	root := domain.MediaFolder{ID: 1, Path: fixturePath("/media")}
 
 	summarize := func(audience domain.Audience, rel string) domain.FolderListing {
 		t.Helper()
@@ -202,9 +202,9 @@ func TestFoldersByAudience(t *testing.T) {
 		dir      string
 		want     bool
 	}{
-		{guest, "/media/private", false},
-		{owner, "/media/private", true},
-		{guest, "/media/pub/deep", true},
+		{guest, fixturePath("/media/private"), false},
+		{owner, fixturePath("/media/private"), true},
+		{guest, fixturePath("/media/pub/deep"), true},
 	} {
 		found, err := db.Library().HasFolderLocations(ctx, tc.audience, tc.dir)
 		if err != nil {
@@ -226,7 +226,7 @@ func TestFoldersByAudience(t *testing.T) {
 		{owner, domain.FolderScopeSubtree, []string{"a", "b", "c", "d"}},
 	} {
 		page, err := db.Library().ListFolderVideos(ctx, tc.audience,
-			domain.FolderVideoQuery{Dir: "/media/pub", Scope: tc.scope, Limit: domain.MaxLimit})
+			domain.FolderVideoQuery{Dir: fixturePath("/media/pub"), Scope: tc.scope, Limit: domain.MaxLimit})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -244,14 +244,14 @@ func TestRelatedAndGetVideoByAudience(t *testing.T) {
 	ctx := context.Background()
 	lib := db.Library()
 
-	siblings, err := lib.DirectVideoPaths(ctx, guest, "/media/pub")
+	siblings, err := lib.DirectVideoPaths(ctx, guest, fixturePath("/media/pub"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := siblingIDs(siblings), []int64{ids["/media/pub/a.mp4"]}; !slices.Equal(got, want) {
+	if got, want := siblingIDs(siblings), []int64{ids[fixturePath("/media/pub/a.mp4")]}; !slices.Equal(got, want) {
 		t.Errorf("ゲストの同じフォルダ = %v, want %v", got, want)
 	}
-	siblings, err = lib.DirectVideoPaths(ctx, owner, "/media/pub")
+	siblings, err = lib.DirectVideoPaths(ctx, owner, fixturePath("/media/pub"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,14 +259,14 @@ func TestRelatedAndGetVideoByAudience(t *testing.T) {
 		t.Errorf("所有者の同じフォルダ = %+v, want 2件", siblings)
 	}
 
-	self, err := lib.GetVideo(ctx, owner, ids["/media/f.mp4"])
+	self, err := lib.GetVideo(ctx, owner, ids[fixturePath("/media/f.mp4")])
 	if err != nil {
 		t.Fatal(err)
 	}
 	for audience, want := range map[domain.Audience][]int64{
-		guest: {ids["/media/pub/a.mp4"], ids["/media/pub/deep/c.mp4"]},
-		owner: {ids["/media/pub/a.mp4"], ids["/media/pub/b.mp4"], ids["/media/pub/deep/c.mp4"],
-			ids["/media/pub/deep/d.mp4"], ids["/media/private/e.mp4"], ids["/media/g.mp4"]},
+		guest: {ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/deep/c.mp4")]},
+		owner: {ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/b.mp4")], ids[fixturePath("/media/pub/deep/c.mp4")],
+			ids[fixturePath("/media/pub/deep/d.mp4")], ids[fixturePath("/media/private/e.mp4")], ids[fixturePath("/media/g.mp4")]},
 	} {
 		neighbors, err := lib.VideosAddedNear(ctx, audience, self.ID, self.AddedAt, 10)
 		if err != nil {
@@ -300,17 +300,17 @@ func TestRelatedAndGetVideoByAudience(t *testing.T) {
 		}
 	}
 
-	video, err := lib.GetVideo(ctx, guest, ids["/media/pub/a.mp4"])
+	video, err := lib.GetVideo(ctx, guest, ids[fixturePath("/media/pub/a.mp4")])
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !video.Public || video.Path != "/media/pub/a.mp4" {
+	if !video.Public || video.Path != fixturePath("/media/pub/a.mp4") {
 		t.Errorf("ゲストの GetVideo = %+v", video)
 	}
-	if _, err := lib.GetVideo(ctx, guest, ids["/media/pub/b.mp4"]); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := lib.GetVideo(ctx, guest, ids[fixturePath("/media/pub/b.mp4")]); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("ゲストの非公開の GetVideo: err = %v, want ErrNotFound", err)
 	}
-	video, err = lib.GetVideo(ctx, owner, ids["/media/pub/b.mp4"])
+	video, err = lib.GetVideo(ctx, owner, ids[fixturePath("/media/pub/b.mp4")])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,33 +351,33 @@ func TestGuestSearchIgnoresTagNames(t *testing.T) {
 func TestPublicFollowsContentKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	ids := upsertAll(t, db, listingFile("/media/old/movie.mp4", "movie", "key-m", 1))
-	id := ids["/media/old/movie.mp4"]
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/old/movie.mp4"), "movie", "key-m", 1))
+	id := ids[fixturePath("/media/old/movie.mp4")]
 	setPublic(t, db, true, id)
 
 	// 所在を移す: 新しい所在を足して、古い所在を消す。
-	moved := upsertAll(t, db, listingFile("/media/new/movie.mp4", "movie", "key-m", 1))
-	if moved["/media/new/movie.mp4"] != id {
-		t.Fatalf("移した所在が同じ動画にならない: %d != %d", moved["/media/new/movie.mp4"], id)
+	moved := upsertAll(t, db, listingFile(fixturePath("/media/new/movie.mp4"), "movie", "key-m", 1))
+	if moved[fixturePath("/media/new/movie.mp4")] != id {
+		t.Fatalf("移した所在が同じ動画にならない: %d != %d", moved[fixturePath("/media/new/movie.mp4")], id)
 	}
-	removeLocation(t, db, id, "/media/old/movie.mp4")
+	removeLocation(t, db, id, fixturePath("/media/old/movie.mp4"))
 	video, err := db.Library().GetVideo(ctx, guest, id)
 	if err != nil {
 		t.Fatalf("移した後にゲストが読めない: %v", err)
 	}
-	if !video.Public || video.Path != "/media/new/movie.mp4" {
+	if !video.Public || video.Path != fixturePath("/media/new/movie.mp4") {
 		t.Errorf("移した後 = %+v", video)
 	}
 
 	// 同じ内容の別の所在を足しても公開のまま、1本として数える。
-	upsertAll(t, db, listingFile("/media/copy/movie.mp4", "movie", "key-m", 1))
+	upsertAll(t, db, listingFile(fixturePath("/media/copy/movie.mp4"), "movie", "key-m", 1))
 	if titles, total := listTitles(t, db, guest, domain.VideoQuery{}); !slices.Equal(titles, []string{"movie"}) || total != 1 {
 		t.Errorf("別の所在を足した後 = %v (total %d)", titles, total)
 	}
 
 	// 最後の所在が消えると、ゲストに現れない。
-	removeLocation(t, db, id, "/media/copy/movie.mp4")
-	removeLocation(t, db, id, "/media/new/movie.mp4")
+	removeLocation(t, db, id, fixturePath("/media/copy/movie.mp4"))
+	removeLocation(t, db, id, fixturePath("/media/new/movie.mp4"))
 	if titles, total := listTitles(t, db, guest, domain.VideoQuery{}); len(titles) != 0 || total != 0 {
 		t.Errorf("最後の所在が消えた後 = %v (total %d)", titles, total)
 	}
@@ -386,8 +386,8 @@ func TestPublicFollowsContentKey(t *testing.T) {
 	}
 
 	// 同じ内容を取り込み直すと、公開のまま戻る（公開フラグは失われない）。
-	back := upsertAll(t, db, listingFile("/media/again/movie.mp4", "movie", "key-m", 1))
-	video, err = db.Library().GetVideo(ctx, guest, back["/media/again/movie.mp4"])
+	back := upsertAll(t, db, listingFile(fixturePath("/media/again/movie.mp4"), "movie", "key-m", 1))
+	video, err = db.Library().GetVideo(ctx, guest, back[fixturePath("/media/again/movie.mp4")])
 	if err != nil {
 		t.Fatalf("取り込み直した後にゲストが読めない: %v", err)
 	}
@@ -419,8 +419,8 @@ func removeLocation(t *testing.T, db *DB, videoID int64, path string) {
 func TestEmptyContentKeyIsNeverPublic(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	ids := upsertAll(t, db, listingFile("/media/legacy.mp4", "legacy", "key-l", 1))
-	id := ids["/media/legacy.mp4"]
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/legacy.mp4"), "legacy", "key-l", 1))
+	id := ids[fixturePath("/media/legacy.mp4")]
 	if _, err := db.sql.Exec(`update videos set content_key = '' where id = ?`, id); err != nil {
 		t.Fatal(err)
 	}
@@ -437,7 +437,7 @@ func TestEmptyContentKeyIsNeverPublic(t *testing.T) {
 	if _, err := db.Library().GetVideo(ctx, guest, id); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("ゲストの GetVideo: err = %v, want ErrNotFound", err)
 	}
-	if found, err := db.Library().HasFolderLocations(ctx, guest, "/media"); err != nil || found {
+	if found, err := db.Library().HasFolderLocations(ctx, guest, fixturePath("/media")); err != nil || found {
 		t.Errorf("ゲストの HasFolderLocations = %v, %v", found, err)
 	}
 	video, err := db.Library().GetVideo(ctx, owner, id)
@@ -453,7 +453,7 @@ func TestEmptyContentKeyIsNeverPublic(t *testing.T) {
 // 状態の動画も誤りにしない。
 func TestSetVideosPublicCountsLibraryVideos(t *testing.T) {
 	db, ids := visibilityFixture(t)
-	a, b := ids["/media/pub/a.mp4"], ids["/media/pub/b.mp4"]
+	a, b := ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/pub/b.mp4")]
 
 	if applied := setPublic(t, db, true, a, b, b, 9999); applied != 2 {
 		t.Errorf("公開: applied = %d, want 2", applied)
@@ -496,7 +496,7 @@ func TestSetVideosPublicIsAllOrNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err := db.Visibility().SetVideosPublic(context.Background(),
-		[]int64{ids["/media/pub/b.mp4"], ids["/media/pub/deep/d.mp4"], ids["/media/g.mp4"]}, true)
+		[]int64{ids[fixturePath("/media/pub/b.mp4")], ids[fixturePath("/media/pub/deep/d.mp4")], ids[fixturePath("/media/g.mp4")]}, true)
 	if err == nil {
 		t.Fatal("失敗が返らない")
 	}
@@ -509,7 +509,7 @@ func TestSetVideosPublicIsAllOrNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = db.Visibility().SetVideosPublic(context.Background(),
-		[]int64{ids["/media/pub/a.mp4"], ids["/media/f.mp4"]}, false)
+		[]int64{ids[fixturePath("/media/pub/a.mp4")], ids[fixturePath("/media/f.mp4")]}, false)
 	if err == nil {
 		t.Fatal("失敗が返らない")
 	}
@@ -529,25 +529,25 @@ func TestGuestReadsFailWhenVisibilityCannotBeRead(t *testing.T) {
 	if _, err := lib.ListVideos(ctx, guest, domain.VideoQuery{}); err == nil {
 		t.Error("ListVideos が成功した")
 	}
-	if _, err := lib.ListFolderVideos(ctx, guest, domain.FolderVideoQuery{Dir: "/media/pub"}); err == nil {
+	if _, err := lib.ListFolderVideos(ctx, guest, domain.FolderVideoQuery{Dir: fixturePath("/media/pub")}); err == nil {
 		t.Error("ListFolderVideos が成功した")
 	}
-	if _, err := lib.GetVideo(ctx, guest, ids["/media/pub/a.mp4"]); err == nil || errors.Is(err, domain.ErrNotFound) {
+	if _, err := lib.GetVideo(ctx, guest, ids[fixturePath("/media/pub/a.mp4")]); err == nil || errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("GetVideo: err = %v, want ErrNotFound 以外の誤り", err)
 	}
-	if _, err := lib.FolderLocations(ctx, guest, "/media"); err == nil {
+	if _, err := lib.FolderLocations(ctx, guest, fixturePath("/media")); err == nil {
 		t.Error("FolderLocations が成功した")
 	}
-	if _, err := lib.HasFolderLocations(ctx, guest, "/media"); err == nil {
+	if _, err := lib.HasFolderLocations(ctx, guest, fixturePath("/media")); err == nil {
 		t.Error("HasFolderLocations が成功した")
 	}
-	if _, err := lib.DirectVideoPaths(ctx, guest, "/media/pub"); err == nil {
+	if _, err := lib.DirectVideoPaths(ctx, guest, fixturePath("/media/pub")); err == nil {
 		t.Error("DirectVideoPaths が成功した")
 	}
-	if _, err := lib.VideosAddedNear(ctx, guest, ids["/media/f.mp4"], fixedTime, 5); err == nil {
+	if _, err := lib.VideosAddedNear(ctx, guest, ids[fixturePath("/media/f.mp4")], fixedTime, 5); err == nil {
 		t.Error("VideosAddedNear が成功した")
 	}
-	if _, err := lib.VideosByIDs(ctx, guest, []int64{ids["/media/pub/a.mp4"]}); err == nil {
+	if _, err := lib.VideosByIDs(ctx, guest, []int64{ids[fixturePath("/media/pub/a.mp4")]}); err == nil {
 		t.Error("VideosByIDs が成功した")
 	}
 }

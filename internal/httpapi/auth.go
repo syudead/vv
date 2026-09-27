@@ -17,8 +17,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 認証の HTTP 境界（specs/016-single-account-auth/contracts/auth-api.md、
-// plan.md Structural Decisions 1・5・8・14）。
+// 認証の HTTP 境界（specs/016-single-account-auth/contracts/auth-api.md）。
 
 const (
 	// sessionCookieHTTPS は HTTPS の要求で使うセッション Cookie の名前である。
@@ -102,25 +101,26 @@ func (a access) String() string {
 // すべて「所有者だけ」である。正本は api/openapi.yaml の各操作の security で、
 // 一致は openapi_routes_test.go が確かめる。
 var accessRoutes = map[string]access{
-	"GET /api/health":                      accessPublic,
-	"GET /api/auth/session":                accessPublic,
-	"POST /api/auth/setup":                 accessPublic,
-	"POST /api/auth/login":                 accessPublic,
-	"POST /api/auth/logout":                accessPublic,
-	"GET /api/videos":                      accessGuest,
-	"GET /api/videos/{id}":                 accessGuest,
-	"GET /api/videos/{id}/related":         accessGuest,
-	"GET /api/videos/{id}/stream":          accessGuest,
-	"GET /api/videos/{id}/preview":         accessGuest,
-	"GET /api/videos/{id}/transcode.mp4":   accessGuest,
-	"GET /api/videos/{id}/transcode-start": accessGuest,
-	"GET /api/videos/{id}/thumbnail":       accessGuest,
-	"GET /api/videos/{id}/seek-thumbnail":  accessGuest,
-	"GET /api/folders":                     accessGuest,
-	"GET /api/folders/{rootId}":            accessGuest,
-	"GET /api/folders/{rootId}/videos":     accessGuest,
-	"GET /api/folders/{rootId}/group":      accessGuest,
-	"GET /api/library":                     accessGuest,
+	"GET /api/health":                             accessPublic,
+	"GET /api/auth/session":                       accessPublic,
+	"POST /api/auth/setup":                        accessPublic,
+	"POST /api/auth/login":                        accessPublic,
+	"POST /api/auth/logout":                       accessPublic,
+	"GET /api/videos":                             accessGuest,
+	"GET /api/videos/{id}":                        accessGuest,
+	"GET /api/videos/{id}/related":                accessGuest,
+	"GET /api/videos/{id}/stream":                 accessGuest,
+	"GET /api/videos/{id}/preview":                accessGuest,
+	"GET /api/videos/{id}/transcode.mp4":          accessGuest,
+	"GET /api/videos/{id}/transcode-start":        accessGuest,
+	"GET /api/videos/{id}/thumbnail":              accessGuest,
+	"GET /api/videos/{id}/seek-thumbnail":         accessGuest,
+	"GET /api/videos/{id}/seek-thumbnail/{sheet}": accessGuest,
+	"GET /api/folders":                            accessGuest,
+	"GET /api/folders/{rootId}":                   accessGuest,
+	"GET /api/folders/{rootId}/videos":            accessGuest,
+	"GET /api/folders/{rootId}/group":             accessGuest,
+	"GET /api/library":                            accessGuest,
 }
 
 // accessMux は accessRoutes の模様を引き当てるためだけの ServeMux である。

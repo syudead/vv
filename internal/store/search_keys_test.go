@@ -47,18 +47,18 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	if _, err := provider.UpTo(ctx, 6); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}
 	// バッチの境目を跨ぐよう、searchKeyBatchSize より多く入れる。
 	const extra = searchKeyBatchSize + 1
 	locations := []struct{ path, title string }{
-		{"/media/旅/ＡＢＣ１２３.mp4", "ＡＢＣ１２３"},
-		{"/other/outside.mp4", "outside"},
+		{fixturePath("/media/旅/ＡＢＣ１２３.mp4"), "ＡＢＣ１２３"},
+		{fixturePath("/other/outside.mp4"), "outside"},
 	}
 	for i := range extra {
 		locations = append(locations, struct{ path, title string }{
-			fmt.Sprintf("/media/bulk/clip%d.mp4", i), fmt.Sprintf("clip%d", i),
+			fmt.Sprintf(fixturePath("/media/bulk/clip%d.mp4"), i), fmt.Sprintf("clip%d", i),
 		})
 	}
 	for i, location := range locations {
@@ -80,7 +80,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	if _, err := Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if key, _, version := locationKeys(t, db, "/media/旅/ＡＢＣ１２３.mp4"); key != "" || version != 0 {
+	if key, _, version := locationKeys(t, db, fixturePath("/media/旅/ＡＢＣ１２３.mp4")); key != "" || version != 0 {
 		t.Fatalf("移行直後の鍵 = %q (版 %d), want 空（版 0）", key, version)
 	}
 
@@ -99,14 +99,14 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 		t.Errorf("古い版のまま残った所在 = %d, want 0", stale)
 	}
 
-	key, titleKey, _ := locationKeys(t, db, "/media/旅/ＡＢＣ１２３.mp4")
+	key, titleKey, _ := locationKeys(t, db, fixturePath("/media/旅/ＡＢＣ１２３.mp4"))
 	if want := "abc123\n旅/abc123.mp4"; key != want {
 		t.Errorf("search_key = %q, want %q", key, want)
 	}
 	if want := domain.NaturalSortKey("ＡＢＣ１２３"); titleKey != want {
 		t.Errorf("title_key = %q, want %q", titleKey, want)
 	}
-	if key, titleKey, version := locationKeys(t, db, "/other/outside.mp4"); key != "" || titleKey != domain.NaturalSortKey("outside") || version != domain.SearchKeyVersion {
+	if key, titleKey, version := locationKeys(t, db, fixturePath("/other/outside.mp4")); key != "" || titleKey != domain.NaturalSortKey("outside") || version != domain.SearchKeyVersion {
 		t.Errorf("登録フォルダ外の鍵 = %q・%q（版 %d）, want 空・題名の鍵（現在の版）", key, titleKey, version)
 	}
 
@@ -119,7 +119,7 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 	if refreshed, err := db.Library().RefreshSearchKeys(ctx); err != nil || refreshed != 0 {
 		t.Errorf("2度目の埋め直し = %d (err=%v), want 0", refreshed, err)
 	}
-	if _, err := db.sql.Exec(`update video_locations set search_version = 0 where path like '/media/bulk/%' and id % 2 = 0`); err != nil {
+	if _, err := db.sql.Exec(`update video_locations set search_version = 0 where path like ? and id % 2 = 0`, fixturePath("/media/bulk/%")); err != nil {
 		t.Fatal(err)
 	}
 	var staleRows int
@@ -138,18 +138,18 @@ func TestRefreshSearchKeysFillsExistingLibraryAfterMigration(t *testing.T) {
 func TestSearchKeyExcludesRegisteredFolderPath(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/旅行/movie.mp4", "movie", "key-1", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/旅行/movie.mp4"), "movie", "key-1", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 
-	key, _, version := locationKeys(t, db, "/media/旅行/movie.mp4")
+	key, _, version := locationKeys(t, db, fixturePath("/media/旅行/movie.mp4"))
 	if want := "movie\n旅行/movie.mp4"; key != want {
 		t.Errorf("search_key = %q, want %q", key, want)
 	}
 	if version != domain.SearchKeyVersion {
 		t.Errorf("search_version = %d, want %d", version, domain.SearchKeyVersion)
 	}
-	for _, query := range []string{"media", "/media", "dia"} {
+	for _, query := range []string{"media", fixturePath("/media"), "dia"} {
 		if got := searchTitles(t, db, query); len(got) != 0 {
 			t.Errorf("検索 %q = %v, want 登録フォルダのパスには当たらない", query, got)
 		}
@@ -166,13 +166,13 @@ func TestSearchKeyExcludesRegisteredFolderPath(t *testing.T) {
 func TestUpsertVideoRefreshesSearchKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "古い題名", "key-1", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "古い題名", "key-1", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "新しい題名", "key-1", 2, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "新しい題名", "key-1", 2, 0)); err != nil {
 		t.Fatal(err)
 	}
-	key, titleKey, _ := locationKeys(t, db, "/media/a.mp4")
+	key, titleKey, _ := locationKeys(t, db, fixturePath("/media/a.mp4"))
 	if want := domain.FoldForMatch("新しい題名") + "\na.mp4"; key != want {
 		t.Errorf("search_key = %q, want %q", key, want)
 	}
@@ -255,7 +255,7 @@ func TestSearchFoldsQueryAndKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	for i, title := range []string{"ＡＢＣ１２３", "たびにっき", "100% 満足", "100 点"} {
-		if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/"+title+".mp4", title, fmt.Sprintf("key-%d", i), int64(i+1), 0)); err != nil {
+		if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/")+title+".mp4", title, fmt.Sprintf("key-%d", i), int64(i+1), 0)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -283,7 +283,7 @@ func TestSearchFoldsQueryAndKey(t *testing.T) {
 func TestLocationSearchMigrationDownRestoresVideosFTS(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/夏休みの旅行.mp4", "夏休みの旅行", "key-1", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/夏休みの旅行.mp4"), "夏休みの旅行", "key-1", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -388,7 +388,7 @@ func TestSearchKeyFollowsListRegistrationRule(t *testing.T) {
 func TestSearchFindsTitleContainingNewline(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "abc\ndef", "key-newline", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "abc\ndef", "key-newline", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	for _, query := range []string{"abc\ndef", "abc def"} {
@@ -402,7 +402,7 @@ func TestSearchFindsTitleContainingNewline(t *testing.T) {
 func TestSearchDoesNotMatchAcrossTitleAndPath(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/def.mp4", "abc", "key-boundary", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/def.mp4"), "abc", "key-boundary", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	// 3文字以上（MATCH）と1〜2文字（instr）の両方の経路を調べる。

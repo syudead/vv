@@ -30,7 +30,7 @@ func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err := db.sql.Exec(`insert into videos(path, title, size_bytes, mtime, content_key, added_at, updated_at)
-		values ('/media/a.mp4', 'a', 10, 20, 'key-a', 30, 40)`)
+		values (?, 'a', 10, 20, 'key-a', 30, 40)`, fixturePath("/media/a.mp4"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +52,7 @@ func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
 		Scan(&migratedID, &migratedPath, &migratedKey, &locationGeneration); err != nil {
 		t.Fatal(err)
 	}
-	if migratedID != videoID || migratedPath != "/media/a.mp4" || migratedKey != "key-a" || locationGeneration != 1 {
+	if migratedID != videoID || migratedPath != fixturePath("/media/a.mp4") || migratedKey != "key-a" || locationGeneration != 1 {
 		t.Fatalf("migrated video = %d %q %q generation=%d", migratedID, migratedPath, migratedKey, locationGeneration)
 	}
 	var jobs, progress int
@@ -145,7 +145,7 @@ func TestHoverPreviewMigrationBackfillsOnlyProbeCompleteVideos(t *testing.T) {
 		}
 		if _, err := db.sql.Exec(`insert into video_locations
 			(video_id, path, title, size_bytes, mtime, created_at, updated_at)
-			values (?, ?, ?, 1, 1, 1, 1)`, id, "/media/"+item.key+".mp4", item.key); err != nil {
+			values (?, ?, ?, 1, 1, 1, 1)`, id, fixturePath("/media/")+item.key+".mp4", item.key); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -339,8 +339,8 @@ func TestMigrateAbortsOnFutureSchemaWithoutWriting(t *testing.T) {
 
 // データベースのパスは DataDir/mdm.db に固定する（設定項目にしない）。
 func TestDatabasePathIsFixedUnderDataDir(t *testing.T) {
-	got := DatabasePath("/data")
-	want := filepath.Join("/data", DatabaseFileName)
+	got := DatabasePath(fixturePath("/data"))
+	want := filepath.Join(fixturePath("/data"), DatabaseFileName)
 	if got != want {
 		t.Errorf("DatabasePath = %q, want %q", got, want)
 	}
@@ -541,7 +541,7 @@ func TestPlaybackProgressRejectsNegativePosition(t *testing.T) {
 func TestDisplayAspectRatioMigrationDown(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := tableColumns(t, db, "videos")["display_aspect_ratio"]; !ok {
@@ -613,10 +613,10 @@ func TestMigrateDownReturnsToInitialSchema(t *testing.T) {
 func TestMediaFolderMigrationRejectsLossyDown(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a/movie.mp4", "movie", "shared", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a/movie.mp4"), "movie", "shared", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b/movie.mp4", "movie", "shared", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b/movie.mp4"), "movie", "shared", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -692,7 +692,7 @@ func migratedDB(t *testing.T) *DB {
 	if _, err := Migrate(context.Background(), db); err != nil {
 		t.Fatalf("マイグレーションに失敗した: %v", err)
 	}
-	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/media")); err != nil {
 		t.Fatalf("テスト用メディアフォルダを登録できない: %v", err)
 	}
 

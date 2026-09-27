@@ -22,15 +22,18 @@ import (
 
 // fakeArtifacts は生成物の置き場の代わりである。thumbnails・previews は content
 // key から配信するファイルのパスへの対応で、無いものは「無い」と答える。
-// シーク用プレビューは image と err を決め打ちで返し、渡された値を控える。
+// シーク用プレビューは、配置情報を sprite と spriteErr（sprite が nil なら
+// fs.ErrNotExist）、シートを image と err で決め打ちに返し、渡された値を控える。
 type fakeArtifacts struct {
 	thumbnails map[string]string
 	previews   map[string]string
 
+	sprite     *domain.SeekSprite
+	spriteErr  error
 	image      []byte
 	err        error
 	contentKey string
-	positionMs int64
+	sheet      int
 }
 
 func (f *fakeArtifacts) ThumbnailFile(contentKey string) (*os.File, error) {
@@ -55,9 +58,29 @@ func (f *fakeArtifacts) PreviewFile(contentKey string) (*os.File, string, error)
 	return file, hex.EncodeToString(h.Sum(nil)), nil
 }
 
-func (f *fakeArtifacts) SeekThumbnail(contentKey string, positionMs int64) ([]byte, error) {
-	f.contentKey, f.positionMs = contentKey, positionMs
+func (f *fakeArtifacts) SeekSprite(contentKey string) (domain.SeekSprite, error) {
+	f.contentKey = contentKey
+	switch {
+	case f.spriteErr != nil:
+		return domain.SeekSprite{}, f.spriteErr
+	case f.sprite == nil:
+		return domain.SeekSprite{}, fs.ErrNotExist
+	}
+	return *f.sprite, nil
+}
+
+func (f *fakeArtifacts) SeekSpriteSheet(contentKey string, sheet int) ([]byte, error) {
+	f.contentKey, f.sheet = contentKey, sheet
 	return f.image, f.err
+}
+
+// testSprite は既に生成済みの旧2シート形式を表す。
+func testSprite() *domain.SeekSprite {
+	return &domain.SeekSprite{
+		SeekSpriteLayout: domain.SeekSpriteLayout{IntervalMs: 5000, FrameCount: 150, Columns: 10, Rows: 10, SheetCount: 2},
+		FrameWidth:       320,
+		FrameHeight:      180,
+	}
 }
 
 func openFake(paths map[string]string, contentKey string) (*os.File, error) {

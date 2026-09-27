@@ -4,7 +4,8 @@ import { reloadPage } from "../auth/pageNavigation";
 import {
   createMediaFolder,
   deleteMediaFolder,
-  fetchSeekThumbnail,
+  fetchSeekThumbnailSheet,
+  fetchSeekThumbnailSprite,
   listDirectories,
   listFolderVideos,
   listLibrary,
@@ -28,7 +29,7 @@ vi.mock("../auth/pageNavigation", async (importOriginal) => ({
   reloadPage: vi.fn(),
 }));
 
-describe("見る人が変わったときの読み直し（plan.md Structural Decisions 14）", () => {
+describe("見る人が変わったときの読み直し", () => {
   function videoResponse(audience: "owner" | "guest"): Response {
     return new Response(JSON.stringify({ id: 1 }), {
       headers: { "Content-Type": "application/json", "X-VV-Audience": audience },
@@ -107,36 +108,62 @@ describe("playback URLs", () => {
     expect(transcodeUrl(7, 12_345.4)).toBe("/api/videos/7/transcode.mp4?startMs=12345");
   });
 
-  it("fetches seek thumbnails through the API boundary", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
-      new Response(new Uint8Array([1, 2, 3]), {
-        headers: { "Content-Type": "image/jpeg" },
-      }),
-    );
+  it("fetches the seek sprite description and sheets through the API boundary", async () => {
+    const sprite = {
+      intervalMs: 12_000,
+      frameCount: 600,
+      columns: 10,
+      rows: 10,
+      frameWidth: 320,
+      frameHeight: 180,
+      sheets: ["/api/videos/7/seek-thumbnail/0?v=1"],
+    };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(sprite), {
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(new Uint8Array([1, 2, 3]), {
+          headers: { "Content-Type": "image/jpeg" },
+        }),
+      );
     vi.stubGlobal("fetch", fetch);
     const signal = new AbortController().signal;
 
-    const image = await fetchSeekThumbnail(
-      "/api/videos/7/seek-thumbnail?positionMs=5000",
+    await expect(
+      fetchSeekThumbnailSprite("/api/videos/7/seek-thumbnail?v=1", signal),
+    ).resolves.toEqual(sprite);
+    expect(fetch).toHaveBeenCalledWith("/api/videos/7/seek-thumbnail?v=1", { signal });
+    const sheet = await fetchSeekThumbnailSheet(
+      "/api/videos/7/seek-thumbnail/0?v=1",
       signal,
     );
-    expect(image).toMatchObject({ size: 3, type: "image/jpeg" });
-    expect(fetch).toHaveBeenCalledWith("/api/videos/7/seek-thumbnail?positionMs=5000", {
+    expect(sheet).toMatchObject({ size: 3, type: "image/jpeg" });
+    expect(fetch).toHaveBeenLastCalledWith("/api/videos/7/seek-thumbnail/0?v=1", {
       signal,
     });
   });
 
-  it("rejects unavailable seek thumbnails", async () => {
+  it("rejects unavailable seek sprites and sheets", async () => {
     vi.stubGlobal(
       "fetch",
       vi
         .fn<typeof globalThis.fetch>()
-        .mockResolvedValue(new Response(null, { status: 409 })),
+        .mockImplementation(() => Promise.resolve(new Response(null, { status: 409 }))),
     );
 
     await expect(
-      fetchSeekThumbnail(
-        "/api/videos/7/seek-thumbnail?positionMs=5000",
+      fetchSeekThumbnailSprite(
+        "/api/videos/7/seek-thumbnail?v=1",
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ status: 409, code: "seek_thumbnail_failed" });
+    await expect(
+      fetchSeekThumbnailSheet(
+        "/api/videos/7/seek-thumbnail/0?v=1",
         new AbortController().signal,
       ),
     ).rejects.toMatchObject({ status: 409, code: "seek_thumbnail_failed" });

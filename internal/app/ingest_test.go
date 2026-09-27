@@ -145,6 +145,26 @@ func TestIngestSeekThumbnailsSuccess(t *testing.T) {
 	}
 }
 
+// シーク用サムネイルの配置は動画の長さから決め、公開と生成に同じ配置を渡す。
+func TestIngestSeekThumbnailsLayoutFollowsDuration(t *testing.T) {
+	video := probedVideo(1, "a")
+	twoHours := int64(2 * 60 * 60 * 1000)
+	video.DurationMs = &twoHours
+	store := newFakeIngestStore(video)
+	generator := &fakeGenerator{}
+	ingest, _ := newTestIngest(store, generator)
+
+	if err := ingest.SeekThumbnails(context.Background(), jobFor(domain.JobSeekThumbnail, video)); err != nil {
+		t.Fatal(err)
+	}
+	want := domain.SeekSpriteLayout{IntervalMs: 88_889, FrameCount: 81, Columns: 9, Rows: 9, SheetCount: 1}
+	if !slices.Equal(generator.seekLayouts, []domain.SeekSpriteLayout{want}) ||
+		!slices.Equal(generator.publishedLayouts, []domain.SeekSpriteLayout{want}) {
+		t.Fatalf("生成の配置 = %+v, 公開の配置 = %+v, want %+v",
+			generator.seekLayouts, generator.publishedLayouts, want)
+	}
+}
+
 // シーク用サムネイルの失敗は、どちらの状態も書かずに返す（上限の判断と
 // seek_thumbnail_state への記録は待ち行列が持つ）。代表サムネイルの状態には触れない。
 func TestIngestSeekThumbnailsFailure(t *testing.T) {

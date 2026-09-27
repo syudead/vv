@@ -38,7 +38,7 @@ export interface VideoCardProps {
    */
   location?: { label: string; title: string };
   /**
-   * 題名の下に呼び出し側の行を足す口（Plan の Structural Decisions 10）。省くと
+   * 題名の下に呼び出し側の行を足す口。省くと
    * 題名の下には何も足さない。ライブラリの格子表示とフォルダ画面はここへタグの行を
    * 渡す（specs/014-video-tags/ui-design.md「Tag row」）。タグの行はリンクの**外**、
    * 同じ `article` の中に置かれる（Structural Decisions 10、キーボードの入れ子を避ける）。

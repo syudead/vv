@@ -85,9 +85,9 @@ func TestOneTransactionPublishesEachKindOfChangeOnce(t *testing.T) {
 	ctx := context.Background()
 	var ids []int64
 	for _, file := range []domain.VideoFile{
-		sampleFile("/media/a.mp4", "a", "key-a", 1, 0),
-		sampleFile("/media/b.mp4", "b", "key-b", 2, 0),
-		sampleFile("/media/b2.mp4", "b", "key-b", 2, 0),
+		sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1, 0),
+		sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 2, 0),
+		sampleFile(fixturePath("/media/b2.mp4"), "b", "key-b", 2, 0),
 	} {
 		added, err := db.ScanIndex().UpsertVideo(ctx, file)
 		if err != nil {
@@ -103,7 +103,7 @@ func TestOneTransactionPublishesEachKindOfChangeOnce(t *testing.T) {
 	db.PublishTo(recorder)
 
 	// 付け替えで2本の動画が消え、すべての段階の仕事が取り出せるようになる。
-	if _, err := db.Settings().ReplaceMediaFolder(ctx, folders[0].ID, folders[0].Version, "/other"); err != nil {
+	if _, err := db.Settings().ReplaceMediaFolder(ctx, folders[0].ID, folders[0].Version, fixturePath("/other")); err != nil {
 		t.Fatal(err)
 	}
 

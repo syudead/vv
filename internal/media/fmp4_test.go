@@ -177,12 +177,13 @@ func (r *recordingTranscoder) videoCodecs() []string {
 }
 
 // generateFixture は 30fps の H.264 と AAC の動画を作る。gop はキーフレームの間隔（フレーム）。
+// 音声は周波数が変わるチャープを使い、異なる時刻のAAC packetが一致しないようにする。
 func generateFixture(t *testing.T, path string, seconds, gop int) {
 	t.Helper()
 	generate := exec.Command(transcodeCommand,
 		"-hide_banner", "-loglevel", "error", "-y",
 		"-f", "lavfi", "-i", fmt.Sprintf("testsrc=size=160x90:rate=30:duration=%d", seconds),
-		"-f", "lavfi", "-i", fmt.Sprintf("sine=frequency=440:sample_rate=48000:duration=%d", seconds),
+		"-f", "lavfi", "-i", fmt.Sprintf("aevalsrc=0.1*sin(2*PI*(440*t+10*t*t)):s=48000:d=%d", seconds),
 		"-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-g", strconv.Itoa(gop),
 		"-keyint_min", strconv.Itoa(gop), "-sc_threshold", "0",
 		"-c:a", "aac", path,
@@ -321,8 +322,10 @@ func assertCopySeek(t *testing.T, input, output string, requestedMs, actualMs in
 	var sourceAudio *mediaPacket
 	for _, packet := range packets(t, input, "a:0") {
 		if packet.hash == outputAudio[0].hash {
+			if sourceAudio != nil {
+				t.Fatal("音声fixtureに同じpacketが複数あり、開始時刻を一意に検証できません")
+			}
 			sourceAudio = &packet
-			break
 		}
 	}
 	if sourceAudio == nil {

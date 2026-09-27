@@ -30,7 +30,7 @@ func ftsFixture(t *testing.T) *DB {
 		t.Fatalf("マイグレーションに失敗した: %v\n%s", err, alternativesHint)
 	}
 	// 登録フォルダの下に無い所在は search_key が空で、索引に載らない。
-	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/media")); err != nil {
 		t.Fatalf("テスト用メディアフォルダを登録できない: %v", err)
 	}
 
@@ -38,9 +38,9 @@ func ftsFixture(t *testing.T) *DB {
 		path  string
 		title string
 	}{
-		{"/media/夏休みの旅行.mp4", "夏休みの旅行"},
-		{"/media/花火大会.mp4", "花火大会"},
-		{"/media/holiday-trip.mp4", "holiday trip"},
+		{fixturePath("/media/夏休みの旅行.mp4"), "夏休みの旅行"},
+		{fixturePath("/media/花火大会.mp4"), "花火大会"},
+		{fixturePath("/media/holiday-trip.mp4"), "holiday trip"},
 	}
 	for _, row := range rows {
 		_, err := db.ScanIndex().UpsertVideo(context.Background(), domain.VideoFile{
@@ -163,7 +163,7 @@ func TestFTS5RebuildRecoversIndex(t *testing.T) {
 	}
 	videoID, _ := res.LastInsertId()
 	if _, err := db.sql.Exec(`insert into video_locations(video_id, path, title, size_bytes, mtime, created_at, updated_at, search_key)
-		values (?, '/media/運動会.mp4', '運動会', 1, 1, 1, 1, '運動会')`, videoID); err != nil {
+		values (?, ?, '運動会', 1, 1, 1, 1, '運動会')`, videoID, fixturePath("/media/運動会.mp4")); err != nil {
 		t.Fatal(err)
 	}
 	if got := countMatch(t, db, "運動会"); got != 0 {
@@ -234,7 +234,7 @@ func searchFixture(t *testing.T) *DB {
 	}
 	for i, row := range rows {
 		_, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-			Path:       "/media/" + row.title + ".mp4",
+			Path:       fixturePath("/media/") + row.title + ".mp4",
 			Title:      row.title,
 			ContentKey: row.key,
 			SizeBytes:  int64(1000 + i),
@@ -301,7 +301,7 @@ func TestSearchNormalizesQuery(t *testing.T) {
 	ctx := context.Background()
 
 	if _, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-		Path: "/media/がっこう.mp4", Title: "がっこう", ContentKey: "key-1",
+		Path: fixturePath("/media/がっこう.mp4"), Title: "がっこう", ContentKey: "key-1",
 		SizeBytes: 1, MTime: fixedTime, AddedAt: fixedTime, Container: "mp4",
 	}); err != nil {
 		t.Fatal(err)
@@ -354,7 +354,7 @@ func TestSearchUsesSameOrderAsListing(t *testing.T) {
 	}
 	for i, row := range rows {
 		if _, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-			Path: "/media/" + row.title + ".mp4", Title: row.title, ContentKey: row.key,
+			Path: fixturePath("/media/") + row.title + ".mp4", Title: row.title, ContentKey: row.key,
 			SizeBytes: int64(i + 1), MTime: fixedTime,
 			AddedAt: fixedTime.Add(time.Duration(i) * time.Minute), Container: "mp4",
 		}); err != nil {
@@ -408,7 +408,7 @@ func TestSearchPagesWithCursor(t *testing.T) {
 	for i := 0; i < 7; i++ {
 		title := fmt.Sprintf("旅%d", i)
 		if _, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-			Path: "/media/" + title + ".mp4", Title: title,
+			Path: fixturePath("/media/") + title + ".mp4", Title: title,
 			ContentKey: fmt.Sprintf("key-%d", i), SizeBytes: int64(i + 1), MTime: fixedTime,
 			AddedAt: fixedTime.Add(time.Duration(i) * time.Minute), Container: "mp4",
 		}); err != nil {
@@ -417,7 +417,7 @@ func TestSearchPagesWithCursor(t *testing.T) {
 	}
 	// 該当しない行も混ぜる。
 	if _, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-		Path: "/media/花火.mp4", Title: "花火", ContentKey: "key-x",
+		Path: fixturePath("/media/花火.mp4"), Title: "花火", ContentKey: "key-x",
 		SizeBytes: 99, MTime: fixedTime, AddedAt: fixedTime, Container: "mp4",
 	}); err != nil {
 		t.Fatal(err)

@@ -358,8 +358,7 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 	return progress
 }
 
-// tagsFor は動画たちのタグをまとめて引く（progressFor と同じ形。Plan の
-// Structural Decisions 5・14）。1件ずつ引くと、60 件の一覧で 60 回の問い合わせに
+// tagsFor は動画たちのタグをまとめて引く（progressFor と同じ形）。1件ずつ引くと、60 件の一覧で 60 回の問い合わせに
 // なる。
 //
 // 引けなかった場合は一覧を諦めない。タグは「あると嬉しい」情報であって、
@@ -533,6 +532,13 @@ func thumbnailURL(video domain.Video) string {
 func seekThumbnailURL(video domain.Video) string {
 	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/seek-thumbnail?v=" +
 		thumbnailVersion(video.ContentKey)
+}
+
+// seekThumbnailSheetURL はスプライトのシート sheet の取得先を組み立てる。版は
+// 配置情報の URL（seekThumbnailURL）と同じく内容由来である。
+func seekThumbnailSheetURL(video domain.Video, sheet int) string {
+	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/seek-thumbnail/" + strconv.Itoa(sheet) +
+		"?v=" + thumbnailVersion(video.ContentKey)
 }
 
 func thumbnailVersion(contentKey string) string {

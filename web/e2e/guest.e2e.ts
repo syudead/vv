@@ -44,7 +44,7 @@ const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 const screenshotDir = process.env.MDM_E2E_SCREENSHOT_DIR;
 const publicTitles = ["ゲスト公開A", "ゲスト公開B", "ゲスト公開E", "ゲスト公開F"];
 const privateTitles = ["ゲスト非公開C", "ゲスト非公開D"];
-// 画面写真の本数（ui-design.md「Visual review criteria」の 12 本以上）を満たすための、
+// 画面確認に使う、
 // 非公開のままの6本。題名で数える確かめに混ざらないよう「ゲスト」を含めない。
 const fillerTitles = ["確認用G", "確認用H", "確認用I", "確認用J", "確認用K", "確認用L"];
 // ライブラリのグループのカードの読み上げ名（ui-design.md「Pressing and selection」）。
@@ -249,15 +249,15 @@ test.describe.serial("guest", () => {
     await expect(page.locator("article[data-group-root]")).toContainText("4 本");
 
     await page
-      .getByRole("group", { name: "表示形式" })
-      .getByRole("button", { name: "リスト" })
+      .getByRole("radiogroup", { name: "表示形式" })
+      .getByRole("radio", { name: "リスト" })
       .click();
     const groupCells = page.locator("tr[data-group-root]").first().locator("td:visible");
     await expect(groupCells.first()).toHaveCSS("border-bottom-width", "1px");
     await expect(groupCells.last()).toHaveCSS("border-bottom-width", "1px");
     await page
-      .getByRole("group", { name: "表示形式" })
-      .getByRole("button", { name: "グリッド" })
+      .getByRole("radiogroup", { name: "表示形式" })
+      .getByRole("radio", { name: "グリッド" })
       .click();
 
     // 検索: 公開の動画だけに当たり、非公開の題名では何も出ない。
@@ -631,7 +631,7 @@ test.describe.serial("guest", () => {
       await context.close();
     }
 
-    // 所有者の公開の切り替え（子 #305、ui-design.md「Visual review criteria」）。
+    // 所有者の公開の切り替え。
     for (const width of [360, 768, 1280]) {
       const owner = await ownerContext(browser, { width, height: 800 });
       const page = await owner.newPage();

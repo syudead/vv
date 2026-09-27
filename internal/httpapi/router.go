@@ -71,8 +71,7 @@ type MediaFolders interface {
 	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
 }
 
-// Tags はタグ管理画面が操作するタグの保存先である（Plan の Structural
-// Decisions 13・14）。どの操作も1つのトランザクションで済むので、
+// Tags はタグ管理画面が操作するタグの保存先である。どの操作も1つのトランザクションで済むので、
 // internal/app は通さず、internal/store の TagStore をここへ直接渡す。
 type Tags interface {
 	ListTags(ctx context.Context) ([]domain.Tag, error)
@@ -83,8 +82,7 @@ type Tags interface {
 	AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error)
 	RemoveSynonym(ctx context.Context, tagID int64, name string) error
 
-	// 付与・取り外し・要約・一覧の項目のタグ引き（#267、Plan の Structural
-	// Decisions 5・14）。どの操作も1つのトランザクションで済むので、こちらも
+	// 付与・取り外し・要約・一覧の項目のタグ引き。どの操作も1つのトランザクションで済むので、こちらも
 	// internal/app を通さない。
 	AttachTagByID(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error)
 	AttachTagByName(ctx context.Context, videoIDs []int64, name string) (domain.TagRef, int, error)
@@ -121,8 +119,11 @@ type ArtifactReader interface {
 	// PreviewFile はホバープレビューの MP4 を開き、内容の SHA-256（manifest に
 	// 記録したもの）と合わせて返す。閉じるのは呼び出し側である。
 	PreviewFile(contentKey string) (*os.File, string, error)
-	// SeekThumbnail は再生位置を含むシーク用プレビューの1枚を読む。
-	SeekThumbnail(contentKey string, positionMs int64) ([]byte, error)
+	// SeekSprite は完成したシーク用プレビューのスプライトの配置情報を読む。
+	// 配置情報の形が違えば fs.ErrNotExist 以外の誤りを返す。
+	SeekSprite(contentKey string) (domain.SeekSprite, error)
+	// SeekSpriteSheet はスプライトのシート sheet（0 から）を読む。
+	SeekSpriteSheet(contentKey string, sheet int) ([]byte, error)
 }
 
 // VideoCatalog は動画を応答に載せるときの判断と、関連動画の組み立てを行う

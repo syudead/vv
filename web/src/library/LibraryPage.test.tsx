@@ -1311,7 +1311,7 @@ describe("LibraryPage", () => {
     // B1: 以前は items が変わるたびに、選択を items に無い id ごと刈り込んで
     // いた。タグの付け外しも loadMore も items を新しい配列に置き換えるので、
     // 「すべて選択」でまだ読み込んでいない id まで選んでいると、それらが
-    // 巻き込まれて消えていた（Plan の Structural Decisions 4、完了の条件2）。
+    // 巻き込まれて消えていた。
     it("すべて選択のあとタグを付けても、選択の件数は変わらない（B1）", async () => {
       installSelectionAwareList({
         tags: [{ id: 1, name: "旅行" }],

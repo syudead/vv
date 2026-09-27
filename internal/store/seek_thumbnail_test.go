@@ -29,11 +29,11 @@ func seekAndThumbnailState(t *testing.T, db *DB, videoID int64) (string, string)
 func TestClaimSeekThumbnailWaitsForProbeAndRemainingThumbnails(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-b", 2048, 0))
+	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 2048, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	outside, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/elsewhere/c.mp4", "c", "key-c", 4096, 0))
+	outside, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/elsewhere/c.mp4"), "c", "key-c", 4096, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestClaimSeekThumbnailWaitsForProbeAndRemainingThumbnails(t *testing.T) {
 func TestProcessingCountsSeekThumbnailSeparately(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-b", 2048, 0))
+	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 2048, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestRequeueMissingSeekThumbnails(t *testing.T) {
 func TestUpsertVideoReportsSeekThumbnailNeed(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestUpsertVideoReportsSeekThumbnailNeed(t *testing.T) {
 	if _, err := db.sql.Exec(`update videos set seek_thumbnail_state = 'done' where id = ?`, added.ID); err != nil {
 		t.Fatal(err)
 	}
-	moved, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-a", 1024, 0))
+	moved, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +279,7 @@ func TestUpsertVideoReportsSeekThumbnailNeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := indexed["/media/a.mp4"].SeekThumbnailState; got != domain.SeekThumbnailDone {
+	if got := indexed[fixturePath("/media/a.mp4")].SeekThumbnailState; got != domain.SeekThumbnailDone {
 		t.Fatalf("IndexedVideo.SeekThumbnailState = %q, want done", got)
 	}
 
@@ -336,7 +336,7 @@ func TestSeekThumbnailStageMigrationBackfillsAndRollsBack(t *testing.T) {
 		if item.located {
 			if _, err := db.sql.Exec(`insert into video_locations
 				(video_id, path, title, size_bytes, mtime, created_at, updated_at)
-				values (?, ?, ?, 1, 1, 1, 1)`, id, "/media/"+item.key+".mp4", item.key); err != nil {
+				values (?, ?, ?, 1, 1, 1, 1)`, id, fixturePath("/media/")+item.key+".mp4", item.key); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -388,5 +388,114 @@ func TestSeekThumbnailStageMigrationBackfillsAndRollsBack(t *testing.T) {
 	}
 	if _, err := Migrate(context.Background(), db); err != nil {
 		t.Fatalf("up after down: %v", err)
+	}
+}
+
+// 00015 は done のシーク用サムネイルを pending に戻して作り直しを積む。failed の
+// 動画と、未完了のシーク用サムネイルのジョブが既にある動画には積まず、代表
+// サムネイルと動くプレビューの状態とジョブには触れない。down は schema を変えず、
+// up をやり直せる。
+func TestSeekThumbnailSpriteMigrationRequeuesDone(t *testing.T) {
+	db, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	fsy, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := provider.UpTo(ctx, 14); err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]int64{}
+	for _, item := range []struct {
+		key, probe, seek string
+		located          bool
+	}{
+		{key: "done", probe: "done", seek: "done", located: true},
+		{key: "done-queued", probe: "done", seek: "done", located: true},
+		{key: "failed", probe: "done", seek: "failed", located: true},
+		{key: "pending", probe: "done", seek: "pending", located: true},
+		{key: "unprobed", probe: "pending", seek: "done", located: true},
+		{key: "unlocated", probe: "done", seek: "done", located: false},
+	} {
+		res, err := db.sql.Exec(`insert into videos(content_key, probe_state, thumbnail_state, preview_state,
+			seek_thumbnail_state) values (?, ?, 'done', 'done', ?)`, item.key, item.probe, item.seek)
+		if err != nil {
+			t.Fatal(err)
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids[item.key] = id
+		if item.located {
+			if _, err := db.sql.Exec(`insert into video_locations
+				(video_id, path, title, size_bytes, mtime, created_at, updated_at)
+				values (?, ?, ?, 1, 1, 1, 1)`, id, fixturePath("/media/")+item.key+".mp4", item.key); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	for _, job := range []struct {
+		kind, state, key string
+	}{
+		{"seek_thumbnail", "running", "done-queued"},
+		{"thumbnail", "queued", "done"},
+		{"preview", "failed", "done"},
+	} {
+		if _, err := db.sql.Exec(`insert into jobs(kind, video_id, state, attempts, created_at, updated_at)
+			values (?, ?, ?, 1, 1, 1)`, job.kind, ids[job.key], job.state); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if _, err := provider.UpTo(ctx, 15); err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]struct {
+		seek string
+		jobs map[string]int
+	}{
+		"done":        {"pending", map[string]int{"seek_thumbnail:queued": 1, "thumbnail:queued": 1, "preview:failed": 1}},
+		"done-queued": {"pending", map[string]int{"seek_thumbnail:running": 1}},
+		"failed":      {"failed", map[string]int{}},
+		"pending":     {"pending", map[string]int{}},
+		"unprobed":    {"pending", map[string]int{}},
+		"unlocated":   {"pending", map[string]int{}},
+	}
+	for key, w := range want {
+		if got := jobCounts(t, db, ids[key]); !equalCounts(got, w.jobs) {
+			t.Errorf("%s: jobs = %v, want %v", key, got, w.jobs)
+		}
+		if seek, thumbnail := seekAndThumbnailState(t, db, ids[key]); seek != w.seek || thumbnail != "done" {
+			t.Errorf("%s: seek = %s, thumbnail = %s, want %s and done", key, seek, thumbnail, w.seek)
+		}
+		var preview string
+		if err := db.sql.QueryRow(`select preview_state from videos where id = ?`, ids[key]).Scan(&preview); err != nil {
+			t.Fatal(err)
+		}
+		if preview != "done" {
+			t.Errorf("%s: preview_state = %s, want done", key, preview)
+		}
+	}
+
+	if _, err := provider.DownTo(ctx, 14); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := tableColumns(t, db, "videos")["seek_thumbnail_state"]; !ok {
+		t.Fatal("down dropped seek_thumbnail_state")
+	}
+	if _, err := Migrate(ctx, db); err != nil {
+		t.Fatalf("up after down: %v", err)
+	}
+	if got := jobCounts(t, db, ids["done"]); got["seek_thumbnail:queued"] != 1 {
+		t.Errorf("up after down: done jobs = %v, want one queued seek_thumbnail", got)
 	}
 }

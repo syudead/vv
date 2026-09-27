@@ -83,8 +83,7 @@ function connect(): void {
     // 接続中の切断はブラウザが自分でつなぎ直す。CLOSED は諦めた状態
     // （応答が 200 でない等）である。EventSource からは応答の状態を読めないので、
     // 見る人の状態を確かめる。セッションが失効して所有者でなくなっていれば、張り直さず
-    // ページを1度だけ読み直す（失敗した要求を無限に再試行しない。
-    // specs/016-single-account-auth/plan.md Structural Decisions 14）。そうでなければ
+    // ページを1度だけ読み直す（失敗した要求を無限に再試行しない）。そうでなければ
     // （サーバーが一時的に落ちている等）、少し待って張り直す。
     if (current.readyState !== EventSource.CLOSED || source !== current) return;
     source = null;
