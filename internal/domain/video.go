@@ -188,8 +188,11 @@ type Video struct {
 	Playable         bool
 	UnplayableReason UnplayableReason
 
-	ProbeState     ProbeState
-	ProbeError     string
+	ProbeState ProbeState
+	ProbeError string
+	// ProbeErrorCode は ProbeState が failed のときの理由のコード。アップグレード前の
+	// 行では空である（specs/023-english-i18n/data-model.md §1）。
+	ProbeErrorCode ProbeErrorCode
 	ThumbnailState ThumbnailState
 	// SeekThumbnailState は videos.seek_thumbnail_state の値である。置き場の
 	// 有無で裏づける前の、保存された状態をそのまま持つ。

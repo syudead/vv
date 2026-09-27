@@ -129,6 +129,18 @@ video API exposes `previewUrl`, and when a `done` preview's MP4 is missing or do
 the size in its manifest it sets the video back to `pending` and queues a preview job in one
 transaction, once per loss.
 
+A failed probe or scan keeps its free-text reason (`videos.probe_error`, `scans.error`) and,
+separately, a machine-readable code: `videos.probe_error_code`, and `scans.error_code` with
+`scans.error_path` when the reason concerns one location (the media folder or the place that
+could not be read). The adapter that produces the failure wraps it in `domain.ProbeFailure`
+(`internal/media`) or `domain.ScanFailure` (`internal/scanner`); `internal/app` marks a scan
+stopped by shutdown as `interrupted`, as does closing one left running at startup; and
+`internal/store` takes the code out with `errors.As` when it records the failure, storing
+`internal` for anything unwrapped. The API returns `Video.probeErrorCode` and
+`Scan.errorCode`/`errorPath`, so the screen explains a failure from the code instead of the
+free text. Rows recorded before the codes existed keep their old reason with no code
+([data-model.md](specs/023-english-i18n/data-model.md)). `jobs.last_error` stays free text.
+
 Generated files have one owner, `internal/artifacts`. Under `MDM_DATA_DIR/thumbnails`
 (the root comes from `cmd/mdm`'s configuration) it alone decides where each content key's
 files live — the library thumbnail at `<p>/<s>.jpg`, the seek sprite under `seek/<p>/<s>/`
@@ -352,7 +364,7 @@ get `401 unauthenticated`; a failed session lookup is `500`, never an owner.
 Guest-too requests without a valid session are handled as a guest: handlers pass the
 audience to `LibraryStore` and `Catalog`, so only public videos (and folders derived
 from them) appear, hidden videos and folders answer the same `404` as missing ones,
-guest responses omit `location`, `progress`, `probeError` and `rootPath` and carry
+guest responses omit `location`, `progress`, `probeError`, `probeErrorCode` and `rootPath` and carry
 empty `tags`, and list conditions that depend on owner data (`watch`, played-at
 sorts, `tag`) are `400`
 ([specs/016-single-account-auth/contracts/guest-api.md](specs/016-single-account-auth/contracts/guest-api.md)).

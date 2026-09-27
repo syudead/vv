@@ -66,13 +66,17 @@ func (f *fakeScanStore) UpdateScanProgress(_ context.Context, id int64, progress
 	return nil
 }
 
-func (f *fakeScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanState, reason string) error {
+func (f *fakeScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanState, cause error) error {
 	// 閉じる書き込みは、停止で取り消された context でも届かなければならない。
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 	f.mu.Lock()
-	f.current.State, f.current.Error = state, reason
+	f.current.State, f.current.Error, f.current.ErrorCode, f.current.ErrorPath = state, "", "", ""
+	if cause != nil {
+		f.current.Error = cause.Error()
+		f.current.ErrorCode, f.current.ErrorPath = domain.ScanFailureOf(cause)
+	}
 	f.rebuiltBeforeFinish = append(f.rebuiltBeforeFinish, f.rebuilds)
 	scan := f.current
 	f.mu.Unlock()
@@ -127,7 +131,7 @@ func (f *fakeScanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	f.runs++
 	f.mu.Unlock()
 	if f.panics {
-		panic("壊れた走査")
+		panic("broken scan")
 	}
 	partial := domain.ScanResult{Total: f.result.Total, Processed: 1}
 	if err := f.reporter.ReportScanProgress(ctx, partial); err != nil {
@@ -198,15 +202,33 @@ func TestScanCompletes(t *testing.T) {
 	}
 }
 
-// 走査が失敗すれば failed で閉じ、理由を残す。panic も失敗として閉じる。
+// 走査が失敗すれば failed で閉じ、理由とそのコードを残す。走査が包んだコードと場所は
+// そのまま渡り、包まれていない失敗と panic は internal になる。
 func TestScanFailure(t *testing.T) {
+	folder := fixturePath("/media/unreadable")
 	for _, tc := range []struct {
 		name    string
 		scanner *fakeScanner
 		reason  string
+		code    domain.ScanErrorCode
+		path    string
 	}{
-		{name: "error", scanner: &fakeScanner{err: errors.New("メディアフォルダを読めません")}, reason: "メディアフォルダを読めません"},
-		{name: "panic", scanner: &fakeScanner{panics: true}, reason: "取り込み処理がpanicしました: 壊れた走査"},
+		{
+			name: "coded",
+			scanner: &fakeScanner{err: domain.NewScanFailure(domain.ScanErrorMediaFolderUnreadable, folder,
+				errors.New("could not read the media folder"))},
+			reason: "could not read the media folder", code: domain.ScanErrorMediaFolderUnreadable, path: folder,
+		},
+		{
+			name:    "uncoded",
+			scanner: &fakeScanner{err: errors.New("database is locked")},
+			reason:  "database is locked", code: domain.ScanErrorInternal,
+		},
+		{
+			name:    "panic",
+			scanner: &fakeScanner{panics: true},
+			reason:  "scan panicked: broken scan", code: domain.ScanErrorInternal,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			scans, store, _ := newTestScans(t, context.Background(), tc.scanner)
@@ -216,6 +238,9 @@ func TestScanFailure(t *testing.T) {
 			closed := store.waitFinished(t)
 			if closed.State != domain.ScanFailed || closed.Error != tc.reason {
 				t.Fatalf("閉じた状態 = %q (%q), want failed (%q)", closed.State, closed.Error, tc.reason)
+			}
+			if closed.ErrorCode != tc.code || closed.ErrorPath != tc.path {
+				t.Fatalf("理由のコード = %q (%q), want %q (%q)", closed.ErrorCode, closed.ErrorPath, tc.code, tc.path)
 			}
 		})
 	}
@@ -260,8 +285,12 @@ func TestScanStoppedByShutdownIsClosedAsFailed(t *testing.T) {
 	stop()
 
 	closed := store.waitFinished(t)
-	if closed.State != domain.ScanFailed || closed.Error != context.Canceled.Error() {
-		t.Fatalf("閉じた状態 = %q (%q), want failed (context canceled)", closed.State, closed.Error)
+	const reason = "the scan was stopped before it finished: context canceled"
+	if closed.State != domain.ScanFailed || closed.Error != reason {
+		t.Fatalf("閉じた状態 = %q (%q), want failed (%q)", closed.State, closed.Error, reason)
+	}
+	if closed.ErrorCode != domain.ScanErrorInterrupted || closed.ErrorPath != "" {
+		t.Fatalf("理由のコード = %q (%q), want interrupted", closed.ErrorCode, closed.ErrorPath)
 	}
 }
 

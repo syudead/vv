@@ -20,21 +20,27 @@ func NewAssets() *Assets {
 	return &Assets{}
 }
 
-// CheckSource は元の動画が読める通常ファイルかを確かめる。
+// CheckSource は元の動画が読める通常ファイルかを確かめる。失敗は
+// domain.ProbeErrorFileUnavailable で包む（解析の失敗理由のコード。解析以外の
+// ジョブでは保存されない）。
 func (a *Assets) CheckSource(path string) error {
 	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return sourceUnavailable(err)
 	}
 	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil {
-		return err
+		return sourceUnavailable(err)
 	}
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("通常ファイルではありません: %s", path)
+		return sourceUnavailable(fmt.Errorf("not a regular file: %s", path))
 	}
 	return nil
+}
+
+func sourceUnavailable(err error) error {
+	return domain.NewProbeFailure(domain.ProbeErrorFileUnavailable, err)
 }
 
 // Probe は ffprobe で動画の情報を読む。

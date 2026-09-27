@@ -200,7 +200,7 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := db.Ingest().FailClaimedJob(ctx, job, "unreadable location"); err != nil {
+		if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("unreadable location")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -314,7 +314,7 @@ func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
 		if job.LastLocation != (i%4 == 3) {
 			t.Fatalf("location %d LastLocation = %v", i, job.LastLocation)
 		}
-		if err := db.Ingest().FailClaimedJob(ctx, job, "location unavailable"); err != nil {
+		if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("location unavailable")); err != nil {
 			t.Fatal(err)
 		}
 		wantState := "queued"
@@ -399,7 +399,7 @@ func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	if written {
 		t.Fatal("thumbnail job claimed before a location was added wrote a stale result")
 	}
-	if err := db.Ingest().FailClaimedJob(ctx, job, "old location failed"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("old location failed")); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobState(t, db, job.ID); got != "queued" {
@@ -468,7 +468,7 @@ func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().FailClaimedJob(ctx, job, "preview failed"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("preview failed")); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobState(t, db, job.ID); got != "failed" {
@@ -493,7 +493,7 @@ func TestFailClaimedPreviewKeepsPendingWhileRetrying(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().FailClaimedJob(ctx, job, "retry preview"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("retry preview")); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobState(t, db, job.ID); got != "queued" {
@@ -525,7 +525,7 @@ func TestFailClaimedPreviewRollsBackJobWhenStateUpdateFails(t *testing.T) {
 		when new.preview_state = 'failed' begin select raise(abort, 'reject preview failure'); end`); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().FailClaimedJob(ctx, job, "preview failed"); err == nil {
+	if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("preview failed")); err == nil {
 		t.Fatal("FailClaimedJob succeeded despite rejected preview state update")
 	}
 	if got := jobState(t, db, job.ID); got != "running" {

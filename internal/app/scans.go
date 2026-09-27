@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -16,7 +17,9 @@ type ScanStore interface {
 	StartScan(ctx context.Context) (scan domain.Scan, started bool, err error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 	UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error
-	FinishScan(ctx context.Context, id int64, state domain.ScanState, reason string) error
+	// FinishScan は走査を閉じる。cause は走査そのものが失敗した理由（成功なら nil）で、
+	// domain.ScanFailure で包まれた理由のコードと場所は保存側が取り出す。
+	FinishScan(ctx context.Context, id int64, state domain.ScanState, cause error) error
 	// FailInterruptedScans は running のまま残った走査を failed で閉じる。
 	FailInterruptedScans(ctx context.Context) (int64, error)
 }
@@ -181,7 +184,7 @@ func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 		return err
 	}
 	if closed > 0 {
-		s.logger.Info("中断していた取り込みを閉じました", slog.Int64("count", closed))
+		s.logger.Info("closed interrupted scans", slog.Int64("count", closed))
 		s.rebuildFolderIndex(ctx)
 	}
 
@@ -190,7 +193,7 @@ func (s *Scans) RecoverInterrupted(ctx context.Context) error {
 		return err
 	}
 	if restored > 0 {
-		s.logger.Info("中断したジョブを待ち行列へ戻しました", slog.Int64("count", restored))
+		s.logger.Info("requeued interrupted jobs", slog.Int64("count", restored))
 	}
 	return nil
 }
@@ -216,27 +219,30 @@ func (s *Scans) run(scanID int64) {
 
 	ctx := s.baseCtx
 
-	result, err := func() (result domain.ScanResult, err error) {
+	result, scanErr := func() (result domain.ScanResult, err error) {
 		defer func() {
 			if recovered := recover(); recovered != nil {
-				err = fmt.Errorf("取り込み処理がpanicしました: %v", recovered)
+				err = fmt.Errorf("scan panicked: %v", recovered)
 			}
 		}()
 		if s.scanner == nil {
-			return domain.ScanResult{}, fmt.Errorf("走査が組み立てられていません")
+			return domain.ScanResult{}, errors.New("scanner is not configured")
 		}
 		return s.scanner.Scan(ctx)
 	}()
 
 	// 停止指示で打ち切った場合は、失敗として閉じる。次の起動で走り直せる。
+	// 理由は interrupted で、走査が包んだ理由より優先する（data-model.md §2）。
 	state := domain.ScanDone
-	reason := ""
-	if err != nil {
+	if scanErr != nil {
 		state = domain.ScanFailed
-		reason = err.Error()
-		s.logger.Warn("取り込みが最後まで走りませんでした", slog.Any("error", err))
+		if ctx.Err() != nil {
+			scanErr = domain.NewScanFailure(domain.ScanErrorInterrupted, "",
+				fmt.Errorf("the scan was stopped before it finished: %w", scanErr))
+		}
+		s.logger.Warn("scan did not finish", slog.Any("error", scanErr))
 	} else {
-		s.logger.Info("取り込みが終わりました",
+		s.logger.Info("scan finished",
 			slog.Int("total", result.Total),
 			slog.Int("added", result.Added),
 			slog.Int("updated", result.Updated),
@@ -251,7 +257,7 @@ func (s *Scans) run(scanID int64) {
 	closeCtx := context.WithoutCancel(ctx)
 
 	if err := s.store.UpdateScanProgress(closeCtx, scanID, progressOf(result)); err != nil {
-		s.logger.Warn("取り込みの進捗を記録できませんでした", slog.Any("error", err))
+		s.logger.Warn("could not record scan progress", slog.Any("error", err))
 	}
 
 	// 成功でも失敗でも、閉じる直前にフォルダの索引を作り直す。読むのは索引の
@@ -259,8 +265,8 @@ func (s *Scans) run(scanID int64) {
 	// 利用者が取り込みを始めたときの走査だけである。
 	s.rebuildFolderIndex(closeCtx)
 
-	if err := s.store.FinishScan(closeCtx, scanID, state, reason); err != nil {
-		s.logger.Warn("取り込みの終了を記録できませんでした", slog.Any("error", err))
+	if err := s.store.FinishScan(closeCtx, scanID, state, scanErr); err != nil {
+		s.logger.Warn("could not record the end of the scan", slog.Any("error", err))
 	}
 	s.scanChanged()
 }
@@ -273,7 +279,7 @@ func (s *Scans) rebuildFolderIndex(ctx context.Context) {
 		return
 	}
 	if err := s.folders.RebuildFolderIndex(ctx); err != nil {
-		s.logger.Warn("フォルダの索引を作り直せませんでした", slog.Any("error", err))
+		s.logger.Warn("could not rebuild the folder index", slog.Any("error", err))
 	}
 }
 

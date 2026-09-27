@@ -44,26 +44,35 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 
 	info, err := os.Stat(path)
 	if err != nil {
-		return domain.Probe{}, fmt.Errorf("解析するファイルを確かめられません (%s): %w", path, err)
+		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorFileUnavailable,
+			fmt.Errorf("could not check the file to probe (%s): %w", path, err))
 	}
 
 	output, err := exec.CommandContext(ctx, probeCommand, probeArgs(path)...).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return domain.Probe{}, fmt.Errorf(
-				"%s が失敗しました (%s): %s", probeCommand, path, firstLine(exitErr.Stderr))
+			return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeFailed, fmt.Errorf(
+				"%s failed (%s): %s", probeCommand, path, firstLine(exitErr.Stderr)))
 		}
-		return domain.Probe{}, fmt.Errorf("%s を実行できません (%s): %w", probeCommand, path, err)
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			// 1件の上限（probeTimeout）に達した。壊れたファイルとして扱う。
+			return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeFailed,
+				fmt.Errorf("%s timed out (%s): %w", probeCommand, path, err))
+		}
+		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeUnavailable,
+			fmt.Errorf("could not run %s (%s): %w", probeCommand, path, err))
 	}
 
 	probe, err := parseProbeOutput(output)
 	if err != nil {
-		return domain.Probe{}, fmt.Errorf("%s の出力を解釈できません (%s): %w", probeCommand, path, err)
+		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorInvalidMetadata,
+			fmt.Errorf("could not interpret the %s output (%s): %w", probeCommand, path, err))
 	}
 	after, err := os.Stat(path)
 	if err != nil {
-		return domain.Probe{}, fmt.Errorf("解析したファイルを確かめられません (%s): %w", path, err)
+		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorFileUnavailable,
+			fmt.Errorf("could not check the probed file (%s): %w", path, err))
 	}
 	return stampProbe(probe, domain.FileStampOf(info), domain.FileStampOf(after)), nil
 }
@@ -144,15 +153,15 @@ type probeStream struct {
 func parseProbeOutput(output []byte) (domain.Probe, error) {
 	var parsed probeOutput
 	if err := json.Unmarshal(output, &parsed); err != nil {
-		return domain.Probe{}, fmt.Errorf("JSON として読めません: %w", err)
+		return domain.Probe{}, fmt.Errorf("not valid JSON: %w", err)
 	}
 
 	seconds, err := strconv.ParseFloat(parsed.Format.Duration, 64)
 	if err != nil {
-		return domain.Probe{}, fmt.Errorf("尺 (format.duration=%q) を読めません", parsed.Format.Duration)
+		return domain.Probe{}, fmt.Errorf("could not read the duration (format.duration=%q)", parsed.Format.Duration)
 	}
 	if seconds < 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
-		return domain.Probe{}, fmt.Errorf("尺 (format.duration=%q) が不正です", parsed.Format.Duration)
+		return domain.Probe{}, fmt.Errorf("invalid duration (format.duration=%q)", parsed.Format.Duration)
 	}
 
 	probe := domain.Probe{
@@ -266,7 +275,7 @@ func firstLine(raw []byte) string {
 		}
 	}
 	if len(raw) == 0 {
-		return "（出力なし）"
+		return "(no output)"
 	}
 	return string(raw)
 }

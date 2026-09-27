@@ -55,7 +55,7 @@ func (q *fakeQueue) CompleteClaimedJob(_ context.Context, job domain.Job) error 
 	return nil
 }
 
-func (q *fakeQueue) FailClaimedJob(_ context.Context, failed domain.Job, _ string) error {
+func (q *fakeQueue) FailClaimedJob(_ context.Context, failed domain.Job, _ error) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 

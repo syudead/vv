@@ -278,7 +278,11 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 // FailClaimedJob は失敗を記録する。queued へ戻すか failed で止めるかは
 // domain.JobStateAfterFailure が決め、ここではその結果を書く。failed なら、
 // 動画側の状態へも同じ取引で記録する（recordTerminalFailure）。
-func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, reason string) error {
+//
+// cause の文を jobs.last_error に書く。解析の終端失敗では、domain.ProbeFailure で
+// 包まれた理由のコードも動画側へ書く（specs/023-english-i18n/data-model.md §1）。
+func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause error) error {
+	reason := cause.Error()
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("ジョブの失敗記録を開始できません (id=%d): %w", job.ID, err)
@@ -321,7 +325,7 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, reason
 	}
 
 	if state == domain.JobFailed {
-		if err := recordTerminalFailure(ctx, tx, job, reason, now); err != nil {
+		if err := recordTerminalFailure(ctx, tx, job, cause, now); err != nil {
 			return err
 		}
 	}
@@ -339,7 +343,7 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, reason
 // 「状態が failed なら、その種類のジョブは終わっている」が成り立つ。
 //
 // どの種類も、claim 時点の内容鍵・所在の世代・所在が今も一致するときに限る。
-func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, reason string, now int64) error {
+func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, cause error, now int64) error {
 	const identity = `id = ? and content_key = ? and location_generation = ? and exists (
 			select 1 from video_locations where id = ? and video_id = ? and version = ? and path = ?
 		)`
@@ -352,9 +356,10 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, reas
 		// プレビューのジョブを積み、そこで失敗してもエラーを返す。保存済みの結果を
 		// 失敗で上書きしないためである。欠けたプレビューのジョブは、次の手動の
 		// 取り込みで走査が積み直す（Scanner.ensurePendingJobs）。
-		if _, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, playable = 0, updated_at = ?
+		if _, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, probe_error_code = ?,
+			playable = 0, updated_at = ?
 			where probe_state = 'pending' and `+identity,
-			append([]any{reason, now}, identityArgs...)...); err != nil {
+			append([]any{cause.Error(), string(domain.ProbeErrorCodeOf(cause)), now}, identityArgs...)...); err != nil {
 			return fmt.Errorf("読み取りの終端失敗を記録できません (job=%d): %w", job.ID, err)
 		}
 	case domain.JobThumbnail:

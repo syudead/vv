@@ -523,35 +523,35 @@ const (
 // 定数名は前置きを持たないので、ここで reason の別名を与えて呼び出し側で
 // 取り違えないようにする。
 const (
-	reasonNameIsTag                = gen.NameIsTag
-	reasonNameIsSynonym            = gen.NameIsSynonym
-	reasonUsernameLength           = gen.UsernameLength
-	reasonPasswordLength           = gen.PasswordLength
-	reasonTagNameEmpty             = gen.TagNameEmpty
-	reasonTagNameControlCharacters = gen.TagNameControlCharacters
-	reasonTagNameTooLong           = gen.TagNameTooLong
-	reasonMergeSameTag             = gen.MergeSameTag
-	reasonSearchTooLong            = gen.SearchTooLong
-	reasonTooManyTagFilters        = gen.TooManyTagFilters
-	reasonTooManyVideos            = gen.TooManyVideos
-	reasonGuestFilterNotAllowed    = gen.GuestFilterNotAllowed
-	reasonInvalidCursor            = gen.InvalidCursor
-	reasonInvalidFolderPath        = gen.InvalidFolderPath
-	reasonRelativeDirectoryPath    = gen.RelativeDirectoryPath
-	reasonVideoNotFound            = gen.VideoNotFound
-	reasonFolderNotFound           = gen.FolderNotFound
-	reasonNotFolderGroup           = gen.NotFolderGroup
-	reasonNoScan                   = gen.NoScan
-	reasonDirectoryNotFound        = gen.DirectoryNotFound
-	reasonFileUnavailable          = gen.FileUnavailable
-	reasonMediaFoldersChanged      = gen.MediaFoldersChanged
-	reasonRootGroupNotTaggable     = gen.RootGroupNotTaggable
-	reasonFolderNotGroup           = gen.FolderNotGroup
-	reasonProbeInfoMissing         = gen.ProbeInfoMissing
-	reasonSeekPreviewGenerating    = gen.SeekPreviewGenerating
-	reasonTranscodeUnavailable     = gen.TranscodeUnavailable
-	reasonCrossOrigin              = gen.CrossOrigin
-	reasonOpenNotLocal             = gen.OpenNotLocal
+	reasonNameIsTag                = gen.ErrorReasonNameIsTag
+	reasonNameIsSynonym            = gen.ErrorReasonNameIsSynonym
+	reasonUsernameLength           = gen.ErrorReasonUsernameLength
+	reasonPasswordLength           = gen.ErrorReasonPasswordLength
+	reasonTagNameEmpty             = gen.ErrorReasonTagNameEmpty
+	reasonTagNameControlCharacters = gen.ErrorReasonTagNameControlCharacters
+	reasonTagNameTooLong           = gen.ErrorReasonTagNameTooLong
+	reasonMergeSameTag             = gen.ErrorReasonMergeSameTag
+	reasonSearchTooLong            = gen.ErrorReasonSearchTooLong
+	reasonTooManyTagFilters        = gen.ErrorReasonTooManyTagFilters
+	reasonTooManyVideos            = gen.ErrorReasonTooManyVideos
+	reasonGuestFilterNotAllowed    = gen.ErrorReasonGuestFilterNotAllowed
+	reasonInvalidCursor            = gen.ErrorReasonInvalidCursor
+	reasonInvalidFolderPath        = gen.ErrorReasonInvalidFolderPath
+	reasonRelativeDirectoryPath    = gen.ErrorReasonRelativeDirectoryPath
+	reasonVideoNotFound            = gen.ErrorReasonVideoNotFound
+	reasonFolderNotFound           = gen.ErrorReasonFolderNotFound
+	reasonNotFolderGroup           = gen.ErrorReasonNotFolderGroup
+	reasonNoScan                   = gen.ErrorReasonNoScan
+	reasonDirectoryNotFound        = gen.ErrorReasonDirectoryNotFound
+	reasonFileUnavailable          = gen.ErrorReasonFileUnavailable
+	reasonMediaFoldersChanged      = gen.ErrorReasonMediaFoldersChanged
+	reasonRootGroupNotTaggable     = gen.ErrorReasonRootGroupNotTaggable
+	reasonFolderNotGroup           = gen.ErrorReasonFolderNotGroup
+	reasonProbeInfoMissing         = gen.ErrorReasonProbeInfoMissing
+	reasonSeekPreviewGenerating    = gen.ErrorReasonSeekPreviewGenerating
+	reasonTranscodeUnavailable     = gen.ErrorReasonTranscodeUnavailable
+	reasonCrossOrigin              = gen.ErrorReasonCrossOrigin
+	reasonOpenNotLocal             = gen.ErrorReasonOpenNotLocal
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの
