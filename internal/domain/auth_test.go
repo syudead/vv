@@ -100,6 +100,20 @@ func TestValidateUsername(t *testing.T) {
 	}
 }
 
+// 長さだけの違反は ErrUsernameLength になり、空白・制御文字の違反はならない。
+func TestValidateUsernameLengthProblem(t *testing.T) {
+	for _, tooLong := range []string{"", strings.Repeat("a", MaxUsernameLength+1)} {
+		if err := ValidateUsername(tooLong); !errors.Is(err, ErrUsernameLength) {
+			t.Errorf("ValidateUsername(len %d) = %v, want ErrUsernameLength", len(tooLong), err)
+		}
+	}
+	for _, other := range []string{" bob", "bob ", "a\x00b", "\xff"} {
+		if err := ValidateUsername(other); errors.Is(err, ErrUsernameLength) {
+			t.Errorf("ValidateUsername(%q) = %v, want not ErrUsernameLength", other, err)
+		}
+	}
+}
+
 func TestValidatePassword(t *testing.T) {
 	for _, ok := range []string{"x", " spaced ", strings.Repeat("a", MaxPasswordBytes)} {
 		if err := ValidatePassword(ok); err != nil {

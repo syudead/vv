@@ -379,9 +379,20 @@ func TestAuthSetupRejectsInvalidValues(t *testing.T) {
 		body string
 		want wantError
 	}{
-		{credentialsBody(" padded", testPassword), wantError{
+		{credentialsBody("", testPassword), wantError{
 			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
 			reason: reasonUsernameLength, limit: domain.MaxUsernameLength,
+		}},
+		{credentialsBody(strings.Repeat("a", domain.MaxUsernameLength+1), testPassword), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+			reason: reasonUsernameLength, limit: domain.MaxUsernameLength,
+		}},
+		// 長さが適正な前後の空白・制御文字の違反には username_length を付けない。
+		{credentialsBody(" bob", testPassword), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+		}},
+		{credentialsBody("a\u0001b", testPassword), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
 		}},
 		{credentialsBody(testUsername, ""), wantError{
 			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,

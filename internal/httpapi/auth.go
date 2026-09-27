@@ -342,6 +342,10 @@ func (s *server) unauthenticated(w http.ResponseWriter) {
 }
 
 // SetupAccount は初回設定である（contracts/auth-api.md §2）。
+// invalidUsernameMessage はユーザー名の規則を外れたときの英語の説明である。
+var invalidUsernameMessage = "Usernames must be 1 to " + strconv.Itoa(domain.MaxUsernameLength) +
+	" characters, with no control characters or leading or trailing spaces."
+
 func (s *server) SetupAccount(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
 		s.internalError(w, "Cannot run the initial setup.", errors.New("authentication is not configured"))
@@ -357,10 +361,13 @@ func (s *server) SetupAccount(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, domain.ErrAccountAlreadyConfigured):
 		s.writeError(w, http.StatusConflict, gen.ErrorCodeAccountAlreadyConfigured, "The account is already set up.")
 		return
+	case errors.Is(err, domain.ErrUsernameLength):
+		s.invalidRequestLimit(w, reasonUsernameLength, domain.MaxUsernameLength, invalidUsernameMessage)
+		return
 	case errors.Is(err, domain.ErrInvalidUsername):
-		s.invalidRequestLimit(w, reasonUsernameLength, domain.MaxUsernameLength,
-			"Usernames must be 1 to "+strconv.Itoa(domain.MaxUsernameLength)+
-				" characters, with no control characters or leading or trailing spaces.")
+		// 長さ以外（制御文字・前後の空白）の違反には対応する reason が無いので、
+		// username_length を付けない（contracts/error-api.md §1）。
+		s.invalidRequest(w, invalidUsernameMessage)
 		return
 	case errors.Is(err, domain.ErrInvalidPassword):
 		s.invalidRequestLimit(w, reasonPasswordLength, domain.MaxPasswordBytes,

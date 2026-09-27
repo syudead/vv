@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -22,6 +23,11 @@ var (
 	ErrLoginThrottled = errors.New("too many login attempts")
 	// ErrInvalidUsername はユーザー名が ValidateUsername の規則を外れることを表す。
 	ErrInvalidUsername = errors.New("invalid username")
+	// ErrUsernameLength は ErrInvalidUsername のうち、長さ（1〜MaxUsernameLength
+	// 文字）だけを外れたことを表す。errors.Is(err, ErrInvalidUsername) も真になる。
+	// 空白・制御文字の違反と区別して、API が username_length を長さの違反にだけ
+	// 付けられるようにする（specs/023-english-i18n/contracts/error-api.md §1）。
+	ErrUsernameLength = fmt.Errorf("%w: must be 1 to %d characters", ErrInvalidUsername, MaxUsernameLength)
 	// ErrInvalidPassword はパスワードが ValidatePassword の規則を外れることを表す。
 	ErrInvalidPassword = errors.New("invalid password")
 	// ErrGuestQueryNotAllowed は、ゲストが所有者のデータに依る一覧の条件を
@@ -53,13 +59,14 @@ type Account struct {
 
 // ValidateUsername はユーザー名が規則を満たすかを確かめる。1〜128 文字で、
 // 制御文字を含まず、先頭と末尾に空白を置かない。正規化や大文字小文字の畳み込みは
-// しないので、規則を満たす値はそのまま保存する。外れたら ErrInvalidUsername を返す。
+// しないので、規則を満たす値はそのまま保存する。外れたら ErrInvalidUsername を返し、
+// 長さだけの違反ではそれを包む ErrUsernameLength を返す。
 func ValidateUsername(username string) error {
-	if username == "" || !utf8.ValidString(username) {
+	if !utf8.ValidString(username) {
 		return ErrInvalidUsername
 	}
-	if utf8.RuneCountInString(username) > MaxUsernameLength {
-		return ErrInvalidUsername
+	if username == "" || utf8.RuneCountInString(username) > MaxUsernameLength {
+		return ErrUsernameLength
 	}
 	if strings.IndexFunc(username, unicode.IsControl) >= 0 {
 		return ErrInvalidUsername
