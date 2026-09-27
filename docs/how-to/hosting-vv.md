@@ -54,10 +54,10 @@ docker compose pull
 docker compose up -d
 ```
 
-Playback positions, tags and the account live in the data folder, so they
-survive the update. Migrations run when the new version starts. To stay on a
-version or go back to one, replace `latest` in `image:` with its `sha-` tag; a
-database already migrated by a newer version may not open with an older one,
+The data folder survives a container update. Migrations run when the new version
+starts. To stay on a version or go back to one, replace `latest` in `image:`
+with its `sha-` tag. A database already migrated by a newer version may not
+open with an older one,
 so back up before updating.
 
 ## Back up and restore
@@ -66,8 +66,9 @@ Stop the container so that the SQLite database is not written during the copy,
 copy the data folder (for example with the NAS's file manager or backup tool),
 and start the container again.
 
-Thumbnails and the index can be rebuilt by scanning again; the account,
-playback positions and tags cannot
-([Data and recovery](running-vv.md#data-and-recovery)). To restore, stop the
-container, replace the contents of the data folder with the copy, and start it
-again.
+The data folder includes settings and user data that a scan cannot recover;
+[Data and recovery](running-vv.md#data-and-recovery) explains the distinction.
+To restore, stop the container, replace the contents of the data folder with
+the copy, and start it again. If the data folder was lost without a backup,
+finish the new account setup and register the media folders again before
+starting a scan.

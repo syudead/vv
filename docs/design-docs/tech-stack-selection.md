@@ -1,11 +1,11 @@
 # 技術選定: MDM（Media Data Management）
 
-- ステータス: 採用（第2版 / バックエンドを Go に変更）
+- ステータス: 現行の技術選定。第1版からの変更は「6. 決定の変更履歴」に記録
 - スコープ: 動画ファイルを管理し、ブラウザで再生できるシステムの技術選定
 
 ## 1. 選定の前提
 
-本ドキュメントは以下の前提で技術を選定した。現行の機能とデータの境界は
+以下は現在の選定理由である。現行の機能とデータの境界は
 [`ARCHITECTURE.md`](../../ARCHITECTURE.md) に記す。
 
 | 項目 | 決定 |
@@ -35,13 +35,13 @@
 
 | レイヤ | 採用 | 主な理由 |
 | --- | --- | --- |
-| バックエンド言語 | Go（現行安定版、1.26 系以降を想定） | 単一バイナリで配布でき、常駐プロセスと子プロセス管理が標準ライブラリで完結する。NAS 上でのメモリ使用量も小さい |
+| バックエンド言語 | Go（使用版は `go.mod`） | 単一バイナリで配布でき、常駐プロセスと子プロセス管理が標準ライブラリで完結する。NAS 上でのメモリ使用量も小さい |
 | HTTP サーバー | 標準ライブラリ `net/http`（Go 1.22 以降の `ServeMux`） | メソッド付きルーティングとパスワイルドカードが標準で使える。`http.ServeContent` が Range 配信を正しく実装済み |
 | 動画配信 | 対応形式は `http.ServeContent`、非対応形式はリクエスト単位の fragmented MP4 ライブ変換 | 元ファイルの Range 配信を標準実装に任せ、変換結果は保存しない（[ライブ変換のシーク](live-transcode-seek.md)） |
 | フロント | React + Vite + React Router + Tailwind CSS | 静的ビルドを Go バイナリに `embed` して配る SPA。画面遷移は React Router で管理する |
 | API 契約 | OpenAPI 3.1 を真実とし、Go は `oapi-codegen`、TS は `openapi-typescript` で生成 | 2言語構成で唯一増えるコスト（型のずれ）を機械的に防ぐ |
 | DB | SQLite（`modernc.org/sqlite`、CGO 不要、WAL モード） | 静的バイナリのままクロスコンパイルでき、alpine ベースの小さいイメージに載る |
-| クエリ | `database/sql` で SQL を手書き | SQL を一次資料として保てる。選定時は `sqlc` での生成も想定したが、SQLite 対応の成熟度と、FTS5 の生 SQL を書く必要から採用していない |
+| クエリ | `database/sql` で SQL を手書き | FTS5 を含む SQL を一次資料として保てる |
 | マイグレーション | `goose`（`embed.FS` にマイグレーションを同梱） | 外部ツールのインストール不要でバイナリ単体で適用できる |
 | 全文検索 | SQLite FTS5（`tokenize='trigram'`） | 日本語をトークナイザ追加なしで部分一致検索できる。外部検索エンジン不要 |
 | メディア解析 | `ffprobe` / `ffmpeg` を `os/exec` で実行（`context` でタイムアウト） | ラッパーを挟まず引数と失敗理由が明示的になる。プロセス停止の制御も標準機能で足りる |
@@ -52,20 +52,12 @@
 | lint | `golangci-lint`（`depguard` で層をまたぐ import を禁止） | 依存方向の制約を CI で機械的に落とせる |
 | 配布 | Docker（multi-stage、alpine + ffmpeg）+ Compose | CGO 不要なので alpine でそのまま動き、イメージが小さい |
 
-### 3.1 境界とデータ
-
 依存方向とパッケージの責務は [ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction) に記す。
 SQLite には再構築できる索引と利用者データが共存するため、復旧時の区別は
 [同文書のデータ分類](../../ARCHITECTURE.md#rebuildable-and-user-data) を正本とする。
 ファイルの移動・改名後も同じ動画として扱う content key は、先頭と末尾の各 1 MiB
 とファイルサイズから作る。ファイル全体を読まずに識別でき、標準ライブラリの
 SHA-256 だけで実装できるためである。
-
-### 3.2 配信
-
-対応形式の元ファイルは `http.ServeContent` に渡し、Range の解釈を標準実装に任せる。
-非対応形式はリクエスト中に fragmented MP4 へ変換する。シーク時の方式は
-[ライブ変換のシークと解析情報の再利用](live-transcode-seek.md) に記す。
 
 ## 4. 採用しなかった選択肢
 
@@ -74,9 +66,10 @@ SHA-256 だけで実装できるためである。
 | TypeScript / Node.js バックエンド | 第1版では言語統一のため採用していたが撤回（「6. 決定の変更履歴」）。Range 配信とプロセス管理を自前で書く必要があり、ネイティブ依存（`better-sqlite3`）の再ビルド運用も抱える |
 | Python + FastAPI | ライブラリは豊富だが、配布が重く、常駐ワーカーと依存管理の運用コストがセルフホスト用途に合わない |
 | Echo / Gin / Fiber | 標準 `ServeMux` で足りる規模であり、ルーティングのために依存を増やす理由がない。Fiber は `net/http` 互換でないため `ServeContent` の利点も失う |
-| GORM / ent | スキーマが小さく、FTS5 の生 SQL を書く必要がある。ORM の抽象より手書きの SQL のほうが読める |
-| `mattn/go-sqlite3` | 成熟しているが CGO が必要で、クロスコンパイルと alpine ビルドが面倒になる。FTS5 にもビルドタグが必要。`modernc.org/sqlite` で FTS5 が使えない場合の代替として残す |
-| PostgreSQL | 単一ユーザーには過剰。別コンテナとバックアップ運用が増える。マルチユーザー化時に再検討する |
+| GORM / ent | FTS5 を含む SQL を一次資料として保てるため、ORM の抽象より手書きの SQL を選んだ |
+| `sqlc` | 選定時は生成も考えたが、FTS5 を含む SQL をそのまま管理する方針で採用しなかった |
+| `mattn/go-sqlite3` | CGO が必要で、クロスコンパイルと alpine ビルドの運用が増える |
+| PostgreSQL | 単一アカウントの運用に別コンテナと別のバックアップ手順を増やしたくない |
 | Meilisearch / Elasticsearch | 検索品質は上だが常駐プロセスが増える。FTS5 trigram で数万件なら実用的 |
 | SvelteKit | 軽量で有力。React を選んだのはエコシステムと将来の人手確保の観点のみで、技術的な優劣ではない |
 | 起動時の HLS 一括トランスコード | ストレージと CPU を大量に消費するため採用せず、リクエスト単位のライブ変換を使う |
@@ -96,23 +89,18 @@ SHA-256 だけで実装できるためである。
   「3文字以上は `MATCH`、1〜2文字は照合用の鍵 `search_key` への `instr`」の2経路にする
   （振り分けは `internal/store/search.go` の `termUsesMatch`、検証は
   `internal/store/fts_test.go`）。
-- **非対応コーデックの混入。** 取り込み時の `ffprobe` で直接再生の可否を判定し、
-  直接再生できない動画はリクエスト中に fragmented MP4 へ変換する。
-  シーク時の開始位置と変換方式は [ライブ変換のシーク](live-transcode-seek.md) に記す。
 - **ファイル名の Unicode 正規化。** 実在パスはファイルシステムが返した綴りを保持する。
   表示名と検索用文字列だけをNFCへ正規化する（`golang.org/x/text/unicode/norm`）。
   実在パスの正規化は、Linux等で別の存在しないentryを指し得るため行わない。
 - **大量スキャン時の I/O 飽和。** 解析・サムネイル・プレビューは段階ごとのワーカーが
   それぞれ1件ずつ処理する（段階内の並列度は1）。進捗は `jobs` テーブルから数え、
   `/api/events` で UI へ送る。
-- **バックアップ。** スキャンで戻せない利用者データが SQLite にある。
-  対象と復旧時の注意点は [運用手順](../how-to/running-vv.md#data-and-recovery) にまとめる。
 
 ## 6. 決定の変更履歴
 
 - **第2版: バックエンドを TypeScript/Node（Hono）から Go へ変更。**
   第1版ではフロントとの言語統一を優先して Node を採用したが、方針として Go を
-  採用する。技術的な利点は、単一バイナリでの配布、`http.ServeContent` による
+  採用した。技術的な利点は、単一バイナリでの配布、`http.ServeContent` による
   Range 配信の標準実装、`os/exec` と `context` による ffmpeg プロセス管理、
   CGO 不要な SQLite ドライバによる小さなコンテナイメージ。
   代償は2言語構成になることで、これは OpenAPI からのコード生成で緩和する

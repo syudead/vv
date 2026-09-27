@@ -22,7 +22,8 @@ services:
     volumes:
       # 設定画面で選べるコンテナ内の候補。ホスト側は差し替えられる。
       - "${MDM_MEDIA_HOST_DIR:-./media}:/media:ro"
-      # データベースは名前付きボリュームに置く。消しても次の起動で作り直される。
+      # データベースは名前付きボリュームに置く。ボリュームを削除すると利用者データも失う。
+      # 復旧手順: docs/how-to/running-vv.md の「Data and recovery」。
       - "data:/data"
     # 猶予 10 秒の停止処理が終わるまで待つ。
     stop_grace_period: 15s

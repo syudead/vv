@@ -112,13 +112,21 @@ The Docker setup stores application data in the `vv_data` volume. The SQLite
 database is `MDM_DATA_DIR/mdm.db`; generated thumbnails live below
 `MDM_DATA_DIR/thumbnails/`.
 
-Most stored data is a rebuildable index and can be recreated by scanning the
-media folders again. The database also contains user data that a scan cannot
-restore, including playback positions, tags, public video settings, the account
-and folder grouping exceptions. The authoritative table-by-table distinction is
-in [Rebuildable and user data](../../ARCHITECTURE.md#rebuildable-and-user-data).
-Removing the `vv_data` volume deletes both kinds of data, so back up the volume
-before resetting the application.
+The database contains user and configuration data that scanning cannot restore.
+The [data classification](../../ARCHITECTURE.md#rebuildable-and-user-data)
+names every table and separates this data from the rebuildable index.
+
+Back up the **whole** `vv_data` volume, including `mdm.db`, before resetting or
+updating vv. Stop the container with `task down`, copy the volume with your
+Docker volume backup tool, then restart with `task up`. Do not copy the database
+files while vv is running: SQLite uses WAL mode, so a filesystem copy taken
+during writes may be inconsistent. `task down` does not delete the volume;
+`docker compose down -v` does.
+
+To restore, stop vv, restore the saved volume, and start vv again. If the
+database is lost without a backup, set up a new account, register the media
+folders again in Settings, then start a scan to rebuild the index. Scanning
+cannot recover the user and configuration data in the linked classification.
 
 ## Network exposure
 
