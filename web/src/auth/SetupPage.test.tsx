@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -22,7 +22,7 @@ function fields() {
     username: screen.getByLabelText("ユーザー名") as HTMLInputElement,
     password: screen.getByLabelText("パスワード") as HTMLInputElement,
     confirm: screen.getByLabelText("パスワード（確認）") as HTMLInputElement,
-    submit: screen.getByRole("button", { name: "設定してはじめる" }) as HTMLButtonElement,
+    submit: screen.getByRole("button", { name: /^設定/ }) as HTMLButtonElement,
   };
 }
 
@@ -53,9 +53,8 @@ describe("SetupPage", () => {
     render(<SetupPage />);
     const { username, password, confirm } = fields();
 
-    expect(
-      screen.getByRole("heading", { level: 1, name: "アカウントを作成" }),
-    ).toBeDefined();
+    expect(screen.getByRole("heading", { level: 1, name: "初回設定" })).toBeDefined();
+    expect(screen.getByRole("img", { name: "VVMDM" })).toBeDefined();
     expect(document.activeElement).toBe(username);
     expect([username.name, username.autocomplete]).toEqual(["username", "username"]);
     expect([password.name, password.autocomplete, password.type]).toEqual([
@@ -70,6 +69,10 @@ describe("SetupPage", () => {
     ]);
     expect(screen.getByText(/この接続は暗号化されていません/)).toBeDefined();
     expect(username.getAttribute("aria-describedby")).toBe("connection-warning");
+    const warning = screen.getByText(/この接続は暗号化されていません/);
+    expect(
+      warning.compareDocumentPosition(username) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("確認用のパスワードが一致しなければ送らず、確認の欄だけを空にしてそこへ移る", async () => {
@@ -87,6 +90,9 @@ describe("SetupPage", () => {
     expect(document.activeElement).toBe(confirm);
     expect(confirm.getAttribute("aria-invalid")).toBe("true");
     expect(confirm.getAttribute("aria-describedby")).toBe("credential-failure");
+    expect(confirm.parentElement?.querySelector('[role="alert"]')?.textContent).toBe(
+      "確認用のパスワードが一致しません",
+    );
     expect(password.getAttribute("aria-invalid")).toBeNull();
   });
 
@@ -153,6 +159,19 @@ describe("SetupPage", () => {
       username: "owner",
       password: "secret",
     });
+  });
+
+  it("送信中は進行中の文言を示して主操作を止める", async () => {
+    let finish: (response: Response) => void = () => undefined;
+    fetchMock.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    render(<SetupPage />);
+    await fill("owner", "secret", "secret");
+
+    expect(fields().submit.disabled).toBe(true);
+    expect(fields().submit.textContent).toContain("設定中…");
+    expect(fields().submit.getAttribute("aria-busy")).toBe("true");
+
+    await act(async () => finish(json({ redirectTo: "/" })));
   });
 
   it("409 では設定済みの旨とログインへの入口を出し、入力を空にして主操作を止める", async () => {

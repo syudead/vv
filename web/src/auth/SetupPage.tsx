@@ -6,7 +6,6 @@ import { RequestFailed } from "../api/client";
 import Button from "../ui/Button";
 import {
   connectionWarningId,
-  ConnectionWarning,
   CredentialField,
   CredentialScreen,
   describedBy,
@@ -140,8 +139,8 @@ export default function SetupPage() {
 
   return (
     <CredentialScreen
-      title="アカウントを作成"
-      description="このサーバーを使うアカウントを1つ作ります。あとから変えるにはサーバーのコマンドを使います"
+      title="初回設定"
+      description="このサーバーの所有者アカウントを作成します"
       onSubmit={() => void submit()}
     >
       <div className="flex flex-col gap-4">
@@ -151,6 +150,7 @@ export default function SetupPage() {
           value={username}
           onChange={(event) => setUsername(event.target.value)}
           {...fieldProps("username")}
+          error={invalidField === "username" ? failure : null}
           aria-describedby={describedBy(
             invalidField === "username" && FAILURE_ID,
             warning,
@@ -166,6 +166,7 @@ export default function SetupPage() {
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           {...fieldProps("password")}
+          error={invalidField === "password" ? failure : null}
         />
         <CredentialField
           ref={refs.confirm}
@@ -177,15 +178,17 @@ export default function SetupPage() {
           value={confirm}
           onChange={(event) => setConfirm(event.target.value)}
           {...fieldProps("confirm")}
+          error={invalidField === "confirm" ? failure : null}
         />
       </div>
-      <FailureLine message={failure} />
+      {invalidField === null && <FailureLine message={failure} />}
       <Button
         type="submit"
         variant="primary"
         size="lg"
         className="w-full"
         disabled={submitting || configured}
+        aria-busy={submitting}
         aria-describedby={warning}
       >
         {submitting && (
@@ -194,9 +197,8 @@ export default function SetupPage() {
             aria-hidden="true"
           />
         )}
-        設定してはじめる
+        {submitting ? "設定中…" : "設定してはじめる"}
       </Button>
-      <ConnectionWarning />
       {configured && (
         // SPA の遷移にしない。ゲートが setupRequired を覚えたままなので、
         // ページごと読み直して状態を確かめ直させる（ui-design.md「Setup behaviour」）。
