@@ -42,9 +42,10 @@ func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, video
 
 // jobStateColumns は仕事の種類ごとに、その結果を持つ動画の列である。
 var jobStateColumns = map[domain.JobKind]string{
-	domain.JobProbe:     "probe_state",
-	domain.JobThumbnail: "thumbnail_state",
-	domain.JobPreview:   "preview_state",
+	domain.JobProbe:         "probe_state",
+	domain.JobThumbnail:     "thumbnail_state",
+	domain.JobSeekThumbnail: "seek_thumbnail_state",
+	domain.JobPreview:       "preview_state",
 }
 
 // EnsureJob は、状態が pending の動画に欠けている仕事を積み直す。走査が
@@ -212,6 +213,14 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 		cond += ` and exists (select 1 from videos v where v.id = ` + alias + `.video_id and v.probe_state <> '` +
 			string(domain.ProbeStatePending) + `')`
 	}
+	if c.NoClaimableThumbnail {
+		// 取り出せる thumbnail の仕事は Processing が数える範囲と同じで、解析待ちで
+		// 今は取り出せないものも含める。
+		cond += ` and not exists (select 1 from jobs t where t.kind = '` + string(domain.JobThumbnail) +
+			`' and t.state in ('queued', 'running') and exists (
+				select 1 from video_locations tl where tl.video_id = t.video_id and ` +
+			registeredLocationCondition("tl") + `))`
+	}
 	return cond
 }
 
@@ -350,10 +359,18 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, reas
 		}
 	case domain.JobThumbnail:
 		// 代表サムネイルの後でシーク用プレビューだけが失敗した動画は done のまま残す。
+		// seek_thumbnail_state はシーク用の仕事が自分で記録するので、ここでは変えない。
 		if _, err := tx.ExecContext(ctx, `update videos set thumbnail_state = 'failed', updated_at = ?
 			where thumbnail_state <> 'done' and `+identity,
 			append([]any{now}, identityArgs...)...); err != nil {
 			return fmt.Errorf("サムネイルの終端失敗を記録できません (job=%d): %w", job.ID, err)
+		}
+	case domain.JobSeekThumbnail:
+		// seek_thumbnail_state だけを failed にする。代表サムネイルは別の仕事の結果である。
+		if _, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'failed', updated_at = ?
+			where seek_thumbnail_state <> 'done' and `+identity,
+			append([]any{now}, identityArgs...)...); err != nil {
+			return fmt.Errorf("シーク用サムネイルの終端失敗を記録できません (job=%d): %w", job.ID, err)
 		}
 	case domain.JobPreview:
 		res, err := tx.ExecContext(ctx, `update videos set preview_state = 'failed', updated_at = ?
@@ -457,6 +474,8 @@ func (s *IngestStore) Processing(ctx context.Context) (domain.Processing, error)
 			out.Probe = count
 		case domain.JobThumbnail:
 			out.Thumbnail = count
+		case domain.JobSeekThumbnail:
+			out.SeekThumbnail = count
 		case domain.JobPreview:
 			out.Preview = count
 		}
