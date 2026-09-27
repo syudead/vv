@@ -2,6 +2,7 @@ import { Search, X } from "lucide-react";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import { MAX_QUERY_LENGTH } from "../api/client";
+import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { type HistoryMode, normalizeQuery, SearchSession } from "./listCriteria";
 import SearchSyntaxHelp from "./SearchSyntaxHelp";
@@ -21,8 +22,8 @@ export interface SearchBoxProps {
   /** 入力欄を外から指す。 */
   inputRef?: RefObject<HTMLInputElement | null>;
   /** 読み上げ名。 */
-  label?: string;
-  placeholder?: string;
+  label?: UiText;
+  placeholder?: UiText;
   className?: string;
 }
 
@@ -80,8 +81,8 @@ export default function SearchBox({
   query,
   onCommit,
   inputRef,
-  label = "動画を検索",
-  placeholder = "検索",
+  label = t.list.search.label,
+  placeholder = t.list.search.placeholder,
   className,
 }: SearchBoxProps) {
   const [input, setInputState] = useState(query);
@@ -193,7 +194,7 @@ export default function SearchBox({
             // 確定して履歴を1つ増やし、続くクリアがもう1つ増やしてしまう。
             onMouseDown={(event) => event.preventDefault()}
             onClick={clear}
-            aria-label="検索語をクリア"
+            aria-label={t.list.search.clear}
             className="flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
           >
             <X className="size-4" />

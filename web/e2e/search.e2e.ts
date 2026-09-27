@@ -81,8 +81,17 @@ async function loadEverything(page: Page, total: number) {
     .toBe(total);
 }
 
+/** resultCount はライブラリの件数の表示（「1 item」「70 items」）である。項目（カード）の数を数える。 */
+function resultCount(total: number): string {
+  return `${total.toLocaleString("en-US")} ${total === 1 ? "item" : "items"}`;
+}
+
+/**
+ * summary は一覧の上の件数の行である。取り込みの進捗表示も role=status の読み上げを
+ * 持つので、件数の段落（p）に絞る。
+ */
 function summary(page: Page) {
-  return page.getByRole("status").first();
+  return page.locator("p[role='status']");
 }
 
 /** listed は一覧の要求のうち、並び順が sort の応答を待つ。 */
@@ -95,9 +104,9 @@ function listed(page: Page, sort: string) {
 
 async function chooseSort(page: Page, current: string, next: string, sort: string) {
   const response = listed(page, sort);
-  await page.getByRole("button", { name: `並び順: ${current}` }).click();
+  await page.getByRole("button", { name: `Sort by: ${current}` }).click();
   await page.getByRole("menuitemradio", { name: next, exact: true }).click();
-  await expect(page.getByRole("button", { name: `並び順: ${next}` })).toBeVisible();
+  await expect(page.getByRole("button", { name: `Sort by: ${next}` })).toBeVisible();
   await response;
 }
 
@@ -173,7 +182,7 @@ test.describe.serial("library search", () => {
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
-    await expect(summary(page)).toHaveText(`${expectedVideos.toLocaleString("ja-JP")}件`);
+    await expect(summary(page)).toHaveText(resultCount(expectedVideos));
 
     const requests: URL[] = [];
     page.on("request", (candidate) => {
@@ -181,13 +190,11 @@ test.describe.serial("library search", () => {
       if (url.pathname === "/api/library") requests.push(url);
     });
 
-    await page.getByRole("button", { name: "絞り込み" }).click();
-    await page.locator("label", { hasText: "未視聴" }).click();
+    await page.getByRole("button", { name: "Filter", exact: true }).click();
+    await page.locator("label", { hasText: "Unwatched" }).click();
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\?watch=unwatched&sort=addedDesc$/);
-    await expect(summary(page)).toHaveText(
-      `${unwatched.total.toLocaleString("ja-JP")}件`,
-    );
+    await expect(summary(page)).toHaveText(resultCount(unwatched.total));
     await page.waitForLoadState("networkidle");
 
     // 選んだ瞬間には 1 ページ目だけを読む。
@@ -201,9 +208,7 @@ test.describe.serial("library search", () => {
     expect(new Set(await cardIds(page))).toEqual(
       new Set(unwatched.items.map((item) => item.id)),
     );
-    await expect(summary(page)).toHaveText(
-      `${unwatched.total.toLocaleString("ja-JP")}件`,
-    );
+    await expect(summary(page)).toHaveText(resultCount(unwatched.total));
   });
 
   test("12: 条件を載せた URL は別のタブでも同じ一覧を出し、戻る/進むで前の条件に戻る", async ({
@@ -223,13 +228,11 @@ test.describe.serial("library search", () => {
     await expect
       .poll(() => cardTitles(page))
       .toEqual(expected.items.map((item) => item.title));
-    await expect(summary(page)).toHaveText("3件");
-    await expect(page.getByRole("searchbox", { name: "動画を検索" })).toHaveValue(
+    await expect(summary(page)).toHaveText("3 items");
+    await expect(page.getByRole("searchbox", { name: "Search videos" })).toHaveValue(
       "旅行 OR 奈良",
     );
-    await expect(
-      page.getByRole("button", { name: "絞り込み（2 件適用中）" }),
-    ).toBeVisible();
+    await expect(page.getByRole("button", { name: "Filter (2 applied)" })).toBeVisible();
 
     const other = await context.newPage();
     await other.setViewportSize({ width: 1280, height: 800 });
@@ -237,11 +240,13 @@ test.describe.serial("library search", () => {
     await expect
       .poll(() => cardTitles(other))
       .toEqual(expected.items.map((item) => item.title));
-    await expect(summary(other)).toHaveText("3件");
+    await expect(summary(other)).toHaveText("3 items");
     await other.close();
 
     // 並べ替えを変えると履歴が 1 つ増え、戻ると前の並びに戻る。
-    await page.getByRole("button", { name: "降順（長い順）。押すと昇順" }).click();
+    await page
+      .getByRole("button", { name: "Descending (longest first). Press for ascending" })
+      .click();
     await expect(page).toHaveURL(/sort=durationAsc/);
     await expect
       .poll(() => cardTitles(page))
@@ -256,7 +261,7 @@ test.describe.serial("library search", () => {
 
     // 検索語の入力は一続きで 1 つだけ増える。
     await page.goto("/?sort=titleAsc");
-    const box = page.getByRole("searchbox", { name: "動画を検索" });
+    const box = page.getByRole("searchbox", { name: "Search videos" });
     await box.click();
     await box.pressSequentially("話", { delay: 50 });
     await expect(page).toHaveURL(/\?q=%E8%A9%B1&sort=titleAsc$/);
@@ -275,17 +280,17 @@ test.describe.serial("library search", () => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/?q=${encodeURIComponent("旅行 OR 奈良")}&sort=addedDesc`);
-    await expect(summary(page)).toHaveText("3件");
+    await expect(summary(page)).toHaveText("3 items");
 
     const kinds: [string, string, string][] = [
-      ["追加日", "addedDesc", "addedAsc"],
-      ["更新日時", "modifiedDesc", "modifiedAsc"],
-      ["題名", "titleAsc", "titleDesc"],
-      ["長さ", "durationDesc", "durationAsc"],
-      ["ファイルサイズ", "sizeDesc", "sizeAsc"],
-      ["最近再生した順", "playedDesc", "playedAsc"],
+      ["Date added", "addedDesc", "addedAsc"],
+      ["Date modified", "modifiedDesc", "modifiedAsc"],
+      ["Title", "titleAsc", "titleDesc"],
+      ["Length", "durationDesc", "durationAsc"],
+      ["File size", "sizeDesc", "sizeAsc"],
+      ["Recently played", "playedDesc", "playedAsc"],
     ];
-    let current = "追加日";
+    let current = "Date added";
     for (const [kind, initial, reversed] of kinds) {
       if (kind !== current) await chooseSort(page, current, kind, initial);
       current = kind;
@@ -294,21 +299,23 @@ test.describe.serial("library search", () => {
       const before = await cardTitles(page);
       const response = listed(page, reversed);
       await page
-        .getByRole("button", { name: /^(昇順|降順)(（.+）)?。押すと(昇順|降順)$/ })
+        .getByRole("button", {
+          name: /^(Ascending|Descending)( \(.+\))?\. Press for (ascending|descending)$/,
+        })
         .click();
       await response;
       await expect(page).toHaveURL(new RegExp(`sort=${reversed}$`));
       await expect.poll(() => cardTitles(page)).toEqual([...before].reverse());
     }
     // 更新日時の新しい順は、ファイルの変更日時の新しい順である。
-    await chooseSort(page, current, "更新日時", "modifiedDesc");
+    await chooseSort(page, current, "Date modified", "modifiedDesc");
     await expect
       .poll(() => cardTitles(page))
       .toEqual(["2024 奈良", "京都旅行 2023", "京都旅行 2024"]);
 
-    await chooseSort(page, "更新日時", "ランダム", "random");
+    await chooseSort(page, "Date modified", "Random", "random");
     await expect(page).toHaveURL(/sort=random&seed=\d+$/);
-    await expect(page.getByRole("button", { name: "並べ直す" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Shuffle" })).toBeVisible();
 
     await page.goto(`/?q=${encodeURIComponent("話")}&sort=titleAsc`);
     await expect.poll(() => cardTitles(page)).toEqual(["2話", "10話"]);
@@ -372,7 +379,7 @@ test.describe.serial("library search", () => {
     expect(await cardIds(page)).toEqual(order.slice(0, 60));
 
     await page.evaluate(() => window.scrollTo(0, 0));
-    await page.getByRole("button", { name: "並べ直す" }).click();
+    await page.getByRole("button", { name: "Shuffle" }).click();
     await expect(page).not.toHaveURL(url);
     await expect(page).toHaveURL(/\?sort=random&seed=\d+$/);
     await expect
@@ -386,16 +393,16 @@ test.describe.serial("library search", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/?q=zzz-no-such-video&watch=unwatched&playable=1&sort=titleDesc");
     await expect(
-      page.getByRole("heading", { name: "条件に一致する動画はありません" }),
+      page.getByRole("heading", { name: "No videos match these conditions" }),
     ).toBeVisible();
     await expect(page.getByRole("list", { name: "効いている条件" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "条件を解除" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Clear filters" })).toHaveCount(0);
     await expect(page).toHaveURL(
       /\?q=zzz-no-such-video&watch=unwatched&playable=1&sort=titleDesc$/,
     );
-    const box = page.getByRole("searchbox", { name: "動画を検索" });
+    const box = page.getByRole("searchbox", { name: "Search videos" });
     await expect(box).toHaveValue("zzz-no-such-video");
-    await expect(page.getByRole("button", { name: "並び順: 題名" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Sort by: Title" })).toBeVisible();
   });
 
   test("16: 検索の書き方を開くと 4 つの書き方が出て、閉じても検索語が残る", async ({
@@ -403,25 +410,25 @@ test.describe.serial("library search", () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/?q=${encodeURIComponent("京都")}&sort=addedDesc`);
-    const box = page.getByRole("searchbox", { name: "動画を検索" });
+    const box = page.getByRole("searchbox", { name: "Search videos" });
     await expect(box).toHaveValue("京都");
     const url = page.url();
 
-    const help = page.getByRole("button", { name: "検索の書き方" });
+    const help = page.getByRole("button", { name: "How to search" });
     await help.click();
-    const dialog = page.getByRole("dialog", { name: "検索の書き方" });
-    await expect(dialog.getByRole("heading", { name: "検索の書き方" })).toBeVisible();
+    const dialog = page.getByRole("dialog", { name: "How to search" });
+    await expect(dialog.getByRole("heading", { name: "How to search" })).toBeVisible();
     await expect(dialog.getByRole("term")).toHaveText([
-      "京都 2024",
-      '"京都旅行 2024"',
-      "京都 -2023",
-      /京都 OR 奈良\s*京都 \| 奈良/,
+      "kyoto 2024",
+      '"kyoto trip 2024"',
+      "kyoto -2023",
+      /kyoto OR nara\s*kyoto \| nara/,
     ]);
     await expect(dialog.getByRole("definition")).toHaveCount(4);
     await expect(help).toBeFocused();
 
     // 例を押しても検索欄には入らない。
-    await dialog.getByText("京都 -2023").click();
+    await dialog.getByText("kyoto -2023").click();
     await expect(box).toHaveValue("京都");
 
     await page.keyboard.press("Escape");
@@ -447,24 +454,26 @@ test.describe.serial("library search", () => {
 
     const focused = () => page.locator(":focus");
     await page.keyboard.press("/");
-    await expect(page.getByRole("searchbox", { name: "動画を検索" })).toBeFocused();
+    await expect(page.getByRole("searchbox", { name: "Search videos" })).toBeFocused();
 
     await page.keyboard.press("Tab");
-    const help = page.getByRole("button", { name: "検索の書き方" });
+    const help = page.getByRole("button", { name: "How to search" });
     await expect(help).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(
-      page.getByRole("dialog", { name: "検索の書き方" }).getByRole("term"),
+      page.getByRole("dialog", { name: "How to search" }).getByRole("term"),
     ).toHaveCount(4);
     await expect(help).toBeFocused();
 
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("button", { name: "絞り込み" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Filter", exact: true })).toBeFocused();
     await expect(page.getByRole("dialog")).toBeHidden();
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("button", { name: "並び順: 題名" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Sort by: Title" })).toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("button", { name: "昇順。押すと降順" })).toBeFocused();
+    await expect(
+      page.getByRole("button", { name: "Ascending. Press for descending" }),
+    ).toBeFocused();
 
     // 残りのツールバーの操作を越えて、最初の結果のカードへ着く。
     const first = page.locator("[data-video-id]").first();
@@ -560,7 +569,7 @@ test.describe.serial("library search", () => {
       );
       await shoot(`no-match-${String(width)}`);
       await page.goto(`/?q=${encodeURIComponent("京都")}&sort=addedDesc`);
-      await page.getByRole("button", { name: "検索の書き方" }).click();
+      await page.getByRole("button", { name: "How to search" }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
       await shoot(`help-${String(width)}`);
     }
@@ -568,11 +577,11 @@ test.describe.serial("library search", () => {
     await page.goto(
       `/?q=${encodeURIComponent("京都")}&watch=unwatched&sort=durationDesc`,
     );
-    await page.getByRole("button", { name: "表示と並び順" }).click();
+    await page.getByRole("button", { name: "View and sort" }).click();
     await shoot("compact-360");
     await page.keyboard.press("Escape");
     await page.goto("/?sort=random&seed=12345");
-    await page.getByRole("button", { name: "表示と並び順" }).click();
+    await page.getByRole("button", { name: "View and sort" }).click();
     await shoot("compact-random-360");
   });
 });

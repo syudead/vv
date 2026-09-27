@@ -2,6 +2,7 @@ import { SlidersHorizontal } from "lucide-react";
 import type { RefObject } from "react";
 
 import type { VideoSort, WatchFilter } from "../api/client";
+import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import Button from "../ui/Button";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
@@ -16,8 +17,8 @@ export interface FolderToolbarProps {
   query: string;
   onQueryCommit: (next: string, mode: HistoryMode) => void;
   searchRef: RefObject<HTMLInputElement | null>;
-  searchLabel: string;
-  searchPlaceholder: string;
+  searchLabel: UiText;
+  searchPlaceholder: UiText;
   sort: VideoSort;
   onSortChange: (value: VideoSort) => void;
   onShuffle: () => void;
@@ -93,7 +94,7 @@ export default function FolderToolbar({
         />
       </div>
 
-      <Tooltip content="カードの大きさ">
+      <Tooltip content={t.list.cardSize}>
         <ZoomSlider
           zoom={zoom}
           onZoomChange={onZoomChange}
@@ -105,7 +106,7 @@ export default function FolderToolbar({
         <PopoverTrigger asChild>
           <Button
             variant="secondary"
-            aria-label="表示と並び順"
+            aria-label={t.list.viewAndSort}
             className="px-2.5 xl:hidden"
           >
             <SlidersHorizontal />
@@ -125,7 +126,7 @@ export default function FolderToolbar({
 
             <fieldset className="xl:hidden">
               <legend className="mb-1 text-xs font-semibold text-fg-muted uppercase">
-                カードの大きさ
+                {t.list.cardSize}
               </legend>
               <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />
             </fieldset>

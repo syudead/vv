@@ -281,8 +281,8 @@ test.describe.serial("video tags", () => {
   test.describe("ライブラリのカードのタグ・タグでの絞り込み（issue 269）", () => {
     function activeTagChip(page: Page, name: string) {
       return page
-        .getByRole("list", { name: "絞り込み中のタグ" })
-        .getByRole("button", { name: `${name}の絞り込みを外す` });
+        .getByRole("list", { name: "Tags in the filter" })
+        .getByRole("button", { name: `Remove the filter for ${name}` });
     }
 
     /**
@@ -292,7 +292,7 @@ test.describe.serial("video tags", () => {
      */
     async function pressCardTag(page: Page, videoId: number, name: string) {
       const card = page.locator(`[data-video-id="${String(videoId)}"]`);
-      const direct = card.getByRole("button", { name: `${name}で絞り込む` });
+      const direct = card.getByRole("button", { name: `Filter by ${name}`, exact: true });
       try {
         // 直に見えていれば、それを押す。レイアウトの計測（B2）が済むまでの
         // 短い間は「+N」に入っていることもあるので、.count() の1回きりの
@@ -302,10 +302,10 @@ test.describe.serial("video tags", () => {
       } catch {
         // 直には無い（本当に収まらず「+N」の中）。
       }
-      await card.getByRole("button", { name: /^ほかのタグ \d+ 個を表示$/ }).click();
+      await card.getByRole("button", { name: /^Show \d+ more tags?$/ }).click();
       await page
         .getByRole("dialog")
-        .getByRole("button", { name: `${name}で絞り込む` })
+        .getByRole("button", { name: `Filter by ${name}`, exact: true })
         .click();
     }
 
@@ -320,7 +320,7 @@ test.describe.serial("video tags", () => {
       await page.goto("/");
       const card = page.locator(`[data-video-id="${String(a.id)}"]`);
       // 追加日時・ファイルサイズ・コーデックの行の代わりにタグの行が出る。
-      await expect(card.getByRole("list", { name: "タグ" })).toBeVisible();
+      await expect(card.getByRole("list", { name: "Tags", exact: true })).toBeVisible();
       // 今のメタ情報の行（追加日時 · ファイルサイズ · コーデック）は区切りの
       // "·" を持つが、タグの行はそれに置き換わるので出ない。
       await expect(card.getByText("·")).toHaveCount(0);
@@ -342,7 +342,7 @@ test.describe.serial("video tags", () => {
       await page.goto("/");
       const overflow = page
         .locator(`[data-video-id="${String(b.id)}"]`)
-        .getByRole("button", { name: /^ほかのタグ \d+ 個を表示$/ });
+        .getByRole("button", { name: /^Show \d+ more tags?$/ });
       await expect(overflow).toBeVisible();
       await overflow.click();
       await expect(page.getByRole("dialog")).toBeVisible();
@@ -372,8 +372,10 @@ test.describe.serial("video tags", () => {
       // タグの付いた両方が残り、検索欄は変わらない。件数も正しい。
       await expect(page.getByRole("article")).toHaveCount(2);
       await expect(activeTagChip(page, "e2e旅行")).toBeVisible();
-      await expect(page.getByRole("searchbox", { name: "動画を検索" })).toHaveValue("");
-      await expect(page.getByRole("status").first()).toHaveText("2件");
+      await expect(page.getByRole("searchbox", { name: "Search videos" })).toHaveValue(
+        "",
+      );
+      await expect(page.locator("p[role='status']")).toHaveText("2 items");
 
       // タグの絞り込みは、題名にその文字列を含むだけのタグの無い動画を出さない
       // （受け入れ条件7、親 Issue「タグの無い動画」の要求を満たさない例）。ここでは
@@ -437,7 +439,7 @@ test.describe.serial("video tags", () => {
       await expect(page.getByRole("article")).toHaveCount(2);
 
       // タグの絞り込みに加えて、検索欄の題名検索がさらに絞り込む（受け入れ条件8）。
-      const box = page.getByRole("searchbox", { name: "動画を検索" });
+      const box = page.getByRole("searchbox", { name: "Search videos" });
       await box.fill("タグ動画A");
       await expect(page.getByRole("article")).toHaveCount(1);
       await expect(page.getByRole("link", { name: "タグ動画A" })).toBeVisible();
@@ -474,7 +476,7 @@ test.describe.serial("video tags", () => {
       await attachTag(request, a.id, searchable.id);
 
       await page.goto("/");
-      const box = page.getByRole("searchbox", { name: "動画を検索" });
+      const box = page.getByRole("searchbox", { name: "Search videos" });
 
       // 題名に含まないタグ名で検索すると、そのタグの付いた動画が出る。
       await box.fill("e2e検索専用タグ");
@@ -495,7 +497,7 @@ test.describe.serial("video tags", () => {
       // フォルダ画面の検索欄も同じ規則で探す（受け入れ条件19、要件10）。
       await page.goto("/folders");
       const folderBox = page.getByRole("searchbox", {
-        name: "すべてのフォルダの動画を検索",
+        name: "Search videos in all folders",
       });
       await folderBox.fill("e2e検索専用タグ");
       await expect(page.getByRole("link", { name: /^タグ動画A/ })).toBeVisible();
@@ -522,7 +524,7 @@ test.describe.serial("video tags", () => {
 
   test.describe("選択バーの一括操作・すべて選択（issue 270）", () => {
     function checkbox(page: Page, title: string) {
-      return page.getByRole("checkbox", { name: `「${title}」を選択` });
+      return page.getByRole("checkbox", { name: `Select "${title}"` });
     }
 
     test("3: 3本を選び選択バーからタグを付けると全部に付く。外す候補で一部にしか付いていないタグが分かる", async ({
@@ -546,13 +548,13 @@ test.describe.serial("video tags", () => {
       await checkbox(page, "タグ動画A").click();
       await checkbox(page, "タグ動画B").click();
       await checkbox(page, "タグ動画D").click();
-      await expect(page.getByText("3 件を選択中")).toBeVisible();
+      await expect(page.getByText("3 videos selected")).toBeVisible();
 
-      await page.getByRole("button", { name: "タグを付ける" }).click();
-      const addInput = page.getByRole("combobox", { name: "タグを付ける" });
+      await page.getByRole("button", { name: "Add tag" }).click();
+      const addInput = page.getByRole("combobox", { name: "Add tag" });
       await addInput.fill("e2e全部タグ");
-      await page.getByRole("option", { name: /を作成/ }).click();
-      await expect(page.getByText("3 件に「e2e全部タグ」を付けました")).toBeVisible();
+      await page.getByRole("option", { name: /^Create/ }).click();
+      await expect(page.getByText('Added "e2e全部タグ" to 3 videos')).toBeVisible();
 
       // 3本すべてのカードに付く（受け入れ条件3）。見える「タグ」の一覧の中だけを
       // 見る（オーバーフロー計測用の隠れた複製は数えない）。
@@ -560,7 +562,7 @@ test.describe.serial("video tags", () => {
         await expect(
           page
             .locator(`[data-video-id="${String(v.id)}"]`)
-            .getByRole("list", { name: "タグ" })
+            .getByRole("list", { name: "Tags", exact: true })
             .getByText("e2e全部タグ"),
         ).toBeVisible();
       }
@@ -573,9 +575,9 @@ test.describe.serial("video tags", () => {
       await checkbox(page, "タグ動画A").click();
       await checkbox(page, "タグ動画B").click();
       await checkbox(page, "タグ動画D").click();
-      await page.getByRole("button", { name: "タグを外す" }).click();
+      await page.getByRole("button", { name: "Remove tag" }).click();
       await expect(
-        page.getByRole("option", { name: "e2e一部タグ、一部の動画だけ、3 件中 1 件" }),
+        page.getByRole("option", { name: "e2e一部タグ, only some videos, 1 of 3" }),
       ).toBeVisible();
       await expect(page.getByRole("option", { name: /^e2e全部タグ/ })).toBeVisible();
     });
@@ -588,19 +590,15 @@ test.describe.serial("video tags", () => {
       await expect(page.getByRole("article")).toHaveCount(4);
 
       await checkbox(page, "タグ動画A").click();
-      await expect(page.getByText("1 件を選択中")).toBeVisible();
+      await expect(page.getByText("1 video selected")).toBeVisible();
 
-      await page.getByRole("button", { name: "すべて選択" }).click();
-      await expect(page.getByText("4 件を選択中")).toBeVisible();
+      await page.getByRole("button", { name: "Select all" }).click();
+      await expect(page.getByText("4 videos selected")).toBeVisible();
 
-      await page.getByRole("button", { name: "タグを付ける" }).click();
-      await page
-        .getByRole("combobox", { name: "タグを付ける" })
-        .fill("e2eすべて選択タグ");
-      await page.getByRole("option", { name: /を作成/ }).click();
-      await expect(
-        page.getByText("4 件に「e2eすべて選択タグ」を付けました"),
-      ).toBeVisible();
+      await page.getByRole("button", { name: "Add tag" }).click();
+      await page.getByRole("combobox", { name: "Add tag" }).fill("e2eすべて選択タグ");
+      await page.getByRole("option", { name: /^Create/ }).click();
+      await expect(page.getByText('Added "e2eすべて選択タグ" to 4 videos')).toBeVisible();
 
       // 選択バーに出ていた件数（4件、ライブラリの全件）と同じ本数に付いたことを、
       // タグの本数（GET /api/tags の videoCount）で確かめる（受け入れ条件4）。
@@ -667,7 +665,7 @@ test.describe.serial("video tags", () => {
       await expect(
         page
           .locator(`[data-video-id="${String(a.id)}"]`)
-          .getByRole("button", { name: "e2e管理改名後で絞り込む" }),
+          .getByRole("button", { name: "Filter by e2e管理改名後" }),
       ).toBeVisible();
 
       // 再生画面にも新しい名前が出る。
@@ -766,8 +764,8 @@ test.describe.serial("video tags", () => {
       await expect(page.getByRole("link", { name: "タグ動画B" })).toHaveCount(0);
       await expect(
         page
-          .getByRole("list", { name: "絞り込み中のタグ" })
-          .getByRole("button", { name: "e2e管理移動先の絞り込みを外す" }),
+          .getByRole("list", { name: "Tags in the filter" })
+          .getByRole("button", { name: "Remove the filter for e2e管理移動先" }),
       ).toBeVisible();
     });
 

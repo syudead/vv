@@ -30,6 +30,7 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import { type Audience, AudienceProvider } from "../auth/audience";
+import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
@@ -210,13 +211,11 @@ describe("FolderPage", () => {
         // 検索だけが 404 を返す）。
         if (params.get("query") === "gone") {
           return Promise.resolve(
-            json({ code: "not_found", message: "そのフォルダは見つかりません" }, 404),
+            json({ code: "not_found", message: "folder not found" }, 404),
           );
         }
         if (params.get("query") === "broken") {
-          return Promise.resolve(
-            json({ code: "internal", message: "壊れています" }, 500),
-          );
+          return Promise.resolve(json({ code: "internal", message: "broken" }, 500));
         }
         if (params.has("query")) return Promise.resolve(json({ items: [], total: 0 }));
         if (params.get("watch") === "unwatched") {
@@ -249,7 +248,7 @@ describe("FolderPage", () => {
       const single = /^\/api\/videos\/(\d+)$/.exec(url);
       if (single !== null) return Promise.resolve(json(video(Number(single[1]), "x")));
       return Promise.resolve(
-        json({ code: "not_found", message: "そのフォルダは見つかりません" }, 404),
+        json({ code: "not_found", message: "folder not found" }, 404),
       );
     });
   });
@@ -276,7 +275,7 @@ describe("FolderPage", () => {
       return Promise.resolve(json(page));
     });
     renderFolders("/folders/3/A");
-    const tag = await screen.findByRole("button", { name: "旅行で絞り込む" });
+    const tag = await screen.findByRole("button", { name: "Filter by 旅行" });
     await userEvent.setup().click(tag);
     expect(screen.getByTestId("library-location").textContent).toBe("/?tag=5");
   });
@@ -322,22 +321,20 @@ describe("FolderPage", () => {
   it("最上位に登録フォルダをパス付きで並べる", async () => {
     renderFolders("/folders");
     const a = await screen.findByRole("link", {
-      name: "movies、動画 0 本、フォルダ 9 件、/a/movies",
+      name: "movies, 0 videos, 9 folders, /a/movies",
     });
     const b = screen.getByRole("link", {
-      name: "movies、動画 1 本、フォルダ 0 件、/b/movies",
+      name: "movies, 1 video, 0 folders, /b/movies",
     });
     expect(a.getAttribute("href")).toBe("/folders/3");
     expect(b.getAttribute("href")).toBe("/folders/7");
-    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe(
-      "メディアフォルダ 2",
-    );
+    expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Media folders 2");
   });
 
   it("直下の子フォルダと直下の動画を、子フォルダを先にして出す", async () => {
     renderFolders("/folders/3/A");
     const child = await screen.findByRole("link", {
-      name: "B、動画 1 本、フォルダ 1 件",
+      name: "B, 1 video, 1 folder",
     });
     const movie = await screen.findByRole("link", { name: "x" });
     expect(child.getAttribute("href")).toBe("/folders/3/A/B");
@@ -351,18 +348,18 @@ describe("FolderPage", () => {
     const headings = screen
       .getAllByRole("heading", { level: 2 })
       .map((h) => h.textContent);
-    expect(headings).toEqual(["フォルダ 1", "動画 1"]);
+    expect(headings).toEqual(["Folders 1", "Videos 1"]);
   });
 
   it("パンくずに現在地までの段を出し、現在地はリンクにしない", async () => {
     renderFolders("/folders/3/A");
-    const nav = await screen.findByRole("navigation", { name: "パンくず" });
+    const nav = await screen.findByRole("navigation", { name: "Breadcrumbs" });
     await within(nav).findByRole("link", { name: "movies" });
     const links = within(nav)
       .getAllByRole("link")
       .map((link) => [link.textContent, link.getAttribute("href")]);
     expect(links).toEqual([
-      ["フォルダ", "/folders"],
+      ["Folders", "/folders"],
       ["movies", "/folders/3"],
     ]);
     const current = within(nav).getByText("A");
@@ -371,18 +368,18 @@ describe("FolderPage", () => {
 
   it("プレビューは4件までで、サムネイルが無いフォルダは外形だけを描く", async () => {
     const { container } = renderFolders("/folders/3");
-    await screen.findByRole("link", { name: "five、動画 6 本、フォルダ 0 件" });
+    await screen.findByRole("link", { name: "five, 6 videos, 0 folders" });
     const five = container.querySelector('[data-folder-path="five"]');
     const deeper = container.querySelector('[data-folder-path="only-deeper"]');
     expect(five?.querySelectorAll("[data-folder-preview]").length).toBe(4);
     expect(five?.querySelectorAll("img").length).toBe(4);
     expect(deeper?.querySelectorAll("img").length).toBe(0);
-    expect(deeper?.textContent).toContain("動画 0 本");
+    expect(deeper?.textContent).toContain("0 videos");
   });
 
   it("フォルダの絵柄の上でマウスを横に動かすと、位置に応じたサムネイルを前に出す", async () => {
     const { container } = renderFolders("/folders/3");
-    await screen.findByRole("link", { name: "five、動画 6 本、フォルダ 0 件" });
+    await screen.findByRole("link", { name: "five, 6 videos, 0 folders" });
     const art = container.querySelector<HTMLElement>(
       '[data-folder-path="five"] [data-folder-art]',
     );
@@ -599,7 +596,7 @@ describe("FolderPage", () => {
   it("特殊な文字を含む名前のフォルダへ、段を1回だけ符号化したリンクを張る", async () => {
     renderFolders("/folders/3");
     const link = await screen.findByRole("link", {
-      name: "100% #1 日本語、動画 1 本、フォルダ 0 件",
+      name: "100% #1 日本語, 1 video, 0 folders",
     });
     expect(link.getAttribute("href")).toBe(
       `/folders/3/${encodeURIComponent("100% #1 日本語")}`,
@@ -612,8 +609,8 @@ describe("FolderPage", () => {
     await screen.findByRole("link", { name: "x" });
     const before = requests.filter((url) => url === "/api/folders/3?path=A").length;
 
-    await user.click(screen.getByRole("button", { name: "並び順: 追加日" }));
-    await user.click(await screen.findByRole("menuitemradio", { name: "題名" }));
+    await user.click(screen.getByRole("button", { name: "Sort by: Date added" }));
+    await user.click(await screen.findByRole("menuitemradio", { name: "Title" }));
 
     await waitFor(() =>
       expect(requests.some((url) => url.includes("videos?path=A&sort=titleAsc"))).toBe(
@@ -621,25 +618,23 @@ describe("FolderPage", () => {
       ),
     );
     expect(requests.filter((url) => url === "/api/folders/3?path=A").length).toBe(before);
-    expect(
-      screen.getByRole("link", { name: "B、動画 1 本、フォルダ 1 件" }),
-    ).toBeDefined();
+    expect(screen.getByRole("link", { name: "B, 1 video, 1 folder" })).toBeDefined();
   });
 
   it("見つからないフォルダでは空の格子ではなく案内と最上位への導線を出す", async () => {
     renderFolders("/folders/3/missing");
-    expect(await screen.findByText("このフォルダは見つかりません")).toBeDefined();
-    const back = screen.getByRole("link", { name: "フォルダの一覧へ" });
+    expect(await screen.findByText("This folder wasn't found")).toBeDefined();
+    const back = screen.getByRole("link", { name: "Go to all folders" });
     expect(back.getAttribute("href")).toBe("/folders");
     const headings = screen
       .getAllByRole("heading", { level: 2 })
       .map((h) => h.textContent);
-    expect(headings).toEqual(["このフォルダは見つかりません"]);
+    expect(headings).toEqual(["This folder wasn't found"]);
   });
 
   it("解釈できない URL も見つからない扱いにする", async () => {
     renderFolders("/folders/abc");
-    expect(await screen.findByText("このフォルダは見つかりません")).toBeDefined();
+    expect(await screen.findByText("This folder wasn't found")).toBeDefined();
   });
 
   it("再生画面から戻ると控えから復元し、子フォルダも動画も読み直さない", async () => {
@@ -649,9 +644,7 @@ describe("FolderPage", () => {
     await user.click(await screen.findByRole("button", { name: "戻る" }));
 
     expect(await screen.findByRole("link", { name: "x" })).toBeDefined();
-    expect(
-      screen.getByRole("link", { name: "B、動画 1 本、フォルダ 1 件" }),
-    ).toBeDefined();
+    expect(screen.getByRole("link", { name: "B, 1 video, 1 folder" })).toBeDefined();
     expect(requests.filter((url) => url === "/api/folders/3?path=A").length).toBe(1);
     expect(
       requests.filter((url) => url.startsWith("/api/folders/3/videos?")).length,
@@ -662,10 +655,8 @@ describe("FolderPage", () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A");
     // A の控えを取ってから B へ移る。B は A の控えを使わず自分で読む。
-    await user.click(
-      await screen.findByRole("link", { name: "B、動画 1 本、フォルダ 1 件" }),
-    );
-    await screen.findByText("このフォルダは見つかりません");
+    await user.click(await screen.findByRole("link", { name: "B, 1 video, 1 folder" }));
+    await screen.findByText("This folder wasn't found");
     expect(requests.filter((url) => url === "/api/folders/3?path=A%2FB").length).toBe(1);
   });
 
@@ -735,7 +726,7 @@ describe("FolderPage", () => {
     });
     renderFolders("/folders");
     await screen.findByRole("link", {
-      name: "movies、動画 0 本、フォルダ 9 件、/a/movies",
+      name: "movies, 0 videos, 9 folders, /a/movies",
     });
     expect(requests.filter((url) => url === "/api/folders").length).toBe(1);
 
@@ -827,8 +818,8 @@ describe("FolderPage", () => {
       ),
     ).toBe(false);
 
-    await user.click(screen.getByRole("button", { name: "絞り込み" }));
-    await user.click(screen.getByRole("radio", { name: "未視聴" }));
+    await user.click(screen.getByRole("button", { name: "Filter" }));
+    await user.click(screen.getByRole("radio", { name: "Unwatched" }));
     await waitFor(() => {
       const location = screen.getByTestId("location").textContent ?? "";
       expect(location).toContain("watch=unwatched");
@@ -840,40 +831,40 @@ describe("FolderPage", () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A?q=京都");
 
-    const x = await screen.findByRole("link", { name: "x、このフォルダ" });
-    const y = await screen.findByRole("link", { name: "y、B" });
+    const x = await screen.findByRole("link", { name: "x, This folder" });
+    const y = await screen.findByRole("link", { name: "y, B" });
     expect(x).toBeDefined();
     expect(y).toBeDefined();
     // 検索中は子フォルダのカードと「フォルダ」「動画」の見出しを出さない。
-    expect(screen.queryByRole("link", { name: /^B、/ })).toBeNull();
-    expect(screen.getByRole("heading", { level: 2, name: "検索結果" })).toBeDefined();
+    expect(screen.queryByRole("link", { name: /^B, / })).toBeNull();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Search results" }),
+    ).toBeDefined();
     const status = screen.getByRole("status");
-    expect(status.textContent).toBe("2件");
+    expect(status.textContent).toBe("2 videos");
     expect(status.classList.contains("sr-only")).toBe(false);
 
-    const box = screen.getByRole("searchbox", { name: "Aの中を検索" });
+    const box = screen.getByRole("searchbox", { name: "Search in A" });
     await user.clear(box);
     await waitFor(() => expect(screen.getByRole("link", { name: "x" })).toBeDefined());
-    expect(
-      screen.getByRole("link", { name: "B、動画 1 本、フォルダ 1 件" }),
-    ).toBeDefined();
+    expect(screen.getByRole("link", { name: "B, 1 video, 1 folder" })).toBeDefined();
   });
 
   it("検索中にフォルダが無くなると、一致なしではなく見つからない案内を出す", async () => {
     renderFolders("/folders/3/A?q=gone");
-    expect(await screen.findByText("このフォルダは見つかりません")).toBeDefined();
-    expect(screen.queryByText("条件に一致する動画はありません")).toBeNull();
+    expect(await screen.findByText("This folder wasn't found")).toBeDefined();
+    expect(screen.queryByText("No videos match these conditions")).toBeNull();
   });
 
   it("404 の後に条件を変えて取得に失敗したら、見つからない案内ではなく再試行を出す", async () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A?q=gone");
-    await screen.findByText("このフォルダは見つかりません");
+    await screen.findByText("This folder wasn't found");
     const box = screen.getByRole("searchbox");
     await user.clear(box);
     await user.type(box, "broken{Enter}");
-    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
-    expect(screen.queryByText("このフォルダは見つかりません")).toBeNull();
+    expect(await screen.findByText("Couldn't load the list")).toBeDefined();
+    expect(screen.queryByText("This folder wasn't found")).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
   });
 
@@ -888,9 +879,7 @@ describe("FolderPage", () => {
         if (params.get("query") === "broken") {
           attempts++;
           if (attempts === 1) {
-            return Promise.resolve(
-              json({ code: "internal", message: "壊れています" }, 500),
-            );
+            return Promise.resolve(json({ code: "internal", message: "broken" }, 500));
           }
           return new Promise<Response>((resolve) => {
             resolveRetry = resolve;
@@ -901,12 +890,12 @@ describe("FolderPage", () => {
     });
     const user = userEvent.setup();
     renderFolders("/folders/3/A?q=broken");
-    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
+    expect(await screen.findByText("Couldn't load the list")).toBeDefined();
 
-    await user.click(screen.getByRole("button", { name: "再試行" }));
+    await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(resolveRetry).toBeDefined());
-    expect(screen.getByRole("status").textContent).toBe("読み込み中…");
-    expect(screen.queryByText("一覧を取得できません")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    expect(screen.queryByText("Couldn't load the list")).toBeNull();
 
     await act(async () => {
       resolveRetry?.(
@@ -916,7 +905,7 @@ describe("FolderPage", () => {
         } satisfies VideoPage),
       );
     });
-    expect(await screen.findByRole("link", { name: "x、このフォルダ" })).toBeDefined();
+    expect(await screen.findByRole("link", { name: "x, This folder" })).toBeDefined();
   });
 
   it("最上位検索の再試行中は読み込み表示へ戻す", async () => {
@@ -927,9 +916,7 @@ describe("FolderPage", () => {
       if (String(input) === "/api/folders") {
         attempts++;
         if (attempts === 1) {
-          return Promise.resolve(
-            json({ code: "internal", message: "壊れています" }, 500),
-          );
+          return Promise.resolve(json({ code: "internal", message: "broken" }, 500));
         }
         return new Promise<Response>((resolve) => {
           resolveRetry = resolve;
@@ -939,19 +926,19 @@ describe("FolderPage", () => {
     });
     const user = userEvent.setup();
     renderFolders("/folders?q=京都");
-    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
+    expect(await screen.findByText("Couldn't load the list")).toBeDefined();
     expect(screen.queryByRole("link", { name: /^x/ })).toBeNull();
     expect(screen.queryByRole("status")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "再試行" }));
+    await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(resolveRetry).toBeDefined());
-    expect(screen.getByRole("status").textContent).toBe("読み込み中…");
-    expect(screen.queryByText("一覧を取得できません")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("Loading…");
+    expect(screen.queryByText("Couldn't load the list")).toBeNull();
 
     await act(async () => {
       resolveRetry?.(json(roots));
     });
-    expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();
+    expect(await screen.findByRole("link", { name: "x, movies/A" })).toBeDefined();
   });
 
   it("最上位の検索で動画と登録フォルダ一覧の両方が失敗したら、1度の再試行で両方を取り直す", async () => {
@@ -960,23 +947,23 @@ describe("FolderPage", () => {
     fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (fail && (url === "/api/folders" || url.startsWith("/api/videos?"))) {
-        return Promise.resolve(json({ code: "internal", message: "壊れています" }, 500));
+        return Promise.resolve(json({ code: "internal", message: "broken" }, 500));
       }
       return base!(input, init);
     });
     const user = userEvent.setup();
     renderFolders("/folders?q=京都");
-    expect(await screen.findByText("一覧を取得できません")).toBeDefined();
+    expect(await screen.findByText("Couldn't load the list")).toBeDefined();
     fail = false;
-    await user.click(screen.getByRole("button", { name: "再試行" }));
-    expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("link", { name: "x, movies/A" })).toBeDefined();
   });
 
   it("最上位の検索はライブラリ全体を対象にし、置き場所を登録フォルダ名から作る", async () => {
     renderFolders("/folders?q=京都");
-    const x = await screen.findByRole("link", { name: "x、movies/A" });
-    const y = await screen.findByRole("link", { name: "y、movies/A/B" });
-    const z = await screen.findByRole("link", { name: "z、movies" });
+    const x = await screen.findByRole("link", { name: "x, movies/A" });
+    const y = await screen.findByRole("link", { name: "y, movies/A/B" });
+    const z = await screen.findByRole("link", { name: "z, movies" });
     expect(x).toBeDefined();
     expect(y).toBeDefined();
     expect(z).toBeDefined();
@@ -987,8 +974,8 @@ describe("FolderPage", () => {
   // 最上位の検索結果は、今のまま動画を1本ずつ出す（GET /api/library を使わない）。
   it("フォルダの一覧と最上位の検索結果は、グループにまとめず1本ずつ出す", async () => {
     renderFolders("/folders?q=京都");
-    expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();
-    expect(screen.getByRole("link", { name: "y、movies/A/B" })).toBeDefined();
+    expect(await screen.findByRole("link", { name: "x, movies/A" })).toBeDefined();
+    expect(screen.getByRole("link", { name: "y, movies/A/B" })).toBeDefined();
     cleanup();
 
     renderFolders("/folders/3/A");
@@ -1002,9 +989,11 @@ describe("FolderPage", () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A?sort=titleDesc");
     await screen.findByRole("link", { name: "x" });
-    expect(screen.getByRole("button", { name: "並び順: 題名" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Sort by: Title" })).toBeDefined();
 
-    await user.click(screen.getByRole("button", { name: "降順。押すと昇順" }));
+    await user.click(
+      screen.getByRole("button", { name: "Descending. Press for ascending" }),
+    );
     await waitFor(() =>
       expect(requests.some((url) => url.includes("sort=titleAsc"))).toBe(true),
     );
@@ -1013,40 +1002,40 @@ describe("FolderPage", () => {
   it("絞り込みだけでは子フォルダのカードが残り、Nは絞った後のtotalになる", async () => {
     renderFolders("/folders/3/A?watch=unwatched");
     const b = await screen.findByRole("link", {
-      name: "B、動画 1 本、フォルダ 1 件",
+      name: "B, 1 video, 1 folder",
     });
     expect(b).toBeDefined();
-    expect(screen.getByRole("heading", { level: 2, name: /^動画/ }).textContent).toBe(
-      "動画 1",
+    expect(screen.getByRole("heading", { level: 2, name: /^Videos/ }).textContent).toBe(
+      "Videos 1",
     );
     expect(screen.getByRole("link", { name: "x" })).toBeDefined();
   });
 
   it("絞り込みだけで一致が無いと、子フォルダの下に簡潔な一致なしを出す", async () => {
     renderFolders("/folders/3/A?watch=watched");
-    await screen.findByRole("link", { name: "B、動画 1 本、フォルダ 1 件" });
+    await screen.findByRole("link", { name: "B, 1 video, 1 folder" });
     expect(
-      screen.getByRole("heading", { name: "条件に一致する動画はありません" }),
+      screen.getByRole("heading", { name: "No videos match these conditions" }),
     ).toBeDefined();
     expect(screen.queryByText(/中のフォルダも探すには/)).toBeNull();
-    expect(screen.queryByText("視聴済み")).toBeNull();
+    expect(screen.queryByText("Watched")).toBeNull();
     expect(screen.queryByText("Aの直下")).toBeNull();
-    expect(screen.queryByRole("button", { name: "条件を解除" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
   });
 
   it("検索の一致なしでは検索語や範囲や解除操作を重ねない", async () => {
     renderFolders("/folders/3/A?q=zzz-no-such-video");
-    await screen.findByRole("heading", { name: "条件に一致する動画はありません" });
+    await screen.findByRole("heading", { name: "No videos match these conditions" });
     expect(screen.queryByText("検索語「zzz-no-such-video」")).toBeNull();
     expect(screen.queryByText("Aとその中")).toBeNull();
-    expect(screen.queryByRole("button", { name: "条件を解除" })).toBeNull();
-    expect(screen.queryByRole("link", { name: /^B、/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^B, / })).toBeNull();
   });
 
   it("sort=random と seed を URL のまま使う", async () => {
     renderFolders("/folders/3/A?sort=random&seed=42");
     await screen.findByRole("link", { name: "x" });
-    expect(screen.getByRole("button", { name: "並べ直す" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Shuffle" })).toBeDefined();
     await waitFor(() =>
       expect(
         requests.some((url) => url.includes("sort=random") && url.includes("seed=42")),
@@ -1059,7 +1048,7 @@ describe("FolderPage", () => {
     renderFolders("/folders/3/A?sort=random&seed=7");
     await screen.findByRole("link", { name: "x" });
 
-    await user.click(screen.getByRole("button", { name: "並べ直す" }));
+    await user.click(screen.getByRole("button", { name: "Shuffle" }));
     await waitFor(() =>
       expect(screen.getByTestId("location").textContent).not.toBe(
         "/folders/3/A?sort=random&seed=7",
@@ -1083,7 +1072,7 @@ describe("FolderPage", () => {
     const user = userEvent.setup();
     renderFolders("/folders/3/A");
     await screen.findByRole("link", { name: "x" });
-    const box = screen.getByRole("searchbox", { name: "Aの中を検索" });
+    const box = screen.getByRole("searchbox", { name: "Search in A" });
     expect(document.activeElement).not.toBe(box);
 
     await user.keyboard("/");
@@ -1093,20 +1082,20 @@ describe("FolderPage", () => {
   it("最上位で検索語が空のときは、表示と並び順のまとめの中でも並べ替え・向きを無効にする", async () => {
     const user = userEvent.setup();
     renderFolders("/folders");
-    await screen.findAllByRole("link", { name: /^movies、/ });
+    await screen.findAllByRole("link", { name: /^movies, / });
 
-    await user.click(screen.getByRole("button", { name: "表示と並び順" }));
+    await user.click(screen.getByRole("button", { name: "View and sort" }));
     // jsdom は <fieldset disabled> から子孫の入力への継承を実装しないので、
     // fieldset 自身が disabled を持つことを確かめる（実ブラウザでは子の
     // input・button にも及ぶ）。絞り込み・並べ替えのメニューボタンは disabled
     // 属性を自分で持つので、そちらは直接確かめられる。
-    const group = await screen.findByRole("group", { name: "並び順" });
+    const group = await screen.findByRole("group", { name: "Sort by" });
     expect((group as HTMLFieldSetElement).disabled).toBe(true);
     expect(
-      (screen.getByRole("button", { name: "絞り込み" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Filter" }) as HTMLButtonElement).disabled,
     ).toBe(true);
     expect(
-      (screen.getByRole("button", { name: "並び順: 追加日" }) as HTMLButtonElement)
+      (screen.getByRole("button", { name: "Sort by: Date added" }) as HTMLButtonElement)
         .disabled,
     ).toBe(true);
   });
@@ -1151,9 +1140,9 @@ describe("FolderPage", () => {
     it("最上位の登録フォルダにパスを添えず、所有者だけの API も /api/events も開かない", async () => {
       guestResponses();
       const { container } = renderFolders("/folders", "guest");
-      await screen.findByRole("link", { name: "movies、動画 0 本、フォルダ 9 件" });
+      await screen.findByRole("link", { name: "movies, 0 videos, 9 folders" });
       expect(
-        screen.getByRole("link", { name: "movies、動画 1 本、フォルダ 0 件" }),
+        screen.getByRole("link", { name: "movies, 1 video, 0 folders" }),
       ).toBeDefined();
       expect(container.textContent).not.toContain("/a/movies");
       expect(requests).toEqual(["/api/folders"]);
@@ -1165,9 +1154,9 @@ describe("FolderPage", () => {
         url === "/api/folders" ? json({ folders: [] }) : undefined,
       );
       renderFolders("/folders", "guest");
-      expect(await screen.findByText("公開されている動画はありません")).toBeDefined();
-      expect(screen.queryByRole("link", { name: "設定を開く" })).toBeNull();
-      expect(screen.getByRole("link", { name: "ログイン" }).getAttribute("href")).toBe(
+      expect(await screen.findByText("No videos are public")).toBeDefined();
+      expect(screen.queryByRole("link", { name: "Open Settings" })).toBeNull();
+      expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe(
         "/login?next=%2Ffolders",
       );
     });
@@ -1175,7 +1164,7 @@ describe("FolderPage", () => {
     it("子フォルダのパンくずの登録フォルダの段を、登録フォルダの name から作る", async () => {
       guestResponses();
       renderFolders("/folders/3/A", "guest");
-      const nav = await screen.findByRole("navigation", { name: "パンくず" });
+      const nav = await screen.findByRole("navigation", { name: "Breadcrumbs" });
       const root = await within(nav).findByRole("link", { name: "movies" });
       expect(root.getAttribute("href")).toBe("/folders/3");
       expect(root.getAttribute("title")).toBe("movies");
@@ -1185,18 +1174,18 @@ describe("FolderPage", () => {
     it("登録フォルダの name を読めなければ、その段を骨組みのまま残さずに省く", async () => {
       guestResponses((url) =>
         url === "/api/folders/3"
-          ? json({ code: "not_found", message: "見つかりません" }, 404)
+          ? json({ code: "not_found", message: "not found" }, 404)
           : undefined,
       );
       renderFolders("/folders/3/A", "guest");
-      const nav = await screen.findByRole("navigation", { name: "パンくず" });
+      const nav = await screen.findByRole("navigation", { name: "Breadcrumbs" });
       await waitFor(() => expect(requests).toContain("/api/folders/3"));
       await waitFor(() =>
         expect(
           within(nav)
             .getAllByRole("link")
             .map((link) => link.textContent),
-        ).toEqual(["フォルダ"]),
+        ).toEqual(["Folders"]),
       );
       expect(within(nav).getByText("A").getAttribute("aria-current")).toBe("page");
     });
@@ -1283,7 +1272,7 @@ describe("FolderPage", () => {
 
     function trigger(grouped: boolean) {
       return screen.findByRole("button", {
-        name: `ライブラリでのまとめ方: ${grouped ? "1 件にまとめて表示" : "1 本ずつ表示"}。メニューを開く`,
+        name: `Grouping in the library: ${grouped ? "shown as 1 item" : "shown one by one"}. Open the menu`,
       });
     }
 
@@ -1292,8 +1281,10 @@ describe("FolderPage", () => {
       const user = userEvent.setup();
       renderFolders("/folders/3/series");
       const button = await trigger(true);
-      expect(button.textContent).toBe("ライブラリで 1 件");
-      expect(button.closest("section")?.querySelector("h2")?.textContent).toBe("動画 2");
+      expect(button.textContent).toBe("1 item in the library");
+      expect(button.closest("section")?.querySelector("h2")?.textContent).toBe(
+        "Videos 2",
+      );
       const listingReads = requests.filter(
         (url) => url === "/api/folders/3?path=series",
       ).length;
@@ -1304,22 +1295,22 @@ describe("FolderPage", () => {
 
       await user.click(button);
       const menu = await screen.findByRole("menu");
-      expect(within(menu).getByText("ライブラリでのまとめ方")).toBeDefined();
+      expect(within(menu).getByText("Grouping in the library")).toBeDefined();
       expect(
         within(menu)
           .getAllByRole("menuitemradio")
           .map((item) => [item.textContent, item.getAttribute("aria-checked")]),
       ).toEqual([
-        ["自動", "true"],
-        ["まとめを解除", "false"],
-        ["直下をまとめる", "false"],
+        ["Automatic", "true"],
+        ["Don't group", "false"],
+        ["Group this folder's videos", "false"],
       ]);
       expect(
-        within(menu).getByRole("menuitem", { name: "グループをタグに変える" }),
+        within(menu).getByRole("menuitem", { name: "Turn the group into a tag" }),
       ).toBeDefined();
-      await user.click(within(menu).getByRole("menuitemradio", { name: "まとめを解除" }));
+      await user.click(within(menu).getByRole("menuitemradio", { name: "Don't group" }));
 
-      expect((await trigger(false)).textContent).toBe("ライブラリで 1 本ずつ");
+      expect((await trigger(false)).textContent).toBe("One by one in the library");
       expect(writes).toEqual([
         {
           method: "PUT",
@@ -1340,7 +1331,7 @@ describe("FolderPage", () => {
       await user.click(await trigger(false));
       expect(
         within(await screen.findByRole("menu")).queryByRole("menuitem", {
-          name: "グループをタグに変える",
+          name: "Turn the group into a tag",
         }),
       ).toBeNull();
     });
@@ -1350,7 +1341,7 @@ describe("FolderPage", () => {
       const user = userEvent.setup();
       renderFolders("/folders/3/series");
       await user.click(await trigger(true));
-      await user.click(await screen.findByRole("menuitemradio", { name: "自動" }));
+      await user.click(await screen.findByRole("menuitemradio", { name: "Automatic" }));
       await waitFor(() =>
         expect(writes).toEqual([
           {
@@ -1378,7 +1369,7 @@ describe("FolderPage", () => {
       ).length;
       holdLibrarySnapshot();
       await user.click(
-        await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+        await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
       );
 
       expect(
@@ -1436,7 +1427,7 @@ describe("FolderPage", () => {
         renderFolders("/folders/3/series");
         await user.click(await trigger(true));
         await user.click(
-          await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+          await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
         );
         // 7000px に届くのは 3 ページ目を読んだ後（3 × 3000 − 768）。4 ページ目は読まない。
         await waitFor(() => expect(loadedPages).toBe(3));
@@ -1454,14 +1445,12 @@ describe("FolderPage", () => {
     });
 
     it("タグ化の失敗をトーストで伝え、引き金を戻す", async () => {
-      respond(() =>
-        json({ code: "invalid_request", message: "タグの名前に使えません" }, 400),
-      );
+      respond(() => json({ code: "invalid_request", message: "invalid tag name" }, 400));
       const user = userEvent.setup();
       renderFolders("/folders/3/series");
       await user.click(await trigger(true));
       await user.click(
-        await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+        await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
       );
       expect(
         await screen.findByText(
@@ -1482,7 +1471,7 @@ describe("FolderPage", () => {
       ).length;
       holdLibrarySnapshot();
       await user.click(
-        await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
+        await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
       );
       expect(await screen.findByText("This folder is no longer a group")).toBeDefined();
       // ほかのタブで先に変わったので、ライブラリの控えも古い。次に開くときは読み直させる。
@@ -1500,15 +1489,11 @@ describe("FolderPage", () => {
       const user = userEvent.setup();
       renderFolders("/folders/3/series");
       await user.click(await trigger(true));
-      await user.click(
-        await screen.findByRole("menuitemradio", { name: "まとめを解除" }),
-      );
-      expect(await screen.findByText("このフォルダは見つかりません")).toBeDefined();
+      await user.click(await screen.findByRole("menuitemradio", { name: "Don't group" }));
+      expect(await screen.findByText("This folder wasn't found")).toBeDefined();
       status = 500;
       await user.click(await trigger(true));
-      await user.click(
-        await screen.findByRole("menuitemradio", { name: "まとめを解除" }),
-      );
+      await user.click(await screen.findByRole("menuitemradio", { name: "Don't group" }));
       expect(await screen.findByText("Couldn't make the change")).toBeDefined();
     });
 
@@ -1518,7 +1503,7 @@ describe("FolderPage", () => {
       renderFolders("/folders/3");
       await user.click(await trigger(false));
       await user.click(
-        await screen.findByRole("menuitemradio", { name: "直下をまとめる" }),
+        await screen.findByRole("menuitemradio", { name: "Group this folder's videos" }),
       );
       expect(await trigger(true)).toBeDefined();
       expect(writes.map(({ url }) => url)).toEqual(["/api/folders/3/grouping"]);
@@ -1531,7 +1516,9 @@ describe("FolderPage", () => {
       await waitFor(() =>
         expect(requests.some((url) => url.includes("query=ep"))).toBe(true),
       );
-      expect(screen.queryByRole("button", { name: /ライブラリでのまとめ方/ })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: /Grouping in the library/ }),
+      ).toBeNull();
     });
 
     it("ゲストの応答には grouping が無いので、引き金を出さない", async () => {
@@ -1555,8 +1542,234 @@ describe("FolderPage", () => {
       await screen.findByRole("link", { name: /ep01/ });
       expect(
         screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
-      ).toContain("動画 1");
-      expect(screen.queryByRole("button", { name: /まとめ方/ })).toBeNull();
+      ).toContain("Videos 1");
+      expect(screen.queryByRole("button", { name: /Grouping/ })).toBeNull();
     });
+  });
+});
+
+describe("FolderPage の英語の画面（specs/023-english-i18n）", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+  /** route は URL ごとの応答である。無い URL は 404 を返す。 */
+  let route: (url: string, method: string) => Promise<Response> | undefined;
+
+  const japanese: FolderListing = {
+    folder: summary({
+      path: "旅行",
+      name: "旅行",
+      videoCount: 2,
+      folderCount: 1,
+      grouping: { mode: "auto", grouped: true, taggable: true },
+    }),
+    folders: [
+      summary({
+        path: "旅行/京都",
+        name: "京都",
+        videoCount: 1,
+        folderCount: 0,
+        previews: previews(1),
+      }),
+    ],
+  };
+  const userData = [
+    "movies",
+    "/a/movies",
+    "/b/movies",
+    "旅行",
+    "京都",
+    "京都の寺",
+    "奈良",
+  ];
+
+  function renderPage(initial: string, audience: Audience = "owner") {
+    return render(
+      <MemoryRouter initialEntries={[initial]}>
+        <TooltipProvider>
+          <ToastProvider>
+            <AudienceProvider audience={audience}>
+              <ScanProvider>
+                <Routes>
+                  <Route path="/folders/*" element={<FolderPage />} />
+                </Routes>
+              </ScanProvider>
+            </AudienceProvider>
+          </ToastProvider>
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", fetchMock);
+    installFakeEventSource();
+    vi.stubGlobal("scrollTo", vi.fn());
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        observe() {}
+        disconnect() {}
+      },
+    );
+    route = (url) => {
+      if (url === "/api/folders") return Promise.resolve(json(roots));
+      if (
+        url === "/api/folders/3?path=%E6%97%85%E8%A1%8C" ||
+        url === "/api/folders/3?path=旅行"
+      )
+        return Promise.resolve(json(japanese));
+      if (url.startsWith("/api/folders/3/videos?")) {
+        const params = new URL(url, "http://localhost").searchParams;
+        if (params.has("query")) {
+          return Promise.resolve(
+            json({
+              items: [
+                video(1, "京都の寺", { folder: { rootId: 3, path: "旅行/京都" } }),
+                video(2, "奈良", { folder: { rootId: 3, path: "旅行" } }),
+              ],
+              total: 2,
+            }),
+          );
+        }
+        return Promise.resolve(
+          json({ items: [video(1, "京都の寺"), video(2, "奈良")], total: 2 }),
+        );
+      }
+      if (url.startsWith("/api/videos?")) {
+        return Promise.resolve(
+          json({
+            items: [video(1, "京都の寺", { folder: { rootId: 3, path: "旅行/京都" } })],
+            total: 1,
+          }),
+        );
+      }
+      return undefined;
+    };
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      return (
+        route(url, method) ??
+        Promise.resolve(json({ code: "not_found", message: "not found" }, 404))
+      );
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    localStorage.clear();
+    clearListSnapshot();
+  });
+
+  it("日本語の名前のフォルダと動画を元の名前のまま出し、件数は単数・複数を分ける", async () => {
+    renderPage(`/folders/3/${encodeURIComponent("旅行")}`);
+    expect(
+      await screen.findByRole("link", { name: "京都, 1 video, 0 folders" }),
+    ).toBeDefined();
+    expect(await screen.findByRole("link", { name: "京都の寺" })).toBeDefined();
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("旅行");
+    expect(
+      screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent),
+    ).toEqual(["Folders 1", "Videos 2"]);
+    expect(screen.getByRole("searchbox", { name: "Search in 旅行" })).toBeDefined();
+  });
+
+  it("疑似ロケールで、最上位・フォルダ・まとめ方のメニューの文言がカタログから出る", async () => {
+    enablePseudoLocale();
+    const user = userEvent.setup();
+    const top = renderPage("/folders");
+    await screen.findAllByRole("link", { name: /movies/ });
+    expectCatalogTextOnly(document.body, userData);
+    top.unmount();
+
+    renderPage(`/folders/3/${encodeURIComponent("旅行")}`);
+    await screen.findByRole("link", { name: /京都の寺/ });
+    await screen.findByRole("link", { name: /京都.*folder/ });
+    expectCatalogTextOnly(document.body, userData);
+
+    await user.click(screen.getByRole("button", { name: /Grouping in the library/ }));
+    await screen.findByRole("menu");
+    expectCatalogTextOnly(document.body, userData);
+    await user.keyboard("{Escape}");
+
+    await user.click(screen.getByRole("button", { name: /View and sort/ }));
+    await screen.findByRole("dialog");
+    expectCatalogTextOnly(document.body, userData);
+  });
+
+  it("疑似ロケールで、フォルダ内と最上位の検索結果の文言がカタログから出る", async () => {
+    enablePseudoLocale();
+    const inside = renderPage(`/folders/3/${encodeURIComponent("旅行")}?q=寺`);
+    await screen.findByRole("link", { name: /京都の寺/ });
+    expectCatalogTextOnly(document.body, [
+      ...userData,
+      "寺",
+      "movies/旅行/京都",
+      "/a/movies/旅行/京都",
+    ]);
+    inside.unmount();
+
+    renderPage("/folders?q=寺");
+    await screen.findByRole("link", { name: /京都の寺/ });
+    expectCatalogTextOnly(document.body, [
+      ...userData,
+      "寺",
+      "movies/旅行/京都",
+      "/a/movies/旅行/京都",
+    ]);
+  });
+
+  it("疑似ロケールで、空・登録なし・ゲストの空・見つからない・読み込み中・失敗の文言がカタログから出る", async () => {
+    enablePseudoLocale();
+    const base = route;
+
+    route = (url, method) =>
+      url.startsWith("/api/folders/3/videos?")
+        ? Promise.resolve(json({ items: [], total: 0 }))
+        : url === "/api/folders/3?path=A"
+          ? Promise.resolve(
+              json({ folder: summary({ path: "A", name: "A" }), folders: [] }),
+            )
+          : base(url, method);
+    let view = renderPage("/folders/3/A");
+    await screen.findByRole("heading", { name: /No videos in this folder yet/ });
+    expectCatalogTextOnly(document.body, [...userData, "A"]);
+    view.unmount();
+
+    route = (url, method) =>
+      url === "/api/folders" ? Promise.resolve(json({ folders: [] })) : base(url, method);
+    view = renderPage("/folders");
+    await screen.findByRole("heading", { name: /No media folders yet/ });
+    expectCatalogTextOnly(document.body);
+    view.unmount();
+
+    view = renderPage("/folders", "guest");
+    await screen.findByRole("heading", { name: /No videos are public/ });
+    expectCatalogTextOnly(document.body);
+    view.unmount();
+
+    route = base;
+    view = renderPage("/folders/3/nowhere");
+    await screen.findByRole("heading", { name: /This folder wasn't found/ });
+    expectCatalogTextOnly(document.body, [...userData, "nowhere"]);
+    view.unmount();
+
+    route = (url, method) =>
+      url === "/api/folders" ? new Promise<Response>(() => undefined) : base(url, method);
+    view = renderPage("/folders");
+    await screen.findByRole("heading", { level: 1 });
+    expectCatalogTextOnly(document.body);
+    view.unmount();
+
+    route = (url, method) =>
+      url === "/api/folders"
+        ? Promise.resolve(json({ code: "internal", message: "internal error" }, 500))
+        : base(url, method);
+    renderPage("/folders");
+    await screen.findByRole("heading", { name: /Couldn't load the list/ });
+    expect(screen.getByText(/Something went wrong on the server/)).toBeDefined();
+    expectCatalogTextOnly(document.body);
   });
 });

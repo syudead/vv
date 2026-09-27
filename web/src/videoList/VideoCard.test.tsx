@@ -327,12 +327,12 @@ describe("VideoCard tagsRow（issue 269）", () => {
     renderCard(
       video({ tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false }] }),
       {
-        tagsRow: () => <button type="button">タグ</button>,
+        tagsRow: () => <button type="button">tags</button>,
       },
     );
     const article = screen.getByRole("article");
     const link = screen.getByRole("link");
-    const button = screen.getByRole("button", { name: "タグ" });
+    const button = screen.getByRole("button", { name: "tags" });
     expect(article.contains(link)).toBe(true);
     expect(article.contains(button)).toBe(true);
     expect(link.contains(button)).toBe(false);
@@ -411,19 +411,19 @@ describe("VideoCard の公開の印", () => {
 
   it("所有者の公開の動画には、時間の面の先頭に地球の印と読み上げの「公開」を出す", () => {
     const { container } = renderAs("owner", video({ public: true }));
-    const mark = screen.getByText("公開");
+    const mark = screen.getByText("Public");
     expect(mark.className).toContain("sr-only");
     const face = mark.parentElement!;
     // 先頭が地球のアイコン、その後に時間。
     expect(face.firstElementChild?.tagName.toLowerCase()).toBe("svg");
     expect(face.firstElementChild?.getAttribute("class")).toContain("lucide-globe");
-    expect(face.textContent).toBe("公開1:00");
+    expect(face.textContent).toBe("Public1:00");
     expect(container.querySelectorAll(".lucide-globe")).toHaveLength(1);
   });
 
   it("非公開の動画には印を出さない", () => {
     const { container } = renderAs("owner", video({ public: false }));
-    expect(screen.queryByText("公開")).toBeNull();
+    expect(screen.queryByText("Public")).toBeNull();
     expect(container.querySelector(".lucide-globe")).toBeNull();
   });
 
@@ -432,13 +432,13 @@ describe("VideoCard の公開の印", () => {
       "owner",
       video({ public: true, durationMs: undefined, width: undefined, height: undefined }),
     );
-    const face = screen.getByText("公開").parentElement!;
-    expect(face.textContent).toBe("公開");
+    const face = screen.getByText("Public").parentElement!;
+    expect(face.textContent).toBe("Public");
   });
 
   it("ゲストには印を出さない", () => {
     const { container } = renderAs("guest", video({ public: true }));
-    expect(screen.queryByText("公開")).toBeNull();
+    expect(screen.queryByText("Public")).toBeNull();
     expect(container.querySelector(".lucide-globe")).toBeNull();
   });
 
@@ -459,8 +459,8 @@ describe("VideoCard の公開の印", () => {
         </AudienceProvider>
       </MemoryRouter>,
     );
-    const cell = screen.getByText("公開").closest("td")!;
-    expect(cell.textContent).toBe("公開1:00");
+    const cell = screen.getByText("Public").closest("td")!;
+    expect(cell.textContent).toBe("Public1:00");
     expect(cell.querySelector(".lucide-globe")).not.toBeNull();
   });
 });
@@ -477,9 +477,12 @@ describe("VideoCard の表示（issue 308）", () => {
 
   // ライブラリ（tagsRow あり）・フォルダ画面（なし）・検索結果（置き場所あり）の3通り。
   const variants: [string, Partial<React.ComponentProps<typeof VideoCard>>][] = [
-    ["ライブラリ", { tagsRow: () => null }],
+    ["Library", { tagsRow: () => null }],
     ["フォルダ画面", { onSelect: undefined }],
-    ["検索結果", { onSelect: undefined, location: { label: "A/B", title: "/m/A/B" } }],
+    [
+      "Search results",
+      { onSelect: undefined, location: { label: "A/B", title: "/m/A/B" } },
+    ],
   ];
 
   it.each(variants)(
@@ -491,7 +494,7 @@ describe("VideoCard の表示（issue 308）", () => {
       expect(article.textContent).not.toMatch(/1080p/i);
       expect(article.textContent).not.toMatch(/MB|KB/);
       expect(article.textContent).not.toMatch(/ ago|just now/);
-      expect(screen.queryByText("視聴済み")).toBeNull();
+      expect(screen.queryByText("Watched")).toBeNull();
       // 再生時間は残す。
       expect(screen.getByText("1:05")).toBeDefined();
     },

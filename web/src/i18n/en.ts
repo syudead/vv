@@ -46,6 +46,13 @@ function seconds(count: number): string {
   });
 }
 
+function folders(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} folder`,
+    other: `${formatNumber(count)} folders`,
+  });
+}
+
 function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
@@ -203,6 +210,239 @@ export const en = {
   list: {
     inconsistentPage:
       "The list keeps changing, so it couldn't be loaded. Try again in a moment.",
+    loading: "Loading…",
+    resultCount: videos,
+    noMatches: "No videos match these conditions",
+    loadFailed: "Couldn't load the list",
+    loadMoreFailed: (reason: string) => `Couldn't load more: ${reason}`,
+    guestEmpty: {
+      title: "No videos are public",
+      description: "Sign in to see all videos.",
+      signIn: "Sign in",
+    },
+    scan: "Scan",
+    scanning: "Scanning…",
+    cardSize: "Card size",
+    viewAndSort: "View and sort",
+    search: {
+      label: "Search videos",
+      placeholder: "Search",
+      clear: "Clear search",
+    },
+    searchHelp: {
+      title: "How to search",
+      allWords: {
+        example: "kyoto 2024",
+        meaning: "Finds videos that contain every space-separated word",
+      },
+      phrase: {
+        example: '"kyoto trip 2024"',
+        before: "Words wrapped in ",
+        after: " are searched for as one term, spaces included",
+      },
+      exclude: {
+        example: "kyoto -2023",
+        before: "Prefix a word with ",
+        after: " to leave out videos that contain it",
+      },
+      either: {
+        example: "kyoto OR nara",
+        alternative: "kyoto | nara",
+        meaning: "Finds videos that contain either word. Binds tighter than a space",
+      },
+      normalization:
+        "Full-width and half-width characters, upper and lower case, and hiragana and katakana are treated the same.",
+      termLimit: (limit: number) =>
+        `Only the first ${formatNumber(limit)} terms are used.`,
+    },
+    filter: {
+      label: "Filter",
+      applied: (count: number) => `Filter (${formatNumber(count)} applied)`,
+      watch: "Watch status",
+      watchOptions: {
+        all: "All",
+        unwatched: "Unwatched",
+        inProgress: "In progress",
+        watched: "Watched",
+      },
+      playableOnly: "Playable only",
+      clear: "Clear filters",
+    },
+    sort: {
+      heading: "Sort by",
+      current: (label: string) => `Sort by: ${label}`,
+      kinds: {
+        added: "Date added",
+        modified: "Date modified",
+        title: "Title",
+        duration: "Length",
+        size: "File size",
+        played: "Recently played",
+        random: "Random",
+      },
+      wording: {
+        added: { asc: "oldest first", desc: "newest first" },
+        modified: { asc: "oldest first", desc: "newest first" },
+        duration: { asc: "shortest first", desc: "longest first" },
+        size: { asc: "smallest first", desc: "largest first" },
+        played: { asc: "least recently played", desc: "most recently played" },
+      },
+      asc: "Ascending",
+      desc: "Descending",
+      withWording: (direction: string, wording: string) => `${direction} (${wording})`,
+      toAsc: (current: string) => `${current}. Press for ascending`,
+      toDesc: (current: string) => `${current}. Press for descending`,
+      direction: "Sort direction",
+      shuffle: "Shuffle",
+    },
+    card: {
+      select: (title: string) => `Select "${title}"`,
+      withLocation: (title: string, location: string) => `${title}, ${location}`,
+      public: "Public",
+      watchedRatio: "Watched portion",
+      watched: "Watched",
+      noImage: "No image",
+      preparing: "Preparing",
+    },
+  },
+  library: {
+    title: "Library",
+    // GET /api/library の total は項目（カード）の数で、グループのカードも 1 つと数える。動画の本数ではない。
+    resultCount: items,
+    empty: {
+      title: "No videos yet",
+      description: "Put videos in a media folder and scan to see them here.",
+    },
+    view: {
+      label: "View",
+      compact: "View (compact)",
+      grid: "Grid",
+      list: "List",
+    },
+    columns: {
+      title: "Title",
+      duration: "Length",
+      quality: "Quality",
+      size: "Size",
+      added: "Added",
+    },
+    deletedTagsRemoved: "Removed deleted tags from the filter",
+    selectAllFailed: (reason: string) => `Couldn't select everything: ${reason}`,
+    activeTags: {
+      label: "Filtering by tags",
+      list: "Tags in the filter",
+      remove: "Remove the tag filter",
+      removeNamed: (name: string) => `Remove the filter for ${name}`,
+    },
+    tagRow: {
+      label: "Tags",
+      fromFolder: "(from the folder name)",
+      filterBy: (name: string) => `Filter by ${name}`,
+      filterByFromFolder: (name: string) => `Filter by ${name} (from the folder name)`,
+      more: (count: number) => `+${formatNumber(count)}`,
+      showMore: (count: number) =>
+        selectPlural(count, {
+          one: `Show ${formatNumber(count)} more tag`,
+          other: `Show ${formatNumber(count)} more tags`,
+        }),
+    },
+    group: {
+      count: videos,
+      select: (name: string) => `Select the group "${name}"`,
+      label: (name: string, count: number, watched: number) =>
+        watched >= 1
+          ? `${name}, group of ${videos(count)}, ${formatNumber(watched)} watched`
+          : `${name}, group of ${videos(count)}`,
+      watchedRatio: "Share of videos watched",
+      progress: (watched: number, total: number) =>
+        `${formatNumber(watched)} / ${formatNumber(total)}`,
+    },
+    selection: {
+      region: "Selection actions",
+      count: (count: number) => `${videos(count)} selected`,
+      selectAll: "Select all",
+      selectingAll: "Selecting…",
+      clear: "Clear selection (Esc)",
+      addTag: "Add tag",
+      removeTag: "Remove tag",
+      create: (name: string) => `Create "${name}"`,
+      synonym: (synonym: string) => `Synonym: ${synonym}`,
+      videoCount: videos,
+      partial: (count: number, total: number) =>
+        `Some: ${formatNumber(count)} / ${formatNumber(total)}`,
+      partialLabel: (name: string, count: number, total: number) =>
+        `${name}, only some videos, ${formatNumber(count)} of ${formatNumber(total)}`,
+      added: (count: number, name: string) => `Added "${name}" to ${videos(count)}`,
+      removed: (count: number, name: string) => `Removed "${name}" from ${videos(count)}`,
+      tagGone: (name: string) =>
+        `The tag "${name}" no longer exists, so the tags were reloaded`,
+      addFailed: (reason: string) => `Couldn't add the tag: ${reason}`,
+      removeFailed: (reason: string) => `Couldn't remove the tag: ${reason}`,
+      loading: "Loading…",
+      summaryFailed: "Couldn't load the tags",
+      nothingToRemove: "The selected videos have no tags that can be removed",
+      visibility: "Visibility",
+      makePublic: "Make public",
+      makePrivate: "Make private",
+      madePublic: (count: number) => `Made ${videos(count)} public`,
+      madePrivate: (count: number) => `Made ${videos(count)} private`,
+      visibilityFailed: (reason: string) => `Couldn't change the visibility: ${reason}`,
+    },
+  },
+  folders: {
+    title: "Folders",
+    breadcrumbs: "Breadcrumbs",
+    mediaFolders: "Media folders",
+    subfolders: "Folders",
+    videos: "Videos",
+    sectionCount: (count: number) => formatNumber(count),
+    directVideos: (count: number) => `${videos(count)} directly in this folder`,
+    searchResults: "Search results",
+    thisFolder: "This folder",
+    searchIn: (name: string) => `Search in ${name}`,
+    searchInPlaceholder: "Search this folder",
+    searchAll: "Search videos in all folders",
+    searchAllPlaceholder: "Search all folders",
+    searchingAll: "Searching all folders",
+    searchingInside: "— searching inside",
+    card: {
+      videos,
+      folders,
+      label: (name: string, videoCount: number, folderCount: number) =>
+        `${name}, ${videos(videoCount)}, ${folders(folderCount)}`,
+      labelWithPath: (label: string, path: string) => `${label}, ${path}`,
+    },
+    empty: {
+      title: "No videos in this folder yet",
+      description: "Scan to see them here.",
+    },
+    noMediaFolders: {
+      title: "No media folders yet",
+      description: "Add a media folder in Settings and scan to see it here.",
+      openSettings: "Open Settings",
+    },
+    notFound: {
+      title: "This folder wasn't found",
+      description: "It was removed from the media folders, or its videos are gone.",
+      back: "Go to all folders",
+    },
+    grouping: {
+      heading: "Grouping in the library",
+      modes: {
+        auto: "Automatic",
+        ungroup: "Don't group",
+        groupDirect: "Group this folder's videos",
+      },
+      grouped: "1 item in the library",
+      ungrouped: "One by one in the library",
+      trigger: (grouped: boolean) =>
+        grouped
+          ? "Grouping in the library: shown as 1 item. Open the menu"
+          : "Grouping in the library: shown one by one. Open the menu",
+      autoHint:
+        "Automatic: groups folders below a media folder that have no subfolders and 2 or more videos",
+      toTag: "Turn the group into a tag",
+    },
   },
   folderGrouping: {
     ungrouped: (name: string) => `Ungrouped "${name}"`,
