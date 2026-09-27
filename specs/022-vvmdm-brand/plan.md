@@ -44,15 +44,23 @@ The separate `ui-design.md` produced by the design stage will be the visual sour
 
 ### VVMDM logo and visible product name
 
-**Scope**: Derive app-delivery logo assets from [`logo/`](../../logo/), use the approved wordmark and symbol in the top bar, setup/login, and video header, and update the tab icon, document title, video title, and user-facing product descriptions in the application and user documentation. Keep internal identifiers stable.
+**Scope**: Derive app-delivery logo assets from [`logo/`](../../logo/), use the approved wordmark and symbol in the top bar and video header, and update the tab icon, document title, video title, and user-facing product descriptions in the application and user documentation. The credential-screen unit owns logo placement on setup and login. Keep internal identifiers stable.
 
 **Dependencies**: “VVMDM theme and shared control states”.
 
 **Acceptance evidence**: At 16, 24, and 32 px the symbol is recognizable; dark, light, and monochrome placements follow the design. The named app entry points, browser titles, and user descriptions show VVMDM rather than the old product name, the logo has a suitable accessible name or is hidden when redundant, and related UI tests, `task check`, and `task check-docs` pass.
 
+### Setup and login surfaces
+
+**Scope**: Apply the design to `CredentialScreen.tsx`, setup, and login, including the approved logo and product name, layout, fields, connection warning, loading, and failure states. Preserve the existing authentication behavior.
+
+**Dependencies**: “VVMDM theme and shared control states” and “VVMDM logo and visible product name”.
+
+**Acceptance evidence**: Narrow and wide browser views show the approved identity and clear input and primary-action order; the warning and failure messages remain legible and announced, and keyboard focus, disabled, and loading states remain distinguishable for setup and login. Relevant UI tests, `task check`, and the [quickstart](quickstart.md) credential scenarios pass.
+
 ### Library grid and search surfaces
 
-**Scope**: Apply the design to the library landing view, cards and group cards, search/filter/sort toolbar, selection actions, and their normal, empty, loading, and error states. Preserve the existing search and organization behavior.
+**Scope**: Apply the design to the library landing view, the shared `VideoCard` and group cards, search/filter/sort toolbar, selection actions, and their normal, empty, loading, and error states. The shared video-card appearance used by folder browsing belongs to this unit. Preserve the existing search and organization behavior.
 
 **Dependencies**: “VVMDM theme and shared control states” and “VVMDM logo and visible product name”.
 
@@ -60,11 +68,11 @@ The separate `ui-design.md` produced by the design stage will be the visual sour
 
 ### Folder browsing surfaces
 
-**Scope**: Apply the design to folder navigation, folder and video cards, folder toolbars, and grouping actions, including long names and empty folders. Preserve folder access and navigation behavior.
+**Scope**: Apply the design to folder navigation, folder cards, folder-specific placement of the shared video cards, folder toolbars, and grouping actions, including long names and an empty registered root for the owner. Preserve folder access and navigation behavior; changes to the shared `VideoCard` belong to “Library grid and search surfaces”.
 
-**Dependencies**: “VVMDM theme and shared control states” and “VVMDM logo and visible product name”.
+**Dependencies**: “VVMDM theme and shared control states”, “VVMDM logo and visible product name”, and “Library grid and search surfaces”.
 
-**Acceptance evidence**: Narrow and wide browser views distinguish folder hierarchy from video content without losing the dense browse view; long names wrap or truncate without covering actions; owner and guest navigation, focus, and empty states work. Relevant UI tests, `task check`, and the [quickstart](quickstart.md) folder scenarios pass.
+**Acceptance evidence**: Narrow and wide browser views distinguish folder hierarchy from video content without losing the dense browse view; long names wrap or truncate without covering actions. The owner can inspect an empty registered root, while the guest can navigate folders containing public videos; focus and available empty states work. Relevant UI tests, `task check`, and the [quickstart](quickstart.md) folder scenarios pass.
 
 ### Tags and settings surfaces
 
