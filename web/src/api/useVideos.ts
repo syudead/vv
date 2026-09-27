@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { useAudience } from "../auth/audience";
+import { errorText, t, type UiText } from "../i18n";
 import {
-  errorMessage,
   type FolderRef,
   type FolderScope,
   getFolderGroup,
@@ -301,9 +301,6 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
   }
 }
 
-const inconsistentPageMessage =
-  "一覧の更新が続いているため取得できません。しばらくしてから再試行してください。";
-
 /** VideosState は一覧の状態である。 */
 export interface VideosState {
   /**
@@ -319,7 +316,7 @@ export interface VideosState {
   loading: boolean;
   /** loadingMore は続きを読んでいる間 true になる。 */
   loadingMore: boolean;
-  error: string | null;
+  error: UiText | null;
   /**
    * notFound は folder を渡したときに、そのフォルダの動画の要求が 404 で
    * 返ったことを表す（検索中にフォルダが無くなった場合、
@@ -392,7 +389,7 @@ export function useVideos(
     }));
   const [loading, setLoading] = useState(seed === undefined);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UiText | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [generation, setGeneration] = useState(0);
   const resyncAttempted = useRef(false);
@@ -823,7 +820,7 @@ export function useVideos(
           } else {
             dispatch({ type: "clear" });
             dispatch({ type: "stop" });
-            setError(inconsistentPageMessage);
+            setError(t.list.inconsistentPage);
           }
           return;
         }
@@ -908,7 +905,7 @@ export function useVideos(
           dispatch({ type: "stop" });
           return;
         }
-        setError(errorMessage(failure));
+        setError(errorText(failure));
         // 前の要求の 404 を残すと、取得の失敗が「見つかりません」に隠れて再試行できない。
         setNotFound(false);
         // 続きが読めない状態で観測点を残すと、同じ要求を繰り返してしまう。
@@ -946,7 +943,7 @@ export function useVideos(
     }
     dispatch({ type: "clear" });
     dispatch({ type: "stop" });
-    setError(inconsistentPageMessage);
+    setError(t.list.inconsistentPage);
   }, [inconsistent]);
 
   // 条件・フォルダが変わったら先頭から読み直す。カーソルはそれらに紐づくので、

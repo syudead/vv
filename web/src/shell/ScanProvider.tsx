@@ -10,7 +10,6 @@ import {
 } from "react";
 
 import {
-  errorMessage,
   getCurrentScan,
   getProcessing,
   isAborted,
@@ -22,6 +21,7 @@ import {
 } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { useAudience } from "../auth/audience";
+import { errorText } from "../i18n";
 
 export interface ScanContextValue {
   scan: Scan | null;
@@ -192,7 +192,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       const failure: unknown = scanResult.reason;
       if (scanAt !== scanRevision.current || isAborted(failure)) return;
       // 最後に得た状態は捨てない。つなぎ直しやウィンドウへの復帰で取り直す。
-      setLoadError(errorMessage(failure));
+      setLoadError(errorText(failure));
     })();
   }, [apply]);
 
@@ -261,7 +261,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         ) {
           updateFolderCount(0);
         }
-        setStartError(`取り込みを始められません: ${errorMessage(failure)}`);
+        setStartError(`取り込みを始められません: ${errorText(failure)}`);
         // 応答だけを失い、取り込み自体は始まっていることがある。変化の知らせか
         // 次の取得でそれを見たら、失敗の表示を消して追跡する。
         recoveryBaselineScanId.current = baselineScanId;

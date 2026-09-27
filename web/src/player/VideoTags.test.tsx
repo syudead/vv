@@ -584,7 +584,7 @@ describe("VideoTags", () => {
     await user.type(addInput(), "   ");
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByText("名前を入力してください")).toBeDefined();
+    expect(await screen.findByText("Enter a name")).toBeDefined();
   });
 
   it("改行を含む貼り付けは取り込まず、理由が出る（受け入れ条件6）", async () => {
@@ -601,7 +601,7 @@ describe("VideoTags", () => {
     );
     fireEvent(input, pasteEvent);
 
-    expect(await screen.findByText("改行やタブは使えません")).toBeDefined();
+    expect(await screen.findByText("Line breaks and tabs aren't allowed")).toBeDefined();
     expect((input as HTMLInputElement).value).toBe("");
   });
 
@@ -615,7 +615,7 @@ describe("VideoTags", () => {
     await user.type(addInput(), longName);
 
     expect(
-      await screen.findByText("100 文字以内にしてください（今 101 文字）"),
+      await screen.findByText("Use 100 characters or fewer (currently 101)"),
     ).toBeDefined();
     await user.keyboard("{Enter}");
     expect(screen.queryByTitle(longName)).toBeNull();
@@ -715,7 +715,7 @@ describe("VideoTags", () => {
 
       await user.click(addInput());
       await user.type(addInput(), longName);
-      await screen.findByText("100 文字以内にしてください（今 101 文字）");
+      await screen.findByText("Use 100 characters or fewer (currently 101)");
 
       const createRow = screen.getByRole("option", { name: /を作成/ });
       expect(createRow.getAttribute("aria-disabled")).toBe("true");
@@ -737,7 +737,7 @@ describe("VideoTags", () => {
         { clipboardData: { getData: () => "旅行\n2024" } },
       );
       fireEvent(input, pasteEvent);
-      await screen.findByText("改行やタブは使えません");
+      await screen.findByText("Line breaks and tabs aren't allowed");
 
       const option = screen.getByRole("option", { name: /旅行/ });
       expect(option.getAttribute("aria-disabled")).toBe("true");

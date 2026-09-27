@@ -4,6 +4,7 @@ import { Navigate, useLocation, useNavigate } from "react-router";
 
 import { type AuthSession, getAuthSession } from "../api/auth";
 import { RequestFailed, setRenderedAudience } from "../api/client";
+import { errorText } from "../i18n";
 import Button from "../ui/Button";
 import { EmptyState } from "../videoList/states";
 import { AudienceProvider } from "./audience";
@@ -38,7 +39,7 @@ function loginNext(search: string): string | undefined {
 }
 
 function failureReason(error: unknown): string {
-  if (error instanceof RequestFailed) return error.message;
+  if (error instanceof RequestFailed) return errorText(error);
   return "サーバーから応答がありません。サーバーが動いているか確かめてください";
 }
 

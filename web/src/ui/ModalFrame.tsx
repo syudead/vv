@@ -2,6 +2,7 @@ import { X } from "lucide-react";
 import { type ReactNode, type RefObject, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 
+import { t, type UiText } from "../i18n";
 import { isComposingNativeKeyEvent } from "./Combobox";
 import IconButton from "./IconButton";
 
@@ -23,7 +24,7 @@ export function ModalFrame({
   children,
   initialFocus,
 }: {
-  title: string;
+  title: UiText;
   onClose: () => void;
   children: ReactNode;
   initialFocus?: RefObject<HTMLElement | null>;
@@ -114,7 +115,7 @@ export function ModalFrame({
           <h2 id={titleId} className="min-w-0 flex-1 truncate text-base font-semibold">
             {title}
           </h2>
-          <IconButton label="閉じる" onClick={onClose} tooltip={false}>
+          <IconButton label={t.common.close} onClick={onClose} tooltip={false}>
             <X />
           </IconButton>
         </div>

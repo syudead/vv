@@ -180,15 +180,23 @@ describe("SetupPage", () => {
     expect(assignPage).not.toHaveBeenCalled();
   });
 
-  it("400 は message をそのまま出す", async () => {
+  it("400 は reason と limit から英語の説明を出す", async () => {
     fetchMock.mockResolvedValue(
-      json({ code: "invalid_request", message: "パスワードは 1024 バイトまでです" }, 400),
+      json(
+        {
+          code: "invalid_request",
+          message: "Passwords must be at most 1024 bytes.",
+          reason: "password_length",
+          limit: 1024,
+        },
+        400,
+      ),
     );
     render(<SetupPage />);
     await fill("owner", "secret", "secret");
 
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "パスワードは 1024 バイトまでです",
+      "Use a password of at most 1,024 bytes.",
     );
     expect(fields().submit.disabled).toBe(false);
   });

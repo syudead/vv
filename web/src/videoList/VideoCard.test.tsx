@@ -67,7 +67,7 @@ describe("VideoCard hover preview", () => {
   it("waits exactly 400ms and keeps the thumbnail until playing", async () => {
     renderCard(video({ unplayableReason: "container" }));
     const card = screen.getByRole("article");
-    expect(screen.queryByText("再生に必要な情報がありません")).toBeNull();
+    expect(screen.queryByText("Missing information needed for playback")).toBeNull();
 
     fireEvent.pointerEnter(card, { pointerType: "mouse" });
     act(() => vi.advanceTimersByTime(399));
@@ -256,11 +256,11 @@ describe("VideoCard hover preview", () => {
       activePreviewId: 1,
       onPreviewStart: onStart,
     });
-    expect(screen.getByText("再生に必要な情報がありません")).toBeDefined();
+    expect(screen.getByText("Missing information needed for playback")).toBeDefined();
 
     fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
     act(() => vi.advanceTimersByTime(400));
-    expect(screen.getByText("再生に必要な情報がありません")).toBeDefined();
+    expect(screen.getByText("Missing information needed for playback")).toBeDefined();
     expect(onStart).not.toHaveBeenCalled();
     expect(document.querySelector("video")).toBeNull();
   });
@@ -490,7 +490,7 @@ describe("VideoCard の表示（issue 308）", () => {
       expect(article.textContent).not.toMatch(/h264/i);
       expect(article.textContent).not.toMatch(/1080p/i);
       expect(article.textContent).not.toMatch(/MB|KB/);
-      expect(article.textContent).not.toMatch(/前|たった今/);
+      expect(article.textContent).not.toMatch(/ ago|just now/);
       expect(screen.queryByText("視聴済み")).toBeNull();
       // 再生時間は残す。
       expect(screen.getByText("1:05")).toBeDefined();

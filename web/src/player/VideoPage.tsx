@@ -28,6 +28,7 @@ import {
 } from "../api/folderGrouping";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
+import { untranslated } from "../i18n";
 import Button from "../ui/Button";
 import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
 import Skeleton from "../ui/Skeleton";
@@ -648,7 +649,7 @@ function GroupLineMenu({
       const { message, conflict } = groupingFailure(failure, {
         name: group.name,
         tagging,
-        notFoundMessage: "変更できませんでした",
+        notFoundMessage: untranslated("変更できませんでした"),
       });
       toast(message);
       if (conflict) onChanged();

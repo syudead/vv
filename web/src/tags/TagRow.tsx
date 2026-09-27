@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 
 import type { Tag } from "../api/tags";
+import { untranslated } from "../i18n";
 import { isComposingKeyEvent } from "../ui/Combobox";
 import IconButton from "../ui/IconButton";
 import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
@@ -160,7 +161,7 @@ export default function TagRow({
       <div className="flex shrink-0 items-center gap-1">
         <IconButton
           ref={(node) => registerRefs(tag.id, { renameButton: node })}
-          label="改名"
+          label={untranslated("改名")}
           size="sm"
           onClick={() => onStartRename(tag)}
           disabled={renaming || blockStart}
@@ -169,7 +170,7 @@ export default function TagRow({
         </IconButton>
         <IconButton
           ref={(node) => registerRefs(tag.id, { synonymsButton: node })}
-          label="シノニム"
+          label={untranslated("シノニム")}
           size="sm"
           onClick={() => onOpenSynonyms(tag)}
           disabled={renaming}
@@ -180,7 +181,7 @@ export default function TagRow({
           <MenuTrigger asChild>
             <IconButton
               ref={(node) => registerRefs(tag.id, { menuButton: node })}
-              label="その他の操作"
+              label={untranslated("その他の操作")}
               size="sm"
               disabled={renaming || blockStart}
             >

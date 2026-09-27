@@ -1,4 +1,4 @@
-import { RequestFailed, toRequestFailed } from "./client";
+import { RequestFailed, sendRequest, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 
 // 認証の経路（specs/016-single-account-auth/contracts/auth-api.md §2〜§4）。
@@ -22,7 +22,7 @@ export class LoginThrottled extends RequestFailed {
 }
 
 function postJSON(path: string, body: unknown): Promise<Response> {
-  return fetch(path, {
+  return sendRequest(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -43,7 +43,7 @@ export async function getAuthSession(
   signal?: AbortSignal,
 ): Promise<AuthSession> {
   const query = next === undefined ? "" : `?${new URLSearchParams({ next })}`;
-  const response = await fetch(`/api/auth/session${query}`, { signal });
+  const response = await sendRequest(`/api/auth/session${query}`, { signal });
   if (!response.ok) throw await toRequestFailed(response);
   return (await response.json()) as AuthSession;
 }
@@ -77,6 +77,6 @@ export async function login(
 
 /** logout はログアウトする。204 以外は RequestFailed で投げる。 */
 export async function logout(): Promise<void> {
-  const response = await fetch("/api/auth/logout", { method: "POST" });
+  const response = await sendRequest("/api/auth/logout", { method: "POST" });
   if (response.status !== 204) throw await toRequestFailed(response);
 }

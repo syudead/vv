@@ -684,7 +684,9 @@ describe("VideoPage", () => {
       renderPage();
       const alert = await screen.findByRole("alert");
       expect(within(alert).getByText("この動画を読み込めませんでした")).toBeDefined();
-      expect(within(alert).getByText("データベースに届きません")).toBeDefined();
+      expect(
+        within(alert).getByText("Something went wrong on the server."),
+      ).toBeDefined();
       expect(screen.queryByText("この動画は開けません")).toBeNull();
       fireEvent.click(within(alert).getByRole("button", { name: "再試行" }));
       expect((await ready()).textContent).toBe("テスト動画");
@@ -918,7 +920,7 @@ describe("VideoPage", () => {
         ).toEqual(["まとめを解除", "グループをタグに変える"]);
         await user.click(within(menu).getByRole("menuitem", { name: "まとめを解除" }));
 
-        expect(await screen.findByText("「series」のまとめを解除しました")).toBeDefined();
+        expect(await screen.findByText('Ungrouped "series"')).toBeDefined();
         expect(server.grouping).toHaveBeenCalledWith(
           "PUT",
           "/api/folders/1/grouping?path=series",
@@ -954,7 +956,7 @@ describe("VideoPage", () => {
           await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
         );
         expect(
-          await screen.findByText("タグ「series」を付け、まとめを解除しました"),
+          await screen.findByText('Added the tag "series" and ungrouped'),
         ).toBeDefined();
         expect(server.grouping).toHaveBeenCalledWith(
           "POST",
@@ -980,7 +982,7 @@ describe("VideoPage", () => {
         );
         expect(
           await screen.findByText(
-            "「series」はタグの名前に使えないため、タグに変えられません",
+            "\"series\" can't be used as a tag name, so it can't become a tag",
           ),
         ).toBeDefined();
         const button = await lineButton();
@@ -1004,9 +1006,7 @@ describe("VideoPage", () => {
         ungroupOnServer();
         await user.click(await lineButton());
         await user.click(await screen.findByRole("menuitem", { name: "まとめを解除" }));
-        expect(
-          await screen.findByText("このフォルダはもうグループではありません"),
-        ).toBeDefined();
+        expect(await screen.findByText("This folder is no longer a group")).toBeDefined();
         // ほかのタブで先に変わったので、ライブラリの控えも古い。次に開くときは読み直させる。
         expect(takeListSnapshot({ query: "series" })).toBeUndefined();
         await waitFor(() => expect(videoRequests(12)).toBe(before + 1));

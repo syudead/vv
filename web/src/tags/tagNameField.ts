@@ -1,6 +1,7 @@
 import { useState, type ClipboardEvent, type FormEvent } from "react";
 
-import { errorMessage, RequestFailed } from "../api/client";
+import { RequestFailed } from "../api/client";
+import { errorText } from "../i18n";
 import { nameReason, newlinePattern } from "../ui/Combobox";
 
 /**
@@ -22,7 +23,7 @@ export function tagFieldError(failure: unknown): TagFieldError {
   if (failure instanceof RequestFailed && failure.code === "tag_name_taken") {
     return { kind: "taken", message: failure.message };
   }
-  return { kind: "other", message: errorMessage(failure) };
+  return { kind: "other", message: errorText(failure) };
 }
 
 /**

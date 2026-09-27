@@ -16,6 +16,7 @@ import {
 } from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
 import { updateVideoVisibility } from "../api/visibility";
+import { untranslated } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
@@ -86,7 +87,7 @@ function buildAddOptions(
   const options: ComboboxOption[] = matched.map(({ tag, hint }) => ({
     id: String(tag.id),
     label: tag.name,
-    hint,
+    hint: hint === undefined ? undefined : untranslated(hint),
     meta: `${String(tag.videoCount)} 本`,
   }));
 
@@ -140,7 +141,9 @@ function buildRemoveOptions(
         `${String(summary.total)} 件`
       ),
       ariaLabel: partial
-        ? `${item.tag.name}、一部の動画だけ、${String(summary.total)} 件中 ${String(item.manualCount)} 件`
+        ? untranslated(
+            `${item.tag.name}、一部の動画だけ、${String(summary.total)} 件中 ${String(item.manualCount)} 件`,
+          )
         : undefined,
     };
   }
@@ -241,13 +244,17 @@ function AddTagPopover({
         : attachVideoTagByName(selectedIds, tag.name);
     void request
       .then((result) => {
-        toast(`${String(result.applied)} 件に「${displayName}」を付けました`);
+        toast(
+          untranslated(`${String(result.applied)} 件に「${displayName}」を付けました`),
+        );
         onOpenChange(false);
         onDone();
       })
       .catch((error: unknown) => {
         if (isTagNotFound(error)) {
-          toast(`タグ「${displayName}」はもう無いため、一覧を取り直しました`);
+          toast(
+            untranslated(`タグ「${displayName}」はもう無いため、一覧を取り直しました`),
+          );
           refreshTags().catch(() => undefined);
           return;
         }
@@ -287,11 +294,11 @@ function AddTagPopover({
             onSelect={(option) => submit({ id: Number(option.id), name: option.label })}
             createLabel={createLabel}
             onCreate={(spelling) => submit({ name: spelling })}
-            placeholder="タグを付ける"
+            placeholder={untranslated("タグを付ける")}
             icon={<Plus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />}
             busy={submitting}
             side="top"
-            aria-label="タグを付ける"
+            aria-label={untranslated("タグを付ける")}
             inputRef={inputRef}
             onEscapeWhenClosed={() => onOpenChange(false)}
             onOpenChange={(listOpen) => {
@@ -427,14 +434,18 @@ function RemoveTagPopover({
     const displayName = option.label;
     void detachVideoTag(selectedIds, tagId)
       .then((result) => {
-        toast(`${String(result.applied)} 件から「${displayName}」を外しました`);
+        toast(
+          untranslated(`${String(result.applied)} 件から「${displayName}」を外しました`),
+        );
         setValue("");
         fetchSummary();
         onRemoved(tagId);
       })
       .catch((error: unknown) => {
         if (isTagNotFound(error)) {
-          toast(`タグ「${displayName}」はもう無いため、一覧を取り直しました`);
+          toast(
+            untranslated(`タグ「${displayName}」はもう無いため、一覧を取り直しました`),
+          );
           fetchSummary();
           return;
         }
@@ -503,13 +514,13 @@ function RemoveTagPopover({
               exactOption={exactOption}
               onSelect={submit}
               createLabel={null}
-              placeholder="タグを外す"
+              placeholder={untranslated("タグを外す")}
               icon={
                 <Minus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />
               }
               busy={submitting}
               side="top"
-              aria-label="タグを外す"
+              aria-label={untranslated("タグを外す")}
               inputRef={inputRef}
               onEscapeWhenClosed={() => onOpenChange(false)}
               onOpenChange={(listOpen) => {
@@ -553,14 +564,18 @@ function VisibilityMenu({
     // 送る直前に選択の最新の件数を確かめる（タグの一括操作と同じ理由。上限を超えると
     // 全部か無しかで 400 になる）。
     if (selectedIds.length > maxVideoTagsSelection) {
-      toast(overLimitMessage);
+      toast(untranslated(overLimitMessage));
       return;
     }
     void updateVideoVisibility(selectedIds, isPublic).then(
       (result) => {
-        toast(`${String(result.applied)} 件を${isPublic ? "公開" : "非公開"}にしました`);
+        toast(
+          untranslated(
+            `${String(result.applied)} 件を${isPublic ? "公開" : "非公開"}にしました`,
+          ),
+        );
       },
-      () => toast("変更できませんでした"),
+      () => toast(untranslated("変更できませんでした")),
     );
   }
 
@@ -770,7 +785,7 @@ export default function SelectionBar({
           {selectingAll ? "選択中…" : "すべて選択"}
         </Button>
         <IconButton
-          label="選択を解除 (Esc)"
+          label={untranslated("選択を解除 (Esc)")}
           size="sm"
           onClick={onClear}
           className="order-3 sm:order-7"

@@ -2,6 +2,7 @@ import { LoaderCircle } from "lucide-react";
 import { useRef } from "react";
 
 import type { Tag } from "../api/tags";
+import { untranslated } from "../i18n";
 import Button from "../ui/Button";
 import { ModalFrame } from "../ui/ModalFrame";
 
@@ -29,7 +30,11 @@ export default function DeleteTagDialog({
       : `${String(tag.videoCount)} 本の動画からこのタグが外れます。この操作は取り消せません。`;
 
   return (
-    <ModalFrame title={`「${tag.name}」を削除`} onClose={onClose} initialFocus={cancel}>
+    <ModalFrame
+      title={untranslated(`「${tag.name}」を削除`)}
+      onClose={onClose}
+      initialFocus={cancel}
+    >
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
         <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
           {message}

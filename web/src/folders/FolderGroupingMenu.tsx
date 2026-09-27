@@ -10,6 +10,7 @@ import {
   taggedMessage,
   tagFolderGroup,
 } from "../api/folderGrouping";
+import { untranslated } from "../i18n";
 import Button from "../ui/Button";
 import {
   MenuContent,
@@ -61,7 +62,7 @@ export default function FolderGroupingMenu({
     const { message, conflict } = groupingFailure(failure, {
       name,
       tagging,
-      notFoundMessage: "このフォルダは見つかりません",
+      notFoundMessage: untranslated("このフォルダは見つかりません"),
     });
     toast(message);
     if (conflict) onConflict();

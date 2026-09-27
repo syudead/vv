@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { setupAccount } from "../api/auth";
 import { RequestFailed } from "../api/client";
+import { errorText } from "../i18n";
 import Button from "../ui/Button";
 import {
   connectionWarningId,
@@ -121,7 +122,7 @@ export default function SetupPage() {
         setConfirm("");
         setConfigured(true);
       } else if (error instanceof RequestFailed && error.status === 400) {
-        setFailure(error.message);
+        setFailure(errorText(error));
       } else if (error instanceof RequestFailed) {
         setFailure("初回設定できませんでした。もう一度お試しください");
       } else {

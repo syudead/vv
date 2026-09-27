@@ -859,7 +859,7 @@ describe("TagsPage", () => {
     await user.keyboard("{Enter}");
 
     const alert = await screen.findByRole("alert");
-    expect(alert.textContent).toBe("改名できませんでした");
+    expect(alert.textContent).toBe("Something went wrong on the server.");
     expect(alert.className).toContain("text-sm");
 
     await user.clear(input);
@@ -1266,7 +1266,7 @@ describe("TagsPage 統合", () => {
     await user.keyboard("{Escape}");
     expect(screen.getByRole("dialog", { name: "「旅行」を統合" })).toBeDefined();
 
-    await user.click(within(dialog).getByRole("button", { name: "閉じる" }));
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
     expect(screen.getByRole("dialog", { name: "「旅行」を統合" })).toBeDefined();
 
     release?.();
@@ -1595,7 +1595,7 @@ describe("TagsPage シノニム", () => {
 
     await user.click(within(dialog).getByRole("button", { name: "統合する" }));
     await within(dialog).findByText("anime");
-    await user.click(within(dialog).getByRole("button", { name: "閉じる" }));
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
 
     expect(screen.queryByTitle("anime")).toBeNull();
     expect(screen.getByTitle("Anime")).toBeDefined();
@@ -1614,7 +1614,7 @@ describe("TagsPage シノニム", () => {
     await user.type(input, "ドラマ");
     await user.keyboard("{Enter}");
     await within(dialog).findByText("ドラマ");
-    await user.click(within(dialog).getByRole("button", { name: "閉じる" }));
+    await user.click(within(dialog).getByRole("button", { name: "Close" }));
 
     expect(screen.getByTitle("旅行")).toBeDefined();
     expect(screen.getByTitle("Anime")).toBeDefined();

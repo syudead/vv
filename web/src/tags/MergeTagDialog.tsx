@@ -1,9 +1,10 @@
 import { LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { errorMessage, RequestFailed } from "../api/client";
+import { RequestFailed } from "../api/client";
 import { compareNatural } from "../api/tagOrder";
 import { mergeTag, type Tag } from "../api/tags";
+import { errorText, untranslated } from "../i18n";
 import Button from "../ui/Button";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import { ModalFrame } from "../ui/ModalFrame";
@@ -93,14 +94,14 @@ export default function MergeTagDialog({
         onStale();
         return;
       }
-      setError(errorMessage(failure));
+      setError(errorText(failure));
       setPending(false);
     }
   }
 
   return (
     <ModalFrame
-      title={`「${source.name}」を統合`}
+      title={untranslated(`「${source.name}」を統合`)}
       onClose={handleClose}
       initialFocus={cancel}
     >
@@ -123,8 +124,8 @@ export default function MergeTagDialog({
           options={options}
           exactOption={exactOption}
           onSelect={selectTarget}
-          placeholder="統合先のタグ"
-          aria-label="統合先のタグ"
+          placeholder={untranslated("統合先のタグ")}
+          aria-label={untranslated("統合先のタグ")}
           // 候補の一覧が閉じているときの Esc は、この窓を閉じる
           // （B1。一覧が開いていれば Combobox 自身が一覧だけを閉じ、
           // preventDefault するので ModalFrame の Esc には届かない）。
@@ -206,7 +207,7 @@ function buildTargetOptions(
   const options: ComboboxOption[] = matched.map(({ tag, hint }) => ({
     id: String(tag.id),
     label: tag.name,
-    hint,
+    hint: hint === undefined ? undefined : untranslated(hint),
     meta: `${String(tag.videoCount)} 本`,
   }));
 

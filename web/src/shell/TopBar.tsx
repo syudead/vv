@@ -2,6 +2,7 @@ import { Menu, RefreshCw } from "lucide-react";
 import { Link } from "react-router";
 
 import { useAudience } from "../auth/audience";
+import { untranslated } from "../i18n";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import Tooltip from "../ui/Tooltip";
@@ -53,7 +54,7 @@ export default function TopBar({ onMenu }: { onMenu: () => void }) {
   const owner = useAudience() === "owner";
   return (
     <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 border-b border-border bg-bg/90 px-2 backdrop-blur-md sm:px-3">
-      <IconButton label="メニュー" onClick={onMenu} tooltip={false}>
+      <IconButton label={untranslated("メニュー")} onClick={onMenu} tooltip={false}>
         <Menu />
       </IconButton>
       <Link

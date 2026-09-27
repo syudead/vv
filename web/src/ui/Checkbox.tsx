@@ -2,6 +2,7 @@ import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import { Check } from "lucide-react";
 import type { MouseEvent } from "react";
 
+import type { UiText } from "../i18n";
 import { cn } from "../lib/cn";
 
 export default function Checkbox({
@@ -13,7 +14,7 @@ export default function Checkbox({
 }: {
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
-  label: string;
+  label: UiText;
   className?: string;
   onClick?: (event: MouseEvent) => void;
 }) {

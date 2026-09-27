@@ -300,7 +300,7 @@ test.describe.serial("library hover preview", () => {
         firstPreview.evaluate((element) => (element as HTMLVideoElement).currentTime),
       )
       .toBeGreaterThan(firstTime + 0.1);
-    await expect(card(page, first).getByText("読み取れませんでした")).toHaveCount(0);
+    await expect(card(page, first).getByText("Couldn't read this video")).toHaveCount(0);
 
     await hoverCard(page, second);
     await expect(card(page, first).locator("video")).toHaveCount(0);

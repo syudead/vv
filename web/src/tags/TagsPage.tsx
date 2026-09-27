@@ -1,7 +1,7 @@
 import { AlertCircle, Plus, SearchX, Tags as TagsIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { errorMessage, RequestFailed } from "../api/client";
+import { RequestFailed } from "../api/client";
 import { compareTagRefs } from "../api/tagOrder";
 import {
   createTag,
@@ -12,6 +12,7 @@ import {
   subscribeTags,
   type Tag,
 } from "../api/tags";
+import { errorText, untranslated } from "../i18n";
 import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
@@ -136,7 +137,7 @@ export default function TagsPage() {
         // 既に一覧を持っているときは、その一覧を残したまま理由だけを控える
         // （読み込み失敗の空の状態は、一覧をまだ一度も取れていないときだけ
         // 出す。N6: 直前の操作は成功しているので、一覧を空白にしない）。
-        setLoadError(errorMessage(failure));
+        setLoadError(errorText(failure));
         return undefined;
       });
   }, []);
@@ -242,7 +243,7 @@ export default function TagsPage() {
       if (isTagNotFound(failure)) {
         const order = visibleRows;
         setRenamingId(null);
-        toast("このタグはもう無いため、一覧を取り直しました");
+        toast(untranslated("このタグはもう無いため、一覧を取り直しました"));
         await reload();
         focusAfterRemoval(order, tag.id);
         return;
@@ -263,17 +264,17 @@ export default function TagsPage() {
       await deleteTag(target.id);
       setTags((current) => current?.filter((item) => item.id !== target.id));
       setDeletingTag(null);
-      toast("削除しました");
+      toast(untranslated("削除しました"));
       focusAfterRemoval(order, target.id);
     } catch (failure) {
       if (isTagNotFound(failure)) {
         setDeletingTag(null);
-        toast("このタグはもう無いため、一覧を取り直しました");
+        toast(untranslated("このタグはもう無いため、一覧を取り直しました"));
         await reload();
         focusAfterRemoval(order, target.id);
         return;
       }
-      setDeleteError(errorMessage(failure));
+      setDeleteError(errorText(failure));
     } finally {
       setDeletePending(false);
     }
@@ -316,7 +317,7 @@ export default function TagsPage() {
         .map((item) => (item.id === merged.id ? merged : item)),
     );
     setMergingTag(null);
-    toast("統合しました");
+    toast(untranslated("統合しました"));
     focusRow(merged.id, "name");
   }
 
@@ -330,7 +331,7 @@ export default function TagsPage() {
     if (source === null) return;
     const order = filtered;
     setMergingTag(null);
-    toast("このタグはもう無いため、一覧を取り直しました");
+    toast(untranslated("このタグはもう無いため、一覧を取り直しました"));
     void reload().then(() => focusAfterRemoval(order, source.id));
   }
 
@@ -395,7 +396,7 @@ export default function TagsPage() {
     const id = synonymsTagId;
     const order = filtered;
     setSynonymsTagId(null);
-    toast("このタグはもう無いため、一覧を取り直しました");
+    toast(untranslated("このタグはもう無いため、一覧を取り直しました"));
     void reload().then(() => focusAfterRemoval(order, id));
   }
 

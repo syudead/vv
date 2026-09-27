@@ -15,6 +15,7 @@ import {
 
 import type { VideoSort } from "../api/client";
 import { useAudience } from "../auth/audience";
+import { untranslated } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import {
@@ -197,18 +198,18 @@ export function CompactSortControls({
         </Button>
       ) : (
         <SegmentedControl<SortDirection>
-          label="並び順の向き"
+          label={untranslated("並び順の向き")}
           value={direction}
           onValueChange={(next) => onSortChange(withDirection(sort, next))}
           options={[
             {
               value: "desc",
-              label: directionLabel(sort, "desc"),
+              label: untranslated(directionLabel(sort, "desc")),
               icon: <ArrowDownWideNarrow />,
             },
             {
               value: "asc",
-              label: directionLabel(sort, "asc"),
+              label: untranslated(directionLabel(sort, "asc")),
               icon: <ArrowUpNarrowWide />,
             },
           ]}

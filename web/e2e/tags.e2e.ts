@@ -200,7 +200,7 @@ test.describe.serial("video tags", () => {
     await input.click();
     await input.fill("   ");
     await page.keyboard.press("Enter");
-    await expect(page.getByText("名前を入力してください")).toBeVisible();
+    await expect(page.getByText("Enter a name")).toBeVisible();
 
     // 改行を含む貼り付けは取り込まない。
     await input.fill("");
@@ -215,13 +215,13 @@ test.describe.serial("video tags", () => {
         }),
       );
     });
-    await expect(page.getByText("改行やタブは使えません")).toBeVisible();
+    await expect(page.getByText("Line breaks and tabs aren't allowed")).toBeVisible();
     await expect(input).toHaveValue("");
 
     // 101 文字は確定できない。
     await input.fill("あ".repeat(101));
     await expect(
-      page.getByText("100 文字以内にしてください（今 101 文字）"),
+      page.getByText("Use 100 characters or fewer (currently 101)"),
     ).toBeVisible();
     await page.keyboard.press("Enter");
     await expect(chip(page, "あ".repeat(101))).toHaveCount(0);
@@ -1031,7 +1031,7 @@ test.describe.serial("video tags", () => {
       await dialog.getByRole("button", { name: "戻る" }).click();
       await expect(dialog.getByText(/本の動画に付いているタグです/)).toHaveCount(0);
       await expect(input).toHaveValue("e2eXyz17anime");
-      await dialog.getByRole("button", { name: "閉じる" }).click();
+      await dialog.getByRole("button", { name: "Close" }).click();
       await expect(tagRowByName(page, "e2eXyz17anime")).toBeVisible();
 
       // もう一度、今度は承諾する。
@@ -1103,7 +1103,7 @@ test.describe.serial("video tags", () => {
         .getByRole("button", { name: "シノニム「e2e管理解除アニメ」を解除" })
         .click();
       await expect(dialog.getByText("e2e管理解除アニメ")).toHaveCount(0);
-      await dialog.getByRole("button", { name: "閉じる" }).click();
+      await dialog.getByRole("button", { name: "Close" }).click();
 
       await expect(tagRowByName(page, "e2e管理解除Anime")).not.toContainText("シノニム:");
     });

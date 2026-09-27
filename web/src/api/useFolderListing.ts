@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import { errorText, type UiText } from "../i18n";
 import {
   type FolderListing,
   type FolderRef,
@@ -16,7 +17,7 @@ export interface FolderListingState<T> {
   loading: boolean;
   /** notFound はフォルダが存在しない（404）ことを表す。 */
   notFound: boolean;
-  error: string | null;
+  error: UiText | null;
   reload: () => void;
   /**
    * update は読み込み済みの値を書き換える（取り直さない）。まだ値が無ければ何もしない。
@@ -37,7 +38,7 @@ function useFolderData<T>(
   const [data, setData] = useState<T | null>(seed ?? null);
   const [loading, setLoading] = useState(seed === undefined);
   const [notFound, setNotFound] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UiText | null>(null);
   const [generation, setGeneration] = useState(seed === undefined ? 1 : 0);
 
   useEffect(() => {
@@ -57,7 +58,7 @@ function useFolderData<T>(
         if (failure instanceof RequestFailed && failure.status === 404) {
           setNotFound(true);
         } else {
-          setError(failure instanceof Error ? failure.message : String(failure));
+          setError(errorText(failure));
         }
         setData(null);
         setLoading(false);

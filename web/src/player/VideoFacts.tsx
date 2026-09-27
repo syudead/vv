@@ -10,6 +10,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { openVideoFile, RequestFailed, type Video } from "../api/client";
+import { untranslated } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import IconButton from "../ui/IconButton";
@@ -111,9 +112,11 @@ export default function VideoFacts({ video }: { video: Video }) {
   const copyPath = () => {
     if (location === undefined) return;
     const path = location.path;
-    const done = () => toast("パスをコピーしました");
+    const done = () => toast(untranslated("パスをコピーしました"));
     const fallback = () =>
-      copyWithSelection(path) ? done() : toast("パスをコピーできませんでした");
+      copyWithSelection(path)
+        ? done()
+        : toast(untranslated("パスをコピーできませんでした"));
     // navigator.clipboard は安全な接続（HTTPS・localhost）でしか使えない。LAN のアドレスで
     // 開いたときは、選んだ文字をコピーする古い方法に切り替える。
     if (navigator.clipboard === undefined) {
@@ -138,7 +141,7 @@ export default function VideoFacts({ video }: { video: Video }) {
           <div className="ml-auto flex shrink-0 items-center">
             {location.openable && (
               <IconButton
-                label="ファイルを開く"
+                label={untranslated("ファイルを開く")}
                 size="sm"
                 onClick={open}
                 className="text-fg-muted! hover:text-fg!"
@@ -147,7 +150,7 @@ export default function VideoFacts({ video }: { video: Video }) {
               </IconButton>
             )}
             <IconButton
-              label="パスをコピー"
+              label={untranslated("パスをコピー")}
               size="sm"
               onClick={copyPath}
               className="text-fg-muted! hover:text-fg!"

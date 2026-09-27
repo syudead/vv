@@ -250,14 +250,14 @@ describe("LibraryPage", () => {
     });
     const user = userEvent.setup();
     renderLibrary();
-    expect(await screen.findByText("壊れています")).toBeDefined();
+    expect(await screen.findByText("Something went wrong on the server.")).toBeDefined();
     expect(screen.getByRole("button", { name: "再試行" })).toBeDefined();
     expect(screen.queryByRole("status")).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "再試行" }));
     await waitFor(() => expect(resolveRetry).toBeDefined());
     expect(screen.getByRole("status").textContent).toBe("読み込み中…");
-    expect(screen.queryByText("壊れています")).toBeNull();
+    expect(screen.queryByText("Something went wrong on the server.")).toBeNull();
 
     await act(async () => {
       resolveRetry?.(json({ items: [video(1)], total: 1 } satisfies VideoPage));
@@ -280,7 +280,7 @@ describe("LibraryPage", () => {
 
     await user.type(screen.getByRole("searchbox", { name: "動画を検索" }), "broken");
 
-    expect(await screen.findByText("壊れています")).toBeDefined();
+    expect(await screen.findByText("Something went wrong on the server.")).toBeDefined();
     expect(screen.queryByRole("status")).toBeNull();
   });
 

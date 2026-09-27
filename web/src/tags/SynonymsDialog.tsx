@@ -1,8 +1,9 @@
 import { LoaderCircle, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { errorMessage, RequestFailed } from "../api/client";
+import { RequestFailed } from "../api/client";
 import { addTagSynonym, refreshTags, removeTagSynonym, type Tag } from "../api/tags";
+import { errorText, untranslated } from "../i18n";
 import Button from "../ui/Button";
 import Chip from "../ui/Chip";
 import { isComposingKeyEvent } from "../ui/Combobox";
@@ -164,7 +165,7 @@ export default function SynonymsDialog({
       // 外せなかったときは、次/前のチップではなく、このチップ自身の × へ戻す
       // （`web/src/player/VideoTags.tsx` の removeTag と同じ扱い）。
       pendingFocusRef.current = { target: { name } };
-      setAddError({ kind: "other", message: errorMessage(failure) });
+      setAddError({ kind: "other", message: errorText(failure) });
     } finally {
       setRemoving((current) => {
         const next = new Set(current);
@@ -210,7 +211,7 @@ export default function SynonymsDialog({
         hasSynonyms: found.synonyms.length > 0,
       });
     } catch (failure) {
-      setAddError({ kind: "other", message: errorMessage(failure) });
+      setAddError({ kind: "other", message: errorText(failure) });
     }
   }
 
@@ -280,7 +281,7 @@ export default function SynonymsDialog({
         await openConfirm(confirm.name);
         return;
       }
-      setConfirmError(errorMessage(failure));
+      setConfirmError(errorText(failure));
     } finally {
       setConfirmPending(false);
     }
@@ -301,7 +302,7 @@ export default function SynonymsDialog({
 
   return (
     <ModalFrame
-      title={`「${tag.name}」のシノニム`}
+      title={untranslated(`「${tag.name}」のシノニム`)}
       onClose={handleClose}
       initialFocus={inputRef}
     >

@@ -4,8 +4,9 @@ import { Link } from "react-router";
 
 import type { LibraryGroup } from "../api/client";
 import { useAudience } from "../auth/audience";
+import { formatRelative, untranslated } from "../i18n";
 import { cn } from "../lib/cn";
-import { formatBytes, formatDuration, formatRelative } from "../lib/format";
+import { formatBytes, formatDuration } from "../lib/format";
 import Checkbox from "../ui/Checkbox";
 import FolderArt from "../videoList/FolderArt";
 
@@ -126,7 +127,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           <Checkbox
             checked={selected}
             onCheckedChange={(next) => onSelect(group.videoIds, next)}
-            label={`「${group.name}」のグループを選択`}
+            label={untranslated(`「${group.name}」のグループを選択`)}
             onClick={(event: MouseEvent) => event.stopPropagation()}
           />
         </div>
@@ -223,7 +224,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           <Checkbox
             checked={selected}
             onCheckedChange={(next) => onSelect(group.videoIds, next)}
-            label={`「${group.name}」のグループを選択`}
+            label={untranslated(`「${group.name}」のグループを選択`)}
             className={cn(
               "transition-opacity",
               selectionMode || selected

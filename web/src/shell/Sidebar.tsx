@@ -5,6 +5,7 @@ import { NavLink, useLocation } from "react-router";
 import { logout } from "../api/auth";
 import { useAudience } from "../auth/audience";
 import { currentPath, loginPath, reloadPage } from "../auth/pageNavigation";
+import { untranslated } from "../i18n";
 import { cn } from "../lib/cn";
 import { useToast } from "../ui/Toast";
 import { navEntries, type NavEntry } from "./navigation";
@@ -75,7 +76,7 @@ function LogoutEntry({ mode }: { mode: SidebarMode }) {
       await logout();
       reloadPage();
     } catch {
-      toast("ログアウトできませんでした");
+      toast(untranslated("ログアウトできませんでした"));
       setPending(false);
     }
   };
