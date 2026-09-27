@@ -157,7 +157,7 @@ func TestIngestSeekThumbnailsLayoutFollowsDuration(t *testing.T) {
 	if err := ingest.SeekThumbnails(context.Background(), jobFor(domain.JobSeekThumbnail, video)); err != nil {
 		t.Fatal(err)
 	}
-	want := domain.SeekSpriteLayout{IntervalMs: 12_000, FrameCount: 600, Columns: 10, Rows: 10, SheetCount: 6}
+	want := domain.SeekSpriteLayout{IntervalMs: 88_889, FrameCount: 81, Columns: 9, Rows: 9, SheetCount: 1}
 	if !slices.Equal(generator.seekLayouts, []domain.SeekSpriteLayout{want}) ||
 		!slices.Equal(generator.publishedLayouts, []domain.SeekSpriteLayout{want}) {
 		t.Fatalf("生成の配置 = %+v, 公開の配置 = %+v, want %+v",

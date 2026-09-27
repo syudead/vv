@@ -74,10 +74,10 @@ func (f *fakeArtifacts) SeekSpriteSheet(contentKey string, sheet int) ([]byte, e
 	return f.image, f.err
 }
 
-// testSprite は 2 シートにまたがる 150 コマの配置情報である。
+// testSprite は既に生成済みの旧2シート形式を表す。
 func testSprite() *domain.SeekSprite {
 	return &domain.SeekSprite{
-		SeekSpriteLayout: domain.NewSeekSpriteLayout(150 * 5000),
+		SeekSpriteLayout: domain.SeekSpriteLayout{IntervalMs: 5000, FrameCount: 150, Columns: 10, Rows: 10, SheetCount: 2},
 		FrameWidth:       320,
 		FrameHeight:      180,
 	}

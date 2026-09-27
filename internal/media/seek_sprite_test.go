@@ -20,8 +20,8 @@ func TestSeekSpriteArgsFollowLayout(t *testing.T) {
 	for _, want := range []string{
 		"-i /media/a.mp4",
 		"-map 0:V:0?",
-		"fps=1000/12000:eof_action=pass,tpad=stop_mode=clone:stop=-1,trim=end_frame=600,",
-		"scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2,tile=10x10,format=yuvj420p",
+		"fps=1000/88889:eof_action=pass,tpad=stop_mode=clone:stop=-1,trim=end_frame=81,",
+		"scale=min(160\\,iw):min(160\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2,tile=9x9,format=yuvj420p",
 		"-fps_mode passthrough",
 		"-start_number 0",
 		"/cache/%03d.jpg",
@@ -123,16 +123,15 @@ func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
 	if len(sheets) != 1 {
 		t.Fatalf("シートが %d 枚（1 枚のはず）", len(sheets))
 	}
-	if b := sheets[0].Bounds(); b.Dx() != 640 || b.Dy() != 640 {
-		t.Fatalf("シートの大きさ %v（640x640 のはず）", b)
+	if b := sheets[0].Bounds(); b.Dx() != 576 || b.Dy() != 576 {
+		t.Fatalf("シートの大きさ %v（576x576 のはず）", b)
 	}
 	for _, k := range []int{0, 3, 5} {
 		startSec := float64(k) * float64(layout.IntervalMs) / 1000
-		endSec := startSec + float64(layout.IntervalMs)/1000
 		got := frameSeconds(t, sheets, layout, k)
-		// JPEG の誤差を見込み、区間の端から 0.5 秒の内側にあることを求める。
-		if got < startSec+0.5 || got > endSec-0.5 {
-			t.Errorf("コマ %d の時刻 %.2f 秒が区間 [%.0f, %.0f) の中にない", k, got, startSec, endSec)
+		// 入力側シークは区間の先頭のフレームを選ぶ。圧縮と JPEG の誤差を許す。
+		if got < startSec-0.5 || got > startSec+1 {
+			t.Errorf("コマ %d の時刻 %.2f 秒が区間の先頭 %.0f 秒から離れている", k, got, startSec)
 		}
 	}
 	// 使わない升目は黒のまま。
@@ -180,14 +179,14 @@ func TestGenerateSeekSpriteWritesSingleFrameForOneSecondInput(t *testing.T) {
 	}
 }
 
-// 縦長の入力では、コマは縦横比を保ち、シートをまたいでも同じ大きさになる。
-func TestGenerateSeekSpriteKeepsPortraitAspectAcrossSheets(t *testing.T) {
+// 縦長の入力でも、コマは縦横比を保って1枚のシートになる。
+func TestGenerateSeekSpriteKeepsPortraitAspect(t *testing.T) {
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "portrait.mp4")
 	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=gray:s=360x640:r=1:d=510", "-c:v", "mpeg4", "-y", videoPath)
 
 	output, layout := generateSprite(t, videoPath, 510_000)
-	if layout.FrameCount != 102 || layout.SheetCount != 2 {
+	if layout.FrameCount != 81 || layout.SheetCount != 1 {
 		t.Fatalf("配置 %+v", layout)
 	}
 	sheets := readSheets(t, output)
@@ -196,12 +195,12 @@ func TestGenerateSeekSpriteKeepsPortraitAspectAcrossSheets(t *testing.T) {
 	}
 	for i, sheet := range sheets {
 		b := sheet.Bounds()
-		// 360x640 を 320x320 の枠に収めると 180x320 になる。
-		if b.Dx() != 180*layout.Columns || b.Dy() != 320*layout.Rows {
-			t.Errorf("シート %d の大きさ %v（コマ 180x320 のはず）", i, b)
+		// 360x640 を 160x160 の枠に収めると 90x160 になる。
+		if b.Dx() != 90*layout.Columns || b.Dy() != 160*layout.Rows {
+			t.Errorf("シート %d の大きさ %v（コマ 90x160 のはず）", i, b)
 		}
 	}
 	if luma := frameLuma(t, sheets, layout, layout.FrameCount-1); luma < 60 {
-		t.Errorf("2 枚目のシートの末尾のコマの輝度が %d", luma)
+		t.Errorf("末尾のコマの輝度が %d", luma)
 	}
 }

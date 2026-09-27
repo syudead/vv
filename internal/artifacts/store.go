@@ -404,7 +404,8 @@ func (s *Store) SeekSpriteSheet(contentKey string, sheet int) ([]byte, error) {
 	if !ok {
 		return nil, errInvalidKey
 	}
-	if sheet < 0 || sheet >= domain.SeekSpriteMaxSheets {
+	// Completed sprites from the previous six-sheet layout remain readable.
+	if sheet < 0 || sheet >= 6 {
 		return nil, fmt.Errorf("シート %d: %w", sheet, fs.ErrNotExist)
 	}
 	return os.ReadFile(filepath.Join(dir, fmt.Sprintf(sheetNameFormat, sheet)))
@@ -519,13 +520,13 @@ func readSeekSprite(dir string) (domain.SeekSprite, error) {
 // （contracts/seek-sprite-api.md §2）。
 func validSeekSprite(sprite domain.SeekSprite) bool {
 	if sprite.IntervalMs < domain.SeekThumbnailInterval.Milliseconds() ||
-		sprite.FrameCount < 1 || sprite.FrameCount > domain.SeekSpriteMaxFrames ||
+		sprite.FrameCount < 1 || sprite.FrameCount > 600 ||
 		// 掛け算があふれないよう、1 シートのコマ数を上限のコマ数までに
 		// 割り算で抑えてから掛ける。
-		sprite.Columns < 1 || sprite.Columns > domain.SeekSpriteMaxFrames ||
-		sprite.Rows < 1 || sprite.Rows > domain.SeekSpriteMaxFrames/sprite.Columns ||
+		sprite.Columns < 1 || sprite.Columns > 600 ||
+		sprite.Rows < 1 || sprite.Rows > 600/sprite.Columns ||
 		sprite.FrameWidth < 2 || sprite.FrameHeight < 2 ||
-		sprite.SheetCount < 1 || sprite.SheetCount > domain.SeekSpriteMaxSheets {
+		sprite.SheetCount < 1 || sprite.SheetCount > 6 {
 		return false
 	}
 	perSheet := sprite.Columns * sprite.Rows
