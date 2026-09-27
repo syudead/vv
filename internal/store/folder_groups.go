@@ -21,7 +21,7 @@ import (
 // である。folderPath に一致するフォルダが今無くても例外は保存する。
 func (s *FolderGroupStore) SetOverride(ctx context.Context, folderPath string, mode domain.FolderGroupMode) error {
 	if !mode.Valid() {
-		return fmt.Errorf("フォルダのまとめ方が正しくありません: %q", mode)
+		return fmt.Errorf("invalid folder grouping: %q", mode)
 	}
 	_, err := s.SetFolderGrouping(ctx, folderPath, mode)
 	return err
@@ -40,7 +40,7 @@ func (s *FolderGroupStore) ClearOverride(ctx context.Context, folderPath string)
 // 外す（自動）。同じ値の再設定も誤りにしない。
 func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath string, mode domain.FolderGroupMode) (domain.FolderGrouping, error) {
 	if mode != "" && !mode.Valid() {
-		return domain.FolderGrouping{}, fmt.Errorf("フォルダのまとめ方が正しくありません: %q", mode)
+		return domain.FolderGrouping{}, fmt.Errorf("invalid folder grouping: %q", mode)
 	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -58,7 +58,7 @@ func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath str
 		return domain.FolderGrouping{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.FolderGrouping{}, fmt.Errorf("フォルダのまとめ方を保存できません: %w", err)
+		return domain.FolderGrouping{}, fmt.Errorf("cannot save the folder grouping: %w", err)
 	}
 	return groupings[0], nil
 }
@@ -84,7 +84,7 @@ func (s *FolderGroupStore) TagFolderGroup(ctx context.Context, folderPath string
 		return domain.FolderGroupTag{}, domain.ErrNotFolderGroup
 	}
 	if err != nil {
-		return domain.FolderGroupTag{}, fmt.Errorf("グループを読み出せません: %w", err)
+		return domain.FolderGroupTag{}, fmt.Errorf("cannot read groups: %w", err)
 	}
 	normalized, err := domain.NormalizeTagName(name)
 	if err != nil {
@@ -105,7 +105,7 @@ func (s *FolderGroupStore) TagFolderGroup(ctx context.Context, folderPath string
 		return domain.FolderGroupTag{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.FolderGroupTag{}, fmt.Errorf("グループをタグに変えられません: %w", err)
+		return domain.FolderGroupTag{}, fmt.Errorf("cannot convert the group to tags: %w", err)
 	}
 	return domain.FolderGroupTag{Tag: tag, Created: created, Grouping: groupings[0]}, nil
 }
@@ -118,7 +118,7 @@ func (s *FolderGroupStore) FolderGroupings(ctx context.Context, folderPaths []st
 	}
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, fmt.Errorf("フォルダのまとめ方の読み取りを始められません: %w", err)
+		return nil, fmt.Errorf("cannot start reading folder groupings: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	groupings, err := folderGroupings(ctx, tx, folderPaths)
@@ -126,7 +126,7 @@ func (s *FolderGroupStore) FolderGroupings(ctx context.Context, folderPaths []st
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("フォルダのまとめ方の読み取りを終えられません: %w", err)
+		return nil, fmt.Errorf("cannot finish reading folder groupings: %w", err)
 	}
 	return groupings, nil
 }
@@ -139,7 +139,7 @@ func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]d
 	}
 	encoded, err := json.Marshal(keys)
 	if err != nil {
-		return nil, fmt.Errorf("フォルダの鍵を組み立てられません: %w", err)
+		return nil, fmt.Errorf("cannot build folder keys: %w", err)
 	}
 	rows, err := tx.QueryContext(ctx, `
 		with wanted(folder_key) as (select distinct value from json_each(?))
@@ -148,7 +148,7 @@ func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]d
 		  left join folder_group_overrides o on o.path = w.folder_key
 		  left join folder_groups g on g.path_key = w.folder_key`, string(encoded))
 	if err != nil {
-		return nil, fmt.Errorf("フォルダのまとめ方を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read folder groupings: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	byKey := map[string]domain.FolderGrouping{}
@@ -157,13 +157,13 @@ func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]d
 		var mode sql.NullString
 		var grouping domain.FolderGrouping
 		if err := rows.Scan(&key, &mode, &grouping.Grouped); err != nil {
-			return nil, fmt.Errorf("フォルダのまとめ方を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read folder groupings: %w", err)
 		}
 		grouping.Mode = domain.FolderGroupMode(mode.String)
 		byKey[key] = grouping
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("フォルダのまとめ方を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read folder groupings: %w", err)
 	}
 	out := make([]domain.FolderGrouping, len(keys))
 	for i, key := range keys {
@@ -183,7 +183,7 @@ func writeOverride(ctx context.Context, tx *sql.Tx, folderPath string, mode doma
 			domain.FolderKey(folderPath), string(mode), time.Now().Unix())
 	}
 	if err != nil {
-		return fmt.Errorf("フォルダのまとめ方を保存できません: %w", err)
+		return fmt.Errorf("cannot save the folder grouping: %w", err)
 	}
 	return nil
 }
@@ -215,7 +215,7 @@ func (s *ScanIndexStore) RefreshFolderIndex(ctx context.Context) (bool, error) {
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 	case err != nil:
-		return false, fmt.Errorf("フォルダの索引の状態を読み出せません: %w", err)
+		return false, fmt.Errorf("cannot read the folder index state: %w", err)
 	case version == domain.FolderIndexVersion && searchVersion == domain.SearchKeyVersion && stale == 0:
 		return false, nil
 	}
@@ -242,7 +242,7 @@ func (s *ScanIndexStore) rebuildFolderIndexTx(ctx context.Context) error {
 func markFolderIndexStale(ctx context.Context, q queryExecer) error {
 	if _, err := q.ExecContext(ctx, `insert into folder_index_state (id, version, search_version, stale) values (1, 0, 0, 1)
 		on conflict (id) do update set stale = 1`); err != nil {
-		return fmt.Errorf("フォルダの索引の状態を保存できません: %w", err)
+		return fmt.Errorf("cannot save the folder index state: %w", err)
 	}
 	return nil
 }
@@ -266,7 +266,7 @@ func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) error {
 	}
 	index := domain.BuildFolderIndex(roots, locations, overrides)
 	if err := writeFolderIndex(ctx, tx, index); err != nil {
-		return fmt.Errorf("フォルダの索引を保存できません: %w", err)
+		return fmt.Errorf("cannot save the folder index: %w", err)
 	}
 	return nil
 }
@@ -274,19 +274,19 @@ func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) error {
 func folderIndexLocations(ctx context.Context, tx *sql.Tx) ([]domain.FolderIndexLocation, error) {
 	rows, err := tx.QueryContext(ctx, `select video_id, path from video_locations`)
 	if err != nil {
-		return nil, fmt.Errorf("所在を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read locations: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	var locations []domain.FolderIndexLocation
 	for rows.Next() {
 		var location domain.FolderIndexLocation
 		if err := rows.Scan(&location.VideoID, &location.Path); err != nil {
-			return nil, fmt.Errorf("所在を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read locations: %w", err)
 		}
 		locations = append(locations, location)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("所在を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read locations: %w", err)
 	}
 	return locations, nil
 }
@@ -294,19 +294,19 @@ func folderIndexLocations(ctx context.Context, tx *sql.Tx) ([]domain.FolderIndex
 func folderGroupOverrides(ctx context.Context, tx *sql.Tx) (map[string]domain.FolderGroupMode, error) {
 	rows, err := tx.QueryContext(ctx, `select path, mode from folder_group_overrides`)
 	if err != nil {
-		return nil, fmt.Errorf("フォルダのまとめ方を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read folder groupings: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	overrides := map[string]domain.FolderGroupMode{}
 	for rows.Next() {
 		var path, mode string
 		if err := rows.Scan(&path, &mode); err != nil {
-			return nil, fmt.Errorf("フォルダのまとめ方を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read folder groupings: %w", err)
 		}
 		overrides[path] = domain.FolderGroupMode(mode)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("フォルダのまとめ方を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read folder groupings: %w", err)
 	}
 	return overrides, nil
 }

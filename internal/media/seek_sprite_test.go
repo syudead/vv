@@ -177,7 +177,7 @@ func TestGenerateSeekSpriteRejectsFramesOutsideTheirIntervals(t *testing.T) {
 		"-fps_mode", "vfr", "-c:v", "mpeg4", "-q:v", "2", "-y", videoPath)
 
 	layout := domain.NewSeekSpriteLayout(15_000)
-	if err := generateSeekSpriteParallel(context.Background(), videoPath, t.TempDir(), layout); err == nil || !strings.Contains(err.Error(), "コマ 1:") {
+	if err := generateSeekSpriteParallel(context.Background(), videoPath, t.TempDir(), layout); err == nil || !strings.Contains(err.Error(), "frame 1:") {
 		t.Fatalf("フレームのない区間で失敗しなかった: %v", err)
 	}
 	output, layout := generateSprite(t, videoPath, 15_000)

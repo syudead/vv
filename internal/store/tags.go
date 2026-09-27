@@ -60,7 +60,7 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 	}
 
 	if err := tx.Commit(); err != nil {
-		return domain.Tag{}, fmt.Errorf("タグを作成できません: %w", err)
+		return domain.Tag{}, fmt.Errorf("cannot create the tag: %w", err)
 	}
 	return domain.Tag{ID: id, Name: normalized, Synonyms: []string{}, VideoCount: count}, nil
 }
@@ -98,7 +98,7 @@ func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain
 			 where tag_id = ? and canonical = 1`,
 			normalized, domain.FoldForMatch(normalized), domain.SearchKeyVersion, id,
 		); err != nil {
-			return domain.Tag{}, fmt.Errorf("タグを改名できません (id=%d): %w", id, err)
+			return domain.Tag{}, fmt.Errorf("cannot rename the tag (id=%d): %w", id, err)
 		}
 	}
 
@@ -107,7 +107,7 @@ func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain
 		return domain.Tag{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.Tag{}, fmt.Errorf("タグを改名できません: %w", err)
+		return domain.Tag{}, fmt.Errorf("cannot rename the tag: %w", err)
 	}
 	return tag, nil
 }
@@ -126,11 +126,11 @@ func (s *TagStore) DeleteTag(ctx context.Context, id int64) error {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `delete from tags where id = ?`, id); err != nil {
-		return fmt.Errorf("タグを削除できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot delete the tag (id=%d): %w", id, err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("タグを削除できません: %w", err)
+		return fmt.Errorf("cannot delete the tag: %w", err)
 	}
 	return nil
 }
@@ -150,7 +150,7 @@ func (s *TagStore) MergeTag(ctx context.Context, targetID, sourceID int64) (doma
 		return domain.Tag{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.Tag{}, fmt.Errorf("タグを統合できません: %w", err)
+		return domain.Tag{}, fmt.Errorf("cannot merge the tags: %w", err)
 	}
 	return tag, nil
 }
@@ -173,17 +173,17 @@ func mergeTagInto(ctx context.Context, tx *sql.Tx, targetID, sourceID int64) (do
 		select content_key, ?, created_at from video_tags where tag_id = ?`,
 		targetID, sourceID,
 	); err != nil {
-		return domain.Tag{}, fmt.Errorf("付与を統合先へ写せません (source=%d target=%d): %w", sourceID, targetID, err)
+		return domain.Tag{}, fmt.Errorf("cannot copy assignments to the merge target (source=%d target=%d): %w", sourceID, targetID, err)
 	}
 
 	if _, err := tx.ExecContext(ctx, `update tag_names set tag_id = ?, canonical = 0 where tag_id = ?`,
 		targetID, sourceID,
 	); err != nil {
-		return domain.Tag{}, fmt.Errorf("タグ名を統合先へ付け替えられません (source=%d target=%d): %w", sourceID, targetID, err)
+		return domain.Tag{}, fmt.Errorf("cannot move tag names to the merge target (source=%d target=%d): %w", sourceID, targetID, err)
 	}
 
 	if _, err := tx.ExecContext(ctx, `delete from tags where id = ?`, sourceID); err != nil {
-		return domain.Tag{}, fmt.Errorf("統合元のタグを削除できません (id=%d): %w", sourceID, err)
+		return domain.Tag{}, fmt.Errorf("cannot delete the merged tag (id=%d): %w", sourceID, err)
 	}
 
 	return tagByID(ctx, tx, targetID)
@@ -243,7 +243,7 @@ func (s *TagStore) AddSynonym(ctx context.Context, tagID int64, name string, mer
 		return domain.Tag{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.Tag{}, fmt.Errorf("シノニムを登録できません: %w", err)
+		return domain.Tag{}, fmt.Errorf("cannot add the synonym: %w", err)
 	}
 	return tag, nil
 }
@@ -264,11 +264,11 @@ func (s *TagStore) RemoveSynonym(ctx context.Context, tagID int64, name string) 
 	if _, err := tx.ExecContext(ctx,
 		`delete from tag_names where name = ? and tag_id = ? and canonical = 0`, name, tagID,
 	); err != nil {
-		return fmt.Errorf("シノニムを解除できません (tag=%d): %w", tagID, err)
+		return fmt.Errorf("cannot remove the synonym (tag=%d): %w", tagID, err)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("シノニムを解除できません: %w", err)
+		return fmt.Errorf("cannot remove the synonym: %w", err)
 	}
 	return nil
 }
@@ -298,7 +298,7 @@ func (s *TagStore) AttachTagByID(ctx context.Context, videoIDs []int64, tagID in
 	}
 
 	if err := tx.Commit(); err != nil {
-		return domain.TagRef{}, 0, fmt.Errorf("タグを付けられません: %w", err)
+		return domain.TagRef{}, 0, fmt.Errorf("cannot add the tag: %w", err)
 	}
 	return domain.TagRef{ID: tagID, Name: name}, applied, nil
 }
@@ -329,7 +329,7 @@ func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name s
 	}
 
 	if err := tx.Commit(); err != nil {
-		return domain.TagRef{}, 0, fmt.Errorf("タグを付けられません: %w", err)
+		return domain.TagRef{}, 0, fmt.Errorf("cannot add the tag: %w", err)
 	}
 	return ref, applied, nil
 }
@@ -357,11 +357,11 @@ func findOrCreateTag(ctx context.Context, tx *sql.Tx, normalized string) (domain
 func insertTag(ctx context.Context, tx *sql.Tx, normalized string) (int64, error) {
 	res, err := tx.ExecContext(ctx, `insert into tags (created_at) values (?)`, time.Now().Unix())
 	if err != nil {
-		return 0, fmt.Errorf("タグを作成できません: %w", err)
+		return 0, fmt.Errorf("cannot create the tag: %w", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		return 0, fmt.Errorf("タグを作成できません: %w", err)
+		return 0, fmt.Errorf("cannot create the tag: %w", err)
 	}
 	if err := insertTagName(ctx, tx, normalized, id, true); err != nil {
 		return 0, err
@@ -389,7 +389,7 @@ func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64)
 	}
 
 	if err := tx.Commit(); err != nil {
-		return domain.TagRef{}, 0, fmt.Errorf("タグを外せません: %w", err)
+		return domain.TagRef{}, 0, fmt.Errorf("cannot remove the tag: %w", err)
 	}
 	return domain.TagRef{ID: tagID, Name: name}, applied, nil
 }
@@ -407,7 +407,7 @@ func attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagI
 			`insert or ignore into video_tags (content_key, tag_id, created_at) values (?, ?, ?)`,
 			key, tagID, now,
 		); err != nil {
-			return 0, fmt.Errorf("タグを付けられません (tag=%d): %w", tagID, err)
+			return 0, fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
 		}
 	}
 	return len(keys), nil
@@ -424,7 +424,7 @@ func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, ta
 		if _, err := tx.ExecContext(ctx,
 			`delete from video_tags where content_key = ? and tag_id = ?`, key, tagID,
 		); err != nil {
-			return 0, fmt.Errorf("タグを外せません (tag=%d): %w", tagID, err)
+			return 0, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
 		}
 	}
 	return len(keys), nil
@@ -453,7 +453,7 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 
 	encoded, err := json.Marshal(keys)
 	if err != nil {
-		return domain.TagSummary{}, fmt.Errorf("content_key を組み立てられません: %w", err)
+		return domain.TagSummary{}, fmt.Errorf("cannot build content_key values: %w", err)
 	}
 
 	// count はどちらかの出所で、manualCount は手で付けた分だけで数える（017 の
@@ -477,25 +477,25 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 		 group by t.tag_id`, string(encoded),
 	)
 	if err != nil {
-		return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
+		return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var item domain.TagSummaryItem
 		if err := rows.Scan(&item.Tag.ID, &item.Tag.Name, &item.Count, &item.ManualCount); err != nil {
-			return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
+			return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
 		}
 		summary.Items = append(summary.Items, item)
 	}
 	if err := rows.Err(); err != nil {
-		return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
+		return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
+		return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.TagSummary{}, fmt.Errorf("タグの要約を読み出せません: %w", err)
+		return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
 	}
 	domain.SortTagSummaryItems(summary.Items)
 	return summary, nil
@@ -514,7 +514,7 @@ func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) 
 	}
 	encoded, err := json.Marshal(contentKeys)
 	if err != nil {
-		return nil, fmt.Errorf("content_key を組み立てられません: %w", err)
+		return nil, fmt.Errorf("cannot build content_key values: %w", err)
 	}
 
 	rows, err := s.sql.QueryContext(ctx, `
@@ -534,7 +534,7 @@ func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) 
 		 group by t.content_key, t.tag_id`, string(encoded),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("項目のタグを読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read item tags: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -543,12 +543,12 @@ func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) 
 		var key string
 		var tag domain.VideoTag
 		if err := rows.Scan(&key, &tag.ID, &tag.Name, &tag.Manual, &tag.FromFolder); err != nil {
-			return nil, fmt.Errorf("項目のタグを読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read item tags: %w", err)
 		}
 		out[key] = append(out[key], tag)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("項目のタグを読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read item tags: %w", err)
 	}
 	for key := range out {
 		domain.SortVideoTags(out[key])
@@ -585,7 +585,7 @@ func listCanonicalTags(ctx context.Context, q queryExecer) ([]domain.Tag, map[in
 		select t.id, tn.name from tags t
 		  join tag_names tn on tn.tag_id = t.id and tn.canonical = 1`)
 	if err != nil {
-		return nil, nil, fmt.Errorf("タグを読み出せません: %w", err)
+		return nil, nil, fmt.Errorf("cannot read tags: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -594,14 +594,14 @@ func listCanonicalTags(ctx context.Context, q queryExecer) ([]domain.Tag, map[in
 	for rows.Next() {
 		var tag domain.Tag
 		if err := rows.Scan(&tag.ID, &tag.Name); err != nil {
-			return nil, nil, fmt.Errorf("タグを読み出せません: %w", err)
+			return nil, nil, fmt.Errorf("cannot read tags: %w", err)
 		}
 		tag.Synonyms = []string{}
 		index[tag.ID] = len(tags)
 		tags = append(tags, tag)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("タグを読み出せません: %w", err)
+		return nil, nil, fmt.Errorf("cannot read tags: %w", err)
 	}
 	return tags, index, nil
 }
@@ -610,7 +610,7 @@ func listCanonicalTags(ctx context.Context, q queryExecer) ([]domain.Tag, map[in
 func addSynonymsToTags(ctx context.Context, q queryExecer, tags []domain.Tag, index map[int64]int) error {
 	rows, err := q.QueryContext(ctx, `select tag_id, name from tag_names where canonical = 0`)
 	if err != nil {
-		return fmt.Errorf("シノニムを読み出せません: %w", err)
+		return fmt.Errorf("cannot read synonyms: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -618,7 +618,7 @@ func addSynonymsToTags(ctx context.Context, q queryExecer, tags []domain.Tag, in
 		var tagID int64
 		var name string
 		if err := rows.Scan(&tagID, &name); err != nil {
-			return fmt.Errorf("シノニムを読み出せません: %w", err)
+			return fmt.Errorf("cannot read synonyms: %w", err)
 		}
 		if i, ok := index[tagID]; ok {
 			tags[i].Synonyms = append(tags[i].Synonyms, name)
@@ -635,7 +635,7 @@ func addVideoCountsToTags(ctx context.Context, q queryExecer, tags []domain.Tag,
 	query := `select tag_id, count(*) from (` + taggedVideosSQL("") + `) group by tag_id`
 	rows, err := q.QueryContext(ctx, query)
 	if err != nil {
-		return fmt.Errorf("タグの本数を数えられません: %w", err)
+		return fmt.Errorf("cannot count tags: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -643,7 +643,7 @@ func addVideoCountsToTags(ctx context.Context, q queryExecer, tags []domain.Tag,
 		var tagID int64
 		var count int
 		if err := rows.Scan(&tagID, &count); err != nil {
-			return fmt.Errorf("タグの本数を数えられません: %w", err)
+			return fmt.Errorf("cannot count tags: %w", err)
 		}
 		if i, ok := index[tagID]; ok {
 			tags[i].VideoCount = count
@@ -672,12 +672,12 @@ func (s *TagStore) RefreshSearchKeys(ctx context.Context) (int, error) {
 			`update tag_names set search_key = ?, search_version = ? where name = ?`,
 			domain.FoldForMatch(name), domain.SearchKeyVersion, name,
 		); err != nil {
-			return 0, fmt.Errorf("タグの照合用の鍵を保存できません (%s): %w", name, err)
+			return 0, fmt.Errorf("cannot save the tag search key (%s): %w", name, err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("タグの照合用の鍵を保存できません: %w", err)
+		return 0, fmt.Errorf("cannot save tag search keys: %w", err)
 	}
 	return len(names), nil
 }
@@ -685,14 +685,14 @@ func (s *TagStore) RefreshSearchKeys(ctx context.Context) (int, error) {
 func staleTagNames(ctx context.Context, q queryExecer) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `select name from tag_names where search_version < ?`, domain.SearchKeyVersion)
 	if err != nil {
-		return nil, fmt.Errorf("タグ名を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read tag names: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	var names []string
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			return nil, fmt.Errorf("タグ名を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read tag names: %w", err)
 		}
 		names = append(names, name)
 	}
@@ -723,7 +723,7 @@ func lookupTagName(ctx context.Context, q tagTx, name string) (nameLookup, bool,
 		return nameLookup{}, false, nil
 	}
 	if err != nil {
-		return nameLookup{}, false, fmt.Errorf("タグを名前で引けません (%s): %w", name, err)
+		return nameLookup{}, false, fmt.Errorf("cannot look up the tag by name (%s): %w", name, err)
 	}
 	lookup.isCanonical = canonicalInt != 0
 	return lookup, true, nil
@@ -738,7 +738,7 @@ func canonicalNameByTagID(ctx context.Context, q rowQueryer, id int64) (string, 
 		return "", domain.ErrTagNotFound
 	}
 	if err != nil {
-		return "", fmt.Errorf("タグの名前を読み出せません (id=%d): %w", id, err)
+		return "", fmt.Errorf("cannot read the tag names (id=%d): %w", id, err)
 	}
 	return name, nil
 }
@@ -769,7 +769,7 @@ func videoCountByTagID(ctx context.Context, q rowQueryer, id int64) (int, error)
 	query := `select count(*) from (` + taggedVideosSQL(` and tag_id = ?`) + `)`
 	var count int
 	if err := q.QueryRowContext(ctx, query, id, id).Scan(&count); err != nil {
-		return 0, fmt.Errorf("タグの本数を数えられません (id=%d): %w", id, err)
+		return 0, fmt.Errorf("cannot count tag uses (id=%d): %w", id, err)
 	}
 	return count, nil
 }
@@ -778,19 +778,19 @@ func videoCountByTagID(ctx context.Context, q rowQueryer, id int64) (int, error)
 func synonymsByTagID(ctx context.Context, q queryExecer, id int64) ([]string, error) {
 	rows, err := q.QueryContext(ctx, `select name from tag_names where tag_id = ? and canonical = 0`, id)
 	if err != nil {
-		return nil, fmt.Errorf("シノニムを読み出せません (id=%d): %w", id, err)
+		return nil, fmt.Errorf("cannot read synonyms (id=%d): %w", id, err)
 	}
 	defer func() { _ = rows.Close() }()
 	names := []string{}
 	for rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			return nil, fmt.Errorf("シノニムを読み出せません (id=%d): %w", id, err)
+			return nil, fmt.Errorf("cannot read synonyms (id=%d): %w", id, err)
 		}
 		names = append(names, name)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("シノニムを読み出せません (id=%d): %w", id, err)
+		return nil, fmt.Errorf("cannot read synonyms (id=%d): %w", id, err)
 	}
 	domain.SortTagNames(names)
 	return names, nil
@@ -804,7 +804,7 @@ func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, ca
 		values (?, ?, ?, ?, ?)`,
 		name, tagID, boolToInt(canonical), domain.FoldForMatch(name), domain.SearchKeyVersion,
 	); err != nil {
-		return fmt.Errorf("タグ名を保存できません (%s): %w", name, err)
+		return fmt.Errorf("cannot save the tag name (%s): %w", name, err)
 	}
 	return nil
 }
@@ -837,7 +837,7 @@ func existingTagIDs(ctx context.Context, q queryExecer, ids []int64) (existing, 
 	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
 	rows, err := q.QueryContext(ctx, `select id from tags where id in (`+placeholders+`)`, args...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("タグの存在を確かめられません: %w", err)
+		return nil, nil, fmt.Errorf("cannot check whether the tag exists: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -845,12 +845,12 @@ func existingTagIDs(ctx context.Context, q queryExecer, ids []int64) (existing, 
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			return nil, nil, fmt.Errorf("タグの存在を確かめられません: %w", err)
+			return nil, nil, fmt.Errorf("cannot check whether the tag exists: %w", err)
 		}
 		found[id] = true
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("タグの存在を確かめられません: %w", err)
+		return nil, nil, fmt.Errorf("cannot check whether the tag exists: %w", err)
 	}
 
 	for _, id := range deduped {

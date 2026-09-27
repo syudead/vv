@@ -100,7 +100,7 @@ func writeSearchKeys(ctx context.Context, q queryExecer, roots []string, targets
 			locationSearchKey(roots, target.path, target.title), domain.NaturalSortKey(target.title),
 			domain.SearchKeyVersion, target.id,
 		); err != nil {
-			return fmt.Errorf("照合用の鍵を保存できません (%s): %w", target.path, err)
+			return fmt.Errorf("cannot save the search key (%s): %w", target.path, err)
 		}
 	}
 	return nil
@@ -146,19 +146,19 @@ func refreshSearchKeysUnder(ctx context.Context, q queryExecer, root string) err
 func searchKeyTargets(ctx context.Context, q queryExecer, query string, args ...any) ([]searchKeyTarget, error) {
 	rows, err := q.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("所在を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read locations: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	var targets []searchKeyTarget
 	for rows.Next() {
 		var target searchKeyTarget
 		if err := rows.Scan(&target.id, &target.path, &target.title); err != nil {
-			return nil, fmt.Errorf("所在を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read locations: %w", err)
 		}
 		targets = append(targets, target)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("所在を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read locations: %w", err)
 	}
 	return targets, nil
 }
@@ -209,7 +209,7 @@ func (s *LibraryStore) refreshSearchKeyBatch(ctx context.Context) (int, error) {
 		return 0, err
 	}
 	if err := tx.Commit(); err != nil {
-		return 0, fmt.Errorf("照合用の鍵を保存できません: %w", err)
+		return 0, fmt.Errorf("cannot save search keys: %w", err)
 	}
 	return len(targets), nil
 }

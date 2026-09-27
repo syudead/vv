@@ -38,9 +38,9 @@ func GeneratePreview(ctx context.Context, videoPath, output string, durationMs i
 	defer cancel()
 	if combined, runErr := exec.CommandContext(processCtx, "ffmpeg", previewArgs(videoPath, output, durationMs)...).CombinedOutput(); runErr != nil {
 		if processCtx.Err() != nil {
-			return fmt.Errorf("プレビュー生成を中断しました: %w", processCtx.Err())
+			return fmt.Errorf("preview generation was interrupted: %w", processCtx.Err())
 		}
-		return fmt.Errorf("ffmpeg がプレビュー生成に失敗しました: %w: %s", runErr, firstLine(combined))
+		return fmt.Errorf("ffmpeg failed to generate the preview: %w: %s", runErr, firstLine(combined))
 	}
 	return nil
 }

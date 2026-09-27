@@ -31,7 +31,7 @@ func GenerateSeekSprite(ctx context.Context, videoPath, outputDir string, layout
 	defer cancel()
 	err := generateSeekSprite(processCtx, videoPath, outputDir, layout)
 	if processCtx.Err() != nil {
-		return fmt.Errorf("シークサムネイル生成を中断しました: %w", processCtx.Err())
+		return fmt.Errorf("seek thumbnail generation was interrupted: %w", processCtx.Err())
 	}
 	return err
 }
@@ -42,7 +42,7 @@ func generateSeekSprite(ctx context.Context, videoPath, outputDir string, layout
 	} else if ctx.Err() != nil {
 		return ctx.Err()
 	} else {
-		slog.WarnContext(ctx, "シークサムネイルの区間抽出が不完全なため全編から生成します", "error", err)
+		slog.WarnContext(ctx, "parallel seek thumbnail extraction was incomplete; generating from the whole video", "error", err)
 	}
 	if ctx.Err() != nil {
 		return ctx.Err()
@@ -90,13 +90,13 @@ frames:
 			}
 			data, err := runSeekFFmpeg(workCtx, args)
 			if err == nil && (len(data) < 54 || string(data[:2]) != "BM") {
-				err = errors.New("シーク位置から画像を抽出できませんでした")
+				err = errors.New("could not extract an image at the seek position")
 			}
 			if err == nil {
 				err = os.WriteFile(filepath.Join(temporary, fmt.Sprintf("%03d.bmp", frame)), data, 0600)
 			}
 			if err != nil {
-				recordError.Do(func() { firstErr = fmt.Errorf("コマ %d: %w", frame, err); cancel() })
+				recordError.Do(func() { firstErr = fmt.Errorf("frame %d: %w", frame, err); cancel() })
 			}
 		}(frame)
 	}
@@ -123,9 +123,9 @@ func runSeekFFmpeg(ctx context.Context, args []string) ([]byte, error) {
 		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return nil, fmt.Errorf("ffmpeg がシークサムネイル生成に失敗しました: %w: %s", err, firstLine(exitErr.Stderr))
+			return nil, fmt.Errorf("ffmpeg failed to generate seek thumbnails: %w: %s", err, firstLine(exitErr.Stderr))
 		}
-		return nil, fmt.Errorf("ffmpeg を実行できません: %w", err)
+		return nil, fmt.Errorf("cannot run ffmpeg: %w", err)
 	}
 	return data, nil
 }
