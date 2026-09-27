@@ -4,13 +4,13 @@
 
 この artifact は [GitHub Issue #134](https://github.com/syudead/vv/issues/134) の `UI品質とアクセシビリティ` を、実装と画像で判定できる形へ具体化する。カード幅、配色、書体、overlay、focus、selection の既存規則は [library-ui.md](../../docs/design-docs/library-ui.md) と `web/src/index.css` の role token を正本とし、ここでは変更しない。
 
-利用者が改善を感じる点は、似た thumbnail/title の動画を開き直さず、一覧の位置と操作を保ったまま全尺の内容を短時間で判別できることにある。現在の不便は、本編へ遷移しないと静止画の外側を確認できないこと。preview を目立つ新機能として飾るのではなく、静止画の場所が自然に動き出すことを価値とする。
+似た thumbnail/title の動画を開き直さず、一覧の位置と操作を保ったまま内容を判別できる。preview は静止画と同じ面で再生し、カードの情報密度を変えない。
 
 ## Screen Boundary
 
-- 対象は grid の `VideoCard` にある 16:9 thumbnail surface である。library と folder 画面（検索結果を含む）の両方で、同時に再生する preview は 1 件である（folder 画面は #308 で揃った）。list row、toolbar、selection bar、player は変えない。
+- 対象は grid の `VideoCard` にある 16:9 thumbnail surface である。library と folder 画面（検索結果を含む）の両方で、同時に再生する preview は 1 件である。list row、toolbar、selection bar、player は変えない。
 - preview video は thumbnail と同じ inset、crop、aspect ratio を使う absolute layer とし、card、grid、metadata の寸法計算へ参加しない。
-- title、duration、progress、selection checkbox、focus ring の意味と位置を維持する（added/size/codec の行、quality、watched の印は #308 で card から無くなった）。probe pending/failed または duration/codec 不足で既存の全面 warning が出る card は preview job 自体が成立しないため、preview eligibility と排他的である。原本が browser-incompatible でも probe metadata が揃い preview が done なら、現在の `unplayableText` は warning を返さず preview を覆わない。
+- title、duration、progress、selection checkbox、focus ring の意味と位置を維持する。probe pending/failed または duration/codec 不足で既存の全面 warning が出る card は preview job 自体が成立しないため、preview eligibility と排他的である。原本が browser-incompatible でも probe metadata が揃い preview が done なら、現在の `unplayableText` は warning を返さず preview を覆わない。
 - 新しい text、badge、spinner、toolbar、audio/seek control は出さない。生成中・未生成・失敗・再生 error は現在の thumbnail/placeholder のまま表す。
 
 ## Interaction
@@ -39,12 +39,11 @@
 
 - `aspect-video`、card width token、grid gap、metadata padding、card radius をそのまま使う。
 - video は `h-full w-full object-contain` で thumbnail と同じ framing にする（縦長の動画も切り抜かず全体を見せる。縦長・正方形に近い動画は、左右の余白に同じサムネイルをぼかして敷く）。開始・停止・buffering で surface 高、card 高、隣接 card、toolbar、selection bar、scroll positionを動かさない。
-- 360px、768px、1280px の各 viewport で、preview 前後の同じ card の bounding box と grid wrapping が変わらないことを画像で確認する。
 
 ## Typography
 
-- title、metadata、duration/quality、状態表示の font family、size、weight、line height、line clamp、tabular numbers を変更しない。
-- preview 状態を可視 text や icon label として追加しないため、新しい typography token は不要。追加する contrast pairs は既存 overlay の不透明背景を検査する前節の3組だけとする。将来 visible label を追加する変更は、この design の再承認対象とする。
+- title、metadata、duration、状態表示の font family、size、weight、line height、line clamp、tabular numbers を変更しない。
+- preview 状態を可視 text や icon label として追加しないため、新しい typography token は不要。preview 中は既存 overlay の背景を不透明にして読みやすさを保つ。
 
 ## Responsive And Motion
 
@@ -71,37 +70,3 @@
 | pending/failed/missing preview | idle のまま。source stream fallback なし |
 | play/media error | idle へ即時復帰し、再 hover を許可 |
 | focus/touch/pen、checkbox の直接操作 | 既存 interaction のみ。preview 開始なし |
-
-## Observable Review Criteria
-
-### Screenshots
-
-- 360px、768px、1280px で、同じ fixture card の `before`、`playing`、`error fallback` を撮る。
-- 各幅で card 外形、grid gap、toolbar、selection bar、title/metadata、duration/quality、progress、watched、checkbox に overlap または layout shift がない。
-- thumbnail と異なる sampled frame が surface 内に表示され、外側の新しい badge/control がないことで、内容確認が card density を変えずに成立している。
-- browser-incompatible source だが preview 生成済みの fixture と、preview pending/failed fixture を同じ一覧に置く。画像では前者が thumbnail と異なる sampled frame を表示し、全面 warning に覆われないこと、後者が既存表示のままであることを示す。動作の有無は下の browser evidence で証明する。
-
-### Interaction
-
-- 400ms 未満の横切りでは request/再生がなく、400ms 留まると active card 1件だけが再生する。
-- mouse を別 card へ移す、filter/sort/load-more/zoom/view を変える、viewport を resize する、card を開く各操作で前の video が停止し、thumbnail に戻る。
-- selection mode、checkbox、card click、Enter、Esc、touch scroll/tap、pen input が preview より優先される。
-- network log は preview endpoint だけを示し、source stream、live transcode、progress PUT/beacon を示さない。
-- browser test または Playwright trace で、done fixture の video `currentTime` が進むこと、pending/failed fixture は video element と preview request を作らないこと、active video が常に1件以下であることを示す。
-
-### Accessibility And Motion
-
-- keyboard-only path で card focus、Enter navigation、checkbox selection、Esc clear を確認し、focus だけで media request が起きない。
-- accessible tree に preview 固有の重複 link、button、video control、live region が増えない。
-- 親 Issue が受け入れ条件とする keyboard/focus semantics は、card focus、Enter navigation、checkbox selection、Esc clear を通る keyboard-only path の request log と、mouse preview の開始前・再生中・停止後で page の accessible tree が不変である Playwright ARIA snapshot を必須証跡とする。preview 固有 control/live region がなく、focus だけでは media request が発生しないことを検査し、この証跡がない実装 PR は Design acceptance 未達とする。
-- 実際の読み上げ音は ARIA snapshot では証明できないため、自動証跡の代替済みとは扱わない。対話可能な Windows 環境では追加の探索的確認として Narrator で card link の題名、checkbox、focus 順を読み上げ、mouse preview の開始・loop・停止が announcement を割り込ませないことを確認する。native screen reader を操作できない実装環境では未確認であることを PR の残余リスクへ明記するが、親 Issue が spoken-output の確認を受け入れ条件に含めていないため、この探索的確認だけは merge gate にしない。
-- `prefers-reduced-motion: reduce` で card/thumbnail の装飾 transition が止まり、400ms 後の preview、停止、error fallback はちらつきや blank frame なしで利用できる。
-
-### Human Visual Review
-
-実装 PR の画像を、要求、通常 card、preview、fallback の順に並べ、次を人が判定する。
-
-- 動く内容が thumbnail の代替として自然で、title/状態表示より強い別 UI に見えない。
-- 一覧の情報量、scan rhythm、card 間隔が通常状態と同じで、管理画面としての密度を損なわない。
-- title と metadata の読みやすさ、overlay の contrast、操作対象の優先順位が preview の frame 内容に左右されない。
-- 静止画から動画への交換が「壊れた画像」「読み込み中」「本編が始まった」と誤認されず、card click が本再生であることを既存 interaction が保っている。

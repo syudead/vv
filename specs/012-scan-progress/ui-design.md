@@ -39,9 +39,8 @@
   設定詳細へ進む trigger の直後に置き、Enter または Space で閉じる。失敗状態は文言と icon を
   組み合わせ、色だけに依存しない。
 - 失敗の強調は、`bg-elevated` の面では `text-fg` と icon、`border-border-strong`、必要なら
-  `danger-soft` の wash で示す。`text-danger` は `bg` 上の補助文または badge に限る。実装で
-  `danger` を `elevated` や `surface` 上の文字として使う場合は、同じ PR で `tokens.test.ts` の
-  contrast pair に追加する。
+  `danger-soft` の wash で示す。`text-danger` は `bg` 上の補助文または badge に限る。`danger` を `elevated` や `surface` 上の文字として使う場合は、
+  `tokens.test.ts` の contrast pair に含める。
 - 表面は `bg-elevated`、`border-border-strong`、`shadow-elevated` を使う。角丸は既存の
   compact control に合わせて `rounded-md` までに留め、ページ section のような大きな card にはしない。
 - 360px でも右端と下端から安全領域を残す。既存 Toast と同時に出る場合は Toast より上へ逃がし、
@@ -126,41 +125,6 @@
   `AlertTriangle`、`XCircle` の既存体系に近い線アイコンを使う。
 - 設定 section へ hash 移動したときは、`id="scan-status"` の section を scroll 位置の対象にし、
   その中の見出しへ programmatic focus を移す。見出しは `tabindex="-1"` を持ち、visible focus ring
-  は出してよい。実装 PR では click、Enter、Space の後に「取り込み状況」の見出しまたは直後の
-  status summary が active element になることを確認する。ブラウザ標準の hash scroll を尊重し、
+  は出してよい。click、Enter、Space の後は「取り込み状況」の見出しまたは直後の
+  status summary が active element になる。ブラウザ標準の hash scroll を尊重し、
   余分な page-level scroll owner を増やさない。
-
-## Observable Review Criteria
-
-実装 PR は `ScanProvider.test.tsx` と `scan-progress.e2e.ts` の状態を使い、360px、768px、1280px で
-通常画面と再生画面の表示、概要表示を撮る。UI 画像は次を含める。
-
-- 総数未確定の実行中: 割合が出ず、indeterminate と文言で待っていることが分かる。
-- 総数確定の実行中: 通常画面右下の短い表示、概要、設定 section が同じ割合と件数を示す。
-- 再生中: どの幅でも右下の表示と概要が同じ scan の更新を続け、閉じる ×、player control、属性情報を覆わない。
-- 0件完了: 完了状態と時刻は分かるが、100% の progress として見えない。
-- 完了または一部失敗: 同じ位置で結果へ切り替わり、8秒後に自動で閉じ、一覧や操作より強くなりすぎない。
-- 全体失敗: 見落とさない強さがあり、閉じる button、設定 section の理由と再試行がある。
-- 初回取得失敗: 既知の scan がない間はフローティング表示を出さず、設定 section は自動再試行中の
-  取得失敗として見える。
-- Toast 併存: 360px を含めて Toast とインジケーターの文言と操作が重ならない。
-- `/settings#scan-status` 直接表示: メディアフォルダ設定より前に「取り込み状況」が見える。
-
-見る観点は次のとおり。
-
-- **視覚的階層**: 右下の表示は補助状態として控えめで、失敗だけが必要な強さを持つ。設定 section は
-  メディアフォルダより先に読めるが、ページタイトルより強くない。
-- **情報密度**: インジケーター本体は短い状態と数値だけ、概要は判断に必要な件数だけ、詳細は
-  時刻・理由・再試行までを引き受ける。
-- **余白のリズム**: フローティング表示は本文を押し上げず、画面端と Toast から安全な余白を取る。
-  設定 section は既存 section 間隔に揃う。
-- **タイポグラフィ**: 状態名、割合、件数、補足の強弱が明確で、数字は tabular numbers で読みやすい。
-- **操作の優先順位**: hover/focus の概要確認と click/tap/keyboard の詳細移動が分かれ、失敗時は
-  設定 section の再試行が主操作として見える。
-
-操作の確認では、mouse hover、keyboard focus、Escape、click、tap、Enter、Space、失敗通知の
-閉じる button、8秒の完了通知期限、画面移動、reload、重複開始、完了直前の navigation を通す。
-支援技術の確認では、trigger と閉じる button の accessible name、hash 遷移後の focus、progress bar
-の name/value、概要に重複した操作がないこと、状態の更新ごとに読み上げを割り込まないことを
-アクセシビリティツリーまたは screen reader で確認する。native screen reader の実音声を確認できない
-環境では、PR の残余リスクに明記する。

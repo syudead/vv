@@ -127,7 +127,7 @@ relevant and available. Their metadata is useful context, not an identity
 check or an execution gate.
 
 Do not add a `spec.md` to a feature directory; the requirement lives in the
-parent Issue. A feature directory always holds `plan.md`, adds `ui-design.md`
+parent Issue. An active feature directory holds `plan.md`, adds `ui-design.md`
 for a `ui` Issue, and carries `research.md`, `data-model.md`, `contracts/` or
 `quickstart.md` when the Plan has that content of its own (P-2).
 

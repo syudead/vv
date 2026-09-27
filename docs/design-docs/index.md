@@ -18,7 +18,6 @@ Add each new document to this index.
 - [技術選定: MDM（Media Data Management）](tech-stack-selection.md)
 - [MOVライブ変換のtrack分離入力](mov-live-transcoding.md)
 - [ライブ変換のシークと解析情報の再利用](live-transcode-seek.md)
-- [Issue handoff SDD: agentを固定しない一工程ずつの実行](sdd-loop-harness.md)
 - [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
 - [動画シーク時のサムネイルプレビュー UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
 - [一覧画面の hover 動画プレビュー UI](../../specs/010-hover-video-preview/ui-design.md)
