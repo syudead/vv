@@ -79,17 +79,25 @@ the folder index is rebuilt only when its rule version is out of date or it is s
 (`RefreshFolderIndex`, after the search-key refresh and before HTTP and the workers
 start), or when an interrupted scan was closed
 ([specs/017-folder-groups/data-model.md](specs/017-folder-groups/data-model.md) §3).
-`internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail, preview —
-each claiming only its own kind of job from the persistent `jobs` queue, one at a time,
-and handing it to `internal/app`, which drives the `internal/media` adapters
-(`ffprobe` for metadata, `ffmpeg` for one library thumbnail, five-second seek-preview frames,
-and a content-keyed hover-preview clip per video) and publishes their output through
-`internal/artifacts`. A worker sleeps while its queue is
+`internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail,
+seek_thumbnail, preview — each claiming only its own kind of job from the persistent `jobs`
+queue, one at a time, and handing it to `internal/app`, which drives the `internal/media`
+adapters (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, five-second
+seek-preview frames from a full decode, and a content-keyed hover-preview clip per video)
+and publishes their output through `internal/artifacts`. The library thumbnail and the seek
+frames are separate stages with their own state columns, so a library thumbnail never waits
+for any video's seek frames. A worker sleeps while its queue is
 empty: `internal/store` publishes `domain.JobsQueued` after every committed enqueue, and a
 subscription wakes the worker for that stage, so no worker polls the queue. A thumbnail job
 is not claimed until its video's probe has finished, because the frame position depends on
-the duration; `internal/app` publishes `domain.VideoIngestChanged` with the finished stage,
-and a subscription wakes the thumbnail worker as soon as a probe's result is recorded. Interrupted scans are closed,
+the duration. A seek_thumbnail job is not claimed until its video's probe has finished and
+no claimable thumbnail job remains, so after a scan every library thumbnail comes first and
+no more than two full-decode `ffmpeg` processes (seek frames and hover preview) run at
+once; the condition applies only at claim time, and a running seek_thumbnail job is not
+stopped when new thumbnail jobs arrive. `internal/app` publishes `domain.VideoIngestChanged`
+with the finished stage, and subscriptions wake the thumbnail worker as soon as a probe's
+result is recorded, and the seek_thumbnail worker when a probe or thumbnail result is
+recorded or a video row is deleted. Interrupted scans are closed,
 running jobs are requeued, and the single `.tmp` directory that holds in-progress
 generation output is removed at the next startup. When a video row is deleted (a scan finds its last
 location gone, its content changes, or its media folder is removed or replaced),
@@ -366,7 +374,8 @@ way only. The packages under `internal/` fall into three layers:
   business rules the store enforces: how a claim counts attempts and whether a
   failed job returns to `queued` or stops as `failed` (`ClaimAttempts`,
   `JobStateAfterFailure`), which queued jobs may be claimed
-  (`ClaimConditionFor`: a registered location, and a finished probe for
+  (`ClaimConditionFor`: a registered location, a finished probe for
+  thumbnails and seek thumbnails, and no claimable thumbnail job left for seek
   thumbnails), and whether a media folder may be added, replaced or removed
   (`CheckMediaFolderPlacement`, `CheckMediaFolderMutation`). `internal/store`
   translates these into SQL and writes their results; it re-reads the inputs
@@ -376,10 +385,11 @@ way only. The packages under `internal/` fall into three layers:
   SQLite driver, or any other `internal/*` package.
 - `internal/app` is the application layer and holds the use cases: starting,
   running and closing a scan and recovering an interrupted one at startup
-  (`Scans`); processing one probe, thumbnail or preview job — checking the claimed
+  (`Scans`); processing one probe, thumbnail, seek-thumbnail or preview job — checking the claimed
   identity, calling the generator, applying the result, publishing the outcome, and
   removing artifacts whose content lost its last reference (`Ingest`); and the decisions behind a video response — requeueing a missing hover
-  preview, deriving the seek-preview state — plus assembling related videos, which for a
+  preview, deriving the seek-preview state from its stored state and requeueing a `done`
+  one whose frames are missing — plus assembling related videos, which for a
   folder-group member orders next/previous inside the group and leaves its members out of
   the related list (`Catalog`); and adding, replacing and removing media folders after the
   filesystem adapter has checked the path (`MediaFolders`); and first-run setup,

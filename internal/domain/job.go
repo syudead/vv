@@ -9,11 +9,12 @@ type JobKind string
 const (
 	// JobProbe は ffprobe によるメタデータの取得。
 	JobProbe JobKind = "probe"
-	// JobThumbnail は ffmpeg による静止画の抽出。
+	// JobThumbnail は ffmpeg による代表サムネイル（静止画1枚）の抽出。
 	JobThumbnail JobKind = "thumbnail"
 	// JobSeekThumbnail は ffmpeg によるシーク用サムネイル（全編デコード）の生成。
 	JobSeekThumbnail JobKind = "seek_thumbnail"
-	JobPreview       JobKind = "preview"
+	// JobPreview は ffmpeg による一覧用のホバープレビューの生成。
+	JobPreview JobKind = "preview"
 )
 
 // MaxJobAttempts は諦めるまでの試行回数である。止めないと、壊れたファイル
@@ -43,7 +44,7 @@ type Job struct {
 
 // JobKinds は取り込みの段階の順に並べたジョブの種類である。段階ごとに
 // ワーカーを1本ずつ置くので、ここに無い種類は処理されない。
-var JobKinds = []JobKind{JobProbe, JobThumbnail, JobPreview}
+var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview}
 
 // Processing は、段階ごとに残っている仕事の数である。待ち行列に積まれている
 // ものと処理中のものを数え、登録外の所在しかない動画の仕事は含めない

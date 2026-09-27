@@ -21,10 +21,11 @@ type fakeCatalogStore struct {
 	requeued      []int64
 	requeueErr    error
 
-	thumbnailJobActive map[int64]bool
-	thumbnailJobErr    error
+	seekStates     map[int64]domain.SeekThumbnailState
+	seekRequeued   []int64
+	seekRequeueErr error
 
-	retried []bool
+	retried []int64
 
 	siblings  map[string][]domain.RelatedSibling
 	neighbors []domain.RelatedNeighbor
@@ -52,12 +53,22 @@ func (f *fakeCatalogStore) RequeueMissingPreview(_ context.Context, id int64, _ 
 	return true, nil
 }
 
-func (f *fakeCatalogStore) ThumbnailJobActive(_ context.Context, id int64) (bool, error) {
-	return f.thumbnailJobActive[id], f.thumbnailJobErr
+func (f *fakeCatalogStore) RequeueMissingSeekThumbnails(_ context.Context, id int64, _ string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.seekRequeueErr != nil {
+		return false, f.seekRequeueErr
+	}
+	if f.seekStates[id] != domain.SeekThumbnailDone {
+		return false, nil
+	}
+	f.seekStates[id] = domain.SeekThumbnailPending
+	f.seekRequeued = append(f.seekRequeued, id)
+	return true, nil
 }
 
-func (f *fakeCatalogStore) RetryProbe(_ context.Context, _ int64, seekThumbnailMissing bool) error {
-	f.retried = append(f.retried, seekThumbnailMissing)
+func (f *fakeCatalogStore) RetryProbe(_ context.Context, id int64) error {
+	f.retried = append(f.retried, id)
 	return nil
 }
 
@@ -177,26 +188,26 @@ func TestPresentVideosIgnoresUnfinishedPreview(t *testing.T) {
 	}
 }
 
+// シーク用サムネイルの状態は保存した列から導き、置き場があれば done とする。
+// 代表サムネイルの状態は見ない。
 func TestSeekThumbnailState(t *testing.T) {
 	cases := []struct {
-		name      string
-		dir       bool
-		thumbnail domain.ThumbnailState
-		active    bool
-		want      domain.SeekThumbnailState
+		name   string
+		dir    bool
+		stored domain.SeekThumbnailState
+		want   domain.SeekThumbnailState
 	}{
-		{name: "置き場あり", dir: true, thumbnail: domain.ThumbnailStateDone, want: domain.SeekThumbnailDone},
-		{name: "サムネイル未作成", thumbnail: domain.ThumbnailStatePending, want: domain.SeekThumbnailPending},
-		{name: "ジョブが queued・running", thumbnail: domain.ThumbnailStateDone, active: true, want: domain.SeekThumbnailPending},
-		{name: "ジョブが failed", thumbnail: domain.ThumbnailStateFailed, want: domain.SeekThumbnailFailed},
-		// 失敗したジョブの行が保持期間を過ぎて消えても pending と読まない。
-		{name: "ジョブの行が消えた", thumbnail: domain.ThumbnailStateDone, want: domain.SeekThumbnailFailed},
+		{name: "置き場あり", dir: true, stored: domain.SeekThumbnailDone, want: domain.SeekThumbnailDone},
+		{name: "置き場があれば列が pending でも done", dir: true, stored: domain.SeekThumbnailPending, want: domain.SeekThumbnailDone},
+		{name: "生成待ち", stored: domain.SeekThumbnailPending, want: domain.SeekThumbnailPending},
+		{name: "失敗", stored: domain.SeekThumbnailFailed, want: domain.SeekThumbnailFailed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			video := probedVideo(1, "a")
-			video.ThumbnailState = tc.thumbnail
-			store := &fakeCatalogStore{thumbnailJobActive: map[int64]bool{1: tc.active}}
+			video.ThumbnailState = domain.ThumbnailStateDone
+			video.SeekThumbnailState = tc.stored
+			store := &fakeCatalogStore{seekStates: map[int64]domain.SeekThumbnailState{1: tc.stored}}
 			catalog := NewCatalog(CatalogOptions{
 				Index: store, Ingest: store,
 				Files: fakeArtifactFiles{seek: map[string]bool{"a": tc.dir}},
@@ -208,19 +219,43 @@ func TestSeekThumbnailState(t *testing.T) {
 			if got != tc.want {
 				t.Fatalf("state = %q, want %q", got, tc.want)
 			}
+			if len(store.seekRequeued) != 0 {
+				t.Fatalf("requeued = %v, want none", store.seekRequeued)
+			}
 		})
 	}
 }
 
-func TestSeekThumbnailStateReportsStoreFailure(t *testing.T) {
+// done と記録したのに置き場が無ければ pending として返し、作り直しは1回だけ頼む。
+func TestSeekThumbnailStateRequeuesMissingOnce(t *testing.T) {
 	video := probedVideo(1, "a")
-	video.ThumbnailState = domain.ThumbnailStateDone
-	store := &fakeCatalogStore{thumbnailJobErr: errors.New("disk I/O error")}
-	catalog := NewCatalog(CatalogOptions{
-		Index: store, Ingest: store, Files: fakeArtifactFiles{},
-	})
-	if _, err := catalog.SeekThumbnailState(context.Background(), video); err == nil {
-		t.Fatal("失敗が返らない")
+	video.SeekThumbnailState = domain.SeekThumbnailDone
+	store := &fakeCatalogStore{seekStates: map[int64]domain.SeekThumbnailState{1: domain.SeekThumbnailDone}}
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
+
+	for range 2 {
+		got, err := catalog.SeekThumbnailState(context.Background(), video)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != domain.SeekThumbnailPending {
+			t.Fatalf("state = %q, want pending", got)
+		}
+	}
+	if want := []int64{1}; !slices.Equal(store.seekRequeued, want) {
+		t.Fatalf("requeued = %v, want %v", store.seekRequeued, want)
+	}
+}
+
+// 作り直しを積めなくても、応答は pending で返す。
+func TestSeekThumbnailStateIgnoresRequeueFailure(t *testing.T) {
+	video := probedVideo(1, "a")
+	video.SeekThumbnailState = domain.SeekThumbnailDone
+	store := &fakeCatalogStore{seekRequeueErr: errors.New("disk I/O error")}
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
+	got, err := catalog.SeekThumbnailState(context.Background(), video)
+	if err != nil || got != domain.SeekThumbnailPending {
+		t.Fatalf("state = %q, err = %v, want pending", got, err)
 	}
 }
 
@@ -293,18 +328,15 @@ func TestRelatedVideosPassesAudience(t *testing.T) {
 	}
 }
 
-// 読み取りのやり直しには、シーク用プレビューの置き場の有無を確かめて渡す。
-func TestRetryProbePassesSeekThumbnailPresence(t *testing.T) {
+// 読み取りのやり直しは、動画の id だけを保存層へ渡す。
+func TestRetryProbePassesVideoID(t *testing.T) {
 	store := &fakeCatalogStore{}
-	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{seek: map[string]bool{"present": true}}})
-
-	for _, key := range []string{"missing", "present"} {
-		if err := catalog.RetryProbe(context.Background(), probedVideo(1, key)); err != nil {
-			t.Fatal(err)
-		}
+	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
+	if err := catalog.RetryProbe(context.Background(), probedVideo(7, "a")); err != nil {
+		t.Fatal(err)
 	}
-	if want := []bool{true, false}; !slices.Equal(store.retried, want) {
-		t.Fatalf("seekThumbnailMissing = %v, want %v", store.retried, want)
+	if want := []int64{7}; !slices.Equal(store.retried, want) {
+		t.Fatalf("retried = %v, want %v", store.retried, want)
 	}
 }
 

@@ -69,9 +69,7 @@ func TestJobRetriesUntilLimitAcrossLocations(t *testing.T) {
 }
 
 func TestClaimConditionWaitsForProbeOnlyForThumbnails(t *testing.T) {
-	kinds := append([]JobKind{}, JobKinds...)
-	kinds = append(kinds, JobSeekThumbnail)
-	for _, kind := range kinds {
+	for _, kind := range JobKinds {
 		c := ClaimConditionFor(kind)
 		if c.Allows(false, ProbeStateDone, false) {
 			t.Errorf("%s: allowed without a registered location", kind)

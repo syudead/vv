@@ -202,7 +202,7 @@ func TestRetryProbeRequeuesFailedSeekThumbnail(t *testing.T) {
 	recorder := &queuedRecorder{}
 	db.PublishTo(recorder)
 
-	if err := db.Ingest().RetryProbe(ctx, videoID, false); err != nil {
+	if err := db.Ingest().RetryProbe(ctx, videoID); err != nil {
 		t.Fatal(err)
 	}
 	if seek, thumbnail := seekAndThumbnailState(t, db, videoID); seek != "pending" || thumbnail != "done" {

@@ -64,6 +64,20 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 				}
 			}))
 	}
+	// シーク用サムネイルは、解析が終わり、取り出せる代表サムネイルの仕事が無い
+	// ときだけ取り出される（domain.ClaimConditionFor）。解析か代表サムネイルの
+	// 1件の成否が決まったとき、または動画の行が消えたとき（Stage が空。残りの
+	// 代表サムネイルの仕事が減る）に、待っていたシーク用のワーカーを起こす。
+	// 条件は取り出しの時点だけで効き、走っているシーク用の生成は止めない。
+	if seek, ok := s.Workers[domain.JobSeekThumbnail]; ok {
+		stopWorkers = append(stopWorkers, eventbus.On(bus, "代表サムネイルの後のシーク用サムネイル",
+			func(event domain.VideoIngestChanged) {
+				switch event.Stage {
+				case domain.JobProbe, domain.JobThumbnail, "":
+					seek.Wake()
+				}
+			}))
+	}
 	stops.StopWorkers = func() {
 		for _, stop := range stopWorkers {
 			stop()

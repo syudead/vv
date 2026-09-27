@@ -895,10 +895,11 @@ type Video struct {
 	// （specs/016-single-account-auth/contracts/guest-api.md §4）
 	Public bool `json:"public"`
 
-	// SeekThumbnailState シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
+	// SeekThumbnailState シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
 	// seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
-	// pending = 置き場が無く thumbnailState = pending かサムネイルのジョブが
-	// queued・running、failed = それ以外
+	// pending = 生成を待っている、または生成中（保存した状態が done なのに置き場が
+	// 無いときは、サーバーが作り直しを積んで pending として返す）、failed = 生成に
+	// 失敗し、再試行の上限に達した
 	SeekThumbnailState *VideoSeekThumbnailState `json:"seekThumbnailState,omitempty"`
 
 	// SeekThumbnailUrl probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL
@@ -934,10 +935,11 @@ type VideoPreviewState string
 // VideoProbeState defines model for Video.ProbeState.
 type VideoProbeState string
 
-// VideoSeekThumbnailState シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
+// VideoSeekThumbnailState シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
 // seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
-// pending = 置き場が無く thumbnailState = pending かサムネイルのジョブが
-// queued・running、failed = それ以外
+// pending = 生成を待っている、または生成中（保存した状態が done なのに置き場が
+// 無いときは、サーバーが作り直しを積んで pending として返す）、failed = 生成に
+// 失敗し、再試行の上限に達した
 type VideoSeekThumbnailState string
 
 // VideoThumbnailState defines model for Video.ThumbnailState.
