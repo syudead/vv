@@ -317,8 +317,8 @@ func TestAccountCommandsRejectWithoutWriting(t *testing.T) {
 		stdin      string
 		wantInErr  string
 	}{
-		{"未設定で set-username", false, []string{"account", "set-username", newUsername}, "", "初回設定"},
-		{"未設定で set-password", false, []string{"account", "set-password"}, newPassword + "\n", "初回設定"},
+		{"未設定で set-username", false, []string{"account", "set-username", newUsername}, "", "ブラウザで VVMDM を開き"},
+		{"未設定で set-password", false, []string{"account", "set-password"}, newPassword + "\n", "ブラウザで VVMDM を開き"},
 		{"空のユーザー名", true, []string{"account", "set-username", ""}, "", "ユーザー名が正しくありません"},
 		{"前後に空白のあるユーザー名", true, []string{"account", "set-username", " bob"}, "", "ユーザー名が正しくありません"},
 		{"ユーザー名が無い", true, []string{"account", "set-username"}, "", "1つだけ"},

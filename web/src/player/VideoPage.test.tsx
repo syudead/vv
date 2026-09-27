@@ -235,7 +235,7 @@ describe("VideoPage", () => {
       renderPage("7", "/?q=abc");
       expect((await ready()).textContent).toBe("テスト動画");
       // 題名は描画後の effect で入るので、h1 が出た直後ではなく反映を待つ。
-      await waitFor(() => expect(document.title).toBe("テスト動画 - vv"));
+      await waitFor(() => expect(document.title).toBe("テスト動画 · VVMDM"));
       expect(screen.getByRole("list", { name: "ファイルの情報" })).toBeDefined();
       expect(screen.getByText("H.264")).toBeDefined();
       expect(screen.getByRole("button", { name: "ファイルを開く" })).toBeDefined();
@@ -320,7 +320,7 @@ describe("VideoPage", () => {
     it("ロゴからホームへ移る", async () => {
       renderPage("7", "/folders/1/movies");
       await ready();
-      fireEvent.click(screen.getByRole("link", { name: "ホーム" }));
+      fireEvent.click(screen.getByRole("link", { name: "VVMDM ホーム" }));
       expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /");
     });
 
