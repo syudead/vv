@@ -9,8 +9,7 @@ import (
 )
 
 // 生成物（サムネイル・シークプレビュー・ホバープレビュー）の成功の応答に付ける
-// キャッシュの指示と ETag（specs/016-single-account-auth/contracts/guest-api.md §5、
-// plan.md Structural Decisions 15）。
+// キャッシュの指示と ETag（specs/016-single-account-auth/contracts/guest-api.md §5）。
 
 // setRevalidate は、使うたびにサーバーへ確かめさせる指示と ETag を付ける。
 func setRevalidate(w http.ResponseWriter, etag string) {

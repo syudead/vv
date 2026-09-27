@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// 送信元と HTTPS の判定（plan.md Structural Decisions 7、#302）。
+// 送信元と HTTPS の判定。
 
 const (
 	// proxyRemote は信頼するプロキシの接続元である。

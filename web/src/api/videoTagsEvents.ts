@@ -3,7 +3,7 @@ import { applyTagToListSnapshot } from "./listSnapshot";
 
 /**
  * videoTagsEvents は動画への付け外しの結果を、progressEvents と同じ形で画面へ
- * 知らせる（issue 267、Plan の Structural Decisions 7）。読み込み済みの一覧の項目と
+ * 知らせる。読み込み済みの一覧の項目と
  * listSnapshot の控えの tags を、一覧を取り直さずに直す。
  */
 type Listener = (

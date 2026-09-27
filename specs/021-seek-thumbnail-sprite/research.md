@@ -179,7 +179,7 @@ URL を入れ直すたびに再確認の要求が出る。object URL なら要�
 （[R-3](#r-3-置き場と完成の印)）。
 
 **Rationale**: 要件 9 の「再取り込みの指示なしに生成対象になる」を、
-[020 の移行](../020-seek-thumbnail-stage/plan.md)（Structural Decisions 5）と同じく移行で積む。
+020 の移行 [00014_seek_thumbnail_stage.sql](../../internal/store/migrations/00014_seek_thumbnail_stage.sql) と同じく移行で積む。
 再生画面を開いたときに積む今の規則だけに任せると、開くまで処理状況に残りが出ず、いつ終わるか
 分からない。旧形式を作り直しが終わるまで配信し続ける形は、プレイヤーと API に 2 つの形式を
 残すことになり、要件 1 の「置き換える」に反する。受け入れ条件 8 が作り直しの間に求めるのは

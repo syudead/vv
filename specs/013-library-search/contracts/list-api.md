@@ -1,6 +1,6 @@
 # Contract: 一覧 API の検索・絞り込み・並べ替え
 
-親 Issue: #195。Plan: [plan.md](../plan.md)。
+親 Issue: #195。
 
 API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文書は
 `listVideos`（`GET /api/videos`）と `listFolderVideos`

@@ -56,7 +56,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   const { refresh: refreshScan } = scan;
   const searching = criteria.query !== "";
   // 検索語があるときはフォルダとその配下すべてを対象にする。無ければ直下だけを絞る
-  // （Plan の Structural Decisions 8、contracts/list-url.md §2）。direct は既定なので
+  // direct は既定なので
   // 送らない（URL・要求を今までと同じ形に保つ）。
   const scope: FolderScope | undefined = searching ? "subtree" : undefined;
 

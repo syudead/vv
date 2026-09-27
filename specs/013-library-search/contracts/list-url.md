@@ -1,11 +1,11 @@
 # Contract: 一覧の条件を表す URL
 
-親 Issue: #195。Plan: [plan.md](../plan.md)。
+親 Issue: #195。
 
 ライブラリ（`/`）、フォルダ画面の最上位（`/folders`）、各フォルダ
 （`/folders/{rootId}/{段}…`）は、同じクエリパラメータで一覧の条件を表す（要件 16・18）。
-フォルダの位置の表し方は変えない（[specs/011-folder-browser/plan.md](../../011-folder-browser/plan.md)
-Structural Decisions 3）。見た目と操作の配置は、design 工程の `ui-design.md` が決める。
+フォルダの位置は既存のパスで表す。見た目と操作の配置は
+[UI 設計](../ui-design.md)に記す。
 
 ## 1. パラメータ
 

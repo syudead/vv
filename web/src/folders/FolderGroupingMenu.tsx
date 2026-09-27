@@ -104,7 +104,7 @@ export default function FolderGroupingMenu({
           aria-label={`ライブラリでのまとめ方: ${
             grouping.grouped ? "1 件にまとめて表示" : "1 本ずつ表示"
           }。メニューを開く`}
-          // 見出しと同じ弱さにし、見出しの行の高さを変えない（ui-design.md「Visual review criteria」）。
+          // 見出しと同じ弱さにし、見出しの行の高さを変えない。
           className="-my-2 -mr-2 gap-1.5! text-fg-muted!"
         >
           <Icon aria-hidden="true" className={busy ? "animate-spin" : undefined} />

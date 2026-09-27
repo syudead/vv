@@ -1,6 +1,6 @@
 # Contract: タグの API
 
-親 Issue: #193。Plan: [plan.md](../plan.md)。
+親 Issue: #193。
 
 API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文書は足す経路・
 スキーマ・誤りの差分だけを書く。誤りの形（`Error {code, message}`）、同一オリジンの
@@ -52,7 +52,7 @@ TypeScript の型を扱う前例がリポジトリに無いためである。
 - `reprobeVideo`（`POST /api/videos/{id}/probe`）
 
 タグが1つも無い動画は空の配列を返し、`null` にしない。フォルダ画面は、この欄を受け取っても
-表示しない（Plan の Structural Decisions 10）。
+表示しない。
 
 ## 2. 足す誤りの `code`
 

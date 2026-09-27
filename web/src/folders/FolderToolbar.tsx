@@ -42,7 +42,7 @@ export interface FolderToolbarProps {
  * ライブラリのツールバーから表示形式の切り替えを除いたもので、部品と幅の境界は
  * 同じにする（ui-design.md「Toolbar」「Screen boundary」）。検索欄・絞り込み・
  * 並べ替え・向き・大きさの部品は、ライブラリと共有する `web/src/videoList/` のものを
- * 使う（Plan の Structural Decisions 9）。
+ * 使う。
  */
 export default function FolderToolbar({
   query,

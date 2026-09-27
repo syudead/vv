@@ -17,8 +17,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 認証の HTTP 境界（specs/016-single-account-auth/contracts/auth-api.md、
-// plan.md Structural Decisions 1・5・8・14）。
+// 認証の HTTP 境界（specs/016-single-account-auth/contracts/auth-api.md）。
 
 const (
 	// sessionCookieHTTPS は HTTPS の要求で使うセッション Cookie の名前である。

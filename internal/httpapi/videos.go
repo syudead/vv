@@ -358,8 +358,7 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 	return progress
 }
 
-// tagsFor は動画たちのタグをまとめて引く（progressFor と同じ形。Plan の
-// Structural Decisions 5・14）。1件ずつ引くと、60 件の一覧で 60 回の問い合わせに
+// tagsFor は動画たちのタグをまとめて引く（progressFor と同じ形）。1件ずつ引くと、60 件の一覧で 60 回の問い合わせに
 // なる。
 //
 // 引けなかった場合は一覧を諦めない。タグは「あると嬉しい」情報であって、

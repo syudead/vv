@@ -2,8 +2,7 @@ import type { FolderRef, LibraryGroup, LibraryItem, Video } from "./client";
 
 /**
  * 一覧の項目（LibraryItem）を読み分ける小さな道具である。一覧の保持
- * （useVideos・listSnapshot）と、項目を並べる画面が共有する
- * （specs/017-folder-groups/plan.md の Structural Decisions 13）。
+ * （useVideos・listSnapshot）と、項目を並べる画面が共有する。
  */
 
 /** videoItem は動画1件を動画の項目に包む（GET /api/videos・フォルダの動画の応答）。 */

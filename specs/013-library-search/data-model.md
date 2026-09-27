@@ -1,6 +1,6 @@
 # Data model: 一覧とフォルダ画面の検索
 
-親 Issue: #195。Plan: [plan.md](plan.md)。
+親 Issue: #195。
 
 既存の表の定義は [internal/store/migrations/](../../internal/store/migrations/) が正本で、
 索引と利用者データの区別は [ARCHITECTURE.md](../../ARCHITECTURE.md) にある。ここには

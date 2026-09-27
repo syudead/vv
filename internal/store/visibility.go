@@ -22,7 +22,7 @@ func publicVideoCondition(alias string) string {
 }
 
 // visibleLocationCondition は、所在（別名 alias）を見る人に見せてよいかの条件句を
-// 返す（data-model.md §3、plan.md Structural Decisions 11）。所有者では登録フォルダの
+// 返す（data-model.md §3）。所有者では登録フォルダの
 // 下にあることだけを、ゲストではそれに加えて動画が公開であることを求める。
 // Audience のゼロ値はゲストなので、付け忘れは狭い側に倒れる。
 //

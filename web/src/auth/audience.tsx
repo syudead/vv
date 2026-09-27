@@ -2,7 +2,7 @@ import { createContext, type ReactNode, useContext } from "react";
 
 /**
  * Audience は画面を描いている相手である。owner はログイン済みの所有者、guest は
- * 未ログインの人（specs/016-single-account-auth/plan.md Structural Decisions 2）。
+ * 未ログインの人。
  */
 export type Audience = "owner" | "guest";
 

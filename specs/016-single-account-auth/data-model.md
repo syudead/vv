@@ -1,6 +1,6 @@
 # Data model: 単一アカウント認証と公開フラグ
 
-親 Issue: #135。Plan: [plan.md](plan.md)。
+親 Issue: #135。
 
 既存の表の定義は [internal/store/migrations/](../../internal/store/migrations/) が正本で、
 「再構築できる索引」と「作り直せない利用者データ」の区別は
@@ -75,7 +75,7 @@ ARCHITECTURE.md の区分の段落にこの3つを書き足す。
 2. 今の一覧と同じく、登録したメディアフォルダの下に所在がある。
 
 この条件は、`Audience` を受け取って所在の条件を返す1つの関数（例:
-`visibleLocationCondition(alias, audience)`）に置く（[plan.md Structural Decisions 11](plan.md#structural-decisions)）。
+`visibleLocationCondition(alias, audience)`）に置く。
 所有者では今の「登録フォルダの下」の条件をそのまま返し、ゲストでは 1 を足す。
 今それぞれの場所で条件を組み立てている次の読み出しを、すべてこの関数に通す。
 

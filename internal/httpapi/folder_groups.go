@@ -14,7 +14,7 @@ import (
 
 // FolderGroups はフォルダのまとめ方の保存先である。internal/store の
 // *FolderGroupStore がこれを満たす。どの操作も1つの取引で済むので、internal/app は
-// 通さない（specs/017-folder-groups/plan.md の Structural Decisions 8）。
+// 通さない。
 type FolderGroups interface {
 	// FolderGroupings はフォルダ（絶対パス）それぞれのまとめ方を、同じ順で返す。
 	FolderGroupings(ctx context.Context, folderPaths []string) ([]domain.FolderGrouping, error)

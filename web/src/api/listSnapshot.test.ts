@@ -168,8 +168,7 @@ describe("フォルダ画面の控え", () => {
   });
 });
 
-// issue 267: 付け外しの結果は、一覧を取り直さず控えの tags へ反映する
-// （Plan の Structural Decisions 7）。
+// issue 267: 付け外しの結果は、一覧を取り直さず控えの tags へ反映する。
 describe("付け外しの結果の反映", () => {
   it("recordAppliedVideoTagsのaddで、対象の項目のtagsだけが変わる", () => {
     saveListSnapshot({ query: "" }, body([1, 2]));
@@ -228,7 +227,7 @@ describe("付け外しの結果の反映", () => {
   });
 });
 
-// specs/017-folder-groups/plan.md の Structural Decisions 10・13: グループの値はメンバーから
+// グループの値はメンバーから
 // 数えるので、控えの中では書き換えず、戻ったときに取り直す印を付ける。
 describe("控えの中のグループの項目", () => {
   const groupItem: LibraryItem = {

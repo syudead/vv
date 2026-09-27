@@ -51,8 +51,7 @@ export interface ListSnapshot {
   /** 鍵。ListKey を正規化して連結したもの。 */
   key: string;
   /**
-   * 読み込み済みの項目（ページをまたいで連結済み）。動画の項目とグループの項目がある
-   * （specs/017-folder-groups/plan.md の Structural Decisions 13）。
+   * 読み込み済みの項目（ページをまたいで連結済み）。動画の項目とグループの項目がある。
    */
   items: LibraryItem[];
   /** 総件数（件数の表示に使う）。 */
@@ -236,8 +235,7 @@ export function clearListSnapshot(): void {
 
 /**
  * applyTagToListSnapshot は控えの中の動画たちのタグを書き換える。付け外しの
- * 直後に、控えを取り直さず結果を反映するために使う（issue 267、Plan の Structural
- * Decisions 7）。action = "remove" で絞り込みに合わなくなった項目も、その場では
+ * 直後に、控えを取り直さず結果を反映するために使う。action = "remove" で絞り込みに合わなくなった項目も、その場では
  * 一覧から外さない（次の読み込みで反映する。contracts/tags-api.md §5）。
  * 対象の動画をメンバーに持つグループの項目には、戻ったときに取り直す印を付ける。
  */

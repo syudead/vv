@@ -4,8 +4,8 @@
 
 machine-readable schema の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、ここには
 この feature が変える差分だけを書く。旧契約
-[specs/009-seek-thumbnail-preview/contracts/seek-thumbnail.md](../../009-seek-thumbnail-preview/contracts/seek-thumbnail.md)
-の `positionMs` の JPEG 応答は、この契約が置き換える。
+`specs/009-seek-thumbnail-preview/contracts/seek-thumbnail.md`（完了した feature の文書として
+`main` から外され、git の履歴にだけ残る）の `positionMs` の JPEG 応答は、この契約が置き換える。
 
 ## 1. `Video.seekThumbnailUrl` の意味
 

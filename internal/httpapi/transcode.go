@@ -81,7 +81,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		Probe:   s.usableTranscodeProbe(r.Context(), video.ID, source),
 		StartMs: startMs,
 		// 直接再生から切り替えた変換だけエンコードを強いる。シークでは映像がコピー
-		// できればコピーする（plan.md Structural Decision 7）。
+		// できればコピーする。
 		Normalize:       video.Playable,
 		StartupDeadline: time.Now().Add(transcodeStartupTimeout),
 	}

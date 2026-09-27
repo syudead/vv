@@ -20,8 +20,8 @@ const (
 	envAddr     = "MDM_ADDR"
 	envDataDir  = "MDM_DATA_DIR"
 	envLogLevel = "MDM_LOG_LEVEL"
-	// envTrustedProxies は転送ヘッダーを信じてよいリバースプロキシのアドレスの一覧である
-	// （specs/016-single-account-auth/plan.md Structural Decisions 7）。未設定なら
+	// envTrustedProxies は転送ヘッダーを信じてよいリバースプロキシのアドレスの一覧である。
+	// 未設定なら
 	// ループバックとプライベートアドレス（defaultTrustedProxies）を信じ、none なら
 	// 転送ヘッダーを読まない。
 	envTrustedProxies = "MDM_TRUSTED_PROXIES"

@@ -1,6 +1,6 @@
 # Contract: 認証の HTTP 境界
 
-親 Issue: #135。Plan: [plan.md](../plan.md)。
+親 Issue: #135。
 
 API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文書はこの feature が
 足す経路・応答・Cookie と、既存の全経路に掛かる認証の境界だけを書く。ゲストに返す
@@ -26,7 +26,7 @@ API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文�
 - 境界は `path.Clean` した `r.URL.Path`（復号済み）で判定する。`//api/…`・`/./api/…`・
   `/%61pi/…`・`/api/../api/…` のような書き方でも、`/api/` 以下として扱う。
 - SPA のビルド成果物は利用者データを含まない。画面の出し分けは SPA が §4 の状態で行う
-  （[plan.md Structural Decisions 2](../plan.md#structural-decisions)）。
+  。
 - Go のテストで、`openapi.yaml` の各操作の `security` と境界の分類が一致することを
   確かめる。`sessionCookie` は `in: cookie` の `apiKey` として宣言する。
 
@@ -70,11 +70,11 @@ API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文�
   どの原因でも Argon2id の照合を1回行う（未設定なら固定のダミーのハッシュと照合する）。
   ユーザー名の比較は定数時間で行う（要件 12）。
 - 照合の前に、その送信元の1回分を予約する。予約中の数も制限に数えるので、同時に
-  送られた要求でも照合は 5 分に 5 回を超えない（[plan.md Structural Decisions 6](../plan.md#structural-decisions)）。
+  送られた要求でも照合は 5 分に 5 回を超えない。
 - 429 のときは照合しない。429 の要求は失敗に数えない。成功すると、その送信元の
   失敗の記録を消す。
 - 送信元は、信頼するプロキシを経た場合はその転送ヘッダーから求めたクライアントの
-  IP アドレスである（[plan.md Structural Decisions 7](../plan.md#structural-decisions)）。IPv6 は /64 で1つの
+  IP アドレスである。IPv6 は /64 で1つの
   送信元とみなす。
 - `redirectTo` は `next` を `domain` の規則で確かめた値である。規則は次のとおりで、
   外れたもの・省略は `/` にする。画面はこの値へ遷移するだけで、自分では判定しない。
@@ -102,7 +102,7 @@ HTTPS の要求には、同じホストの HTTP でログインした `vv_sessio
 `__Host-vv_session` が届かないので、HTTP でのログアウトは HTTP のセッションだけを
 終わらせる。そのセッションは HTTPS でしか使えず、HTTP の経路からは読めない。
 届いた Cookie が有効なセッションを指していれば、そのセッションを削除し、同じセッションで
-処理中の応答を打ち切る（[plan.md Structural Decisions 5](../plan.md#structural-decisions)）。
+処理中の応答を打ち切る。
 同一オリジンの確認は他の状態変更と同じく掛かる。
 
 ## 5. 未認証とその他の応答
@@ -119,7 +119,7 @@ HTTPS の要求には、同じホストの HTTP でログインした `vv_sessio
   処理する。
 - `/api/*` のすべての応答に、その要求をどちらとして処理したかを `X-VV-Audience: owner` か
   `X-VV-Audience: guest` で付ける。画面は、所有者として描いている間に `guest` の応答を
-  受けたら、401 と同じく1度だけページを読み直す（[plan.md Structural Decisions 14](../plan.md#structural-decisions)）。
+  受けたら、401 と同じく1度だけページを読み直す。
   「ゲストも」の要求は失効しても 401 にならないので、別のタブでのログアウトをこれで
   次の操作のときに知る（Edge Case「複数タブ」）。
 - どれも `Cache-Control: no-store` で、HTML を返さない（要件 11）。
@@ -147,7 +147,7 @@ HTTPS の要求には、同じホストの HTTP でログインした `vv_sessio
   名前を分けるので、HTTP の応答が HTTPS 用の Cookie を上書きしたり、HTTPS 用の
   Cookie が HTTP で送られたりしない（Edge Case「HTTP と HTTPS」）。
 - 接続が HTTPS かどうかは、TLS で受けたか、信頼するプロキシの `X-Forwarded-Proto` で
-  決める（[plan.md Structural Decisions 7](../plan.md#structural-decisions)）。
+  決める。
 
 ## 8. 同一オリジンの確認
 

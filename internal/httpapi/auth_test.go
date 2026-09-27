@@ -746,8 +746,7 @@ func TestAuthLogsOmitSecrets(t *testing.T) {
 	}
 }
 
-// 資格を失った要求の、処理中の /api/events と Range 応答が終わること
-// （plan.md Structural Decisions 5）。
+// 資格を失った要求の、処理中の /api/events と Range 応答が終わること。
 func TestAuthRevocationEndsInFlightResponses(t *testing.T) {
 	cases := []struct {
 		name   string

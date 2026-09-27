@@ -267,7 +267,7 @@ func (s *Scans) run(scanID int64) {
 
 // rebuildFolderIndex はフォルダの索引を作り直す。失敗してもスキャンは失敗に
 // せず、ログに残すだけにする。保存側が索引を古いと記録しているので、次の作り直しの
-// 時点（次の起動を含む）で直る（specs/017-folder-groups/plan.md Structural Decisions 14）。
+// 時点（次の起動を含む）で直る。
 func (s *Scans) rebuildFolderIndex(ctx context.Context) {
 	if s.folders == nil {
 		return

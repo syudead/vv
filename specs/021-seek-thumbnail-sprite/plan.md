@@ -58,7 +58,8 @@
   表示の規則: [specs/009-seek-thumbnail-preview/ui-design.md](../009-seek-thumbnail-preview/ui-design.md)、
   [web/src/index.css](../../web/src/index.css) の `.vv-seek-preview`
 - ライブ変換でも元動画の論理時刻を使う判断:
-  [specs/009-seek-thumbnail-preview/plan.md](../009-seek-thumbnail-preview/plan.md)（Structural Decisions）
+  `specs/009-seek-thumbnail-preview/plan.md`（Structural Decisions。完了した feature の
+  Plan として `main` から外され、git の履歴にだけ残る）
 - 前例: ホバープレビューの manifest（`preview/<p>/<s>.mp4.sha256`、`internal/artifacts`）、
   既存動画への積み直しの移行
   [00014_seek_thumbnail_stage.sql](../../internal/store/migrations/00014_seek_thumbnail_stage.sql)、

@@ -337,8 +337,7 @@ func TestRebuildFolderIndexFailureMarksStale(t *testing.T) {
 	}
 }
 
-// BenchmarkRebuildFolderIndex は1万本・約3千フォルダの作り直しにかかる時間を測る
-// （specs/017-folder-groups/plan.md の Technical Context、目安は1秒未満）。
+// BenchmarkRebuildFolderIndex は1万本・約3千フォルダの作り直しにかかる時間を測る。
 func BenchmarkRebuildFolderIndex(b *testing.B) {
 	db, err := Open(b.TempDir())
 	if err != nil {
