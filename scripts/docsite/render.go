@@ -20,17 +20,19 @@ import (
 // 閲覧サイトが出してよいのはこの中のものだけで、.env のような無視された
 // ファイルは一覧に現れないので外へ出ない。
 type repoFiles struct {
-	all  map[string]bool
+	// all は git の一覧にあるパスからそのパス自身への対応。要求の URL から
+	// ファイルを開くときは、要求の文字列ではなくここから引いた値を使う。
+	all  map[string]string
 	docs []string // Markdown だけ。並びは sortDocs の順。
 }
 
 func newRepoFiles(paths []string) repoFiles {
-	files := repoFiles{all: make(map[string]bool, len(paths))}
+	files := repoFiles{all: make(map[string]string, len(paths))}
 	for _, p := range paths {
 		if p == "" {
 			continue
 		}
-		files.all[p] = true
+		files.all[p] = p
 		if strings.HasSuffix(p, ".md") {
 			files.docs = append(files.docs, p)
 		}
@@ -39,7 +41,18 @@ func newRepoFiles(paths []string) repoFiles {
 	return files
 }
 
-func (f repoFiles) isDoc(p string) bool { return f.all[p] && strings.HasSuffix(p, ".md") }
+// lookup は一覧にある p を、一覧に記録したパスとして返す。
+func (f repoFiles) lookup(p string) (string, bool) {
+	listed, ok := f.all[p]
+	return listed, ok
+}
+
+func (f repoFiles) has(p string) bool {
+	_, ok := f.all[p]
+	return ok
+}
+
+func (f repoFiles) isDoc(p string) bool { return f.has(p) && strings.HasSuffix(p, ".md") }
 
 // isDir は p の下に1つでもファイルがあるかを返す。
 func (f repoFiles) isDir(p string) bool {
@@ -58,9 +71,8 @@ func (f repoFiles) isDir(p string) bool {
 // dirIndex はディレクトリを開いたときに見せる文書を返す。
 func (f repoFiles) dirIndex(dir string) (string, bool) {
 	for _, name := range []string{"README.md", "index.md"} {
-		p := path.Join(dir, name)
-		if f.isDoc(p) {
-			return p, true
+		if doc, ok := f.lookup(path.Join(dir, name)); ok {
+			return doc, true
 		}
 	}
 	return "", false
@@ -207,10 +219,10 @@ func (r renderer) rewrite(doc, dest string, assets map[string]bool) string {
 	switch {
 	case r.files.isDoc(resolved):
 		return relativeURL(doc, pageURL(resolved)) + fragment
-	case r.files.all[resolved] && assetExts[strings.ToLower(path.Ext(resolved))]:
+	case r.files.has(resolved) && assetExts[strings.ToLower(path.Ext(resolved))]:
 		assets[resolved] = true
 		return relativeURL(doc, resolved) + fragment
-	case r.files.all[resolved]:
+	case r.files.has(resolved):
 		return r.githubURL("blob", resolved) + fragment
 	case r.files.isDir(resolved):
 		if index, ok := r.files.dirIndex(resolved); ok {

@@ -184,3 +184,22 @@ func TestExportWritesPagesAndAssets(t *testing.T) {
 		}
 	}
 }
+
+// TestReadStaysInsideRepository は、一覧に載っていてもリポジトリの外を指す
+// シンボリックリンクと .. を読まないことを確かめる。
+func TestReadStaysInsideRepository(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "secret.png")
+	if err := os.WriteFile(outside, []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "link.png")); err != nil {
+		t.Skipf("symlink is unavailable: %v", err)
+	}
+	s := site{root: root}
+	for _, p := range []string{"link.png", "../secret.png"} {
+		if body, err := s.read(p); err == nil {
+			t.Errorf("read(%q) = %q, want an error", p, body)
+		}
+	}
+}

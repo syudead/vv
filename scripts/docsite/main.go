@@ -98,8 +98,24 @@ func fileExists(p string) bool {
 	return err == nil && !info.IsDir()
 }
 
+// read と stat は os.Root 越しに開くので、どのパスを渡されてもリポジトリの
+// 外（.. やシンボリックリンクの先）には出ない。
 func (s site) read(p string) ([]byte, error) {
-	return os.ReadFile(filepath.Join(s.root, filepath.FromSlash(p)))
+	root, err := os.OpenRoot(s.root)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
+	return root.ReadFile(filepath.FromSlash(p))
+}
+
+func (s site) stat(p string) (os.FileInfo, error) {
+	root, err := os.OpenRoot(s.root)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = root.Close() }()
+	return root.Stat(filepath.FromSlash(p))
 }
 
 // navNode はサイドバーの木の1つの節である。
@@ -227,7 +243,7 @@ func (s site) page(files repoFiles, titles map[string]string, doc string) ([]byt
 		Nav:    buildNav(files, titles, doc),
 		Source: r.githubURL("blob", doc),
 	}
-	if info, err := os.Stat(filepath.Join(s.root, filepath.FromSlash(doc))); err == nil {
+	if info, err := s.stat(doc); err == nil {
 		data.Modified = info.ModTime().Format("2006-01-02 15:04")
 	}
 	var buf bytes.Buffer
@@ -338,8 +354,17 @@ func (s site) handler() http.Handler {
 			_, _ = w.Write(body)
 			return
 		}
-		if files.all[p] && assetExts[strings.ToLower(path.Ext(p))] {
-			http.ServeFile(w, req, filepath.Join(s.root, filepath.FromSlash(p)))
+		if asset, ok := files.lookup(p); ok && assetExts[strings.ToLower(path.Ext(asset))] {
+			body, err := s.read(asset)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+			var modified time.Time
+			if info, err := s.stat(asset); err == nil {
+				modified = info.ModTime()
+			}
+			http.ServeContent(w, req, path.Base(asset), modified, bytes.NewReader(body))
 			return
 		}
 		http.NotFound(w, req)
@@ -353,8 +378,8 @@ func docFor(files repoFiles, p string) (string, bool) {
 		return files.dirIndex(p)
 	}
 	if strings.HasSuffix(p, ".html") {
-		doc := strings.TrimSuffix(p, ".html") + ".md"
-		return doc, files.isDoc(doc)
+		doc, ok := files.lookup(strings.TrimSuffix(p, ".html") + ".md")
+		return doc, ok
 	}
 	return "", false
 }
