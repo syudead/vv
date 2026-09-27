@@ -20,6 +20,7 @@ Add each new document to this index.
 - [ライブ変換のシークと解析情報の再利用](live-transcode-seek.md)
 - [Issue handoff SDD: agentを固定しない一工程ずつの実行](sdd-loop-harness.md)
 - [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
+- [VVMDM ブランドと画面の UI 設計](../../specs/022-vvmdm-brand/ui-design.md)
 - [一覧画面の hover 動画プレビュー UI](../../specs/010-hover-video-preview/ui-design.md)
 - [動画詳細画面の UI](../../specs/012-video-detail-ia/ui-design.md)
 - [動画取り込みの進捗表示 UI](../../specs/012-scan-progress/ui-design.md)
