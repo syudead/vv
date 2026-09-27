@@ -95,7 +95,7 @@
 - **ゲストの応答とキャッシュ**（guest-api.md §5）: 合格。配置情報とシートはどちらも
   `private, no-cache` と `ETag` で返し、ゲストにも返す経路の表に足す。
 - **文書は変更と同じ PR で直す**（core-beliefs.md）: 合格。ARCHITECTURE.md の生成物の段落は
-  生成を変える単位が、技術選定と `specs/009` の記述は移行の単位が直す（要件 10）。
+  保存と配信を切り替える単位が、技術選定と `specs/009` の記述は移行の単位が直す（要件 10）。
 
 Phase 1 のあとも判定は同じである。Complexity Tracking に載せる違反は無い。
 
@@ -125,6 +125,7 @@ specs/021-seek-thumbnail-sprite/
 - `internal/domain`: スプライトの配置（間隔・コマ数・列・行・シート数）を動画の長さから決める
   純粋関数と定数。`SeekThumbnailInterval` は最小の間隔になる。
 - `internal/media`: `fps`・`tpad`・`trim`・`scale`・`tile` による 1 回の ffmpeg でシートを書く。
+  計測の境界 `GenerateSeekThumbnailSet`。
 - `internal/artifacts`: シートと `sprite.json` の公開（コマの大きさをシートの JPEG から読む）、
   完成の判定、配置情報とシートの読み出し、旧形式の置き場の回収。
 - `internal/app`: `Ingest.SeekThumbnails` が動画の長さから配置を決めて生成に渡す。
@@ -144,11 +145,14 @@ specs/021-seek-thumbnail-sprite/
 
 ### previewbench でシーク用サムネイルの生成も測れるようにする
 
-**Scope**: `scripts/previewbench` に測る対象の種類（動くプレビュー・シーク用サムネイル）を足し、
-シーク用では本番の生成関数（`internal/media`）を呼んで、壁時計時間とピークメモリに加えて出力の
-ファイル数と合計バイト数を出す。[docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md)
-にシーク用の測り方と PR に残す表の形を足す（[quickstart.md](quickstart.md) §1）。生成そのものは
-変えない。
+**Scope**: `scripts/previewbench` に測る対象の種類（動くプレビュー・シーク用サムネイル）を足す。
+シーク用の計測の境界として、`internal/media` に
+`GenerateSeekThumbnailSet(ctx, videoPath, outputDir string, durationMs int64) error` を足す。
+今はこれが今の生成で個別 JPEG を `outputDir` に書き、previewbench のシーク用はこの関数だけを呼んで、
+壁時計時間とピークメモリに加えて `outputDir` のファイル数と合計バイト数を出す。後の単位はこの
+関数の中身だけを変え、`scripts/previewbench` には触れない。
+[docs/how-to/preview-benchmark.md](../../docs/how-to/preview-benchmark.md) にシーク用の測り方と
+PR に残す表の形を足す（[quickstart.md](quickstart.md) §1）。生成そのものは変えない。
 
 **Dependencies**: None.
 
@@ -157,17 +161,13 @@ specs/021-seek-thumbnail-sprite/
 `scripts/previewbench` のテストが、種類の解釈とシーク用の集計を検査する。`task check` と
 `task check-docs` が通る。
 
-### シーク用サムネイルをスプライトシートと配置情報として生成・保存・配信する
+### シーク用サムネイルの配置の規則とスプライトシートの生成を作る
 
 **Scope**: [research.md R-1](research.md#r-1-上限と間隔の規則) の配置の規則を `internal/domain` に
-置き、`internal/media` の生成を [R-2](research.md#r-2-コマの選び方) の ffmpeg の引数に変え、
-`internal/artifacts` を [R-3](research.md#r-3-置き場と完成の印) の置き場・`sprite.json`・完成の
-判定・旧形式の回収にし、`internal/app` の `Ingest.SeekThumbnails` が動画の長さから配置を決めて
-渡すようにする。[contracts/seek-sprite-api.md](contracts/seek-sprite-api.md) に従い
-`api/openapi.yaml` を変えて `task generate`、`internal/httpapi` の配置情報とシートの応答と
-`auth.go` の表を直す。`web/e2e/playback.e2e.ts` の待ち合わせを配置情報の経路にする。
-`scripts/previewbench` のシーク用を新しい生成関数に合わせる。ARCHITECTURE.md の生成物と
-ワーカーの段落を直す。
+置き、[R-2](research.md#r-2-コマの選び方) の ffmpeg の引数でシートを書く生成関数を
+`internal/media` に足す（配置を受け取り、1 回の ffmpeg でシートを書く。`Assets` からも呼べる形に
+する）。`GenerateSeekThumbnailSet` の中身を、動画の長さから配置を決めてこの生成関数を呼ぶ形に
+変える。保存・配信・プレイヤーは変えないので、再生画面の挙動はこの単位では変わらない。
 
 **Dependencies**: `previewbench でシーク用サムネイルの生成も測れるようにする`。
 
@@ -175,36 +175,45 @@ specs/021-seek-thumbnail-sprite/
 12 秒間隔・600 コマ・6 シートになること、どの長さでも 600 コマ・6 シートを超えないこと、1 コマだけの
 短い動画を検査する。`internal/media` のテストが（ffmpeg があるとき）、時刻を描いたテスト入力で
 先頭・中間・末尾のコマの時刻がそれぞれの区間の中にあること、映像が容器の長さより短い入力で
-末尾のコマが最後の場面になること、縦長の入力でコマが縦横比を保ち 1 本の中で同じ大きさになることを
-検査する。`internal/artifacts` のテストが、`sprite.json` が無い置き場を未完成と判定すること、
+末尾のコマが最後の場面になること、間隔の半分より短い（1 秒の）入力で 1 コマのシートができること、
+縦長の入力でコマが縦横比を保ち 1 本の中で同じ大きさになることを検査する。PR に、同じ 2 時間と
+2 分の入力での改善前後の生成時間・ピークメモリ・ファイル数・合計サイズの表
+（[quickstart.md](quickstart.md) §1）が載る。`task check` と `task check-docs` が通る。
+
+### シーク用サムネイルをスプライトシートで保存・配信し、プレイヤーで切り出して表示する
+
+**Scope**: `internal/artifacts` を [R-3](research.md#r-3-置き場と完成の印) の置き場・`sprite.json`・
+完成の判定・旧形式の回収にし、`internal/app` の `Ingest.SeekThumbnails` が動画の長さから配置を
+決めて前の単位の生成関数に渡すようにする。呼ばれなくなった `internal/media` の個別 JPEG の生成
+（`GenerateSeekThumbnails` と `Assets.SeekThumbnails`）を消す。
+[contracts/seek-sprite-api.md](contracts/seek-sprite-api.md) に従い `api/openapi.yaml` を変えて
+`task generate`、`internal/httpapi` の配置情報とシートの応答と `auth.go` の表を直す。
+[R-5](research.md#r-5-プレイヤーの取得と切り出し) に従い `web/src/player/seekPreview.ts` を、
+配置情報を 1 回取得し、必要になったシートを 1 回だけ取得して object URL で保持し、コマを配置情報の
+大きさで切り出す形にする。5 秒の bucket と `fetchSeekThumbnail` の 1 枚ずつの取得はやめ、
+`web/src/api/client.ts` の取得関数を配置情報とシートに合わせる。`VideoPlayer.tsx` は
+`seekThumbnailState` が変わったら取り付け直す。表示の見た目（大きさ・位置・時刻表示）は変えない。
+`web/e2e/playback.e2e.ts`（待ち合わせとシークプレビューのテスト）はこの単位だけが直す。
+ARCHITECTURE.md の生成物とワーカーの段落を直す。API とプレイヤーは同じ単位で切り替える。今の
+プレイヤーは新しい応答を読めず、分けると間の feature branch でシークプレビューが壊れるため。
+
+**Dependencies**: `シーク用サムネイルの配置の規則とスプライトシートの生成を作る`。
+
+**Acceptance**: `internal/artifacts` のテストが、`sprite.json` が無い置き場を未完成と判定すること、
 公開で旧形式の個別 JPEG が消えてシートと `sprite.json` に置き換わること、中断で一時置き場に何も
 残らないこと、`RemoveContent` が消すことを検査する。`internal/httpapi` のテストが、配置情報が
 契約の形で `private, no-cache` と `ETag` 付きで返り `If-None-Match` で 304 になること、シートの
-番号が範囲外なら 404、生成中は 409 になることを検査する。PR に、同じ 2 時間の入力での改善前後の
-生成時間・ファイル数・合計サイズの表（[quickstart.md](quickstart.md) §1）が載る。`task check` と
-`task check-docs` が通る。
-
-### プレイヤーのシークプレビューをスプライトシートから切り出して表示する
-
-**Scope**: [research.md R-5](research.md#r-5-プレイヤーの取得と切り出し) に従い
-`web/src/player/seekPreview.ts` を、配置情報を 1 回取得し、必要になったシートを 1 回だけ取得して
-object URL で保持し、コマを配置情報の大きさで切り出す形にする。5 秒の bucket と
-`fetchSeekThumbnail` の 1 枚ずつの取得はやめ、`web/src/api/client.ts` の取得関数を配置情報とシートに
-合わせる。`VideoPlayer.tsx` は `seekThumbnailState` が変わったら取り付け直す。表示の見た目
-（大きさ・位置・時刻表示）は変えない。単体テストと `web/e2e/playback.e2e.ts` を直す。
-
-**Dependencies**: `シーク用サムネイルをスプライトシートと配置情報として生成・保存・配信する`。
-
-**Acceptance**: 単体テストが、位置からコマとシートを決める規則が配置情報の間隔を使い 5 秒を前提に
-しないこと、同じシートの中の移動で取得が起きないこと、シートをまたぐ移動で次のシートを 1 回だけ
-取得すること、配置情報やシートの取得に失敗しても時刻の表示が続き 5 秒後に再試行すること、取り外しで
-object URL が解放されることを検査する。`task test-e2e` の再生のテストが、直接配信とライブ変換の
-両方で同じ位置に同じコマが出ることを検査する。画面が変わるので、時刻を描いた 2 時間の入力と縦長の
-入力（[quickstart.md](quickstart.md) §2）で、先頭・中間・末尾近くのコマの時刻が区間の中にあること、
-縦長でも隣のコマが見えないこと、シークバー上でポインターを連続して動かしたときにブラウザの
-ネットワーク記録に同じ動画のシートの追加要求が無いことを 360px・768px・1280px で確かめ、結果を
-PR に残す。支援技術ではプレビューが読み上げの対象にならないままであることを確かめる。`task check`
-が通る。
+番号が範囲外なら 404、生成中は 409 になることを検査する。web の単体テストが、位置からコマとシートを
+決める規則が配置情報の間隔を使い 5 秒を前提にしないこと、同じシートの中の移動で取得が起きない
+こと、シートをまたぐ移動で次のシートを 1 回だけ取得すること、取得が終わる前に離れたシートへ
+戻っても 2 回目の取得が起きないこと、配置情報やシートの取得に失敗しても時刻の表示が続き 5 秒後に
+再試行すること、取り外しで進行中の取得が中断され object URL が解放されることを検査する。
+`task test-e2e` の再生のテストが、直接配信とライブ変換の両方で同じ位置に同じコマが出ることを
+検査する。画面が変わるので、時刻を描いた 2 時間の入力と縦長の入力（[quickstart.md](quickstart.md)
+§2）で、先頭・中間・末尾近くのコマの時刻が区間の中にあること、縦長でも隣のコマが見えないこと、
+シークバー上でポインターを連続して動かしたときにブラウザのネットワーク記録に同じ動画のシートの
+追加要求が無いことを 360px・768px・1280px で確かめ、結果を PR に残す。支援技術ではプレビューが
+読み上げの対象にならないままであることを確かめる。`task check` と `task check-docs` が通る。
 
 ### 既存のシーク用サムネイルをスプライトに作り直し、技術選定と 009 の記述を合わせる
 
@@ -216,7 +225,7 @@ PR に残す。支援技術ではプレビューが読み上げの対象にな�
 `quickstart.md` の 5 秒間隔・個別 JPEG・`positionMs` の記述を、この feature の契約への参照に
 置き換える（要件 10）。
 
-**Dependencies**: `シーク用サムネイルをスプライトシートと配置情報として生成・保存・配信する`。
+**Dependencies**: `シーク用サムネイルをスプライトシートで保存・配信し、プレイヤーで切り出して表示する`。
 
 **Acceptance**: `internal/store` のテストが、`00015` が `done` の動画を `pending` に戻して
 `seek_thumbnail` を積み、`failed` の動画と未完了のジョブがある動画には積まないこと、`up` / `down` が
