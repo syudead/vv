@@ -14,19 +14,23 @@
 `internal/httpapi/spa.go` の平文の失敗応答（`http.Error`）と、`writeJSON` が応答を組み立てられない
 ときの固定の JSON も英語にする。
 
-## 1. `Error` の `reason` と `limit`
+## 1. `Error` の `reason`・`limit`・`tagName`
 
-`Error` に次の任意の 2 項目を足す（`additionalProperties: false` は保つ）。
+`Error` に次の任意の 3 項目を足す（`additionalProperties: false` は保つ）。
 
 | 項目 | 型 | 意味 |
 | --- | --- | --- |
 | `reason` | string enum（`ErrorReason`） | 同じ `code` の中で状況を区別する下位の理由。下の表の状況だけで返す |
 | `limit` | integer | その理由の上限値。表で `limit` の欄に値があるときだけ返す |
+| `tagName` | string | 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。表で `tagName` の欄に印があるときだけ返す |
 
 `reason` の無い応答は今と同じで、画面は `code` の文言を出す。
 
 | `code`（HTTP） | `reason` | `limit` | 状況（今の箇所） |
 | --- | --- | --- | --- |
+| `tag_name_taken`（409） | `name_is_tag` | — | 送った名前が既にあるタグの元の名前。`tagName` を返す（`tags.go` の `tagNameTakenMessage`） |
+| 〃 | `name_is_synonym` | — | 送った名前が別のタグのシノニム。`tagName` はそのタグの元の名前（同上） |
+| `tag_merge_required`（409） | — | — | 名前の変更先が別のタグの名前。`tagName` を返す（`tags.go`） |
 | `invalid_request`（400） | `username_length` | `domain.MaxUsernameLength` | ユーザー名の長さ（`auth.go`） |
 | 〃 | `password_length` | `domain.MaxPasswordBytes` | パスワードの長さ（`auth.go`） |
 | 〃 | `tag_name_empty` | — | タグ名が空（`domain.NormalizeTagName`。`tags.go`・`video_tags.go`・`folder_groups.go` のフォルダ名からのタグ化） |
@@ -58,7 +62,8 @@
 これ以外の `invalid_request`・`not_found`（並び順・`attempt`・Content-Type・経路が無いなど、画面が
 送らない値）は `reason` を返さない。
 
-`limit` の値はサーバーの定数から埋め、画面は上限を自分で持たない。`domain.NormalizeTagName` の
+`limit` の値はサーバーの定数から埋め、画面は上限を自分で持たない。今の日本語の `message` が埋め込んでいる
+競合先のタグ名は `tagName` で返し、画面は送った名前と合わせて具体的な説明を作る（要件 6 の具体性）。`domain.NormalizeTagName` の
 失敗は、今の文字列ではなく理由を持つ domain の誤りにし、`internal/httpapi` がそれを `reason` に写す。
 
 ## 2. `Video.probeErrorCode`

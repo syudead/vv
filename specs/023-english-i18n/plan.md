@@ -14,9 +14,9 @@
   （[research.md R-1](research.md#r-1-画面文言の置き場は型付きの自前カタログにする)、
   [R-2](research.md#r-2-書式と単数複数はブラウザの-intl-で扱う)）。`index.html` は `lang="en"`、
   video.js の独自言語もカタログから作る（[R-9](research.md#r-9-videojs-の文言はカタログから作る)）。
-- 画面は API の `message` を通常の表示に使わず、`code` と新しい `reason`・`limit` から英語の文言を
+- 画面は API の `message` を通常の表示に使わず、`code` と新しい `reason`・`limit`・`tagName` から英語の文言を
   出す。既存の `code` と HTTP 状態は変えず、同じ `code` の中の状況は `reason` で区別する
-  （[contracts/error-api.md §1](contracts/error-api.md#1-error-の-reason-と-limit)、
+  （[contracts/error-api.md §1](contracts/error-api.md#1-error-の-reasonlimittagname)、
   [R-4](research.md#r-4-api-エラーの具体性はコードを変えずに-reason-で足す)、
   [R-5](research.md#r-5-画面は既知のエラーを-reasoncode-からそれ以外を安全な概要で表示する)）。
 - 解析と取り込みの失敗には理由のコードを別の列に保存し、画面は自由文（ffprobe の出力、過去の
@@ -24,7 +24,7 @@
   （[data-model.md](data-model.md)、[R-6](research.md#r-6-失敗理由は機械可読なコードを保存し画面は自由文を出さない)）。
 - サーバーの `message`・ログ・`cmd/mdm` の出力は Go に英語で直接書く
   （[R-7](research.md#r-7-サーバーには文言カタログを置かず英語を直接書く)）。
-- 訳し漏れは、画面は ESLint の `no-restricted-syntax`、既知のエラーはカタログの
+- 訳し漏れは、画面は ESLint の `no-restricted-syntax` と、固定の文言を受け取る部品の props の branded 型 `UiText`、既知のエラーはカタログの
   `Record<ErrorCode | ErrorReason, …>` の型、サーバーは `gosmopolitan` で検出する
   （[R-3](research.md#r-3-訳し漏れは-lint-と型で検出する)）。
 - コメント、OpenAPI の `description`、設計文書、`scripts/` は対象にしない
@@ -56,7 +56,7 @@
 - 依存は増やさない。画面は `Intl`、lint は ESLint の組み込み規則と golangci-lint 同梱の
   `gosmopolitan` を使う。
 - SQLite に 3 列を足す移行 `00016` がある（[data-model.md](data-model.md)）。
-- API の変更は追加だけである（`Error.reason`・`Error.limit`・`Video.probeErrorCode`・
+- API の変更は追加だけである（`Error.reason`・`Error.limit`・`Error.tagName`・`Video.probeErrorCode`・
   `Scan.errorCode`・`Scan.errorPath`）。既存の `code`・HTTP 状態・状態値は変えない。
 - 各 `ui-design.md` が引用する日本語の文言は、英語のカタログが正本になる。
 
@@ -68,7 +68,7 @@
 - **API の正本は `api/openapi.yaml`**（ARCHITECTURE.md、AGENTS.md）: 合格。`reason` と失敗のコードは
   enum として足し、`task generate` で Go と TypeScript を作る。生成物は手で直さない。
 - **画面は `web/src/api/` だけがサーバーと話す**（ARCHITECTURE.md「Web layer」）: 合格。`reason` と
-  `limit` を `RequestFailed` に載せるのは `client.ts` で、画面の文言は `web/src/i18n/` が作る。
+  `limit`・`tagName` を `RequestFailed` に載せるのは `client.ts` で、画面の文言は `web/src/i18n/` が作る。
 - **索引と利用者データの区別**（ARCHITECTURE.md「Rebuildable and user data」）: 合格。足す列は
   作り直せる `videos` と `scans` にあり、利用者の名前やタグは触らない（要件 8）。
 - **制約は検査で守る**（core-beliefs.md）: 合格。訳し漏れ・ロケールの固定・エラーの表示漏れは
@@ -90,7 +90,7 @@ specs/023-english-i18n/
 ├── data-model.md         # videos.probe_error_code、scans.error_code・error_path
 ├── quickstart.md         # 日本語の残り、失敗の表示、過去の日本語データ、書式の確認
 └── contracts/
-    └── error-api.md      # Error.reason・limit、Video.probeErrorCode、Scan.errorCode・errorPath
+    └── error-api.md      # Error.reason・limit・tagName、Video.probeErrorCode、Scan.errorCode・errorPath
 ```
 
 `ui-design.md` は作らない。親 Issue に `ui` ラベルが無く、画面の構成・操作・見た目は変えずに文言を
@@ -100,13 +100,13 @@ specs/023-english-i18n/
 
 **Affected boundaries**:
 
-- `api/openapi.yaml`・`internal/httpapi`: `Error.reason`・`limit`、失敗コードの項目、英語の `message`。
+- `api/openapi.yaml`・`internal/httpapi`: `Error.reason`・`limit`・`tagName`、失敗コードの項目、英語の `message`。
 - `internal/domain`: 失敗コードと包む型、`NormalizeTagName` の理由付きの誤り、英語の誤りの文。
 - `internal/media`・`internal/scanner`・`internal/app`・`internal/jobs`・`internal/store`: 失敗コードの
   付与と保存、英語の誤りの文とログ。
 - `internal/artifacts`・`internal/mediafs`・`internal/opener`・`internal/password`・
   `internal/eventbus`・`cmd/mdm`: 英語の誤りの文、ログ、設定とアカウント操作の出力。
-- `web/src/i18n`（新規）: カタログ、書式、エラー表示。`web/src/api/client.ts`: `reason`・`limit`。
+- `web/src/i18n`（新規）: カタログ、書式、エラー表示。`web/src/api/client.ts`: `reason`・`limit`・`tagName`。
 - `web/src/*` の各領域と `web/e2e`: カタログの利用と英語の検証。`web/index.html`: `lang="en"`。
 - `.golangci.yml`・`web/eslint.config.js`: 訳し漏れの検出。
 - `ARCHITECTURE.md`・`docs/design-docs/`: i18n の設計文書と索引、API・データ・Web 層の記述。
@@ -126,18 +126,18 @@ specs/023-english-i18n/
 画面の lint は基盤で有効にして未対応のディレクトリを除外し、各領域が自分の分を外す
 （[R-3](research.md#r-3-訳し漏れは-lint-と型で検出する)）。
 
-### API エラーに reason と limit を足し、API の message を英語にする
+### API エラーに理由と表示用の値を足し、API の message を英語にする
 
-**Scope**: `api/openapi.yaml` の `Error.reason`・`limit` と `message` の説明
+**Scope**: `api/openapi.yaml` の `Error.reason`・`limit`・`tagName` と `message` の説明
 （[contracts/error-api.md §0・§1](contracts/error-api.md)）、`internal/httpapi` のすべての
-`message`・ログ・`spa.go` の平文の応答の英語化、表の状況への `reason`・`limit` の付与、
+`message`・ログ・`spa.go` の平文の応答の英語化、表の状況への `reason`・`limit`・`tagName` の付与、
 `internal/domain` の誤りの文の英語化と `NormalizeTagName` の理由付きの誤り、Go のテストの期待値、
 ARCHITECTURE.md の API の記述。
 
 **Dependencies**: None
 
 **Acceptance**: `internal/httpapi` のテストが、表の各状況で変更前と同じ HTTP 状態・`code` と、
-表の `reason`・`limit` を確かめて通る。`gosmopolitan` を一時的に有効にして `internal/httpapi` と
+表の `reason`・`limit`・`tagName` を確かめて通る。`gosmopolitan` を一時的に有効にして `internal/httpapi` と
 `internal/domain` を検査すると 0 件。`task generate` の差分が生成物だけで、`task check` が通る。
 
 ### 解析と取り込みの失敗に理由のコードを保存して API で返す
@@ -148,7 +148,7 @@ ARCHITECTURE.md の API の記述。
 `Video.probeErrorCode`・`Scan.errorCode`・`Scan.errorPath`
 （[contracts/error-api.md §2・§3](contracts/error-api.md)）、ARCHITECTURE.md のデータの記述。
 
-**Dependencies**: API エラーに reason と limit を足し、API の message を英語にする
+**Dependencies**: API エラーに理由と表示用の値を足し、API の message を英語にする
 
 **Acceptance**: 動画でないファイルの解析失敗で `GET /api/videos/{id}` が
 `probeErrorCode: "probe_failed"` と英語の `probeError` を返し、読めないメディアフォルダの取り込みで
@@ -177,7 +177,7 @@ ARCHITECTURE.md の API の記述。
 （[R-1](research.md#r-1-画面文言の置き場は型付きの自前カタログにする)・
 [R-2](research.md#r-2-書式と単数複数はブラウザの-intl-で扱う)・
 [R-5](research.md#r-5-画面は既知のエラーを-reasoncode-からそれ以外を安全な概要で表示する)）。
-`client.ts` の `RequestFailed` の `reason`・`limit`、`lib/format.ts` のロケール依存の関数の移動、
+`client.ts` の `RequestFailed` の `reason`・`limit`・`tagName`、`UiText` 型と `ui/` の部品の文言の props、`lib/format.ts` のロケール依存の関数の移動、
 `web/src/api/`・`web/src/lib/`・`web/src/ui/`・`web/src/app/`・`main.tsx` の文言、`index.html` の `lang="en"`。ESLint の規則と
 未対応のディレクトリの除外の一覧（[R-3](research.md#r-3-訳し漏れは-lint-と型で検出する)）。
 `docs/design-docs/i18n.md` と索引へのリンク、各 `ui-design.md` の文言はカタログが正本である旨の
@@ -229,7 +229,7 @@ Vitest と `web/e2e` の `search`・`folders`・`guest`（該当部分）・`hov
 **Dependencies**: 画面の i18n 基盤（文言カタログ・英語の書式・API エラーの表示）を作る
 
 **Acceptance**: 除外を外した ESLint が通る。空のタグ名・長すぎるタグ名（`limit` の埋め込み）・
-使用中の名前・統合が要る名前・同じタグの統合で英語の具体的な説明が出ることと、日本語のタグ名と
+使用中の名前・別のタグのシノニムの名前・統合が要る名前（どれも競合先のタグ名を含む）・同じタグの統合で英語の具体的な説明が出ることと、日本語のタグ名と
 同義語がそのまま表示・検索できることを Vitest と `task test-e2e` が確かめる。画面が変わるので視覚と
 支援技術の確認を行う。
 

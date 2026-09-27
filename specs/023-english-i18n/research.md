@@ -64,6 +64,10 @@
   - 既知のエラー: カタログのエラー表を `Record<ErrorCode, …>` と `Record<ErrorReason, …>`
     （`api/openapi.yaml` から生成した型）にするので、API に足したコードや理由の表示漏れは型検査で
     落ちる。失敗理由のコード（[data-model.md](data-model.md)）も同じにする。
+  - カタログの外の英語の文言: カタログが返す値を `i18n/` の branded 型 `UiText` にし、自前の部品が
+    固定の文言を受け取る props と引数（トーストの本文、状態表示・空状態・ダイアログの見出しと説明、
+    ボタンの名前など）を `UiText` にする。コンポーネントに書いた英語のリテラルはそこへ渡せず、型検査で
+    落ちる。利用者のデータ（動画名、タグ名）を受け取る props は `string` のままにする。
   - サーバー: `.golangci.yml` で `gosmopolitan`（`watch-for-scripts: [Han, Hiragana, Katakana]`、
     `allow-time-local: true`）を `cmd/` と `internal/` の非テストに有効にする。
 - **Rationale**: どれも AST を見るので、日本語のまま残すコメントを誤検出しない。ESLint の組み込み
@@ -73,6 +77,11 @@
   - `web/src/theme/tokens.test.ts` のような行単位の走査: 日本語のコメントを文言と区別できない。
   - Go の独自 AST テスト: 同梱の `gosmopolitan` で足りる。
   - 実行時に未知の鍵を警告する: 画面を開くまで見つからない。
+  - 英語らしいリテラル（空白で区切られた英単語）を ESLint で報告する: Tailwind の `className` や
+    識別子の文字列と区別できず、誤検出が多すぎる。
+
+  残る穴は、英語のリテラルを `string` の変数に入れてから JSX の式や `string` の props で出す書き方で、
+  各領域の画面のテストが英語の文言を確かめることとレビューで扱う。
 
 移行の途中で lint を通すため、画面の規則は基盤の単位で有効にし、まだ英語にしていない
 ディレクトリを一時的な除外の一覧に置く。各領域の単位が自分のディレクトリを一覧から外し、
@@ -80,26 +89,28 @@
 
 ## R-4: API エラーの具体性は、コードを変えずに `reason` で足す
 
-- **Decision**: `Error` に任意の `reason`（機械可読な下位の理由の enum）と `limit`（整数）を足す。
+- **Decision**: `Error` に任意の `reason`（機械可読な下位の理由の enum）、`limit`（整数）、`tagName`
+  （競合先のタグの元の名前）を足す。
   `reason` は、1 つのコードが画面から起こりうる複数の状況に使われている箇所にだけ付ける
-  （[contracts/error-api.md §1](contracts/error-api.md#1-error-の-reason-と-limit)）。画面の
+  （[contracts/error-api.md §1](contracts/error-api.md#1-error-の-reasonlimittagname)）。画面の
   表示は `reason` → `code` の順にカタログを引く。
 - **Rationale**: 要件 5 が既存の `code` と HTTP 状態を保つことを求めるので、同じ状況に新しい
-  `code` を割り当てられない。上限値を `limit` で返すので、画面がサーバーの上限（ユーザー名の長さ、
+  `code` を割り当てられない。今の `message` が埋め込む値のうち画面の説明に要るもの（上限値と競合先の
+  タグ名）を項目で返すので、`message` を使わずに具体性を保てる。上限値を `limit` で返すので、画面がサーバーの上限（ユーザー名の長さ、
   タグ名の長さ、検索語の長さ、一括操作の件数）を二重に持たない。
 - **Alternatives considered**:
   - 状況ごとに新しい `code` を足す: 今の `invalid_request` などを受け取っている API 利用者に対して
     `code` が変わり、要件 5 に反する。
-  - `params` を任意の値の辞書にする: 今必要な値は上限の 1 つだけで、型の無い辞書は生成型での
+  - `params` を任意の値の辞書にする: 今必要な値は上限とタグ名の 2 つだけで、型の無い辞書は生成型での
     検査が効かない。
   - 全 48 の `invalid_request` に理由を付ける: 画面が送らない値（並び順の名前、`attempt` の形式、
     Content-Type など）は API の誤用で、コードの英語文と `message` で足りる。
 
 ## R-5: 画面は、既知のエラーを `reason`・`code` から、それ以外を安全な概要で表示する
 
-- **Decision**: `web/src/api/client.ts` の `RequestFailed` に `reason` と `limit` を足し、
+- **Decision**: `web/src/api/client.ts` の `RequestFailed` に `reason`・`limit`・`tagName` を足し、
   `errorMessage()` を `i18n/` のエラー表示に置き換える。
-  - 既知の `reason` または `code`: カタログの英語文（`limit` を埋め込む）。
+  - 既知の `reason` または `code`: カタログの英語文（`limit`・`tagName` を埋め込む）。
   - 未知の `code` で `message` がある: サーバーの英語の `message`（要件 6 のフォールバック）。
   - 本文が JSON でない・空・`message` が無い: `Request failed (HTTP <status>)` の形の英語の概要。
   - `fetch` 自体の失敗: サーバーに届かなかったことを表す英語の概要。ブラウザの文言は出さない。
