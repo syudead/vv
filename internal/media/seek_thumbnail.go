@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -46,4 +47,13 @@ func seekThumbnailArgs(videoPath, outputPattern string) []string {
 		"-y",
 		outputPattern,
 	}
+}
+
+// GenerateSeekThumbnailSet はシーク用サムネイルの一式を outputDir（既にある
+// ディレクトリ）へ書く。scripts/previewbench がシーク用の生成を測る境界で、
+// 生成方式を変えるときはこの関数の中身を変える。今は GenerateSeekThumbnails で
+// domain.SeekThumbnailInterval ごとの個別 JPEG を書き、durationMs は使わない。
+func GenerateSeekThumbnailSet(ctx context.Context, videoPath, outputDir string, durationMs int64) error {
+	_ = durationMs
+	return GenerateSeekThumbnails(ctx, videoPath, filepath.Join(outputDir, "%06d.jpg"))
 }
