@@ -28,7 +28,7 @@ type LibraryItems interface {
 // 誤りは listVideos と同じである。
 func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.ListLibraryParams) {
 	if s.library == nil {
-		s.internalError(w, "一覧の問い合わせ先が設定されていません", nil)
+		s.internalError(w, "Library queries are not configured.", nil)
 		return
 	}
 	audience := audienceFrom(r.Context())
@@ -43,10 +43,10 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	page, err := s.library.ListLibrary(r.Context(), audience, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
-		s.invalidRequest(w, "読み込み位置を解釈できません。一覧を開き直してください")
+		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
 		return
 	case err != nil:
-		s.internalError(w, "一覧を取得できませんでした", err)
+		s.internalError(w, "Could not load the list.", err)
 		return
 	}
 
@@ -79,8 +79,8 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		if !ok {
 			// 同じスナップショットの登録フォルダの下に無いグループは索引の不整合である。
 			// 黙って落とすと items が total・カーソルと食い違うので、要求を失敗させる。
-			s.internalError(w, "一覧を取得できませんでした",
-				fmt.Errorf("グループのフォルダを登録フォルダから引けません: %s", item.Group.Path))
+			s.internalError(w, "Could not load the list.",
+				fmt.Errorf("group folder is not under any media folder: %s", item.Group.Path))
 			return
 		}
 		payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindGroup, Group: &group})
@@ -101,7 +101,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 // 「すべて選択」用。specs/017-folder-groups/contracts/library-api.md §2）。
 func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params gen.ListLibraryIdsParams) {
 	if s.library == nil {
-		s.internalError(w, "一覧の問い合わせ先が設定されていません", nil)
+		s.internalError(w, "Library queries are not configured.", nil)
 		return
 	}
 	query, ok := s.parseIDsQuery(w, params.Query, params.Watch, params.Playable, params.Tag)
@@ -110,7 +110,7 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 	}
 	ids, missingTagIDs, err := s.library.LibraryIDs(r.Context(), query)
 	if err != nil {
-		s.internalError(w, "idを取得できませんでした", err)
+		s.internalError(w, "Could not load the ids.", err)
 		return
 	}
 	s.writeVideoIDs(w, ids, missingTagIDs)
@@ -120,7 +120,7 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 // contracts/library-api.md §3）。
 func (s *server) GetFolderGroup(w http.ResponseWriter, r *http.Request, rootID gen.FolderRootId, params gen.GetFolderGroupParams) {
 	if s.library == nil {
-		s.internalError(w, "グループの問い合わせ先が設定されていません", nil)
+		s.internalError(w, "Group queries are not configured.", nil)
 		return
 	}
 	roots, root, rel, ok := s.resolveFolderRootIn(w, r, rootID, params.Path)
@@ -131,16 +131,16 @@ func (s *server) GetFolderGroup(w http.ResponseWriter, r *http.Request, rootID g
 	group, err := s.library.FolderGroup(r.Context(), audience, domain.FolderDir(root.Path, rel))
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
-		s.notFound(w, "そのフォルダはグループではありません")
+		s.notFoundReason(w, reasonNotFolderGroup, "The folder is not a group.")
 		return
 	case err != nil:
-		s.folderError(w, r, "グループを取得できませんでした", err)
+		s.folderError(w, r, "Could not load the group.", err)
 		return
 	}
 
 	payload, ok := s.itemLookups(r.Context(), nil, group.Members).group(r.Context(), audience, roots, group)
 	if !ok {
-		s.notFound(w, "そのフォルダはグループではありません")
+		s.notFoundReason(w, reasonNotFolderGroup, "The folder is not a group.")
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)

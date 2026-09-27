@@ -12,21 +12,21 @@ import (
 // 認証の誤り（specs/016-single-account-auth/contracts/auth-api.md）。
 var (
 	// ErrAccountNotConfigured はアカウントがまだ設定されていないことを表す。
-	ErrAccountNotConfigured = errors.New("アカウントが設定されていません")
+	ErrAccountNotConfigured = errors.New("account is not configured")
 	// ErrAccountAlreadyConfigured は初回設定の時点でアカウントが既にあることを表す。
 	// 同時の初回設定で負けた場合も含む。
-	ErrAccountAlreadyConfigured = errors.New("アカウントは既に設定されています")
+	ErrAccountAlreadyConfigured = errors.New("account is already configured")
 	// ErrInvalidCredentials はユーザー名かパスワードが違うことを表す。
-	ErrInvalidCredentials = errors.New("ユーザー名またはパスワードが違います")
+	ErrInvalidCredentials = errors.New("username or password is incorrect")
 	// ErrLoginThrottled はログインの試行が制限されていることを表す。
-	ErrLoginThrottled = errors.New("ログインの試行が多すぎます")
+	ErrLoginThrottled = errors.New("too many login attempts")
 	// ErrInvalidUsername はユーザー名が ValidateUsername の規則を外れることを表す。
-	ErrInvalidUsername = errors.New("ユーザー名が正しくありません")
+	ErrInvalidUsername = errors.New("invalid username")
 	// ErrInvalidPassword はパスワードが ValidatePassword の規則を外れることを表す。
-	ErrInvalidPassword = errors.New("パスワードが正しくありません")
+	ErrInvalidPassword = errors.New("invalid password")
 	// ErrGuestQueryNotAllowed は、ゲストが所有者のデータに依る一覧の条件を
 	// 指定したことを表す（specs/016-single-account-auth/contracts/guest-api.md §3）。
-	ErrGuestQueryNotAllowed = errors.New("ログインしていないと使えない条件です")
+	ErrGuestQueryNotAllowed = errors.New("this filter requires signing in")
 )
 
 // ユーザー名とパスワードの長さの上限（specs/016-single-account-auth/data-model.md §6）。

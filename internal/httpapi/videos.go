@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -30,7 +31,7 @@ const thumbnailVersionLength = 12
 // ページングはカーソル方式で、総件数はページとは独立に返る。
 func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.ListVideosParams) {
 	if s.videos == nil {
-		s.internalError(w, "一覧の問い合わせ先が設定されていません", nil)
+		s.internalError(w, "Library queries are not configured.", nil)
 		return
 	}
 
@@ -48,10 +49,10 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	case errors.Is(err, domain.ErrInvalidCursor):
 		// 黙って先頭から返さない。無限スクロールが巻き戻って同じ内容を
 		// 延々と表示することになる。
-		s.invalidRequest(w, "読み込み位置を解釈できません。一覧を開き直してください")
+		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
 		return
 	case err != nil:
-		s.internalError(w, "一覧を取得できませんでした", err)
+		s.internalError(w, "Could not load the list.", err)
 		return
 	}
 
@@ -90,7 +91,7 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	if params.limit != nil {
 		limit := *params.limit
 		if limit < 1 {
-			s.invalidRequest(w, "1ページの件数は 1 以上を指定してください")
+			s.invalidRequest(w, "limit must be at least 1.")
 			return domain.VideoQuery{}, false
 		}
 		query.Limit = min(limit, domain.MaxLimit)
@@ -147,7 +148,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 // データに依る条件を指定したら 400 を書いて false を返す（contracts/guest-api.md §3）。
 func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audience, query domain.VideoQuery) bool {
 	if err := audience.CheckVideoQuery(query); err != nil {
-		s.invalidRequest(w, "視聴状態・再生日時の並べ替え・タグの絞り込みは、ログインしてから使えます")
+		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by watch status or tags, or to sort by last played.")
 		return false
 	}
 	return true
@@ -183,7 +184,7 @@ func (s *server) registeredRoots(ctx context.Context) []domain.MediaFolder {
 	}
 	roots, err := list(ctx)
 	if err != nil {
-		s.logger.Warn("登録フォルダを読み出せませんでした", slog.Any("error", err))
+		s.logger.Warn("could not read media folders", slog.Any("error", err))
 		return nil
 	}
 	return roots
@@ -212,7 +213,7 @@ func (s *server) parseListFilters(w http.ResponseWriter, params listFilterParams
 	if params.watch != nil {
 		watch := domain.WatchFilter(*params.watch)
 		if !watch.Valid() {
-			s.invalidRequest(w, "視聴状態の値が不明です")
+			s.invalidRequest(w, "Unknown watch filter.")
 			return listFilters{}, false
 		}
 		out.watch = watch
@@ -223,7 +224,7 @@ func (s *server) parseListFilters(w http.ResponseWriter, params listFilterParams
 	if params.sort != nil {
 		sort := domain.VideoSort(*params.sort)
 		if !sort.Valid() {
-			s.invalidRequest(w, "並び順の値が不明です")
+			s.invalidRequest(w, "Unknown sort order.")
 			return listFilters{}, false
 		}
 		out.sort = sort
@@ -231,7 +232,7 @@ func (s *server) parseListFilters(w http.ResponseWriter, params listFilterParams
 	if params.seed != nil {
 		seed := *params.seed
 		if seed < 0 || seed > domain.MaxShuffleSeed {
-			s.invalidRequest(w, "並びの種は 0 以上 2147483647 以下にしてください")
+			s.invalidRequest(w, fmt.Sprintf("seed must be between 0 and %d.", domain.MaxShuffleSeed))
 			return listFilters{}, false
 		}
 		out.seed = seed
@@ -245,7 +246,8 @@ func (s *server) parseSearchQuery(w http.ResponseWriter, query *string) (string,
 		return "", true
 	}
 	if len([]rune(*query)) > maxQueryLength {
-		s.invalidRequest(w, "検索語は 100 文字までにしてください")
+		s.invalidRequestLimit(w, reasonSearchTooLong, maxQueryLength,
+			fmt.Sprintf("Search text must be at most %d characters.", maxQueryLength))
 		return "", false
 	}
 	return *query, true
@@ -259,7 +261,8 @@ func (s *server) parseTagFilter(w http.ResponseWriter, tag *[]int64) ([]int64, b
 		return nil, true
 	}
 	if len(*tag) > maxTagFilterCount {
-		s.invalidRequest(w, "タグでの絞り込みは 16 個までにしてください")
+		s.invalidRequestLimit(w, reasonTooManyTagFilters, maxTagFilterCount,
+			fmt.Sprintf("Filter by at most %d tags.", maxTagFilterCount))
 		return nil, false
 	}
 	return *tag, true
@@ -286,7 +289,7 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	if s.catalog != nil {
 		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video)
 		if err != nil {
-			s.internalError(w, "動画を取得できませんでした", err)
+			s.internalError(w, "Could not load the video.", err)
 			return
 		}
 		if grouped {
@@ -301,7 +304,7 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	if video.HasSeekThumbnail() && s.catalog != nil {
 		state, err := s.catalog.SeekThumbnailState(r.Context(), video)
 		if err != nil {
-			s.internalError(w, "動画を取得できませんでした", err)
+			s.internalError(w, "Could not load the video.", err)
 			return
 		}
 		apiState := gen.VideoSeekThumbnailState(state)
@@ -352,7 +355,7 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 
 	progress, err := s.playback.ProgressByContentKeys(ctx, keys)
 	if err != nil {
-		s.logger.Warn("再生位置を読み出せませんでした", slog.Any("error", err))
+		s.logger.Warn("could not read playback progress", slog.Any("error", err))
 		return nil
 	}
 	return progress
@@ -379,7 +382,7 @@ func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string]
 
 	tags, err := s.tags.TagsByContentKeys(ctx, keys)
 	if err != nil {
-		s.logger.Warn("項目のタグを読み出せませんでした", slog.Any("error", err))
+		s.logger.Warn("could not read item tags", slog.Any("error", err))
 		return nil
 	}
 	return tags
@@ -415,17 +418,17 @@ func withProgress(video gen.Video, progress map[string]domain.Progress, contentK
 // lookupVideo は id から動画を引く。見つからなければ応答を書いて false を返す。
 func (s *server) lookupVideo(w http.ResponseWriter, r *http.Request, id int64) (domain.Video, bool) {
 	if s.videos == nil {
-		s.internalError(w, "一覧の問い合わせ先が設定されていません", nil)
+		s.internalError(w, "Library queries are not configured.", nil)
 		return domain.Video{}, false
 	}
 
 	video, err := s.videos.GetVideo(r.Context(), audienceFrom(r.Context()), id)
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
-		s.notFound(w, "その動画はありません")
+		s.notFoundReason(w, reasonVideoNotFound, "Video not found.")
 		return domain.Video{}, false
 	case err != nil:
-		s.internalError(w, "動画を取得できませんでした", err)
+		s.internalError(w, "Could not load the video.", err)
 		return domain.Video{}, false
 	}
 	return video, true

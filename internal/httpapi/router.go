@@ -404,7 +404,7 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 		if requiresJSONBody(r) {
 			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 			if err != nil || mediaType != "application/json" {
-				s.invalidRequest(w, "Content-Typeはapplication/jsonを指定してください")
+				s.invalidRequest(w, "Content-Type must be application/json.")
 				return
 			}
 		}
@@ -460,7 +460,7 @@ func apiNotFound(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusNotFound, gen.Error{
 		Code:    codeNotFound,
-		Message: "そのような API 経路はありません: " + r.URL.Path,
+		Message: "No such API route: " + r.URL.Path,
 	}, slog.Default())
 }
 
@@ -468,8 +468,8 @@ func apiNotFound(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, payload any, logger *slog.Logger) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		logger.Error("応答を JSON へ変換できません", slog.Any("error", err))
-		http.Error(w, `{"code":"internal","message":"応答を組み立てられませんでした"}`,
+		logger.Error("cannot encode the response as JSON", slog.Any("error", err))
+		http.Error(w, `{"code":"internal","message":"Could not build the response."}`,
 			http.StatusInternalServerError)
 		return
 	}
@@ -477,7 +477,7 @@ func writeJSON(w http.ResponseWriter, status int, payload any, logger *slog.Logg
 	w.Header().Set("Content-Type", contentTypeJSON)
 	w.WriteHeader(status)
 	if _, err := w.Write(append(body, '\n')); err != nil {
-		logger.Debug("応答を書き出せませんでした", slog.Any("error", err))
+		logger.Debug("could not write the response", slog.Any("error", err))
 	}
 }
 
@@ -519,14 +519,60 @@ const (
 	codeTagMergeRequired            = gen.ErrorCodeTagMergeRequired
 )
 
-// writeError は JSON のエラーを書き出す。message は利用者にそのまま提示して
-// よい日本語にする。
+// エラーの reason の正本も api/openapi.yaml の ErrorReason である。生成された
+// 定数名は前置きを持たないので、ここで reason の別名を与えて呼び出し側で
+// 取り違えないようにする。
+const (
+	reasonNameIsTag                = gen.NameIsTag
+	reasonNameIsSynonym            = gen.NameIsSynonym
+	reasonUsernameLength           = gen.UsernameLength
+	reasonPasswordLength           = gen.PasswordLength
+	reasonTagNameEmpty             = gen.TagNameEmpty
+	reasonTagNameControlCharacters = gen.TagNameControlCharacters
+	reasonTagNameTooLong           = gen.TagNameTooLong
+	reasonMergeSameTag             = gen.MergeSameTag
+	reasonSearchTooLong            = gen.SearchTooLong
+	reasonTooManyTagFilters        = gen.TooManyTagFilters
+	reasonTooManyVideos            = gen.TooManyVideos
+	reasonGuestFilterNotAllowed    = gen.GuestFilterNotAllowed
+	reasonInvalidCursor            = gen.InvalidCursor
+	reasonInvalidFolderPath        = gen.InvalidFolderPath
+	reasonRelativeDirectoryPath    = gen.RelativeDirectoryPath
+	reasonVideoNotFound            = gen.VideoNotFound
+	reasonFolderNotFound           = gen.FolderNotFound
+	reasonNotFolderGroup           = gen.NotFolderGroup
+	reasonNoScan                   = gen.NoScan
+	reasonDirectoryNotFound        = gen.DirectoryNotFound
+	reasonFileUnavailable          = gen.FileUnavailable
+	reasonMediaFoldersChanged      = gen.MediaFoldersChanged
+	reasonRootGroupNotTaggable     = gen.RootGroupNotTaggable
+	reasonFolderNotGroup           = gen.FolderNotGroup
+	reasonProbeInfoMissing         = gen.ProbeInfoMissing
+	reasonSeekPreviewGenerating    = gen.SeekPreviewGenerating
+	reasonTranscodeUnavailable     = gen.TranscodeUnavailable
+	reasonCrossOrigin              = gen.CrossOrigin
+	reasonOpenNotLocal             = gen.OpenNotLocal
+)
+
+// writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの
+// 自由文を含めない（specs/023-english-i18n/contracts/error-api.md §0）。
 func (s *server) writeError(w http.ResponseWriter, status int, code gen.ErrorCode, message string) {
+	s.writeErrorBody(w, status, gen.Error{Code: code, Message: message})
+}
+
+// writeReasonError は reason を添えた JSON のエラーを書き出す。reason は契約の表の
+// 状況だけで使う（specs/023-english-i18n/contracts/error-api.md §1）。
+func (s *server) writeReasonError(w http.ResponseWriter, status int, code gen.ErrorCode, reason gen.ErrorReason, message string) {
+	s.writeErrorBody(w, status, gen.Error{Code: code, Reason: &reason, Message: message})
+}
+
+// writeErrorBody は組み立てたエラーの本文を書き出す。
+func (s *server) writeErrorBody(w http.ResponseWriter, status int, body gen.Error) {
 	// エラーもキャッシュさせない。存在しなかった経路や読めなかったディレクトリの
 	// 応答が残ると、状態が変わったあとも古い失敗を返しうる（PR #74 の指摘）。
 	// 成功側と違って呼び出し箇所が多いので、ここで一括して付ける。
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, status, gen.Error{Code: code, Message: message}, s.logger)
+	writeJSON(w, status, body, s.logger)
 }
 
 // notFound は対象が存在しないことを返す。実体を開けない場合もこれを使う。
@@ -538,6 +584,32 @@ func (s *server) notFound(w http.ResponseWriter, message string) {
 // invalidRequest は要求の形式が不正であることを返す。
 func (s *server) invalidRequest(w http.ResponseWriter, message string) {
 	s.writeError(w, http.StatusBadRequest, codeInvalidRequest, message)
+}
+
+// invalidRequestReason は reason を添えて要求の形式が不正であることを返す。
+func (s *server) invalidRequestReason(w http.ResponseWriter, reason gen.ErrorReason, message string) {
+	s.writeReasonError(w, http.StatusBadRequest, codeInvalidRequest, reason, message)
+}
+
+// invalidRequestLimit は reason と上限値を添えて要求の形式が不正であることを返す。
+// limit はサーバーの定数から渡し、画面は上限を自分で持たない。
+func (s *server) invalidRequestLimit(w http.ResponseWriter, reason gen.ErrorReason, limit int, message string) {
+	s.writeErrorBody(w, http.StatusBadRequest, gen.Error{
+		Code:    codeInvalidRequest,
+		Reason:  &reason,
+		Limit:   &limit,
+		Message: message,
+	})
+}
+
+// notFoundReason は reason を添えて対象が存在しないことを返す。
+func (s *server) notFoundReason(w http.ResponseWriter, reason gen.ErrorReason, message string) {
+	s.writeReasonError(w, http.StatusNotFound, codeNotFound, reason, message)
+}
+
+// conflictReason は reason を添えて今の状態では受け付けられないことを返す。
+func (s *server) conflictReason(w http.ResponseWriter, reason gen.ErrorReason, message string) {
+	s.writeReasonError(w, http.StatusConflict, codeConflict, reason, message)
 }
 
 // internalError は予期しない失敗を返す。原因は記録に残し、応答には出さない。

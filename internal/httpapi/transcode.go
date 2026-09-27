@@ -36,7 +36,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	resolveStart := func(int64) {}
 	if params.Attempt != nil {
 		if !validTranscodeAttempt(*params.Attempt) {
-			s.invalidRequest(w, "attemptの形式が正しくありません")
+			s.invalidRequest(w, "Invalid attempt.")
 			return
 		}
 		resolve, end := s.transcodeStarts.begin(transcodeStartKey{videoID: video.ID, attempt: *params.Attempt})
@@ -44,7 +44,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		resolveStart = resolve
 	}
 	if video.ProbeState != domain.ProbeStateDone || video.DurationMs == nil || *video.DurationMs <= 0 {
-		s.writeError(w, http.StatusConflict, codeConflict, "この動画はライブ変換に必要な解析情報がありません")
+		s.conflictReason(w, reasonProbeInfoMissing, "This video lacks the media information needed for live transcoding.")
 		return
 	}
 
@@ -53,21 +53,21 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		startMs = *params.StartMs
 	}
 	if startMs < 0 || startMs >= *video.DurationMs {
-		s.invalidRequest(w, "startMsは動画の範囲内で指定してください")
+		s.invalidRequest(w, "startMs must be within the video's duration.")
 		return
 	}
 	if s.transcoder == nil {
-		s.internalError(w, "ライブ変換が設定されていません", nil)
+		s.internalError(w, "Live transcoding is not configured.", nil)
 		return
 	}
 
 	if s.files == nil {
-		s.internalError(w, "メディアファイルの読み出しが設定されていません", nil)
+		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
 	file, info, _, ok := s.openMediaFile(r, video)
 	if !ok {
-		s.notFound(w, "この動画の実体を開けません")
+		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
 		return
 	}
 	defer func() { _ = file.Close() }()
@@ -91,14 +91,14 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 			return
 		}
 		if errors.Is(err, domain.ErrUnprocessableMedia) {
-			s.logger.Info("動画をライブ変換できません", slog.Int64("video", video.ID), slog.Any("error", err))
-			s.writeError(w, http.StatusConflict, codeConflict, "この動画をライブ変換できません")
+			s.logger.Info("video cannot be transcoded live", slog.Int64("video", video.ID), slog.Any("error", err))
+			s.conflictReason(w, reasonTranscodeUnavailable, "This video cannot be transcoded live.")
 			return
 		}
-		s.internalError(w, "ライブ変換を開始できませんでした", err)
+		s.internalError(w, "Could not start live transcoding.", err)
 		return
 	}
-	s.logger.Debug("ライブ変換を開始しました",
+	s.logger.Debug("live transcoding started",
 		slog.Int64("video", video.ID), slog.Int64("requested_ms", startMs), slog.Int64("start_ms", started.StartMs))
 	stream, wait, stop := started.Stream, started.Wait, started.Stop
 	defer func() { _ = stream.Close() }()
@@ -107,7 +107,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		if errors.Is(r.Context().Err(), context.Canceled) {
 			return
 		}
-		s.internalError(w, "ライブ変換が初期データを生成できませんでした", err)
+		s.internalError(w, "Live transcoding produced no initial data.", err)
 		return
 	}
 	resolveStart(started.StartMs)
@@ -151,7 +151,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		return
 	}
 	if copyErr != nil || waitErr != nil {
-		s.logger.Warn("ライブ変換streamが途中で終了しました",
+		s.logger.Warn("live transcoding stream ended early",
 			slog.Int64("video", video.ID), slog.Any("copy_error", copyErr), slog.Any("process_error", waitErr))
 	}
 }
@@ -161,7 +161,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 func (s *server) usableTranscodeProbe(ctx context.Context, videoID int64, source domain.FileStamp) *domain.TranscodeProbe {
 	stored, err := s.videos.TranscodeProbe(ctx, videoID)
 	if err != nil {
-		s.logger.Warn("保存済みの解析情報を読めません。その場で解析します",
+		s.logger.Warn("cannot read the stored media information; probing on the fly",
 			slog.Int64("video", videoID), slog.Any("error", err))
 		return nil
 	}
@@ -179,7 +179,7 @@ func (s *server) saveTranscodeProbe(ctx context.Context, videoID int64, source d
 		return
 	}
 	if err := s.transcodeProbes.SaveTranscodeProbe(ctx, videoID, source, probe); err != nil {
-		s.logger.Warn("ライブ変換用の解析情報を保存できません",
+		s.logger.Warn("cannot save the media information for live transcoding",
 			slog.Int64("video", videoID), slog.Any("error", err))
 	}
 }

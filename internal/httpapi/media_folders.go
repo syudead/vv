@@ -15,12 +15,12 @@ import (
 
 func (s *server) ListMediaFolders(w http.ResponseWriter, r *http.Request) {
 	if s.mediaFolders == nil {
-		s.internalError(w, "メディアフォルダの経路が設定されていません", nil)
+		s.internalError(w, "Media folder storage is not configured.", nil)
 		return
 	}
 	folders, err := s.mediaFolders.ListMediaFolders(r.Context())
 	if err != nil {
-		s.internalError(w, "メディアフォルダを取得できませんでした", err)
+		s.internalError(w, "Could not load media folders.", err)
 		return
 	}
 	out := make([]gen.MediaFolder, 0, len(folders))
@@ -37,11 +37,11 @@ func (s *server) CreateMediaFolder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.TrimSpace(body.Path) == "" {
-		s.invalidRequest(w, "pathを指定してください")
+		s.invalidRequest(w, "path is required.")
 		return
 	}
 	if s.mediaFolders == nil {
-		s.internalError(w, "メディアフォルダの経路が設定されていません", nil)
+		s.internalError(w, "Media folder storage is not configured.", nil)
 		return
 	}
 	folder, err := s.mediaFolders.AddMediaFolder(r.Context(), body.Path)
@@ -59,11 +59,11 @@ func (s *server) UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id ge
 		return
 	}
 	if id < 1 || body.Version < 1 || strings.TrimSpace(body.Path) == "" {
-		s.invalidRequest(w, "id、path、versionを正しく指定してください")
+		s.invalidRequest(w, "Specify a valid id, path, and version.")
 		return
 	}
 	if s.mediaFolders == nil {
-		s.internalError(w, "メディアフォルダの経路が設定されていません", nil)
+		s.internalError(w, "Media folder storage is not configured.", nil)
 		return
 	}
 	folder, err := s.mediaFolders.ReplaceMediaFolder(r.Context(), id, body.Version, body.Path)
@@ -77,11 +77,11 @@ func (s *server) UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id ge
 
 func (s *server) DeleteMediaFolder(w http.ResponseWriter, r *http.Request, id gen.MediaFolderId, params gen.DeleteMediaFolderParams) {
 	if id < 1 || params.Version < 1 {
-		s.invalidRequest(w, "idとversionを正しく指定してください")
+		s.invalidRequest(w, "Specify a valid id and version.")
 		return
 	}
 	if s.mediaFolders == nil {
-		s.internalError(w, "メディアフォルダの経路が設定されていません", nil)
+		s.internalError(w, "Media folder storage is not configured.", nil)
 		return
 	}
 	if err := s.mediaFolders.DeleteMediaFolder(r.Context(), id, params.Version); err != nil {
@@ -102,18 +102,18 @@ func toAPIMediaFolder(folder domain.MediaFolder) gen.MediaFolder {
 func (s *server) readJSONBody(w http.ResponseWriter, r *http.Request, target any) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "application/json" {
-		s.invalidRequest(w, "Content-Typeはapplication/jsonを指定してください")
+		s.invalidRequest(w, "Content-Type must be application/json.")
 		return false
 	}
 	decoder := json.NewDecoder(io.LimitReader(r.Body, 1<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		s.invalidRequest(w, "JSONを解釈できません")
+		s.invalidRequest(w, "Cannot parse the JSON body.")
 		return false
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		s.invalidRequest(w, "JSONは1件だけ指定してください")
+		s.invalidRequest(w, "The body must contain exactly one JSON value.")
 		return false
 	}
 	return true
@@ -121,7 +121,7 @@ func (s *server) readJSONBody(w http.ResponseWriter, r *http.Request, target any
 
 func (s *server) acceptsSameOrigin(w http.ResponseWriter, r *http.Request) bool {
 	if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") {
-		s.writeError(w, http.StatusForbidden, codeForbidden, "same-originの操作だけを受け付けます")
+		s.writeReasonError(w, http.StatusForbidden, codeForbidden, reasonCrossOrigin, "Only same-origin requests are accepted.")
 		return false
 	}
 	origin := r.Header.Get("Origin")
@@ -136,7 +136,7 @@ func (s *server) acceptsSameOrigin(w http.ResponseWriter, r *http.Request) bool 
 		expectedScheme = "https"
 	}
 	if err != nil || parsed.Scheme != expectedScheme || !strings.EqualFold(parsed.Host, r.Host) {
-		s.writeError(w, http.StatusForbidden, codeForbidden, "same-originの操作だけを受け付けます")
+		s.writeReasonError(w, http.StatusForbidden, codeForbidden, reasonCrossOrigin, "Only same-origin requests are accepted.")
 		return false
 	}
 	return true
@@ -145,18 +145,18 @@ func (s *server) acceptsSameOrigin(w http.ResponseWriter, r *http.Request) bool 
 func (s *server) writeMediaFolderError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, domain.ErrInvalidMediaFolder):
-		s.writeError(w, http.StatusBadRequest, codeInvalidMediaDirectory, "選択したディレクトリを利用できません")
+		s.writeError(w, http.StatusBadRequest, codeInvalidMediaDirectory, "The selected directory cannot be used.")
 	case errors.Is(err, domain.ErrUnsupportedMediaFolder):
-		s.writeError(w, http.StatusBadRequest, codeUnsupportedMediaDirectory, "そのディレクトリは選択できません")
+		s.writeError(w, http.StatusBadRequest, codeUnsupportedMediaDirectory, "That directory cannot be selected.")
 	case errors.Is(err, domain.ErrNotFound):
-		s.writeError(w, http.StatusNotFound, codeMediaFolderNotFound, "メディアフォルダが見つかりません")
+		s.writeError(w, http.StatusNotFound, codeMediaFolderNotFound, "Media folder not found.")
 	case errors.Is(err, domain.ErrFolderConflict):
-		s.writeError(w, http.StatusConflict, codeOverlappingMediaDirectories, "登録済みフォルダと重複または包含しています")
+		s.writeError(w, http.StatusConflict, codeOverlappingMediaDirectories, "The folder overlaps with or contains an existing media folder.")
 	case errors.Is(err, domain.ErrScanRunning):
-		s.writeError(w, http.StatusConflict, codeScanInProgress, "取り込み中はメディアフォルダを変更できません")
+		s.writeError(w, http.StatusConflict, codeScanInProgress, "Media folders cannot be changed while a scan is running.")
 	case errors.Is(err, domain.ErrVersionConflict):
-		s.writeError(w, http.StatusConflict, codeConflict, "メディアフォルダが別の操作で変更されました")
+		s.conflictReason(w, reasonMediaFoldersChanged, "Media folders were changed by another operation.")
 	default:
-		s.internalError(w, "メディアフォルダを変更できませんでした", err)
+		s.internalError(w, "Could not change media folders.", err)
 	}
 }
