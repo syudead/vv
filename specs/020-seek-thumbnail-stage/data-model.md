@@ -72,8 +72,16 @@
 「取り出せる `thumbnail` の仕事が無い」は、`state in ('queued', 'running')` かつ登録済みの所在が
 ある `thumbnail` の行が 1 件も無いこと（`IngestStore.Processing` が数える範囲と同じ）。
 解析待ちで取り出せない `thumbnail` も数えるので、走査の直後は解析→代表サムネイルが全部終わる
-まで `seek_thumbnail` は始まらない。これが要件 1（代表が先）と要件 3（重い ffmpeg は同時に
-2 本まで）を満たす。
+まで `seek_thumbnail` は始まらない。これが要件 1（代表が先）と要件 3（スキャン中に代表 JPEG の
+流れとシーク用の全編デコードを競わせない）を満たす。
+
+この条件は取り出しの時点だけで判断し、走っている `seek_thumbnail` を止めない。取り出した後に
+新しい `thumbnail` が積まれれば（走査やフォルダの変更）、その代表 JPEG は走っている 1 件の
+シーク用と並んで走る（要件 1 は待つことを許さない）。並ぶのはその 1 件が終わるまでで、次の
+`seek_thumbnail` は `thumbnail` の残りが無くなるまで取り出されない。全編を読む ffmpeg
+（シーク用・ホバープレビュー）が同時に 2 本を超えることは無く、重なるのは入力側シークで
+1 枚だけ取る代表 JPEG（1 本 0.1〜0.3 秒）で、今も解析の `ffprobe` が同じ形で重なっている。
+実行時の制限を足さない理由は plan.md の Structural Decisions 3。
 
 起床（`cmd/mdm/events.go`）: `seek_thumbnail` のワーカーは、`JobsQueued` にその種類があるとき
 （既存の一般則）に加え、`VideoIngestChanged` の `Stage` が `probe`・`thumbnail`・空（動画の行が
