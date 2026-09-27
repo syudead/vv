@@ -292,8 +292,16 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     body = (
       <EmptyState
         icon={FolderOpen}
-        title="このフォルダにはまだ動画がありません"
-        description={owner ? "取り込むと、ここに並びます。" : undefined}
+        title={
+          owner && folder.path === ""
+            ? "登録したメディアフォルダは空です"
+            : "このフォルダにはまだ動画がありません"
+        }
+        description={
+          owner
+            ? "動画や子フォルダが見つかりません。ファイルを置いてから取り込んでください。"
+            : undefined
+        }
         action={
           // 取り込みは所有者だけの操作である（ui-design.md「Guest degradation」）。
           owner ? (

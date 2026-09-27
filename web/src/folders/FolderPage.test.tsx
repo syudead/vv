@@ -334,6 +334,60 @@ describe("FolderPage", () => {
     );
   });
 
+  it("長い名前と登録パスを省略しても全体を確認でき、ゲストにパスを出さない", () => {
+    const name = "長い日本語のフォルダ名 and a long English folder name";
+    const rootPath = "/media/long/registered/path/to/long-folder";
+    const folder = summary({ name, rootPath });
+    const { rerender } = render(
+      <MemoryRouter>
+        <FolderCard folder={folder} showPath />
+      </MemoryRouter>,
+    );
+    const card = screen.getByRole("link", {
+      name: `${name}、動画 0 本、フォルダ 0 件、${rootPath}`,
+    });
+    expect(card.querySelector("h3")?.getAttribute("title")).toBe(name);
+    expect(card.querySelector("h3 span")?.className).toContain("line-clamp-2");
+    expect(card.querySelector("p[dir=rtl]")?.getAttribute("title")).toBe(rootPath);
+    expect(card.closest("article")?.className).toContain("border-border");
+
+    rerender(
+      <MemoryRouter>
+        <FolderCard folder={folder} showPath={false} />
+      </MemoryRouter>,
+    );
+    expect(
+      screen.getByRole("link", { name: `${name}、動画 0 本、フォルダ 0 件` }),
+    ).toBeDefined();
+    expect(screen.queryByText(rootPath)).toBeNull();
+  });
+
+  it("所有者の空の登録ルートに理由と取り込み操作を示す", async () => {
+    const original = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/folders/7") {
+        return Promise.resolve(
+          json({ folder: summary({ rootId: 7, rootPath: "/b/movies" }), folders: [] }),
+        );
+      }
+      if (url.startsWith("/api/folders/7/videos?")) {
+        return Promise.resolve(json({ items: [], total: 0 }));
+      }
+      return original!(input, init);
+    });
+    renderFolders("/folders/7");
+    expect(
+      await screen.findByRole("heading", { name: "登録したメディアフォルダは空です" }),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "動画や子フォルダが見つかりません。ファイルを置いてから取り込んでください。",
+      ),
+    ).toBeDefined();
+    expect(screen.getByRole("button", { name: "取り込む" })).toBeDefined();
+  });
+
   it("直下の子フォルダと直下の動画を、子フォルダを先にして出す", async () => {
     renderFolders("/folders/3/A");
     const child = await screen.findByRole("link", {

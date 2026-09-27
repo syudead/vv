@@ -29,6 +29,7 @@ import { ownerAccount } from "./owner-account";
 interface MediaFolder {
   id: number;
   version: number;
+  path: string;
 }
 
 interface Video {
@@ -209,6 +210,29 @@ test.describe.serial("guest", () => {
       { headers: mutationHeaders },
     );
     expect(removed.status()).toBe(204);
+  });
+
+  test("公開フォルダは狭い幅でも広い幅でも移動でき、登録パスを見せない", async ({
+    browser,
+  }) => {
+    const context = await guestContext(browser);
+    const page = await context.newPage();
+    for (const width of [360, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto("/folders");
+      await expect(page.locator("[data-folder-path] p[title]")).toHaveCount(0);
+      expect(await page.locator("main").innerText()).not.toContain(folder!.path);
+      await openGuestFolder(page, "公開あり");
+      await expect.poll(() => cardTitles(page)).toEqual(publicTitles);
+      await expect(page.getByRole("navigation", { name: "パンくず" })).toBeVisible();
+      expect(
+        await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+      ).toBe(true);
+    }
+    await context.close();
   });
 
   test("所有者が公開にした動画だけが一覧・検索・フォルダ・関連動画に出て、件数も合う", async ({
