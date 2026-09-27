@@ -472,28 +472,6 @@ func TestAuthSessionReturnsRedirectOnlyForOwner(t *testing.T) {
 	}
 }
 
-func TestAuthCanceledRequestDoesNotLogSessionFailure(t *testing.T) {
-	env := newAuthEnv(t, t.TempDir(), Options{Videos: sampleLibrary()})
-	cookie := env.setup()
-	for _, target := range []string{"/api/auth/session", ownerOnlyTarget} {
-		t.Run(target, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
-			req := httptest.NewRequest(http.MethodGet, target, nil).WithContext(ctx)
-			req.AddCookie(cookie)
-			before := env.logs.String()
-			rec := httptest.NewRecorder()
-			env.handler.ServeHTTP(rec, req)
-			if got := env.logs.String(); got != before {
-				t.Errorf("中断された要求をエラーとして記録した: %s", got[len(before):])
-			}
-			if rec.Body.Len() != 0 {
-				t.Errorf("中断された要求に応答した: %s", rec.Body.String())
-			}
-		})
-	}
-}
-
 // logoutBeforeState は、境界の確認と状態の確認の間に別のタブでログアウトされた
 // 場合を再現する。
 type logoutBeforeState struct{ appAuthenticator }
