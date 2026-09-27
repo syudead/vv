@@ -389,30 +389,56 @@ func docFor(files repoFiles, p string) (string, bool) {
 }
 
 // export は全ての文書を out の下へ静的な HTML として書き出す。
+//
+// 書き出しは out の隣に作る一時ディレクトリへ行い、全て書けてから out と入れ
+// 替える。途中で失敗しても out は前のまま残り、そのまま再実行できる。
 func (s site) export(out string) error {
-	if !filepath.IsAbs(out) {
-		wd, err := os.Getwd()
-		if err != nil {
-			return err
-		}
-		out = filepath.Join(wd, out)
-	}
-	if err := clearOut(filepath.Clean(out), s.root); err != nil {
-		return err
-	}
-	files, err := s.files()
+	out, err := filepath.Abs(out)
 	if err != nil {
 		return err
+	}
+	if err := checkOutsideRepository(out, s.root); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(out), 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.MkdirTemp(filepath.Dir(out), ".docsite-tmp-*")
+	if err != nil {
+		return err
+	}
+	// tmp はここで作ったものなので、入れ替えで無くなっていても消してよい。
+	defer func() { _ = os.RemoveAll(tmp) }()
+
+	count, err := s.build(tmp)
+	if err != nil {
+		return err
+	}
+	if err := writeFile(tmp, exportMarker, []byte(exportMarkerBody)); err != nil {
+		return err
+	}
+	if err := replaceOut(out, tmp); err != nil {
+		return err
+	}
+	fmt.Printf("docs: %d 文書を %s へ書き出しました\n", count, out)
+	return nil
+}
+
+// build は全ての文書と付随するファイルを dir へ書き、文書の数を返す。
+func (s site) build(out string) (int, error) {
+	files, err := s.files()
+	if err != nil {
+		return 0, err
 	}
 	titles := s.titles(files)
 	assets := map[string]bool{}
 	for _, doc := range files.docs {
 		body, result, err := s.page(files, titles, doc)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if err := writeFile(out, pageURL(doc), body); err != nil {
-			return err
+			return 0, err
 		}
 		for _, a := range result.Assets {
 			assets[a] = true
@@ -421,19 +447,19 @@ func (s site) export(out string) error {
 	for a := range assets {
 		body, err := s.read(a)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		if err := writeFile(out, a, body); err != nil {
-			return err
+			return 0, err
 		}
 	}
 
 	index, err := s.searchIndexJS(files, titles)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if err := writeFile(out, assetDir+"/"+searchIndex, index); err != nil {
-		return err
+		return 0, err
 	}
 	err = fs.WalkDir(assetFS, "assets", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || p == "assets/page.html" {
@@ -446,40 +472,105 @@ func (s site) export(out string) error {
 		return writeFile(out, assetDir+"/"+strings.TrimPrefix(p, "assets/"), body)
 	})
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	// 根の index.html は README へ案内する。
 	home, ok := files.dirIndex("")
 	if !ok {
-		return errors.New("リポジトリ直下に README.md がありません")
+		return 0, errors.New("リポジトリ直下に README.md がありません")
 	}
 	redirect := fmt.Sprintf(`<!doctype html><meta charset="utf-8"><meta http-equiv="refresh" content="0; url=%[1]s"><a href="%[1]s">%[1]s</a>`+"\n", pageURL(home))
 	if err := writeFile(out, "index.html", []byte(redirect)); err != nil {
+		return 0, err
+	}
+	return len(files.docs), nil
+}
+
+const (
+	// exportMarker は書き出しを全て終えたときだけ置く印。既存の out を入れ
+	// 替えてよいのは、この印がある（＝このコマンドが作り終えた）ときだけである。
+	exportMarker     = ".docsite-export"
+	exportMarkerBody = "vv docsite export\n"
+)
+
+// checkOutsideRepository は out がリポジトリそのものかリポジトリを含む
+// ディレクトリなら拒む。シンボリックリンクを通した別名でも見落とさないよう、
+// 双方を実際のパスに解決してから比べる。
+func checkOutsideRepository(out, root string) error {
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
 		return err
 	}
-	fmt.Printf("docs: %d 文書を %s へ書き出しました\n", len(files.docs), out)
+	realOut, err := resolveExisting(out)
+	if err != nil {
+		return err
+	}
+	rel, err := filepath.Rel(realOut, realRoot)
+	if err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("書き出し先 %s はリポジトリを含むので使えません。build/docs のような専用のディレクトリを指定してください", out)
+	}
 	return nil
 }
 
-// clearOut は書き出し先を空にする。消してよいのは、まだ無いか空のディレクトリと、
-// 前回の書き出し（_docsite/app.js がある）だけである。-out に . やリポジトリを
-// 含むディレクトリ、無関係な既存のディレクトリを渡されたときに消さないため。
-func clearOut(out, root string) error {
-	if rel, err := filepath.Rel(out, root); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("書き出し先 %s はリポジトリを含むので使えません。build/docs のような専用のディレクトリを指定してください", out)
+// resolveExisting は p の存在する最も近い祖先までシンボリックリンクを解決し、
+// 残り（まだ無い部分）をその後ろに付ける。
+func resolveExisting(p string) (string, error) {
+	var rest []string
+	for {
+		real, err := filepath.EvalSymlinks(p)
+		if err == nil {
+			return filepath.Join(append([]string{real}, rest...)...), nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return "", err
+		}
+		rest = append([]string{filepath.Base(p)}, rest...)
+		p = parent
 	}
-	entries, err := os.ReadDir(out)
+}
+
+// replaceOut は書き終えた tmp を out に置く。out がまだ無いか空なら、そのまま
+// 置く。中身があるときは、前回の書き出しの印があるときだけ入れ替える。それ以外
+// （無関係なディレクトリ、シンボリックリンク、ファイル）には手を触れない。
+func replaceOut(out, tmp string) error {
+	info, err := os.Lstat(out)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return os.Rename(tmp, out)
 	}
 	if err != nil {
 		return err
 	}
-	if len(entries) > 0 && !fileExists(filepath.Join(out, assetDir, "app.js")) {
-		return fmt.Errorf("書き出し先 %s は前回の書き出しではない既存のディレクトリなので消しません。空のディレクトリか新しいパスを指定してください", out)
+	if !info.IsDir() {
+		return fmt.Errorf("書き出し先 %s はディレクトリではないので使えません", out)
 	}
-	return os.RemoveAll(out)
+	entries, err := os.ReadDir(out)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		if err := os.Remove(out); err != nil {
+			return err
+		}
+		return os.Rename(tmp, out)
+	}
+	marker, err := os.ReadFile(filepath.Join(out, exportMarker))
+	if err != nil || string(marker) != exportMarkerBody {
+		return fmt.Errorf("書き出し先 %s は task docs-build が作ったディレクトリではないので置き換えません。空のディレクトリか新しいパスを指定してください", out)
+	}
+	old := tmp + "-old"
+	if err := os.Rename(out, old); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, out); err != nil {
+		_ = os.Rename(old, out)
+		return err
+	}
+	return os.RemoveAll(old)
 }
 
 func writeFile(out, rel string, body []byte) error {

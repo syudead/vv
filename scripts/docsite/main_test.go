@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -218,39 +217,88 @@ func TestRenderOmitsRawHTML(t *testing.T) {
 	}
 }
 
-// TestClearOutRefusesDirectoriesItDidNotWrite は、-out にリポジトリやそれを含む
-// ディレクトリ、無関係な既存のディレクトリを渡しても消さないことを確かめる。
-func TestClearOutRefusesDirectoriesItDidNotWrite(t *testing.T) {
+// TestExportReplacesOnlyItsOwnOutput は、-out にリポジトリやそれを含む
+// ディレクトリ（シンボリックリンクの別名を含む）、無関係な既存のディレクトリを
+// 渡しても何も消さず、前回の書き出しだけを置き換えることを確かめる。
+func TestExportReplacesOnlyItsOwnOutput(t *testing.T) {
 	parent := t.TempDir()
 	root := filepath.Join(parent, "repo")
 	unrelated := filepath.Join(parent, "notes")
-	previous := filepath.Join(parent, "site")
-	for _, f := range []string{
-		filepath.Join(root, "README.md"),
-		filepath.Join(unrelated, "keep.txt"),
-		filepath.Join(previous, assetDir, "app.js"),
+	for p, body := range map[string]string{
+		filepath.Join(root, "README.md"):             "# Home\n",
+		filepath.Join(unrelated, "keep.txt"):         "keep",
+		filepath.Join(unrelated, assetDir, "app.js"): "not ours",
 	} {
-		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(f, nil, 0o644); err != nil {
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, out := range []string{root, parent, unrelated} {
-		if err := clearOut(out, root); err == nil {
-			t.Errorf("clearOut(%s) succeeded, want a refusal", out)
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(parent, alias); err != nil {
+		t.Fatal(err)
+	}
+	s := site{root: root, github: "https://example.com/r", ref: "main", list: func() ([]string, error) {
+		return []string{"README.md"}, nil
+	}}
+
+	for _, out := range []string{root, parent, alias, unrelated} {
+		if err := s.export(out); err == nil {
+			t.Errorf("export(%s) succeeded, want a refusal", out)
 		}
 	}
 	if !fileExists(filepath.Join(root, "README.md")) || !fileExists(filepath.Join(unrelated, "keep.txt")) {
 		t.Fatal("a refused directory was modified")
 	}
-	for _, out := range []string{previous, filepath.Join(parent, "new"), filepath.Join(root, "build", "docs")} {
-		if err := clearOut(out, root); err != nil {
-			t.Errorf("clearOut(%s) = %v, want success", out, err)
-		}
+
+	site1 := filepath.Join(root, "build", "docs")
+	if err := s.export(site1); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat(previous); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("previous export was not removed: %v", err)
+	stale := filepath.Join(site1, "stale.html")
+	if err := os.WriteFile(stale, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.export(site1); err != nil {
+		t.Fatalf("re-export over the previous output: %v", err)
+	}
+	if fileExists(stale) || !fileExists(filepath.Join(site1, "README.html")) {
+		t.Error("previous output was not replaced")
+	}
+	leftovers, _ := filepath.Glob(filepath.Join(root, "build", ".docsite-tmp-*"))
+	if len(leftovers) > 0 {
+		t.Errorf("temporary directories were left: %v", leftovers)
+	}
+}
+
+// TestFailedExportKeepsThePreviousOutput は、途中で失敗した書き出しが前回の
+// 出力を壊さず、直してから再実行できることを確かめる。
+func TestFailedExportKeepsThePreviousOutput(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "README.md"), []byte("# Home\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	listed := []string{"README.md"}
+	s := site{root: root, github: "https://example.com/r", ref: "main", list: func() ([]string, error) {
+		return listed, nil
+	}}
+	out := filepath.Join(t.TempDir(), "site")
+	if err := s.export(out); err != nil {
+		t.Fatal(err)
+	}
+
+	listed = []string{"README.md", "gone.md"} // 読めない文書で途中失敗させる
+	if err := s.export(out); err == nil {
+		t.Fatal("export with an unreadable document succeeded")
+	}
+	if !fileExists(filepath.Join(out, "README.html")) || !fileExists(filepath.Join(out, exportMarker)) {
+		t.Fatal("the previous output was damaged by a failed export")
+	}
+
+	listed = []string{"README.md"}
+	if err := s.export(out); err != nil {
+		t.Fatalf("re-export after a failure: %v", err)
 	}
 }

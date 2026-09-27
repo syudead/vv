@@ -30,7 +30,9 @@ mise exec --command "task docs"
 mise exec --command "task docs-build"
 ```
 
-`build/docs/` に書き出す（版管理の外）。相対パスだけで組むので、
+`build/docs/` に書き出す（版管理の外）。`task docs-build -- -out <dir>` で書き出し先を
+変えられる。既存のディレクトリを置き換えるのは、空のときか前回の書き出し（印の
+`.docsite-export` がある）のときだけで、それ以外のディレクトリには手を触れずに止まる。相対パスだけで組むので、
 `build/docs/index.html` をブラウザで直接開いても一覧と検索が使える。どこかへ
 置く場合もこのディレクトリをそのまま配れば足りる。
 

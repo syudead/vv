@@ -90,15 +90,35 @@
     });
   }
 
-  // highlight は元の文字列の上で全ての語の一致範囲を集めて重なりをまとめ、
+  // lowerWithOffsets は s を小文字にし、小文字側の各位置が元の s のどこから
+  // どこまでに当たるかを返す。İ のように小文字にすると長さが変わる文字があり、
+  // 小文字側の位置をそのまま元の文字列に使うと強調がずれる。
+  function lowerWithOffsets(s) {
+    var lower = "";
+    var starts = [];
+    var ends = [];
+    var pos = 0;
+    for (var ch of s) {
+      var l = ch.toLowerCase();
+      for (var k = 0; k < l.length; k++) {
+        starts.push(pos);
+        ends.push(pos + ch.length);
+      }
+      lower += l;
+      pos += ch.length;
+    }
+    return { lower: lower, starts: starts, ends: ends };
+  }
+
+  // highlight は全ての語の一致範囲を元の文字列の位置で集めて重なりをまとめ、
   // 範囲ごとに1度だけエスケープして <mark> で囲む。置換を語ごとに重ねると、
   // 先に入れた <mark> の中身まで次の語で置き換えてしまう。
   function highlight(s, terms) {
-    var lower = s.toLowerCase();
+    var m = lowerWithOffsets(s);
     var ranges = [];
     terms.forEach(function (t) {
-      for (var i = lower.indexOf(t); t && i >= 0; i = lower.indexOf(t, i + t.length)) {
-        ranges.push([i, i + t.length]);
+      for (var i = m.lower.indexOf(t); t && i >= 0; i = m.lower.indexOf(t, i + t.length)) {
+        ranges.push([m.starts[i], m.ends[i + t.length - 1]]);
       }
     });
     ranges.sort(function (a, b) { return a[0] - b[0]; });
@@ -114,8 +134,10 @@
   }
 
   function snippet(text, term) {
-    var i = text.toLowerCase().indexOf(term);
-    if (i < 0) return "";
+    var m = lowerWithOffsets(text);
+    var found = m.lower.indexOf(term);
+    if (found < 0) return "";
+    var i = m.starts[found];
     var start = Math.max(0, i - 30);
     return (start > 0 ? "…" : "") + text.slice(start, i + term.length + 60) + "…";
   }
