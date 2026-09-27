@@ -6,6 +6,7 @@ import { nextProgressSequence, recordSavedProgress } from "./progressEvents";
 // 型は api/openapi.yaml からの生成物を使う。契約を変えると、ここが
 // コンパイルエラーになって気付ける。
 export type Video = components["schemas"]["Video"];
+export type SeekThumbnailSprite = components["schemas"]["SeekThumbnailSprite"];
 export type VideoPage = components["schemas"]["VideoPage"];
 export type VideoSort = components["schemas"]["VideoSort"];
 
@@ -634,8 +635,30 @@ export async function getTranscodeStart(
   return body.startMs;
 }
 
-/** fetchSeekThumbnail はシークプレビュー用のJPEGを取得する。 */
-export async function fetchSeekThumbnail(
+/**
+ * fetchSeekThumbnailSprite はシークプレビューのスプライトの配置情報を取得する。url は
+ * Video.seekThumbnailUrl（specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。
+ */
+export async function fetchSeekThumbnailSprite(
+  url: string,
+  signal: AbortSignal,
+): Promise<SeekThumbnailSprite> {
+  const response = await apiFetch(url, { signal });
+  if (!response.ok) {
+    throw new RequestFailed(
+      response.status,
+      "seek_thumbnail_failed",
+      `seek thumbnail request failed: ${String(response.status)}`,
+    );
+  }
+  return (await response.json()) as SeekThumbnailSprite;
+}
+
+/**
+ * fetchSeekThumbnailSheet はスプライトのシート（配置情報の sheets の URL）の JPEG を
+ * 取得する（contracts/seek-sprite-api.md §3）。
+ */
+export async function fetchSeekThumbnailSheet(
   url: string,
   signal: AbortSignal,
 ): Promise<Blob> {
@@ -644,7 +667,7 @@ export async function fetchSeekThumbnail(
     throw new RequestFailed(
       response.status,
       "seek_thumbnail_failed",
-      `seek thumbnail request failed: ${String(response.status)}`,
+      `seek thumbnail sheet request failed: ${String(response.status)}`,
     );
   }
   return response.blob();

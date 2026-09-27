@@ -405,12 +405,40 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 指定時刻のシークプレビュー画像を返す
-         * @description 元動画の論理時刻から1秒以内のJPEGを要求時に生成する。画像は保存しない。
+         * シーク用サムネイルのスプライトの配置情報を返す
+         * @description 完成したスプライトの配置情報を返す。位置 p ms のコマは
+         *     `min(floor(p / intervalMs), frameCount - 1)` で、コマ k はシート
+         *     `floor(k / (columns * rows))` の左上から行優先で `k mod (columns * rows)` 番目に載る
+         *     （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。
          *     `v` は内容由来の識別子である。成功の応答は `Cache-Control: private, no-cache` と
          *     `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す（guest-api.md §5）。
+         *     解析が終わっていない・尺が無い、またはスプライトが完成していない（生成待ち・生成中・
+         *     失敗）ときは `409`。
          */
         get: operations["getVideoSeekThumbnail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/seek-thumbnail/{sheet}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * シーク用サムネイルのスプライトのシートを返す
+         * @description 配置情報の `sheets[sheet]` が指す JPEG を返す。幅は `columns × frameWidth`、高さは
+         *     `rows × frameHeight`。`sheet` が枚数以上なら `404`。成功の応答は
+         *     `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が一致すれば
+         *     `304` を返す（guest-api.md §5）。
+         */
+        get: operations["getVideoSeekThumbnailSheet"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1315,7 +1343,11 @@ export interface components {
             thumbnailUrl?: string;
             /** @description previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL。done なのに asset が無ければ、サーバーは作り直しを積み、previewState を pending として返す */
             previewUrl?: string;
-            /** @description probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL */
+            /**
+             * @description probeState = done かつ正のdurationMsを持つときだけ入る、シーク用サムネイルの
+             *     スプライトの配置情報（SeekThumbnailSprite）を返す経路の版付き URL
+             *     （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §1）
+             */
             seekThumbnailUrl?: string;
             progress?: components["schemas"]["Progress"];
             location?: components["schemas"]["VideoLocation"];
@@ -1335,13 +1367,37 @@ export interface components {
             public: boolean;
             /**
              * @description シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
-             *     seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
+             *     seekThumbnailUrl と同じ条件のときだけ入る。done = スプライトが完成している、
              *     pending = 生成を待っている、または生成中（保存した状態が done なのに置き場が
              *     無いときは、サーバーが作り直しを積んで pending として返す）、failed = 生成に
              *     失敗し、再試行の上限に達した
              * @enum {string}
              */
             seekThumbnailState?: "pending" | "done" | "failed";
+        };
+        /**
+         * @description シーク用サムネイルのスプライトの配置情報
+         *     （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。最後のシートの
+         *     frameCount を超える部分は黒く、クライアントはそこを指さない。
+         */
+        SeekThumbnailSprite: {
+            /**
+             * Format: int64
+             * @description コマ k が受け持つ位置は [k*intervalMs, (k+1)*intervalMs)
+             */
+            intervalMs: number;
+            /** @description 全シートに載るコマの数 */
+            frameCount: number;
+            /** @description 1 シートの列数 */
+            columns: number;
+            /** @description 1 シートの行数 */
+            rows: number;
+            /** @description 1 コマの幅（px）。1 本の中で全コマ同じ */
+            frameWidth: number;
+            /** @description 1 コマの高さ（px） */
+            frameHeight: number;
+            /** @description シートの版付き URL。番号順 */
+            sheets: string[];
         };
         /**
          * @description 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
@@ -2164,8 +2220,7 @@ export interface operations {
     };
     getVideoSeekThumbnail: {
         parameters: {
-            query: {
-                positionMs: number;
+            query?: {
                 /** @description 一覧・詳細が返したURLに含まれる内容由来の版 */
                 v?: string;
             };
@@ -2178,7 +2233,54 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 指定時刻に対応する画像 */
+            /** @description スプライトの配置情報 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SeekThumbnailSprite"];
+                };
+            };
+            /** @description `If-None-Match` が `ETag` と一致した */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description 配置情報を読めない、または形が違う */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getVideoSeekThumbnailSheet: {
+        parameters: {
+            query?: {
+                /** @description 配置情報の `sheets` に含まれていた内容由来の版 */
+                v?: string;
+            };
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+                /** @description シートの番号（0 から） */
+                sheet: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description シートの画像 */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -2197,7 +2299,7 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
-            /** @description 画像生成processを開始または完了できない */
+            /** @description 画像を読めない */
             500: {
                 headers: {
                     [name: string]: unknown;

@@ -57,7 +57,7 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 	ctx := context.Background()
 	f := &guestFixture{mediaDir: t.TempDir(), otherDir: t.TempDir(), ids: map[string]int64{}, transcode: &fakeTranscoder{body: "fragmented-mp4"}}
 	artifactDir := t.TempDir()
-	artifacts := &fakeArtifacts{thumbnails: map[string]string{}, previews: map[string]string{}, image: []byte{0xff, 0xd8, 0xff, 0xd9}}
+	artifacts := &fakeArtifacts{thumbnails: map[string]string{}, previews: map[string]string{}, sprite: testSprite(), image: []byte{0xff, 0xd8, 0xff, 0xd9}}
 
 	f.env = newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
 		library := db.Library()
@@ -400,7 +400,8 @@ func TestGuestMediaRoutesServeOnlyPublicVideos(t *testing.T) {
 		{"/related", nil, http.StatusOK},
 		{"/stream", map[string]string{"Range": "bytes=0-9"}, http.StatusPartialContent},
 		{"/thumbnail?v=abc", nil, http.StatusOK},
-		{"/seek-thumbnail?positionMs=1000&v=abc", nil, http.StatusOK},
+		{"/seek-thumbnail?v=abc", nil, http.StatusOK},
+		{"/seek-thumbnail/1?v=abc", nil, http.StatusOK},
 		{"/preview?v=content-key-a", nil, http.StatusOK},
 		{"/transcode.mp4", nil, http.StatusOK},
 	}
@@ -479,7 +480,7 @@ func TestArtifactResponsesRevalidateForOwnerAndGuest(t *testing.T) {
 	f := newGuestFixture(t, true)
 	env := f.env
 
-	for _, suffix := range []string{"/thumbnail?v=abc", "/seek-thumbnail?positionMs=1000&v=abc", "/preview?v=content-key-a"} {
+	for _, suffix := range []string{"/thumbnail?v=abc", "/seek-thumbnail?v=abc", "/seek-thumbnail/0?v=abc", "/preview?v=content-key-a"} {
 		for _, viewer := range []struct {
 			label   string
 			cookies []*http.Cookie
@@ -532,9 +533,6 @@ func TestGuestOperationsRequireConfiguredAccount(t *testing.T) {
 			continue
 		}
 		target := strings.ReplaceAll(operationTarget(op), "/1", "/"+strconv.FormatInt(configured.ids["a"], 10))
-		if op.path == "/api/videos/{id}/seek-thumbnail" {
-			target += "?positionMs=0"
-		}
 		rec := configured.env.get(target)
 		if rec.Code == http.StatusUnauthorized {
 			t.Errorf("設定済みの %s: 401: %s", target, rec.Body)

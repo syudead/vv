@@ -168,6 +168,9 @@ type fakeGenerator struct {
 	validated []bool
 	// outputs は生成に渡した書き出し先。置き場が渡したものと同じであること。
 	outputs []string
+	// seekLayouts と publishedLayouts は、シーク用サムネイルの生成と公開に渡した配置。
+	seekLayouts      []domain.SeekSpriteLayout
+	publishedLayouts []domain.SeekSpriteLayout
 
 	calls   []string
 	removed []string
@@ -201,9 +204,12 @@ func (f *fakeGenerator) Thumbnail(_ context.Context, _ string, _ int64, output s
 	return f.thumbnailErr
 }
 
-func (f *fakeGenerator) SeekThumbnails(_ context.Context, _, outputPattern string) error {
+func (f *fakeGenerator) SeekSprite(_ context.Context, _, outputDir string, layout domain.SeekSpriteLayout) error {
 	f.record("seek")
-	f.recordOutput(outputPattern)
+	f.recordOutput(outputDir)
+	f.mu.Lock()
+	f.seekLayouts = append(f.seekLayouts, layout)
+	f.mu.Unlock()
 	return f.seekErr
 }
 
@@ -217,7 +223,12 @@ func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string) e
 	return write("tmp/thumbnail/" + contentKey)
 }
 
-func (f *fakeGenerator) PublishSeekThumbnails(contentKey string, write func(string) error) error {
+func (f *fakeGenerator) PublishSeekThumbnails(
+	contentKey string, layout domain.SeekSpriteLayout, write func(string) error,
+) error {
+	f.mu.Lock()
+	f.publishedLayouts = append(f.publishedLayouts, layout)
+	f.mu.Unlock()
 	return write("tmp/seek/" + contentKey)
 }
 

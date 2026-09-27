@@ -47,11 +47,6 @@ func (a *Assets) Thumbnail(ctx context.Context, path string, durationMs int64, o
 	return Thumbnail(ctx, path, durationMs, output)
 }
 
-// SeekThumbnails はシーク用プレビューのフレームを outputPattern（連番の型）へ書く。
-func (a *Assets) SeekThumbnails(ctx context.Context, path, outputPattern string) error {
-	return GenerateSeekThumbnails(ctx, path, outputPattern)
-}
-
 // SeekSprite はシーク用プレビューのシートを layout の配置で outputDir へ書く。
 func (a *Assets) SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) error {
 	return GenerateSeekSprite(ctx, path, outputDir, layout)
