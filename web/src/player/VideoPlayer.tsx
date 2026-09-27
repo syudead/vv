@@ -400,8 +400,10 @@ export default function VideoPlayer(props: Props) {
   }, [video.id, video.probeState, video.durationMs, video.playable]);
 
   // シーク位置サムネイルは、処理中の取り直しで後から URL が来ることもある。プレイヤーは
-  // 作り直さず、再生バーへの取り付けだけをやり直す。
+  // 作り直さず、再生バーへの取り付けだけをやり直す。URL は同じでも、生成が終わって
+  // seekThumbnailState が変わったら取り付け直し、取得に失敗した配置情報を捨てる。
   const seekThumbnailUrl = video.seekThumbnailUrl;
+  const seekThumbnailState = video.seekThumbnailState;
   const durationMs = video.durationMs;
   useEffect(() => {
     const host = hostRef.current;
@@ -415,7 +417,7 @@ export default function VideoPlayer(props: Props) {
       { durationMs, thumbnailUrl: seekThumbnailUrl },
       progressControl,
     );
-  }, [durationMs, playerReady, seekThumbnailUrl]);
+  }, [durationMs, playerReady, seekThumbnailUrl, seekThumbnailState]);
 
   // 代表サムネイルが後からできたときは、作り直さずに背景の画像だけを差し替える。
   useEffect(() => {

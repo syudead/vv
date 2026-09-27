@@ -83,10 +83,8 @@ async function waitForSeekThumbnails(request: APIRequestContext) {
         let ready = 0;
         for (const item of videos.values()) {
           if (item.seekThumbnailUrl === undefined) continue;
-          const separator = item.seekThumbnailUrl.includes("?") ? "&" : "?";
-          const response = await request.get(
-            `${item.seekThumbnailUrl}${separator}positionMs=0`,
-          );
+          // 配置情報は、スプライトが完成するまで 409 を返す。
+          const response = await request.get(item.seekThumbnailUrl);
           if (response.ok()) ready++;
         }
         return ready;
@@ -629,29 +627,24 @@ test.describe.serial("live MP4 playback", () => {
       if (seekBounds === null || controlBounds === null || playerBounds === null) {
         throw new Error("player controls are not visible");
       }
+      // シートは取り付けの間 1 回だけ取得し、ポインターを動かしても取り直さない
+      // （specs/021-seek-thumbnail-sprite/research.md R-5）。
+      const sheetRequests: string[] = [];
+      const onRequest = (request: Request) => {
+        if (/\/seek-thumbnail\/\d+/.test(new URL(request.url()).pathname)) {
+          sheetRequests.push(request.url());
+        }
+      };
+      page.on("request", onRequest);
       await page.mouse.move(seekBounds.x + seekBounds.width * 0.25, controlBounds.y + 2);
       await expect(page.locator('.vv-seek-preview[data-state="ready"]')).toBeVisible({
         timeout: 5000,
       });
-      await page.route("**/seek-thumbnail?*", async (route) => {
-        await new Promise((resolve) => setTimeout(resolve, 250));
-        await route.continue();
-      });
-      await page.mouse.move(
-        seekBounds.x + seekBounds.width * 0.99,
-        seekBounds.y + seekBounds.height / 2,
-      );
-      await expect(
-        page.locator('.vv-seek-preview[data-state="loading"] img'),
-      ).toBeVisible({ timeout: 150 });
-      await expect(page.locator('.vv-seek-preview[data-state="ready"]')).toBeVisible({
-        timeout: 5000,
-      });
-      await page.unroute("**/seek-thumbnail?*");
-      for (const ratio of [0.01, 0.5, 0.99]) {
+      for (const ratio of [0.01, 0.2, 0.5, 0.8, 0.99]) {
         await page.mouse.move(
           seekBounds.x + seekBounds.width * ratio,
           seekBounds.y + seekBounds.height / 2,
+          { steps: 5 },
         );
         const preview = page.locator('.vv-seek-preview[data-state="ready"]');
         await expect(preview).toBeVisible({ timeout: 5000 });
@@ -661,6 +654,9 @@ test.describe.serial("live MP4 playback", () => {
           (previewBounds?.x ?? width) + (previewBounds?.width ?? width + 1),
         ).toBeLessThanOrEqual(playerBounds.x + playerBounds.width);
       }
+      page.off("request", onRequest);
+      // 6 秒の fixture は 1 シートに収まる。
+      expect(sheetRequests).toHaveLength(1);
       if (screenshotDir !== undefined) {
         await mkdir(screenshotDir, { recursive: true });
         await page.mouse.move(
@@ -720,6 +716,40 @@ test.describe.serial("live MP4 playback", () => {
     }
   });
 
+  test("直接配信とライブ変換で、同じ位置に同じコマを出す", async ({ page }) => {
+    test.setTimeout(30_000);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const shown: Array<{ position: string; pixels: Buffer }> = [];
+    // 同じ内容を MP4（直接配信）と MKV（ライブ変換）にした fixture で、コマを決める
+    // 位置は元動画の論理時刻である（contracts/seek-sprite-api.md §5）。
+    for (const item of [video("direct"), video("container-only")]) {
+      await play(page, item);
+      await page.addStyleTag({
+        content: ".vv-seek-preview-time { visibility: hidden; }",
+      });
+      const seekBar = page.locator(".vjs-progress-holder");
+      const seekBounds = await seekBar.boundingBox();
+      if (seekBounds === null) throw new Error("seek bar is not visible");
+      await page.mouse.move(
+        seekBounds.x + seekBounds.width * 0.9,
+        seekBounds.y + seekBounds.height / 2,
+      );
+      const preview = page.locator('.vv-seek-preview[data-state="ready"]');
+      await expect(preview).toBeVisible({ timeout: 5000 });
+      await expect(preview).toContainText("0:05");
+      const image = preview.locator(".vv-seek-preview-image");
+      shown.push({
+        position: await image.evaluate(
+          (element) => getComputedStyle(element).backgroundPosition,
+        ),
+        pixels: await image.screenshot({ animations: "disabled" }),
+      });
+    }
+    expect(shown[0]?.position).toBe(shown[1]?.position);
+    expect(shown[0]?.position).not.toBe("0% 0%");
+    expect(shown[0]?.pixels.equals(shown[1]?.pixels ?? Buffer.alloc(0))).toBe(true);
+  });
+
   test("縦動画のシークpreviewも実JPEGを表示する", async ({ page }) => {
     const item = video("portrait");
     await page.setViewportSize({ width: 768, height: 800 });
@@ -740,9 +770,10 @@ test.describe.serial("live MP4 playback", () => {
     // 画像は動画の縦横比を保つ（specs/009-seek-thumbnail-preview/ui-design.md）。
     // fixture の portrait.mp4 は 180x320 なので 9:16 になる。
     expect(previewBounds.width / previewBounds.height).toBeCloseTo(9 / 16, 1);
-    const image = preview.locator("img");
-    await expect(image).toHaveAttribute("src", /\/seek-thumbnail\?.*positionMs=/);
-    expect(await image.getAttribute("src")).not.toContain("blob:");
+    // シートは object URL で持ち、背景として 1 コマの箱に敷く。
+    const image = preview.locator(".vv-seek-preview-image");
+    await expect(image).toHaveCSS("background-image", /url\("blob:/);
+    await expect(image).toHaveCSS("background-size", /.+/);
     if (screenshotDir !== undefined) {
       await mkdir(screenshotDir, { recursive: true });
       await page.screenshot({

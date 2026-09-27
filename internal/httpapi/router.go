@@ -119,8 +119,11 @@ type ArtifactReader interface {
 	// PreviewFile はホバープレビューの MP4 を開き、内容の SHA-256（manifest に
 	// 記録したもの）と合わせて返す。閉じるのは呼び出し側である。
 	PreviewFile(contentKey string) (*os.File, string, error)
-	// SeekThumbnail は再生位置を含むシーク用プレビューの1枚を読む。
-	SeekThumbnail(contentKey string, positionMs int64) ([]byte, error)
+	// SeekSprite は完成したシーク用プレビューのスプライトの配置情報を読む。
+	// 配置情報の形が違えば fs.ErrNotExist 以外の誤りを返す。
+	SeekSprite(contentKey string) (domain.SeekSprite, error)
+	// SeekSpriteSheet はスプライトのシート sheet（0 から）を読む。
+	SeekSpriteSheet(contentKey string, sheet int) ([]byte, error)
 }
 
 // VideoCatalog は動画を応答に載せるときの判断と、関連動画の組み立てを行う

@@ -38,7 +38,8 @@ type existingArtifacts struct {
 }
 
 // placeExistingArtifacts は、この変更より前の版が作ったのと同じ場所に生成物を置く。
-// パスは規則の実装を通さず文字列で書く。
+// パスは規則の実装を通さず文字列で書く。シーク用プレビューは、スプライトにする前の
+// 形式（個別 JPEG）である。
 func placeExistingArtifacts(t *testing.T, dataDir string) existingArtifacts {
 	t.Helper()
 	root := filepath.Join(dataDir, "thumbnails")
@@ -134,6 +135,28 @@ func newArtifactsFixture(t *testing.T) artifactsFixture {
 	return artifactsFixture{ctx: ctx, db: db, videoID: video.ID, files: files, handler: handler, ingest: ingest}
 }
 
+// placeSprite は、シーク用プレビューの置き場をスプライトの形式（シート 000.jpg と
+// sprite.json）に置き換える（specs/021-seek-thumbnail-sprite/research.md R-3）。
+func (f artifactsFixture) placeSprite(t *testing.T) {
+	t.Helper()
+	dir := filepath.Dir(f.files.frame0)
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, data := range map[string]string{
+		"000.jpg": "sheet-0",
+		"sprite.json": `{"version":1,"intervalMs":5000,"frameCount":12,"columns":10,"rows":10,` +
+			`"frameWidth":320,"frameHeight":180,"sheetCount":1}`,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func (f artifactsFixture) get(t *testing.T, target string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := httptest.NewRecorder()
@@ -179,10 +202,11 @@ func (f artifactsFixture) previewJobs(t *testing.T) int {
 	return count
 }
 
-// この変更より前に作った生成物がある MDM_DATA_DIR では、作り直しを積まずに
-// 一覧のサムネイル・シークバーのプレビュー・ホバープレビューを出す。
+// 作り終えた生成物がある MDM_DATA_DIR では、作り直しを積まずに一覧のサムネイル・
+// シークバーのプレビュー（スプライト）・ホバープレビューを出す。
 func TestExistingArtifactsAreServedWithoutRegeneration(t *testing.T) {
 	f := newArtifactsFixture(t)
+	f.placeSprite(t)
 
 	listed := f.listed(t)
 	if listed.ThumbnailUrl == nil || listed.PreviewUrl == nil || listed.SeekThumbnailUrl == nil {
@@ -195,15 +219,26 @@ func TestExistingArtifactsAreServedWithoutRegeneration(t *testing.T) {
 
 	id := strconv.FormatInt(f.videoID, 10)
 	for target, want := range map[string]string{
-		*listed.ThumbnailUrl: "thumbnail-jpeg",
-		*listed.PreviewUrl:   "preview-mp4",
-		"/api/videos/" + id + "/seek-thumbnail?positionMs=0":    "frame-0",
-		"/api/videos/" + id + "/seek-thumbnail?positionMs=5000": "frame-1",
+		*listed.ThumbnailUrl:                      "thumbnail-jpeg",
+		*listed.PreviewUrl:                        "preview-mp4",
+		"/api/videos/" + id + "/seek-thumbnail/0": "sheet-0",
 	} {
 		rec := f.get(t, target)
 		if rec.Code != http.StatusOK || rec.Body.String() != want {
 			t.Errorf("%s = %d %q, want %q", target, rec.Code, rec.Body.String(), want)
 		}
+	}
+
+	rec := f.get(t, *listed.SeekThumbnailUrl)
+	var sprite gen.SeekThumbnailSprite
+	if err := json.Unmarshal(rec.Body.Bytes(), &sprite); rec.Code != http.StatusOK || err != nil {
+		t.Fatalf("配置情報 = %d %s (%v)", rec.Code, rec.Body, err)
+	}
+	if sprite.FrameCount != 12 || len(sprite.Sheets) != 1 {
+		t.Fatalf("配置情報 = %+v", sprite)
+	}
+	if sheet := f.get(t, sprite.Sheets[0]); sheet.Code != http.StatusOK || sheet.Body.String() != "sheet-0" {
+		t.Fatalf("%s = %d %q", sprite.Sheets[0], sheet.Code, sheet.Body)
 	}
 
 	jobs, err := store.CountJobsForTest(f.ctx, f.db)
@@ -212,6 +247,25 @@ func TestExistingArtifactsAreServedWithoutRegeneration(t *testing.T) {
 	}
 	if jobs != 0 {
 		t.Fatalf("ジョブが %d 件積まれた", jobs)
+	}
+}
+
+// スプライトにする前の個別 JPEG しか無い置き場は未完成で、シーク用プレビューを
+// 配信せず、詳細は done を返さない。ほかの生成物はそのまま出す。
+func TestLegacySeekFramesAreNotServed(t *testing.T) {
+	f := newArtifactsFixture(t)
+	video := f.video(t)
+	if video.SeekThumbnailState == nil || *video.SeekThumbnailState == gen.VideoSeekThumbnailStateDone {
+		t.Fatalf("seekThumbnailState = %v", video.SeekThumbnailState)
+	}
+	if video.PreviewUrl == nil {
+		t.Fatal("ホバープレビューが出ない")
+	}
+	id := strconv.FormatInt(f.videoID, 10)
+	for _, target := range []string{"/api/videos/" + id + "/seek-thumbnail", "/api/videos/" + id + "/seek-thumbnail/0"} {
+		if rec := f.get(t, target); rec.Code != http.StatusConflict {
+			t.Errorf("%s = %d %s", target, rec.Code, rec.Body)
+		}
 	}
 }
 
