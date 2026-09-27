@@ -3,6 +3,7 @@ package media
 import (
 	"context"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"os"
 	"os/exec"
@@ -20,7 +21,7 @@ func TestSeekSpriteArgsFollowLayout(t *testing.T) {
 	for _, want := range []string{
 		"-i /media/a.mp4",
 		"-map 0:V:0?",
-		"fps=1000/88889:eof_action=pass,tpad=stop_mode=clone:stop=-1,trim=end_frame=81,",
+		"tpad=stop_mode=clone:stop=-1,fps=1000/88889:round=up:eof_action=pass,trim=end_frame=81,",
 		"scale=min(160\\,iw):min(160\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2,tile=9x9,format=yuvj420p",
 		"-fps_mode passthrough",
 		"-start_number 0",
@@ -154,9 +155,59 @@ func TestGenerateSeekSpriteRepeatsLastSceneWhenVideoEndsEarly(t *testing.T) {
 		t.Fatalf("配置 %+v", layout)
 	}
 	sheets := readSheets(t, output)
+	for _, k := range []int{0, 1, 3} {
+		startSec := float64(k) * float64(layout.IntervalMs) / 1000
+		got := frameSeconds(t, sheets, layout, k)
+		if got < startSec-0.5 || got > startSec+1 {
+			t.Errorf("フォールバックのコマ %d は %.2f 秒（区間先頭 %.0f 秒のはず）", k, got, startSec)
+		}
+	}
 	// 最後の場面は映像の終わり（23 秒）の近くで、黒で埋まっていない。
 	if last := frameSeconds(t, sheets, layout, layout.FrameCount-1); last < 22 || last > 23.5 {
 		t.Fatalf("末尾のコマの時刻が %.2f 秒（22〜23 秒のはず）", last)
+	}
+}
+
+func TestGenerateSeekSpriteRejectsFramesOutsideTheirIntervals(t *testing.T) {
+	requireFFmpeg(t)
+	videoPath := filepath.Join(t.TempDir(), "sparse.mp4")
+	runFFmpeg(t,
+		"-f", "lavfi", "-i", timeGraySource("64x64", "30"),
+		"-vf", "select=eq(n\\,0)+eq(n\\,100)+eq(n\\,200)",
+		"-fps_mode", "vfr", "-c:v", "mpeg4", "-q:v", "2", "-y", videoPath)
+
+	layout := domain.NewSeekSpriteLayout(15_000)
+	if err := generateSeekSpriteParallel(context.Background(), videoPath, t.TempDir(), layout); err == nil || !strings.Contains(err.Error(), "コマ 1:") {
+		t.Fatalf("フレームのない区間で失敗しなかった: %v", err)
+	}
+	output, layout := generateSprite(t, videoPath, 15_000)
+	sheets := readSheets(t, output)
+	for _, check := range []struct {
+		frame int
+		want  float64
+	}{{1, 0}, {2, 10}} {
+		if got := frameSeconds(t, sheets, layout, check.frame); got < check.want-0.5 || got > check.want+1 {
+			t.Errorf("コマ %d は %.2f 秒（%.0f 秒の場面のはず）", check.frame, got, check.want)
+		}
+	}
+}
+
+func TestGenerateSeekSpriteIgnoresAttachedCover(t *testing.T) {
+	requireFFmpeg(t)
+	dir := t.TempDir()
+	mainVideo := filepath.Join(dir, "main.mp4")
+	cover := filepath.Join(dir, "cover.jpg")
+	videoPath := filepath.Join(dir, "with-cover.mp4")
+	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=green:s=64x64:r=1:d=5", "-c:v", "mpeg4", "-y", mainVideo)
+	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=red:s=600x600", "-frames:v", "1", "-y", cover)
+	runFFmpeg(t, "-i", mainVideo, "-i", cover, "-map", "0:v:0", "-map", "1:v:0", "-c", "copy", "-disposition:v:1", "attached_pic", "-y", videoPath)
+
+	output, _ := generateSprite(t, videoPath, 5000)
+	sheets := readSheets(t, output)
+	bounds := sheets[0].Bounds()
+	r, g, b, _ := color.RGBAModel.Convert(sheets[0].At(bounds.Min.X+bounds.Dx()/18, bounds.Min.Y+bounds.Dy()/18)).RGBA()
+	if g <= r || g <= b {
+		t.Errorf("表紙画像の色を抽出した: R=%d G=%d B=%d", r, g, b)
 	}
 }
 

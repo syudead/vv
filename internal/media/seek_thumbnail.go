@@ -80,9 +80,12 @@ frames:
 			defer workers.Done()
 			defer func() { <-semaphore }()
 			at := float64(int64(frame)*layout.IntervalMs) / 1000
+			interval := float64(layout.IntervalMs) / 1000
 			args := []string{
 				"-nostdin", "-v", "error", "-ss", strconv.FormatFloat(at, 'f', 3, 64),
-				"-i", videoPath, "-frames:v", "1", "-vf", seekSpriteFastScale,
+				"-t", strconv.FormatFloat(interval, 'f', 3, 64), "-i", videoPath,
+				"-map", "0:V:0?", "-frames:v", "1",
+				"-vf", "trim=end=" + strconv.FormatFloat(interval, 'f', 3, 64) + "," + seekSpriteFastScale,
 				"-c:v", "bmp", "-f", "rawvideo", "pipe:1",
 			}
 			data, err := runSeekFFmpeg(workCtx, args)
@@ -129,8 +132,8 @@ func runSeekFFmpeg(ctx context.Context, args []string) ([]byte, error) {
 
 func seekSpriteArgs(videoPath, outputPattern string, layout domain.SeekSpriteLayout) []string {
 	filters := []string{
-		"fps=1000/" + strconv.FormatInt(layout.IntervalMs, 10) + ":eof_action=pass",
 		"tpad=stop_mode=clone:stop=-1",
+		"fps=1000/" + strconv.FormatInt(layout.IntervalMs, 10) + ":round=up:eof_action=pass",
 		"trim=end_frame=" + strconv.Itoa(layout.FrameCount),
 		seekSpriteFastScale,
 		"tile=" + strconv.Itoa(layout.Columns) + "x" + strconv.Itoa(layout.Rows),
