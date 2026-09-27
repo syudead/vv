@@ -3,6 +3,7 @@ package media
 import (
 	"context"
 	"image"
+	"image/color"
 	"image/jpeg"
 	"os"
 	"os/exec"
@@ -20,8 +21,8 @@ func TestSeekSpriteArgsFollowLayout(t *testing.T) {
 	for _, want := range []string{
 		"-i /media/a.mp4",
 		"-map 0:V:0?",
-		"fps=1000/12000:eof_action=pass,tpad=stop_mode=clone:stop=-1,trim=end_frame=600,",
-		"scale=min(320\\,iw):min(320\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2,tile=10x10,format=yuvj420p",
+		"tpad=stop_mode=clone:stop=-1,fps=1000/88889:round=up:eof_action=pass,trim=end_frame=81,",
+		"scale=min(160\\,iw):min(160\\,ih):force_original_aspect_ratio=decrease:force_divisible_by=2,tile=9x9,format=yuvj420p",
 		"-fps_mode passthrough",
 		"-start_number 0",
 		"/cache/%03d.jpg",
@@ -123,16 +124,15 @@ func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
 	if len(sheets) != 1 {
 		t.Fatalf("シートが %d 枚（1 枚のはず）", len(sheets))
 	}
-	if b := sheets[0].Bounds(); b.Dx() != 640 || b.Dy() != 640 {
-		t.Fatalf("シートの大きさ %v（640x640 のはず）", b)
+	if b := sheets[0].Bounds(); b.Dx() != 576 || b.Dy() != 576 {
+		t.Fatalf("シートの大きさ %v（576x576 のはず）", b)
 	}
 	for _, k := range []int{0, 3, 5} {
 		startSec := float64(k) * float64(layout.IntervalMs) / 1000
-		endSec := startSec + float64(layout.IntervalMs)/1000
 		got := frameSeconds(t, sheets, layout, k)
-		// JPEG の誤差を見込み、区間の端から 0.5 秒の内側にあることを求める。
-		if got < startSec+0.5 || got > endSec-0.5 {
-			t.Errorf("コマ %d の時刻 %.2f 秒が区間 [%.0f, %.0f) の中にない", k, got, startSec, endSec)
+		// 入力側シークは区間の先頭のフレームを選ぶ。圧縮と JPEG の誤差を許す。
+		if got < startSec-0.5 || got > startSec+1 {
+			t.Errorf("コマ %d の時刻 %.2f 秒が区間の先頭 %.0f 秒から離れている", k, got, startSec)
 		}
 	}
 	// 使わない升目は黒のまま。
@@ -155,9 +155,59 @@ func TestGenerateSeekSpriteRepeatsLastSceneWhenVideoEndsEarly(t *testing.T) {
 		t.Fatalf("配置 %+v", layout)
 	}
 	sheets := readSheets(t, output)
+	for _, k := range []int{0, 1, 3} {
+		startSec := float64(k) * float64(layout.IntervalMs) / 1000
+		got := frameSeconds(t, sheets, layout, k)
+		if got < startSec-0.5 || got > startSec+1 {
+			t.Errorf("フォールバックのコマ %d は %.2f 秒（区間先頭 %.0f 秒のはず）", k, got, startSec)
+		}
+	}
 	// 最後の場面は映像の終わり（23 秒）の近くで、黒で埋まっていない。
 	if last := frameSeconds(t, sheets, layout, layout.FrameCount-1); last < 22 || last > 23.5 {
 		t.Fatalf("末尾のコマの時刻が %.2f 秒（22〜23 秒のはず）", last)
+	}
+}
+
+func TestGenerateSeekSpriteRejectsFramesOutsideTheirIntervals(t *testing.T) {
+	requireFFmpeg(t)
+	videoPath := filepath.Join(t.TempDir(), "sparse.mp4")
+	runFFmpeg(t,
+		"-f", "lavfi", "-i", timeGraySource("64x64", "30"),
+		"-vf", "select=eq(n\\,0)+eq(n\\,100)+eq(n\\,200)",
+		"-fps_mode", "vfr", "-c:v", "mpeg4", "-q:v", "2", "-y", videoPath)
+
+	layout := domain.NewSeekSpriteLayout(15_000)
+	if err := generateSeekSpriteParallel(context.Background(), videoPath, t.TempDir(), layout); err == nil || !strings.Contains(err.Error(), "コマ 1:") {
+		t.Fatalf("フレームのない区間で失敗しなかった: %v", err)
+	}
+	output, layout := generateSprite(t, videoPath, 15_000)
+	sheets := readSheets(t, output)
+	for _, check := range []struct {
+		frame int
+		want  float64
+	}{{1, 0}, {2, 10}} {
+		if got := frameSeconds(t, sheets, layout, check.frame); got < check.want-0.5 || got > check.want+1 {
+			t.Errorf("コマ %d は %.2f 秒（%.0f 秒の場面のはず）", check.frame, got, check.want)
+		}
+	}
+}
+
+func TestGenerateSeekSpriteIgnoresAttachedCover(t *testing.T) {
+	requireFFmpeg(t)
+	dir := t.TempDir()
+	mainVideo := filepath.Join(dir, "main.mp4")
+	cover := filepath.Join(dir, "cover.jpg")
+	videoPath := filepath.Join(dir, "with-cover.mp4")
+	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=green:s=64x64:r=1:d=5", "-c:v", "mpeg4", "-y", mainVideo)
+	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=red:s=600x600", "-frames:v", "1", "-y", cover)
+	runFFmpeg(t, "-i", mainVideo, "-i", cover, "-map", "0:v:0", "-map", "1:v:0", "-c", "copy", "-disposition:v:1", "attached_pic", "-y", videoPath)
+
+	output, _ := generateSprite(t, videoPath, 5000)
+	sheets := readSheets(t, output)
+	bounds := sheets[0].Bounds()
+	r, g, b, _ := color.RGBAModel.Convert(sheets[0].At(bounds.Min.X+bounds.Dx()/18, bounds.Min.Y+bounds.Dy()/18)).RGBA()
+	if g <= r || g <= b {
+		t.Errorf("表紙画像の色を抽出した: R=%d G=%d B=%d", r, g, b)
 	}
 }
 
@@ -180,14 +230,14 @@ func TestGenerateSeekSpriteWritesSingleFrameForOneSecondInput(t *testing.T) {
 	}
 }
 
-// 縦長の入力では、コマは縦横比を保ち、シートをまたいでも同じ大きさになる。
-func TestGenerateSeekSpriteKeepsPortraitAspectAcrossSheets(t *testing.T) {
+// 縦長の入力でも、コマは縦横比を保って1枚のシートになる。
+func TestGenerateSeekSpriteKeepsPortraitAspect(t *testing.T) {
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "portrait.mp4")
 	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=gray:s=360x640:r=1:d=510", "-c:v", "mpeg4", "-y", videoPath)
 
 	output, layout := generateSprite(t, videoPath, 510_000)
-	if layout.FrameCount != 102 || layout.SheetCount != 2 {
+	if layout.FrameCount != 81 || layout.SheetCount != 1 {
 		t.Fatalf("配置 %+v", layout)
 	}
 	sheets := readSheets(t, output)
@@ -196,12 +246,12 @@ func TestGenerateSeekSpriteKeepsPortraitAspectAcrossSheets(t *testing.T) {
 	}
 	for i, sheet := range sheets {
 		b := sheet.Bounds()
-		// 360x640 を 320x320 の枠に収めると 180x320 になる。
-		if b.Dx() != 180*layout.Columns || b.Dy() != 320*layout.Rows {
-			t.Errorf("シート %d の大きさ %v（コマ 180x320 のはず）", i, b)
+		// 360x640 を 160x160 の枠に収めると 90x160 になる。
+		if b.Dx() != 90*layout.Columns || b.Dy() != 160*layout.Rows {
+			t.Errorf("シート %d の大きさ %v（コマ 90x160 のはず）", i, b)
 		}
 	}
 	if luma := frameLuma(t, sheets, layout, layout.FrameCount-1); luma < 60 {
-		t.Errorf("2 枚目のシートの末尾のコマの輝度が %d", luma)
+		t.Errorf("末尾のコマの輝度が %d", luma)
 	}
 }

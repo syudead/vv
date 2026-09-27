@@ -1,13 +1,11 @@
 package domain
 
-// シーク用サムネイルのスプライトの配置（specs/021-seek-thumbnail-sprite/research.md
-// R-1）。1 シートは SeekSpriteColumns × SeekSpriteRows のコマの格子で、1 本の動画は
-// 最大 SeekSpriteMaxSheets 枚・SeekSpriteMaxFrames コマになる。間隔は
-// SeekThumbnailInterval を最小とし、それで覆えない長さの動画だけ広げる。
+// シーク用サムネイルの配置。1 本の動画を最大 81 コマの 9 × 9 シートにする。
+// 短い動画では 5 秒間隔を保ち、長い動画では全体にコマを均等配置する。
 const (
-	SeekSpriteColumns   = 10
-	SeekSpriteRows      = 10
-	SeekSpriteMaxSheets = 6
+	SeekSpriteColumns   = 9
+	SeekSpriteRows      = 9
+	SeekSpriteMaxSheets = 1
 	// SeekSpriteFramesPerSheet は 1 シートに並ぶコマの数である。
 	SeekSpriteFramesPerSheet = SeekSpriteColumns * SeekSpriteRows
 	// SeekSpriteMaxFrames は 1 本の動画のコマの上限である。

@@ -11,7 +11,7 @@ const (
 	JobProbe JobKind = "probe"
 	// JobThumbnail は ffmpeg による代表サムネイル（静止画1枚）の抽出。
 	JobThumbnail JobKind = "thumbnail"
-	// JobSeekThumbnail は ffmpeg によるシーク用サムネイル（全編デコード）の生成。
+	// JobSeekThumbnail は ffmpeg によるシーク用スプライトの生成。
 	JobSeekThumbnail JobKind = "seek_thumbnail"
 	// JobPreview は ffmpeg による一覧用のホバープレビューの生成。
 	JobPreview JobKind = "preview"
@@ -130,7 +130,7 @@ type JobClaimCondition struct {
 // 順では解析が先になる保証が無い。
 //
 // シーク用サムネイルは解析の完了に加え、取り出せる代表サムネイルの仕事が
-// 残っていないことを待つ。全編デコードの重い仕事を代表サムネイルの流れと
+// 残っていないことを待つ。シーク用スプライトの重い仕事を代表サムネイルの流れと
 // 競わせず、代表サムネイルを先に揃えるためである。この条件は取り出しの
 // 時点だけで判断し、走っているシーク用サムネイルは止めない。
 func ClaimConditionFor(kind JobKind) JobClaimCondition {

@@ -62,7 +62,7 @@ func sheetJPEG(t *testing.T, width, height int) []byte {
 }
 
 // spriteLayout は 2 シートにまたがる 150 コマの配置である。
-var spriteLayout = domain.NewSeekSpriteLayout(150 * 5000)
+var spriteLayout = domain.SeekSpriteLayout{IntervalMs: 5000, FrameCount: 150, Columns: 10, Rows: 10, SheetCount: 2}
 
 // sheetWriter は受け取ったディレクトリへ、1 コマ 32 × 18 のシートを sheets 枚書く
 // 生成の代わりである。
@@ -587,7 +587,7 @@ func TestSeekSpriteDescribesPublishedSheets(t *testing.T) {
 			t.Fatalf("シート %d = %d バイト, %v", sheet, len(image), err)
 		}
 	}
-	for _, sheet := range []int{-1, 2, domain.SeekSpriteMaxSheets} {
+	for _, sheet := range []int{-1, 2, 6} {
 		if _, err := store.SeekSpriteSheet(key, sheet); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("シート %d の誤り = %v", sheet, err)
 		}
