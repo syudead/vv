@@ -274,7 +274,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
     <tr
       data-video-id={video.id}
       className={cn(
-        "group relative border-b border-border transition-colors hover:bg-hover-wash has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-link",
+        "group relative transition-colors hover:bg-hover-wash [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-link",
         selected && "bg-accent-soft",
       )}
     >
