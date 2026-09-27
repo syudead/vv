@@ -44,9 +44,10 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	}
 
 	var videoID int64
-	var probeState, thumbnailState, previewState string
-	err = tx.QueryRowContext(ctx, `select id, probe_state, thumbnail_state, preview_state from videos where content_key = ?`, file.ContentKey).
-		Scan(&videoID, &probeState, &thumbnailState, &previewState)
+	var probeState, thumbnailState, seekThumbnailState, previewState string
+	err = tx.QueryRowContext(ctx, `select id, probe_state, thumbnail_state, seek_thumbnail_state, preview_state
+		from videos where content_key = ?`, file.ContentKey).
+		Scan(&videoID, &probeState, &thumbnailState, &seekThumbnailState, &previewState)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return domain.UpsertResult{}, err
 	}
@@ -58,6 +59,7 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	if newVideo {
 		probeState = string(domain.ProbeStatePending)
 		thumbnailState = string(domain.ThumbnailStatePending)
+		seekThumbnailState = string(domain.SeekThumbnailPending)
 		previewState = string(domain.PreviewStatePending)
 		res, err := tx.ExecContext(ctx, `
 		insert into videos
@@ -124,9 +126,10 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	}
 	return domain.UpsertResult{
 		ID: videoID, Outcome: outcome,
-		NeedsProbe:     probeState != string(domain.ProbeStateDone),
-		NeedsThumbnail: thumbnailState != string(domain.ThumbnailStateDone),
-		NeedsPreview:   probeState == string(domain.ProbeStateDone) && previewState != string(domain.PreviewStateDone),
+		NeedsProbe:         probeState != string(domain.ProbeStateDone),
+		NeedsThumbnail:     thumbnailState != string(domain.ThumbnailStateDone),
+		NeedsSeekThumbnail: seekThumbnailState != string(domain.SeekThumbnailDone),
+		NeedsPreview:       probeState == string(domain.ProbeStateDone) && previewState != string(domain.PreviewStateDone),
 	}, nil
 }
 
@@ -197,7 +200,8 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
 // 走査はこれと実際のファイルを突き合わせて差分を出す。
 func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]domain.IndexedVideo, error) {
-	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state, v.preview_state from video_locations l join videos v on v.id = l.video_id`)
+	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state, v.seek_thumbnail_state, v.preview_state
+		from video_locations l join videos v on v.id = l.video_id`)
 	if err != nil {
 		return nil, fmt.Errorf("索引を読み出せません: %w", err)
 	}
@@ -208,7 +212,7 @@ func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]do
 		var path string
 		var video domain.IndexedVideo
 		var mtime int64
-		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &video.ProbeState, &video.ThumbnailState, &video.PreviewState); err != nil {
+		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &video.ProbeState, &video.ThumbnailState, &video.SeekThumbnailState, &video.PreviewState); err != nil {
 			return nil, fmt.Errorf("索引を読み出せません: %w", err)
 		}
 		video.MTime = time.Unix(mtime, 0)

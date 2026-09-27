@@ -377,6 +377,8 @@ func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVid
 	}{
 		{kind: domain.JobProbe, pending: video.ProbeState == domain.ProbeStatePending},
 		{kind: domain.JobThumbnail, pending: video.ThumbnailState == domain.ThumbnailStatePending},
+		// failed は積み直さない。やり直しは読み取りのやり直し（RetryProbe）が受け持つ。
+		{kind: domain.JobSeekThumbnail, pending: video.SeekThumbnailState == domain.SeekThumbnailPending},
 		{kind: domain.JobPreview, pending: video.ProbeState == domain.ProbeStateDone && video.PreviewState == domain.PreviewStatePending},
 	}
 	for _, state := range states {
@@ -389,7 +391,7 @@ func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVid
 	return nil
 }
 
-// enqueue は解析とサムネイルのジョブを積む。
+// enqueue は解析・サムネイル・シーク用サムネイル・プレビューのうち要るジョブを積む。
 func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error {
 	if s.queue == nil {
 		return nil
@@ -400,6 +402,9 @@ func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error
 	}
 	if result.NeedsThumbnail {
 		kinds = append(kinds, domain.JobThumbnail)
+	}
+	if result.NeedsSeekThumbnail {
+		kinds = append(kinds, domain.JobSeekThumbnail)
 	}
 	if result.NeedsPreview {
 		kinds = append(kinds, domain.JobPreview)

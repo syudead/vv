@@ -4,6 +4,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -165,6 +166,27 @@ func (s *IngestStore) SetThumbnailStateForJob(ctx context.Context, job domain.Jo
 	return count == 1, err
 }
 
+// SetSeekThumbnailStateForJob はシーク用サムネイルの状態を記録する。専有した
+// ときの内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。
+func (s *IngestStore) SetSeekThumbnailStateForJob(
+	ctx context.Context, job domain.Job, state domain.SeekThumbnailState,
+) (bool, error) {
+	res, err := s.db.sql.ExecContext(ctx, `update videos set seek_thumbnail_state = ?, updated_at = ?
+		where id = ? and content_key = ? and exists (
+			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
+		and location_generation = ?`,
+		string(state), time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
+		job.LocationVersion, job.LocationPath, job.LocationGeneration)
+	if err != nil {
+		return false, fmt.Errorf("シーク用サムネイルの状態を記録できません (id=%d): %w", job.VideoID, err)
+	}
+	count, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("シーク用サムネイルの状態の更新件数を確認できません (id=%d): %w", job.VideoID, err)
+	}
+	return count == 1, nil
+}
+
 // SetPreviewStateForJob applies only to the content and location generation
 // captured when the preview job was claimed.
 func (s *IngestStore) SetPreviewStateForJob(ctx context.Context, job domain.Job, state domain.PreviewState) (bool, error) {
@@ -297,6 +319,60 @@ func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, conte
 	return true, nil
 }
 
+// RequeueMissingSeekThumbnails は、シーク用サムネイルを作り終えた記録があるのに
+// 置き場が無い動画を、1つの取引の中で作り直す状態へ戻し、シーク用サムネイルの
+// ジョブを積む。置き場の有無はファイルの事実なので、呼び出し側が確かめて呼ぶ。
+//
+// seek_thumbnail_state が done で、内容の識別子が今も同じときだけ変える。
+// そうでなければ何もせず false を返す。同じ動画を何度見つけても、積むのは
+// 1回である（RequeueMissingPreview と同じ形）。
+func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64, contentKey string) (bool, error) {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return false, fmt.Errorf("シーク用サムネイルの作り直しを開始できません (id=%d): %w", id, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now().Unix()
+	res, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'pending', updated_at = ?
+		where id = ? and content_key = ? and seek_thumbnail_state = 'done'`, now, id, contentKey)
+	if err != nil {
+		return false, fmt.Errorf("シーク用サムネイルの状態を戻せません (id=%d): %w", id, err)
+	}
+	reset, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("シーク用サムネイルの状態の更新件数を確認できません (id=%d): %w", id, err)
+	}
+	if reset == 0 {
+		return false, nil
+	}
+	if err := requeueJob(ctx, tx, domain.JobSeekThumbnail, id, now); err != nil {
+		return false, err
+	}
+	var c changes
+	c.jobsQueued(domain.JobSeekThumbnail)
+	if err := s.db.commit(tx, &c); err != nil {
+		return false, fmt.Errorf("シーク用サムネイルの作り直しを確定できません (id=%d): %w", id, err)
+	}
+	return true, nil
+}
+
+// requeueJob は終わった行を捨ててから kind の仕事を queued で積む。未完了の行が
+// 既にあれば何もしない。
+func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now int64) error {
+	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
+		string(kind), id); err != nil {
+		return fmt.Errorf("古いジョブを掃除できません (%s, video=%d): %w", kind, id, err)
+	}
+	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
+		values (?, ?, 'queued', 0, ?, ?)
+		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
+		string(kind), id, now, now); err != nil {
+		return fmt.Errorf("ジョブを積めません (%s, video=%d): %w", kind, id, err)
+	}
+	return nil
+}
+
 // RetryProbe は読み取りに失敗した動画を、1つの取引の中で読み取り直す状態へ
 // 戻し、スキャンが新しい内容に積むのと同じジョブを積む。
 //
@@ -310,6 +386,8 @@ func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, conte
 // 有無はファイルの事実なので、呼び出し側が確かめて渡す。thumbnail_state が
 // done でも置き場が無ければ、状態はそのままでサムネイルのジョブを積む
 // （app.Ingest.Thumbnail は代表サムネイルがあればシーク用プレビューだけを作る）。
+// seek_thumbnail_state が failed なら pending に戻し、戻したときだけシーク用
+// サムネイルのジョブを積む。
 // 一覧用プレビューのジョブは、読み取りの成功後に app.Ingest.Probe が積む。
 func (s *IngestStore) RetryProbe(ctx context.Context, id int64, seekThumbnailMissing bool) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
@@ -352,21 +430,26 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64, seekThumbnailMis
 		where id = ? and preview_state = 'failed'`, now, id); err != nil {
 		return fmt.Errorf("プレビューの状態を戻せません (id=%d): %w", id, err)
 	}
+	res, err = tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'pending', updated_at = ?
+		where id = ? and seek_thumbnail_state = 'failed'`, now, id)
+	if err != nil {
+		return fmt.Errorf("シーク用サムネイルの状態を戻せません (id=%d): %w", id, err)
+	}
+	seekThumbnailReset, err := res.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("シーク用サムネイルの状態の更新件数を確認できません (id=%d): %w", id, err)
+	}
 
 	kinds := []domain.JobKind{domain.JobProbe}
 	if thumbnailReset > 0 || seekThumbnailMissing {
 		kinds = append(kinds, domain.JobThumbnail)
 	}
+	if seekThumbnailReset > 0 {
+		kinds = append(kinds, domain.JobSeekThumbnail)
+	}
 	for _, kind := range kinds {
-		if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
-			string(kind), id); err != nil {
-			return fmt.Errorf("古いジョブを掃除できません (%s, video=%d): %w", kind, id, err)
-		}
-		if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-			values (?, ?, 'queued', 0, ?, ?)
-			on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
-			string(kind), id, now, now); err != nil {
-			return fmt.Errorf("ジョブを積めません (%s, video=%d): %w", kind, id, err)
+		if err := requeueJob(ctx, tx, kind, id, now); err != nil {
+			return err
 		}
 	}
 	var c changes

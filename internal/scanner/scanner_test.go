@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -69,7 +70,7 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 			f.rows[file.Path] = domain.IndexedVideo{
 				ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
 				ProbeState: row.ProbeState, ThumbnailState: row.ThumbnailState,
-				PreviewState: row.PreviewState,
+				SeekThumbnailState: row.SeekThumbnailState, PreviewState: row.PreviewState,
 			}
 			outcome := domain.OutcomeMoved
 			if path == file.Path {
@@ -82,18 +83,24 @@ func (f *fakeIndex) UpsertVideo(_ context.Context, file domain.VideoFile) (domai
 	if row, ok := f.rows[file.Path]; ok {
 		f.rows[file.Path] = domain.IndexedVideo{
 			ID: row.ID, LocationID: row.LocationID, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
-			ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending, PreviewState: domain.PreviewStatePending,
+			ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending,
+			SeekThumbnailState: domain.SeekThumbnailPending, PreviewState: domain.PreviewStatePending,
 		}
-		return domain.UpsertResult{ID: row.ID, Outcome: domain.OutcomeUpdated, NeedsProbe: true, NeedsThumbnail: true}, nil
+		return domain.UpsertResult{
+			ID: row.ID, Outcome: domain.OutcomeUpdated, NeedsProbe: true, NeedsThumbnail: true, NeedsSeekThumbnail: true,
+		}, nil
 	}
 
 	id := f.nextID
 	f.nextID++
 	f.rows[file.Path] = domain.IndexedVideo{
 		ID: id, LocationID: id, ContentKey: file.ContentKey, SizeBytes: file.SizeBytes, MTime: file.MTime,
-		ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending, PreviewState: domain.PreviewStatePending,
+		ProbeState: domain.ProbeStatePending, ThumbnailState: domain.ThumbnailStatePending,
+		SeekThumbnailState: domain.SeekThumbnailPending, PreviewState: domain.PreviewStatePending,
 	}
-	return domain.UpsertResult{ID: id, Outcome: domain.OutcomeAdded, NeedsProbe: true, NeedsThumbnail: true}, nil
+	return domain.UpsertResult{
+		ID: id, Outcome: domain.OutcomeAdded, NeedsProbe: true, NeedsThumbnail: true, NeedsSeekThumbnail: true,
+	}, nil
 }
 
 func (f *fakeIndex) DeleteVideos(_ context.Context, ids []int64) error {
@@ -300,6 +307,7 @@ func TestScanSkipsUnchangedFiles(t *testing.T) {
 	for path, row := range index.rows {
 		row.ProbeState = domain.ProbeStateDone
 		row.ThumbnailState = domain.ThumbnailStateDone
+		row.SeekThumbnailState = domain.SeekThumbnailDone
 		row.PreviewState = domain.PreviewStateDone
 		index.rows[path] = row
 	}
@@ -318,7 +326,7 @@ func TestScanSkipsUnchangedFiles(t *testing.T) {
 			upsertsAfterFirst, len(index.upserts))
 	}
 	// 解析のジョブも積み直さない。積むと毎回の走査で ffprobe が走る。
-	jobsAfterFirst := 2
+	jobsAfterFirst := 3
 	if len(index.jobs) != jobsAfterFirst {
 		t.Errorf("ジョブ = %d 件, want %d（変化が無ければ積み直さない）",
 			len(index.jobs), jobsAfterFirst)
@@ -337,8 +345,8 @@ func TestScanRequeuesMissingJobsForUnchangedPendingVideo(t *testing.T) {
 	if len(index.upserts) != upsertsAfterFirst {
 		t.Fatalf("unchanged file was rehashed: upserts = %d, want %d", len(index.upserts), upsertsAfterFirst)
 	}
-	if len(index.jobs) != 2 {
-		t.Fatalf("requeued jobs = %d, want 2", len(index.jobs))
+	if len(index.jobs) != 3 {
+		t.Fatalf("requeued jobs = %d, want 3", len(index.jobs))
 	}
 }
 
@@ -362,6 +370,7 @@ func TestScanRequeuesMissingPreviewForProbeCompleteVideo(t *testing.T) {
 	for path, row := range index.rows {
 		row.ProbeState = domain.ProbeStateDone
 		row.ThumbnailState = domain.ThumbnailStateDone
+		row.SeekThumbnailState = domain.SeekThumbnailDone
 		row.PreviewState = domain.PreviewStatePending
 		index.rows[path] = row
 	}
@@ -380,6 +389,7 @@ func TestScanDoesNotRequeueFailedJobsForUnchangedVideo(t *testing.T) {
 	for path, row := range index.rows {
 		row.ProbeState = domain.ProbeStateFailed
 		row.ThumbnailState = domain.ThumbnailStateFailed
+		row.SeekThumbnailState = domain.SeekThumbnailFailed
 		index.rows[path] = row
 	}
 	index.jobs = nil
@@ -387,6 +397,65 @@ func TestScanDoesNotRequeueFailedJobsForUnchangedVideo(t *testing.T) {
 	runScan(t, root, index)
 	if len(index.jobs) != 0 {
 		t.Fatalf("failed jobs were requeued: %d", len(index.jobs))
+	}
+}
+
+// 代表サムネイルは終わり、シーク用サムネイルだけが pending の既存動画には、
+// シーク用サムネイルの仕事だけを積み直す。
+func TestScanRequeuesOnlySeekThumbnailForPendingSeekThumbnail(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	var id int64
+	for path, row := range index.rows {
+		row.ProbeState = domain.ProbeStateDone
+		row.ThumbnailState = domain.ThumbnailStateDone
+		row.SeekThumbnailState = domain.SeekThumbnailPending
+		row.PreviewState = domain.PreviewStateDone
+		index.rows[path] = row
+		id = row.ID
+	}
+	index.jobs = nil
+
+	runScan(t, root, index)
+	want := []jobCall{{kind: domain.JobSeekThumbnail, videoID: id}}
+	if !slices.Equal(index.jobs, want) {
+		t.Fatalf("requeued jobs = %+v, want %+v", index.jobs, want)
+	}
+}
+
+// シーク用サムネイルだけが終端失敗した既存動画は、走査で積み直さない。
+func TestScanDoesNotRequeueFailedSeekThumbnail(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	for path, row := range index.rows {
+		row.ProbeState = domain.ProbeStateDone
+		row.ThumbnailState = domain.ThumbnailStateDone
+		row.SeekThumbnailState = domain.SeekThumbnailFailed
+		row.PreviewState = domain.PreviewStateDone
+		index.rows[path] = row
+	}
+	index.jobs = nil
+
+	runScan(t, root, index)
+	if len(index.jobs) != 0 {
+		t.Fatalf("requeued jobs = %+v, want none", index.jobs)
+	}
+}
+
+// 新しい内容の取り込みでは、シーク用サムネイルの仕事も積む。
+func TestScanEnqueuesSeekThumbnailForNewContent(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	var kinds []domain.JobKind
+	for _, job := range index.jobs {
+		kinds = append(kinds, job.kind)
+	}
+	want := []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail}
+	if !slices.Equal(kinds, want) {
+		t.Fatalf("enqueued kinds = %v, want %v", kinds, want)
 	}
 }
 
@@ -691,6 +760,7 @@ func TestScanProgressCountsOnlyFilesThatNeedImport(t *testing.T) {
 	for path, row := range index.rows {
 		row.ProbeState = domain.ProbeStateDone
 		row.ThumbnailState = domain.ThumbnailStateDone
+		row.SeekThumbnailState = domain.SeekThumbnailDone
 		row.PreviewState = domain.PreviewStateDone
 		index.rows[path] = row
 	}
