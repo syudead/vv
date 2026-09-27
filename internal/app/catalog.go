@@ -16,10 +16,12 @@ type CatalogIngestStore interface {
 	// 状態を pending へ戻し、作り直しを積む。両方を1つの取引で行う。積んだら
 	// true を返す。すでに戻っていれば false。
 	RequeueMissingPreview(ctx context.Context, id int64, contentKey string) (bool, error)
-	// ThumbnailJobActive はサムネイルのジョブが queued・running かを返す。
-	ThumbnailJobActive(ctx context.Context, videoID int64) (bool, error)
+	// RequeueMissingSeekThumbnails は、作り終えた記録があるのに置き場が無い
+	// シーク用サムネイルの状態を pending へ戻し、作り直しを積む。両方を1つの
+	// 取引で行う。積んだら true を返す。すでに戻っていれば false。
+	RequeueMissingSeekThumbnails(ctx context.Context, id int64, contentKey string) (bool, error)
 	// RetryProbe は読み取りに失敗した動画を読み取り直す状態へ戻し、ジョブを積む。
-	RetryProbe(ctx context.Context, id int64, seekThumbnailMissing bool) error
+	RetryProbe(ctx context.Context, id int64) error
 }
 
 // CatalogIndexStore は関連動画を組み立てるためのライブラリ索引である。どの
@@ -107,27 +109,25 @@ func (c *Catalog) present(ctx context.Context, video domain.Video) domain.VideoV
 	return domain.VideoView{Video: video}
 }
 
-// SeekThumbnailState はシーク用プレビューの状態を導く。DB 上に状態は無い。
+// SeekThumbnailState はシーク用サムネイルの状態を導く。
 //
-// 置き場があれば done。無ければ、thumbnail_state が pending か、サムネイルの
-// ジョブが queued・running のときだけ pending で、それ以外は failed とする。
-// 失敗したジョブの行は保持期間を過ぎると消えるので、行が無いことを pending と
-// 読まない。そう読むと、画面の作成中の1行と取り直しが止まらなくなる。
+// 置き場があれば done。無ければ、保存した状態が done のときは作り直しを積んで
+// pending とし（積めなくても pending。次に見つけたときに積む）、それ以外は
+// 保存した状態をそのまま返す。積むのは状態が done の間の1回だけで、同じ動画を
+// 並行して見ても保存層の取引で1回になる（プレビューの RequeueMissingPreview と
+// 同じ形）。
 func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error) {
 	if c.files.SeekThumbnailsAvailable(video.ContentKey) {
 		return domain.SeekThumbnailDone, nil
 	}
-	if video.ThumbnailState == domain.ThumbnailStatePending {
-		return domain.SeekThumbnailPending, nil
+	if video.SeekThumbnailState != domain.SeekThumbnailDone {
+		return video.SeekThumbnailState, nil
 	}
-	active, err := c.ingest.ThumbnailJobActive(ctx, video.ID)
-	if err != nil {
-		return "", err
+	if _, err := c.ingest.RequeueMissingSeekThumbnails(ctx, video.ID, video.ContentKey); err != nil {
+		c.logger.Warn("消えたシーク用サムネイルの作り直しを積めませんでした",
+			slog.Int64("videoId", video.ID), slog.Any("error", err))
 	}
-	if active {
-		return domain.SeekThumbnailPending, nil
-	}
-	return domain.SeekThumbnailFailed, nil
+	return domain.SeekThumbnailPending, nil
 }
 
 // VideoGroup は動画が属するグループを、見る人に見せてよいメンバーだけで返す
@@ -188,11 +188,10 @@ func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, v
 }
 
 // RetryProbe は読み取りに失敗した動画を読み取り直す。状態を戻すこととジョブを
-// 積むことは保存層が1つの取引で行う。シーク用プレビューの置き場の有無は
-// ファイルの事実なので、ここで確かめて渡す。
+// 積むことは保存層が1つの取引で行う。
 //
 // 失敗していない動画には domain.ErrProbeNotFailed、無い動画には
 // domain.ErrNotFound を返す。
 func (c *Catalog) RetryProbe(ctx context.Context, video domain.Video) error {
-	return c.ingest.RetryProbe(ctx, video.ID, !c.files.SeekThumbnailsAvailable(video.ContentKey))
+	return c.ingest.RetryProbe(ctx, video.ID)
 }

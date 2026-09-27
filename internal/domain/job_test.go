@@ -68,20 +68,37 @@ func TestJobRetriesUntilLimitAcrossLocations(t *testing.T) {
 	}
 }
 
-func TestClaimConditionWaitsForProbeOnlyForThumbnail(t *testing.T) {
+func TestClaimConditionWaitsForProbeOnlyForThumbnails(t *testing.T) {
 	for _, kind := range JobKinds {
 		c := ClaimConditionFor(kind)
-		if c.Allows(false, ProbeStateDone) {
+		if c.Allows(false, ProbeStateDone, false) {
 			t.Errorf("%s: allowed without a registered location", kind)
 		}
 		for _, probe := range []ProbeState{ProbeStateDone, ProbeStateFailed} {
-			if !c.Allows(true, probe) {
+			if !c.Allows(true, probe, false) {
 				t.Errorf("%s: not allowed after probe %s", kind, probe)
 			}
 		}
-		wantPending := kind != JobThumbnail
-		if got := c.Allows(true, ProbeStatePending); got != wantPending {
+		wantPending := kind != JobThumbnail && kind != JobSeekThumbnail
+		if got := c.Allows(true, ProbeStatePending, false); got != wantPending {
 			t.Errorf("%s: allowed while probe pending = %v, want %v", kind, got, wantPending)
 		}
+	}
+}
+
+func TestClaimConditionSeekThumbnailWaitsForClaimableThumbnails(t *testing.T) {
+	for _, kind := range []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview} {
+		got := ClaimConditionFor(kind).Allows(true, ProbeStateDone, true)
+		want := kind != JobSeekThumbnail
+		if got != want {
+			t.Errorf("%s: allowed while a thumbnail job is claimable = %v, want %v", kind, got, want)
+		}
+	}
+}
+
+func TestProcessingRemainingIncludesSeekThumbnail(t *testing.T) {
+	p := Processing{Probe: 1, Thumbnail: 2, SeekThumbnail: 4, Preview: 8}
+	if got := p.Remaining(); got != 15 {
+		t.Fatalf("Remaining() = %d, want 15", got)
 	}
 }

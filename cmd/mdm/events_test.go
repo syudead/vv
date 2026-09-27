@@ -30,7 +30,8 @@ func newTestBus() *eventbus.Bus {
 }
 
 // 仕事が積まれた段階のワーカーだけを起こし、解析の成否が決まったらサムネイルの
-// ワーカーを起こす。購読をやめたら、止めたワーカーを起こさない。
+// ワーカーを起こす。シーク用サムネイルのワーカーは、解析と代表サムネイルの成否と
+// 動画の行の削除で起こす。購読をやめたら、止めたワーカーを起こさない。
 func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	bus := newTestBus()
 	wakers := map[domain.JobKind]*countingWaker{}
@@ -45,7 +46,13 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobProbe})
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobThumbnail})
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1})
-	want := map[domain.JobKind]int32{domain.JobProbe: 1, domain.JobThumbnail: 1, domain.JobPreview: 1}
+	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobSeekThumbnail})
+	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobPreview})
+	want := map[domain.JobKind]int32{
+		domain.JobProbe: 1, domain.JobThumbnail: 1, domain.JobPreview: 1,
+		// 解析・代表サムネイル・動画の行の削除の3回。
+		domain.JobSeekThumbnail: 3,
+	}
 	check := func() bool {
 		for kind, w := range wakers {
 			if w.woken.Load() != want[kind] {

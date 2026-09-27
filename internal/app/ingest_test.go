@@ -74,15 +74,15 @@ func TestIngestSkipsStaleJobs(t *testing.T) {
 			if calls, _ := generator.snapshot(); len(calls) != 0 {
 				t.Fatalf("生成を呼んだ: %v", calls)
 			}
-			if len(store.appliedProbes)+len(store.thumbnailStates)+store.previewsDone != 0 {
+			if len(store.appliedProbes)+len(store.thumbnailStates)+len(store.seekStates)+store.previewsDone != 0 {
 				t.Fatal("結果を反映した")
 			}
 		})
 	}
 }
 
-// サムネイルに成功したら、代表の1枚とシーク用プレビューを作り、done を記録する。
-// 代表の1枚がすでにあれば作り直さない。
+// 代表サムネイルのジョブは代表の1枚だけを作り、done を記録する。シーク用
+// サムネイルは作らない。代表の1枚がすでにあれば作り直さない。
 func TestIngestThumbnailSuccess(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
@@ -90,8 +90,8 @@ func TestIngestThumbnailSuccess(t *testing.T) {
 		wantCalls []string
 		wantState int
 	}{
-		{name: "未作成", state: domain.ThumbnailStatePending, wantCalls: []string{"check", "thumbnail", "seek"}, wantState: 1},
-		{name: "作成済み", state: domain.ThumbnailStateDone, wantCalls: []string{"check", "seek"}, wantState: 0},
+		{name: "未作成", state: domain.ThumbnailStatePending, wantCalls: []string{"check", "thumbnail"}, wantState: 1},
+		{name: "作成済み", state: domain.ThumbnailStateDone, wantCalls: []string{"check"}, wantState: 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			video := probedVideo(1, "a")
@@ -100,20 +100,96 @@ func TestIngestThumbnailSuccess(t *testing.T) {
 			generator := &fakeGenerator{}
 			ingest, _ := newTestIngest(store, generator)
 
-			if err := ingest.Thumbnail(context.Background(), jobFor(domain.JobThumbnail, video)); err != nil {
+			if err := ingest.Handler(domain.JobThumbnail)(context.Background(), jobFor(domain.JobThumbnail, video)); err != nil {
 				t.Fatal(err)
 			}
 			calls, removed := generator.snapshot()
 			if !slices.Equal(calls, tc.wantCalls) {
 				t.Fatalf("呼び出し = %v, want %v", calls, tc.wantCalls)
 			}
-			if len(store.thumbnailStates) != tc.wantState {
-				t.Fatalf("記録した状態 = %v", store.thumbnailStates)
+			if len(store.thumbnailStates) != tc.wantState || len(store.seekStates) != 0 {
+				t.Fatalf("記録した状態 = %v, シーク用 = %v", store.thumbnailStates, store.seekStates)
 			}
 			if len(removed) != 0 {
 				t.Fatalf("参照のある生成物を消した: %v", removed)
 			}
 		})
+	}
+}
+
+// シーク用サムネイルのジョブは、置き場へ書き終えてから done を記録する。
+// 代表サムネイルは作らず、その状態も記録しない。
+func TestIngestSeekThumbnailsSuccess(t *testing.T) {
+	video := probedVideo(1, "a")
+	video.ThumbnailState = domain.ThumbnailStateDone
+	store := newFakeIngestStore(video)
+	generator := &fakeGenerator{}
+	store.order = generator
+	ingest, _ := newTestIngest(store, generator)
+
+	if err := ingest.Handler(domain.JobSeekThumbnail)(context.Background(), jobFor(domain.JobSeekThumbnail, video)); err != nil {
+		t.Fatal(err)
+	}
+	calls, removed := generator.snapshot()
+	if want := []string{"check", "seek", "seek-state:done"}; !slices.Equal(calls, want) {
+		t.Fatalf("呼び出し = %v, want %v", calls, want)
+	}
+	if len(store.thumbnailStates) != 0 {
+		t.Fatalf("代表サムネイルの状態を記録した: %v", store.thumbnailStates)
+	}
+	if len(removed) != 0 {
+		t.Fatalf("参照のある生成物を消した: %v", removed)
+	}
+	if !slices.Equal(generator.outputs, []string{"tmp/seek/a"}) {
+		t.Fatalf("書き出し先 = %v, want [tmp/seek/a]", generator.outputs)
+	}
+}
+
+// シーク用サムネイルの失敗は、どちらの状態も書かずに返す（上限の判断と
+// seek_thumbnail_state への記録は待ち行列が持つ）。代表サムネイルの状態には触れない。
+func TestIngestSeekThumbnailsFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		generator *fakeGenerator
+		wantCalls []string
+	}{
+		{name: "読めない元", generator: &fakeGenerator{sourceErr: errors.New("no such file")}, wantCalls: []string{"check"}},
+		{name: "生成の失敗", generator: &fakeGenerator{seekErr: errors.New("ffmpeg exited 1")}, wantCalls: []string{"check", "seek"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			video := probedVideo(1, "a")
+			store := newFakeIngestStore(video)
+			ingest, _ := newTestIngest(store, tc.generator)
+			if err := ingest.SeekThumbnails(context.Background(), jobFor(domain.JobSeekThumbnail, video)); err == nil {
+				t.Fatal("失敗が返らない")
+			}
+			calls, removed := tc.generator.snapshot()
+			if !slices.Equal(calls, tc.wantCalls) {
+				t.Fatalf("呼び出し = %v, want %v", calls, tc.wantCalls)
+			}
+			if len(store.thumbnailStates)+len(store.seekStates) != 0 || len(removed) != 0 {
+				t.Fatalf("状態 = %v / %v, 消した生成物 = %v", store.thumbnailStates, store.seekStates, removed)
+			}
+		})
+	}
+}
+
+// 生成中に動画が消えていたら、書き終えたシーク用サムネイルを残さない。
+func TestIngestSeekThumbnailsRemovesArtifactsOfVanishedVideo(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	store.gone = true
+	generator := &fakeGenerator{}
+	ingest, _ := newTestIngest(store, generator)
+
+	if err := ingest.SeekThumbnails(context.Background(), jobFor(domain.JobSeekThumbnail, video)); err != nil {
+		t.Fatal(err)
+	}
+	if _, removed := generator.snapshot(); !slices.Equal(removed, []string{"a"}) {
+		t.Fatalf("消した生成物 = %v, want [a]", removed)
+	}
+	if len(store.seekStates) != 0 {
+		t.Fatalf("消えた動画に状態を記録した: %v", store.seekStates)
 	}
 }
 
@@ -130,7 +206,10 @@ func TestIngestWritesIntoPublishedOutputs(t *testing.T) {
 	if err := ingest.Preview(context.Background(), jobFor(domain.JobPreview, video)); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"tmp/thumbnail/a", "tmp/seek/a", "tmp/preview/a"}
+	if err := ingest.SeekThumbnails(context.Background(), jobFor(domain.JobSeekThumbnail, video)); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"tmp/thumbnail/a", "tmp/preview/a", "tmp/seek/a"}
 	if !slices.Equal(generator.outputs, want) {
 		t.Fatalf("書き出し先 = %v, want %v", generator.outputs, want)
 	}
@@ -286,8 +365,6 @@ func TestIngestThumbnailFailure(t *testing.T) {
 			wantCalls: []string{"check"}},
 		{name: "代表サムネイルの失敗", generator: &fakeGenerator{thumbnailErr: errors.New("ffmpeg exited 1")},
 			wantCalls: []string{"check", "thumbnail"}},
-		{name: "シーク用プレビューの失敗", generator: &fakeGenerator{seekErr: errors.New("ffmpeg exited 1")},
-			wantCalls: []string{"check", "thumbnail", "seek"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			video := probedVideo(1, "a")
@@ -300,14 +377,8 @@ func TestIngestThumbnailFailure(t *testing.T) {
 			if !slices.Equal(calls, tc.wantCalls) {
 				t.Fatalf("呼び出し = %v, want %v", calls, tc.wantCalls)
 			}
-			// 代表サムネイルを作れたあとでシーク用プレビューに失敗した場合だけ、
-			// 代表サムネイルの done は記録済みである。
-			wantStates := 0
-			if tc.generator.seekErr != nil {
-				wantStates = 1
-			}
-			if len(store.thumbnailStates) != wantStates || len(removed) != 0 {
-				t.Fatalf("記録した状態 = %v, 消した生成物 = %v", store.thumbnailStates, removed)
+			if len(store.thumbnailStates)+len(store.seekStates) != 0 || len(removed) != 0 {
+				t.Fatalf("記録した状態 = %v / %v, 消した生成物 = %v", store.thumbnailStates, store.seekStates, removed)
 			}
 		})
 	}

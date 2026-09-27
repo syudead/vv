@@ -187,6 +187,11 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	c.videosDeleted(released)
 	// 動画の行が残っても、登録外になった所在の仕事は残りとして数えなくなる。
 	c.processingChanged()
+	// 取り出せる代表サムネイルの仕事が減ると、待っていたシーク用サムネイルが
+	// 取り出せるようになる（domain.ClaimConditionFor）。動画の行が残ると
+	// VideoIngestChanged も出ないので、ここで起こさないと次に仕事が積まれるまで
+	// 止まったままになる。
+	c.jobsQueued(domain.JobSeekThumbnail)
 	return s.db.commit(tx, &c)
 }
 

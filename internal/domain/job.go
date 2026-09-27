@@ -9,9 +9,12 @@ type JobKind string
 const (
 	// JobProbe は ffprobe によるメタデータの取得。
 	JobProbe JobKind = "probe"
-	// JobThumbnail は ffmpeg による静止画の抽出。
+	// JobThumbnail は ffmpeg による代表サムネイル（静止画1枚）の抽出。
 	JobThumbnail JobKind = "thumbnail"
-	JobPreview   JobKind = "preview"
+	// JobSeekThumbnail は ffmpeg によるシーク用サムネイル（全編デコード）の生成。
+	JobSeekThumbnail JobKind = "seek_thumbnail"
+	// JobPreview は ffmpeg による一覧用のホバープレビューの生成。
+	JobPreview JobKind = "preview"
 )
 
 // MaxJobAttempts は諦めるまでの試行回数である。止めないと、壊れたファイル
@@ -41,20 +44,21 @@ type Job struct {
 
 // JobKinds は取り込みの段階の順に並べたジョブの種類である。段階ごとに
 // ワーカーを1本ずつ置くので、ここに無い種類は処理されない。
-var JobKinds = []JobKind{JobProbe, JobThumbnail, JobPreview}
+var JobKinds = []JobKind{JobProbe, JobThumbnail, JobSeekThumbnail, JobPreview}
 
 // Processing は、段階ごとに残っている仕事の数である。待ち行列に積まれている
 // ものと処理中のものを数え、登録外の所在しかない動画の仕事は含めない
 // （ワーカーが取り出さないので、数えると終わらない準備に見える）。
 type Processing struct {
-	Probe     int
-	Thumbnail int
-	Preview   int
+	Probe         int
+	Thumbnail     int
+	SeekThumbnail int
+	Preview       int
 }
 
 // Remaining は全段階の残りの合計である。0 なら準備は終わっている。
 func (p Processing) Remaining() int {
-	return p.Probe + p.Thumbnail + p.Preview
+	return p.Probe + p.Thumbnail + p.SeekThumbnail + p.Preview
 }
 
 // JobState は待ち行列の行の状態である。値は jobs.state 列に対応する。
@@ -112,6 +116,10 @@ type JobClaimCondition struct {
 	// ProbeFinished は、動画の解析（probe）が pending でなくなっている
 	// （done か failed になっている）ことを求める。
 	ProbeFinished bool
+	// NoClaimableThumbnail は、取り出せる代表サムネイルの仕事（queued か
+	// running で、登録済みの所在がある thumbnail の行）が1件も無いことを求める。
+	// 解析待ちで今は取り出せない thumbnail も数える。
+	NoClaimableThumbnail bool
 }
 
 // ClaimConditionFor は kind の仕事を取り出してよい条件を返す。
@@ -120,21 +128,30 @@ type JobClaimCondition struct {
 // 取り出さない。抽出位置は動画の長さで決まり、解析より先に作ると長さの
 // 分からない位置で固定される。段階ごとのワーカーは並行して動くので、積んだ
 // 順では解析が先になる保証が無い。
+//
+// シーク用サムネイルは解析の完了に加え、取り出せる代表サムネイルの仕事が
+// 残っていないことを待つ。全編デコードの重い仕事を代表サムネイルの流れと
+// 競わせず、代表サムネイルを先に揃えるためである。この条件は取り出しの
+// 時点だけで判断し、走っているシーク用サムネイルは止めない。
 func ClaimConditionFor(kind JobKind) JobClaimCondition {
 	return JobClaimCondition{
-		RegisteredLocation: true,
-		ProbeFinished:      kind == JobThumbnail,
+		RegisteredLocation:   true,
+		ProbeFinished:        kind == JobThumbnail || kind == JobSeekThumbnail,
+		NoClaimableThumbnail: kind == JobSeekThumbnail,
 	}
 }
 
 // Allows は、動画の今の状態でこの条件を満たすかを返す。hasRegisteredLocation は
 // 登録済みのメディアフォルダの下に所在が1つ以上あるか、probe は動画の解析の
-// 状態である。
-func (c JobClaimCondition) Allows(hasRegisteredLocation bool, probe ProbeState) bool {
+// 状態、claimableThumbnail は取り出せる代表サムネイルの仕事が1件以上あるかである。
+func (c JobClaimCondition) Allows(hasRegisteredLocation bool, probe ProbeState, claimableThumbnail bool) bool {
 	if c.RegisteredLocation && !hasRegisteredLocation {
 		return false
 	}
 	if c.ProbeFinished && probe == ProbeStatePending {
+		return false
+	}
+	if c.NoClaimableThumbnail && claimableThumbnail {
 		return false
 	}
 	return true

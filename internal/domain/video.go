@@ -191,7 +191,10 @@ type Video struct {
 	ProbeState     ProbeState
 	ProbeError     string
 	ThumbnailState ThumbnailState
-	PreviewState   PreviewState
+	// SeekThumbnailState は videos.seek_thumbnail_state の値である。置き場の
+	// 有無で裏づける前の、保存された状態をそのまま持つ。
+	SeekThumbnailState SeekThumbnailState
+	PreviewState       PreviewState
 
 	// Public は公開フラグが立っているか（specs/016-single-account-auth/data-model.md §1）。
 	// 保存層が public_videos から埋める。空の content_key の動画は常に false である。
@@ -230,15 +233,16 @@ type VideoFile struct {
 // IndexedVideo は差分判定に要る最小限の値である。走査は実際のファイルと
 // これを突き合わせる。
 type IndexedVideo struct {
-	ID              int64
-	ContentKey      string
-	LocationID      int64
-	LocationVersion int64
-	SizeBytes       int64
-	MTime           time.Time
-	ProbeState      ProbeState
-	ThumbnailState  ThumbnailState
-	PreviewState    PreviewState
+	ID                 int64
+	ContentKey         string
+	LocationID         int64
+	LocationVersion    int64
+	SizeBytes          int64
+	MTime              time.Time
+	ProbeState         ProbeState
+	ThumbnailState     ThumbnailState
+	SeekThumbnailState SeekThumbnailState
+	PreviewState       PreviewState
 }
 
 // MediaFolder is one independently managed scan root.
@@ -283,7 +287,9 @@ type UpsertResult struct {
 	Outcome        UpsertOutcome
 	NeedsProbe     bool
 	NeedsThumbnail bool
-	NeedsPreview   bool
+	// NeedsSeekThumbnail は seek_thumbnail_state が done でないことを表す。
+	NeedsSeekThumbnail bool
+	NeedsPreview       bool
 }
 
 // HasSeekThumbnail はシーク用プレビューを持ちうる動画かを返す。応答の
@@ -293,8 +299,8 @@ func (v Video) HasSeekThumbnail() bool {
 		*v.DurationMs > 0 && v.VideoCodec != "" && v.ContentKey != ""
 }
 
-// SeekThumbnailState はシーク用プレビューの状態である。DB 上には持たず、
-// 置き場の有無とサムネイルのジョブの状態から導く。
+// SeekThumbnailState はシーク用プレビューの状態である。値は
+// videos.seek_thumbnail_state に保存する値でもある。
 type SeekThumbnailState string
 
 const (

@@ -251,9 +251,10 @@ export interface paths {
         /**
          * 読み取りに失敗した動画を読み取り直す
          * @description `probeState = failed` の動画だけを受け付ける。1つの取引の中で読み取りの状態を
-         *     pending に戻し、読み取りのジョブを積む。サムネイルが完成していないとき、または
-         *     シーク用プレビューの置き場が無いときはサムネイルのジョブも積み、失敗した
-         *     一覧用プレビューの状態も pending に戻す。要求の本文は無い。
+         *     pending に戻し、読み取りのジョブを積む。代表サムネイル・シーク用サムネイル・
+         *     一覧用プレビューのうち failed のもの（代表サムネイルは完成していないもの）を
+         *     pending に戻し、代表サムネイルとシーク用サムネイルは戻したときだけそのジョブを
+         *     積む（一覧用プレビューは読み取りの成功後に積まれる）。要求の本文は無い。
          */
         post: operations["reprobeVideo"];
         delete?: never;
@@ -856,7 +857,7 @@ export interface paths {
         };
         /**
          * 取り込みの段階ごとに残っている仕事の数を返す
-         * @description 解析・サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
+         * @description 解析・サムネイル・シーク用サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
          *     登録済みメディアフォルダの外にしか所在が無い動画の仕事は、処理されないので含めない。
          *     すべて 0 なら、取り込んだ動画の準備は終わっている。
          */
@@ -1333,10 +1334,11 @@ export interface components {
              */
             public: boolean;
             /**
-             * @description シーク用プレビューの状態。GET /api/videos/{id} の応答にだけ入り、
+             * @description シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
              *     seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
-             *     pending = 置き場が無く thumbnailState = pending かサムネイルのジョブが
-             *     queued・running、failed = それ以外
+             *     pending = 生成を待っている、または生成中（保存した状態が done なのに置き場が
+             *     無いときは、サーバーが作り直しを積んで pending として返す）、failed = 生成に
+             *     失敗し、再試行の上限に達した
              * @enum {string}
              */
             seekThumbnailState?: "pending" | "done" | "failed";
@@ -1455,8 +1457,10 @@ export interface components {
         Processing: {
             /** @description 解析（ffprobe）の残り */
             probe: number;
-            /** @description サムネイルとシーク用プレビューの残り */
+            /** @description 代表サムネイルの残り */
             thumbnail: number;
+            /** @description シーク用サムネイルの残り */
+            seekThumbnail: number;
             /** @description 一覧用プレビューの残り */
             preview: number;
         };

@@ -55,7 +55,7 @@ describe("ScanProvider", () => {
     // 混ぜない。
     vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
       String(input) === "/api/processing"
-        ? Promise.resolve(json({ probe: 0, thumbnail: 0, preview: 0 }))
+        ? Promise.resolve(json({ probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 }))
         : fetchMock(input, init),
     );
     installFakeEventSource();
@@ -228,7 +228,12 @@ describe("ScanProvider", () => {
     );
     expect(await screen.findByText("残り: 0/0/0")).toBeDefined();
 
-    await emitServerEvent("processing", { probe: 3, thumbnail: 2, preview: 1 });
+    await emitServerEvent("processing", {
+      probe: 3,
+      thumbnail: 2,
+      seekThumbnail: 0,
+      preview: 1,
+    });
 
     expect(screen.getByText("残り: 3/2/1")).toBeDefined();
   });

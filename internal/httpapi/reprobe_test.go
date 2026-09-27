@@ -9,17 +9,16 @@ import (
 )
 
 // fakeReprober は保存層の RetryProbe と同じ規則で状態を戻し、積んだジョブを数える。
-// シーク用プレビューの置き場は無いものとする。
 type fakeReprober struct {
 	library *fakeLibrary
 	jobs    map[domain.JobKind]int
 }
 
 func (f *fakeReprober) catalog() *fakeCatalog {
-	return &fakeCatalog{retry: func(video domain.Video) error { return f.retryProbe(video.ID, true) }}
+	return &fakeCatalog{retry: func(video domain.Video) error { return f.retryProbe(video.ID) }}
 }
 
-func (f *fakeReprober) retryProbe(id int64, seekThumbnailMissing bool) error {
+func (f *fakeReprober) retryProbe(id int64) error {
 	video, ok := f.library.videos[id]
 	if !ok {
 		return domain.ErrNotFound
@@ -30,11 +29,13 @@ func (f *fakeReprober) retryProbe(id int64, seekThumbnailMissing bool) error {
 	video.ProbeState = domain.ProbeStatePending
 	video.ProbeError = ""
 	f.jobs[domain.JobProbe]++
-	if video.ThumbnailState != domain.ThumbnailStateDone || seekThumbnailMissing {
-		if video.ThumbnailState != domain.ThumbnailStateDone {
-			video.ThumbnailState = domain.ThumbnailStatePending
-		}
+	if video.ThumbnailState != domain.ThumbnailStateDone {
+		video.ThumbnailState = domain.ThumbnailStatePending
 		f.jobs[domain.JobThumbnail]++
+	}
+	if video.SeekThumbnailState == domain.SeekThumbnailFailed {
+		video.SeekThumbnailState = domain.SeekThumbnailPending
+		f.jobs[domain.JobSeekThumbnail]++
 	}
 	if video.PreviewState == domain.PreviewStateFailed {
 		video.PreviewState = domain.PreviewStatePending
