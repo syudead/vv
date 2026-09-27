@@ -239,7 +239,7 @@ func TestAddingDuplicateLocationRequestsRecoveryForFailedProcessing(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().MarkProbeFailed(ctx, first.ID, "broken location"); err != nil {
+	if err := db.Ingest().MarkProbeFailed(ctx, first.ID, errors.New("broken location")); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Ingest().SetThumbnailState(ctx, first.ID, domain.ThumbnailStateFailed); err != nil {
@@ -360,7 +360,8 @@ func TestMarkProbeFailedKeepsRowAndRecordsReason(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().MarkProbeFailed(ctx, added.ID, "ffprobe が尺を返しませんでした"); err != nil {
+	cause := domain.NewProbeFailure(domain.ProbeErrorInvalidMetadata, errors.New(`invalid duration (format.duration="N/A")`))
+	if err := db.Ingest().MarkProbeFailed(ctx, added.ID, cause); err != nil {
 		t.Fatal(err)
 	}
 
@@ -374,8 +375,24 @@ func TestMarkProbeFailedKeepsRowAndRecordsReason(t *testing.T) {
 	if video.ProbeError == "" {
 		t.Error("失敗の理由が記録されていない")
 	}
+	if video.ProbeErrorCode != domain.ProbeErrorInvalidMetadata {
+		t.Errorf("ProbeErrorCode = %q, want invalid_metadata", video.ProbeErrorCode)
+	}
 	if video.Playable {
 		t.Error("解析に失敗したのに再生できる扱いになっている")
+	}
+
+	// 解析に成功すれば、理由と一緒にコードも消える。
+	probe := domain.Probe{DurationMs: 1000, VideoCodec: "h264", AudioCodec: "aac"}
+	if err := db.Ingest().ApplyProbe(ctx, added.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
+		t.Fatal(err)
+	}
+	video, err = db.Library().GetVideo(ctx, domain.AudienceOwner, added.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.ProbeError != "" || video.ProbeErrorCode != "" {
+		t.Errorf("解析の成功後に理由が残った: %q (%q)", video.ProbeError, video.ProbeErrorCode)
 	}
 }
 

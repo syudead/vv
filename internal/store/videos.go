@@ -26,7 +26,7 @@ const videoColumnsTemplate = `videos.id,
 	(select mtime from video_locations l where video_id = videos.id and {visible} order by path limit 1) as mtime,
 	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
-	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
+	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	{public} as public`
 
 // registrationSeparators は、登録フォルダの下かどうかを調べるときに区切りとして
@@ -236,6 +236,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		displayAspectRatio                       sql.NullFloat64
 		container, videoCodec, audioCodec        sql.NullString
 		unplayableReason, probeError             sql.NullString
+		probeErrorCode                           sql.NullString
 		playable                                 int
 		probeState, thumbnailState, previewState string
 		seekThumbnailState                       string
@@ -245,7 +246,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	err := row.Scan(
 		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &addedAt, &updatedAt,
 		&video.ContentKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
-		&playable, &unplayableReason, &probeState, &probeError, &thumbnailState, &seekThumbnailState, &previewState,
+		&playable, &unplayableReason, &probeState, &probeError, &probeErrorCode, &thumbnailState, &seekThumbnailState, &previewState,
 		&public,
 	)
 	if err != nil {
@@ -278,6 +279,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	video.UnplayableReason = domain.UnplayableReason(unplayableReason.String)
 	video.ProbeState = domain.ProbeState(probeState)
 	video.ProbeError = probeError.String
+	video.ProbeErrorCode = domain.ProbeErrorCode(probeErrorCode.String)
 	video.ThumbnailState = domain.ThumbnailState(thumbnailState)
 	video.SeekThumbnailState = domain.SeekThumbnailState(seekThumbnailState)
 	video.PreviewState = domain.PreviewState(previewState)

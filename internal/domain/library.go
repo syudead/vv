@@ -158,6 +158,12 @@ type Scan struct {
 	Failed     int
 	// Error は走査そのものが失敗した理由。個別のファイルの失敗は含まない。
 	Error string
+	// ErrorCode は State が failed のときの理由のコード。アップグレード前の行では空である
+	// （specs/023-english-i18n/data-model.md §2）。
+	ErrorCode ScanErrorCode
+	// ErrorPath は理由が結び付く場所（メディアフォルダ、または読めなかった場所）の
+	// 絶対パス。特定の場所に結び付かなければ空である。
+	ErrorPath string
 }
 
 // ScanProgress は進捗の値である。

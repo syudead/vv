@@ -1335,6 +1335,7 @@ export interface components {
             probeState: "pending" | "done" | "failed";
             /** @description probeState = failed のときの理由。ゲストの応答では省く（ファイルの絶対パスを含みうる） */
             probeError?: string;
+            probeErrorCode?: components["schemas"]["ProbeErrorCode"];
             /** @enum {string} */
             thumbnailState: "pending" | "done" | "failed";
             /** @enum {string} */
@@ -1507,9 +1508,22 @@ export interface components {
             /** @description 取り込み処理に成功した対象ファイル数 */
             completed: number;
             failed: number;
-            /** @description スキャン自体が失敗した理由 */
+            /** @description スキャン自体が失敗した理由の自由文。画面は表示せず、errorCode と errorPath から説明を作る （specs/023-english-i18n/contracts/error-api.md §3） */
             error?: string;
+            errorCode?: components["schemas"]["ScanErrorCode"];
+            /** @description errorCode の理由が特定の場所に結び付くときの、その絶対パス（メディアフォルダ、またはその下の 読めなかった場所。翻訳しない利用者のデータ）。それ以外は省略される */
+            errorPath?: string;
         };
+        /**
+         * @description 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+         * @enum {string}
+         */
+        ProbeErrorCode: "file_unavailable" | "probe_unavailable" | "probe_failed" | "invalid_metadata" | "internal";
+        /**
+         * @description スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である （task generate）。
+         * @enum {string}
+         */
+        ScanErrorCode: "media_folder_unreadable" | "media_folder_not_directory" | "location_unreadable" | "interrupted" | "internal";
         Processing: {
             /** @description 解析（ffprobe）の残り */
             probe: number;

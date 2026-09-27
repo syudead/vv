@@ -155,7 +155,7 @@ func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audie
 }
 
 // forAudience は応答に載せる動画を見る人に合わせる。ゲストには所在（絶対パス）・
-// 再生位置・読み取りの誤り（絶対パスを含みうる）を出さず、タグを空の配列にする
+// 再生位置・読み取りの誤りとそのコード（誤りは絶対パスを含みうる）を出さず、タグを空の配列にする
 // （contracts/guest-api.md §1、親 Issue 要件 18）。所有者にはそのまま返す。
 func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	if audience.IsOwner() {
@@ -164,6 +164,7 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.Location = nil
 	video.Progress = nil
 	video.ProbeError = nil
+	video.ProbeErrorCode = nil
 	video.Tags = []gen.VideoTag{}
 	return video
 }
@@ -483,6 +484,12 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 	if video.ProbeError != "" {
 		reason := video.ProbeError
 		out.ProbeError = &reason
+	}
+	// コードは failed の行だけに出す。アップグレード前の失敗にはコードが無い
+	// （specs/023-english-i18n/contracts/error-api.md §2）。
+	if video.ProbeState == domain.ProbeStateFailed && video.ProbeErrorCode != "" {
+		code := gen.ProbeErrorCode(video.ProbeErrorCode)
+		out.ProbeErrorCode = &code
 	}
 	// サムネイルは生成済みのときだけ URL を出す。未生成の動画も一覧には
 	// 並べ、クライアントは枠だけを描く。

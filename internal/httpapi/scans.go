@@ -83,5 +83,15 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 		reason := scan.Error
 		out.Error = &reason
 	}
+	// コードと場所は failed の行だけに出す。アップグレード前の失敗にはコードが無い
+	// （specs/023-english-i18n/contracts/error-api.md §3）。
+	if scan.State == domain.ScanFailed && scan.ErrorCode != "" {
+		code := gen.ScanErrorCode(scan.ErrorCode)
+		out.ErrorCode = &code
+		if scan.ErrorPath != "" {
+			path := scan.ErrorPath
+			out.ErrorPath = &path
+		}
+	}
 	return out
 }

@@ -186,7 +186,7 @@ const playableCondition = `videos.playable = 1 and videos.probe_state = 'done'`
 const listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
 	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
-	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
+	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	` + publicColumn + ` as public`
 
 // filteredFrom は chosen に動画と再生の記録を結び、絞り込みを掛けた from 句と

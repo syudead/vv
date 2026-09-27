@@ -33,7 +33,7 @@ func (s *IngestStore) ApplyProbe(
 		   set duration_ms = ?, width = ?, height = ?, display_aspect_ratio = ?,
 		       video_codec = ?, audio_codec = ?,
 		       playable = ?, unplayable_reason = ?,
-		       probe_state = 'done', probe_error = null, updated_at = ?
+		       probe_state = 'done', probe_error = null, probe_error_code = null, updated_at = ?
 		 where id = ?`,
 		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height), nullableFloat64(probe.DisplayAspectRatio),
 		nullableString(probe.VideoCodec), nullableString(probe.AudioCodec),
@@ -70,7 +70,7 @@ func (s *IngestStore) ApplyProbeForJob(
 	now := time.Now()
 	res, err := tx.ExecContext(ctx, `
 		update videos set duration_ms = ?, width = ?, height = ?, display_aspect_ratio = ?, video_codec = ?, audio_codec = ?,
-		playable = ?, unplayable_reason = ?, probe_state = 'done', probe_error = null, updated_at = ?
+		playable = ?, unplayable_reason = ?, probe_state = 'done', probe_error = null, probe_error_code = null, updated_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
 		and location_generation = ?`,
@@ -127,13 +127,15 @@ func upsertTranscodeProbe(
 }
 
 // MarkProbeFailed は解析に失敗したことを記録する。行は残す。個別のファイルの
-// 失敗で取り込み全体を止めないため、一覧には並んだままになる。
-func (s *IngestStore) MarkProbeFailed(ctx context.Context, id int64, reason string) error {
+// 失敗で取り込み全体を止めないため、一覧には並んだままになる。cause の文を
+// probe_error に、domain.ProbeFailure で包まれた理由のコードを probe_error_code に
+// 書く（包まれていなければ internal）。
+func (s *IngestStore) MarkProbeFailed(ctx context.Context, id int64, cause error) error {
 	_, err := s.db.sql.ExecContext(ctx, `
 		update videos
-		   set probe_state = 'failed', probe_error = ?, playable = 0, updated_at = ?
+		   set probe_state = 'failed', probe_error = ?, probe_error_code = ?, playable = 0, updated_at = ?
 		 where id = ?`,
-		reason, time.Now().Unix(), id,
+		cause.Error(), string(domain.ProbeErrorCodeOf(cause)), time.Now().Unix(), id,
 	)
 	if err != nil {
 		return fmt.Errorf("解析の失敗を記録できません (id=%d): %w", id, err)
@@ -395,7 +397,7 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().Unix()
-	res, err := tx.ExecContext(ctx, `update videos set probe_state = 'pending', probe_error = null, updated_at = ?
+	res, err := tx.ExecContext(ctx, `update videos set probe_state = 'pending', probe_error = null, probe_error_code = null, updated_at = ?
 		where id = ? and probe_state = 'failed'`, now, id)
 	if err != nil {
 		return fmt.Errorf("読み取りの状態を戻せません (id=%d): %w", id, err)
