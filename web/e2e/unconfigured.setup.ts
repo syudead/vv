@@ -40,8 +40,7 @@ test("未設定のサーバーはどの要求にも初回設定を求める", as
 });
 
 // 画面でも、未設定のサーバーではどの URL も初回設定画面になり、キーボードだけで
-// 設定まで進める（specs/016-single-account-auth/ui-design.md「Visual review criteria」の
-// 操作の確認 1）。ここで作ったアカウントを、auth.setup.ts はログインで使う。
+// 設定まで進める。ここで作ったアカウントを、auth.setup.ts はログインで使う。
 test("未設定のサーバーはどの URL も初回設定画面にし、設定するとログイン済みの一覧になる", async ({
   page,
 }) => {

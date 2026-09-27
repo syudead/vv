@@ -984,8 +984,7 @@ describe("FolderPage", () => {
   });
 
   // 受け入れ条件 18: グループはライブラリでだけ1件にまとまる。フォルダ画面の一覧と
-  // 最上位の検索結果は、今のまま動画を1本ずつ出す（GET /api/library を使わない。
-  // specs/017-folder-groups/plan.md の Structural Decisions 6）。
+  // 最上位の検索結果は、今のまま動画を1本ずつ出す（GET /api/library を使わない）。
   it("フォルダの一覧と最上位の検索結果は、グループにまとめず1本ずつ出す", async () => {
     renderFolders("/folders?q=京都");
     expect(await screen.findByRole("link", { name: "x、movies/A" })).toBeDefined();

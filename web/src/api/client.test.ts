@@ -28,7 +28,7 @@ vi.mock("../auth/pageNavigation", async (importOriginal) => ({
   reloadPage: vi.fn(),
 }));
 
-describe("見る人が変わったときの読み直し（plan.md Structural Decisions 14）", () => {
+describe("見る人が変わったときの読み直し", () => {
   function videoResponse(audience: "owner" | "guest"): Response {
     return new Response(JSON.stringify({ id: 1 }), {
       headers: { "Content-Type": "application/json", "X-VV-Audience": audience },

@@ -6,8 +6,7 @@ import (
 )
 
 // LiveTranscodeRequest は 1 要求分のライブ変換の指示である。httpapi の経路が作り、
-// internal/media の LiveTranscoder が受け取る（specs/018-live-transcode-seek/plan.md
-// Structural Decision 6）。
+// internal/media の LiveTranscoder が受け取る。
 type LiveTranscodeRequest struct {
 	// Path は変換で開いたファイルのパスである。
 	Path string
@@ -20,7 +19,7 @@ type LiveTranscodeRequest struct {
 	// StartMs は変換を始める位置（ミリ秒）である。
 	StartMs int64
 	// Normalize は映像と音声を必ずエンコードし直すかである。直接再生から切り替えた
-	// 変換だけが真で、シークや途中からの再開では立てない（plan.md Structural Decision 7）。
+	// 変換だけが真で、シークや途中からの再開では立てない。
 	Normalize bool
 	// StartupDeadline はその場の解析と最初のデータまでを合わせた期限である。
 	StartupDeadline time.Time

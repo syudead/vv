@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// 送信元と HTTPS の判定（specs/016-single-account-auth/plan.md Structural Decisions 7）。
+// 送信元と HTTPS の判定。
 //
 // 転送ヘッダーは、直接の接続元が信頼するプロキシ（Options.TrustedProxies）のときだけ
 // 読む。それ以外の接続元が付けたヘッダーは、直接つないだ利用者が偽ったものかもしれない

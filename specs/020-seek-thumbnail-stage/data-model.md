@@ -1,6 +1,6 @@
 # Data model: シーク用サムネイルの段階
 
-親 Issue #388 の Plan（[plan.md](plan.md)）の一部。既存の索引（`videos`・`jobs`）と生成物の
+親 Issue #388。既存の索引（`videos`・`jobs`）と生成物の
 置き場は [ARCHITECTURE.md](../../ARCHITECTURE.md) と
 [internal/artifacts/store.go](../../internal/artifacts/store.go) のままで、ここには足す列と
 ジョブの種類、その状態遷移、取り出しの条件、移行だけを書く。
@@ -16,7 +16,7 @@
 `NeedsSeekThumbnail`（`seek_thumbnail_state <> 'done'`）を足す。`thumbnail_state` の意味は
 代表 JPEG だけになる。
 
-作り直せる索引である（ARCHITECTURE.md「Two kinds of data」）。
+作り直せる索引である（ARCHITECTURE.md「Rebuildable and user data」）。
 
 ## 2. `jobs.kind = 'seek_thumbnail'`
 
@@ -81,7 +81,6 @@
 `seek_thumbnail` は `thumbnail` の残りが無くなるまで取り出されない。全編を読む ffmpeg
 （シーク用・ホバープレビュー）が同時に 2 本を超えることは無く、重なるのは入力側シークで
 1 枚だけ取る代表 JPEG（1 本 0.1〜0.3 秒）で、今も解析の `ffprobe` が同じ形で重なっている。
-実行時の制限を足さない理由は plan.md の Structural Decisions 3。
 
 起床（`cmd/mdm/events.go`）: `seek_thumbnail` のワーカーは、`JobsQueued` にその種類があるとき
 （既存の一般則）に加え、`VideoIngestChanged` の `Stage` が `probe`・`thumbnail`・空（動画の行が

@@ -32,7 +32,7 @@ export interface ListCriteriaState {
  * preferredSort は URL に sort が無いときの並び順（端末に保存した値）である。
  *
  * `extraParam` は、画面の固有のもの（ライブラリのタグ絞り込み `tag` など）を運ぶ口
- * （Plan の Structural Decisions 15）。中身は解釈せず、この経路が書き換える URL の
+ * 中身は解釈せず、この経路が書き換える URL の
  * すべての経路（apply・seed の補完・sort を確定する置き換え）で値を残す。省略する
  * 画面（フォルダ画面）では、そのパラメータには一切触れない。
  *

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// ログインの試行制限の定数（specs/016-single-account-auth/plan.md Structural Decisions 6）。
+// ログインの試行制限の定数。
 const (
 	// loginFailureWindow は失敗を数える期間である。
 	loginFailureWindow = 5 * time.Minute

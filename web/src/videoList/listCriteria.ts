@@ -9,8 +9,7 @@ import {
 /**
  * 一覧の条件と URL の相互変換（specs/013-library-search/contracts/list-url.md）。
  *
- * ライブラリとフォルダ画面は同じクエリパラメータで条件を表す（Plan の
- * Structural Decisions 9）。ここは React に依存しない純粋な関数だけを置き、
+ * ライブラリとフォルダ画面は同じクエリパラメータで条件を表す。ここは React に依存しない純粋な関数だけを置き、
  * 画面との結び付けは useListCriteria が受け持つ。
  */
 

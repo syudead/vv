@@ -93,7 +93,7 @@ function LibraryApp() {
  *
  * すべての経路をゲート（AuthGate）の内側に置き、見る人の状態が分かるまで何も
  * 描かない。初回設定（/setup）とログイン（/login）はシェルとプロバイダの外に
- * 置く（specs/016-single-account-auth/plan.md Structural Decisions 2）。
+ * 置く。
  * それ以外は、一覧・フォルダ・設定をシェル（トップバー + サイドバー）で包み、
  * 再生画面はシアターモードとして包まない。この分岐はここ 1 か所に閉じる。
  */

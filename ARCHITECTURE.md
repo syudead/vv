@@ -188,24 +188,28 @@ live in `internal/domain`.
 Shutdown closes the `/api/events` streams, drains in-flight requests within a 10 second
 grace period, then stops the scanner and the workers so a running job returns to the queue.
 
-Two kinds of data live in SQLite and they are not equivalent: `videos`,
-`video_locations` (including its per-location search keys), `location_search_fts`,
-`jobs`, `scans`, thumbnail files, hover-preview MP4/manifest pairs, the folder index
-(`folder_groups`, `folder_group_members`, `video_folder_names`, `folder_index_state`) and
-the per-video live-transcode probe (`video_transcode_probes`, refilled by the next probe or
-live transcode) are a rebuildable index (deleting them costs a rescan), while `playback_progress`, the tag tables
-(`tags`, `tag_names`, `video_tags`), the per-video public flag (`public_videos`) and the
-per-folder grouping exceptions (`folder_group_overrides`) are user data that cannot be
-reconstructed.
+### Rebuildable and user data
+
+Stored data falls into three recovery categories. `videos`, `video_locations`
+(including their search keys), `location_search_fts`, `jobs`, `scans`, generated
+thumbnails and previews, the folder index (`folder_groups`, `folder_group_members`,
+`video_folder_names`, `folder_index_state`), and `video_transcode_probes` are
+rebuildable from registered media folders by scanning and processing the files again.
+`playback_progress`, the tag tables (`tags`, `tag_names`, `video_tags`),
+`public_videos`, `folder_group_overrides`, `account`, and `media_folders` are
+user or configuration data that a scan cannot restore. In particular, a scan
+cannot start with no registered `media_folders`; after database loss those folders
+must be registered again before scanning. `sessions` is transient and a fresh
+login restores it.
 That is why playback positions, tag assignments and public flags are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
 key to `videos`. Grouping exceptions are keyed by the folder's absolute path
 (`domain.FolderKey`) and carry no foreign key to `videos` or `media_folders`, so they
 survive rescans and media-folder changes.
-The single `account` row (username, Argon2id password hash and credential version) is
-also user data that cannot be reconstructed: deleting it sends the server back to first-run
-setup. `sessions` belongs to neither kind; it is transient state that a fresh login
-restores (`specs/016-single-account-auth/data-model.md` §2).
+The single `account` row holds the username, Argon2id password hash and credential
+version; deleting it sends the server back to first-run setup
+(`specs/016-single-account-auth/data-model.md` §2). The operational backup and
+restore procedure is in [Running vv](docs/how-to/running-vv.md#data-and-recovery).
 
 `store.DB` is only the foundation: it opens and closes the SQLite connection pools,
 routing write transactions through an immediate-lock pool and snapshot list reads through

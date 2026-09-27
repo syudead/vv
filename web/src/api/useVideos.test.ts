@@ -711,7 +711,7 @@ describe("useVideos の準備の反映", () => {
   });
 
   // issue 267: 付け外しの結果は、表示中の項目の tags へその場で反映される
-  // （一覧を取り直さない。Plan の Structural Decisions 7）。
+  // （一覧を取り直さない）。
   it("付け外しの通知を受けて、表示中の項目の tags を書き換える", async () => {
     const { nextVideoTagsSequence, recordAppliedVideoTags } =
       await import("./videoTagsEvents");
@@ -1278,8 +1278,7 @@ describe("useVideos の公開の反映", () => {
   });
 });
 
-// specs/017-folder-groups/plan.md の Structural Decisions 10・13、ui-design.md
-// 「Refresh and removal」: グループの項目はメンバーの変化で1件取り直し、404 なら外す。
+// グループの更新: グループの項目はメンバーの変化で1件取り直し、404 なら外す。
 // 今の一覧の経路はグループを返さないので、控えからの復元でグループの項目を入れる。
 describe("useVideos のグループの項目", () => {
   /** group はフォルダ A/B の、動画 10・11・12 をメンバーに持つグループを作る。 */

@@ -52,8 +52,7 @@ export type LibraryGroup = components["schemas"]["LibraryGroup"];
 
 /**
  * LibraryItem は一覧の項目1件である（api/openapi.yaml の LibraryItem）。生成した型は
- * `video` と `group` をどちらも省略可能にしているので、`kind` で読み分けられる形にする
- * （specs/017-folder-groups/plan.md の Structural Decisions 13）。
+ * `video` と `group` をどちらも省略可能にしているので、`kind` で読み分けられる形にする。
  */
 export type LibraryItem =
   { kind: "video"; video: Video } | { kind: "group"; group: LibraryGroup };
@@ -77,8 +76,7 @@ export class RequestFailed extends Error {
   }
 }
 
-// --- 見る人が変わったときの読み直し（specs/016-single-account-auth/plan.md
-// Structural Decisions 14、ui-design.md「Gate」） ---
+// --- 見る人が変わったときの読み直し ---
 
 /** renderedAudience はゲートが確かめた、今描いている相手である。確かめる前は null。 */
 let renderedAudience: "owner" | "guest" | null = null;

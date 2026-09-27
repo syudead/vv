@@ -205,8 +205,7 @@ function videosDataReducer(state: VideosData, action: VideosDataAction): VideosD
     case "stop":
       return state.hasMore ? { ...state, hasMore: false } : state;
     // 再生位置・タグ・公開・取り直しは動画の項目にだけ直接重ねる。グループの値は
-    // メンバーから数えるので、メンバーの変化ではグループを1件取り直す（useVideos の
-    // refreshGroups。specs/017-folder-groups/plan.md の Structural Decisions 10）。
+    // メンバーから数えるので、メンバーの変化ではグループを1件取り直す（useVideos の refreshGroups）。
     case "progress": {
       const items = mapVideos(
         state.items,
@@ -308,8 +307,7 @@ const inconsistentPageMessage =
 /** VideosState は一覧の状態である。 */
 export interface VideosState {
   /**
-   * 読み込み済みの項目。動画の項目とグループの項目がある（グループはライブラリの
-   * 一覧にだけ現れる。specs/017-folder-groups/plan.md の Structural Decisions 13）。
+   * 読み込み済みの項目。動画の項目とグループの項目がある（グループはライブラリの一覧にだけ現れる）。
    */
   items: LibraryItem[];
   total: number;
@@ -409,8 +407,7 @@ export function useVideos(
 
   // グループの項目は、メンバーの再生位置・タグ・`video` イベントの変化で
   // `GET /api/folders/{rootId}/group` から1件ずつ取り直して差し替える
-  // （specs/017-folder-groups/plan.md の Structural Decisions 10、ui-design.md
-  // 「Refresh and removal」）。取り直しの間は項目を変えず、404 ならその項目を外す。
+  // 取り直しの間は項目を変えず、404 ならその項目を外す。
   // 取り直しは1件ずつ順に行い、同じグループを重ねて取りに行かない（動画の
   // 取り直しの refreshQueue と同じ形）。取り直しの途中に同じグループが変われば、
   // 終わった後にもう一度取る。
@@ -519,8 +516,7 @@ export function useVideos(
   );
   const maxTagsChangedWhileLoading = 500;
 
-  // 付け外しの結果を、表示中の項目へ反映する（issue 267、Plan の Structural
-  // Decisions 7）。絞り込みに合わなくなった項目も、その場では一覧から外さない。
+  // 付け外しの結果を、表示中の項目へ反映する。絞り込みに合わなくなった項目も、その場では一覧から外さない。
   useEffect(
     () =>
       subscribeVideoTags((videoIds, tag, action) => {

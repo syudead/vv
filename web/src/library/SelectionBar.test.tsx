@@ -674,7 +674,7 @@ describe("SelectionBar", () => {
   // 拾うため、何もしなければ combobox 自身の Esc 処理より先にポップオーバー
   // 全体が閉じてしまう。1回目の Esc は候補の一覧だけを閉じ、選択とポップオーバー
   // は残る。一覧がすでに閉じている2回目の Esc でポップオーバーが閉じ、それでも
-  // 選択は残る（ui-design.md「Combobox」、Visual review criteria 手順2）。
+  // 選択は残る（ui-design.md「Combobox」）。
   it("タグを付ける: 1回目のEscは候補の一覧だけを閉じ、2回目でポップオーバーが閉じても選択は残る", async () => {
     const user = userEvent.setup();
     install();

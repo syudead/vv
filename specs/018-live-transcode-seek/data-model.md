@@ -2,7 +2,7 @@
 
 親 Issue #371 の要件 7〜10 のうち、保存するものとその規則だけを書く。既存の表（`videos`・
 `video_locations`・`jobs` ほか）は変えない。表の区分は [ARCHITECTURE.md](../../ARCHITECTURE.md) の
-「Two kinds of data」に従い、この表は索引である。
+「Rebuildable and user data」に従い、この表は索引である。
 
 ## 1. マイグレーション
 

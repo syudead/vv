@@ -1,6 +1,6 @@
 # Data model: 動画のタグ
 
-親 Issue: #193。Plan: [plan.md](plan.md)。
+親 Issue: #193。
 
 既存の表の定義は [internal/store/migrations/](../../internal/store/migrations/) が正本で、
 「再構築できる索引」と「作り直せない利用者データ」の区別は

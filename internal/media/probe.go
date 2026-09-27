@@ -136,7 +136,7 @@ type probeStream struct {
 
 // parseProbeOutput は JSON から domain.Probe を組み立てる。取り込みの解析もライブ変換の
 // 要求時の解析もこの関数だけで ffprobe の出力を解釈し、同じ出力から同じ
-// domain.TranscodeProbe を得る（specs/018-live-transcode-seek/plan.md Structural Decisions 6）。
+// domain.TranscodeProbe を得る。
 //
 // 外部プロセスを起動しないので、「どの値を取り出すか」を単体テストで固定できる。
 // 尺が取れないものは誤りとして返す。尺が分からない動画は一覧で長さを出せず、
