@@ -385,7 +385,7 @@ export default function Combobox({
       <div
         className={cn(
           "flex h-6 items-center gap-1 rounded-sm border bg-field px-1.5 text-xs",
-          "focus-within:border-accent",
+          "focus-within:border-accent focus-within:ring-2 focus-within:ring-link",
           disabled ? "border-border opacity-50" : "border-control-border",
           frameClassName ?? "w-40",
         )}

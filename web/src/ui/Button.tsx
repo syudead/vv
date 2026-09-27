@@ -11,11 +11,12 @@ const base =
   "aria-busy:cursor-progress disabled:cursor-not-allowed disabled:opacity-50 [&>svg]:size-4";
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-accent-fg hover:bg-accent-hover active:bg-accent-active",
+  primary:
+    "bg-accent text-accent-fg not-disabled:hover:bg-accent-hover not-disabled:active:bg-accent-active",
   secondary:
-    "border border-control-border bg-elevated text-fg hover:bg-surface-hover active:bg-surface",
-  ghost: "text-fg hover:bg-hover-wash active:bg-active-wash",
-  danger: "bg-danger-strong text-danger-fg hover:bg-danger-strong/80",
+    "border border-control-border bg-elevated text-fg not-disabled:hover:bg-surface-hover not-disabled:active:bg-surface",
+  ghost: "text-fg not-disabled:hover:bg-hover-wash not-disabled:active:bg-active-wash",
+  danger: "bg-danger-strong text-danger-fg not-disabled:hover:bg-danger-strong/80",
 };
 
 const sizes: Record<ButtonSize, string> = {

@@ -58,9 +58,9 @@ export default function TagSearchBox({
         spellCheck={false}
         className={cn(
           "pr-9",
-          "h-full w-full rounded-md border border-border bg-field pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
+          "h-full w-full rounded-md border border-control-border bg-field pl-9 text-sm text-fg shadow-[inset_0_1px_2px_var(--color-border)]",
           "placeholder:text-fg-subtle transition-[border-color,box-shadow] duration-150",
-          "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent-soft",
+          "focus:border-accent focus:outline-none focus:ring-2 focus:ring-link",
           "disabled:opacity-50",
           "[&::-webkit-search-cancel-button]:hidden",
         )}
