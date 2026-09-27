@@ -1,3 +1,4 @@
+import { Folder } from "lucide-react";
 import { memo } from "react";
 import { Link } from "react-router";
 
@@ -18,14 +19,15 @@ export function folderLabel(folder: FolderSummary, withPath: boolean): string {
 }
 
 /**
- * FolderCard はフォルダ1件のカードである。箱は動画カードと同じで、上半分だけが
- * フォルダの絵柄になる。showPath は最上位（登録フォルダ）でパスを添えるとき。
+ * FolderCard はフォルダ1件のカードである。動画カードと同じ幅と境界を使い、
+ * フォルダの絵柄と名前の目印で動画から区別する。
+ * showPath は最上位（登録フォルダ）でパスを添えるとき。
  */
 function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boolean }) {
   return (
     <article
       data-folder-path={folder.path}
-      className="group relative flex flex-col overflow-hidden rounded-lg bg-surface shadow-card transition-[box-shadow,transform] duration-200 ease-out-quart hover:-translate-y-0.5 hover:shadow-card-hover has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link motion-reduce:transition-none motion-reduce:hover:translate-y-0"
+      className="group relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-[border-color,box-shadow,transform] duration-200 ease-out-quart hover:-translate-y-0.5 hover:border-border-strong hover:shadow-card-hover has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link motion-reduce:transition-none motion-reduce:hover:translate-y-0"
     >
       <Link
         to={folderUrl({ rootId: folder.rootId, path: folder.path })}
@@ -38,9 +40,10 @@ function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boo
         <div className="flex min-w-0 flex-col gap-1 px-3 pt-2 pb-3">
           <h3
             title={folder.name}
-            className="line-clamp-2 text-sm leading-5 font-medium break-all text-fg"
+            className="flex min-w-0 items-start gap-1.5 text-sm leading-5 font-semibold text-fg sm:text-base sm:leading-6"
           >
-            {folder.name}
+            <Folder aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-fg-muted" />
+            <span className="line-clamp-2 min-w-0 break-all">{folder.name}</span>
           </h3>
           <p className="text-xs text-fg-muted tabular-nums">
             動画 {folder.videoCount.toLocaleString("ja-JP")} 本
