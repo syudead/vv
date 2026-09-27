@@ -7,7 +7,6 @@ import { RequestFailed } from "../api/client";
 import Button from "../ui/Button";
 import {
   connectionWarningId,
-  ConnectionWarning,
   CredentialField,
   CredentialScreen,
   FailureLine,
@@ -89,7 +88,11 @@ export default function LoginPage() {
   const warning = connectionWarningId();
 
   return (
-    <CredentialScreen title="ログイン" onSubmit={() => void submit()}>
+    <CredentialScreen
+      title="ログイン"
+      description="所有者のアカウントでログインします"
+      onSubmit={() => void submit()}
+    >
       <div className="flex flex-col gap-4">
         <UsernameField
           ref={usernameRef}
@@ -116,6 +119,7 @@ export default function LoginPage() {
         size="lg"
         className="w-full"
         disabled={submitting || throttled}
+        aria-busy={submitting}
         aria-describedby={warning}
       >
         {submitting && (
@@ -124,9 +128,8 @@ export default function LoginPage() {
             aria-hidden="true"
           />
         )}
-        ログイン
+        {submitting ? "ログイン中…" : "ログイン"}
       </Button>
-      <ConnectionWarning />
     </CredentialScreen>
   );
 }

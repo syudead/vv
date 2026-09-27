@@ -12,7 +12,6 @@ import {
 } from "../api/client";
 import { useScan } from "../shell/ScanProvider";
 import Button from "../ui/Button";
-import IconButton from "../ui/IconButton";
 import { ModalFrame } from "../ui/ModalFrame";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
@@ -38,7 +37,10 @@ function DeleteDialog({
   return (
     <ModalFrame title="フォルダの削除を確認" onClose={onClose} initialFocus={cancel}>
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
-        <code className="break-words text-sm text-fg">{folder.path}</code>
+        <div className="min-w-0 rounded-md border border-control-border bg-field p-3">
+          <p className="mb-1 text-xs text-fg-muted">削除する登録フォルダ</p>
+          <code className="block break-all text-sm text-fg">{folder.path}</code>
+        </div>
         <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
           このフォルダだけにある動画は一覧から外れます。別の登録フォルダにもある動画は残ります。再生位置と視聴済み状態は残ります。取り込みは自動では始まりません。
         </p>
@@ -48,13 +50,13 @@ function DeleteDialog({
           </p>
         )}
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
         <Button ref={cancel} onClick={onClose} disabled={pending}>
           キャンセル
         </Button>
         <Button variant="danger" onClick={onDelete} disabled={pending}>
           {pending && <LoaderCircle className="animate-spin" />}
-          削除する
+          {pending ? "削除中…" : "削除する"}
         </Button>
       </div>
     </ModalFrame>
@@ -199,7 +201,10 @@ export default function SettingsPage() {
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="text-xl font-semibold">設定</h1>
       <ScanStatusSection />
-      <section aria-labelledby="media-folders-heading" className="mt-8">
+      <section
+        aria-labelledby="media-folders-heading"
+        className="mt-8 rounded-lg border border-border bg-surface p-4 sm:p-5"
+      >
         <div className="border-b border-border pb-4">
           <h2 id="media-folders-heading" className="text-base font-semibold">
             メディアフォルダ
@@ -252,22 +257,29 @@ export default function SettingsPage() {
                     if (element === null) rowRefs.current.delete(folder.id);
                     else rowRefs.current.set(folder.id, element);
                   }}
-                  className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center"
+                  className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-center"
                 >
                   <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <Folder className="mt-0.5 size-4 shrink-0 text-fg-muted" />
-                    <code className="min-w-0 break-words text-sm leading-5">
-                      {folder.path}
-                    </code>
+                    <Folder className="mt-2 size-4 shrink-0 text-fg-muted" />
+                    <div className="min-w-0 flex-1 rounded-md border border-control-border bg-field px-3 py-2">
+                      <span className="block text-xs text-fg-muted">現在の登録先</span>
+                      <code
+                        className="block break-all text-sm leading-5"
+                        title={folder.path}
+                      >
+                        {folder.path}
+                      </code>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center justify-end gap-1">
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     {rowPending && (
                       <span role="status" className="mr-2 text-xs text-fg-muted">
                         {pending.kind === "delete" ? "削除中…" : "変更中…"}
                       </span>
                     )}
-                    <IconButton
-                      label="フォルダを変更"
+                    <Button
+                      size="sm"
+                      aria-label="フォルダを変更"
                       onClick={() => {
                         setOperationError(null);
                         setPicker(folder);
@@ -275,9 +287,12 @@ export default function SettingsPage() {
                       disabled={rowPending || mutationsDisabled}
                     >
                       <Pencil />
-                    </IconButton>
-                    <IconButton
-                      label="フォルダを削除"
+                      変更
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label="フォルダを削除"
                       onClick={() => {
                         setOperationError(null);
                         setDeleting(folder);
@@ -286,7 +301,8 @@ export default function SettingsPage() {
                       className="text-danger"
                     >
                       <Trash2 />
-                    </IconButton>
+                      削除
+                    </Button>
                   </div>
                   {rowError?.id === folder.id && (
                     <p role="alert" className="text-sm text-danger sm:basis-full">

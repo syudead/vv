@@ -101,14 +101,26 @@ export default function FolderGroupingMenu({
           variant="ghost"
           size="sm"
           disabled={busy}
-          aria-label={`ライブラリでのまとめ方: ${
-            grouping.grouped ? "1 件にまとめて表示" : "1 本ずつ表示"
-          }。メニューを開く`}
-          // 見出しと同じ弱さにし、見出しの行の高さを変えない。
+          aria-busy={busy}
+          aria-label={
+            busy
+              ? "ライブラリでのまとめ方を変更中"
+              : `ライブラリでのまとめ方: ${
+                  grouping.grouped ? "1 件にまとめて表示" : "1 本ずつ表示"
+                }。メニューを開く`
+          }
+          // 見出しと同じ弱さにし、見出しの行の高さを変えない（ui-design.md「Visual review criteria」）。
           className="-my-2 -mr-2 gap-1.5! text-fg-muted!"
         >
-          <Icon aria-hidden="true" className={busy ? "animate-spin" : undefined} />
-          {grouping.grouped ? "ライブラリで 1 件" : "ライブラリで 1 本ずつ"}
+          <Icon
+            aria-hidden="true"
+            className={busy ? "animate-spin motion-reduce:animate-none" : undefined}
+          />
+          {busy
+            ? "変更中…"
+            : grouping.grouped
+              ? "ライブラリで 1 件"
+              : "ライブラリで 1 本ずつ"}
           <ChevronDown aria-hidden="true" className="size-3.5!" />
         </Button>
       </MenuTrigger>

@@ -101,7 +101,7 @@ func TestPrepareAuthWarnsWhenNotConfigured(t *testing.T) {
 	withAuth(t, dataDir, func(auth *store.AuthStore) {
 		prepareAuth(context.Background(), auth, time.Now(), slog.New(slog.NewTextHandler(&logs, nil)))
 	})
-	if !strings.Contains(logs.String(), "アカウントが未設定です") {
+	if !strings.Contains(logs.String(), "ブラウザで VVMDM を開き") {
 		t.Errorf("未設定の警告が無い:\n%s", logs.String())
 	}
 }

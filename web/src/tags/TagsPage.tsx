@@ -415,17 +415,18 @@ export default function TagsPage() {
         review criteria」情報密度）を満たすため、ここを詰める（B5）。
       */}
 
-      <div className="mt-2 flex items-center gap-3">
+      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
         <TagSearchBox
           value={search}
           onChange={setSearch}
           inputRef={searchInputRef}
           disabled={tags !== undefined && tags.length === 0}
-          className="flex-1 sm:max-w-sm"
+          className="w-full min-w-0 sm:max-w-sm sm:flex-1"
         />
         <Button
           ref={createButtonRef}
-          variant="secondary"
+          variant="primary"
+          className="w-full sm:w-auto"
           onClick={openCreate}
           disabled={tags === undefined || creating || createPending || renamePending}
         >
@@ -437,12 +438,12 @@ export default function TagsPage() {
       <p
         role="status"
         aria-live="polite"
-        className="mt-1 text-xs text-fg-muted tabular-nums"
+        className="mt-2 text-xs text-fg-muted tabular-nums"
       >
         {countText}
       </p>
 
-      <div className="mt-1">
+      <div className="mt-2">
         {tags === undefined && loadError === null && (
           <div className="space-y-2" aria-hidden="true">
             {Array.from({ length: 6 }, (_, index) => (

@@ -86,6 +86,9 @@ describe("App", () => {
     render(<App />);
     const user = userEvent.setup();
     const indicator = await screen.findByRole("button", { name: /取り込み中 40%/ });
+    const home = screen.getByRole("link", { name: "VVMDM ホーム" });
+    expect(home.getAttribute("href")).toBe("/");
+    expect(home.querySelectorAll('img[alt=""]')).toHaveLength(2);
     expect(indicator.closest(".fixed")?.classList.contains("bottom-4")).toBe(true);
 
     await user.click(screen.getByRole("link", { name: "フォルダへ" }));
@@ -147,7 +150,7 @@ describe("App", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "アカウントを作成" }),
+      await screen.findByRole("heading", { level: 1, name: "初回設定" }),
     ).toBeDefined();
     expect(window.location.pathname).toBe("/setup");
     expect(

@@ -194,7 +194,7 @@ export default function VideoPage() {
   const title = video?.title;
   useEffect(() => {
     const previous = document.title;
-    if (title !== undefined) document.title = `${title} - vv`;
+    if (title !== undefined) document.title = `${title} · VVMDM`;
     return () => {
       document.title = previous;
     };
@@ -570,7 +570,7 @@ export default function VideoPage() {
 
         <aside
           // 広い画面では見出しの行を上に留め、関連動画の並びだけを中でスクロールさせる。
-          className="min-w-0 px-4 sm:px-6 lg:flex lg:min-h-0 lg:flex-col lg:px-0 lg:pt-6"
+          className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 lg:flex lg:min-h-0 lg:flex-col lg:border-t-0 lg:border-l lg:pl-5 lg:pt-6"
         >
           <RelatedVideos state={related} backTo={backTo} onRetry={retryRelated} />
         </aside>

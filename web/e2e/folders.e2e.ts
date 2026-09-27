@@ -19,7 +19,9 @@ const expectedVideos = 14;
 const registered: MediaFolder[] = [];
 
 function rootA(): number {
-  const found = registered.find((folder) => folder.path.endsWith("/a/movies"));
+  const found = registered.find((folder) =>
+    path.normalize(folder.path).endsWith(path.join("a", "movies")),
+  );
   if (found === undefined) throw new Error("a/movies is not registered");
   return found.id;
 }
@@ -161,13 +163,61 @@ test.describe.serial("folder browser", () => {
     await expect(page).toHaveURL(/\/folders$/);
 
     await expect(
-      page.getByRole("link", { name: /^movies、.*\/a\/movies$/ }),
+      page.getByRole("link", { name: /^movies、.*[\\/]a[\\/]movies$/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: /^movies、.*\/b\/movies$/ }),
+      page.getByRole("link", { name: /^movies、.*[\\/]b[\\/]movies$/ }),
     ).toBeVisible();
-    await expect(page.locator("[data-folder-path] p[title$='/a/movies']")).toBeVisible();
-    await expect(page.locator("[data-folder-path] p[title$='/b/movies']")).toBeVisible();
+    await expect(page.locator("[data-folder-path] p[title]").first()).toHaveAttribute(
+      "title",
+      /[\\/]a[\\/]movies$/,
+    );
+    await expect(page.locator("[data-folder-path] p[title]").last()).toHaveAttribute(
+      "title",
+      /[\\/]b[\\/]movies$/,
+    );
+  });
+
+  test("空の登録ルートと長い名前を三幅で確認できる", async ({ page, request }) => {
+    const mediaRoot = process.env.MDM_E2E_FOLDERS_MEDIA_DIR;
+    if (mediaRoot === undefined) throw new Error("folder fixtures are not configured");
+    const name = "長い日本語のフォルダ名 and a long English folder name";
+    const emptyPath = path.join(mediaRoot, name);
+    await mkdir(emptyPath, { recursive: true });
+    const created = await request.post("/api/media-folders", {
+      headers: mutationHeaders,
+      data: { path: emptyPath },
+    });
+    expect(created.status()).toBe(201);
+    const empty = (await created.json()) as MediaFolder;
+    try {
+      for (const width of [360, 768, 1280]) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto("/folders");
+        const card = page.getByRole("link", { name: new RegExp(`^${name}、動画 0 本`) });
+        await expect(card).toBeVisible();
+        await expect(card.locator("h3")).toHaveAttribute("title", name);
+        await expect(card.locator("p[dir=rtl]")).toHaveAttribute("title", empty.path);
+        await card.click();
+        await expect(
+          page.getByRole("heading", { name: "登録したメディアフォルダは空です" }),
+        ).toBeVisible();
+        await expect(page.getByRole("button", { name: "取り込む" })).toBeVisible();
+        expect(
+          await page.evaluate(
+            () =>
+              document.documentElement.scrollWidth <=
+              document.documentElement.clientWidth,
+          ),
+        ).toBe(true);
+      }
+    } finally {
+      const removed = await request.delete(
+        `/api/media-folders/${String(empty.id)}?version=${String(empty.version)}`,
+        { headers: mutationHeaders },
+      );
+      expect(removed.status()).toBe(204);
+    }
   });
 
   test("子フォルダを自然順に並べ、直下だけを出し、プレビューは直下の4件まで", async ({
@@ -276,7 +326,7 @@ test.describe.serial("folder browser", () => {
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/folders$/);
 
-    await tabUntil(page, (active) => /^movies、.*\/a\/movies$/.test(active.label));
+    await tabUntil(page, (active) => /^movies、.*[\\/]a[\\/]movies$/.test(active.label));
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(folderUrl(rootA()));
 

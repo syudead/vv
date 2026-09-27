@@ -469,6 +469,10 @@ describe("LibraryPage", () => {
     expect(screen.queryByText("再生できるものだけ")).toBeNull();
     expect(screen.queryByRole("button", { name: "条件を解除" })).toBeNull();
     expect(screen.queryByText("動画がまだありません")).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", { name: "検索を変更" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("searchbox", { name: "動画を検索" }),
+    );
   });
 
   it("絞り込みの条件を解除は検索語も外し、ポップオーバーを閉じて絞り込みのボタンへ戻る", async () => {

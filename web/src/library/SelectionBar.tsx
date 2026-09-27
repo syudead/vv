@@ -680,7 +680,7 @@ export default function SelectionBar({
        * コンテナにすると幅が 0 に潰れる）。22.75rem は3つの最小の幅と間隔の和
        * （116px × 3 + 8px × 2）である。
        */}
-      <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md bg-elevated p-1.5 shadow-elevated animate-slide-up max-sm:@container sm:h-11 sm:w-auto sm:flex-nowrap sm:py-0 sm:pr-1.5 sm:pl-4">
+      <div className="flex w-full flex-wrap items-center gap-x-2 gap-y-1.5 rounded-md border border-border-strong bg-elevated p-1.5 shadow-elevated animate-slide-up motion-reduce:animate-none max-sm:@container sm:h-11 sm:w-auto sm:flex-nowrap sm:py-0 sm:pr-1.5 sm:pl-4">
         <span
           role="status"
           aria-live="polite"

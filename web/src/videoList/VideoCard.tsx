@@ -152,14 +152,14 @@ function VideoCard(props: VideoCardProps) {
       onPointerEnter={startPreview}
       onPointerLeave={releasePreview}
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-lg bg-surface shadow-card transition-[box-shadow,transform] duration-200 ease-out-quart",
+        "group relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-[border-color,box-shadow,transform] duration-200 ease-out-quart",
         // リンクの輪郭は overflow-hidden で切れるので、キーボードフォーカスは箱の外側に出す。
-        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link",
+        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-link",
         "hover:-translate-y-0.5",
         // 装飾的な動きは動きを減らす設定で止める（library-ui.md 4）。影の最終状態は残す。
         "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
         "hover:shadow-card-hover",
-        selected && "ring-2 ring-accent",
+        selected && "border-accent ring-2 ring-accent",
         selectionMode && "select-none",
       )}
     >
@@ -193,12 +193,7 @@ function VideoCard(props: VideoCardProps) {
           <CardMedia video={video} preview={preview} />
 
           {(publicMark || duration !== "") && (
-            <span
-              className={cn(
-                "absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm px-1.5 py-0.5 text-[11px] font-medium tabular-nums backdrop-blur-sm",
-                showingPreview ? "bg-navbar text-fg" : "bg-navbar/85 text-fg",
-              )}
-            >
+            <span className="absolute right-2 bottom-2 flex items-center gap-1.5 rounded-sm bg-navbar/90 px-1.5 py-0.5 text-[11px] font-medium text-fg tabular-nums backdrop-blur-sm">
               {publicMark && <PublicMark />}
               {duration !== "" && <span>{duration}</span>}
             </span>
@@ -211,10 +206,7 @@ function VideoCard(props: VideoCardProps) {
               aria-valuemax={100}
               aria-valuenow={Math.round(ratio * 100)}
               aria-label="再生済みの割合"
-              className={cn(
-                "absolute inset-x-0 bottom-0 h-[5px]",
-                showingPreview ? "bg-fg-subtle" : "bg-fg-subtle/50",
-              )}
+              className="absolute inset-x-0 bottom-0 h-[5px] bg-navbar/90"
             >
               <span
                 className="block h-full bg-accent"
@@ -239,7 +231,7 @@ function VideoCard(props: VideoCardProps) {
           <h3
             title={video.title}
             className={cn(
-              "line-clamp-2 text-sm leading-5 font-medium break-all",
+              "line-clamp-2 text-sm leading-5 font-semibold break-all sm:text-base sm:leading-6",
               state === "watched" ? "text-fg-muted" : "text-fg",
             )}
           >
@@ -282,7 +274,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
     <tr
       data-video-id={video.id}
       className={cn(
-        "group relative transition-colors hover:bg-hover-wash",
+        "group relative transition-colors hover:bg-hover-wash [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-link",
         selected && "bg-accent-soft",
       )}
     >
@@ -317,7 +309,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
             />
           )}
           {ratio !== null && (
-            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50">
+            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-navbar/90">
               <span
                 className="block h-full bg-accent"
                 style={{ width: `${String(Math.round(ratio * 100))}%` }}

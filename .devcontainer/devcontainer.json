@@ -1,7 +1,7 @@
 {
   // PR のブランチをブラウザで触って確かめるための環境（GitHub Codespaces）。
   // 手順は docs/how-to/codespaces-preview.md。
-  "name": "vv preview",
+  "name": "VVMDM preview",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "hostRequirements": { "cpus": 2 },
   // 作成時に1回だけ。ツールの版は mise.toml から入れる。
@@ -10,7 +10,7 @@
   "postAttachCommand": "$HOME/.local/bin/mise exec -- task preview",
   "forwardPorts": [8080],
   "portsAttributes": {
-    "8080": { "label": "vv", "onAutoForward": "openBrowser" }
+    "8080": { "label": "VVMDM", "onAutoForward": "openBrowser" }
   },
   // vv 本体（18080）は中継越しに使うので、直接は開かせない。
   "otherPortsAttributes": { "onAutoForward": "ignore" }

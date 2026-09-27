@@ -35,7 +35,7 @@ function fields() {
   return {
     username: screen.getByLabelText("ユーザー名") as HTMLInputElement,
     password: screen.getByLabelText("パスワード") as HTMLInputElement,
-    submit: screen.getByRole("button", { name: "ログイン" }) as HTMLButtonElement,
+    submit: screen.getByRole("button", { name: /^ログイン/ }) as HTMLButtonElement,
   };
 }
 
@@ -69,18 +69,26 @@ describe("LoginPage", () => {
     const form = username.closest("form");
     expect(form).not.toBeNull();
     expect(form?.getAttribute("method")).toBeNull();
+    expect(screen.getByRole("img", { name: "VVMDM" }).getAttribute("src")).toBe(
+      "/brand/vvmdm-wordmark-cyan.svg",
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "ログイン" })).toBeDefined();
+    expect(screen.getByText("所有者のアカウントでログインします")).toBeDefined();
+    expect(username.className).toContain("focus-visible:outline-link");
   });
 
-  it("HTTP では主操作の下に警告を出し、ユーザー名と主操作から指す", () => {
+  it("HTTP では入力前に警告を出し、ユーザー名と主操作から指す", () => {
     renderLogin();
-    const warning = screen.getByText(/この接続は暗号化されていません/).closest("p");
+    const warning = screen
+      .getByText(/この接続は暗号化されていません/)
+      .closest("p") as HTMLElement;
     const { username, submit } = fields();
 
     expect(warning?.id).toBe("connection-warning");
     expect(username.getAttribute("aria-describedby")).toBe("connection-warning");
     expect(submit.getAttribute("aria-describedby")).toBe("connection-warning");
     expect(
-      submit.compareDocumentPosition(warning as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+      warning.compareDocumentPosition(username) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(warning?.closest("form")?.getAttribute("aria-describedby")).toBeNull();
   });
@@ -113,6 +121,8 @@ describe("LoginPage", () => {
     await user.type(fields().username, "owner");
     await user.type(fields().password, "secret{Enter}");
     expect(fields().submit.disabled).toBe(true);
+    expect(fields().submit.textContent).toContain("ログイン中…");
+    expect(fields().submit.getAttribute("aria-busy")).toBe("true");
     await user.type(fields().password, "{Enter}");
     await user.click(fields().submit);
     expect(fetchMock).toHaveBeenCalledOnce();

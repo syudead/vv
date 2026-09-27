@@ -6,6 +6,7 @@ import type { VideoFolder } from "../api/client";
 import { folderUrl } from "../folders/folderPath";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
+import BrandHomeLink from "../ui/BrandHomeLink";
 
 interface FolderCrumb {
   label: string;
@@ -55,14 +56,7 @@ export default function VideoHeader({
 
   return (
     <header className="sticky top-0 z-40 flex h-navbar shrink-0 items-center gap-1 border-b border-border bg-bg/90 px-2 backdrop-blur-md sm:px-3">
-      <Link
-        to="/"
-        aria-label="ホーム"
-        className="flex h-8 shrink-0 items-center gap-2 rounded-sm px-2 text-base font-semibold tracking-tight text-fg select-none hover:bg-hover-wash"
-      >
-        <span className="size-2.5 rounded-full bg-accent" aria-hidden="true" />
-        vv
-      </Link>
+      <BrandHomeLink />
 
       {crumbs.length > 0 && (
         <nav

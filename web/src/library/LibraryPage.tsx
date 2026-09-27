@@ -34,6 +34,7 @@ import {
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import { useToast } from "../ui/Toast";
+import Skeleton from "../ui/Skeleton";
 import {
   criteriaKey,
   type HistoryMode,
@@ -576,9 +577,7 @@ export default function LibraryPage() {
   });
 
   return (
-    <div className="flex w-full flex-col gap-3 px-3 pt-3 pb-24 sm:px-4">
-      <h1 className="sr-only">ライブラリ</h1>
-
+    <div className="flex w-full flex-col gap-4 px-3 pt-4 pb-24 sm:px-4">
       <TopBarPortal>
         <LibraryToolbar
           query={query}
@@ -603,6 +602,22 @@ export default function LibraryPage() {
         />
       </TopBarPortal>
 
+      <div className="flex min-w-0 items-baseline justify-between gap-3">
+        <h1 className="text-xl font-semibold tracking-tight text-fg sm:text-2xl">
+          ライブラリ
+        </h1>
+        {!initialLoadFailed && (
+          <p
+            role="status"
+            aria-label="検索結果"
+            aria-live="polite"
+            className="shrink-0 text-xs text-fg-muted tabular-nums sm:text-sm"
+          >
+            {resultStatus}
+          </p>
+        )}
+      </div>
+
       {tagIds.length > 0 && (
         <ActiveTagFilters
           tagIds={tagIds}
@@ -611,21 +626,11 @@ export default function LibraryPage() {
         />
       )}
 
-      {!initialLoadFailed && (
-        <p
-          role="status"
-          aria-live="polite"
-          className="text-center text-xs text-fg-muted tabular-nums"
-        >
-          {resultStatus}
-        </p>
-      )}
-
       {initialLoadFailed && <LoadFailed reason={error} onRetry={reload} />}
 
       {empty &&
         (conditioned ? (
-          <NoMatches />
+          <NoMatches onSearch={() => searchField.current?.focus()} />
         ) : owner ? (
           <EmptyLibrary onScan={scan.start} scanning={scan.running} />
         ) : (
@@ -653,8 +658,19 @@ export default function LibraryPage() {
               {loadingMore && <CardSkeleton count={6} />}
             </Grid>
           </TagRowMeasureProvider>
+        ) : loading ? (
+          <div aria-hidden="true" className="space-y-2 rounded-lg bg-surface p-3">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div key={index} className="flex items-center gap-3 py-1">
+                <Skeleton className="aspect-video w-28 shrink-0" />
+                <div className="flex min-w-0 flex-1 flex-col gap-2">
+                  <Skeleton className="h-4 w-3/5" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
-          !loading &&
           items.length > 0 && (
             <table className="w-full border-separate border-spacing-0 overflow-hidden rounded-lg bg-surface shadow-card">
               <thead>

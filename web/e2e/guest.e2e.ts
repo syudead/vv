@@ -29,6 +29,7 @@ import { ownerAccount } from "./owner-account";
 interface MediaFolder {
   id: number;
   version: number;
+  path: string;
 }
 
 interface Video {
@@ -211,6 +212,29 @@ test.describe.serial("guest", () => {
     expect(removed.status()).toBe(204);
   });
 
+  test("公開フォルダは狭い幅でも広い幅でも移動でき、登録パスを見せない", async ({
+    browser,
+  }) => {
+    const context = await guestContext(browser);
+    const page = await context.newPage();
+    for (const width of [360, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto("/folders");
+      await expect(page.locator("[data-folder-path] p[title]")).toHaveCount(0);
+      expect(await page.locator("main").innerText()).not.toContain(folder!.path);
+      await openGuestFolder(page, "公開あり");
+      await expect.poll(() => cardTitles(page)).toEqual(publicTitles);
+      await expect(page.getByRole("navigation", { name: "パンくず" })).toBeVisible();
+      expect(
+        await page.evaluate(
+          () =>
+            document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+        ),
+      ).toBe(true);
+    }
+    await context.close();
+  });
+
   test("所有者が公開にした動画だけが一覧・検索・フォルダ・関連動画に出て、件数も合う", async ({
     browser,
   }) => {
@@ -223,6 +247,18 @@ test.describe.serial("guest", () => {
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
     await expect(page.getByText("1件", { exact: true })).toBeVisible();
     await expect(page.locator("article[data-group-root]")).toContainText("4 本");
+
+    await page
+      .getByRole("radiogroup", { name: "表示形式" })
+      .getByRole("radio", { name: "リスト" })
+      .click();
+    const groupCells = page.locator("tr[data-group-root]").first().locator("td:visible");
+    await expect(groupCells.first()).toHaveCSS("border-bottom-width", "1px");
+    await expect(groupCells.last()).toHaveCSS("border-bottom-width", "1px");
+    await page
+      .getByRole("radiogroup", { name: "表示形式" })
+      .getByRole("radio", { name: "グリッド" })
+      .click();
 
     // 検索: 公開の動画だけに当たり、非公開の題名では何も出ない。
     await page.goto(`/?q=${encodeURIComponent("ゲスト")}`);
