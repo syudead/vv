@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Link } from "react-router";
 
 import type { FolderSummary } from "../api/client";
+import { t, type UiText } from "../i18n";
 import Skeleton from "../ui/Skeleton";
 import FolderArt from "../videoList/FolderArt";
 import { folderUrl } from "./folderPath";
@@ -10,10 +11,10 @@ import { folderUrl } from "./folderPath";
  * folderLabel はフォルダカードの読み上げ名である（親 Issue のアクセシビリティ）。
  * 絶対パスが無い（ゲストの）応答では、パスを添えない。
  */
-export function folderLabel(folder: FolderSummary, withPath: boolean): string {
-  const label = `${folder.name}、動画 ${String(folder.videoCount)} 本、フォルダ ${String(folder.folderCount)} 件`;
+export function folderLabel(folder: FolderSummary, withPath: boolean): UiText {
+  const label = t.folders.card.label(folder.name, folder.videoCount, folder.folderCount);
   return withPath && folder.rootPath !== undefined
-    ? `${label}、${folder.rootPath}`
+    ? t.folders.card.labelWithPath(label, folder.rootPath)
     : label;
 }
 
@@ -43,9 +44,9 @@ function FolderCard({ folder, showPath }: { folder: FolderSummary; showPath: boo
             {folder.name}
           </h3>
           <p className="text-xs text-fg-muted tabular-nums">
-            動画 {folder.videoCount.toLocaleString("ja-JP")} 本
+            {t.folders.card.videos(folder.videoCount)}
             <span className="text-fg-subtle"> · </span>
-            フォルダ {folder.folderCount.toLocaleString("ja-JP")} 件
+            {t.folders.card.folders(folder.folderCount)}
           </p>
           {showPath && folder.rootPath !== undefined && (
             // 同名の登録フォルダを見分けるのはパスの末尾なので、先頭の側を省略する。

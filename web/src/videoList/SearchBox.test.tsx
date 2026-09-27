@@ -17,8 +17,8 @@ function renderBox(query = "京都") {
   render(<SearchBox query={query} onCommit={onCommit} />);
   return {
     onCommit,
-    box: screen.getByRole("searchbox", { name: "動画を検索" }) as HTMLInputElement,
-    help: screen.getByRole("button", { name: "検索の書き方" }),
+    box: screen.getByRole("searchbox", { name: "Search videos" }) as HTMLInputElement,
+    help: screen.getByRole("button", { name: "How to search" }),
   };
 }
 
@@ -36,33 +36,33 @@ describe("SearchBox の検索の書き方", () => {
 
     await user.click(help);
 
-    const dialog = await screen.findByRole("dialog", { name: "検索の書き方" });
-    expect(within(dialog).getByRole("heading", { name: "検索の書き方" })).toBeDefined();
+    const dialog = await screen.findByRole("dialog", { name: "How to search" });
+    expect(within(dialog).getByRole("heading", { name: "How to search" })).toBeDefined();
     const examples = within(dialog)
       .getAllByRole("term")
       .map((term) => Array.from(term.children).map((line) => line.textContent));
     expect(examples).toEqual([
-      ["京都 2024"],
-      ['"京都旅行 2024"'],
-      ["京都 -2023"],
-      ["京都 OR 奈良", "京都 | 奈良"],
+      ["kyoto 2024"],
+      ['"kyoto trip 2024"'],
+      ["kyoto -2023"],
+      ["kyoto OR nara", "kyoto | nara"],
     ]);
     expect(
       within(dialog)
         .getAllByRole("definition")
         .map((meaning) => meaning.textContent),
     ).toEqual([
-      "空白で区切った語をすべて含む",
-      '" で囲んだ部分を、空白ごと1つの語として探す',
-      "- を付けた語を含むものを除く",
-      "どちらかを含む。空白より強く結び付く",
+      "Finds videos that contain every space-separated word",
+      'Words wrapped in " are searched for as one term, spaces included',
+      "Leaves out videos that contain a word starting with -",
+      "Finds videos that contain either word. Binds tighter than a space",
     ]);
     expect(
       within(dialog).getByText(
-        "全角と半角、大文字と小文字、ひらがなとカタカナは区別しません。",
+        "Full-width and half-width characters, upper and lower case, and hiragana and katakana are treated the same.",
       ),
     ).toBeDefined();
-    expect(within(dialog).getByText("語は先頭から 16 個まで使います。")).toBeDefined();
+    expect(within(dialog).getByText("Only the first 16 terms are used.")).toBeDefined();
 
     expect(document.activeElement).toBe(help);
     expect(help.getAttribute("aria-expanded")).toBe("true");
@@ -72,7 +72,7 @@ describe("SearchBox の検索の書き方", () => {
     );
     expect(described).not.toBeNull();
     expect(dialog.contains(described)).toBe(true);
-    expect(described?.textContent).not.toContain("検索の書き方");
+    expect(described?.textContent).not.toContain("How to search");
   });
 
   it("Enter と Space で開き、フォーカスだけでは開かない", async () => {
@@ -111,7 +111,7 @@ describe("SearchBox の検索の書き方", () => {
 
     await user.click(help);
     const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByText("京都 -2023"));
+    await user.click(within(dialog).getByText("kyoto -2023"));
     expect(box.value).toBe("京都");
 
     await user.click(help);
@@ -139,7 +139,7 @@ describe("SearchBox の検索の書き方", () => {
     await user.click(box);
     await user.tab();
     expect(document.activeElement).toBe(
-      screen.getByRole("button", { name: "検索語をクリア" }),
+      screen.getByRole("button", { name: "Clear search" }),
     );
     await user.tab();
     expect(document.activeElement).toBe(help);
@@ -172,7 +172,9 @@ describe("SearchBox の入力", () => {
     ).toBe("b" + "😀😀" + "b".repeat(MAX_QUERY_LENGTH - 3));
 
     render(<SearchBox query="" onCommit={() => {}} />);
-    const input = screen.getByRole<HTMLInputElement>("searchbox", { name: "動画を検索" });
+    const input = screen.getByRole<HTMLInputElement>("searchbox", {
+      name: "Search videos",
+    });
     expect(input.maxLength).toBe(-1);
     fireEvent.change(input, { target: { value: emoji } });
     expect(Array.from(input.value)).toHaveLength(MAX_QUERY_LENGTH);
@@ -181,11 +183,13 @@ describe("SearchBox の入力", () => {
   it("入力途中に × を押しても、履歴を増やす確定は起きない", () => {
     const onCommit = vi.fn();
     render(<SearchBox query="" onCommit={onCommit} />);
-    const input = screen.getByRole<HTMLInputElement>("searchbox", { name: "動画を検索" });
+    const input = screen.getByRole<HTMLInputElement>("searchbox", {
+      name: "Search videos",
+    });
     input.focus();
     fireEvent.change(input, { target: { value: "京都" } });
 
-    const clear = screen.getByRole("button", { name: "検索語をクリア" });
+    const clear = screen.getByRole("button", { name: "Clear search" });
     // × の mousedown は入力欄のフォーカスを外さない（blur で入力途中の語を確定しない）。
     expect(fireEvent.mouseDown(clear)).toBe(false);
     fireEvent.click(clear);

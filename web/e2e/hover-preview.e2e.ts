@@ -435,16 +435,16 @@ test.describe.serial("library hover preview", () => {
     await page.goto("/");
     const target = card(page, item);
     const link = target.getByRole("link", { name: item.title, exact: true });
-    const checkbox = target.getByRole("checkbox", { name: `「${item.title}」を選択` });
+    const checkbox = target.getByRole("checkbox", { name: `Select "${item.title}"` });
 
     await tabTo(page, checkbox);
     await expect(checkbox).toBeFocused();
     await page.keyboard.press("Space");
     await expect(checkbox).toBeChecked();
-    await expect(page.getByText("1 件を選択中")).toBeVisible();
+    await expect(page.getByText("1 video selected")).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(checkbox).not.toBeChecked();
-    await expect(page.getByText("1 件を選択中")).toHaveCount(0);
+    await expect(page.getByText("1 video selected")).toHaveCount(0);
 
     await page.keyboard.press("Tab");
     await expect(link).toBeFocused();

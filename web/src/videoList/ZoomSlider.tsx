@@ -1,5 +1,6 @@
 import * as Slider from "@radix-ui/react-slider";
 
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import type { Zoom } from "../preferences/viewPreferences";
 
@@ -28,7 +29,7 @@ export default function ZoomSlider({
         <Slider.Range className="absolute h-full rounded-full bg-accent" />
       </Slider.Track>
       <Slider.Thumb
-        aria-label="カードの大きさ"
+        aria-label={t.list.cardSize}
         className="block size-4 rounded-full bg-fg shadow-card transition-transform hover:scale-110"
       />
     </Slider.Root>

@@ -48,10 +48,10 @@ const privateTitles = ["ゲスト非公開C", "ゲスト非公開D"];
 const fillerTitles = ["確認用G", "確認用H", "確認用I", "確認用J", "確認用K", "確認用L"];
 // ライブラリのグループのカードの読み上げ名（ui-design.md「Pressing and selection」）。
 // ゲストは公開のメンバーだけを数える。所有者は全メンバーを数える。
-const guestGroup = "公開あり、4本のグループ";
+const guestGroup = "公開あり, group of 4 videos";
 // 所有者が「ゲスト」で検索したときの項目。「非公開だけ」は D だけが検索語に当たるが、
 // グループは当たったメンバーが1本あれば1件で、本数は全メンバーで数える（data-model.md §5）。
-const ownerGroups = ["公開あり、5本のグループ", "非公開だけ、7本のグループ"];
+const ownerGroups = ["公開あり, group of 5 videos", "非公開だけ, group of 7 videos"];
 const videos = new Map<string, Video>();
 let folder: MediaFolder | undefined;
 
@@ -141,7 +141,7 @@ async function openGuestFolder(page: Page, name: string) {
     .filter({ has: page.locator("h3", { hasText: name }) })
     .getByRole("link")
     .click();
-  await expect(page.getByRole("heading", { level: 2, name: /^動画/ })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: /^Videos/ })).toBeVisible();
 }
 
 async function sidebarNames(page: Page): Promise<string[]> {
@@ -221,15 +221,15 @@ test.describe.serial("guest", () => {
     // カードの枚数（要件 20）。「非公開だけ」は公開のメンバーが無いので出ない。
     await page.goto("/");
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
-    await expect(page.getByText("1件", { exact: true })).toBeVisible();
-    await expect(page.locator("article[data-group-root]")).toContainText("4 本");
+    await expect(page.getByText("1 video", { exact: true })).toBeVisible();
+    await expect(page.locator("article[data-group-root]")).toContainText("4 videos");
 
     // 検索: 公開の動画だけに当たり、非公開の題名では何も出ない。
     await page.goto(`/?q=${encodeURIComponent("ゲスト")}`);
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
-    await expect(page.getByText("1件", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 video", { exact: true })).toBeVisible();
     await page.goto(`/?q=${encodeURIComponent("ゲスト非公開")}`);
-    await expect(page.getByText("条件に一致する動画はありません")).toBeVisible();
+    await expect(page.getByText("No videos match these conditions")).toBeVisible();
 
     // フォルダ: 公開の動画を含む登録フォルダだけが出て、パスを添えない。
     await page.goto("/folders");
@@ -242,11 +242,11 @@ test.describe.serial("guest", () => {
     await expect(page.locator("[data-folder-path] h3")).toHaveText(["公開あり"]);
     await page.locator("[data-folder-path]").getByRole("link").click();
     await expect.poll(() => cardTitles(page)).toEqual(publicTitles);
-    await expect(page.getByRole("heading", { level: 2, name: /^動画/ })).toHaveText(
-      "動画 4",
+    await expect(page.getByRole("heading", { level: 2, name: /^Videos/ })).toHaveText(
+      "Videos 4",
     );
     // パンくずの登録フォルダの段は、骨組みのまま残らず名前で出る。
-    const crumbs = page.getByRole("navigation", { name: "パンくず" });
+    const crumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
     await expect(crumbs.getByRole("link", { name: "guest-media" })).toBeVisible();
 
     // 関連動画の列: 「公開あり」はグループなので、公開のメンバーだけが「続けて再生」の
@@ -297,24 +297,24 @@ test.describe.serial("guest", () => {
     await page.locator("article[data-group-root]").first().hover();
     await expect(page.getByRole("checkbox")).toHaveCount(0);
 
-    await page.getByRole("button", { name: "絞り込み" }).click();
+    await page.getByRole("button", { name: "Filter", exact: true }).click();
     const filter = page.getByRole("dialog");
-    await expect(filter.getByText("再生できるものだけ")).toBeVisible();
-    await expect(filter.getByText("視聴状態")).toHaveCount(0);
+    await expect(filter.getByText("Playable only")).toBeVisible();
+    await expect(filter.getByText("Watch status")).toHaveCount(0);
     await page.keyboard.press("Escape");
 
-    await page.getByRole("button", { name: /^並び順:/ }).click();
+    await page.getByRole("button", { name: /^Sort by:/ }).click();
     const menu = page.getByRole("menu");
     await expect(menu.getByRole("menuitemradio")).toHaveCount(6);
-    await expect(menu.getByText("最近再生した順")).toHaveCount(0);
+    await expect(menu.getByText("Recently played")).toHaveCount(0);
     await page.keyboard.press("Escape");
 
     // 支援技術のツリーに、所有者だけの操作の名前が無い。
     const tree = await page.locator("body").ariaSnapshot();
     for (const name of [
-      "視聴状態",
-      "最近再生した順",
-      "を選択",
+      "Watch status",
+      "Recently played",
+      "Select",
       "タグを追加",
       "Refresh library",
     ]) {
@@ -331,7 +331,7 @@ test.describe.serial("guest", () => {
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト公開B");
     await expect(page.getByRole("list", { name: "ファイルの情報" })).toBeVisible();
     await expect(page.getByRole("button", { name: "パスをコピー" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "タグ" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Tags" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /ファイルを開く/ })).toHaveCount(0);
     await expect(page.getByRole("switch")).toHaveCount(0);
     await startPlayback(page);
@@ -362,10 +362,8 @@ test.describe.serial("guest", () => {
     await expect.poll(() => libraryItems(second)).toEqual(ownerGroups);
 
     // 所有者の一覧で、非公開の動画だけのグループを選んでおく。
-    await second
-      .getByRole("checkbox", { name: "「非公開だけ」のグループを選択" })
-      .check();
-    await expect(second.getByRole("region", { name: "選択中の操作" })).toBeVisible();
+    await second.getByRole("checkbox", { name: 'Select the group "非公開だけ"' }).check();
+    await expect(second.getByRole("region", { name: "Selection actions" })).toBeVisible();
 
     await first.getByRole("button", { name: "Sign out" }).click();
     await expect(
@@ -376,7 +374,7 @@ test.describe.serial("guest", () => {
     await expect.poll(() => libraryItems(first)).toEqual([guestGroup]);
 
     // もう一方のタブは、次の一覧の取得（並び順の向きの切り替え）で読み直される。
-    await second.getByRole("button", { name: /押すと/ }).click();
+    await second.getByRole("button", { name: /Press for/ }).click();
     await expect(
       second.getByRole("complementary", { name: "Main navigation" }).getByRole("link", {
         name: "Sign in",
@@ -384,7 +382,9 @@ test.describe.serial("guest", () => {
     ).toBeVisible();
     await expect.poll(() => libraryItems(second)).toEqual([guestGroup]);
     await expect(second.getByRole("checkbox")).toHaveCount(0);
-    await expect(second.getByRole("region", { name: "選択中の操作" })).toHaveCount(0);
+    await expect(second.getByRole("region", { name: "Selection actions" })).toHaveCount(
+      0,
+    );
     await expect(second.getByText("非公開だけ")).toHaveCount(0);
     await context.close();
   });
@@ -464,7 +464,7 @@ test.describe.serial("guest", () => {
     // 送信の間もフォーカスは切り替えに残る。
     await expect(toggle).toBeFocused();
     // ゲストのグループのカードの本数が、公開になった C の分だけ増える。
-    await expect.poll(guestSees).toEqual(["公開あり、5本のグループ"]);
+    await expect.poll(guestSees).toEqual(["公開あり, group of 5 videos"]);
 
     // もう一度 Space で戻すと、ゲストのカードの本数も戻る。
     await ownerPage.keyboard.press("Space");
@@ -476,22 +476,22 @@ test.describe.serial("guest", () => {
     await ownerPage.goto(`/?q=${encodeURIComponent("ゲスト")}`);
     await expect.poll(() => libraryItems(ownerPage)).toEqual(ownerGroups);
     await ownerPage
-      .getByRole("checkbox", { name: "「非公開だけ」のグループを選択" })
+      .getByRole("checkbox", { name: 'Select the group "非公開だけ"' })
       .check();
-    const bar = ownerPage.getByRole("region", { name: "選択中の操作" });
-    await bar.getByRole("button", { name: "公開" }).focus();
+    const bar = ownerPage.getByRole("region", { name: "Selection actions" });
+    await bar.getByRole("button", { name: "Visibility" }).focus();
     await ownerPage.keyboard.press("Enter");
     const menu = ownerPage.getByRole("menu");
-    await expect(menu.getByRole("menuitem")).toHaveText(["公開にする", "非公開にする"]);
+    await expect(menu.getByRole("menuitem")).toHaveText(["Make public", "Make private"]);
     await expect(
-      menu.getByRole("menuitem", { name: "公開にする", exact: true }),
+      menu.getByRole("menuitem", { name: "Make public", exact: true }),
     ).toBeFocused();
     await ownerPage.keyboard.press("Enter");
-    await expect(ownerPage.getByText("7 件を公開にしました")).toBeVisible();
+    await expect(ownerPage.getByText("Made 7 videos public")).toBeVisible();
     // 選択は残り、メンバーのカード（フォルダ画面）の右下に公開の印が出る。
-    await expect(bar.getByText("7 件を選択中")).toBeVisible();
+    await expect(bar.getByText("7 videos selected")).toBeVisible();
     await expect.poll(publicMarksInHidden).toBe(7);
-    const withHidden = [guestGroup, "非公開だけ、7本のグループ"];
+    const withHidden = [guestGroup, "非公開だけ, group of 7 videos"];
     await expect.poll(guestSees).toEqual(withHidden);
 
     // 再スキャンの後も公開のままである。
@@ -501,9 +501,9 @@ test.describe.serial("guest", () => {
     await expect.poll(guestSees).toEqual(withHidden);
 
     // 非公開に戻すと消える。
-    await bar.getByRole("button", { name: "公開" }).click();
-    await ownerPage.getByRole("menuitem", { name: "非公開にする", exact: true }).click();
-    await expect(ownerPage.getByText("7 件を非公開にしました")).toBeVisible();
+    await bar.getByRole("button", { name: "Visibility" }).click();
+    await ownerPage.getByRole("menuitem", { name: "Make private", exact: true }).click();
+    await expect(ownerPage.getByText("Made 7 videos private")).toBeVisible();
     await expect.poll(publicMarksInHidden).toBe(0);
     await expect.poll(guestSees).toEqual([guestGroup]);
 
@@ -533,20 +533,20 @@ test.describe.serial("guest", () => {
       await shot(page, "library", width);
 
       if (width >= 768) {
-        await page.getByRole("button", { name: "絞り込み" }).click();
+        await page.getByRole("button", { name: "Filter", exact: true }).click();
         await expect(page.getByRole("dialog")).toBeVisible();
         await shot(page, "filter", width);
         await page.keyboard.press("Escape");
-        await page.getByRole("button", { name: /^並び順:/ }).click();
+        await page.getByRole("button", { name: /^Sort by:/ }).click();
         await expect(page.getByRole("menu")).toBeVisible();
         await shot(page, "sort", width);
         await page.keyboard.press("Escape");
       } else {
-        await page.getByRole("button", { name: "表示と並び順" }).click();
+        await page.getByRole("button", { name: "View and sort" }).click();
         await expect(page.getByRole("dialog")).toBeVisible();
         await shot(page, "sort", width);
         await page.keyboard.press("Escape");
-        await page.getByRole("button", { name: "絞り込み" }).click();
+        await page.getByRole("button", { name: "Filter", exact: true }).click();
         await expect(page.getByRole("dialog")).toBeVisible();
         await shot(page, "filter", width);
         await page.keyboard.press("Escape");
@@ -583,10 +583,10 @@ test.describe.serial("guest", () => {
         route.fulfill({ json: { folders: [] } }),
       );
       await page.goto("/");
-      await expect(page.getByText("公開されている動画はありません")).toBeVisible();
+      await expect(page.getByText("No videos are public")).toBeVisible();
       await shot(page, "empty", width);
       await page.goto("/folders");
-      await expect(page.getByText("公開されている動画はありません")).toBeVisible();
+      await expect(page.getByText("No videos are public")).toBeVisible();
       await shot(page, "folders-empty", width);
       await context.close();
     }
@@ -617,14 +617,14 @@ test.describe.serial("guest", () => {
       await expect.poll(() => libraryItems(page)).toEqual(ownerGroups);
       for (const name of ["公開あり", "非公開だけ"]) {
         const checkbox = page.getByRole("checkbox", {
-          name: `「${name}」のグループを選択`,
+          name: `Select the group "${name}"`,
         });
         await checkbox.check({ force: true });
       }
-      const bar = page.getByRole("region", { name: "選択中の操作" });
+      const bar = page.getByRole("region", { name: "Selection actions" });
       await expect(bar).toBeVisible();
       await ownerShot("bar");
-      await bar.getByRole("button", { name: "公開" }).click();
+      await bar.getByRole("button", { name: "Visibility" }).click();
       await expect(page.getByRole("menu")).toBeVisible();
       await ownerShot("menu");
       await page.keyboard.press("Escape");

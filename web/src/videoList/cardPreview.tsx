@@ -9,6 +9,7 @@ import {
 } from "react";
 
 import type { Video } from "../api/client";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { isNarrowVideo, unplayableText } from "../lib/format";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
@@ -181,7 +182,9 @@ export function CardMedia({ video, preview }: { video: Video; preview: CardPrevi
         <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-fg-subtle">
           <ImageOff className="size-6" strokeWidth={1.5} />
           <span className="text-xs">
-            {video.thumbnailState === "failed" ? "画像なし" : "準備中"}
+            {video.thumbnailState === "failed"
+              ? t.list.card.noImage
+              : t.list.card.preparing}
           </span>
         </div>
       )}

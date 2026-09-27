@@ -456,7 +456,7 @@ export default function TagsPage() {
           <EmptyState
             icon={AlertCircle}
             tone="danger"
-            title="タグを取得できません"
+            title={untranslated("タグを取得できません")}
             action={<Button onClick={() => void reload()}>再試行</Button>}
           />
         )}
@@ -464,7 +464,7 @@ export default function TagsPage() {
         {showEmptyTags && (
           <EmptyState
             icon={TagsIcon}
-            title="タグはまだありません"
+            title={untranslated("タグはまだありません")}
             description="動画の再生画面や、ライブラリの選択バーから付けられます。ここで先に作っておくこともできます。"
             action={
               <Button variant="primary" onClick={openCreate}>
@@ -478,7 +478,7 @@ export default function TagsPage() {
         {showNoMatch && (
           <EmptyState
             icon={SearchX}
-            title={`「${search}」に一致するタグはありません`}
+            title={untranslated(`「${search}」に一致するタグはありません`)}
             action={<Button onClick={clearSearch}>検索をクリア</Button>}
           />
         )}

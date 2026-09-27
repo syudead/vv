@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { FolderRef, Video } from "../api/client";
 import { itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
+import { t } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { Grid } from "../videoList/Grid";
 import { resultCountText } from "../videoList/listSummary";
@@ -40,7 +41,7 @@ export default function FolderSearchResults({
     !videos.loading && videos.items.length === 0 ? videos.error : null;
   return (
     <>
-      <h2 className="sr-only">検索結果</h2>
+      <h2 className="sr-only">{t.folders.searchResults}</h2>
       {noMatch ? (
         <NoMatches />
       ) : (
@@ -51,7 +52,7 @@ export default function FolderSearchResults({
               aria-live="polite"
               className="text-center text-xs text-fg-muted tabular-nums"
             >
-              {videos.loading ? "読み込み中…" : resultCountText(videos.total)}
+              {videos.loading ? t.list.loading : resultCountText(videos.total)}
             </p>
           )}
           {initialLoadError !== null ? (

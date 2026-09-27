@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import type { Video } from "../api/client";
 import { useAudience } from "../auth/audience";
-import { formatRelative, untranslated } from "../i18n";
+import { formatRelative, t } from "../i18n";
 import { cn } from "../lib/cn";
 import {
   formatBytes,
@@ -75,7 +75,7 @@ function PublicMark({ className }: { className?: string }) {
   return (
     <>
       <Globe aria-hidden="true" className={cn("size-3 shrink-0 text-fg", className)} />
-      <span className="sr-only">公開</span>
+      <span className="sr-only">{t.list.card.public}</span>
     </>
   );
 }
@@ -106,7 +106,7 @@ function SelectCheck({
       <Checkbox
         checked={selected}
         onCheckedChange={(next) => onSelect(video.id, next)}
-        label={untranslated(`「${video.title}」を選択`)}
+        label={t.list.card.select(video.title)}
         className={previewing ? "!bg-navbar" : undefined}
         onClick={(event: MouseEvent) => event.stopPropagation()}
       />
@@ -178,7 +178,9 @@ function VideoCard(props: VideoCardProps) {
         to={`/videos/${String(video.id)}`}
         state={{ from: backTo }}
         aria-label={
-          location === undefined ? video.title : `${video.title}、${location.label}`
+          location === undefined
+            ? video.title
+            : t.list.card.withLocation(video.title, location.label)
         }
         onClick={(event) => {
           onPreviewReset?.();
@@ -210,7 +212,7 @@ function VideoCard(props: VideoCardProps) {
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round(ratio * 100)}
-              aria-label="再生済みの割合"
+              aria-label={t.list.card.watchedRatio}
               className={cn(
                 "absolute inset-x-0 bottom-0 h-[5px]",
                 showingPreview ? "bg-fg-subtle" : "bg-fg-subtle/50",
@@ -292,7 +294,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           <Checkbox
             checked={selected}
             onCheckedChange={(next) => onSelect(video.id, next)}
-            label={untranslated(`「${video.title}」を選択`)}
+            label={t.list.card.select(video.title)}
             className={cn(
               "transition-opacity",
               selectionMode || selected
@@ -352,7 +354,10 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </td>
       <td className="hidden w-16 pr-4 text-right text-xs text-fg-muted tabular-nums sm:table-cell">
         {state === "watched" && (
-          <Check className="ml-auto size-4 text-success" aria-label="視聴済み" />
+          <Check
+            className="ml-auto size-4 text-success"
+            aria-label={t.list.card.watched}
+          />
         )}
       </td>
       <td className="w-20 pr-4 text-right text-sm text-fg tabular-nums">

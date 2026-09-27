@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 
 import { currentPath, loginPath } from "../auth/pageNavigation";
+import { t, type UiText } from "../i18n";
 import Button, { buttonClassName } from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 
@@ -14,7 +15,7 @@ export function EmptyState({
   tone = "neutral",
 }: {
   icon: LucideIcon;
-  title: string;
+  title: UiText;
   description?: ReactNode;
   action?: ReactNode;
   tone?: "neutral" | "danger";
@@ -51,14 +52,14 @@ export function GuestEmpty() {
   return (
     <EmptyState
       icon={FolderOpen}
-      title="公開されている動画はありません"
-      description="ログインすると、すべての動画を見られます"
+      title={t.list.guestEmpty.title}
+      description={t.list.guestEmpty.description}
       action={
         <Link
           to={loginPath(currentPath(location))}
           className={buttonClassName("secondary")}
         >
-          ログイン
+          {t.list.guestEmpty.signIn}
         </Link>
       }
     />
@@ -67,17 +68,17 @@ export function GuestEmpty() {
 
 /** NoMatches は条件に一致する動画が無いことだけを示す。 */
 export function NoMatches() {
-  return <EmptyState icon={SearchX} title="条件に一致する動画はありません" />;
+  return <EmptyState icon={SearchX} title={t.list.noMatches} />;
 }
 
-export function LoadFailed({ reason, onRetry }: { reason: string; onRetry: () => void }) {
+export function LoadFailed({ reason, onRetry }: { reason: UiText; onRetry: () => void }) {
   return (
     <EmptyState
       icon={AlertCircle}
       tone="danger"
-      title="一覧を取得できません"
+      title={t.list.loadFailed}
       description={reason}
-      action={<Button onClick={onRetry}>再試行</Button>}
+      action={<Button onClick={onRetry}>{t.common.retry}</Button>}
     />
   );
 }
@@ -90,14 +91,14 @@ export function LoadMoreFailed({
   reason,
   onRetry,
 }: {
-  reason: string;
+  reason: UiText;
   onRetry: () => void;
 }) {
   return (
     <div className="flex items-center justify-center gap-2 text-sm text-danger">
-      <p>続きを取得できません: {reason}</p>
+      <p>{t.list.loadMoreFailed(reason)}</p>
       <Button size="sm" onClick={onRetry}>
-        再試行
+        {t.common.retry}
       </Button>
     </div>
   );

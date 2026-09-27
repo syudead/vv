@@ -84,9 +84,7 @@ test("未設定のサーバーはどの URL も初回設定画面にし、設定
   await page.keyboard.type(ownerAccount.password);
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL("/");
-  await expect(
-    page.getByRole("heading", { level: 1, name: "ライブラリ" }),
-  ).toBeAttached();
+  await expect(page.getByRole("heading", { level: 1, name: "Library" })).toBeAttached();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   expect(requests).toEqual(["POST"]);
 

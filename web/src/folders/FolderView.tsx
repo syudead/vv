@@ -18,6 +18,7 @@ import {
 import { useFolderListing, useRootFolderName } from "../api/useFolderListing";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
+import { t } from "../i18n";
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import Button from "../ui/Button";
@@ -292,13 +293,13 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     body = (
       <EmptyState
         icon={FolderOpen}
-        title="このフォルダにはまだ動画がありません"
-        description={owner ? "取り込むと、ここに並びます。" : undefined}
+        title={t.folders.empty.title}
+        description={owner ? t.folders.empty.description : undefined}
         action={
           // 取り込みは所有者だけの操作である（ui-design.md「Guest degradation」）。
           owner ? (
             <Button variant="primary" onClick={scan.start} disabled={scan.running}>
-              {scan.running ? "取り込み中…" : "取り込む"}
+              {scan.running ? t.list.scanning : t.list.scan}
             </Button>
           ) : undefined
         }
@@ -324,15 +325,15 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   return (
     <>
       <h1 ref={heading} tabIndex={-1} className="sr-only">
-        {name ?? "フォルダ"}
+        {name ?? t.folders.title}
       </h1>
       <TopBarPortal>
         <FolderToolbar
           query={criteria.query}
           onQueryCommit={commitQuery}
           searchRef={searchField}
-          searchLabel={`${name ?? "フォルダ"}の中を検索`}
-          searchPlaceholder="このフォルダ内を検索"
+          searchLabel={t.folders.searchIn(name ?? t.folders.title)}
+          searchPlaceholder={t.folders.searchInPlaceholder}
           sort={criteria.sort}
           onSortChange={changeSort}
           onShuffle={shuffle}
@@ -353,7 +354,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
             ? breadcrumbsFor(folder, undefined).filter((crumb) => crumb !== undefined)
             : breadcrumbsFor(folder, rootName)
         }
-        suffix={searching && !videos.notFound ? "内を検索中" : undefined}
+        suffix={searching && !videos.notFound ? t.folders.searchingInside : undefined}
       />
       {/* 中身を押す直前（再生画面・子フォルダへ移る直前）の状態を控える。 */}
       <div ref={listRef} onClick={saveSnapshot} className="flex flex-col gap-3">

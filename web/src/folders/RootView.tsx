@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { takeListSnapshot } from "../api/listSnapshot";
 import { useRootFolders } from "../api/useFolderListing";
 import { useAudience } from "../auth/audience";
+import { t } from "../i18n";
 import { useScan } from "../shell/ScanProvider";
 import TopBarPortal from "../shell/TopBarPortal";
 import { buttonClassName } from "../ui/Button";
@@ -84,15 +85,15 @@ export default function RootView() {
   return (
     <>
       <h1 ref={heading} tabIndex={-1} className="sr-only">
-        フォルダ
+        {t.folders.title}
       </h1>
       <TopBarPortal>
         <FolderToolbar
           query={criteria.query}
           onQueryCommit={commitQuery}
           searchRef={searchField}
-          searchLabel="すべてのフォルダの動画を検索"
-          searchPlaceholder="すべてのフォルダを検索"
+          searchLabel={t.folders.searchAll}
+          searchPlaceholder={t.folders.searchAllPlaceholder}
           sort={criteria.sort}
           onSortChange={changeSort}
           onShuffle={shuffle}
@@ -109,7 +110,7 @@ export default function RootView() {
       </TopBarPortal>
       <Breadcrumbs
         crumbs={
-          searching ? [{ label: "すべてのフォルダを検索中" }] : [{ label: "フォルダ" }]
+          searching ? [{ label: t.folders.searchingAll }] : [{ label: t.folders.title }]
         }
       />
 
@@ -128,11 +129,11 @@ export default function RootView() {
           owner ? (
             <EmptyState
               icon={FolderOpen}
-              title="メディアフォルダが登録されていません"
-              description="設定でメディアフォルダを登録して取り込むと、ここに並びます。"
+              title={t.folders.noMediaFolders.title}
+              description={t.folders.noMediaFolders.description}
               action={
                 <Link to="/settings" className={buttonClassName("primary")}>
-                  設定を開く
+                  {t.folders.noMediaFolders.openSettings}
                 </Link>
               }
             />
@@ -141,7 +142,7 @@ export default function RootView() {
           )
         ) : (
           <Section
-            title="メディアフォルダ"
+            title={t.folders.mediaFolders}
             count={roots.loading ? undefined : folders.length}
           >
             <Grid zoom={zoom}>
