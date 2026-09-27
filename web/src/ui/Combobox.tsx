@@ -88,7 +88,7 @@ export function nameReason(raw: string): string | null {
 
 /**
  * Combobox はタグの名前を打つ ARIA 1.2 の combobox（入力 + listbox、
- * `aria-activedescendant`）である（Plan の Structural Decisions 9）。依存は
+ * `aria-activedescendant`）である。依存は
  * 足さず、キーボード操作・名前の検証・改行の貼り付け／落とし込みの遮断を
  * 手で作る（ui-design.md「Combobox」）。
  *

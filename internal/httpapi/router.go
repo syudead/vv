@@ -71,8 +71,7 @@ type MediaFolders interface {
 	DeleteMediaFolder(ctx context.Context, id, expectedVersion int64) error
 }
 
-// Tags はタグ管理画面が操作するタグの保存先である（Plan の Structural
-// Decisions 13・14）。どの操作も1つのトランザクションで済むので、
+// Tags はタグ管理画面が操作するタグの保存先である。どの操作も1つのトランザクションで済むので、
 // internal/app は通さず、internal/store の TagStore をここへ直接渡す。
 type Tags interface {
 	ListTags(ctx context.Context) ([]domain.Tag, error)
@@ -83,8 +82,7 @@ type Tags interface {
 	AddSynonym(ctx context.Context, tagID int64, name string, mergeTagID *int64) (domain.Tag, error)
 	RemoveSynonym(ctx context.Context, tagID int64, name string) error
 
-	// 付与・取り外し・要約・一覧の項目のタグ引き（#267、Plan の Structural
-	// Decisions 5・14）。どの操作も1つのトランザクションで済むので、こちらも
+	// 付与・取り外し・要約・一覧の項目のタグ引き。どの操作も1つのトランザクションで済むので、こちらも
 	// internal/app を通さない。
 	AttachTagByID(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error)
 	AttachTagByName(ctx context.Context, videoIDs []int64, name string) (domain.TagRef, int, error)

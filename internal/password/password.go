@@ -1,5 +1,5 @@
 // Package password は Argon2id によるパスワードのハッシュ化と照合を受け持つ
-// アダプタである（specs/016-single-account-auth/plan.md Structural Decisions 9）。
+// アダプタである。
 //
 // ハッシュは PHC 文字列 `$argon2id$v=19$m=<KiB>,t=<回数>,p=<並列度>$<ソルト>$<鍵>`
 // で表す。ソルトと鍵はパディングの無い標準の Base64 である。照合は文字列に

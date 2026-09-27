@@ -1,6 +1,6 @@
 # Contract: ゲストへの応答と公開フラグの API
 
-親 Issue: #135。Plan: [plan.md](../plan.md)。
+親 Issue: #135。
 
 API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文書は「ゲストも」の
 要求（[auth-api.md §1](auth-api.md#1-3つの扱い)）をゲストとして処理したときの応答の差と、
@@ -91,6 +91,5 @@ API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文�
 ## 6. 公開をやめたときの配信
 
 非公開にした動画について、ゲストとして処理中の配信・ライブ変換・プレビューの応答を
-打ち切る（Edge Case「公開の動画を見ている間に非公開にした」、
-[plan.md Structural Decisions 5](../plan.md#structural-decisions)）。一覧は、その後の取得から
+打ち切る（Edge Case「公開の動画を見ている間に非公開にした」）。一覧は、その後の取得から
 その動画を含まない。所有者として処理中の応答は打ち切らない。

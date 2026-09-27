@@ -35,8 +35,7 @@ type FocusTarget = "rename" | "synonyms" | "name" | "menu";
  * management page」）。一覧・検索・作成・改名・削除・統合・シノニムの登録と
  * 解除を持つ。
  *
- * タグの一覧は共有の保持（`web/src/api/tags.ts`、Plan の Structural
- * Decisions 8）を使う。作成・改名・削除の直後は、サーバーが返した最新の1件を
+ * タグの一覧は共有の保持（`web/src/api/tags.ts`）を使う。作成・改名・削除の直後は、サーバーが返した最新の1件を
  * 今の一覧へその場で重ねる（もう1回 `GET /api/tags` を送らない。`createTag`・
  * `renameTag`・`deleteTag` 自体が共有の保持をバックグラウンドで取り直すので、
  * 二重の取得にはならない）。タグがもう無いとき（`tag_not_found`）だけ、

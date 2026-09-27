@@ -7,8 +7,7 @@ import {
 
 /**
  * tagCriteria は、ライブラリだけが持つタグ絞り込みの条件（URL の `tag`）の
- * 読み書きを行う（specs/014-video-tags/contracts/list-url.md §1・§2、Plan の
- * Structural Decisions 1・15）。共有の `ListCriteria`（videoList/listCriteria.ts）には
+ * 読み書きを行う（specs/014-video-tags/contracts/list-url.md §1・§2）。共有の `ListCriteria`（videoList/listCriteria.ts）には
  * `tag` を足さない — 足すとフォルダ画面も `tag` を読んで URL に残してしまい、
  * フォルダ画面の URL を変えない約束に反する。
  */

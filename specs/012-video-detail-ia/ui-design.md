@@ -1,6 +1,6 @@
 # UI Design: 動画詳細画面の情報設計
 
-**Feature**: [parent Issue #171](https://github.com/syudead/vv/issues/171) | **Plan**: [plan.md](plan.md)
+**Feature**: [parent Issue #171](https://github.com/syudead/vv/issues/171)
 
 見た目の規則は [ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
 [`web/src/index.css`](../../web/src/index.css) の `@theme` に従う。本書は、動画詳細画面
@@ -171,7 +171,7 @@
 - × はこの帯の 1 か所だけに置く。プレイヤーの上と関連動画の見出しには置かない。
 - 再生画面のトースト（「パスをコピー」の結果・取り込みの通知）は、帯の上の中央に一時的に重なり、
   パンくずを隠すことがある。左右に `4rem` ずつ空けるので × には重ならない。
-- × は `state.from` の一覧へ戻る。Esc も同じ操作である（Plan の Structural Decisions 9・10）。
+- × は `state.from` の一覧へ戻る。Esc も同じ操作である。
 
 ## Player
 
@@ -238,7 +238,7 @@
 
 ### Overlay layer
 
-プレイヤーの上には、1 つの入れ物の中に層を重ねる（Plan の Structural Decisions 12）。
+プレイヤーの上には、1 つの入れ物の中に層を重ねる。
 上から順に次のとおりで、同時に出るのは 1 つだけである。
 
 1. 状態表示
@@ -287,10 +287,10 @@
   - 一覧用プレビュー
 - 各行は、アイコン・名前（`text-sm`）・右端の状態の文字（`text-xs`）を並べる。
 - 「ファイルの検出」の行は常に「完了」とする。動画の行が存在することが、検出が済んだことを
-  意味する。他の 4 行は、Plan の Structural Decisions 11 のとおり、それぞれ `probeState`・
+  意味する。他の 4 行は、それぞれ `probeState`・
   `thumbnailState`・`seekThumbnailState`・`previewState` から決める。
 
-| 行の状態（Plan の Structural Decisions 11） | アイコン | 名前 | 状態の文字 |
+| 行の状態 | アイコン | 名前 | 状態の文字 |
 | --- | --- | --- | --- |
 | 完了 | `CircleCheck`（`text-success`） | `text-fg` | 「完了」`text-fg-muted` |
 | 処理中 | `LoaderCircle`（`text-accent`、回転） | `text-fg font-medium` | 「処理中」`text-accent` |
@@ -337,7 +337,7 @@
 
 ## Interaction details
 
-- **キーボード**：Space・F・M・0・Esc の意味は Plan の Structural Decisions 9 に従う。←/→ の秒数送りは
+- **キーボード**：←/→ の秒数送りは
   置かない。
   - 再生速度のメニューが開いているときの Esc は、メニューを閉じるだけにする。
   - 全画面中の Esc は、全画面の解除だけにする。

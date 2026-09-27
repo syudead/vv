@@ -10,8 +10,7 @@ import (
 )
 
 // 公開フラグの切り替えと、非公開にした動画のゲストへの配信の打ち切り
-// （specs/016-single-account-auth/contracts/guest-api.md §4・§6、
-// plan.md Structural Decisions 5）。
+// （specs/016-single-account-auth/contracts/guest-api.md §4・§6）。
 
 // Visibility は動画の公開フラグの保存先である。internal/store の *VisibilityStore が
 // これを満たす。1つのトランザクションで済むので、internal/app は通さない。

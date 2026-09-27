@@ -7,8 +7,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 検索式を所在1行に対する SQL の条件句に組み立てる（specs/013-library-search/plan.md
-// Structural Decisions 2）。どの所在を範囲にし、動画ごとにどうまとめるかは
+// 検索式を所在1行に対する SQL の条件句に組み立てる。どの所在を範囲にし、動画ごとにどうまとめるかは
 // listing.go の chosenLocationsCTE が決める。
 
 // matchMinLength は MATCH で調べる語の最小の文字数（照合形の符号位置の数）である。

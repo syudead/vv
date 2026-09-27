@@ -17,7 +17,7 @@ import (
 // TagStore は PlaybackStore と同じく、共有する SQLite 接続だけを持ち、
 // ライブラリ索引の役割の型（LibraryStore）にも通知の発行にも依存しない。
 // タグの変更は副作用（生成物の削除・ワーカーの起床・/api/events）を持たない
-// ので、トランザクションのコミットだけで済む（Plan の Constitution Check）。
+// ので、トランザクションのコミットだけで済む。
 
 // tagTx は1つのトランザクションの中で名前とタグの行を読み書きするための
 // 共通部分である。*sql.Tx はこれを満たす。
@@ -135,8 +135,7 @@ func (s *TagStore) DeleteTag(ctx context.Context, id int64) error {
 	return nil
 }
 
-// MergeTag は sourceID のタグを targetID へ統合する（data-model.md §4、Plan の
-// Structural Decisions 11）。source の付与は insert or ignore で target へ写り、
+// MergeTag は sourceID のタグを targetID へ統合する（specs/014-video-tags/data-model.md §4）。source の付与は insert or ignore で target へ写り、
 // source の元の名前とシノニムはすべて target のシノニムになり、source は
 // 一覧から消える。どちらかが無ければ domain.ErrTagNotFound を返す。
 func (s *TagStore) MergeTag(ctx context.Context, targetID, sourceID int64) (domain.Tag, error) {
@@ -337,8 +336,7 @@ func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name s
 
 // findOrCreateTag は整えた名前 normalized をシノニムを含めて引き、無ければ同じ
 // トランザクションの中で作る。作ったかどうかも返す。名前でタグを付ける操作と、
-// グループをタグに変える操作（folder_groups.go、017 の Plan の Structural
-// Decisions 8）が共有する。
+// グループをタグに変える操作（folder_groups.go）が共有する。
 func findOrCreateTag(ctx context.Context, tx *sql.Tx, normalized string) (domain.TagRef, bool, error) {
 	lookup, found, err := lookupTagName(ctx, tx, normalized)
 	if err != nil {
@@ -509,7 +507,7 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 // まとめて出所を両方持つ（017 の data-model.md §4）。タグの無い content_key は
 // 結果に現れない。PlaybackStore.ProgressByContentKeys と同じ形で、
 // internal/httpapi が progressFor と同じ位置から一覧の項目にタグを足すために
-// 使う（Plan の Structural Decisions 5・14）。
+// 使う。
 func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error) {
 	if len(contentKeys) == 0 {
 		return map[string][]domain.VideoTag{}, nil

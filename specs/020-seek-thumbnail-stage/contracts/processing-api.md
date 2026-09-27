@@ -1,6 +1,6 @@
 # Contract: 処理状況とシーク用サムネイルの状態
 
-親 Issue #388 の Plan（[plan.md](../plan.md)）の一部。正本は [api/openapi.yaml](../../../api/openapi.yaml)
+親 Issue #388。正本は [api/openapi.yaml](../../../api/openapi.yaml)
 で、ここには変える箇所だけを書く。
 
 ## 1. `Processing.seekThumbnail`

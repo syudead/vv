@@ -49,8 +49,7 @@ func NewLiveTranscoder(serverDone <-chan struct{}) *LiveTranscoder {
 	}
 }
 
-// Start は変換を始め、最初のデータが出たところで返す（specs/018-live-transcode-seek/
-// plan.md Structural Decisions 1〜3・6）。request.Probe があれば ffprobe を起動せず、
+// Start は変換を始め、最初のデータが出たところで返す。request.Probe があれば ffprobe を起動せず、
 // 無ければその場で ffprobe を実行して結果を Probed に載せる。
 //
 // 映像がコピーできる動画（videoCanCopy が真で Normalize でない）は、まず映像をコピーして

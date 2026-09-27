@@ -30,7 +30,7 @@ function listTags(): Promise<Tag[]> {
 }
 
 /**
- * タグの一覧の共有の保持（Plan の Structural Decisions 8）。
+ * タグの一覧の共有の保持。
  *
  * 候補（combobox）・絞り込み中のタグの確かめ・管理画面が同じ控えを読む。画面ごとに
  * `GET /api/tags` を持つと、同じタブの中で「管理画面で作ったタグが開いたままの
@@ -144,9 +144,7 @@ export function __resetTagsForTest(): void {
 
 /**
  * refreshOnStaleTagError は、古いタグを使った操作の誤り（`tag_not_found`・
- * `tag_merge_required`）を受けたときに共有の一覧を取り直す（親 Issue の
- * 子 Issue「タグの管理 API を公開する」項目5、Plan の Structural Decisions 7・8
- * — 別のタブでの削除・改名・統合に、
+ * `tag_merge_required`）を受けたときに共有の一覧を取り直す（別のタブでの削除・改名・統合に、
  * その場で気付けるようにする）。取り直しの完了は待たず、失敗しても揉み消して
  * 未処理の reject を残さない（B2）。誤りは常にそのまま投げ直す。
  */

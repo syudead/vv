@@ -82,7 +82,7 @@ export default function LibraryPage() {
   const [preferences, setPreferences] = useState(readViewPreferences);
   // 一覧の条件は URL が持つ（contracts/list-url.md）。端末に保存するのは sort だけ。
   // タグ絞り込み（`tag`）はライブラリだけが持つ条件で、共有の ListCriteria には
-  // 含めない（Plan の Structural Decisions 1・15）。useListCriteria の画面固有の
+  // 含めない。useListCriteria の画面固有の
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
   const { criteria, apply } = useListCriteria(preferences.sort, TAG_PARAM);
   const { query, watch, playable, sort } = criteria;
@@ -202,7 +202,7 @@ export default function LibraryPage() {
     staleGroups,
   } = useVideos({ ...criteria, tag: tagIds }, restored, "library");
 
-  // 絞り込みはサーバーが一覧の条件として適用する（Plan の Structural Decisions 7）。
+  // 絞り込みはサーバーが一覧の条件として適用する。
   // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
   useEffect(() => {
     resetPreview();
@@ -298,7 +298,7 @@ export default function LibraryPage() {
     setSelectAllIds(null);
   }, [invalidateSelectAll]);
 
-  // --- 「すべて選択」（Plan の Structural Decisions 4） ---
+  // --- 「すべて選択」 ---
   // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。選択は常に id の
   // 集合として持つ。
   const selectAll = useCallback(() => {
@@ -353,7 +353,7 @@ export default function LibraryPage() {
   );
 
   // 選択は常に id の集合として持ち、読み込み済みの items に合わせて刈り込まない
-  // （Plan の Structural Decisions 4、issue 270 完了の条件2）。以前はここで
+  // 以前はここで
   // items に無い id を選択から落としていたが、items は タグの付け外し・
   // loadMore・進捗の反映のたびに新しい配列になるため、「すべて選択」で選んだ
   // まだ読み込んでいない id まで巻き込んで削ってしまっていた（B1）。条件
@@ -377,8 +377,7 @@ export default function LibraryPage() {
     const onKey = (event: KeyboardEvent) => {
       // 選択バーのタグ操作の Combobox・ポップオーバーが Esc を自分の操作として
       // 使ったとき（候補の一覧や吹き出しを閉じる）は、preventDefault 済みなので
-      // ここでは見送り、選択を解除しない（ui-design.md「Combobox」・
-      // Visual review criteria の操作の確認 手順2）。
+      // ここでは見送り、選択を解除しない（ui-design.md「Combobox」）。
       if (event.key === "Escape" && !event.defaultPrevented) clearSelection();
     };
     document.addEventListener("keydown", onKey);

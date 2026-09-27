@@ -1,6 +1,6 @@
 # UI Design: 動画のタグと、タグでの絞り込み
 
-**Feature**: [parent Issue #193](https://github.com/syudead/vv/issues/193) | **Plan**: [plan.md](plan.md)
+**Feature**: [parent Issue #193](https://github.com/syudead/vv/issues/193)
 
 見た目の規則・シェル・一覧の密度は
 [ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
@@ -85,8 +85,7 @@
 ### Card structure and pressing
 
 - カードは今、全体が再生画面への1つのリンクである。タグの行はリンクの**外**、同じ
-  `article` の中の題名の下に置く（リンクの中に押せる要素を入れ子にしない。Plan の
-  Structural Decisions 10）。見た目は今と同じ1枚のカードで、境目の線は引かない。
+  `article` の中の題名の下に置く（リンクの中に押せる要素を入れ子にしない）。見た目は今と同じ1枚のカードで、境目の線は引かない。
 - カードの hover の浮き上がり・影・hover プレビューは、タグの行の上でも今と同じに効く。
 - タグのチップは、それぞれ1つのボタンである。押すと、今の条件にそのタグを加える
   （[list-url.md §2](contracts/list-url.md#2-タグを押したときと外したとき)）。再生画面へは移らない。
@@ -321,8 +320,7 @@
 
 ### Synonyms
 
-- 「シノニム」を押すと、`ModalFrame`（Plan の Structural Decisions 9 で `web/src/ui/` へ
-  移すもの）の窓「「Anime」のシノニム」を開く。
+- 「シノニム」を押すと、`ModalFrame`の窓「「Anime」のシノニム」を開く。
   - 上に、今のシノニムを `Chip` に × を足した形で並べる。窓の面が `bg-elevated` で neutral の
     `Chip` と同じ色になり面が消えるので、このチップだけ面を `bg-bg` にする（`fg` on `bg` は
     `pairs` にある）。× の読み上げ名は

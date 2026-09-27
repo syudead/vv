@@ -47,8 +47,7 @@ type transcodeStartSlot struct {
 	changed    chan struct{}
 }
 
-// transcodeStarts は attempt ごとの実際の開始位置の台帳である
-// （plan.md Structural Decision 4）。
+// transcodeStarts は attempt ごとの実際の開始位置の台帳である。
 type transcodeStarts struct {
 	mu    sync.Mutex
 	slots map[transcodeStartKey]*transcodeStartSlot

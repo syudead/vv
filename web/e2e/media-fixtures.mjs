@@ -314,8 +314,7 @@ export function generateFolderFixtures(root) {
 
 /**
  * generateFolderSearchFixtures はフォルダ画面・最上位の検索と絞り込みの検証用の
- * フォルダ構成を作る（specs/013-library-search、親 Issue #195 の受け入れ条件
- * 17〜21、#228 の完了の条件）。ui-design.md「Visual review criteria」の
+ * フォルダ構成を作る。
  * `root/A/x 京都.mp4`・`root/A/B/y 京都.mp4`・`root/C/z 京都.mp4` に対応する。
  *
  * - `A/x 京都.mp4`・`A/B/y 京都.mp4` は「京都」を含み、A の配下にある
@@ -498,8 +497,7 @@ export function generateGuestFixtures(root) {
   clip(path.join(shown, "ゲスト公開F.mp4"), 220);
   clip(path.join(shown, "ゲスト非公開C.mp4"), 280);
   clip(path.join(hidden, "ゲスト非公開D.mp4"), 340);
-  // 画面写真を ui-design.md「Visual review criteria」の「12 本以上、うち 4 本が公開」で
-  // 撮るための、非公開のままの6本。題名に「ゲスト」を含めず、上の6本を題名で
+  // 画面確認に使う、非公開のままの6本。題名に「ゲスト」を含めず、上の6本を題名で
   // 数える確かめに混ざらないようにする。
   for (const [index, name] of ["G", "H", "I", "J", "K", "L"].entries()) {
     clip(path.join(hidden, `確認用${name}.mp4`), 20 + index * 55);

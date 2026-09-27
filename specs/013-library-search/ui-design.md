@@ -1,6 +1,6 @@
 # UI Design: 一覧とフォルダ画面の検索・絞り込み・並べ替え
 
-**Feature**: [parent Issue #195](https://github.com/syudead/vv/issues/195) | **Plan**: [plan.md](plan.md)
+**Feature**: [parent Issue #195](https://github.com/syudead/vv/issues/195)
 
 見た目の規則・シェル・一覧の密度は
 [ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
@@ -15,7 +15,7 @@
 
 - ライブラリ（`/`）、フォルダ画面の最上位（`/folders`）、各フォルダは、同じ部品
   （検索欄と手引き・絞り込み・並べ替えと向き）を `TopBarPortal` の中に置く。部品は
-  `web/src/library/` のものをフォルダ画面が借りる（Plan の Structural Decisions 9）。
+  `web/src/library/` のものをフォルダ画面が借りる。
   フォルダ画面のツールバーは、ライブラリのツールバーから表示形式の切り替えを除いたものに
   なる。フォルダ画面にはリスト表示が無いからである。
 - フォルダ画面のツールバーは、今の「右寄せ」をやめ、ライブラリと同じ「検索欄を先頭に

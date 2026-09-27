@@ -202,8 +202,7 @@ function AddTagPopover({
     return unsubscribe;
   }, []);
 
-  // 開くたびに共有の一覧を取り直す（Plan の Structural Decisions 8。すでに保持が
-  // あっても、別のタブでの変更に気付けるようにする）。
+  // 開くたびに共有の一覧を取り直す。
   useEffect(() => {
     if (!open) return;
     setValue("");

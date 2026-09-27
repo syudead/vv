@@ -1,6 +1,6 @@
 # UI Design: フォルダ階層をたどって動画を見るフォルダ画面
 
-**Feature**: [parent Issue #145](https://github.com/syudead/vv/issues/145) | **Plan**: [plan.md](plan.md)
+**Feature**: [parent Issue #145](https://github.com/syudead/vv/issues/145)
 
 見た目の規則・シェル・一覧の構成は
 [ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と

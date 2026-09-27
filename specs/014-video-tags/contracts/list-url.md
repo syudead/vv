@@ -1,6 +1,6 @@
 # Contract: タグの絞り込みを表す URL
 
-親 Issue: #193。Plan: [plan.md](../plan.md)。
+親 Issue: #193。
 
 ライブラリ一覧（`/`）の条件の URL は、#195 の
 [list-url.md](../../013-library-search/contracts/list-url.md) が正本である。この文書は、
@@ -24,7 +24,7 @@
 - 一覧の控え（`listSnapshot`）の鍵に、整えた `tag` の並びを含める。`/?tag=1` から戻って
   `/` の控えが使われないようにする。
 - 控えから一覧を戻したときは、一覧の要求をしないので `missingTagIds` が届かない。そこで
-  画面は、戻したときに取り直す共有のタグの一覧（Plan の Structural Decisions 8）と URL の
+  画面は、戻したときに取り直す共有のタグの一覧と URL の
   `tag` を突き合わせる。一覧に無い `id` があれば、`missingTagIds` を受けたときと同じく
   伝えて URL から取り除く。条件が変わるので控えは使われず、一覧は取り直される。
 

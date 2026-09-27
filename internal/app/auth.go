@@ -15,8 +15,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 認証の定数（specs/016-single-account-auth/plan.md Structural Decisions 6、
-// contracts/auth-api.md §3・§7）。
+// 認証の定数。
 const (
 	// sessionTokenBytes はセッション ID の乱数のバイト数である。
 	sessionTokenBytes = 32

@@ -12,7 +12,7 @@ import FolderArt from "../videoList/FolderArt";
 /**
  * GroupCardProps はライブラリのグループのカードと行の props である
  * （specs/017-folder-groups/ui-design.md「Group card」）。グループのカードはフォルダ画面には
- * 出ないので `web/src/library/` に置く（plan.md の Structural Decisions 13）。
+ * 出ないので `web/src/library/` に置く。
  */
 export interface GroupCardProps {
   group: LibraryGroup;
