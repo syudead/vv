@@ -150,7 +150,7 @@ describe("App", () => {
     render(<App />);
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "アカウントを作成" }),
+      await screen.findByRole("heading", { level: 1, name: "初回設定" }),
     ).toBeDefined();
     expect(window.location.pathname).toBe("/setup");
     expect(

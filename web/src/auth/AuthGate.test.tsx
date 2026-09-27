@@ -82,7 +82,7 @@ describe("AuthGate", () => {
       renderGate(path);
 
       expect(
-        await screen.findByRole("heading", { level: 1, name: "アカウントを作成" }),
+        await screen.findByRole("heading", { level: 1, name: "初回設定" }),
       ).toBeDefined();
       expect(currentLocation).toBe("/setup");
       expect(screen.queryByText(/library/)).toBeNull();

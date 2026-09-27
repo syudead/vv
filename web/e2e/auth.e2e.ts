@@ -27,7 +27,7 @@ test("ゲストで設定画面を開くとログイン画面になり、キー�
   await expect(page).toHaveURL("/login?next=%2Fsettings");
   await expect(page.getByRole("heading", { level: 1, name: "ログイン" })).toBeVisible();
   await expectCredentialFields(page);
-  // e2e は HTTP で配るので、主操作の下に警告が出て、ユーザー名と主操作から指される。
+  // e2e は HTTP で配るので、入力前に警告が出て、ユーザー名と主操作から指される。
   await expect(page.getByText(/この接続は暗号化されていません/)).toBeVisible();
   await expect(page.getByLabel("ユーザー名")).toHaveAttribute(
     "aria-describedby",
@@ -37,6 +37,13 @@ test("ゲストで設定画面を開くとログイン画面になり、キー�
     "aria-describedby",
     "connection-warning",
   );
+  for (const width of [360, 768, 1280]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(page.getByRole("img", { name: "VVMDM" })).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+  }
 
   await expect(page.getByLabel("ユーザー名")).toBeFocused();
   await page.keyboard.type(ownerAccount.username);
@@ -71,6 +78,8 @@ test("ログインの送信中は再送信できず、失敗するとパスワ�
   await page.getByLabel("パスワード").press("Enter");
   const submit = page.getByRole("button", { name: "ログイン" });
   await expect(submit).toBeDisabled();
+  await expect(submit).toHaveText("ログイン中…");
+  await expect(submit).toHaveAttribute("aria-busy", "true");
   await page.getByLabel("パスワード").press("Enter");
   await submit.click({ force: true });
   expect(attempts).toBe(1);
