@@ -36,7 +36,7 @@ export default function SegmentedControl<T extends string>({
           <ToggleGroup.Item
             value={option.value}
             aria-label={option.label}
-            className="inline-flex h-full w-9 items-center justify-center rounded-md text-fg-muted transition-colors first:rounded-r-none last:rounded-l-none hover:text-fg data-[state=on]:bg-active-wash data-[state=on]:text-fg disabled:pointer-events-none disabled:opacity-50 [&>svg]:size-4"
+            className="inline-flex h-full w-9 items-center justify-center rounded-md border border-transparent text-fg-muted transition-colors first:rounded-r-none last:rounded-l-none hover:text-fg data-[state=on]:border-accent-active data-[state=on]:bg-accent-soft data-[state=on]:text-link disabled:pointer-events-none disabled:opacity-50 [&>svg]:size-4"
           >
             {option.icon}
           </ToggleGroup.Item>
