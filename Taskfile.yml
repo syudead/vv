@@ -27,6 +27,7 @@ tasks:
       # 最新かどうかの判定で飛ばしてはいけない。
       - npm --prefix web ci
       - npm --prefix tools ci
+      - npm --prefix docs-site ci
       - task: golangci
         vars: { GOLANGCI_ARGS: "--version" }
       - go -C tools tool air -v
@@ -57,6 +58,16 @@ tasks:
     desc: Build the SPA and the single Go binary.
     cmds:
       - go run ./scripts/build
+
+  docs:
+    desc: Serve the documentation site (docs/ and specs/) locally with live reload.
+    cmds:
+      - npm --prefix docs-site run dev
+
+  docs-build:
+    desc: Build the documentation site into docs-site/.vitepress/dist, as CI does.
+    cmds:
+      - npm --prefix docs-site run build
 
   generate:
     desc: Generate Go and TypeScript types from OpenAPI.
