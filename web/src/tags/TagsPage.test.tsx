@@ -34,6 +34,8 @@ const server = {
    * するためのもの。
    */
   failAllGets: false,
+  /** true にすると、次のタグ作成を一般の理由で失敗させる。 */
+  failNextCreate: false,
   /** true にすると、次の PATCH /api/tags/{id} を tag_name_taken 以外の理由で失敗させる（N2）。 */
   failNextPatch: false,
   /** true にすると、次の POST /api/tags/{id}/merge を一般の理由で失敗させる（N4）。 */
@@ -104,6 +106,12 @@ function install() {
     }
 
     if (path === "/api/tags" && method === "POST") {
+      if (server.failNextCreate) {
+        server.failNextCreate = false;
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "作成できませんでした" }, 500),
+        );
+      }
       const body = JSON.parse(String(init?.body)) as { name: string };
       const conflict = server.tags.find(
         (t) => t.name === body.name || t.synonyms.includes(body.name),
@@ -329,6 +337,7 @@ beforeEach(() => {
   server.getCalls = 0;
   server.failNextGet = false;
   server.failAllGets = false;
+  server.failNextCreate = false;
   server.failNextPatch = false;
   server.failNextMerge = false;
   server.failNextSynonymsPost = false;
@@ -869,6 +878,46 @@ describe("TagsPage", () => {
     const taken = await screen.findByText("「アニメ」は「Anime」のシノニムです");
     expect(taken.getAttribute("role")).toBeNull();
     expect(taken.className).toContain("text-xs");
+    expect(input.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  it("通信失敗は作成・改名・シノニム追加の名前入力を無効扱いせず、alertで伝える", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    await user.click(screen.getByRole("button", { name: "新しいタグ" }));
+    const createInput = screen.getByRole("textbox", { name: "新しいタグの名前" });
+    await user.type(createInput, "未登録");
+    server.failNextCreate = true;
+    await user.keyboard("{Enter}");
+    expect((await screen.findByRole("alert")).textContent).toBe("作成できませんでした");
+    expect(createInput.getAttribute("aria-invalid")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "キャンセル" }));
+
+    const row = screen.getByTitle("旅行").closest("div")!.parentElement!;
+    await user.click(within(row).getByRole("button", { name: "改名" }));
+    const renameInput = screen.getByRole("textbox", { name: "「旅行」の新しい名前" });
+    await user.clear(renameInput);
+    await user.type(renameInput, "旅行2024");
+    server.failNextPatch = true;
+    await user.keyboard("{Enter}");
+    expect((await screen.findByRole("alert")).textContent).toBe("改名できませんでした");
+    expect(renameInput.getAttribute("aria-invalid")).toBeNull();
+    await user.keyboard("{Escape}");
+
+    const dramaRow = screen.getByTitle("Drama").closest("div")!.parentElement!;
+    await user.click(within(dramaRow).getByRole("button", { name: "シノニム" }));
+    const dialog = await screen.findByRole("dialog", { name: "「Drama」のシノニム" });
+    const synonymInput = within(dialog).getByRole("textbox", { name: "シノニムを追加" });
+    await user.type(synonymInput, "別名");
+    server.failNextSynonymsPost = true;
+    await user.keyboard("{Enter}");
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "追加できませんでした",
+    );
+    expect(synonymInput.getAttribute("aria-invalid")).toBeNull();
   });
 
   it("空白だけの検索は絞り込み中として数えない（N5）", async () => {
@@ -1259,7 +1308,7 @@ describe("TagsPage 統合", () => {
     await user.click(within(dialog).getByRole("button", { name: "統合する" }));
     await waitFor(() =>
       expect(
-        within(dialog).getByRole("button", { name: "統合する" }).hasAttribute("disabled"),
+        within(dialog).getByRole("button", { name: "統合中…" }).hasAttribute("disabled"),
       ).toBe(true),
     );
 

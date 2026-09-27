@@ -144,7 +144,7 @@ export default function MergeTagDialog({
           )}
         </div>
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
         <Button ref={cancel} onClick={handleClose} disabled={pending}>
           キャンセル
         </Button>
@@ -155,7 +155,7 @@ export default function MergeTagDialog({
           disabled={pending || target === null}
         >
           {pending && <LoaderCircle className="animate-spin" />}
-          統合する
+          {pending ? "統合中…" : "統合する"}
         </Button>
       </div>
     </ModalFrame>
