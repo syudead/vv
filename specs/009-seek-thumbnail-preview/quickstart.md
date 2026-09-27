@@ -1,5 +1,8 @@
 # Validation Quickstart: 動画シーク時のサムネイルプレビュー
 
+> 画像の間隔・形式・要求の形は 021 で置き換えた。現在の確認手順は
+> [021 の quickstart](../021-seek-thumbnail-sprite/quickstart.md) と [021 の契約](../021-seek-thumbnail-sprite/contracts/seek-sprite-api.md) を正本とする。
+
 共通の build、test、起動方法は [Taskfile.yml](../../Taskfile.yml) を使う。本書はこの機能だけの検証matrixを示す。
 
 ## Automated validation
@@ -14,11 +17,11 @@
 
 | Case | Setup | Expected evidence |
 | --- | --- | --- |
-| 直接配信 | 時刻を画像内に描いたMP4/H.264/AAC | 表示時刻に対応する5秒bucketの画像 |
+| 直接配信 | 時刻を画像内に描いたMP4/H.264/AAC | 表示時刻を含む区間の画像（[021 の契約](../021-seek-thumbnail-sprite/contracts/seek-sprite-api.md)） |
 | ライブ変換 | 同内容のMKV/非対応codec | 直接配信と同じ論理時刻の画像 |
-| 先頭・末尾 | 0秒付近と`durationMs - 1` | 対応する5秒bucketのJPEG、画面外へのはみ出しなし |
+| 先頭・末尾 | 0秒付近と`durationMs - 1` | 対応する区間の画像、画面外へのはみ出しなし |
 | rapid move | 10秒間に100回以上位置変更 | 1秒以内に最新位置へ収束し、古い画像へ戻らない |
-| duplicate bucket | 同じ5秒内を反復 | URLが同一で、追加のnetwork取得を繰り返さない |
+| duplicate image | 同じ画像の区間内を反復 | 追加のnetwork取得を繰り返さない |
 | image failure | 画像応答を409または切断 | 時刻、再生、シークが継続する |
 | lifecycle | hover中に一覧へ戻る／動画変更 | request、表示、object URLが残らない |
 
