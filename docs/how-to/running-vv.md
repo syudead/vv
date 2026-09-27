@@ -40,8 +40,8 @@ During and after a scan:
 
 - the library and player remain available while indexing continues;
 - moved or renamed files retain their identity and playback position;
-- browser-incompatible files remain visible with an explanation before
-  playback is attempted; and
+- browser-incompatible files remain visible and play through live transcoding
+  when conversion succeeds; and
 - titles can be searched from the first character.
 
 ## Runtime settings
@@ -113,10 +113,12 @@ database is `MDM_DATA_DIR/mdm.db`; generated thumbnails live below
 `MDM_DATA_DIR/thumbnails/`.
 
 Most stored data is a rebuildable index and can be recreated by scanning the
-media folders again. Playback positions in `playback_progress` and tags
-(`tags`, `tag_names`, `video_tags`) are user data and cannot be reconstructed.
-Removing the `vv_data` volume deletes both, so back it up before resetting the
-application.
+media folders again. The database also contains user data that a scan cannot
+restore, including playback positions, tags, public video settings, the account
+and folder grouping exceptions. The authoritative table-by-table distinction is
+in [Rebuildable and user data](../../ARCHITECTURE.md#rebuildable-and-user-data).
+Removing the `vv_data` volume deletes both kinds of data, so back up the volume
+before resetting the application.
 
 ## Network exposure
 

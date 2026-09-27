@@ -188,6 +188,8 @@ live in `internal/domain`.
 Shutdown closes the `/api/events` streams, drains in-flight requests within a 10 second
 grace period, then stops the scanner and the workers so a running job returns to the queue.
 
+### Rebuildable and user data
+
 Two kinds of data live in SQLite and they are not equivalent: `videos`,
 `video_locations` (including its per-location search keys), `location_search_fts`,
 `jobs`, `scans`, thumbnail files, hover-preview MP4/manifest pairs, the folder index

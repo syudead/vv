@@ -7,7 +7,6 @@
 本書は「なぜこの形にしたか」だけを書く。値そのもの（色・半径・カード幅）は
 `web/src/index.css` の `@theme` にあり、検査する組は
 `web/src/theme/tokens.test.ts` にある。ここに写すと真実が 2 か所になるので、写さない。
-**本書と実装が食い違ったら、実装が正しい。**
 
 ## 1. なぜ見た目の値を CSS の 1 か所に置き、対比をテストで保証するのか
 
@@ -142,11 +141,11 @@ jsdom は CSS を適用しないので、`position: fixed` もメディアクエ
   チェックはそのメンバー全部を入れ外しし、件数（「N 件を選択中」）はカードの枚数ではなく
   動画の本数を数える。そのため「すべて選択」は選んだ本数と `total` を比べて無効にせず、
   送っている間と、選択が直前の「すべて選択」の応答と同じ集合である間だけ押せなくする
-  （specs/017-folder-groups/ui-design.md「Pressing and selection」）。sm 未満ではバーが 2 段になり、
-  タグの 2 つの操作と「公開」が下の段に回る。3 つが 1 行に収まらない幅（360px）では
-  「公開」だけがさらに次の段の右端に置かれる
-  （specs/014-video-tags/ui-design.md「Selection bar」、
-  specs/016-single-account-auth/ui-design.md「Selection bar」）。選択が
+  （specs/017-folder-groups/ui-design.md「Pressing and selection」）。`sm` 以上では
+  1 行に並び、`sm` 未満では上段に件数・「すべて選択」・解除、下段にタグの 2 操作と
+  「公開」を置く。下段の 3 操作が収まらない幅（360px など）では「公開」が次の段の
+  右端に回る。文言をアイコンだけに縮めないので、タッチ端末でも操作を読める。
+  選択が
   `POST /api/video-tags`・`PUT /api/video-visibility` の上限（20,000件、全部か無しか。
   specs/014-video-tags/contracts/tags-api.md §4）を超えるときは、タグと公開の一括操作が
   disabled になり理由が添えられる。一括で外したタグが今のタグの絞り込みに含まれている
