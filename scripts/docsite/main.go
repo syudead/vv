@@ -397,7 +397,7 @@ func (s site) export(out string) error {
 		}
 		out = filepath.Join(wd, out)
 	}
-	if err := os.RemoveAll(out); err != nil {
+	if err := clearOut(filepath.Clean(out), s.root); err != nil {
 		return err
 	}
 	files, err := s.files()
@@ -460,6 +460,26 @@ func (s site) export(out string) error {
 	}
 	fmt.Printf("docs: %d 文書を %s へ書き出しました\n", len(files.docs), out)
 	return nil
+}
+
+// clearOut は書き出し先を空にする。消してよいのは、まだ無いか空のディレクトリと、
+// 前回の書き出し（_docsite/app.js がある）だけである。-out に . やリポジトリを
+// 含むディレクトリ、無関係な既存のディレクトリを渡されたときに消さないため。
+func clearOut(out, root string) error {
+	if rel, err := filepath.Rel(out, root); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("書き出し先 %s はリポジトリを含むので使えません。build/docs のような専用のディレクトリを指定してください", out)
+	}
+	entries, err := os.ReadDir(out)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if len(entries) > 0 && !fileExists(filepath.Join(out, assetDir, "app.js")) {
+		return fmt.Errorf("書き出し先 %s は前回の書き出しではない既存のディレクトリなので消しません。空のディレクトリか新しいパスを指定してください", out)
+	}
+	return os.RemoveAll(out)
 }
 
 func writeFile(out, rel string, body []byte) error {

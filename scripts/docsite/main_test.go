@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -214,5 +215,42 @@ func TestRenderOmitsRawHTML(t *testing.T) {
 	}
 	if strings.Contains(got.HTML, "<script") || strings.Contains(got.HTML, "onerror") {
 		t.Errorf("raw HTML was rendered: %s", got.HTML)
+	}
+}
+
+// TestClearOutRefusesDirectoriesItDidNotWrite は、-out にリポジトリやそれを含む
+// ディレクトリ、無関係な既存のディレクトリを渡しても消さないことを確かめる。
+func TestClearOutRefusesDirectoriesItDidNotWrite(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "repo")
+	unrelated := filepath.Join(parent, "notes")
+	previous := filepath.Join(parent, "site")
+	for _, f := range []string{
+		filepath.Join(root, "README.md"),
+		filepath.Join(unrelated, "keep.txt"),
+		filepath.Join(previous, assetDir, "app.js"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(f), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(f, nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, out := range []string{root, parent, unrelated} {
+		if err := clearOut(out, root); err == nil {
+			t.Errorf("clearOut(%s) succeeded, want a refusal", out)
+		}
+	}
+	if !fileExists(filepath.Join(root, "README.md")) || !fileExists(filepath.Join(unrelated, "keep.txt")) {
+		t.Fatal("a refused directory was modified")
+	}
+	for _, out := range []string{previous, filepath.Join(parent, "new"), filepath.Join(root, "build", "docs")} {
+		if err := clearOut(out, root); err != nil {
+			t.Errorf("clearOut(%s) = %v, want success", out, err)
+		}
+	}
+	if _, err := os.Stat(previous); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("previous export was not removed: %v", err)
 	}
 }
