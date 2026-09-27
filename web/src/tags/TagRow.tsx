@@ -116,7 +116,7 @@ export default function TagRow({
               field.reason !== null ? reasonId : error !== null ? errorId : undefined
             }
             aria-busy={pending || undefined}
-            aria-invalid={field.reason !== null || error !== null || undefined}
+            aria-invalid={field.reason !== null || error?.kind === "taken" || undefined}
             className="h-8 w-full min-w-0 rounded-sm border border-control-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-link"
           />
         ) : (

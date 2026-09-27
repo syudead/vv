@@ -369,7 +369,9 @@ export default function SynonymsDialog({
                         : undefined
                   }
                   aria-busy={addPending || undefined}
-                  aria-invalid={field.reason !== null || addError !== null || undefined}
+                  aria-invalid={
+                    field.reason !== null || addError?.kind === "taken" || undefined
+                  }
                   className="h-9 w-full min-w-0 rounded-sm border border-control-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-link"
                 />
               </div>

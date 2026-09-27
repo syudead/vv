@@ -72,7 +72,7 @@ export default function CreateTagRow({
               : undefined
         }
         aria-busy={pending || undefined}
-        aria-invalid={field.reason !== null || error !== null || undefined}
+        aria-invalid={field.reason !== null || error?.kind === "taken" || undefined}
         className="h-9 min-w-0 basis-full rounded-sm border border-control-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-link sm:flex-1 sm:basis-auto"
       />
       <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
