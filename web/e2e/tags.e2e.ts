@@ -687,7 +687,7 @@ test.describe.serial("video tags", () => {
       await renameInput.fill("e2e管理既存名");
       await page.keyboard.press("Enter");
       await expect(
-        page.getByText("「e2e管理既存名」という名前のタグが既にあります"),
+        page.getByText('A tag named "e2e管理既存名" already exists.'),
       ).toBeVisible();
       // 入力は残る。
       await expect(renameInput).toHaveValue("e2e管理既存名");
@@ -1048,7 +1048,7 @@ test.describe.serial("video tags", () => {
       // getByText は大文字小文字を区別しない部分一致なので、窓の見出し
       // 「「e2eXyz17Anime」のシノニム」と取り違えないよう exact にする。
       await expect(dialog2.getByText("e2eXyz17anime", { exact: true })).toBeVisible();
-      await dialog2.getByRole("button", { name: "閉じる" }).click();
+      await dialog2.getByRole("button", { name: "Close" }).click();
       await expect(tagRowByName(page, "e2eXyz17anime")).toHaveCount(0);
       await expect(tagRowByName(page, "e2eXyz17Anime")).toContainText(
         "シノニム: e2eXyz17anime",
@@ -1084,9 +1084,7 @@ test.describe.serial("video tags", () => {
       await page.keyboard.press("Enter");
 
       await expect(
-        dialog.getByText(
-          "「e2e管理衝突アニメ」は「e2e管理衝突Anime」のシノニムとして使われています",
-        ),
+        dialog.getByText('That name is already a synonym of the tag "e2e管理衝突Anime".'),
       ).toBeVisible();
     });
 

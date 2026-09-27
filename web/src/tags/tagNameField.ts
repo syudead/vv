@@ -21,7 +21,9 @@ export type TagFieldError = { kind: "taken" | "other"; message: string };
  */
 export function tagFieldError(failure: unknown): TagFieldError {
   if (failure instanceof RequestFailed && failure.code === "tag_name_taken") {
-    return { kind: "taken", message: failure.message };
+    // 文言はほかの失敗と同じくカタログから作る（reason・tagName を使う）。サーバーの
+    // message は出さない（specs/023-english-i18n/research.md R-5）。
+    return { kind: "taken", message: errorText(failure) };
   }
   return { kind: "other", message: errorText(failure) };
 }

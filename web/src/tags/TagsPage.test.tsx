@@ -16,6 +16,24 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+/**
+ * takenResponse は実際のサーバーと同じ形の tag_name_taken を返す
+ * （contracts/error-api.md §1）。submitted が owner の元の名前なら name_is_tag、
+ * そうでなければ name_is_synonym。画面がカタログの文を出す（サーバーの
+ * message をそのまま出さない）ことを確かめるため、message は画面に出ない文にする。
+ */
+function takenResponse(submitted: string, ownerName: string): Response {
+  return jsonResponse(
+    {
+      code: "tag_name_taken",
+      reason: submitted === ownerName ? "name_is_tag" : "name_is_synonym",
+      tagName: ownerName,
+      message: "server-side message",
+    },
+    409,
+  );
+}
+
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
   return { synonyms: [], videoCount: 0, ...overrides };
 }
@@ -109,12 +127,7 @@ function install() {
         (t) => t.name === body.name || t.synonyms.includes(body.name),
       );
       if (conflict !== undefined) {
-        return maybeHold(() =>
-          jsonResponse(
-            { code: "tag_name_taken", message: `「${body.name}」は既に使われています` },
-            409,
-          ),
-        );
+        return maybeHold(() => takenResponse(body.name, conflict.name));
       }
       const created = tag({ id: server.nextId, name: body.name });
       server.nextId += 1;
@@ -144,15 +157,7 @@ function install() {
         (t) => t.id !== id && (t.name === body.name || t.synonyms.includes(body.name)),
       );
       if (conflict !== undefined) {
-        return maybeHold(() =>
-          jsonResponse(
-            {
-              code: "tag_name_taken",
-              message: `「${body.name}」は「${conflict.name}」のシノニムです`,
-            },
-            409,
-          ),
-        );
+        return maybeHold(() => takenResponse(body.name, conflict.name));
       }
       return maybeHold(() => {
         found.name = body.name;
@@ -230,15 +235,7 @@ function install() {
         return maybeHold(() => jsonResponse(target));
       }
       if (target.name === body.name) {
-        return maybeHold(() =>
-          jsonResponse(
-            {
-              code: "tag_name_taken",
-              message: `「${body.name}」は既にこのタグの名前です`,
-            },
-            409,
-          ),
-        );
+        return maybeHold(() => takenResponse(body.name, target.name));
       }
       const ownedBy = server.tags.find(
         (t) => t.id !== id && (t.name === body.name || t.synonyms.includes(body.name)),
@@ -265,15 +262,7 @@ function install() {
           });
         }
         // 別のタグの既存のシノニムとの衝突。
-        return maybeHold(() =>
-          jsonResponse(
-            {
-              code: "tag_name_taken",
-              message: `「${body.name}」は「${ownedBy.name}」のシノニムです`,
-            },
-            409,
-          ),
-        );
+        return maybeHold(() => takenResponse(body.name, ownedBy.name));
       }
       return maybeHold(() => {
         target.synonyms = [...target.synonyms, body.name];
@@ -491,7 +480,7 @@ describe("TagsPage", () => {
     await user.type(input, "旅行");
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByText("「旅行」は既に使われています")).toBeDefined();
+    expect(await screen.findByText('A tag named "旅行" already exists.')).toBeDefined();
     expect((input as HTMLInputElement).value).toBe("旅行");
   });
 
@@ -511,7 +500,9 @@ describe("TagsPage", () => {
     await user.clear(input);
     await user.type(input, "アニメ");
     await user.keyboard("{Enter}");
-    expect(await screen.findByText("「アニメ」は「Anime」のシノニムです")).toBeDefined();
+    expect(
+      await screen.findByText('That name is already a synonym of the tag "Anime".'),
+    ).toBeDefined();
 
     await user.clear(input);
     await user.type(input, "旅行2024");
@@ -794,7 +785,7 @@ describe("TagsPage", () => {
 
     release?.();
 
-    expect(await screen.findByText("「旅行」は既に使われています")).toBeDefined();
+    expect(await screen.findByText('A tag named "旅行" already exists.')).toBeDefined();
     expect(document.activeElement).toBe(input);
     expect((input as HTMLInputElement).value).toBe("旅行");
     await waitFor(() => expect(input.getAttribute("aria-busy")).toBeNull());
@@ -821,7 +812,9 @@ describe("TagsPage", () => {
 
     release?.();
 
-    expect(await screen.findByText("「アニメ」は「Anime」のシノニムです")).toBeDefined();
+    expect(
+      await screen.findByText('That name is already a synonym of the tag "Anime".'),
+    ).toBeDefined();
     expect(document.activeElement).toBe(input);
     expect((input as HTMLInputElement).value).toBe("アニメ");
     await waitFor(() => expect(input.getAttribute("aria-busy")).toBeNull());
@@ -866,7 +859,9 @@ describe("TagsPage", () => {
     await user.type(input, "アニメ");
     await user.keyboard("{Enter}");
 
-    const taken = await screen.findByText("「アニメ」は「Anime」のシノニムです");
+    const taken = await screen.findByText(
+      'That name is already a synonym of the tag "Anime".',
+    );
     expect(taken.getAttribute("role")).toBeNull();
     expect(taken.className).toContain("text-xs");
   });
@@ -1050,10 +1045,10 @@ describe("TagsPage", () => {
     await user.type(input, "旅行");
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByText("「旅行」は既に使われています")).toBeDefined();
+    expect(await screen.findByText('A tag named "旅行" already exists.')).toBeDefined();
 
     await user.type(input, "2024");
-    expect(screen.queryByText("「旅行」は既に使われています")).toBeNull();
+    expect(screen.queryByText('A tag named "旅行" already exists.')).toBeNull();
   });
 
   it("改名の失敗の表示は、入力を打ち直すと消える（Devinの指摘3）", async () => {
@@ -1069,10 +1064,14 @@ describe("TagsPage", () => {
     await user.type(input, "アニメ");
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByText("「アニメ」は「Anime」のシノニムです")).toBeDefined();
+    expect(
+      await screen.findByText('That name is already a synonym of the tag "Anime".'),
+    ).toBeDefined();
 
     await user.type(input, "2024");
-    expect(screen.queryByText("「アニメ」は「Anime」のシノニムです")).toBeNull();
+    expect(
+      screen.queryByText('That name is already a synonym of the tag "Anime".'),
+    ).toBeNull();
   });
 });
 
@@ -1348,7 +1347,9 @@ describe("TagsPage シノニム", () => {
     await user.keyboard("{Enter}");
 
     expect(
-      await within(dialog).findByText("「アニメ」は「Anime」のシノニムです"),
+      await within(dialog).findByText(
+        'That name is already a synonym of the tag "Anime".',
+      ),
     ).toBeDefined();
   });
 
@@ -1501,11 +1502,13 @@ describe("TagsPage シノニム", () => {
     const input = within(dialog).getByRole("textbox", { name: "シノニムを追加" });
     await user.type(input, "アニメ");
     await user.keyboard("{Enter}");
-    await within(dialog).findByText("「アニメ」は「Anime」のシノニムです");
+    await within(dialog).findByText('That name is already a synonym of the tag "Anime".');
 
     await user.type(input, "2");
 
-    expect(within(dialog).queryByText("「アニメ」は「Anime」のシノニムです")).toBeNull();
+    expect(
+      within(dialog).queryByText('That name is already a synonym of the tag "Anime".'),
+    ).toBeNull();
   });
 
   it("シノニムを解除すると、次のチップの×、無ければ前、1つも無ければ入力へフォーカスが移る（N2）", async () => {
