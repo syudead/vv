@@ -706,6 +706,31 @@ describe("VideoPage", () => {
       expect(screen.queryByText("再生できませんでした")).toBeNull();
     });
 
+    it("映像の読み込み中は文字を伴う状態を表示し、再生開始後に消す", async () => {
+      renderPage();
+      await ready();
+      act(() =>
+        player().onStatus({
+          loading: true,
+          playing: true,
+          userActive: true,
+          ended: false,
+        }),
+      );
+      const status = screen.getByRole("status");
+      expect(status.textContent).toBe("読み込み中");
+      expect(status.className).toContain("bg-navbar");
+      act(() =>
+        player().onStatus({
+          loading: false,
+          playing: true,
+          userActive: true,
+          ended: false,
+        }),
+      );
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+
     it("途中まで見た動画は続きの位置から始め、再開を知らせる表示を出さない", async () => {
       server.videos.set(7, [
         {
@@ -780,6 +805,9 @@ describe("VideoPage", () => {
       await ready();
       await screen.findByRole("heading", { level: 2, name: "関連動画" });
       end();
+      expect(
+        screen.getByRole("heading", { level: 2, name: "再生が終わりました" }),
+      ).toBeDefined();
       expect(screen.getByRole("button", { name: "もう一度見る" })).toBeDefined();
       expect(screen.queryByRole("button", { name: "次を再生" })).toBeNull();
     });

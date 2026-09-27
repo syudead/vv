@@ -124,11 +124,11 @@ export default function VideoFacts({ video }: { video: Video }) {
   };
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 border-t border-border pt-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <ul
           aria-label="ファイルの情報"
-          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 sm:gap-x-5 gap-y-2 text-sm text-fg tabular-nums"
+          className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 sm:gap-x-5 gap-y-2 text-sm text-fg-muted tabular-nums"
         >
           {duration !== "" && <Fact icon={Clock} label="長さ" value={duration} />}
           <Fact icon={HardDrive} label="サイズ" value={formatBytes(video.sizeBytes)} />
