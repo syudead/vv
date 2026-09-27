@@ -331,8 +331,9 @@ type DeletedVideo struct {
 // 表す。生成物は公開されていないので、ジョブをやり直してよい。
 var ErrPreviewStale = errors.New("preview source identity changed")
 
-// SeekThumbnailInterval はシーク用プレビューのフレームの間隔である。生成
-// （internal/media の ffmpeg の式）と読み出し（internal/artifacts の位置から
-// フレームの番号への変換）が同じ値を使う。片方だけ変えると、読み出す番号が
-// 別の場面を指す。
+// SeekThumbnailInterval はシーク用プレビューのフレームの間隔の最小値である。
+// スプライトの配置（NewSeekSpriteLayout）は、これで上限のコマ数に収まらない
+// 長さの動画だけ間隔を広げる。個別 JPEG の生成（internal/media の ffmpeg の式）と
+// 読み出し（internal/artifacts の位置からフレームの番号への変換）は、まだこの
+// 値をそのまま間隔に使う。片方だけ変えると、読み出す番号が別の場面を指す。
 const SeekThumbnailInterval = 5 * time.Second
