@@ -39,5 +39,12 @@ CI と同じ作り方で確かめるときは `task docs-build` を使う。出�
 - 見出しの anchor は GitHub と同じ規則で作るので、`#r-3-…` のような日本語の見出しへの
   リンクも GitHub とサイトの両方で通る。
 - サイドバーはディレクトリの構成から自動で作る。項目の名前は各文書の見出し1である。
+  サイドバーは `task docs` の起動時に作るので、起動中に文書を足したり消したり、
+  見出し1を変えたりしたときは、`task docs` を起動し直すと一覧に反映される（本文の
+  変更はその場で反映される）。
 
 設定は `docs-site/.vitepress/config.mts` にある。
+
+`docs-site/package.json` の `overrides` で vite を 6.4.3 に上げている。VitePress 1.6.4 が
+依存する vite 5 系と esbuild 0.21 には既知の脆弱性（GHSA-4w7w-66w2-5vf9 など）があり、
+VitePress の安定版では直っていないためである。VitePress の修正版が出たら外す。

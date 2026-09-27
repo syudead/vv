@@ -21,9 +21,11 @@ on:
 permissions:
   contents: read
 
+# PR では古い実行を打ち切る。main では打ち切らない。ワークフローごと打ち切ると、
+# 公開中の deploy ジョブまで止まってしまうため。
 concurrency:
   group: docs-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:

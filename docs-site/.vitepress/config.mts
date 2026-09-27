@@ -104,7 +104,9 @@ function linkRewriter(md: MarkdownIt) {
 }
 
 // 日本語は語を空白で区切らないので、そのままでは全文検索がほとんど当たらない。
-// 漢字・かな・カナの連なりは2文字ずつの組に分けて索引にする。
+// 漢字・かな・カナの連なりは2文字ずつの組に分けて索引にする。連なりの最後の
+// 1文字も単独で加え、どの文字も何かの語の先頭になるようにする。前方一致の
+// 検索で、語末の1文字（「シーク」の「ク」）だけを探しても当たる。
 function tokenize(text: string): string[] {
   const tokens: string[] = []
   for (const part of text.toLowerCase().split(/[\s\p{P}\p{S}]+/u)) {
@@ -113,6 +115,7 @@ function tokenize(text: string): string[] {
       if (/^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}ー]+$/u.test(run) && run.length > 1) {
         const chars = [...run]
         for (let i = 0; i < chars.length - 1; i++) tokens.push(chars[i] + chars[i + 1])
+        tokens.push(chars[chars.length - 1])
       } else {
         tokens.push(run)
       }
