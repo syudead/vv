@@ -50,6 +50,9 @@ Browser tests are a separate command:
 mise exec --command "task test-e2e"
 ```
 
+To read the repository's Markdown with a sidebar, search and table of contents,
+run `task docs` ([文書を閲覧サイトで読む](browsing-docs.md)).
+
 Use `task help` for the full command list. `Taskfile.yml` is the supported entry
 point for developer commands.
 

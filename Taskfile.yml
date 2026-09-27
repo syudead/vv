@@ -58,6 +58,16 @@ tasks:
     cmds:
       - go run ./scripts/build
 
+  docs:
+    desc: Serve the repository's Markdown as a browsable site (http://127.0.0.1:6060/).
+    cmds:
+      - go run ./scripts/docsite {{.CLI_ARGS}}
+
+  docs-build:
+    desc: Write the documentation site as static HTML to build/docs.
+    cmds:
+      - go run ./scripts/docsite -out build/docs {{.CLI_ARGS}}
+
   generate:
     desc: Generate Go and TypeScript types from OpenAPI.
     cmds:
