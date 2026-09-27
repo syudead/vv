@@ -343,9 +343,9 @@ func (s site) handler() http.Handler {
 
 		doc, ok := docFor(files, p)
 		if ok {
-			if p == "" || strings.HasSuffix(req.URL.Path, "/") {
-				// ディレクトリの URL で開いたときは、相対リンクが正しく解決される
-				// よう文書のページへ移る。
+			if p != pageURL(doc) {
+				// ディレクトリの URL（末尾の / の有無によらない）で開いたときは、
+				// 相対リンクの基準を揃えるため文書のページへ移る。
 				http.Redirect(w, req, "/"+pageURL(doc), http.StatusFound)
 				return
 			}

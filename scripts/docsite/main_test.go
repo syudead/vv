@@ -121,17 +121,21 @@ func TestHandlerServesOnlyListedFiles(t *testing.T) {
 	}
 	write("README.md", "# Home\n\n[Guide](docs/guide.md)\n")
 	write("docs/guide.md", "# Guide\n")
+	write("docs/how-to/README.md", "# How-to\n")
 	write("docs/shot.png", "png")
 	write("main.go", "package main")
 	write(".env", "SECRET=1")
 	s := site{root: root, github: "https://example.com/r", ref: "main", list: func() ([]string, error) {
-		return []string{"README.md", "docs/guide.md", "docs/shot.png", "main.go"}, nil
+		return []string{"README.md", "docs/guide.md", "docs/how-to/README.md", "docs/shot.png", "main.go"}, nil
 	}}
 	handler := s.handler()
 
 	cases := map[string]int{
 		"/":                         http.StatusFound,
 		"/docs/":                    http.StatusNotFound,
+		"/docs/how-to":              http.StatusFound,
+		"/docs/how-to/":             http.StatusFound,
+		"/docs/how-to/README.html":  http.StatusOK,
 		"/README.html":              http.StatusOK,
 		"/docs/guide.html":          http.StatusOK,
 		"/docs/shot.png":            http.StatusOK,
@@ -151,6 +155,12 @@ func TestHandlerServesOnlyListedFiles(t *testing.T) {
 	}
 
 	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/docs/how-to", nil))
+	if got := rec.Header().Get("Location"); got != "/docs/how-to/README.html" {
+		t.Errorf("GET /docs/how-to redirects to %q, want /docs/how-to/README.html", got)
+	}
+
+	rec = httptest.NewRecorder()
 	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/README.html", nil))
 	if body := rec.Body.String(); !strings.Contains(body, `href="docs/guide.html"`) || !strings.Contains(body, "<title>Home · vv docs</title>") {
 		t.Errorf("README page is missing the rewritten link or title:\n%s", body)

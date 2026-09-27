@@ -189,7 +189,7 @@
       input.value = "";
       search("");
       input.blur();
-    } else if (e.key === "Enter") {
+    } else if (e.key === "Enter" && !results.hidden) {
       var first = results.querySelector("a");
       if (first) location.href = first.href;
     }
