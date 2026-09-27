@@ -81,9 +81,9 @@ async function loadEverything(page: Page, total: number) {
     .toBe(total);
 }
 
-/** resultCount は一覧の件数の表示（「1 video」「70 videos」）である。 */
+/** resultCount はライブラリの件数の表示（「1 item」「70 items」）である。項目（カード）の数を数える。 */
 function resultCount(total: number): string {
-  return `${total.toLocaleString("en-US")} ${total === 1 ? "video" : "videos"}`;
+  return `${total.toLocaleString("en-US")} ${total === 1 ? "item" : "items"}`;
 }
 
 /**
@@ -228,7 +228,7 @@ test.describe.serial("library search", () => {
     await expect
       .poll(() => cardTitles(page))
       .toEqual(expected.items.map((item) => item.title));
-    await expect(summary(page)).toHaveText("3 videos");
+    await expect(summary(page)).toHaveText("3 items");
     await expect(page.getByRole("searchbox", { name: "Search videos" })).toHaveValue(
       "旅行 OR 奈良",
     );
@@ -240,7 +240,7 @@ test.describe.serial("library search", () => {
     await expect
       .poll(() => cardTitles(other))
       .toEqual(expected.items.map((item) => item.title));
-    await expect(summary(other)).toHaveText("3 videos");
+    await expect(summary(other)).toHaveText("3 items");
     await other.close();
 
     // 並べ替えを変えると履歴が 1 つ増え、戻ると前の並びに戻る。
@@ -280,7 +280,7 @@ test.describe.serial("library search", () => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`/?q=${encodeURIComponent("旅行 OR 奈良")}&sort=addedDesc`);
-    await expect(summary(page)).toHaveText("3 videos");
+    await expect(summary(page)).toHaveText("3 items");
 
     const kinds: [string, string, string][] = [
       ["Date added", "addedDesc", "addedAsc"],

@@ -66,7 +66,7 @@ describe("CardTagRow", () => {
     renderRow({ tags: tags("旅行", "2024", "Anime") });
     // jsdom は幅を0で返すため、この実装では available<=0 のとき全部表示になる。
     // つまりここでは「+N」は出ない — その前提を確かめる。
-    expect(screen.queryByRole("button", { name: /ほかのタグ/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Show \d+ more tags?$/ })).toBeNull();
 
     vi.unstubAllGlobals();
   });

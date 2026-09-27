@@ -221,13 +221,13 @@ test.describe.serial("guest", () => {
     // カードの枚数（要件 20）。「非公開だけ」は公開のメンバーが無いので出ない。
     await page.goto("/");
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
-    await expect(page.getByText("1 video", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
     await expect(page.locator("article[data-group-root]")).toContainText("4 videos");
 
     // 検索: 公開の動画だけに当たり、非公開の題名では何も出ない。
     await page.goto(`/?q=${encodeURIComponent("ゲスト")}`);
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
-    await expect(page.getByText("1 video", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
     await page.goto(`/?q=${encodeURIComponent("ゲスト非公開")}`);
     await expect(page.getByText("No videos match these conditions")).toBeVisible();
 

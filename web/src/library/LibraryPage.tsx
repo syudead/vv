@@ -42,7 +42,6 @@ import {
   newSeed,
 } from "../videoList/listCriteria";
 import { Grid } from "../videoList/Grid";
-import { resultCountText } from "../videoList/listSummary";
 import {
   CardSkeleton,
   GuestEmpty,
@@ -515,7 +514,7 @@ export default function LibraryPage() {
   const initialLoadFailed = !loading && error !== null && items.length === 0;
   const conditioned = hasTagConditions(criteria, tagIds);
   const selectionMode = selectedIds.size > 0;
-  const resultStatus = loading ? t.list.loading : resultCountText(total);
+  const resultStatus = loading ? t.list.loading : t.library.resultCount(total);
 
   // renderTagsRow は VideoCard へ渡す安定した関数である（N4）。VideoCard は
   // memo で包まれており、props が前回と同じ参照であれば再描画しない。ここで

@@ -54,7 +54,7 @@ describe("SearchBox の検索の書き方", () => {
     ).toEqual([
       "Finds videos that contain every space-separated word",
       'Words wrapped in " are searched for as one term, spaces included',
-      "Leaves out videos that contain a word starting with -",
+      "Prefix a word with - to leave out videos that contain it",
       "Finds videos that contain either word. Binds tighter than a space",
     ]);
     expect(

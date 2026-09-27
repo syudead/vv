@@ -242,8 +242,8 @@ export const en = {
       },
       exclude: {
         example: "kyoto -2023",
-        before: "Leaves out videos that contain a word starting with ",
-        after: "",
+        before: "Prefix a word with ",
+        after: " to leave out videos that contain it",
       },
       either: {
         example: "kyoto OR nara",
@@ -307,6 +307,8 @@ export const en = {
   },
   library: {
     title: "Library",
+    // GET /api/library の total は項目（カード）の数で、グループのカードも 1 つと数える。動画の本数ではない。
+    resultCount: items,
     empty: {
       title: "No videos yet",
       description: "Put videos in a media folder and scan to see them here.",
