@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { RequestFailed } from "../api/client";
 import { compareNatural } from "../api/tagOrder";
 import { mergeTag, type Tag } from "../api/tags";
-import { errorText, untranslated } from "../i18n";
+import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import { ModalFrame } from "../ui/ModalFrame";
@@ -35,7 +35,7 @@ export default function MergeTagDialog({
   const [value, setValue] = useState("");
   const [target, setTarget] = useState<Tag | null>(null);
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<UiText | null>(null);
   // 選んだ直後（フォーカスをまだ動かしていない）かを持つ。統合先を選ぶと
   // 「統合する」へフォーカスを移すが、それは候補を選んだ直後の1回だけで、
   // 統合先を選び直した（別の候補、または綴りの完全一致）ときにも1回だけ
@@ -74,7 +74,7 @@ export default function MergeTagDialog({
   }
 
   function selectTarget(option: ComboboxOption) {
-    const found = tags.find((t) => String(t.id) === option.id);
+    const found = tags.find((item) => String(item.id) === option.id);
     if (found === undefined) return;
     justSelectedRef.current = true;
     setTarget(found);
@@ -101,7 +101,7 @@ export default function MergeTagDialog({
 
   return (
     <ModalFrame
-      title={untranslated(`「${source.name}」を統合`)}
+      title={t.tags.mergeDialog.title(source.name)}
       onClose={handleClose}
       initialFocus={cancel}
     >
@@ -124,8 +124,8 @@ export default function MergeTagDialog({
           options={options}
           exactOption={exactOption}
           onSelect={selectTarget}
-          placeholder={untranslated("統合先のタグ")}
-          aria-label={untranslated("統合先のタグ")}
+          placeholder={t.tags.mergeDialog.target}
+          aria-label={t.tags.mergeDialog.target}
           // 候補の一覧が閉じているときの Esc は、この窓を閉じる
           // （B1。一覧が開いていれば Combobox 自身が一覧だけを閉じ、
           // preventDefault するので ModalFrame の Esc には届かない）。
@@ -135,7 +135,7 @@ export default function MergeTagDialog({
         <div className="min-h-0 flex-1 overflow-y-auto">
           {target !== null && (
             <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
-              {`「${source.name}」が付いた ${String(source.videoCount)} 本の動画に「${target.name}」が付きます。「${source.name}」とそのシノニムは「${target.name}」のシノニムになり、「${source.name}」はタグの一覧から消えます。この操作は取り消せません。`}
+              {t.tags.mergeDialog.warning(source.name, source.videoCount, target.name)}
             </p>
           )}
           {error !== null && (
@@ -147,7 +147,7 @@ export default function MergeTagDialog({
       </div>
       <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
         <Button ref={cancel} onClick={handleClose} disabled={pending}>
-          キャンセル
+          {t.common.cancel}
         </Button>
         <Button
           ref={mergeButton}
@@ -156,7 +156,7 @@ export default function MergeTagDialog({
           disabled={pending || target === null}
         >
           {pending && <LoaderCircle className="animate-spin" />}
-          統合する
+          {t.tags.mergeDialog.submit}
         </Button>
       </div>
     </ModalFrame>
@@ -195,7 +195,9 @@ function buildTargetOptions(
         tag,
         prefix: namePrefix || synonymPrefix,
         hint:
-          !nameMatch && synonymHit !== undefined ? `シノニム: ${synonymHit}` : undefined,
+          !nameMatch && synonymHit !== undefined
+            ? t.tags.mergeDialog.synonymHint(synonymHit)
+            : undefined,
       };
     })
     .filter((value): value is NonNullable<typeof value> => value !== null)
@@ -207,8 +209,8 @@ function buildTargetOptions(
   const options: ComboboxOption[] = matched.map(({ tag, hint }) => ({
     id: String(tag.id),
     label: tag.name,
-    hint: hint === undefined ? undefined : untranslated(hint),
-    meta: `${String(tag.videoCount)} 本`,
+    hint,
+    meta: t.tags.mergeDialog.videoCount(tag.videoCount),
   }));
 
   const exactOption: ComboboxOption | null =
@@ -217,7 +219,7 @@ function buildTargetOptions(
       : {
           id: String(exactTag.id),
           label: exactTag.name,
-          meta: `${String(exactTag.videoCount)} 本`,
+          meta: t.tags.mergeDialog.videoCount(exactTag.videoCount),
         };
 
   return { options, exactOption };

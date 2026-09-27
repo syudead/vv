@@ -53,6 +53,13 @@ function folders(count: number): string {
   });
 }
 
+function tagCount(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} tag`,
+    other: `${formatNumber(count)} tags`,
+  });
+}
+
 function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
@@ -442,6 +449,87 @@ export const en = {
       autoHint:
         "Automatic: groups folders below a media folder that have no subfolders and 2 or more videos",
       toTag: "Turn the group into a tag",
+    },
+  },
+  tags: {
+    title: "Tags",
+    newTag: "New tag",
+    loading: "Loading…",
+    count: tagCount,
+    filteredCount: (shown: number, total: number) =>
+      `${formatNumber(shown)} of ${tagCount(total)}`,
+    loadFailed: "Couldn't load the tags",
+    empty: {
+      title: "No tags yet",
+      description:
+        "Add tags from a video's playback page or the library's selection bar. You can also create them here first.",
+    },
+    noMatches: (query: string) => `No tags match "${query}"`,
+    clearSearch: "Show all tags",
+    search: {
+      label: "Search tags",
+      placeholder: "Search tags",
+      clear: "Clear search",
+    },
+    gone: "This tag no longer exists, so the list was reloaded",
+    deleted: (name: string) => `Deleted "${name}"`,
+    merged: (source: string, target: string) => `Merged "${source}" into "${target}"`,
+    // タグ名の競合の説明。送った名前と、API の tagName（競合先のタグの元の名前）を合わせる
+    // （contracts/error-api.md §1）。
+    nameIsTag: (tagName: string) => `A tag named "${tagName}" already exists.`,
+    nameIsOwnName: (tagName: string) => `"${tagName}" is already this tag's name.`,
+    nameIsSynonym: (submitted: string, tagName: string) =>
+      `"${submitted}" is already a synonym of the tag "${tagName}".`,
+    nameIsOwnSynonym: (submitted: string) =>
+      `"${submitted}" is already a synonym of this tag.`,
+    create: {
+      label: "New tag name",
+      placeholder: "Tag name",
+      submit: "Create",
+    },
+    row: {
+      open: (name: string) => `Open the library filtered by ${name}`,
+      synonyms: (list: string) => `Synonyms: ${list}`,
+      videoCount: videos,
+      renameLabel: (name: string) => `New name for "${name}"`,
+      rename: "Rename",
+      synonymsButton: "Synonyms",
+      more: "More actions",
+      merge: "Merge into another tag…",
+      delete: "Delete…",
+    },
+    deleteDialog: {
+      title: (name: string) => `Delete "${name}"`,
+      unused: "This tag isn't on any videos.",
+      used: (count: number) =>
+        `This tag will be removed from ${videos(count)}. This can't be undone.`,
+      submit: "Delete",
+    },
+    mergeDialog: {
+      title: (name: string) => `Merge "${name}"`,
+      target: "Tag to merge into",
+      synonymHint: (synonym: string) => `Synonym: ${synonym}`,
+      videoCount: videos,
+      warning: (source: string, count: number, target: string) =>
+        `The ${videos(count)} tagged "${source}" get the tag "${target}". "${source}" and its synonyms become synonyms of "${target}", and "${source}" leaves the tag list. This can't be undone.`,
+      submit: "Merge",
+    },
+    synonymsDialog: {
+      title: (name: string) => `Synonyms of "${name}"`,
+      list: "Synonyms",
+      remove: (name: string) => `Remove the synonym "${name}"`,
+      add: "Add synonym",
+      submit: "Add",
+      addFailed: "Couldn't add the synonym",
+      mergeWarning: (
+        source: string,
+        count: number,
+        target: string,
+        hasSynonyms: boolean,
+      ) =>
+        `"${source}" is a tag on ${videos(count)}. Merging it into "${target}" adds "${target}" to those videos, and "${source}"${hasSynonyms ? " and its synonyms become synonyms" : " becomes a synonym"} of "${target}". "${source}" leaves the tag list.`,
+      back: "Back",
+      merge: "Merge",
     },
   },
   folderGrouping: {
