@@ -1,6 +1,7 @@
 package media
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -43,6 +44,10 @@ type keyframeTrack struct {
 	lengthSize int
 	// parameterSets はデコーダ設定（avcC／hvcC）にある NAL で、キーフレームの前に置く。
 	parameterSets [][]byte
+	// displayFilter は表示行列（tkhd）の回転を復号後の画像に施す ffmpeg のフィルタで、
+	// 回転しないトラックでは空である。生の映像として復号すると表示行列は失われるので、
+	// ffmpeg が容器から読むときの自動回転と同じ向きにここで直す。
+	displayFilter string
 	// keyframes は表示時刻の昇順に並べたキーフレームである。
 	keyframes []keyframe
 }
@@ -56,14 +61,14 @@ type keyframe struct {
 
 // readMovieBox はファイルの最上位の box を先頭から順に見て、moov の中身を返す。
 // moov の前にある mdat などは header だけを読んで飛ばす。
-func readMovieBox(r io.ReaderAt, fileSize int64) ([]byte, error) {
+func readMovieBox(ctx context.Context, r io.ReaderAt, fileSize int64) ([]byte, error) {
 	var position int64
 	header := make([]byte, 16)
 	for range maxTopLevelBoxes {
 		if position+boxHeaderSize > fileSize {
 			break
 		}
-		n, err := r.ReadAt(header, position)
+		n, err := readAt(ctx, r, header, position)
 		if n < boxHeaderSize {
 			if err == nil || errors.Is(err, io.EOF) {
 				err = io.ErrUnexpectedEOF
@@ -91,7 +96,7 @@ func readMovieBox(r io.ReaderAt, fileSize int64) ([]byte, error) {
 				return nil, fmt.Errorf("%w: moov が大きすぎる（%d バイト）", errSeekIndexUnsupported, size)
 			}
 			movie := make([]byte, size-headerSize)
-			if _, err := r.ReadAt(movie, position+headerSize); err != nil {
+			if _, err := readAt(ctx, r, movie, position+headerSize); err != nil {
 				return nil, err
 			}
 			return movie, nil
@@ -178,6 +183,9 @@ func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, 
 	if table.count == 0 {
 		return nil, fmt.Errorf("%w: sample table が空（fragmented MP4 など）", errSeekIndexUnsupported)
 	}
+	if track.displayFilter, err = displayFilter(trak); err != nil {
+		return nil, err
+	}
 	sync, err := syncSamples(boxes, table.count)
 	if err != nil {
 		return nil, err
@@ -191,7 +199,7 @@ func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, 
 		return nil, err
 	}
 	composition := table.compositionOffsets(sync)
-	shift, err := presentationShift(trak, timescale, movieTimescaleValue)
+	shift, endUs, err := presentationWindow(trak, timescale, movieTimescaleValue)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +215,50 @@ func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, 
 	sort.SliceStable(track.keyframes, func(i, j int) bool {
 		return track.keyframes[i].presentationUs < track.keyframes[j].presentationUs
 	})
+	// 編集で切り取られて再生されない後ろのキーフレームは選ばない。すべてが範囲の外なら
+	// 最初の 1 枚だけを残す。
+	if endUs > 0 {
+		end := sort.Search(len(track.keyframes), func(i int) bool { return track.keyframes[i].presentationUs >= endUs })
+		track.keyframes = track.keyframes[:max(end, 1)]
+	}
 	return track, nil
+}
+
+// displayFilter は tkhd の表示行列を読み、ffmpeg の自動回転と同じ変換のフィルタを返す。
+// 行列の a・b・c・d（16.16 固定小数点）が 90 度単位の回転を表すときだけ扱い、
+// 反転や拡大縮小を含む行列は errSeekIndexUnsupported にして区間ごとの抽出に任せる。
+func displayFilter(trak []mp4Box) (string, error) {
+	tkhd, err := childPayload(trak, "tkhd")
+	if err != nil {
+		return "", nil
+	}
+	// 版 0 は作成・更新時刻と長さが 4 バイト、版 1 は 8 バイトで、行列はその後ろにある。
+	offset := 40
+	if len(tkhd) > 0 && tkhd[0] == 1 {
+		offset = 52
+	}
+	if len(tkhd) < offset+36 {
+		return "", fmt.Errorf("%w: tkhd が短い", errSeekIndexUnsupported)
+	}
+	var m [9]int32
+	for i := range m {
+		m[i] = int32(binary.BigEndian.Uint32(tkhd[offset+4*i:]))
+	}
+	const one = 1 << 16
+	if m[2] != 0 || m[5] != 0 {
+		return "", fmt.Errorf("%w: tkhd の表示行列が射影を含む", errSeekIndexUnsupported)
+	}
+	switch [4]int32{m[0], m[1], m[3], m[4]} {
+	case [4]int32{one, 0, 0, one}:
+		return "", nil
+	case [4]int32{0, -one, one, 0}:
+		return "transpose=cclock", nil
+	case [4]int32{0, one, -one, 0}:
+		return "transpose=clock", nil
+	case [4]int32{-one, 0, 0, -one}:
+		return "hflip,vflip", nil
+	}
+	return "", fmt.Errorf("%w: tkhd の表示行列 %v", errSeekIndexUnsupported, m)
 }
 
 // readDecoderConfig は sample description（stsd）の entry から形式とパラメータセットを
@@ -503,45 +554,51 @@ func syncSamples(boxes []mp4Box, count int) ([]int, error) {
 	return slices.Compact(samples), nil
 }
 
-// presentationShift は edit list による時刻のずれ（media timescale）を返す。表示時刻は
-// sample の時刻からこの値を引いたものになる。空でない edit の media_time から始まり、
-// 先頭の空の edit の長さだけ遅れる。途中を切り取る（空でない edit が複数ある）
-// トラックは扱わない。
-func presentationShift(trak []mp4Box, timescale, movieTimescaleValue uint64) (int64, error) {
+// presentationWindow は edit list による時刻のずれ（media timescale）と、再生される
+// 範囲の終わりの表示時刻（マイクロ秒、終わりが無ければ 0）を返す。表示時刻は sample の
+// 時刻からずれを引いたものになる。空でない edit の media_time から始まり、先頭の空の
+// edit の長さだけ遅れ、その edit の長さで終わる。途中を切り取る（空でない edit が
+// 複数ある）トラックは扱わない。
+func presentationWindow(trak []mp4Box, timescale, movieTimescaleValue uint64) (int64, int64, error) {
 	edts, err := childPayload(trak, "edts")
 	if err != nil {
-		return 0, nil
+		return 0, 0, nil
 	}
 	edtsBoxes, err := parseBoxes(edts)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %w", errSeekIndexUnsupported, err)
+		return 0, 0, fmt.Errorf("%w: %w", errSeekIndexUnsupported, err)
 	}
 	elst, err := childPayload(edtsBoxes, "elst")
 	if err != nil {
-		return 0, nil
+		return 0, 0, nil
 	}
 	list, err := parseEditList(elst)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %w", errSeekIndexUnsupported, err)
+		return 0, 0, fmt.Errorf("%w: %w", errSeekIndexUnsupported, err)
 	}
 	var shift int64
+	var duration uint64
 	edits := 0
 	for _, entry := range list.entries {
 		if !entry.empty() {
-			shift = entry.mediaTime
+			shift, duration = entry.mediaTime, entry.segmentDuration
 			edits++
 		}
 	}
 	if edits > 1 {
-		return 0, fmt.Errorf("%w: edit list に編集が %d 個", errSeekIndexUnsupported, edits)
+		return 0, 0, fmt.Errorf("%w: edit list に編集が %d 個", errSeekIndexUnsupported, edits)
 	}
 	if delay := list.startDelay(); delay > 0 && movieTimescaleValue > 0 {
 		if delay > math.MaxInt64/timescale {
-			return 0, fmt.Errorf("%w: edit list の開始の遅れ %d", errSeekIndexUnsupported, delay)
+			return 0, 0, fmt.Errorf("%w: edit list の開始の遅れ %d", errSeekIndexUnsupported, delay)
 		}
 		shift -= int64(delay * timescale / movieTimescaleValue)
 	}
-	return shift, nil
+	var endUs int64
+	if delay := list.startDelay(); edits == 1 && duration > 0 && movieTimescaleValue > 0 && delay <= math.MaxInt64 && duration <= math.MaxInt64-delay {
+		endUs = ticksToMicroseconds(int64(delay+duration), int64(movieTimescaleValue))
+	}
+	return shift, endUs, nil
 }
 
 // fullBoxEntries は version・flags と entry の数に続く、固定長の entry の並びを切り出す。
@@ -652,4 +709,25 @@ func (t *keyframeTrack) isIDR(header byte) bool {
 	}
 	nalType := header >> 1 & 0x3f
 	return nalType == 19 || nalType == 20
+}
+
+// readAt は r.ReadAt を行い、ctx が終わったら読み取りの終わりを待たずに戻る。
+// 応答しない置き場で、生成の期限や停止を過ぎてもジョブが止まり続けないようにする。
+// 戻った後も読み取りは続きうるので、呼び出し側は p を再利用しない。
+func readAt(ctx context.Context, r io.ReaderAt, p []byte, offset int64) (int, error) {
+	type result struct {
+		n   int
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		n, err := r.ReadAt(p, offset)
+		done <- result{n, err}
+	}()
+	select {
+	case res := <-done:
+		return res.n, res.err
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
 }

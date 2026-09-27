@@ -76,7 +76,7 @@ func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir strin
 	if err != nil {
 		return err
 	}
-	movie, err := readMovieBox(file, info.Size())
+	movie, err := readMovieBox(ctx, file, info.Size())
 	if err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir strin
 	if err != nil {
 		return err
 	}
-	if _, err := runSeekFFmpegIn(ctx, keys, keyframeDecodeArgs(track.format, len(unique), allIDR, decoded)); err != nil {
+	if _, err := runSeekFFmpegIn(ctx, keys, keyframeDecodeArgs(track, len(unique), allIDR, decoded)); err != nil {
 		return err
 	}
 	// 復号できなかったキーフレームがあると、後ろのコマが 1 つずつずれる。枚数が
@@ -143,7 +143,12 @@ func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir strin
 // デコーダが前後を入れ替える。その場合は 1 枚ずつ別の入力にしてデコーダを分け、
 // concat で入力の順につなぐ。入力ごとの初期化の分だけ遅い。I フレームは単独で
 // 完結するので、IDR でなくても出力させる（showall）。
-func keyframeDecodeArgs(format string, count int, allIDR bool, decoded string) []string {
+func keyframeDecodeArgs(track *keyframeTrack, count int, allIDR bool, decoded string) []string {
+	format := track.format
+	filter := seekSpriteFastScale
+	if track.displayFilter != "" {
+		filter = track.displayFilter + "," + filter
+	}
 	args := []string{"-nostdin", "-v", "error"}
 	output := []string{"-fps_mode", "passthrough", "-c:v", "bmp", "-start_number", "0", "-y", filepath.Join(decoded, "%03d.bmp")}
 	if allIDR {
@@ -151,7 +156,7 @@ func keyframeDecodeArgs(format string, count int, allIDR bool, decoded string) [
 		for i := range names {
 			names[i] = keyframeFileName(i, format)
 		}
-		args = append(args, "-f", format, "-i", "concat:"+strings.Join(names, "|"), "-vf", seekSpriteFastScale)
+		args = append(args, "-f", format, "-i", "concat:"+strings.Join(names, "|"), "-vf", filter)
 		return append(args, output...)
 	}
 	var inputs strings.Builder
@@ -159,7 +164,7 @@ func keyframeDecodeArgs(format string, count int, allIDR bool, decoded string) [
 		args = append(args, "-threads", "1", "-flags2", "+showall", "-f", format, "-i", keyframeFileName(i, format))
 		fmt.Fprintf(&inputs, "[%d:v]", i)
 	}
-	args = append(args, "-filter_complex", fmt.Sprintf("%sconcat=n=%d:v=1:a=0,%s", inputs.String(), count, seekSpriteFastScale))
+	args = append(args, "-filter_complex", fmt.Sprintf("%sconcat=n=%d:v=1:a=0,%s", inputs.String(), count, filter))
 	return append(args, output...)
 }
 
@@ -200,7 +205,7 @@ func readKeyframes(ctx context.Context, r io.ReaderAt, track *keyframeTrack, ind
 				return
 			}
 			data := make([]byte, frame.size)
-			_, err := r.ReadAt(data, frame.offset)
+			_, err := readAt(ctx, r, data, frame.offset)
 			if err != nil {
 				err = fmt.Errorf("キーフレームを読めません（位置 %d）: %w", frame.offset, err)
 			} else if data, idr[i], err = track.annexB(data); err == nil {

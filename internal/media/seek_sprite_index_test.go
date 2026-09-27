@@ -5,12 +5,17 @@ import (
 	"context"
 	"encoding/binary"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -53,7 +58,7 @@ func TestParseKeyframeTrackReadsKeyframeTimes(t *testing.T) {
 			}
 			defer func() { _ = file.Close() }()
 			info, _ := file.Stat()
-			movie, err := readMovieBox(file, info.Size())
+			movie, err := readMovieBox(context.Background(), file, info.Size())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -213,7 +218,7 @@ func TestParseKeyframeTrackSurvivesDamagedIndex(t *testing.T) {
 	}
 	defer func() { _ = file.Close() }()
 	info, _ := file.Stat()
-	movie, err := readMovieBox(file, info.Size())
+	movie, err := readMovieBox(context.Background(), file, info.Size())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,29 +304,32 @@ func editBoxes(t *testing.T, entries ...editEntry) []mp4Box {
 	return []mp4Box{{boxType: "edts", payload: edts}}
 }
 
-func TestPresentationShiftFollowsEditList(t *testing.T) {
+func TestPresentationWindowFollowsEditList(t *testing.T) {
 	normal := [4]byte{0, 1, 0, 0}
 	// media timescale 90000、movie timescale 1000。
 	for _, tc := range []struct {
-		name    string
-		entries []editEntry
-		want    int64
+		name      string
+		entries   []editEntry
+		wantShift int64
+		wantEndUs int64
 	}{
-		{"no edit list", nil, 0},
-		{"media time skips B-frame delay", []editEntry{{segmentDuration: 10_000, mediaTime: 3000, rate: normal}}, 3000},
+		{"no edit list", nil, 0, 0},
+		{"media time skips B-frame delay", []editEntry{{segmentDuration: 10_000, mediaTime: 3000, rate: normal}}, 3000, 10_000_000},
 		{"empty edit delays start by one second", []editEntry{
 			{segmentDuration: 1000, mediaTime: -1, rate: normal},
 			{segmentDuration: 10_000, mediaTime: 0, rate: normal},
-		}, -90_000},
+		}, -90_000, 11_000_000},
+		{"edit plays 5 to 12 seconds of the media", []editEntry{{segmentDuration: 7000, mediaTime: 450_000, rate: normal}}, 450_000, 7_000_000},
+		{"zero duration leaves the end open", []editEntry{{segmentDuration: 0, mediaTime: 0, rate: normal}}, 0, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var trak []mp4Box
 			if tc.entries != nil {
 				trak = editBoxes(t, tc.entries...)
 			}
-			got, err := presentationShift(trak, 90_000, 1000)
-			if err != nil || got != tc.want {
-				t.Fatalf("presentationShift = %d, %v（%d のはず）", got, err, tc.want)
+			shift, endUs, err := presentationWindow(trak, 90_000, 1000)
+			if err != nil || shift != tc.wantShift || endUs != tc.wantEndUs {
+				t.Fatalf("presentationWindow = %d, %d, %v（%d, %d のはず）", shift, endUs, err, tc.wantShift, tc.wantEndUs)
 			}
 		})
 	}
@@ -329,7 +337,7 @@ func TestPresentationShiftFollowsEditList(t *testing.T) {
 	cut := editBoxes(t,
 		editEntry{segmentDuration: 5000, mediaTime: 0, rate: normal},
 		editEntry{segmentDuration: 5000, mediaTime: 900_000, rate: normal})
-	if _, err := presentationShift(cut, 90_000, 1000); !errors.Is(err, errSeekIndexUnsupported) {
+	if _, _, err := presentationWindow(cut, 90_000, 1000); !errors.Is(err, errSeekIndexUnsupported) {
 		t.Fatalf("編集が複数ある edit list で %v（errSeekIndexUnsupported のはず）", err)
 	}
 }
@@ -456,5 +464,104 @@ func TestSampleTableFindsKeyframesAcrossChunks(t *testing.T) {
 	}
 	if want := []int64{200, 200, 200}; !slices.Equal(composition, want) {
 		t.Errorf("表示時刻との差 %v（%v のはず）", composition, want)
+	}
+}
+
+// 表示行列で回転する動画のコマは、ffmpeg が容器から読んで自動回転したのと同じ向きになる。
+// 反転を含む表示行列は索引からは作らず、区間ごとの抽出に任せる。
+func TestGenerateSeekSpriteFromIndexAppliesDisplayRotation(t *testing.T) {
+	requireEncoder(t, "libx264")
+	dir := t.TempDir()
+	base := filepath.Join(dir, "base.mp4")
+	runFFmpeg(t, "-f", "lavfi", "-i", "testsrc2=s=128x72:r=10:d=12", "-c:v", "libx264", "-g", "10", "-y", base)
+
+	for _, rotation := range []string{"90", "180", "270"} {
+		t.Run(rotation, func(t *testing.T) {
+			videoPath := filepath.Join(dir, "rotated-"+rotation+".mp4")
+			runFFmpeg(t, "-display_rotation", rotation, "-i", base, "-c", "copy", "-y", videoPath)
+			layout := domain.NewSeekSpriteLayout(12_000)
+			output := t.TempDir()
+			if err := generateSeekSpriteFromIndex(context.Background(), videoPath, output, layout); err != nil {
+				t.Fatal(err)
+			}
+			sheet := readSheets(t, output)[0]
+			expectedPath := filepath.Join(t.TempDir(), "expected.png")
+			runFFmpeg(t, "-ss", "5", "-i", videoPath, "-frames:v", "1", "-vf", seekSpriteFastScale, "-y", expectedPath)
+			expected := decodePNG(t, expectedPath)
+
+			w, h := expected.Bounds().Dx(), expected.Bounds().Dy()
+			if b := sheet.Bounds(); b.Dx() != w*layout.Columns || b.Dy() != h*layout.Rows {
+				t.Fatalf("シートの大きさ %v（コマ %dx%d のはず）", b, w, h)
+			}
+			var diff, count int
+			for y := range h {
+				for x := range w {
+					got := color.GrayModel.Convert(sheet.At(w+x, y)).(color.Gray).Y
+					want := color.GrayModel.Convert(expected.At(x, y)).(color.Gray).Y
+					diff += abs(int(got) - int(want))
+					count++
+				}
+			}
+			if mean := diff / count; mean > 12 {
+				t.Errorf("コマ 1 と自動回転した画像の輝度の差が平均 %d", mean)
+			}
+		})
+	}
+
+	flipped := filepath.Join(dir, "flipped.mp4")
+	runFFmpeg(t, "-display_hflip", "-i", base, "-c", "copy", "-y", flipped)
+	err := generateSeekSpriteFromIndex(context.Background(), flipped, t.TempDir(), domain.NewSeekSpriteLayout(12_000))
+	if !errors.Is(err, errSeekIndexUnsupported) {
+		t.Fatalf("反転する表示行列で %v（errSeekIndexUnsupported のはず）", err)
+	}
+}
+
+func decodePNG(t *testing.T, path string) image.Image {
+	t.Helper()
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = file.Close() }()
+	img, err := png.Decode(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return img
+}
+
+func abs(v int) int {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// stalledReader は読み取りが戻らない置き場の代わりである。
+type stalledReader struct{ release chan struct{} }
+
+func (r stalledReader) ReadAt([]byte, int64) (int, error) {
+	<-r.release
+	return 0, io.EOF
+}
+
+// 読み取りが止まっても、期限が来れば索引の読み取りを待たずに戻る。
+func TestReadMovieBoxReturnsWhenContextEnds(t *testing.T) {
+	reader := stalledReader{release: make(chan struct{})}
+	defer close(reader.release)
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := readMovieBox(ctx, reader, 1<<20)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("readMovieBox = %v（期限切れのはず）", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("期限が来ても readMovieBox が戻らなかった")
 	}
 }
