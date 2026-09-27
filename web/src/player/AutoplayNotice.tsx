@@ -167,7 +167,7 @@ export default function AutoplayNotice({
       <span role="status" className="sr-only">
         {autoplayAnnouncement(next.title)}
       </span>
-      <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5">
+      <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5 shadow-elevated">
         <div className="flex items-baseline justify-between gap-3">
           <span className="text-xs font-semibold text-accent">続けて再生</span>
           <span aria-hidden="true" className="text-xs text-fg-muted tabular-nums">

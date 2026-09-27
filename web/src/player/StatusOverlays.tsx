@@ -41,7 +41,7 @@ function Panel({
     <div
       role={role}
       className={cn(
-        "pointer-events-auto flex w-full flex-col rounded-lg bg-navbar p-5",
+        "pointer-events-auto flex w-full flex-col rounded-lg bg-navbar p-5 shadow-elevated",
         className,
       )}
     >
@@ -85,7 +85,7 @@ export function Dimmed({ children }: { children: ReactNode }) {
   );
 }
 
-/** LoadingOverlay は読み込み中の輪である。backdrop が偽なら背景（サムネイル）を透かす。 */
+/** LoadingOverlay は読み込み中を文字でも伝える。backdrop が偽なら映像を透かす。 */
 export function LoadingOverlay({ backdrop }: { backdrop: boolean }) {
   return (
     <div
@@ -95,8 +95,11 @@ export function LoadingOverlay({ backdrop }: { backdrop: boolean }) {
         backdrop && "bg-navbar",
       )}
     >
-      <LoaderCircle className={cn("size-7 text-accent", spin)} aria-hidden="true" />
-      <span role="status" className="sr-only">
+      <span
+        role="status"
+        className="flex items-center gap-2 rounded-md bg-navbar px-3 py-2 text-sm font-medium text-fg shadow-elevated"
+      >
+        <LoaderCircle className={cn("size-5 text-accent", spin)} aria-hidden="true" />
         読み込み中
       </span>
     </div>

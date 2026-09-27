@@ -43,12 +43,16 @@ export default function EndedOverlay({
         再生が終わりました
       </span>
       {next === undefined ? (
-        <Button ref={primary} variant="secondary" onClick={onReplay}>
-          <RotateCcw aria-hidden="true" />
-          もう一度見る
-        </Button>
+        <div className="flex flex-col items-center gap-3 rounded-lg bg-navbar p-5 text-center shadow-elevated">
+          <h2 className="text-lg font-semibold text-fg">再生が終わりました</h2>
+          <Button ref={primary} variant="secondary" onClick={onReplay}>
+            <RotateCcw aria-hidden="true" />
+            もう一度見る
+          </Button>
+        </div>
       ) : (
-        <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5">
+        <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5 shadow-elevated">
+          <h2 className="text-lg font-semibold text-fg">再生が終わりました</h2>
           <span className="text-xs font-semibold text-accent">次の動画</span>
           <Link
             to={`/videos/${String(next.id)}`}

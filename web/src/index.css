@@ -15,9 +15,44 @@
   background: var(--color-overlay);
 }
 
+/* video.js の既定の青灰色を使わず、明暗どちらのフレームでも操作を同じ暗い面に載せる。 */
+.vv-video-player .video-js .vjs-control-bar {
+  color: var(--color-fg);
+  border-top: 1px solid var(--color-border-strong);
+}
+
+.vv-video-player .video-js .vjs-big-play-button {
+  color: var(--color-fg);
+  background: var(--color-overlay);
+  border: 2px solid var(--color-control-border);
+  border-radius: var(--radius-lg);
+}
+
+.vv-video-player .video-js .vjs-big-play-button:hover,
+.vv-video-player .video-js .vjs-big-play-button:focus-visible {
+  background: var(--color-navbar);
+  border-color: var(--color-accent-hover);
+}
+
+.vv-video-player .video-js .vjs-button:hover {
+  background: var(--color-hover-wash);
+}
+
+.vv-video-player .video-js .vjs-button:focus-visible,
+.vv-video-player .video-js .vjs-slider:focus-visible,
+.vv-video-player .video-js .vjs-big-play-button:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: -2px;
+}
+
 .vv-video-player .vjs-play-progress,
 .vv-video-player .vjs-volume-level {
   background: var(--color-accent);
+}
+
+.vv-video-player .video-js .vjs-progress-holder,
+.vv-video-player .video-js .vjs-volume-bar {
+  background: var(--color-border-strong);
 }
 
 .vv-video-player .vjs-progress-holder {
