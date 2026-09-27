@@ -66,11 +66,22 @@ describe("contrast", () => {
     ["fg", "bg", 4.5],
     ["fg", "surface", 4.5],
     ["fg", "elevated", 4.5],
+    ["fg", "field", 4.5],
     ["fg-muted", "bg", 4.5],
     ["fg-muted", "surface", 4.5],
     ["fg-muted", "elevated", 4.5],
+    ["fg-subtle", "elevated", 4.5],
+    ["fg-subtle", "surface", 4.5],
     ["accent-fg", "accent", 4.5],
+    ["accent-fg", "accent-hover", 4.5],
+    ["accent-fg", "accent-active", 4.5],
+    ["danger-fg", "danger-strong", 4.5],
     ["link", "bg", 4.5],
+    ["link", "surface", 4.5],
+    ["link", "accent-soft", 4.5],
+    ["danger", "danger-soft", 4.5],
+    ["warning", "warning-soft", 4.5],
+    ["success", "success-soft", 4.5],
     ["danger", "bg", 4.5],
     // 選択バーのタグ操作ポップオーバーと管理画面の窓（ModalFrame は bg-elevated）の
     // 中の理由・失敗の行（specs/014-video-tags/ui-design.md「Accessibility」）。
@@ -89,7 +100,14 @@ describe("contrast", () => {
     // 「ログインへ」（specs/016-single-account-auth/ui-design.md「Accessibility」）。
     ["danger", "surface", 4.5],
     ["warning", "surface", 4.5],
-    ["link", "surface", 4.5],
+    // 共通ボタン・選択部品・入力欄の境界とフォーカス輪郭。
+    ["control-border", "surface", 3],
+    ["control-border", "elevated", 3],
+    ["control-border", "field", 3],
+    ["accent", "surface", 3],
+    ["accent", "navbar", 3],
+    ["accent-active", "surface", 3],
+    ["accent-active", "navbar", 3],
   ];
 
   it.each(pairs)("%s on %s >= %s", (fg, bg, minimum) => {

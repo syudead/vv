@@ -386,7 +386,7 @@ export default function Combobox({
         className={cn(
           "flex h-6 items-center gap-1 rounded-sm border bg-field px-1.5 text-xs",
           "focus-within:border-accent",
-          disabled ? "border-border opacity-50" : "border-border",
+          disabled ? "border-border opacity-50" : "border-control-border",
           frameClassName ?? "w-40",
         )}
       >
