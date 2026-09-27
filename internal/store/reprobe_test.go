@@ -76,7 +76,7 @@ func TestRetryProbeRequeuesFailedVideoOnce(t *testing.T) {
 	db, videoID := failedVideoFixture(t)
 	ctx := context.Background()
 
-	if err := db.Ingest().RetryProbe(ctx, videoID, true); err != nil {
+	if err := db.Ingest().RetryProbe(ctx, videoID); err != nil {
 		t.Fatal(err)
 	}
 	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
@@ -94,7 +94,7 @@ func TestRetryProbeRequeuesFailedVideoOnce(t *testing.T) {
 		t.Fatalf("jobs = %v, want %v", got, want)
 	}
 
-	if err := db.Ingest().RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
+	if err := db.Ingest().RetryProbe(ctx, videoID); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("2 回目: err = %v, want ErrProbeNotFailed", err)
 	}
 	if got := jobCounts(t, db, videoID); !equalCounts(got, want) {
@@ -102,38 +102,28 @@ func TestRetryProbeRequeuesFailedVideoOnce(t *testing.T) {
 	}
 }
 
-// サムネイルが完成していれば状態は done のままにする。シーク用プレビューの
-// 置き場が無いときだけサムネイルのジョブを積む。
+// サムネイルが完成していれば状態は done のままにし、サムネイルのジョブは積まない。
+// シーク用サムネイルの置き場の有無は見ない（消えた置き場は動画の応答を組み立てる
+// ときに RequeueMissingSeekThumbnails が積み直す）。
 func TestRetryProbeKeepsCompletedThumbnail(t *testing.T) {
-	for _, tc := range []struct {
-		name        string
-		seekMissing bool
-		want        map[string]int
-	}{
-		{name: "seek missing", seekMissing: true, want: map[string]int{"probe:queued": 1, "thumbnail:queued": 1}},
-		{name: "seek present", seekMissing: false, want: map[string]int{"probe:queued": 1}},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			db, videoID := jobsFixture(t)
-			ctx := context.Background()
-			if _, err := db.sql.Exec(`update videos set probe_state = 'failed', probe_error = 'broken',
-				thumbnail_state = 'done' where id = ?`, videoID); err != nil {
-				t.Fatal(err)
-			}
-			if err := db.Ingest().RetryProbe(ctx, videoID, tc.seekMissing); err != nil {
-				t.Fatal(err)
-			}
-			video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if video.ThumbnailState != domain.ThumbnailStateDone {
-				t.Fatalf("thumbnail = %q, want done", video.ThumbnailState)
-			}
-			if got := jobCounts(t, db, videoID); !equalCounts(got, tc.want) {
-				t.Fatalf("jobs = %v, want %v", got, tc.want)
-			}
-		})
+	db, videoID := jobsFixture(t)
+	ctx := context.Background()
+	if _, err := db.sql.Exec(`update videos set probe_state = 'failed', probe_error = 'broken',
+		thumbnail_state = 'done', seek_thumbnail_state = 'done' where id = ?`, videoID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Ingest().RetryProbe(ctx, videoID); err != nil {
+		t.Fatal(err)
+	}
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.ThumbnailState != domain.ThumbnailStateDone || video.SeekThumbnailState != domain.SeekThumbnailDone {
+		t.Fatalf("thumbnail = %q, seek = %q, want done", video.ThumbnailState, video.SeekThumbnailState)
+	}
+	if got, want := jobCounts(t, db, videoID), map[string]int{"probe:queued": 1}; !equalCounts(got, want) {
+		t.Fatalf("jobs = %v, want %v", got, want)
 	}
 }
 
@@ -141,17 +131,17 @@ func TestRetryProbeKeepsCompletedThumbnail(t *testing.T) {
 func TestRetryProbeRejectsNonFailedAndMissing(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
+	if err := db.Ingest().RetryProbe(ctx, videoID); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("pending: err = %v, want ErrProbeNotFailed", err)
 	}
 	probe := domain.Probe{DurationMs: 1_000, VideoCodec: "h264", AudioCodec: "aac"}
 	if err := db.Ingest().ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().RetryProbe(ctx, videoID, true); !errors.Is(err, domain.ErrProbeNotFailed) {
+	if err := db.Ingest().RetryProbe(ctx, videoID); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("done: err = %v, want ErrProbeNotFailed", err)
 	}
-	if err := db.Ingest().RetryProbe(ctx, videoID+100, true); !errors.Is(err, domain.ErrNotFound) {
+	if err := db.Ingest().RetryProbe(ctx, videoID+100); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing: err = %v, want domain.ErrNotFound", err)
 	}
 	if count := countJobs(t, db); count != 0 {
@@ -272,13 +262,13 @@ func TestRetryProbeDuringFinalAttemptWindow(t *testing.T) {
 	job := claimAtLastAttempt(t, db, domain.JobProbe, videoID)
 
 	// ハンドラは失敗を返したが、ワーカーはまだ FailClaimedJob を呼んでいない。
-	if err := db.Ingest().RetryProbe(ctx, videoID, false); !errors.Is(err, domain.ErrProbeNotFailed) {
+	if err := db.Ingest().RetryProbe(ctx, videoID); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("window: err = %v, want ErrProbeNotFailed", err)
 	}
 	if err := db.Ingest().FailClaimedJob(ctx, job, "ffprobe failed"); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().RetryProbe(ctx, videoID, false); err != nil {
+	if err := db.Ingest().RetryProbe(ctx, videoID); err != nil {
 		t.Fatal(err)
 	}
 	// サムネイルは完成していないので、読み取りと同じ組で積む。

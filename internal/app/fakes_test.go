@@ -50,7 +50,11 @@ type fakeIngestStore struct {
 	appliedProbes   []domain.Probe
 	enqueued        []domain.JobKind
 	thumbnailStates []domain.ThumbnailState
+	seekStates      []domain.SeekThumbnailState
 	previewsDone    int
+	// order は、nil でなければシーク用サムネイルの状態の記録を生成の呼び出しと
+	// 同じ列へ書く。生成と記録の順を確かめるのに使う。
+	order *fakeGenerator
 }
 
 func newFakeIngestStore(videos ...domain.Video) *fakeIngestStore {
@@ -119,6 +123,22 @@ func (f *fakeIngestStore) SetThumbnailStateForJob(
 		return false, nil
 	}
 	f.thumbnailStates = append(f.thumbnailStates, state)
+	return true, nil
+}
+
+func (f *fakeIngestStore) SetSeekThumbnailStateForJob(
+	_ context.Context, job domain.Job, state domain.SeekThumbnailState,
+) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.gone {
+		delete(f.referenced, job.ContentKey)
+		return false, nil
+	}
+	f.seekStates = append(f.seekStates, state)
+	if f.order != nil {
+		f.order.record("seek-state:" + string(state))
+	}
 	return true, nil
 }
 

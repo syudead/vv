@@ -38,7 +38,7 @@ func TestProbeJobWritesAndRewritesTranscodeProbe(t *testing.T) {
 	if err := db.Ingest().SaveTranscodeProbe(ctx, videoID, old, sampleTranscodeProbe(640)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().RetryProbe(ctx, videoID, false); err != nil {
+	if err := db.Ingest().RetryProbe(ctx, videoID); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)

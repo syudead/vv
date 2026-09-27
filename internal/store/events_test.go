@@ -68,7 +68,7 @@ func TestRejectedWritesPublishNothing(t *testing.T) {
 	if err := db.Settings().DeleteMediaFolder(ctx, folders[0].ID, folders[0].Version); !errors.Is(err, domain.ErrScanRunning) {
 		t.Fatalf("走査中の DeleteMediaFolder error = %v, want domain.ErrScanRunning", err)
 	}
-	if err := db.Ingest().RetryProbe(ctx, videoID, false); !errors.Is(err, domain.ErrProbeNotFailed) {
+	if err := db.Ingest().RetryProbe(ctx, videoID); !errors.Is(err, domain.ErrProbeNotFailed) {
 		t.Fatalf("RetryProbe error = %v, want domain.ErrProbeNotFailed", err)
 	}
 	if requeued, err := db.Ingest().RequeueMissingPreview(ctx, videoID, "key-a"); err != nil || requeued {

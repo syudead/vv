@@ -21,6 +21,7 @@ type IngestStore interface {
 	PreviewSourceCurrent(ctx context.Context, job domain.Job) (bool, error)
 	ApplyProbeForJob(ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability) (bool, error)
 	SetThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.ThumbnailState) (bool, error)
+	SetSeekThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.SeekThumbnailState) (bool, error)
 	CompletePreviewForContent(ctx context.Context, job domain.Job) (bool, error)
 }
 
@@ -72,7 +73,8 @@ type IngestOptions struct {
 	Logger *slog.Logger
 }
 
-// Ingest は取り込みの各段階（解析・サムネイル・プレビュー）のジョブの処理と、
+// Ingest は取り込みの各段階（解析・代表サムネイル・シーク用サムネイル・
+// プレビュー）のジョブの処理と、
 // 参照の無くなった内容の生成物の削除を受け持つ。
 //
 // ジョブを取り出して成否を記録する進め方は internal/jobs が持ち、1件で何を
@@ -107,6 +109,8 @@ func (i *Ingest) Handler(kind domain.JobKind) func(context.Context, domain.Job) 
 		return i.Probe
 	case domain.JobThumbnail:
 		return i.Thumbnail
+	case domain.JobSeekThumbnail:
+		return i.SeekThumbnails
 	case domain.JobPreview:
 		return i.Preview
 	}
@@ -116,7 +120,8 @@ func (i *Ingest) Handler(kind domain.JobKind) func(context.Context, domain.Job) 
 // JobFinished は1件の成否が記録されたあとに呼ばれる。ワーカーの Finished に渡す。
 //
 // その動画の取り込みの状態と、段階ごとの残りが変わったことを発行する。
-// 解析の成否が決まったら待っていたサムネイルのワーカーを起こす、という段階の
+// 解析の成否が決まったら待っていたサムネイルのワーカーを起こす、代表サムネイルの
+// 成否が決まったら待っていたシーク用サムネイルのワーカーを起こす、という段階の
 // 間の受け渡しは、この発行の購読として cmd/mdm が登録する。
 func (i *Ingest) JobFinished(job domain.Job) {
 	if i.publisher == nil {
@@ -172,7 +177,8 @@ func (i *Ingest) Probe(ctx context.Context, job domain.Job) error {
 	return i.store.EnqueueJob(ctx, domain.JobPreview, job.VideoID)
 }
 
-// Thumbnail は代表サムネイルを1枚とシーク用プレビューを生成し、状態を記録する。
+// Thumbnail は代表サムネイルを1枚生成し、状態を記録する。シーク用サムネイルは
+// 別の段階（SeekThumbnails）が作るので、ここでは待たない。
 func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 	video, err := i.store.GetVideo(ctx, job.VideoID)
 	if err != nil {
@@ -215,12 +221,49 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 			return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
 		}
 	}
+
+	// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
+	// 参照の無くなった生成物を残さない。
+	return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
+}
+
+// SeekThumbnails はシーク用サムネイル（全編デコード）を生成し、状態を記録する。
+// 置き場に完成したものがあれば生成せず、状態だけを記録する。
+//
+// 代表サムネイルと同じく、完了は専有した時点の内容・所在・所在の世代が今も
+// 同じときだけ記録する。上限まで試して駄目なときの失敗は、FailClaimedJob が
+// seek_thumbnail_state だけへ記録し、代表サムネイルの状態には触れない。
+func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
+	if _, err := i.store.GetVideo(ctx, job.VideoID); err != nil {
+		return err
+	}
+	current, err := i.store.JobIdentityCurrent(ctx, job)
+	if err != nil {
+		return err
+	}
+	if !current {
+		return nil
+	}
+	if err := i.generator.CheckSource(job.LocationPath); err != nil {
+		return err
+	}
+	// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
+	// 生成物の削除と直列にする。
+	unlock := i.artifacts.lock(job.ContentKey)
+	defer unlock()
 	if err := i.files.PublishSeekThumbnails(job.ContentKey, func(outputPattern string) error {
 		return i.generator.SeekThumbnails(ctx, job.LocationPath, outputPattern)
 	}); err != nil {
 		return err
 	}
-
+	applied, err := i.store.SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone)
+	if err != nil {
+		return err
+	}
+	if !applied {
+		// 生成中に動画が消えていたら、書き終えたシーク用サムネイルを残さない。
+		return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
+	}
 	// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
 	// 参照の無くなった生成物を残さない。
 	return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)

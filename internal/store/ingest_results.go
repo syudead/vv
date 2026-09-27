@@ -382,14 +382,12 @@ func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now in
 // 取引で記録する）ので、ここで積むジョブが running の古いジョブとの重複防止で
 // 省かれることは無い。
 //
-// seekThumbnailMissing はシーク用プレビューの置き場が無いことを表す。置き場の
-// 有無はファイルの事実なので、呼び出し側が確かめて渡す。thumbnail_state が
-// done でも置き場が無ければ、状態はそのままでサムネイルのジョブを積む
-// （app.Ingest.Thumbnail は代表サムネイルがあればシーク用プレビューだけを作る）。
-// seek_thumbnail_state が failed なら pending に戻し、戻したときだけシーク用
-// サムネイルのジョブを積む。
+// thumbnail_state は done でなければ、seek_thumbnail_state は failed なら
+// pending に戻し、戻したときだけそれぞれのジョブを積む。seek_thumbnail_state が done なのに
+// 置き場が無い動画は、動画の応答を組み立てるときに
+// RequeueMissingSeekThumbnails が積み直す。
 // 一覧用プレビューのジョブは、読み取りの成功後に app.Ingest.Probe が積む。
-func (s *IngestStore) RetryProbe(ctx context.Context, id int64, seekThumbnailMissing bool) error {
+func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("読み取りのやり直しを開始できません (id=%d): %w", id, err)
@@ -441,7 +439,7 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64, seekThumbnailMis
 	}
 
 	kinds := []domain.JobKind{domain.JobProbe}
-	if thumbnailReset > 0 || seekThumbnailMissing {
+	if thumbnailReset > 0 {
 		kinds = append(kinds, domain.JobThumbnail)
 	}
 	if seekThumbnailReset > 0 {

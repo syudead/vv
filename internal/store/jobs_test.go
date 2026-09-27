@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -979,8 +980,13 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 		t.Fatal(err)
 	}
 
-	// 動画は消えず（登録外の所在が残る）、仕事も積まないので、残りの変化だけを知らせる。
-	if want := []domain.Event{domain.ProcessingChanged{}}; !slices.Equal(recorder.events, want) {
+	// 動画は消えず（登録外の所在が残る）、仕事も積まない。残りの変化と、待っていた
+	// シーク用サムネイルが取り出せるようになりうることを知らせる。
+	want := []domain.Event{
+		domain.JobsQueued{Kinds: []domain.JobKind{domain.JobSeekThumbnail}},
+		domain.ProcessingChanged{},
+	}
+	if !reflect.DeepEqual(recorder.events, want) {
 		t.Fatalf("発行 = %v, want %v", recorder.events, want)
 	}
 	if recorder.calls != 1 {
@@ -988,6 +994,60 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 	}
 	if got, err := db.Ingest().Processing(ctx); err != nil || got.Probe != 0 {
 		t.Errorf("Processing = %+v, %v, want probe 0", got, err)
+	}
+}
+
+// 登録を外して、取り出せる代表サムネイルの仕事が無くなったら、別の動画の
+// シーク用サムネイルが取り出せるようになる。動画の行が残る（登録外の所在がある）
+// ときも、シーク用のワーカーを起こす知らせを出す。
+func TestDeleteMediaFolderWakesSeekThumbnailWhenThumbnailWorkLeaves(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/other', 1, 1, 1)`); err != nil {
+		t.Fatal(err)
+	}
+	blocking, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/legacy/a.mp4", "a", "key-a", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	waiting, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/other/b.mp4", "b", "key-b", 2048, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeDone(t, db, blocking.ID)
+	probeDone(t, db, waiting.ID)
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, blocking.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobSeekThumbnail, waiting.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Ingest().ClaimJob(ctx, domain.JobSeekThumbnail); !errors.Is(err, domain.ErrNoJob) {
+		t.Fatalf("代表サムネイルが残る間の ClaimJob error = %v, want domain.ErrNoJob", err)
+	}
+	var folderID, version int64
+	if err := db.sql.QueryRow(`select id, version from media_folders where path = '/media'`).Scan(&folderID, &version); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := &queuedRecorder{}
+	db.PublishTo(recorder)
+	if err := db.Settings().DeleteMediaFolder(ctx, folderID, version); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := recorder.take(); !slices.Contains(got, domain.JobSeekThumbnail) {
+		t.Errorf("積まれた段階の知らせ = %v, want seek_thumbnail を含む", got)
+	}
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobSeekThumbnail)
+	if err != nil {
+		t.Fatalf("登録を外した後も取り出せない: %v", err)
+	}
+	if job.VideoID != waiting.ID {
+		t.Errorf("VideoID = %d, want %d", job.VideoID, waiting.ID)
 	}
 }
 

@@ -435,18 +435,6 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	return affected, nil
 }
 
-// ThumbnailJobActive はその動画のサムネイルのジョブが queued か running かを
-// 返す。シーク用プレビューの状態（pending か failed か）を導くのに使う。
-func (s *IngestStore) ThumbnailJobActive(ctx context.Context, videoID int64) (bool, error) {
-	var active int
-	err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from jobs
-		where kind = 'thumbnail' and video_id = ? and state in ('queued', 'running'))`, videoID).Scan(&active)
-	if err != nil {
-		return false, fmt.Errorf("サムネイルのジョブを確かめられません (video=%d): %w", videoID, err)
-	}
-	return active == 1, nil
-}
-
 // Processing は段階ごとに残っている仕事の数を返す。数えるのは queued と
 // running で、ClaimJob と同じく登録済みの所在がある動画に限る。登録外の
 // 所在しかない仕事はワーカーが取り出さないので、数えると準備が終わらない。
