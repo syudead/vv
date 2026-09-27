@@ -16,7 +16,7 @@
 `NeedsSeekThumbnail`（`seek_thumbnail_state <> 'done'`）を足す。`thumbnail_state` の意味は
 代表 JPEG だけになる。
 
-作り直せる索引である（ARCHITECTURE.md「Two kinds of data」）。
+作り直せる索引である（ARCHITECTURE.md「Rebuildable and user data」）。
 
 ## 2. `jobs.kind = 'seek_thumbnail'`
 

@@ -69,7 +69,7 @@
 - **生成物の所有**（ARCHITECTURE.md「Generated files have one owner」）: 合格。置き場・公開・
   削除は `internal/artifacts` のまま。新しいワーカーは今と同じ `PublishSeekThumbnails` を、
   同じ内容ごとの錠の中で呼ぶ。
-- **索引と利用者データの区別**（ARCHITECTURE.md「Two kinds of data」）: 合格。足す列と
+- **索引と利用者データの区別**（ARCHITECTURE.md「Rebuildable and user data」）: 合格。足す列と
   ジョブの種類は作り直せる索引で、利用者データには触れない。
 - **API の正本**（ARCHITECTURE.md）: 合格。`Processing` の変更は `api/openapi.yaml` から生成する。
 - **文書は変更と同じ PR で直す**（core-beliefs.md）: 合格。ARCHITECTURE.md のワーカー・取り出し

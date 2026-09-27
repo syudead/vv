@@ -264,7 +264,7 @@ Web の新しいファイルの名前は各単位で決める。
 取り出しとフォルダのパスから `VideoFolder` を求める `LocateFolder`（[data-model.md §2](data-model.md#2-割り当ての規則)）、`rebuildFolderIndex` と4つの作り直しの時点（スキャンを閉じる前・メディアフォルダの変更・
 例外の変更・起動時の版・中断したスキャンの回復）、`FolderGroupStore` の例外の設定と解除。
 ARCHITECTURE.md の「スキャンの後に全体を読まない」の記述（と `internal/app/scans.go` の注記）、
-「Two kinds of data」の表の区分、store の役割の型の一覧に、この単位が足すものを書く
+「Rebuildable and user data」の表の区分、store の役割の型の一覧に、この単位が足すものを書く
 （[data-model.md §1〜§3](data-model.md)）。
 
 **Dependencies**: None
