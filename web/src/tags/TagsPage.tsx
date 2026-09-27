@@ -12,7 +12,7 @@ import {
   subscribeTags,
   type Tag,
 } from "../api/tags";
-import { errorText, untranslated } from "../i18n";
+import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
@@ -45,7 +45,7 @@ type FocusTarget = "rename" | "synonyms" | "name" | "menu";
 export default function TagsPage() {
   const toast = useToast();
   const [tags, setTags] = useState<Tag[] | undefined>(currentTags());
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<UiText | null>(null);
   const [search, setSearch] = useState("");
 
   const [creating, setCreating] = useState(false);
@@ -58,7 +58,7 @@ export default function TagsPage() {
 
   const [deletingTag, setDeletingTag] = useState<Tag | null>(null);
   const [deletePending, setDeletePending] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<UiText | null>(null);
 
   const [mergingTag, setMergingTag] = useState<Tag | null>(null);
   const [synonymsTagId, setSynonymsTagId] = useState<number | null>(null);
@@ -193,10 +193,10 @@ export default function TagsPage() {
   const total = tags?.length ?? 0;
   const countText =
     tags === undefined
-      ? "読み込み中…"
+      ? t.tags.loading
       : searching
-        ? `${String(filtered.length)} / ${String(total)} 個のタグ`
-        : `${String(total)} 個のタグ`;
+        ? t.tags.filteredCount(filtered.length, total)
+        : t.tags.count(total);
 
   function openCreate() {
     // 改名の送信中は、その応答が届くまで新しく作成を始めない（B2 と同じ規則。
@@ -223,7 +223,7 @@ export default function TagsPage() {
       setCreating(false);
       focusRow(created.id, "name");
     } catch (failure) {
-      setCreateError(tagFieldError(failure));
+      setCreateError(tagFieldError(failure, { submitted: name }));
     } finally {
       setCreatePending(false);
     }
@@ -243,12 +243,12 @@ export default function TagsPage() {
       if (isTagNotFound(failure)) {
         const order = visibleRows;
         setRenamingId(null);
-        toast(untranslated("このタグはもう無いため、一覧を取り直しました"));
+        toast(t.tags.gone);
         await reload();
         focusAfterRemoval(order, tag.id);
         return;
       }
-      setRenameError(tagFieldError(failure));
+      setRenameError(tagFieldError(failure, { submitted: name, ownTagName: tag.name }));
     } finally {
       setRenamePending(false);
     }
@@ -264,12 +264,12 @@ export default function TagsPage() {
       await deleteTag(target.id);
       setTags((current) => current?.filter((item) => item.id !== target.id));
       setDeletingTag(null);
-      toast(untranslated("削除しました"));
+      toast(t.tags.deleted(target.name));
       focusAfterRemoval(order, target.id);
     } catch (failure) {
       if (isTagNotFound(failure)) {
         setDeletingTag(null);
-        toast(untranslated("このタグはもう無いため、一覧を取り直しました"));
+        toast(t.tags.gone);
         await reload();
         focusAfterRemoval(order, target.id);
         return;
@@ -317,7 +317,7 @@ export default function TagsPage() {
         .map((item) => (item.id === merged.id ? merged : item)),
     );
     setMergingTag(null);
-    toast(untranslated("統合しました"));
+    toast(t.tags.merged(source.name, merged.name));
     focusRow(merged.id, "name");
   }
 
@@ -331,7 +331,7 @@ export default function TagsPage() {
     if (source === null) return;
     const order = filtered;
     setMergingTag(null);
-    toast(untranslated("このタグはもう無いため、一覧を取り直しました"));
+    toast(t.tags.gone);
     void reload().then(() => focusAfterRemoval(order, source.id));
   }
 
@@ -396,7 +396,7 @@ export default function TagsPage() {
     const id = synonymsTagId;
     const order = filtered;
     setSynonymsTagId(null);
-    toast(untranslated("このタグはもう無いため、一覧を取り直しました"));
+    toast(t.tags.gone);
     void reload().then(() => focusAfterRemoval(order, id));
   }
 
@@ -408,7 +408,7 @@ export default function TagsPage() {
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
-      <h1 className="text-xl font-semibold">タグ</h1>
+      <h1 className="text-xl font-semibold">{t.tags.title}</h1>
       {/*
         h1・操作の行・件数の行の間隔は ui-design.md が固定していない（固定するのは
         本文の外側の余白と行の py-2 だけ）。「1280×800 でシノニムの行を持つタグと
@@ -431,7 +431,7 @@ export default function TagsPage() {
           disabled={tags === undefined || creating || createPending || renamePending}
         >
           <Plus />
-          新しいタグ
+          {t.tags.newTag}
         </Button>
       </div>
 
@@ -456,20 +456,20 @@ export default function TagsPage() {
           <EmptyState
             icon={AlertCircle}
             tone="danger"
-            title={untranslated("タグを取得できません")}
-            action={<Button onClick={() => void reload()}>再試行</Button>}
+            title={t.tags.loadFailed}
+            action={<Button onClick={() => void reload()}>{t.common.retry}</Button>}
           />
         )}
 
         {showEmptyTags && (
           <EmptyState
             icon={TagsIcon}
-            title={untranslated("タグはまだありません")}
-            description="動画の再生画面や、ライブラリの選択バーから付けられます。ここで先に作っておくこともできます。"
+            title={t.tags.empty.title}
+            description={t.tags.empty.description}
             action={
               <Button variant="primary" onClick={openCreate}>
                 <Plus />
-                新しいタグ
+                {t.tags.newTag}
               </Button>
             }
           />
@@ -478,8 +478,8 @@ export default function TagsPage() {
         {showNoMatch && (
           <EmptyState
             icon={SearchX}
-            title={untranslated(`「${search}」に一致するタグはありません`)}
-            action={<Button onClick={clearSearch}>検索をクリア</Button>}
+            title={t.tags.noMatches(search)}
+            action={<Button onClick={clearSearch}>{t.tags.clearSearch}</Button>}
           />
         )}
 

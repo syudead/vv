@@ -2,7 +2,7 @@ import { LoaderCircle } from "lucide-react";
 import { useRef } from "react";
 
 import type { Tag } from "../api/tags";
-import { untranslated } from "../i18n";
+import { t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import { ModalFrame } from "../ui/ModalFrame";
 
@@ -19,19 +19,19 @@ export default function DeleteTagDialog({
 }: {
   tag: Tag;
   pending: boolean;
-  error: string | null;
+  error: UiText | null;
   onClose: () => void;
   onDelete: () => void;
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
   const message =
     tag.videoCount === 0
-      ? "このタグはどの動画にも付いていません。"
-      : `${String(tag.videoCount)} 本の動画からこのタグが外れます。この操作は取り消せません。`;
+      ? t.tags.deleteDialog.unused
+      : t.tags.deleteDialog.used(tag.videoCount);
 
   return (
     <ModalFrame
-      title={untranslated(`「${tag.name}」を削除`)}
+      title={t.tags.deleteDialog.title(tag.name)}
       onClose={onClose}
       initialFocus={cancel}
     >
@@ -47,11 +47,11 @@ export default function DeleteTagDialog({
       </div>
       <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
         <Button ref={cancel} onClick={onClose} disabled={pending}>
-          キャンセル
+          {t.common.cancel}
         </Button>
         <Button variant="danger" onClick={onDelete} disabled={pending}>
           {pending && <LoaderCircle className="animate-spin" />}
-          削除する
+          {t.tags.deleteDialog.submit}
         </Button>
       </div>
     </ModalFrame>

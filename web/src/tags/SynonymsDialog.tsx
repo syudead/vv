@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import { addTagSynonym, refreshTags, removeTagSynonym, type Tag } from "../api/tags";
-import { errorText, untranslated } from "../i18n";
+import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import Chip from "../ui/Chip";
 import { isComposingKeyEvent } from "../ui/Combobox";
@@ -18,10 +18,17 @@ function isMergeRequired(error: unknown): boolean {
   return error instanceof RequestFailed && error.code === "tag_merge_required";
 }
 
+/** mergeOwner は tag_merge_required が返した、名前を持つタグの元の名前である。 */
+function mergeOwner(error: unknown): string | undefined {
+  return error instanceof RequestFailed ? error.tagName : undefined;
+}
+
 /** MergeConfirm は「シノニム登録に伴う統合」の確認である（要件6、受け入れ条件17）。 */
 interface MergeConfirm {
   /** 登録しようとした、既存のタグ S の元の名前（≒入力していた綴り）。 */
   name: string;
+  /** タグ S の元の名前（API の tagName。確認の文言に出す）。 */
+  sourceName: string;
   sourceId: number;
   videoCount: number;
   hasSynonyms: boolean;
@@ -88,7 +95,7 @@ export default function SynonymsDialog({
 
   const [confirm, setConfirm] = useState<MergeConfirm | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<UiText | null>(null);
 
   const chipRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusRef = useRef<FocusAfterRemoval | null>(null);
@@ -189,13 +196,15 @@ export default function SynonymsDialog({
    * 見つからなければ1回だけ送り直せる。それでも見つからなければ、ループを
    * 続けず一般の失敗として見せる。
    */
-  async function openConfirm(name: string, attempt = 0) {
+  async function openConfirm(name: string, attempt = 0, ownerName?: string) {
     try {
       const list = await refreshTags();
-      const found = list.find((item) => item.name === name);
+      // S は API が tagName で返した元の名前で探す（送った綴りと整え方が違っても
+      // 見つかるように）。tagName が無い応答では送った綴りで探す。
+      const found = list.find((item) => item.name === (ownerName ?? name));
       if (found === undefined) {
         if (attempt >= 1) {
-          setAddError({ kind: "other", message: "タグを追加できませんでした" });
+          setAddError({ kind: "other", message: t.tags.synonymsDialog.addFailed });
           return;
         }
         // 別のタブでの変更により、この名前を持つタグがもう無い。素の登録を
@@ -206,6 +215,7 @@ export default function SynonymsDialog({
       }
       setConfirm({
         name,
+        sourceName: found.name,
         sourceId: found.id,
         videoCount: found.videoCount,
         hasSynonyms: found.synonyms.length > 0,
@@ -243,10 +253,10 @@ export default function SynonymsDialog({
       if (isMergeRequired(failure)) {
         // openConfirm を呼ぶこと自体は送り直しではないので、attempt は
         // そのまま渡す（N6b: 実際に送り直した回数だけを数える）。
-        await openConfirm(name, attempt);
+        await openConfirm(name, attempt, mergeOwner(failure));
         return;
       }
-      setAddError(tagFieldError(failure));
+      setAddError(tagFieldError(failure, { submitted: name, ownTagName: tag.name }));
     }
   }
 
@@ -278,7 +288,7 @@ export default function SynonymsDialog({
       if (isMergeRequired(failure)) {
         // 確認の後に別のタブでこの名前がさらに別のタグへ移った。一覧を
         // 取り直して確認をやり直す（tags-api.md §3）。
-        await openConfirm(confirm.name);
+        await openConfirm(confirm.name, 0, mergeOwner(failure));
         return;
       }
       setConfirmError(errorText(failure));
@@ -302,7 +312,7 @@ export default function SynonymsDialog({
 
   return (
     <ModalFrame
-      title={untranslated(`「${tag.name}」のシノニム`)}
+      title={t.tags.synonymsDialog.title(tag.name)}
       onClose={handleClose}
       initialFocus={inputRef}
     >
@@ -310,7 +320,10 @@ export default function SynonymsDialog({
         {confirm === null ? (
           <>
             {tag.synonyms.length > 0 && (
-              <ul aria-label="シノニム" className="flex flex-wrap gap-1.5">
+              <ul
+                aria-label={t.tags.synonymsDialog.list}
+                className="flex flex-wrap gap-1.5"
+              >
                 {tag.synonyms.map((name) => (
                   <li key={name} className="min-w-0 max-w-full">
                     <Chip
@@ -325,7 +338,7 @@ export default function SynonymsDialog({
                           else chipRefs.current.delete(name);
                         }}
                         type="button"
-                        aria-label={`シノニム「${name}」を解除`}
+                        aria-label={t.tags.synonymsDialog.remove(name)}
                         aria-busy={removing.has(name) || undefined}
                         onClick={() => {
                           if (removing.has(name)) return;
@@ -344,7 +357,7 @@ export default function SynonymsDialog({
             <div className="flex items-end gap-2">
               <div className="min-w-0 flex-1">
                 <label htmlFor="synonym-add-input" className="sr-only">
-                  シノニムを追加
+                  {t.tags.synonymsDialog.add}
                 </label>
                 <input
                   id="synonym-add-input"
@@ -360,8 +373,8 @@ export default function SynonymsDialog({
                       if (!addPending) void submitAdd();
                     }
                   }}
-                  placeholder="シノニムを追加"
-                  aria-label="シノニムを追加"
+                  placeholder={t.tags.synonymsDialog.add}
+                  aria-label={t.tags.synonymsDialog.add}
                   aria-describedby={
                     field.reason !== null
                       ? reasonId
@@ -378,7 +391,7 @@ export default function SynonymsDialog({
                   if (!addPending) void submitAdd();
                 }}
               >
-                追加
+                {t.tags.synonymsDialog.submit}
               </Button>
             </div>
             {field.reason !== null && (
@@ -400,7 +413,12 @@ export default function SynonymsDialog({
         ) : (
           <>
             <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
-              {`「${confirm.name}」は ${String(confirm.videoCount)} 本の動画に付いているタグです。「${tag.name}」に統合すると、その ${String(confirm.videoCount)} 本に「${tag.name}」が付き、「${confirm.name}」${confirm.hasSynonyms ? "とそのシノニムは" : "は"}「${tag.name}」のシノニムになります。「${confirm.name}」はタグの一覧から消えます。`}
+              {t.tags.synonymsDialog.mergeWarning(
+                confirm.sourceName,
+                confirm.videoCount,
+                tag.name,
+                confirm.hasSynonyms,
+              )}
             </p>
             {confirmError !== null && (
               <p role="alert" className="text-sm text-danger">
@@ -409,7 +427,7 @@ export default function SynonymsDialog({
             )}
             <div className="flex justify-end gap-2">
               <Button ref={backRef} onClick={backFromConfirm} disabled={confirmPending}>
-                戻る
+                {t.tags.synonymsDialog.back}
               </Button>
               <Button
                 ref={confirmMergeButton}
@@ -418,7 +436,7 @@ export default function SynonymsDialog({
                 disabled={confirmPending}
               >
                 {confirmPending && <LoaderCircle className="animate-spin" />}
-                統合する
+                {t.tags.synonymsDialog.merge}
               </Button>
             </div>
           </>
