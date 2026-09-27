@@ -5,11 +5,12 @@ import { processingRemaining } from "./ScanProvider";
 const stages: { key: keyof Processing; label: string }[] = [
   { key: "probe", label: "解析" },
   { key: "thumbnail", label: "サムネイル" },
+  { key: "seekThumbnail", label: "シーク用" },
   { key: "preview", label: "プレビュー" },
 ];
 
 /**
- * ProcessingBreakdown は取り込みの段階ごとの残りを3列で示す。残りが無ければ
+ * ProcessingBreakdown は取り込みの段階ごとの残りを4列で示す。残りが無ければ
  * 何も出さない。フローティング表示の概要と設定画面の詳細で同じものを使う。
  */
 export default function ProcessingBreakdown({
@@ -21,7 +22,7 @@ export default function ProcessingBreakdown({
 }) {
   if (processing === null || processingRemaining(processing) === 0) return null;
   return (
-    <dl aria-label="準備の残り" className={cn("grid grid-cols-3 gap-2", className)}>
+    <dl aria-label="準備の残り" className={cn("grid grid-cols-4 gap-x-1", className)}>
       {stages.map((stage) => (
         <div key={stage.key} className="min-w-0">
           <dt className="break-keep">{stage.label}</dt>

@@ -263,5 +263,10 @@ func (s *server) GetProcessing(w http.ResponseWriter, r *http.Request) {
 }
 
 func toAPIProcessing(p domain.Processing) gen.Processing {
-	return gen.Processing{Probe: p.Probe, Thumbnail: p.Thumbnail, Preview: p.Preview}
+	return gen.Processing{
+		Probe:         p.Probe,
+		Thumbnail:     p.Thumbnail,
+		SeekThumbnail: p.SeekThumbnail,
+		Preview:       p.Preview,
+	}
 }

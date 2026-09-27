@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -56,7 +56,7 @@ function renderIndicator() {
   );
 }
 
-let processing: Processing = { probe: 0, thumbnail: 0, preview: 0 };
+let processing: Processing = { probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 };
 
 describe("ScanProgressIndicator", () => {
   const fetchMock = vi.fn<typeof fetch>();
@@ -66,7 +66,7 @@ describe("ScanProgressIndicator", () => {
     fetchMock.mockReset();
     // 段階ごとの残りは、各検査が指定しなければ 0 を返す。scan の応答の差し替えに
     // 混ぜない。
-    processing = { probe: 0, thumbnail: 0, preview: 0 };
+    processing = { probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 };
     vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
       String(input) === "/api/processing"
         ? Promise.resolve(json(processing))
@@ -361,16 +361,66 @@ describe("ScanProgressIndicator", () => {
     await screen.findByRole("button", { name: /取り込み中 40%/ });
 
     state = "done";
-    await emitServerEvent("processing", { probe: 2, thumbnail: 3, preview: 1 });
+    await emitServerEvent("processing", {
+      probe: 2,
+      thumbnail: 3,
+      seekThumbnail: 4,
+      preview: 1,
+    });
     await emitServerEvent("scan", scan({ state: "done" }));
 
-    const preparing = await screen.findByRole("button", { name: /^準備中 残り 6。/ });
+    const preparing = await screen.findByRole("button", { name: /^準備中 残り 10。/ });
     expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
     await act(async () => fireEvent.focus(preparing));
     const list = await screen.findByLabelText("準備の残り");
-    expect(list.textContent).toBe("解析2 件サムネイル3 件プレビュー1 件");
+    expect(list.textContent).toBe("解析2 件サムネイル3 件シーク用4 件プレビュー1 件");
 
-    await emitServerEvent("processing", { probe: 0, thumbnail: 0, preview: 0 });
+    await emitServerEvent("processing", {
+      probe: 0,
+      thumbnail: 0,
+      seekThumbnail: 0,
+      preview: 0,
+    });
+
+    expect(await screen.findByRole("button", { name: /^完了。/ })).toBeDefined();
+  });
+
+  it("シーク用サムネイルだけが残っていても準備中を示し、4 段階の内訳を出す", async () => {
+    let state: Scan["state"] = "running";
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(scan({ state })),
+      ),
+    );
+    renderIndicator();
+    await screen.findByRole("button", { name: /取り込み中 40%/ });
+
+    state = "done";
+    await emitServerEvent("processing", {
+      probe: 0,
+      thumbnail: 0,
+      seekThumbnail: 5,
+      preview: 0,
+    });
+    await emitServerEvent("scan", scan({ state: "done" }));
+
+    const preparing = await screen.findByRole("button", { name: /^準備中 残り 5。/ });
+    expect(screen.queryByRole("button", { name: /^完了。/ })).toBeNull();
+    await act(async () => fireEvent.focus(preparing));
+    const list = await screen.findByLabelText("準備の残り");
+    expect(list.textContent).toBe("解析0 件サムネイル0 件シーク用5 件プレビュー0 件");
+    expect(
+      within(list)
+        .getAllByRole("term")
+        .map((term) => term.textContent),
+    ).toEqual(["解析", "サムネイル", "シーク用", "プレビュー"]);
+
+    await emitServerEvent("processing", {
+      probe: 0,
+      thumbnail: 0,
+      seekThumbnail: 0,
+      preview: 0,
+    });
 
     expect(await screen.findByRole("button", { name: /^完了。/ })).toBeDefined();
   });

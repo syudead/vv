@@ -108,7 +108,7 @@ func expectNoEvent(t *testing.T, events <-chan sseEvent) {
 // ときだけ送る。切れていた間の変化は、つなぎ直した直後の送信で取り戻せる。
 func TestStreamEventsSendsCurrentStateThenOnlyChanges(t *testing.T) {
 	events := NewEvents()
-	processing := &fakeProcessing{current: domain.Processing{Probe: 3, Thumbnail: 2, Preview: 1}}
+	processing := &fakeProcessing{current: domain.Processing{Probe: 3, Thumbnail: 2, SeekThumbnail: 5, Preview: 1}}
 	scans := &fakeScans{hasScan: true, current: domain.Scan{ID: 4, State: domain.ScanRunning, Total: 10, Completed: 2}}
 	handler := newTestServer(t, Options{Scans: scans, Processing: processing, Events: events})
 
@@ -127,7 +127,7 @@ func TestStreamEventsSendsCurrentStateThenOnlyChanges(t *testing.T) {
 	if err := json.Unmarshal([]byte(processingEvent.data), &remaining); err != nil {
 		t.Fatal(err)
 	}
-	if remaining != (gen.Processing{Probe: 3, Thumbnail: 2, Preview: 1}) {
+	if remaining != (gen.Processing{Probe: 3, Thumbnail: 2, SeekThumbnail: 5, Preview: 1}) {
 		t.Errorf("processing = %+v", remaining)
 	}
 
@@ -230,14 +230,14 @@ func TestStreamEventsEndsOnClose(t *testing.T) {
 // 段階ごとの残りを返す。
 func TestGetProcessing(t *testing.T) {
 	handler := newTestServer(t, Options{
-		Processing: &fakeProcessing{current: domain.Processing{Probe: 1, Thumbnail: 4, Preview: 7}},
+		Processing: &fakeProcessing{current: domain.Processing{Probe: 1, Thumbnail: 4, SeekThumbnail: 9, Preview: 7}},
 	})
 	rec := do(t, handler, http.MethodGet, "/api/processing")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	got := decode[gen.Processing](t, rec)
-	if got != (gen.Processing{Probe: 1, Thumbnail: 4, Preview: 7}) {
+	if got != (gen.Processing{Probe: 1, Thumbnail: 4, SeekThumbnail: 9, Preview: 7}) {
 		t.Errorf("processing = %+v", got)
 	}
 }

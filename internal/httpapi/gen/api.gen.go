@@ -709,7 +709,10 @@ type Processing struct {
 	// Probe 解析（ffprobe）の残り
 	Probe int `json:"probe"`
 
-	// Thumbnail サムネイルとシーク用プレビューの残り
+	// SeekThumbnail シーク用サムネイルの残り
+	SeekThumbnail int `json:"seekThumbnail"`
+
+	// Thumbnail 代表サムネイルの残り
 	Thumbnail int `json:"thumbnail"`
 }
 

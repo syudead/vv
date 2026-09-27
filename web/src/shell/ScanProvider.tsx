@@ -28,7 +28,7 @@ export interface ScanContextValue {
   /** current scan の初回取得が完了している。 */
   loaded: boolean;
   /**
-   * 取り込みの段階（解析・サムネイル・プレビュー）ごとに残っている仕事の数。
+   * 取り込みの段階（解析・サムネイル・シーク用サムネイル・プレビュー）ごとに残っている仕事の数。
    * まだ取得していなければ null。
    */
   processing: Processing | null;
@@ -60,7 +60,12 @@ export function useScan(): ScanContextValue {
 /** processingRemaining は全段階の残りの合計である。未取得なら 0。 */
 export function processingRemaining(processing: Processing | null): number {
   if (processing === null) return 0;
-  return processing.probe + processing.thumbnail + processing.preview;
+  return (
+    processing.probe +
+    processing.thumbnail +
+    processing.seekThumbnail +
+    processing.preview
+  );
 }
 
 /**
