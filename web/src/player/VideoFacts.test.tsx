@@ -58,21 +58,21 @@ describe("VideoFacts", () => {
 
   it("ファイルの情報は長さ・サイズ・追加日の順で、最後に見た日時は出さない", () => {
     renderFacts(video);
-    expect(listText("ファイルの情報")).toEqual([
-      "長さ 4:02",
-      "サイズ 80.4 MB",
-      "追加日 2026/09/20",
+    expect(listText("File details")).toEqual([
+      "Length 4:02",
+      "Size 80.4 MB",
+      "Added Sep 20, 2026",
     ]);
     expect(document.body.textContent).not.toContain("2026/09/21");
   });
 
   it("技術情報は解像度・コンテナ・映像・音声を大文字の表記で並べ、分からない値は省く", () => {
     const view = renderFacts(video);
-    expect(listText("技術情報")).toEqual(["1920×1080", "MKV", "H.264", "AAC"]);
+    expect(listText("Technical details")).toEqual(["1920×1080", "MKV", "H.264", "AAC"]);
     view.unmount();
 
     renderFacts({ ...video, audioCodec: undefined });
-    expect(listText("技術情報")).toEqual(["1920×1080", "MKV", "H.264"]);
+    expect(listText("Technical details")).toEqual(["1920×1080", "MKV", "H.264"]);
   });
 
   it("読み取り前は長さを出さず、技術情報は読み取り中、失敗なら警告を 1 行出す", () => {
@@ -87,20 +87,20 @@ describe("VideoFacts", () => {
       audioCodec: undefined,
     };
     const view = renderFacts(pending);
-    expect(listText("ファイルの情報")).toEqual(["サイズ 80.4 MB", "追加日 2026/09/20"]);
-    expect(screen.getByText("技術情報を読み取り中")).toBeDefined();
+    expect(listText("File details")).toEqual(["Size 80.4 MB", "Added Sep 20, 2026"]);
+    expect(screen.getByText("Reading technical details…")).toBeDefined();
     view.unmount();
 
     renderFacts({ ...pending, probeState: "failed", probeError: "moov atom" });
-    expect(screen.getByText("技術情報を読み取れませんでした").className).toContain(
+    expect(screen.getByText("Couldn't read the technical details").className).toContain(
       "text-warning",
     );
   });
 
   it("開けないときは「ファイルを開く」を出さず、コピーだけを置く", () => {
     renderFacts({ ...video, location: { path: "/media/a/b.mp4", openable: false } });
-    expect(screen.queryByRole("button", { name: "ファイルを開く" })).toBeNull();
-    expect(screen.getByRole("button", { name: "パスをコピー" })).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Open file" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Copy path" })).toBeDefined();
   });
 
   it("所在が無ければ操作を置かない", () => {
@@ -112,7 +112,7 @@ describe("VideoFacts", () => {
     const writeText = vi.fn<(text: string) => Promise<void>>().mockResolvedValue();
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
     renderFacts(video);
-    fireEvent.click(screen.getByRole("button", { name: "パスをコピー" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy path" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("/media/a/b.mp4"));
   });
 
@@ -131,7 +131,7 @@ describe("VideoFacts", () => {
       configurable: true,
     });
     renderFacts(video);
-    const button = screen.getByRole("button", { name: "パスをコピー" });
+    const button = screen.getByRole("button", { name: "Copy path" });
     button.focus();
     fireEvent.click(button);
     expect(execCommand).toHaveBeenCalledWith("copy");
@@ -144,7 +144,7 @@ describe("VideoFacts", () => {
   it("「ファイルを開く」は開く要求を送る", async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
     renderFacts(video);
-    fireEvent.click(screen.getByRole("button", { name: "ファイルを開く" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open file" }));
     await waitFor(() =>
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/videos/7/open",
@@ -154,20 +154,31 @@ describe("VideoFacts", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  it("file_missing なら理由付き、それ以外なら短い文言を情報の行の下に出し、次の操作で消す", async () => {
+  it("開けなかった理由を API エラーの英語の文で情報の行の下に出し、次の操作で消す", async () => {
     fetchMock
-      .mockResolvedValueOnce(json({ code: "file_missing", message: "無い" }, 409))
-      .mockResolvedValueOnce(json({ code: "internal", message: "失敗" }, 500))
+      .mockResolvedValueOnce(json({ code: "file_missing", message: "x" }, 409))
+      .mockResolvedValueOnce(json({ code: "internal", message: "x" }, 500))
+      .mockResolvedValueOnce(
+        json({ code: "forbidden", reason: "open_not_local", message: "x" }, 403),
+      )
       .mockReturnValueOnce(new Promise(() => undefined));
     renderFacts(video);
-    const button = screen.getByRole("button", { name: "ファイルを開く" });
+    const button = screen.getByRole("button", { name: "Open file" });
     fireEvent.click(button);
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "開けませんでした: ファイルが見つかりません",
+      "Couldn't open the file: The video file is missing.",
     );
     fireEvent.click(button);
     await waitFor(() =>
-      expect(screen.getByRole("alert").textContent).toBe("開けませんでした"),
+      expect(screen.getByRole("alert").textContent).toBe(
+        "Couldn't open the file: Something went wrong on the server.",
+      ),
+    );
+    fireEvent.click(button);
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toBe(
+        "Couldn't open the file: Files can only be opened on the computer running vv.",
+      ),
     );
     fireEvent.click(button);
     expect(screen.queryByRole("alert")).toBeNull();

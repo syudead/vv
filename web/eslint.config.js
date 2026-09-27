@@ -47,15 +47,7 @@ const i18nRestrictedSyntax = [
       "CallExpression[arguments.length=0][callee.property.name=/^toLocale(Date|Time)?String$/]",
     message: "Format dates and numbers with the functions in web/src/i18n.",
   },
-  {
-    selector: 'CallExpression[callee.name="untranslated"]',
-    message: "untranslated() is only for directories on the i18n exclusion list.",
-  },
 ];
-
-// まだ英語のカタログへ移していないディレクトリである。各領域の単位が自分の
-// ディレクトリをここから外し、最後の単位で一覧を無くす（R-3）。
-const untranslatedDirectories = ["src/player/**"];
 
 export default [
   {
@@ -132,7 +124,7 @@ export default [
   },
   {
     files: ["src/**/*.{ts,tsx}"],
-    ignores: ["src/i18n/**", "src/**/*.test.{ts,tsx}", ...untranslatedDirectories],
+    ignores: ["src/i18n/**", "src/**/*.test.{ts,tsx}"],
     rules: {
       "no-restricted-syntax": ["error", ...i18nRestrictedSyntax],
     },

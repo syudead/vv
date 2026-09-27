@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import type { Video } from "../api/client";
 import type { RelatedState } from "../api/useVideoDetail";
 import { type HoverPreview, useHoverPreview } from "./useHoverPreview";
+import { formatNumber, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration, isNarrowVideo, watchedRatio } from "../lib/format";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
@@ -17,7 +18,9 @@ import Skeleton from "../ui/Skeleton";
  */
 export function videoLinkLabel(video: Video): string {
   const duration = formatDuration(video.durationMs);
-  return duration === "" ? video.title : `${video.title} ${duration}`;
+  return duration === ""
+    ? video.title
+    : t.player.related.videoLink(video.title, duration);
 }
 
 /**
@@ -61,7 +64,9 @@ export function VideoThumbnail({
         <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-fg-subtle">
           <ImageOff className="size-5" strokeWidth={1.5} aria-hidden="true" />
           <span className="text-xs">
-            {video.thumbnailState === "failed" ? "画像なし" : "準備中"}
+            {video.thumbnailState === "failed"
+              ? t.list.card.noImage
+              : t.list.card.preparing}
           </span>
         </div>
       )}
@@ -95,7 +100,7 @@ export function VideoThumbnail({
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.round(ratio * 100)}
-          aria-label="再生済みの割合"
+          aria-label={t.list.card.watchedRatio}
           className="absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50"
         >
           <span
@@ -158,7 +163,7 @@ export default function RelatedVideos({
     >
       {!empty && (
         <h2 id="related-heading" className="text-sm font-semibold text-fg">
-          関連動画
+          {t.player.related.heading}
         </h2>
       )}
 
@@ -178,9 +183,9 @@ export default function RelatedVideos({
 
       {state.kind === "failed" && (
         <div className="flex flex-col items-start gap-2">
-          <p className="text-sm text-fg-muted">関連動画を取得できませんでした</p>
+          <p className="text-sm text-fg-muted">{t.player.related.loadFailed}</p>
           <Button variant="ghost" size="sm" onClick={onRetry}>
-            再試行
+            {t.common.retry}
           </Button>
         </div>
       )}
@@ -230,11 +235,11 @@ function GroupedRelated({
     >
       <div className="flex items-baseline justify-between gap-3">
         <h2 id="group-heading" className="text-sm font-semibold text-fg">
-          続けて再生
+          {t.player.related.group}
         </h2>
         {index >= 0 && (
           <span className="text-xs text-fg-muted tabular-nums">
-            {index + 1} / {members.length}
+            {t.player.related.position(index + 1, members.length)}
           </span>
         )}
       </div>
@@ -265,7 +270,7 @@ function GroupedRelated({
             </div>
             <section aria-labelledby="related-heading" className="flex flex-col gap-3">
               <h2 id="related-heading" className="text-sm font-semibold text-fg">
-                関連動画
+                {t.player.related.heading}
               </h2>
               <ul className="flex flex-col gap-3">
                 {items.map((video) => (
@@ -287,7 +292,7 @@ function MemberNumber({ position }: { position: number }) {
       aria-hidden="true"
       className="w-5 shrink-0 pt-0.5 text-right text-xs text-fg-muted tabular-nums"
     >
-      {position}
+      {formatNumber(position)}
     </span>
   );
 }
@@ -316,9 +321,9 @@ function MemberTitle({ video }: { video: Video }) {
 }
 
 /** memberLinkLabel はメンバーの行の読み上げ名である。視聴済みならそれを続ける。 */
-export function memberLinkLabel(video: Video): string {
+export function memberLinkLabel(video: Video): string | UiText {
   const label = videoLinkLabel(video);
-  return video.progress?.completed === true ? `${label} 視聴済み` : label;
+  return video.progress?.completed === true ? t.player.related.watchedLink(label) : label;
 }
 
 function MemberItem({
@@ -367,9 +372,9 @@ function CurrentMember({
       <div className="-m-1.5 flex gap-3 rounded-lg border-l-2 border-accent bg-active-wash p-1.5 pl-1">
         <MemberNumber position={position} />
         <VideoThumbnail video={video} className="w-40" />
-        <span className="sr-only">再生中</span>
+        <span className="sr-only">{t.player.related.nowPlaying}</span>
         <MemberTitle video={video} />
-        {watched && <span className="sr-only">視聴済み</span>}
+        {watched && <span className="sr-only">{t.player.related.watched}</span>}
       </div>
     </li>
   );

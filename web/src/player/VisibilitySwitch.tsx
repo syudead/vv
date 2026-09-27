@@ -2,6 +2,7 @@ import { AlertCircle, Globe, LoaderCircle, Lock } from "lucide-react";
 import { useState } from "react";
 
 import { updateVideoVisibility } from "../api/visibility";
+import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 
 /**
@@ -28,14 +29,14 @@ export default function VisibilitySwitch({
   isPublic: boolean;
 }) {
   const [sending, setSending] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<UiText | null>(null);
 
   function toggle() {
     if (sending) return;
-    setFailed(false);
+    setFailure(null);
     setSending(true);
     updateVideoVisibility([videoId], !isPublic)
-      .catch(() => setFailed(true))
+      .catch((error: unknown) => setFailure(t.player.visibility.failed(errorText(error))))
       .finally(() => setSending(false));
   }
 
@@ -47,7 +48,7 @@ export default function VisibilitySwitch({
         type="button"
         role="switch"
         aria-checked={isPublic}
-        aria-label="ログインしていない人に公開する"
+        aria-label={t.player.visibility.label}
         aria-disabled={sending || undefined}
         onClick={toggle}
         className={cn(
@@ -61,12 +62,12 @@ export default function VisibilitySwitch({
           aria-hidden="true"
           className={cn("size-4", sending && "animate-spin motion-reduce:animate-none")}
         />
-        {isPublic ? "公開中" : "非公開"}
+        {isPublic ? t.player.visibility.public : t.player.visibility.private}
       </button>
-      {failed && (
+      {failure !== null && (
         <p role="alert" className="flex items-center gap-1.5 text-sm text-danger">
           <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
-          変更できませんでした
+          {failure}
         </p>
       )}
     </div>

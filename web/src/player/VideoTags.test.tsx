@@ -117,7 +117,7 @@ function renderTags(videoId: number, tags: VideoTag[], onStaleVideo = vi.fn()) {
 }
 
 function addInput() {
-  return screen.getByRole("combobox", { name: "タグを追加" });
+  return screen.getByRole("combobox", { name: "Add tag" });
 }
 
 beforeEach(() => {
@@ -172,7 +172,7 @@ describe("VideoTags", () => {
     renderTags(7, [{ id: 1, name: "旅行", manual: true, fromFolder: false }]);
 
     const removeButton = await screen.findByRole("button", {
-      name: "旅行をこの動画から外す",
+      name: "Remove 旅行 from this video",
     });
     fireEvent.click(removeButton);
     expect((removeButton as HTMLButtonElement).disabled).toBe(true);
@@ -183,7 +183,7 @@ describe("VideoTags", () => {
     install();
     renderTags(7, [{ id: 1, name: "旅行", manual: true, fromFolder: false }]);
 
-    const link = await screen.findByRole("link", { name: "旅行で絞り込む" });
+    const link = await screen.findByRole("link", { name: "Filter by 旅行" });
     expect(link.getAttribute("href")).toBe("/?tag=1");
   });
 
@@ -198,12 +198,14 @@ describe("VideoTags", () => {
     ]);
 
     const removeButton = await screen.findByRole("button", {
-      name: "旅行をこの動画から外す",
+      name: "Remove 旅行 from this video",
     });
     fireEvent.click(removeButton);
     expect((removeButton as HTMLButtonElement).disabled).toBe(true);
 
-    await screen.findByText("タグを外せませんでした");
+    await screen.findByText(
+      "Couldn't remove the tag: Something went wrong on the server.",
+    );
     await waitFor(() => expect((removeButton as HTMLButtonElement).disabled).toBe(false));
     expect(document.activeElement).toBe(removeButton);
     expect(screen.getByTitle("旅行")).toBeDefined();
@@ -218,9 +220,11 @@ describe("VideoTags", () => {
     ]);
 
     const removeButton = await screen.findByRole("button", {
-      name: "旅行をこの動画から外す",
+      name: "Remove 旅行 from this video",
     });
-    const nextButton = screen.getByRole("button", { name: "Animeをこの動画から外す" });
+    const nextButton = screen.getByRole("button", {
+      name: "Remove Anime from this video",
+    });
     fireEvent.click(removeButton);
     await waitFor(() => expect((removeButton as HTMLButtonElement).disabled).toBe(true));
     expect(document.activeElement).not.toBe(nextButton);
@@ -241,9 +245,11 @@ describe("VideoTags", () => {
     ]);
 
     const removeButton = await screen.findByRole("button", {
-      name: "Animeをこの動画から外す",
+      name: "Remove Anime from this video",
     });
-    const nextButton = screen.getByRole("button", { name: "旅行をこの動画から外す" });
+    const nextButton = screen.getByRole("button", {
+      name: "Remove 旅行 from this video",
+    });
     fireEvent.click(removeButton);
     await waitFor(() => expect((removeButton as HTMLButtonElement).disabled).toBe(true));
     expect(document.activeElement).not.toBe(nextButton);
@@ -263,19 +269,21 @@ describe("VideoTags", () => {
       ]);
 
       const link = await screen.findByRole("link", {
-        name: "京都で絞り込む（フォルダ名から）",
+        name: "Filter by 京都 (from the folder name)",
       });
       expect(link.getAttribute("href")).toBe("/?tag=4");
       expect(link.className).toContain("border-dashed");
       expect(link.className).not.toContain("bg-elevated");
       expect(link.querySelector("svg[aria-hidden='true']")).not.toBeNull();
-      expect(screen.queryByRole("button", { name: "京都をこの動画から外す" })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Remove 京都 from this video" }),
+      ).toBeNull();
 
       // 手で付けたタグは今の形（面あり・×あり）。大きさは同じ h-6・text-xs。
       const manualChip = screen.getByTitle("旅行");
       expect(manualChip.className).toContain("bg-elevated");
       expect(
-        screen.getByRole("button", { name: "旅行をこの動画から外す" }),
+        screen.getByRole("button", { name: "Remove 旅行 from this video" }),
       ).toBeDefined();
       for (const chip of [link, manualChip]) {
         expect(chip.className).toContain("h-6");
@@ -294,17 +302,21 @@ describe("VideoTags", () => {
       ]);
 
       fireEvent.click(
-        await screen.findByRole("button", { name: "旅行をこの動画から外す" }),
+        await screen.findByRole("button", { name: "Remove 旅行 from this video" }),
       );
       // 応答を受けるまでは今の形のまま。
-      expect(screen.queryByRole("link", { name: /旅行.*フォルダ名から/ })).toBeNull();
+      expect(
+        screen.queryByRole("link", { name: /旅行.*from the folder name/ }),
+      ).toBeNull();
 
       act(() => server.attachDelay?.());
       const link = await screen.findByRole("link", {
-        name: "旅行で絞り込む（フォルダ名から）",
+        name: "Filter by 旅行 (from the folder name)",
       });
       expect(link.className).toContain("border-dashed");
-      expect(screen.queryByRole("button", { name: "旅行をこの動画から外す" })).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Remove 旅行 from this video" }),
+      ).toBeNull();
       const list = screen.getAllByRole("listitem");
       expect(list.slice(0, 3).map((item) => item.textContent)).toEqual([
         "Anime",
@@ -312,7 +324,7 @@ describe("VideoTags", () => {
         "Drama",
       ]);
       expect(document.activeElement).toBe(
-        screen.getByRole("button", { name: "Dramaをこの動画から外す" }),
+        screen.getByRole("button", { name: "Remove Drama from this video" }),
       );
     });
 
@@ -325,11 +337,11 @@ describe("VideoTags", () => {
       ]);
 
       fireEvent.click(
-        await screen.findByRole("button", { name: "Animeをこの動画から外す" }),
+        await screen.findByRole("button", { name: "Remove Anime from this video" }),
       );
       await waitFor(() => expect(screen.queryByTitle("Anime")).toBeNull());
       expect(document.activeElement).toBe(
-        screen.getByRole("button", { name: "旅行をこの動画から外す" }),
+        screen.getByRole("button", { name: "Remove 旅行 from this video" }),
       );
     });
 
@@ -342,7 +354,7 @@ describe("VideoTags", () => {
       ]);
 
       fireEvent.click(
-        await screen.findByRole("button", { name: "旅行をこの動画から外す" }),
+        await screen.findByRole("button", { name: "Remove 旅行 from this video" }),
       );
       await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
       expect(document.activeElement).toBe(addInput());
@@ -362,10 +374,10 @@ describe("VideoTags", () => {
       await user.click(screen.getByRole("option", { name: /旅行/ }));
 
       expect(
-        await screen.findByRole("button", { name: "旅行をこの動画から外す" }),
+        await screen.findByRole("button", { name: "Remove 旅行 from this video" }),
       ).toBeDefined();
       expect(screen.getByTitle("旅行").className).toContain("bg-elevated");
-      expect(screen.queryByRole("link", { name: /フォルダ名から/ })).toBeNull();
+      expect(screen.queryByRole("link", { name: /from the folder name/ })).toBeNull();
     });
   });
 
@@ -652,12 +664,14 @@ describe("VideoTags", () => {
     );
 
     const removeButton = await screen.findByRole("button", {
-      name: "もう無いタグをこの動画から外す",
+      name: "Remove もう無いタグ from this video",
     });
     fireEvent.click(removeButton);
 
     expect(
-      await screen.findByText("タグ「もう無いタグ」はもう無いため、一覧を取り直しました"),
+      await screen.findByText(
+        'The tag "もう無いタグ" no longer exists, so the tags were reloaded',
+      ),
     ).toBeDefined();
     expect(onStaleVideo).toHaveBeenCalled();
   });
@@ -681,7 +695,7 @@ describe("VideoTags", () => {
     await user.type(addInput(), "アニメ");
 
     const option = await screen.findByRole("option", { name: /Anime/ });
-    expect(within(option).getByText("シノニム: アニメ")).toBeDefined();
+    expect(within(option).getByText("Synonym: アニメ")).toBeDefined();
   });
 
   // B1: 一覧が開いていれば1回目のEscでそれだけを閉じ、すでに閉じていれば
@@ -694,7 +708,7 @@ describe("VideoTags", () => {
     const input = addInput();
     await user.click(input);
     await user.type(input, "途中まで");
-    await screen.findByRole("option", { name: /を作成/ });
+    await screen.findByRole("option", { name: /Create "/ });
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("option")).toBeNull();
@@ -717,7 +731,7 @@ describe("VideoTags", () => {
       await user.type(addInput(), longName);
       await screen.findByText("Use 100 characters or fewer (currently 101)");
 
-      const createRow = screen.getByRole("option", { name: /を作成/ });
+      const createRow = screen.getByRole("option", { name: /Create "/ });
       expect(createRow.getAttribute("aria-disabled")).toBe("true");
       fireEvent.click(createRow);
 
@@ -760,7 +774,7 @@ describe("VideoTags", () => {
 
       // 値が「遅いタグ」のままなので、候補は作成の行だけになる。それをクリックしても
       // 二重には送らない。
-      const option = screen.getByRole("option", { name: /を作成/ });
+      const option = screen.getByRole("option", { name: /Create "/ });
       expect(option.getAttribute("aria-disabled")).toBe("true");
       const fetchCallsBefore = server.tags.length;
       fireEvent.click(option);

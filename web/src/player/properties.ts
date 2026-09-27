@@ -23,17 +23,6 @@ export function formatCodec(codec: string): string {
   return codecNames[codec.toLowerCase()] ?? codec.toUpperCase();
 }
 
-/** formatDate は日付だけを `2026/09/20` の形で書く。 */
-export function formatDate(iso: string): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("ja-JP", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-}
-
 /** technicalSummary は技術情報の行の中身を返す。 */
 export function technicalSummary(video: Video): TechnicalSummary {
   if (video.probeState === "failed") return { kind: "failed" };

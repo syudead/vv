@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import { getVideo, isAborted, RequestFailed, type Video } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
+import { t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
@@ -12,8 +13,8 @@ import { Dimmed } from "./StatusOverlays";
 export const autoplayNoticeSeconds = 5;
 
 /** autoplayAnnouncement は予告が出たときに一度だけ読み上げる文である。 */
-export function autoplayAnnouncement(title: string): string {
-  return `再生が終わりました。${String(autoplayNoticeSeconds)} 秒後に次の動画「${title}」を再生します`;
+export function autoplayAnnouncement(title: string): UiText {
+  return t.player.autoplay.announcement(title, autoplayNoticeSeconds);
 }
 
 /**
@@ -169,9 +170,11 @@ export default function AutoplayNotice({
       </span>
       <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5">
         <div className="flex items-baseline justify-between gap-3">
-          <span className="text-xs font-semibold text-accent">続けて再生</span>
+          <span className="text-xs font-semibold text-accent">
+            {t.player.autoplay.heading}
+          </span>
           <span aria-hidden="true" className="text-xs text-fg-muted tabular-nums">
-            {remaining} 秒後
+            {t.player.autoplay.countdown(remaining)}
           </span>
         </div>
         <Link
@@ -196,11 +199,11 @@ export default function AutoplayNotice({
         <div className="flex flex-wrap gap-2">
           <Button ref={cancel} variant="secondary" onClick={onCancel}>
             <X aria-hidden="true" />
-            取り消す
+            {t.player.autoplay.cancel}
           </Button>
           <Button variant="primary" onClick={onPlayNow}>
             <Play aria-hidden="true" />
-            今すぐ再生
+            {t.player.autoplay.playNow}
           </Button>
         </div>
       </div>

@@ -27,6 +27,7 @@ export function setDecoration(next: Decorate | null): void {
 
 const numberFormat = new Intl.NumberFormat(LOCALE);
 const pluralRules = new Intl.PluralRules(LOCALE);
+const listFormat = new Intl.ListFormat(LOCALE, { type: "conjunction" });
 
 /** formatNumber は数を桁区切り付きで表す。 */
 export function formatNumber(value: number): UiText {
@@ -45,4 +46,9 @@ export interface PluralForms<T> {
  */
 export function selectPlural<T>(count: number, forms: PluralForms<T>): T {
   return pluralRules.select(count) === "one" ? forms.one : forms.other;
+}
+
+/** formatList は項目を「A, B and C」の形でつなぐ。項目はカタログの文言を渡す。 */
+export function formatList(items: readonly string[]): string {
+  return listFormat.format(items);
 }

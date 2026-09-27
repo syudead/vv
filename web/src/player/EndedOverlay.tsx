@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 
 import type { Video } from "../api/client";
+import { t } from "../i18n";
 import Button from "../ui/Button";
 import { VideoThumbnail, videoLinkLabel } from "./RelatedVideos";
 import { Dimmed } from "./StatusOverlays";
@@ -40,16 +41,16 @@ export default function EndedOverlay({
   return (
     <Dimmed>
       <span role="status" className="sr-only">
-        再生が終わりました
+        {t.player.ended.announcement}
       </span>
       {next === undefined ? (
         <Button ref={primary} variant="secondary" onClick={onReplay}>
           <RotateCcw aria-hidden="true" />
-          もう一度見る
+          {t.player.ended.replay}
         </Button>
       ) : (
         <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5">
-          <span className="text-xs font-semibold text-accent">次の動画</span>
+          <span className="text-xs font-semibold text-accent">{t.player.ended.next}</span>
           <Link
             to={`/videos/${String(next.id)}`}
             state={{ from: backTo }}
@@ -64,11 +65,11 @@ export default function EndedOverlay({
           <div className="flex flex-wrap gap-2">
             <Button ref={primary} variant="primary" onClick={onPlayNext}>
               <Play aria-hidden="true" />
-              次を再生
+              {t.player.ended.playNext}
             </Button>
             <Button variant="secondary" onClick={onReplay}>
               <RotateCcw aria-hidden="true" />
-              もう一度見る
+              {t.player.ended.replay}
             </Button>
           </div>
         </div>

@@ -34,11 +34,11 @@ describe("processingStages", () => {
         seekThumbnailState: undefined,
       }),
     ).toEqual([
-      ["ファイルの検出", "done"],
-      ["動画情報の読み取り", "active"],
-      ["サムネイル", "waiting"],
-      ["シーク用プレビュー", "waiting"],
-      ["一覧用プレビュー", "waiting"],
+      ["Finding the file", "done"],
+      ["Reading video information", "active"],
+      ["Thumbnail", "waiting"],
+      ["Seek preview", "waiting"],
+      ["List preview", "waiting"],
     ]);
   });
 
@@ -51,28 +51,31 @@ describe("processingStages", () => {
         previewState: "pending",
       }),
     ).toEqual([
-      ["ファイルの検出", "done"],
-      ["動画情報の読み取り", "active"],
-      ["サムネイル", "failed"],
-      ["シーク用プレビュー", "done"],
-      ["一覧用プレビュー", "waiting"],
+      ["Finding the file", "done"],
+      ["Reading video information", "active"],
+      ["Thumbnail", "failed"],
+      ["Seek preview", "done"],
+      ["List preview", "waiting"],
     ]);
     expect(states({ thumbnailState: "failed", previewState: "pending" })).toEqual([
-      ["ファイルの検出", "done"],
-      ["動画情報の読み取り", "done"],
-      ["サムネイル", "failed"],
-      ["シーク用プレビュー", "done"],
-      ["一覧用プレビュー", "active"],
+      ["Finding the file", "done"],
+      ["Reading video information", "done"],
+      ["Thumbnail", "failed"],
+      ["Seek preview", "done"],
+      ["List preview", "active"],
     ]);
   });
 });
 
 describe("creatingLine", () => {
   it.each([
-    [{ previewState: "pending" }, "一覧用プレビューを作成中 · 再生はできます"],
+    [
+      { previewState: "pending" },
+      "Creating the list preview · You can play the video now",
+    ],
     [
       { seekThumbnailState: "pending", previewState: "pending" },
-      "シーク用プレビューと一覧用プレビューを作成中 · 再生はできます",
+      "Creating the seek preview and the list preview · You can play the video now",
     ],
     [
       {
@@ -80,7 +83,7 @@ describe("creatingLine", () => {
         seekThumbnailState: "pending",
         previewState: "pending",
       },
-      "サムネイルとシーク用プレビューと一覧用プレビューを作成中 · 再生はできます",
+      "Creating the thumbnail, the seek preview, and the list preview · You can play the video now",
     ],
     [{}, null],
     // failed だけが残ったら消す。

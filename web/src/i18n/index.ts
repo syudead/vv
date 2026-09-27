@@ -10,4 +10,4 @@ export {
 } from "./format";
 export { LOCALE } from "./intl";
 export { t, type Messages, type MessageSource } from "./messages";
-export { untranslated, type UiText } from "./uiText";
+export { type UiText } from "./uiText";
