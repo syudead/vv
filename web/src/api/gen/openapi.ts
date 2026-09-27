@@ -857,7 +857,7 @@ export interface paths {
         };
         /**
          * 取り込みの段階ごとに残っている仕事の数を返す
-         * @description 解析・サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
+         * @description 解析・サムネイル・シーク用サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
          *     登録済みメディアフォルダの外にしか所在が無い動画の仕事は、処理されないので含めない。
          *     すべて 0 なら、取り込んだ動画の準備は終わっている。
          */
@@ -1457,8 +1457,10 @@ export interface components {
         Processing: {
             /** @description 解析（ffprobe）の残り */
             probe: number;
-            /** @description サムネイルとシーク用プレビューの残り */
+            /** @description 代表サムネイルの残り */
             thumbnail: number;
+            /** @description シーク用サムネイルの残り */
+            seekThumbnail: number;
             /** @description 一覧用プレビューの残り */
             preview: number;
         };

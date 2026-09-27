@@ -6,7 +6,7 @@ export type ScanPresentationState =
   | "starting"
   | "unknown-total"
   | "running"
-  /** スキャンは終わり、解析・サムネイル・プレビューの残りがある（またはまだ分からない）。 */
+  /** スキャンは終わり、解析・サムネイル・シーク用サムネイル・プレビューの残りがある（またはまだ分からない）。 */
   | "preparing"
   | "done"
   | "partial-failed"

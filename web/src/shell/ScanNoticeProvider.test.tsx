@@ -301,9 +301,9 @@ describe("ScanNoticeProvider", () => {
     expect(screen.getByTestId("notice").textContent).toBe("none");
 
     await act(async () =>
-      resolveProcessing?.(json({ probe: 0, thumbnail: 0, preview: 0 })),
+      resolveProcessing?.(json({ probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 })),
     );
-    processing = json({ probe: 0, thumbnail: 0, preview: 0 });
+    processing = json({ probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 });
     await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("21"));
   });
 });

@@ -1437,7 +1437,7 @@ paths:
       operationId: getProcessing
       summary: 取り込みの段階ごとに残っている仕事の数を返す
       description: |
-        解析・サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
+        解析・サムネイル・シーク用サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
         登録済みメディアフォルダの外にしか所在が無い動画の仕事は、処理されないので含めない。
         すべて 0 なら、取り込んだ動画の準備は終わっている。
       responses:
@@ -2499,7 +2499,7 @@ components:
 
     Processing:
       type: object
-      required: [probe, thumbnail, preview]
+      required: [probe, thumbnail, seekThumbnail, preview]
       additionalProperties: false
       properties:
         probe:
@@ -2507,7 +2507,10 @@ components:
           description: 解析（ffprobe）の残り
         thumbnail:
           type: integer
-          description: サムネイルとシーク用プレビューの残り
+          description: 代表サムネイルの残り
+        seekThumbnail:
+          type: integer
+          description: シーク用サムネイルの残り
         preview:
           type: integer
           description: 一覧用プレビューの残り
