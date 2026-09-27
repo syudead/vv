@@ -224,6 +224,18 @@ test.describe.serial("guest", () => {
     await expect(page.getByText("1件", { exact: true })).toBeVisible();
     await expect(page.locator("article[data-group-root]")).toContainText("4 本");
 
+    await page
+      .getByRole("group", { name: "表示形式" })
+      .getByRole("button", { name: "リスト" })
+      .click();
+    const groupCells = page.locator("tr[data-group-root]").first().locator("td:visible");
+    await expect(groupCells.first()).toHaveCSS("border-bottom-width", "1px");
+    await expect(groupCells.last()).toHaveCSS("border-bottom-width", "1px");
+    await page
+      .getByRole("group", { name: "表示形式" })
+      .getByRole("button", { name: "グリッド" })
+      .click();
+
     // 検索: 公開の動画だけに当たり、非公開の題名では何も出ない。
     await page.goto(`/?q=${encodeURIComponent("ゲスト")}`);
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);

@@ -54,6 +54,7 @@ export default function FilterMenu({
           className={cn("px-2.5", filterCount > 0 && "bg-accent-soft text-link")}
         >
           <ListFilter />
+          <span className="hidden xl:inline">絞り込み</span>
           {filterCount > 0 && <span className="tabular-nums">{filterCount}</span>}
         </Button>
       </PopoverTrigger>

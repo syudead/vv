@@ -20,12 +20,11 @@ export function EmptyState({
   tone?: "neutral" | "danger";
 }) {
   return (
-    <div className="mx-auto flex w-full max-w-lg flex-col items-center justify-center px-6 py-20 text-center animate-fade-in">
+    <div className="mx-auto flex w-full max-w-lg flex-col items-center justify-center rounded-lg border border-border bg-surface px-6 py-14 text-center animate-fade-in motion-reduce:animate-none">
       <Icon
-        className={
-          "mb-4 size-10 " + (tone === "danger" ? "text-danger" : "text-fg-subtle")
-        }
+        className={"mb-4 size-10 " + (tone === "danger" ? "text-danger" : "text-accent")}
         strokeWidth={1.5}
+        aria-hidden="true"
       />
       <h2 className="text-lg font-semibold text-fg">{title}</h2>
       {description !== undefined &&
@@ -65,9 +64,22 @@ export function GuestEmpty() {
   );
 }
 
-/** NoMatches は条件に一致する動画が無いことだけを示す。 */
-export function NoMatches() {
-  return <EmptyState icon={SearchX} title="条件に一致する動画はありません" />;
+/** NoMatches は条件に一致しない理由と次の操作を示す。 */
+export function NoMatches({ onSearch }: { onSearch?: () => void }) {
+  return (
+    <EmptyState
+      icon={SearchX}
+      title="条件に一致する動画はありません"
+      description="検索語や絞り込み条件を変えてみてください。"
+      action={
+        onSearch && (
+          <Button variant="secondary" onClick={onSearch}>
+            検索を変更
+          </Button>
+        )
+      }
+    />
+  );
 }
 
 export function LoadFailed({ reason, onRetry }: { reason: string; onRetry: () => void }) {
@@ -94,7 +106,8 @@ export function LoadMoreFailed({
   onRetry: () => void;
 }) {
   return (
-    <div className="flex items-center justify-center gap-2 text-sm text-danger">
+    <div className="flex flex-wrap items-center justify-center gap-2 rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm text-danger">
+      <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
       <p>続きを取得できません: {reason}</p>
       <Button size="sm" onClick={onRetry}>
         再試行
@@ -109,7 +122,7 @@ export function CardSkeleton({ count }: { count: number }) {
       {Array.from({ length: count }, (_, index) => (
         <div
           key={index}
-          className="flex flex-col overflow-hidden rounded-md bg-surface"
+          className="flex flex-col overflow-hidden rounded-lg bg-surface shadow-card"
           aria-hidden="true"
         >
           <Skeleton className="aspect-video w-full rounded-none" />

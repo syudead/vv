@@ -82,7 +82,7 @@ async function loadEverything(page: Page, total: number) {
 }
 
 function summary(page: Page) {
-  return page.getByRole("status").first();
+  return page.getByRole("status", { name: "検索結果" });
 }
 
 /** listed は一覧の要求のうち、並び順が sort の応答を待つ。 */
@@ -174,6 +174,18 @@ test.describe.serial("library search", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
     await expect(summary(page)).toHaveText(`${expectedVideos.toLocaleString("ja-JP")}件`);
+
+    await page
+      .getByRole("group", { name: "表示形式" })
+      .getByRole("button", { name: "リスト" })
+      .click();
+    const videoCells = page.locator("tr[data-video-id]").first().locator("td:visible");
+    await expect(videoCells.first()).toHaveCSS("border-bottom-width", "1px");
+    await expect(videoCells.last()).toHaveCSS("border-bottom-width", "1px");
+    await page
+      .getByRole("group", { name: "表示形式" })
+      .getByRole("button", { name: "グリッド" })
+      .click();
 
     const requests: URL[] = [];
     page.on("request", (candidate) => {

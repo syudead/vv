@@ -105,12 +105,12 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
       data-group-root={group.folder.rootId}
       data-group-path={group.folder.path}
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-lg bg-surface shadow-card transition-[box-shadow,transform] duration-200 ease-out-quart",
-        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link",
+        "group relative flex flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-card transition-[border-color,box-shadow,transform] duration-200 ease-out-quart",
+        "has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-offset-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-link",
         "hover:-translate-y-0.5",
         "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
         "hover:shadow-card-hover",
-        selected && "ring-2 ring-accent",
+        selected && "border-accent ring-2 ring-accent",
         selectionMode && "select-none",
       )}
     >
@@ -156,7 +156,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 
           {/* 本数と長さは、フォルダの背板の右下に、動画のカードの長さと同じ面で重ねる。
               前に出たサムネイルより上に置き、絵柄の下見の操作を妨げない。 */}
-          <span className="pointer-events-none absolute right-5 bottom-4 z-20 flex items-center gap-1.5 rounded-sm bg-navbar/85 px-1.5 py-0.5 text-[11px] font-medium text-fg tabular-nums backdrop-blur-sm">
+          <span className="pointer-events-none absolute right-5 bottom-4 z-20 flex items-center gap-1.5 rounded-sm bg-navbar/90 px-1.5 py-0.5 text-[11px] font-medium text-fg tabular-nums backdrop-blur-sm">
             <span>{countText}</span>
             {duration !== "" && <span>{duration}</span>}
           </span>
@@ -168,7 +168,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
               aria-valuemax={100}
               aria-valuenow={Math.round(ratio * 100)}
               aria-label="視聴済みの本数の割合"
-              className="absolute inset-x-0 bottom-0 z-20 h-[5px] bg-fg-subtle/50"
+              className="absolute inset-x-0 bottom-0 z-20 h-[5px] bg-navbar/90"
             >
               <span
                 className="block h-full bg-accent"
@@ -184,7 +184,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           <h3
             title={group.name}
             className={cn(
-              "line-clamp-2 text-sm leading-5 font-medium break-all",
+              "line-clamp-2 text-sm leading-5 font-semibold break-all sm:text-base sm:leading-6",
               state === "watched" ? "text-fg-muted" : "text-fg",
             )}
           >
@@ -214,7 +214,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
       data-group-root={group.folder.rootId}
       data-group-path={group.folder.path}
       className={cn(
-        "group relative transition-colors hover:bg-hover-wash",
+        "group relative transition-colors hover:bg-hover-wash [&>td]:border-b [&>td]:border-border has-[a:focus-visible]:outline-2 has-[a:focus-visible]:outline-link has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-link",
         selected && "bg-accent-soft",
       )}
     >
@@ -245,7 +245,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
             />
           )}
           {ratio !== null && (
-            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-fg-subtle/50">
+            <span className="absolute inset-x-0 bottom-0 h-[3px] bg-navbar/90">
               <span
                 className="block h-full bg-accent"
                 style={{ width: `${String(Math.round(ratio * 100))}%` }}
