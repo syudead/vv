@@ -97,7 +97,10 @@ once; the condition applies only at claim time, and a running seek_thumbnail job
 stopped when new thumbnail jobs arrive. `internal/app` publishes `domain.VideoIngestChanged`
 with the finished stage, and subscriptions wake the thumbnail worker as soon as a probe's
 result is recorded, and the seek_thumbnail worker when a probe or thumbnail result is
-recorded or a video row is deleted. Interrupted scans are closed,
+recorded or a video row is deleted. Removing a media folder also publishes
+`domain.JobsQueued` for seek_thumbnail, because thumbnail work under that folder stops
+being claimable even when the video row survives through an unregistered location.
+Interrupted scans are closed,
 running jobs are requeued, and the single `.tmp` directory that holds in-progress
 generation output is removed at the next startup. When a video row is deleted (a scan finds its last
 location gone, its content changes, or its media folder is removed or replaced),
