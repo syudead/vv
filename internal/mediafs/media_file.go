@@ -37,7 +37,7 @@ func (FS) OpenMediaFile(roots []string, path string) (*os.File, os.FileInfo, err
 	}
 	if !info.Mode().IsRegular() {
 		_ = file.Close()
-		return nil, nil, fmt.Errorf("%w: 通常ファイルではありません", domain.ErrMediaFileUnavailable)
+		return nil, nil, fmt.Errorf("%w: not a regular file", domain.ErrMediaFileUnavailable)
 	}
 	return file, info, nil
 }
@@ -54,7 +54,7 @@ func (FS) ResolveMediaFile(roots []string, path string) (string, error) {
 		return "", fmt.Errorf("%w: %w", domain.ErrMediaFileUnavailable, err)
 	}
 	if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("%w: 通常ファイルではありません", domain.ErrMediaFileUnavailable)
+		return "", fmt.Errorf("%w: not a regular file", domain.ErrMediaFileUnavailable)
 	}
 	return resolved, nil
 }
@@ -80,5 +80,5 @@ func resolveInside(roots []string, path string) (string, error) {
 	if escaped {
 		return "", fmt.Errorf("%w: %w", domain.ErrMediaFileUnavailable, domain.ErrMediaFileOutsideRoot)
 	}
-	return "", fmt.Errorf("%w: 登録フォルダの外です", domain.ErrMediaFileUnavailable)
+	return "", fmt.Errorf("%w: outside the media folder", domain.ErrMediaFileUnavailable)
 }

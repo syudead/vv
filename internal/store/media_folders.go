@@ -27,7 +27,7 @@ func (s *LibraryStore) ListMediaFolders(ctx context.Context) ([]domain.MediaFold
 func listMediaFolders(ctx context.Context, q queryExecer) ([]domain.MediaFolder, error) {
 	rows, err := q.QueryContext(ctx, `select id, path, version, created_at, updated_at from media_folders order by id`)
 	if err != nil {
-		return nil, fmt.Errorf("メディアフォルダを読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read media folders: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	folders := []domain.MediaFolder{}
@@ -35,7 +35,7 @@ func listMediaFolders(ctx context.Context, q queryExecer) ([]domain.MediaFolder,
 		var folder domain.MediaFolder
 		var createdAt, updatedAt int64
 		if err := rows.Scan(&folder.ID, &folder.Path, &folder.Version, &createdAt, &updatedAt); err != nil {
-			return nil, fmt.Errorf("メディアフォルダを読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read media folders: %w", err)
 		}
 		folder.CreatedAt = time.Unix(createdAt, 0)
 		folder.UpdatedAt = time.Unix(updatedAt, 0)
@@ -62,7 +62,7 @@ func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain
 	now := time.Now().Unix()
 	res, err := tx.ExecContext(ctx, `insert into media_folders(path, version, created_at, updated_at) values (?, 1, ?, ?)`, cleaned, now, now)
 	if err != nil {
-		return domain.MediaFolder{}, fmt.Errorf("メディアフォルダを追加できません: %w", err)
+		return domain.MediaFolder{}, fmt.Errorf("cannot add the media folder: %w", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {

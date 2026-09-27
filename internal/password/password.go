@@ -44,13 +44,13 @@ const (
 
 // ErrMalformedHash は保存されたハッシュが Argon2id の PHC 文字列として
 // 解釈できないことを表す。
-var ErrMalformedHash = errors.New("パスワードのハッシュを解釈できません")
+var ErrMalformedHash = errors.New("cannot parse the password hash")
 
 // Hash はパスワードを、ランダムなソルトと既定のパラメータで Argon2id の PHC 文字列にする。
 func Hash(password string) (string, error) {
 	salt := make([]byte, saltLength)
 	if _, err := rand.Read(salt); err != nil {
-		return "", fmt.Errorf("ソルトを作れません: %w", err)
+		return "", fmt.Errorf("cannot create a salt: %w", err)
 	}
 	p := params{memory: memoryKiB, iterations: iterations, threads: threads}
 	key := argon2.IDKey([]byte(password), salt, p.iterations, p.memory, p.threads, keyLength)

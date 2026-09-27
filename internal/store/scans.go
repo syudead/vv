@@ -37,11 +37,11 @@ func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bo
 		`insert into scans (state, started_at, total, completed, failed) values ('running', ?, 0, 0, 0)`,
 		time.Now().Unix())
 	if err != nil {
-		return domain.Scan{}, false, fmt.Errorf("走査を始められません: %w", err)
+		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
-		return domain.Scan{}, false, fmt.Errorf("走査を始められません: %w", err)
+		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
 	}
 
 	scan, err = s.scanByID(ctx, id)
@@ -58,7 +58,7 @@ func (s *ScanStore) UpdateScanProgress(ctx context.Context, id int64, progress d
 		`update scans set total = ?, completed = ?, failed = ? where id = ?`,
 		progress.Total, progress.Completed, progress.Failed, id)
 	if err != nil {
-		return fmt.Errorf("走査の進捗を記録できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot record scan progress (id=%d): %w", id, err)
 	}
 	return nil
 }
@@ -81,7 +81,7 @@ func (s *ScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanS
 		`update scans set state = ?, finished_at = ?, error = ?, error_code = ?, error_path = ? where id = ?`,
 		string(state), time.Now().Unix(), reason, code, path, id)
 	if err != nil {
-		return fmt.Errorf("走査の終了を記録できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 	}
 	return nil
 }
@@ -107,12 +107,12 @@ func (s *ScanStore) FailInterruptedScans(ctx context.Context) (int64, error) {
 		 where state = 'running'`,
 		time.Now().Unix(), "The application stopped before the scan finished.", string(domain.ScanErrorInterrupted))
 	if err != nil {
-		return 0, fmt.Errorf("中断した走査を閉じられません: %w", err)
+		return 0, fmt.Errorf("cannot close interrupted scans: %w", err)
 	}
 
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("中断した走査を閉じられません: %w", err)
+		return 0, fmt.Errorf("cannot close interrupted scans: %w", err)
 	}
 	return affected, nil
 }
@@ -141,7 +141,7 @@ func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (doma
 		return domain.Scan{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return domain.Scan{}, fmt.Errorf("走査の記録を読み出せません: %w", err)
+		return domain.Scan{}, fmt.Errorf("cannot read the scan record: %w", err)
 	}
 
 	scan.State = domain.ScanState(state)

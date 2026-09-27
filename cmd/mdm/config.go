@@ -92,18 +92,18 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 
 	if _, _, err := net.SplitHostPort(cfg.Addr); err != nil {
 		problems = append(problems, fmt.Errorf(
-			"%s=%q は待ち受けアドレスとして解釈できません（例: :8080、127.0.0.1:8080）: %w",
+			"%s=%q is not a valid listen address (for example :8080 or 127.0.0.1:8080): %w",
 			envAddr, cfg.Addr, err))
 	}
 
 	if !filepath.IsAbs(cfg.DataDir) {
 		problems = append(problems, fmt.Errorf(
-			"%s=%q は絶対パスではありません", envDataDir, cfg.DataDir))
+			"%s=%q is not an absolute path", envDataDir, cfg.DataDir))
 	}
 
 	if _, ok := logLevels[cfg.LogLevel]; !ok {
 		problems = append(problems, fmt.Errorf(
-			"%s=%q は未知の値です（debug / info / warn / error のいずれか）",
+			"%s=%q is not a known value (use debug, info, warn or error)",
 			envLogLevel, cfg.LogLevel))
 	}
 
@@ -112,7 +112,7 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 	problems = append(problems, proxyProblems...)
 
 	if len(problems) > 0 {
-		return cfg, joinProblems("設定が正しくありません", problems)
+		return cfg, joinProblems("invalid configuration", problems)
 	}
 	return cfg, nil
 }
@@ -123,7 +123,7 @@ func LoadConfig(getenv func(string) string) (Config, error) {
 func (c Config) Verify() error {
 	problems := c.verifyProblems()
 	if len(problems) > 0 {
-		return joinProblems("設定の検証に失敗しました", problems)
+		return joinProblems("configuration check failed", problems)
 	}
 	return nil
 }
@@ -134,9 +134,9 @@ func (c Config) verifyProblems() []error {
 	var problems []error
 
 	if err := os.MkdirAll(c.DataDir, dataDirPerm); err != nil {
-		problems = append(problems, fmt.Errorf("%s=%s を作成できません: %w", envDataDir, c.DataDir, err))
+		problems = append(problems, fmt.Errorf("cannot create %s=%s: %w", envDataDir, c.DataDir, err))
 	} else if err := checkReadableDir(c.DataDir); err != nil {
-		problems = append(problems, fmt.Errorf("%s=%s を読み取れません: %w", envDataDir, c.DataDir, err))
+		problems = append(problems, fmt.Errorf("cannot read %s=%s: %w", envDataDir, c.DataDir, err))
 	}
 
 	// サムネイルの置き場所は起動後に初めて使うが、確認はここで済ませる。
@@ -144,7 +144,7 @@ func (c Config) verifyProblems() []error {
 	// 追わないと分からなくなる。
 	if err := os.MkdirAll(c.ThumbnailsDir(), dataDirPerm); err != nil {
 		problems = append(problems, fmt.Errorf(
-			"サムネイルの置き場所 %s を作成できません: %w", c.ThumbnailsDir(), err))
+			"cannot create the thumbnail directory %s: %w", c.ThumbnailsDir(), err))
 	}
 
 	return problems
@@ -189,7 +189,7 @@ func parseTrustedProxies(value string) ([]netip.Prefix, []error) {
 		prefix, err := parseTrustedProxy(field)
 		if err != nil {
 			problems = append(problems, fmt.Errorf(
-				"%s の %q は CIDR として解釈できません（例: 127.0.0.1/32、10.0.0.0/8、::1/128。転送ヘッダーを読まないなら %s）",
+				"%s: %q is not a valid CIDR (for example 127.0.0.1/32, 10.0.0.0/8 or ::1/128; use %s to ignore forwarding headers)",
 				envTrustedProxies, field, noTrustedProxies))
 			continue
 		}
@@ -204,7 +204,7 @@ func parseTrustedProxy(field string) (netip.Prefix, error) {
 	}
 	addr, err := netip.ParseAddr(field)
 	if err != nil || addr.Zone() != "" {
-		return netip.Prefix{}, errors.New("CIDR ではありません")
+		return netip.Prefix{}, errors.New("not a CIDR")
 	}
 	return normalizePrefix(netip.PrefixFrom(addr, addr.BitLen())), nil
 }
@@ -241,7 +241,7 @@ func checkReadableDir(path string) error {
 		return err
 	}
 	if !info.IsDir() {
-		return errors.New("ディレクトリではありません")
+		return errors.New("not a directory")
 	}
 
 	entry, err := os.Open(path)

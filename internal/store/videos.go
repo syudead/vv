@@ -120,7 +120,7 @@ func getVideo(ctx context.Context, q rowQueryer, audience domain.Audience, id in
 		return domain.Video{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return domain.Video{}, fmt.Errorf("動画を読み出せません (id=%d): %w", id, err)
+		return domain.Video{}, fmt.Errorf("cannot read the video (id=%d): %w", id, err)
 	}
 	return video, nil
 }
@@ -137,7 +137,7 @@ func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64)
 		return nil
 	}
 	if err != nil {
-		return fmt.Errorf("代表場所を読み出せません (video=%d): %w", videoID, err)
+		return fmt.Errorf("cannot read the primary location (video=%d): %w", videoID, err)
 	}
 	container := domain.ContainerFromPath(path)
 	if oldContainer.String == container {
@@ -152,7 +152,7 @@ func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64)
 			nullableString(container), time.Now().Unix(), videoID)
 	}
 	if err != nil {
-		return fmt.Errorf("代表場所のcontainerを更新できません (video=%d): %w", videoID, err)
+		return fmt.Errorf("cannot update the primary location's container (video=%d): %w", videoID, err)
 	}
 	return nil
 }
@@ -172,7 +172,7 @@ func contentKeyReferenced(ctx context.Context, q rowQueryer, key string) (bool, 
 	var referenced int
 	if err := q.QueryRowContext(ctx, `select exists(select 1 from videos where content_key = ?)`, key).
 		Scan(&referenced); err != nil {
-		return false, fmt.Errorf("識別子の参照を確かめられません: %w", err)
+		return false, fmt.Errorf("cannot check references to the content key: %w", err)
 	}
 	return referenced == 1, nil
 }
@@ -194,7 +194,7 @@ func registeredContentKeysForVideoIDs(ctx context.Context, q queryExecer, videoI
 	}
 	encoded, err := json.Marshal(videoIDs)
 	if err != nil {
-		return nil, fmt.Errorf("動画の id を組み立てられません: %w", err)
+		return nil, fmt.Errorf("cannot build video ids: %w", err)
 	}
 
 	//nolint:gosec // registeredVideoCondition は定型SQLだけを返す。
@@ -203,7 +203,7 @@ func registeredContentKeysForVideoIDs(ctx context.Context, q queryExecer, videoI
 		registeredVideoCondition("v")
 	rows, err := q.QueryContext(ctx, query, string(encoded))
 	if err != nil {
-		return nil, fmt.Errorf("動画の id を content_key へ引けません: %w", err)
+		return nil, fmt.Errorf("cannot map video ids to content_key values: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -211,12 +211,12 @@ func registeredContentKeysForVideoIDs(ctx context.Context, q queryExecer, videoI
 	for rows.Next() {
 		var key string
 		if err := rows.Scan(&key); err != nil {
-			return nil, fmt.Errorf("動画の id を content_key へ引けません: %w", err)
+			return nil, fmt.Errorf("cannot map video ids to content_key values: %w", err)
 		}
 		keys = append(keys, key)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("動画の id を content_key へ引けません: %w", err)
+		return nil, fmt.Errorf("cannot map video ids to content_key values: %w", err)
 	}
 	return keys, nil
 }

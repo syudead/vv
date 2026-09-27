@@ -13,12 +13,12 @@ import (
 var RequiredCommands = []string{"ffprobe", "ffmpeg"}
 
 // ErrMissingCommands は必要な外部コマンドが見つからなかったことを表す。
-var ErrMissingCommands = errors.New("必要な外部コマンドが見つかりません")
+var ErrMissingCommands = errors.New("required external commands were not found")
 
 // installHint は不足していた場合に提示する導入方法である。欠けているコマンド名だけを
 // 出しても次の一手が分からないため、導入方法を必ず添える。
-const installHint = "Docker で実行する（task up）か、ffmpeg を導入してください" +
-	"（alpine: apk add ffmpeg / Debian・Ubuntu: apt-get install ffmpeg / macOS: brew install ffmpeg）"
+const installHint = "Run with Docker (task up) or install ffmpeg" +
+	" (alpine: apk add ffmpeg / Debian, Ubuntu: apt-get install ffmpeg / macOS: brew install ffmpeg)"
 
 // Preflight は RequiredCommands が実行パス上にあるかを確認する。
 // 欠けている場合は、不足しているコマンド名と導入方法を含む誤りを返す。
@@ -33,6 +33,6 @@ func Preflight() error {
 		return nil
 	}
 
-	return fmt.Errorf("%w: %s。%s",
+	return fmt.Errorf("%w: %s. %s",
 		ErrMissingCommands, strings.Join(missing, ", "), installHint)
 }

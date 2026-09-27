@@ -26,13 +26,13 @@ const (
 )
 
 // accountUsage は account の下位コマンドの使い方である。
-const accountUsage = `使い方:
-  mdm                                 サーバーを起動する
-  mdm account set-username <NAME>     ユーザー名を変える
-  mdm account set-password            パスワードを再設定する（標準入力から受け取る）
+const accountUsage = `Usage:
+  mdm                                 start the server
+  mdm account set-username <NAME>     change the username
+  mdm account set-password            reset the password (read from standard input)
 
-設定は MDM_DATA_DIR だけから読みます。パスワードは引数や環境変数では受け取りません。
-標準入力が端末なら2回尋ね、端末でなければ最初の1行をパスワードとします。`
+Settings are read only from MDM_DATA_DIR. The password is never taken from arguments or environment variables.
+If standard input is a terminal, the password is asked for twice; otherwise the first line is used as the password.`
 
 // accountEnv はホスト側のコマンドが外界から受け取るものである。テストが差し替える。
 type accountEnv struct {
@@ -71,7 +71,7 @@ func operationFailure(format string, args ...any) *accountFailure {
 
 // notConfiguredFailure は未設定のときの失敗である。コマンドではアカウントを作らない。
 func notConfiguredFailure() *accountFailure {
-	return usageFailure("アカウントがまだ設定されていません。先にブラウザで vv を開き、画面で初回設定を済ませてください。")
+	return usageFailure("The account is not set up yet. Open vv in a browser and complete the initial setup first.")
 }
 
 // runCommand は引数つきの mdm を実行し、終了コードを返す。args は os.Args[1:] である。
@@ -80,9 +80,9 @@ func runCommand(ctx context.Context, args []string, env accountEnv) int {
 	var failure *accountFailure
 	switch {
 	case len(args) == 0 || args[0] != "account":
-		failure = usageFailure("未知のコマンドです: %s", strings.Join(args, " "))
+		failure = usageFailure("Unknown command: %s", strings.Join(args, " "))
 	case len(args) == 1:
-		failure = usageFailure("account の下位コマンドを指定してください。")
+		failure = usageFailure("Specify an account subcommand.")
 	default:
 		failure = runAccount(ctx, args[1], args[2:], env)
 	}
@@ -104,20 +104,20 @@ func runAccount(ctx context.Context, sub string, args []string, env accountEnv) 
 	switch sub {
 	case "set-username":
 		if len(args) != 1 {
-			return usageFailure("set-username には新しいユーザー名を1つだけ渡してください。")
+			return usageFailure("set-username takes exactly one argument: the new username.")
 		}
 		username := args[0]
 		if err := domain.ValidateUsername(username); err != nil {
-			return usageFailure("%v: 1〜%d 文字で、制御文字を含まず、先頭と末尾に空白を置かないでください。",
+			return usageFailure("%v. Use 1 to %d characters, with no control characters and no leading or trailing spaces.",
 				err, domain.MaxUsernameLength)
 		}
 		return withAuthStore(ctx, env, func(auth *store.AuthStore) *accountFailure {
-			return changeCredentials(auth.ChangeUsername(ctx, username, env.Now()), "ユーザー名を変更しました。", env)
+			return changeCredentials(auth.ChangeUsername(ctx, username, env.Now()), "Changed the username. ", env)
 		})
 
 	case "set-password":
 		if len(args) != 0 {
-			return usageFailure("set-password は引数を取りません。パスワードは標準入力から渡してください。")
+			return usageFailure("set-password takes no arguments. Pass the password on standard input.")
 		}
 		return withAuthStore(ctx, env, func(auth *store.AuthStore) *accountFailure {
 			// 未設定なら尋ねる前に終える。書き換えでも未設定は確かめ直す。
@@ -134,11 +134,11 @@ func runAccount(ctx context.Context, sub string, args []string, env accountEnv) 
 			if err != nil {
 				return operationFailure("%v", err)
 			}
-			return changeCredentials(auth.ChangePassword(ctx, hash, env.Now()), "パスワードを再設定しました。", env)
+			return changeCredentials(auth.ChangePassword(ctx, hash, env.Now()), "Reset the password. ", env)
 		})
 
 	default:
-		return usageFailure("account の未知の下位コマンドです: %s", sub)
+		return usageFailure("Unknown account subcommand: %s", sub)
 	}
 }
 
@@ -150,7 +150,7 @@ func changeCredentials(err error, done string, env accountEnv) *accountFailure {
 	if err != nil {
 		return operationFailure("%v", err)
 	}
-	_, _ = fmt.Fprintln(env.Stderr, done+"既存のログインセッションはすべて無効にしました。")
+	_, _ = fmt.Fprintln(env.Stderr, done+"All existing login sessions have been signed out.")
 	return nil
 }
 
@@ -162,12 +162,12 @@ func changeCredentials(err error, done string, env accountEnv) *accountFailure {
 func withAuthStore(ctx context.Context, env accountEnv, use func(*store.AuthStore) *accountFailure) *accountFailure {
 	dataDir := valueOr(env.Getenv(envDataDir), defaultDataDir)
 	if !filepath.IsAbs(dataDir) {
-		return usageFailure("%s=%q は絶対パスではありません。", envDataDir, dataDir)
+		return usageFailure("%s=%q is not an absolute path.", envDataDir, dataDir)
 	}
 	if _, err := os.Stat(store.DatabasePath(dataDir)); errors.Is(err, os.ErrNotExist) {
 		return notConfiguredFailure()
 	} else if err != nil {
-		return operationFailure("データベースを確かめられません: %v", err)
+		return operationFailure("Cannot check the database: %v", err)
 	}
 
 	db, err := store.Open(dataDir) //nolint:contextcheck // store.Open は context を取らない（起動時と同じ）。
@@ -188,28 +188,28 @@ func withAuthStore(ctx context.Context, env accountEnv, use func(*store.AuthStor
 func readNewPassword(env accountEnv) (string, *accountFailure) {
 	var secret string
 	if env.ReadHidden != nil {
-		first, err := promptHidden(env, "新しいパスワード: ")
+		first, err := promptHidden(env, "New password: ")
 		if err != nil {
-			return "", operationFailure("パスワードを読み取れません: %v", err)
+			return "", operationFailure("Cannot read the password: %v", err)
 		}
-		second, err := promptHidden(env, "もう一度入力してください: ")
+		second, err := promptHidden(env, "Enter it again: ")
 		if err != nil {
-			return "", operationFailure("パスワードを読み取れません: %v", err)
+			return "", operationFailure("Cannot read the password: %v", err)
 		}
 		if first != second {
-			return "", usageFailure("2回の入力が一致しません。何も変更していません。")
+			return "", usageFailure("The two entries do not match. Nothing was changed.")
 		}
 		secret = first
 	} else {
 		line, err := readFirstLine(env.Stdin)
 		if err != nil {
-			return "", operationFailure("パスワードを読み取れません: %v", err)
+			return "", operationFailure("Cannot read the password: %v", err)
 		}
 		secret = line
 	}
 
 	if err := domain.ValidatePassword(secret); err != nil {
-		return "", usageFailure("%v: 1〜%d バイトにしてください。何も変更していません。", err, domain.MaxPasswordBytes)
+		return "", usageFailure("%v. Use 1 to %d bytes. Nothing was changed.", err, domain.MaxPasswordBytes)
 	}
 	return secret, nil
 }

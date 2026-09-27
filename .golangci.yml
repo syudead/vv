@@ -27,7 +27,18 @@ linters:
     # 理由を添えて nolint で示す（internal/app/scans.go の走査開始）。
     - contextcheck
 
+    # サーバーの出力（誤りの文・ログ・運用コマンドの出力）は英語に統一する
+    # （specs/023-english-i18n research.md R-3・R-7）。日本語の固定文言の再混入を
+    # 止める。コメントは AST の文字列リテラルではないので対象にならない。
+    - gosmopolitan
+
   settings:
+    gosmopolitan:
+      watch-for-scripts:
+        - Han
+        - Hiragana
+        - Katakana
+      allow-time-local: true
     depguard:
       rules:
         # cmd → internal/{app,httpapi,store,media,mediafs,artifacts,opener,scanner,jobs,eventbus,password} → internal/domain の
@@ -276,6 +287,15 @@ linters:
   exclusions:
     generated: lax
     rules:
+      # テストの期待値やテスト名、利用者のデータとしての日本語の名前は対象外
+      # （research.md R-3・R-8）。
+      - path: _test\.go$
+        linters:
+          - gosmopolitan
+      # scripts/ は開発者向けの道具で、配布されるサービスの出力ではない（R-8）。
+      - path: ^scripts/
+        linters:
+          - gosmopolitan
       # 生成物は手編集しないので、検査の対象からも外す（AGENTS.md）。
       - path: internal/httpapi/gen/
         linters:

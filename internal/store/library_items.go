@@ -159,7 +159,7 @@ func itemOrder(sort domain.VideoSort) listOrder {
 func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
+		return domain.LibraryPage{}, fmt.Errorf("cannot start reading the list: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -180,7 +180,7 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 		return domain.LibraryPage{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
+		return domain.LibraryPage{}, fmt.Errorf("cannot finish reading the list: %w", err)
 	}
 	page.MissingTagIDs = missingTagIDs
 	page.Roots = roots
@@ -223,7 +223,7 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	if err := tx.QueryRowContext(ctx, cte+` select count(*) from items`+whereWatch,
 		append(append([]any{}, args...), watchArgs...)...).Scan(&total); err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("件数を数えられません: %w", err)
+		return domain.LibraryPage{}, fmt.Errorf("cannot count items: %w", err)
 	}
 
 	// 引数は SQL の文字列に現れる順（CTE・seed・視聴状態・カーソル・件数）に並べる。
@@ -242,7 +242,7 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 
 	rows, err := tx.QueryContext(ctx, query, append(args, limit+1)...)
 	if err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
+		return domain.LibraryPage{}, fmt.Errorf("cannot read the list: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	var keys []itemRow
@@ -251,16 +251,16 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 		var key itemRow
 		var value any
 		if err := rows.Scan(&key.groupID, &key.id, &key.path, &value); err != nil {
-			return domain.LibraryPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
+			return domain.LibraryPage{}, fmt.Errorf("cannot read the list: %w", err)
 		}
 		keys = append(keys, key)
 		values = append(values, value)
 	}
 	if err := rows.Err(); err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
+		return domain.LibraryPage{}, fmt.Errorf("cannot read the list: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("一覧を閉じられません: %w", err)
+		return domain.LibraryPage{}, fmt.Errorf("cannot close the list: %w", err)
 	}
 
 	page := domain.LibraryPage{Total: total, Limit: limit, Items: []domain.LibraryItem{}}
@@ -304,14 +304,14 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 		if key.groupID.Valid {
 			group, ok := groups[key.groupID.Int64]
 			if !ok {
-				return nil, fmt.Errorf("グループを読み出せません (id=%d)", key.groupID.Int64)
+				return nil, fmt.Errorf("cannot read the group (id=%d)", key.groupID.Int64)
 			}
 			items = append(items, domain.LibraryItem{Group: &group})
 			continue
 		}
 		video, ok := videos[key.id]
 		if !ok {
-			return nil, fmt.Errorf("動画を読み出せません (id=%d)", key.id)
+			return nil, fmt.Errorf("cannot read the video (id=%d)", key.id)
 		}
 		items = append(items, domain.LibraryItem{Video: &video})
 	}
@@ -327,7 +327,7 @@ func videosAtLocations(ctx context.Context, tx *sql.Tx, pairs [][2]any) (map[int
 	}
 	encoded, err := json.Marshal(pairs)
 	if err != nil {
-		return nil, fmt.Errorf("項目の鍵を組み立てられません: %w", err)
+		return nil, fmt.Errorf("cannot build item keys: %w", err)
 	}
 	//nolint:gosec // listColumns は定型の列だけで、値は引数で渡す。
 	rows, err := tx.QueryContext(ctx, `with chosen(video_id, path) as (
@@ -335,18 +335,18 @@ func videosAtLocations(ctx context.Context, tx *sql.Tx, pairs [][2]any) (map[int
 		select `+listColumns+` from chosen join videos on videos.id = chosen.video_id
 		join video_locations loc on loc.path = chosen.path`, string(encoded))
 	if err != nil {
-		return nil, fmt.Errorf("項目の動画を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read item videos: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		video, err := scanVideo(rows)
 		if err != nil {
-			return nil, fmt.Errorf("項目の動画を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read item videos: %w", err)
 		}
 		out[video.ID] = video
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("項目の動画を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read item videos: %w", err)
 	}
 	return out, nil
 }
@@ -371,7 +371,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	}
 	encoded, err := json.Marshal(groupIDs)
 	if err != nil {
-		return nil, fmt.Errorf("グループの id を組み立てられません: %w", err)
+		return nil, fmt.Errorf("cannot build group ids: %w", err)
 	}
 	progressColumns := `null, null, null, null`
 	progressJoin := ""
@@ -386,7 +386,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 		where g.id in (select value from json_each(?)) and `+visibleVideoCondition("videos", audience)+`
 		order by g.id, m.position`, string(encoded))
 	if err != nil {
-		return nil, fmt.Errorf("グループのメンバーを読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read group members: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -406,7 +406,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 			&groupID, &path, &name, &position, &duration, &completed, &updatedAt,
 		}})
 		if err != nil {
-			return nil, fmt.Errorf("グループのメンバーを読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read group members: %w", err)
 		}
 		group := groups[groupID]
 		if group == nil {
@@ -425,7 +425,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 		group.progress = append(group.progress, progress)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("グループのメンバーを読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read group members: %w", err)
 	}
 	for _, id := range order {
 		group := groups[id]
@@ -441,7 +441,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) ([]int64, []int64, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, nil, fmt.Errorf("id の読み取りを始められません: %w", err)
+		return nil, nil, fmt.Errorf("cannot start reading ids: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -467,25 +467,25 @@ func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) ([]i
 		select gm.video_id from items join gm on gm.group_id = items.group_id
 		where items.group_id is not null`+and, args...)
 	if err != nil {
-		return nil, nil, fmt.Errorf("id を読み出せません: %w", err)
+		return nil, nil, fmt.Errorf("cannot read ids: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	ids := []int64{}
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
-			return nil, nil, fmt.Errorf("id を読み出せません: %w", err)
+			return nil, nil, fmt.Errorf("cannot read ids: %w", err)
 		}
 		ids = append(ids, id)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, nil, fmt.Errorf("id を読み出せません: %w", err)
+		return nil, nil, fmt.Errorf("cannot read ids: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return nil, nil, fmt.Errorf("id を読み出せません: %w", err)
+		return nil, nil, fmt.Errorf("cannot read ids: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, nil, fmt.Errorf("id の読み取りを終えられません: %w", err)
+		return nil, nil, fmt.Errorf("cannot finish reading ids: %w", err)
 	}
 	return ids, missingTagIDs, nil
 }
@@ -497,7 +497,7 @@ func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) ([]i
 func (s *LibraryStore) FolderGroup(ctx context.Context, audience domain.Audience, dir string) (domain.LibraryGroup, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return domain.LibraryGroup{}, fmt.Errorf("グループの読み取りを始められません: %w", err)
+		return domain.LibraryGroup{}, fmt.Errorf("cannot start reading groups: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -507,14 +507,14 @@ func (s *LibraryStore) FolderGroup(ctx context.Context, audience domain.Audience
 		return domain.LibraryGroup{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return domain.LibraryGroup{}, fmt.Errorf("グループを読み出せません: %w", err)
+		return domain.LibraryGroup{}, fmt.Errorf("cannot read groups: %w", err)
 	}
 	groups, err := loadGroups(ctx, tx, audience, []int64{groupID})
 	if err != nil {
 		return domain.LibraryGroup{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.LibraryGroup{}, fmt.Errorf("グループの読み取りを終えられません: %w", err)
+		return domain.LibraryGroup{}, fmt.Errorf("cannot finish reading groups: %w", err)
 	}
 	group, ok := groups[groupID]
 	if !ok || len(group.Members) < minGroupMembers(audience) {
