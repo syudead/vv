@@ -24,7 +24,7 @@
   （[data-model.md](data-model.md)、[R-6](research.md#r-6-失敗理由は機械可読なコードを保存し画面は自由文を出さない)）。
 - サーバーの `message`・ログ・`cmd/mdm` の出力は Go に英語で直接書く
   （[R-7](research.md#r-7-サーバーには文言カタログを置かず英語を直接書く)）。
-- 訳し漏れは、画面は ESLint の `no-restricted-syntax` と、固定の文言を受け取る部品の props の branded 型 `UiText`、既知のエラーはカタログの
+- 訳し漏れは、画面は ESLint の `no-restricted-syntax`、固定の文言を運ぶ値の branded 型 `UiText`、疑似ロケールで描画する画面テスト、既知のエラーはカタログの
   `Record<ErrorCode | ErrorReason, …>` の型、サーバーは `gosmopolitan` で検出する
   （[R-3](research.md#r-3-訳し漏れは-lint-と型で検出する)）。
 - コメント、OpenAPI の `description`、設計文書、`scripts/` は対象にしない
@@ -177,7 +177,7 @@ ARCHITECTURE.md の API の記述。
 （[R-1](research.md#r-1-画面文言の置き場は型付きの自前カタログにする)・
 [R-2](research.md#r-2-書式と単数複数はブラウザの-intl-で扱う)・
 [R-5](research.md#r-5-画面は既知のエラーを-reasoncode-からそれ以外を安全な概要で表示する)）。
-`client.ts` の `RequestFailed` の `reason`・`limit`・`tagName`、`UiText` 型と `ui/` の部品の文言の props、`lib/format.ts` のロケール依存の関数の移動、
+`client.ts` の `RequestFailed` の `reason`・`limit`・`tagName`、`UiText` 型と `ui/` の部品の文言の props、疑似ロケールと、描画した画面の文言がすべてカタログ由来か利用者のデータであることを確かめるテストの helper、`lib/format.ts` のロケール依存の関数の移動、
 `web/src/api/`・`web/src/lib/`・`web/src/ui/`・`web/src/app/`・`main.tsx` の文言、`index.html` の `lang="en"`。ESLint の規則と
 未対応のディレクトリの除外の一覧（[R-3](research.md#r-3-訳し漏れは-lint-と型で検出する)）。
 `docs/design-docs/i18n.md` と索引へのリンク、各 `ui-design.md` の文言はカタログが正本である旨の
@@ -187,7 +187,8 @@ ARCHITECTURE.md の API の記述。
 
 **Acceptance**: Vitest が、すべての `ErrorCode`・`ErrorReason`・`ProbeErrorCode`・`ScanErrorCode` に
 英語の文があること（型検査）、`limit` の埋め込み、未知のコード・空の本文・JSON でない本文・
-`fetch` の失敗の表示、1 と複数の件数、英語の日付・日時・相対時刻を確かめて通る。`web/src/api/`・`lib/`・`ui/`・`app/` に
+`fetch` の失敗の表示、1 と複数の件数、英語の日付・日時・相対時刻、疑似ロケールの helper が
+`string` の変数を経由した英語のリテラルを描画した部品を検出することを確かめて通る。`web/src/api/`・`lib/`・`ui/`・`app/` に
 `i18n/` の外の日本語や固定の文字が無いことを ESLint が確かめる。`task check` が通る。共通部品（コンボボックス、
 トースト）の文言が変わるので、視覚と支援技術の確認を行う。
 
@@ -201,7 +202,7 @@ ESLint の除外の一覧からこの 3 ディレクトリを外す。
 
 **Dependencies**: 画面の i18n 基盤（文言カタログ・英語の書式・API エラーの表示）を作る
 
-**Acceptance**: 除外を外した ESLint が通る。初回設定・ログイン（誤ったパスワード、試行の制限）・
+**Acceptance**: 除外を外した ESLint が通る。通常・空・処理中・失敗の状態を疑似ロケールで描画したテストが、カタログ外の文言が無いことを確かめて通る。初回設定・ログイン（誤ったパスワード、試行の制限）・
 設定画面（存在しない・重なるメディアフォルダ、取り込みの失敗、`errorCode` の無い過去の失敗）で
 英語の説明が出ることを Vitest と `task test-e2e` が確かめる。画面が変わるので視覚と支援技術の確認を
 行う。
@@ -215,7 +216,7 @@ Vitest と `web/e2e` の `search`・`folders`・`guest`（該当部分）・`hov
 
 **Dependencies**: 画面の i18n 基盤（文言カタログ・英語の書式・API エラーの表示）を作る
 
-**Acceptance**: 除外を外した ESLint が通る。1 本と複数本の件数、空状態、読み込み失敗、検索語の
+**Acceptance**: 除外を外した ESLint が通る。通常・空・処理中・失敗の状態を疑似ロケールで描画したテストが、カタログ外の文言が無いことを確かめて通る。1 本と複数本の件数、空状態、読み込み失敗、検索語の
 長さと一括操作の上限（`limit` の埋め込み）の表示と、日本語の名前の動画・フォルダが元の名前のまま
 表示・検索できることを Vitest と `task test-e2e` が確かめる。画面が変わるので視覚と支援技術の
 確認を行う。
@@ -228,7 +229,7 @@ Vitest と `web/e2e` の `search`・`folders`・`guest`（該当部分）・`hov
 
 **Dependencies**: 画面の i18n 基盤（文言カタログ・英語の書式・API エラーの表示）を作る
 
-**Acceptance**: 除外を外した ESLint が通る。空のタグ名・長すぎるタグ名（`limit` の埋め込み）・
+**Acceptance**: 除外を外した ESLint が通る。通常・空・処理中・失敗の状態を疑似ロケールで描画したテストが、カタログ外の文言が無いことを確かめて通る。空のタグ名・長すぎるタグ名（`limit` の埋め込み）・
 使用中の名前・別のタグのシノニムの名前・統合が要る名前（どれも競合先のタグ名を含む）・同じタグの統合で英語の具体的な説明が出ることと、日本語のタグ名と
 同義語がそのまま表示・検索できることを Vitest と `task test-e2e` が確かめる。画面が変わるので視覚と
 支援技術の確認を行う。
@@ -242,7 +243,7 @@ Vitest と `web/e2e` の `search`・`folders`・`guest`（該当部分）・`hov
 
 **Dependencies**: 画面の i18n 基盤（文言カタログ・英語の書式・API エラーの表示）を作る
 
-**Acceptance**: 除外の一覧の無い ESLint が通る。操作バーのボタンの読み上げ名とツールチップが英語で
+**Acceptance**: 除外の一覧の無い ESLint が通る。通常・空・処理中・失敗の状態を疑似ロケールで描画したテストが、カタログ外の文言が無いことを確かめて通る。操作バーのボタンの読み上げ名とツールチップが英語で
 キーを添えること、`probeErrorCode` ごとの説明、コードの無い過去の日本語の `probeError` が画面に出ず
 英語の概要が出ること、ファイルが無いときの「開く」の失敗、キーボードショートカットが変わらない
 ことを Vitest と `task test-e2e` が確かめる。画面が変わるので視覚と支援技術の確認を行う。
