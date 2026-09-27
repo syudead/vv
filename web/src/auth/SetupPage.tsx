@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { setupAccount } from "../api/auth";
 import { RequestFailed } from "../api/client";
-import { errorText } from "../i18n";
+import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import {
   connectionWarningId,
@@ -39,7 +39,7 @@ function usernameBreaksRule(username: string): boolean {
 
 interface Invalid {
   field: SetupField;
-  message: string;
+  message: UiText;
 }
 
 /** validateSetup は送る前の検証である。名指しする欄と理由を返す。 */
@@ -49,19 +49,19 @@ export function validateSetup(
   confirm: string,
 ): Invalid | null {
   if (username === "") {
-    return { field: "username", message: "ユーザー名を入力してください" };
+    return { field: "username", message: t.auth.setup.usernameRequired };
   }
   if (usernameBreaksRule(username)) {
     return {
       field: "username",
-      message: "ユーザー名は 128 文字まで、前後の空白と制御文字なしにしてください",
+      message: t.auth.setup.usernameRule(MAX_USERNAME_LENGTH),
     };
   }
   if (password === "") {
-    return { field: "password", message: "パスワードを入力してください" };
+    return { field: "password", message: t.auth.setup.passwordRequired };
   }
   if (confirm !== password) {
-    return { field: "confirm", message: "確認用のパスワードが一致しません" };
+    return { field: "confirm", message: t.auth.setup.passwordMismatch };
   }
   return null;
 }
@@ -76,7 +76,7 @@ export default function SetupPage() {
   const [confirm, setConfirm] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [configured, setConfigured] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<UiText | null>(null);
   const [invalidField, setInvalidField] = useState<SetupField | null>(null);
   const busy = useRef(false);
   const usernameRef = useRef<HTMLInputElement>(null);
@@ -116,7 +116,7 @@ export default function SetupPage() {
     } catch (error) {
       if (error instanceof RequestFailed && error.status === 409) {
         // 同時の初回設定で負けた側。入力を空にし、ログインへ進ませる。
-        setFailure("アカウントは既に設定されています");
+        setFailure(t.errors.code.account_already_configured);
         setUsername("");
         setPassword("");
         setConfirm("");
@@ -124,9 +124,9 @@ export default function SetupPage() {
       } else if (error instanceof RequestFailed && error.status === 400) {
         setFailure(errorText(error));
       } else if (error instanceof RequestFailed) {
-        setFailure("初回設定できませんでした。もう一度お試しください");
+        setFailure(t.auth.setup.failed);
       } else {
-        setFailure("サーバーに接続できません");
+        setFailure(errorText(error));
       }
     }
     busy.current = false;
@@ -141,8 +141,8 @@ export default function SetupPage() {
 
   return (
     <CredentialScreen
-      title="アカウントを作成"
-      description="このサーバーを使うアカウントを1つ作ります。あとから変えるにはサーバーのコマンドを使います"
+      title={t.auth.setup.title}
+      description={t.auth.setup.description}
       onSubmit={() => void submit()}
     >
       <div className="flex flex-col gap-4">
@@ -160,7 +160,7 @@ export default function SetupPage() {
         <CredentialField
           ref={refs.password}
           id="setup-password"
-          label="パスワード"
+          label={t.auth.fields.password}
           name="new-password"
           type="password"
           autoComplete="new-password"
@@ -171,7 +171,7 @@ export default function SetupPage() {
         <CredentialField
           ref={refs.confirm}
           id="setup-confirm"
-          label="パスワード（確認）"
+          label={t.auth.fields.confirmPassword}
           name="confirm-password"
           type="password"
           autoComplete="new-password"
@@ -195,7 +195,7 @@ export default function SetupPage() {
             aria-hidden="true"
           />
         )}
-        設定してはじめる
+        {t.auth.setup.submit}
       </Button>
       <ConnectionWarning />
       {configured && (
@@ -206,7 +206,7 @@ export default function SetupPage() {
           href="/login"
           className="self-start text-sm text-link underline underline-offset-4"
         >
-          ログインへ
+          {t.auth.setup.goToLogin}
         </a>
       )}
     </CredentialScreen>

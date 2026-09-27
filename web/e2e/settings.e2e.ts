@@ -25,10 +25,10 @@ test("filesystem rootをメディアフォルダとして登録できる", async
   });
 
   await page.goto("/settings");
-  await page.getByRole("button", { name: "フォルダを追加" }).click();
-  const picker = page.getByRole("dialog", { name: "メディアフォルダを追加" });
+  await page.getByRole("button", { name: "Add folder" }).click();
+  const picker = page.getByRole("dialog", { name: "Add media folder" });
   await picker.getByRole("button", { name: filesystemRoot, exact: true }).click();
-  const add = picker.getByRole("button", { name: "このフォルダを追加" });
+  const add = picker.getByRole("button", { name: "Add this folder" });
   await expect(add).toBeEnabled();
 
   const create = page.waitForResponse(
@@ -40,14 +40,14 @@ test("filesystem rootをメディアフォルダとして登録できる", async
   expect((await create).status()).toBe(201);
   await expect(page.locator("code", { hasText: filesystemRoot })).toBeVisible();
 
-  await page.getByRole("button", { name: "フォルダを削除" }).click();
-  const confirmation = page.getByRole("dialog", { name: "フォルダの削除を確認" });
+  await page.getByRole("button", { name: "Remove folder" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Remove this folder?" });
   const remove = page.waitForResponse(
     (response) =>
       response.url().includes("/api/media-folders/") &&
       response.request().method() === "DELETE",
   );
-  await confirmation.getByRole("button", { name: "削除する" }).click();
+  await confirmation.getByRole("button", { name: "Remove" }).click();
   expect((await remove).status()).toBe(204);
   await expect(page.locator("code", { hasText: filesystemRoot })).toHaveCount(0);
 });
@@ -74,11 +74,11 @@ test("設定画面からVite proxy越しにメディアフォルダを追加で�
     });
 
     await page.goto("/settings");
-    await expect(page.getByRole("heading", { name: "設定" })).toBeVisible();
-    await expect(page.getByText("メディアフォルダが設定されていません")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await expect(page.getByText("No media folders yet")).toBeVisible();
 
-    await page.getByRole("button", { name: "フォルダを追加" }).click();
-    const dialog = page.getByRole("dialog", { name: "メディアフォルダを追加" });
+    await page.getByRole("button", { name: "Add folder" }).click();
+    const dialog = page.getByRole("dialog", { name: "Add media folder" });
     await dialog.getByRole("button", { name: path.basename(mediaDir) }).click();
 
     const mutation = page.waitForResponse(
@@ -86,20 +86,22 @@ test("設定画面からVite proxy越しにメディアフォルダを追加で�
         response.url().endsWith("/api/media-folders") &&
         response.request().method() === "POST",
     );
-    await dialog.getByRole("button", { name: "このフォルダを追加" }).click();
+    await dialog.getByRole("button", { name: "Add this folder" }).click();
     expect((await mutation).status()).toBe(201);
 
     await expect(page.getByText(mediaDir)).toBeVisible();
-    await expect(page.getByText("same-originの操作だけを受け付けます")).toHaveCount(0);
+    await expect(page.getByText("This change must be made from vv itself.")).toHaveCount(
+      0,
+    );
 
-    await page.getByRole("button", { name: "フォルダを削除" }).click();
-    const confirmation = page.getByRole("dialog", { name: "フォルダの削除を確認" });
+    await page.getByRole("button", { name: "Remove folder" }).click();
+    const confirmation = page.getByRole("dialog", { name: "Remove this folder?" });
     const remove = page.waitForResponse(
       (response) =>
         response.url().includes("/api/media-folders/") &&
         response.request().method() === "DELETE",
     );
-    await confirmation.getByRole("button", { name: "削除する" }).click();
+    await confirmation.getByRole("button", { name: "Remove" }).click();
     expect((await remove).status()).toBe(204);
   } finally {
     await rm(mediaDir, { recursive: true, force: true });

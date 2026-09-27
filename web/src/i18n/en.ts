@@ -32,6 +32,20 @@ function characters(limit: number): string {
   });
 }
 
+function items(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} item`,
+    other: `${formatNumber(count)} items`,
+  });
+}
+
+function seconds(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} second`,
+    other: `${formatNumber(count)} seconds`,
+  });
+}
+
 function videos(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} video`,
@@ -160,8 +174,12 @@ const scanErrors = {
 
 export const en = {
   common: {
+    appName: "vv",
     close: "Close",
     reload: "Reload",
+    retry: "Retry",
+    cancel: "Cancel",
+    back: "Back",
   },
   app: {
     routeLoadFailed: {
@@ -202,6 +220,197 @@ export const en = {
     controlCharacters: "Line breaks and tabs aren't allowed",
     tooLong: (limit: number, length: number) =>
       `Use ${characters(limit)} or fewer (currently ${formatNumber(length)})`,
+  },
+  auth: {
+    gate: {
+      unreachable: "Can't connect to the server",
+      noResponse: "The server isn't responding. Check that it's running.",
+    },
+    fields: {
+      username: "Username",
+      password: "Password",
+      confirmPassword: "Confirm password",
+    },
+    connectionWarning:
+      "This connection isn't encrypted. Your username, password and sign-in status can be read in transit. Signing in doesn't protect against eavesdropping.",
+    login: {
+      title: "Sign in",
+      submit: "Sign in",
+      throttledFor: (wait: number) =>
+        `Too many sign-in attempts. Try again in ${seconds(wait)}.`,
+      failed: "Couldn't sign in. Try again.",
+    },
+    setup: {
+      title: "Create an account",
+      description:
+        "Create the one account for this server. To change it later, use the server's command line.",
+      submit: "Create account",
+      goToLogin: "Go to sign in",
+      usernameRequired: "Enter a username.",
+      usernameRule: (limit: number) =>
+        `Use a username of up to ${characters(limit)}, without leading or trailing spaces or control characters.`,
+      passwordRequired: "Enter a password.",
+      passwordMismatch: "The passwords don't match.",
+      failed: "Couldn't finish setting up. Try again.",
+    },
+  },
+  shell: {
+    nav: {
+      main: "Main navigation",
+      account: "Account and settings",
+      library: "Library",
+      folders: "Folders",
+      tags: "Tags",
+      settings: "Settings",
+      login: "Sign in",
+      logout: "Sign out",
+      loggingOut: "Signing out…",
+      logoutFailed: "Couldn't sign out",
+      menu: "Menu",
+      closeMenu: "Close menu",
+    },
+    topBar: {
+      scanning: "Scanning",
+      refreshLibrary: "Refresh library",
+      needsMediaFolder: "Add a media folder in Settings first",
+      refreshing: "Refreshing",
+      refresh: "Refresh",
+    },
+    scan: {
+      startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,
+      starting: "Starting the scan…",
+      notRun: "No scan has run yet",
+      scanningUnknown: "Scanning…",
+      scanningCount: (completed: number, total: number) =>
+        `Scanning ${formatNumber(completed)} / ${formatNumber(total)}`,
+      checkingPreparation: "Checking what's left to prepare for the scanned videos",
+      preparingCount: (remaining: number) =>
+        `Preparing the scanned videos (${items(remaining)} left)`,
+      partialFailed: (failed: number) =>
+        selectPlural(failed, {
+          one: `Finished with ${formatNumber(failed)} failure`,
+          other: `Finished with ${formatNumber(failed)} failures`,
+        }),
+      failed: (reason: string) => `The scan failed: ${reason}`,
+      lastScanned: (completed: number) => `The last scan processed ${items(completed)}`,
+      noChanges: "The last scan found no changes",
+      // 上部の進捗表示
+      announce: {
+        starting: "Starting the scan",
+        unknownTotal: "Scanning. Counting the items",
+        running: (total: number) => `Scanning ${items(total)}`,
+        preparing: "Preparing the scanned videos",
+        done: "The scan is complete",
+        partialFailed: "The scan finished with some failures",
+        failed: "The scan failed",
+      },
+      label: {
+        starting: "Starting",
+        scanning: "Scanning",
+        scanningPercent: (percent: number) => `Scanning ${formatNumber(percent)}%`,
+        preparing: "Preparing",
+        preparingLeft: (remaining: number) =>
+          `Preparing, ${formatNumber(remaining)} left`,
+        partialFailed: "Some failed",
+        failed: "The scan failed",
+        done: "Done",
+      },
+      checkingRemaining: "Checking what's left",
+      remaining: (remaining: number) => `${items(remaining)} left`,
+      counts: (completed: number, total: number | null, failed: number) =>
+        total === null
+          ? `${formatNumber(completed)} / counting (${formatNumber(failed)} failed)`
+          : `${formatNumber(completed)} / ${formatNumber(total)} (${formatNumber(failed)} failed)`,
+      failedSeeSettings: "The scan failed. See Settings for the reason.",
+      openStatus: (label: string) => `${label}. Open the scan status`,
+      dismissFailure: "Dismiss the scan failure notice",
+      progress: "Scan progress",
+      progressPreparing: "Preparing the scanned videos",
+      progressChecking: "Checking what to scan",
+      breakdown: {
+        label: "Preparation left",
+        probe: "Analysis",
+        thumbnail: "Thumbnails",
+        seekThumbnail: "Seek",
+        preview: "Previews",
+      },
+    },
+  },
+  settings: {
+    title: "Settings",
+    scanStatus: {
+      heading: "Scan status",
+      state: {
+        notRun: "Not run",
+        starting: "Starting",
+        running: "Running",
+        preparing: "Preparing",
+        done: "Done",
+        partialFailed: "Some failed",
+        failed: "Failed",
+        fetchFailed: "Rechecking",
+      },
+      nothingFound: "There was nothing to scan",
+      processed: "Processed",
+      total: "Total",
+      failed: "Failed",
+      counting: "Counting…",
+      preparationLeft: "Preparation left",
+      startedAt: "Started",
+      finishedAt: "Finished",
+      notFinished: "Not finished",
+      rechecking: "Rechecking the latest status",
+    },
+    mediaFolders: {
+      heading: "Media folders",
+      description:
+        "Folders on the server where vv looks for videos. After a change, run a scan with “Refresh library” at the top. Scans don't start automatically.",
+      lockedWhileScanning: "You can't change media folders while a scan is running",
+      list: "Added media folders",
+      loading: "Loading the media folders",
+      loadFailed: (reason: string) => `Couldn't load the media folders: ${reason}`,
+      empty: "No media folders yet",
+      emptyHint: "Add a folder to start scanning manually.",
+      removing: "Removing…",
+      changing: "Changing…",
+      change: "Change folder",
+      remove: "Remove folder",
+      add: "Add folder",
+      addBlocked: "You can add a folder once the current folders have loaded",
+      changedElsewhere:
+        "This folder was changed or removed elsewhere. Check it and try again.",
+      added: "Added. Run a scan to apply the change.",
+      changed: "Changed. Run a scan to apply the change.",
+      removed: "Removed. A scan doesn't start automatically.",
+    },
+    removeDialog: {
+      title: "Remove this folder?",
+      warning:
+        "Videos that are only in this folder leave the list. Videos that are also in another media folder stay. Playback positions and watched status are kept. A scan doesn't start automatically.",
+      submit: "Remove",
+    },
+    picker: {
+      addTitle: "Add media folder",
+      changeTitle: "Change media folder",
+      parent: "Go to the parent folder",
+      fileSystem: "File system",
+      list: "Folders",
+      loading: "Loading the folders",
+      toRoot: "Go to the top",
+      noSubfolders: "No subfolders",
+      selectFolder: "Select a folder",
+      sameFolder: "This is the current folder",
+      overlaps:
+        "You can't select a media folder that's already added, or a folder inside or above one",
+      addThis: "Add this folder",
+      changeToThis: "Change to this folder",
+      confirmTitle: "Change this folder?",
+      before: "Before",
+      after: "After",
+      confirmWarning:
+        "Videos that are only in the old folder leave the list. Videos that are also in another media folder stay. Playback positions and watched status are kept. A scan doesn't start automatically.",
+      confirm: "Change",
+    },
   },
   errors: {
     code: errorCodes,

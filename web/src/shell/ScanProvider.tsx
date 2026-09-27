@@ -21,7 +21,7 @@ import {
 } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { useAudience } from "../auth/audience";
-import { errorText } from "../i18n";
+import { errorText, t, type UiText } from "../i18n";
 
 export interface ScanContextValue {
   scan: Scan | null;
@@ -33,7 +33,7 @@ export interface ScanContextValue {
    */
   processing: Processing | null;
   /** 状態取得や開始の失敗。 */
-  error: string | null;
+  error: UiText | null;
   starting: boolean;
   running: boolean;
   canStart: boolean;
@@ -52,7 +52,7 @@ const ScanContext = createContext<ScanContextValue | null>(null);
 export function useScan(): ScanContextValue {
   const value = useContext(ScanContext);
   if (value === null) {
-    throw new Error("useScan は ScanProvider の中で使う");
+    throw new Error("useScan must be used inside ScanProvider");
   }
   return value;
 }
@@ -86,8 +86,8 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [scan, setScan] = useState<Scan | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [processing, setProcessing] = useState<Processing | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [startError, setStartError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<UiText | null>(null);
+  const [startError, setStartError] = useState<UiText | null>(null);
   const [starting, setStarting] = useState(false);
   const [finished, setFinished] = useState<Scan | null>(null);
   const [folderCount, setFolderCount] = useState<number | null>(null);
@@ -261,7 +261,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
         ) {
           updateFolderCount(0);
         }
-        setStartError(`取り込みを始められません: ${errorText(failure)}`);
+        setStartError(t.shell.scan.startFailed(errorText(failure)));
         // 応答だけを失い、取り込み自体は始まっていることがある。変化の知らせか
         // 次の取得でそれを見たら、失敗の表示を消して追跡する。
         recoveryBaselineScanId.current = baselineScanId;
@@ -304,29 +304,4 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   );
 
   return <ScanContext.Provider value={value}>{children}</ScanContext.Provider>;
-}
-
-/** describeScan は状態を一行にする（ツールチップ・読み上げ用）。 */
-export function describeScan(value: ScanContextValue): string {
-  const { scan, error } = value;
-  if (error !== null) return error;
-  if (value.starting) return "取り込みを開始しています…";
-  if (scan === null) return "まだ取り込んでいません";
-  const failed = scan.failed > 0 ? `（${String(scan.failed)} 件失敗）` : "";
-  switch (scan.state) {
-    case "running":
-      return scan.total > 0
-        ? `取り込み中 ${String(scan.completed)} / ${String(scan.total)}${failed}`
-        : "取り込み中…";
-    case "done": {
-      if (value.processing === null) return "取り込んだ動画の準備の残りを確認しています";
-      const remaining = processingRemaining(value.processing);
-      if (remaining > 0) return `取り込んだ動画を準備中（残り ${String(remaining)} 件）`;
-      return scan.completed > 0
-        ? `前回 ${String(scan.completed)} 件を取り込みました${failed}`
-        : `前回の取り込みで変化はありませんでした${failed}`;
-    }
-    case "failed":
-      return `取り込みに失敗しました: ${scan.error ?? "理由は記録されていません"}`;
-  }
 }

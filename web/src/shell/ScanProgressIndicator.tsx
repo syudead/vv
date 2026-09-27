@@ -2,7 +2,7 @@ import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router";
 
-import { untranslated } from "../i18n";
+import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
@@ -21,35 +21,62 @@ function iconFor(state: ScanPresentation["state"]) {
   return RefreshCw;
 }
 
-function countSummary(presentation: ScanPresentation) {
+function countSummary(presentation: ScanPresentation): UiText {
   if (presentation.state === "preparing") {
     return presentation.processing === null
-      ? "残りを確認中"
-      : `残り ${String(presentation.remaining)} 件`;
+      ? t.shell.scan.checkingRemaining
+      : t.shell.scan.remaining(presentation.remaining);
   }
-  const total = presentation.total === null ? "確認中" : String(presentation.total);
-  return `${String(presentation.completed)} / ${total} 件（${String(presentation.failed)} 件失敗）`;
+  return t.shell.scan.counts(
+    presentation.completed,
+    presentation.total,
+    presentation.failed,
+  );
 }
 
-function statusAnnouncement(presentation: ScanPresentation) {
+function statusAnnouncement(presentation: ScanPresentation): UiText | null {
+  const announce = t.shell.scan.announce;
   switch (presentation.state) {
     case "starting":
-      return "取り込みを開始しています";
+      return announce.starting;
     case "unknown-total":
-      return "取り込み中。総件数を確認しています";
+      return announce.unknownTotal;
     case "running":
-      return `取り込み対象は ${String(presentation.total)} 件です`;
+      return announce.running(presentation.total ?? 0);
     case "preparing":
-      return "取り込んだ動画を準備しています";
+      return announce.preparing;
     case "done":
-      return "取り込みが完了しました";
+      return announce.done;
     case "partial-failed":
-      return "取り込みが一部失敗で完了しました";
+      return announce.partialFailed;
     case "failed":
-      return "取り込みに失敗しました";
+      return announce.failed;
     case "not-run":
     case "fetch-failed":
-      return "";
+      return null;
+  }
+}
+
+function indicatorLabel(presentation: ScanPresentation): UiText {
+  const label = t.shell.scan.label;
+  switch (presentation.state) {
+    case "starting":
+      return label.starting;
+    case "running":
+    case "unknown-total":
+      return presentation.progress === null
+        ? label.scanning
+        : label.scanningPercent(Math.round(presentation.progress * 100));
+    case "preparing":
+      return presentation.processing === null
+        ? label.preparing
+        : label.preparingLeft(presentation.remaining);
+    case "partial-failed":
+      return label.partialFailed;
+    case "failed":
+      return label.failed;
+    default:
+      return label.done;
   }
 }
 
@@ -111,24 +138,9 @@ export default function ScanProgressIndicator() {
   const Icon = iconFor(presentation.state);
   const description =
     presentation.state === "failed"
-      ? "取り込みに失敗しました。設定で理由を確認してください"
+      ? t.shell.scan.failedSeeSettings
       : presentation.description;
-  const label =
-    presentation.state === "starting"
-      ? "開始中"
-      : presentation.state === "running" || presentation.state === "unknown-total"
-        ? presentation.progress === null
-          ? "取り込み中"
-          : `取り込み中 ${String(Math.round(presentation.progress * 100))}%`
-        : presentation.state === "preparing"
-          ? presentation.processing === null
-            ? "準備中"
-            : `準備中 残り ${String(presentation.remaining)}`
-          : presentation.state === "partial-failed"
-            ? "一部失敗"
-            : presentation.state === "failed"
-              ? "取り込みに失敗しました"
-              : "完了";
+  const label = indicatorLabel(presentation);
   const goToDetails = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     navigatingToDetails.current = true;
@@ -174,7 +186,7 @@ export default function ScanProgressIndicator() {
               onClick={goToDetails}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
-              aria-label={`${label}。取り込み状況を開く`}
+              aria-label={t.shell.scan.openStatus(label)}
               className="inline-flex max-w-full items-center gap-2 rounded-md border border-border-strong bg-elevated px-3 py-2 text-sm text-fg shadow-elevated"
             >
               <Icon
@@ -185,7 +197,7 @@ export default function ScanProgressIndicator() {
           </PopoverTrigger>
           {presentation.state === "failed" && (
             <IconButton
-              label={untranslated("取り込み失敗の通知を閉じる")}
+              label={t.shell.scan.dismissFailure}
               size="sm"
               className="-ml-1 rounded-md border border-border-strong bg-elevated shadow-elevated"
               onClick={() => notice.acknowledgeTerminalScan()}
@@ -210,7 +222,11 @@ export default function ScanProgressIndicator() {
         >
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <strong>{presentation.state === "preparing" ? "準備中" : label}</strong>
+              <strong>
+                {presentation.state === "preparing"
+                  ? t.shell.scan.label.preparing
+                  : label}
+              </strong>
               <span className="tabular-nums text-fg-muted">
                 {countSummary(presentation)}
               </span>
@@ -218,7 +234,7 @@ export default function ScanProgressIndicator() {
             <ScanProgressBar presentation={presentation} className="h-1.5" />
             {/* 準備中は件数を見出しと内訳に出しているので、同じ件数の説明文を重ねない。 */}
             {presentation.state === "preparing" ? (
-              <p className="text-sm text-fg-muted">取り込んだ動画を準備しています</p>
+              <p className="text-sm text-fg-muted">{t.shell.scan.announce.preparing}</p>
             ) : (
               <p className="text-sm text-fg-muted">{description}</p>
             )}

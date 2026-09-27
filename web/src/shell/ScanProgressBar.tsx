@@ -1,3 +1,4 @@
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import type { ScanPresentation } from "./scanPresentation";
 
@@ -22,7 +23,7 @@ export default function ScanProgressBar({
     return (
       <div
         role="progressbar"
-        aria-label="取り込みの進捗"
+        aria-label={t.shell.scan.progress}
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={value}
@@ -42,8 +43,8 @@ export default function ScanProgressBar({
       role="progressbar"
       aria-label={
         presentation.state === "preparing"
-          ? "取り込んだ動画を準備中"
-          : "取り込み対象を確認中"
+          ? t.shell.scan.progressPreparing
+          : t.shell.scan.progressChecking
       }
       className={cn("overflow-hidden rounded-full bg-bg", className)}
     >

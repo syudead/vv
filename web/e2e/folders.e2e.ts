@@ -156,8 +156,8 @@ test.describe.serial("folder browser", () => {
     page,
   }) => {
     await page.goto("/");
-    const sidebar = page.getByRole("complementary", { name: "メインナビゲーション" });
-    await sidebar.getByRole("link", { name: "フォルダ" }).click();
+    const sidebar = page.getByRole("complementary", { name: "Main navigation" });
+    await sidebar.getByRole("link", { name: "Folders" }).click();
     await expect(page).toHaveURL(/\/folders$/);
 
     await expect(
@@ -518,7 +518,7 @@ test.describe.serial("folder search", () => {
     // 取り込むと、ページの ScanProvider が「実行中」を観測する前に終わってしまい
     // 検知できないことがある）。
     await rm(`${dir}/movies/A/B`, { recursive: true, force: true });
-    await page.getByRole("button", { name: "ライブラリを更新" }).click();
+    await page.getByRole("button", { name: "Refresh library" }).click();
 
     await expect(page.getByText("このフォルダは見つかりません")).toBeVisible({
       timeout: 60_000,

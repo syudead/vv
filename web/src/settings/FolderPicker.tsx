@@ -2,7 +2,7 @@ import { ArrowLeft, ArrowUp, ChevronRight, Folder, LoaderCircle } from "lucide-r
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import { listDirectories, type DirectoryListing, type MediaFolder } from "../api/client";
-import { errorText, untranslated } from "../i18n";
+import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
 import { ModalFrame } from "../ui/ModalFrame";
@@ -26,16 +26,15 @@ function candidateProblem(
   listing: DirectoryListing | null,
   folders: MediaFolder[],
   replacing?: MediaFolder,
-): string | null {
+): UiText | null {
+  const text = t.settings.picker;
   const path = listing?.currentPath;
-  if (path === undefined) return "フォルダを選択してください";
-  if (replacing?.path === path) return "現在と同じフォルダです";
+  if (path === undefined) return text.selectFolder;
+  if (replacing?.path === path) return text.sameFolder;
   const conflict = folders.find(
     (folder) => folder.id !== replacing?.id && pathsOverlap(folder.path, path),
   );
-  return conflict === undefined
-    ? null
-    : "登録済みフォルダと同じ場所、またはその親子は選択できません";
+  return conflict === undefined ? null : text.overlaps;
 }
 
 export default function FolderPicker({
@@ -49,14 +48,14 @@ export default function FolderPicker({
   folders: MediaFolder[];
   replacing?: MediaFolder;
   submitting: boolean;
-  mutationError: string | null;
+  mutationError: UiText | null;
   onClose: () => void;
   onSubmit: (path: string) => void;
 }) {
   const [listing, setListing] = useState<DirectoryListing | null>(null);
   const [requestedPath, setRequestedPath] = useState<string | undefined>(replacing?.path);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<UiText | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const rows = useRef<Array<HTMLButtonElement | null>>([]);
@@ -117,24 +116,21 @@ export default function FolderPicker({
 
   const problem = candidateProblem(listing, folders, replacing);
   const currentPath = listing?.currentPath;
-  const title = replacing ? "メディアフォルダを変更" : "メディアフォルダを追加";
+  const text = t.settings.picker;
+  const title = replacing ? text.changeTitle : text.addTitle;
 
   if (confirming && replacing !== undefined && currentPath !== undefined) {
     return (
-      <ModalFrame
-        title={untranslated("フォルダの変更を確認")}
-        onClose={onClose}
-        initialFocus={confirmBack}
-      >
+      <ModalFrame title={text.confirmTitle} onClose={onClose} initialFocus={confirmBack}>
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
           <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
-            <span className="text-xs font-medium text-fg-muted">変更前</span>
+            <span className="text-xs font-medium text-fg-muted">{text.before}</span>
             <code className="min-w-0 break-words text-sm text-fg">{replacing.path}</code>
-            <span className="text-xs font-medium text-fg-muted">変更後</span>
+            <span className="text-xs font-medium text-fg-muted">{text.after}</span>
             <code className="min-w-0 break-words text-sm text-fg">{currentPath}</code>
           </div>
           <p className="border-l-2 border-warning-strong pl-3 text-sm leading-6 text-fg-muted">
-            変更前のフォルダだけにある動画は一覧から外れます。別の登録フォルダにもある動画は残ります。再生位置と視聴済み状態は残ります。取り込みは自動では始まりません。
+            {text.confirmWarning}
           </p>
           {mutationError !== null && (
             <p role="alert" className="text-sm text-danger">
@@ -149,7 +145,7 @@ export default function FolderPicker({
             disabled={submitting}
           >
             <ArrowLeft />
-            戻る
+            {t.common.back}
           </Button>
           <Button
             variant="danger"
@@ -157,7 +153,7 @@ export default function FolderPicker({
             disabled={submitting}
           >
             {submitting && <LoaderCircle className="animate-spin" />}
-            変更する
+            {text.confirm}
           </Button>
         </div>
       </ModalFrame>
@@ -165,11 +161,11 @@ export default function FolderPicker({
   }
 
   return (
-    <ModalFrame title={untranslated(title)} onClose={onClose}>
+    <ModalFrame title={title} onClose={onClose}>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex shrink-0 items-start gap-2 border-b border-border px-4 py-3">
           <IconButton
-            label={untranslated("親フォルダへ戻る")}
+            label={text.parent}
             onClick={(event) =>
               load(listing?.parentPath ?? undefined, event.detail === 0)
             }
@@ -181,7 +177,7 @@ export default function FolderPicker({
             aria-live="polite"
             className="min-w-0 flex-1 break-words pt-2 text-xs leading-5 text-fg-muted"
           >
-            {listing?.currentPath ?? "ファイルシステム"}
+            {listing?.currentPath ?? text.fileSystem}
           </code>
         </div>
 
@@ -190,14 +186,10 @@ export default function FolderPicker({
           tabIndex={-1}
           className="min-h-0 flex-1 overflow-y-auto p-2 sm:min-h-72"
           onKeyDown={onListKeyDown}
-          aria-label="フォルダ一覧"
+          aria-label={text.list}
         >
           {loading && (
-            <div
-              role="status"
-              aria-label="フォルダを読み込み中"
-              className="space-y-2 p-2"
-            >
+            <div role="status" aria-label={text.loading} className="space-y-2 p-2">
               <Skeleton className="h-10" />
               <Skeleton className="h-10" />
               <Skeleton className="h-10" />
@@ -209,17 +201,15 @@ export default function FolderPicker({
                 {loadError}
               </p>
               <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={() => load(requestedPath)}>再試行</Button>
+                <Button onClick={() => load(requestedPath)}>{t.common.retry}</Button>
                 <Button variant="ghost" onClick={() => load()}>
-                  ルートへ戻る
+                  {text.toRoot}
                 </Button>
               </div>
             </div>
           )}
           {!loading && loadError === null && listing?.directories.length === 0 && (
-            <p className="p-6 text-center text-sm text-fg-muted">
-              子フォルダはありません
-            </p>
+            <p className="p-6 text-center text-sm text-fg-muted">{text.noSubfolders}</p>
           )}
           {!loading && loadError === null && listing !== null && (
             <div role="list" className="divide-y divide-border">
@@ -264,7 +254,7 @@ export default function FolderPicker({
           )}
           <div className="flex justify-end gap-2">
             <Button variant="ghost" onClick={onClose} disabled={submitting}>
-              キャンセル
+              {t.common.cancel}
             </Button>
             <Button
               variant="primary"
@@ -276,7 +266,7 @@ export default function FolderPicker({
               }}
             >
               {submitting && <LoaderCircle className="animate-spin" />}
-              {replacing ? "このフォルダに変更" : "このフォルダを追加"}
+              {replacing ? text.changeToThis : text.addThis}
             </Button>
           </div>
         </div>

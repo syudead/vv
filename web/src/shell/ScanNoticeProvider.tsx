@@ -29,7 +29,8 @@ const ScanNoticeContext = createContext<ScanNoticeContextValue | null>(null);
 
 export function useScanNotice(): ScanNoticeContextValue {
   const value = useContext(ScanNoticeContext);
-  if (value === null) throw new Error("useScanNotice は ScanNoticeProvider の中で使う");
+  if (value === null)
+    throw new Error("useScanNotice must be used inside ScanNoticeProvider");
   return value;
 }
 

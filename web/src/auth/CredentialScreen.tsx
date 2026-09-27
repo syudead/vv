@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 
 // 初回設定画面とログイン画面が共有する骨格と部品
@@ -38,8 +39,8 @@ export function CredentialScreen({
   onSubmit,
   children,
 }: {
-  title: string;
-  description?: string;
+  title: UiText;
+  description?: UiText;
   onSubmit: () => void;
   children: ReactNode;
 }) {
@@ -55,7 +56,7 @@ export function CredentialScreen({
         <form noValidate onSubmit={submit} className="flex flex-col gap-5">
           <p className="flex items-center gap-2 text-base font-semibold tracking-tight text-fg select-none">
             <span className="size-2.5 rounded-full bg-accent" aria-hidden="true" />
-            vv
+            {t.common.appName}
           </p>
           <div className="flex flex-col gap-1.5">
             <h1 className="text-xl font-semibold text-fg">{title}</h1>
@@ -72,7 +73,7 @@ export function CredentialScreen({
 
 export interface CredentialFieldProps extends InputHTMLAttributes<HTMLInputElement> {
   id: string;
-  label: string;
+  label: UiText;
 }
 
 export const CredentialField = forwardRef<HTMLInputElement, CredentialFieldProps>(
@@ -104,7 +105,7 @@ export const UsernameField = forwardRef<
   return (
     <CredentialField
       ref={ref}
-      label="ユーザー名"
+      label={t.auth.fields.username}
       name="username"
       type="text"
       autoComplete="username"
@@ -117,7 +118,7 @@ export const UsernameField = forwardRef<
 });
 
 /** FailureLine は失敗の行である。出た時点で読まれる。 */
-export function FailureLine({ message }: { message: string | null }) {
+export function FailureLine({ message }: { message: UiText | null }) {
   if (message === null) return null;
   return (
     <p id={FAILURE_ID} role="alert" className="flex gap-2 text-sm text-danger">
@@ -129,7 +130,7 @@ export function FailureLine({ message }: { message: string | null }) {
 
 /**
  * ConnectionWarning は HTTP のときだけ出す接続の警告である。HTTPS ではこの行を出さず、
- * 「安全な接続です」のような肯定の文も出さない（ui-design.md「Connection warning」）。
+ * 「This connection is secure」のような肯定の文も出さない（ui-design.md「Connection warning」）。
  */
 export function ConnectionWarning() {
   if (!isInsecureConnection()) return null;
@@ -139,9 +140,7 @@ export function ConnectionWarning() {
       className="flex gap-2 border-l-2 border-warning-strong pl-3 text-sm leading-6 text-warning"
     >
       <ShieldAlert className="mt-1 size-4 shrink-0" aria-hidden="true" />
-      <span>
-        この接続は暗号化されていません。ユーザー名、パスワード、ログイン状態は通信路で読み取られるおそれがあります。ログインは通信の盗聴を防ぎません
-      </span>
+      <span>{t.auth.connectionWarning}</span>
     </p>
   );
 }
