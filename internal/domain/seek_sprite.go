@@ -53,6 +53,12 @@ func (l SeekSpriteLayout) FrameAt(positionMs int64) int {
 	return int(min(positionMs/l.IntervalMs, int64(l.FrameCount-1)))
 }
 
+// ceilDiv は正の a, b について a/b の切り上げを返す。a+b-1 は a が int64 の上限に
+// 近いとあふれるため、商と余りから求める。
 func ceilDiv(a, b int64) int64 {
-	return (a + b - 1) / b
+	q := a / b
+	if a%b != 0 {
+		q++
+	}
+	return q
 }

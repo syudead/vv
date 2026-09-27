@@ -1,6 +1,9 @@
 package domain
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestNewSeekSpriteLayout(t *testing.T) {
 	tests := []struct {
@@ -35,7 +38,7 @@ func TestSeekSpriteLayoutKeepsFiveSecondsUpToFiftyMinutes(t *testing.T) {
 }
 
 func TestSeekSpriteLayoutNeverExceedsLimits(t *testing.T) {
-	durations := []int64{1, 4999, 5001, 499_999, 2_999_999, 3_000_001, 3_000_599, 3_000_600, 3_000_601, 7_199_999, 7_200_001, 36_000_000, 1<<53 - 1}
+	durations := []int64{1, 4999, 5001, 499_999, 2_999_999, 3_000_001, 3_000_599, 3_000_600, 3_000_601, 7_199_999, 7_200_001, 36_000_000, 1<<53 - 1, math.MaxInt64 - 1, math.MaxInt64}
 	for d := int64(1); d < 20_000_000; d = d*3 + 7 {
 		durations = append(durations, d)
 	}
@@ -51,11 +54,14 @@ func TestSeekSpriteLayoutNeverExceedsLimits(t *testing.T) {
 			t.Errorf("duration %d: SheetCount = %d for %d frames", durationMs, l.SheetCount, l.FrameCount)
 		}
 		// 全フレームで動画全体を覆い、最後のコマの区間は動画の中から始まる。
-		if int64(l.FrameCount)*l.IntervalMs < durationMs {
-			t.Errorf("duration %d: %d frames x %d ms do not cover it", durationMs, l.FrameCount, l.IntervalMs)
+		// FrameCount*IntervalMs は int64 の上限付近であふれるため、最後のコマの
+		// 開始位置から比べる。
+		lastStart := int64(l.FrameCount-1) * l.IntervalMs
+		if lastStart >= durationMs {
+			t.Errorf("duration %d: last frame starts at %d", durationMs, lastStart)
 		}
-		if int64(l.FrameCount-1)*l.IntervalMs >= durationMs {
-			t.Errorf("duration %d: last frame starts at %d", durationMs, int64(l.FrameCount-1)*l.IntervalMs)
+		if durationMs-lastStart > l.IntervalMs {
+			t.Errorf("duration %d: %d frames x %d ms do not cover it", durationMs, l.FrameCount, l.IntervalMs)
 		}
 	}
 }
