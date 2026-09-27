@@ -1987,16 +1987,9 @@ describe("TagsPage の英語の文言", () => {
     await user.click(within(rowOf("Anime")).getByRole("button", { name: "Synonyms" }));
     const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Anime"' });
     const input = within(dialog).getByRole("textbox", { name: "Add synonym" });
-    // 送った綴りと、名前を持つタグの元の名前が違う（サーバーが整えた形で一致した）場合。
-    server.nextError = {
-      status: 409,
-      body: {
-        code: "tag_merge_required",
-        tagName: "ドラマ",
-        message: "server-side message",
-      },
-    };
-    await user.type(input, "ﾄﾞﾗﾏ");
+    // サーバーは整えた名前（前後の空白を除くだけ）を BINARY で照合するので、
+    // 前後に空白を付けて打った綴りでも、tagName は元の名前「ドラマ」になる。
+    await user.type(input, "  ドラマ  ");
     await user.keyboard("{Enter}");
     expect(
       await within(dialog).findByText(

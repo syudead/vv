@@ -199,8 +199,8 @@ export default function SynonymsDialog({
   async function openConfirm(name: string, attempt = 0, ownerName?: string) {
     try {
       const list = await refreshTags();
-      // S は API が tagName で返した元の名前で探す（送った綴りと整え方が違っても
-      // 見つかるように）。tagName が無い応答では送った綴りで探す。
+      // S は API が tagName で返した元の名前で探す（contracts/error-api.md §1）。
+      // tagName が無い応答では送った綴りで探す。
       const found = list.find((item) => item.name === (ownerName ?? name));
       if (found === undefined) {
         if (attempt >= 1) {
