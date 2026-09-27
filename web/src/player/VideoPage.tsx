@@ -194,7 +194,7 @@ export default function VideoPage() {
   const title = video?.title;
   useEffect(() => {
     const previous = document.title;
-    if (title !== undefined) document.title = `${title} - vv`;
+    if (title !== undefined) document.title = `${title} · VVMDM`;
     return () => {
       document.title = previous;
     };

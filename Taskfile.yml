@@ -49,7 +49,7 @@ tasks:
       - go run ./scripts/dev
 
   preview:
-    desc: Build vv and run it with generated sample videos (used by Codespaces).
+    desc: Build VVMDM and run it with generated sample videos (used by Codespaces).
     cmds:
       - go run ./scripts/preview
 
