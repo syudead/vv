@@ -17,6 +17,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // task test-web のビルド成果物で開発中のページを再読み込みしない。
+    // 再読み込みは再生中の動画と API リクエストを中断する。
+    watch: { ignored: ["**/.vite-build-check/**"] },
     proxy: {
       "/api": {
         target: process.env.MDM_API_TARGET ?? "http://localhost:8080",

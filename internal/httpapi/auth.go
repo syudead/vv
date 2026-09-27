@@ -271,6 +271,10 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 			valid, err = false, nil
 		}
 		if err != nil {
+			if r.Context().Err() != nil {
+				// ブラウザーがページを離れた要求は、認証の障害として記録しない。
+				return
+			}
 			setAudience(domain.AudienceGuest)
 			if class == accessPublic {
 				// 誰でもの要求は見る人に依らないので、確かめられなくてもゲストとして続ける。
@@ -434,6 +438,9 @@ func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params g
 	}
 	state, err := s.auth.State(r.Context(), s.sessionToken(r))
 	if err != nil {
+		if r.Context().Err() != nil {
+			return
+		}
 		s.internalError(w, "ログインの状態を確かめられませんでした", err)
 		return
 	}
