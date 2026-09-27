@@ -18,6 +18,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"io"
 	"io/fs"
 	"os"
@@ -34,7 +36,8 @@ import (
 // content key をファイル名に使える形にしたもの、<p> は <s> の先頭2文字である。
 //
 //	<root>/<p>/<s>.jpg                      ライブラリ用サムネイル
-//	<root>/seek/<p>/<s>/<n>.jpg             シーク用プレビュー（<n> は6桁の番号）
+//	<root>/seek/<p>/<s>/<n>.jpg             シーク用プレビューのシート（<n> は3桁の番号）
+//	<root>/seek/<p>/<s>/sprite.json         その配置情報。完成の印を兼ねる
 //	<root>/preview/<p>/<s>.mp4              ホバープレビュー
 //	<root>/preview/<p>/<s>.mp4.sha256       その manifest
 //	<root>/preview/.publish.lock            ホバープレビューの公開の錠
@@ -50,10 +53,15 @@ const (
 	thumbnailExt     = ".jpg"
 	previewExt       = ".mp4"
 	manifestExt      = ".sha256"
-	// frameNameFormat はシーク用プレビューの1フレームのファイル名である。ffmpeg の
-	// 連番の出力にもそのまま渡す。
-	frameNameFormat = "%06d.jpg"
+	// sheetNameFormat はシーク用プレビューのシートのファイル名である
+	// （internal/media の GenerateSeekSprite が書く名前）。
+	sheetNameFormat = "%03d.jpg"
+	// spriteFileName はシーク用プレビューの配置情報のファイル名である。
+	spriteFileName = "sprite.json"
 )
+
+// spriteVersion はシーク用プレビューの配置情報の版である。
+const spriteVersion = 1
 
 // dirPerm は置き場のディレクトリを作るときの許可属性である。
 const dirPerm os.FileMode = 0o755
@@ -201,15 +209,23 @@ func (s *Store) PublishThumbnail(contentKey string, write func(output string) er
 	return nil
 }
 
-// PublishSeekThumbnails はシーク用プレビューを公開する。完成したものがすでに
-// あれば write を呼ばずに成功を返す。write は一時置き場の中の連番のファイル名の
-// 型（ffmpeg の出力にそのまま渡せる形）を受けてフレームを書く。
-func (s *Store) PublishSeekThumbnails(contentKey string, write func(outputPattern string) error) error {
+// PublishSeekThumbnails はシーク用プレビューのスプライトを公開する
+// （specs/021-seek-thumbnail-sprite/research.md R-3）。配置情報（sprite.json）の
+// ある完成した置き場がすでにあれば write を呼ばずに成功を返す。
+//
+// write は一時置き場のディレクトリを受け、layout の配置でシート 000.jpg から順に
+// 書く。書き終えたら、コマの大きさをシート 000.jpg の寸法から読んで sprite.json を
+// 書き、ディレクトリごと本来の場所へ改名する。その直前に、配置情報の無い置き場
+// （旧形式の個別 JPEG や、途中で壊れたもの）を消す。同じ内容の公開と削除を
+// 直列にする錠は呼び出し側（internal/app）が持つ。
+func (s *Store) PublishSeekThumbnails(
+	contentKey string, layout domain.SeekSpriteLayout, write func(outputDir string) error,
+) error {
 	target, err := s.publishTarget(s.seekDir, contentKey)
 	if err != nil {
 		return err
 	}
-	if isDir(target) {
+	if _, err := readSeekSprite(target); err == nil {
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
@@ -221,15 +237,26 @@ func (s *Store) PublishSeekThumbnails(contentKey string, write func(outputPatter
 	}
 	defer func() { _ = os.RemoveAll(temporary) }()
 
-	if err := write(filepath.Join(temporary, frameNameFormat)); err != nil {
+	if err := write(temporary); err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(temporary, fmt.Sprintf(frameNameFormat, 0))); err != nil {
+	sprite, err := describeSheets(temporary, layout)
+	if err != nil {
 		return fmt.Errorf("シークサムネイルが生成されませんでした (%s): %w", contentKey, err)
 	}
-	// ディレクトリごと改名するので、置き場があれば完成している。
+	data, err := json.Marshal(spriteFileFrom(sprite))
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(filepath.Join(temporary, spriteFileName), append(data, '\n'), 0o644); err != nil {
+		return fmt.Errorf("シークサムネイルの配置情報を書けません: %w", err)
+	}
+	if err := os.RemoveAll(target); err != nil {
+		return fmt.Errorf("古いシークサムネイルを削除できません: %w", err)
+	}
+	// ディレクトリごと改名するので、配置情報があれば完成している。
 	if err := os.Rename(temporary, target); err != nil {
-		if isDir(target) {
+		if _, readErr := readSeekSprite(target); readErr == nil {
 			return nil
 		}
 		return fmt.Errorf("シークサムネイルを確定できません: %w", err)
@@ -358,15 +385,29 @@ func (s *Store) PreviewFile(contentKey string) (*os.File, string, error) {
 	return file, digest, nil
 }
 
-// SeekThumbnail は再生位置 positionMs を含むシーク用プレビューの1フレームを
-// 読む。無ければ fs.ErrNotExist を包んだ誤りを返す。
-func (s *Store) SeekThumbnail(contentKey string, positionMs int64) ([]byte, error) {
+// SeekSprite は完成したシーク用プレビューの配置情報を読む。置き場か配置情報が
+// 無ければ fs.ErrNotExist を包んだ誤りを返し、配置情報の形が違えばそれ以外の
+// 誤りを返す。
+func (s *Store) SeekSprite(contentKey string) (domain.SeekSprite, error) {
+	dir, ok := s.seekDir(contentKey)
+	if !ok {
+		return domain.SeekSprite{}, errInvalidKey
+	}
+	return readSeekSprite(dir)
+}
+
+// SeekSpriteSheet はシーク用プレビューのシート sheet（0 から）を読む。無ければ
+// fs.ErrNotExist を包んだ誤りを返す。枚数との照合は SeekSprite の結果で呼び出し側が
+// 行う。
+func (s *Store) SeekSpriteSheet(contentKey string, sheet int) ([]byte, error) {
 	dir, ok := s.seekDir(contentKey)
 	if !ok {
 		return nil, errInvalidKey
 	}
-	index := max(int64(0), positionMs/domain.SeekThumbnailInterval.Milliseconds())
-	return os.ReadFile(filepath.Join(dir, fmt.Sprintf(frameNameFormat, index)))
+	if sheet < 0 || sheet >= domain.SeekSpriteMaxSheets {
+		return nil, fmt.Errorf("シート %d: %w", sheet, fs.ErrNotExist)
+	}
+	return os.ReadFile(filepath.Join(dir, fmt.Sprintf(sheetNameFormat, sheet)))
 }
 
 // PreviewAvailable はホバープレビューを配信できるかを返す。
@@ -388,11 +429,13 @@ func (s *Store) PreviewAvailable(contentKey string) bool {
 	return err == nil
 }
 
-// SeekThumbnailsAvailable はシーク用プレビューの置き場があるかを返す。置き場は
-// 生成の完了時に一時置き場から改名して作られるので、あれば完成している。
+// SeekThumbnailsAvailable はシーク用プレビューが完成しているかを返す。完成の印は
+// 読める配置情報（sprite.json）で、それの無い置き場（旧形式の個別 JPEG や途中で
+// 壊れたもの）は未完成とみなす。置き場は生成の完了時に一時置き場から改名して
+// 作られるので、配置情報があればシートも揃っている。
 func (s *Store) SeekThumbnailsAvailable(contentKey string) bool {
-	dir, ok := s.seekDir(contentKey)
-	return ok && isDir(dir)
+	_, err := s.SeekSprite(contentKey)
+	return err == nil
 }
 
 // RemoveContent は内容1つ分の生成物（ライブラリ用サムネイル・シーク用
@@ -418,6 +461,133 @@ func (s *Store) RemoveContent(contentKey string) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// spriteFile は sprite.json の形である（research.md R-3）。
+type spriteFile struct {
+	Version     int   `json:"version"`
+	IntervalMs  int64 `json:"intervalMs"`
+	FrameCount  int   `json:"frameCount"`
+	Columns     int   `json:"columns"`
+	Rows        int   `json:"rows"`
+	FrameWidth  int   `json:"frameWidth"`
+	FrameHeight int   `json:"frameHeight"`
+	SheetCount  int   `json:"sheetCount"`
+}
+
+func spriteFileFrom(sprite domain.SeekSprite) spriteFile {
+	return spriteFile{
+		Version:     spriteVersion,
+		IntervalMs:  sprite.IntervalMs,
+		FrameCount:  sprite.FrameCount,
+		Columns:     sprite.Columns,
+		Rows:        sprite.Rows,
+		FrameWidth:  sprite.FrameWidth,
+		FrameHeight: sprite.FrameHeight,
+		SheetCount:  sprite.SheetCount,
+	}
+}
+
+// readSeekSprite は置き場 dir の配置情報を読み、形を確かめる。
+func readSeekSprite(dir string) (domain.SeekSprite, error) {
+	data, err := os.ReadFile(filepath.Join(dir, spriteFileName))
+	if err != nil {
+		return domain.SeekSprite{}, err
+	}
+	var file spriteFile
+	if err := json.Unmarshal(data, &file); err != nil {
+		return domain.SeekSprite{}, fmt.Errorf("シークサムネイルの配置情報を読めません: %w", err)
+	}
+	sprite := domain.SeekSprite{
+		SeekSpriteLayout: domain.SeekSpriteLayout{
+			IntervalMs: file.IntervalMs,
+			FrameCount: file.FrameCount,
+			Columns:    file.Columns,
+			Rows:       file.Rows,
+			SheetCount: file.SheetCount,
+		},
+		FrameWidth:  file.FrameWidth,
+		FrameHeight: file.FrameHeight,
+	}
+	if file.Version != spriteVersion || !validSeekSprite(sprite) {
+		return domain.SeekSprite{}, errors.New("シークサムネイルの配置情報の形が違います")
+	}
+	return sprite, nil
+}
+
+// validSeekSprite は配置情報の値が契約の範囲にあり、互いに食い違わないかを返す
+// （contracts/seek-sprite-api.md §2）。
+func validSeekSprite(sprite domain.SeekSprite) bool {
+	if sprite.IntervalMs < domain.SeekThumbnailInterval.Milliseconds() ||
+		sprite.FrameCount < 1 || sprite.FrameCount > domain.SeekSpriteMaxFrames ||
+		// 掛け算があふれないよう、1 シートのコマ数を上限のコマ数までに
+		// 割り算で抑えてから掛ける。
+		sprite.Columns < 1 || sprite.Columns > domain.SeekSpriteMaxFrames ||
+		sprite.Rows < 1 || sprite.Rows > domain.SeekSpriteMaxFrames/sprite.Columns ||
+		sprite.FrameWidth < 2 || sprite.FrameHeight < 2 ||
+		sprite.SheetCount < 1 || sprite.SheetCount > domain.SeekSpriteMaxSheets {
+		return false
+	}
+	perSheet := sprite.Columns * sprite.Rows
+	return sprite.SheetCount == (sprite.FrameCount+perSheet-1)/perSheet
+}
+
+// describeSheets は一時置き場 dir に layout の枚数のシートが揃っているかを
+// 確かめ、コマの大きさをシート 000.jpg の JPEG の寸法を列数・行数で割って得る。
+// ffmpeg の式や解析の値からは計算しない（自動回転と偶数への丸めを再現しない）。
+// どのシートも JPEG として読めて 000.jpg と同じ寸法であることも確かめ、表示
+// できないシートを含む置き場を完成として公開しない（最後のシートも tile が
+// 余りを埋めるので同じ寸法になる）。
+func describeSheets(dir string, layout domain.SeekSpriteLayout) (domain.SeekSprite, error) {
+	var width, height int
+	for sheet := range layout.SheetCount {
+		config, err := sheetConfig(filepath.Join(dir, fmt.Sprintf(sheetNameFormat, sheet)))
+		if err != nil {
+			return domain.SeekSprite{}, fmt.Errorf("シート %d: %w", sheet, err)
+		}
+		if sheet == 0 {
+			width, height = config.Width, config.Height
+		} else if config.Width != width || config.Height != height {
+			return domain.SeekSprite{}, fmt.Errorf("シート %d の大きさ %dx%d がシート 0 の %dx%d と違います",
+				sheet, config.Width, config.Height, width, height)
+		}
+	}
+	if layout.Columns < 1 || layout.Rows < 1 || layout.SheetCount < 1 ||
+		width%layout.Columns != 0 || height%layout.Rows != 0 {
+		return domain.SeekSprite{}, fmt.Errorf("シート 0 の大きさ %dx%d が %dx%d の格子に割り切れません",
+			width, height, layout.Columns, layout.Rows)
+	}
+	sprite := domain.SeekSprite{
+		SeekSpriteLayout: layout,
+		FrameWidth:       width / layout.Columns,
+		FrameHeight:      height / layout.Rows,
+	}
+	if !validSeekSprite(sprite) {
+		return domain.SeekSprite{}, errors.New("シートの配置が範囲の外です")
+	}
+	return sprite, nil
+}
+
+// sheetConfig は path が空でない通常ファイルの JPEG であることを確かめ、その
+// 寸法を返す。
+func sheetConfig(path string) (image.Config, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return image.Config{}, err
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
+		return image.Config{}, errors.New("空です")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return image.Config{}, err
+	}
+	defer func() { _ = file.Close() }()
+	config, err := jpeg.DecodeConfig(file)
+	if err != nil {
+		return image.Config{}, fmt.Errorf("JPEG として読めません: %w", err)
+	}
+	return config, nil
 }
 
 // previewManifest はホバープレビューの完全性を確かめるための記録である。
@@ -512,11 +682,6 @@ func removeFile(path string) error {
 		return err
 	}
 	return nil
-}
-
-func isDir(path string) bool {
-	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
 }
 
 func fileSHA256(path string) (string, error) {

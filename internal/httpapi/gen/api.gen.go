@@ -794,6 +794,32 @@ type Scan struct {
 // ScanState defines model for Scan.State.
 type ScanState string
 
+// SeekThumbnailSprite シーク用サムネイルのスプライトの配置情報
+// （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。最後のシートの
+// frameCount を超える部分は黒く、クライアントはそこを指さない。
+type SeekThumbnailSprite struct {
+	// Columns 1 シートの列数
+	Columns int `json:"columns"`
+
+	// FrameCount 全シートに載るコマの数
+	FrameCount int `json:"frameCount"`
+
+	// FrameHeight 1 コマの高さ（px）
+	FrameHeight int `json:"frameHeight"`
+
+	// FrameWidth 1 コマの幅（px）。1 本の中で全コマ同じ
+	FrameWidth int `json:"frameWidth"`
+
+	// IntervalMs コマ k が受け持つ位置は [k*intervalMs, (k+1)*intervalMs)
+	IntervalMs int64 `json:"intervalMs"`
+
+	// Rows 1 シートの行数
+	Rows int `json:"rows"`
+
+	// Sheets シートの版付き URL。番号順
+	Sheets []string `json:"sheets"`
+}
+
 // SetupRequest defines model for SetupRequest.
 type SetupRequest struct {
 	// Password 1〜1024 バイト
@@ -899,13 +925,15 @@ type Video struct {
 	Public bool `json:"public"`
 
 	// SeekThumbnailState シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
-	// seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
+	// seekThumbnailUrl と同じ条件のときだけ入る。done = スプライトが完成している、
 	// pending = 生成を待っている、または生成中（保存した状態が done なのに置き場が
 	// 無いときは、サーバーが作り直しを積んで pending として返す）、failed = 生成に
 	// 失敗し、再試行の上限に達した
 	SeekThumbnailState *VideoSeekThumbnailState `json:"seekThumbnailState,omitempty"`
 
-	// SeekThumbnailUrl probeState = done かつ正のdurationMsを持つときだけ入る版付き基底URL
+	// SeekThumbnailUrl probeState = done かつ正のdurationMsを持つときだけ入る、シーク用サムネイルの
+	// スプライトの配置情報（SeekThumbnailSprite）を返す経路の版付き URL
+	// （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §1）
 	SeekThumbnailUrl *string `json:"seekThumbnailUrl,omitempty"`
 	SizeBytes        int64   `json:"sizeBytes"`
 
@@ -939,7 +967,7 @@ type VideoPreviewState string
 type VideoProbeState string
 
 // VideoSeekThumbnailState シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
-// seekThumbnailUrl と同じ条件のときだけ入る。done = 置き場がある、
+// seekThumbnailUrl と同じ条件のときだけ入る。done = スプライトが完成している、
 // pending = 生成を待っている、または生成中（保存した状態が done なのに置き場が
 // 無いときは、サーバーが作り直しを積んで pending として返す）、failed = 生成に
 // 失敗し、再試行の上限に達した
@@ -1317,9 +1345,13 @@ type GetVideoPreviewParams struct {
 
 // GetVideoSeekThumbnailParams defines parameters for GetVideoSeekThumbnail.
 type GetVideoSeekThumbnailParams struct {
-	PositionMs int64 `form:"positionMs" json:"positionMs"`
-
 	// V 一覧・詳細が返したURLに含まれる内容由来の版
+	V *string `form:"v,omitempty" json:"v,omitempty"`
+}
+
+// GetVideoSeekThumbnailSheetParams defines parameters for GetVideoSeekThumbnailSheet.
+type GetVideoSeekThumbnailSheetParams struct {
+	// V 配置情報の `sheets` に含まれていた内容由来の版
 	V *string `form:"v,omitempty" json:"v,omitempty"`
 }
 
@@ -1505,9 +1537,12 @@ type ServerInterface interface {
 	// GetRelatedVideos 関連動画を返す
 	// (GET /api/videos/{id}/related)
 	GetRelatedVideos(w http.ResponseWriter, r *http.Request, id VideoId)
-	// GetVideoSeekThumbnail 指定時刻のシークプレビュー画像を返す
+	// GetVideoSeekThumbnail シーク用サムネイルのスプライトの配置情報を返す
 	// (GET /api/videos/{id}/seek-thumbnail)
 	GetVideoSeekThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoSeekThumbnailParams)
+	// GetVideoSeekThumbnailSheet シーク用サムネイルのスプライトのシートを返す
+	// (GET /api/videos/{id}/seek-thumbnail/{sheet})
+	GetVideoSeekThumbnailSheet(w http.ResponseWriter, r *http.Request, id VideoId, sheet int, params GetVideoSeekThumbnailSheetParams)
 	// StreamVideo 動画本体を配信する
 	// (GET /api/videos/{id}/stream)
 	StreamVideo(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -2859,19 +2894,6 @@ func (siw *ServerInterfaceWrapper) GetVideoSeekThumbnail(w http.ResponseWriter, 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetVideoSeekThumbnailParams
 
-	// ------------- Required query parameter "positionMs" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, true, "positionMs", r.URL.Query(), &params.PositionMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "positionMs"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "positionMs", Err: err})
-		}
-		return
-	}
-
 	// ------------- Optional query parameter "v" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
@@ -2887,6 +2909,57 @@ func (siw *ServerInterfaceWrapper) GetVideoSeekThumbnail(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetVideoSeekThumbnail(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVideoSeekThumbnailSheet operation middleware
+func (siw *ServerInterfaceWrapper) GetVideoSeekThumbnailSheet(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sheet" -------------
+	var sheet int
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sheet", r.PathValue("sheet"), &sheet, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sheet", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetVideoSeekThumbnailSheetParams
+
+	// ------------- Optional query parameter "v" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "v", r.URL.Query(), &params.V, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "v"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "v", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVideoSeekThumbnailSheet(w, r, id, sheet, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3199,6 +3272,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/transcode-start", wrapper.GetTranscodeStart)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/thumbnail", wrapper.GetVideoThumbnail)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/seek-thumbnail", wrapper.GetVideoSeekThumbnail)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/seek-thumbnail/{sheet}", wrapper.GetVideoSeekThumbnailSheet)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.StartScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/media-folders", wrapper.ListMediaFolders)

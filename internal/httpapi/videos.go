@@ -535,6 +535,13 @@ func seekThumbnailURL(video domain.Video) string {
 		thumbnailVersion(video.ContentKey)
 }
 
+// seekThumbnailSheetURL はスプライトのシート sheet の取得先を組み立てる。版は
+// 配置情報の URL（seekThumbnailURL）と同じく内容由来である。
+func seekThumbnailSheetURL(video domain.Video, sheet int) string {
+	return "/api/videos/" + strconv.FormatInt(video.ID, 10) + "/seek-thumbnail/" + strconv.Itoa(sheet) +
+		"?v=" + thumbnailVersion(video.ContentKey)
+}
+
 func thumbnailVersion(contentKey string) string {
 	if len(contentKey) > thumbnailVersionLength {
 		return contentKey[:thumbnailVersionLength]
