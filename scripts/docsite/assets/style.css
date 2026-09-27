@@ -42,6 +42,8 @@
 }
 
 * { box-sizing: border-box; }
+/* display を指定した要素でも hidden 属性で隠れるようにする。 */
+[hidden] { display: none !important; }
 html { scroll-padding-top: calc(var(--bar-h) + 16px); }
 body {
   margin: 0;

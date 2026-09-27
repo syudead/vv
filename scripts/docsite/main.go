@@ -304,6 +304,10 @@ func (s site) serve(addr string) error {
 		return err
 	}
 	fmt.Printf("docs: http://%s/ で閲覧できます（Ctrl+C で終了）\n", listener.Addr())
+	if tcp, ok := listener.Addr().(*net.TCPAddr); ok && !tcp.IP.IsLoopback() {
+		fmt.Println("docs: 注意: 手元の外からも接続できるアドレスで待ち受けています。認証はないので、" +
+			"届く人は誰でも全ての文書を読めます。信頼できるネットワークでだけ使ってください。")
+	}
 	server := &http.Server{Handler: s.handler(), ReadHeaderTimeout: 10 * time.Second}
 	return server.Serve(listener)
 }

@@ -72,7 +72,12 @@
         var s = document.createElement("script");
         s.src = root + "_docsite/search-index.js";
         s.onload = function () { resolve(window.DOCSITE_INDEX || []); };
-        s.onerror = reject;
+        s.onerror = function (e) {
+          // 失敗を覚えたままにせず、次の入力で読み直せるようにする。
+          s.remove();
+          loading = null;
+          reject(e);
+        };
         document.head.appendChild(s);
       });
     }
@@ -85,13 +90,27 @@
     });
   }
 
+  // highlight は元の文字列の上で全ての語の一致範囲を集めて重なりをまとめ、
+  // 範囲ごとに1度だけエスケープして <mark> で囲む。置換を語ごとに重ねると、
+  // 先に入れた <mark> の中身まで次の語で置き換えてしまう。
   function highlight(s, terms) {
-    var out = escapeHTML(s);
+    var lower = s.toLowerCase();
+    var ranges = [];
     terms.forEach(function (t) {
-      var re = new RegExp(escapeHTML(t).replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
-      out = out.replace(re, function (m) { return "<mark>" + m + "</mark>"; });
+      for (var i = lower.indexOf(t); t && i >= 0; i = lower.indexOf(t, i + t.length)) {
+        ranges.push([i, i + t.length]);
+      }
     });
-    return out;
+    ranges.sort(function (a, b) { return a[0] - b[0]; });
+    var out = "";
+    var pos = 0;
+    ranges.forEach(function (r) {
+      if (r[1] <= pos) return;
+      var start = Math.max(r[0], pos);
+      out += escapeHTML(s.slice(pos, start)) + "<mark>" + escapeHTML(s.slice(start, r[1])) + "</mark>";
+      pos = r[1];
+    });
+    return out + escapeHTML(s.slice(pos));
   }
 
   function snippet(text, term) {

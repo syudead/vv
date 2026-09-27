@@ -203,3 +203,16 @@ func TestReadStaysInsideRepository(t *testing.T) {
 		}
 	}
 }
+
+// TestRenderOmitsRawHTML は、文書に書かれた生の HTML（スクリプトなど）を出さない
+// ことを確かめる。未追跡の文書も出すので、閲覧者のブラウザで動かさない。
+func TestRenderOmitsRawHTML(t *testing.T) {
+	src := []byte("# T\n\n<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>\n")
+	got, err := testRenderer().render("README.md", src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(got.HTML, "<script") || strings.Contains(got.HTML, "onerror") {
+		t.Errorf("raw HTML was rendered: %s", got.HTML)
+	}
+}

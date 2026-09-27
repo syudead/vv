@@ -12,7 +12,6 @@ import (
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/renderer/html"
 	"github.com/yuin/goldmark/text"
 )
 
@@ -137,8 +136,9 @@ var assetExts = map[string]bool{
 func (r renderer) render(doc string, source []byte) (rendered, error) {
 	md := goldmark.New(
 		goldmark.WithExtensions(extension.GFM, extension.Footnote),
-		// 文書はこのリポジトリの中身で、<details> などの生の HTML を使っている。
-		goldmark.WithRendererOptions(html.WithUnsafe()),
+		// 生の HTML は出さない（goldmark の既定）。未追跡の文書も出すので、文書に
+		// 書かれたスクリプトを閲覧者のブラウザで動かさないためである。文書が使って
+		// いる生の HTML は注釈（<!-- -->）だけで、出さなくても見た目は変わらない。
 	)
 	root := md.Parser().Parse(text.NewReader(source))
 	// id は描いた後の文字から作る。goldmark の自動 id は見出しの生の行を使うので、
