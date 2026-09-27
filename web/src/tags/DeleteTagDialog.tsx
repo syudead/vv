@@ -40,13 +40,13 @@ export default function DeleteTagDialog({
           </p>
         )}
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
         <Button ref={cancel} onClick={onClose} disabled={pending}>
           キャンセル
         </Button>
         <Button variant="danger" onClick={onDelete} disabled={pending}>
           {pending && <LoaderCircle className="animate-spin" />}
-          削除する
+          {pending ? "削除中…" : "削除する"}
         </Button>
       </div>
     </ModalFrame>

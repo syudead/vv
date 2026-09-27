@@ -1259,7 +1259,7 @@ describe("TagsPage 統合", () => {
     await user.click(within(dialog).getByRole("button", { name: "統合する" }));
     await waitFor(() =>
       expect(
-        within(dialog).getByRole("button", { name: "統合する" }).hasAttribute("disabled"),
+        within(dialog).getByRole("button", { name: "統合中…" }).hasAttribute("disabled"),
       ).toBe(true),
     );
 

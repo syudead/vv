@@ -45,7 +45,7 @@ export default function CreateTagRow({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2 py-2">
+    <div className="flex flex-wrap items-center gap-2 rounded-md border border-control-border bg-elevated px-3 py-2">
       <input
         ref={inputRef}
         value={field.value}
@@ -72,11 +72,12 @@ export default function CreateTagRow({
               : undefined
         }
         aria-busy={pending || undefined}
-        className="h-8 min-w-0 flex-1 rounded-sm border border-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none"
+        aria-invalid={field.reason !== null || error !== null || undefined}
+        className="h-9 min-w-0 basis-full rounded-sm border border-control-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-link sm:flex-1 sm:basis-auto"
       />
-      <div className="flex shrink-0 items-center gap-2">
+      <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
         <Button variant="primary" size="sm" onClick={submit} disabled={pending}>
-          作成
+          {pending ? "作成中…" : "作成"}
         </Button>
         <Button variant="ghost" size="sm" onClick={cancel} disabled={pending}>
           キャンセル

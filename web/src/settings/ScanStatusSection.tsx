@@ -74,8 +74,12 @@ export default function ScanStatusSection() {
   }, [location.hash, location.key]);
 
   return (
-    <section id="scan-status" aria-labelledby="scan-status-heading" className="mt-8">
-      <div className="border-b border-border pb-4">
+    <section
+      id="scan-status"
+      aria-labelledby="scan-status-heading"
+      className="mt-8 rounded-lg border border-border bg-surface p-4 sm:p-5"
+    >
+      <div>
         <div className="flex flex-wrap items-center gap-2">
           <h2
             ref={heading}

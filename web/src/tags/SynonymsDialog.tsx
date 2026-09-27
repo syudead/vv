@@ -340,7 +340,7 @@ export default function SynonymsDialog({
               </ul>
             )}
 
-            <div className="flex items-end gap-2">
+            <div className="flex flex-wrap items-end gap-2">
               <div className="min-w-0 flex-1">
                 <label htmlFor="synonym-add-input" className="sr-only">
                   シノニムを追加
@@ -369,10 +369,12 @@ export default function SynonymsDialog({
                         : undefined
                   }
                   aria-busy={addPending || undefined}
-                  className="h-8 w-full min-w-0 rounded-sm border border-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none"
+                  aria-invalid={field.reason !== null || addError !== null || undefined}
+                  className="h-9 w-full min-w-0 rounded-sm border border-control-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-link"
                 />
               </div>
               <Button
+                variant="primary"
                 onClick={() => {
                   if (!addPending) void submitAdd();
                 }}
