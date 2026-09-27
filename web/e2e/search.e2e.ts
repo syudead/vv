@@ -82,7 +82,7 @@ async function loadEverything(page: Page, total: number) {
 }
 
 function summary(page: Page) {
-  return page.getByRole("status").first();
+  return page.getByRole("status", { name: "検索結果" });
 }
 
 /** listed は一覧の要求のうち、並び順が sort の応答を待つ。 */
