@@ -111,7 +111,7 @@ func TestStaleProbeJobDoesNotWriteTranscodeProbe(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", "key-a", 1024, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/z.mp4"), "z", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
 	transcode := sampleTranscodeProbe(1920)

@@ -18,7 +18,7 @@ func TestWriteTransactionsWaitForTheCurrentWriter(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := db.ScanIndex().UpsertVideo(context.Background(), sampleFile("/media/wait.mp4", "wait", "wait-key", 1, 0))
+		_, err := db.ScanIndex().UpsertVideo(context.Background(), sampleFile(fixturePath("/media/wait.mp4"), "wait", "wait-key", 1, 0))
 		done <- err
 	}()
 
@@ -58,7 +58,7 @@ func TestListReadTransactionDoesNotReserveTheWriter(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/read-does-not-block.mp4", "read", "read-key", 1, 0))
+		_, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/read-does-not-block.mp4"), "read", "read-key", 1, 0))
 		done <- err
 	}()
 

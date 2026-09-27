@@ -68,8 +68,8 @@ func TestFolderNameMatchingExistingTagTagsVideos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	inside := upsertFolderVideo(t, db, "/media/Anime/Show/1.mp4", "k1")
-	outside := upsertFolderVideo(t, db, "/media/Drama/1.mp4", "k2")
+	inside := upsertFolderVideo(t, db, fixturePath("/media/Anime/Show/1.mp4"), "k1")
+	outside := upsertFolderVideo(t, db, fixturePath("/media/Drama/1.mp4"), "k2")
 	rebuildIndexForTest(t, db)
 
 	want := []domain.VideoTag{{TagRef: domain.TagRef{ID: tag.ID, Name: "Anime"}, FromFolder: true}}
@@ -101,7 +101,7 @@ func TestFolderNameMatchingExistingTagTagsVideos(t *testing.T) {
 func TestFolderTagsFollowTagChangesWithoutRescan(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	video := upsertFolderVideo(t, db, "/media/アニメ/1.mp4", "k1")
+	video := upsertFolderVideo(t, db, fixturePath("/media/アニメ/1.mp4"), "k1")
 	rebuildIndexForTest(t, db)
 
 	anime, err := db.Tags().CreateTag(ctx, "Anime")
@@ -157,10 +157,10 @@ func TestFolderTagsUseEveryAncestorOfEveryLocation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	first := upsertFolderVideo(t, db, "/media/A/Travel/1.mp4", "k1")
-	second := upsertFolderVideo(t, db, "/media/B/Travel/2.mp4", "k2")
+	first := upsertFolderVideo(t, db, fixturePath("/media/A/Travel/1.mp4"), "k1")
+	second := upsertFolderVideo(t, db, fixturePath("/media/B/Travel/2.mp4"), "k2")
 	// 同じ内容（k2）の別の所在。
-	if again := upsertFolderVideo(t, db, "/media/Fav/2.mp4", "k2"); again != second {
+	if again := upsertFolderVideo(t, db, fixturePath("/media/Fav/2.mp4"), "k2"); again != second {
 		t.Fatalf("同じ内容が別の動画になった: %d != %d", again, second)
 	}
 	rebuildIndexForTest(t, db)
@@ -185,8 +185,8 @@ func TestManualAndFolderTagsMergeAndDetachRemovesOnlyManual(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	both := upsertFolderVideo(t, db, "/media/Anime/1.mp4", "k1")
-	manual := upsertFolderVideo(t, db, "/media/Other/2.mp4", "k2")
+	both := upsertFolderVideo(t, db, fixturePath("/media/Anime/1.mp4"), "k1")
+	manual := upsertFolderVideo(t, db, fixturePath("/media/Other/2.mp4"), "k2")
 	rebuildIndexForTest(t, db)
 	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{both, manual}, tag.ID); err != nil {
 		t.Fatal(err)
@@ -244,8 +244,8 @@ func TestSearchMatchesFolderTagNamesForOwnerOnly(t *testing.T) {
 	if _, err := db.Tags().AddSynonym(ctx, tag.ID, "Trip", nil); err != nil {
 		t.Fatal(err)
 	}
-	video := upsertFolderVideo(t, db, "/media/Trip/a.mp4", "k1")
-	other := upsertFolderVideo(t, db, "/media/Else/b.mp4", "k2")
+	video := upsertFolderVideo(t, db, fixturePath("/media/Trip/a.mp4"), "k1")
+	other := upsertFolderVideo(t, db, fixturePath("/media/Else/b.mp4"), "k2")
 	rebuildIndexForTest(t, db)
 	setPublic(t, db, true, video, other)
 
@@ -263,8 +263,8 @@ func TestSearchMatchesFolderTagNamesForOwnerOnly(t *testing.T) {
 func TestCreateTagCountsVideosUnderSameNamedFolder(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	upsertFolderVideo(t, db, "/media/Anime/1.mp4", "k1")
-	upsertFolderVideo(t, db, "/media/Drama/1.mp4", "k2")
+	upsertFolderVideo(t, db, fixturePath("/media/Anime/1.mp4"), "k1")
+	upsertFolderVideo(t, db, fixturePath("/media/Drama/1.mp4"), "k2")
 	rebuildIndexForTest(t, db)
 
 	tag, err := db.Tags().CreateTag(ctx, "Anime")

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -72,12 +73,12 @@ func searchExprFixture(t *testing.T) *DB {
 	t.Helper()
 	db := migratedDB(t)
 	// 鍵は取り込み時の登録フォルダから作るので、取り込む前に差し替える。
-	if _, err := db.sql.Exec(`update media_folders set path = '/media/videos'`); err != nil {
+	if _, err := db.sql.Exec(`update media_folders set path = ?`, fixturePath("/media/videos")); err != nil {
 		t.Fatal(err)
 	}
 	var files []domain.VideoFile
 	for i, title := range searchExprTitles {
-		files = append(files, listingFile("/media/videos/"+title+".mp4", title, fmt.Sprintf("key-%d", i), i))
+		files = append(files, listingFile(fixturePath("/media/videos/")+title+".mp4", title, fmt.Sprintf("key-%d", i), i))
 	}
 	upsertAll(t, db, files...)
 	return db
@@ -148,12 +149,12 @@ func TestListVideosSearchExpressions(t *testing.T) {
 // 9. 登録フォルダより下のフォルダ名では当たる。拡張子も照合の対象である。
 func TestListVideosMatchesRelativeFolderNames(t *testing.T) {
 	db := migratedDB(t)
-	if _, err := db.sql.Exec(`update media_folders set path = '/media/videos'`); err != nil {
+	if _, err := db.sql.Exec(`update media_folders set path = ?`, fixturePath("/media/videos")); err != nil {
 		t.Fatal(err)
 	}
 	upsertAll(t, db,
-		listingFile("/media/videos/2024/京都/a.mp4", "a", "key-a", 0),
-		listingFile("/media/videos/other/b.webm", "b", "key-b", 1),
+		listingFile(fixturePath("/media/videos/2024/京都/a.mp4"), "a", "key-a", 0),
+		listingFile(fixturePath("/media/videos/other/b.webm"), "b", "key-b", 1),
 	)
 	for query, want := range map[string][]string{
 		"京都":        {"a"},
@@ -173,8 +174,8 @@ func TestListVideosMatchesRelativeFolderNames(t *testing.T) {
 func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
-		listingFile("/media/A/京都.mp4", "京都", "same", 0),
-		listingFile("/media/B/2024.mp4", "2024", "same", 0),
+		listingFile(fixturePath("/media/A/京都.mp4"), "京都", "same", 0),
+		listingFile(fixturePath("/media/B/2024.mp4"), "2024", "same", 0),
 	)
 	ctx := context.Background()
 
@@ -187,9 +188,9 @@ func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 	}
 
 	for query, want := range map[string]string{
-		"京都":   "/media/A/京都.mp4",
-		"2024": "/media/B/2024.mp4",
-		"":     "/media/A/京都.mp4", // 検索語が無ければパスの最小の所在
+		"京都":   fixturePath("/media/A/京都.mp4"),
+		"2024": fixturePath("/media/B/2024.mp4"),
+		"":     fixturePath("/media/A/京都.mp4"), // 検索語が無ければパスの最小の所在
 	} {
 		page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, domain.VideoQuery{Query: query})
 		if err != nil {
@@ -199,7 +200,7 @@ func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 			t.Fatalf("検索 %q: total = %d, items = %d, want 1 件", query, page.Total, len(page.Items))
 		}
 		item := page.Items[0]
-		wantTitle := strings.TrimSuffix(want[strings.LastIndex(want, "/")+1:], ".mp4")
+		wantTitle := strings.TrimSuffix(filepath.Base(want), ".mp4")
 		if item.Path != want || item.Title != wantTitle {
 			t.Errorf("検索 %q: path = %q, title = %q, want %q と %q", query, item.Path, item.Title, want, wantTitle)
 		}
@@ -211,18 +212,18 @@ func TestListVideosMatchesWithinOneLocation(t *testing.T) {
 func TestListingScopes(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
-		listingFile("/media/A/x 京都.mp4", "x 京都", "key-x", 0),
-		listingFile("/media/A/B/y 京都.mp4", "y 京都", "key-y", 1),
-		listingFile("/media/C/z 京都.mp4", "z 京都", "key-z", 2),
+		listingFile(fixturePath("/media/A/x 京都.mp4"), "x 京都", "key-x", 0),
+		listingFile(fixturePath("/media/A/B/y 京都.mp4"), "y 京都", "key-y", 1),
+		listingFile(fixturePath("/media/C/z 京都.mp4"), "z 京都", "key-z", 2),
 		// 同じ内容が A の配下と C にある。A の配下の所在は「京都」を含まない。
-		listingFile("/media/A/B/w.mp4", "w", "key-w", 3),
-		listingFile("/media/C/w 京都.mp4", "w 京都", "key-w", 3),
+		listingFile(fixturePath("/media/A/B/w.mp4"), "w", "key-w", 3),
+		listingFile(fixturePath("/media/C/w 京都.mp4"), "w 京都", "key-w", 3),
 	)
 	ctx := context.Background()
 
 	folder := func(scope domain.FolderScope, query string) []string {
 		t.Helper()
-		page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media/A", Scope: scope, Query: query, Limit: domain.MaxLimit})
+		page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A"), Scope: scope, Query: query, Limit: domain.MaxLimit})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -270,10 +271,10 @@ func watchFixture(t *testing.T) *DB {
 		for _, playable := range []bool{true, false} {
 			title := fmt.Sprintf("%s-%v", state.name, playable)
 			key := "key-" + title
-			ids := upsertAll(t, db, listingFile("/media/"+title+".mp4", title, key, offset))
+			ids := upsertAll(t, db, listingFile(fixturePath("/media/")+title+".mp4", title, key, offset))
 			offset++
 			if playable {
-				if err := db.Ingest().ApplyProbe(ctx, ids["/media/"+title+".mp4"], domain.Probe{DurationMs: 100_000, VideoCodec: "h264"},
+				if err := db.Ingest().ApplyProbe(ctx, ids[fixturePath("/media/")+title+".mp4"], domain.Probe{DurationMs: 100_000, VideoCodec: "h264"},
 					domain.Playability{Playable: true}); err != nil {
 					t.Fatal(err)
 				}
@@ -362,7 +363,7 @@ func TestWatchConditionMatchesDomainClassification(t *testing.T) {
 func TestListFolderVideosFilters(t *testing.T) {
 	db := watchFixture(t)
 	page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{
-		Dir: "/media", Watch: domain.WatchInProgress, PlayableOnly: true, Limit: domain.MaxLimit,
+		Dir: fixturePath("/media"), Watch: domain.WatchInProgress, PlayableOnly: true, Limit: domain.MaxLimit,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -384,10 +385,10 @@ func TestListingPagingSurvivesAddedLocations(t *testing.T) {
 				for i := range 6 {
 					title := fmt.Sprintf("旅%d", i)
 					stable = append(stable, title)
-					upsertAll(t, db, listingFile("/media/"+title+".mp4", title, "key-"+title, i))
+					upsertAll(t, db, listingFile(fixturePath("/media/")+title+".mp4", title, "key-"+title, i))
 				}
 				// 当たらない動画も混ぜる。
-				upsertAll(t, db, listingFile("/media/花火.mp4", "花火", "key-hanabi", 10))
+				upsertAll(t, db, listingFile(fixturePath("/media/花火.mp4"), "花火", "key-hanabi", 10))
 
 				var seen []string
 				cursor := ""
@@ -402,10 +403,10 @@ func TestListingPagingSurvivesAddedLocations(t *testing.T) {
 						// 変わらない）。当たらなかった動画に、当たる所在を足す。新しい
 						// 動画も足す。
 						upsertAll(t, db,
-							listingFile("/media/旅4~copy.mp4", "copy", "key-旅4", 0),
-							listingFile("/media/旅1~copy.mp4", "copy", "key-旅1", 0),
-							listingFile("/media/旅zz.mp4", "旅zz", "key-hanabi", 0),
-							listingFile("/media/旅new.mp4", "旅new", "key-new", 20),
+							listingFile(fixturePath("/media/旅4~copy.mp4"), "copy", "key-旅4", 0),
+							listingFile(fixturePath("/media/旅1~copy.mp4"), "copy", "key-旅1", 0),
+							listingFile(fixturePath("/media/旅zz.mp4"), "旅zz", "key-hanabi", 0),
+							listingFile(fixturePath("/media/旅new.mp4"), "旅new", "key-new", 20),
 						)
 					}
 					if page.NextCursor == "" {
@@ -502,8 +503,8 @@ func TestListVideosWithManyTerms(t *testing.T) {
 func TestListVideosExclusionIsEvaluatedPerLocation(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
-		listingFile("/media/A/京都.mp4", "京都", "same", 0),
-		listingFile("/media/B/x.mp4", "x", "same", 0),
+		listingFile(fixturePath("/media/A/京都.mp4"), "京都", "same", 0),
+		listingFile(fixturePath("/media/B/x.mp4"), "x", "same", 0),
 	)
 	page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Query: "-京都"})
 	if err != nil {
@@ -512,7 +513,7 @@ func TestListVideosExclusionIsEvaluatedPerLocation(t *testing.T) {
 	if page.Total != 1 || len(page.Items) != 1 {
 		t.Fatalf("-京都: total = %d, items = %d, want 1 件", page.Total, len(page.Items))
 	}
-	if item := page.Items[0]; item.Path != "/media/B/x.mp4" || item.Title != "x" {
+	if item := page.Items[0]; item.Path != fixturePath("/media/B/x.mp4") || item.Title != "x" {
 		t.Errorf("-京都: path = %q, title = %q, want /media/B/x.mp4 と x", item.Path, item.Title)
 	}
 }
@@ -522,8 +523,8 @@ func TestListVideosExclusionIsEvaluatedPerLocation(t *testing.T) {
 func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	ids := upsertAll(t, db, listingFile("/media/legacy.mp4", "legacy", "legacy-key", 0))
-	if _, err := db.sql.Exec(`update videos set content_key = '' where id = ?`, ids["/media/legacy.mp4"]); err != nil {
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/legacy.mp4"), "legacy", "legacy-key", 0))
+	if _, err := db.sql.Exec(`update videos set content_key = '' where id = ?`, ids[fixturePath("/media/legacy.mp4")]); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Playback().SaveProgress(ctx, "", domain.Progress{PositionMs: 100_000, Completed: true}); err != nil {
@@ -559,10 +560,10 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 		t.Fatal(err)
 	}
 	upsertAll(t, db,
-		listingFile("/media/both.mp4", "both", "key-both", 0),
-		listingFile("/media/a-only.mp4", "a-only", "key-a", 1),
-		listingFile("/media/b-only.mp4", "b-only", "key-b", 2),
-		listingFile("/media/neither.mp4", "neither", "key-neither", 3),
+		listingFile(fixturePath("/media/both.mp4"), "both", "key-both", 0),
+		listingFile(fixturePath("/media/a-only.mp4"), "a-only", "key-a", 1),
+		listingFile(fixturePath("/media/b-only.mp4"), "b-only", "key-b", 2),
+		listingFile(fixturePath("/media/neither.mp4"), "neither", "key-neither", 3),
 	)
 	attachTag(t, db, "key-both", tagA.ID)
 	attachTag(t, db, "key-both", tagB.ID)
@@ -573,7 +574,7 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 	if err != nil {
 		t.Fatalf("ListVideos() error = %v", err)
 	}
-	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Path != "/media/both.mp4" {
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Path != fixturePath("/media/both.mp4") {
 		t.Fatalf("タグ A・B の AND = %+v, want /media/both.mp4 だけ", page)
 	}
 	if len(page.MissingTagIDs) != 0 {
@@ -631,13 +632,13 @@ func TestListVideosPagesWithTagFilterCoverEveryMatch(t *testing.T) {
 	var tagged []int64
 	for i := range 5 {
 		key := fmt.Sprintf("key-tagged-%d", i)
-		got := upsertAll(t, db, listingFile(fmt.Sprintf("/media/tagged-%d.mp4", i), fmt.Sprintf("tagged-%d", i), key, i))
-		id := got[fmt.Sprintf("/media/tagged-%d.mp4", i)]
+		got := upsertAll(t, db, listingFile(fmt.Sprintf(fixturePath("/media/tagged-%d.mp4"), i), fmt.Sprintf("tagged-%d", i), key, i))
+		id := got[fmt.Sprintf(fixturePath("/media/tagged-%d.mp4"), i)]
 		tagged = append(tagged, id)
 		attachTag(t, db, key, tag.ID)
 	}
 	// タグが付かない動画も混ぜる。
-	upsertAll(t, db, listingFile("/media/untagged.mp4", "untagged", "key-untagged", 100))
+	upsertAll(t, db, listingFile(fixturePath("/media/untagged.mp4"), "untagged", "key-untagged", 100))
 
 	query := domain.VideoQuery{TagIDs: []int64{tag.ID}}
 	wantIDs := slices.Clone(tagged)
@@ -703,18 +704,18 @@ func TestTagAttachmentSurvivesLocationMoveAndRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := upsertAll(t, db, listingFile("/media/old/a.mp4", "a", "same-key", 0))
-	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids["/media/old/a.mp4"]}, tag.ID); err != nil {
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/old/a.mp4"), "a", "same-key", 0))
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/old/a.mp4")]}, tag.ID); err != nil {
 		t.Fatal(err)
 	}
 
 	// 再スキャンで所在が移る。同じ content_key なので同じ動画として扱われる。
-	moved := listingFile("/media/new/a.mp4", "a", "same-key", 1)
+	moved := listingFile(fixturePath("/media/new/a.mp4"), "a", "same-key", 1)
 	if _, err := db.ScanIndex().UpsertVideo(ctx, moved); err != nil {
 		t.Fatal(err)
 	}
 	var oldLocationID int64
-	if err := db.sql.QueryRow(`select id from video_locations where path = ?`, "/media/old/a.mp4").Scan(&oldLocationID); err != nil {
+	if err := db.sql.QueryRow(`select id from video_locations where path = ?`, fixturePath("/media/old/a.mp4")).Scan(&oldLocationID); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.ScanIndex().DeleteVideoLocations(ctx, []int64{oldLocationID}); err != nil {
@@ -725,7 +726,7 @@ func TestTagAttachmentSurvivesLocationMoveAndRescan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Path != "/media/new/a.mp4" {
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].Path != fixturePath("/media/new/a.mp4") {
 		t.Errorf("移動後のタグでの絞り込み = %+v, want /media/new/a.mp4 だけ", page)
 	}
 
@@ -746,7 +747,7 @@ func TestTagAttachmentSurvivesLocationMoveAndRescan(t *testing.T) {
 func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.sql.Exec(`update media_folders set path = '/media'`); err != nil {
+	if _, err := db.sql.Exec(`update media_folders set path = ?`, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}
 
@@ -755,10 +756,10 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 		t.Fatal(err)
 	}
 	upsertAll(t, db,
-		listingFile("/media/A/no-title-match.mp4", "猫", "tagged-key", 0),
-		listingFile("/media/A/other.mp4", "犬", "other-key", 1),
+		listingFile(fixturePath("/media/A/no-title-match.mp4"), "猫", "tagged-key", 0),
+		listingFile(fixturePath("/media/A/other.mp4"), "犬", "other-key", 1),
 	)
-	if _, _, err := db.Tags().AttachTagByID(ctx, mustVideoID(t, db, "/media/A/no-title-match.mp4"), tag.ID); err != nil {
+	if _, _, err := db.Tags().AttachTagByID(ctx, mustVideoID(t, db, fixturePath("/media/A/no-title-match.mp4")), tag.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -773,7 +774,7 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 			t.Errorf("ライブラリで %q = %v, want %v", query, got, want)
 		}
 		// フォルダ直下。
-		direct, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media/A", Query: query})
+		direct, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A"), Query: query})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -781,7 +782,7 @@ func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.
 			t.Errorf("フォルダ直下で %q = %v, want %v", query, got, want)
 		}
 		// フォルダ配下。
-		subtree, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media", Scope: domain.FolderScopeSubtree, Query: query})
+		subtree, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media"), Scope: domain.FolderScopeSubtree, Query: query})
 		if err != nil {
 			t.Fatal(err)
 		}

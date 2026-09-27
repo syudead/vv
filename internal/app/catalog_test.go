@@ -264,15 +264,15 @@ func TestRelatedVideos(t *testing.T) {
 	videos := map[int64]domain.Video{}
 	for id, name := range map[int64]string{1: "ep 2", 2: "ep 10", 3: "ep 9", 4: "other"} {
 		video := probedVideo(id, name)
-		video.Path = "/media/show/" + name + ".mp4"
+		video.Path = fixturePath("/media/show/") + name + ".mp4"
 		videos[id] = video
 	}
-	videos[4] = func(v domain.Video) domain.Video { v.Path = "/media/other/other.mp4"; return v }(videos[4])
+	videos[4] = func(v domain.Video) domain.Video { v.Path = fixturePath("/media/other/other.mp4"); return v }(videos[4])
 	store := &fakeCatalogStore{
-		siblings: map[string][]domain.RelatedSibling{"/media/show": {
-			{VideoID: 1, Path: "/media/show/ep 2.mp4"},
-			{VideoID: 2, Path: "/media/show/ep 10.mp4"},
-			{VideoID: 3, Path: "/media/show/ep 9.mp4"},
+		siblings: map[string][]domain.RelatedSibling{fixturePath("/media/show"): {
+			{VideoID: 1, Path: fixturePath("/media/show/ep 2.mp4")},
+			{VideoID: 2, Path: fixturePath("/media/show/ep 10.mp4")},
+			{VideoID: 3, Path: fixturePath("/media/show/ep 9.mp4")},
 		}},
 		neighbors: []domain.RelatedNeighbor{{VideoID: 4, AddedAt: time.Unix(1_757_000_001, 0)}},
 		videos:    videos,
@@ -283,7 +283,7 @@ func TestRelatedVideos(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if store.lastDir != "/media/show" {
+	if store.lastDir != fixturePath("/media/show") {
 		t.Errorf("dir = %q, want /media/show", store.lastDir)
 	}
 	ids := make([]int64, 0, len(got.Items))
@@ -313,9 +313,9 @@ func TestRelatedVideos(t *testing.T) {
 func TestRelatedVideosPassesAudience(t *testing.T) {
 	for _, audience := range []domain.Audience{domain.AudienceGuest, domain.AudienceOwner} {
 		video := probedVideo(1, "a")
-		video.Path = "/media/show/a.mp4"
+		video.Path = fixturePath("/media/show/a.mp4")
 		store := &fakeCatalogStore{
-			siblings: map[string][]domain.RelatedSibling{"/media/show": {{VideoID: 1, Path: video.Path}, {VideoID: 2, Path: "/media/show/b.mp4"}}},
+			siblings: map[string][]domain.RelatedSibling{fixturePath("/media/show"): {{VideoID: 1, Path: video.Path}, {VideoID: 2, Path: fixturePath("/media/show/b.mp4")}}},
 			videos:   map[int64]domain.Video{2: probedVideo(2, "b")},
 		}
 		catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
@@ -354,7 +354,7 @@ func TestRelatedVideosForGroupMember(t *testing.T) {
 	for i := range size {
 		id := int64(i + 1)
 		video := probedVideo(id, "m")
-		video.Path = fmt.Sprintf("/media/big/%02d.mp4", id)
+		video.Path = fmt.Sprintf(fixturePath("/media/big/%02d.mp4"), id)
 		video.AddedAt = base.Add(time.Duration(i) * time.Second)
 		videos[id] = video
 		members = append(members, video)
@@ -363,7 +363,7 @@ func TestRelatedVideosForGroupMember(t *testing.T) {
 	}
 	// グループの外の動画。同じディレクトリに1本、追加日時の近い動画に上限より多く。
 	outsider := probedVideo(100, "outsider")
-	outsider.Path = "/media/big/zz.mp4"
+	outsider.Path = fixturePath("/media/big/zz.mp4")
 	videos[100] = outsider
 	siblings = append(siblings, domain.RelatedSibling{VideoID: 100, Path: outsider.Path})
 	for i := range domain.MaxRelatedVideos + 3 {
@@ -388,7 +388,7 @@ func TestRelatedVideosForGroupMember(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			store := &fakeCatalogStore{
-				siblings:  map[string][]domain.RelatedSibling{"/media/big": siblings},
+				siblings:  map[string][]domain.RelatedSibling{fixturePath("/media/big"): siblings},
 				neighbors: neighbors,
 				videos:    videos,
 				groups:    groups,
@@ -430,9 +430,9 @@ func TestRelatedVideosForGroupMember(t *testing.T) {
 // グループに属さない動画では、group は無く、読む件数も前後も今のまま。
 func TestRelatedVideosWithoutGroupKeepsFolderOrder(t *testing.T) {
 	video := probedVideo(1, "a")
-	video.Path = "/media/show/a.mp4"
+	video.Path = fixturePath("/media/show/a.mp4")
 	store := &fakeCatalogStore{
-		siblings: map[string][]domain.RelatedSibling{"/media/show": {{VideoID: 1, Path: video.Path}, {VideoID: 2, Path: "/media/show/b.mp4"}}},
+		siblings: map[string][]domain.RelatedSibling{fixturePath("/media/show"): {{VideoID: 1, Path: video.Path}, {VideoID: 2, Path: fixturePath("/media/show/b.mp4")}}},
 		videos:   map[int64]domain.Video{2: probedVideo(2, "b")},
 	}
 	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})

@@ -102,23 +102,23 @@ func upsertFolderVideo(t *testing.T, db *DB, path, key string) int64 {
 func TestRebuildFolderIndexAfterScan(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	one := upsertFolderVideo(t, db, "/media/Show/1.mp4", "k1")
-	ten := upsertFolderVideo(t, db, "/media/Show/10.mp4", "k10")
-	two := upsertFolderVideo(t, db, "/media/Show/2.mp4", "k2")
-	loose := upsertFolderVideo(t, db, "/media/loose.mp4", "loose")
+	one := upsertFolderVideo(t, db, fixturePath("/media/Show/1.mp4"), "k1")
+	ten := upsertFolderVideo(t, db, fixturePath("/media/Show/10.mp4"), "k10")
+	two := upsertFolderVideo(t, db, fixturePath("/media/Show/2.mp4"), "k2")
+	loose := upsertFolderVideo(t, db, fixturePath("/media/loose.mp4"), "loose")
 	// 取り込みだけでは索引は変わらない。
 	assertGroups(t, db, nil)
 
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
-	assertGroups(t, db, []storedGroup{{Path: "/media/Show", Name: "Show", Members: []int64{one, two, ten}}})
+	assertGroups(t, db, []storedGroup{{Path: fixturePath("/media/Show"), Name: "Show", Members: []int64{one, two, ten}}})
 	if names := storedFolderNames(t, db); !reflect.DeepEqual(names, map[int64][]string{one: {"Show"}, two: {"Show"}, ten: {"Show"}}) {
 		t.Fatalf("folder names = %v (loose=%d)", names, loose)
 	}
 
 	// 次のスキャンで子フォルダができると、そのフォルダはグループでなくなる。
-	nested := upsertFolderVideo(t, db, "/media/Show/Extra/a.mp4", "extra")
+	nested := upsertFolderVideo(t, db, fixturePath("/media/Show/Extra/a.mp4"), "extra")
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -143,21 +143,21 @@ func TestRebuildFolderIndexOnMediaFolderChanges(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	// /aaa はまだ登録されていないので、その下の所在は索引に入らない。
-	shared := upsertFolderVideo(t, db, "/aaa/c/1.mp4", "shared")
-	onlyAAA := upsertFolderVideo(t, db, "/aaa/c/3.mp4", "only-aaa")
-	upsertFolderVideo(t, db, "/media/b/1.mp4", "shared")
-	onlyMedia := upsertFolderVideo(t, db, "/media/b/2.mp4", "only-media")
+	shared := upsertFolderVideo(t, db, fixturePath("/aaa/c/1.mp4"), "shared")
+	onlyAAA := upsertFolderVideo(t, db, fixturePath("/aaa/c/3.mp4"), "only-aaa")
+	upsertFolderVideo(t, db, fixturePath("/media/b/1.mp4"), "shared")
+	onlyMedia := upsertFolderVideo(t, db, fixturePath("/media/b/2.mp4"), "only-media")
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
-	assertGroups(t, db, []storedGroup{{Path: "/media/b", Name: "b", Members: []int64{shared, onlyMedia}}})
+	assertGroups(t, db, []storedGroup{{Path: fixturePath("/media/b"), Name: "b", Members: []int64{shared, onlyMedia}}})
 
-	added, err := db.Settings().AddMediaFolder(ctx, "/aaa")
+	added, err := db.Settings().AddMediaFolder(ctx, fixturePath("/aaa"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	// 共有する動画の代表の所在は /aaa/c/1.mp4 に移り、/media/b は1本になる。
-	assertGroups(t, db, []storedGroup{{Path: "/aaa/c", Name: "c", Members: []int64{shared, onlyAAA}}})
+	assertGroups(t, db, []storedGroup{{Path: fixturePath("/aaa/c"), Name: "c", Members: []int64{shared, onlyAAA}}})
 	if names := storedFolderNames(t, db); !reflect.DeepEqual(names[shared], []string{"b", "c"}) {
 		t.Fatalf("shared folder names = %v", names[shared])
 	}
@@ -165,7 +165,7 @@ func TestRebuildFolderIndexOnMediaFolderChanges(t *testing.T) {
 	if err := db.Settings().DeleteMediaFolder(ctx, added.ID, added.Version); err != nil {
 		t.Fatal(err)
 	}
-	assertGroups(t, db, []storedGroup{{Path: "/media/b", Name: "b", Members: []int64{shared, onlyMedia}}})
+	assertGroups(t, db, []storedGroup{{Path: fixturePath("/media/b"), Name: "b", Members: []int64{shared, onlyMedia}}})
 	if names := storedFolderNames(t, db); !reflect.DeepEqual(names[shared], []string{"b"}) {
 		t.Fatalf("shared folder names after delete = %v", names[shared])
 	}
@@ -182,52 +182,52 @@ func TestFolderGroupOverrides(t *testing.T) {
 	if _, err := Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Settings().AddMediaFolder(ctx, "/media"); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}
-	a := upsertFolderVideo(t, db, "/media/Show/a.mp4", "a")
-	b := upsertFolderVideo(t, db, "/media/Show/b.mp4", "b")
-	rootA := upsertFolderVideo(t, db, "/media/x.mp4", "x")
-	rootB := upsertFolderVideo(t, db, "/media/y.mp4", "y")
+	a := upsertFolderVideo(t, db, fixturePath("/media/Show/a.mp4"), "a")
+	b := upsertFolderVideo(t, db, fixturePath("/media/Show/b.mp4"), "b")
+	rootA := upsertFolderVideo(t, db, fixturePath("/media/x.mp4"), "x")
+	rootB := upsertFolderVideo(t, db, fixturePath("/media/y.mp4"), "y")
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
-	show := storedGroup{Path: "/media/Show", Name: "Show", Members: []int64{a, b}}
-	root := storedGroup{Path: "/media", Name: "media", Members: []int64{rootA, rootB}}
+	show := storedGroup{Path: fixturePath("/media/Show"), Name: "Show", Members: []int64{a, b}}
+	root := storedGroup{Path: fixturePath("/media"), Name: "media", Members: []int64{rootA, rootB}}
 	assertGroups(t, db, []storedGroup{show})
 
 	groups := db.FolderGroups()
-	if err := groups.SetOverride(ctx, "/media/Show/", domain.FolderGroupUngroup); err != nil {
+	if err := groups.SetOverride(ctx, fixturePath("/media/Show/"), domain.FolderGroupUngroup); err != nil {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, nil)
 	// 同じフォルダの例外は置き換わり、2つが同時に付くことはない。
-	if err := groups.SetOverride(ctx, "/media/Show", domain.FolderGroupDirect); err != nil {
+	if err := groups.SetOverride(ctx, fixturePath("/media/Show"), domain.FolderGroupDirect); err != nil {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, []storedGroup{show})
-	if err := groups.SetOverride(ctx, "/media", domain.FolderGroupDirect); err != nil {
+	if err := groups.SetOverride(ctx, fixturePath("/media"), domain.FolderGroupDirect); err != nil {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, []storedGroup{root, show})
-	if err := groups.ClearOverride(ctx, "/media"); err != nil {
+	if err := groups.ClearOverride(ctx, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, []storedGroup{show})
-	if err := groups.SetOverride(ctx, "/media/Show", "both"); err == nil {
+	if err := groups.SetOverride(ctx, fixturePath("/media/Show"), "both"); err == nil {
 		t.Fatal("unknown mode was accepted")
 	}
 	// 一致するフォルダの無い例外も保存する。
-	if err := groups.SetOverride(ctx, "/media/Gone", domain.FolderGroupUngroup); err != nil {
+	if err := groups.SetOverride(ctx, fixturePath("/media/Gone"), domain.FolderGroupUngroup); err != nil {
 		t.Fatal(err)
 	}
-	if err := groups.SetOverride(ctx, "/media/Show", domain.FolderGroupUngroup); err != nil {
+	if err := groups.SetOverride(ctx, fixturePath("/media/Show"), domain.FolderGroupUngroup); err != nil {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, nil)
 
 	// 再スキャン（取り込みと作り直し）の後も例外は効く。
-	c := upsertFolderVideo(t, db, "/media/Show/c.mp4", "c")
+	c := upsertFolderVideo(t, db, fixturePath("/media/Show/c.mp4"), "c")
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -262,9 +262,9 @@ func TestFolderGroupOverrides(t *testing.T) {
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
-	upsertFolderVideo(t, db, "/media/Show/a.mp4", "a")
-	upsertFolderVideo(t, db, "/media/Show/b.mp4", "b")
-	if err := db.FolderGroups().ClearOverride(ctx, "/media/Nothing"); err != nil {
+	upsertFolderVideo(t, db, fixturePath("/media/Show/a.mp4"), "a")
+	upsertFolderVideo(t, db, fixturePath("/media/Show/b.mp4"), "b")
+	if err := db.FolderGroups().ClearOverride(ctx, fixturePath("/media/Nothing")); err != nil {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, nil)
@@ -310,8 +310,8 @@ func TestRefreshFolderIndex(t *testing.T) {
 func TestRebuildFolderIndexFailureMarksStale(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	upsertFolderVideo(t, db, "/media/Show/1.mp4", "k1")
-	upsertFolderVideo(t, db, "/media/Show/2.mp4", "k2")
+	upsertFolderVideo(t, db, fixturePath("/media/Show/1.mp4"), "k1")
+	upsertFolderVideo(t, db, fixturePath("/media/Show/2.mp4"), "k2")
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -348,7 +348,7 @@ func BenchmarkRebuildFolderIndex(b *testing.B) {
 	if _, err := Migrate(ctx, db); err != nil {
 		b.Fatal(err)
 	}
-	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/media', 1, 1, 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/media")); err != nil {
 		b.Fatal(err)
 	}
 	tx, err := db.sql.Begin()
@@ -358,7 +358,7 @@ func BenchmarkRebuildFolderIndex(b *testing.B) {
 	const videos = 10000
 	for i := range videos {
 		// 30 × 100 = 3000 フォルダに、1フォルダあたり約3本を置く。
-		path := fmt.Sprintf("/media/series-%02d/season-%03d/episode-%d.mp4", i%30, (i/30)%100, i)
+		path := fmt.Sprintf(fixturePath("/media/series-%02d/season-%03d/episode-%d.mp4"), i%30, (i/30)%100, i)
 		res, err := tx.Exec(`insert into videos (added_at, updated_at, content_key, playable, probe_state, thumbnail_state)
 			values (1, 1, ?, 0, 'pending', 'pending')`, fmt.Sprintf("key-%d", i))
 		if err != nil {
@@ -396,11 +396,11 @@ func TestFolderGroupingsAndTagFolderGroup(t *testing.T) {
 	if _, err := Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Settings().AddMediaFolder(ctx, "/media"); err != nil {
+	if _, err := db.Settings().AddMediaFolder(ctx, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}
 	long := strings.Repeat("a", domain.TagNameMaxLength+1)
-	for _, path := range []string{"/media/Show/a.mp4", "/media/Show/b.mp4", "/media/" + long + "/c.mp4", "/media/" + long + "/d.mp4", "/media/x.mp4"} {
+	for _, path := range []string{fixturePath("/media/Show/a.mp4"), fixturePath("/media/Show/b.mp4"), fixturePath("/media/" + long + "/c.mp4"), fixturePath("/media/" + long + "/d.mp4"), fixturePath("/media/x.mp4")} {
 		upsertFolderVideo(t, db, path, filepath.Base(path))
 	}
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
@@ -408,7 +408,7 @@ func TestFolderGroupingsAndTagFolderGroup(t *testing.T) {
 	}
 	groups := db.FolderGroups()
 
-	got, err := groups.FolderGroupings(ctx, []string{"/media/Show/", "/media", "/media/Gone"})
+	got, err := groups.FolderGroupings(ctx, []string{fixturePath("/media/Show/"), fixturePath("/media"), fixturePath("/media/Gone")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -416,12 +416,12 @@ func TestFolderGroupingsAndTagFolderGroup(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("groupings = %+v, want %+v", got, want)
 	}
-	grouping, err := groups.SetFolderGrouping(ctx, "/media", domain.FolderGroupDirect)
+	grouping, err := groups.SetFolderGrouping(ctx, fixturePath("/media"), domain.FolderGroupDirect)
 	if err != nil || grouping != (domain.FolderGrouping{Mode: domain.FolderGroupDirect, Grouped: false}) {
 		// /media の直下は x だけなので、1本ではグループにならない。
 		t.Fatalf("groupDirect = %+v, %v", grouping, err)
 	}
-	if grouping, err := groups.SetFolderGrouping(ctx, "/media", ""); err != nil || grouping != (domain.FolderGrouping{}) {
+	if grouping, err := groups.SetFolderGrouping(ctx, fixturePath("/media"), ""); err != nil || grouping != (domain.FolderGrouping{}) {
 		t.Fatalf("auto = %+v, %v", grouping, err)
 	}
 
@@ -433,17 +433,17 @@ func TestFolderGroupingsAndTagFolderGroup(t *testing.T) {
 		}
 		return n
 	}
-	if _, err := groups.TagFolderGroup(ctx, "/media/"+long); !errors.Is(err, domain.ErrInvalidTagName) {
+	if _, err := groups.TagFolderGroup(ctx, fixturePath("/media/")+long); !errors.Is(err, domain.ErrInvalidTagName) {
 		t.Fatalf("タグ名に使えない名前: err = %v", err)
 	}
-	if _, err := groups.TagFolderGroup(ctx, "/media/Gone"); !errors.Is(err, domain.ErrNotFolderGroup) {
+	if _, err := groups.TagFolderGroup(ctx, fixturePath("/media/Gone")); !errors.Is(err, domain.ErrNotFolderGroup) {
 		t.Fatalf("グループでないフォルダ: err = %v", err)
 	}
 	if tags, overrides := countRows("tags"), countRows("folder_group_overrides"); tags != 0 || overrides != 0 {
 		t.Fatalf("失敗したタグ化で書かれた: tags %d, overrides %d", tags, overrides)
 	}
 
-	result, err := groups.TagFolderGroup(ctx, "/media/Show")
+	result, err := groups.TagFolderGroup(ctx, fixturePath("/media/Show"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -453,7 +453,7 @@ func TestFolderGroupingsAndTagFolderGroup(t *testing.T) {
 	if remaining := storedGroups(t, db); len(remaining) != 1 || remaining[0].Name != long {
 		t.Fatalf("タグ化の後のグループ = %+v, want %s だけ", remaining, long)
 	}
-	if _, err := groups.TagFolderGroup(ctx, "/media/Show"); !errors.Is(err, domain.ErrNotFolderGroup) {
+	if _, err := groups.TagFolderGroup(ctx, fixturePath("/media/Show")); !errors.Is(err, domain.ErrNotFolderGroup) {
 		t.Fatalf("2回目: err = %v", err)
 	}
 }
