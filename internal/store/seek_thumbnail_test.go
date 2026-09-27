@@ -29,11 +29,11 @@ func seekAndThumbnailState(t *testing.T, db *DB, videoID int64) (string, string)
 func TestClaimSeekThumbnailWaitsForProbeAndRemainingThumbnails(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-b", 2048, 0))
+	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 2048, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	outside, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/elsewhere/c.mp4", "c", "key-c", 4096, 0))
+	outside, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/elsewhere/c.mp4"), "c", "key-c", 4096, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,7 +84,7 @@ func TestClaimSeekThumbnailWaitsForProbeAndRemainingThumbnails(t *testing.T) {
 func TestProcessingCountsSeekThumbnailSeparately(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-b", 2048, 0))
+	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 2048, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -258,7 +258,7 @@ func TestRequeueMissingSeekThumbnails(t *testing.T) {
 func TestUpsertVideoReportsSeekThumbnailNeed(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestUpsertVideoReportsSeekThumbnailNeed(t *testing.T) {
 	if _, err := db.sql.Exec(`update videos set seek_thumbnail_state = 'done' where id = ?`, added.ID); err != nil {
 		t.Fatal(err)
 	}
-	moved, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-a", 1024, 0))
+	moved, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -279,7 +279,7 @@ func TestUpsertVideoReportsSeekThumbnailNeed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := indexed["/media/a.mp4"].SeekThumbnailState; got != domain.SeekThumbnailDone {
+	if got := indexed[fixturePath("/media/a.mp4")].SeekThumbnailState; got != domain.SeekThumbnailDone {
 		t.Fatalf("IndexedVideo.SeekThumbnailState = %q, want done", got)
 	}
 
@@ -336,7 +336,7 @@ func TestSeekThumbnailStageMigrationBackfillsAndRollsBack(t *testing.T) {
 		if item.located {
 			if _, err := db.sql.Exec(`insert into video_locations
 				(video_id, path, title, size_bytes, mtime, created_at, updated_at)
-				values (?, ?, ?, 1, 1, 1, 1)`, id, "/media/"+item.key+".mp4", item.key); err != nil {
+				values (?, ?, ?, 1, 1, 1, 1)`, id, fixturePath("/media/")+item.key+".mp4", item.key); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -438,7 +438,7 @@ func TestSeekThumbnailSpriteMigrationRequeuesDone(t *testing.T) {
 		if item.located {
 			if _, err := db.sql.Exec(`insert into video_locations
 				(video_id, path, title, size_bytes, mtime, created_at, updated_at)
-				values (?, ?, ?, 1, 1, 1, 1)`, id, "/media/"+item.key+".mp4", item.key); err != nil {
+				values (?, ?, ?, 1, 1, 1, 1)`, id, fixturePath("/media/")+item.key+".mp4", item.key); err != nil {
 				t.Fatal(err)
 			}
 		}

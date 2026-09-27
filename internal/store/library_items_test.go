@@ -4,7 +4,9 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -26,18 +28,18 @@ type itemFile struct {
 // （登録フォルダ直下の solo、子フォルダを持つ mixed の x、1本だけの mixed/sub の y）
 // である。値の同じ項目を混ぜ、id での決着も確かめる。
 var itemFiles = []itemFile{
-	{path: "/media/show/ep10.mp4", added: 9, mtime: 1, size: 100, duration: ptr(1000),
+	{path: fixturePath("/media/show/ep10.mp4"), added: 9, mtime: 1, size: 100, duration: ptr(1000),
 		progress: &domain.Progress{PositionMs: 500}, played: 300},
-	{path: "/media/show/ep1.mp4", added: 2, mtime: 4, size: 200, duration: ptr(2000),
+	{path: fixturePath("/media/show/ep1.mp4"), added: 2, mtime: 4, size: 200, duration: ptr(2000),
 		progress: &domain.Progress{PositionMs: 2000, Completed: true}, played: 100},
-	{path: "/media/show/ep2.mp4", added: 3, mtime: 2, size: 300, duration: nil,
+	{path: fixturePath("/media/show/ep2.mp4"), added: 3, mtime: 2, size: 300, duration: nil,
 		progress: &domain.Progress{PositionMs: 0}, played: 200},
-	{path: "/media/pair/p1.mp4", added: 1, mtime: 8, size: 50, duration: nil},
-	{path: "/media/pair/p2.mp4", added: 5, mtime: 3, size: 50, duration: nil},
-	{path: "/media/solo.mp4", added: 9, mtime: 8, size: 600, duration: ptr(3000),
+	{path: fixturePath("/media/pair/p1.mp4"), added: 1, mtime: 8, size: 50, duration: nil},
+	{path: fixturePath("/media/pair/p2.mp4"), added: 5, mtime: 3, size: 50, duration: nil},
+	{path: fixturePath("/media/solo.mp4"), added: 9, mtime: 8, size: 600, duration: ptr(3000),
 		progress: &domain.Progress{PositionMs: 3000, Completed: true}, played: 300},
-	{path: "/media/mixed/x.mp4", added: 4, mtime: 8, size: 100, duration: ptr(3000)},
-	{path: "/media/mixed/sub/y.mp4", added: 6, mtime: 5, size: 700, duration: ptr(100),
+	{path: fixturePath("/media/mixed/x.mp4"), added: 4, mtime: 8, size: 100, duration: ptr(3000)},
+	{path: fixturePath("/media/mixed/sub/y.mp4"), added: 6, mtime: 5, size: 700, duration: ptr(100),
 		progress: &domain.Progress{PositionMs: 50}, played: 50},
 }
 
@@ -79,14 +81,7 @@ func itemsFixture(t *testing.T) (*DB, map[string]int64) {
 }
 
 func titleOf(path string) string {
-	base := path[len("/media/"):]
-	for i := len(base) - 1; i >= 0; i-- {
-		if base[i] == '/' {
-			base = base[i+1:]
-			break
-		}
-	}
-	return base[:len(base)-len(".mp4")]
+	return strings.TrimSuffix(filepath.Base(path), ".mp4")
 }
 
 // itemKey は項目の keyset の id（動画の id か、グループの最初のメンバーの id）である。
@@ -172,10 +167,10 @@ func TestListLibraryGroupsFoldersIntoOneItem(t *testing.T) {
 	}
 
 	show := findGroup(t, items, "show")
-	if want := []int64{ids["/media/show/ep1.mp4"], ids["/media/show/ep2.mp4"], ids["/media/show/ep10.mp4"]}; !slices.Equal(memberIDs(show), want) {
+	if want := []int64{ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep2.mp4")], ids[fixturePath("/media/show/ep10.mp4")]}; !slices.Equal(memberIDs(show), want) {
 		t.Errorf("show のメンバー = %v, want %v（自然順）", memberIDs(show), want)
 	}
-	if show.Path != "/media/show" {
+	if show.Path != fixturePath("/media/show") {
 		t.Errorf("show のパス = %q", show.Path)
 	}
 	if show.DurationMs == nil || *show.DurationMs != 3000 {
@@ -227,10 +222,10 @@ func TestListLibraryFiltersPerMember(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids["/media/show/ep1.mp4"]}, tagA.ID); err != nil {
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/show/ep1.mp4")]}, tagA.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids["/media/show/ep2.mp4"]}, tagB.ID); err != nil {
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/show/ep2.mp4")]}, tagB.ID); err != nil {
 		t.Fatal(err)
 	}
 	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID}})); !slices.Equal(names, []string{"group:show"}) {
@@ -359,16 +354,16 @@ func TestListLibraryWatchStateMatchesDomain(t *testing.T) {
 	if show.WatchState != domain.WatchStateInProgress || show.WatchedCount != 1 {
 		t.Errorf("show = %s・%d, want inProgress・1", show.WatchState, show.WatchedCount)
 	}
-	if show.OpenVideoID != ids["/media/show/ep10.mp4"] {
+	if show.OpenVideoID != ids[fixturePath("/media/show/ep10.mp4")] {
 		t.Errorf("show の開くメンバー = %d, want ep10（途中まで見た最初のメンバー）", show.OpenVideoID)
 	}
-	if pair := findGroup(t, items, "pair"); pair.WatchState != domain.WatchStateUnwatched || pair.OpenVideoID != ids["/media/pair/p1.mp4"] {
+	if pair := findGroup(t, items, "pair"); pair.WatchState != domain.WatchStateUnwatched || pair.OpenVideoID != ids[fixturePath("/media/pair/p1.mp4")] {
 		t.Errorf("pair = %s・開く %d, want unwatched・p1", pair.WatchState, pair.OpenVideoID)
 	}
 
 	// 全部を完了にすると watched になり、開くのは最初のメンバーになる。
 	for _, name := range []string{"ep2", "ep10"} {
-		if _, err := db.sql.Exec(`update playback_progress set completed = 1 where content_key = ?`, "key/media/show/"+name+".mp4"); err != nil {
+		if _, err := db.sql.Exec(`update playback_progress set completed = 1 where content_key = ?`, "key"+fixturePath("/media/show/"+name+".mp4")); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -441,7 +436,7 @@ func TestLibraryIDsIncludeAllMembersOfMatchedGroups(t *testing.T) {
 		t.Errorf("missing = %v", missing)
 	}
 	slices.Sort(got)
-	want := []int64{ids["/media/show/ep1.mp4"], ids["/media/show/ep2.mp4"], ids["/media/show/ep10.mp4"], ids["/media/solo.mp4"]}
+	want := []int64{ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep2.mp4")], ids[fixturePath("/media/show/ep10.mp4")], ids[fixturePath("/media/solo.mp4")]}
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("ids = %v, want %v", got, want)
@@ -452,7 +447,7 @@ func TestLibraryIDsIncludeAllMembersOfMatchedGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	slices.Sort(got)
-	want = []int64{ids["/media/pair/p1.mp4"], ids["/media/pair/p2.mp4"], ids["/media/mixed/x.mp4"]}
+	want = []int64{ids[fixturePath("/media/pair/p1.mp4")], ids[fixturePath("/media/pair/p2.mp4")], ids[fixturePath("/media/mixed/x.mp4")]}
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("未視聴の ids = %v, want %v", got, want)
@@ -464,7 +459,7 @@ func TestLibraryIDsIncludeAllMembersOfMatchedGroups(t *testing.T) {
 func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
-	public := []int64{ids["/media/show/ep1.mp4"], ids["/media/show/ep10.mp4"], ids["/media/pair/p2.mp4"], ids["/media/solo.mp4"]}
+	public := []int64{ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep10.mp4")], ids[fixturePath("/media/pair/p2.mp4")], ids[fixturePath("/media/solo.mp4")]}
 	if _, err := db.Visibility().SetVideosPublic(ctx, public, true); err != nil {
 		t.Fatal(err)
 	}
@@ -476,13 +471,13 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 		t.Fatalf("ゲストの項目 = %v, want %v", names, want)
 	}
 	show := findGroup(t, items, "show")
-	if want := []int64{ids["/media/show/ep1.mp4"], ids["/media/show/ep10.mp4"]}; !slices.Equal(memberIDs(show), want) {
+	if want := []int64{ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep10.mp4")]}; !slices.Equal(memberIDs(show), want) {
 		t.Errorf("ゲストの show のメンバー = %v, want %v", memberIDs(show), want)
 	}
 	if show.SizeBytes != 300 || show.DurationMs == nil || *show.DurationMs != 3000 {
 		t.Errorf("ゲストの show の大きさ・長さ = %d・%v, want 300・3000", show.SizeBytes, show.DurationMs)
 	}
-	if show.LastPlayedAt != nil || show.WatchedCount != 0 || show.OpenVideoID != ids["/media/show/ep1.mp4"] {
+	if show.LastPlayedAt != nil || show.WatchedCount != 0 || show.OpenVideoID != ids[fixturePath("/media/show/ep1.mp4")] {
 		t.Errorf("ゲストの show に再生の記録が出た: %+v", show)
 	}
 	// ゲストの検索は非公開のメンバー（ep2）に当たらない。
@@ -490,10 +485,10 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 		t.Errorf("ゲストの ep2 の検索 = %v, want 空", names)
 	}
 
-	if _, err := db.Library().FolderGroup(ctx, domain.AudienceGuest, "/media/pair"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Library().FolderGroup(ctx, domain.AudienceGuest, fixturePath("/media/pair")); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("ゲストの pair（公開1本）= %v, want ErrNotFound", err)
 	}
-	group, err := db.Library().FolderGroup(ctx, domain.AudienceGuest, "/media/show")
+	group, err := db.Library().FolderGroup(ctx, domain.AudienceGuest, fixturePath("/media/show"))
 	if err != nil || len(group.Members) != 2 {
 		t.Errorf("ゲストの show = %+v, %v", group, err)
 	}
@@ -504,24 +499,24 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 func TestFolderGroup(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
-	group, err := db.Library().FolderGroup(ctx, domain.AudienceOwner, "/media/show/")
+	group, err := db.Library().FolderGroup(ctx, domain.AudienceOwner, fixturePath("/media/show/"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if group.Name != "show" || len(group.Members) != 3 || group.OpenVideoID != ids["/media/show/ep10.mp4"] {
+	if group.Name != "show" || len(group.Members) != 3 || group.OpenVideoID != ids[fixturePath("/media/show/ep10.mp4")] {
 		t.Errorf("show = %+v", group)
 	}
-	for _, dir := range []string{"/media/mixed", "/media/mixed/sub", "/media", "/media/none"} {
+	for _, dir := range []string{fixturePath("/media/mixed"), fixturePath("/media/mixed/sub"), fixturePath("/media"), fixturePath("/media/none")} {
 		if _, err := db.Library().FolderGroup(ctx, domain.AudienceOwner, dir); !errors.Is(err, domain.ErrNotFound) {
 			t.Errorf("%s = %v, want ErrNotFound", dir, err)
 		}
 	}
 
 	// 「まとめを解除」するとグループでなくなり、メンバーは動画の項目に戻る。
-	if err := db.FolderGroups().SetOverride(ctx, "/media/show", domain.FolderGroupUngroup); err != nil {
+	if err := db.FolderGroups().SetOverride(ctx, fixturePath("/media/show"), domain.FolderGroupUngroup); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Library().FolderGroup(ctx, domain.AudienceOwner, "/media/show"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := db.Library().FolderGroup(ctx, domain.AudienceOwner, fixturePath("/media/show")); !errors.Is(err, domain.ErrNotFound) {
 		t.Errorf("解除した show = %v, want ErrNotFound", err)
 	}
 	names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit}))

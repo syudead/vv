@@ -185,10 +185,10 @@ func TestMergeTagMovesContentAndSynonyms(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/x-only.mp4", "x-only", "key-x", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/x-only.mp4"), "x-only", "key-x", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/both.mp4", "both", "key-both", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/both.mp4"), "both", "key-both", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	attachTag(t, db, "key-x", x.ID)
@@ -269,7 +269,7 @@ func TestAddSynonymMergeRequiredAndAccepted(t *testing.T) {
 	}
 	for i := range 10 {
 		key := fmt.Sprintf("anime-%d", i)
-		if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fmt.Sprintf("/media/anime-%d.mp4", i), key, key, 1, 0)); err != nil {
+		if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fmt.Sprintf(fixturePath("/media/anime-%d.mp4"), i), key, key, 1, 0)); err != nil {
 			t.Fatal(err)
 		}
 		attachTag(t, db, key, lower.ID)
@@ -373,7 +373,7 @@ func TestVideoCountExcludesUnregisteredVideosAndMergeReachesThem(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/registered.mp4", "registered", "key-registered", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/registered.mp4"), "registered", "key-registered", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	attachTag(t, db, "key-registered", x.ID)
@@ -444,7 +444,7 @@ func TestMergeTagRollsBackEverythingOnMidTransactionFailure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1, 0)); err != nil {
 		t.Fatal(err)
 	}
 	attachTag(t, db, "key-a", source.ID)

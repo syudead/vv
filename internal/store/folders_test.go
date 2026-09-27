@@ -33,31 +33,31 @@ func folderFixture(t *testing.T, files ...domain.VideoFile) (*DB, map[string]int
 
 func TestFolderLocationsReturnsEverythingBelowTheFolder(t *testing.T) {
 	db, ids := folderFixture(t,
-		sampleFile("/media/A/x.mp4", "x", "key-x", 1, 0),
-		sampleFile("/media/A/B/y.mp4", "y", "key-y", 1, 0),
-		sampleFile("/media/A/B/C/z.mp4", "z", "key-z", 1, 0),
-		sampleFile("/media/AB/other.mp4", "other", "key-o", 1, 0),
+		sampleFile(fixturePath("/media/A/x.mp4"), "x", "key-x", 1, 0),
+		sampleFile(fixturePath("/media/A/B/y.mp4"), "y", "key-y", 1, 0),
+		sampleFile(fixturePath("/media/A/B/C/z.mp4"), "z", "key-z", 1, 0),
+		sampleFile(fixturePath("/media/AB/other.mp4"), "other", "key-o", 1, 0),
 	)
 	ctx := context.Background()
-	if err := db.Ingest().SetThumbnailState(ctx, ids["/media/A/B/y.mp4"], domain.ThumbnailStateDone); err != nil {
+	if err := db.Ingest().SetThumbnailState(ctx, ids[fixturePath("/media/A/B/y.mp4")], domain.ThumbnailStateDone); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.sql.Exec(`update videos set preview_state = 'done' where id = ?`, ids["/media/A/B/y.mp4"]); err != nil {
+	if _, err := db.sql.Exec(`update videos set preview_state = 'done' where id = ?`, ids[fixturePath("/media/A/B/y.mp4")]); err != nil {
 		t.Fatal(err)
 	}
 
-	locations, err := db.Library().FolderLocations(ctx, domain.AudienceOwner, "/media/A")
+	locations, err := db.Library().FolderLocations(ctx, domain.AudienceOwner, fixturePath("/media/A"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var paths []string
 	for _, location := range locations {
 		paths = append(paths, location.Path)
-		if location.Path == "/media/A/B/y.mp4" && location.ThumbnailState != domain.ThumbnailStateDone {
+		if location.Path == fixturePath("/media/A/B/y.mp4") && location.ThumbnailState != domain.ThumbnailStateDone {
 			t.Errorf("thumbnail state = %q", location.ThumbnailState)
 		}
 		wantPreview := domain.PreviewStatePending
-		if location.Path == "/media/A/B/y.mp4" {
+		if location.Path == fixturePath("/media/A/B/y.mp4") {
 			wantPreview = domain.PreviewStateDone
 		}
 		if location.PreviewState != wantPreview {
@@ -65,46 +65,46 @@ func TestFolderLocationsReturnsEverythingBelowTheFolder(t *testing.T) {
 		}
 	}
 	slices.Sort(paths)
-	if want := []string{"/media/A/B/C/z.mp4", "/media/A/B/y.mp4", "/media/A/x.mp4"}; !slices.Equal(paths, want) {
+	if want := []string{fixturePath("/media/A/B/C/z.mp4"), fixturePath("/media/A/B/y.mp4"), fixturePath("/media/A/x.mp4")}; !slices.Equal(paths, want) {
 		t.Errorf("paths = %q, want %q (AB must not match the A prefix)", paths, want)
 	}
 
-	listing, ok := domain.SummarizeFolder(domain.MediaFolder{ID: 1, Path: "/media"}, "A", locations)
+	listing, ok := domain.SummarizeFolder(domain.MediaFolder{ID: 1, Path: fixturePath("/media")}, "A", locations)
 	if !ok || len(listing.Folders) != 1 || listing.Folders[0].Name != "B" ||
 		listing.Folders[0].VideoCount != 1 || listing.Folders[0].FolderCount != 1 ||
-		len(listing.Folders[0].Previews) != 1 || listing.Folders[0].Previews[0].VideoID != ids["/media/A/B/y.mp4"] {
+		len(listing.Folders[0].Previews) != 1 || listing.Folders[0].Previews[0].VideoID != ids[fixturePath("/media/A/B/y.mp4")] {
 		t.Errorf("listing = %+v", listing)
 	}
 }
 
 func TestFolderLocationsIgnoresUnregisteredLocations(t *testing.T) {
-	db, _ := folderFixture(t, sampleFile("/media/A/x.mp4", "x", "key-x", 1, 0))
+	db, _ := folderFixture(t, sampleFile(fixturePath("/media/A/x.mp4"), "x", "key-x", 1, 0))
 	ctx := context.Background()
-	if _, err := db.sql.Exec(`update media_folders set path = '/elsewhere'`); err != nil {
+	if _, err := db.sql.Exec(`update media_folders set path = ?`, fixturePath("/elsewhere")); err != nil {
 		t.Fatal(err)
 	}
 
-	locations, err := db.Library().FolderLocations(ctx, domain.AudienceOwner, "/media")
+	locations, err := db.Library().FolderLocations(ctx, domain.AudienceOwner, fixturePath("/media"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(locations) != 0 {
 		t.Errorf("locations = %+v, want none outside registered folders", locations)
 	}
-	found, err := db.Library().HasFolderLocations(ctx, domain.AudienceOwner, "/media/A")
+	found, err := db.Library().HasFolderLocations(ctx, domain.AudienceOwner, fixturePath("/media/A"))
 	if err != nil || found {
 		t.Errorf("HasFolderLocations = %v, %v; want false", found, err)
 	}
 }
 
 func TestHasFolderLocations(t *testing.T) {
-	db, _ := folderFixture(t, sampleFile("/media/only-deeper/inner/d.mp4", "d", "key-d", 1, 0))
+	db, _ := folderFixture(t, sampleFile(fixturePath("/media/only-deeper/inner/d.mp4"), "d", "key-d", 1, 0))
 	ctx := context.Background()
 	for dir, want := range map[string]bool{
-		"/media/only-deeper":       true,
-		"/media/only-deeper/inner": true,
-		"/media/only":              false,
-		"/media/missing":           false,
+		fixturePath("/media/only-deeper"):       true,
+		fixturePath("/media/only-deeper/inner"): true,
+		fixturePath("/media/only"):              false,
+		fixturePath("/media/missing"):           false,
 	} {
 		got, err := db.Library().HasFolderLocations(ctx, domain.AudienceOwner, dir)
 		if err != nil {
@@ -118,13 +118,13 @@ func TestHasFolderLocations(t *testing.T) {
 
 func TestListFolderVideosReturnsDirectVideosOnly(t *testing.T) {
 	db, _ := folderFixture(t,
-		sampleFile("/media/A/x.mp4", "x", "key-x", 10, 0),
-		sampleFile("/media/A/B/y.mp4", "y", "key-y", 10, 0),
-		sampleFile("/media/A/B/C/z.mp4", "z", "key-z", 10, 0),
-		sampleFile("/media/AB/other.mp4", "other", "key-o", 10, 0),
+		sampleFile(fixturePath("/media/A/x.mp4"), "x", "key-x", 10, 0),
+		sampleFile(fixturePath("/media/A/B/y.mp4"), "y", "key-y", 10, 0),
+		sampleFile(fixturePath("/media/A/B/C/z.mp4"), "z", "key-z", 10, 0),
+		sampleFile(fixturePath("/media/AB/other.mp4"), "other", "key-o", 10, 0),
 	)
 
-	page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media/A"})
+	page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +132,7 @@ func TestListFolderVideosReturnsDirectVideosOnly(t *testing.T) {
 		t.Errorf("titles = %q, total = %d; want only x", got, page.Total)
 	}
 
-	page, err = db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media"})
+	page, err = db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,13 +143,13 @@ func TestListFolderVideosReturnsDirectVideosOnly(t *testing.T) {
 
 func TestListFolderVideosUsesTheLocationInThatFolder(t *testing.T) {
 	db, ids := folderFixture(t,
-		sampleFile("/media/dup/same-b.mp4", "same-b", "key-same", 20, 0),
-		sampleFile("/media/dup/same-a.mp4", "same-a", "key-same", 20, 0),
-		sampleFile("/media/other/copy.mp4", "copy", "key-same", 20, 0),
+		sampleFile(fixturePath("/media/dup/same-b.mp4"), "same-b", "key-same", 20, 0),
+		sampleFile(fixturePath("/media/dup/same-a.mp4"), "same-a", "key-same", 20, 0),
+		sampleFile(fixturePath("/media/other/copy.mp4"), "copy", "key-same", 20, 0),
 	)
 	ctx := context.Background()
 
-	dup, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media/dup"})
+	dup, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/dup")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,14 +157,14 @@ func TestListFolderVideosUsesTheLocationInThatFolder(t *testing.T) {
 		t.Errorf("dup = %q (total %d), want one card titled by the first path", got, dup.Total)
 	}
 
-	other, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media/other"})
+	other, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/other")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := titlesOf(other); !slices.Equal(got, []string{"copy"}) {
 		t.Errorf("other = %q, want the title of the location in that folder", got)
 	}
-	if other.Items[0].ID != dup.Items[0].ID || other.Items[0].ID != ids["/media/dup/same-b.mp4"] {
+	if other.Items[0].ID != dup.Items[0].ID || other.Items[0].ID != ids[fixturePath("/media/dup/same-b.mp4")] {
 		t.Error("both folders must show the same logical video")
 	}
 }
@@ -173,7 +173,7 @@ func TestListFolderVideosPagesWithCursor(t *testing.T) {
 	files := make([]domain.VideoFile, 0, 61)
 	for index := range 61 {
 		name := fmt.Sprintf("v%02d", index)
-		files = append(files, sampleFile("/media/many/"+name+".mp4", name, "key-"+name, 1, 0))
+		files = append(files, sampleFile(fixturePath("/media/many/")+name+".mp4", name, "key-"+name, 1, 0))
 	}
 	db, _ := folderFixture(t, files...)
 	ctx := context.Background()
@@ -182,7 +182,7 @@ func TestListFolderVideosPagesWithCursor(t *testing.T) {
 		var titles []string
 		cursor := ""
 		for {
-			page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media/many", Sort: sort, Cursor: cursor})
+			page, err := db.Library().ListFolderVideos(ctx, domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/many"), Sort: sort, Cursor: cursor})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -208,8 +208,8 @@ func TestListFolderVideosPagesWithCursor(t *testing.T) {
 }
 
 func TestListFolderVideosRejectsBrokenCursor(t *testing.T) {
-	db, _ := folderFixture(t, sampleFile("/media/A/x.mp4", "x", "key-x", 1, 0))
-	_, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media/A", Cursor: "!!"})
+	db, _ := folderFixture(t, sampleFile(fixturePath("/media/A/x.mp4"), "x", "key-x", 1, 0))
+	_, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A"), Cursor: "!!"})
 	if !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Errorf("err = %v, want domain.ErrInvalidCursor", err)
 	}
@@ -222,17 +222,17 @@ func TestFolderNamesEndingWithBackslashOnUnix(t *testing.T) {
 		t.Skip("`\\` is a path separator on this OS")
 	}
 	db, _ := folderFixture(t,
-		sampleFile("/media/A\\/movie.mp4", "movie", "key-m", 1, 0),
-		sampleFile("/media/A/other.mp4", "other", "key-o", 1, 0),
+		sampleFile(fixturePath("/media/A\\/movie.mp4"), "movie", "key-m", 1, 0),
+		sampleFile(fixturePath("/media/A/other.mp4"), "other", "key-o", 1, 0),
 	)
-	page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: "/media/A\\"})
+	page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{Dir: fixturePath("/media/A\\")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got := titlesOf(page); !slices.Equal(got, []string{"movie"}) {
 		t.Errorf("A\\ = %q, want only movie", got)
 	}
-	found, err := db.Library().HasFolderLocations(context.Background(), domain.AudienceOwner, "/media/A\\")
+	found, err := db.Library().HasFolderLocations(context.Background(), domain.AudienceOwner, fixturePath("/media/A\\"))
 	if err != nil || !found {
 		t.Errorf("HasFolderLocations(A\\) = %v, %v; want true", found, err)
 	}

@@ -52,7 +52,7 @@ func sortFixture(t *testing.T) (*DB, []int64) {
 	for i, row := range sortRows {
 		key := fmt.Sprintf("key-%d", i)
 		got, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
-			Path: fmt.Sprintf("/media/%d-%s.mp4", i, row.title), Title: row.title, ContentKey: key,
+			Path: fmt.Sprintf(fixturePath("/media/%d-%s.mp4"), i, row.title), Title: row.title, ContentKey: key,
 			SizeBytes: row.size, MTime: fixedTime.Add(time.Duration(row.mtime) * time.Minute),
 			AddedAt: fixedTime.Add(time.Duration(row.added) * time.Minute), Container: "mp4",
 		})
@@ -177,7 +177,7 @@ func TestListFolderVideosSortsWithSeed(t *testing.T) {
 		cursor := ""
 		for range 20 {
 			page, err := db.Library().ListFolderVideos(context.Background(), domain.AudienceOwner, domain.FolderVideoQuery{
-				Dir: "/media", Sort: sort, Seed: 9, Limit: 2, Cursor: cursor,
+				Dir: fixturePath("/media"), Sort: sort, Seed: 9, Limit: 2, Cursor: cursor,
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -199,9 +199,9 @@ func TestListFolderVideosSortsWithSeed(t *testing.T) {
 func TestListVideosTitleAscIsNatural(t *testing.T) {
 	db := migratedDB(t)
 	upsertAll(t, db,
-		listingFile("/media/10話.mp4", "10話", "key-10", 0),
-		listingFile("/media/2話.mp4", "2話", "key-2", 1),
-		listingFile("/media/1話.mp4", "1話", "key-1", 2),
+		listingFile(fixturePath("/media/10話.mp4"), "10話", "key-10", 0),
+		listingFile(fixturePath("/media/2話.mp4"), "2話", "key-2", 1),
+		listingFile(fixturePath("/media/1話.mp4"), "1話", "key-1", 2),
 	)
 	page, err := db.Library().ListVideos(context.Background(), domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortTitleAsc})
 	if err != nil {
@@ -279,7 +279,7 @@ func TestListVideosRandomSurvivesAddedLocations(t *testing.T) {
 			// まだ出ていない動画すべてに、パスが前に来る所在を足す。
 			for i := range sortRows {
 				if !slices.Contains(seen, ids[i]) {
-					upsertAll(t, db, listingFile(fmt.Sprintf("/media/0-extra-%d.mp4", i), "extra", fmt.Sprintf("key-%d", i), 0))
+					upsertAll(t, db, listingFile(fmt.Sprintf(fixturePath("/media/0-extra-%d.mp4"), i), "extra", fmt.Sprintf("key-%d", i), 0))
 				}
 			}
 		}

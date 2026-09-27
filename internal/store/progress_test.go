@@ -104,7 +104,7 @@ func TestProgressSurvivesVideoDeletion(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestProgressFollowsContentAcrossPaths(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/元.mp4", "元", "key-a", 1024, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/元.mp4"), "元", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Playback().SaveProgress(ctx, "key-a", domain.EvaluateProgress(4000, 600_000)); err != nil {
@@ -142,7 +142,7 @@ func TestProgressFollowsContentAcrossPaths(t *testing.T) {
 	if err := db.ScanIndex().DeleteVideos(ctx, []int64{1}); err != nil {
 		t.Fatal(err)
 	}
-	moved, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/2026/別名.mp4", "別名", "key-a", 1024, 0))
+	moved, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/2026/別名.mp4"), "別名", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}

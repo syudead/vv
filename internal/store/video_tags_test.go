@@ -32,14 +32,14 @@ func TestAttachTagByIDAppliesToAllRequestedVideos(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids := upsertAll(t, db,
-		listingFile("/media/a.mp4", "a", "key-a", 0),
-		listingFile("/media/b.mp4", "b", "key-b", 1),
-		listingFile("/media/c.mp4", "c", "key-c", 2),
+		listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0),
+		listingFile(fixturePath("/media/b.mp4"), "b", "key-b", 1),
+		listingFile(fixturePath("/media/c.mp4"), "c", "key-c", 2),
 	)
-	videoIDs := []int64{ids["/media/a.mp4"], ids["/media/b.mp4"], ids["/media/c.mp4"]}
+	videoIDs := []int64{ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")], ids[fixturePath("/media/c.mp4")]}
 
 	// b には先に付けておく。
-	if _, applied, err := db.Tags().AttachTagByID(ctx, []int64{ids["/media/b.mp4"]}, tag.ID); err != nil || applied != 1 {
+	if _, applied, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/b.mp4")]}, tag.ID); err != nil || applied != 1 {
 		t.Fatalf("先に付ける: applied=%d err=%v", applied, err)
 	}
 
@@ -70,9 +70,9 @@ func TestAttachTagByIDSkipsUnresolvableVideoIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))
 
-	_, applied, err := db.Tags().AttachTagByID(ctx, []int64{ids["/media/a.mp4"], 999999}, tag.ID)
+	_, applied, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/a.mp4")], 999999}, tag.ID)
 	if err != nil {
 		t.Fatalf("AttachTagByID() error = %v", err)
 	}
@@ -92,8 +92,8 @@ func TestAttachTagByIDCountsDuplicateVideoIDsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
-	id := ids["/media/a.mp4"]
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))
+	id := ids[fixturePath("/media/a.mp4")]
 
 	_, applied, err := db.Tags().AttachTagByID(ctx, []int64{id, id, id}, tag.ID)
 	if err != nil {
@@ -112,9 +112,9 @@ func TestAttachTagByIDCountsDuplicateVideoIDsOnce(t *testing.T) {
 func TestAttachTagByIDRejectsMissingTag(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	ids := upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))
 
-	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids["/media/a.mp4"]}, 9999); !errors.Is(err, domain.ErrTagNotFound) {
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/a.mp4")]}, 9999); !errors.Is(err, domain.ErrTagNotFound) {
 		t.Errorf("AttachTagByID(無いタグ) error = %v, want ErrTagNotFound", err)
 	}
 }
@@ -132,9 +132,9 @@ func TestAttachTagByNameUsesSynonymToFindOriginalTag(t *testing.T) {
 	if _, err := db.Tags().AddSynonym(ctx, tag.ID, "anime-jp", nil); err != nil {
 		t.Fatal(err)
 	}
-	ids := upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))
 
-	ref, applied, err := db.Tags().AttachTagByName(ctx, []int64{ids["/media/a.mp4"]}, "anime-jp")
+	ref, applied, err := db.Tags().AttachTagByName(ctx, []int64{ids[fixturePath("/media/a.mp4")]}, "anime-jp")
 	if err != nil {
 		t.Fatalf("AttachTagByName(シノニム) error = %v", err)
 	}
@@ -154,9 +154,9 @@ func TestAttachTagByNameUsesSynonymToFindOriginalTag(t *testing.T) {
 func TestAttachTagByNameCreatesTagWhenMissing(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	ids := upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))
 
-	ref, applied, err := db.Tags().AttachTagByName(ctx, []int64{ids["/media/a.mp4"]}, "新規")
+	ref, applied, err := db.Tags().AttachTagByName(ctx, []int64{ids[fixturePath("/media/a.mp4")]}, "新規")
 	if err != nil {
 		t.Fatalf("AttachTagByName(新しい名前) error = %v", err)
 	}
@@ -186,15 +186,15 @@ func TestDetachTagIgnoresAlreadyUnassignedVideos(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids := upsertAll(t, db,
-		listingFile("/media/a.mp4", "a", "key-a", 0),
-		listingFile("/media/b.mp4", "b", "key-b", 1),
+		listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0),
+		listingFile(fixturePath("/media/b.mp4"), "b", "key-b", 1),
 	)
-	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids["/media/a.mp4"]}, tag.ID); err != nil {
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/a.mp4")]}, tag.ID); err != nil {
 		t.Fatal(err)
 	}
 
 	// b には付いていないが、外しても誤りにならない。
-	ref, applied, err := db.Tags().DetachTag(ctx, []int64{ids["/media/a.mp4"], ids["/media/b.mp4"]}, tag.ID)
+	ref, applied, err := db.Tags().DetachTag(ctx, []int64{ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")]}, tag.ID)
 	if err != nil {
 		t.Fatalf("DetachTag() error = %v", err)
 	}
@@ -209,7 +209,7 @@ func TestDetachTagIgnoresAlreadyUnassignedVideos(t *testing.T) {
 	}
 
 	// もう一度外しても誤りにならない。
-	if _, applied, err := db.Tags().DetachTag(ctx, []int64{ids["/media/a.mp4"]}, tag.ID); err != nil || applied != 1 {
+	if _, applied, err := db.Tags().DetachTag(ctx, []int64{ids[fixturePath("/media/a.mp4")]}, tag.ID); err != nil || applied != 1 {
 		t.Errorf("再度の DetachTag: applied=%d err=%v, want 1 と nil", applied, err)
 	}
 }
@@ -225,8 +225,8 @@ func TestDetachTagCountsDuplicateVideoIDsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
-	id := ids["/media/a.mp4"]
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))
+	id := ids[fixturePath("/media/a.mp4")]
 	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{id}, tag.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -265,8 +265,8 @@ func TestAttachTagByIDRollsBackEverythingOnMidTransactionFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids := upsertAll(t, db,
-		listingFile("/media/a.mp4", "a", "key-a", 0),
-		listingFile("/media/b.mp4", "b", "key-b", 1),
+		listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0),
+		listingFile(fixturePath("/media/b.mp4"), "b", "key-b", 1),
 	)
 
 	trigger := fmt.Sprintf(
@@ -276,7 +276,7 @@ func TestAttachTagByIDRollsBackEverythingOnMidTransactionFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids["/media/a.mp4"], ids["/media/b.mp4"]}, tag.ID); err == nil {
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")]}, tag.ID); err == nil {
 		t.Fatal("AttachTagByID() = nil error, want failure")
 	}
 
@@ -302,15 +302,15 @@ func TestSummaryCountsOnlyRegisteredVideosAndPartiallyTaggedTags(t *testing.T) {
 		t.Fatal(err)
 	}
 	ids := upsertAll(t, db,
-		listingFile("/media/a.mp4", "a", "key-a", 0),
-		listingFile("/media/b.mp4", "b", "key-b", 1),
-		listingFile("/media/c.mp4", "c", "key-c", 2),
+		listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0),
+		listingFile(fixturePath("/media/b.mp4"), "b", "key-b", 1),
+		listingFile(fixturePath("/media/c.mp4"), "c", "key-c", 2),
 	)
-	videoIDs := []int64{ids["/media/a.mp4"], ids["/media/b.mp4"], ids["/media/c.mp4"]}
+	videoIDs := []int64{ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")], ids[fixturePath("/media/c.mp4")]}
 	if _, _, err := db.Tags().AttachTagByID(ctx, videoIDs, all.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids["/media/a.mp4"]}, one.ID); err != nil {
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/a.mp4")]}, one.ID); err != nil {
 		t.Fatal(err)
 	}
 
@@ -347,8 +347,8 @@ func TestSummaryCountsDuplicateVideoIDsOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ids := upsertAll(t, db, listingFile("/media/a.mp4", "a", "key-a", 0))
-	id := ids["/media/a.mp4"]
+	ids := upsertAll(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0))
+	id := ids[fixturePath("/media/a.mp4")]
 	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{id}, tag.ID); err != nil {
 		t.Fatal(err)
 	}

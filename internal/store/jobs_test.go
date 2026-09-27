@@ -19,7 +19,7 @@ func jobsFixture(t *testing.T) (*DB, int64) {
 
 	db := migratedDB(t)
 	added, err := db.ScanIndex().UpsertVideo(context.Background(),
-		sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+		sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -293,7 +293,7 @@ func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
 	ctx := context.Background()
 	var videoID int64
 	for i := range 4 {
-		result, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fmt.Sprintf("/media/%d/movie.mp4", i), "movie", "shared", 1, 0))
+		result, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fmt.Sprintf(fixturePath("/media/%d/movie.mp4"), i), "movie", "shared", 1, 0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -381,7 +381,7 @@ func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", "key-a", 1024, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/z.mp4"), "z", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -409,7 +409,7 @@ func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if retried.LocationPath != "/media/z.mp4" {
+	if retried.LocationPath != fixturePath("/media/z.mp4") {
 		t.Fatalf("retry path = %q, want /media/z.mp4", retried.LocationPath)
 	}
 }
@@ -418,7 +418,7 @@ func TestPreviewStateUsesContentIdentityForSuccessAndClaimIdentityForFailure(t *
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	probe := domain.Probe{DurationMs: 1000, VideoCodec: "h264", AudioCodec: "aac"}
-	if err := db.Ingest().ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability(domain.ContainerFromPath("/media/a.mp4"), probe)); err != nil {
+	if err := db.Ingest().ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability(domain.ContainerFromPath(fixturePath("/media/a.mp4")), probe)); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
@@ -428,7 +428,7 @@ func TestPreviewStateUsesContentIdentityForSuccessAndClaimIdentityForFailure(t *
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", "key-a", 1024, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/z.mp4"), "z", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
 
@@ -575,7 +575,7 @@ func TestPreviewCompletionRejectsChangedContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "replacement", "key-b", 2048, time.Second)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "replacement", "key-b", 2048, time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	current, err := db.Ingest().ContentKeyCurrent(ctx, job.VideoID, job.ContentKey)
@@ -597,11 +597,11 @@ func TestPreviewCompletionRejectsChangedContent(t *testing.T) {
 func TestPreviewSourceRejectsReassignedClaimedPathWithOriginalContentRemaining(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	video, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	video, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-a", 1024, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
@@ -611,10 +611,10 @@ func TestPreviewSourceRejectsReassignedClaimedPathWithOriginalContentRemaining(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.LocationPath != "/media/a.mp4" {
+	if job.LocationPath != fixturePath("/media/a.mp4") {
 		t.Fatalf("claimed path = %q", job.LocationPath)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "replacement", "key-b", 2048, time.Second)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "replacement", "key-b", 2048, time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	contentCurrent, err := db.Ingest().ContentKeyCurrent(ctx, job.VideoID, job.ContentKey)
@@ -640,7 +640,7 @@ func TestPreviewSourceAcceptsLocationOnlyChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", job.ContentKey, 1024, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/z.mp4"), "z", job.ContentKey, 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
 	current, err := db.Ingest().PreviewSourceCurrent(ctx, job)
@@ -659,7 +659,7 @@ func TestCompletePreviewAtomicallyFinishesAssetAndJobAfterCancellation(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/z.mp4", "z", job.ContentKey, 1024, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/z.mp4"), "z", job.ContentKey, 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
 	cancelled, cancel := context.WithCancel(ctx)
@@ -689,11 +689,11 @@ func TestCompletePreviewAtomicallyFinishesAssetAndJobAfterCancellation(t *testin
 func TestClaimedJobBecomesStaleWhenLowerIDLocationIsReassigned(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	lower, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	lower, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-b", 1024, 0))
+	target, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -710,7 +710,7 @@ func TestClaimedJobBecomesStaleWhenLowerIDLocationIsReassigned(t *testing.T) {
 
 	// Reusing the earlier location for the target content changes membership
 	// without creating an ID larger than the claimed target location.
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-b", 2048, time.Second)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-b", 2048, time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	current, err := db.Ingest().JobIdentityCurrent(ctx, job)
@@ -869,11 +869,11 @@ func TestJobsQueuedNotification(t *testing.T) {
 func TestProcessingCountsRemainingWorkPerStage(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/b.mp4", "b", "key-b", 2048, 0))
+	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 2048, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	outside, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/elsewhere/c.mp4", "c", "key-c", 4096, 0))
+	outside, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/elsewhere/c.mp4"), "c", "key-c", 4096, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -956,11 +956,11 @@ func probeDone(t *testing.T, db *DB, videoID int64) {
 func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	video, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	video, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/legacy/a.mp4", "a", "key-a", 1024, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/legacy/a.mp4"), "a", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
@@ -970,7 +970,7 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 		t.Fatalf("Processing = %+v, %v, want probe 1", got, err)
 	}
 	var folderID, version int64
-	if err := db.sql.QueryRow(`select id, version from media_folders where path = '/media'`).Scan(&folderID, &version); err != nil {
+	if err := db.sql.QueryRow(`select id, version from media_folders where path = ?`, fixturePath("/media")).Scan(&folderID, &version); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1003,17 +1003,17 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 func TestDeleteMediaFolderWakesSeekThumbnailWhenThumbnailWorkLeaves(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/other', 1, 1, 1)`); err != nil {
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/other")); err != nil {
 		t.Fatal(err)
 	}
-	blocking, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/media/a.mp4", "a", "key-a", 1024, 0))
+	blocking, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1024, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/legacy/a.mp4", "a", "key-a", 1024, 0)); err != nil {
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/legacy/a.mp4"), "a", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
-	waiting, err := db.ScanIndex().UpsertVideo(ctx, sampleFile("/other/b.mp4", "b", "key-b", 2048, 0))
+	waiting, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/other/b.mp4"), "b", "key-b", 2048, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1029,7 +1029,7 @@ func TestDeleteMediaFolderWakesSeekThumbnailWhenThumbnailWorkLeaves(t *testing.T
 		t.Fatalf("代表サムネイルが残る間の ClaimJob error = %v, want domain.ErrNoJob", err)
 	}
 	var folderID, version int64
-	if err := db.sql.QueryRow(`select id, version from media_folders where path = '/media'`).Scan(&folderID, &version); err != nil {
+	if err := db.sql.QueryRow(`select id, version from media_folders where path = ?`, fixturePath("/media")).Scan(&folderID, &version); err != nil {
 		t.Fatal(err)
 	}
 
