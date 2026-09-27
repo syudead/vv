@@ -141,7 +141,7 @@ func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
 	}
 }
 
-// 映像が容器の長さより短い入力では、映像の後ろのコマは最後の場面を複製する。
+// 映像が容器の長さより短い入力では、映像の後ろのコマは直前のコマを複製する。
 func TestGenerateSeekSpriteRepeatsLastSceneWhenVideoEndsEarly(t *testing.T) {
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "short-video.mp4")
@@ -155,20 +155,22 @@ func TestGenerateSeekSpriteRepeatsLastSceneWhenVideoEndsEarly(t *testing.T) {
 		t.Fatalf("配置 %+v", layout)
 	}
 	sheets := readSheets(t, output)
-	for _, k := range []int{0, 1, 3} {
+	for _, k := range []int{0, 1, 3, 4} {
 		startSec := float64(k) * float64(layout.IntervalMs) / 1000
 		got := frameSeconds(t, sheets, layout, k)
 		if got < startSec-0.5 || got > startSec+1 {
-			t.Errorf("フォールバックのコマ %d は %.2f 秒（区間先頭 %.0f 秒のはず）", k, got, startSec)
+			t.Errorf("コマ %d は %.2f 秒（区間先頭 %.0f 秒のはず）", k, got, startSec)
 		}
 	}
-	// 最後の場面は映像の終わり（23 秒）の近くで、黒で埋まっていない。
-	if last := frameSeconds(t, sheets, layout, layout.FrameCount-1); last < 22 || last > 23.5 {
-		t.Fatalf("末尾のコマの時刻が %.2f 秒（22〜23 秒のはず）", last)
+	// 映像の無い最後の区間（25〜30 秒）は、直前のコマ（20 秒の場面）で埋まる。
+	if last := frameSeconds(t, sheets, layout, layout.FrameCount-1); last < 19.5 || last > 21 {
+		t.Fatalf("末尾のコマの時刻が %.2f 秒（20 秒の場面のはず）", last)
 	}
 }
 
-func TestGenerateSeekSpriteRejectsFramesOutsideTheirIntervals(t *testing.T) {
+// フレームの無い区間は、次の区間のフレームを使わず、直前のコマを複製する。
+// 全編復号へは切り替えない。
+func TestGenerateSeekSpriteRepeatsPreviousFrameForEmptyInterval(t *testing.T) {
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "sparse.mp4")
 	runFFmpeg(t,
@@ -177,10 +179,10 @@ func TestGenerateSeekSpriteRejectsFramesOutsideTheirIntervals(t *testing.T) {
 		"-fps_mode", "vfr", "-c:v", "mpeg4", "-q:v", "2", "-y", videoPath)
 
 	layout := domain.NewSeekSpriteLayout(15_000)
-	if err := generateSeekSpriteParallel(context.Background(), videoPath, t.TempDir(), layout); err == nil || !strings.Contains(err.Error(), "コマ 1:") {
-		t.Fatalf("フレームのない区間で失敗しなかった: %v", err)
+	output := t.TempDir()
+	if err := generateSeekSpriteParallel(context.Background(), videoPath, output, layout); err != nil {
+		t.Fatalf("フレームのない区間で区間抽出が失敗した: %v", err)
 	}
-	output, layout := generateSprite(t, videoPath, 15_000)
 	sheets := readSheets(t, output)
 	for _, check := range []struct {
 		frame int
