@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import type { Tag } from "../api/tags";
 import { t } from "../i18n";
+import { cn } from "../lib/cn";
 import { isComposingKeyEvent } from "../ui/Combobox";
 import IconButton from "../ui/IconButton";
 import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
@@ -86,7 +87,13 @@ export default function TagRow({
   const errorId = `tag-rename-error-${String(tag.id)}`;
 
   return (
-    <div data-tag-id={tag.id} className="flex items-center gap-3 py-2">
+    <div
+      data-tag-id={tag.id}
+      className={cn(
+        "flex items-center gap-2 rounded-md px-2 py-2 sm:gap-3",
+        renaming && "bg-elevated ring-1 ring-control-border",
+      )}
+    >
       <div className="min-w-0 flex-1">
         {renaming ? (
           <input
@@ -110,7 +117,8 @@ export default function TagRow({
               field.reason !== null ? reasonId : error !== null ? errorId : undefined
             }
             aria-busy={pending || undefined}
-            className="h-8 w-full min-w-0 rounded-sm border border-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none"
+            aria-invalid={field.reason !== null || error?.kind === "taken" || undefined}
+            className="h-8 w-full min-w-0 rounded-sm border border-control-border bg-field px-2 text-sm text-fg focus:border-accent focus:outline-none focus:ring-2 focus:ring-link"
           />
         ) : (
           <>
@@ -155,7 +163,7 @@ export default function TagRow({
             </p>
           )}
       </div>
-      <span className="w-20 shrink-0 whitespace-nowrap text-right text-sm text-fg-muted tabular-nums">
+      <span className="w-16 shrink-0 whitespace-nowrap text-right text-xs text-fg-muted tabular-nums sm:w-20 sm:text-sm">
         {t.tags.row.videoCount(tag.videoCount)}
       </span>
       <div className="flex shrink-0 items-center gap-1">

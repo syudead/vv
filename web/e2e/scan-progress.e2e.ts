@@ -68,7 +68,7 @@ test("scan progress remains one indicator across library, settings, and playback
 
   const settingsIndicator = page.getByRole("button", { name: /Open the scan status/ });
   await expect(settingsIndicator).toHaveText(/Scanning/);
-  await page.getByRole("link", { name: "vv" }).click();
+  await page.getByRole("link", { name: "VVMDM home" }).click();
   await expect(page).toHaveURL(/\/$/);
   const routePersistentIndicator = page.getByRole("button", {
     name: /Open the scan status/,

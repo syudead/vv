@@ -44,12 +44,16 @@ export default function EndedOverlay({
         {t.player.ended.announcement}
       </span>
       {next === undefined ? (
-        <Button ref={primary} variant="secondary" onClick={onReplay}>
-          <RotateCcw aria-hidden="true" />
-          {t.player.ended.replay}
-        </Button>
+        <div className="flex flex-col items-center gap-3 rounded-lg bg-navbar p-5 text-center shadow-elevated">
+          <h2 className="text-lg font-semibold text-fg">{t.player.ended.announcement}</h2>
+          <Button ref={primary} variant="secondary" onClick={onReplay}>
+            <RotateCcw aria-hidden="true" />
+            {t.player.ended.replay}
+          </Button>
+        </div>
       ) : (
-        <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5">
+        <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5 shadow-elevated">
+          <h2 className="text-lg font-semibold text-fg">{t.player.ended.announcement}</h2>
           <span className="text-xs font-semibold text-accent">{t.player.ended.next}</span>
           <Link
             to={`/videos/${String(next.id)}`}

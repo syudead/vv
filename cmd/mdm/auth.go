@@ -60,8 +60,8 @@ func prepareAuth(ctx context.Context, authStore *store.AuthStore, now time.Time,
 	_, err := authStore.Account(ctx)
 	switch {
 	case errors.Is(err, domain.ErrAccountNotConfigured):
-		logger.Warn("the account is not set up; open vv in a browser and choose a username and password in the initial setup. " +
-			"Until then, the first person to open vv can create the account")
+		logger.Warn("the account is not set up; open VVMDM in a browser and choose a username and password in the initial setup. " +
+			"Until then, the first person to open VVMDM can create the account")
 	case err != nil:
 		logger.Warn("could not check the account", slog.Any("error", err))
 	}

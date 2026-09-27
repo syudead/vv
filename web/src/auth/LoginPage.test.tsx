@@ -36,7 +36,7 @@ function fields() {
   return {
     username: screen.getByLabelText("Username") as HTMLInputElement,
     password: screen.getByLabelText("Password") as HTMLInputElement,
-    submit: screen.getByRole("button", { name: "Sign in" }) as HTMLButtonElement,
+    submit: screen.getByRole("button", { name: /^Sign(ing)? in/ }) as HTMLButtonElement,
   };
 }
 
@@ -70,18 +70,26 @@ describe("LoginPage", () => {
     const form = username.closest("form");
     expect(form).not.toBeNull();
     expect(form?.getAttribute("method")).toBeNull();
+    expect(screen.getByRole("img", { name: "VVMDM" }).getAttribute("src")).toBe(
+      "/brand/vvmdm-wordmark-cyan.svg",
+    );
+    expect(screen.getByRole("heading", { level: 1, name: "Sign in" })).toBeDefined();
+    expect(screen.getByText("Sign in with the owner account")).toBeDefined();
+    expect(username.className).toContain("focus-visible:outline-link");
   });
 
-  it("HTTP では主操作の下に警告を出し、ユーザー名と主操作から指す", () => {
+  it("HTTP では入力前に警告を出し、ユーザー名と主操作から指す", () => {
     renderLogin();
-    const warning = screen.getByText(/This connection isn't encrypted/).closest("p");
+    const warning = screen
+      .getByText(/This connection isn't encrypted/)
+      .closest("p") as HTMLElement;
     const { username, submit } = fields();
 
     expect(warning?.id).toBe("connection-warning");
     expect(username.getAttribute("aria-describedby")).toBe("connection-warning");
     expect(submit.getAttribute("aria-describedby")).toBe("connection-warning");
     expect(
-      submit.compareDocumentPosition(warning as Node) & Node.DOCUMENT_POSITION_FOLLOWING,
+      warning.compareDocumentPosition(username) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(warning?.closest("form")?.getAttribute("aria-describedby")).toBeNull();
   });
@@ -114,6 +122,8 @@ describe("LoginPage", () => {
     await user.type(fields().username, "owner");
     await user.type(fields().password, "secret{Enter}");
     expect(fields().submit.disabled).toBe(true);
+    expect(fields().submit.textContent).toContain("Signing in…");
+    expect(fields().submit.getAttribute("aria-busy")).toBe("true");
     await user.type(fields().password, "{Enter}");
     await user.click(fields().submit);
     expect(fetchMock).toHaveBeenCalledOnce();
@@ -201,7 +211,7 @@ describe("LoginPage", () => {
     [
       "通信の失敗",
       () => Promise.reject(new TypeError("Failed to fetch")),
-      "Couldn't reach the server. Check that vv is running and try again.",
+      "Couldn't reach the server. Check that VVMDM is running and try again.",
     ],
   ])("%s は失敗の行に出す", async (_, respond, message) => {
     const user = userEvent.setup();

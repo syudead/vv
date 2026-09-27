@@ -71,7 +71,7 @@ func operationFailure(format string, args ...any) *accountFailure {
 
 // notConfiguredFailure は未設定のときの失敗である。コマンドではアカウントを作らない。
 func notConfiguredFailure() *accountFailure {
-	return usageFailure("The account is not set up yet. Open vv in a browser and complete the initial setup first.")
+	return usageFailure("The account is not set up yet. Open VVMDM in a browser and complete the initial setup first.")
 }
 
 // runCommand は引数つきの mdm を実行し、終了コードを返す。args は os.Args[1:] である。

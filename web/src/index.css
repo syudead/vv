@@ -12,12 +12,47 @@
 }
 
 .vv-video-player .vjs-control-bar {
-  background: rgb(17 19 23 / 0.88);
+  background: var(--color-overlay);
+}
+
+/* video.js の既定の青灰色を使わず、明暗どちらのフレームでも操作を同じ暗い面に載せる。 */
+.vv-video-player .video-js .vjs-control-bar {
+  color: var(--color-fg);
+  border-top: 1px solid var(--color-border-strong);
+}
+
+.vv-video-player .video-js .vjs-big-play-button {
+  color: var(--color-fg);
+  background: var(--color-overlay);
+  border: 2px solid var(--color-control-border);
+  border-radius: var(--radius-lg);
+}
+
+.vv-video-player .video-js .vjs-big-play-button:hover,
+.vv-video-player .video-js .vjs-big-play-button:focus-visible {
+  background: var(--color-navbar);
+  border-color: var(--color-accent-hover);
+}
+
+.vv-video-player .video-js .vjs-button:hover {
+  background: var(--color-hover-wash);
+}
+
+.vv-video-player .video-js .vjs-button:focus-visible,
+.vv-video-player .video-js .vjs-slider:focus-visible,
+.vv-video-player .video-js .vjs-big-play-button:focus-visible {
+  outline: 2px solid var(--color-link);
+  outline-offset: -2px;
 }
 
 .vv-video-player .vjs-play-progress,
 .vv-video-player .vjs-volume-level {
   background: var(--color-accent);
+}
+
+.vv-video-player .video-js .vjs-progress-holder,
+.vv-video-player .video-js .vjs-volume-bar {
+  background: var(--color-border-strong);
 }
 
 .vv-video-player .vjs-progress-holder {
@@ -214,47 +249,50 @@
  * border-border / rounded-md など）を使い、生の色を src/** に書かない。
  * src/theme/tokens.test.ts がそれを機械で確かめる。
  *
- * 構造は上部ナビ・フィルタ帯・箱型カードで構成し、配色と書体は
- * 暖色寄りのチャコールにミントのアクセントを使う。
+ * 構造は上部ナビ・フィルタ帯・箱型カードで構成し、暗い無彩色の面に
+ * VVMDM のシアンを操作のアクセントとして使う。
  */
 @theme {
-  /* --- 面（暖色寄りのチャコール。青灰でも真っ黒でもない） --- */
-  --color-bg: #16181d;
-  --color-surface: #1e2129;
-  --color-surface-hover: #262a33;
-  --color-elevated: #2a2e38;
-  --color-navbar: #111317;
-  --color-overlay: rgb(8 9 12 / 0.7);
-  --color-field: rgb(8 9 12 / 0.45);
+  /* --- VVMDM の暗い面。ロゴを置く明るい面は必要な場所で別に扱う。 --- */
+  --color-navbar: #000000;
+  --color-bg: #111111;
+  --color-surface: #2a2a2a;
+  --color-surface-hover: #333333;
+  --color-elevated: #343434;
+  --color-overlay: rgb(0 0 0 / 0.88);
+  --color-field: #1b1b1b;
 
   /* --- 境界線・ウォッシュ --- */
-  --color-border: rgb(255 255 255 / 0.07);
-  --color-border-strong: rgb(255 255 255 / 0.16);
-  --color-hover-wash: rgb(255 255 255 / 0.06);
-  --color-active-wash: rgb(255 255 255 / 0.12);
+  --color-border: #525252;
+  --color-border-strong: #686868;
+  --color-control-border: #888888;
+  --color-hover-wash: rgb(255 255 255 / 0.08);
+  --color-active-wash: rgb(255 255 255 / 0.14);
 
   /* --- 文字 --- */
-  --color-fg: #eceef2;
-  --color-fg-muted: #a0a7b4;
-  --color-fg-subtle: #6f7785;
+  --color-fg: #f2f2f2;
+  --color-fg-muted: #b3b3b3;
+  --color-fg-subtle: #a0a0a0;
 
-  /* --- アクセント（ミント。動画サイトの赤・青と被らない色） --- */
-  --color-accent: #2fd0b4;
-  --color-accent-hover: #5ee0c9;
-  --color-accent-fg: #062521;
-  --color-link: #5ee0c9;
-  --color-accent-soft: rgb(47 208 180 / 0.16);
+  /* --- VVMDM の三つのシアン。押下と選択には濃い版を使う。 --- */
+  --color-accent: #3ec1d3;
+  --color-accent-hover: #68cedc;
+  --color-accent-active: #29a4b5;
+  --color-accent-fg: #111111;
+  --color-link: #68cedc;
+  --color-accent-soft: #163b40;
 
   /* --- 状態 --- */
   --color-danger: #ff8a80;
-  --color-danger-strong: #e5484d;
-  --color-danger-soft: rgb(229 72 77 / 0.18);
+  --color-danger-strong: #b8363c;
+  --color-danger-fg: #ffffff;
+  --color-danger-soft: #4b2023;
   --color-warning: #f5b452;
   --color-warning-strong: #d9822b;
-  --color-warning-soft: rgb(217 130 43 / 0.18);
+  --color-warning-soft: #4c3520;
   --color-success: #5fd39a;
   --color-success-strong: #2f9e6b;
-  --color-success-soft: rgb(47 158 107 / 0.18);
+  --color-success-soft: #204334;
 
   /* --- 書体 --- */
   --font-sans:

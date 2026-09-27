@@ -12,7 +12,6 @@ import {
 import { errorText, t, type UiText } from "../i18n";
 import { useScan } from "../shell/ScanProvider";
 import Button from "../ui/Button";
-import IconButton from "../ui/IconButton";
 import { ModalFrame } from "../ui/ModalFrame";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
@@ -42,7 +41,10 @@ function DeleteDialog({
       initialFocus={cancel}
     >
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
-        <code className="break-words text-sm text-fg">{folder.path}</code>
+        <div className="min-w-0 rounded-md border border-control-border bg-field p-3">
+          <p className="mb-1 text-xs text-fg-muted">{t.settings.removeDialog.target}</p>
+          <code className="block break-all text-sm text-fg">{folder.path}</code>
+        </div>
         <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
           {t.settings.removeDialog.warning}
         </p>
@@ -52,13 +54,13 @@ function DeleteDialog({
           </p>
         )}
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
         <Button ref={cancel} onClick={onClose} disabled={pending}>
           {t.common.cancel}
         </Button>
         <Button variant="danger" onClick={onDelete} disabled={pending}>
           {pending && <LoaderCircle className="animate-spin" />}
-          {t.settings.removeDialog.submit}
+          {pending ? t.settings.removeDialog.removing : t.settings.removeDialog.submit}
         </Button>
       </div>
     </ModalFrame>
@@ -203,7 +205,10 @@ export default function SettingsPage() {
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 sm:py-8">
       <h1 className="text-xl font-semibold">{t.settings.title}</h1>
       <ScanStatusSection />
-      <section aria-labelledby="media-folders-heading" className="mt-8">
+      <section
+        aria-labelledby="media-folders-heading"
+        className="mt-8 rounded-lg border border-border bg-surface p-4 sm:p-5"
+      >
         <div className="border-b border-border pb-4">
           <h2 id="media-folders-heading" className="text-base font-semibold">
             {t.settings.mediaFolders.heading}
@@ -256,15 +261,23 @@ export default function SettingsPage() {
                     if (element === null) rowRefs.current.delete(folder.id);
                     else rowRefs.current.set(folder.id, element);
                   }}
-                  className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center"
+                  className="flex min-w-0 flex-col gap-3 py-4 sm:flex-row sm:items-center"
                 >
                   <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <Folder className="mt-0.5 size-4 shrink-0 text-fg-muted" />
-                    <code className="min-w-0 break-words text-sm leading-5">
-                      {folder.path}
-                    </code>
+                    <Folder className="mt-2 size-4 shrink-0 text-fg-muted" />
+                    <div className="min-w-0 flex-1 rounded-md border border-control-border bg-field px-3 py-2">
+                      <span className="block text-xs text-fg-muted">
+                        {t.settings.mediaFolders.current}
+                      </span>
+                      <code
+                        className="block break-all text-sm leading-5"
+                        title={folder.path}
+                      >
+                        {folder.path}
+                      </code>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center justify-end gap-1">
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     {rowPending && (
                       <span role="status" className="mr-2 text-xs text-fg-muted">
                         {pending.kind === "delete"
@@ -272,8 +285,9 @@ export default function SettingsPage() {
                           : t.settings.mediaFolders.changing}
                       </span>
                     )}
-                    <IconButton
-                      label={t.settings.mediaFolders.change}
+                    <Button
+                      size="sm"
+                      aria-label={t.settings.mediaFolders.change}
                       onClick={() => {
                         setOperationError(null);
                         setPicker(folder);
@@ -281,9 +295,12 @@ export default function SettingsPage() {
                       disabled={rowPending || mutationsDisabled}
                     >
                       <Pencil />
-                    </IconButton>
-                    <IconButton
-                      label={t.settings.mediaFolders.remove}
+                      {t.settings.mediaFolders.changeShort}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      aria-label={t.settings.mediaFolders.remove}
                       onClick={() => {
                         setOperationError(null);
                         setDeleting(folder);
@@ -292,7 +309,8 @@ export default function SettingsPage() {
                       className="text-danger"
                     >
                       <Trash2 />
-                    </IconButton>
+                      {t.settings.mediaFolders.removeShort}
+                    </Button>
                   </div>
                   {rowError?.id === folder.id && (
                     <p role="alert" className="text-sm text-danger sm:basis-full">

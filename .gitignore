@@ -29,6 +29,9 @@ web/dist/*
 # npm run test の出力先。web/dist を汚さないために分けてある。
 web/.vite-build-check/
 
+# 文書サイト（VitePress）のキャッシュ。出力の dist/ は上で除いている。
+/docs-site/.vitepress/cache/
+
 # task が sources / generates の判定に使う作業領域
 /.task/
 

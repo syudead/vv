@@ -45,13 +45,13 @@ export default function DeleteTagDialog({
           </p>
         )}
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
         <Button ref={cancel} onClick={onClose} disabled={pending}>
           {t.common.cancel}
         </Button>
         <Button variant="danger" onClick={onDelete} disabled={pending}>
           {pending && <LoaderCircle className="animate-spin" />}
-          {t.tags.deleteDialog.submit}
+          {pending ? t.tags.deleteDialog.submitting : t.tags.deleteDialog.submit}
         </Button>
       </div>
     </ModalFrame>

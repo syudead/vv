@@ -1,8 +1,8 @@
-# Hosting vv with the published image
+# Hosting VVMDM with the published image
 
-Use this on a Docker host that does not have the vv source, such as a NAS or a
+Use this on a Docker host that does not have the VVMDM source, such as a NAS or a
 home server. The host pulls the published image instead of building it. For
-development from a clone, keep using `task up` ([Running vv](running-vv.md)).
+development from a clone, keep using `task up` ([Running VVMDM](running-vv.md)).
 
 ## Image
 
@@ -26,7 +26,7 @@ marked `変える` to match the host:
   for their own management page, so pick another port such as `18080`);
 - the host folder with the videos on the left of `:/media:ro`; mount a folder
   high enough that every video folder you want is below it, then choose the
-  folders below `/media` in vv's Settings;
+  folders below `/media` in VVMDM's Settings;
 - the host folder for the database and thumbnails on the left of `:/data`.
 
 Create the data folder first. Then either paste the file into the NAS's
@@ -34,13 +34,13 @@ container manager as a new application (QNAP Container Station, Synology
 Container Manager and similar), or save it as `compose.yaml` on the host and run
 `docker compose up -d` in its folder. Nothing is built on the host.
 
-Open `http://<host>:<port>/api/health` to check that vv is up. Then open vv in a
+Open `http://<host>:<port>/api/health` to check that VVMDM is up. Then open VVMDM in a
 browser, finish the account setup right away
 ([Account setup](running-vv.md#account-setup)), add folders below `/media` in
 Settings and start a scan. `MDM_LOG_LEVEL` works as in
 [Runtime settings](running-vv.md#runtime-settings). A reverse proxy on the NAS
 or the home network works without further settings; see
-[Network exposure](running-vv.md#network-exposure) before making vv reachable
+[Network exposure](running-vv.md#network-exposure) before making VVMDM reachable
 from the internet.
 
 ## Update

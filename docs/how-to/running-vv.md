@@ -1,21 +1,21 @@
-# Running vv
+# Running VVMDM
 
 ## Start the container
 
-vv requires Task and Docker. From the repository root:
+VVMDM requires Task and Docker. From the repository root:
 
 ```bash
 task up
 ```
 
-To run vv on a Docker host without the source, such as a NAS, use the
-published image instead: see [Hosting vv](hosting-vv.md).
+To run VVMDM on a Docker host without the source, such as a NAS, use the
+published image instead: see [Hosting VVMDM](hosting-vv.md).
 
 Open <http://localhost:8080>. The health endpoint is available at
 `http://localhost:8080/api/health`. Stop the application with `task down`.
 
 The container mounts `./media` read-only at `/media` by default. Set another
-host directory before starting vv when needed:
+host directory before starting VVMDM when needed:
 
 ```bash
 MDM_MEDIA_HOST_DIR=/path/to/videos task up
@@ -59,9 +59,9 @@ Invalid environment values are reported together when the application starts.
 
 ## Account setup
 
-vv has a single account. Until it is configured, the first person to reach the
+VVMDM has a single account. Until it is configured, the first person to reach the
 server can create it, so finish the initial setup in the browser right after
-installing vv, before the server is reachable by anyone else. Open vv and
+installing VVMDM, before the server is reachable by anyone else. Open VVMDM and
 choose the username and password on the setup screen.
 
 ## Changing the username or resetting the password
@@ -130,20 +130,20 @@ cannot recover the user and configuration data in the linked classification.
 
 ## Network exposure
 
-On a trusted home network, vv can be used over plain HTTP. To make it reachable
+On a trusted home network, VVMDM can be used over plain HTTP. To make it reachable
 from the internet, put it behind a reverse proxy that serves HTTPS; never
-expose vv's own HTTP port to the internet. Over HTTP, the password and the
+expose VVMDM's own HTTP port to the internet. Over HTTP, the password and the
 session cookie travel unencrypted.
 
 The reverse proxy must:
 
-- terminate HTTPS and forward to vv over HTTP;
-- pass the `Host` header through unchanged (vv compares it with `Origin` to
+- terminate HTTPS and forward to VVMDM over HTTP;
+- pass the `Host` header through unchanged (VVMDM compares it with `Origin` to
   accept only same-origin changes, and does not read `X-Forwarded-Host`);
 - set or append the client address in `X-Forwarded-For` and set `X-Forwarded-Proto`
   to `https`.
 
-vv trusts forwarding headers from loopback and private addresses by default
+VVMDM trusts forwarding headers from loopback and private addresses by default
 (`127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `::1`,
 `fc00::/7`), so a proxy on the same PC, on the home network or in the same
 Docker network works without any setting. Set `MDM_TRUSTED_PROXIES` only to
@@ -154,7 +154,7 @@ or to `none` to never read forwarding headers:
 MDM_TRUSTED_PROXIES=172.18.0.0/16 task up
 ```
 
-vv reads the forwarding headers only on connections from those addresses.
+VVMDM reads the forwarding headers only on connections from those addresses.
 There it takes the client address by walking `X-Forwarded-For` from the right
 to the first untrusted address, and decides HTTPS from the last
 `X-Forwarded-Proto` value. On every other connection it uses the connecting
@@ -182,7 +182,7 @@ If the proxy's address is not trusted (it has a public address, or
   does not match and every change (`POST`, `PUT`, `PATCH`, `DELETE`) including
   login fails with 403.
 
-A minimal Caddy configuration, with vv and Caddy in the same Docker network:
+A minimal Caddy configuration, with VVMDM and Caddy in the same Docker network:
 
 ```caddyfile
 vv.example.com {

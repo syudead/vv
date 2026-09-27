@@ -89,7 +89,7 @@ describe("ScanStatusSection", () => {
 
     expect(
       await screen.findByText(
-        "Couldn't reach the server. Check that vv is running and try again.",
+        "Couldn't reach the server. Check that VVMDM is running and try again.",
       ),
     ).toBeDefined();
     expect(screen.queryByRole("progressbar")).toBeNull();

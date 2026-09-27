@@ -293,7 +293,9 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     body = (
       <EmptyState
         icon={FolderOpen}
-        title={t.folders.empty.title}
+        title={
+          owner && folder.path === "" ? t.folders.empty.rootTitle : t.folders.empty.title
+        }
         description={owner ? t.folders.empty.description : undefined}
         action={
           // 取り込みは所有者だけの操作である（ui-design.md「Guest degradation」）。

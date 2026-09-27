@@ -8,14 +8,15 @@ export type ButtonSize = "sm" | "md" | "lg";
 const base =
   "inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-medium " +
   "whitespace-nowrap transition-colors duration-150 select-none " +
-  "disabled:pointer-events-none disabled:opacity-50 [&>svg]:size-4";
+  "aria-busy:cursor-progress disabled:cursor-not-allowed disabled:opacity-50 [&>svg]:size-4";
 
 const variants: Record<ButtonVariant, string> = {
-  primary: "bg-accent text-accent-fg hover:bg-accent-hover active:bg-accent-hover",
+  primary:
+    "bg-accent text-accent-fg not-disabled:hover:bg-accent-hover not-disabled:active:bg-accent-active",
   secondary:
-    "bg-elevated text-fg hover:bg-hover-wash hover:bg-blend-lighten active:bg-active-wash",
-  ghost: "text-fg hover:bg-hover-wash active:bg-active-wash",
-  danger: "bg-danger-strong text-accent-fg hover:bg-danger-strong/80",
+    "border border-control-border bg-elevated text-fg not-disabled:hover:bg-surface-hover not-disabled:active:bg-surface",
+  ghost: "text-fg not-disabled:hover:bg-hover-wash not-disabled:active:bg-active-wash",
+  danger: "bg-danger-strong text-danger-fg not-disabled:hover:bg-danger-strong/80",
 };
 
 const sizes: Record<ButtonSize, string> = {

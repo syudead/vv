@@ -1,6 +1,6 @@
-# vv
+# VVMDM
 
-vv is a self-hosted video library for files on local storage. It indexes media,
+VVMDM is a self-hosted video library for files on local storage. It indexes media,
 generates thumbnails and previews, remembers playback positions, and serves the
 library and player from a single container.
 
@@ -30,14 +30,14 @@ Stop the application with `task down`.
 
 > [!WARNING]
 > Plain HTTP sends the password and session cookie unencrypted. Use it only on a
-> trusted network; to reach vv from the internet, put it behind a reverse proxy
+> trusted network; to reach VVMDM from the internet, put it behind a reverse proxy
 > that serves HTTPS (see
 > [Network exposure](docs/how-to/running-vv.md#network-exposure)).
 > Visitors who are not signed in can browse and play only the videos you mark as
 > public.
 
 Runtime settings, storage behavior, and backup cautions are documented in
-[Running vv](docs/how-to/running-vv.md).
+[Running VVMDM](docs/how-to/running-vv.md).
 
 ## Develop
 
@@ -64,6 +64,10 @@ See [Development](docs/how-to/development.md) for the full local workflow and
 - [Design documents](docs/design-docs/index.md): consequential technical decisions
 - [Product specifications](docs/product-specs/index.md): specification policy
 - [How-to guides](docs/how-to/README.md): repeatable operational procedures
+
+These documents and the feature plans under `specs/` are also published as a
+browsable site with search at <https://syudead.github.io/vv/>
+([文書サイト](docs/how-to/docs-site.md)).
 
 The API contract in `api/openapi.yaml` is the source of truth for generated Go
 and TypeScript types. Do not hand-edit `internal/httpapi/gen/` or

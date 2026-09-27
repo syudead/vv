@@ -24,6 +24,7 @@ Add each new document to this index.
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
 - [画面の文言と書式（i18n）](i18n.md)
+- [VVMDM ブランドと画面の UI 設計](../../specs/022-vvmdm-brand/ui-design.md)
 - [動画シーク時のサムネイルプレビュー UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
 - [一覧画面の hover 動画プレビュー UI](../../specs/010-hover-video-preview/ui-design.md)
 - [フォルダ階層をたどる画面の UI](../../specs/011-folder-browser/ui-design.md)

@@ -149,7 +149,7 @@ describe("errorText", () => {
       );
       expect(failure).toBeInstanceOf(NetworkFailed);
       expect(errorText(failure)).toBe(
-        "Couldn't reach the server. Check that vv is running and try again.",
+        "Couldn't reach the server. Check that VVMDM is running and try again.",
       );
     });
 

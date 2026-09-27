@@ -37,6 +37,13 @@ test("ゲストで設定画面を開くとログイン画面になり、キー�
     "aria-describedby",
     "connection-warning",
   );
+  for (const width of [360, 768, 1280]) {
+    await page.setViewportSize({ width, height: 800 });
+    await expect(page.getByRole("img", { name: "VVMDM" })).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+  }
 
   await expect(page.getByLabel("Username")).toBeFocused();
   await page.keyboard.type(ownerAccount.username);
@@ -71,6 +78,8 @@ test("ログインの送信中は再送信できず、失敗するとパスワ�
   await page.getByLabel("Password").press("Enter");
   const submit = page.getByRole("button", { name: "Sign in" });
   await expect(submit).toBeDisabled();
+  await expect(submit).toHaveText("Signing in…");
+  await expect(submit).toHaveAttribute("aria-busy", "true");
   await page.getByLabel("Password").press("Enter");
   await submit.click({ force: true });
   expect(attempts).toBe(1);

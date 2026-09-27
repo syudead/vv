@@ -257,7 +257,7 @@ describe("ScanProvider", () => {
     );
     expect(
       await screen.findByText(
-        "Couldn't reach the server. Check that vv is running and try again.",
+        "Couldn't reach the server. Check that VVMDM is running and try again.",
       ),
     ).toBeDefined();
     expect(screen.getByText("状態: なし")).toBeDefined();
@@ -289,7 +289,7 @@ describe("ScanProvider", () => {
 
     expect(
       await screen.findByText(
-        "Couldn't reach the server. Check that vv is running and try again.",
+        "Couldn't reach the server. Check that VVMDM is running and try again.",
       ),
     ).toBeDefined();
     expect(screen.getByText("状態: 5")).toBeDefined();

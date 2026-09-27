@@ -93,7 +93,7 @@ func main() {
 	case err != nil:
 		devtools.Fail(err)
 	case running != "":
-		fmt.Println("vv preview はすでに動いている:", running)
+		fmt.Println("VVMDM preview はすでに動いている:", running)
 		return
 	}
 
@@ -119,7 +119,7 @@ func main() {
 	backend.Stdout = os.Stdout
 	backend.Stderr = os.Stderr
 	if err := backend.Start(); err != nil {
-		devtools.Fail(fmt.Errorf("vv を起動できません: %w", err))
+		devtools.Fail(fmt.Errorf("VVMDM を起動できません: %w", err))
 	}
 	// 終了は起動待ちと停止処理と最後の select の3か所で見るので、値を送るのではなく
 	// close で知らせる。送った値は1か所でしか受け取れない。
@@ -163,7 +163,7 @@ func main() {
 	go func() { proxyExit <- proxy.Serve(listener) }()
 
 	fmt.Println()
-	fmt.Println("vv preview:", publicURL(listenPort(listener.Addr())))
+	fmt.Println("VVMDM preview:", publicURL(listenPort(listener.Addr())))
 	fmt.Println("Media:     ", mediaDir)
 	fmt.Println("Data:      ", dataDir)
 	fmt.Println("Ctrl+C で止める。")
@@ -174,7 +174,7 @@ func main() {
 		stopBackend()
 	case <-backendDone:
 		shutdown(proxy)
-		devtools.Fail(fmt.Errorf("vv が停止した（%s）。上の出力を確認すること。", exitReason(backendErr)))
+		devtools.Fail(fmt.Errorf("VVMDM が停止した（%s）。上の出力を確認すること。", exitReason(backendErr)))
 	case err := <-proxyExit:
 		stopBackend()
 		devtools.Fail(fmt.Errorf("中継が停止した: %w", err))
@@ -239,9 +239,9 @@ func waitHealthy(backend *url.URL, exited <-chan struct{}, exitErr *error) error
 		}
 		select {
 		case <-exited:
-			return fmt.Errorf("vv が起動中に停止した（%s）。上の出力を確認すること。", exitReason(*exitErr))
+			return fmt.Errorf("VVMDM が起動中に停止した（%s）。上の出力を確認すること。", exitReason(*exitErr))
 		case <-deadline:
-			return errors.New("vv が 60 秒以内に応答しなかった")
+			return errors.New("VVMDM が 60 秒以内に応答しなかった")
 		case <-time.After(300 * time.Millisecond):
 		}
 	}

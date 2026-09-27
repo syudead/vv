@@ -91,7 +91,7 @@ function resultCount(total: number): string {
  * 持つので、件数の段落（p）に絞る。
  */
 function summary(page: Page) {
-  return page.locator("p[role='status']");
+  return page.getByRole("status", { name: "Search results" });
 }
 
 /** listed は一覧の要求のうち、並び順が sort の応答を待つ。 */
@@ -183,6 +183,18 @@ test.describe.serial("library search", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/");
     await expect(summary(page)).toHaveText(resultCount(expectedVideos));
+
+    await page
+      .getByRole("radiogroup", { name: "View" })
+      .getByRole("radio", { name: "List" })
+      .click();
+    const videoCells = page.locator("tr[data-video-id]").first().locator("td:visible");
+    await expect(videoCells.first()).toHaveCSS("border-bottom-width", "1px");
+    await expect(videoCells.last()).toHaveCSS("border-bottom-width", "1px");
+    await page
+      .getByRole("radiogroup", { name: "View" })
+      .getByRole("radio", { name: "Grid" })
+      .click();
 
     const requests: URL[] = [];
     page.on("request", (candidate) => {

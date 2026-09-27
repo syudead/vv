@@ -5,9 +5,10 @@ themselves; the reasoning behind a decision belongs in `docs/design-docs/`.
 
 ## Documents
 
-- [vv を実行する](running-vv.md)
-- [公開イメージで vv をホスティングする](hosting-vv.md)
+- [VVMDM を実行する](running-vv.md)
+- [公開イメージで VVMDM をホスティングする](hosting-vv.md)
 - [ローカル開発](development.md)
 - [Codespaces で PR を確かめる](codespaces-preview.md)
 - [依存の更新（Renovate）](dependency-updates.md)
 - [動くプレビューとシーク用サムネイルの生成を測る](preview-benchmark.md)
+- [文書サイト](docs-site.md)

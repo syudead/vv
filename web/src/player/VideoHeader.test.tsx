@@ -20,7 +20,9 @@ function renderHeader(folder: VideoFolder | undefined, onClose = vi.fn()) {
 describe("VideoHeader", () => {
   it("ロゴはホームへのリンクで、× は 1 つだけ置き、押すと閉じる", () => {
     const onClose = renderHeader(undefined);
-    expect(screen.getByRole("link", { name: "Home" }).getAttribute("href")).toBe("/");
+    const home = screen.getByRole("link", { name: "VVMDM home" });
+    expect(home.getAttribute("href")).toBe("/");
+    expect(home.querySelectorAll('img[alt=""]')).toHaveLength(2);
     const close = screen.getAllByRole("button", { name: "Close" });
     expect(close).toHaveLength(1);
     fireEvent.click(close[0] as HTMLElement);

@@ -34,7 +34,7 @@ export default function TouchControls({
         type="button"
         aria-label={playing ? t.player.controls.pause : t.player.controls.play}
         onClick={onToggle}
-        className="pointer-events-auto flex size-15 items-center justify-center rounded-full bg-overlay text-fg"
+        className="pointer-events-auto flex size-15 items-center justify-center rounded-full border border-control-border bg-overlay text-fg shadow-elevated transition-colors hover:bg-navbar motion-reduce:transition-none"
       >
         {playing ? (
           <Pause className="size-7" aria-hidden="true" />

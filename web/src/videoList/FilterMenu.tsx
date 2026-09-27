@@ -55,6 +55,7 @@ export default function FilterMenu({
           className={cn("px-2.5", filterCount > 0 && "bg-accent-soft text-link")}
         >
           <ListFilter />
+          <span className="hidden xl:inline">{t.list.filter.label}</span>
           {filterCount > 0 && (
             <span className="tabular-nums">{formatNumber(filterCount)}</span>
           )}

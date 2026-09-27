@@ -8,7 +8,6 @@ import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import {
   connectionWarningId,
-  ConnectionWarning,
   CredentialField,
   CredentialScreen,
   FailureLine,
@@ -89,7 +88,11 @@ export default function LoginPage() {
   const warning = connectionWarningId();
 
   return (
-    <CredentialScreen title={t.auth.login.title} onSubmit={() => void submit()}>
+    <CredentialScreen
+      title={t.auth.login.title}
+      description={t.auth.login.description}
+      onSubmit={() => void submit()}
+    >
       <div className="flex flex-col gap-4">
         <UsernameField
           ref={usernameRef}
@@ -116,6 +119,7 @@ export default function LoginPage() {
         size="lg"
         className="w-full"
         disabled={submitting || throttled}
+        aria-busy={submitting}
         aria-describedby={warning}
       >
         {submitting && (
@@ -124,9 +128,8 @@ export default function LoginPage() {
             aria-hidden="true"
           />
         )}
-        {t.auth.login.submit}
+        {submitting ? t.auth.login.submitting : t.auth.login.submit}
       </Button>
-      <ConnectionWarning />
     </CredentialScreen>
   );
 }

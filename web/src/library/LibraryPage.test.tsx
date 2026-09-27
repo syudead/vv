@@ -479,6 +479,10 @@ describe("LibraryPage", () => {
     expect(screen.queryByText("Playable only")).toBeNull();
     expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
     expect(screen.queryByText("No videos yet")).toBeNull();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Change search" }));
+    expect(document.activeElement).toBe(
+      screen.getByRole("searchbox", { name: "Search videos" }),
+    );
   });
 
   it("絞り込みの条件を解除は検索語も外し、ポップオーバーを閉じて絞り込みのボタンへ戻る", async () => {

@@ -188,7 +188,8 @@ const scanErrors = {
 
 export const en = {
   common: {
-    appName: "vv",
+    appName: "VVMDM",
+    brandHome: "VVMDM home",
     close: "Close",
     reload: "Reload",
     retry: "Retry",
@@ -222,6 +223,8 @@ export const en = {
     noMatches: "No videos match these conditions",
     loadFailed: "Couldn't load the list",
     loadMoreFailed: (reason: string) => `Couldn't load more: ${reason}`,
+    noMatchesHint: "Try a different search or change the filters.",
+    changeSearch: "Change search",
     guestEmpty: {
       title: "No videos are public",
       description: "Sign in to see all videos.",
@@ -314,6 +317,7 @@ export const en = {
   },
   library: {
     title: "Library",
+    resultsLabel: "Search results",
     // GET /api/library の total は項目（カード）の数で、グループのカードも 1 つと数える。動画の本数ではない。
     resultCount: items,
     empty: {
@@ -421,7 +425,8 @@ export const en = {
     },
     empty: {
       title: "No videos in this folder yet",
-      description: "Scan to see them here.",
+      rootTitle: "The media folders are empty",
+      description: "No videos or subfolders were found. Put files there, then scan.",
     },
     noMediaFolders: {
       title: "No media folders yet",
@@ -446,6 +451,8 @@ export const en = {
         grouped
           ? "Grouping in the library: shown as 1 item. Open the menu"
           : "Grouping in the library: shown one by one. Open the menu",
+      changing: "Changing the grouping in the library",
+      changingShort: "Changing…",
       autoHint:
         "Automatic: groups folders below a media folder that have no subfolders and 2 or more videos",
       toTag: "Turn the group into a tag",
@@ -486,6 +493,7 @@ export const en = {
       label: "New tag name",
       placeholder: "Tag name",
       submit: "Create",
+      submitting: "Creating…",
     },
     row: {
       open: (name: string) => `Open the library filtered by ${name}`,
@@ -504,6 +512,7 @@ export const en = {
       used: (count: number) =>
         `This tag will be removed from ${videos(count)}. This can't be undone.`,
       submit: "Delete",
+      submitting: "Deleting…",
     },
     mergeDialog: {
       title: (name: string) => `Merge "${name}"`,
@@ -513,6 +522,7 @@ export const en = {
       warning: (source: string, count: number, target: string) =>
         `The ${videos(count)} tagged "${source}" get the tag "${target}". "${source}" and its synonyms become synonyms of "${target}", and "${source}" leaves the tag list. This can't be undone.`,
       submit: "Merge",
+      submitting: "Merging…",
     },
     synonymsDialog: {
       title: (name: string) => `Synonyms of "${name}"`,
@@ -544,7 +554,7 @@ export const en = {
     changeFailed: "Couldn't make the change",
   },
   player: {
-    documentTitle: (title: string) => `${title} - vv`,
+    documentTitle: (title: string) => `${title} · VVMDM`,
     header: {
       home: "Home",
       folder: "Folder",
@@ -712,7 +722,9 @@ export const en = {
       "This connection isn't encrypted. Your username, password and sign-in status can be read in transit. Signing in doesn't protect against eavesdropping.",
     login: {
       title: "Sign in",
+      description: "Sign in with the owner account",
       submit: "Sign in",
+      submitting: "Signing in…",
       throttledFor: (wait: number) =>
         `Too many sign-in attempts. Try again in ${seconds(wait)}.`,
       failed: "Couldn't sign in. Try again.",
@@ -722,6 +734,7 @@ export const en = {
       description:
         "Create the one account for this server. To change it later, use the server's command line.",
       submit: "Create account",
+      submitting: "Creating the account…",
       goToLogin: "Go to sign in",
       usernameRequired: "Enter a username.",
       usernameRule: (limit: number) =>
@@ -841,7 +854,7 @@ export const en = {
     mediaFolders: {
       heading: "Media folders",
       description:
-        "Folders on the server where vv looks for videos. After a change, run a scan with “Refresh library” at the top. Scans don't start automatically.",
+        "Folders on the server where VVMDM looks for videos. After a change, run a scan with “Refresh library” at the top. Scans don't start automatically.",
       lockedWhileScanning: "You can't change media folders while a scan is running",
       list: "Added media folders",
       loading: "Loading the media folders",
@@ -850,8 +863,11 @@ export const en = {
       emptyHint: "Add a folder to start scanning manually.",
       removing: "Removing…",
       changing: "Changing…",
+      current: "Current location",
       change: "Change folder",
+      changeShort: "Change",
       remove: "Remove folder",
+      removeShort: "Remove",
       add: "Add folder",
       addBlocked: "You can add a folder once the current folders have loaded",
       changedElsewhere:
@@ -862,9 +878,11 @@ export const en = {
     },
     removeDialog: {
       title: "Remove this folder?",
+      target: "Media folder to remove",
       warning:
         "Videos that are only in this folder leave the list. Videos that are also in another media folder stay. Playback positions and watched status are kept. A scan doesn't start automatically.",
       submit: "Remove",
+      removing: "Removing…",
     },
     picker: {
       addTitle: "Add media folder",
@@ -887,13 +905,15 @@ export const en = {
       confirmWarning:
         "Videos that are only in the old folder leave the list. Videos that are also in another media folder stay. Playback positions and watched status are kept. A scan doesn't start automatically.",
       confirm: "Change",
+      changing: "Changing…",
+      adding: "Adding…",
     },
   },
   errors: {
     code: errorCodes,
     reason: errorReasons,
     requestFailed: (status: number) => `Request failed (HTTP ${String(status)})`,
-    unreachable: "Couldn't reach the server. Check that vv is running and try again.",
+    unreachable: "Couldn't reach the server. Check that VVMDM is running and try again.",
     unexpected: "Something went wrong.",
     probe: probeErrors,
     probeUnknown: "Couldn't read this video's information.",

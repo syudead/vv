@@ -99,12 +99,24 @@ export default function FolderGroupingMenu({
           variant="ghost"
           size="sm"
           disabled={busy}
-          aria-label={t.folders.grouping.trigger(grouping.grouped)}
-          // 見出しと同じ弱さにし、見出しの行の高さを変えない。
+          aria-busy={busy}
+          aria-label={
+            busy
+              ? t.folders.grouping.changing
+              : t.folders.grouping.trigger(grouping.grouped)
+          }
+          // 見出しと同じ弱さにし、見出しの行の高さを変えない（ui-design.md「Visual review criteria」）。
           className="-my-2 -mr-2 gap-1.5! text-fg-muted!"
         >
-          <Icon aria-hidden="true" className={busy ? "animate-spin" : undefined} />
-          {grouping.grouped ? t.folders.grouping.grouped : t.folders.grouping.ungrouped}
+          <Icon
+            aria-hidden="true"
+            className={busy ? "animate-spin motion-reduce:animate-none" : undefined}
+          />
+          {busy
+            ? t.folders.grouping.changingShort
+            : grouping.grouped
+              ? t.folders.grouping.grouped
+              : t.folders.grouping.ungrouped}
           <ChevronDown aria-hidden="true" className="size-3.5!" />
         </Button>
       </MenuTrigger>

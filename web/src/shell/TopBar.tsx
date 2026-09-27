@@ -1,10 +1,10 @@
 import { Menu, RefreshCw } from "lucide-react";
-import { Link } from "react-router";
 
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
+import BrandHomeLink from "../ui/BrandHomeLink";
 import Tooltip from "../ui/Tooltip";
 import { useScan } from "./ScanProvider";
 
@@ -59,13 +59,7 @@ export default function TopBar({ onMenu }: { onMenu: () => void }) {
       <IconButton label={t.shell.nav.menu} onClick={onMenu} tooltip={false}>
         <Menu />
       </IconButton>
-      <Link
-        to="/"
-        className="mr-1 hidden h-8 shrink-0 items-center gap-2 rounded-md px-2 text-base font-semibold tracking-tight text-fg select-none hover:bg-hover-wash sm:flex"
-      >
-        <span className="size-2.5 rounded-full bg-accent" aria-hidden="true" />
-        {t.common.appName}
-      </Link>
+      <BrandHomeLink className="mr-1" />
 
       <div id="topbar-library-tools" className="flex min-w-0 flex-1 items-center" />
 

@@ -238,7 +238,7 @@ describe("VideoPage", () => {
       renderPage("7", "/?q=abc");
       expect((await ready()).textContent).toBe("テスト動画");
       // 題名は描画後の effect で入るので、h1 が出た直後ではなく反映を待つ。
-      await waitFor(() => expect(document.title).toBe("テスト動画 - vv"));
+      await waitFor(() => expect(document.title).toBe("テスト動画 · VVMDM"));
       expect(screen.getByRole("list", { name: "File details" })).toBeDefined();
       expect(screen.getByText("H.264")).toBeDefined();
       expect(screen.getByRole("button", { name: "Open file" })).toBeDefined();
@@ -323,7 +323,7 @@ describe("VideoPage", () => {
     it("ロゴからホームへ移る", async () => {
       renderPage("7", "/folders/1/movies");
       await ready();
-      fireEvent.click(screen.getByRole("link", { name: "Home" }));
+      fireEvent.click(screen.getByRole("link", { name: "VVMDM home" }));
       expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /");
     });
 
@@ -732,6 +732,31 @@ describe("VideoPage", () => {
       expect(screen.queryByText("Couldn't play this video")).toBeNull();
     });
 
+    it("映像の読み込み中は文字を伴う状態を表示し、再生開始後に消す", async () => {
+      renderPage();
+      await ready();
+      act(() =>
+        player().onStatus({
+          loading: true,
+          playing: true,
+          userActive: true,
+          ended: false,
+        }),
+      );
+      const status = screen.getByRole("status");
+      expect(status.textContent).toBe("Loading");
+      expect(status.className).toContain("bg-navbar");
+      act(() =>
+        player().onStatus({
+          loading: false,
+          playing: true,
+          userActive: true,
+          ended: false,
+        }),
+      );
+      expect(screen.queryByRole("status")).toBeNull();
+    });
+
     it("途中まで見た動画は続きの位置から始め、再開を知らせる表示を出さない", async () => {
       server.videos.set(7, [
         {
@@ -770,7 +795,10 @@ describe("VideoPage", () => {
       await ready();
       await screen.findByRole("heading", { level: 2, name: "Related videos" });
       end();
-      expect(screen.getByText("Playback finished")).toBeDefined();
+      expect(screen.getByRole("status").textContent).toBe("Playback finished");
+      expect(
+        screen.getByRole("heading", { level: 2, name: "Playback finished" }),
+      ).toBeDefined();
       expect(screen.getByText("Next video")).toBeDefined();
       expect(screen.getAllByRole("link", { name: /後続の動画/ })).toHaveLength(2);
       fireEvent.click(screen.getByRole("button", { name: "Watch again" }));
@@ -806,6 +834,10 @@ describe("VideoPage", () => {
       await ready();
       await screen.findByRole("heading", { level: 2, name: "Related videos" });
       end();
+      expect(screen.getByRole("status").textContent).toBe("Playback finished");
+      expect(
+        screen.getByRole("heading", { level: 2, name: "Playback finished" }),
+      ).toBeDefined();
       expect(screen.getByRole("button", { name: "Watch again" })).toBeDefined();
       expect(screen.queryByRole("button", { name: "Play next" })).toBeNull();
     });
@@ -1190,7 +1222,7 @@ describe("VideoPage", () => {
       end();
       fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
       expect(screen.queryByText(announcement)).toBeNull();
-      expect(screen.getByText("Playback finished")).toBeDefined();
+      expect(screen.getByRole("status").textContent).toBe("Playback finished");
       const playNext = screen.getByRole("button", { name: "Play next" });
       expect(document.activeElement).toBe(playNext);
       expect(screen.getByRole("button", { name: "Watch again" })).toBeDefined();

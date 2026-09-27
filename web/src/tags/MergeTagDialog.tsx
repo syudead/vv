@@ -145,7 +145,7 @@ export default function MergeTagDialog({
           )}
         </div>
       </div>
-      <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+      <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
         <Button ref={cancel} onClick={handleClose} disabled={pending}>
           {t.common.cancel}
         </Button>
@@ -156,7 +156,7 @@ export default function MergeTagDialog({
           disabled={pending || target === null}
         >
           {pending && <LoaderCircle className="animate-spin" />}
-          {t.tags.mergeDialog.submit}
+          {pending ? t.tags.mergeDialog.submitting : t.tags.mergeDialog.submit}
         </Button>
       </div>
     </ModalFrame>

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -23,7 +23,7 @@ function fields() {
     username: screen.getByLabelText("Username") as HTMLInputElement,
     password: screen.getByLabelText("Password") as HTMLInputElement,
     confirm: screen.getByLabelText("Confirm password") as HTMLInputElement,
-    submit: screen.getByRole("button", { name: "Create account" }) as HTMLButtonElement,
+    submit: screen.getByRole("button", { name: /^Creat(e|ing) / }) as HTMLButtonElement,
   };
 }
 
@@ -57,6 +57,7 @@ describe("SetupPage", () => {
     expect(
       screen.getByRole("heading", { level: 1, name: "Create an account" }),
     ).toBeDefined();
+    expect(screen.getByRole("img", { name: "VVMDM" })).toBeDefined();
     expect(document.activeElement).toBe(username);
     expect([username.name, username.autocomplete]).toEqual(["username", "username"]);
     expect([password.name, password.autocomplete, password.type]).toEqual([
@@ -71,6 +72,10 @@ describe("SetupPage", () => {
     ]);
     expect(screen.getByText(/This connection isn't encrypted/)).toBeDefined();
     expect(username.getAttribute("aria-describedby")).toBe("connection-warning");
+    const warning = screen.getByText(/This connection isn't encrypted/);
+    expect(
+      warning.compareDocumentPosition(username) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("確認用のパスワードが一致しなければ送らず、確認の欄だけを空にしてそこへ移る", async () => {
@@ -86,6 +91,9 @@ describe("SetupPage", () => {
     expect(document.activeElement).toBe(confirm);
     expect(confirm.getAttribute("aria-invalid")).toBe("true");
     expect(confirm.getAttribute("aria-describedby")).toBe("credential-failure");
+    expect(confirm.parentElement?.querySelector('[role="alert"]')?.textContent).toBe(
+      "The passwords don't match.",
+    );
     expect(password.getAttribute("aria-invalid")).toBeNull();
   });
 
@@ -152,6 +160,19 @@ describe("SetupPage", () => {
       username: "owner",
       password: "secret",
     });
+  });
+
+  it("送信中は進行中の文言を示して主操作を止める", async () => {
+    let finish: (response: Response) => void = () => undefined;
+    fetchMock.mockReturnValue(new Promise((resolve) => (finish = resolve)));
+    render(<SetupPage />);
+    await fill("owner", "secret", "secret");
+
+    expect(fields().submit.disabled).toBe(true);
+    expect(fields().submit.textContent).toContain("Creating the account…");
+    expect(fields().submit.getAttribute("aria-busy")).toBe("true");
+
+    await act(async () => finish(json({ redirectTo: "/" })));
   });
 
   it("409 では設定済みの旨とログインへの入口を出し、入力を空にして主操作を止める", async () => {

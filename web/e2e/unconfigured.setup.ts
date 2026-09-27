@@ -54,6 +54,18 @@ test("未設定のサーバーはどの URL も初回設定画面にし、設定
 
   await page.goto("/videos/1");
   await expect(page).toHaveURL("/setup");
+  for (const width of [360, 768, 1280]) {
+    await page.setViewportSize({ width, height: 800 });
+    const wordmark = page.getByRole("img", { name: "VVMDM" });
+    await expect(wordmark).toBeVisible();
+    const box = await wordmark.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.width).toBeGreaterThan(100);
+    expect(box!.x + box!.width).toBeLessThan(width - 16);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+  }
   const username = page.getByLabel("Username");
   const password = page.getByLabel("Password", { exact: true });
   const confirm = page.getByLabel("Confirm password");
@@ -61,7 +73,7 @@ test("未設定のサーバーはどの URL も初回設定画面にし、設定
   await expect(username).toHaveAttribute("autocomplete", "username");
   await expect(password).toHaveAttribute("autocomplete", "new-password");
   await expect(confirm).toHaveAttribute("autocomplete", "new-password");
-  // e2e は HTTP で配るので、主操作の下に警告が出る。
+  // e2e は HTTP で配るので、入力の前に警告が出る。
   await expect(page.getByText(/This connection isn't encrypted/)).toBeVisible();
   await expect(username).toHaveAttribute("aria-describedby", "connection-warning");
 

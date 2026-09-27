@@ -37,10 +37,10 @@ const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(function IconB
       data-active={active || undefined}
       className={cn(
         "inline-flex shrink-0 items-center justify-center rounded-md transition-colors duration-150 select-none [&>svg]:size-4",
-        "disabled:pointer-events-none disabled:opacity-50",
+        "aria-busy:cursor-progress disabled:cursor-not-allowed disabled:opacity-50",
         variant === "ghost"
-          ? "text-fg hover:bg-hover-wash active:bg-active-wash data-active:bg-active-wash"
-          : "bg-elevated text-fg hover:bg-hover-wash active:bg-active-wash data-active:bg-active-wash",
+          ? "text-fg enabled:hover:bg-hover-wash enabled:active:bg-active-wash data-active:bg-accent-soft data-active:text-link"
+          : "border border-control-border bg-elevated text-fg enabled:hover:bg-surface-hover enabled:active:bg-surface data-active:border-accent-active data-active:bg-accent-soft data-active:text-link",
         sizes[size],
         className,
       )}

@@ -1,0 +1,76 @@
+# 文書サイト（docs-site/、VitePress）を作り、main では GitHub Pages へ公開する。
+# PR では作れることだけを確かめる。公開するのは docs/ と specs/ の文書である。
+name: Docs site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "specs/**"
+      - "docs-site/**"
+      - ".github/workflows/docs.yml"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "specs/**"
+      - "docs-site/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# PR では古い実行を打ち切る。main では打ち切らない。ワークフローごと打ち切ると、
+# 公開中の deploy ジョブまで止まってしまうため。
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Build docs site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # 各ページの「最終更新」を git の履歴から求める。
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: 依存を入れる
+        run: npm --prefix docs-site ci
+
+      - name: サイトを作る
+        run: npm --prefix docs-site run build
+
+      - name: Pages 用に成果物を上げる
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs-site/.vitepress/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # 公開は main の順に1つずつ行い、途中の公開を打ち切らない。
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: GitHub Pages へ公開する
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

@@ -79,7 +79,7 @@ export default function Breadcrumbs({
                     <Link
                       to={crumb.to}
                       title={crumb.label}
-                      className="max-w-40 min-w-0 truncate rounded-sm px-1 py-0.5 text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
+                      className="max-w-40 min-w-0 truncate rounded-sm px-1 py-0.5 text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link"
                     >
                       {crumb.label}
                     </Link>

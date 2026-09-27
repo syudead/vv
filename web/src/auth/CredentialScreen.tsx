@@ -54,16 +54,18 @@ export function CredentialScreen({
       <main className="mx-auto w-full max-w-sm rounded-lg bg-surface p-6 shadow-card sm:p-8">
         {/* 送信は web/src/api/auth.ts が行う。method="post" を付けない。 */}
         <form noValidate onSubmit={submit} className="flex flex-col gap-5">
-          <p className="flex items-center gap-2 text-base font-semibold tracking-tight text-fg select-none">
-            <span className="size-2.5 rounded-full bg-accent" aria-hidden="true" />
-            {t.common.appName}
-          </p>
+          <img
+            src="/brand/vvmdm-wordmark-cyan.svg"
+            alt={t.common.appName}
+            className="h-10 w-auto max-w-full self-start object-contain object-left"
+          />
           <div className="flex flex-col gap-1.5">
             <h1 className="text-xl font-semibold text-fg">{title}</h1>
             {description !== undefined && (
               <p className="text-sm leading-6 text-fg-muted">{description}</p>
             )}
           </div>
+          <ConnectionWarning />
           {children}
         </form>
       </main>
@@ -74,10 +76,11 @@ export function CredentialScreen({
 export interface CredentialFieldProps extends InputHTMLAttributes<HTMLInputElement> {
   id: string;
   label: UiText;
+  error?: UiText | null;
 }
 
 export const CredentialField = forwardRef<HTMLInputElement, CredentialFieldProps>(
-  function CredentialField({ id, label, className, ...rest }, ref) {
+  function CredentialField({ id, label, error, className, ...rest }, ref) {
     return (
       <div className="flex flex-col">
         <label htmlFor={id} className="mb-1 text-xs font-medium text-fg-muted">
@@ -87,11 +90,12 @@ export const CredentialField = forwardRef<HTMLInputElement, CredentialFieldProps
           ref={ref}
           id={id}
           className={cn(
-            "h-9 w-full rounded-sm border border-border bg-field px-3 text-sm text-fg focus:border-accent focus:outline-none",
+            "h-9 w-full rounded-sm border border-control-border bg-field px-3 text-sm text-fg focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-link",
             className,
           )}
           {...rest}
         />
+        {error && <FailureLine message={error} className="mt-2" />}
       </div>
     );
   },
@@ -118,10 +122,20 @@ export const UsernameField = forwardRef<
 });
 
 /** FailureLine は失敗の行である。出た時点で読まれる。 */
-export function FailureLine({ message }: { message: UiText | null }) {
+export function FailureLine({
+  message,
+  className,
+}: {
+  message: UiText | null;
+  className?: string;
+}) {
   if (message === null) return null;
   return (
-    <p id={FAILURE_ID} role="alert" className="flex gap-2 text-sm text-danger">
+    <p
+      id={FAILURE_ID}
+      role="alert"
+      className={cn("flex gap-2 text-sm text-danger", className)}
+    >
       <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
       <span>{message}</span>
     </p>

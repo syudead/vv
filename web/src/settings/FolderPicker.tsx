@@ -123,11 +123,23 @@ export default function FolderPicker({
     return (
       <ModalFrame title={text.confirmTitle} onClose={onClose} initialFocus={confirmBack}>
         <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
-          <div className="grid gap-4 sm:grid-cols-[auto_1fr]">
-            <span className="text-xs font-medium text-fg-muted">{text.before}</span>
-            <code className="min-w-0 break-words text-sm text-fg">{replacing.path}</code>
-            <span className="text-xs font-medium text-fg-muted">{text.after}</span>
-            <code className="min-w-0 break-words text-sm text-fg">{currentPath}</code>
+          <div className="grid min-w-0 gap-3">
+            <div className="min-w-0 rounded-md border border-control-border bg-field p-3">
+              <span className="block text-xs font-medium text-fg-muted">
+                {text.before}
+              </span>
+              <code className="block min-w-0 break-all text-sm text-fg">
+                {replacing.path}
+              </code>
+            </div>
+            <div className="min-w-0 rounded-md border border-control-border bg-field p-3">
+              <span className="block text-xs font-medium text-fg-muted">
+                {text.after}
+              </span>
+              <code className="block min-w-0 break-all text-sm text-fg">
+                {currentPath}
+              </code>
+            </div>
           </div>
           <p className="border-l-2 border-warning-strong pl-3 text-sm leading-6 text-fg-muted">
             {text.confirmWarning}
@@ -138,7 +150,7 @@ export default function FolderPicker({
             </p>
           )}
         </div>
-        <div className="flex shrink-0 justify-end gap-2 border-t border-border p-4">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border p-4">
           <Button
             ref={confirmBack}
             onClick={() => setConfirming(false)}
@@ -153,7 +165,7 @@ export default function FolderPicker({
             disabled={submitting}
           >
             {submitting && <LoaderCircle className="animate-spin" />}
-            {text.confirm}
+            {submitting ? text.changing : text.confirm}
           </Button>
         </div>
       </ModalFrame>
@@ -163,7 +175,7 @@ export default function FolderPicker({
   return (
     <ModalFrame title={title} onClose={onClose}>
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex shrink-0 items-start gap-2 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 shrink-0 items-start gap-2 border-b border-border bg-field px-4 py-3">
           <IconButton
             label={text.parent}
             onClick={(event) =>
@@ -175,7 +187,7 @@ export default function FolderPicker({
           </IconButton>
           <code
             aria-live="polite"
-            className="min-w-0 flex-1 break-words pt-2 text-xs leading-5 text-fg-muted"
+            className="min-w-0 flex-1 break-all pt-2 text-xs leading-5 text-fg-muted"
           >
             {listing?.currentPath ?? text.fileSystem}
           </code>
@@ -229,10 +241,10 @@ export default function FolderPicker({
                         load(directory.path, true);
                       }
                     }}
-                    className="flex min-h-11 w-full items-center gap-3 px-3 py-2 text-left text-sm hover:bg-hover-wash focus:bg-active-wash"
+                    className="flex min-h-11 w-full min-w-0 items-center gap-3 rounded-sm px-3 py-2 text-left text-sm hover:bg-hover-wash focus:bg-active-wash"
                   >
                     <Folder className="size-4 shrink-0 text-fg-muted" />
-                    <span className="min-w-0 flex-1 break-words">{directory.name}</span>
+                    <span className="min-w-0 flex-1 break-all">{directory.name}</span>
                     <ChevronRight className="size-4 shrink-0 text-fg-subtle" />
                   </button>
                 </div>
@@ -252,12 +264,18 @@ export default function FolderPicker({
               {mutationError}
             </p>
           )}
-          <div className="flex justify-end gap-2">
-            <Button variant="ghost" onClick={onClose} disabled={submitting}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="ghost"
+              className="w-full sm:w-auto"
+              onClick={onClose}
+              disabled={submitting}
+            >
               {t.common.cancel}
             </Button>
             <Button
               variant="primary"
+              className="w-full sm:w-auto"
               disabled={loading || loadError !== null || problem !== null || submitting}
               onClick={() => {
                 if (currentPath === undefined) return;
@@ -266,7 +284,13 @@ export default function FolderPicker({
               }}
             >
               {submitting && <LoaderCircle className="animate-spin" />}
-              {replacing ? text.changeToThis : text.addThis}
+              {submitting
+                ? replacing
+                  ? text.changing
+                  : text.adding
+                : replacing
+                  ? text.changeToThis
+                  : text.addThis}
             </Button>
           </div>
         </div>
