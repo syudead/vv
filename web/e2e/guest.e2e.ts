@@ -254,7 +254,7 @@ test.describe.serial("guest", () => {
     // 関連動画にも出ない。
     await page.goto(`/videos/${String(video("ゲスト公開A").id)}`);
     const column = page.getByRole("complementary");
-    const members = column.getByRole("region", { name: "続けて再生" });
+    const members = column.getByRole("region", { name: "Up next" });
     await expect(members.getByRole("link", { name: /^ゲスト公開B/ })).toBeVisible();
     await expect(members.locator('li[aria-current="true"]')).toContainText("ゲスト公開A");
     await expect(column.getByRole("link", { name: /ゲスト非公開/ })).toHaveCount(0);
@@ -274,7 +274,7 @@ test.describe.serial("guest", () => {
 
     for (const title of privateTitles) {
       await page.goto(`/videos/${String(video(title).id)}`);
-      await expect(page.getByText("この動画は開けません")).toBeVisible();
+      await expect(page.getByText("This video can't be opened")).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
     }
     await context.close();
@@ -315,7 +315,7 @@ test.describe.serial("guest", () => {
       "Watch status",
       "Recently played",
       "Select",
-      "タグを追加",
+      "Add tag",
       "Refresh library",
     ]) {
       expect(tree).not.toContain(name);
@@ -329,10 +329,10 @@ test.describe.serial("guest", () => {
     // 再生しても止めても再生位置を送らない。
     await page.goto(`/videos/${String(video("ゲスト公開B").id)}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト公開B");
-    await expect(page.getByRole("list", { name: "ファイルの情報" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "パスをコピー" })).toHaveCount(0);
+    await expect(page.getByRole("list", { name: "File details" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy path" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Tags" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /ファイルを開く/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Open file/ })).toHaveCount(0);
     await expect(page.getByRole("switch")).toHaveCount(0);
     await startPlayback(page);
     await page.keyboard.press("Space");
@@ -397,7 +397,7 @@ test.describe.serial("guest", () => {
     const page = await context.newPage();
     await page.goto(`/videos/${String(video("ゲスト非公開C").id)}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト非公開C");
-    await expect(page.getByRole("button", { name: "パスをコピー" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy path" })).toBeVisible();
     await startPlayback(page);
 
     // 同じ Cookie の別の接続からログアウトして、サーバー側でだけセッションを消す。
@@ -413,8 +413,8 @@ test.describe.serial("guest", () => {
     // 次の操作（一時停止で再生位置を送る）で見る人が変わったと分かり、ページごと
     // 読み直す。非公開の動画なので、ゲストの画面では「開けません」になる。
     await page.keyboard.press("Space");
-    await expect(page.getByText("この動画は開けません")).toBeVisible();
-    await expect(page.getByRole("button", { name: "パスをコピー" })).toHaveCount(0);
+    await expect(page.getByText("This video can't be opened")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy path" })).toHaveCount(0);
     await context.close();
   });
 
@@ -446,10 +446,10 @@ test.describe.serial("guest", () => {
     // 再生画面: キーボードだけで「非公開」→ Space →「公開中」（キーボード確認の手順 4）。
     await ownerPage.goto(`/videos/${String(video("ゲスト非公開C").id)}`);
     const toggle = ownerPage.getByRole("switch", {
-      name: "ログインしていない人に公開する",
+      name: "Show to people who aren't signed in",
     });
     await expect(toggle).toHaveAttribute("aria-checked", "false");
-    await expect(toggle).toHaveText("非公開");
+    await expect(toggle).toHaveText("Private");
     await toggle.focus();
     const sent = ownerPage.waitForRequest(
       (req) => req.method() === "PUT" && req.url().endsWith("/api/video-visibility"),
@@ -460,7 +460,7 @@ test.describe.serial("guest", () => {
       public: true,
     });
     await expect(toggle).toHaveAttribute("aria-checked", "true");
-    await expect(toggle).toHaveText("公開中");
+    await expect(toggle).toHaveText("Public");
     // 送信の間もフォーカスは切り替えに残る。
     await expect(toggle).toBeFocused();
     // ゲストのグループのカードの本数が、公開になった C の分だけ増える。
@@ -568,7 +568,7 @@ test.describe.serial("guest", () => {
 
       await page.goto(`/videos/${String(video("ゲスト公開A").id)}`);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト公開A");
-      await expect(page.getByRole("list", { name: "ファイルの情報" })).toBeVisible();
+      await expect(page.getByRole("list", { name: "File details" })).toBeVisible();
       await page.screenshot({
         path: path.join(screenshotDir, `20260925-guest-video-${String(width)}.png`),
         fullPage: true,
@@ -632,11 +632,13 @@ test.describe.serial("guest", () => {
 
       // 再生画面の切り替え: 非公開・公開中・送信中・失敗。
       await page.goto(`/videos/${String(video("ゲスト非公開C").id)}`);
-      const toggle = page.getByRole("switch", { name: "ログインしていない人に公開する" });
-      await expect(toggle).toHaveText("非公開");
+      const toggle = page.getByRole("switch", {
+        name: "Show to people who aren't signed in",
+      });
+      await expect(toggle).toHaveText("Private");
       await ownerShot("video-private", true);
       await page.goto(`/videos/${String(video("ゲスト公開A").id)}`);
-      await expect(toggle).toHaveText("公開中");
+      await expect(toggle).toHaveText("Public");
       await ownerShot("video-public", true);
       let release: (() => void) | undefined;
       await page.route("**/api/video-visibility", async (route) => {
@@ -650,8 +652,10 @@ test.describe.serial("guest", () => {
       await expect(toggle).toHaveAttribute("aria-disabled", "true");
       await ownerShot("video-sending", true);
       release?.();
-      await expect(page.getByRole("alert")).toHaveText("変更できませんでした");
-      await expect(toggle).toHaveText("公開中");
+      await expect(page.getByRole("alert").filter({ hasText: /visibility/ })).toHaveText(
+        "Couldn't change the visibility: Something went wrong on the server.",
+      );
+      await expect(toggle).toHaveText("Public");
       await ownerShot("video-failed", true);
       await owner.close();
     }

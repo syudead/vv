@@ -12,13 +12,3 @@ export type UiText = string & { readonly [uiTextBrand]: true };
 export function asUiText(text: string): UiText {
   return text as UiText;
 }
-
-/**
- * untranslated は、まだ英語のカタログへ移していないディレクトリ（web/eslint.config.js の
- * 除外の一覧）が、UiText を受ける部品へ文言を渡すための一時的な出口である。各領域の単位が
- * 自分のディレクトリの呼び出しを消し、最後の単位でこの関数も消す。除外の外で使うと
- * ESLint が報告する。
- */
-export function untranslated(text: string): UiText {
-  return text as UiText;
-}

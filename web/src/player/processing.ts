@@ -1,4 +1,5 @@
 import type { Video } from "../api/client";
+import { t, type UiText } from "../i18n";
 
 /**
  * 取り込みの段階表示と作成中の 1 行の出し分け（plan の Structural Decisions 11、
@@ -8,7 +9,9 @@ import type { Video } from "../api/client";
 export type StageState = "done" | "active" | "waiting" | "failed";
 
 export interface Stage {
-  name: string;
+  /** 段を見分ける鍵（描画の key）。 */
+  id: keyof typeof t.player.stages.names;
+  name: UiText;
   state: StageState;
 }
 
@@ -24,20 +27,21 @@ type GenerationState = Video["probeState"];
  * - シーク用プレビューの状態は読み取り前の応答に入らない。そのときは未完了として扱う。
  */
 export function processingStages(video: Video): Stage[] {
-  const generation: [string, GenerationState][] = [
-    ["動画情報の読み取り", video.probeState],
-    ["サムネイル", video.thumbnailState],
-    ["シーク用プレビュー", video.seekThumbnailState ?? "pending"],
-    ["一覧用プレビュー", video.previewState],
+  const names = t.player.stages.names;
+  const generation: [Stage["id"], GenerationState][] = [
+    ["probe", video.probeState],
+    ["thumbnail", video.thumbnailState],
+    ["seekPreview", video.seekThumbnailState ?? "pending"],
+    ["preview", video.previewState],
   ];
   let activeTaken = false;
-  const stages: Stage[] = [{ name: "ファイルの検出", state: "done" }];
-  for (const [name, state] of generation) {
+  const stages: Stage[] = [{ id: "detect", name: names.detect, state: "done" }];
+  for (const [id, state] of generation) {
     if (state === "pending") {
-      stages.push({ name, state: activeTaken ? "waiting" : "active" });
+      stages.push({ id, name: names[id], state: activeTaken ? "waiting" : "active" });
       activeTaken = true;
     } else {
-      stages.push({ name, state });
+      stages.push({ id, name: names[id], state });
     }
   }
   return stages;
@@ -47,15 +51,18 @@ export function processingStages(video: Video): Stage[] {
  * creatingLine は、読み取りが終わっていて作成中のものが残っているときの 1 行を返す。
  * 無ければ null。`failed` だけが残っても null にする。
  */
-export function creatingLine(video: Video): string | null {
+export function creatingLine(video: Video): UiText | null {
   if (video.probeState !== "done") return null;
-  const creating = [
-    ["サムネイル", video.thumbnailState],
-    ["シーク用プレビュー", video.seekThumbnailState],
-    ["一覧用プレビュー", video.previewState],
-  ]
+  const names = t.player.creating;
+  const creating = (
+    [
+      [names.thumbnail, video.thumbnailState],
+      [names.seekPreview, video.seekThumbnailState],
+      [names.preview, video.previewState],
+    ] as const
+  )
     .filter(([, state]) => state === "pending")
     .map(([name]) => name);
   if (creating.length === 0) return null;
-  return `${creating.join("と")}を作成中 · 再生はできます`;
+  return names.line(creating);
 }

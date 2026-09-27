@@ -28,7 +28,7 @@ import {
 } from "../api/folderGrouping";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
-import { untranslated } from "../i18n";
+import { t } from "../i18n";
 import Button from "../ui/Button";
 import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
 import Skeleton from "../ui/Skeleton";
@@ -195,7 +195,7 @@ export default function VideoPage() {
   const title = video?.title;
   useEffect(() => {
     const previous = document.title;
-    if (title !== undefined) document.title = `${title} - vv`;
+    if (title !== undefined) document.title = t.player.documentTitle(title);
     return () => {
       document.title = previous;
     };
@@ -607,7 +607,7 @@ function GroupLine({
         ·
       </span>
       <span className="shrink-0 tabular-nums">
-        {group.position} / {group.count}
+        {t.player.related.position(group.position, group.count)}
       </span>
     </>
   );
@@ -649,7 +649,7 @@ function GroupLineMenu({
       const { message, conflict } = groupingFailure(failure, {
         name: group.name,
         tagging,
-        notFoundMessage: untranslated("変更できませんでした"),
+        notFoundMessage: t.folderGrouping.changeFailed,
       });
       toast(message);
       if (conflict) onChanged();
@@ -665,7 +665,7 @@ function GroupLineMenu({
           variant="ghost"
           size="sm"
           disabled={busy}
-          aria-label={`グループ「${group.name}」、${String(group.count)} 本中 ${String(group.position)} 本目。まとめ方のメニュー`}
+          aria-label={t.player.group.menu(group.name, group.position, group.count)}
           // 文字の左端を題名にそろえ、行は題名より小さく従の色のままにする。
           className="-ml-2 max-w-full min-w-0 self-start gap-1.5! font-normal! text-fg-muted! sm:text-sm!"
         >
@@ -676,13 +676,13 @@ function GroupLineMenu({
       <MenuContent align="start">
         <MenuItem onSelect={() => void run(false)}>
           <Ungroup aria-hidden="true" />
-          まとめを解除
+          {t.player.group.ungroup}
         </MenuItem>
         {/* 登録フォルダそのもののグループはタグに変えられない（contracts §2）。 */}
         {group.folder.path !== "" && (
           <MenuItem onSelect={() => void run(true)}>
             <Tag aria-hidden="true" />
-            グループをタグに変える
+            {t.player.group.toTag}
           </MenuItem>
         )}
       </MenuContent>

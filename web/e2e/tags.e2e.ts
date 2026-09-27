@@ -104,7 +104,7 @@ async function clearVideoTags(request: APIRequestContext, videoId: number) {
 }
 
 function addInput(page: Page) {
-  return page.getByRole("combobox", { name: "タグを追加" });
+  return page.getByRole("combobox", { name: "Add tag" });
 }
 
 function chip(page: Page, name: string) {
@@ -181,7 +181,7 @@ test.describe.serial("video tags", () => {
 
     await page.goto(`/videos/${String(a.id)}`);
     const removeButton = page.getByRole("button", {
-      name: "e2e外すタグをこの動画から外す",
+      name: "Remove e2e外すタグ from this video",
     });
     await expect(removeButton).toBeVisible();
     await removeButton.click();
@@ -406,7 +406,7 @@ test.describe.serial("video tags", () => {
 
       // 再生画面でタグを押すと、そのタグ1つで絞り込んだライブラリ一覧が開く。
       await page.goto(`/videos/${String(a.id)}`);
-      await page.getByRole("link", { name: "e2e旅行で絞り込む" }).click();
+      await page.getByRole("link", { name: "Filter by e2e旅行" }).click();
       await expect(page).toHaveURL(
         new RegExp(`^http://127\\.0\\.0\\.1:15173/\\?tag=${String(tag.id)}$`),
       );

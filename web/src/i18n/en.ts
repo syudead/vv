@@ -1,5 +1,5 @@
 import type { components } from "../api/gen/openapi";
-import { formatNumber, selectPlural } from "./intl";
+import { formatList, formatNumber, selectPlural } from "./intl";
 
 // 英語の文言カタログである。画面の文言はここに集め、コンポーネントは messages.ts の `t`
 // から引く（specs/023-english-i18n/research.md R-1）。
@@ -542,6 +542,155 @@ export const en = {
       `"${name}" can't be used as a tag name, so it can't become a tag`,
     notGroup: "This folder is no longer a group",
     changeFailed: "Couldn't make the change",
+  },
+  player: {
+    documentTitle: (title: string) => `${title} - vv`,
+    header: {
+      home: "Home",
+      folder: "Folder",
+    },
+    // 操作バー（video.js）の読み上げ名とツールチップ。キーボード操作を持つボタンには
+    // withKey でキーを添える（specs/023-english-i18n/research.md R-9）。
+    controls: {
+      withKey: (label: string, key: string) => `${label} (${key})`,
+      play: "Play",
+      pause: "Pause",
+      replay: "Replay",
+      mute: "Mute",
+      unmute: "Unmute",
+      fullscreen: "Fullscreen",
+      exitFullscreen: "Exit fullscreen",
+      pictureInPicture: "Picture-in-picture",
+      exitPictureInPicture: "Exit picture-in-picture",
+      playbackRate: "Playback speed",
+      currentTime: "Current time",
+      duration: "Duration",
+      progressBar: "Playback position",
+      volumeLevel: "Volume",
+      videoPlayer: "Video player",
+      restart: "Restart",
+      transcoding: "Converting for playback",
+      transcodingDetail:
+        "The browser can't play this format directly, so it's converted while it plays. Seeking takes a few seconds.",
+    },
+    neighbors: {
+      previous: "Previous video",
+      next: "Next video",
+      withTitle: (label: string, title: string) => `${label}: ${title}`,
+    },
+    loading: "Loading",
+    playbackFailed: {
+      title: "Couldn't play this video",
+      description:
+        "The file may have been moved or deleted, or the browser may not support its format.",
+      retryFrom: (time: string) => `Try again from ${time}`,
+    },
+    stages: {
+      title: "Getting ready to play",
+      description:
+        "Reading the video's information. When that's done, you can play it right here.",
+      note: "Playback starts once “Reading video information” is done. The rest is created during playback.",
+      names: {
+        detect: "Finding the file",
+        probe: "Reading video information",
+        thumbnail: "Thumbnail",
+        seekPreview: "Seek preview",
+        preview: "List preview",
+      },
+      states: {
+        done: "Done",
+        active: "In progress",
+        waiting: "Waiting",
+        failed: "Couldn't create",
+      },
+    },
+    creating: {
+      thumbnail: "the thumbnail",
+      seekPreview: "the seek preview",
+      preview: "the list preview",
+      line: (parts: readonly string[]) =>
+        `Creating ${formatList(parts)} · You can play the video now`,
+    },
+    readFailure: {
+      title: "Couldn't read this video",
+      reprobe: "Read again",
+      openFile: "Open file",
+      reprobeFailed: "Couldn't start reading the video again",
+    },
+    missing: {
+      title: "This video can't be opened",
+      description: "It was removed from the library, or its file is gone.",
+    },
+    loadFailed: "Couldn't load this video",
+    unplayable: {
+      title: "This video can't be played",
+      description: "It's missing the length or picture information needed for playback.",
+    },
+    ended: {
+      announcement: "Playback finished",
+      next: "Next video",
+      playNext: "Play next",
+      replay: "Watch again",
+    },
+    autoplay: {
+      heading: "Up next",
+      countdown: (remaining: number) => `in ${seconds(remaining)}`,
+      announcement: (title: string, wait: number) =>
+        `Playback finished. The next video, "${title}", plays in ${seconds(wait)}`,
+      cancel: "Cancel",
+      playNow: "Play now",
+    },
+    related: {
+      heading: "Related videos",
+      loadFailed: "Couldn't load related videos",
+      group: "Up next",
+      position: (position: number, count: number) =>
+        `${formatNumber(position)} / ${formatNumber(count)}`,
+      videoLink: (title: string, duration: string) => `${title} ${duration}`,
+      watchedLink: (label: string) => `${label}, watched`,
+      nowPlaying: "Now playing",
+      watched: "Watched",
+    },
+    facts: {
+      label: "File details",
+      duration: "Length",
+      size: "Size",
+      added: "Added",
+      openFile: "Open file",
+      copyPath: "Copy path",
+      pathCopied: "Copied the path",
+      copyFailed: "Couldn't copy the path",
+      openFailed: (reason: string) => `Couldn't open the file: ${reason}`,
+      technical: "Technical details",
+      technicalPending: "Reading technical details…",
+      technicalFailed: "Couldn't read the technical details",
+    },
+    visibility: {
+      label: "Show to people who aren't signed in",
+      public: "Public",
+      private: "Private",
+      failed: (reason: string) => `Couldn't change the visibility: ${reason}`,
+    },
+    group: {
+      menu: (name: string, position: number, count: number) =>
+        `Group "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Grouping menu`,
+      ungroup: "Ungroup",
+      toTag: "Turn the group into a tag",
+    },
+    tags: {
+      heading: "Tags",
+      add: "Add tag",
+      create: (name: string) => `Create "${name}"`,
+      synonym: (synonym: string) => `Synonym: ${synonym}`,
+      videoCount: videos,
+      filterBy: (name: string) => `Filter by ${name}`,
+      filterByFromFolder: (name: string) => `Filter by ${name} (from the folder name)`,
+      remove: (name: string) => `Remove ${name} from this video`,
+      gone: (name: string) =>
+        `The tag "${name}" no longer exists, so the tags were reloaded`,
+      attachFailed: (reason: string) => `Couldn't add the tag: ${reason}`,
+      detachFailed: (reason: string) => `Couldn't remove the tag: ${reason}`,
+    },
   },
   tagName: {
     required: "Enter a name",
