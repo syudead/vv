@@ -39,11 +39,12 @@ export default function EndedOverlay({
 
   return (
     <Dimmed>
+      <span role="status" className="sr-only">
+        再生が終わりました
+      </span>
       {next === undefined ? (
         <div className="flex flex-col items-center gap-3 rounded-lg bg-navbar p-5 text-center shadow-elevated">
-          <h2 aria-live="polite" className="text-lg font-semibold text-fg">
-            再生が終わりました
-          </h2>
+          <h2 className="text-lg font-semibold text-fg">再生が終わりました</h2>
           <Button ref={primary} variant="secondary" onClick={onReplay}>
             <RotateCcw aria-hidden="true" />
             もう一度見る
@@ -51,9 +52,7 @@ export default function EndedOverlay({
         </div>
       ) : (
         <div className="pointer-events-auto flex w-full max-w-lg flex-col gap-3 rounded-lg bg-navbar p-5 shadow-elevated">
-          <h2 aria-live="polite" className="text-lg font-semibold text-fg">
-            再生が終わりました
-          </h2>
+          <h2 className="text-lg font-semibold text-fg">再生が終わりました</h2>
           <span className="text-xs font-semibold text-accent">次の動画</span>
           <Link
             to={`/videos/${String(next.id)}`}

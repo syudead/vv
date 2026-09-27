@@ -769,7 +769,10 @@ describe("VideoPage", () => {
       await ready();
       await screen.findByRole("heading", { level: 2, name: "関連動画" });
       end();
-      expect(screen.getByText("再生が終わりました")).toBeDefined();
+      expect(screen.getByRole("status").textContent).toBe("再生が終わりました");
+      expect(
+        screen.getByRole("heading", { level: 2, name: "再生が終わりました" }),
+      ).toBeDefined();
       expect(screen.getByText("次の動画")).toBeDefined();
       expect(screen.getAllByRole("link", { name: /後続の動画/ })).toHaveLength(2);
       fireEvent.click(screen.getByRole("button", { name: "もう一度見る" }));
@@ -805,6 +808,7 @@ describe("VideoPage", () => {
       await ready();
       await screen.findByRole("heading", { level: 2, name: "関連動画" });
       end();
+      expect(screen.getByRole("status").textContent).toBe("再生が終わりました");
       expect(
         screen.getByRole("heading", { level: 2, name: "再生が終わりました" }),
       ).toBeDefined();
@@ -1202,7 +1206,7 @@ describe("VideoPage", () => {
       end();
       fireEvent.click(screen.getByRole("button", { name: "取り消す" }));
       expect(screen.queryByText(announcement)).toBeNull();
-      expect(screen.getByText("再生が終わりました")).toBeDefined();
+      expect(screen.getByRole("status").textContent).toBe("再生が終わりました");
       const playNext = screen.getByRole("button", { name: "次を再生" });
       expect(document.activeElement).toBe(playNext);
       expect(screen.getByRole("button", { name: "もう一度見る" })).toBeDefined();
