@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createMediaFolder,
   deleteMediaFolder,
-  errorMessage,
   listMediaFolders,
   RequestFailed,
   updateMediaFolder,
   type MediaFolder,
 } from "../api/client";
+import { errorText, untranslated } from "../i18n";
 import { useScan } from "../shell/ScanProvider";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
@@ -36,7 +36,11 @@ function DeleteDialog({
 }) {
   const cancel = useRef<HTMLButtonElement>(null);
   return (
-    <ModalFrame title="フォルダの削除を確認" onClose={onClose} initialFocus={cancel}>
+    <ModalFrame
+      title={untranslated("フォルダの削除を確認")}
+      onClose={onClose}
+      initialFocus={cancel}
+    >
       <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-5">
         <code className="break-words text-sm text-fg">{folder.path}</code>
         <p className="border-l-2 border-danger-strong pl-3 text-sm leading-6 text-fg-muted">
@@ -88,7 +92,7 @@ export default function SettingsPage() {
         return sorted;
       } catch (failure) {
         if (signal?.aborted) return;
-        setLoadError(errorMessage(failure));
+        setLoadError(errorText(failure));
       } finally {
         if (!signal?.aborted) setLoading(false);
       }
@@ -139,7 +143,7 @@ export default function SettingsPage() {
       scan.refresh();
       return;
     }
-    setOperationError(errorMessage(failure));
+    setOperationError(errorText(failure));
   };
 
   const submitFolder = async (path: string) => {
@@ -152,14 +156,14 @@ export default function SettingsPage() {
         setFolders((current) => [...current, created].sort((a, b) => a.id - b.id));
         scan.setFolderCount(1);
         await load();
-        toast("追加しました。反映するには取り込みを実行してください");
+        toast(untranslated("追加しました。反映するには取り込みを実行してください"));
       } else {
         const updated = await updateMediaFolder(replacing.id, path, replacing.version);
         setFolders((current) =>
           current.map((folder) => (folder.id === updated.id ? updated : folder)),
         );
         setRowError((current) => (current?.id === updated.id ? null : current));
-        toast("変更しました。反映するには取り込みを実行してください");
+        toast(untranslated("変更しました。反映するには取り込みを実行してください"));
       }
       setPicker(null);
     } catch (failure) {
@@ -181,7 +185,7 @@ export default function SettingsPage() {
       setFolders(remaining);
       scan.setFolderCount(remaining.length);
       setDeleting(null);
-      toast("削除しました。取り込みは自動では始まりません");
+      toast(untranslated("削除しました。取り込みは自動では始まりません"));
       const refreshed = await load();
       const current = refreshed ?? remaining;
       const nextFolder = current[Math.min(targetIndex, current.length - 1)];
@@ -267,7 +271,7 @@ export default function SettingsPage() {
                       </span>
                     )}
                     <IconButton
-                      label="フォルダを変更"
+                      label={untranslated("フォルダを変更")}
                       onClick={() => {
                         setOperationError(null);
                         setPicker(folder);
@@ -277,7 +281,7 @@ export default function SettingsPage() {
                       <Pencil />
                     </IconButton>
                     <IconButton
-                      label="フォルダを削除"
+                      label={untranslated("フォルダを削除")}
                       onClick={() => {
                         setOperationError(null);
                         setDeleting(folder);

@@ -19,6 +19,7 @@ import {
   tagsReflectChange,
 } from "../api/tagOrder";
 import { subscribeVideoTags } from "../api/videoTagsEvents";
+import { untranslated } from "../i18n";
 import { cn } from "../lib/cn";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import { useToast } from "../ui/Toast";
@@ -201,7 +202,9 @@ export default function VideoTags({
       .then(() => setInputValue((current) => (current === submittedValue ? "" : current)))
       .catch((error: unknown) => {
         if (isTagNotFound(error)) {
-          toast(`タグ「${displayName}」はもう無いため、一覧を取り直しました`);
+          toast(
+            untranslated(`タグ「${displayName}」はもう無いため、一覧を取り直しました`),
+          );
           onStaleVideo();
           return;
         }
@@ -229,7 +232,7 @@ export default function VideoTags({
     void detachVideoTag([videoId], tag.id)
       .catch((error: unknown) => {
         if (isTagNotFound(error)) {
-          toast(`タグ「${tag.name}」はもう無いため、一覧を取り直しました`);
+          toast(untranslated(`タグ「${tag.name}」はもう無いため、一覧を取り直しました`));
           onStaleVideo();
           return;
         }
@@ -319,10 +322,10 @@ export default function VideoTags({
             }
             createLabel={createLabel}
             onCreate={(spelling) => submitAdd({ name: spelling })}
-            placeholder="タグを追加"
+            placeholder={untranslated("タグを追加")}
             icon={<Plus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />}
             busy={submitting}
-            aria-label="タグを追加"
+            aria-label={untranslated("タグを追加")}
             inputRef={inputRef}
             // 一覧が閉じているときの Esc は、入力を空にする
             // （ui-design.md「Add input」）。
@@ -382,7 +385,7 @@ function buildOptions(
   const options: ComboboxOption[] = matched.map(({ tag, hint }) => ({
     id: String(tag.id),
     label: tag.name,
-    hint,
+    hint: hint === undefined ? undefined : untranslated(hint),
     meta: `${String(tag.videoCount)} 本`,
   }));
 

@@ -202,7 +202,7 @@ describe("useVideos（一覧の読み込み）", () => {
     });
 
     expect(itemVideos(result.current.items)).toEqual([]);
-    expect(result.current.error).toContain("再試行してください");
+    expect(result.current.error).toContain("Try again in a moment");
     expect(calls).toHaveLength(2);
   });
 
@@ -233,7 +233,7 @@ describe("useVideos（一覧の読み込み）", () => {
       wrapper: OwnerAudience,
     });
     await act(async () => calls[0]?.reject(new Error("一時的な失敗")));
-    expect(result.current.error).toBe("一時的な失敗");
+    expect(result.current.error).toBe("Something went wrong.");
 
     act(() => result.current.reload());
     await waitFor(() => expect(calls).toHaveLength(2));
@@ -305,7 +305,7 @@ describe("useVideos（一覧の読み込み）", () => {
     await waitFor(() => expect(calls).toHaveLength(2));
 
     await act(async () => calls[1]?.reject(new Error("一時的な失敗")));
-    expect(result.current.error).toBe("一時的な失敗");
+    expect(result.current.error).toBe("Something went wrong.");
     expect(result.current.hasMore).toBe(false);
 
     act(() => result.current.retryLoadMore());

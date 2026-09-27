@@ -218,7 +218,7 @@ describe("AuthGate", () => {
     expect(
       await screen.findByRole("heading", { name: "サーバーに接続できません" }),
     ).toBeDefined();
-    expect(screen.getByText("DB が応答しません")).toBeDefined();
+    expect(screen.getByText("Something went wrong on the server.")).toBeDefined();
     expect(currentLocation).toBe("/login?next=%2Fsettings");
     expect(fetchMock).toHaveBeenCalledTimes(2);
 

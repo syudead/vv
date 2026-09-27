@@ -81,7 +81,11 @@ describe("ScanStatusSection", () => {
     );
     renderSection();
 
-    expect(await screen.findByText("network")).toBeDefined();
+    expect(
+      await screen.findByText(
+        "Couldn't reach the server. Check that vv is running and try again.",
+      ),
+    ).toBeDefined();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 

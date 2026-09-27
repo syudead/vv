@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FakeEventSource, installFakeEventSource } from "../api/fakeEventSource";
+import type { UiText } from "../i18n";
 import { useToast } from "../ui/Toast";
 import App from "./App";
 
@@ -15,7 +16,7 @@ vi.mock("../library/LibraryPage", () => ({
         <Link to="/folders">フォルダへ</Link>
         <Link to="/settings">設定へ</Link>
         <Link to="/videos/1">動画へ</Link>
-        <button type="button" onClick={() => toast("route toast")}>
+        <button type="button" onClick={() => toast("route toast" as UiText)}>
           通知する
         </button>
       </div>

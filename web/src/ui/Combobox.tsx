@@ -15,6 +15,7 @@ import {
   type Ref,
 } from "react";
 
+import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 
 /** 候補の1行。id は React のキーと aria-activedescendant に使う文字列である。 */
@@ -23,7 +24,7 @@ export interface ComboboxOption {
   /** 表示する名前（常に元の名前。ui-design.md「Combobox」）。 */
   label: string;
   /** 名前の下に添える従の1行（例: 「シノニム: アニメ」）。 */
-  hint?: string;
+  hint?: UiText;
   /** 行の右に置く従の情報（本数など）。 */
   meta?: ReactNode;
   /**
@@ -32,12 +33,15 @@ export interface ComboboxOption {
    * 見た目の文言と読み上げ名を変えたいときに使う
    * （ui-design.md「Accessibility」の読み上げ名）。
    */
-  ariaLabel?: string;
+  ariaLabel?: UiText;
 }
 
 export const newlinePattern = /[\r\n]/;
 // eslint-disable-next-line no-control-regex -- タグ名では C0/C1 制御文字をすべて拒む。
 const controlCharPattern = /[\u0000-\u001f\u007f-\u009f]/;
+
+/** tagNameMaxLength はタグ名に許す長さ（符号位置の数）である。 */
+const tagNameMaxLength = 100;
 
 /** codePointLength は前後の空白を除いた符号位置の数を返す（`length` は使わない）。 */
 function codePointLength(value: string): number {
@@ -79,10 +83,10 @@ export function isComposingNativeKeyEvent(event: globalThis.KeyboardEvent): bool
  * 名前を打つすべての入力（この Combobox、管理画面の作成・改名・シノニムの
  * 追加）が同じ規則を使うので外へ公開する（ui-design.md「Combobox」末尾）。
  */
-export function nameReason(raw: string): string | null {
-  if (controlCharPattern.test(raw)) return "改行やタブは使えません";
+export function nameReason(raw: string): UiText | null {
+  if (controlCharPattern.test(raw)) return t.tagName.controlCharacters;
   const length = codePointLength(raw);
-  if (length > 100) return `100 文字以内にしてください（今 ${String(length)} 文字）`;
+  if (length > tagNameMaxLength) return t.tagName.tooLong(tagNameMaxLength, length);
   return null;
 }
 
@@ -128,7 +132,7 @@ export default function Combobox({
   /** 非 null のときだけ、末尾に作成の行を出す（`exactOption` があれば出さない）。 */
   createLabel?: ReactNode | null;
   onCreate?: (spelling: string) => void;
-  placeholder?: string;
+  placeholder?: UiText;
   icon?: ReactNode;
   busy?: boolean;
   disabled?: boolean;
@@ -147,7 +151,7 @@ export default function Combobox({
   onOpenChange?: (open: boolean) => void;
   describedBy?: string;
   inputRef?: Ref<HTMLInputElement>;
-  "aria-label"?: string;
+  "aria-label"?: UiText;
   className?: string;
   inputClassName?: string;
   /** 入力を囲む枠の幅などを差し替える。既定は再生画面と同じ `w-40`。 */
@@ -169,7 +173,7 @@ export default function Combobox({
 
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const [reason, setReason] = useState<string | null>(null);
+  const [reason, setReason] = useState<UiText | null>(null);
 
   const listRef = useRef<HTMLUListElement | null>(null);
 
@@ -202,7 +206,7 @@ export default function Combobox({
   function tryCommitSpelling() {
     const trimmed = value.trim();
     if (trimmed === "") {
-      setReason("名前を入力してください");
+      setReason(t.tagName.required);
       return;
     }
     if (exactOption !== null) {
@@ -275,7 +279,7 @@ export default function Combobox({
     const text = event.clipboardData.getData("text");
     if (newlinePattern.test(text)) {
       event.preventDefault();
-      setReason("改行やタブは使えません");
+      setReason(t.tagName.controlCharacters);
     }
   }
 
@@ -285,7 +289,7 @@ export default function Combobox({
     const text = native.data ?? "";
     if (newlinePattern.test(text)) {
       event.preventDefault();
-      setReason("改行やタブは使えません");
+      setReason(t.tagName.controlCharacters);
     }
   }
 

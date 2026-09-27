@@ -1382,7 +1382,7 @@ describe("FolderPage", () => {
       );
 
       expect(
-        await screen.findByText("タグ「series」を作り、まとめを解除しました"),
+        await screen.findByText('Created the tag "series" and ungrouped'),
       ).toBeDefined();
       expect(writes.map(({ method, url }) => [method, url])).toEqual([
         ["POST", "/api/folders/3/grouping/tag?path=series"],
@@ -1465,7 +1465,7 @@ describe("FolderPage", () => {
       );
       expect(
         await screen.findByText(
-          "「series」はタグの名前に使えないため、タグに変えられません",
+          "\"series\" can't be used as a tag name, so it can't become a tag",
         ),
       ).toBeDefined();
       const button = await trigger(true);
@@ -1484,9 +1484,7 @@ describe("FolderPage", () => {
       await user.click(
         await screen.findByRole("menuitem", { name: "グループをタグに変える" }),
       );
-      expect(
-        await screen.findByText("このフォルダはもうグループではありません"),
-      ).toBeDefined();
+      expect(await screen.findByText("This folder is no longer a group")).toBeDefined();
       // ほかのタブで先に変わったので、ライブラリの控えも古い。次に開くときは読み直させる。
       expect(takeListSnapshot({ query: "" })).toBeUndefined();
       await waitFor(() =>
@@ -1511,7 +1509,7 @@ describe("FolderPage", () => {
       await user.click(
         await screen.findByRole("menuitemradio", { name: "まとめを解除" }),
       );
-      expect(await screen.findByText("変更できませんでした")).toBeDefined();
+      expect(await screen.findByText("Couldn't make the change")).toBeDefined();
     });
 
     it("登録フォルダそのものの画面にも出し、送るときは path を省く", async () => {

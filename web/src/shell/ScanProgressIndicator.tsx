@@ -2,6 +2,7 @@ import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router";
 
+import { untranslated } from "../i18n";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
@@ -184,7 +185,7 @@ export default function ScanProgressIndicator() {
           </PopoverTrigger>
           {presentation.state === "failed" && (
             <IconButton
-              label="取り込み失敗の通知を閉じる"
+              label={untranslated("取り込み失敗の通知を閉じる")}
               size="sm"
               className="-ml-1 rounded-md border border-border-strong bg-elevated shadow-elevated"
               onClick={() => notice.acknowledgeTerminalScan()}

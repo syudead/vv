@@ -200,7 +200,7 @@ test.describe.serial("video tags", () => {
     await input.click();
     await input.fill("   ");
     await page.keyboard.press("Enter");
-    await expect(page.getByText("名前を入力してください")).toBeVisible();
+    await expect(page.getByText("Enter a name")).toBeVisible();
 
     // 改行を含む貼り付けは取り込まない。
     await input.fill("");
@@ -215,13 +215,13 @@ test.describe.serial("video tags", () => {
         }),
       );
     });
-    await expect(page.getByText("改行やタブは使えません")).toBeVisible();
+    await expect(page.getByText("Line breaks and tabs aren't allowed")).toBeVisible();
     await expect(input).toHaveValue("");
 
     // 101 文字は確定できない。
     await input.fill("あ".repeat(101));
     await expect(
-      page.getByText("100 文字以内にしてください（今 101 文字）"),
+      page.getByText("Use 100 characters or fewer (currently 101)"),
     ).toBeVisible();
     await page.keyboard.press("Enter");
     await expect(chip(page, "あ".repeat(101))).toHaveCount(0);
@@ -687,7 +687,7 @@ test.describe.serial("video tags", () => {
       await renameInput.fill("e2e管理既存名");
       await page.keyboard.press("Enter");
       await expect(
-        page.getByText("「e2e管理既存名」という名前のタグが既にあります"),
+        page.getByText('A tag named "e2e管理既存名" already exists.'),
       ).toBeVisible();
       // 入力は残る。
       await expect(renameInput).toHaveValue("e2e管理既存名");
@@ -1031,7 +1031,7 @@ test.describe.serial("video tags", () => {
       await dialog.getByRole("button", { name: "戻る" }).click();
       await expect(dialog.getByText(/本の動画に付いているタグです/)).toHaveCount(0);
       await expect(input).toHaveValue("e2eXyz17anime");
-      await dialog.getByRole("button", { name: "閉じる" }).click();
+      await dialog.getByRole("button", { name: "Close" }).click();
       await expect(tagRowByName(page, "e2eXyz17anime")).toBeVisible();
 
       // もう一度、今度は承諾する。
@@ -1048,7 +1048,7 @@ test.describe.serial("video tags", () => {
       // getByText は大文字小文字を区別しない部分一致なので、窓の見出し
       // 「「e2eXyz17Anime」のシノニム」と取り違えないよう exact にする。
       await expect(dialog2.getByText("e2eXyz17anime", { exact: true })).toBeVisible();
-      await dialog2.getByRole("button", { name: "閉じる" }).click();
+      await dialog2.getByRole("button", { name: "Close" }).click();
       await expect(tagRowByName(page, "e2eXyz17anime")).toHaveCount(0);
       await expect(tagRowByName(page, "e2eXyz17Anime")).toContainText(
         "シノニム: e2eXyz17anime",
@@ -1084,9 +1084,7 @@ test.describe.serial("video tags", () => {
       await page.keyboard.press("Enter");
 
       await expect(
-        dialog.getByText(
-          "「e2e管理衝突アニメ」は「e2e管理衝突Anime」のシノニムとして使われています",
-        ),
+        dialog.getByText('That name is already a synonym of the tag "e2e管理衝突Anime".'),
       ).toBeVisible();
     });
 
@@ -1103,7 +1101,7 @@ test.describe.serial("video tags", () => {
         .getByRole("button", { name: "シノニム「e2e管理解除アニメ」を解除" })
         .click();
       await expect(dialog.getByText("e2e管理解除アニメ")).toHaveCount(0);
-      await dialog.getByRole("button", { name: "閉じる" }).click();
+      await dialog.getByRole("button", { name: "Close" }).click();
 
       await expect(tagRowByName(page, "e2e管理解除Anime")).not.toContainText("シノニム:");
     });

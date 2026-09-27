@@ -238,7 +238,7 @@ describe("useVideoDetail", () => {
     expect(result.current.state).toEqual({
       kind: "failed",
       id: 7,
-      reason: "壊れています",
+      reason: "Something went wrong on the server.",
     });
   });
 

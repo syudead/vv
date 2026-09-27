@@ -4,11 +4,11 @@ import { Link } from "react-router";
 
 import type { Video } from "../api/client";
 import { useAudience } from "../auth/audience";
+import { formatRelative, untranslated } from "../i18n";
 import { cn } from "../lib/cn";
 import {
   formatBytes,
   formatDuration,
-  formatRelative,
   qualityLabel,
   unplayableText,
   watchState,
@@ -106,7 +106,7 @@ function SelectCheck({
       <Checkbox
         checked={selected}
         onCheckedChange={(next) => onSelect(video.id, next)}
-        label={`「${video.title}」を選択`}
+        label={untranslated(`「${video.title}」を選択`)}
         className={previewing ? "!bg-navbar" : undefined}
         onClick={(event: MouseEvent) => event.stopPropagation()}
       />
@@ -292,7 +292,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
           <Checkbox
             checked={selected}
             onCheckedChange={(next) => onSelect(video.id, next)}
-            label={`「${video.title}」を選択`}
+            label={untranslated(`「${video.title}」を選択`)}
             className={cn(
               "transition-opacity",
               selectionMode || selected

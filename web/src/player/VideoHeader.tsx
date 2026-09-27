@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import type { VideoFolder } from "../api/client";
 import { folderUrl } from "../folders/folderPath";
+import { untranslated } from "../i18n";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 
@@ -108,7 +109,11 @@ export default function VideoHeader({
         </nav>
       )}
 
-      <IconButton label="閉じる" onClick={onClose} className="ml-auto [&>svg]:size-5!">
+      <IconButton
+        label={untranslated("閉じる")}
+        onClick={onClose}
+        className="ml-auto [&>svg]:size-5!"
+      >
         <X aria-hidden="true" />
       </IconButton>
     </header>

@@ -2,6 +2,7 @@ import { LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import type { RefObject } from "react";
 
 import type { VideoSort, WatchFilter } from "../api/client";
+import { untranslated } from "../i18n";
 import { cn } from "../lib/cn";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import Button from "../ui/Button";
@@ -15,8 +16,8 @@ import { CompactSortControls, SortMenu } from "../videoList/SortControls";
 import ZoomSlider from "../videoList/ZoomSlider";
 
 const viewOptions = [
-  { value: "grid", label: "グリッド", icon: <LayoutGrid /> },
-  { value: "list", label: "リスト", icon: <List /> },
+  { value: "grid", label: untranslated("グリッド"), icon: <LayoutGrid /> },
+  { value: "list", label: untranslated("リスト"), icon: <List /> },
 ] as const;
 
 export interface LibraryToolbarProps {
@@ -85,7 +86,7 @@ export default function LibraryToolbar({
 
       <div className="hidden lg:block">
         <SegmentedControl
-          label="表示形式"
+          label={untranslated("表示形式")}
           value={view}
           onValueChange={onViewChange}
           options={viewOptions}
@@ -128,7 +129,7 @@ export default function LibraryToolbar({
                 表示形式
               </legend>
               <SegmentedControl
-                label="表示形式（コンパクト）"
+                label={untranslated("表示形式（コンパクト）")}
                 value={view}
                 onValueChange={onViewChange}
                 options={viewOptions}

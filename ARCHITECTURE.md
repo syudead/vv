@@ -484,7 +484,8 @@ consumes it as an `fs.FS`.
 The SPA under `web/src` is split by responsibility rather than by widget.
 
 `web/src/api/` is the only place that talks to the server. `client.ts` wraps
-`fetch` over the generated types in `web/src/api/gen/` (never hand-edited;
+`fetch` (turning a failed `fetch` into `NetworkFailed` and an error response into
+`RequestFailed`) over the generated types in `web/src/api/gen/` (never hand-edited;
 `task generate` rewrites them from `api/openapi.yaml`), `serverEvents.ts` shares one
 `EventSource` on `/api/events` among its subscribers, `useVideos.ts` owns
 paging and request cancellation for the library list and re-fetches a listed video in
@@ -532,7 +533,15 @@ state nor subscribe to `/api/events` for a guest.
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
 frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`,
 `web/src/tags/`, and `web/src/player/` own their respective product flows, while reusable
-primitives live in `web/src/ui/` and formatting helpers live in `web/src/lib/`. The
+primitives live in `web/src/ui/` and locale-independent formatting helpers (duration,
+size, resolution) live in `web/src/lib/`. User-facing text, the locale-dependent formatting
+(numbers, dates, relative time, plurals) and the display of API errors live in
+`web/src/i18n/`: an English catalog that components import statically as `t`, whose values
+are the branded `UiText` type that `web/src/ui/` props require, and `errorText`, which
+turns a `RequestFailed` (its `reason`, `code`, `limit` and `tagName`) or a `NetworkFailed`
+into English instead of showing the server's or the browser's text. ESLint reports
+Japanese or fixed text outside `web/src/i18n/`; the details are in
+[docs/design-docs/i18n.md](docs/design-docs/i18n.md). The
 video-list pieces the library and folder screens share (list criteria and their URL hook,
 the condition labels and count summary, the video card, the empty/loading/error states and
 the search, filter, sort and zoom controls) live in `web/src/videoList/`, which belongs to

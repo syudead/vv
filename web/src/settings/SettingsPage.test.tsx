@@ -243,7 +243,9 @@ describe("SettingsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect((await screen.findByRole("alert")).textContent).toContain("DBを読めません");
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Something went wrong on the server.",
+    );
     expect(screen.queryByText("メディアフォルダが設定されていません")).toBeNull();
     expect(
       screen.getByRole("button", { name: "フォルダを追加" }).hasAttribute("disabled"),
@@ -354,7 +356,7 @@ describe("SettingsPage", () => {
     );
 
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "一覧を再取得できません",
+      "Something went wrong on the server.",
     );
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByText("/media/original")).toBeNull();

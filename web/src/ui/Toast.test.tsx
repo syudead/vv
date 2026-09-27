@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { UiText } from "../i18n";
 import { ToastProvider, useToast } from "./Toast";
 
 function Harness() {
@@ -8,7 +9,7 @@ function Harness() {
   return (
     <>
       {(["first", "second", "third", "fourth"] as const).map((message) => (
-        <button key={message} type="button" onClick={() => toast(message)}>
+        <button key={message} type="button" onClick={() => toast(message as UiText)}>
           {message}
         </button>
       ))}

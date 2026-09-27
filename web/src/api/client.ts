@@ -64,16 +64,68 @@ export type VideoChanged = components["schemas"]["VideoChanged"];
 // これだけを待つ。
 export const PAGE_SIZE = 60;
 
-/** 応答がエラーだったことを表す。message は利用者にそのまま見せてよい。 */
+export type ErrorCode = ApiError["code"];
+export type ErrorReason = components["schemas"]["ErrorReason"];
+export type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
+export type ScanErrorCode = components["schemas"]["ScanErrorCode"];
+
+/** RequestFailedDetails は API エラーの、画面の文言に使う値である（contracts/error-api.md §1）。 */
+export interface RequestFailedDetails {
+  reason?: string;
+  limit?: number;
+  tagName?: string;
+}
+
+/**
+ * RequestFailed は応答がエラーだったことを表す。画面に出す文言は i18n の errorText が
+ * `reason`・`code` から作る。`message` はサーバーの英語の文（無ければ空）で、未知の
+ * コードのときだけ画面に出る。未知のコードでも `status` と `code` は残す。本文が
+ * JSON でなかったときの `code` は空である。
+ */
 export class RequestFailed extends Error {
   readonly status: number;
   readonly code: string;
+  readonly reason: string | undefined;
+  readonly limit: number | undefined;
+  readonly tagName: string | undefined;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details: RequestFailedDetails = {},
+  ) {
     super(message);
     this.name = "RequestFailed";
     this.status = status;
     this.code = code;
+    this.reason = details.reason;
+    this.limit = details.limit;
+    this.tagName = details.tagName;
+  }
+}
+
+/**
+ * NetworkFailed は fetch 自体が失敗した（サーバーに届かなかった）ことを表す。
+ * ブラウザの文言は画面に出さない（specs/023-english-i18n/research.md R-5）。
+ */
+export class NetworkFailed extends Error {
+  constructor(cause: unknown) {
+    super("network request failed", { cause });
+    this.name = "NetworkFailed";
+  }
+}
+
+/**
+ * sendRequest は fetch を呼び、fetch 自体の失敗を NetworkFailed に変える。打ち切り
+ * （AbortError）はそのまま投げる。`/api/*` への要求はすべてここを通す。
+ */
+export async function sendRequest(path: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(path, init);
+  } catch (error) {
+    if (isAborted(error)) throw error;
+    throw new NetworkFailed(error);
   }
 }
 
@@ -132,7 +184,7 @@ function viewerChanged(response: Response): boolean {
  * 描かないためである。認証の経路（auth.ts）はこれを通さない。
  */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const response = await fetch(path, init);
+  const response = await sendRequest(path, init);
   if (viewerChanged(response)) {
     reloadForViewerChange();
     return new Promise<Response>(() => undefined);
@@ -156,20 +208,26 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
-/** toRequestFailed は誤りの応答を、画面に出せる形へ変える。 */
+/** toRequestFailed は誤りの応答を、画面が文言を選べる形へ変える。 */
 export async function toRequestFailed(response: Response): Promise<RequestFailed> {
+  let body: Partial<ApiError> | null = null;
   try {
-    const body = (await response.json()) as ApiError;
-    if (typeof body?.message === "string" && body.message !== "") {
-      return new RequestFailed(response.status, body.code ?? "internal", body.message);
-    }
+    body = (await response.json()) as Partial<ApiError> | null;
   } catch {
     // JSON で返ってこない場合もある（経路の取り違え、中継の失敗）。
   }
+  if (typeof body !== "object" || body === null) {
+    return new RequestFailed(response.status, "", "");
+  }
   return new RequestFailed(
     response.status,
-    "internal",
-    `要求に失敗しました (${response.status})`,
+    typeof body.code === "string" ? body.code : "",
+    typeof body.message === "string" ? body.message : "",
+    {
+      reason: typeof body.reason === "string" ? body.reason : undefined,
+      limit: typeof body.limit === "number" ? body.limit : undefined,
+      tagName: typeof body.tagName === "string" ? body.tagName : undefined,
+    },
   );
 }
 
@@ -674,15 +732,4 @@ export async function fetchSeekThumbnailSheet(
 /** isAborted は「利用者が先に進んだので打ち切った」だけかどうかを返す。 */
 export function isAborted(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
-}
-
-/** errorMessage は画面に出す文言を取り出す。 */
-export function errorMessage(error: unknown): string {
-  if (error instanceof RequestFailed) {
-    return error.message;
-  }
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
 }

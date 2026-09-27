@@ -60,9 +60,9 @@ describe("deferredRoute", () => {
     render(<Route />);
 
     expect(
-      await screen.findByRole("heading", { name: "画面を読み込めませんでした" }),
+      await screen.findByRole("heading", { name: "Couldn't load this page" }),
     ).toBeDefined();
-    await userEvent.setup().click(screen.getByRole("button", { name: "再読み込み" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Reload" }));
     expect(reload).toHaveBeenCalledTimes(1);
   });
 

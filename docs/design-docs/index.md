@@ -13,6 +13,9 @@ Add each new document to this index.
 
 ## Documents
 
+下の `ui-design.md` は日本語の文言を引用している。英語化のあとの画面の文言は、英語のカタログ
+（`web/src/i18n/en.ts`）が正本である（[i18n](i18n.md#ui-designmd-の文言)）。
+
 - [Core beliefs](core-beliefs.md)
 - [Plan品質の規則: 空欄を埋めるための記述を防ぐ](plan-quality.md)
 - [技術選定: MDM（Media Data Management）](tech-stack-selection.md)
@@ -20,6 +23,7 @@ Add each new document to this index.
 - [ライブ変換のシークと解析情報の再利用](live-transcode-seek.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
+- [画面の文言と書式（i18n）](i18n.md)
 - [動画シーク時のサムネイルプレビュー UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
 - [一覧画面の hover 動画プレビュー UI](../../specs/010-hover-video-preview/ui-design.md)
 - [フォルダ階層をたどる画面の UI](../../specs/011-folder-browser/ui-design.md)

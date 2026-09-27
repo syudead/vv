@@ -1,11 +1,12 @@
 import * as ToggleGroup from "@radix-ui/react-toggle-group";
 import type { ReactNode } from "react";
 
+import type { UiText } from "../i18n";
 import Tooltip from "./Tooltip";
 
 export interface SegmentOption<T extends string> {
   value: T;
-  label: string;
+  label: UiText;
   icon: ReactNode;
 }
 
@@ -19,7 +20,7 @@ export default function SegmentedControl<T extends string>({
   value: T;
   onValueChange: (value: T) => void;
   options: readonly SegmentOption<T>[];
-  label: string;
+  label: UiText;
 }) {
   return (
     <ToggleGroup.Root

@@ -25,6 +25,7 @@ import { itemKey } from "../api/libraryItems";
 import { refreshTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
+import { untranslated } from "../i18n";
 import {
   readViewPreferences,
   type ViewPreferences,
@@ -158,7 +159,7 @@ export default function LibraryPage() {
       const { criteria: current, tagIds: currentTagIds } = latestConditions.current;
       if (currentTagIds.includes(tag.id)) return; // すでに絞り込み中なら何も変わらない。
       if (currentTagIds.length >= MAX_TAG_COUNT) {
-        toast("絞り込めるタグは 16 個までです");
+        toast(untranslated("絞り込めるタグは 16 個までです"));
         return;
       }
       resetPreview();
@@ -319,7 +320,7 @@ export default function LibraryPage() {
           const { criteria: latestCriteria, tagIds: latestTagIds } =
             latestConditions.current;
           const remaining = latestTagIds.filter((id) => !missing.includes(id));
-          toast("削除されたタグを絞り込みから外しました");
+          toast(untranslated("削除されたタグを絞り込みから外しました"));
           refreshTags().catch(() => undefined);
           apply(latestCriteria, "replace", serializeTagIds(remaining));
           return;
@@ -330,7 +331,7 @@ export default function LibraryPage() {
       })
       .catch(() => {
         if (selectAllSeq.current !== seq) return;
-        toast("すべてを選択できませんでした");
+        toast(untranslated("すべてを選択できませんでした"));
       })
       .finally(() => {
         if (selectAllSeq.current === seq) setSelectingAll(false);
@@ -468,7 +469,7 @@ export default function LibraryPage() {
     handledMissingTagIds.current = signature;
     const remaining = tagIds.filter((id) => !missingTagIds.includes(id));
     if (remaining.length === tagIds.length) return;
-    toast("削除されたタグを絞り込みから外しました");
+    toast(untranslated("削除されたタグを絞り込みから外しました"));
     refreshTags().catch(() => undefined);
     apply(criteria, "replace", serializeTagIds(remaining));
   }, [apply, criteria, missingTagIds, tagIds, toast]);
@@ -492,7 +493,7 @@ export default function LibraryPage() {
         } = mountRef.current;
         const remaining = current.filter((id) => known.has(id));
         if (remaining.length === current.length) return;
-        mountRef.current.toast("削除されたタグを絞り込みから外しました");
+        mountRef.current.toast(untranslated("削除されたタグを絞り込みから外しました"));
         currentApply(currentCriteria, "replace", serializeTagIds(remaining));
       })
       .catch(() => undefined);

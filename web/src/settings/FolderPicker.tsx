@@ -1,12 +1,8 @@
 import { ArrowLeft, ArrowUp, ChevronRight, Folder, LoaderCircle } from "lucide-react";
 import { type KeyboardEvent, useCallback, useEffect, useRef, useState } from "react";
 
-import {
-  errorMessage,
-  listDirectories,
-  type DirectoryListing,
-  type MediaFolder,
-} from "../api/client";
+import { listDirectories, type DirectoryListing, type MediaFolder } from "../api/client";
+import { errorText, untranslated } from "../i18n";
 import Button from "../ui/Button";
 import IconButton from "../ui/IconButton";
 import { ModalFrame } from "../ui/ModalFrame";
@@ -83,7 +79,7 @@ export default function FolderPicker({
         setActiveIndex(0);
       })
       .catch((failure) => {
-        if (!controller.signal.aborted) setLoadError(errorMessage(failure));
+        if (!controller.signal.aborted) setLoadError(errorText(failure));
       })
       .finally(() => {
         if (loadController.current === controller) setLoading(false);
@@ -126,7 +122,7 @@ export default function FolderPicker({
   if (confirming && replacing !== undefined && currentPath !== undefined) {
     return (
       <ModalFrame
-        title="フォルダの変更を確認"
+        title={untranslated("フォルダの変更を確認")}
         onClose={onClose}
         initialFocus={confirmBack}
       >
@@ -169,11 +165,11 @@ export default function FolderPicker({
   }
 
   return (
-    <ModalFrame title={title} onClose={onClose}>
+    <ModalFrame title={untranslated(title)} onClose={onClose}>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex shrink-0 items-start gap-2 border-b border-border px-4 py-3">
           <IconButton
-            label="親フォルダへ戻る"
+            label={untranslated("親フォルダへ戻る")}
             onClick={(event) =>
               load(listing?.parentPath ?? undefined, event.detail === 0)
             }
