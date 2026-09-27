@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"image"
 	"image/jpeg"
 	"io"
 	"io/fs"
@@ -519,7 +520,10 @@ func readSeekSprite(dir string) (domain.SeekSprite, error) {
 func validSeekSprite(sprite domain.SeekSprite) bool {
 	if sprite.IntervalMs < domain.SeekThumbnailInterval.Milliseconds() ||
 		sprite.FrameCount < 1 || sprite.FrameCount > domain.SeekSpriteMaxFrames ||
-		sprite.Columns < 1 || sprite.Rows < 1 ||
+		// 掛け算があふれないよう、1 シートのコマ数を上限のコマ数までに
+		// 割り算で抑えてから掛ける。
+		sprite.Columns < 1 || sprite.Columns > domain.SeekSpriteMaxFrames ||
+		sprite.Rows < 1 || sprite.Rows > domain.SeekSpriteMaxFrames/sprite.Columns ||
 		sprite.FrameWidth < 2 || sprite.FrameHeight < 2 ||
 		sprite.SheetCount < 1 || sprite.SheetCount > domain.SeekSpriteMaxSheets {
 		return false
@@ -531,39 +535,59 @@ func validSeekSprite(sprite domain.SeekSprite) bool {
 // describeSheets は一時置き場 dir に layout の枚数のシートが揃っているかを
 // 確かめ、コマの大きさをシート 000.jpg の JPEG の寸法を列数・行数で割って得る。
 // ffmpeg の式や解析の値からは計算しない（自動回転と偶数への丸めを再現しない）。
+// どのシートも JPEG として読めて 000.jpg と同じ寸法であることも確かめ、表示
+// できないシートを含む置き場を完成として公開しない（最後のシートも tile が
+// 余りを埋めるので同じ寸法になる）。
 func describeSheets(dir string, layout domain.SeekSpriteLayout) (domain.SeekSprite, error) {
+	var width, height int
 	for sheet := range layout.SheetCount {
-		info, err := os.Stat(filepath.Join(dir, fmt.Sprintf(sheetNameFormat, sheet)))
+		config, err := sheetConfig(filepath.Join(dir, fmt.Sprintf(sheetNameFormat, sheet)))
 		if err != nil {
-			return domain.SeekSprite{}, err
+			return domain.SeekSprite{}, fmt.Errorf("シート %d: %w", sheet, err)
 		}
-		if !info.Mode().IsRegular() || info.Size() == 0 {
-			return domain.SeekSprite{}, fmt.Errorf("シート %d が空です", sheet)
+		if sheet == 0 {
+			width, height = config.Width, config.Height
+		} else if config.Width != width || config.Height != height {
+			return domain.SeekSprite{}, fmt.Errorf("シート %d の大きさ %dx%d がシート 0 の %dx%d と違います",
+				sheet, config.Width, config.Height, width, height)
 		}
 	}
-	first, err := os.Open(filepath.Join(dir, fmt.Sprintf(sheetNameFormat, 0)))
-	if err != nil {
-		return domain.SeekSprite{}, err
-	}
-	defer func() { _ = first.Close() }()
-	config, err := jpeg.DecodeConfig(first)
-	if err != nil {
-		return domain.SeekSprite{}, fmt.Errorf("シート 0 を読めません: %w", err)
-	}
-	if layout.Columns < 1 || layout.Rows < 1 ||
-		config.Width%layout.Columns != 0 || config.Height%layout.Rows != 0 {
+	if layout.Columns < 1 || layout.Rows < 1 || layout.SheetCount < 1 ||
+		width%layout.Columns != 0 || height%layout.Rows != 0 {
 		return domain.SeekSprite{}, fmt.Errorf("シート 0 の大きさ %dx%d が %dx%d の格子に割り切れません",
-			config.Width, config.Height, layout.Columns, layout.Rows)
+			width, height, layout.Columns, layout.Rows)
 	}
 	sprite := domain.SeekSprite{
 		SeekSpriteLayout: layout,
-		FrameWidth:       config.Width / layout.Columns,
-		FrameHeight:      config.Height / layout.Rows,
+		FrameWidth:       width / layout.Columns,
+		FrameHeight:      height / layout.Rows,
 	}
 	if !validSeekSprite(sprite) {
 		return domain.SeekSprite{}, errors.New("シートの配置が範囲の外です")
 	}
 	return sprite, nil
+}
+
+// sheetConfig は path が空でない通常ファイルの JPEG であることを確かめ、その
+// 寸法を返す。
+func sheetConfig(path string) (image.Config, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return image.Config{}, err
+	}
+	if !info.Mode().IsRegular() || info.Size() == 0 {
+		return image.Config{}, errors.New("空です")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return image.Config{}, err
+	}
+	defer func() { _ = file.Close() }()
+	config, err := jpeg.DecodeConfig(file)
+	if err != nil {
+		return image.Config{}, fmt.Errorf("JPEG として読めません: %w", err)
+	}
+	return config, nil
 }
 
 // previewManifest はホバープレビューの完全性を確かめるための記録である。

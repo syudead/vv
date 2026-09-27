@@ -383,6 +383,22 @@ func TestPublishFailureLeavesNothing(t *testing.T) {
 				return nil
 			})
 		}},
+		{name: "2 枚目が JPEG でないシーク", publish: func(s *Store) error {
+			return s.PublishSeekThumbnails(key, spriteLayout, func(dir string) error {
+				if err := os.WriteFile(filepath.Join(dir, "000.jpg"), sheetJPEG(t, 320, 180), 0o644); err != nil {
+					return err
+				}
+				return os.WriteFile(filepath.Join(dir, "001.jpg"), []byte("x"), 0o644)
+			})
+		}},
+		{name: "2 枚目の大きさが違うシーク", publish: func(s *Store) error {
+			return s.PublishSeekThumbnails(key, spriteLayout, func(dir string) error {
+				if err := os.WriteFile(filepath.Join(dir, "000.jpg"), sheetJPEG(t, 320, 180), 0o644); err != nil {
+					return err
+				}
+				return os.WriteFile(filepath.Join(dir, "001.jpg"), sheetJPEG(t, 160, 90), 0o644)
+			})
+		}},
 		{name: "格子に割り切れないシーク", publish: func(s *Store) error {
 			return s.PublishSeekThumbnails(key, spriteLayout, func(dir string) error {
 				for _, name := range []string{"000.jpg", "001.jpg"} {
@@ -636,11 +652,13 @@ func TestPublishSeekSpriteReplacesIncompleteDirectory(t *testing.T) {
 // 形の違う配置情報は、無いものではなく読めないものとして返す（配信は 500）。
 func TestSeekSpriteRejectsMalformedDescription(t *testing.T) {
 	for name, body := range map[string]string{
-		"壊れている":     "{",
-		"版が違う":      `{"version":2,"intervalMs":5000,"frameCount":1,"columns":10,"rows":10,"frameWidth":2,"frameHeight":2,"sheetCount":1}`,
-		"枚数が食い違う":   `{"version":1,"intervalMs":5000,"frameCount":150,"columns":10,"rows":10,"frameWidth":2,"frameHeight":2,"sheetCount":1}`,
-		"間隔が短い":     `{"version":1,"intervalMs":1000,"frameCount":1,"columns":10,"rows":10,"frameWidth":2,"frameHeight":2,"sheetCount":1}`,
-		"コマが上限を超える": `{"version":1,"intervalMs":5000,"frameCount":700,"columns":10,"rows":10,"frameWidth":2,"frameHeight":2,"sheetCount":7}`,
+		"壊れている":       "{",
+		"版が違う":        `{"version":2,"intervalMs":5000,"frameCount":1,"columns":10,"rows":10,"frameWidth":2,"frameHeight":2,"sheetCount":1}`,
+		"枚数が食い違う":     `{"version":1,"intervalMs":5000,"frameCount":150,"columns":10,"rows":10,"frameWidth":2,"frameHeight":2,"sheetCount":1}`,
+		"間隔が短い":       `{"version":1,"intervalMs":1000,"frameCount":1,"columns":10,"rows":10,"frameWidth":2,"frameHeight":2,"sheetCount":1}`,
+		"コマが上限を超える":   `{"version":1,"intervalMs":5000,"frameCount":700,"columns":10,"rows":10,"frameWidth":2,"frameHeight":2,"sheetCount":7}`,
+		"格子の掛け算があふれる": `{"version":1,"intervalMs":5000,"frameCount":1,"columns":4294967296,"rows":4294967296,"frameWidth":2,"frameHeight":2,"sheetCount":1}`,
+		"格子が上限を超える":   `{"version":1,"intervalMs":5000,"frameCount":1,"columns":601,"rows":1,"frameWidth":2,"frameHeight":2,"sheetCount":1}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
