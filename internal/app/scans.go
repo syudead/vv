@@ -75,10 +75,14 @@ type ScansOptions struct {
 
 // Scans は走査の開始・実行・進捗の記録と、起動時の中断からの回復を受け持つ。
 type Scans struct {
-	store     ScanStore
-	jobs      JobRecoveryStore
-	folders   FolderIndexStore
-	scanner   Scanner
+	store   ScanStore
+	jobs    JobRecoveryStore
+	folders FolderIndexStore
+	scanner Scanner
+	// lifetime は組み立て時に渡した寿命の長い context。取り消しは stopRuns が
+	// 走査の context へ伝えるが、それは非同期なので、中断かどうかの判定では
+	// こちらも直接見る。
+	lifetime  context.Context
 	publisher Publisher
 	logger    *slog.Logger
 
@@ -102,12 +106,14 @@ func NewScans(opts ScansOptions) *Scans {
 		store:     opts.Store,
 		jobs:      opts.Jobs,
 		folders:   opts.FolderIndex,
+		lifetime:  opts.Context,
 		publisher: opts.Publisher,
 		logger:    opts.Logger,
 	}
-	if opts.Context != nil {
-		context.AfterFunc(opts.Context, s.stopRuns)
+	if s.lifetime == nil {
+		s.lifetime = context.Background()
 	}
+	context.AfterFunc(s.lifetime, s.stopRuns)
 	if s.logger == nil {
 		s.logger = slog.Default()
 	}
@@ -255,7 +261,7 @@ func (s *Scans) run(ctx context.Context, scanID int64) {
 	state := domain.ScanDone
 	if scanErr != nil {
 		state = domain.ScanFailed
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || s.lifetime.Err() != nil {
 			scanErr = domain.NewScanFailure(domain.ScanErrorInterrupted, "",
 				fmt.Errorf("the scan was stopped before it finished: %w", scanErr))
 		}
