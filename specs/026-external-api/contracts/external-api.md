@@ -52,26 +52,20 @@ ExternalVideoTag:                                 # domain.VideoTag
 
 | 引数 | 既定 | 規則 |
 | --- | --- | --- |
-| `order` | `added` | `added`・`changed`（[R-6](../research.md#r-6-動画の一覧は単調に増える列でカーソルを作る)） |
-| `cursor` | 先頭 | 前回の `nextCursor`。別の `order` のもの・解釈できないものは `400 invalid_request` / `invalid_cursor` |
+| `cursor` | 先頭 | 前回の `nextCursor`。解釈できないものは `400 invalid_request` / `invalid_cursor` |
 | `limit` | 100 | 1〜`domain.MaxLimit`（200）。外れは `400 invalid_request` |
 
-`200`: `{ items: ExternalVideo[], nextCursor: string, hasMore: boolean }`。カーソルは読み通しの
-始まりで固定した上限を持ち、その読み通しの間に足された・変わった動画は返さない（同じ動画が一度の
-読み通しで二度返らない）。`hasMore` が `false` になった後も `nextCursor` を返し、そこから呼ぶと、その後に
-足された（`changed` なら変わった）動画だけが返る（受け入れ条件 3）。項目が無いときも同じ規則で
-`nextCursor` を返す。
+`200`: `{ items: ExternalVideo[], nextCursor: string }`。並びは `(addedAt, id)` の昇順で固定。続きが無ければ
+`nextCursor` は空文字列（[R-6](../research.md#r-6-動画の一覧は-added_at-id-の-keyset-のカーソルで読む)）。
+
+一覧は全件を先頭から読むための口で、変更の追跡はしない。新しい動画を知りたい利用者は一覧を読み直す
+（受け入れ条件 3）。ページングの途中で動画が増える・消える・移動しても、続きの要求は失敗せずその時点の
+続きを返すが、読み通しの間の取りこぼしと重複を防ぐ約束はしない（Edge Cases）。
 
 一覧は、`lookup` と同じく登録フォルダの下に所在を 1 つ以上持つ動画だけを返す。登録の下の所在をすべて失い
 登録外の所在だけで残った動画は、行が消えた動画と同じく一覧に出ず、消えたことを知らせる項目（墓標）も返さない。
-Issue は新着を読むことを求め、消えた動画の通知は求めていない（Webhook も対象外）。利用者は、持っている動画が
-消えたことを `lookup` の `404` で知る（`docs/how-to/external-api.md` に書く）。その動画が後で登録の下に
-戻れば、`changed` で返る。
-
-`changed` で「変わった」と数える事実は [data-model.md §2](../data-model.md#2-videosadded_seqvideoschanged_seqr-6) の表のとおりで、
-所在の付け替えで所在を失った動画と、メディアフォルダの追加・置き換えで所在が登録の下に入った動画も含む。
-後者は `added` では元の位置のままなので、登録の変更で現れた動画を拾うには `changed` を読む
-（`docs/how-to/external-api.md` に書く）。
+Issue は消えた動画の通知を求めていない（Webhook も対象外）。利用者は、持っている動画が消えたことを
+`lookup` の `404` で知る（`docs/how-to/external-api.md` に書く）。
 
 ### `GET /api/v1/videos/lookup`
 
