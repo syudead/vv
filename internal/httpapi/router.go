@@ -56,10 +56,10 @@ type Playback interface {
 // Scans は取り込みの開始と状態の取得である。internal/app の *Scans がこれを
 // 満たす。
 //
-// StartScan は実行中なら新しく始めず、実行中のものを返す。走査を実際に
-// 動かすのはアプリケーション層である。
+// StartScan は実行中なら新しく始めず、実行中のものを返す。started は新しく始めたか
+// である。走査を実際に動かすのはアプリケーション層である。
 type Scans interface {
-	StartScan(ctx context.Context) (domain.Scan, error)
+	StartScan(ctx context.Context) (scan domain.Scan, started bool, err error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 	// ListScanIssues は直近の取り込みの問題を cursor の次から limit 件返す。一度も
 	// 走査していなければ domain.ErrNotFound、カーソルが不正なら domain.ErrInvalidCursor。
@@ -299,6 +299,7 @@ type server struct {
 //	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/settings/*  → JSON（所有者が設定画面で選ぶ値。同上）
 //	/api/api-tokens* → JSON（所有者が設定画面で管理する API トークン。同上）
+//	/api/v1/*        → JSON（外部連携 API。api/external-v1.yaml から生成した経路で、Bearer だけ）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
 func NewRouter(opts Options) http.Handler {
@@ -354,6 +355,7 @@ func NewRouter(opts Options) http.Handler {
 		}
 	}
 
+	registerExternalAPI(mux, srv)
 	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
 		BaseRouter: mux,
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
@@ -418,7 +420,10 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-			if !s.acceptsSameOrigin(w, r) {
+			// 同一オリジンの検査は、ブラウザが自動で送る Cookie を使った CSRF を防ぐ。
+			// Bearer の扱いの要求は Cookie を読まず、Authorization はブラウザが自動では
+			// 付けないので、Origin を問わない（specs/026-external-api/research.md R-4）。
+			if class, _ := classifyRequest(r); class != accessBearer && !s.acceptsSameOrigin(w, r) {
 				return
 			}
 		}

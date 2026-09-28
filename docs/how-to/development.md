@@ -65,6 +65,7 @@ while skipping `task check`, browser E2E, and the Docker image build. Code and
 configuration changes run `task check`; browser E2E and the Docker build run
 only on a push to `main`, that is, after a pull request is merged.
 
-When the OpenAPI contract changes, edit `api/openapi.yaml` and run
-`task generate`. Never edit `internal/httpapi/gen/` or `web/src/api/gen/`
+When the OpenAPI contract changes, edit `api/openapi.yaml` (or
+`api/external-v1.yaml` for the external API) and run `task generate`. Never edit
+`internal/httpapi/gen/`, `internal/httpapi/extgen/` or `web/src/api/gen/`
 directly.

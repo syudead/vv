@@ -256,7 +256,7 @@ func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) 
 	log := &eventLog{}
 	bus.Subscribe("テスト用の購読者", log.handle)
 
-	if _, err := scans.StartScan(ctx); err != nil {
+	if _, _, err := scans.StartScan(ctx); err != nil {
 		t.Fatal(err)
 	}
 	scans.Wait()

@@ -79,10 +79,17 @@ var (
 // 読む。字下げが変わって何も拾えなくなった場合は、呼び出し側が失敗させる。
 func openAPIOperations(t *testing.T) (withBody, withoutBody []operation) {
 	t.Helper()
+	return openAPIOperationsIn(t, "openapi.yaml", "")
+}
 
-	body, err := os.ReadFile(filepath.Join(repositoryRoot(t), "api", "openapi.yaml"))
+// openAPIOperationsIn は api/ の下の文書 file の操作を、経路の前に base を付けて返す。
+// 外部連携 API（external-v1.yaml）の経路は servers の /api/v1 からの相対で書く。
+func openAPIOperationsIn(t *testing.T, file, base string) (withBody, withoutBody []operation) {
+	t.Helper()
+
+	body, err := os.ReadFile(filepath.Join(repositoryRoot(t), "api", file))
 	if err != nil {
-		t.Fatalf("api/openapi.yaml を読めない: %v", err)
+		t.Fatalf("api/%s を読めない: %v", file, err)
 	}
 
 	var current operation
@@ -95,7 +102,7 @@ func openAPIOperations(t *testing.T) (withBody, withoutBody []operation) {
 	for _, line := range strings.Split(string(body), "\n") {
 		if m := openAPIPath.FindStringSubmatch(line); m != nil {
 			flush()
-			current = operation{path: m[1]}
+			current = operation{path: base + m[1]}
 			continue
 		}
 		if m := openAPIMethod.FindStringSubmatch(line); m != nil {
@@ -273,4 +280,80 @@ func openAPISecurity(t *testing.T) map[operation]access {
 	}
 	flushSecurity()
 	return result
+}
+
+// TestExternalAPIOperationsAreBearer は、外部連携 API（api/external-v1.yaml）のすべての操作が
+// bearerAuth で、境界がそれを Bearer の扱いに分類することを確かめる（specs/026-external-api/
+// research.md R-3）。文書の基底が境界の externalAPIBase と同じで、操作ごとの security の上書きが
+// 無いことも確かめる。宣言の無い method も Bearer の扱いである（/api/v1 の下はすべて Bearer）。
+// 本文を取る操作と requiresJSONBody の一致も、画面の API と同じく確かめる。
+func TestExternalAPIOperationsAreBearer(t *testing.T) {
+	body, err := os.ReadFile(filepath.Join(repositoryRoot(t), "api", "external-v1.yaml"))
+	if err != nil {
+		t.Fatalf("api/external-v1.yaml を読めない: %v", err)
+	}
+	text := string(body)
+	if !strings.Contains(text, "\nservers:\n  - url: "+externalAPIBase+"\n") {
+		t.Errorf("external-v1.yaml の servers が %s ではない", externalAPIBase)
+	}
+	if !strings.Contains(text, "\nsecurity:\n  - bearerAuth: []\n") {
+		t.Error("external-v1.yaml の全体の security が bearerAuth ではない")
+	}
+	if !regexp.MustCompile(`(?m)^    bearerAuth:\n      type: http\n      scheme: bearer$`).MatchString(text) {
+		t.Error("external-v1.yaml の bearerAuth が type: http・scheme: bearer ではない")
+	}
+	if regexp.MustCompile(`(?m)^      security:`).MatchString(text) {
+		t.Error("external-v1.yaml に操作ごとの security がある。すべての操作は bearerAuth である")
+	}
+
+	withBody, withoutBody := openAPIOperationsIn(t, "external-v1.yaml", externalAPIBase)
+	operations := append(append([]operation{}, withBody...), withoutBody...)
+	if len(operations) == 0 {
+		t.Fatal("external-v1.yaml から操作を読み取れていない")
+	}
+	declaredBody := map[operation]bool{}
+	for _, op := range withBody {
+		declaredBody[op] = true
+	}
+	for _, op := range operations {
+		for _, method := range openAPIMethodSet {
+			candidate := operation{method: method, path: op.path}
+			got, api := classifyRequest(operationRequest(candidate))
+			if got != accessBearer || !api {
+				t.Errorf("%s %s: 境界の扱い = %s (api %v), want bearer", method, op.path, got, api)
+			}
+			if requiresJSONBody(operationRequest(candidate)) != declaredBody[candidate] {
+				t.Errorf("%s %s: requiresJSONBody と external-v1.yaml の requestBody が食い違う", method, op.path)
+			}
+		}
+	}
+}
+
+// Bearer の扱いの経路（/api/v1 の下と /mcp）と、そうでない経路の分類を確かめる。
+func TestClassifyBearerPaths(t *testing.T) {
+	cases := []struct {
+		target string
+		want   access
+		api    bool
+	}{
+		{"/api/v1", accessBearer, true},
+		{"/api/v1/", accessBearer, true},
+		{"/api/v1/tags", accessBearer, true},
+		{"/api/v1/unknown/route", accessBearer, true},
+		{"//api/./v1/tags", accessBearer, true},
+		{"/mcp", accessBearer, false},
+		// 符号化した区切りで段が食い違う要求は、今までの規則のまま所有者だけに倒す。
+		{"/api/v1%2Ftags", accessOwner, true},
+		{"/api/v1/x%2F..%2F..%2Fvideos", accessOwner, true},
+		// 似た名前は Bearer ではない。
+		{"/api/v10/tags", accessOwner, true},
+		{"/api/videos", accessGuest, true},
+		{"/mcpx", accessPublic, false},
+	}
+	for _, tc := range cases {
+		got, api := classifyRequest(httptest.NewRequest(http.MethodGet, tc.target, nil))
+		if got != tc.want || api != tc.api {
+			t.Errorf("%s: 扱い = %s (api %v), want %s (api %v)", tc.target, got, api, tc.want, tc.api)
+		}
+	}
 }

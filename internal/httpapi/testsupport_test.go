@@ -187,16 +187,18 @@ func (f *fakeScans) ListScanIssues(_ context.Context, cursor string, limit int) 
 	return domain.ScanIssuePage{ScanID: f.current.ID, Items: items, NextCursor: next}, nil
 }
 
-func (f *fakeScans) StartScan(context.Context) (domain.Scan, error) {
+// StartScan は実行中（ScanRunning）の走査があればそれを返し、無ければ新しく始める。
+func (f *fakeScans) StartScan(context.Context) (domain.Scan, bool, error) {
 	if f.startErr != nil {
-		return domain.Scan{}, f.startErr
+		return domain.Scan{}, false, f.startErr
 	}
 	f.started++
-	if !f.hasScan {
-		f.current = domain.Scan{ID: 1, State: domain.ScanRunning, StartedAt: time.Now()}
-		f.hasScan = true
+	if f.hasScan && f.current.State == domain.ScanRunning {
+		return f.current, false, nil
 	}
-	return f.current, nil
+	f.current = domain.Scan{ID: f.current.ID + 1, State: domain.ScanRunning, StartedAt: time.Now()}
+	f.hasScan = true
+	return f.current, true, nil
 }
 
 func (f *fakeScans) CurrentScan(context.Context) (domain.Scan, error) {

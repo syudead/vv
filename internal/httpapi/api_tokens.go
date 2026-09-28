@@ -13,11 +13,19 @@ import (
 // 画面の API トークンの管理（specs/026-external-api/contracts/token-api.md）。
 //
 // 3 つの操作はどれも所有者だけで、accessRoutes に載せない。Bearer はここでは読まない。
+// Bearer で所有者を確かめるのは境界（auth.go の bearerBoundary）で、同じ APITokens を使う。
 // 名前の規則・平文の作り・保存は internal/app と internal/store が持ち、httpapi は要求の
 // 解釈と契約の形への変換だけを持つ。
 
-// APITokens は API トークンの発行・一覧・失効である。internal/app の *Auth がこれを満たす。
+// APITokens は API トークンの発行・一覧・失効と、Bearer の確かめである。internal/app の
+// *Auth がこれを満たす。
 type APITokens interface {
+	// CheckAPIToken は Bearer で送られた平文 secret が有効な API トークンかを確かめ、有効なら
+	// その行を返す。問い合わせが失敗したら、無効とせずに誤りを返す。
+	CheckAPIToken(ctx context.Context, secret string) (domain.APIToken, bool, error)
+	// RecordAPITokenUse は id の API トークンを今使ったことを記録する。60 秒より細かくは
+	// 書かない（specs/026-external-api/research.md R-9）。
+	RecordAPITokenUse(ctx context.Context, id int64) error
 	// ListAPITokens は有効な API トークンを作成日時の降順で返す。
 	ListAPITokens(ctx context.Context) ([]domain.APIToken, error)
 	// CreateAPIToken はセッション sessionToken の求めで API トークンを発行し、保存した行と
@@ -84,6 +92,8 @@ func (s *server) DeleteApiToken(w http.ResponseWriter, r *http.Request, id gen.A
 		s.internalError(w, "Could not revoke the API token.", err)
 		return
 	}
+	// 失効したトークンで処理中の外部連携 API と MCP の要求を、すぐに打ち切る（research.md R-9）。
+	s.sessions.revoke(apiTokenLedgerKey(id))
 	w.Header().Set("Cache-Control", cacheNoStore)
 	w.WriteHeader(http.StatusNoContent)
 }
