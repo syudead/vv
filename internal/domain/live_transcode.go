@@ -23,6 +23,9 @@ type LiveTranscodeRequest struct {
 	Normalize bool
 	// StartupDeadline はその場の解析と最初のデータまでを合わせた期限である。
 	StartupDeadline time.Time
+	// VideoEncoder は映像をエンコードするときに使う方式である。空なら software として
+	// 扱う。映像をコピーする要求では見ない（親 Issue #370 要件 12）。
+	VideoEncoder VideoEncoder
 }
 
 // LiveTranscode は最初のデータが出たライブ変換 1 本である。
@@ -41,4 +44,11 @@ type LiveTranscode struct {
 	// 解析情報だけで始められたとき、または解析のあとにファイルが変わっていたときは
 	// nil で、呼び出し側はこれがあるときだけ保存する。
 	Probed *TranscodeProbe
+	// VideoEncoder は映像をエンコードした方式である。映像をコピーしたときは空である。
+	VideoEncoder VideoEncoder
+	// HardwareFailure は、要求の方式（ハードウェア）が最初のデータを出さずに終わり、同じ要求の
+	// 中で software に切り替えたときの誤り（FFmpeg の標準エラーの末尾を含む）である。
+	// 切り替えなかったときは nil。ログに書くのは呼び出し側である
+	// （specs/025-hardware-encoding/research.md R-6）。
+	HardwareFailure error
 }

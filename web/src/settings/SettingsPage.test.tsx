@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { MediaFolder } from "../api/client";
+import type { MediaFolder, TranscodingSettings } from "../api/client";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import AppShell from "../shell/AppShell";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
@@ -30,6 +30,18 @@ function folder(id: number, path: string, version = 1): MediaFolder {
   };
 }
 
+const transcodingSettings: TranscodingSettings = {
+  videoEncoder: "software",
+  effectiveEncoder: "software",
+  checking: false,
+  encoders: [
+    { encoder: "nvenc", state: "unavailable", reason: "encoder_missing" },
+    { encoder: "qsv", state: "unavailable", reason: "encoder_missing" },
+    { encoder: "vaapi", state: "unavailable", reason: "encoder_missing" },
+    { encoder: "videotoolbox", state: "unavailable", reason: "unsupported_os" },
+  ],
+};
+
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={["/settings"]}>
@@ -54,7 +66,13 @@ describe("SettingsPage", () => {
   const fetchMock = vi.fn<typeof fetch>();
 
   beforeEach(() => {
-    vi.stubGlobal("fetch", fetchMock);
+    // 「動画の変換」区画の読み取りは TranscodingSection.test.tsx が確かめる。ここでは
+    // メディアフォルダの要求だけを fetchMock に通す。
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === "/api/settings/transcoding"
+        ? Promise.resolve(json(transcodingSettings))
+        : fetchMock(input, init),
+    );
     window.matchMedia = vi.fn().mockReturnValue({
       matches: false,
       addEventListener: vi.fn(),
@@ -76,6 +94,9 @@ describe("SettingsPage", () => {
       await screen.findByRole("heading", { level: 1, name: "Settings" }),
     ).toBeDefined();
     expect(await screen.findByText("No media folders yet")).toBeDefined();
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "Video conversion" }),
+    ).toBeDefined();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("button", { name: /保存/ })).toBeNull();
     expect(

@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -30,6 +31,8 @@ const (
 	// 出力は frag_keyframe でキーフレームごとに fragment を区切るので、最初の
 	// データはこの間隔分をエンコードし終えるまで出ない。
 	liveKeyframeInterval = 2
+	// vaapiDevice は VAAPI で使う DRM の render node である（research.md R-7）。
+	vaapiDevice = "/dev/dri/renderD128"
 )
 
 // LiveTranscoder starts one FFmpeg process for each HTTP request. Its output is
@@ -59,6 +62,10 @@ func NewLiveTranscoder(serverDone <-chan struct{}) *LiveTranscoder {
 // エンコードに切り替える。保存済みの解析情報で始めた変換がそれでも最初のデータを出さずに
 // 終わったときは、その場の ffprobe を実行し、コピーから 1 回だけやり直す。期限
 // （StartupDeadline）は解析と切り替えを含めて 1 つで、期限切れは切り替えずに失敗にする。
+//
+// 映像をエンコードする段は request.VideoEncoder がハードウェアの方式ならまずそれで始め、
+// 最初のデータを出さずに終わったら同じ解析情報で libx264 で始め直す（startEncode）。
+// 切り替えたことは戻り値の HardwareFailure に載せる。
 // 成功したら Wait をちょうど 1 回呼ぶこと。
 func (t *LiveTranscoder) Start(
 	requestContext context.Context,
@@ -106,10 +113,12 @@ func (t *LiveTranscoder) Start(
 					Reader: io.MultiReader(bytes.NewReader(started.first), started.process.stdout),
 					closer: started.process.stdout,
 				},
-				Wait:    wait,
-				Stop:    sync.OnceFunc(cancel),
-				StartMs: started.startMs,
-				Probed:  probed,
+				Wait:            wait,
+				Stop:            sync.OnceFunc(cancel),
+				StartMs:         started.startMs,
+				Probed:          probed,
+				VideoEncoder:    started.encoder,
+				HardwareFailure: started.hardwareFailure,
 			}, nil
 		}
 
@@ -141,6 +150,10 @@ type startedTranscode struct {
 	process transcodeProcess
 	first   []byte
 	startMs int64
+	// encoder は映像をエンコードした方式で、コピーでは空である。
+	encoder domain.VideoEncoder
+	// hardwareFailure はハードウェアから software に切り替えたときの誤りである。
+	hardwareFailure error
 }
 
 // startWithProbe は 1 つの解析情報で変換を始める。映像をコピーできればコピーを試し、
@@ -149,7 +162,7 @@ func (t *LiveTranscoder) startWithProbe(
 	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
 ) (startedTranscode, error) {
 	if !request.Normalize && videoCanCopy(metadata.Video) {
-		started, err := t.startAttempt(ctx, request, metadata, true)
+		started, err := t.startAttempt(ctx, request, metadata, "")
 		if err == nil {
 			return started, nil
 		}
@@ -158,7 +171,7 @@ func (t *LiveTranscoder) startWithProbe(
 			return startedTranscode{}, err
 		}
 		copyErr := err
-		started, err = t.startAttempt(ctx, request, metadata, false)
+		started, err = t.startEncode(ctx, request, metadata)
 		if err != nil {
 			// その場の解析へ切り替えるかはエンコードの失敗だけで決めるので、コピーの
 			// 誤りは文字列として添える。
@@ -166,15 +179,45 @@ func (t *LiveTranscoder) startWithProbe(
 		}
 		return started, nil
 	}
-	return t.startAttempt(ctx, request, metadata, false)
+	return t.startEncode(ctx, request, metadata)
 }
 
-// startAttempt は FFmpeg を 1 本起動し、最初のデータを待つ。途中からのコピーでは moov
-// までを読み、edit list から実際の開始位置を得て書き換える（fmp4.go）。
-func (t *LiveTranscoder) startAttempt(
-	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe, copyVideo bool,
+// startEncode は映像をエンコードして始める。要求の方式がハードウェアなら、まずそれで始め、
+// 最初のデータを出さずに終わったら同じ解析情報で software で始め直す（research.md R-6）。
+// 期限切れと取り消しは切り替えない。期限は Start と共通の StartupDeadline 1 つである。
+func (t *LiveTranscoder) startEncode(
+	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
 ) (startedTranscode, error) {
-	args := buildTranscodeArgs(request.Path, request.StartMs, metadata, request.Normalize, copyVideo)
+	encoder := request.VideoEncoder
+	if !slices.Contains(domain.HardwareVideoEncoders, encoder) {
+		return t.startAttempt(ctx, request, metadata, domain.VideoEncoderSoftware)
+	}
+	started, err := t.startAttempt(ctx, request, metadata, encoder)
+	if err == nil {
+		return started, nil
+	}
+	if ctx.Err() != nil || !errors.Is(err, errNoInitialData) {
+		return startedTranscode{}, err
+	}
+	hardwareErr := fmt.Errorf("%s video encoder failed before producing data: %w", encoder, err)
+	started, err = t.startAttempt(ctx, request, metadata, domain.VideoEncoderSoftware)
+	if err != nil {
+		// その場の解析へ切り替えるかは software の失敗だけで決めるので、ハードウェアの
+		// 誤りは文字列として添える。
+		return startedTranscode{}, fmt.Errorf("%w; %s", err, hardwareErr.Error())
+	}
+	started.hardwareFailure = hardwareErr
+	return started, nil
+}
+
+// startAttempt は FFmpeg を 1 本起動し、最初のデータを待つ。encoder が空なら映像をコピーし、
+// そうでなければその方式でエンコードする。途中からのコピーでは moov までを読み、edit list
+// から実際の開始位置を得て書き換える（fmp4.go）。
+func (t *LiveTranscoder) startAttempt(
+	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe, encoder domain.VideoEncoder,
+) (startedTranscode, error) {
+	copyVideo := encoder == ""
+	args := buildTranscodeArgs(request.Path, request.StartMs, metadata, request.Normalize, copyVideo, encoder)
 	process, err := t.startProcess(ctx, args)
 	if err != nil {
 		return startedTranscode{}, err
@@ -196,7 +239,7 @@ func (t *LiveTranscoder) startAttempt(
 		}
 	}
 	if readErr == nil && len(first) > 0 {
-		return startedTranscode{process: process, first: first, startMs: startMs}, nil
+		return startedTranscode{process: process, first: first, startMs: startMs, encoder: encoder}, nil
 	}
 
 	process.stop()
@@ -345,13 +388,14 @@ func parseTranscodeProbe(output []byte) (domain.TranscodeProbe, error) {
 	return *probe.Transcode, nil
 }
 
-// transcodeArgs は最初に試す引数を返す。映像はコピーできればコピーする。
+// transcodeArgs は software の方式で最初に試す引数を返す。映像はコピーできればコピーする。
 func transcodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, normalize bool) []string {
-	return buildTranscodeArgs(path, startMs, metadata, normalize, !normalize && videoCanCopy(metadata.Video))
+	return buildTranscodeArgs(path, startMs, metadata, normalize, !normalize && videoCanCopy(metadata.Video), domain.VideoEncoderSoftware)
 }
 
 // buildTranscodeArgs は FFmpeg の引数を組み立てる。copyVideo は映像をコピーするかで、
-// normalize でなく videoCanCopy が真のときだけ効く。
+// normalize でなく videoCanCopy が真のときだけ効く。encoder は映像をエンコードするときの
+// 方式で、コピーするときは見ない。
 //
 // 音声は normalize でなく audioCanCopy が真ならコピーする（親 Issue #371 要件 4）。ただし
 // 映像をエンコードして途中から始めるときは、今までどおり音声もエンコードする。入力側の
@@ -361,10 +405,15 @@ func transcodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, n
 // 途中からのコピーだけ -copyts -start_at_zero と delay_moov を付け、mp4 muxer が各 track の
 // 開始時刻を moov の edit list に書くようにする（research.md R-1）。-noaccurate_seek は、
 // エンコードする音声もコピーする映像と同じくキーフレームの時刻から始めるためのものである。
-func buildTranscodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, normalize, copyVideo bool) []string {
+func buildTranscodeArgs(
+	path string, startMs int64, metadata domain.TranscodeProbe, normalize, copyVideo bool, encoder domain.VideoEncoder,
+) []string {
 	copyVideo = copyVideo && !normalize && videoCanCopy(metadata.Video)
 	seekCopy := copyVideo && startMs > 0
 	args := []string{"-hide_banner", "-loglevel", "warning"}
+	if !copyVideo {
+		args = append(args, hardwareDeviceArgs(encoder)...)
+	}
 	appendInput := func(disableStream string) {
 		if startMs > 0 {
 			if seekCopy {
@@ -398,7 +447,7 @@ func buildTranscodeArgs(path string, startMs int64, metadata domain.TranscodePro
 	if copyVideo {
 		args = append(args, "-c:v", "copy")
 	} else {
-		args = append(args, videoEncodeArgs(metadata.Video)...)
+		args = append(args, videoEncodeArgs(metadata.Video, encoder)...)
 	}
 
 	if metadata.Audio != nil {
@@ -454,7 +503,39 @@ func audioCanCopy(stream domain.TranscodeAudio) bool {
 		stream.SampleRate >= 8000 && stream.SampleRate <= 48000
 }
 
-func videoEncodeArgs(stream domain.TranscodeVideo) []string {
+// hardwareDeviceArgs は方式が要る入力より前の大域の指定を返す。VAAPI だけがデバイスを開く。
+func hardwareDeviceArgs(encoder domain.VideoEncoder) []string {
+	if encoder == domain.VideoEncoderVAAPI {
+		return []string{"-vaapi_device", vaapiDevice}
+	}
+	return nil
+}
+
+// encoderCodecArgs は方式ごとの符号化器の指定である（research.md R-7）。どれも H.264 High・
+// Level 5.1・4:2:0 8bit・一定品質で、強制キーフレームを IDR にする。VAAPI の画素形式は
+// フィルターの format=nv12,hwupload で与える。知らない方式は software とする。
+func encoderCodecArgs(encoder domain.VideoEncoder) []string {
+	switch encoder {
+	case domain.VideoEncoderNVENC:
+		return []string{"-c:v", "h264_nvenc", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p",
+			"-preset", "p4", "-rc", "vbr", "-cq", "23", "-b:v", "0", "-forced-idr", "1"}
+	case domain.VideoEncoderQSV:
+		return []string{"-c:v", "h264_qsv", "-profile:v", "high", "-level", "51", "-pix_fmt", "nv12",
+			"-preset", "veryfast", "-global_quality", "23", "-look_ahead", "0", "-forced_idr", "1"}
+	case domain.VideoEncoderVAAPI:
+		return []string{"-c:v", "h264_vaapi", "-profile:v", "high", "-level", "5.1", "-rc_mode", "CQP", "-qp", "23"}
+	case domain.VideoEncoderVideoToolbox:
+		return []string{"-c:v", "h264_videotoolbox", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p",
+			"-q:v", "60", "-realtime", "1"}
+	default:
+		return []string{"-c:v", "libx264", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p", "-preset", liveX264Preset, "-crf", "23"}
+	}
+}
+
+// videoEncodeArgs は映像をエンコードする引数を返す。フィルター（縮小・pad・setsar・fps）と
+// キーフレームの指定は方式に依らず共通で、出力の約束を守る。符号化器の指定だけを方式で
+// 差し替える。
+func videoEncodeArgs(stream domain.TranscodeVideo, encoder domain.VideoEncoder) []string {
 	displayWidth, displayHeight, sampleAspectNum, sampleAspectDen := displayGeometry(stream)
 	width, height := outputDimensions(displayWidth, displayHeight)
 	filters := make([]string, 0, 2)
@@ -485,7 +566,12 @@ func videoEncodeArgs(stream domain.TranscodeVideo) []string {
 		filters = append(filters, "fps="+formatCappedFPS(limit))
 	}
 
-	args := []string{"-c:v", "libx264", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p", "-preset", liveX264Preset, "-crf", "23"}
+	if encoder == domain.VideoEncoderVAAPI {
+		// h264_vaapi は hw フレームしか受けないので、8bit 4:2:0 にしてから GPU へ上げる。
+		filters = append(filters, "format=nv12", "hwupload")
+	}
+
+	args := encoderCodecArgs(encoder)
 	// フレーム数ではなく出力の時刻で揃えるため、fps フィルターで間引いたあとも
 	// 入力のフレームレートによらず同じ間隔になる。
 	args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", liveKeyframeInterval))

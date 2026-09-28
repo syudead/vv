@@ -28,7 +28,9 @@ member, the group and its position in it, and
 `/api/videos/{id}/related`, `/probe` and `/open` return related videos (for a group member,
 also every member in group order, with next/previous inside the group), retry a failed
 metadata read, and open the file in the server PC's default app), media-folder settings and
-server-side directory picker APIs, the read-only folder browsing API
+server-side directory picker APIs, the live-transcode video encoder setting
+(`/api/settings/transcoding`: the saved choice, the encoder in use and each hardware encoder's
+startup check result), the read-only folder browsing API
 (`/api/folders*`), the tag management API (`/api/tags*`: list, create,
 rename, delete, merge and synonym registration/removal), the video-tags API
 (`/api/video-tags` to attach/detach a tag on a set of videos and
@@ -232,8 +234,9 @@ thumbnails and previews, the folder index (`folder_groups`, `folder_group_member
 `video_folder_names`, `folder_index_state`), and `video_transcode_probes` are
 rebuildable from registered media folders by scanning and processing the files again.
 `playback_progress`, the tag tables (`tags`, `tag_names`, `video_tags`),
-`public_videos`, `folder_group_overrides`, `account`, and `media_folders` are
-user or configuration data that a scan cannot restore. In particular, a scan
+`public_videos`, `folder_group_overrides`, `account`, `media_folders`, and `settings`
+(owner-chosen values such as the live-transcode video encoder,
+`specs/025-hardware-encoding/data-model.md`) are user or configuration data that a scan cannot restore. In particular, a scan
 cannot start with no registered `media_folders`; after database loss those folders
 must be registered again before scanning. `sessions` is transient and a fresh
 login restores it.
@@ -292,7 +295,8 @@ compile:
   locations, removing missing ones and the videos they orphan), rebuilding the folder
   index before a scan closes, and the startup refresh of an out-of-date folder index.
 - `SettingsStore` — registering, replacing and removing media folders, rebuilding the
-  folder index in the same transaction.
+  folder index in the same transaction; and reading and saving owner settings in the
+  `settings` table (the live-transcode video encoder choice, returned uninterpreted).
 - `FolderGroupStore` — setting and clearing a folder's grouping exception (`ungroup`,
   `group_direct`), turning a folder's group into a tag (finding or creating the tag by
   name or synonym and writing `ungroup`), each rebuilding the folder index in the same
@@ -406,6 +410,13 @@ when it is more than `domain.CopySeekAllowance` before the requested position.
 The player learns that start from `GET /api/videos/{id}/transcode-start`, keyed by the
 `attempt` it put on the transcode URL and served from an in-memory ledger in `internal/httpapi`
 ([live-transcode-seek.md](docs/design-docs/live-transcode-seek.md)).
+When the video is encoded, the route puts the encoder `TranscodeSettings` currently resolves
+(software, NVENC, Quick Sync, VAAPI or VideoToolbox) on each request, so a new choice applies
+from the next request without a restart and a running stream keeps the encoder it started
+with. A hardware encoder that exits before its first data is retried with `libx264` inside
+the same request, and the route logs that fallback as a warning. `cmd/mdm` starts the
+startup encoder checks in the background, so they never delay the HTTP listener
+([hardware-encoding.md](docs/design-docs/hardware-encoding.md)).
 
 ## Intended dependency direction
 
@@ -435,7 +446,10 @@ way only. The packages under `internal/` fall into three layers:
   one whose sprite is missing or incomplete — plus assembling related videos, which for a
   folder-group member orders next/previous inside the group and leaves its members out of
   the related list (`Catalog`); and adding, replacing and removing media folders after the
-  filesystem adapter has checked the path (`MediaFolders`); and first-run setup,
+  filesystem adapter has checked the path (`MediaFolders`); and holding the live-transcode
+  video encoder choice with the startup encoder checks, run concurrently with a
+  per-encoder time limit and kept in memory only, to decide the encoder actually used
+  and to save a new choice (`TranscodeSettings`); and first-run setup,
   login verification with per-source throttling, and issuing, checking and
   revoking login sessions (`Auth`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
   through interfaces it declares, so its unit tests run without SQLite, `ffmpeg` or

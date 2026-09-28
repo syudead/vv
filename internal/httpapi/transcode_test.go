@@ -5,16 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
+	"github.com/syudead/vv/internal/media"
 	"github.com/syudead/vv/internal/store"
 )
 
@@ -502,3 +506,196 @@ func doRequest(handler http.Handler, req *http.Request) *httptest.ResponseRecord
 }
 
 var _ gen.ServerInterface = (*server)(nil)
+
+// fakeFFmpegScript は PATH の先頭に置く偽の ffmpeg である。引数を 1 行ずつ calls.log に
+// 残し、fail-hw があれば h264_nvenc の起動を最初のデータを出さずに失敗させる。それ以外は
+// 最初のデータを出し、release ができるまで終わらない（配信中の変換を模す）。
+const fakeFFmpegScript = `#!/bin/sh
+dir=$(dirname "$0")
+echo "$*" >> "$dir/calls.log"
+case " $* " in
+*" h264_nvenc "*)
+  if [ -e "$dir/fail-hw" ]; then
+    echo "OpenEncodeSessionEx failed: out of memory (10)" >&2
+    exit 1
+  fi
+  ;;
+esac
+printf 'fmp4-data'
+i=0
+while [ ! -e "$dir/release" ] && [ "$i" -lt 400 ]; do
+  sleep 0.05
+  i=$((i + 1))
+done
+exit 0
+`
+
+// liveEncoderEnv は本物の media.LiveTranscoder と app.TranscodeSettings を、偽の ffmpeg で
+// つないだ経路である。
+type liveEncoderEnv struct {
+	dir      string
+	server   *httptest.Server
+	handler  http.Handler
+	settings *app.TranscodeSettings
+	logs     *syncBuffer
+	target   string
+}
+
+func newLiveEncoderEnv(t *testing.T) *liveEncoderEnv {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("偽の ffmpeg は sh のスクリプトである")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "ffmpeg"), []byte(fakeFFmpegScript), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	probes := newTranscodeProbeEnv(t)
+	env := &liveEncoderEnv{
+		dir:      dir,
+		settings: newCheckedTranscodeSettings(t, &memoryEncoderStore{}),
+		logs:     &syncBuffer{},
+		target:   fmt.Sprintf("/api/videos/%d/transcode.mp4", probes.ids["ingested"]),
+	}
+	serverDone := make(chan struct{})
+	t.Cleanup(func() { close(serverDone) })
+	env.handler = newTestServer(t, Options{
+		Videos:            probes.db.Library(),
+		Transcoder:        media.NewLiveTranscoder(serverDone),
+		TranscodeProbes:   probes.db.Ingest(),
+		TranscodeSettings: env.settings,
+		Logger:            slog.New(slog.NewTextHandler(env.logs, nil)),
+	})
+	env.server = httptest.NewServer(env.handler)
+	t.Cleanup(env.server.Close)
+	// 待たせた偽の ffmpeg を必ず終わらせる。
+	t.Cleanup(func() { env.touch(t, "release") })
+	return env
+}
+
+func (e *liveEncoderEnv) touch(t *testing.T, name string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(e.dir, name), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// calls は偽の ffmpeg が起動された引数を順に返す。
+func (e *liveEncoderEnv) calls(t *testing.T) []string {
+	t.Helper()
+	body, err := os.ReadFile(filepath.Join(e.dir, "calls.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Split(strings.TrimSpace(string(body)), "\n")
+}
+
+// start は変換を要求し、最初のデータまでを読んだ応答を返す。
+func (e *liveEncoderEnv) start(t *testing.T) *http.Response {
+	t.Helper()
+	res, err := e.server.Client().Get(e.server.URL + e.target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = res.Body.Close() })
+	if res.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(res.Body)
+		t.Fatalf("status = %d: %s", res.StatusCode, body)
+	}
+	first := make([]byte, len("fmp4-data"))
+	if _, err := io.ReadFull(res.Body, first); err != nil || string(first) != "fmp4-data" {
+		t.Fatalf("最初のデータ = %q, %v", first, err)
+	}
+	return res
+}
+
+func videoCodecArg(args string) string {
+	fields := strings.Fields(args)
+	for i := 0; i+1 < len(fields); i++ {
+		if fields[i] == "-c:v" {
+			return fields[i+1]
+		}
+	}
+	return ""
+}
+
+// 方式の変更は次に始まる要求から効き、配信中の変換は始めた方式のまま続く
+// （親 Issue #370 要件 4、contracts/transcoding-settings-api.md §4）。
+func TestTranscodeUsesEncoderSelectedBeforeRequestStarts(t *testing.T) {
+	env := newLiveEncoderEnv(t)
+
+	before := env.start(t)
+	if calls := env.calls(t); len(calls) != 1 || videoCodecArg(calls[0]) != "libx264" {
+		t.Fatalf("変更前の要求の引数 = %q", calls)
+	}
+
+	if rec := putTranscoding(t, env.handler, `{"videoEncoder":"nvenc"}`); rec.Code != http.StatusOK {
+		t.Fatalf("PUT: status = %d: %s", rec.Code, rec.Body)
+	}
+	after := env.start(t)
+	calls := env.calls(t)
+	if len(calls) != 2 || videoCodecArg(calls[1]) != "h264_nvenc" {
+		t.Fatalf("変更後の要求の引数 = %q", calls)
+	}
+
+	// 変更前に始まった要求は、変更のあとも同じプロセスのまま最後まで届く。
+	env.touch(t, "release")
+	for label, res := range map[string]*http.Response{"変更前": before, "変更後": after} {
+		if rest, err := io.ReadAll(res.Body); err != nil || len(rest) != 0 {
+			t.Errorf("%s の要求の残り = %q, %v", label, rest, err)
+		}
+	}
+	if calls := env.calls(t); len(calls) != 2 {
+		t.Errorf("ffmpeg の起動 = %q, want 2 回", calls)
+	}
+	if logs := env.logs.String(); strings.Contains(logs, "level=WARN") {
+		t.Errorf("切り替えの無い要求で警告が出た: %s", logs)
+	}
+}
+
+// ハードウェアが最初のデータを出さずに失敗した要求は、同じ要求の中で software に切り替えて
+// 200 で本文を返し、Warn を記録する（親 Issue #370 受け入れ条件 8）。
+func TestTranscodeFallsBackToSoftwareAndWarns(t *testing.T) {
+	env := newLiveEncoderEnv(t)
+	if rec := putTranscoding(t, env.handler, `{"videoEncoder":"nvenc"}`); rec.Code != http.StatusOK {
+		t.Fatalf("PUT: status = %d: %s", rec.Code, rec.Body)
+	}
+	env.touch(t, "fail-hw")
+	env.touch(t, "release")
+
+	res := env.start(t)
+	if rest, err := io.ReadAll(res.Body); err != nil || len(rest) != 0 {
+		t.Fatalf("本文の残り = %q, %v", rest, err)
+	}
+	calls := env.calls(t)
+	if len(calls) != 2 || videoCodecArg(calls[0]) != "h264_nvenc" || videoCodecArg(calls[1]) != "libx264" {
+		t.Fatalf("ffmpeg の起動 = %q, want h264_nvenc のあと libx264", calls)
+	}
+	logs := env.logs.String()
+	for _, want := range []string{"level=WARN", "fell back to software", "encoder=nvenc", "video=", "OpenEncodeSessionEx failed"} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("ログに %q が無い: %s", want, logs)
+		}
+	}
+	// 切り替えは要求の中だけで、設定の選択と実際の方式は変えない。
+	if current := env.settings.Current(); current.Choice != domain.EncoderChoiceNVENC || current.Effective != domain.VideoEncoderNVENC {
+		t.Errorf("切り替えのあとの設定 = %+v", current)
+	}
+}
+
+// 設定が無い経路は software でエンコードする。
+func TestTranscodeWithoutSettingsRequestsSoftware(t *testing.T) {
+	var got domain.VideoEncoder
+	fake := &fakeTranscoder{body: "fragmented-mp4", beforeReturn: func(request domain.LiveTranscodeRequest) {
+		got = request.VideoEncoder
+	}}
+	rec := do(t, transcodeServer(t, false, fake), http.MethodGet, "/api/videos/1/transcode.mp4")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got != domain.VideoEncoderSoftware {
+		t.Errorf("VideoEncoder = %q, want software", got)
+	}
+}

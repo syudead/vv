@@ -15,6 +15,8 @@ type ErrorCode = components["schemas"]["Error"]["code"];
 type ErrorReason = components["schemas"]["ErrorReason"];
 type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
 type ScanErrorCode = components["schemas"]["ScanErrorCode"];
+type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
+type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -159,6 +161,7 @@ const errorReasons = {
   transcode_unavailable: "This video can't be converted for playback.",
   cross_origin: "This change must be made from vv itself.",
   open_not_local: "Files can only be opened on the computer running vv.",
+  encoder_unavailable: "That video encoder isn't available on this server.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -875,6 +878,43 @@ export const en = {
       added: "Added. Run a scan to apply the change.",
       changed: "Changed. Run a scan to apply the change.",
       removed: "Removed. A scan doesn't start automatically.",
+    },
+    transcoding: {
+      heading: "Video conversion",
+      description:
+        "How VVMDM encodes video when a browser can't play the original file. A hardware encoder needs the server's GPU and VVMDM running directly on the server; the Docker image uses software only.",
+      guide: "How to set up hardware encoding",
+      opensInNewTab: "(opens in a new tab)",
+      loading: "Loading the video conversion settings",
+      loadFailed: (reason: string) =>
+        `Couldn't load the video conversion settings: ${reason}`,
+      inUse: "In use now",
+      checking: "Checking which encoders this server can use…",
+      selectedUnavailable:
+        "The selected encoder isn't available on this server, so videos are converted with software.",
+      choices: "Video encoder",
+      saving: "Saving…",
+      saveFailed: (reason: string) => `Couldn't change the encoder: ${reason}`,
+      encoder: {
+        software: "Software",
+        nvenc: "NVENC (NVIDIA)",
+        qsv: "Quick Sync (Intel)",
+        vaapi: "VAAPI (Intel/AMD)",
+        videotoolbox: "VideoToolbox (macOS)",
+        auto: "Automatic",
+      } satisfies Record<VideoEncoderChoice, string>,
+      state: {
+        available: "Available",
+        alwaysAvailable: "Always available",
+        auto: "Uses an available hardware encoder, otherwise software",
+        checking: "Checking…",
+      },
+      reason: {
+        unsupported_os: "Not supported on this server's operating system",
+        encoder_missing: "Not found on this server",
+        check_failed: "The test encode failed",
+        timed_out: "The test encode took too long",
+      } satisfies Record<EncoderUnavailableReason, string>,
     },
     removeDialog: {
       title: "Remove this folder?",
