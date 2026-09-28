@@ -8,6 +8,7 @@ import {
   generateFolderSearchFixtures,
   generateGuestFixtures,
   generateMediaFixtures,
+  generateScanIssueFixtures,
   generateScanProgressFixtures,
   generateSearchFixtures,
   generateTagsFixtures,
@@ -26,6 +27,7 @@ const foldersSearchMediaDir = path.join(runRoot, "folders-search-media");
 const tagsMediaDir = path.join(runRoot, "tags-media");
 const guestMediaDir = path.join(runRoot, "guest-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
+const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
 // Go のビルドキャッシュは実行をまたいで使い回す。実行ごとの runRoot に置くと
 // 毎回ゼロからのコンパイルになる。既定の置き場（GOCACHE）が決まっていれば
 // それに従い（CI は setup-go が復元した場所を渡す）、無ければ作業ツリーの中の
@@ -42,6 +44,7 @@ function run() {
     generateTagsFixtures(tagsMediaDir);
     generateGuestFixtures(guestMediaDir);
     generateScanProgressFixtures(scanProgressMediaDir);
+    generateScanIssueFixtures(scanIssuesMediaDir);
     const mediaContract = spawnSync(
       "go",
       ["test", "./internal/media", "-run", "^TestVideoEncode.*WithFFmpeg$", "-count=1"],
@@ -85,6 +88,7 @@ function run() {
         MDM_E2E_TAGS_MEDIA_DIR: tagsMediaDir,
         MDM_E2E_GUEST_MEDIA_DIR: guestMediaDir,
         MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
+        MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,
       },
       stdio: "inherit",
     });

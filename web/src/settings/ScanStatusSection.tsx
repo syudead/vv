@@ -8,6 +8,8 @@ import ScanProgressBar from "../shell/ScanProgressBar";
 import { useScan } from "../shell/ScanProvider";
 import { ScanDetail, ScanIssueCounts, ScanStatusIcon } from "../shell/ScanSummaryParts";
 import { presentScan, type ScanPresentation } from "../shell/scanPresentation";
+import ScanIssueList from "./ScanIssueList";
+import { useScanIssues } from "./useScanIssues";
 
 function stateLabel(presentation: ScanPresentation): UiText {
   if (presentation.statusText !== null) return presentation.statusText;
@@ -28,7 +30,7 @@ function failureText(presentation: ScanPresentation): UiText {
 /**
  * ScanStatusSection は設定の「Scan status」の概要である（specs/024-import-progress/ui-design.md
  * 「Settings Scan Status」）。概要（右下の popover）と同じ要素に、分母の意味・取り込み
- * 自体の失敗の理由と再試行だけを足す。
+ * 自体の失敗の理由と再試行・問題の一覧だけを足す。
  */
 export default function ScanStatusSection() {
   const location = useLocation();
@@ -37,6 +39,8 @@ export default function ScanStatusSection() {
   const presentation = presentScan(scan);
   const text = t.settings.scanStatus;
   const retry = () => scan.start();
+  const issues = useScanIssues(scan.scan, scan.refresh);
+  const issueCount = presentation.issues.failed + presentation.issues.substituted;
 
   useLayoutEffect(() => {
     if (location.hash !== "#scan-status") return;
@@ -119,6 +123,13 @@ export default function ScanStatusSection() {
               {t.common.retry}
             </Button>
           </div>
+        )}
+        {(issueCount > 0 || issues.items.length > 0) && (
+          <ScanIssueList
+            list={issues}
+            failed={presentation.issues.failed}
+            substituted={presentation.issues.substituted}
+          />
         )}
       </div>
     </section>

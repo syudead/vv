@@ -342,6 +342,27 @@ export function generateScanProgressFixtures(root) {
 }
 
 /**
+ * generateScanIssueFixtures は、取り込みの問題の一覧（specs/024-import-progress）を実際の
+ * サーバーで確かめるための2つのファイルを作る（web/e2e/scan-issues.e2e.ts）。
+ *
+ * - 読めないファイル: 動画の拡張子を持つ名前付きパイプ。通常のファイルでないので走査は
+ *   読めなかったとして記録する。権限を外す方法は root で動く環境では読めてしまうため使わない。
+ * - 解析できない動画: 動画の拡張子を持つ、動画でない中身のファイル。登録はされるが、解析の
+ *   仕事がやり直しの上限まで失敗する。
+ */
+export const SCAN_ISSUE_UNREADABLE = "scan-issue-unreadable.mp4";
+export const SCAN_ISSUE_BROKEN = "scan-issue-broken.mp4";
+
+export function generateScanIssueFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  run("mkfifo", [path.join(root, SCAN_ISSUE_UNREADABLE)]);
+  writeFileSync(
+    path.join(root, SCAN_ISSUE_BROKEN),
+    "this is not a video; the probe cannot read any stream from it\n".repeat(64),
+  );
+}
+
+/**
  * generateFolderSearchFixtures はフォルダ画面・最上位の検索と絞り込みの検証用の
  * フォルダ構成を作る。
  * `root/A/x 京都.mp4`・`root/A/B/y 京都.mp4`・`root/C/z 京都.mp4` に対応する。

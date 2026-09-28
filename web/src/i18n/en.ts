@@ -16,6 +16,7 @@ type ErrorReason = components["schemas"]["ErrorReason"];
 type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
 type ScanErrorCode = components["schemas"]["ScanErrorCode"];
 type ScanActivityKind = components["schemas"]["ScanActivityKind"];
+type ScanIssueKind = components["schemas"]["ScanIssueKind"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -838,6 +839,60 @@ export const en = {
         fetchFailed: "Rechecking",
       },
       rechecking: "Rechecking the latest status",
+      // 問題の一覧（specs/024-import-progress/ui-design.md「Issue List」）。
+      issues: {
+        heading: "Videos with problems",
+        failed: "Failed",
+        check: "Check",
+        // 影響（その動画がどうなっているか）と理由。種類の漏れは型検査で見つかる
+        // （research.md R-10）。
+        kinds: {
+          unreadable: {
+            impact: "Not added to the library.",
+            reason: "The file couldn't be read.",
+          },
+          changed_during_import: {
+            impact: "Not added to the library.",
+            reason: "The file changed during the scan.",
+          },
+          register_failed: {
+            impact: "Not added to the library.",
+            reason: "Saving it to the library failed.",
+          },
+          probe_failed: {
+            impact: "It may not play.",
+            reason: "It couldn't be analyzed as a video.",
+          },
+          thumbnail_failed: {
+            impact: "It has no thumbnail.",
+            reason: "The thumbnail couldn't be created.",
+          },
+          seek_thumbnail_failed: {
+            impact: "No thumbnails appear while seeking.",
+            reason: "The seek thumbnails couldn't be created.",
+          },
+          preview_failed: {
+            impact: "No preview appears in the list.",
+            reason: "The preview couldn't be created.",
+          },
+          thumbnail_first_frame: {
+            impact: "The thumbnail uses the first frame instead.",
+            reason: "The frame at the usual position couldn't be read.",
+          },
+          seek_thumbnail_full_decode: {
+            impact: "The seek thumbnails were rebuilt from the whole video.",
+            reason: "The usual method didn't work.",
+          },
+        } satisfies Record<ScanIssueKind, { impact: string; reason: string }>,
+        impactAndReason: (impact: string, reason: string) => `${impact} ${reason}`,
+        also: (impacts: readonly string[]) => `Also: ${impacts.join(" ")}`,
+        /** 行のリンクの名前: ファイル名と目印と影響。 */
+        openVideo: (fileName: string, marker: string, impact: string) =>
+          `${fileName}. ${marker}: ${impact} Open the video`,
+        showMore: "Show more",
+        loadingMore: "Loading…",
+        loadFailed: (reason: string) => `Couldn't load the list: ${reason}`,
+      },
     },
     mediaFolders: {
       heading: "Media folders",
