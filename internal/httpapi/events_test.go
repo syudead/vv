@@ -150,8 +150,9 @@ func TestStreamEventsSendsCurrentStateThenOnlyChanges(t *testing.T) {
 	events.VideoChanged(9)
 	events.ProcessingChanged()
 
+	// 仕事の成否で済みの本数が変わるので、残りと一緒に scan も送る。
 	got := map[string]string{}
-	for range 2 {
+	for range 3 {
 		event := nextEvent(t, stream)
 		got[event.name] = event.data
 	}
@@ -167,6 +168,9 @@ func TestStreamEventsSendsCurrentStateThenOnlyChanges(t *testing.T) {
 	}
 	if remaining.Probe != 2 {
 		t.Errorf("processing.probe = %d, want 2（送る直前の値）", remaining.Probe)
+	}
+	if _, ok := got["scan"]; !ok {
+		t.Errorf("ProcessingChanged で scan が送られない: %v", got)
 	}
 }
 
@@ -184,8 +188,8 @@ func TestStreamEventsCoalescesPendingChanges(t *testing.T) {
 	events.VideoChanged(2)
 
 	scan, processing, videos := sub.take()
-	if scan || !processing {
-		t.Errorf("scan = %v, processing = %v, want false と true", scan, processing)
+	if !scan || !processing {
+		t.Errorf("scan = %v, processing = %v, want 両方", scan, processing)
 	}
 	if len(videos) != 2 || videos[0] != 1 || videos[1] != 2 {
 		t.Errorf("videos = %v, want [1 2]", videos)
@@ -277,7 +281,7 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 		t.Fatalf("ScanChanged: scan=%v processing=%v, want 両方", scan, processing)
 	}
 	events.Handle(domain.ProcessingChanged{})
-	if scan, processing, _ := sub.take(); scan || !processing {
+	if scan, processing, _ := sub.take(); !scan || !processing {
 		t.Fatalf("ProcessingChanged: scan=%v processing=%v", scan, processing)
 	}
 	// 同じ動画の続けての変化は1つにまとまる。

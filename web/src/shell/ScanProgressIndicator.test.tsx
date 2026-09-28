@@ -22,6 +22,7 @@ function json(body: unknown, status = 200) {
 function scan(values: Partial<Scan> = {}): Scan {
   return {
     id: 1,
+    status: "running",
     state: "running",
     total: 10,
     completed: 4,

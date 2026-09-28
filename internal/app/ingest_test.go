@@ -18,7 +18,7 @@ func newTestIngest(store *fakeIngestStore, generator *fakeGenerator) (*Ingest, *
 	}), publisher
 }
 
-// 解析に成功したら結果を反映し、プレビューの仕事を積む。
+// 解析に成功したら結果を反映する。プレビューの仕事は保存側が同じ取引で積む。
 func TestIngestProbeSuccess(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
@@ -30,9 +30,6 @@ func TestIngestProbeSuccess(t *testing.T) {
 	}
 	if len(store.appliedProbes) != 1 || store.appliedProbes[0].DurationMs != 1000 {
 		t.Fatalf("反映した解析 = %+v", store.appliedProbes)
-	}
-	if !slices.Equal(store.enqueued, []domain.JobKind{domain.JobPreview}) {
-		t.Fatalf("積んだ仕事 = %v, want [preview]", store.enqueued)
 	}
 }
 
@@ -52,8 +49,8 @@ func TestIngestProbeFailure(t *testing.T) {
 			if err := ingest.Probe(context.Background(), jobFor(domain.JobProbe, video)); err == nil {
 				t.Fatal("失敗が返らない")
 			}
-			if len(store.appliedProbes) != 0 || len(store.enqueued) != 0 {
-				t.Fatalf("失敗なのに書いた: probes=%v enqueued=%v", store.appliedProbes, store.enqueued)
+			if len(store.appliedProbes) != 0 {
+				t.Fatalf("失敗なのに書いた: probes=%v", store.appliedProbes)
 			}
 		})
 	}

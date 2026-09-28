@@ -17,26 +17,19 @@ import (
 // 差し替えたファイルが永久に未解析のままになる。諦めた行を残さないのは、
 // 再スキャンのたびに履歴が積み上がるのを避けるためである。
 func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
-	if _, err := s.db.sql.ExecContext(ctx,
-		`delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
-		string(kind), videoID,
-	); err != nil {
-		return fmt.Errorf("cannot clean up old jobs: %w", err)
-	}
-
-	now := time.Now().Unix()
-	_, err := s.db.sql.ExecContext(ctx, `
-		insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-		values (?, ?, 'queued', 0, ?, ?)
-		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
-		string(kind), videoID, now, now,
-	)
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("cannot queue the job (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot start queueing the job (%s, video=%d): %w", kind, videoID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := requeueJob(ctx, tx, kind, videoID, time.Now().Unix()); err != nil {
+		return err
 	}
 	var c changes
 	c.jobsQueued(kind)
-	s.db.publish(&c)
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return fmt.Errorf("cannot commit queueing the job (%s, video=%d): %w", kind, videoID, err)
+	}
 	return nil
 }
 
@@ -88,9 +81,12 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 	}
 	var c changes
 	if inserted > 0 {
+		if err := addScanVideos(ctx, tx, videoID); err != nil {
+			return err
+		}
 		c.jobsQueued(kind)
 	}
-	if err := s.db.commit(tx, &c); err != nil {
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot commit restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	return nil
@@ -159,6 +155,9 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 		if _, updateErr := conn.ExecContext(ctx, `delete from jobs where id = ?`, job.ID); updateErr != nil {
 			return domain.Job{}, updateErr
 		}
+		if settleErr := refreshScanSettled(ctx, conn, time.Now().Unix()); settleErr != nil {
+			return domain.Job{}, settleErr
+		}
 		if _, commitErr := conn.ExecContext(ctx, `commit`); commitErr != nil {
 			return domain.Job{}, commitErr
 		}
@@ -190,6 +189,9 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 		job.Attempts, locationID, locationVersion, locationPath, time.Now().Unix(), job.ID,
 	); err != nil {
 		return domain.Job{}, fmt.Errorf("cannot take ownership of the job (id=%d): %w", job.ID, err)
+	}
+	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
+		return domain.Job{}, err
 	}
 
 	if _, err := conn.ExecContext(ctx, `commit`); err != nil {
@@ -224,9 +226,15 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 	return cond
 }
 
-// CompleteJob はジョブを完了にする。
+// CompleteClaimedJob はジョブを完了にする。専有した時点の所在と内容が今も同じなら
+// done に、変わっていれば queued へ戻す。
 func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
-	_, err := s.db.sql.ExecContext(ctx, `
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot start recording job completion (id=%d): %w", job.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `
 		update jobs set
 		state = case when exists (
 			select 1 from video_locations l join videos v on v.id = l.video_id
@@ -241,14 +249,29 @@ func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) er
 	if err != nil {
 		return fmt.Errorf("cannot record job completion (id=%d): %w", job.ID, err)
 	}
+	var c changes
+	c.remainingChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return fmt.Errorf("cannot commit job completion (id=%d): %w", job.ID, err)
+	}
 	return nil
 }
 
 // CompleteJob は専有時点の所在を確かめずに完了を記録する。専有の控えを
 // 持たない呼び出し（テストの準備など）のために残している。
 func (s *IngestStore) CompleteJob(ctx context.Context, id int64) error {
-	_, err := s.db.sql.ExecContext(ctx, `update jobs set state = 'done', last_error = null, updated_at = ? where id = ?`, time.Now().Unix(), id)
-	return err
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `update jobs set state = 'done', last_error = null, updated_at = ? where id = ?`,
+		time.Now().Unix(), id); err != nil {
+		return err
+	}
+	var c changes
+	c.remainingChanged()
+	return s.db.commit(ctx, tx, &c)
 }
 
 // FailJob は専有時点の所在を確かめずに失敗を記録する。専有の控えを持たない
@@ -272,7 +295,9 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 		string(state), reason, time.Now().Unix(), id); err != nil {
 		return err
 	}
-	return tx.Commit()
+	var c changes
+	c.remainingChanged()
+	return s.db.commit(ctx, tx, &c)
 }
 
 // FailClaimedJob は失敗を記録する。queued へ戻すか failed で止めるかは
@@ -329,7 +354,9 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	var c changes
+	c.remainingChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot commit the job failure (id=%d): %w", job.ID, err)
 	}
 	return nil
@@ -352,10 +379,8 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 
 	switch job.Kind {
 	case domain.JobProbe:
-		// pending のときだけ書く。app.Ingest.Probe は結果を保存して done にしたあとで
-		// プレビューのジョブを積み、そこで失敗してもエラーを返す。保存済みの結果を
-		// 失敗で上書きしないためである。欠けたプレビューのジョブは、次の手動の
-		// 取り込みで走査が積み直す（Scanner.ensurePendingJobs）。
+		// pending のときだけ書く。解析の結果を保存して done にしたあとの失敗
+		// （仕事の完了の記録など）で、保存済みの結果を失敗で上書きしないためである。
 		if _, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, probe_error_code = ?,
 			playable = 0, updated_at = ?
 			where probe_state = 'pending' and `+identity,
@@ -421,7 +446,12 @@ func jobIdentityCurrent(ctx context.Context, q rowQueryer, job domain.Job) (bool
 // これがあるので、取り込みの途中でプロセスを止めても次の起動で再開でき、
 // 同じ処理を二重に行うこともない。
 func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
-	res, err := s.db.sql.ExecContext(ctx,
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx,
 		`update jobs set state = 'queued', updated_at = ? where state = 'running'`,
 		time.Now().Unix())
 	if err != nil {
@@ -432,10 +462,12 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}
+	var c changes
 	if affected > 0 {
-		var c changes
 		c.jobsQueued(domain.JobKinds...)
-		s.db.publish(&c)
+	}
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}
 	return affected, nil
 }

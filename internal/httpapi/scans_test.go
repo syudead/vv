@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -75,6 +77,73 @@ func TestGetCurrentScan(t *testing.T) {
 	}
 	if scan.Total != 12 || scan.Completed != 11 || scan.Failed != 1 {
 		t.Errorf("進捗 = %+v", scan)
+	}
+}
+
+// 取り込みの状態・本数・完了の時刻は、internal/app が組み立てた値をそのまま返す。
+// finding のあいだは本数を、done・partial 以外では完了の時刻を省く
+// （specs/024-import-progress/contracts/scan-api.md §2）。
+func TestGetCurrentScanReturnsImportProgress(t *testing.T) {
+	settledAt := time.Unix(1_700_000_100, 0).UTC()
+	for _, tc := range []struct {
+		name        string
+		progress    domain.ImportProgress
+		wantStatus  gen.ScanStatus
+		wantVideos  *gen.ScanVideos
+		wantSettled bool
+	}{
+		{
+			name:       "finding",
+			progress:   domain.ImportProgress{Status: domain.ImportFinding},
+			wantStatus: gen.ScanStatusFinding,
+		},
+		{
+			name:       "running",
+			progress:   domain.ImportProgress{Status: domain.ImportRunning, Counted: true, Total: 10, Settled: 4},
+			wantStatus: gen.ScanStatusRunning,
+			wantVideos: &gen.ScanVideos{Total: 10, Settled: 4},
+		},
+		{
+			name: "done",
+			progress: domain.ImportProgress{Status: domain.ImportDone, Counted: true, Total: 10, Settled: 10,
+				SettledAt: settledAt},
+			wantStatus:  gen.ScanStatusDone,
+			wantVideos:  &gen.ScanVideos{Total: 10, Settled: 10},
+			wantSettled: true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := newTestServer(t, Options{Scans: &fakeScans{
+				hasScan: true,
+				current: domain.Scan{ID: 3, State: domain.ScanDone, Import: tc.progress},
+			}})
+			rec := do(t, handler, http.MethodGet, "/api/scans/current")
+			if rec.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body)
+			}
+			var raw map[string]any
+			if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := raw["status"]; !ok {
+				t.Fatalf("status が無い: %s", rec.Body)
+			}
+			scan := decode[gen.Scan](t, rec)
+			if scan.Status != tc.wantStatus {
+				t.Errorf("status = %q, want %q", scan.Status, tc.wantStatus)
+			}
+			if (scan.Videos == nil) != (tc.wantVideos == nil) ||
+				(scan.Videos != nil && *scan.Videos != *tc.wantVideos) {
+				t.Errorf("videos = %+v, want %+v", scan.Videos, tc.wantVideos)
+			}
+			if tc.wantSettled {
+				if scan.SettledAt == nil || !scan.SettledAt.Equal(settledAt) {
+					t.Errorf("settledAt = %v, want %v", scan.SettledAt, settledAt)
+				}
+			} else if scan.SettledAt != nil {
+				t.Errorf("settledAt = %v, want 省略", scan.SettledAt)
+			}
+		})
 	}
 }
 

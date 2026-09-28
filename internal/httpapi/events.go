@@ -119,8 +119,13 @@ func (e *Events) ScanChanged() {
 }
 
 // ProcessingChanged は段階ごとの残りが変わったかもしれないことを知らせる。
+// 仕事の成否で直近の取り込みの済みの本数と状態も変わるので、scan も送る
+// （specs/024-import-progress/contracts/scan-api.md §4）。
 func (e *Events) ProcessingChanged() {
-	e.publish(func(s *eventSubscriber) { s.processing = true })
+	e.publish(func(s *eventSubscriber) {
+		s.scan = true
+		s.processing = true
+	})
 }
 
 // VideoChanged は動画の状態が変わったことを知らせる。

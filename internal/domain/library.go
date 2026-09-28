@@ -164,6 +164,30 @@ type Scan struct {
 	// ErrorPath は理由が結び付く場所（メディアフォルダ、または読めなかった場所）の
 	// 絶対パス。特定の場所に結び付かなければ空である。
 	ErrorPath string
+	// Videos はこの走査の対象の動画の本数、SettledVideos はそのうち残りの仕事が
+	// 無い本数である（specs/024-import-progress/data-model.md §2）。
+	Videos        int
+	SettledVideos int
+	// SettledAt は対象の動画がすべて済んだ時刻。済んでいなければゼロ値である。
+	SettledAt time.Time
+	// Import は利用者に見せる取り込みの状態で、internal/app が組み立てる。
+	// 保存側は埋めない。
+	Import ImportProgress
+}
+
+// Tally は走査の記録から、取り込みの状態を決める入力を作る。問題の数は
+// 呼び出し側が渡す。
+func (s Scan) Tally(unregisteredIssues, failedIssues int) ImportTally {
+	return ImportTally{
+		State:              s.State,
+		ScanTotal:          s.Total,
+		ScanCompleted:      s.Completed,
+		ScanFailed:         s.Failed,
+		Videos:             s.Videos,
+		SettledVideos:      s.SettledVideos,
+		UnregisteredIssues: unregisteredIssues,
+		FailedIssues:       failedIssues,
+	}
 }
 
 // ScanProgress は進捗の値である。
