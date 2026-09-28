@@ -35,7 +35,9 @@ ffmpeg 6.1.1（Ubuntu 24.04 のパッケージ。`--enable-libvpl`、NVENC・VAA
   `ffmpeg -f lavfi -i testsrc2=size=256x144:rate=30 -frames:v 8 <R-7 のエンコード引数> -f null -`
   を実行し、終了コード 0 なら「使える」とする。対象は OS で決める（linux: NVENC・Quick Sync・VAAPI、
   windows: NVENC・Quick Sync、darwin: VideoToolbox。それ以外の組は `unsupported_os` で「使えない」）。
-  先に `ffmpeg -encoders` を 1 回読み、名前の無いエンコーダーは実行せずに `encoder_missing` とする。
+  先に `ffmpeg -encoders` を 1 回、同じ上限時間の中で読み、名前の無いエンコーダーは実行せずに
+  `encoder_missing` とする。`-encoders` が上限時間を超えたら、確認対象をすべて `timed_out` にして
+  結果を返す（「確認中」のまま残さない）。
   実エンコードの失敗は `check_failed`（標準エラーの末尾をログに残す）、上限時間
   （`encoderCheckTimeout`、エンコーダーごとに 10 秒）の超過は `timed_out`。確認は並行して走らせ、
   HTTP の待ち受けを待たせない（[R-3](#r-3-実際に使う方式はドメインの純粋関数が決めapp-がメモリに持つ)
@@ -44,7 +46,9 @@ ffmpeg 6.1.1（Ubuntu 24.04 のパッケージ。`--enable-libvpl`、NVENC・VAA
   ビルドに含まれていてもデバイスやドライバーが無い場合（Docker に GPU を渡していない、`/dev/dri` の
   権限が無い、NVIDIA のライブラリが無い）を見分けられず、実エンコードだけがそれを一度に確かめる。
   `lavfi` の合成入力はどのビルドにもあり、入力ファイルを要らなくする。並行にするのは、固まった
-  エンコーダーが 1 つあっても全体の待ちが 10 秒で済むようにするためである。
+  エンコーダーが 1 つあっても全体の待ちが 10 秒で済むようにするためである（`-encoders` の
+  読み取りを含めて最悪 20 秒）。`-encoders` にも上限を掛けるのは、それが固まると後の確認が始まらず、
+  画面が確認中のまま読み直しを続けるからである。
 - Alternatives considered: `-encoders` の有無だけ（上記）。デバイスファイル（`/dev/dri/renderD128`、
   `/dev/nvidia*`）の存在で判定（ドライバーの不一致やセッション上限を見ない）。順に実行（最悪 30 秒）。
   確認が終わるまで起動を待つ（Edge Case「起動時の確認が遅い、または固まる」に反する）。
@@ -197,3 +201,17 @@ ffmpeg 6.1.1（Ubuntu 24.04 のパッケージ。`--enable-libvpl`、NVENC・VAA
   そのまま使う。
 - Alternatives considered: GPU 付きの self-hosted runner（この feature の範囲で用意できない）。
   実機の確認を省く（要件 10 の約束が符号化器の option の綴りに依るので、実機で ffprobe する必要がある）。
+
+## R-11: 設定画面の説明文は、公開文書サイトの節を指す
+
+- Decision: 「動画の変換」区画の説明文は、GitHub Pages の文書サイトにある
+  `docs/how-to/running-vv.md` の「Hardware encoding」節
+  （`https://syudead.github.io/vv/docs/how-to/running-vv#hardware-encoding`）への外部リンクを持ち、
+  新しいタブで開く。URL は `web/src/settings` の定数に 1 つだけ置く。
+- Rationale: SPA はリポジトリの Markdown を配信しないので、相対リンクでは動かない。
+  [docs/how-to/docs-site.md](../../docs/how-to/docs-site.md) のとおり `docs/` は `main` に入るたびに
+  このサイトへ公開され（`cleanUrls` で `.md` を付けない）、README も利用者をここへ案内している。
+  見出しの anchor は GitHub と同じ規則で作られる。
+- Alternatives considered: GitHub の blob の URL（`main` のソースの表示で、利用者向けの公開先ではない）。
+  SPA に文書を同梱して配信する（文書の配信を新しく持ち込むことになり、要件 14 の「該当箇所が分かる」
+  に対して過大）。

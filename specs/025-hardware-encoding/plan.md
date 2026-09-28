@@ -107,7 +107,7 @@ Phase 1 のあとも判定は同じである。Complexity Tracking に載せる�
 specs/025-hardware-encoding/
 ├── plan.md                              # This file
 │                                        # No spec.md — the parent Issue is the specification
-├── research.md                          # 実行環境、確認、決定の規則、保存先、切り替え、引数、API、文書、検査
+├── research.md                          # 実行環境、確認、決定の規則、保存先、切り替え、引数、API、文書、検査、文書への案内
 ├── data-model.md                        # settings 表とメモリに持つ値
 ├── quickstart.md                        # GPU のあるホストでの実機の確認
 └── contracts/
@@ -188,11 +188,12 @@ store を読む案は依存方向に反する。
 - `LiveTranscodeRequest.VideoEncoder` を受け取り、`Start` の梯子のエンコードの段を
   「ハードウェア → ソフトウェア」の 2 段にする。使った方式と、切り替えたときのハードウェアの誤りを
   `LiveTranscode` に載せる（[R-6](research.md#r-6-要求の中での切り替えはエンコードの段でハードウェア--ソフトウェアの順に試す)）。
-- `EncoderCheck`: `-encoders` の読み取りと、方式ごとの短い実エンコード
+- `EncoderCheck`: 上限時間つきの `-encoders` の読み取りと、方式ごとの短い実エンコード
   （[R-2](research.md#r-2-起動時の確認はエンコーダーごとに短い実エンコードを並行して走らせる)）。
   前の単位の checker interface を満たす。
 
-**Dependencies**: None（interface の形は前の単位と合わせる。同時に進めるときは先に合わせる）。
+**Dependencies**: `ライブ変換の映像エンコード方式を保存し、起動時の確認結果から実際に使う方式を決める`
+（`domain.VideoEncoder`・`EncoderAvailability` と checker interface を使う）。
 
 **Acceptance**: 次の検査があり、`task check` が通る。
 - 引数のテスト: `software` の引数が今のテストの期待と 1 文字も変わらない。各ハードウェアの方式で
@@ -201,7 +202,8 @@ store を読む案は依存方向に反する。
 - helper process のテスト: ハードウェアが最初のデータを出さずに終わると、同じ要求の中で `libx264`
   で始まり、`LiveTranscode` に切り替えの事実が載る。期限切れと取り消しでは切り替えない。最初の
   データを出したあとの失敗では切り替えない。
-- `EncoderCheck` のテスト: `-encoders` に無い方式は実行せずに `encoder_missing`。実エンコードの
+- `EncoderCheck` のテスト: `-encoders` に無い方式は実行せずに `encoder_missing`。`-encoders` が
+  上限時間を超えて固まると、確認対象がすべて `timed_out` になり結果が返る。実エンコードの
   失敗は `check_failed`、固まる helper は上限時間で `timed_out`、成功は `available`。
 - ffmpeg 付きの既存のテスト（回転・縦横比・4K・キーフレーム間隔・MOV・切断時の後始末）が
   そのまま通る。
@@ -237,9 +239,10 @@ store を読む案は依存方向に反する。
 
 **Scope**: 設定画面の区画。基準は親 Issue の「UI品質」と「要件 1・6・8」。
 - `web/src/api/client.ts`: `getTranscodingSettings`・`updateTranscodingSettings`。
-- `web/src/settings/TranscodingSection.tsx`: 見出し・説明（`docs/how-to/running-vv.md` の
-  「Hardware encoding」への案内）・「今使われている方式」・選択肢（radio、1 行に 1 つ、方式名と
-  状態）。使えない方式は選べず理由を添える。確認中は「確認中」を出し、終わるまで数秒ごとに
+- `web/src/settings/TranscodingSection.tsx`: 見出し・説明（公開文書サイトの
+  `docs/how-to/running-vv.md`「Hardware encoding」への外部リンク。
+  [R-11](research.md#r-11-設定画面の説明文は公開文書サイトの節を指す)）・「今使われている方式」・
+  選択肢（radio、1 行に 1 つ、方式名と状態）。使えない方式は選べず理由を添える。確認中は「確認中」を出し、終わるまで数秒ごとに
   読み直す（[R-5](research.md#r-5-変更の知らせは出さず画面は表示時と保存の応答で合わせる)）。
   選んだ時点で保存し、保存中は「保存中…」を出して二重の変更を防ぐ。失敗したら選択を元に戻し、
   区画内に理由を出す。`fallbackReason` の警告は `text-warning` で選択肢より上に出す。
@@ -259,6 +262,8 @@ store を読む案は依存方向に反する。
     方式」が変わる。
   - `PUT` の失敗で選択が元に戻り、区画内に `role="alert"` の理由が出る（受け入れ条件 10）。
   - `fallbackReason: selected_unavailable` で警告が選択肢より上に出る。
+  - 説明文のリンクの `href` が R-11 の URL で、新しいタブで開く（`target="_blank"`・
+    `rel="noreferrer"`）。
   - `checking: true` で確認中の表示になり、`false` を返す応答で置き換わる。
   - 疑似ロケールの検査（`expectCatalogTextOnly`）を通り、ゲストの画面に区画が無い
     （`/settings` が所有者だけであることを既存のテストで確かめる）。
