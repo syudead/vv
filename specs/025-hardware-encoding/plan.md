@@ -25,9 +25,11 @@ SQLite に保存し、再起動なしに次の変換の要求から効かせる�
   （[contracts/transcoding-settings-api.md](contracts/transcoding-settings-api.md)）と、設定画面の
   区画。見た目と操作の基準は親 Issue の「UI品質」がそのまま仕様である（`ui` ラベルは無く、
   design 段階は無い）。
-- **同梱イメージ**: 実行環境を Debian に変えて 3 つの方式を使えるようにし、GPU を渡す手順を
-  文書に書く（[R-1](research.md#r-1-同梱イメージの実行環境を-alpine-から-debian-に変える)、
-  [R-9](research.md#r-9-gpu-をコンテナに渡す設定は-override-ファイルの例として文書に置く)）。
+- **同梱イメージと文書**: 同梱の Docker イメージは `main` と同じ Alpine のままソフトウェア
+  エンコードだけとし、コンテナの中では起動時の確認がハードウェアの方式をすべて使えないと報告する。
+  ハードウェアエンコードはホスト（Windows・Linux・macOS）に直接入れた VVMDM で使い、その前提と
+  手順を文書に書く（[R-1](research.md#r-1-同梱イメージは-alpine-のままにしソフトウェアエンコードだけにする)、
+  [R-9](research.md#r-9-ハードウェアエンコードはホストへの直接インストールで使い文書に前提と手順を書く)）。
 
 ## Technical Context
 
@@ -59,11 +61,13 @@ SQLite に保存し、再起動なしに次の変換の要求から効かせる�
 
 **Feature-specific context**:
 
-- Go と npm の依存は足さない。実行環境の変更は Docker イメージの側だけである（R-1）。
-  `linux/arm64` のイメージには Intel のパッケージが無いので、ffmpeg だけを入れる。
+- Go と npm の依存は足さない。`Dockerfile` と compose のファイルは `main` から変えない（R-1）。
+  ハードウェアエンコードの前提（ドライバー、ハードウェアエンコーダーを含む ffmpeg）は、直接
+  インストールするホストの側で利用者が用意する（R-9）。
 - SQLite は表を 1 つ足す（[data-model.md](data-model.md)）。移行は `internal/store/migrations` の
   次の番号を使う。
-- ハードウェアエンコーダーは CI に無い。実機の確認は [quickstart.md](quickstart.md) で行い、
+- ハードウェアエンコーダーは CI に無い。実機の確認は GPU のあるホストに直接入れて
+  [quickstart.md](quickstart.md) で行い、
   自動テストは ffmpeg を差し替える（R-10）。
 - 親 Issue の要件 10 は #371（`main` に入っている）の「出力の時刻で 2 秒以下」のキーフレーム間隔を
   含む。`-force_key_frames` の指定は方式に依らず共通なので、そのまま守る（R-7）。
@@ -129,8 +133,9 @@ specs/025-hardware-encoding/
 - `api/openapi.yaml`・`internal/httpapi`（新しい経路、`transcode.go`、`requiresJSONBody`）・
   `cmd/mdm/main.go`
 - `web/src/api`・`web/src/settings`・`web/src/i18n`
-- `Dockerfile`・`compose.yaml`・`compose.hosting.yaml`・`docs/how-to/running-vv.md`・
-  `docs/how-to/hosting-vv.md`・`ARCHITECTURE.md`・`docs/design-docs/`
+- `docs/how-to/running-vv.md`・`docs/how-to/hosting-vv.md`・`ARCHITECTURE.md`・`docs/design-docs/`
+  （`Dockerfile`・`compose.yaml`・`compose.hosting.yaml` は `main` のままで、この feature の差分に
+  含めない）
 
 **New paths**:
 
@@ -268,22 +273,26 @@ store を読む案は依存方向に反する。
   - 疑似ロケールの検査（`expectCatalogTextOnly`）を通り、ゲストの画面に区画が無い
     （`/settings` が所有者だけであることを既存のテストで確かめる）。
 
-### Docker イメージでハードウェアエンコーダーを使えるようにし、GPU をコンテナに渡す手順を書く
+### Docker イメージはソフトウェアエンコードのままにし、ハードウェアエンコードを直接インストールで使う手順を書く
 
-**Scope**: 同梱イメージと利用者向けの文書。
-- `Dockerfile`: 実行段を Debian にし、ffmpeg と `linux/amd64` の Intel/AMD のドライバーを入れる
-  （[R-1](research.md#r-1-同梱イメージの実行環境を-alpine-から-debian-に変える)）。`HEALTHCHECK` の
-  `wget` は Debian に合わせる。
-- `compose.yaml`・`compose.hosting.yaml`: 文書の節へのコメント
-  （[R-9](research.md#r-9-gpu-をコンテナに渡す設定は-override-ファイルの例として文書に置く)）。
-- `docs/how-to/running-vv.md`: 「Hardware encoding」の節（方式ごとの前提、Intel/AMD と NVIDIA の
-  override の例、設定画面での有効化）。`docs/how-to/hosting-vv.md` から節を指す。
-- [quickstart.md](quickstart.md) を GPU のあるホストで実行し、結果を PR の本文に残す。
+**Scope**: 同梱イメージの範囲の確定と利用者向けの文書。
+- `Dockerfile`・`compose.yaml`・`compose.hosting.yaml`: `main` と同じにする（実行段は Alpine で
+  `ffmpeg` だけを入れる。GPU のドライバーも GPU を渡す設定も足さない。
+  [R-1](research.md#r-1-同梱イメージは-alpine-のままにしソフトウェアエンコードだけにする)）。feature ブランチにこれと違う
+  変更があれば `main` の内容に戻す。
+- `docs/how-to/running-vv.md`: 「Hardware encoding」の節（ハードウェアエンコードにはホストへの直接
+  インストールが要ること、同梱の Docker イメージはソフトウェアエンコードだけで、コンテナの中では
+  ハードウェアの方式がすべて使えないと表示されること、方式ごとの前提（ドライバー、デバイス、OS、
+  ハードウェアエンコーダーを含む ffmpeg）、直接インストールの手順への案内、設定画面での有効化）。
+  GPU をコンテナに渡す override の例は置かない
+  （[R-9](research.md#r-9-ハードウェアエンコードはホストへの直接インストールで使い文書に前提と手順を書く)）。
+  `docs/how-to/hosting-vv.md` から節を指す。
+- [quickstart.md](quickstart.md) を GPU のあるホストに直接入れて実行し、結果を PR の本文に残す。
 
 **Dependencies**: `設定画面に「動画の変換」区画を足し、方式の選択と使える方式の表示を行う`。
 
-**Acceptance**: `task check-docs` が通り、CI の `Docker image` のビルド（`linux/amd64,linux/arm64`）が
-通る。イメージの `ffmpeg -encoders` に `h264_nvenc`・`h264_qsv`・`h264_vaapi` がある
-（`docker compose run --rm --entrypoint ffmpeg mdm -hide_banner -encoders`）。文書を読んで
-Intel/AMD と NVIDIA の GPU を渡し、設定画面から有効にできる（受け入れ条件 11）。quickstart の
-各手順の結果が PR の本文にある。
+**Acceptance**: `task check-docs` が通る。`Dockerfile` と compose のファイルに `main` との差分が無く、
+CI の `Docker image` のビルド（`linux/amd64,linux/arm64`）が通る。同梱イメージで起動すると、設定画面で
+ハードウェアの方式がすべて使えない状態で表示され、ライブ変換はソフトウェアで動く。文書を読んで、
+直接インストールしたホストで前提を満たし、設定画面からハードウェアエンコードを有効にできる
+（受け入れ条件 11）。quickstart の各手順の結果が PR の本文にある。
