@@ -110,87 +110,73 @@ nothing and ask you to use the setup screen.
 
 Videos that a browser cannot play are converted while they stream. By default
 the conversion uses the CPU (software encoding). A GPU can do the video part
-of that conversion instead, which lowers the CPU load. Hardware encoding is off
-until you pass a GPU to the container and choose it in Settings.
+of that conversion instead, which lowers the CPU load.
+
+Hardware encoding works only when VVMDM runs directly on the host (Windows,
+Linux or macOS). The Docker image, both with `task up` and the published image
+in [Hosting VVMDM](hosting-vv.md), uses software encoding only: it carries no
+GPU drivers, and passing a GPU to the container does not enable a hardware
+encoder. Inside the container, Settings shows every hardware encoder as not
+available, and conversions use software.
 
 ### What each encoder needs
 
-| Encoder in Settings  | GPU and host                                                                                     | What the container needs                     |
-| -------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------- |
-| NVENC (NVIDIA)       | An NVIDIA GPU with NVENC on Linux, with the NVIDIA driver and the NVIDIA Container Toolkit       | The GPU through the NVIDIA Container Toolkit |
-| Quick Sync (Intel)   | An Intel GPU supported by the oneVPL GPU runtime (Iris Xe, 11th-generation Core or newer), Linux | `/dev/dri`                                   |
-| VAAPI (Intel/AMD)    | An Intel GPU (Broadwell or newer) or an AMD GPU with a video encoder, Linux                      | `/dev/dri`                                   |
-| VideoToolbox (macOS) | A Mac running VVMDM directly, not in Docker                                                      | Not available in Docker                      |
+VVMDM does not bundle FFmpeg or GPU drivers on a direct install. It runs the
+`ffmpeg` found on `PATH`, so that build must include the encoder, and the host
+must have the driver and the device.
 
-The image carries FFmpeg with all three Linux encoders. On `linux/amd64` it
-also carries the Intel VAAPI driver, the Quick Sync runtime and the AMD VAAPI
-driver. The NVIDIA libraries come from the host through the NVIDIA Container
-Toolkit and are not in the image. The `linux/arm64` image has FFmpeg without
-the Intel and AMD drivers.
+| Encoder in Settings  | Operating system | GPU and driver                                                                                                               |
+| -------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| NVENC (NVIDIA)       | Linux, Windows   | An NVIDIA GPU with NVENC and the NVIDIA driver                                                                               |
+| Quick Sync (Intel)   | Linux, Windows   | An Intel GPU supported by the oneVPL GPU runtime (Iris Xe, 11th-generation Core or newer), the Intel driver and that runtime |
+| VAAPI (Intel/AMD)    | Linux            | An Intel GPU (Broadwell or newer) or an AMD GPU with a video encoder, a VA-API driver, and access to `/dev/dri/renderD128`   |
+| VideoToolbox (macOS) | macOS            | A Mac; the driver is part of macOS                                                                                            |
 
-VAAPI uses the render node `/dev/dri/renderD128` inside the container. On a
-host with more than one GPU, map the one you want to that name, as in the
-example below.
-
-### Pass the GPU to the container
-
-Do not add these lines to `compose.yaml`: a container that asks for a device the
-host does not have fails to start. With `task up`, put them in a
-`compose.override.yaml` next to `compose.yaml`. Docker Compose merges that file
-automatically. With the published image, add them to the `mdm` service in
-[`compose.hosting.yaml`](../../compose.hosting.yaml)
-([Hosting VVMDM](hosting-vv.md)).
-
-**Intel or AMD (Quick Sync and VAAPI).** Find the group that owns the render
-node on the host, then pass `/dev/dri` and that group:
+On Linux, Quick Sync and VAAPI open the GPU through `/dev/dri`, so the user
+that runs VVMDM needs read and write access to `/dev/dri/renderD128`, usually
+through the group that owns it (often `render` or `video`):
 
 ```bash
-stat -c %g /dev/dri/renderD128
+ls -l /dev/dri/renderD128
+sudo usermod -aG render "$USER"   # then sign out and in again
 ```
 
-```yaml
-services:
-  mdm:
-    devices:
-      - /dev/dri:/dev/dri
-      # With more than one GPU, pass only the one you want under the name VAAPI uses:
-      # - /dev/dri/renderD129:/dev/dri/renderD128
-    group_add:
-      # The number printed by the stat command above.
-      - "993"
-```
+VAAPI uses `renderD128`, the first GPU. Consumer NVIDIA GPUs limit how many
+NVENC sessions run at the same time; a conversion that the GPU refuses falls
+back to software encoding.
 
-**NVIDIA (NVENC).** Install the NVIDIA driver and the
-[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-on the host and configure Docker for it. Then reserve the GPU and ask for the
-CUDA and video libraries (NVENC opens a CUDA context):
-
-```yaml
-services:
-  mdm:
-    environment:
-      NVIDIA_DRIVER_CAPABILITIES: "compute,video,utility"
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-```
-
-Consumer NVIDIA GPUs limit how many NVENC sessions run at the same time. A
-conversion that the GPU refuses falls back to software encoding.
-
-Recreate the container after changing these lines (`task up`, or
-`docker compose up -d`). To check that FFmpeg in the image has the encoders:
+Check that the `ffmpeg` on `PATH` has the encoder you want (`h264_nvenc`,
+`h264_qsv`, `h264_vaapi` or `h264_videotoolbox`):
 
 ```bash
-docker compose run --rm --entrypoint ffmpeg mdm -hide_banner -encoders
+ffmpeg -hide_banner -encoders
 ```
 
-The list includes `h264_nvenc`, `h264_qsv` and `h264_vaapi` whether or not a
-GPU is passed; having an encoder in the list does not mean the GPU works.
+Having an encoder in the list does not mean the GPU works; VVMDM tests it when
+it starts (below). If an encoder is missing, install an FFmpeg build that
+includes it, for example one linked from
+[ffmpeg.org](https://ffmpeg.org/download.html).
+
+### Run VVMDM directly on the host
+
+Set up the toolchain as described in
+[Development](development.md#set-up-the-toolchain), then build the single
+binary from the repository root:
+
+```bash
+mise exec --command "task build"
+```
+
+This produces `bin/mdm` (the SPA is embedded in it). Start it with an absolute
+data directory, and the other [Runtime settings](#runtime-settings) as needed:
+
+```bash
+MDM_DATA_DIR=/absolute/path/to/vv-data ./bin/mdm
+```
+
+On Windows, `MDM_DATA_DIR` must include the drive letter. Open
+<http://localhost:8080>, finish the [Account setup](#account-setup), and add
+your media folders in Settings.
 
 ### Turn it on in Settings
 
@@ -198,17 +184,19 @@ VVMDM tests each hardware encoder with a short encode every time it starts.
 Open **Settings** as the owner and go to **Video conversion**:
 
 - encoders that passed the test can be selected; the others show the reason,
-  for example "Not found on this server" or "The test encode failed";
+  for example "Not supported on this server's operating system", "Not found on
+  this server" or "The test encode failed";
 - choose one encoder, or **Automatic** to use the first available of NVENC,
   Quick Sync, VAAPI and VideoToolbox, falling back to software;
 - **In use now** shows the encoder that conversions use.
 
 The choice is kept across restarts. If the chosen encoder is not available
-after a restart (for example, the GPU is no longer passed), VVMDM converts with
-software and Settings says so. When the hardware encoder cannot start a
-conversion, for example because the GPU is busy, that conversion uses software. The startup log shows the
-result of each test (`transcode video encoder checks finished`), and a failed
-test is logged with the end of FFmpeg's error output.
+after a restart (for example, the driver was removed or VVMDM now runs in the
+Docker image), VVMDM converts with software and Settings says so. When the
+hardware encoder cannot start a conversion, for example because the GPU is
+busy, that conversion uses software. The startup log shows the result of each
+test (`transcode video encoder checks finished`), and a failed test is logged
+with the end of FFmpeg's error output.
 
 ## Data and recovery
 

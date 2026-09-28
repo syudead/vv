@@ -301,6 +301,19 @@ describe("TranscodingSection", () => {
     expect(link.getAttribute("rel")).toBe("noreferrer");
   });
 
+  it("says hardware encoding needs a direct install and Docker is software only", async () => {
+    fetchMock.mockResolvedValue(json(settings()));
+    render(<TranscodingSection />);
+
+    const link = await screen.findByRole("link", {
+      name: /How to set up hardware encoding/,
+    });
+    const description = link.parentElement?.textContent ?? "";
+    expect(description).toContain("VVMDM running directly on the server");
+    expect(description).toContain("the Docker image uses software only");
+    expect(description).not.toMatch(/pass the GPU|container/i);
+  });
+
   it("shows checking and polls until the checks finish", async () => {
     let gets = 0;
     fetchMock.mockImplementation(() => {

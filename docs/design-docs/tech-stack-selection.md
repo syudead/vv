@@ -39,7 +39,7 @@
 | 動画配信 | 対応形式は `http.ServeContent`、非対応形式はリクエスト単位の fragmented MP4 ライブ変換 | 元ファイルの Range 配信を標準実装に任せ、変換結果は保存しない（[ライブ変換のシーク](live-transcode-seek.md)） |
 | フロント | React + Vite + React Router + Tailwind CSS | 静的ビルドを Go バイナリに `embed` して配る SPA。画面遷移は React Router で管理する |
 | API 契約 | OpenAPI 3.1 を真実とし、Go は `oapi-codegen`、TS は `openapi-typescript` で生成 | 2言語構成で唯一増えるコスト（型のずれ）を機械的に防ぐ |
-| DB | SQLite（`modernc.org/sqlite`、CGO 不要、WAL モード） | 静的バイナリのままクロスコンパイルでき、実行環境のイメージを選ばない |
+| DB | SQLite（`modernc.org/sqlite`、CGO 不要、WAL モード） | 静的バイナリのままクロスコンパイルでき、alpine ベースの小さいイメージに載る |
 | クエリ | `database/sql` で SQL を手書き | FTS5 を含む SQL を一次資料として保てる |
 | マイグレーション | `goose`（`embed.FS` にマイグレーションを同梱） | 外部ツールのインストール不要でバイナリ単体で適用できる |
 | 全文検索 | SQLite FTS5（`tokenize='trigram'`） | 日本語をトークナイザ追加なしで部分一致検索できる。外部検索エンジン不要 |
@@ -49,7 +49,7 @@
 | ログ | 標準ライブラリ `log/slog`（JSON ハンドラ） | 追加依存なしで構造化ログになる |
 | テスト | Go 標準 `testing` + `net/http/httptest`（Range の検証）+ Playwright（再生の E2E） | 「実際に再生が始まる」ことは E2E でしか担保できない |
 | lint | `golangci-lint`（`depguard` で層をまたぐ import を禁止） | 依存方向の制約を CI で機械的に落とせる |
-| 配布 | Docker（multi-stage、Debian slim + ffmpeg）+ Compose | CGO 不要なので土台を選ばない。実行段は、NVIDIA Container Toolkit が渡す glibc のライブラリを読めるよう Debian にした（[025 research R-1](../../specs/025-hardware-encoding/research.md#r-1-同梱イメージの実行環境を-alpine-から-debian-に変える)） |
+| 配布 | Docker（multi-stage、alpine + ffmpeg）+ Compose | CGO 不要なので alpine でそのまま動き、イメージが小さい |
 
 依存方向とパッケージの責務は [ARCHITECTURE.md](../../ARCHITECTURE.md#intended-dependency-direction) に記す。
 SQLite には再構築できる索引と利用者データが共存するため、復旧時の区別は

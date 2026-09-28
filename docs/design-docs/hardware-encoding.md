@@ -16,7 +16,7 @@
 
 ライブ変換の映像は `libx264` でエンコードしていた。サーバーに GPU があれば、NVENC・Quick Sync・
 VAAPI・VideoToolbox で CPU の負荷を下げられる。ただし、ffmpeg のビルドに符号化器があっても、
-デバイスやドライバーが無ければ使えない（Docker に GPU を渡していない、`/dev/dri` の権限が無い、
+デバイスやドライバーが無ければ使えない（同梱の Docker イメージの中、`/dev/dri` の権限が無い、
 NVIDIA のライブラリが無い）。
 
 ### Decision
