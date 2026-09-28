@@ -179,12 +179,14 @@ ffmpeg 6.1.1（Ubuntu 24.04 のパッケージ。`--enable-libvpl`、NVENC・VAA
 - Decision: `docs/how-to/running-vv.md` に「Hardware encoding」の節を足し、`compose.override.yaml`
   （`task up`）と `compose.hosting.yaml` に足す行の例を、Intel/AMD（`/dev/dri` の `devices` と
   `group_add`）と NVIDIA（NVIDIA Container Toolkit、`deploy.resources.reservations.devices` と
-  `NVIDIA_DRIVER_CAPABILITIES=video,utility`）の 2 つについて書く。方式ごとの前提（ドライバー、
+  `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`）の 2 つについて書く。方式ごとの前提（ドライバー、
   デバイス、OS、VideoToolbox は Docker では使えないこと）も同じ節に置く。`compose.yaml` 自体には
   デバイスの行を入れず、節へのコメントだけを足す。設定画面の説明文はこの節を指す。
 - Rationale: `devices: /dev/dri` はホストにその device が無いと起動に失敗するので、既定の
   `compose.yaml` には入れられない。Compose は `compose.override.yaml` を自動で重ねるので、利用者は
-  `compose.yaml` を書き換えずに足せる。
+  `compose.yaml` を書き換えずに足せる。`compute` を含めるのは、FFmpeg の `h264_nvenc` が
+  `libcuda.so.1` で CUDA コンテキストを作り、NVIDIA Container Toolkit はこのライブラリを
+  `compute` の capability のときにしかコンテナへ入れないため。
 - Alternatives considered: `compose.yaml` にコメントアウトで置く（NAS の管理画面に貼る
   `compose.hosting.yaml` と二重になる）。`compose.gpu.yaml` を同梱して `task up-gpu` を足す
   （Intel と NVIDIA で内容が違い、2 つ同梱しても組み合わせは利用者が選ぶ）。
