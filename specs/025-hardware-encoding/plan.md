@@ -25,7 +25,7 @@ SQLite に保存し、再起動なしに次の変換の要求から効かせる�
   （[contracts/transcoding-settings-api.md](contracts/transcoding-settings-api.md)）と、設定画面の
   区画。見た目と操作の基準は親 Issue の「UI品質」がそのまま仕様である（`ui` ラベルは無く、
   design 段階は無い）。
-- **同梱イメージと文書**: 同梱の Docker イメージは `main` と同じ Alpine のままソフトウェア
+- **同梱イメージと文書**: 同梱の Docker イメージは #491 より前と同じ Alpine のままソフトウェア
   エンコードだけとし、コンテナの中では起動時の確認がハードウェアの方式をすべて使えないと報告する。
   ハードウェアエンコードはホスト（Windows・Linux・macOS）に直接入れた VVMDM で使い、その前提と
   手順を文書に書く（[R-1](research.md#r-1-同梱イメージは-alpine-のままにしソフトウェアエンコードだけにする)、
@@ -61,7 +61,8 @@ SQLite に保存し、再起動なしに次の変換の要求から効かせる�
 
 **Feature-specific context**:
 
-- Go と npm の依存は足さない。`Dockerfile` と compose のファイルは `main` から変えない（R-1）。
+- Go と npm の依存は足さない。`Dockerfile` と compose のファイルは #491 より前の内容（`e5acc24`）
+  から変えない（R-1）。
   ハードウェアエンコードの前提（ドライバー、ハードウェアエンコーダーを含む ffmpeg）は、直接
   インストールするホストの側で利用者が用意する（R-9）。
 - SQLite は表を 1 つ足す（[data-model.md](data-model.md)）。移行は `internal/store/migrations` の
@@ -134,8 +135,8 @@ specs/025-hardware-encoding/
   `cmd/mdm/main.go`
 - `web/src/api`・`web/src/settings`・`web/src/i18n`
 - `docs/how-to/running-vv.md`・`docs/how-to/hosting-vv.md`・`ARCHITECTURE.md`・`docs/design-docs/`
-  （`Dockerfile`・`compose.yaml`・`compose.hosting.yaml` は `main` のままで、この feature の差分に
-  含めない）
+  （`Dockerfile`・`compose.yaml`・`compose.hosting.yaml` は #491 より前の内容（`e5acc24`）のままで、
+  この feature の差分に含めない）
 
 **New paths**:
 
@@ -276,10 +277,11 @@ store を読む案は依存方向に反する。
 ### Docker イメージはソフトウェアエンコードのままにし、ハードウェアエンコードを直接インストールで使う手順を書く
 
 **Scope**: 同梱イメージの範囲の確定と利用者向けの文書。
-- `Dockerfile`・`compose.yaml`・`compose.hosting.yaml`: `main` と同じにする（実行段は Alpine で
+- `Dockerfile`・`compose.yaml`・`compose.hosting.yaml`: #491 より前の内容（`e5acc24` の時点）に
+  戻す（実行段は Alpine で
   `ffmpeg` だけを入れる。GPU のドライバーも GPU を渡す設定も足さない。
-  [R-1](research.md#r-1-同梱イメージは-alpine-のままにしソフトウェアエンコードだけにする)）。feature ブランチにこれと違う
-  変更があれば `main` の内容に戻す。
+  [R-1](research.md#r-1-同梱イメージは-alpine-のままにしソフトウェアエンコードだけにする)）。feature ブランチの #491
+  が入れた Debian の実行段・GPU のドライバー・compose の変更は、すべて取り除く。
 - `docs/how-to/running-vv.md`: 「Hardware encoding」の節（ハードウェアエンコードにはホストへの直接
   インストールが要ること、同梱の Docker イメージはソフトウェアエンコードだけで、コンテナの中では
   ハードウェアの方式がすべて使えないと表示されること、方式ごとの前提（ドライバー、デバイス、OS、
@@ -291,7 +293,8 @@ store を読む案は依存方向に反する。
 
 **Dependencies**: `設定画面に「動画の変換」区画を足し、方式の選択と使える方式の表示を行う`。
 
-**Acceptance**: `task check-docs` が通る。`Dockerfile` と compose のファイルに `main` との差分が無く、
+**Acceptance**: `task check-docs` が通る。`Dockerfile` と compose のファイルに `e5acc24`（#491 より前）との
+差分が無く、
 CI の `Docker image` のビルド（`linux/amd64,linux/arm64`）が通る。同梱イメージで起動すると、設定画面で
 ハードウェアの方式がすべて使えない状態で表示され、ライブ変換はソフトウェアで動く。文書を読んで、
 直接インストールしたホストで前提を満たし、設定画面からハードウェアエンコードを有効にできる

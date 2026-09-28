@@ -13,7 +13,7 @@ ffmpeg 6.1.1（Ubuntu 24.04 のパッケージ。`--enable-libvpl`、NVENC・VAA
 
 ## R-1: 同梱イメージは Alpine のままにし、ソフトウェアエンコードだけにする
 
-- Decision: `Dockerfile` の実行段は `main` と同じ Alpine で、`ffmpeg`・`ca-certificates`・`tzdata`
+- Decision: `Dockerfile` の実行段は #491 より前（`e5acc24`）と同じ Alpine で、`ffmpeg`・`ca-certificates`・`tzdata`
   だけを入れる。GPU のドライバーや実行時ライブラリは足さず、`compose.yaml`・`compose.hosting.yaml`
   にも GPU を渡す設定を足さない。コンテナの中では、起動時の確認
   （[R-2](#r-2-起動時の確認はエンコーダーごとに短い実エンコードを並行して走らせる)）がハードウェアの
