@@ -194,15 +194,19 @@ export default function APITokensSection() {
     setRevokeError(null);
     try {
       await revokeAPIToken(target.id);
-      const index = tokens.findIndex((token) => token.id === target.id);
-      const remaining = tokens.filter((token) => token.id !== target.id);
-      setTokens(remaining);
+      // 失効を待つあいだに発行が終わり、一覧の先頭に足されていることがある。
+      // 失効を始めたときの一覧ではなく最新の一覧から、対象の 1 本だけを除く。
+      setTokens((current) => {
+        const index = current.findIndex((token) => token.id === target.id);
+        const remaining = current.filter((token) => token.id !== target.id);
+        const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)];
+        focusAfterRender.current = next === undefined ? "name" : next.id;
+        return remaining;
+      });
       // 失効したトークンの平文は残さない。
-      if (revealed?.token.id === target.id) setRevealed(null);
+      setRevealed((current) => (current?.token.id === target.id ? null : current));
       setRevoking(null);
       toast(text.revoked);
-      const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)];
-      focusAfterRender.current = next === undefined ? "name" : next.id;
     } catch (failure) {
       setRevokeError(errorText(failure));
     } finally {

@@ -367,6 +367,38 @@ describe("APITokensSection", () => {
     expect(screen.getByRole("textbox", { name: "Name" })).toBeDefined();
   });
 
+  it("失効を待つあいだに発行が終わったトークンは、失効の後も一覧に残る", async () => {
+    const created = deferred<Response>();
+    const revoked = deferred<Response>();
+    fetchMock.mockImplementation((_input, init) => {
+      if (init?.method === "POST") return created.promise;
+      if (init?.method === "DELETE") return revoked.promise;
+      return Promise.resolve(json({ items: [token(1, "claude")] }));
+    });
+    const user = userEvent.setup();
+    renderSection();
+
+    const input = await screen.findByRole("textbox", { name: "Name" });
+    await waitFor(() => expect((input as HTMLInputElement).disabled).toBe(false));
+    await user.type(input, "scraper{Enter}");
+    await screen.findByRole("button", { name: "Creating…" });
+
+    await user.click(screen.getByRole("button", { name: "Revoke claude" }));
+    const dialog = await screen.findByRole("dialog", { name: "Revoke this token?" });
+    await user.click(within(dialog).getByRole("button", { name: "Revoke" }));
+
+    created.resolve(json({ token: token(5, "scraper"), secret: SECRET }, 201));
+    expect(await screen.findByText(SECRET)).toBeDefined();
+    revoked.resolve(json(null, 204));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByText("claude")).toBeNull();
+    expect(rows().map((row) => row.textContent)).toEqual([
+      expect.stringContaining("scraper"),
+    ]);
+    expect(screen.getByText(SECRET)).toBeDefined();
+  });
+
   it("失効の失敗は窓の中に出し、行を残す", async () => {
     fetchMock.mockImplementation((_input, init) =>
       Promise.resolve(
