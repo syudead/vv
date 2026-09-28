@@ -83,9 +83,11 @@ func (probeOnlyGenerator) CheckSource(string) error { return nil }
 func (probeOnlyGenerator) Probe(context.Context, string) (domain.Probe, error) {
 	return domain.Probe{DurationMs: 60_000, VideoCodec: "h264", AudioCodec: "aac"}, nil
 }
-func (probeOnlyGenerator) Thumbnail(context.Context, string, int64, string) error { return nil }
-func (probeOnlyGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) error {
-	return nil
+func (probeOnlyGenerator) Thumbnail(context.Context, string, int64, string) (bool, error) {
+	return false, nil
+}
+func (probeOnlyGenerator) SeekSprite(context.Context, string, string, domain.SeekSpriteLayout) (bool, error) {
+	return false, nil
 }
 func (probeOnlyGenerator) Preview(context.Context, string, string, int64) error { return nil }
 

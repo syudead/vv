@@ -392,7 +392,7 @@ func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	if written {
 		t.Fatal("job claimed before a location was added wrote a stale result")
 	}
-	written, err = db.Ingest().SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
+	written, err = db.Ingest().SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone, domain.SubstitutionNone)
 	if err != nil {
 		t.Fatal(err)
 	}

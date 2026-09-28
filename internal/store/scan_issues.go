@@ -113,6 +113,26 @@ func clearFailedIssue(ctx context.Context, q queryExecer, kind domain.JobKind, v
 	return clearScanIssues(ctx, q, videoID, issue)
 }
 
+// applySubstitution は段階 kind の成功を書いた取引で、代用の行を入れる・消す。
+// 代用したなら入れ、代用せずに作り直したなら消す。分からない（既存の生成物を採用した）
+// ときは変えない（specs/024-import-progress/data-model.md §3）。
+func applySubstitution(
+	ctx context.Context, q queryExecer, kind domain.JobKind, job domain.Job, substitution domain.Substitution,
+) error {
+	issue, ok := domain.SubstitutedIssueKind(kind)
+	if !ok {
+		return nil
+	}
+	switch substitution {
+	case domain.SubstitutionUsed:
+		return recordScanIssue(ctx, q, job.VideoID, job.LocationPath, issue, time.Now().Unix())
+	case domain.SubstitutionNone:
+		return clearScanIssues(ctx, q, job.VideoID, issue)
+	case domain.SubstitutionUnknown:
+	}
+	return nil
+}
+
 // RecordScanIssue は走査が1つのファイルで出会った失敗を、直近の取り込みの問題として
 // 記録する。走査が知っている既存の動画があれば、その動画の問題になる。
 func (s *ScanStore) RecordScanIssue(ctx context.Context, issue domain.ScanFileIssue) error {

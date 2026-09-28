@@ -77,6 +77,15 @@ func sheetWriter(t *testing.T, sheets int) func(string) error {
 	}
 }
 
+// publishSeek は、代用を問わない検査のために、全編の復号を使わない生成として
+// シーク用プレビューを公開する。
+func publishSeek(s *Store, contentKey string, layout domain.SeekSpriteLayout, write func(string) error) error {
+	_, err := s.PublishSeekThumbnails(contentKey, layout, func(dir string) (bool, error) {
+		return false, write(dir)
+	})
+	return err
+}
+
 // seekDirOf は key のシーク用プレビューの置き場（既存の並べ方）である。
 func seekDirOf(root string) string {
 	return filepath.Join(root, "seek", "ab", "ab12cd34_5678")
@@ -172,7 +181,7 @@ func TestPublishesIntoExistingLayout(t *testing.T) {
 	if err := store.PublishThumbnail(key, writer([]byte("jpeg"))); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.PublishSeekThumbnails(key, spriteLayout, sheetWriter(t, 2)); err != nil {
+	if err := publishSeek(store, key, spriteLayout, sheetWriter(t, 2)); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.PublishPreview(ctx, key, writer([]byte("mp4")), nil); err != nil {
@@ -230,7 +239,7 @@ func TestRejectsKeysOutsideTheStore(t *testing.T) {
 		}
 		called := false
 		write := func(string) error { called = true; return nil }
-		if store.PublishThumbnail(bad, write) == nil || store.PublishSeekThumbnails(bad, spriteLayout, write) == nil ||
+		if store.PublishThumbnail(bad, write) == nil || publishSeek(store, bad, spriteLayout, write) == nil ||
 			store.PublishPreview(ctx, bad, write, nil) == nil || called {
 			t.Errorf("%q: 公開した", bad)
 		}
@@ -253,7 +262,7 @@ func TestEmptyRootHasNothing(t *testing.T) {
 	}
 	for _, err := range []error{
 		store.PublishThumbnail(key, writer([]byte("x"))),
-		store.PublishSeekThumbnails(key, spriteLayout, sheetWriter(t, 2)),
+		publishSeek(store, key, spriteLayout, sheetWriter(t, 2)),
 		store.PublishPreview(context.Background(), key, writer([]byte("x")), nil),
 	} {
 		if !errors.Is(err, errNotConfigured) {
@@ -363,18 +372,18 @@ func TestPublishFailureLeavesNothing(t *testing.T) {
 		{name: "サムネイル", want: failure, publish: func(s *Store) error { return s.PublishThumbnail(key, failing) }},
 		{name: "空のサムネイル", publish: func(s *Store) error { return s.PublishThumbnail(key, writer(nil)) }},
 		{name: "シーク", want: failure, publish: func(s *Store) error {
-			return s.PublishSeekThumbnails(key, spriteLayout, func(dir string) error {
+			return publishSeek(s, key, spriteLayout, func(dir string) error {
 				return failing(filepath.Join(dir, "000.jpg"))
 			})
 		}},
 		{name: "シートが無いシーク", publish: func(s *Store) error {
-			return s.PublishSeekThumbnails(key, spriteLayout, func(string) error { return nil })
+			return publishSeek(s, key, spriteLayout, func(string) error { return nil })
 		}},
 		{name: "シートが足りないシーク", publish: func(s *Store) error {
-			return s.PublishSeekThumbnails(key, spriteLayout, sheetWriter(t, 1))
+			return publishSeek(s, key, spriteLayout, sheetWriter(t, 1))
 		}},
 		{name: "JPEG でないシーク", publish: func(s *Store) error {
-			return s.PublishSeekThumbnails(key, spriteLayout, func(dir string) error {
+			return publishSeek(s, key, spriteLayout, func(dir string) error {
 				for _, name := range []string{"000.jpg", "001.jpg"} {
 					if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
 						return err
@@ -384,7 +393,7 @@ func TestPublishFailureLeavesNothing(t *testing.T) {
 			})
 		}},
 		{name: "2 枚目が JPEG でないシーク", publish: func(s *Store) error {
-			return s.PublishSeekThumbnails(key, spriteLayout, func(dir string) error {
+			return publishSeek(s, key, spriteLayout, func(dir string) error {
 				if err := os.WriteFile(filepath.Join(dir, "000.jpg"), sheetJPEG(t, 320, 180), 0o644); err != nil {
 					return err
 				}
@@ -392,7 +401,7 @@ func TestPublishFailureLeavesNothing(t *testing.T) {
 			})
 		}},
 		{name: "2 枚目の大きさが違うシーク", publish: func(s *Store) error {
-			return s.PublishSeekThumbnails(key, spriteLayout, func(dir string) error {
+			return publishSeek(s, key, spriteLayout, func(dir string) error {
 				if err := os.WriteFile(filepath.Join(dir, "000.jpg"), sheetJPEG(t, 320, 180), 0o644); err != nil {
 					return err
 				}
@@ -400,7 +409,7 @@ func TestPublishFailureLeavesNothing(t *testing.T) {
 			})
 		}},
 		{name: "格子に割り切れないシーク", publish: func(s *Store) error {
-			return s.PublishSeekThumbnails(key, spriteLayout, func(dir string) error {
+			return publishSeek(s, key, spriteLayout, func(dir string) error {
 				for _, name := range []string{"000.jpg", "001.jpg"} {
 					if err := os.WriteFile(filepath.Join(dir, name), sheetJPEG(t, 325, 180), 0o644); err != nil {
 						return err
@@ -441,11 +450,11 @@ func TestPublishFailureLeavesNothing(t *testing.T) {
 func TestPublishReusesCompletedSeekThumbnails(t *testing.T) {
 	root := t.TempDir()
 	store := New(root)
-	if err := store.PublishSeekThumbnails(key, spriteLayout, sheetWriter(t, 2)); err != nil {
+	if err := publishSeek(store, key, spriteLayout, sheetWriter(t, 2)); err != nil {
 		t.Fatal(err)
 	}
 	called := false
-	if err := store.PublishSeekThumbnails(key, spriteLayout, func(string) error { called = true; return nil }); err != nil {
+	if err := publishSeek(store, key, spriteLayout, func(string) error { called = true; return nil }); err != nil {
 		t.Fatal(err)
 	}
 	if called {
@@ -460,6 +469,73 @@ func TestPublishReusesCompletedSeekThumbnails(t *testing.T) {
 	if data, _ := os.ReadFile(thumbnail); string(data) != "new" {
 		t.Fatalf("サムネイル = %q", data)
 	}
+}
+
+// シーク用プレビューを全編の復号から作ったかは sprite.json に残り、完成したものを
+// 採用したときにも読み戻せる。公開と完了の記録の間で止まった後の再実行や、同じ内容の
+// 別の動画でも、代用を取りこぼさない（specs/024-import-progress/research.md R-7）。
+// 記録の無い旧い sprite.json は、代用したかが分からない。
+func TestPublishSeekThumbnailsKeepsSubstitution(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		fullDecode bool
+		want       domain.Substitution
+	}{
+		{name: "全編から", fullDecode: true, want: domain.SubstitutionUsed},
+		{name: "代用なし", fullDecode: false, want: domain.SubstitutionNone},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := New(t.TempDir())
+			write := sheetWriter(t, 2)
+			published, err := store.PublishSeekThumbnails(key, spriteLayout, func(dir string) (bool, error) {
+				return tc.fullDecode, write(dir)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if published != tc.want {
+				t.Fatalf("公開したときの代用 = %v, want %v", published, tc.want)
+			}
+			adopted, err := store.PublishSeekThumbnails(key, spriteLayout, func(string) (bool, error) {
+				t.Fatal("完成したシーク用プレビューを作り直した")
+				return false, nil
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if adopted != tc.want {
+				t.Fatalf("採用したときの代用 = %v, want %v", adopted, tc.want)
+			}
+		})
+	}
+
+	t.Run("記録の無い旧いもの", func(t *testing.T) {
+		root := t.TempDir()
+		store := New(root)
+		if err := publishSeek(store, key, spriteLayout, sheetWriter(t, 2)); err != nil {
+			t.Fatal(err)
+		}
+		manifest := filepath.Join(seekDirOf(root), "sprite.json")
+		data, err := os.ReadFile(manifest)
+		if err != nil {
+			t.Fatal(err)
+		}
+		legacy := bytes.Replace(data, []byte(`,"fullDecode":false`), nil, 1)
+		if bytes.Equal(legacy, data) {
+			t.Fatalf("sprite.json に代用の記録が無い: %s", data)
+		}
+		writeFile(t, manifest, legacy)
+		adopted, err := store.PublishSeekThumbnails(key, spriteLayout, func(string) (bool, error) {
+			t.Fatal("完成したシーク用プレビューを作り直した")
+			return false, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if adopted != domain.SubstitutionUnknown {
+			t.Fatalf("採用したときの代用 = %v, want Unknown", adopted)
+		}
+	})
 }
 
 // 生成途中の成果物は1か所にまとまっていて、起動時にそこだけを消せる。
@@ -558,7 +634,7 @@ func TestPublishPreviewSerializesAcrossStores(t *testing.T) {
 func TestSeekSpriteDescribesPublishedSheets(t *testing.T) {
 	root := t.TempDir()
 	store := New(root)
-	if err := store.PublishSeekThumbnails(key, spriteLayout, sheetWriter(t, 2)); err != nil {
+	if err := publishSeek(store, key, spriteLayout, sheetWriter(t, 2)); err != nil {
 		t.Fatal(err)
 	}
 	if !store.SeekThumbnailsAvailable(key) {
@@ -577,7 +653,7 @@ func TestSeekSpriteDescribesPublishedSheets(t *testing.T) {
 		t.Fatal(err)
 	}
 	const wantJSON = `{"version":1,"intervalMs":5000,"frameCount":150,"columns":10,"rows":10,` +
-		`"frameWidth":32,"frameHeight":18,"sheetCount":2}` + "\n"
+		`"frameWidth":32,"frameHeight":18,"sheetCount":2,"fullDecode":false}` + "\n"
 	if string(data) != wantJSON {
 		t.Fatalf("sprite.json = %s", data)
 	}
@@ -619,7 +695,7 @@ func TestPublishSeekSpriteReplacesIncompleteDirectory(t *testing.T) {
 				t.Fatal("未完成の置き場を完成と答えた")
 			}
 			called := false
-			if err := store.PublishSeekThumbnails(key, spriteLayout, func(dir string) error {
+			if err := publishSeek(store, key, spriteLayout, func(dir string) error {
 				called = true
 				return sheetWriter(t, 2)(dir)
 			}); err != nil {
@@ -678,7 +754,7 @@ func TestSeekSpriteRejectsMalformedDescription(t *testing.T) {
 func TestRemoveContentRemovesSeekSprite(t *testing.T) {
 	root := t.TempDir()
 	store := New(root)
-	if err := store.PublishSeekThumbnails(key, spriteLayout, sheetWriter(t, 2)); err != nil {
+	if err := publishSeek(store, key, spriteLayout, sheetWriter(t, 2)); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.RemoveContent(key); err != nil {

@@ -80,6 +80,41 @@ func FailedIssueKind(kind JobKind) (ScanIssueKind, bool) {
 	return "", false
 }
 
+// SubstitutedIssueKind は仕事の種類が代用して成功したときの問題の種類を返す。
+// 代用のある段階は、代表サムネイルとシーク用サムネイルだけである。
+func SubstitutedIssueKind(kind JobKind) (ScanIssueKind, bool) {
+	switch kind {
+	case JobThumbnail:
+		return IssueThumbnailFirstFrame, true
+	case JobSeekThumbnail:
+		return IssueSeekThumbnailFullDecode, true
+	}
+	return "", false
+}
+
+// Substitution は、生成の段階が成功したときに代用したかである。internal/media の
+// 生成の関数が返す値から internal/app が決め、成功を書く保存側へ渡す
+// （specs/024-import-progress/research.md R-7）。
+type Substitution int
+
+const (
+	// SubstitutionUnknown は、生成せずに既存の生成物を採用したなど、代用したかが
+	// 分からないことを表す。保存側は代用の問題の行を変えない。
+	SubstitutionUnknown Substitution = iota
+	// SubstitutionNone は代用せずに作ったことを表す。保存側は代用の行を消す。
+	SubstitutionNone
+	// SubstitutionUsed は代用して作ったことを表す。保存側は代用の行を入れる。
+	SubstitutionUsed
+)
+
+// SubstitutionOf は生成の関数が返した「代用したか」を Substitution にする。
+func SubstitutionOf(substituted bool) Substitution {
+	if substituted {
+		return SubstitutionUsed
+	}
+	return SubstitutionNone
+}
+
 // ScanIssueSeverity はまとめた件の重さである。値は api/openapi.yaml の
 // ScanIssue.severity に対応する。
 type ScanIssueSeverity string

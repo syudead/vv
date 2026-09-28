@@ -51,7 +51,7 @@ func generateSprite(t *testing.T, videoPath string, durationMs int64) (string, d
 	t.Helper()
 	layout := domain.NewSeekSpriteLayout(durationMs)
 	output := t.TempDir()
-	if err := GenerateSeekSprite(context.Background(), videoPath, output, layout); err != nil {
+	if _, err := GenerateSeekSprite(context.Background(), videoPath, output, layout); err != nil {
 		t.Fatal(err)
 	}
 	return output, layout
