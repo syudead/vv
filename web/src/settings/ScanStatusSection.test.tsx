@@ -22,7 +22,15 @@ function json(body: unknown, status = 200) {
 }
 
 function scan(values: Partial<Scan> = {}): Scan {
-  return { id: 2, state: "done", total: 0, completed: 0, failed: 0, ...values };
+  return {
+    id: 2,
+    status: "done",
+    state: "done",
+    total: 0,
+    completed: 0,
+    failed: 0,
+    ...values,
+  };
 }
 
 function SameAnchorNavigation() {

@@ -12,13 +12,13 @@ import (
 type IngestStore interface {
 	ContentIndex
 	GetVideo(ctx context.Context, id int64) (domain.Video, error)
-	EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64) error
 	// JobIdentityCurrent は専有した時点の所在と内容が今も同じかを返す。
 	JobIdentityCurrent(ctx context.Context, job domain.Job) (bool, error)
 	// ContentKeyCurrent は動画の内容が key のままかを返す。
 	ContentKeyCurrent(ctx context.Context, videoID int64, key string) (bool, error)
 	// PreviewSourceCurrent はプレビューの元が専有した時点と同じかを返す。
 	PreviewSourceCurrent(ctx context.Context, job domain.Job) (bool, error)
+	// ApplyProbeForJob は解析の結果を書き、同じ取引で一覧用プレビューの仕事を積む。
 	ApplyProbeForJob(ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability) (bool, error)
 	SetThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.ThumbnailState) (bool, error)
 	SetSeekThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.SeekThumbnailState) (bool, error)
@@ -148,7 +148,7 @@ func (i *Ingest) Wait() {
 	i.artifacts.wait()
 }
 
-// Probe は ffprobe の結果を索引へ反映し、プレビューの仕事を積む。
+// Probe は ffprobe の結果を索引へ反映する。プレビューの仕事は保存側が同じ取引で積む。
 //
 // 再生可否の判定は internal/domain の純粋関数が行い、ここはその結果を
 // 保存層へ渡すだけである。
@@ -172,11 +172,10 @@ func (i *Ingest) Probe(ctx context.Context, job domain.Job) error {
 	}
 
 	playability := domain.EvaluatePlayability(domain.ContainerFromPath(job.LocationPath), probe)
-	applied, err := i.store.ApplyProbeForJob(ctx, job, probe, playability)
-	if err != nil || !applied {
-		return err
-	}
-	return i.store.EnqueueJob(ctx, domain.JobPreview, job.VideoID)
+	// 一覧用プレビューの仕事は、結果を書くのと同じ取引で保存側が積む
+	// （specs/024-import-progress/research.md R-2）。
+	_, err = i.store.ApplyProbeForJob(ctx, job, probe, playability)
+	return err
 }
 
 // Thumbnail は代表サムネイルを1枚生成し、状態を記録する。シーク用サムネイルは

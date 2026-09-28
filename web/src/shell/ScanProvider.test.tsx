@@ -15,7 +15,14 @@ function json(body: unknown, status = 200): Response {
 }
 
 function scan(id: number, state: Scan["state"]): Scan {
-  return { id, state, total: 1, completed: state === "running" ? 0 : 1, failed: 0 };
+  return {
+    id,
+    status: state,
+    state,
+    total: 1,
+    completed: state === "running" ? 0 : 1,
+    failed: 0,
+  };
 }
 
 function Harness() {

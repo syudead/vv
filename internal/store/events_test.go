@@ -39,7 +39,7 @@ func TestCommitPublishesNothingWhenTransactionRollsBack(t *testing.T) {
 	c.jobsQueued(domain.JobProbe)
 	// 確定の前に取り消すと、取引はロールバックする。
 	cancel()
-	if err := db.commit(tx, &c); err == nil {
+	if err := db.commit(ctx, tx, &c); err == nil {
 		t.Fatal("取り消した取引が確定した")
 	}
 

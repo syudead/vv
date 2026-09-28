@@ -66,10 +66,19 @@ func (s *server) GetCurrentScan(w http.ResponseWriter, r *http.Request) {
 func toAPIScan(scan domain.Scan) gen.Scan {
 	out := gen.Scan{
 		Id:        scan.ID,
+		Status:    gen.ScanStatus(scan.Import.Status),
 		State:     gen.ScanState(scan.State),
 		Total:     scan.Total,
 		Completed: scan.Completed,
 		Failed:    scan.Failed,
+	}
+	// 状態と本数は internal/app が組み立てたものを写すだけにする。
+	if scan.Import.Counted {
+		out.Videos = &gen.ScanVideos{Total: scan.Import.Total, Settled: scan.Import.Settled}
+	}
+	if !scan.Import.SettledAt.IsZero() {
+		settledAt := scan.Import.SettledAt
+		out.SettledAt = &settledAt
 	}
 	if !scan.StartedAt.IsZero() {
 		startedAt := scan.StartedAt

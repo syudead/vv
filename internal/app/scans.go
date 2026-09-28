@@ -125,13 +125,13 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, error) {
 		return domain.Scan{}, err
 	}
 	if !started {
-		return scan, nil
+		return withImport(scan), nil
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.running {
-		return scan, nil
+		return withImport(scan), nil
 	}
 	s.running = true
 	s.done.Add(1)
@@ -143,12 +143,27 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, error) {
 	go s.run(scan.ID)
 
 	s.scanChanged()
-	return scan, nil
+	return withImport(scan), nil
 }
 
-// CurrentScan は直近の走査を返す。
+// CurrentScan は直近の走査を、利用者に見せる取り込みの状態（Scan.Import）を
+// 組み立てて返す。
 func (s *Scans) CurrentScan(ctx context.Context) (domain.Scan, error) {
-	return s.store.CurrentScan(ctx)
+	scan, err := s.store.CurrentScan(ctx)
+	if err != nil {
+		return domain.Scan{}, err
+	}
+	return withImport(scan), nil
+}
+
+// withImport は走査の記録から取り込みの状態を組み立てる。状態の決め方は domain が
+// 持つ（specs/024-import-progress/research.md R-4・R-5）。
+//
+// 問題の記録はまだ無いので、登録できなかったファイルの問題の数と失敗の問題の数は
+// 0 として渡す。
+func withImport(scan domain.Scan) domain.Scan {
+	scan.Import = scan.Tally(0, 0).Progress(scan.SettledAt)
+	return scan
 }
 
 // ReportScanProgress は走査の進捗を記録する。走査中も一覧・再生は通常どおり

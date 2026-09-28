@@ -1494,10 +1494,21 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        /** @description 直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。startedAt・finishedAt・ total・completed・failed は、画面が status・videos・settledAt に移ったあとでなくす */
         Scan: {
             /** Format: int64 */
             id: number;
-            /** @enum {string} */
+            status: components["schemas"]["ScanStatus"];
+            videos?: components["schemas"]["ScanVideos"];
+            /**
+             * Format: date-time
+             * @description 対象の動画がすべて済んだ時刻。status が done・partial のときだけ返す
+             */
+            settledAt?: string;
+            /**
+             * @description 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
+             * @enum {string}
+             */
             state: "running" | "done" | "failed";
             /** Format: date-time */
             startedAt?: string;
@@ -1513,6 +1524,18 @@ export interface components {
             errorCode?: components["schemas"]["ScanErrorCode"];
             /** @description errorCode の理由が特定の場所に結び付くときの、その絶対パス（メディアフォルダ、またはその下の 読めなかった場所。翻訳しない利用者のデータ）。それ以外は省略される */
             errorPath?: string;
+        };
+        /**
+         * @description 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外（specs/024-import-progress/contracts/scan-api.md §2）
+         * @enum {string}
+         */
+        ScanStatus: "finding" | "running" | "done" | "partial" | "failed";
+        /** @description 取り込みの進み具合。status が finding のあいだは省く */
+        ScanVideos: {
+            /** @description 対象の本数。0 は変化が無かったことを示す */
+            total: number;
+            /** @description 済みの本数。total を超えない */
+            settled: number;
         };
         /**
          * @description 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。

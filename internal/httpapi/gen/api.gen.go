@@ -383,6 +383,33 @@ func (e ScanErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for ScanStatus.
+const (
+	ScanStatusDone    ScanStatus = "done"
+	ScanStatusFailed  ScanStatus = "failed"
+	ScanStatusFinding ScanStatus = "finding"
+	ScanStatusPartial ScanStatus = "partial"
+	ScanStatusRunning ScanStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the ScanStatus enum.
+func (e ScanStatus) Valid() bool {
+	switch e {
+	case ScanStatusDone:
+		return true
+	case ScanStatusFailed:
+		return true
+	case ScanStatusFinding:
+		return true
+	case ScanStatusPartial:
+		return true
+	case ScanStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoPreviewState.
 const (
 	VideoPreviewStateDone    VideoPreviewState = "done"
@@ -942,7 +969,7 @@ type RootFolderListing struct {
 	Folders []FolderSummary `json:"folders"`
 }
 
-// Scan defines model for Scan.
+// Scan 直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。startedAt・finishedAt・ total・completed・failed は、画面が status・videos・settledAt に移ったあとでなくす
 type Scan struct {
 	// Completed 取り込み処理に成功した対象ファイル数
 	Completed int `json:"completed"`
@@ -958,18 +985,41 @@ type Scan struct {
 	Failed     int        `json:"failed"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 	Id         int64      `json:"id"`
-	StartedAt  *time.Time `json:"startedAt,omitempty"`
-	State      ScanState  `json:"state"`
+
+	// SettledAt 対象の動画がすべて済んだ時刻。status が done・partial のときだけ返す
+	SettledAt *time.Time `json:"settledAt,omitempty"`
+	StartedAt *time.Time `json:"startedAt,omitempty"`
+
+	// State 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
+	State ScanState `json:"state"`
+
+	// Status 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外（specs/024-import-progress/contracts/scan-api.md §2）
+	Status ScanStatus `json:"status"`
 
 	// Total 変更なしを除いた取り込み対象ファイル数。対象の確定前は0
 	Total int `json:"total"`
+
+	// Videos 取り込みの進み具合。status が finding のあいだは省く
+	Videos *ScanVideos `json:"videos,omitempty"`
 }
 
-// ScanState defines model for Scan.State.
+// ScanState 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
 type ScanState string
 
 // ScanErrorCode スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である （task generate）。
 type ScanErrorCode string
+
+// ScanStatus 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外（specs/024-import-progress/contracts/scan-api.md §2）
+type ScanStatus string
+
+// ScanVideos 取り込みの進み具合。status が finding のあいだは省く
+type ScanVideos struct {
+	// Settled 済みの本数。total を超えない
+	Settled int `json:"settled"`
+
+	// Total 対象の本数。0 は変化が無かったことを示す
+	Total int `json:"total"`
+}
 
 // SeekThumbnailSprite シーク用サムネイルのスプライトの配置情報
 // （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。最後のシートの

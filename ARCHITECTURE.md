@@ -88,6 +88,21 @@ the folder index is rebuilt only when its rule version is out of date or it is s
 (`RefreshFolderIndex`, after the search-key refresh and before HTTP and the workers
 start), or when an interrupted scan was closed
 ([specs/017-folder-groups/data-model.md](specs/017-folder-groups/data-model.md) §3).
+The latest scan owns the set of videos that the current import has to prepare
+(`scan_videos`): every transaction that queues a job, or makes a queued job claimable again
+by adding or replacing a media folder, adds the video to the latest scan in the same
+transaction, and starting a scan replaces the previous set while carrying over the videos
+that still have claimable queued or running jobs. The probe result and the preview job are
+written in one transaction, so a video never looks finished between the two. A video is
+settled when it has no claimable queued or running job, derived on every read, so requeued
+running jobs are not counted twice. `scans.settled_at` records when the closed latest scan's
+set first had no remaining work; `internal/store` recomputes it (`refreshScanSettled`) before
+committing any transaction whose change set can alter the remaining work — claims, job
+outcomes, enqueues, video deletions, media-folder changes and closing a scan.
+`internal/app` (`Scans`) combines the scan row and those counts into the user-facing
+`Scan.status` (`finding`, `running`, `done`, `partial`, `failed`) and progress through
+`domain.ImportTally`
+([specs/024-import-progress/research.md](specs/024-import-progress/research.md) R-1–R-5).
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail,
 seek_thumbnail, preview — each claiming only its own kind of job from the persistent `jobs`
 queue, one at a time, and handing it to `internal/app`, which drives the `internal/media`
@@ -179,7 +194,8 @@ an unresponsive mount does not return on cancellation; past it, shutdown continu
 next startup closes the scan.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
-browser polling: `scan` when the current scan changes, `processing` with the remaining
+browser polling: `scan` when the current scan or the remaining jobs change (job outcomes
+move the import's settled count), `processing` with the remaining
 jobs per stage, and `video` when a video's ingest state changes. The payload is read
 at send time, pending notices for a connection are coalesced, and a new connection
 first receives the current `scan` and `processing` so a reconnect recovers what it
@@ -227,7 +243,8 @@ grace period, then stops the scanner and the workers so a running job returns to
 ### Rebuildable and user data
 
 Stored data falls into three recovery categories. `videos`, `video_locations`
-(including their search keys), `location_search_fts`, `jobs`, `scans`, generated
+(including their search keys), `location_search_fts`, `jobs`, `scans` (including
+`settled_at`), `scan_videos`, generated
 thumbnails and previews, the folder index (`folder_groups`, `folder_group_members`,
 `video_folder_names`, `folder_index_state`), and `video_transcode_probes` are
 rebuildable from registered media folders by scanning and processing the files again.

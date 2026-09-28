@@ -58,6 +58,10 @@ func (s *IngestStore) ApplyProbe(
 
 // ApplyProbeForJob writes only while the file identity captured at claim time is current.
 // The live-transcode probe is upserted in the same transaction, only when the video row was written.
+//
+// 結果を書いたら、同じ取引で一覧用プレビューの仕事を積む。解析の仕事はこの時点で
+// まだ running なので、その動画が一瞬だけ「済み」に数えられることが無い
+// （specs/024-import-progress/research.md R-2）。
 func (s *IngestStore) ApplyProbeForJob(
 	ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability,
 ) (bool, error) {
@@ -90,7 +94,12 @@ func (s *IngestStore) ApplyProbeForJob(
 			return false, err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := requeueJob(ctx, tx, domain.JobPreview, job.VideoID, now.Unix()); err != nil {
+		return false, err
+	}
+	var c changes
+	c.jobsQueued(domain.JobPreview)
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -246,7 +255,9 @@ func (s *IngestStore) CompletePreviewForContent(ctx context.Context, job domain.
 	if n != 1 {
 		return false, fmt.Errorf("preview job is not running (id=%d)", job.ID)
 	}
-	if err := tx.Commit(); err != nil {
+	var c changes
+	c.remainingChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -303,19 +314,12 @@ func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, conte
 	if reset == 0 {
 		return false, nil
 	}
-	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = 'preview' and video_id = ? and state in ('done', 'failed')`,
-		id); err != nil {
-		return false, fmt.Errorf("cannot clean up old preview jobs (id=%d): %w", id, err)
-	}
-	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-		values ('preview', ?, 'queued', 0, ?, ?)
-		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
-		id, now, now); err != nil {
-		return false, fmt.Errorf("cannot queue the preview job (id=%d): %w", id, err)
+	if err := requeueJob(ctx, tx, domain.JobPreview, id, now); err != nil {
+		return false, err
 	}
 	var c changes
 	c.jobsQueued(domain.JobPreview)
-	if err := s.db.commit(tx, &c); err != nil {
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, fmt.Errorf("cannot commit regenerating the preview (id=%d): %w", id, err)
 	}
 	return true, nil
@@ -353,14 +357,16 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 	}
 	var c changes
 	c.jobsQueued(domain.JobSeekThumbnail)
-	if err := s.db.commit(tx, &c); err != nil {
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, fmt.Errorf("cannot commit regenerating seek thumbnails (id=%d): %w", id, err)
 	}
 	return true, nil
 }
 
-// requeueJob は終わった行を捨ててから kind の仕事を queued で積む。未完了の行が
-// 既にあれば何もしない。
+// requeueJob は終わった行を捨ててから kind の仕事を queued で積み、その動画を直近の
+// 走査の対象に加える（addScanVideos）。未完了の行が既にあれば積まない。
+//
+// 呼び出し側は changes.jobsQueued を記録し、commit で完了の時刻を決め直させる。
 func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now int64) error {
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
 		string(kind), id); err != nil {
@@ -372,7 +378,7 @@ func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now in
 		string(kind), id, now, now); err != nil {
 		return fmt.Errorf("cannot queue the job (%s, video=%d): %w", kind, id, err)
 	}
-	return nil
+	return addScanVideos(ctx, tx, id)
 }
 
 // RetryProbe は読み取りに失敗した動画を、1つの取引の中で読み取り直す状態へ
@@ -388,7 +394,7 @@ func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now in
 // pending に戻し、戻したときだけそれぞれのジョブを積む。seek_thumbnail_state が done なのに
 // 置き場が無い動画は、動画の応答を組み立てるときに
 // RequeueMissingSeekThumbnails が積み直す。
-// 一覧用プレビューのジョブは、読み取りの成功後に app.Ingest.Probe が積む。
+// 一覧用プレビューのジョブは、読み取りの結果を書く取引で ApplyProbeForJob が積む。
 func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -454,7 +460,7 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	}
 	var c changes
 	c.jobsQueued(kinds...)
-	if err := s.db.commit(tx, &c); err != nil {
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot commit re-reading (id=%d): %w", id, err)
 	}
 	return nil

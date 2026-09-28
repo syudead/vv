@@ -48,7 +48,6 @@ type fakeIngestStore struct {
 	referenced map[string]bool
 
 	appliedProbes   []domain.Probe
-	enqueued        []domain.JobKind
 	thumbnailStates []domain.ThumbnailState
 	seekStates      []domain.SeekThumbnailState
 	previewsDone    int
@@ -80,13 +79,6 @@ func (f *fakeIngestStore) GetVideo(_ context.Context, id int64) (domain.Video, e
 		return domain.Video{}, domain.ErrNotFound
 	}
 	return video, nil
-}
-
-func (f *fakeIngestStore) EnqueueJob(_ context.Context, kind domain.JobKind, _ int64) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.enqueued = append(f.enqueued, kind)
-	return nil
 }
 
 func (f *fakeIngestStore) JobIdentityCurrent(context.Context, domain.Job) (bool, error) {

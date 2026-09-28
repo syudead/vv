@@ -15,6 +15,10 @@ import (
 //
 // 409 にしないのは、利用者の意図が「今の状態を進めたい」であり、進行中なら
 // それを返すのが素直だからである。
+//
+// 新しい走査の行を入れる取引で、前の走査の対象の動画の集合を入れ替える。残りの
+// 仕事がある動画は新しい走査の対象へ持ち越す
+// （specs/024-import-progress/research.md R-3）。
 func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bool, err error) {
 	s.db.folderMu.Lock()
 	defer s.db.folderMu.Unlock()
@@ -33,7 +37,12 @@ func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bo
 		return domain.Scan{}, false, err
 	}
 
-	res, err := s.db.sql.ExecContext(ctx,
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx,
 		`insert into scans (state, started_at, total, completed, failed) values ('running', ?, 0, 0, 0)`,
 		time.Now().Unix())
 	if err != nil {
@@ -41,6 +50,17 @@ func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bo
 	}
 	id, err := res.LastInsertId()
 	if err != nil {
+		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
+	}
+	if err := addScanVideosWithRemainingJobs(ctx, tx); err != nil {
+		return domain.Scan{}, false, err
+	}
+	if _, err := tx.ExecContext(ctx, `delete from scan_videos where scan_id <> ?`, id); err != nil {
+		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's videos: %w", err)
+	}
+	var c changes
+	c.remainingChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot start the scan: %w", err)
 	}
 
@@ -77,10 +97,20 @@ func (s *ScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanS
 		code = nullableString(string(failureCode))
 		path = nullableString(failurePath)
 	}
-	_, err := s.db.sql.ExecContext(ctx,
-		`update scans set state = ?, finished_at = ?, error = ?, error_code = ?, error_path = ? where id = ?`,
-		string(state), time.Now().Unix(), reason, code, path, id)
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
+		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx,
+		`update scans set state = ?, finished_at = ?, error = ?, error_code = ?, error_path = ? where id = ?`,
+		string(state), time.Now().Unix(), reason, code, path, id); err != nil {
+		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
+	}
+	// 走査が閉じると、対象に残りの仕事が無ければ取り込みは済む。
+	var c changes
+	c.remainingChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 	}
 	return nil
@@ -101,7 +131,12 @@ func (s *ScanStore) CurrentScan(ctx context.Context) (domain.Scan, error) {
 // 閉じないと「実行中は1件だけ」の制約が働いたまま、二度と走査を始められなく
 // なる。前回の走査が最後まで走ったかどうかは分からないので、成功とはみなさない。
 func (s *ScanStore) FailInterruptedScans(ctx context.Context) (int64, error) {
-	res, err := s.db.sql.ExecContext(ctx, `
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("cannot close interrupted scans: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `
 		update scans
 		   set state = 'failed', finished_at = ?, error = ?, error_code = ?, error_path = null
 		 where state = 'running'`,
@@ -114,11 +149,23 @@ func (s *ScanStore) FailInterruptedScans(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("cannot close interrupted scans: %w", err)
 	}
+	var c changes
+	if affected > 0 {
+		c.remainingChanged()
+	}
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return 0, fmt.Errorf("cannot close interrupted scans: %w", err)
+	}
 	return affected, nil
 }
 
-// scanColumns は Scan を組み立てるのに要る列である。並びは scanRow と対応させる。
-const scanColumns = `id, state, started_at, finished_at, total, completed, failed, error, error_code, error_path`
+// scanColumns は Scan を組み立てるのに要る列である。並びは scanBy の Scan と対応させる。
+// 対象の動画の本数と、そのうち残りの仕事が無い本数は、読み出しのたびに仕事の状態から
+// 数える（specs/024-import-progress/research.md R-1）。
+var scanColumns = `id, state, started_at, finished_at, total, completed, failed, error, error_code, error_path, settled_at,
+	(select count(*) from scan_videos sv where sv.scan_id = scans.id),
+	(select count(*) from scan_videos sv where sv.scan_id = scans.id and not exists (
+		select 1 from jobs j where j.video_id = sv.video_id and ` + remainingJobCondition("j") + `))`
 
 func (s *ScanStore) scanByID(ctx context.Context, id int64) (domain.Scan, error) {
 	return s.scanBy(ctx, `select `+scanColumns+` from scans where id = ?`, id)
@@ -129,13 +176,15 @@ func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (doma
 		scan                  domain.Scan
 		state                 string
 		startedAt, finishedAt sql.NullInt64
+		settledAt             sql.NullInt64
 		reason, code, path    sql.NullString
 	)
 
 	//nolint:gosec // scanColumns は定数で、利用者の入力は混ざらない。
 	err := s.db.sql.QueryRowContext(ctx, query, args...).Scan(
 		&scan.ID, &state, &startedAt, &finishedAt,
-		&scan.Total, &scan.Completed, &scan.Failed, &reason, &code, &path,
+		&scan.Total, &scan.Completed, &scan.Failed, &reason, &code, &path, &settledAt,
+		&scan.Videos, &scan.SettledVideos,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Scan{}, domain.ErrNotFound
@@ -150,6 +199,9 @@ func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (doma
 	}
 	if finishedAt.Valid {
 		scan.FinishedAt = time.Unix(finishedAt.Int64, 0)
+	}
+	if settledAt.Valid {
+		scan.SettledAt = time.Unix(settledAt.Int64, 0)
 	}
 	scan.Error = reason.String
 	scan.ErrorCode = domain.ScanErrorCode(code.String)

@@ -73,6 +73,7 @@ func (f *fakeScanStore) FinishScan(ctx context.Context, id int64, state domain.S
 	}
 	f.mu.Lock()
 	f.current.State, f.current.Error, f.current.ErrorCode, f.current.ErrorPath = state, "", "", ""
+	f.current.FinishedAt = time.Now()
 	if cause != nil {
 		f.current.Error = cause.Error()
 		f.current.ErrorCode, f.current.ErrorPath = domain.ScanFailureOf(cause)
@@ -354,4 +355,68 @@ func TestScanRebuildsFolderIndexBeforeClosing(t *testing.T) {
 			}
 		})
 	}
+}
+
+// setVideos は保存側が数える対象の動画の本数と、完了の時刻を決め打ちにする。
+func (f *fakeScanStore) setVideos(videos, settled int, settledAt time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.current.Videos, f.current.SettledVideos, f.current.SettledAt = videos, settled, settledAt
+}
+
+// 走査が閉じても対象に残りの仕事があるあいだは running のままで、最後の仕事の成否が
+// 記録された時点で done になる。完了の時刻は走査の終了より後になる
+// （specs/024-import-progress/research.md R-4）。
+func TestCurrentScanStaysRunningUntilJobsSettle(t *testing.T) {
+	scanner := &fakeScanner{result: domain.ScanResult{Total: 2, Processed: 2, Added: 2}}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	if _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	closed := store.waitFinished(t)
+	scans.Wait()
+
+	// 走査は閉じたが、2本のうち1本に仕事が残っている。
+	store.setVideos(2, 1, time.Time{})
+	current, err := scans.CurrentScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Import.Status != domain.ImportRunning || current.Import.Total != 2 || current.Import.Settled != 1 {
+		t.Fatalf("残りがあるあいだ = %+v, want 2本のうち1本・running", current.Import)
+	}
+	if !current.Import.SettledAt.IsZero() {
+		t.Fatalf("残りがあるのに完了の時刻を返した: %v", current.Import.SettledAt)
+	}
+
+	// 最後の仕事の成否を記録した時点で、保存側が完了の時刻を入れる。
+	settledAt := closed.FinishedAt.Add(3 * time.Second)
+	store.setVideos(2, 2, settledAt)
+	current, err = scans.CurrentScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Import.Status != domain.ImportDone || current.Import.Settled != 2 {
+		t.Fatalf("すべて済んだあと = %+v, want 2本のうち2本・done", current.Import)
+	}
+	if !current.Import.SettledAt.After(current.FinishedAt) {
+		t.Fatalf("完了の時刻 = %v, want 走査の終了 %v より後", current.Import.SettledAt, current.FinishedAt)
+	}
+}
+
+// 開始の応答も、取り込みの状態を組み立てて返す。対象を数える前は finding である。
+func TestStartScanReturnsFindingImport(t *testing.T) {
+	release := make(chan struct{})
+	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}, release: release}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	scan, err := scans.StartScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scan.Import.Status != domain.ImportFinding || scan.Import.Counted {
+		t.Fatalf("開始直後 = %+v, want finding・本数なし", scan.Import)
+	}
+	close(release)
+	store.waitFinished(t)
+	scans.Wait()
 }

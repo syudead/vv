@@ -63,10 +63,21 @@ func (db *DB) PublishTo(publisher Publisher) {
 // changes は1つの取引の中で起きた変化を集める。確定した後に commit が
 // まとめて発行し、確定しなければ捨てる。同じ種類の変化は1つにまとめるので、
 // 取引の中で何度起きても、確定後の知らせは重ならない。
+//
+// 残りの仕事が変わりうる変化（settle）を記録した取引では、commit が確定の前に
+// 直近の取り込みの完了の時刻を決め直す（refreshScanSettled）。
 type changes struct {
 	queued     []domain.JobKind
 	processing bool
 	deleted    []domain.DeletedVideo
+	// settle は残りの仕事の数が変わりうることを表す。発行する知らせには出ない。
+	settle bool
+}
+
+// remainingChanged は、知らせは出さないが、残りの仕事の数が変わりうることを
+// 記録する（仕事の専有・成否の記録・走査の終了など）。
+func (c *changes) remainingChanged() {
+	c.settle = true
 }
 
 // jobsQueued は仕事を積んだ（または取り出せるようにした）段階を記録する。
@@ -78,12 +89,14 @@ func (c *changes) jobsQueued(kinds ...domain.JobKind) {
 		}
 	}
 	c.processing = true
+	c.settle = true
 }
 
 // processingChanged は、仕事は積んでいないが、残りの仕事として数える範囲が
 // 変わったことを記録する（メディアフォルダの登録を外したなど）。
 func (c *changes) processingChanged() {
 	c.processing = true
+	c.settle = true
 }
 
 // videosDeleted は消した動画の行を記録する。その動画の仕事も残りから消える。
@@ -93,6 +106,7 @@ func (c *changes) videosDeleted(deleted []domain.DeletedVideo) {
 	}
 	c.deleted = append(c.deleted, deleted...)
 	c.processing = true
+	c.settle = true
 }
 
 // events は集めた変化を発行する形にする。
@@ -119,7 +133,13 @@ func (c *changes) events() []domain.Event {
 
 // commit は取引を確定し、確定できたときだけ集めた変化を発行する。確定前に
 // 発行すると、ワーカーがまだ見えない行を探して空振りし、そのまま眠る。
-func (db *DB) commit(tx *sql.Tx, c *changes) error {
+//
+// 残りの仕事が変わりうる変化があれば、確定の前に同じ取引で直近の取り込みの
+// 完了の時刻を決め直す。
+func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
+	if err := settle(ctx, tx, c); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}
@@ -127,8 +147,8 @@ func (db *DB) commit(tx *sql.Tx, c *changes) error {
 	return nil
 }
 
-// publish は集めた変化を発行する。取引の外の1文で書き換えた場合は、その文が
-// 成功した後に呼ぶ。
+// publish は集めた変化を発行する。commit を通らない書き込みから呼ぶときは、
+// 残りの仕事が変わる変化を含めないこと（完了の時刻が決め直されない）。
 func (db *DB) publish(c *changes) {
 	events := c.events()
 	if len(events) == 0 {
