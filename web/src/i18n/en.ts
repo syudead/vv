@@ -164,13 +164,12 @@ const errorReasons = {
   cross_origin: "This change must be made from vv itself.",
   open_not_local: "Files can only be opened on the computer running vv.",
   encoder_unavailable: "That video encoder isn't available on this server.",
-  api_token_name_empty: "Enter a name for the API token.",
-  api_token_name_control_characters:
-    "API token names can't contain line breaks, tabs or other control characters.",
+  api_token_name_empty: "Enter a name for the token.",
+  api_token_name_control_characters: "The name can't contain control characters.",
   api_token_name_too_long: ({ limit }) =>
     limit === undefined
-      ? "The API token name is too long."
-      : `Use an API token name of ${characters(limit)} or fewer.`,
+      ? "The name is too long."
+      : `The name can be up to ${characters(limit)}.`,
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -965,6 +964,41 @@ export const en = {
         check_failed: "The test encode failed",
         timed_out: "The test encode took too long",
       } satisfies Record<EncoderUnavailableReason, string>,
+    },
+    apiTokens: {
+      heading: "API tokens",
+      description:
+        "Tokens let external tools and MCP clients use this library as the owner. Anyone who has a token can read every video and change tags, so keep it as safe as your password.",
+      guide: "How to use the API and MCP",
+      opensInNewTab: "(opens in a new tab)",
+      name: "Name",
+      nameHint: "What the token is for, such as the tool that will use it.",
+      create: "Create token",
+      creating: "Creating…",
+      createBlocked: "You can create a token once the current tokens have loaded",
+      revealTitle: (name: string) => `Token for ${name}`,
+      revealWarning:
+        "This is the only time the token is shown. Copy it now. After you close this, it can't be shown again; if you lose it, revoke it and create a new one.",
+      copy: "Copy token",
+      copied: "Copied",
+      copyFailed: "Couldn't copy. Select the token and copy it yourself.",
+      done: "Done",
+      list: "API tokens",
+      loading: "Loading the API tokens",
+      loadFailed: (reason: string) => `Couldn't load the API tokens: ${reason}`,
+      created: (when: string) => `Created ${when}`,
+      lastUsed: (when: string) => `Last used ${when}`,
+      neverUsed: "Never used",
+      revoke: "Revoke",
+      revokeNamed: (name: string) => `Revoke ${name}`,
+      revoked: "Revoked",
+    },
+    revokeTokenDialog: {
+      title: "Revoke this token?",
+      target: "Token",
+      warning: "Tools using this token stop working right away. This can't be undone.",
+      submit: "Revoke",
+      revoking: "Revoking…",
     },
     removeDialog: {
       title: "Remove this folder?",
