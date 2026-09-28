@@ -163,13 +163,13 @@ services:
 **NVIDIA (NVENC).** Install the NVIDIA driver and the
 [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 on the host and configure Docker for it. Then reserve the GPU and ask for the
-video libraries:
+CUDA and video libraries (NVENC opens a CUDA context):
 
 ```yaml
 services:
   mdm:
     environment:
-      NVIDIA_DRIVER_CAPABILITIES: "video,utility"
+      NVIDIA_DRIVER_CAPABILITIES: "compute,video,utility"
     deploy:
       resources:
         reservations:
