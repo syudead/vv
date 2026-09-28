@@ -168,7 +168,7 @@ layout" with a link]
     entity) instead of repeating it here.
   - Between them the units must cover the whole feature, and must not overlap.
   - For a unit that changes a screen, say so in its acceptance: the
-    implementation owes a visual/accessibility review.
+    implementation owes a visual review.
 
   Do not add persistent task IDs and do not create a separate tasks.md.
 -->

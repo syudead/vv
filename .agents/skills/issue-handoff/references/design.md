@@ -40,12 +40,12 @@ A technical constraint is never a reason to narrow the design (Q-7).
 
 1. Use the supplied Issue, PR, branch, and current checkout as context.
 2. Read the parent Issue, the plan, and any existing UI design as inputs, plus
-   the sources above. The Issue's `## UI品質とアクセシビリティ` section is where
+   the sources above. The Issue's `## UI品質` section is where
    this artifact starts.
 3. Create an arbitrary-name sub-branch from the feature branch.
 4. Create `<feature-dir>/ui-design.md`. Write only what this feature adds or
    changes: screen boundaries, visual hierarchy, responsive behaviour, content
-   and system states, interactions, accessibility, and observable review
+   and system states, interactions, and observable review
    criteria. Cover each of these when the feature touches it, and leave out the
    ones it does not — the artifact is as long as the change earns. Do not
    implement code.
@@ -54,8 +54,9 @@ A technical constraint is never a reason to narrow the design (Q-7).
    density, spacing rhythm, typography, and the priority of actions — and Q-4
    rules out "the element is present" as a criterion. An element with no
    behaviour behind it needs its value and its misrecognition risk stated
-   (Q-5). Name the widths, the keyboard path, and the assistive-technology
-   check the implementation will be judged against.
+   (Q-5). Name the widths the implementation will be judged against. Do not
+   add accessibility design (screen readers, ARIA, contrast ratios) unless the
+   parent Issue asks for it.
 6. Reconcile every stated behaviour against the parent Issue and the existing
    design system rules, which this artifact narrows more often than it
    contradicts.

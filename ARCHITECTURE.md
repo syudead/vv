@@ -92,13 +92,16 @@ start), or when an interrupted scan was closed
 seek_thumbnail, preview — each claiming only its own kind of job from the persistent `jobs`
 queue, one at a time, and handing it to `internal/app`, which drives the `internal/media`
 adapters (`ffprobe` for metadata, `ffmpeg` for one library thumbnail, seek-preview sprite
-sheets from up to four concurrent input seeks,
+sheets from the keyframes an MP4/MOV index assigns to each interval or, for other inputs,
+from up to four concurrent input seeks,
 and a content-keyed hover-preview clip per video)
 and publishes their output through `internal/artifacts`. New seek previews use at most 81
 frames on one 9 × 9 sheet with cells up to 160 px. `domain.NewSeekSpriteLayout` derives
 the interval from the duration, keeping five seconds for short videos and widening it
-for longer videos. Each frame uses an input seek; missing frames fall back to the
-sequential decoder. Existing completed six-sheet sprites remain readable
+for longer videos. For MP4/MOV with H.264/HEVC the index is read once and only the chosen
+keyframes are read; other inputs use one input seek per frame. An interval without a frame
+reuses the previous frame, and only an ffmpeg failure falls back to the sequential decoder.
+Existing completed six-sheet sprites remain readable
 ([seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md)).
 The library thumbnail and the seek
 sprite are separate stages with their own state columns, so a library thumbnail never waits

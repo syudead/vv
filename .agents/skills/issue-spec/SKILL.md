@@ -20,7 +20,7 @@ files, or open a pull request. Stop when the Issue is written.
 ## 背景
 ## 目的
 ## 要件
-## UI品質とアクセシビリティ   <- `ui` ラベルの Issue だけ
+## UI品質   <- `ui` ラベルの Issue だけ
 ## 受け入れ条件
 ## Edge Cases
 ## 対象外
@@ -55,6 +55,9 @@ what this stage adds.
   something the product already does, say so in 要件.
 - **Revising is the same stage.** When the requirement changes, edit this Issue
   rather than recording the change somewhere downstream.
+- **Accessibility is not a requirement here.** Do not write screen-reader,
+  ARIA, reading-name, contrast-ratio or other accessibility requirements,
+  acceptance criteria or edge cases unless the requester asks for them.
 - **Labels are the requester's call.** Create the Issue with no labels, and
   add only the ones the requester names. Do not copy labels from other Issues.
   `ui` is the only label with workflow meaning — it decides whether the
