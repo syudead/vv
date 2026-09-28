@@ -132,8 +132,13 @@ create table video_aliases (
 create index video_aliases_canonical_idx on video_aliases (canonical_key);
 ```
 
-不変条件: 正の鍵は別名の行の `alias_key` に現れない（別名の別名を作らない）。束ねる
-操作は、束ね先が別名なら先にその正の鍵へたどってから書く。
+不変条件: 正の鍵は別名の行の `alias_key` に現れない（別名の別名を作らない）。どの別名も
+1 回引けば正の鍵に着く。束ねる操作はこれを保つように書く。
+
+- 束ね先が別名なら、先にその正の鍵へたどる。
+- 束ね元が正の鍵なら、`canonical_key` が束ね元の行をすべて束ね先に付け替えてから、
+  束ね元自身を束ね先の別名にする。たとえば `a1 → A` があるところで A を B へ束ねると、
+  `a1 → B` と `A → B` になる（`a1 → A → B` を残さない）。
 
 ### 2.2 利用者データの扱い
 
@@ -145,9 +150,22 @@ create index video_aliases_canonical_idx on video_aliases (canonical_key);
   - `playback_progress`: `updated_at` が新しい方を残す。
   - `public_videos`: どちらかが非公開なら非公開にする（意図しない公開を避ける）。
     どちらを採るかは要件で決める。
-  - 読むときは、各動画の `content_key` を `video_aliases` で正の鍵に置き換えてから
-    `TagsByContentKeys`・`ProgressByContentKeys` と公開判定を引く。書くときも正の鍵に
-    書く。
+  - 書くときは正の鍵に書く。読むときは、利用者データを引く箇所すべてで、動画の
+    `content_key` を `video_aliases` で正の鍵に置き換える（`coalesce(alias.canonical_key,
+    v.content_key)` の形）。応答に載せる値だけでなく、一覧の SQL が直接引いている箇所も
+    含む。
+    - 視聴状態の絞り込みと再生日時の並び（`internal/store/listing.go`、
+      `library_items.go` の `playback_progress` の結合）。
+    - タグでの絞り込みと、検索語のタグ名への照合（`internal/store/search.go` の
+      `video_tags`）。
+    - ゲストに見せる所在の条件（`internal/store/visibility.go` の `public_videos`）。
+    - 応答を組み立てるときの `TagsByContentKeys`・`ProgressByContentKeys`。
+    どれかを置き換え忘れると、別名の動画が「正のタグが見えるのにタグで絞ると出ない」
+    「公開したのにゲストに見えない」のように食い違う。
+  - フォルダ由来のタグ（`video_folder_names` から付くもの）は束ねない。版ごとに置き場所の
+    フォルダが違うので、各動画の `videos.id` から今までどおり求め、手で付けたタグ
+    （`video_tags`、正の鍵で引く）とあとで合わせる。`TagsByContentKeys` は両方を
+    同じ鍵で引いているので、手で付けたタグの側だけ正の鍵へ置き換えるよう分ける。
 - **案 B（利用者データを同一性の id に結び直す）。** `playback_progress` などの鍵を
   新しい同一性 id に替える。読み書きは単純になるが、既存の 3 表の移行と、
   「利用者データは内容の識別子に結ぶ」という今の前提の書き換えが要る。
