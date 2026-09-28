@@ -11,23 +11,24 @@
 ffmpeg 6.1.1（Ubuntu 24.04 のパッケージ。`--enable-libvpl`、NVENC・VAAPI 有効）の `-encoders` と
 `-h encoder=…` で確かめた。
 
-## R-1: 同梱イメージの実行環境を Alpine から Debian に変える
+## R-1: 同梱イメージは Alpine のままにし、ソフトウェアエンコードだけにする
 
-- Decision: `Dockerfile` の実行段（3 段目）を `debian:<stable>-slim` にし、`ffmpeg` は Debian の
-  パッケージを入れる。`linux/amd64` では Intel の VAAPI ドライバー（`intel-media-va-driver-non-free`、
-  `non-free` を有効にする）、Quick Sync の実行時ライブラリ（`libmfx-gen1.2`）、AMD の VAAPI ドライバー
-  （`mesa-va-drivers`）を足す。`linux/arm64` では ffmpeg だけを入れる（Intel のパッケージは amd64 に
-  しか無い）。NVENC の実行時ライブラリ（`libnvidia-encode.so.1`）はイメージに入れず、ホストの
-  NVIDIA Container Toolkit がコンテナへ渡す。SPA とバイナリのビルド段は変えない。
-- Rationale: 親 Issue 要件 14 は同梱イメージで VAAPI・Quick Sync・NVENC を使えることを求める。
-  NVIDIA Container Toolkit が渡すドライバーのライブラリは glibc に結合されていて、musl の Alpine では
-  読み込めない（Jellyfin・Plex の公式イメージが Debian/Ubuntu 系なのはこのため）。Debian の
-  `ffmpeg` パッケージは `h264_nvenc`・`h264_qsv`（libvpl）・`h264_vaapi` をすべて含む（Ubuntu 24.04 の
-  同系のパッケージで確かめた）ので、ffmpeg 自体を別に用意する必要が無い。
-- Alternatives considered: Alpine のまま（NVENC が成り立たない）。`jellyfin-ffmpeg` の deb を
-  入れる（ハードウェア対応が最も広く小さいが、第三者の apt リポジトリと鍵を Dockerfile に持ち込み、
-  依存の更新の運用（Renovate）の外になる）。ハードウェア対応版を別タグの 2 つ目のイメージにする
-  （要件 14 は同梱イメージ 1 つを指しており、利用者に選ばせる理由が無い）。
+- Decision: `Dockerfile` の実行段は #491 より前（`e5acc24`）と同じ Alpine で、`ffmpeg`・`ca-certificates`・`tzdata`
+  だけを入れる。GPU のドライバーや実行時ライブラリは足さず、`compose.yaml`・`compose.hosting.yaml`
+  にも GPU を渡す設定を足さない。コンテナの中では、起動時の確認
+  （[R-2](#r-2-起動時の確認はエンコーダーごとに短い実エンコードを並行して走らせる)）がハードウェアの
+  方式をすべて使えないと報告し、ライブ変換はソフトウェアで動く。ハードウェアエンコードは、ホストに
+  直接入れた VVMDM で使う（[R-9](#r-9-ハードウェアエンコードはホストへの直接インストールで使い文書に前提と手順を書く)）。
+- Rationale: 親 Issue 要件 14 と対象外は、同梱の Docker イメージの中でのハードウェアエンコード
+  （コンテナへの GPU パススルー）を扱わないと決めている。確認とソフトウェアへの切り替えは OS と
+  環境に依らない作りなので、イメージを変えなくてもコンテナの中では「使えない」と表示されるだけで
+  済む。イメージを変えないので、実行段の基盤、イメージの大きさ、`HEALTHCHECK`、依存の更新の運用
+  （Renovate）も今のまま保てる。
+- Alternatives considered: 実行段を Debian にし、Intel/AMD のドライバーを入れ、NVIDIA Container
+  Toolkit でドライバーのライブラリを渡す（NVIDIA のライブラリは glibc に結合され musl の Alpine では
+  読み込めないため。親 Issue の対象外で採らない）。`jellyfin-ffmpeg` の deb を入れる（同上。加えて
+  第三者の apt リポジトリと鍵を持ち込む）。ハードウェア対応版を別タグの 2 つ目のイメージにする
+  （同上）。
 
 ## R-2: 起動時の確認は、エンコーダーごとに短い実エンコードを並行して走らせる
 
@@ -43,7 +44,7 @@ ffmpeg 6.1.1（Ubuntu 24.04 のパッケージ。`--enable-libvpl`、NVENC・VAA
   HTTP の待ち受けを待たせない（[R-3](#r-3-実際に使う方式はドメインの純粋関数が決めapp-がメモリに持つ)
   の「確認中」）。確認は起動時の 1 回だけで、画面から調べ直す操作は置かない（親 Issue 対象外）。
 - Rationale: 親 Issue 要件 5 は「実際に短いエンコードを試す」ことを求める。`-encoders` の有無だけでは
-  ビルドに含まれていてもデバイスやドライバーが無い場合（Docker に GPU を渡していない、`/dev/dri` の
+  ビルドに含まれていてもデバイスやドライバーが無い場合（Docker のコンテナの中、`/dev/dri` の
   権限が無い、NVIDIA のライブラリが無い）を見分けられず、実エンコードだけがそれを一度に確かめる。
   `lavfi` の合成入力はどのビルドにもあり、入力ファイルを要らなくする。並行にするのは、固まった
   エンコーダーが 1 つあっても全体の待ちが 10 秒で済むようにするためである（`-encoders` の
@@ -174,22 +175,28 @@ ffmpeg 6.1.1（Ubuntu 24.04 のパッケージ。`--enable-libvpl`、NVENC・VAA
 - Alternatives considered: `/api/transcoding-settings`（上記）。`PATCH`（項目が 1 つで部分更新の
   意味が無い）。エンコーダーの一覧を別の経路にする（画面は必ず両方を出すので往復が増える）。
 
-## R-9: GPU をコンテナに渡す設定は override ファイルの例として文書に置く
+## R-9: ハードウェアエンコードはホストへの直接インストールで使い、文書に前提と手順を書く
 
-- Decision: `docs/how-to/running-vv.md` に「Hardware encoding」の節を足し、`compose.override.yaml`
-  （`task up`）と `compose.hosting.yaml` に足す行の例を、Intel/AMD（`/dev/dri` の `devices` と
-  `group_add`）と NVIDIA（NVIDIA Container Toolkit、`deploy.resources.reservations.devices` と
-  `NVIDIA_DRIVER_CAPABILITIES=compute,video,utility`）の 2 つについて書く。方式ごとの前提（ドライバー、
-  デバイス、OS、VideoToolbox は Docker では使えないこと）も同じ節に置く。`compose.yaml` 自体には
-  デバイスの行を入れず、節へのコメントだけを足す。設定画面の説明文はこの節を指す。
-- Rationale: `devices: /dev/dri` はホストにその device が無いと起動に失敗するので、既定の
-  `compose.yaml` には入れられない。Compose は `compose.override.yaml` を自動で重ねるので、利用者は
-  `compose.yaml` を書き換えずに足せる。`compute` を含めるのは、FFmpeg の `h264_nvenc` が
-  `libcuda.so.1` で CUDA コンテキストを作り、NVIDIA Container Toolkit はこのライブラリを
-  `compute` の capability のときにしかコンテナへ入れないため。
-- Alternatives considered: `compose.yaml` にコメントアウトで置く（NAS の管理画面に貼る
-  `compose.hosting.yaml` と二重になる）。`compose.gpu.yaml` を同梱して `task up-gpu` を足す
-  （Intel と NVIDIA で内容が違い、2 つ同梱しても組み合わせは利用者が選ぶ）。
+- Decision: `docs/how-to/running-vv.md` に「Hardware encoding」の節を足し、次を書く。
+  - ハードウェアエンコードは、VVMDM をホスト（Windows・Linux・macOS）に直接入れて動かす場合に使える。
+    同梱の Docker イメージはソフトウェアエンコードだけで、コンテナの中では設定画面にハードウェアの
+    方式がすべて使えないと表示される（[R-1](#r-1-同梱イメージは-alpine-のままにしソフトウェアエンコードだけにする)）。
+  - 方式ごとの前提: 使える OS（R-2 の確認対象）、ドライバー、デバイス（VAAPI の
+    `/dev/dri/renderD128` と、その権限を持つグループ）、PATH の ffmpeg がその方式のエンコーダーを
+    含むこと（`ffmpeg -hide_banner -encoders` で確かめる）。
+  - 直接インストールの手順は、単一バイナリを `task build` で作って動かす既存の手順
+    （[docs/how-to/development.md](../../docs/how-to/development.md) の toolchain）へ案内し、
+    `MDM_DATA_DIR` などの実行時設定は同じ文書の「Runtime settings」を指す。
+  - 設定画面での有効化と、起動時の確認・ソフトウェアへの切り替えの見え方。
+  GPU をコンテナに渡す override の例（`devices`・`group_add`・NVIDIA Container Toolkit）は書かない。
+  `compose.yaml`・`compose.hosting.yaml` には何も足さない。設定画面の説明文はこの節を指す（R-11）。
+- Rationale: 親 Issue 要件 14 と受け入れ条件 11 は、この文書でハードウェアエンコードに直接
+  インストールが要ることと Docker がソフトウェアだけであることが分かり、直接インストールした環境で
+  有効にできることを求める。ハードウェアエンコーダーの有無は ffmpeg のビルドとホストのドライバーで
+  決まり、VVMDM はそれを用意しないので、利用者が確かめる方法（`-encoders`）を前提と並べて書く。
+- Alternatives considered: GPU をコンテナに渡す override の例を書く（親 Issue の対象外。イメージに
+  ドライバーが無く、渡しても使えない）。直接インストール用の配布物（ビルド済みのバイナリ、
+  インストーラー）を足す（要件に無く、この feature の範囲を超える）。
 
 ## R-10: 検査は ffmpeg を差し替えたテストで行い、実機の確認は quickstart に置く
 
