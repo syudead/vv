@@ -58,6 +58,18 @@ func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bo
 	if _, err := tx.ExecContext(ctx, `delete from scan_videos where scan_id <> ?`, id); err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's videos: %w", err)
 	}
+	// 前の走査の問題は新しい取り込みに持ち越さない（research.md R-3）。
+	cleared, err := tx.ExecContext(ctx, `delete from scan_issues where scan_id <> ?`, id)
+	if err != nil {
+		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's issues: %w", err)
+	}
+	if n, err := cleared.RowsAffected(); err != nil {
+		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's issues: %w", err)
+	} else if n > 0 {
+		if err := bumpIssuesRevision(ctx, tx); err != nil {
+			return domain.Scan{}, false, err
+		}
+	}
 	var c changes
 	c.remainingChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
@@ -162,7 +174,7 @@ func (s *ScanStore) FailInterruptedScans(ctx context.Context) (int64, error) {
 // scanColumns は Scan を組み立てるのに要る列である。並びは scanBy の Scan と対応させる。
 // 対象の動画の本数と、そのうち残りの仕事が無い本数は、読み出しのたびに仕事の状態から
 // 数える（specs/024-import-progress/research.md R-1）。
-var scanColumns = `id, state, started_at, finished_at, total, completed, failed, error, error_code, error_path, settled_at,
+var scanColumns = `id, state, started_at, finished_at, total, completed, failed, error, error_code, error_path, settled_at, issues_revision,
 	(select count(*) from scan_videos sv where sv.scan_id = scans.id),
 	(select count(*) from scan_videos sv where sv.scan_id = scans.id and not exists (
 		select 1 from jobs j where j.video_id = sv.video_id and ` + remainingJobCondition("j") + `))`
@@ -183,7 +195,7 @@ func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (doma
 	//nolint:gosec // scanColumns は定数で、利用者の入力は混ざらない。
 	err := s.db.sql.QueryRowContext(ctx, query, args...).Scan(
 		&scan.ID, &state, &startedAt, &finishedAt,
-		&scan.Total, &scan.Completed, &scan.Failed, &reason, &code, &path, &settledAt,
+		&scan.Total, &scan.Completed, &scan.Failed, &reason, &code, &path, &settledAt, &scan.IssuesRevision,
 		&scan.Videos, &scan.SettledVideos,
 	)
 	if errors.Is(err, sql.ErrNoRows) {

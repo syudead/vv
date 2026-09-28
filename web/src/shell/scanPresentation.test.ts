@@ -9,6 +9,7 @@ function makeScan(state: Scan["state"], values: Partial<Scan> = {}): Scan {
   return {
     id: 1,
     status: state,
+    issues: { failed: 0, substituted: 0, revision: 0 },
     state,
     total: 10,
     completed: state === "running" ? 4 : 10,

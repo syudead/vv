@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
+	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -243,5 +247,117 @@ func TestScansWithoutController(t *testing.T) {
 	}
 	if rec := do(t, handler, http.MethodGet, "/api/scans/current"); rec.Code != http.StatusInternalServerError {
 		t.Errorf("GET: status = %d, want 500", rec.Code)
+	}
+}
+
+// scanIssueFixture は並びを確かめるための問題である。domain.ScanIssues が並べる。
+func scanIssueFixture() []domain.ScanIssue {
+	media := filepath.FromSlash("/media")
+	return domain.ScanIssues([]domain.MediaFolder{{ID: 7, Path: media}}, []domain.ScanIssueRecord{
+		{VideoID: 11, Path: filepath.Join(media, "b.mp4"), Kinds: []domain.ScanIssueKind{domain.IssueThumbnailFirstFrame}, InImport: true},
+		{VideoID: 12, Path: filepath.Join(media, "sub", "c.mp4"),
+			Kinds: []domain.ScanIssueKind{domain.IssueThumbnailFirstFrame, domain.IssueProbeFailed}, InImport: true},
+		{Path: filepath.Join(media, "a.mp4"), Kinds: []domain.ScanIssueKind{domain.IssueUnreadable}},
+	})
+}
+
+// 問題の一覧は、失敗を先に、同じ重さの中はファイル名の順に返し、続きがあるときだけ
+// nextCursor を返す（specs/024-import-progress/contracts/scan-api.md §3）。
+func TestListCurrentScanIssuesOrderAndCursor(t *testing.T) {
+	handler := newTestServer(t, Options{Scans: &fakeScans{
+		hasScan: true, current: domain.Scan{ID: 9, State: domain.ScanDone}, issues: scanIssueFixture(),
+	}})
+
+	rec := do(t, handler, http.MethodGet, "/api/scans/current/issues?limit=2")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
+		t.Errorf("Cache-Control = %q", got)
+	}
+	first := decode[gen.ScanIssuePage](t, rec)
+	if first.ScanId != 9 || len(first.Items) != 2 || first.NextCursor == nil {
+		t.Fatalf("1ページ目 = %+v", first)
+	}
+	a, c := first.Items[0], first.Items[1]
+	if a.FileName != "a.mp4" || a.Severity != gen.ScanIssueSeverityFailed || a.VideoId != nil ||
+		!slices.Equal(a.Kinds, []gen.ScanIssueKind{gen.ScanIssueKindUnreadable}) || a.Folder.RootId != 7 || a.Folder.Path != "" {
+		t.Errorf("1件目 = %+v, want 未登録の a.mp4", a)
+	}
+	if c.FileName != "c.mp4" || c.VideoId == nil || *c.VideoId != 12 || c.Folder.Path != "sub" ||
+		c.Folder.RootName == nil || *c.Folder.RootName != "media" ||
+		!slices.Equal(c.Kinds, []gen.ScanIssueKind{gen.ScanIssueKindProbeFailed, gen.ScanIssueKindThumbnailFirstFrame}) {
+		t.Errorf("2件目 = %+v, want 動画12の c.mp4", c)
+	}
+
+	rec = do(t, handler, http.MethodGet, "/api/scans/current/issues?limit=2&cursor="+url.QueryEscape(*first.NextCursor))
+	second := decode[gen.ScanIssuePage](t, rec)
+	if len(second.Items) != 1 || second.Items[0].FileName != "b.mp4" ||
+		second.Items[0].Severity != gen.ScanIssueSeveritySubstituted || second.NextCursor != nil {
+		t.Fatalf("2ページ目 = %+v, want 代用の b.mp4 だけで続きなし", second)
+	}
+
+	// 既定の件数は 50 で、すべて入れば nextCursor を返さない。
+	all := decode[gen.ScanIssuePage](t, do(t, handler, http.MethodGet, "/api/scans/current/issues"))
+	if len(all.Items) != 3 || all.NextCursor != nil {
+		t.Fatalf("既定の件数 = %+v", all)
+	}
+}
+
+func TestListCurrentScanIssuesRejectsInvalidRequests(t *testing.T) {
+	handler := newTestServer(t, Options{Scans: &fakeScans{
+		hasScan: true, current: domain.Scan{ID: 9, State: domain.ScanDone}, issues: scanIssueFixture(),
+	}})
+	rec := do(t, handler, http.MethodGet, "/api/scans/current/issues?cursor=not-a-cursor")
+	assertErrorBody(t, "不正なカーソル", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor})
+	for _, limit := range []string{"0", "201"} {
+		if rec := do(t, handler, http.MethodGet, "/api/scans/current/issues?limit="+limit); rec.Code != http.StatusBadRequest {
+			t.Errorf("limit=%s: status = %d, want 400", limit, rec.Code)
+		}
+	}
+}
+
+// 一度も走査していなければ 404。
+func TestListCurrentScanIssuesWhenNeverScanned(t *testing.T) {
+	handler := newTestServer(t, Options{Scans: &fakeScans{}})
+	rec := do(t, handler, http.MethodGet, "/api/scans/current/issues")
+	assertErrorBody(t, "取り込みが無い", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonNoScan})
+}
+
+// 問題の一覧は所有者だけの経路で、ゲストには未認証を返し、中身を出さない（要件 11）。
+func TestListCurrentScanIssuesIsOwnerOnly(t *testing.T) {
+	if _, ok := accessRoutes["GET /api/scans/current/issues"]; ok {
+		t.Fatal("問題の一覧がゲストにも返す経路の表に入っている")
+	}
+	env := newAuthEnv(t, t.TempDir(), Options{Scans: &fakeScans{
+		hasScan: true, current: domain.Scan{ID: 9, State: domain.ScanDone}, issues: scanIssueFixture(),
+	}})
+	cookie := env.setup()
+
+	guest := env.get("/api/scans/current/issues")
+	assertUnauthenticated(t, "ゲストの問題の一覧", guest)
+	if strings.Contains(guest.Body.String(), "a.mp4") {
+		t.Fatalf("ゲストに問題を返した: %s", guest.Body)
+	}
+	if owner := env.get("/api/scans/current/issues", cookie); owner.Code != http.StatusOK {
+		t.Fatalf("所有者: status = %d: %s", owner.Code, owner.Body)
+	}
+}
+
+// Scan.issues は internal/app が数えた本数と、保存された番号を返す。
+func TestGetCurrentScanReturnsIssueCounts(t *testing.T) {
+	handler := newTestServer(t, Options{Scans: &fakeScans{
+		hasScan: true,
+		current: domain.Scan{
+			ID: 3, State: domain.ScanDone, IssuesRevision: 4,
+			Issues: domain.ScanIssueCounts{Failed: 2, Substituted: 1, Unregistered: 1},
+			Import: domain.ImportProgress{Status: domain.ImportPartial, Counted: true, Total: 5, Settled: 5},
+		},
+	}})
+	scan := decode[gen.Scan](t, do(t, handler, http.MethodGet, "/api/scans/current"))
+	if scan.Status != gen.ScanStatusPartial || scan.Issues != (gen.ScanIssueCounts{Failed: 2, Substituted: 1, Revision: 4}) {
+		t.Fatalf("scan = %+v, want partial・失敗2・代用1・番号4", scan)
 	}
 }

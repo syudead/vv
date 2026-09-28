@@ -29,6 +29,8 @@ type fakeScanStore struct {
 	rebuildErr error
 	// rebuiltBeforeFinish は閉じる時点までに作り直した回数である。
 	rebuiltBeforeFinish []int
+	// issues は記録された問題である。
+	issues []domain.ScanIssue
 }
 
 func newFakeScanStore() *fakeScanStore {
@@ -83,6 +85,22 @@ func (f *fakeScanStore) FinishScan(ctx context.Context, id int64, state domain.S
 	f.mu.Unlock()
 	f.finished <- scan
 	return nil
+}
+
+func (f *fakeScanStore) RecordScanIssue(_ context.Context, issue domain.ScanFileIssue) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.issues = append(f.issues, domain.ScanIssue{
+		VideoID: issue.VideoID, Severity: issue.Kind.Severity(), Kinds: []domain.ScanIssueKind{issue.Kind},
+		FileName: issue.Path, Path: issue.Path, Unregistered: issue.VideoID == 0,
+	})
+	return nil
+}
+
+func (f *fakeScanStore) ScanIssues(context.Context, int64) ([]domain.ScanIssue, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.issues), nil
 }
 
 func (f *fakeScanStore) FailInterruptedScans(context.Context) (int64, error) {
@@ -419,4 +437,67 @@ func TestStartScanReturnsFindingImport(t *testing.T) {
 	close(release)
 	store.waitFinished(t)
 	scans.Wait()
+}
+
+// 走査が報告したファイルの失敗は問題として記録され、変化として知らせる。登録できなかった
+// ファイルは分母と済みの本数に入り、失敗の問題があるので取り込みは partial になる
+// （specs/024-import-progress/research.md R-5）。
+func TestReportedFileIssueMakesImportPartial(t *testing.T) {
+	scanner := &fakeScanner{result: domain.ScanResult{Total: 2, Processed: 1, Added: 1, Failed: 1}}
+	scans, store, publisher := newTestScans(t, context.Background(), scanner)
+	if _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.waitFinished(t)
+	scans.Wait()
+	store.setVideos(1, 1, time.Now())
+
+	before := len(publisher.published())
+	if err := scans.ReportScanIssue(context.Background(), domain.ScanFileIssue{
+		Path: "/media/broken.mp4", Kind: domain.IssueUnreadable,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if events := publisher.published(); len(events) != before+1 || events[len(events)-1] != (domain.ScanChanged{}) {
+		t.Fatalf("知らせ = %v, want ScanChanged を1回", events[before:])
+	}
+
+	current, err := scans.CurrentScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Import.Status != domain.ImportPartial || current.Import.Total != 2 || current.Import.Settled != 2 {
+		t.Fatalf("取り込み = %+v, want 2本のうち2本・partial", current.Import)
+	}
+	if current.Issues.Failed != 1 || current.Issues.Unregistered != 1 {
+		t.Fatalf("本数 = %+v, want 失敗1・未登録1", current.Issues)
+	}
+}
+
+// 問題の一覧は直近の走査の id と一緒に返り、一度も走査していなければ ErrNotFound である。
+func TestListScanIssues(t *testing.T) {
+	scans, store, _ := newTestScans(t, context.Background(), &fakeScanner{})
+	if _, err := scans.ListScanIssues(context.Background(), "", 50); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("走査前: err = %v, want ErrNotFound", err)
+	}
+	if _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.waitFinished(t)
+	scans.Wait()
+	for _, path := range []string{"/media/b.mp4", "/media/a.mp4"} {
+		if err := scans.ReportScanIssue(context.Background(), domain.ScanFileIssue{Path: path, Kind: domain.IssueUnreadable}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := scans.ListScanIssues(context.Background(), "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.ScanID != 1 || len(page.Items) != 1 || page.NextCursor == "" {
+		t.Fatalf("1ページ目 = %+v", page)
+	}
+	if _, err := scans.ListScanIssues(context.Background(), "not a cursor", 1); !errors.Is(err, domain.ErrInvalidCursor) {
+		t.Fatalf("不正なカーソル: err = %v, want ErrInvalidCursor", err)
+	}
 }

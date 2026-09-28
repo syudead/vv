@@ -103,6 +103,14 @@ outcomes, enqueues, video deletions, media-folder changes and closing a scan.
 `Scan.status` (`finding`, `running`, `done`, `partial`, `failed`) and progress through
 `domain.ImportTally`
 ([specs/024-import-progress/research.md](specs/024-import-progress/research.md) R-1–R-5).
+The latest scan also owns its issues (`scan_issues`, one row per event): `internal/scanner`
+hands each file it cannot read or register to the reporter it declares, and `internal/app`
+records it; a job that fails at the retry limit is recorded in the same transaction as
+`recordTerminalFailure`, and a later success of that stage deletes it. Starting a scan clears
+the previous scan's issues, and every change bumps `scans.issues_revision`. Reads group the
+rows per video (or per path for unregistered files) and drop those outside every registered
+media folder; one failed issue makes the import `partial`, and files that could not be
+registered count toward the progress (R-6).
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail,
 seek_thumbnail, preview — each claiming only its own kind of job from the persistent `jobs`
 queue, one at a time, and handing it to `internal/app`, which drives the `internal/media`
@@ -244,7 +252,7 @@ grace period, then stops the scanner and the workers so a running job returns to
 
 Stored data falls into three recovery categories. `videos`, `video_locations`
 (including their search keys), `location_search_fts`, `jobs`, `scans` (including
-`settled_at`), `scan_videos`, generated
+`settled_at` and `issues_revision`), `scan_videos`, `scan_issues`, generated
 thumbnails and previews, the folder index (`folder_groups`, `folder_group_members`,
 `video_folder_names`, `folder_index_state`), and `video_transcode_probes` are
 rebuildable from registered media folders by scanning and processing the files again.

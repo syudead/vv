@@ -18,6 +18,7 @@ function scan(id: number, state: Scan["state"]): Scan {
   return {
     id,
     status: state,
+    issues: { failed: 0, substituted: 0, revision: 0 },
     state,
     total: 1,
     completed: state === "running" ? 0 : 1,

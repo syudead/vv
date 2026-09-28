@@ -170,9 +170,14 @@ type Scan struct {
 	SettledVideos int
 	// SettledAt は対象の動画がすべて済んだ時刻。済んでいなければゼロ値である。
 	SettledAt time.Time
+	// IssuesRevision は問題の記録（scan_issues）を変えるたびに増える番号である
+	// （specs/024-import-progress/data-model.md §1・§3）。
+	IssuesRevision int64
 	// Import は利用者に見せる取り込みの状態で、internal/app が組み立てる。
 	// 保存側は埋めない。
 	Import ImportProgress
+	// Issues は問題の本数で、internal/app が組み立てる。保存側は埋めない。
+	Issues ScanIssueCounts
 }
 
 // Tally は走査の記録から、取り込みの状態を決める入力を作る。問題の数は
