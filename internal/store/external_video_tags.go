@@ -156,31 +156,44 @@ func uniqueContentKeys(targets []taggableVideo) []string {
 }
 
 // applyManualTags は keys の動画の手で付けたタグ（video_tags の行）を action の通りに書き換える。
+// 動画とタグの組を 1 行ずつ送らず、json_each で渡した集合に対する 1〜2 文で済ませる。上限の
+// 20000 件 × 100 件でも文の数が増えず、書き込みの鍵を持つ時間を SQLite の中の処理だけに抑える。
 func applyManualTags(ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64) error {
-	encoded, err := json.Marshal(tagIDs)
+	encodedKeys, err := json.Marshal(keys)
+	if err != nil {
+		return fmt.Errorf("cannot build content keys: %w", err)
+	}
+	encodedTags, err := json.Marshal(tagIDs)
 	if err != nil {
 		return fmt.Errorf("cannot build tag ids: %w", err)
 	}
-	now := time.Now().Unix()
-	for _, key := range keys {
-		if action == domain.VideoTagsReplace {
-			if _, err := tx.ExecContext(ctx,
-				`delete from video_tags where content_key = ? and tag_id not in (select value from json_each(?))`,
-				key, string(encoded),
-			); err != nil {
-				return fmt.Errorf("cannot replace the video tags: %w", err)
-			}
+	switch action {
+	case domain.VideoTagsReplace:
+		if _, err := tx.ExecContext(ctx,
+			`delete from video_tags
+			 where content_key in (select value from json_each(?))
+			   and tag_id not in (select value from json_each(?))`,
+			string(encodedKeys), string(encodedTags),
+		); err != nil {
+			return fmt.Errorf("cannot replace the video tags: %w", err)
 		}
-		for _, tagID := range tagIDs {
-			query := `insert or ignore into video_tags (content_key, tag_id, created_at) values (?, ?, ?)`
-			args := []any{key, tagID, now}
-			if action == domain.VideoTagsRemove {
-				query = `delete from video_tags where content_key = ? and tag_id = ?`
-				args = args[:2]
-			}
-			if _, err := tx.ExecContext(ctx, query, args...); err != nil {
-				return fmt.Errorf("cannot update the video tags (tag=%d): %w", tagID, err)
-			}
+		fallthrough
+	case domain.VideoTagsAdd:
+		if _, err := tx.ExecContext(ctx,
+			`insert or ignore into video_tags (content_key, tag_id, created_at)
+			 select k.value, t.value, ? from json_each(?) as k cross join json_each(?) as t`,
+			time.Now().Unix(), string(encodedKeys), string(encodedTags),
+		); err != nil {
+			return fmt.Errorf("cannot add the video tags: %w", err)
+		}
+	case domain.VideoTagsRemove:
+		if _, err := tx.ExecContext(ctx,
+			`delete from video_tags
+			 where content_key in (select value from json_each(?))
+			   and tag_id in (select value from json_each(?))`,
+			string(encodedKeys), string(encodedTags),
+		); err != nil {
+			return fmt.Errorf("cannot remove the video tags: %w", err)
 		}
 	}
 	return nil

@@ -245,6 +245,21 @@ func TestExternalVideoTagsRejectsBadRequests(t *testing.T) {
 	}
 }
 
+// 上限を超えた本文は、途中で切れた JSON としてではなく、上限を示す 400 で断る。
+func TestExternalVideoTagsRejectsOversizedBody(t *testing.T) {
+	f := newExternalTagsFixture(t)
+	path := "/" + strings.Repeat("x", externalBodyLimit/2)
+	status, raw := f.post(t, videoTagsBody([]map[string]any{{"path": path}, {"path": path}}, "add", []string{"猫"}))
+	var e extgen.Error
+	if err := json.Unmarshal(raw, &e); err != nil {
+		t.Fatalf("%v: %s", err, raw)
+	}
+	want := "The body must be at most " + strconv.Itoa(externalBodyLimit) + " bytes."
+	if status != http.StatusBadRequest || e.Code != extgen.ErrorCodeInvalidRequest || !strings.HasPrefix(e.Message, want) {
+		t.Errorf("status = %d: %s", status, raw)
+	}
+}
+
 func sameExternalPtr[T comparable](got, want *T) bool {
 	if got == nil || want == nil {
 		return got == want

@@ -113,7 +113,8 @@ curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
 ```
 
 - `videos` の各要素は `id`・`contentKey`・`path` のちょうど 1 つを持つ（`lookup` と同じ引き方）。
-  1〜20000 件。
+  1〜20000 件。本文は 32 MiB（33554432 バイト）までで、超えると `400`（`invalid_request`）で断る。
+  長いパスを大量に送るときは、要求を分ける。
 - `action` は次のどれか。どれも手で付けたタグだけを書き換え、祖先のフォルダ名から付くタグ
   （`fromFolder`）は変えない。
   - `add`: 名前のタグを付ける。無い名前はタグを作る。

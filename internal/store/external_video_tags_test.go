@@ -141,6 +141,39 @@ func TestApplyVideoTagsReplaceKeepsFolderTags(t *testing.T) {
 	}
 }
 
+// 動画とタグの組をまとめて書き換える文は、要求に含む動画だけに効き、含まない動画の手で
+// 付けたタグは変えない。
+func TestApplyVideoTagsChangesOnlyRequestedVideos(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	upsertAll(t, db,
+		listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 0),
+		listingFile(fixturePath("/media/b.mp4"), "b", "key-b", 1),
+		listingFile(fixturePath("/media/c.mp4"), "c", "key-c", 2),
+	)
+	all := []domain.VideoRef{{ContentKey: "key-a"}, {ContentKey: "key-b"}, {ContentKey: "key-c"}}
+	if _, err := db.Tags().ApplyVideoTags(ctx, all, domain.VideoTagsAdd, []string{"猫", "犬"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Tags().ApplyVideoTags(ctx, all[:2], domain.VideoTagsReplace, []string{"鳥", "猫"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Tags().ApplyVideoTags(ctx, all[:1], domain.VideoTagsRemove, []string{"鳥"}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := db.Tags().ApplyVideoTags(ctx, all, domain.VideoTagsAdd, []string{"猫"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := [][]string{{"猫:m"}, {"猫:m", "鳥:m"}, {"犬:m", "猫:m"}}
+	for i, item := range got {
+		if names := tagNames(item.Tags); !reflect.DeepEqual(names, want[i]) {
+			t.Errorf("%s: tags = %v, want %v", item.ContentKey, names, want[i])
+		}
+	}
+}
+
 // 引けない動画を 1 つ含む要求は、その位置を持つ誤りで全体を失敗させ、何も反映しない
 // （タグも作らない）。
 func TestApplyVideoTagsFailsWholeRequestOnMissingVideo(t *testing.T) {

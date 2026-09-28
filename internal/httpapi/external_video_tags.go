@@ -161,20 +161,30 @@ func (e *externalServer) readJSONBody(w http.ResponseWriter, r *http.Request, ta
 		e.invalidRequest(w, nil, "Content-Type must be application/json.")
 		return false
 	}
-	decoder := json.NewDecoder(io.LimitReader(r.Body, externalBodyLimit))
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, externalBodyLimit))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
-		e.invalidRequest(w, nil, "Cannot parse the JSON body.")
+		e.invalidBody(w, err, "Cannot parse the JSON body.")
 		return false
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		e.invalidRequest(w, nil, "The body must contain exactly one JSON value.")
+		e.invalidBody(w, err, "The body must contain exactly one JSON value.")
 		return false
 	}
 	return true
 }
 
+// invalidBody は本文を読めなかったときの 400 invalid_request を返す。上限を超えた本文は、
+// 途中で切れた JSON の誤りとしてではなく、上限を超えたことを示す。
+func (e *externalServer) invalidBody(w http.ResponseWriter, err error, message string) {
+	if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
+		message = fmt.Sprintf("The body must be at most %d bytes. Split the videos into smaller requests.", tooLarge.Limit)
+	}
+	e.invalidRequest(w, nil, message)
+}
+
 // externalBodyLimit は外部連携 API が読む本文の上限（バイト）である。videos の上限 20000 件を
-// パスで指定しても収まる大きさにする（1 件あたり 400 バイト程度まで）。
-const externalBodyLimit = 8 << 20
+// パスで指定しても収まる大きさにする（1 件あたり 1.6 KB 程度、日本語の名前で 500 文字ほどまで）。
+// 超えた本文は invalidBody が上限を示して断る。
+const externalBodyLimit = 32 << 20
