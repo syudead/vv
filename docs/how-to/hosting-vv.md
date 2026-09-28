@@ -43,6 +43,10 @@ or the home network works without further settings; see
 [Network exposure](running-vv.md#network-exposure) before making VVMDM reachable
 from the internet.
 
+To convert videos with the host's GPU, add the lines in
+[Hardware encoding](running-vv.md#hardware-encoding) to the `mdm` service of
+`compose.hosting.yaml` and choose the encoder in Settings.
+
 ## Update
 
 First pull `ghcr.io/syudead/vv:latest` again, then recreate the container.

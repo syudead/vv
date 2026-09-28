@@ -28,6 +28,8 @@ services:
     # 猶予 10 秒の停止処理が終わるまで待つ。
     stop_grace_period: 15s
     restart: unless-stopped
+    # GPU（/dev/dri や NVIDIA）はここに書かない。ホストに無いと起動に失敗するので、使うホストだけが
+    # compose.override.yaml で足す（docs/how-to/running-vv.md「Hardware encoding」）。
 
 volumes:
   data:

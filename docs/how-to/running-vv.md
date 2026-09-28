@@ -106,6 +106,110 @@ nothing and ask you to use the setup screen.
 | `1`       | The database could not be opened or written |
 | `2`       | Not configured yet, an invalid value, a mismatched confirmation, or an unknown command |
 
+## Hardware encoding
+
+Videos that a browser cannot play are converted while they stream. By default
+the conversion uses the CPU (software encoding). A GPU can do the video part
+of that conversion instead, which lowers the CPU load. Hardware encoding is off
+until you pass a GPU to the container and choose it in Settings.
+
+### What each encoder needs
+
+| Encoder in Settings  | GPU and host                                                                                     | What the container needs                     |
+| -------------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------- |
+| NVENC (NVIDIA)       | An NVIDIA GPU with NVENC on Linux, with the NVIDIA driver and the NVIDIA Container Toolkit       | The GPU through the NVIDIA Container Toolkit |
+| Quick Sync (Intel)   | An Intel GPU supported by the oneVPL GPU runtime (Iris Xe, 11th-generation Core or newer), Linux | `/dev/dri`                                   |
+| VAAPI (Intel/AMD)    | An Intel GPU (Broadwell or newer) or an AMD GPU with a video encoder, Linux                      | `/dev/dri`                                   |
+| VideoToolbox (macOS) | A Mac running VVMDM directly, not in Docker                                                      | Not available in Docker                      |
+
+The image carries FFmpeg with all three Linux encoders. On `linux/amd64` it
+also carries the Intel VAAPI driver, the Quick Sync runtime and the AMD VAAPI
+driver. The NVIDIA libraries come from the host through the NVIDIA Container
+Toolkit and are not in the image. The `linux/arm64` image has FFmpeg without
+the Intel and AMD drivers.
+
+VAAPI uses the render node `/dev/dri/renderD128` inside the container. On a
+host with more than one GPU, map the one you want to that name, as in the
+example below.
+
+### Pass the GPU to the container
+
+Do not add these lines to `compose.yaml`: a container that asks for a device the
+host does not have fails to start. With `task up`, put them in a
+`compose.override.yaml` next to `compose.yaml`. Docker Compose merges that file
+automatically. With the published image, add them to the `mdm` service in
+[`compose.hosting.yaml`](../../compose.hosting.yaml)
+([Hosting VVMDM](hosting-vv.md)).
+
+**Intel or AMD (Quick Sync and VAAPI).** Find the group that owns the render
+node on the host, then pass `/dev/dri` and that group:
+
+```bash
+stat -c %g /dev/dri/renderD128
+```
+
+```yaml
+services:
+  mdm:
+    devices:
+      - /dev/dri:/dev/dri
+      # With more than one GPU, pass only the one you want under the name VAAPI uses:
+      # - /dev/dri/renderD129:/dev/dri/renderD128
+    group_add:
+      # The number printed by the stat command above.
+      - "993"
+```
+
+**NVIDIA (NVENC).** Install the NVIDIA driver and the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+on the host and configure Docker for it. Then reserve the GPU and ask for the
+video libraries:
+
+```yaml
+services:
+  mdm:
+    environment:
+      NVIDIA_DRIVER_CAPABILITIES: "video,utility"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+```
+
+Consumer NVIDIA GPUs limit how many NVENC sessions run at the same time. A
+conversion that the GPU refuses falls back to software encoding.
+
+Recreate the container after changing these lines (`task up`, or
+`docker compose up -d`). To check that FFmpeg in the image has the encoders:
+
+```bash
+docker compose run --rm --entrypoint ffmpeg mdm -hide_banner -encoders
+```
+
+The list includes `h264_nvenc`, `h264_qsv` and `h264_vaapi` whether or not a
+GPU is passed; having an encoder in the list does not mean the GPU works.
+
+### Turn it on in Settings
+
+VVMDM tests each hardware encoder with a short encode every time it starts.
+Open **Settings** as the owner and go to **Video conversion**:
+
+- encoders that passed the test can be selected; the others show the reason,
+  for example "Not found on this server" or "The test encode failed";
+- choose one encoder, or **Automatic** to use the first available of NVENC,
+  Quick Sync, VAAPI and VideoToolbox, falling back to software;
+- **In use now** shows the encoder that conversions use.
+
+The choice is kept across restarts. If the chosen encoder is not available
+after a restart (for example, the GPU is no longer passed), VVMDM converts with
+software and Settings says so. When the hardware encoder cannot start a
+conversion, for example because the GPU is busy, that conversion uses software. The startup log shows the
+result of each test (`transcode video encoder checks finished`), and a failed
+test is logged with the end of FFmpeg's error output.
+
 ## Data and recovery
 
 The Docker setup stores application data in the `vv_data` volume. The SQLite

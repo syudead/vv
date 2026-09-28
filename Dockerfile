@@ -33,9 +33,24 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -buil
     -o /out/mdm ./cmd/mdm
 
 # 3) 実行する。ffmpeg／ffprobe を同梱し、起動前確認が通る状態にする。
-FROM alpine:3.24@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
-RUN apk add --no-cache ffmpeg ca-certificates tzdata \
-    && mkdir -p /media /data
+# glibc の Debian にするのは、NVIDIA Container Toolkit がホストから渡す NVENC のライブラリを
+# 読み込めるようにするためである（specs/025-hardware-encoding/research.md R-1）。Debian の
+# ffmpeg は h264_nvenc・h264_qsv・h264_vaapi を含む。linux/amd64 では non-free を有効にして、
+# Intel の VAAPI ドライバーと Quick Sync の実行時ライブラリ、AMD の VAAPI ドライバーを足す
+# （Intel のパッケージは amd64 にしか無い）。NVENC のライブラリはイメージに入れない。
+# GPU をコンテナに渡す手順: docs/how-to/running-vv.md の「Hardware encoding」。
+FROM debian:trixie-slim@sha256:a99cfc517144bc59b1978475ec53b46ecabec7e43635402ee5b77cc54cd1b20a
+ARG TARGETARCH
+RUN set -eux; \
+    extra=""; \
+    if [ "$TARGETARCH" = "amd64" ]; then \
+        sed -i 's/^Components: main$/Components: main non-free/' /etc/apt/sources.list.d/debian.sources; \
+        extra="intel-media-va-driver-non-free libmfx-gen1.2 mesa-va-drivers"; \
+    fi; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ffmpeg ca-certificates tzdata wget $extra; \
+    rm -rf /var/lib/apt/lists/*; \
+    mkdir -p /media /data
 COPY --from=build /out/mdm /usr/local/bin/mdm
 
 ENV MDM_ADDR=":8080" \
@@ -47,6 +62,6 @@ VOLUME ["/data"]
 
 # 稼働確認はアプリケーション自身の経路を使う。
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget -qO- http://127.0.0.1:8080/api/health >/dev/null || exit 1
+    CMD wget -q --no-proxy -O- http://127.0.0.1:8080/api/health >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/mdm"]
