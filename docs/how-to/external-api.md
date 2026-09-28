@@ -100,3 +100,61 @@ curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
 - `path` は正規化せず、所在のパスとバイト列で比べる。macOS などで NFD の綴りのファイル名は、
   一覧の `locations[].path` をそのまま渡す。
 - 無い動画と、登録フォルダの下に所在の無い動画は `404`（`video_not_found`）。
+
+## 動画にタグを付ける
+
+`POST /api/v1/video-tags` は、複数の動画に名前で指定したタグを 1 回の要求でまとめて付ける・外す・
+置き換える。本文は JSON で、`Content-Type: application/json` を付ける。
+
+```json
+{ "videos": [{ "path": "/media/videos/clip.mp4" }, { "contentKey": "…" }, { "id": 12 }],
+  "action": "add",
+  "tags": ["猫", "ねこ"] }
+```
+
+- `videos` の各要素は `id`・`contentKey`・`path` のちょうど 1 つを持つ（`lookup` と同じ引き方）。
+  1〜20000 件。本文は 32 MiB（33554432 バイト）までで、超えると `400`（`invalid_request`）で断る。
+  長いパスを大量に送るときは、要求を分ける。
+- `action` は次のどれか。どれも手で付けたタグだけを書き換え、祖先のフォルダ名から付くタグ
+  （`fromFolder`）は変えない。
+  - `add`: 名前のタグを付ける。無い名前はタグを作る。
+  - `remove`: 名前のタグを外す。どのタグにも当たらない名前は何もしない。
+  - `replace`: 手で付けたタグをちょうど `tags` の集合にする。無い名前はタグを作る。`tags` が空なら
+    手で付けたタグをすべて外す。
+- `tags` はタグの名前で、シノニムも使える（シノニムは元のタグとして付く）。同じタグに当たる名前は
+  1 つにまとめる。100 件まで。`add`・`remove` では 1 件以上。
+- 応答は `{ items: [{ video: { id, contentKey }, tags }] }` で、`videos` の順に各動画の操作後の
+  タグを返す。`tags` の形は一覧の項目と同じである。
+- 全体を 1 つのトランザクションで行う。引けない動画が 1 つでもあれば `404`（`video_not_found`、
+  `index` は `videos` の何番目か）で、何も反映しない（タグも作らない）。
+- 同じ要求を繰り返しても状態は変わらず、`200` が返る。通信の失敗のあとは、そのまま送り直してよい。
+- 件数の誤りは `400`（`too_many_videos`・`too_many_tags`、`limit` に上限）。名前の誤りは `400`
+  （`tag_name_empty`・`tag_name_control_characters`・`tag_name_too_long`）で、`index` は `tags` の
+  何番目かを指す。
+
+## スクレイパーからの連携例
+
+新しく取り込んだ動画を外部のサイトで調べ、見つけたタグを付ける流れの例である。
+
+1. スキャンを始め（`POST /api/v1/scans`）、`GET /api/v1/scans/current` の `status` が `done`・`partial`・
+   `failed` のどれかになるまで待つ。
+2. 一覧（`GET /api/v1/videos`）を先頭から読み直し、手元に記録の無い `contentKey` を新しい動画として
+   拾う。`contentKey` はファイルを移しても変わらないので、手元の記録の鍵にする。
+3. 新しい動画ごとに、`locations[].path` や `title` から外部のサイトで調べる。後で状態を確かめ直す
+   ときは `GET /api/v1/videos/lookup?contentKey=…` で 1 本引く（`404` なら消えている）。
+4. 見つけた名前を `POST /api/v1/video-tags` で付ける。同じ名前の組を付ける動画はまとめて 1 回で送る。
+
+```sh
+# 2. 一覧から contentKey と代表のパスを拾う（ページのたどり方は「動画の一覧を読む」）。
+curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos?limit=200" |
+  jq -r '.items[] | [.contentKey, .locations[0].path] | @tsv'
+
+# 4. 調べた結果のタグを付ける。
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/v1/video-tags" \
+  -d '{"videos":[{"contentKey":"…"}],"action":"add","tags":["猫","旅行"]}'
+```
+
+- 付けたタグを外部の結果にそろえ直したいときは `replace` を使う。画面で手で付けたタグも置き換わる
+  ので、画面と併用するなら `add` と `remove` で差分だけを送る。
+- 要求が `404` で失敗したときは、`index` の動画を記録から外すか `lookup` で引き直してから送り直す。

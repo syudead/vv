@@ -95,6 +95,10 @@ type Tags interface {
 	// progressFor と同じ位置（httpapi）から、一覧・詳細・関連動画・読み取りの
 	// やり直しの応答へ Video.tags を載せるために使う。
 	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error)
+	// ApplyVideoTags は外部連携 API の名前でのタグの一括操作（specs/026-external-api/research.md
+	// R-7）。引けない動画があれば *domain.VideoRefNotFoundError、規則に合わない名前は
+	// *domain.TagNameAtError で失敗し、何も反映しない。
+	ApplyVideoTags(ctx context.Context, videos []domain.VideoRef, action domain.VideoTagsAction, names []string) ([]domain.VideoTagsResult, error)
 }
 
 // Transcoder は1 request分のfragmented MP4を生成する。internal/media の
@@ -447,7 +451,7 @@ func requiresJSONBody(r *http.Request) bool {
 	case http.MethodPost:
 		switch r.URL.Path {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary",
-			"/api/auth/setup", "/api/auth/login", "/api/api-tokens":
+			"/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags":
 			return true
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
