@@ -83,7 +83,6 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 // 数える（data-model.md §5）。フォルダ名から付いている分も含む（017 の
 // data-model.md §4）。
 func videoCountByTagID(ctx context.Context, q rowQueryer, id int64) (int, error) {
-	//nolint:gosec // registeredVideoCondition は定型SQLだけを返す。
 	query := `select count(*) from (` + taggedVideosSQL(` and tag_id = ?`) + `)`
 	var count int
 	if err := q.QueryRowContext(ctx, query, id, id).Scan(&count); err != nil {
@@ -152,7 +151,6 @@ func existingTagIDs(ctx context.Context, q queryExecer, ids []int64) (existing, 
 		args = append(args, id)
 	}
 
-	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
 	rows, err := q.QueryContext(ctx, `select id from tags where id in (`+placeholders+`)`, args...)
 	if err != nil {
 		return nil, nil, fmt.Errorf("cannot check whether the tag exists: %w", err)

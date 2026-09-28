@@ -1,5 +1,5 @@
 import { LoaderCircle, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import { addTagSynonym, refreshTags, removeTagSynonym, type Tag } from "../api/tags";
@@ -115,11 +115,12 @@ export default function SynonymsDialog({
 
   // シノニムの解除が失敗した直後は「統合する」（または「戻る」）へ戻す
   // MergeTagDialog の N4 と同じ扱いを、統合の確認の「統合する」にも適用する。
+  // きっかけは confirmError だけで、確認の表示が切り替わっても動かさない。
+  const restoreFocus = useEffectEvent(() => {
+    (confirm !== null ? confirmMergeButton : backRef).current?.focus();
+  });
   useEffect(() => {
-    if (confirmError !== null) {
-      (confirm !== null ? confirmMergeButton : backRef).current?.focus();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (confirmError !== null) restoreFocus();
   }, [confirmError]);
 
   // 解除したチップが一覧から消えたら（tag.synonyms に反映されたら）、次の

@@ -53,6 +53,14 @@ export default [
     ignores: ["dist/**", ".vite-build-check/**", "test-results/**", "src/api/gen/**"],
   },
   {
+    // 規則はコード全体に例外なく効かせる。指摘はコードの書き換えで解消し、
+    // eslint-disable* などのコメントによる無効化は認めない（syudead/vv#443）。
+    // 書かれたコメントは効かず警告になり、lint の --max-warnings 0 で失敗する。
+    linterOptions: {
+      noInlineConfig: true,
+    },
+  },
+  {
     files: ["**/*.{js,mjs,cjs,ts,tsx}"],
     languageOptions: {
       parser: babelParser,

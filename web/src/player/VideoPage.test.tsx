@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -44,13 +44,13 @@ const playerMock = vi.hoisted(() => ({
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: PlayerProps) {
     playerMock.props = props;
+    // プレイヤーは作ったときの値だけを使う。
+    const [initial] = useState(props);
     useEffect(() => {
       playerMock.mounts += 1;
-      if (playerMock.controls !== undefined) props.onControls(playerMock.controls);
-      return () => props.onControls(null);
-      // プレイヤーは作ったときの値だけを使う。
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+      if (playerMock.controls !== undefined) initial.onControls(playerMock.controls);
+      return () => initial.onControls(null);
+    }, [initial]);
     return <div data-testid="video-player" />;
   },
   canStartPlayback: (video: Video) =>

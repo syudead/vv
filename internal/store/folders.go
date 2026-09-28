@@ -70,7 +70,6 @@ func directChildConditionFor(alias string, windows bool) string {
 // internal/domain の SummarizeFolder が行うので、ゲストには公開の動画の所在から
 // 導いたフォルダと件数だけが現れる。
 func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audience, dir string) ([]domain.FolderLocation, error) {
-	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	rows, err := s.db.sql.QueryContext(ctx, `select l.path, l.video_id, videos.content_key, videos.thumbnail_state, videos.preview_state
 		from video_locations l join videos on videos.id = l.video_id
 		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience),
@@ -101,7 +100,6 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 // 所在が1件でもあるかを返す。
 func (s *LibraryStore) HasFolderLocations(ctx context.Context, audience domain.Audience, dir string) (bool, error) {
 	var found int
-	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	err := s.db.sql.QueryRowContext(ctx, `select exists (select 1 from video_locations l
 		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience)+`)`,
 		folderPrefix(dir)).Scan(&found)

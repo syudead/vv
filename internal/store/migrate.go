@@ -114,7 +114,6 @@ func recordedVersion(ctx context.Context, db *sql.DB) (int64, error) {
 	}
 
 	var version sql.NullInt64
-	//nolint:gosec // 表名は定数で、利用者の入力は混ざらない。
 	err = db.QueryRowContext(ctx,
 		`select max(version_id) from `+versionTableName,
 	).Scan(&version)

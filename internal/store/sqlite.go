@@ -183,6 +183,12 @@ func dsn(path string, txLock string) string {
 // Open はデータディレクトリ配下のデータベースを開く。ファイルが無ければ作成される。
 // 呼び出し側は必ず Close を呼ぶこと。
 func Open(dataDir string) (*DB, error) {
+	return OpenContext(context.Background(), dataDir)
+}
+
+// OpenContext は Open と同じだが、開いた直後の疎通の確認に ctx を使う。
+// 要求や操作の context を持つ呼び出し側はこちらを使う。
+func OpenContext(ctx context.Context, dataDir string) (*DB, error) {
 	path := DatabasePath(dataDir)
 
 	handle, err := sql.Open("sqlite", dsn(path, "immediate"))
@@ -197,7 +203,7 @@ func Open(dataDir string) (*DB, error) {
 	}
 
 	db := &DB{sql: handle, read: read, path: path}
-	if err := db.Ping(context.Background()); err != nil {
+	if err := db.Ping(ctx); err != nil {
 		_ = handle.Close()
 		_ = read.Close()
 		return nil, err

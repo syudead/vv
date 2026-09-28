@@ -228,7 +228,6 @@ func countVideosWith(ctx context.Context, db queryRower, spec listSpec) (int, er
 	from, fromArgs := filteredFrom(spec, false)
 	args = append(args, fromArgs...)
 	var total int
-	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	if err := db.QueryRowContext(ctx, cte+` select count(*)`+from, args...).Scan(&total); err != nil {
 		return 0, fmt.Errorf("cannot count items: %w", err)
 	}
@@ -292,7 +291,6 @@ func listVideoPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.Vid
 	}
 	from, fromArgs := filteredFrom(spec, true)
 	args = append(args, fromArgs...)
-	//nolint:gosec // 組み立てるのは列名と定型の条件句だけで、値はすべて引数で渡す。
 	query := cte + ` select * from (select ` + listColumns + `, ` + order.value + ` as sort_value` +
 		from + `) as videos`
 	if cursorClause != "" {

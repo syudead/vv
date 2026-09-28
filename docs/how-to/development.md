@@ -44,6 +44,11 @@ push changes Markdown, `docs/` or `specs/`; a push that skips them tends to come
 back as a formatting or lint fix from CI. `task fmt` rewrites Go and Web sources
 into the checked format.
 
+Lint findings are fixed in the code, never silenced. `task check` fails on any
+`//nolint` comment in Go sources (`scripts/nolintguard`) and on any
+`eslint-disable*` or other inline ESLint configuration comment in `web/`
+(`linterOptions.noInlineConfig`).
+
 Browser tests are a separate command:
 
 ```bash

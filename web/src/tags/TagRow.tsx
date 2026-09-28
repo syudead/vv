@@ -1,5 +1,5 @@
 import { Ellipsis, Merge, Pencil, Tags as SynonymsIcon, Trash2 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useEffectEvent, useRef } from "react";
 import { Link } from "react-router";
 
 import type { Tag } from "../api/tags";
@@ -60,13 +60,15 @@ export default function TagRow({
   const field = useTagNameField(tag.name, onDraftChange);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  useEffect(() => {
-    if (!renaming) return;
+  // 改名を開くたびに今の名前へ戻し、選んだ状態にする。きっかけは renaming だけで、
+  // 開いている間に名前や field が変わっても入力中の値は戻さない。
+  const startRenaming = useEffectEvent(() => {
     field.setValue(tag.name);
     inputRef.current?.focus();
     inputRef.current?.select();
-    // 改名を開くたびに今の名前へ戻し、選んだ状態にする。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+  useEffect(() => {
+    if (renaming) startRenaming();
   }, [renaming]);
 
   function submit() {

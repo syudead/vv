@@ -2,6 +2,7 @@ import { LoaderCircle } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useId,
   useMemo,
   useRef,
@@ -37,8 +38,8 @@ export interface ComboboxOption {
 }
 
 export const newlinePattern = /[\r\n]/;
-// eslint-disable-next-line no-control-regex -- タグ名では C0/C1 制御文字をすべて拒む。
-const controlCharPattern = /[\u0000-\u001f\u007f-\u009f]/;
+// タグ名では C0/C1 制御文字（U+0000–U+001F・U+007F–U+009F、一般カテゴリ Cc）をすべて拒む。
+const controlCharPattern = /\p{Cc}/u;
 
 /** tagNameMaxLength はタグ名に許す長さ（符号位置の数）である。 */
 const tagNameMaxLength = 100;
@@ -179,9 +180,10 @@ export default function Combobox({
 
   // open の変化を外側へ伝える（呼び出し元は effect の commit 後、次の
   // キー操作より前に確実に最新の値を読める。B2）。
+  // 呼び出し元は毎回新しい関数を渡しうるので、きっかけは open だけにする。
+  const notifyOpenChange = useEffectEvent((next: boolean) => onOpenChange?.(next));
   useEffect(() => {
-    onOpenChange?.(open);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    notifyOpenChange(open);
   }, [open]);
 
   const showCreateRow = createLabel !== null && exactOption === null;
