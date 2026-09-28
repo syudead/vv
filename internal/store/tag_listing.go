@@ -82,7 +82,6 @@ func addSynonymsToTags(ctx context.Context, q queryExecer, tags []domain.Tag, in
 // ある動画だけを数えた本数を足す。手で付けた分とフォルダ名から付いている分の
 // どちらかで付いていれば1本と数える（017 の data-model.md §4）。
 func addVideoCountsToTags(ctx context.Context, q queryExecer, tags []domain.Tag, index map[int64]int) error {
-	//nolint:gosec // registeredVideoCondition は定型SQLだけを返す。
 	query := `select tag_id, count(*) from (` + taggedVideosSQL("") + `) group by tag_id`
 	rows, err := q.QueryContext(ctx, query)
 	if err != nil {

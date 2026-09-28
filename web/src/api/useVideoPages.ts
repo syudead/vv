@@ -266,9 +266,36 @@ export function useVideoPages({
         }
       }
     },
-    // folderKey と key は folderRef・criteriaRef の中身が変わったことを表す。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [folderKey, key, notifyIfIdle, refreshGroups, refreshItems],
+    // どれも useVideos から渡る変わらない値（ref・set 関数・dispatch）か、それだけに
+    // 依る関数である。条件とフォルダは呼んだ時点の criteriaRef・folderRef から読むので、
+    // 条件が変わっても作り直さない（読み直しは下の effect が key・folderKey で起こす）。
+    [
+      changedWhileLoading,
+      criteriaRef,
+      dispatch,
+      folderRef,
+      groupQueue,
+      groupRefreshing,
+      itemsRef,
+      libraryRef,
+      notifyIfIdle,
+      pageLoading,
+      progressChangedWhileLoading,
+      refreshGroups,
+      refreshItems,
+      refreshQueue,
+      refreshing,
+      resyncAttempted,
+      setError,
+      setGeneration,
+      setLoading,
+      setLoadingMore,
+      setNotFound,
+      staleGroups,
+      tagsChangedWhileLoading,
+      uncertain,
+      unsettledGroups,
+    ],
   );
 
   // seeded は「いま持っている中身が復元で埋まったものか」を覚える。

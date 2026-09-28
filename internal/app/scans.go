@@ -79,7 +79,6 @@ type Scans struct {
 	jobs      JobRecoveryStore
 	folders   FolderIndexStore
 	scanner   Scanner
-	baseCtx   context.Context
 	publisher Publisher
 	logger    *slog.Logger
 
@@ -88,6 +87,11 @@ type Scans struct {
 	// 二重に起こさないためだけの錠である。
 	mu      sync.Mutex
 	running bool
+	// cancelRun は走っている走査の context を取り消す。走っていなければ nil。
+	cancelRun context.CancelFunc
+	// stopped は組み立て時の context が取り消されたことを表す。以後に始める
+	// 走査は、始めた直後に取り消す。
+	stopped bool
 	// done は背後で走っている走査の終わりを待つ。
 	done sync.WaitGroup
 }
@@ -98,12 +102,11 @@ func NewScans(opts ScansOptions) *Scans {
 		store:     opts.Store,
 		jobs:      opts.Jobs,
 		folders:   opts.FolderIndex,
-		baseCtx:   opts.Context,
 		publisher: opts.Publisher,
 		logger:    opts.Logger,
 	}
-	if s.baseCtx == nil {
-		s.baseCtx = context.Background()
+	if opts.Context != nil {
+		context.AfterFunc(opts.Context, s.stopRuns)
 	}
 	if s.logger == nil {
 		s.logger = slog.Default()
@@ -117,8 +120,9 @@ func NewScans(opts ScansOptions) *Scans {
 // StartScan は取り込みを開始する。実行中なら新しく始めず、実行中のものを返す。
 // 応答は即座に返り、走査は背後で進む。
 //
-// ctx は要求のものなので、走査自体には使わない。要求が終わった時点で走査が
-// 打ち切られてしまう。走査は組み立て時に渡した寿命の長い context で動かす。
+// ctx は要求のものなので、その取り消しを走査へは持ち込まない。要求が終わった
+// 時点で走査が打ち切られてしまう。走査は組み立て時に渡した寿命の長い context の
+// 取り消しでだけ止まる。
 func (s *Scans) StartScan(ctx context.Context) (domain.Scan, error) {
 	scan, started, err := s.store.StartScan(ctx)
 	if err != nil {
@@ -136,11 +140,15 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, error) {
 	s.running = true
 	s.done.Add(1)
 
-	// contextcheck はここで ctx を渡していないことを指摘するが、渡してはならない。
-	// 上のコメントのとおり、要求の ctx を使うと応答を返した時点で走査が
-	// 打ち切られる。走査は組み立て時に渡した寿命の長い context で動く。
-	//nolint:contextcheck // 要求の ctx を走査へ持ち込まないのは意図した設計である。
-	go s.run(scan.ID)
+	// 走査は要求の ctx の取り消しを受け継がない（WithoutCancel）。受け継ぐと
+	// 応答を返した時点で走査が打ち切られる。止めるのは、組み立て時に渡した
+	// 寿命の長い context が取り消されたときの stopRuns だけである。
+	runCtx, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	s.cancelRun = cancel
+	if s.stopped {
+		cancel()
+	}
+	go s.run(runCtx, scan.ID)
 
 	s.scanChanged()
 	return scan, nil
@@ -208,16 +216,27 @@ func (s *Scans) currentScanID(ctx context.Context) int64 {
 	return scan.ID
 }
 
+// stopRuns は組み立て時の context が取り消されたときに呼ばれ、走っている
+// 走査を止める。以後に始める走査も、始めた直後に止まる。
+func (s *Scans) stopRuns() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.stopped = true
+	if s.cancelRun != nil {
+		s.cancelRun()
+	}
+}
+
 // run は走査を最後まで走らせ、結果を記録する。
-func (s *Scans) run(scanID int64) {
+func (s *Scans) run(ctx context.Context, scanID int64) {
 	defer s.done.Done()
 	defer func() {
 		s.mu.Lock()
 		s.running = false
+		s.cancelRun()
+		s.cancelRun = nil
 		s.mu.Unlock()
 	}()
-
-	ctx := s.baseCtx
 
 	result, scanErr := func() (result domain.ScanResult, err error) {
 		defer func() {

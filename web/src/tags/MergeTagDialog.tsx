@@ -1,5 +1,5 @@
 import { LoaderCircle } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import { compareNatural } from "../api/tagOrder";
@@ -56,11 +56,12 @@ export default function MergeTagDialog({
   // そうでなければ「キャンセル」）へフォーカスを戻す。何もしないと、失敗の
   // 直前に disabled にした「統合する」がフォーカスを失い、body に落ちる
   // （N4）。
+  // きっかけは error だけで、統合先を選び直しても（target が変わっても）動かさない。
+  const restoreFocus = useEffectEvent(() => {
+    (target !== null ? mergeButton : cancel).current?.focus();
+  });
   useEffect(() => {
-    if (error !== null) {
-      (target !== null ? mergeButton : cancel).current?.focus();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (error !== null) restoreFocus();
   }, [error]);
 
   /**

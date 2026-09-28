@@ -220,7 +220,6 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 	}
 
 	var total int
-	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	if err := tx.QueryRowContext(ctx, cte+` select count(*) from items`+whereWatch,
 		append(append([]any{}, args...), watchArgs...)...).Scan(&total); err != nil {
 		return domain.LibraryPage{}, fmt.Errorf("cannot count items: %w", err)
@@ -231,7 +230,6 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 		args = append(args, spec.seed)
 	}
 	args = append(args, watchArgs...)
-	//nolint:gosec // 組み立てるのは列名と定型の条件句だけで、値はすべて引数で渡す。
 	query := cte + ` select group_id, id, path, sort_value from (select items.*, ` + order.value +
 		` as sort_value from items` + whereWatch + `) as items`
 	if cursorClause != "" {
@@ -329,7 +327,6 @@ func videosAtLocations(ctx context.Context, tx *sql.Tx, pairs [][2]any) (map[int
 	if err != nil {
 		return nil, fmt.Errorf("cannot build item keys: %w", err)
 	}
-	//nolint:gosec // listColumns は定型の列だけで、値は引数で渡す。
 	rows, err := tx.QueryContext(ctx, `with chosen(video_id, path) as (
 			select json_extract(value, '$[0]'), json_extract(value, '$[1]') from json_each(?))
 		select `+listColumns+` from chosen join videos on videos.id = chosen.video_id
@@ -379,7 +376,6 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 		progressColumns = `p.position_ms, p.duration_ms, p.completed, p.updated_at`
 		progressJoin = ` left join playback_progress p on p.content_key = videos.content_key and videos.content_key <> ''`
 	}
-	//nolint:gosec // 組み立てるのは定型の列と条件句だけで、値は引数で渡す。
 	rows, err := q.QueryContext(ctx, `select `+videoColumns(audience)+`, g.id, g.path, g.name, `+progressColumns+`
 		from folder_groups g join folder_group_members m on m.group_id = g.id
 		join videos on videos.id = m.video_id`+progressJoin+`
@@ -460,7 +456,6 @@ func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) ([]i
 	}
 	args = append(args, watchArgs...)
 	args = append(args, watchArgs...)
-	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	rows, err := tx.QueryContext(ctx, cte+`
 		select id from items where group_id is null`+and+`
 		union all

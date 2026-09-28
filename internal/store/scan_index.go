@@ -146,7 +146,6 @@ func (s *ScanIndexStore) DeleteVideos(ctx context.Context, ids []int64) error {
 		args = append(args, id)
 	}
 
-	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
 	released, err := collectDeletedVideos(s.db.sql.QueryContext(ctx,
 		`delete from videos where id in (`+placeholders+`) returning id, content_key`, args...))
 	if err != nil {

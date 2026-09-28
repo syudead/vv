@@ -23,8 +23,10 @@ linters:
     - sqlclosecheck
     # 原因エラーを %v で埋め込み、errors.Is で辿れなくする誤り。
     - errorlint
-    # 背後で動かす処理へ context を渡し忘れる誤り。意図して渡さない箇所は
-    # 理由を添えて nolint で示す（internal/app/scans.go の走査開始）。
+    # 背後で動かす処理へ context を渡し忘れる誤り。
+    #
+    # 指摘はコードの書き換えで解消する。//nolint による無効化は認めず、
+    # task lint-go が scripts/nolintguard で拒む。
     - contextcheck
 
     # サーバーの出力（誤りの文・ログ・運用コマンドの出力）は英語に統一する

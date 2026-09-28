@@ -128,10 +128,12 @@ tasks:
       - npm --prefix web run format:check
 
   lint-go:
-    desc: Run golangci-lint, including dependency rules.
+    desc: Run golangci-lint, including dependency rules, and reject //nolint.
     cmds:
       - task: golangci
         vars: { GOLANGCI_ARGS: "run" }
+      # 指摘はコードで解消し、//nolint による無効化は認めない（syudead/vv#443）。
+      - go run ./scripts/nolintguard
 
   lint-web:
     desc: Run Web static analysis.

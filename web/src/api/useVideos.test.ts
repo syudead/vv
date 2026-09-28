@@ -456,6 +456,29 @@ describe("useVideos（条件と重複）", () => {
     expect(calls).toHaveLength(1);
   });
 
+  it("条件を変えると1回だけ読み直し、そのあとの続きの取得は新しい条件で読む", async () => {
+    const { result, rerender } = renderHook(
+      ({ criteria }: { criteria: VideosCriteria }) => useVideos(criteria),
+      {
+        initialProps: { criteria: { sort: "addedDesc", query: "a" } as VideosCriteria },
+        wrapper: OwnerAudience,
+      },
+    );
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => calls[0]?.resolve(page([1], "cursor-a")));
+
+    rerender({ criteria: { sort: "addedDesc", query: "b" } });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    rerender({ criteria: { sort: "addedDesc", query: "b" } });
+    await act(async () => calls[1]?.resolve(page([2], "cursor-b")));
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.params).toMatchObject({ query: "b", cursor: undefined });
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls[2]?.params).toMatchObject({ query: "b", cursor: "cursor-b" });
+  });
+
   it("続きのページに既に出た id が含まれていても、一覧に2度出さない", async () => {
     const { result } = renderHook(() => useVideos({ sort: "sizeDesc" }), {
       wrapper: OwnerAudience,

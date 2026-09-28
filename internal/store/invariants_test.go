@@ -94,7 +94,6 @@ func assertRepresentativeInvariant(t *testing.T, db *DB) {
 	}
 
 	condition := registeredLocationCondition("l")
-	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
 	rows, err := db.sql.Query(`
 		select v.id, coalesce(v.container, ''), v.playable, coalesce(v.unplayable_reason, ''),
 		       v.probe_state, coalesce(v.video_codec, ''), coalesce(v.audio_codec, ''),
