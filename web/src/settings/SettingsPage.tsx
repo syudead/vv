@@ -17,6 +17,7 @@ import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
 import FolderPicker from "./FolderPicker";
 import ScanStatusSection from "./ScanStatusSection";
+import TranscodingSection from "./TranscodingSection";
 
 type Pending = { id: number | "new"; kind: "add" | "change" | "delete" } | null;
 
@@ -344,6 +345,7 @@ export default function SettingsPage() {
           </p>
         )}
       </section>
+      <TranscodingSection />
 
       {picker !== null && (
         <FolderPicker

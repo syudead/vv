@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"runtime/debug"
 	"sync"
 	"syscall"
@@ -238,6 +239,15 @@ func run() error {
 	// 設定画面のメディアフォルダは、パスをファイルシステムで確かめてから保存する。
 	mediaFolders := app.NewMediaFolders(app.MediaFoldersOptions{Store: settingsStore, Checker: mediaFiles})
 
+	// ライブ変換の映像エンコード方式。起動時の確認は背後で走り、HTTP の待ち受けを
+	// 待たせない。停止の指示で確認を止める。
+	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
+	defer stopChecks()
+	transcodeSettings, err := startTranscodeSettings(checksCtx, settingsStore, media.NewEncoderCheck(), runtime.GOOS, logger)
+	if err != nil {
+		return err
+	}
+
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:        build,
 		Pinger:       db,
@@ -251,6 +261,8 @@ func run() error {
 		FolderGroups: db.FolderGroups(),
 		Library:      libraryStore,
 		Transcoder:   media.NewLiveTranscoder(requestMediaCtx.Done()),
+		// 要求ごとに今の方式を読むので、方式の変更は再起動なしに次の要求から効く。
+		TranscodeSettings: transcodeSettings,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,
@@ -268,6 +280,7 @@ func run() error {
 	// 変化の知らせの接続は終わりが無いので、停止の猶予待ちより先に閉じる。
 	// 閉じた接続へ書かないよう、先に画面への知らせの購読をやめる。
 	beforeShutdown := func() {
+		stopChecks()
 		stopRequestMedia()
 		subscriptions.StopScreen()
 		events.Close()
@@ -279,6 +292,10 @@ func run() error {
 	// HTTP の猶予待ちが終わってから、走査とワーカーを止める。処理中の
 	// ジョブは running のまま残るが、次の起動で queued へ戻る。止めたワーカーを
 	// 起こさないよう、先に起こす購読をやめる。
+	// 取り消した確認の ffmpeg が終わるのを待つ。確認は取り消しで戻るので長くは待たない。
+	if !waitAtMost(func() { <-transcodeSettings.Done() }, scanStopGrace) {
+		logger.Warn("the hardware encoder checks did not stop within the grace period")
+	}
 	subscriptions.StopWorkers()
 	stopBackground()
 	workersDone.Wait()

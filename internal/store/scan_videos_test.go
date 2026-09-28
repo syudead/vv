@@ -437,7 +437,7 @@ func TestScanImportMigrationCarriesUnfinishedJobs(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 16); err != nil {
+	if _, err := provider.UpTo(ctx, 17); err != nil {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
@@ -486,7 +486,7 @@ func TestScanImportMigrationCarriesUnfinishedJobs(t *testing.T) {
 		t.Fatalf("移行直後 = %+v, want 1本のうち0本・running", progress)
 	}
 
-	downTo(t, db, 16)
+	downTo(t, db, 17)
 	if _, ok := tableColumns(t, db, "scans")["settled_at"]; ok {
 		t.Error("Down 後も scans に settled_at 列が残っている")
 	}

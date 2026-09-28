@@ -437,7 +437,7 @@ func TestScanIssuesMigrationCarriesFailedVideos(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 17); err != nil {
+	if _, err := provider.UpTo(ctx, 18); err != nil {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
@@ -473,7 +473,7 @@ func TestScanIssuesMigrationCarriesFailedVideos(t *testing.T) {
 		t.Fatal("移行で問題を入れたのに issues_revision が 0 のまま")
 	}
 
-	downTo(t, db, 17)
+	downTo(t, db, 18)
 	if _, ok := tableColumns(t, db, "scan_issues")["kind"]; ok {
 		t.Error("Down 後も scan_issues が残っている")
 	}

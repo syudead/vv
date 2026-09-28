@@ -21,6 +21,7 @@ Add each new document to this index.
 - [技術選定: MDM（Media Data Management）](tech-stack-selection.md)
 - [MOVライブ変換のtrack分離入力](mov-live-transcoding.md)
 - [ライブ変換のシークと解析情報の再利用](live-transcode-seek.md)
+- [ライブ変換のハードウェアエンコード](hardware-encoding.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
 - [画面の文言と書式（i18n）](i18n.md)

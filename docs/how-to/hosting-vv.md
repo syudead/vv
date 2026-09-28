@@ -43,6 +43,10 @@ or the home network works without further settings; see
 [Network exposure](running-vv.md#network-exposure) before making VVMDM reachable
 from the internet.
 
+The published image converts videos with software encoding only. To use the
+host's GPU, run VVMDM directly on the host instead; see
+[Hardware encoding](running-vv.md#hardware-encoding).
+
 ## Update
 
 First pull `ghcr.io/syudead/vv:latest` again, then recreate the container.

@@ -55,6 +55,11 @@ export type RootFolderListing = components["schemas"]["RootFolderListing"];
 export type RelatedVideos = components["schemas"]["RelatedVideos"];
 export type VideoLocation = components["schemas"]["VideoLocation"];
 export type LibraryGroup = components["schemas"]["LibraryGroup"];
+export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
+export type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
+export type VideoEncoder = components["schemas"]["VideoEncoder"];
+export type EncoderAvailability = components["schemas"]["EncoderAvailability"];
+export type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"];
 
 /**
  * LibraryItem は一覧の項目1件である（api/openapi.yaml の LibraryItem）。生成した型は
@@ -522,6 +527,26 @@ export function startScan(signal?: AbortSignal): Promise<Scan> {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
+    signal,
+  });
+}
+
+/** getTranscodingSettings はライブ変換の映像エンコード方式と、各方式の確認結果を取得する。 */
+export function getTranscodingSettings(
+  signal?: AbortSignal,
+): Promise<TranscodingSettings> {
+  return request<TranscodingSettings>("/api/settings/transcoding", { signal });
+}
+
+/** updateTranscodingSettings は方式を保存し、保存後の状態全体を返す。 */
+export function updateTranscodingSettings(
+  videoEncoder: VideoEncoderChoice,
+  signal?: AbortSignal,
+): Promise<TranscodingSettings> {
+  return request<TranscodingSettings>("/api/settings/transcoding", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ videoEncoder }),
     signal,
   });
 }

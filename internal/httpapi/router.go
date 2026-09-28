@@ -106,6 +106,17 @@ type Transcoder interface {
 	Start(ctx context.Context, request domain.LiveTranscodeRequest) (domain.LiveTranscode, error)
 }
 
+// TranscodeSettings はライブ変換の映像エンコード方式の設定である。internal/app の
+// *TranscodeSettings がこれを満たす。方式の決定と、使えない方式を拒む判断はそちらが持つ
+// （specs/025-hardware-encoding/research.md R-3）。
+type TranscodeSettings interface {
+	// Current は今の選択・実際に使う方式・理由・確認中か・各方式の確認結果を返す。
+	Current() domain.TranscodeEncoding
+	// Select は選択を保存し、保存後の状態を返す。使えないハードウェアの方式には
+	// domain.ErrEncoderUnavailable を返し、保存値を変えない。
+	Select(ctx context.Context, choice domain.EncoderChoice) (domain.TranscodeEncoding, error)
+}
+
 // TranscodeProbeWriter は、ライブ変換がその場で解析した結果を保存する。
 // internal/store の *IngestStore がこれを満たす（specs/018-live-transcode-seek/
 // data-model.md §4）。
@@ -198,6 +209,9 @@ type Options struct {
 	Library LibraryItems
 	// Transcoder は非対応動画をMP4へ変換する。nilなら経路は500を返す。
 	Transcoder Transcoder
+	// TranscodeSettings はライブ変換の映像エンコード方式の設定。nil なら設定の経路は 500 を
+	// 返し、ライブ変換は software でエンコードする。
+	TranscodeSettings TranscodeSettings
 	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
 	// 解析情報の無い動画は変換のたびに解析する。
 	TranscodeProbes TranscodeProbeWriter
@@ -249,6 +263,8 @@ type server struct {
 	folderGroups FolderGroups
 	library      LibraryItems
 	transcoder   Transcoder
+	// transcodeSettings はライブ変換の映像エンコード方式の設定（nil なら software）。
+	transcodeSettings TranscodeSettings
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
 	transcodeProbes TranscodeProbeWriter
 	// transcodeStarts は attempt ごとの実際の開始位置の台帳である（transcode_start.go）。
@@ -278,6 +294,7 @@ type server struct {
 //	/api/library*    → JSON（同上）
 //	/api/tags*       → JSON（同上）
 //	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
+//	/api/settings/*  → JSON（所有者が設定画面で選ぶ値。同上）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
 func NewRouter(opts Options) http.Handler {
@@ -294,30 +311,31 @@ func NewRouter(opts Options) http.Handler {
 	mux.Handle("/", newSPAHandler(opts.Assets, logger))
 
 	srv := &server{
-		build:           opts.Build,
-		pinger:          opts.Pinger,
-		videos:          opts.Videos,
-		playback:        opts.Playback,
-		scans:           opts.Scans,
-		mediaFolders:    opts.MediaFolders,
-		tags:            opts.Tags,
-		visibility:      opts.Visibility,
-		folders:         opts.Folders,
-		folderGroups:    opts.FolderGroups,
-		library:         opts.Library,
-		transcoder:      opts.Transcoder,
-		transcodeProbes: opts.TranscodeProbes,
-		transcodeStarts: newTranscodeStarts(),
-		artifacts:       opts.Artifacts,
-		catalog:         opts.Catalog,
-		opener:          opts.Opener,
-		files:           opts.Files,
-		events:          opts.Events,
-		logger:          logger,
-		auth:            opts.Auth,
-		sessions:        newSessionLedger(opts.SessionRecheck, logger),
-		guests:          newGuestLedger(),
-		now:             opts.Now,
+		build:             opts.Build,
+		pinger:            opts.Pinger,
+		videos:            opts.Videos,
+		playback:          opts.Playback,
+		scans:             opts.Scans,
+		mediaFolders:      opts.MediaFolders,
+		tags:              opts.Tags,
+		visibility:        opts.Visibility,
+		folders:           opts.Folders,
+		folderGroups:      opts.FolderGroups,
+		library:           opts.Library,
+		transcoder:        opts.Transcoder,
+		transcodeProbes:   opts.TranscodeProbes,
+		transcodeSettings: opts.TranscodeSettings,
+		transcodeStarts:   newTranscodeStarts(),
+		artifacts:         opts.Artifacts,
+		catalog:           opts.Catalog,
+		opener:            opts.Opener,
+		files:             opts.Files,
+		events:            opts.Events,
+		logger:            logger,
+		auth:              opts.Auth,
+		sessions:          newSessionLedger(opts.SessionRecheck, logger),
+		guests:            newGuestLedger(),
+		now:               opts.Now,
 		// 呼び出し側が後から書き換えても判定が変わらないよう写しを持つ。
 		trustedProxies: slices.Clone(opts.TrustedProxies),
 	}
@@ -427,7 +445,7 @@ func requiresJSONBody(r *http.Request) bool {
 			return found && rest != "" && !strings.Contains(rest, "/")
 		}
 	case http.MethodPut:
-		if r.URL.Path == "/api/video-visibility" {
+		if r.URL.Path == "/api/video-visibility" || r.URL.Path == "/api/settings/transcoding" {
 			return true
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/folders/"); ok {
@@ -550,6 +568,7 @@ const (
 	reasonTranscodeUnavailable     = gen.ErrorReasonTranscodeUnavailable
 	reasonCrossOrigin              = gen.ErrorReasonCrossOrigin
 	reasonOpenNotLocal             = gen.ErrorReasonOpenNotLocal
+	reasonEncoderUnavailable       = gen.ErrorReasonEncoderUnavailable
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

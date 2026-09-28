@@ -35,6 +35,69 @@ func (e AuthSessionState) Valid() bool {
 	}
 }
 
+// Defines values for EncoderAvailabilityState.
+const (
+	EncoderAvailabilityStateAvailable   EncoderAvailabilityState = "available"
+	EncoderAvailabilityStateChecking    EncoderAvailabilityState = "checking"
+	EncoderAvailabilityStateUnavailable EncoderAvailabilityState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the EncoderAvailabilityState enum.
+func (e EncoderAvailabilityState) Valid() bool {
+	switch e {
+	case EncoderAvailabilityStateAvailable:
+		return true
+	case EncoderAvailabilityStateChecking:
+		return true
+	case EncoderAvailabilityStateUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EncoderFallbackReason.
+const (
+	EncoderFallbackReasonChecking            EncoderFallbackReason = "checking"
+	EncoderFallbackReasonSelectedUnavailable EncoderFallbackReason = "selected_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the EncoderFallbackReason enum.
+func (e EncoderFallbackReason) Valid() bool {
+	switch e {
+	case EncoderFallbackReasonChecking:
+		return true
+	case EncoderFallbackReasonSelectedUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for EncoderUnavailableReason.
+const (
+	CheckFailed    EncoderUnavailableReason = "check_failed"
+	EncoderMissing EncoderUnavailableReason = "encoder_missing"
+	TimedOut       EncoderUnavailableReason = "timed_out"
+	UnsupportedOs  EncoderUnavailableReason = "unsupported_os"
+)
+
+// Valid indicates whether the value is a known member of the EncoderUnavailableReason enum.
+func (e EncoderUnavailableReason) Valid() bool {
+	switch e {
+	case CheckFailed:
+		return true
+	case EncoderMissing:
+		return true
+	case TimedOut:
+		return true
+	case UnsupportedOs:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	ErrorCodeAccountAlreadyConfigured    ErrorCode = "account_already_configured"
@@ -117,6 +180,7 @@ func (e ErrorCode) Valid() bool {
 const (
 	ErrorReasonCrossOrigin              ErrorReason = "cross_origin"
 	ErrorReasonDirectoryNotFound        ErrorReason = "directory_not_found"
+	ErrorReasonEncoderUnavailable       ErrorReason = "encoder_unavailable"
 	ErrorReasonFileUnavailable          ErrorReason = "file_unavailable"
 	ErrorReasonFolderNotFound           ErrorReason = "folder_not_found"
 	ErrorReasonFolderNotGroup           ErrorReason = "folder_not_group"
@@ -152,6 +216,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonCrossOrigin:
 		return true
 	case ErrorReasonDirectoryNotFound:
+		return true
+	case ErrorReasonEncoderUnavailable:
 		return true
 	case ErrorReasonFileUnavailable:
 		return true
@@ -214,19 +280,19 @@ func (e ErrorReason) Valid() bool {
 
 // Defines values for FolderGroupingMode.
 const (
-	Auto        FolderGroupingMode = "auto"
-	GroupDirect FolderGroupingMode = "groupDirect"
-	Ungroup     FolderGroupingMode = "ungroup"
+	FolderGroupingModeAuto        FolderGroupingMode = "auto"
+	FolderGroupingModeGroupDirect FolderGroupingMode = "groupDirect"
+	FolderGroupingModeUngroup     FolderGroupingMode = "ungroup"
 )
 
 // Valid indicates whether the value is a known member of the FolderGroupingMode enum.
 func (e FolderGroupingMode) Valid() bool {
 	switch e {
-	case Auto:
+	case FolderGroupingModeAuto:
 		return true
-	case GroupDirect:
+	case FolderGroupingModeGroupDirect:
 		return true
-	case Ungroup:
+	case FolderGroupingModeUngroup:
 		return true
 	default:
 		return false
@@ -599,6 +665,63 @@ func (e VideoUnplayableReason) Valid() bool {
 	}
 }
 
+// Defines values for VideoEncoder.
+const (
+	VideoEncoderNvenc        VideoEncoder = "nvenc"
+	VideoEncoderQsv          VideoEncoder = "qsv"
+	VideoEncoderSoftware     VideoEncoder = "software"
+	VideoEncoderVaapi        VideoEncoder = "vaapi"
+	VideoEncoderVideotoolbox VideoEncoder = "videotoolbox"
+)
+
+// Valid indicates whether the value is a known member of the VideoEncoder enum.
+func (e VideoEncoder) Valid() bool {
+	switch e {
+	case VideoEncoderNvenc:
+		return true
+	case VideoEncoderQsv:
+		return true
+	case VideoEncoderSoftware:
+		return true
+	case VideoEncoderVaapi:
+		return true
+	case VideoEncoderVideotoolbox:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VideoEncoderChoice.
+const (
+	VideoEncoderChoiceAuto         VideoEncoderChoice = "auto"
+	VideoEncoderChoiceNvenc        VideoEncoderChoice = "nvenc"
+	VideoEncoderChoiceQsv          VideoEncoderChoice = "qsv"
+	VideoEncoderChoiceSoftware     VideoEncoderChoice = "software"
+	VideoEncoderChoiceVaapi        VideoEncoderChoice = "vaapi"
+	VideoEncoderChoiceVideotoolbox VideoEncoderChoice = "videotoolbox"
+)
+
+// Valid indicates whether the value is a known member of the VideoEncoderChoice enum.
+func (e VideoEncoderChoice) Valid() bool {
+	switch e {
+	case VideoEncoderChoiceAuto:
+		return true
+	case VideoEncoderChoiceNvenc:
+		return true
+	case VideoEncoderChoiceQsv:
+		return true
+	case VideoEncoderChoiceSoftware:
+		return true
+	case VideoEncoderChoiceVaapi:
+		return true
+	case VideoEncoderChoiceVideotoolbox:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for VideoSort.
 const (
 	AddedAsc     VideoSort = "addedAsc"
@@ -739,6 +862,25 @@ type DirectoryListing struct {
 	Directories []DirectoryEntry `json:"directories"`
 	ParentPath  *string          `json:"parentPath"`
 }
+
+// EncoderAvailability defines model for EncoderAvailability.
+type EncoderAvailability struct {
+	// Encoder ライブ変換が実際に使う映像エンコード方式
+	Encoder VideoEncoder `json:"encoder"`
+
+	// Reason ハードウェアの方式が使えない理由
+	Reason *EncoderUnavailableReason `json:"reason,omitempty"`
+	State  EncoderAvailabilityState  `json:"state"`
+}
+
+// EncoderAvailabilityState defines model for EncoderAvailability.State.
+type EncoderAvailabilityState string
+
+// EncoderFallbackReason 選んだハードウェアの方式を使えず software にしている理由。selected_unavailable は 確認の結果使えない、checking は起動時の確認が終わっていない
+type EncoderFallbackReason string
+
+// EncoderUnavailableReason ハードウェアの方式が使えない理由
+type EncoderUnavailableReason string
 
 // Error defines model for Error.
 type Error struct {
@@ -1237,10 +1379,34 @@ type TranscodeStart struct {
 	StartMs int64 `json:"startMs"`
 }
 
+// TranscodingSettings defines model for TranscodingSettings.
+type TranscodingSettings struct {
+	// Checking 起動時の確認が終わっていない
+	Checking bool `json:"checking"`
+
+	// EffectiveEncoder ライブ変換が実際に使う映像エンコード方式
+	EffectiveEncoder VideoEncoder `json:"effectiveEncoder"`
+
+	// Encoders ハードウェアの方式の確認結果。nvenc・qsv・vaapi・videotoolbox の順で常に 4 件。 software は常に使えるので載らない
+	Encoders []EncoderAvailability `json:"encoders"`
+
+	// FallbackReason 選んだハードウェアの方式を使えず software にしている理由。selected_unavailable は 確認の結果使えない、checking は起動時の確認が終わっていない
+	FallbackReason *EncoderFallbackReason `json:"fallbackReason,omitempty"`
+
+	// VideoEncoder 所有者が選ぶライブ変換の映像エンコード方式。auto は使えるハードウェアの方式を nvenc・qsv・vaapi・videotoolbox の順で選び、無ければ software にする
+	VideoEncoder VideoEncoderChoice `json:"videoEncoder"`
+}
+
 // UpdateMediaFolderRequest defines model for UpdateMediaFolderRequest.
 type UpdateMediaFolderRequest struct {
 	Path    string `json:"path"`
 	Version int64  `json:"version"`
+}
+
+// UpdateTranscodingSettingsRequest defines model for UpdateTranscodingSettingsRequest.
+type UpdateTranscodingSettingsRequest struct {
+	// VideoEncoder 所有者が選ぶライブ変換の映像エンコード方式。auto は使えるハードウェアの方式を nvenc・qsv・vaapi・videotoolbox の順で選び、無ければ software にする
+	VideoEncoder VideoEncoderChoice `json:"videoEncoder"`
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError` を省き、`tags` を空の配列にする
@@ -1361,6 +1527,12 @@ type VideoChanged struct {
 	// Id 状態が変わった動画の識別子
 	Id int64 `json:"id"`
 }
+
+// VideoEncoder ライブ変換が実際に使う映像エンコード方式
+type VideoEncoder string
+
+// VideoEncoderChoice 所有者が選ぶライブ変換の映像エンコード方式。auto は使えるハードウェアの方式を nvenc・qsv・vaapi・videotoolbox の順で選び、無ければ software にする
+type VideoEncoderChoice string
 
 // VideoFolder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 // GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
@@ -1784,6 +1956,9 @@ type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
 // StartScanJSONRequestBody defines body for StartScan for application/json ContentType.
 type StartScanJSONRequestBody = StartScanJSONBody
 
+// UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
+type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
+
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
 
@@ -1876,6 +2051,12 @@ type ServerInterface interface {
 	// ListCurrentScanIssues 直近の取り込みの問題の一覧を返す
 	// (GET /api/scans/current/issues)
 	ListCurrentScanIssues(w http.ResponseWriter, r *http.Request, params ListCurrentScanIssuesParams)
+	// GetTranscodingSettings ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
+	// (GET /api/settings/transcoding)
+	GetTranscodingSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateTranscodingSettings ライブ変換の映像エンコード方式を保存する
+	// (PUT /api/settings/transcoding)
+	UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request)
 	// ListTags タグを一覧する
 	// (GET /api/tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
@@ -2777,6 +2958,34 @@ func (siw *ServerInterfaceWrapper) ListCurrentScanIssues(w http.ResponseWriter, 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListCurrentScanIssues(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetTranscodingSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetTranscodingSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetTranscodingSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateTranscodingSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateTranscodingSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3701,6 +3910,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/media-folders", wrapper.CreateMediaFolder)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.DeleteMediaFolder)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.UpdateMediaFolder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/transcoding", wrapper.GetTranscodingSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags", wrapper.CreateTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}", wrapper.DeleteTag)
