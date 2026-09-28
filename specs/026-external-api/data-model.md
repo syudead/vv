@@ -59,14 +59,22 @@ create unique index videos_changed_seq_idx on videos (changed_seq);
 番号を取るのは package-private の 1 つの関数（例: `nextVideoSeq(tx)`）だけで、同じトランザクションの
 中で `video_seq` を 1 増やして返す。
 
+外部連携 API が返す動画の事実は、登録フォルダの下の所在（[contracts/external-api.md §2](contracts/external-api.md#2-動画)）と
+題名・長さである。登録外の所在は返さないので、所在が登録の下に入る・登録の下から外れることも事実の変更である。
+番号はどの場合も、事実を変える書き込みと同じトランザクションの中で進める。
+
 | 事実の変更（今の箇所） | 書く列 |
 | --- | --- |
 | 動画の行を作る（`ScanIndexStore.UpsertVideo` の挿入） | `added_seq` と `changed_seq` |
-| 所在の追加・削除・パスや題名の変更（`UpsertVideo` の所在の更新、`DeleteVideoLocations`、メディアフォルダの削除・置き換えで所在が消えて動画が残るとき） | その動画の `changed_seq` |
+| 所在を足す・パスや題名を変える（`UpsertVideo` の所在の挿入と更新） | 所在を持つ動画の `changed_seq` |
+| 所在が別の動画へ付け替わる（`UpsertVideo` で内容が変わり `oldVideoID != videoID` のとき） | 所在を得た動画と、所在を失って残る前の動画の両方の `changed_seq`。前の動画が孤立して消えるなら、その動画には書かない |
+| 所在を消して動画が残る（`DeleteVideoLocations`、メディアフォルダの削除・置き換えの `removeLocationsUnder`） | 残る動画の `changed_seq` |
+| 登録外だった所在が登録の下に入る（`AddMediaFolder`、`ReplaceMediaFolder` の新しいパスの `syncLocationsUnder`） | その所在を持つ動画の `changed_seq`。`added_seq` は変えない（行を作った順のまま） |
 | 解析の結果で長さが変わる（`IngestStore` の probe の結果の書き込み） | その動画の `changed_seq` |
 
 タグ・公開フラグ・取り込みの段の状態・再生位置の変更では書かない。動画の行が消えるときは何も残さない
-（一覧は消えた動画を返さない）。
+（一覧は消えた動画を返さない）。走査が同じ所在を同じ内容で見つけたとき（`UpsertVideo` の `OutcomeUnchanged`）も
+書かないので、フォルダの追加のあとの走査は、フォルダの追加で進めた番号を二重に進めない。
 
 区分: `videos` の一部なので再構築できる索引に属する。データベースを作り直すと番号は振り直しになり、
 利用者は先頭から読み直す（`docs/how-to/external-api.md` に書く）。

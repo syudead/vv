@@ -159,26 +159,36 @@ specs/026-external-api/
 **Scope**: `api/external-v1.yaml` の土台（共通の誤り、`bearerAuth`）と生成の設定・`scripts/generate`・AGENTS.md の
 生成物の一覧（R-5）。境界の Bearer の分類・同一オリジンの検査の除外・最終使用日時・台帳による打ち切り
 （R-3・R-4・R-9）。操作は `GET /api/v1/tags` とスキャンの 2 つ（[contracts/external-api.md §3・§5](contracts/external-api.md#3-タグ)）。
-`docs/how-to/external-api.md` を作り、トークンの使い方と互換の方針を書く。ARCHITECTURE.md の認証の段落。
+`app.Scans.StartScan` に `started` を返させ（`internal/httpapi` の `Scans` インターフェースと画面の `POST /api/scans` も合わせて
+直す。画面の応答は変えない）。`docs/how-to/external-api.md` を作り、トークンの使い方と互換の方針を書く。ARCHITECTURE.md の認証の段落。
 
 **Dependencies**: API トークンの発行・一覧・失効（画面の API と保存）
 
 **Acceptance**: `task check` が通る。有効なトークンで `GET /api/v1/tags` が `200`、無効・失効済み・形式違い・Cookie
 だけでは `401` と `WWW-Authenticate: Bearer`。Bearer だけの `GET /api/api-tokens` は `401`、`GET /api/videos` は
-`X-VV-Audience: guest`。別の `Origin` を付けた `POST /api/v1/scans` が通る。画面での失効が実行中の Bearer の応答を
+`X-VV-Audience: guest`。別の `Origin` を付けた `POST /api/v1/scans` が通る。app の試験で `StartScan` の `started` が
+最初は真、実行中にもう一度呼ぶと偽になり、httpapi の試験で `POST /api/v1/scans` が最初は `201`、実行中は `200` を返し、
+画面の `POST /api/scans` は今どおり `202` のまま。`GET /api/v1/scans/current` が、始めた直後（`finding`）は
+`videos`・`settledVideos` とも `null`、対象 0 本で終わった走査は両方 `0` を返す。画面での失効が実行中の Bearer の応答を
 打ち切ることを httpapi の試験で確かめる。外部連携 API の全操作が `bearerAuth` で Bearer に分類されることを試験が確かめる。
 
 ### 外部連携 API で動画を変更順のカーソルで読み、1 本を引く
 
-**Scope**: 番号の移行と書き込み（[data-model.md §2](data-model.md#2-videosadded_seqvideoschanged_seqr-6)）、
+**Scope**: 番号の移行と書き込み（[data-model.md §2](data-model.md#2-videosadded_seqvideoschanged_seqr-6) の表の
+すべての箇所。`UpsertVideo`・`DeleteVideoLocations`・`IngestStore` に加え、`AddMediaFolder`・`ReplaceMediaFolder`・
+`DeleteMediaFolder` の同じトランザクション）、
 `GET /api/v1/videos` と `GET /api/v1/videos/lookup`（[contracts/external-api.md §2](contracts/external-api.md#2-動画)）、
-`docs/how-to/external-api.md` の一覧の読み方（最後の `nextCursor` を保存して続きから読む）。
+`docs/how-to/external-api.md` の一覧の読み方（最後の `nextCursor` を保存して続きから読む。登録の変更で現れた動画は
+`changed` で拾う）。
 
 **Dependencies**: 外部連携 API v1 の Bearer 認証とタグ・スキャンの操作
 
 **Acceptance**: `task check` が通る。store の試験で、ページングの途中で動画が増える・消える・移動しても、`added`・`changed`
 の両方で取りこぼしも重複も無く（途中で移動した動画は同じ読み通しで二度返らず、次の読み通しで返る）、最大の id の動画を消した後に足した動画が続きから返る。最後の `nextCursor` から
-呼ぶと、その後のスキャンで増えた動画だけが返る（受け入れ条件 3）。非公開の動画も返る（受け入れ条件 2）。
+呼ぶと、その後のスキャンで増えた動画だけが返る（受け入れ条件 3）。`changed` の最後の `nextCursor` から呼ぶと、
+その後に (a) 所在の内容が変わって別の動画へ付け替わり、所在を失って残った前の動画、(b) メディアフォルダの追加で
+登録外だった所在が登録の下に入った動画、(c) メディアフォルダの置き換え・削除で所在を失って残った動画が、
+それぞれ一度だけ返り、その後の走査が同じ所在を同じ内容で見つけても二度目は返らない。非公開の動画も返る（受け入れ条件 2）。
 `lookup` が id・内容キー・パス（NFD の綴りのパスを含む）のそれぞれで同じ動画を返し、無い指定は `404 video_not_found`。
 
 ### 外部連携 API から名前でタグを付与・除去・置き換える

@@ -62,6 +62,11 @@ ExternalVideoTag:                                 # domain.VideoTag
 足された（`changed` なら変わった）動画だけが返る（受け入れ条件 3）。項目が無いときも同じ規則で
 `nextCursor` を返す。
 
+`changed` で「変わった」と数える事実は [data-model.md §2](../data-model.md#2-videosadded_seqvideoschanged_seqr-6) の表のとおりで、
+所在の付け替えで所在を失った動画と、メディアフォルダの追加・置き換えで所在が登録の下に入った動画も含む。
+後者は `added` では元の位置のままなので、登録の変更で現れた動画を拾うには `changed` を読む
+（`docs/how-to/external-api.md` に書く）。
+
 ### `GET /api/v1/videos/lookup`
 
 `id`・`contentKey`・`path` のちょうど 1 つを取る。0 個・2 個以上は `400 invalid_request`。
@@ -112,11 +117,19 @@ ExternalScan:
     status: { enum: [finding, running, done, partial, failed] }   # domain の Scan.status と同じ
     startedAt: { type: string, format: date-time }
     finishedAt: { type: [string, "null"], format: date-time }
-    videos: { type: integer }
-    settledVideos: { type: integer }
+    videos: { type: [integer, "null"] }            # finding のあいだは null（本数を数え終えていない）
+    settledVideos: { type: [integer, "null"] }     # 同上。数えたあとは 0 ≤ settledVideos ≤ videos
     errorCode: { type: [string, "null"] }
 ```
 
-- `POST /api/v1/scans`: `app.Scans.StartScan`。新しく始めたら `201`、実行中のものを返したら `200`。
+`videos`・`settledVideos` は `domain.ImportProgress.Counted` が真のときだけ数を入れ、偽なら両方 `null` にする
+（画面の API が `videos` を省くのと同じ判定）。走査を始めた直後の `finding` と、対象が 0 本で `done` の
+`{ videos: 0, settledVideos: 0 }` を区別できる。
+
+- `POST /api/v1/scans`: 新しく始めたら `201`、実行中のものを返したら `200`。どちらかは、走査の行を作るか
+  実行中の行を返すかを 1 つのトランザクションで決める `ScanStore.StartScan` の `started` で決め、
+  `app.Scans.StartScan` は `(domain.Scan, started bool, error)` を返すように変えてそれを通す。画面の
+  `POST /api/scans` は `started` を読まず、今どおり `202` を返す。応答の前に `GET /api/v1/scans/current` で
+  状態を読んで決めることはしない（読む間に走査が始まる・終わる）。
   メディアフォルダが無ければ、画面の API と同じ `409 media_folders_not_configured`。
 - `GET /api/v1/scans/current`: `200 ExternalScan`。一度も走査していなければ `404 not_found` / `no_scan`。
