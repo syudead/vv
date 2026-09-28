@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -95,15 +95,17 @@ describe("ScanStatusSection", () => {
       Promise.resolve(
         String(input) === "/api/media-folders"
           ? json([{}])
-          : json(
-              scan({
-                state: "done",
-                status: "running",
-                videos: { total: 10, settled: 7 },
-                issues: { failed: 1, substituted: 2, revision: 4 },
-                activity: { kind: "preview", fileName: "clip.mp4" },
-              }),
-            ),
+          : String(input).startsWith("/api/scans/current/issues")
+            ? json({ scanId: 2, items: [] })
+            : json(
+                scan({
+                  state: "done",
+                  status: "running",
+                  videos: { total: 10, settled: 7 },
+                  issues: { failed: 1, substituted: 2, revision: 4 },
+                  activity: { kind: "preview", fileName: "clip.mp4" },
+                }),
+              ),
       ),
     );
     const { container } = renderSection();
@@ -115,8 +117,11 @@ describe("ScanStatusSection", () => {
       ),
     ).toBeDefined();
     expect(screen.getByText("Creating the preview · clip.mp4")).toBeDefined();
-    expect(screen.getByText("1 failed")).toBeDefined();
-    expect(screen.getByText("2 to check")).toBeDefined();
+    const headingRow = screen.getByRole("heading", {
+      name: "Scan status",
+    }).parentElement!;
+    expect(within(headingRow).getByText("1 failed")).toBeDefined();
+    expect(within(headingRow).getByText("2 to check")).toBeDefined();
     const progress = screen.getByRole("progressbar");
     expect(progress.getAttribute("aria-valuetext")).toBe("7 of 10 videos done");
     // 概要にない数字の欄や時刻の欄を置かない。
@@ -236,7 +241,22 @@ describe("ScanStatusSection", () => {
     enablePseudoLocale();
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
-        String(input) === "/api/media-folders" ? json([{}]) : json(current),
+        String(input) === "/api/media-folders"
+          ? json([{}])
+          : String(input).startsWith("/api/scans/current/issues")
+            ? json({
+                scanId: current.id,
+                items: [
+                  {
+                    severity: "failed",
+                    kinds: ["unreadable", "thumbnail_failed"],
+                    fileName: "夏.mp4",
+                    folder: { rootId: 1, path: "旅行", rootName: "media" },
+                    videoId: 5,
+                  },
+                ],
+              })
+            : json(current),
       ),
     );
     const { container } = renderSection();
@@ -247,7 +267,7 @@ describe("ScanStatusSection", () => {
     await waitFor(() =>
       expect(screen.getByTestId("scan-detail").textContent).not.toBe(""),
     );
-    expectCatalogTextOnly(container, ["/media/動画/sub", "夏.mp4"]);
+    expectCatalogTextOnly(container, ["/media/動画/sub", "夏.mp4", "media / 旅行"]);
   });
 
   it("focuses the heading again when navigating to the same anchor", async () => {
