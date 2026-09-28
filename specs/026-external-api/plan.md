@@ -146,8 +146,8 @@ specs/026-external-api/
 
 ### 設定ページの「API トークン」節
 
-**Scope**: 設定ページに節を足し、発行・一度だけの平文の表示とコピー・一覧・確認付きの失効を行う。英語と日本語の
-文言、新しい `reason` の文言（`web/src/i18n/errors.ts`）。見た目と操作は `ui-design.md` に従う。
+**Scope**: 設定ページに節を足し、発行・一度だけの平文の表示とコピー・一覧・確認付きの失効を行う。英語の
+カタログ（`web/src/i18n/en.ts`）の文言、新しい `reason` の文言（`web/src/i18n/errors.ts`）。見た目と操作は `ui-design.md` に従う。
 
 **Dependencies**: API トークンの発行・一覧・失効（画面の API と保存）
 

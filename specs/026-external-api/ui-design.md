@@ -15,13 +15,13 @@
   [`TranscodingSection.tsx`](../../web/src/settings/TranscodingSection.tsx)（動画の変換）
 - 文言の置き場と書式: [画面の文言と書式（i18n）](../../docs/design-docs/i18n.md)。本書の英語は
   意図を示す案で、実装後はカタログ [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) が正本になる。
-  カタログは 023 の決定どおり英語の 1 組で、本書は言語の仕組みを足さない
+  カタログは 023 の決定どおり英語の 1 組で、本書は言語の仕組みを足さない（UI品質「日本語対応は求めない」）
 
 この feature が画面に足すのは、設定ページの 1 つの節だけである。ほかの画面は変えない。ゲストは
 設定ページに入れない（016 のゲート）ので、ゲスト向けの縮退は無い。`mdm account` の出力の変更は
 CLI で、本書の範囲外である（[contracts/token-api.md](contracts/token-api.md#mdm-account)）。
-新しい色・半径・影の token は足さず、`tokens.test.ts` の `pairs` にも足さない（下の
-「Colour」）。
+新しい色・半径・影の token は足さない。`tokens.test.ts` の `pairs` には、この節で初めて
+検査する組を 2 つだけ足す（下の「Colour」）。
 
 ## Screen boundary
 
@@ -181,12 +181,19 @@ CLI で、本書の範囲外である（[contracts/token-api.md](contracts/token
 
 ## Colour
 
-新しい token は足さない。使う組は `tokens.test.ts` の `pairs` にすでにある: 本文
-（`fg`・`fg-muted` on `surface`・`field`・`elevated`）、失敗の行（`danger` on `surface`・
-`elevated`）、注意の行（`warning` on `surface`）、箱の枠（`control-border` on `surface`・
-`field`・`elevated`）、主操作（`accent-fg` on `accent`）。`border-warning-strong`・
-`border-danger-strong` は 016 と設定ページがすでに同じ用途で使っている左の線で、文字ではなく
-文とアイコンが意味を運ぶので、組には足さない。
+新しい token は足さない。使う組のうち次は `tokens.test.ts` の `pairs` にすでにある: 本文
+（`fg` on `surface`・`field`・`elevated`、`fg-muted` on `surface`・`elevated`）、失敗の行
+（`danger` on `surface`・`elevated`）、箱の枠（`control-border` on `surface`・`field`・
+`elevated`）、主操作（`accent-fg` on `accent`）。
+
+平文の表示と失効の窓の対象の箱（`bg-field`）の上の文字は、次の 2 組がまだ `pairs` に無いので、
+実装で `pairs` に足す（いずれも 4.5 以上）。
+
+- `fg-muted` on `field`: 「Token for 〈名前〉」、失効の窓の「Token」と「Created 〈日時〉」。
+- `warning` on `field`: 平文の表示の注意の行。
+
+`border-warning-strong`・`border-danger-strong` は 016 と設定ページがすでに同じ用途で使っている
+左の線で、文字ではなく文とアイコンが意味を運ぶので、組には足さない。
 
 ## Responsive layout
 
