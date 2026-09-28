@@ -36,6 +36,7 @@ BASE=http://localhost:8080
 TOKEN=vvt_...
 
 curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/tags"
+curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos?limit=100"
 curl -X POST -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans"
 curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 ```
@@ -56,3 +57,46 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 - `GET /api/v1/scans/current` で直近の状態を読む。`status` が `done`・`partial`・`failed` になれば
   終わっている。`finding` のあいだは本数を数え終えていないので、`videos`・`settledVideos` は `null`
   である。一度も走査していなければ `404`（`no_scan`）。
+
+## 動画の一覧を読む
+
+- `GET /api/v1/videos` は、登録フォルダの下にある動画を追加日時の古い順（`addedAt`、同じなら `id`）で
+  返す。非公開の動画も返る。1 ページの件数は `limit`（既定 100、1〜200。範囲外は `400`）。
+- 応答は `{ items, nextCursor }`。`nextCursor` が空文字列でなければ、それをそのまま `cursor` に渡して
+  続きを読む。空文字列になれば最後まで読んだ。カーソルの中身は解釈しない。解釈できないカーソルは
+  `400`（`invalid_cursor`）なので、先頭から読み直す。
+
+  ```sh
+  cursor=""
+  while :; do
+    page=$(curl -s -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos" \
+      --data-urlencode "cursor=$cursor")
+    echo "$page" | jq -c '.items[]'
+    cursor=$(echo "$page" | jq -r '.nextCursor')
+    [ -z "$cursor" ] && break
+  done
+  ```
+
+- 一覧は変更を追跡しない。新しい動画を知るには、スキャンの後に一覧を先頭から読み直す。読み通しの
+  途中で動画が増える・消える・移動しても続きの要求は失敗しないが、その間の取りこぼしと重複は
+  起こりうる。
+- 消えた動画は一覧に出なくなるだけで、消えたことを知らせる項目は無い。手元に持っている動画が
+  まだあるかは `lookup` で確かめ、`404`（`video_not_found`）なら消えている。登録フォルダの外の所在だけが
+  残った動画も、消えた動画と同じに扱う。
+- `locations` は登録フォルダの下の今の所在で、パスの順に並び、先頭が代表である（`title` は代表の
+  題名）。`durationMs` は解析前は `null`。`tags` の `manual` は手で付けたタグ、`fromFolder` は
+  祖先のフォルダ名から付くタグである。
+
+## 動画を 1 本引く
+
+`GET /api/v1/videos/lookup` は `id`・`contentKey`・`path` のちょうど 1 つを取る（0 個・2 個以上は
+`400`）。応答は一覧の項目と同じ形である。
+
+```sh
+curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
+  --data-urlencode "path=/media/videos/clip.mp4"
+```
+
+- `path` は正規化せず、所在のパスとバイト列で比べる。macOS などで NFD の綴りのファイル名は、
+  一覧の `locations[].path` をそのまま渡す。
+- 無い動画と、登録フォルダの下に所在の無い動画は `404`（`video_not_found`）。

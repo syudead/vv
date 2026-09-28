@@ -6,9 +6,12 @@
 package extgen
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/oapi-codegen/runtime"
 )
 
 // Defines values for ErrorCode.
@@ -148,6 +151,53 @@ type ExternalScan struct {
 // ExternalScanStatus 取り込みの状態。画面の API の Scan.status と同じ値で、failed は走査そのものの失敗、 finding は対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外である
 type ExternalScanStatus string
 
+// ExternalVideo 動画 1 本。見る人は常に所有者で、非公開の動画も返す
+type ExternalVideo struct {
+	AddedAt time.Time `json:"addedAt"`
+
+	// ContentKey 内容から決まる識別子。ファイルが移動しても変わらない
+	ContentKey string `json:"contentKey"`
+
+	// DurationMs 長さ（ミリ秒）。解析前は null
+	DurationMs *int64 `json:"durationMs"`
+	Id         int64  `json:"id"`
+
+	// Locations 登録フォルダの下の今の所在。パスの順で、代表が先頭
+	Locations []ExternalVideoLocation `json:"locations"`
+	Tags      []ExternalVideoTag      `json:"tags"`
+
+	// Title 代表の所在（locations の先頭）の題名
+	Title string `json:"title"`
+}
+
+// ExternalVideoLocation defines model for ExternalVideoLocation.
+type ExternalVideoLocation struct {
+	// FileName path の最後の要素
+	FileName string `json:"fileName"`
+
+	// Path 絶対パス。ファイルシステムの綴り（NFD を含む）のまま
+	Path string `json:"path"`
+}
+
+// ExternalVideoPage defines model for ExternalVideoPage.
+type ExternalVideoPage struct {
+	Items []ExternalVideo `json:"items"`
+
+	// NextCursor 次のページの取得に渡す。続きが無ければ空文字列
+	NextCursor string `json:"nextCursor"`
+}
+
+// ExternalVideoTag defines model for ExternalVideoTag.
+type ExternalVideoTag struct {
+	// FromFolder 祖先のフォルダ名から付く（この API では外れない）
+	FromFolder bool  `json:"fromFolder"`
+	Id         int64 `json:"id"`
+
+	// Manual 手で付けた（この API の付け外しの対象）
+	Manual bool   `json:"manual"`
+	Name   string `json:"name"`
+}
+
 // Tag defines model for Tag.
 type Tag struct {
 	Id   int64  `json:"id"`
@@ -171,6 +221,24 @@ type Internal = Error
 // Unauthenticated 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
 type Unauthenticated = Error
 
+// ListVideosParams defines parameters for ListVideos.
+type ListVideosParams struct {
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。省略すると先頭から
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1 ページの件数。範囲外は `400` `invalid_request`
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// LookupVideoParams defines parameters for LookupVideo.
+type LookupVideoParams struct {
+	Id         *int64  `form:"id,omitempty" json:"id,omitempty"`
+	ContentKey *string `form:"contentKey,omitempty" json:"contentKey,omitempty"`
+
+	// Path 所在の絶対パス
+	Path *string `form:"path,omitempty" json:"path,omitempty"`
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// StartScan スキャンを始める
@@ -182,6 +250,12 @@ type ServerInterface interface {
 	// ListTags タグの一覧を返す
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
+	// ListVideos 動画の一覧をページを分けて返す
+	// (GET /videos)
+	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
+	// LookupVideo 動画を 1 本、id・内容キー・パスのどれかで引く
+	// (GET /videos/lookup)
+	LookupVideo(w http.ResponseWriter, r *http.Request, params LookupVideoParams)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -226,6 +300,111 @@ func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVideos operation middleware
+func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVideosParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVideos(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// LookupVideo operation middleware
+func (siw *ServerInterfaceWrapper) LookupVideo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params LookupVideoParams
+
+	// ------------- Optional query parameter "id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "id", r.URL.Query(), &params.Id, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "contentKey" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "contentKey", r.URL.Query(), &params.ContentKey, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "contentKey"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "contentKey", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "path" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.LookupVideo(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -355,6 +534,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/videos", wrapper.ListVideos)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/videos/lookup", wrapper.LookupVideo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/scans", wrapper.StartScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/scans/current", wrapper.GetCurrentScan)
