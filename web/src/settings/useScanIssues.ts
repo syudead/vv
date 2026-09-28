@@ -76,7 +76,8 @@ async function loadPages(
  *   つながり直したあとの取り直しで版が変わっていれば、切れていた間の問題も反映される。
  * - 新しい取り込みでは先頭から読み直す。同じ取り込みの中では、読めた件数まで読み直す。
  * - 応答の `scanId` が今の `Scan.id` と違えば、状態を取り直し（`refreshScan`）、読み直す。
- * - 読めなかったときは、最後に読めた一覧を残す（ui-design.md「States」）。
+ * - 読めなかったときは、最後に読めた一覧を残す（ui-design.md「States」）。状態を取り直せたら、
+ *   版が同じでも読み直す。
  */
 export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanIssueList {
   const [loaded, setLoaded] = useState<Loaded>(empty);
@@ -90,6 +91,8 @@ export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanI
   const mismatches = useRef(0);
   const refreshRef = useRef(refreshScan);
   refreshRef.current = refreshScan;
+  const errorRef = useRef(error);
+  errorRef.current = error;
 
   const scanId = scan?.id ?? null;
   const revision = scan?.issues.revision ?? null;
@@ -151,6 +154,13 @@ export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanI
       });
     return () => abort.abort();
   }, [scanId, revision, hasIssues, retry]);
+
+  // 読めなかった後に状態を取り直せたら（つながり直し・ウィンドウへの復帰・更新の求め）、
+  // 版が同じでも読み直す。取り込みの状態と同じく、一時的な失敗から戻れるようにする。
+  useEffect(() => {
+    if (scan === null || errorRef.current === null || controller.current !== null) return;
+    setRetry((value) => value + 1);
+  }, [scan]);
 
   const loadMore = useCallback(() => {
     const current = loadedRef.current;

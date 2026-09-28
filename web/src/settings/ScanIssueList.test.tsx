@@ -236,6 +236,25 @@ describe("ScanIssueList", () => {
     expect(requests.length).toBeGreaterThanOrEqual(2);
   });
 
+  it("reads the list again after a failure once the scan state is refreshed", async () => {
+    const state = {
+      scan: scan(),
+      pages: {} as Record<string, ScanIssuePage>,
+    };
+    const requests = serve(fetchMock, state);
+    renderSection();
+    const warning = await screen.findByText(/^Couldn't load the list/);
+    // 読めなかった理由は見せるが、取り込みの節目ではないので読み上げない。
+    expect(warning.closest("[role=status]")).toBeNull();
+
+    // 版は同じまま、ウィンドウへ戻って状態を取り直す。
+    state.pages[""] = { scanId: 2, items: [issue({ fileName: "back.mp4" })] };
+    act(() => window.dispatchEvent(new Event("focus")));
+    expect(await screen.findByText("back.mp4")).toBeDefined();
+    expect(screen.queryByText(/^Couldn't load the list/)).toBeNull();
+    expect(requests).toHaveLength(2);
+  });
+
   it("walks the rows with the keyboard and opens the video", async () => {
     serve(fetchMock, {
       scan: scan(),

@@ -141,10 +141,9 @@ export default function ScanIssueList({
           className="text-xs text-fg-muted"
         />
       </div>
+      {/* 読み上げる節目は完了・一部失敗・失敗の3つだけにする（ui-design.md「Accessibility」）。 */}
       {list.error !== null && (
-        <p role="status" className="mt-2 text-sm text-warning">
-          {text.loadFailed(list.error)}
-        </p>
+        <p className="mt-2 text-sm text-warning">{text.loadFailed(list.error)}</p>
       )}
       <div
         ref={region}
