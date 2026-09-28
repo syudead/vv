@@ -16,6 +16,7 @@ import { ModalFrame } from "../ui/ModalFrame";
 import Skeleton from "../ui/Skeleton";
 import { useToast } from "../ui/Toast";
 import FolderPicker from "./FolderPicker";
+import APITokensSection from "./APITokensSection";
 import ScanStatusSection from "./ScanStatusSection";
 import TranscodingSection from "./TranscodingSection";
 
@@ -346,6 +347,7 @@ export default function SettingsPage() {
         )}
       </section>
       <TranscodingSection />
+      <APITokensSection />
 
       {picker !== null && (
         <FolderPicker

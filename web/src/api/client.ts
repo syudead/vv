@@ -60,6 +60,8 @@ export type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 export type VideoEncoder = components["schemas"]["VideoEncoder"];
 export type EncoderAvailability = components["schemas"]["EncoderAvailability"];
 export type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"];
+export type APIToken = components["schemas"]["APIToken"];
+export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
 
 /**
  * LibraryItem は一覧の項目1件である（api/openapi.yaml の LibraryItem）。生成した型は
@@ -549,6 +551,38 @@ export function updateTranscodingSettings(
     body: JSON.stringify({ videoEncoder }),
     signal,
   });
+}
+
+/** listAPITokens は発行済みの API トークンを作成日時の新しい順で取得する。平文は含まない。 */
+export async function listAPITokens(signal?: AbortSignal): Promise<APIToken[]> {
+  const list = await request<components["schemas"]["APITokenList"]>("/api/api-tokens", {
+    signal,
+  });
+  return list.items;
+}
+
+/** createAPIToken は API トークンを発行する。平文（`secret`）はこの応答にだけ現れる。 */
+export function createAPIToken(
+  name: string,
+  signal?: AbortSignal,
+): Promise<CreatedAPIToken> {
+  return request<CreatedAPIToken>("/api/api-tokens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+    signal,
+  });
+}
+
+/** revokeAPIToken は API トークンを失効する。無い id も成功として扱う（contracts/token-api.md）。 */
+export async function revokeAPIToken(id: number, signal?: AbortSignal): Promise<void> {
+  const response = await apiFetch(`/api/api-tokens/${String(id)}`, {
+    method: "DELETE",
+    signal,
+  });
+  if (!response.ok) {
+    throw await toRequestFailed(response);
+  }
 }
 
 /** listMediaFolders は登録rootをid順で取得する。 */

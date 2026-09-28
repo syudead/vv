@@ -111,6 +111,10 @@ describe("contrast", () => {
     ["accent", "navbar", 3],
     ["accent-active", "surface", 3],
     ["accent-active", "navbar", 3],
+    // 設定画面の「API tokens」節の bg-field の箱の上の文字（平文の表示の見出しと注意、
+    // 失効の窓の対象）（specs/026-external-api/ui-design.md「Colour」）。
+    ["fg-muted", "field", 4.5],
+    ["warning", "field", 4.5],
   ];
 
   it.each(pairs)("%s on %s >= %s", (fg, bg, minimum) => {
