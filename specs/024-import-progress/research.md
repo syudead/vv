@@ -174,11 +174,17 @@
 - **Decision**: 問題の影響と理由、今の処理、走査の失敗の理由は、API では種類（列挙値）で返す。
   SPA が利用者の言葉にする。
 - **Rationale**: 英語化の feature（[#463](https://github.com/syudead/vv/pull/463)、
-  `specs/023-english-i18n`）は、画面の文字列を SPA のカタログに集め、API の `message` を画面に
-  出さない方針である。種類で返せば、どちらが先に `main` に入っても言葉は SPA の側だけで決まる。
-  走査の失敗の理由は、023 が `Scan` に足す `errorCode`・`errorPath` をそのまま引き継ぐ。
-- **Alternatives considered**: サーバーが日本語の文を返す: 023 の方針と衝突し、英語化のときに
-  API を変えることになる。
+  `specs/023-english-i18n`）は、次の方針をとっている
+  （[docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)）。
+  - 画面の文字列を、SPA のカタログ `web/src/i18n/en.ts` に集める。
+  - API の `message` は画面に出さない。
+  - 失敗の理由はコードで返し、画面が言葉にする。
+
+  種類で返せば、この方針のまま、言葉を SPA の側だけで決められる。カタログは種類をキーにした
+  `Record` で持てるので、種類の漏れは型検査で見つかる。走査の失敗の理由は、023 が `Scan` に
+  足した `errorCode`・`errorPath` をそのまま引き継ぐ。
+- **Alternatives considered**: サーバーが英語の文を返す: 023 の方針（`message` を画面に出さない）と
+  衝突する。言語を足すときに API を変えることにもなる。
 
 ## R-11: 移行は、今の行から分かる結果だけを直近の走査へ移す
 

@@ -39,7 +39,7 @@
 | `activity.folder` | `VideoFolder` \| 省略 | ファイルが置かれたフォルダ。同じ名前のファイルを見分けるため |
 | `activity.videoId` | int64 \| 省略 | 登録された動画なら、その id |
 | `state` | `running` \| `done` \| `failed`, 必須 | 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使い、画面には出さない |
-| `errorCode`・`errorPath` | 省略可 | 走査が `failed` のときの理由。英語化（023）が `Scan` に足す形をそのまま引き継ぐ。023 が未導入なら、その時点の `error` を引き継ぐ |
+| `errorCode`・`errorPath` | 省略可 | 走査が `failed` のときの理由。英語化（023）が `Scan` に足した形をそのまま引き継ぐ。`error` も 023 のとおり残すが、画面には出さない |
 
 今の `startedAt`・`finishedAt`・`total`・`completed`・`failed` はなくす。
 
