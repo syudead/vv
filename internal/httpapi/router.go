@@ -307,6 +307,7 @@ type server struct {
 //	/api/settings/*  → JSON（所有者が設定画面で選ぶ値。同上）
 //	/api/api-tokens* → JSON（所有者が設定画面で管理する API トークン。同上）
 //	/api/v1/*        → JSON（外部連携 API。api/external-v1.yaml から生成した経路で、Bearer だけ）
+//	/mcp             → MCP（Streamable HTTP の stateless。外部連携 API のツール、Bearer だけ）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
 func NewRouter(opts Options) http.Handler {
@@ -364,6 +365,7 @@ func NewRouter(opts Options) http.Handler {
 	}
 
 	registerExternalAPI(mux, srv)
+	mux.Handle(mcpPath, newMCPHandler(srv))
 	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
 		BaseRouter: mux,
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
