@@ -164,6 +164,38 @@ func TestTranscodeSettingsLogsResultWhenChecksFinish(t *testing.T) {
 	}
 }
 
+func TestTranscodeSettingsLogsCheckFailureDetail(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	store := &fakeTranscodeSettingsStore{}
+	checker := &fakeEncoderChecker{results: map[domain.VideoEncoder]domain.EncoderAvailability{
+		domain.VideoEncoderNVENC: {Encoder: domain.VideoEncoderNVENC, State: domain.EncoderUnavailable, Reason: domain.EncoderReasonCheckFailed, Detail: "Cannot load libcuda.so.1"},
+		domain.VideoEncoderQSV:   {Encoder: domain.VideoEncoderQSV, State: domain.EncoderUnavailable, Reason: domain.EncoderReasonEncoderMissing},
+		domain.VideoEncoderVAAPI: available(domain.VideoEncoderVAAPI),
+	}}
+	s, err := NewTranscodeSettings(context.Background(), TranscodeSettingsOptions{
+		Store: store, Checker: checker, GOOS: "linux", Logger: logger,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.StartChecks(context.Background())
+	waitChecks(t, s)
+
+	if got := s.Current().Encoders[0]; got.Detail != "Cannot load libcuda.so.1" {
+		t.Fatalf("nvenc = %+v, want the checker's detail kept", got)
+	}
+	log := buf.String()
+	for _, part := range []string{"transcode video encoder check failed", "encoder=nvenc", "reason=check_failed", `detail="Cannot load libcuda.so.1"`} {
+		if !strings.Contains(log, part) {
+			t.Fatalf("log %q does not contain %q", log, part)
+		}
+	}
+	if strings.Contains(log, "encoder=qsv") || strings.Contains(log, "encoder=vaapi") {
+		t.Fatalf("log %q has a detail line for an encoder without detail", log)
+	}
+}
+
 func TestTranscodeSettingsTimesOutOneCheck(t *testing.T) {
 	store := &fakeTranscodeSettingsStore{found: false}
 	checker := &fakeEncoderChecker{

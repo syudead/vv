@@ -103,6 +103,9 @@ type EncoderAvailability struct {
 	State   EncoderState
 	// Reason は State が EncoderUnavailable のときだけ付く。
 	Reason EncoderUnavailableReason
+	// Detail は確認が失敗したときの補足（FFmpeg の標準エラーの末尾など）で、ログ用である。
+	// API には出さない。
+	Detail string
 }
 
 // TranscodeEncoding は今のライブ変換の方式の状態である（data-model.md §3）。保存しない。

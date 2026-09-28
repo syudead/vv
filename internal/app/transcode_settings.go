@@ -120,6 +120,7 @@ func (t *TranscodeSettings) StartChecks(ctx context.Context) {
 		wg.Wait()
 		encoding := t.Current()
 		t.logEncoding("transcode video encoder checks finished", encoding)
+		t.logCheckDetails(encoding)
 		close(t.done)
 	}()
 }
@@ -155,7 +156,9 @@ func (t *TranscodeSettings) check(ctx context.Context, encoder domain.VideoEncod
 		if reason == "" {
 			reason = domain.EncoderReasonCheckFailed
 		}
-		return unavailable(encoder, reason)
+		failed := unavailable(encoder, reason)
+		failed.Detail = got.Detail
+		return failed
 	default:
 		return unavailable(encoder, domain.EncoderReasonCheckFailed)
 	}
@@ -214,6 +217,21 @@ func (t *TranscodeSettings) isAvailable(encoder domain.VideoEncoder) bool {
 		}
 	}
 	return false
+}
+
+// logCheckDetails は確認に失敗したエンコーダーの補足（FFmpeg の標準エラーの末尾）を
+// 1 件ずつ記録する（research.md R-2）。補足はログ用で、API には出さない。
+func (t *TranscodeSettings) logCheckDetails(encoding domain.TranscodeEncoding) {
+	for _, a := range encoding.Encoders {
+		if a.State != domain.EncoderUnavailable || a.Detail == "" {
+			continue
+		}
+		t.logger.Warn("transcode video encoder check failed",
+			slog.String("encoder", string(a.Encoder)),
+			slog.String("reason", string(a.Reason)),
+			slog.String("detail", a.Detail),
+		)
+	}
 }
 
 // logEncoding は選択・実際の方式・理由を記録する（親 Issue #370 要件 9）。
