@@ -1,40 +1,19 @@
-import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import { useLocation } from "react-router";
 
-import { formatDateTime, formatNumber, scanErrorText, t, type UiText } from "../i18n";
+import { scanErrorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import ScanProgressBar from "../shell/ScanProgressBar";
 import { useScan } from "../shell/ScanProvider";
-import ProcessingBreakdown from "../shell/ProcessingBreakdown";
+import { ScanDetail, ScanIssueCounts, ScanStatusIcon } from "../shell/ScanSummaryParts";
 import { presentScan, type ScanPresentation } from "../shell/scanPresentation";
 
-function formatTime(value?: string): UiText {
-  if (value === undefined) return t.settings.scanStatus.notFinished;
-  return formatDateTime(value);
-}
-
 function stateLabel(presentation: ScanPresentation): UiText {
-  const state = t.settings.scanStatus.state;
-  switch (presentation.state) {
-    case "not-run":
-      return state.notRun;
-    case "starting":
-      return state.starting;
-    case "unknown-total":
-    case "running":
-      return state.running;
-    case "preparing":
-      return state.preparing;
-    case "done":
-      return state.done;
-    case "partial-failed":
-      return state.partialFailed;
-    case "failed":
-      return state.failed;
-    case "fetch-failed":
-      return state.fetchFailed;
-  }
+  if (presentation.statusText !== null) return presentation.statusText;
+  return presentation.state === "fetch-failed"
+    ? t.settings.scanStatus.state.fetchFailed
+    : t.settings.scanStatus.state.notRun;
 }
 
 /**
@@ -46,13 +25,11 @@ function failureText(presentation: ScanPresentation): UiText {
   return presentation.error ?? t.errors.scanUnknown;
 }
 
-function StateIcon({ state }: { state: ScanPresentation["state"] }) {
-  if (state === "done") return <CheckCircle2 className="size-4" />;
-  if (state === "partial-failed") return <AlertTriangle className="size-4" />;
-  if (state === "failed") return <XCircle className="size-4" />;
-  return <RefreshCw className="size-4" />;
-}
-
+/**
+ * ScanStatusSection は設定の「Scan status」の概要である（specs/024-import-progress/ui-design.md
+ * 「Settings Scan Status」）。概要（右下の popover）と同じ要素に、分母の意味・取り込み
+ * 自体の失敗の理由と再試行だけを足す。
+ */
 export default function ScanStatusSection() {
   const location = useLocation();
   const heading = useRef<HTMLHeadingElement>(null);
@@ -60,8 +37,6 @@ export default function ScanStatusSection() {
   const presentation = presentScan(scan);
   const text = t.settings.scanStatus;
   const retry = () => scan.start();
-  const empty = presentation.state === "not-run";
-  const noItems = presentation.state === "done" && presentation.total === 0;
 
   useLayoutEffect(() => {
     if (location.hash !== "#scan-status") return;
@@ -98,59 +73,35 @@ export default function ScanStatusSection() {
             {text.heading}
           </h2>
           <span className="inline-flex items-center gap-1 rounded-md bg-elevated px-2 py-1 text-xs text-fg-muted">
-            <StateIcon state={presentation.state} />
+            <ScanStatusIcon state={presentation.state} />
             {stateLabel(presentation)}
           </span>
-        </div>
-        <p className="mt-3 text-sm leading-6 text-fg-muted">
-          {empty
-            ? t.shell.scan.notRun
-            : noItems
-              ? text.nothingFound
-              : presentation.description}
-        </p>
-        <div className="mt-4 max-w-xl">
-          <ScanProgressBar presentation={presentation} className="h-2" />
-        </div>
-        <dl className="mt-4 grid grid-cols-1 gap-2 text-sm text-fg-muted sm:grid-cols-3">
-          <div>
-            <dt>{text.processed}</dt>
-            <dd className="tabular-nums text-fg">
-              {formatNumber(presentation.completed)}
-            </dd>
-          </div>
-          <div>
-            <dt>{text.total}</dt>
-            <dd className="tabular-nums text-fg">
-              {presentation.total === null
-                ? text.counting
-                : formatNumber(presentation.total)}
-            </dd>
-          </div>
-          <div>
-            <dt>{text.failed}</dt>
-            <dd className="tabular-nums text-fg">{formatNumber(presentation.failed)}</dd>
-          </div>
-        </dl>
-        {presentation.remaining > 0 && (
-          <div className="mt-4 text-sm text-fg-muted">
-            <p>{text.preparationLeft}</p>
-            <ProcessingBreakdown
-              processing={presentation.processing}
-              className="mt-2 max-w-xl"
+          {(presentation.issues.failed > 0 || presentation.issues.substituted > 0) && (
+            <ScanIssueCounts
+              failed={presentation.issues.failed}
+              substituted={presentation.issues.substituted}
+              className="rounded-md bg-elevated px-2 py-1 text-xs text-fg-muted"
             />
-          </div>
-        )}
-        <dl className="mt-4 grid grid-cols-1 gap-2 text-sm text-fg-muted sm:grid-cols-2">
-          <div>
-            <dt>{text.startedAt}</dt>
-            <dd className="text-fg">{formatTime(presentation.startedAt)}</dd>
-          </div>
-          <div>
-            <dt>{text.finishedAt}</dt>
-            <dd className="text-fg">{formatTime(presentation.finishedAt)}</dd>
-          </div>
-        </dl>
+          )}
+        </div>
+        <div className="mt-4 max-w-xl space-y-2">
+          <ScanProgressBar presentation={presentation} className="h-2" />
+          {presentation.state === "not-run" ? (
+            <p className="text-sm text-fg-muted">{t.shell.scan.notRun}</p>
+          ) : presentation.state === "fetch-failed" ? (
+            <p className="text-sm text-fg-muted">{presentation.error}</p>
+          ) : (
+            presentation.progressText !== null && (
+              <p className="text-sm tabular-nums text-fg">{presentation.progressText}</p>
+            )
+          )}
+          {presentation.videos !== null && (
+            <p className="text-xs text-fg-muted">{t.shell.scan.denominator}</p>
+          )}
+          {presentation.state !== "not-run" && presentation.state !== "fetch-failed" && (
+            <ScanDetail presentation={presentation} />
+          )}
+        </div>
         {presentation.refreshing && (
           <p role="status" className="mt-3 text-sm text-warning">
             {text.rechecking}

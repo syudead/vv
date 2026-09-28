@@ -216,7 +216,7 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 			string(domain.ProbeStatePending) + `')`
 	}
 	if c.NoClaimableThumbnail {
-		// 取り出せる thumbnail の仕事は Processing が数える範囲と同じで、解析待ちで
+		// 取り出せる thumbnail の仕事は残りの仕事（remainingJobCondition）と同じ範囲で、解析待ちで
 		// 今は取り出せないものも含める。
 		cond += ` and not exists (select 1 from jobs t where t.kind = '` + string(domain.JobThumbnail) +
 			`' and t.state in ('queued', 'running') and exists (
@@ -505,43 +505,4 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}
 	return affected, nil
-}
-
-// Processing は段階ごとに残っている仕事の数を返す。数えるのは queued と
-// running で、ClaimJob と同じく登録済みの所在がある動画に限る。登録外の
-// 所在しかない仕事はワーカーが取り出さないので、数えると準備が終わらない。
-func (s *IngestStore) Processing(ctx context.Context) (domain.Processing, error) {
-	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
-	query := `select j.kind, count(*) from jobs j
-		where j.state in ('queued', 'running') and exists (
-			select 1 from video_locations l where l.video_id = j.video_id and ` + registeredLocationCondition("l") + `)
-		group by j.kind`
-	rows, err := s.db.sql.QueryContext(ctx, query)
-	if err != nil {
-		return domain.Processing{}, fmt.Errorf("cannot count remaining jobs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var out domain.Processing
-	for rows.Next() {
-		var kind string
-		var count int
-		if err := rows.Scan(&kind, &count); err != nil {
-			return domain.Processing{}, fmt.Errorf("cannot count remaining jobs: %w", err)
-		}
-		switch domain.JobKind(kind) {
-		case domain.JobProbe:
-			out.Probe = count
-		case domain.JobThumbnail:
-			out.Thumbnail = count
-		case domain.JobSeekThumbnail:
-			out.SeekThumbnail = count
-		case domain.JobPreview:
-			out.Preview = count
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return domain.Processing{}, fmt.Errorf("cannot count remaining jobs: %w", err)
-	}
-	return out, nil
 }

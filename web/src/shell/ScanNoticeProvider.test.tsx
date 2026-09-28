@@ -14,15 +14,14 @@ function json(body: unknown): Response {
   });
 }
 
-function scan(id: number, state: Scan["state"]): Scan {
+function scan(id: number, state: Scan["state"], values: Partial<Scan> = {}): Scan {
   return {
     id,
     status: state,
+    videos: { total: 1, settled: state === "running" ? 0 : 1 },
     issues: { failed: 0, substituted: 0, revision: 0 },
     state,
-    total: 1,
-    completed: state === "running" ? 0 : 1,
-    failed: 0,
+    ...values,
   };
 }
 
@@ -286,32 +285,46 @@ describe("ScanNoticeProvider", () => {
     expect(screen.getByTestId("notice").textContent).toBe("10");
   });
 
-  it("準備の残りをまだ得ていない間は、完了を知らせない", async () => {
-    let processing: Response | null = null;
-    let resolveProcessing: ((response: Response) => void) | undefined;
-    fetchMock.mockImplementation((input) => {
-      const url = String(input);
-      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
-      if (url === "/api/processing") {
-        if (processing !== null) return Promise.resolve(processing);
-        return new Promise<Response>((resolve) => {
-          resolveProcessing = resolve;
-        });
-      }
-      return Promise.resolve(json(scan(21, "running")));
-    });
+  it("走査が閉じても準備が残る（status が running）あいだは、完了を知らせない", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(scan(21, "running")),
+      ),
+    );
     renderProvider();
-    // 残りの取得が返らない間も、スキャンは変化の知らせで届く。
-    await emitServerEvent("scan", scan(21, "running"));
     await waitFor(() => expect(screen.getByTestId("tracking").textContent).toBe("21"));
 
-    await emitServerEvent("scan", scan(21, "done"));
+    await emitServerEvent("scan", scan(21, "done", { status: "running" }));
     expect(screen.getByTestId("notice").textContent).toBe("none");
 
-    await act(async () =>
-      resolveProcessing?.(json({ probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 })),
-    );
-    processing = json({ probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 });
+    await emitServerEvent("scan", scan(21, "done"));
     await waitFor(() => expect(screen.getByTestId("notice").textContent).toBe("21"));
+  });
+
+  it("一部失敗の通知は、失敗と同じく閉じるまで残す", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders" ? json([{}]) : json(scan(22, "running")),
+      ),
+    );
+    vi.useFakeTimers();
+    renderProvider();
+    await act(async () => Promise.resolve());
+    await emitServerEvent(
+      "scan",
+      scan(22, "done", {
+        status: "partial",
+        issues: { failed: 2, substituted: 0, revision: 1 },
+      }),
+    );
+    expect(screen.getByTestId("notice").textContent).toBe("22");
+
+    await act(async () => screen.getByRole("button", { name: "pause" }).click());
+    await act(async () => screen.getByRole("button", { name: "resume" }).click());
+    await act(async () => vi.advanceTimersByTimeAsync(9000));
+    expect(screen.getByTestId("notice").textContent).toBe("22");
+
+    await act(async () => screen.getByRole("button", { name: "acknowledge" }).click());
+    expect(screen.getByTestId("notice").textContent).toBe("none");
   });
 });

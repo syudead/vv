@@ -2,15 +2,11 @@ import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import type { ScanPresentation } from "./scanPresentation";
 
-function isIndeterminate(presentation: ScanPresentation) {
-  return (
-    presentation.state === "starting" ||
-    presentation.state === "unknown-total" ||
-    presentation.state === "preparing" ||
-    (presentation.state === "failed" && presentation.progress === null)
-  );
-}
-
+/**
+ * ScanProgressBar は本数による1つの進み具合である。数字の出ない状態（開始中・finding）
+ * では `aria-valuenow` を持たない不確定のバーにし、対象が 0 本の完了では何も出さない
+ * （specs/024-import-progress/ui-design.md「Accessibility」）。
+ */
 export default function ScanProgressBar({
   presentation,
   className,
@@ -18,34 +14,32 @@ export default function ScanProgressBar({
   presentation: ScanPresentation;
   className?: string;
 }) {
-  if (presentation.determinate && presentation.progress !== null) {
-    const value = Math.round(presentation.progress * 100);
+  const { videos } = presentation;
+  if (presentation.bar === "determinate" && videos !== null) {
+    const percent = Math.round((videos.settled / videos.total) * 100);
     return (
       <div
         role="progressbar"
         aria-label={t.shell.scan.progress}
         aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={value}
+        aria-valuemax={videos.total}
+        aria-valuenow={videos.settled}
+        aria-valuetext={t.shell.scan.videosDone(videos.settled, videos.total)}
         className={cn("overflow-hidden rounded-full bg-bg", className)}
       >
         <div
           className="h-full bg-accent transition-[width] duration-300"
-          style={{ width: `${String(value)}%` }}
+          style={{ width: `${String(percent)}%` }}
         />
       </div>
     );
   }
 
-  if (!isIndeterminate(presentation)) return null;
+  if (presentation.bar !== "indeterminate") return null;
   return (
     <div
       role="progressbar"
-      aria-label={
-        presentation.state === "preparing"
-          ? t.shell.scan.progressPreparing
-          : t.shell.scan.progressChecking
-      }
+      aria-label={t.shell.scan.progress}
       className={cn("overflow-hidden rounded-full bg-bg", className)}
     >
       <div className="h-full w-1/3 animate-pulse bg-accent motion-reduce:animate-none" />

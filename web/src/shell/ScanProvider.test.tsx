@@ -14,15 +14,14 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function scan(id: number, state: Scan["state"]): Scan {
+function scan(id: number, state: Scan["state"], values: Partial<Scan> = {}): Scan {
   return {
     id,
     status: state,
+    videos: { total: 1, settled: state === "running" ? 0 : 1 },
     issues: { failed: 0, substituted: 0, revision: 0 },
     state,
-    total: 1,
-    completed: state === "running" ? 0 : 1,
-    failed: 0,
+    ...values,
   };
 }
 
@@ -44,12 +43,7 @@ function Harness() {
       <p>実行中: {value.running ? "はい" : "いいえ"}</p>
       <p>完了: {value.finished?.id ?? "なし"}</p>
       <p>開始可否: {value.canStart ? "可" : "不可"}</p>
-      <p>
-        残り:{" "}
-        {value.processing === null
-          ? "未取得"
-          : `${String(value.processing.probe)}/${String(value.processing.thumbnail)}/${String(value.processing.preview)}`}
-      </p>
+      <p>今の処理: {value.activity?.fileName ?? "なし"}</p>
     </>
   );
 }
@@ -59,13 +53,7 @@ describe("ScanProvider", () => {
 
   beforeEach(() => {
     fetchMock.mockReset();
-    // 段階ごとの残りはどの検査でも同じ応答にし、scan の問い合わせの数え方に
-    // 混ぜない。
-    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
-      String(input) === "/api/processing"
-        ? Promise.resolve(json({ probe: 0, thumbnail: 0, seekThumbnail: 0, preview: 0 }))
-        : fetchMock(input, init),
-    );
+    vi.stubGlobal("fetch", fetchMock);
     installFakeEventSource();
   });
 
@@ -223,12 +211,13 @@ describe("ScanProvider", () => {
     expect(currentCalls).toBe(callsAfterLoad);
   });
 
-  it("段階ごとの残りを変化の知らせで更新する", async () => {
-    fetchMock.mockImplementation((input) =>
-      Promise.resolve(
-        String(input) === "/api/media-folders" ? json([{}]) : json(scan(1, "done")),
-      ),
-    );
+  it("取り込み中に今の処理が一瞬無くなっても、直前の値を残す", async () => {
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url === "/api/processing") throw new Error("/api/processing は呼ばない");
+      return Promise.resolve(json(scan(1, "running")));
+    });
     render(
       <OwnerAudience>
         <ScanProvider>
@@ -236,16 +225,27 @@ describe("ScanProvider", () => {
         </ScanProvider>
       </OwnerAudience>,
     );
-    expect(await screen.findByText("残り: 0/0/0")).toBeDefined();
+    expect(await screen.findByText("今の処理: なし")).toBeDefined();
 
-    await emitServerEvent("processing", {
-      probe: 3,
-      thumbnail: 2,
-      seekThumbnail: 0,
-      preview: 1,
-    });
+    const activity = { kind: "probe", fileName: "a.mp4" } as const;
+    await emitServerEvent("scan", scan(1, "done", { status: "running", activity }));
+    expect(screen.getByText("今の処理: a.mp4")).toBeDefined();
 
-    expect(screen.getByText("残り: 3/2/1")).toBeDefined();
+    // 準備の合間に activity が無い scan が届いても、同じ取り込みのあいだは残す。
+    await emitServerEvent("scan", scan(1, "done", { status: "running" }));
+    expect(screen.getByText("今の処理: a.mp4")).toBeDefined();
+
+    // 終わったら消す。
+    await emitServerEvent("scan", scan(1, "done"));
+    expect(screen.getByText("今の処理: なし")).toBeDefined();
+
+    // 別の取り込みへ持ち越さない。
+    await emitServerEvent("scan", scan(2, "running", { activity }));
+    await emitServerEvent("scan", scan(3, "running"));
+    expect(screen.getByText("今の処理: なし")).toBeDefined();
+    expect(
+      fetchMock.mock.calls.some(([input]) => String(input) === "/api/processing"),
+    ).toBe(false);
   });
 
   it("初回の状態取得に失敗しても、知らせの接続がつながったら取り直す", async () => {

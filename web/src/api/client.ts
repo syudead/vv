@@ -38,6 +38,8 @@ export type VideoIdsResponse = components["schemas"]["VideoIdsResponse"];
 export type FolderScope = components["schemas"]["FolderScope"];
 export type VideoFolder = components["schemas"]["VideoFolder"];
 export type Scan = components["schemas"]["Scan"];
+export type ScanActivity = components["schemas"]["ScanActivity"];
+export type ScanActivityKind = components["schemas"]["ScanActivityKind"];
 export type Progress = components["schemas"]["Progress"];
 export type TranscodeStart = components["schemas"]["TranscodeStart"];
 export type MediaFolder = components["schemas"]["MediaFolder"];
@@ -57,7 +59,6 @@ export type LibraryGroup = components["schemas"]["LibraryGroup"];
  */
 export type LibraryItem =
   { kind: "video"; video: Video } | { kind: "group"; group: LibraryGroup };
-export type Processing = components["schemas"]["Processing"];
 export type VideoChanged = components["schemas"]["VideoChanged"];
 
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
@@ -481,11 +482,6 @@ export async function getCurrentScan(signal?: AbortSignal): Promise<Scan | null>
     }
     throw error;
   }
-}
-
-/** getProcessing は取り込みの段階ごとに残っている仕事の数を取得する。 */
-export function getProcessing(signal?: AbortSignal): Promise<Processing> {
-  return request<Processing>("/api/processing", { signal });
 }
 
 /** startScan は取り込みを促す。実行中なら、実行中のものがそのまま返る。 */

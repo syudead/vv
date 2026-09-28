@@ -74,7 +74,13 @@ describe("App", () => {
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
       if (url === "/api/scans/current") {
         return Promise.resolve(
-          json({ id: 188, state: "running", total: 10, completed: 4, failed: 0 }),
+          json({
+            id: 188,
+            status: "running",
+            videos: { total: 10, settled: 4 },
+            issues: { failed: 0, substituted: 0, revision: 0 },
+            state: "running",
+          }),
         );
       }
       return Promise.resolve(json({}));
@@ -86,7 +92,9 @@ describe("App", () => {
   it("keeps one indicator instance and shared progress across library, settings, and playback routes", async () => {
     render(<App />);
     const user = userEvent.setup();
-    const indicator = await screen.findByRole("button", { name: /Scanning 40%/ });
+    const indicator = await screen.findByRole("button", {
+      name: /^Scanning 4 of 10 videos done\./,
+    });
     const home = screen.getByRole("link", { name: "VVMDM home" });
     expect(home.getAttribute("href")).toBe("/");
     expect(home.querySelectorAll('img[alt=""]')).toHaveLength(2);
@@ -98,13 +106,17 @@ describe("App", () => {
     await waitFor(() =>
       expect(screen.getByRole("link", { name: "動画へ" })).toBeDefined(),
     );
-    expect(screen.getByRole("button", { name: /Scanning 40%/ })).toBe(indicator);
+    expect(screen.getByRole("button", { name: /^Scanning 4 of 10 videos done\./ })).toBe(
+      indicator,
+    );
 
     await user.click(screen.getByRole("link", { name: "動画へ" }));
     await waitFor(() =>
       expect(screen.getByRole("link", { name: "ライブラリへ" })).toBeDefined(),
     );
-    const playbackIndicator = screen.getByRole("button", { name: /Scanning 40%/ });
+    const playbackIndicator = screen.getByRole("button", {
+      name: /^Scanning 4 of 10 videos done\./,
+    });
     expect(playbackIndicator).toBe(indicator);
     const playbackPlacement = playbackIndicator.closest(".fixed")?.classList;
     // 再生画面でも右下に置く。右上には閉じる × がある。
@@ -112,14 +124,14 @@ describe("App", () => {
     expect(playbackPlacement?.contains("sm:bottom-5")).toBe(true);
     expect(playbackPlacement?.contains("sm:top-2")).toBe(false);
     expect(playbackIndicator.getAttribute("aria-label")).toBe(
-      "Scanning 40%. Open the scan status",
+      "Scanning 4 of 10 videos done. Open the scan status",
     );
   });
 
   it("keeps an active toast while a real link changes to playback placement", async () => {
     render(<App />);
     const user = userEvent.setup();
-    await screen.findByRole("button", { name: /Scanning 40%/ });
+    await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ });
 
     await user.click(screen.getByRole("button", { name: "通知する" }));
     const toast = screen.getByText("route toast");
@@ -209,7 +221,7 @@ describe("App", () => {
 
   it("所有者にはサイドバーの全項目と更新を出す", async () => {
     render(<App />);
-    await screen.findByRole("button", { name: /Scanning 40%/ });
+    await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ });
     const main = screen.getByRole("complementary", { name: "Main navigation" });
     const names = Array.from(main.querySelectorAll("a, button")).map((node) =>
       node.textContent?.trim(),

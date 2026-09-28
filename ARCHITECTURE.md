@@ -224,11 +224,11 @@ next startup closes the scan.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
 browser polling: `scan` when the current scan, the remaining jobs (job outcomes
-move the import's settled count) or the current activity change, `processing` with the remaining
-jobs per stage, and `video` when a video's ingest state changes. The payload is read
+move the import's settled count) or the current activity change, and `video` when a
+video's ingest state changes. There is no per-stage job count on the wire; the screen
+shows only the import's own status, video count and current activity. The payload is read
 at send time, pending notices for a connection are coalesced, and a new connection
-first receives the current `scan` and `processing` so a reconnect recovers what it
-missed. Logical videos are separated from their physical
+first receives the current `scan` so a reconnect recovers what it missed. Logical videos are separated from their physical
 locations so the same content may remain available from more than one configured root.
 Folders are not stored: the folder browsing API derives each folder's direct
 children and direct videos from the current locations' paths on every request,

@@ -40,7 +40,10 @@ func TestStartScanReturnsAccepted(t *testing.T) {
 func TestStartScanReturnsRunningInsteadOfConflict(t *testing.T) {
 	scans := &fakeScans{
 		hasScan: true,
-		current: domain.Scan{ID: 5, State: domain.ScanRunning, Total: 100, Completed: 40},
+		current: domain.Scan{
+			ID: 5, State: domain.ScanRunning, Total: 100, Completed: 40,
+			Import: domain.ImportProgress{Status: domain.ImportRunning, Counted: true, Total: 100, Settled: 40},
+		},
 	}
 	handler := newTestServer(t, Options{Scans: scans})
 
@@ -56,17 +59,19 @@ func TestStartScanReturnsRunningInsteadOfConflict(t *testing.T) {
 	if scan.Id != 5 {
 		t.Errorf("id = %d, want 5（実行中のものを返す）", scan.Id)
 	}
-	if scan.Total != 100 || scan.Completed != 40 {
-		t.Errorf("進捗が引き継がれていない: %+v", scan)
+	if scan.Videos == nil || scan.Videos.Total != 100 || scan.Videos.Settled != 40 {
+		t.Errorf("進捗が引き継がれていない: %+v", scan.Videos)
 	}
 }
 
-// 直近の状態を返す。取り込みの規模と残りが分かる。
+// 直近の状態を返す。古い項目（startedAt・finishedAt・total・completed・failed）は
+// 返さない（specs/024-import-progress/contracts/scan-api.md §2）。
 func TestGetCurrentScan(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{
 		hasScan: true,
 		current: domain.Scan{
 			ID: 3, State: domain.ScanDone, Total: 12, Completed: 11, Failed: 1,
+			StartedAt: time.Unix(1_700_000_000, 0).UTC(), FinishedAt: time.Unix(1_700_000_050, 0).UTC(),
 		},
 	}})
 
@@ -79,8 +84,14 @@ func TestGetCurrentScan(t *testing.T) {
 	if scan.State != gen.ScanStateDone {
 		t.Errorf("state = %q, want done", scan.State)
 	}
-	if scan.Total != 12 || scan.Completed != 11 || scan.Failed != 1 {
-		t.Errorf("進捗 = %+v", scan)
+	var raw map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"startedAt", "finishedAt", "total", "completed", "failed"} {
+		if _, ok := raw[key]; ok {
+			t.Errorf("古い項目 %q を返した: %s", key, rec.Body)
+		}
 	}
 }
 

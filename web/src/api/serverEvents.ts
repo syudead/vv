@@ -1,16 +1,10 @@
 import { getAuthSession } from "./auth";
-import {
-  type Processing,
-  reloadIfNoLongerOwner,
-  type Scan,
-  type VideoChanged,
-} from "./client";
+import { reloadIfNoLongerOwner, type Scan, type VideoChanged } from "./client";
 
 /**
  * ServerEventHandlers はサーバーから届く変化の受け取り先である。
  *
- * - `scan`: 直近のスキャンが変わった
- * - `processing`: 取り込みの段階ごとの残りが変わった
+ * - `scan`: 直近の取り込みが変わった（済みの本数と今の処理を含む）
  * - `video`: 動画の状態が変わった（最新の内容は取り直す）
  * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図。
  *   `reconnected` は、この購読者がつながった状態を前にも見ていたかを表す。
@@ -18,7 +12,6 @@ import {
  */
 export interface ServerEventHandlers {
   scan?: (scan: Scan) => void;
-  processing?: (processing: Processing) => void;
   video?: (id: number) => void;
   open?: (reconnected: boolean) => void;
 }
@@ -70,10 +63,6 @@ function connect(): void {
   current.addEventListener("scan", (event) => {
     const scan = parse<Scan>(event);
     if (scan !== undefined) dispatch("scan", scan);
-  });
-  current.addEventListener("processing", (event) => {
-    const processing = parse<Processing>(event);
-    if (processing !== undefined) dispatch("processing", processing);
   });
   current.addEventListener("video", (event) => {
     const changed = parse<VideoChanged>(event);

@@ -12,7 +12,7 @@ import (
 
 // remainingJobCondition は、別名 alias の jobs の行が残りの仕事に数えられる条件である。
 // queued・running で、登録されたメディアフォルダの中に所在がある（ワーカーが
-// 取り出せる）ものに限る。Processing・ClaimJob と同じ範囲である。
+// 取り出せる）ものに限る。ClaimJob と同じ範囲である。
 func remainingJobCondition(alias string) string {
 	return alias + `.state in ('queued', 'running') and exists (
 		select 1 from video_locations l where l.video_id = ` + alias + `.video_id and ` +
