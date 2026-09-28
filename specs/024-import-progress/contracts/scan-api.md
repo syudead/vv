@@ -31,6 +31,7 @@
 | `issues` | object, 必須 | 問題の本数。§3 のまとめた件を数える |
 | `issues.failed` | int, 必須 | 重さが失敗の件数 |
 | `issues.substituted` | int, 必須 | 重さが代用の件数 |
+| `issues.revision` | int, 必須 | 問題の一覧の中身が変わるたびに増える番号（[data-model.md §1・§3](../data-model.md#3-scan_issues新しい表)）。本数が同じでも、種類や行が変われば増える |
 | `settledAt` | date-time \| 省略 | 対象がすべて済んだ時刻。`done`・`partial` のときだけ返す（要件 4） |
 | `activity` | object \| 省略 | 今の処理（[R-8](../research.md#r-8-今の処理は保存せずinternalapp-がメモリに持つ)）。何も動いていなければ省く |
 | `activity.kind` | `registering` \| `probe` \| `thumbnail` \| `seekThumbnail` \| `preview`, 必須 | 何をしているか |
@@ -95,6 +96,6 @@
   - 今の `domain.ScanChanged`
   - `domain.ProcessingChanged`（仕事の成否で済みの本数が変わるため）
   - 新しい `domain.ScanActivityChanged`
-- 問題の一覧は SSE では送らない。画面は `Scan.issues` の本数か `Scan.id` が変わったら、§3 を
-  読み直す。つながり直したあとも同じで、切れていた間に増えた問題が反映される。
+- 問題の一覧は SSE では送らない。画面は `Scan.id` か `Scan.issues.revision` が変わったら、
+  §3 を読み直す。つながり直したあとも同じで、切れていた間に増えた問題が反映される。
 - `video` の event は変えない。

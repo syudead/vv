@@ -2,26 +2,32 @@
 
 SQLite の既存の表は [internal/store/migrations](../../internal/store/migrations) が正本である。
 `scans` は [00002_core.sql](../../internal/store/migrations/00002_core.sql)、`jobs` と `videos` の
-状態列は同じ場所の各移行にある。この feature が足すのは、次の2つの表と、`scans` の1列だけである。
+状態列は同じ場所の各移行にある。この feature が足すのは、次の2つの表と、`scans` の2列だけである。
 ほかの表は変えない。
 
 この feature の3つは、ARCHITECTURE.md の「Rebuildable and user data」で作り直せる側に入る
 （走査と準備をやり直せば同じものができる）。
 
-## 1. `scans.settled_at`（列の追加）
+## 1. `scans.settled_at`・`scans.issues_revision`（列の追加）
 
 | 列 | 型 | 意味 |
 | --- | --- | --- |
 | `settled_at` | `integer null` | この走査の対象の動画がすべて済んだ時刻（Unix 秒） |
+| `issues_revision` | `integer not null default 0` | この走査の `scan_issues` を変えるたびに1増やす番号（§3） |
 
 規則（[research.md R-4](research.md#r-4-完了は走査が閉じて集合に残りの仕事が無いときにする)）:
 
-- 設定するのは `SettleCurrentScan` だけである。条件は、直近の走査が `state <> 'running'` で、
-  `scan_videos` の動画に `queued`・`running` の仕事が無いことである。すでに値があれば変えない。
-- 直近の走査の集合に未完了の仕事が加わったトランザクションは、`settled_at` を `null` に戻す。
+- 書くのは `internal/store` の `refreshScanSettled` だけである。どのトランザクションで呼ぶかは
+  research.md R-4 にある。
+  - 直近の走査が `state <> 'running'` で、`scan_videos` の動画に着手できる `queued`・`running` の
+    仕事が無いとき: 値が無ければ今の時刻を入れる。値があれば変えない。
+  - それ以外のとき: `null` にする。
 - 走査が `failed` で閉じた場合も、残りの準備が済んだ時点で設定する。画面は `failed` を優先して示す。
-- 移行は、既存の閉じた走査の `settled_at` に `finished_at` を入れる。残りの仕事があれば、次の
-  `SettleCurrentScan` が正しい値で上書きする（`null` に戻すのは、仕事が加わったときだけである）。
+- 移行は、次の順に行う。
+  1. 直近の走査の `scan_videos` に、着手できる `queued`・`running` の仕事が残っている動画を入れる
+     （§2 の持ち越しと同じ条件）。
+  2. 閉じた走査の `settled_at` に `finished_at` を入れる。ただし直近の走査は、1 で入れた動画が
+     あれば `null` のままにする。
 
 ## 2. `scan_videos`（新しい表）
 
@@ -96,6 +102,9 @@ SQLite の既存の表は [internal/store/migrations](../../internal/store/migra
 - 代用は、その段階の成功を書くトランザクションで入れる。同じ段階が代用なしで作り直されたら、
   その行を消す。
 - 前の走査の行は `StartScan` で消す（R-3）。
+- 行を入れる・消すトランザクションは、同じ中で直近の走査の `issues_revision` を1増やす。
+  まとめた件の数が変わらない変化も、画面がこの番号の変化で読み直せる。例: 解析の失敗がある動画に
+  サムネイルの失敗が加わる場合、別の件が入れ替わる場合。
 
 **まとめた1件**（読み出しの形。保存はしない）: `coalesce(video_id, path)` ごとに、種類の集合、
 重さ（失敗を1つでも含めば失敗）、表示の所在を返す。所在は、動画なら今の代表の所在、未登録なら

@@ -133,7 +133,7 @@ feature 固有の手順は無い。`ui-design.md` は、この Plan のあとの
 
 - `internal/domain`: `status` の決め方、問題の種類と重さ、分母と済みの数え方、
   `ScanActivityChanged`
-- `internal/store`: 移行、集合への追加の補助関数と各積み込み箇所、`SettleCurrentScan`、問題の記録と
+- `internal/store`: 移行、集合への追加の補助関数と各積み込み箇所、`refreshScanSettled`、問題の記録と
   消去、問題の一覧の読み出し、解析の結果とプレビューの積み込みの1トランザクション化
 - `internal/scanner`: ファイルごとの失敗と今のファイルの報告、`progressInterval` の廃止
 - `internal/media`・`internal/app`（`Generator`・`Ingest`）: 代用の印の受け渡し
@@ -145,7 +145,7 @@ feature 固有の手順は無い。`ui-design.md` は、この Plan のあとの
 
 **New paths**:
 
-- `internal/store/migrations/000NN_scan_import.sql`（`scan_videos`・`scans.settled_at`）
+- `internal/store/migrations/000NN_scan_import.sql`（`scan_videos`・`scans.settled_at`・`scans.issues_revision`）
 - `internal/store/migrations/000NN_scan_issues.sql`
 
 どちらも、実装の時点の次の番号を使う。
@@ -165,7 +165,9 @@ store の読み出しだけでは返せないからである。httpapi が store
   （[R-1](research.md#r-1-取り込みの対象を走査の記録に紐づく動画の集合として保存する)、
   [R-3](research.md#r-3-集合は直近の走査の分だけを持ち新しい走査の開始で入れ替える)）。
 - プレビューの積み込み: `ApplyProbeForJob` の中で行う（[R-2](research.md#r-2-解析の結果とプレビューの仕事の積み込みを1つのトランザクションにする)）。
-- 完了の時刻: `SettleCurrentScan` と、未完了の仕事が加わったときの消去（[R-4](research.md#r-4-完了は走査が閉じて集合に残りの仕事が無いときにする)）。
+- 完了の時刻: 残りの仕事の数が変わりうるすべてのトランザクションで `refreshScanSettled` を呼ぶ
+  （[R-4](research.md#r-4-完了は走査が閉じて集合に残りの仕事が無いときにする)）。移行で、直近の走査の未完了の仕事を持ち越す
+  （[data-model.md](data-model.md) §1）。
 - 状態の決め方: `internal/domain` に `status`、分母、済みの数え方を置く（[R-5](research.md#r-5-走査中の分母は集合にまだ登録していない対象のファイルの数を足す)）。
   失敗の問題の数は、この単位では 0 として渡す。
 - 組み立て: `internal/app` の `Scans` が取り込みの状態を組み立てる。
@@ -186,6 +188,8 @@ store の読み出しだけでは返せないからである。httpapi が store
   - 前回の未完了の動画が、新しい走査へ持ち越される。
   - 見つからないプレビューの積み直しと、解析のやり直しで、直近の走査の対象に加わり、
     `settled_at` が消える。
+  - 閉じた走査の残りの仕事がメディアフォルダの削除で着手できなくなると、`settled_at` が入る。
+  - 未完了の仕事がある状態から移行すると、それらの動画が対象に入り、`settled_at` が `null` になる。
   - 対象の動画の行が消えると、分母から除かれる。
   - `running` の仕事を積み直して再起動しても、`settled` が二重に数えられない。
 - `internal/app` のテスト: 走査が閉じても仕事が残るあいだは `status = running` のままになる。
@@ -202,7 +206,8 @@ store の読み出しだけでは返せないからである。httpapi が store
 - 前の走査の問題: `StartScan` で消す。
 - 数え方: 問題の件数と、登録できなかったファイルを、分母と済みの本数と `status = partial` に
   反映する。
-- API: `Scan.issues` と `GET /api/scans/current/issues` を足す（[contracts/scan-api.md](contracts/scan-api.md) §2・§3）。
+- 番号: 問題の行を変えるたびに `scans.issues_revision` を増やす。
+- API: `Scan.issues`（`revision` を含む）と `GET /api/scans/current/issues` を足す（[contracts/scan-api.md](contracts/scan-api.md) §2・§3）。
 - 文書: ARCHITECTURE.md の作り直せるデータの一覧に `scan_issues` を足す。
 
 **Dependencies**: `取り込みの対象の動画を記録し、済みの本数と完了をサーバーで数える`。
@@ -217,6 +222,7 @@ store の読み出しだけでは返せないからである。httpapi が store
   - 新しい走査を始めると、前の問題が消える。
   - 1本の動画に2つの種類が起きると、1件にまとまる。
   - 数千件の問題を、カーソルで重ならずに最後まで辿れる。
+  - 問題のある動画に別の種類が加わると、件数は変わらずに `issues.revision` が増える。
 - `internal/httpapi` のテスト: `GET /api/scans/current/issues` について、次の応答を確かめる。
   - 並び順と `nextCursor`
   - 不正な `cursor` での 400
@@ -309,7 +315,7 @@ store の読み出しだけでは返せないからである。httpapi が store
 - 仕様: `ui-design.md` に従う。
 - 表示: `ScanStatusSection` に `GET /api/scans/current/issues` の一覧を足す。影響と理由の言葉は
   `kinds` から組み立てる（[R-10](research.md#r-10-画面の言葉はサーバーが返す種類から-spa-が組み立てる)）。
-- 取得: `web/src/api` に取得関数を足す。`Scan.id`・`issues` が変わったら読み直す
+- 取得: `web/src/api` に取得関数を足す。`Scan.id`・`issues.revision` が変わったら読み直す
   （[contracts/scan-api.md](contracts/scan-api.md) §4）。
 - 移動: 登録された動画の行から `/videos/{id}` へ移れる。
 - 長い一覧: 続きを辿れるようにする。
