@@ -31,36 +31,48 @@ const (
 // MP4／MOV の H.264／HEVC は索引から各区間のキーフレームだけを読んで作る。
 // それ以外の入力は区間ごとに時刻シークし、それもできない入力では全編復号へ戻る。
 // 一時データは outputDir 内で片付け、完成物の公開は呼び出し側が受け持つ。
-func GenerateSeekSprite(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) error {
+//
+// fullDecode は、区間ごとの抽出にも失敗して全編の復号から作ったかである。呼び出し側は
+// これを代用として記録する（specs/024-import-progress/research.md R-7）。索引から
+// 作れない入力が区間ごとの抽出で作れた場合は、通常の経路なので代用に数えない
+// （docs/design-docs/seek-sprite-generation.md）。
+func GenerateSeekSprite(
+	ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout,
+) (fullDecode bool, err error) {
 	processCtx, cancel := context.WithTimeout(ctx, seekThumbnailTimeout)
 	defer cancel()
-	err := generateSeekSprite(processCtx, videoPath, outputDir, layout)
+	fullDecode, err = generateSeekSprite(processCtx, videoPath, outputDir, layout)
 	if processCtx.Err() != nil {
-		return fmt.Errorf("seek thumbnail generation was interrupted: %w", processCtx.Err())
+		return false, fmt.Errorf("seek thumbnail generation was interrupted: %w", processCtx.Err())
 	}
-	return err
+	if err != nil {
+		return false, err
+	}
+	return fullDecode, nil
 }
 
-func generateSeekSprite(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) error {
+func generateSeekSprite(ctx context.Context, videoPath, outputDir string, layout domain.SeekSpriteLayout) (bool, error) {
 	err := generateSeekSpriteFromIndex(ctx, videoPath, outputDir, layout)
 	if err == nil {
-		return nil
+		return false, nil
 	}
 	if ctx.Err() != nil {
-		return ctx.Err()
+		return false, ctx.Err()
 	}
 	if !errors.Is(err, errSeekIndexUnsupported) {
 		slog.WarnContext(ctx, "cannot build seek thumbnails from the index; extracting per interval", "error", err)
 	}
 	if err := generateSeekSpriteParallel(ctx, videoPath, outputDir, layout); err == nil {
-		return nil
+		return false, nil
 	} else if ctx.Err() != nil {
-		return ctx.Err()
+		return false, ctx.Err()
 	} else {
 		slog.WarnContext(ctx, "parallel seek thumbnail extraction was incomplete; generating from the whole video", "error", err)
 	}
-	_, err = runSeekFFmpeg(ctx, seekSpriteArgs(videoPath, filepath.Join(outputDir, "%03d.jpg"), layout))
-	return err
+	if _, err := runSeekFFmpeg(ctx, seekSpriteArgs(videoPath, filepath.Join(outputDir, "%03d.jpg"), layout)); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // generateSeekSpriteFromIndex は MP4／MOV の索引を 1 回だけ読み、各コマに使う
@@ -388,6 +400,8 @@ func seekSpriteArgs(videoPath, outputPattern string, layout domain.SeekSpriteLay
 // ディレクトリ）へ書く。scripts/previewbench がシーク用の生成を測る境界で、
 // 生成方式を変えるときはこの関数の中身を変える。今は durationMs から
 // domain.NewSeekSpriteLayout で配置を決め、GenerateSeekSprite でシートを書く。
+// 測るのは生成の時間だけなので、全編から作ったかは捨てる。
 func GenerateSeekThumbnailSet(ctx context.Context, videoPath, outputDir string, durationMs int64) error {
-	return GenerateSeekSprite(ctx, videoPath, outputDir, domain.NewSeekSpriteLayout(durationMs))
+	_, err := GenerateSeekSprite(ctx, videoPath, outputDir, domain.NewSeekSpriteLayout(durationMs))
+	return err
 }

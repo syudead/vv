@@ -50,7 +50,10 @@ type fakeIngestStore struct {
 	appliedProbes   []domain.Probe
 	thumbnailStates []domain.ThumbnailState
 	seekStates      []domain.SeekThumbnailState
-	previewsDone    int
+	// thumbnailSubstitutions と seekSubstitutions は、成功とともに渡された代用。
+	thumbnailSubstitutions []domain.Substitution
+	seekSubstitutions      []domain.Substitution
+	previewsDone           int
 	// order は、nil でなければシーク用サムネイルの状態の記録を生成の呼び出しと
 	// 同じ列へ書く。生成と記録の順を確かめるのに使う。
 	order *fakeGenerator
@@ -106,7 +109,7 @@ func (f *fakeIngestStore) ApplyProbeForJob(
 }
 
 func (f *fakeIngestStore) SetThumbnailStateForJob(
-	_ context.Context, job domain.Job, state domain.ThumbnailState,
+	_ context.Context, job domain.Job, state domain.ThumbnailState, substitution domain.Substitution,
 ) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -115,11 +118,12 @@ func (f *fakeIngestStore) SetThumbnailStateForJob(
 		return false, nil
 	}
 	f.thumbnailStates = append(f.thumbnailStates, state)
+	f.thumbnailSubstitutions = append(f.thumbnailSubstitutions, substitution)
 	return true, nil
 }
 
 func (f *fakeIngestStore) SetSeekThumbnailStateForJob(
-	_ context.Context, job domain.Job, state domain.SeekThumbnailState,
+	_ context.Context, job domain.Job, state domain.SeekThumbnailState, substitution domain.Substitution,
 ) (bool, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -128,6 +132,7 @@ func (f *fakeIngestStore) SetSeekThumbnailStateForJob(
 		return false, nil
 	}
 	f.seekStates = append(f.seekStates, state)
+	f.seekSubstitutions = append(f.seekSubstitutions, substitution)
 	if f.order != nil {
 		f.order.record("seek-state:" + string(state))
 	}
@@ -156,6 +161,11 @@ type fakeGenerator struct {
 	previewErr   error
 	thumbnailErr error
 	seekErr      error
+	// firstFrame と fullDecode は、代表サムネイルとシーク用サムネイルの生成が返す代用。
+	firstFrame bool
+	fullDecode bool
+	// seekPublished は、置き場に完成したシーク用サムネイルがあり、生成しないことを表す。
+	seekPublished bool
 	// validated はプレビューの公開の直前に確かめた元の同一性。
 	validated []bool
 	// outputs は生成に渡した書き出し先。置き場が渡したものと同じであること。
@@ -190,19 +200,19 @@ func (f *fakeGenerator) Probe(context.Context, string) (domain.Probe, error) {
 	return f.probe, f.probeErr
 }
 
-func (f *fakeGenerator) Thumbnail(_ context.Context, _ string, _ int64, output string) error {
+func (f *fakeGenerator) Thumbnail(_ context.Context, _ string, _ int64, output string) (bool, error) {
 	f.record("thumbnail")
 	f.recordOutput(output)
-	return f.thumbnailErr
+	return f.firstFrame, f.thumbnailErr
 }
 
-func (f *fakeGenerator) SeekSprite(_ context.Context, _, outputDir string, layout domain.SeekSpriteLayout) error {
+func (f *fakeGenerator) SeekSprite(_ context.Context, _, outputDir string, layout domain.SeekSpriteLayout) (bool, error) {
 	f.record("seek")
 	f.recordOutput(outputDir)
 	f.mu.Lock()
 	f.seekLayouts = append(f.seekLayouts, layout)
 	f.mu.Unlock()
-	return f.seekErr
+	return f.fullDecode, f.seekErr
 }
 
 func (f *fakeGenerator) Preview(_ context.Context, _, output string, _ int64) error {
@@ -220,7 +230,11 @@ func (f *fakeGenerator) PublishSeekThumbnails(
 ) error {
 	f.mu.Lock()
 	f.publishedLayouts = append(f.publishedLayouts, layout)
+	adopted := f.seekPublished
 	f.mu.Unlock()
+	if adopted {
+		return nil
+	}
 	return write("tmp/seek/" + contentKey)
 }
 

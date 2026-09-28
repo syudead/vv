@@ -126,6 +126,15 @@ keyframes are read; other inputs use one input seek per frame. An interval witho
 reuses the previous frame, and only an ffmpeg failure falls back to the sequential decoder.
 Existing completed six-sheet sprites remain readable
 ([seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md)).
+Two generation fallbacks are substitutions that the user is told about: a library thumbnail
+taken from the first frame because no frame was found at the chosen position, and a seek
+sprite rebuilt by decoding the whole video. `internal/media` returns them as values
+(`Thumbnail`, `GenerateSeekSprite`) without knowing events or the store, `internal/app`
+passes them with the stage's success, and `internal/store` records
+`thumbnail_first_frame` / `seek_thumbnail_full_decode` in the transaction that writes the
+success, or deletes the row when the stage is rebuilt without the fallback. An import with
+only substitutions stays `done` and counts them in `Scan.issues.substituted`
+([specs/024-import-progress/research.md](specs/024-import-progress/research.md) R-7).
 The library thumbnail and the seek
 sprite are separate stages with their own state columns, so a library thumbnail never waits
 for any video's seek sprite. A worker sleeps while its queue is

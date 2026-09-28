@@ -20,8 +20,12 @@ type IngestStore interface {
 	PreviewSourceCurrent(ctx context.Context, job domain.Job) (bool, error)
 	// ApplyProbeForJob は解析の結果を書き、同じ取引で一覧用プレビューの仕事を積む。
 	ApplyProbeForJob(ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability) (bool, error)
-	SetThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.ThumbnailState) (bool, error)
-	SetSeekThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.SeekThumbnailState) (bool, error)
+	// SetThumbnailStateForJob と SetSeekThumbnailStateForJob は、成功を書く取引で
+	// substitution に従って代用の問題を入れる・消す。
+	SetThumbnailStateForJob(
+		ctx context.Context, job domain.Job, state domain.ThumbnailState, substitution domain.Substitution) (bool, error)
+	SetSeekThumbnailStateForJob(
+		ctx context.Context, job domain.Job, state domain.SeekThumbnailState, substitution domain.Substitution) (bool, error)
 	CompletePreviewForContent(ctx context.Context, job domain.Job) (bool, error)
 }
 
@@ -58,9 +62,12 @@ type Generator interface {
 	// CheckSource は元の動画が読める通常ファイルかを確かめる。
 	CheckSource(path string) error
 	Probe(ctx context.Context, path string) (domain.Probe, error)
-	Thumbnail(ctx context.Context, path string, durationMs int64, output string) error
-	// SeekSprite はシーク用サムネイルのシートを layout の配置で outputDir へ書く。
-	SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) error
+	// Thumbnail は代表サムネイルを output へ書き、指定位置で取れず先頭のコマで
+	// 作ったかを返す。
+	Thumbnail(ctx context.Context, path string, durationMs int64, output string) (firstFrame bool, err error)
+	// SeekSprite はシーク用サムネイルのシートを layout の配置で outputDir へ書き、
+	// 区間ごとの抽出にも失敗して全編から作ったかを返す。
+	SeekSprite(ctx context.Context, path, outputDir string, layout domain.SeekSpriteLayout) (fullDecode bool, err error)
 	Preview(ctx context.Context, path, output string, durationMs int64) error
 }
 
@@ -208,12 +215,17 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 	// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
 	// FailClaimedJob が動画側へ記録する。
 	if video.ThumbnailState != domain.ThumbnailStateDone {
+		// 先頭のコマでの代用は、成功を書く取引で問題として記録する
+		// （specs/024-import-progress/research.md R-7）。
+		substitution := domain.SubstitutionUnknown
 		if err := i.files.PublishThumbnail(job.ContentKey, func(output string) error {
-			return i.generator.Thumbnail(ctx, job.LocationPath, durationMs, output)
+			firstFrame, err := i.generator.Thumbnail(ctx, job.LocationPath, durationMs, output)
+			substitution = domain.SubstitutionOf(firstFrame)
+			return err
 		}); err != nil {
 			return err
 		}
-		applied, err := i.store.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
+		applied, err := i.store.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone, substitution)
 		if err != nil {
 			return err
 		}
@@ -259,12 +271,18 @@ func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 		durationMs = *video.DurationMs
 	}
 	layout := domain.NewSeekSpriteLayout(durationMs)
+	// 全編からの作り直しは、成功を書く取引で問題として記録する（R-7）。置き場に
+	// 完成したものがあって生成しなかったときは、代用したかが分からないので、
+	// 問題の行を変えない。
+	substitution := domain.SubstitutionUnknown
 	if err := i.files.PublishSeekThumbnails(job.ContentKey, layout, func(outputDir string) error {
-		return i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
+		fullDecode, err := i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
+		substitution = domain.SubstitutionOf(fullDecode)
+		return err
 	}); err != nil {
 		return err
 	}
-	applied, err := i.store.SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone)
+	applied, err := i.store.SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone, substitution)
 	if err != nil {
 		return err
 	}

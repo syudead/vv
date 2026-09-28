@@ -25,6 +25,25 @@ func TestScanIssueKindSeverity(t *testing.T) {
 	}
 }
 
+// 代用のある段階は代表サムネイルとシーク用サムネイルだけで、その種類は代用の重さである。
+func TestSubstitutedIssueKind(t *testing.T) {
+	want := map[JobKind]ScanIssueKind{
+		JobThumbnail: IssueThumbnailFirstFrame, JobSeekThumbnail: IssueSeekThumbnailFullDecode,
+	}
+	for _, job := range JobKinds {
+		kind, ok := SubstitutedIssueKind(job)
+		if kind != want[job] || ok != (want[job] != "") {
+			t.Errorf("%s: 代用の種類 = %q, %v, want %q", job, kind, ok, want[job])
+		}
+		if ok && kind.Severity() != IssueSubstituted {
+			t.Errorf("%s: 重さ = %s", kind, kind.Severity())
+		}
+	}
+	if SubstitutionOf(true) != SubstitutionUsed || SubstitutionOf(false) != SubstitutionNone {
+		t.Error("SubstitutionOf が生成の値を写さない")
+	}
+}
+
 // 所在がどの登録フォルダにも含まれない件は除き、失敗を先に、同じ重さの中はファイル名、
 // 次にフォルダの順に並べる。種類は重い順に並び、失敗を1つでも含めば失敗になる。
 func TestScanIssuesGroupsFiltersAndSorts(t *testing.T) {

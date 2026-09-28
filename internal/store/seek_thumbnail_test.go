@@ -168,13 +168,13 @@ func TestSetSeekThumbnailStateForJobRequiresClaimIdentity(t *testing.T) {
 
 	stale := job
 	stale.LocationGeneration++
-	if applied, err := db.Ingest().SetSeekThumbnailStateForJob(ctx, stale, domain.SeekThumbnailDone); err != nil || applied {
+	if applied, err := db.Ingest().SetSeekThumbnailStateForJob(ctx, stale, domain.SeekThumbnailDone, domain.SubstitutionNone); err != nil || applied {
 		t.Fatalf("古い世代の記録 = %v, %v, want false", applied, err)
 	}
 	if seek, _ := seekAndThumbnailState(t, db, videoID); seek != "pending" {
 		t.Fatalf("seek = %s, want pending", seek)
 	}
-	if applied, err := db.Ingest().SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone); err != nil || !applied {
+	if applied, err := db.Ingest().SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone, domain.SubstitutionNone); err != nil || !applied {
 		t.Fatalf("SetSeekThumbnailStateForJob = %v, %v, want true", applied, err)
 	}
 	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)

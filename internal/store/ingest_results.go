@@ -168,17 +168,22 @@ func (s *IngestStore) SetThumbnailState(ctx context.Context, id int64, state dom
 
 // SetThumbnailStateForJob は代表サムネイルの状態を記録する。専有したときの内容鍵・
 // 所在・所在の世代が今も同じときだけ反映し、反映したかを返す。done を書いたら、同じ
-// 取引でその動画の thumbnail_failed を問題から消す。
-func (s *IngestStore) SetThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.ThumbnailState) (bool, error) {
-	return s.setStageStateForJob(ctx, job, domain.JobThumbnail, "thumbnail_state", string(state), state == domain.ThumbnailStateDone)
+// 取引でその動画の thumbnail_failed を問題から消し、substitution に従って
+// thumbnail_first_frame を入れる・消す。
+func (s *IngestStore) SetThumbnailStateForJob(
+	ctx context.Context, job domain.Job, state domain.ThumbnailState, substitution domain.Substitution,
+) (bool, error) {
+	return s.setStageStateForJob(ctx, job, domain.JobThumbnail, "thumbnail_state", string(state),
+		state == domain.ThumbnailStateDone, substitution)
 }
 
 // setStageStateForJob は段階 kind の状態列 column に state を書く。専有したときの
 // 内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。succeeded なら、
-// 同じ取引でその段階の *_failed を直近の取り込みの問題から消す
-// （specs/024-import-progress/data-model.md §3）。
+// 同じ取引でその段階の *_failed を直近の取り込みの問題から消し、substitution に従って
+// 代用の行を入れる・消す（specs/024-import-progress/data-model.md §3）。
 func (s *IngestStore) setStageStateForJob(
 	ctx context.Context, job domain.Job, kind domain.JobKind, column, state string, succeeded bool,
+	substitution domain.Substitution,
 ) (bool, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -203,6 +208,9 @@ func (s *IngestStore) setStageStateForJob(
 		if err := clearFailedIssue(ctx, tx, kind, job.VideoID); err != nil {
 			return false, err
 		}
+		if err := applySubstitution(ctx, tx, kind, job, substitution); err != nil {
+			return false, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return false, err
@@ -211,11 +219,13 @@ func (s *IngestStore) setStageStateForJob(
 }
 
 // SetSeekThumbnailStateForJob はシーク用サムネイルの状態を記録する。専有した
-// ときの内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。
+// ときの内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。done を
+// 書いたら、substitution に従って seek_thumbnail_full_decode を入れる・消す。
 func (s *IngestStore) SetSeekThumbnailStateForJob(
-	ctx context.Context, job domain.Job, state domain.SeekThumbnailState,
+	ctx context.Context, job domain.Job, state domain.SeekThumbnailState, substitution domain.Substitution,
 ) (bool, error) {
-	applied, err := s.setStageStateForJob(ctx, job, domain.JobSeekThumbnail, "seek_thumbnail_state", string(state), state == domain.SeekThumbnailDone)
+	applied, err := s.setStageStateForJob(ctx, job, domain.JobSeekThumbnail, "seek_thumbnail_state", string(state),
+		state == domain.SeekThumbnailDone, substitution)
 	if err != nil {
 		return false, fmt.Errorf("cannot record the seek thumbnail state (id=%d): %w", job.VideoID, err)
 	}
@@ -225,7 +235,8 @@ func (s *IngestStore) SetSeekThumbnailStateForJob(
 // SetPreviewStateForJob applies only to the content and location generation
 // captured when the preview job was claimed.
 func (s *IngestStore) SetPreviewStateForJob(ctx context.Context, job domain.Job, state domain.PreviewState) (bool, error) {
-	return s.setStageStateForJob(ctx, job, domain.JobPreview, "preview_state", string(state), state == domain.PreviewStateDone)
+	return s.setStageStateForJob(ctx, job, domain.JobPreview, "preview_state", string(state),
+		state == domain.PreviewStateDone, domain.SubstitutionUnknown)
 }
 
 // SetPreviewStateForContent accepts a completed asset after a representative

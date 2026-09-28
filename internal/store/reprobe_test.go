@@ -238,7 +238,7 @@ func TestFailClaimedJobKeepsCompletedState(t *testing.T) {
 	}
 
 	thumbnailJob := claimAtLastAttempt(t, db, domain.JobThumbnail, videoID)
-	if written, err := db.Ingest().SetThumbnailStateForJob(ctx, thumbnailJob, domain.ThumbnailStateDone); err != nil || !written {
+	if written, err := db.Ingest().SetThumbnailStateForJob(ctx, thumbnailJob, domain.ThumbnailStateDone, domain.SubstitutionNone); err != nil || !written {
 		t.Fatalf("thumbnail done = %v, %v", written, err)
 	}
 	if err := db.Ingest().FailClaimedJob(ctx, thumbnailJob, errors.New("seek thumbnails failed")); err != nil {
