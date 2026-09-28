@@ -48,9 +48,11 @@ ExternalVideo:
 | `cursor` | 先頭 | 前回の `nextCursor`。別の `order` のもの・解釈できないものは `400 invalid_request` / `invalid_cursor` |
 | `limit` | 100 | 1〜`domain.MaxLimit`（200）。外れは `400 invalid_request` |
 
-`200`: `{ items: ExternalVideo[], nextCursor: string, hasMore: boolean }`。`nextCursor` は最後まで読んだ
-後も返し、そこから呼ぶと、その後に足された（`changed` なら変わった）動画だけが返る（受け入れ条件 3）。
-項目が無いときは受け取ったカーソルと同じ位置を返す。
+`200`: `{ items: ExternalVideo[], nextCursor: string, hasMore: boolean }`。カーソルは読み通しの
+始まりで固定した上限を持ち、その読み通しの間に足された・変わった動画は返さない（同じ動画が一度の
+読み通しで二度返らない）。`hasMore` が `false` になった後も `nextCursor` を返し、そこから呼ぶと、その後に
+足された（`changed` なら変わった）動画だけが返る（受け入れ条件 3）。項目が無いときも同じ規則で
+`nextCursor` を返す。
 
 ### `GET /api/v1/videos/lookup`
 
@@ -59,7 +61,9 @@ ExternalVideo:
 - `200`: `ExternalVideo`。
 - `404 not_found` / `video_not_found`: 無い、または登録フォルダの下に所在が無い。
 
-`path` は絶対パスで、NFC に正規化してから今の所在と完全一致で比べる。
+`path` は絶対パスで、正規化せず今の所在の `path` とバイト列の完全一致で比べる。所在は
+ファイルシステムの綴り（NFD を含む）のまま保存されている（`internal/scanner` の
+`TestScanPreservesPathAndNormalizesTitleToNFC`）ので、一覧が返した `path` をそのまま渡せば引ける。
 
 ## 3. タグ
 

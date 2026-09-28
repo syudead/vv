@@ -77,7 +77,7 @@ create unique index videos_changed_seq_idx on videos (changed_seq);
 | --- | --- |
 | `APIToken` | `ID`・`Name`・`CreatedAt`・`LastUsedAt`（未使用はゼロ値）。平文とハッシュは持たない |
 | `NormalizeAPITokenName` と `APITokenNameMaxLength = 100` | R-10 の規則と、その誤りの値（タグ名の `InvalidTagNameError` と同じ形） |
-| `VideoRef` | `ID`・`ContentKey`・`Path` のちょうど 1 つ。`Path` は `domain` の今のパスの正規化（NFC）を通して比べる |
+| `VideoRef` | `ID`・`ContentKey`・`Path` のちょうど 1 つ。`Path` は正規化せず、所在の `path` とバイト列で比べる |
 | `VideoChangeOrder` | `added`・`changed` |
 | `VideoChangeQuery`・`VideoChangePage` | 順序・カーソル・件数と、項目・`NextCursor`・`HasMore` |
 | `VideoTagsAction` | `add`・`remove`・`replace` |

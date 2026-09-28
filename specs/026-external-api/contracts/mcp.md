@@ -31,5 +31,6 @@ reason?, limit?, index? }` を本文に入れて返す。
 | `start_scan` | `POST /api/v1/scans` |
 | `get_current_scan` | `GET /api/v1/scans/current` |
 
-`update_video_tags` と `start_scan` には `destructiveHint: false`・`idempotentHint` を
-（`update_video_tags` は `true`、`start_scan` は `false`）、読み出しのツールには `readOnlyHint: true` を付ける。
+読み出しのツールには `readOnlyHint: true` を付ける。`update_video_tags` は `remove` と `replace` で
+既存のタグを外すので `destructiveHint: true`・`idempotentHint: true`、`start_scan` は
+`destructiveHint: false`・`idempotentHint: false` にする。
