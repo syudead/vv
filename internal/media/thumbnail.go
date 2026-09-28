@@ -34,7 +34,11 @@ const thumbnailCommand = "ffmpeg"
 // 形式は JPEG にする。WebP の方が小さいが、libwebp を含む ffmpeg ビルドを
 // 前提にすると実行環境の差で失敗しうる。mjpeg エンコーダはどのビルドにも
 // 含まれる。幅 640px でおおむね 30〜60KB であり、一覧 60 件でも 2〜4MB に収まる。
-func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output string) error {
+//
+// firstFrame は、指定位置でコマを取れず、先頭のコマで作り直したかである。呼び出し側は
+// これを代用として記録する（specs/024-import-progress/research.md R-7）。ここは
+// 報告先を知らず、値として返すだけである。
+func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output string) (firstFrame bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
 
@@ -44,13 +48,14 @@ func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output s
 		// 索引の壊れたファイル）。1枚も無いより先頭の1枚の方がよいので、
 		// 一度だけ先頭から取り直す。
 		if offset == 0 {
-			return err
+			return false, err
 		}
 		if retryErr := runThumbnail(ctx, videoPath, 0, output); retryErr != nil {
-			return err
+			return false, err
 		}
+		return true, nil
 	}
-	return nil
+	return false, nil
 }
 
 // runThumbnail は ffmpeg を1回実行し、画像が実際に書かれたことまで確かめる。

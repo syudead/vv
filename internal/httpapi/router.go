@@ -61,6 +61,9 @@ type Playback interface {
 type Scans interface {
 	StartScan(ctx context.Context) (domain.Scan, error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
+	// ListScanIssues は直近の取り込みの問題を cursor の次から limit 件返す。一度も
+	// 走査していなければ domain.ErrNotFound、カーソルが不正なら domain.ErrInvalidCursor。
+	ListScanIssues(ctx context.Context, cursor string, limit int) (domain.ScanIssuePage, error)
 }
 
 // MediaFolders は設定画面が1件ずつ操作するメディアフォルダ保存先である。
@@ -226,8 +229,6 @@ type Options struct {
 	// 既定アプリで開く操作・ディレクトリ選択は 500 を返す。黙って 404 にしないのは、
 	// つなぎ忘れを「実体が無い」と見分けられなくなるためである。
 	Files MediaFiles
-	// Processing は段階ごとの残りの問い合わせ先。nilなら経路は500を返す。
-	Processing Processing
 	// Events は画面へ送る変化の知らせ。nilなら経路は500を返す。
 	Events *Events
 	// Assets は SPA のビルド成果物（web/dist に相当）。
@@ -272,7 +273,6 @@ type server struct {
 	catalog         VideoCatalog
 	opener          FileOpener
 	files           MediaFiles
-	processing      Processing
 	events          *Events
 	logger          *slog.Logger
 	auth            Authenticator
@@ -289,7 +289,6 @@ type server struct {
 //	/api/health      → JSON（生成された経路定義から登録する）
 //	/api/videos*     → JSON・動画本体・サムネイル（同上）
 //	/api/scans*      → JSON（同上）
-//	/api/processing  → JSON（同上）
 //	/api/events      → Server-Sent Events（同上）
 //	/api/folders*    → JSON（同上）
 //	/api/library*    → JSON（同上）
@@ -331,7 +330,6 @@ func NewRouter(opts Options) http.Handler {
 		catalog:           opts.Catalog,
 		opener:            opts.Opener,
 		files:             opts.Files,
-		processing:        opts.Processing,
 		events:            opts.Events,
 		logger:            logger,
 		auth:              opts.Auth,

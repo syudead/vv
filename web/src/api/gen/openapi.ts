@@ -905,7 +905,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/processing": {
+    "/api/scans/current/issues": {
         parameters: {
             query?: never;
             header?: never;
@@ -913,12 +913,14 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * 取り込みの段階ごとに残っている仕事の数を返す
-         * @description 解析・サムネイル・シーク用サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
-         *     登録済みメディアフォルダの外にしか所在が無い動画の仕事は、処理されないので含めない。
-         *     すべて 0 なら、取り込んだ動画の準備は終わっている。
+         * 直近の取り込みの問題の一覧を返す
+         * @description 直近の取り込みの問題を、動画（未登録ならファイル）ごとに1件で返す
+         *     （specs/024-import-progress/contracts/scan-api.md §3）。失敗を先に、同じ重さの中は
+         *     ファイル名、次にフォルダの順に並ぶ。所在がどの登録フォルダにも含まれない件は返さず、
+         *     Scan.issues の本数にも数えない。一覧は SSE では送らない。画面は Scan.id か
+         *     Scan.issues.revision が変わったら読み直す。
          */
-        get: operations["getProcessing"];
+        get: operations["listCurrentScanIssues"];
         put?: never;
         post?: never;
         delete?: never;
@@ -939,15 +941,13 @@ export interface paths {
          * @description 接続中は、変化が起きたときだけ次のイベントを送る。一定間隔の送信はしない
          *     （接続を保つためのコメント行を除く）。
          *
-         *     - `scan`: 直近のスキャンが変わった。data は `Scan`（まだ一度も無ければ送らない）
-         *     - `processing`: 段階ごとの残りが変わった。data は `Processing`
+         *     - `scan`: 直近の取り込みが変わった。data は `Scan`（まだ一度も無ければ送らない）。
+         *       走査の変化、仕事の成否（済みの本数が変わる）、今の処理の変化で送る
          *     - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
          *       `GET /api/videos/{id}` で取る
          *
-         *     接続の直後に `processing` と `scan`（あれば）を1回ずつ送るので、つなぎ直した
-         *     クライアントは切れていた間の変化を取り戻せる。`video` は切れていた間の分を
-         *     送り直さない。`processing` と `scan` を同時に送るときは `processing` を先に送る。
-         *     スキャンの完了を受けた時点で、準備の残りが手元にそろっているようにするためである。
+         *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
+         *     変化を取り戻せる。`video` は切れていた間の分を送り直さない。
          */
         get: operations["streamEvents"];
         put?: never;
@@ -1470,8 +1470,10 @@ export interface components {
         /**
          * @description 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
          *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-         *     登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
-         *     （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+         *     登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
+         *     今の処理のファイルのフォルダを指す。
+         *     LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+         *     グループのフォルダそのものを指す
          */
         VideoFolder: {
             /**
@@ -1483,7 +1485,7 @@ export interface components {
             path: string;
             /**
              * @description 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-             *     Video.folder にだけ入る（Video.group.folder には入らない）
+             *     Video.folder・ScanIssue.folder・ScanActivity.folder にだけ入る（Video.group.folder には入らない）
              */
             rootName?: string;
         };
@@ -1561,26 +1563,104 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
+        /** @description 直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。右下の表示と設定画面は、 どちらもこの1つを読む */
         Scan: {
             /** Format: int64 */
             id: number;
-            /** @enum {string} */
+            status: components["schemas"]["ScanStatus"];
+            videos?: components["schemas"]["ScanVideos"];
+            issues: components["schemas"]["ScanIssueCounts"];
+            /**
+             * Format: date-time
+             * @description 対象の動画がすべて済んだ時刻。status が done・partial のときだけ返す
+             */
+            settledAt?: string;
+            activity?: components["schemas"]["ScanActivity"];
+            /**
+             * @description 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
+             * @enum {string}
+             */
             state: "running" | "done" | "failed";
-            /** Format: date-time */
-            startedAt?: string;
-            /** Format: date-time */
-            finishedAt?: string;
-            /** @description 変更なしを除いた取り込み対象ファイル数。対象の確定前は0 */
-            total: number;
-            /** @description 取り込み処理に成功した対象ファイル数 */
-            completed: number;
-            failed: number;
             /** @description スキャン自体が失敗した理由の自由文。画面は表示せず、errorCode と errorPath から説明を作る （specs/023-english-i18n/contracts/error-api.md §3） */
             error?: string;
             errorCode?: components["schemas"]["ScanErrorCode"];
             /** @description errorCode の理由が特定の場所に結び付くときの、その絶対パス（メディアフォルダ、またはその下の 読めなかった場所。翻訳しない利用者のデータ）。それ以外は省略される */
             errorPath?: string;
         };
+        /**
+         * @description 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外（specs/024-import-progress/contracts/scan-api.md §2）
+         * @enum {string}
+         */
+        ScanStatus: "finding" | "running" | "done" | "partial" | "failed";
+        /** @description 取り込み中の今の処理（specs/024-import-progress/contracts/scan-api.md §2）。複数が同時に動くときは 最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる */
+        ScanActivity: {
+            kind: components["schemas"]["ScanActivityKind"];
+            /** @description 処理しているファイルの名前（翻訳しない利用者のデータ） */
+            fileName: string;
+            folder?: components["schemas"]["VideoFolder"];
+            /**
+             * Format: int64
+             * @description 登録された動画なら、その id
+             */
+            videoId?: number;
+        };
+        /**
+         * @description 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている
+         * @enum {string}
+         */
+        ScanActivityKind: "registering" | "probe" | "thumbnail" | "seekThumbnail" | "preview";
+        /** @description 取り込みの進み具合。status が finding のあいだは省く */
+        ScanVideos: {
+            /** @description 対象の本数。0 は変化が無かったことを示す */
+            total: number;
+            /** @description 済みの本数。total を超えない */
+            settled: number;
+        };
+        /** @description 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える （specs/024-import-progress/contracts/scan-api.md §2） */
+        ScanIssueCounts: {
+            /** @description 重さが失敗の件数。1以上なら取り込みは partial になる */
+            failed: number;
+            /** @description 重さが代用の件数 */
+            substituted: number;
+            /**
+             * Format: int64
+             * @description 問題の一覧の中身が変わるたびに増える番号。本数が同じでも、種類や行が変われば増える。 画面はこれが変わったら一覧を読み直す
+             */
+            revision: number;
+        };
+        ScanIssuePage: {
+            /**
+             * Format: int64
+             * @description どの取り込みの一覧か。Scan.id と違えば、画面は読み直す
+             */
+            scanId: number;
+            items: components["schemas"]["ScanIssue"][];
+            /** @description 続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        /** @description 直近の取り込みの問題の、動画（未登録ならファイル）ごとの1件 */
+        ScanIssue: {
+            /**
+             * @description まとめた件の重さ。失敗の種類を1つでも含めば failed
+             * @enum {string}
+             */
+            severity: "failed" | "substituted";
+            /** @description 起きた出来事の種類。重い順 */
+            kinds: components["schemas"]["ScanIssueKind"][];
+            /** @description ファイル名（翻訳しない利用者のデータ） */
+            fileName: string;
+            folder: components["schemas"]["VideoFolder"];
+            /**
+             * Format: int64
+             * @description 登録された動画のときだけ入る。画面は /videos/{id} へ移れる
+             */
+            videoId?: number;
+        };
+        /**
+         * @description 取り込みの問題の種類（specs/024-import-progress/data-model.md §3）。unreadable・ changed_during_import・register_failed は走査で、*_failed は準備の仕事がやり直しの上限まで 失敗したもの（以上は失敗）。thumbnail_first_frame・seek_thumbnail_full_decode は代用
+         * @enum {string}
+         */
+        ScanIssueKind: "unreadable" | "changed_during_import" | "register_failed" | "probe_failed" | "thumbnail_failed" | "seek_thumbnail_failed" | "preview_failed" | "thumbnail_first_frame" | "seek_thumbnail_full_decode";
         /**
          * @description 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
@@ -1591,16 +1671,6 @@ export interface components {
          * @enum {string}
          */
         ScanErrorCode: "media_folder_unreadable" | "media_folder_not_directory" | "location_unreadable" | "interrupted" | "internal";
-        Processing: {
-            /** @description 解析（ffprobe）の残り */
-            probe: number;
-            /** @description 代表サムネイルの残り */
-            thumbnail: number;
-            /** @description シーク用サムネイルの残り */
-            seekThumbnail: number;
-            /** @description 一覧用プレビューの残り */
-            preview: number;
-        };
         VideoChanged: {
             /**
              * Format: int64
@@ -3147,22 +3217,37 @@ export interface operations {
             };
         };
     };
-    getProcessing: {
+    listCurrentScanIssues: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description 段階ごとの残り */
+            /** @description 問題の一覧 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Processing"];
+                    "application/json": components["schemas"]["ScanIssuePage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            /** @description 一度もスキャンしていない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
                 };
             };
         };

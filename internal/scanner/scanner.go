@@ -21,6 +21,9 @@ var ErrNoMediaFolders = errors.New("no media folders are configured")
 // リンクを含む）ことを表す。
 var errNotDirectory = errors.New("not a directory")
 
+// errNotRegular は、対象のファイルが通常のファイルでなくなったことを表す。
+var errNotRegular = errors.New("not a regular file")
+
 // mediaExtensions は取り込みの対象にする拡張子である。
 //
 // 再生できない形式（mkv・avi など）も取り込む。一覧に出したうえで「再生でき
@@ -45,10 +48,6 @@ var partialExtensions = map[string]struct{}{
 	".part": {}, ".crdownload": {}, ".tmp": {},
 }
 
-// progressInterval は進捗を報告する間隔（件数）である。1件ごとに書くと
-// 走査中の書き込みが増えすぎ、一覧の応答に影響する。
-const progressInterval = 20
-
 // Index は走査結果の保存先である。scanner は保存の手段を知らない。
 type Index interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
@@ -66,9 +65,34 @@ type Queue interface {
 	EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error
 }
 
-// Reporter は走査の進捗の報告先である。nil でもよい（報告しないだけ）。
+// Reporter は走査の進捗・今のファイル・ファイルごとの失敗の報告先である。nil でも
+// よい（報告しないだけ）。失敗は直近の取り込みの問題として記録される
+// （specs/024-import-progress/data-model.md §3）。scanner は記録の手段を知らない。
 type Reporter interface {
+	// ReportScanProgress は進みを報告する。登録の対象を数え終えたときと、
+	// 1ファイルを終えるごとに呼ばれる。
 	ReportScanProgress(ctx context.Context, result domain.ScanResult) error
+	ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue) error
+	// ReportScanFile は登録を始めるファイルを知らせる。videoID は走査が知っている
+	// 既存の動画（知らなければ 0）である。path が空なら、ファイルの登録をすべて
+	// 終えたことを表す（specs/024-import-progress/research.md R-8）。
+	ReportScanFile(path string, videoID int64)
+}
+
+// fileError は1つのファイルを取り込めなかった理由である。kind は問題の種類、
+// videoID は走査が知っている既存の動画（知らなければ 0）である。
+type fileError struct {
+	kind    domain.ScanIssueKind
+	videoID int64
+	err     error
+}
+
+func (e *fileError) Error() string { return e.err.Error() }
+func (e *fileError) Unwrap() error { return e.err }
+
+// failFile は err を kind の失敗として包む。
+func failFile(kind domain.ScanIssueKind, videoID int64, err error) error {
+	return &fileError{kind: kind, videoID: videoID, err: err}
 }
 
 // Options は走査の組み立てに必要な依存である。
@@ -88,6 +112,7 @@ type Scanner struct {
 	logger     *slog.Logger
 	contentKey func(string) (string, error)
 	walkDir    func(string, fs.WalkDirFunc) error
+	lstat      func(string) (fs.FileInfo, error)
 }
 
 type scanTarget struct {
@@ -107,6 +132,7 @@ func New(opts Options) *Scanner {
 		logger:     logger,
 		contentKey: ContentKey,
 		walkDir:    filepath.WalkDir,
+		lstat:      os.Lstat,
 	}
 }
 
@@ -194,7 +220,9 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 				result.Failed++
 				s.logger.Warn("could not read the file information of a scan target",
 					slog.String("path", path), slog.Any("error", infoErr))
-				return nil
+				return s.reportIssue(ctx, domain.ScanFileIssue{
+					VideoID: indexed[path].ID, Path: path, Kind: domain.IssueUnreadable,
+				})
 			}
 
 			if existing, ok := indexed[path]; ok &&
@@ -210,6 +238,9 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 						slog.String("path", path), slog.Any("error", err))
 					result.Total++
 					result.Failed++
+					return s.reportIssue(ctx, domain.ScanFileIssue{
+						VideoID: existing.ID, Path: path, Kind: domain.IssueRegisterFailed,
+					})
 				}
 				return nil
 			}
@@ -230,28 +261,40 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		return result, err
 	}
 
-	for i, target := range targets {
+	for _, target := range targets {
+		s.reportFile(target.path, indexed[target.path].ID)
 		if err := s.ingest(ctx, target, &result); err != nil {
 			if ctx.Err() != nil {
 				return result, err
 			}
-			// 1件の失敗で全体を止めない。理由は記録に残し、次のファイルへ進む。
+			// 1件の失敗で全体を止めない。理由は取り込みの問題として報告し、次のファイルへ進む。
 			s.logger.Warn("could not ingest a file",
 				slog.String("path", target.path), slog.Any("error", err))
 			result.Failed++
+			issue := domain.ScanFileIssue{
+				VideoID: indexed[target.path].ID, Path: target.path, Kind: domain.IssueRegisterFailed,
+			}
+			var failed *fileError
+			if errors.As(err, &failed) {
+				issue.Kind = failed.kind
+				if failed.videoID != 0 {
+					issue.VideoID = failed.videoID
+				}
+			}
+			if err := s.reportIssue(ctx, issue); err != nil {
+				return result, err
+			}
 		} else {
 			result.Processed++
 		}
 
-		if (i+1)%progressInterval == 0 {
-			if err := s.report(ctx, result); err != nil {
-				return result, err
-			}
+		// 1ファイルごとに進みを知らせる。画面への送信は接続ごとにまとまるので、
+		// 遅い接続に古い値は積もらない（research.md R-8）。
+		if err := s.report(ctx, result); err != nil {
+			return result, err
 		}
 	}
-	if err := s.report(ctx, result); err != nil {
-		return result, err
-	}
+	s.reportFile("", 0)
 
 	checkedDirs := map[string]struct{}{}
 	for _, folder := range folders {
@@ -328,21 +371,28 @@ func (s *Scanner) ingest(
 	target scanTarget,
 	result *domain.ScanResult,
 ) error {
-	info, err := stableTargetInfo(target.path)
+	info, err := s.stableTargetInfo(target.path)
 	if err != nil {
-		return err
+		return failFile(domain.IssueUnreadable, 0, err)
 	}
 
 	key, err := s.contentKey(target.path)
 	if err != nil {
-		return err
+		return failFile(domain.IssueUnreadable, 0, err)
 	}
-	after, err := stableTargetInfo(target.path)
+	after, err := s.stableTargetInfo(target.path)
 	if err != nil {
-		return err
+		// 消えたか通常のファイルでなくなったときだけ、途中で変わったと言える。
+		// それ以外の読めなさ（I/O の失敗や権限）は、読めなかったとして報告する。
+		kind := domain.IssueUnreadable
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotRegular) {
+			kind = domain.IssueChangedDuringImport
+		}
+		return failFile(kind, 0, err)
 	}
 	if !os.SameFile(info, after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
-		return fmt.Errorf("the file changed while it was being ingested (%s)", target.path)
+		return failFile(domain.IssueChangedDuringImport, 0,
+			fmt.Errorf("the file changed while it was being ingested (%s)", target.path))
 	}
 
 	file := domain.VideoFile{
@@ -356,7 +406,7 @@ func (s *Scanner) ingest(
 
 	upserted, err := s.index.UpsertVideo(ctx, file)
 	if err != nil {
-		return err
+		return failFile(domain.IssueRegisterFailed, 0, err)
 	}
 
 	switch upserted.Outcome {
@@ -370,16 +420,19 @@ func (s *Scanner) ingest(
 		return nil
 	}
 
-	return s.enqueue(ctx, upserted)
+	if err := s.enqueue(ctx, upserted); err != nil {
+		return failFile(domain.IssueRegisterFailed, upserted.ID, err)
+	}
+	return nil
 }
 
-func stableTargetInfo(path string) (fs.FileInfo, error) {
-	info, err := os.Lstat(path)
+func (s *Scanner) stableTargetInfo(path string) (fs.FileInfo, error) {
+	info, err := s.lstat(path)
 	if err != nil {
 		return nil, fmt.Errorf("could not read the file information (%s): %w", path, err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("not a regular file (%s)", path)
+		return nil, fmt.Errorf("%w (%s)", errNotRegular, path)
 	}
 	return info, nil
 }
@@ -485,6 +538,25 @@ func (s *Scanner) report(ctx context.Context, result domain.ScanResult) error {
 	}
 	if err := s.reporter.ReportScanProgress(ctx, result); err != nil {
 		return fmt.Errorf("could not record the scan progress: %w", err)
+	}
+	return nil
+}
+
+// reportFile は登録を始めるファイルを知らせる。path が空なら登録を終えたことを表す。
+func (s *Scanner) reportFile(path string, videoID int64) {
+	if s.reporter != nil {
+		s.reporter.ReportScanFile(path, videoID)
+	}
+}
+
+// reportIssue はファイルの失敗を報告する。報告の失敗時は、進捗と同じく走査を止める。
+// 記録できなかった失敗は、利用者から見えなくなるためである。
+func (s *Scanner) reportIssue(ctx context.Context, issue domain.ScanFileIssue) error {
+	if s.reporter == nil {
+		return nil
+	}
+	if err := s.reporter.ReportScanIssue(ctx, issue); err != nil {
+		return fmt.Errorf("could not record a file the scan could not import (%s): %w", issue.Path, err)
 	}
 	return nil
 }

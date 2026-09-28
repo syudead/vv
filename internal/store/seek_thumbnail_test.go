@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"reflect"
 	"testing"
 
 	"github.com/pressly/goose/v3"
@@ -80,8 +81,8 @@ func TestClaimSeekThumbnailWaitsForProbeAndRemainingThumbnails(t *testing.T) {
 	}
 }
 
-// 段階ごとの残りは、シーク用サムネイルを代表サムネイルと分けて数える。
-func TestProcessingCountsSeekThumbnailSeparately(t *testing.T) {
+// 残りの仕事は、シーク用サムネイルを代表サムネイルと分けて数える。
+func TestRemainingJobsCountSeekThumbnailSeparately(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 2048, 0))
@@ -98,13 +99,10 @@ func TestProcessingCountsSeekThumbnailSeparately(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	got, err := db.Ingest().Processing(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := domain.Processing{Thumbnail: 1, SeekThumbnail: 2}
-	if got != want {
-		t.Fatalf("Processing = %+v, want %+v", got, want)
+	got := remainingByKind(t, db)
+	want := map[domain.JobKind]int{domain.JobThumbnail: 1, domain.JobSeekThumbnail: 2}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("残り = %v, want %v", got, want)
 	}
 }
 
@@ -168,13 +166,13 @@ func TestSetSeekThumbnailStateForJobRequiresClaimIdentity(t *testing.T) {
 
 	stale := job
 	stale.LocationGeneration++
-	if applied, err := db.Ingest().SetSeekThumbnailStateForJob(ctx, stale, domain.SeekThumbnailDone); err != nil || applied {
+	if applied, err := db.Ingest().SetSeekThumbnailStateForJob(ctx, stale, domain.SeekThumbnailDone, domain.SubstitutionNone); err != nil || applied {
 		t.Fatalf("古い世代の記録 = %v, %v, want false", applied, err)
 	}
 	if seek, _ := seekAndThumbnailState(t, db, videoID); seek != "pending" {
 		t.Fatalf("seek = %s, want pending", seek)
 	}
-	if applied, err := db.Ingest().SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone); err != nil || !applied {
+	if applied, err := db.Ingest().SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone, domain.SubstitutionNone); err != nil || !applied {
 		t.Fatalf("SetSeekThumbnailStateForJob = %v, %v, want true", applied, err)
 	}
 	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)

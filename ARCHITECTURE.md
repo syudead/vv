@@ -90,6 +90,37 @@ the folder index is rebuilt only when its rule version is out of date or it is s
 (`RefreshFolderIndex`, after the search-key refresh and before HTTP and the workers
 start), or when an interrupted scan was closed
 ([specs/017-folder-groups/data-model.md](specs/017-folder-groups/data-model.md) §3).
+The latest scan owns the set of videos that the current import has to prepare
+(`scan_videos`): every transaction that queues a job, or makes a queued job claimable again
+by adding or replacing a media folder, adds the video to the latest scan in the same
+transaction, and starting a scan replaces the previous set while carrying over the videos
+that still have claimable queued or running jobs. The probe result and the preview job are
+written in one transaction, so a video never looks finished between the two. A video is
+settled when it has no claimable queued or running job, derived on every read, so requeued
+running jobs are not counted twice. `scans.settled_at` records when the closed latest scan's
+set first had no remaining work; `internal/store` recomputes it (`refreshScanSettled`) before
+committing any transaction whose change set can alter the remaining work — claims, job
+outcomes, enqueues, video deletions, media-folder changes and closing a scan.
+`internal/app` (`Scans`) combines the scan row and those counts into the user-facing
+`Scan.status` (`finding`, `running`, `done`, `partial`, `failed`) and progress through
+`domain.ImportTally`
+([specs/024-import-progress/research.md](specs/024-import-progress/research.md) R-1–R-5).
+The latest scan also owns its issues (`scan_issues`, one row per event): `internal/scanner`
+hands each file it cannot read or register to the reporter it declares, and `internal/app`
+records it; a job that fails at the retry limit is recorded in the same transaction as
+`recordTerminalFailure`, and a later success of that stage deletes it. Starting a scan clears
+the previous scan's issues, and every change bumps `scans.issues_revision`. Reads group the
+rows per video (or per path for unregistered files) and drop those outside every registered
+media folder; one failed issue makes the import `partial`, and files that could not be
+registered count toward the progress (R-6).
+What the import is doing right now (`Scan.activity`: registering, probe, thumbnail,
+seekThumbnail or preview, with the file) is not stored: `internal/app` (`Scans`) keeps the
+running activities in memory, shows the one that started last and falls back to the latest
+remaining one when it ends, and publishes `ScanActivityChanged` whenever the shown one
+changes (R-8). `internal/scanner` reports each file before registering it and its progress
+after every file (no longer every 20 files) to the reporter it declares, and the workers
+report each job through the `Started` and `Finished` hooks of `internal/jobs`, which
+`cmd/mdm` wires to `Scans`. After a restart only what is running then is shown.
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail,
 seek_thumbnail, preview — each claiming only its own kind of job from the persistent `jobs`
 queue, one at a time, and handing it to `internal/app`, which drives the `internal/media`
@@ -105,6 +136,18 @@ keyframes are read; other inputs use one input seek per frame. An interval witho
 reuses the previous frame, and only an ffmpeg failure falls back to the sequential decoder.
 Existing completed six-sheet sprites remain readable
 ([seek-sprite-generation.md](docs/design-docs/seek-sprite-generation.md)).
+Two generation fallbacks are substitutions that the user is told about: a library thumbnail
+taken from the first frame because no frame was found at the chosen position, and a seek
+sprite rebuilt by decoding the whole video. `internal/media` returns them as values
+(`Thumbnail`, `GenerateSeekSprite`) without knowing events or the store, `internal/app`
+passes them with the stage's success, and `internal/store` records
+`thumbnail_first_frame` / `seek_thumbnail_full_decode` in the transaction that writes the
+success, or deletes the row when the stage is rebuilt without the fallback. The seek sprite
+also keeps the flag in its `sprite.json`, so adopting a completed sprite (a rerun after a stop
+between publishing and recording, or another video with the same content) records the same
+substitution. An import with
+only substitutions stays `done` and counts them in `Scan.issues.substituted`
+([specs/024-import-progress/research.md](specs/024-import-progress/research.md) R-7).
 The library thumbnail and the seek
 sprite are separate stages with their own state columns, so a library thumbnail never waits
 for any video's seek sprite. A worker sleeps while its queue is
@@ -166,7 +209,8 @@ Changing that layout would orphan every file an existing data directory already 
 
 State changes that trigger side effects are domain events (`internal/domain/event.go`):
 a video's ingest state changed, jobs were queued, the remaining work per stage changed, the
-scan changed, and content keys lost their last reference. Publishers — `internal/store`
+scan changed, the current import activity changed (`ScanActivityChanged`), and content keys
+lost their last reference. Publishers — `internal/store`
 after a transaction commits (never from one that rolled back, and one notice per kind of
 change per transaction, plus one per deleted video) and `internal/app` for job outcomes and scans — call a `Publish`
 interface they declare themselves and know nothing about the subscribers. `internal/eventbus`
@@ -181,11 +225,12 @@ an unresponsive mount does not return on cancellation; past it, shutdown continu
 next startup closes the scan.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
-browser polling: `scan` when the current scan changes, `processing` with the remaining
-jobs per stage, and `video` when a video's ingest state changes. The payload is read
+browser polling: `scan` when the current scan, the remaining jobs (job outcomes
+move the import's settled count) or the current activity change, and `video` when a
+video's ingest state changes. There is no per-stage job count on the wire; the screen
+shows only the import's own status, video count and current activity. The payload is read
 at send time, pending notices for a connection are coalesced, and a new connection
-first receives the current `scan` and `processing` so a reconnect recovers what it
-missed. Logical videos are separated from their physical
+first receives the current `scan` so a reconnect recovers what it missed. Logical videos are separated from their physical
 locations so the same content may remain available from more than one configured root.
 Folders are not stored: the folder browsing API derives each folder's direct
 children and direct videos from the current locations' paths on every request,
@@ -229,7 +274,8 @@ grace period, then stops the scanner and the workers so a running job returns to
 ### Rebuildable and user data
 
 Stored data falls into three recovery categories. `videos`, `video_locations`
-(including their search keys), `location_search_fts`, `jobs`, `scans`, generated
+(including their search keys), `location_search_fts`, `jobs`, `scans` (including
+`settled_at` and `issues_revision`), `scan_videos`, `scan_issues`, generated
 thumbnails and previews, the folder index (`folder_groups`, `folder_group_members`,
 `video_folder_names`, `folder_index_state`), and `video_transcode_probes` are
 rebuildable from registered media folders by scanning and processing the files again.

@@ -77,10 +77,16 @@ func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain
 		return domain.MediaFolder{}, err
 	}
 	// 登録外の所在しか無かった待ちの仕事が、この登録で取り出せるようになる。
+	// その動画を直近の取り込みの対象に加える（specs/024-import-progress/data-model.md §2）。
+	if err := addScanVideosWithRemainingJobs(ctx, tx); err != nil {
+		return domain.MediaFolder{}, err
+	}
 	// 眠っているワーカーを起こさないと、次に仕事が積まれるまで止まったままになる。
 	var c changes
 	c.jobsQueued(domain.JobKinds...)
-	if err := s.db.commit(tx, &c); err != nil {
+	// 登録フォルダの中にあるかで、問題の一覧に出る件が変わる。
+	c.issuesChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: 1, CreatedAt: time.Unix(now, 0), UpdatedAt: time.Unix(now, 0)}, nil
@@ -136,11 +142,17 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 	if err := rebuildFolderIndex(ctx, tx); err != nil {
 		return domain.MediaFolder{}, err
 	}
+	// 付け替え先で着手できるようになった仕事の動画を、直近の取り込みの対象に加える。
+	if err := addScanVideosWithRemainingJobs(ctx, tx); err != nil {
+		return domain.MediaFolder{}, err
+	}
 	var c changes
 	c.videosDeleted(released)
 	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
 	c.jobsQueued(domain.JobKinds...)
-	if err := s.db.commit(tx, &c); err != nil {
+	// 登録フォルダの中にあるかで、問題の一覧に出る件が変わる。
+	c.issuesChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
 	return domain.MediaFolder{ID: id, Path: cleaned, Version: version + 1, CreatedAt: time.Unix(createdAt, 0), UpdatedAt: time.Unix(now, 0)}, nil
@@ -187,12 +199,14 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	c.videosDeleted(released)
 	// 動画の行が残っても、登録外になった所在の仕事は残りとして数えなくなる。
 	c.processingChanged()
+	// 登録外になった所在の問題は、一覧にも本数にも入らなくなる。
+	c.issuesChanged()
 	// 取り出せる代表サムネイルの仕事が減ると、待っていたシーク用サムネイルが
 	// 取り出せるようになる（domain.ClaimConditionFor）。動画の行が残ると
 	// VideoIngestChanged も出ないので、ここで起こさないと次に仕事が積まれるまで
 	// 止まったままになる。
 	c.jobsQueued(domain.JobSeekThumbnail)
-	return s.db.commit(tx, &c)
+	return s.db.commit(ctx, tx, &c)
 }
 
 // ensureFolderPlacementAllowed は取引の中で走査の有無と登録済みのフォルダを

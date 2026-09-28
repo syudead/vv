@@ -38,6 +38,11 @@ export type VideoIdsResponse = components["schemas"]["VideoIdsResponse"];
 export type FolderScope = components["schemas"]["FolderScope"];
 export type VideoFolder = components["schemas"]["VideoFolder"];
 export type Scan = components["schemas"]["Scan"];
+export type ScanActivity = components["schemas"]["ScanActivity"];
+export type ScanActivityKind = components["schemas"]["ScanActivityKind"];
+export type ScanIssue = components["schemas"]["ScanIssue"];
+export type ScanIssueKind = components["schemas"]["ScanIssueKind"];
+export type ScanIssuePage = components["schemas"]["ScanIssuePage"];
 export type Progress = components["schemas"]["Progress"];
 export type TranscodeStart = components["schemas"]["TranscodeStart"];
 export type MediaFolder = components["schemas"]["MediaFolder"];
@@ -62,7 +67,6 @@ export type EncoderUnavailableReason = components["schemas"]["EncoderUnavailable
  */
 export type LibraryItem =
   { kind: "video"; video: Video } | { kind: "group"; group: LibraryGroup };
-export type Processing = components["schemas"]["Processing"];
 export type VideoChanged = components["schemas"]["VideoChanged"];
 
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
@@ -488,9 +492,33 @@ export async function getCurrentScan(signal?: AbortSignal): Promise<Scan | null>
   }
 }
 
-/** getProcessing は取り込みの段階ごとに残っている仕事の数を取得する。 */
-export function getProcessing(signal?: AbortSignal): Promise<Processing> {
-  return request<Processing>("/api/processing", { signal });
+/** SCAN_ISSUE_PAGE_SIZE は問題の一覧の1ページの件数である（契約の既定と同じ 50）。 */
+export const SCAN_ISSUE_PAGE_SIZE = 50;
+/** MAX_SCAN_ISSUE_PAGE_SIZE は問題の一覧の1ページに求められる件数の上限である。 */
+export const MAX_SCAN_ISSUE_PAGE_SIZE = 200;
+
+/**
+ * listCurrentScanIssues は直近の取り込みの問題を1ページ取得する
+ * （specs/024-import-progress/contracts/scan-api.md §3）。一度も取り込んでいなければ null。
+ */
+export async function listCurrentScanIssues(
+  params: { limit?: number; cursor?: string; signal?: AbortSignal } = {},
+): Promise<ScanIssuePage | null> {
+  const query = new URLSearchParams();
+  query.set("limit", String(params.limit ?? SCAN_ISSUE_PAGE_SIZE));
+  if (params.cursor !== undefined && params.cursor !== "") {
+    query.set("cursor", params.cursor);
+  }
+  try {
+    return await request<ScanIssuePage>(`/api/scans/current/issues?${query.toString()}`, {
+      signal: params.signal,
+    });
+  } catch (error) {
+    if (error instanceof RequestFailed && error.status === 404) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 /** startScan は取り込みを促す。実行中なら、実行中のものがそのまま返る。 */

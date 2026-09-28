@@ -115,7 +115,19 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	// 内容が変わって前の動画が消えたら、前の内容の生成物を片付けさせる。
 	var c changes
 	c.videosDeleted(released)
-	if err := s.db.commit(tx, &c); err != nil {
+	// 所在を足すか付け替えると、問題のある動画の代表の所在が変わりうる。
+	if !locationExists || oldVideoID != videoID {
+		changed, err := videosHaveIssues(ctx, tx, videoID, oldVideoID)
+		if err != nil {
+			return domain.UpsertResult{}, err
+		}
+		if changed {
+			c.issuesChanged()
+		}
+	}
+	// 新しい所在で、登録外の所在しか無かった仕事が着手できるようになりうる。
+	c.remainingChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return domain.UpsertResult{}, err
 	}
 	outcome := domain.OutcomeMoved
@@ -146,14 +158,21 @@ func (s *ScanIndexStore) DeleteVideos(ctx context.Context, ids []int64) error {
 		args = append(args, id)
 	}
 
-	released, err := collectDeletedVideos(s.db.sql.QueryContext(ctx,
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot delete videos: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	released, err := collectDeletedVideos(tx.QueryContext(ctx,
 		`delete from videos where id in (`+placeholders+`) returning id, content_key`, args...))
 	if err != nil {
 		return fmt.Errorf("cannot delete videos: %w", err)
 	}
 	var c changes
 	c.videosDeleted(released)
-	s.db.publish(&c)
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return fmt.Errorf("cannot delete videos: %w", err)
+	}
 	return nil
 }
 
@@ -187,13 +206,27 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 			return err
 		}
 	}
+	// 所在を消すと、残った問題のある動画の代表の所在が変わりうる。
+	affectedIDs := make([]int64, 0, len(affected))
+	for videoID := range affected {
+		affectedIDs = append(affectedIDs, videoID)
+	}
+	issuesMoved, err := videosHaveIssues(ctx, tx, affectedIDs...)
+	if err != nil {
+		return err
+	}
 	released, err := deleteOrphanVideos(ctx, tx)
 	if err != nil {
 		return err
 	}
 	var c changes
 	c.videosDeleted(released)
-	return s.db.commit(tx, &c)
+	if issuesMoved {
+		c.issuesChanged()
+	}
+	// 動画の行が残っても、消した所在の仕事は着手できなくなりうる。
+	c.remainingChanged()
+	return s.db.commit(ctx, tx, &c)
 }
 
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。

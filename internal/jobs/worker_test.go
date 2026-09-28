@@ -3,6 +3,7 @@ package jobs
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -352,6 +353,39 @@ func TestWorkerReportsFinishedJobs(t *testing.T) {
 	// 2 は上限まで失敗するので、試行のたびに知らせる。
 	if len(finished) != 1+domain.MaxJobAttempts {
 		t.Errorf("知らせた回数 = %d (%v), want %d", len(finished), finished, 1+domain.MaxJobAttempts)
+	}
+}
+
+// 処理を始める直前に Started が、成否を記録したあとに Finished が呼ばれる。
+// 取り込み中の今の処理を知らせるのに使う。
+func TestWorkerReportsStartedBeforeHandler(t *testing.T) {
+	queue := &fakeQueue{}
+	queue.add(&fakeJob{id: 1, kind: domain.JobProbe})
+
+	var mu sync.Mutex
+	var calls []string
+	record := func(call string) {
+		mu.Lock()
+		defer mu.Unlock()
+		calls = append(calls, call)
+	}
+	_, stop := startWorker(t, Options{
+		Kind:  domain.JobProbe,
+		Queue: queue,
+		Handler: func(context.Context, domain.Job) error {
+			record("handle")
+			return nil
+		},
+		Started:  func(domain.Job) { record("started") },
+		Finished: func(domain.Job) { record("finished") },
+	})
+	waitUntil(t, func() bool { return queue.idle(domain.JobProbe) })
+	stop()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if want := []string{"started", "handle", "finished"}; !slices.Equal(calls, want) {
+		t.Errorf("呼ばれた順 = %v, want %v", calls, want)
 	}
 }
 

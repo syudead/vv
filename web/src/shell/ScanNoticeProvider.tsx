@@ -9,7 +9,8 @@ import {
   useState,
 } from "react";
 
-import { processingRemaining, useScan } from "./ScanProvider";
+import type { Scan } from "../api/client";
+import { inProgress, useScan } from "./ScanProvider";
 import {
   emptyScanNoticeSession,
   readScanNoticeSession,
@@ -19,6 +20,15 @@ import {
 } from "./scanNoticeSession";
 
 const completionNoticeDuration = 8000;
+
+/**
+ * persistent は、閉じる button で閉じるか設定へ移るまで残す結果かを返す。一部失敗は、
+ * 使えない動画があることを離席していた所有者にも見せるため、失敗と同じく残す
+ * （specs/024-import-progress/ui-design.md「Floating Indicator」）。
+ */
+function persistent(scan: Scan | null | undefined): boolean {
+  return scan?.status === "failed" || scan?.status === "partial";
+}
 
 export interface ScanNoticeContextValue extends ScanNoticeSession {
   acknowledgeTerminalScan: () => void;
@@ -56,7 +66,8 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const current = scan.scan;
     if (current === null) return;
-    if (current.state === "running") {
+    // 走査が閉じても準備が残るあいだは status が running のままなので、完了を知らせない。
+    if (inProgress(current)) {
       const next: ScanNoticeSession = {
         ...session,
         trackingScanId: current.id,
@@ -70,18 +81,9 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
     }
     if (session.trackingScanId !== current.id) return;
     if (session.acknowledgedTerminalScanId === current.id) return;
-    // スキャンが終わっても、取り込んだ動画の準備が残っている間は完了を知らせない。
-    // 準備が終わった時点で完了の通知へ移る。残りをまだ得ていないときも、0 件と
-    // みなさずに待つ。
-    if (
-      current.state !== "failed" &&
-      (scan.processing === null || processingRemaining(scan.processing) > 0)
-    ) {
-      return;
-    }
     if (
       session.completionNotice?.scanId === current.id &&
-      (current.state === "failed" || session.completionNotice.pausedRemainingMs !== null)
+      (persistent(current) || session.completionNotice.pausedRemainingMs !== null)
     ) {
       return;
     }
@@ -105,13 +107,13 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
       pausedRemainingMs: null,
     };
     updateSession({ ...session, completionNotice });
-  }, [scan.processing, scan.scan, session, updateSession]);
+  }, [scan.scan, session, updateSession]);
 
   useEffect(() => {
     const notice = session.completionNotice;
     if (notice === null) return;
     if (!scan.loaded) return;
-    if (scan.scan?.id === notice.scanId && scan.scan.state === "failed") return;
+    if (scan.scan?.id === notice.scanId && persistent(scan.scan)) return;
     if (completionNoticePaused || notice.pausedRemainingMs !== null) return;
     const remaining = notice.expiresAt - Date.now();
     const expire = () => {
@@ -148,7 +150,7 @@ export function ScanNoticeProvider({ children }: { children: ReactNode }) {
       const notice = currentSession.completionNotice;
       if (
         notice === null ||
-        (scanRef.current?.id === notice.scanId && scanRef.current.state === "failed")
+        (scanRef.current?.id === notice.scanId && persistent(scanRef.current))
       ) {
         setCompletionNoticePausedState(false);
         return;

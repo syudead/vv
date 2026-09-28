@@ -2,6 +2,14 @@
 
 **Feature**: [parent Issue #170](https://github.com/syudead/vv/issues/170)
 
+> **今の UI の正本ではない。** 右下の表示・概要・設定の「取り込み状況」が**何を示すか**は、
+> [取り込みの進捗と結果の UI 設計](../024-import-progress/ui-design.md)（024）が置き換えた。
+> 本書のうち今も有効なのは、置き場所と操作（右下に1つだけ固定する、押すと
+> `/settings#scan-status` へ移る、hover と focus で概要を開く、閉じる button、設定の section の
+> 位置、取得の一時失敗の扱い）だけである。「Floating Indicator」の文言の行、
+> 「Summary Popover」の表示内容、「Settings Scan Status」の件数と時刻の行、「States」の表は、
+> 024 を読む。
+
 見た目の規則、シェル、一覧の密度は
 [ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
 [`web/src/index.css`](../../web/src/index.css) の role token に従う。本書は、取り込み進捗の

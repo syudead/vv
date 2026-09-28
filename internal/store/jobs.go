@@ -17,26 +17,19 @@ import (
 // 差し替えたファイルが永久に未解析のままになる。諦めた行を残さないのは、
 // 再スキャンのたびに履歴が積み上がるのを避けるためである。
 func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
-	if _, err := s.db.sql.ExecContext(ctx,
-		`delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
-		string(kind), videoID,
-	); err != nil {
-		return fmt.Errorf("cannot clean up old jobs: %w", err)
-	}
-
-	now := time.Now().Unix()
-	_, err := s.db.sql.ExecContext(ctx, `
-		insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-		values (?, ?, 'queued', 0, ?, ?)
-		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
-		string(kind), videoID, now, now,
-	)
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("cannot queue the job (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot start queueing the job (%s, video=%d): %w", kind, videoID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := requeueJob(ctx, tx, kind, videoID, time.Now().Unix()); err != nil {
+		return err
 	}
 	var c changes
 	c.jobsQueued(kind)
-	s.db.publish(&c)
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return fmt.Errorf("cannot commit queueing the job (%s, video=%d): %w", kind, videoID, err)
+	}
 	return nil
 }
 
@@ -86,9 +79,12 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 	}
 	var c changes
 	if inserted > 0 {
+		if err := addScanVideos(ctx, tx, videoID); err != nil {
+			return err
+		}
 		c.jobsQueued(kind)
 	}
-	if err := s.db.commit(tx, &c); err != nil {
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot commit restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	return nil
@@ -156,6 +152,9 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 		if _, updateErr := conn.ExecContext(ctx, `delete from jobs where id = ?`, job.ID); updateErr != nil {
 			return domain.Job{}, updateErr
 		}
+		if settleErr := refreshScanSettled(ctx, conn, time.Now().Unix()); settleErr != nil {
+			return domain.Job{}, settleErr
+		}
 		if _, commitErr := conn.ExecContext(ctx, `commit`); commitErr != nil {
 			return domain.Job{}, commitErr
 		}
@@ -188,6 +187,9 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	); err != nil {
 		return domain.Job{}, fmt.Errorf("cannot take ownership of the job (id=%d): %w", job.ID, err)
 	}
+	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
+		return domain.Job{}, err
+	}
 
 	if _, err := conn.ExecContext(ctx, `commit`); err != nil {
 		return domain.Job{}, fmt.Errorf("cannot take ownership of the job (id=%d): %w", job.ID, err)
@@ -211,7 +213,7 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 			string(domain.ProbeStatePending) + `')`
 	}
 	if c.NoClaimableThumbnail {
-		// 取り出せる thumbnail の仕事は Processing が数える範囲と同じで、解析待ちで
+		// 取り出せる thumbnail の仕事は残りの仕事（remainingJobCondition）と同じ範囲で、解析待ちで
 		// 今は取り出せないものも含める。
 		cond += ` and not exists (select 1 from jobs t where t.kind = '` + string(domain.JobThumbnail) +
 			`' and t.state in ('queued', 'running') and exists (
@@ -221,9 +223,15 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 	return cond
 }
 
-// CompleteJob はジョブを完了にする。
+// CompleteClaimedJob はジョブを完了にする。専有した時点の所在と内容が今も同じなら
+// done に、変わっていれば queued へ戻す。
 func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) error {
-	_, err := s.db.sql.ExecContext(ctx, `
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot start recording job completion (id=%d): %w", job.ID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	_, err = tx.ExecContext(ctx, `
 		update jobs set
 		state = case when exists (
 			select 1 from video_locations l join videos v on v.id = l.video_id
@@ -238,14 +246,29 @@ func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) er
 	if err != nil {
 		return fmt.Errorf("cannot record job completion (id=%d): %w", job.ID, err)
 	}
+	var c changes
+	c.remainingChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return fmt.Errorf("cannot commit job completion (id=%d): %w", job.ID, err)
+	}
 	return nil
 }
 
 // CompleteJob は専有時点の所在を確かめずに完了を記録する。専有の控えを
 // 持たない呼び出し（テストの準備など）のために残している。
 func (s *IngestStore) CompleteJob(ctx context.Context, id int64) error {
-	_, err := s.db.sql.ExecContext(ctx, `update jobs set state = 'done', last_error = null, updated_at = ? where id = ?`, time.Now().Unix(), id)
-	return err
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `update jobs set state = 'done', last_error = null, updated_at = ? where id = ?`,
+		time.Now().Unix(), id); err != nil {
+		return err
+	}
+	var c changes
+	c.remainingChanged()
+	return s.db.commit(ctx, tx, &c)
 }
 
 // FailJob は専有時点の所在を確かめずに失敗を記録する。専有の控えを持たない
@@ -269,7 +292,9 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 		string(state), reason, time.Now().Unix(), id); err != nil {
 		return err
 	}
-	return tx.Commit()
+	var c changes
+	c.remainingChanged()
+	return s.db.commit(ctx, tx, &c)
 }
 
 // FailClaimedJob は失敗を記録する。queued へ戻すか failed で止めるかは
@@ -326,7 +351,9 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	var c changes
+	c.remainingChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot commit the job failure (id=%d): %w", job.ID, err)
 	}
 	return nil
@@ -347,48 +374,76 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 	identityArgs := []any{job.VideoID, job.ContentKey, job.LocationGeneration,
 		job.LocationID, job.VideoID, job.LocationVersion, job.LocationPath}
 
+	// updated は動画の段階を failed にした文の結果である。書いたときだけ問題を記録する。
+	var updated sql.Result
 	switch job.Kind {
 	case domain.JobProbe:
-		// pending のときだけ書く。app.Ingest.Probe は結果を保存して done にしたあとで
-		// プレビューのジョブを積み、そこで失敗してもエラーを返す。保存済みの結果を
-		// 失敗で上書きしないためである。欠けたプレビューのジョブは、次の手動の
-		// 取り込みで走査が積み直す（Scanner.ensurePendingJobs）。
-		if _, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, probe_error_code = ?,
+		// pending のときだけ書く。解析の結果を保存して done にしたあとの失敗
+		// （仕事の完了の記録など）で、保存済みの結果を失敗で上書きしないためである。
+		res, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, probe_error_code = ?,
 			playable = 0, updated_at = ?
 			where probe_state = 'pending' and `+identity,
-			append([]any{cause.Error(), string(domain.ProbeErrorCodeOf(cause)), now}, identityArgs...)...); err != nil {
+			append([]any{cause.Error(), string(domain.ProbeErrorCodeOf(cause)), now}, identityArgs...)...)
+		if err != nil {
 			return fmt.Errorf("cannot record the final probe failure (job=%d): %w", job.ID, err)
 		}
+		updated = res
 	case domain.JobThumbnail:
 		// 代表サムネイルの後でシーク用プレビューだけが失敗した動画は done のまま残す。
 		// seek_thumbnail_state はシーク用の仕事が自分で記録するので、ここでは変えない。
-		if _, err := tx.ExecContext(ctx, `update videos set thumbnail_state = 'failed', updated_at = ?
+		res, err := tx.ExecContext(ctx, `update videos set thumbnail_state = 'failed', updated_at = ?
 			where thumbnail_state <> 'done' and `+identity,
-			append([]any{now}, identityArgs...)...); err != nil {
+			append([]any{now}, identityArgs...)...)
+		if err != nil {
 			return fmt.Errorf("cannot record the final thumbnail failure (job=%d): %w", job.ID, err)
 		}
+		updated = res
 	case domain.JobSeekThumbnail:
 		// seek_thumbnail_state だけを failed にする。代表サムネイルは別の仕事の結果である。
-		if _, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'failed', updated_at = ?
+		res, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'failed', updated_at = ?
 			where seek_thumbnail_state <> 'done' and `+identity,
-			append([]any{now}, identityArgs...)...); err != nil {
+			append([]any{now}, identityArgs...)...)
+		if err != nil {
 			return fmt.Errorf("cannot record the final seek thumbnail failure (job=%d): %w", job.ID, err)
 		}
+		updated = res
 	case domain.JobPreview:
 		res, err := tx.ExecContext(ctx, `update videos set preview_state = 'failed', updated_at = ?
 			where `+identity, append([]any{now}, identityArgs...)...)
 		if err != nil {
 			return fmt.Errorf("cannot record the final preview failure (job=%d): %w", job.ID, err)
 		}
-		updated, rowsErr := res.RowsAffected()
+		affected, rowsErr := res.RowsAffected()
 		if rowsErr != nil {
 			return fmt.Errorf("cannot check the preview state update count (job=%d): %w", job.ID, rowsErr)
 		}
-		if updated != 1 {
-			return fmt.Errorf("cannot record the final failure on the current preview (job=%d, affected=%d)", job.ID, updated)
+		if affected != 1 {
+			return fmt.Errorf("cannot record the final failure on the current preview (job=%d, affected=%d)", job.ID, affected)
 		}
+		return recordFailedIssue(ctx, tx, job, now)
 	}
-	return nil
+	if updated == nil {
+		return nil
+	}
+	count, err := updated.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("cannot check the final failure update count (job=%d): %w", job.ID, err)
+	}
+	if count != 1 {
+		return nil
+	}
+	return recordFailedIssue(ctx, tx, job, now)
+}
+
+// recordFailedIssue は、動画の段階を failed にした取引で、その段階の *_failed を直近の
+// 取り込みの問題として記録する（specs/024-import-progress/data-model.md §3）。上限の
+// 手前の失敗は記録しない。
+func recordFailedIssue(ctx context.Context, tx *sql.Tx, job domain.Job, now int64) error {
+	issue, ok := domain.FailedIssueKind(job.Kind)
+	if !ok {
+		return nil
+	}
+	return recordScanIssue(ctx, tx, job.VideoID, job.LocationPath, issue, now)
 }
 
 // JobIdentityCurrent は、専有したときの内容鍵・所在・所在の世代が今も
@@ -417,8 +472,17 @@ func jobIdentityCurrent(ctx context.Context, q rowQueryer, job domain.Job) (bool
 //
 // これがあるので、取り込みの途中でプロセスを止めても次の起動で再開でき、
 // 同じ処理を二重に行うこともない。
+//
+// 戻す行が無くても、直近の取り込みの完了の時刻は実行時の条件で決め直す。移行
+// （00018_scan_import.sql）は着手できるかを OS に依らない条件で判定するので、
+// その後に書き込みが無くても、起動のたびにここで揃う。
 func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
-	res, err := s.db.sql.ExecContext(ctx,
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx,
 		`update jobs set state = 'queued', updated_at = ? where state = 'running'`,
 		time.Now().Unix())
 	if err != nil {
@@ -429,48 +493,13 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}
+	var c changes
+	c.remainingChanged()
 	if affected > 0 {
-		var c changes
 		c.jobsQueued(domain.JobKinds...)
-		s.db.publish(&c)
+	}
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}
 	return affected, nil
-}
-
-// Processing は段階ごとに残っている仕事の数を返す。数えるのは queued と
-// running で、ClaimJob と同じく登録済みの所在がある動画に限る。登録外の
-// 所在しかない仕事はワーカーが取り出さないので、数えると準備が終わらない。
-func (s *IngestStore) Processing(ctx context.Context) (domain.Processing, error) {
-	query := `select j.kind, count(*) from jobs j
-		where j.state in ('queued', 'running') and exists (
-			select 1 from video_locations l where l.video_id = j.video_id and ` + registeredLocationCondition("l") + `)
-		group by j.kind`
-	rows, err := s.db.sql.QueryContext(ctx, query)
-	if err != nil {
-		return domain.Processing{}, fmt.Errorf("cannot count remaining jobs: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-
-	var out domain.Processing
-	for rows.Next() {
-		var kind string
-		var count int
-		if err := rows.Scan(&kind, &count); err != nil {
-			return domain.Processing{}, fmt.Errorf("cannot count remaining jobs: %w", err)
-		}
-		switch domain.JobKind(kind) {
-		case domain.JobProbe:
-			out.Probe = count
-		case domain.JobThumbnail:
-			out.Thumbnail = count
-		case domain.JobSeekThumbnail:
-			out.SeekThumbnail = count
-		case domain.JobPreview:
-			out.Preview = count
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return domain.Processing{}, fmt.Errorf("cannot count remaining jobs: %w", err)
-	}
-	return out, nil
 }

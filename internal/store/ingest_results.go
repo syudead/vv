@@ -58,6 +58,10 @@ func (s *IngestStore) ApplyProbe(
 
 // ApplyProbeForJob writes only while the file identity captured at claim time is current.
 // The live-transcode probe is upserted in the same transaction, only when the video row was written.
+//
+// 結果を書いたら、同じ取引で一覧用プレビューの仕事を積む。解析の仕事はこの時点で
+// まだ running なので、その動画が一瞬だけ「済み」に数えられることが無い
+// （specs/024-import-progress/research.md R-2）。
 func (s *IngestStore) ApplyProbeForJob(
 	ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability,
 ) (bool, error) {
@@ -90,7 +94,15 @@ func (s *IngestStore) ApplyProbeForJob(
 			return false, err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := clearFailedIssue(ctx, tx, domain.JobProbe, job.VideoID); err != nil {
+		return false, err
+	}
+	if err := requeueJob(ctx, tx, domain.JobPreview, job.VideoID, now.Unix()); err != nil {
+		return false, err
+	}
+	var c changes
+	c.jobsQueued(domain.JobPreview)
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -154,54 +166,76 @@ func (s *IngestStore) SetThumbnailState(ctx context.Context, id int64, state dom
 	return nil
 }
 
-func (s *IngestStore) SetThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.ThumbnailState) (bool, error) {
-	res, err := s.db.sql.ExecContext(ctx, `update videos set thumbnail_state = ?, updated_at = ?
+// SetThumbnailStateForJob は代表サムネイルの状態を記録する。専有したときの内容鍵・
+// 所在・所在の世代が今も同じときだけ反映し、反映したかを返す。done を書いたら、同じ
+// 取引でその動画の thumbnail_failed を問題から消し、substitution に従って
+// thumbnail_first_frame を入れる・消す。
+func (s *IngestStore) SetThumbnailStateForJob(
+	ctx context.Context, job domain.Job, state domain.ThumbnailState, substitution domain.Substitution,
+) (bool, error) {
+	return s.setStageStateForJob(ctx, job, domain.JobThumbnail, "thumbnail_state", string(state),
+		state == domain.ThumbnailStateDone, substitution)
+}
+
+// setStageStateForJob は段階 kind の状態列 column に state を書く。専有したときの
+// 内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。succeeded なら、
+// 同じ取引でその段階の *_failed を直近の取り込みの問題から消し、substitution に従って
+// 代用の行を入れる・消す（specs/024-import-progress/data-model.md §3）。
+func (s *IngestStore) setStageStateForJob(
+	ctx context.Context, job domain.Job, kind domain.JobKind, column, state string, succeeded bool,
+	substitution domain.Substitution,
+) (bool, error) {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `update videos set `+column+` = ?, updated_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
 		and location_generation = ?`,
-		string(state), time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
+		state, time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
 		job.LocationVersion, job.LocationPath, job.LocationGeneration)
 	if err != nil {
 		return false, err
 	}
 	count, err := res.RowsAffected()
-	return count == 1, err
+	if err != nil || count != 1 {
+		return false, err
+	}
+	if succeeded {
+		if err := clearFailedIssue(ctx, tx, kind, job.VideoID); err != nil {
+			return false, err
+		}
+		if err := applySubstitution(ctx, tx, kind, job, substitution); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // SetSeekThumbnailStateForJob はシーク用サムネイルの状態を記録する。専有した
-// ときの内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。
+// ときの内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。done を
+// 書いたら、substitution に従って seek_thumbnail_full_decode を入れる・消す。
 func (s *IngestStore) SetSeekThumbnailStateForJob(
-	ctx context.Context, job domain.Job, state domain.SeekThumbnailState,
+	ctx context.Context, job domain.Job, state domain.SeekThumbnailState, substitution domain.Substitution,
 ) (bool, error) {
-	res, err := s.db.sql.ExecContext(ctx, `update videos set seek_thumbnail_state = ?, updated_at = ?
-		where id = ? and content_key = ? and exists (
-			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
-		and location_generation = ?`,
-		string(state), time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
-		job.LocationVersion, job.LocationPath, job.LocationGeneration)
+	applied, err := s.setStageStateForJob(ctx, job, domain.JobSeekThumbnail, "seek_thumbnail_state", string(state),
+		state == domain.SeekThumbnailDone, substitution)
 	if err != nil {
 		return false, fmt.Errorf("cannot record the seek thumbnail state (id=%d): %w", job.VideoID, err)
 	}
-	count, err := res.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("cannot check the seek thumbnail state update count (id=%d): %w", job.VideoID, err)
-	}
-	return count == 1, nil
+	return applied, nil
 }
 
 // SetPreviewStateForJob applies only to the content and location generation
 // captured when the preview job was claimed.
 func (s *IngestStore) SetPreviewStateForJob(ctx context.Context, job domain.Job, state domain.PreviewState) (bool, error) {
-	res, err := s.db.sql.ExecContext(ctx, `update videos set preview_state = ?, updated_at = ?
-		where id = ? and content_key = ? and exists (
-			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
-		and location_generation = ?`, string(state), time.Now().Unix(), job.VideoID, job.ContentKey,
-		job.LocationID, job.LocationVersion, job.LocationPath, job.LocationGeneration)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n == 1, err
+	return s.setStageStateForJob(ctx, job, domain.JobPreview, "preview_state", string(state),
+		state == domain.PreviewStateDone, domain.SubstitutionUnknown)
 }
 
 // SetPreviewStateForContent accepts a completed asset after a representative
@@ -246,7 +280,12 @@ func (s *IngestStore) CompletePreviewForContent(ctx context.Context, job domain.
 	if n != 1 {
 		return false, fmt.Errorf("preview job is not running (id=%d)", job.ID)
 	}
-	if err := tx.Commit(); err != nil {
+	if err := clearFailedIssue(ctx, tx, domain.JobPreview, job.VideoID); err != nil {
+		return false, err
+	}
+	var c changes
+	c.remainingChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -303,19 +342,12 @@ func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, conte
 	if reset == 0 {
 		return false, nil
 	}
-	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = 'preview' and video_id = ? and state in ('done', 'failed')`,
-		id); err != nil {
-		return false, fmt.Errorf("cannot clean up old preview jobs (id=%d): %w", id, err)
-	}
-	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
-		values ('preview', ?, 'queued', 0, ?, ?)
-		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
-		id, now, now); err != nil {
-		return false, fmt.Errorf("cannot queue the preview job (id=%d): %w", id, err)
+	if err := requeueJob(ctx, tx, domain.JobPreview, id, now); err != nil {
+		return false, err
 	}
 	var c changes
 	c.jobsQueued(domain.JobPreview)
-	if err := s.db.commit(tx, &c); err != nil {
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, fmt.Errorf("cannot commit regenerating the preview (id=%d): %w", id, err)
 	}
 	return true, nil
@@ -353,14 +385,16 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 	}
 	var c changes
 	c.jobsQueued(domain.JobSeekThumbnail)
-	if err := s.db.commit(tx, &c); err != nil {
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, fmt.Errorf("cannot commit regenerating seek thumbnails (id=%d): %w", id, err)
 	}
 	return true, nil
 }
 
-// requeueJob は終わった行を捨ててから kind の仕事を queued で積む。未完了の行が
-// 既にあれば何もしない。
+// requeueJob は終わった行を捨ててから kind の仕事を queued で積み、その動画を直近の
+// 走査の対象に加える（addScanVideos）。未完了の行が既にあれば積まない。
+//
+// 呼び出し側は changes.jobsQueued を記録し、commit で完了の時刻を決め直させる。
 func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now int64) error {
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
 		string(kind), id); err != nil {
@@ -372,7 +406,7 @@ func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now in
 		string(kind), id, now, now); err != nil {
 		return fmt.Errorf("cannot queue the job (%s, video=%d): %w", kind, id, err)
 	}
-	return nil
+	return addScanVideos(ctx, tx, id)
 }
 
 // RetryProbe は読み取りに失敗した動画を、1つの取引の中で読み取り直す状態へ
@@ -388,7 +422,7 @@ func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now in
 // pending に戻し、戻したときだけそれぞれのジョブを積む。seek_thumbnail_state が done なのに
 // 置き場が無い動画は、動画の応答を組み立てるときに
 // RequeueMissingSeekThumbnails が積み直す。
-// 一覧用プレビューのジョブは、読み取りの成功後に app.Ingest.Probe が積む。
+// 一覧用プレビューのジョブは、読み取りの結果を書く取引で ApplyProbeForJob が積む。
 func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -454,7 +488,7 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	}
 	var c changes
 	c.jobsQueued(kinds...)
-	if err := s.db.commit(tx, &c); err != nil {
+	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot commit re-reading (id=%d): %w", id, err)
 	}
 	return nil

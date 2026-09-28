@@ -22,11 +22,6 @@ const eventsKeepAlive = 30 * time.Second
 // eventsRetryMs は、切れたときにブラウザがつなぎ直すまでの待ち時間である。
 const eventsRetryMs = 3000
 
-// Processing は段階ごとの残りの問い合わせ先である。
-type Processing interface {
-	Processing(ctx context.Context) (domain.Processing, error)
-}
-
 // Events は画面へ送る変化の知らせを配る。
 //
 // 知らせるのは「何が変わったか」だけで、送る内容は送る直前に読み直す。
@@ -46,10 +41,9 @@ func NewEvents() *Events {
 
 // eventSubscriber は1本の接続が、まだ送っていない変化を持つ。
 type eventSubscriber struct {
-	mu         sync.Mutex
-	scan       bool
-	processing bool
-	videos     map[int64]struct{}
+	mu     sync.Mutex
+	scan   bool
+	videos map[int64]struct{}
 	// ready は送るものがあることを知らせる。容量1で、重なった知らせはまとまる。
 	ready chan struct{}
 }
@@ -65,26 +59,23 @@ func (s *eventSubscriber) mark(update func(*eventSubscriber)) {
 }
 
 // take はまだ送っていない変化を取り出して空にする。
-func (s *eventSubscriber) take() (scan, processing bool, videos []int64) {
+func (s *eventSubscriber) take() (scan bool, videos []int64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	scan, processing = s.scan, s.processing
+	scan = s.scan
 	for id := range s.videos {
 		videos = append(videos, id)
 	}
 	slices.Sort(videos)
-	s.scan, s.processing = false, false
+	s.scan = false
 	clear(s.videos)
-	return scan, processing, videos
+	return scan, videos
 }
 
 func (e *Events) subscribe() (*eventSubscriber, func()) {
 	sub := &eventSubscriber{videos: map[int64]struct{}{}, ready: make(chan struct{}, 1)}
 	// つないだ直後に今の状態を1回送る。切れていた間の変化を取り戻すためである。
-	sub.mark(func(s *eventSubscriber) {
-		s.scan = true
-		s.processing = true
-	})
+	sub.mark(func(s *eventSubscriber) { s.scan = true })
 	e.mu.Lock()
 	e.subs[sub] = struct{}{}
 	e.mu.Unlock()
@@ -107,20 +98,23 @@ func (e *Events) publish(update func(*eventSubscriber)) {
 	}
 }
 
-// ScanChanged は直近のスキャンが変わったことを知らせる。段階ごとの残りも
-// 同じ知らせで送る。画面はスキャンの完了を受けた時点の残りで完了を知らせる
-// かどうかを決めるので、2つを別々に記録すると、その間に送信が走ってスキャン
-// だけが古い残りとともに届くことがある。
+// ScanChanged は直近の取り込みが変わったかもしれないことを知らせる。
 func (e *Events) ScanChanged() {
-	e.publish(func(s *eventSubscriber) {
-		s.scan = true
-		s.processing = true
-	})
+	e.publish(func(s *eventSubscriber) { s.scan = true })
 }
 
-// ProcessingChanged は段階ごとの残りが変わったかもしれないことを知らせる。
+// ProcessingChanged は残りの仕事が変わったかもしれないことを知らせる。仕事の成否で
+// 直近の取り込みの済みの本数と状態が変わるので、scan を送る
+// （specs/024-import-progress/contracts/scan-api.md §4）。
 func (e *Events) ProcessingChanged() {
-	e.publish(func(s *eventSubscriber) { s.processing = true })
+	e.publish(func(s *eventSubscriber) { s.scan = true })
+}
+
+// ScanActivityChanged は取り込み中の今の処理が変わったことを知らせる。今の処理は
+// scan が運ぶので、scan だけを送る（specs/024-import-progress/contracts/scan-api.md §4）。
+// 1ファイルごとに届くが、接続ごとにまとまるので、遅い接続に古い値は積もらない。
+func (e *Events) ScanActivityChanged() {
+	e.publish(func(s *eventSubscriber) { s.scan = true })
 }
 
 // VideoChanged は動画の状態が変わったことを知らせる。
@@ -136,6 +130,8 @@ func (e *Events) Handle(event domain.Event) {
 		e.ScanChanged()
 	case domain.ProcessingChanged:
 		e.ProcessingChanged()
+	case domain.ScanActivityChanged:
+		e.ScanActivityChanged()
 	case domain.VideoIngestChanged:
 		e.VideoChanged(event.VideoID)
 	}
@@ -205,19 +201,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 
 // writePendingEvents はまだ送っていない変化を、今の内容で書き出す。
 func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber) error {
-	scan, processing, videos := sub.take()
-	// 残りを先に送る。スキャンの完了を受けた画面は、その時点で手元にある残りで
-	// 「準備中」か「完了」かを決めるので、完了より後に残りが届くと、準備が
-	// 残っているのに完了を知らせてしまう。
-	if processing && s.processing != nil {
-		remaining, err := s.processing.Processing(ctx)
-		if err != nil {
-			return err
-		}
-		if err := writeEvent(w, "processing", toAPIProcessing(remaining)); err != nil {
-			return err
-		}
-	}
+	scan, videos := sub.take()
 	if scan && s.scans != nil {
 		current, err := s.scans.CurrentScan(ctx)
 		switch {
@@ -245,28 +229,4 @@ func writeEvent(w http.ResponseWriter, name string, payload any) error {
 	}
 	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", name, data)
 	return err
-}
-
-// GetProcessing は段階ごとの残りを返す（GET /api/processing）。
-func (s *server) GetProcessing(w http.ResponseWriter, r *http.Request) {
-	if s.processing == nil {
-		s.internalError(w, "Scan backlog is not configured.", nil)
-		return
-	}
-	remaining, err := s.processing.Processing(r.Context())
-	if err != nil {
-		s.internalError(w, "Could not load the scan backlog.", err)
-		return
-	}
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, toAPIProcessing(remaining), s.logger)
-}
-
-func toAPIProcessing(p domain.Processing) gen.Processing {
-	return gen.Processing{
-		Probe:         p.Probe,
-		Thumbnail:     p.Thumbnail,
-		SeekThumbnail: p.SeekThumbnail,
-		Preview:       p.Preview,
-	}
 }

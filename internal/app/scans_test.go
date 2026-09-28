@@ -29,6 +29,8 @@ type fakeScanStore struct {
 	rebuildErr error
 	// rebuiltBeforeFinish は閉じる時点までに作り直した回数である。
 	rebuiltBeforeFinish []int
+	// issues は記録された問題である。
+	issues []domain.ScanIssue
 }
 
 func newFakeScanStore() *fakeScanStore {
@@ -73,6 +75,7 @@ func (f *fakeScanStore) FinishScan(ctx context.Context, id int64, state domain.S
 	}
 	f.mu.Lock()
 	f.current.State, f.current.Error, f.current.ErrorCode, f.current.ErrorPath = state, "", "", ""
+	f.current.FinishedAt = time.Now()
 	if cause != nil {
 		f.current.Error = cause.Error()
 		f.current.ErrorCode, f.current.ErrorPath = domain.ScanFailureOf(cause)
@@ -82,6 +85,22 @@ func (f *fakeScanStore) FinishScan(ctx context.Context, id int64, state domain.S
 	f.mu.Unlock()
 	f.finished <- scan
 	return nil
+}
+
+func (f *fakeScanStore) RecordScanIssue(_ context.Context, issue domain.ScanFileIssue) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.issues = append(f.issues, domain.ScanIssue{
+		VideoID: issue.VideoID, Severity: issue.Kind.Severity(), Kinds: []domain.ScanIssueKind{issue.Kind},
+		FileName: issue.Path, Path: issue.Path, Unregistered: issue.VideoID == 0,
+	})
+	return nil
+}
+
+func (f *fakeScanStore) ScanIssues(context.Context, int64) ([]domain.ScanIssue, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.issues), nil
 }
 
 func (f *fakeScanStore) FailInterruptedScans(context.Context) (int64, error) {
@@ -377,5 +396,132 @@ func TestScanRebuildsFolderIndexBeforeClosing(t *testing.T) {
 				t.Fatalf("閉じる時点の作り直しの回数 = %v, want [1]", store.rebuiltBeforeFinish)
 			}
 		})
+	}
+}
+
+// setVideos は保存側が数える対象の動画の本数と、完了の時刻を決め打ちにする。
+func (f *fakeScanStore) setVideos(videos, settled int, settledAt time.Time) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.current.Videos, f.current.SettledVideos, f.current.SettledAt = videos, settled, settledAt
+}
+
+// 走査が閉じても対象に残りの仕事があるあいだは running のままで、最後の仕事の成否が
+// 記録された時点で done になる。完了の時刻は走査の終了より後になる
+// （specs/024-import-progress/research.md R-4）。
+func TestCurrentScanStaysRunningUntilJobsSettle(t *testing.T) {
+	scanner := &fakeScanner{result: domain.ScanResult{Total: 2, Processed: 2, Added: 2}}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	if _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	closed := store.waitFinished(t)
+	scans.Wait()
+
+	// 走査は閉じたが、2本のうち1本に仕事が残っている。
+	store.setVideos(2, 1, time.Time{})
+	current, err := scans.CurrentScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Import.Status != domain.ImportRunning || current.Import.Total != 2 || current.Import.Settled != 1 {
+		t.Fatalf("残りがあるあいだ = %+v, want 2本のうち1本・running", current.Import)
+	}
+	if !current.Import.SettledAt.IsZero() {
+		t.Fatalf("残りがあるのに完了の時刻を返した: %v", current.Import.SettledAt)
+	}
+
+	// 最後の仕事の成否を記録した時点で、保存側が完了の時刻を入れる。
+	settledAt := closed.FinishedAt.Add(3 * time.Second)
+	store.setVideos(2, 2, settledAt)
+	current, err = scans.CurrentScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Import.Status != domain.ImportDone || current.Import.Settled != 2 {
+		t.Fatalf("すべて済んだあと = %+v, want 2本のうち2本・done", current.Import)
+	}
+	if !current.Import.SettledAt.After(current.FinishedAt) {
+		t.Fatalf("完了の時刻 = %v, want 走査の終了 %v より後", current.Import.SettledAt, current.FinishedAt)
+	}
+}
+
+// 開始の応答も、取り込みの状態を組み立てて返す。対象を数える前は finding である。
+func TestStartScanReturnsFindingImport(t *testing.T) {
+	release := make(chan struct{})
+	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}, release: release}
+	scans, store, _ := newTestScans(t, context.Background(), scanner)
+	scan, err := scans.StartScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scan.Import.Status != domain.ImportFinding || scan.Import.Counted {
+		t.Fatalf("開始直後 = %+v, want finding・本数なし", scan.Import)
+	}
+	close(release)
+	store.waitFinished(t)
+	scans.Wait()
+}
+
+// 走査が報告したファイルの失敗は問題として記録され、変化として知らせる。登録できなかった
+// ファイルは分母と済みの本数に入り、失敗の問題があるので取り込みは partial になる
+// （specs/024-import-progress/research.md R-5）。
+func TestReportedFileIssueMakesImportPartial(t *testing.T) {
+	scanner := &fakeScanner{result: domain.ScanResult{Total: 2, Processed: 1, Added: 1, Failed: 1}}
+	scans, store, publisher := newTestScans(t, context.Background(), scanner)
+	if _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.waitFinished(t)
+	scans.Wait()
+	store.setVideos(1, 1, time.Now())
+
+	before := len(publisher.published())
+	if err := scans.ReportScanIssue(context.Background(), domain.ScanFileIssue{
+		Path: "/media/broken.mp4", Kind: domain.IssueUnreadable,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if events := publisher.published(); len(events) != before+1 || events[len(events)-1] != (domain.ScanChanged{}) {
+		t.Fatalf("知らせ = %v, want ScanChanged を1回", events[before:])
+	}
+
+	current, err := scans.CurrentScan(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Import.Status != domain.ImportPartial || current.Import.Total != 2 || current.Import.Settled != 2 {
+		t.Fatalf("取り込み = %+v, want 2本のうち2本・partial", current.Import)
+	}
+	if current.Issues.Failed != 1 || current.Issues.Unregistered != 1 {
+		t.Fatalf("本数 = %+v, want 失敗1・未登録1", current.Issues)
+	}
+}
+
+// 問題の一覧は直近の走査の id と一緒に返り、一度も走査していなければ ErrNotFound である。
+func TestListScanIssues(t *testing.T) {
+	scans, store, _ := newTestScans(t, context.Background(), &fakeScanner{})
+	if _, err := scans.ListScanIssues(context.Background(), "", 50); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("走査前: err = %v, want ErrNotFound", err)
+	}
+	if _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	store.waitFinished(t)
+	scans.Wait()
+	for _, path := range []string{"/media/b.mp4", "/media/a.mp4"} {
+		if err := scans.ReportScanIssue(context.Background(), domain.ScanFileIssue{Path: path, Kind: domain.IssueUnreadable}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := scans.ListScanIssues(context.Background(), "", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.ScanID != 1 || len(page.Items) != 1 || page.NextCursor == "" {
+		t.Fatalf("1ページ目 = %+v", page)
+	}
+	if _, err := scans.ListScanIssues(context.Background(), "not a cursor", 1); !errors.Is(err, domain.ErrInvalidCursor) {
+		t.Fatalf("不正なカーソル: err = %v, want ErrInvalidCursor", err)
 	}
 }

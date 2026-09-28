@@ -214,54 +214,64 @@ func (s *Store) PublishThumbnail(contentKey string, write func(output string) er
 // ある完成した置き場がすでにあれば write を呼ばずに成功を返す。
 //
 // write は一時置き場のディレクトリを受け、layout の配置でシート 000.jpg から順に
-// 書く。書き終えたら、コマの大きさをシート 000.jpg の寸法から読んで sprite.json を
-// 書き、ディレクトリごと本来の場所へ改名する。その直前に、配置情報の無い置き場
+// 書き、全編の復号から作ったかを返す。書き終えたら、コマの大きさをシート 000.jpg の
+// 寸法から読んで、全編の復号から作ったかと合わせて sprite.json を書き、ディレクトリ
+// ごと本来の場所へ改名する。
+//
+// 戻り値は、公開した（または採用した）スプライトが全編の復号から作られたかである。
+// 採用したものに記録が無ければ（この記録を持たない旧いもの）SubstitutionUnknown を
+// 返す。公開と完了の記録の間で止まった後の再実行や、同じ内容の別の動画でも、代用を
+// 取りこぼさない（specs/024-import-progress/research.md R-7）。その直前に、配置情報の無い置き場
 // （旧形式の個別 JPEG や、途中で壊れたもの）を消す。同じ内容の公開と削除を
 // 直列にする錠は呼び出し側（internal/app）が持つ。
 func (s *Store) PublishSeekThumbnails(
-	contentKey string, layout domain.SeekSpriteLayout, write func(outputDir string) error,
-) error {
+	contentKey string, layout domain.SeekSpriteLayout, write func(outputDir string) (fullDecode bool, err error),
+) (domain.Substitution, error) {
+	unknown := domain.SubstitutionUnknown
 	target, err := s.publishTarget(s.seekDir, contentKey)
 	if err != nil {
-		return err
+		return unknown, err
 	}
-	if _, err := readSeekSprite(target); err == nil {
-		return nil
+	if file, _, err := readSpriteFile(target); err == nil {
+		return file.substitution(), nil
 	}
 	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
-		return fmt.Errorf("cannot create the seek thumbnail directory: %w", err)
+		return unknown, fmt.Errorf("cannot create the seek thumbnail directory: %w", err)
 	}
 	temporary, err := s.makeTemporaryDir("seek-*")
 	if err != nil {
-		return err
+		return unknown, err
 	}
 	defer func() { _ = os.RemoveAll(temporary) }()
 
-	if err := write(temporary); err != nil {
-		return err
+	fullDecode, err := write(temporary)
+	if err != nil {
+		return unknown, err
 	}
 	sprite, err := describeSheets(temporary, layout)
 	if err != nil {
-		return fmt.Errorf("seek thumbnails were not generated (%s): %w", contentKey, err)
+		return unknown, fmt.Errorf("seek thumbnails were not generated (%s): %w", contentKey, err)
 	}
-	data, err := json.Marshal(spriteFileFrom(sprite))
+	file := spriteFileFrom(sprite)
+	file.FullDecode = &fullDecode
+	data, err := json.Marshal(file)
 	if err != nil {
-		return err
+		return unknown, err
 	}
 	if err := os.WriteFile(filepath.Join(temporary, spriteFileName), append(data, '\n'), 0o644); err != nil {
-		return fmt.Errorf("cannot write the seek thumbnail manifest: %w", err)
+		return unknown, fmt.Errorf("cannot write the seek thumbnail manifest: %w", err)
 	}
 	if err := os.RemoveAll(target); err != nil {
-		return fmt.Errorf("cannot delete old seek thumbnails: %w", err)
+		return unknown, fmt.Errorf("cannot delete old seek thumbnails: %w", err)
 	}
 	// ディレクトリごと改名するので、配置情報があれば完成している。
 	if err := os.Rename(temporary, target); err != nil {
-		if _, readErr := readSeekSprite(target); readErr == nil {
-			return nil
+		if published, _, readErr := readSpriteFile(target); readErr == nil {
+			return published.substitution(), nil
 		}
-		return fmt.Errorf("cannot publish the seek thumbnails: %w", err)
+		return unknown, fmt.Errorf("cannot publish the seek thumbnails: %w", err)
 	}
-	return nil
+	return file.substitution(), nil
 }
 
 // PublishPreview はホバープレビューの MP4 と manifest を公開する。
@@ -474,6 +484,17 @@ type spriteFile struct {
 	FrameWidth  int   `json:"frameWidth"`
 	FrameHeight int   `json:"frameHeight"`
 	SheetCount  int   `json:"sheetCount"`
+	// FullDecode は全編の復号から作ったかである。この記録より前に作られたものには
+	// 無い（specs/024-import-progress/research.md R-7）。
+	FullDecode *bool `json:"fullDecode,omitempty"`
+}
+
+// substitution は、このスプライトが代用（全編の復号）で作られたかを返す。
+func (f spriteFile) substitution() domain.Substitution {
+	if f.FullDecode == nil {
+		return domain.SubstitutionUnknown
+	}
+	return domain.SubstitutionOf(*f.FullDecode)
 }
 
 func spriteFileFrom(sprite domain.SeekSprite) spriteFile {
@@ -491,13 +512,19 @@ func spriteFileFrom(sprite domain.SeekSprite) spriteFile {
 
 // readSeekSprite は置き場 dir の配置情報を読み、形を確かめる。
 func readSeekSprite(dir string) (domain.SeekSprite, error) {
+	_, sprite, err := readSpriteFile(dir)
+	return sprite, err
+}
+
+// readSpriteFile は置き場 dir の sprite.json を読み、形を確かめる。
+func readSpriteFile(dir string) (spriteFile, domain.SeekSprite, error) {
 	data, err := os.ReadFile(filepath.Join(dir, spriteFileName))
 	if err != nil {
-		return domain.SeekSprite{}, err
+		return spriteFile{}, domain.SeekSprite{}, err
 	}
 	var file spriteFile
 	if err := json.Unmarshal(data, &file); err != nil {
-		return domain.SeekSprite{}, fmt.Errorf("cannot read the seek thumbnail manifest: %w", err)
+		return spriteFile{}, domain.SeekSprite{}, fmt.Errorf("cannot read the seek thumbnail manifest: %w", err)
 	}
 	sprite := domain.SeekSprite{
 		SeekSpriteLayout: domain.SeekSpriteLayout{
@@ -511,9 +538,9 @@ func readSeekSprite(dir string) (domain.SeekSprite, error) {
 		FrameHeight: file.FrameHeight,
 	}
 	if file.Version != spriteVersion || !validSeekSprite(sprite) {
-		return domain.SeekSprite{}, errors.New("the seek thumbnail manifest has an unexpected shape")
+		return spriteFile{}, domain.SeekSprite{}, errors.New("the seek thumbnail manifest has an unexpected shape")
 	}
-	return sprite, nil
+	return file, sprite, nil
 }
 
 // validSeekSprite は配置情報の値が契約の範囲にあり、互いに食い違わないかを返す

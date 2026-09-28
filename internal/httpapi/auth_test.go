@@ -822,7 +822,6 @@ func TestAuthRevocationEndsInFlightResponses(t *testing.T) {
 			env := newAuthEnv(t, t.TempDir(), Options{
 				Videos:         &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{mediaDir}},
 				Events:         NewEvents(),
-				Processing:     &fakeProcessing{},
 				SessionRecheck: 20 * time.Millisecond,
 			})
 			cookie := env.setup()

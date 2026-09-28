@@ -392,7 +392,7 @@ func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	if written {
 		t.Fatal("job claimed before a location was added wrote a stale result")
 	}
-	written, err = db.Ingest().SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone)
+	written, err = db.Ingest().SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone, domain.SubstitutionNone)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -864,9 +864,32 @@ func TestJobsQueuedNotification(t *testing.T) {
 	}
 }
 
-// 段階ごとの残りは queued と running を数え、終わった仕事と、登録外の所在しか
+// remainingByKind は残りの仕事（remainingJobCondition）を段階ごとに数える。
+func remainingByKind(t *testing.T, db *DB) map[domain.JobKind]int {
+	t.Helper()
+	rows, err := db.sql.Query(`select j.kind, count(*) from jobs j where ` + remainingJobCondition("j") + ` group by j.kind`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	out := map[domain.JobKind]int{}
+	for rows.Next() {
+		var kind string
+		var count int
+		if err := rows.Scan(&kind, &count); err != nil {
+			t.Fatal(err)
+		}
+		out[domain.JobKind(kind)] = count
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// 残りの仕事は queued と running を数え、終わった仕事と、登録外の所在しか
 // ない動画の仕事は数えない。
-func TestProcessingCountsRemainingWorkPerStage(t *testing.T) {
+func TestRemainingJobsCountQueuedAndRunningPerStage(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	other, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-b", 2048, 0))
@@ -903,16 +926,10 @@ func TestProcessingCountsRemainingWorkPerStage(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got, err := db.Ingest().Processing(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := domain.Processing{Probe: 2, Thumbnail: 1, Preview: 0}
-	if got != want {
-		t.Errorf("Processing = %+v, want %+v", got, want)
-	}
-	if got.Remaining() != 3 {
-		t.Errorf("Remaining = %d, want 3", got.Remaining())
+	got := remainingByKind(t, db)
+	want := map[domain.JobKind]int{domain.JobProbe: 2, domain.JobThumbnail: 1}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("残り = %v, want %v", got, want)
 	}
 }
 
@@ -966,8 +983,8 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := db.Ingest().Processing(ctx); err != nil || got.Probe != 1 {
-		t.Fatalf("Processing = %+v, %v, want probe 1", got, err)
+	if got := remainingByKind(t, db); got[domain.JobProbe] != 1 {
+		t.Fatalf("残り = %v, want probe 1", got)
 	}
 	var folderID, version int64
 	if err := db.sql.QueryRow(`select id, version from media_folders where path = ?`, fixturePath("/media")).Scan(&folderID, &version); err != nil {
@@ -992,8 +1009,8 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 	if recorder.calls != 1 {
 		t.Errorf("知らせ = %d 回, want 1", recorder.calls)
 	}
-	if got, err := db.Ingest().Processing(ctx); err != nil || got.Probe != 0 {
-		t.Errorf("Processing = %+v, %v, want probe 0", got, err)
+	if got := remainingByKind(t, db); got[domain.JobProbe] != 0 {
+		t.Errorf("残り = %v, want probe 0", got)
 	}
 }
 
