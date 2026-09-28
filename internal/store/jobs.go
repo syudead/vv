@@ -445,6 +445,10 @@ func jobIdentityCurrent(ctx context.Context, q rowQueryer, job domain.Job) (bool
 //
 // これがあるので、取り込みの途中でプロセスを止めても次の起動で再開でき、
 // 同じ処理を二重に行うこともない。
+//
+// 戻す行が無くても、直近の取り込みの完了の時刻は実行時の条件で決め直す。移行
+// （00017_scan_import.sql）は着手できるかを OS に依らない条件で判定するので、
+// その後に書き込みが無くても、起動のたびにここで揃う。
 func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -463,6 +467,7 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}
 	var c changes
+	c.remainingChanged()
 	if affected > 0 {
 		c.jobsQueued(domain.JobKinds...)
 	}

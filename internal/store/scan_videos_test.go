@@ -491,3 +491,33 @@ func TestScanImportMigrationCarriesUnfinishedJobs(t *testing.T) {
 		t.Error("Down 後も scans に settled_at 列が残っている")
 	}
 }
+
+// 移行が登録外の所在の動画を対象に入れて完了の時刻を null にしても、起動時の積み直しが
+// 実行時の条件で決め直し、閉じた走査に完了の時刻が入る。戻す仕事が無くても決め直す。
+func TestRequeueRunningJobsSettlesImportLeftOpenByMigration(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	for _, stmt := range []string{
+		`insert into videos(id, content_key, probe_state, added_at, updated_at) values (1, 'key-a', 'pending', 1, 1)`,
+		`insert into video_locations(video_id, path, title, size_bytes, mtime, created_at, updated_at)
+			values (1, '` + fixturePath("/elsewhere/a.mp4") + `', 'a', 1, 1, 1, 1)`,
+		`insert into jobs(kind, video_id, state, attempts, created_at, updated_at) values ('probe', 1, 'queued', 0, 1, 1)`,
+		`insert into scans(id, state, started_at, finished_at, total, completed, failed) values (1, 'done', 1, 5, 1, 1, 0)`,
+		`insert into scan_videos(scan_id, video_id) values (1, 1)`,
+	} {
+		if _, err := db.sql.Exec(stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	if scan, _ := currentImport(t, db); !scan.SettledAt.IsZero() {
+		t.Fatalf("準備: settled_at = %v, want null", scan.SettledAt)
+	}
+
+	if restored, err := db.Ingest().RequeueRunningJobs(ctx); err != nil || restored != 0 {
+		t.Fatalf("RequeueRunningJobs = %d, %v", restored, err)
+	}
+	scan, progress := currentImport(t, db)
+	if scan.SettledAt.IsZero() || progress.Status != domain.ImportDone {
+		t.Fatalf("起動後 = %+v (%v), want done・時刻つき", progress, scan.SettledAt)
+	}
+}

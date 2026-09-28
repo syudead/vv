@@ -21,8 +21,9 @@ create index scan_videos_video_idx on scan_videos (video_id);
 -- 1. 直近の走査の集合に、着手できる queued・running の仕事が残っている動画を入れる。
 --    着手できるとは、登録されたメディアフォルダの中に所在があることである。実行時の
 --    条件（store の registeredLocationCondition）は OS の区切り文字と大文字小文字の扱いに
---    従うが、ここでは区切り文字の '/' と '\' をどちらも認める。次に仕事の数が変わる
---    書き込みで refreshScanSettled が完了の時刻を決め直す。
+--    従うが、ここでは区切り文字の '/' と '\' をどちらも認める。ずれて着手できない
+--    動画が入っても、起動時の RequeueRunningJobs が refreshScanSettled で完了の時刻を
+--    実行時の条件で決め直す。
 insert or ignore into scan_videos (scan_id, video_id)
 select (select max(id) from scans), j.video_id
   from jobs j
