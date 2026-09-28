@@ -190,7 +190,6 @@ func (s *IngestStore) setStageStateForJob(
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	//nolint:gosec // column は呼び出し側の定数で、利用者の入力は混ざらない。
 	res, err := tx.ExecContext(ctx, `update videos set `+column+` = ?, updated_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)

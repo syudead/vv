@@ -101,7 +101,6 @@ func (s *AuthStore) changeCredentials(ctx context.Context, column, value string,
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	//nolint:gosec // column は固定の列名だけで、値は引数で渡す。
 	res, err := tx.ExecContext(ctx,
 		`update account set `+column+` = ?, version = version + 1, updated_at = ? where id = ?`,
 		value, now.Unix(), accountID)

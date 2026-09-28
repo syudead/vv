@@ -250,7 +250,9 @@ func TestAuthLoginFailuresAreIndistinguishableAndVerifyOnce(t *testing.T) {
 				f.configured(t)
 			}
 			_, err := login(f, tc.username, tc.password, sourceA)
-			if !errors.Is(err, domain.ErrInvalidCredentials) || err != domain.ErrInvalidCredentials { //nolint:errorlint // 原因を区別しない同じ値であることを確かめる。
+			// 原因を区別しない同じ値であること（包んだ値ではないこと）を確かめる。
+			// 包みを辿る errors.Is では足りないので、値そのものを比べる。
+			if any(err) != any(domain.ErrInvalidCredentials) {
 				t.Fatalf("Login = %v, want ErrInvalidCredentials そのもの", err)
 			}
 			if got := f.hasher.verifies.Load(); got != 1 {

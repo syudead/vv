@@ -111,7 +111,6 @@ func (s *LibraryStore) GetVideo(ctx context.Context, audience domain.Audience, i
 }
 
 func getVideo(ctx context.Context, q rowQueryer, audience domain.Audience, id int64) (domain.Video, error) {
-	//nolint:gosec // videoColumns は定型の SQL だけを返し、利用者の入力は混ざらない。
 	row := q.QueryRowContext(ctx, `select `+videoColumns(audience)+` from videos where videos.id = ? and `+
 		visibleVideoCondition("videos", audience), id)
 
@@ -131,7 +130,6 @@ func syncRepresentativeContainer(ctx context.Context, tx *sql.Tx, videoID int64)
 		where v.id = ? and ` + registeredLocationCondition("l") + ` order by l.path limit 1`
 	var path, probeState, videoCodec, audioCodec string
 	var oldContainer sql.NullString
-	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
 	err := tx.QueryRowContext(ctx, query, videoID).Scan(&path, &oldContainer, &probeState, &videoCodec, &audioCodec)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -197,7 +195,6 @@ func registeredContentKeysForVideoIDs(ctx context.Context, q queryExecer, videoI
 		return nil, fmt.Errorf("cannot build video ids: %w", err)
 	}
 
-	//nolint:gosec // registeredVideoCondition は定型SQLだけを返す。
 	query := `select v.content_key from videos v
 		where v.id in (select value from json_each(?)) and v.content_key <> '' and ` +
 		registeredVideoCondition("v")

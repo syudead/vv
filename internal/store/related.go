@@ -17,7 +17,6 @@ import (
 // OrderRelated が決める。ゲストには公開の動画だけを返す。
 func (s *LibraryStore) DirectVideoPaths(ctx context.Context, audience domain.Audience, dir string) ([]domain.RelatedSibling, error) {
 	cte, args := chosenLocationsCTE(folderScope(dir, domain.FolderScopeDirect, audience), domain.SearchExpr{})
-	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	rows, err := s.db.sql.QueryContext(ctx, cte+` select video_id, path from chosen`, args...)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read videos in the same folder: %w", err)
@@ -100,7 +99,6 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 		args = append(args, id)
 	}
 
-	//nolint:gosec // 組み立てるのは列名・定型の条件句・プレースホルダの数だけで、値は引数で渡す。
 	rows, err := s.db.sql.QueryContext(ctx, `select `+videoColumns(audience)+` from videos where videos.id in (`+
 		placeholders+`) and `+visibleVideoCondition("videos", audience), args...)
 	if err != nil {

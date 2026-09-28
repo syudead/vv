@@ -867,7 +867,6 @@ func TestJobsQueuedNotification(t *testing.T) {
 // remainingByKind は残りの仕事（remainingJobCondition）を段階ごとに数える。
 func remainingByKind(t *testing.T, db *DB) map[domain.JobKind]int {
 	t.Helper()
-	//nolint:gosec // remainingJobCondition は定型SQLだけを返す。
 	rows, err := db.sql.Query(`select j.kind, count(*) from jobs j where ` + remainingJobCondition("j") + ` group by j.kind`)
 	if err != nil {
 		t.Fatal(err)

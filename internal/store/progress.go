@@ -89,7 +89,6 @@ func (p *PlaybackStore) ProgressByContentKeys(
 		args = append(args, key)
 	}
 
-	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
 	rows, err := p.sql.QueryContext(ctx, `
 		select content_key, position_ms, duration_ms, completed, updated_at
 		  from playback_progress where content_key in (`+placeholders+`)`, args...)

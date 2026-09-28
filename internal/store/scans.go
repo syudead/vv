@@ -192,7 +192,6 @@ func (s *ScanStore) scanBy(ctx context.Context, query string, args ...any) (doma
 		reason, code, path    sql.NullString
 	)
 
-	//nolint:gosec // scanColumns は定数で、利用者の入力は混ざらない。
 	err := s.db.sql.QueryRowContext(ctx, query, args...).Scan(
 		&scan.ID, &state, &startedAt, &finishedAt,
 		&scan.Total, &scan.Completed, &scan.Failed, &reason, &code, &path, &settledAt, &scan.IssuesRevision,

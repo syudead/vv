@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from "react";
+import { useEffectEvent, useLayoutEffect, useRef } from "react";
 
 /** hasMounted はこのタブで最初の表示が済んだかを覚える。最初の表示ではフォーカスを動かさない。 */
 let hasMounted = false;
@@ -10,14 +10,16 @@ let hasMounted = false;
  */
 export function useArrival(restoring = false) {
   const heading = useRef<HTMLHeadingElement | null>(null);
-  useLayoutEffect(() => {
+  const arrive = useEffectEvent(() => {
     if (!restoring) {
       window.scrollTo({ top: 0, behavior: "auto" });
       if (hasMounted) heading.current?.focus({ preventScroll: true });
     }
     hasMounted = true;
-    // 到着はフォルダごとに1回だけ扱う（FolderView は key でフォルダごとに作り直す）。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  });
+  // 到着はフォルダごとに1回だけ扱う（FolderView は key でフォルダごとに作り直す）。
+  useLayoutEffect(() => {
+    arrive();
   }, []);
   return heading;
 }

@@ -139,10 +139,12 @@ type fakeScanner struct {
 	result   domain.ScanResult
 	err      error
 	panics   bool
-	release  chan struct{}
-	started  chan struct{}
-	runs     int
-	mu       sync.Mutex
+	// beforeReturn は結果を返す直前に呼ぶ。nil なら呼ばない。
+	beforeReturn func()
+	release      chan struct{}
+	started      chan struct{}
+	runs         int
+	mu           sync.Mutex
 }
 
 func (f *fakeScanner) Scan(ctx context.Context) (domain.ScanResult, error) {
@@ -165,6 +167,9 @@ func (f *fakeScanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		case <-ctx.Done():
 			return partial, ctx.Err()
 		}
+	}
+	if f.beforeReturn != nil {
+		f.beforeReturn()
 	}
 	return f.result, f.err
 }
@@ -310,6 +315,25 @@ func TestScanStoppedByShutdownIsClosedAsFailed(t *testing.T) {
 	}
 	if closed.ErrorCode != domain.ScanErrorInterrupted || closed.ErrorPath != "" {
 		t.Fatalf("理由のコード = %q (%q), want interrupted", closed.ErrorCode, closed.ErrorPath)
+	}
+}
+
+// 停止の直後に走査が別の理由で失敗しても、中断として閉じる。停止は走査の
+// context へ非同期に伝わるので、それを待たずに失敗が返る場合を確かめる。
+func TestScanFailingRightAfterShutdownIsInterrupted(t *testing.T) {
+	baseCtx, stop := context.WithCancel(context.Background())
+	scanner := &fakeScanner{
+		err:          errors.New("could not read the media folder"),
+		beforeReturn: stop,
+	}
+	scans, store, _ := newTestScans(t, baseCtx, scanner)
+
+	if _, err := scans.StartScan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	closed := store.waitFinished(t)
+	if closed.State != domain.ScanFailed || closed.ErrorCode != domain.ScanErrorInterrupted {
+		t.Fatalf("閉じた状態 = %q (%q), want failed (interrupted)", closed.State, closed.ErrorCode)
 	}
 }
 

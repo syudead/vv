@@ -35,7 +35,6 @@ func videosHaveIssues(ctx context.Context, q queryExecer, videoIDs ...int64) (bo
 	for _, id := range videoIDs {
 		args = append(args, id)
 	}
-	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
 	rows, err := q.QueryContext(ctx, `select 1 from scan_issues
 		where scan_id = (select max(id) from scans) and video_id in (`+placeholders+`) limit 1`, args...)
 	if err != nil {
@@ -88,7 +87,6 @@ func clearScanIssues(ctx context.Context, q queryExecer, videoID int64, kinds ..
 		args = append(args, string(kind))
 	}
 	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(kinds)), ",")
-	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
 	res, err := q.ExecContext(ctx, `delete from scan_issues
 		where scan_id = (select max(id) from scans) and video_id = ? and kind in (`+placeholders+`)`, args...)
 	if err != nil {
@@ -157,7 +155,6 @@ func (s *ScanStore) RecordScanIssue(ctx context.Context, issue domain.ScanFileIs
 // 動画の表示の所在は、登録フォルダの中の所在のうちパスの最小のもの（一覧の代表と
 // 同じ）である。そうした所在が無い動画は Path を空で返す。
 func (s *ScanStore) ScanIssueRecords(ctx context.Context, scanID int64) ([]domain.ScanIssueRecord, error) {
-	//nolint:gosec // registeredLocationCondition は定型SQLだけを返す。
 	rows, err := s.db.sql.QueryContext(ctx, `
 		select i.video_id,
 		       case when i.video_id is null then i.path else (

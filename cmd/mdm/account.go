@@ -47,7 +47,7 @@ type accountEnv struct {
 // osAccountEnv は実際の標準入出力と環境変数を使う accountEnv を返す。
 func osAccountEnv() accountEnv {
 	env := accountEnv{Getenv: os.Getenv, Stdin: os.Stdin, Stderr: os.Stderr, Now: time.Now}
-	fd := int(os.Stdin.Fd()) //nolint:gosec // 標準入力の記述子は int に収まる。
+	fd := int(os.Stdin.Fd())
 	if term.IsTerminal(fd) {
 		env.ReadHidden = func() ([]byte, error) { return term.ReadPassword(fd) }
 	}
@@ -170,7 +170,7 @@ func withAuthStore(ctx context.Context, env accountEnv, use func(*store.AuthStor
 		return operationFailure("Cannot check the database: %v", err)
 	}
 
-	db, err := store.Open(dataDir) //nolint:contextcheck // store.Open は context を取らない（起動時と同じ）。
+	db, err := store.OpenContext(ctx, dataDir)
 	if err != nil {
 		return operationFailure("%v", err)
 	}

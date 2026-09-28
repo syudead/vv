@@ -60,13 +60,11 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 		return fmt.Errorf("cannot start restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	//nolint:gosec // 組み立てるのは定型の列名だけで、値はすべて引数で渡す。
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state = 'failed' and `+pending,
 		string(kind), videoID, videoID); err != nil {
 		return fmt.Errorf("cannot discard legacy failure rows (%s, video=%d): %w", kind, videoID, err)
 	}
 	now := time.Now().Unix()
-	//nolint:gosec // 組み立てるのは定型の列名だけで、値はすべて引数で渡す。
 	res, err := tx.ExecContext(ctx, `
 		insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
 		select ?, ?, 'queued', 0, ?, ?
@@ -121,7 +119,6 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	var previousPath sql.NullString
 	// 取り出してよい条件は domain が決める（domain.ClaimConditionFor）。ここでは
 	// それを SQL の条件へ写すだけにする。
-	//nolint:gosec // claimConditionSQL は定型SQLだけを返す。
 	queuedJobSQL := `select j.id, j.kind, j.video_id, j.attempts, j.location_path from jobs j
 		where j.state = 'queued' and j.kind = ?` + claimConditionSQL(domain.ClaimConditionFor(kind), "j") + `
 		order by j.id limit 1`

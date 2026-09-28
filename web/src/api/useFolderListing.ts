@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useState } from "react";
 
 import { errorText, type UiText } from "../i18n";
 import {
@@ -41,6 +41,10 @@ function useFolderData<T>(
   const [error, setError] = useState<UiText | null>(null);
   const [generation, setGeneration] = useState(seed === undefined ? 1 : 0);
 
+  // load は呼び出し元が描画のたびに作り直す。key が同じ間は同じ要求を表すので、
+  // 取り直すきっかけは世代と key だけにする。
+  const request = useEffectEvent((signal: AbortSignal) => load(signal));
+
   useEffect(() => {
     // 0 番目の世代は復元した控え（seed）で、取りに行かない。
     if (generation === 0) return;
@@ -48,7 +52,7 @@ function useFolderData<T>(
     setLoading(true);
     setError(null);
     setNotFound(false);
-    load(controller.signal)
+    request(controller.signal)
       .then((value) => {
         setData(value);
         setLoading(false);
@@ -64,8 +68,6 @@ function useFolderData<T>(
         setLoading(false);
       });
     return () => controller.abort();
-    // load は key が同じ間は同じ要求を表すので、依存は key で足りる。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [generation, key]);
 
   const reload = useCallback(() => setGeneration((value) => value + 1), []);

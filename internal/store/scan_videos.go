@@ -31,7 +31,6 @@ func addScanVideos(ctx context.Context, q queryExecer, videoIDs ...int64) error 
 	for _, id := range videoIDs {
 		args = append(args, id)
 	}
-	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
 	if _, err := q.ExecContext(ctx, `insert into scan_videos (scan_id, video_id)
 		select s.id, v.id from (select max(id) as id from scans) s, videos v
 		where s.id is not null and v.id in (`+placeholders+`)
@@ -45,7 +44,6 @@ func addScanVideos(ctx context.Context, q queryExecer, videoIDs ...int64) error 
 // 加える。メディアフォルダの追加・付け替えで仕事が着手できるようになったときと、
 // 新しい走査へ前の走査の未完了の動画を持ち越すときに使う。
 func addScanVideosWithRemainingJobs(ctx context.Context, q queryExecer) error {
-	//nolint:gosec // remainingJobCondition は定型SQLだけを返す。
 	if _, err := q.ExecContext(ctx, `insert into scan_videos (scan_id, video_id)
 		select distinct s.id, j.video_id from (select max(id) as id from scans) s, jobs j
 		where s.id is not null and `+remainingJobCondition("j")+`
@@ -62,7 +60,6 @@ func addScanVideosWithRemainingJobs(ctx context.Context, q queryExecer) error {
 // 入れる。そうでなければ null に戻す。残りの仕事の数が変わりうるトランザクションで、
 // コミットの前に呼ぶ。呼び忘れを防ぐため、changes に印を付けた取引では commit が呼ぶ。
 func refreshScanSettled(ctx context.Context, q queryExecer, now int64) error {
-	//nolint:gosec // remainingJobCondition は定型SQLだけを返す。
 	if _, err := q.ExecContext(ctx, `update scans
 		set settled_at = case
 			when state <> 'running' and not exists (
