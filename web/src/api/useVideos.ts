@@ -1,347 +1,27 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 
 import { useAudience } from "../auth/audience";
-import { errorText, t, type UiText } from "../i18n";
-import {
-  type FolderRef,
-  type FolderScope,
-  getFolderGroup,
-  getVideo,
-  isAborted,
-  type LibraryGroup,
-  type LibraryItem,
-  listFolderVideos,
-  listLibrary,
-  listVideos,
-  RequestFailed,
-  type TagRef,
-  type Video,
-  type VideoSort,
-  type WatchFilter,
-} from "./client";
-import {
-  folderRefKey,
-  groupRef,
-  groupsWithMembers,
-  itemKey,
-  itemVideos,
-  videoItem,
-} from "./libraryItems";
+import type { UiText } from "../i18n";
+import type { TagRef } from "./client";
+import { folderRefKey, groupRef } from "./libraryItems";
 import { subscribeProgress } from "./progressEvents";
 import { subscribeServerEvents } from "./serverEvents";
-import { applyTagToTags } from "./tagOrder";
-import { isProcessing } from "./useVideoDetail";
+import { useGroupRefresh } from "./useGroupRefresh";
+import { useItemRefresh } from "./useItemRefresh";
+import { useVideoPages } from "./useVideoPages";
 import { subscribeVideoTags } from "./videoTagsEvents";
+import { criteriaKey, type VideosCriteria, type VideosSource } from "./videosCriteria";
 import {
-  subscribeVideoVisibility,
-  subscribeVideoVisibilityStale,
-  visibilityMark,
-  withVisibilitySince,
-} from "./visibility";
+  shownVideoIds,
+  type VideosData,
+  videosDataReducer,
+  type VideosSeed,
+  type VideosState,
+} from "./videosData";
+import { subscribeVideoVisibility, subscribeVideoVisibilityStale } from "./visibility";
 
-/**
- * mergeRefreshed は取り直した1件を、一覧に出ている項目へ重ねる。
- *
- * 題名と大きさは一覧側の値を残す。フォルダ画面の項目は、そのフォルダにある
- * 所在の題名と大きさを持ち、1件の取得（代表の所在）とは違うことがあるためである。
- */
-function mergeRefreshed(current: Video, refreshed: Video): Video {
-  return { ...current, ...refreshed, title: current.title, sizeBytes: current.sizeBytes };
-}
-
-/**
- * VideosSeed は復元された一覧の初期状態である。
- *
- * 与えると 1 ページ目を**取りに行かない**。再生画面から戻るたびに読み直すと、
- * 300 件まで読んだ状態を戻すのに 5 ページ分の往復が要る。
- */
-export interface VideosSeed {
-  items: LibraryItem[];
-  total: number;
-  cursor?: string;
-  hasMore: boolean;
-  /**
-   * 控えを取った後にメンバーが変わったグループの項目（ListSnapshot.staleGroups）。
-   * 戻ったときにこれを取り直す。
-   */
-  staleGroups?: readonly FolderRef[];
-}
-
-/**
- * VideosSource は useVideos が読む一覧である。
- *
- * - `"videos"`: 1本ずつの一覧（`GET /api/videos`）。フォルダ画面の最上位の検索結果が使う。
- * - `"library"`: 動画とグループの項目の一覧（`GET /api/library`）。ライブラリが使う
- *   （specs/017-folder-groups/contracts/library-api.md §1）。
- * - フォルダ: そのフォルダの動画（`GET /api/folders/{rootId}/videos`）。フォルダ画面が使う。
- */
-export type VideosSource = "videos" | "library" | FolderRef;
-
-/**
- * VideosCriteria は一覧を取りに行く条件である
- * （specs/013-library-search/contracts/list-url.md の q・watch・playable・sort・seed）。
- * 省略した項目はサーバーの既定になる。
- */
-export interface VideosCriteria {
-  query?: string;
-  watch?: WatchFilter;
-  playable?: boolean;
-  sort: VideoSort;
-  /** sort=random のときだけ送る。 */
-  seed?: number;
-  /**
-   * フォルダ画面での検索範囲（direct = 直下だけ、subtree = 配下すべて）。
-   * folder を渡さない（ライブラリ）ときは無視する。省略時は direct と同じ。
-   */
-  scope?: FolderScope;
-  /**
-   * 絞り込むタグの id（listVideos だけが受け取る。listFolderVideos には渡さない。
-   * specs/014-video-tags/contracts/tags-api.md §5）。
-   */
-  tag?: number[];
-}
-
-/** criteriaKey は条件を値で比べるための文字列にする。 */
-function criteriaKey(criteria: VideosCriteria): string {
-  return JSON.stringify([
-    criteria.query ?? "",
-    criteria.watch ?? "all",
-    criteria.playable === true,
-    criteria.sort,
-    criteria.sort === "random" ? (criteria.seed ?? null) : null,
-    criteria.scope ?? "direct",
-    criteria.tag ?? [],
-  ]);
-}
-
-/**
- * appendUnique は続きのページから、既に出ている項目を捨てて足す（list-api.md §5）。
- * 動画の項目は動画の id、グループの項目はフォルダで比べる（itemKey）。
- */
-function appendUnique(current: LibraryItem[], next: LibraryItem[]): LibraryItem[] {
-  const seen = new Set(current.map(itemKey));
-  const added: LibraryItem[] = [];
-  for (const item of next) {
-    const key = itemKey(item);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    added.push(item);
-  }
-  return added.length === 0 ? current : [...current, ...added];
-}
-
-/**
- * mapVideos は動画の項目のうち `match` に当たるものだけを `update` で書き換える。
- * 当たる項目が無ければ受け取った配列をそのまま返す（描画し直さないため）。
- */
-function mapVideos(
-  items: LibraryItem[],
-  match: (video: Video) => boolean,
-  update: (video: Video) => Video,
-): LibraryItem[] {
-  if (!items.some((item) => item.kind === "video" && match(item.video))) return items;
-  return items.map((item) =>
-    item.kind === "video" && match(item.video) ? videoItem(update(item.video)) : item,
-  );
-}
-
-/** shownVideoIds は動画の項目の id である（グループのメンバーは含まない）。 */
-function shownVideoIds(items: readonly LibraryItem[]): number[] {
-  return itemVideos(items).map((video) => video.id);
-}
-
-interface VideosData {
-  items: LibraryItem[];
-  total: number;
-  cursor: string | undefined;
-  hasMore: boolean;
-  /** inconsistent は異なる時点のページを安全に結合できなかったことを表す。 */
-  inconsistent: boolean;
-  /**
-   * missingTagIds は、直近の要求で `tag` に指定したがもう無かった id である
-   * （specs/014-video-tags/contracts/tags-api.md §5）。folder を渡す（`tag` を
-   * 送らない）ときは常に空。
-   */
-  missingTagIds: number[];
-}
-
-type VideosDataAction =
-  | { type: "clear" }
-  | { type: "stop" }
-  | { type: "progress"; videoId: number; progress: NonNullable<Video["progress"]> }
-  | {
-      type: "tags";
-      videoIds: readonly number[];
-      tag: TagRef;
-      action: "add" | "remove";
-    }
-  | { type: "visibility"; videoIds: readonly number[]; isPublic: boolean }
-  | { type: "refresh"; videoId: number; video: Video }
-  | { type: "remove"; videoId: number }
-  | { type: "refreshGroup"; folderKey: string; group: LibraryGroup }
-  | { type: "removeGroup"; folderKey: string }
-  | {
-      type: "page";
-      page: {
-        items: LibraryItem[];
-        total: number;
-        nextCursor?: string;
-        missingTagIds?: number[];
-      };
-      replace: boolean;
-    };
-
-function videosDataReducer(state: VideosData, action: VideosDataAction): VideosData {
-  switch (action.type) {
-    case "clear":
-      return {
-        items: [],
-        total: 0,
-        cursor: undefined,
-        hasMore: true,
-        inconsistent: false,
-        missingTagIds: [],
-      };
-    case "stop":
-      return state.hasMore ? { ...state, hasMore: false } : state;
-    // 再生位置・タグ・公開・取り直しは動画の項目にだけ直接重ねる。グループの値は
-    // メンバーから数えるので、メンバーの変化ではグループを1件取り直す（useVideos の refreshGroups）。
-    case "progress": {
-      const items = mapVideos(
-        state.items,
-        (video) => video.id === action.videoId,
-        (video) => ({ ...video, progress: action.progress }),
-      );
-      return items === state.items ? state : { ...state, items };
-    }
-    case "tags": {
-      const targets = new Set(action.videoIds);
-      const items = mapVideos(
-        state.items,
-        (video) => targets.has(video.id),
-        (video) => ({
-          ...video,
-          tags: applyTagToTags(video.tags, action.tag, action.action),
-        }),
-      );
-      return items === state.items ? state : { ...state, items };
-    }
-    case "visibility": {
-      const targets = new Set(action.videoIds);
-      const items = mapVideos(
-        state.items,
-        (video) => targets.has(video.id) && video.public !== action.isPublic,
-        (video) => ({ ...video, public: action.isPublic }),
-      );
-      return items === state.items ? state : { ...state, items };
-    }
-    case "refresh": {
-      const items = mapVideos(
-        state.items,
-        (video) => video.id === action.videoId,
-        (video) => mergeRefreshed(video, action.video),
-      );
-      return items === state.items ? state : { ...state, items };
-    }
-    case "remove": {
-      const isTarget = (item: LibraryItem) =>
-        item.kind === "video" && item.video.id === action.videoId;
-      if (!state.items.some(isTarget)) return state;
-      return {
-        ...state,
-        items: state.items.filter((item) => !isTarget(item)),
-        total: Math.max(0, state.total - 1),
-      };
-    }
-    case "refreshGroup": {
-      const isTarget = (item: LibraryItem) =>
-        item.kind === "group" && folderRefKey(groupRef(item.group)) === action.folderKey;
-      if (!state.items.some(isTarget)) return state;
-      return {
-        ...state,
-        items: state.items.map((item) =>
-          isTarget(item) ? { kind: "group", group: action.group } : item,
-        ),
-      };
-    }
-    case "removeGroup": {
-      const isTarget = (item: LibraryItem) =>
-        item.kind === "group" && folderRefKey(groupRef(item.group)) === action.folderKey;
-      if (!state.items.some(isTarget)) return state;
-      // total は次に一覧を読むまでそのままにする（ui-design.md「Refresh and removal」）。
-      return { ...state, items: state.items.filter((item) => !isTarget(item)) };
-    }
-    case "page": {
-      const missingTagIds = action.page.missingTagIds ?? [];
-      if (action.replace) {
-        return {
-          items: action.page.items,
-          total: action.page.total,
-          cursor: action.page.nextCursor,
-          hasMore: action.page.nextCursor !== undefined,
-          inconsistent: false,
-          missingTagIds,
-        };
-      }
-      const items = appendUnique(state.items, action.page.items);
-      // ページ間で索引が縮むと、前のページにだけ残る項目と最新の total を
-      // 安全に結合できない。古い整合した状態を保ち、先頭からの再読込を求める。
-      if (items.length > action.page.total) {
-        return { ...state, hasMore: false, inconsistent: true };
-      }
-      return {
-        items,
-        total: action.page.total,
-        cursor: action.page.nextCursor,
-        hasMore: action.page.nextCursor !== undefined,
-        inconsistent: false,
-        missingTagIds,
-      };
-    }
-  }
-}
-
-/** VideosState は一覧の状態である。 */
-export interface VideosState {
-  /**
-   * 読み込み済みの項目。動画の項目とグループの項目がある（グループはライブラリの一覧にだけ現れる）。
-   */
-  items: LibraryItem[];
-  total: number;
-  /** cursor は次のページの続き位置。控えを取るときに使う。 */
-  cursor: string | undefined;
-  /** hasMore は次のページがあるかどうか。 */
-  hasMore: boolean;
-  /** loading は最初の1ページを待っている間だけ true になる。 */
-  loading: boolean;
-  /** loadingMore は続きを読んでいる間 true になる。 */
-  loadingMore: boolean;
-  error: UiText | null;
-  /**
-   * notFound は folder を渡したときに、そのフォルダの動画の要求が 404 で
-   * 返ったことを表す（検索中にフォルダが無くなった場合、
-   * list-api.md §5「listFolderVideos でフォルダが無いとき」）。
-   */
-  notFound: boolean;
-  /**
-   * missingTagIds は、直近の要求の `tag` のうちもう無かった id である
-   * （specs/014-video-tags/contracts/tags-api.md §5）。画面はこれを受けて、
-   * もう無いことを伝え、タグの一覧を取り直し、URL から取り除く。
-   */
-  missingTagIds: number[];
-  /** loadMore は次のページを読む。無限スクロールの観測点から呼ぶ。 */
-  loadMore: () => void;
-  /** retryLoadMore は失敗した続きのページを同じカーソルから再要求する。 */
-  retryLoadMore: () => void;
-  /** reload は先頭から読み直す。取り込みのあとに使う。 */
-  reload: () => void;
-  /**
-   * staleGroups は、取り直しを求めたがまだ済んでいない表示中のグループの項目の
-   * フォルダを返す（取り直しの待ち・途中・一時的な失敗）。一覧の控えを取るときに
-   * ListSnapshot.staleGroups へ渡し、戻ったときに取り直させる。
-   */
-  staleGroups: () => FolderRef[];
-}
+export type { VideosCriteria, VideosSource } from "./videosCriteria";
+export type { VideosSeed, VideosState } from "./videosData";
 
 /**
  * useVideos は一覧を1ページずつ読む。条件（検索語・視聴状態・再生可否・並び順・
@@ -402,82 +82,15 @@ export function useVideos(
   const itemsRef = useRef(items);
   itemsRef.current = items;
 
-  // グループの項目は、メンバーの再生位置・タグ・`video` イベントの変化で
-  // `GET /api/folders/{rootId}/group` から1件ずつ取り直して差し替える
-  // 取り直しの間は項目を変えず、404 ならその項目を外す。
-  // 取り直しは1件ずつ順に行い、同じグループを重ねて取りに行かない（動画の
-  // 取り直しの refreshQueue と同じ形）。取り直しの途中に同じグループが変われば、
-  // 終わった後にもう一度取る。
-  const groupQueue = useRef(new Map<string, FolderRef>());
-  const groupRefreshing = useRef<AbortController | null>(null);
-  // staleGroups は、控えから戻った一覧のうち、控えの後にメンバーが変わったグループである。
-  const staleGroups = useRef<readonly FolderRef[]>(seed?.staleGroups ?? []);
-  // unsettledGroups は、取り直しを求めたがまだ差し替えも除外もしていないグループである
-  // （待ち・取り直し中・一時的な失敗）。一覧を離れるときの控えに印として残し、戻った
-  // ときに取り直す。取り直しの途中で動画を開くと要求は打ち切られるので、印を残さないと
-  // 古いグループがそのまま復元される（Devin の指摘、PR 357）。
-  const unsettledGroups = useRef(
-    new Map((seed?.staleGroups ?? []).map((folder) => [folderRefKey(folder), folder])),
-  );
-  const drainGroupQueue = useCallback(async () => {
-    if (groupRefreshing.current !== null) return;
-    const controller = new AbortController();
-    groupRefreshing.current = controller;
-    try {
-      for (const [groupKey, folder] of groupQueue.current) {
-        groupQueue.current.delete(groupKey);
-        try {
-          const group = await getFolderGroup(folder, controller.signal);
-          // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
-          if (controller.signal.aborted) return;
-          // 取り直しの途中に同じグループがまた変わっていれば、次の取り直しまで印を残す。
-          if (!groupQueue.current.has(groupKey)) unsettledGroups.current.delete(groupKey);
-          dispatch({ type: "refreshGroup", folderKey: groupKey, group });
-        } catch (failure) {
-          if (isAborted(failure) || controller.signal.aborted) return;
-          // 今はグループでない（例外で単体に戻った等）か、フォルダが無い。何も伝えずに
-          // 外す。一時的な失敗は、その1件だけ諦める（次の変化か読み直しで直る）。
-          // 一時的な失敗のグループは unsettledGroups に残し、控えの印で戻ったときに取り直す。
-          if (failure instanceof RequestFailed && failure.status === 404) {
-            unsettledGroups.current.delete(groupKey);
-            dispatch({ type: "removeGroup", folderKey: groupKey });
-          }
-        }
-      }
-    } finally {
-      if (groupRefreshing.current === controller) groupRefreshing.current = null;
-    }
-  }, []);
-  const refreshGroups = useCallback(
-    (folders: Iterable<FolderRef>) => {
-      let queued = false;
-      for (const folder of folders) {
-        const groupKey = folderRefKey(folder);
-        groupQueue.current.set(groupKey, folder);
-        unsettledGroups.current.set(groupKey, folder);
-        queued = true;
-      }
-      if (queued) void drainGroupQueue();
-    },
-    [drainGroupQueue],
-  );
-  // refreshGroupsWith は `videoIds` のどれかをメンバーに持つ表示中のグループを取り直す。
-  const refreshGroupsWith = useCallback(
-    (videoIds: Iterable<number>) => {
-      refreshGroups(groupsWithMembers(itemsRef.current, videoIds));
-    },
-    [refreshGroups],
-  );
-  // unsettledGroupRefs は控えに残す取り直しの印である（表示中のグループだけ）。
-  const unsettledGroupRefs = useCallback((): FolderRef[] => {
-    const pending = unsettledGroups.current;
-    if (pending.size === 0) return [];
-    return itemsRef.current.flatMap((item) => {
-      if (item.kind !== "group") return [];
-      const folder = groupRef(item.group);
-      return pending.has(folderRefKey(folder)) ? [folder] : [];
-    });
-  }, []);
+  const groups = useGroupRefresh(seed, itemsRef, dispatch);
+  const {
+    groupQueue,
+    groupRefreshing,
+    staleGroups,
+    refreshGroups,
+    refreshGroupsWith,
+    unsettledGroupRefs,
+  } = groups;
 
   // ページの取得中に届いた知らせは、取得した内容より新しいことがある
   // （下の「取り込みの準備」の取り直しと、その次のタグの付け外しの両方が使う）。
@@ -535,92 +148,17 @@ export function useVideos(
     [refreshGroupsWith],
   );
 
-  // 取り込みの準備が進んだ動画を、一覧を読み直さずに1件ずつ取り直す。読み直すと
-  // スクロール位置や読み込んだページが失われる。取り直しは1件ずつ順に行い、
-  // 知らせが重なっても同じ動画を重ねて取りに行かない。
-  const refreshQueue = useRef(new Set<number>());
-  const refreshing = useRef<AbortController | null>(null);
-  // idleWaiters は、取り直しとページの取得がすべて終わるのを待つ者である
-  // （一部にしか反映されなかった切り替えの取り直しの決着。下の購読を参照）。
-  // 一覧を離れたときも解く。
-  const idleWaiters = useRef<(() => void)[]>([]);
-  // uncertain は、公開の切り替えが一部にしか反映されず、まだサーバーの状態を
-  // 取り直せていない表示中の動画である。取り直しが一時的に失敗した動画は古い
-  // `public` のまま残るので、ここから外れるまで決着させない（外れると古い一覧が
-  // 控えられ、戻ったときに復元される。Devin の指摘、PR 338）。取り直しが成功する
-  // か、消えたと分かる（404）か、切り替えの後に取ったページで置き換わるか、
-  // 全件に反映された切り替えの結果が届くと外れる。
-  //
-  // 値は、その動画を確かでないとした直近の知らせの番号（staleNotices）である。
-  // 知らせの前に始めた取り直し（更新の知らせ等）は切り替える前の `public` を
-  // 読んでいることがあるので、取り直しは始めた時点の番号を覚えておき、それより
-  // 新しい知らせで確かでないとされた動画は外さない（Devin の指摘、PR 338）。
-  const uncertain = useRef(new Map<number, number>());
-  const staleNotices = useRef(0);
-  // settleUncertain は、`started`（取り直しを始めた時点の知らせの番号）以後の
-  // 知らせで確かでないとされていない動画を、確かになったとして外す。
-  const settleUncertain = useCallback((id: number, started: number) => {
-    if ((uncertain.current.get(id) ?? 0) <= started) uncertain.current.delete(id);
-  }, []);
-  const notifyIfIdle = useCallback(() => {
-    if (
-      pageLoading.current ||
-      refreshing.current !== null ||
-      refreshQueue.current.size > 0 ||
-      uncertain.current.size > 0
-    ) {
-      return;
-    }
-    for (const resolve of idleWaiters.current.splice(0)) resolve();
-  }, []);
-  const drainRefreshQueue = useCallback(async () => {
-    if (refreshing.current !== null) return;
-    const controller = new AbortController();
-    refreshing.current = controller;
-    try {
-      for (const id of refreshQueue.current) {
-        refreshQueue.current.delete(id);
-        const started = staleNotices.current;
-        try {
-          const mark = visibilityMark();
-          const refreshed = withVisibilitySince(
-            await getVideo(id, controller.signal),
-            mark,
-          );
-          // 条件を変えて読み直した後に届いた古い取り直しは、新しい一覧に重ねない。
-          if (controller.signal.aborted) return;
-          settleUncertain(id, started);
-          dispatch({ type: "refresh", videoId: id, video: refreshed });
-        } catch (failure) {
-          if (isAborted(failure)) return;
-          // 動画が索引から消えていたら、一覧からも外す。一時的な失敗は、その
-          // 1件だけ諦める（次の知らせか取り込みの完了時の読み直しで直る）。
-          // 公開状態が確かでない動画は、失敗しても uncertain に残す。
-          if (failure instanceof RequestFailed && failure.status === 404) {
-            settleUncertain(id, started);
-            dispatch({ type: "remove", videoId: id });
-          }
-        }
-      }
-    } finally {
-      if (refreshing.current === controller) refreshing.current = null;
-      notifyIfIdle();
-    }
-  }, [notifyIfIdle, settleUncertain]);
-  const refreshItems = useCallback(
-    (ids: Iterable<number>) => {
-      for (const id of ids) refreshQueue.current.add(id);
-      void drainRefreshQueue();
-    },
-    [drainRefreshQueue],
-  );
-  const refreshProcessingItems = useCallback(() => {
-    refreshItems(
-      itemVideos(itemsRef.current)
-        .filter((video) => isProcessing(video))
-        .map((video) => video.id),
-    );
-  }, [refreshItems]);
+  const itemRefresh = useItemRefresh(pageLoading, itemsRef, dispatch);
+  const {
+    refreshQueue,
+    refreshing,
+    idleWaiters,
+    uncertain,
+    staleNotices,
+    notifyIfIdle,
+    refreshItems,
+    refreshProcessingItems,
+  } = itemRefresh;
 
   // サーバーからの更新の知らせは、取得した内容より新しいことがある。知らせを
   // 受けた動画を覚えておき、ページを反映したあとで取り直す（pageLoading・
@@ -664,7 +202,7 @@ export function useVideos(
       pending.clear();
       for (const resolve of waiters.splice(0)) resolve();
     };
-  }, [notifyIfIdle, refreshItems]);
+  }, [idleWaiters, notifyIfIdle, refreshItems, staleNotices, uncertain]);
 
   // 公開・非公開の切り替えの結果も、タグの付け外しと同じく一覧を読み直さずに
   // 表示中の項目へ反映する（issue 305）。取得の間に反映した切り替えは、
@@ -683,7 +221,7 @@ export function useVideos(
         dispatch({ type: "visibility", videoIds, isPublic });
         notifyIfIdle();
       }),
-    [notifyIfIdle],
+    [notifyIfIdle, uncertain],
   );
 
   // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない
@@ -740,254 +278,47 @@ export function useVideos(
       groupRefreshing.current = null;
       groups.clear();
     };
-  }, [owner, refreshGroups, refreshGroupsWith, refreshItems, refreshProcessingItems]);
+  }, [
+    groupQueue,
+    groupRefreshing,
+    owner,
+    refreshGroups,
+    refreshGroupsWith,
+    refreshItems,
+    refreshProcessingItems,
+    refreshQueue,
+    refreshing,
+    staleGroups,
+  ]);
 
-  // 読み込み中の要求を覚えておく。条件を変えた直後に古い応答が届いても、
-  // 新しい一覧を上書きしないようにする。
-  const inFlight = useRef<AbortController | null>(null);
-
-  const fetchPage = useCallback(
-    async (from: string | undefined, replace: boolean) => {
-      inFlight.current?.abort();
-      const controller = new AbortController();
-      inFlight.current = controller;
-      pageLoading.current = true;
-      changedWhileLoading.current.clear();
-      progressChangedWhileLoading.current.clear();
-      if (replace) {
-        // 前の一覧のために始めた取り直しは捨てる。新しいページの内容の方が新しい。
-        refreshing.current?.abort();
-        refreshing.current = null;
-        refreshQueue.current.clear();
-        groupRefreshing.current?.abort();
-        groupRefreshing.current = null;
-        groupQueue.current.clear();
-        staleGroups.current = [];
-        unsettledGroups.current.clear();
-        // 条件やフォルダを変えた一から読み直し（または不整合からの再同期）
-        // でだけ、それまでに記録した付け外しを捨てる。古い条件のときの変更は
-        // 新しい一覧に持ち越さない。続きの取得（loadMore、replace===false）
-        // ではここを通らないので、まだどのページにも現れていない動画への
-        // 変更は消さずに残す（Devin の指摘3。次に読み込まれたページで重ねる）。
-        tagsChangedWhileLoading.current.clear();
-      }
-
-      if (replace) {
-        setLoading(true);
-        setError(null);
-        setNotFound(false);
-      } else {
-        setLoadingMore(true);
-      }
-
-      const mark = visibilityMark();
-      try {
-        const target = folderRef.current;
-        const current = criteriaRef.current;
-        const params = {
-          query: current.query,
-          watch: current.watch === "all" ? undefined : current.watch,
-          playable: current.playable,
-          sort: current.sort,
-          seed: current.sort === "random" ? current.seed : undefined,
-          cursor: from,
-          signal: controller.signal,
-        };
-        const fetched =
-          target !== undefined
-            ? await listFolderVideos({ folder: target, scope: current.scope, ...params })
-            : libraryRef.current
-              ? await listLibrary({ ...params, tag: current.tag })
-              : await listVideos({ ...params, tag: current.tag });
-        const page = {
-          ...fetched,
-          items: fetched.items.map((item): LibraryItem => {
-            if ("kind" in item) {
-              return item.kind === "video"
-                ? videoItem(withVisibilitySince(item.video, mark))
-                : item;
-            }
-            return videoItem(withVisibilitySince(item, mark));
-          }),
-        };
-        // 打ち切った要求の応答は捨てる。fetch は打ち切りで reject するが、
-        // 応答の本文を読み終えた後に打ち切られた場合はここに来る。
-        if (controller.signal.aborted || inFlight.current !== controller) return;
-        if (replace && page.items.length > page.total) {
-          if (!resyncAttempted.current) {
-            resyncAttempted.current = true;
-            setGeneration((value) => value + 1);
-          } else {
-            dispatch({ type: "clear" });
-            dispatch({ type: "stop" });
-            setError(t.list.inconsistentPage);
-          }
-          return;
-        }
-        if (replace) resyncAttempted.current = false;
-        const shownBefore = new Set(shownVideoIds(itemsRef.current));
-        dispatch({ type: "page", page, replace });
-        const changed = shownVideoIds(page.items).filter((id) =>
-          changedWhileLoading.current.has(id),
-        );
-        // ページの取得中にメンバーが変わったグループは、ページを反映したあとで取り直す。
-        // 再生位置の保存も同じく、ページの内容より新しいことがある。
-        refreshGroups(
-          groupsWithMembers(page.items, [
-            ...changedWhileLoading.current,
-            ...progressChangedWhileLoading.current,
-          ]),
-        );
-        changedWhileLoading.current.clear();
-        progressChangedWhileLoading.current.clear();
-        // 公開状態が確かでない動画のうち、このページで取り直す（changed）ものと、
-        // 続きの取得で残る表示中のものだけを uncertain に残す。一から読み直した
-        // ページは切り替えの後に取ったものなので、それ以外はもう確かである。
-        // ページの取得中に届いた知らせの対象は changedWhileLoading に入っている
-        // ので、切り替えの前に読まれたかもしれないページで確かになることはない。
-        const stillShown = new Set(changed);
-        if (!replace) for (const id of shownBefore) stillShown.add(id);
-        for (const id of uncertain.current.keys()) {
-          if (!stillShown.has(id)) uncertain.current.delete(id);
-        }
-        if (changed.length > 0) refreshItems(changed);
-        // このページの取得中に届いたタグの付け外しのうち、このページで
-        // ちょうど読み込んだ動画のものは、取り直さずここで直接重ねる
-        // （サーバーがすでに教えてくれている内容なので、getVideo で1件ずつ
-        // 取り直す必要が無い。Devin の指摘3）。
-        // グループのメンバーへの付け外しは、そのグループを取り直す。
-        if (tagsChangedWhileLoading.current.size > 0) {
-          const pageIds = new Set(shownVideoIds(page.items));
-          const memberIds = new Set(
-            page.items.flatMap((item) =>
-              item.kind === "group" ? item.group.videoIds : [],
-            ),
-          );
-          const changedMembers: number[] = [];
-          for (const [tagKey, change] of tagsChangedWhileLoading.current) {
-            if (memberIds.has(change.videoId)) {
-              changedMembers.push(change.videoId);
-              tagsChangedWhileLoading.current.delete(tagKey);
-              continue;
-            }
-            if (!pageIds.has(change.videoId)) continue;
-            dispatch({
-              type: "tags",
-              videoIds: [change.videoId],
-              tag: change.tag,
-              action: change.action,
-            });
-            tagsChangedWhileLoading.current.delete(tagKey);
-          }
-          refreshGroups(groupsWithMembers(page.items, changedMembers));
-        }
-        setError(null);
-        setNotFound(false);
-      } catch (failure) {
-        // 打ち切った要求や、条件を変えた後に届いた古い要求の失敗は、新しい一覧に
-        // 404 や失敗を持ち込まないよう捨てる。
-        if (
-          isAborted(failure) ||
-          controller.signal.aborted ||
-          inFlight.current !== controller
-        ) {
-          return;
-        }
-        if (
-          folderRef.current !== undefined &&
-          failure instanceof RequestFailed &&
-          failure.status === 404
-        ) {
-          // フォルダが無くなった（検索中に配下が削除された等）。一致なしではなく
-          // 「このフォルダは見つかりません」を出す（list-api.md §5）。
-          setNotFound(true);
-          setError(null);
-          dispatch({ type: "stop" });
-          return;
-        }
-        setError(errorText(failure));
-        // 前の要求の 404 を残すと、取得の失敗が「見つかりません」に隠れて再試行できない。
-        setNotFound(false);
-        // 続きが読めない状態で観測点を残すと、同じ要求を繰り返してしまう。
-        dispatch({ type: "stop" });
-      } finally {
-        if (!controller.signal.aborted) {
-          pageLoading.current = false;
-          setLoading(false);
-          setLoadingMore(false);
-          notifyIfIdle();
-        }
-      }
-    },
-    // folderKey と key は folderRef・criteriaRef の中身が変わったことを表す。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [folderKey, key, notifyIfIdle, refreshGroups, refreshItems],
-  );
-
-  // seeded は「いま持っている中身が復元で埋まったものか」を覚える。
-  //
-  // 効果を 1 回で消費する印にしないのは、React が開発時に効果を 2 回走らせる
-  // ためである（1 回目で消費すると 2 回目が復元を捨てて読み直してしまう）。
-  // 鍵（条件・フォルダ・読み直しの世代）ごと覚えておけば、何度走っても
-  // 同じ判断になる。
-  const seeded = useRef(seed === undefined ? null : { key, folderKey, generation: 0 });
-
-  // 異なる時点のページを結合できなかったときは、古い整合した一覧を保ったまま
-  // 世代を進め、通常の先頭ページ取得へ戻す。
-  useEffect(() => {
-    if (!inconsistent) return;
-    if (!resyncAttempted.current) {
-      resyncAttempted.current = true;
-      setGeneration((value) => value + 1);
-      return;
-    }
-    dispatch({ type: "clear" });
-    dispatch({ type: "stop" });
-    setError(t.list.inconsistentPage);
-  }, [inconsistent]);
-
-  // 条件・フォルダが変わったら先頭から読み直す。カーソルはそれらに紐づくので、
-  // 引き継ぐと境界の意味が変わってしまう。
-  //
-  // 前の要求は fetchPage が AbortController で打ち切る。入力が連続しても、
-  // 古い応答が新しい一覧を上書きすることはない。
-  useEffect(() => {
-    const held = seeded.current;
-    if (
-      held !== null &&
-      held.key === key &&
-      held.folderKey === folderKey &&
-      held.generation === generation
-    ) {
-      // 取りに行かなくても打ち切りは要る。復元した一覧で続きを読んでいる
-      // 途中に画面を離れると、この経路が後片付けを残さないかぎり要求が
-      // 最後まで走ってしまう。
-      return () => inFlight.current?.abort();
-    }
-    seeded.current = null;
-
-    dispatch({ type: "clear" });
-    void fetchPage(undefined, true);
-
-    return () => inFlight.current?.abort();
-  }, [fetchPage, folderKey, generation, key]);
-
-  const loadMore = useCallback(() => {
-    if (loading || loadingMore || !hasMore || cursor === undefined) {
-      return;
-    }
-    void fetchPage(cursor, false);
-  }, [cursor, fetchPage, hasMore, loading, loadingMore]);
-
-  const retryLoadMore = useCallback(() => {
-    if (loading || loadingMore || cursor === undefined) return;
-    void fetchPage(cursor, false);
-  }, [cursor, fetchPage, loading, loadingMore]);
-
-  const reload = useCallback(() => {
-    resyncAttempted.current = false;
-    setGeneration((value) => value + 1);
-  }, []);
+  const { loadMore, retryLoadMore, reload } = useVideoPages({
+    key,
+    folderKey,
+    criteriaRef,
+    folderRef,
+    libraryRef,
+    itemsRef,
+    dispatch,
+    setLoading,
+    setLoadingMore,
+    setError,
+    setNotFound,
+    setGeneration,
+    resyncAttempted,
+    pageLoading,
+    changedWhileLoading,
+    progressChangedWhileLoading,
+    tagsChangedWhileLoading,
+    groups,
+    itemRefresh,
+    seed,
+    generation,
+    inconsistent,
+    cursor,
+    hasMore,
+    loading,
+    loadingMore,
+  });
 
   return {
     items,

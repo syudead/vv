@@ -12,6 +12,16 @@ import { Dimmed } from "./StatusOverlays";
 /** 予告から次のメンバーを再生するまでの秒数（specs/017-folder-groups/ui-design.md「Autoplay notice」）。 */
 export const autoplayNoticeSeconds = 5;
 
+/**
+ * AutoplayPhase は、グループのメンバーの再生が終わったときの層の段階である
+ * （specs/017-folder-groups/ui-design.md「Autoplay notice」）。
+ *
+ * - `notice`: 次のメンバーを自動で再生する予告
+ * - `cancelled`: 予告を取り消した。今の再生終了の層を出す
+ * - `gone`: 予告の間に次のメンバーが消えた。「もう一度見る」だけの層を出す
+ */
+export type AutoplayPhase = "notice" | "cancelled" | "gone";
+
 /** autoplayAnnouncement は予告が出たときに一度だけ読み上げる文である。 */
 export function autoplayAnnouncement(title: string): UiText {
   return t.player.autoplay.announcement(title, autoplayNoticeSeconds);

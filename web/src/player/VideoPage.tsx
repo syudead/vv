@@ -7,38 +7,22 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { ChevronDown, Folder, Tag, Ungroup } from "lucide-react";
 import { useLocation, useNavigate, useParams } from "react-router";
 
 import { getAuthSession } from "../api/auth";
-import {
-  beaconProgress,
-  reloadForViewerChange,
-  reprobeVideo,
-  RequestFailed,
-  saveProgress,
-  type Video,
-} from "../api/client";
-import {
-  groupingFailure,
-  setFolderGrouping,
-  taggedMessage,
-  tagFolderGroup,
-  ungroupedMessage,
-} from "../api/folderGrouping";
+import { reloadForViewerChange, reprobeVideo, RequestFailed } from "../api/client";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
-import Button from "../ui/Button";
-import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
 import Skeleton from "../ui/Skeleton";
-import { useToast } from "../ui/Toast";
-import AutoplayNotice from "./AutoplayNotice";
+import AutoplayNotice, { type AutoplayPhase } from "./AutoplayNotice";
 import EndedOverlay from "./EndedOverlay";
+import GroupLine from "./GroupLine";
 import NeighborArrows from "./NeighborArrows";
 import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
 import { playerAspectRatio } from "./aspect";
+import { autoplayRequested, backTarget, resumePosition } from "./pageDecisions";
 import RelatedVideos from "./RelatedVideos";
 import {
   CreatingLine,
@@ -59,41 +43,8 @@ import VideoPlayer, {
   type PlayerStatus,
 } from "./VideoPlayer";
 import VideoTags from "./VideoTags";
+import { useProgressSaving } from "./useProgressSaving";
 import VisibilitySwitch from "./VisibilitySwitch";
-
-/** minResumeMs 未満の位置は「見始めたばかり」として先頭から再生する。 */
-const minResumeMs = 5000;
-
-/** backTarget は遷移元の一覧 URL。無ければ `/`。外部 URL は受け付けない。 */
-export function backTarget(state: unknown): string {
-  const from: unknown = (state as { from?: unknown } | null)?.from;
-  if (typeof from !== "string" || !from.startsWith("/") || from.startsWith("//")) {
-    return "/";
-  }
-  return from;
-}
-
-/** autoplayRequested は「次を再生」から来たか（移った先で再生を始めるか）を返す。 */
-function autoplayRequested(state: unknown): boolean {
-  return (state as { autoplay?: unknown } | null)?.autoplay === true;
-}
-
-function resumePosition(video: Video): number {
-  const progress = video.progress;
-  return progress === undefined || progress.completed || progress.positionMs < minResumeMs
-    ? 0
-    : progress.positionMs;
-}
-
-/**
- * AutoplayPhase は、グループのメンバーの再生が終わったときの層の段階である
- * （specs/017-folder-groups/ui-design.md「Autoplay notice」）。
- *
- * - `notice`: 次のメンバーを自動で再生する予告
- * - `cancelled`: 予告を取り消した。今の再生終了の層を出す
- * - `gone`: 予告の間に次のメンバーが消えた。「もう一度見る」だけの層を出す
- */
-type AutoplayPhase = "notice" | "cancelled" | "gone";
 
 /** 再生の試み。再試行と「次を再生」は、位置と自動再生を決めてプレイヤーを作り直す。 */
 interface Attempt {
@@ -202,64 +153,7 @@ export default function VideoPage() {
   }, [title]);
 
   // --- 再生位置の保存（既存どおり） ---
-  const lastSent = useRef<{ videoId: number; positionMs: number } | null>(null);
-  const latestPosition = useRef<{ videoId: number; positionMs: number } | null>(null);
-
-  const send = useCallback(
-    (positionMs: number, leaving: boolean, force = false) => {
-      // 再生位置は所有者のものなので、ゲストでは保存を送らない。
-      if (!owner) return;
-      if (!Number.isFinite(positionMs) || positionMs < 0) return;
-      const rounded = Math.round(positionMs);
-      if (
-        !leaving &&
-        !force &&
-        lastSent.current?.videoId === id &&
-        Math.abs(rounded - lastSent.current.positionMs) < 1000
-      ) {
-        return;
-      }
-      lastSent.current = { videoId: id, positionMs: rounded };
-      if (leaving) {
-        beaconProgress(id, rounded);
-        return;
-      }
-      void saveProgress(id, rounded).catch(() => undefined);
-    },
-    [id, owner],
-  );
-
-  const rememberProgress = useCallback(
-    (positionMs: number) => {
-      latestPosition.current = { videoId: id, positionMs };
-    },
-    [id],
-  );
-
-  const savePlayerProgress = useCallback(
-    (positionMs: number, immediate: boolean) => {
-      latestPosition.current = { videoId: id, positionMs };
-      send(positionMs, false, immediate);
-    },
-    [id, send],
-  );
-
-  useEffect(() => {
-    const sendLatest = () => {
-      const latest = latestPosition.current;
-      if (latest?.videoId === id) send(latest.positionMs, true);
-    };
-    const onHidden = () => {
-      if (document.visibilityState === "hidden") sendLatest();
-    };
-    document.addEventListener("visibilitychange", onHidden);
-    window.addEventListener("pagehide", sendLatest);
-    return () => {
-      document.removeEventListener("visibilitychange", onHidden);
-      window.removeEventListener("pagehide", sendLatest);
-      sendLatest();
-    };
-  }, [id, send]);
+  const { rememberProgress, savePlayerProgress } = useProgressSaving(id, owner);
 
   // --- プレイヤーの状態 ---
   const endedRef = useRef(false);
@@ -577,115 +471,5 @@ export default function VideoPage() {
         </aside>
       </div>
     </div>
-  );
-}
-
-/**
- * GroupLine は題名の上に置く、グループ名と何本目かの1行である（要件 25、ui-design.md
- * 「Group line」）。題名より小さく従の色にし、題名より先に目に入らないようにする。
- * 見出しの帯のパンくずが同じフォルダへのリンクを持つので、グループ名はリンクにしない。
- *
- * 所有者では行全体をまとめ方のメニューの引き金にする（要件 29）。ゲストでは押せない文字の行。
- */
-function GroupLine({
-  group,
-  owner,
-  onChanged,
-}: {
-  group: NonNullable<Video["group"]>;
-  owner: boolean;
-  /** まとめ方を変えた後（と 409 の後）に、動画と関連動画を取り直させる。 */
-  onChanged: () => void;
-}) {
-  const content = (
-    <>
-      <Folder className="size-3.5! shrink-0 text-fg-subtle" aria-hidden="true" />
-      <span className="truncate" title={group.name}>
-        {group.name}
-      </span>
-      <span className="shrink-0 text-fg-subtle" aria-hidden="true">
-        ·
-      </span>
-      <span className="shrink-0 tabular-nums">
-        {t.player.related.position(group.position, group.count)}
-      </span>
-    </>
-  );
-  if (!owner) {
-    return (
-      <p className="flex min-w-0 items-center gap-1.5 text-xs text-fg-muted sm:text-sm">
-        {content}
-      </p>
-    );
-  }
-  return <GroupLineMenu group={group} onChanged={onChanged} content={content} />;
-}
-
-/** GroupLineMenu は所有者の Group line で、「まとめを解除」「グループをタグに変える」を開く。 */
-function GroupLineMenu({
-  group,
-  onChanged,
-  content,
-}: {
-  group: NonNullable<Video["group"]>;
-  onChanged: () => void;
-  content: ReactNode;
-}) {
-  const toast = useToast();
-  const [busy, setBusy] = useState(false);
-  const folder = { rootId: group.folder.rootId, path: group.folder.path };
-
-  const run = async (tagging: boolean) => {
-    setBusy(true);
-    try {
-      if (tagging) {
-        toast(taggedMessage(await tagFolderGroup(folder)));
-      } else {
-        await setFolderGrouping(folder, "ungroup");
-        toast(ungroupedMessage(group.name));
-      }
-      onChanged();
-    } catch (failure) {
-      const { message, conflict } = groupingFailure(failure, {
-        name: group.name,
-        tagging,
-        notFoundMessage: t.folderGrouping.changeFailed,
-      });
-      toast(message);
-      if (conflict) onChanged();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <MenuRoot>
-      <MenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          aria-label={t.player.group.menu(group.name, group.position, group.count)}
-          // 文字の左端を題名にそろえ、行は題名より小さく従の色のままにする。
-          className="-ml-2 max-w-full min-w-0 self-start gap-1.5! font-normal! text-fg-muted! sm:text-sm!"
-        >
-          {content}
-          <ChevronDown className="size-3.5! shrink-0" aria-hidden="true" />
-        </Button>
-      </MenuTrigger>
-      <MenuContent align="start">
-        <MenuItem onSelect={() => void run(false)}>
-          <Ungroup aria-hidden="true" />
-          {t.player.group.ungroup}
-        </MenuItem>
-        {/* 登録フォルダそのもののグループはタグに変えられない（contracts §2）。 */}
-        {group.folder.path !== "" && (
-          <MenuItem onSelect={() => void run(true)}>
-            <Tag aria-hidden="true" />
-            {t.player.group.toTag}
-          </MenuItem>
-        )}
-      </MenuContent>
-    </MenuRoot>
   );
 }
