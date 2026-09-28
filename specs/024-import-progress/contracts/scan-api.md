@@ -72,6 +72,10 @@
 | `items` | `ScanIssue[]`, 必須 | 失敗を先に、同じ重さの中はファイル名、次にフォルダの順 |
 | `nextCursor` | string \| 省略 | 続きがあるときだけ |
 
+所在がどの登録フォルダにも含まれない件は、返さず、`Scan.issues` の本数にも数えない。例は、
+取り込みの後にメディアフォルダを外した場合である。親 Issue の Edge Cases「対象から外れた動画は
+…問題にも数えない」に従う。
+
 一度も走査していなければ 404 を返す（`GET /api/scans/current` と同じ）。`cursor` が不正なら 400 を
 返す。
 
@@ -82,7 +86,7 @@
 | `severity` | `failed` \| `substituted`, 必須 | まとめた件の重さ |
 | `kinds` | `ScanIssueKind[]`, 必須, 1件以上 | data-model.md §3 の種類。重い順 |
 | `fileName` | string, 必須 | |
-| `folder` | `VideoFolder` \| 省略 | どの登録フォルダにも含まれなければ省く |
+| `folder` | `VideoFolder`, 必須 | 所在の置かれたフォルダ。同じ名前のファイルを見分けるため |
 | `videoId` | int64 \| 省略 | 登録された動画なら、その id。画面は `/videos/{id}` へ移れる（要件 5） |
 
 影響の言葉（「一覧に追加できませんでした」など）と理由の言葉は、`kinds` から SPA が組み立てる

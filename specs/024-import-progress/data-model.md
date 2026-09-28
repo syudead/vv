@@ -112,4 +112,5 @@ SQLite の既存の表は [internal/store/migrations](../../internal/store/migra
 **まとめた1件**（読み出しの形。保存はしない）: `coalesce(video_id, path)` ごとに、種類の集合、
 重さ（失敗を1つでも含めば失敗）、表示の所在を返す。所在は、動画なら今の代表の所在、未登録なら
 `path` である。どちらも `domain.LocateVideoFolder` と同じ規則で、登録フォルダの表示名と相対パスに
-直す。本数の数え方も同じ単位（まとめた件の数）である。
+直す。本数の数え方も同じ単位（まとめた件の数）である。所在がどの登録フォルダにも含まれない件は、
+一覧にも本数にも入れない（[contracts/scan-api.md §3](contracts/scan-api.md#3-get-apiscanscurrentissues)）。
