@@ -94,6 +94,9 @@ func (s *IngestStore) ApplyProbeForJob(
 			return false, err
 		}
 	}
+	if err := clearFailedIssue(ctx, tx, domain.JobProbe, job.VideoID); err != nil {
+		return false, err
+	}
 	if err := requeueJob(ctx, tx, domain.JobPreview, job.VideoID, now.Unix()); err != nil {
 		return false, err
 	}
@@ -163,18 +166,48 @@ func (s *IngestStore) SetThumbnailState(ctx context.Context, id int64, state dom
 	return nil
 }
 
+// SetThumbnailStateForJob は代表サムネイルの状態を記録する。専有したときの内容鍵・
+// 所在・所在の世代が今も同じときだけ反映し、反映したかを返す。done を書いたら、同じ
+// 取引でその動画の thumbnail_failed を問題から消す。
 func (s *IngestStore) SetThumbnailStateForJob(ctx context.Context, job domain.Job, state domain.ThumbnailState) (bool, error) {
-	res, err := s.db.sql.ExecContext(ctx, `update videos set thumbnail_state = ?, updated_at = ?
+	return s.setStageStateForJob(ctx, job, domain.JobThumbnail, "thumbnail_state", string(state), state == domain.ThumbnailStateDone)
+}
+
+// setStageStateForJob は段階 kind の状態列 column に state を書く。専有したときの
+// 内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。succeeded なら、
+// 同じ取引でその段階の *_failed を直近の取り込みの問題から消す
+// （specs/024-import-progress/data-model.md §3）。
+func (s *IngestStore) setStageStateForJob(
+	ctx context.Context, job domain.Job, kind domain.JobKind, column, state string, succeeded bool,
+) (bool, error) {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	//nolint:gosec // column は呼び出し側の定数で、利用者の入力は混ざらない。
+	res, err := tx.ExecContext(ctx, `update videos set `+column+` = ?, updated_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
 		and location_generation = ?`,
-		string(state), time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
+		state, time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
 		job.LocationVersion, job.LocationPath, job.LocationGeneration)
 	if err != nil {
 		return false, err
 	}
 	count, err := res.RowsAffected()
-	return count == 1, err
+	if err != nil || count != 1 {
+		return false, err
+	}
+	if succeeded {
+		if err := clearFailedIssue(ctx, tx, kind, job.VideoID); err != nil {
+			return false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // SetSeekThumbnailStateForJob はシーク用サムネイルの状態を記録する。専有した
@@ -182,35 +215,17 @@ func (s *IngestStore) SetThumbnailStateForJob(ctx context.Context, job domain.Jo
 func (s *IngestStore) SetSeekThumbnailStateForJob(
 	ctx context.Context, job domain.Job, state domain.SeekThumbnailState,
 ) (bool, error) {
-	res, err := s.db.sql.ExecContext(ctx, `update videos set seek_thumbnail_state = ?, updated_at = ?
-		where id = ? and content_key = ? and exists (
-			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
-		and location_generation = ?`,
-		string(state), time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
-		job.LocationVersion, job.LocationPath, job.LocationGeneration)
+	applied, err := s.setStageStateForJob(ctx, job, domain.JobSeekThumbnail, "seek_thumbnail_state", string(state), state == domain.SeekThumbnailDone)
 	if err != nil {
 		return false, fmt.Errorf("cannot record the seek thumbnail state (id=%d): %w", job.VideoID, err)
 	}
-	count, err := res.RowsAffected()
-	if err != nil {
-		return false, fmt.Errorf("cannot check the seek thumbnail state update count (id=%d): %w", job.VideoID, err)
-	}
-	return count == 1, nil
+	return applied, nil
 }
 
 // SetPreviewStateForJob applies only to the content and location generation
 // captured when the preview job was claimed.
 func (s *IngestStore) SetPreviewStateForJob(ctx context.Context, job domain.Job, state domain.PreviewState) (bool, error) {
-	res, err := s.db.sql.ExecContext(ctx, `update videos set preview_state = ?, updated_at = ?
-		where id = ? and content_key = ? and exists (
-			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
-		and location_generation = ?`, string(state), time.Now().Unix(), job.VideoID, job.ContentKey,
-		job.LocationID, job.LocationVersion, job.LocationPath, job.LocationGeneration)
-	if err != nil {
-		return false, err
-	}
-	n, err := res.RowsAffected()
-	return n == 1, err
+	return s.setStageStateForJob(ctx, job, domain.JobPreview, "preview_state", string(state), state == domain.PreviewStateDone)
 }
 
 // SetPreviewStateForContent accepts a completed asset after a representative
@@ -254,6 +269,9 @@ func (s *IngestStore) CompletePreviewForContent(ctx context.Context, job domain.
 	}
 	if n != 1 {
 		return false, fmt.Errorf("preview job is not running (id=%d)", job.ID)
+	}
+	if err := clearFailedIssue(ctx, tx, domain.JobPreview, job.VideoID); err != nil {
+		return false, err
 	}
 	var c changes
 	c.remainingChanged()

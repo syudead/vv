@@ -30,6 +30,9 @@ type fakeIndex struct {
 	progress  []domain.ScanResult
 	reportErr error
 	ensureErr error
+	// issues は報告されたファイルの失敗、issueErr はその報告の失敗である。
+	issues   []domain.ScanFileIssue
+	issueErr error
 }
 
 type failingInfoEntry struct {
@@ -140,6 +143,11 @@ func (f *fakeIndex) EnsureJob(_ context.Context, kind domain.JobKind, videoID in
 func (f *fakeIndex) ReportScanProgress(_ context.Context, result domain.ScanResult) error {
 	f.progress = append(f.progress, result)
 	return f.reportErr
+}
+
+func (f *fakeIndex) ReportScanIssue(_ context.Context, issue domain.ScanFileIssue) error {
+	f.issues = append(f.issues, issue)
+	return f.issueErr
 }
 
 // upsertedPaths は取り込もうとしたパスを並べて返す。
@@ -361,6 +369,39 @@ func TestScanCountsFailedPendingJobRepairAsTarget(t *testing.T) {
 	if result.Total != 1 || result.Completed() != 0 || result.Failed != 1 {
 		t.Fatalf("failed pending job repair should be 0 / 1 with one failure, got %+v", result)
 	}
+	// 走査が知っている既存の動画の問題になる。
+	path := filepath.Join(root, "a.mp4")
+	want := []domain.ScanFileIssue{{VideoID: index.rows[path].ID, Path: path, Kind: domain.IssueRegisterFailed}}
+	if !slices.Equal(index.issues, want) {
+		t.Fatalf("報告 = %+v, want %+v", index.issues, want)
+	}
+}
+
+// 登録のあとで仕事を積めなかったファイルは、登録された動画の register_failed になる。
+func TestScanReportsEnqueueFailureWithRegisteredVideo(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a"})
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index, Queue: failingQueue{}, Reporter: index})
+	if _, err := scanner.Scan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(root, "a.mp4")
+	want := []domain.ScanFileIssue{{VideoID: index.rows[path].ID, Path: path, Kind: domain.IssueRegisterFailed}}
+	if !slices.Equal(index.issues, want) {
+		t.Fatalf("報告 = %+v, want %+v", index.issues, want)
+	}
+}
+
+// failingQueue は仕事を積めない待ち行列である。
+type failingQueue struct{}
+
+func (failingQueue) EnqueueJob(context.Context, domain.JobKind, int64) error {
+	return errors.New("queue unavailable")
+}
+
+func (failingQueue) EnsureJob(context.Context, domain.JobKind, int64) error {
+	return errors.New("queue unavailable")
 }
 
 func TestScanRequeuesMissingPreviewForProbeCompleteVideo(t *testing.T) {
@@ -685,6 +726,67 @@ func TestScanContinuesAfterFileFailure(t *testing.T) {
 	}
 }
 
+// 読めないファイルを含むフォルダを走査すると、そのパスが unreadable として報告先に
+// 渡る（specs/024-import-progress/data-model.md §3）。まだ登録されていないので、動画は
+// 結び付かない。
+func TestScanReportsUnreadableFileAsIssue(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a", "読めない.mp4": "b"})
+	broken := filepath.Join(root, "読めない.mp4")
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index, Queue: index, Reporter: index})
+	scanner.contentKey = func(path string) (string, error) {
+		if path == broken {
+			return "", &os.PathError{Op: "open", Path: path, Err: os.ErrPermission}
+		}
+		return ContentKey(path)
+	}
+	if _, err := scanner.Scan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.ScanFileIssue{{Path: broken, Kind: domain.IssueUnreadable}}
+	if !slices.Equal(index.issues, want) {
+		t.Fatalf("報告 = %+v, want %+v", index.issues, want)
+	}
+}
+
+// 情報を読めない対象も unreadable として報告する。
+func TestScanReportsFileWithUnreadableInfoAsIssue(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a"})
+	path := filepath.Join(root, "a.mp4")
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index, Queue: index, Reporter: index})
+	scanner.walkDir = func(root string, fn fs.WalkDirFunc) error {
+		return filepath.WalkDir(root, func(p string, entry fs.DirEntry, err error) error {
+			if p == path {
+				entry = failingInfoEntry{entry}
+			}
+			return fn(p, entry, err)
+		})
+	}
+	if _, err := scanner.Scan(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.ScanFileIssue{{Path: path, Kind: domain.IssueUnreadable}}
+	if !slices.Equal(index.issues, want) {
+		t.Fatalf("報告 = %+v, want %+v", index.issues, want)
+	}
+}
+
+// 失敗を記録できなければ、走査を止める。記録されない失敗は利用者から見えなくなる。
+func TestScanStopsWhenIssueCannotBeRecorded(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a"})
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	index.issueErr = errors.New("store unavailable")
+	scanner := New(Options{Index: index, Queue: index, Reporter: index})
+	scanner.contentKey = func(string) (string, error) { return "", errors.New("unreadable") }
+	if _, err := scanner.Scan(context.Background()); !errors.Is(err, index.issueErr) {
+		t.Fatalf("err = %v, want the recording failure", err)
+	}
+}
+
 func TestScanContinuesAfterPermissionFailure(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "a", "壊れた.mp4": "b", "c.mp4": "c"})
 
@@ -808,8 +910,54 @@ func TestScanRejectsFileChangedWhileContentKeyIsCalculated(t *testing.T) {
 	if len(index.upserts) != 0 {
 		t.Fatalf("changed file was indexed with inconsistent metadata: %+v", index.upserts)
 	}
+	if want := []domain.ScanFileIssue{{Path: path, Kind: domain.IssueChangedDuringImport}}; !slices.Equal(index.issues, want) {
+		t.Fatalf("報告 = %+v, want %+v", index.issues, want)
+	}
 	if got, err := os.ReadFile(path); err != nil || string(got) != "new and longer" {
 		t.Fatalf("fixture change failed: content=%q err=%v", got, err)
+	}
+}
+
+// 内容を読んだあとにファイルの情報を読めなくなっただけなら、変わったとは言えないので
+// unreadable として報告する。消えたときは changed_during_import である。
+func TestScanClassifiesMetadataFailureAfterContentKey(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want domain.ScanIssueKind
+	}{
+		{name: "読めない", err: errors.New("input/output error"), want: domain.IssueUnreadable},
+		{name: "消えた", err: fs.ErrNotExist, want: domain.IssueChangedDuringImport},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := mediaTree(t, map[string]string{"a.mp4": "old"})
+			path := filepath.Join(root, "a.mp4")
+			index := newFakeIndex()
+			index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+			scanner := New(Options{Index: index, Queue: index, Reporter: index})
+			hashed := false
+			scanner.contentKey = func(path string) (string, error) {
+				hashed = true
+				return ContentKey(path)
+			}
+			scanner.lstat = func(name string) (fs.FileInfo, error) {
+				if hashed && name == path {
+					return nil, &fs.PathError{Op: "lstat", Path: name, Err: tc.err}
+				}
+				return os.Lstat(name)
+			}
+
+			result, err := scanner.Scan(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Failed != 1 || len(index.upserts) != 0 {
+				t.Fatalf("result = %+v, upserts = %+v, want 1件の失敗", result, index.upserts)
+			}
+			if want := []domain.ScanFileIssue{{Path: path, Kind: tc.want}}; !slices.Equal(index.issues, want) {
+				t.Fatalf("報告 = %+v, want %+v", index.issues, want)
+			}
+		})
 	}
 }
 

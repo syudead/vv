@@ -72,6 +72,15 @@ type changes struct {
 	deleted    []domain.DeletedVideo
 	// settle は残りの仕事の数が変わりうることを表す。発行する知らせには出ない。
 	settle bool
+	// issues は、問題の行を直接書かずに問題の一覧が変わりうることを表す（動画の行の
+	// 削除による連鎖、メディアフォルダの変更）。発行する知らせには出ない。
+	issues bool
+}
+
+// issuesChanged は、問題の一覧に出る件が変わりうることを記録する。commit が直近の
+// 走査の issues_revision を増やし、画面に一覧を読み直させる。
+func (c *changes) issuesChanged() {
+	c.issues = true
 }
 
 // remainingChanged は、知らせは出さないが、残りの仕事の数が変わりうることを
@@ -107,6 +116,7 @@ func (c *changes) videosDeleted(deleted []domain.DeletedVideo) {
 	c.deleted = append(c.deleted, deleted...)
 	c.processing = true
 	c.settle = true
+	c.issues = true
 }
 
 // events は集めた変化を発行する形にする。
@@ -135,10 +145,15 @@ func (c *changes) events() []domain.Event {
 // 発行すると、ワーカーがまだ見えない行を探して空振りし、そのまま眠る。
 //
 // 残りの仕事が変わりうる変化があれば、確定の前に同じ取引で直近の取り込みの
-// 完了の時刻を決め直す。
+// 完了の時刻を決め直す。問題の一覧が変わりうる変化があれば、その番号を増やす。
 func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 	if err := settle(ctx, tx, c); err != nil {
 		return err
+	}
+	if c != nil && c.issues {
+		if err := bumpIssuesRevision(ctx, tx); err != nil {
+			return err
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		return err

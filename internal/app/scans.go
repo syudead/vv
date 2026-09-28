@@ -22,6 +22,12 @@ type ScanStore interface {
 	FinishScan(ctx context.Context, id int64, state domain.ScanState, cause error) error
 	// FailInterruptedScans は running のまま残った走査を failed で閉じる。
 	FailInterruptedScans(ctx context.Context) (int64, error)
+	// RecordScanIssue は走査が1つのファイルで出会った失敗を、直近の取り込みの問題と
+	// して記録する。
+	RecordScanIssue(ctx context.Context, issue domain.ScanFileIssue) error
+	// ScanIssues は走査 scanID の問題を、まとめて並べた形で返す。所在がどの登録
+	// フォルダにも含まれない件は含めない。
+	ScanIssues(ctx context.Context, scanID int64) ([]domain.ScanIssue, error)
 }
 
 // JobRecoveryStore は中断した取り込みジョブを待ち行列へ戻す保存先である。
@@ -42,10 +48,11 @@ type Scanner interface {
 	Scan(ctx context.Context) (domain.ScanResult, error)
 }
 
-// ScanReporter は走査の進捗の報告先である。*Scans がこれを満たし、
-// ScansOptions.NewScanner に渡される。
+// ScanReporter は走査の進捗とファイルごとの失敗の報告先である。*Scans がこれを
+// 満たし、ScansOptions.NewScanner に渡される。
 type ScanReporter interface {
 	ReportScanProgress(ctx context.Context, result domain.ScanResult) error
+	ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue) error
 }
 
 // Publisher は状態の変化の発行先である。誰が受け取るか（画面への知らせ・
@@ -125,13 +132,13 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, error) {
 		return domain.Scan{}, err
 	}
 	if !started {
-		return withImport(scan), nil
+		return s.withImport(ctx, scan)
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.running {
-		return withImport(scan), nil
+		return s.withImport(ctx, scan)
 	}
 	s.running = true
 	s.done.Add(1)
@@ -143,7 +150,7 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, error) {
 	go s.run(scan.ID)
 
 	s.scanChanged()
-	return withImport(scan), nil
+	return s.withImport(ctx, scan)
 }
 
 // CurrentScan は直近の走査を、利用者に見せる取り込みの状態（Scan.Import）を
@@ -153,17 +160,49 @@ func (s *Scans) CurrentScan(ctx context.Context) (domain.Scan, error) {
 	if err != nil {
 		return domain.Scan{}, err
 	}
-	return withImport(scan), nil
+	return s.withImport(ctx, scan)
 }
 
-// withImport は走査の記録から取り込みの状態を組み立てる。状態の決め方は domain が
-// 持つ（specs/024-import-progress/research.md R-4・R-5）。
-//
-// 問題の記録はまだ無いので、登録できなかったファイルの問題の数と失敗の問題の数は
-// 0 として渡す。
-func withImport(scan domain.Scan) domain.Scan {
-	scan.Import = scan.Tally(0, 0).Progress(scan.SettledAt)
-	return scan
+// ListScanIssues は直近の取り込みの問題を、cursor の次から limit 件返す
+// （specs/024-import-progress/contracts/scan-api.md §3）。一度も走査していなければ
+// domain.ErrNotFound、カーソルが解釈できなければ domain.ErrInvalidCursor を返す。
+func (s *Scans) ListScanIssues(ctx context.Context, cursor string, limit int) (domain.ScanIssuePage, error) {
+	scan, err := s.store.CurrentScan(ctx)
+	if err != nil {
+		return domain.ScanIssuePage{}, err
+	}
+	issues, err := s.store.ScanIssues(ctx, scan.ID)
+	if err != nil {
+		return domain.ScanIssuePage{}, err
+	}
+	items, next, err := domain.PageScanIssues(issues, cursor, limit)
+	if err != nil {
+		return domain.ScanIssuePage{}, err
+	}
+	return domain.ScanIssuePage{ScanID: scan.ID, Items: items, NextCursor: next}, nil
+}
+
+// withImport は走査の記録と問題から取り込みの状態を組み立てる。状態の決め方は
+// domain が持つ（specs/024-import-progress/research.md R-4・R-5）。本数は、問題を
+// 動画（未登録ならファイル）ごとにまとめた件で数える。
+func (s *Scans) withImport(ctx context.Context, scan domain.Scan) (domain.Scan, error) {
+	issues, err := s.store.ScanIssues(ctx, scan.ID)
+	if err != nil {
+		return domain.Scan{}, err
+	}
+	scan.Issues = domain.CountScanIssues(issues)
+	scan.Import = scan.Tally(scan.Issues.Unregistered, scan.Issues.Failed).Progress(scan.SettledAt)
+	return scan, nil
+}
+
+// ReportScanIssue は走査が1つのファイルで出会った失敗を、直近の取り込みの問題として
+// 記録する。本数が変わるので、走査の変化として知らせる。
+func (s *Scans) ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue) error {
+	if err := s.store.RecordScanIssue(ctx, issue); err != nil {
+		return err
+	}
+	s.scanChanged()
+	return nil
 }
 
 // ReportScanProgress は走査の進捗を記録する。走査中も一覧・再生は通常どおり

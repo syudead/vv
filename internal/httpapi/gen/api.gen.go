@@ -383,6 +383,63 @@ func (e ScanErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for ScanIssueSeverity.
+const (
+	ScanIssueSeverityFailed      ScanIssueSeverity = "failed"
+	ScanIssueSeveritySubstituted ScanIssueSeverity = "substituted"
+)
+
+// Valid indicates whether the value is a known member of the ScanIssueSeverity enum.
+func (e ScanIssueSeverity) Valid() bool {
+	switch e {
+	case ScanIssueSeverityFailed:
+		return true
+	case ScanIssueSeveritySubstituted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScanIssueKind.
+const (
+	ScanIssueKindChangedDuringImport     ScanIssueKind = "changed_during_import"
+	ScanIssueKindPreviewFailed           ScanIssueKind = "preview_failed"
+	ScanIssueKindProbeFailed             ScanIssueKind = "probe_failed"
+	ScanIssueKindRegisterFailed          ScanIssueKind = "register_failed"
+	ScanIssueKindSeekThumbnailFailed     ScanIssueKind = "seek_thumbnail_failed"
+	ScanIssueKindSeekThumbnailFullDecode ScanIssueKind = "seek_thumbnail_full_decode"
+	ScanIssueKindThumbnailFailed         ScanIssueKind = "thumbnail_failed"
+	ScanIssueKindThumbnailFirstFrame     ScanIssueKind = "thumbnail_first_frame"
+	ScanIssueKindUnreadable              ScanIssueKind = "unreadable"
+)
+
+// Valid indicates whether the value is a known member of the ScanIssueKind enum.
+func (e ScanIssueKind) Valid() bool {
+	switch e {
+	case ScanIssueKindChangedDuringImport:
+		return true
+	case ScanIssueKindPreviewFailed:
+		return true
+	case ScanIssueKindProbeFailed:
+		return true
+	case ScanIssueKindRegisterFailed:
+		return true
+	case ScanIssueKindSeekThumbnailFailed:
+		return true
+	case ScanIssueKindSeekThumbnailFullDecode:
+		return true
+	case ScanIssueKindThumbnailFailed:
+		return true
+	case ScanIssueKindThumbnailFirstFrame:
+		return true
+	case ScanIssueKindUnreadable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ScanStatus.
 const (
 	ScanStatusDone    ScanStatus = "done"
@@ -799,8 +856,9 @@ type LibraryGroup struct {
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
-	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
 	// LastPlayedAt メンバーの最後に再生した時刻の最大。無ければ省く
@@ -928,8 +986,9 @@ type ProgressUpdate struct {
 type RelatedGroup struct {
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
-	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
 	// Items 全メンバーをグループの中の並びの順に、基準の動画を含めて並べる。上限は無い
@@ -986,6 +1045,9 @@ type Scan struct {
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 	Id         int64      `json:"id"`
 
+	// Issues 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える （specs/024-import-progress/contracts/scan-api.md §2）
+	Issues ScanIssueCounts `json:"issues"`
+
 	// SettledAt 対象の動画がすべて済んだ時刻。status が done・partial のときだけ返す
 	SettledAt *time.Time `json:"settledAt,omitempty"`
 	StartedAt *time.Time `json:"startedAt,omitempty"`
@@ -1008,6 +1070,57 @@ type ScanState string
 
 // ScanErrorCode スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である （task generate）。
 type ScanErrorCode string
+
+// ScanIssue 直近の取り込みの問題の、動画（未登録ならファイル）ごとの1件
+type ScanIssue struct {
+	// FileName ファイル名（翻訳しない利用者のデータ）
+	FileName string `json:"fileName"`
+
+	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// グループのフォルダそのものを指す
+	Folder VideoFolder `json:"folder"`
+
+	// Kinds 起きた出来事の種類。重い順
+	Kinds []ScanIssueKind `json:"kinds"`
+
+	// Severity まとめた件の重さ。失敗の種類を1つでも含めば failed
+	Severity ScanIssueSeverity `json:"severity"`
+
+	// VideoId 登録された動画のときだけ入る。画面は /videos/{id} へ移れる
+	VideoId *int64 `json:"videoId,omitempty"`
+}
+
+// ScanIssueSeverity まとめた件の重さ。失敗の種類を1つでも含めば failed
+type ScanIssueSeverity string
+
+// ScanIssueCounts 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える （specs/024-import-progress/contracts/scan-api.md §2）
+type ScanIssueCounts struct {
+	// Failed 重さが失敗の件数。1以上なら取り込みは partial になる
+	Failed int `json:"failed"`
+
+	// Revision 問題の一覧の中身が変わるたびに増える番号。本数が同じでも、種類や行が変われば増える。 画面はこれが変わったら一覧を読み直す
+	Revision int64 `json:"revision"`
+
+	// Substituted 重さが代用の件数
+	Substituted int `json:"substituted"`
+}
+
+// ScanIssueKind 取り込みの問題の種類（specs/024-import-progress/data-model.md §3）。unreadable・ changed_during_import・register_failed は走査で、*_failed は準備の仕事がやり直しの上限まで 失敗したもの（以上は失敗）。thumbnail_first_frame・seek_thumbnail_full_decode は代用
+type ScanIssueKind string
+
+// ScanIssuePage defines model for ScanIssuePage.
+type ScanIssuePage struct {
+	Items []ScanIssue `json:"items"`
+
+	// NextCursor 続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// ScanId どの取り込みの一覧か。Scan.id と違えば、画面は読み直す
+	ScanId int64 `json:"scanId"`
+}
 
 // ScanStatus 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外（specs/024-import-progress/contracts/scan-api.md §2）
 type ScanStatus string
@@ -1118,8 +1231,9 @@ type Video struct {
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
-	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
 	// Group 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
@@ -1217,8 +1331,9 @@ type VideoChanged struct {
 
 // VideoFolder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 // GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
-// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+// グループのフォルダそのものを指す
 type VideoFolder struct {
 	// Path 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字
 	Path string `json:"path"`
@@ -1227,7 +1342,7 @@ type VideoFolder struct {
 	RootId int64 `json:"rootId"`
 
 	// RootName 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-	// Video.folder にだけ入る（Video.group.folder には入らない）
+	// Video.folder と ScanIssue.folder にだけ入る（Video.group.folder には入らない）
 	RootName *string `json:"rootName,omitempty"`
 }
 
@@ -1241,8 +1356,9 @@ type VideoGroupRef struct {
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
-	// （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
 	// Name フォルダ名
@@ -1526,6 +1642,15 @@ type DeleteMediaFolderParams struct {
 // StartScanJSONBody defines parameters for StartScan.
 type StartScanJSONBody = map[string]interface{}
 
+// ListCurrentScanIssuesParams defines parameters for ListCurrentScanIssues.
+type ListCurrentScanIssuesParams struct {
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // RemoveTagSynonymParams defines parameters for RemoveTagSynonym.
 type RemoveTagSynonymParams struct {
 	// Name 外すシノニムの名前
@@ -1716,6 +1841,9 @@ type ServerInterface interface {
 	// GetCurrentScan 直近のスキャンの状態を返す
 	// (GET /api/scans/current)
 	GetCurrentScan(w http.ResponseWriter, r *http.Request)
+	// ListCurrentScanIssues 直近の取り込みの問題の一覧を返す
+	// (GET /api/scans/current/issues)
+	ListCurrentScanIssues(w http.ResponseWriter, r *http.Request, params ListCurrentScanIssuesParams)
 	// ListTags タグを一覧する
 	// (GET /api/tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
@@ -2585,6 +2713,52 @@ func (siw *ServerInterfaceWrapper) GetCurrentScan(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetCurrentScan(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListCurrentScanIssues operation middleware
+func (siw *ServerInterfaceWrapper) ListCurrentScanIssues(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListCurrentScanIssuesParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListCurrentScanIssues(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3527,6 +3701,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/folders/{rootId}/grouping/tag", wrapper.TagFolderGroup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current/issues", wrapper.ListCurrentScanIssues)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/processing", wrapper.GetProcessing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/events", wrapper.StreamEvents)
 

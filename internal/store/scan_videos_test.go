@@ -13,8 +13,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// currentImport は直近の走査と、そこから決まる本数を返す。問題の記録はまだ無いので
-// 問題の数は 0 とする。
+// currentImport は直近の走査と、そこから決まる本数を返す。ここでの検査は問題を
+// 起こさないので、問題の数は 0 とする（問題を含む組み立ては importIssues）。
 func currentImport(t *testing.T, db *DB) (domain.Scan, domain.ImportProgress) {
 	t.Helper()
 	scan, err := db.Scans().CurrentScan(context.Background())

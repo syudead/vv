@@ -876,6 +876,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/scans/current/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 直近の取り込みの問題の一覧を返す
+         * @description 直近の取り込みの問題を、動画（未登録ならファイル）ごとに1件で返す
+         *     （specs/024-import-progress/contracts/scan-api.md §3）。失敗を先に、同じ重さの中は
+         *     ファイル名、次にフォルダの順に並ぶ。所在がどの登録フォルダにも含まれない件は返さず、
+         *     Scan.issues の本数にも数えない。一覧は SSE では送らない。画面は Scan.id か
+         *     Scan.issues.revision が変わったら読み直す。
+         */
+        get: operations["listCurrentScanIssues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/processing": {
         parameters: {
             query?: never;
@@ -1403,8 +1427,9 @@ export interface components {
         /**
          * @description 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
          *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-         *     登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
-         *     （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+         *     登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+         *     LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+         *     グループのフォルダそのものを指す
          */
         VideoFolder: {
             /**
@@ -1416,7 +1441,7 @@ export interface components {
             path: string;
             /**
              * @description 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-             *     Video.folder にだけ入る（Video.group.folder には入らない）
+             *     Video.folder と ScanIssue.folder にだけ入る（Video.group.folder には入らない）
              */
             rootName?: string;
         };
@@ -1500,6 +1525,7 @@ export interface components {
             id: number;
             status: components["schemas"]["ScanStatus"];
             videos?: components["schemas"]["ScanVideos"];
+            issues: components["schemas"]["ScanIssueCounts"];
             /**
              * Format: date-time
              * @description 対象の動画がすべて済んだ時刻。status が done・partial のときだけ返す
@@ -1537,6 +1563,51 @@ export interface components {
             /** @description 済みの本数。total を超えない */
             settled: number;
         };
+        /** @description 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える （specs/024-import-progress/contracts/scan-api.md §2） */
+        ScanIssueCounts: {
+            /** @description 重さが失敗の件数。1以上なら取り込みは partial になる */
+            failed: number;
+            /** @description 重さが代用の件数 */
+            substituted: number;
+            /**
+             * Format: int64
+             * @description 問題の一覧の中身が変わるたびに増える番号。本数が同じでも、種類や行が変われば増える。 画面はこれが変わったら一覧を読み直す
+             */
+            revision: number;
+        };
+        ScanIssuePage: {
+            /**
+             * Format: int64
+             * @description どの取り込みの一覧か。Scan.id と違えば、画面は読み直す
+             */
+            scanId: number;
+            items: components["schemas"]["ScanIssue"][];
+            /** @description 続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        /** @description 直近の取り込みの問題の、動画（未登録ならファイル）ごとの1件 */
+        ScanIssue: {
+            /**
+             * @description まとめた件の重さ。失敗の種類を1つでも含めば failed
+             * @enum {string}
+             */
+            severity: "failed" | "substituted";
+            /** @description 起きた出来事の種類。重い順 */
+            kinds: components["schemas"]["ScanIssueKind"][];
+            /** @description ファイル名（翻訳しない利用者のデータ） */
+            fileName: string;
+            folder: components["schemas"]["VideoFolder"];
+            /**
+             * Format: int64
+             * @description 登録された動画のときだけ入る。画面は /videos/{id} へ移れる
+             */
+            videoId?: number;
+        };
+        /**
+         * @description 取り込みの問題の種類（specs/024-import-progress/data-model.md §3）。unreadable・ changed_during_import・register_failed は走査で、*_failed は準備の仕事がやり直しの上限まで 失敗したもの（以上は失敗）。thumbnail_first_frame・seek_thumbnail_full_decode は代用
+         * @enum {string}
+         */
+        ScanIssueKind: "unreadable" | "changed_during_import" | "register_failed" | "probe_failed" | "thumbnail_failed" | "seek_thumbnail_failed" | "preview_failed" | "thumbnail_first_frame" | "seek_thumbnail_full_decode";
         /**
          * @description 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
@@ -3053,6 +3124,41 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    listCurrentScanIssues: {
+        parameters: {
+            query?: {
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 問題の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScanIssuePage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            /** @description 一度もスキャンしていない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
             };
         };
     };

@@ -25,6 +25,7 @@ function scan(values: Partial<Scan> = {}): Scan {
   return {
     id: 2,
     status: "done",
+    issues: { failed: 0, substituted: 0, revision: 0 },
     state: "done",
     total: 0,
     completed: 0,

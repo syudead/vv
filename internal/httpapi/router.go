@@ -61,6 +61,9 @@ type Playback interface {
 type Scans interface {
 	StartScan(ctx context.Context) (domain.Scan, error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
+	// ListScanIssues は直近の取り込みの問題を cursor の次から limit 件返す。一度も
+	// 走査していなければ domain.ErrNotFound、カーソルが不正なら domain.ErrInvalidCursor。
+	ListScanIssues(ctx context.Context, cursor string, limit int) (domain.ScanIssuePage, error)
 }
 
 // MediaFolders は設定画面が1件ずつ操作するメディアフォルダ保存先である。

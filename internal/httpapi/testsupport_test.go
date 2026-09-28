@@ -169,6 +169,22 @@ type fakeScans struct {
 	started    int
 	startErr   error
 	currentErr error
+	// issues は直近の取り込みの問題で、並べ替えとページ分けは domain が行う。
+	issues []domain.ScanIssue
+}
+
+func (f *fakeScans) ListScanIssues(_ context.Context, cursor string, limit int) (domain.ScanIssuePage, error) {
+	if f.currentErr != nil {
+		return domain.ScanIssuePage{}, f.currentErr
+	}
+	if !f.hasScan {
+		return domain.ScanIssuePage{}, domain.ErrNotFound
+	}
+	items, next, err := domain.PageScanIssues(f.issues, cursor, limit)
+	if err != nil {
+		return domain.ScanIssuePage{}, err
+	}
+	return domain.ScanIssuePage{ScanID: f.current.ID, Items: items, NextCursor: next}, nil
 }
 
 func (f *fakeScans) StartScan(context.Context) (domain.Scan, error) {

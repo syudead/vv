@@ -377,46 +377,76 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 	identityArgs := []any{job.VideoID, job.ContentKey, job.LocationGeneration,
 		job.LocationID, job.VideoID, job.LocationVersion, job.LocationPath}
 
+	// updated は動画の段階を failed にした文の結果である。書いたときだけ問題を記録する。
+	var updated sql.Result
 	switch job.Kind {
 	case domain.JobProbe:
 		// pending のときだけ書く。解析の結果を保存して done にしたあとの失敗
 		// （仕事の完了の記録など）で、保存済みの結果を失敗で上書きしないためである。
-		if _, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, probe_error_code = ?,
+		res, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, probe_error_code = ?,
 			playable = 0, updated_at = ?
 			where probe_state = 'pending' and `+identity,
-			append([]any{cause.Error(), string(domain.ProbeErrorCodeOf(cause)), now}, identityArgs...)...); err != nil {
+			append([]any{cause.Error(), string(domain.ProbeErrorCodeOf(cause)), now}, identityArgs...)...)
+		if err != nil {
 			return fmt.Errorf("cannot record the final probe failure (job=%d): %w", job.ID, err)
 		}
+		updated = res
 	case domain.JobThumbnail:
 		// 代表サムネイルの後でシーク用プレビューだけが失敗した動画は done のまま残す。
 		// seek_thumbnail_state はシーク用の仕事が自分で記録するので、ここでは変えない。
-		if _, err := tx.ExecContext(ctx, `update videos set thumbnail_state = 'failed', updated_at = ?
+		res, err := tx.ExecContext(ctx, `update videos set thumbnail_state = 'failed', updated_at = ?
 			where thumbnail_state <> 'done' and `+identity,
-			append([]any{now}, identityArgs...)...); err != nil {
+			append([]any{now}, identityArgs...)...)
+		if err != nil {
 			return fmt.Errorf("cannot record the final thumbnail failure (job=%d): %w", job.ID, err)
 		}
+		updated = res
 	case domain.JobSeekThumbnail:
 		// seek_thumbnail_state だけを failed にする。代表サムネイルは別の仕事の結果である。
-		if _, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'failed', updated_at = ?
+		res, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'failed', updated_at = ?
 			where seek_thumbnail_state <> 'done' and `+identity,
-			append([]any{now}, identityArgs...)...); err != nil {
+			append([]any{now}, identityArgs...)...)
+		if err != nil {
 			return fmt.Errorf("cannot record the final seek thumbnail failure (job=%d): %w", job.ID, err)
 		}
+		updated = res
 	case domain.JobPreview:
 		res, err := tx.ExecContext(ctx, `update videos set preview_state = 'failed', updated_at = ?
 			where `+identity, append([]any{now}, identityArgs...)...)
 		if err != nil {
 			return fmt.Errorf("cannot record the final preview failure (job=%d): %w", job.ID, err)
 		}
-		updated, rowsErr := res.RowsAffected()
+		affected, rowsErr := res.RowsAffected()
 		if rowsErr != nil {
 			return fmt.Errorf("cannot check the preview state update count (job=%d): %w", job.ID, rowsErr)
 		}
-		if updated != 1 {
-			return fmt.Errorf("cannot record the final failure on the current preview (job=%d, affected=%d)", job.ID, updated)
+		if affected != 1 {
+			return fmt.Errorf("cannot record the final failure on the current preview (job=%d, affected=%d)", job.ID, affected)
 		}
+		return recordFailedIssue(ctx, tx, job, now)
 	}
-	return nil
+	if updated == nil {
+		return nil
+	}
+	count, err := updated.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("cannot check the final failure update count (job=%d): %w", job.ID, err)
+	}
+	if count != 1 {
+		return nil
+	}
+	return recordFailedIssue(ctx, tx, job, now)
+}
+
+// recordFailedIssue は、動画の段階を failed にした取引で、その段階の *_failed を直近の
+// 取り込みの問題として記録する（specs/024-import-progress/data-model.md §3）。上限の
+// 手前の失敗は記録しない。
+func recordFailedIssue(ctx context.Context, tx *sql.Tx, job domain.Job, now int64) error {
+	issue, ok := domain.FailedIssueKind(job.Kind)
+	if !ok {
+		return nil
+	}
+	return recordScanIssue(ctx, tx, job.VideoID, job.LocationPath, issue, now)
 }
 
 // JobIdentityCurrent は、専有したときの内容鍵・所在・所在の世代が今も

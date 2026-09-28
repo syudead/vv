@@ -1478,6 +1478,46 @@ paths:
         "404":
           description: 一度もスキャンしていない
 
+  /api/scans/current/issues:
+    get:
+      operationId: listCurrentScanIssues
+      summary: 直近の取り込みの問題の一覧を返す
+      description: |
+        直近の取り込みの問題を、動画（未登録ならファイル）ごとに1件で返す
+        （specs/024-import-progress/contracts/scan-api.md §3）。失敗を先に、同じ重さの中は
+        ファイル名、次にフォルダの順に並ぶ。所在がどの登録フォルダにも含まれない件は返さず、
+        Scan.issues の本数にも数えない。一覧は SSE では送らない。画面は Scan.id か
+        Scan.issues.revision が変わったら読み直す。
+      parameters:
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: 問題の一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ScanIssuePage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          description: 一度もスキャンしていない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/processing:
     get:
       operationId: getProcessing
@@ -2425,8 +2465,9 @@ components:
       description: |
         所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
         GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-        登録フォルダにも含まれなければ省かれる。LibraryGroup.folder・Video.group.folder
-        （GET /api/videos/{id}）・RelatedGroup.folder ではグループのフォルダそのものを指す
+        登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+        LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+        グループのフォルダそのものを指す
       properties:
         rootId:
           type: integer
@@ -2439,7 +2480,7 @@ components:
           type: string
           description: |
             登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-            Video.folder にだけ入る（Video.group.folder には入らない）
+            Video.folder と ScanIssue.folder にだけ入る（Video.group.folder には入らない）
 
     VideoLocation:
       type: object
@@ -2567,7 +2608,7 @@ components:
       description: >-
         直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。startedAt・finishedAt・
         total・completed・failed は、画面が status・videos・settledAt に移ったあとでなくす
-      required: [id, status, state, total, completed, failed]
+      required: [id, status, issues, state, total, completed, failed]
       additionalProperties: false
       properties:
         id:
@@ -2577,6 +2618,8 @@ components:
           $ref: "#/components/schemas/ScanStatus"
         videos:
           $ref: "#/components/schemas/ScanVideos"
+        issues:
+          $ref: "#/components/schemas/ScanIssueCounts"
         settledAt:
           type: string
           format: date-time
@@ -2634,6 +2677,90 @@ components:
           type: integer
           minimum: 0
           description: 済みの本数。total を超えない
+
+    ScanIssueCounts:
+      type: object
+      description: >-
+        直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える
+        （specs/024-import-progress/contracts/scan-api.md §2）
+      required: [failed, substituted, revision]
+      additionalProperties: false
+      properties:
+        failed:
+          type: integer
+          minimum: 0
+          description: 重さが失敗の件数。1以上なら取り込みは partial になる
+        substituted:
+          type: integer
+          minimum: 0
+          description: 重さが代用の件数
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            問題の一覧の中身が変わるたびに増える番号。本数が同じでも、種類や行が変われば増える。
+            画面はこれが変わったら一覧を読み直す
+
+    ScanIssuePage:
+      type: object
+      required: [scanId, items]
+      additionalProperties: false
+      properties:
+        scanId:
+          type: integer
+          format: int64
+          description: どの取り込みの一覧か。Scan.id と違えば、画面は読み直す
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ScanIssue"
+        nextCursor:
+          type: string
+          description: 続きがあるときだけ入る
+
+    ScanIssue:
+      type: object
+      description: 直近の取り込みの問題の、動画（未登録ならファイル）ごとの1件
+      required: [severity, kinds, fileName, folder]
+      additionalProperties: false
+      properties:
+        severity:
+          type: string
+          description: まとめた件の重さ。失敗の種類を1つでも含めば failed
+          enum: [failed, substituted]
+        kinds:
+          type: array
+          minItems: 1
+          description: 起きた出来事の種類。重い順
+          items:
+            $ref: "#/components/schemas/ScanIssueKind"
+        fileName:
+          type: string
+          description: ファイル名（翻訳しない利用者のデータ）
+        folder:
+          $ref: "#/components/schemas/VideoFolder"
+        videoId:
+          type: integer
+          format: int64
+          description: 登録された動画のときだけ入る。画面は /videos/{id} へ移れる
+
+    ScanIssueKind:
+      type: string
+      description: >-
+        取り込みの問題の種類（specs/024-import-progress/data-model.md §3）。unreadable・
+        changed_during_import・register_failed は走査で、*_failed は準備の仕事がやり直しの上限まで
+        失敗したもの（以上は失敗）。thumbnail_first_frame・seek_thumbnail_full_decode は代用
+      enum:
+        - unreadable
+        - changed_during_import
+        - register_failed
+        - probe_failed
+        - thumbnail_failed
+        - seek_thumbnail_failed
+        - preview_failed
+        - thumbnail_first_frame
+        - seek_thumbnail_full_decode
 
     ProbeErrorCode:
       type: string

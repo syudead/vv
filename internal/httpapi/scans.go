@@ -62,11 +62,84 @@ func (s *server) GetCurrentScan(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toAPIScan(scan), s.logger)
 }
 
+// 問題の一覧の1ページの件数（api/openapi.yaml の limit と同じ値）。
+const (
+	defaultScanIssueLimit = 50
+	maxScanIssueLimit     = 200
+)
+
+// ListCurrentScanIssues は直近の取り込みの問題の一覧を返す
+// （GET /api/scans/current/issues、specs/024-import-progress/contracts/scan-api.md §3）。
+// 所有者だけの経路で、ゲストに返す経路の表（accessRoutes）には入れない。
+func (s *server) ListCurrentScanIssues(w http.ResponseWriter, r *http.Request, params gen.ListCurrentScanIssuesParams) {
+	if s.scans == nil {
+		s.internalError(w, "Scanning is not configured.", nil)
+		return
+	}
+	limit := defaultScanIssueLimit
+	if params.Limit != nil {
+		if *params.Limit < 1 || *params.Limit > maxScanIssueLimit {
+			s.invalidRequest(w, "limit must be between 1 and 200.")
+			return
+		}
+		limit = *params.Limit
+	}
+	cursor := ""
+	if params.Cursor != nil {
+		cursor = *params.Cursor
+	}
+
+	page, err := s.scans.ListScanIssues(r.Context(), cursor, limit)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		s.notFoundReason(w, reasonNoScan, "No scan has been run yet.")
+		return
+	case errors.Is(err, domain.ErrInvalidCursor):
+		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
+		return
+	case err != nil:
+		s.internalError(w, "Could not load the import issues.", err)
+		return
+	}
+
+	out := gen.ScanIssuePage{ScanId: page.ScanID, Items: make([]gen.ScanIssue, 0, len(page.Items))}
+	for _, issue := range page.Items {
+		item := gen.ScanIssue{
+			Severity: gen.ScanIssueSeverity(issue.Severity),
+			Kinds:    make([]gen.ScanIssueKind, 0, len(issue.Kinds)),
+			FileName: issue.FileName,
+			Folder:   gen.VideoFolder{RootId: issue.Folder.RootID, Path: issue.Folder.Path},
+		}
+		if issue.RootName != "" {
+			rootName := issue.RootName
+			item.Folder.RootName = &rootName
+		}
+		for _, kind := range issue.Kinds {
+			item.Kinds = append(item.Kinds, gen.ScanIssueKind(kind))
+		}
+		if issue.VideoID != 0 {
+			videoID := issue.VideoID
+			item.VideoId = &videoID
+		}
+		out.Items = append(out.Items, item)
+	}
+	if page.NextCursor != "" {
+		next := page.NextCursor
+		out.NextCursor = &next
+	}
+
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, out, s.logger)
+}
+
 // toAPIScan は domain.Scan を契約の形へ写す。
 func toAPIScan(scan domain.Scan) gen.Scan {
 	out := gen.Scan{
-		Id:        scan.ID,
-		Status:    gen.ScanStatus(scan.Import.Status),
+		Id:     scan.ID,
+		Status: gen.ScanStatus(scan.Import.Status),
+		Issues: gen.ScanIssueCounts{
+			Failed: scan.Issues.Failed, Substituted: scan.Issues.Substituted, Revision: scan.IssuesRevision,
+		},
 		State:     gen.ScanState(scan.State),
 		Total:     scan.Total,
 		Completed: scan.Completed,
