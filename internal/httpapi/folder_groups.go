@@ -150,12 +150,12 @@ func (s *server) folderGroupings(ctx context.Context, audience domain.Audience, 
 // apiFolderGrouping はまとめ方を契約の形へ写す。rel は登録フォルダからの相対パスで、
 // 空なら登録フォルダそのもの（タグに変えられない）である。
 func apiFolderGrouping(grouping domain.FolderGrouping, rel string) gen.FolderGrouping {
-	mode := gen.Auto
+	mode := gen.FolderGroupingModeAuto
 	switch grouping.Mode {
 	case domain.FolderGroupUngroup:
-		mode = gen.Ungroup
+		mode = gen.FolderGroupingModeUngroup
 	case domain.FolderGroupDirect:
-		mode = gen.GroupDirect
+		mode = gen.FolderGroupingModeGroupDirect
 	}
 	return gen.FolderGrouping{
 		Mode:     mode,
@@ -167,9 +167,9 @@ func apiFolderGrouping(grouping domain.FolderGrouping, rel string) gen.FolderGro
 // domainFolderGroupMode は契約のまとめ方を保存する例外へ写す。auto は空（例外なし）である。
 func domainFolderGroupMode(mode gen.FolderGroupingMode) domain.FolderGroupMode {
 	switch mode {
-	case gen.Ungroup:
+	case gen.FolderGroupingModeUngroup:
 		return domain.FolderGroupUngroup
-	case gen.GroupDirect:
+	case gen.FolderGroupingModeGroupDirect:
 		return domain.FolderGroupDirect
 	default:
 		return ""

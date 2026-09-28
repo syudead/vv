@@ -84,6 +84,9 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		// できればコピーする。
 		Normalize:       video.Playable,
 		StartupDeadline: time.Now().Add(transcodeStartupTimeout),
+		// 方式は要求ごとに今の設定から決める。変更は次に始まる要求から効き、配信中の変換は
+		// 始めた方式のまま続く（specs/025-hardware-encoding/contracts/transcoding-settings-api.md §4）。
+		VideoEncoder: s.effectiveVideoEncoder(),
 	}
 	started, err := s.transcoder.Start(r.Context(), request)
 	if err != nil {
@@ -98,8 +101,17 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.internalError(w, "Could not start live transcoding.", err)
 		return
 	}
+	if started.HardwareFailure != nil {
+		// ハードウェアが最初のデータを出さずに終わり、同じ要求の中で software に切り替えた
+		// （research.md R-6）。誤りには FFmpeg の標準エラーの末尾が入っている。
+		s.logger.Warn("hardware video encoder failed; live transcoding fell back to software",
+			slog.Int64("video", video.ID),
+			slog.String("encoder", string(request.VideoEncoder)),
+			slog.Any("error", started.HardwareFailure))
+	}
 	s.logger.Debug("live transcoding started",
-		slog.Int64("video", video.ID), slog.Int64("requested_ms", startMs), slog.Int64("start_ms", started.StartMs))
+		slog.Int64("video", video.ID), slog.Int64("requested_ms", startMs), slog.Int64("start_ms", started.StartMs),
+		slog.String("encoder", string(started.VideoEncoder)))
 	stream, wait, stop := started.Stream, started.Wait, started.Stop
 	defer func() { _ = stream.Close() }()
 	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop)
@@ -154,6 +166,14 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.logger.Warn("live transcoding stream ended early",
 			slog.Int64("video", video.ID), slog.Any("copy_error", copyErr), slog.Any("process_error", waitErr))
 	}
+}
+
+// effectiveVideoEncoder は今の設定が使う方式を返す。設定が無ければ software である。
+func (s *server) effectiveVideoEncoder() domain.VideoEncoder {
+	if s.transcodeSettings == nil {
+		return domain.VideoEncoderSoftware
+	}
+	return s.transcodeSettings.Current().Effective
 }
 
 // usableTranscodeProbe は保存済みの解析情報のうち、開いたファイルの変換に使って

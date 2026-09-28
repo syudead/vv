@@ -159,6 +159,7 @@ const errorReasons = {
   transcode_unavailable: "This video can't be converted for playback.",
   cross_origin: "This change must be made from vv itself.",
   open_not_local: "Files can only be opened on the computer running vv.",
+  encoder_unavailable: "That video encoder isn't available on this server.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
