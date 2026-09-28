@@ -5,6 +5,7 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"sync"
 	"testing"
 	"time"
 
@@ -351,7 +352,7 @@ func TestReleaseWaitsForGenerationOfSameContent(t *testing.T) {
 	generator := &fakeGenerator{}
 	ingest, _ := newTestIngest(store, generator)
 
-	unlock := ingest.artifacts.lock("readded")
+	unlock := ingest.artifacts.lockGeneration("readded", artifactPreview)
 	ingest.ReleaseArtifacts(domain.ContentUnreferenced{ContentKeys: []string{"readded"}})
 	time.Sleep(50 * time.Millisecond)
 	if _, removed := generator.snapshot(); len(removed) != 0 {
@@ -445,5 +446,212 @@ func TestIngestPassesSubstitutionToStore(t *testing.T) {
 				t.Fatalf("シーク用サムネイルの代用 = %v, want %v", store.seekSubstitutions, tc.wantSeek)
 			}
 		})
+	}
+}
+
+// holdGeneration は生成の呼び出し held の最初の1回を止める門である。started は
+// 止まったことを、release は先へ進めることを表す。
+type holdGeneration struct {
+	started map[string]chan struct{}
+	release map[string]chan struct{}
+
+	mu   sync.Mutex
+	used map[string]bool
+}
+
+func newHoldGeneration(held ...string) *holdGeneration {
+	h := &holdGeneration{
+		started: map[string]chan struct{}{}, release: map[string]chan struct{}{}, used: map[string]bool{},
+	}
+	for _, call := range held {
+		h.started[call] = make(chan struct{})
+		h.release[call] = make(chan struct{})
+	}
+	return h
+}
+
+func (h *holdGeneration) gate(call string) {
+	started, ok := h.started[call]
+	h.mu.Lock()
+	first := ok && !h.used[call]
+	h.used[call] = true
+	h.mu.Unlock()
+	if first {
+		close(started)
+		<-h.release[call]
+	}
+}
+
+func runJob(ingest *Ingest, kind domain.JobKind, video domain.Video) <-chan error {
+	done := make(chan error, 1)
+	job := jobFor(kind, video)
+	go func() {
+		switch kind {
+		case domain.JobThumbnail:
+			done <- ingest.Thumbnail(context.Background(), job)
+		case domain.JobSeekThumbnail:
+			done <- ingest.SeekThumbnails(context.Background(), job)
+		default:
+			done <- ingest.Preview(context.Background(), job)
+		}
+	}()
+	return done
+}
+
+func waitJob(t *testing.T, done <-chan error) error {
+	t.Helper()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(2 * time.Second):
+		t.Fatal("生成が終わらない")
+		return nil
+	}
+}
+
+// 同じ内容でも種類の違う生成は、互いの生成の終わりを待たずに完了を記録する。
+func TestGenerationKindsDoNotWaitForEachOther(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		held       string
+		heldKind   domain.JobKind
+		other      domain.JobKind
+		otherCall  string
+		otherState func(*fakeIngestStore) int
+	}{
+		{
+			name: "プレビューの生成中の代表サムネイル", held: "preview", heldKind: domain.JobPreview,
+			other: domain.JobThumbnail, otherState: func(s *fakeIngestStore) int { return len(s.thumbnailStates) },
+		},
+		{
+			name: "プレビューの生成中のシーク用サムネイル", held: "preview", heldKind: domain.JobPreview,
+			other: domain.JobSeekThumbnail, otherState: func(s *fakeIngestStore) int { return len(s.seekStates) },
+		},
+		{
+			name: "シーク用サムネイルの生成中のプレビュー", held: "seek", heldKind: domain.JobSeekThumbnail,
+			other: domain.JobPreview, otherState: func(s *fakeIngestStore) int { return s.previewsDone },
+		},
+		{
+			name: "シーク用サムネイルの生成中の代表サムネイル", held: "seek", heldKind: domain.JobSeekThumbnail,
+			other: domain.JobThumbnail, otherState: func(s *fakeIngestStore) int { return len(s.thumbnailStates) },
+		},
+		{
+			name: "代表サムネイルの生成中のシーク用サムネイル", held: "thumbnail", heldKind: domain.JobThumbnail,
+			other: domain.JobSeekThumbnail, otherState: func(s *fakeIngestStore) int { return len(s.seekStates) },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			video := probedVideo(1, "a")
+			store := newFakeIngestStore(video)
+			hold := newHoldGeneration(tc.held)
+			ingest, _ := newTestIngest(store, &fakeGenerator{gate: hold.gate})
+
+			held := runJob(ingest, tc.heldKind, video)
+			<-hold.started[tc.held]
+			if err := waitJob(t, runJob(ingest, tc.other, video)); err != nil {
+				t.Fatal(err)
+			}
+			store.mu.Lock()
+			recorded := tc.otherState(store)
+			store.mu.Unlock()
+			if recorded != 1 {
+				t.Fatalf("記録した完了 = %d, want 1", recorded)
+			}
+
+			close(hold.release[tc.held])
+			if err := waitJob(t, held); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
+// 生成の途中で同じ内容の削除を始めると、削除はその生成の完了の記録を待ち、
+// そのあと参照が無ければ消す。
+func TestReleaseWaitsForGenerationInProgress(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	hold := newHoldGeneration("preview")
+	generator := &fakeGenerator{gate: hold.gate}
+	ingest, _ := newTestIngest(store, generator)
+
+	preview := runJob(ingest, domain.JobPreview, video)
+	<-hold.started["preview"]
+	store.mu.Lock()
+	delete(store.referenced, "a")
+	store.mu.Unlock()
+	ingest.ReleaseArtifacts(domain.ContentUnreferenced{ContentKeys: []string{"a"}})
+	time.Sleep(50 * time.Millisecond)
+	if _, removed := generator.snapshot(); len(removed) != 0 {
+		t.Fatalf("生成の完了を待たずに消した: %v", removed)
+	}
+
+	close(hold.release["preview"])
+	if err := waitJob(t, preview); err != nil {
+		t.Fatal(err)
+	}
+	ingest.Wait()
+	if _, removed := generator.snapshot(); store.previewsDone != 1 || !slices.Equal(removed, []string{"a"}) {
+		t.Fatalf("完了 = %d, 消した生成物 = %v, want 1 / [a]", store.previewsDone, removed)
+	}
+}
+
+// 生成中に動画が消えたとき、先に終わった生成の後始末は、同じ内容の別の種類の
+// 生成が終わるまで消さない。最後には参照の無くなった生成物が消える。
+func TestCleanupAfterVanishWaitsForOtherKinds(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	store.gone = true
+	hold := newHoldGeneration("preview", "seek")
+	generator := &fakeGenerator{gate: hold.gate}
+	ingest, _ := newTestIngest(store, generator)
+
+	preview := runJob(ingest, domain.JobPreview, video)
+	seek := runJob(ingest, domain.JobSeekThumbnail, video)
+	<-hold.started["preview"]
+	<-hold.started["seek"]
+
+	close(hold.release["seek"])
+	time.Sleep(50 * time.Millisecond)
+	if _, removed := generator.snapshot(); len(removed) != 0 {
+		t.Fatalf("別の種類の生成を待たずに消した: %v", removed)
+	}
+
+	close(hold.release["preview"])
+	if err := waitJob(t, preview); !errors.Is(err, domain.ErrPreviewStale) {
+		t.Fatalf("err = %v, want ErrPreviewStale", err)
+	}
+	if err := waitJob(t, seek); err != nil {
+		t.Fatal(err)
+	}
+	if _, removed := generator.snapshot(); len(removed) == 0 {
+		t.Fatal("参照の無くなった生成物が残った")
+	}
+}
+
+// 同じ内容の同じ種類の生成（重複ファイルの別の動画など）は直列になる。
+func TestGenerationOfSameKindIsSerialized(t *testing.T) {
+	first := probedVideo(1, "a")
+	second := probedVideo(2, "a")
+	store := newFakeIngestStore(first, second)
+	hold := newHoldGeneration("preview")
+	generator := &fakeGenerator{gate: hold.gate}
+	ingest, _ := newTestIngest(store, generator)
+
+	held := runJob(ingest, domain.JobPreview, first)
+	<-hold.started["preview"]
+	// 門は最初の1回だけを止めるので、2本目は錠が無ければそのまま完了する。
+	other := runJob(ingest, domain.JobPreview, second)
+	select {
+	case err := <-other:
+		t.Fatalf("同じ種類の生成を待たずに終わった: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(hold.release["preview"])
+	if err := waitJob(t, held); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitJob(t, other); err != nil {
+		t.Fatal(err)
 	}
 }

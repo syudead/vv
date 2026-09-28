@@ -212,35 +212,31 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 		return err
 	}
 	// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
-	// 生成物の削除と直列にする。
-	unlock := i.artifacts.lock(job.ContentKey)
-	defer unlock()
-	// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
-	// FailClaimedJob が動画側へ記録する。
-	if video.ThumbnailState != domain.ThumbnailStateDone {
-		// 先頭のコマでの代用は、成功を書く取引で問題として記録する
-		// （specs/024-import-progress/research.md R-7）。
-		substitution := domain.SubstitutionUnknown
-		if err := i.files.PublishThumbnail(job.ContentKey, func(output string) error {
-			firstFrame, err := i.generator.Thumbnail(ctx, job.LocationPath, durationMs, output)
-			substitution = domain.SubstitutionOf(firstFrame)
-			return err
-		}); err != nil {
-			return err
+	// 生成物の削除と直列にする。別の種類の生成は待たない。
+	return i.artifacts.generate(ctx, job.ContentKey, artifactThumbnail, func() (bool, error) {
+		// 上限まで試して駄目なときの失敗は、ジョブを failed にするのと同じ取引で
+		// FailClaimedJob が動画側へ記録する。
+		if video.ThumbnailState != domain.ThumbnailStateDone {
+			// 先頭のコマでの代用は、成功を書く取引で問題として記録する
+			// （specs/024-import-progress/research.md R-7）。
+			substitution := domain.SubstitutionUnknown
+			if err := i.files.PublishThumbnail(job.ContentKey, func(output string) error {
+				firstFrame, err := i.generator.Thumbnail(ctx, job.LocationPath, durationMs, output)
+				substitution = domain.SubstitutionOf(firstFrame)
+				return err
+			}); err != nil {
+				return false, err
+			}
+			// 生成中に動画が消えていたら（applied が偽）、書き終えたサムネイルを
+			// 後始末で残さない。
+			if _, err := i.store.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone, substitution); err != nil {
+				return false, err
+			}
 		}
-		applied, err := i.store.SetThumbnailStateForJob(ctx, job, domain.ThumbnailStateDone, substitution)
-		if err != nil {
-			return err
-		}
-		if !applied {
-			// 生成中に動画が消えていたら、書き終えたサムネイルを残さない。
-			return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
-		}
-	}
-
-	// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
-	// 参照の無くなった生成物を残さない。
-	return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
+		// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
+		// 参照の無くなった生成物を残さない。
+		return true, nil
+	})
 }
 
 // SeekThumbnails はシーク用サムネイル（スプライトシート）を生成し、
@@ -265,37 +261,34 @@ func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 	if err := i.generator.CheckSource(job.LocationPath); err != nil {
 		return err
 	}
-	// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
-	// 生成物の削除と直列にする。
-	unlock := i.artifacts.lock(job.ContentKey)
-	defer unlock()
 	var durationMs int64
 	if video.DurationMs != nil {
 		durationMs = *video.DurationMs
 	}
 	layout := domain.NewSeekSpriteLayout(durationMs)
-	// 全編からの作り直しは、成功を書く取引で問題として記録する（R-7）。置き場に
-	// 完成したものがあって生成しなかったときは、置き場が生成時に残した記録を使う。
-	// 公開と完了の記録の間で止まった後の再実行や、同じ内容の別の動画でも代用を
-	// 取りこぼさない。記録の無い旧いものは代用したかが分からないので、問題の行を
-	// 変えない。
-	substitution, err := i.files.PublishSeekThumbnails(job.ContentKey, layout, func(outputDir string) (bool, error) {
-		return i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
+	// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
+	// 生成物の削除と直列にする。別の種類の生成は待たない。
+	return i.artifacts.generate(ctx, job.ContentKey, artifactSeekThumbnails, func() (bool, error) {
+		// 全編からの作り直しは、成功を書く取引で問題として記録する（R-7）。置き場に
+		// 完成したものがあって生成しなかったときは、置き場が生成時に残した記録を使う。
+		// 公開と完了の記録の間で止まった後の再実行や、同じ内容の別の動画でも代用を
+		// 取りこぼさない。記録の無い旧いものは代用したかが分からないので、問題の行を
+		// 変えない。
+		substitution, err := i.files.PublishSeekThumbnails(job.ContentKey, layout, func(outputDir string) (bool, error) {
+			return i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
+		})
+		if err != nil {
+			return false, err
+		}
+		// 生成中に動画が消えていたら（applied が偽）、書き終えたシーク用サムネイルを
+		// 後始末で残さない。
+		if _, err := i.store.SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone, substitution); err != nil {
+			return false, err
+		}
+		// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
+		// 参照の無くなった生成物を残さない。
+		return true, nil
 	})
-	if err != nil {
-		return err
-	}
-	applied, err := i.store.SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone, substitution)
-	if err != nil {
-		return err
-	}
-	if !applied {
-		// 生成中に動画が消えていたら、書き終えたシーク用サムネイルを残さない。
-		return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
-	}
-	// 生成中にスキャンが動画を消すことがある。書き終えたあとで確かめ直し、
-	// 参照の無くなった生成物を残さない。
-	return i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey)
 }
 
 // errMissingDuration は解析済みなのに長さが無く、プレビューを作れないことを表す。
@@ -323,26 +316,23 @@ func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {
 	validateContent := func(validateCtx context.Context) (bool, error) {
 		return i.store.PreviewSourceCurrent(validateCtx, job)
 	}
-	// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
-	// 生成物の削除と直列にする。
-	unlock := i.artifacts.lock(job.ContentKey)
-	defer unlock()
 	durationMs := *video.DurationMs
-	if err := i.files.PublishPreview(ctx, job.ContentKey, func(output string) error {
-		return i.generator.Preview(ctx, job.LocationPath, output, durationMs)
-	}, validateContent); err != nil {
-		return err
-	}
-	applied, err := i.store.CompletePreviewForContent(context.WithoutCancel(ctx), job)
-	if err != nil {
-		return err
-	}
-	if !applied {
-		// 生成中に動画が消えていたら、書き終えたプレビューを残さない。
-		if err := i.artifacts.removeIfUnreferencedLocked(context.WithoutCancel(ctx), job.ContentKey); err != nil {
-			return err
+	// 生成（既存のファイルの採用を含む）から完了の記録までを、同じ内容の
+	// 生成物の削除と直列にする。別の種類の生成は待たない。
+	return i.artifacts.generate(ctx, job.ContentKey, artifactPreview, func() (bool, error) {
+		if err := i.files.PublishPreview(ctx, job.ContentKey, func(output string) error {
+			return i.generator.Preview(ctx, job.LocationPath, output, durationMs)
+		}, validateContent); err != nil {
+			return false, err
 		}
-		return domain.ErrPreviewStale
-	}
-	return nil
+		applied, err := i.store.CompletePreviewForContent(context.WithoutCancel(ctx), job)
+		if err != nil {
+			return false, err
+		}
+		if !applied {
+			// 生成中に動画が消えていたら、書き終えたプレビューを後始末で残さない。
+			return true, domain.ErrPreviewStale
+		}
+		return false, nil
+	})
 }

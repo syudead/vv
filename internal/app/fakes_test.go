@@ -176,6 +176,10 @@ type fakeGenerator struct {
 	seekLayouts      []domain.SeekSpriteLayout
 	publishedLayouts []domain.SeekSpriteLayout
 
+	// gate は生成（thumbnail・seek・preview）の途中で呼ばれる。生成を止めておく
+	// テストが使う。
+	gate func(call string)
+
 	calls   []string
 	removed []string
 }
@@ -192,6 +196,12 @@ func (f *fakeGenerator) recordOutput(output string) {
 	f.outputs = append(f.outputs, output)
 }
 
+func (f *fakeGenerator) pass(call string) {
+	if f.gate != nil {
+		f.gate(call)
+	}
+}
+
 func (f *fakeGenerator) CheckSource(string) error {
 	f.record("check")
 	return f.sourceErr
@@ -205,12 +215,14 @@ func (f *fakeGenerator) Probe(context.Context, string) (domain.Probe, error) {
 func (f *fakeGenerator) Thumbnail(_ context.Context, _ string, _ int64, output string) (bool, error) {
 	f.record("thumbnail")
 	f.recordOutput(output)
+	f.pass("thumbnail")
 	return f.firstFrame, f.thumbnailErr
 }
 
 func (f *fakeGenerator) SeekSprite(_ context.Context, _, outputDir string, layout domain.SeekSpriteLayout) (bool, error) {
 	f.record("seek")
 	f.recordOutput(outputDir)
+	f.pass("seek")
 	f.mu.Lock()
 	f.seekLayouts = append(f.seekLayouts, layout)
 	f.mu.Unlock()
@@ -220,6 +232,7 @@ func (f *fakeGenerator) SeekSprite(_ context.Context, _, outputDir string, layou
 func (f *fakeGenerator) Preview(_ context.Context, _, output string, _ int64) error {
 	f.record("preview")
 	f.recordOutput(output)
+	f.pass("preview")
 	return f.previewErr
 }
 
