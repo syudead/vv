@@ -41,6 +41,8 @@ type Options struct {
 	Kind    domain.JobKind
 	Queue   Queue
 	Handler Handler
+	// Started は1件を専有し、処理を始める直前に呼ばれる。nil でもよい。
+	Started func(job domain.Job)
 	// Finished は1件の成否を記録したあとに呼ばれる。nil でもよい。
 	Finished func(job domain.Job)
 	// RetryDelay は取り出しが失敗したときの再試行の間隔。0 なら既定値。
@@ -60,6 +62,7 @@ type Worker struct {
 	kind     domain.JobKind
 	queue    Queue
 	handler  Handler
+	started  func(domain.Job)
 	finished func(domain.Job)
 	retry    time.Duration
 	logger   *slog.Logger
@@ -80,6 +83,7 @@ func New(opts Options) *Worker {
 		kind:     opts.Kind,
 		queue:    opts.Queue,
 		handler:  opts.Handler,
+		started:  opts.Started,
 		finished: opts.Finished,
 		retry:    retry,
 		logger:   logger.With(slog.String("stage", string(opts.Kind))),
@@ -155,6 +159,9 @@ func (w *Worker) sleep(ctx context.Context, retry <-chan time.Time) bool {
 // running のまま残り、次の起動の巻き戻しで queued へ戻る。処理中のジョブを
 // 失敗として数えると、再試行の回数を無駄に消費してしまう。
 func (w *Worker) process(ctx context.Context, job domain.Job) {
+	if w.started != nil {
+		w.started(job)
+	}
 	var err error
 	if w.handler == nil {
 		// 再試行しても結果は変わらない。待ち行列を塞ぐだけなので諦める。

@@ -111,6 +111,14 @@ the previous scan's issues, and every change bumps `scans.issues_revision`. Read
 rows per video (or per path for unregistered files) and drop those outside every registered
 media folder; one failed issue makes the import `partial`, and files that could not be
 registered count toward the progress (R-6).
+What the import is doing right now (`Scan.activity`: registering, probe, thumbnail,
+seekThumbnail or preview, with the file) is not stored: `internal/app` (`Scans`) keeps the
+running activities in memory, shows the one that started last and falls back to the latest
+remaining one when it ends, and publishes `ScanActivityChanged` whenever the shown one
+changes (R-8). `internal/scanner` reports each file before registering it and its progress
+after every file (no longer every 20 files) to the reporter it declares, and the workers
+report each job through the `Started` and `Finished` hooks of `internal/jobs`, which
+`cmd/mdm` wires to `Scans`. After a restart only what is running then is shown.
 `internal/jobs` runs one in-process worker per ingest stage — probe, thumbnail,
 seek_thumbnail, preview — each claiming only its own kind of job from the persistent `jobs`
 queue, one at a time, and handing it to `internal/app`, which drives the `internal/media`
@@ -199,7 +207,8 @@ Changing that layout would orphan every file an existing data directory already 
 
 State changes that trigger side effects are domain events (`internal/domain/event.go`):
 a video's ingest state changed, jobs were queued, the remaining work per stage changed, the
-scan changed, and content keys lost their last reference. Publishers — `internal/store`
+scan changed, the current import activity changed (`ScanActivityChanged`), and content keys
+lost their last reference. Publishers — `internal/store`
 after a transaction commits (never from one that rolled back, and one notice per kind of
 change per transaction, plus one per deleted video) and `internal/app` for job outcomes and scans — call a `Publish`
 interface they declare themselves and know nothing about the subscribers. `internal/eventbus`
@@ -214,8 +223,8 @@ an unresponsive mount does not return on cancellation; past it, shutdown continu
 next startup closes the scan.
 
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
-browser polling: `scan` when the current scan or the remaining jobs change (job outcomes
-move the import's settled count), `processing` with the remaining
+browser polling: `scan` when the current scan, the remaining jobs (job outcomes
+move the import's settled count) or the current activity change, `processing` with the remaining
 jobs per stage, and `video` when a video's ingest state changes. The payload is read
 at send time, pending notices for a connection are coalesced, and a new connection
 first receives the current `scan` and `processing` so a reconnect recovers what it

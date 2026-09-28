@@ -128,6 +128,13 @@ func (e *Events) ProcessingChanged() {
 	})
 }
 
+// ScanActivityChanged は取り込み中の今の処理が変わったことを知らせる。今の処理は
+// scan が運ぶので、scan だけを送る（specs/024-import-progress/contracts/scan-api.md §4）。
+// 1ファイルごとに届くが、接続ごとにまとまるので、遅い接続に古い値は積もらない。
+func (e *Events) ScanActivityChanged() {
+	e.publish(func(s *eventSubscriber) { s.scan = true })
+}
+
 // VideoChanged は動画の状態が変わったことを知らせる。
 func (e *Events) VideoChanged(id int64) {
 	e.publish(func(s *eventSubscriber) { s.videos[id] = struct{}{} })
@@ -141,6 +148,8 @@ func (e *Events) Handle(event domain.Event) {
 		e.ScanChanged()
 	case domain.ProcessingChanged:
 		e.ProcessingChanged()
+	case domain.ScanActivityChanged:
+		e.ScanActivityChanged()
 	case domain.VideoIngestChanged:
 		e.VideoChanged(event.VideoID)
 	}

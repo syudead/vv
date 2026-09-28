@@ -292,3 +292,109 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 		t.Fatalf("videos = %v, want [5 6]", videos)
 	}
 }
+
+// lockedScans は、送信の goroutine が読むあいだにテストが今の処理を差し替える。
+type lockedScans struct {
+	mu      sync.Mutex
+	current domain.Scan
+}
+
+func (f *lockedScans) StartScan(ctx context.Context) (domain.Scan, error) {
+	return f.CurrentScan(ctx)
+}
+
+func (f *lockedScans) CurrentScan(context.Context) (domain.Scan, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.current, nil
+}
+
+func (f *lockedScans) ListScanIssues(context.Context, string, int) (domain.ScanIssuePage, error) {
+	return domain.ScanIssuePage{}, nil
+}
+
+func (f *lockedScans) setActivity(activity domain.ScanActivity) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.current.Activity = activity
+}
+
+// 今の処理が変わると scan を送り、activity に種類とファイル名とフォルダが入る。
+// 残りは変わらないので processing は送らない。何も動いていなければ activity を省く
+// （specs/024-import-progress/contracts/scan-api.md §2・§4）。
+func TestStreamEventsSendsScanWhenActivityChanges(t *testing.T) {
+	events := NewEvents()
+	scans := &lockedScans{current: domain.Scan{ID: 4, State: domain.ScanRunning}}
+	handler := newTestServer(t, Options{Scans: scans, Processing: &fakeProcessing{}, Events: events})
+
+	stream, _ := openEvents(t, handler)
+	nextEvent(t, stream) // processing
+	var scan gen.Scan
+	if err := json.Unmarshal([]byte(nextEvent(t, stream).data), &scan); err != nil {
+		t.Fatal(err)
+	}
+	if scan.Activity != nil {
+		t.Errorf("何も動いていないのに activity がある: %+v", scan.Activity)
+	}
+
+	scans.setActivity(domain.ScanActivity{
+		Kind: domain.ActivityThumbnail, VideoID: 12, Path: "/media/a/movie.mp4",
+		Folder: domain.VideoFolder{RootID: 3, Path: "a"}, RootName: "media", Located: true,
+	})
+	events.Handle(domain.ScanActivityChanged{})
+
+	event := nextEvent(t, stream)
+	if event.name != "scan" {
+		t.Fatalf("イベント = %q, want scan", event.name)
+	}
+	scan = gen.Scan{}
+	if err := json.Unmarshal([]byte(event.data), &scan); err != nil {
+		t.Fatal(err)
+	}
+	activity := scan.Activity
+	if activity == nil {
+		t.Fatalf("activity が無い: %s", event.data)
+	}
+	if activity.Kind != gen.Thumbnail || activity.FileName != "movie.mp4" {
+		t.Errorf("activity = %+v, want thumbnail の movie.mp4", activity)
+	}
+	if activity.VideoId == nil || *activity.VideoId != 12 {
+		t.Errorf("activity.videoId = %v, want 12", activity.VideoId)
+	}
+	if activity.Folder == nil || activity.Folder.RootId != 3 || activity.Folder.Path != "a" ||
+		activity.Folder.RootName == nil || *activity.Folder.RootName != "media" {
+		t.Errorf("activity.folder = %+v, want 3 の a (media)", activity.Folder)
+	}
+	expectNoEvent(t, stream)
+
+	// 何も動かなくなれば、activity を省いた scan を送る。
+	scans.setActivity(domain.ScanActivity{})
+	events.Handle(domain.ScanActivityChanged{})
+	scan = gen.Scan{}
+	if err := json.Unmarshal([]byte(nextEvent(t, stream).data), &scan); err != nil {
+		t.Fatal(err)
+	}
+	if scan.Activity != nil {
+		t.Errorf("終わったのに activity がある: %+v", scan.Activity)
+	}
+}
+
+// 今の処理の変化は scan だけを記録する。1ファイルごとに届いても、送る前の分は
+// 1回にまとまる。
+func TestScanActivityChangedMarksOnlyScan(t *testing.T) {
+	events := NewEvents()
+	sub, unsubscribe := events.subscribe()
+	defer unsubscribe()
+	sub.take()
+
+	for range 20 {
+		events.Handle(domain.ScanActivityChanged{})
+	}
+	scan, processing, videos := sub.take()
+	if !scan || processing || len(videos) != 0 {
+		t.Errorf("scan = %v, processing = %v, videos = %v, want scan だけ", scan, processing, videos)
+	}
+	if scan, _, _ := sub.take(); scan {
+		t.Error("まとめたあとにも scan が残っている")
+	}
+}

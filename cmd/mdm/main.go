@@ -163,6 +163,7 @@ func run() error {
 				Index: scanIndexStore, Queue: ingestStore, Reporter: reporter, Logger: logger,
 			})
 		},
+		Folders:   scanIndexStore,
 		Context:   backgroundCtx,
 		Publisher: bus,
 		Logger:    logger,
@@ -190,11 +191,17 @@ func run() error {
 	wakers := make(map[domain.JobKind]waker, len(domain.JobKinds))
 	for _, kind := range domain.JobKinds {
 		worker := jobs.New(jobs.Options{
-			Kind:     kind,
-			Queue:    ingestStore,
-			Handler:  ingest.Handler(kind),
-			Finished: ingest.JobFinished,
-			Logger:   logger,
+			Kind:    kind,
+			Queue:   ingestStore,
+			Handler: ingest.Handler(kind),
+			// 仕事の開始と終了を、取り込み中の今の処理として知らせる
+			// （specs/024-import-progress/research.md R-8）。
+			Started: scans.JobStarted,
+			Finished: func(job domain.Job) {
+				scans.JobFinished(job)
+				ingest.JobFinished(job)
+			},
+			Logger: logger,
 		})
 		workers = append(workers, worker)
 		wakers[kind] = worker

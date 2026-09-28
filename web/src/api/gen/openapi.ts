@@ -1427,7 +1427,8 @@ export interface components {
         /**
          * @description 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
          *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-         *     登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+         *     登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
+         *     今の処理のファイルのフォルダを指す。
          *     LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
          *     グループのフォルダそのものを指す
          */
@@ -1441,7 +1442,7 @@ export interface components {
             path: string;
             /**
              * @description 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-             *     Video.folder と ScanIssue.folder にだけ入る（Video.group.folder には入らない）
+             *     Video.folder・ScanIssue.folder・ScanActivity.folder にだけ入る（Video.group.folder には入らない）
              */
             rootName?: string;
         };
@@ -1531,6 +1532,7 @@ export interface components {
              * @description 対象の動画がすべて済んだ時刻。status が done・partial のときだけ返す
              */
             settledAt?: string;
+            activity?: components["schemas"]["ScanActivity"];
             /**
              * @description 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
              * @enum {string}
@@ -1556,6 +1558,23 @@ export interface components {
          * @enum {string}
          */
         ScanStatus: "finding" | "running" | "done" | "partial" | "failed";
+        /** @description 取り込み中の今の処理（specs/024-import-progress/contracts/scan-api.md §2）。複数が同時に動くときは 最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる */
+        ScanActivity: {
+            kind: components["schemas"]["ScanActivityKind"];
+            /** @description 処理しているファイルの名前（翻訳しない利用者のデータ） */
+            fileName: string;
+            folder?: components["schemas"]["VideoFolder"];
+            /**
+             * Format: int64
+             * @description 登録された動画なら、その id
+             */
+            videoId?: number;
+        };
+        /**
+         * @description 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている
+         * @enum {string}
+         */
+        ScanActivityKind: "registering" | "probe" | "thumbnail" | "seekThumbnail" | "preview";
         /** @description 取り込みの進み具合。status が finding のあいだは省く */
         ScanVideos: {
             /** @description 対象の本数。0 は変化が無かったことを示す */
