@@ -21,6 +21,9 @@ var ErrNoMediaFolders = errors.New("no media folders are configured")
 // リンクを含む）ことを表す。
 var errNotDirectory = errors.New("not a directory")
 
+// errNotRegular は、対象のファイルが通常のファイルでなくなったことを表す。
+var errNotRegular = errors.New("not a regular file")
+
 // mediaExtensions は取り込みの対象にする拡張子である。
 //
 // 再生できない形式（mkv・avi など）も取り込む。一覧に出したうえで「再生でき
@@ -107,6 +110,7 @@ type Scanner struct {
 	logger     *slog.Logger
 	contentKey func(string) (string, error)
 	walkDir    func(string, fs.WalkDirFunc) error
+	lstat      func(string) (fs.FileInfo, error)
 }
 
 type scanTarget struct {
@@ -126,6 +130,7 @@ func New(opts Options) *Scanner {
 		logger:     logger,
 		contentKey: ContentKey,
 		walkDir:    filepath.WalkDir,
+		lstat:      os.Lstat,
 	}
 }
 
@@ -365,7 +370,7 @@ func (s *Scanner) ingest(
 	target scanTarget,
 	result *domain.ScanResult,
 ) error {
-	info, err := stableTargetInfo(target.path)
+	info, err := s.stableTargetInfo(target.path)
 	if err != nil {
 		return failFile(domain.IssueUnreadable, 0, err)
 	}
@@ -374,9 +379,15 @@ func (s *Scanner) ingest(
 	if err != nil {
 		return failFile(domain.IssueUnreadable, 0, err)
 	}
-	after, err := stableTargetInfo(target.path)
+	after, err := s.stableTargetInfo(target.path)
 	if err != nil {
-		return failFile(domain.IssueChangedDuringImport, 0, err)
+		// 消えたか通常のファイルでなくなったときだけ、途中で変わったと言える。
+		// それ以外の読めなさ（I/O の失敗や権限）は、読めなかったとして報告する。
+		kind := domain.IssueUnreadable
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotRegular) {
+			kind = domain.IssueChangedDuringImport
+		}
+		return failFile(kind, 0, err)
 	}
 	if !os.SameFile(info, after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
 		return failFile(domain.IssueChangedDuringImport, 0,
@@ -414,13 +425,13 @@ func (s *Scanner) ingest(
 	return nil
 }
 
-func stableTargetInfo(path string) (fs.FileInfo, error) {
-	info, err := os.Lstat(path)
+func (s *Scanner) stableTargetInfo(path string) (fs.FileInfo, error) {
+	info, err := s.lstat(path)
 	if err != nil {
 		return nil, fmt.Errorf("could not read the file information (%s): %w", path, err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("not a regular file (%s)", path)
+		return nil, fmt.Errorf("%w (%s)", errNotRegular, path)
 	}
 	return info, nil
 }

@@ -302,6 +302,51 @@ func TestIssuesOutsideMediaFoldersAreHidden(t *testing.T) {
 	}
 }
 
+// 問題のある動画の所在だけが変わっても（パスの小さい所在を足す・代表の所在を消す）、
+// 一覧に出るファイル名が変わるので issues_revision が増える。
+func TestIssueLocationChangeAdvancesRevision(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	_, ids := startImport(t, db, "b")
+	failJobToLimit(t, db, domain.JobProbe)
+	before, issues, _ := importIssues(t, db)
+	if len(issues) != 1 || issues[0].FileName != "b.mp4" {
+		t.Fatalf("問題 = %+v, want b.mp4", issues)
+	}
+
+	// 同じ内容の、パスの小さい所在を足すと代表が a.mp4 になる。
+	added, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-b", 1024, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if added.ID != ids[0] {
+		t.Fatalf("足した所在の動画 = %d, want %d", added.ID, ids[0])
+	}
+	moved, issues, _ := importIssues(t, db)
+	if len(issues) != 1 || issues[0].FileName != "a.mp4" {
+		t.Fatalf("問題 = %+v, want a.mp4", issues)
+	}
+	if moved.IssuesRevision <= before.IssuesRevision {
+		t.Fatalf("所在を足したあとの issues_revision = %d → %d, want 増える", before.IssuesRevision, moved.IssuesRevision)
+	}
+
+	// 代表の所在を消すと、残った b.mp4 に戻る。
+	indexed, err := db.ScanIndex().IndexedVideosByPath(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.ScanIndex().DeleteVideoLocations(ctx, []int64{indexed[fixturePath("/media/a.mp4")].LocationID}); err != nil {
+		t.Fatal(err)
+	}
+	after, issues, _ := importIssues(t, db)
+	if len(issues) != 1 || issues[0].FileName != "b.mp4" {
+		t.Fatalf("問題 = %+v, want b.mp4", issues)
+	}
+	if after.IssuesRevision <= moved.IssuesRevision {
+		t.Fatalf("所在を消したあとの issues_revision = %d → %d, want 増える", moved.IssuesRevision, after.IssuesRevision)
+	}
+}
+
 // 数千件の問題を、カーソルで重ならずに最後まで辿れる。
 func TestThousandsOfIssuesPageWithoutOverlap(t *testing.T) {
 	db := migratedDB(t)

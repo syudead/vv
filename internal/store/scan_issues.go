@@ -23,6 +23,32 @@ func bumpIssuesRevision(ctx context.Context, q queryExecer) error {
 	return nil
 }
 
+// videosHaveIssues は、直近の走査に videoIDs のどれかの問題の行があるかを返す。
+// 所在を足す・消す・付け替える取引は、問題のある動画の所在が変わると一覧に出る
+// ファイル名とフォルダが変わるので、これが真なら issuesChanged を記録する。
+func videosHaveIssues(ctx context.Context, q queryExecer, videoIDs ...int64) (bool, error) {
+	if len(videoIDs) == 0 {
+		return false, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(videoIDs)), ",")
+	args := make([]any, 0, len(videoIDs))
+	for _, id := range videoIDs {
+		args = append(args, id)
+	}
+	//nolint:gosec // 組み立てるのはプレースホルダの数だけで、値は引数で渡す。
+	rows, err := q.QueryContext(ctx, `select 1 from scan_issues
+		where scan_id = (select max(id) from scans) and video_id in (`+placeholders+`) limit 1`, args...)
+	if err != nil {
+		return false, fmt.Errorf("cannot read the import issues: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	found := rows.Next()
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("cannot read the import issues: %w", err)
+	}
+	return found, nil
+}
+
 // recordScanIssue は直近の走査に問題を1行入れる。同じ動画（未登録ならパス）と種類の
 // 行があれば入れない。走査が1つも無ければ何もしない。入れたときだけ番号を増やす。
 // videoID が 0 なら未登録のファイルとして記録する。

@@ -918,6 +918,49 @@ func TestScanRejectsFileChangedWhileContentKeyIsCalculated(t *testing.T) {
 	}
 }
 
+// 内容を読んだあとにファイルの情報を読めなくなっただけなら、変わったとは言えないので
+// unreadable として報告する。消えたときは changed_during_import である。
+func TestScanClassifiesMetadataFailureAfterContentKey(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		err  error
+		want domain.ScanIssueKind
+	}{
+		{name: "読めない", err: errors.New("input/output error"), want: domain.IssueUnreadable},
+		{name: "消えた", err: fs.ErrNotExist, want: domain.IssueChangedDuringImport},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := mediaTree(t, map[string]string{"a.mp4": "old"})
+			path := filepath.Join(root, "a.mp4")
+			index := newFakeIndex()
+			index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+			scanner := New(Options{Index: index, Queue: index, Reporter: index})
+			hashed := false
+			scanner.contentKey = func(path string) (string, error) {
+				hashed = true
+				return ContentKey(path)
+			}
+			scanner.lstat = func(name string) (fs.FileInfo, error) {
+				if hashed && name == path {
+					return nil, &fs.PathError{Op: "lstat", Path: name, Err: tc.err}
+				}
+				return os.Lstat(name)
+			}
+
+			result, err := scanner.Scan(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Failed != 1 || len(index.upserts) != 0 {
+				t.Fatalf("result = %+v, upserts = %+v, want 1件の失敗", result, index.upserts)
+			}
+			if want := []domain.ScanFileIssue{{Path: path, Kind: tc.want}}; !slices.Equal(index.issues, want) {
+				t.Fatalf("報告 = %+v, want %+v", index.issues, want)
+			}
+		})
+	}
+}
+
 // 読めないrootでは対象集合を確定できないため、走査全体を失敗させる。
 func TestScanFailsWhenMediaDirIsUnreadable(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "missing")

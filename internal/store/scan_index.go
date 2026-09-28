@@ -115,6 +115,16 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	// 内容が変わって前の動画が消えたら、前の内容の生成物を片付けさせる。
 	var c changes
 	c.videosDeleted(released)
+	// 所在を足すか付け替えると、問題のある動画の代表の所在が変わりうる。
+	if !locationExists || oldVideoID != videoID {
+		changed, err := videosHaveIssues(ctx, tx, videoID, oldVideoID)
+		if err != nil {
+			return domain.UpsertResult{}, err
+		}
+		if changed {
+			c.issuesChanged()
+		}
+	}
 	// 新しい所在で、登録外の所在しか無かった仕事が着手できるようになりうる。
 	c.remainingChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
@@ -197,12 +207,24 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 			return err
 		}
 	}
+	// 所在を消すと、残った問題のある動画の代表の所在が変わりうる。
+	affectedIDs := make([]int64, 0, len(affected))
+	for videoID := range affected {
+		affectedIDs = append(affectedIDs, videoID)
+	}
+	issuesMoved, err := videosHaveIssues(ctx, tx, affectedIDs...)
+	if err != nil {
+		return err
+	}
 	released, err := deleteOrphanVideos(ctx, tx)
 	if err != nil {
 		return err
 	}
 	var c changes
 	c.videosDeleted(released)
+	if issuesMoved {
+		c.issuesChanged()
+	}
 	// 動画の行が残っても、消した所在の仕事は着手できなくなりうる。
 	c.remainingChanged()
 	return s.db.commit(ctx, tx, &c)
