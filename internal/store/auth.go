@@ -77,13 +77,14 @@ func (s *AuthStore) Setup(
 	return nil
 }
 
-// ChangeUsername はユーザー名を書き換え、版を 1 増やし、セッションを全件消す。
+// ChangeUsername はユーザー名を書き換え、版を 1 増やし、セッションと API トークンを全件消す。
 // 行が無ければ domain.ErrAccountNotConfigured を返す。
 func (s *AuthStore) ChangeUsername(ctx context.Context, username string, now time.Time) error {
 	return s.changeCredentials(ctx, "username", username, now)
 }
 
-// ChangePassword はパスワードのハッシュを書き換え、版を 1 増やし、セッションを全件消す。
+// ChangePassword はパスワードのハッシュを書き換え、版を 1 増やし、セッションと API トークンを
+// 全件消す。
 // 行が無ければ domain.ErrAccountNotConfigured を返す。
 func (s *AuthStore) ChangePassword(ctx context.Context, passwordHash string, now time.Time) error {
 	return s.changeCredentials(ctx, "password_hash", passwordHash, now)
@@ -93,7 +94,8 @@ func (s *AuthStore) ChangePassword(ctx context.Context, passwordHash string, now
 // ChangeUsername と ChangePassword が渡す固定の列名だけである。
 //
 // 既存のセッションを無効にするのは版の一致（data-model.md §4）で、sessions の
-// 全件削除は後片付けである。
+// 全件削除は後片付けである。API トークンも同じ取引で全件消し、設定ページの一覧から
+// 使えないトークンを消す（specs/026-external-api/research.md R-2）。
 func (s *AuthStore) changeCredentials(ctx context.Context, column, value string, now time.Time) error {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -117,6 +119,9 @@ func (s *AuthStore) changeCredentials(ctx context.Context, column, value string,
 
 	if _, err := tx.ExecContext(ctx, `delete from sessions`); err != nil {
 		return fmt.Errorf("cannot delete sessions: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `delete from api_tokens`); err != nil {
+		return fmt.Errorf("cannot delete API tokens: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("cannot commit the account update: %w", err)

@@ -195,7 +195,7 @@ func TestAccountCommandsChangeCredentialsAndInvalidateSessions(t *testing.T) {
 		t.Fatalf("set-username の終了コード = %d, 標準エラー = %q", renamed.code, renamed.stderr)
 	}
 	if !strings.Contains(renamed.stderr, "Changed the username.") ||
-		!strings.Contains(renamed.stderr, "All existing login sessions have been signed out.") {
+		!strings.Contains(renamed.stderr, "All existing login sessions have been signed out and all API tokens have been revoked.") {
 		t.Fatalf("標準エラー = %q", renamed.stderr)
 	}
 	if sessionValid(t, dataDir, oldSession) || sessionValid(t, dataDir, otherLogin) {
@@ -224,7 +224,7 @@ func TestAccountCommandsChangeCredentialsAndInvalidateSessions(t *testing.T) {
 		t.Fatalf("set-password の終了コード = %d, 標準エラー = %q", reset.code, reset.stderr)
 	}
 	if !strings.Contains(reset.stderr, "Reset the password.") ||
-		!strings.Contains(reset.stderr, "All existing login sessions have been signed out.") {
+		!strings.Contains(reset.stderr, "All existing login sessions have been signed out and all API tokens have been revoked.") {
 		t.Fatalf("標準エラー = %q", reset.stderr)
 	}
 	if sessionValid(t, dataDir, "session-token-3") {

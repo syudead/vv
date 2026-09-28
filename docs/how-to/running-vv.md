@@ -102,7 +102,7 @@ nothing and ask you to use the setup screen.
 
 | Exit code | Meaning |
 | --------- | ------- |
-| `0`       | The change was saved and existing sessions were signed out |
+| `0`       | The change was saved, existing sessions were signed out and API tokens were revoked |
 | `1`       | The database could not be opened or written |
 | `2`       | Not configured yet, an invalid value, a mismatched confirmation, or an unknown command |
 

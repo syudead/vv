@@ -164,6 +164,13 @@ const errorReasons = {
   cross_origin: "This change must be made from vv itself.",
   open_not_local: "Files can only be opened on the computer running vv.",
   encoder_unavailable: "That video encoder isn't available on this server.",
+  api_token_name_empty: "Enter a name for the API token.",
+  api_token_name_control_characters:
+    "API token names can't contain line breaks, tabs or other control characters.",
+  api_token_name_too_long: ({ limit }) =>
+    limit === undefined
+      ? "The API token name is too long."
+      : `Use an API token name of ${characters(limit)} or fewer.`,
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

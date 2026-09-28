@@ -24,6 +24,12 @@ type fakeAuthStore struct {
 	failSession bool
 	// failAccount が真なら Account が誤りを返す。
 	failAccount bool
+	// apiTokens は平文ごとの API トークンである（api_tokens_test.go）。
+	apiTokens map[string]fakeAPIToken
+	// apiTokenQueries は APIToken が呼ばれた回数である。
+	apiTokenQueries int
+	// failAPIToken が真なら APIToken が誤りを返す。
+	failAPIToken bool
 }
 
 type fakeSession struct {
@@ -34,7 +40,7 @@ type fakeSession struct {
 var errFakeDB = errors.New("DB の失敗")
 
 func newFakeAuthStore() *fakeAuthStore {
-	return &fakeAuthStore{sessions: map[string]fakeSession{}}
+	return &fakeAuthStore{sessions: map[string]fakeSession{}, apiTokens: map[string]fakeAPIToken{}}
 }
 
 func (f *fakeAuthStore) Account(context.Context) (domain.Account, error) {

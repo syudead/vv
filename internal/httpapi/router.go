@@ -238,6 +238,8 @@ type Options struct {
 	// Auth は初回設定・ログイン・ログアウト・セッションの確認。nil なら「誰でも」以外の
 	// 要求と認証の経路は 500 を返す。所有者とみなして通すことはしない。
 	Auth Authenticator
+	// APITokens は API トークンの発行・一覧・失効。nil なら該当の経路は 500 を返す。
+	APITokens APITokens
 	// SessionRecheck は、所有者として長く続く要求のセッションを確かめ直す間隔である。
 	// 0 なら 30 秒。テストが短くする。
 	SessionRecheck time.Duration
@@ -276,6 +278,7 @@ type server struct {
 	events          *Events
 	logger          *slog.Logger
 	auth            Authenticator
+	apiTokens       APITokens
 	sessions        *sessionLedger
 	// guests はゲストとして処理中の配信の応答を content_key ごとに覚える（visibility.go）。
 	guests *guestLedger
@@ -295,6 +298,7 @@ type server struct {
 //	/api/tags*       → JSON（同上）
 //	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/settings/*  → JSON（所有者が設定画面で選ぶ値。同上）
+//	/api/api-tokens* → JSON（所有者が設定画面で管理する API トークン。同上）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
 func NewRouter(opts Options) http.Handler {
@@ -333,6 +337,7 @@ func NewRouter(opts Options) http.Handler {
 		events:            opts.Events,
 		logger:            logger,
 		auth:              opts.Auth,
+		apiTokens:         opts.APITokens,
 		sessions:          newSessionLedger(opts.SessionRecheck, logger),
 		guests:            newGuestLedger(),
 		now:               opts.Now,
@@ -433,7 +438,7 @@ func requiresJSONBody(r *http.Request) bool {
 	case http.MethodPost:
 		switch r.URL.Path {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary",
-			"/api/auth/setup", "/api/auth/login":
+			"/api/auth/setup", "/api/auth/login", "/api/api-tokens":
 			return true
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
@@ -539,36 +544,39 @@ const (
 // 定数名は前置きを持たないので、ここで reason の別名を与えて呼び出し側で
 // 取り違えないようにする。
 const (
-	reasonNameIsTag                = gen.ErrorReasonNameIsTag
-	reasonNameIsSynonym            = gen.ErrorReasonNameIsSynonym
-	reasonUsernameLength           = gen.ErrorReasonUsernameLength
-	reasonPasswordLength           = gen.ErrorReasonPasswordLength
-	reasonTagNameEmpty             = gen.ErrorReasonTagNameEmpty
-	reasonTagNameControlCharacters = gen.ErrorReasonTagNameControlCharacters
-	reasonTagNameTooLong           = gen.ErrorReasonTagNameTooLong
-	reasonMergeSameTag             = gen.ErrorReasonMergeSameTag
-	reasonSearchTooLong            = gen.ErrorReasonSearchTooLong
-	reasonTooManyTagFilters        = gen.ErrorReasonTooManyTagFilters
-	reasonTooManyVideos            = gen.ErrorReasonTooManyVideos
-	reasonGuestFilterNotAllowed    = gen.ErrorReasonGuestFilterNotAllowed
-	reasonInvalidCursor            = gen.ErrorReasonInvalidCursor
-	reasonInvalidFolderPath        = gen.ErrorReasonInvalidFolderPath
-	reasonRelativeDirectoryPath    = gen.ErrorReasonRelativeDirectoryPath
-	reasonVideoNotFound            = gen.ErrorReasonVideoNotFound
-	reasonFolderNotFound           = gen.ErrorReasonFolderNotFound
-	reasonNotFolderGroup           = gen.ErrorReasonNotFolderGroup
-	reasonNoScan                   = gen.ErrorReasonNoScan
-	reasonDirectoryNotFound        = gen.ErrorReasonDirectoryNotFound
-	reasonFileUnavailable          = gen.ErrorReasonFileUnavailable
-	reasonMediaFoldersChanged      = gen.ErrorReasonMediaFoldersChanged
-	reasonRootGroupNotTaggable     = gen.ErrorReasonRootGroupNotTaggable
-	reasonFolderNotGroup           = gen.ErrorReasonFolderNotGroup
-	reasonProbeInfoMissing         = gen.ErrorReasonProbeInfoMissing
-	reasonSeekPreviewGenerating    = gen.ErrorReasonSeekPreviewGenerating
-	reasonTranscodeUnavailable     = gen.ErrorReasonTranscodeUnavailable
-	reasonCrossOrigin              = gen.ErrorReasonCrossOrigin
-	reasonOpenNotLocal             = gen.ErrorReasonOpenNotLocal
-	reasonEncoderUnavailable       = gen.ErrorReasonEncoderUnavailable
+	reasonNameIsTag                     = gen.ErrorReasonNameIsTag
+	reasonNameIsSynonym                 = gen.ErrorReasonNameIsSynonym
+	reasonUsernameLength                = gen.ErrorReasonUsernameLength
+	reasonPasswordLength                = gen.ErrorReasonPasswordLength
+	reasonTagNameEmpty                  = gen.ErrorReasonTagNameEmpty
+	reasonTagNameControlCharacters      = gen.ErrorReasonTagNameControlCharacters
+	reasonTagNameTooLong                = gen.ErrorReasonTagNameTooLong
+	reasonMergeSameTag                  = gen.ErrorReasonMergeSameTag
+	reasonSearchTooLong                 = gen.ErrorReasonSearchTooLong
+	reasonTooManyTagFilters             = gen.ErrorReasonTooManyTagFilters
+	reasonTooManyVideos                 = gen.ErrorReasonTooManyVideos
+	reasonGuestFilterNotAllowed         = gen.ErrorReasonGuestFilterNotAllowed
+	reasonInvalidCursor                 = gen.ErrorReasonInvalidCursor
+	reasonInvalidFolderPath             = gen.ErrorReasonInvalidFolderPath
+	reasonRelativeDirectoryPath         = gen.ErrorReasonRelativeDirectoryPath
+	reasonVideoNotFound                 = gen.ErrorReasonVideoNotFound
+	reasonFolderNotFound                = gen.ErrorReasonFolderNotFound
+	reasonNotFolderGroup                = gen.ErrorReasonNotFolderGroup
+	reasonNoScan                        = gen.ErrorReasonNoScan
+	reasonDirectoryNotFound             = gen.ErrorReasonDirectoryNotFound
+	reasonFileUnavailable               = gen.ErrorReasonFileUnavailable
+	reasonMediaFoldersChanged           = gen.ErrorReasonMediaFoldersChanged
+	reasonRootGroupNotTaggable          = gen.ErrorReasonRootGroupNotTaggable
+	reasonFolderNotGroup                = gen.ErrorReasonFolderNotGroup
+	reasonProbeInfoMissing              = gen.ErrorReasonProbeInfoMissing
+	reasonSeekPreviewGenerating         = gen.ErrorReasonSeekPreviewGenerating
+	reasonTranscodeUnavailable          = gen.ErrorReasonTranscodeUnavailable
+	reasonCrossOrigin                   = gen.ErrorReasonCrossOrigin
+	reasonOpenNotLocal                  = gen.ErrorReasonOpenNotLocal
+	reasonEncoderUnavailable            = gen.ErrorReasonEncoderUnavailable
+	reasonAPITokenNameEmpty             = gen.ErrorReasonApiTokenNameEmpty
+	reasonAPITokenNameControlCharacters = gen.ErrorReasonApiTokenNameControlCharacters
+	reasonAPITokenNameTooLong           = gen.ErrorReasonApiTokenNameTooLong
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの
