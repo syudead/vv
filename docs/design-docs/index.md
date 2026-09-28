@@ -30,6 +30,7 @@ Add each new document to this index.
 - [フォルダ階層をたどる画面の UI](../../specs/011-folder-browser/ui-design.md)
 - [動画詳細画面の UI](../../specs/012-video-detail-ia/ui-design.md)
 - [動画取り込みの進捗表示 UI](../../specs/012-scan-progress/ui-design.md)
+- [取り込みの進捗と結果の UI](../../specs/024-import-progress/ui-design.md)
 - [一覧とフォルダ画面の検索 UI](../../specs/013-library-search/ui-design.md)
 - [動画のタグとタグでの絞り込み UI](../../specs/014-video-tags/ui-design.md)
 - [単一アカウント認証とゲストの閲覧 UI](../../specs/016-single-account-auth/ui-design.md)

@@ -75,13 +75,16 @@
   旧 SPA との互換は保たない（これまでの契約変更と同じ扱い）。ただし実装単位の途中で画面が壊れない
   よう、サーバーの単位は新しい項目を足すだけにする。古い項目と `/api/processing` は、画面を
   切り替える単位が消す。
-- 英語化の feature（`specs/023-english-i18n`、統合 PR
-  [#463](https://github.com/syudead/vv/pull/463)）が、同じ `web/src/shell`・`web/src/settings` の
-  文字列と `Scan` の失敗の理由を変えている。
-  - 画面の単位は、実装の時点の `main` の方式（023 が入っていれば文字列のカタログ）で言葉を足す。
-  - `Scan.errorCode`・`errorPath` は、023 の形を引き継ぐ
+- 画面の言葉は英語で、英語化の feature（`specs/023-english-i18n`、[#463](https://github.com/syudead/vv/pull/463)。
+  `main` に入り、feature branch へ取り込み済み）の仕組みに従う
+  （[docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)）。
+  - 画面の単位は、言葉を [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) のカタログに置く。
+    `shell.scan` と `settings.scanStatus` を [ui-design.md](ui-design.md) の言葉に置き換える。
+    ESLint の規則と疑似ロケールの画面テストは、今のまま通す。
+  - `Scan.errorCode`・`errorPath` は 023 の形をそのまま引き継ぎ、理由の文は `scanErrorText` で書く。
+    `Scan.error` は、023 と同じく画面に出さない
     （[R-10](research.md#r-10-画面の言葉はサーバーが返す種類から-spa-が組み立てる)）。
-  - 023 が先に `main` に入った場合、画面の単位の前に、feature branch へ `main` を取り込む。
+  - サーバーのログと `message` は、023 と同じく英語で直接書く。
 
 ## Constitution Check
 
