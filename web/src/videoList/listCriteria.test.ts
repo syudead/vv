@@ -13,6 +13,7 @@ import {
   serializeListCriteria,
   sortDirection,
   sortKindOf,
+  sortKindLabel,
   sortKinds,
   videoSorts,
   withDirection,
@@ -171,14 +172,14 @@ describe("parseSeed と newSeed", () => {
 
 describe("並べ替えの種類と向き", () => {
   it("7 つの種類と、選んだときの向き", () => {
-    expect(sortKinds.map((info) => [info.label, info.initial])).toEqual([
-      ["追加日", "addedDesc"],
-      ["更新日時", "modifiedDesc"],
-      ["題名", "titleAsc"],
-      ["長さ", "durationDesc"],
-      ["ファイルサイズ", "sizeDesc"],
-      ["最近再生した順", "playedDesc"],
-      ["ランダム", "random"],
+    expect(sortKinds.map((info) => [sortKindLabel(info.kind), info.initial])).toEqual([
+      ["Date added", "addedDesc"],
+      ["Date modified", "modifiedDesc"],
+      ["Title", "titleAsc"],
+      ["Length", "durationDesc"],
+      ["File size", "sizeDesc"],
+      ["Recently played", "playedDesc"],
+      ["Random", "random"],
     ]);
   });
 
@@ -192,9 +193,13 @@ describe("並べ替えの種類と向き", () => {
   });
 
   it("向きの読み上げ名は今の向きと押したときの向きを含む", () => {
-    expect(directionToggleLabel("addedDesc")).toBe("降順（新しい順）。押すと昇順");
-    expect(directionToggleLabel("durationAsc")).toBe("昇順（短い順）。押すと降順");
-    expect(directionToggleLabel("titleAsc")).toBe("昇順。押すと降順");
+    expect(directionToggleLabel("addedDesc")).toBe(
+      "Descending (newest first). Press for ascending",
+    );
+    expect(directionToggleLabel("durationAsc")).toBe(
+      "Ascending (shortest first). Press for descending",
+    );
+    expect(directionToggleLabel("titleAsc")).toBe("Ascending. Press for descending");
   });
 });
 

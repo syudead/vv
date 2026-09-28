@@ -49,7 +49,7 @@ export function currentEventSource(): FakeEventSource {
     (source) => source.readyState !== FakeEventSource.CLOSED,
   );
   const source = open.at(-1);
-  if (source === undefined) throw new Error("変化の知らせの接続がありません");
+  if (source === undefined) throw new Error("no server events connection");
   return source;
 }
 

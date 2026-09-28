@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { FolderSummary, Video } from "../api/client";
 import { itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
+import { t } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { Grid } from "../videoList/Grid";
 import { hasConditions, type ListCriteria } from "../videoList/listCriteria";
@@ -60,7 +61,7 @@ export default function FolderContents({
     <>
       {showFolders && (
         <Section
-          title="フォルダ"
+          title={t.folders.subfolders}
           count={listingLoading ? undefined : childFolders.length}
         >
           <Grid zoom={zoom}>
@@ -84,15 +85,13 @@ export default function FolderContents({
             読み込み中は空にする）。
           */}
           <p role="status" aria-live="polite" className="sr-only">
-            {filterOnly && !videos.loading
-              ? `直下の動画 ${videos.total.toLocaleString("ja-JP")} 件`
-              : ""}
+            {filterOnly && !videos.loading ? t.folders.directVideos(videos.total) : ""}
           </p>
           {filterOnlyNoMatch ? (
             <NoMatches />
           ) : (
             <Section
-              title="動画"
+              title={t.folders.videos}
               count={videos.loading ? undefined : videos.total}
               action={groupingMenu}
             >

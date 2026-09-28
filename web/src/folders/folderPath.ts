@@ -1,4 +1,5 @@
 import type { FolderRef, VideoFolder } from "../api/client";
+import { t } from "../i18n";
 
 /** FOLDERS_ROOT はフォルダ画面の最上位の URL である。 */
 export const FOLDERS_ROOT = "/folders";
@@ -77,7 +78,8 @@ export function folderLocationLabel(
   open: FolderRef,
   target: VideoFolder,
 ): VideoLocationLabel {
-  if (target.path === open.path) return { label: "このフォルダ", title: "このフォルダ" };
+  if (target.path === open.path)
+    return { label: t.folders.thisFolder, title: t.folders.thisFolder };
   const prefix = open.path === "" ? "" : `${open.path}/`;
   const relative = target.path.startsWith(prefix)
     ? target.path.slice(prefix.length)
@@ -157,7 +159,7 @@ export function breadcrumbsFor(
   folder: FolderRef,
   rootName: string | undefined,
 ): (Crumb | undefined)[] {
-  const crumbs: (Crumb | undefined)[] = [{ label: "フォルダ", to: FOLDERS_ROOT }];
+  const crumbs: (Crumb | undefined)[] = [{ label: t.folders.title, to: FOLDERS_ROOT }];
   const segments = folder.path === "" ? [] : folder.path.split("/");
   crumbs.push(
     rootName === undefined

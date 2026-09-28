@@ -2,41 +2,48 @@ import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useLayoutEffect, useRef } from "react";
 import { useLocation } from "react-router";
 
+import { formatDateTime, formatNumber, scanErrorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import ScanProgressBar from "../shell/ScanProgressBar";
 import { useScan } from "../shell/ScanProvider";
 import ProcessingBreakdown from "../shell/ProcessingBreakdown";
 import { presentScan, type ScanPresentation } from "../shell/scanPresentation";
 
-function formatTime(value?: string) {
-  if (value === undefined) return "未完了";
-  return new Intl.DateTimeFormat("ja-JP", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
+function formatTime(value?: string): UiText {
+  if (value === undefined) return t.settings.scanStatus.notFinished;
+  return formatDateTime(value);
 }
 
-function stateLabel(presentation: ScanPresentation) {
+function stateLabel(presentation: ScanPresentation): UiText {
+  const state = t.settings.scanStatus.state;
   switch (presentation.state) {
     case "not-run":
-      return "未実行";
+      return state.notRun;
     case "starting":
-      return "開始中";
+      return state.starting;
     case "unknown-total":
-      return "実行中";
     case "running":
-      return "実行中";
+      return state.running;
     case "preparing":
-      return "準備中";
+      return state.preparing;
     case "done":
-      return "完了";
+      return state.done;
     case "partial-failed":
-      return "一部失敗";
+      return state.partialFailed;
     case "failed":
-      return "失敗";
+      return state.failed;
     case "fetch-failed":
-      return "再確認中";
+      return state.fetchFailed;
   }
+}
+
+/**
+ * failureText は取り込みの失敗の説明である。`Scan.error`（自由文）は出さず、
+ * `errorCode` と `errorPath` から作る。スキャンが無いときは状態取得の失敗を出す。
+ */
+function failureText(presentation: ScanPresentation): UiText {
+  if (presentation.scan !== null) return scanErrorText(presentation.scan);
+  return presentation.error ?? t.errors.scanUnknown;
 }
 
 function StateIcon({ state }: { state: ScanPresentation["state"] }) {
@@ -51,6 +58,7 @@ export default function ScanStatusSection() {
   const heading = useRef<HTMLHeadingElement>(null);
   const scan = useScan();
   const presentation = presentScan(scan);
+  const text = t.settings.scanStatus;
   const retry = () => scan.start();
   const empty = presentation.state === "not-run";
   const noItems = presentation.state === "done" && presentation.total === 0;
@@ -87,7 +95,7 @@ export default function ScanStatusSection() {
             tabIndex={-1}
             className="text-base font-semibold"
           >
-            取り込み状況
+            {text.heading}
           </h2>
           <span className="inline-flex items-center gap-1 rounded-md bg-elevated px-2 py-1 text-xs text-fg-muted">
             <StateIcon state={presentation.state} />
@@ -96,9 +104,9 @@ export default function ScanStatusSection() {
         </div>
         <p className="mt-3 text-sm leading-6 text-fg-muted">
           {empty
-            ? "まだ取り込んでいません"
+            ? t.shell.scan.notRun
             : noItems
-              ? "対象はありませんでした"
+              ? text.nothingFound
               : presentation.description}
         </p>
         <div className="mt-4 max-w-xl">
@@ -106,25 +114,27 @@ export default function ScanStatusSection() {
         </div>
         <dl className="mt-4 grid grid-cols-1 gap-2 text-sm text-fg-muted sm:grid-cols-3">
           <div>
-            <dt>処理済み</dt>
-            <dd className="tabular-nums text-fg">{String(presentation.completed)} 件</dd>
-          </div>
-          <div>
-            <dt>総件数</dt>
+            <dt>{text.processed}</dt>
             <dd className="tabular-nums text-fg">
-              {presentation.total === null
-                ? "確認中"
-                : `${String(presentation.total)} 件`}
+              {formatNumber(presentation.completed)}
             </dd>
           </div>
           <div>
-            <dt>失敗</dt>
-            <dd className="tabular-nums text-fg">{String(presentation.failed)} 件</dd>
+            <dt>{text.total}</dt>
+            <dd className="tabular-nums text-fg">
+              {presentation.total === null
+                ? text.counting
+                : formatNumber(presentation.total)}
+            </dd>
+          </div>
+          <div>
+            <dt>{text.failed}</dt>
+            <dd className="tabular-nums text-fg">{formatNumber(presentation.failed)}</dd>
           </div>
         </dl>
         {presentation.remaining > 0 && (
           <div className="mt-4 text-sm text-fg-muted">
-            <p>準備の残り</p>
+            <p>{text.preparationLeft}</p>
             <ProcessingBreakdown
               processing={presentation.processing}
               className="mt-2 max-w-xl"
@@ -133,33 +143,29 @@ export default function ScanStatusSection() {
         )}
         <dl className="mt-4 grid grid-cols-1 gap-2 text-sm text-fg-muted sm:grid-cols-2">
           <div>
-            <dt>開始時刻</dt>
+            <dt>{text.startedAt}</dt>
             <dd className="text-fg">{formatTime(presentation.startedAt)}</dd>
           </div>
           <div>
-            <dt>完了時刻</dt>
+            <dt>{text.finishedAt}</dt>
             <dd className="text-fg">{formatTime(presentation.finishedAt)}</dd>
           </div>
         </dl>
         {presentation.refreshing && (
           <p role="status" className="mt-3 text-sm text-warning">
-            最新状態を再確認中
+            {text.rechecking}
           </p>
         )}
         {presentation.state === "failed" && (
           <div className="mt-4 flex flex-col items-start gap-3">
-            <p className="break-words text-sm text-danger">
-              {presentation.scan?.error ??
-                presentation.error ??
-                "理由は記録されていません"}
-            </p>
+            <p className="break-words text-sm text-danger">{failureText(presentation)}</p>
             <Button
               variant="primary"
               onClick={retry}
               disabled={!scan.canStart || scan.running}
             >
               <RefreshCw />
-              再試行
+              {t.common.retry}
             </Button>
           </div>
         )}

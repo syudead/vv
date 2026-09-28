@@ -117,12 +117,12 @@ func (t *LiveTranscoder) Start(
 		// 出さずに終わったときだけである。取り消しと期限切れはそのまま失敗にする。
 		if ctx.Err() != nil || !errors.Is(err, errNoInitialData) || metadata != request.Probe {
 			cleanup()
-			return domain.LiveTranscode{}, fmt.Errorf("ライブ変換が初期データを生成できませんでした: %w", err)
+			return domain.LiveTranscode{}, fmt.Errorf("live transcode could not produce initial data: %w", err)
 		}
 		fresh, probeErr := t.probeSource(ctx, request)
 		if probeErr != nil {
 			cleanup()
-			return domain.LiveTranscode{}, fmt.Errorf("保存済みの解析情報で変換できず、解析し直せませんでした: %w; 最初の変換: %w", probeErr, err)
+			return domain.LiveTranscode{}, fmt.Errorf("transcoding with the stored probe failed and re-probing failed: %w; first transcode: %w", probeErr, err)
 		}
 		metadata, probed = &fresh.probe, fresh.saved
 	}
@@ -131,9 +131,9 @@ func (t *LiveTranscoder) Start(
 var (
 	// errNoInitialData はプロセスが最初のデータ（途中からのコピーでは moov まで）を
 	// 出さずに終わったことを表す。
-	errNoInitialData = errors.New("FFmpeg が最初のデータを出さずに終わりました")
+	errNoInitialData = errors.New("FFmpeg exited before producing any data")
 	// errCopySeekTooFar はコピーの実際の開始位置が指定位置から離れすぎていることを表す。
-	errCopySeekTooFar = errors.New("直前のキーフレームが指定位置から離れすぎています")
+	errCopySeekTooFar = errors.New("the previous keyframe is too far from the requested position")
 )
 
 // startedTranscode は最初のデータを出した FFmpeg 1 本である。
@@ -162,7 +162,7 @@ func (t *LiveTranscoder) startWithProbe(
 		if err != nil {
 			// その場の解析へ切り替えるかはエンコードの失敗だけで決めるので、コピーの
 			// 誤りは文字列として添える。
-			return startedTranscode{}, fmt.Errorf("%w; 映像のコピー: %s", err, copyErr.Error())
+			return startedTranscode{}, fmt.Errorf("%w; video copy: %s", err, copyErr.Error())
 		}
 		return started, nil
 	}
@@ -192,7 +192,7 @@ func (t *LiveTranscoder) startAttempt(
 	if readErr == nil && seekCopy {
 		first, startMs, readErr = rebaseEditLists(first)
 		if readErr == nil && !domain.CopySeekWithinAllowance(request.StartMs, startMs) {
-			readErr = fmt.Errorf("%w: 指定位置 %d ms、実際の開始位置 %d ms", errCopySeekTooFar, request.StartMs, startMs)
+			readErr = fmt.Errorf("%w: requested %d ms, actual start %d ms", errCopySeekTooFar, request.StartMs, startMs)
 		}
 	}
 	if readErr == nil && len(first) > 0 {
@@ -226,18 +226,18 @@ func (t *LiveTranscoder) startProcess(ctx context.Context, args []string) (trans
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		cancel()
-		return transcodeProcess{}, fmt.Errorf("FFmpeg の出力を開けません: %w", err)
+		return transcodeProcess{}, fmt.Errorf("cannot open the FFmpeg output: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
 		cancel()
 		_ = stdout.Close()
-		return transcodeProcess{}, fmt.Errorf("FFmpeg を開始できません: %w", err)
+		return transcodeProcess{}, fmt.Errorf("cannot start FFmpeg: %w", err)
 	}
 	wait := func() error {
 		err := cmd.Wait()
 		cancel()
 		if err != nil {
-			return fmt.Errorf("FFmpeg が終了しました: %w; stderr: %s", err, stderr.String())
+			return fmt.Errorf("FFmpeg exited: %w; stderr: %s", err, stderr.String())
 		}
 		return nil
 	}
@@ -268,7 +268,7 @@ func readFirstOutput(
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case <-timer.C:
-		return nil, fmt.Errorf("初期データ待機が%sでタイムアウトしました", timeout)
+		return nil, fmt.Errorf("timed out after %s waiting for initial data", timeout)
 	}
 }
 
@@ -317,9 +317,9 @@ func (t *LiveTranscoder) probe(ctx context.Context, path string, startupDeadline
 	output, err := t.commandContext(probeCtx, probeCommand, probeArgs(path)...).Output()
 	if err != nil {
 		if contextErr := probeCtx.Err(); contextErr != nil {
-			return domain.TranscodeProbe{}, fmt.Errorf("要求時の ffprobe が期限内に完了しませんでした: %w", contextErr)
+			return domain.TranscodeProbe{}, fmt.Errorf("on-demand ffprobe did not finish in time: %w", contextErr)
 		}
-		return domain.TranscodeProbe{}, fmt.Errorf("%w: 要求時の ffprobe に失敗しました: %w", domain.ErrUnprocessableMedia, err)
+		return domain.TranscodeProbe{}, fmt.Errorf("%w: on-demand ffprobe failed: %w", domain.ErrUnprocessableMedia, err)
 	}
 	metadata, err := parseTranscodeProbe(output)
 	if err != nil {
@@ -337,10 +337,10 @@ func parseTranscodeProbe(output []byte) (domain.TranscodeProbe, error) {
 		return domain.TranscodeProbe{}, err
 	}
 	if probe.DurationMs <= 0 {
-		return domain.TranscodeProbe{}, fmt.Errorf("動画の尺がありません")
+		return domain.TranscodeProbe{}, fmt.Errorf("the video has no duration")
 	}
 	if probe.Transcode == nil {
-		return domain.TranscodeProbe{}, fmt.Errorf("寸法のある非添付の映像streamがありません")
+		return domain.TranscodeProbe{}, fmt.Errorf("no non-attached video stream with dimensions")
 	}
 	return *probe.Transcode, nil
 }

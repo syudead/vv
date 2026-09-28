@@ -21,28 +21,29 @@ func (s *server) OpenVideoFile(w http.ResponseWriter, r *http.Request, id gen.Vi
 		return
 	}
 	if s.opener == nil || !s.opener.Available() {
-		s.writeError(w, http.StatusConflict, codeOpenUnavailable, "このサーバーではファイルを開けません")
+		s.writeError(w, http.StatusConflict, codeOpenUnavailable, "This server cannot open files.")
 		return
 	}
 	if !s.loopbackRequest(r) {
-		s.writeError(w, http.StatusForbidden, codeForbidden, "ファイルはサーバーと同じ PC からだけ開けます")
+		s.writeReasonError(w, http.StatusForbidden, codeForbidden, reasonOpenNotLocal,
+			"Files can only be opened from the computer running the server.")
 		return
 	}
 	if s.files == nil {
-		s.internalError(w, "メディアファイルの読み出しが設定されていません", nil)
+		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
 	path, ok, err := s.openablePath(r, video.Path)
 	if err != nil {
-		s.internalError(w, "登録フォルダを取得できませんでした", err)
+		s.internalError(w, "Could not load media folders.", err)
 		return
 	}
 	if !ok {
-		s.writeError(w, http.StatusConflict, codeFileMissing, "ファイルが見つかりません。移動または削除された可能性があります")
+		s.writeError(w, http.StatusConflict, codeFileMissing, "File not found. It may have been moved or deleted.")
 		return
 	}
 	if err := s.opener.Open(path); err != nil {
-		s.internalError(w, "ファイルを開けませんでした", err)
+		s.internalError(w, "Could not open the file.", err)
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)

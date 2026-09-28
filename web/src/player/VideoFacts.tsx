@@ -9,22 +9,25 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { openVideoFile, RequestFailed, type Video } from "../api/client";
+import { openVideoFile, type Video } from "../api/client";
+import { errorText, formatDate, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import IconButton from "../ui/IconButton";
 import { useToast } from "../ui/Toast";
-import { formatDate, technicalSummary } from "./properties";
+import { technicalSummary } from "./properties";
 
 /**
  * useOpenFile はサーバーの PC で動画ファイルを開き、開けなかったときの文言を持つ。
+ * 文言は API エラーの表示（errorText）を埋め込む。ファイルが無い（`file_missing`）、
+ * サーバーの PC からでない（`open_not_local`）などの理由がそこに出る。
  * 文言は、次に開く操作をしたとき、または別の動画へ移ったときに消える。
  */
 export function useOpenFile(videoId: number): {
   open: () => void;
-  failure: string | null;
+  failure: UiText | null;
 } {
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<UiText | null>(null);
   const request = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -39,11 +42,7 @@ export function useOpenFile(videoId: number): {
     request.current = controller;
     void openVideoFile(videoId, controller.signal).catch((error: unknown) => {
       if (controller.signal.aborted) return;
-      setFailure(
-        error instanceof RequestFailed && error.code === "file_missing"
-          ? "開けませんでした: ファイルが見つかりません"
-          : "開けませんでした",
-      );
+      setFailure(t.player.facts.openFailed(errorText(error)));
     });
   }, [videoId]);
 
@@ -80,7 +79,7 @@ function Fact({
   value,
 }: {
   icon: LucideIcon;
-  label: string;
+  label: UiText;
   value: string;
 }) {
   return (
@@ -111,9 +110,9 @@ export default function VideoFacts({ video }: { video: Video }) {
   const copyPath = () => {
     if (location === undefined) return;
     const path = location.path;
-    const done = () => toast("パスをコピーしました");
+    const done = () => toast(t.player.facts.pathCopied);
     const fallback = () =>
-      copyWithSelection(path) ? done() : toast("パスをコピーできませんでした");
+      copyWithSelection(path) ? done() : toast(t.player.facts.copyFailed);
     // navigator.clipboard は安全な接続（HTTPS・localhost）でしか使えない。LAN のアドレスで
     // 開いたときは、選んだ文字をコピーする古い方法に切り替える。
     if (navigator.clipboard === undefined) {
@@ -127,18 +126,28 @@ export default function VideoFacts({ video }: { video: Video }) {
     <div className="flex flex-col gap-3 border-t border-border pt-3">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <ul
-          aria-label="ファイルの情報"
+          aria-label={t.player.facts.label}
           className="flex min-w-0 flex-1 flex-wrap items-center gap-x-4 sm:gap-x-5 gap-y-2 text-sm text-fg-muted tabular-nums"
         >
-          {duration !== "" && <Fact icon={Clock} label="長さ" value={duration} />}
-          <Fact icon={HardDrive} label="サイズ" value={formatBytes(video.sizeBytes)} />
-          <Fact icon={CalendarPlus} label="追加日" value={formatDate(video.addedAt)} />
+          {duration !== "" && (
+            <Fact icon={Clock} label={t.player.facts.duration} value={duration} />
+          )}
+          <Fact
+            icon={HardDrive}
+            label={t.player.facts.size}
+            value={formatBytes(video.sizeBytes)}
+          />
+          <Fact
+            icon={CalendarPlus}
+            label={t.player.facts.added}
+            value={formatDate(video.addedAt)}
+          />
         </ul>
         {location !== undefined && (
           <div className="ml-auto flex shrink-0 items-center">
             {location.openable && (
               <IconButton
-                label="ファイルを開く"
+                label={t.player.facts.openFile}
                 size="sm"
                 onClick={open}
                 className="text-fg-muted! hover:text-fg!"
@@ -147,7 +156,7 @@ export default function VideoFacts({ video }: { video: Video }) {
               </IconButton>
             )}
             <IconButton
-              label="パスをコピー"
+              label={t.player.facts.copyPath}
               size="sm"
               onClick={copyPath}
               className="text-fg-muted! hover:text-fg!"
@@ -171,10 +180,10 @@ export default function VideoFacts({ video }: { video: Video }) {
 function TechnicalLine({ summary }: { summary: ReturnType<typeof technicalSummary> }) {
   const base = "text-xs tracking-wider tabular-nums";
   if (summary.kind === "pending") {
-    return <p className={cn(base, "text-fg-muted")}>技術情報を読み取り中</p>;
+    return <p className={cn(base, "text-fg-muted")}>{t.player.facts.technicalPending}</p>;
   }
   if (summary.kind === "failed") {
-    return <p className={cn(base, "text-warning")}>技術情報を読み取れませんでした</p>;
+    return <p className={cn(base, "text-warning")}>{t.player.facts.technicalFailed}</p>;
   }
   if (summary.values.length === 0) return null;
   // どの項目も左に縦線と余白を持ち、並び全体をその幅だけ左へずらして外側で切る。
@@ -182,7 +191,7 @@ function TechnicalLine({ summary }: { summary: ReturnType<typeof technicalSummar
   return (
     <div className="overflow-hidden">
       <ul
-        aria-label="技術情報"
+        aria-label={t.player.facts.technical}
         lang="en"
         className={cn(
           base,

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Link, useLocation } from "react-router";
 
 import { currentPath, loginPath } from "../auth/pageNavigation";
+import { t, type UiText } from "../i18n";
 import Button, { buttonClassName } from "../ui/Button";
 import Skeleton from "../ui/Skeleton";
 
@@ -14,7 +15,7 @@ export function EmptyState({
   tone = "neutral",
 }: {
   icon: LucideIcon;
-  title: string;
+  title: UiText;
   description?: ReactNode;
   action?: ReactNode;
   tone?: "neutral" | "danger";
@@ -50,14 +51,14 @@ export function GuestEmpty() {
   return (
     <EmptyState
       icon={FolderOpen}
-      title="公開されている動画はありません"
-      description="ログインすると、すべての動画を見られます"
+      title={t.list.guestEmpty.title}
+      description={t.list.guestEmpty.description}
       action={
         <Link
           to={loginPath(currentPath(location))}
           className={buttonClassName("secondary")}
         >
-          ログイン
+          {t.list.guestEmpty.signIn}
         </Link>
       }
     />
@@ -69,12 +70,12 @@ export function NoMatches({ onSearch }: { onSearch?: () => void }) {
   return (
     <EmptyState
       icon={SearchX}
-      title="条件に一致する動画はありません"
-      description="検索語や絞り込み条件を変えてみてください。"
+      title={t.list.noMatches}
+      description={t.list.noMatchesHint}
       action={
         onSearch && (
           <Button variant="secondary" onClick={onSearch}>
-            検索を変更
+            {t.list.changeSearch}
           </Button>
         )
       }
@@ -82,14 +83,14 @@ export function NoMatches({ onSearch }: { onSearch?: () => void }) {
   );
 }
 
-export function LoadFailed({ reason, onRetry }: { reason: string; onRetry: () => void }) {
+export function LoadFailed({ reason, onRetry }: { reason: UiText; onRetry: () => void }) {
   return (
     <EmptyState
       icon={AlertCircle}
       tone="danger"
-      title="一覧を取得できません"
+      title={t.list.loadFailed}
       description={reason}
-      action={<Button onClick={onRetry}>再試行</Button>}
+      action={<Button onClick={onRetry}>{t.common.retry}</Button>}
     />
   );
 }
@@ -102,15 +103,15 @@ export function LoadMoreFailed({
   reason,
   onRetry,
 }: {
-  reason: string;
+  reason: UiText;
   onRetry: () => void;
 }) {
   return (
     <div className="flex flex-wrap items-center justify-center gap-2 rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm text-danger">
       <AlertCircle aria-hidden="true" className="size-4 shrink-0" />
-      <p>続きを取得できません: {reason}</p>
+      <p>{t.list.loadMoreFailed(reason)}</p>
       <Button size="sm" onClick={onRetry}>
-        再試行
+        {t.common.retry}
       </Button>
     </div>
   );

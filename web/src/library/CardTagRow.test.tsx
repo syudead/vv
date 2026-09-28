@@ -34,14 +34,14 @@ afterEach(() => cleanup());
 describe("CardTagRow", () => {
   it("測れない（jsdom で幅0）ときはすべてのタグをボタンとして出す", () => {
     renderRow({ tags: tags("旅行", "2024", "Anime") });
-    expect(screen.getByRole("button", { name: "旅行で絞り込む" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "2024で絞り込む" })).toBeDefined();
-    expect(screen.getByRole("button", { name: "Animeで絞り込む" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Filter by 旅行" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Filter by 2024" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Filter by Anime" })).toBeDefined();
   });
 
   it("押すと onPress にそのタグを渡す", () => {
     const { onPress } = renderRow({ tags: tags("旅行") });
-    fireEvent.click(screen.getByRole("button", { name: "旅行で絞り込む" }));
+    fireEvent.click(screen.getByRole("button", { name: "Filter by 旅行" }));
     expect(onPress).toHaveBeenCalledWith(expect.objectContaining({ name: "旅行" }));
   });
 
@@ -66,7 +66,7 @@ describe("CardTagRow", () => {
     renderRow({ tags: tags("旅行", "2024", "Anime") });
     // jsdom は幅を0で返すため、この実装では available<=0 のとき全部表示になる。
     // つまりここでは「+N」は出ない — その前提を確かめる。
-    expect(screen.queryByRole("button", { name: /ほかのタグ/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Show \d+ more tags?$/ })).toBeNull();
 
     vi.unstubAllGlobals();
   });
@@ -76,8 +76,8 @@ describe("CardTagRow", () => {
       tags: tags("旅行"),
       selectionMode: true,
     });
-    expect(screen.queryByRole("button", { name: "旅行で絞り込む" })).toBeNull();
-    const list = screen.getByRole("list", { name: "タグ" });
+    expect(screen.queryByRole("button", { name: "Filter by 旅行" })).toBeNull();
+    const list = screen.getByRole("list", { name: "Tags" });
     expect(within(list).getByText("旅行")).toBeDefined();
 
     fireEvent.click(within(list).getByText("旅行"));
@@ -88,7 +88,7 @@ describe("CardTagRow", () => {
   it("ul に aria-label=タグ を付ける", () => {
     renderRow({ tags: tags("旅行") });
     expect(
-      within(screen.getByRole("list", { name: "タグ" })).getByText("旅行"),
+      within(screen.getByRole("list", { name: "Tags" })).getByText("旅行"),
     ).toBeDefined();
   });
 
@@ -105,14 +105,14 @@ describe("CardTagRow", () => {
     it("フォルダ由来だけのタグを破線の形で出し、ほかは面のある形のまま出す", () => {
       renderRow({ tags: mixed });
       const folderOnly = screen.getByRole("button", {
-        name: "京都で絞り込む（フォルダ名から）",
+        name: "Filter by 京都 (from the folder name)",
       });
       expect(folderOnly.className).toContain("border-dashed");
       expect(folderOnly.className).not.toContain("bg-elevated");
       expect(folderOnly.querySelector("svg[aria-hidden='true']")).not.toBeNull();
 
       for (const name of ["旅行", "夏"]) {
-        const chip = screen.getByRole("button", { name: `${name}で絞り込む` });
+        const chip = screen.getByRole("button", { name: `Filter by ${name}` });
         expect(chip.className).toContain("bg-elevated");
         expect(chip.className).not.toContain("border-dashed");
         expect(chip.querySelector("svg")).toBeNull();
@@ -122,7 +122,7 @@ describe("CardTagRow", () => {
     it("区別は文字の大きさではなく形で行う（同じ h-5・text-xs）", () => {
       renderRow({ tags: mixed });
       const folderOnly = screen.getByRole("button", { name: /京都/ });
-      const manual = screen.getByRole("button", { name: "夏で絞り込む" });
+      const manual = screen.getByRole("button", { name: "Filter by 夏" });
       for (const chip of [folderOnly, manual]) {
         expect(chip.className).toContain("h-5");
         expect(chip.className).toContain("text-xs");
@@ -133,14 +133,14 @@ describe("CardTagRow", () => {
     it("押したときは出所によらず、そのタグで絞り込む", () => {
       const { onPress } = renderRow({ tags: mixed });
       fireEvent.click(
-        screen.getByRole("button", { name: "京都で絞り込む（フォルダ名から）" }),
+        screen.getByRole("button", { name: "Filter by 京都 (from the folder name)" }),
       );
       expect(onPress).toHaveBeenCalledWith(mixed[0]);
     });
 
     it("API の順のまま並べ、出所で分けない", () => {
       renderRow({ tags: mixed });
-      const list = screen.getByRole("list", { name: "タグ" });
+      const list = screen.getByRole("list", { name: "Tags" });
       expect(
         within(list)
           .getAllByRole("button")
@@ -150,10 +150,10 @@ describe("CardTagRow", () => {
 
     it("選択中の形でも破線の形で出し、隠した「フォルダ名から」を添える", () => {
       renderRow({ tags: mixed, selectionMode: true });
-      const list = screen.getByRole("list", { name: "タグ" });
+      const list = screen.getByRole("list", { name: "Tags" });
       const chip = within(list).getByTitle("京都");
       expect(chip.className).toContain("border-dashed");
-      expect(chip.textContent).toBe("京都（フォルダ名から）");
+      expect(chip.textContent).toBe("京都 (from the folder name)");
     });
   });
 });

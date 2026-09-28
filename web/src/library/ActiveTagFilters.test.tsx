@@ -42,7 +42,7 @@ describe("ActiveTagFilters", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "タグの絞り込みを外す" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Remove the tag filter" })).toBeDefined();
 
     await act(async () => {
       resolveTags?.(
@@ -51,7 +51,9 @@ describe("ActiveTagFilters", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole("button", { name: "旅行の絞り込みを外す" })).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Remove the filter for 旅行" }),
+    ).toBeDefined();
   });
 
   it("チップの名前に title を持つ（N3）", async () => {
@@ -79,7 +81,7 @@ describe("ActiveTagFilters", () => {
       const search = useRef<HTMLInputElement | null>(null);
       return (
         <>
-          <input ref={search} aria-label="動画を検索" />
+          <input ref={search} aria-label="Search videos" />
           {ids.length > 0 && (
             <ActiveTagFilters
               tagIds={ids}
@@ -91,12 +93,16 @@ describe("ActiveTagFilters", () => {
       );
     }
     render(<Harness />);
-    const button = await screen.findByRole("button", { name: "旅行の絞り込みを外す" });
+    const button = await screen.findByRole("button", {
+      name: "Remove the filter for 旅行",
+    });
     button.focus();
     fireEvent.click(button);
-    expect(screen.queryByRole("button", { name: "旅行の絞り込みを外す" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Remove the filter for 旅行" }),
+    ).toBeNull();
     expect(document.activeElement).toBe(
-      screen.getByRole("textbox", { name: "動画を検索" }),
+      screen.getByRole("textbox", { name: "Search videos" }),
     );
   });
 });

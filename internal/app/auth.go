@@ -171,7 +171,7 @@ func (a *Auth) Setup(ctx context.Context, username, password string) (Session, e
 	hash, err := a.hasher.Hash(password)
 	a.releaseVerifySlot()
 	if err != nil {
-		return Session{}, fmt.Errorf("パスワードをハッシュ化できません: %w", err)
+		return Session{}, fmt.Errorf("cannot hash the password: %w", err)
 	}
 
 	token, err := a.newSessionToken()
@@ -229,7 +229,7 @@ func (a *Auth) Login(ctx context.Context, req LoginRequest) (Session, error) {
 	a.releaseVerifySlot()
 	if err != nil {
 		a.throttle.cancel(source)
-		return Session{}, fmt.Errorf("パスワードを照合できません: %w", err)
+		return Session{}, fmt.Errorf("cannot verify the password: %w", err)
 	}
 
 	usernameMatched := equalUsername(req.Username, account.Username)
@@ -322,7 +322,7 @@ func (a *Auth) releaseVerifySlot() { <-a.verifySlots }
 func (a *Auth) newSessionToken() (string, error) {
 	raw := make([]byte, sessionTokenBytes)
 	if _, err := io.ReadFull(a.random, raw); err != nil {
-		return "", fmt.Errorf("セッション ID を作れません: %w", err)
+		return "", fmt.Errorf("cannot create a session ID: %w", err)
 	}
 	return sessionTokenEncoding.EncodeToString(raw), nil
 }

@@ -5,6 +5,7 @@ import {
   type VideoSort,
   type WatchFilter,
 } from "../api/client";
+import { t, type UiText } from "../i18n";
 
 /**
  * 一覧の条件と URL の相互変換（specs/013-library-search/contracts/list-url.md）。
@@ -44,73 +45,38 @@ export type SortDirection = "asc" | "desc";
 
 export interface SortKindInfo {
   kind: SortKind;
-  label: string;
   /** 種類を選んだときの並び順（ui-design.md「Sort and direction」の表）。 */
   initial: VideoSort;
   /** 昇順と降順の値。ランダムは向きを持たない。 */
   asc?: VideoSort;
   desc?: VideoSort;
-  /** 昇順／降順の言い換え。無い種類は undefined。 */
-  ascWording?: string;
-  descWording?: string;
 }
 
-/** sortKinds はメニューに並べる7つの種類である。順はメニューの順と同じ。 */
+/**
+ * sortKinds はメニューに並べる7つの種類である。順はメニューの順と同じ。表示名は
+ * sortKindLabel で描画のたびにカタログから引く。
+ */
 export const sortKinds: readonly SortKindInfo[] = [
-  {
-    kind: "added",
-    label: "追加日",
-    initial: "addedDesc",
-    asc: "addedAsc",
-    desc: "addedDesc",
-    ascWording: "古い順",
-    descWording: "新しい順",
-  },
-  {
-    kind: "modified",
-    label: "更新日時",
-    initial: "modifiedDesc",
-    asc: "modifiedAsc",
-    desc: "modifiedDesc",
-    ascWording: "古い順",
-    descWording: "新しい順",
-  },
-  {
-    kind: "title",
-    label: "題名",
-    initial: "titleAsc",
-    asc: "titleAsc",
-    desc: "titleDesc",
-  },
-  {
-    kind: "duration",
-    label: "長さ",
-    initial: "durationDesc",
-    asc: "durationAsc",
-    desc: "durationDesc",
-    ascWording: "短い順",
-    descWording: "長い順",
-  },
-  {
-    kind: "size",
-    label: "ファイルサイズ",
-    initial: "sizeDesc",
-    asc: "sizeAsc",
-    desc: "sizeDesc",
-    ascWording: "小さい順",
-    descWording: "大きい順",
-  },
-  {
-    kind: "played",
-    label: "最近再生した順",
-    initial: "playedDesc",
-    asc: "playedAsc",
-    desc: "playedDesc",
-    ascWording: "前に再生した順",
-    descWording: "最近再生した順",
-  },
-  { kind: "random", label: "ランダム", initial: "random" },
+  { kind: "added", initial: "addedDesc", asc: "addedAsc", desc: "addedDesc" },
+  { kind: "modified", initial: "modifiedDesc", asc: "modifiedAsc", desc: "modifiedDesc" },
+  { kind: "title", initial: "titleAsc", asc: "titleAsc", desc: "titleDesc" },
+  { kind: "duration", initial: "durationDesc", asc: "durationAsc", desc: "durationDesc" },
+  { kind: "size", initial: "sizeDesc", asc: "sizeAsc", desc: "sizeDesc" },
+  { kind: "played", initial: "playedDesc", asc: "playedAsc", desc: "playedDesc" },
+  { kind: "random", initial: "random" },
 ];
+
+/** sortKindLabel は並べ替えの種類の表示名である。 */
+export function sortKindLabel(kind: SortKind): UiText {
+  return t.list.sort.kinds[kind];
+}
+
+/** directionWording は昇順／降順の言い換えである。無い種類（題名・ランダム）は undefined。 */
+function directionWording(kind: SortKind, direction: SortDirection): UiText | undefined {
+  const wording: Partial<Record<SortKind, Record<SortDirection, UiText>>> =
+    t.list.sort.wording;
+  return wording[kind]?.[direction];
+}
 
 /** sortKindOf は並び順の種類の情報を返す。 */
 export function sortKindOf(sort: VideoSort): SortKindInfo {
@@ -133,23 +99,22 @@ export function withDirection(sort: VideoSort, direction: SortDirection): VideoS
 
 /**
  * directionLabel は向きの読み上げ名を作る（ui-design.md「Sort and direction」）。
- * 例: 「降順（新しい順）」。言い換えの無い種類は「降順」。
+ * 例: 「Descending (newest first)」。言い換えの無い種類は「Descending」。
  */
-export function directionLabel(sort: VideoSort, direction: SortDirection): string {
-  const info = sortKindOf(sort);
-  const wording = direction === "asc" ? info.ascWording : info.descWording;
-  const name = direction === "asc" ? "昇順" : "降順";
-  return wording === undefined ? name : `${name}（${wording}）`;
+export function directionLabel(sort: VideoSort, direction: SortDirection): UiText {
+  const wording = directionWording(sortKindOf(sort).kind, direction);
+  const name = direction === "asc" ? t.list.sort.asc : t.list.sort.desc;
+  return wording === undefined ? name : t.list.sort.withWording(name, wording);
 }
 
 /**
  * directionToggleLabel は向きの切り替えボタンの読み上げ名とツールチップである。
- * 例: 「降順（新しい順）。押すと昇順」。
+ * 例: 「Descending (newest first). Press for ascending」。
  */
-export function directionToggleLabel(sort: VideoSort): string {
+export function directionToggleLabel(sort: VideoSort): UiText {
   const current = sortDirection(sort) ?? "desc";
-  const next = current === "asc" ? "降順" : "昇順";
-  return `${directionLabel(sort, current)}。押すと${next}`;
+  const label = directionLabel(sort, current);
+  return current === "asc" ? t.list.sort.toDesc(label) : t.list.sort.toAsc(label);
 }
 
 /** normalizeQuery は検索語を URL と一覧の条件に使う形にする。 */

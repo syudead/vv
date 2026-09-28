@@ -153,6 +153,7 @@ func TestTranscodeErrorsBeforeBody(t *testing.T) {
 		{"invalid start", "/api/videos/1/transcode.mp4?startMs=999999", &fakeTranscoder{}, http.StatusBadRequest},
 		{"invalid query", "/api/videos/1/transcode.mp4?startMs=nope", &fakeTranscoder{}, http.StatusBadRequest},
 		{"probe failure", "/api/videos/1/transcode.mp4", &fakeTranscoder{err: domain.ErrUnprocessableMedia}, http.StatusConflict},
+		{"invalid attempt", "/api/videos/1/transcode.mp4?attempt=%21", &fakeTranscoder{}, http.StatusBadRequest},
 		{"start failure", "/api/videos/1/transcode.mp4", &fakeTranscoder{err: errors.New("start failed")}, http.StatusInternalServerError},
 	}
 	for _, tc := range tests {
@@ -164,6 +165,15 @@ func TestTranscodeErrorsBeforeBody(t *testing.T) {
 			if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
 				t.Errorf("Cache-Control = %q", got)
 			}
+			switch tc.name {
+			case "probe failure":
+				assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(),
+					wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonTranscodeUnavailable})
+			case "invalid start", "invalid attempt":
+				// 画面が送らない値の誤りには reason を付けない。
+				assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(),
+					wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+			}
 		})
 	}
 }
@@ -172,16 +182,16 @@ func TestTranscodeRejectsMissingProbeAndFile(t *testing.T) {
 	mediaDir, video, _ := streamFixture(t, "a.mkv", 128)
 	video.ProbeState = domain.ProbeStateFailed
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{mediaDir}}, Transcoder: &fakeTranscoder{}})
-	if rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4"); rec.Code != http.StatusConflict {
-		t.Errorf("probe failure status = %d", rec.Code)
-	}
+	rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4")
+	assertErrorBody(t, "解析情報が無い", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonProbeInfoMissing})
 
 	video.ProbeState = domain.ProbeStateDone
 	video.Path = mediaDir + "/missing.mkv"
 	handler = newTestServer(t, Options{Videos: &fakeLibrary{videos: map[int64]domain.Video{1: video}, roots: []string{mediaDir}}, Transcoder: &fakeTranscoder{}})
-	if rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4"); rec.Code != http.StatusNotFound {
-		t.Errorf("missing file status = %d", rec.Code)
-	}
+	rec = do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4")
+	assertErrorBody(t, "実体が無い", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFileUnavailable})
 }
 
 func TestTranscodeLogsProcessFailureAfterBodyStarts(t *testing.T) {

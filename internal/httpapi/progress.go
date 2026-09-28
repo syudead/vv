@@ -23,7 +23,7 @@ const maxProgressBody = 1 << 10
 // 呼び出し間隔はクライアントの責務で、サーバー側で頻度制限はしない。
 func (s *server) PutVideoProgress(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	if s.playback == nil {
-		s.internalError(w, "再生位置の保存先が設定されていません", nil)
+		s.internalError(w, "Playback progress storage is not configured.", nil)
 		return
 	}
 
@@ -51,7 +51,7 @@ func (s *server) PutVideoProgress(w http.ResponseWriter, r *http.Request, id gen
 	saved, err := s.playback.SaveProgress(
 		r.Context(), video.ContentKey, domain.EvaluateProgress(positionMs, durationMs))
 	if err != nil {
-		s.internalError(w, "再生位置を記録できませんでした", err)
+		s.internalError(w, "Could not save playback progress.", err)
 		return
 	}
 
@@ -63,11 +63,11 @@ func (s *server) PutVideoProgress(w http.ResponseWriter, r *http.Request, id gen
 func (s *server) acceptsProgressBody(w http.ResponseWriter, r *http.Request) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil {
-		s.invalidRequest(w, "Content-Type を解釈できません")
+		s.invalidRequest(w, "Cannot parse Content-Type.")
 		return false
 	}
 	if mediaType != "application/json" {
-		s.invalidRequest(w, "本文は application/json で送ってください")
+		s.invalidRequest(w, "The body must be application/json.")
 		return false
 	}
 	return true
@@ -77,11 +77,11 @@ func (s *server) acceptsProgressBody(w http.ResponseWriter, r *http.Request) boo
 func (s *server) readPosition(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxProgressBody+1))
 	if err != nil {
-		s.invalidRequest(w, "本文を読み取れません")
+		s.invalidRequest(w, "Cannot read the body.")
 		return 0, false
 	}
 	if len(body) > maxProgressBody {
-		s.invalidRequest(w, "本文が大きすぎます")
+		s.invalidRequest(w, "The body is too large.")
 		return 0, false
 	}
 
@@ -92,18 +92,18 @@ func (s *server) readPosition(w http.ResponseWriter, r *http.Request) (int64, bo
 	if err := json.Unmarshal(body, &update); err != nil {
 		var typeErr *json.UnmarshalTypeError
 		if errors.As(err, &typeErr) {
-			s.invalidRequest(w, "positionMs は数値で送ってください")
+			s.invalidRequest(w, "positionMs must be a number.")
 			return 0, false
 		}
-		s.invalidRequest(w, "本文を JSON として読み取れません")
+		s.invalidRequest(w, "Cannot parse the body as JSON.")
 		return 0, false
 	}
 	if update.PositionMs == nil {
-		s.invalidRequest(w, "positionMs を指定してください")
+		s.invalidRequest(w, "positionMs is required.")
 		return 0, false
 	}
 	if *update.PositionMs < 0 {
-		s.invalidRequest(w, "positionMs は 0 以上で指定してください")
+		s.invalidRequest(w, "positionMs must be 0 or greater.")
 		return 0, false
 	}
 	return *update.PositionMs, true

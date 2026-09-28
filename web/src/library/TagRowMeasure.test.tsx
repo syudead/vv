@@ -52,7 +52,7 @@ describe("TagRowMeasureProvider（B2）", () => {
       </TagRowMeasureProvider>,
     );
 
-    expect(screen.getAllByRole("list", { name: "タグ" })).toHaveLength(3);
+    expect(screen.getAllByRole("list", { name: "Tags" })).toHaveLength(3);
     expect(instances).toHaveLength(1);
 
     vi.unstubAllGlobals();
@@ -67,6 +67,6 @@ describe("TagRowMeasureProvider（B2）", () => {
         onToggleSelection={vi.fn()}
       />,
     );
-    expect(screen.getByRole("list", { name: "タグ" })).toBeDefined();
+    expect(screen.getByRole("list", { name: "Tags" })).toBeDefined();
   });
 });

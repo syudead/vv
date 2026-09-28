@@ -4,8 +4,9 @@ import { Link } from "react-router";
 
 import type { LibraryGroup } from "../api/client";
 import { useAudience } from "../auth/audience";
+import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
-import { formatBytes, formatDuration, formatRelative } from "../lib/format";
+import { formatBytes, formatDuration } from "../lib/format";
 import Checkbox from "../ui/Checkbox";
 import FolderArt from "../videoList/FolderArt";
 
@@ -58,9 +59,9 @@ function useGroupFacts(group: LibraryGroup) {
   };
 }
 
-/** groupCountText はカードの本数の文字（「12 本」）である。 */
-export function groupCountText(videoCount: number): string {
-  return `${String(videoCount)} 本`;
+/** groupCountText はカードの本数の文字（「12 videos」）である。 */
+export function groupCountText(videoCount: number): UiText {
+  return t.library.group.count(videoCount);
 }
 
 /** groupLinkLabel はカードのリンクの読み上げ名である（ui-design.md「Accessibility」）。 */
@@ -68,9 +69,8 @@ export function groupLinkLabel(
   name: string,
   videoCount: number,
   watchedCount: number,
-): string {
-  const base = `${name}、${String(videoCount)}本のグループ`;
-  return watchedCount >= 1 ? `${base}、${String(watchedCount)}本を視聴済み` : base;
+): UiText {
+  return t.library.group.label(name, videoCount, watchedCount);
 }
 
 function groupPath(group: LibraryGroup): string {
@@ -126,7 +126,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           <Checkbox
             checked={selected}
             onCheckedChange={(next) => onSelect(group.videoIds, next)}
-            label={`「${group.name}」のグループを選択`}
+            label={t.library.group.select(group.name)}
             onClick={(event: MouseEvent) => event.stopPropagation()}
           />
         </div>
@@ -167,7 +167,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.round(ratio * 100)}
-              aria-label="視聴済みの本数の割合"
+              aria-label={t.library.group.watchedRatio}
               className="absolute inset-x-0 bottom-0 z-20 h-[5px] bg-navbar/90"
             >
               <span
@@ -223,7 +223,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           <Checkbox
             checked={selected}
             onCheckedChange={(next) => onSelect(group.videoIds, next)}
-            label={`「${group.name}」のグループを選択`}
+            label={t.library.group.select(group.name)}
             className={cn(
               "transition-opacity",
               selectionMode || selected
@@ -274,15 +274,18 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
         </Link>
         <span className="mt-0.5 flex items-center gap-1 text-xs text-fg-muted tabular-nums">
           <Folder aria-hidden="true" className="size-3 shrink-0" />
-          {`${String(group.videoCount)} 本`}
+          {groupCountText(group.videoCount)}
         </span>
       </td>
       <td className="hidden w-16 pr-4 text-right text-xs text-fg-muted tabular-nums sm:table-cell">
         {state === "watched" && (
-          <Check className="ml-auto size-4 text-success" aria-label="視聴済み" />
+          <Check
+            className="ml-auto size-4 text-success"
+            aria-label={t.list.card.watched}
+          />
         )}
         {state === "inProgress" &&
-          `${String(watchedCount)} / ${String(group.videoCount)}`}
+          t.library.group.progress(watchedCount, group.videoCount)}
       </td>
       <td className="w-20 pr-4 text-right text-sm text-fg tabular-nums">{duration}</td>
       <td className="hidden w-20 pr-4 md:table-cell" />

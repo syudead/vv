@@ -1,5 +1,6 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
+import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import Tooltip from "../ui/Tooltip";
 
@@ -32,7 +33,7 @@ export default function NeighborArrows({
       {previous !== undefined && (
         <Arrow
           side="left"
-          label="前の動画"
+          label={t.player.neighbors.previous}
           neighbor={previous}
           visible={visible}
           container={container}
@@ -41,7 +42,7 @@ export default function NeighborArrows({
       {next !== undefined && (
         <Arrow
           side="right"
-          label="次の動画"
+          label={t.player.neighbors.next}
           neighbor={next}
           visible={visible}
           container={container}
@@ -59,13 +60,16 @@ function Arrow({
   container,
 }: {
   side: "left" | "right";
-  label: string;
+  label: UiText;
   neighbor: Neighbor;
   visible: boolean;
   container: HTMLElement | null;
 }) {
   const Icon = side === "left" ? ChevronLeft : ChevronRight;
-  const tip = neighbor.title === undefined ? label : `${label}: ${neighbor.title}`;
+  const tip =
+    neighbor.title === undefined
+      ? label
+      : t.player.neighbors.withTitle(label, neighbor.title);
   return (
     <Tooltip
       content={tip}

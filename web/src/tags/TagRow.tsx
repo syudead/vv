@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { Link } from "react-router";
 
 import type { Tag } from "../api/tags";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { isComposingKeyEvent } from "../ui/Combobox";
 import IconButton from "../ui/IconButton";
@@ -111,7 +112,7 @@ export default function TagRow({
                 cancel();
               }
             }}
-            aria-label={`「${tag.name}」の新しい名前`}
+            aria-label={t.tags.row.renameLabel(tag.name)}
             aria-describedby={
               field.reason !== null ? reasonId : error !== null ? errorId : undefined
             }
@@ -125,17 +126,17 @@ export default function TagRow({
               ref={(node) => registerRefs(tag.id, { nameLink: node })}
               to={`/?tag=${String(tag.id)}`}
               title={tag.name}
-              aria-label={`${tag.name}で絞り込んだライブラリを開く`}
+              aria-label={t.tags.row.open(tag.name)}
               className="block truncate text-sm font-medium text-fg hover:text-link"
             >
               {tag.name}
             </Link>
             {tag.synonyms.length > 0 && (
               <p
-                title={`シノニム: ${tag.synonyms.join(" · ")}`}
+                title={t.tags.row.synonyms(tag.synonyms.join(" · "))}
                 className="truncate text-xs text-fg-muted"
               >
-                シノニム: {tag.synonyms.join(" · ")}
+                {t.tags.row.synonyms(tag.synonyms.join(" · "))}
               </p>
             )}
           </>
@@ -162,13 +163,13 @@ export default function TagRow({
             </p>
           )}
       </div>
-      <span className="w-12 shrink-0 text-right text-xs text-fg-muted tabular-nums sm:w-16 sm:text-sm">
-        {tag.videoCount} 本
+      <span className="w-16 shrink-0 whitespace-nowrap text-right text-xs text-fg-muted tabular-nums sm:w-20 sm:text-sm">
+        {t.tags.row.videoCount(tag.videoCount)}
       </span>
       <div className="flex shrink-0 items-center gap-1">
         <IconButton
           ref={(node) => registerRefs(tag.id, { renameButton: node })}
-          label="改名"
+          label={t.tags.row.rename}
           size="sm"
           onClick={() => onStartRename(tag)}
           disabled={renaming || blockStart}
@@ -177,7 +178,7 @@ export default function TagRow({
         </IconButton>
         <IconButton
           ref={(node) => registerRefs(tag.id, { synonymsButton: node })}
-          label="シノニム"
+          label={t.tags.row.synonymsButton}
           size="sm"
           onClick={() => onOpenSynonyms(tag)}
           disabled={renaming}
@@ -188,7 +189,7 @@ export default function TagRow({
           <MenuTrigger asChild>
             <IconButton
               ref={(node) => registerRefs(tag.id, { menuButton: node })}
-              label="その他の操作"
+              label={t.tags.row.more}
               size="sm"
               disabled={renaming || blockStart}
             >
@@ -198,12 +199,12 @@ export default function TagRow({
           <MenuContent>
             <MenuItem onSelect={() => onOpenMerge(tag)}>
               <Merge />
-              別のタグへ統合…
+              {t.tags.row.merge}
             </MenuItem>
             <MenuSeparator />
             <MenuItem tone="danger" onSelect={() => onDelete(tag)}>
               <Trash2 />
-              削除…
+              {t.tags.row.delete}
             </MenuItem>
           </MenuContent>
         </MenuRoot>

@@ -687,7 +687,7 @@ test.describe.serial("live MP4 playback", () => {
         )
         .toBeGreaterThan(beforeSeek);
       // 見出しの帯の右端の閉じる × で戻る。× は帯の 1 か所だけにある。
-      const back = page.getByRole("button", { name: "閉じる" });
+      const back = page.getByRole("button", { name: "Close" });
       await back.focus();
       await Promise.all([page.waitForURL("/"), back.press("Enter")]);
     }
@@ -865,7 +865,9 @@ test.describe.serial("live MP4 playback", () => {
     await card.click();
     await expect(page).toHaveURL(new RegExp(`/videos/${String(video("direct").id)}$`));
     await expect(page.getByRole("heading", { level: 1 })).toHaveText("direct");
-    await expect(page.getByRole("heading", { level: 2, name: "関連動画" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 2, name: "Related videos" }),
+    ).toBeVisible();
 
     const related = page.locator("aside").getByRole("link").first();
     const relatedTitle = (await related.textContent()) ?? "";
@@ -877,12 +879,101 @@ test.describe.serial("live MP4 playback", () => {
     expect(relatedTitle).toContain(
       (await page.getByRole("heading", { level: 1 }).textContent()) ?? "missing",
     );
-    await page.getByRole("button", { name: "閉じる" }).click();
+    await page.getByRole("button", { name: "Close" }).click();
     await expect(page).toHaveURL(/\/\?q=direct$/);
 
     await page.goBack();
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\/\?q=direct$/);
+  });
+
+  test("操作バーの読み上げ名とツールチップが英語でキーを添え、失敗の説明も英語で出す", async ({
+    page,
+  }) => {
+    test.setTimeout(30_000);
+    const item = video("direct");
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`/videos/${String(item.id)}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("direct");
+
+    // video.js の独自言語はカタログの英語から作り、キーボード操作を持つボタンにキーを添える。
+    await expect(page.locator(".video-js")).toHaveAttribute("lang", "en-x-vv");
+    const controls: [string, string, string][] = [
+      [".vjs-control-bar > .vjs-play-control", "Play (Space)", "Space"],
+      [".vjs-control-bar .vjs-mute-control", "Mute (M)", "M"],
+      [".vjs-control-bar > .vjs-fullscreen-control", "Fullscreen (F)", "F"],
+      [".vjs-control-bar .vv-bar-button", "Restart (0)", "0"],
+    ];
+    for (const [selector, title, keys] of controls) {
+      const control = page.locator(selector);
+      await expect(control).toHaveAttribute("title", title);
+      await expect(control).toHaveAttribute("aria-keyshortcuts", keys);
+    }
+    await expect(page.locator(".vjs-control-bar .vv-bar-button")).toHaveAttribute(
+      "aria-label",
+      "Restart",
+    );
+    await expect(
+      page.locator(".vjs-control-bar > .vjs-play-control .vjs-control-text"),
+    ).toHaveText("Play (Space)");
+
+    // キーボードショートカットは変わらない（M でミュートし、ボタンの名前が切り替わる）。
+    await page.keyboard.press("m");
+    await expect(page.locator(".vjs-control-bar .vjs-mute-control")).toHaveAttribute(
+      "title",
+      "Unmute (M)",
+    );
+    await page.keyboard.press("m");
+    await expect(page.locator(".vjs-control-bar .vjs-mute-control")).toHaveAttribute(
+      "title",
+      "Mute (M)",
+    );
+
+    // 開く要求がファイルの無い理由で失敗したら、その理由を英語で出す。
+    await page.route(`**/api/videos/${String(item.id)}/open`, (route) =>
+      route.fulfill({
+        status: 409,
+        json: { code: "file_missing", message: "The video file is missing." },
+      }),
+    );
+    await page.route(`**/api/videos/${String(item.id)}`, async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          location: { ...(body.location as object), openable: true },
+        },
+      });
+    });
+    await page.reload();
+    await page.getByRole("button", { name: "Open file" }).click();
+    await expect(page.getByRole("alert")).toHaveText(
+      "Couldn't open the file: The video file is missing.",
+    );
+
+    // 英語化の前の読み取り失敗（コードが無く、理由が日本語）は、理由を出さずに英語の概要を出す。
+    await page.unroute(`**/api/videos/${String(item.id)}`);
+    await page.route(`**/api/videos/${String(item.id)}`, async (route) => {
+      const response = await route.fetch();
+      const body = (await response.json()) as Record<string, unknown>;
+      await route.fulfill({
+        response,
+        json: {
+          ...body,
+          probeState: "failed",
+          playable: false,
+          probeError: "ffprobe の実行に失敗しました: 壊れています",
+          probeErrorCode: undefined,
+        },
+      });
+    });
+    await page.reload();
+    const failure = page.locator("[data-player-frame]").getByRole("alert");
+    await expect(failure).toContainText("Couldn't read this video");
+    await expect(failure).toContainText("Couldn't read this video's information.");
+    await expect(failure).not.toContainText("壊れています");
   });
 });

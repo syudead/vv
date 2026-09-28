@@ -1,6 +1,7 @@
 import { useState, type ClipboardEvent, type FormEvent } from "react";
 
-import { errorMessage, RequestFailed } from "../api/client";
+import { RequestFailed } from "../api/client";
+import { errorText, t, type UiText } from "../i18n";
 import { nameReason, newlinePattern } from "../ui/Combobox";
 
 /**
@@ -10,19 +11,51 @@ import { nameReason, newlinePattern } from "../ui/Combobox";
  * `role="alert"` の `text-sm text-danger`（ui-design.md「States」の
  * 「操作の失敗」）と、大きさと読み上げの扱いが違う。
  */
-export type TagFieldError = { kind: "taken" | "other"; message: string };
+export type TagFieldError = { kind: "taken" | "other"; message: UiText };
+
+/** TagFieldContext は競合の説明に使う、送った名前と、その入力が属するタグの元の名前である。 */
+export interface TagFieldContext {
+  /** 送った名前（前後の空白を除いた綴り）。 */
+  submitted?: string;
+  /** シノニムの窓のように、入力が既存のタグに属するときのそのタグの元の名前。 */
+  ownTagName?: string;
+}
+
+/**
+ * takenText は `tag_name_taken` の具体的な説明である。API の `tagName`（競合先の
+ * タグの元の名前）と送った名前を合わせる（specs/023-english-i18n/contracts/error-api.md §1）。
+ * `tagName` が無い応答は errorText の一般的な文にする。
+ */
+function takenText(failure: RequestFailed, context: TagFieldContext): UiText {
+  const owner = failure.tagName;
+  if (owner === undefined) return errorText(failure);
+  const own = context.ownTagName !== undefined && owner === context.ownTagName;
+  if (failure.reason === "name_is_tag") {
+    return own ? t.tags.nameIsOwnName(owner) : t.tags.nameIsTag(owner);
+  }
+  if (failure.reason === "name_is_synonym" && context.submitted !== undefined) {
+    return own
+      ? t.tags.nameIsOwnSynonym(context.submitted)
+      : t.tags.nameIsSynonym(context.submitted, owner);
+  }
+  return errorText(failure);
+}
 
 /**
  * tagFieldError は、タグの名前を打つ入力（作成・改名・シノニムの追加）が
  * 共通で使う、失敗の分類である。`tag_name_taken`（既存の名前・シノニムとの
  * 衝突）は理由が分かる `taken`、それ以外は一般の失敗 `other` にする
- * （ui-design.md「Create and rename」「States」）。
+ * （ui-design.md「Create and rename」「States」）。サーバーの message は出さない
+ * （specs/023-english-i18n/research.md R-5）。
  */
-export function tagFieldError(failure: unknown): TagFieldError {
+export function tagFieldError(
+  failure: unknown,
+  context: TagFieldContext = {},
+): TagFieldError {
   if (failure instanceof RequestFailed && failure.code === "tag_name_taken") {
-    return { kind: "taken", message: failure.message };
+    return { kind: "taken", message: takenText(failure, context) };
   }
-  return { kind: "other", message: errorMessage(failure) };
+  return { kind: "other", message: errorText(failure) };
 }
 
 /**
@@ -40,7 +73,7 @@ export function tagFieldError(failure: unknown): TagFieldError {
  */
 export function useTagNameField(initial = "", onChange?: () => void) {
   const [value, setValueState] = useState(initial);
-  const [reason, setReason] = useState<string | null>(nameReason(initial));
+  const [reason, setReason] = useState<UiText | null>(nameReason(initial));
 
   function setValue(next: string): void {
     setValueState(next);
@@ -52,7 +85,7 @@ export function useTagNameField(initial = "", onChange?: () => void) {
     const text = event.clipboardData.getData("text");
     if (newlinePattern.test(text)) {
       event.preventDefault();
-      setReason("改行やタブは使えません");
+      setReason(t.tagName.controlCharacters);
     }
   }
 
@@ -62,7 +95,7 @@ export function useTagNameField(initial = "", onChange?: () => void) {
     const text = native.data ?? "";
     if (newlinePattern.test(text)) {
       event.preventDefault();
-      setReason("改行やタブは使えません");
+      setReason(t.tagName.controlCharacters);
     }
   }
 
@@ -71,7 +104,7 @@ export function useTagNameField(initial = "", onChange?: () => void) {
     if (reason !== null) return null;
     const trimmed = value.trim();
     if (trimmed === "") {
-      setReason("名前を入力してください");
+      setReason(t.tagName.required);
       return null;
     }
     return trimmed;

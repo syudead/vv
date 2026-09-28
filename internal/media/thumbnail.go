@@ -65,16 +65,16 @@ func runThumbnail(ctx context.Context, videoPath string, offsetSec float64, outp
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return fmt.Errorf(
-				"%s が失敗しました (%s): %s", thumbnailCommand, videoPath, firstLine(exitErr.Stderr))
+				"%s failed (%s): %s", thumbnailCommand, videoPath, firstLine(exitErr.Stderr))
 		}
-		return fmt.Errorf("%s を実行できません (%s): %w", thumbnailCommand, videoPath, err)
+		return fmt.Errorf("cannot run %s (%s): %w", thumbnailCommand, videoPath, err)
 	}
 
 	if info, err := os.Stat(output); err != nil || info.Size() == 0 {
 		// 途中まで書かれた画像を残さない。半端な JPEG を配信すると、
 		// 生成済みなのか壊れているのかが利用者から区別できない。
 		_ = os.Remove(output)
-		return fmt.Errorf("サムネイルが生成されませんでした (%s、位置 %.3f 秒)", videoPath, offsetSec)
+		return fmt.Errorf("thumbnail was not generated (%s, at %.3f s)", videoPath, offsetSec)
 	}
 	return nil
 }

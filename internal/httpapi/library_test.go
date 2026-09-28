@@ -234,12 +234,16 @@ func TestListLibraryForOwner(t *testing.T) {
 		t.Errorf("タグ show = %v", names)
 	}
 
-	if rec := f.env.get("/api/library?cursor=%21", f.owner); rec.Code != http.StatusBadRequest {
-		t.Errorf("解釈できないカーソル: status = %d", rec.Code)
-	}
-	if rec := f.env.get("/api/library?query="+strings.Repeat("a", 101), f.owner); rec.Code != http.StatusBadRequest {
-		t.Errorf("長すぎる検索語: status = %d", rec.Code)
-	}
+	rec = f.env.get("/api/library?cursor=%21", f.owner)
+	assertErrorBody(t, "解釈できないカーソル", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor})
+	rec = f.env.get("/api/library?query="+strings.Repeat("a", 101), f.owner)
+	assertErrorBody(t, "長すぎる検索語", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonSearchTooLong, limit: maxQueryLength,
+	})
+	rec = f.env.get("/api/library?sort=bogus", f.owner)
+	assertErrorBody(t, "不明な並び順（reason を返さない）", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 }
 
 // failingRootsFolders は登録フォルダの一覧だけを読めないフォルダの問い合わせ先である。
@@ -312,9 +316,10 @@ func TestListLibraryIdsIncludesAllMembers(t *testing.T) {
 		t.Errorf("missingTagIds = %v", got.MissingTagIds)
 	}
 	tags := "/api/library/ids?" + strings.Repeat("tag=1&", maxTagFilterCount+1)
-	if rec := f.env.get(tags, f.owner); rec.Code != http.StatusBadRequest {
-		t.Errorf("17 個のタグ: status = %d", rec.Code)
-	}
+	rec = f.env.get(tags, f.owner)
+	assertErrorBody(t, "17 個のタグ", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyTagFilters, limit: maxTagFilterCount,
+	})
 }
 
 // ゲストには公開のメンバーだけで数えた項目を返し、公開のメンバーが1本のグループは
@@ -371,9 +376,9 @@ func TestListLibraryForGuest(t *testing.T) {
 	}
 
 	for _, query := range []string{"watch=watched", "sort=playedAsc", "sort=playedDesc", "tag=" + strconv.FormatInt(f.manual, 10)} {
-		if rec := f.env.get("/api/library?" + query); rec.Code != http.StatusBadRequest {
-			t.Errorf("ゲストの %s: status = %d, want 400", query, rec.Code)
-		}
+		rec := f.env.get("/api/library?" + query)
+		assertErrorBody(t, "ゲストの "+query, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonGuestFilterNotAllowed})
 		if rec := f.env.get("/api/library?"+query, f.owner); rec.Code != http.StatusOK {
 			t.Errorf("所有者の %s: status = %d, want 200", query, rec.Code)
 		}
@@ -401,16 +406,16 @@ func TestGetFolderGroup(t *testing.T) {
 		t.Errorf("pair = %+v", pair)
 	}
 	for _, rel := range []string{"", "none", "show/ep1.mp4"} {
-		if rec := f.env.get(f.groupPath(rel), f.owner); rec.Code != http.StatusNotFound {
-			t.Errorf("%q: status = %d, want 404", rel, rec.Code)
-		}
+		rec := f.env.get(f.groupPath(rel), f.owner)
+		assertErrorBody(t, rel, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonNotFolderGroup})
 	}
-	if rec := f.env.get(f.groupPath("../show"), f.owner); rec.Code != http.StatusBadRequest {
-		t.Errorf("規則違反のパス: status = %d, want 400", rec.Code)
-	}
-	if rec := f.env.get("/api/folders/999/group?path=show", f.owner); rec.Code != http.StatusNotFound {
-		t.Errorf("無い登録フォルダ: status = %d, want 404", rec.Code)
-	}
+	rec = f.env.get(f.groupPath("../show"), f.owner)
+	assertErrorBody(t, "規則違反のパス", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidFolderPath})
+	rec = f.env.get("/api/folders/999/group?path=show", f.owner)
+	assertErrorBody(t, "無い登録フォルダ", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFolderNotFound})
 
 	guest := f.env.get(f.groupPath("show"))
 	if guest.Code != http.StatusOK {

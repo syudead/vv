@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
+	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
 // streamFixture は MediaDir の内側に実体を持つ動画を1件用意する。
@@ -374,9 +375,9 @@ func TestStreamHandlesMissingFile(t *testing.T) {
 	}
 	handler := streamServer(t, mediaDir, video)
 
-	if rec := rangeRequest(t, handler, "/api/videos/1/stream", ""); rec.Code != http.StatusNotFound {
-		t.Errorf("status = %d, want 404", rec.Code)
-	}
+	rec := rangeRequest(t, handler, "/api/videos/1/stream", "")
+	assertErrorBody(t, "消えた実体", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFileUnavailable})
 }
 
 // 存在しない id は 404。

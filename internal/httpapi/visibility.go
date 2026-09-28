@@ -35,16 +35,16 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !validVideoTagsIDs(body.VideoIds) {
-		s.invalidRequest(w, "videoIdsは1件以上20000件以下で指定してください")
+		s.tooManyVideos(w)
 		return
 	}
 	if body.Public == nil {
-		s.invalidRequest(w, "publicを指定してください")
+		s.invalidRequest(w, "public is required.")
 		return
 	}
 	public := *body.Public
 	if s.visibility == nil {
-		s.internalError(w, "公開フラグの保存先が設定されていません", nil)
+		s.internalError(w, "Visibility storage is not configured.", nil)
 		return
 	}
 
@@ -55,7 +55,7 @@ func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 	defer s.guests.switching.Unlock()
 	keys, err := s.visibility.SetVideosPublic(r.Context(), body.VideoIds, public)
 	if err != nil {
-		s.internalError(w, "公開フラグを切り替えられませんでした", err)
+		s.internalError(w, "Could not change the visibility.", err)
 		return
 	}
 	// 反映を確定させてから打ち切る。確定の前に打ち切ると、その間に始まったゲストの

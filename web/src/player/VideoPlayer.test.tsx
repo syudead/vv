@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
+import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 
 const mock = vi.hoisted(() => {
   type Callback = () => void;
@@ -158,7 +159,7 @@ const mock = vi.hoisted(() => {
 
 vi.mock("video.js", () => ({ default: mock.factory }));
 
-import VideoPlayer from "./VideoPlayer";
+import VideoPlayer, { playerLanguage } from "./VideoPlayer";
 
 const video: Video = {
   id: 7,
@@ -326,16 +327,70 @@ describe("VideoPlayer", () => {
     ).toBe("Space");
   });
 
+  it("操作バーの読み上げ名とツールチップは英語の独自言語で、キーボード操作を持つボタンにキーを添える", async () => {
+    render(<VideoPlayer {...props()} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    expect(playerLanguage).toBe("en-x-vv");
+    expect(mock.instances[0]?.options.language).toBe(playerLanguage);
+    expect(mock.factory.addLanguage).toHaveBeenCalledWith(playerLanguage, {
+      Play: "Play (Space)",
+      Pause: "Pause (Space)",
+      Replay: "Replay (Space)",
+      "Play Video": "Play",
+      Mute: "Mute (M)",
+      Unmute: "Unmute (M)",
+      Fullscreen: "Fullscreen (F)",
+      "Exit Fullscreen": "Exit fullscreen (F)",
+      "Picture-in-Picture": "Picture-in-picture",
+      "Exit Picture-in-Picture": "Exit picture-in-picture",
+      "Playback Rate": "Playback speed",
+      "Current Time": "Current time",
+      Duration: "Duration",
+      "Progress Bar": "Playback position",
+      "Volume Level": "Volume",
+      "Video Player": "Video player",
+    });
+    const element = mock.instances[0]?.element;
+    const shortcuts = [
+      ".vjs-play-control",
+      ".vjs-mute-control",
+      ".vjs-fullscreen-control",
+    ].map((selector) =>
+      element?.querySelector(selector)?.getAttribute("aria-keyshortcuts"),
+    );
+    expect(shortcuts).toEqual(["Space", "M", "F"]);
+    const restart = await screen.findByRole("button", { name: "Restart" });
+    expect(restart.getAttribute("title")).toBe("Restart (0)");
+  });
+
+  it("疑似ロケールで、video.js の独自言語・差し込んだ操作・変換の案内がカタログから出る", async () => {
+    enablePseudoLocale();
+    render(<VideoPlayer {...props({ playable: false })} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const dictionary = mock.factory.addLanguage.mock.calls.at(-1)?.[1] as Record<
+      string,
+      string
+    >;
+    for (const text of Object.values(dictionary)) {
+      expect(text.startsWith("⟦") && text.endsWith("⟧")).toBe(true);
+    }
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Converting for playback/ }),
+    );
+    await screen.findByText(/Seeking takes a few seconds/);
+    expectCatalogTextOnly(document.body);
+  });
+
   it("操作バーの再生の前に「最初に戻る」を差し込み、押すと先頭へ戻る", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
     const player = mock.instances[0];
-    const restart = await screen.findByRole("button", { name: "最初に戻る" });
+    const restart = await screen.findByRole("button", { name: "Restart" });
     const labels = Array.from(
       player?.element.querySelectorAll(".vjs-control-bar button") ?? [],
       (button) => button.getAttribute("aria-label") ?? button.className,
     );
-    expect(labels.slice(0, 2)).toEqual(["最初に戻る", "vjs-play-control"]);
+    expect(labels.slice(0, 2)).toEqual(["Restart", "vjs-play-control"]);
     expect(restart.getAttribute("aria-keyshortcuts")).toBe("0");
 
     player?.currentTime(42);
@@ -346,25 +401,29 @@ describe("VideoPlayer", () => {
   it("変換して再生する動画だけ、操作バーの再生速度の前に「変換して再生中」を出す", async () => {
     const direct = render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
-    expect(screen.queryByText("変換して再生中")).toBeNull();
+    expect(screen.queryByText("Converting for playback")).toBeNull();
     direct.unmount();
 
     render(<VideoPlayer {...props({ playable: false })} />);
-    const indicator = await screen.findByRole("button", { name: "変換して再生中" });
+    const indicator = await screen.findByRole("button", {
+      name: "Converting for playback",
+    });
     const bar = mock.instances[1]?.element.querySelector(".vjs-control-bar");
     expect(bar?.contains(indicator)).toBe(true);
     expect(
       indicator.closest(".vv-transcode-indicator")?.nextElementSibling?.className,
     ).toBe("vjs-playback-rate");
     fireEvent.click(indicator);
-    expect(await screen.findByText(/シークに数秒かかります/)).toBeDefined();
+    expect(await screen.findByText(/Seeking takes a few seconds/)).toBeDefined();
   });
 
   it("directからtranscodeへ切り替えたら「変換して再生中」を出す", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
     act(() => mock.instances[0]?.trigger("error"));
-    expect(await screen.findByRole("button", { name: "変換して再生中" })).toBeDefined();
+    expect(
+      await screen.findByRole("button", { name: "Converting for playback" }),
+    ).toBeDefined();
   });
 
   it("thumbnailStateだけが変わってもプレイヤーを作り直さず、背景の画像だけ差し替える", async () => {
@@ -520,8 +579,10 @@ describe("VideoPlayer", () => {
     // 全画面ボタンの表示を切り替えるため、プレイヤーにも知らせる。
     expect(changes).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(await screen.findByRole("button", { name: "変換して再生中" }));
-    const content = await screen.findByText(/シークに数秒かかります/);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Converting for playback" }),
+    );
+    const content = await screen.findByText(/Seeking takes a few seconds/);
     expect(frame.contains(content)).toBe(true);
 
     Object.defineProperty(document, "fullscreenElement", {

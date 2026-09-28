@@ -101,7 +101,7 @@ func (c *Catalog) present(ctx context.Context, video domain.Video) domain.VideoV
 	switch {
 	case err != nil:
 		// 作り直しを積めなくても、応答は URL を省いて返せる。次に見つけたときに積む。
-		c.logger.Warn("消えたプレビューの作り直しを積めませんでした",
+		c.logger.Warn("could not queue regeneration of a missing preview",
 			slog.Int64("videoId", video.ID), slog.Any("error", err))
 	case requeued:
 		video.PreviewState = domain.PreviewStatePending
@@ -124,7 +124,7 @@ func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (d
 		return video.SeekThumbnailState, nil
 	}
 	if _, err := c.ingest.RequeueMissingSeekThumbnails(ctx, video.ID, video.ContentKey); err != nil {
-		c.logger.Warn("消えたシーク用サムネイルの作り直しを積めませんでした",
+		c.logger.Warn("could not queue regeneration of missing seek thumbnails",
 			slog.Int64("videoId", video.ID), slog.Any("error", err))
 	}
 	return domain.SeekThumbnailPending, nil

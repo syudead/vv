@@ -5,17 +5,15 @@ import { NavLink, useLocation } from "react-router";
 import { logout } from "../api/auth";
 import { useAudience } from "../auth/audience";
 import { currentPath, loginPath, reloadPage } from "../auth/pageNavigation";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { useToast } from "../ui/Toast";
 import { navEntries, type NavEntry } from "./navigation";
 import type { SidebarMode } from "./useSidebar";
 
-const settingsEntry: NavEntry = {
-  id: "settings",
-  label: "設定",
-  icon: Settings,
-  to: "/settings",
-};
+function settingsEntry(): NavEntry {
+  return { id: "settings", label: t.shell.nav.settings, icon: Settings, to: "/settings" };
+}
 
 function entryClassName(mode: SidebarMode, active: boolean): string {
   const rail = mode === "rail";
@@ -75,7 +73,7 @@ function LogoutEntry({ mode }: { mode: SidebarMode }) {
       await logout();
       reloadPage();
     } catch {
-      toast("ログアウトできませんでした");
+      toast(t.shell.nav.logoutFailed);
       setPending(false);
     }
   };
@@ -89,7 +87,7 @@ function LogoutEntry({ mode }: { mode: SidebarMode }) {
     >
       <LogOut strokeWidth={1.75} />
       <span className="max-w-full truncate">
-        {pending ? "ログアウト中…" : "ログアウト"}
+        {pending ? t.shell.nav.loggingOut : t.shell.nav.logout}
       </span>
     </button>
   );
@@ -109,7 +107,7 @@ function AccountEntries({
   if (audience === "guest") {
     const loginEntry: NavEntry = {
       id: "login",
-      label: "ログイン",
+      label: t.shell.nav.login,
       icon: LogIn,
       to: loginPath(currentPath(location)),
     };
@@ -117,7 +115,7 @@ function AccountEntries({
   }
   return (
     <>
-      <Entry entry={settingsEntry} mode={mode} onNavigate={onNavigate} />
+      <Entry entry={settingsEntry()} mode={mode} onNavigate={onNavigate} />
       <LogoutEntry mode={mode} />
     </>
   );
@@ -135,21 +133,21 @@ export default function Sidebar({
 }) {
   const drawer = mode === "drawer";
   const audience = useAudience();
-  const entries =
-    audience === "owner" ? navEntries : navEntries.filter((entry) => !entry.ownerOnly);
+  const all = navEntries();
+  const entries = audience === "owner" ? all : all.filter((entry) => !entry.ownerOnly);
 
   return (
     <>
       {drawer && open && (
         <button
           type="button"
-          aria-label="メニューを閉じる"
+          aria-label={t.shell.nav.closeMenu}
           onClick={onClose}
           className="fixed inset-0 z-30 bg-overlay animate-fade-in"
         />
       )}
       <aside
-        aria-label="メインナビゲーション"
+        aria-label={t.shell.nav.main}
         aria-hidden={drawer && !open ? true : undefined}
         inert={drawer && !open ? true : undefined}
         className={cn(
@@ -171,7 +169,7 @@ export default function Sidebar({
           ))}
         </nav>
         <nav
-          aria-label="アカウントと設定"
+          aria-label={t.shell.nav.account}
           className={cn(
             "flex shrink-0 flex-col gap-0.5 border-t border-border",
             mode === "rail" ? "items-center px-1.5 py-2" : "px-2.5 py-3",

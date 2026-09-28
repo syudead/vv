@@ -7,20 +7,21 @@ import {
   useState,
 } from "react";
 
+import type { UiText } from "../i18n";
 import { cn } from "../lib/cn";
 
 interface ToastItem {
   id: number;
-  message: string;
+  message: UiText;
   expiresAt: number | null;
 }
 
 const toastDuration = 2800;
 
-const ToastContext = createContext<(message: string) => void>(() => undefined);
+const ToastContext = createContext<(message: UiText) => void>(() => undefined);
 
 /** useToast は短い通知を出す関数を返す。 */
-export function useToast(): (message: string) => void {
+export function useToast(): (message: UiText) => void {
   return useContext(ToastContext);
 }
 
@@ -34,7 +35,7 @@ export function ToastProvider({
   const [items, setItems] = useState<ToastItem[]>([]);
 
   const show = useCallback(
-    (message: string) => {
+    (message: UiText) => {
       const id = Date.now() + Math.random();
       setItems((current) => {
         const visibleCount = current.filter((item) => item.expiresAt !== null).length;

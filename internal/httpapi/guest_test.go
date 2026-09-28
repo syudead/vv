@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"maps"
 	"net/http"
@@ -116,7 +117,8 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 		id := result.ID
 		f.ids[file.name] = id
 		if file.name == "d" {
-			if err := db.Ingest().MarkProbeFailed(ctx, id, "ffprobe: "+file.path+": 読めません"); err != nil {
+			if err := db.Ingest().MarkProbeFailed(ctx, id,
+				domain.NewProbeFailure(domain.ProbeErrorProbeFailed, errors.New("ffprobe: "+file.path+": invalid data"))); err != nil {
 				t.Fatal(err)
 			}
 			continue
@@ -182,7 +184,7 @@ func rawItems(t *testing.T, body []byte, field string) []map[string]json.RawMess
 // assertGuestVideo は動画の JSON に所有者のデータが無いことを確かめる（guest-api.md §1）。
 func assertGuestVideo(t *testing.T, label string, video map[string]json.RawMessage) {
 	t.Helper()
-	for _, field := range []string{"location", "progress", "probeError"} {
+	for _, field := range []string{"location", "progress", "probeError", "probeErrorCode"} {
 		if value, ok := video[field]; ok {
 			t.Errorf("%s: ゲストの応答に %s = %s", label, field, value)
 		}
@@ -252,6 +254,9 @@ func TestGuestSeesOnlyPublicVideosWithoutOwnerData(t *testing.T) {
 		case "d":
 			if video.ProbeError == nil {
 				t.Errorf("所有者の d に probeError が無い: %+v", video)
+			}
+			if video.ProbeErrorCode == nil || *video.ProbeErrorCode != gen.ProbeErrorCodeProbeFailed {
+				t.Errorf("所有者の d の probeErrorCode = %v, want probe_failed", video.ProbeErrorCode)
 			}
 		}
 	}

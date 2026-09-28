@@ -1,3 +1,4 @@
+import { t, type UiText } from "../i18n";
 import { type FolderRef, RequestFailed, request } from "./client";
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
@@ -73,15 +74,13 @@ export async function tagFolderGroup(
 }
 
 /** ungroupedMessage はまとめを解除したことを伝える文言である（ui-design.md「Group line」）。 */
-export function ungroupedMessage(name: string): string {
-  return `「${name}」のまとめを解除しました`;
+export function ungroupedMessage(name: string): UiText {
+  return t.folderGrouping.ungrouped(name);
 }
 
 /** taggedMessage はグループをタグに変えたことを伝える文言である（ui-design.md「Group line」）。 */
-export function taggedMessage(result: FolderGroupTagResult): string {
-  return result.created
-    ? `タグ「${result.tag.name}」を作り、まとめを解除しました`
-    : `タグ「${result.tag.name}」を付け、まとめを解除しました`;
+export function taggedMessage(result: FolderGroupTagResult): UiText {
+  return t.folderGrouping.tagged(result.tag.name, result.created);
 }
 
 /**
@@ -101,20 +100,17 @@ export function groupingFailure(
     name: string;
     /** グループをタグに変える操作の失敗か。400 の文言はこの操作にだけ当てる。 */
     tagging: boolean;
-    notFoundMessage: string;
+    notFoundMessage: UiText;
   },
-): { message: string; conflict: boolean } {
+): { message: UiText; conflict: boolean } {
   if (failure instanceof RequestFailed) {
     if (tagging && failure.status === 400 && failure.code === "invalid_request") {
-      return {
-        message: `「${name}」はタグの名前に使えないため、タグに変えられません`,
-        conflict: false,
-      };
+      return { message: t.folderGrouping.cannotTag(name), conflict: false };
     }
     if (failure.status === 409) {
-      return { message: "このフォルダはもうグループではありません", conflict: true };
+      return { message: t.folderGrouping.notGroup, conflict: true };
     }
     if (failure.status === 404) return { message: notFoundMessage, conflict: false };
   }
-  return { message: "変更できませんでした", conflict: false };
+  return { message: t.folderGrouping.changeFailed, conflict: false };
 }

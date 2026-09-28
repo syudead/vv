@@ -77,22 +77,22 @@ func TestMediaFolderMutationErrors(t *testing.T) {
 		err    error
 		status int
 		code   gen.ErrorCode
+		reason gen.ErrorReason
 	}{
-		{domain.ErrInvalidMediaFolder, 400, codeInvalidMediaDirectory},
-		{domain.ErrUnsupportedMediaFolder, 400, codeUnsupportedMediaDirectory},
-		{domain.ErrNotFound, 404, codeMediaFolderNotFound},
-		{domain.ErrFolderConflict, 409, codeOverlappingMediaDirectories},
-		{domain.ErrScanRunning, 409, codeScanInProgress},
-		{domain.ErrVersionConflict, 409, codeConflict},
-		{errors.New("database unavailable"), 500, codeInternal},
+		{domain.ErrInvalidMediaFolder, 400, codeInvalidMediaDirectory, ""},
+		{domain.ErrUnsupportedMediaFolder, 400, codeUnsupportedMediaDirectory, ""},
+		{domain.ErrNotFound, 404, codeMediaFolderNotFound, ""},
+		{domain.ErrFolderConflict, 409, codeOverlappingMediaDirectories, ""},
+		{domain.ErrScanRunning, 409, codeScanInProgress, ""},
+		{domain.ErrVersionConflict, 409, codeConflict, reasonMediaFoldersChanged},
+		{errors.New("database unavailable"), 500, codeInternal, ""},
 	}
 	for _, tc := range tests {
 		t.Run(string(tc.code), func(t *testing.T) {
 			handler := newTestServer(t, Options{MediaFolders: &fakeMediaFolders{err: tc.err}})
 			rec := jsonRequest(t, handler, http.MethodPost, "/api/media-folders", `{"path":"/media"}`)
-			if rec.Code != tc.status || decode[gen.Error](t, rec).Code != tc.code {
-				t.Fatalf("response = %d %s", rec.Code, rec.Body)
-			}
+			assertErrorBody(t, string(tc.code), rec.Code, rec.Body.Bytes(),
+				wantError{status: tc.status, code: tc.code, reason: tc.reason})
 		})
 	}
 }
@@ -111,6 +111,8 @@ func TestMediaFolderMutationRequiresJSONAndSameOrigin(t *testing.T) {
 	if rec.Code != http.StatusForbidden || folders.operation != "" {
 		t.Fatalf("origin response = %d operation=%s", rec.Code, folders.operation)
 	}
+	assertErrorBody(t, "cross origin", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusForbidden, code: gen.ErrorCodeForbidden, reason: reasonCrossOrigin})
 	if rec.Header().Get("Access-Control-Allow-Origin") != "" {
 		t.Fatal("CORS header was added")
 	}

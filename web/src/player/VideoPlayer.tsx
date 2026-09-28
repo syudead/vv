@@ -5,6 +5,7 @@ import videojs from "video.js";
 import "video.js/dist/video-js.css";
 
 import { streamUrl, type Video } from "../api/client";
+import { t, type UiText } from "../i18n";
 import { readPlaybackVolume, writePlaybackVolume } from "../preferences/playbackVolume";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { liveSource } from "./liveOffset";
@@ -47,28 +48,37 @@ const controlBarChildren = [
 ];
 
 /**
- * 操作バーの読み上げ名とポイントしたときの説明。キーボード操作を持つボタンには
- * キーを添える（ui-design「Control bar」）。video.js は同じ文字を title にも使う。
+ * 操作バーの読み上げ名とポイントしたときの説明。video.js の文言をカタログの英語で置き換える
+ * 独自言語で、キーボード操作を持つボタンにはキーを添える（ui-design「Control bar」、
+ * specs/023-english-i18n/research.md R-9）。video.js は同じ文字を title にも使う。
+ *
+ * 名前は英語の私用の副タグにする。video.js はこれをプレイヤーの `lang` 属性にも使い、
+ * ここに無い文言は主の言語（`en`）の既定に戻る。
  */
-const language = "vv-ja";
-videojs.addLanguage(language, {
-  Play: "再生（Space）",
-  Pause: "一時停止（Space）",
-  Replay: "もう一度再生（Space）",
-  "Play Video": "再生",
-  Mute: "ミュート（M）",
-  Unmute: "ミュートを解除（M）",
-  Fullscreen: "全画面（F）",
-  "Exit Fullscreen": "全画面を終了（F）",
-  "Picture-in-Picture": "ピクチャーインピクチャー",
-  "Exit Picture-in-Picture": "ピクチャーインピクチャーを終了",
-  "Playback Rate": "再生速度",
-  "Current Time": "現在の時刻",
-  Duration: "長さ",
-  "Progress Bar": "再生位置",
-  "Volume Level": "音量",
-  "Video Player": "動画プレイヤー",
-});
+export const playerLanguage = "en-x-vv";
+
+/** playerDictionary は video.js の文言からカタログの英語への表である。作るたびにカタログを引く。 */
+export function playerDictionary(): Record<string, string> {
+  const c = t.player.controls;
+  return {
+    Play: c.withKey(c.play, "Space"),
+    Pause: c.withKey(c.pause, "Space"),
+    Replay: c.withKey(c.replay, "Space"),
+    "Play Video": c.play,
+    Mute: c.withKey(c.mute, "M"),
+    Unmute: c.withKey(c.unmute, "M"),
+    Fullscreen: c.withKey(c.fullscreen, "F"),
+    "Exit Fullscreen": c.withKey(c.exitFullscreen, "F"),
+    "Picture-in-Picture": c.pictureInPicture,
+    "Exit Picture-in-Picture": c.exitPictureInPicture,
+    "Playback Rate": c.playbackRate,
+    "Current Time": c.currentTime,
+    Duration: c.duration,
+    "Progress Bar": c.progressBar,
+    "Volume Level": c.volumeLevel,
+    "Video Player": c.videoPlayer,
+  };
+}
 
 /** キーボード操作を持つボタンと、そのキー（aria-keyshortcuts）。 */
 const keyShortcuts: [string, string][] = [
@@ -159,6 +169,8 @@ export default function VideoPlayer(props: Props) {
     if (host === null || initialAttempt === null) return;
     const source = current.video;
 
+    // 言語はプレイヤーを作るときにカタログから作り直す（テストの疑似ロケールも届く）。
+    videojs.addLanguage(playerLanguage, playerDictionary());
     const element = document.createElement("video-js");
     element.classList.add("video-js", "vjs-big-play-centered");
     host.appendChild(element);
@@ -169,7 +181,7 @@ export default function VideoPlayer(props: Props) {
       playsinline: true,
       poster: source.thumbnailUrl,
       preload: "metadata",
-      language,
+      language: playerLanguage,
       // 失敗はプレイヤーの上の層で伝える。video.js 自身の誤りの面は出さない。
       errorDisplay: false,
       playbackRates,
@@ -436,7 +448,7 @@ export default function VideoPlayer(props: Props) {
       {restartSlot !== null &&
         createPortal(
           <BarButton
-            label="最初に戻る"
+            label={t.player.controls.restart}
             keys="0"
             icon={RotateCcw}
             onClick={() => {
@@ -468,12 +480,12 @@ function BarButton({
   icon: Icon,
   onClick,
 }: {
-  label: string;
+  label: UiText;
   keys?: string;
   icon: LucideIcon;
   onClick: () => void;
 }) {
-  const title = keys === undefined ? label : `${label}（${keys}）`;
+  const title = keys === undefined ? label : t.player.controls.withKey(label, keys);
   return (
     <button
       type="button"
@@ -507,10 +519,10 @@ function TranscodeIndicator({
       <PopoverTrigger className="inline-flex! items-center gap-1 rounded-sm px-1 text-xs! leading-4! whitespace-nowrap text-fg-muted! transition-colors! hover:text-fg!">
         <Info className="size-3.5 shrink-0" aria-hidden="true" />
         {/* 縦長の動画などで枠が狭いときは、印だけを残して操作バーの幅に収める。 */}
-        <span className="@max-[22.5rem]:sr-only">変換して再生中</span>
+        <span className="@max-[22.5rem]:sr-only">{t.player.controls.transcoding}</span>
       </PopoverTrigger>
       <PopoverContent container={container} className="w-64 text-sm text-fg">
-        ブラウザがそのまま再生できない形式のため、変換しながら再生しています。シークに数秒かかります。
+        {t.player.controls.transcodingDetail}
       </PopoverContent>
     </PopoverRoot>
   );

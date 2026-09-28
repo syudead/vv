@@ -20,14 +20,14 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 		return
 	}
 	if s.catalog == nil {
-		s.internalError(w, "関連動画の問い合わせ先が設定されていません", nil)
+		s.internalError(w, "Related video queries are not configured.", nil)
 		return
 	}
 	audience := audienceFrom(r.Context())
 
 	related, err := s.catalog.RelatedVideos(r.Context(), audience, video)
 	if err != nil {
-		s.internalError(w, "関連動画を取得できませんでした", err)
+		s.internalError(w, "Could not load related videos.", err)
 		return
 	}
 

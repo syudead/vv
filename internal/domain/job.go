@@ -22,7 +22,7 @@ const (
 const MaxJobAttempts = 3
 
 // ErrNoJob は待ち行列が空であることを表す。ワーカーはこれを見て待機に入る。
-var ErrNoJob = errors.New("処理するジョブがありません")
+var ErrNoJob = errors.New("no job to process")
 
 // Job は待ち行列から専有した仕事である。
 type Job struct {

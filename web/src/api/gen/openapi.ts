@@ -1335,6 +1335,7 @@ export interface components {
             probeState: "pending" | "done" | "failed";
             /** @description probeState = failed のときの理由。ゲストの応答では省く（ファイルの絶対パスを含みうる） */
             probeError?: string;
+            probeErrorCode?: components["schemas"]["ProbeErrorCode"];
             /** @enum {string} */
             thumbnailState: "pending" | "done" | "failed";
             /** @enum {string} */
@@ -1507,9 +1508,22 @@ export interface components {
             /** @description 取り込み処理に成功した対象ファイル数 */
             completed: number;
             failed: number;
-            /** @description スキャン自体が失敗した理由 */
+            /** @description スキャン自体が失敗した理由の自由文。画面は表示せず、errorCode と errorPath から説明を作る （specs/023-english-i18n/contracts/error-api.md §3） */
             error?: string;
+            errorCode?: components["schemas"]["ScanErrorCode"];
+            /** @description errorCode の理由が特定の場所に結び付くときの、その絶対パス（メディアフォルダ、またはその下の 読めなかった場所。翻訳しない利用者のデータ）。それ以外は省略される */
+            errorPath?: string;
         };
+        /**
+         * @description 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+         * @enum {string}
+         */
+        ProbeErrorCode: "file_unavailable" | "probe_unavailable" | "probe_failed" | "invalid_metadata" | "internal";
+        /**
+         * @description スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である （task generate）。
+         * @enum {string}
+         */
+        ScanErrorCode: "media_folder_unreadable" | "media_folder_not_directory" | "location_unreadable" | "interrupted" | "internal";
         Processing: {
             /** @description 解析（ffprobe）の残り */
             probe: number;
@@ -1533,9 +1547,19 @@ export interface components {
              * @enum {string}
              */
             code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured";
-            /** @description 人が読むための説明。利用者にそのまま提示してよい文言にする */
+            /** @description 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0） */
             message: string;
+            reason?: components["schemas"]["ErrorReason"];
+            /** @description reason の上限値。契約の表で limit を返す reason のときだけ入る （specs/023-english-i18n/contracts/error-api.md §1） */
+            limit?: number;
+            /** @description 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1） */
+            tagName?: string;
         };
+        /**
+         * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+         * @enum {string}
+         */
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local";
     };
     responses: {
         /** @description 対象が存在しない */

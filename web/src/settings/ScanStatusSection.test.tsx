@@ -4,6 +4,12 @@ import { MemoryRouter, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Scan } from "../api/client";
+import {
+  enablePseudoLocale,
+  expectCatalogTextOnly,
+  PSEUDO_CLOSE,
+  PSEUDO_OPEN,
+} from "../i18n/pseudo";
 import { ScanProvider } from "../shell/ScanProvider";
 import { OwnerAudience } from "../testing/audience";
 import ScanStatusSection from "./ScanStatusSection";
@@ -50,9 +56,9 @@ describe("ScanStatusSection", () => {
       Promise.resolve(String(input) === "/api/media-folders" ? json([]) : json(scan())),
     );
     renderSection();
-    const heading = await screen.findByRole("heading", { name: "取り込み状況" });
+    const heading = await screen.findByRole("heading", { name: "Scan status" });
     expect(document.activeElement).toBe(heading);
-    expect(screen.getByText("対象はありませんでした")).toBeDefined();
+    expect(screen.getByText("There was nothing to scan")).toBeDefined();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
@@ -67,10 +73,10 @@ describe("ScanStatusSection", () => {
     renderSection();
 
     const progress = await screen.findByRole("progressbar", {
-      name: "取り込み対象を確認中",
+      name: "Checking what to scan",
     });
     expect(progress.getAttribute("aria-valuenow")).toBeNull();
-    expect(screen.getByText("確認中")).toBeDefined();
+    expect(screen.getByText("Counting…")).toBeDefined();
   });
 
   it("shows retry text without a progress bar when no scan has loaded", async () => {
@@ -81,7 +87,11 @@ describe("ScanStatusSection", () => {
     );
     renderSection();
 
-    expect(await screen.findByText("network")).toBeDefined();
+    expect(
+      await screen.findByText(
+        "Couldn't reach the server. Check that VVMDM is running and try again.",
+      ),
+    ).toBeDefined();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
@@ -97,14 +107,76 @@ describe("ScanStatusSection", () => {
         );
       }
       return Promise.resolve(
-        json(scan({ state: "failed", error: "ディスクを読み取れません" })),
+        json(
+          scan({
+            state: "failed",
+            error: "open /media/動画: permission denied",
+            errorCode: "media_folder_unreadable",
+            errorPath: "/media/動画",
+          }),
+        ),
       );
     });
     renderSection();
-    expect(await screen.findByText("ディスクを読み取れません")).toBeDefined();
+    expect(
+      await screen.findByText("The media folder couldn't be read: /media/動画"),
+    ).toBeDefined();
+    expect(screen.queryByText(/permission denied/)).toBeNull();
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "再試行" }));
+    await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(startCalls).toBe(1));
+  });
+
+  it("shows a general English reason for an old failure without a code", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders"
+          ? json([{}])
+          : json(
+              scan({
+                state: "failed",
+                error: "取り込みの途中でアプリケーションが停止しました",
+              }),
+            ),
+      ),
+    );
+    const { container } = renderSection();
+    expect((await screen.findAllByText("The scan failed.")).length).toBeGreaterThan(0);
+    expect(container.textContent).not.toMatch(/[\u3040-\u30ff\u4e00-\u9fff]/);
+  });
+
+  it.each([
+    ["done", scan({ state: "done", total: 3, completed: 3 })],
+    ["running", scan({ state: "running", total: 10, completed: 4, failed: 1 })],
+    [
+      "failed",
+      scan({
+        state: "failed",
+        errorCode: "location_unreadable",
+        errorPath: "/media/動画/sub",
+      }),
+    ],
+    ["failed without a code", scan({ state: "failed", error: "古い理由" })],
+  ])("renders only catalog text when %s (pseudo-locale)", async (_, current) => {
+    enablePseudoLocale();
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders"
+          ? json([{}])
+          : json({
+              ...current,
+              startedAt: "2026-09-27T10:00:00Z",
+              finishedAt:
+                current.state === "running" ? undefined : "2026-09-27T10:05:00Z",
+            }),
+      ),
+    );
+    const { container } = renderSection();
+    await screen.findByRole("heading", {
+      name: `${PSEUDO_OPEN}Scan status${PSEUDO_CLOSE}`,
+    });
+    await waitFor(() => expect(container.textContent).toContain("Started"));
+    expectCatalogTextOnly(container, ["/media/動画/sub"]);
   });
 
   it("focuses the heading again when navigating to the same anchor", async () => {
@@ -112,7 +184,7 @@ describe("ScanStatusSection", () => {
       Promise.resolve(String(input) === "/api/media-folders" ? json([]) : json(scan())),
     );
     renderSection({ navigation: true });
-    const heading = await screen.findByRole("heading", { name: "取り込み状況" });
+    const heading = await screen.findByRole("heading", { name: "Scan status" });
     const user = userEvent.setup();
     const navigation = screen.getByRole("button", { name: "同じ詳細へ移動" });
 

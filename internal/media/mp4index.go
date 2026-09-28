@@ -34,7 +34,7 @@ const (
 
 // errSeekIndexUnsupported は、入力が索引から抽出できる形（sample table を持つ
 // MP4／MOV の H.264／HEVC）でないことを表す。
-var errSeekIndexUnsupported = errors.New("索引からキーフレームを取れない入力です")
+var errSeekIndexUnsupported = errors.New("keyframes cannot be read from the index for this input")
 
 // keyframeTrack は映像トラックのうち、スプライトの生成に使う部分である。
 type keyframeTrack struct {
@@ -83,17 +83,17 @@ func readMovieBox(ctx context.Context, r io.ReaderAt, fileSize int64) ([]byte, e
 			size = fileSize - position
 		case 1:
 			if n < 16 {
-				return nil, fmt.Errorf("%w: box %q の header が途中で切れている", errSeekIndexUnsupported, boxType)
+				return nil, fmt.Errorf("%w: box %q header is truncated", errSeekIndexUnsupported, boxType)
 			}
 			size = int64(binary.BigEndian.Uint64(header[8:16]))
 			headerSize = 16
 		}
 		if size < headerSize || size > fileSize-position {
-			return nil, fmt.Errorf("%w: box %q の大きさ %d", errSeekIndexUnsupported, boxType, size)
+			return nil, fmt.Errorf("%w: box %q has size %d", errSeekIndexUnsupported, boxType, size)
 		}
 		if boxType == "moov" {
 			if size-headerSize > maxMovieBoxSize {
-				return nil, fmt.Errorf("%w: moov が大きすぎる（%d バイト）", errSeekIndexUnsupported, size)
+				return nil, fmt.Errorf("%w: moov is too large (%d bytes)", errSeekIndexUnsupported, size)
 			}
 			movie := make([]byte, size-headerSize)
 			if _, err := readAt(ctx, r, movie, position+headerSize); err != nil {
@@ -103,7 +103,7 @@ func readMovieBox(ctx context.Context, r io.ReaderAt, fileSize int64) ([]byte, e
 		}
 		position += size
 	}
-	return nil, fmt.Errorf("%w: moov が無い", errSeekIndexUnsupported)
+	return nil, fmt.Errorf("%w: no moov", errSeekIndexUnsupported)
 }
 
 // parseKeyframeTrack は moov の中身から、ffmpeg が選ぶのと同じ最初の映像トラックの
@@ -131,12 +131,12 @@ func parseKeyframeTrack(movie []byte) (*keyframeTrack, error) {
 		}
 		return track, err
 	}
-	return nil, fmt.Errorf("%w: 映像トラックが無い", errSeekIndexUnsupported)
+	return nil, fmt.Errorf("%w: no video track", errSeekIndexUnsupported)
 }
 
 // errNotVideoTrack は、映像でない、または表紙のような 1 枚だけの画像のトラックを表す。
 // ffmpeg の 0:V:0 と同じく、こうしたトラックは飛ばして次を見る。
-var errNotVideoTrack = errors.New("映像トラックでない")
+var errNotVideoTrack = errors.New("not a video track")
 
 func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, error) {
 	mdia, err := childPayload(trak, "mdia")
@@ -153,15 +153,15 @@ func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, 
 	}
 	mdhd, err := childPayload(mdiaBoxes, "mdhd")
 	if err != nil {
-		return nil, fmt.Errorf("%w: mdhd が無い", errSeekIndexUnsupported)
+		return nil, fmt.Errorf("%w: no mdhd", errSeekIndexUnsupported)
 	}
 	timescale, err := movieTimescale(mdhd)
 	if err != nil || timescale == 0 {
-		return nil, fmt.Errorf("%w: mdhd の timescale が読めない", errSeekIndexUnsupported)
+		return nil, fmt.Errorf("%w: cannot read mdhd timescale", errSeekIndexUnsupported)
 	}
 	stbl, err := nestedPayload(mdiaBoxes, "minf", "stbl")
 	if err != nil {
-		return nil, fmt.Errorf("%w: stbl が無い", errSeekIndexUnsupported)
+		return nil, fmt.Errorf("%w: no stbl", errSeekIndexUnsupported)
 	}
 	boxes, err := parseBoxes(stbl)
 	if err != nil {
@@ -181,7 +181,7 @@ func parseVideoTrak(trak []mp4Box, movieTimescaleValue uint64) (*keyframeTrack, 
 		return nil, err
 	}
 	if table.count == 0 {
-		return nil, fmt.Errorf("%w: sample table が空（fragmented MP4 など）", errSeekIndexUnsupported)
+		return nil, fmt.Errorf("%w: sample table is empty (fragmented MP4 or similar)", errSeekIndexUnsupported)
 	}
 	if track.displayFilter, err = displayFilter(trak); err != nil {
 		return nil, err
@@ -238,7 +238,7 @@ func displayFilter(trak []mp4Box) (string, error) {
 		offset = 52
 	}
 	if len(tkhd) < offset+36 {
-		return "", fmt.Errorf("%w: tkhd が短い", errSeekIndexUnsupported)
+		return "", fmt.Errorf("%w: tkhd is too short", errSeekIndexUnsupported)
 	}
 	var m [9]int32
 	for i := range m {
@@ -246,7 +246,7 @@ func displayFilter(trak []mp4Box) (string, error) {
 	}
 	const one = 1 << 16
 	if m[2] != 0 || m[5] != 0 {
-		return "", fmt.Errorf("%w: tkhd の表示行列が射影を含む", errSeekIndexUnsupported)
+		return "", fmt.Errorf("%w: tkhd display matrix contains a projection", errSeekIndexUnsupported)
 	}
 	switch [4]int32{m[0], m[1], m[3], m[4]} {
 	case [4]int32{one, 0, 0, one}:
@@ -258,7 +258,7 @@ func displayFilter(trak []mp4Box) (string, error) {
 	case [4]int32{-one, 0, 0, -one}:
 		return "hflip,vflip", nil
 	}
-	return "", fmt.Errorf("%w: tkhd の表示行列 %v", errSeekIndexUnsupported, m)
+	return "", fmt.Errorf("%w: tkhd display matrix %v", errSeekIndexUnsupported, m)
 }
 
 // readDecoderConfig は sample description（stsd）の entry から形式とパラメータセットを
@@ -266,14 +266,14 @@ func displayFilter(trak []mp4Box) (string, error) {
 func (t *keyframeTrack) readDecoderConfig(table []mp4Box) error {
 	stsd, err := childPayload(table, "stsd")
 	if err != nil || len(stsd) < 8 {
-		return fmt.Errorf("%w: stsd が無い", errSeekIndexUnsupported)
+		return fmt.Errorf("%w: no stsd", errSeekIndexUnsupported)
 	}
 	if count := binary.BigEndian.Uint32(stsd[4:8]); count != 1 {
-		return fmt.Errorf("%w: stsd の entry が %d 個", errSeekIndexUnsupported, count)
+		return fmt.Errorf("%w: stsd has %d entries", errSeekIndexUnsupported, count)
 	}
 	entries, err := parseBoxes(stsd[8:])
 	if err != nil || len(entries) == 0 {
-		return fmt.Errorf("%w: stsd の entry が読めない", errSeekIndexUnsupported)
+		return fmt.Errorf("%w: cannot read stsd entry", errSeekIndexUnsupported)
 	}
 	entry := entries[0]
 	// VisualSampleEntry の固定部分（78 バイト）の後ろに avcC などの box が続く。
@@ -285,10 +285,10 @@ func (t *keyframeTrack) readDecoderConfig(table []mp4Box) error {
 	case "hvc1", "hev1":
 		t.format, configType = "hevc", "hvcC"
 	default:
-		return fmt.Errorf("%w: 映像の形式 %q", errSeekIndexUnsupported, entry.boxType)
+		return fmt.Errorf("%w: video format %q", errSeekIndexUnsupported, entry.boxType)
 	}
 	if len(entry.payload) < visualSampleEntrySize {
-		return fmt.Errorf("%w: %s の entry が短い", errSeekIndexUnsupported, entry.boxType)
+		return fmt.Errorf("%w: %s entry is too short", errSeekIndexUnsupported, entry.boxType)
 	}
 	extensions, err := parseBoxes(entry.payload[visualSampleEntrySize:])
 	if err != nil {
@@ -296,7 +296,7 @@ func (t *keyframeTrack) readDecoderConfig(table []mp4Box) error {
 	}
 	config, err := childPayload(extensions, configType)
 	if err != nil {
-		return fmt.Errorf("%w: %s が無い", errSeekIndexUnsupported, configType)
+		return fmt.Errorf("%w: no %s", errSeekIndexUnsupported, configType)
 	}
 	if t.format == "h264" {
 		return t.readAVCConfig(config)
@@ -306,14 +306,14 @@ func (t *keyframeTrack) readDecoderConfig(table []mp4Box) error {
 
 func (t *keyframeTrack) readAVCConfig(config []byte) error {
 	if len(config) < 7 {
-		return fmt.Errorf("%w: avcC が短い", errSeekIndexUnsupported)
+		return fmt.Errorf("%w: avcC is too short", errSeekIndexUnsupported)
 	}
 	t.lengthSize = int(config[4]&3) + 1
 	rest := config[5:]
 	// SPS の数は下位 5 ビット、PPS の数は次の 1 バイトにある。
 	for _, mask := range []byte{0x1f, 0xff} {
 		if len(rest) < 1 {
-			return fmt.Errorf("%w: avcC が途中で切れている", errSeekIndexUnsupported)
+			return fmt.Errorf("%w: avcC is truncated", errSeekIndexUnsupported)
 		}
 		count := int(rest[0] & mask)
 		rest = rest[1:]
@@ -331,14 +331,14 @@ func (t *keyframeTrack) readAVCConfig(config []byte) error {
 
 func (t *keyframeTrack) readHEVCConfig(config []byte) error {
 	if len(config) < 23 {
-		return fmt.Errorf("%w: hvcC が短い", errSeekIndexUnsupported)
+		return fmt.Errorf("%w: hvcC is too short", errSeekIndexUnsupported)
 	}
 	t.lengthSize = int(config[21]&3) + 1
 	arrays := int(config[22])
 	rest := config[23:]
 	for range arrays {
 		if len(rest) < 3 {
-			return fmt.Errorf("%w: hvcC が途中で切れている", errSeekIndexUnsupported)
+			return fmt.Errorf("%w: hvcC is truncated", errSeekIndexUnsupported)
 		}
 		count := int(binary.BigEndian.Uint16(rest[1:3]))
 		rest = rest[3:]
@@ -357,11 +357,11 @@ func (t *keyframeTrack) readHEVCConfig(config []byte) error {
 // lengthPrefixed は 2 バイトの長さに続く中身を切り出し、残りと一緒に返す。
 func lengthPrefixed(data []byte) ([]byte, []byte, error) {
 	if len(data) < 2 {
-		return nil, nil, fmt.Errorf("%w: パラメータセットが途中で切れている", errSeekIndexUnsupported)
+		return nil, nil, fmt.Errorf("%w: parameter set is truncated", errSeekIndexUnsupported)
 	}
 	size := int(binary.BigEndian.Uint16(data))
 	if len(data) < 2+size {
-		return nil, nil, fmt.Errorf("%w: パラメータセットが途中で切れている", errSeekIndexUnsupported)
+		return nil, nil, fmt.Errorf("%w: parameter set is truncated", errSeekIndexUnsupported)
 	}
 	return data[2 : 2+size], data[2+size:], nil
 }
@@ -383,7 +383,7 @@ type sampleTable struct {
 func readSampleTable(boxes []mp4Box) (*sampleTable, error) {
 	stsz, err := childPayload(boxes, "stsz")
 	if err != nil || len(stsz) < 12 {
-		return nil, fmt.Errorf("%w: stsz が無い", errSeekIndexUnsupported)
+		return nil, fmt.Errorf("%w: no stsz", errSeekIndexUnsupported)
 	}
 	table := &sampleTable{
 		fixedSize: int64(binary.BigEndian.Uint32(stsz[4:8])),
@@ -391,7 +391,7 @@ func readSampleTable(boxes []mp4Box) (*sampleTable, error) {
 	}
 	if table.fixedSize == 0 {
 		if len(stsz)-12 < table.count*4 {
-			return nil, fmt.Errorf("%w: stsz の entry が足りない", errSeekIndexUnsupported)
+			return nil, fmt.Errorf("%w: stsz has too few entries", errSeekIndexUnsupported)
 		}
 		table.sizes = stsz[12:]
 	}
@@ -403,7 +403,7 @@ func readSampleTable(boxes []mp4Box) (*sampleTable, error) {
 	}
 	if table.chunkOffsets, err = requiredEntries(boxes, "stco", 4); err != nil {
 		if table.chunkOffsets, err = requiredEntries(boxes, "co64", 8); err != nil {
-			return nil, fmt.Errorf("%w: stco／co64 が無い", errSeekIndexUnsupported)
+			return nil, fmt.Errorf("%w: no stco/co64", errSeekIndexUnsupported)
 		}
 	}
 	if ctts, err := childPayload(boxes, "ctts"); err == nil {
@@ -448,7 +448,7 @@ func (s *sampleTable) decodeTimes(samples []int) ([]int64, error) {
 		start += int64(run) * delta
 	}
 	if first < s.count {
-		return nil, fmt.Errorf("%w: stts の sample 数 %d が stsz の %d より少ない", errSeekIndexUnsupported, first, s.count)
+		return nil, fmt.Errorf("%w: stts sample count %d is less than stsz count %d", errSeekIndexUnsupported, first, s.count)
 	}
 	return times, nil
 }
@@ -485,7 +485,7 @@ func (s *sampleTable) offsets(samples []int) ([]int64, error) {
 			lastChunk = min(lastChunk, int(binary.BigEndian.Uint32(s.sampleToChunk[i+1][0:4]))-1)
 		}
 		if firstChunk < 0 || firstChunk > lastChunk {
-			return nil, fmt.Errorf("%w: stsc の chunk 番号 %d", errSeekIndexUnsupported, firstChunk+1)
+			return nil, fmt.Errorf("%w: stsc chunk number %d", errSeekIndexUnsupported, firstChunk+1)
 		}
 		for chunk := firstChunk; chunk < lastChunk && first < s.count; chunk++ {
 			end := first + min(perChunk, s.count-first)
@@ -507,7 +507,7 @@ func (s *sampleTable) offsets(samples []int) ([]int64, error) {
 		}
 	}
 	if first != s.count {
-		return nil, fmt.Errorf("%w: chunk に収まる sample が %d 個（%d 個のはず）", errSeekIndexUnsupported, first, s.count)
+		return nil, fmt.Errorf("%w: chunks hold %d samples (expected %d)", errSeekIndexUnsupported, first, s.count)
 	}
 	return positions, nil
 }
@@ -526,7 +526,7 @@ func syncSamples(boxes []mp4Box, count int) ([]int, error) {
 	stss, err := childPayload(boxes, "stss")
 	if err != nil {
 		if count > maxKeyframes {
-			return nil, fmt.Errorf("%w: キーフレームが %d 枚", errSeekIndexUnsupported, count)
+			return nil, fmt.Errorf("%w: %d keyframes", errSeekIndexUnsupported, count)
 		}
 		all := make([]int, count)
 		for i := range all {
@@ -539,13 +539,13 @@ func syncSamples(boxes []mp4Box, count int) ([]int, error) {
 		return nil, err
 	}
 	if len(entries) == 0 || len(entries) > maxKeyframes {
-		return nil, fmt.Errorf("%w: キーフレームが %d 枚", errSeekIndexUnsupported, len(entries))
+		return nil, fmt.Errorf("%w: %d keyframes", errSeekIndexUnsupported, len(entries))
 	}
 	samples := make([]int, 0, len(entries))
 	for _, entry := range entries {
 		number := int(binary.BigEndian.Uint32(entry))
 		if number < 1 || number > count {
-			return nil, fmt.Errorf("%w: stss の sample 番号 %d", errSeekIndexUnsupported, number)
+			return nil, fmt.Errorf("%w: stss sample number %d", errSeekIndexUnsupported, number)
 		}
 		samples = append(samples, number-1)
 	}
@@ -586,11 +586,11 @@ func presentationWindow(trak []mp4Box, timescale, movieTimescaleValue uint64) (i
 		}
 	}
 	if edits > 1 {
-		return 0, 0, fmt.Errorf("%w: edit list に編集が %d 個", errSeekIndexUnsupported, edits)
+		return 0, 0, fmt.Errorf("%w: edit list has %d edits", errSeekIndexUnsupported, edits)
 	}
 	if delay := list.startDelay(); delay > 0 && movieTimescaleValue > 0 {
 		if delay > math.MaxInt64/timescale {
-			return 0, 0, fmt.Errorf("%w: edit list の開始の遅れ %d", errSeekIndexUnsupported, delay)
+			return 0, 0, fmt.Errorf("%w: edit list start delay %d", errSeekIndexUnsupported, delay)
 		}
 		shift -= int64(delay * timescale / movieTimescaleValue)
 	}
@@ -604,12 +604,12 @@ func presentationWindow(trak []mp4Box, timescale, movieTimescaleValue uint64) (i
 // fullBoxEntries は version・flags と entry の数に続く、固定長の entry の並びを切り出す。
 func fullBoxEntries(payload []byte, entrySize int, boxType string) ([][]byte, error) {
 	if len(payload) < 8 {
-		return nil, fmt.Errorf("%w: %s が短い", errSeekIndexUnsupported, boxType)
+		return nil, fmt.Errorf("%w: %s is too short", errSeekIndexUnsupported, boxType)
 	}
 	count := int64(binary.BigEndian.Uint32(payload[4:8]))
 	data := payload[8:]
 	if int64(len(data)) < count*int64(entrySize) {
-		return nil, fmt.Errorf("%w: %s の entry が足りない", errSeekIndexUnsupported, boxType)
+		return nil, fmt.Errorf("%w: %s has too few entries", errSeekIndexUnsupported, boxType)
 	}
 	entries := make([][]byte, count)
 	for i := range entries {
@@ -624,7 +624,7 @@ func childPayload(boxes []mp4Box, boxType string) ([]byte, error) {
 			return box.payload, nil
 		}
 	}
-	return nil, fmt.Errorf("%w: %s が無い", errSeekIndexUnsupported, boxType)
+	return nil, fmt.Errorf("%w: no %s", errSeekIndexUnsupported, boxType)
 }
 
 func nestedPayload(boxes []mp4Box, path ...string) ([]byte, error) {
@@ -682,7 +682,7 @@ func (t *keyframeTrack) annexB(sample []byte) ([]byte, bool, error) {
 	idr := false
 	for len(sample) > 0 {
 		if len(sample) < t.lengthSize {
-			return nil, false, errors.New("キーフレームの NAL の長さが途中で切れている")
+			return nil, false, errors.New("keyframe NAL length is truncated")
 		}
 		var size int
 		for _, b := range sample[:t.lengthSize] {
@@ -690,7 +690,7 @@ func (t *keyframeTrack) annexB(sample []byte) ([]byte, bool, error) {
 		}
 		sample = sample[t.lengthSize:]
 		if size > len(sample) {
-			return nil, false, errors.New("キーフレームの NAL が途中で切れている")
+			return nil, false, errors.New("keyframe NAL is truncated")
 		}
 		if size > 0 && t.isIDR(sample[0]) {
 			idr = true

@@ -19,6 +19,7 @@ import {
   tagsReflectChange,
 } from "../api/tagOrder";
 import { subscribeVideoTags } from "../api/videoTagsEvents";
+import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import { useToast } from "../ui/Toast";
@@ -139,7 +140,7 @@ export default function VideoTags({
   const [inputValue, setInputValue] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [removingIds, setRemovingIds] = useState<ReadonlySet<number>>(new Set());
-  const [opError, setOpError] = useState<"attach" | "detach" | null>(null);
+  const [opError, setOpError] = useState<UiText | null>(null);
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const buttonRefs = useRef(new Map<number, HTMLButtonElement>());
@@ -201,11 +202,11 @@ export default function VideoTags({
       .then(() => setInputValue((current) => (current === submittedValue ? "" : current)))
       .catch((error: unknown) => {
         if (isTagNotFound(error)) {
-          toast(`タグ「${displayName}」はもう無いため、一覧を取り直しました`);
+          toast(t.player.tags.gone(displayName));
           onStaleVideo();
           return;
         }
-        setOpError("attach");
+        setOpError(t.player.tags.attachFailed(errorText(error)));
       })
       .finally(() => setSubmitting(false));
   }
@@ -229,13 +230,13 @@ export default function VideoTags({
     void detachVideoTag([videoId], tag.id)
       .catch((error: unknown) => {
         if (isTagNotFound(error)) {
-          toast(`タグ「${tag.name}」はもう無いため、一覧を取り直しました`);
+          toast(t.player.tags.gone(tag.name));
           onStaleVideo();
           return;
         }
         // 外せなかったときは、次/前のチップではなく、このチップの × へ戻す。
         pendingFocusRef.current = { target: { chipId: tag.id } };
-        setOpError("detach");
+        setOpError(t.player.tags.detachFailed(errorText(error)));
       })
       .finally(() => {
         setRemovingIds((current) => {
@@ -251,13 +252,13 @@ export default function VideoTags({
     exactOption === null && trimmed !== "" ? (
       <span className="flex min-w-0 items-center gap-2">
         <Plus className="size-3.5 shrink-0 text-fg-muted" aria-hidden="true" />
-        <span className="truncate">「{trimmed}」を作成</span>
+        <span className="truncate">{t.player.tags.create(trimmed)}</span>
       </span>
     ) : null;
 
   return (
     <div className="flex flex-col gap-1">
-      <h2 className="sr-only">タグ</h2>
+      <h2 className="sr-only">{t.player.tags.heading}</h2>
       <ul className="flex flex-wrap items-center gap-1.5">
         {tags.map((tag, index) => (
           <li key={tag.id} className="min-w-0 max-w-full">
@@ -269,7 +270,7 @@ export default function VideoTags({
               <Link
                 to={`/?tag=${String(tag.id)}`}
                 title={tag.name}
-                aria-label={`${tag.name}で絞り込む（フォルダ名から）`}
+                aria-label={t.player.tags.filterByFromFolder(tag.name)}
                 className="inline-flex h-6 max-w-full items-center gap-1 rounded-sm border border-dashed border-border-strong px-2 text-xs text-fg hover:border-solid hover:text-fg"
               >
                 <Folder className="size-3 shrink-0 text-fg-subtle" aria-hidden="true" />
@@ -282,7 +283,7 @@ export default function VideoTags({
               >
                 <Link
                   to={`/?tag=${String(tag.id)}`}
-                  aria-label={`${tag.name}で絞り込む`}
+                  aria-label={t.player.tags.filterBy(tag.name)}
                   className="min-w-0 truncate hover:text-link"
                 >
                   {tag.name}
@@ -294,7 +295,7 @@ export default function VideoTags({
                     else buttonRefs.current.delete(tag.id);
                   }}
                   type="button"
-                  aria-label={`${tag.name}をこの動画から外す`}
+                  aria-label={t.player.tags.remove(tag.name)}
                   disabled={removingIds.has(tag.id)}
                   onClick={() => removeTag(tag, index)}
                   className={cn(
@@ -319,10 +320,10 @@ export default function VideoTags({
             }
             createLabel={createLabel}
             onCreate={(spelling) => submitAdd({ name: spelling })}
-            placeholder="タグを追加"
+            placeholder={t.player.tags.add}
             icon={<Plus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />}
             busy={submitting}
-            aria-label="タグを追加"
+            aria-label={t.player.tags.add}
             inputRef={inputRef}
             // 一覧が閉じているときの Esc は、入力を空にする
             // （ui-design.md「Add input」）。
@@ -332,7 +333,7 @@ export default function VideoTags({
       </ul>
       {opError !== null && (
         <p role="alert" className="text-xs text-danger">
-          {opError === "attach" ? "タグを付けられませんでした" : "タグを外せませんでした"}
+          {opError}
         </p>
       )}
     </div>
@@ -370,7 +371,9 @@ function buildOptions(
         tag,
         prefix: namePrefix || synonymPrefix,
         hint:
-          !nameMatch && synonymHit !== undefined ? `シノニム: ${synonymHit}` : undefined,
+          !nameMatch && synonymHit !== undefined
+            ? t.player.tags.synonym(synonymHit)
+            : undefined,
       };
     })
     .filter((value): value is NonNullable<typeof value> => value !== null)
@@ -383,7 +386,7 @@ function buildOptions(
     id: String(tag.id),
     label: tag.name,
     hint,
-    meta: `${String(tag.videoCount)} 本`,
+    meta: t.player.tags.videoCount(tag.videoCount),
   }));
 
   const exactOption: ComboboxOption | null =
@@ -392,7 +395,7 @@ function buildOptions(
       : {
           id: String(exactTag.id),
           label: exactTag.name,
-          meta: `${String(exactTag.videoCount)} 本`,
+          meta: t.player.tags.videoCount(exactTag.videoCount),
         };
 
   return { options, exactOption };

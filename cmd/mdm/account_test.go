@@ -194,8 +194,8 @@ func TestAccountCommandsChangeCredentialsAndInvalidateSessions(t *testing.T) {
 	if renamed.code != exitAccountOK {
 		t.Fatalf("set-username の終了コード = %d, 標準エラー = %q", renamed.code, renamed.stderr)
 	}
-	if !strings.Contains(renamed.stderr, "ユーザー名を変更しました") ||
-		!strings.Contains(renamed.stderr, "セッションはすべて無効にしました") {
+	if !strings.Contains(renamed.stderr, "Changed the username.") ||
+		!strings.Contains(renamed.stderr, "All existing login sessions have been signed out.") {
 		t.Fatalf("標準エラー = %q", renamed.stderr)
 	}
 	if sessionValid(t, dataDir, oldSession) || sessionValid(t, dataDir, otherLogin) {
@@ -223,8 +223,8 @@ func TestAccountCommandsChangeCredentialsAndInvalidateSessions(t *testing.T) {
 	if reset.code != exitAccountOK {
 		t.Fatalf("set-password の終了コード = %d, 標準エラー = %q", reset.code, reset.stderr)
 	}
-	if !strings.Contains(reset.stderr, "パスワードを再設定しました") ||
-		!strings.Contains(reset.stderr, "セッションはすべて無効にしました") {
+	if !strings.Contains(reset.stderr, "Reset the password.") ||
+		!strings.Contains(reset.stderr, "All existing login sessions have been signed out.") {
 		t.Fatalf("標準エラー = %q", reset.stderr)
 	}
 	if sessionValid(t, dataDir, "session-token-3") {
@@ -291,7 +291,7 @@ func TestAccountSetPasswordOnTerminalAsksTwice(t *testing.T) {
 
 	mismatch := runAccountCommand(t, dataDir, []string{"account", "set-password"}, "",
 		[]string{newPassword, newPassword + "x"})
-	if mismatch.code != exitAccountUsage || !strings.Contains(mismatch.stderr, "一致しません") {
+	if mismatch.code != exitAccountUsage || !strings.Contains(mismatch.stderr, "do not match") {
 		t.Fatalf("不一致: 終了コード = %d, 標準エラー = %q", mismatch.code, mismatch.stderr)
 	}
 	if !credentialsMatch(t, readAccount(t, dataDir), oldUsername, oldPassword) || !sessionValid(t, dataDir, oldSession) {
@@ -317,17 +317,17 @@ func TestAccountCommandsRejectWithoutWriting(t *testing.T) {
 		stdin      string
 		wantInErr  string
 	}{
-		{"未設定で set-username", false, []string{"account", "set-username", newUsername}, "", "ブラウザで VVMDM を開き"},
-		{"未設定で set-password", false, []string{"account", "set-password"}, newPassword + "\n", "ブラウザで VVMDM を開き"},
-		{"空のユーザー名", true, []string{"account", "set-username", ""}, "", "ユーザー名が正しくありません"},
-		{"前後に空白のあるユーザー名", true, []string{"account", "set-username", " bob"}, "", "ユーザー名が正しくありません"},
-		{"ユーザー名が無い", true, []string{"account", "set-username"}, "", "1つだけ"},
-		{"空のパスワード", true, []string{"account", "set-password"}, "\n", "パスワードが正しくありません"},
-		{"長すぎるパスワード", true, []string{"account", "set-password"}, tooLong + "\n", "パスワードが正しくありません"},
-		{"パスワードを引数で渡す", true, []string{"account", "set-password", newPassword}, "", "引数を取りません"},
-		{"未知の下位コマンド", true, []string{"account", "delete"}, "", "未知の下位コマンド"},
-		{"下位コマンドが無い", true, []string{"account"}, "", "下位コマンドを指定"},
-		{"未知のコマンド", true, []string{"serve"}, "", "未知のコマンド"},
+		{"未設定で set-username", false, []string{"account", "set-username", newUsername}, "", "initial setup"},
+		{"未設定で set-password", false, []string{"account", "set-password"}, newPassword + "\n", "initial setup"},
+		{"空のユーザー名", true, []string{"account", "set-username", ""}, "", "invalid username"},
+		{"前後に空白のあるユーザー名", true, []string{"account", "set-username", " bob"}, "", "invalid username"},
+		{"ユーザー名が無い", true, []string{"account", "set-username"}, "", "exactly one argument"},
+		{"空のパスワード", true, []string{"account", "set-password"}, "\n", "invalid password"},
+		{"長すぎるパスワード", true, []string{"account", "set-password"}, tooLong + "\n", "invalid password"},
+		{"パスワードを引数で渡す", true, []string{"account", "set-password", newPassword}, "", "takes no arguments"},
+		{"未知の下位コマンド", true, []string{"account", "delete"}, "", "Unknown account subcommand"},
+		{"下位コマンドが無い", true, []string{"account"}, "", "Specify an account subcommand"},
+		{"未知のコマンド", true, []string{"serve"}, "", "Unknown command"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -341,7 +341,7 @@ func TestAccountCommandsRejectWithoutWriting(t *testing.T) {
 			if run.code != exitAccountUsage {
 				t.Fatalf("終了コード = %d, 標準エラー = %q", run.code, run.stderr)
 			}
-			if !strings.Contains(run.stderr, tc.wantInErr) || !strings.Contains(run.stderr, "使い方") {
+			if !strings.Contains(run.stderr, tc.wantInErr) || !strings.Contains(run.stderr, "Usage:") {
 				t.Fatalf("標準エラー = %q", run.stderr)
 			}
 			if strings.Contains(run.stderr, newPassword) {
@@ -368,7 +368,7 @@ func TestAccountCommandsRejectWithoutWriting(t *testing.T) {
 func TestAccountCommandDoesNotCreateMissingDatabase(t *testing.T) {
 	dataDir := filepath.Join(t.TempDir(), "typo")
 	run := runAccountCommand(t, dataDir, []string{"account", "set-password"}, newPassword+"\n", nil)
-	if run.code != exitAccountUsage || !strings.Contains(run.stderr, "初回設定") {
+	if run.code != exitAccountUsage || !strings.Contains(run.stderr, "initial setup") {
 		t.Fatalf("終了コード = %d, 標準エラー = %q", run.code, run.stderr)
 	}
 	if _, err := os.Stat(dataDir); !errors.Is(err, os.ErrNotExist) {

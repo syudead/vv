@@ -3,6 +3,7 @@ import { type RefObject, useEffect, useRef, useState } from "react";
 
 import { currentTags, refreshTags, subscribeTags, type Tag } from "../api/tags";
 import { compareNatural } from "../api/tagOrder";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import Skeleton from "../ui/Skeleton";
 
@@ -79,8 +80,11 @@ export default function ActiveTagFilters({
 
   return (
     <div className="flex flex-wrap items-center justify-center gap-1.5">
-      <span className="text-xs text-fg-muted">タグで絞り込み中</span>
-      <ul aria-label="絞り込み中のタグ" className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-fg-muted">{t.library.activeTags.label}</span>
+      <ul
+        aria-label={t.library.activeTags.list}
+        className="flex flex-wrap items-center gap-1.5"
+      >
         {ordered.map((id) => {
           const tag = byId.get(id);
           return (
@@ -95,8 +99,8 @@ export default function ActiveTagFilters({
                 // ようにする（N2）。名前が分かれば「〈名〉の絞り込みを外す」に差し替わる。
                 aria-label={
                   tag === undefined
-                    ? "タグの絞り込みを外す"
-                    : `${tag.name}の絞り込みを外す`
+                    ? t.library.activeTags.remove
+                    : t.library.activeTags.removeNamed(tag.name)
                 }
                 onClick={() => remove(id)}
                 className={cn(

@@ -36,7 +36,7 @@ func GenerateSeekSprite(ctx context.Context, videoPath, outputDir string, layout
 	defer cancel()
 	err := generateSeekSprite(processCtx, videoPath, outputDir, layout)
 	if processCtx.Err() != nil {
-		return fmt.Errorf("シークサムネイル生成を中断しました: %w", processCtx.Err())
+		return fmt.Errorf("seek thumbnail generation was interrupted: %w", processCtx.Err())
 	}
 	return err
 }
@@ -50,14 +50,14 @@ func generateSeekSprite(ctx context.Context, videoPath, outputDir string, layout
 		return ctx.Err()
 	}
 	if !errors.Is(err, errSeekIndexUnsupported) {
-		slog.WarnContext(ctx, "シークサムネイルを索引から生成できないため区間ごとに抽出します", "error", err)
+		slog.WarnContext(ctx, "cannot build seek thumbnails from the index; extracting per interval", "error", err)
 	}
 	if err := generateSeekSpriteParallel(ctx, videoPath, outputDir, layout); err == nil {
 		return nil
 	} else if ctx.Err() != nil {
 		return ctx.Err()
 	} else {
-		slog.WarnContext(ctx, "シークサムネイルの区間抽出に失敗したため全編から生成します", "error", err)
+		slog.WarnContext(ctx, "parallel seek thumbnail extraction was incomplete; generating from the whole video", "error", err)
 	}
 	_, err = runSeekFFmpeg(ctx, seekSpriteArgs(videoPath, filepath.Join(outputDir, "%03d.jpg"), layout))
 	return err
@@ -123,12 +123,12 @@ func generateSeekSpriteFromIndex(ctx context.Context, videoPath, outputDir strin
 	// 復号できなかったキーフレームがあると、後ろのコマが 1 つずつずれる。枚数が
 	// 合わないときは使わない。
 	if _, err := os.Stat(filepath.Join(decoded, fmt.Sprintf("%03d.bmp", len(unique)))); err == nil {
-		return fmt.Errorf("キーフレーム %d 枚より多い画像が出ました", len(unique))
+		return fmt.Errorf("got more images than the %d keyframes", len(unique))
 	}
 	for k, pick := range picks {
 		source := filepath.Join(decoded, fmt.Sprintf("%03d.bmp", decodeOrder[pick]))
 		if err := copyFile(source, filepath.Join(temporary, fmt.Sprintf("%03d.bmp", k))); err != nil {
-			return fmt.Errorf("コマ %d のキーフレームを復号できませんでした: %w", k, err)
+			return fmt.Errorf("could not decode the keyframe for frame %d: %w", k, err)
 		}
 	}
 	return tileSeekSprite(ctx, temporary, outputDir, layout)
@@ -180,10 +180,10 @@ func readKeyframes(ctx context.Context, r io.ReaderAt, track *keyframeTrack, ind
 	for _, index := range indexes {
 		size := track.keyframes[index].size
 		if size <= 0 || size > maxKeyframeSize {
-			return false, fmt.Errorf("%w: キーフレームの大きさ %d", errSeekIndexUnsupported, size)
+			return false, fmt.Errorf("%w: keyframe size %d", errSeekIndexUnsupported, size)
 		}
 		if total += size; total > maxKeyframeTotalSize {
-			return false, fmt.Errorf("%w: キーフレームの合計が %d バイトを超える", errSeekIndexUnsupported, int64(maxKeyframeTotalSize))
+			return false, fmt.Errorf("%w: keyframes exceed %d bytes in total", errSeekIndexUnsupported, int64(maxKeyframeTotalSize))
 		}
 	}
 	semaphore := make(chan struct{}, seekSpriteReadParallel)
@@ -207,7 +207,7 @@ func readKeyframes(ctx context.Context, r io.ReaderAt, track *keyframeTrack, ind
 			data := make([]byte, frame.size)
 			_, err := readAt(ctx, r, data, frame.offset)
 			if err != nil {
-				err = fmt.Errorf("キーフレームを読めません（位置 %d）: %w", frame.offset, err)
+				err = fmt.Errorf("cannot read keyframe (offset %d): %w", frame.offset, err)
 			} else if data, idr[i], err = track.annexB(data); err == nil {
 				err = os.WriteFile(filepath.Join(dir, keyframeFileName(i, track.format)), data, 0600)
 			}
@@ -270,13 +270,13 @@ frames:
 				return
 			}
 			if err == nil && (len(data) < 54 || string(data[:2]) != "BM") {
-				err = errors.New("シーク位置から画像を抽出できませんでした")
+				err = errors.New("could not extract an image at the seek position")
 			}
 			if err == nil {
 				err = os.WriteFile(filepath.Join(temporary, fmt.Sprintf("%03d.bmp", frame)), data, 0600)
 			}
 			if err != nil {
-				recordError.Do(func() { firstErr = fmt.Errorf("コマ %d: %w", frame, err); cancel() })
+				recordError.Do(func() { firstErr = fmt.Errorf("frame %d: %w", frame, err); cancel() })
 			}
 		}(frame)
 	}
@@ -311,7 +311,7 @@ func fillMissingFrames(dir string, missing []bool) error {
 			}
 		}
 		if source < 0 {
-			return errors.New("どの区間からも画像を抽出できませんでした")
+			return errors.New("could not extract an image from any interval")
 		}
 		if err := copyFile(filepath.Join(dir, fmt.Sprintf("%03d.bmp", source)), filepath.Join(dir, fmt.Sprintf("%03d.bmp", frame))); err != nil {
 			return err
@@ -354,9 +354,9 @@ func runSeekFFmpegIn(ctx context.Context, dir string, args []string) ([]byte, er
 		}
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return nil, fmt.Errorf("ffmpeg がシークサムネイル生成に失敗しました: %w: %s", err, firstLine(exitErr.Stderr))
+			return nil, fmt.Errorf("ffmpeg failed to generate seek thumbnails: %w: %s", err, firstLine(exitErr.Stderr))
 		}
-		return nil, fmt.Errorf("ffmpeg を実行できません: %w", err)
+		return nil, fmt.Errorf("cannot run ffmpeg: %w", err)
 	}
 	return data, nil
 }

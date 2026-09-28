@@ -113,6 +113,105 @@ func (e ErrorCode) Valid() bool {
 	}
 }
 
+// Defines values for ErrorReason.
+const (
+	ErrorReasonCrossOrigin              ErrorReason = "cross_origin"
+	ErrorReasonDirectoryNotFound        ErrorReason = "directory_not_found"
+	ErrorReasonFileUnavailable          ErrorReason = "file_unavailable"
+	ErrorReasonFolderNotFound           ErrorReason = "folder_not_found"
+	ErrorReasonFolderNotGroup           ErrorReason = "folder_not_group"
+	ErrorReasonGuestFilterNotAllowed    ErrorReason = "guest_filter_not_allowed"
+	ErrorReasonInvalidCursor            ErrorReason = "invalid_cursor"
+	ErrorReasonInvalidFolderPath        ErrorReason = "invalid_folder_path"
+	ErrorReasonMediaFoldersChanged      ErrorReason = "media_folders_changed"
+	ErrorReasonMergeSameTag             ErrorReason = "merge_same_tag"
+	ErrorReasonNameIsSynonym            ErrorReason = "name_is_synonym"
+	ErrorReasonNameIsTag                ErrorReason = "name_is_tag"
+	ErrorReasonNoScan                   ErrorReason = "no_scan"
+	ErrorReasonNotFolderGroup           ErrorReason = "not_folder_group"
+	ErrorReasonOpenNotLocal             ErrorReason = "open_not_local"
+	ErrorReasonPasswordLength           ErrorReason = "password_length"
+	ErrorReasonProbeInfoMissing         ErrorReason = "probe_info_missing"
+	ErrorReasonRelativeDirectoryPath    ErrorReason = "relative_directory_path"
+	ErrorReasonRootGroupNotTaggable     ErrorReason = "root_group_not_taggable"
+	ErrorReasonSearchTooLong            ErrorReason = "search_too_long"
+	ErrorReasonSeekPreviewGenerating    ErrorReason = "seek_preview_generating"
+	ErrorReasonTagNameControlCharacters ErrorReason = "tag_name_control_characters"
+	ErrorReasonTagNameEmpty             ErrorReason = "tag_name_empty"
+	ErrorReasonTagNameTooLong           ErrorReason = "tag_name_too_long"
+	ErrorReasonTooManyTagFilters        ErrorReason = "too_many_tag_filters"
+	ErrorReasonTooManyVideos            ErrorReason = "too_many_videos"
+	ErrorReasonTranscodeUnavailable     ErrorReason = "transcode_unavailable"
+	ErrorReasonUsernameLength           ErrorReason = "username_length"
+	ErrorReasonVideoNotFound            ErrorReason = "video_not_found"
+)
+
+// Valid indicates whether the value is a known member of the ErrorReason enum.
+func (e ErrorReason) Valid() bool {
+	switch e {
+	case ErrorReasonCrossOrigin:
+		return true
+	case ErrorReasonDirectoryNotFound:
+		return true
+	case ErrorReasonFileUnavailable:
+		return true
+	case ErrorReasonFolderNotFound:
+		return true
+	case ErrorReasonFolderNotGroup:
+		return true
+	case ErrorReasonGuestFilterNotAllowed:
+		return true
+	case ErrorReasonInvalidCursor:
+		return true
+	case ErrorReasonInvalidFolderPath:
+		return true
+	case ErrorReasonMediaFoldersChanged:
+		return true
+	case ErrorReasonMergeSameTag:
+		return true
+	case ErrorReasonNameIsSynonym:
+		return true
+	case ErrorReasonNameIsTag:
+		return true
+	case ErrorReasonNoScan:
+		return true
+	case ErrorReasonNotFolderGroup:
+		return true
+	case ErrorReasonOpenNotLocal:
+		return true
+	case ErrorReasonPasswordLength:
+		return true
+	case ErrorReasonProbeInfoMissing:
+		return true
+	case ErrorReasonRelativeDirectoryPath:
+		return true
+	case ErrorReasonRootGroupNotTaggable:
+		return true
+	case ErrorReasonSearchTooLong:
+		return true
+	case ErrorReasonSeekPreviewGenerating:
+		return true
+	case ErrorReasonTagNameControlCharacters:
+		return true
+	case ErrorReasonTagNameEmpty:
+		return true
+	case ErrorReasonTagNameTooLong:
+		return true
+	case ErrorReasonTooManyTagFilters:
+		return true
+	case ErrorReasonTooManyVideos:
+		return true
+	case ErrorReasonTranscodeUnavailable:
+		return true
+	case ErrorReasonUsernameLength:
+		return true
+	case ErrorReasonVideoNotFound:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for FolderGroupingMode.
 const (
 	Auto        FolderGroupingMode = "auto"
@@ -209,6 +308,33 @@ func (e LibraryItemKind) Valid() bool {
 	}
 }
 
+// Defines values for ProbeErrorCode.
+const (
+	ProbeErrorCodeFileUnavailable  ProbeErrorCode = "file_unavailable"
+	ProbeErrorCodeInternal         ProbeErrorCode = "internal"
+	ProbeErrorCodeInvalidMetadata  ProbeErrorCode = "invalid_metadata"
+	ProbeErrorCodeProbeFailed      ProbeErrorCode = "probe_failed"
+	ProbeErrorCodeProbeUnavailable ProbeErrorCode = "probe_unavailable"
+)
+
+// Valid indicates whether the value is a known member of the ProbeErrorCode enum.
+func (e ProbeErrorCode) Valid() bool {
+	switch e {
+	case ProbeErrorCodeFileUnavailable:
+		return true
+	case ProbeErrorCodeInternal:
+		return true
+	case ProbeErrorCodeInvalidMetadata:
+		return true
+	case ProbeErrorCodeProbeFailed:
+		return true
+	case ProbeErrorCodeProbeUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ScanState.
 const (
 	ScanStateDone    ScanState = "done"
@@ -224,6 +350,33 @@ func (e ScanState) Valid() bool {
 	case ScanStateFailed:
 		return true
 	case ScanStateRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ScanErrorCode.
+const (
+	ScanErrorCodeInternal                ScanErrorCode = "internal"
+	ScanErrorCodeInterrupted             ScanErrorCode = "interrupted"
+	ScanErrorCodeLocationUnreadable      ScanErrorCode = "location_unreadable"
+	ScanErrorCodeMediaFolderNotDirectory ScanErrorCode = "media_folder_not_directory"
+	ScanErrorCodeMediaFolderUnreadable   ScanErrorCode = "media_folder_unreadable"
+)
+
+// Valid indicates whether the value is a known member of the ScanErrorCode enum.
+func (e ScanErrorCode) Valid() bool {
+	switch e {
+	case ScanErrorCodeInternal:
+		return true
+	case ScanErrorCodeInterrupted:
+		return true
+	case ScanErrorCodeLocationUnreadable:
+		return true
+	case ScanErrorCodeMediaFolderNotDirectory:
+		return true
+	case ScanErrorCodeMediaFolderUnreadable:
 		return true
 	default:
 		return false
@@ -481,12 +634,24 @@ type Error struct {
 	// Code 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 	Code ErrorCode `json:"code"`
 
-	// Message 人が読むための説明。利用者にそのまま提示してよい文言にする
+	// Limit reason の上限値。契約の表で limit を返す reason のときだけ入る （specs/023-english-i18n/contracts/error-api.md §1）
+	Limit *int `json:"limit,omitempty"`
+
+	// Message 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0）
 	Message string `json:"message"`
+
+	// Reason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+	Reason *ErrorReason `json:"reason,omitempty"`
+
+	// TagName 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1）
+	TagName *string `json:"tagName,omitempty"`
 }
 
 // ErrorCode 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 type ErrorCode string
+
+// ErrorReason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+type ErrorReason string
 
 // FolderGroupTagResult defines model for FolderGroupTagResult.
 type FolderGroupTagResult struct {
@@ -701,6 +866,9 @@ type MergeTagRequest struct {
 	SourceId int64 `json:"sourceId"`
 }
 
+// ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+type ProbeErrorCode string
+
 // Processing defines model for Processing.
 type Processing struct {
 	// Preview 一覧用プレビューの残り
@@ -779,8 +947,14 @@ type Scan struct {
 	// Completed 取り込み処理に成功した対象ファイル数
 	Completed int `json:"completed"`
 
-	// Error スキャン自体が失敗した理由
-	Error      *string    `json:"error,omitempty"`
+	// Error スキャン自体が失敗した理由の自由文。画面は表示せず、errorCode と errorPath から説明を作る （specs/023-english-i18n/contracts/error-api.md §3）
+	Error *string `json:"error,omitempty"`
+
+	// ErrorCode スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である （task generate）。
+	ErrorCode *ScanErrorCode `json:"errorCode,omitempty"`
+
+	// ErrorPath errorCode の理由が特定の場所に結び付くときの、その絶対パス（メディアフォルダ、またはその下の 読めなかった場所。翻訳しない利用者のデータ）。それ以外は省略される
+	ErrorPath  *string    `json:"errorPath,omitempty"`
 	Failed     int        `json:"failed"`
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 	Id         int64      `json:"id"`
@@ -793,6 +967,9 @@ type Scan struct {
 
 // ScanState defines model for Scan.State.
 type ScanState string
+
+// ScanErrorCode スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である （task generate）。
+type ScanErrorCode string
 
 // SeekThumbnailSprite シーク用サムネイルのスプライトの配置情報
 // （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。最後のシートの
@@ -916,9 +1093,12 @@ type Video struct {
 	PreviewUrl *string `json:"previewUrl,omitempty"`
 
 	// ProbeError probeState = failed のときの理由。ゲストの応答では省く（ファイルの絶対パスを含みうる）
-	ProbeError *string         `json:"probeError,omitempty"`
-	ProbeState VideoProbeState `json:"probeState"`
-	Progress   *Progress       `json:"progress,omitempty"`
+	ProbeError *string `json:"probeError,omitempty"`
+
+	// ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+	ProbeErrorCode *ProbeErrorCode `json:"probeErrorCode,omitempty"`
+	ProbeState     VideoProbeState `json:"probeState"`
+	Progress       *Progress       `json:"progress,omitempty"`
 
 	// Public 公開の動画か。公開の動画はログインしていない人にも見える
 	// （specs/016-single-account-auth/contracts/guest-api.md §4）

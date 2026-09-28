@@ -73,11 +73,11 @@ const manifestVersion = 1
 const publishLockWait = 100 * time.Millisecond
 
 // errNotConfigured は、置き場の根が設定されていないことを表す。
-var errNotConfigured = errors.New("生成物の置き場が設定されていません")
+var errNotConfigured = errors.New("the artifact store is not configured")
 
 // errInvalidKey は、置き場の外を指しうる content key を表す。読み出しでは
 // 「無い」と同じに扱えるよう fs.ErrNotExist を包む。
-var errInvalidKey = fmt.Errorf("生成物の置き場に使えない内容の識別子です: %w", fs.ErrNotExist)
+var errInvalidKey = fmt.Errorf("content key cannot be used in the artifact store: %w", fs.ErrNotExist)
 
 // Store は1つの根の下にある生成物の置き場である。
 type Store struct {
@@ -157,11 +157,11 @@ func (s *Store) makeTemporaryDir(pattern string) (string, error) {
 	}
 	root := filepath.Join(s.root, temporaryDirName)
 	if err := os.MkdirAll(root, dirPerm); err != nil {
-		return "", fmt.Errorf("生成途中の一時領域を作れません: %w", err)
+		return "", fmt.Errorf("cannot create the temporary directory for generation: %w", err)
 	}
 	dir, err := os.MkdirTemp(root, pattern)
 	if err != nil {
-		return "", fmt.Errorf("生成途中の一時領域を作れません: %w", err)
+		return "", fmt.Errorf("cannot create the temporary directory for generation: %w", err)
 	}
 	return dir, nil
 }
@@ -174,7 +174,7 @@ func (s *Store) RemoveTemporary() error {
 		return nil
 	}
 	if err := os.RemoveAll(filepath.Join(s.root, temporaryDirName)); err != nil {
-		return fmt.Errorf("生成途中の一時領域を削除できません: %w", err)
+		return fmt.Errorf("cannot delete the temporary directories for generation: %w", err)
 	}
 	return nil
 }
@@ -198,13 +198,13 @@ func (s *Store) PublishThumbnail(contentKey string, write func(output string) er
 		return err
 	}
 	if info, err := os.Stat(output); err != nil || !info.Mode().IsRegular() || info.Size() == 0 {
-		return fmt.Errorf("サムネイルが生成されませんでした (%s)", contentKey)
+		return fmt.Errorf("thumbnail was not generated (%s)", contentKey)
 	}
 	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
-		return fmt.Errorf("サムネイルの置き場所を作れません (%s): %w", filepath.Dir(target), err)
+		return fmt.Errorf("cannot create the thumbnail directory (%s): %w", filepath.Dir(target), err)
 	}
 	if err := os.Rename(output, target); err != nil {
-		return fmt.Errorf("サムネイルを確定できません: %w", err)
+		return fmt.Errorf("cannot publish the thumbnail: %w", err)
 	}
 	return nil
 }
@@ -229,7 +229,7 @@ func (s *Store) PublishSeekThumbnails(
 		return nil
 	}
 	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
-		return fmt.Errorf("シークサムネイルの置き場所を作れません: %w", err)
+		return fmt.Errorf("cannot create the seek thumbnail directory: %w", err)
 	}
 	temporary, err := s.makeTemporaryDir("seek-*")
 	if err != nil {
@@ -242,24 +242,24 @@ func (s *Store) PublishSeekThumbnails(
 	}
 	sprite, err := describeSheets(temporary, layout)
 	if err != nil {
-		return fmt.Errorf("シークサムネイルが生成されませんでした (%s): %w", contentKey, err)
+		return fmt.Errorf("seek thumbnails were not generated (%s): %w", contentKey, err)
 	}
 	data, err := json.Marshal(spriteFileFrom(sprite))
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(temporary, spriteFileName), append(data, '\n'), 0o644); err != nil {
-		return fmt.Errorf("シークサムネイルの配置情報を書けません: %w", err)
+		return fmt.Errorf("cannot write the seek thumbnail manifest: %w", err)
 	}
 	if err := os.RemoveAll(target); err != nil {
-		return fmt.Errorf("古いシークサムネイルを削除できません: %w", err)
+		return fmt.Errorf("cannot delete old seek thumbnails: %w", err)
 	}
 	// ディレクトリごと改名するので、配置情報があれば完成している。
 	if err := os.Rename(temporary, target); err != nil {
 		if _, readErr := readSeekSprite(target); readErr == nil {
 			return nil
 		}
-		return fmt.Errorf("シークサムネイルを確定できません: %w", err)
+		return fmt.Errorf("cannot publish the seek thumbnails: %w", err)
 	}
 	return nil
 }
@@ -284,17 +284,17 @@ func (s *Store) PublishPreview(
 	}
 	manifest := target + manifestExt
 	if err := os.MkdirAll(filepath.Dir(target), dirPerm); err != nil {
-		return fmt.Errorf("プレビューの置き場所を作れません: %w", err)
+		return fmt.Errorf("cannot create the preview directory: %w", err)
 	}
 	// 2つのファイルの公開は組として不可分にできないので、同じ置き場を使う
 	// プロセスはすべて、この1つの錠で公開を直列にする。
 	assetLock := flock.New(filepath.Join(s.root, previewDirName, publishLockName))
 	locked, err := assetLock.TryLockContext(ctx, publishLockWait)
 	if err != nil {
-		return fmt.Errorf("プレビューの生成ロックを取得できません: %w", err)
+		return fmt.Errorf("cannot acquire the preview generation lock: %w", err)
 	}
 	if !locked {
-		return errors.New("プレビューの生成ロックを取得できません")
+		return errors.New("cannot acquire the preview generation lock")
 	}
 	defer func() { _ = assetLock.Unlock() }()
 
@@ -316,10 +316,10 @@ func (s *Store) PublishPreview(
 	}
 	info, err := os.Stat(tmpVideo)
 	if err != nil {
-		return fmt.Errorf("プレビューを確認できません: %w", err)
+		return fmt.Errorf("cannot check the preview: %w", err)
 	}
 	if info.Size() == 0 {
-		return errors.New("プレビューが生成されませんでした: ファイルが空です")
+		return errors.New("preview was not generated: the file is empty")
 	}
 	digest, err := fileSHA256(tmpVideo)
 	if err != nil {
@@ -336,7 +336,7 @@ func (s *Store) PublishPreview(
 	if current != nil {
 		ok, err := current(ctx)
 		if err != nil {
-			return fmt.Errorf("プレビューの公開条件を確認できません: %w", err)
+			return fmt.Errorf("cannot check whether the preview can be published: %w", err)
 		}
 		if !ok {
 			return domain.ErrPreviewStale
@@ -344,13 +344,13 @@ func (s *Store) PublishPreview(
 	}
 	if err := os.Rename(tmpVideo, target); err != nil {
 		if verifyPreview(target, manifest) != nil {
-			return fmt.Errorf("プレビューを確定できません: %w", err)
+			return fmt.Errorf("cannot publish the preview: %w", err)
 		}
 		return nil
 	}
 	if err := os.Rename(tmpManifest, manifest); err != nil {
 		_ = os.Remove(target)
-		return fmt.Errorf("プレビューのmanifestを確定できません: %w", err)
+		return fmt.Errorf("cannot publish the preview manifest: %w", err)
 	}
 	return nil
 }
@@ -406,7 +406,7 @@ func (s *Store) SeekSpriteSheet(contentKey string, sheet int) ([]byte, error) {
 	}
 	// Completed sprites from the previous six-sheet layout remain readable.
 	if sheet < 0 || sheet >= 6 {
-		return nil, fmt.Errorf("シート %d: %w", sheet, fs.ErrNotExist)
+		return nil, fmt.Errorf("sheet %d: %w", sheet, fs.ErrNotExist)
 	}
 	return os.ReadFile(filepath.Join(dir, fmt.Sprintf(sheetNameFormat, sheet)))
 }
@@ -446,18 +446,18 @@ func (s *Store) RemoveContent(contentKey string) error {
 	var errs []error
 	if path, ok := s.thumbnailPath(contentKey); ok {
 		if err := removeFile(path); err != nil {
-			errs = append(errs, fmt.Errorf("サムネイルを削除できません: %w", err))
+			errs = append(errs, fmt.Errorf("cannot delete the thumbnail: %w", err))
 		}
 	}
 	if dir, ok := s.seekDir(contentKey); ok {
 		if err := os.RemoveAll(dir); err != nil {
-			errs = append(errs, fmt.Errorf("シークサムネイルを削除できません: %w", err))
+			errs = append(errs, fmt.Errorf("cannot delete the seek thumbnails: %w", err))
 		}
 	}
 	if path, manifest, ok := s.previewPaths(contentKey); ok {
 		for _, p := range []string{path, manifest} {
 			if err := removeFile(p); err != nil {
-				errs = append(errs, fmt.Errorf("プレビューを削除できません: %w", err))
+				errs = append(errs, fmt.Errorf("cannot delete the preview: %w", err))
 			}
 		}
 	}
@@ -497,7 +497,7 @@ func readSeekSprite(dir string) (domain.SeekSprite, error) {
 	}
 	var file spriteFile
 	if err := json.Unmarshal(data, &file); err != nil {
-		return domain.SeekSprite{}, fmt.Errorf("シークサムネイルの配置情報を読めません: %w", err)
+		return domain.SeekSprite{}, fmt.Errorf("cannot read the seek thumbnail manifest: %w", err)
 	}
 	sprite := domain.SeekSprite{
 		SeekSpriteLayout: domain.SeekSpriteLayout{
@@ -511,7 +511,7 @@ func readSeekSprite(dir string) (domain.SeekSprite, error) {
 		FrameHeight: file.FrameHeight,
 	}
 	if file.Version != spriteVersion || !validSeekSprite(sprite) {
-		return domain.SeekSprite{}, errors.New("シークサムネイルの配置情報の形が違います")
+		return domain.SeekSprite{}, errors.New("the seek thumbnail manifest has an unexpected shape")
 	}
 	return sprite, nil
 }
@@ -544,18 +544,18 @@ func describeSheets(dir string, layout domain.SeekSpriteLayout) (domain.SeekSpri
 	for sheet := range layout.SheetCount {
 		config, err := sheetConfig(filepath.Join(dir, fmt.Sprintf(sheetNameFormat, sheet)))
 		if err != nil {
-			return domain.SeekSprite{}, fmt.Errorf("シート %d: %w", sheet, err)
+			return domain.SeekSprite{}, fmt.Errorf("sheet %d: %w", sheet, err)
 		}
 		if sheet == 0 {
 			width, height = config.Width, config.Height
 		} else if config.Width != width || config.Height != height {
-			return domain.SeekSprite{}, fmt.Errorf("シート %d の大きさ %dx%d がシート 0 の %dx%d と違います",
+			return domain.SeekSprite{}, fmt.Errorf("sheet %d is %dx%d, but sheet 0 is %dx%d",
 				sheet, config.Width, config.Height, width, height)
 		}
 	}
 	if layout.Columns < 1 || layout.Rows < 1 || layout.SheetCount < 1 ||
 		width%layout.Columns != 0 || height%layout.Rows != 0 {
-		return domain.SeekSprite{}, fmt.Errorf("シート 0 の大きさ %dx%d が %dx%d の格子に割り切れません",
+		return domain.SeekSprite{}, fmt.Errorf("sheet 0 size %dx%d does not divide into a %dx%d grid",
 			width, height, layout.Columns, layout.Rows)
 	}
 	sprite := domain.SeekSprite{
@@ -564,7 +564,7 @@ func describeSheets(dir string, layout domain.SeekSpriteLayout) (domain.SeekSpri
 		FrameHeight:      height / layout.Rows,
 	}
 	if !validSeekSprite(sprite) {
-		return domain.SeekSprite{}, errors.New("シートの配置が範囲の外です")
+		return domain.SeekSprite{}, errors.New("sheet layout is out of range")
 	}
 	return sprite, nil
 }
@@ -577,7 +577,7 @@ func sheetConfig(path string) (image.Config, error) {
 		return image.Config{}, err
 	}
 	if !info.Mode().IsRegular() || info.Size() == 0 {
-		return image.Config{}, errors.New("空です")
+		return image.Config{}, errors.New("empty")
 	}
 	file, err := os.Open(path)
 	if err != nil {
@@ -586,7 +586,7 @@ func sheetConfig(path string) (image.Config, error) {
 	defer func() { _ = file.Close() }()
 	config, err := jpeg.DecodeConfig(file)
 	if err != nil {
-		return image.Config{}, fmt.Errorf("JPEG として読めません: %w", err)
+		return image.Config{}, fmt.Errorf("cannot read as JPEG: %w", err)
 	}
 	return config, nil
 }

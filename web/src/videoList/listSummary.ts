@@ -1,14 +1,20 @@
 import type { WatchFilter } from "../api/client";
+import { t, type UiText } from "../i18n";
 
-/** watchOptions は視聴状態の選択肢と表示名である。 */
-export const watchOptions: { value: WatchFilter; label: string }[] = [
-  { value: "all", label: "すべて" },
-  { value: "unwatched", label: "未視聴" },
-  { value: "inProgress", label: "視聴途中" },
-  { value: "watched", label: "視聴済み" },
+/** watchValues は視聴状態の選択肢の並びである。 */
+export const watchValues: readonly WatchFilter[] = [
+  "all",
+  "unwatched",
+  "inProgress",
+  "watched",
 ];
 
-/** resultCountText は検索や絞り込み後の全件数を表示する。 */
-export function resultCountText(total: number): string {
-  return `${total.toLocaleString("ja-JP")}件`;
+/** watchLabel は視聴状態の選択肢の表示名である。 */
+export function watchLabel(value: WatchFilter): UiText {
+  return t.list.filter.watchOptions[value];
+}
+
+/** resultCountText は検索や絞り込み後の全件数を表示する（「1 video」「2 videos」）。 */
+export function resultCountText(total: number): UiText {
+  return t.list.resultCount(total);
 }

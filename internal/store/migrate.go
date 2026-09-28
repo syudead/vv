@@ -24,7 +24,7 @@ const versionTableName = "goose_db_version"
 // ErrFutureSchema はデータベースがアプリケーションの知らない将来の版を
 // 持っていた場合に返る。この場合は何も書き換えずに起動を中止する
 // （ダウングレードによる破壊を防ぐため）。
-var ErrFutureSchema = errors.New("データベースの構造がアプリケーションより新しい")
+var ErrFutureSchema = errors.New("the database schema is newer than this application")
 
 // MigrateResult はマイグレーションの結果である。記録に出す用途を想定している。
 type MigrateResult struct {
@@ -43,12 +43,12 @@ type MigrateResult struct {
 func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 	fsys, err := fs.Sub(migrationsFS, "migrations")
 	if err != nil {
-		return MigrateResult{}, fmt.Errorf("マイグレーションを読み出せません: %w", err)
+		return MigrateResult{}, fmt.Errorf("cannot read migrations: %w", err)
 	}
 
 	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
 	if err != nil {
-		return MigrateResult{}, fmt.Errorf("マイグレーションを準備できません: %w", err)
+		return MigrateResult{}, fmt.Errorf("cannot prepare migrations: %w", err)
 	}
 
 	known, err := latestKnownVersion(provider)
@@ -63,15 +63,15 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 	}
 	if current > known {
 		return MigrateResult{}, fmt.Errorf(
-			"%w: データベースは版 %d、このアプリケーションが知っているのは版 %d までです。"+
-				"新しい版のアプリケーションで起動するか、データベース (%s) を作り直してください",
+			"%w: the database is at version %d, but this application knows versions up to %d. "+
+				"Start a newer version of the application or recreate the database (%s)",
 			ErrFutureSchema, current, known, db.Path(),
 		)
 	}
 
 	results, err := provider.Up(ctx)
 	if err != nil {
-		return MigrateResult{}, fmt.Errorf("マイグレーションを適用できません: %w", err)
+		return MigrateResult{}, fmt.Errorf("cannot apply migrations: %w", err)
 	}
 
 	applied, err := recordedVersion(ctx, db.sql)
@@ -86,7 +86,7 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 func latestKnownVersion(provider *goose.Provider) (int64, error) {
 	sources := provider.ListSources()
 	if len(sources) == 0 {
-		return 0, errors.New("埋め込まれたマイグレーションがありません")
+		return 0, errors.New("no embedded migrations")
 	}
 
 	var latest int64
@@ -107,7 +107,7 @@ func recordedVersion(ctx context.Context, db *sql.DB) (int64, error) {
 		versionTableName,
 	).Scan(&exists)
 	if err != nil {
-		return 0, fmt.Errorf("スキーマ版を読み取れません: %w", err)
+		return 0, fmt.Errorf("cannot read the schema version: %w", err)
 	}
 	if exists == 0 {
 		return 0, nil
@@ -119,7 +119,7 @@ func recordedVersion(ctx context.Context, db *sql.DB) (int64, error) {
 		`select max(version_id) from `+versionTableName,
 	).Scan(&version)
 	if err != nil {
-		return 0, fmt.Errorf("スキーマ版を読み取れません: %w", err)
+		return 0, fmt.Errorf("cannot read the schema version: %w", err)
 	}
 	if !version.Valid {
 		return 0, nil
@@ -135,16 +135,16 @@ func recordedVersion(ctx context.Context, db *sql.DB) (int64, error) {
 func Down(ctx context.Context, db *DB) error {
 	fsys, err := fs.Sub(migrationsFS, "migrations")
 	if err != nil {
-		return fmt.Errorf("マイグレーションを読み出せません: %w", err)
+		return fmt.Errorf("cannot read migrations: %w", err)
 	}
 
 	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsys)
 	if err != nil {
-		return fmt.Errorf("マイグレーションを準備できません: %w", err)
+		return fmt.Errorf("cannot prepare migrations: %w", err)
 	}
 
 	if _, err := provider.Down(ctx); err != nil {
-		return fmt.Errorf("マイグレーションを取り消せません: %w", err)
+		return fmt.Errorf("cannot roll back migrations: %w", err)
 	}
 	return nil
 }

@@ -1,6 +1,7 @@
 import { Search, X } from "lucide-react";
 import { type RefObject, useEffect } from "react";
 
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { isComposingKeyEvent } from "../ui/Combobox";
 
@@ -51,8 +52,8 @@ export default function TagSearchBox({
             onChange("");
           }
         }}
-        placeholder="タグを検索"
-        aria-label="タグを検索"
+        placeholder={t.tags.search.placeholder}
+        aria-label={t.tags.search.label}
         disabled={disabled}
         autoComplete="off"
         spellCheck={false}
@@ -71,7 +72,7 @@ export default function TagSearchBox({
             type="button"
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => onChange("")}
-            aria-label="検索語をクリア"
+            aria-label={t.tags.search.clear}
             className="flex size-6 items-center justify-center rounded-sm text-fg-muted transition-colors hover:bg-hover-wash hover:text-fg"
           >
             <X className="size-4" />

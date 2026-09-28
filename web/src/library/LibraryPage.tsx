@@ -25,6 +25,7 @@ import { itemKey } from "../api/libraryItems";
 import { refreshTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
+import { errorText, t } from "../i18n";
 import {
   readViewPreferences,
   type ViewPreferences,
@@ -42,7 +43,6 @@ import {
   newSeed,
 } from "../videoList/listCriteria";
 import { Grid } from "../videoList/Grid";
-import { resultCountText } from "../videoList/listSummary";
 import {
   CardSkeleton,
   GuestEmpty,
@@ -159,7 +159,7 @@ export default function LibraryPage() {
       const { criteria: current, tagIds: currentTagIds } = latestConditions.current;
       if (currentTagIds.includes(tag.id)) return; // すでに絞り込み中なら何も変わらない。
       if (currentTagIds.length >= MAX_TAG_COUNT) {
-        toast("絞り込めるタグは 16 個までです");
+        toast(t.errors.reason.too_many_tag_filters({ limit: MAX_TAG_COUNT }));
         return;
       }
       resetPreview();
@@ -320,7 +320,7 @@ export default function LibraryPage() {
           const { criteria: latestCriteria, tagIds: latestTagIds } =
             latestConditions.current;
           const remaining = latestTagIds.filter((id) => !missing.includes(id));
-          toast("削除されたタグを絞り込みから外しました");
+          toast(t.library.deletedTagsRemoved);
           refreshTags().catch(() => undefined);
           apply(latestCriteria, "replace", serializeTagIds(remaining));
           return;
@@ -329,9 +329,9 @@ export default function LibraryPage() {
         setSelectedIds(selected);
         setSelectAllIds(selected);
       })
-      .catch(() => {
+      .catch((failure: unknown) => {
         if (selectAllSeq.current !== seq) return;
-        toast("すべてを選択できませんでした");
+        toast(t.library.selectAllFailed(errorText(failure)));
       })
       .finally(() => {
         if (selectAllSeq.current === seq) setSelectingAll(false);
@@ -469,7 +469,7 @@ export default function LibraryPage() {
     handledMissingTagIds.current = signature;
     const remaining = tagIds.filter((id) => !missingTagIds.includes(id));
     if (remaining.length === tagIds.length) return;
-    toast("削除されたタグを絞り込みから外しました");
+    toast(t.library.deletedTagsRemoved);
     refreshTags().catch(() => undefined);
     apply(criteria, "replace", serializeTagIds(remaining));
   }, [apply, criteria, missingTagIds, tagIds, toast]);
@@ -493,7 +493,7 @@ export default function LibraryPage() {
         } = mountRef.current;
         const remaining = current.filter((id) => known.has(id));
         if (remaining.length === current.length) return;
-        mountRef.current.toast("削除されたタグを絞り込みから外しました");
+        mountRef.current.toast(t.library.deletedTagsRemoved);
         currentApply(currentCriteria, "replace", serializeTagIds(remaining));
       })
       .catch(() => undefined);
@@ -515,7 +515,7 @@ export default function LibraryPage() {
   const initialLoadFailed = !loading && error !== null && items.length === 0;
   const conditioned = hasTagConditions(criteria, tagIds);
   const selectionMode = selectedIds.size > 0;
-  const resultStatus = loading ? "読み込み中…" : resultCountText(total);
+  const resultStatus = loading ? t.list.loading : t.library.resultCount(total);
 
   // renderTagsRow は VideoCard へ渡す安定した関数である（N4）。VideoCard は
   // memo で包まれており、props が前回と同じ参照であれば再描画しない。ここで
@@ -604,12 +604,12 @@ export default function LibraryPage() {
 
       <div className="flex min-w-0 items-baseline justify-between gap-3">
         <h1 className="text-xl font-semibold tracking-tight text-fg sm:text-2xl">
-          ライブラリ
+          {t.library.title}
         </h1>
         {!initialLoadFailed && (
           <p
             role="status"
-            aria-label="検索結果"
+            aria-label={t.library.resultsLabel}
             aria-live="polite"
             className="shrink-0 text-xs text-fg-muted tabular-nums sm:text-sm"
           >
@@ -677,17 +677,19 @@ export default function LibraryPage() {
                 <tr className="text-left text-xs text-fg-muted">
                   {owner && <th className="w-10" />}
                   <th className="w-32 py-2" />
-                  <th className="py-2 pr-4 font-medium">題名</th>
+                  <th className="py-2 pr-4 font-medium">{t.library.columns.title}</th>
                   <th className="hidden w-16 py-2 pr-4 sm:table-cell" />
-                  <th className="w-20 py-2 pr-4 text-right font-medium">長さ</th>
+                  <th className="w-20 py-2 pr-4 text-right font-medium">
+                    {t.library.columns.duration}
+                  </th>
                   <th className="hidden w-20 py-2 pr-4 text-right font-medium md:table-cell">
-                    画質
+                    {t.library.columns.quality}
                   </th>
                   <th className="hidden w-24 py-2 pr-4 text-right font-medium md:table-cell">
-                    大きさ
+                    {t.library.columns.size}
                   </th>
                   <th className="hidden w-28 py-2 pr-3 text-right font-medium lg:table-cell">
-                    追加
+                    {t.library.columns.added}
                   </th>
                 </tr>
               </thead>

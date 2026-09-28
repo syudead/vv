@@ -103,7 +103,7 @@ type listSpec struct {
 func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.VideoPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
+		return domain.VideoPage{}, fmt.Errorf("cannot start reading the list: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -120,7 +120,7 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 		return domain.VideoPage{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
+		return domain.VideoPage{}, fmt.Errorf("cannot finish reading the list: %w", err)
 	}
 	page.MissingTagIDs = missingTagIDs
 	return page, nil
@@ -186,7 +186,7 @@ const playableCondition = `videos.playable = 1 and videos.probe_state = 'done'`
 const listColumns = `videos.id, chosen.path, loc.title, loc.size_bytes, loc.mtime,
 	videos.added_at, videos.updated_at, videos.content_key, videos.duration_ms, videos.width,
 	videos.height, videos.display_aspect_ratio, videos.container, videos.video_codec, videos.audio_codec, videos.playable,
-	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
+	videos.unplayable_reason, videos.probe_state, videos.probe_error, videos.probe_error_code, videos.thumbnail_state, videos.seek_thumbnail_state, videos.preview_state,
 	` + publicColumn + ` as public`
 
 // filteredFrom は chosen に動画と再生の記録を結び、絞り込みを掛けた from 句と
@@ -230,7 +230,7 @@ func countVideosWith(ctx context.Context, db queryRower, spec listSpec) (int, er
 	var total int
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	if err := db.QueryRowContext(ctx, cte+` select count(*)`+from, args...).Scan(&total); err != nil {
-		return 0, fmt.Errorf("件数を数えられません: %w", err)
+		return 0, fmt.Errorf("cannot count items: %w", err)
 	}
 	return total, nil
 }
@@ -246,7 +246,7 @@ func (s *LibraryStore) countVideos(ctx context.Context, spec listSpec) (int, err
 func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain.VideoPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを始められません: %w", err)
+		return domain.VideoPage{}, fmt.Errorf("cannot start reading the list: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -255,7 +255,7 @@ func (s *LibraryStore) listVideoPage(ctx context.Context, spec listSpec) (domain
 		return domain.VideoPage{}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧の読み取りを終えられません: %w", err)
+		return domain.VideoPage{}, fmt.Errorf("cannot finish reading the list: %w", err)
 	}
 	return page, nil
 }
@@ -306,7 +306,7 @@ func listVideoPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.Vid
 
 	rows, err := tx.QueryContext(ctx, query, append(args, limit+1)...)
 	if err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
+		return domain.VideoPage{}, fmt.Errorf("cannot read the list: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -316,16 +316,16 @@ func listVideoPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.Vid
 		var value any
 		video, err := scanVideo(sortValueScanner{rows: rows, value: &value})
 		if err != nil {
-			return domain.VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
+			return domain.VideoPage{}, fmt.Errorf("cannot read the list: %w", err)
 		}
 		page.Items = append(page.Items, video)
 		values = append(values, value)
 	}
 	if err := rows.Err(); err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧を読み出せません: %w", err)
+		return domain.VideoPage{}, fmt.Errorf("cannot read the list: %w", err)
 	}
 	if err := rows.Close(); err != nil {
-		return domain.VideoPage{}, fmt.Errorf("一覧を閉じられません: %w", err)
+		return domain.VideoPage{}, fmt.Errorf("cannot close the list: %w", err)
 	}
 
 	if len(page.Items) > limit {
@@ -361,16 +361,16 @@ func init() {
 		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
 			seed, ok := args[0].(int64)
 			if !ok {
-				return nil, fmt.Errorf("%s: seed が整数ではありません: %T", shuffleFunction, args[0])
+				return nil, fmt.Errorf("%s: seed is not an integer: %T", shuffleFunction, args[0])
 			}
 			id, ok := args[1].(int64)
 			if !ok {
-				return nil, fmt.Errorf("%s: id が整数ではありません: %T", shuffleFunction, args[1])
+				return nil, fmt.Errorf("%s: id is not an integer: %T", shuffleFunction, args[1])
 			}
 			return domain.ShuffleKey(seed, id), nil
 		})
 	if err != nil {
-		panic(fmt.Sprintf("%s を登録できません: %v", shuffleFunction, err))
+		panic(fmt.Sprintf("cannot register %s: %v", shuffleFunction, err))
 	}
 }
 
@@ -455,14 +455,14 @@ func (o listOrder) cursorCondition(spec listSpec, cursor string) (string, []any,
 		return "", nil, err
 	}
 	if c.sort != string(spec.sort) {
-		return "", nil, fmt.Errorf("%w: 別の並び順のカーソルです", domain.ErrInvalidCursor)
+		return "", nil, fmt.Errorf("%w: cursor is for a different sort order", domain.ErrInvalidCursor)
 	}
 	if c.seed != o.seedText(spec) {
-		return "", nil, fmt.Errorf("%w: 別の seed のカーソルです", domain.ErrInvalidCursor)
+		return "", nil, fmt.Errorf("%w: cursor is for a different seed", domain.ErrInvalidCursor)
 	}
 	if c.isNull {
 		if !o.nullable {
-			return "", nil, fmt.Errorf("%w: 値の無いカーソルです", domain.ErrInvalidCursor)
+			return "", nil, fmt.Errorf("%w: cursor has no value", domain.ErrInvalidCursor)
 		}
 		clause, args := o.after(true, nil, c.id)
 		return clause, args, nil
@@ -471,7 +471,7 @@ func (o listOrder) cursorCondition(spec listSpec, cursor string) (string, []any,
 	if o.kind == sortInteger {
 		parsed, err := strconv.ParseInt(c.value, 10, 64)
 		if err != nil {
-			return "", nil, fmt.Errorf("%w: 並べ替えの値として解釈できません", domain.ErrInvalidCursor)
+			return "", nil, fmt.Errorf("%w: cannot parse the sort value", domain.ErrInvalidCursor)
 		}
 		value = parsed
 	}
@@ -501,7 +501,7 @@ func (o listOrder) encodeCursor(spec listSpec, value any, id int64) (string, err
 	case []byte:
 		text = string(v)
 	default:
-		return "", fmt.Errorf("並べ替えの値を包めません: %T", value)
+		return "", fmt.Errorf("cannot encode the sort value: %T", value)
 	}
 	fields := []string{string(spec.sort), o.seedText(spec), nullFlag, strconv.FormatInt(id, 10), text}
 	return base64.RawURLEncoding.EncodeToString([]byte(strings.Join(fields, cursorSeparator))), nil
@@ -528,14 +528,14 @@ func decodeCursor(cursor string) (cursorFields, error) {
 
 	parts := strings.SplitN(string(raw), cursorSeparator, 5)
 	if len(parts) != 5 {
-		return cursorFields{}, fmt.Errorf("%w: 項目が足りません", domain.ErrInvalidCursor)
+		return cursorFields{}, fmt.Errorf("%w: too few fields", domain.ErrInvalidCursor)
 	}
 	if parts[2] != "0" && parts[2] != "1" {
-		return cursorFields{}, fmt.Errorf("%w: 値の有無を解釈できません", domain.ErrInvalidCursor)
+		return cursorFields{}, fmt.Errorf("%w: cannot parse whether a value is present", domain.ErrInvalidCursor)
 	}
 	id, err := strconv.ParseInt(parts[3], 10, 64)
 	if err != nil {
-		return cursorFields{}, fmt.Errorf("%w: 識別子として解釈できません", domain.ErrInvalidCursor)
+		return cursorFields{}, fmt.Errorf("%w: cannot parse the id", domain.ErrInvalidCursor)
 	}
 	return cursorFields{sort: parts[0], seed: parts[1], isNull: parts[2] == "1", id: id, value: parts[4]}, nil
 }

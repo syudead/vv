@@ -7,18 +7,18 @@ import "errors"
 var (
 	// ErrMediaFileUnavailable は、所在が登録フォルダの内側の通常ファイルを
 	// 指していないか、開けないことを表す。
-	ErrMediaFileUnavailable = errors.New("メディアファイルを開けません")
+	ErrMediaFileUnavailable = errors.New("media file is unavailable")
 	// ErrMediaFileOutsideRoot は、所在は登録フォルダの内側にあるが、symlink を
 	// 辿った先が外にあることを表す。ErrMediaFileUnavailable でもある。
-	ErrMediaFileOutsideRoot = errors.New("メディアファイルのリンク先が登録フォルダの外です")
+	ErrMediaFileOutsideRoot = errors.New("media file link points outside the media folder")
 
 	// ErrInvalidDirectoryPath は、ディレクトリ選択に絶対パスでない値が渡されたことを表す。
-	ErrInvalidDirectoryPath = errors.New("絶対pathを指定してください")
+	ErrInvalidDirectoryPath = errors.New("path must be absolute")
 	// ErrDirectoryNotFound は、ディレクトリが無い、ディレクトリでない、または
 	// symlink を経由していることを表す。
-	ErrDirectoryNotFound = errors.New("ディレクトリが見つかりません")
+	ErrDirectoryNotFound = errors.New("directory not found")
 	// ErrDirectoryUnavailable は、ディレクトリを読み取れないことを表す。
-	ErrDirectoryUnavailable = errors.New("ディレクトリを読み取れません")
+	ErrDirectoryUnavailable = errors.New("directory is unreadable")
 )
 
 // DirectoryEntry はディレクトリ選択に並べる子ディレクトリの1件である。

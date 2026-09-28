@@ -53,6 +53,15 @@ positions. The library list additionally accepts up to 16 `tag` ids (AND) and
 reports any that no longer exist in `missingTagIds`
 ([specs/014-video-tags/contracts/tags-api.md](specs/014-video-tags/contracts/tags-api.md)).
 
+Every API error is a JSON `Error` with a machine-readable `code` and an English
+`message`. Where one `code` covers several situations the UI can cause, the
+response also carries a `reason` (`ErrorReason`), and for some reasons a server
+`limit` or the conflicting tag's original name (`tagName`); the UI builds its text
+from `code` and `reason`, and the `message` is the fallback for API clients and
+unknown codes. `internal/httpapi` fills `limit` from the server's own constants and
+maps `domain.InvalidTagNameError` to the tag-name reasons
+([specs/023-english-i18n/contracts/error-api.md](specs/023-english-i18n/contracts/error-api.md)).
+
 `GET /api/library` takes the same parameters as `GET /api/videos` but returns
 library items: a video, or a folder group as one item
 (`LibraryStore.ListLibrary`). The search, playable and tag filters apply per
@@ -122,6 +131,18 @@ or incomplete is repaired when it is found: `internal/app` already checks it bef
 video API exposes `previewUrl`, and when a `done` preview's MP4 is missing or does not match
 the size in its manifest it sets the video back to `pending` and queues a preview job in one
 transaction, once per loss.
+
+A failed probe or scan keeps its free-text reason (`videos.probe_error`, `scans.error`) and,
+separately, a machine-readable code: `videos.probe_error_code`, and `scans.error_code` with
+`scans.error_path` when the reason concerns one location (the media folder or the place that
+could not be read). The adapter that produces the failure wraps it in `domain.ProbeFailure`
+(`internal/media`) or `domain.ScanFailure` (`internal/scanner`); `internal/app` marks a scan
+stopped by shutdown as `interrupted`, as does closing one left running at startup; and
+`internal/store` takes the code out with `errors.As` when it records the failure, storing
+`internal` for anything unwrapped. The API returns `Video.probeErrorCode` and
+`Scan.errorCode`/`errorPath`, so the screen explains a failure from the code instead of the
+free text. Rows recorded before the codes existed keep their old reason with no code
+([data-model.md](specs/023-english-i18n/data-model.md)). `jobs.last_error` stays free text.
 
 Generated files have one owner, `internal/artifacts`. Under `MDM_DATA_DIR/thumbnails`
 (the root comes from `cmd/mdm`'s configuration) it alone decides where each content key's
@@ -346,7 +367,7 @@ get `401 unauthenticated`; a failed session lookup is `500`, never an owner.
 Guest-too requests without a valid session are handled as a guest: handlers pass the
 audience to `LibraryStore` and `Catalog`, so only public videos (and folders derived
 from them) appear, hidden videos and folders answer the same `404` as missing ones,
-guest responses omit `location`, `progress`, `probeError` and `rootPath` and carry
+guest responses omit `location`, `progress`, `probeError`, `probeErrorCode` and `rootPath` and carry
 empty `tags`, and list conditions that depend on owner data (`watch`, played-at
 sorts, `tag`) are `400`
 ([specs/016-single-account-auth/contracts/guest-api.md](specs/016-single-account-auth/contracts/guest-api.md)).
@@ -466,7 +487,8 @@ consumes it as an `fs.FS`.
 The SPA under `web/src` is split by responsibility rather than by widget.
 
 `web/src/api/` is the only place that talks to the server. `client.ts` wraps
-`fetch` over the generated types in `web/src/api/gen/` (never hand-edited;
+`fetch` (turning a failed `fetch` into `NetworkFailed` and an error response into
+`RequestFailed`) over the generated types in `web/src/api/gen/` (never hand-edited;
 `task generate` rewrites them from `api/openapi.yaml`), `serverEvents.ts` shares one
 `EventSource` on `/api/events` among its subscribers, `useVideos.ts` owns
 paging and request cancellation for the library list and re-fetches a listed video in
@@ -514,7 +536,15 @@ state nor subscribe to `/api/events` for a guest.
 `web/src/shell/` holds the responsive top bar, sidebar, scan state, and the
 frame around a screen. `web/src/library/`, `web/src/folders/`, `web/src/settings/`,
 `web/src/tags/`, and `web/src/player/` own their respective product flows, while reusable
-primitives live in `web/src/ui/` and formatting helpers live in `web/src/lib/`. The
+primitives live in `web/src/ui/` and locale-independent formatting helpers (duration,
+size, resolution) live in `web/src/lib/`. User-facing text, the locale-dependent formatting
+(numbers, dates, relative time, plurals) and the display of API errors live in
+`web/src/i18n/`: an English catalog that components import statically as `t`, whose values
+are the branded `UiText` type that `web/src/ui/` props require, and `errorText`, which
+turns a `RequestFailed` (its `reason`, `code`, `limit` and `tagName`) or a `NetworkFailed`
+into English instead of showing the server's or the browser's text. ESLint reports
+Japanese or fixed text outside `web/src/i18n/`; the details are in
+[docs/design-docs/i18n.md](docs/design-docs/i18n.md). The
 video-list pieces the library and folder screens share (list criteria and their URL hook,
 the condition labels and count summary, the video card, the empty/loading/error states and
 the search, filter, sort and zoom controls) live in `web/src/videoList/`, which belongs to

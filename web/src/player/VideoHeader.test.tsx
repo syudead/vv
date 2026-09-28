@@ -20,10 +20,10 @@ function renderHeader(folder: VideoFolder | undefined, onClose = vi.fn()) {
 describe("VideoHeader", () => {
   it("ロゴはホームへのリンクで、× は 1 つだけ置き、押すと閉じる", () => {
     const onClose = renderHeader(undefined);
-    const home = screen.getByRole("link", { name: "VVMDM ホーム" });
+    const home = screen.getByRole("link", { name: "VVMDM home" });
     expect(home.getAttribute("href")).toBe("/");
     expect(home.querySelectorAll('img[alt=""]')).toHaveLength(2);
-    const close = screen.getAllByRole("button", { name: "閉じる" });
+    const close = screen.getAllByRole("button", { name: "Close" });
     expect(close).toHaveLength(1);
     fireEvent.click(close[0] as HTMLElement);
     expect(onClose).toHaveBeenCalledTimes(1);
@@ -31,7 +31,7 @@ describe("VideoHeader", () => {
 
   it("登録フォルダから置き場所のフォルダまでの段を、各フォルダ画面へのリンクで並べる", () => {
     renderHeader({ rootId: 3, path: "2025/京都 旅行", rootName: "ホームビデオ" });
-    const nav = screen.getByRole("navigation", { name: "フォルダ" });
+    const nav = screen.getByRole("navigation", { name: "Folder" });
     const links = within(nav).getAllByRole("link");
     expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
       ["ホームビデオ", "/folders/3"],
@@ -48,7 +48,7 @@ describe("VideoHeader", () => {
 
   it("登録フォルダの直下なら段は 1 つで、「…」は出さない", () => {
     renderHeader({ rootId: 3, path: "", rootName: "movies" });
-    const nav = screen.getByRole("navigation", { name: "フォルダ" });
+    const nav = screen.getByRole("navigation", { name: "Folder" });
     expect(
       within(nav)
         .getAllByRole("link")
