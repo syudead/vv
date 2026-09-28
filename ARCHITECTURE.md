@@ -132,7 +132,10 @@ sprite rebuilt by decoding the whole video. `internal/media` returns them as val
 (`Thumbnail`, `GenerateSeekSprite`) without knowing events or the store, `internal/app`
 passes them with the stage's success, and `internal/store` records
 `thumbnail_first_frame` / `seek_thumbnail_full_decode` in the transaction that writes the
-success, or deletes the row when the stage is rebuilt without the fallback. An import with
+success, or deletes the row when the stage is rebuilt without the fallback. The seek sprite
+also keeps the flag in its `sprite.json`, so adopting a completed sprite (a rerun after a stop
+between publishing and recording, or another video with the same content) records the same
+substitution. An import with
 only substitutions stays `done` and counts them in `Scan.issues.substituted`
 ([specs/024-import-progress/research.md](specs/024-import-progress/research.md) R-7).
 The library thumbnail and the seek

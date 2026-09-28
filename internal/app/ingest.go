@@ -47,9 +47,12 @@ type ArtifactStore interface {
 	// PublishThumbnail は write に一時置き場のパスを渡して書かせ、公開する。
 	PublishThumbnail(contentKey string, write func(output string) error) error
 	// PublishSeekThumbnails は完成したもの（配置情報のある置き場）があれば write を
-	// 呼ばない。write は一時置き場のディレクトリを受け、layout の配置でシートを書く。
-	// 配置情報の無い置き場（旧形式・途中で壊れたもの）は公開の直前に消す。
-	PublishSeekThumbnails(contentKey string, layout domain.SeekSpriteLayout, write func(outputDir string) error) error
+	// 呼ばない。write は一時置き場のディレクトリを受け、layout の配置でシートを書き、
+	// 全編の復号から作ったかを返す。配置情報の無い置き場（旧形式・途中で壊れたもの）は
+	// 公開の直前に消す。公開した、または採用したスプライトが代用で作られたかを返し、
+	// 採用したものに記録が無ければ SubstitutionUnknown を返す。
+	PublishSeekThumbnails(contentKey string, layout domain.SeekSpriteLayout,
+		write func(outputDir string) (fullDecode bool, err error)) (domain.Substitution, error)
 	// PublishPreview は完成したものがあれば write を呼ばない。公開の直前に current を
 	// 呼び、false なら公開せずに domain.ErrPreviewStale を返す。
 	PublishPreview(ctx context.Context, contentKey string, write func(output string) error,
@@ -272,14 +275,14 @@ func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 	}
 	layout := domain.NewSeekSpriteLayout(durationMs)
 	// 全編からの作り直しは、成功を書く取引で問題として記録する（R-7）。置き場に
-	// 完成したものがあって生成しなかったときは、代用したかが分からないので、
-	// 問題の行を変えない。
-	substitution := domain.SubstitutionUnknown
-	if err := i.files.PublishSeekThumbnails(job.ContentKey, layout, func(outputDir string) error {
-		fullDecode, err := i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
-		substitution = domain.SubstitutionOf(fullDecode)
-		return err
-	}); err != nil {
+	// 完成したものがあって生成しなかったときは、置き場が生成時に残した記録を使う。
+	// 公開と完了の記録の間で止まった後の再実行や、同じ内容の別の動画でも代用を
+	// 取りこぼさない。記録の無い旧いものは代用したかが分からないので、問題の行を
+	// 変えない。
+	substitution, err := i.files.PublishSeekThumbnails(job.ContentKey, layout, func(outputDir string) (bool, error) {
+		return i.generator.SeekSprite(ctx, job.LocationPath, outputDir, layout)
+	})
+	if err != nil {
 		return err
 	}
 	applied, err := i.store.SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone, substitution)

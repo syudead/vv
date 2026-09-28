@@ -402,8 +402,8 @@ func TestIngestThumbnailFailure(t *testing.T) {
 }
 
 // 生成が返した代用を、成功を書く保存側へ渡す（specs/024-import-progress/research.md R-7）。
-// 置き場に完成したシーク用サムネイルがあって生成しなかったときは、代用したかが
-// 分からないので Unknown を渡す。
+// 置き場に完成したシーク用サムネイルがあって生成しなかったときは、置き場が生成時に
+// 残した記録を渡す。記録の無い旧いものは、代用したかが分からないので Unknown を渡す。
 func TestIngestPassesSubstitutionToStore(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
@@ -417,8 +417,14 @@ func TestIngestPassesSubstitutionToStore(t *testing.T) {
 			wantThumbnail: domain.SubstitutionUsed, wantSeek: domain.SubstitutionUsed,
 		},
 		{
-			name: "既存のシーク用サムネイルを採用", generator: &fakeGenerator{seekPublished: true, fullDecode: true},
+			name: "記録の無い既存のシーク用サムネイルを採用", generator: &fakeGenerator{seekPublished: true, fullDecode: true},
 			wantThumbnail: domain.SubstitutionNone, wantSeek: domain.SubstitutionUnknown,
+		},
+		{
+			// 全編から作って公開した後、完了を記録する前に止まった再実行
+			name:          "全編から作った既存のシーク用サムネイルを採用",
+			generator:     &fakeGenerator{seekPublished: true, publishedSubstitution: domain.SubstitutionUsed},
+			wantThumbnail: domain.SubstitutionNone, wantSeek: domain.SubstitutionUsed,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

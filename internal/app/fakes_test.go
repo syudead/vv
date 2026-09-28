@@ -166,6 +166,8 @@ type fakeGenerator struct {
 	fullDecode bool
 	// seekPublished は、置き場に完成したシーク用サムネイルがあり、生成しないことを表す。
 	seekPublished bool
+	// publishedSubstitution は、採用したシーク用サムネイルに置き場が残した代用の記録。
+	publishedSubstitution domain.Substitution
 	// validated はプレビューの公開の直前に確かめた元の同一性。
 	validated []bool
 	// outputs は生成に渡した書き出し先。置き場が渡したものと同じであること。
@@ -226,16 +228,20 @@ func (f *fakeGenerator) PublishThumbnail(contentKey string, write func(string) e
 }
 
 func (f *fakeGenerator) PublishSeekThumbnails(
-	contentKey string, layout domain.SeekSpriteLayout, write func(string) error,
-) error {
+	contentKey string, layout domain.SeekSpriteLayout, write func(string) (bool, error),
+) (domain.Substitution, error) {
 	f.mu.Lock()
 	f.publishedLayouts = append(f.publishedLayouts, layout)
 	adopted := f.seekPublished
 	f.mu.Unlock()
 	if adopted {
-		return nil
+		return f.publishedSubstitution, nil
 	}
-	return write("tmp/seek/" + contentKey)
+	fullDecode, err := write("tmp/seek/" + contentKey)
+	if err != nil {
+		return domain.SubstitutionUnknown, err
+	}
+	return domain.SubstitutionOf(fullDecode), nil
 }
 
 func (f *fakeGenerator) PublishPreview(
