@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -8,9 +9,12 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
+	"github.com/syudead/vv/internal/store"
 )
 
 // 画面の API トークンの管理（specs/026-external-api/contracts/token-api.md）を、本物の
@@ -189,5 +193,46 @@ func TestAPITokenOperationsIgnoreBearer(t *testing.T) {
 	list, _ := env.listAPITokens(cookie)
 	if len(list.Items) != 1 {
 		t.Errorf("Bearer の要求が一覧を変えた: %+v", list)
+	}
+}
+
+// beforeCreateAPITokens は発行の直前に before を走らせる。境界がセッションを確かめた後、
+// 保存の前に割り込む試験に使う。
+type beforeCreateAPITokens struct {
+	APITokens
+	before func()
+}
+
+func (b beforeCreateAPITokens) CreateAPIToken(ctx context.Context, sessionToken, name string) (domain.APIToken, string, error) {
+	b.before()
+	return b.APITokens.CreateAPIToken(ctx, sessionToken, name)
+}
+
+// 境界がセッションを確かめた後に mdm account が資格情報を変えたら、その要求では発行せず
+// 未認証にする。新しい版のトークンが古いセッションから生まれない（research.md R-2）。
+func TestAPITokenCreateRacingCredentialChangeIsUnauthenticated(t *testing.T) {
+	var db *store.DB
+	env := newAuthEnvWith(t, t.TempDir(), func(opened *store.DB) Options {
+		db = opened
+		auth := app.NewAuth(app.AuthOptions{Store: opened.Auth(), Hasher: passwordHasher{}, Now: time.Now})
+		return Options{APITokens: beforeCreateAPITokens{APITokens: auth, before: func() {
+			if err := opened.Auth().ChangePassword(context.Background(), "new-hash", time.Now()); err != nil {
+				t.Errorf("ChangePassword: %v", err)
+			}
+		}}}
+	})
+	cookie := env.setup()
+
+	rec := env.serve(authRequest{
+		method: http.MethodPost, target: "/api/api-tokens", body: createAPITokenBody("n"),
+		cookies: []*http.Cookie{cookie},
+	})
+	assertUnauthenticated(t, "資格情報の変更と競った発行", rec)
+	if strings.Contains(rec.Body.String(), "vvt_") {
+		t.Errorf("平文を返した: %s", rec.Body)
+	}
+	list, err := db.Auth().ListAPITokens(context.Background())
+	if err != nil || len(list) != 0 {
+		t.Fatalf("ListAPITokens = %+v, %v", list, err)
 	}
 }

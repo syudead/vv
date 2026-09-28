@@ -18,14 +18,17 @@ type fakeAPIToken struct {
 	version int64
 }
 
-func (f *fakeAuthStore) AddAPIToken(_ context.Context, name, token string, now time.Time) (domain.APIToken, error) {
+func (f *fakeAuthStore) AddAPIToken(
+	_ context.Context, sessionToken, name, token string, now time.Time,
+) (domain.APIToken, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if f.account == nil {
-		return domain.APIToken{}, domain.ErrAccountNotConfigured
+	s, ok := f.sessions[sessionToken]
+	if !ok || f.account == nil || s.version != f.account.Version || !s.expires.After(now) {
+		return domain.APIToken{}, domain.ErrSessionNotValid
 	}
 	added := domain.APIToken{ID: int64(len(f.apiTokens) + 1), Name: name, CreatedAt: now}
-	f.apiTokens[token] = fakeAPIToken{token: added, version: f.account.Version}
+	f.apiTokens[token] = fakeAPIToken{token: added, version: s.version}
 	return added, nil
 }
 
@@ -79,13 +82,24 @@ func (f *fakeAuthStore) TouchAPIToken(_ context.Context, id int64, now time.Time
 	return nil
 }
 
+// ownerSession はアカウントを設定済みにし、所有者のセッションの平文を返す。
+func ownerSession(t *testing.T, f authFixture) string {
+	t.Helper()
+	session, err := f.auth.Setup(context.Background(), "owner", "correct-password")
+	if err != nil {
+		t.Fatalf("Setup: %v", err)
+	}
+	return session.Token
+}
+
 func TestAuthCreateAPITokenReturnsPrefixedSecret(t *testing.T) {
 	random := bytes.Repeat([]byte{0xfb}, sessionTokenBytes)
-	f := newAuthFixture(t, nil).configured(t)
+	f := newAuthFixture(t, nil)
+	session := ownerSession(t, f)
 	f.auth.random = bytes.NewReader(random)
 	ctx := context.Background()
 
-	token, secret, err := f.auth.CreateAPIToken(ctx, "  Claude Code ")
+	token, secret, err := f.auth.CreateAPIToken(ctx, session, "  Claude Code ")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,9 +131,10 @@ func TestAuthCreateAPITokenReturnsPrefixedSecret(t *testing.T) {
 }
 
 func TestAuthCreateAPITokenRejectsInvalidName(t *testing.T) {
-	f := newAuthFixture(t, nil).configured(t)
+	f := newAuthFixture(t, nil)
+	session := ownerSession(t, f)
 	for _, name := range []string{"", " ", "a\nb", strings.Repeat("a", domain.APITokenNameMaxLength+1)} {
-		if _, _, err := f.auth.CreateAPIToken(context.Background(), name); !errors.Is(err, domain.ErrInvalidAPITokenName) {
+		if _, _, err := f.auth.CreateAPIToken(context.Background(), session, name); !errors.Is(err, domain.ErrInvalidAPITokenName) {
 			t.Errorf("CreateAPIToken(%q) err = %v, want ErrInvalidAPITokenName", name, err)
 		}
 	}
@@ -128,17 +143,28 @@ func TestAuthCreateAPITokenRejectsInvalidName(t *testing.T) {
 	}
 }
 
-func TestAuthCreateAPITokenRequiresAccount(t *testing.T) {
+func TestAuthCreateAPITokenRequiresValidSession(t *testing.T) {
 	f := newAuthFixture(t, nil)
-	if _, _, err := f.auth.CreateAPIToken(context.Background(), "n"); !errors.Is(err, domain.ErrAccountNotConfigured) {
-		t.Fatalf("err = %v, want ErrAccountNotConfigured", err)
+	if _, _, err := f.auth.CreateAPIToken(context.Background(), "none", "n"); !errors.Is(err, domain.ErrSessionNotValid) {
+		t.Fatalf("未設定: err = %v, want ErrSessionNotValid", err)
+	}
+	session := ownerSession(t, f)
+	if err := f.auth.Logout(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := f.auth.CreateAPIToken(context.Background(), session, "n"); !errors.Is(err, domain.ErrSessionNotValid) {
+		t.Fatalf("ログアウトの後: err = %v, want ErrSessionNotValid", err)
+	}
+	if len(f.store.apiTokens) != 0 {
+		t.Error("有効でないセッションで保存した")
 	}
 }
 
 func TestAuthCheckAPITokenRejectsMalformedWithoutQuery(t *testing.T) {
-	f := newAuthFixture(t, nil).configured(t)
+	f := newAuthFixture(t, nil)
+	session := ownerSession(t, f)
 	ctx := context.Background()
-	_, secret, err := f.auth.CreateAPIToken(ctx, "n")
+	_, secret, err := f.auth.CreateAPIToken(ctx, session, "n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,9 +187,10 @@ func TestAuthCheckAPITokenRejectsMalformedWithoutQuery(t *testing.T) {
 }
 
 func TestAuthCheckAPITokenReportsQueryFailure(t *testing.T) {
-	f := newAuthFixture(t, nil).configured(t)
+	f := newAuthFixture(t, nil)
+	session := ownerSession(t, f)
 	ctx := context.Background()
-	_, secret, err := f.auth.CreateAPIToken(ctx, "n")
+	_, secret, err := f.auth.CreateAPIToken(ctx, session, "n")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,9 +201,10 @@ func TestAuthCheckAPITokenReportsQueryFailure(t *testing.T) {
 }
 
 func TestAuthRecordAPITokenUseUsesClock(t *testing.T) {
-	f := newAuthFixture(t, nil).configured(t)
+	f := newAuthFixture(t, nil)
+	session := ownerSession(t, f)
 	ctx := context.Background()
-	token, secret, err := f.auth.CreateAPIToken(ctx, "n")
+	token, secret, err := f.auth.CreateAPIToken(ctx, session, "n")
 	if err != nil {
 		t.Fatal(err)
 	}

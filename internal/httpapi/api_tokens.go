@@ -20,9 +20,10 @@ import (
 type APITokens interface {
 	// ListAPITokens は有効な API トークンを作成日時の降順で返す。
 	ListAPITokens(ctx context.Context) ([]domain.APIToken, error)
-	// CreateAPIToken は API トークンを発行し、保存した行と平文を返す。名前が規則を外れれば
-	// *domain.InvalidAPITokenNameError を返す。
-	CreateAPIToken(ctx context.Context, name string) (domain.APIToken, string, error)
+	// CreateAPIToken はセッション sessionToken の求めで API トークンを発行し、保存した行と
+	// 平文を返す。名前が規則を外れれば *domain.InvalidAPITokenNameError を、保存の時点で
+	// セッションが有効でなければ domain.ErrSessionNotValid を返す。
+	CreateAPIToken(ctx context.Context, sessionToken, name string) (domain.APIToken, string, error)
 	// RevokeAPIToken は API トークンを失効させる。無い id では何もしない。
 	RevokeAPIToken(ctx context.Context, id int64) error
 }
@@ -54,9 +55,15 @@ func (s *server) CreateApiToken(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "API token storage is not configured.", nil)
 		return
 	}
-	token, secret, err := s.apiTokens.CreateAPIToken(r.Context(), body.Name)
+	// 境界が確かめたのと同じセッションを渡し、保存と同じ取引でもう一度確かめさせる。
+	// 境界の後に資格情報が変わっていれば、新しい版のトークンを作らない（research.md R-2）。
+	token, secret, err := s.apiTokens.CreateAPIToken(r.Context(), s.sessionToken(r), body.Name)
 	if errors.Is(err, domain.ErrInvalidAPITokenName) {
 		s.invalidAPITokenName(w, err)
+		return
+	}
+	if errors.Is(err, domain.ErrSessionNotValid) {
+		s.unauthenticated(w)
 		return
 	}
 	if err != nil {

@@ -9,16 +9,19 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
+// setupSession は setupAccount が作るセッションの平文である。
+const setupSession = "session"
+
 func setupAccount(t *testing.T, db *DB) {
 	t.Helper()
-	if err := db.Auth().Setup(context.Background(), "owner", "hash", "session", authNow); err != nil {
+	if err := db.Auth().Setup(context.Background(), "owner", "hash", setupSession, authNow); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func addAPIToken(t *testing.T, db *DB, name, token string, now time.Time) domain.APIToken {
 	t.Helper()
-	added, err := db.Auth().AddAPIToken(context.Background(), name, token, now)
+	added, err := db.Auth().AddAPIToken(context.Background(), setupSession, name, token, now)
 	if err != nil {
 		t.Fatalf("AddAPIToken(%q): %v", name, err)
 	}
@@ -36,8 +39,50 @@ func apiTokenValid(t *testing.T, db *DB, token string) bool {
 
 func TestAPITokenRequiresAccount(t *testing.T) {
 	db := migratedDB(t)
-	if _, err := db.Auth().AddAPIToken(context.Background(), "n", "t", authNow); !errors.Is(err, domain.ErrAccountNotConfigured) {
-		t.Fatalf("AddAPIToken err = %v, want ErrAccountNotConfigured", err)
+	if _, err := db.Auth().AddAPIToken(context.Background(), setupSession, "n", "t", authNow); !errors.Is(err, domain.ErrSessionNotValid) {
+		t.Fatalf("AddAPIToken err = %v, want ErrSessionNotValid", err)
+	}
+}
+
+// 発行は、求めたセッションがその取引の中で有効なときだけ行う。境界で確かめた後に資格情報が
+// 変わっていれば、新しい版で足さない（research.md R-2）。
+func TestAPITokenRequiresCurrentSession(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		prepare func(*testing.T, *DB)
+		session string
+		now     time.Time
+	}{
+		{name: "資格情報の変更の後", session: setupSession, now: authNow, prepare: func(t *testing.T, db *DB) {
+			if err := db.Auth().ChangePassword(context.Background(), "new-hash", authNow); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "版の合わないセッション", session: setupSession, now: authNow, prepare: func(t *testing.T, db *DB) {
+			if _, err := db.sql.Exec(`update account set version = version + 1`); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "期限切れ", session: setupSession, now: authNow.Add(domain.SessionLifetime)},
+		{name: "無いセッション", session: "other", now: authNow},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := migratedDB(t)
+			setupAccount(t, db)
+			if tc.prepare != nil {
+				tc.prepare(t, db)
+			}
+			if _, err := db.Auth().AddAPIToken(context.Background(), tc.session, "n", "t1", tc.now); !errors.Is(err, domain.ErrSessionNotValid) {
+				t.Fatalf("AddAPIToken err = %v, want ErrSessionNotValid", err)
+			}
+			var count int
+			if err := db.sql.QueryRow(`select count(*) from api_tokens`).Scan(&count); err != nil {
+				t.Fatal(err)
+			}
+			if count != 0 {
+				t.Errorf("api_tokens = %d 行, want 0", count)
+			}
+		})
 	}
 }
 

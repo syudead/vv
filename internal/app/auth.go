@@ -48,8 +48,9 @@ type AuthStore interface {
 	// DeleteSession はセッションを消す。無ければ何もしない。
 	DeleteSession(ctx context.Context, sessionToken string) error
 
-	// AddAPIToken は今の版で API トークンを足す。未設定なら domain.ErrAccountNotConfigured を返す。
-	AddAPIToken(ctx context.Context, name, token string, now time.Time) (domain.APIToken, error)
+	// AddAPIToken は、sessionToken のセッションが今も有効なときだけ、その版で API トークンを
+	// 足す。有効でなければ domain.ErrSessionNotValid を返す。
+	AddAPIToken(ctx context.Context, sessionToken, name, token string, now time.Time) (domain.APIToken, error)
 	// ListAPITokens は有効な API トークンを作成日時の降順で返す。
 	ListAPITokens(ctx context.Context) ([]domain.APIToken, error)
 	// DeleteAPIToken は API トークンを消す。無ければ何もしない。

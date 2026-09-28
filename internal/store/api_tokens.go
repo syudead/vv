@@ -18,11 +18,17 @@ import (
 const apiTokenTouchInterval = 60 * time.Second
 
 // AddAPIToken は名前 name・平文 token の API トークンを 1 件足し、足した行を返す。
-// 同じ取引で読んだ account.version を行に書く。account の行が無ければ
-// domain.ErrAccountNotConfigured を返す。
+//
+// 行に書く版は、発行を求めたセッション sessionToken の版である。同じ文の中で、その
+// セッションが今も有効（行があり、account.version と一致し、期限が now より後）かを確かめ、
+// 有効でなければ足さずに domain.ErrSessionNotValid を返す。account の行が無いときも同じである。
+// 境界でセッションを確かめた後、ここまでの間に mdm account が資格情報を変えても、新しい版の
+// トークンが古いセッションから生まれないようにする（specs/026-external-api/research.md R-2）。
 //
 // name は domain.NormalizeAPITokenName を通した値を渡す（呼び出し側が確かめる）。
-func (s *AuthStore) AddAPIToken(ctx context.Context, name, token string, now time.Time) (domain.APIToken, error) {
+func (s *AuthStore) AddAPIToken(
+	ctx context.Context, sessionToken, name, token string, now time.Time,
+) (domain.APIToken, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return domain.APIToken{}, fmt.Errorf("cannot save the API token: %w", err)
@@ -31,8 +37,11 @@ func (s *AuthStore) AddAPIToken(ctx context.Context, name, token string, now tim
 
 	res, err := tx.ExecContext(ctx, `
 		insert into api_tokens (name, token_hash, account_version, created_at)
-		select ?, ?, version, ? from account where id = ?`,
-		name, sessionTokenHash(token), now.Unix(), accountID)
+		select ?, ?, s.account_version, ?
+		  from sessions s
+		  join account a on a.id = ? and a.version = s.account_version
+		 where s.token_hash = ? and s.expires_at > ?`,
+		name, sessionTokenHash(token), now.Unix(), accountID, sessionTokenHash(sessionToken), now.Unix())
 	if err != nil {
 		return domain.APIToken{}, fmt.Errorf("cannot save the API token: %w", err)
 	}
@@ -41,7 +50,7 @@ func (s *AuthStore) AddAPIToken(ctx context.Context, name, token string, now tim
 		return domain.APIToken{}, fmt.Errorf("cannot save the API token: %w", err)
 	}
 	if inserted == 0 {
-		return domain.APIToken{}, domain.ErrAccountNotConfigured
+		return domain.APIToken{}, domain.ErrSessionNotValid
 	}
 	id, err := res.LastInsertId()
 	if err != nil {

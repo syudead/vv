@@ -17,10 +17,11 @@ import (
 // vv のトークンと見分けるためのものである。
 const apiTokenPrefix = "vvt_"
 
-// CreateAPIToken は名前 name の API トークンを発行し、保存した行と平文を返す。平文は
-// この戻り値にしか現れない。名前が規則を外れれば *domain.InvalidAPITokenNameError を、
-// アカウントが未設定なら domain.ErrAccountNotConfigured を返す。
-func (a *Auth) CreateAPIToken(ctx context.Context, name string) (domain.APIToken, string, error) {
+// CreateAPIToken は、セッション sessionToken の所有者の求めで名前 name の API トークンを
+// 発行し、保存した行と平文を返す。平文はこの戻り値にしか現れない。名前が規則を外れれば
+// *domain.InvalidAPITokenNameError を、保存の時点でセッションが有効でなければ
+// domain.ErrSessionNotValid を返す（research.md R-2）。
+func (a *Auth) CreateAPIToken(ctx context.Context, sessionToken, name string) (domain.APIToken, string, error) {
 	normalized, err := domain.NormalizeAPITokenName(name)
 	if err != nil {
 		return domain.APIToken{}, "", err
@@ -30,7 +31,7 @@ func (a *Auth) CreateAPIToken(ctx context.Context, name string) (domain.APIToken
 		return domain.APIToken{}, "", fmt.Errorf("cannot create an API token: %w", err)
 	}
 	secret := apiTokenPrefix + sessionTokenEncoding.EncodeToString(raw)
-	token, err := a.store.AddAPIToken(ctx, normalized, secret, a.now())
+	token, err := a.store.AddAPIToken(ctx, sessionToken, normalized, secret, a.now())
 	if err != nil {
 		return domain.APIToken{}, "", err
 	}
