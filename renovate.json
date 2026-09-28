@@ -51,7 +51,7 @@
       "groupName": "mise tools"
     },
     {
-      "description": "Dockerfile の土台イメージ（alpine など）。",
+      "description": "Dockerfile の土台イメージ（debian など）。",
       "matchManagers": ["dockerfile"],
       "groupName": "container images"
     }

@@ -27,7 +27,7 @@
   ではなく両 manager に共通の `matchDepNames` で指定している。
   止めるのはバージョンの変更（major / minor / patch）だけで、`Dockerfile` の
   イメージのダイジェスト更新は対象内に残す。
-- `mise.toml` の `task` と `jq`、`Dockerfile` の `alpine` は対象内で、それぞれ
+- `mise.toml` の `task` と `jq`、`Dockerfile` の `debian` は対象内で、それぞれ
   mise tools / container images グループに入る。
 - Dependabot の security updates はリポジトリ設定で無効にしている。
   Renovate の `vulnerabilityAlerts` が同じ役割を果たす。
