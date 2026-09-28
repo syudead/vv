@@ -462,6 +462,15 @@ the 30-second re-check ends them after a credential change from the host command
 R-9). The external API's handlers live on a separate type (`externalServer`,
 `external.go`) generated from `api/external-v1.yaml` into `internal/httpapi/extgen/`
 ([docs/how-to/external-api.md](docs/how-to/external-api.md)).
+`/mcp` is an MCP server (Streamable HTTP, stateless, JSON responses; `GET` and `DELETE`
+are `405`) built with the official Go SDK in `internal/httpapi/mcp.go`, behind the same
+Bearer boundary. Its six tools map one to one to the external API operations: each tool
+builds that operation's query or body, calls the same `externalServer` handler, and
+returns the response body as structured content, or `isError` with the external API's
+error body for a non-2xx status. A tool call is cancelled with its HTTP request, so
+revoking a token also ends its running tools
+([specs/026-external-api/contracts/mcp.md](specs/026-external-api/contracts/mcp.md),
+[research.md](specs/026-external-api/research.md) R-8).
 `cmd/mdm` wraps `app.Auth` for the boundary, deletes expired sessions at startup, and
 logs a warning while no account is configured.
 The client address and whether a request is HTTPS come from `client_origin.go`, which

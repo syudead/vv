@@ -158,3 +158,29 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 - 付けたタグを外部の結果にそろえ直したいときは `replace` を使う。画面で手で付けたタグも置き換わる
   ので、画面と併用するなら `add` と `remove` で差分だけを送る。
 - 要求が `404` で失敗したときは、`index` の動画を記録から外すか `lookup` で引き直してから送り直す。
+
+## MCP から使う
+
+同じ操作を `/mcp` の MCP サーバー（Streamable HTTP）がツールとして出す。Claude Code などの MCP
+クライアントから、外部連携 API と同じトークンで使う。
+
+```sh
+claude mcp add --transport http vv https://vv.example/mcp --header "Authorization: Bearer vvt_…"
+```
+
+| ツール | 対応する操作 |
+| --- | --- |
+| `list_videos` | `GET /api/v1/videos` |
+| `get_video` | `GET /api/v1/videos/lookup` |
+| `list_tags` | `GET /api/v1/tags` |
+| `update_video_tags` | `POST /api/v1/video-tags` |
+| `start_scan` | `POST /api/v1/scans` |
+| `get_current_scan` | `GET /api/v1/scans/current` |
+
+- ツールの引数は同じ操作の問い合わせ・本文と、結果（structured content）は応答の本文と同じ形である。
+  操作の誤りは、ツールの結果の `isError: true` と、上の誤りの本文（`{ code, message, reason?, limit?,
+  index? }`）で返る。
+- 受けるのは `POST /mcp` だけで、応答は `application/json`。サーバーは会話の状態を持たない
+  （`GET`・`DELETE` は `405`）。
+- トークンが無い・無効なときは、MCP の処理に入る前に `401` と `WWW-Authenticate: Bearer` が返る。
+  トークンを失効させると、実行中のツールも打ち切られる。
