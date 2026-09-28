@@ -104,7 +104,7 @@ func TestSetFolderGrouping(t *testing.T) {
 	if res.code != http.StatusOK {
 		t.Fatalf("ungroup: status = %d: %s", res.code, res.body)
 	}
-	if got := decodeBytes[gen.FolderGrouping](t, res.body); got != (gen.FolderGrouping{Mode: gen.Ungroup}) {
+	if got := decodeBytes[gen.FolderGrouping](t, res.body); got != (gen.FolderGrouping{Mode: gen.FolderGroupingModeUngroup}) {
 		t.Errorf("ungroup の応答 = %+v", got)
 	}
 	if names := f.ownerLibraryNames(t); !slices.Equal(names, []string{"ep1", "ep10", "ep2", "group:pair", "solo"}) {
@@ -116,7 +116,7 @@ func TestSetFolderGrouping(t *testing.T) {
 	}
 
 	res = f.putGrouping("show", `{"mode":"auto"}`)
-	if got := decodeBytes[gen.FolderGrouping](t, res.body); res.code != http.StatusOK || got != (gen.FolderGrouping{Mode: gen.Auto, Grouped: true, Taggable: true}) {
+	if got := decodeBytes[gen.FolderGrouping](t, res.body); res.code != http.StatusOK || got != (gen.FolderGrouping{Mode: gen.FolderGroupingModeAuto, Grouped: true, Taggable: true}) {
 		t.Errorf("auto: status = %d, 応答 = %+v", res.code, got)
 	}
 	if names := f.ownerLibraryNames(t); !slices.Equal(names, []string{"group:pair", "group:show", "solo"}) {
@@ -126,7 +126,7 @@ func TestSetFolderGrouping(t *testing.T) {
 	// 直下をまとめる: 子フォルダを持つ登録フォルダそのものでも、直下の動画がグループになる。
 	f.addVideo(t, "solo2")
 	res = f.putGrouping("", `{"mode":"groupDirect"}`)
-	if got := decodeBytes[gen.FolderGrouping](t, res.body); res.code != http.StatusOK || got != (gen.FolderGrouping{Mode: gen.GroupDirect, Grouped: true}) {
+	if got := decodeBytes[gen.FolderGrouping](t, res.body); res.code != http.StatusOK || got != (gen.FolderGrouping{Mode: gen.FolderGroupingModeGroupDirect, Grouped: true}) {
 		t.Errorf("登録フォルダの groupDirect: status = %d, 応答 = %+v（taggable は false）", res.code, got)
 	}
 	root := filepath.Base(f.mediaDir)
@@ -136,16 +136,16 @@ func TestSetFolderGrouping(t *testing.T) {
 
 	// FolderSummary.grouping は所有者の応答に入る。
 	listing := f.ownerFolder(t, "")
-	if listing.Folder.Grouping == nil || *listing.Folder.Grouping != (gen.FolderGrouping{Mode: gen.GroupDirect, Grouped: true}) {
+	if listing.Folder.Grouping == nil || *listing.Folder.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeGroupDirect, Grouped: true}) {
 		t.Errorf("登録フォルダの grouping = %+v", listing.Folder.Grouping)
 	}
 	for _, child := range listing.Folders {
-		if child.Grouping == nil || *child.Grouping != (gen.FolderGrouping{Mode: gen.Auto, Grouped: true, Taggable: true}) {
+		if child.Grouping == nil || *child.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeAuto, Grouped: true, Taggable: true}) {
 			t.Errorf("子フォルダ %s の grouping = %+v", child.Name, child.Grouping)
 		}
 	}
 	roots := decode[gen.RootFolderListing](t, f.env.get("/api/folders", f.owner))
-	if len(roots.Folders) != 1 || roots.Folders[0].Grouping == nil || roots.Folders[0].Grouping.Mode != gen.GroupDirect {
+	if len(roots.Folders) != 1 || roots.Folders[0].Grouping == nil || roots.Folders[0].Grouping.Mode != gen.FolderGroupingModeGroupDirect {
 		t.Errorf("GET /api/folders の grouping = %+v", roots.Folders)
 	}
 
@@ -180,7 +180,7 @@ func TestTagFolderGroup(t *testing.T) {
 			t.Fatalf("status = %d: %s", res.code, res.body)
 		}
 		got := decodeBytes[gen.FolderGroupTagResult](t, res.body)
-		if got.Tag.Id != f.folder || got.Tag.Name != "show" || got.Created || got.Grouping != (gen.FolderGrouping{Mode: gen.Ungroup}) {
+		if got.Tag.Id != f.folder || got.Tag.Name != "show" || got.Created || got.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeUngroup}) {
 			t.Errorf("応答 = %+v", got)
 		}
 		if after := tagCount(t, f); after != before {
@@ -198,7 +198,7 @@ func TestTagFolderGroup(t *testing.T) {
 				t.Errorf("%s のタグ = %+v, want show（フォルダ由来）", item.Video.Title, item.Video.Tags)
 			}
 		}
-		if listing := f.ownerFolder(t, "show"); listing.Folder.Grouping == nil || *listing.Folder.Grouping != (gen.FolderGrouping{Mode: gen.Ungroup}) {
+		if listing := f.ownerFolder(t, "show"); listing.Folder.Grouping == nil || *listing.Folder.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeUngroup}) {
 			t.Errorf("タグ化の後の grouping = %+v", listing.Folder.Grouping)
 		}
 		// もうグループではないので、2回目は 409。
@@ -250,7 +250,7 @@ func TestTagFolderGroup(t *testing.T) {
 		if after := tagCount(t, f); after != before {
 			t.Errorf("タグの数 = %d, want %d", after, before)
 		}
-		if listing := f.ownerFolder(t, long); listing.Folder.Grouping == nil || *listing.Folder.Grouping != (gen.FolderGrouping{Mode: gen.Auto, Grouped: true, Taggable: true}) {
+		if listing := f.ownerFolder(t, long); listing.Folder.Grouping == nil || *listing.Folder.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeAuto, Grouped: true, Taggable: true}) {
 			t.Errorf("例外が書かれた: grouping = %+v", listing.Folder.Grouping)
 		}
 	})

@@ -972,6 +972,49 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/settings/transcoding:
+    get:
+      operationId: getTranscodingSettings
+      summary: ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
+      description: |
+        保存した選択、今のライブ変換の要求が使う方式、選んだ方式を使えないときの理由、起動時の
+        確認が終わっていないか、ハードウェアの方式ごとの確認結果を返す
+        （specs/025-hardware-encoding/contracts/transcoding-settings-api.md §2）。
+      responses:
+        "200":
+          description: 今の設定と確認結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscodingSettings"
+    put:
+      operationId: updateTranscodingSettings
+      summary: ライブ変換の映像エンコード方式を保存する
+      description: |
+        保存は次に始まるライブ変換の要求から効き、配信中の変換は始めた方式のまま続く。
+        `software` と `auto` は常に受け付ける。使える（`state` が `available`）ハードウェアの
+        方式でないときは `409` `conflict`・reason `encoder_unavailable` を返し、保存値は変えない
+        （specs/025-hardware-encoding/contracts/transcoding-settings-api.md §3）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateTranscodingSettingsRequest"
+      responses:
+        "200":
+          description: 保存後の設定と確認結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TranscodingSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/tags:
     get:
       operationId: listTags
@@ -1722,6 +1765,75 @@ components:
           type: integer
           format: int64
           minimum: 1
+
+    VideoEncoderChoice:
+      type: string
+      description: >-
+        所有者が選ぶライブ変換の映像エンコード方式。auto は使えるハードウェアの方式を
+        nvenc・qsv・vaapi・videotoolbox の順で選び、無ければ software にする
+      enum: [software, nvenc, qsv, vaapi, videotoolbox, auto]
+
+    VideoEncoder:
+      type: string
+      description: ライブ変換が実際に使う映像エンコード方式
+      enum: [software, nvenc, qsv, vaapi, videotoolbox]
+
+    EncoderUnavailableReason:
+      type: string
+      description: ハードウェアの方式が使えない理由
+      enum: [unsupported_os, encoder_missing, check_failed, timed_out]
+
+    EncoderFallbackReason:
+      type: string
+      description: >-
+        選んだハードウェアの方式を使えず software にしている理由。selected_unavailable は
+        確認の結果使えない、checking は起動時の確認が終わっていない
+      enum: [selected_unavailable, checking]
+
+    EncoderAvailability:
+      type: object
+      required: [encoder, state]
+      additionalProperties: false
+      properties:
+        encoder:
+          $ref: "#/components/schemas/VideoEncoder"
+        state:
+          type: string
+          enum: [checking, available, unavailable]
+        reason:
+          $ref: "#/components/schemas/EncoderUnavailableReason"
+
+    TranscodingSettings:
+      type: object
+      required: [videoEncoder, effectiveEncoder, checking, encoders]
+      additionalProperties: false
+      properties:
+        videoEncoder:
+          $ref: "#/components/schemas/VideoEncoderChoice"
+        effectiveEncoder:
+          $ref: "#/components/schemas/VideoEncoder"
+        fallbackReason:
+          $ref: "#/components/schemas/EncoderFallbackReason"
+        checking:
+          type: boolean
+          description: 起動時の確認が終わっていない
+        encoders:
+          type: array
+          description: >-
+            ハードウェアの方式の確認結果。nvenc・qsv・vaapi・videotoolbox の順で常に 4 件。
+            software は常に使えるので載らない
+          minItems: 4
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/EncoderAvailability"
+
+    UpdateTranscodingSettingsRequest:
+      type: object
+      required: [videoEncoder]
+      additionalProperties: false
+      properties:
+        videoEncoder:
+          $ref: "#/components/schemas/VideoEncoderChoice"
 
     TagRef:
       type: object
@@ -2740,3 +2852,4 @@ components:
         - transcode_unavailable
         - cross_origin
         - open_not_local
+        - encoder_unavailable

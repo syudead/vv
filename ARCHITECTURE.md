@@ -28,7 +28,9 @@ member, the group and its position in it, and
 `/api/videos/{id}/related`, `/probe` and `/open` return related videos (for a group member,
 also every member in group order, with next/previous inside the group), retry a failed
 metadata read, and open the file in the server PC's default app), media-folder settings and
-server-side directory picker APIs, the read-only folder browsing API
+server-side directory picker APIs, the live-transcode video encoder setting
+(`/api/settings/transcoding`: the saved choice, the encoder in use and each hardware encoder's
+startup check result), the read-only folder browsing API
 (`/api/folders*`), the tag management API (`/api/tags*`: list, create,
 rename, delete, merge and synonym registration/removal), the video-tags API
 (`/api/video-tags` to attach/detach a tag on a set of videos and
@@ -408,6 +410,13 @@ when it is more than `domain.CopySeekAllowance` before the requested position.
 The player learns that start from `GET /api/videos/{id}/transcode-start`, keyed by the
 `attempt` it put on the transcode URL and served from an in-memory ledger in `internal/httpapi`
 ([live-transcode-seek.md](docs/design-docs/live-transcode-seek.md)).
+When the video is encoded, the route puts the encoder `TranscodeSettings` currently resolves
+(software, NVENC, Quick Sync, VAAPI or VideoToolbox) on each request, so a new choice applies
+from the next request without a restart and a running stream keeps the encoder it started
+with. A hardware encoder that exits before its first data is retried with `libx264` inside
+the same request, and the route logs that fallback as a warning. `cmd/mdm` starts the
+startup encoder checks in the background, so they never delay the HTTP listener
+([hardware-encoding.md](docs/design-docs/hardware-encoding.md)).
 
 ## Intended dependency direction
 

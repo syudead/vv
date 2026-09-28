@@ -525,6 +525,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/transcoding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
+         * @description 保存した選択、今のライブ変換の要求が使う方式、選んだ方式を使えないときの理由、起動時の
+         *     確認が終わっていないか、ハードウェアの方式ごとの確認結果を返す
+         *     （specs/025-hardware-encoding/contracts/transcoding-settings-api.md §2）。
+         */
+        get: operations["getTranscodingSettings"];
+        /**
+         * ライブ変換の映像エンコード方式を保存する
+         * @description 保存は次に始まるライブ変換の要求から効き、配信中の変換は始めた方式のまま続く。
+         *     `software` と `auto` は常に受け付ける。使える（`state` が `available`）ハードウェアの
+         *     方式でないときは `409` `conflict`・reason `encoder_unavailable` を返し、保存値は変えない
+         *     （specs/025-hardware-encoding/contracts/transcoding-settings-api.md §3）。
+         */
+        put: operations["updateTranscodingSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -996,6 +1025,44 @@ export interface components {
             path: string;
             /** Format: int64 */
             version: number;
+        };
+        /**
+         * @description 所有者が選ぶライブ変換の映像エンコード方式。auto は使えるハードウェアの方式を nvenc・qsv・vaapi・videotoolbox の順で選び、無ければ software にする
+         * @enum {string}
+         */
+        VideoEncoderChoice: "software" | "nvenc" | "qsv" | "vaapi" | "videotoolbox" | "auto";
+        /**
+         * @description ライブ変換が実際に使う映像エンコード方式
+         * @enum {string}
+         */
+        VideoEncoder: "software" | "nvenc" | "qsv" | "vaapi" | "videotoolbox";
+        /**
+         * @description ハードウェアの方式が使えない理由
+         * @enum {string}
+         */
+        EncoderUnavailableReason: "unsupported_os" | "encoder_missing" | "check_failed" | "timed_out";
+        /**
+         * @description 選んだハードウェアの方式を使えず software にしている理由。selected_unavailable は 確認の結果使えない、checking は起動時の確認が終わっていない
+         * @enum {string}
+         */
+        EncoderFallbackReason: "selected_unavailable" | "checking";
+        EncoderAvailability: {
+            encoder: components["schemas"]["VideoEncoder"];
+            /** @enum {string} */
+            state: "checking" | "available" | "unavailable";
+            reason?: components["schemas"]["EncoderUnavailableReason"];
+        };
+        TranscodingSettings: {
+            videoEncoder: components["schemas"]["VideoEncoderChoice"];
+            effectiveEncoder: components["schemas"]["VideoEncoder"];
+            fallbackReason?: components["schemas"]["EncoderFallbackReason"];
+            /** @description 起動時の確認が終わっていない */
+            checking: boolean;
+            /** @description ハードウェアの方式の確認結果。nvenc・qsv・vaapi・videotoolbox の順で常に 4 件。 software は常に使えるので載らない */
+            encoders: components["schemas"]["EncoderAvailability"][];
+        };
+        UpdateTranscodingSettingsRequest: {
+            videoEncoder: components["schemas"]["VideoEncoderChoice"];
         };
         /** @description 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。 */
         TagRef: {
@@ -1559,7 +1626,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -2500,6 +2567,53 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getTranscodingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の設定と確認結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscodingSettings"];
+                };
+            };
+        };
+    };
+    updateTranscodingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateTranscodingSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存後の設定と確認結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscodingSettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
         };
     };
