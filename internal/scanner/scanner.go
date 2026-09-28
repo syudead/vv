@@ -48,10 +48,6 @@ var partialExtensions = map[string]struct{}{
 	".part": {}, ".crdownload": {}, ".tmp": {},
 }
 
-// progressInterval は進捗を報告する間隔（件数）である。1件ごとに書くと
-// 走査中の書き込みが増えすぎ、一覧の応答に影響する。
-const progressInterval = 20
-
 // Index は走査結果の保存先である。scanner は保存の手段を知らない。
 type Index interface {
 	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
@@ -69,12 +65,18 @@ type Queue interface {
 	EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error
 }
 
-// Reporter は走査の進捗と、ファイルごとの失敗の報告先である。nil でもよい
-// （報告しないだけ）。失敗は直近の取り込みの問題として記録される
+// Reporter は走査の進捗・今のファイル・ファイルごとの失敗の報告先である。nil でも
+// よい（報告しないだけ）。失敗は直近の取り込みの問題として記録される
 // （specs/024-import-progress/data-model.md §3）。scanner は記録の手段を知らない。
 type Reporter interface {
+	// ReportScanProgress は進みを報告する。登録の対象を数え終えたときと、
+	// 1ファイルを終えるごとに呼ばれる。
 	ReportScanProgress(ctx context.Context, result domain.ScanResult) error
 	ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue) error
+	// ReportScanFile は登録を始めるファイルを知らせる。videoID は走査が知っている
+	// 既存の動画（知らなければ 0）である。path が空なら、ファイルの登録をすべて
+	// 終えたことを表す（specs/024-import-progress/research.md R-8）。
+	ReportScanFile(path string, videoID int64)
 }
 
 // fileError は1つのファイルを取り込めなかった理由である。kind は問題の種類、
@@ -259,7 +261,8 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		return result, err
 	}
 
-	for i, target := range targets {
+	for _, target := range targets {
+		s.reportFile(target.path, indexed[target.path].ID)
 		if err := s.ingest(ctx, target, &result); err != nil {
 			if ctx.Err() != nil {
 				return result, err
@@ -285,15 +288,13 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 			result.Processed++
 		}
 
-		if (i+1)%progressInterval == 0 {
-			if err := s.report(ctx, result); err != nil {
-				return result, err
-			}
+		// 1ファイルごとに進みを知らせる。画面への送信は接続ごとにまとまるので、
+		// 遅い接続に古い値は積もらない（research.md R-8）。
+		if err := s.report(ctx, result); err != nil {
+			return result, err
 		}
 	}
-	if err := s.report(ctx, result); err != nil {
-		return result, err
-	}
+	s.reportFile("", 0)
 
 	checkedDirs := map[string]struct{}{}
 	for _, folder := range folders {
@@ -539,6 +540,13 @@ func (s *Scanner) report(ctx context.Context, result domain.ScanResult) error {
 		return fmt.Errorf("could not record the scan progress: %w", err)
 	}
 	return nil
+}
+
+// reportFile は登録を始めるファイルを知らせる。path が空なら登録を終えたことを表す。
+func (s *Scanner) reportFile(path string, videoID int64) {
+	if s.reporter != nil {
+		s.reporter.ReportScanFile(path, videoID)
+	}
 }
 
 // reportIssue はファイルの失敗を報告する。報告の失敗時は、進捗と同じく走査を止める。

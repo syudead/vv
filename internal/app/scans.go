@@ -48,11 +48,18 @@ type Scanner interface {
 	Scan(ctx context.Context) (domain.ScanResult, error)
 }
 
-// ScanReporter は走査の進捗とファイルごとの失敗の報告先である。*Scans がこれを
-// 満たし、ScansOptions.NewScanner に渡される。
+// ScanReporter は走査の進捗・今のファイル・ファイルごとの失敗の報告先である。
+// *Scans がこれを満たし、ScansOptions.NewScanner に渡される。
 type ScanReporter interface {
 	ReportScanProgress(ctx context.Context, result domain.ScanResult) error
 	ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue) error
+	ReportScanFile(path string, videoID int64)
+}
+
+// ActivityFolderStore は、今の処理のファイルが置かれたフォルダを求めるための
+// 登録フォルダの読み出し先である。
+type ActivityFolderStore interface {
+	ListMediaFolders(ctx context.Context) ([]domain.MediaFolder, error)
 }
 
 // Publisher は状態の変化の発行先である。誰が受け取るか（画面への知らせ・
@@ -74,6 +81,8 @@ type ScansOptions struct {
 	// Context は走査に使う寿命の長い context。停止時に取り消され、走査は
 	// failed で閉じる。nil なら context.Background を使う。
 	Context context.Context
+	// Folders は今の処理のフォルダを求めるのに使う。nil ならフォルダを省く。
+	Folders ActivityFolderStore
 	// Publisher は nil なら発行しない。
 	Publisher Publisher
 	// Logger は nil なら slog の既定を使う。
@@ -85,10 +94,13 @@ type Scans struct {
 	store     ScanStore
 	jobs      JobRecoveryStore
 	folders   FolderIndexStore
+	roots     ActivityFolderStore
 	scanner   Scanner
 	baseCtx   context.Context
 	publisher Publisher
 	logger    *slog.Logger
+	// activity は今の処理をメモリに持つ（specs/024-import-progress/research.md R-8）。
+	activity *activities
 
 	// mu は走査の起動が重ならないようにする。実行中かどうかの判断は
 	// scans 表（部分ユニーク索引）が持つので、ここは goroutine を
@@ -105,6 +117,7 @@ func NewScans(opts ScansOptions) *Scans {
 		store:     opts.Store,
 		jobs:      opts.Jobs,
 		folders:   opts.FolderIndex,
+		roots:     opts.Folders,
 		baseCtx:   opts.Context,
 		publisher: opts.Publisher,
 		logger:    opts.Logger,
@@ -115,6 +128,7 @@ func NewScans(opts ScansOptions) *Scans {
 	if s.logger == nil {
 		s.logger = slog.Default()
 	}
+	s.activity = newActivities(s.activityChanged)
 	if opts.NewScanner != nil {
 		s.scanner = opts.NewScanner(s)
 	}
@@ -192,7 +206,55 @@ func (s *Scans) withImport(ctx context.Context, scan domain.Scan) (domain.Scan, 
 	}
 	scan.Issues = domain.CountScanIssues(issues)
 	scan.Import = scan.Tally(scan.Issues.Unregistered, scan.Issues.Failed).Progress(scan.SettledAt)
+	activity, err := s.currentActivity(ctx)
+	if err != nil {
+		return domain.Scan{}, err
+	}
+	scan.Activity = activity
 	return scan, nil
+}
+
+// currentActivity は今の処理を、ファイルの置かれたフォルダを添えて返す。
+func (s *Scans) currentActivity(ctx context.Context) (domain.ScanActivity, error) {
+	activity := s.activity.current()
+	if !activity.Active() || s.roots == nil {
+		return activity, nil
+	}
+	roots, err := s.roots.ListMediaFolders(ctx)
+	if err != nil {
+		return domain.ScanActivity{}, err
+	}
+	return activity.Locate(roots), nil
+}
+
+// ReportScanFile は走査が登録を始めるファイルを、今の処理として記録する。videoID は
+// 走査が知っている既存の動画（知らなければ 0）である。path が空なら、ファイルの
+// 登録をすべて終えたことを表す。
+func (s *Scans) ReportScanFile(path string, videoID int64) {
+	if path == "" {
+		s.activity.end(scanActivityKey)
+		return
+	}
+	s.activity.begin(scanActivityKey, domain.ScanActivity{
+		Kind: domain.ActivityRegistering, VideoID: videoID, Path: path,
+	})
+}
+
+// JobStarted は仕事の処理が始まったことを、今の処理として記録する。ワーカーの
+// Started に渡す。
+func (s *Scans) JobStarted(job domain.Job) {
+	kind, ok := domain.ActivityKindOf(job.Kind)
+	if !ok || job.LocationPath == "" {
+		return
+	}
+	s.activity.begin(jobActivityKey(job), domain.ScanActivity{
+		Kind: kind, VideoID: job.VideoID, Path: job.LocationPath,
+	})
+}
+
+// JobFinished は仕事の処理が終わったことを記録する。ワーカーの Finished に渡す。
+func (s *Scans) JobFinished(job domain.Job) {
+	s.activity.end(jobActivityKey(job))
 }
 
 // ReportScanIssue は走査が1つのファイルで出会った失敗を、直近の取り込みの問題として
@@ -284,6 +346,8 @@ func (s *Scans) run(scanID int64) {
 		}
 		return s.scanner.Scan(ctx)
 	}()
+	// 走査が途中で止まっても、登録中のファイルを今の処理に残さない。
+	s.activity.end(scanActivityKey)
 
 	// 停止指示で打ち切った場合は、失敗として閉じる。次の起動で走り直せる。
 	// 理由は interrupted で、走査が包んだ理由より優先する（data-model.md §2）。
@@ -335,6 +399,14 @@ func (s *Scans) rebuildFolderIndex(ctx context.Context) {
 	if err := s.folders.RebuildFolderIndex(ctx); err != nil {
 		s.logger.Warn("could not rebuild the folder index", slog.Any("error", err))
 	}
+}
+
+// activityChanged は今の処理が変わったことを発行する。
+func (s *Scans) activityChanged() {
+	if s.publisher == nil {
+		return
+	}
+	s.publisher.Publish(domain.ScanActivityChanged{})
 }
 
 // scanChanged は走査の状態が変わったことを発行する。

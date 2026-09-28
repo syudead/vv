@@ -29,6 +29,11 @@ type ProcessingChanged struct{}
 // ScanChanged は直近の走査の状態が変わったことを表す。
 type ScanChanged struct{}
 
+// ScanActivityChanged は取り込み中の今の処理が変わったことを表す
+// （specs/024-import-progress/research.md R-8）。値はメモリにだけあり、受け取る側は
+// 読み出しの時点の値を使う。
+type ScanActivityChanged struct{}
+
 // ContentUnreferenced は、内容の識別子を参照していた動画の行が消え、確定の
 // 時点で参照が無くなったことを表す。同じ内容の動画がすぐに取り込み直される
 // こともあるので、生成物を消す側は消す直前に参照を確かめ直すこと。
@@ -40,4 +45,5 @@ func (VideoIngestChanged) event()  {}
 func (JobsQueued) event()          {}
 func (ProcessingChanged) event()   {}
 func (ScanChanged) event()         {}
+func (ScanActivityChanged) event() {}
 func (ContentUnreferenced) event() {}

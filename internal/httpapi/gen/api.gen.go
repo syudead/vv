@@ -356,6 +356,33 @@ func (e ScanState) Valid() bool {
 	}
 }
 
+// Defines values for ScanActivityKind.
+const (
+	Preview       ScanActivityKind = "preview"
+	Probe         ScanActivityKind = "probe"
+	Registering   ScanActivityKind = "registering"
+	SeekThumbnail ScanActivityKind = "seekThumbnail"
+	Thumbnail     ScanActivityKind = "thumbnail"
+)
+
+// Valid indicates whether the value is a known member of the ScanActivityKind enum.
+func (e ScanActivityKind) Valid() bool {
+	switch e {
+	case Preview:
+		return true
+	case Probe:
+		return true
+	case Registering:
+		return true
+	case SeekThumbnail:
+		return true
+	case Thumbnail:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ScanErrorCode.
 const (
 	ScanErrorCodeInternal                ScanErrorCode = "internal"
@@ -856,7 +883,8 @@ type LibraryGroup struct {
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
+	// 今の処理のファイルのフォルダを指す。
 	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
@@ -986,7 +1014,8 @@ type ProgressUpdate struct {
 type RelatedGroup struct {
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
+	// 今の処理のファイルのフォルダを指す。
 	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
@@ -1030,6 +1059,9 @@ type RootFolderListing struct {
 
 // Scan 直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。startedAt・finishedAt・ total・completed・failed は、画面が status・videos・settledAt に移ったあとでなくす
 type Scan struct {
+	// Activity 取り込み中の今の処理（specs/024-import-progress/contracts/scan-api.md §2）。複数が同時に動くときは 最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる
+	Activity *ScanActivity `json:"activity,omitempty"`
+
 	// Completed 取り込み処理に成功した対象ファイル数
 	Completed int `json:"completed"`
 
@@ -1068,6 +1100,29 @@ type Scan struct {
 // ScanState 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
 type ScanState string
 
+// ScanActivity 取り込み中の今の処理（specs/024-import-progress/contracts/scan-api.md §2）。複数が同時に動くときは 最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる
+type ScanActivity struct {
+	// FileName 処理しているファイルの名前（翻訳しない利用者のデータ）
+	FileName string `json:"fileName"`
+
+	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
+	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
+	// 今の処理のファイルのフォルダを指す。
+	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// グループのフォルダそのものを指す
+	Folder *VideoFolder `json:"folder,omitempty"`
+
+	// Kind 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている
+	Kind ScanActivityKind `json:"kind"`
+
+	// VideoId 登録された動画なら、その id
+	VideoId *int64 `json:"videoId,omitempty"`
+}
+
+// ScanActivityKind 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている
+type ScanActivityKind string
+
 // ScanErrorCode スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である （task generate）。
 type ScanErrorCode string
 
@@ -1078,7 +1133,8 @@ type ScanIssue struct {
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
+	// 今の処理のファイルのフォルダを指す。
 	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
@@ -1231,7 +1287,8 @@ type Video struct {
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
+	// 今の処理のファイルのフォルダを指す。
 	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
@@ -1331,7 +1388,8 @@ type VideoChanged struct {
 
 // VideoFolder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 // GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
+// 今の処理のファイルのフォルダを指す。
 // LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 // グループのフォルダそのものを指す
 type VideoFolder struct {
@@ -1342,7 +1400,7 @@ type VideoFolder struct {
 	RootId int64 `json:"rootId"`
 
 	// RootName 登録フォルダの表示名（FolderSummary.name と同じ規則）。GET /api/videos/{id} の
-	// Video.folder と ScanIssue.folder にだけ入る（Video.group.folder には入らない）
+	// Video.folder・ScanIssue.folder・ScanActivity.folder にだけ入る（Video.group.folder には入らない）
 	RootName *string `json:"rootName,omitempty"`
 }
 
@@ -1356,7 +1414,8 @@ type VideoGroupRef struct {
 
 	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在のフォルダを指す。
+	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
+	// 今の処理のファイルのフォルダを指す。
 	// LibraryGroup.folder・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`

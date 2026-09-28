@@ -178,6 +178,8 @@ type Scan struct {
 	Import ImportProgress
 	// Issues は問題の本数で、internal/app が組み立てる。保存側は埋めない。
 	Issues ScanIssueCounts
+	// Activity は今の処理で、internal/app がメモリの値から埋める。保存側は埋めない。
+	Activity ScanActivity
 }
 
 // Tally は走査の記録から、取り込みの状態を決める入力を作る。問題の数は

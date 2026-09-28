@@ -153,6 +153,9 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 		settledAt := scan.Import.SettledAt
 		out.SettledAt = &settledAt
 	}
+	if scan.Activity.Active() {
+		out.Activity = toAPIScanActivity(scan.Activity)
+	}
 	if !scan.StartedAt.IsZero() {
 		startedAt := scan.StartedAt
 		out.StartedAt = &startedAt
@@ -174,6 +177,25 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 			path := scan.ErrorPath
 			out.ErrorPath = &path
 		}
+	}
+	return out
+}
+
+// toAPIScanActivity は今の処理を契約の形へ写す。利用者の言葉は SPA が kind から
+// 組み立てる（specs/024-import-progress/research.md R-10）。
+func toAPIScanActivity(activity domain.ScanActivity) *gen.ScanActivity {
+	out := &gen.ScanActivity{Kind: gen.ScanActivityKind(activity.Kind), FileName: activity.FileName()}
+	if activity.Located {
+		folder := gen.VideoFolder{RootId: activity.Folder.RootID, Path: activity.Folder.Path}
+		if activity.RootName != "" {
+			rootName := activity.RootName
+			folder.RootName = &rootName
+		}
+		out.Folder = &folder
+	}
+	if activity.VideoID != 0 {
+		videoID := activity.VideoID
+		out.VideoId = &videoID
 	}
 	return out
 }

@@ -3,6 +3,7 @@ package scanner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -33,6 +34,8 @@ type fakeIndex struct {
 	// issues は報告されたファイルの失敗、issueErr はその報告の失敗である。
 	issues   []domain.ScanFileIssue
 	issueErr error
+	// reports は進みと今のファイルの報告を、届いた順に並べたものである。
+	reports []string
 }
 
 type failingInfoEntry struct {
@@ -142,7 +145,16 @@ func (f *fakeIndex) EnsureJob(_ context.Context, kind domain.JobKind, videoID in
 
 func (f *fakeIndex) ReportScanProgress(_ context.Context, result domain.ScanResult) error {
 	f.progress = append(f.progress, result)
+	f.reports = append(f.reports, fmt.Sprintf("progress %d/%d", result.Completed(), result.Total))
 	return f.reportErr
+}
+
+func (f *fakeIndex) ReportScanFile(path string, videoID int64) {
+	if path == "" {
+		f.reports = append(f.reports, "file done")
+		return
+	}
+	f.reports = append(f.reports, fmt.Sprintf("file %s %d", filepath.Base(path), videoID))
 }
 
 func (f *fakeIndex) ReportScanIssue(_ context.Context, issue domain.ScanFileIssue) error {
@@ -853,6 +865,49 @@ func TestScanReportsProgress(t *testing.T) {
 	last := index.progress[len(index.progress)-1]
 	if last.Total != 2 || last.Completed() != 2 {
 		t.Errorf("最後に報告した進捗 = %d / %d, want 2 / 2", last.Completed(), last.Total)
+	}
+}
+
+// 1ファイルごとに、登録を始めるファイルを知らせ、終えたら進みを知らせる
+// （specs/024-import-progress/research.md R-8）。以前の20件ごとの報告ではない。
+func TestScanReportsProgressForEveryFile(t *testing.T) {
+	root := mediaTree(t, map[string]string{
+		"a.mp4": "a", "b.mp4": "b", "c.mp4": "c", "d.mp4": "d", "e.mp4": "e",
+	})
+
+	index := newFakeIndex()
+	runScan(t, root, index)
+
+	want := []string{"progress 0/5"}
+	for i, name := range []string{"a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4"} {
+		want = append(want, "file "+name+" 0", fmt.Sprintf("progress %d/5", i+1))
+	}
+	want = append(want, "file done")
+	if !slices.Equal(index.reports, want) {
+		t.Errorf("報告 = %q\nwant %q", index.reports, want)
+	}
+}
+
+// 既に知っている動画のファイルを登録し直すときは、その動画の id を添える。
+func TestScanReportsKnownVideoOfCurrentFile(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	id := index.rows[filepath.Join(root, "a.mp4")].ID
+
+	changed := filepath.Join(root, "a.mp4")
+	if err := os.WriteFile(changed, []byte("changed length"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(changed, later, later); err != nil {
+		t.Fatal(err)
+	}
+	index.reports = nil
+	runScan(t, root, index)
+
+	if want := fmt.Sprintf("file a.mp4 %d", id); !slices.Contains(index.reports, want) {
+		t.Errorf("報告 = %q, want %q を含む", index.reports, want)
 	}
 }
 
