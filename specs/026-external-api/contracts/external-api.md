@@ -37,7 +37,15 @@ ExternalVideo:
           fileName: { type: string }
     tags:
       type: array
-      items: { required: [id, name], properties: { id: {type: integer, format: int64}, name: {type: string} } }
+      items: { $ref: ExternalVideoTag }
+
+ExternalVideoTag:                                 # domain.VideoTag
+  required: [id, name, manual, fromFolder]
+  properties:
+    id: { type: integer, format: int64 }
+    name: { type: string }
+    manual: { type: boolean }                     # 手で付けた（この API の付け外しの対象）
+    fromFolder: { type: boolean }                 # 祖先のフォルダ名から付く（この API では外れない）
 ```
 
 ### `GET /api/v1/videos`
@@ -81,11 +89,11 @@ ExternalVideo:
   "tags": ["名前", "シノニム"] }
 ```
 
-規則は [research.md R-7](../research.md#r-7-タグの操作は厳格な一括操作として-tagstore-に足す)。
+付け外しの対象は手で付けたタグだけで、フォルダ由来のタグは残る（`replace` の後も）。規則は [research.md R-7](../research.md#r-7-タグの操作は厳格な一括操作として-tagstore-に足す)。
 
 | 状況 | 応答 |
 | --- | --- |
-| 成功 | `200`: `{ items: [{ video: { id, contentKey }, tags: [{id, name}] }] }`（`videos` の順、操作後のタグ） |
+| 成功 | `200`: `{ items: [{ video: { id, contentKey }, tags: ExternalVideoTag[] }] }`（`videos` の順、操作後のタグ） |
 | 各 `videos` の要素が id・内容キー・パスのちょうど 1 つでない、`action` が不正 | `400 invalid_request` |
 | `videos` が 0 件か 20000 件超 | `400 invalid_request` / `too_many_videos`、`limit` |
 | `tags` が `add`・`remove` で 0 件、または 100 件超 | `400 invalid_request` / `too_many_tags`、`limit` |
