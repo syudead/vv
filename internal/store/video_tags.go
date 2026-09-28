@@ -140,6 +140,12 @@ func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, ta
 // internal/httpapi が progressFor と同じ位置から一覧の項目にタグを足すために
 // 使う。
 func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error) {
+	return tagsByContentKeys(ctx, s.sql, contentKeys)
+}
+
+// tagsByContentKeys は TagStore.TagsByContentKeys の本体で、呼び出し側の取引の中でも
+// 読めるように問い合わせ先を取る（外部連携 API の一覧が同じスナップショットで読む）。
+func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string) (map[string][]domain.VideoTag, error) {
 	if len(contentKeys) == 0 {
 		return map[string][]domain.VideoTag{}, nil
 	}
@@ -148,7 +154,7 @@ func (s *TagStore) TagsByContentKeys(ctx context.Context, contentKeys []string) 
 		return nil, fmt.Errorf("cannot build content_key values: %w", err)
 	}
 
-	rows, err := s.sql.QueryContext(ctx, `
+	rows, err := q.QueryContext(ctx, `
 		with selected(content_key) as (select value from json_each(?)),
 		tagged(content_key, tag_id, manual, from_folder) as (
 			select vt.content_key, vt.tag_id, 1, 0 from video_tags vt

@@ -240,6 +240,8 @@ type Options struct {
 	Auth Authenticator
 	// APITokens は API トークンの発行・一覧・失効。nil なら該当の経路は 500 を返す。
 	APITokens APITokens
+	// ExternalVideos は外部連携 API の動画の一覧と引き当て。nil なら該当の経路は 500 を返す。
+	ExternalVideos ExternalVideos
 	// SessionRecheck は、所有者として長く続く要求のセッションを確かめ直す間隔である。
 	// 0 なら 30 秒。テストが短くする。
 	SessionRecheck time.Duration
@@ -279,6 +281,7 @@ type server struct {
 	logger          *slog.Logger
 	auth            Authenticator
 	apiTokens       APITokens
+	externalVideos  ExternalVideos
 	sessions        *sessionLedger
 	// guests はゲストとして処理中の配信の応答を content_key ごとに覚える（visibility.go）。
 	guests *guestLedger
@@ -339,6 +342,7 @@ func NewRouter(opts Options) http.Handler {
 		logger:            logger,
 		auth:              opts.Auth,
 		apiTokens:         opts.APITokens,
+		externalVideos:    opts.ExternalVideos,
 		sessions:          newSessionLedger(opts.SessionRecheck, logger),
 		guests:            newGuestLedger(),
 		now:               opts.Now,

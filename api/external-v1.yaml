@@ -28,6 +28,96 @@ security:
   - bearerAuth: []
 
 paths:
+  /videos:
+    get:
+      operationId: listVideos
+      summary: 動画の一覧をページを分けて返す
+      description: |
+        登録フォルダの下に所在を 1 つ以上持つ動画を `(addedAt, id)` の昇順で返す。`nextCursor` が
+        空文字列になるまで、前回の `nextCursor` を `cursor` に渡してたどると全件を読める。
+        変更の追跡はしない。新しい動画を知るには一覧を読み直し、持っている動画が消えたことは
+        `lookup` の `404` で知る（contracts/external-api.md §2）。
+      parameters:
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。省略すると先頭から
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1 ページの件数。範囲外は `400` `invalid_request`
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: 動画の一覧 1 ページ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalVideoPage"
+        "400":
+          description: >-
+            limit が範囲外、またはカーソルを解釈できない（`invalid_request`、カーソルは
+            `invalid_cursor`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /videos/lookup:
+    get:
+      operationId: lookupVideo
+      summary: 動画を 1 本、id・内容キー・パスのどれかで引く
+      description: |
+        `id`・`contentKey`・`path` のちょうど 1 つを取る。0 個・2 個以上は `400` `invalid_request`。
+        `path` は正規化せず、今の所在の `path` とバイト列で完全一致させる。一覧が返した `path` を
+        そのまま渡せば引ける（contracts/external-api.md §2）。
+      parameters:
+        - name: id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: contentKey
+          in: query
+          schema:
+            type: string
+        - name: path
+          in: query
+          description: 所在の絶対パス
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalVideo"
+        "400":
+          description: 指定がちょうど 1 つでない（`invalid_request`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: 無い、または登録フォルダの下に所在が無い（`not_found` / `video_not_found`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /tags:
     get:
       operationId: listTags
@@ -197,6 +287,80 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Tag"
+
+    ExternalVideo:
+      type: object
+      required: [id, contentKey, title, durationMs, addedAt, locations, tags]
+      additionalProperties: false
+      description: 動画 1 本。見る人は常に所有者で、非公開の動画も返す
+      properties:
+        id:
+          type: integer
+          format: int64
+        contentKey:
+          type: string
+          description: 内容から決まる識別子。ファイルが移動しても変わらない
+        title:
+          type: string
+          description: 代表の所在（locations の先頭）の題名
+        durationMs:
+          type: [integer, "null"]
+          format: int64
+          description: 長さ（ミリ秒）。解析前は null
+        addedAt:
+          type: string
+          format: date-time
+        locations:
+          type: array
+          description: 登録フォルダの下の今の所在。パスの順で、代表が先頭
+          items:
+            $ref: "#/components/schemas/ExternalVideoLocation"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalVideoTag"
+
+    ExternalVideoLocation:
+      type: object
+      required: [path, fileName]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: 絶対パス。ファイルシステムの綴り（NFD を含む）のまま
+        fileName:
+          type: string
+          description: path の最後の要素
+
+    ExternalVideoTag:
+      type: object
+      required: [id, name, manual, fromFolder]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        manual:
+          type: boolean
+          description: 手で付けた（この API の付け外しの対象）
+        fromFolder:
+          type: boolean
+          description: 祖先のフォルダ名から付く（この API では外れない）
+
+    ExternalVideoPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalVideo"
+        nextCursor:
+          type: string
+          description: 次のページの取得に渡す。続きが無ければ空文字列
 
     ExternalScan:
       type: object

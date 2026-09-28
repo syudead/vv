@@ -42,12 +42,15 @@ func assertBearerUnauthenticated(t *testing.T, label string, rec *httptest.Respo
 	}
 }
 
-// newExternalEnv は本物のタグの保存先でつないだ経路を組み立て、初回設定の Cookie を返す。
+// newExternalEnv は本物のタグと動画の保存先でつないだ経路を組み立て、初回設定の Cookie を返す。
 func newExternalEnv(t *testing.T, opts Options) (*authEnv, *http.Cookie) {
 	t.Helper()
 	env := newAuthEnvWith(t, t.TempDir(), func(db *store.DB) Options {
 		if opts.Tags == nil {
 			opts.Tags = db.Tags()
+		}
+		if opts.ExternalVideos == nil {
+			opts.ExternalVideos = db.Library()
 		}
 		return opts
 	})
