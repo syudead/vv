@@ -104,6 +104,27 @@ func (e ExternalScanStatus) Valid() bool {
 	}
 }
 
+// Defines values for VideoTagsRequestAction.
+const (
+	Add     VideoTagsRequestAction = "add"
+	Remove  VideoTagsRequestAction = "remove"
+	Replace VideoTagsRequestAction = "replace"
+)
+
+// Valid indicates whether the value is a known member of the VideoTagsRequestAction enum.
+func (e VideoTagsRequestAction) Valid() bool {
+	switch e {
+	case Add:
+		return true
+	case Remove:
+		return true
+	case Replace:
+		return true
+	default:
+		return false
+	}
+}
+
 // Error 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
 type Error struct {
 	// Code 機械可読なエラー種別。
@@ -215,6 +236,47 @@ type TagList struct {
 	Items []Tag `json:"items"`
 }
 
+// VideoRef 動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の 今の所在の path とバイト列で比べる
+type VideoRef struct {
+	ContentKey *string `json:"contentKey,omitempty"`
+	Id         *int64  `json:"id,omitempty"`
+	Path       *string `json:"path,omitempty"`
+}
+
+// VideoTagsItem defines model for VideoTagsItem.
+type VideoTagsItem struct {
+	// Tags 操作後のタグ（手で付けた分とフォルダ名から付く分、出所つき）
+	Tags  []ExternalVideoTag `json:"tags"`
+	Video VideoTagsVideo     `json:"video"`
+}
+
+// VideoTagsRequest defines model for VideoTagsRequest.
+type VideoTagsRequest struct {
+	// Action add は付ける、remove は外す、replace は手で付けたタグをちょうど tags の集合にする （空なら手で付けたタグをすべて外す）
+	Action VideoTagsRequestAction `json:"action"`
+
+	// Tags タグの名前（シノニムも可）。100 件まで。add・remove では 1 件以上。範囲外は `too_many_tags`
+	Tags []string `json:"tags"`
+
+	// Videos 1〜20000 件。範囲外は `too_many_videos`
+	Videos []VideoRef `json:"videos"`
+}
+
+// VideoTagsRequestAction add は付ける、remove は外す、replace は手で付けたタグをちょうど tags の集合にする （空なら手で付けたタグをすべて外す）
+type VideoTagsRequestAction string
+
+// VideoTagsResponse defines model for VideoTagsResponse.
+type VideoTagsResponse struct {
+	// Items videos の順
+	Items []VideoTagsItem `json:"items"`
+}
+
+// VideoTagsVideo defines model for VideoTagsVideo.
+type VideoTagsVideo struct {
+	ContentKey string `json:"contentKey"`
+	Id         int64  `json:"id"`
+}
+
 // Internal 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
 type Internal = Error
 
@@ -239,6 +301,9 @@ type LookupVideoParams struct {
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
+// UpdateVideoTagsJSONRequestBody defines body for UpdateVideoTags for application/json ContentType.
+type UpdateVideoTagsJSONRequestBody = VideoTagsRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// StartScan スキャンを始める
@@ -250,6 +315,9 @@ type ServerInterface interface {
 	// ListTags タグの一覧を返す
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request)
+	// UpdateVideoTags 複数の動画に名前で指定したタグを付ける・外す・置き換える
+	// (POST /video-tags)
+	UpdateVideoTags(w http.ResponseWriter, r *http.Request)
 	// ListVideos 動画の一覧をページを分けて返す
 	// (GET /videos)
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
@@ -300,6 +368,20 @@ func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Reque
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListTags(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateVideoTags operation middleware
+func (siw *ServerInterfaceWrapper) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateVideoTags(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -536,6 +618,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/videos", wrapper.ListVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/videos/lookup", wrapper.LookupVideo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/scans", wrapper.StartScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/scans/current", wrapper.GetCurrentScan)

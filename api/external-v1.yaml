@@ -118,6 +118,50 @@ paths:
         "500":
           $ref: "#/components/responses/Internal"
 
+  /video-tags:
+    post:
+      operationId: updateVideoTags
+      summary: 複数の動画に名前で指定したタグを付ける・外す・置き換える
+      description: |
+        1 つのトランザクションで行う。付け外しの対象は手で付けたタグだけで、祖先のフォルダ名から
+        付くタグは残る（`replace` の後も）。名前はシノニムを含めて引き、`add`・`replace` では無い名前の
+        タグを作る。`remove` ではどのタグにも当たらない名前は何もしない。同じタグに当たる名前は 1 つに
+        まとめる。引けない動画が 1 つでもあれば `404` で何も反映しない（contracts/external-api.md §4）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoTagsRequest"
+      responses:
+        "200":
+          description: 各動画の操作後のタグ（`videos` の順）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoTagsResponse"
+        "400":
+          description: >-
+            本文の形が違う・`action` が不正・動画の指定がちょうど 1 つでない（`invalid_request`）、
+            件数の上限（`too_many_videos`・`too_many_tags`、`limit`）、タグ名の誤り
+            （`tag_name_empty`・`tag_name_control_characters`・`tag_name_too_long`、`index` は `tags` の位置）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: >-
+            引けない動画がある（`not_found` / `video_not_found`、`index` は `videos` の位置）。
+            何も反映しない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
   /tags:
     get:
       operationId: listTags
@@ -361,6 +405,79 @@ components:
         nextCursor:
           type: string
           description: 次のページの取得に渡す。続きが無ければ空文字列
+
+    VideoRef:
+      type: object
+      additionalProperties: false
+      description: >-
+        動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の
+        今の所在の path とバイト列で比べる
+      properties:
+        id:
+          type: integer
+          format: int64
+        contentKey:
+          type: string
+        path:
+          type: string
+
+    VideoTagsRequest:
+      type: object
+      required: [videos, action, tags]
+      additionalProperties: false
+      properties:
+        videos:
+          type: array
+          description: 1〜20000 件。範囲外は `too_many_videos`
+          items:
+            $ref: "#/components/schemas/VideoRef"
+        action:
+          type: string
+          description: >-
+            add は付ける、remove は外す、replace は手で付けたタグをちょうど tags の集合にする
+            （空なら手で付けたタグをすべて外す）
+          enum: [add, remove, replace]
+        tags:
+          type: array
+          description: >-
+            タグの名前（シノニムも可）。100 件まで。add・remove では 1 件以上。範囲外は `too_many_tags`
+          items:
+            type: string
+
+    VideoTagsResponse:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: videos の順
+          items:
+            $ref: "#/components/schemas/VideoTagsItem"
+
+    VideoTagsItem:
+      type: object
+      required: [video, tags]
+      additionalProperties: false
+      properties:
+        video:
+          $ref: "#/components/schemas/VideoTagsVideo"
+        tags:
+          type: array
+          description: 操作後のタグ（手で付けた分とフォルダ名から付く分、出所つき）
+          items:
+            $ref: "#/components/schemas/ExternalVideoTag"
+
+    VideoTagsVideo:
+      type: object
+      required: [id, contentKey]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        contentKey:
+          type: string
 
     ExternalScan:
       type: object
