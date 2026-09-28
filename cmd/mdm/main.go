@@ -257,7 +257,6 @@ func run() error {
 		Catalog:         catalog,
 		Opener:          fileOpener,
 		Files:           mediaFiles,
-		Processing:      ingestStore,
 		Events:          events,
 		Assets:          web.Dist(),
 		Logger:          logger,

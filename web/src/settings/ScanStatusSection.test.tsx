@@ -22,14 +22,14 @@ function json(body: unknown, status = 200) {
 }
 
 function scan(values: Partial<Scan> = {}): Scan {
+  const state = values.state ?? "done";
   return {
     id: 2,
-    status: "done",
+    status: state,
+    videos: { total: 0, settled: 0 },
     issues: { failed: 0, substituted: 0, revision: 0 },
-    state: "done",
-    total: 0,
-    completed: 0,
-    failed: 0,
+    state,
+    settledAt: state === "done" ? "2026-09-28T06:04:00Z" : undefined,
     ...values,
   };
 }
@@ -67,7 +67,8 @@ describe("ScanStatusSection", () => {
     renderSection();
     const heading = await screen.findByRole("heading", { name: "Scan status" });
     expect(document.activeElement).toBe(heading);
-    expect(screen.getByText("There was nothing to scan")).toBeDefined();
+    expect(screen.getByText("No changed files were found.")).toBeDefined();
+    expect(screen.getByText(/^Finished /)).toBeDefined();
     expect(screen.queryByRole("progressbar")).toBeNull();
   });
 
@@ -76,16 +77,60 @@ describe("ScanStatusSection", () => {
       Promise.resolve(
         String(input) === "/api/media-folders"
           ? json([{}])
-          : json(scan({ state: "running" })),
+          : json(scan({ state: "running", status: "finding", videos: undefined })),
       ),
     );
-    renderSection();
+    const { container } = renderSection();
 
     const progress = await screen.findByRole("progressbar", {
-      name: "Checking what to scan",
+      name: "Progress of the videos in this scan",
     });
     expect(progress.getAttribute("aria-valuenow")).toBeNull();
-    expect(screen.getByText("Counting…")).toBeDefined();
+    expect(screen.getByText("Looking for files…")).toBeDefined();
+    expect(container.querySelector("section")?.textContent).not.toMatch(/\d/);
+  });
+
+  it("shows one video count, its meaning and the current activity while running", async () => {
+    fetchMock.mockImplementation((input) =>
+      Promise.resolve(
+        String(input) === "/api/media-folders"
+          ? json([{}])
+          : json(
+              scan({
+                state: "done",
+                status: "running",
+                videos: { total: 10, settled: 7 },
+                issues: { failed: 1, substituted: 2, revision: 4 },
+                activity: { kind: "preview", fileName: "clip.mp4" },
+              }),
+            ),
+      ),
+    );
+    const { container } = renderSection();
+
+    expect(await screen.findByText("7 of 10 videos done")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Counts changed files and videos that still needed preparing, not the whole library.",
+      ),
+    ).toBeDefined();
+    expect(screen.getByText("Creating the preview · clip.mp4")).toBeDefined();
+    expect(screen.getByText("1 failed")).toBeDefined();
+    expect(screen.getByText("2 to check")).toBeDefined();
+    const progress = screen.getByRole("progressbar");
+    expect(progress.getAttribute("aria-valuetext")).toBe("7 of 10 videos done");
+    // 概要にない数字の欄や時刻の欄を置かない。
+    const text = container.textContent ?? "";
+    for (const removed of [
+      "Processed",
+      "Total",
+      "Preparation left",
+      "Started",
+      "Finished",
+    ]) {
+      expect(text).not.toContain(removed);
+    }
+    expect(container.querySelector("dl")).toBeNull();
   });
 
   it("shows retry text without a progress bar when no scan has loaded", async () => {
@@ -112,7 +157,15 @@ describe("ScanStatusSection", () => {
       if (url === "/api/scans" && init?.method === "POST") {
         startCalls += 1;
         return Promise.resolve(
-          json({ id: 4, state: "running", total: 0, completed: 0, failed: 0 }, 202),
+          json(
+            {
+              id: 4,
+              status: "finding",
+              issues: { failed: 0, substituted: 0, revision: 0 },
+              state: "running",
+            },
+            202,
+          ),
         );
       }
       return Promise.resolve(
@@ -130,6 +183,7 @@ describe("ScanStatusSection", () => {
     expect(
       await screen.findByText("The media folder couldn't be read: /media/動画"),
     ).toBeDefined();
+    expect(screen.getByText("The scan couldn't finish.")).toBeDefined();
     expect(screen.queryByText(/permission denied/)).toBeNull();
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Retry" }));
@@ -150,13 +204,25 @@ describe("ScanStatusSection", () => {
       ),
     );
     const { container } = renderSection();
-    expect((await screen.findAllByText("The scan failed.")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("The scan failed.")).toBeDefined();
     expect(container.textContent).not.toMatch(/[\u3040-\u30ff\u4e00-\u9fff]/);
   });
 
   it.each([
-    ["done", scan({ state: "done", total: 3, completed: 3 })],
-    ["running", scan({ state: "running", total: 10, completed: 4, failed: 1 })],
+    ["done", scan({ state: "done", videos: { total: 3, settled: 3 } })],
+    [
+      "running",
+      scan({
+        state: "running",
+        videos: { total: 10, settled: 4 },
+        issues: { failed: 1, substituted: 1, revision: 1 },
+        activity: {
+          kind: "registering",
+          fileName: "夏.mp4",
+          folder: { rootId: 1, path: "旅行", rootName: "media" },
+        },
+      }),
+    ],
     [
       "failed",
       scan({
@@ -170,22 +236,18 @@ describe("ScanStatusSection", () => {
     enablePseudoLocale();
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
-        String(input) === "/api/media-folders"
-          ? json([{}])
-          : json({
-              ...current,
-              startedAt: "2026-09-27T10:00:00Z",
-              finishedAt:
-                current.state === "running" ? undefined : "2026-09-27T10:05:00Z",
-            }),
+        String(input) === "/api/media-folders" ? json([{}]) : json(current),
       ),
     );
     const { container } = renderSection();
     await screen.findByRole("heading", {
       name: `${PSEUDO_OPEN}Scan status${PSEUDO_CLOSE}`,
     });
-    await waitFor(() => expect(container.textContent).toContain("Started"));
-    expectCatalogTextOnly(container, ["/media/動画/sub"]);
+    await waitFor(() => expect(container.textContent).toContain("⟦Scan"));
+    await waitFor(() =>
+      expect(screen.getByTestId("scan-detail").textContent).not.toBe(""),
+    );
+    expectCatalogTextOnly(container, ["/media/動画/sub", "夏.mp4"]);
   });
 
   it("focuses the heading again when navigating to the same anchor", async () => {

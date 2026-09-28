@@ -11,13 +11,12 @@ import {
 
 import {
   getCurrentScan,
-  getProcessing,
   isAborted,
   listMediaFolders,
-  type Processing,
   RequestFailed,
   startScan,
   type Scan,
+  type ScanActivity,
 } from "../api/client";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { useAudience } from "../auth/audience";
@@ -28,10 +27,10 @@ export interface ScanContextValue {
   /** current scan の初回取得が完了している。 */
   loaded: boolean;
   /**
-   * 取り込みの段階（解析・サムネイル・シーク用サムネイル・プレビュー）ごとに残っている仕事の数。
-   * まだ取得していなければ null。
+   * 今の処理。取り込み中に `Scan.activity` が一瞬無くなっても、同じ取り込みのあいだは
+   * 直前の値を残す（specs/024-import-progress/ui-design.md「Words」）。
    */
-  processing: Processing | null;
+  activity: ScanActivity | null;
   /** 状態取得や開始の失敗。 */
   error: UiText | null;
   starting: boolean;
@@ -57,15 +56,24 @@ export function useScan(): ScanContextValue {
   return value;
 }
 
-/** processingRemaining は全段階の残りの合計である。未取得なら 0。 */
-export function processingRemaining(processing: Processing | null): number {
-  if (processing === null) return 0;
-  return (
-    processing.probe +
-    processing.thumbnail +
-    processing.seekThumbnail +
-    processing.preview
-  );
+/** inProgress は、取り込みがまだ終わっていない（走査中か、準備が残る）かを返す。 */
+export function inProgress(scan: Scan): boolean {
+  return scan.status === "finding" || scan.status === "running";
+}
+
+/**
+ * nextActivity は、新しい `Scan` を受けたときに示す今の処理を決める。同じ取り込みが
+ * 終わっていないあいだは、activity が無くても直前の値を残す。
+ */
+export function nextActivity(
+  previous: { scanId: number; activity: ScanActivity } | null,
+  current: Scan | null,
+): { scanId: number; activity: ScanActivity } | null {
+  if (current === null || !inProgress(current)) return null;
+  if (current.activity !== undefined) {
+    return { scanId: current.id, activity: current.activity };
+  }
+  return previous?.scanId === current.id ? previous : null;
 }
 
 /**
@@ -85,7 +93,10 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const owner = useAudience() === "owner";
   const [scan, setScan] = useState<Scan | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [processing, setProcessing] = useState<Processing | null>(null);
+  const [activity, setActivity] = useState<{
+    scanId: number;
+    activity: ScanActivity;
+  } | null>(null);
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const [startError, setStartError] = useState<UiText | null>(null);
   const [starting, setStarting] = useState(false);
@@ -99,7 +110,6 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   // 取得と変化の知らせは並行する。知らせの方が新しいことがあるので、取得を
   // 始めたあとに知らせを受けたら、その取得の応答は捨てる。
   const scanRevision = useRef(0);
-  const processingRevision = useRef(0);
 
   const updateFolderCount = useCallback((count: number) => {
     folderCountRevision.current += 1;
@@ -114,6 +124,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     const previousScanId = lastSeenScanId.current;
     lastSeenScanId.current = current?.id ?? null;
     setScan(current);
+    setActivity((previous) => nextActivity(previous, current));
     setLoaded(true);
     setLoadError(null);
     if (current === null) return;
@@ -159,40 +170,24 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  /**
-   * loadScan はスキャンと段階ごとの残りを取り直す。遅れて届いた古い応答は捨てる。
-   */
+  /** loadScan は直近の取り込みを取り直す。遅れて届いた古い応答は捨てる。 */
   const inFlight = useRef<AbortController | null>(null);
   const loadScan = useCallback(() => {
     inFlight.current?.abort();
     const controller = new AbortController();
     inFlight.current = controller;
     scanRevision.current += 1;
-    processingRevision.current += 1;
     const scanAt = scanRevision.current;
-    const processingAt = processingRevision.current;
 
-    // スキャンと残りは同じ描画で反映する。スキャンの完了だけが先に見えると、
-    // 残りを得るまでの間「準備の残りを確認中」がちらつく。
     void (async () => {
-      const [scanResult, processingResult] = await Promise.allSettled([
-        getCurrentScan(controller.signal),
-        getProcessing(controller.signal),
-      ]);
-      if (processingResult.status === "fulfilled") {
-        if (processingAt === processingRevision.current)
-          setProcessing(processingResult.value);
+      try {
+        const current = await getCurrentScan(controller.signal);
+        if (scanAt === scanRevision.current) apply(current);
+      } catch (failure) {
+        if (scanAt !== scanRevision.current || isAborted(failure)) return;
+        // 最後に得た状態は捨てない。つなぎ直しやウィンドウへの復帰で取り直す。
+        setLoadError(errorText(failure));
       }
-      // 残りの取得の失敗は、最後に得た数を残して次の知らせか取り直しを待つ。
-      // 残りは補助の情報なので、取れなくても取り込みの状態は示せる。
-      if (scanResult.status === "fulfilled") {
-        if (scanAt === scanRevision.current) apply(scanResult.value);
-        return;
-      }
-      const failure: unknown = scanResult.reason;
-      if (scanAt !== scanRevision.current || isAborted(failure)) return;
-      // 最後に得た状態は捨てない。つなぎ直しやウィンドウへの復帰で取り直す。
-      setLoadError(errorText(failure));
     })();
   }, [apply]);
 
@@ -213,10 +208,6 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       scan: (next) => {
         scanRevision.current += 1;
         apply(next);
-      },
-      processing: (next) => {
-        processingRevision.current += 1;
-        setProcessing(next);
       },
       open: load,
     });
@@ -279,7 +270,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     () => ({
       scan,
       loaded,
-      processing,
+      activity: activity?.activity ?? null,
       error,
       starting,
       running: starting || scan?.state === "running",
@@ -290,11 +281,11 @@ export function ScanProvider({ children }: { children: ReactNode }) {
       finished,
     }),
     [
+      activity,
       error,
       finished,
       folderCount,
       loaded,
-      processing,
       refresh,
       scan,
       start,

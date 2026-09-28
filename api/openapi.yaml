@@ -1518,22 +1518,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /api/processing:
-    get:
-      operationId: getProcessing
-      summary: 取り込みの段階ごとに残っている仕事の数を返す
-      description: |
-        解析・サムネイル・シーク用サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
-        登録済みメディアフォルダの外にしか所在が無い動画の仕事は、処理されないので含めない。
-        すべて 0 なら、取り込んだ動画の準備は終わっている。
-      responses:
-        "200":
-          description: 段階ごとの残り
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Processing"
-
   /api/events:
     get:
       operationId: streamEvents
@@ -1542,15 +1526,13 @@ paths:
         接続中は、変化が起きたときだけ次のイベントを送る。一定間隔の送信はしない
         （接続を保つためのコメント行を除く）。
 
-        - `scan`: 直近のスキャンが変わった。data は `Scan`（まだ一度も無ければ送らない）
-        - `processing`: 段階ごとの残りが変わった。data は `Processing`
+        - `scan`: 直近の取り込みが変わった。data は `Scan`（まだ一度も無ければ送らない）。
+          走査の変化、仕事の成否（済みの本数が変わる）、今の処理の変化で送る
         - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
           `GET /api/videos/{id}` で取る
 
-        接続の直後に `processing` と `scan`（あれば）を1回ずつ送るので、つなぎ直した
-        クライアントは切れていた間の変化を取り戻せる。`video` は切れていた間の分を
-        送り直さない。`processing` と `scan` を同時に送るときは `processing` を先に送る。
-        スキャンの完了を受けた時点で、準備の残りが手元にそろっているようにするためである。
+        接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
+        変化を取り戻せる。`video` は切れていた間の分を送り直さない。
       responses:
         "200":
           description: イベントの流れ
@@ -2607,9 +2589,9 @@ components:
     Scan:
       type: object
       description: >-
-        直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。startedAt・finishedAt・
-        total・completed・failed は、画面が status・videos・settledAt に移ったあとでなくす
-      required: [id, status, issues, state, total, completed, failed]
+        直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。右下の表示と設定画面は、
+        どちらもこの1つを読む
+      required: [id, status, issues, state]
       additionalProperties: false
       properties:
         id:
@@ -2631,20 +2613,6 @@ components:
           type: string
           description: 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
           enum: [running, done, failed]
-        startedAt:
-          type: string
-          format: date-time
-        finishedAt:
-          type: string
-          format: date-time
-        total:
-          type: integer
-          description: 変更なしを除いた取り込み対象ファイル数。対象の確定前は0
-        completed:
-          type: integer
-          description: 取り込み処理に成功した対象ファイル数
-        failed:
-          type: integer
         error:
           type: string
           description: >-
@@ -2817,24 +2785,6 @@ components:
         - location_unreadable
         - interrupted
         - internal
-
-    Processing:
-      type: object
-      required: [probe, thumbnail, seekThumbnail, preview]
-      additionalProperties: false
-      properties:
-        probe:
-          type: integer
-          description: 解析（ffprobe）の残り
-        thumbnail:
-          type: integer
-          description: 代表サムネイルの残り
-        seekThumbnail:
-          type: integer
-          description: シーク用サムネイルの残り
-        preview:
-          type: integer
-          description: 一覧用プレビューの残り
 
     VideoChanged:
       type: object

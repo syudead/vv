@@ -313,6 +313,35 @@ export function generateFolderFixtures(root) {
 }
 
 /**
+ * generateScanProgressFixtures は、取り込みの進み具合（specs/024-import-progress）を実際の
+ * サーバーで確かめるための、10 本の短い動画を作る（web/e2e/scan-progress.e2e.ts）。
+ * 準備（解析・サムネイル・シーク用サムネイル・プレビュー）が一瞬で終わらないよう、
+ * 数秒の長さにする。
+ */
+export const SCAN_PROGRESS_VIDEOS = 10;
+
+export function generateScanProgressFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  for (let index = 1; index <= SCAN_PROGRESS_VIDEOS; index += 1) {
+    const name = `scan-progress-${String(index).padStart(2, "0")}`;
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=15:duration=4",
+      "-vf",
+      `hue=h=${String((index * 29) % 360)}`,
+      ...h264,
+      "-an",
+      "-metadata",
+      `title=${name}`,
+      path.join(root, `${name}.mp4`),
+    ]);
+  }
+  return SCAN_PROGRESS_VIDEOS;
+}
+
+/**
  * generateFolderSearchFixtures はフォルダ画面・最上位の検索と絞り込みの検証用の
  * フォルダ構成を作る。
  * `root/A/x 京都.mp4`・`root/A/B/y 京都.mp4`・`root/C/z 京都.mp4` に対応する。

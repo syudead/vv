@@ -982,21 +982,6 @@ type MergeTagRequest struct {
 // ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
 type ProbeErrorCode string
 
-// Processing defines model for Processing.
-type Processing struct {
-	// Preview 一覧用プレビューの残り
-	Preview int `json:"preview"`
-
-	// Probe 解析（ffprobe）の残り
-	Probe int `json:"probe"`
-
-	// SeekThumbnail シーク用サムネイルの残り
-	SeekThumbnail int `json:"seekThumbnail"`
-
-	// Thumbnail 代表サムネイルの残り
-	Thumbnail int `json:"thumbnail"`
-}
-
 // Progress defines model for Progress.
 type Progress struct {
 	Completed  bool      `json:"completed"`
@@ -1057,13 +1042,10 @@ type RootFolderListing struct {
 	Folders []FolderSummary `json:"folders"`
 }
 
-// Scan 直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。startedAt・finishedAt・ total・completed・failed は、画面が status・videos・settledAt に移ったあとでなくす
+// Scan 直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。右下の表示と設定画面は、 どちらもこの1つを読む
 type Scan struct {
 	// Activity 取り込み中の今の処理（specs/024-import-progress/contracts/scan-api.md §2）。複数が同時に動くときは 最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる
 	Activity *ScanActivity `json:"activity,omitempty"`
-
-	// Completed 取り込み処理に成功した対象ファイル数
-	Completed int `json:"completed"`
 
 	// Error スキャン自体が失敗した理由の自由文。画面は表示せず、errorCode と errorPath から説明を作る （specs/023-english-i18n/contracts/error-api.md §3）
 	Error *string `json:"error,omitempty"`
@@ -1072,26 +1054,20 @@ type Scan struct {
 	ErrorCode *ScanErrorCode `json:"errorCode,omitempty"`
 
 	// ErrorPath errorCode の理由が特定の場所に結び付くときの、その絶対パス（メディアフォルダ、またはその下の 読めなかった場所。翻訳しない利用者のデータ）。それ以外は省略される
-	ErrorPath  *string    `json:"errorPath,omitempty"`
-	Failed     int        `json:"failed"`
-	FinishedAt *time.Time `json:"finishedAt,omitempty"`
-	Id         int64      `json:"id"`
+	ErrorPath *string `json:"errorPath,omitempty"`
+	Id        int64   `json:"id"`
 
 	// Issues 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える （specs/024-import-progress/contracts/scan-api.md §2）
 	Issues ScanIssueCounts `json:"issues"`
 
 	// SettledAt 対象の動画がすべて済んだ時刻。status が done・partial のときだけ返す
 	SettledAt *time.Time `json:"settledAt,omitempty"`
-	StartedAt *time.Time `json:"startedAt,omitempty"`
 
 	// State 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
 	State ScanState `json:"state"`
 
 	// Status 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外（specs/024-import-progress/contracts/scan-api.md §2）
 	Status ScanStatus `json:"status"`
-
-	// Total 変更なしを除いた取り込み対象ファイル数。対象の確定前は0
-	Total int `json:"total"`
 
 	// Videos 取り込みの進み具合。status が finding のあいだは省く
 	Videos *ScanVideos `json:"videos,omitempty"`
@@ -1891,9 +1867,6 @@ type ServerInterface interface {
 	// UpdateMediaFolder メディアフォルダ1件のpathを変更する
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
-	// GetProcessing 取り込みの段階ごとに残っている仕事の数を返す
-	// (GET /api/processing)
-	GetProcessing(w http.ResponseWriter, r *http.Request)
 	// StartScan 取り込みを開始する
 	// (POST /api/scans)
 	StartScan(w http.ResponseWriter, r *http.Request)
@@ -2730,20 +2703,6 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMediaFolder(w, r, id)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetProcessing operation middleware
-func (siw *ServerInterfaceWrapper) GetProcessing(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetProcessing(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -3761,7 +3720,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/folders/{rootId}/grouping/tag", wrapper.TagFolderGroup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current/issues", wrapper.ListCurrentScanIssues)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/processing", wrapper.GetProcessing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/events", wrapper.StreamEvents)
 
 	return m

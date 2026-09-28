@@ -140,10 +140,7 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 		Issues: gen.ScanIssueCounts{
 			Failed: scan.Issues.Failed, Substituted: scan.Issues.Substituted, Revision: scan.IssuesRevision,
 		},
-		State:     gen.ScanState(scan.State),
-		Total:     scan.Total,
-		Completed: scan.Completed,
-		Failed:    scan.Failed,
+		State: gen.ScanState(scan.State),
 	}
 	// 状態と本数は internal/app が組み立てたものを写すだけにする。
 	if scan.Import.Counted {
@@ -155,14 +152,6 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 	}
 	if scan.Activity.Active() {
 		out.Activity = toAPIScanActivity(scan.Activity)
-	}
-	if !scan.StartedAt.IsZero() {
-		startedAt := scan.StartedAt
-		out.StartedAt = &startedAt
-	}
-	if !scan.FinishedAt.IsZero() {
-		finishedAt := scan.FinishedAt
-		out.FinishedAt = &finishedAt
 	}
 	if scan.Error != "" {
 		reason := scan.Error

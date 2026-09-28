@@ -95,10 +95,3 @@ func TestClaimConditionSeekThumbnailWaitsForClaimableThumbnails(t *testing.T) {
 		}
 	}
 }
-
-func TestProcessingRemainingIncludesSeekThumbnail(t *testing.T) {
-	p := Processing{Probe: 1, Thumbnail: 2, SeekThumbnail: 4, Preview: 8}
-	if got := p.Remaining(); got != 15 {
-		t.Fatalf("Remaining() = %d, want 15", got)
-	}
-}

@@ -15,6 +15,7 @@ type ErrorCode = components["schemas"]["Error"]["code"];
 type ErrorReason = components["schemas"]["ErrorReason"];
 type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
 type ScanErrorCode = components["schemas"]["ScanErrorCode"];
+type ScanActivityKind = components["schemas"]["ScanActivityKind"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -768,87 +769,74 @@ export const en = {
     },
     scan: {
       startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,
-      starting: "Starting the scan…",
       notRun: "No scan has run yet",
-      scanningUnknown: "Scanning…",
-      scanningCount: (completed: number, total: number) =>
-        `Scanning ${formatNumber(completed)} / ${formatNumber(total)}`,
-      checkingPreparation: "Checking what's left to prepare for the scanned videos",
-      preparingCount: (remaining: number) =>
-        `Preparing the scanned videos (${items(remaining)} left)`,
-      partialFailed: (failed: number) =>
-        selectPlural(failed, {
-          one: `Finished with ${formatNumber(failed)} failure`,
-          other: `Finished with ${formatNumber(failed)} failures`,
-        }),
-      failed: (reason: string) => `The scan failed: ${reason}`,
-      lastScanned: (completed: number) => `The last scan processed ${items(completed)}`,
-      noChanges: "The last scan found no changes",
-      // 上部の進捗表示
-      announce: {
-        starting: "Starting the scan",
-        unknownTotal: "Scanning. Counting the items",
-        running: (total: number) => `Scanning ${items(total)}`,
-        preparing: "Preparing the scanned videos",
-        done: "The scan is complete",
-        partialFailed: "The scan finished with some failures",
-        failed: "The scan failed",
-      },
-      label: {
+      // 状態の言葉（specs/024-import-progress/ui-design.md「Words」）。走査と準備を
+      // 言い分けない。
+      status: {
         starting: "Starting",
-        scanning: "Scanning",
-        scanningPercent: (percent: number) => `Scanning ${formatNumber(percent)}%`,
-        preparing: "Preparing",
-        preparingLeft: (remaining: number) =>
-          `Preparing, ${formatNumber(remaining)} left`,
-        partialFailed: "Some failed",
-        failed: "The scan failed",
+        finding: "Scanning",
+        running: "Scanning",
         done: "Done",
+        partial: "Some failed",
+        failed: "Scan failed",
       },
-      checkingRemaining: "Checking what's left",
-      remaining: (remaining: number) => `${items(remaining)} left`,
-      counts: (completed: number, total: number | null, failed: number) =>
-        total === null
-          ? `${formatNumber(completed)} / counting (${formatNumber(failed)} failed)`
-          : `${formatNumber(completed)} / ${formatNumber(total)} (${formatNumber(failed)} failed)`,
-      failedSeeSettings: "The scan failed. See Settings for the reason.",
+      // 進み具合。分母は変化のあったファイルと準備が残っていた動画で、済みには失敗して
+      // 終わった動画も入る。
+      videosDone: (settled: number, total: number) =>
+        `${formatNumber(settled)} of ${videos(total)} done`,
+      videosShort: (settled: number, total: number) =>
+        `${formatNumber(settled)} / ${formatNumber(total)}`,
+      denominator:
+        "Counts changed files and videos that still needed preparing, not the whole library.",
+      noChanges: "No changed files were found.",
+      // 今の処理の行。動作の言葉を先に置き、長いファイル名は末尾を省略する。
+      lookingForFiles: "Looking for files…",
+      activity: {
+        registering: "Adding to the library",
+        probe: "Analyzing",
+        thumbnail: "Creating the thumbnail",
+        seekThumbnail: "Creating seek thumbnails",
+        preview: "Creating the preview",
+      } satisfies Record<ScanActivityKind, string>,
+      activityLine: (action: string, fileName: string) => `${action} · ${fileName}`,
+      /** 登録フォルダの表示名 / 相対パス / ファイル名。省略した行の全体を示す。 */
+      location: (parts: readonly string[]) => parts.join(" / "),
+      finishedAt: (when: string) => `Finished ${when}`,
+      couldNotFinish: "The scan couldn't finish.",
+      failedCount: (count: number) => `${formatNumber(count)} failed`,
+      toCheckCount: (count: number) => `${formatNumber(count)} to check`,
+      seeSettingsForList: "See Settings for the list.",
+      // 読み上げは完了・一部失敗・失敗の節目だけにする。
+      announce: {
+        done: (toCheck: number) =>
+          toCheck === 0
+            ? "The scan is complete."
+            : selectPlural(toCheck, {
+                one: `The scan is complete. ${videos(toCheck)} is worth checking.`,
+                other: `The scan is complete. ${videos(toCheck)} are worth checking.`,
+              }),
+        partial: (failed: number) =>
+          `The scan finished with some failures. ${videos(failed)} may not be usable.`,
+        failed: "The scan failed.",
+      },
+      /** 右下の本体の名前: 〈状態の言葉〉 M of N videos done, 〈問題の本数〉. */
+      indicatorName: (status: string, progress: string | null, issues: string | null) =>
+        `${progress === null ? status : `${status} ${progress}`}${issues === null ? "" : `, ${issues}`}`,
+      issueCounts: (counts: readonly string[]) => formatList(counts),
       openStatus: (label: string) => `${label}. Open the scan status`,
-      dismissFailure: "Dismiss the scan failure notice",
-      progress: "Scan progress",
-      progressPreparing: "Preparing the scanned videos",
-      progressChecking: "Checking what to scan",
-      breakdown: {
-        label: "Preparation left",
-        probe: "Analysis",
-        thumbnail: "Thumbnails",
-        seekThumbnail: "Seek",
-        preview: "Previews",
-      },
+      dismissResult: "Dismiss the scan result notice",
+      progress: "Progress of the videos in this scan",
     },
   },
   settings: {
     title: "Settings",
     scanStatus: {
       heading: "Scan status",
+      // 状態の言葉は shell.scan.status と同じものを使う。ここにはこの画面だけの状態を置く。
       state: {
         notRun: "Not run",
-        starting: "Starting",
-        running: "Running",
-        preparing: "Preparing",
-        done: "Done",
-        partialFailed: "Some failed",
-        failed: "Failed",
         fetchFailed: "Rechecking",
       },
-      nothingFound: "There was nothing to scan",
-      processed: "Processed",
-      total: "Total",
-      failed: "Failed",
-      counting: "Counting…",
-      preparationLeft: "Preparation left",
-      startedAt: "Started",
-      finishedAt: "Finished",
-      notFinished: "Not finished",
       rechecking: "Rechecking the latest status",
     },
     mediaFolders: {

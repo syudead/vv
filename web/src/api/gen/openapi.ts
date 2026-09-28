@@ -900,28 +900,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/processing": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * 取り込みの段階ごとに残っている仕事の数を返す
-         * @description 解析・サムネイル・シーク用サムネイル・プレビューの各段階で、待ち行列にあるものと処理中のものを数える。
-         *     登録済みメディアフォルダの外にしか所在が無い動画の仕事は、処理されないので含めない。
-         *     すべて 0 なら、取り込んだ動画の準備は終わっている。
-         */
-        get: operations["getProcessing"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/events": {
         parameters: {
             query?: never;
@@ -934,15 +912,13 @@ export interface paths {
          * @description 接続中は、変化が起きたときだけ次のイベントを送る。一定間隔の送信はしない
          *     （接続を保つためのコメント行を除く）。
          *
-         *     - `scan`: 直近のスキャンが変わった。data は `Scan`（まだ一度も無ければ送らない）
-         *     - `processing`: 段階ごとの残りが変わった。data は `Processing`
+         *     - `scan`: 直近の取り込みが変わった。data は `Scan`（まだ一度も無ければ送らない）。
+         *       走査の変化、仕事の成否（済みの本数が変わる）、今の処理の変化で送る
          *     - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
          *       `GET /api/videos/{id}` で取る
          *
-         *     接続の直後に `processing` と `scan`（あれば）を1回ずつ送るので、つなぎ直した
-         *     クライアントは切れていた間の変化を取り戻せる。`video` は切れていた間の分を
-         *     送り直さない。`processing` と `scan` を同時に送るときは `processing` を先に送る。
-         *     スキャンの完了を受けた時点で、準備の残りが手元にそろっているようにするためである。
+         *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
+         *     変化を取り戻せる。`video` は切れていた間の分を送り直さない。
          */
         get: operations["streamEvents"];
         put?: never;
@@ -1520,7 +1496,7 @@ export interface components {
             /** Format: date-time */
             updatedAt: string;
         };
-        /** @description 直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。startedAt・finishedAt・ total・completed・failed は、画面が status・videos・settledAt に移ったあとでなくす */
+        /** @description 直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。右下の表示と設定画面は、 どちらもこの1つを読む */
         Scan: {
             /** Format: int64 */
             id: number;
@@ -1538,15 +1514,6 @@ export interface components {
              * @enum {string}
              */
             state: "running" | "done" | "failed";
-            /** Format: date-time */
-            startedAt?: string;
-            /** Format: date-time */
-            finishedAt?: string;
-            /** @description 変更なしを除いた取り込み対象ファイル数。対象の確定前は0 */
-            total: number;
-            /** @description 取り込み処理に成功した対象ファイル数 */
-            completed: number;
-            failed: number;
             /** @description スキャン自体が失敗した理由の自由文。画面は表示せず、errorCode と errorPath から説明を作る （specs/023-english-i18n/contracts/error-api.md §3） */
             error?: string;
             errorCode?: components["schemas"]["ScanErrorCode"];
@@ -1637,16 +1604,6 @@ export interface components {
          * @enum {string}
          */
         ScanErrorCode: "media_folder_unreadable" | "media_folder_not_directory" | "location_unreadable" | "interrupted" | "internal";
-        Processing: {
-            /** @description 解析（ffprobe）の残り */
-            probe: number;
-            /** @description 代表サムネイルの残り */
-            thumbnail: number;
-            /** @description シーク用サムネイルの残り */
-            seekThumbnail: number;
-            /** @description 一覧用プレビューの残り */
-            preview: number;
-        };
         VideoChanged: {
             /**
              * Format: int64
@@ -3177,26 +3134,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
-                };
-            };
-        };
-    };
-    getProcessing: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 段階ごとの残り */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["Processing"];
                 };
             };
         };

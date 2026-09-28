@@ -1,103 +1,109 @@
-import type { Processing, Scan } from "../api/client";
-import { scanErrorText, t, type UiText } from "../i18n";
-import { processingRemaining, type ScanContextValue } from "./ScanProvider";
+import type { Scan, ScanActivity } from "../api/client";
+import { formatDateTime, t, type UiText } from "../i18n";
+import type { ScanContextValue } from "./ScanProvider";
 
+/**
+ * ScanPresentationState は画面の状態である。取り込みの状態（`Scan.status`）に、
+ * 未実行・開始中・取得の一時失敗を足したもの（specs/024-import-progress/ui-design.md「States」）。
+ */
 export type ScanPresentationState =
   | "not-run"
   | "starting"
-  | "unknown-total"
+  | "finding"
   | "running"
-  /** スキャンは終わり、解析・サムネイル・シーク用サムネイル・プレビューの残りがある（またはまだ分からない）。 */
-  | "preparing"
   | "done"
-  | "partial-failed"
+  | "partial"
   | "failed"
   | "fetch-failed";
 
-export interface ScanPresentation {
-  state: ScanPresentationState;
-  scan: Scan | null;
-  description: UiText;
-  progress: number | null;
-  determinate: boolean;
-  completed: number;
-  total: number | null;
-  failed: number;
-  startedAt?: string;
-  finishedAt?: string;
-  error: UiText | null;
-  refreshing: boolean;
-  /** 段階ごとの残り。未取得なら null。 */
-  processing: Processing | null;
-  /** 全段階の残りの合計。 */
-  remaining: number;
-}
-
-function progressFor(scan: Scan): number | null {
-  if (scan.total <= 0) return null;
-  return Math.min(1, Math.max(0, scan.completed / scan.total));
-}
-
-function stateFor(scan: Scan, processing: Processing | null): ScanPresentationState {
-  if (scan.state === "running") return scan.total > 0 ? "running" : "unknown-total";
-  if (scan.state === "failed") return "failed";
-  // 残りをまだ得ていなければ、0 件とみなして完了を示さない。
-  if (processing === null || processingRemaining(processing) > 0) return "preparing";
-  return scan.failed > 0 ? "partial-failed" : "done";
+/** ScanDetailLine は3行目（今の処理、または完了の時刻）である。 */
+export interface ScanDetailLine {
+  text: UiText;
+  /** 省略した全体（登録フォルダの表示名 / 相対パス / ファイル名）。今の処理のときだけ。 */
+  title?: UiText;
 }
 
 /**
- * describe は状態の一行の説明である。取り込みの失敗は `Scan.error`（自由文）を出さず、
- * `errorCode` と `errorPath` から作る（specs/023-english-i18n/research.md R-6）。
+ * ScanPresentation は、右下の本体・概要・設定の「Scan status」が共有する表示モデルである。
+ * `Scan` の status・videos・issues・settledAt・activity だけから作る。
  */
-function describe(
+export interface ScanPresentation {
+  state: ScanPresentationState;
+  scan: Scan | null;
+  /** 状態の言葉。未実行と取得の一時失敗では null。 */
+  statusText: UiText | null;
+  /** 数字で示す進み具合。数字を出さない状態（finding など）と、対象が 0 本のときは null。 */
+  videos: { settled: number; total: number } | null;
+  /** 進み具合の文。「M of N videos done」か「No changed files were found.」。 */
+  progressText: UiText | null;
+  /** バーの形。 */
+  bar: "determinate" | "indeterminate" | "none";
+  /** 今の処理、または完了の時刻の行。 */
+  detail: ScanDetailLine | null;
+  issues: { failed: number; substituted: number };
+  error: UiText | null;
+  refreshing: boolean;
+}
+
+/** inProgressState は、取り込みがまだ終わっていない画面の状態かを返す。 */
+export function inProgressState(state: ScanPresentationState): boolean {
+  return state === "starting" || state === "finding" || state === "running";
+}
+
+function activityLine(activity: ScanActivity): ScanDetailLine {
+  const text = t.shell.scan;
+  const parts: string[] = [];
+  if (activity.folder?.rootName !== undefined) parts.push(activity.folder.rootName);
+  if (activity.folder !== undefined && activity.folder.path !== "")
+    parts.push(activity.folder.path);
+  parts.push(activity.fileName);
+  return {
+    text: text.activityLine(text.activity[activity.kind], activity.fileName),
+    title: text.location(parts),
+  };
+}
+
+function detailFor(
   state: ScanPresentationState,
   scan: Scan,
-  processing: Processing | null,
-  remaining: number,
-): UiText {
+  activity: ScanActivity | null,
+): ScanDetailLine | null {
   const text = t.shell.scan;
   switch (state) {
-    case "unknown-total":
-      return text.scanningUnknown;
+    case "finding":
     case "running":
-      return text.scanningCount(scan.completed, scan.total);
-    case "preparing":
-      return processing === null
-        ? text.checkingPreparation
-        : text.preparingCount(remaining);
-    case "partial-failed":
-      return text.partialFailed(scan.failed);
+      if (activity !== null) return activityLine(activity);
+      return state === "finding" ? { text: text.lookingForFiles } : null;
+    case "done":
+    case "partial":
+      return scan.settledAt === undefined
+        ? null
+        : { text: text.finishedAt(formatDateTime(scan.settledAt)) };
     case "failed":
-      // コードの無い過去の失敗は、一般的な概要だけにする。
-      return scan.errorCode === undefined
-        ? scanErrorText(scan)
-        : text.failed(scanErrorText(scan));
+      return { text: text.couldNotFinish };
     default:
-      return scan.completed > 0 ? text.lastScanned(scan.completed) : text.noChanges;
+      return null;
   }
 }
 
+const noIssues = { failed: 0, substituted: 0 };
+
 /** Converts the scan context into the shared state model used by shell views. */
 export function presentScan(value: ScanContextValue): ScanPresentation {
-  const { scan, processing } = value;
-  const remaining = processingRemaining(processing);
+  const { scan } = value;
+  const text = t.shell.scan;
   if (value.starting) {
     return {
       state: "starting",
       scan,
-      description: t.shell.scan.starting,
-      progress: null,
-      determinate: false,
-      completed: scan?.completed ?? 0,
-      total: null,
-      failed: scan?.failed ?? 0,
-      startedAt: scan?.startedAt,
-      finishedAt: scan?.finishedAt,
+      statusText: text.status.starting,
+      videos: null,
+      progressText: null,
+      bar: "indeterminate",
+      detail: { text: text.lookingForFiles },
+      issues: noIssues,
       error: value.error,
       refreshing: false,
-      processing,
-      remaining,
     };
   }
 
@@ -105,40 +111,78 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
     return {
       state: value.error === null ? "not-run" : "fetch-failed",
       scan: null,
-      description: value.error ?? t.shell.scan.notRun,
-      progress: null,
-      determinate: false,
-      completed: 0,
-      total: null,
-      failed: 0,
+      statusText: null,
+      videos: null,
+      progressText: null,
+      bar: "none",
+      detail: null,
+      issues: noIssues,
       error: value.error,
       refreshing: value.error !== null,
-      processing,
-      remaining,
     };
   }
 
-  const state = stateFor(scan, processing);
-  // 準備の段階は全体の件数が分からないので、割合を出さない。
-  const progress = state === "preparing" ? null : progressFor(scan);
-  const description = describe(state, scan, processing, remaining);
+  const state: ScanPresentationState = scan.status;
+  // finding のあいだは数字を出さない（割合も出さない）。
+  const counted = state !== "finding" && scan.videos !== undefined;
+  const total = counted ? (scan.videos?.total ?? 0) : 0;
+  const videos =
+    counted && total > 0
+      ? { settled: Math.min(scan.videos?.settled ?? 0, total), total }
+      : null;
+  const noChanges = counted && total === 0 && (state === "done" || state === "partial");
+  const progressText =
+    videos !== null
+      ? text.videosDone(videos.settled, videos.total)
+      : noChanges
+        ? text.noChanges
+        : null;
+  const bar =
+    videos !== null
+      ? "determinate"
+      : state === "finding" || state === "running"
+        ? "indeterminate"
+        : "none";
 
   return {
     state,
     scan,
-    description,
-    progress,
-    determinate: progress !== null,
-    completed: scan.completed,
-    total: state === "unknown-total" ? null : scan.total,
-    failed: scan.failed,
-    startedAt: scan.startedAt,
-    finishedAt: scan.finishedAt,
+    statusText: text.status[state],
+    videos,
+    progressText,
+    bar,
+    detail: detailFor(state, scan, value.activity),
+    issues: { failed: scan.issues.failed, substituted: scan.issues.substituted },
     error: value.error,
     refreshing: value.error !== null,
-    processing,
-    remaining,
   };
 }
 
-export const toScanPresentation = presentScan;
+/** issueCountTexts は問題の本数の言葉である。0 の方は出さない。 */
+export function issueCountTexts(presentation: ScanPresentation): UiText[] {
+  const text = t.shell.scan;
+  const out: UiText[] = [];
+  if (presentation.issues.failed > 0)
+    out.push(text.failedCount(presentation.issues.failed));
+  if (presentation.issues.substituted > 0)
+    out.push(text.toCheckCount(presentation.issues.substituted));
+  return out;
+}
+
+/**
+ * statusAnnouncement は `role="status"` で読み上げる文である。完了・一部失敗・失敗の
+ * 節目だけにし、今の処理や進み具合の変化では何も読み上げない。
+ */
+export function statusAnnouncement(presentation: ScanPresentation): UiText | null {
+  const announce = t.shell.scan.announce;
+  switch (presentation.state) {
+    case "done":
+      return announce.done(presentation.issues.substituted);
+    case "partial":
+      return announce.partial(presentation.issues.failed);
+    case "failed":
+      return announce.failed;
+    default:
+      return null;
+  }
+}

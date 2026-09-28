@@ -1,4 +1,4 @@
-import { AlertTriangle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
+import { XCircle } from "lucide-react";
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useNavigate } from "react-router";
 
@@ -9,77 +9,35 @@ import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useScanNotice } from "./ScanNoticeProvider";
 import ScanProgressBar from "./ScanProgressBar";
 import { useScan } from "./ScanProvider";
-import ProcessingBreakdown from "./ProcessingBreakdown";
-import { presentScan, type ScanPresentation } from "./scanPresentation";
+import { ScanDetail, ScanIssueCounts, ScanStatusIcon } from "./ScanSummaryParts";
+import {
+  inProgressState,
+  issueCountTexts,
+  presentScan,
+  statusAnnouncement,
+  type ScanPresentation,
+} from "./scanPresentation";
 
 const POINTER_CLOSE_DELAY_MS = 100;
 
-function iconFor(state: ScanPresentation["state"]) {
-  if (state === "done") return CheckCircle2;
-  if (state === "partial-failed") return AlertTriangle;
-  if (state === "failed") return XCircle;
-  return RefreshCw;
-}
-
-function countSummary(presentation: ScanPresentation): UiText {
-  if (presentation.state === "preparing") {
-    return presentation.processing === null
-      ? t.shell.scan.checkingRemaining
-      : t.shell.scan.remaining(presentation.remaining);
-  }
-  return t.shell.scan.counts(
-    presentation.completed,
-    presentation.total,
-    presentation.failed,
+/** indicatorName は右下の本体の名前（「Open the scan status」の前）である。 */
+function indicatorName(presentation: ScanPresentation): UiText {
+  const text = t.shell.scan;
+  const issues = issueCountTexts(presentation);
+  return text.indicatorName(
+    presentation.statusText ?? text.status.starting,
+    presentation.videos === null
+      ? null
+      : text.videosDone(presentation.videos.settled, presentation.videos.total),
+    issues.length === 0 ? null : text.issueCounts(issues),
   );
 }
 
-function statusAnnouncement(presentation: ScanPresentation): UiText | null {
-  const announce = t.shell.scan.announce;
-  switch (presentation.state) {
-    case "starting":
-      return announce.starting;
-    case "unknown-total":
-      return announce.unknownTotal;
-    case "running":
-      return announce.running(presentation.total ?? 0);
-    case "preparing":
-      return announce.preparing;
-    case "done":
-      return announce.done;
-    case "partial-failed":
-      return announce.partialFailed;
-    case "failed":
-      return announce.failed;
-    case "not-run":
-    case "fetch-failed":
-      return null;
-  }
-}
-
-function indicatorLabel(presentation: ScanPresentation): UiText {
-  const label = t.shell.scan.label;
-  switch (presentation.state) {
-    case "starting":
-      return label.starting;
-    case "running":
-    case "unknown-total":
-      return presentation.progress === null
-        ? label.scanning
-        : label.scanningPercent(Math.round(presentation.progress * 100));
-    case "preparing":
-      return presentation.processing === null
-        ? label.preparing
-        : label.preparingLeft(presentation.remaining);
-    case "partial-failed":
-      return label.partialFailed;
-    case "failed":
-      return label.failed;
-    default:
-      return label.done;
-  }
-}
-
+/**
+ * ScanProgressIndicator は右下の本体と概要である（specs/024-import-progress/ui-design.md
+ * 「Floating Indicator」「Summary Popover」）。置き場所・開き方・押したときの移動先は
+ * 012 の形のまま。
+ */
 export default function ScanProgressIndicator() {
   const scan = useScan();
   const notice = useScanNotice();
@@ -95,12 +53,9 @@ export default function ScanProgressIndicator() {
   const terminalVisible =
     presentation.scan !== null &&
     notice.completionNotice?.scanId === presentation.scan.id;
-  const visible =
-    presentation.state === "starting" ||
-    presentation.state === "unknown-total" ||
-    presentation.state === "running" ||
-    presentation.state === "preparing" ||
-    terminalVisible;
+  const visible = inProgressState(presentation.state) || terminalVisible;
+  // 一部失敗と失敗は、閉じる button で閉じるか設定へ移るまで残す。
+  const persistent = presentation.state === "partial" || presentation.state === "failed";
 
   useEffect(() => {
     setOpen(pointerActive || focused);
@@ -135,17 +90,11 @@ export default function ScanProgressIndicator() {
 
   if (!visible) return null;
 
-  const Icon = iconFor(presentation.state);
-  const description =
-    presentation.state === "failed"
-      ? t.shell.scan.failedSeeSettings
-      : presentation.description;
-  const label = indicatorLabel(presentation);
   const goToDetails = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     navigatingToDetails.current = true;
     setOpen(false);
-    if (presentation.state === "failed") notice.acknowledgeTerminalScan();
+    if (persistent) notice.acknowledgeTerminalScan();
     navigate("/settings#scan-status");
   };
   const enterPointerArea = () => {
@@ -186,18 +135,30 @@ export default function ScanProgressIndicator() {
               onClick={goToDetails}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
-              aria-label={t.shell.scan.openStatus(label)}
-              className="inline-flex max-w-full items-center gap-2 rounded-md border border-border-strong bg-elevated px-3 py-2 text-sm text-fg shadow-elevated"
+              aria-label={t.shell.scan.openStatus(indicatorName(presentation))}
+              className="inline-flex max-w-full items-center gap-2 whitespace-nowrap rounded-md border border-border-strong bg-elevated px-3 py-2 text-sm text-fg shadow-elevated"
             >
-              <Icon
-                className={`size-4 shrink-0 ${presentation.state === "running" || presentation.state === "unknown-total" || presentation.state === "starting" || presentation.state === "preparing" ? "animate-spin motion-reduce:animate-none" : ""}`}
+              <ScanStatusIcon state={presentation.state} />
+              <span className="font-medium">{presentation.statusText}</span>
+              {presentation.videos !== null && (
+                <span className="tabular-nums">
+                  {t.shell.scan.videosShort(
+                    presentation.videos.settled,
+                    presentation.videos.total,
+                  )}
+                </span>
+              )}
+              <ScanIssueCounts
+                failed={presentation.issues.failed}
+                substituted={presentation.issues.substituted}
+                mostSevereOnly
+                compact
               />
-              <span className="min-w-0 break-words tabular-nums">{label}</span>
             </button>
           </PopoverTrigger>
-          {presentation.state === "failed" && (
+          {persistent && (
             <IconButton
-              label={t.shell.scan.dismissFailure}
+              label={t.shell.scan.dismissResult}
               size="sm"
               className="-ml-1 rounded-md border border-border-strong bg-elevated shadow-elevated"
               onClick={() => notice.acknowledgeTerminalScan()}
@@ -220,28 +181,27 @@ export default function ScanProgressIndicator() {
           onPointerEnter={enterPointerArea}
           onPointerLeave={leavePointerArea}
         >
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <strong>
-                {presentation.state === "preparing"
-                  ? t.shell.scan.label.preparing
-                  : label}
-              </strong>
-              <span className="tabular-nums text-fg-muted">
-                {countSummary(presentation)}
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <span className="inline-flex items-center gap-2 whitespace-nowrap font-semibold">
+                <ScanStatusIcon state={presentation.state} />
+                {presentation.statusText}
               </span>
+              <ScanIssueCounts
+                failed={presentation.issues.failed}
+                substituted={presentation.issues.substituted}
+                className="text-sm"
+              />
             </div>
             <ScanProgressBar presentation={presentation} className="h-1.5" />
-            {/* 準備中は件数を見出しと内訳に出しているので、同じ件数の説明文を重ねない。 */}
-            {presentation.state === "preparing" ? (
-              <p className="text-sm text-fg-muted">{t.shell.scan.announce.preparing}</p>
-            ) : (
-              <p className="text-sm text-fg-muted">{description}</p>
+            {presentation.progressText !== null && (
+              <p className="text-sm tabular-nums">{presentation.progressText}</p>
             )}
-            <ProcessingBreakdown
-              processing={presentation.processing}
-              className="text-xs text-fg-muted"
-            />
+            <ScanDetail presentation={presentation} />
+            {(presentation.state === "partial" ||
+              (presentation.state === "done" && presentation.issues.substituted > 0)) && (
+              <p className="text-xs text-fg-muted">{t.shell.scan.seeSettingsForList}</p>
+            )}
           </div>
         </PopoverContent>
       </PopoverRoot>
