@@ -69,7 +69,7 @@
 **Feature-specific context**:
 
 - 追加する依存は無い。
-- SQLite は、表を2つと列を1つ足す（[data-model.md](data-model.md)）。移行は `internal/store/migrations`
+- SQLite は、表を2つと列を2つ足す（[data-model.md](data-model.md)）。移行は `internal/store/migrations`
   の次の番号を使う。
 - `Scan` の形と `/api/processing` の削除は、SPA がバイナリに同梱されて一緒に更新されるので、
   旧 SPA との互換は保たない（これまでの契約変更と同じ扱い）。ただし実装単位の途中で画面が壊れない
@@ -117,7 +117,7 @@ Phase 1 のあとも判定は同じである。Complexity Tracking に載せる�
 specs/024-import-progress/
 ├── plan.md                # This file
 │                          # No spec.md — the parent Issue is the specification
-├── research.md            # 対象の集合、完了、分母、問題、代用、今の処理、API、言葉の決定
+├── research.md            # 対象の集合、完了、分母、問題、代用、今の処理、API、言葉、移行の決定
 ├── data-model.md          # scans.settled_at、scan_videos、scan_issues
 └── contracts/
     └── scan-api.md        # Scan の新しい形、問題の一覧の経路、/api/processing の削除、SSE
@@ -204,6 +204,7 @@ store の読み出しだけでは返せないからである。httpapi が store
 - 仕事の失敗: やり直しの上限までの失敗（`*_failed`）を `recordTerminalFailure` と同じ
   トランザクションで記録する。後の成功で消す（[R-6](research.md#r-6-問題は出来事ごとの行で保存し読み出しで動画ごとの1件にまとめる)）。
 - 前の走査の問題: `StartScan` で消す。
+- 移行: 今 `failed` の準備がある動画を、直近の走査の問題として入れる（[data-model.md](data-model.md) §1 の手順 2）。
 - 数え方: 問題の件数と、登録できなかったファイルを、分母と済みの本数と `status = partial` に
   反映する。
 - 番号: 問題の行を変えるたびに `scans.issues_revision` を増やす。
@@ -223,6 +224,9 @@ store の読み出しだけでは返せないからである。httpapi が store
   - 1本の動画に2つの種類が起きると、1件にまとまる。
   - 数千件の問題を、カーソルで重ならずに最後まで辿れる。
   - 問題のある動画に別の種類が加わると、件数は変わらずに `issues.revision` が増える。
+  - 解析に失敗した動画がある状態から移行すると、その動画が `probe_failed` の問題になり、
+    直近の取り込みが `partial` になる
+    （[R-11](research.md#r-11-移行は今の行から分かる結果だけを直近の走査へ移す)）。
 - `internal/httpapi` のテスト: `GET /api/scans/current/issues` について、次の応答を確かめる。
   - 並び順と `nextCursor`
   - 不正な `cursor` での 400

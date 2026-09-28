@@ -26,7 +26,10 @@ SQLite の既存の表は [internal/store/migrations](../../internal/store/migra
 - 移行は、次の順に行う。
   1. 直近の走査の `scan_videos` に、着手できる `queued`・`running` の仕事が残っている動画を入れる
      （§2 の持ち越しと同じ条件）。
-  2. 閉じた走査の `settled_at` に `finished_at` を入れる。ただし直近の走査は、1 で入れた動画が
+  2. `scan_issues` を足す移行で、直近の走査の `scan_issues` に、今 `probe_state`・`thumbnail_state`・`seek_thumbnail_state`・
+     `preview_state` が `failed` の動画を、対応する `*_failed` の種類で入れる（§3、
+     [research.md R-11](research.md#r-11-移行は今の行から分かる結果だけを直近の走査へ移す)）。
+  3. 閉じた走査の `settled_at` に `finished_at` を入れる。ただし直近の走査は、1 で入れた動画が
      あれば `null` のままにする。
 
 ## 2. `scan_videos`（新しい表）
