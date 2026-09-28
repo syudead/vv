@@ -202,9 +202,9 @@ func TestTagFolderGroup(t *testing.T) {
 			t.Errorf("タグ化の後の grouping = %+v", listing.Folder.Grouping)
 		}
 		// もうグループではないので、2回目は 409。
-		if res := f.postGroupingTag("show"); res.code != http.StatusConflict || decodeBytes[gen.Error](t, res.body).Code != gen.ErrorCodeConflict {
-			t.Errorf("2回目: status = %d: %s", res.code, res.body)
-		}
+		res = f.postGroupingTag("show")
+		assertErrorBody(t, "2回目", res.code, res.body,
+			wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonFolderNotGroup})
 	})
 
 	t.Run("シノニムで引けたタグを使う", func(t *testing.T) {
@@ -243,9 +243,10 @@ func TestTagFolderGroup(t *testing.T) {
 		f.addVideo(t, long+"/x2")
 		before := tagCount(t, f)
 		res := f.postGroupingTag(long)
-		if res.code != http.StatusBadRequest || decodeBytes[gen.Error](t, res.body).Code != gen.ErrorCodeInvalidRequest {
-			t.Fatalf("status = %d: %s", res.code, res.body)
-		}
+		assertErrorBody(t, "長すぎるフォルダ名", res.code, res.body, wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+			reason: reasonTagNameTooLong, limit: domain.TagNameMaxLength,
+		})
 		if after := tagCount(t, f); after != before {
 			t.Errorf("タグの数 = %d, want %d", after, before)
 		}
@@ -260,25 +261,25 @@ func TestTagFolderGroup(t *testing.T) {
 			t.Fatalf("ungroup: status = %d", res.code)
 		}
 		before := tagCount(t, f)
-		if res := f.postGroupingTag("pair"); res.code != http.StatusConflict {
-			t.Errorf("グループでないフォルダ: status = %d: %s", res.code, res.body)
-		}
+		res := f.postGroupingTag("pair")
+		assertErrorBody(t, "グループでないフォルダ", res.code, res.body,
+			wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonFolderNotGroup})
 		f.addVideo(t, "solo2")
 		if res := f.putGrouping("", `{"mode":"groupDirect"}`); res.code != http.StatusOK {
 			t.Fatalf("groupDirect: status = %d", res.code)
 		}
-		if res := f.postGroupingTag(""); res.code != http.StatusConflict || decodeBytes[gen.Error](t, res.body).Code != gen.ErrorCodeConflict {
-			t.Errorf("登録フォルダそのもの: status = %d: %s", res.code, res.body)
-		}
+		res = f.postGroupingTag("")
+		assertErrorBody(t, "登録フォルダそのもの", res.code, res.body,
+			wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonRootGroupNotTaggable})
 		if after := tagCount(t, f); after != before {
 			t.Errorf("タグの数 = %d, want %d", after, before)
 		}
-		if res := f.postGroupingTag("gone"); res.code != http.StatusNotFound {
-			t.Errorf("フォルダが無い: status = %d", res.code)
-		}
-		if res := f.postGroupingTag("/show"); res.code != http.StatusBadRequest {
-			t.Errorf("パスが不正: status = %d", res.code)
-		}
+		res = f.postGroupingTag("gone")
+		assertErrorBody(t, "フォルダが無い", res.code, res.body,
+			wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFolderNotFound})
+		res = f.postGroupingTag("/show")
+		assertErrorBody(t, "パスが不正", res.code, res.body,
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidFolderPath})
 	})
 }
 

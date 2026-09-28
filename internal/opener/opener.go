@@ -9,7 +9,7 @@ import (
 )
 
 // ErrUnavailable は既定アプリを起動できない環境であることを表す。
-var ErrUnavailable = errors.New("既定のアプリを起動できない環境です")
+var ErrUnavailable = errors.New("this environment cannot launch the default app")
 
 // Opener は OS の既定アプリでファイルを開く。
 type Opener struct {
@@ -81,7 +81,7 @@ func (o *Opener) Open(path string) error {
 		return ErrUnavailable
 	}
 	if err := o.start(o.command, path); err != nil {
-		return fmt.Errorf("既定のアプリを起動できません: %w", err)
+		return fmt.Errorf("cannot launch the default app: %w", err)
 	}
 	return nil
 }

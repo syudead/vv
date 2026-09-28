@@ -40,14 +40,14 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 	var stops eventSubscriptions
 	stops.StopScreen = func() {}
 	if s.Screen != nil {
-		stops.StopScreen = bus.Subscribe("画面への知らせ", s.Screen)
+		stops.StopScreen = bus.Subscribe("screen notifications", s.Screen)
 	}
 
 	var stopWorkers []func()
 	for kind, worker := range s.Workers {
 		// 仕事が積まれた段階のワーカーを起こす。ワーカーは待ち行列を一定間隔で
 		// 問い合わせない。
-		stopWorkers = append(stopWorkers, eventbus.On(bus, "ワーカーの起床 ("+string(kind)+")",
+		stopWorkers = append(stopWorkers, eventbus.On(bus, "worker wake-up ("+string(kind)+")",
 			func(event domain.JobsQueued) {
 				if slices.Contains(event.Kinds, kind) {
 					worker.Wake()
@@ -57,7 +57,7 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 	// サムネイルは解析が終わるまで取り出されない（抽出位置が動画の長さで
 	// 決まる）。解析の成否が決まったら、待っていたサムネイルのワーカーを起こす。
 	if thumbnail, ok := s.Workers[domain.JobThumbnail]; ok {
-		stopWorkers = append(stopWorkers, eventbus.On(bus, "解析の後のサムネイル",
+		stopWorkers = append(stopWorkers, eventbus.On(bus, "thumbnail after probe",
 			func(event domain.VideoIngestChanged) {
 				if event.Stage == domain.JobProbe {
 					thumbnail.Wake()
@@ -70,7 +70,7 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 	// 代表サムネイルの仕事が減る）に、待っていたシーク用のワーカーを起こす。
 	// 条件は取り出しの時点だけで効き、走っているシーク用の生成は止めない。
 	if seek, ok := s.Workers[domain.JobSeekThumbnail]; ok {
-		stopWorkers = append(stopWorkers, eventbus.On(bus, "代表サムネイルの後のシーク用サムネイル",
+		stopWorkers = append(stopWorkers, eventbus.On(bus, "seek thumbnail after thumbnail",
 			func(event domain.VideoIngestChanged) {
 				switch event.Stage {
 				case domain.JobProbe, domain.JobThumbnail, "":
@@ -85,7 +85,7 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 	}
 
 	if s.ReleaseArtifacts != nil {
-		eventbus.On(bus, "生成物の削除", s.ReleaseArtifacts)
+		eventbus.On(bus, "artifact release", s.ReleaseArtifacts)
 	}
 	return stops
 }

@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MediaFolder } from "../api/client";
+import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import AppShell from "../shell/AppShell";
 import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
 import { ScanProvider } from "../shell/ScanProvider";
@@ -71,13 +72,15 @@ describe("SettingsPage", () => {
 
     renderPage();
 
-    expect(await screen.findByRole("heading", { level: 1, name: "設定" })).toBeDefined();
-    expect(await screen.findByText("メディアフォルダが設定されていません")).toBeDefined();
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Settings" }),
+    ).toBeDefined();
+    expect(await screen.findByText("No media folders yet")).toBeDefined();
     expect(screen.queryByRole("textbox")).toBeNull();
     expect(screen.queryByRole("button", { name: /保存/ })).toBeNull();
     expect(
       screen
-        .getByRole("button", { name: "メディアフォルダを設定してください" })
+        .getByRole("button", { name: "Add a media folder in Settings first" })
         .hasAttribute("disabled"),
     ).toBe(true);
   });
@@ -128,11 +131,11 @@ describe("SettingsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    await user.click(await screen.findByRole("button", { name: "フォルダを追加" }));
-    const dialog = await screen.findByRole("dialog", { name: "メディアフォルダを追加" });
+    await user.click(await screen.findByRole("button", { name: "Add folder" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add media folder" });
     expect(
       within(dialog)
-        .getByRole("button", { name: "このフォルダを追加" })
+        .getByRole("button", { name: "Add this folder" })
         .hasAttribute("disabled"),
     ).toBe(true);
     const root = await within(dialog).findByRole("button", { name: "/" });
@@ -142,14 +145,14 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(document.activeElement).toBe(srv));
     expect(
       within(dialog)
-        .getByRole("button", { name: "このフォルダを追加" })
+        .getByRole("button", { name: "Add this folder" })
         .hasAttribute("disabled"),
     ).toBe(false);
     await user.keyboard("{ArrowRight}");
     const media = await within(dialog).findByRole("button", { name: "media" });
     await waitFor(() => expect(document.activeElement).toBe(media));
     await user.click(media);
-    await user.click(within(dialog).getByRole("button", { name: "このフォルダを追加" }));
+    await user.click(within(dialog).getByRole("button", { name: "Add this folder" }));
 
     expect(await screen.findByText("/srv/media")).toBeDefined();
     const createCall = fetchMock.mock.calls.find(
@@ -197,17 +200,21 @@ describe("SettingsPage", () => {
     renderPage();
 
     expect(await screen.findByText("/very/long/日本語/動画保管場所")).toBeDefined();
-    await user.click(screen.getAllByRole("button", { name: "フォルダを変更" })[0]!);
-    let dialog = await screen.findByRole("dialog", { name: "メディアフォルダを変更" });
+    await user.click(screen.getAllByRole("button", { name: "Change folder" })[0]!);
+    let dialog = await screen.findByRole("dialog", { name: "Change media folder" });
     await user.click(await within(dialog).findByRole("button", { name: "replacement" }));
-    await user.click(within(dialog).getByRole("button", { name: "このフォルダに変更" }));
-    dialog = await screen.findByRole("dialog", { name: "フォルダの変更を確認" });
-    expect(within(dialog).getByText(/再生位置と視聴済み状態は残ります/)).toBeDefined();
-    const back = within(dialog).getByRole("button", { name: "戻る" });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Change to this folder" }),
+    );
+    dialog = await screen.findByRole("dialog", { name: "Change this folder?" });
+    expect(
+      within(dialog).getByText(/Playback positions and watched status are kept/),
+    ).toBeDefined();
+    const back = within(dialog).getByRole("button", { name: "Back" });
     await waitFor(() => expect(document.activeElement).toBe(back));
     await user.click(back);
     expect(
-      await screen.findByRole("dialog", { name: "メディアフォルダを変更" }),
+      await screen.findByRole("dialog", { name: "Change media folder" }),
     ).toBeDefined();
     expect(
       Array.from(document.body.children).some((element) => element.hasAttribute("inert")),
@@ -215,12 +222,12 @@ describe("SettingsPage", () => {
     await user.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    await user.click(screen.getAllByRole("button", { name: "フォルダを削除" })[1]!);
-    dialog = await screen.findByRole("dialog", { name: "フォルダの削除を確認" });
+    await user.click(screen.getAllByRole("button", { name: "Remove folder" })[1]!);
+    dialog = await screen.findByRole("dialog", { name: "Remove this folder?" });
     expect(
-      within(dialog).getByText(/別の登録フォルダにもある動画は残ります/),
+      within(dialog).getByText(/Videos that are also in another media folder stay/),
     ).toBeDefined();
-    const cancel = within(dialog).getByRole("button", { name: "キャンセル" });
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
     await waitFor(() => expect(document.activeElement).toBe(cancel));
     await user.click(cancel);
     expect(screen.queryByRole("dialog")).toBeNull();
@@ -243,13 +250,15 @@ describe("SettingsPage", () => {
     const user = userEvent.setup();
     renderPage();
 
-    expect((await screen.findByRole("alert")).textContent).toContain("DBを読めません");
-    expect(screen.queryByText("メディアフォルダが設定されていません")).toBeNull();
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Something went wrong on the server.",
+    );
+    expect(screen.queryByText("No media folders yet")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "フォルダを追加" }).hasAttribute("disabled"),
+      screen.getByRole("button", { name: "Add folder" }).hasAttribute("disabled"),
     ).toBe(true);
-    await user.click(screen.getByRole("button", { name: "再試行" }));
-    expect(await screen.findByText("メディアフォルダが設定されていません")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("No media folders yet")).toBeDefined();
   });
 
   it("削除は対象id/versionだけへ送り、残る行へfocusを移す", async () => {
@@ -271,9 +280,9 @@ describe("SettingsPage", () => {
     renderPage();
 
     await screen.findByText("/media/two");
-    await user.click(screen.getAllByRole("button", { name: "フォルダを削除" })[0]!);
+    await user.click(screen.getAllByRole("button", { name: "Remove folder" })[0]!);
     await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "削除する" }),
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }),
     );
 
     await waitFor(() => expect(screen.queryByText("/media/one")).toBeNull());
@@ -287,7 +296,7 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(
         (document.activeElement as HTMLElement | null)?.getAttribute("aria-label"),
-      ).toBe("フォルダを変更"),
+      ).toBe("Change folder"),
     );
   });
 
@@ -311,15 +320,15 @@ describe("SettingsPage", () => {
     renderPage();
 
     await screen.findByText("/media/original");
-    await user.click(screen.getByRole("button", { name: "フォルダを削除" }));
+    await user.click(screen.getByRole("button", { name: "Remove folder" }));
     await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "削除する" }),
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }),
     );
 
     expect(await screen.findByText("/media/concurrent")).toBeDefined();
     expect(screen.queryByText("/media/original")).toBeNull();
     expect(
-      screen.getByRole("button", { name: "ライブラリを更新" }).hasAttribute("disabled"),
+      screen.getByRole("button", { name: "Refresh library" }).hasAttribute("disabled"),
     ).toBe(false);
   });
 
@@ -348,13 +357,13 @@ describe("SettingsPage", () => {
     renderPage();
 
     await screen.findByText("/media/original");
-    await user.click(screen.getByRole("button", { name: "フォルダを削除" }));
+    await user.click(screen.getByRole("button", { name: "Remove folder" }));
     await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "削除する" }),
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }),
     );
 
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "一覧を再取得できません",
+      "Something went wrong on the server.",
     );
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByText("/media/original")).toBeNull();
@@ -388,9 +397,9 @@ describe("SettingsPage", () => {
     renderPage();
 
     await screen.findByText("/media/remaining");
-    await user.click(screen.getAllByRole("button", { name: "フォルダを削除" })[0]!);
+    await user.click(screen.getAllByRole("button", { name: "Remove folder" })[0]!);
     await user.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: "削除する" }),
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Remove" }),
     );
 
     await waitFor(() => expect(screen.queryByText("/media/stale")).toBeNull());
@@ -400,7 +409,187 @@ describe("SettingsPage", () => {
     await waitFor(() =>
       expect(
         (document.activeElement as HTMLElement | null)?.getAttribute("aria-label"),
-      ).toBe("フォルダを変更"),
+      ).toBe("Change folder"),
     );
+  });
+  it("存在しないフォルダを開くと、API エラーの英語の説明を出す", async () => {
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url === "/api/media-folders") return Promise.resolve(json([]));
+      if (url === "/api/directories") {
+        return Promise.resolve(
+          json(
+            {
+              code: "not_found",
+              reason: "directory_not_found",
+              message: "Directory not found.",
+            },
+            404,
+          ),
+        );
+      }
+      return Promise.resolve(json({}, 404));
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Add folder" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add media folder" });
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "That folder wasn't found.",
+    );
+    expect(within(dialog).getByRole("button", { name: "Go to the top" })).toBeDefined();
+  });
+
+  it("重なるメディアフォルダの追加は、API エラーの英語の説明を出す", async () => {
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/media-folders" && init?.method === "POST") {
+        return Promise.resolve(
+          json(
+            {
+              code: "overlapping_media_directories",
+              message: "Media folders overlap.",
+            },
+            409,
+          ),
+        );
+      }
+      if (url === "/api/media-folders") return Promise.resolve(json([]));
+      if (url.startsWith("/api/directories")) {
+        return Promise.resolve(
+          json({ currentPath: "/srv", parentPath: "/", directories: [] }),
+        );
+      }
+      return Promise.resolve(json({}, 404));
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Add folder" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add media folder" });
+    const add = await within(dialog).findByRole("button", { name: "Add this folder" });
+    await waitFor(() => expect(add.hasAttribute("disabled")).toBe(false));
+    await user.click(add);
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "That folder overlaps a media folder that's already added.",
+    );
+  });
+
+  it("別の操作でメディアフォルダが変わったら、reason の英語の説明を出す", async () => {
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      if (url === "/api/media-folders" && init?.method === "POST") {
+        return Promise.resolve(
+          json(
+            {
+              code: "conflict",
+              reason: "media_folders_changed",
+              message: "Media folders changed.",
+            },
+            409,
+          ),
+        );
+      }
+      if (url === "/api/media-folders") return Promise.resolve(json([]));
+      if (url.startsWith("/api/directories")) {
+        return Promise.resolve(
+          json({ currentPath: "/srv", parentPath: "/", directories: [] }),
+        );
+      }
+      return Promise.resolve(json({}, 404));
+    });
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Add folder" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add media folder" });
+    const add = await within(dialog).findByRole("button", { name: "Add this folder" });
+    await waitFor(() => expect(add.hasAttribute("disabled")).toBe(false));
+    await user.click(add);
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(
+      "The media folders were changed elsewhere. Reload and try again.",
+    );
+  });
+
+  describe("疑似ロケール", () => {
+    const paths = ["/srv/media", "/very/long/日本語/動画保管場所", "/other", "/", "srv"];
+
+    function serve(folders: MediaFolder[], listFails = false) {
+      fetchMock.mockImplementation((input) => {
+        const url = String(input);
+        if (url === "/api/media-folders") {
+          return Promise.resolve(
+            listFails
+              ? json({ code: "internal", message: "Internal error." }, 500)
+              : json(folders),
+          );
+        }
+        if (url === "/api/directories") {
+          return Promise.resolve(
+            json({ parentPath: null, directories: [{ name: "srv", path: "/srv" }] }),
+          );
+        }
+        if (url.startsWith("/api/directories")) {
+          return Promise.resolve(
+            json({ currentPath: "/other", parentPath: "/", directories: [] }),
+          );
+        }
+        return Promise.resolve(json({}, 404));
+      });
+    }
+
+    it("空の状態と上部の枠・サイドバーはカタログの文言だけを描く", async () => {
+      enablePseudoLocale();
+      serve([]);
+      const { container } = renderPage();
+      await screen.findByText(/No media folders yet/);
+      expectCatalogTextOnly(container, paths);
+    });
+
+    it("一覧の取得の失敗はカタログの文言だけを描く", async () => {
+      enablePseudoLocale();
+      serve([], true);
+      const { container } = renderPage();
+      await screen.findByText(/Couldn't load the media folders/);
+      expectCatalogTextOnly(container, paths);
+    });
+
+    it("一覧・フォルダ選択・変更の確認・削除の確認はカタログの文言だけを描く", async () => {
+      enablePseudoLocale();
+      serve([folder(1, "/srv/media"), folder(2, "/very/long/日本語/動画保管場所")]);
+      const user = userEvent.setup();
+      const { container } = renderPage();
+      await screen.findByText("/srv/media");
+      expectCatalogTextOnly(container, paths);
+
+      await user.click(screen.getByRole("button", { name: /Add folder/ }));
+      const picker = await screen.findByRole("dialog");
+      await within(picker).findByRole("button", { name: "srv" });
+      expectCatalogTextOnly(document.body, paths);
+      await user.click(within(picker).getByRole("button", { name: /Cancel/ }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+      await user.click(screen.getAllByRole("button", { name: /Change folder/ })[1]!);
+      const change = await screen.findByRole("dialog");
+      const submit = await within(change).findByRole("button", {
+        name: /Change to this folder/,
+      });
+      await waitFor(() => expect(submit.hasAttribute("disabled")).toBe(false));
+      await user.click(submit);
+      await within(screen.getByRole("dialog")).findByText(/Before/);
+      expectCatalogTextOnly(document.body, paths);
+      await user.click(
+        within(screen.getByRole("dialog")).getByRole("button", { name: /Back/ }),
+      );
+      await user.click(
+        within(await screen.findByRole("dialog")).getByRole("button", { name: /Cancel/ }),
+      );
+      await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+      await user.click(screen.getAllByRole("button", { name: /Remove folder/ })[0]!);
+      await screen.findByRole("dialog");
+      expectCatalogTextOnly(document.body, paths);
+    });
   });
 });

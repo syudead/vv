@@ -20,7 +20,7 @@ const (
 )
 
 // errInvalidInitSegment は出力の先頭が期待した形（ftyp などに続く moov）でないことを表す。
-var errInvalidInitSegment = errors.New("ライブ変換の出力の先頭を読めません")
+var errInvalidInitSegment = errors.New("cannot read the start of the live transcode output")
 
 // readInitSegment は r から moov までの box を読み、そのまま返す。moov より前に moof が
 // 来たとき、または box の大きさが読めないときは errInvalidInitSegment を返す。moov を
@@ -48,10 +48,10 @@ func readInitSegment(r io.Reader) ([]byte, error) {
 			headerSize += 8
 		}
 		if size < headerSize || size > maxInitSegmentSize || uint64(len(segment))+size > maxInitSegmentSize {
-			return nil, fmt.Errorf("%w: box %q の大きさ %d", errInvalidInitSegment, boxType, size)
+			return nil, fmt.Errorf("%w: box %q has size %d", errInvalidInitSegment, boxType, size)
 		}
 		if boxType == "moof" || boxType == "mdat" {
-			return nil, fmt.Errorf("%w: moov より前に %s がある", errInvalidInitSegment, boxType)
+			return nil, fmt.Errorf("%w: %s appears before moov", errInvalidInitSegment, boxType)
 		}
 		body := make([]byte, size-headerSize)
 		if _, err := io.ReadFull(r, body); err != nil {
@@ -84,7 +84,7 @@ func parseBoxes(data []byte) ([]mp4Box, error) {
 	var boxes []mp4Box
 	for len(data) > 0 {
 		if len(data) < boxHeaderSize {
-			return nil, fmt.Errorf("%w: box の header が途中で切れている", errInvalidInitSegment)
+			return nil, fmt.Errorf("%w: box header is truncated", errInvalidInitSegment)
 		}
 		size := uint64(binary.BigEndian.Uint32(data[:4]))
 		boxType := string(data[4:8])
@@ -94,13 +94,13 @@ func parseBoxes(data []byte) ([]mp4Box, error) {
 			size = uint64(len(data))
 		case 1:
 			if len(data) < 16 {
-				return nil, fmt.Errorf("%w: box %q の header が途中で切れている", errInvalidInitSegment, boxType)
+				return nil, fmt.Errorf("%w: box %q header is truncated", errInvalidInitSegment, boxType)
 			}
 			size = binary.BigEndian.Uint64(data[8:16])
 			headerSize = 16
 		}
 		if size < headerSize || size > uint64(len(data)) {
-			return nil, fmt.Errorf("%w: box %q の大きさ %d", errInvalidInitSegment, boxType, size)
+			return nil, fmt.Errorf("%w: box %q has size %d", errInvalidInitSegment, boxType, size)
 		}
 		box := mp4Box{boxType: boxType, payload: data[headerSize:size]}
 		if boxType == "moov" || boxType == "trak" || boxType == "edts" {
@@ -129,7 +129,7 @@ func serializeBoxes(boxes []mp4Box) ([]byte, error) {
 		}
 		size := uint64(boxHeaderSize) + uint64(len(payload))
 		if size > math.MaxUint32 {
-			return nil, fmt.Errorf("%w: box %q が大きすぎる", errInvalidInitSegment, box.boxType)
+			return nil, fmt.Errorf("%w: box %q is too large", errInvalidInitSegment, box.boxType)
 		}
 		out = binary.BigEndian.AppendUint32(out, uint32(size))
 		out = append(out, box.boxType...)
@@ -156,7 +156,7 @@ func (e editEntry) empty() bool { return e.mediaTime == -1 }
 
 func parseEditList(payload []byte) (editList, error) {
 	if len(payload) < 8 {
-		return editList{}, fmt.Errorf("%w: elst が短い", errInvalidInitSegment)
+		return editList{}, fmt.Errorf("%w: elst is too short", errInvalidInitSegment)
 	}
 	list := editList{version: payload[0]}
 	copy(list.flags[:], payload[1:4])
@@ -165,11 +165,11 @@ func parseEditList(payload []byte) (editList, error) {
 	if list.version == 1 {
 		entrySize = 20
 	} else if list.version != 0 {
-		return editList{}, fmt.Errorf("%w: elst の版 %d", errInvalidInitSegment, list.version)
+		return editList{}, fmt.Errorf("%w: elst version %d", errInvalidInitSegment, list.version)
 	}
 	data := payload[8:]
 	if uint64(len(data)) < uint64(count)*uint64(entrySize) {
-		return editList{}, fmt.Errorf("%w: elst の entry が足りない", errInvalidInitSegment)
+		return editList{}, fmt.Errorf("%w: elst has too few entries", errInvalidInitSegment)
 	}
 	for range count {
 		var entry editEntry
@@ -247,7 +247,7 @@ func rebaseEditLists(segment []byte) ([]byte, int64, error) {
 		}
 	}
 	if moovIndex < 0 {
-		return nil, 0, fmt.Errorf("%w: moov が無い", errInvalidInitSegment)
+		return nil, 0, fmt.Errorf("%w: no moov", errInvalidInitSegment)
 	}
 	moov := &boxes[moovIndex]
 
@@ -284,10 +284,10 @@ func rebaseEditLists(segment []byte) ([]byte, int64, error) {
 		}
 	}
 	if timescale == 0 {
-		return nil, 0, fmt.Errorf("%w: mvhd の timescale が無い", errInvalidInitSegment)
+		return nil, 0, fmt.Errorf("%w: no mvhd timescale", errInvalidInitSegment)
 	}
 	if len(tracks) == 0 {
-		return nil, 0, fmt.Errorf("%w: track が無い", errInvalidInitSegment)
+		return nil, 0, fmt.Errorf("%w: no track", errInvalidInitSegment)
 	}
 
 	earliest := uint64(math.MaxUint64)
@@ -322,7 +322,7 @@ func movieTimescale(payload []byte) (uint64, error) {
 		offset = 20
 	}
 	if len(payload) < offset+4 {
-		return 0, fmt.Errorf("%w: mvhd が短い", errInvalidInitSegment)
+		return 0, fmt.Errorf("%w: mvhd is too short", errInvalidInitSegment)
 	}
 	return uint64(binary.BigEndian.Uint32(payload[offset : offset+4])), nil
 }

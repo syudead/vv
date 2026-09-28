@@ -33,7 +33,7 @@ func (s *AuthStore) Account(ctx context.Context) (domain.Account, error) {
 		return domain.Account{}, domain.ErrAccountNotConfigured
 	}
 	if err != nil {
-		return domain.Account{}, fmt.Errorf("アカウントを読み出せません: %w", err)
+		return domain.Account{}, fmt.Errorf("cannot read the account: %w", err)
 	}
 	return account, nil
 }
@@ -48,7 +48,7 @@ func (s *AuthStore) Setup(
 ) error {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("初回設定を始められません: %w", err)
+		return fmt.Errorf("cannot start the initial setup: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -58,11 +58,11 @@ func (s *AuthStore) Setup(
 		on conflict (id) do nothing`,
 		accountID, username, passwordHash, now.Unix())
 	if err != nil {
-		return fmt.Errorf("アカウントを保存できません: %w", err)
+		return fmt.Errorf("cannot save the account: %w", err)
 	}
 	inserted, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("アカウントを保存できません: %w", err)
+		return fmt.Errorf("cannot save the account: %w", err)
 	}
 	if inserted == 0 {
 		return domain.ErrAccountAlreadyConfigured
@@ -72,7 +72,7 @@ func (s *AuthStore) Setup(
 		return err
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("初回設定を確定できません: %w", err)
+		return fmt.Errorf("cannot commit the initial setup: %w", err)
 	}
 	return nil
 }
@@ -97,7 +97,7 @@ func (s *AuthStore) ChangePassword(ctx context.Context, passwordHash string, now
 func (s *AuthStore) changeCredentials(ctx context.Context, column, value string, now time.Time) error {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("アカウントを書き換えられません: %w", err)
+		return fmt.Errorf("cannot update the account: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -106,21 +106,21 @@ func (s *AuthStore) changeCredentials(ctx context.Context, column, value string,
 		`update account set `+column+` = ?, version = version + 1, updated_at = ? where id = ?`,
 		value, now.Unix(), accountID)
 	if err != nil {
-		return fmt.Errorf("アカウントを書き換えられません: %w", err)
+		return fmt.Errorf("cannot update the account: %w", err)
 	}
 	updated, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("アカウントを書き換えられません: %w", err)
+		return fmt.Errorf("cannot update the account: %w", err)
 	}
 	if updated == 0 {
 		return domain.ErrAccountNotConfigured
 	}
 
 	if _, err := tx.ExecContext(ctx, `delete from sessions`); err != nil {
-		return fmt.Errorf("セッションを消せません: %w", err)
+		return fmt.Errorf("cannot delete sessions: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("アカウントの書き換えを確定できません: %w", err)
+		return fmt.Errorf("cannot commit the account update: %w", err)
 	}
 	return nil
 }
@@ -136,24 +136,24 @@ func (s *AuthStore) AddSession(
 ) error {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("セッションを保存できません: %w", err)
+		return fmt.Errorf("cannot save the session: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `delete from sessions where expires_at <= ?`, now.Unix()); err != nil {
-		return fmt.Errorf("期限切れのセッションを消せません: %w", err)
+		return fmt.Errorf("cannot delete expired sessions: %w", err)
 	}
 	if replaceToken != "" {
 		if _, err := tx.ExecContext(ctx,
 			`delete from sessions where token_hash = ?`, sessionTokenHash(replaceToken)); err != nil {
-			return fmt.Errorf("古いセッションを消せません: %w", err)
+			return fmt.Errorf("cannot delete the old session: %w", err)
 		}
 	}
 	if err := insertSession(ctx, tx, sessionToken, accountVersion, now); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("セッションの保存を確定できません: %w", err)
+		return fmt.Errorf("cannot commit the session: %w", err)
 	}
 	return nil
 }
@@ -167,7 +167,7 @@ func insertSession(ctx context.Context, tx *sql.Tx, sessionToken string, account
 		insert into sessions (token_hash, account_version, created_at, expires_at)
 		values (?, ?, ?, ?)`,
 		sessionTokenHash(sessionToken), accountVersion, created, expires); err != nil {
-		return fmt.Errorf("セッションを保存できません: %w", err)
+		return fmt.Errorf("cannot save the session: %w", err)
 	}
 	return nil
 }
@@ -197,7 +197,7 @@ func (s *AuthStore) Session(ctx context.Context, sessionToken string, now time.T
 		return time.Time{}, false, nil
 	}
 	if err != nil {
-		return time.Time{}, false, fmt.Errorf("セッションを確かめられません: %w", err)
+		return time.Time{}, false, fmt.Errorf("cannot check the session: %w", err)
 	}
 
 	if expiresAt <= now.Unix() {
@@ -217,7 +217,7 @@ func (s *AuthStore) Session(ctx context.Context, sessionToken string, now time.T
 func (s *AuthStore) DeleteSession(ctx context.Context, sessionToken string) error {
 	if _, err := s.sql.ExecContext(ctx,
 		`delete from sessions where token_hash = ?`, sessionTokenHash(sessionToken)); err != nil {
-		return fmt.Errorf("セッションを消せません: %w", err)
+		return fmt.Errorf("cannot delete sessions: %w", err)
 	}
 	return nil
 }
@@ -227,11 +227,11 @@ func (s *AuthStore) DeleteSession(ctx context.Context, sessionToken string) erro
 func (s *AuthStore) DeleteExpiredSessions(ctx context.Context, now time.Time) (int64, error) {
 	res, err := s.sql.ExecContext(ctx, `delete from sessions where expires_at <= ?`, now.Unix())
 	if err != nil {
-		return 0, fmt.Errorf("期限切れのセッションを消せません: %w", err)
+		return 0, fmt.Errorf("cannot delete expired sessions: %w", err)
 	}
 	deleted, err := res.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("期限切れのセッションを消せません: %w", err)
+		return 0, fmt.Errorf("cannot delete expired sessions: %w", err)
 	}
 	return deleted, nil
 }

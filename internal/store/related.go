@@ -20,7 +20,7 @@ func (s *LibraryStore) DirectVideoPaths(ctx context.Context, audience domain.Aud
 	//nolint:gosec // 組み立てるのは定型の条件句だけで、値はすべて引数で渡す。
 	rows, err := s.db.sql.QueryContext(ctx, cte+` select video_id, path from chosen`, args...)
 	if err != nil {
-		return nil, fmt.Errorf("同じフォルダの動画を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read videos in the same folder: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -28,12 +28,12 @@ func (s *LibraryStore) DirectVideoPaths(ctx context.Context, audience domain.Aud
 	for rows.Next() {
 		var item domain.RelatedSibling
 		if err := rows.Scan(&item.VideoID, &item.Path); err != nil {
-			return nil, fmt.Errorf("同じフォルダの動画を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read videos in the same folder: %w", err)
 		}
 		siblings = append(siblings, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("同じフォルダの動画を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read videos in the same folder: %w", err)
 	}
 	return siblings, nil
 }
@@ -60,7 +60,7 @@ func (s *LibraryStore) VideosAddedNear(ctx context.Context, audience domain.Audi
 	for _, query := range []string{before, after} {
 		side, err := s.relatedNeighbors(ctx, query, at, at, id, limit)
 		if err != nil {
-			return nil, fmt.Errorf("追加日時の近い動画を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read videos added around the same time: %w", err)
 		}
 		neighbors = append(neighbors, side...)
 	}
@@ -104,7 +104,7 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 	rows, err := s.db.sql.QueryContext(ctx, `select `+videoColumns(audience)+` from videos where videos.id in (`+
 		placeholders+`) and `+visibleVideoCondition("videos", audience), args...)
 	if err != nil {
-		return nil, fmt.Errorf("関連動画を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read related videos: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -112,12 +112,12 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 	for rows.Next() {
 		video, err := scanVideo(rows)
 		if err != nil {
-			return nil, fmt.Errorf("関連動画を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read related videos: %w", err)
 		}
 		byID[video.ID] = video
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("関連動画を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read related videos: %w", err)
 	}
 
 	videos := make([]domain.Video, 0, len(ids))
@@ -141,7 +141,7 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience, id int64) (domain.VideoGroup, bool, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return domain.VideoGroup{}, false, fmt.Errorf("動画のグループの読み取りを始められません: %w", err)
+		return domain.VideoGroup{}, false, fmt.Errorf("cannot start reading the video's group: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -151,7 +151,7 @@ func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience,
 		return domain.VideoGroup{}, false, nil
 	}
 	if err != nil {
-		return domain.VideoGroup{}, false, fmt.Errorf("動画のグループを読み出せません: %w", err)
+		return domain.VideoGroup{}, false, fmt.Errorf("cannot read the video's group: %w", err)
 	}
 	groups, err := loadGroups(ctx, tx, audience, []int64{groupID})
 	if err != nil {
@@ -162,7 +162,7 @@ func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience,
 		return domain.VideoGroup{}, false, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.VideoGroup{}, false, fmt.Errorf("動画のグループの読み取りを終えられません: %w", err)
+		return domain.VideoGroup{}, false, fmt.Errorf("cannot finish reading the video's group: %w", err)
 	}
 
 	group, ok := groups[groupID]
@@ -175,7 +175,7 @@ func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience,
 	}
 	folder, located := domain.LocateFolder(roots, group.Path)
 	if !located {
-		return domain.VideoGroup{}, false, fmt.Errorf("グループのフォルダが登録フォルダの下にありません: %s", group.Path)
+		return domain.VideoGroup{}, false, fmt.Errorf("the group folder is not under a media folder: %s", group.Path)
 	}
 	out.Folder = folder
 	return out, true, nil

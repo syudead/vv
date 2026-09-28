@@ -1,4 +1,5 @@
 import type { Processing, Scan } from "../api/client";
+import { scanErrorText, t, type UiText } from "../i18n";
 import { processingRemaining, type ScanContextValue } from "./ScanProvider";
 
 export type ScanPresentationState =
@@ -16,7 +17,7 @@ export type ScanPresentationState =
 export interface ScanPresentation {
   state: ScanPresentationState;
   scan: Scan | null;
-  description: string;
+  description: UiText;
   progress: number | null;
   determinate: boolean;
   completed: number;
@@ -24,7 +25,7 @@ export interface ScanPresentation {
   failed: number;
   startedAt?: string;
   finishedAt?: string;
-  error: string | null;
+  error: UiText | null;
   refreshing: boolean;
   /** 段階ごとの残り。未取得なら null。 */
   processing: Processing | null;
@@ -45,6 +46,38 @@ function stateFor(scan: Scan, processing: Processing | null): ScanPresentationSt
   return scan.failed > 0 ? "partial-failed" : "done";
 }
 
+/**
+ * describe は状態の一行の説明である。取り込みの失敗は `Scan.error`（自由文）を出さず、
+ * `errorCode` と `errorPath` から作る（specs/023-english-i18n/research.md R-6）。
+ */
+function describe(
+  state: ScanPresentationState,
+  scan: Scan,
+  processing: Processing | null,
+  remaining: number,
+): UiText {
+  const text = t.shell.scan;
+  switch (state) {
+    case "unknown-total":
+      return text.scanningUnknown;
+    case "running":
+      return text.scanningCount(scan.completed, scan.total);
+    case "preparing":
+      return processing === null
+        ? text.checkingPreparation
+        : text.preparingCount(remaining);
+    case "partial-failed":
+      return text.partialFailed(scan.failed);
+    case "failed":
+      // コードの無い過去の失敗は、一般的な概要だけにする。
+      return scan.errorCode === undefined
+        ? scanErrorText(scan)
+        : text.failed(scanErrorText(scan));
+    default:
+      return scan.completed > 0 ? text.lastScanned(scan.completed) : text.noChanges;
+  }
+}
+
 /** Converts the scan context into the shared state model used by shell views. */
 export function presentScan(value: ScanContextValue): ScanPresentation {
   const { scan, processing } = value;
@@ -53,7 +86,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
     return {
       state: "starting",
       scan,
-      description: "取り込みを開始しています…",
+      description: t.shell.scan.starting,
       progress: null,
       determinate: false,
       completed: scan?.completed ?? 0,
@@ -72,7 +105,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
     return {
       state: value.error === null ? "not-run" : "fetch-failed",
       scan: null,
-      description: value.error ?? "まだ取り込んでいません",
+      description: value.error ?? t.shell.scan.notRun,
       progress: null,
       determinate: false,
       completed: 0,
@@ -88,22 +121,7 @@ export function presentScan(value: ScanContextValue): ScanPresentation {
   const state = stateFor(scan, processing);
   // 準備の段階は全体の件数が分からないので、割合を出さない。
   const progress = state === "preparing" ? null : progressFor(scan);
-  const description =
-    state === "unknown-total"
-      ? "取り込み中…"
-      : state === "running"
-        ? `取り込み中 ${String(scan.completed)} / ${String(scan.total)}`
-        : state === "preparing"
-          ? processing === null
-            ? "取り込んだ動画の準備の残りを確認しています"
-            : `取り込んだ動画を準備中（残り ${String(remaining)} 件）`
-          : state === "partial-failed"
-            ? `一部失敗（${String(scan.failed)} 件）`
-            : state === "failed"
-              ? `取り込みに失敗しました: ${scan.error ?? "理由は記録されていません"}`
-              : scan.completed > 0
-                ? `前回 ${String(scan.completed)} 件を取り込みました`
-                : "前回の取り込みで変化はありませんでした";
+  const description = describe(state, scan, processing, remaining);
 
   return {
     state,

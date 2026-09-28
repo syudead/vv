@@ -10,6 +10,7 @@ import {
   taggedMessage,
   tagFolderGroup,
 } from "../api/folderGrouping";
+import { t } from "../i18n";
 import Button from "../ui/Button";
 import {
   MenuContent,
@@ -23,11 +24,8 @@ import {
 } from "../ui/Menu";
 import { useToast } from "../ui/Toast";
 
-const modes: { value: FolderGroupingMode; label: string }[] = [
-  { value: "auto", label: "自動" },
-  { value: "ungroup", label: "まとめを解除" },
-  { value: "groupDirect", label: "直下をまとめる" },
-];
+/** modes はまとめ方の選択肢の並びである。表示名は描画のたびにカタログから引く。 */
+const modes: readonly FolderGroupingMode[] = ["auto", "ungroup", "groupDirect"];
 
 /**
  * FolderGroupingMenu はフォルダ画面の「動画 N」の見出しの行の右端に置く、そのフォルダの
@@ -61,7 +59,7 @@ export default function FolderGroupingMenu({
     const { message, conflict } = groupingFailure(failure, {
       name,
       tagging,
-      notFoundMessage: "このフォルダは見つかりません",
+      notFoundMessage: t.folders.notFound.title,
     });
     toast(message);
     if (conflict) onConflict();
@@ -104,10 +102,8 @@ export default function FolderGroupingMenu({
           aria-busy={busy}
           aria-label={
             busy
-              ? "ライブラリでのまとめ方を変更中"
-              : `ライブラリでのまとめ方: ${
-                  grouping.grouped ? "1 件にまとめて表示" : "1 本ずつ表示"
-                }。メニューを開く`
+              ? t.folders.grouping.changing
+              : t.folders.grouping.trigger(grouping.grouped)
           }
           // 見出しと同じ弱さにし、見出しの行の高さを変えない（ui-design.md「Visual review criteria」）。
           className="-my-2 -mr-2 gap-1.5! text-fg-muted!"
@@ -117,31 +113,31 @@ export default function FolderGroupingMenu({
             className={busy ? "animate-spin motion-reduce:animate-none" : undefined}
           />
           {busy
-            ? "変更中…"
+            ? t.folders.grouping.changingShort
             : grouping.grouped
-              ? "ライブラリで 1 件"
-              : "ライブラリで 1 本ずつ"}
+              ? t.folders.grouping.grouped
+              : t.folders.grouping.ungrouped}
           <ChevronDown aria-hidden="true" className="size-3.5!" />
         </Button>
       </MenuTrigger>
       <MenuContent align="end" className="max-w-80">
-        <MenuLabel>ライブラリでのまとめ方</MenuLabel>
+        <MenuLabel>{t.folders.grouping.heading}</MenuLabel>
         <MenuRadioGroup value={grouping.mode} onValueChange={(mode) => void choose(mode)}>
           {modes.map((mode) => (
-            <MenuRadioItem key={mode.value} value={mode.value}>
-              {mode.label}
+            <MenuRadioItem key={mode} value={mode}>
+              {t.folders.grouping.modes[mode]}
             </MenuRadioItem>
           ))}
         </MenuRadioGroup>
         <p className="px-2.5 pt-1 pb-1.5 text-xs text-fg-muted">
-          自動: 登録フォルダより下で、子フォルダが無く動画が 2 本以上のフォルダをまとめる
+          {t.folders.grouping.autoHint}
         </p>
         {grouping.taggable && (
           <>
             <MenuSeparator />
             <MenuItem onSelect={() => void toTag()}>
               <Tag aria-hidden="true" />
-              グループをタグに変える
+              {t.folders.grouping.toTag}
             </MenuItem>
           </>
         )}

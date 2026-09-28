@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import type { VideoFolder } from "../api/client";
 import { folderUrl } from "../folders/folderPath";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import BrandHomeLink from "../ui/BrandHomeLink";
@@ -60,7 +61,7 @@ export default function VideoHeader({
 
       {crumbs.length > 0 && (
         <nav
-          aria-label="フォルダ"
+          aria-label={t.player.header.folder}
           className="flex min-w-0 flex-1 items-center overflow-hidden"
         >
           <ol className="flex min-w-0 items-center gap-0.5 text-sm whitespace-nowrap">
@@ -102,7 +103,11 @@ export default function VideoHeader({
         </nav>
       )}
 
-      <IconButton label="閉じる" onClick={onClose} className="ml-auto [&>svg]:size-5!">
+      <IconButton
+        label={t.common.close}
+        onClick={onClose}
+        className="ml-auto [&>svg]:size-5!"
+      >
         <X aria-hidden="true" />
       </IconButton>
     </header>

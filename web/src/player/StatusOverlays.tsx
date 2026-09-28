@@ -11,6 +11,7 @@ import {
 import { useState, type ReactNode } from "react";
 
 import type { Video } from "../api/client";
+import { probeErrorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
 import Button from "../ui/Button";
@@ -100,7 +101,7 @@ export function LoadingOverlay({ backdrop }: { backdrop: boolean }) {
         className="flex items-center gap-2 rounded-md bg-navbar px-3 py-2 text-sm font-medium text-fg shadow-elevated"
       >
         <LoaderCircle className={cn("size-5 text-accent", spin)} aria-hidden="true" />
-        読み込み中
+        {t.player.loading}
       </span>
     </div>
   );
@@ -118,13 +119,13 @@ export function PlaybackFailure({
     <Dimmed>
       <Panel role="alert" className="max-w-md items-center gap-3 text-center">
         <AlertCircle className="size-8 text-danger" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">再生できませんでした</h2>
+        <h2 className="text-lg font-semibold text-fg">{t.player.playbackFailed.title}</h2>
         <p className="text-sm text-fg-muted text-balance">
-          ファイルが移動・削除されたか、ブラウザが対応していない形式の可能性があります。
+          {t.player.playbackFailed.description}
         </p>
         <Button variant="secondary" onClick={onRetry} className="mt-1">
           <RotateCcw aria-hidden="true" />
-          {formatDuration(positionMs)} からもう一度試す
+          {t.player.playbackFailed.retryFrom(formatDuration(positionMs))}
         </Button>
       </Panel>
     </Dimmed>
@@ -143,26 +144,19 @@ const stageIcons: Record<StageState, ReactNode> = {
   failed: <AlertCircle className="size-4 shrink-0 text-warning" aria-hidden="true" />,
 };
 
-const stageLabels: Record<StageState, string> = {
-  done: "完了",
-  active: "処理中",
-  waiting: "待機中",
-  failed: "作成できませんでした",
-};
-
 /** ProcessingStages は取り込み中（読み取り前）の段階表示である（要件 12）。 */
 export function ProcessingStages({ video }: { video: Video }) {
   return (
     <Surface>
       <div className="flex w-full max-w-sm flex-col gap-3 text-left">
-        <h2 className="text-lg font-semibold text-fg">再生の準備をしています</h2>
+        <h2 className="text-lg font-semibold text-fg">{t.player.stages.title}</h2>
         <p className="hidden text-sm text-fg-muted sm:block">
-          動画の情報を読み取っています。終わるとこの画面のまま再生できるようになります。
+          {t.player.stages.description}
         </p>
         <div role="status" aria-live="polite">
           <ol className="flex flex-col gap-1.5 sm:gap-3">
             {processingStages(video).map((stage) => (
-              <li key={stage.name} className="flex items-center gap-2.5">
+              <li key={stage.id} className="flex items-center gap-2.5">
                 {stageIcons[stage.state]}
                 <span
                   className={cn(
@@ -181,15 +175,13 @@ export function ProcessingStages({ video }: { video: Video }) {
                     stage.state === "active" ? "text-accent" : "text-fg-muted",
                   )}
                 >
-                  {stageLabels[stage.state]}
+                  {t.player.stages.states[stage.state]}
                 </span>
               </li>
             ))}
           </ol>
         </div>
-        <p className="hidden text-xs text-fg-muted sm:block">
-          再生できるのは『動画情報の読み取り』が終わってからです。残りは再生中に作られます。
-        </p>
+        <p className="hidden text-xs text-fg-muted sm:block">{t.player.stages.note}</p>
       </div>
     </Surface>
   );
@@ -216,10 +208,10 @@ export function ReadFailure({
     <Surface>
       <Panel role="alert" className="max-w-lg gap-3">
         <AlertTriangle className="size-8 text-warning" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">この動画を読み取れませんでした</h2>
-        <p className="text-sm text-fg-muted">
-          ファイルが壊れているか、途中までしか書き込まれていない可能性があります。
-        </p>
+        <h2 className="text-lg font-semibold text-fg">{t.player.readFailure.title}</h2>
+        {/* 自由文の probeError（ffprobe の出力や過去の日本語）は出さず、コードから説明を作る
+            （specs/023-english-i18n/research.md R-6）。コードの無い行は一般的な概要になる。 */}
+        <p className="text-sm text-fg-muted">{probeErrorText(video.probeErrorCode)}</p>
         {onReprobe !== undefined && (
           <ReadFailureActions video={video} onReprobe={onReprobe} />
         )}
@@ -251,11 +243,6 @@ function ReadFailureActions({
 
   return (
     <>
-      {video.probeError !== undefined && video.probeError !== "" && (
-        <pre className="max-h-[calc(3lh+1rem)] overflow-y-auto rounded-md border border-border bg-field px-3 py-2 font-mono text-xs whitespace-pre-wrap break-all text-fg">
-          {video.probeError}
-        </pre>
-      )}
       <div className="mt-1 flex flex-wrap gap-2">
         <Button variant="secondary" onClick={reprobe} disabled={busy}>
           {busy ? (
@@ -263,16 +250,18 @@ function ReadFailureActions({
           ) : (
             <RefreshCw aria-hidden="true" />
           )}
-          もう一度読み取る
+          {t.player.readFailure.reprobe}
         </Button>
         {openable && (
           <Button variant="secondary" onClick={open}>
             <FolderOpen aria-hidden="true" />
-            ファイルを開く
+            {t.player.readFailure.openFile}
           </Button>
         )}
       </div>
-      {failed && <p className="text-sm text-danger">読み取りを始められませんでした</p>}
+      {failed && (
+        <p className="text-sm text-danger">{t.player.readFailure.reprobeFailed}</p>
+      )}
       {openFailure !== null && <p className="text-sm text-danger">{openFailure}</p>}
     </>
   );
@@ -284,9 +273,9 @@ export function MissingVideo() {
     <Surface>
       <Panel role="alert" className="max-w-md items-center gap-3 text-center">
         <AlertCircle className="size-8 text-fg-muted" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">この動画は開けません</h2>
+        <h2 className="text-lg font-semibold text-fg">{t.player.missing.title}</h2>
         <p className="text-sm text-fg-muted text-balance">
-          ライブラリから外れたか、ファイルが無くなりました。
+          {t.player.missing.description}
         </p>
       </Panel>
     </Surface>
@@ -301,7 +290,7 @@ export function LoadFailure({
   reason,
   onRetry,
 }: {
-  reason: string;
+  reason: UiText;
   onRetry: () => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
@@ -313,7 +302,7 @@ export function LoadFailure({
     <Surface>
       <Panel role="alert" className="max-w-md items-center gap-3 text-center">
         <AlertCircle className="size-8 text-danger" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">この動画を読み込めませんでした</h2>
+        <h2 className="text-lg font-semibold text-fg">{t.player.loadFailed}</h2>
         <p className="text-sm text-fg-muted text-balance">{reason}</p>
         <Button variant="secondary" onClick={retry} disabled={busy} className="mt-1">
           {busy ? (
@@ -321,7 +310,7 @@ export function LoadFailure({
           ) : (
             <RefreshCw aria-hidden="true" />
           )}
-          再試行
+          {t.common.retry}
         </Button>
       </Panel>
     </Surface>
@@ -334,9 +323,9 @@ export function Unplayable() {
     <Surface>
       <Panel role="alert" className="max-w-md items-center gap-3 text-center">
         <AlertTriangle className="size-8 text-warning" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">この動画は再生できません</h2>
+        <h2 className="text-lg font-semibold text-fg">{t.player.unplayable.title}</h2>
         <p className="text-sm text-fg-muted text-balance">
-          再生に必要な長さや映像の情報がありません。
+          {t.player.unplayable.description}
         </p>
       </Panel>
     </Surface>

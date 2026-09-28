@@ -53,16 +53,16 @@ func newHTTPAuth(authStore *store.AuthStore) httpapi.Authenticator {
 // セッションは要求ごとに期限を確かめるので、消し残しても使えない。
 func prepareAuth(ctx context.Context, authStore *store.AuthStore, now time.Time, logger *slog.Logger) {
 	if deleted, err := authStore.DeleteExpiredSessions(ctx, now); err != nil {
-		logger.Warn("期限切れのセッションを消せませんでした", slog.Any("error", err))
+		logger.Warn("could not delete expired sessions", slog.Any("error", err))
 	} else {
-		logger.Info("期限切れのセッションを消しました", slog.Int64("sessions", deleted))
+		logger.Info("deleted expired sessions", slog.Int64("sessions", deleted))
 	}
 	_, err := authStore.Account(ctx)
 	switch {
 	case errors.Is(err, domain.ErrAccountNotConfigured):
-		logger.Warn("アカウントが未設定です。ブラウザで VVMDM を開き、画面の初回設定でユーザー名とパスワードを決めてください。" +
-			"設定するまでは、最初に開いた人がアカウントを作れます")
+		logger.Warn("the account is not set up; open VVMDM in a browser and choose a username and password in the initial setup. " +
+			"Until then, the first person to open VVMDM can create the account")
 	case err != nil:
-		logger.Warn("アカウントを確かめられませんでした", slog.Any("error", err))
+		logger.Warn("could not check the account", slog.Any("error", err))
 	}
 }

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import LoginPage from "./LoginPage";
 import { assignPage } from "./pageNavigation";
 
@@ -20,7 +21,7 @@ function json(body: unknown, status = 200, headers: Record<string, string> = {})
 
 const invalidCredentials = {
   code: "invalid_credentials",
-  message: "ユーザー名またはパスワードが違います",
+  message: "The username or password is incorrect.",
 };
 
 function renderLogin(path = "/login") {
@@ -33,9 +34,9 @@ function renderLogin(path = "/login") {
 
 function fields() {
   return {
-    username: screen.getByLabelText("ユーザー名") as HTMLInputElement,
-    password: screen.getByLabelText("パスワード") as HTMLInputElement,
-    submit: screen.getByRole("button", { name: /^ログイン/ }) as HTMLButtonElement,
+    username: screen.getByLabelText("Username") as HTMLInputElement,
+    password: screen.getByLabelText("Password") as HTMLInputElement,
+    submit: screen.getByRole("button", { name: /^Sign(ing)? in/ }) as HTMLButtonElement,
   };
 }
 
@@ -72,15 +73,15 @@ describe("LoginPage", () => {
     expect(screen.getByRole("img", { name: "VVMDM" }).getAttribute("src")).toBe(
       "/brand/vvmdm-wordmark-cyan.svg",
     );
-    expect(screen.getByRole("heading", { level: 1, name: "ログイン" })).toBeDefined();
-    expect(screen.getByText("所有者のアカウントでログインします")).toBeDefined();
+    expect(screen.getByRole("heading", { level: 1, name: "Sign in" })).toBeDefined();
+    expect(screen.getByText("Sign in with the owner account")).toBeDefined();
     expect(username.className).toContain("focus-visible:outline-link");
   });
 
   it("HTTP では入力前に警告を出し、ユーザー名と主操作から指す", () => {
     renderLogin();
     const warning = screen
-      .getByText(/この接続は暗号化されていません/)
+      .getByText(/This connection isn't encrypted/)
       .closest("p") as HTMLElement;
     const { username, submit } = fields();
 
@@ -121,7 +122,7 @@ describe("LoginPage", () => {
     await user.type(fields().username, "owner");
     await user.type(fields().password, "secret{Enter}");
     expect(fields().submit.disabled).toBe(true);
-    expect(fields().submit.textContent).toContain("ログイン中…");
+    expect(fields().submit.textContent).toContain("Signing in…");
     expect(fields().submit.getAttribute("aria-busy")).toBe("true");
     await user.type(fields().password, "{Enter}");
     await user.click(fields().submit);
@@ -140,7 +141,7 @@ describe("LoginPage", () => {
     await user.type(fields().password, "wrong{Enter}");
 
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "ユーザー名またはパスワードが違います",
+      "The username or password is incorrect.",
     );
     const { username, password } = fields();
     expect(username.value).toBe("owner");
@@ -161,7 +162,7 @@ describe("LoginPage", () => {
 
     expect(fetchMock).toHaveBeenCalledOnce();
     expect((await screen.findByRole("alert")).textContent).toBe(
-      "ユーザー名またはパスワードが違います",
+      "The username or password is incorrect.",
     );
   });
 
@@ -180,7 +181,7 @@ describe("LoginPage", () => {
       await user.type(fields().password, "secret{Enter}");
 
       expect((await screen.findByRole("alert")).textContent).toBe(
-        "試行が多すぎます。42 秒後にやり直してください",
+        "Too many sign-in attempts. Try again in 42 seconds.",
       );
       expect(fields().password.value).toBe("secret");
       expect(fields().submit.disabled).toBe(true);
@@ -200,17 +201,17 @@ describe("LoginPage", () => {
     [
       "5xx",
       () => Promise.resolve(json({ code: "internal", message: "x" }, 500)),
-      "ログインできませんでした。もう一度お試しください",
+      "Something went wrong on the server.",
     ],
     [
       "403",
       () => Promise.resolve(json({ code: "forbidden", message: "x" }, 403)),
-      "ログインできませんでした。もう一度お試しください",
+      "This action isn't allowed.",
     ],
     [
       "通信の失敗",
       () => Promise.reject(new TypeError("Failed to fetch")),
-      "サーバーに接続できません",
+      "Couldn't reach the server. Check that VVMDM is running and try again.",
     ],
   ])("%s は失敗の行に出す", async (_, respond, message) => {
     const user = userEvent.setup();
@@ -222,5 +223,42 @@ describe("LoginPage", () => {
 
     expect((await screen.findByRole("alert")).textContent).toBe(message);
     expect(fields().password.value).toBe("secret");
+  });
+  it("429 で待ち時間が無ければ、API エラーの表示で試行の制限を伝える", async () => {
+    const user = userEvent.setup();
+    fetchMock.mockResolvedValue(
+      json({ code: "login_throttled", message: "Too many attempts." }, 429),
+    );
+    renderLogin();
+
+    await user.type(fields().username, "owner");
+    await user.type(fields().password, "secret{Enter}");
+
+    expect((await screen.findByRole("alert")).textContent).toBe(
+      "Too many sign-in attempts. Wait a moment and try again.",
+    );
+  });
+
+  it.each([
+    ["通常", null],
+    ["誤ったパスワード", () => Promise.resolve(json(invalidCredentials, 401))],
+    [
+      "試行の制限",
+      () =>
+        Promise.resolve(
+          json({ code: "login_throttled", message: "x" }, 429, { "Retry-After": "1" }),
+        ),
+    ],
+  ])("疑似ロケールで %s の状態はカタログの文言だけを描く", async (_, respond) => {
+    enablePseudoLocale();
+    const user = userEvent.setup();
+    const { container } = renderLogin();
+    if (respond !== null) {
+      fetchMock.mockImplementation(respond);
+      await user.type(screen.getByRole("textbox"), "owner");
+      await user.type(container.querySelector("#login-password")!, "secret{Enter}");
+      await screen.findByRole("alert");
+    }
+    expectCatalogTextOnly(container, ["owner"]);
   });
 });

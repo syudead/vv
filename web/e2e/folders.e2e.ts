@@ -158,15 +158,15 @@ test.describe.serial("folder browser", () => {
     page,
   }) => {
     await page.goto("/");
-    const sidebar = page.getByRole("complementary", { name: "メインナビゲーション" });
-    await sidebar.getByRole("link", { name: "フォルダ" }).click();
+    const sidebar = page.getByRole("complementary", { name: "Main navigation" });
+    await sidebar.getByRole("link", { name: "Folders" }).click();
     await expect(page).toHaveURL(/\/folders$/);
 
     await expect(
-      page.getByRole("link", { name: /^movies、.*[\\/]a[\\/]movies$/ }),
+      page.getByRole("link", { name: /^movies, .*[\\/]a[\\/]movies$/ }),
     ).toBeVisible();
     await expect(
-      page.getByRole("link", { name: /^movies、.*[\\/]b[\\/]movies$/ }),
+      page.getByRole("link", { name: /^movies, .*[\\/]b[\\/]movies$/ }),
     ).toBeVisible();
     await expect(page.locator("[data-folder-path] p[title]").first()).toHaveAttribute(
       "title",
@@ -194,15 +194,15 @@ test.describe.serial("folder browser", () => {
       for (const width of [360, 768, 1280]) {
         await page.setViewportSize({ width, height: 800 });
         await page.goto("/folders");
-        const card = page.getByRole("link", { name: new RegExp(`^${name}、動画 0 本`) });
+        const card = page.getByRole("link", { name: new RegExp(`^${name}, 0 videos`) });
         await expect(card).toBeVisible();
         await expect(card.locator("h3")).toHaveAttribute("title", name);
         await expect(card.locator("p[dir=rtl]")).toHaveAttribute("title", empty.path);
         await card.click();
         await expect(
-          page.getByRole("heading", { name: "登録したメディアフォルダは空です" }),
+          page.getByRole("heading", { name: "The media folders are empty" }),
         ).toBeVisible();
-        await expect(page.getByRole("button", { name: "取り込む" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Scan" })).toBeVisible();
         expect(
           await page.evaluate(
             () =>
@@ -241,17 +241,17 @@ test.describe.serial("folder browser", () => {
     await expect(five.locator("img")).toHaveCount(4);
     const deeper = page.locator('[data-folder-path="only-deeper"]');
     await expect(deeper.locator("img")).toHaveCount(0);
-    await expect(deeper).toContainText("動画 0 本");
+    await expect(deeper).toContainText("0 videos");
 
     // A を開くと、直下の x と子フォルダ B だけが出る。
-    await page.getByRole("link", { name: "A、動画 1 本、フォルダ 1 件" }).click();
+    await page.getByRole("link", { name: "A, 1 video, 1 folder" }).click();
     await expect(page).toHaveURL(folderUrl(rootA(), "A"));
     const videoLinks = page.locator("[data-video-id] a");
     await expect(videoLinks).toHaveCount(1);
     await expect(videoLinks.first()).toHaveAccessibleName("x");
     expect(await cardNames(page)).toEqual(["B"]);
 
-    const b = page.getByRole("link", { name: "B、動画 1 本、フォルダ 1 件" });
+    const b = page.getByRole("link", { name: "B, 1 video, 1 folder" });
     await expect(b).toBeVisible();
     // 子フォルダの一群は動画の一群より前に出る。
     const folderBox = await b.boundingBox();
@@ -285,8 +285,8 @@ test.describe.serial("folder browser", () => {
     await page.waitForLoadState("networkidle");
     const before = listings.length;
 
-    await page.getByRole("button", { name: "並び順: 追加日" }).click();
-    await page.getByRole("menuitemradio", { name: "題名" }).click();
+    await page.getByRole("button", { name: "Sort by: Date added" }).click();
+    await page.getByRole("menuitemradio", { name: "Title" }).click();
     await expect(first).toHaveText("part-1");
     await page.waitForLoadState("networkidle");
     expect(listings).toHaveLength(before);
@@ -295,8 +295,8 @@ test.describe.serial("folder browser", () => {
   test("パンくず・再読み込み・戻るで同じフォルダを開く", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(folderUrl(rootA(), "A/B"));
-    await page.getByRole("link", { name: "C、動画 1 本、フォルダ 0 件" }).click();
-    const crumbs = page.getByRole("navigation", { name: "パンくず" });
+    await page.getByRole("link", { name: "C, 1 video, 0 folders" }).click();
+    const crumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
     await expect(crumbs.locator('[aria-current="page"]')).toHaveText("C");
 
     await page.reload();
@@ -326,11 +326,11 @@ test.describe.serial("folder browser", () => {
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/folders$/);
 
-    await tabUntil(page, (active) => /^movies、.*[\\/]a[\\/]movies$/.test(active.label));
+    await tabUntil(page, (active) => /^movies, .*[\\/]a[\\/]movies$/.test(active.label));
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(folderUrl(rootA()));
 
-    await tabUntil(page, (active) => active.label.startsWith("A、"));
+    await tabUntil(page, (active) => active.label.startsWith("A, "));
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(folderUrl(rootA(), "A"));
 
@@ -390,31 +390,27 @@ test.describe.serial("folder search", () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(folderUrl(root!.id, "A"));
-    await expect(
-      page.getByRole("link", { name: "B、動画 1 本、フォルダ 0 件" }),
-    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "B, 1 video, 0 folders" })).toBeVisible();
 
-    const box = page.getByRole("searchbox", { name: "Aの中を検索" });
+    const box = page.getByRole("searchbox", { name: "Search in A" });
     await box.fill("京都");
     await expect(page).toHaveURL(/\?q=%E4%BA%AC%E9%83%BD&sort=addedDesc$/);
     await expect(
-      page.getByRole("heading", { name: "検索結果", level: 2 }),
+      page.getByRole("heading", { name: "Search results", level: 2 }),
     ).toBeAttached();
     await expect.poll(() => cardTitles(page)).toEqual(["x 京都", "y 京都"]);
-    await expect(page.getByRole("link", { name: "x 京都、このフォルダ" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "y 京都、B" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "x 京都, This folder" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "y 京都, B" })).toBeVisible();
     // 子フォルダのカードと「フォルダ」「動画」の見出しは出さない。
-    await expect(page.getByRole("link", { name: /^B、/ })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: /^フォルダ \d/ })).toHaveCount(0);
-    const crumbs = page.getByRole("navigation", { name: "パンくず" });
-    await expect(crumbs).toContainText("内を検索中");
+    await expect(page.getByRole("link", { name: /^B, / })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: /^Folders \d/ })).toHaveCount(0);
+    const crumbs = page.getByRole("navigation", { name: "Breadcrumbs" });
+    await expect(crumbs).toContainText("— searching inside");
 
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(new RegExp(`${folderUrl(root!.id, "A")}(\\?|$)`));
-    await expect(page.locator("body")).not.toContainText("検索結果");
-    await expect(
-      page.getByRole("link", { name: "B、動画 1 本、フォルダ 0 件" }),
-    ).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("Search results");
+    await expect(page.getByRole("link", { name: "B, 1 video, 0 folders" })).toBeVisible();
     await expect(page.getByRole("link", { name: "x 京都" })).toBeVisible();
   });
 
@@ -423,17 +419,19 @@ test.describe.serial("folder search", () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/folders");
-    await expect(page.getByRole("button", { name: "絞り込み" })).toBeDisabled();
+    await expect(
+      page.getByRole("button", { name: "Filter", exact: true }),
+    ).toBeDisabled();
 
-    const box = page.getByRole("searchbox", { name: "すべてのフォルダの動画を検索" });
+    const box = page.getByRole("searchbox", { name: "Search videos in all folders" });
     await box.fill("京都");
     await expect
       .poll(async () => new Set(await cardTitles(page)))
       .toEqual(new Set(["x 京都", "y 京都", "z 京都"]));
-    await expect(page.getByRole("button", { name: "絞り込み" })).toBeEnabled();
-    await expect(page.getByRole("link", { name: "x 京都、movies/A" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "y 京都、movies/A/B" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "z 京都、movies/C" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Filter", exact: true })).toBeEnabled();
+    await expect(page.getByRole("link", { name: "x 京都, movies/A" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "y 京都, movies/A/B" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "z 京都, movies/C" })).toBeVisible();
   });
 
   test("19・20: 絞り込みだけでは子フォルダのカードが残り、一致なしでは中を探す案内を出す", async ({
@@ -441,29 +439,25 @@ test.describe.serial("folder search", () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(folderUrl(root!.id, "A"));
-    await page.getByRole("button", { name: "絞り込み" }).click();
-    await page.locator("label", { hasText: "未視聴" }).click();
+    await page.getByRole("button", { name: "Filter", exact: true }).click();
+    await page.locator("label", { hasText: "Unwatched" }).click();
     await page.keyboard.press("Escape");
     await expect(page).toHaveURL(/\?watch=unwatched&sort=addedDesc$/);
-    await expect(
-      page.getByRole("link", { name: "B、動画 1 本、フォルダ 0 件" }),
-    ).toBeVisible();
-    await expect(page.getByRole("heading", { name: "動画 2", level: 2 })).toBeVisible();
+    await expect(page.getByRole("link", { name: "B, 1 video, 0 folders" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Videos 2", level: 2 })).toBeVisible();
 
-    await page.getByRole("button", { name: "絞り込み（1 件適用中）" }).click();
-    await page.locator("label", { hasText: "視聴済み" }).click();
+    await page.getByRole("button", { name: "Filter (1 applied)" }).click();
+    await page.locator("label", { hasText: /^Watched$/ }).click();
     await page.keyboard.press("Escape");
     await expect(
-      page.getByRole("heading", { name: "条件に一致する動画はありません" }),
+      page.getByRole("heading", { name: "No videos match these conditions" }),
     ).toBeVisible();
     await expect(
       page.getByText("中のフォルダも探すには、検索語を入れてください。"),
     ).toHaveCount(0);
-    await expect(
-      page.getByRole("link", { name: "B、動画 1 本、フォルダ 0 件" }),
-    ).toBeVisible();
+    await expect(page.getByRole("link", { name: "B, 1 video, 0 folders" })).toBeVisible();
     await expect(page.getByRole("list", { name: "効いている条件" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "条件を解除" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Clear filters" })).toHaveCount(0);
     await expect(page).toHaveURL(/\?watch=watched&sort=addedDesc$/);
   });
 
@@ -472,16 +466,18 @@ test.describe.serial("folder search", () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto("/folders");
-    await expect(page.getByRole("link", { name: /^movies、/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: "絞り込み" })).toBeDisabled();
-    await expect(page.getByRole("button", { name: /^並び順:/ })).toBeDisabled();
+    await expect(page.getByRole("link", { name: /^movies, / })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Filter", exact: true }),
+    ).toBeDisabled();
+    await expect(page.getByRole("button", { name: /^Sort by:/ })).toBeDisabled();
   });
 
   test("無いフォルダの URL に q を付けても、一致なしではなく見つからない案内を出す", async ({
     page,
   }) => {
     await page.goto(`${folderUrl(root!.id, "missing")}?q=x`);
-    await expect(page.getByText("このフォルダは見つかりません")).toBeVisible();
+    await expect(page.getByText("This folder wasn't found")).toBeVisible();
   });
 
   test("画面の画像を撮る", async ({ page, request }) => {
@@ -517,7 +513,7 @@ test.describe.serial("folder search", () => {
 
       await page.goto(`${folderUrl(root!.id, "A")}?watch=unwatched`);
       await expect(
-        page.getByRole("link", { name: "B、動画 1 本、フォルダ 0 件" }),
+        page.getByRole("link", { name: "B, 1 video, 0 folders" }),
       ).toBeVisible();
       await shoot(`filter-only-${String(width)}`);
 
@@ -529,13 +525,15 @@ test.describe.serial("folder search", () => {
 
       await page.goto(`${folderUrl(root!.id, "A")}?q=zzz-no-such-video`);
       await expect(
-        page.getByRole("heading", { name: "条件に一致する動画はありません" }),
+        page.getByRole("heading", { name: "No videos match these conditions" }),
       ).toBeVisible();
       await shoot(`no-match-${String(width)}`);
 
       // 最上位で検索語が空のとき（絞り込み・並べ替え・向きが無効）。
       await page.goto("/folders");
-      await expect(page.getByRole("button", { name: "絞り込み" })).toBeDisabled();
+      await expect(
+        page.getByRole("button", { name: "Filter", exact: true }),
+      ).toBeDisabled();
       await shoot(`top-level-empty-${String(width)}`);
     }
 
@@ -543,7 +541,7 @@ test.describe.serial("folder search", () => {
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto(`${folderUrl(root!.id, "A")}?q=${encodeURIComponent("京都")}`);
     await expect.poll(() => cardTitles(page)).toEqual(["x 京都", "y 京都"]);
-    await page.getByRole("button", { name: "表示と並び順" }).click();
+    await page.getByRole("button", { name: "View and sort" }).click();
     await shoot("compact-360");
   });
 
@@ -557,7 +555,7 @@ test.describe.serial("folder search", () => {
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(`${folderUrl(root!.id, "A/B")}?q=${encodeURIComponent("京都")}`);
-    await expect(page.getByRole("link", { name: "y 京都、このフォルダ" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "y 京都, This folder" })).toBeVisible();
 
     // 表示している間に B が丸ごと無くなる想定で、配下を消してから取り込み直す。
     // これでこの describe の他のフィクスチャ（x・y・z・大阪）のうち y が無くなるので、
@@ -568,9 +566,9 @@ test.describe.serial("folder search", () => {
     // 取り込むと、ページの ScanProvider が「実行中」を観測する前に終わってしまい
     // 検知できないことがある）。
     await rm(`${dir}/movies/A/B`, { recursive: true, force: true });
-    await page.getByRole("button", { name: "ライブラリを更新" }).click();
+    await page.getByRole("button", { name: "Refresh library" }).click();
 
-    await expect(page.getByText("このフォルダは見つかりません")).toBeVisible({
+    await expect(page.getByText("This folder wasn't found")).toBeVisible({
       timeout: 60_000,
     });
   });

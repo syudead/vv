@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Scan } from "../api/client";
+import type { UiText } from "../i18n";
 import type { ScanContextValue } from "./ScanProvider";
 import { presentScan } from "./scanPresentation";
 
@@ -46,13 +47,15 @@ describe("presentScan", () => {
     ["done", context(makeScan("done"), { processing: idle })],
     ["partial-failed", context(makeScan("done", { failed: 2 }), { processing: idle })],
     ["failed", context(makeScan("failed", { error: "disk" }))],
-    ["fetch-failed", context(null, { error: "network" })],
+    ["fetch-failed", context(null, { error: "network" as UiText })],
   ] as const)("maps %s", (expected, value) => {
     expect(presentScan(value).state).toBe(expected);
   });
 
   it("keeps the last scan visible while a refresh is failing", () => {
-    const presentation = presentScan(context(makeScan("running"), { error: "network" }));
+    const presentation = presentScan(
+      context(makeScan("running"), { error: "network" as UiText }),
+    );
     expect(presentation.state).toBe("running");
     expect(presentation.refreshing).toBe(true);
     expect(presentation.progress).toBe(0.4);
@@ -76,7 +79,7 @@ describe("presentScan", () => {
     expect(presentation.state).toBe("preparing");
     expect(presentation.remaining).toBe(3);
     expect(presentation.progress).toBeNull();
-    expect(presentation.description).toBe("取り込んだ動画を準備中（残り 3 件）");
+    expect(presentation.description).toBe("Preparing the scanned videos (3 items left)");
   });
 
   it("シーク用サムネイルだけが残っていても準備中とし、残りに数える", () => {
@@ -87,7 +90,7 @@ describe("presentScan", () => {
     );
     expect(presentation.state).toBe("preparing");
     expect(presentation.remaining).toBe(2);
-    expect(presentation.description).toBe("取り込んだ動画を準備中（残り 2 件）");
+    expect(presentation.description).toBe("Preparing the scanned videos (2 items left)");
   });
 
   it("準備の残りが無くなれば完了になる", () => {
@@ -102,7 +105,9 @@ describe("presentScan", () => {
   it("準備の残りをまだ得ていなければ、完了とせずに確認中として示す", () => {
     const presentation = presentScan(context(makeScan("done")));
     expect(presentation.state).toBe("preparing");
-    expect(presentation.description).toBe("取り込んだ動画の準備の残りを確認しています");
+    expect(presentation.description).toBe(
+      "Checking what's left to prepare for the scanned videos",
+    );
   });
 
   it("取り込み自体の失敗は、準備の残りがあっても失敗として示す", () => {
@@ -112,5 +117,22 @@ describe("presentScan", () => {
       }),
     );
     expect(presentation.state).toBe("failed");
+    // 自由文（アップグレード前の日本語）は出さず、一般的な英語の概要にする。
+    expect(presentation.description).toBe("The scan failed.");
+  });
+
+  it("取り込みの失敗は errorCode と errorPath から説明を作る", () => {
+    const presentation = presentScan(
+      context(
+        makeScan("failed", {
+          error: "open /media: permission denied",
+          errorCode: "media_folder_unreadable",
+          errorPath: "/media",
+        }),
+      ),
+    );
+    expect(presentation.description).toBe(
+      "The scan failed: The media folder couldn't be read: /media",
+    );
   });
 });

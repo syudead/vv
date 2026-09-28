@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { t } from "../i18n";
 import Button from "../ui/Button";
 import { isComposingKeyEvent } from "../ui/Combobox";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
@@ -62,8 +63,8 @@ export default function CreateTagRow({
             cancel();
           }
         }}
-        placeholder="タグの名前"
-        aria-label="新しいタグの名前"
+        placeholder={t.tags.create.placeholder}
+        aria-label={t.tags.create.label}
         aria-describedby={
           field.reason !== null
             ? "tag-create-reason"
@@ -77,10 +78,10 @@ export default function CreateTagRow({
       />
       <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
         <Button variant="primary" size="sm" onClick={submit} disabled={pending}>
-          {pending ? "作成中…" : "作成"}
+          {pending ? t.tags.create.submitting : t.tags.create.submit}
         </Button>
         <Button variant="ghost" size="sm" onClick={cancel} disabled={pending}>
-          キャンセル
+          {t.common.cancel}
         </Button>
       </div>
       {field.reason !== null && (

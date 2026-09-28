@@ -3,6 +3,7 @@ import { useCallback, useLayoutEffect, useRef, useState } from "react";
 
 import type { VideoTag } from "../api/client";
 import { isFolderOnly } from "../api/tagOrder";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { useTagRowMeasure } from "./TagRowMeasure";
@@ -95,7 +96,7 @@ function TagChip({
         className={chipClassName(false, shrink, surface, folderOnly)}
       >
         {content}
-        {folderOnly && <span className="sr-only">（フォルダ名から）</span>}
+        {folderOnly && <span className="sr-only"> {t.library.tagRow.fromFolder}</span>}
       </span>
     );
   }
@@ -104,7 +105,9 @@ function TagChip({
       type="button"
       title={tag.name}
       aria-label={
-        folderOnly ? `${tag.name}で絞り込む（フォルダ名から）` : `${tag.name}で絞り込む`
+        folderOnly
+          ? t.library.tagRow.filterByFromFolder(tag.name)
+          : t.library.tagRow.filterBy(tag.name)
       }
       onClick={onPress}
       className={chipClassName(true, shrink, surface, folderOnly)}
@@ -177,7 +180,7 @@ export default function CardTagRow({
     >
       <ul
         ref={rowRef}
-        aria-label="タグ"
+        aria-label={t.library.tagRow.label}
         className="flex flex-nowrap items-center gap-1 overflow-hidden"
       >
         {visible.map((tag) => (
@@ -200,10 +203,12 @@ export default function CardTagRow({
                 <PopoverTrigger asChild>
                   <button
                     type="button"
-                    aria-label={`ほかのタグ ${String(hidden.length)} 個を表示`}
+                    aria-label={t.library.tagRow.showMore(hidden.length)}
                     className={chipClassName(true)}
                   >
-                    <span className="tabular-nums">+{hidden.length}</span>
+                    <span className="tabular-nums">
+                      {t.library.tagRow.more(hidden.length)}
+                    </span>
                   </button>
                 </PopoverTrigger>
                 <PopoverContent align="start" className="w-auto max-w-64 p-1.5">
@@ -228,7 +233,9 @@ export default function CardTagRow({
           ) : (
             <li className="shrink-0">
               <span className={chipClassName(false)}>
-                <span className="tabular-nums">+{hidden.length}</span>
+                <span className="tabular-nums">
+                  {t.library.tagRow.more(hidden.length)}
+                </span>
               </span>
             </li>
           ))}
@@ -251,7 +258,7 @@ export default function CardTagRow({
           ))}
         </div>
         <span ref={overflowMeasureRef} className={chipClassName(true)}>
-          <span className="tabular-nums">+{String(tags.length)}</span>
+          <span className="tabular-nums">{t.library.tagRow.more(tags.length)}</span>
         </span>
       </div>
     </div>

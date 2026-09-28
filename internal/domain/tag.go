@@ -19,38 +19,61 @@ const TagNameMaxLength = 100
 // invalid_request（400）になる（data-model.md §2）。
 //
 // NormalizeTagName はこれを直接は返さず、具体的な理由（空・制御文字・長さ超過）を
-// 運ぶ *invalidTagNameError を返す。errors.Is(err, ErrInvalidTagName) は真のまま
-// になるが、err.Error() は利用者にそのまま出せる理由を持つ（親 Issue 要件 4、
-// 受け入れ条件 6）。
-var ErrInvalidTagName = errors.New("タグ名が使えません")
+// 運ぶ *InvalidTagNameError を返す。errors.Is(err, ErrInvalidTagName) は真のまま
+// になり、errors.As で取り出した Problem から internal/httpapi が API の reason を
+// 決める（specs/023-english-i18n/contracts/error-api.md §1）。
+var ErrInvalidTagName = errors.New("invalid tag name")
 
-// invalidTagNameError はタグ名の規則違反の具体的な理由を運ぶ。
-type invalidTagNameError struct {
-	reason string
+// TagNameProblem はタグ名の規則違反の種類である。
+type TagNameProblem int
+
+const (
+	// TagNameEmpty は前後の空白を取り除くと空になることを表す。
+	TagNameEmpty TagNameProblem = iota + 1
+	// TagNameControlCharacters は制御文字を含むことを表す。
+	TagNameControlCharacters
+	// TagNameTooLong は TagNameMaxLength 符号位置を超えることを表す。
+	TagNameTooLong
+)
+
+// InvalidTagNameError はタグ名の規則違反の具体的な理由を運ぶ。
+type InvalidTagNameError struct {
+	Problem TagNameProblem
 }
 
-func (e *invalidTagNameError) Error() string { return e.reason }
+func (e *InvalidTagNameError) Error() string {
+	switch e.Problem {
+	case TagNameEmpty:
+		return "tag name is empty"
+	case TagNameControlCharacters:
+		return "tag name contains control characters"
+	case TagNameTooLong:
+		return fmt.Sprintf("tag name must be at most %d characters", TagNameMaxLength)
+	default:
+		return ErrInvalidTagName.Error()
+	}
+}
 
-func (e *invalidTagNameError) Unwrap() error { return ErrInvalidTagName }
+func (e *InvalidTagNameError) Unwrap() error { return ErrInvalidTagName }
 
-func invalidTagName(reason string) error {
-	return &invalidTagNameError{reason: reason}
+func invalidTagName(problem TagNameProblem) error {
+	return &InvalidTagNameError{Problem: problem}
 }
 
 // ErrTagNotFound は指定したタグがもう無いことを表す。API では tag_not_found
 // （404）になる。
-var ErrTagNotFound = errors.New("タグが見つかりません")
+var ErrTagNotFound = errors.New("tag not found")
 
 // ErrTagNameTaken はその名前が既に別のタグの元の名前かシノニムであることを
 // 表す。API では tag_name_taken（409）になる。errors.As で *TagNameConflict を
 // 取り出すと、その名前を持つタグが分かる。
-var ErrTagNameTaken = errors.New("その名前は既に使われています")
+var ErrTagNameTaken = errors.New("name is already in use")
 
 // ErrTagMergeRequired は、シノニムにしようとした名前が既存のタグの元の名前で、
 // その統合の承諾が無い（無効な承諾を含む）ことを表す。API では
 // tag_merge_required（409）になる。errors.As で *TagMergeRequired を取り出すと、
 // 統合の承諾が要るタグが分かる。
-var ErrTagMergeRequired = errors.New("統合の承諾が必要です")
+var ErrTagMergeRequired = errors.New("merge confirmation is required")
 
 // TagRef は動画に付いたタグ1件である。Name は常に元の名前
 // （contracts/tags-api.md §1 の TagRef）。
@@ -111,7 +134,7 @@ type TagNameConflict struct {
 }
 
 func (e *TagNameConflict) Error() string {
-	return fmt.Sprintf("タグ「%s」の名前です", e.Tag.Name)
+	return fmt.Sprintf("name belongs to tag %q", e.Tag.Name)
 }
 
 func (e *TagNameConflict) Unwrap() error { return ErrTagNameTaken }
@@ -124,7 +147,7 @@ type TagMergeRequired struct {
 }
 
 func (e *TagMergeRequired) Error() string {
-	return fmt.Sprintf("タグ「%s」への統合の承諾が要ります", e.Tag.Name)
+	return fmt.Sprintf("merging into tag %q requires confirmation", e.Tag.Name)
 }
 
 func (e *TagMergeRequired) Unwrap() error { return ErrTagMergeRequired }
@@ -146,17 +169,17 @@ func (e *TagMergeRequired) Unwrap() error { return ErrTagMergeRequired }
 func NormalizeTagName(input string) (string, error) {
 	for _, r := range input {
 		if unicode.Is(unicode.Cc, r) {
-			return "", invalidTagName("タグ名に制御文字は使えません")
+			return "", invalidTagName(TagNameControlCharacters)
 		}
 	}
 	trimmed := strings.TrimFunc(input, func(r rune) bool {
 		return unicode.Is(unicode.White_Space, r)
 	})
 	if trimmed == "" {
-		return "", invalidTagName("タグ名を入力してください")
+		return "", invalidTagName(TagNameEmpty)
 	}
 	if utf8.RuneCountInString(trimmed) > TagNameMaxLength {
-		return "", invalidTagName(fmt.Sprintf("タグ名は%d文字以内にしてください", TagNameMaxLength))
+		return "", invalidTagName(TagNameTooLong)
 	}
 	return trimmed, nil
 }

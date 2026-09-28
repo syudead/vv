@@ -599,6 +599,7 @@ func TestScanPreservesIndexWhenRootDisappearsAfterDiscovery(t *testing.T) {
 	if err == nil {
 		t.Fatal("root disappearance was reported as a completed scan")
 	}
+	assertScanFailure(t, err, domain.ScanErrorMediaFolderUnreadable, root)
 	if len(index.deleted) != 0 {
 		t.Fatalf("indexed locations were deleted after root disappearance: %v", index.deleted)
 	}
@@ -827,6 +828,7 @@ func TestScanFailsWhenMediaDirIsUnreadable(t *testing.T) {
 	if !strings.Contains(err.Error(), root) {
 		t.Fatalf("failure reason does not identify the root: %v", err)
 	}
+	assertScanFailure(t, err, domain.ScanErrorMediaFolderUnreadable, root)
 	if result.Total != 0 || result.Failed != 0 {
 		t.Fatalf("directory failure was mixed into file counts: %+v", result)
 	}
@@ -854,6 +856,7 @@ func TestScanFailsWhenSubdirectoryCannotBeRead(t *testing.T) {
 	if !strings.Contains(err.Error(), failedDir) {
 		t.Fatalf("failure reason does not identify the unreadable directory: %v", err)
 	}
+	assertScanFailure(t, err, domain.ScanErrorLocationUnreadable, failedDir)
 	if result.Total != 0 || result.Failed != 0 {
 		t.Fatalf("directory failure was mixed into file counts: %+v", result)
 	}
@@ -963,4 +966,59 @@ func snapshot(t *testing.T, root string) map[string]string {
 		t.Fatal(err)
 	}
 	return out
+}
+
+// assertScanFailure は走査の失敗が理由のコードと場所で包まれていることを確かめる
+// （specs/023-english-i18n/data-model.md §2）。
+func assertScanFailure(t *testing.T, err error, code domain.ScanErrorCode, path string) {
+	t.Helper()
+	gotCode, gotPath := domain.ScanFailureOf(err)
+	if gotCode != code || gotPath != path {
+		t.Fatalf("scan failure = %q (%q), want %q (%q): %v", gotCode, gotPath, code, path, err)
+	}
+}
+
+// メディアフォルダがディレクトリでなければ media_folder_not_directory で、場所はそのフォルダ。
+func TestScanFailureCodeWhenMediaFolderIsNotDirectory(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "file.mp4")
+	if err := os.WriteFile(root, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+
+	_, err := New(Options{Index: index}).Scan(context.Background())
+	if err == nil {
+		t.Fatal("a file as the media folder was reported as a completed scan")
+	}
+	assertScanFailure(t, err, domain.ScanErrorMediaFolderNotDirectory, root)
+}
+
+// メディアフォルダそのものを読めない（一覧できない）ときは、途中の場所ではなく
+// media_folder_unreadable である。
+func TestScanFailureCodeWhenMediaFolderCannotBeListed(t *testing.T) {
+	root := t.TempDir()
+	index := newFakeIndex()
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	scanner := New(Options{Index: index})
+	scanner.walkDir = func(path string, walk fs.WalkDirFunc) error {
+		return walk(path, nil, errors.New("permission denied"))
+	}
+
+	_, err := scanner.Scan(context.Background())
+	if err == nil {
+		t.Fatal("an unreadable media folder was reported as a completed scan")
+	}
+	assertScanFailure(t, err, domain.ScanErrorMediaFolderUnreadable, root)
+}
+
+// 途中の保存の失敗など、場所に結び付かない失敗は包まない（受け取る側で internal）。
+func TestScanFailureCodeIsInternalForIndexFailure(t *testing.T) {
+	index := newFakeIndex()
+	index.folders = nil
+	_, err := New(Options{Index: index}).Scan(context.Background())
+	if !errors.Is(err, ErrNoMediaFolders) {
+		t.Fatalf("err = %v, want ErrNoMediaFolders", err)
+	}
+	assertScanFailure(t, err, domain.ScanErrorInternal, "")
 }

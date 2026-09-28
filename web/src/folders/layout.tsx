@@ -2,6 +2,7 @@ import { FolderX } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 
+import { formatNumber, t, type UiText } from "../i18n";
 import { buttonClassName } from "../ui/Button";
 import { EmptyState } from "../videoList/states";
 import { FOLDERS_ROOT } from "./folderPath";
@@ -14,7 +15,7 @@ export function Section({
   className,
   children,
 }: {
-  title: string;
+  title: UiText;
   count?: number;
   /** 見出しの行の右端に置く操作（フォルダ画面の「Folder grouping menu」）。 */
   action?: ReactNode;
@@ -26,7 +27,7 @@ export function Section({
       {title}
       {count !== undefined && (
         // 読み上げで名前と件数が続けて読まれないよう、余白ではなく空白で区切る。
-        <span className="tabular-nums"> {count.toLocaleString("ja-JP")}</span>
+        <span className="tabular-nums"> {formatNumber(count)}</span>
       )}
     </h2>
   );
@@ -49,11 +50,11 @@ export function FolderNotFound() {
   return (
     <EmptyState
       icon={FolderX}
-      title="このフォルダは見つかりません"
-      description="登録が外れたか、中の動画が無くなりました。"
+      title={t.folders.notFound.title}
+      description={t.folders.notFound.description}
       action={
         <Link to={FOLDERS_ROOT} className={buttonClassName()}>
-          フォルダの一覧へ
+          {t.folders.notFound.back}
         </Link>
       }
     />

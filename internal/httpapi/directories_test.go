@@ -75,13 +75,13 @@ func TestListDirectoriesRootsAndErrors(t *testing.T) {
 	} else if roots := decode[gen.DirectoryListing](t, rec); len(roots.Directories) == 0 || roots.ParentPath != nil {
 		t.Fatalf("roots listing = %+v", roots)
 	}
-	if rec := do(t, handler, http.MethodGet, "/api/directories?path=relative"); rec.Code != http.StatusBadRequest {
-		t.Fatalf("relative status = %d", rec.Code)
-	}
+	rec := do(t, handler, http.MethodGet, "/api/directories?path=relative")
+	assertErrorBody(t, "relative", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonRelativeDirectoryPath})
 	missing := filepath.Join(t.TempDir(), "missing")
-	if rec := do(t, handler, http.MethodGet, "/api/directories?path="+url.QueryEscape(missing)); rec.Code != http.StatusNotFound {
-		t.Fatalf("missing status = %d", rec.Code)
-	}
+	rec = do(t, handler, http.MethodGet, "/api/directories?path="+url.QueryEscape(missing))
+	assertErrorBody(t, "missing", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonDirectoryNotFound})
 }
 
 func TestListDirectoriesRejectsSymbolicLinkComponent(t *testing.T) {

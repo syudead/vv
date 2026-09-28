@@ -99,12 +99,8 @@ func TestGetCurrentScanWhenNeverScanned(t *testing.T) {
 	handler := newTestServer(t, Options{Scans: &fakeScans{}})
 
 	rec := do(t, handler, http.MethodGet, "/api/scans/current")
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404: %s", rec.Code, rec.Body)
-	}
-	if got := decode[gen.Error](t, rec); got.Code != codeNotFound {
-		t.Errorf("code = %q, want %s", got.Code, codeNotFound)
-	}
+	assertErrorBody(t, "取り込みが無い", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonNoScan})
 }
 
 // スキャンの経路も中間キャッシュに残さない。

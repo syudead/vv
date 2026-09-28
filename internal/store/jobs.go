@@ -21,7 +21,7 @@ func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, video
 		`delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
 		string(kind), videoID,
 	); err != nil {
-		return fmt.Errorf("古いジョブを掃除できません: %w", err)
+		return fmt.Errorf("cannot clean up old jobs: %w", err)
 	}
 
 	now := time.Now().Unix()
@@ -32,7 +32,7 @@ func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, video
 		string(kind), videoID, now, now,
 	)
 	if err != nil {
-		return fmt.Errorf("ジョブを積めません (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot queue the job (%s, video=%d): %w", kind, videoID, err)
 	}
 	var c changes
 	c.jobsQueued(kind)
@@ -58,19 +58,19 @@ var jobStateColumns = map[domain.JobKind]string{
 func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
 	column, ok := jobStateColumns[kind]
 	if !ok {
-		return fmt.Errorf("未知の仕事の種類です: %s", kind)
+		return fmt.Errorf("unknown job kind: %s", kind)
 	}
 	pending := `exists (select 1 from videos where id = ? and ` + column + ` = 'pending')`
 
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("欠落ジョブの復旧を開始できません (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot start restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	//nolint:gosec // 組み立てるのは定型の列名だけで、値はすべて引数で渡す。
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state = 'failed' and `+pending,
 		string(kind), videoID, videoID); err != nil {
-		return fmt.Errorf("旧版の失敗の行を捨てられません (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot discard legacy failure rows (%s, video=%d): %w", kind, videoID, err)
 	}
 	now := time.Now().Unix()
 	//nolint:gosec // 組み立てるのは定型の列名だけで、値はすべて引数で渡す。
@@ -80,18 +80,18 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 		where not exists (select 1 from jobs where kind = ? and video_id = ?) and `+pending,
 		string(kind), videoID, now, now, string(kind), videoID, videoID)
 	if err != nil {
-		return fmt.Errorf("欠落ジョブを復旧できません (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot restore missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	inserted, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("復旧したジョブを数えられません (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot count restored jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	var c changes
 	if inserted > 0 {
 		c.jobsQueued(kind)
 	}
 	if err := s.db.commit(tx, &c); err != nil {
-		return fmt.Errorf("欠落ジョブの復旧を確定できません (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot commit restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	return nil
 }
@@ -106,12 +106,12 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain.Job, error) {
 	conn, err := s.db.sql.Conn(ctx)
 	if err != nil {
-		return domain.Job{}, fmt.Errorf("ジョブを取り出せません: %w", err)
+		return domain.Job{}, fmt.Errorf("cannot claim a job: %w", err)
 	}
 	defer func() { _ = conn.Close() }()
 
 	if _, err := conn.ExecContext(ctx, `begin immediate`); err != nil {
-		return domain.Job{}, fmt.Errorf("ジョブを取り出せません: %w", err)
+		return domain.Job{}, fmt.Errorf("cannot claim a job: %w", err)
 	}
 	committed := false
 	defer func() {
@@ -134,7 +134,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 		return domain.Job{}, domain.ErrNoJob
 	}
 	if err != nil {
-		return domain.Job{}, fmt.Errorf("ジョブを取り出せません: %w", err)
+		return domain.Job{}, fmt.Errorf("cannot claim a job: %w", err)
 	}
 	job.Kind = domain.JobKind(kindName)
 	var locationID, locationVersion int64
@@ -166,7 +166,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 		return domain.Job{}, domain.ErrNoJob
 	}
 	if err != nil {
-		return domain.Job{}, fmt.Errorf("ジョブの処理場所を選べません: %w", err)
+		return domain.Job{}, fmt.Errorf("cannot choose a location for the job: %w", err)
 	}
 	job.ContentKey = contentKey
 	job.LocationID = locationID
@@ -176,12 +176,12 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	if err := conn.QueryRowContext(ctx, `select exists (
 		select 1 from video_locations l where l.video_id = ? and l.path > ? and `+registeredLocationCondition("l")+`)`,
 		job.VideoID, job.LocationPath).Scan(&hasLaterLocation); err != nil {
-		return domain.Job{}, fmt.Errorf("ジョブの処理場所の終端を確認できません: %w", err)
+		return domain.Job{}, fmt.Errorf("cannot check the job location's final state: %w", err)
 	}
 	job.LastLocation = hasLaterLocation == 0
 	if err := conn.QueryRowContext(ctx, `select location_generation from videos where id = ?`, job.VideoID).
 		Scan(&job.LocationGeneration); err != nil {
-		return domain.Job{}, fmt.Errorf("ジョブのlocation世代を確認できません: %w", err)
+		return domain.Job{}, fmt.Errorf("cannot check the job's location generation: %w", err)
 	}
 
 	if _, err := conn.ExecContext(ctx, `
@@ -189,11 +189,11 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 		location_path = ?, updated_at = ? where id = ?`,
 		job.Attempts, locationID, locationVersion, locationPath, time.Now().Unix(), job.ID,
 	); err != nil {
-		return domain.Job{}, fmt.Errorf("ジョブを専有できません (id=%d): %w", job.ID, err)
+		return domain.Job{}, fmt.Errorf("cannot take ownership of the job (id=%d): %w", job.ID, err)
 	}
 
 	if _, err := conn.ExecContext(ctx, `commit`); err != nil {
-		return domain.Job{}, fmt.Errorf("ジョブを専有できません (id=%d): %w", job.ID, err)
+		return domain.Job{}, fmt.Errorf("cannot take ownership of the job (id=%d): %w", job.ID, err)
 	}
 	committed = true
 
@@ -239,7 +239,7 @@ func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) er
 		job.VideoID, job.ContentKey, job.LocationID, job.LocationVersion, job.LocationPath, job.LocationGeneration,
 		job.LocationID, job.LocationVersion, job.LocationPath, time.Now().Unix(), job.ID)
 	if err != nil {
-		return fmt.Errorf("ジョブの完了を記録できません (id=%d): %w", job.ID, err)
+		return fmt.Errorf("cannot record job completion (id=%d): %w", job.ID, err)
 	}
 	return nil
 }
@@ -278,24 +278,28 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 // FailClaimedJob は失敗を記録する。queued へ戻すか failed で止めるかは
 // domain.JobStateAfterFailure が決め、ここではその結果を書く。failed なら、
 // 動画側の状態へも同じ取引で記録する（recordTerminalFailure）。
-func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, reason string) error {
+//
+// cause の文を jobs.last_error に書く。解析の終端失敗では、domain.ProbeFailure で
+// 包まれた理由のコードも動画側へ書く（specs/023-english-i18n/data-model.md §1）。
+func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause error) error {
+	reason := cause.Error()
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("ジョブの失敗記録を開始できません (id=%d): %w", job.ID, err)
+		return fmt.Errorf("cannot start recording the job failure (id=%d): %w", job.ID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	var attempts int
 	err = tx.QueryRowContext(ctx, `select attempts from jobs where id = ? and state = 'running'`, job.ID).Scan(&attempts)
 	if errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("実行中のジョブへ失敗を記録できません (id=%d, affected=0)", job.ID)
+		return fmt.Errorf("cannot record a failure on the running job (id=%d, affected=0)", job.ID)
 	}
 	if err != nil {
-		return fmt.Errorf("ジョブの試行回数を確認できません (id=%d): %w", job.ID, err)
+		return fmt.Errorf("cannot check the job attempt count (id=%d): %w", job.ID, err)
 	}
 	current, err := jobIdentityCurrent(ctx, tx, job)
 	if err != nil {
-		return fmt.Errorf("ジョブの処理場所を確認できません (id=%d): %w", job.ID, err)
+		return fmt.Errorf("cannot check the job location (id=%d): %w", job.ID, err)
 	}
 	state := domain.JobStateAfterFailure(attempts, job.LastLocation, current)
 
@@ -310,23 +314,23 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, reason
 		job.LocationID, job.LocationVersion, job.LocationPath,
 		now, job.ID)
 	if err != nil {
-		return fmt.Errorf("ジョブの失敗を記録できません (id=%d): %w", job.ID, err)
+		return fmt.Errorf("cannot record the job failure (id=%d): %w", job.ID, err)
 	}
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("ジョブの更新件数を確認できません (id=%d): %w", job.ID, err)
+		return fmt.Errorf("cannot check the job update count (id=%d): %w", job.ID, err)
 	}
 	if affected != 1 {
-		return fmt.Errorf("実行中のジョブへ失敗を記録できません (id=%d, affected=%d)", job.ID, affected)
+		return fmt.Errorf("cannot record a failure on the running job (id=%d, affected=%d)", job.ID, affected)
 	}
 
 	if state == domain.JobFailed {
-		if err := recordTerminalFailure(ctx, tx, job, reason, now); err != nil {
+		if err := recordTerminalFailure(ctx, tx, job, cause, now); err != nil {
 			return err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("ジョブの失敗を確定できません (id=%d): %w", job.ID, err)
+		return fmt.Errorf("cannot commit the job failure (id=%d): %w", job.ID, err)
 	}
 	return nil
 }
@@ -339,7 +343,7 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, reason
 // 「状態が failed なら、その種類のジョブは終わっている」が成り立つ。
 //
 // どの種類も、claim 時点の内容鍵・所在の世代・所在が今も一致するときに限る。
-func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, reason string, now int64) error {
+func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, cause error, now int64) error {
 	const identity = `id = ? and content_key = ? and location_generation = ? and exists (
 			select 1 from video_locations where id = ? and video_id = ? and version = ? and path = ?
 		)`
@@ -352,10 +356,11 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, reas
 		// プレビューのジョブを積み、そこで失敗してもエラーを返す。保存済みの結果を
 		// 失敗で上書きしないためである。欠けたプレビューのジョブは、次の手動の
 		// 取り込みで走査が積み直す（Scanner.ensurePendingJobs）。
-		if _, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, playable = 0, updated_at = ?
+		if _, err := tx.ExecContext(ctx, `update videos set probe_state = 'failed', probe_error = ?, probe_error_code = ?,
+			playable = 0, updated_at = ?
 			where probe_state = 'pending' and `+identity,
-			append([]any{reason, now}, identityArgs...)...); err != nil {
-			return fmt.Errorf("読み取りの終端失敗を記録できません (job=%d): %w", job.ID, err)
+			append([]any{cause.Error(), string(domain.ProbeErrorCodeOf(cause)), now}, identityArgs...)...); err != nil {
+			return fmt.Errorf("cannot record the final probe failure (job=%d): %w", job.ID, err)
 		}
 	case domain.JobThumbnail:
 		// 代表サムネイルの後でシーク用プレビューだけが失敗した動画は done のまま残す。
@@ -363,27 +368,27 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, reas
 		if _, err := tx.ExecContext(ctx, `update videos set thumbnail_state = 'failed', updated_at = ?
 			where thumbnail_state <> 'done' and `+identity,
 			append([]any{now}, identityArgs...)...); err != nil {
-			return fmt.Errorf("サムネイルの終端失敗を記録できません (job=%d): %w", job.ID, err)
+			return fmt.Errorf("cannot record the final thumbnail failure (job=%d): %w", job.ID, err)
 		}
 	case domain.JobSeekThumbnail:
 		// seek_thumbnail_state だけを failed にする。代表サムネイルは別の仕事の結果である。
 		if _, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'failed', updated_at = ?
 			where seek_thumbnail_state <> 'done' and `+identity,
 			append([]any{now}, identityArgs...)...); err != nil {
-			return fmt.Errorf("シーク用サムネイルの終端失敗を記録できません (job=%d): %w", job.ID, err)
+			return fmt.Errorf("cannot record the final seek thumbnail failure (job=%d): %w", job.ID, err)
 		}
 	case domain.JobPreview:
 		res, err := tx.ExecContext(ctx, `update videos set preview_state = 'failed', updated_at = ?
 			where `+identity, append([]any{now}, identityArgs...)...)
 		if err != nil {
-			return fmt.Errorf("プレビューの終端失敗を記録できません (job=%d): %w", job.ID, err)
+			return fmt.Errorf("cannot record the final preview failure (job=%d): %w", job.ID, err)
 		}
 		updated, rowsErr := res.RowsAffected()
 		if rowsErr != nil {
-			return fmt.Errorf("preview 状態の更新件数を確認できません (job=%d): %w", job.ID, rowsErr)
+			return fmt.Errorf("cannot check the preview state update count (job=%d): %w", job.ID, rowsErr)
 		}
 		if updated != 1 {
-			return fmt.Errorf("current preview へ終端失敗を記録できません (job=%d, affected=%d)", job.ID, updated)
+			return fmt.Errorf("cannot record the final failure on the current preview (job=%d, affected=%d)", job.ID, updated)
 		}
 	}
 	return nil
@@ -420,12 +425,12 @@ func (s *IngestStore) RequeueRunningJobs(ctx context.Context) (int64, error) {
 		`update jobs set state = 'queued', updated_at = ? where state = 'running'`,
 		time.Now().Unix())
 	if err != nil {
-		return 0, fmt.Errorf("中断したジョブを戻せません: %w", err)
+		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}
 
 	affected, err := res.RowsAffected()
 	if err != nil {
-		return 0, fmt.Errorf("中断したジョブを戻せません: %w", err)
+		return 0, fmt.Errorf("cannot requeue interrupted jobs: %w", err)
 	}
 	if affected > 0 {
 		var c changes
@@ -446,7 +451,7 @@ func (s *IngestStore) Processing(ctx context.Context) (domain.Processing, error)
 		group by j.kind`
 	rows, err := s.db.sql.QueryContext(ctx, query)
 	if err != nil {
-		return domain.Processing{}, fmt.Errorf("残りの仕事を数えられません: %w", err)
+		return domain.Processing{}, fmt.Errorf("cannot count remaining jobs: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -455,7 +460,7 @@ func (s *IngestStore) Processing(ctx context.Context) (domain.Processing, error)
 		var kind string
 		var count int
 		if err := rows.Scan(&kind, &count); err != nil {
-			return domain.Processing{}, fmt.Errorf("残りの仕事を数えられません: %w", err)
+			return domain.Processing{}, fmt.Errorf("cannot count remaining jobs: %w", err)
 		}
 		switch domain.JobKind(kind) {
 		case domain.JobProbe:
@@ -469,7 +474,7 @@ func (s *IngestStore) Processing(ctx context.Context) (domain.Processing, error)
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return domain.Processing{}, fmt.Errorf("残りの仕事を数えられません: %w", err)
+		return domain.Processing{}, fmt.Errorf("cannot count remaining jobs: %w", err)
 	}
 	return out, nil
 }

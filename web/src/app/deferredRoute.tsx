@@ -1,6 +1,7 @@
 import { AlertCircle } from "lucide-react";
 import { type ComponentType, useEffect, useState } from "react";
 
+import { t } from "../i18n";
 import Button from "../ui/Button";
 import { EmptyState } from "../videoList/states";
 
@@ -22,9 +23,9 @@ export function RouteLoadFailed({ onReload }: { onReload: () => void }) {
     <EmptyState
       icon={AlertCircle}
       tone="danger"
-      title="画面を読み込めませんでした"
-      description="ページを再読み込みしてください。"
-      action={<Button onClick={onReload}>再読み込み</Button>}
+      title={t.app.routeLoadFailed.title}
+      description={t.app.routeLoadFailed.description}
+      action={<Button onClick={onReload}>{t.common.reload}</Button>}
     />
   );
 }

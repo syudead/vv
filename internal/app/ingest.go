@@ -279,7 +279,7 @@ func (i *Ingest) SeekThumbnails(ctx context.Context, job domain.Job) error {
 }
 
 // errMissingDuration は解析済みなのに長さが無く、プレビューを作れないことを表す。
-var errMissingDuration = errors.New("プレビュー生成に必要な動画の長さがありません")
+var errMissingDuration = errors.New("the video has no duration to generate a preview from")
 
 // Preview は一覧用プレビューを生成し、完了を記録する。
 func (i *Ingest) Preview(ctx context.Context, job domain.Job) error {

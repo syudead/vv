@@ -71,7 +71,7 @@ describe("rootDisplayName", () => {
 describe("breadcrumbsFor", () => {
   it("最上位・登録フォルダ・途中の段へのリンクを作り、現在地はリンクにしない", () => {
     expect(breadcrumbsFor({ rootId: 3, path: "A/B" }, "movies")).toEqual([
-      { label: "フォルダ", to: "/folders" },
+      { label: "Folders", to: "/folders" },
       { label: "movies", to: "/folders/3" },
       { label: "A", to: "/folders/3/A" },
       { label: "B" },
@@ -80,7 +80,7 @@ describe("breadcrumbsFor", () => {
 
   it("登録フォルダの名前が分からない間はその段を空ける", () => {
     expect(breadcrumbsFor({ rootId: 3, path: "A" }, undefined)).toEqual([
-      { label: "フォルダ", to: "/folders" },
+      { label: "Folders", to: "/folders" },
       undefined,
       { label: "A" },
     ]);
@@ -91,9 +91,9 @@ describe("folderLocationLabel", () => {
   it("開いているフォルダの直下は「このフォルダ」にする", () => {
     expect(
       folderLocationLabel({ rootId: 3, path: "A" }, { rootId: 3, path: "A" }),
-    ).toEqual({ label: "このフォルダ", title: "このフォルダ" });
+    ).toEqual({ label: "This folder", title: "This folder" });
     expect(folderLocationLabel({ rootId: 3, path: "" }, { rootId: 3, path: "" })).toEqual(
-      { label: "このフォルダ", title: "このフォルダ" },
+      { label: "This folder", title: "This folder" },
     );
   });
 

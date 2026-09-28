@@ -76,7 +76,7 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience),
 		folderPrefix(dir))
 	if err != nil {
-		return nil, fmt.Errorf("フォルダの中身を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read the folder contents: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -85,14 +85,14 @@ func (s *LibraryStore) FolderLocations(ctx context.Context, audience domain.Audi
 		var item domain.FolderLocation
 		var thumbnail, preview string
 		if err := rows.Scan(&item.Path, &item.VideoID, &item.ContentKey, &thumbnail, &preview); err != nil {
-			return nil, fmt.Errorf("フォルダの中身を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read the folder contents: %w", err)
 		}
 		item.ThumbnailState = domain.ThumbnailState(thumbnail)
 		item.PreviewState = domain.PreviewState(preview)
 		locations = append(locations, item)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("フォルダの中身を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read the folder contents: %w", err)
 	}
 	return locations, nil
 }
@@ -106,7 +106,7 @@ func (s *LibraryStore) HasFolderLocations(ctx context.Context, audience domain.A
 		where instr(`+folderPathExpr("l")+`, ?) = 1 and `+visibleLocationCondition("l", audience)+`)`,
 		folderPrefix(dir)).Scan(&found)
 	if err != nil {
-		return false, fmt.Errorf("フォルダの有無を確かめられません: %w", err)
+		return false, fmt.Errorf("cannot check whether the folder exists: %w", err)
 	}
 	return found == 1, nil
 }

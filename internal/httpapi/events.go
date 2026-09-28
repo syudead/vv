@@ -150,7 +150,7 @@ func (e *Events) Close() {
 // StreamEvents は変化を Server-Sent Events で送る（GET /api/events）。
 func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	if s.events == nil {
-		s.internalError(w, "変化の知らせの経路が設定されていません", nil)
+		s.internalError(w, "Change notifications are not configured.", nil)
 		return
 	}
 	// 応答を返し始める前に受け口を作る。ブラウザは最初の送信を受けた時点で
@@ -171,7 +171,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := controller.Flush(); err != nil {
-		s.logger.Warn("変化の知らせを送れません", slog.Any("error", err))
+		s.logger.Warn("cannot send a change notification", slog.Any("error", err))
 		return
 	}
 
@@ -192,7 +192,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 		case <-sub.ready:
 			if err := s.writePendingEvents(ctx, w, sub); err != nil {
 				if ctx.Err() == nil {
-					s.logger.Warn("変化の知らせを送れません", slog.Any("error", err))
+					s.logger.Warn("cannot send a change notification", slog.Any("error", err))
 				}
 				return
 			}
@@ -223,7 +223,7 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
 		case err != nil:
-			return fmt.Errorf("スキャンの状態を読めません: %w", err)
+			return fmt.Errorf("cannot read the scan status: %w", err)
 		default:
 			if err := writeEvent(w, "scan", toAPIScan(current)); err != nil {
 				return err
@@ -250,12 +250,12 @@ func writeEvent(w http.ResponseWriter, name string, payload any) error {
 // GetProcessing は段階ごとの残りを返す（GET /api/processing）。
 func (s *server) GetProcessing(w http.ResponseWriter, r *http.Request) {
 	if s.processing == nil {
-		s.internalError(w, "取り込みの残りの経路が設定されていません", nil)
+		s.internalError(w, "Scan backlog is not configured.", nil)
 		return
 	}
 	remaining, err := s.processing.Processing(r.Context())
 	if err != nil {
-		s.internalError(w, "取り込みの残りを取得できませんでした", err)
+		s.internalError(w, "Could not load the scan backlog.", err)
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)

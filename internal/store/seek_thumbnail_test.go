@@ -117,7 +117,7 @@ func TestFailClaimedSeekThumbnailMarksOnlySeekState(t *testing.T) {
 	probeDone(t, db, videoID)
 
 	seekJob := claimAtLastAttempt(t, db, domain.JobSeekThumbnail, videoID)
-	if err := db.Ingest().FailClaimedJob(ctx, seekJob, "ffmpeg failed"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, seekJob, errors.New("ffmpeg failed")); err != nil {
 		t.Fatal(err)
 	}
 	if seek, thumbnail := seekAndThumbnailState(t, db, videoID); seek != "failed" || thumbnail != "pending" {
@@ -128,7 +128,7 @@ func TestFailClaimedSeekThumbnailMarksOnlySeekState(t *testing.T) {
 		t.Fatal(err)
 	}
 	thumbnailJob := claimAtLastAttempt(t, db, domain.JobThumbnail, videoID)
-	if err := db.Ingest().FailClaimedJob(ctx, thumbnailJob, "ffmpeg failed"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, thumbnailJob, errors.New("ffmpeg failed")); err != nil {
 		t.Fatal(err)
 	}
 	if seek, thumbnail := seekAndThumbnailState(t, db, videoID); seek != "pending" || thumbnail != "failed" {
@@ -145,7 +145,7 @@ func TestFailClaimedSeekThumbnailKeepsDone(t *testing.T) {
 	if _, err := db.sql.Exec(`update videos set seek_thumbnail_state = 'done' where id = ?`, videoID); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().FailClaimedJob(ctx, job, "late failure"); err != nil {
+	if err := db.Ingest().FailClaimedJob(ctx, job, errors.New("late failure")); err != nil {
 		t.Fatal(err)
 	}
 	if seek, _ := seekAndThumbnailState(t, db, videoID); seek != "done" {
@@ -192,7 +192,7 @@ func TestRetryProbeRequeuesFailedSeekThumbnail(t *testing.T) {
 	ctx := context.Background()
 	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobSeekThumbnail} {
 		job := claimAtLastAttempt(t, db, kind, videoID)
-		if err := db.Ingest().FailClaimedJob(ctx, job, string(kind)+" failed"); err != nil {
+		if err := db.Ingest().FailClaimedJob(ctx, job, errors.New(string(kind)+" failed")); err != nil {
 			t.Fatal(err)
 		}
 	}

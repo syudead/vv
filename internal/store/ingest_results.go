@@ -23,7 +23,7 @@ func (s *IngestStore) ApplyProbe(
 ) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("解析の結果を反映できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -33,7 +33,7 @@ func (s *IngestStore) ApplyProbe(
 		   set duration_ms = ?, width = ?, height = ?, display_aspect_ratio = ?,
 		       video_codec = ?, audio_codec = ?,
 		       playable = ?, unplayable_reason = ?,
-		       probe_state = 'done', probe_error = null, updated_at = ?
+		       probe_state = 'done', probe_error = null, probe_error_code = null, updated_at = ?
 		 where id = ?`,
 		nullableInt64(probe.DurationMs), nullableInt(probe.Width), nullableInt(probe.Height), nullableFloat64(probe.DisplayAspectRatio),
 		nullableString(probe.VideoCodec), nullableString(probe.AudioCodec),
@@ -41,17 +41,17 @@ func (s *IngestStore) ApplyProbe(
 		now.Unix(), id,
 	)
 	if err != nil {
-		return fmt.Errorf("解析の結果を反映できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	}
 	if count, err := res.RowsAffected(); err != nil {
-		return fmt.Errorf("解析の結果を反映できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	} else if count == 1 && probe.Transcode != nil {
 		if err := upsertTranscodeProbe(ctx, tx, id, probe.Source, *probe.Transcode, now); err != nil {
 			return err
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("解析の結果を反映できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	}
 	return nil
 }
@@ -70,7 +70,7 @@ func (s *IngestStore) ApplyProbeForJob(
 	now := time.Now()
 	res, err := tx.ExecContext(ctx, `
 		update videos set duration_ms = ?, width = ?, height = ?, display_aspect_ratio = ?, video_codec = ?, audio_codec = ?,
-		playable = ?, unplayable_reason = ?, probe_state = 'done', probe_error = null, updated_at = ?
+		playable = ?, unplayable_reason = ?, probe_state = 'done', probe_error = null, probe_error_code = null, updated_at = ?
 		where id = ? and content_key = ? and exists (
 			select 1 from video_locations where video_id = videos.id and id = ? and version = ? and path = ?)
 		and location_generation = ?`,
@@ -111,7 +111,7 @@ func upsertTranscodeProbe(
 ) error {
 	encoded, err := json.Marshal(probe)
 	if err != nil {
-		return fmt.Errorf("ライブ変換用の解析情報を JSON にできません (id=%d): %w", videoID, err)
+		return fmt.Errorf("cannot encode the transcode probe as JSON (id=%d): %w", videoID, err)
 	}
 	if _, err := db.ExecContext(ctx, `
 		insert into video_transcode_probes (video_id, version, size_bytes, mtime_ns, probe, updated_at)
@@ -121,22 +121,24 @@ func upsertTranscodeProbe(
 		       probe = excluded.probe, updated_at = excluded.updated_at`,
 		videoID, domain.TranscodeProbeVersion, source.SizeBytes, source.ModTimeNs, string(encoded), now.Unix(),
 	); err != nil {
-		return fmt.Errorf("ライブ変換用の解析情報を保存できません (id=%d): %w", videoID, err)
+		return fmt.Errorf("cannot save the transcode probe (id=%d): %w", videoID, err)
 	}
 	return nil
 }
 
 // MarkProbeFailed は解析に失敗したことを記録する。行は残す。個別のファイルの
-// 失敗で取り込み全体を止めないため、一覧には並んだままになる。
-func (s *IngestStore) MarkProbeFailed(ctx context.Context, id int64, reason string) error {
+// 失敗で取り込み全体を止めないため、一覧には並んだままになる。cause の文を
+// probe_error に、domain.ProbeFailure で包まれた理由のコードを probe_error_code に
+// 書く（包まれていなければ internal）。
+func (s *IngestStore) MarkProbeFailed(ctx context.Context, id int64, cause error) error {
 	_, err := s.db.sql.ExecContext(ctx, `
 		update videos
-		   set probe_state = 'failed', probe_error = ?, playable = 0, updated_at = ?
+		   set probe_state = 'failed', probe_error = ?, probe_error_code = ?, playable = 0, updated_at = ?
 		 where id = ?`,
-		reason, time.Now().Unix(), id,
+		cause.Error(), string(domain.ProbeErrorCodeOf(cause)), time.Now().Unix(), id,
 	)
 	if err != nil {
-		return fmt.Errorf("解析の失敗を記録できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot record the probe failure (id=%d): %w", id, err)
 	}
 	return nil
 }
@@ -147,7 +149,7 @@ func (s *IngestStore) SetThumbnailState(ctx context.Context, id int64, state dom
 		`update videos set thumbnail_state = ?, updated_at = ? where id = ?`,
 		string(state), time.Now().Unix(), id)
 	if err != nil {
-		return fmt.Errorf("サムネイルの状態を記録できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot record the thumbnail state (id=%d): %w", id, err)
 	}
 	return nil
 }
@@ -178,11 +180,11 @@ func (s *IngestStore) SetSeekThumbnailStateForJob(
 		string(state), time.Now().Unix(), job.VideoID, job.ContentKey, job.LocationID,
 		job.LocationVersion, job.LocationPath, job.LocationGeneration)
 	if err != nil {
-		return false, fmt.Errorf("シーク用サムネイルの状態を記録できません (id=%d): %w", job.VideoID, err)
+		return false, fmt.Errorf("cannot record the seek thumbnail state (id=%d): %w", job.VideoID, err)
 	}
 	count, err := res.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("シーク用サムネイルの状態の更新件数を確認できません (id=%d): %w", job.VideoID, err)
+		return false, fmt.Errorf("cannot check the seek thumbnail state update count (id=%d): %w", job.VideoID, err)
 	}
 	return count == 1, nil
 }
@@ -284,7 +286,7 @@ func (s *IngestStore) SetPreviewState(ctx context.Context, id int64, state domai
 func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, contentKey string) (bool, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("プレビューの作り直しを開始できません (id=%d): %w", id, err)
+		return false, fmt.Errorf("cannot start regenerating the preview (id=%d): %w", id, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -292,29 +294,29 @@ func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, conte
 	res, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', updated_at = ?
 		where id = ? and content_key = ? and preview_state = 'done'`, now, id, contentKey)
 	if err != nil {
-		return false, fmt.Errorf("プレビューの状態を戻せません (id=%d): %w", id, err)
+		return false, fmt.Errorf("cannot reset the preview state (id=%d): %w", id, err)
 	}
 	reset, err := res.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("プレビューの状態の更新件数を確認できません (id=%d): %w", id, err)
+		return false, fmt.Errorf("cannot check the preview state update count (id=%d): %w", id, err)
 	}
 	if reset == 0 {
 		return false, nil
 	}
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = 'preview' and video_id = ? and state in ('done', 'failed')`,
 		id); err != nil {
-		return false, fmt.Errorf("古いプレビューのジョブを掃除できません (id=%d): %w", id, err)
+		return false, fmt.Errorf("cannot clean up old preview jobs (id=%d): %w", id, err)
 	}
 	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
 		values ('preview', ?, 'queued', 0, ?, ?)
 		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
 		id, now, now); err != nil {
-		return false, fmt.Errorf("プレビューのジョブを積めません (id=%d): %w", id, err)
+		return false, fmt.Errorf("cannot queue the preview job (id=%d): %w", id, err)
 	}
 	var c changes
 	c.jobsQueued(domain.JobPreview)
 	if err := s.db.commit(tx, &c); err != nil {
-		return false, fmt.Errorf("プレビューの作り直しを確定できません (id=%d): %w", id, err)
+		return false, fmt.Errorf("cannot commit regenerating the preview (id=%d): %w", id, err)
 	}
 	return true, nil
 }
@@ -329,7 +331,7 @@ func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, conte
 func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64, contentKey string) (bool, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return false, fmt.Errorf("シーク用サムネイルの作り直しを開始できません (id=%d): %w", id, err)
+		return false, fmt.Errorf("cannot start regenerating seek thumbnails (id=%d): %w", id, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -337,11 +339,11 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 	res, err := tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'pending', updated_at = ?
 		where id = ? and content_key = ? and seek_thumbnail_state = 'done'`, now, id, contentKey)
 	if err != nil {
-		return false, fmt.Errorf("シーク用サムネイルの状態を戻せません (id=%d): %w", id, err)
+		return false, fmt.Errorf("cannot reset the seek thumbnail state (id=%d): %w", id, err)
 	}
 	reset, err := res.RowsAffected()
 	if err != nil {
-		return false, fmt.Errorf("シーク用サムネイルの状態の更新件数を確認できません (id=%d): %w", id, err)
+		return false, fmt.Errorf("cannot check the seek thumbnail state update count (id=%d): %w", id, err)
 	}
 	if reset == 0 {
 		return false, nil
@@ -352,7 +354,7 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 	var c changes
 	c.jobsQueued(domain.JobSeekThumbnail)
 	if err := s.db.commit(tx, &c); err != nil {
-		return false, fmt.Errorf("シーク用サムネイルの作り直しを確定できません (id=%d): %w", id, err)
+		return false, fmt.Errorf("cannot commit regenerating seek thumbnails (id=%d): %w", id, err)
 	}
 	return true, nil
 }
@@ -362,13 +364,13 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now int64) error {
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
 		string(kind), id); err != nil {
-		return fmt.Errorf("古いジョブを掃除できません (%s, video=%d): %w", kind, id, err)
+		return fmt.Errorf("cannot clean up old jobs (%s, video=%d): %w", kind, id, err)
 	}
 	if _, err := tx.ExecContext(ctx, `insert into jobs (kind, video_id, state, attempts, created_at, updated_at)
 		values (?, ?, 'queued', 0, ?, ?)
 		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
 		string(kind), id, now, now); err != nil {
-		return fmt.Errorf("ジョブを積めません (%s, video=%d): %w", kind, id, err)
+		return fmt.Errorf("cannot queue the job (%s, video=%d): %w", kind, id, err)
 	}
 	return nil
 }
@@ -390,24 +392,24 @@ func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now in
 func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("読み取りのやり直しを開始できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot start re-reading (id=%d): %w", id, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
 	now := time.Now().Unix()
-	res, err := tx.ExecContext(ctx, `update videos set probe_state = 'pending', probe_error = null, updated_at = ?
+	res, err := tx.ExecContext(ctx, `update videos set probe_state = 'pending', probe_error = null, probe_error_code = null, updated_at = ?
 		where id = ? and probe_state = 'failed'`, now, id)
 	if err != nil {
-		return fmt.Errorf("読み取りの状態を戻せません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot reset the probe state (id=%d): %w", id, err)
 	}
 	reset, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("読み取りの状態の更新件数を確認できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot check the probe state update count (id=%d): %w", id, err)
 	}
 	if reset == 0 {
 		var exists int
 		if err := tx.QueryRowContext(ctx, `select exists(select 1 from videos where id = ?)`, id).Scan(&exists); err != nil {
-			return fmt.Errorf("動画の有無を確かめられません (id=%d): %w", id, err)
+			return fmt.Errorf("cannot check whether the video exists (id=%d): %w", id, err)
 		}
 		if exists == 0 {
 			return domain.ErrNotFound
@@ -418,24 +420,24 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	res, err = tx.ExecContext(ctx, `update videos set thumbnail_state = 'pending', updated_at = ?
 		where id = ? and thumbnail_state <> 'done'`, now, id)
 	if err != nil {
-		return fmt.Errorf("サムネイルの状態を戻せません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot reset the thumbnail state (id=%d): %w", id, err)
 	}
 	thumbnailReset, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("サムネイルの状態の更新件数を確認できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot check the thumbnail state update count (id=%d): %w", id, err)
 	}
 	if _, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', updated_at = ?
 		where id = ? and preview_state = 'failed'`, now, id); err != nil {
-		return fmt.Errorf("プレビューの状態を戻せません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot reset the preview state (id=%d): %w", id, err)
 	}
 	res, err = tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'pending', updated_at = ?
 		where id = ? and seek_thumbnail_state = 'failed'`, now, id)
 	if err != nil {
-		return fmt.Errorf("シーク用サムネイルの状態を戻せません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot reset the seek thumbnail state (id=%d): %w", id, err)
 	}
 	seekThumbnailReset, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("シーク用サムネイルの状態の更新件数を確認できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot check the seek thumbnail state update count (id=%d): %w", id, err)
 	}
 
 	kinds := []domain.JobKind{domain.JobProbe}
@@ -453,7 +455,7 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 	var c changes
 	c.jobsQueued(kinds...)
 	if err := s.db.commit(tx, &c); err != nil {
-		return fmt.Errorf("読み取りのやり直しを確定できません (id=%d): %w", id, err)
+		return fmt.Errorf("cannot commit re-reading (id=%d): %w", id, err)
 	}
 	return nil
 }

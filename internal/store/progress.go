@@ -38,7 +38,7 @@ func (p *PlaybackStore) SaveProgress(
 		boolToInt(progress.Completed), updatedAt.Unix(),
 	)
 	if err != nil {
-		return domain.Progress{}, fmt.Errorf("再生位置を記録できません (%s): %w", contentKey, err)
+		return domain.Progress{}, fmt.Errorf("cannot save the playback position (%s): %w", contentKey, err)
 	}
 
 	progress.UpdatedAt = updatedAt.Truncate(time.Second)
@@ -62,7 +62,7 @@ func (p *PlaybackStore) Progress(ctx context.Context, contentKey string) (domain
 		return domain.Progress{}, domain.ErrNotFound
 	}
 	if err != nil {
-		return domain.Progress{}, fmt.Errorf("再生位置を読み出せません (%s): %w", contentKey, err)
+		return domain.Progress{}, fmt.Errorf("cannot read the playback position (%s): %w", contentKey, err)
 	}
 
 	progress.DurationMs = durationMs.Int64
@@ -94,7 +94,7 @@ func (p *PlaybackStore) ProgressByContentKeys(
 		select content_key, position_ms, duration_ms, completed, updated_at
 		  from playback_progress where content_key in (`+placeholders+`)`, args...)
 	if err != nil {
-		return nil, fmt.Errorf("再生位置を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read playback positions: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -108,7 +108,7 @@ func (p *PlaybackStore) ProgressByContentKeys(
 			updatedAt  int64
 		)
 		if err := rows.Scan(&key, &progress.PositionMs, &durationMs, &completed, &updatedAt); err != nil {
-			return nil, fmt.Errorf("再生位置を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read playback positions: %w", err)
 		}
 		progress.DurationMs = durationMs.Int64
 		progress.Completed = completed != 0
@@ -116,7 +116,7 @@ func (p *PlaybackStore) ProgressByContentKeys(
 		out[key] = progress
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("再生位置を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read playback positions: %w", err)
 	}
 	return out, nil
 }

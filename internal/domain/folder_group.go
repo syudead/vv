@@ -34,7 +34,7 @@ func (m FolderGroupMode) Valid() bool {
 
 // ErrNotFolderGroup は、グループに対する操作（グループをタグに変える）の対象の
 // フォルダが今グループでないことを表す（specs/017-folder-groups/contracts/folder-groups-api.md §2）。
-var ErrNotFolderGroup = errors.New("そのフォルダは今グループではありません")
+var ErrNotFolderGroup = errors.New("the folder is not a group")
 
 // FolderGrouping はフォルダ1つのまとめ方の今の状態である
 // （specs/017-folder-groups/contracts/folder-groups-api.md §1）。

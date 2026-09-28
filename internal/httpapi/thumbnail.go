@@ -20,7 +20,7 @@ func (s *server) GetVideoThumbnail(
 	}
 
 	if s.artifacts == nil || !video.HasThumbnail() {
-		s.notFound(w, "サムネイルはまだ生成されていません")
+		s.notFound(w, "The thumbnail has not been generated yet.")
 		return
 	}
 
@@ -28,14 +28,14 @@ func (s *server) GetVideoThumbnail(
 	if err != nil {
 		// 状態が done でも実体が無いことはある（利用者が消した、生成中に
 		// 停止した）。存在を漏らさないためにも 404 に揃える。
-		s.notFound(w, "サムネイルはまだ生成されていません")
+		s.notFound(w, "The thumbnail has not been generated yet.")
 		return
 	}
 	defer func() { _ = file.Close() }()
 
 	info, err := file.Stat()
 	if err != nil {
-		s.notFound(w, "サムネイルはまだ生成されていません")
+		s.notFound(w, "The thumbnail has not been generated yet.")
 		return
 	}
 
@@ -44,7 +44,7 @@ func (s *server) GetVideoThumbnail(
 	// 作る。作り直しで大きさと更新時刻が前と同じになっても、古い画像を使わせない。
 	etag, err := readerETag(file)
 	if err != nil {
-		s.notFound(w, "サムネイルはまだ生成されていません")
+		s.notFound(w, "The thumbnail has not been generated yet.")
 		return
 	}
 	setRevalidate(w, etag)

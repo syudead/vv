@@ -4,6 +4,7 @@ import { Navigate, useLocation, useNavigate } from "react-router";
 
 import { type AuthSession, getAuthSession } from "../api/auth";
 import { RequestFailed, setRenderedAudience } from "../api/client";
+import { errorText, t, type UiText } from "../i18n";
 import Button from "../ui/Button";
 import { EmptyState } from "../videoList/states";
 import { AudienceProvider } from "./audience";
@@ -11,7 +12,7 @@ import { currentPath, loginPath, reloadPage } from "./pageNavigation";
 
 type GateState =
   | { status: "checking" }
-  | { status: "failed"; reason: string }
+  | { status: "failed"; reason: UiText }
   // search は、確かめたときの /login の問い合わせ（next を送ったか）である。
   | { status: "ready"; session: AuthSession; search: string | null };
 
@@ -37,9 +38,9 @@ function loginNext(search: string): string | undefined {
   return new URLSearchParams(search).get("next") ?? undefined;
 }
 
-function failureReason(error: unknown): string {
-  if (error instanceof RequestFailed) return error.message;
-  return "サーバーから応答がありません。サーバーが動いているか確かめてください";
+function failureReason(error: unknown): UiText {
+  if (error instanceof RequestFailed) return errorText(error);
+  return t.auth.gate.noResponse;
 }
 
 /**
@@ -59,7 +60,7 @@ function OwnerLoginRedirect({
   const location = useLocation();
   const navigate = useNavigate();
   const [attempt, setAttempt] = useState(0);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<UiText | null>(null);
 
   useEffect(() => {
     if (checkedSearch === location.search) {
@@ -96,15 +97,15 @@ function OwnerLoginRedirect({
   );
 }
 
-function GateFailure({ reason, onRetry }: { reason: string; onRetry: () => void }) {
+function GateFailure({ reason, onRetry }: { reason: UiText; onRetry: () => void }) {
   return (
     <div className="flex min-h-dvh items-center bg-bg">
       <EmptyState
         icon={AlertCircle}
         tone="danger"
-        title="サーバーに接続できません"
+        title={t.auth.gate.unreachable}
         description={reason}
-        action={<Button onClick={onRetry}>再試行</Button>}
+        action={<Button onClick={onRetry}>{t.common.retry}</Button>}
       />
     </div>
   );

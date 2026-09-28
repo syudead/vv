@@ -24,7 +24,7 @@ func (s *LibraryStore) TranscodeProbe(ctx context.Context, videoID int64) (*doma
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("ライブ変換用の解析情報を読めません (id=%d): %w", videoID, err)
+		return nil, fmt.Errorf("cannot read the transcode probe (id=%d): %w", videoID, err)
 	}
 	return &stored, nil
 }

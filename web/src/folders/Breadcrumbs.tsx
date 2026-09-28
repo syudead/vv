@@ -2,6 +2,7 @@ import { ChevronRight } from "lucide-react";
 import { Fragment } from "react";
 import { Link } from "react-router";
 
+import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import Skeleton from "../ui/Skeleton";
 import type { Crumb } from "./folderPath";
@@ -34,14 +35,17 @@ export default function Breadcrumbs({
   suffix,
 }: {
   crumbs: (Crumb | undefined)[];
-  suffix?: string;
+  suffix?: UiText;
 }) {
   const collapsible = crumbs.length >= collapseFrom;
   const lastIndex = crumbs.length - 1;
 
   return (
     <div className="sticky top-navbar z-20 -mx-3 -mt-3 flex h-10 items-center border-b border-border bg-bg/90 px-3 backdrop-blur-md sm:-mx-4 sm:px-4">
-      <nav aria-label="パンくず" className="flex min-w-0 flex-1 items-center">
+      <nav
+        aria-label={t.folders.breadcrumbs}
+        className="flex min-w-0 flex-1 items-center"
+      >
         <ol className="flex min-w-0 items-center gap-0.5 text-xs whitespace-nowrap">
           {crumbs.map((crumb, index) => {
             const hiddenWhenNarrow = collapsible && index < lastIndex - 1;

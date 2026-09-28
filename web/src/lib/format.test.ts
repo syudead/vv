@@ -4,7 +4,6 @@ import type { Video } from "../api/client";
 import {
   formatBytes,
   formatDuration,
-  formatRelative,
   isNarrowVideo,
   qualityLabel,
   unplayableText,
@@ -58,22 +57,6 @@ describe("qualityLabel", () => {
   });
 });
 
-describe("formatRelative", () => {
-  const now = new Date("2026-09-20T12:00:00Z");
-  it("段階的に丸める", () => {
-    expect(formatRelative("2026-09-20T11:59:50Z", now)).toBe("たった今");
-    expect(formatRelative("2026-09-20T11:30:00Z", now)).toBe("30 分前");
-    expect(formatRelative("2026-09-20T06:00:00Z", now)).toBe("6 時間前");
-    expect(formatRelative("2026-09-14T12:00:00Z", now)).toBe("6 日前");
-    expect(formatRelative("2026-08-30T12:00:00Z", now)).toBe("3 週間前");
-    expect(formatRelative("2026-03-20T12:00:00Z", now)).toBe("6 か月前");
-    expect(formatRelative("2020-09-20T12:00:00Z", now)).toBe("6 年前");
-  });
-  it("壊れた日付は空", () => {
-    expect(formatRelative("nope", now)).toBe("");
-  });
-});
-
 describe("watchState / watchedRatio", () => {
   const at = "2026-09-20T00:00:00Z";
   it("3 値に畳む", () => {
@@ -113,10 +96,10 @@ describe("unplayableText", () => {
   });
   it("解析待ちと解析失敗だけ文言を返す", () => {
     expect(unplayableText({ ...base, playable: false, probeState: "pending" })).toBe(
-      "確認中",
+      "Checking…",
     );
     expect(unplayableText({ ...base, playable: false, probeState: "failed" })).toBe(
-      "読み取れませんでした",
+      "Couldn't read this video",
     );
     expect(
       unplayableText({
@@ -127,10 +110,10 @@ describe("unplayableText", () => {
       }),
     ).toBeNull();
     expect(unplayableText({ ...base, playable: false, durationMs: undefined })).toBe(
-      "再生に必要な情報がありません",
+      "Missing information needed for playback",
     );
     expect(unplayableText({ ...base, playable: false, videoCodec: undefined })).toBe(
-      "再生に必要な情報がありません",
+      "Missing information needed for playback",
     );
   });
 });

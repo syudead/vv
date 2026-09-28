@@ -1,5 +1,6 @@
 import { useLocation } from "react-router";
 
+import { t } from "../i18n";
 import Breadcrumbs from "./Breadcrumbs";
 import { FOLDERS_ROOT, folderKey, parseFolderPathname } from "./folderPath";
 import FolderView from "./FolderView";
@@ -27,9 +28,9 @@ export default function FolderPage() {
         <FolderView key={folderKey(target.folder)} folder={target.folder} />
       ) : (
         <>
-          <h1 className="sr-only">フォルダ</h1>
+          <h1 className="sr-only">{t.folders.title}</h1>
           <Breadcrumbs
-            crumbs={[{ label: "フォルダ", to: FOLDERS_ROOT }, { label: "…" }]}
+            crumbs={[{ label: t.folders.title, to: FOLDERS_ROOT }, { label: "…" }]}
           />
           <FolderNotFound />
         </>

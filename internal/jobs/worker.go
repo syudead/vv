@@ -22,8 +22,9 @@ type Queue interface {
 	// CompleteClaimedJob は専有した時点の所在が今も同じなら完了を記録する。
 	CompleteClaimedJob(ctx context.Context, job domain.Job) error
 	// FailClaimedJob は失敗を記録する。試行回数が上限に達していなければ
-	// 待ち行列へ戻す。
-	FailClaimedJob(ctx context.Context, job domain.Job, reason string) error
+	// 待ち行列へ戻す。cause の文と、domain.ProbeFailure で包まれた理由のコードは
+	// 保存側が取り出す（包まれていなければ internal）。
+	FailClaimedJob(ctx context.Context, job domain.Job, cause error) error
 }
 
 // Handler は1種類のジョブの処理である。
@@ -122,7 +123,7 @@ func (w *Worker) Run(ctx context.Context) {
 			if ctx.Err() != nil {
 				return
 			}
-			w.logger.Warn("ジョブを取り出せませんでした", slog.Any("error", err))
+			w.logger.Warn("could not claim a job", slog.Any("error", err))
 			timer := time.NewTimer(w.retry)
 			ok := w.sleep(ctx, timer.C)
 			timer.Stop()
@@ -157,7 +158,7 @@ func (w *Worker) process(ctx context.Context, job domain.Job) {
 	var err error
 	if w.handler == nil {
 		// 再試行しても結果は変わらない。待ち行列を塞ぐだけなので諦める。
-		err = fmt.Errorf("扱いを知らない種類のジョブです: %s", job.Kind)
+		err = fmt.Errorf("unknown job kind: %s", job.Kind)
 	} else {
 		err = w.handler(ctx, job)
 	}
@@ -168,7 +169,7 @@ func (w *Worker) process(ctx context.Context, job domain.Job) {
 	if err != nil {
 		w.fail(ctx, job, err)
 	} else if completeErr := w.queue.CompleteClaimedJob(ctx, job); completeErr != nil {
-		w.logger.Warn("ジョブの完了を記録できませんでした",
+		w.logger.Warn("could not record job completion",
 			slog.Int64("job", job.ID), slog.Any("error", completeErr))
 	}
 	if w.finished != nil {
@@ -178,7 +179,7 @@ func (w *Worker) process(ctx context.Context, job domain.Job) {
 
 // fail は失敗を記録する。上限に達したかどうかの判断は待ち行列側が持つ。
 func (w *Worker) fail(ctx context.Context, job domain.Job, cause error) {
-	w.logger.Warn("ジョブに失敗しました",
+	w.logger.Warn("job failed",
 		slog.Int64("job", job.ID),
 		slog.String("kind", string(job.Kind)),
 		slog.Int64("video", job.VideoID),
@@ -186,8 +187,8 @@ func (w *Worker) fail(ctx context.Context, job domain.Job, cause error) {
 		slog.Any("error", cause),
 	)
 
-	if err := w.queue.FailClaimedJob(ctx, job, cause.Error()); err != nil {
-		w.logger.Warn("ジョブの失敗を記録できませんでした",
+	if err := w.queue.FailClaimedJob(ctx, job, cause); err != nil {
+		w.logger.Warn("could not record job failure",
 			slog.Int64("job", job.ID), slog.Any("error", err))
 	}
 }

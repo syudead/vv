@@ -21,9 +21,8 @@ func TestNormalizeTagNameRejectsBlank(t *testing.T) {
 	// （TestNormalizeTagNameRejectsControlCharactersBeforeTrimming）。ここでは
 	// Cc を含まない空白（半角スペース・全角スペースなど）だけを確かめる。
 	for _, input := range []string{"", " ", "　"} {
-		err := errNormalizeTagName(t, input)
-		if err.Error() == "" || strings.Contains(err.Error(), "制御文字") || strings.Contains(err.Error(), "文字以内") {
-			t.Errorf("NormalizeTagName(%q) error = %q, want a blank-specific reason", input, err.Error())
+		if got := normalizeTagNameProblem(t, input); got != TagNameEmpty {
+			t.Errorf("NormalizeTagName(%q) problem = %v, want TagNameEmpty", input, got)
 		}
 	}
 }
@@ -32,9 +31,8 @@ func TestNormalizeTagNameRejectsControlCharactersBeforeTrimming(t *testing.T) {
 	// 前後に付いた改行・タブは、White_Space として黙って取り除かれてはならない。
 	// 取り除いてしまうと "旅行\n" と "旅行" が同じ名前になる。
 	for _, input := range []string{"旅行\n", "\t旅行", "旅行\r", "旅\n行", "a\tb"} {
-		err := errNormalizeTagName(t, input)
-		if !strings.Contains(err.Error(), "制御文字") {
-			t.Errorf("NormalizeTagName(%q) error = %q, want a control-character-specific reason", input, err.Error())
+		if got := normalizeTagNameProblem(t, input); got != TagNameControlCharacters {
+			t.Errorf("NormalizeTagName(%q) problem = %v, want TagNameControlCharacters", input, got)
 		}
 	}
 }
@@ -45,21 +43,28 @@ func TestNormalizeTagNameRejectsOverLongNames(t *testing.T) {
 		t.Errorf("NormalizeTagName(100 符号位置) error = %v, want nil", err)
 	}
 	tooLong := strings.Repeat("あ", TagNameMaxLength+1)
-	err := errNormalizeTagName(t, tooLong)
-	if !strings.Contains(err.Error(), "文字以内") {
-		t.Errorf("NormalizeTagName(101 符号位置) error = %q, want a length-specific reason", err.Error())
+	if got := normalizeTagNameProblem(t, tooLong); got != TagNameTooLong {
+		t.Errorf("NormalizeTagName(101 符号位置) problem = %v, want TagNameTooLong", got)
 	}
 }
 
-// errNormalizeTagName は誤りを返すことを確かめたうえでその誤りを返す。
-// errors.Is(err, ErrInvalidTagName) が保たれていることも確かめる。
-func errNormalizeTagName(t *testing.T, input string) error {
+// normalizeTagNameProblem は誤りを返すことを確かめたうえでその理由を返す。
+// errors.Is(err, ErrInvalidTagName) が保たれていることと、Error() が空でない
+// ことも確かめる。
+func normalizeTagNameProblem(t *testing.T, input string) TagNameProblem {
 	t.Helper()
 	_, err := NormalizeTagName(input)
 	if !errors.Is(err, ErrInvalidTagName) {
 		t.Fatalf("NormalizeTagName(%q) error = %v, want ErrInvalidTagName", input, err)
 	}
-	return err
+	var invalid *InvalidTagNameError
+	if !errors.As(err, &invalid) {
+		t.Fatalf("NormalizeTagName(%q) error = %v, want *InvalidTagNameError", input, err)
+	}
+	if err.Error() == "" {
+		t.Errorf("NormalizeTagName(%q) error message is empty", input)
+	}
+	return invalid.Problem
 }
 
 func TestNormalizeTagNameDoesNotFoldCase(t *testing.T) {

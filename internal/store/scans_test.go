@@ -94,7 +94,7 @@ func TestFinishScan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanDone, ""); err != nil {
+	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanDone, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -127,7 +127,10 @@ func TestFinishScanRecordsError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanFailed, "メディアフォルダを読み取れません"); err != nil {
+	folder := fixturePath("/media/unreadable")
+	cause := domain.NewScanFailure(domain.ScanErrorMediaFolderUnreadable, folder,
+		errors.New("could not read the media folder"))
+	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanFailed, cause); err != nil {
 		t.Fatal(err)
 	}
 
@@ -138,8 +141,47 @@ func TestFinishScanRecordsError(t *testing.T) {
 	if got.State != domain.ScanFailed {
 		t.Errorf("State = %q, want failed", got.State)
 	}
-	if got.Error == "" {
-		t.Error("失敗の理由が記録されていない")
+	if got.Error != "could not read the media folder" {
+		t.Errorf("Error = %q, want the reason", got.Error)
+	}
+	if got.ErrorCode != domain.ScanErrorMediaFolderUnreadable || got.ErrorPath != folder {
+		t.Errorf("ErrorCode = %q (%q), want media_folder_unreadable (%q)", got.ErrorCode, got.ErrorPath, folder)
+	}
+}
+
+// 理由のコードで包まれていない失敗は internal で、場所は残さない。成功は理由を残さない。
+func TestFinishScanRecordsInternalForUncodedError(t *testing.T) {
+	db := scanDB(t)
+	ctx := context.Background()
+
+	scan, _, err := db.Scans().StartScan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanFailed, errors.New("database is locked")); err != nil {
+		t.Fatal(err)
+	}
+	got, err := db.Scans().CurrentScan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ErrorCode != domain.ScanErrorInternal || got.ErrorPath != "" {
+		t.Errorf("ErrorCode = %q (%q), want internal without a path", got.ErrorCode, got.ErrorPath)
+	}
+
+	next, _, err := db.Scans().StartScan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Scans().FinishScan(ctx, next.ID, domain.ScanDone, nil); err != nil {
+		t.Fatal(err)
+	}
+	got, err = db.Scans().CurrentScan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Error != "" || got.ErrorCode != "" || got.ErrorPath != "" {
+		t.Errorf("done の走査に理由がある: %+v", got)
 	}
 }
 
@@ -152,7 +194,7 @@ func TestCurrentScanPrefersRunning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Scans().FinishScan(ctx, finished.ID, domain.ScanDone, ""); err != nil {
+	if err := db.Scans().FinishScan(ctx, finished.ID, domain.ScanDone, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -204,6 +246,9 @@ func TestFailInterruptedScans(t *testing.T) {
 	}
 	if got.ID != interrupted.ID || got.State != domain.ScanFailed {
 		t.Errorf("中断したスキャンが failed になっていない: %+v", got)
+	}
+	if got.ErrorCode != domain.ScanErrorInterrupted || got.ErrorPath != "" || got.Error == "" {
+		t.Errorf("中断したスキャンの理由 = %q (%q, %q), want interrupted", got.ErrorCode, got.ErrorPath, got.Error)
 	}
 
 	if _, started, err := db.Scans().StartScan(ctx); err != nil || !started {

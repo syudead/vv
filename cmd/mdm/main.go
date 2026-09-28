@@ -72,7 +72,7 @@ func run() error {
 
 	// どの設定で動いているかを後から追跡できるように、有効な設定値と
 	// バージョン情報を1行で記録する。
-	logger.LogAttrs(context.Background(), slog.LevelInfo, "起動します",
+	logger.LogAttrs(context.Background(), slog.LevelInfo, "starting",
 		append(cfg.LogAttrs(),
 			slog.String("version", build.Version),
 			slog.String("commit", build.Commit),
@@ -89,7 +89,7 @@ func run() error {
 	}
 	defer func() {
 		if err := db.Close(); err != nil {
-			logger.Warn("データベースを閉じられませんでした", slog.Any("error", err))
+			logger.Warn("could not close the database", slog.Any("error", err))
 		}
 	}()
 
@@ -97,7 +97,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	logger.Info("マイグレーションを適用しました",
+	logger.Info("applied migrations",
 		slog.String("database", db.Path()),
 		slog.Int("applied", migrated.Applied),
 		slog.Int64("version", migrated.Version),
@@ -109,17 +109,17 @@ func run() error {
 	// 版が行ごとに残るので、次の起動で続きから埋まる。
 	refreshed, err := libraryStore.RefreshSearchKeys(context.Background())
 	if err != nil {
-		return fmt.Errorf("照合用の鍵を作り直せません: %w", err)
+		return fmt.Errorf("cannot rebuild the search keys: %w", err)
 	}
-	logger.Info("照合用の鍵を作り直しました", slog.Int("locations", refreshed))
+	logger.Info("rebuilt the search keys", slog.Int("locations", refreshed))
 
 	// タグ名の照合用の鍵も同じ時点で作り直す。メディアフォルダに依らないので
 	// folderMu は取らない（specs/014-video-tags/data-model.md §7）。
 	tagsRefreshed, err := db.Tags().RefreshSearchKeys(context.Background())
 	if err != nil {
-		return fmt.Errorf("タグの照合用の鍵を作り直せません: %w", err)
+		return fmt.Errorf("cannot rebuild the tag search keys: %w", err)
 	}
-	logger.Info("タグの照合用の鍵を作り直しました", slog.Int("tag_names", tagsRefreshed))
+	logger.Info("rebuilt the tag search keys", slog.Int("tag_names", tagsRefreshed))
 
 	// フォルダの索引（グループとフォルダ名）を、規則の版が古いか前回の作り直しが
 	// 失敗していたときだけ作り直す。title_key は照合用の鍵の規則で作るので、その
@@ -127,9 +127,9 @@ func run() error {
 	// 変更・メディアフォルダの変更か次の起動で作り直す
 	// （specs/017-folder-groups/data-model.md §3）。
 	if rebuilt, err := db.ScanIndex().RefreshFolderIndex(context.Background()); err != nil {
-		logger.Warn("フォルダの索引を作り直せませんでした", slog.Any("error", err))
+		logger.Warn("could not rebuild the folder index", slog.Any("error", err))
 	} else if rebuilt {
-		logger.Info("フォルダの索引を作り直しました")
+		logger.Info("rebuilt the folder index")
 	}
 
 	// 認証の準備。期限切れのセッションを消し、未設定なら初回設定を促す。
@@ -178,7 +178,7 @@ func run() error {
 	// 前回の停止で残った生成途中の成果物を消す。ワーカーを動かす前なので、
 	// 生成中のものを消すことはない。
 	if err := artifactStore.RemoveTemporary(); err != nil {
-		logger.Warn("生成途中の成果物を削除できませんでした", slog.Any("error", err))
+		logger.Warn("could not delete unfinished artifacts", slog.Any("error", err))
 	}
 	ingest := app.NewIngest(app.IngestOptions{
 		Store: ingestStore, Generator: media.NewAssets(), Artifacts: artifactStore, Publisher: bus, Logger: logger,
@@ -217,7 +217,7 @@ func run() error {
 	// 既定アプリを起動できる環境かどうかは、ここで1度だけ決める。要求のたびには
 	// コマンドを探さない。
 	fileOpener := opener.New()
-	logger.Info("ファイルを開く機能の状態", slog.Bool("available", fileOpener.Available()),
+	logger.Info("open-file feature status", slog.Bool("available", fileOpener.Available()),
 		slog.String("command", fileOpener.Command()))
 
 	// 動画の応答に要る判断（消えたプレビューの作り直し、シーク用プレビューの
@@ -281,14 +281,14 @@ func run() error {
 	// 読み取りが戻らないときは待ち切らずに進む。走査の記録は running のまま
 	// 残り、次の起動の RecoverInterrupted が閉じる。
 	if !waitAtMost(scans.Wait, scanStopGrace) {
-		logger.Warn("走査が猶予内に止まりませんでした。走査が消した動画の生成物は残ることがあります",
+		logger.Warn("the scan did not stop within the grace period; artifacts of videos it removed may remain",
 			slog.String("grace", scanStopGrace.String()))
 	}
 	// 積んである変化（生成物の削除）を渡し終え、背後で動いている生成物の削除を、
 	// データベースを閉じる前に終える。途中で閉じると、消すはずの生成物が残り続ける。
 	bus.Close()
 	ingest.Wait()
-	logger.Info("取り込みとジョブを停止しました")
+	logger.Info("stopped ingest and jobs")
 
 	return nil
 }
@@ -344,12 +344,12 @@ func serveUntil(
 
 	listener, err := net.Listen("tcp", cfg.Addr)
 	if err != nil {
-		return fmt.Errorf("待ち受けに失敗しました (%s): %w", cfg.Addr, err)
+		return fmt.Errorf("cannot listen on %s: %w", cfg.Addr, err)
 	}
 	defer func() { _ = listener.Close() }()
 
 	listenErr := make(chan error, 1)
-	logger.Info("待ち受けを開始しました", slog.String("addr", cfg.Addr))
+	logger.Info("listening", slog.String("addr", cfg.Addr))
 	if onListening != nil {
 		onListening()
 	}
@@ -360,7 +360,7 @@ func serveUntil(
 	select {
 	case err := <-listenErr:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("待ち受けに失敗しました (%s): %w", cfg.Addr, err)
+			return fmt.Errorf("cannot listen on %s: %w", cfg.Addr, err)
 		}
 		return nil
 
@@ -369,7 +369,7 @@ func serveUntil(
 		if restoreSignals != nil {
 			restoreSignals()
 		}
-		logger.Info("停止指示を受けました。処理中の要求を待ちます",
+		logger.Info("received a stop signal; waiting for in-flight requests",
 			slog.String("grace", shutdownGrace.String()))
 		if beforeShutdown != nil {
 			beforeShutdown()
@@ -379,9 +379,9 @@ func serveUntil(
 		defer cancel()
 
 		if err := srv.Shutdown(shutdownCtx); err != nil {
-			return fmt.Errorf("猶予 %s 以内に停止できませんでした: %w", shutdownGrace, err)
+			return fmt.Errorf("could not stop within %s: %w", shutdownGrace, err)
 		}
-		logger.Info("停止しました")
+		logger.Info("stopped")
 		return nil
 	}
 }
@@ -396,7 +396,7 @@ func checkPreconditions(cfg Config) error {
 	}
 
 	if len(problems) > 0 {
-		return joinProblems("起動前の確認に失敗しました", problems)
+		return joinProblems("startup check failed", problems)
 	}
 	return nil
 }

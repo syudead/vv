@@ -2,6 +2,7 @@ import { LayoutGrid, List, SlidersHorizontal } from "lucide-react";
 import type { RefObject } from "react";
 
 import type { VideoSort, WatchFilter } from "../api/client";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import Button from "../ui/Button";
@@ -14,10 +15,13 @@ import SearchBox from "../videoList/SearchBox";
 import { CompactSortControls, SortMenu } from "../videoList/SortControls";
 import ZoomSlider from "../videoList/ZoomSlider";
 
-const viewOptions = [
-  { value: "grid", label: "グリッド", icon: <LayoutGrid /> },
-  { value: "list", label: "リスト", icon: <List /> },
-] as const;
+/** viewOptions は表示形式の選択肢である。文言は描画のたびにカタログから引く。 */
+function viewOptions() {
+  return [
+    { value: "grid", label: t.library.view.grid, icon: <LayoutGrid /> },
+    { value: "list", label: t.library.view.list, icon: <List /> },
+  ] as const;
+}
 
 export interface LibraryToolbarProps {
   query: string;
@@ -85,15 +89,15 @@ export default function LibraryToolbar({
 
       <div className="hidden lg:block">
         <SegmentedControl
-          label="表示形式"
+          label={t.library.view.label}
           value={view}
           onValueChange={onViewChange}
-          options={viewOptions}
+          options={viewOptions()}
         />
       </div>
 
       {view === "grid" && (
-        <Tooltip content="カードの大きさ">
+        <Tooltip content={t.list.cardSize}>
           <ZoomSlider
             zoom={zoom}
             onZoomChange={onZoomChange}
@@ -106,7 +110,7 @@ export default function LibraryToolbar({
         <PopoverTrigger asChild>
           <Button
             variant="secondary"
-            aria-label="表示と並び順"
+            aria-label={t.list.viewAndSort}
             className={cn("px-2.5", view === "grid" ? "xl:hidden" : "lg:hidden")}
           >
             <SlidersHorizontal />
@@ -125,20 +129,20 @@ export default function LibraryToolbar({
 
             <fieldset className="lg:hidden">
               <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
-                表示形式
+                {t.library.view.label}
               </legend>
               <SegmentedControl
-                label="表示形式（コンパクト）"
+                label={t.library.view.compact}
                 value={view}
                 onValueChange={onViewChange}
-                options={viewOptions}
+                options={viewOptions()}
               />
             </fieldset>
 
             {view === "grid" && (
               <fieldset className="xl:hidden">
                 <legend className="mb-1 text-xs font-semibold text-fg-muted uppercase">
-                  カードの大きさ
+                  {t.list.cardSize}
                 </legend>
                 <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />
               </fieldset>

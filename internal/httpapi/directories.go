@@ -13,7 +13,7 @@ import (
 // ここは誤りを応答の状態へ移すだけである。
 func (s *server) ListDirectories(w http.ResponseWriter, _ *http.Request, params gen.ListDirectoriesParams) {
 	if s.files == nil {
-		s.internalError(w, "ディレクトリの読み取りが設定されていません", nil)
+		s.internalError(w, "Directory listing is not configured.", nil)
 		return
 	}
 	var listing domain.DirectoryListing
@@ -24,13 +24,13 @@ func (s *server) ListDirectories(w http.ResponseWriter, _ *http.Request, params 
 		listing, err = s.files.ListDirectories(*params.Path)
 		switch {
 		case errors.Is(err, domain.ErrInvalidDirectoryPath):
-			s.writeError(w, http.StatusBadRequest, codeInvalidRequest, err.Error())
+			s.invalidRequestReason(w, reasonRelativeDirectoryPath, "The path must be absolute.")
 			return
 		case errors.Is(err, domain.ErrDirectoryNotFound):
-			s.writeError(w, http.StatusNotFound, codeNotFound, err.Error())
+			s.notFoundReason(w, reasonDirectoryNotFound, "Directory not found.")
 			return
 		case err != nil:
-			s.writeError(w, http.StatusBadRequest, codeDirectoryUnavailable, domain.ErrDirectoryUnavailable.Error())
+			s.writeError(w, http.StatusBadRequest, codeDirectoryUnavailable, "Cannot read the directory.")
 			return
 		}
 	}

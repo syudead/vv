@@ -21,21 +21,21 @@ func (s *server) GetVideoPreview(
 	defer release()
 
 	if video.PreviewState != domain.PreviewStateDone || s.artifacts == nil {
-		s.notFound(w, "プレビューはまだ生成されていません")
+		s.notFound(w, "The preview has not been generated yet.")
 		return
 	}
 
 	// 無い・manifest と合わない・生成途中のものは、置き場が「無い」と答える。
 	file, digest, err := s.artifacts.PreviewFile(video.ContentKey)
 	if err != nil {
-		s.notFound(w, "プレビューはまだ生成されていません")
+		s.notFound(w, "The preview has not been generated yet.")
 		return
 	}
 	defer func() { _ = file.Close() }()
 
 	info, err := file.Stat()
 	if err != nil {
-		s.notFound(w, "プレビューはまだ生成されていません")
+		s.notFound(w, "The preview has not been generated yet.")
 		return
 	}
 

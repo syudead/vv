@@ -19,17 +19,17 @@ type Folders interface {
 	ListFolderVideos(ctx context.Context, audience domain.Audience, q domain.FolderVideoQuery) (domain.VideoPage, error)
 }
 
-const folderNotFoundMessage = "そのフォルダは見つかりません"
+const folderNotFoundMessage = "Folder not found."
 
 // ListRootFolders は登録済みメディアフォルダの集計を返す（GET /api/folders）。
 func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	if s.folders == nil {
-		s.internalError(w, "フォルダの問い合わせ先が設定されていません", nil)
+		s.internalError(w, "Folder queries are not configured.", nil)
 		return
 	}
 	roots, err := s.folders.ListMediaFolders(r.Context())
 	if err != nil {
-		s.folderError(w, r, "フォルダを取得できませんでした", err)
+		s.folderError(w, r, "Could not load folders.", err)
 		return
 	}
 
@@ -38,7 +38,7 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	for _, root := range roots {
 		locations, err := s.folders.FolderLocations(r.Context(), audience, root.Path)
 		if err != nil {
-			s.folderError(w, r, "フォルダを取得できませんでした", err)
+			s.folderError(w, r, "Could not load folders.", err)
 			return
 		}
 		listing, _ := domain.SummarizeFolder(root, "", locations)
@@ -52,7 +52,7 @@ func (s *server) ListRootFolders(w http.ResponseWriter, r *http.Request) {
 	domain.SortFolders(summaries)
 	groupings, err := s.folderGroupings(r.Context(), audience, summaries)
 	if err != nil {
-		s.folderError(w, r, "フォルダを取得できませんでした", err)
+		s.folderError(w, r, "Could not load folders.", err)
 		return
 	}
 
@@ -69,7 +69,7 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 	audience := audienceFrom(r.Context())
 	locations, err := s.folders.FolderLocations(r.Context(), audience, domain.FolderDir(root.Path, rel))
 	if err != nil {
-		s.folderError(w, r, "フォルダを取得できませんでした", err)
+		s.folderError(w, r, "Could not load folders.", err)
 		return
 	}
 	listing, found := domain.SummarizeFolder(root, rel, locations)
@@ -77,14 +77,14 @@ func (s *server) GetFolder(w http.ResponseWriter, r *http.Request, rootID gen.Fo
 	// 含まないなら存在しないフォルダと同じにする。登録フォルダの rootId を数え上げられない
 	// ようにする（contracts/guest-api.md §2）。
 	if !found || (!audience.IsOwner() && !listingHasVideos(listing)) {
-		s.notFound(w, folderNotFoundMessage)
+		s.notFoundReason(w, reasonFolderNotFound, folderNotFoundMessage)
 		return
 	}
 
 	// 開いたフォルダと子フォルダのまとめ方を、同じ読み取りから引く。
 	groupings, err := s.folderGroupings(r.Context(), audience, append([]domain.FolderSummary{listing.Folder}, listing.Folders...))
 	if err != nil {
-		s.folderError(w, r, "フォルダを取得できませんでした", err)
+		s.folderError(w, r, "Could not load folders.", err)
 		return
 	}
 	var folderGrouping *gen.FolderGrouping
@@ -121,18 +121,18 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	if rel != "" || !audience.IsOwner() {
 		found, err := s.folders.HasFolderLocations(r.Context(), audience, query.Dir)
 		if err != nil {
-			s.folderError(w, r, "フォルダの動画を取得できませんでした", err)
+			s.folderError(w, r, "Could not load the folder's videos.", err)
 			return
 		}
 		if !found {
-			s.notFound(w, folderNotFoundMessage)
+			s.notFoundReason(w, reasonFolderNotFound, folderNotFoundMessage)
 			return
 		}
 	}
 	if params.Scope != nil {
 		scope := domain.FolderScope(*params.Scope)
 		if !scope.Valid() {
-			s.invalidRequest(w, "検索の範囲の値が不明です")
+			s.invalidRequest(w, "Unknown search scope.")
 			return
 		}
 		query.Scope = scope
@@ -152,7 +152,7 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	}
 	if params.Limit != nil {
 		if *params.Limit < 1 {
-			s.invalidRequest(w, "1ページの件数は 1 以上を指定してください")
+			s.invalidRequest(w, "limit must be at least 1.")
 			return
 		}
 		query.Limit = min(*params.Limit, domain.MaxLimit)
@@ -164,10 +164,10 @@ func (s *server) ListFolderVideos(w http.ResponseWriter, r *http.Request, rootID
 	page, err := s.folders.ListFolderVideos(r.Context(), audience, query)
 	switch {
 	case errors.Is(err, domain.ErrInvalidCursor):
-		s.invalidRequest(w, "読み込み位置を解釈できません。フォルダを開き直してください")
+		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reopen the folder.")
 		return
 	case err != nil:
-		s.folderError(w, r, "フォルダの動画を取得できませんでした", err)
+		s.folderError(w, r, "Could not load the folder's videos.", err)
 		return
 	}
 
@@ -184,7 +184,7 @@ func (s *server) resolveFolderRoot(w http.ResponseWriter, r *http.Request, rootI
 // resolveFolderRootIn は resolveFolderRoot と同じで、引いた登録フォルダの一覧も返す。
 func (s *server) resolveFolderRootIn(w http.ResponseWriter, r *http.Request, rootID int64, path *string) ([]domain.MediaFolder, domain.MediaFolder, string, bool) {
 	if s.folders == nil {
-		s.internalError(w, "フォルダの問い合わせ先が設定されていません", nil)
+		s.internalError(w, "Folder queries are not configured.", nil)
 		return nil, domain.MediaFolder{}, "", false
 	}
 	rel := ""
@@ -192,13 +192,14 @@ func (s *server) resolveFolderRootIn(w http.ResponseWriter, r *http.Request, roo
 		rel = *path
 	}
 	if err := domain.ValidateFolderPath(rel); err != nil {
-		s.invalidRequest(w, "フォルダの指定が正しくありません。空の段・先頭や末尾の / ・ . ・ .. は使えません")
+		s.invalidRequestReason(w, reasonInvalidFolderPath,
+			"Invalid folder path. Empty segments, leading or trailing /, ., and .. are not allowed.")
 		return nil, domain.MediaFolder{}, "", false
 	}
 
 	roots, err := s.folders.ListMediaFolders(r.Context())
 	if err != nil {
-		s.folderError(w, r, "フォルダを取得できませんでした", err)
+		s.folderError(w, r, "Could not load folders.", err)
 		return nil, domain.MediaFolder{}, "", false
 	}
 	for _, root := range roots {
@@ -206,7 +207,7 @@ func (s *server) resolveFolderRootIn(w http.ResponseWriter, r *http.Request, roo
 			return roots, root, rel, true
 		}
 	}
-	s.notFound(w, folderNotFoundMessage)
+	s.notFoundReason(w, reasonFolderNotFound, folderNotFoundMessage)
 	return nil, domain.MediaFolder{}, "", false
 }
 

@@ -89,7 +89,9 @@ describe("ScanProvider", () => {
     await user.click(screen.getByRole("button", { name: "開始" }));
 
     expect(
-      await screen.findByText("取り込みを始められません: 開始できません"),
+      await screen.findByText(
+        "Couldn't start the scan: Something went wrong on the server.",
+      ),
     ).toBeDefined();
     const currentCalls = fetchMock.mock.calls.filter(
       ([input]) => String(input) === "/api/scans/current",
@@ -253,7 +255,11 @@ describe("ScanProvider", () => {
         </ScanProvider>
       </OwnerAudience>,
     );
-    expect(await screen.findByText("一時的な失敗")).toBeDefined();
+    expect(
+      await screen.findByText(
+        "Couldn't reach the server. Check that VVMDM is running and try again.",
+      ),
+    ).toBeDefined();
     expect(screen.getByText("状態: なし")).toBeDefined();
 
     await emitServerEvent("open");
@@ -281,7 +287,11 @@ describe("ScanProvider", () => {
 
     await act(async () => window.dispatchEvent(new Event("focus")));
 
-    expect(await screen.findByText("一時的な失敗")).toBeDefined();
+    expect(
+      await screen.findByText(
+        "Couldn't reach the server. Check that VVMDM is running and try again.",
+      ),
+    ).toBeDefined();
     expect(screen.getByText("状態: 5")).toBeDefined();
   });
 
@@ -359,7 +369,7 @@ describe("ScanProvider", () => {
           json(
             {
               code: "media_folders_not_configured",
-              message: "メディアフォルダが設定されていません",
+              message: "No media folders yet",
             },
             409,
           ),

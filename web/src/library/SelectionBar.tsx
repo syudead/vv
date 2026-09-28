@@ -1,598 +1,16 @@
-import { ChevronDown, CircleDashed, Globe, Lock, Minus, Plus, X } from "lucide-react";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Minus, Plus, X } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
 
-import { RequestFailed } from "../api/client";
-import {
-  attachVideoTagByID,
-  attachVideoTagByName,
-  currentTags,
-  detachVideoTag,
-  maxVideoTagsSelection,
-  refreshTags,
-  subscribeTags,
-  summarizeVideoTags,
-  type Tag,
-  type VideoTagsSummary,
-} from "../api/tags";
-import { compareNatural } from "../api/tagOrder";
-import { updateVideoVisibility } from "../api/visibility";
+import { maxVideoTagsSelection } from "../api/tags";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
-import Combobox, { type ComboboxOption } from "../ui/Combobox";
 import IconButton from "../ui/IconButton";
-import { MenuContent, MenuItem, MenuRoot, MenuTrigger } from "../ui/Menu";
-import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
-import { useToast } from "../ui/Toast";
-
-type VideoTagsSummaryItem = VideoTagsSummary["items"][number];
-
-function isTagNotFound(error: unknown): boolean {
-  return error instanceof RequestFailed && error.code === "tag_not_found";
-}
-
-/**
- * `POST /api/video-tags`・`POST /api/video-tags/summary` は videoIds を全部か
- * 無しかでしか受け付けず、maxVideoTagsSelection を超えると400になる
- * （contracts/tags-api.md §4）。トリガのボタンを disabled にするだけでは、
- * ポップオーバーを開いたまま選択が増える（例:「すべて選択」の応答が届く）と
- * 送れてしまうため、ポップオーバー自身も閉じ・その場の送信も selectedIds の
- * 最新の件数で確かめて理由を示す（Devin の指摘）。
- *
- * 公開の一括の切り替え（`PUT /api/video-visibility`）も同じ上限・同じ全部か無しかで
- * （specs/016-single-account-auth/contracts/guest-api.md §4）、同じ理由を添える
- * （ui-design.md「Selection bar」）。そのため文言はタグに限らない言い方にする。
- */
-const overLimitMessage = `一括操作は ${maxVideoTagsSelection.toLocaleString("ja-JP")} 件までです`;
-
-/** buildAddOptions は「タグを付ける」の候補（全タグ、各行の右に本数）を作る。 */
-function buildAddOptions(
-  allTags: readonly Tag[],
-  input: string,
-): { options: ComboboxOption[]; exactOption: ComboboxOption | null } {
-  const trimmed = input.trim();
-  const query = trimmed.toLowerCase();
-
-  let exactTag: Tag | undefined;
-  for (const tag of allTags) {
-    if (tag.name === trimmed || tag.synonyms.includes(trimmed)) {
-      exactTag = tag;
-      break;
-    }
-  }
-
-  const matched = allTags
-    .map((tag) => {
-      const nameMatch = query === "" || tag.name.toLowerCase().includes(query);
-      const synonymHit = tag.synonyms.find((synonym) =>
-        synonym.toLowerCase().includes(query),
-      );
-      if (!nameMatch && synonymHit === undefined) return null;
-      const namePrefix = query === "" || tag.name.toLowerCase().startsWith(query);
-      const synonymPrefix =
-        synonymHit !== undefined && synonymHit.toLowerCase().startsWith(query);
-      return {
-        tag,
-        prefix: namePrefix || synonymPrefix,
-        hint:
-          !nameMatch && synonymHit !== undefined ? `シノニム: ${synonymHit}` : undefined,
-      };
-    })
-    .filter((value): value is NonNullable<typeof value> => value !== null)
-    .sort((a, b) => {
-      if (a.prefix !== b.prefix) return a.prefix ? -1 : 1;
-      return compareNatural(a.tag.name, b.tag.name);
-    });
-
-  const options: ComboboxOption[] = matched.map(({ tag, hint }) => ({
-    id: String(tag.id),
-    label: tag.name,
-    hint,
-    meta: `${String(tag.videoCount)} 本`,
-  }));
-
-  const exactOption: ComboboxOption | null =
-    exactTag === undefined
-      ? null
-      : {
-          id: String(exactTag.id),
-          label: exactTag.name,
-          meta: `${String(exactTag.videoCount)} 本`,
-        };
-
-  return { options, exactOption };
-}
-
-/**
- * removableSummary は要約から、選んだ動画のどれかに手で付けたタグ
- * （`manualCount >= 1`）だけを残す。フォルダ名から付いているだけのタグは
- * 外せないので、候補にも `disabled` の行にも出さない
- * （specs/017-folder-groups/ui-design.md「Folder-derived tag chip」）。
- */
-function removableSummary(summary: VideoTagsSummary): VideoTagsSummary {
-  return { ...summary, items: summary.items.filter((item) => item.manualCount >= 1) };
-}
-
-/**
- * buildRemoveOptions は「タグを外す」の候補（要約のタグだけ）を作る。作成の行は持たない。
- * 外れるのは手で付けた分だけなので、「一部」の判定と本数は `manualCount` で行い、
- * 分母は選んだ本数（`total`）のままにする。
- */
-function buildRemoveOptions(
-  summary: VideoTagsSummary,
-  input: string,
-): { options: ComboboxOption[]; exactOption: ComboboxOption | null } {
-  const trimmed = input.trim();
-  const query = trimmed.toLowerCase();
-
-  function toOption(item: VideoTagsSummaryItem): ComboboxOption {
-    const partial = item.manualCount < summary.total;
-    return {
-      id: String(item.tag.id),
-      label: item.tag.name,
-      meta: partial ? (
-        <span className="inline-flex items-center gap-1">
-          <CircleDashed className="size-3" aria-hidden="true" />
-          <span>
-            一部 {item.manualCount} / {summary.total} 件
-          </span>
-        </span>
-      ) : (
-        `${String(summary.total)} 件`
-      ),
-      ariaLabel: partial
-        ? `${item.tag.name}、一部の動画だけ、${String(summary.total)} 件中 ${String(item.manualCount)} 件`
-        : undefined,
-    };
-  }
-
-  let exactItem: VideoTagsSummaryItem | undefined;
-  for (const item of summary.items) {
-    if (item.tag.name === trimmed) {
-      exactItem = item;
-      break;
-    }
-  }
-
-  const matched = summary.items
-    .filter((item) => query === "" || item.tag.name.toLowerCase().includes(query))
-    .map((item) => ({
-      item,
-      prefix: query === "" || item.tag.name.toLowerCase().startsWith(query),
-    }))
-    .sort((a, b) => {
-      if (a.prefix !== b.prefix) return a.prefix ? -1 : 1;
-      return compareNatural(a.item.tag.name, b.item.tag.name);
-    });
-
-  return {
-    options: matched.map(({ item }) => toOption(item)),
-    exactOption: exactItem === undefined ? null : toOption(exactItem),
-  };
-}
-
-/**
- * AddTagPopover は選択バーの「タグを付ける」の中身である
- * （ui-design.md「Selection bar」の「Add」）。
- */
-function AddTagPopover({
-  open,
-  onOpenChange,
-  selectedIds,
-  onDone,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  selectedIds: readonly number[];
-  onDone: () => void;
-}) {
-  const toast = useToast();
-  const headingId = useId();
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  // Radix の DismissableLayer は document の capture 段階で Esc を先に拾う
-  // ため、combobox の候補の一覧が開いているかをここで見張り、開いていれば
-  // PopoverContent の onEscapeKeyDown で既定の「閉じる」を止める（B2）。
-  const listOpenRef = useRef(false);
-  const [value, setValue] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [allTags, setAllTags] = useState<Tag[] | undefined>(currentTags());
-
-  useEffect(() => {
-    const unsubscribe = subscribeTags((tags) => setAllTags(tags));
-    return unsubscribe;
-  }, []);
-
-  // 開くたびに共有の一覧を取り直す。
-  useEffect(() => {
-    if (!open) return;
-    setValue("");
-    setErrorMessage(null);
-    refreshTags().catch(() => undefined);
-  }, [open]);
-
-  // 開いている間に選択が増えて上限を超えたら、候補も送信も止める（親の
-  // SelectionBar がこのポップオーバー自体を閉じるまでの間の保険）。
-  const overLimit = selectedIds.length > maxVideoTagsSelection;
-
-  const { options, exactOption } = buildAddOptions(allTags ?? [], value);
-  const trimmed = value.trim();
-  const createLabel =
-    exactOption === null && trimmed !== "" ? (
-      <span className="flex min-w-0 items-center gap-2">
-        <Plus className="size-3.5 shrink-0 text-fg-muted" aria-hidden="true" />
-        <span className="truncate">「{trimmed}」を作成</span>
-      </span>
-    ) : null;
-
-  function submit(tag: { id: number; name: string } | { name: string }) {
-    setErrorMessage(null);
-    // 送る直前に selectedIds の最新の件数を確かめる。ポップオーバーを開いた
-    // ままの間に選択が増えて上限を超えていれば、静かに送らず理由を示す
-    // （contracts/tags-api.md §4: 全部か無しかで、超えると400になる）。
-    if (selectedIds.length > maxVideoTagsSelection) {
-      setErrorMessage(overLimitMessage);
-      return;
-    }
-    setSubmitting(true);
-    const displayName = tag.name;
-    const request =
-      "id" in tag
-        ? attachVideoTagByID(selectedIds, tag.id)
-        : attachVideoTagByName(selectedIds, tag.name);
-    void request
-      .then((result) => {
-        toast(`${String(result.applied)} 件に「${displayName}」を付けました`);
-        onOpenChange(false);
-        onDone();
-      })
-      .catch((error: unknown) => {
-        if (isTagNotFound(error)) {
-          toast(`タグ「${displayName}」はもう無いため、一覧を取り直しました`);
-          refreshTags().catch(() => undefined);
-          return;
-        }
-        setErrorMessage("付けられませんでした。もう一度お試しください");
-      })
-      .finally(() => setSubmitting(false));
-  }
-
-  return (
-    <PopoverContent
-      side="top"
-      align="start"
-      aria-labelledby={headingId}
-      className="w-72 p-3"
-      onOpenAutoFocus={(event) => {
-        event.preventDefault();
-        if (!overLimit) inputRef.current?.focus();
-      }}
-      onEscapeKeyDown={(event) => {
-        if (listOpenRef.current) event.preventDefault();
-      }}
-    >
-      <h2 id={headingId} className="sr-only">
-        タグを付ける
-      </h2>
-      {overLimit ? (
-        <p role="alert" className="text-xs text-danger">
-          {overLimitMessage}
-        </p>
-      ) : (
-        <>
-          <Combobox
-            value={value}
-            onValueChange={setValue}
-            options={options}
-            exactOption={exactOption}
-            onSelect={(option) => submit({ id: Number(option.id), name: option.label })}
-            createLabel={createLabel}
-            onCreate={(spelling) => submit({ name: spelling })}
-            placeholder="タグを付ける"
-            icon={<Plus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />}
-            busy={submitting}
-            side="top"
-            aria-label="タグを付ける"
-            inputRef={inputRef}
-            onEscapeWhenClosed={() => onOpenChange(false)}
-            onOpenChange={(listOpen) => {
-              listOpenRef.current = listOpen;
-            }}
-            className="w-full"
-            inputClassName="w-full"
-            frameClassName="w-full"
-          />
-          {errorMessage !== null && (
-            <p role="alert" className="mt-1 text-xs text-danger">
-              {errorMessage}
-            </p>
-          )}
-        </>
-      )}
-    </PopoverContent>
-  );
-}
-
-/**
- * RemoveTagPopover は選択バーの「タグを外す」の中身である
- * （ui-design.md「Selection bar」の「Remove」）。
- */
-function RemoveTagPopover({
-  open,
-  onOpenChange,
-  selectedIds,
-  onRemoved,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  selectedIds: readonly number[];
-  /** タグを外し終えるたびに、外したタグの id を渡して呼ぶ。 */
-  onRemoved: (tagId: number) => void;
-}) {
-  const toast = useToast();
-  const headingId = useId();
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  // AddTagPopover と同じく、候補の一覧が開いているかを見張る（B2）。
-  const listOpenRef = useRef(false);
-  const [value, setValue] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [fetchFailed, setFetchFailed] = useState(false);
-  const [summary, setSummary] = useState<VideoTagsSummary | null>(null);
-
-  // 開いている間に選択が増えて上限を超えたら、要約の取得も送信も止める
-  // （親の SelectionBar がこのポップオーバー自体を閉じるまでの間の保険）。
-  const overLimit = selectedIds.length > maxVideoTagsSelection;
-
-  // 要約の取得は選ぶたびに通し番号を払い出し、古い応答が新しい選択の結果を
-  // 上書きしないようにする（Devin の指摘2。summarizeVideoTags 自身は要求の
-  // 順・届く順を揃えない）。
-  const summarySeq = useRef(0);
-  const fetchSummary = useCallback(() => {
-    // 選択が空になった直後（一括で外したタグが今の絞り込みに含まれていて、
-    // 呼び出し元が選択を解除した直後など）は、このポップオーバーはすぐ閉じる
-    // ので要求しない。`POST /api/video-tags/summary` は videoIds を1件以上
-    // 要る（contracts/tags-api.md §4）。
-    if (selectedIds.length === 0) return;
-    if (selectedIds.length > maxVideoTagsSelection) {
-      // 進行中の（上限内だった頃に始めた）取得を無効にする。その応答が
-      // 後から届いても、上限超過の表示を古い要約で上書きしない。
-      summarySeq.current += 1;
-      setLoading(false);
-      setFetchFailed(false);
-      setSummary(null);
-      return;
-    }
-    const seq = (summarySeq.current += 1);
-    setLoading(true);
-    setFetchFailed(false);
-    summarizeVideoTags(selectedIds)
-      .then((result) => {
-        if (summarySeq.current !== seq) return;
-        setSummary(removableSummary(result));
-      })
-      .catch(() => {
-        if (summarySeq.current !== seq) return;
-        setFetchFailed(true);
-      })
-      .finally(() => {
-        if (summarySeq.current === seq) setLoading(false);
-      });
-  }, [selectedIds]);
-
-  // 開いている間に選択が変わったら（別の動画を選び直す・「すべて選択」の
-  // 結果が届くなど）要約を取り直す。取り直している間は loading が立ち、
-  // 候補（Combobox）ごと隠れるので、古い候補を選べない（Devin の指摘2）。
-  // 開いた瞬間（justOpened）だけ、前回の入力と失敗の文言を消す。
-  const wasOpenRef = useRef(false);
-  useEffect(() => {
-    if (!open) {
-      wasOpenRef.current = false;
-      return;
-    }
-    const justOpened = !wasOpenRef.current;
-    wasOpenRef.current = true;
-    if (justOpened) {
-      setValue("");
-      setErrorMessage(null);
-    }
-    setSummary(null);
-    fetchSummary();
-  }, [open, fetchSummary]);
-
-  // 「読み込み中…」から Combobox に切り替わった瞬間（要約が届いたとき）は、
-  // ui-design.md「Add」「Remove」と同じくフォーカスを入力へ移す。
-  // `onOpenAutoFocus` は最初のマウント時にしか働かないため、ここで補う。
-  const ready =
-    open && !overLimit && !loading && !fetchFailed && (summary?.items.length ?? 0) > 0;
-  useEffect(() => {
-    if (ready) inputRef.current?.focus();
-  }, [ready]);
-
-  const { options, exactOption } =
-    summary === null
-      ? { options: [], exactOption: null }
-      : buildRemoveOptions(summary, value);
-
-  function submit(option: ComboboxOption) {
-    setErrorMessage(null);
-    // 送る直前に selectedIds の最新の件数を確かめる（AddTagPopover.submit と
-    // 同じ理由。contracts/tags-api.md §4）。
-    if (selectedIds.length > maxVideoTagsSelection) {
-      setErrorMessage(overLimitMessage);
-      return;
-    }
-    setSubmitting(true);
-    const tagId = Number(option.id);
-    const displayName = option.label;
-    void detachVideoTag(selectedIds, tagId)
-      .then((result) => {
-        toast(`${String(result.applied)} 件から「${displayName}」を外しました`);
-        setValue("");
-        fetchSummary();
-        onRemoved(tagId);
-      })
-      .catch((error: unknown) => {
-        if (isTagNotFound(error)) {
-          toast(`タグ「${displayName}」はもう無いため、一覧を取り直しました`);
-          fetchSummary();
-          return;
-        }
-        setErrorMessage("外せませんでした。もう一度お試しください");
-      })
-      .finally(() => setSubmitting(false));
-  }
-
-  return (
-    <PopoverContent
-      side="top"
-      align="start"
-      aria-labelledby={headingId}
-      className="w-72 p-3"
-      onOpenAutoFocus={(event) => {
-        if (overLimit || loading || fetchFailed || summary?.items.length === 0) {
-          event.preventDefault();
-        } else {
-          inputRef.current?.focus();
-        }
-      }}
-      onEscapeKeyDown={(event) => {
-        if (listOpenRef.current) event.preventDefault();
-      }}
-    >
-      <h2 id={headingId} className="sr-only">
-        タグを外す
-      </h2>
-      {overLimit && (
-        <p role="alert" className="text-xs text-danger">
-          {overLimitMessage}
-        </p>
-      )}
-      {!overLimit && loading && (
-        <p role="status" className="text-xs text-fg-muted">
-          読み込み中…
-        </p>
-      )}
-      {!overLimit && !loading && fetchFailed && (
-        <div className="flex flex-col items-start gap-2">
-          <p role="alert" className="text-xs text-danger">
-            タグを取得できませんでした
-          </p>
-          <Button variant="ghost" size="sm" onClick={fetchSummary}>
-            再試行
-          </Button>
-        </div>
-      )}
-      {!overLimit &&
-        !loading &&
-        !fetchFailed &&
-        summary !== null &&
-        summary.items.length === 0 && (
-          <p className="text-xs text-fg-muted">選んだ動画に、外せるタグはありません</p>
-        )}
-      {!overLimit &&
-        !loading &&
-        !fetchFailed &&
-        summary !== null &&
-        summary.items.length > 0 && (
-          <>
-            <Combobox
-              value={value}
-              onValueChange={setValue}
-              options={options}
-              exactOption={exactOption}
-              onSelect={submit}
-              createLabel={null}
-              placeholder="タグを外す"
-              icon={
-                <Minus className="size-3 shrink-0 text-fg-muted" aria-hidden="true" />
-              }
-              busy={submitting}
-              side="top"
-              aria-label="タグを外す"
-              inputRef={inputRef}
-              onEscapeWhenClosed={() => onOpenChange(false)}
-              onOpenChange={(listOpen) => {
-                listOpenRef.current = listOpen;
-              }}
-              className="w-full"
-              inputClassName="w-full"
-              frameClassName="w-full"
-            />
-            {errorMessage !== null && (
-              <p role="alert" className="mt-1 text-xs text-danger">
-                {errorMessage}
-              </p>
-            )}
-          </>
-        )}
-    </PopoverContent>
-  );
-}
-
-/**
- * VisibilityMenu は選択バーの「公開」である（specs/016-single-account-auth/ui-design.md
- * 「Visibility toggle」の「Selection bar」）。選んだ動画の今の状態は示さず、
- * 「公開にする」「非公開にする」の両方を常に押せる。確定したらトーストで結果を伝え、
- * 選択は残す。カードの印は応答の通知（api/visibility.ts）で一覧が差し替える。
- */
-function VisibilityMenu({
-  selectedIds,
-  overLimit,
-  overLimitId,
-  className,
-}: {
-  selectedIds: readonly number[];
-  overLimit: boolean;
-  overLimitId: string;
-  className?: string;
-}) {
-  const toast = useToast();
-
-  function apply(isPublic: boolean) {
-    // 送る直前に選択の最新の件数を確かめる（タグの一括操作と同じ理由。上限を超えると
-    // 全部か無しかで 400 になる）。
-    if (selectedIds.length > maxVideoTagsSelection) {
-      toast(overLimitMessage);
-      return;
-    }
-    void updateVideoVisibility(selectedIds, isPublic).then(
-      (result) => {
-        toast(`${String(result.applied)} 件を${isPublic ? "公開" : "非公開"}にしました`);
-      },
-      () => toast("変更できませんでした"),
-    );
-  }
-
-  return (
-    <MenuRoot>
-      <MenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={className}
-          disabled={overLimit}
-          title={overLimit ? overLimitMessage : undefined}
-          aria-describedby={overLimit ? overLimitId : undefined}
-        >
-          <Globe aria-hidden="true" />
-          公開
-          <ChevronDown aria-hidden="true" />
-        </Button>
-      </MenuTrigger>
-      <MenuContent side="top" align="start">
-        <MenuItem onSelect={() => apply(true)}>
-          <Globe aria-hidden="true" />
-          公開にする
-        </MenuItem>
-        <MenuItem onSelect={() => apply(false)}>
-          <Lock aria-hidden="true" />
-          非公開にする
-        </MenuItem>
-      </MenuContent>
-    </MenuRoot>
-  );
-}
+import { PopoverRoot, PopoverTrigger } from "../ui/Popover";
+import AddTagPopover from "./AddTagPopover";
+import RemoveTagPopover from "./RemoveTagPopover";
+import { overLimitMessage } from "./selectionErrors";
+import VisibilityMenu from "./VisibilityMenu";
 
 export interface SelectionBarProps {
   /** 選んだ動画の本数（グループはメンバーを数える）。 */
@@ -668,7 +86,7 @@ export default function SelectionBar({
   return (
     <div
       role="region"
-      aria-label="選択中の操作"
+      aria-label={t.library.selection.region}
       className="fixed inset-x-0 bottom-4 z-30 flex justify-center px-4"
     >
       {/*
@@ -686,7 +104,7 @@ export default function SelectionBar({
           aria-live="polite"
           className="order-1 px-1 text-sm text-fg tabular-nums sm:px-0"
         >
-          {count.toLocaleString("ja-JP")} 件を選択中
+          {t.library.selection.count(count)}
         </span>
 
         {/*
@@ -707,11 +125,11 @@ export default function SelectionBar({
               size="sm"
               className="order-5 max-sm:flex-1 max-sm:@max-[22.75rem]:flex-none sm:order-2"
               disabled={overLimit}
-              title={overLimit ? overLimitMessage : undefined}
+              title={overLimit ? overLimitMessage() : undefined}
               aria-describedby={overLimit ? overLimitId : undefined}
             >
               <Plus aria-hidden="true" />
-              タグを付ける
+              {t.library.selection.addTag}
             </Button>
           </PopoverTrigger>
           <AddTagPopover
@@ -729,11 +147,11 @@ export default function SelectionBar({
               size="sm"
               className="order-6 max-sm:flex-1 max-sm:@max-[22.75rem]:flex-none sm:order-3"
               disabled={overLimit}
-              title={overLimit ? overLimitMessage : undefined}
+              title={overLimit ? overLimitMessage() : undefined}
               aria-describedby={overLimit ? overLimitId : undefined}
             >
               <Minus aria-hidden="true" />
-              タグを外す
+              {t.library.selection.removeTag}
             </Button>
           </PopoverTrigger>
           <RemoveTagPopover
@@ -751,7 +169,7 @@ export default function SelectionBar({
         />
         {overLimit && (
           <span id={overLimitId} className="sr-only">
-            {overLimitMessage}
+            {overLimitMessage()}
           </span>
         )}
 
@@ -767,10 +185,12 @@ export default function SelectionBar({
           disabled={selectingAll || allSelected}
           className="order-2 sm:order-6"
         >
-          {selectingAll ? "選択中…" : "すべて選択"}
+          {selectingAll
+            ? t.library.selection.selectingAll
+            : t.library.selection.selectAll}
         </Button>
         <IconButton
-          label="選択を解除 (Esc)"
+          label={t.library.selection.clear}
           size="sm"
           onClick={onClear}
           className="order-3 sm:order-7"
