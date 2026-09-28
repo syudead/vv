@@ -19,5 +19,3 @@ services:
       - "/share/Container/vv/data:/data"
     stop_grace_period: 15s
     restart: unless-stopped
-    # ハードウェアエンコードを使うなら、ここに GPU を渡す行を足す
-    # （docs/how-to/running-vv.md「Hardware encoding」）。

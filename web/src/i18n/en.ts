@@ -882,7 +882,7 @@ export const en = {
     transcoding: {
       heading: "Video conversion",
       description:
-        "How VVMDM encodes video when a browser can't play the original file. A hardware encoder needs the server's GPU; with Docker, pass the GPU to the container first.",
+        "How VVMDM encodes video when a browser can't play the original file. A hardware encoder needs the server's GPU and VVMDM running directly on the server; the Docker image uses software only.",
       guide: "How to set up hardware encoding",
       opensInNewTab: "(opens in a new tab)",
       loading: "Loading the video conversion settings",
