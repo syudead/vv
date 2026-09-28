@@ -122,9 +122,14 @@ export default function TranscodingSection({
       setSettings(await updateTranscodingSettings(choice));
     } catch (failure) {
       setSaveError(text.saveFailed(errorText(failure)));
-      // 確認の結果が画面の表示より新しいときは、使える方式の表示を合わせ直す。
+      // 確認の結果が画面の表示より新しいときは、使える方式の表示を合わせ直す。読み直しが
+      // 終わるまで選択肢は操作できないままにし、あとの保存の応答を古い応答で上書きしない。
       if (failure instanceof RequestFailed && failure.reason === "encoder_unavailable") {
-        getTranscodingSettings().then(setSettings, () => undefined);
+        try {
+          setSettings(await getTranscodingSettings());
+        } catch {
+          // 読み直しの失敗は表示を変えない。保存の失敗はすでに出している。
+        }
       }
     } finally {
       setSaving(null);

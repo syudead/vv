@@ -210,6 +210,57 @@ describe("TranscodingSection", () => {
     expect(radio("Software").checked).toBe(true);
   });
 
+  it("keeps the choices locked until the refresh after a rejected save settles", async () => {
+    const refresh = deferred<Response>();
+    let gets = 0;
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === URL && init?.method === "PUT") {
+        return Promise.resolve(
+          json(
+            { code: "conflict", message: "unavailable", reason: "encoder_unavailable" },
+            409,
+          ),
+        );
+      }
+      gets += 1;
+      if (gets === 1) {
+        return Promise.resolve(
+          json(
+            settings({
+              encoders: encoders({ nvenc: { state: "available", reason: undefined } }),
+            }),
+          ),
+        );
+      }
+      return refresh.promise;
+    });
+    const user = userEvent.setup();
+    render(<TranscodingSection />);
+    await screen.findByRole("radiogroup");
+
+    await user.click(radio("NVENC (NVIDIA)"));
+
+    await screen.findByRole("alert");
+    await waitFor(() => expect(gets).toBe(2));
+    // 読み直しの応答が来るまでは、次の保存を始められない。
+    expect(radio("Automatic").disabled).toBe(true);
+    expect(screen.getByText("Saving…")).toBeDefined();
+
+    refresh.resolve(
+      json(
+        settings({
+          encoders: encoders({
+            nvenc: { state: "unavailable", reason: "check_failed" },
+          }),
+        }),
+      ),
+    );
+
+    await waitFor(() => expect(radio("Automatic").disabled).toBe(false));
+    expect(radio("NVENC (NVIDIA)").disabled).toBe(true);
+    expect(radio("Software").checked).toBe(true);
+  });
+
   it("warns above the choices when the selected encoder fell back to software", async () => {
     fetchMock.mockResolvedValue(
       json(
