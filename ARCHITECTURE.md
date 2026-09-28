@@ -403,8 +403,8 @@ and aborts startup if that fails
 (`specs/013-library-search/data-model.md` §5).
 
 Every request crosses an authentication boundary at the outermost layer of
-`internal/httpapi` (`auth.go`) before routing. It sorts each request into one of three
-kinds — anyone (`GET /api/health`, `GET /api/auth/session`, `POST /api/auth/setup`,
+`internal/httpapi` (`auth.go`) before routing. It sorts each request into one of four
+kinds — Bearer (`/api/v1/…`, the external API, and `/mcp`; see below), anyone (`GET /api/health`, `GET /api/auth/session`, `POST /api/auth/setup`,
 `POST /api/auth/login`, `POST /api/auth/logout`, and `GET`/`HEAD` outside `/api/` for
 the SPA build), guests too (the video, stream, artifact and folder reads), and
 owner only (everything else, including undefined `/api/*` paths) — by the
@@ -446,6 +446,22 @@ cannot be cut off by an earlier switch to private. `POST /api/auth/setup` create
 sessions only) list, issue and revoke API tokens; the plaintext appears only in the
 issue response
 ([specs/026-external-api/contracts/token-api.md](specs/026-external-api/contracts/token-api.md)).
+Bearer requests — a `path.Clean`ed path under `/api/v1/` (including undefined ones,
+which answer a JSON `404` after authentication) or `/mcp`, chosen only when the
+escaped and decoded segments agree — never read the cookie: `Authorization: Bearer
+<token>` alone decides the owner through `app.Auth`, and a missing, malformed, unknown
+or revoked token is `401 unauthenticated` with `WWW-Authenticate: Bearer`. Every
+other path never reads `Authorization`, so a Bearer-only request to the screen API is
+a guest (or `401` for owner-only operations). The same-origin check applies to cookie
+requests only; a Bearer request's `Origin` is not checked, while the JSON body rule
+still applies. A valid token records its last use at most once a minute (a failed
+write is logged and the request continues), and its requests join the in-memory
+ledger under the token's id, so revoking it on the settings page ends them at once and
+the 30-second re-check ends them after a credential change from the host command
+([specs/026-external-api/research.md](specs/026-external-api/research.md) R-3, R-4,
+R-9). The external API's handlers live on a separate type (`externalServer`,
+`external.go`) generated from `api/external-v1.yaml` into `internal/httpapi/extgen/`
+([docs/how-to/external-api.md](docs/how-to/external-api.md)).
 `cmd/mdm` wraps `app.Auth` for the boundary, deletes expired sessions at startup, and
 logs a warning while no account is configured.
 The client address and whether a request is HTTPS come from `client_origin.go`, which
@@ -542,10 +558,13 @@ other (test files are exempt, because an external `package x_test` imports its
 own package). Each rule carries the reason in its message, so a violation
 explains itself from the `task lint` output alone.
 
-The API contract in `api/openapi.yaml` is the single source of truth for the
-boundary between the Go backend and the TypeScript frontend; both sides are
-generated from it (`task generate`), the generated files are version
-controlled, and CI fails when regenerating them produces a diff.
+Each HTTP API boundary has a single source of truth. `api/openapi.yaml` is the
+contract between the Go backend and the TypeScript frontend; both sides are
+generated from it. `api/external-v1.yaml` is the versioned contract with external
+tools (the external API under `/api/v1`); only Go is generated from it
+(`internal/httpapi/extgen/`), because the SPA never calls it. Both are generated
+by `task generate`, the generated files are version controlled, and CI fails when
+regenerating them produces a diff.
 
 `web/embed.go` is the one deliberate exception to the layering: Go's embed
 directive cannot reference a parent directory, so the declaration that pulls
@@ -682,5 +701,6 @@ calls it, so a regression in either fails CI the same way.
 - Keep dependencies directed from product-facing layers toward stable domain
   interfaces.
 - Capture consequential design decisions in `docs/design-docs/`.
-- Keep generated code (`internal/httpapi/gen/`, `web/src/api/gen/`) generated;
-  change `api/openapi.yaml` instead.
+- Keep generated code (`internal/httpapi/gen/`, `internal/httpapi/extgen/`,
+  `web/src/api/gen/`) generated; change `api/openapi.yaml` or
+  `api/external-v1.yaml` instead.

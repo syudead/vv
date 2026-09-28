@@ -1,0 +1,233 @@
+# vv の外部連携 API v1 の契約。このファイルが外部連携 API の唯一の真実であり、
+# Go（oapi-codegen、api/oapi-codegen-external.yaml）だけをここから生成する。
+# 生成物（internal/httpapi/extgen/）は手編集しない。型を変えるときはこのファイルを直し、
+# task generate を実行すること。画面の API（api/openapi.yaml）とは別の約束である
+# （specs/026-external-api/research.md R-5）。
+#
+# 互換の方針: v1 の中では項目と操作の追加だけを行う。既存の項目の意味・型・必須を変えるときは
+# v2 を足す（docs/how-to/external-api.md）。
+openapi: 3.1.0
+
+info:
+  title: vv external API
+  version: 1.0.0
+  summary: 外部ツールが API トークンで vv を操作するための API
+  description: |
+    すべての操作は `Authorization: Bearer <token>` で認証する。トークンは設定ページの
+    「API トークン」節で所有者が発行する。トークンが無い・形式が違う・無効・失効済みのときは
+    `401` `unauthenticated` と `WWW-Authenticate: Bearer` を返す。Cookie は読まない。
+
+    見る人は常に所有者で、非公開の動画も返す。同一オリジンの検査はかけない。本文を取る操作は
+    `Content-Type: application/json` を要する（specs/026-external-api/contracts/external-api.md §1）。
+
+servers:
+  - url: /api/v1
+    description: アプリケーション自身が配信する
+
+security:
+  - bearerAuth: []
+
+paths:
+  /tags:
+    get:
+      operationId: listTags
+      summary: タグの一覧を返す
+      description: 画面のタグ管理と同じ並び（contracts/external-api.md §3）。
+      responses:
+        "200":
+          description: タグの一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /scans:
+    post:
+      operationId: startScan
+      summary: スキャンを始める
+      description: |
+        新しく始めたら `201`、実行中のものがあれば新しく始めずにそれを `200` で返す
+        （contracts/external-api.md §5）。本文は取らない。
+      responses:
+        "201":
+          description: 新しく始めたスキャン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalScan"
+        "200":
+          description: 実行中だったスキャン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalScan"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: メディアフォルダが 1 つも登録されていない（`media_folders_not_configured`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /scans/current:
+    get:
+      operationId: getCurrentScan
+      summary: 直近のスキャンの状態を返す
+      description: 実行中のものがあればそれを、無ければ最後に終わったものを返す。
+      responses:
+        "200":
+          description: 直近のスキャン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalScan"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: 一度もスキャンしていない（`not_found` / `no_scan`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 設定ページで発行した API トークン（`vvt_` で始まる 47 文字）。
+
+  responses:
+    Unauthenticated:
+      description: トークンが無い・形式が違う・無効・失効済み（`unauthenticated`）
+      headers:
+        WWW-Authenticate:
+          description: 常に `Bearer`
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Internal:
+      description: 予期しない失敗（`internal`）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      description: >-
+        誤りの形は画面の API と同じで、index はこの API だけの項目である
+        （contracts/external-api.md §1）。
+      properties:
+        code:
+          type: string
+          description: 機械可読なエラー種別。
+          enum:
+            - unauthenticated
+            - invalid_request
+            - not_found
+            - media_folders_not_configured
+            - internal
+        message:
+          type: string
+          description: 英語の説明。利用者のプログラムは code と reason で分岐する
+        reason:
+          $ref: "#/components/schemas/ErrorReason"
+        limit:
+          type: integer
+          description: reason の上限値。上限を持つ reason のときだけ入る
+        index:
+          type: integer
+          description: >-
+            原因になった要素の位置（0 から）。タグ名の誤りでは tags の、それ以外では videos の位置を
+            指す（contracts/external-api.md §4）
+    ErrorReason:
+      type: string
+      description: 同じ code の中で状況を区別する下位の理由。
+      enum:
+        - invalid_cursor
+        - too_many_videos
+        - too_many_tags
+        - tag_name_empty
+        - tag_name_control_characters
+        - tag_name_too_long
+        - video_not_found
+        - no_scan
+
+    Tag:
+      type: object
+      required: [id, name, synonyms, videoCount]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        synonyms:
+          type: array
+          description: 名前の自然順
+          items:
+            type: string
+        videoCount:
+          type: integer
+          description: いまライブラリにある動画の本数
+
+    TagList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+
+    ExternalScan:
+      type: object
+      required: [id, status, startedAt, finishedAt, videos, settledVideos, errorCode]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          description: >-
+            取り込みの状態。画面の API の Scan.status と同じ値で、failed は走査そのものの失敗、
+            finding は対象をまだ数え終えていない、running は走査中か済んでいない対象がある、
+            partial は失敗の問題がある、done はそれ以外である
+          enum: [finding, running, done, partial, failed]
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: [string, "null"]
+          format: date-time
+          description: 走査が終わった時刻。走査中なら null
+        videos:
+          type: [integer, "null"]
+          description: 対象の動画の本数。finding のあいだは null（本数を数え終えていない）
+        settledVideos:
+          type: [integer, "null"]
+          description: >-
+            対象のうち残りの仕事が無い本数。finding のあいだは null。数えたあとは
+            0 ≤ settledVideos ≤ videos
+        errorCode:
+          type: [string, "null"]
+          description: 走査そのものが失敗した理由のコード（status が failed のときだけ入る）

@@ -246,8 +246,9 @@ type lockedScans struct {
 	current domain.Scan
 }
 
-func (f *lockedScans) StartScan(ctx context.Context) (domain.Scan, error) {
-	return f.CurrentScan(ctx)
+func (f *lockedScans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
+	scan, err := f.CurrentScan(ctx)
+	return scan, false, err
 }
 
 func (f *lockedScans) CurrentScan(context.Context) (domain.Scan, error) {

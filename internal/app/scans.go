@@ -145,24 +145,28 @@ func NewScans(opts ScansOptions) *Scans {
 }
 
 // StartScan は取り込みを開始する。実行中なら新しく始めず、実行中のものを返す。
-// 応答は即座に返り、走査は背後で進む。
+// 応答は即座に返り、走査は背後で進む。started は走査の行を新しく作ったかで、
+// 作るか実行中の行を返すかを 1 つのトランザクションで決めた保存先の答えをそのまま返す
+// （specs/026-external-api/contracts/external-api.md §5）。
 //
 // ctx は要求のものなので、その取り消しを走査へは持ち込まない。要求が終わった
 // 時点で走査が打ち切られてしまう。走査は組み立て時に渡した寿命の長い context の
 // 取り消しでだけ止まる。
-func (s *Scans) StartScan(ctx context.Context) (domain.Scan, error) {
+func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
 	scan, started, err := s.store.StartScan(ctx)
 	if err != nil {
-		return domain.Scan{}, err
+		return domain.Scan{}, false, err
 	}
 	if !started {
-		return s.withImport(ctx, scan)
+		scan, err = s.withImport(ctx, scan)
+		return scan, false, err
 	}
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.running {
-		return s.withImport(ctx, scan)
+		scan, err = s.withImport(ctx, scan)
+		return scan, true, err
 	}
 	s.running = true
 	s.done.Add(1)
@@ -178,7 +182,8 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, error) {
 	go s.run(runCtx, scan.ID)
 
 	s.scanChanged()
-	return s.withImport(ctx, scan)
+	scan, err = s.withImport(ctx, scan)
+	return scan, true, err
 }
 
 // CurrentScan は直近の走査を、利用者に見せる取り込みの状態（Scan.Import）を

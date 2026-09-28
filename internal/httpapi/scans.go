@@ -26,7 +26,8 @@ func (s *server) StartScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	scan, err := s.scans.StartScan(r.Context())
+	// 画面は新しく始めたかを区別せず、どちらも 202 にする（外部連携 API は区別する）。
+	scan, _, err := s.scans.StartScan(r.Context())
 	if errors.Is(err, domain.ErrNoMediaFolders) {
 		s.writeError(w, http.StatusConflict, codeMediaFoldersNotConfigured, "Add a media folder first.")
 		return
