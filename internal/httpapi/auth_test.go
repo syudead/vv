@@ -22,6 +22,7 @@ import (
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
+	"github.com/syudead/vv/internal/httpapi/gen"
 	"github.com/syudead/vv/internal/password"
 	"github.com/syudead/vv/internal/store"
 )
@@ -244,7 +245,7 @@ func assertUnauthenticated(t *testing.T, label string, rec *httptest.ResponseRec
 		return
 	}
 	var body struct{ Code, Message string }
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Code != "unauthenticated" || body.Message != "ログインが必要です" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.Code != "unauthenticated" || body.Message != "Sign-in required." {
 		t.Errorf("%s: 本文 = %s", label, rec.Body)
 	}
 	if got := rec.Header().Get("Content-Type"); got != contentTypeJSON {
@@ -374,11 +375,33 @@ func TestAuthUnconfiguredRequiresSetup(t *testing.T) {
 
 func TestAuthSetupRejectsInvalidValues(t *testing.T) {
 	env := newAuthEnv(t, t.TempDir(), Options{})
-	for _, body := range []string{credentialsBody(" padded", testPassword), credentialsBody(testUsername, "")} {
-		rec := env.serve(authRequest{method: http.MethodPost, target: "/api/auth/setup", body: body})
-		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), `"invalid_request"`) {
-			t.Errorf("%s: status = %d: %s", body, rec.Code, rec.Body)
-		}
+	cases := []struct {
+		body string
+		want wantError
+	}{
+		{credentialsBody("", testPassword), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+			reason: reasonUsernameLength, limit: domain.MaxUsernameLength,
+		}},
+		{credentialsBody(strings.Repeat("a", domain.MaxUsernameLength+1), testPassword), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+			reason: reasonUsernameLength, limit: domain.MaxUsernameLength,
+		}},
+		// 長さが適正な前後の空白・制御文字の違反には username_length を付けない。
+		{credentialsBody(" bob", testPassword), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+		}},
+		{credentialsBody("a\u0001b", testPassword), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+		}},
+		{credentialsBody(testUsername, ""), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+			reason: reasonPasswordLength, limit: domain.MaxPasswordBytes,
+		}},
+	}
+	for _, tc := range cases {
+		rec := env.serve(authRequest{method: http.MethodPost, target: "/api/auth/setup", body: tc.body})
+		assertErrorBody(t, tc.body, rec.Code, rec.Body.Bytes(), tc.want)
 	}
 	if got := authState(t, env.get("/api/auth/session")); got != "setupRequired" {
 		t.Errorf("規則を外れた初回設定の後の state = %q, want setupRequired", got)

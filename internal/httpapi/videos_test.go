@@ -218,12 +218,8 @@ func TestListVideosRejectsBrokenCursor(t *testing.T) {
 	}})
 
 	rec := do(t, handler, http.MethodGet, "/api/videos?cursor=壊れている")
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body)
-	}
-	if got := decode[gen.Error](t, rec); got.Code != codeInvalidRequest {
-		t.Errorf("code = %q, want %s", got.Code, codeInvalidRequest)
-	}
+	assertErrorBody(t, "壊れたカーソル", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor})
 }
 
 // 一覧・詳細は中間キャッシュに残さない。取り込みで内容が変わり続けるため。
@@ -294,12 +290,8 @@ func TestGetVideoNotFound(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: &fakeLibrary{}})
 
 	rec := do(t, handler, http.MethodGet, "/api/videos/999")
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404: %s", rec.Code, rec.Body)
-	}
-	if got := decode[gen.Error](t, rec); got.Code != codeNotFound {
-		t.Errorf("code = %q, want %s", got.Code, codeNotFound)
-	}
+	assertErrorBody(t, "無い動画", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonVideoNotFound})
 }
 
 // 保存層の予期しない失敗は 500 にする。400 や 404 に丸めると、利用者にも
@@ -382,12 +374,9 @@ func TestListVideosRejectsOverlongQuery(t *testing.T) {
 
 	tooLong := strings.Repeat("あ", maxQueryLength+1)
 	rec := do(t, handler, http.MethodGet, "/api/videos?query="+url.QueryEscape(tooLong))
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("101 文字で status = %d, want 400", rec.Code)
-	}
-	if got := decode[gen.Error](t, rec); got.Code != codeInvalidRequest {
-		t.Errorf("code = %q, want %s", got.Code, codeInvalidRequest)
-	}
+	assertErrorBody(t, "101 文字", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonSearchTooLong, limit: maxQueryLength,
+	})
 }
 
 // 検索とカーソルを併用できること。検索語はカーソルと一緒に渡し続ける。
@@ -475,13 +464,9 @@ func TestListVideosRejectsUnknownFilters(t *testing.T) {
 		"/api/videos?seed=2147483648",
 	} {
 		rec := do(t, handler, http.MethodGet, target)
-		if rec.Code != http.StatusBadRequest {
-			t.Errorf("%s: status = %d, want 400", target, rec.Code)
-			continue
-		}
-		if got := decode[gen.Error](t, rec); got.Code != gen.ErrorCodeInvalidRequest {
-			t.Errorf("%s: code = %q", target, got.Code)
-		}
+		// 画面が送らない値の誤りには reason を付けない。
+		assertErrorBody(t, target, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 	}
 }
 
@@ -557,12 +542,9 @@ func TestListVideosTagFilter(t *testing.T) {
 
 	many := "/api/videos?" + strings.Repeat("tag=1&", 17)
 	rec = do(t, handler, http.MethodGet, strings.TrimSuffix(many, "&"))
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("17個: status = %d, want 400: %s", rec.Code, rec.Body)
-	}
-	if got := decode[gen.Error](t, rec).Code; got != codeInvalidRequest {
-		t.Errorf("17個: code = %q", got)
-	}
+	assertErrorBody(t, "17個", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyTagFilters, limit: maxTagFilterCount,
+	})
 }
 
 // 存在しなかった tag の id は VideoPage.missingTagIds に返る。1つも無ければ省く。

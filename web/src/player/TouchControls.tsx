@@ -1,5 +1,6 @@
 import { Pause, Play } from "lucide-react";
 
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 
 /**
@@ -31,7 +32,7 @@ export default function TouchControls({
     >
       <button
         type="button"
-        aria-label={playing ? "一時停止" : "再生"}
+        aria-label={playing ? t.player.controls.pause : t.player.controls.play}
         onClick={onToggle}
         className="pointer-events-auto flex size-15 items-center justify-center rounded-full border border-control-border bg-overlay text-fg shadow-elevated transition-colors hover:bg-navbar motion-reduce:transition-none"
       >

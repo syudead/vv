@@ -192,7 +192,7 @@ func (s *subscription) run(logger *slog.Logger) {
 func (s *subscription) deliver(event domain.Event, logger *slog.Logger) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			logger.Error("変化の購読者が panic しました",
+			logger.Error("event subscriber panicked",
 				slog.String("subscriber", s.name),
 				slog.String("event", fmt.Sprintf("%T", event)),
 				slog.Any("panic", recovered))

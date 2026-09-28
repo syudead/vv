@@ -22,17 +22,17 @@ func (s *server) StartScan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if s.scans == nil {
-		s.internalError(w, "取り込みの経路が設定されていません", nil)
+		s.internalError(w, "Scanning is not configured.", nil)
 		return
 	}
 
 	scan, err := s.scans.StartScan(r.Context())
 	if errors.Is(err, domain.ErrNoMediaFolders) {
-		s.writeError(w, http.StatusConflict, codeMediaFoldersNotConfigured, "メディアフォルダを設定してください")
+		s.writeError(w, http.StatusConflict, codeMediaFoldersNotConfigured, "Add a media folder first.")
 		return
 	}
 	if err != nil {
-		s.internalError(w, "取り込みを開始できませんでした", err)
+		s.internalError(w, "Could not start the scan.", err)
 		return
 	}
 
@@ -44,17 +44,17 @@ func (s *server) StartScan(w http.ResponseWriter, r *http.Request) {
 // 実行中のものがあればそれを、無ければ最後に終わったものを返す。
 func (s *server) GetCurrentScan(w http.ResponseWriter, r *http.Request) {
 	if s.scans == nil {
-		s.internalError(w, "取り込みの経路が設定されていません", nil)
+		s.internalError(w, "Scanning is not configured.", nil)
 		return
 	}
 
 	scan, err := s.scans.CurrentScan(r.Context())
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
-		s.notFound(w, "まだ一度も取り込みを行っていません")
+		s.notFoundReason(w, reasonNoScan, "No scan has been run yet.")
 		return
 	case err != nil:
-		s.internalError(w, "取り込みの状態を取得できませんでした", err)
+		s.internalError(w, "Could not load the scan status.", err)
 		return
 	}
 
@@ -82,6 +82,16 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 	if scan.Error != "" {
 		reason := scan.Error
 		out.Error = &reason
+	}
+	// コードと場所は failed の行だけに出す。アップグレード前の失敗にはコードが無い
+	// （specs/023-english-i18n/contracts/error-api.md §3）。
+	if scan.State == domain.ScanFailed && scan.ErrorCode != "" {
+		code := gen.ScanErrorCode(scan.ErrorCode)
+		out.ErrorCode = &code
+		if scan.ErrorPath != "" {
+			path := scan.ErrorPath
+			out.ErrorPath = &path
+		}
 	}
 	return out
 }

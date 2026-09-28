@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useAudience } from "../auth/audience";
+import { errorText, type UiText } from "../i18n";
 import {
-  errorMessage,
   getRelatedVideos,
   getVideo,
   isAborted,
@@ -24,7 +24,7 @@ export type VideoDetailState =
   /** 動画が無い（404、または id の形が正しくない）。取り直しで消えたときもこれになる。 */
   | { kind: "missing"; id: number }
   /** 最初の取得が 404 以外で失敗した。 */
-  | { kind: "failed"; id: number; reason: string };
+  | { kind: "failed"; id: number; reason: UiText };
 
 /**
  * isProcessing は、取り込みの処理が残っているかを返す（plan の Structural
@@ -103,7 +103,7 @@ export function useVideoDetail(id: number): {
           return;
         }
         if (current === undefined) {
-          setState({ kind: "failed", id, reason: errorMessage(failure) });
+          setState({ kind: "failed", id, reason: errorText(failure) });
         }
         settle();
       }

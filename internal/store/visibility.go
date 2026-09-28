@@ -61,7 +61,7 @@ const publicColumn = `exists (select 1 from public_videos pub where pub.content_
 func (s *VisibilityStore) SetVideosPublic(ctx context.Context, videoIDs []int64, public bool) ([]string, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, fmt.Errorf("公開フラグを書き換えられません: %w", err)
+		return nil, fmt.Errorf("cannot update the public flag: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
@@ -78,11 +78,11 @@ func (s *VisibilityStore) SetVideosPublic(ctx context.Context, videoIDs []int64,
 			_, err = tx.ExecContext(ctx, `delete from public_videos where content_key = ?`, key)
 		}
 		if err != nil {
-			return nil, fmt.Errorf("公開フラグを書き換えられません: %w", err)
+			return nil, fmt.Errorf("cannot update the public flag: %w", err)
 		}
 	}
 	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("公開フラグを書き換えられません: %w", err)
+		return nil, fmt.Errorf("cannot update the public flag: %w", err)
 	}
 	return keys, nil
 }

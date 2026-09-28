@@ -14,7 +14,7 @@ import (
 const MaxFolderPreviews = 4
 
 // ErrInvalidFolderPath はフォルダの相対パスが規則に反することを表す。
-var ErrInvalidFolderPath = errors.New("フォルダの指定が正しくありません")
+var ErrInvalidFolderPath = errors.New("invalid folder path")
 
 // FolderLocation はフォルダの集計に要る所在1件である。フォルダは保存せず、
 // 取り込み済みの所在のパスから要求のたびに導く。

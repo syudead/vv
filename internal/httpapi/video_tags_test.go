@@ -96,8 +96,11 @@ func TestUpdateVideoTagsRejectsInvalidTagInput(t *testing.T) {
 func TestUpdateVideoTagsRejectsOutOfRangeVideoIDs(t *testing.T) {
 	handler := newTestServer(t, Options{Tags: &fakeTags{}})
 
-	assertErrorCode(t, postJSON(t, handler, "/api/video-tags", `{"videoIds":[],"action":"add","tag":{"id":1}}`),
-		http.StatusBadRequest, codeInvalidRequest)
+	tooMany := wantError{
+		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs,
+	}
+	rec := postJSON(t, handler, "/api/video-tags", `{"videoIds":[],"action":"add","tag":{"id":1}}`)
+	assertErrorBody(t, "0件", rec.Code, rec.Body.Bytes(), tooMany)
 
 	var ids strings.Builder
 	for i := 1; i <= 20001; i++ {
@@ -107,7 +110,31 @@ func TestUpdateVideoTagsRejectsOutOfRangeVideoIDs(t *testing.T) {
 		ids.WriteString(strconv.Itoa(i))
 	}
 	body := `{"videoIds":[` + ids.String() + `],"action":"add","tag":{"id":1}}`
-	assertErrorCode(t, postJSON(t, handler, "/api/video-tags", body), http.StatusBadRequest, codeInvalidRequest)
+	rec = postJSON(t, handler, "/api/video-tags", body)
+	assertErrorBody(t, "20001件", rec.Code, rec.Body.Bytes(), tooMany)
+}
+
+// 名前で付けるタグが規則を外れれば、その理由を reason で返す
+// （specs/023-english-i18n/contracts/error-api.md §1）。
+func TestUpdateVideoTagsInvalidTagNameReason(t *testing.T) {
+	cases := []struct {
+		problem domain.TagNameProblem
+		want    wantError
+	}{
+		{domain.TagNameEmpty, wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTagNameEmpty}},
+		{domain.TagNameControlCharacters, wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTagNameControlCharacters,
+		}},
+		{domain.TagNameTooLong, wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+			reason: reasonTagNameTooLong, limit: domain.TagNameMaxLength,
+		}},
+	}
+	for _, tc := range cases {
+		handler := newTestServer(t, Options{Tags: &fakeTags{err: &domain.InvalidTagNameError{Problem: tc.problem}}})
+		rec := postJSON(t, handler, "/api/video-tags", `{"videoIds":[1],"action":"add","tag":{"name":"x"}}`)
+		assertErrorBody(t, string(tc.want.reason), rec.Code, rec.Body.Bytes(), tc.want)
+	}
 }
 
 // 存在しない tag.id は 404 tag_not_found になる。
@@ -150,5 +177,7 @@ func TestSummarizeVideoTags(t *testing.T) {
 func TestSummarizeVideoTagsRejectsEmptyVideoIDs(t *testing.T) {
 	handler := newTestServer(t, Options{Tags: &fakeTags{}})
 	rec := postJSON(t, handler, "/api/video-tags/summary", `{"videoIds":[]}`)
-	assertErrorCode(t, rec, http.StatusBadRequest, codeInvalidRequest)
+	assertErrorBody(t, "要約の 0件", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs,
+	})
 }

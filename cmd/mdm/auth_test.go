@@ -101,7 +101,7 @@ func TestPrepareAuthWarnsWhenNotConfigured(t *testing.T) {
 	withAuth(t, dataDir, func(auth *store.AuthStore) {
 		prepareAuth(context.Background(), auth, time.Now(), slog.New(slog.NewTextHandler(&logs, nil)))
 	})
-	if !strings.Contains(logs.String(), "ブラウザで VVMDM を開き") {
+	if !strings.Contains(logs.String(), "the account is not set up") {
 		t.Errorf("未設定の警告が無い:\n%s", logs.String())
 	}
 }
@@ -116,7 +116,7 @@ func TestPrepareAuthDeletesExpiredSessions(t *testing.T) {
 	if got := countRows(t, dataDir, "sessions"); got != 0 {
 		t.Errorf("期限切れのセッションが %d 行残った", got)
 	}
-	if strings.Contains(logs.String(), "アカウントが未設定です") {
+	if strings.Contains(logs.String(), "the account is not set up") {
 		t.Errorf("設定済みなのに未設定の警告が出た:\n%s", logs.String())
 	}
 }

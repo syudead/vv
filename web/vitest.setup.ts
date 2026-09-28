@@ -5,8 +5,13 @@
 import { cleanup } from "@testing-library/react";
 import { afterEach, vi } from "vitest";
 
+import { resetLocale } from "./src/i18n/pseudo";
+
 afterEach(() => {
   cleanup();
+
+  // 疑似ロケール（src/i18n/pseudo.ts）へ差し替えた検査のあとは英語に戻す。
+  resetLocale();
 
   // 表示設定（vv.view.v1）は localStorage に残る。jsdom の localStorage は
   // ファイル内のすべての検査で共有されるので、片付けないと「密度を変えた」

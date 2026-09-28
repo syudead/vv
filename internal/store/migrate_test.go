@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io/fs"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/pressly/goose/v3"
+	"github.com/syudead/vv/internal/domain"
 )
 
 func TestMediaFolderMigrationPreservesExistingLibrary(t *testing.T) {
@@ -724,4 +726,104 @@ func tableColumns(t *testing.T, db *DB, table string) map[string]bool {
 		t.Fatal(err)
 	}
 	return columns
+}
+
+// 失敗理由のコードの移行（00016）は、移行前に入れた日本語の理由をそのまま残し、
+// コードは null のままにする（specs/023-english-i18n/data-model.md）。コードの列を持つ
+// 読み出しでも、その行は理由だけを返す。Down は列だけを外し、理由は残す。
+func TestFailureCodesMigrationKeepsExistingReasons(t *testing.T) {
+	db, err := Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	fsy, err := fs.Sub(migrationsFS, "migrations")
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider, err := goose.NewProvider(goose.DialectSQLite3, db.sql, fsy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := provider.UpTo(ctx, 15); err != nil {
+		t.Fatal(err)
+	}
+	const probeReason = "ffprobe が失敗しました (/media/a.mp4): moov atom not found"
+	const scanReason = "メディアフォルダを読めません (/media): permission denied"
+	res, err := db.sql.Exec(`insert into videos(content_key, probe_state, probe_error, added_at, updated_at)
+		values ('key-a', 'failed', ?, 1, 1)`, probeReason)
+	if err != nil {
+		t.Fatal(err)
+	}
+	videoID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`insert into video_locations
+		(video_id, path, title, size_bytes, mtime, created_at, updated_at)
+		values (?, ?, 'a', 1, 1, 1, 1)`, videoID, fixturePath("/media/a.mp4")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`,
+		fixturePath("/media")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`insert into scans(state, started_at, finished_at, total, completed, failed, error)
+		values ('failed', 1, 2, 0, 0, 0, ?)`, scanReason); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+
+	var probeError string
+	var probeErrorCode sql.NullString
+	if err := db.sql.QueryRow(`select probe_error, probe_error_code from videos where id = ?`, videoID).
+		Scan(&probeError, &probeErrorCode); err != nil {
+		t.Fatal(err)
+	}
+	if probeError != probeReason || probeErrorCode.Valid {
+		t.Fatalf("probe_error = %q, probe_error_code = %v, want the old reason and null", probeError, probeErrorCode)
+	}
+	var scanError string
+	var scanErrorCode, scanErrorPath sql.NullString
+	if err := db.sql.QueryRow(`select error, error_code, error_path from scans`).
+		Scan(&scanError, &scanErrorCode, &scanErrorPath); err != nil {
+		t.Fatal(err)
+	}
+	if scanError != scanReason || scanErrorCode.Valid || scanErrorPath.Valid {
+		t.Fatalf("scans = %q (%v, %v), want the old reason and null", scanError, scanErrorCode, scanErrorPath)
+	}
+
+	video, err := db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if video.ProbeError != probeReason || video.ProbeErrorCode != "" {
+		t.Fatalf("video = %q (%q), want the old reason without a code", video.ProbeError, video.ProbeErrorCode)
+	}
+	scan, err := db.Scans().CurrentScan(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if scan.Error != scanReason || scan.ErrorCode != "" || scan.ErrorPath != "" {
+		t.Fatalf("scan = %+v, want the old reason without a code", scan)
+	}
+
+	downTo(t, db, 15)
+	if _, ok := tableColumns(t, db, "videos")["probe_error_code"]; ok {
+		t.Error("Down 後も videos に probe_error_code 列が残っている")
+	}
+	columns := tableColumns(t, db, "scans")
+	if _, ok := columns["error_code"]; ok {
+		t.Error("Down 後も scans に error_code 列が残っている")
+	}
+	if _, ok := columns["error_path"]; ok {
+		t.Error("Down 後も scans に error_path 列が残っている")
+	}
+	if err := db.sql.QueryRow(`select error from scans`).Scan(&scanError); err != nil || scanError != scanReason {
+		t.Fatalf("Down 後の scans.error = %q (%v), want the old reason", scanError, err)
+	}
 }

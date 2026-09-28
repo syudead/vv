@@ -1,5 +1,6 @@
 import { FolderOpen } from "lucide-react";
 
+import { t } from "../i18n";
 import Button from "../ui/Button";
 import { EmptyState } from "../videoList/states";
 
@@ -14,11 +15,11 @@ export default function EmptyLibrary({
   return (
     <EmptyState
       icon={FolderOpen}
-      title="動画がまだありません"
-      description="メディアフォルダに動画を置いて取り込むと、ここに並びます。"
+      title={t.library.empty.title}
+      description={t.library.empty.description}
       action={
         <Button variant="primary" onClick={onScan} disabled={scanning}>
-          {scanning ? "取り込み中…" : "取り込む"}
+          {scanning ? t.list.scanning : t.list.scan}
         </Button>
       }
     />

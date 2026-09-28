@@ -8,6 +8,7 @@ import {
 } from "../api/listSnapshot";
 import { itemVideos } from "../api/libraryItems";
 import { useVideos } from "../api/useVideos";
+import { t, type UiText } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { useScan } from "../shell/ScanProvider";
 import type { ListCriteria } from "../videoList/listCriteria";
@@ -41,7 +42,7 @@ export default function RootSearchResults({
   criteria: ListCriteria;
   rootNames: Map<number, RootDisplay>;
   /** 登録フォルダ一覧の取得の状態。置き場所の行はこれが揃ってから出す。 */
-  roots: { loading: boolean; error: string | null; reload: () => void };
+  roots: { loading: boolean; error: UiText | null; reload: () => void };
   zoom: Zoom;
   /** 呼び出し側（RootView）が取り出した控え。無ければ1ページ目から読む。 */
   restored: ReturnType<typeof takeListSnapshot>;
@@ -142,11 +143,11 @@ export default function RootSearchResults({
   const noMatch = !waiting && failure === null && items.length === 0;
   const initialLoadFailed =
     !waiting && failure !== null && (items.length === 0 || roots.error !== null);
-  const summaryText = waiting ? "読み込み中…" : resultCountText(total);
+  const summaryText = waiting ? t.list.loading : resultCountText(total);
 
   return (
     <div onClick={saveSnapshot} className="flex flex-col gap-3">
-      <h2 className="sr-only">検索結果</h2>
+      <h2 className="sr-only">{t.folders.searchResults}</h2>
       {noMatch ? (
         <NoMatches />
       ) : (

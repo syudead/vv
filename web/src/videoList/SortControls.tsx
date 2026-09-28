@@ -15,6 +15,7 @@ import {
 
 import type { VideoSort } from "../api/client";
 import { useAudience } from "../auth/audience";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import Button from "../ui/Button";
 import {
@@ -33,6 +34,7 @@ import {
   type SortDirection,
   type SortKind,
   sortDirection,
+  sortKindLabel,
   sortKindOf,
   sortKinds,
   withDirection,
@@ -56,7 +58,6 @@ export const sortIcons: Record<SortKind, LucideIcon> = {
 export const sortOptions = sortKinds.map((info) => ({
   kind: info.kind,
   value: info.initial,
-  label: info.label,
   icon: sortIcons[info.kind],
 }));
 
@@ -87,7 +88,9 @@ export function SortMenu({ sort, onSortChange, onShuffle, disabled }: SortContro
   const options = useSortOptions();
   const active = sortKindOf(sort);
   const direction = sortDirection(sort);
-  const toggleLabel = direction === undefined ? "並べ直す" : directionToggleLabel(sort);
+  const activeLabel = sortKindLabel(active.kind);
+  const toggleLabel =
+    direction === undefined ? t.list.sort.shuffle : directionToggleLabel(sort);
 
   return (
     <div className="flex">
@@ -95,16 +98,16 @@ export function SortMenu({ sort, onSortChange, onShuffle, disabled }: SortContro
         <MenuTrigger asChild>
           <Button
             variant="secondary"
-            aria-label={`並び順: ${active.label}`}
+            aria-label={t.list.sort.current(activeLabel)}
             disabled={disabled}
             className="rounded-r-none"
           >
-            {active.label}
+            {activeLabel}
             <ChevronDown className="-mr-1 text-fg-muted" />
           </Button>
         </MenuTrigger>
         <MenuContent align="start">
-          <MenuLabel>並び順</MenuLabel>
+          <MenuLabel>{t.list.sort.heading}</MenuLabel>
           <MenuRadioGroup
             value={active.initial}
             onValueChange={(value) => {
@@ -115,7 +118,7 @@ export function SortMenu({ sort, onSortChange, onShuffle, disabled }: SortContro
             {options.map((option) => (
               <MenuRadioItem key={option.kind} value={option.value}>
                 <option.icon />
-                {option.label}
+                {sortKindLabel(option.kind)}
               </MenuRadioItem>
             ))}
           </MenuRadioGroup>
@@ -163,7 +166,7 @@ export function CompactSortControls({
   return (
     <fieldset className="space-y-2" disabled={disabled}>
       <legend className="mb-2 text-xs font-semibold text-fg-muted uppercase">
-        並び順
+        {t.list.sort.heading}
       </legend>
       <div className="grid grid-cols-2 gap-1">
         {options.map((option) => (
@@ -186,18 +189,18 @@ export function CompactSortControls({
               className="sr-only"
             />
             <option.icon className="size-4 shrink-0" />
-            <span className="truncate">{option.label}</span>
+            <span className="truncate">{sortKindLabel(option.kind)}</span>
           </label>
         ))}
       </div>
       {direction === undefined ? (
         <Button variant="ghost" size="sm" onClick={onShuffle} disabled={disabled}>
           <Dices />
-          並べ直す
+          {t.list.sort.shuffle}
         </Button>
       ) : (
         <SegmentedControl<SortDirection>
-          label="並び順の向き"
+          label={t.list.sort.direction}
           value={direction}
           onValueChange={(next) => onSortChange(withDirection(sort, next))}
           options={[

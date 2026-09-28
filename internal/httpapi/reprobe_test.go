@@ -106,7 +106,9 @@ func TestReprobeVideoRejectsNonFailedAndUnknown(t *testing.T) {
 	handler := newTestServer(t, Options{Videos: library, Catalog: reprober.catalog()})
 
 	assertErrorCode(t, do(t, handler, http.MethodPost, "/api/videos/1/probe"), http.StatusConflict, codeProbeNotFailed)
-	assertErrorCode(t, do(t, handler, http.MethodPost, "/api/videos/99/probe"), http.StatusNotFound, codeNotFound)
+	rec := do(t, handler, http.MethodPost, "/api/videos/99/probe")
+	assertErrorBody(t, "無い動画", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonVideoNotFound})
 	if len(reprober.jobs) != 0 {
 		t.Fatalf("jobs = %v, want none", reprober.jobs)
 	}

@@ -90,7 +90,7 @@ func (a *artifacts) release(contentKeys []string) {
 		ctx := context.Background()
 		for _, key := range contentKeys {
 			if err := a.removeIfUnreferenced(ctx, key); err != nil {
-				a.logger.Warn("消えた動画の生成物を削除できませんでした",
+				a.logger.Warn("could not delete artifacts of a removed video",
 					slog.String("contentKey", key), slog.Any("error", err))
 			}
 		}

@@ -31,18 +31,18 @@ const readWindow = 1 << 20 // 1MiB
 func ContentKey(path string) (string, error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return "", fmt.Errorf("内容の識別子を計算できません (%s): %w", path, err)
+		return "", fmt.Errorf("could not compute the content key (%s): %w", path, err)
 	}
 	defer func() { _ = file.Close() }()
 
 	info, err := file.Stat()
 	if err != nil {
-		return "", fmt.Errorf("内容の識別子を計算できません (%s): %w", path, err)
+		return "", fmt.Errorf("could not compute the content key (%s): %w", path, err)
 	}
 
 	key, err := ContentKeyFrom(file, info.Size())
 	if err != nil {
-		return "", fmt.Errorf("内容の識別子を計算できません (%s): %w", path, err)
+		return "", fmt.Errorf("could not compute the content key (%s): %w", path, err)
 	}
 	return key, nil
 }

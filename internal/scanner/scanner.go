@@ -15,7 +15,11 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-var ErrNoMediaFolders = errors.New("メディアフォルダが登録されていません")
+var ErrNoMediaFolders = errors.New("no media folders are configured")
+
+// errNotDirectory はメディアフォルダ・親ディレクトリがディレクトリでない（シンボリック
+// リンクを含む）ことを表す。
+var errNotDirectory = errors.New("not a directory")
 
 // mediaExtensions は取り込みの対象にする拡張子である。
 //
@@ -145,19 +149,26 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 		root := folder.Path
 		rootInfo, rootErr := os.Lstat(root)
 		if rootErr != nil {
-			return domain.ScanResult{}, fmt.Errorf("メディアフォルダを読めません (%s): %w", root, rootErr)
+			return domain.ScanResult{}, domain.NewScanFailure(domain.ScanErrorMediaFolderUnreadable, root,
+				fmt.Errorf("could not read the media folder (%s): %w", root, rootErr))
 		}
 		if rootInfo.Mode()&os.ModeSymlink != 0 || !rootInfo.IsDir() {
-			return domain.ScanResult{}, fmt.Errorf("メディアフォルダがディレクトリではありません (%s)", root)
+			return domain.ScanResult{}, domain.NewScanFailure(domain.ScanErrorMediaFolderNotDirectory, root,
+				fmt.Errorf("the media folder is not a directory (%s)", root))
 		}
 		walkErr := s.walkDir(root, func(path string, entry fs.DirEntry, err error) error {
 			if ctxErr := ctx.Err(); ctxErr != nil {
 				return ctxErr
 			}
 			if err != nil {
-				s.logger.Warn("走査中に読み取れない場所がありました",
+				s.logger.Warn("could not read a location during the scan",
 					slog.String("path", path), slog.Any("error", err))
-				return fmt.Errorf("場所を読めません (%s): %w", path, err)
+				// メディアフォルダそのものが読めなければ、途中の場所ではなくフォルダの失敗である。
+				code := domain.ScanErrorLocationUnreadable
+				if path == root {
+					code = domain.ScanErrorMediaFolderUnreadable
+				}
+				return domain.NewScanFailure(code, path, fmt.Errorf("could not read a location (%s): %w", path, err))
 			}
 
 			if entry.IsDir() {
@@ -181,7 +192,7 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 				// 読めない場合も対象件数と失敗件数に含める。
 				result.Total++
 				result.Failed++
-				s.logger.Warn("取り込み対象の情報を読めないファイルがあります",
+				s.logger.Warn("could not read the file information of a scan target",
 					slog.String("path", path), slog.Any("error", infoErr))
 				return nil
 			}
@@ -195,7 +206,7 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 					if ctx.Err() != nil {
 						return err
 					}
-					s.logger.Warn("取り込み済みファイルのjobを確認できませんでした",
+					s.logger.Warn("could not check the jobs of an indexed file",
 						slog.String("path", path), slog.Any("error", err))
 					result.Total++
 					result.Failed++
@@ -210,7 +221,7 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 			if ctx.Err() != nil {
 				return domain.ScanResult{}, ctx.Err()
 			}
-			return domain.ScanResult{}, fmt.Errorf("メディアフォルダを最後まで走査できませんでした (%s): %w", root, walkErr)
+			return domain.ScanResult{}, fmt.Errorf("could not finish scanning the media folder (%s): %w", root, walkErr)
 		}
 	}
 	result.Total += len(targets)
@@ -225,7 +236,7 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 				return result, err
 			}
 			// 1件の失敗で全体を止めない。理由は記録に残し、次のファイルへ進む。
-			s.logger.Warn("取り込めなかったファイルがあります",
+			s.logger.Warn("could not ingest a file",
 				slog.String("path", target.path), slog.Any("error", err))
 			result.Failed++
 		} else {
@@ -245,7 +256,12 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 	checkedDirs := map[string]struct{}{}
 	for _, folder := range folders {
 		if err := ensureReadableDirectory(folder.Path); err != nil {
-			return result, fmt.Errorf("取り込み後にメディアフォルダを確認できません (%s): %w", folder.Path, err)
+			code := domain.ScanErrorMediaFolderUnreadable
+			if errors.Is(err, errNotDirectory) {
+				code = domain.ScanErrorMediaFolderNotDirectory
+			}
+			return result, domain.NewScanFailure(code, folder.Path,
+				fmt.Errorf("could not check the media folder after the scan (%s): %w", folder.Path, err))
 		}
 		checkedDirs[folder.Path] = struct{}{}
 	}
@@ -259,7 +275,8 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 			parent := filepath.Dir(path)
 			if _, ok := checkedDirs[parent]; !ok {
 				if parentErr := ensureReadableDirectory(parent); parentErr != nil {
-					return result, fmt.Errorf("取り込み後に親ディレクトリを確認できません (%s): %w", parent, parentErr)
+					return result, domain.NewScanFailure(domain.ScanErrorLocationUnreadable, parent,
+						fmt.Errorf("could not check the parent directory after the scan (%s): %w", parent, parentErr))
 				}
 				checkedDirs[parent] = struct{}{}
 			}
@@ -267,7 +284,7 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 			continue
 		}
 		if err != nil {
-			s.logger.Warn("取り込み後のファイル状態を確認できませんでした",
+			s.logger.Warn("could not check a file after the scan",
 				slog.String("path", path), slog.Any("error", err))
 			continue
 		}
@@ -291,7 +308,7 @@ func ensureReadableDirectory(path string) error {
 		return err
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-		return fmt.Errorf("ディレクトリではありません")
+		return errNotDirectory
 	}
 	dir, err := os.Open(path)
 	if err != nil {
@@ -325,7 +342,7 @@ func (s *Scanner) ingest(
 		return err
 	}
 	if !os.SameFile(info, after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
-		return fmt.Errorf("取り込み中にファイルが変更されました (%s)", target.path)
+		return fmt.Errorf("the file changed while it was being ingested (%s)", target.path)
 	}
 
 	file := domain.VideoFile{
@@ -359,10 +376,10 @@ func (s *Scanner) ingest(
 func stableTargetInfo(path string) (fs.FileInfo, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return nil, fmt.Errorf("取り込み対象の情報を読めません (%s): %w", path, err)
+		return nil, fmt.Errorf("could not read the file information (%s): %w", path, err)
 	}
 	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("取り込み対象が通常ファイルではありません (%s)", path)
+		return nil, fmt.Errorf("not a regular file (%s)", path)
 	}
 	return info, nil
 }
@@ -467,7 +484,7 @@ func (s *Scanner) report(ctx context.Context, result domain.ScanResult) error {
 		return nil
 	}
 	if err := s.reporter.ReportScanProgress(ctx, result); err != nil {
-		return fmt.Errorf("走査の進捗を記録できません: %w", err)
+		return fmt.Errorf("could not record the scan progress: %w", err)
 	}
 	return nil
 }

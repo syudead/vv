@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Tag } from "../api/tags";
 import { __resetTagsForTest } from "../api/tags";
+import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
 import SelectionBar from "./SelectionBar";
@@ -35,6 +36,8 @@ const server = {
   /** videoId ごとに、フォルダ名から付いているタグの id（手で付けた分とは別）。 */
   fromFolder: new Map<number, Set<number>>(),
   addFails: false,
+  /** 付ける要求に返す失敗の応答（addFails より先に見る）。 */
+  addError: null as { status: number; body: unknown } | null,
   removeFails: false,
   summaryFails: false,
   summaryDelay: null as (() => void) | null,
@@ -64,11 +67,20 @@ function install() {
         action: "add" | "remove";
         tag: { id: number } | { name: string };
       };
+      if (body.action === "add" && server.addError !== null) {
+        return Promise.resolve(
+          jsonResponse(server.addError.body, server.addError.status),
+        );
+      }
       if (body.action === "add" && server.addFails) {
-        return Promise.resolve(jsonResponse({ code: "internal", message: "失敗" }, 500));
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "internal error" }, 500),
+        );
       }
       if (body.action === "remove" && server.removeFails) {
-        return Promise.resolve(jsonResponse({ code: "internal", message: "失敗" }, 500));
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "internal error" }, 500),
+        );
       }
       let resolvedTag: { id: number; name: string };
       const requestedTag = body.tag;
@@ -76,7 +88,7 @@ function install() {
         const found = server.tags.find((t) => t.id === requestedTag.id);
         if (found === undefined) {
           return Promise.resolve(
-            jsonResponse({ code: "tag_not_found", message: "もう無い" }, 404),
+            jsonResponse({ code: "tag_not_found", message: "tag not found" }, 404),
           );
         }
         resolvedTag = { id: found.id, name: found.name };
@@ -107,7 +119,7 @@ function install() {
       const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
       const resolveNow = () => {
         if (server.summaryFails) {
-          return jsonResponse({ code: "internal", message: "失敗" }, 500);
+          return jsonResponse({ code: "internal", message: "internal error" }, 500);
         }
         // count はどちらかの出所で付いている本数、manualCount は手で付けた本数
         // （017 の contracts/folder-groups-api.md §4）。
@@ -152,7 +164,9 @@ function install() {
       };
       server.visibilityRequests.push(body);
       if (server.visibilityFails) {
-        return Promise.resolve(jsonResponse({ code: "internal", message: "失敗" }, 500));
+        return Promise.resolve(
+          jsonResponse({ code: "internal", message: "internal error" }, 500),
+        );
       }
       return Promise.resolve(jsonResponse({ applied: body.videoIds.length }));
     }
@@ -197,6 +211,7 @@ beforeEach(() => {
   server.attached = new Map();
   server.fromFolder = new Map();
   server.addFails = false;
+  server.addError = null;
   server.removeFails = false;
   server.summaryFails = false;
   server.summaryDelay = null;
@@ -215,16 +230,16 @@ describe("SelectionBar", () => {
   it("count が 0 のときは何も描かない", () => {
     install();
     renderBar({ count: 0 });
-    expect(screen.queryByRole("region", { name: "選択中の操作" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
   });
 
   it("件数・すべて選択・選択解除を出す。すべて選択は選択中…でdisabledになる", () => {
     install();
     renderBar({ selectingAll: true });
-    expect(screen.getByText("3 件を選択中")).toBeDefined();
-    const selectAll = screen.getByRole("button", { name: "選択中…" });
+    expect(screen.getByText("3 videos selected")).toBeDefined();
+    const selectAll = screen.getByRole("button", { name: "Selecting…" });
     expect((selectAll as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByRole("button", { name: "選択を解除 (Esc)" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Clear selection (Esc)" })).toBeDefined();
   });
 
   it("選択が直前の「すべて選択」と同じ集合（allSelected）のときだけ、すべて選択がdisabled", () => {
@@ -235,7 +250,7 @@ describe("SelectionBar", () => {
       selectedIds: Array.from({ length: 10 }, (_, i) => i + 1),
     });
     expect(
-      (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement).disabled,
     ).toBe(true);
     // 選んだ本数が項目の数（total）を超えていても、集合が違えば押せる
     // （specs/017-folder-groups/ui-design.md「Pressing and selection」）。
@@ -251,7 +266,7 @@ describe("SelectionBar", () => {
       }),
     );
     expect(
-      (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement).disabled,
     ).toBe(false);
   });
 
@@ -266,35 +281,35 @@ describe("SelectionBar", () => {
       selectedIds: Array.from({ length: 20001 }, (_, i) => i + 1),
     });
     const addButton = screen.getByRole("button", {
-      name: "タグを付ける",
+      name: "Add tag",
     }) as HTMLButtonElement;
     const removeButton = screen.getByRole("button", {
-      name: "タグを外す",
+      name: "Remove tag",
     }) as HTMLButtonElement;
     const visibilityButton = screen.getByRole("button", {
-      name: "公開",
+      name: "Visibility",
     }) as HTMLButtonElement;
     expect(addButton.disabled).toBe(true);
     expect(removeButton.disabled).toBe(true);
     // 公開の一括の切り替えも同じ上限で、同じ理由を添える（016 ui-design.md「Selection bar」）。
     expect(visibilityButton.disabled).toBe(true);
-    expect(visibilityButton.title).toBe("一括操作は 20,000 件までです");
+    expect(visibilityButton.title).toBe("Select between 1 and 20,000 videos.");
     expect(visibilityButton.getAttribute("aria-describedby")).toBe(
       addButton.getAttribute("aria-describedby"),
     );
-    expect(addButton.title).toBe("一括操作は 20,000 件までです");
-    expect(removeButton.title).toBe("一括操作は 20,000 件までです");
+    expect(addButton.title).toBe("Select between 1 and 20,000 videos.");
+    expect(removeButton.title).toBe("Select between 1 and 20,000 videos.");
 
     const addDescribedBy = addButton.getAttribute("aria-describedby");
     expect(addDescribedBy).not.toBeNull();
     expect(document.getElementById(addDescribedBy!)?.textContent).toBe(
-      "一括操作は 20,000 件までです",
+      "Select between 1 and 20,000 videos.",
     );
 
     // すべて選択はこの上限と無関係なので、ちょうど全件選び終わっていなければ
     // 引き続き押せる。
     expect(
-      (screen.getByRole("button", { name: "すべて選択" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Select all" }) as HTMLButtonElement).disabled,
     ).toBe(false);
   });
 
@@ -306,11 +321,10 @@ describe("SelectionBar", () => {
       selectedIds: Array.from({ length: 20000 }, (_, i) => i + 1),
     });
     expect(
-      (screen.getByRole("button", { name: "タグを付ける" }) as HTMLButtonElement)
-        .disabled,
+      (screen.getByRole("button", { name: "Add tag" }) as HTMLButtonElement).disabled,
     ).toBe(false);
     expect(
-      (screen.getByRole("button", { name: "タグを外す" }) as HTMLButtonElement).disabled,
+      (screen.getByRole("button", { name: "Remove tag" }) as HTMLButtonElement).disabled,
     ).toBe(false);
   });
 
@@ -326,8 +340,8 @@ describe("SelectionBar", () => {
       selectedIds: [1, 2, 3],
     });
 
-    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
-    await screen.findByRole("combobox", { name: "タグを付ける" });
+    await user.click(screen.getByRole("button", { name: "Add tag" }));
+    await screen.findByRole("combobox", { name: "Add tag" });
 
     rerender(
       barElement({
@@ -341,7 +355,7 @@ describe("SelectionBar", () => {
       }),
     );
 
-    expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -358,8 +372,8 @@ describe("SelectionBar", () => {
       selectedIds: [1, 2, 3],
     });
 
-    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
-    await screen.findByRole("combobox", { name: "タグを付ける" });
+    await user.click(screen.getByRole("button", { name: "Add tag" }));
+    await screen.findByRole("combobox", { name: "Add tag" });
 
     rerender(
       barElement({
@@ -373,8 +387,8 @@ describe("SelectionBar", () => {
       }),
     );
 
-    expect(await screen.findByText("一括操作は 20,000 件までです")).toBeDefined();
-    expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull();
+    expect(await screen.findByText("Select between 1 and 20,000 videos.")).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull();
     expect(
       fetchMock.mock.calls.some(
         ([input, init]) => String(input) === "/api/video-tags" && init?.method === "POST",
@@ -392,8 +406,8 @@ describe("SelectionBar", () => {
       selectedIds: [1, 2, 3],
     });
 
-    await user.click(screen.getByRole("button", { name: "タグを外す" }));
-    await screen.findByRole("combobox", { name: "タグを外す" });
+    await user.click(screen.getByRole("button", { name: "Remove tag" }));
+    await screen.findByRole("combobox", { name: "Remove tag" });
     const summaryCallsBefore = fetchMock.mock.calls.filter(
       ([input, init]) =>
         String(input) === "/api/video-tags/summary" && init?.method === "POST",
@@ -411,8 +425,8 @@ describe("SelectionBar", () => {
       }),
     );
 
-    expect(await screen.findByText("一括操作は 20,000 件までです")).toBeDefined();
-    expect(screen.queryByRole("combobox", { name: "タグを外す" })).toBeNull();
+    expect(await screen.findByText("Select between 1 and 20,000 videos.")).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: "Remove tag" })).toBeNull();
     const summaryCallsAfter = fetchMock.mock.calls.filter(
       ([input, init]) =>
         String(input) === "/api/video-tags/summary" && init?.method === "POST",
@@ -425,16 +439,16 @@ describe("SelectionBar", () => {
     install();
     renderBar();
 
-    const addButton = screen.getByRole("button", { name: "タグを付ける" });
+    const addButton = screen.getByRole("button", { name: "Add tag" });
     await user.click(addButton);
-    const input = await screen.findByRole("combobox", { name: "タグを付ける" });
+    const input = await screen.findByRole("combobox", { name: "Add tag" });
     await user.type(input, "旅行");
     await screen.findByRole("option", { name: /旅行/ });
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByText("3 件に「旅行」を付けました")).toBeDefined();
+    expect(await screen.findByText('Added "旅行" to 3 videos')).toBeDefined();
     await waitFor(() =>
-      expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull(),
+      expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull(),
     );
     expect(document.activeElement).toBe(addButton);
     // 反映されたことをサーバー側で確認する。
@@ -448,13 +462,13 @@ describe("SelectionBar", () => {
     install();
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
-    const input = await screen.findByRole("combobox", { name: "タグを付ける" });
+    await user.click(screen.getByRole("button", { name: "Add tag" }));
+    const input = await screen.findByRole("combobox", { name: "Add tag" });
     await user.type(input, "新規タグ");
-    await screen.findByRole("option", { name: /を作成/ });
+    await screen.findByRole("option", { name: /^Create/ });
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByText("3 件に「新規タグ」を付けました")).toBeDefined();
+    expect(await screen.findByText('Added "新規タグ" to 3 videos')).toBeDefined();
   });
 
   it("付けるのに失敗すると、入力の下に理由が出て、選択とポップオーバーを保ったまま再試行できる", async () => {
@@ -463,21 +477,23 @@ describe("SelectionBar", () => {
     server.addFails = true;
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
-    const input = await screen.findByRole("combobox", { name: "タグを付ける" });
+    await user.click(screen.getByRole("button", { name: "Add tag" }));
+    const input = await screen.findByRole("combobox", { name: "Add tag" });
     await user.type(input, "旅行");
     await screen.findByRole("option", { name: /旅行/ });
     await user.keyboard("{Enter}");
 
     expect(
-      await screen.findByText("付けられませんでした。もう一度お試しください"),
+      await screen.findByText(
+        "Couldn't add the tag: Something went wrong on the server.",
+      ),
     ).toBeDefined();
-    expect(screen.getByRole("combobox", { name: "タグを付ける" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Add tag" })).toBeDefined();
     expect((input as HTMLInputElement).value).toBe("旅行");
 
     server.addFails = false;
     await user.keyboard("{Enter}");
-    expect(await screen.findByText("3 件に「旅行」を付けました")).toBeDefined();
+    expect(await screen.findByText('Added "旅行" to 3 videos')).toBeDefined();
   });
 
   it("候補が別のタブで削除された（tag_not_found）ときは、トーストを出しポップオーバーは開いたまま", async () => {
@@ -485,8 +501,8 @@ describe("SelectionBar", () => {
     install();
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
-    const input = await screen.findByRole("combobox", { name: "タグを付ける" });
+    await user.click(screen.getByRole("button", { name: "Add tag" }));
+    const input = await screen.findByRole("combobox", { name: "Add tag" });
     await user.type(input, "旅行");
     const option = await screen.findByRole("option", { name: /旅行/ });
     // 選ぶ直前にタグが消える。
@@ -494,9 +510,11 @@ describe("SelectionBar", () => {
     fireEvent.click(option);
 
     expect(
-      await screen.findByText("タグ「旅行」はもう無いため、一覧を取り直しました"),
+      await screen.findByText(
+        'The tag "旅行" no longer exists, so the tags were reloaded',
+      ),
     ).toBeDefined();
-    expect(screen.getByRole("combobox", { name: "タグを付ける" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Add tag" })).toBeDefined();
   });
 
   it("要約を取るまでは読み込み中…を role=status で出す", async () => {
@@ -508,16 +526,16 @@ describe("SelectionBar", () => {
     server.summaryDelay = () => undefined;
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを外す" }));
+    await user.click(screen.getByRole("button", { name: "Remove tag" }));
     // role=status は選択件数の行にもあるので、「読み込み中…」の方だけを見る。
-    const status = await screen.findByText("読み込み中…");
+    const status = await screen.findByText("Loading…");
     expect(status.getAttribute("role")).toBe("status");
 
     await act(async () => {
       server.summaryDelay?.();
       await Promise.resolve();
     });
-    const input = await screen.findByRole("combobox", { name: "タグを外す" });
+    const input = await screen.findByRole("combobox", { name: "Remove tag" });
     await user.click(input);
     expect(await screen.findByRole("option", { name: /旅行/ })).toBeDefined();
   });
@@ -530,29 +548,29 @@ describe("SelectionBar", () => {
     server.attached.set(3, new Set([1]));
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを外す" }));
+    await user.click(screen.getByRole("button", { name: "Remove tag" }));
 
-    const input = await screen.findByRole("combobox", { name: "タグを外す" });
+    const input = await screen.findByRole("combobox", { name: "Remove tag" });
     await user.click(input);
     const travelOption = await screen.findByRole("option", { name: /旅行/ });
-    expect(within(travelOption).getByText("3 件")).toBeDefined();
+    expect(within(travelOption).getByText("3 videos")).toBeDefined();
 
     const dramaOption = screen.getByRole("option", {
-      name: "Drama、一部の動画だけ、3 件中 1 件",
+      name: "Drama, only some videos, 1 of 3",
     });
-    expect(within(dramaOption).getByText("一部 1 / 3 件")).toBeDefined();
+    expect(within(dramaOption).getByText("Some: 1 / 3")).toBeDefined();
 
     await user.type(input, "旅行");
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByText("3 件から「旅行」を外しました")).toBeDefined();
+    expect(await screen.findByText('Removed "旅行" from 3 videos')).toBeDefined();
     expect(server.attached.get(1)?.has(1)).toBe(false);
     expect(server.attached.get(2)?.has(1)).toBe(false);
     expect(server.attached.get(3)?.has(1)).toBe(false);
     // 外した後もポップオーバーは開いたまま、要約を取り直して残りの候補を見せる。
     await waitFor(() =>
       expect(
-        screen.queryByRole("option", { name: "Drama、一部の動画だけ、3 件中 1 件" }),
+        screen.queryByRole("option", { name: "Drama, only some videos, 1 of 3" }),
       ).toBeDefined(),
     );
   });
@@ -566,19 +584,21 @@ describe("SelectionBar", () => {
     server.removeFails = true;
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを外す" }));
-    const input = await screen.findByRole("combobox", { name: "タグを外す" });
+    await user.click(screen.getByRole("button", { name: "Remove tag" }));
+    const input = await screen.findByRole("combobox", { name: "Remove tag" });
     await user.type(input, "旅行");
     await user.keyboard("{Enter}");
 
     expect(
-      await screen.findByText("外せませんでした。もう一度お試しください"),
+      await screen.findByText(
+        "Couldn't remove the tag: Something went wrong on the server.",
+      ),
     ).toBeDefined();
     expect((input as HTMLInputElement).value).toBe("旅行");
 
     server.removeFails = false;
     await user.keyboard("{Enter}");
-    expect(await screen.findByText("3 件から「旅行」を外しました")).toBeDefined();
+    expect(await screen.findByText('Removed "旅行" from 3 videos')).toBeDefined();
   });
 
   it("選んだ動画にタグが無いときは、外せるタグが無いことを出す", async () => {
@@ -586,8 +606,10 @@ describe("SelectionBar", () => {
     install();
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを外す" }));
-    expect(await screen.findByText("選んだ動画に、外せるタグはありません")).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Remove tag" }));
+    expect(
+      await screen.findByText("The selected videos have no tags that can be removed"),
+    ).toBeDefined();
   });
 
   // 017 の ui-design.md「Folder-derived tag chip」: フォルダ名から付いているだけの
@@ -609,16 +631,16 @@ describe("SelectionBar", () => {
     server.attached.set(3, new Set([2]));
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを外す" }));
-    const input = await screen.findByRole("combobox", { name: "タグを外す" });
+    await user.click(screen.getByRole("button", { name: "Remove tag" }));
+    const input = await screen.findByRole("combobox", { name: "Remove tag" });
     await user.click(input);
     const options = await screen.findAllByRole("option");
     expect(options.map((option) => option.textContent)).toEqual([
-      "Drama3 件",
-      "旅行一部 1 / 3 件",
+      "Drama3 videos",
+      "旅行Some: 1 / 3",
     ]);
     expect(
-      screen.getByRole("option", { name: "旅行、一部の動画だけ、3 件中 1 件" }),
+      screen.getByRole("option", { name: "旅行, only some videos, 1 of 3" }),
     ).toBeDefined();
     expect(screen.queryByRole("option", { name: /京都/ })).toBeNull();
   });
@@ -629,9 +651,11 @@ describe("SelectionBar", () => {
     for (const id of [1, 2, 3]) server.fromFolder.set(id, new Set([1]));
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを外す" }));
-    expect(await screen.findByText("選んだ動画に、外せるタグはありません")).toBeDefined();
-    expect(screen.queryByRole("combobox", { name: "タグを外す" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Remove tag" }));
+    expect(
+      await screen.findByText("The selected videos have no tags that can be removed"),
+    ).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: "Remove tag" })).toBeNull();
   });
 
   it("要約を取れないときは理由と再試行を出し、再試行で取り直す", async () => {
@@ -643,13 +667,13 @@ describe("SelectionBar", () => {
     server.summaryFails = true;
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを外す" }));
-    await screen.findByText("タグを取得できませんでした");
-    expect(screen.getByRole("alert").textContent).toBe("タグを取得できませんでした");
+    await user.click(screen.getByRole("button", { name: "Remove tag" }));
+    await screen.findByText("Couldn't load the tags");
+    expect(screen.getByRole("alert").textContent).toBe("Couldn't load the tags");
 
     server.summaryFails = false;
-    await user.click(screen.getByRole("button", { name: "再試行" }));
-    const input = await screen.findByRole("combobox", { name: "タグを外す" });
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    const input = await screen.findByRole("combobox", { name: "Remove tag" });
     await user.click(input);
     expect(await screen.findByRole("option", { name: /旅行/ })).toBeDefined();
   });
@@ -658,7 +682,7 @@ describe("SelectionBar", () => {
     const user = userEvent.setup();
     install();
     const { onSelectAll } = renderBar();
-    await user.click(screen.getByRole("button", { name: "すべて選択" }));
+    await user.click(screen.getByRole("button", { name: "Select all" }));
     expect(onSelectAll).toHaveBeenCalledTimes(1);
   });
 
@@ -666,7 +690,7 @@ describe("SelectionBar", () => {
     const user = userEvent.setup();
     install();
     const { onClear } = renderBar();
-    await user.click(screen.getByRole("button", { name: "選択を解除 (Esc)" }));
+    await user.click(screen.getByRole("button", { name: "Clear selection (Esc)" }));
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
@@ -680,24 +704,24 @@ describe("SelectionBar", () => {
     install();
     renderBar();
 
-    const addButton = screen.getByRole("button", { name: "タグを付ける" });
+    const addButton = screen.getByRole("button", { name: "Add tag" });
     await user.click(addButton);
-    const input = await screen.findByRole("combobox", { name: "タグを付ける" });
+    const input = await screen.findByRole("combobox", { name: "Add tag" });
     // フォーカスで一覧が開く（全タグが候補になる）。
     await screen.findByRole("option", { name: /旅行/ });
 
     await user.keyboard("{Escape}");
     // 1回目: 一覧だけが閉じ、ポップオーバー（入力）はまだ残る。
     expect(screen.queryByRole("option")).toBeNull();
-    expect(screen.getByRole("combobox", { name: "タグを付ける" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Add tag" })).toBeDefined();
     expect(input).toHaveProperty("value", "");
 
     await user.keyboard("{Escape}");
     // 2回目: ポップオーバーが閉じる。選択（3 件を選択中）は残る。
     await waitFor(() =>
-      expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull(),
+      expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull(),
     );
-    expect(screen.getByText("3 件を選択中")).toBeDefined();
+    expect(screen.getByText("3 videos selected")).toBeDefined();
   });
 
   it("タグを外す: 1回目のEscは候補の一覧だけを閉じ、2回目でポップオーバーが閉じても選択は残る", async () => {
@@ -708,19 +732,19 @@ describe("SelectionBar", () => {
     server.attached.set(3, new Set([1]));
     renderBar();
 
-    await user.click(screen.getByRole("button", { name: "タグを外す" }));
-    await screen.findByRole("combobox", { name: "タグを外す" });
+    await user.click(screen.getByRole("button", { name: "Remove tag" }));
+    await screen.findByRole("combobox", { name: "Remove tag" });
     await screen.findByRole("option", { name: /旅行/ });
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("option")).toBeNull();
-    expect(screen.getByRole("combobox", { name: "タグを外す" })).toBeDefined();
+    expect(screen.getByRole("combobox", { name: "Remove tag" })).toBeDefined();
 
     await user.keyboard("{Escape}");
     await waitFor(() =>
-      expect(screen.queryByRole("combobox", { name: "タグを外す" })).toBeNull(),
+      expect(screen.queryByRole("combobox", { name: "Remove tag" })).toBeNull(),
     );
-    expect(screen.getByText("3 件を選択中")).toBeDefined();
+    expect(screen.getByText("3 videos selected")).toBeDefined();
   });
 
   // Devin の指摘2: 「タグを外す」が開いたまま選択が変わっても、以前は要約を
@@ -734,8 +758,8 @@ describe("SelectionBar", () => {
     server.attached.set(3, new Set());
     const { rerender } = renderBar({ selectedIds: [1, 2, 3], count: 3 });
 
-    await user.click(screen.getByRole("button", { name: "タグを外す" }));
-    await screen.findByRole("option", { name: "旅行、一部の動画だけ、3 件中 2 件" });
+    await user.click(screen.getByRole("button", { name: "Remove tag" }));
+    await screen.findByRole("option", { name: "旅行, only some videos, 2 of 3" });
 
     // ポップオーバーを開いたまま、選択が動画1だけに変わる（動画2・3の選択を
     // 外した想定。LibraryPage が selectedIds を新しい配列で渡し直す）。
@@ -756,8 +780,8 @@ describe("SelectionBar", () => {
 
     // 新しい選択（動画1だけ）では「旅行」は全部に付いていて、もう一部ではない。
     const option = await screen.findByRole("option", { name: /旅行/ });
-    expect(within(option).getByText("1 件")).toBeDefined();
-    expect(screen.queryByText(/一部/)).toBeNull();
+    expect(within(option).getByText("1 video")).toBeDefined();
+    expect(screen.queryByText(/Some:/)).toBeNull();
   });
 
   it("要約の取り直しでは、古い応答が新しい応答を上書きしない（Devin の指摘2）", async () => {
@@ -767,7 +791,7 @@ describe("SelectionBar", () => {
     server.summaryHold = true;
     const { rerender } = renderBar({ selectedIds: [1, 2], count: 2 });
 
-    fireEvent.click(screen.getByRole("button", { name: "タグを外す" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove tag" }));
     await waitFor(() => expect(server.summaryQueue).toHaveLength(1));
 
     // 開いている間に選択が変わり、2回目の要求も止められる。
@@ -791,7 +815,7 @@ describe("SelectionBar", () => {
       await Promise.resolve();
     });
     const optionAfterSecond = await screen.findByRole("option", { name: /旅行/ });
-    expect(within(optionAfterSecond).getByText("1 件")).toBeDefined();
+    expect(within(optionAfterSecond).getByText("1 video")).toBeDefined();
 
     await act(async () => {
       first?.();
@@ -799,7 +823,7 @@ describe("SelectionBar", () => {
     });
     // 古い応答（選択が[1,2]だった頃、2件中2件）が後から届いても上書きしない。
     const optionAfterStale = screen.getByRole("option", { name: /旅行/ });
-    expect(within(optionAfterStale).getByText("1 件")).toBeDefined();
+    expect(within(optionAfterStale).getByText("1 video")).toBeDefined();
   });
 
   // Devin の指摘3: addOpen・removeOpen は SelectionBar 自身の状態で、選択が
@@ -810,8 +834,8 @@ describe("SelectionBar", () => {
     install();
     const { rerender } = renderBar({ selectedIds: [1, 2, 3], count: 3 });
 
-    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
-    await screen.findByRole("combobox", { name: "タグを付ける" });
+    await user.click(screen.getByRole("button", { name: "Add tag" }));
+    await screen.findByRole("combobox", { name: "Add tag" });
 
     // 選択が0件になる（バーは何も描かなくなる）。
     rerender(
@@ -825,7 +849,7 @@ describe("SelectionBar", () => {
         onTagRemoved: vi.fn(),
       }),
     );
-    expect(screen.queryByRole("region", { name: "選択中の操作" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
 
     // 選び直す（バーがまた出る）。
     rerender(
@@ -842,9 +866,9 @@ describe("SelectionBar", () => {
 
     // ポップオーバーは勝手に開いた状態で戻らない。押せば開く（表示自体は壊れて
     // いない）ことも確かめる。
-    expect(screen.queryByRole("combobox", { name: "タグを付ける" })).toBeNull();
-    await user.click(screen.getByRole("button", { name: "タグを付ける" }));
-    expect(await screen.findByRole("combobox", { name: "タグを付ける" })).toBeDefined();
+    expect(screen.queryByRole("combobox", { name: "Add tag" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Add tag" }));
+    expect(await screen.findByRole("combobox", { name: "Add tag" })).toBeDefined();
   });
 });
 
@@ -855,23 +879,26 @@ describe("SelectionBar の公開", () => {
     const fetchMock = install();
     const { onClear } = renderBar();
 
-    await user.click(screen.getByRole("button", { name: "公開" }));
+    await user.click(screen.getByRole("button", { name: "Visibility" }));
     const items = await screen.findAllByRole("menuitem");
     // 今の状態は示さず、2つとも常に押せる。
-    expect(items.map((item) => item.textContent)).toEqual(["公開にする", "非公開にする"]);
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Make public",
+      "Make private",
+    ]);
     expect(items.every((item) => item.getAttribute("aria-disabled") !== "true")).toBe(
       true,
     );
-    await user.click(screen.getByRole("menuitem", { name: "公開にする" }));
+    await user.click(screen.getByRole("menuitem", { name: "Make public" }));
 
-    expect(await screen.findByText("3 件を公開にしました")).toBeDefined();
+    expect(await screen.findByText("Made 3 videos public")).toBeDefined();
     const puts = fetchMock.mock.calls.filter(
       ([url, init]) => url === "/api/video-visibility" && init?.method === "PUT",
     );
     expect(puts).toHaveLength(1);
     expect(server.visibilityRequests).toEqual([{ videoIds: [1, 2, 3], public: true }]);
     expect(onClear).not.toHaveBeenCalled();
-    expect(screen.getByText("3 件を選択中")).toBeDefined();
+    expect(screen.getByText("3 videos selected")).toBeDefined();
   });
 
   it("「非公開にする」は public: false を送り、非公開にしたと伝える", async () => {
@@ -879,10 +906,10 @@ describe("SelectionBar の公開", () => {
     install();
     renderBar({ count: 2, selectedIds: [4, 5] });
 
-    await user.click(screen.getByRole("button", { name: "公開" }));
-    await user.click(await screen.findByRole("menuitem", { name: "非公開にする" }));
+    await user.click(screen.getByRole("button", { name: "Visibility" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Make private" }));
 
-    expect(await screen.findByText("2 件を非公開にしました")).toBeDefined();
+    expect(await screen.findByText("Made 2 videos private")).toBeDefined();
     expect(server.visibilityRequests).toEqual([{ videoIds: [4, 5], public: false }]);
   });
 
@@ -892,12 +919,16 @@ describe("SelectionBar の公開", () => {
     server.visibilityFails = true;
     const { onClear } = renderBar();
 
-    await user.click(screen.getByRole("button", { name: "公開" }));
-    await user.click(await screen.findByRole("menuitem", { name: "公開にする" }));
+    await user.click(screen.getByRole("button", { name: "Visibility" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Make public" }));
 
-    expect(await screen.findByText("変更できませんでした")).toBeDefined();
+    expect(
+      await screen.findByText(
+        "Couldn't change the visibility: Something went wrong on the server.",
+      ),
+    ).toBeDefined();
     expect(onClear).not.toHaveBeenCalled();
-    expect(screen.getByText("3 件を選択中")).toBeDefined();
+    expect(screen.getByText("3 videos selected")).toBeDefined();
   });
 
   // ui/Menu（Radix）はキーボードで開くと先頭の項目にフォーカスを置く。↓ で
@@ -907,16 +938,117 @@ describe("SelectionBar の公開", () => {
     install();
     renderBar();
 
-    screen.getByRole("button", { name: "公開" }).focus();
+    screen.getByRole("button", { name: "Visibility" }).focus();
     await user.keyboard("{Enter}");
     await screen.findByRole("menu");
-    await waitFor(() => expect(document.activeElement?.textContent).toBe("公開にする"));
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("Make public"));
     await user.keyboard("{ArrowDown}");
-    await waitFor(() => expect(document.activeElement?.textContent).toBe("非公開にする"));
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("Make private"));
     await user.keyboard("{ArrowUp}");
-    await waitFor(() => expect(document.activeElement?.textContent).toBe("公開にする"));
+    await waitFor(() => expect(document.activeElement?.textContent).toBe("Make public"));
     await user.keyboard("{Enter}");
 
-    expect(await screen.findByText("3 件を公開にしました")).toBeDefined();
+    expect(await screen.findByText("Made 3 videos public")).toBeDefined();
+  });
+});
+
+describe("SelectionBar の英語の文言", () => {
+  it("1 本と複数本の件数を単数・複数で出す", () => {
+    install();
+    const { rerender } = renderBar({ count: 1, selectedIds: [1] });
+    expect(screen.getByText("1 video selected")).toBeDefined();
+    rerender(
+      barElement({
+        count: 2,
+        allSelected: false,
+        selectedIds: [1, 2],
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+      }),
+    );
+    expect(screen.getByText("2 videos selected")).toBeDefined();
+  });
+
+  it("一括操作の上限の失敗は、API の limit を埋め込んだ文で出す", async () => {
+    const user = userEvent.setup();
+    install();
+    server.addError = {
+      status: 400,
+      body: {
+        code: "invalid_request",
+        reason: "too_many_videos",
+        limit: 500,
+        message: "videoIds must contain between 1 and 500 items",
+      },
+    };
+    renderBar();
+
+    await user.click(screen.getByRole("button", { name: "Add tag" }));
+    const input = await screen.findByRole("combobox", { name: "Add tag" });
+    await user.type(input, "旅行");
+    await screen.findByRole("option", { name: /旅行/ });
+    await user.keyboard("{Enter}");
+
+    expect(
+      await screen.findByText("Couldn't add the tag: Select between 1 and 500 videos."),
+    ).toBeDefined();
+  });
+
+  it("疑似ロケールで、通常・付ける・外す・上限超過の文言がすべてカタログから出る", async () => {
+    enablePseudoLocale();
+    const user = userEvent.setup();
+    install();
+    server.attached.set(1, new Set([1, 2]));
+    server.attached.set(2, new Set([2]));
+    server.attached.set(3, new Set([2]));
+    const tagNames = ["旅行", "Drama"];
+    const { rerender } = renderBar();
+    expectCatalogTextOnly(document.body, tagNames);
+
+    await user.click(screen.getByRole("button", { name: /Add tag/ }));
+    const addInput = await screen.findByRole("combobox", { name: /Add tag/ });
+    await user.type(addInput, "新規");
+    await screen.findByRole("option", { name: /新規/ });
+    expectCatalogTextOnly(document.body, [...tagNames, "新規"]);
+    await user.keyboard("{Escape}{Escape}");
+
+    await user.click(screen.getByRole("button", { name: /Remove tag/ }));
+    const removeInput = await screen.findByRole("combobox", { name: /Remove tag/ });
+    await user.click(removeInput);
+    await screen.findAllByRole("option");
+    expectCatalogTextOnly(document.body, tagNames);
+    await user.keyboard("{Escape}{Escape}");
+
+    rerender(
+      barElement({
+        count: 20_001,
+        allSelected: false,
+        selectedIds: [1, 2, 3],
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+      }),
+    );
+    expectCatalogTextOnly(document.body, tagNames);
+  });
+
+  it("疑似ロケールで、要約の読み込み中・失敗・外せるタグが無い状態もカタログから出る", async () => {
+    enablePseudoLocale();
+    const user = userEvent.setup();
+    install();
+    server.summaryFails = true;
+    renderBar();
+
+    await user.click(screen.getByRole("button", { name: /Remove tag/ }));
+    await screen.findByRole("button", { name: /Retry/ });
+    expectCatalogTextOnly(document.body);
+
+    server.summaryFails = false;
+    await user.click(screen.getByRole("button", { name: /Retry/ }));
+    await screen.findByText(/no tags that can be removed/);
+    expectCatalogTextOnly(document.body);
   });
 });

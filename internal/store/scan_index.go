@@ -67,7 +67,7 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 		values (?, ?, ?, ?, 0, 'pending', 'pending')`,
 			addedAt.Unix(), now, file.ContentKey, nullableString(file.Container))
 		if err != nil {
-			return domain.UpsertResult{}, fmt.Errorf("動画を取り込めません (%s): %w", file.Path, err)
+			return domain.UpsertResult{}, fmt.Errorf("cannot import the video (%s): %w", file.Path, err)
 		}
 		videoID, err = res.LastInsertId()
 		if err != nil {
@@ -83,7 +83,7 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 			videoID, file.Path, file.Title, file.SizeBytes, file.MTime.Unix(), now, now)
 	}
 	if err != nil {
-		return domain.UpsertResult{}, fmt.Errorf("動画の場所を保存できません (%s): %w", file.Path, err)
+		return domain.UpsertResult{}, fmt.Errorf("cannot save the video location (%s): %w", file.Path, err)
 	}
 	// 題名とパスが変わりうるので、照合用の鍵も同じ書き込みの中で作り直す。
 	if err := refreshSearchKeysByPath(ctx, tx, file.Path); err != nil {
@@ -150,7 +150,7 @@ func (s *ScanIndexStore) DeleteVideos(ctx context.Context, ids []int64) error {
 	released, err := collectDeletedVideos(s.db.sql.QueryContext(ctx,
 		`delete from videos where id in (`+placeholders+`) returning id, content_key`, args...))
 	if err != nil {
-		return fmt.Errorf("動画を削除できません: %w", err)
+		return fmt.Errorf("cannot delete videos: %w", err)
 	}
 	var c changes
 	c.videosDeleted(released)
@@ -203,7 +203,7 @@ func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]do
 	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, v.probe_state, v.thumbnail_state, v.seek_thumbnail_state, v.preview_state
 		from video_locations l join videos v on v.id = l.video_id`)
 	if err != nil {
-		return nil, fmt.Errorf("索引を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read the index: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
@@ -213,13 +213,13 @@ func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]do
 		var video domain.IndexedVideo
 		var mtime int64
 		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &video.ProbeState, &video.ThumbnailState, &video.SeekThumbnailState, &video.PreviewState); err != nil {
-			return nil, fmt.Errorf("索引を読み出せません: %w", err)
+			return nil, fmt.Errorf("cannot read the index: %w", err)
 		}
 		video.MTime = time.Unix(mtime, 0)
 		out[path] = video
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("索引を読み出せません: %w", err)
+		return nil, fmt.Errorf("cannot read the index: %w", err)
 	}
 	return out, nil
 }

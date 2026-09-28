@@ -1,6 +1,7 @@
 import { Menu, RefreshCw } from "lucide-react";
 
 import { useAudience } from "../auth/audience";
+import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import IconButton from "../ui/IconButton";
 import BrandHomeLink from "../ui/BrandHomeLink";
@@ -11,9 +12,9 @@ function ScanButton() {
   const scan = useScan();
   const buttonDescription = scan.canStart
     ? scan.running
-      ? "取り込み中"
-      : "ライブラリを更新"
-    : "メディアフォルダを設定してください";
+      ? t.shell.topBar.scanning
+      : t.shell.topBar.refreshLibrary
+    : t.shell.topBar.needsMediaFolder;
 
   return (
     <Tooltip content={buttonDescription}>
@@ -37,7 +38,9 @@ function ScanButton() {
             scan.running && "animate-spin motion-reduce:animate-none",
           )}
         />
-        <span className="hidden md:inline">{scan.running ? "更新中" : "更新"}</span>
+        <span className="hidden md:inline">
+          {scan.running ? t.shell.topBar.refreshing : t.shell.topBar.refresh}
+        </span>
       </button>
     </Tooltip>
   );
@@ -53,7 +56,7 @@ export default function TopBar({ onMenu }: { onMenu: () => void }) {
   const owner = useAudience() === "owner";
   return (
     <header className="fixed inset-x-0 top-0 z-40 flex h-navbar items-center gap-1 border-b border-border bg-bg/90 px-2 backdrop-blur-md sm:px-3">
-      <IconButton label="メニュー" onClick={onMenu} tooltip={false}>
+      <IconButton label={t.shell.nav.menu} onClick={onMenu} tooltip={false}>
         <Menu />
       </IconButton>
       <BrandHomeLink className="mr-1" />

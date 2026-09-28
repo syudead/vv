@@ -187,13 +187,13 @@ func Open(dataDir string) (*DB, error) {
 
 	handle, err := sql.Open("sqlite", dsn(path, "immediate"))
 	if err != nil {
-		return nil, fmt.Errorf("データベースを開けません (%s): %w", path, err)
+		return nil, fmt.Errorf("cannot open the database (%s): %w", path, err)
 	}
 
 	read, err := sql.Open("sqlite", dsn(path, "deferred"))
 	if err != nil {
 		_ = handle.Close()
-		return nil, fmt.Errorf("読み取り用データベースを開けません (%s): %w", path, err)
+		return nil, fmt.Errorf("cannot open the read-only database (%s): %w", path, err)
 	}
 
 	db := &DB{sql: handle, read: read, path: path}
@@ -215,10 +215,10 @@ func (db *DB) Path() string {
 // 判定するために使う。
 func (db *DB) Ping(ctx context.Context) error {
 	if err := db.sql.PingContext(ctx); err != nil {
-		return fmt.Errorf("データベースへ疎通できません (%s): %w", db.path, err)
+		return fmt.Errorf("cannot reach the database (%s): %w", db.path, err)
 	}
 	if err := db.read.PingContext(ctx); err != nil {
-		return fmt.Errorf("読み取り用データベースへ疎通できません (%s): %w", db.path, err)
+		return fmt.Errorf("cannot reach the read-only database (%s): %w", db.path, err)
 	}
 	return nil
 }

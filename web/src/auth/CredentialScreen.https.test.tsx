@@ -21,21 +21,19 @@ describe("HTTPS の接続", () => {
         <LoginPage />
       </MemoryRouter>,
     );
-    expect(screen.queryByText(/暗号化/)).toBeNull();
-    expect(screen.queryByText(/安全/)).toBeNull();
+    expect(screen.queryByText(/encrypted/)).toBeNull();
+    expect(screen.queryByText(/secure/)).toBeNull();
     expect(document.getElementById("connection-warning")).toBeNull();
+    expect(screen.getByLabelText("Username").getAttribute("aria-describedby")).toBeNull();
     expect(
-      screen.getByLabelText("ユーザー名").getAttribute("aria-describedby"),
-    ).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "ログイン" }).getAttribute("aria-describedby"),
+      screen.getByRole("button", { name: "Sign in" }).getAttribute("aria-describedby"),
     ).toBeNull();
   });
 
   it("初回設定画面に警告を出さない", () => {
     render(<SetupPage />);
-    expect(screen.queryByText(/暗号化/)).toBeNull();
-    expect(screen.queryByText(/安全/)).toBeNull();
+    expect(screen.queryByText(/encrypted/)).toBeNull();
+    expect(screen.queryByText(/secure/)).toBeNull();
     expect(document.getElementById("connection-warning")).toBeNull();
   });
 });

@@ -15,26 +15,26 @@ const (
 )
 
 // ErrNotFound は対象が存在しないことを表す。
-var ErrNotFound = errors.New("対象が見つかりません")
+var ErrNotFound = errors.New("not found")
 
 var (
-	ErrNoMediaFolders         = errors.New("メディアフォルダが登録されていません")
-	ErrScanRunning            = errors.New("取り込みの実行中です")
-	ErrFolderConflict         = errors.New("メディアフォルダが重複または包含しています")
-	ErrVersionConflict        = errors.New("メディアフォルダが別の操作で変更されています")
-	ErrInvalidMediaFolder     = errors.New("メディアフォルダとして登録できません")
-	ErrUnsupportedMediaFolder = errors.New("対応していないメディアフォルダです")
+	ErrNoMediaFolders         = errors.New("no media folders are configured")
+	ErrScanRunning            = errors.New("a scan is in progress")
+	ErrFolderConflict         = errors.New("media folders overlap or contain each other")
+	ErrVersionConflict        = errors.New("media folders were changed by another operation")
+	ErrInvalidMediaFolder     = errors.New("cannot be added as a media folder")
+	ErrUnsupportedMediaFolder = errors.New("unsupported media folder")
 )
 
 // ErrProbeNotFailed は読み取りに失敗していない動画へ読み取りのやり直しを
 // 求めたことを表す。読み取り中・読み取り済みの動画がこれに当たる。
-var ErrProbeNotFailed = errors.New("読み取りに失敗した動画ではありません")
+var ErrProbeNotFailed = errors.New("the video has not failed to probe")
 
 // ErrInvalidCursor はカーソルが解釈できないことを表す。
 //
 // 黙って先頭から返さないのは、無限スクロールが巻き戻って同じ内容を延々と
 // 表示することになるためである。
-var ErrInvalidCursor = errors.New("カーソルを解釈できません")
+var ErrInvalidCursor = errors.New("invalid cursor")
 
 // VideoSort は一覧の並び順である。値は api/openapi.yaml の VideoSort に対応する。
 type VideoSort string
@@ -158,6 +158,12 @@ type Scan struct {
 	Failed     int
 	// Error は走査そのものが失敗した理由。個別のファイルの失敗は含まない。
 	Error string
+	// ErrorCode は State が failed のときの理由のコード。アップグレード前の行では空である
+	// （specs/023-english-i18n/data-model.md §2）。
+	ErrorCode ScanErrorCode
+	// ErrorPath は理由が結び付く場所（メディアフォルダ、または読めなかった場所）の
+	// 絶対パス。特定の場所に結び付かなければ空である。
+	ErrorPath string
 }
 
 // ScanProgress は進捗の値である。

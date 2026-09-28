@@ -113,8 +113,15 @@ func TestVideoVisibilityRejectsGuestsAndInvalidBodies(t *testing.T) {
 	for label, body := range map[string]string{
 		"空の videoIds":   visibilityBody(true),
 		"多すぎる videoIds": visibilityBody(true, tooMany...),
-		"public が無い":    `{"videoIds":[1]}`,
-		"知らない欄":         `{"videoIds":[1],"public":true,"extra":1}`,
+	} {
+		rec := env.serve(authRequest{method: http.MethodPut, target: "/api/video-visibility", body: body, cookies: []*http.Cookie{f.owner}})
+		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs,
+		})
+	}
+	for label, body := range map[string]string{
+		"public が無い": `{"videoIds":[1]}`,
+		"知らない欄":      `{"videoIds":[1],"public":true,"extra":1}`,
 	} {
 		rec := env.serve(authRequest{method: http.MethodPut, target: "/api/video-visibility", body: body, cookies: []*http.Cookie{f.owner}})
 		assertStatus(t, label, rec, http.StatusBadRequest)

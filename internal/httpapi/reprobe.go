@@ -19,20 +19,20 @@ func (s *server) ReprobeVideo(w http.ResponseWriter, r *http.Request, id gen.Vid
 		return
 	}
 	if s.catalog == nil {
-		s.internalError(w, "読み取りのやり直し先が設定されていません", nil)
+		s.internalError(w, "Probe retry is not configured.", nil)
 		return
 	}
 
 	err := s.catalog.RetryProbe(r.Context(), video)
 	switch {
 	case errors.Is(err, domain.ErrNotFound):
-		s.notFound(w, "その動画はありません")
+		s.notFoundReason(w, reasonVideoNotFound, "Video not found.")
 		return
 	case errors.Is(err, domain.ErrProbeNotFailed):
-		s.writeError(w, http.StatusConflict, codeProbeNotFailed, "この動画は読み取り中か、読み取り済みです")
+		s.writeError(w, http.StatusConflict, codeProbeNotFailed, "This video is being probed or has already been probed.")
 		return
 	case err != nil:
-		s.internalError(w, "読み取りをやり直せませんでした", err)
+		s.internalError(w, "Could not retry the probe.", err)
 		return
 	}
 

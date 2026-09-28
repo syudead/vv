@@ -81,7 +81,8 @@ func TestOpenVideoFileRejectsNonLoopback(t *testing.T) {
 		{remote: "127.0.0.1:50000", host: "192.168.1.10:8080"},
 	} {
 		rec := serve(handler, openRequest("/api/videos/1/open", tc.remote, tc.host))
-		assertErrorCode(t, rec, http.StatusForbidden, codeForbidden)
+		assertErrorBody(t, tc.remote+" "+tc.host, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusForbidden, code: gen.ErrorCodeForbidden, reason: reasonOpenNotLocal})
 	}
 	if len(opener.opened) != 0 {
 		t.Fatalf("opened = %q, want none", opener.opened)

@@ -38,7 +38,9 @@ describe("RelatedVideos", () => {
     const link = screen.getByRole("link", { name: /関連 2/ });
     expect(link.getAttribute("href")).toBe("/videos/2");
     expect(link.textContent).toBe("1:05関連 2");
-    expect(screen.getByRole("heading", { level: 2, name: "関連動画" })).toBeDefined();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Related videos" }),
+    ).toBeDefined();
   });
 
   it("途中まで見た動画だけに進捗バーを出す", () => {
@@ -84,8 +86,8 @@ describe("RelatedVideos", () => {
 
   it("読み込み失敗では文言と再試行を出す", () => {
     renderList({ kind: "failed", id: 1 });
-    expect(screen.getByText("関連動画を取得できませんでした")).toBeDefined();
-    expect(screen.getByRole("button", { name: "再試行" })).toBeDefined();
+    expect(screen.getByText("Couldn't load related videos")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
   });
 
   it("サムネイルが無ければ一覧のカードと同じ代わりの表示にする", () => {
@@ -96,7 +98,7 @@ describe("RelatedVideos", () => {
         items: [item(2, { thumbnailUrl: undefined, thumbnailState: "pending" })],
       },
     });
-    expect(screen.getByText("準備中")).toBeDefined();
+    expect(screen.getByText("Preparing")).toBeDefined();
   });
 
   it("リンクの読み上げ名は長さと題名だけで、進捗の数値を含めない", () => {
@@ -117,7 +119,7 @@ describe("RelatedVideos", () => {
     });
     // リンクの名前は題名と長さだけで、割合は進捗バーとして別に読める。
     expect(screen.getByRole("link", { name: "関連 2 1:05" })).toBeDefined();
-    expect(screen.getByRole("progressbar", { name: "再生済みの割合" })).toBeDefined();
+    expect(screen.getByRole("progressbar", { name: "Watched portion" })).toBeDefined();
   });
 
   describe("マウスを乗せたときのプレビュー", () => {
@@ -224,8 +226,8 @@ describe("RelatedVideos", () => {
 
     it("「続けて再生」と何本目かの下に全メンバーを順に出し、境目の下に関連動画を別の並びで出す（受け入れ条件 15）", () => {
       renderGroup(13);
-      const heading = screen.getByRole("heading", { level: 2, name: "続けて再生" });
-      expect(heading.parentElement?.textContent).toBe("続けて再生3 / 4");
+      const heading = screen.getByRole("heading", { level: 2, name: "Up next" });
+      expect(heading.parentElement?.textContent).toBe("Up next3 / 4");
       const lists = screen.getAllByRole("list");
       expect(lists).toHaveLength(2);
       const [memberList, relatedList] = lists as [HTMLElement, HTMLElement];
@@ -233,12 +235,12 @@ describe("RelatedVideos", () => {
       expect(rows.map((row) => row.textContent)).toEqual([
         "11:05ep01",
         "21:05ep02",
-        "31:05再生中ep03",
+        "31:05Now playingep03",
         "41:05ep04",
       ]);
       // 境目は「関連動画」の見出しの前にある。
       const separator = screen.getByRole("separator");
-      const related = screen.getByRole("heading", { level: 2, name: "関連動画" });
+      const related = screen.getByRole("heading", { level: 2, name: "Related videos" });
       expect(
         separator.compareDocumentPosition(related) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
@@ -263,7 +265,7 @@ describe("RelatedVideos", () => {
 
     it("視聴済みは読み上げ名に「視聴済み」を足し、途中のメンバーは進捗バーを出す", () => {
       renderGroup(13);
-      const done = screen.getByRole("link", { name: "ep01 1:05 視聴済み" });
+      const done = screen.getByRole("link", { name: "ep01 1:05, watched" });
       expect(done.getAttribute("href")).toBe("/videos/11");
       expect(within(done).queryByRole("progressbar")).toBeNull();
       const partial = screen.getByRole("link", { name: "ep02 1:05" });
@@ -273,8 +275,8 @@ describe("RelatedVideos", () => {
 
     it("関連動画が 0 件なら、境目と「関連動画」の見出しを出さない", () => {
       renderGroup(11, []);
-      expect(screen.getByRole("heading", { name: "続けて再生" })).toBeDefined();
-      expect(screen.queryByRole("heading", { name: "関連動画" })).toBeNull();
+      expect(screen.getByRole("heading", { name: "Up next" })).toBeDefined();
+      expect(screen.queryByRole("heading", { name: "Related videos" })).toBeNull();
       expect(screen.queryByRole("separator")).toBeNull();
       expect(screen.getAllByRole("list")).toHaveLength(1);
     });

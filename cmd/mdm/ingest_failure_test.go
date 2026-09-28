@@ -107,7 +107,7 @@ func TestIngestHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 				t.Fatal("失敗の記録前に読み取りのやり直しを受け付けた")
 			}
 
-			if err := db.Ingest().FailClaimedJob(ctx, job, handleErr.Error()); err != nil {
+			if err := db.Ingest().FailClaimedJob(ctx, job, handleErr); err != nil {
 				t.Fatal(err)
 			}
 			video, err = db.Library().GetVideo(ctx, domain.AudienceOwner, videoID)
@@ -119,6 +119,9 @@ func TestIngestHandlersLeaveTerminalFailureToFailClaimedJob(t *testing.T) {
 			}
 			if tc.kind == domain.JobProbe && video.ProbeError != handleErr.Error() {
 				t.Fatalf("probeError = %q, want %q", video.ProbeError, handleErr.Error())
+			}
+			if tc.kind == domain.JobProbe && video.ProbeErrorCode != domain.ProbeErrorFileUnavailable {
+				t.Fatalf("probeErrorCode = %q, want file_unavailable", video.ProbeErrorCode)
 			}
 		})
 	}

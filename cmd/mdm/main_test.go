@@ -28,7 +28,7 @@ func TestServeDoesNotRunStartupHookWhenPortIsInUse(t *testing.T) {
 	if err == nil {
 		t.Fatal("使用中のポートなのに起動できた")
 	}
-	if !strings.Contains(err.Error(), "待ち受けに失敗しました") {
+	if !strings.Contains(err.Error(), "cannot listen on") {
 		t.Fatalf("err = %v", err)
 	}
 	if called {

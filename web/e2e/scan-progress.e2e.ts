@@ -27,7 +27,7 @@ async function failLogout(page: Page) {
   );
 }
 
-const logoutFailed = "ログアウトできませんでした";
+const logoutFailed = "Couldn't sign out";
 
 test("scan progress remains one indicator across library, settings, and playback", async ({
   page,
@@ -58,20 +58,20 @@ test("scan progress remains one indicator across library, settings, and playback
   });
 
   await page.goto("/#scan-progress");
-  const indicator = page.getByRole("button", { name: /取り込み状況を開く/ });
+  const indicator = page.getByRole("button", { name: /Open the scan status/ });
   await expect(indicator).toBeVisible();
   await indicator.hover();
-  await expect(page.getByRole("dialog")).toContainText("件");
+  await expect(page.getByRole("dialog")).toContainText(" / ");
   await indicator.click();
   await expect(page).toHaveURL(/\/settings#scan-status$/);
-  await expect(page.getByRole("heading", { name: "取り込み状況" })).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Scan status" })).toBeFocused();
 
-  const settingsIndicator = page.getByRole("button", { name: /取り込み状況を開く/ });
-  await expect(settingsIndicator).toHaveText(/取り込み中/);
-  await page.getByRole("link", { name: "VVMDM ホーム" }).click();
+  const settingsIndicator = page.getByRole("button", { name: /Open the scan status/ });
+  await expect(settingsIndicator).toHaveText(/Scanning/);
+  await page.getByRole("link", { name: "VVMDM home" }).click();
   await expect(page).toHaveURL(/\/$/);
   const routePersistentIndicator = page.getByRole("button", {
-    name: /取り込み状況を開く/,
+    name: /Open the scan status/,
   });
   await expect(routePersistentIndicator).toHaveCount(1);
 
@@ -126,7 +126,7 @@ test("an idle page recovers from a transient current-scan failure on the next re
   });
 
   await page.goto("/");
-  await expect(page.getByRole("button", { name: /取り込み状況を開く/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Open the scan status/ })).toHaveCount(0);
   refreshRequested = true;
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   // 一時的な失敗のあとは、一定間隔では取り直さない。次にウィンドウへ戻ったとき
@@ -134,13 +134,13 @@ test("an idle page recovers from a transient current-scan failure on the next re
   await expect.poll(() => failedOnce).toBe(true);
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
 
-  const indicator = page.getByRole("button", { name: /^取り込み中。/ });
+  const indicator = page.getByRole("button", { name: /^Scanning\./ });
   await expect(indicator).toBeVisible({ timeout: 5000 });
   await indicator.hover();
-  const progress = page.getByRole("progressbar", { name: "取り込み対象を確認中" });
+  const progress = page.getByRole("progressbar", { name: "Checking what to scan" });
   await expect(progress).toBeVisible();
   await expect(progress).not.toHaveAttribute("aria-valuenow");
-  await expect(page.getByRole("dialog")).toContainText("0 / 確認中 件");
+  await expect(page.getByRole("dialog")).toContainText("0 / counting");
 });
 
 test("opening failed scan details acknowledges the notice across reloads", async ({
@@ -167,16 +167,16 @@ test("opening failed scan details acknowledges the notice across reloads", async
   );
 
   await page.goto("/");
-  await expect(page.getByRole("button", { name: /取り込み中 50%/ })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Scanning 50%/ })).toBeVisible();
   state = "failed";
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await page
-    .getByRole("button", { name: /取り込みに失敗しました。取り込み状況を開く/ })
+    .getByRole("button", { name: /The scan failed\. Open the scan status/ })
     .click();
   await expect(page).toHaveURL(/\/settings#scan-status$/);
-  await expect(page.getByRole("button", { name: /取り込み状況を開く/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Open the scan status/ })).toHaveCount(0);
   await page.reload();
-  await expect(page.getByRole("button", { name: /取り込み状況を開く/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Open the scan status/ })).toHaveCount(0);
 });
 
 for (const width of [360, 640, 768]) {
@@ -205,21 +205,21 @@ for (const width of [360, 640, 768]) {
     await failLogout(page);
 
     await page.goto("/");
-    const indicator = page.getByRole("button", { name: /取り込み中 40%/ });
+    const indicator = page.getByRole("button", { name: /Scanning 40%/ });
     await expect(indicator).toBeVisible();
-    await page.getByRole("button", { name: "メニュー" }).click();
-    await page.getByRole("button", { name: "ログアウト" }).click();
+    await page.getByRole("button", { name: "Menu" }).click();
+    await page.getByRole("button", { name: "Sign out" }).click();
     if (width < 640) {
       await page
-        .getByRole("button", { name: "メニューを閉じる" })
+        .getByRole("button", { name: "Close menu" })
         .evaluate((button: HTMLButtonElement) => button.click());
     }
     const toast = page.getByText(logoutFailed);
     await expect(toast).toBeVisible();
-    const sidebar = page.getByRole("complementary", { name: "メインナビゲーション" });
+    const sidebar = page.getByRole("complementary", { name: "Main navigation" });
     const expandedSidebarBox = width >= 640 ? await sidebar.boundingBox() : null;
     if (width >= 640) {
-      await page.getByRole("button", { name: "メニュー" }).click();
+      await page.getByRole("button", { name: "Menu" }).click();
       await expect(sidebar).toHaveClass(/w-sidebar-rail/);
     }
     await indicator.hover();
@@ -280,16 +280,16 @@ for (const { width, height } of [
     await failLogout(page);
 
     await page.goto("/");
-    await page.getByRole("button", { name: "メニュー" }).click();
+    await page.getByRole("button", { name: "Menu" }).click();
     // ログアウトは失敗するまで押せないので、トーストが出るのを待ってから次を押す。
-    const logoutButton = page.getByRole("button", { name: "ログアウト" });
+    const logoutButton = page.getByRole("button", { name: "Sign out" });
     for (let count = 1; count <= 3; count += 1) {
       await logoutButton.click();
       await expect(page.getByText(logoutFailed)).toHaveCount(count);
     }
     if (width < 640) {
       await page
-        .getByRole("button", { name: "メニューを閉じる" })
+        .getByRole("button", { name: "Close menu" })
         .evaluate((button: HTMLButtonElement) => button.click());
     }
 
@@ -304,7 +304,7 @@ for (const { width, height } of [
     await expect(toast).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
 
-    const indicator = page.getByRole("button", { name: /取り込み中 40%/ });
+    const indicator = page.getByRole("button", { name: /Scanning 40%/ });
     await indicator.hover();
     const summary = page.getByRole("dialog");
     await expect(summary).toBeVisible();
