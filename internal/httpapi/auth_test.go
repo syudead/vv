@@ -139,6 +139,9 @@ func newAuthEnvWrapped(
 	opts := build(db)
 	auth := app.NewAuth(app.AuthOptions{Store: db.Auth(), Hasher: passwordHasher{}, Now: env.clock})
 	opts.Auth = appAuthenticator{auth: auth}
+	if opts.APITokens == nil {
+		opts.APITokens = auth
+	}
 	if wrap != nil {
 		opts.Auth = wrap(opts.Auth)
 	}

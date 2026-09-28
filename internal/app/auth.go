@@ -47,6 +47,17 @@ type AuthStore interface {
 	Session(ctx context.Context, sessionToken string, now time.Time) (time.Time, bool, error)
 	// DeleteSession はセッションを消す。無ければ何もしない。
 	DeleteSession(ctx context.Context, sessionToken string) error
+
+	// AddAPIToken は今の版で API トークンを足す。未設定なら domain.ErrAccountNotConfigured を返す。
+	AddAPIToken(ctx context.Context, name, token string, now time.Time) (domain.APIToken, error)
+	// ListAPITokens は有効な API トークンを作成日時の降順で返す。
+	ListAPITokens(ctx context.Context) ([]domain.APIToken, error)
+	// DeleteAPIToken は API トークンを消す。無ければ何もしない。
+	DeleteAPIToken(ctx context.Context, id int64) error
+	// APIToken は API トークンが有効かを確かめ、有効ならその行を返す。
+	APIToken(ctx context.Context, token string) (domain.APIToken, bool, error)
+	// TouchAPIToken は最終使用日時を、保存した値が空か 60 秒以上前のときだけ書く。
+	TouchAPIToken(ctx context.Context, id int64, now time.Time) error
 }
 
 // PasswordHasher はパスワードのハッシュ化と照合である。internal/password の
@@ -62,7 +73,7 @@ type AuthOptions struct {
 	Hasher PasswordHasher
 	// Now は今の時刻を返す。nil なら time.Now を使う。
 	Now func() time.Time
-	// Random はセッション ID の乱数の元である。nil なら crypto/rand.Reader を使う。
+	// Random はセッション ID と API トークンの乱数の元である。nil なら crypto/rand.Reader を使う。
 	Random io.Reader
 	// VerifyWait は照合の空きを待つ時間である。0 なら 5 秒。
 	VerifyWait time.Duration
@@ -70,8 +81,9 @@ type AuthOptions struct {
 	MaxThrottleSources int
 }
 
-// Auth は初回設定・ログイン・ログアウト・セッションの確認を受け持つ
-// （specs/016-single-account-auth/contracts/auth-api.md §2〜§4）。
+// Auth は初回設定・ログイン・ログアウト・セッションの確認と、API トークンの発行・一覧・
+// 失効・確認を受け持つ（specs/016-single-account-auth/contracts/auth-api.md §2〜§4、
+// specs/026-external-api/contracts/token-api.md）。
 // HTTP の形（Cookie・状態コード）は知らず、送信元と Cookie の値は呼び出し側が渡す。
 type Auth struct {
 	store      AuthStore

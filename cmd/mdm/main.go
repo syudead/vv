@@ -248,6 +248,7 @@ func run() error {
 		return err
 	}
 
+	httpAuthenticator, apiTokens := newHTTPAuth(authStore)
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:        build,
 		Pinger:       db,
@@ -272,7 +273,8 @@ func run() error {
 		Events:          events,
 		Assets:          web.Dist(),
 		Logger:          logger,
-		Auth:            newHTTPAuth(authStore),
+		Auth:            httpAuthenticator,
+		APITokens:       apiTokens,
 		// 信頼するプロキシからの要求でだけ転送ヘッダーを読む。
 		TrustedProxies: cfg.TrustedProxies,
 	})

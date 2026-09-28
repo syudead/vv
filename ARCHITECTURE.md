@@ -280,9 +280,11 @@ thumbnails and previews, the folder index (`folder_groups`, `folder_group_member
 `video_folder_names`, `folder_index_state`), and `video_transcode_probes` are
 rebuildable from registered media folders by scanning and processing the files again.
 `playback_progress`, the tag tables (`tags`, `tag_names`, `video_tags`),
-`public_videos`, `folder_group_overrides`, `account`, `media_folders`, and `settings`
+`public_videos`, `folder_group_overrides`, `account`, `media_folders`, `settings`
 (owner-chosen values such as the live-transcode video encoder,
-`specs/025-hardware-encoding/data-model.md`) are user or configuration data that a scan cannot restore. In particular, a scan
+`specs/025-hardware-encoding/data-model.md`), and `api_tokens` (issued API tokens, which
+must be issued again if lost, `specs/026-external-api/data-model.md` §1) are user or
+configuration data that a scan cannot restore. In particular, a scan
 cannot start with no registered `media_folders`; after database loss those folders
 must be registered again before scanning. `sessions` is transient and a fresh
 login restores it.
@@ -363,14 +365,17 @@ compile:
   `PlaybackStore.ProgressByContentKeys`). Like `PlaybackStore`, it holds only the SQL
   connection and does not depend on the rebuildable index stores or their
   notifications; tag changes have no side effects, so they publish no domain event.
-- `AuthStore` — the single account and its login sessions: first-run setup (the account
-  row and the first session in one transaction, so concurrent setups resolve by the
-  primary key), changing the username or password (bumping `account.version` and
-  clearing `sessions`), adding, checking, deleting and sweeping expired sessions. It
-  stores only the SHA-256 of a session ID, and a session is valid only while its
+- `AuthStore` — the single account, its login sessions and its API tokens: first-run
+  setup (the account row and the first session in one transaction, so concurrent setups
+  resolve by the primary key), changing the username or password (bumping
+  `account.version` and clearing `sessions` and `api_tokens` in the same transaction),
+  adding, checking, deleting and sweeping expired sessions, and issuing, listing, revoking
+  and checking API tokens and recording their last use at most once a minute. It stores
+  only the SHA-256 of a session ID or an API token; a session is valid only while its
   `account_version` matches `account.version` and it has not expired
-  (`specs/016-single-account-auth/data-model.md` §4, §5). Like `PlaybackStore`, it holds
-  only the SQL connection and publishes no domain event.
+  (`specs/016-single-account-auth/data-model.md` §4, §5), and an API token only while its
+  `account_version` matches (`specs/026-external-api/data-model.md` §1). Like
+  `PlaybackStore`, it holds only the SQL connection and publishes no domain event.
 - `VisibilityStore` — switching the public flag of a set of video ids (resolved to the
   currently-registered videos' content keys, like tag attachment) in one transaction,
   returning the content keys it applied to
@@ -437,6 +442,10 @@ cannot be cut off by an earlier switch to private. `POST /api/auth/setup` create
 `POST /api/auth/login` and `POST /api/auth/logout` issue and revoke sessions, and
 `GET /api/auth/session` reports `owner`, `guest` or `setupRequired`
 ([specs/016-single-account-auth/contracts/auth-api.md](specs/016-single-account-auth/contracts/auth-api.md)).
+`GET`/`POST /api/api-tokens` and `DELETE /api/api-tokens/{id}` (owner only, cookie
+sessions only) list, issue and revoke API tokens; the plaintext appears only in the
+issue response
+([specs/026-external-api/contracts/token-api.md](specs/026-external-api/contracts/token-api.md)).
 `cmd/mdm` wraps `app.Auth` for the boundary, deletes expired sessions at startup, and
 logs a warning while no account is configured.
 The client address and whether a request is HTTPS come from `client_origin.go`, which
@@ -496,8 +505,9 @@ way only. The packages under `internal/` fall into three layers:
   video encoder choice with the startup encoder checks, run concurrently with a
   per-encoder time limit and kept in memory only, to decide the encoder actually used
   and to save a new choice (`TranscodeSettings`); and first-run setup,
-  login verification with per-source throttling, and issuing, checking and
-  revoking login sessions (`Auth`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
+  login verification with per-source throttling, issuing, checking and
+  revoking login sessions, and issuing (`vvt_` plus 32 random bytes), listing, checking
+  and revoking API tokens (`Auth`). It reaches storage, `ffmpeg`/`ffprobe` and generated files only
   through interfaces it declares, so its unit tests run without SQLite, `ffmpeg` or
   an HTTP server. It must not import `net/http`, `database/sql`, `os/exec`, the
   SQLite driver, or any adapter package.

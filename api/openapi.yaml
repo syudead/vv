@@ -1015,6 +1015,62 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/api-tokens:
+    get:
+      operationId: listApiTokens
+      summary: 発行した API トークンを返す
+      description: |
+        作成日時の降順で返す。平文とハッシュは返さない
+        （specs/026-external-api/contracts/token-api.md）。所有者のセッションだけで使え、
+        Bearer は読まない。
+      responses:
+        "200":
+          description: API トークンの一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/APITokenList"
+    post:
+      operationId: createApiToken
+      summary: API トークンを 1 件発行する
+      description: |
+        `secret` は平文で、この応答にだけ現れる。名前の規則を外れれば `400` `invalid_request` に
+        reason `api_token_name_empty`・`api_token_name_control_characters`・
+        `api_token_name_too_long`（`limit` 付き）を付ける
+        （specs/026-external-api/contracts/token-api.md）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAPITokenRequest"
+      responses:
+        "201":
+          description: 発行した API トークンと、その平文
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreatedAPIToken"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/api-tokens/{id}:
+    delete:
+      operationId: deleteApiToken
+      summary: API トークンを 1 件失効させる
+      description: 無い id も `204` にする（二重の失効を誤りにしない）。
+      parameters:
+        - $ref: "#/components/parameters/APITokenId"
+      responses:
+        "204":
+          description: 失効させた
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/tags:
     get:
       operationId: listTags
@@ -1623,6 +1679,15 @@ components:
         type: integer
         format: int64
         minimum: 1
+    APITokenId:
+      name: id
+      in: path
+      required: true
+      description: API トークンの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
     TagId:
       name: id
       in: path
@@ -1856,6 +1921,56 @@ components:
       properties:
         videoEncoder:
           $ref: "#/components/schemas/VideoEncoderChoice"
+
+    APIToken:
+      type: object
+      required: [id, name, createdAt, lastUsedAt]
+      additionalProperties: false
+      description: 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: [string, "null"]
+          format: date-time
+          description: 最後に使った時刻。未使用なら null。1 分より細かくは更新しない
+
+    APITokenList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: 作成日時の降順
+          items:
+            $ref: "#/components/schemas/APIToken"
+
+    CreateAPITokenRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: 用途の名前。前後の空白を除いて 1〜100 文字で、制御文字を含まない。重複してよい
+
+    CreatedAPIToken:
+      type: object
+      required: [token, secret]
+      additionalProperties: false
+      properties:
+        token:
+          $ref: "#/components/schemas/APIToken"
+        secret:
+          type: string
+          description: トークンの平文（`vvt_` で始まる 47 文字）。この応答にだけ現れ、再び取り出せない
 
     TagRef:
       type: object
@@ -2995,3 +3110,6 @@ components:
         - cross_origin
         - open_not_local
         - encoder_unavailable
+        - api_token_name_empty
+        - api_token_name_control_characters
+        - api_token_name_too_long

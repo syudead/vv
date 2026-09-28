@@ -47,8 +47,9 @@ func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
+	authenticator, apiTokens := newHTTPAuth(db.Auth())
 	handler := httpapi.NewRouter(httpapi.Options{
-		Videos: db.Library(), Assets: fstest.MapFS{}, Auth: newHTTPAuth(db.Auth()),
+		Videos: db.Library(), Assets: fstest.MapFS{}, Auth: authenticator, APITokens: apiTokens,
 	})
 	serve := func(method, target, body string, cookie *http.Cookie) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(method, target, strings.NewReader(body))
@@ -78,6 +79,15 @@ func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	if rec := serve(http.MethodGet, "/api/videos", "", cookie); rec.Code != http.StatusOK {
 		t.Fatalf("初回設定の Cookie で一覧: status = %d: %s", rec.Code, rec.Body)
 	}
+	// 初回設定の Cookie で API トークンを発行する（specs/026-external-api/contracts/token-api.md）。
+	created := serve(http.MethodPost, "/api/api-tokens", `{"name":"Claude Code"}`, cookie)
+	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"secret":"vvt_`) {
+		t.Fatalf("API トークンの発行: status = %d: %s", created.Code, created.Body)
+	}
+	if list := serve(http.MethodGet, "/api/api-tokens", "", cookie); list.Code != http.StatusOK ||
+		!strings.Contains(list.Body.String(), "Claude Code") || strings.Contains(list.Body.String(), "vvt_") {
+		t.Fatalf("API トークンの一覧: status = %d: %s", list.Code, list.Body)
+	}
 
 	if run := runAccountCommand(t, dataDir, []string{"account", "set-password"}, newPassword+"\n", nil); run.code != exitAccountOK {
 		t.Fatalf("set-password: code = %d: %s", run.code, run.stderr)
@@ -92,6 +102,12 @@ func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	login := serve(http.MethodPost, "/api/auth/login", `{"username":"alice","password":"`+newPassword+`"}`, nil)
 	if login.Code != http.StatusOK {
 		t.Fatalf("新しいパスワードでログイン: status = %d: %s", login.Code, login.Body)
+	}
+	// パスワードの再設定で API トークンもすべて失効し、一覧から消える。
+	fresh := login.Result().Cookies()[0]
+	list := serve(http.MethodGet, "/api/api-tokens", "", &http.Cookie{Name: fresh.Name, Value: fresh.Value})
+	if list.Code != http.StatusOK || strings.TrimSpace(list.Body.String()) != `{"items":[]}` {
+		t.Fatalf("再設定後の API トークンの一覧: status = %d: %s", list.Code, list.Body)
 	}
 }
 

@@ -554,6 +554,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/api-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 発行した API トークンを返す
+         * @description 作成日時の降順で返す。平文とハッシュは返さない
+         *     （specs/026-external-api/contracts/token-api.md）。所有者のセッションだけで使え、
+         *     Bearer は読まない。
+         */
+        get: operations["listApiTokens"];
+        put?: never;
+        /**
+         * API トークンを 1 件発行する
+         * @description `secret` は平文で、この応答にだけ現れる。名前の規則を外れれば `400` `invalid_request` に
+         *     reason `api_token_name_empty`・`api_token_name_control_characters`・
+         *     `api_token_name_too_long`（`limit` 付き）を付ける
+         *     （specs/026-external-api/contracts/token-api.md）。
+         */
+        post: operations["createApiToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/api-tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * API トークンを 1 件失効させる
+         * @description 無い id も `204` にする（二重の失効を誤りにしない）。
+         */
+        delete: operations["deleteApiToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -1063,6 +1112,32 @@ export interface components {
         };
         UpdateTranscodingSettingsRequest: {
             videoEncoder: components["schemas"]["VideoEncoderChoice"];
+        };
+        /** @description 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。 */
+        APIToken: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** Format: date-time */
+            createdAt: string;
+            /**
+             * Format: date-time
+             * @description 最後に使った時刻。未使用なら null。1 分より細かくは更新しない
+             */
+            lastUsedAt: string | null;
+        };
+        APITokenList: {
+            /** @description 作成日時の降順 */
+            items: components["schemas"]["APIToken"][];
+        };
+        CreateAPITokenRequest: {
+            /** @description 用途の名前。前後の空白を除いて 1〜100 文字で、制御文字を含まない。重複してよい */
+            name: string;
+        };
+        CreatedAPIToken: {
+            token: components["schemas"]["APIToken"];
+            /** @description トークンの平文（`vvt_` で始まる 47 文字）。この応答にだけ現れ、再び取り出せない */
+            secret: string;
         };
         /** @description 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。 */
         TagRef: {
@@ -1696,7 +1771,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -1741,6 +1816,8 @@ export interface components {
         VideoId: number;
         /** @description メディアフォルダの識別子 */
         MediaFolderId: number;
+        /** @description API トークンの識別子 */
+        APITokenId: number;
         /** @description タグの識別子 */
         TagId: number;
         /** @description フォルダが属する登録済みメディアフォルダの識別子 */
@@ -2685,6 +2762,75 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    listApiTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description API トークンの一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["APITokenList"];
+                };
+            };
+        };
+    };
+    createApiToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateAPITokenRequest"];
+            };
+        };
+        responses: {
+            /** @description 発行した API トークンと、その平文 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreatedAPIToken"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    deleteApiToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description API トークンの識別子 */
+                id: components["parameters"]["APITokenId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 失効させた */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     listTags: {
