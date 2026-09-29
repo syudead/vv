@@ -193,7 +193,9 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         </div>
       </Link>
       {showTagsRow && (
-        <div className="flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">{tagsRowNode}</div>
+        <div className="mt-auto flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">
+          {tagsRowNode}
+        </div>
       )}
     </article>
   );

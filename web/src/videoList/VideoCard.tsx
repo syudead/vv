@@ -258,7 +258,10 @@ function VideoCard(props: VideoCardProps) {
       {showTagsRow && (
         // タグの行はリンクの外（別の要素）に置くので、題名の下との間隔を今の
         // gap-1（4px）と同じに保つには、ここで pt-1 を明示する必要がある（B3）。
-        <div className="flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">{tagsRowNode}</div>
+        // mt-auto でカードの下端へ寄せ、同じ行で題名の行数が違ってもタグの高さをそろえる。
+        <div className="mt-auto flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">
+          {tagsRowNode}
+        </div>
       )}
     </article>
   );
