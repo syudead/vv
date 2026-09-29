@@ -193,7 +193,9 @@ specs/028-sidecar-subtitles/
   symlink は入らない。登録フォルダの外の動画は列挙も開くこともできない。一覧に無い名前
   （`../x.srt`、別のフォルダの名前）は `OpenSidecarFile` が断る。
 - `internal/media` のテスト（表）: UTF-8（BOM あり・なし）、BOM 付き UTF-16 LE・BE、Shift_JIS の
-  同じ日本語 SRT が同じ WebVTT になる。`,` と `.` の小数点、番号行の無い cue、CRLF、桁の少ない
+  同じ日本語 SRT が同じ WebVTT になる。UTF-8 としても妥当な Shift_JIS の列（`E0 A1 A1` を含む
+  SRT）が Shift_JIS として `爍｡` になり、韓国語の UTF-8 の SRT が UTF-8 のまま読まれ、Shift_JIS の
+  復号器が `U+FFFD` を出す列（`F0 40`）を含む BOM 無しの SRT が `ErrSubtitleUnreadable` になる。`,` と `.` の小数点、番号行の無い cue、CRLF、桁の少ない
   時刻、`<i>` と `{\an8}` を含む本文（そのまま）、時刻の行が読めない cue（落ちる）、cue が
   1 つも無い SRT・`WEBVTT` の無い VTT・空（`ErrSubtitleUnreadable`）。`offsetMs = 8000` で
   0〜5 秒の cue が消え、3〜10 秒の cue が 0〜2 秒になり、10〜12 秒の cue が 2〜4 秒になる。

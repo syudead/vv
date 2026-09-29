@@ -78,16 +78,35 @@
 ## R-5: 文字コードは BOM → UTF-8 の妥当性 → Shift_JIS の順で決める
 
 - Decision: 先頭のバイトで決める。`EF BB BF` は UTF-8 として BOM を除く。`FF FE`・`FE FF` は
-  UTF-16（LE・BE）として `golang.org/x/text/encoding/unicode` で復号する。BOM が無く
-  `utf8.Valid` なら UTF-8 のまま。それ以外は Shift_JIS として `golang.org/x/text/encoding/japanese`
-  で復号し、復号できない列があれば壊れたファイルとして扱う（R-7）。
-- Rationale: 親 Issue の要件 4 が挙げる 4 種類はこの順で互いに区別できる。Shift_JIS の
-  日本語のバイト列が偶然 UTF-8 として妥当になることは、2 バイト目の範囲が UTF-8 の
-  継続バイトと重ならないので実用上起きない。`golang.org/x/text` は既に依存にある
-  （`internal/mediafs` の NFC 正規化）。
+  UTF-16（LE・BE）として `golang.org/x/text/encoding/unicode` で復号する。BOM が無いときは、
+  UTF-8 と Shift_JIS（`golang.org/x/text/encoding/japanese`）の 2 つの候補を次の順で決める。
+  1. `utf8.Valid` で、復号した文字がすべて字幕で使われる文字体系（Unicode の script が
+     `Common`・`Inherited`・`Latin`・`Greek`・`Cyrillic`・`Hebrew`・`Arabic`・`Thai`・`Hangul`・
+     `Han`・`Hiragana`・`Katakana`・`Bopomofo` のどれか）に入るなら UTF-8。
+  2. そうでなく、Shift_JIS として復号でき（出力に `U+FFFD` も C1 制御文字 `U+0080`〜`U+009F` も
+     無い）れば Shift_JIS。
+  3. そうでなく `utf8.Valid` なら UTF-8（上の一覧に無い文字体系の UTF-8 の字幕）。
+  4. どれでもなければ壊れたファイルとして扱う（R-7）。
+  判定は `internal/media` の中の純粋関数で、ファイル全体のバイト列を 1 度だけ見る。
+- Rationale: BOM の 3 種類は先頭で一意に決まる。BOM 無しの UTF-8 と Shift_JIS は一意には
+  区別できない。Shift_JIS のバイト列が UTF-8 としても妥当になることがあり、たとえば `E0 A1 A1`
+  は Shift_JIS では `爍｡`、UTF-8 では `U+0861`（Syriac Supplement の `ࡡ`）になる。こうした列を
+  UTF-8 として読んだ結果は、日本語の字幕にまず現れない文字体系の文字になるので、手順 1 の
+  文字体系の確認で UTF-8 を捨てて Shift_JIS に回せる。日本語・英語・韓国語などの普通の UTF-8 の
+  字幕は手順 1 で決まり、Shift_JIS の復号に回らない。`golang.org/x/text` の Shift_JIS の復号器は
+  読めない列でエラーを返さず `U+FFFD` を出し、`0x80` を `U+0080` に通すので、「復号できた」は
+  出力にそれらが無いことで確かめる。
+  それでも、UTF-8 としても手順 1 の文字体系（ひらがなや漢字など）に収まる Shift_JIS の列は
+  残り、そのときは UTF-8 を選ぶ。
+  BOM 無しの Shift_JIS のファイル全体が `utf8.Valid` になるには、全部の非 ASCII の列が偶然
+  そうなる必要があり、実際の日本語の字幕では起きにくい。残る取り違えは quickstart の実在の
+  Shift_JIS のファイルで確かめる。`golang.org/x/text` は既に依存にある
+  （`internal/mediafs` の NFC 正規化）。`unicode` の script の表は標準ライブラリにある。
 - Alternatives considered: 文字コード推定のライブラリを足す（依存が増え、要件 4 の 4 種類の
-  外まで当てにいく必要が無い）。BOM 無しの UTF-16 も受ける（要件 4 は BOM 付きだけで、BOM 無しは
-  0x00 の混じる列の推定になる）。
+  外まで当てにいく必要が無い）。`utf8.Valid` だけで UTF-8 に決める（上の `E0 A1 A1` のような
+  Shift_JIS を化けたまま表示する）。両方の復号結果の「日本語らしさ」を点数で比べる（点数の
+  付け方が恣意的になり、表の検査で境界を固定しにくい）。BOM 無しの UTF-16 も受ける（要件 4 は
+  BOM 付きだけで、BOM 無しは 0x00 の混じる列の推定になる）。
 
 ## R-6: ライブ変換の時刻合わせは、サーバーが `offsetMs` だけ時刻をずらした WebVTT を返す
 
