@@ -143,7 +143,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
             onSelect(group.videoIds, !selected);
           }
         }}
-        className="flex min-w-0 flex-col outline-none"
+        className="flex min-w-0 flex-1 flex-col outline-none"
       >
         <div className="relative aspect-video w-full">
           <FolderArt
