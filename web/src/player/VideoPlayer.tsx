@@ -24,9 +24,10 @@ import {
 } from "./playerControls";
 import {
   classifyMediaError,
+  probeMediaSource,
   reconnectDelay,
   recoveredAfterMs,
-  serverReachable,
+  reloadTimeoutMs,
   type PlaybackFailureKind,
 } from "./playbackRecovery";
 import { attachSeekPreview } from "./seekPreview";
@@ -221,23 +222,59 @@ export default function VideoPlayer(props: Props) {
     let attempt: PlaybackAttempt = initialAttempt;
     let switchingSource = false;
     let resumeApplied = false;
-    // 通信が切れたときの読み込み直し（playbackRecovery.ts）。reconnectCount は続けて
-    // 読み込み直した回数で、読み込み直したあと実際に recoveredAfterMs 再生したら数え直す。
-    // playedSinceRecoveryMs はその再生した長さで、続けて届いた timeupdate の差
-    // （maxPlaybackStepMs 以下）だけを足す。シークは lastTickMs を捨てて数えない。
-    // resumeAtMs は直接再生を読み込み直したときに
-    // メタデータの後で戻す位置である。recoveryGeneration は誤り・読み込み直しのたびに
-    // 進め、古い確かめや読み込み直しの結果を捨てる。
+    // 誤りからの回復（playbackRecovery.ts）。recovering は誤りを受けてから、読み込み直しの
+    // メタデータが来るか、失敗・変換への切り替えを決めるまでの間である。その間の見る人の
+    // 再生・一時停止・シークは壊れた source へ渡さず、attempt の意図と位置として覚える。
+    // reconnectCount は続けて読み込み直した回数で、読み込み直したあと再生中に実際に
+    // recoveredAfterMs 進んだら数え直す。playedSinceRecoveryMs はその進んだ長さで、再生中に
+    // 続けて届いた timeupdate の差（maxPlaybackStepMs 以下）だけを足す。シーク・一時停止は
+    // lastTickMs を捨てて数えない。pendingRecovery は読み込み直した要求で、reloadDeadline
+    // までにメタデータが来なければ次の読み込み直しへ進む。recoveryGeneration は誤り・
+    // 読み込み直しのたびに進め、古い確かめや期限の結果を捨てる。
+    let recovering = false;
     let reconnectCount = 0;
     let reconnectTimer: number | undefined;
+    let reloadDeadline: number | undefined;
+    let pendingRecovery: { generation: number; positionMs: number } | null = null;
     let playedSinceRecoveryMs: number | null = null;
     let lastTickMs: number | null = null;
-    let resumeAtMs: number | undefined;
     let recoveryGeneration = 0;
-    let reachability: AbortController | undefined;
+    let probe: AbortController | undefined;
     let slot: HTMLElement | null = null;
     let restart: HTMLElement | null = null;
     let status: PlayerStatus = { ...initialPlayerStatus };
+
+    // 回復を待つ間の見る人の操作（操作バー・中央の操作・キー）は、video.js の部品も
+    // playerControls もこのプレイヤーの play・pause・currentTime を通るので、ここで受ける。
+    // 再生は意図を覚えてすぐ読み込み直し、一時停止は意図だけを覚える。シークは読み込み直す
+    // 位置として覚え、再生バーにもその位置を出す。
+    const media = player as unknown as {
+      play(): Promise<void> | undefined;
+      pause(): void;
+      currentTime(seconds?: number): number | undefined;
+    };
+    const mediaPlay = media.play.bind(player);
+    const mediaPause = media.pause.bind(player);
+    const mediaCurrentTime = media.currentTime.bind(player);
+    media.play = () => {
+      if (!recovering) return mediaPlay();
+      attempt = { ...attempt, playIntended: true };
+      reconnectNow();
+      return Promise.resolve();
+    };
+    media.pause = () => {
+      if (recovering) attempt = { ...attempt, playIntended: false };
+      mediaPause();
+    };
+    media.currentTime = (seconds?: number) => {
+      if (!recovering) return mediaCurrentTime(seconds);
+      if (seconds !== undefined) {
+        attempt = updatePosition(attempt, seconds * 1000);
+        latest.current.onPosition(attempt.logicalPositionMs);
+        player.trigger("timeupdate");
+      }
+      return attempt.logicalPositionMs / 1000;
+    };
     setRoute(attempt.route);
     setHoldControlBar(true);
 
@@ -335,6 +372,8 @@ export default function VideoPlayer(props: Props) {
     };
 
     player.on("loadedmetadata", () => {
+      // 回復を待つ間に、止まったと見切った古い要求が遅れて届いても使わない。
+      if (recovering && pendingRecovery === null) return;
       attempt = { ...attempt, state: "ready" };
       const videoWidth = player.videoWidth();
       const videoHeight = player.videoHeight();
@@ -342,11 +381,8 @@ export default function VideoPlayer(props: Props) {
         latest.current.onAspectRatio?.(videoWidth / videoHeight);
       }
       setHoldControlBar(false);
-      if (resumeAtMs !== undefined) {
-        const at = resumeAtMs;
-        resumeAtMs = undefined;
-        player.currentTime(at / 1000);
-        latest.current.onPosition(at);
+      if (pendingRecovery !== null) {
+        finishRecovery(pendingRecovery.positionMs);
         return;
       }
       if (resumeApplied || initialPositionMs <= 0) return;
@@ -363,6 +399,10 @@ export default function VideoPlayer(props: Props) {
     player.on("timeupdate", () => {
       const position = reportPosition();
       if (playedSinceRecoveryMs === null) return;
+      if (recovering || player.paused()) {
+        lastTickMs = null;
+        return;
+      }
       if (lastTickMs !== null) {
         const step = position - lastTickMs;
         if (step > 0 && step <= maxPlaybackStepMs) playedSinceRecoveryMs += step;
@@ -375,6 +415,7 @@ export default function VideoPlayer(props: Props) {
       }
     });
     player.on("play", () => {
+      if (recovering) return;
       attempt = { ...attempt, state: "playing", playIntended: true };
       setStatus({ playing: true, ended: false });
     });
@@ -389,7 +430,9 @@ export default function VideoPlayer(props: Props) {
     player.on("useractive", () => setStatus({ userActive: true }));
     player.on("userinactive", () => setStatus({ userActive: false }));
     player.on("pause", () => {
-      if (switchingSource || player.error() !== null) return;
+      lastTickMs = null;
+      // 見る人が回復を待つ間に止めた意図は、差し替えた pause が覚えている。
+      if (recovering || switchingSource || player.error() !== null) return;
       attempt = { ...attempt, playIntended: false };
       setStatus({ playing: false, loading: false });
       latest.current.onProgress(reportPosition(), true);
@@ -402,7 +445,17 @@ export default function VideoPlayer(props: Props) {
       player.src({ src: streamUrl(source.id), type: directContentType(source) });
     };
 
+    const clearRecoveryTimers = () => {
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      reconnectTimer = undefined;
+      if (reloadDeadline !== undefined) window.clearTimeout(reloadDeadline);
+      reloadDeadline = undefined;
+      pendingRecovery = null;
+    };
+
     const fail = (kind: PlaybackFailureKind, position: number) => {
+      clearRecoveryTimers();
+      recovering = false;
       switchingSource = false;
       attempt = { ...attempt, state: "failed" };
       setStatus({ playing: false, loading: false, reconnecting: false });
@@ -417,32 +470,42 @@ export default function VideoPlayer(props: Props) {
       player.hasStarted(true);
     };
 
-    // reload は通信が切れた位置から今の経路を読み込み直す。直接再生はメタデータが来たら
-    // その位置へ戻し、変換は位置から始め直す。どちらもメタデータが来たら読み込み直しの
-    // 表示を下ろし、再生していたなら再生を続ける。
+    // finishRecovery は読み込み直した source のメタデータが来たときに呼ぶ。直接再生は
+    // 読み込み直した位置へ戻し（変換はその位置から始めている）、読み込み直しの表示を下ろし、
+    // 再生する意図があれば再生を続ける。
+    const finishRecovery = (positionMs: number) => {
+      clearRecoveryTimers();
+      recovering = false;
+      resumeApplied = true;
+      if (attempt.route === "direct") {
+        player.currentTime(positionMs / 1000);
+        latest.current.onPosition(positionMs);
+      }
+      playedSinceRecoveryMs = 0;
+      lastTickMs = null;
+      setStatus({ reconnecting: false });
+      if (attempt.playIntended) {
+        setStatus({ loading: true });
+        void player.play()?.catch(() => setStatus({ loading: false }));
+      }
+    };
+
+    // reload は切れた位置（待つ間にシークしたならその位置）から今の経路を読み込み直す。
+    // 要求が誤りも出さずに止まったときのため、期限を過ぎたら次の読み込み直しへ進む。
     const reload = () => {
       reconnectTimer = undefined;
       if (player.isDisposed()) return;
       const generation = ++recoveryGeneration;
-      const position = attempt.logicalPositionMs;
-      resumeApplied = true;
-      player.one("loadedmetadata", () => {
-        if (generation !== recoveryGeneration || player.isDisposed()) return;
-        switchingSource = false;
-        playedSinceRecoveryMs = 0;
-        lastTickMs = position;
-        setStatus({ reconnecting: false });
-        if (attempt.playIntended) {
-          setStatus({ loading: true });
-          void player.play()?.catch(() => setStatus({ loading: false }));
-        }
-      });
-      if (attempt.route === "direct") {
-        resumeAtMs = position;
-        setDirectSource();
-      } else {
-        setLiveSource(position);
-      }
+      const positionMs = attempt.logicalPositionMs;
+      pendingRecovery = { generation, positionMs };
+      reloadDeadline = window.setTimeout(() => {
+        reloadDeadline = undefined;
+        if (player.isDisposed() || pendingRecovery?.generation !== generation) return;
+        pendingRecovery = null;
+        scheduleReconnect(attempt.logicalPositionMs);
+      }, reloadTimeoutMs);
+      if (attempt.route === "direct") setDirectSource();
+      else setLiveSource(positionMs);
     };
 
     const scheduleReconnect = (position: number) => {
@@ -458,29 +521,34 @@ export default function VideoPlayer(props: Props) {
       reconnectTimer = window.setTimeout(reload, delay);
     };
 
-    // 端末が回線に戻ったら、待ちを切り上げてすぐ読み込み直す。
-    const reconnectNow = () => {
+    // 端末が回線に戻ったとき・見る人が再生を押したときは、待ちを切り上げてすぐ読み込み直す。
+    function reconnectNow() {
       if (reconnectTimer === undefined) return;
       window.clearTimeout(reconnectTimer);
       reload();
-    };
+    }
     window.addEventListener("online", reconnectNow);
 
     const handleFailure = (
       kind: PlaybackFailureKind,
       position: number,
-      playIntended: boolean,
+      allowFallback = true,
     ) => {
       if (kind === "network") {
         scheduleReconnect(position);
         return;
       }
-      // 直接再生で形式が読めないときだけ、1 回だけ変換へ切り替える。
-      const fallback = fallbackToTranscode(attempt, position, playIntended);
+      // 直接再生で形式が読めないときだけ、1 回だけ変換へ切り替える。ファイルそのものを
+      // 出せないと分かったとき（allowFallback が偽）は切り替えても再生できない。
+      const fallback = allowFallback
+        ? fallbackToTranscode(attempt, position, attempt.playIntended)
+        : null;
       if (fallback === null) {
         fail(kind, position);
         return;
       }
+      recovering = false;
+      switchingSource = true;
       attempt = fallback;
       setRoute("transcode");
       setStatus({ reconnecting: false });
@@ -500,34 +568,46 @@ export default function VideoPlayer(props: Props) {
       const position = logicalPositionMs();
       const playIntended = attempt.playIntended || !player.paused();
       const generation = ++recoveryGeneration;
-      reachability?.abort();
-      reachability = undefined;
-      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
-      reconnectTimer = undefined;
+      probe?.abort();
+      probe = undefined;
+      clearRecoveryTimers();
       attempt = {
         ...updatePosition(attempt, position),
         state: "loading",
         playIntended,
       };
-      // 確かめと読み込み直しの間は、誤りの印（操作バーを隠す）を外し、止まったことを
-      // 再生を止めた操作として扱わない。
-      switchingSource = true;
+      // 確かめと読み込み直しの間は、誤りの印（操作バーを隠す）を外し、見る人の操作を
+      // 回復を待つ間の操作として受ける。
+      recovering = true;
+      playedSinceRecoveryMs = null;
+      lastTickMs = null;
       player.error(null);
 
       const errorClass = classifyMediaError(code);
       if (errorClass !== "ambiguous") {
-        handleFailure(errorClass, position, playIntended);
+        handleFailure(errorClass, position);
         return;
       }
       setStatus({ loading: true });
       const controller = new AbortController();
-      reachability = controller;
-      void serverReachable(controller.signal).then((reachable) => {
-        if (controller.signal.aborted || player.isDisposed()) return;
-        if (generation !== recoveryGeneration) return;
-        reachability = undefined;
-        handleFailure(reachable ? "source" : "network", position, playIntended);
-      });
+      probe = controller;
+      const direct = attempt.route === "direct";
+      void probeMediaSource(direct ? streamUrl(source.id) : null, controller.signal).then(
+        (result) => {
+          if (controller.signal.aborted || player.isDisposed()) return;
+          if (generation !== recoveryGeneration) return;
+          probe = undefined;
+          if (result === "unreachable")
+            handleFailure("network", attempt.logicalPositionMs);
+          // 直接再生でファイルを出せない（404・500 など）なら、変換へ切り替えずに伝える。
+          else
+            handleFailure(
+              "source",
+              attempt.logicalPositionMs,
+              !direct || result === "ok",
+            );
+        },
+      );
     });
 
     if (attempt.route === "direct") {
@@ -549,9 +629,10 @@ export default function VideoPlayer(props: Props) {
     return () => {
       window.clearInterval(timer);
       window.removeEventListener("online", reconnectNow);
-      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      clearRecoveryTimers();
+      recovering = false;
       recoveryGeneration += 1;
-      reachability?.abort();
+      probe?.abort();
       if (syncFullscreen !== undefined) {
         document.removeEventListener("fullscreenchange", syncFullscreen);
       }

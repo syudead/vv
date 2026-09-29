@@ -56,25 +56,55 @@ export function reconnectDelay(count: number): number | null {
  */
 export const recoveredAfterMs = 10_000;
 
-/** reachabilityTimeoutMs はサーバーに届くかを確かめる要求の期限である。 */
-const reachabilityTimeoutMs = 5000;
+/**
+ * reloadTimeoutMs は読み込み直した要求がメタデータを返すまでの期限である。回線が詰まると
+ * 要求は誤りも出さずに止まったままになるので、期限を過ぎたら次の読み込み直しへ進む。
+ */
+export const reloadTimeoutMs = 15_000;
+
+/** probeTimeoutMs は、誤りの原因を確かめる要求の期限である。 */
+const probeTimeoutMs = 5000;
 
 /**
- * serverReachable はサーバーに届くか（`/api/health` が何かを返すか）を確かめる。
- * 端末が回線につながっていないと分かっているときは要求を出さない。期限までに返らない
- * ときも届かないとみなす。signal で打ち切ったときは false で解決する。
+ * ProbeResult は誤りの原因を確かめた結果である。`unreachable` はサーバーに届かない
+ * （端末がオフライン・要求の失敗・期限切れ）、`ok` は確かめた先が中身を返した、`error` は
+ * サーバーには届いたが誤りの状態（404・500 など）を返したことを表す。
  */
-export async function serverReachable(signal?: AbortSignal): Promise<boolean> {
-  if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+export type ProbeResult = "unreachable" | "ok" | "error";
+
+/**
+ * probeMediaSource は誤りの原因を確かめる。直接再生では動画本体の先頭 1 バイトを要求し、
+ * ファイルを出せるか（出せるなら形式の問題）まで分ける。変換は要求すると変換が始まって
+ * しまうので、`/api/health` でサーバーに届くかだけを確かめる。
+ *
+ * 端末が回線につながっていないと分かっているときは要求を出さない。signal で打ち切ったときは
+ * `unreachable` で解決する（呼ぶ側は打ち切った結果を使わない）。
+ */
+export async function probeMediaSource(
+  streamUrl: string | null,
+  signal?: AbortSignal,
+): Promise<ProbeResult> {
+  if (typeof navigator !== "undefined" && navigator.onLine === false)
+    return "unreachable";
   const controller = new AbortController();
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort);
-  const timer = setTimeout(abort, reachabilityTimeoutMs);
+  const timer = setTimeout(abort, probeTimeoutMs);
   try {
-    await sendRequest("/api/health", { cache: "no-store", signal: controller.signal });
-    return true;
+    const response = await sendRequest(
+      streamUrl ?? "/api/health",
+      streamUrl === null
+        ? { cache: "no-store", signal: controller.signal }
+        : {
+            cache: "no-store",
+            headers: { Range: "bytes=0-0" },
+            signal: controller.signal,
+          },
+    );
+    void response.body?.cancel().catch(() => undefined);
+    return response.ok ? "ok" : "error";
   } catch {
-    return false;
+    return "unreachable";
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", abort);

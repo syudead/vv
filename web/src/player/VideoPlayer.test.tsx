@@ -740,7 +740,7 @@ describe("VideoPlayer", () => {
         act(() => vi.advanceTimersByTime(15_000));
         act(() => player.trigger("loadedmetadata"));
       }
-      for (let second = 31; second <= 40; second += 1) {
+      for (let second = 31; second <= 41; second += 1) {
         player.time = second;
         act(() => player.trigger("timeupdate"));
       }
@@ -768,6 +768,120 @@ describe("VideoPlayer", () => {
       player.errorValue = { code: 2 };
       act(() => player.trigger("error"));
       expect(values.onError).toHaveBeenCalledWith(61_000, "network");
+    });
+
+    it("一時停止している間の位置の変化は、再生した長さに数えない", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      for (let round = 0; round < 5; round += 1) {
+        player.errorValue = { code: 2 };
+        act(() => player.trigger("error"));
+        act(() => vi.advanceTimersByTime(15_000));
+        act(() => player.trigger("loadedmetadata"));
+      }
+      act(() => player.pause());
+      act(() => player.trigger("pause"));
+      for (let second = 31; second <= 45; second += 1) {
+        player.time = second;
+        act(() => player.trigger("timeupdate"));
+      }
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      expect(values.onError).toHaveBeenCalledWith(45_000, "network");
+    });
+
+    it("読み込み直した要求が誤りも出さずに止まったら、期限を過ぎて次の読み込み直しへ進む", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(player.sources).toHaveLength(2);
+      act(() => vi.advanceTimersByTime(15_000));
+      expect(lastStatus(values)).toMatchObject({ reconnecting: true });
+      act(() => vi.advanceTimersByTime(2000));
+      expect(player.sources).toHaveLength(3);
+    });
+
+    it("止まった要求を使い切ったら、通信の失敗として伝える", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => vi.advanceTimersByTime(5 * 15_000 + 30_000));
+      expect(values.onError).toHaveBeenCalledWith(30_000, "network");
+    });
+
+    it("待つ間に一時停止したら、読み込み直したあとも止めたままにする", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => player.pause());
+      act(() => vi.advanceTimersByTime(1000));
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.pausedValue).toBe(true);
+      expect(lastStatus(values)).toMatchObject({ reconnecting: false });
+    });
+
+    it("待つ間に再生を押したら、待たずに読み込み直して再生を続ける", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => player.pause());
+      act(() => {
+        void player.play();
+      });
+      expect(player.sources).toHaveLength(2);
+      player.pausedValue = true;
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.pausedValue).toBe(false);
+    });
+
+    it("待つ間のシークは、その位置から直接再生を読み込み直す", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      expect(player.currentTime(60)).toBe(60);
+      expect(values.onPosition).toHaveBeenLastCalledWith(60_000);
+      act(() => vi.advanceTimersByTime(1000));
+      player.time = 0;
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.time).toBe(60);
+    });
+
+    it("待つ間のシークは、その位置から変換を始め直す", () => {
+      vi.useFakeTimers();
+      const values = props({ playable: false });
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => player.currentTime(60));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(player.sources[1]).toMatchObject({ vvOffsetSeconds: 60 });
+    });
+
+    it("直接再生でファイルを出せないと分かったら、変換へ切り替えずに伝える", async () => {
+      const values = props();
+      const player = startPlaying(values);
+      const fetchMock = vi.fn(() => Promise.resolve(new Response("", { status: 404 })));
+      vi.stubGlobal("fetch", fetchMock);
+      player.errorValue = { code: 4 };
+      act(() => player.trigger("error"));
+      await waitFor(() => expect(values.onError).toHaveBeenCalledWith(30_000, "source"));
+      expect(player.sources).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/videos/7/stream",
+        expect.objectContaining({ headers: { Range: "bytes=0-0" } }),
+      );
     });
 
     it("端末が回線に戻ったら、待たずに読み込み直す", () => {

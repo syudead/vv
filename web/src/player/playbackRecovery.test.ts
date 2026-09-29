@@ -4,7 +4,7 @@ import {
   classifyMediaError,
   reconnectDelay,
   reconnectDelaysMs,
-  serverReachable,
+  probeMediaSource,
 } from "./playbackRecovery";
 
 describe("classifyMediaError", () => {
@@ -30,18 +30,35 @@ describe("reconnectDelay", () => {
   });
 });
 
-describe("serverReachable", () => {
+describe("probeMediaSource", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
-  it("応答があれば、状態の番号によらず届く", async () => {
+  it("直接再生は動画本体の先頭 1 バイトを要求し、中身が返れば ok", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("x", { status: 206 })));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(probeMediaSource("/api/videos/7/stream")).resolves.toBe("ok");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/videos/7/stream",
+      expect.objectContaining({ headers: { Range: "bytes=0-0" } }),
+    );
+  });
+
+  it("届いたが誤りの状態なら error", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(() => Promise.resolve(new Response("", { status: 503 }))),
+      vi.fn(() => Promise.resolve(new Response("", { status: 404 }))),
     );
-    await expect(serverReachable()).resolves.toBe(true);
+    await expect(probeMediaSource("/api/videos/7/stream")).resolves.toBe("error");
+  });
+
+  it("変換では /api/health でサーバーに届くかだけを確かめる", async () => {
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("{}")));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(probeMediaSource(null)).resolves.toBe("ok");
+    expect(fetchMock).toHaveBeenCalledWith("/api/health", expect.anything());
   });
 
   it("要求そのものが失敗したら届かない", async () => {
@@ -49,14 +66,14 @@ describe("serverReachable", () => {
       "fetch",
       vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
     );
-    await expect(serverReachable()).resolves.toBe(false);
+    await expect(probeMediaSource(null)).resolves.toBe("unreachable");
   });
 
   it("端末が回線につながっていなければ要求を出さない", async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
-    await expect(serverReachable()).resolves.toBe(false);
+    await expect(probeMediaSource("/api/videos/7/stream")).resolves.toBe("unreachable");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
