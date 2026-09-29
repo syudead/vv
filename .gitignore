@@ -55,3 +55,9 @@ __pycache__/
 .venv/
 
 *.tsbuildinfo
+
+# Japanese edition of the documentation site and its translation memory, both
+# produced by `task docs-translate` (scripts/translate). CI keeps the memory on
+# the translation-memory branch.
+/docs-site/ja/
+/docs-site/.translation/

@@ -69,6 +69,16 @@ tasks:
     cmds:
       - npm --prefix docs-site run build
 
+  docs-translate:
+    desc: Generate the Japanese edition (docs-site/ja/) from the English documents.
+    cmds:
+      # VV_TRANSLATE_BASE_URL と VV_TRANSLATE_MODEL が無ければ要求を送らず、
+      # 訳の記憶に無い段落は英語のまま出す（docs/design-docs/translation-pipeline.md）。
+      - go run ./scripts/translate {{if not .VV_TRANSLATE_BASE_URL}}-offline{{end}} {{.CLI_ARGS}}
+    vars:
+      VV_TRANSLATE_BASE_URL:
+        sh: echo "${VV_TRANSLATE_BASE_URL:-}"
+
   generate:
     desc: Generate Go and TypeScript types from OpenAPI.
     cmds:

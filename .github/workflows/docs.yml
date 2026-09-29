@@ -1,5 +1,10 @@
 # 文書サイト（docs-site/、VitePress）を作り、main では GitHub Pages へ公開する。
 # PR では作れることだけを確かめる。公開するのは docs/ と specs/ の文書である。
+#
+# 日本語版（/ja/）は英語の原文から scripts/translate が作る。訳の記憶は
+# translation-memory ブランチに置き、main では新しい段落だけを翻訳のモデルへ送って
+# 記憶を書き戻す。PR では要求を送らず、記憶に無い段落は英語のまま出す
+# （docs/design-docs/translation-pipeline.md）。
 name: Docs site
 
 on:
@@ -9,12 +14,16 @@ on:
       - "docs/**"
       - "specs/**"
       - "docs-site/**"
+      - "scripts/translate/**"
+      - "scripts/internal/mdslug/**"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs/**"
       - "specs/**"
       - "docs-site/**"
+      - "scripts/translate/**"
+      - "scripts/internal/mdslug/**"
       - ".github/workflows/docs.yml"
   workflow_dispatch: {}
 
@@ -31,6 +40,8 @@ jobs:
   build:
     name: Build docs site
     runs-on: ubuntu-latest
+    env:
+      MEMORY: docs-site/.translation/ja.json
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -43,8 +54,46 @@ jobs:
           cache: npm
           cache-dependency-path: docs-site/package-lock.json
 
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: 依存を入れる
         run: npm --prefix docs-site ci
+
+      - name: 訳の記憶を取り出す
+        run: |
+          mkdir -p "$(dirname "$MEMORY")"
+          if git fetch --depth=1 origin translation-memory; then
+            git show FETCH_HEAD:ja.json > "$MEMORY"
+          else
+            echo "translation-memory ブランチが無いので、空の記憶から始める。"
+          fi
+
+      - name: 日本語版を作る
+        env:
+          # 送り先は OpenAI 互換の API。無ければ（fork の PR など）要求を送らない。
+          VV_TRANSLATE_PROVIDER: ${{ vars.VV_TRANSLATE_PROVIDER }}
+          VV_TRANSLATE_BASE_URL: ${{ vars.VV_TRANSLATE_BASE_URL }}
+          VV_TRANSLATE_MODEL: ${{ vars.VV_TRANSLATE_MODEL }}
+          VV_TRANSLATE_API_KEY: ${{ secrets.VV_TRANSLATE_API_KEY }}
+          ONLINE: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VV_TRANSLATE_BASE_URL != '' }}
+        run: |
+          if [ "$ONLINE" = "true" ]; then
+            go run ./scripts/translate -memory "$MEMORY"
+          else
+            go run ./scripts/translate -memory "$MEMORY" -offline
+          fi
+
+      - name: 訳の記憶を渡す
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VV_TRANSLATE_BASE_URL != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: translation-memory
+          path: ${{ env.MEMORY }}
+          include-hidden-files: true
+          retention-days: 1
 
       - name: サイトを作る
         run: npm --prefix docs-site run build
@@ -54,6 +103,33 @@ jobs:
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: docs-site/.vitepress/dist
+
+  # 訳の記憶を translation-memory ブランチへ書き戻す。書き込みの権限はこのジョブだけが持つ。
+  save-memory:
+    name: Save translation memory
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && vars.VV_TRANSLATE_BASE_URL != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: translation-memory
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: translation-memory
+      - name: 1コミットのブランチとして上書きする
+        # 記憶は毎回全体を書き直すので、過去の版は要らない。
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git init -q
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ja.json
+          git commit -q -m "Update translation memory from ${GITHUB_SHA}"
+          git push --force "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:translation-memory
 
   deploy:
     name: Deploy to GitHub Pages

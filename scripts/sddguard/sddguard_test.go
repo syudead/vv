@@ -241,12 +241,16 @@ var markdownLink = regexp.MustCompile(`\]\(([^)\s]+)\)`)
 // TestMarkdownRelativeLinksResolve は解決できない相対リンクを落とす。PR #76 は
 // 実行計画を active/ から completed/ へ移した結果、参照元のリンクが切れていた。
 func TestMarkdownRelativeLinksResolve(t *testing.T) {
-	for _, path := range guardedMarkdown(t) {
+	for _, path := range styledMarkdown(t) {
 		body, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("%s を読めない: %v", path, err)
 		}
-		for _, match := range markdownLink.FindAllStringSubmatch(string(body), -1) {
+		var prose strings.Builder
+		for _, line := range proseLines(string(body)) {
+			prose.WriteString(line.text + "\n")
+		}
+		for _, match := range markdownLink.FindAllStringSubmatch(prose.String(), -1) {
 			target := match[1]
 			if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") ||
 				strings.HasPrefix(target, "#") || strings.HasPrefix(target, "mailto:") {

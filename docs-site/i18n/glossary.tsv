@@ -1,0 +1,35 @@
+# Fixed Japanese renderings of product terms, used by scripts/translate
+# (chat backend). One term per line: English<TAB>Japanese. Longer terms win.
+# Keep a term here only when a free translation would vary between pages.
+library	ライブラリ
+media folder	メディアフォルダ
+registered folder	登録フォルダ
+folder group	フォルダグループ
+folder page	フォルダ画面
+playback page	再生画面
+video detail page	動画詳細画面
+settings page	設定画面
+tag	タグ
+synonym	シノニム
+scan	スキャン
+import	取り込み
+live transcoding	ライブ変換
+live transcode	ライブ変換
+seek thumbnail	シークサムネイル
+seek sprite	シーク用スプライト
+hover preview	ホバープレビュー
+animated preview	動くプレビュー
+owner	所有者
+guest	ゲスト
+visibility	公開範囲
+API token	API トークン
+parent Issue	親 Issue
+child Issue	子 Issue
+native sub-issue	ネイティブ sub-issue
+feature branch	feature ブランチ
+integration PR	統合 PR
+stage PR	段階の PR
+acceptance criteria	受け入れ条件
+requirement	要件
+source of truth	正本
+translation memory	翻訳メモリ
