@@ -22,6 +22,12 @@ const mock = vi.hoisted(() => {
     videoHeightValue = 1080;
     posterValue: string | undefined;
     userActiveValue = true;
+    /** 付けた字幕のトラック（addRemoteTextTrack の引数と mode）。 */
+    remoteTracks: {
+      options: { src: string; label: string; kind: string };
+      mode: string;
+    }[] = [];
+    trackListeners: Callback[] = [];
     element: HTMLElement;
     options: Record<string, unknown>;
 
@@ -34,10 +40,30 @@ const mock = vi.hoisted(() => {
         '<div class="vjs-control-bar"><div class="vjs-progress-control">' +
         '<div class="vjs-progress-holder"></div></div>' +
         '<button class="vjs-play-control"></button>' +
-        '<button class="vjs-mute-control"></button><div class="vjs-playback-rate"></div>' +
+        '<button class="vjs-mute-control"></button>' +
+        '<div class="vjs-subs-caps-button"><button class="vjs-subs-caps-button"></button></div>' +
+        '<div class="vjs-playback-rate"></div>' +
         '<button class="vjs-fullscreen-control"></button></div>';
     }
 
+    textTracks() {
+      return {
+        addEventListener: (_type: string, listener: Callback) => {
+          this.trackListeners.push(listener);
+        },
+        removeEventListener: (_type: string, listener: Callback) => {
+          this.trackListeners = this.trackListeners.filter((item) => item !== listener);
+        },
+      };
+    }
+    addRemoteTextTrack(options: { src: string; label: string; kind: string }) {
+      const track = { options, mode: "disabled" };
+      this.remoteTracks.push(track);
+      return { track };
+    }
+    removeRemoteTextTrack(track: unknown) {
+      this.remoteTracks = this.remoteTracks.filter((item) => item !== track);
+    }
     on(event: string, callback: Callback) {
       this.handlers.set(event, [...(this.handlers.get(event) ?? []), callback]);
     }
@@ -147,6 +173,8 @@ const mock = vi.hoisted(() => {
     {
       use: vi.fn(),
       addLanguage: vi.fn(),
+      getComponent: vi.fn(() => class {}),
+      registerComponent: vi.fn(),
       createTimeRanges: vi.fn((values: [number, number][]) => ({
         length: values.length,
         start: (index: number) => values[index]?.[0] ?? 0,
@@ -333,6 +361,86 @@ describe("VideoPlayer", () => {
     ).toBe("Space");
   });
 
+  it("字幕ボタンを再生速度の前に置き、字幕の設定を出さず、C キーを添える", async () => {
+    render(<VideoPlayer {...props()} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const options = mock.instances[0]?.options as {
+      textTrackSettings: boolean;
+      controlBar: { children: string[] };
+    };
+    expect(options.textTrackSettings).toBe(false);
+    const children = options.controlBar.children;
+    expect(children.indexOf("subtitlesButton")).toBe(
+      children.indexOf("playbackRateMenuButton") - 1,
+    );
+    const element = mock.instances[0]?.element;
+    expect(
+      element
+        ?.querySelector("button.vjs-subs-caps-button")
+        ?.getAttribute("aria-keyshortcuts"),
+    ).toBe("C");
+  });
+
+  it("字幕の一覧をトラックとして付け、一覧が届き直してもプレイヤーを作り直さない", async () => {
+    window.localStorage.setItem(
+      "vv.subtitles.v1",
+      JSON.stringify({ enabled: true, label: "ja" }),
+    );
+    const base = props();
+    const view = render(<VideoPlayer {...base} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    expect(player?.remoteTracks).toEqual([]);
+
+    view.rerender(
+      <VideoPlayer
+        {...base}
+        subtitles={[
+          { file: "movie.srt", label: "", format: "srt" },
+          { file: "movie.ja.srt", label: "ja", format: "srt" },
+        ]}
+      />,
+    );
+    await waitFor(() => expect(player?.remoteTracks).toHaveLength(2));
+    expect(mock.instances).toHaveLength(1);
+    expect(player?.remoteTracks.map((track) => track.options)).toEqual([
+      {
+        kind: "subtitles",
+        src: "/api/videos/7/subtitles/movie.srt",
+        label: "Default",
+        default: false,
+      },
+      {
+        kind: "subtitles",
+        src: "/api/videos/7/subtitles/movie.ja.srt",
+        label: "ja",
+        default: false,
+      },
+    ]);
+    expect(player?.remoteTracks.map((track) => track.mode)).toEqual([
+      "disabled",
+      "showing",
+    ]);
+
+    // c キーの入口は字幕を切り替える。
+    const controls = base.onControls.mock.calls.at(-1)?.[0] as {
+      toggleSubtitles(): void;
+    };
+    act(() => controls.toggleSubtitles());
+    expect(player?.remoteTracks.map((track) => track.mode)).toEqual([
+      "disabled",
+      "disabled",
+    ]);
+    expect(JSON.parse(window.localStorage.getItem("vv.subtitles.v1") ?? "null")).toEqual({
+      enabled: false,
+      label: "ja",
+    });
+
+    view.rerender(<VideoPlayer {...base} subtitles={[]} />);
+    await waitFor(() => expect(player?.remoteTracks).toEqual([]));
+    expect(mock.instances).toHaveLength(1);
+  });
+
   it("操作バーの読み上げ名とツールチップは英語の独自言語で、キーボード操作を持つボタンにキーを添える", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
@@ -355,6 +463,12 @@ describe("VideoPlayer", () => {
       "Progress Bar": "Playback position",
       "Volume Level": "Volume",
       "Video Player": "Video player",
+      ", selected": ", selected",
+      Subtitles: "Subtitles (C)",
+      Captions: "Subtitles (C)",
+      "subtitles off": "Off",
+      "captions off": "Off",
+      "captions and subtitles off": "Off",
     });
     const element = mock.instances[0]?.element;
     const shortcuts = [
@@ -416,9 +530,10 @@ describe("VideoPlayer", () => {
     });
     const bar = mock.instances[1]?.element.querySelector(".vjs-control-bar");
     expect(bar?.contains(indicator)).toBe(true);
-    expect(
-      indicator.closest(".vv-transcode-indicator")?.nextElementSibling?.className,
-    ).toBe("vjs-playback-rate");
+    // 字幕ボタンは再生速度の隣に保ち、「変換して再生中」はその前に置く。
+    const next = indicator.closest(".vv-transcode-indicator")?.nextElementSibling;
+    expect(next?.className).toBe("vjs-subs-caps-button");
+    expect(next?.nextElementSibling?.className).toBe("vjs-playback-rate");
     fireEvent.click(indicator);
     expect(await screen.findByText(/Seeking takes a few seconds/)).toBeDefined();
   });

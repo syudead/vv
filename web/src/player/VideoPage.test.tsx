@@ -5,7 +5,12 @@ import { Link, MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AuthState } from "../api/auth";
-import { type RelatedVideos, setRenderedAudience, type Video } from "../api/client";
+import {
+  type RelatedVideos,
+  setRenderedAudience,
+  type SubtitleTrack,
+  type Video,
+} from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { saveListSnapshot, takeListSnapshot } from "../api/listSnapshot";
 import { type Audience, AudienceProvider } from "../auth/audience";
@@ -29,6 +34,7 @@ interface PlayerProps {
   onError: (positionMs: number, kind: PlaybackFailureKind) => void;
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
+  subtitles?: readonly SubtitleTrack[];
 }
 
 vi.mock("../auth/pageNavigation", async (importOriginal) => ({
@@ -98,6 +104,8 @@ function json(body: unknown, status = 200): Response {
 const server = {
   videos: new Map<number, (() => Response) | Video[]>(),
   related: new Map<number, RelatedVideos>(),
+  /** GET /api/videos/{id}/subtitles の応答。無い動画は字幕無し。 */
+  subtitles: new Map<number, () => Response>(),
   probe: vi.fn<() => Response>(),
   open: vi.fn<() => Response>(),
   /** フォルダのまとめ方の経路（PUT …/grouping・POST …/grouping/tag）の応答。 */
@@ -114,6 +122,7 @@ function fakeControls(): PlayerControls {
     restart: vi.fn(),
     toggleMute: vi.fn(),
     toggleFullscreen: vi.fn(),
+    toggleSubtitles: vi.fn(),
     isFullscreen: vi.fn(() => false),
     menuOpen: vi.fn(() => false),
     wake: vi.fn(),
@@ -180,6 +189,7 @@ describe("VideoPage", () => {
     playerMock.controls = fakeControls();
     server.videos.clear();
     server.related.clear();
+    server.subtitles.clear();
     server.videos.set(7, [video]);
     server.related.set(7, {
       items: [related(8, "後続の動画"), related(3, "前の動画")],
@@ -208,6 +218,10 @@ describe("VideoPage", () => {
       if (match === null) return Promise.resolve(json({}));
       const id = Number(match[1]);
       const suffix = match[2];
+      if (suffix === "/subtitles") {
+        const answer = server.subtitles.get(id);
+        return Promise.resolve(answer?.() ?? json({ subtitles: [] }));
+      }
       if (suffix === "/related") {
         return Promise.resolve(json(server.related.get(id) ?? { items: [] }));
       }
@@ -379,6 +393,47 @@ describe("VideoPage", () => {
       // 列の指定が無いと、層の列が内容の幅まで広がり、狭い幅で右が切れる。
       const frame = document.querySelector("[data-player-frame]");
       expect(frame?.className.split(" ")).toContain("grid-cols-[minmax(0,1fr)]");
+    });
+  });
+
+  describe("字幕", () => {
+    const ja: SubtitleTrack = { file: "テスト動画.ja.srt", label: "ja", format: "srt" };
+    const en: SubtitleTrack = { file: "後続.en.vtt", label: "en", format: "vtt" };
+
+    it("開いた動画の字幕の一覧をプレイヤーに渡し、別の動画へ移ったら前の一覧を渡さない", async () => {
+      server.subtitles.set(7, () => json({ subtitles: [ja] }));
+      server.subtitles.set(8, () => json({ subtitles: [en] }));
+      server.videos.set(8, [{ ...related(8, "後続の動画"), location: video.location }]);
+      renderPage();
+      await ready();
+      await waitFor(() => expect(player().subtitles).toEqual([ja]));
+      const seen: (readonly SubtitleTrack[] | undefined)[] = [];
+      fireEvent.click(await screen.findByRole("link", { name: /後続の動画/ }));
+      await waitFor(() => {
+        seen.push(player().subtitles);
+        expect(player().video.id).toBe(8);
+        expect(player().subtitles).toEqual([en]);
+      });
+      expect(seen.some((list) => list?.includes(ja) === true)).toBe(false);
+    });
+
+    it("一覧を取れなければ字幕無しで再生を続ける", async () => {
+      server.subtitles.set(7, () =>
+        json({ code: "file_unavailable", message: "読めません" }, 404),
+      );
+      renderPage();
+      await ready();
+      await waitFor(() =>
+        expect(
+          fetchMock.mock.calls.some(
+            ([input]) => String(input) === "/api/videos/7/subtitles",
+          ),
+        ).toBe(true),
+      );
+      await act(async () => undefined);
+      expect(player().subtitles).toEqual([]);
+      expect(screen.getByTestId("video-player")).toBeDefined();
+      expect(screen.queryByRole("alert")).toBeNull();
     });
   });
 

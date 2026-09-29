@@ -264,6 +264,17 @@ export function generateMediaFixtures(mediaDir) {
   for (const [name, codecs] of Object.entries(expected)) {
     assertFixture(file(name), codecs);
   }
+
+  // 隣に置いた字幕（specs/028-sidecar-subtitles）。ラベルの無い字幕と `ja` の字幕で、
+  // どちらも 0.5 秒から動画の終わりまで 1 つの cue を出す。
+  writeFileSync(
+    file("direct.srt"),
+    "1\r\n00:00:00,500 --> 00:00:06,000\r\nDefault subtitle cue\r\n",
+  );
+  writeFileSync(
+    file("direct.ja.srt"),
+    "1\n00:00:00,500 --> 00:00:06,000\n日本語の字幕\n",
+  );
 }
 
 /**

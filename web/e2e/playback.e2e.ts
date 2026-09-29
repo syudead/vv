@@ -857,6 +857,71 @@ test.describe.serial("live MP4 playback", () => {
     }
   });
 
+  test("隣の字幕をメニューで選ぶと cue の時刻に出て、「オフ」で消え、選択を再読み込みの後も覚える", async ({
+    page,
+  }) => {
+    test.setTimeout(30_000);
+    const item = video("direct");
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`/videos/${String(item.id)}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("direct");
+
+    // 字幕ボタンは再生速度の前に出る。一度も選んでいないのでオフで始まる。
+    const button = page.locator(".vjs-control-bar > .vjs-subs-caps-button");
+    await expect(button).toBeVisible();
+    await expect(button.locator("button")).toHaveAttribute("title", "Subtitles (C)");
+    await expect(button.locator("button")).toHaveAttribute("aria-keyshortcuts", "C");
+    await expect(
+      page.locator(".vjs-control-bar > .vjs-subs-caps-button + .vjs-playback-rate"),
+    ).toHaveCount(1);
+    const items = button.locator(".vjs-menu-item .vjs-menu-item-text");
+    await expect(items).toHaveText(["Off", "Default", "ja"]);
+    await expect(button.locator(".vjs-texttrack-settings")).toHaveCount(0);
+    const display = page.locator(".vjs-text-track-display");
+    await expect(display).not.toContainText("Default subtitle cue");
+
+    // cue は 0.5 秒から。再生して 0.5 秒を過ぎると、選んだ字幕の文字が出る。
+    await page.evaluate(() => {
+      const element = document.querySelector<HTMLVideoElement>("video.vjs-tech");
+      if (element === null) throw new Error("video is missing");
+      element.muted = true;
+      void element.play();
+    });
+    await page.locator(".video-js").hover();
+    await button.hover();
+    await page.getByRole("menuitemradio", { name: /^Default/ }).click();
+    await expect(display).toContainText("Default subtitle cue");
+
+    await button.hover();
+    await page.getByRole("menuitemradio", { name: /^Off/ }).click();
+    await expect(display).not.toContainText("Default subtitle cue");
+
+    await button.hover();
+    await page.getByRole("menuitemradio", { name: /^ja/ }).click();
+    await expect(display).toContainText("日本語の字幕");
+
+    // 再読み込みしても ja がオンのまま始まる。
+    await page.reload();
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("direct");
+    await expect(
+      button.locator(".vjs-menu-item", { hasText: /^ja/ }).first(),
+    ).toHaveAttribute("aria-checked", "true");
+    await page.evaluate(() => {
+      const element = document.querySelector<HTMLVideoElement>("video.vjs-tech");
+      if (element === null) throw new Error("video is missing");
+      element.muted = true;
+      void element.play();
+    });
+    await expect(display).toContainText("日本語の字幕");
+
+    // c キーでオフにし、もう一度で最後に選んだ ja に戻る。
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press("c");
+    await expect(display).not.toContainText("日本語の字幕");
+    await page.keyboard.press("c");
+    await expect(display).toContainText("日本語の字幕");
+  });
+
   test("関連動画から移ったあとの × と Esc は最初の一覧へ戻る", async ({ page }) => {
     test.setTimeout(30_000);
     await page.setViewportSize({ width: 1280, height: 800 });
