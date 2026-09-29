@@ -304,6 +304,102 @@ test.describe.serial("guest", () => {
     await context.close();
   });
 
+  // 一部のメンバーだけが検索に当たったグループ（specs/027-partial-group-search、親 #523
+  // 受け入れ条件 1・2・7・8、contracts/library-api.md §1〜§2）。「公開あり」は所有者には
+  // 5本、ゲストには公開の4本のグループである。題名の一部の語で検索すると、当たった
+  // メンバーだけが動画のカードで出て、フォルダ名で検索すると全メンバーが当たるので
+  // グループのカードになる。
+  test("一部のメンバーだけが当たったグループは当たった動画のカードで出て、すべて選択もその動画だけに効く", async ({
+    browser,
+    request,
+  }) => {
+    const owner = await ownerContext(browser);
+    const page = await owner.newPage();
+    const a = video("ゲスト公開A");
+
+    // 受け入れ条件 1: 1本の題名にだけ当たる語では、その動画のカードが1枚で、グループの
+    // カードは出ない。押すとその動画の再生画面が開く。
+    await page.goto(`/?q=${encodeURIComponent("ゲスト公開A")}`);
+    await expect.poll(() => libraryItems(page)).toEqual(["ゲスト公開A"]);
+    await expect(page.locator("article[data-video-id]")).toHaveCount(1);
+    await expect(page.locator("article[data-group-root]")).toHaveCount(0);
+    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
+    await page
+      .locator(`article[data-video-id="${String(a.id)}"]`)
+      .getByRole("link", { name: "ゲスト公開A" })
+      .first()
+      .click();
+    await expect(page).toHaveURL(`/videos/${String(a.id)}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト公開A");
+
+    // 受け入れ条件 2: フォルダ名で検索すると全メンバーが当たるので、グループのカードが
+    // 1枚で、メンバーは1本ずつ出ない。
+    await page.goto(`/?q=${encodeURIComponent("公開あり")}`);
+    await expect.poll(() => libraryItems(page)).toEqual(["公開あり, group of 5 videos"]);
+    await expect(page.locator("article[data-group-root]")).toHaveCount(1);
+    await expect(page.locator("article[data-video-id]")).toHaveCount(0);
+
+    // 受け入れ条件 7: 「ゲスト公開」は A・B・E・F に当たり、同じグループの C には当たらない。
+    // 「すべて選択」してタグを付けると、当たった4本にだけ付き、C には付かない。
+    const tagName = "e2e一部一致タグ";
+    const matched = publicTitles.map(video);
+    await page.goto(`/?q=${encodeURIComponent("ゲスト公開")}`);
+    await expect.poll(() => libraryItems(page)).toEqual(publicTitles);
+    await page
+      .getByRole("checkbox", { name: 'Select "ゲスト公開A"' })
+      .check({ force: true });
+    await expect(page.getByText("1 video selected")).toBeVisible();
+    await page.getByRole("button", { name: "Select all" }).click();
+    await expect(page.getByText("4 videos selected")).toBeVisible();
+    await page.getByRole("button", { name: "Add tag" }).click();
+    await page.getByRole("combobox", { name: "Add tag" }).fill(tagName);
+    await page.getByRole("option", { name: /^Create/ }).click();
+    await expect(page.getByText(`Added "${tagName}" to 4 videos`)).toBeVisible();
+
+    const tagNames = async (id: number) => {
+      const response = await request.get(`/api/videos/${String(id)}`);
+      expect(response.status()).toBe(200);
+      const detail = (await response.json()) as { tags: { id: number; name: string }[] };
+      return detail.tags;
+    };
+    let tagId: number | undefined;
+    for (const v of matched) {
+      const tags = await tagNames(v.id);
+      const found = tags.find((tag) => tag.name === tagName);
+      expect(found, v.title).toBeDefined();
+      tagId = found?.id;
+    }
+    for (const title of privateTitles) {
+      const tags = await tagNames(video(title).id);
+      expect(
+        tags.map((tag) => tag.name),
+        title,
+      ).not.toContain(tagName);
+    }
+
+    // 後の場面とほかの e2e に残さないよう、作ったタグを消す。
+    if (tagId !== undefined) {
+      const removed = await request.delete(`/api/tags/${String(tagId)}`, {
+        headers: mutationHeaders,
+      });
+      expect(removed.status()).toBe(204);
+    }
+    await owner.close();
+
+    // 受け入れ条件 8: ゲストには公開の4本だけで数える。公開のメンバー1本にだけ当たる語では、
+    // その1本が動画のカードで出る。
+    const guest = await guestContext(browser);
+    const guestPage = await guest.newPage();
+    await guestPage.goto(`/?q=${encodeURIComponent("ゲスト公開A")}`);
+    await expect.poll(() => libraryItems(guestPage)).toEqual(["ゲスト公開A"]);
+    await expect(
+      guestPage.locator(`article[data-video-id="${String(a.id)}"]`),
+    ).toHaveCount(1);
+    await expect(guestPage.locator("article[data-group-root]")).toHaveCount(0);
+    await expect(guestPage.getByText("1 item", { exact: true })).toBeVisible();
+    await guest.close();
+  });
+
   test("ゲストで公開の動画を再生でき、非公開の動画の再生 URL は「開けません」になる", async ({
     browser,
   }) => {
