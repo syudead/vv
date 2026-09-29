@@ -166,8 +166,8 @@ of job from the persistent `jobs` queue, one at a time, and hands it to `interna
 | preview | A content-keyed hover-preview clip per video |
 
 ```mermaid
-flowchart LR
-  scanner[internal/scanner] --> store[(internal/store jobs queue)]
+flowchart TD
+  scanner[internal/scanner] --> store[("internal/store<br/>jobs queue")]
   store -->|JobsQueued| bus[internal/eventbus]
   bus -->|wake| worker[internal/jobs worker]
   worker --> app[internal/app]
@@ -295,7 +295,7 @@ State changes that trigger side effects are domain events (`internal/domain/even
 - content keys lost their last reference.
 
 ```mermaid
-flowchart LR
+flowchart TD
   store[internal/store] -->|Publish| bus[internal/eventbus]
   app[internal/app] -->|Publish| bus
   bus --> sse[api/events stream]

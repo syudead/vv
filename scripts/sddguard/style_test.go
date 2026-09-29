@@ -270,3 +270,58 @@ func TestProseProblemsCountsBlocks(t *testing.T) {
 		}
 	}
 }
+
+// maxSidewaysNodes is the widest left-to-right flowchart that still fits the
+// text column at a readable size. A wider one is scaled down until its labels
+// cannot be read, on GitHub and on the documentation site alike.
+const maxSidewaysNodes = 4
+
+var (
+	mermaidBlock = regexp.MustCompile("(?ms)^```mermaid\\n(.*?)^```")
+	sideways     = regexp.MustCompile(`^\s*(flowchart|graph)\s+(LR|RL)\b`)
+	mermaidNode  = regexp.MustCompile(`(?m)(?:^|[\s>|-])([A-Za-z_][\w-]*)\s*[\[\(\{]`)
+)
+
+// TestDiagramsStayReadable fails on a left-to-right flowchart with more nodes
+// than fit the column. Lay it out top-down instead (writing-style.md).
+func TestDiagramsStayReadable(t *testing.T) {
+	for _, path := range styledMarkdown(t) {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, m := range mermaidBlock.FindAllStringSubmatch(string(body), -1) {
+			if n := sidewaysNodes(m[1]); n > maxSidewaysNodes {
+				t.Errorf("%s: a left-to-right flowchart has %d nodes (max %d) and renders too small to read. Use `flowchart TD`",
+					relativeTo(t, path), n, maxSidewaysNodes)
+			}
+		}
+	}
+}
+
+// sidewaysNodes counts the distinct nodes of a left-to-right flowchart, and
+// returns 0 for any other diagram.
+func sidewaysNodes(diagram string) int {
+	if !sideways.MatchString(diagram) {
+		return 0
+	}
+	nodes := map[string]bool{}
+	for _, m := range mermaidNode.FindAllStringSubmatch(diagram, -1) {
+		nodes[m[1]] = true
+	}
+	return len(nodes)
+}
+
+func TestSidewaysNodesCountsDistinctNodes(t *testing.T) {
+	cases := map[string]int{
+		"flowchart LR\n  a[A] --> b[B] --> c[(C)]\n":                           3,
+		"flowchart LR\n  a[A] --> b{B}\n  b --> c[C]\n  c --> d[D] --> e[E]\n": 5,
+		"flowchart TD\n  a[A] --> b[B] --> c[C] --> d[D] --> e[E]\n":           0,
+		"stateDiagram-v2\n  [*] --> idle\n":                                    0,
+	}
+	for diagram, want := range cases {
+		if got := sidewaysNodes(diagram); got != want {
+			t.Errorf("sidewaysNodes(%q) = %d, want %d", diagram, got, want)
+		}
+	}
+}

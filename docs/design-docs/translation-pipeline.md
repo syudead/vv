@@ -25,15 +25,15 @@ writes Japanese documents by hand.
 ## Design
 
 ```mermaid
-flowchart LR
-  src[docs/ and specs/<br/>English Markdown] --> seg[Split into segments]
-  seg --> tm{In translation<br/>memory?}
+flowchart TD
+  src["English Markdown<br/>docs/ and specs/"] --> seg[Split into segments]
+  seg --> tm{In memory?}
   tm -- yes --> out
   tm -- no --> model[Translation model]
   model --> check{Tags intact?}
-  check -- yes --> mem[(Translation memory)] --> out[docs-site/ja/<br/>Japanese Markdown]
-  check -- no, twice --> en[Keep English] --> out
-  out --> site[VitePress /ja/ locale]
+  check -- yes --> mem[(Memory)] --> out
+  check -- "no, twice" --> en[Keep English] --> out
+  out["Japanese Markdown<br/>docs-site/ja/"] --> site["Site: /ja/"]
 ```
 
 1. `scripts/translate` lists the tracked Markdown under `docs/` and `specs/`

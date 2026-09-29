@@ -92,8 +92,15 @@ list of decisions.
 ### Diagrams
 
 Use Mermaid in a fenced `mermaid` block. GitHub and the documentation site both
-render it. Keep node labels short and in English; the translation pipeline
-translates them. Draw only what the text relies on.
+render it. Draw only what the text relies on.
+
+- Lay out top-down (`flowchart TD`). A left-to-right chain wider than about
+  four nodes is scaled down to fit the text column, and its labels become
+  unreadable.
+- Keep node labels to a few words, and break a longer one with `<br/>` inside
+  a quoted label (`a["Two<br/>lines"]`).
+- Labels stay English on both editions; the translation pipeline copies
+  diagrams unchanged.
 
 ```mermaid
 flowchart LR
