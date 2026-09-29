@@ -18,6 +18,11 @@ file into a handbook.
 ## Working agreements
 
 - Keep documentation close to the code and update it with behavior changes.
+- Write every document, Issue body and PR body in technical English, following
+  [docs/design-docs/writing-style.md](docs/design-docs/writing-style.md), and
+  start a new document from its template in [docs/templates/](docs/templates/).
+  Do not write Japanese documents; the Japanese site is generated
+  ([translation-pipeline.md](docs/design-docs/translation-pipeline.md)).
 - A feature's specification is its parent GitHub Issue. Write and revise it with
   `.agents/skills/issue-spec`, following
   [docs/product-specs/spec-quality.md](docs/product-specs/spec-quality.md).
@@ -37,15 +42,18 @@ file into a handbook.
   `api/external-v1.yaml` and run `task generate`.
 - Add links to new design documents from `docs/design-docs/index.md`.
 - Give every pushed working branch a pull request as its review target.
-- 依存更新（Renovate）の運用は
-  [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md)。
+- Dependency updates (Renovate) follow
+  [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md).
 - SDD work starts when the maintainer hands over a parent Issue or native
   sub-issue URL, and runs `plan → design → plan-to-issues → implement →
   integrate`, with `design` only for `ui` Issues. Use
   `.agents/skills/issue-handoff`; it selects the next stage from GitHub and
   feature-branch state, and each run performs one stage and opens or updates
-  one PR. Stage and implementation PRs target the
-  long-lived feature branch, and only its integration PR targets `main`.
+  one PR.
+  - A stage PR's body carries the digest of its artifact
+    ([pr-digest.md](.agents/skills/issue-handoff/references/pr-digest.md)).
+  - Stage and implementation PRs target the long-lived feature branch, and
+    only its integration PR targets `main`.
 - To run a feature unattended up to (not including) the integration merge,
   the maintainer explicitly starts `.agents/skills/sdd-autopilot` with the
   parent Issue. It merges feature-branch PRs itself; never the integration PR.

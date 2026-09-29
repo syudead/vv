@@ -1,51 +1,56 @@
-# Data model: 外部連携 API と MCP
+# Data model: External API and MCP
 
-親 Issue: #493。
+Parent Issue: #493.
 
-既存の表の定義は [internal/store/migrations/](../../internal/store/migrations/) が正本で、
-データの区分は [ARCHITECTURE.md](../../ARCHITECTURE.md)「Rebuildable and user data」、`account` と
-`sessions` の規則は [016 data-model.md](../016-single-account-auth/data-model.md) にある。ここには、
-この feature が足す表と、それを読み書きする規則だけを書く。書いていない表は変えない（`videos` にも
-列を足さない。動画の一覧は今の列だけで読む。[R-6](research.md#r-6-動画の一覧は-added_at-id-の-keyset-のカーソルで読む)）。
+| Source of truth | Location |
+| --- | --- |
+| Existing table definitions | [internal/store/migrations/](../../internal/store/migrations/) |
+| Data classes | [ARCHITECTURE.md](../../ARCHITECTURE.md) "Rebuildable and user data" |
+| Rules for `account` and `sessions` | [016 data-model.md](../016-single-account-auth/data-model.md) |
 
-## 1. `api_tokens`（R-1・R-2・R-9・R-10）
+This document covers only the table this feature adds and the rules that read and write it. Tables
+not listed here do not change. `videos` gets no new column either; the video list reads the current
+columns only ([R-6](research.md#r-6-the-video-list-is-read-with-an-added_at-id-keyset-cursor)).
+
+## 1. `api_tokens` (R-1, R-2, R-9, R-10)
 
 ```sql
 create table api_tokens (
     id              integer primary key autoincrement,
-    -- 用途の名前。domain.NormalizeAPITokenName を通した値。重複してよい。
+    -- Purpose name. The value after domain.NormalizeAPITokenName. Duplicates are allowed.
     name            text    not null,
-    -- 平文の SHA-256（16 進）。平文はどこにも保存しない。
+    -- SHA-256 of the plaintext (hex). The plaintext is stored nowhere.
     token_hash      text    not null unique,
-    -- 発行したときの account.version。一致しない行は無効（R-2）。
+    -- account.version at issue time. A row that does not match is invalid (R-2).
     account_version integer not null,
     created_at      integer not null,
-    -- 最後に使った時刻（Unix 秒）。未使用なら null。60 秒より細かくは書かない（R-9）。
+    -- Last use time (Unix seconds). null when never used. Not written more often than every 60 s (R-9).
     last_used_at    integer
 );
 ```
 
-`id` に `autoincrement` を付けるのは、失効した行の id を新しいトークンに再利用しないためである
-（画面の失効の要求が、同じ id の別のトークンを消さない）。
+`id` has `autoincrement` so that a revoked row's id is never reused by a new token. A revoke request
+from the UI therefore never deletes a different token with the same id.
 
-区分: 作り直せない設定のデータ（スキャンで戻らず、失えば発行し直す）。ARCHITECTURE.md の一覧に足す。
+Class: configuration data that cannot be rebuilt (a scan does not restore it; if lost, tokens are
+issued again). Add it to the list in ARCHITECTURE.md.
 
-| 操作 | 1 つのトランザクションで行うこと |
+| Operation | Done in one transaction |
 | --- | --- |
-| 発行（Cookie の所有者） | 読んだ `account.version` を `account_version` に書いて 1 行足し、平文を返す。`account` の行が無ければ失敗する |
-| 一覧 | `id`・`name`・`created_at`・`last_used_at` を `created_at` の降順で返す。版の合わない行は無い（下の変更で消える）が、あれば返さない |
-| 失効 | `id` の行を消す。無ければ何もしない |
-| 確かめる（Bearer） | 平文の SHA-256 で引き、`account` があり版が一致する行だけを有効とする。問い合わせの失敗は無効とせず誤りにする |
-| 使った時刻 | `last_used_at is null or last_used_at <= now - 60` のときだけ `now` を書く |
-| ユーザー名・パスワードの変更 | 今の `changeCredentials` に `delete from api_tokens` を足す |
+| Issue (Cookie owner) | Write the read `account.version` to `account_version`, insert one row and return the plaintext. Fails when the `account` row does not exist |
+| List | Return `id`, `name`, `created_at` and `last_used_at` in descending `created_at` order. Rows with a mismatched version do not exist (the change below deletes them), but they are not returned if present |
+| Revoke | Delete the row with `id`. Does nothing when it does not exist |
+| Verify (Bearer) | Look up by the SHA-256 of the plaintext. Only a row with an existing `account` and a matching version is valid. A query failure is an error, not an invalid token |
+| Last use time | Write `now` only when `last_used_at is null or last_used_at <= now - 60` |
+| Username or password change | Add `delete from api_tokens` to the current `changeCredentials` |
 
-## 2. `internal/domain` に足す値
+## 2. Values added to `internal/domain`
 
-| 値 | 中身 |
+| Value | Content |
 | --- | --- |
-| `APIToken` | `ID`・`Name`・`CreatedAt`・`LastUsedAt`（未使用はゼロ値）。平文とハッシュは持たない |
-| `NormalizeAPITokenName` と `APITokenNameMaxLength = 100` | R-10 の規則と、その誤りの値（タグ名の `InvalidTagNameError` と同じ形） |
-| `VideoRef` | `ID`・`ContentKey`・`Path` のちょうど 1 つ。`Path` は正規化せず、所在の `path` とバイト列で比べる |
-| `ExternalVideoQuery`・`ExternalVideoPage` | カーソル・件数と、項目・`NextCursor`（[R-6](research.md#r-6-動画の一覧は-added_at-id-の-keyset-のカーソルで読む)）。並びは `(added_at, id)` の昇順だけで、順序の指定は持たない |
-| `VideoTagsAction` | `add`・`remove`・`replace` |
-| 引けない動画の誤り | `ErrNotFound` を包み、`VideoRef` の位置（0 から）を持つ |
+| `APIToken` | `ID`, `Name`, `CreatedAt`, `LastUsedAt` (zero value when never used). Holds neither the plaintext nor the hash |
+| `NormalizeAPITokenName` and `APITokenNameMaxLength = 100` | The R-10 rule and its error value (same shape as `InvalidTagNameError` for tag names) |
+| `VideoRef` | Exactly one of `ID`, `ContentKey` and `Path`. `Path` is not normalized and is compared byte for byte with the location `path` |
+| `ExternalVideoQuery`, `ExternalVideoPage` | Cursor and limit; items and `NextCursor` ([R-6](research.md#r-6-the-video-list-is-read-with-an-added_at-id-keyset-cursor)). The only order is ascending `(added_at, id)`; there is no order parameter |
+| `VideoTagsAction` | `add`, `remove`, `replace` |
+| Error for a video that cannot be found | Wraps `ErrNotFound` and holds the position (from 0) of the `VideoRef` |

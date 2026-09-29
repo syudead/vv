@@ -1,201 +1,242 @@
-# ライブラリ UI: 見た目の規則と一覧の構成
+# Library UI: visual rules and list layout
 
-- ステータス: 採用
-- スコープ: `web/` の画面（シェル・一覧・再生）が従う見た目の規則と、その規則が
-  守られていることの確かめ方
+- Status: Adopted
+- Scope: the visual rules that the `web/` screens (shell, lists, video page) follow, and how the
+  repository verifies that the rules hold
 
-本書は画面に共通する構成と、その判断の理由を記す。値そのもの（色・半径・カード幅）は
-`web/src/index.css` の `@theme` にあり、検査する組は
-`web/src/theme/tokens.test.ts` にある。ここに写すと真実が 2 か所になるので、写さない。
+This document records the layout shared by the screens and the reasons behind it. The values
+themselves (colors, radii, card widths) are in `@theme` of `web/src/index.css`, and the pairs that
+are checked are in `web/src/theme/tokens.test.ts`. Copying them here would create a second source
+of truth, so this document does not copy them.
 
-## 1. なぜ見た目の値を CSS の 1 か所に置き、対比をテストで保証するのか
+## 1. Visual values live in one CSS file, and tests guarantee contrast
 
-規則の置き場は `web/src/index.css` の `@theme` である。画面と部品は、そこから
-Tailwind が生成する実用クラス（`bg-surface`・`text-fg-muted`・`rounded-md` など）で
-色を指定する。生の 16 進色・`rgb()`・Tailwind 既定のパレット名（`neutral-*`・`sky-*`）が
-`web/src/**` にあると、`web/src/theme/tokens.test.ts` の走査が落ちる。
+| | |
+| --- | --- |
+| **Decision** | The rules live in `@theme` of `web/src/index.css`. Screens and components set colors with the utility classes that Tailwind generates from it (`bg-surface`, `text-fg-muted`, `rounded-md` and so on). A raw hex color, `rgb()` or a default Tailwind palette name (`neutral-*`, `sky-*`) in `web/src/**` fails the scan in `web/src/theme/tokens.test.ts`. |
+| **Why** | With CSS as the source of truth, the screens have no option other than token names. |
+| **Rejected** | Keeping the values in TypeScript and generating CSS: the screens are still written with Tailwind class names, so every name exists twice, and one more generated artifact that must not be hand-edited is added. |
 
-CSS を真実にしたのは、そうすると画面側にトークン名以外の選択肢が無くなるからである。
-値を TypeScript 側に置いて CSS を生成する形も採れるが、画面は結局 Tailwind のクラス名で
-書くので名前が二重になり、手編集禁止の管理対象が 1 つ増える。
+Contrast is not left to the human eye. The same `tokens.test.ts` reads the colors from `@theme`,
+computes sRGB, then relative luminance, then contrast with the WCAG 2 formula, and asserts that
+every text and surface pair is 4.5 or higher. The check needs to **read only that file** because
+the values are in one place.
 
-対比を人の目に任せない。同じ `tokens.test.ts` が `@theme` から色を取り出し、
-sRGB → 相対輝度 → 対比を WCAG 2 の式で計算して、文字と面の各組が 4.5 以上であることを
-表明する。検証が**そのファイルを読むだけ**で済むのは、値が 1 か所に集まっている結果である。
-外部の検査ツール（axe・Lighthouse）を CI に入れる案は、実ブラウザと描画が要る割に、
-得られるのは対比以外の指摘であり、それは人が見る範囲である。
+| | |
+| --- | --- |
+| **Decision** | Contrast is checked by `tokens.test.ts`, not by an external tool. |
+| **Why** | The values are in one file, so reading that file is enough. |
+| **Rejected** | Running an external checker (axe, Lighthouse) in CI: it needs a real browser and rendering, and what it adds beyond contrast is findings that fall within what a human reviews. |
 
-**文字色や面の色を足したら `tokens.test.ts` の組にも足すこと。** 組に無い色は検査されない。
-テストは「組に載っているのに CSS に無い」ずれも落とすが、その逆は落としようがない。
+**When you add a text color or a surface color, add it to the pairs in `tokens.test.ts`.** A color
+that is not in a pair is not checked. The test also fails on a pair that is listed but missing from
+the CSS, but it cannot catch the reverse.
 
-VVMDM の画面では `navbar`・`bg`・`surface` に提供された暗色を、主要操作にシアンの
-`accent`、hover に `accent-hover`、押下と選択に `accent-active` を使う。共通操作部の
-境界には `control-border`、キーボードフォーカスには `link` を使う。危険・警告・成功は
-それぞれの意味別の色と文言・アイコンで伝え、シアンの操作状態と混同させない。
-通常文字と面の対比、主要な境界とフォーカスの対比は `tokens.test.ts` で検査する。
+The VVMDM screens use these tokens.
 
-## 2. なぜ暗い配色だけを実装し、明暗の切り替えを持たないのか
+| Role | Token |
+| --- | --- |
+| The provided dark colors | `navbar`, `bg`, `surface` |
+| Primary action (cyan) | `accent` |
+| Hover | `accent-hover` |
+| Pressed and selected | `accent-active` |
+| Border of shared controls | `control-border` |
+| Keyboard focus | `link` |
 
-`html` に `color-scheme: dark` を宣言し、定義している配色は暗い 1 組である。
-`prefers-color-scheme` の分岐も切り替えスイッチも無い。
+Danger, warning and success use their own semantic colors plus text and icons, so they are not
+confused with the cyan interaction states. `tokens.test.ts` checks the contrast of normal text
+against surfaces, and of the main borders and the focus indicator.
 
-理由は維持の費用である。切り替えを入れると、対比の検査対象が 2 組になる。一方は誰も
-見ないまま値が古び、それでも検証対象として保ち続けることになる。
+## 2. Only the dark color scheme exists; there is no light/dark switch
 
-その代わり、トークン名を色そのもの（`neutral-850`）ではなく**役割**（`bg`・`surface`・
-`elevated`・`fg`・`fg-muted`・`accent`・`danger`・`warning`）で付けてある。将来明るい配色が
-必要になったときの作業は「もう 1 組の値を定義する」ことだけで、画面側の書き換えは発生しない。
-いま分岐を持たないことと、あとで分岐を足せることは両立する。
+`html` declares `color-scheme: dark`, and one dark color set is defined. There is no
+`prefers-color-scheme` branch and no toggle.
 
-## 3. なぜ仮想スクロールを使っていないのか
+| | |
+| --- | --- |
+| **Decision** | Implement one dark color set only. Tokens are named by **role** (`bg`, `surface`, `elevated`, `fg`, `fg-muted`, `accent`, `danger`, `warning`), not by color (`neutral-850`). |
+| **Why** | Maintenance cost. A switch doubles the contrast pairs to check. One set goes stale because nobody looks at it, yet it has to be kept as a test target. |
+| **Rejected** | A light/dark switch now. With role names, a future light scheme only means "define one more set of values", and the screens need no rewrite. Having no branch now and adding one later are compatible. |
 
-一覧は仮想スクロールのライブラリを使っていない。求めているのは「操作への反応がすぐ始まる」
-ことであって、DOM の要素数を減らすこと自体ではない。
+## 3. The list does not use virtual scrolling
 
-仮想スクロールを避けたのは、この一覧が**折り返す格子**だからである。1 行の枚数は画面幅と
-カード幅で変わるので、仮想化すると枚数の計算を自前で持つことになり、一覧へ戻ったときの
-位置の復元も仮想化の座標系に合わせて作り直しになる。一覧は 1 ページ 60 件ずつしか読まない
-ので、DOM に載る数は利用者が読み込んだ分に限られる。依存も増えない。
+The list uses no virtual scrolling library. The goal is that "the response to an action starts at
+once", not fewer DOM elements as such.
 
-**この判断は測ってから見直す。** 反応が遅いと分かった場合でも、その場で仮想スクロールへ
-進まず、まず何が遅いのかを測る。
+| | |
+| --- | --- |
+| **Decision** | No virtual scrolling. |
+| **Why** | The list is a **wrapping grid**. Cards per row depend on the viewport width and the card width, so virtualization means owning that calculation. Restoring the position when returning to the list would also have to be rebuilt in the virtualized coordinate system. The list loads 60 items per page, so the DOM holds only what the user has loaded. No dependency is added. |
+| **Rejected** | A virtual scrolling library, for the reasons above. |
 
-## 4. 幅の分岐を CSS で行う理由と、サイドバーの例外
+**Measure before revisiting this decision.** Even if the response turns out to be slow, do not jump
+to virtual scrolling; first measure what is slow.
 
-画面の組み立ての幅による出し分けは、Tailwind の既定のブレークポイントを使い CSS で
-行っている。JavaScript で幅を監視すると、監視そのものに加えて、初回描画が既定値で
-1 フレーム出るちらつきと、テストのための `matchMedia` の擬似実装を抱え込むからである。
+## 4. Width breakpoints are in CSS, with the sidebar as the exception
 
-サイドバーの展開・レール・ドロワーは、`web/src/shell/useSidebar.ts` が `matchMedia` で
-画面幅を読んで決めている。利用者が開閉した選択を幅ごとに解釈し、ドロワーの開閉を状態と
-して持つためで、CSS だけでは表せない。境界（1024px・640px）は Tailwind の `lg`・`sm` と
-同じ値である。
+| | |
+| --- | --- |
+| **Decision** | Layout changes by width use the default Tailwind breakpoints in CSS. |
+| **Why** | Watching the width in JavaScript brings the watcher itself, a one-frame flash of the default layout on first render, and a fake `matchMedia` for tests. |
+| **Rejected** | Width detection in JavaScript, except for the sidebar below. |
 
-**動きを減らす設定（`prefers-reduced-motion`）は CSS で扱う。** 装飾的な
-遷移は `motion-reduce:` 変種で止め、色の最終状態と狙いの印は常に適用する ── 動きだけを
-止めるので、操作の結果は判別できる。
+`web/src/shell/useSidebar.ts` reads the viewport width with `matchMedia` to choose between the
+expanded sidebar, the rail and the drawer. It interprets the user's open or closed choice per width
+and holds the drawer's open state, which CSS alone cannot express. The breakpoints (1024px, 640px)
+equal Tailwind's `lg` and `sm`.
 
-## 5. なぜ構図の検証を機械に任せないのか
+**Reduced motion (`prefers-reduced-motion`) is handled in CSS.** Decorative transitions stop with
+the `motion-reduce:` variant. The final color state and the focus indicator always apply. Only the
+motion stops, so the result of an action stays distinguishable.
 
-機械で確かめているのは、対比・生の色が無いこと・部品の振る舞い（選択、絞り込み、
-再生位置の送信など）である。**構図そのものと、画面幅による出し分けは人が実機で確かめる。**
+## 5. Layout is not verified by machines
 
-jsdom は CSS を適用しないので、`position: fixed` もメディアクエリも折り返しも解決されない。
-そこに擬似的な仕掛けを置くと、「テストは通るが画面は壊れている」という最悪の状態を招く。
-視覚回帰テスト（基準画像との比較）は依存が増えるうえ、環境ごとの字形差で誤検知が出るため、
-以後すべての UI 変更が基準画像の更新を伴うことになる。
+Machines check contrast, the absence of raw colors, and component behavior (selection, filtering,
+sending the playback position, and so on). **A human checks the composition itself and the layout
+changes by width on real devices.**
 
-人に回すのは**確かめられないものだけ**である。
+| | |
+| --- | --- |
+| **Decision** | Composition and responsive layout are checked by a human on real devices. |
+| **Why** | jsdom applies no CSS, so `position: fixed`, media queries and wrapping are never resolved. Faking them leads to the worst state: "the tests pass but the screen is broken". |
+| **Rejected** | Visual regression tests (comparison with baseline images): they add dependencies, and glyph differences between environments cause false positives, so every later UI change would also need a baseline update. |
 
-## 6. 一覧の構成
+Only **what cannot be verified** goes to a human.
 
-一覧は管理画面として密度の高い構成にする。上部ナビゲーション、フィルタ帯、箱型カードを
-組み合わせ、配色と書体は VVMDM のものにしている。
+## 6. List layout
 
-- **シェル**: 上部の `TopBar`（`web/src/shell/TopBar.tsx`）は ☰・ロゴ・取り込みの
-  「更新」ボタンを持ち、その間に各画面が自分のツールバーを差し込む
-  （`TopBarPortal`）。ナビゲーションと設定への入口は `Sidebar` にある。サイドバーの
-  下段は所有者では「設定」「ログアウト」、ゲスト（ログインしていない人）では
-  「ログイン」だけで、ゲストでは上段も「ライブラリ」「フォルダ」の 2 つになり、
-  上部バーの「更新」と取り込みの進捗も出ない
-  （specs/016-single-account-auth/ui-design.md「Shell entries」「Guest degradation」）。
-- **サイドバー**: 展開・レール（アイコンのみ）・ドロワー（狭幅）の 3 状態。折りたたむと、
-  格子が使える横幅が増える（カードの幅は表示倍率で決まる）。
-- **ツールバー**: 検索・絞り込み・表示形式（ライブラリのみ）・表示倍率・並び順を持つ。
-  狭い幅では表示形式・表示倍率・並び順が「表示と並び順」のまとめへ移る。件数は
-  ライブラリと検索結果では格子の上の行に、フォルダ画面の直下の表示では一群の見出しに出る。
-- **カード**（`web/src/videoList/VideoCard.tsx`）: サムネイル、その右下の再生時間、
-  下端の再生進捗、題名を描く。ライブラリの格子表示とフォルダ画面では、題名の下にその
-  動画のタグの行を足し、タグの無い動画では足さない（specs/014-video-tags/ui-design.md
-  「Library card」）。ライブラリではタグを押すとそのタグで絞り込み、フォルダ画面では
-  そのタグで絞ったライブラリ（`/?tag=<id>`）へ移る。フォルダ名からだけ付いているタグは、
-  同じ大きさのまま面を持たない破線の枠と Folder の目印で手で付けたタグと区別し、再生画面では
-  × を出さない。選択バーの「タグを外す」も手で付けたタグだけを候補にする
-  （specs/017-folder-groups/ui-design.md「Folder-derived tag chip」）。
-  フォルダ画面の検索結果では題名の下に置き場所の行を足す。ホバープレビューはどの画面でも
-  同時に 1 件だけ再生され、表示倍率を変えると画面上端にあったカードの位置へ戻る。格子
-  （`web/src/videoList/Grid.tsx`）はライブラリとフォルダ画面で共有している。
-- **フォルダのカード**（`web/src/folders/FolderCard.tsx`）: 動画カードと同じ幅・境界を使い、
-  フォルダの絵柄と題名の Folder アイコンで区別する。名前は2行まで表示し、全体は
-  `title` でも確認できる。登録フォルダのパスは所有者だけに末尾を優先して表示し、
-  省略した全体は `title` で確認できる。登録済みの空ルートでは、ファイルを置いてから
-  取り込む必要があることを伝える。
-- **グループのカード**（ライブラリのみ、`web/src/library/GroupCard.tsx`）: ライブラリの一覧は
-  `GET /api/library` を読み、フォルダのグループを動画と同格の 1 件として混ぜる。カードは
-  動画のカードと同じ箱と大きさで、サムネイルの枠にフォルダカードと同じフォルダの絵柄
-  （`web/src/videoList/FolderArt.tsx`、メンバーのサムネイルを最大4枚重ねる）、その右下の面に
-  本数（「12 本」）と合計の長さ、視聴中だけ見終えた本数の割合の帯、グループ名、メンバーの
-  タグの行を描く。押すと続きの
-  メンバーの再生画面（`/videos/{openVideoId}`）へ移る。ゲストには視聴状態・見終えた本数・帯を
-  出さない。フォルダ画面とその検索結果は今までどおり 1 本ずつ出す
-  （specs/017-folder-groups/ui-design.md「Group card」）。まとめの解除・直下をまとめる・
-  タグに変える操作はカードの上に置かず、フォルダ画面の「動画 N」の見出しの行の右端の
-  メニュー（所有者のみ、`web/src/folders/FolderGroupingMenu.tsx`）と、再生画面の
-  グループ名の行に置く。操作の後はライブラリの一覧の控えを捨て、次にライブラリを開くと
-  読み直す（specs/017-folder-groups/ui-design.md「Folder grouping menu」）。
-- **リスト表示**（ライブラリのみ）: 1 行に題名・視聴済み・長さ・画質・大きさ・追加日時を
-  並べる。グループの行は同じ列に、先頭のメンバーのサムネイル、題名の下の Folder の目印と
-  本数、視聴済みの列の「3 / 12」、合計の長さと大きさを出し、画質は空にする
-  （specs/017-folder-groups/ui-design.md「List view row」）。
-- **選択**（ライブラリのみ、所有者のみ）: 格子表示のチェックはポイントまたは
-  フォーカスしたときに現れ、hover できない端末では常に見せる。リスト表示のチェックは
-  常に薄く見せ、選択中はすべてのチェックを表示する。グループのチェックが選ぶ対象と
-  件数の数え方は [017 の UI 設計「Pressing and selection」](../../specs/017-folder-groups/ui-design.md#pressing-and-selection) に記す。
-- **選択バー**: 1 件でも選ぶと画面下部に固定して出し、ツールバーの位置と高さは
-  変えない。広い幅では「N 件を選択中」・「タグを付ける」・「タグを外す」・「公開」を
-  区切り線の無い一群にし、その後に区切り線・「すべて選択」・解除を 1 行に並べる。
-  `sm` 未満では上段に件数・「すべて選択」・解除、下段にタグの 2 操作と「公開」を
-  置く。3 操作が収まらない幅では「公開」がさらに次の段の右端に回る。
-  操作名を短縮しないのは、hover できない端末でも意味を読めるようにするためである。
-  タグ操作の中身は [014 の UI 設計「Selection bar」](../../specs/014-video-tags/ui-design.md#selection-bar)、
-  公開メニューの中身は [016 の UI 設計「Selection bar」](../../specs/016-single-account-auth/ui-design.md#selection-bar) に記す。
-- **操作状態**: 通常・hover・focus-visible・active・selected・disabled を部品ごとにばらばらに
-  せず明確に分ける。キーボードフォーカスはアクセント色の外側輪郭で示す。検索欄は内側の
-  `input` ではなく外枠にフォーカスを出し、二重輪郭を避ける。
+The list uses a dense layout suited to a management screen. It combines a top navigation bar, a
+filter strip and boxed cards, with the VVMDM colors and typefaces.
 
-## 7. サイドバーの導線
+- **Shell**: `TopBar` at the top (`web/src/shell/TopBar.tsx`) holds ☰, the logo and the "Refresh"
+  button for scanning. Each screen inserts its own toolbar between them (`TopBarPortal`).
+  Navigation and the entry to settings are in `Sidebar`.
+  - The lower part of the sidebar shows "Settings" and "Sign out" to the owner, and only "Sign in"
+    to a guest (someone not signed in).
+  - For a guest, the upper part has only "Library" and "Folders", and the top bar shows neither
+    "Refresh" nor the scan progress (specs/016-single-account-auth/ui-design.md "Shell entries",
+    "Guest degradation").
+- **Sidebar**: three states: expanded, rail (icons only), and drawer (narrow widths). Collapsing it
+  gives the grid more width (the card width comes from the zoom level).
+- **Toolbar**: search, filters, view mode (library only), zoom level and sort order. At narrow
+  widths, view mode, zoom level and sort order move into the "View and sort" group. The count
+  appears on the row above the grid in the library and in search results, and in the section
+  heading for the direct contents of a folder screen.
+- **Card** (`web/src/videoList/VideoCard.tsx`): draws the thumbnail, the duration at its bottom
+  right, the playback progress along the bottom edge, and the title.
+  - In the library grid and on the folder screen, a row of the video's tags goes under the title.
+    A video without tags gets no row (specs/014-video-tags/ui-design.md "Library card").
+  - Pressing a tag filters by it in the library. On the folder screen it opens the library
+    filtered by that tag (`/?tag=<id>`).
+  - A tag that comes only from the folder name keeps the same size but has no fill, a dashed
+    border and a Folder marker, which sets it apart from tags added by hand. The video page shows
+    no × for it. "Remove tag" on the selection bar offers only tags added by hand
+    (specs/017-folder-groups/ui-design.md "Folder-derived tag chip").
+  - In folder-screen search results, a location row goes under the title.
+  - On every screen, only one hover preview plays at a time. Changing the zoom level returns to the
+    card that was at the top of the screen. The grid (`web/src/videoList/Grid.tsx`) is shared by
+    the library and the folder screen.
+- **Folder card** (`web/src/folders/FolderCard.tsx`): uses the same width and border as a video
+  card, and is told apart by the folder artwork and a Folder icon next to the title.
+  - The name shows up to two lines, and `title` shows the full name.
+  - The path of a media folder is shown only to the owner, with the end kept visible first;
+    `title` shows the omitted full path.
+  - An empty registered root tells the user that files must be placed there and then scanned.
+- **Group card** (library only, `web/src/library/GroupCard.tsx`): the library list reads
+  `GET /api/library` and mixes folder groups in as items equal to videos.
+  - The card uses the same box and size as a video card. The thumbnail frame holds the same folder
+    artwork as a folder card (`web/src/videoList/FolderArt.tsx`, up to four member thumbnails
+    stacked). A panel at its bottom right shows the count ("12 videos") and the total length.
+  - A bar with the share of watched members appears only while watching. Then come the group name
+    and a row of member tags.
+  - Pressing the card opens the video page of the member to continue (`/videos/{openVideoId}`).
+    Guests see no watch state, watched count or bar. The folder screen and its search results still
+    show videos one by one (specs/017-folder-groups/ui-design.md "Group card").
+  - Ungrouping, grouping the direct contents, and turning a group into a tag are not on the card.
+    They are in the menu at the right end of the "Videos N" heading row on the folder screen (owner
+    only, `web/src/folders/FolderGroupingMenu.tsx`) and in the group name row on the video page.
+  - After such an action, the cached library list is discarded and reloaded the next time the
+    library opens (specs/017-folder-groups/ui-design.md "Folder grouping menu").
+- **List view** (library only): each row shows the title, watched, length, quality, size and date
+  added. A group row uses the same columns: the first member's thumbnail, a Folder marker and the
+  count under the title, "3 / 12" in the watched column, and the total length and size. Quality is
+  empty (specs/017-folder-groups/ui-design.md "List view row").
+- **Selection** (library only, owner only): in the grid, the checkbox appears on pointer hover or
+  focus, and always on devices that cannot hover. In the list view, checkboxes are always shown
+  faintly, and all of them show while anything is selected. What a group's checkbox selects and
+  how it counts is in
+  [017 UI design "Pressing and selection"](../../specs/017-folder-groups/ui-design.md#pressing-and-selection).
+- **Selection bar**: appears fixed at the bottom of the screen as soon as one item is selected. It
+  does not move or resize the toolbar.
+  - At wide widths, "N videos selected", "Add tag", "Remove tag" and "Visibility" form one group
+    without dividers, followed on the same row by a divider, "Select all" and clear.
+  - Below `sm`, the top row holds the count, "Select all" and clear, and the bottom row holds the
+    two tag actions and "Visibility". Where the three actions do not fit, "Visibility" wraps to the
+    right end of the next row.
+  - Action names are not shortened, so that they stay readable on devices that cannot hover. The
+    tag actions are in
+    [014 UI design "Selection bar"](../../specs/014-video-tags/ui-design.md#selection-bar), and the
+    visibility menu is in
+    [016 UI design "Selection bar"](../../specs/016-single-account-auth/ui-design.md#selection-bar).
+- **Interaction states**: normal, hover, focus-visible, active, selected and disabled are clearly
+  distinct and consistent across components. Keyboard focus is an outer outline in the accent
+  color. The search box shows focus on its outer frame, not on the inner `input`, to avoid a double
+  outline.
 
-サイドバーの各項目は対応する画面へ移る。
+## 7. Sidebar navigation
 
-## 8. 再生画面の構成
+Each sidebar item opens its screen.
 
-再生画面（`/videos/:id`）は「見る」ための画面で、一覧とは逆に密度を下げる。詳細な形と
-文言は [specs/012-video-detail-ia/ui-design.md](../../specs/012-video-detail-ia/ui-design.md)
-にあり、ここには構成の判断だけを書く。
+## 8. Video page layout
 
-- **構成要素**: 見出しの帯・プレイヤー・題名・タグ・公開の切り替え・ファイルの情報・
-  関連動画を置く。シェルは無く、一覧の上に重なった画面として × と Esc で閉じる。見出しの帯は
-  再生画面だけのもので、ロゴ（ホームへ）・置き場所のフォルダまでのパンくず・× を持つ。戻り先は
-  画面を開く前の一覧で、関連動画や「次を再生」で移っても最初の一覧のまま引き継ぐ。タグは
-  題名のすぐ下に置き、題名と1つのまとまりとして扱う（詳細は
-  [specs/014-video-tags/ui-design.md「Video page tags」](../../specs/014-video-tags/ui-design.md#video-page-tags)）。
-  公開の切り替え（`role="switch"`）はそのまとまりの直下、ファイルの情報の上に置く。ゲストでは
-  タグ・公開の切り替え・「ファイルを開く」「パスをコピー」を出さず、題名の下はファイルの情報と
-  技術情報の 2 行だけになる（[specs/016-single-account-auth/ui-design.md「Visibility toggle」「Guest degradation」](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)）。
-- **幅による出し分けは CSS**（4 と同じ）: `lg` 以上は右に関連動画の列、それ未満は縦に
-  積む。× は帯の 1 か所だけにあり、パンくずは `md` より狭い幅で最後の段だけを残して畳む。
-- **題名の下は線も枠もラベルも使わない 2 行**: 1 行目はアイコンを添えたファイルの情報
-  （長さ・サイズ・追加日）と、右端の「ファイルを開く」「パスをコピー」。2 行目は技術情報
-  （解像度・コンテナ・コーデック）で、いちばん小さく控えめにする。置き場所はパンくずとして
-  帯にあるので、題名の下にパスは出さない。
-- **状態と失敗はプレイヤーの中に出す**: 読み込み中・取り込みの段階・読み取り失敗・
-  再生失敗・動画が消えた・再生終了は、プレイヤーの上の 1 つの入れ物に重なる。入れ物が
-  重なりの順を決め、一度に 1 つを出す。プレイヤーの外に出る状態はプレイヤー直下の
-  「作成中」の 1 行である。層の中の文字は不透明な `bg-navbar` の面に載っている。半透明の
-  `bg-overlay` の上の文字は、対比を `tokens.test.ts` で検査できないからである。
-- **video.js の部品になっているのは操作バーの部品**: 最初に戻る・再生速度・現在時刻/長さ・
-  「変換して再生中」。状態表示は React 側にある。video.js の部品にすると、画面の他の部分と
-  状態を共有できないからである。
-- **キーボード操作は画面全体で受ける**: video.js の操作バーの部品はキーの伝播を止めるので、
-  `window` の捕捉段階で受け、ボタンやスライダー自身の操作になるキーだけを見送る。
-- **グループのメンバーは同じ画面に足すだけ**: 題名の上にグループ名と何本目かの従の1行、
-  関連動画の列の上位に「続けて再生」のメンバーの並びと境目、再生終了の層の代わりに次の
-  メンバーの予告（5 秒・取り消せる・Esc は取り消し）を出す。所有者ではグループ名の行が
-  「まとめを解除」「グループをタグに変える」のメニューを開き、操作の後は動画と関連動画を
-  取り直してふつうの動画の形に戻る。開いているメニューの Esc はメニューだけを閉じる。
-  前後のつまみはグループの中の前後になる。グループに属さない動画の画面は変えない（詳細は
-  [specs/017-folder-groups/ui-design.md「Video page」](../../specs/017-folder-groups/ui-design.md#video-page)）。
-  広い画面で今のメンバーの行を見える位置へ動かすときだけ、`lg` の幅を `matchMedia` で読む。
-  狭い幅ではページごと動いてプレイヤーが消えるので、動かさないためである。
-- **タッチ用の中央操作は `pointer: coarse` の端末に出る**: 出し分けは CSS のメディア条件で
-  行い、`matchMedia` は読んでいない（4 と同じ理由）。
+The video page (`/videos/:id`) is for watching, so it is less dense than the list. The detailed
+shapes and labels are in
+[specs/012-video-detail-ia/ui-design.md](../../specs/012-video-detail-ia/ui-design.md); this
+section records only the layout decisions.
+
+- **Parts**: a header strip, the player, the title, tags, the visibility toggle, file details and
+  related videos. There is no shell; the page is a layer over the list and closes with × or Esc.
+  - The header strip exists only on the video page. It holds the logo (to home), a breadcrumb to
+    the video's folder, and ×.
+  - The return target is the list open before the page. Moving through related videos or "Play
+    next" keeps that first list.
+  - Tags sit right under the title, and the title and tags form one unit (details in
+    [specs/014-video-tags/ui-design.md "Video page tags"](../../specs/014-video-tags/ui-design.md#video-page-tags)).
+    The visibility toggle (`role="switch"`) is right under that unit, above the file details.
+  - Guests see no tags, visibility toggle, "Open file" or "Copy path". Under the title they see
+    only the two lines of file details and technical details
+    ([specs/016-single-account-auth/ui-design.md "Visibility toggle", "Guest degradation"](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)).
+- **Width breakpoints in CSS** (as in 4): at `lg` and wider, related videos form a column on the
+  right; below that, everything stacks. × exists only once, in the strip. Below `md`, the
+  breadcrumb collapses to its last level.
+- **Two lines under the title, with no rules, frames or labels**: line 1 is the file details with
+  icons (length, size, date added) and, at the right end, "Open file" and "Copy path". Line 2 is
+  the technical details (resolution, container, codec), the smallest and most subdued. The
+  location is already in the strip as a breadcrumb, so no path appears under the title.
+- **States and failures appear inside the player**: loading, scan stages, read failure, playback
+  failure, video gone and playback ended overlay one container above the player. The container
+  decides the stacking order and shows one at a time.
+  - The only state outside the player is the single "Creating" line right under it.
+  - Text in the layer sits on the opaque `bg-navbar` surface, because `tokens.test.ts` cannot check
+    the contrast of text on the translucent `bg-overlay`.
+- **Only control-bar parts are video.js components**: restart, playback speed, current time /
+  duration, and "Converting for playback". State displays live in React, because a video.js
+  component cannot share state with the rest of the page.
+- **Keyboard shortcuts are handled for the whole page**: video.js control-bar components stop key
+  propagation, so keys are caught in the capture phase on `window`. Only keys that operate a
+  focused button or slider itself are passed through.
+- **Group members only add to the same page**: a secondary line above the title with the group name
+  and the member's position, an "Up next" member list and divider at the top of the related-videos
+  column, and, instead of the playback-ended layer, a notice for the next member (5 s, cancelable,
+  Esc cancels).
+  - For the owner, the group name row opens a menu with "Ungroup" and "Turn the group into a tag".
+    After an action, the page reloads the video and related videos and returns to the normal video
+    layout. Esc on an open menu closes only the menu.
+  - The previous and next handles move within the group. Pages of videos outside any group do not
+    change (details in
+    [specs/017-folder-groups/ui-design.md "Video page"](../../specs/017-folder-groups/ui-design.md#video-page)).
+  - The `lg` width is read with `matchMedia` only to scroll the current member's row into view on
+    wide screens. On narrow widths the whole page would scroll and the player would leave the
+    view, so it does not scroll.
+- **Central touch controls appear on `pointer: coarse` devices**: a CSS media condition decides
+  this, and `matchMedia` is not read (the same reason as in 4).

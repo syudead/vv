@@ -1,55 +1,56 @@
-# Quickstart: 動画詳細画面の確認手順
+# Quickstart: verifying the video detail page
 
-準備・起動・検査の手順は [README.md](../../README.md) と [Taskfile.yml](../../Taskfile.yml)
-（`task dev`・`task check`・`task test-e2e`）に従う。ここに書くのは、この feature に固有の
-確認だけである。自動の test で確かめられることは、各実装単位の受け入れ証拠に置いてある。
+Setup, startup and checks follow [README.md](../../README.md) and [Taskfile.yml](../../Taskfile.yml)
+(`task dev`, `task check`, `task test-e2e`). This document covers only the checks specific to this
+feature. What automated tests can confirm is in the acceptance evidence of each unit of work.
 
-## 1. ファイルを開く（要件 18・受け入れ条件 16・17）
+## 1. Open file (Requirement 18, Acceptance criteria 16 and 17)
 
-実行環境によって結果が変わるので、次の 3 通りを人が確かめる。
+The result depends on the runtime environment, so a person checks these 3 cases.
 
-1. **同じ PC・コンテナの外**
-   - 手順: デスクトップのある PC で `task dev` を実行し、同じ PC のブラウザで
-     `http://localhost:<port>/videos/<id>` を開く。
-   - 期待する結果: 情報の行の右端に「ファイルを開く」のアイコンが出て、押すとその動画が
-     既定のアプリで開く。
-2. **別の PC から**
-   - 手順: 1 と同じサーバーへ、同じネットワークの別の端末から LAN のアドレスで接続する。
-   - 期待する結果: 「ファイルを開く」のアイコンは出ない（「パスをコピー」だけが出る）。
-     `curl -X POST http://<lan-addr>:<port>/api/videos/<id>/open` は 403 を返す。
-3. **コンテナ**
-   - 手順: `docker compose up` で起動し、同じ PC のブラウザで開く。
-   - 期待する結果: 「ファイルを開く」のアイコンは出ない。コピーされるパスはコンテナ内の
-     パス（`/media/...`）になる。
-     `curl -X POST http://localhost:8080/api/videos/<id>/open` は 409 `open_unavailable` を
-     返す。コンテナには画面が無いので、要求元の判定（403）より先にこちらが決まる
-     （[contracts](contracts/video-detail-api.md)「ファイルを開く」の判定順）。
+1. **Same PC, outside a container**
+   - Steps: run `task dev` on a PC with a desktop, and open
+     `http://localhost:<port>/videos/<id>` in a browser on the same PC.
+   - Expected: the "Open file" icon appears at the right end of the facts row. Pressing it opens
+     the video in the default application.
+2. **From another PC**
+   - Steps: connect to the server from case 1 using its LAN address, from another device on the
+     same network.
+   - Expected: the "Open file" icon does not appear (only "Copy path" appears).
+     `curl -X POST http://<lan-addr>:<port>/api/videos/<id>/open` returns 403.
+3. **Container**
+   - Steps: start with `docker compose up` and open the page in a browser on the same PC.
+   - Expected: the "Open file" icon does not appear. The copied path is the path inside the
+     container (`/media/...`). `curl -X POST http://localhost:8080/api/videos/<id>/open` returns
+     409 `open_unavailable`. The container has no display, so this check wins over the requester
+     check (403) (the check order of "Open file" in [contracts](contracts/video-detail-api.md)).
 
-同じ PC のブラウザでも、`localhost` ではなく LAN のアドレスで開くと、「ファイルを開く」は出ない
-（要求元と `Host` がループバックでないため）。
+On the same PC, opening the page by the LAN address instead of `localhost` also hides "Open file",
+because the requester and `Host` are not loopback.
 
-注意: 逆プロキシを同じ PC に置いて中継すると、別の PC からの要求もループバックに見える。
-その構成で開けてしまう場合は、逆プロキシ側でこの経路を塞ぐ（plan の Structural Decisions 5）。
+Caution: a reverse proxy on the same PC makes requests from other PCs look like loopback. If files
+open in that setup, block this route at the reverse proxy (Structural Decisions 5 of the plan).
 
-## 2. 取り込み中の段階表示と自動更新（要件 11・12・受け入れ条件 10・11）
+## 2. Stage display and automatic refresh during ingest (Requirements 11 and 12, Acceptance criteria 10 and 11)
 
-1. 動画詳細画面を開いたまま、新しい動画ファイルをメディアフォルダへ置き、設定画面から
-   スキャンを始める。
-2. 別のタブの一覧から、その動画の詳細画面を開く。
-3. 期待する結果:
-   - 開き直さなくても、段階表示が「動画情報の読み取り」→ サムネイル → シーク用プレビュー →
-     一覧用プレビューの順に進む。
-   - 読み取りが終わった時点で再生できるようになる。
-   - プレイヤーの直下の 1 行は、すべての生成が終わると消える。
-   - 再生を始めたあとに生成が進んでも、再生は途切れない。
+1. With a video detail page open, put a new video file in the media folder and start a scan from
+   the settings page.
+2. Open that video's detail page from the list in another tab.
+3. Expected:
+   - Without reloading, the stage display advances in this order: "Reading video information",
+     thumbnail, seek preview, list preview.
+   - The video becomes playable once reading finishes.
+   - The line directly below the player disappears when all generation finishes.
+   - Playback is not interrupted when generation progresses after playback starts.
 
-## 3. 読み取り失敗とやり直し（要件 13・受け入れ条件 12）
+## 3. Probe failure and retry (Requirement 13, Acceptance criterion 12)
 
-1. 壊れた動画を用意する。たとえば、正しい MP4 を先頭から途中で切ったファイル
-   （`head -c 100000 good.mp4 > broken.mp4`）を置いてスキャンする。
-2. 読み取りの再試行が上限に達したあと、その動画の詳細画面を開く。
-3. 期待する結果: プレイヤーの中に失敗理由の原文が出る。
-4. ファイルはそのままで「もう一度読み取る」を押す。
-5. 期待する結果: 段階表示に移り、再試行が上限に達すると、再び失敗の表示に戻る。
-   - 画面を開き直す必要は無い。
-   - 押している間に、同じ動画の読み取りのジョブが 2 件以上積まれることは無い。
+1. Prepare a broken video. For example, put a valid MP4 cut partway from the start
+   (`head -c 100000 good.mp4 > broken.mp4`) in the media folder and scan.
+2. After the probe retries reach their limit, open the video's detail page.
+3. Expected: the raw failure reason appears inside the player.
+4. Leave the file as it is and press "Read again".
+5. Expected: the page switches to the stage display. When the retries reach the limit, it returns
+   to the failure display.
+   - The page does not need to be reopened.
+   - Pressing the button never enqueues 2 or more probe jobs for the same video.

@@ -1,15 +1,25 @@
-## 概要
+## Summary
 
-<!-- 何を、なぜ変えるのか。1〜3行 -->
+<!-- What changes and why, in one to three sentences. Write in English. -->
 
-## 関連 Issue
+## Related Issue
 
-<!-- stage PRは親、implement PRは子を `Refs #NNN`。main向け統合PRだけ親を `Closes #NNN`。 -->
+<!-- Stage PR: `Refs #<parent>`. Implementation PR: `Refs #<child>`.
+     Only the integration PR into main: `Closes #<parent>`.
+     SDD stage and integration PRs follow
+     .agents/skills/issue-handoff/references/pr-digest.md. -->
 
-## 変更点
+## Changes
 
-<!-- 主な変更を領域ごとに -->
+<!-- The main changes, grouped by area. Prefer a table:
+| Area | Change |
+| --- | --- |
+-->
 
-## 確認
+## Checks
 
-<!-- 実行した検証。例: task check が成功 / 起動して /api/health を確認 -->
+<!-- The checks you ran and their result:
+| Command | Result |
+| --- | --- |
+| `task check` | passed |
+-->

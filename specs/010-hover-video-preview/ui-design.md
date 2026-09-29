@@ -2,71 +2,127 @@
 
 ## Design Basis
 
-この artifact は [GitHub Issue #134](https://github.com/syudead/vv/issues/134) の `UI品質とアクセシビリティ` を、実装と画像で判定できる形へ具体化する。カード幅、配色、書体、overlay、focus、selection の既存規則は [library-ui.md](../../docs/design-docs/library-ui.md) と `web/src/index.css` の role token を正本とし、ここでは変更しない。
+This artifact turns the `UI品質とアクセシビリティ` ("UI quality and accessibility") section of
+[GitHub Issue #134](https://github.com/syudead/vv/issues/134) into a form that the implementation
+and screenshots can be judged against. The existing rules for card width, color, type, overlays,
+focus and selection come from [library-ui.md](../../docs/design-docs/library-ui.md) and the role
+tokens in `web/src/index.css`; this document does not change them.
 
-似た thumbnail/title の動画を開き直さず、一覧の位置と操作を保ったまま内容を判別できる。preview は静止画と同じ面で再生し、カードの情報密度を変えない。
+The user can tell apart videos with similar thumbnails and titles without opening them again,
+while the list position and interaction stay the same. The preview plays on the same surface as
+the still image and does not change the card's information density.
 
 ## Screen Boundary
 
-- 対象は grid の `VideoCard` にある 16:9 thumbnail surface である。library と folder 画面（検索結果を含む）の両方で、同時に再生する preview は 1 件である。list row、toolbar、selection bar、player は変えない。
-- preview video は thumbnail と同じ inset、crop、aspect ratio を使う absolute layer とし、card、grid、metadata の寸法計算へ参加しない。
-- title、duration、progress、selection checkbox、focus ring の意味と位置を維持する。probe pending/failed または duration/codec 不足で既存の全面 warning が出る card は preview job 自体が成立しないため、preview eligibility と排他的である。原本が browser-incompatible でも probe metadata が揃い preview が done なら、現在の `unplayableText` は warning を返さず preview を覆わない。
-- 新しい text、badge、spinner、toolbar、audio/seek control は出さない。生成中・未生成・失敗・再生 error は現在の thumbnail/placeholder のまま表す。
+- The target is the 16:9 thumbnail surface of `VideoCard` in the grid. On both the library and
+  folder screens (including search results), at most 1 preview plays at a time. List rows, the
+  toolbar, the selection bar and the player do not change.
+- The preview video is an absolute layer with the same inset, crop and aspect ratio as the
+  thumbnail. It takes no part in the size calculation of the card, grid or metadata.
+- The meaning and position of the title, duration, progress, selection checkbox and focus ring
+  stay the same.
+- A card that shows the existing full-surface warning (probe pending/failed, or missing
+  duration/codec) has no preview job, so it is never preview-eligible. When the original is
+  browser-incompatible but the probe metadata is complete and the preview is done, the current
+  `unplayableText` returns no warning and does not cover the preview.
+- No new text, badge, spinner, toolbar, or audio/seek control appears. Generating, not generated,
+  failed and playback error states all show the current thumbnail/placeholder.
 
 ## Interaction
 
-1. `pointerType === "mouse"` の pointer が eligible card に入り、同じ card 内に 400ms 留まると、その card を active preview として取得開始する。400ms は既存 tooltip の hover delay と同じで、一覧を横切るだけの操作を media request にしない。
-2. thumbnail/placeholder は最初の `playing` event まで表示し続ける。metadata 待ちや初回 buffering のために blank surface や loading indicator を見せない。
-3. 再生開始後は同じ surface 内で muted、inline の preview を表示し、clip 終端では loop する。再生後の `waiting`/`stalled` では現在の video frame を維持し、`playing` でそのまま再開する。error になった場合だけ thumbnail へ戻す。動く内容そのものを preview 中の印とし、静止 frame だけでは新しい状態表示を増やさない。
-4. pointer leave、別 card の activation、click navigation、filter/sort/page/list追加、grid/list 切替、zoom/viewport resize、unmount で即座に timer と再生を止め、media resource を解放して thumbnail/placeholder へ戻す。
-5. `play()` rejection、network/media error、asset 404 でも thumbnail/placeholder を残し、error overlay や toast を増やさない。pointer が一度離れて再度入れば新しい試行を許可する。
-6. selection mode では既存 checkbox と card click selection が優先される。checkbox 上の pointer は preview timer を開始せず、preview 中に selection mode が始まった場合も checkbox は最前面に残る。
+1. When a pointer with `pointerType === "mouse"` enters an eligible card and stays inside the same
+   card for 400 ms, that card becomes the active preview and starts fetching. 400 ms matches the
+   existing tooltip hover delay, so moving across the list does not create media requests.
+2. The thumbnail/placeholder stays visible until the first `playing` event. No blank surface or
+   loading indicator appears while waiting for metadata or initial buffering.
+3. After playback starts, the muted inline preview shows on the same surface and loops at the end
+   of the clip. On `waiting`/`stalled` after playback, the current video frame stays, and playback
+   resumes on `playing`. Only an error returns to the thumbnail. The moving content itself marks
+   the preview; a still frame adds no new state indicator.
+4. Pointer leave, activation of another card, click navigation, filter/sort/page/list append,
+   grid/list toggle, zoom/viewport resize and unmount immediately stop the timer and playback,
+   release the media resources and return to the thumbnail/placeholder.
+5. A `play()` rejection, a network/media error or an asset 404 keeps the thumbnail/placeholder and
+   adds no error overlay or toast. Once the pointer leaves and enters again, a new attempt is
+   allowed.
+6. In selection mode, the existing checkbox and card click selection take priority. A pointer on
+   the checkbox does not start the preview timer, and when selection mode starts during a preview,
+   the checkbox stays on top.
 
-`LibraryPage` は active card ID と reset epoch だけを調停する。card は timer、video element、playing/error state、resource cleanup を所有する。同時に見える active preview は1件だけとする。
+`LibraryPage` coordinates only the active card ID and the reset epoch. The card owns the timer,
+the video element, the playing/error state and resource cleanup. At most 1 active preview is
+visible at a time.
 
 ## Visual Hierarchy
 
-- thumbnail または preview が card の一次視覚情報、title と duration/progress が判別を支える情報である。preview は surface の外へ出ず、title より強い外枠や label を追加しない。
-- 公開マークと再生時間、progress bar、selection checkbox は preview layer より前面に置く。preview 中は再生時間の背景を不透明な `navbar`、progress track を不透明な `fg-subtle` に切り替え、frame の明暗に依存しない識別性を保つ。通常の thumbnail 状態の見た目は変えない。
-- preview 中も card hover shadow とわずかな lift は現行どおりで、feature 固有の glow、色変更、拡大は足さない。thumbnail と video は同じ media-layer wrapper 内に置き、既存の hover scale を wrapper へ適用するため、`playing` への交換で crop/scale が跳ねない。
+- The thumbnail or preview is the card's primary visual information; the title and
+  duration/progress support identification. The preview stays inside the surface and adds no
+  frame or label stronger than the title.
+- The public mark, duration, progress bar and selection checkbox sit in front of the preview
+  layer. During a preview, the duration background switches to opaque `navbar` and the progress
+  track to opaque `fg-subtle`, so they stay distinguishable regardless of frame brightness. The
+  normal thumbnail state looks the same as before.
+- During a preview, the card hover shadow and slight lift stay as they are; no feature-specific
+  glow, color change or enlargement is added. The thumbnail and the video sit in the same
+  media-layer wrapper, and the existing hover scale applies to the wrapper, so the crop/scale does
+  not jump on the switch to `playing`.
 
 ## Information Density
 
-- card が同時に見せる text と control の数は増やさない。通常時、delay 中、preview 中、fallback 後で grid の card 数と折り返し位置を同じにする。
-- preview が unavailable な理由は一覧へ追加表示しない。既存 thumbnail placeholder と状態表示だけを使い、詳細な失敗理由は job 確認経路が所有する。
+- The number of text items and controls a card shows does not grow. The number of grid cards and
+  the wrap positions are the same in the normal state, during the delay, during a preview and
+  after fallback.
+- The list shows no extra reason why a preview is unavailable. Only the existing thumbnail
+  placeholder and state display are used; the job inspection path owns detailed failure reasons.
 
 ## Spacing Rhythm
 
-- `aspect-video`、card width token、grid gap、metadata padding、card radius をそのまま使う。
-- video は `h-full w-full object-contain` で thumbnail と同じ framing にする（縦長の動画も切り抜かず全体を見せる。縦長・正方形に近い動画は、左右の余白に同じサムネイルをぼかして敷く）。開始・停止・buffering で surface 高、card 高、隣接 card、toolbar、selection bar、scroll positionを動かさない。
+- `aspect-video`, the card width token, the grid gap, the metadata padding and the card radius
+  stay as they are.
+- The video uses `h-full w-full object-contain`, the same framing as the thumbnail (portrait
+  videos are shown whole without cropping; for portrait and near-square videos, a blurred copy of
+  the same thumbnail fills the side margins). Start, stop and buffering do not move the surface
+  height, card height, adjacent cards, toolbar, selection bar or scroll position.
 
 ## Typography
 
-- title、metadata、duration、状態表示の font family、size、weight、line height、line clamp、tabular numbers を変更しない。
-- preview 状態を可視 text や icon label として追加しないため、新しい typography token は不要。preview 中は既存 overlay の背景を不透明にして読みやすさを保つ。
+- The font family, size, weight, line height, line clamp and tabular numbers of the title,
+  metadata, duration and state display do not change.
+- The preview state adds no visible text or icon label, so no new typography token is needed.
+  During a preview, the existing overlay background becomes opaque to keep it readable.
 
 ## Responsive And Motion
 
-- viewport 幅による eligibility の分岐を作らない。touch 主体端末でも mouse event なら preview でき、touch/pen/focus では開始しない。
-- layout は既存 CSS breakpoint と card width token に従う。JavaScript の resize handling は playback reset のためだけに使い、幅や配置を決定しない。
-- `prefers-reduced-motion: reduce` では既存 CSS rule により card lift、thumbnail scale、opacity transition を実質停止する。利用者が明示的に mouse を留めた結果である video playback は利用できるが、thumbnail と first playing frame の交換、および停止時の復帰は fade/scale せず即時に行う。
+- Eligibility does not branch on viewport width. On touch-first devices a mouse event can still
+  start a preview; touch, pen and focus do not.
+- Layout follows the existing CSS breakpoints and the card width token. JavaScript resize handling
+  exists only to reset playback and does not decide width or placement.
+- Under `prefers-reduced-motion: reduce`, existing CSS rules effectively stop the card lift, the
+  thumbnail scale and opacity transitions. Video playback, which results from the user explicitly
+  resting the mouse, stays available. The swap between the thumbnail and the first playing frame,
+  and the return on stop, happen immediately without fade or scale.
 
 ## Accessibility
 
-- keyboard focus だけでは preview を開始しない。Tab で card link と checkbox に到達でき、focus-visible outline、Enter navigation、Space/click selection、Esc selection clear を既存どおり使える。
-- preview video は装飾的な補助内容として accessibility tree へ重複した題名や control を追加しない。card link の accessible name は title のままにする。
-- video は常に muted、`playsInline`、controls なし。音声を有効にする経路と progress update を持たない。
-- screen reader では preview の開始・停止を live announcement しない。pointer 専用の一時的視覚情報であり、keyboard 操作の読み上げを割り込ませない。
+- Keyboard focus alone does not start a preview. Tab reaches the card link and checkbox, and the
+  focus-visible outline, Enter navigation, Space/click selection and Esc selection clear work as
+  before.
+- The preview video is decorative supplementary content and adds no duplicate title or control to
+  the accessibility tree. The card link's accessible name stays the title.
+- The video is always muted, `playsInline`, and has no controls. It has no path to enable audio
+  and no progress updates.
+- Screen readers get no live announcement of preview start or stop. The preview is temporary
+  pointer-only visual information and must not interrupt keyboard announcements.
 
 ## System States
 
 | State | Visible result |
 | --- | --- |
-| eligible, idle | 現在の thumbnail/placeholder と overlays |
-| 400ms delay | idle と同一。request、spinner、label なし |
-| initial loading/buffering | thumbnail/placeholder を維持 |
-| playing | thumbnail surface の内容だけを loop preview に置換。既存 overlays は前面 |
-| waiting/stalled after playing | 現在の preview frame を維持し、再開を待つ |
-| pending/failed/missing preview | idle のまま。source stream fallback なし |
-| play/media error | idle へ即時復帰し、再 hover を許可 |
-| focus/touch/pen、checkbox の直接操作 | 既存 interaction のみ。preview 開始なし |
+| eligible, idle | Current thumbnail/placeholder and overlays |
+| 400 ms delay | Same as idle. No request, spinner or label |
+| initial loading/buffering | Keeps the thumbnail/placeholder |
+| playing | Only the thumbnail surface content is replaced by the looping preview. Existing overlays stay in front |
+| waiting/stalled after playing | Keeps the current preview frame and waits to resume |
+| pending/failed/missing preview | Stays idle. No source stream fallback |
+| play/media error | Returns to idle immediately and allows a new hover |
+| focus/touch/pen, direct checkbox interaction | Existing interaction only. No preview start |

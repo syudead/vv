@@ -79,12 +79,13 @@ satisfy. The three that decide whether the output is usable:
    to say (P-2). Name the ones you are not creating, and why, in `plan.md`.
 
 6. **Reconcile the artifacts on disk**: This command also revises existing
-   plans, and a previous run's files stay where they are. When an
-   artifact no longer carries feature-specific content, delete it in this same
-   change so the directory matches the list in `plan.md` — a stale file stays an
-   input to later stages. If it still holds something worth keeping, move that
-   into the canonical document first and link to it, then delete. Git keeps the
-   history, so deleting loses nothing.
+   plans, and a previous run's files stay where they are.
+   - When an artifact no longer carries feature-specific content, delete it in
+     this same change so the directory matches the list in `plan.md` — a stale
+     file stays an input to later stages.
+   - If it still holds something worth keeping, move that into the canonical
+     document first and link to it, then delete. Git keeps the history, so
+     deleting loses nothing.
 
 ## Completion Report
 

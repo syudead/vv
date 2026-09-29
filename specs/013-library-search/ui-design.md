@@ -1,252 +1,294 @@
-# UI Design: 一覧とフォルダ画面の検索・絞り込み・並べ替え
+# UI Design: search, filter and sort in the list and folder pages
 
 **Feature**: [parent Issue #195](https://github.com/syudead/vv/issues/195)
 
-見た目の規則・シェル・一覧の密度は
-[ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
-[`web/src/index.css`](../../web/src/index.css) の `@theme` に従う。フォルダ画面の構成は
-[011 の ui-design.md](../011-folder-browser/ui-design.md) に従う。URL の形と履歴は
-[contracts/list-url.md](contracts/list-url.md)、検索語の書き方は
-[contracts/list-api.md §1](contracts/list-api.md#1-検索語の書き方) で決まっており、ここでは
-決め直さない。本書は、ツールバー・書き方の手引き・件数と一致なし・フォルダ画面の検索が
-既存の画面に**足す・変える**ものだけを定める。新しい色・半径・影のトークンは追加しない。
+The visual rules, the shell and the list density follow
+[Library UI: visual rules and list structure](../../docs/design-docs/library-ui.md) and `@theme`
+in [`web/src/index.css`](../../web/src/index.css). The folder page structure follows
+[011's ui-design.md](../011-folder-browser/ui-design.md). The URL shape and history are fixed by
+[contracts/list-url.md](contracts/list-url.md), and the search syntax by
+[contracts/list-api.md §1](contracts/list-api.md#1-search-syntax); this document does not
+redecide them. It defines only what the toolbar, the syntax help, the result count, the no-match
+state and the folder page search **add to or change in** the existing pages. No new color,
+radius or shadow tokens are added.
 
 ## Screen boundary
 
-- ライブラリ（`/`）、フォルダ画面の最上位（`/folders`）、各フォルダは、同じ部品
-  （検索欄と手引き・絞り込み・並べ替えと向き）を `TopBarPortal` の中に置く。部品は
-  `web/src/library/` のものをフォルダ画面が借りる。
-  フォルダ画面のツールバーは、ライブラリのツールバーから表示形式の切り替えを除いたものに
-  なる。フォルダ画面にはリスト表示が無いからである。
-- フォルダ画面のツールバーは、今の「右寄せ」をやめ、ライブラリと同じ「検索欄を先頭に
-  中央へまとめる」配置にする。右寄せは、検索欄が無かった時の配置である
-  （011「Toolbar」）。検索欄が入ったので、同じ製品の同じ部品に見せる方を取る。
-- 格子・カード・シェル・スクロールの持ち方は変えない。
+- The library (`/`), the top level of the folder page (`/folders`) and each folder put the same
+  parts (the search box and its help, the filter, the sort and direction) inside `TopBarPortal`.
+  The folder page borrows the parts from `web/src/library/`.
+- The folder page toolbar is the library toolbar without the view switch, because the folder
+  page has no list view.
+- The folder page toolbar drops its current right-aligned layout and uses the library layout:
+  the search box first, grouped in the center.
+  - Why: right alignment was the layout when there was no search box (011 "Toolbar"). With a
+    search box, the parts should look like the same parts of the same product.
+- The grid, the cards, the shell and the scroll ownership do not change.
 
 ## Toolbar
 
-主は結果の格子で、ツールバーは従である。ツールバーの中では、検索欄だけを入力欄の見た目
-（`bg-field` の枠）にし、ほかはすべて今と同じ `Button` の secondary と `IconButton` にする。
-行は増やさない。
+The result grid is primary and the toolbar is secondary. Inside the toolbar, only the search box
+looks like an input (a `bg-field` frame). Everything else is the current `Button` secondary and
+`IconButton`. No row is added.
 
-左から次の順に並べる。この順が Tab の順でもある。
+The parts are ordered from left to right as below. This order is also the Tab order.
 
-1. **検索欄**（今の `SearchBox`。幅の規則 `min-w-20`・`sm:min-w-40`・`sm:max-w-md` も今のまま）
-2. **書き方の手引き**を開くボタン。検索欄の枠の**内側の右端**に置く（下の「Syntax help」）
-3. **絞り込み**のボタン（今の `ListFilter` のボタン。有効な件数の数字も今のまま）
-4. **並べ替え**のメニューボタン（今の種類の名前 ＋ `ChevronDown`）
-5. **向き**の切り替え、またはランダムのときの**並べ直す**（同じ場所に1つだけ）
-6. 表示形式（ライブラリだけ）・カードの大きさ・「表示と並び順」のまとめボタン（今のまま）
+1. **Search box** (the current `SearchBox`; the width rules `min-w-20`, `sm:min-w-40` and
+   `sm:max-w-md` stay).
+2. The button that opens the **syntax help**, at the **inner right edge** of the search box frame
+   ("Syntax help" below).
+3. The **filter** button (the current `ListFilter` button, with the active count as today).
+4. The **sort** menu button (the current kind label + `ChevronDown`).
+5. The **direction** toggle, or **"Shuffle"** in random order (only one of them, in the same
+   place).
+6. View (library only), card size, and the "View and sort" menu button (as today).
 
-幅ごとの出し分けは今の境界（Tailwind 既定の `md`・`lg`・`xl`）をそのまま使う。
+The width breakpoints stay the current ones (Tailwind default `md`, `lg`, `xl`).
 
-| 幅 | 見えるもの |
+| Width | Visible |
 | --- | --- |
-| 360px（`sm` 未満） | 検索欄（手引きのボタンを含む）・絞り込み・「表示と並び順」 |
-| 768px（`md` 以上） | 上に加えて、並べ替えと向き |
-| 1024px（`lg` 以上） | 上に加えて、表示形式（ライブラリだけ） |
-| 1280px（`xl` 以上） | 上に加えて、カードの大きさ。格子表示では「表示と並び順」は消える |
+| 360 px (below `sm`) | Search box (including the help button), filter, "View and sort" |
+| 768 px (`md` and up) | The above, plus sort and direction |
+| 1024 px (`lg` and up) | The above, plus view (library only) |
+| 1280 px (`xl` and up) | The above, plus card size. In grid view, "View and sort" disappears |
 
-- `md` 未満では、並べ替えの種類と向きを「表示と並び順」のまとめの中へ移す（今と同じ）。
-  絞り込みは、どの幅でも独立したボタンに残す。これも今のライブラリと同じである。
-  絞り込みまでまとめに入れる案は採らない。有効な件数の数字がまとめの中に隠れ、360px で
-  「何で絞っているか」がツールバーから見えなくなるからである。検索欄はどの幅でも最後まで残る。
-- 何で絞っているかは、ツールバーの3か所で分かる。検索語は検索欄、視聴状態と再生可否は
-  絞り込みボタンの `bg-accent-soft` と数字（今の見た目）、並べ替えはボタンの名前である。
+- Below `md`, the sort kind and the direction move into the "View and sort" menu (as today). The
+  filter stays a separate button at every width, as in the current library. The search box stays
+  at every width.
+  - Rejected: moving the filter into the menu too. The active count would hide inside the menu,
+    and at 360 px the toolbar would no longer show what is filtering the list.
+- The toolbar shows what is filtering the list in 3 places: the search term in the search box,
+  the watch status and playability in the filter button's `bg-accent-soft` and count (the
+  current look), and the sort in the button label.
 
 ### Sort and direction
 
-- 並べ替えのメニュー（`ui/Menu` の `MenuRadioGroup`）は、7つの種類を1列に並べる。名前と
-  lucide のアイコンは次のとおり。メニューボタンには種類の名前だけを出し、向きは出さない。
-  「最近再生した順」は所有者だけで、ゲスト（ログインしていない人）のメニューはそれを除いた
-  6種になる（[016 の ui-design.md「Guest degradation」](../016-single-account-auth/ui-design.md#guest-degradation)）。
+- The sort menu (`MenuRadioGroup` from `ui/Menu`) lists the 7 kinds in one column, with the
+  labels and lucide icons below. The menu button shows only the kind label, not the direction.
+- "Recently played" is for the owner only. The menu for a guest (someone not signed in) has the
+  other 6 kinds
+  ([016's ui-design.md "Guest degradation"](../016-single-account-auth/ui-design.md#guest-degradation)).
 
-| 種類 | 名前 | アイコン | 選んだときの向き | 昇順／降順の言い換え |
+| Kind | Label | Icon | Direction when selected | Ascending / descending wording |
 | --- | --- | --- | --- | --- |
-| 追加日 | 追加日 | `CalendarArrowDown` | 降順 | 古い順／新しい順 |
-| 更新日時 | 更新日時 | `CalendarClock` | 降順 | 古い順／新しい順 |
-| 題名 | 題名 | `ArrowDownAZ` | 昇順 | — |
-| 長さ | 長さ | `Timer` | 降順 | 短い順／長い順 |
-| ファイルサイズ | ファイルサイズ | `HardDrive` | 降順 | 小さい順／大きい順 |
-| 最近再生した順 | 最近再生した順 | `History` | 降順 | 前に再生した順／最近再生した順 |
-| ランダム | ランダム | `Shuffle` | — | — |
+| Date added | "Date added" | `CalendarArrowDown` | Descending | "oldest first" / "newest first" |
+| Date modified | "Date modified" | `CalendarClock` | Descending | "oldest first" / "newest first" |
+| Title | "Title" | `ArrowDownAZ` | Ascending | — |
+| Length | "Length" | `Timer` | Descending | "shortest first" / "longest first" |
+| File size | "File size" | `HardDrive` | Descending | "smallest first" / "largest first" |
+| Recently played | "Recently played" | `History` | Descending | "least recently played" / "most recently played" |
+| Random | "Random" | `Shuffle` | — | — |
 
-- 種類を選ぶと、その種類の「選んだときの向き」になる。追加日と題名は、今の `addedDesc`・
-  `titleAsc` と同じ向きである。前の種類の向きを引き継ぐ案は採らない。追加日の降順から
-  題名へ移ると「Z→A」になり、ほとんどの場合に望まれない向きになる。
-- **向きの切り替え**は、メニューボタンのすぐ右に置く1つのボタンである。見た目は
-  メニューボタンと同じ secondary で、2つの間に隙間を空けず、接する側の角を丸めない
-  （`SegmentedControl` の端の扱いと同じ）。アイコンは降順が `ArrowDownWideNarrow`、昇順が
-  `ArrowUpNarrowWide`。読み上げ名とツールチップは「降順（新しい順）。押すと昇順」の形で、
-  言い換えの無い種類では「昇順。押すと降順」とする。
-- **ランダム**のときは、同じ場所を「並べ直す」のボタン（lucide `Dices`、読み上げ名と
-  ツールチップは「並べ直す」）に差し替える。向きのボタンを隠す・無効にする案は採らない。
-  隠すとツールバーの幅がずれ、無効にすると押せない部品が1つ増える（Q-5）。
-  `RefreshCw` はトップバーの「更新」が使っているので、並べ直すには使わない。
-- `md` 未満のまとめの中では、並べ替えの種類を今と同じ2列のラジオで並べ、その下に向きを
-  `SegmentedControl`（2つ。読み上げ名は言い換えを含む）で置く。ランダムのときは、
-  そこを `Button`（ghost・`sm`）の「並べ直す」に差し替える。
+- Selecting a kind sets that kind's "direction when selected". Date added and title keep the
+  directions of the current `addedDesc` and `titleAsc`.
+  - Rejected: carrying over the previous kind's direction. Moving from date added descending to
+    title would give "Z→A", which is almost never wanted.
+- The **direction toggle** is one button right next to the menu button.
+  - It is secondary like the menu button, with no gap between the two, and the touching corners
+    are not rounded (the same edge treatment as `SegmentedControl`).
+  - The icon is `ArrowDownWideNarrow` for descending and `ArrowUpNarrowWide` for ascending.
+  - The accessible name and tooltip take the form "Descending (newest first). Press for
+    ascending". A kind without wording uses "Ascending. Press for descending".
+- In **random** order, the same place holds the "Shuffle" button instead (lucide `Dices`; the
+  accessible name and tooltip are "Shuffle").
+  - Rejected: hiding or disabling the direction button. Hiding shifts the toolbar width, and
+    disabling adds one more control that cannot be pressed (Q-5).
+  - `RefreshCw` is not used for "Shuffle", because the top bar's "Refresh" uses it.
+- Inside the menu below `md`, the sort kinds are 2-column radios as today. Below them, the
+  direction is a `SegmentedControl` (2 options; the accessible names include the wording). In
+  random order, that place holds a `Button` (ghost, `sm`) labelled "Shuffle".
 
 ### Filter menu
 
-今の絞り込みのポップオーバー（視聴状態の2×2のラジオ、「再生できるものだけ」）を保つ。
+The current filter popover (the 2×2 radios for watch status, "Playable only") stays.
 
-- 下端のボタンの名前を「絞り込みを解除」から「**条件を解除**」に変える。意味は
-  [list-url.md §2](contracts/list-url.md#2-フォルダ画面での意味) のとおり、検索語・視聴状態・
-  再生可否を外す。出すのは、この3つのどれかが有効なときである（今は絞り込みが有効な
-  ときだけ）。押すとポップオーバーを閉じ、フォーカスは絞り込みボタンに戻る。
-- ボタンの数字は、今と同じく視聴状態と再生可否の数だけを数える。検索語は検索欄に
-  見えているので数えない。
+- The button at the bottom is renamed from the old label (clear the filtering) to "**Clear
+  filters**" (clear the conditions). As defined in
+  [list-url.md §2](contracts/list-url.md#2-meaning-on-the-folder-page), it removes the search term, the
+  watch status and playability.
+  - It appears when any of those 3 is active (today, only when a filter is active).
+  - Pressing it closes the popover and returns focus to the filter button.
+- The count on the button still counts only the watch status and playability, as today. The
+  search term is visible in the search box, so it is not counted.
 
 ## Syntax help
 
-- 部品は `ui/Popover` である。開くボタンは `IconButton` 相当の小さなボタン（`size-6`、
-  lucide `CircleHelp`、`text-fg-muted`、hover で `bg-hover-wash` と `text-fg`）で、検索欄の
-  枠の内側の右端に置く。検索語があるときは、今の「検索語をクリア」の × の右に並ぶ。
-  `/` のキーの印は、今と同じく検索語が空で `sm` 以上のときだけ、手引きのボタンの左に出す。
-  枠の外に独立したボタンとして置く案は採らない。360px で検索欄の幅を 36px ほど削り、
-  検索欄から離れた操作に見えるからである。
-- 常時は場所を取らない。クリック・Enter・Space で開き、hover やフォーカスだけでは開かない。
-- 中身は上から次のとおり。ポップオーバーの幅は今の既定（`w-72`）より広い `w-80` とし、
-  360px では今の衝突回避で画面内に収まる。
-  1. 見出し「検索の書き方」（`text-sm font-medium text-fg`）。
-  2. 4行の対応表。左に例を `font-mono text-xs text-fg`（`player/StatusOverlays` と同じ等幅）、
-     右に意味を `text-xs text-fg-muted` で書く。
-     - `京都 2024` — 空白で区切った語をすべて含む
-     - `"京都旅行 2024"` — `"` で囲んだ部分を、空白ごと1つの語として探す
-     - `京都 -2023` — `-` を付けた語を含むものを除く
-     - `京都 OR 奈良`・`京都 | 奈良` — どちらかを含む。空白より強く結び付く
-  3. 区切り線（`MenuSeparator` と同じ `bg-border` の線）の下に、`text-xs text-fg-muted` で2行。
-     「全角と半角、大文字と小文字、ひらがなとカタカナは区別しません。」
-     「語は先頭から 16 個まで使います。」（[list-api.md §1-7](contracts/list-api.md#1-検索語の書き方)）
-- 例は押しても検索欄に入らない。入れる案は、押しただけで今の検索語が置き換わる事故を
-  招くので採らない。
-- 開いてもフォーカスは手引きのボタンに残す（`onOpenAutoFocus` を止める。前例は
-  `web/src/shell/ScanProgressIndicator.tsx` のポップオーバー）。中に操作を持たないので、
-  フォーカスを中へ移すと Radix の FocusScope が Tab を止め、Esc でしか出られなくなる。
-  中へ移して Tab を自前で扱う案は採らない。手引きは読むだけの従の情報で、フォーカスを
-  奪う理由が無い。
-- 手引きのボタンは `aria-expanded` と `aria-controls` でポップオーバーを指し、開いている
-  間は `aria-describedby` でその中身を指す。読み上げでは、ボタンに留まったまま中身が読まれる。
-- Tab でボタンから次の絞り込みボタンへ進むと、フォーカスがポップオーバーの外へ出るので
-  閉じる。Esc は、ポップオーバーが開いているときはポップオーバーだけを閉じ、フォーカスは
-  手引きのボタンのままである。検索語は消さない（受け入れ条件 16）。検索欄にフォーカスが
-  あるときの Esc（検索語を消して抜ける）は今のままである。ポップオーバーはモーダルにしない。
+- The part is `ui/Popover`. The opening button is a small `IconButton`-like button (`size-6`,
+  lucide `CircleHelp`, `text-fg-muted`, `bg-hover-wash` and `text-fg` on hover) at the inner right
+  edge of the search box frame.
+  - With a search term, it sits to the right of the current "Clear search" ×.
+  - The `/` key hint appears to the left of the help button, as today only when the search term
+    is empty and the width is `sm` or up.
+  - Rejected: a separate button outside the frame. At 360 px it takes about 36 px from the search
+    box, and it looks like a control unrelated to the search box.
+- It takes no space when closed. Click, Enter and Space open it. Hover or focus alone does not.
+- Contents from top to bottom are listed below. The popover width is `w-80`, wider than the
+  current default (`w-72`). At 360 px the current collision handling keeps it on screen.
+  1. The heading "How to search" (`text-sm font-medium text-fg`).
+  2. A 4-row table. The left column shows the example in `font-mono text-xs text-fg` (the same
+     monospace as `player/StatusOverlays`). The right column shows the meaning in
+     `text-xs text-fg-muted`.
+     - `京都 2024` — "Finds videos that contain every space-separated word"
+     - `"京都旅行 2024"` — "Words wrapped in `"` are searched for as one term, spaces included"
+     - `京都 -2023` — "Prefix a word with `-` to leave out videos that contain it"
+     - `京都 OR 奈良`, `京都 | 奈良` — "Finds videos that contain either word. Binds tighter
+       than a space"
+  3. Below a divider (the same `bg-border` line as `MenuSeparator`), 2 lines in
+     `text-xs text-fg-muted`: "Full-width and half-width characters, upper and lower case, and
+     hiragana and katakana are treated the same." and "Only the first 16 terms are used."
+     ([list-api.md §1-7](contracts/list-api.md#1-search-syntax))
+- Pressing an example does not put it into the search box.
+  - Rejected: inserting it. A single press would replace the current search term by accident.
+- Opening keeps focus on the help button (stop `onOpenAutoFocus`; the precedent is the popover
+  in `web/src/shell/ScanProgressIndicator.tsx`).
+  - The popover has no controls. Moving focus inside would let the Radix FocusScope trap Tab, and
+    only Esc could leave.
+  - Rejected: moving focus inside and handling Tab ourselves. The help is read-only secondary
+    information, with no reason to take focus.
+- The help button points to the popover with `aria-expanded` and `aria-controls`. While the
+  popover is open, `aria-describedby` points to its contents. A screen reader reads the contents
+  while focus stays on the button.
+- Tab from the button to the next control (the filter button) moves focus out of the popover, so
+  the popover closes.
+- Esc while the popover is open closes only the popover. Focus stays on the help button, and the
+  search term stays (Acceptance criterion 16). Esc with focus in the search box (clear the term
+  and leave) behaves as today. The popover is not modal.
 
 ## Result status
 
-- 検索語は検索欄、結果は一覧そのものから分かるため、要約は「N件」だけを表示する。
-  検索語、読み込み済みの範囲、合計時間、合計サイズ、説明語は重ねない。
-- 件数は `role="status"`（`aria-live="polite"`）とし、N はサーバーの `total`（検索語と
-  絞り込みをすべて適用した全件）である。
-- 先頭ページを取得できなかったときは件数を表示せず、取得失敗の案内だけを表示する。
+- The search box shows the search term and the list itself shows the results, so the summary
+  shows only "N videos". It does not repeat the search term, the loaded range, the total
+  duration, the total size or explanatory words.
+- The count has `role="status"` (`aria-live="polite"`). N is the server's `total` (all items
+  after every search term and filter is applied).
+- When the first page fails to load, the count is not shown; only the load-failure notice is.
 
 ## No-match state
 
-ライブラリとフォルダ画面で1つの部品にする。
+The library and the folder page share one part.
 
-- 見出しは「条件に一致する動画はありません」。
-- 検索語、絞り込み条件、検索範囲のチップや補足文は表示しない。
-- 「条件を解除」ボタンは表示しない。条件は検索欄や絞り込みメニューから変更する。
-- フォルダ画面で絞り込みだけのときは、子フォルダの一群を上に残し、動画の一群の場所に
-  この状態を出す。
-- 登録フォルダが0件・動画が0件の空の状態は、条件が何も無いときだけ出す（今のまま）。
+- The heading is "No videos match these conditions".
+- It shows no chips or notes for the search term, the filters or the search scope.
+- It shows no "Clear filters" button. The user changes the conditions from the search box or the
+  filter menu.
+- On the folder page with filters only, the subfolder group stays on top, and this state takes
+  the place of the video group.
+- The empty state for 0 registered folders or 0 videos appears only when there are no
+  conditions (as today).
 
 ## Folder screen
 
 ### Toolbar and scope
 
-- 検索欄の読み上げ名は、各フォルダでは「〈フォルダ名〉の中を検索」、最上位では
-  「すべてのフォルダの動画を検索」とする。ライブラリは「動画を検索」のまま。見える
-  プレースホルダーは、各フォルダが「このフォルダ内を検索」、最上位が「すべてのフォルダを
-  検索」である。ライブラリの「検索」と文言で分けるのは、ここで打つと範囲が違うことを
-  打つ前に知らせるためである。
-- 検索中（検索語が空でないとき）は、パンくず帯の現在地の直後に `text-fg-muted` で
-  「内を検索中」を続ける（「フォルダ › movies › A 内を検索中」）。最上位では「フォルダ」の
-  代わりに「すべてのフォルダを検索中」とする。現在地の名前が入りきらずに省略されるときも、
-  この文字は省略しない。祖先の段を「…」にまとめる規則は今のまま（`md` 未満で4段以上）である。パンくず帯は sticky なので、スクロール
-  しても範囲が見える。
-- 絞り込みだけのときは、パンくず帯に何も足さない。範囲は今の表示（直下）のままだからである。
-- `/` と Esc は、検索欄の部品ごとライブラリと同じに振る舞う（受け入れ条件 21）。
+- The search box's accessible name is "Search in {folder name}" in each folder and "Search
+  videos in all folders" at the top level. The library keeps "Search videos".
+- The visible placeholder is "Search this folder" in each folder and "Search all folders" at the
+  top level.
+  - Why the wording differs from the library's "Search": it tells the user, before typing, that
+    the scope here is different.
+- While searching (the search term is not empty), the breadcrumb bar continues after the current
+  location with "— searching inside" in `text-fg-muted` ("Folders › movies › A — searching
+  inside"). At the top level, "Searching all folders" replaces "Folders".
+  - This text is not truncated, even when the current location's name is.
+  - The rule that collapses ancestor segments into "…" stays (below `md`, with 4 or more
+    segments).
+  - The breadcrumb bar is sticky, so the scope stays visible while scrolling.
+- With filters only, nothing is added to the breadcrumb bar, because the scope stays as today
+  (direct).
+- `/` and Esc behave as in the library, because the whole search box part is shared (Acceptance
+  criterion 21).
 
 ### Search results
 
-検索語があるときの中身は、ライブラリの一覧と同じ形にする。
+With a search term, the content takes the same shape as the library list.
 
-- 子フォルダの一群と「動画 N」の見出しを出さない。パンくず帯の下にライブラリと同じ
-  「N件」と1つの格子を置く。見出しの代わりに、視覚的に隠した `h2`「検索結果」を置く。
-- 格子と動画カードは、ライブラリと同じ幅・同じ `gap-2.5`・同じ表示倍率である。
-- 各カードの題名の下、今のメタ情報の行（追加日 · 大きさ）の上に、**置き場所の行**を足す。
-  - lucide `Folder`（`size-3`、`text-fg-subtle`、読まない）＋ `text-xs text-fg-muted` の1行。
-    題名（`text-sm font-medium`）より小さく、従の色である。
-  - 中身は、開いているフォルダからの相対パスを `/` でつないだもの（受け入れ条件 17 の `y`
-    なら「B」）。開いているフォルダの直下の動画は「このフォルダ」とする。直下のときに行を
-    出さない案は採らない。行の有無が「直下」なのか「情報が無い」のかを見分けられないからである。
-  - 最上位の検索では、登録フォルダの表示名から始める（「movies/2024/京都」）。登録フォルダの
-    直下なら表示名だけにする。
-  - 入りきらないときは**先頭の側**を省略し、末尾のフォルダ名を残す（「…/2024/京都」）。
-    011 のフォルダカードのパスと同じ扱いである。`title` 属性に全体（最上位では登録フォルダの
-    パスから）を入れる。
-  - この行はリンクにしない。カードの中にリンクが2つになり、Tab の数が倍になるからである。
-    その場所へは、検索語を消して子フォルダのカードからたどる。検索結果から直接移る手段は
-    この feature では足さない（Issue の要件に無い）。
-  - カードのリンクの読み上げ名は「〈題名〉、〈置き場所〉」とする。同じ題名の結果を
-    読み上げで区別できるようにするためである。
-- ライブラリの検索結果のカードには、置き場所の行を足さない。
+- The subfolder group and the "Videos N" heading are not shown. Below the breadcrumb bar come the
+  same "N videos" as in the library and one grid. A visually hidden `h2` "Search results" replaces
+  the heading.
+- The grid and the video cards have the same width, the same `gap-2.5` and the same zoom as the
+  library.
+- Each card gets a **location line** below the title and above the current metadata line (date
+  added · size).
+  - One line: lucide `Folder` (`size-3`, `text-fg-subtle`, not read aloud) + `text-xs
+    text-fg-muted`. It is smaller than the title (`text-sm font-medium`) and in a secondary
+    color.
+  - The content is the path relative to the open folder, joined with `/` ("B" for `y` in
+    Acceptance criterion 17). A video directly in the open folder shows "This folder".
+  - Rejected: no line for a video directly in the folder. The absence of the line could not tell
+    "direct" from "no information".
+  - A top-level search starts from the registered folder's display name (`movies/2024/京都`).
+    Directly in a registered folder, the line is only the display name.
+  - When it does not fit, the **start** is truncated and the last folder name stays
+    (`…/2024/京都`), like the folder card path in 011. The `title` attribute holds the whole path
+    (at the top level, starting from the registered folder's path).
+  - The line is not a link. A link would give the card 2 links and double the Tab stops. To reach
+    that place, the user clears the search term and follows the subfolder cards. This feature adds
+    no direct way to move there from a search result (the Issue's requirements do not ask for it).
+  - The card link's accessible name is "{title}, {location}", so results with the same title can
+    be told apart by screen reader.
+- Library search result cards get no location line.
 
 ### Filter only
 
-検索語が空で視聴状態・再生可否だけがあるときは、今のフォルダ画面の見え方（子フォルダ →
-「動画 N」）のまま、直下の動画だけが絞られる。
+With an empty search term and only watch status or playability set, the current folder page
+layout stays (subfolders → "Videos N"), and only the videos directly in the folder are filtered.
 
-- 「動画 N」の N は絞った後の `total` である。子フォルダの一群は変えない。
-- 見える要約行は足さない。子フォルダの上に出すと、何の件数か読めないからである。件数の
-  変化は、視覚的に隠した `role="status"`（`aria-live="polite"`）で「直下の動画 N 件」と知らせる。
+- N in "Videos N" is the filtered `total`. The subfolder group does not change.
+- No visible summary line is added: above the subfolders, it would be unclear what it counts. A
+  visually hidden `role="status"` (`aria-live="polite"`) announces the change as "N videos
+  directly in this folder".
 
 ### Top level (`/folders`)
 
-- 検索語が空のときは、今と同じく登録フォルダのカードだけを出す。このとき絞り込み・
-  並べ替え・向きのボタンは**無効**（`disabled`、今の部品の `opacity-50`）にし、絞り込みの
-  数字は出さない。URL に `watch`・`playable` が残っていても効かないからである
-  （[list-url.md §2](contracts/list-url.md#2-フォルダ画面での意味)）。
-  - 隠す案は採らない。検索語を打った瞬間にボタンが現れると、中央寄せのツールバーで
-    検索欄が打鍵中に横へずれる。
-  - Q-5: 無効のボタンの価値は、ほかのフォルダ画面と同じ部品が同じ位置に並び、検索語を
-    入れれば絞れることが見えることである。「壊れている」と取られる恐れは、検索欄の
-    すぐ右にあることと、プレースホルダー「すべてのフォルダを検索」で、条件が打つことだと
-    読めることで抑える。無効のボタンは Tab の順から外れる。
-- `md` 未満の「表示と並び順」のまとめの中でも、検索語が空の最上位では並べ替えの
-  ラジオと向きを同じく無効にする。カードの大きさは今のまま操作できる。
-- 検索語があるときは、上の「Search results」のとおりライブラリ全体の結果を出す。
+- With an empty search term, only the registered folder cards are shown, as today. The filter,
+  sort and direction buttons are **disabled** (`disabled`, the current parts' `opacity-50`), and
+  the filter count is not shown. `watch` and `playable` in the URL have no effect there
+  ([list-url.md §2](contracts/list-url.md#2-meaning-on-the-folder-page)).
+  - Rejected: hiding them. If the buttons appeared the moment a term is typed, the centered
+    toolbar would shift the search box sideways during typing.
+  - Q-5: the value of the disabled buttons is that the same parts sit in the same place as on
+    the other folder pages, showing that typing a search term enables filtering. The risk that
+    they look broken is reduced because they sit right next to the search box, and the
+    placeholder "Search all folders" tells the user that the condition is to type. Disabled
+    buttons leave the Tab order.
+- Inside the "View and sort" menu below `md`, the sort radios and the direction are disabled the
+  same way at the top level with an empty search term. Card size stays usable.
+- With a search term, the results for the whole library appear as in "Search results" above.
 
 ## States
 
-| 状態 | 見え方 |
+| State | Appearance |
 | --- | --- |
-| 検索結果の読み込み中 | 件数の位置は「読み込み中…」、1つの格子に動画カードの骨組み 12 枚。フォルダカードの骨組みは出さない |
-| 検索中にフォルダが無くなった（404） | 今と同じ「このフォルダは見つかりません」。一致なしにはしない |
-| 検索結果の読み込み失敗・続きの失敗 | ライブラリと同じ `LoadFailed` と「続きを取得できません」 |
-| 一致なし | 上の「No-match state」 |
+| Search results loading | "Loading…" in place of the count, and 12 video card skeletons in one grid. No folder card skeletons |
+| The folder disappears during a search (404) | The same "This folder wasn't found" as today, not the no-match state |
+| Search results or the next page fail to load | The same `LoadFailed` and "Couldn't load more" as the library |
+| No match | "No-match state" above |
 
 ## Interaction states
 
-足す操作（手引きのボタン、向き、並べ直す、条件を解除）は、hover・focus-visible・active・
-disabled を、それぞれの元の部品（`IconButton`、`Button` の secondary と ghost、今の × の
-ボタン）から受け継ぐ。独自の状態の色は作らない。フォーカスはグローバルの `:focus-visible`
-（`link` 色の外側輪郭）で示す。検索欄の枠の中のボタンにフォーカスがあるときも、その
-ボタンの輪郭を出し、検索欄の枠のフォーカス表示（`focus:border-accent`）は出さない。
+The added controls (the help button, direction, "Shuffle", "Clear filters") inherit hover,
+focus-visible, active and disabled from their base parts (`IconButton`, `Button` secondary and
+ghost, the current × button). No custom state colors are created. Focus is shown by the global
+`:focus-visible` (an outer outline in the `link` color). When a button inside the search box frame
+has focus, that button shows its outline, and the search box frame's focus style
+(`focus:border-accent`) is not shown.
 
 ## Accessibility
 
-- 読み上げ名: 検索欄は上の3通り。手引きのボタンは「検索の書き方」で、ポップオーバーは
-  見出し「検索の書き方」を名前に持つ。絞り込みボタンは今の「絞り込み（N 件適用中）」。
-  並べ替えのメニューボタンは今と同じ「並び順: 〈種類〉」で、メニューの見出し・まとめの
-  「表示と並び順」も今の「並び順」の語のままにする。向きと並べ直すは上のとおり。
-- 件数の変化: ライブラリと検索中のフォルダ画面は、見える件数の行から `polite` で知らせる。
-- キーボードの順（受け入れ条件 23）: トップバーの中で、検索欄 →（検索語があれば ×）→
-  手引き → 絞り込み → 並べ替え → 向き（または並べ直す）→ 表示形式・大きさ・まとめ →「更新」、
-  続いてサイドバーの入口、本文の結果のカードである。本文の前にシェルの部品が入る点は
-  011「Accessibility」のとおりで、Tab の順はその並びの中でこの順を保つ。
-- 色の組: 足すのは `fg-muted`・`fg-subtle` on `surface`（置き場所の行）、`fg`・`fg-muted` on
-  `elevated`（手引きとチップ）で、文字の組は `tokens.test.ts` に既に入っている。
-  `fg-subtle` はアイコンだけに使い、文字には使わない。新しい組は増えない。
+- Accessible names:
+  - The search box has the 3 names above.
+  - The help button is "How to search", and the popover is named by its heading "How to search".
+  - The filter button keeps "Filter (N applied)".
+  - The sort menu button keeps "Sort by: {kind}". The menu heading and the "View and sort" menu
+    keep the current "Sort by" wording.
+  - Direction and "Shuffle" are as above.
+- Count changes: the library and the folder page while searching announce them `polite` from the
+  visible count line.
+- Keyboard order (Acceptance criterion 23): in the top bar, search box → (× when there is a
+  search term) → help → filter → sort → direction (or "Shuffle") → view, card size, menu →
+  "Refresh". Then the sidebar entries, then the result cards in the main content. Shell parts
+  come before the main content as in 011 "Accessibility", and within that sequence the Tab order
+  keeps this order.
+- Color pairs: the additions are `fg-muted` and `fg-subtle` on `surface` (the location line), and
+  `fg` and `fg-muted` on `elevated` (the help and chips). The text pairs are already in
+  `tokens.test.ts`. `fg-subtle` is used only for icons, never for text. No new pair is added.

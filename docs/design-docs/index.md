@@ -3,36 +3,58 @@
 Design documents explain consequential technical decisions and their context.
 Add each new document to this index.
 
-## 設計文書の方針
+## Policy for design documents
 
-- 文書には正しいことだけを書く。今の実装と食い違う記述は残さず、実装を変えた変更の中で
-  直す。
-- 何を出すか、何を置いてよいかを制限するのは、設計文書の役目ではない。「〜だけとする」
-  「〜は出さない」「〜を増やさないこと」のような縛りは書かず、今どうなっているかと、
-  なぜそうしたかを書く。
+- Write only what is true. Fix a statement that disagrees with the
+  implementation in the same change that alters the implementation.
+- Describe what the system does now and why. Do not write restrictions such as
+  "only X", "never show Y" or "do not add Z"; limiting what may be built is not
+  the job of a design document.
+- Write in technical English and follow
+  [Writing style for repository documents](writing-style.md). The Japanese
+  edition of the documentation site is generated
+  ([Documentation translation pipeline](translation-pipeline.md)).
 
 ## Documents
 
-下の `ui-design.md` は日本語の文言を引用している。英語化のあとの画面の文言は、英語のカタログ
-（`web/src/i18n/en.ts`）が正本である（[i18n](i18n.md#ui-designmd-の文言)）。
+### Process and writing
 
-- [Core beliefs](core-beliefs.md)
-- [Plan品質の規則: 空欄を埋めるための記述を防ぐ](plan-quality.md)
-- [技術選定: MDM（Media Data Management）](tech-stack-selection.md)
-- [MOVライブ変換のtrack分離入力](mov-live-transcoding.md)
-- [ライブ変換のシークと解析情報の再利用](live-transcode-seek.md)
-- [ライブ変換のハードウェアエンコード](hardware-encoding.md)
-- [シーク用スプライトの生成](seek-sprite-generation.md)
-- [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
-- [画面の文言と書式（i18n）](i18n.md)
-- [VVMDM ブランドと画面の UI 設計](../../specs/022-vvmdm-brand/ui-design.md)
-- [動画シーク時のサムネイルプレビュー UI](../../specs/009-seek-thumbnail-preview/ui-design.md)
-- [一覧画面の hover 動画プレビュー UI](../../specs/010-hover-video-preview/ui-design.md)
-- [フォルダ階層をたどる画面の UI](../../specs/011-folder-browser/ui-design.md)
-- [動画詳細画面の UI](../../specs/012-video-detail-ia/ui-design.md)
-- [動画取り込みの進捗表示 UI](../../specs/012-scan-progress/ui-design.md)（置き場所と操作だけ。示す内容は 024）
-- [取り込みの進捗と結果の UI](../../specs/024-import-progress/ui-design.md)
-- [一覧とフォルダ画面の検索 UI](../../specs/013-library-search/ui-design.md)
-- [動画のタグとタグでの絞り込み UI](../../specs/014-video-tags/ui-design.md)
-- [単一アカウント認証とゲストの閲覧 UI](../../specs/016-single-account-auth/ui-design.md)
-- [フォルダのグループと続けて再生の UI](../../specs/017-folder-groups/ui-design.md)
+| Document | Covers |
+| --- | --- |
+| [Core beliefs](core-beliefs.md) | Principles every change follows |
+| [Writing style for repository documents](writing-style.md) | Language, register, shapes and document templates |
+| [Documentation translation pipeline](translation-pipeline.md) | How the Japanese site is generated from the English source |
+| [Plan quality rules](plan-quality.md) | What a `plan.md` may contain |
+
+### System
+
+| Document | Covers |
+| --- | --- |
+| [Tech stack selection: MDM (Media Data Management)](tech-stack-selection.md) | The stack and the component boundaries |
+| [Split-track inputs for MOV live transcoding](mov-live-transcoding.md) | Feeding ffmpeg MOV tracks separately |
+| [Live transcoding seek and probe data reuse](live-transcode-seek.md) | Seeking inside a live transcode |
+| [Hardware encoding for live transcoding](hardware-encoding.md) | Encoder selection and fallback |
+| [Seek sprite generation](seek-sprite-generation.md) | Building the seek thumbnail sprites |
+| [UI text and formatting (i18n)](i18n.md) | The message catalog and formatters |
+
+### UI
+
+The quoted labels in each `ui-design.md` are proposals. The catalog
+`web/src/i18n/en.ts` is the source of truth for the text the UI shows
+([i18n](i18n.md#labels-in-ui-designmd)).
+
+| Document | Covers |
+| --- | --- |
+| [Library UI: visual rules and list layout](library-ui.md) | The design system and list layout |
+| [VVMDM brand and screen UI design](../../specs/022-vvmdm-brand/ui-design.md) | Brand, colours and typography |
+| [Thumbnail preview while seeking](../../specs/009-seek-thumbnail-preview/ui-design.md) | Seek bar preview |
+| [Library hover preview](../../specs/010-hover-video-preview/ui-design.md) | Animated preview on hover |
+| [Folder page](../../specs/011-folder-browser/ui-design.md) | Browsing by folder hierarchy |
+| [Video detail page](../../specs/012-video-detail-ia/ui-design.md) | Playback page information architecture |
+| [Scan progress display](../../specs/012-scan-progress/ui-design.md) | Where the progress lives and how it is operated (024 defines what it shows) |
+| [Import progress and results](../../specs/024-import-progress/ui-design.md) | What the scan progress shows |
+| [Search, filter and sort](../../specs/013-library-search/ui-design.md) | Library and folder toolbars |
+| [Video tags and the tag filter](../../specs/014-video-tags/ui-design.md) | Tag chips, tag editing, tag page |
+| [Single-account authentication](../../specs/016-single-account-auth/ui-design.md) | Sign-in and guest browsing |
+| [Folder groups and continuous playback](../../specs/017-folder-groups/ui-design.md) | Group cards and up-next |
+| [API tokens section](../../specs/026-external-api/ui-design.md) | Issuing and revoking tokens |

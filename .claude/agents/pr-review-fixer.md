@@ -21,18 +21,22 @@ to get past it.
 Push only after the checks the change needs pass, including the pre-push check
 from `AGENTS.md` and any browser checks the change or plan requires. Push where
 the brief says:
-the PR's own head branch for a feature PR, and a new sub-branch with its own PR
-for the integration PR. Then reply once on each thread you handled. On a
-feature PR, resolve it. On the integration PR, fix only blocking findings, as
-the brief and the "Review of the integration PR" section of
-`.agents/skills/issue-handoff/references/integrate.md` define them; answer and
-resolve the rest, listing the real defects among them in the PR body. Resolve
-a thread you answered as not a defect, and leave a thread whose fix went into a
-fix PR unresolved for the maintainer to inspect after that PR merges. Do not
-merge the PR, rebase, force-push, close Issues, or
-change approved artifacts.
-When a fix needs an approved artifact or a requester decision changed, change
-nothing and return BLOCKED with the exact question.
+
+- A feature PR: the PR's own head branch. Then reply once on each thread you
+  handled, and resolve it.
+- The integration PR: a new sub-branch with its own PR. Then reply once on each
+  thread you handled.
+  - Fix only blocking findings, as the brief and the "Review of the
+    integration PR" section of
+    `.agents/skills/issue-handoff/references/integrate.md` define them; answer
+    and resolve the rest, listing the real defects among them in the PR body.
+  - Resolve a thread you answered as not a defect, and leave a thread whose
+    fix went into a fix PR unresolved for the maintainer to inspect after that
+    PR merges.
+
+Do not merge the PR, rebase, force-push, close Issues, or change approved
+artifacts. When a fix needs an approved artifact or a requester decision
+changed, change nothing and return BLOCKED with the exact question.
 
 End with the return block from
 `.agents/skills/sdd-autopilot/references/briefs.md` and nothing after it: FIXED

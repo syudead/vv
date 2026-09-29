@@ -12,10 +12,16 @@ Follow the repository's applicable AGENTS.md instructions and the
 Issue, approved artifacts, repository contracts, existing invariants, failure
 paths, and stale documentation risks. Cite the source for each conclusion.
 
-Do not implement fixes, create or switch branches, commit, push, open or update
-a pull request, change approved artifacts, or expand the delegated scope. If a
-finding requires changing an approved artifact or cannot be judged from the
-supplied sources, return the exact blocker instead of guessing.
+Do not:
+
+- implement fixes;
+- create or switch branches, commit, or push;
+- open or update a pull request;
+- change approved artifacts;
+- expand the delegated scope.
+
+If a finding requires changing an approved artifact or cannot be judged from
+the supplied sources, return the exact blocker instead of guessing.
 
 Return ordered findings with file and line references where applicable, the
 checks performed, and any residual risk the parent agent must carry into the

@@ -1,166 +1,176 @@
-# Contract: 認証の HTTP 境界
+# Contract: authentication HTTP boundary
 
-親 Issue: #135。
+Parent Issue: #135.
 
-API の正本は [api/openapi.yaml](../../../api/openapi.yaml) で、この文書はこの feature が
-足す経路・応答・Cookie と、既存の全経路に掛かる認証の境界だけを書く。ゲストに返す
-内容の差と公開フラグの API は [guest-api.md](guest-api.md) にある。実装では
-`openapi.yaml` に足して `task generate` で生成する。
+[api/openapi.yaml](../../../api/openapi.yaml) is the source of truth for the API. This document
+covers only the routes, responses and cookies this feature adds, and the authentication
+boundary over every existing route. The guest response differences and the visibility-flag
+API are in [guest-api.md](guest-api.md). The implementation adds them to `openapi.yaml` and
+generates code with `task generate`.
 
-## 1. 3つの扱い
+## 1. Three access classes
 
-すべての要求は、次の3つのどれかに入る。どれにも挙がらないものは「所有者だけ」である
-（既定拒否、要件 10）。
+Every request falls into one of three classes. A request not listed is "owner only"
+(deny by default, Requirement 10).
 
-| 扱い | 要求 | `openapi.yaml` の `security` |
+| Class | Requests | `security` in `openapi.yaml` |
 | --- | --- | --- |
-| 誰でも | `GET /api/health`、`GET /api/auth/session`、`POST /api/auth/setup`、`POST /api/auth/login`、`POST /api/auth/logout`、`/api/` で始まらない `GET`・`HEAD`（SPA のビルド成果物） | `[]` |
-| ゲストも | `listVideos`、`getVideo`、`getRelatedVideos`、`streamVideo`、`getVideoPreview`、`transcodeVideo`、`getVideoThumbnail`、`getVideoSeekThumbnail`、`listRootFolders`、`getFolder`、`listFolderVideos` | `[{sessionCookie: []}, {}]` |
-| 所有者だけ | 上以外のすべての `/api/*`（定義の無い経路を含む）。`listVideoIds`、`streamEvents`、`getProcessing`、スキャン、メディアフォルダ、ディレクトリ選択、タグ、`updateVideoTags`、`putVideoProgress`、`reprobeVideo`、`openVideoFile`、`updateVideoVisibility` もここに入る | 全体の既定 `[{sessionCookie: []}]` |
+| Anyone | `GET /api/health`, `GET /api/auth/session`, `POST /api/auth/setup`, `POST /api/auth/login`, `POST /api/auth/logout`, and `GET`/`HEAD` outside `/api/` (the SPA build output) | `[]` |
+| Guests too | `listVideos`, `getVideo`, `getRelatedVideos`, `streamVideo`, `getVideoPreview`, `transcodeVideo`, `getVideoThumbnail`, `getVideoSeekThumbnail`, `listRootFolders`, `getFolder`, `listFolderVideos` | `[{sessionCookie: []}, {}]` |
+| Owner only | Every other `/api/*` request, including undefined routes. This includes `listVideoIds`, `streamEvents`, `getProcessing`, scans, media folders, the directory picker, tags, `updateVideoTags`, `putVideoProgress`, `reprobeVideo`, `openVideoFile` and `updateVideoVisibility` | The global default `[{sessionCookie: []}]` |
 
-- 「ゲストも」の要求は、有効なセッションがあれば所有者として、無ければゲストとして
-  処理する。ゲストとして処理した応答は [guest-api.md](guest-api.md) に従う。
-- 「所有者だけ」の要求に有効なセッションが無ければ、§5 の未認証応答を返す。
-- アカウントが未設定の間は、「誰でも」以外のすべての要求に §5 の未認証応答を返す
-  （公開フラグも効かない、要件 2）。
-- 境界は `path.Clean` した `r.URL.Path`（復号済み）で判定する。`//api/…`・`/./api/…`・
-  `/%61pi/…`・`/api/../api/…` のような書き方でも、`/api/` 以下として扱う。
-- SPA のビルド成果物は利用者データを含まない。画面の出し分けは SPA が §4 の状態で行う
-  。
-- Go のテストで、`openapi.yaml` の各操作の `security` と境界の分類が一致することを
-  確かめる。`sessionCookie` は `in: cookie` の `apiKey` として宣言する。
+- A "guests too" request runs as the owner with a valid session, and as a guest without one.
+  Guest responses follow [guest-api.md](guest-api.md).
+- An "owner only" request without a valid session gets the unauthenticated response of §5.
+- While the account is not configured, every request outside "anyone" gets the
+  unauthenticated response of §5. The visibility flag has no effect either (Requirement 2).
+- The boundary is decided on `r.URL.Path` (decoded) after `path.Clean`. Forms such as
+  `//api/…`, `/./api/…`, `/%61pi/…` and `/api/../api/…` count as under `/api/`.
+- The SPA build output contains no user data. The SPA chooses what to show from the state
+  in §4.
+- A Go test checks that each operation's `security` in `openapi.yaml` matches the boundary
+  class. `sessionCookie` is declared as an `apiKey` with `in: cookie`.
 
 ## 2. `POST /api/auth/setup`
 
-要求（`Content-Type: application/json`、本文は 8 KiB まで）:
+Request (`Content-Type: application/json`, body up to 8 KiB):
 
 ```json
 { "username": "string", "password": "string" }
 ```
 
-| 状況 | 応答 |
+| Situation | Response |
 | --- | --- |
-| 未設定で、値が [data-model.md §6](../data-model.md#6-ユーザー名とパスワードの値) を満たす | `200` `{ "redirectTo": "/" }` と `Set-Cookie`（§7）。そのままログイン済みになる |
-| 値が規則を外れる | `400` `invalid_request`（どの欄かを `message` で示してよい。まだアカウントが無いので隠す値が無い） |
-| 既に設定済み（同時の初回設定で負けた場合を含む） | `409` `{ "code": "account_already_configured", "message": "アカウントは既に設定されています" }`。何も書かない |
-| 同一オリジンでない、JSON でない | 既存どおり `403`・`400` |
+| Not configured, and the values satisfy [data-model.md §6](../data-model.md#6-username-and-password-values) | `200` `{ "redirectTo": "/" }` with `Set-Cookie` (§7). The client is signed in at once |
+| A value breaks the rules | `400` `invalid_request`. The `message` may name the field; no account exists yet, so there is nothing to hide |
+| Already configured, including losing a concurrent first setup | `409` `{ "code": "account_already_configured", "message": "The account is already set up." }`. Nothing is written |
+| Not same-origin, or not JSON | `403` or `400`, as today |
 
-- 確認用のパスワードは画面で照らし合わせ、一致しなければ送らない（要件 5）。サーバーは
-  1つのパスワードだけを受け取る。
-- 成立は [data-model.md §5](../data-model.md#5-書き換えの規則) の主キーの衝突で1つに決まる。
+- The UI compares the confirmation password and does not send the request on a mismatch
+  (Requirement 5). The server receives one password only.
+- The primary-key conflict in [data-model.md §5](../data-model.md#5-write-rules) lets only
+  one setup succeed.
 
 ## 3. `POST /api/auth/login`
 
-要求（`Content-Type: application/json`、本文は 8 KiB まで）:
+Request (`Content-Type: application/json`, body up to 8 KiB):
 
 ```json
 { "username": "string", "password": "string", "next": "/videos/12?t=30" }
 ```
 
-`next` は省略できる。
+`next` is optional.
 
-| 状況 | 応答 |
+| Situation | Response |
 | --- | --- |
-| 成功 | `200` `{ "redirectTo": "<安全な戻り先>" }` と `Set-Cookie`（§7） |
-| ユーザー名かパスワードが違う、空、上限超え、アカウントが未設定 | `401` `{ "code": "invalid_credentials", "message": "ユーザー名またはパスワードが違います" }` |
-| 同じ送信元の「照合中 + 直近 5 分の失敗」が 5 以上、または照合の空きを 5 秒待っても得られない | `429` `{ "code": "login_throttled", … }` と `Retry-After`（秒） |
-| 本文が JSON でない、8 KiB を超える、同一オリジンでない | 既存どおり `400`・`403` |
+| Success | `200` `{ "redirectTo": "<safe destination>" }` with `Set-Cookie` (§7) |
+| Wrong username or password, empty value, value over the limit, or account not configured | `401` `{ "code": "invalid_credentials", "message": "Incorrect username or password." }` |
+| The source has 5 or more "verifications in progress + failures in the last 5 min", or no verification slot frees up within 5 s | `429` `{ "code": "login_throttled", … }` with `Retry-After` (seconds) |
+| The body is not JSON, exceeds 8 KiB, or is not same-origin | `400` or `403`, as today |
 
-- 401 の4つの原因は、状態コード・本文・ヘッダーが同じである。応答時間を揃えるため、
-  どの原因でも Argon2id の照合を1回行う（未設定なら固定のダミーのハッシュと照合する）。
-  ユーザー名の比較は定数時間で行う（要件 12）。
-- 照合の前に、その送信元の1回分を予約する。予約中の数も制限に数えるので、同時に
-  送られた要求でも照合は 5 分に 5 回を超えない。
-- 429 のときは照合しない。429 の要求は失敗に数えない。成功すると、その送信元の
-  失敗の記録を消す。
-- 送信元は、信頼するプロキシを経た場合はその転送ヘッダーから求めたクライアントの
-  IP アドレスである。IPv6 は /64 で1つの
-  送信元とみなす。
-- `redirectTo` は `next` を `domain` の規則で確かめた値である。規則は次のとおりで、
-  外れたもの・省略は `/` にする。画面はこの値へ遷移するだけで、自分では判定しない。
-  - 制御文字・空白・`\` をどこにも含まない（ブラウザは URL の解釈でタブと改行を
-    取り除くので、`/\t/evil.example` が `//evil.example` になる）。
-  - 固定の基底に対して URL として解釈した結果が、スキームもホストも持たず、`/` で
-    始まるパスになる。
-  - パスが `/login`・`/setup` でも `/api/` 以下でもない。
-  - 返すのは解釈した結果のパスと問い合わせ文字列を組み立て直した値で、入力そのもの
-    ではない。
+- The four causes of 401 share the status code, body and headers. To equalize response
+  time, every cause runs one Argon2id verification; an unconfigured account verifies against
+  a fixed dummy hash. The username comparison runs in constant time (Requirement 12).
+- Before verifying, the server reserves one attempt for the source. Reservations count
+  toward the limit, so concurrent requests never exceed 5 verifications in 5 min.
+- A 429 skips verification and does not count as a failure. A success clears the source's
+  failure record.
+- The source is the client IP address. Behind a trusted proxy, it comes from the proxy's
+  forwarding header. IPv6 addresses count as one source per /64.
+- `redirectTo` is `next` after validation by the `domain` rules below. A value that breaks
+  them, or a missing value, becomes `/`. The UI only navigates to this value and does not
+  validate it.
+  - No control character, whitespace or `\` anywhere. Browsers strip tabs and newlines when
+    parsing a URL, so `/\t/evil.example` becomes `//evil.example`.
+  - Parsed as a URL against a fixed base, the result has no scheme and no host, and is a
+    path starting with `/`.
+  - The path is not `/login` or `/setup`, and is not under `/api/`.
+  - The returned value is rebuilt from the parsed path and query string, not the input.
 
-## 4. `GET /api/auth/session`・`POST /api/auth/logout`
+## 4. `GET /api/auth/session` and `POST /api/auth/logout`
 
-`GET /api/auth/session` は `200` `{ "state": "owner" | "guest" | "setupRequired" }` を返す。
+`GET /api/auth/session` returns `200` `{ "state": "owner" | "guest" | "setupRequired" }`.
 
-- `setupRequired` は未設定の状態で、Cookie の有無によらずこれを返す。
-- ユーザー名は返さない。
-- 問い合わせ文字列に `next` を付けて呼ぶと、`owner` のときだけ §3 と同じ規則で
-  確かめた `redirectTo` も返す。ログイン済みで `/login` を開いた画面は、この値へ遷移する。
+- `setupRequired` means not configured. It is returned with or without a cookie.
+- The username is not returned.
+- When called with `next` in the query string, the response also carries `redirectTo`,
+  validated by the rules of §3, but only for `owner`. A signed-in UI that opens `/login`
+  navigates to this value.
 
-`POST /api/auth/logout` は `204` を返し、要求に付いていた認証の Cookie をすべて消す
-（`Max-Age=0`）。§7 の読み分けと違い、ログアウトは届いた両方の名前の Cookie を見る。
-HTTPS の要求には、同じホストの HTTP でログインした `vv_session`（`Secure` なし）も
-届くので、HTTPS でのログアウトは HTTP のセッションも終わらせる。HTTP の要求には
-`__Host-vv_session` が届かないので、HTTP でのログアウトは HTTP のセッションだけを
-終わらせる。そのセッションは HTTPS でしか使えず、HTTP の経路からは読めない。
-届いた Cookie が有効なセッションを指していれば、そのセッションを削除し、同じセッションで
-処理中の応答を打ち切る。
-同一オリジンの確認は他の状態変更と同じく掛かる。
+`POST /api/auth/logout` returns `204` and clears every authentication cookie on the request
+(`Max-Age=0`).
 
-## 5. 未認証とその他の応答
+- Unlike the per-scheme reading of §7, logout reads cookies of both names that arrive.
+- An HTTPS request also carries a `vv_session` (without `Secure`) from an HTTP sign-in on the
+  same host. Logout over HTTPS therefore also ends the HTTP session.
+- An HTTP request never carries `__Host-vv_session`, so logout over HTTP ends only the HTTP
+  session. The HTTPS session works only over HTTPS and cannot be read from HTTP routes.
+- When a cookie points to a valid session, the server deletes that session and cuts off
+  responses in progress for it.
+- The same-origin check applies, as for other state changes.
 
-| 状況 | 応答 |
+## 5. Unauthenticated and other responses
+
+| Situation | Response |
 | --- | --- |
-| 「所有者だけ」の要求で、Cookie が無い・形式が違う・該当するセッションが無い・期限切れ・資格情報の再設定後、または未設定 | `401` `{ "code": "unauthenticated", "message": "ログインが必要です" }` |
-| 「ゲストも」の要求で、ゲストに見せない動画を指した | 既存の「その動画はありません」と同じ `404`（[guest-api.md §2](guest-api.md#2-ゲストに見せない動画)） |
-| セッションか公開フラグの確認で DB が失敗した | `500` `{ "code": "internal", … }`（所有者とも公開ともみなさない） |
+| An "owner only" request with no cookie, a malformed cookie, no matching session, an expired session, a session from before a credential reset, or an unconfigured account | `401` `{ "code": "unauthenticated", "message": "Sign-in required." }` |
+| A "guests too" request for a video hidden from guests | The same `404` as the existing "Video not found." ([guest-api.md §2](guest-api.md#2-videos-hidden-from-guests)) |
+| The DB fails while checking the session or the visibility flag | `500` `{ "code": "internal", … }`. The request is treated as neither owner nor public |
 
-- 401 の原因は区別しない（Edge Case「不正、期限切れ、改ざん済みの Cookie」）。
-  `WWW-Authenticate` は付けない（ブラウザの Basic 認証の窓を出さない）。
-- 「ゲストも」の要求に不正・期限切れの Cookie が付いていたら、401 にせずゲストとして
-  処理する。
-- `/api/*` のすべての応答に、その要求をどちらとして処理したかを `X-VV-Audience: owner` か
-  `X-VV-Audience: guest` で付ける。画面は、所有者として描いている間に `guest` の応答を
-  受けたら、401 と同じく1度だけページを読み直す。
-  「ゲストも」の要求は失効しても 401 にならないので、別のタブでのログアウトをこれで
-  次の操作のときに知る（Edge Case「複数タブ」）。
-- どれも `Cache-Control: no-store` で、HTML を返さない（要件 11）。
-- DB の失敗を 401 にしないのは、画面がログイン画面へ送り、そこでも失敗する往復を
-  作らないためである。
+- 401 does not distinguish causes (Edge case "invalid, expired or tampered cookie").
+  `WWW-Authenticate` is not sent, so the browser shows no Basic-auth dialog.
+- A "guests too" request with an invalid or expired cookie runs as a guest instead of
+  returning 401.
+- Every `/api/*` response carries `X-VV-Audience: owner` or `X-VV-Audience: guest`, naming
+  how the request ran. While rendering as the owner, the UI reloads the page once on a
+  `guest` response, as it does on 401. A "guests too" request never returns 401 after
+  expiry, so this header reveals a logout in another tab on the next action (Edge case
+  "multiple tabs").
+- All of these carry `Cache-Control: no-store` and never return HTML (Requirement 11).
+- A DB failure is not a 401. Otherwise the UI would go to the sign-in screen, fail there too,
+  and loop.
 
 ## 6. `GET /api/health`
 
-応答の形は変えない（`status`・`version`・`commit`・`builtAt`）。ライブラリの内容、設定、
-ユーザー名、認証の状態、初回設定の要否は載せない（受け入れ条件 16）。
-`version` と `commit` は稼働中のバイナリの特定に使っているので残す。
+The response shape is unchanged (`status`, `version`, `commit`, `builtAt`). It carries no
+library content, settings, username, authentication state or first-setup need (Acceptance
+criterion 16). `version` and `commit` stay because they identify the running binary.
 
-## 7. セッション Cookie
+## 7. Session cookie
 
-| 接続 | 名前 | 属性 |
+| Connection | Name | Attributes |
 | --- | --- | --- |
-| HTTPS | `__Host-vv_session` | `HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=<期限までの秒>` |
-| HTTP | `vv_session` | `HttpOnly; SameSite=Strict; Path=/; Max-Age=<期限までの秒>` |
+| HTTPS | `__Host-vv_session` | `HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=<seconds until expiry>` |
+| HTTP | `vv_session` | `HttpOnly; SameSite=Strict; Path=/; Max-Age=<seconds until expiry>` |
 
-- 値はセッション ID（32 バイトの暗号学的乱数の base64url）である（要件 6）。
-- `Max-Age` を付けるので、ブラウザを閉じても期限まで残る（受け入れ条件 10）。
-- HTTP でも同じ仕組みで動き、HTTPS を前提にする属性・API は使わない（要件 14）。
-- 認証では、HTTPS の要求は `__Host-vv_session` だけを、HTTP の要求は `vv_session` だけを
-  読む（ログアウトは例外で、§4 のとおり届いた両方を見る）。
-  名前を分けるので、HTTP の応答が HTTPS 用の Cookie を上書きしたり、HTTPS 用の
-  Cookie が HTTP で送られたりしない（Edge Case「HTTP と HTTPS」）。
-- 接続が HTTPS かどうかは、TLS で受けたか、信頼するプロキシの `X-Forwarded-Proto` で
-  決める。
+- The value is the session ID: 32 bytes from a cryptographic RNG, in base64url
+  (Requirement 6).
+- `Max-Age` is set, so the cookie survives a browser restart until expiry (Acceptance
+  criterion 10).
+- HTTP uses the same mechanism, with no attribute or API that requires HTTPS
+  (Requirement 14).
+- For authentication, an HTTPS request reads only `__Host-vv_session`, and an HTTP request
+  reads only `vv_session`. Logout is the exception and reads both (§4). The separate names
+  keep an HTTP response from overwriting the HTTPS cookie, and keep the HTTPS cookie from
+  being sent over HTTP (Edge case "HTTP and HTTPS").
+- A connection is HTTPS when it arrived over TLS, or when a trusted proxy's
+  `X-Forwarded-Proto` says so.
 
-## 8. 同一オリジンの確認
+## 8. Same-origin check
 
-既存の `acceptsSameOrigin`（`internal/httpapi/media_folders.go`）を、初回設定・ログイン・
-ログアウトを含むすべての `POST`・`PUT`・`PATCH`・`DELETE` に掛ける規則のまま使う
-（要件 13）。変えるのは、期待するスキームを §7 と同じ判定から取ることだけである。
-今は `r.TLS` だけを見るので、TLS を終端するプロキシの後ろでは同一オリジンの要求も
-拒否している。
+The existing `acceptsSameOrigin` (`internal/httpapi/media_folders.go`) stays as is: it applies
+to every `POST`, `PUT`, `PATCH` and `DELETE`, including setup, sign-in and logout
+(Requirement 13). The only change is that the expected scheme comes from the same decision as
+§7. Today it reads only `r.TLS`, so it rejects same-origin requests behind a TLS-terminating
+proxy.
 
-## 9. 記録
+## 9. Logging
 
-初回設定・ログイン成功・失敗・試行制限・ログアウトを、それぞれ1行の `slog` で `info` に
-出す。属性は出来事の種類と送信元だけで、送られたユーザー名・パスワード・セッション ID・
-Cookie の値は出さない（要件 12）。送られたユーザー名を出さないのは、パスワードを
-ユーザー名の欄に誤って入れた場合に平文が記録に残るためである。未設定のまま起動した
-ときは、初回設定を促す警告を1行出す。
+Setup, sign-in success, sign-in failure, throttling and logout each log one `slog` line at
+`info`.
+
+- The attributes are the event type and the source only. The submitted username, password,
+  session ID and cookie value are never logged (Requirement 12).
+- The submitted username is withheld because a password typed into the username field would
+  otherwise stay in the log in plaintext.
+- A start without a configured account logs one warning that asks for the first setup.

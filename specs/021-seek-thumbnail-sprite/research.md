@@ -1,56 +1,69 @@
-# Research: シーク用サムネイルをスプライトシートにし、枚数とファイル数に上限を設ける
+# Research: seek thumbnails as sprite sheets with caps on frame and file counts
 
-> 生成方式は、その後の[長尺動画のシーク用スプライト生成](../../docs/design-docs/seek-sprite-generation.md)で更新した。
-> 以下の全編デコードの記述は初期実装の判断で、現在は索引からも区間ごとの抽出でも作れない入力にだけ使う。
+> [!NOTE]
+> The generation method was later updated by
+> [seek sprite generation for long videos](../../docs/design-docs/seek-sprite-generation.md).
+> The full decode described below is the initial implementation's decision. It now applies only
+> to inputs that neither the index nor per-interval extraction can handle.
 
-技術スタック、境界、生成物の所有、`seek_thumbnail` ジョブと状態は既存の正本
-（[ARCHITECTURE.md](../../ARCHITECTURE.md)、
-[specs/020-seek-thumbnail-stage/data-model.md](../020-seek-thumbnail-stage/data-model.md)）を
-そのまま受け継ぐ。ここにはこの feature が足す決定だけを書く。
+The tech stack, boundaries, ownership of generated files, and the `seek_thumbnail` job and state
+are inherited unchanged from the existing sources of truth ([ARCHITECTURE.md](../../ARCHITECTURE.md),
+[specs/020-seek-thumbnail-stage/data-model.md](../020-seek-thumbnail-stage/data-model.md)). This
+file records only the decisions this feature adds.
 
-## R-1: 上限と間隔の規則
+## R-1: At most 600 frames on 6 sheets; the interval widens only past 50 min
 
-**Decision**: 1 本の動画のスプライトは、10 列 × 10 行（1 シート 100 コマ）のシートを最大 6 枚、
-コマは最大 600 とする。間隔・コマ数・シート数は `internal/domain` の純粋関数が動画の長さ
-`durationMs` から決める。
+| | |
+| --- | --- |
+| **Decision** | A video's sprite has at most 6 sheets of 10 columns × 10 rows (100 frames per sheet), and at most 600 frames. Pure functions in `internal/domain` derive the interval, frame count and sheet count from the video duration `durationMs`. |
+| **Why** | Requirement 2 says "keep 5 s within the cap, and widen only for longer videos", so the cap sets the length that 5 s can cover. 600 frames (50 min) keeps the current interval for videos under 1 h, the majority of the library, and still lets a 2 h film be searched at 12 s intervals (1/600 of the seek bar). |
+| **Rejected** | A cap of 1,440 frames (5 s up to 2 h). A 25-frame sheet (5 × 5) with a higher sheet cap. Smaller frames for more frames per sheet. Reasons below. |
 
 ```text
 intervalMs = max(5000, ceil(durationMs / 600))
-frameCount = max(1, ceil(durationMs / intervalMs))      # 600 を超えない
-sheetCount = ceil(frameCount / 100)                      # 6 を超えない
-コマ k が受け持つ位置: [k * intervalMs, (k + 1) * intervalMs)
-位置 p のコマ:         min(floor(p / intervalMs), frameCount - 1)
+frameCount = max(1, ceil(durationMs / intervalMs))      # never above 600
+sheetCount = ceil(frameCount / 100)                      # never above 6
+positions covered by frame k: [k * intervalMs, (k + 1) * intervalMs)
+frame for position p:         min(floor(p / intervalMs), frameCount - 1)
 ```
 
-50 分（3,000,000 ms）までは今の 5 秒間隔のままで、それを超える動画だけ間隔が広がる。2 時間は
-12 秒間隔・600 コマ・6 シート、1 時間は 6 秒間隔・600 コマ・6 シート、3 分は 5 秒間隔・36 コマ・
-1 シート（後ろの 64 コマ分は空き）。コマの大きさは今と同じで、表示される向きのまま 320 × 320 の
-枠に収め、偶数に丸める（`scale=min(320,iw):min(320,ih):force_original_aspect_ratio=decrease:force_divisible_by=2`）。
-1 本の中では全コマが同じ大きさになる。
+Up to 50 min (3,000,000 ms), the interval stays at the current 5 s. Only longer videos get a
+wider interval.
 
-**Rationale**: 要件 2 は「上限の中では 5 秒を保ち、超える長さだけ広げる」なので、上限は 5 秒で
-覆える長さを決める数である。600 コマ（50 分）は、ライブラリの多数を占める 1 時間未満の動画で
-今の間隔を保ち、2 時間の映画でも 12 秒間隔（シークバーの 1/600）で場面を探せる。1 シート
-100 コマ（16:9 で 3200 × 1800 px、testsrc2 の入力で 1 シート 0.7 MB 前後）は、ブラウザが 1 枚の
-画像として復号できる大きさに収まり、6 枚で今の 1,440 ファイル・約 12 MB を 6 ファイル・数 MB に
-する。
+| Duration | Interval | Frames | Sheets |
+| --- | --- | --- | --- |
+| 1 h | 6 s | 600 | 6 |
+| 2 h | 12 s | 600 | 6 |
+| 3 min | 5 s | 36 | 1 (the last 64 frame slots are empty) |
 
-**Alternatives considered**:
+- The frame size stays as today: the frame fits a 320 × 320 box in its displayed orientation,
+  rounded to even numbers
+  (`scale=min(320,iw):min(320,ih):force_original_aspect_ratio=decrease:force_divisible_by=2`).
+  All frames of one video have the same size.
+- A 100-frame sheet (3200 × 1800 px at 16:9, about 0.7 MB per sheet for the testsrc2 input) fits
+  what a browser decodes as one image. 6 sheets turn today's 1,440 files of about 12 MB into 6
+  files of a few MB.
 
-- 上限を 1,440 コマ（2 時間まで 5 秒）にする: 2 時間の映画でシートが 15 枚・数十 MB になり、
-  「少数のシートにまとめる」目的に反するので採らない。
-- 1 シート 25 コマ（5 × 5）にしてシート数の上限を増やす: 1 枚の取得は軽くなるが、2 時間のバーを
-  端から端まで動かすと 24 回の取得になり、要件 5 の「取得し直さずに切り替える」範囲が狭くなる
-  ので採らない。
-- コマの大きさも小さくして 1 シートに多く載せる: プレビューの見た目の変更は対象外なので採らない。
+Rejected alternatives:
 
-## R-2: コマの選び方
+- A cap of 1,440 frames (5 s up to 2 h): a 2 h film gets 15 sheets of tens of MB, which defeats
+  the goal of "a few sheets".
+- 25 frames per sheet (5 × 5) with a higher sheet cap: each fetch is lighter, but moving across
+  the bar of a 2 h video takes 24 fetches, narrowing the range where Requirement 5 "switches
+  without fetching again" holds.
+- Smaller frames to fit more per sheet: changing how the preview looks is out of scope.
 
-**Decision**: 生成は今と同じ 1 回の全編デコードで、`select` の代わりに `fps` フィルタで間隔ごとに
-1 コマを取り、`tpad` で最後のコマを複製し、`trim` でコマ数を `frameCount` に揃え、`tile` で格子に
-並べる。同梱の ffmpeg 6.1 で次の形が動くことを確かめた（23 秒の映像と 30 秒の音声を持つ
-30 秒の入力で、6 コマ目が 23 秒の場面になり、1 シートに 6 コマが並んだ。0.2 秒・1 秒・2.6 秒の
-入力でも 1 コマの 1 シートになった）。
+## R-2: Frames come from `fps`, `tpad`, `trim` and `tile` in one decode
+
+| | |
+| --- | --- |
+| **Decision** | Generation stays one full decode, as today. Instead of `select`, the `fps` filter takes 1 frame per interval, `tpad` clones the last frame, `trim` cuts the count to `frameCount`, and `tile` lays the frames out in a grid. |
+| **Why** | `fps` produces evenly spaced output and fills intervals without a frame by cloning the previous frame, so frame numbers never shift. `tpad` and `trim` fix `frameCount` to the value derived from the duration, so the result need not be recounted. |
+| **Rejected** | Adding `tile` to the current `select` expression. Input-side seeking 600 times, as for animated previews. Cutting sheets with `-frames:v`. Reasons below. |
+
+The bundled ffmpeg 6.1 runs the following form. Verified with a 30 s input with 23 s of video and
+30 s of audio: the 6th frame showed the 23 s scene, and one sheet held 6 frames. Inputs of 0.2 s,
+1 s and 2.6 s each produced one sheet with 1 frame.
 
 ```text
 ffmpeg -nostdin -v error -i <video> -map 0:V:0? \
@@ -60,137 +73,138 @@ tile=10x10,format=yuvj420p" \
   -fps_mode passthrough -q:v 4 -start_number 0 -y <tmp>/%03d.jpg
 ```
 
-`fps` の既定の丸め（`round=near`）では、コマ k はおよそ `k * interval + interval / 2` の場面、
-つまり自分が受け持つ区間の中ほどの場面になる。先頭のコマは 0 秒ではなく間隔の半分の場面である
-（要件 4 の「示す場面と再生位置が対応する」を、区間の中ほどで満たす）。
+- With the default `fps` rounding (`round=near`), frame k shows roughly the scene at
+  `k * interval + interval / 2`: the middle of the interval it covers. The first frame shows the
+  scene at half the interval, not at 0 s. This meets Requirement 4 ("the shown scene matches the
+  playback position") at the middle of each interval.
+- `eof_action=pass` emits the last not-yet-emitted frame as one frame at the end of input. With
+  the default, an input shorter than half the interval (2.5 s at a 5 s interval) makes `fps` emit
+  no frame, `tpad` has nothing to clone, and no sheet is produced (verified with a 1 s input).
+- With `pass`, the last scene of such an input becomes the first frame, which lies inside the
+  interval the first frame covers (the whole video). For inputs of at least half the interval,
+  the number and times of the frames are the same as with the default.
 
-`eof_action=pass` は入力の終わりに、まだ出していない最後のフレームを 1 コマとして出す。既定の
-`round` では、間隔の半分（5 秒間隔なら 2.5 秒）より短い入力で `fps` がコマを 1 つも出さず、
-`tpad` に複製元が無いのでシートが 1 枚もできない（1 秒の入力で確かめた）。`pass` ではその入力の
-最後の場面が先頭のコマになり、これは先頭のコマが受け持つ区間（動画全体）の中にある。間隔の半分
-以上の入力では、出るコマの数と時刻は `round` と変わらない。
+Details of the reasoning:
 
-**Rationale**: 今の `select` は「区間の最初のフレーム」を取るが、フレームの無い区間（可変フレーム
-レートや壊れた索引）を飛ばすので、それ以降の番号が 1 つずつずれ、位置と場面が対応しなくなる
-（Edge Cases）。`fps` は出力を等間隔に揃え、フレームの無い区間は直前のコマを複製するので番号が
-ずれない。容器の長さより映像が短い入力（末尾付近にフレームが無い動画）は `fps` だけでは末尾の
-コマが欠けて `tile` が黒で埋めるので、`tpad` で最後のコマを複製し `trim` で `frameCount` に切る。
-これで配置情報の `frameCount` は動画の長さから決めた値で確定し、生成の結果を数え直さなくてよい。
-`tile` は 1 シート分たまるか入力が尽きたときにシートを 1 枚書き、最後のシートの空きは黒で埋める。
-プレイヤーは `frameCount` を超えるコマを指さないので空きは見えない。
+- The current `select` takes "the first frame of the interval", but it skips intervals without a
+  frame (variable frame rate or a broken index). Every later number then shifts by one, and
+  position and scene no longer match (Edge cases).
+- When the video is shorter than the container duration (no frames near the end), `fps` alone
+  drops the last frames and `tile` fills them with black. `tpad` clones the last frame and `trim`
+  cuts at `frameCount` to prevent that.
+- `tile` writes a sheet when it has one sheet of frames or when input ends, and fills the empty
+  part of the last sheet with black. The player never points beyond `frameCount`, so the empty
+  part is never visible.
 
-**Alternatives considered**:
+Rejected alternatives:
 
-- 今の `select` の式のまま `tile` を足す: 上のずれが残るので採らない。
-- 動くプレビュー（specs/019）と同じ入力側シークで 600 回読む: 2 時間で 600 回のシークと復号に
-  なり、全編デコード（640 × 360 で 84 秒）より速いとは限らず、要件は生成方式ではなく枚数と
-  ファイル数の上限なので、この feature では変えない。改善前後の生成時間は PR に残す（受け入れ
-  条件 1）。
-- シートを `-frames:v` で切る: `tile` の後では枚数がシート数になりコマ数を切れないので、`trim` を
-  `tile` の前に置く。
+- Adding `tile` to the current `select` expression: the shift above remains.
+- Reading 600 times with input-side seeking, as animated previews do (specs/019): a 2 h video
+  needs 600 seeks and decodes, which is not necessarily faster than a full decode (84 s at
+  640 × 360). The requirement caps frame and file counts, not the generation method, so this
+  feature does not change it. The PR records generation time before and after (Acceptance
+  criterion 1).
+- Cutting sheets with `-frames:v`: after `tile`, the count is the sheet count and cannot cut
+  frames, so `trim` goes before `tile`.
 
-## R-3: 置き場と完成の印
+## R-3: The location stays `seek/<p>/<s>/`; `sprite.json` marks completion
 
-**Decision**: 置き場は今の `seek/<p>/<s>/` のままで、中身をシート `000.jpg`〜`005.jpg`（3 桁の
-番号、最大 6 枚）と配置情報 `sprite.json` にする。`sprite.json` は `internal/artifacts` が生成の
-後に書き、コマの大きさはシート `000.jpg` の JPEG の寸法を列数・行数で割って得る。
+| | |
+| --- | --- |
+| **Decision** | The location stays `seek/<p>/<s>/`. It holds sheets `000.jpg`–`005.jpg` (3-digit numbers, at most 6) and the layout file `sprite.json`. `internal/artifacts` writes `sprite.json` after generation and gets the frame size by dividing the JPEG dimensions of sheet `000.jpg` by the column and row counts. The presence of `sprite.json` marks completion. |
+| **Why** | The layout describes the generated files, so storing and renaming it together with them keeps them consistent (the same shape as the `.sha256` manifest of hover previews). Keeping the directory lets existing deletion and cleanup work unchanged. |
+| **Rejected** | A column in `videos`. A new `sprite/` directory with bulk deletion of `seek/` at startup. No layout file, with Go and TypeScript constants. Reasons below. |
 
 ```json
 {"version": 1, "intervalMs": 12000, "frameCount": 600, "columns": 10, "rows": 10,
  "frameWidth": 320, "frameHeight": 180, "sheetCount": 6}
 ```
 
-完成の印は `sprite.json` の有無で、`SeekThumbnailsAvailable` と配信はこれを見る。`sprite.json` の
-無い置き場（旧形式の個別 JPEG、途中で壊れたもの）は未完成として扱い、`Catalog.SeekThumbnailState`
-の既存の規則（`done` なのに置き場が無ければ `pending` に戻して 1 回だけ積む）がそのまま作り直しを
-積む。公開は今と同じく `.tmp` の下に全部を書いてからディレクトリごと改名するが、旧形式の置き場が
-あれば、内容ごとの錠の中で改名の直前に消す。
+- `SeekThumbnailsAvailable` and serving check `sprite.json`. A location without `sprite.json` (old
+  individual JPEGs, or a broken partial write) counts as incomplete.
+- The existing `Catalog.SeekThumbnailState` rule (a `done` video without a location returns to
+  `pending` and is queued once) queues the rebuild unchanged.
+- Publishing works as today: write everything under `.tmp`, then rename the whole directory. An
+  old-format location is deleted just before the rename, inside the per-content lock.
+- The frame size is read from the finished sheet, not computed from the ffmpeg expression or the
+  probe values. This avoids reproducing ffmpeg autorotation and even rounding, and the structure
+  guarantees that the generating side and the display side use the same numbers (Requirement 3).
+- Keeping the directory means `RemoveContent`, startup cleanup and `ContentUnreferenced` deletion
+  work unchanged, and the old format is collected in the same place.
 
-**Rationale**: 配置情報は生成したファイルの記述なので、ファイルと一緒に置いて一緒に改名すると
-両者が食い違わない（ホバープレビューの `.sha256` manifest と同じ形）。コマの大きさを ffmpeg の
-式や解析の値から計算せず出来上がったシートから読むのは、ffmpeg の自動回転と偶数への丸めを
-再現しなくて済み、生成側と表示側が同じ数を使う（要件 3）ことが構成で保証されるからである。
-置き場のディレクトリを変えないのは、`RemoveContent`・起動時の掃除・`ContentUnreferenced` の
-削除がそのまま効き、旧形式の回収も同じ場所で済むからである。
+Rejected alternatives:
 
-**Alternatives considered**:
+- Storing the layout in a `videos` column: the column is updated separately from the generated
+  files, so restoring only the data directory makes them disagree. `internal/store` does not look
+  at the file system, so it cannot check.
+- A new `sprite/` directory, deleting the old `seek/` in bulk at startup: startup cleanup would
+  walk the whole store, breaking the ARCHITECTURE.md rule "clean nothing except `.tmp`".
+- No layout file, with the route rules (columns, rows, interval) as Go and TypeScript constants:
+  frame size and actual frame count differ per video, so constants are not enough and
+  Requirement 3 ("use the same information") cannot be met.
 
-- 配置情報を `videos` の列に持つ: 列は生成物の実体と別に更新されるので、データディレクトリだけを
-  戻したときに食い違う。`internal/store` はファイルシステムを見ないので確かめられない。採らない。
-- 新しいディレクトリ `sprite/` に置き、旧 `seek/` を起動時に一括で消す: 起動時の掃除が置き場全体を
-  歩くことになり、ARCHITECTURE.md の「`.tmp` 以外は何も掃除しない」規則を破る。採らない。
-- 配置情報を持たず、経路の規則（列数・行数・間隔）を Go と TypeScript の定数にする: コマの大きさと
-  実際のコマ数が動画ごとに違うので定数では足りず、要件 3 の「同じ情報を使う」を満たせない。採らない。
+## R-4: The API returns a JSON layout and separate JPEG sheets
 
-## R-4: API の形
+| | |
+| --- | --- |
+| **Decision** | `GET /api/videos/{id}/seek-thumbnail` (the versioned URL `Video.seekThumbnailUrl` points to) takes no `positionMs` and returns the layout as JSON. `GET /api/videos/{id}/seek-thumbnail/{sheet}` returns a sheet as JPEG. The layout lists the versioned sheet URLs. Both responses use `private, no-cache` and `ETag` and also serve guests. Details: [contracts/seek-sprite-api.md](contracts/seek-sprite-api.md). |
+| **Why** | `Video.seekThumbnailUrl` and `seekThumbnailState` have the shape fixed in 020 and appear in list responses. Embedding the layout in `Video` would read `sprite.json` on every list response, so the layout is a separate response the playback screen fetches once. One route returning JSON or JPEG depending on `sheet` would give one OpenAPI operation two response types, so the routes are separate. |
+| **Rejected** | Renaming the route to `seek-sprite`: jobs, states and URLs are all named `seek_thumbnail` / `seekThumbnail`, and renaming only the route obscures the mapping. Keeping a `positionMs` response for the old SPA: the SPA ships inside the binary and updates with it, and no earlier contract change kept the old form either. |
 
-**Decision**: `GET /api/videos/{id}/seek-thumbnail`（`Video.seekThumbnailUrl` が指す版付き URL）は
-`positionMs` を取らず、配置情報の JSON を返す。シートは
-`GET /api/videos/{id}/seek-thumbnail/{sheet}` で JPEG を返す。配置情報にはシートの版付き URL を
-並べる。詳細は [contracts/seek-sprite-api.md](contracts/seek-sprite-api.md)。どちらの応答も
-`private, no-cache` と `ETag` で、ゲストにも返す。
+## R-5: The player fetches each sheet once and crops it with the background
 
-**Rationale**: `Video.seekThumbnailUrl` と `seekThumbnailState` は 020 で決まった形で、一覧の応答
-にも載る。配置情報を `Video` に埋めると一覧の応答のたびに `sprite.json` を読むことになるので、
-再生画面が 1 回だけ取る別の応答にする。1 つの経路で `sheet` の有無により JSON と JPEG を返し
-分ける形は OpenAPI の 1 操作に 2 つの応答の型を持つことになるので分ける。
+| | |
+| --- | --- |
+| **Decision** | The player fetches the layout when it first shows the preview, picks the frame and sheet with the [R-1](#r-1-at-most-600-frames-on-6-sheets-the-interval-widens-only-past-50-min) rule, fetches a missing sheet with `fetch`, and holds it as a `URL.createObjectURL` URL. The preview box shows one frame of the sheet as a background image. |
+| **Why** | Requirement 5 and Acceptance criterion 4 require "no additional request for sheets of the same video", so the browser HTTP cache cannot be relied on. The current responses are `no-cache` (guest-api.md §5), and every reassignment of the same URL to `img.src` sends a revalidation request. An object URL needs only one request. |
+| **Rejected** | Showing the whole sheet in an `<img>` with `object-fit` and `object-position`: the window position lands on fractional pixels, and after scaling 1 px of the neighboring frame can show. Fetching the layout when the playback screen appears: a video still generating returns 409, and it breaks the current rule "request only on hover", so the layout is fetched when the preview first shows. |
 
-**Alternatives considered**:
+Fetching:
 
-- 経路名を `seek-sprite` に変える: ジョブ・状態・URL の名前が `seek_thumbnail` /
-  `seekThumbnail` で揃っているので、経路だけ変えると対応が読めなくなる。採らない。
-- 旧 SPA のために `positionMs` の応答も残す: SPA はバイナリに同梱されて一緒に更新され、これまでの
-  契約変更も残していない。採らない。
+- Sheets the player holds stay for the whole mount (at most 6) and are released on unmount.
+- At most one fetch runs per sheet; in-flight fetches are also tracked by sheet number.
+- Moving within a sheet fetches nothing. Moving across sheets leaves the previous sheet's
+  in-flight fetch running and starts a fetch for the next sheet if it is not held.
+- Returning to a previous sheet with an in-flight fetch waits for that fetch and sends no new
+  request.
+- Only unmount aborts in-flight fetches. A finished fetch for a sheet not being shown does not
+  switch the display.
+- A failed layout or sheet fetch shows only the time, as today. A failed sheet is not fetched
+  again for 5 s.
 
-## R-5: プレイヤーの取得と切り出し
+Cropping:
 
-**Decision**: プレイヤーは、プレビューを最初に出すときに配置情報を取得し、位置から
-[R-1](#r-1-上限と間隔の規則) の規則でコマとシートを決め、そのシートを持っていなければ `fetch` で
-取得して `URL.createObjectURL` の URL で持つ。持っているシートは取り付けの間ずっと保持し（最大
-6 枚）、取り外しで解放する。取得はシートごとに高々 1 つで、進行中の取得もシートの番号で持つ。
-同じシートの中の移動では取得が起きず、シートをまたぐ移動では前のシートの進行中の取得を中断せずに
-残し、次のシートを持っていなければ取得を始める。前のシートへ戻ったときは、進行中の取得があれば
-その完了を待って使い、新しい要求は出さない。進行中の取得を中断するのは取り外しのときだけで、
-表示中でないシートの取得が終わっても表示は切り替えない。配置情報とシートの取得の失敗は、今と
-同じく時刻だけの表示にし、失敗したシートの取得は 5 秒後まで始め直さない。
+- The preview box is one frame's box. The sheet is the background image, tiled at `columns` times
+  the width and `rows` times the height, and `background-position` shifts it by the matching
+  column and row.
+- The box aspect ratio comes from `frameWidth : frameHeight` in the layout (today it comes from
+  the probe aspect ratio).
+- The shift is an integer multiple of the box size, so scaling fractions never reveal the
+  neighboring frame (Requirement 6).
+- The preview size, position and time label do not change.
 
-コマの切り出しは、プレビューの枠を 1 コマの箱とし、シートを背景画像にして横 `columns` 倍・縦
-`rows` 倍の大きさで敷き、`background-position` で該当の列と行の分だけずらす。枠の縦横比は
-配置情報の `frameWidth : frameHeight` から決める（今は解析の縦横比）。箱の大きさの整数倍で
-ずらすので、拡縮の端数で隣のコマが見えない（要件 6）。プレビューの大きさ・位置・時刻表示は
-変えない。
+## R-6: A migration requeues existing individual JPEGs for rebuild
 
-**Rationale**: 要件 5 と受け入れ条件 4 は「同じ動画のシートへの追加リクエストなし」なので、
-ブラウザの HTTP キャッシュに頼れない。今の応答は `no-cache`（guest-api.md §5）で、`img.src` に同じ
-URL を入れ直すたびに再確認の要求が出る。object URL なら要求は 1 回で済む。
+| | |
+| --- | --- |
+| **Decision** | Migration `00015_seek_thumbnail_sprite.sql` returns videos with `seek_thumbnail_state = done` to `pending`, and queues a `seek_thumbnail` job for each analyzed video with a location and no unfinished `seek_thumbnail` job. `failed` videos return through a read retry, as before. |
+| **Why** | Requirement 9 ("becomes a generation target without a re-import instruction") is met by queueing in a migration, as 020's [00014_seek_thumbnail_stage.sql](../../internal/store/migrations/00014_seek_thumbnail_stage.sql) did. Relying only on the current rule that queues when the playback screen opens shows no remaining work in the processing status until then, so nobody knows when it finishes. |
+| **Rejected** | Serving the old format until the rebuild finishes. Queueing no `jobs` in the migration and relying on the location check. Returning `failed` videos to `pending` too. Reasons below. |
 
-**Alternatives considered**:
+- The migration does not touch the states and jobs of cover thumbnails and animated previews
+  (Requirement 9).
+- During the rebuild, the video's seek preview behaves like today's `pending` (time only).
+  Playback, seeking and the time display work (Acceptance criterion 8).
+- `internal/artifacts` deletes the old individual JPEGs when it publishes that video's sprite
+  ([R-3](#r-3-the-location-stays-seek-spritejson-marks-completion)).
+- Acceptance criterion 8 requires playback, seeking and the time display during the rebuild; the
+  preview image is not included.
 
-- `<img>` にシート全体を入れて `object-fit` と `object-position` で見せる: 見せる窓の位置が画素の
-  端数になり、拡縮のあと隣のコマが 1 px 見えることがある。採らない。
-- 配置情報を再生画面の表示時に取りに行く: 生成中の動画では 409 が返り、今の「hover したときだけ
-  要求する」規則から外れるので、最初の表示のときに取る。
+Rejected alternatives:
 
-## R-6: 既存の個別 JPEG からの移行
-
-**Decision**: 移行 `00015_seek_thumbnail_sprite.sql` で、`seek_thumbnail_state = done` の動画を
-`pending` に戻し、解析が終わり所在のある動画に未完了の `seek_thumbnail` ジョブが無ければ積む。
-`failed` の動画は今までどおり読み取りのやり直しで戻す。代表サムネイルと動くプレビューの状態と
-ジョブには触れない（要件 9）。作り直しの間、その動画のシークプレビューは
-今の `pending` と同じ扱い（時刻だけの表示）で、再生・シーク・時刻の表示は使える（受け入れ条件 8）。
-旧形式の個別 JPEG は、その動画のスプライトを公開するときに `internal/artifacts` が消す
-（[R-3](#r-3-置き場と完成の印)）。
-
-**Rationale**: 要件 9 の「再取り込みの指示なしに生成対象になる」を、
-020 の移行 [00014_seek_thumbnail_stage.sql](../../internal/store/migrations/00014_seek_thumbnail_stage.sql) と同じく移行で積む。
-再生画面を開いたときに積む今の規則だけに任せると、開くまで処理状況に残りが出ず、いつ終わるか
-分からない。旧形式を作り直しが終わるまで配信し続ける形は、プレイヤーと API に 2 つの形式を
-残すことになり、要件 1 の「置き換える」に反する。受け入れ条件 8 が作り直しの間に求めるのは
-再生・シーク・時刻の表示で、プレビューの画像は含まれない。
-
-**Alternatives considered**:
-
-- 旧形式を作り直しが終わるまで配信する: 上のとおり採らない。
-- 移行で `jobs` を積まず、置き場の確認だけに任せる: 上のとおり採らない。
-- `failed` の動画も `pending` に戻す: 失敗の原因（読めない入力、30 分の上限）は方式と関係なく、
-  再試行の回数の記録も無くなるので採らない。
+- Serving the old format until the rebuild finishes: the player and the API would keep two
+  formats, which contradicts "replace" in Requirement 1.
+- Queueing no `jobs` in the migration and relying only on the location check: the remaining
+  work stays invisible, as explained above.
+- Returning `failed` videos to `pending` too: the causes of failure (unreadable input, the 30 min
+  cap) do not depend on the method, and the retry count record would be lost.

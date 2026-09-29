@@ -1,226 +1,179 @@
-# Research: ライブ変換でハードウェアエンコードを使えるようにする
+# Research: hardware encoding for live transcode
 
-技術スタック、ライブ変換の現行の作り（解析情報の再利用、コピーとエンコードの切り替え、
-キーフレームの間隔）、設定画面と API エラーの作りは正本に従う
-（[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)・
-[docs/design-docs/live-transcode-seek.md](../../docs/design-docs/live-transcode-seek.md)・
-[docs/design-docs/mov-live-transcoding.md](../../docs/design-docs/mov-live-transcoding.md)・
-[internal/media/transcode.go](../../internal/media/transcode.go)・
-[specs/023-english-i18n/contracts/error-api.md](../023-english-i18n/contracts/error-api.md)）。
-ここにはこの feature が足す決定だけを書く。ffmpeg のエンコーダーの有無と選択肢は、開発コンテナの
-ffmpeg 6.1.1（Ubuntu 24.04 のパッケージ。`--enable-libvpl`、NVENC・VAAPI 有効）の `-encoders` と
-`-h encoder=…` で確かめた。
+The tech stack, the current live transcode design (reuse of probe data, the switch between copy
+and encode, the keyframe interval), the settings screen and the API error design follow their
+sources of truth:
+[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md),
+[docs/design-docs/live-transcode-seek.md](../../docs/design-docs/live-transcode-seek.md),
+[docs/design-docs/mov-live-transcoding.md](../../docs/design-docs/mov-live-transcoding.md),
+[internal/media/transcode.go](../../internal/media/transcode.go),
+[specs/023-english-i18n/contracts/error-api.md](../023-english-i18n/contracts/error-api.md).
+This document records only the decisions this feature adds.
 
-## R-1: 同梱イメージは Alpine のままにし、ソフトウェアエンコードだけにする
+The presence and options of ffmpeg encoders were verified with `-encoders` and `-h encoder=…` on
+the dev container's ffmpeg 6.1.1 (the Ubuntu 24.04 package; `--enable-libvpl`, NVENC and VAAPI
+enabled).
 
-- Decision: `Dockerfile` の実行段は #491 より前（`e5acc24`）と同じ Alpine で、`ffmpeg`・`ca-certificates`・`tzdata`
-  だけを入れる。GPU のドライバーや実行時ライブラリは足さず、`compose.yaml`・`compose.hosting.yaml`
-  にも GPU を渡す設定を足さない。コンテナの中では、起動時の確認
-  （[R-2](#r-2-起動時の確認はエンコーダーごとに短い実エンコードを並行して走らせる)）がハードウェアの
-  方式をすべて使えないと報告し、ライブ変換はソフトウェアで動く。ハードウェアエンコードは、ホストに
-  直接入れた VVMDM で使う（[R-9](#r-9-ハードウェアエンコードはホストへの直接インストールで使い文書に前提と手順を書く)）。
-- Rationale: 親 Issue 要件 14 と対象外は、同梱の Docker イメージの中でのハードウェアエンコード
-  （コンテナへの GPU パススルー）を扱わないと決めている。確認とソフトウェアへの切り替えは OS と
-  環境に依らない作りなので、イメージを変えなくてもコンテナの中では「使えない」と表示されるだけで
-  済む。イメージを変えないので、実行段の基盤、イメージの大きさ、`HEALTHCHECK`、依存の更新の運用
-  （Renovate）も今のまま保てる。
-- Alternatives considered: 実行段を Debian にし、Intel/AMD のドライバーを入れ、NVIDIA Container
-  Toolkit でドライバーのライブラリを渡す（NVIDIA のライブラリは glibc に結合され musl の Alpine では
-  読み込めないため。親 Issue の対象外で採らない）。`jellyfin-ffmpeg` の deb を入れる（同上。加えて
-  第三者の apt リポジトリと鍵を持ち込む）。ハードウェア対応版を別タグの 2 つ目のイメージにする
-  （同上）。
+## R-1: The bundled image stays on Alpine with software encoding only
 
-## R-2: 起動時の確認は、エンコーダーごとに短い実エンコードを並行して走らせる
+| | |
+| --- | --- |
+| **Decision** | The `Dockerfile` runtime stage stays the same Alpine as before #491 (`e5acc24`) and installs only `ffmpeg`, `ca-certificates` and `tzdata`. No GPU drivers or runtime libraries are added, and `compose.yaml` and `compose.hosting.yaml` get no GPU passthrough settings. Inside the container, the startup check ([R-2](#r-2-the-startup-check-runs-a-short-real-encode-per-encoder-concurrently)) reports every hardware encoder as unavailable, and live transcode runs with software. Hardware encoding is for VVMDM installed directly on the host ([R-9](#r-9-hardware-encoding-uses-a-direct-install-on-the-host-and-the-docs-describe-prerequisites-and-steps)). |
+| **Why** | Parent Issue Requirement 14 and Out of scope exclude hardware encoding inside the bundled Docker image (GPU passthrough into the container). The check and the switch to software do not depend on the OS or environment, so without an image change the container only shows "unavailable". An unchanged image also keeps the runtime base, the image size, `HEALTHCHECK` and the dependency update process (Renovate) as they are. |
+| **Rejected** | A Debian runtime stage with Intel/AMD drivers and NVIDIA libraries passed in by the NVIDIA Container Toolkit (the NVIDIA libraries link against glibc and do not load on musl Alpine; out of scope in the parent Issue). Installing the `jellyfin-ffmpeg` deb (same reason; it also brings a third-party apt repository and key). A second, hardware-enabled image under another tag (same reason). |
 
-- Decision: `internal/media` の `EncoderCheck` が、対象のエンコーダーごとに
-  `ffmpeg -f lavfi -i testsrc2=size=256x144:rate=30 -frames:v 8 <R-7 のエンコード引数> -f null -`
-  を実行し、終了コード 0 なら「使える」とする。対象は OS で決める（linux: NVENC・Quick Sync・VAAPI、
-  windows: NVENC・Quick Sync、darwin: VideoToolbox。それ以外の組は `unsupported_os` で「使えない」）。
-  先に `ffmpeg -encoders` を 1 回、同じ上限時間の中で読み、名前の無いエンコーダーは実行せずに
-  `encoder_missing` とする。`-encoders` が上限時間を超えたら、確認対象をすべて `timed_out` にして
-  結果を返す（「確認中」のまま残さない）。
-  実エンコードの失敗は `check_failed`（標準エラーの末尾をログに残す）、上限時間
-  （`encoderCheckTimeout`、エンコーダーごとに 10 秒）の超過は `timed_out`。確認は並行して走らせ、
-  HTTP の待ち受けを待たせない（[R-3](#r-3-実際に使う方式はドメインの純粋関数が決めapp-がメモリに持つ)
-  の「確認中」）。確認は起動時の 1 回だけで、画面から調べ直す操作は置かない（親 Issue 対象外）。
-- Rationale: 親 Issue 要件 5 は「実際に短いエンコードを試す」ことを求める。`-encoders` の有無だけでは
-  ビルドに含まれていてもデバイスやドライバーが無い場合（Docker のコンテナの中、`/dev/dri` の
-  権限が無い、NVIDIA のライブラリが無い）を見分けられず、実エンコードだけがそれを一度に確かめる。
-  `lavfi` の合成入力はどのビルドにもあり、入力ファイルを要らなくする。並行にするのは、固まった
-  エンコーダーが 1 つあっても全体の待ちが 10 秒で済むようにするためである（`-encoders` の
-  読み取りを含めて最悪 20 秒）。`-encoders` にも上限を掛けるのは、それが固まると後の確認が始まらず、
-  画面が確認中のまま読み直しを続けるからである。
-- Alternatives considered: `-encoders` の有無だけ（上記）。デバイスファイル（`/dev/dri/renderD128`、
-  `/dev/nvidia*`）の存在で判定（ドライバーの不一致やセッション上限を見ない）。順に実行（最悪 30 秒）。
-  確認が終わるまで起動を待つ（Edge Case「起動時の確認が遅い、または固まる」に反する）。
+## R-2: The startup check runs a short real encode per encoder, concurrently
 
-## R-3: 実際に使う方式はドメインの純粋関数が決め、app がメモリに持つ
+| | |
+| --- | --- |
+| **Decision** | `EncoderCheck` in `internal/media` runs `ffmpeg -f lavfi -i testsrc2=size=256x144:rate=30 -frames:v 8 <R-7 encode arguments> -f null -` per target encoder; exit code 0 means available. The OS decides the targets (see below). The check runs concurrently and does not delay HTTP listening (the "checking" state in [R-3](#r-3-a-pure-domain-function-decides-the-encoder-actually-used-and-app-holds-it-in-memory)). It runs once at startup; the screen has no re-check action (parent Issue Out of scope). |
+| **Why** | Parent Issue Requirement 5 asks for an actual short encode. `-encoders` alone cannot tell a build that includes the encoder but lacks the device or driver (inside a Docker container, no permission on `/dev/dri`, missing NVIDIA libraries); only a real encode checks all of it at once. The `lavfi` synthetic input exists in every build and needs no input file. Concurrency keeps the total wait at 10 s even when one encoder hangs (20 s worst case including reading `-encoders`). `-encoders` also has a time limit because a hang there would block the later checks and leave the screen reloading in the checking state. |
+| **Rejected** | `-encoders` alone (above). Checking for device files (`/dev/dri/renderD128`, `/dev/nvidia*`): misses driver mismatches and session limits. Sequential runs: 30 s worst case. Delaying startup until the check ends: violates the edge case "the startup check is slow or hangs". |
 
-- Decision: `internal/domain` に方式の値（`VideoEncoder`: `software`・`nvenc`・`qsv`・`vaapi`・
-  `videotoolbox`、選択肢 `EncoderChoice` はそれに `auto` を足したもの）、各エンコーダーの確認結果
-  （`EncoderAvailability`: `checking`／`available`／`unavailable` と理由）、実際に使う方式を決める
-  純粋関数 `ResolveVideoEncoder(choice, availability)` を置く。
-  - `software` → software。
-  - `auto` → 使えるものを `nvenc`・`qsv`・`vaapi`・`videotoolbox` の順で最初の 1 つ。無ければ software
-    （fallback ではない。要件 7）。
-  - ハードウェアの方式 → 使えればそれ。使えなければ software で、`fallbackReason` を
-    `selected_unavailable`（確認済みで使えない）か `checking`（確認中）にする。
-  - 保存値が知らない文字列なら `software` として扱う（Edge Case「保存値が未知の値」）。
-  `internal/app` の `TranscodeSettings` が保存値と確認結果をメモリに持ち、`Current()` で今の状態
-  （選択・実際の方式・理由・確認中か・各エンコーダーの結果）を返し、`Select(choice)` で保存する。
-  変換の経路は要求ごとに `Current()` の実際の方式を `LiveTranscodeRequest` に載せるので、変更は
-  次の要求から効き、配信中の変換は始めたときの方式で続く（要件 4）。起動時の確認が終わったときと
-  `Select` のたびに、app が選択・実際の方式・理由をログに記録する（要件 9）。
-- Rationale: 「どれを使うか」は入力（選択と確認結果）だけで決まる規則なので、ARCHITECTURE.md の
-  層の分け方に従って `internal/domain` に置き、SQLite も ffmpeg も無しにテストする。確認結果は
-  起動ごとに作り直す値なので保存しない。要求ごとに読むのは保存値ではなくメモリの状態で、SQLite の
-  読み出しが変換の開始に加わらない。
-- Alternatives considered: 実際の方式を SQLite に書く（起動ごとに変わる値で、保存値を変えない
-  要件 8 と混ざる）。経路が保存値を毎回読む（変換の開始に SQLite の読み出しが入る）。`auto` の順を
-  設定にする（エンコーダーごとの細かい設定は対象外）。
+Check targets and results:
 
-## R-4: 保存先は汎用の `settings` 表（key-value）
+| Item | Rule |
+| --- | --- |
+| Targets per OS | linux: NVENC, Quick Sync, VAAPI. windows: NVENC, Quick Sync. darwin: VideoToolbox. Any other pair is unavailable with `unsupported_os`. |
+| `ffmpeg -encoders` | Read once first, within the same time limit. An encoder not named there is not run and is `encoder_missing`. |
+| `-encoders` over the time limit | Every check target becomes `timed_out` and the result returns (it does not stay in "checking"). |
+| Real encode fails | `check_failed`; the tail of stderr goes to the log. |
+| Time limit exceeded | `timed_out`. The limit is `encoderCheckTimeout`, 10 s per encoder. |
 
-- Decision: 表 `settings(key text primary key, value text not null, updated_at integer not null)`
-  を足し、キー `transcode.video_encoder` に選択肢の文字列を保存する
-  （[data-model.md](data-model.md)）。読み書きは `SettingsStore` のメソッドで、行が無ければ
-  「未選択」＝ `software`。値の解釈（未知の値を `software` に倒す）は `domain.ParseEncoderChoice`
-  が行い、store は文字列をそのまま返す。
-- Rationale: 保存する値は文字列 1 つで、未知の値を保存したまま扱う要件（Edge Case）は型付きの列より
-  文字列の方が素直である。今後の設定（同種の「所有者が設定画面で選ぶ値」）を、表とマイグレーションを
-  足さずに置ける。ARCHITECTURE.md の区分では `media_folders` と同じ「利用者・設定のデータ」で、
-  走査では戻らない。
-- Alternatives considered: `transcode_settings` の 1 行の表（項目が増えるたびに列とマイグレーションが
-  要る）。`media_folders` のような専用表（値が 1 つで表にする理由が無い）。環境変数（要件 1 で除外）。
+## R-3: A pure domain function decides the encoder actually used, and app holds it in memory
 
-## R-5: 変更の知らせは出さず、画面は表示時と保存の応答で合わせる
+| | |
+| --- | --- |
+| **Decision** | `internal/domain` holds the encoder values, the check results and the pure function `ResolveVideoEncoder(choice, availability)` that decides the encoder actually used (rules below). `TranscodeSettings` in `internal/app` holds the saved value and the check results in memory. `Current()` returns the current state (choice, encoder actually used, reason, whether checking, per-encoder results); `Select(choice)` saves. |
+| **Why** | Which encoder to use is a rule decided only by its inputs (choice and check results), so it belongs in `internal/domain` per the ARCHITECTURE.md layering, and tests need neither SQLite nor ffmpeg. The check results are rebuilt on every start, so they are not stored. Each request reads the in-memory state, not the saved value, so starting a transcode adds no SQLite read. |
+| **Rejected** | Writing the encoder actually used to SQLite: it changes on every start and would mix with Requirement 8, which keeps the saved value unchanged. The path reads the saved value every time: adds a SQLite read to transcode start. Making the `auto` order a setting: per-encoder fine-grained settings are out of scope. |
 
-- Decision: 方式の変更で domain event も `/api/events` の種類も足さない。画面は区画を表示するときに
-  `GET` し、`PUT` の応答（保存後の状態全体）で表示を置き換える。「確認中」の間だけ、確認が終わるまで
-  数秒ごとに `GET` し直す。
-- Rationale: 親 Issue の Edge Case「複数のタブや端末で同時に方式を変える」は「後から保存した方が
-  勝ち、次に表示したとき、または変更の結果を受け取ったときに正しく表示する」で足りるとしている。
-  所有者だけが使う設定 1 つのために、イベントの種類・購読・画面の購読を増やす方が重い。確認中は
-  起動直後の数秒〜十数秒だけなので、その間の読み直しで十分である。
-- Alternatives considered: `domain.TranscodeSettingsChanged` を足して SSE で配る（上記）。
-  確認の完了も SSE で配る（同上）。
+Values in `internal/domain`:
 
-## R-6: 要求の中での切り替えは、エンコードの段でハードウェア → ソフトウェアの順に試す
+- `VideoEncoder`: `software`, `nvenc`, `qsv`, `vaapi`, `videotoolbox`. The choice `EncoderChoice`
+  adds `auto` to these.
+- `EncoderAvailability`: per-encoder check result, `checking` / `available` / `unavailable` with a
+  reason.
 
-- Decision: `LiveTranscoder.Start` の切り替えの梯子（live-transcode-seek.md「コピーの経路と差の
-  上限」）の「エンコード」の段を 2 段にする。実際の方式がハードウェアなら、まずそのエンコーダーで
-  始め、最初のデータを出さずに終わったら（`errNoInitialData`）同じ解析情報で `libx264` で始め直す。
-  期限は今までどおり `StartupDeadline` 1 つで、期限切れと取り消しでは切り替えない。切り替えたことは
-  `LiveTranscode` に載せて返し（使った方式と、ハードウェアの失敗の誤り）、経路が
-  `Warn` でログに記録する（Edge Case「起動後にハードウェアが使えなくなる」「同時セッション数の
-  上限」）。コピーで済む要求（`videoCanCopy` かつ `Normalize` でない）はこれまでどおりコピーで、
-  方式の設定を見ない（要件 12）。最初のデータを出したあとの失敗は、今までどおり切り替えない。
-- Rationale: 親 Issue 要件 11 の「最初のデータを出す前に失敗したら同じ要求の中でソフトウェアに
-  切り替える」は、既に「コピー → エンコード → その場の解析」で使っている仕組み（プロセスが
-  データを出さずに終わったら次の段へ）そのものである。ハードウェアの初期化の失敗（セッション上限、
-  デバイス無し、対応しない入力）は即座に終了コードで返るので、期限を分けなくてもソフトウェアの
-  やり直しに時間が残る。期限を足すと、切り替えの合計が今の上限を超える（Edge Case
-  「開始時の待ち時間の上限」）。
-- Alternatives considered: ハードウェアの試行に別の短い上限（3 秒など）を切る（4K の入力では
-  ソフトウェアのデコードだけで最初の 2 秒分に 3 秒以上かかることがあり、成功する試行を切ってしまう。
-  固まるエンコーダーはこれまでの梯子でも期限切れで失敗にしている）。ソフトウェアのやり直しに
-  新しい期限を与える（合計が最大 12 秒になる）。失敗したエンコーダーを覚えて以後の要求で使わない
-  （セッション上限は一時的で、次の要求では使えることが多い。要件 8 の表示も起動時の結果のままで
-  よいとしている）。
+Rules of `ResolveVideoEncoder`:
 
-## R-7: エンコード引数は、方式ごとの符号化器の指定だけを差し替え、出力の約束は共通の引数で守る
+- `software` → software.
+- `auto` → the first available encoder in the order `nvenc`, `qsv`, `vaapi`, `videotoolbox`. With
+  none, software (not a fallback; Requirement 7).
+- A hardware encoder → that encoder when available. Otherwise software, with `fallbackReason`
+  `selected_unavailable` (checked and unavailable) or `checking` (still checking).
+- An unknown saved string is treated as `software` (edge case "the saved value is unknown").
 
-- Decision: `videoEncodeArgs` を方式で分岐させる。共通の部分（フィルター: 縮小・pad・setsar・fps、
-  `-force_key_frames expr:gte(t,n_forced*2)`）と音声・`-movflags` は変えない。`software` は今の
-  引数（`-c:v libx264 -profile:v high -level:v 5.1 -pix_fmt yuv420p -preset superfast -crf 23`）を
-  1 文字も変えない（受け入れ条件 1）。ハードウェアでは、H.264 High・Level 5.1・4:2:0 8bit・一定品質・
-  強制キーフレームを IDR にする指定を、そのエンコーダーの綴りで与える。
-  - `nvenc`: `-c:v h264_nvenc -profile:v high -level:v 5.1 -pix_fmt yuv420p -preset p4 -rc vbr -cq 23
-    -b:v 0 -forced-idr 1`
-  - `qsv`: `-c:v h264_qsv -profile:v high -level 51 -pix_fmt nv12 -preset veryfast -global_quality 23
-    -look_ahead 0 -forced_idr 1`
-  - `vaapi`: `-vaapi_device /dev/dri/renderD128`、フィルターの末尾に `format=nv12,hwupload`、
-    `-c:v h264_vaapi -profile:v high -level 5.1 -rc_mode CQP -qp 23`
-  - `videotoolbox`: `-c:v h264_videotoolbox -profile:v high -level:v 5.1 -pix_fmt yuv420p -q:v 60
-    -realtime 1`（`-q:v` が効かない機種では符号化器の既定の bitrate になる）
-  10bit・特殊な画素形式の入力は、`format`／`-pix_fmt` の指定で符号化器に渡す前に 8bit 4:2:0 へ
-  落とす（Edge Case「ハードウェアエンコーダーが扱えない入力」）。Quick Sync と VAAPI は `nv12`
-  で受けるが、出力の bitstream は 4:2:0 8bit で、ブラウザから見て `yuv420p` と同じである。
-  解像度の上限を超える入力は、今と同じ `scale` で先に縮める。数値（品質、preset）はこの表を
-  出発点とし、実装の PR が受け入れ条件 7 の確認（[quickstart.md](quickstart.md)）で調整してよい。
-  出力の約束（プロファイル・レベル・画素形式・キーフレーム間隔）は変えない。
-- Rationale: 要件 10 は出力の約束をソフトウェアと同じにすることを求め、それはフィルターと
-  キーフレームの指定（既に符号化器に依らない形で書いてある）で守られる。符号化器ごとの綴り
-  （レベルの書き方、`nv12` の入力、VAAPI の hwupload、強制キーフレームを IDR にする option）だけが
-  差分である。IDR にするのは、`frag_keyframe` が fragment を切る印にキーフレームを使うためで、
-  非 IDR の I フレームでは fragment が切れず最初のデータが遅れる。
-- Alternatives considered: ハードウェアデコード（`-hwaccel`）も使う（親 Issue 対象外）。
-  `-g 60` だけでキーフレームを入れる（fps フィルターで間引いたあとのフレーム数と時刻がずれる。
-  #371 が時刻基準を選んでいる）。VAAPI をソフトウェアフレームのまま渡す（`h264_vaapi` は
-  hw フレームしか受けない）。
+Behavior of `TranscodeSettings`:
 
-## R-8: 設定の API は `/api/settings/transcoding` の GET と PUT で、状態全体を返す
+- For each request, the transcode path puts the encoder actually used from `Current()` on
+  `LiveTranscodeRequest`. A change applies from the next request, and a streaming transcode keeps
+  the encoder it started with (Requirement 4).
+- When the startup check ends, and on every `Select`, app logs the choice, the encoder actually
+  used and the reason (Requirement 9).
 
-- Decision: `GET /api/settings/transcoding` と `PUT /api/settings/transcoding`（本文
-  `{ "videoEncoder": <選択肢> }`）を足し、どちらも同じ `TranscodingSettings`（選択、実際の方式、
-  fallback の理由、確認中か、エンコーダーごとの結果と理由）を返す
-  （[contracts/transcoding-settings-api.md](contracts/transcoding-settings-api.md)）。所有者だけ
-  （`accessRoutes` に足さない）。使えない方式を選ぶ `PUT` は 409 `conflict` に reason
-  `encoder_unavailable` を添える。理由は機械可読のコードで、文言は SPA の英語カタログが持つ
-  （023 の error-api の方針）。
-- Rationale: 画面が要るのは「保存値」「今使われている方式」「各方式が使えるか」の 3 つで、
-  `PUT` の応答が状態全体を返せば、保存後に `GET` し直さずに R-5 の表示が揃う。経路を
-  `/api/settings/` の下に置くのは、同種の「所有者が設定画面で選ぶ値」を今後同じ場所に並べるため
-  （`media-folders` はこの名前空間より前からある）。
-- Alternatives considered: `/api/transcoding-settings`（上記）。`PATCH`（項目が 1 つで部分更新の
-  意味が無い）。エンコーダーの一覧を別の経路にする（画面は必ず両方を出すので往復が増える）。
+## R-4: Storage is a generic `settings` table (key-value)
 
-## R-9: ハードウェアエンコードはホストへの直接インストールで使い、文書に前提と手順を書く
+| | |
+| --- | --- |
+| **Decision** | Add the table `settings(key text primary key, value text not null, updated_at integer not null)` and save the choice string under the key `transcode.video_encoder` ([data-model.md](data-model.md)). `SettingsStore` methods read and write it; no row means "no selection" = `software`. `domain.ParseEncoderChoice` interprets the value (an unknown value falls back to `software`); the store returns the string as is. |
+| **Why** | The stored value is one string, and the requirement to keep an unknown value stored (edge case) is simpler with a string than with a typed column. Future settings of the same kind (values the owner selects on the settings screen) fit without a new table or migration. In the ARCHITECTURE.md categories it is user and settings data like `media_folders`, and a scan does not restore it. |
+| **Rejected** | A one-row `transcode_settings` table: every new item needs a column and a migration. A dedicated table like `media_folders`: one value gives no reason for a table. An environment variable: excluded by Requirement 1. |
 
-- Decision: `docs/how-to/running-vv.md` に「Hardware encoding」の節を足し、次を書く。
-  - ハードウェアエンコードは、VVMDM をホスト（Windows・Linux・macOS）に直接入れて動かす場合に使える。
-    同梱の Docker イメージはソフトウェアエンコードだけで、コンテナの中では設定画面にハードウェアの
-    方式がすべて使えないと表示される（[R-1](#r-1-同梱イメージは-alpine-のままにしソフトウェアエンコードだけにする)）。
-  - 方式ごとの前提: 使える OS（R-2 の確認対象）、ドライバー、デバイス（VAAPI の
-    `/dev/dri/renderD128` と、その権限を持つグループ）、PATH の ffmpeg がその方式のエンコーダーを
-    含むこと（`ffmpeg -hide_banner -encoders` で確かめる）。
-  - 直接インストールの手順は、単一バイナリを `task build` で作って動かす既存の手順
-    （[docs/how-to/development.md](../../docs/how-to/development.md) の toolchain）へ案内し、
-    `MDM_DATA_DIR` などの実行時設定は同じ文書の「Runtime settings」を指す。
-  - 設定画面での有効化と、起動時の確認・ソフトウェアへの切り替えの見え方。
-  GPU をコンテナに渡す override の例（`devices`・`group_add`・NVIDIA Container Toolkit）は書かない。
-  `compose.yaml`・`compose.hosting.yaml` には何も足さない。設定画面の説明文はこの節を指す（R-11）。
-- Rationale: 親 Issue 要件 14 と受け入れ条件 11 は、この文書でハードウェアエンコードに直接
-  インストールが要ることと Docker がソフトウェアだけであることが分かり、直接インストールした環境で
-  有効にできることを求める。ハードウェアエンコーダーの有無は ffmpeg のビルドとホストのドライバーで
-  決まり、VVMDM はそれを用意しないので、利用者が確かめる方法（`-encoders`）を前提と並べて書く。
-- Alternatives considered: GPU をコンテナに渡す override の例を書く（親 Issue の対象外。イメージに
-  ドライバーが無く、渡しても使えない）。直接インストール用の配布物（ビルド済みのバイナリ、
-  インストーラー）を足す（要件に無く、この feature の範囲を超える）。
+## R-5: No change notification; the screen syncs on display and from the save response
 
-## R-10: 検査は ffmpeg を差し替えたテストで行い、実機の確認は quickstart に置く
+| | |
+| --- | --- |
+| **Decision** | An encoder change adds no domain event and no `/api/events` type. The screen calls `GET` when it shows the section, and replaces the display with the `PUT` response (the full state after saving). Only while checking, it calls `GET` again every few seconds until the check ends. |
+| **Why** | The parent Issue edge case "changing the encoder from several tabs or devices at once" accepts "the later save wins, and the display is correct on the next display or on receiving the change result". Adding an event type, a subscription and a screen subscription for one owner-only setting costs more. Checking lasts only a few to a dozen or so seconds after startup, so reloading during that time is enough. |
+| **Rejected** | Adding `domain.TranscodeSettingsChanged` and delivering it over SSE (above). Delivering the check completion over SSE (same reason). |
 
-- Decision: CI にハードウェアエンコーダーは無いので、切り替え・確認・保存・API・画面は
-  `commandContext` を差し替えた helper process（`internal/media/transcode_test.go` の既存の形）と
-  fake の checker で検査する。受け入れ条件 2・3・5・6・7・11 の実機の確認は
-  [quickstart.md](quickstart.md) の手順で GPU のあるホストで行い、結果を実装 PR の本文に残す。
-  ソフトウェアの引数が変わらないことと、共通の出力の約束（回転・縦横比・4K の縮小・キーフレーム
-  間隔）は、今の ffmpeg 付きのテストをそのまま通すことで確かめる。
-- Rationale: 実機でしか確かめられないことを CI で偽って通したように見せない。既存の検査の形を
-  そのまま使う。
-- Alternatives considered: GPU 付きの self-hosted runner（この feature の範囲で用意できない）。
-  実機の確認を省く（要件 10 の約束が符号化器の option の綴りに依るので、実機で ffprobe する必要がある）。
+## R-6: Switching inside a request tries hardware, then software, at the encode step
 
-## R-11: 設定画面の説明文は、公開文書サイトの節を指す
+| | |
+| --- | --- |
+| **Decision** | Split the "encode" step of the `LiveTranscoder.Start` fallback ladder (live-transcode-seek.md, section "Copy path and gap limit") into two steps. When the encoder actually used is hardware, start with that encoder; when it ends without first data (`errNoInitialData`), restart with `libx264` using the same probe data. Details are below. |
+| **Why** | Parent Issue Requirement 11, "switch to software inside the same request when it fails before the first data", is the mechanism the "copy → encode → on-the-spot probe" ladder already uses (move to the next step when the process ends without data). Hardware initialization failures (session limit, no device, unsupported input) return an exit code at once, so software has time left without a separate deadline. An extra deadline would push the total switch time past the current limit (edge case "limit on startup wait"). |
+| **Rejected** | A separate short limit for the hardware attempt (such as 3 s): for 4K input, software decoding alone can take over 3 s for the first 2 s of output, which would cut successful attempts; the existing ladder already fails a hanging encoder at the deadline. A new deadline for the software retry: the total reaches up to 12 s. Remembering a failed encoder and skipping it in later requests: session limits are temporary and the next request often succeeds; Requirement 8 also accepts the display staying at the startup result. |
 
-- Decision: 「動画の変換」区画の説明文は、GitHub Pages の文書サイトにある
-  `docs/how-to/running-vv.md` の「Hardware encoding」節
-  （`https://syudead.github.io/vv/docs/how-to/running-vv#hardware-encoding`）への外部リンクを持ち、
-  新しいタブで開く。URL は `web/src/settings` の定数に 1 つだけ置く。
-- Rationale: SPA はリポジトリの Markdown を配信しないので、相対リンクでは動かない。
-  [docs/how-to/docs-site.md](../../docs/how-to/docs-site.md) のとおり `docs/` は `main` に入るたびに
-  このサイトへ公開され（`cleanUrls` で `.md` を付けない）、README も利用者をここへ案内している。
-  見出しの anchor は GitHub と同じ規則で作られる。
-- Alternatives considered: GitHub の blob の URL（`main` のソースの表示で、利用者向けの公開先ではない）。
-  SPA に文書を同梱して配信する（文書の配信を新しく持ち込むことになり、要件 14 の「該当箇所が分かる」
-  に対して過大）。
+Details of the switch:
+
+- The deadline stays one `StartupDeadline`. A deadline expiry or a cancellation does not switch.
+- The switch is returned on `LiveTranscode` (the encoder used and the hardware error), and the
+  path logs it with `Warn` (edge cases "hardware becomes unavailable after startup" and
+  "concurrent session limit").
+- A request that can copy (`videoCanCopy` and not `Normalize`) copies as before and ignores the
+  encoder setting (Requirement 12).
+- A failure after the first data does not switch, as before.
+
+## R-7: Encode arguments replace only the per-encoder codec options; shared arguments keep the output contract
+
+| | |
+| --- | --- |
+| **Decision** | `videoEncodeArgs` branches by encoder. The shared parts do not change: the filter (downscale, pad, setsar, fps), `-force_key_frames expr:gte(t,n_forced*2)`, audio and `-movflags`. `software` keeps the current arguments (`-c:v libx264 -profile:v high -level:v 5.1 -pix_fmt yuv420p -preset superfast -crf 23`) character for character (Acceptance criterion 1). Hardware encoders get H.264 High, Level 5.1, 4:2:0 8-bit, constant quality and IDR on forced keyframes, in each encoder's own spelling (below). |
+| **Why** | Requirement 10 asks for the same output contract as software. The filter and keyframe arguments, already written independent of the encoder, keep it. The only differences are each encoder's spelling (the level syntax, `nv12` input, VAAPI hwupload, the option that makes forced keyframes IDR). IDR matters because `frag_keyframe` cuts fragments at keyframes; a non-IDR I-frame does not cut a fragment and delays the first data. |
+| **Rejected** | Also using hardware decoding (`-hwaccel`): parent Issue Out of scope. Inserting keyframes with `-g 60` only: frame count and time drift after the fps filter drops frames, and #371 chose a time-based interval. Passing software frames to VAAPI: `h264_vaapi` accepts only hw frames. |
+
+| Encoder | Arguments |
+| --- | --- |
+| `nvenc` | `-c:v h264_nvenc -profile:v high -level:v 5.1 -pix_fmt yuv420p -preset p4 -rc vbr -cq 23 -b:v 0 -forced-idr 1` |
+| `qsv` | `-c:v h264_qsv -profile:v high -level 51 -pix_fmt nv12 -preset veryfast -global_quality 23 -look_ahead 0 -forced_idr 1` |
+| `vaapi` | `-vaapi_device /dev/dri/renderD128`, `format=nv12,hwupload` at the end of the filter, `-c:v h264_vaapi -profile:v high -level 5.1 -rc_mode CQP -qp 23` |
+| `videotoolbox` | `-c:v h264_videotoolbox -profile:v high -level:v 5.1 -pix_fmt yuv420p -q:v 60 -realtime 1` (on models where `-q:v` has no effect, the encoder's default bitrate applies) |
+
+- 10-bit input and unusual pixel formats are reduced to 8-bit 4:2:0 by the `format` / `-pix_fmt`
+  argument before reaching the encoder (edge case "input a hardware encoder cannot handle").
+- Quick Sync and VAAPI take `nv12`, but the output bitstream is 4:2:0 8-bit, the same as
+  `yuv420p` from the browser's view.
+- Input above the resolution limit is downscaled first by the same `scale` as today.
+- The numbers (quality, preset) in the table are a starting point. The implementation PR may tune
+  them during the Acceptance criterion 7 check ([quickstart.md](quickstart.md)). The output
+  contract (profile, level, pixel format, keyframe interval) does not change.
+
+## R-8: The settings API is GET and PUT on `/api/settings/transcoding`, returning the full state
+
+| | |
+| --- | --- |
+| **Decision** | Add `GET /api/settings/transcoding` and `PUT /api/settings/transcoding` (body `{ "videoEncoder": <choice> }`). Both return the same `TranscodingSettings`: choice, encoder actually used, fallback reason, whether checking, and per-encoder results with reasons ([contracts/transcoding-settings-api.md](contracts/transcoding-settings-api.md)). Owner only (not added to `accessRoutes`). A `PUT` that selects an unavailable encoder gets 409 `conflict` with reason `encoder_unavailable`. Reasons are machine-readable codes; the SPA's English catalog owns the text (the 023 error-api policy). |
+| **Why** | The screen needs three things: the saved value, the encoder in use now, and whether each encoder is available. When the `PUT` response returns the full state, the R-5 display is consistent without a second `GET`. The path sits under `/api/settings/` so that future values of the same kind (values the owner selects on the settings screen) line up in one place (`media-folders` predates this namespace). |
+| **Rejected** | `/api/transcoding-settings` (above). `PATCH`: one field, so partial update has no meaning. A separate path for the encoder list: the screen always shows both, so it adds a round trip. |
+
+## R-9: Hardware encoding uses a direct install on the host, and the docs describe prerequisites and steps
+
+| | |
+| --- | --- |
+| **Decision** | Add a "Hardware encoding" section to `docs/how-to/running-vv.md` with the content below. Do not document an override that passes a GPU into the container (`devices`, `group_add`, NVIDIA Container Toolkit). Add nothing to `compose.yaml` or `compose.hosting.yaml`. The settings screen description links to this section (R-11). |
+| **Why** | Parent Issue Requirement 14 and Acceptance criterion 11 ask that this doc makes clear that hardware encoding needs a direct install and that Docker is software only, and that a reader can enable it on a direct install. The ffmpeg build and the host drivers decide whether hardware encoders exist, and VVMDM does not provide them, so the doc lists the way to check (`-encoders`) next to the prerequisites. |
+| **Rejected** | Documenting an override that passes a GPU into the container: parent Issue Out of scope; the image has no drivers, so passing the GPU does not work. Adding direct-install distributions (prebuilt binaries, an installer): not required and beyond this feature's scope. |
+
+Content of the section:
+
+- Hardware encoding works when VVMDM is installed and run directly on the host (Windows, Linux,
+  macOS). The bundled Docker image is software encoding only, and inside the container the
+  settings screen shows every hardware encoder as unavailable
+  ([R-1](#r-1-the-bundled-image-stays-on-alpine-with-software-encoding-only)).
+- Per-encoder prerequisites: supported OS (the R-2 check targets), drivers, devices (VAAPI's
+  `/dev/dri/renderD128` and the group with permission on it), and an ffmpeg on PATH that includes
+  that encoder (check with `ffmpeg -hide_banner -encoders`).
+- For the direct install steps, a pointer to the existing steps that build and run the single
+  binary with `task build` (the toolchain in
+  [docs/how-to/development.md](../../docs/how-to/development.md)). Runtime settings such as
+  `MDM_DATA_DIR` point to "Runtime settings" in the same doc.
+- Enabling it on the settings screen, and how the startup check and the switch to software
+  appear.
+
+## R-10: Tests replace ffmpeg; the real-hardware check lives in the quickstart
+
+| | |
+| --- | --- |
+| **Decision** | CI has no hardware encoders. Switching, checking, storage, API and screen are tested with a helper process that replaces `commandContext` (the existing form in `internal/media/transcode_test.go`) and a fake checker. The real-hardware check for Acceptance criteria 2, 3, 5, 6, 7 and 11 follows [quickstart.md](quickstart.md) on a host with a GPU, and the results go in the implementation PR body. The existing ffmpeg tests pass unchanged, which confirms that the software arguments did not change and that the shared output contract (rotation, aspect ratio, 4K downscale, keyframe interval) holds. |
+| **Why** | CI must not appear to pass what only real hardware can verify. The existing test forms are reused as is. |
+| **Rejected** | A self-hosted runner with a GPU: cannot be provided within this feature. Skipping the real-hardware check: the Requirement 10 contract depends on the spelling of encoder options, so ffprobe on real hardware is necessary. |
+
+## R-11: The settings screen description links to the section on the public docs site
+
+| | |
+| --- | --- |
+| **Decision** | The description of the "Video conversion" section has an external link to the "Hardware encoding" section of `docs/how-to/running-vv.md` on the GitHub Pages docs site (`https://syudead.github.io/vv/docs/how-to/running-vv#hardware-encoding`), opened in a new tab. The URL lives in one constant in `web/src/settings`. |
+| **Why** | The SPA does not serve the repository's Markdown, so a relative link does not work. Per [docs/how-to/docs-site.md](../../docs/how-to/docs-site.md), `docs/` is published to this site on every merge to `main` (`cleanUrls`, so no `.md`), and the README also sends users there. Heading anchors follow the same rules as GitHub. |
+| **Rejected** | A GitHub blob URL: shows the `main` source, not the user-facing publication. Bundling and serving the docs in the SPA: introduces document serving, excessive for Requirement 14's "the relevant section is clear". |

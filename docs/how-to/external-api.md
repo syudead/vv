@@ -1,35 +1,40 @@
-# 外部連携 API を使う
+# Using the external API
 
-スクレイパーなどの外部ツールから、API トークンで VVMDM を操作する手順である。決定の理由は
-[specs/026-external-api/research.md](../../specs/026-external-api/research.md) にある。
+This procedure operates VVMDM from an external tool, such as a scraper, with an API token. The
+reasons for the decisions are in
+[specs/026-external-api/research.md](../../specs/026-external-api/research.md).
 
-## 契約
+## Contract
 
-- 契約の正本は [api/external-v1.yaml](../../api/external-v1.yaml)（OpenAPI 3.1）である。操作・
-  項目・誤りの `code` と `reason` はこの文書を読む。サーバーからは配らない。
-- 基底の経路は `/api/v1`。画面が使う `/api/*`（[api/openapi.yaml](../../api/openapi.yaml)）とは別の
-  約束で、画面の API は予告なく変わる。外部ツールは `/api/v1` だけを使う。
+- The source of truth for the contract is [api/external-v1.yaml](../../api/external-v1.yaml)
+  (OpenAPI 3.1). Read that file for the operations, fields, and error `code` and `reason` values.
+  The server does not serve it.
+- The base path is `/api/v1`. It is a separate contract from the `/api/*` the UI uses
+  ([api/openapi.yaml](../../api/openapi.yaml)); the UI API changes without notice. External tools
+  use only `/api/v1`.
 
-## 互換の方針
+## Compatibility policy
 
-- `v1` の中では、項目と操作の追加だけを行う。利用者は、知らない項目と知らない `code`・`reason` を
-  読み飛ばすように書く。
-- 既存の項目の意味・型・必須を変えるとき、操作を取り除くときは、`v1` を変えずに `v2` を足す。
+- Within `v1`, only fields and operations are added. Write clients to skip unknown fields and
+  unknown `code` and `reason` values.
+- Changing the meaning, type or requiredness of an existing field, or removing an operation, adds
+  `v2` and leaves `v1` unchanged.
 
-## トークンを発行する
+## Issue a token
 
-1. 所有者でログインし、設定ページの「API トークン」節で用途の名前を入れて発行する。
-2. 表示された平文（`vvt_` で始まる 47 文字）をその場で控える。平文はこの一度しか表示されない。
-   失くしたら失効させて発行し直す。
-3. 使わなくなったトークンは同じ節で失効させる。ユーザー名かパスワードを変える
-   （`mdm account`）と、すべてのトークンが失効する。
+1. Log in as the owner. In the "API tokens" section of the Settings page, enter a name for the
+   purpose and issue the token.
+2. Copy the displayed plaintext (47 characters starting with `vvt_`) right away. The plaintext is
+   shown only this once. If you lose it, revoke the token and issue a new one.
+3. Revoke tokens you no longer use in the same section. Changing the username or password
+   (`mdm account`) revokes every token.
 
-トークンは所有者と同じ権限を持つ（非公開の動画も読める）。設定ファイルやログに残すときは
-パスワードと同じように扱う。
+A token has the same permissions as the owner (it can read private videos too). Treat it like a
+password when you keep it in a configuration file or a log.
 
-## 呼び出す
+## Call
 
-すべての要求に `Authorization: Bearer <トークン>` を付ける。Cookie は読まない。
+Send `Authorization: Bearer <token>` on every request. Cookies are not read.
 
 ```sh
 BASE=http://localhost:8080
@@ -41,30 +46,33 @@ curl -X POST -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans"
 curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 ```
 
-- トークンが無い・形式が違う・無効・失効済みのときは `401`（`code: unauthenticated`）と
-  `WWW-Authenticate: Bearer` が返る。原因は区別しない。
-- 同一オリジンの検査はかけないので、`Origin` を送るクライアントでも使える。本文を取る操作は
-  `Content-Type: application/json` を要する。
-- 誤りの本文は `{ code, message, reason?, limit?, index? }`。`message` は英語の説明で、分岐には
-  `code` と `reason` を使う。
-- 最終使用日時は設定ページの一覧に出る。1 分より細かくは更新しない。
-- 実行中の要求も、トークンを失効させた時点で打ち切られる。
+- A missing, malformed, invalid or revoked token returns `401` (`code: unauthenticated`) with
+  `WWW-Authenticate: Bearer`. The causes are not distinguished.
+- No same-origin check applies, so clients that send `Origin` work too. Operations that take a
+  body require `Content-Type: application/json`.
+- The error body is `{ code, message, reason?, limit?, index? }`. `message` is an English
+  description; branch on `code` and `reason`.
+- The last-used time appears in the list on the Settings page. It is not updated more often than
+  once per minute.
+- Revoking a token also aborts its in-flight requests.
 
-## スキャン
+## Scans
 
-- `POST /api/v1/scans` は本文を取らない。新しく始めたら `201`、実行中のものがあれば新しく始めずに
-  それを `200` で返す。メディアフォルダが無ければ `409`（`media_folders_not_configured`）。
-- `GET /api/v1/scans/current` で直近の状態を読む。`status` が `done`・`partial`・`failed` になれば
-  終わっている。`finding` のあいだは本数を数え終えていないので、`videos`・`settledVideos` は `null`
-  である。一度も走査していなければ `404`（`no_scan`）。
+- `POST /api/v1/scans` takes no body. It returns `201` when it starts a new scan. When a scan is
+  running, it returns that scan with `200` instead of starting one. Without media folders, it
+  returns `409` (`media_folders_not_configured`).
+- `GET /api/v1/scans/current` reads the latest state. The scan has finished when `status` is
+  `done`, `partial` or `failed`. While `finding`, the count is not final, so `videos` and
+  `settledVideos` are `null`. If no scan has ever run, it returns `404` (`no_scan`).
 
-## 動画の一覧を読む
+## List videos
 
-- `GET /api/v1/videos` は、登録フォルダの下にある動画を追加日時の古い順（`addedAt`、同じなら `id`）で
-  返す。非公開の動画も返る。1 ページの件数は `limit`（既定 100、1〜200。範囲外は `400`）。
-- 応答は `{ items, nextCursor }`。`nextCursor` が空文字列でなければ、それをそのまま `cursor` に渡して
-  続きを読む。空文字列になれば最後まで読んだ。カーソルの中身は解釈しない。解釈できないカーソルは
-  `400`（`invalid_cursor`）なので、先頭から読み直す。
+- `GET /api/v1/videos` returns the videos under the registered folders, oldest added first
+  (`addedAt`, then `id`). Private videos are included. The page size is `limit` (default 100,
+  range 1–200; out of range returns `400`).
+- The response is `{ items, nextCursor }`. When `nextCursor` is not an empty string, pass it as
+  is as `cursor` to read the next page. An empty string means the end. Do not interpret the cursor
+  contents. An uninterpretable cursor returns `400` (`invalid_cursor`); read again from the start.
 
   ```sh
   cursor=""
@@ -77,34 +85,37 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
   done
   ```
 
-- 一覧は変更を追跡しない。新しい動画を知るには、スキャンの後に一覧を先頭から読み直す。読み通しの
-  途中で動画が増える・消える・移動しても続きの要求は失敗しないが、その間の取りこぼしと重複は
-  起こりうる。
-- 消えた動画は一覧に出なくなるだけで、消えたことを知らせる項目は無い。手元に持っている動画が
-  まだあるかは `lookup` で確かめ、`404`（`video_not_found`）なら消えている。登録フォルダの外の所在だけが
-  残った動画も、消えた動画と同じに扱う。
-- `locations` は登録フォルダの下の今の所在で、パスの順に並び、先頭が代表である（`title` は代表の
-  題名）。`durationMs` は解析前は `null`。`tags` の `manual` は手で付けたタグ、`fromFolder` は
-  祖先のフォルダ名から付くタグである。
+- The list does not track changes. To find new videos, read the list again from the start after a
+  scan. Videos added, removed or moved during a full read do not fail the following requests, but
+  videos can be missed or duplicated in that window.
+- A removed video just disappears from the list; no field reports the removal. Check whether a
+  video you hold still exists with `lookup`: `404` (`video_not_found`) means it is gone. Treat a
+  video whose only remaining locations are outside the registered folders the same as a removed
+  one.
+- `locations` are the current locations under the registered folders, sorted by path; the first
+  is the representative (`title` is the representative's title). `durationMs` is `null` before
+  analysis. In `tags`, `manual` holds manually added tags and `fromFolder` holds tags from
+  ancestor folder names.
 
-## 動画を 1 本引く
+## Look up one video
 
-`GET /api/v1/videos/lookup` は `id`・`contentKey`・`path` のちょうど 1 つを取る（0 個・2 個以上は
-`400`）。応答は一覧の項目と同じ形である。
+`GET /api/v1/videos/lookup` takes exactly one of `id`, `contentKey` and `path` (zero, or two or
+more, returns `400`). The response has the same shape as a list item.
 
 ```sh
 curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
   --data-urlencode "path=/media/videos/clip.mp4"
 ```
 
-- `path` は正規化せず、所在のパスとバイト列で比べる。macOS などで NFD の綴りのファイル名は、
-  一覧の `locations[].path` をそのまま渡す。
-- 無い動画と、登録フォルダの下に所在の無い動画は `404`（`video_not_found`）。
+- `path` is not normalized; it is compared byte for byte with the location path. For a file name
+  spelled in NFD, such as on macOS, pass `locations[].path` from the list as is.
+- A missing video, or a video without a location under the registered folders, returns `404`
+  (`video_not_found`).
 
-## 動画にタグを付ける
+## Tag videos
 
-`POST /api/v1/video-tags` は、複数の動画に名前で指定したタグを 1 回の要求でまとめて付ける・外す・
-置き換える。本文は JSON で、`Content-Type: application/json` を付ける。
+`POST /api/v1/video-tags` adds, removes or replaces tags, given by name, on several videos in one
+request. The body is JSON; send `Content-Type: application/json`.
 
 ```json
 { "videos": [{ "path": "/media/videos/clip.mp4" }, { "contentKey": "…" }, { "id": 12 }],
@@ -112,63 +123,70 @@ curl -G -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos/lookup" \
   "tags": ["猫", "ねこ"] }
 ```
 
-- `videos` の各要素は `id`・`contentKey`・`path` のちょうど 1 つを持つ（`lookup` と同じ引き方）。
-  1〜20000 件。本文は 32 MiB（33554432 バイト）までで、超えると `400`（`invalid_request`）で断る。
-  長いパスを大量に送るときは、要求を分ける。
-- `action` は次のどれか。どれも手で付けたタグだけを書き換え、祖先のフォルダ名から付くタグ
-  （`fromFolder`）は変えない。
-  - `add`: 名前のタグを付ける。無い名前はタグを作る。
-  - `remove`: 名前のタグを外す。どのタグにも当たらない名前は何もしない。
-  - `replace`: 手で付けたタグをちょうど `tags` の集合にする。無い名前はタグを作る。`tags` が空なら
-    手で付けたタグをすべて外す。
-- `tags` はタグの名前で、シノニムも使える（シノニムは元のタグとして付く）。同じタグに当たる名前は
-  1 つにまとめる。100 件まで。`add`・`remove` では 1 件以上。
-- 応答は `{ items: [{ video: { id, contentKey }, tags }] }` で、`videos` の順に各動画の操作後の
-  タグを返す。`tags` の形は一覧の項目と同じである。
-- 全体を 1 つのトランザクションで行う。引けない動画が 1 つでもあれば `404`（`video_not_found`、
-  `index` は `videos` の何番目か）で、何も反映しない（タグも作らない）。
-- 同じ要求を繰り返しても状態は変わらず、`200` が返る。通信の失敗のあとは、そのまま送り直してよい。
-- 件数の誤りは `400`（`too_many_videos`・`too_many_tags`、`limit` に上限）。名前の誤りは `400`
-  （`tag_name_empty`・`tag_name_control_characters`・`tag_name_too_long`）で、`index` は `tags` の
-  何番目かを指す。
+- Each element of `videos` has exactly one of `id`, `contentKey` and `path` (the same lookup as
+  `lookup`). 1–20000 elements. The body is limited to 32 MiB (33554432 bytes); a larger body is
+  rejected with `400` (`invalid_request`). Split the request when sending many long paths.
+- `action` is one of the following. Each rewrites only manually added tags and never changes tags
+  from ancestor folder names (`fromFolder`).
+  - `add`: adds the named tags. An unknown name creates the tag.
+  - `remove`: removes the named tags. A name that matches no tag does nothing.
+  - `replace`: sets the manually added tags to exactly the `tags` set. An unknown name creates
+    the tag. An empty `tags` removes every manually added tag.
+- `tags` are tag names; synonyms work too (a synonym is applied as its original tag). Names that
+  resolve to the same tag are merged into one. Up to 100 names; at least 1 for `add` and `remove`.
+- The response is `{ items: [{ video: { id, contentKey }, tags }] }`: each video's tags after the
+  operation, in `videos` order. `tags` has the same shape as in a list item.
+- The whole request runs in one transaction. If any video cannot be resolved, it returns `404`
+  (`video_not_found`, with `index` as the position in `videos`) and applies nothing (it creates
+  no tags either).
+- Repeating the same request does not change the state and returns `200`. After a network
+  failure, resend the request as is.
+- Count errors return `400` (`too_many_videos`, `too_many_tags`, with the limit in `limit`). Name
+  errors return `400` (`tag_name_empty`, `tag_name_control_characters`, `tag_name_too_long`), with
+  `index` as the position in `tags`.
 
-## スクレイパーからの連携例
+## Example: integration from a scraper
 
-新しく取り込んだ動画を外部のサイトで調べ、見つけたタグを付ける流れの例である。
+This example looks up newly imported videos on an external site and adds the tags it finds.
 
-1. スキャンを始め（`POST /api/v1/scans`）、`GET /api/v1/scans/current` の `status` が `done`・`partial`・
-   `failed` のどれかになるまで待つ。
-2. 一覧（`GET /api/v1/videos`）を先頭から読み直し、手元に記録の無い `contentKey` を新しい動画として
-   拾う。`contentKey` はファイルを移しても変わらないので、手元の記録の鍵にする。
-3. 新しい動画ごとに、`locations[].path` や `title` から外部のサイトで調べる。後で状態を確かめ直す
-   ときは `GET /api/v1/videos/lookup?contentKey=…` で 1 本引く（`404` なら消えている）。
-4. 見つけた名前を `POST /api/v1/video-tags` で付ける。同じ名前の組を付ける動画はまとめて 1 回で送る。
+1. Start a scan (`POST /api/v1/scans`) and wait until `status` from `GET /api/v1/scans/current`
+   is `done`, `partial` or `failed`.
+2. Read the list (`GET /api/v1/videos`) again from the start, and pick each `contentKey` without a
+   local record as a new video. `contentKey` does not change when a file moves, so use it as the
+   key of the local records.
+3. For each new video, search the external site by `locations[].path` or `title`. To recheck its
+   state later, look up one video with `GET /api/v1/videos/lookup?contentKey=…` (`404` means it
+   is gone).
+4. Add the found names with `POST /api/v1/video-tags`. Send videos that get the same set of names
+   together in one request.
 
 ```sh
-# 2. 一覧から contentKey と代表のパスを拾う（ページのたどり方は「動画の一覧を読む」）。
+# 2. Pick contentKey and the representative path from the list (paging: see "List videos").
 curl -s -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/videos?limit=200" |
   jq -r '.items[] | [.contentKey, .locations[0].path] | @tsv'
 
-# 4. 調べた結果のタグを付ける。
+# 4. Add the tags found by the search.
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   "$BASE/api/v1/video-tags" \
   -d '{"videos":[{"contentKey":"…"}],"action":"add","tags":["猫","旅行"]}'
 ```
 
-- 付けたタグを外部の結果にそろえ直したいときは `replace` を使う。画面で手で付けたタグも置き換わる
-  ので、画面と併用するなら `add` と `remove` で差分だけを送る。
-- 要求が `404` で失敗したときは、`index` の動画を記録から外すか `lookup` で引き直してから送り直す。
+- To realign the tags with the external results, use `replace`. It also replaces tags added
+  manually in the UI, so when you use the UI as well, send only the difference with `add` and
+  `remove`.
+- When a request fails with `404`, drop the video at `index` from the records or look it up again
+  with `lookup`, then resend.
 
-## MCP から使う
+## Use from MCP
 
-同じ操作を `/mcp` の MCP サーバー（Streamable HTTP）がツールとして出す。Claude Code などの MCP
-クライアントから、外部連携 API と同じトークンで使う。
+The MCP server at `/mcp` (Streamable HTTP) exposes the same operations as tools. Use it from an
+MCP client such as Claude Code, with the same token as the external API.
 
 ```sh
 claude mcp add --transport http vv https://vv.example/mcp --header "Authorization: Bearer vvt_…"
 ```
 
-| ツール | 対応する操作 |
+| Tool | Operation |
 | --- | --- |
 | `list_videos` | `GET /api/v1/videos` |
 | `get_video` | `GET /api/v1/videos/lookup` |
@@ -177,10 +195,11 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `start_scan` | `POST /api/v1/scans` |
 | `get_current_scan` | `GET /api/v1/scans/current` |
 
-- ツールの引数は同じ操作の問い合わせ・本文と、結果（structured content）は応答の本文と同じ形である。
-  操作の誤りは、ツールの結果の `isError: true` と、上の誤りの本文（`{ code, message, reason?, limit?,
-  index? }`）で返る。
-- 受けるのは `POST /mcp` だけで、応答は `application/json`。サーバーは会話の状態を持たない
-  （`GET`・`DELETE` は `405`）。
-- トークンが無い・無効なときは、MCP の処理に入る前に `401` と `WWW-Authenticate: Bearer` が返る。
-  トークンを失効させると、実行中のツールも打ち切られる。
+- Tool arguments have the same shape as the operation's query and body, and the result
+  (structured content) the same shape as the response body. An operation error returns a tool
+  result with `isError: true` and the error body above (`{ code, message, reason?, limit?,
+  index? }`).
+- The server accepts only `POST /mcp` and responds with `application/json`. It keeps no session
+  state (`GET` and `DELETE` return `405`).
+- A missing or invalid token returns `401` with `WWW-Authenticate: Bearer` before MCP processing
+  starts. Revoking a token also aborts its running tools.

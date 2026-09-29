@@ -251,8 +251,10 @@ There it takes the client address by walking `X-Forwarded-For` from the right
 to the first untrusted address, and decides HTTPS from the last
 `X-Forwarded-Proto` value. On every other connection it uses the connecting
 address and whether the connection itself was TLS, so a client on the internet
-cannot fake either. With the default, a device on the home network can: it can
-claim another address and so get around the login attempt limit. Narrow
+cannot fake either.
+
+With the default, a device on the home network can: it can claim another
+address and so get around the login attempt limit. Narrow
 `MDM_TRUSTED_PROXIES` to the proxy's address if you do not trust every device
 on the network. The `Forwarded` header (RFC 7239) is not read. Invalid entries
 are reported together with other invalid settings at startup.

@@ -1,13 +1,13 @@
-# Quickstart: フォルダ画面の検証
+# Quickstart: verifying the folder page
 
-起動と検査のコマンドは [README.md](../../README.md) と
-[Taskfile.yml](../../Taskfile.yml) を使う。ここに書くのは、この機能に固有の
-フォルダ構成と、それに対して確かめることだけである。
+Use [README.md](../../README.md) and [Taskfile.yml](../../Taskfile.yml) for the startup and check
+commands. This document records only the folder layout specific to this feature and what to
+verify against it.
 
-## フォルダ構成
+## Folder layout
 
-2つのメディアフォルダを登録する。どちらも末尾の名前を `movies` にして、同名の登録
-フォルダを区別できることを確かめる（受け入れ条件 2）。
+Register 2 media folders. Name both `movies` at the end, to verify that registered folders with
+the same name can be told apart (Acceptance criterion 2).
 
 ```text
 <tmp>/a/movies/
@@ -20,40 +20,42 @@
 ├── 1/  w1.mp4
 ├── 2/  w2.mp4
 ├── 10/ w10.mp4
-├── many/            # 直下に 61 本（受け入れ条件 12）
-├── five/            # 直下に 5 本（受け入れ条件 5）
+├── many/            # 61 videos directly inside (Acceptance criterion 12)
+├── five/            # 5 videos directly inside (Acceptance criterion 5)
 ├── only-deeper/
-│   └── inner/ d.mp4 # 直下に動画が無い子フォルダ（受け入れ条件 6）
-├── 100% #1 日本語/ s.mp4   # 特殊な文字（Edge Case）
+│   └── inner/ d.mp4 # subfolder with no direct videos (Acceptance criterion 6)
+├── 100% #1 日本語/ s.mp4   # special characters (Edge case)
 └── dup/
-    ├── same-a.mp4   # 内容が同じ2ファイル。カードは1枚（Edge Case）
+    ├── same-a.mp4   # 2 files with the same content; 1 card (Edge case)
     └── same-b.mp4
 <tmp>/b/movies/
-└── copy-of-x.mp4    # A/x.mp4 と内容が同じ。どちらでも再生位置を共有する
+└── copy-of-x.mp4    # same content as A/x.mp4; both share the playback position
 ```
 
-動画はどれも数秒の小さな H.264 でよい（`web/e2e/media-fixtures.mjs` の作り方と同じ）。
-登録と取り込みは設定画面か `POST /api/media-folders`・`POST /api/scans` で行う。
+Every video can be a small H.264 file a few seconds long (made the same way as
+`web/e2e/media-fixtures.mjs`). Register and scan from the settings page, or with
+`POST /api/media-folders` and `POST /api/scans`.
 
-## 確かめること
+## What to verify
 
-1. `/folders` に `movies` が2枚出て、パスで見分けられる。
-2. `movies`（a）を開くと、子フォルダが `1`・`2`・`10`・`100% #1 日本語`・`A`・`dup`・
-   `five`・`many`・`only-deeper` の自然順で、動画より前に並ぶ。
-3. `A` を開くと動画は `x` だけ、子フォルダは `B` だけ。`B` のカードは動画 1 本・
-   フォルダ 1 件で、プレビューは `y` だけ。
-4. `five` のカードのプレビューは4件まで。`only-deeper` のカードは外形と「動画 0 本」。
-5. `A/B/C` を開いた URL で再読み込みして同じフォルダが開き、戻るで `A/B` に戻る。
-   `100% #1 日本語` でも同じ。
-6. `many` で下までスクロールすると 61 本すべてが出る。途中の動画を再生して戻ると、
-   同じ位置に戻る。
-7. 並び順を切り替えると動画だけが並び替わる。
-8. 設定画面で `b/movies` の登録を削除してから、そのフォルダの URL を開くと
-   「見つかりません」と最上位への導線が出る。
-9. キーボードだけで、サイドバーの「フォルダ」→ フォルダカード → 動画カード →
-   パンくずで戻る、を通せる。
+1. `/folders` shows 2 `movies` cards, told apart by their paths.
+2. Opening `movies` (a) lists the subfolders before the videos, in natural order: `1`, `2`, `10`,
+   `100% #1 日本語`, `A`, `dup`, `five`, `many`, `only-deeper`.
+3. Opening `A` shows only the video `x` and only the subfolder `B`. The `B` card shows 1 video and
+   1 folder, and its preview is only `y`.
+4. The `five` card shows at most 4 previews. The `only-deeper` card shows the folder outline and
+   "0 videos".
+5. Reloading the URL of `A/B/C` opens the same folder, and Back returns to `A/B`. The same holds
+   for `100% #1 日本語`.
+6. Scrolling to the bottom of `many` shows all 61 videos. Playing a video in the middle and going
+   back returns to the same position.
+7. Changing the sort order reorders only the videos.
+8. After removing the `b/movies` registration in the settings page, opening that folder's URL
+   shows "not found" and a link to the top level.
+9. Keyboard alone can go through the sidebar "Folders" → a folder card → a video card → back
+   through the breadcrumb.
 
-`task test-e2e` の `web/e2e/folders.e2e.ts` が 1〜5、7、9 を自動で確かめる。E2E の
-フォルダ構成には `many/` を置かない。6 のページ送りは `internal/store` と
-`internal/httpapi` の単体テストが、戻ったときの復元は `FolderPage.test.tsx` が確かめる。
-8 と見た目は人が確かめ。
+`web/e2e/folders.e2e.ts` in `task test-e2e` verifies 1 to 5, 7 and 9 automatically. The E2E
+folder layout has no `many/`. The unit tests in `internal/store` and `internal/httpapi` verify the
+paging in 6, and `FolderPage.test.tsx` verifies the restore on going back. A person verifies 8 and
+the visuals.

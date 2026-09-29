@@ -16,9 +16,16 @@ plan-to-issues creates Issues and no branch. Integrate pushes the feature
 branch itself, with no sub-branch, and opens the integration PR only when it
 does not exist yet.
 
-Do not merge any PR (merging main into the feature branch in integrate is not a
-PR merge), close Issues, edit the parent Issue body, start another stage, or
-widen the scope. If the work needs a requester decision (Q-6, Q-7 in
+Do not:
+
+- merge any PR (merging main into the feature branch in integrate is not a PR
+  merge);
+- close Issues;
+- edit the parent Issue body;
+- start another stage;
+- widen the scope.
+
+If the work needs a requester decision (Q-6, Q-7 in
 docs/product-specs/spec-quality.md) or a change to an approved artifact, stop
 and return BLOCKED with the exact question instead of guessing.
 

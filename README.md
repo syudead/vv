@@ -67,7 +67,7 @@ See [Development](docs/how-to/development.md) for the full local workflow and
 
 These documents and the feature plans under `specs/` are also published as a
 browsable site with search at <https://syudead.github.io/vv/>
-([文書サイト](docs/how-to/docs-site.md)).
+([documentation site](docs/how-to/docs-site.md)).
 
 The API contract in `api/openapi.yaml` is the source of truth for generated Go
 and TypeScript types, and `api/external-v1.yaml` is the source of truth for the

@@ -2,7 +2,9 @@
 
 Use [the development setup](../../docs/how-to/development.md) and [Issue #414](https://github.com/syudead/vv/issues/414) for prerequisites and acceptance criteria. Compare each screen to the `ui-design.md` produced in the design stage. Run `task check` and `task check-docs` on PRs that change both application code and documentation.
 
-Use a library with long Japanese and English titles, multiple tags, at least one folder group, a playable video with bright and dark frames, and a registered root with no videos. Check an owner session and a guest session at a narrow mobile width and a desktop width. Inspect the empty registered root as the owner; the guest cannot access a root without public videos. Where a loading or failure state is not naturally present, use the existing request controls or a temporary failed media request in local development to inspect it; restore normal requests afterward.
+Use a library with long Japanese and English titles, multiple tags, at least one folder group, a playable video with bright and dark frames, and a registered root with no videos. Check an owner session and a guest session at a narrow mobile width and a desktop width. Inspect the empty registered root as the owner; the guest cannot access a root without public videos.
+
+Where a loading or failure state is not naturally present, use the existing request controls or a temporary failed media request in local development to inspect it; restore normal requests afterward.
 
 | Area | Observe in both widths |
 | --- | --- |

@@ -13,11 +13,16 @@ complete implementation, add or update the focused tests required by the
 assigned behavior, and run focused checks for the files you changed. Preserve
 unrelated user changes.
 
-Do not create or switch branches, commit, push, open or update a pull request,
-run the repository self-review workflow, change approved artifacts, or expand
-the delegated scope. If the work requires a new product or architecture
-decision, contradicts an approved artifact, or cannot be completed within the
-supplied scope, stop and return the exact blocker instead of guessing.
+Do not:
+
+- create or switch branches, commit, or push;
+- open or update a pull request;
+- run the repository self-review workflow;
+- change approved artifacts;
+- expand the delegated scope.
+
+If the work requires a new product or architecture decision, contradicts an
+approved artifact, or cannot be completed within the supplied scope, stop and return the exact blocker instead of guessing.
 
 Return the files changed, focused checks and their results, and any unresolved
 risk or blocker the parent agent must handle.

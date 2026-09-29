@@ -1,4 +1,4 @@
-# Implementation Plan: 取り込みの進捗と結果を、利用者が知りたいことに答える形に作り直す
+# Implementation Plan: rebuild import progress and results around what the user wants to know
 
 **Branch**: `feature/024-import-progress` | **Parent Issue**: #444
 
@@ -6,111 +6,123 @@
 
 ## Summary
 
-今の画面は、走査の割合（`Scan` の total / completed）と、仕事の種類ごとの残り（`Processing`）を
-そのまま出している。これを、「直近の取り込みの対象の動画が何本のうち何本済んだか」という1つの
-進み具合と、今の処理の1行と、動画ごとの問題の一覧に置き換える。
+The current screen shows the scan ratio (`Scan` total / completed) and the remaining work per job
+kind (`Processing`) as they are. This feature replaces them with one progress value ("M of N
+target videos of the latest import settled"), one line for the current activity, and a per-video
+issue list.
 
-- **対象と済みの本数**: サーバーが直近の走査に属する動画の集合を持つ。動画は、仕事が積まれた
-  時点でその集合に加わる。「済み」は、その動画に残りの仕事が無いことから読み出しのたびに決める
-  （[research.md R-1](research.md#r-1-取り込みの対象を走査の記録に紐づく動画の集合として保存する)〜
-  [R-5](research.md#r-5-走査中の分母は集合にまだ登録していない対象のファイルの数を足す)）。
-- **完了**: 走査が閉じて、対象の動画がすべて済んだときにだけ「完了」または「一部失敗」にする。
-  その時刻を1つ保存する（R-4）。
-- **問題**: 次の出来事を直近の取り込みの問題として保存し、動画ごとに1件にまとめて返す
-  （[R-6](research.md#r-6-問題は出来事ごとの行で保存し読み出しで動画ごとの1件にまとめる)、
-  [R-7](research.md#r-7-代用は生成の関数が結果の値として返す)）。
-  - 走査で読めなかったファイル、登録できなかったファイル
-  - やり直しの上限まで失敗した仕事
-  - 代表サムネイルとシーク用サムネイルの代用
-- **今の処理**: `internal/app` がメモリに持ち、走査の1ファイルごと、仕事の開始と終了ごとに知らせる
-  （[R-8](research.md#r-8-今の処理は保存せずinternalapp-がメモリに持つ)）。
-- **API**: `Scan` の形を作り直し、`/api/processing` と SSE の `processing` をなくす。右下の表示と
-  設定画面は同じ `Scan` を読み、設定画面だけが問題の一覧を別の経路で読む
-  （[contracts/scan-api.md](contracts/scan-api.md)）。
-- **画面の形**: 見た目・言葉・配置は、この Plan のあとの design 段階が `ui-design.md` で決める
-  （親 Issue に `ui` ラベルがある）。この Plan は、画面が読む値と、その値の意味までを決める。
+- **Targets and settled count**: the server holds the set of videos that belong to the latest
+  scan. A video joins the set when a job is enqueued for it. Each read decides "settled" from the
+  absence of remaining jobs for the video
+  ([research.md R-1](research.md#r-1-store-the-import-targets-as-a-set-of-videos-tied-to-the-scan-record) to
+  [R-5](research.md#r-5-while-scanning-add-target-files-not-yet-registered-to-the-denominator)).
+- **Completion**: the state becomes "done" or "some failed" only when the scan has closed and
+  every target video has settled. That time is stored once (R-4).
+- **Issues**: the events below are stored as issues of the latest import and returned merged into
+  one entry per video
+  ([R-6](research.md#r-6-store-issues-as-one-row-per-event-and-merge-them-per-video-on-read),
+  [R-7](research.md#r-7-the-generator-functions-return-substitution-as-a-result-value)).
+  - Files the scan could not read, and files that could not be registered
+  - Jobs that failed up to the retry limit
+  - Substitutions for the main thumbnail and the seek thumbnails
+- **Current activity**: `internal/app` holds it in memory. It is reported per scanned file and on
+  each job start and finish ([R-8](research.md#r-8-current-activity-is-not-stored-internalapp-keeps-it-in-memory)).
+- **API**: `Scan` is rebuilt, and `/api/processing` and the SSE `processing` event are removed.
+  The bottom-right indicator and the Settings screen read the same `Scan`. Only the Settings
+  screen reads the issue list, through a separate route
+  ([contracts/scan-api.md](contracts/scan-api.md)).
+- **Screen shape**: the design stage after this Plan decides the look, text and layout in
+  `ui-design.md` (the parent Issue has the `ui` label). This Plan decides the values the screen
+  reads and what they mean.
 
 ## Technical Context
 
 **Canonical definitions**:
 
-- 境界と依存方向、ドメインイベント、`/api/events`、作り直せるデータの分類:
-  [ARCHITECTURE.md](../../ARCHITECTURE.md)（「Intended dependency direction」
-  「Rebuildable and user data」、イベントと SSE の段落）
-- 今の走査: [internal/scanner/scanner.go](../../internal/scanner/scanner.go)
-  （`Scan`、`progressInterval`、ファイルごとの失敗のログ）、
-  [internal/app/scans.go](../../internal/app/scans.go)（`StartScan`・`run`・`RecoverInterrupted`）、
+- Boundaries and dependency direction, domain events, `/api/events`, and the rebuildable data
+  classification: [ARCHITECTURE.md](../../ARCHITECTURE.md) ("Intended dependency direction",
+  "Rebuildable and user data", and the events and SSE paragraph)
+- Current scan: [internal/scanner/scanner.go](../../internal/scanner/scanner.go)
+  (`Scan`, `progressInterval`, per-file failure logging),
+  [internal/app/scans.go](../../internal/app/scans.go) (`StartScan`, `run`, `RecoverInterrupted`),
   [internal/store/scans.go](../../internal/store/scans.go)
-- 今の仕事と失敗: [internal/domain/job.go](../../internal/domain/job.go)（`MaxJobAttempts`・
-  `JobStateAfterFailure`・`Processing`）、[internal/store/jobs.go](../../internal/store/jobs.go)
-  （`EnqueueJob`・`EnsureJob`・`FailClaimedJob`・`recordTerminalFailure`・`Processing`）、
+- Current jobs and failures: [internal/domain/job.go](../../internal/domain/job.go)
+  (`MaxJobAttempts`, `JobStateAfterFailure`, `Processing`),
+  [internal/store/jobs.go](../../internal/store/jobs.go) (`EnqueueJob`, `EnsureJob`,
+  `FailClaimedJob`, `recordTerminalFailure`, `Processing`),
   [internal/store/ingest_results.go](../../internal/store/ingest_results.go)
-  （結果の書き込み、作り直しの積み直し、`RetryProbe`）、
-  [internal/app/ingest.go](../../internal/app/ingest.go)（`JobFinished`、解析のあとのプレビューの積み込み）、
-  [internal/jobs/worker.go](../../internal/jobs/worker.go)
-- 今の代用: [internal/media/thumbnail.go](../../internal/media/thumbnail.go)（先頭のコマでの再試行）、
-  [internal/media/seek_thumbnail.go](../../internal/media/seek_thumbnail.go)（3段の生成）、
+  (result writes, rebuild requeues, `RetryProbe`),
+  [internal/app/ingest.go](../../internal/app/ingest.go) (`JobFinished`, the preview enqueue after
+  probing), [internal/jobs/worker.go](../../internal/jobs/worker.go)
+- Current substitutions: [internal/media/thumbnail.go](../../internal/media/thumbnail.go) (retry
+  with the first frame), [internal/media/seek_thumbnail.go](../../internal/media/seek_thumbnail.go)
+  (three-tier generation),
   [docs/design-docs/seek-sprite-generation.md](../../docs/design-docs/seek-sprite-generation.md)
-- 今の HTTP と SSE: [api/openapi.yaml](../../api/openapi.yaml)（`startScan`・`getCurrentScan`・
-  `getProcessing`・`streamEvents`、`Scan`・`Processing`・`VideoFolder`）、
-  [internal/httpapi/scans.go](../../internal/httpapi/scans.go)、
-  [internal/httpapi/events.go](../../internal/httpapi/events.go)、
+- Current HTTP and SSE: [api/openapi.yaml](../../api/openapi.yaml) (`startScan`,
+  `getCurrentScan`, `getProcessing`, `streamEvents`, `Scan`, `Processing`, `VideoFolder`),
+  [internal/httpapi/scans.go](../../internal/httpapi/scans.go),
+  [internal/httpapi/events.go](../../internal/httpapi/events.go),
   [cmd/mdm/events.go](../../cmd/mdm/events.go)
-- 今の画面: [web/src/shell/ScanProvider.tsx](../../web/src/shell/ScanProvider.tsx)・
-  [scanPresentation.ts](../../web/src/shell/scanPresentation.ts)・
-  [ScanProgressIndicator.tsx](../../web/src/shell/ScanProgressIndicator.tsx)・
-  [ScanNoticeProvider.tsx](../../web/src/shell/ScanNoticeProvider.tsx)、
-  [web/src/settings/ScanStatusSection.tsx](../../web/src/settings/ScanStatusSection.tsx)、
-  [web/e2e/scan-progress.e2e.ts](../../web/e2e/scan-progress.e2e.ts)。
-  今の UI の判断は [specs/012-scan-progress/ui-design.md](../012-scan-progress/ui-design.md) にある。
-- 検査入口: [Taskfile.yml](../../Taskfile.yml)（`task check`・`task check-docs`・`task generate`・
-  `task test-e2e`）
+- Current screen: [web/src/shell/ScanProvider.tsx](../../web/src/shell/ScanProvider.tsx),
+  [scanPresentation.ts](../../web/src/shell/scanPresentation.ts),
+  [ScanProgressIndicator.tsx](../../web/src/shell/ScanProgressIndicator.tsx),
+  [ScanNoticeProvider.tsx](../../web/src/shell/ScanNoticeProvider.tsx),
+  [web/src/settings/ScanStatusSection.tsx](../../web/src/settings/ScanStatusSection.tsx),
+  [web/e2e/scan-progress.e2e.ts](../../web/e2e/scan-progress.e2e.ts). The current UI decisions are
+  in [specs/012-scan-progress/ui-design.md](../012-scan-progress/ui-design.md).
+- Check entry points: [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`,
+  `task generate`, `task test-e2e`)
 
 **Feature-specific context**:
 
-- 追加する依存は無い。
-- SQLite は、表を2つと列を2つ足す（[data-model.md](data-model.md)）。移行は `internal/store/migrations`
-  の次の番号を使う。
-- `Scan` の形と `/api/processing` の削除は、SPA がバイナリに同梱されて一緒に更新されるので、
-  旧 SPA との互換は保たない（これまでの契約変更と同じ扱い）。ただし実装単位の途中で画面が壊れない
-  よう、サーバーの単位は新しい項目を足すだけにする。古い項目と `/api/processing` は、画面を
-  切り替える単位が消す。
-- 画面の言葉は英語で、英語化の feature（`specs/023-english-i18n`、[#463](https://github.com/syudead/vv/pull/463)。
-  `main` に入り、feature branch へ取り込み済み）の仕組みに従う
-  （[docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)）。
-  - 画面の単位は、言葉を [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts) のカタログに置く。
-    `shell.scan` と `settings.scanStatus` を [ui-design.md](ui-design.md) の言葉に置き換える。
-    ESLint の規則と疑似ロケールの画面テストは、今のまま通す。
-  - `Scan.errorCode`・`errorPath` は 023 の形をそのまま引き継ぎ、理由の文は `scanErrorText` で書く。
-    `Scan.error` は、023 と同じく画面に出さない
-    （[R-10](research.md#r-10-画面の言葉はサーバーが返す種類から-spa-が組み立てる)）。
-  - サーバーのログと `message` は、023 と同じく英語で直接書く。
+- No new dependencies.
+- SQLite gains two tables and two columns ([data-model.md](data-model.md)). The migrations use the
+  next numbers in `internal/store/migrations`.
+- The new `Scan` shape and the removal of `/api/processing` do not keep compatibility with the old
+  SPA, because the SPA ships inside the binary and updates with it (the same treatment as earlier
+  contract changes). To keep the screen working between implementation units, the server units
+  only add new fields. The unit that switches the screen removes the old fields and
+  `/api/processing`.
+- The screen text is English and follows the mechanism of the English localization feature
+  (`specs/023-english-i18n`, [#463](https://github.com/syudead/vv/pull/463); merged into `main` and
+  into the feature branch) ([docs/design-docs/i18n.md](../../docs/design-docs/i18n.md)).
+  - The screen units put text in the catalog [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts).
+    They replace `shell.scan` and `settings.scanStatus` with the text in
+    [ui-design.md](ui-design.md). The ESLint rules and the pseudo-locale screen tests keep
+    passing as they are.
+  - `Scan.errorCode` and `errorPath` keep the 023 shape, and `scanErrorText` writes the reason
+    text. `Scan.error` stays off the screen, as in 023
+    ([R-10](research.md#r-10-the-spa-builds-the-screen-text-from-kinds-the-server-returns)).
+  - Server logs and `message` are written directly in English, as in 023.
 
 ## Constitution Check
 
-- **依存方向**（ARCHITECTURE.md「Intended dependency direction」）: 合格。
-  - `internal/domain`: 状態の決め方（`status`）、問題の種類と重さ、分母と済みの数え方を、純粋関数と
-    列挙として持つ。
-  - `internal/media`: 代用したかを値として返すだけで、イベントも store も知らない（R-7）。
-  - `internal/scanner`: ファイルの失敗と今のファイルを、自分が宣言する報告先に渡す。
-  - `internal/jobs`: 仕事の開始を、今の `Finished` と同じ形の `Started` で知らせる。
-  - `internal/app`: 今の処理をメモリに持ち、取り込みの状態を組み立てる。
-  - `internal/httpapi`: それを `gen` の型に変えるだけである。
-  - 兄弟のパッケージを互いに import しない（depguard の規則は変えない）。
-- **ドメインイベント**（ARCHITECTURE.md のイベントの段落）: 合格。`domain.ScanActivityChanged` を
-  足し、購読の登録は `cmd/mdm/events.go` だけで行う。store は今と同じくコミットのあとにだけ発行する。
-- **API の正本**（ARCHITECTURE.md）: 合格。`api/openapi.yaml` を変えて `task generate` し、生成物は
-  手で直さない（AGENTS.md）。
-- **索引と利用者データの区別**（ARCHITECTURE.md「Rebuildable and user data」）: 合格。
-  `scan_videos`・`scan_issues`・`scans.settled_at` は走査と準備のやり直しで作り直せる側に入る。
-  利用者データの表には触れない。一覧に載せる変更は、表を足す単位が行う。
-- **所有者だけに示す**（要件 11、`internal/httpapi/auth.go` の `accessRoutes`）: 合格。新しい経路は
-  所有者だけで、ゲストに返す経路の表に足さない。SPA の購読も今と同じく所有者のときだけ行う。
-- **文書は変更と同じ PR で直す**（core-beliefs.md、AGENTS.md）: 合格。走査・仕事・イベントの段落は
-  サーバーの各単位が、`specs/012-scan-progress/ui-design.md` が今の UI の正本でなくなることは
-  design 段階と画面の単位が直す。
+- **Dependency direction** (ARCHITECTURE.md "Intended dependency direction"): pass.
+  - `internal/domain`: owns the state rule (`status`), issue kinds and severities, and the
+    denominator and settled counting, as pure functions and enums.
+  - `internal/media`: only returns whether it substituted, as a value. It knows neither events nor
+    the store (R-7).
+  - `internal/scanner`: passes file failures and the current file to a reporter it declares.
+  - `internal/jobs`: reports job start through `Started`, shaped like the existing `Finished`.
+  - `internal/app`: holds the current activity in memory and assembles the import state.
+  - `internal/httpapi`: only converts it to the `gen` types.
+  - Sibling packages do not import each other (the depguard rules do not change).
+- **Domain events** (ARCHITECTURE.md events paragraph): pass. `domain.ScanActivityChanged` is
+  added, and subscriptions are registered only in `cmd/mdm/events.go`. The store still emits only
+  after commit.
+- **Canonical API** (ARCHITECTURE.md): pass. Change `api/openapi.yaml` and run `task generate`; do
+  not hand-edit generated files (AGENTS.md).
+- **Index versus user data** (ARCHITECTURE.md "Rebuildable and user data"): pass. `scan_videos`,
+  `scan_issues` and `scans.settled_at` are rebuildable by rerunning the scan and preparation. No
+  user data table is touched. The unit that adds each table adds it to that list.
+- **Owner-only exposure** (Requirement 11, `accessRoutes` in `internal/httpapi/auth.go`): pass.
+  The new route is owner-only and is not added to the table of routes returned to guests. The SPA
+  subscribes only for the owner, as today.
+- **Docs change with the code in the same PR** (core-beliefs.md, AGENTS.md): pass. Each server unit
+  updates the scan, job and event paragraphs. The design stage and the screen units record that
+  `specs/012-scan-progress/ui-design.md` is no longer the canonical UI.
 
-Phase 1 のあとも判定は同じである。Complexity Tracking に載せる違反は無い。
+The result is the same after Phase 1. Complexity Tracking has no violations to list.
 
 ## Project Structure
 
@@ -120,227 +132,255 @@ Phase 1 のあとも判定は同じである。Complexity Tracking に載せる�
 specs/024-import-progress/
 ├── plan.md                # This file
 │                          # No spec.md — the parent Issue is the specification
-├── research.md            # 対象の集合、完了、分母、問題、代用、今の処理、API、言葉、移行の決定
-├── data-model.md          # scans.settled_at、scan_videos、scan_issues
+├── research.md            # Decisions: target set, completion, denominator, issues, substitution, current activity, API, text, migration
+├── data-model.md          # scans.settled_at, scan_videos, scan_issues
 └── contracts/
-    └── scan-api.md        # Scan の新しい形、問題の一覧の経路、/api/processing の削除、SSE
+    └── scan-api.md        # New Scan shape, issue list route, /api/processing removal, SSE
 ```
 
-`quickstart.md` は作らない。検証は各単位の自動テストと、今の `web/e2e` のフィクスチャ
-（[web/e2e/media-fixtures.mjs](../../web/e2e/media-fixtures.mjs)）に足すファイルで行う。手で走らせる
-feature 固有の手順は無い。`ui-design.md` は、この Plan のあとの design 段階が作る。
+No `quickstart.md`. Verification uses each unit's automated tests and files added to the existing
+`web/e2e` fixtures ([web/e2e/media-fixtures.mjs](../../web/e2e/media-fixtures.mjs)). There is no
+feature-specific manual procedure. The design stage after this Plan creates `ui-design.md`.
 
 ### Source Code
 
 **Affected boundaries**:
 
-- `internal/domain`: `status` の決め方、問題の種類と重さ、分母と済みの数え方、
-  `ScanActivityChanged`
-- `internal/store`: 移行、集合への追加の補助関数と各積み込み箇所、`refreshScanSettled`、問題の記録と
-  消去、問題の一覧の読み出し、解析の結果とプレビューの積み込みの1トランザクション化
-- `internal/scanner`: ファイルごとの失敗と今のファイルの報告、`progressInterval` の廃止
-- `internal/media`・`internal/app`（`Generator`・`Ingest`）: 代用の印の受け渡し
+- `internal/domain`: the `status` rule, issue kinds and severities, denominator and settled
+  counting, `ScanActivityChanged`
+- `internal/store`: migrations, the set-insert helper and every enqueue site,
+  `refreshScanSettled`, recording and clearing issues, reading the issue list, and merging the
+  probe result and the preview enqueue into one transaction
+- `internal/scanner`: per-file failure and current-file reporting, removal of `progressInterval`
+- `internal/media`, `internal/app` (`Generator`, `Ingest`): passing the substitution marker
 - `internal/jobs`: `Started`
-- `internal/app`（`Scans`）: 今の処理の保持と、取り込みの状態の組み立て
-- `api/openapi.yaml`・`internal/httpapi`（`scans.go`・`events.go`）・`cmd/mdm`（`events.go`・`main.go`）
-- `web/src/api`・`web/src/shell`・`web/src/settings`・`web/e2e`
+- `internal/app` (`Scans`): holding the current activity and assembling the import state
+- `api/openapi.yaml`, `internal/httpapi` (`scans.go`, `events.go`), `cmd/mdm` (`events.go`,
+  `main.go`)
+- `web/src/api`, `web/src/shell`, `web/src/settings`, `web/e2e`
 - `ARCHITECTURE.md`
 
 **New paths**:
 
-- `internal/store/migrations/000NN_scan_import.sql`（`scan_videos`・`scans.settled_at`・`scans.issues_revision`）
+- `internal/store/migrations/000NN_scan_import.sql` (`scan_videos`, `scans.settled_at`,
+  `scans.issues_revision`)
 - `internal/store/migrations/000NN_scan_issues.sql`
 
-どちらも、実装の時点の次の番号を使う。
+Both use the next number available at implementation time.
 
-**Structure decision**: 既存の配置に従う（[ARCHITECTURE.md](../../ARCHITECTURE.md)）。
-取り込みの状態を組み立てる場所は `internal/app` の `Scans` にした。今の処理がメモリにあるので、
-store の読み出しだけでは返せないからである。httpapi が store と app の両方を読んで組み立てる案は、
-`status` の決め方が HTTP の層に漏れるので採らない。
+**Structure decision**: follows the existing layout ([ARCHITECTURE.md](../../ARCHITECTURE.md)).
+
+| | |
+| --- | --- |
+| **Decision** | `Scans` in `internal/app` assembles the import state. |
+| **Why** | The current activity lives in memory, so a store read alone cannot return it. |
+| **Rejected** | `internal/httpapi` reading both the store and the app and assembling the state: the `status` rule would leak into the HTTP layer. |
 
 ## Implementation Work
 
-### 取り込みの対象の動画を記録し、済みの本数と完了をサーバーで数える
+### Record the import's target videos and count settled videos and completion on the server
 
-**Scope**: [data-model.md](data-model.md) の §1・§2 を移行で足す。
-- 集合への追加: 仕事を積むすべての箇所と、仕事を着手できるようにするメディアフォルダの追加・
-  付け替えで、`scan_videos` に加える。`StartScan` で持ち越しと入れ替えを行う
-  （[R-1](research.md#r-1-取り込みの対象を走査の記録に紐づく動画の集合として保存する)、
-  [R-3](research.md#r-3-集合は直近の走査の分だけを持ち新しい走査の開始で入れ替える)）。
-- プレビューの積み込み: `ApplyProbeForJob` の中で行う（[R-2](research.md#r-2-解析の結果とプレビューの仕事の積み込みを1つのトランザクションにする)）。
-- 完了の時刻: 残りの仕事の数が変わりうるすべてのトランザクションで `refreshScanSettled` を呼ぶ
-  （[R-4](research.md#r-4-完了は走査が閉じて集合に残りの仕事が無いときにする)）。移行で、直近の走査の未完了の仕事を持ち越す
-  （[data-model.md](data-model.md) §1）。
-- 状態の決め方: `internal/domain` に `status`、分母、済みの数え方を置く（[R-5](research.md#r-5-走査中の分母は集合にまだ登録していない対象のファイルの数を足す)）。
-  失敗の問題の数は、この単位では 0 として渡す。
-- 組み立て: `internal/app` の `Scans` が取り込みの状態を組み立てる。
-- API: [contracts/scan-api.md](contracts/scan-api.md) §2 の `status`・`videos`・`settledAt` を `Scan`
-  に足す。古い項目と `/api/processing` は残す。`/api/events` は `ProcessingChanged` でも `scan` を
-  送る（§4）。
-- 文書: ARCHITECTURE.md の走査・作り直せるデータ・SSE の記述を直す。
+**Scope**: add §1 and §2 of [data-model.md](data-model.md) through a migration.
+- Set membership: every job enqueue site, and adding or remapping a media folder that makes jobs
+  startable, adds to `scan_videos`. `StartScan` carries over and replaces the set
+  ([R-1](research.md#r-1-store-the-import-targets-as-a-set-of-videos-tied-to-the-scan-record),
+  [R-3](research.md#r-3-keep-the-set-for-the-latest-scan-only-and-replace-it-when-a-new-scan-starts)).
+- Preview enqueue: done inside `ApplyProbeForJob`
+  ([R-2](research.md#r-2-enqueue-the-preview-job-in-the-same-transaction-as-the-probe-result)).
+- Settle time: every transaction that can change the number of remaining jobs calls
+  `refreshScanSettled` ([R-4](research.md#r-4-done-means-the-scan-closed-and-no-job-remains-in-the-set)).
+  The migration carries the latest scan's unfinished jobs over ([data-model.md](data-model.md) §1).
+- State rule: put `status`, the denominator and settled counting in `internal/domain`
+  ([R-5](research.md#r-5-while-scanning-add-target-files-not-yet-registered-to-the-denominator)). This
+  unit passes 0 as the failed-issue count.
+- Assembly: `Scans` in `internal/app` assembles the import state.
+- API: add `status`, `videos` and `settledAt` from [contracts/scan-api.md](contracts/scan-api.md)
+  §2 to `Scan`. Keep the old fields and `/api/processing`. `/api/events` also sends `scan` on
+  `ProcessingChanged` (§4).
+- Docs: update the ARCHITECTURE.md text on scans, rebuildable data and SSE.
 
 **Dependencies**: None.
 
-**Acceptance**: 次の検査があり、`task check` と `task check-docs` が通る。
-- `internal/domain` のテスト: `status` の5つの状態と優先順、分母と済みの数え方。
-- `internal/store` のテストで、次を確かめる。
-  - 10本の新しいファイルを登録すると `videos.total = 10` になる。仕事を順に終えると、
-    `settled` が 0 から 10 へ減ることなく増える。
-  - 解析を終えてプレビューが積まれるあいだも、`settled` が減らない。
-  - 変化の無い動画に仕事が積み直されると、その動画が対象に数えられる。
-  - 前回の未完了の動画が、新しい走査へ持ち越される。
-  - 見つからないプレビューの積み直しと、解析のやり直しで、直近の走査の対象に加わり、
-    `settled_at` が消える。
-  - 閉じた走査の残りの仕事がメディアフォルダの削除で着手できなくなると、`settled_at` が入る。
-  - 未完了の仕事がある状態から移行すると、それらの動画が対象に入り、`settled_at` が `null` になる。
-  - 対象の動画の行が消えると、分母から除かれる。
-  - `running` の仕事を積み直して再起動しても、`settled` が二重に数えられない。
-- `internal/app` のテスト: 走査が閉じても仕事が残るあいだは `status = running` のままになる。
-  最後の仕事の成否を記録した時点で `done` になり、`settledAt` が走査の終了より後になる。
-- `GET /api/scans/current` の応答に、`status`・`videos`・`settledAt` がある。
+**Acceptance**: the checks below exist, and `task check` and `task check-docs` pass.
+- `internal/domain` tests: the five `status` states and their precedence; denominator and settled
+  counting.
+- `internal/store` tests verify:
+  - Registering 10 new files gives `videos.total = 10`. Finishing the jobs one by one raises
+    `settled` from 0 to 10 without ever decreasing.
+  - `settled` does not decrease while a probe finishes and its preview is enqueued.
+  - An unchanged video counts as a target when a job is requeued for it.
+  - Unfinished videos from the previous import carry over to the new scan.
+  - Requeueing a missing preview and retrying a probe add the video to the latest scan's targets
+    and clear `settled_at`.
+  - When removing a media folder makes a closed scan's remaining jobs unstartable, `settled_at` is
+    set.
+  - Migrating with unfinished jobs puts those videos in the targets and leaves `settled_at` as
+    `null`.
+  - Deleting a target video's row removes it from the denominator.
+  - Requeueing a `running` job and restarting does not count it twice in `settled`.
+- `internal/app` tests: `status = running` holds while jobs remain after the scan closes. It
+  becomes `done` when the last job outcome is recorded, and `settledAt` is later than the scan's
+  finish.
+- The `GET /api/scans/current` response has `status`, `videos` and `settledAt`.
 
-### 取り込みで起きた失敗を問題として記録し、一覧を返す
+### Record import failures as issues and return the list
 
-**Scope**: [data-model.md](data-model.md) の §3 を移行で足す。
-- 走査の失敗: `internal/scanner` のファイルごとの失敗（`unreadable`・`changed_during_import`・
-  `register_failed`）を、scanner が宣言する報告先を通して `internal/app` が記録する。
-- 仕事の失敗: やり直しの上限までの失敗（`*_failed`）を `recordTerminalFailure` と同じ
-  トランザクションで記録する。後の成功で消す（[R-6](research.md#r-6-問題は出来事ごとの行で保存し読み出しで動画ごとの1件にまとめる)）。
-- 前の走査の問題: `StartScan` で消す。
-- 移行: 今 `failed` の準備がある動画を、直近の走査の問題として入れる（[data-model.md](data-model.md) §1 の手順 2）。
-- 数え方: 問題の件数と、登録できなかったファイルを、分母と済みの本数と `status = partial` に
-  反映する。
-- 番号: 問題の行を変えるたびに `scans.issues_revision` を増やす。
-- API: `Scan.issues`（`revision` を含む）と `GET /api/scans/current/issues` を足す（[contracts/scan-api.md](contracts/scan-api.md) §2・§3）。
-- 文書: ARCHITECTURE.md の作り直せるデータの一覧に `scan_issues` を足す。
+**Scope**: add §3 of [data-model.md](data-model.md) through a migration.
+- Scan failures: `internal/app` records the per-file failures of `internal/scanner`
+  (`unreadable`, `changed_during_import`, `register_failed`) through a reporter the scanner
+  declares.
+- Job failures: record failures up to the retry limit (`*_failed`) in the same transaction as
+  `recordTerminalFailure`. A later success clears them
+  ([R-6](research.md#r-6-store-issues-as-one-row-per-event-and-merge-them-per-video-on-read)).
+- Previous scan's issues: `StartScan` deletes them.
+- Migration: videos with a currently `failed` preparation become issues of the latest scan
+  ([data-model.md](data-model.md) §1, step 2).
+- Counting: reflect the issue counts and the files that could not be registered in the
+  denominator, the settled count and `status = partial`.
+- Revision: increment `scans.issues_revision` whenever issue rows change.
+- API: add `Scan.issues` (including `revision`) and `GET /api/scans/current/issues`
+  ([contracts/scan-api.md](contracts/scan-api.md) §2 and §3).
+- Docs: add `scan_issues` to the rebuildable data list in ARCHITECTURE.md.
 
-**Dependencies**: `取り込みの対象の動画を記録し、済みの本数と完了をサーバーで数える`。
+**Dependencies**: `Record the import's target videos and count settled videos and completion on the server`.
 
-**Acceptance**: 次の検査があり、`task check` と `task check-docs` が通る。
-- `internal/scanner` のテスト: 読めないファイルを含むフォルダを走査すると、そのパスが
-  `unreadable` として報告先に渡る。
-- `internal/store` のテストで、次を確かめる。
-  - 解析が上限まで失敗した動画は `probe_failed` の問題になり、`Scan.status` が `partial` になる。
-  - 上限の手前で失敗して後で成功した動画は、問題にならない。
-  - 解析のやり直しで成功すると、問題が消える。
-  - 新しい走査を始めると、前の問題が消える。
-  - 1本の動画に2つの種類が起きると、1件にまとまる。
-  - 数千件の問題を、カーソルで重ならずに最後まで辿れる。
-  - 問題のある動画に別の種類が加わると、件数は変わらずに `issues.revision` が増える。
-  - 解析に失敗した動画がある状態から移行すると、その動画が `probe_failed` の問題になり、
-    直近の取り込みが `partial` になる
-    （[R-11](research.md#r-11-移行は今の行から分かる結果だけを直近の走査へ移す)）。
-- `internal/httpapi` のテスト: `GET /api/scans/current/issues` について、次の応答を確かめる。
-  - 並び順と `nextCursor`
-  - 不正な `cursor` での 400
-  - 一度も走査していないときの 404
-  - ゲストでの 401・403
+**Acceptance**: the checks below exist, and `task check` and `task check-docs` pass.
+- `internal/scanner` tests: scanning a folder with an unreadable file passes that path to the
+  reporter as `unreadable`.
+- `internal/store` tests verify:
+  - A video whose probe fails up to the limit becomes a `probe_failed` issue, and `Scan.status`
+    becomes `partial`.
+  - A video that fails below the limit and succeeds later is not an issue.
+  - A successful probe retry clears the issue.
+  - Starting a new scan clears the previous issues.
+  - Two kinds on one video merge into one entry.
+  - A cursor walks thousands of issues to the end without overlap.
+  - Adding another kind to a video with an issue raises `issues.revision` without changing the
+    count.
+  - Migrating with a video whose probe failed makes it a `probe_failed` issue, and the latest
+    import becomes `partial`
+    ([R-11](research.md#r-11-the-migration-moves-into-the-latest-scan-only-the-results-the-current-rows-reveal)).
+- `internal/httpapi` tests: for `GET /api/scans/current/issues`, verify these responses:
+  - Ordering and `nextCursor`
+  - 400 for an invalid `cursor`
+  - 404 when no scan has ever run
+  - 401 and 403 for a guest
 
-### 代表サムネイルとシーク用サムネイルの代用を問題として記録する
+### Record main-thumbnail and seek-thumbnail substitutions as issues
 
-**Scope**: 代用を問題として記録する（[R-7](research.md#r-7-代用は生成の関数が結果の値として返す)）。
-- `internal/media`: `Thumbnail` が先頭のコマで作ったかを、`GenerateSeekSprite` が全編から作ったかを
-  値として返す。
-- `internal/app`: `Generator` と `Ingest` がその値を、結果を書く store の呼び出しに渡す。
-- `internal/store`: 成功を書くトランザクションで、`thumbnail_first_frame`・
-  `seek_thumbnail_full_decode` を記録する。代用なしで作り直されたら消す
-  （[data-model.md](data-model.md) §3）。
-- 文書: ARCHITECTURE.md の生成の段落に、代用を知らせることを足す。
+**Scope**: record substitutions as issues
+([R-7](research.md#r-7-the-generator-functions-return-substitution-as-a-result-value)).
+- `internal/media`: `Thumbnail` returns whether it used the first frame, and `GenerateSeekSprite`
+  returns whether it built from the whole video, as values.
+- `internal/app`: `Generator` and `Ingest` pass that value to the store call that writes the
+  result.
+- `internal/store`: the transaction that writes the success records `thumbnail_first_frame` and
+  `seek_thumbnail_full_decode`. A rebuild without substitution clears them
+  ([data-model.md](data-model.md) §3).
+- Docs: add substitution reporting to the generation paragraph in ARCHITECTURE.md.
 
-**Dependencies**: `取り込みで起きた失敗を問題として記録し、一覧を返す`。
+**Dependencies**: `Record import failures as issues and return the list`.
 
-**Acceptance**: 次の検査があり、`task check` と `task check-docs` が通る。
-- `internal/media` のテスト（ffmpeg があるとき）: 指定位置にコマの無い入力で、代表サムネイルが
-  先頭のコマで作られたことを示す値が返る。区間ごとの抽出に失敗する入力で、全編から作ったことを
-  示す値が返る。
-- `internal/app` と `internal/store` のテスト: 代用だけの取り込みは `status = done` になり、
-  `issues.substituted = 1` になる。問題の一覧に、その動画の種類が出る。
+**Acceptance**: the checks below exist, and `task check` and `task check-docs` pass.
+- `internal/media` tests (when ffmpeg is available): an input with no frame at the requested
+  position returns a value showing the main thumbnail used the first frame. An input where
+  per-segment extraction fails returns a value showing the sprite was built from the whole video.
+- `internal/app` and `internal/store` tests: an import with only substitutions gives
+  `status = done` and `issues.substituted = 1`. The issue list shows that video's kind.
 
-### 取り込み中の今の処理を知らせ、進み具合を1ファイルごとに更新する
+### Report the current activity during an import and update progress per file
 
-**Scope**: 今の処理を知らせ、進み具合を1ファイルごとに更新する
-（[R-8](research.md#r-8-今の処理は保存せずinternalapp-がメモリに持つ)）。
-- `internal/app`: 今の処理を保持する。
-- `internal/scanner`: 1ファイルごとに今のファイルと進みを報告し、`progressInterval` をやめる。
-- `internal/jobs`: `Started` の hook を足す。
-- イベント: `domain.ScanActivityChanged` を足し、`cmd/mdm/events.go` で `/api/events` に購読させる。
-- API: `Scan.activity` を足す（[contracts/scan-api.md](contracts/scan-api.md) §2・§4）。
-- 文書: ARCHITECTURE.md のイベントと SSE の段落を直す。
+**Scope**: report the current activity and update progress per file
+([R-8](research.md#r-8-current-activity-is-not-stored-internalapp-keeps-it-in-memory)).
+- `internal/app`: holds the current activity.
+- `internal/scanner`: reports the current file and progress per file, and drops
+  `progressInterval`.
+- `internal/jobs`: adds the `Started` hook.
+- Events: add `domain.ScanActivityChanged` and subscribe `/api/events` to it in
+  `cmd/mdm/events.go`.
+- API: add `Scan.activity` ([contracts/scan-api.md](contracts/scan-api.md) §2 and §4).
+- Docs: update the events and SSE paragraphs in ARCHITECTURE.md.
 
-**Dependencies**: `取り込みの対象の動画を記録し、済みの本数と完了をサーバーで数える`。
+**Dependencies**: `Record the import's target videos and count settled videos and completion on the server`.
 
-**Acceptance**: 次の検査があり、`task check` と `task check-docs` が通る。
-- `internal/app` のテスト、今の処理について:
-  - 2つの仕事が重なったとき、後に始まった方を示す。それが終わると、残りの方に戻る。
-  - すべて終わると `activity` が省かれる。
-- `internal/scanner` のテスト: 5本のファイルの走査で、進みの報告が1ファイルごとに届く。
-- `internal/httpapi` のテスト: 今の処理が変わると `scan` の event が送られ、`activity` に
-  ファイル名と種類がある。
+**Acceptance**: the checks below exist, and `task check` and `task check-docs` pass.
+- `internal/app` tests for the current activity:
+  - When two jobs overlap, it shows the one that started later. When that one finishes, it falls
+    back to the remaining one.
+  - When everything finishes, `activity` is omitted.
+- `internal/scanner` tests: scanning 5 files delivers a progress report per file.
+- `internal/httpapi` tests: a change in the current activity sends a `scan` event whose
+  `activity` has the file name and kind.
 
-### 右下の表示と設定画面の概要を、本数による進み具合と今の処理に作り直す
+### Rebuild the bottom-right indicator and the Settings summary around video-count progress and the current activity
 
-**Scope**: 右下の表示と設定画面の概要を作り直す。
-- 仕様: `ui-design.md`（design 段階が作る）に従う。
-- 画面の状態: `ScanProvider`・`scanPresentation.ts`・完了の通知（`ScanNoticeProvider`）を、
-  `Scan.status`・`videos`・`issues`（本数）・`settledAt`・`activity` だけから作る形にする。
-  - 完了の通知は、`status` が `done`・`partial`・`failed` になったときに出す。
-  - 一覧の読み直しは `Scan.state` の変化で行う。
-- 右下の表示: `ScanProgressIndicator` を作り直す。
-- 設定画面: `ScanStatusSection` の概要（状態、進み具合、今の処理、問題の本数、時刻、走査の失敗の
-  理由と再試行）を作り直す。
-- 古い値の削除: 次をなくし、`task generate` する。
-  - `Scan` の古い項目
-  - `/api/processing` と SSE の `processing`
-  - `ProcessingBreakdown` と、その取得
-- テスト: `web/e2e/scan-progress.e2e.ts` と、古い項目を読む e2e の fixture を直す。
-- 文書: `specs/012-scan-progress/ui-design.md` が今の正本でなくなる旨を、design 段階の指示に
-  従って直す。
-
-**Dependencies**:
-- `取り込みで起きた失敗を問題として記録し、一覧を返す`
-- `取り込み中の今の処理を知らせ、進み具合を1ファイルごとに更新する`
-
-**Acceptance**: 画面が変わる単位なので、360px・768px・1280px 幅で見た目と操作を確認する。
-次の検査があり、`task check`・`task check-docs`・`task test-e2e` が通る。
-- web の単体テストで、次を確かめる。
-  - `finding` のあいだは割合を出さない。
-  - `running` のあいだは「N 本のうち M 本」の1つの進み具合と今の処理を示す。
-  - `videos.total = 0` の完了は、変化が無かったことを示す。
-  - 仕事の件数や段階ごとの内訳の要素が無い。
-  - `role="status"` は完了・一部失敗・失敗だけを読み上げる。
-  - 今の処理が変わっても、読み上げと配置が変わらない。
-- e2e で、次を確かめる。
-  - 10本の取り込みで、進み具合が単位を変えずに増える。
-  - 準備が残るあいだ完了と表示されない。
-  - 完了の時刻が準備の終わりを示す。
-  - 再読み込みのあとも、同じ状態と進み具合が出る。
-  - ゲストに右下の表示が出ない。
-
-### 設定画面に取り込みの問題の一覧を出し、動画へ移れるようにする
-
-**Scope**: 設定画面に問題の一覧を出す。
-- 仕様: `ui-design.md` に従う。
-- 表示: `ScanStatusSection` に `GET /api/scans/current/issues` の一覧を足す。影響と理由の言葉は
-  `kinds` から組み立てる（[R-10](research.md#r-10-画面の言葉はサーバーが返す種類から-spa-が組み立てる)）。
-- 取得: `web/src/api` に取得関数を足す。`Scan.id`・`issues.revision` が変わったら読み直す
-  （[contracts/scan-api.md](contracts/scan-api.md) §4）。
-- 移動: 登録された動画の行から `/videos/{id}` へ移れる。
-- 長い一覧: 続きを辿れるようにする。
+**Scope**: rebuild the bottom-right indicator and the Settings summary.
+- Spec: follow `ui-design.md` (created by the design stage).
+- Screen state: `ScanProvider`, `scanPresentation.ts` and the completion notice
+  (`ScanNoticeProvider`) build only from `Scan.status`, `videos`, `issues` (counts), `settledAt`
+  and `activity`.
+  - The completion notice appears when `status` becomes `done`, `partial` or `failed`.
+  - The list reloads on changes to `Scan.state`.
+- Bottom-right indicator: rebuild `ScanProgressIndicator`.
+- Settings: rebuild the `ScanStatusSection` summary (state, progress, current activity, issue
+  counts, time, scan failure reason and retry).
+- Remove old values: remove the items below and run `task generate`.
+  - The old `Scan` fields
+  - `/api/processing` and the SSE `processing` event
+  - `ProcessingBreakdown` and its fetch
+- Tests: update `web/e2e/scan-progress.e2e.ts` and the e2e fixtures that read old fields.
+- Docs: update `specs/012-scan-progress/ui-design.md` to say it is no longer canonical, as the
+  design stage instructs.
 
 **Dependencies**:
-- `右下の表示と設定画面の概要を、本数による進み具合と今の処理に作り直す`
-- `代表サムネイルとシーク用サムネイルの代用を問題として記録する`
+- `Record import failures as issues and return the list`
+- `Report the current activity during an import and update progress per file`
 
-**Acceptance**: 画面が変わる単位なので、360px・768px・1280px 幅で見た目と操作を確認する。
-次の検査があり、`task check`・`task check-docs`・`task test-e2e` が通る。
-- web の単体テストで、次を確かめる。
-  - 失敗と代用が、色だけでなく文言かアイコンで区別される。
-  - 長いファイル名と同じ名前のファイルを見分けられる。
-  - 続きを読み込める。
-  - 新しい取り込みで一覧が入れ替わる。
-  - 各行をキーボードで辿り、動画へ移れる。
-- e2e で、次を確かめる。
-  - 読めないファイルと解析できない動画を含むフィクスチャを取り込むと、全体が一部失敗になる。
-  - 一覧に、その2件の影響と理由が出る。
-  - 解析できない動画の行から、再生画面へ移れる。
-  - 再読み込みのあとも、同じ一覧が出る。
+**Acceptance**: this unit changes the screen, so check the look and interaction at 360 px, 768 px
+and 1280 px widths. The checks below exist, and `task check`, `task check-docs` and
+`task test-e2e` pass.
+- Web unit tests verify:
+  - No ratio appears during `finding`.
+  - During `running`, one progress value "M of N videos" and the current activity appear.
+  - A completion with `videos.total = 0` shows that nothing changed.
+  - No element shows job counts or per-stage breakdowns.
+  - `role="status"` announces only done, some failed and failed.
+  - A change in the current activity changes neither the announcement nor the layout.
+- e2e tests verify:
+  - In a 10-video import, progress increases without changing its unit.
+  - "Done" does not appear while preparation remains.
+  - The completion time marks the end of preparation.
+  - The same state and progress appear after a reload.
+  - Guests do not see the bottom-right indicator.
+
+### Show the import issue list on the Settings screen and link to the videos
+
+**Scope**: show the issue list on the Settings screen.
+- Spec: follow `ui-design.md`.
+- Display: add the `GET /api/scans/current/issues` list to `ScanStatusSection`. Build the impact
+  and reason text from `kinds`
+  ([R-10](research.md#r-10-the-spa-builds-the-screen-text-from-kinds-the-server-returns)).
+- Fetch: add a fetch function to `web/src/api`. Reload when `Scan.id` or `issues.revision`
+  changes ([contracts/scan-api.md](contracts/scan-api.md) §4).
+- Navigation: rows of registered videos link to `/videos/{id}`.
+- Long lists: the user can load the rest.
+
+**Dependencies**:
+- `Rebuild the bottom-right indicator and the Settings summary around video-count progress and the current activity`
+- `Record main-thumbnail and seek-thumbnail substitutions as issues`
+
+**Acceptance**: this unit changes the screen, so check the look and interaction at 360 px, 768 px
+and 1280 px widths. The checks below exist, and `task check`, `task check-docs` and
+`task test-e2e` pass.
+- Web unit tests verify:
+  - Failures and substitutions differ by text or icon, not by color alone.
+  - Long file names and files with the same name can be told apart.
+  - The rest of the list can be loaded.
+  - A new import replaces the list.
+  - Each row is reachable by keyboard and navigates to the video.
+- e2e tests verify:
+  - Importing a fixture with an unreadable file and an unprobeable video makes the whole import
+    "some failed".
+  - The list shows the impact and reason for those 2 entries.
+  - The row of the unprobeable video navigates to the player.
+  - The same list appears after a reload.

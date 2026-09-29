@@ -1,75 +1,93 @@
-# UI Design: 動画シーク時のサムネイルプレビュー
+# UI Design: thumbnail preview while seeking
 
 **Feature**: [parent Issue #117](https://github.com/syudead/vv/issues/117)
 
-既存の再生画面、Video.js の操作構造、役割トークンは
-[ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
-[`web/src/index.css`](../../web/src/index.css) に従う。本書はシークプレビューが追加する表示と操作だけを
-定める。一覧画面と再生画面のページ構成は変更しない。
+The existing playback page, the Video.js control structure and the role tokens follow
+[Library UI: visual rules and list layout](../../docs/design-docs/library-ui.md) and
+[`web/src/index.css`](../../web/src/index.css). This document defines only the display and
+interaction the seek preview adds. The page structure of the list and playback pages does not
+change.
 
 ## Screen boundary and hierarchy
 
-プレビューは `VideoPlayer` 内の進捗バーに所属する一時的な補助表示とする。ページ本文、動画情報、
-一覧カードには状態を持ち出さない。動画面が最大の表示領域である状態を維持し、プレビューは進捗バーを
-ポイントしている間、またはポインター／タッチでドラッグしている間だけ動画面の下端寄りに重ねる。
+The preview is a transient secondary display that belongs to the progress bar inside
+`VideoPlayer`. Its state does not leak into the page body, the video information or the list
+cards. The video surface stays the largest display area. The preview overlays the lower part of the
+video surface only while the pointer is over the progress bar, or while a pointer or touch drag is
+in progress.
 
-表示は次の3要素だけで構成する。
+The display consists of these three elements only:
 
-1. 対象時刻に対応する静止画（動画の縦横比。分からなければ16:9）
-2. `h:mm:ss` または `m:ss` の対象時刻
-3. 対象位置との対応を示す、進捗バー上の既存 mouse display
+1. A still image for the target time (in the video's aspect ratio; 16:9 when unknown)
+2. The target time as `h:mm:ss` or `m:ss`
+3. The existing mouse display on the progress bar, which shows the matching position
 
-題名、取得状態の文言、spinner、ボタン、枠外の説明は追加しない。プレビューを現在再生中の映像と
-誤認しないよう、進捗バーの対象位置へ水平に結び付け、プレイヤー中央へ独立して浮かせない。
+No title, loading text, spinner, button or explanation outside the frame is added. So that the
+preview is not mistaken for the video currently playing, it is tied horizontally to the target
+position on the progress bar and does not float independently in the center of the player.
 
 ## Geometry and responsive behaviour
 
-- プレビュー全体は対象位置を水平中心として進捗バーの上に置き、左右端ではプレイヤー内へ収まる位置まで
-  水平移動を止める。画像と時刻は常に一緒に移動し、mouse displayだけが実際の対象位置を示す
-- 画像は動画の縦横比を保ち、幅は通常240pxを上限とする。縦長の動画では、高さが同じ幅の16:9の
-  4/3倍を超えないよう幅を狭める。360px viewportでは160px、768px以上では240pxを
-  基準とし、その間は連続的に収める。元画像を枠へ合わせるときは全体を表示し、切り抜かない
-- 画像の下辺は進捗バーと隣接する操作を覆わない間隔だけ上へ離す。タッチ中も指の真下に置かず、
-  指とcontrol barの上側で画像と時刻を確認できる位置を維持する
-- プレイヤーが16:9より狭い、または先頭・末尾を指している場合も、プレビュー、時刻、影を含む全体を
-  プレイヤーの左右内側へ収める。ページviewportではなくプレイヤー矩形を基準にする
-- 対象位置の移動には位置transitionを付けない。表示開始だけ既存の短いfadeを使え、
-  `prefers-reduced-motion` では既存規則どおり即時表示にする
+- The whole preview sits above the progress bar, centered horizontally on the target position. At
+  the left and right edges it stops moving horizontally where it still fits inside the player. The
+  image and the time always move together; only the mouse display shows the actual target position
+- The image keeps the video's aspect ratio, with a maximum width of 240 px. For portrait video the
+  width shrinks so that the height does not exceed 4/3 of the height of a 16:9 image of the same
+  width
+- The base image width is 160 px at a 360 px viewport and 240 px at 768 px and above, scaling
+  continuously in between. When fitting the source image to the frame, the whole image is shown,
+  never cropped
+- The bottom edge of the image sits far enough above the progress bar not to cover it or adjacent
+  controls. During touch it is not placed directly under the finger; the image and time stay
+  visible above the finger and the control bar
+- When the player is narrower than 16:9, or the target is at the start or end, the whole preview,
+  including the time and the shadow, stays inside the player's left and right edges. The reference
+  is the player rectangle, not the page viewport
+- Moving the target position has no position transition. Only the appearance may use the existing
+  short fade, and with `prefers-reduced-motion` it appears instantly, per the existing rules
 
 ## Visual treatment
 
-画像を `elevated` の面、`border-strong` の境界、`rounded-md`、`shadow-elevated` で動画から分離する。
-新しい色または半径tokenは追加しない。時刻は画像下部中央へ一行で重ね、`navbar` または `overlay` の面に
-`fg` の文字を置く。数字は既存のtabular numeral設定を継承し、既存control barの時刻より強い見出しには
-しない。
+The image is separated from the video by an `elevated` surface, a `border-strong` border,
+`rounded-md` and `shadow-elevated`. No new color or radius token is added. The time overlays the
+bottom center of the image on one line, as `fg` text on a `navbar` or `overlay` surface. Digits
+inherit the existing tabular numeral setting, and the time is not styled more strongly than the
+existing control bar time.
 
-画像と時刻の間に別のカードや区画を挟まない。外枠の内側余白は時刻の判読に必要な量だけにし、画像、
-時刻、対象位置が一つの補助表示に見える近接関係を保つ。
+No separate card or section sits between the image and the time. The inner padding of the outer
+frame is only what the time needs to stay legible, and the image, the time and the target position
+stay close enough to read as one secondary display.
 
 ## States and interaction
 
 | State | Observable behaviour |
 | --- | --- |
-| hidden | progress controlの外にいてdragもしていない。プレビューDOMは表示されない |
-| loading | 対象時刻を即時更新する。初回は動画の縦横比の空の面を表示し、切り替え時は黒い面を挟まないよう直前の画像を新画像のdecode完了まで維持する |
-| ready | 現在のbucketに一致する画像だけを表示し、時刻は操作位置へ引き続き即時追従する |
-| unavailable | 画像領域を隠し、対象時刻だけを進捗位置の上に表示する。error文言や再試行操作は出さない |
+| hidden | The pointer is outside the progress control and no drag is in progress. No preview DOM is shown |
+| loading | The target time updates instantly. The first time, an empty surface in the video's aspect ratio is shown. On a switch, the previous image stays until the new image finishes decoding, so no black surface appears in between |
+| ready | Only the image that matches the current bucket is shown, and the time keeps following the pointer position instantly |
+| unavailable | The image area is hidden and only the target time is shown above the progress position. No error text or retry action appears |
 
-pointer hover、pointer drag、touch dragは同じ表示を使う。drag終了、drag中でないpointer leave、
-動画切り替え、画面離脱では即時にhiddenへ戻す。drag中に進捗バーの外へ出ても表示を維持し、
-pointer captureまたは同等の仕組みで終了まで位置をプレイヤー内へ収めて追従する。画像の取得、表示、
-失敗は再生、一時停止、mute、source切り替え、実際のシーク位置を変更しない。
+Pointer hover, pointer drag and touch drag use the same display. Drag end, pointer leave outside a
+drag, a video switch and leaving the page return to hidden immediately. During a drag the display
+stays even outside the progress bar; pointer capture or an equivalent keeps the position inside the
+player and follows it until the drag ends. Fetching, showing or failing an image never changes
+playback, pause, mute, the source or the actual seek position.
 
-同じ5秒bucketでは同じ画像を維持し、時刻表示だけを実際の操作位置へ追従させる。別bucketへ移った場合は
-取得を即時開始し、現在位置の画像を完全にdecodeしてから表示中の画像と一度に差し替える。完了順が逆転した
-古い応答は表示せず、取得失敗時は保持画像を隠して時刻だけを表示する。
+Within the same 5 s bucket the same image stays, and only the time follows the actual pointer
+position. On a move to another bucket, the fetch starts immediately; the image for the current
+position is fully decoded and then replaces the displayed image in one step. Stale responses that
+complete out of order are not shown. On a fetch failure the retained image is hidden and only the
+time is shown.
 
 ## Accessibility
 
-- プレビューは `pointer-events: none` とし、クリック、タップ、hover判定、dragを受け取らない
-- link、button、tab stopを追加しない。既存progress controlのfocus-visibleとキーボード操作を維持する
-- 静止画は装飾画像として空の代替テキストにし、プレビューコンテナと時刻は支援技術から隠す。
-  連続したpointer移動を読み上げイベントにしない
-- キーボード操作時は本プレビューを表示要件にせず、Video.jsの既存時刻、シーク、フォーカス表示を
-  変更しない
-- 色だけを対象位置の手掛かりにせず、mouse displayの位置と時刻文字列を併用する
+- The preview has `pointer-events: none` and receives no click, tap, hover detection or drag
+- No link, button or tab stop is added. The focus-visible style and keyboard operation of the
+  existing progress control stay
+- The still image is decorative with empty alternative text, and the preview container and the
+  time are hidden from assistive technology. Continuous pointer movement does not become
+  announcements
+- The preview is not required during keyboard operation, and the existing Video.js time, seeking
+  and focus display do not change
+- Color is not the only cue for the target position; the mouse display position and the time
+  string are used together

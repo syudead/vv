@@ -1,46 +1,47 @@
-# Data model: フォルダのグループとフォルダ由来のタグ
+# Data model: Folder groups and folder-derived tags
 
-親 Issue #326 の要件のうち、保存するもの・導くもの・その規則だけを書く。既存の表
-（`videos`・`video_locations`・`playback_progress`・`tags`・`tag_names`・`video_tags`・`media_folders`・
-`public_videos`）は変えない。表の区分（索引と利用者データ）は [ARCHITECTURE.md](../../ARCHITECTURE.md) の「Rebuildable and user data」に従う。
+This document covers only what parent Issue #326 stores, what it derives, and the rules for both.
+The existing tables (`videos`, `video_locations`, `playback_progress`, `tags`, `tag_names`,
+`video_tags`, `media_folders`, `public_videos`) do not change. The table classes (index and user
+data) follow "Rebuildable and user data" in [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
-## 1. マイグレーション
+## 1. Migration
 
-`internal/store/migrations/00012_folder_groups.sql` を足す。
+Add `internal/store/migrations/00012_folder_groups.sql`.
 
 ```sql
--- 利用者データ。再スキャン・メディアフォルダの変更・再起動で消えてはならない。
--- 登録フォルダにも videos にも外部キーを張らない。
+-- User data. Rescans, media folder changes and restarts must not erase it.
+-- No foreign key to the media folders or to videos.
 create table folder_group_overrides (
-    -- フォルダの絶対パスを §2 の folderKey で整えたもの。
+    -- The folder's absolute path, normalized with folderKey from §2.
     path       text    primary key,
     mode       text    not null check (mode in ('ungroup', 'group_direct')),
     updated_at integer not null
 ) without rowid;
 
--- 以下は索引。§3 の作り直しが丸ごと置き換える。
+-- The tables below are index data. The rebuild in §3 replaces them entirely.
 create table folder_groups (
     id              integer primary key,
-    -- フォルダを指す鍵。§2 の folderKey。グループの同一性はこれで決める。
+    -- The key that identifies the folder: folderKey from §2. It defines group identity.
     path_key        text    not null unique,
-    -- フォルダの絶対パスの綴り（そのフォルダの下の所在のうちパスの最小のものから取る）。
-    -- 応答の VideoFolder（rootId と相対パス）はこれから domain.LocateFolder で作る（§2）。
+    -- The folder's absolute path as spelled (taken from the smallest path among the locations under it).
+    -- The response's VideoFolder (rootId and relative path) is built from it with domain.LocateFolder (§2).
     path            text    not null,
-    -- フォルダ名（domain.FolderName と同じ最後の段）。
+    -- The folder name (the last segment, as in domain.FolderName).
     name            text    not null,
-    -- 題名順の並べ替えの鍵。domain.NaturalSortKey(name)。
+    -- Sort key for title order: domain.NaturalSortKey(name).
     title_key       text    not null
 );
 
 create table folder_group_members (
     video_id  integer primary key references videos (id) on delete cascade,
     group_id  integer not null references folder_groups (id) on delete cascade,
-    -- グループの中の並び（0 始まり）。
+    -- Order within the group (0-based).
     position  integer not null,
     unique (group_id, position)
 );
 
--- 動画ごとの祖先フォルダ名（§4）。
+-- Ancestor folder names per video (§4).
 create table video_folder_names (
     video_id integer not null references videos (id) on delete cascade,
     name     text    not null,
@@ -48,153 +49,190 @@ create table video_folder_names (
 ) without rowid;
 create index video_folder_names_name_idx on video_folder_names (name, video_id);
 
--- 索引を作った規則の版。どちらかが今の値と違えば起動時に作り直す（§3）。
--- title_key は domain.NaturalSortKey で作るので、その版（SearchKeyVersion）も持つ。
+-- Versions of the rules that built the index. If either differs from the current value, startup rebuilds (§3).
+-- title_key is built with domain.NaturalSortKey, so its version (SearchKeyVersion) is stored too.
 create table folder_index_state (
     id             integer primary key check (id = 1),
     version        integer not null,   -- domain.FolderIndexVersion
     search_version integer not null,   -- domain.SearchKeyVersion
-    -- 1 は「前回の作り直しが失敗した」。作り直しが成功すると 0 に戻る（§3）。
+    -- 1 means "the previous rebuild failed". A successful rebuild resets it to 0 (§3).
     stale          integer not null default 0 check (stale in (0, 1))
 );
 ```
 
-`videos` の行が消えると、メンバーとフォルダ名の行は連鎖で消える。それでメンバーが1本になった
-グループは、次の作り直しまで1本のグループとして残る（§3）。カードの絵柄のサムネイル（`previews`）と項目の `id` は
-保存せず、残っているメンバーから読み出しのたびに取るので、メンバーが消えても消えた動画を指さない。
+When a `videos` row is deleted, its member and folder name rows are deleted by cascade. A group left
+with one member stays a one-video group until the next rebuild (§3). The card artwork thumbnails
+(`previews`) and the item `id` are not stored. Each read takes them from the remaining members, so
+they never point to a deleted video.
 
-## 2. 割り当ての規則
+## 2. Assignment rules
 
-`internal/domain/folder_group.go` の1つの純粋関数が、次の入力から、グループ（パス・名前・並んだメンバー）と
-動画ごとの祖先フォルダ名を返す。store はこの結果を表へ書くだけである。
+One pure function in `internal/domain/folder_group.go` takes the inputs below and returns the
+groups (path, name, ordered members) and the ancestor folder names per video. The store only writes
+this result to the tables.
 
-- 入力: 登録フォルダ、登録フォルダの下にある全所在（動画の `id` とパス）、例外（`folderKey` → `mode`）。
-- フォルダ `D` は、グループ分け（`direct`・`hasChild`・ルートかどうか）でも、例外の突き合わせでも、
-  API の `(rootId, path)` からの引き当てでも、`folderKey(D)` で同一視する。Windows で綴りの大文字小文字が
-  違う所在は同じフォルダに入る。
-- **代表の所在**: 動画の所在のうちパスのバイト順で最小のもの（`videoColumnsTemplate` の `order by path limit 1` と同じ）。
-- **直下の動画** `direct(D)`: 代表の所在の親フォルダが `D` である動画。同じ内容の別の所在は数えない（要件 6）。
-- **子フォルダを持つ** `hasChild(D)`: どれかの所在（代表に限らない）が `D` の子フォルダの下にある。
-  フォルダ画面の `folderCount` と同じく、所在から導く。空のフォルダは数えない。
-- **グループになる**: `len(direct(D)) >= 2` かつ、次のどちらか。
+- Input: the media folders, every location under them (video `id` and path), and the overrides
+  (`folderKey` → `mode`).
+- A folder `D` is identified by `folderKey(D)` in grouping (`direct`, `hasChild`, whether it is a
+  root), in override matching, and in resolving `(rootId, path)` from the API. On Windows, locations
+  whose spelling differs only in letter case fall in the same folder.
+- **Representative location**: the video's location with the smallest path in byte order (same as
+  `order by path limit 1` in `videoColumnsTemplate`).
+- **Direct videos** `direct(D)`: videos whose representative location's parent folder is `D`.
+  Another location of the same content does not count (Requirement 6).
+- **Has a subfolder** `hasChild(D)`: some location (not only a representative one) lies under a
+  subfolder of `D`. Like `folderCount` on the folder page, it is derived from locations. Empty
+  folders do not count.
+- **Becomes a group**: `len(direct(D)) >= 2`, and one of:
   - `mode(D) = group_direct`
-  - `mode(D)` が無く、`hasChild(D)` が偽で、`D` が登録フォルダそのものではない
-- **並び**: `compareSiblings`（ファイル名の自然順、バイト順、`id`）と同じ全順序で、今の同じフォルダの前後と
-  同じ比べ方である（要件 4）。ただし対象は `direct(D)` だけで、代表の所在が別のフォルダにある動画は、
-  今の同じフォルダの前後（`DirectVideoPaths`）には入ってもグループには入らない（要件 6）。
-- **名前**: `domain.FolderName` と同じく、フォルダの最後の段（要件 5）。
-- **folderKey**: パスの末尾の区切りを落とし、Windows では `/` を `\` にそろえて `LowerASCII` を掛ける。
-  所在と例外の突き合わせ、例外の主キーの両方に使う。登録フォルダの判定
-  （`registeredLocationCondition`・`LocateVideoFolder`）と同じ区切りと大文字小文字の規則である。
-- **フォルダの VideoFolder**: グループや例外の**フォルダそのもの**の絶対パスから `(rootId, path)` を
-  求める関数 `domain.LocateFolder` を足す。今の `LocateVideoFolder` は所在（ファイル）のパスを受けて
-  最後の段をファイル名として落とすので、フォルダのパスを渡すと一段上を指してしまう。両者は
-  `pathBelowRoot` を共有し、違いは最後の段を落とすかどうかだけにする。入れ子のフォルダで、グループの
-  `folder` が `GET /api/folders/{rootId}/group` と `getFolder` の引き当てに一致することをテストする。
-- 例外のパスに一致するフォルダが無くても例外は消さない。同じパスのフォルダが戻れば効く（Edge Case）。
+  - `mode(D)` is absent, `hasChild(D)` is false, and `D` is not the media folder itself
+- **Order**: the same total order as `compareSiblings` (natural file name order, byte order, `id`),
+  the comparison used today for previous/next within a folder (Requirement 4). Only `direct(D)` is
+  ordered. A video whose representative location is in another folder is in today's same-folder
+  previous/next (`DirectVideoPaths`) but not in the group (Requirement 6).
+- **Name**: the folder's last segment, as in `domain.FolderName` (Requirement 5).
+- **folderKey**: drop a trailing separator from the path; on Windows, normalize `/` to `\` and apply
+  `LowerASCII`. Both override matching and the override primary key use it. It follows the same
+  separator and case rules as the media folder checks (`registeredLocationCondition`,
+  `LocateVideoFolder`).
+- **VideoFolder of a folder**: add `domain.LocateFolder`, which computes `(rootId, path)` from the
+  absolute path of the **folder itself** of a group or override. The current `LocateVideoFolder`
+  takes a location (file) path and drops the last segment as the file name, so a folder path would
+  resolve one level up.
+  - Both share `pathBelowRoot` and differ only in whether they drop the last segment.
+  - A test checks, with nested folders, that the group's `folder` matches the lookups of
+    `GET /api/folders/{rootId}/group` and `getFolder`.
+- An override is not deleted when no folder matches its path. It takes effect again when a folder
+  with the same path returns (Edge case).
 
-## 3. 作り直す時点
+## 3. Rebuild points
 
-`rebuildFolderIndex(tx)` は、登録フォルダの下の全所在と例外を読み、§2 の関数を通し、
-`folder_groups`・`folder_group_members`・`video_folder_names` を消して書き直し、
-`folder_index_state` を今の `domain.FolderIndexVersion` と `domain.SearchKeyVersion` にする。1つの書き込み取引の中で行うので、
-読み出しは作り直しの前か後のどちらかだけを見る。
+`rebuildFolderIndex(tx)` reads every location under the media folders and the overrides, passes
+them through the §2 function, deletes and rewrites `folder_groups`, `folder_group_members` and
+`video_folder_names`, and sets `folder_index_state` to the current `domain.FolderIndexVersion` and
+`domain.SearchKeyVersion`. It runs inside one write transaction, so a read sees only the state
+before or after the rebuild.
 
-| 時点 | 呼ぶ側 | 取引 |
+| Point | Caller | Transaction |
 | --- | --- | --- |
-| スキャンを閉じる直前（成功でも失敗でも） | `app.Scans` → `ScanIndexStore.RebuildFolderIndex` | 作り直しだけの取引 |
-| メディアフォルダの追加・置換・削除 | `SettingsStore` | その変更と同じ取引 |
-| 例外の設定・解除、グループのタグ化 | `FolderGroupStore` | その変更と同じ取引 |
-| 起動時、`version` か `search_version` が今の値と違うか、`stale = 1` か、行が無いとき | `cmd/mdm` → `ScanIndexStore.RefreshFolderIndex` | 作り直しだけの取引。`RefreshSearchKeys` の後で、HTTP とワーカーの開始より前 |
-| 起動時、前回の停止で中断したスキャンを閉じたとき（`FailInterruptedScans` が 1 件以上） | `app.Scans.RecoverInterrupted` → `ScanIndexStore.RebuildFolderIndex` | 作り直しだけの取引 |
+| Just before a scan closes (success or failure) | `app.Scans` → `ScanIndexStore.RebuildFolderIndex` | A rebuild-only transaction |
+| Adding, replacing or removing a media folder | `SettingsStore` | The same transaction as the change |
+| Setting or clearing an override, turning a group into a tag | `FolderGroupStore` | The same transaction as the change |
+| Startup, when `version` or `search_version` differs from the current value, `stale = 1`, or no row exists | `cmd/mdm` → `ScanIndexStore.RefreshFolderIndex` | A rebuild-only transaction, after `RefreshSearchKeys` and before HTTP and the workers start |
+| Startup, when scans interrupted by the previous shutdown are closed (`FailInterruptedScans` closes 1 or more) | `app.Scans.RecoverInterrupted` → `ScanIndexStore.RebuildFolderIndex` | A rebuild-only transaction |
 
-スキャンの途中（閉じる前）に足された動画は単体として、消えた動画のグループは残りのメンバーで出る。
-スキャンを閉じる前の作り直しで正しい形になる。作り直しに失敗したときは、その取引は巻き戻り、
-別の取引で `folder_index_state.stale = 1` を書いてログに残し、スキャンを閉じる。次の作り直しの時点
-（次の起動を含む）まで前の索引を使う（plan の Structural Decisions 14）。`stale` の書き込みまで失敗した
-ときは、次のスキャン・例外の変更・メディアフォルダの変更の作り直しで直る。作り直しの取引の途中で
-プロセスが止まった場合は、スキャンが閉じられずに残るので、起動時の中断したスキャンの回復で作り直す。作り直しの前後をまたいだ
-ページングでは、13 の取り込み中と同じく項目の重複や抜けが起こりうる。
+During a scan (before it closes), added videos appear as single videos, and the group of a removed
+video appears with its remaining members. The rebuild before the scan closes produces the correct
+shape.
 
-## 4. フォルダ由来のタグ
+Failure handling (Structural Decision 14 in the plan):
 
-- **フォルダ名**: 動画の登録フォルダの下にある**すべての**所在について、登録フォルダより下で
-  ファイルより上の段（グループのフォルダを含む）を取り、`domain.NormalizeTagName` を掛ける。誤りになる名前は
-  捨てる。動画ごとに重複を除いて `video_folder_names` に書く（要件 9、Edge Case「同じ内容が複数の場所にある」）。
-- **付いているタグ**: `video_folder_names.name = tag_names.name` の行がある `tag_names.tag_id`。
-  元の名前とシノニムのどちらにも当たる。照合は `tag_names` の主キーと同じ完全一致（014 の §2・§3）。
-- **動画のタグ** = 手で付けたタグ（`video_tags` を `videos.content_key` で結ぶ）∪ フォルダ由来のタグ。
-  同じタグが両方から付けば1件にまとめ、出所を両方持つ。
-- これを使う読み出し:
-  - `TagStore.TagsByContentKeys`（`Video.tags`）: 出所つきで返す。
-  - タグでの絞り込み（014 §6）: 条件ごとの `exists` を「手で付けた行」または「フォルダ名の行」の OR にする。
-  - 検索欄のタグ名の照合（014 §7）: タグ名の鍵を持つタグが動画に付いているかを、同じく2つの出所の OR にする。
-  - タグごとの本数（014 §5）: どちらかの出所で付いている、いまライブラリにある動画を数える。
-  - 選択の要約: 本数 `count` はどちらかの出所で、`manualCount` は手で付けた分だけで数える。
-- 取り外し（`DetachTag`）は `video_tags` だけを消す。変更は要らない（要件 13）。
-- 登録フォルダそのものの名前はフォルダ名に入らない（要件 9 の「ルートより下」）。そのため「直下を
-  まとめる」で登録フォルダそのものがグループになっていても、タグ化はできない（409、
-  [contracts/folder-groups-api.md §2](contracts/folder-groups-api.md#2-グループをタグに変える)）。
-  タグを作っても要件 11 の結果（中の動画にそのタグが付く）にならないためである。
-- タグ化（要件 11）は `FolderGroupStore` の1つの取引で、フォルダ名を `NormalizeTagName` に通し
-  （誤りなら何も書かない）、名前かシノニムで引けたタグを使うか新しく作り、そのフォルダに `ungroup` を
-  書き、§3 の作り直しを行う。
+- When the rebuild fails, its transaction rolls back. A separate transaction writes
+  `folder_index_state.stale = 1`, the failure is logged, and the scan closes. The previous index
+  stays in use until the next rebuild point (including the next startup).
+- When writing `stale` also fails, the rebuild on the next scan, override change or media folder
+  change repairs it.
+- When the process stops in the middle of the rebuild transaction, the scan stays open, and the
+  recovery of interrupted scans at startup rebuilds.
+- Paging across a rebuild can duplicate or skip items, as during an import in 013.
 
-## 5. ライブラリの項目
+## 4. Folder-derived tags
 
-`GET /api/library` の問い合わせ。013 の流れ（範囲と検索式 → `chosen` → 絞り込み → keyset）に、
-項目へまとめる段を足す。
+- **Folder names**: for **every** location of a video under its media folder, take the segments
+  below the media folder and above the file (including the group's folder) and apply
+  `domain.NormalizeTagName`. Names that fail are discarded. Deduplicate per video and write them to
+  `video_folder_names` (Requirement 9, Edge case "Same content in several places").
+- **Attached tags**: each `tag_names.tag_id` with a row where `video_folder_names.name =
+  tag_names.name`. Both primary names and synonyms match. Matching is exact, like the `tag_names`
+  primary key (014 §2, §3).
+- **Tags of a video** = tags attached by hand (`video_tags` joined on `videos.content_key`) ∪
+  folder-derived tags. A tag attached from both sources becomes one entry that carries both sources.
+- Reads that use this:
+  - `TagStore.TagsByContentKeys` (`Video.tags`): returns tags with their sources.
+  - Tag filtering (014 §6): each condition's `exists` becomes an OR of "a row attached by hand" and
+    "a folder name row".
+  - Tag name matching in the search box (014 §7): whether a tag with the tag name key is attached to
+    the video is also an OR of the two sources.
+  - Video count per tag (014 §5): counts videos currently in the library with the tag from either
+    source.
+  - Selection summary: `count` counts either source; `manualCount` counts tags attached by hand
+    only.
+- Detaching (`DetachTag`) deletes only from `video_tags`. It needs no change (Requirement 13).
+- The media folder's own name is not a folder name ("below the root" in Requirement 9). So when
+  "Group this folder's videos" makes the media folder itself a group, it cannot become a tag (409,
+  [contracts/folder-groups-api.md §2](contracts/folder-groups-api.md#2-turning-a-group-into-a-tag)).
+  Creating that tag would not give the result of Requirement 11 (the videos inside get the tag).
+- Turning a group into a tag (Requirement 11) runs in one `FolderGroupStore` transaction:
+  1. Pass the folder name through `NormalizeTagName`. On an error, write nothing.
+  2. Use the tag found by name or synonym, or create a new one.
+  3. Write `ungroup` for the folder.
+  4. Run the rebuild from §3.
 
-1. **メンバー単位の絞り込み**: `chosen`（範囲はライブラリ、検索式）に `videos` を結び、再生可否とタグの AND
-   （§4 の出所の OR）を掛ける。ここを通った動画を「当たった動画」とする。1本の動画が全条件を満たす
-   ことを求める（要件 19）。
-2. **項目にまとめる**: 当たった動画のうち `folder_group_members` の行を持つものはそのグループへ、
-   持たないものは動画の項目にする。グループは当たったメンバーが1本以上あれば1件になる。
-3. **グループの集計**: 当たったかどうかに関わらず、グループの**全メンバー**から数える。
+## 5. Library items
 
-   | 値 | 動画の項目 | グループの項目 |
+The `GET /api/library` query adds a step that groups results into items to the 013 flow (scope and
+search expression → `chosen` → filters → keyset).
+
+1. **Per-member filtering**: join `videos` to `chosen` (scope is the library, plus the search
+   expression) and apply the playability and tag AND (each tag an OR of the §4 sources). Videos
+   that pass are the "matching videos". One video must satisfy every condition (Requirement 19).
+2. **Grouping into items**: a matching video with a `folder_group_members` row goes into its group;
+   one without becomes a video item. A group becomes one item when it has one or more matching
+   members.
+3. **Group aggregates**: computed from **all members** of the group, matching or not.
+
+   | Value | Video item | Group item |
    | --- | --- | --- |
-   | 追加日時 | `videos.added_at` | メンバーの最大 |
-   | 更新日時 | `chosen` の所在の `mtime` | メンバーの代表の所在の `mtime` の最大 |
-   | 最後に再生した時刻 | `playback_progress.updated_at` | メンバーの最大（無ければ NULL） |
-   | 題名 | `chosen` の所在の `title_key` | `folder_groups.title_key` |
-   | 長さ | `videos.duration_ms` | 分かっているメンバーの合計。1本も分かっていなければ NULL |
-   | ファイルサイズ | `chosen` の所在の `size_bytes` | メンバーの代表の所在の `size_bytes` の合計 |
-   | 視聴状態 | 今の `watchCondition` | §6 |
+   | Added time | `videos.added_at` | Maximum over members |
+   | Modified time | `mtime` of the `chosen` location | Maximum `mtime` of the members' representative locations |
+   | Last played time | `playback_progress.updated_at` | Maximum over members (NULL when none) |
+   | Title | `title_key` of the `chosen` location | `folder_groups.title_key` |
+   | Length | `videos.duration_ms` | Sum over members with a known length; NULL when none is known |
+   | File size | `size_bytes` of the `chosen` location | Sum of `size_bytes` of the members' representative locations |
+   | Watch status | The current `watchCondition` | §6 |
 
-4. **項目単位の絞り込み**: 視聴状態の絞り込みを、上の視聴状態に掛ける（要件 19）。
-5. **並べ替えと keyset**: 並び順の値は上の表の値。値が同じときの決着と keyset の `id` は、動画の項目は
-   動画の `id`、グループの項目は残っているメンバーのうち `position` の最小のものの動画の `id` である。メンバーは重ならないので項目どうしで
-   重ならない。シャッフルの鍵は `vv_shuffle_key(seed, その id)`。カーソルの形は 013 と同じ。
-6. **件数**: 4 を通った項目の数（要件 20）。
-7. **「すべて選択」**: 4 を通った項目の、動画の `id` とグループの全メンバーの `id`（要件 21）。
+4. **Per-item filtering**: apply the watch status filter to the watch status above (Requirement
+   19).
+5. **Sort and keyset**: sort values come from the table above. For ties and the keyset `id`, a
+   video item uses the video `id`, and a group item uses the video `id` of its remaining member with
+   the smallest `position`. Members do not overlap, so items do not overlap. The shuffle key is
+   `vv_shuffle_key(seed, that id)`. The cursor shape is the same as in 013.
+6. **Count**: the number of items that pass step 4 (Requirement 20).
+7. **"Select all"**: for the items that pass step 4, the video `id` of each video item and the `id`
+   of every member of each group (Requirement 21).
 
-## 6. グループの視聴状態と開くメンバー
+## 6. Group watch status and the member to open
 
-`internal/domain` の関数が、並んだメンバーの再生の記録（無い・位置・完了）から決める。1本の定義は
-`domain.ClassifyWatch` と同じ。
+A function in `internal/domain` decides both from the ordered members' playback records (none,
+position, completed). The per-video definition is the same as `domain.ClassifyWatch`.
 
-- **視聴状態**: 見始めたメンバー（位置が 0 より大きいか完了）が無ければ `unwatched`、全メンバーが完了なら
-  `watched`、それ以外は `inProgress`。**見終えた本数**は完了したメンバーの数（要件 17）。
-- **開くメンバー**: 並びの順で、位置が 0 より大きく完了していない最初のメンバー。無ければ最初の未完了の
-  メンバー。全部完了なら最初のメンバー（要件 23）。
-- 項目の SQL の視聴状態（§5 の 4）と同じ結果になることを、同じ入力でテストする。
+- **Watch status**: `unwatched` when no member has been started (position above 0, or completed);
+  `watched` when every member is completed; `inProgress` otherwise. The **watched count** is the
+  number of completed members (Requirement 17).
+- **Member to open**: in order, the first member with a position above 0 that is not completed.
+  Otherwise the first member that is not completed. When all are completed, the first member
+  (Requirement 23).
+- A test checks with the same inputs that the result equals the watch status in the item SQL (§5,
+  step 4).
 
-## 7. 見る人ごとの見え方
+## 7. Visibility per viewer
 
-索引（§1〜§3）は見る人に依らず、所有者から見た全所在で1つだけ作る。ゲストへの応答は、読み出しの時点で
-016 の公開の条件（`visibleLocationCondition`、[016 data-model.md §3](../016-single-account-auth/data-model.md#3-見る人と公開の動画の条件)）を
-メンバーに掛けて作る。
+The index (§1 to §3) does not depend on the viewer. There is exactly one, built from every location
+the owner sees. A guest response applies the 016 public condition (`visibleLocationCondition`,
+[016 data-model.md §3](../016-single-account-auth/data-model.md#3-audience-and-the-public-video-condition)) to the
+members at read time.
 
-- **グループのメンバー**: ゲストでは公開のメンバーだけを数える。`videoCount`・`videoIds`・`previews`・
-  長さと大きさの合計・追加日時と更新日時の最大・`Video.group` の `position` と `count`・関連動画の `group.items`・
-  グループの中の前後は、どれも公開のメンバーだけから作る。公開のメンバーが1本だけのグループは、ゲストには
-  動画の項目として出す（1本のグループのカードは出さない）。1本も無いグループは出さない。
-- **視聴とタグ**: ゲストには再生位置もタグも返さない（016 の guest-api §1）。`LibraryGroup` の
-  `watchedCount`・`watchState`・`lastPlayedAt` は省き、`tags` は空にする。`openVideoId` は公開のメンバーの
-  並びで最初のもの。フォルダ由来のタグも同じく、ゲストの応答・絞り込み・検索には使わない
-  （`tag` の条件はゲストでは 400、検索はタグ名に照合しない）。
-- **例外とグループ化の判定**: どのフォルダがグループかは所有者の全所在で決まる（§2）。ゲストに
-  返すのは、その判定の結果を公開のメンバーで絞ったものだけで、非公開の動画の本数や名前は出さない。
-- `GET /api/folders/{rootId}/group`: 公開のメンバーが2本以上なければ、ゲストには 404。
-
+- **Group members**: a guest counts only public members. `videoCount`, `videoIds`, `previews`, the
+  length and size sums, the maximum added and modified times, `position` and `count` of
+  `Video.group`, `group.items` of the related videos, and previous/next within the group are all
+  built from public members only. A group with exactly one public member appears to a guest as a
+  video item (no one-video group card). A group with no public member does not appear.
+- **Watch data and tags**: a guest receives neither playback positions nor tags (016 guest-api §1).
+  `watchedCount`, `watchState` and `lastPlayedAt` of `LibraryGroup` are omitted, and `tags` is
+  empty. `openVideoId` is the first public member in order. Folder-derived tags are likewise not
+  used in guest responses, filters or search (a `tag` condition returns 400 for a guest, and search
+  does not match tag names).
+- **Overrides and the grouping decision**: which folders are groups is decided from all of the
+  owner's locations (§2). A guest receives only that result narrowed to public members, and never
+  the count or names of private videos.
+- `GET /api/folders/{rootId}/group`: 404 for a guest unless the group has 2 or more public members.

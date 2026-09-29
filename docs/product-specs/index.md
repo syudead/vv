@@ -10,4 +10,4 @@ carries them if an audit needs them.
 
 ## Specification quality
 
-- [仕様品質の規則: 要求の縮退を防ぐ](spec-quality.md)
+- [Specification quality rules: preventing requirement degradation](spec-quality.md)

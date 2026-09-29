@@ -3,27 +3,27 @@ layout: home
 
 hero:
   name: vv docs
-  text: 設計文書・仕様・手順
-  tagline: リポジトリの docs/ と specs/ を main から自動で公開しています。
+  text: Design docs, specifications and procedures
+  tagline: Published automatically from docs/ and specs/ on main. A Japanese edition is machine-translated from this English source.
   actions:
     - theme: brand
-      text: 設計文書
+      text: Design docs
       link: /docs/design-docs/
     - theme: alt
-      text: 手順
+      text: How-to
       link: /docs/how-to/
 
 features:
-  - title: 設計文書
-    details: 技術選定、ライブ変換やシークの仕組み、UI の規則など、判断とその理由。
+  - title: Design docs
+    details: Technical decisions and their reasons, such as the stack, live transcoding, seeking and the UI rules.
     link: /docs/design-docs/
-  - title: プロダクト仕様
-    details: 仕様の置き場と、仕様の書き方の規則。
+  - title: Product specs
+    details: Where specifications live and the rules for writing them.
     link: /docs/product-specs/
-  - title: 手順
-    details: 実行、ホスティング、ローカル開発、依存の更新などの繰り返す手順。
+  - title: How-to
+    details: Repeated procedures such as running, hosting, local development and dependency updates.
     link: /docs/how-to/
-  - title: 機能ごとの計画
-    details: SDD で進めた機能の Plan、UI 設計、データモデル、契約。
+  - title: Feature plans
+    details: Plans, UI designs, data models and contracts of the features built with SDD.
     link: /specs/
 ---

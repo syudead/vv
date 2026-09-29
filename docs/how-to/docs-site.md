@@ -1,50 +1,96 @@
-# 文書サイト
+# Documentation site
 
-`docs/` と `specs/` の文書は、`main` に入るたびに GitHub Pages へ公開される。
+The documents under `docs/` and `specs/` are published to GitHub Pages on every
+push to `main`, in English at `/` and in machine-translated Japanese at `/ja/`.
 
-- 公開先: <https://syudead.github.io/vv/>
-- 公開するのは `docs/` と `specs/` だけで、リポジトリ直下の文書や `.agents/`・`.claude/`
-  などのエージェント向けの文書は出さない。
+| | |
+| --- | --- |
+| **URL** | <https://syudead.github.io/vv/> |
+| **Published** | `docs/` and `specs/` (except `docs/templates/`), plus `docs-site/index.md` |
+| **Not published** | Repository-root documents, `.agents/`, `.claude/` and other agent-facing files |
+| **Config** | `docs-site/.vitepress/config.mts` |
 
-## 手元で見る
+## Preview locally
+
+1. Install the site's dependencies once with `task setup`.
+2. Optionally generate the Japanese edition (see below).
+3. Start the server:
+
+   ```bash
+   mise exec --command "task docs"
+   ```
+
+4. Open <http://localhost:5174/vv/>. Edits to a document show immediately.
+
+To build the site the way CI does, run `task docs-build`. The output goes to
+`docs-site/.vitepress/dist/`, outside version control.
+
+The sidebar is built from the directory layout when `task docs` starts, and
+each entry is the document's H1. Restart `task docs` after adding, removing or
+retitling a document.
+
+## Generate the Japanese edition
+
+`task docs-translate` writes `docs-site/ja/` from the English documents. The
+design is in
+[translation-pipeline.md](../design-docs/translation-pipeline.md).
+
+| Situation | Command | Result |
+| --- | --- | --- |
+| No translation service | `task docs-translate` | Offline: segments missing from the memory stay English. |
+| Local server (vLLM, Ollama, llama.cpp) running PLaMo Translate | `VV_TRANSLATE_PROVIDER=plamo VV_TRANSLATE_BASE_URL=http://localhost:8000/v1 VV_TRANSLATE_MODEL=pfnet/plamo-2-translate task docs-translate` | New segments are translated and added to the memory. |
+| Hosted chat model | `VV_TRANSLATE_BASE_URL=... VV_TRANSLATE_MODEL=... VV_TRANSLATE_API_KEY=... task docs-translate` | Same, through `/chat/completions` with the glossary. |
+| Cap the requests of one run | `task docs-translate -- -max-new 200` | At most 200 new segments are requested. |
+
+The local memory is `docs-site/.translation/ja.json`. To start from what CI
+has already translated:
 
 ```bash
-mise exec --command "task docs"
+git fetch origin translation-memory
+mkdir -p docs-site/.translation
+git show FETCH_HEAD:ja.json > docs-site/.translation/ja.json
 ```
 
-表示された URL（<http://localhost:5174/vv/>）を開く。文書を直すと、その場で表示が
-変わる。初回は `task setup`（`docs-site/` の依存を入れる）が必要である。
+Never edit `docs-site/ja/` by hand; the next run replaces it. Fix a bad
+translation by improving the English source, or by adding the term to
+[glossary.tsv](../../docs-site/i18n/glossary.tsv).
 
-CI と同じ作り方で確かめるときは `task docs-build` を使う。出力は
-`docs-site/.vitepress/dist/` に出る（版管理の外）。
+## Publishing
 
-## 公開の流れ
+`.github/workflows/docs.yml` does the work.
 
-`.github/workflows/docs.yml` が行う。
+| Event | What happens |
+| --- | --- |
+| Pull request touching `docs/`, `specs/`, `docs-site/` or the translator | Builds both editions offline from the stored memory. Nothing is published. |
+| Push to `main` | Translates new segments, saves the memory to the `translation-memory` branch, builds and publishes. |
 
-- PR: `docs/`・`specs/`・`docs-site/` を変えたときに、サイトを作れることだけを確かめる。
-  公開はしない。
-- `main` への push: サイトを作り、GitHub Pages へ公開する。
-- 公開には、リポジトリの Settings → Pages で Source を「GitHub Actions」にしておく
-  必要がある。
+One-time repository settings:
 
-## 書き方の注意
+| Setting | Value |
+| --- | --- |
+| Settings → Pages → Source | GitHub Actions |
+| Actions variable `VV_TRANSLATE_BASE_URL` | OpenAI-compatible API base. Without it, `main` builds offline too. |
+| Actions variable `VV_TRANSLATE_MODEL` | Model name, e.g. `pfnet/plamo-2-translate` |
+| Actions variable `VV_TRANSLATE_PROVIDER` | `plamo` for PLaMo Translate, otherwise empty (`chat`) |
+| Actions secret `VV_TRANSLATE_API_KEY` | Bearer token, if the service needs one |
 
-- 文書どうしのリンクは今までどおり相対パスで書く。`README.md` はそのディレクトリの
-  入口ページ（`/docs/how-to/` など）になる。
-- 公開範囲の外（ソース、設定ファイル、リポジトリ直下の文書）へのリンクは、サイトでは
-  GitHub の表示へ向く。
-- リンク先が見つからないとサイトの作成が失敗する。`http://localhost:…` の例は例外として
-  許している。
-- 見出しの anchor は GitHub と同じ規則で作るので、`#r-3-…` のような日本語の見出しへの
-  リンクも GitHub とサイトの両方で通る。
-- サイドバーはディレクトリの構成から自動で作る。項目の名前は各文書の見出し1である。
-  サイドバーは `task docs` の起動時に作るので、起動中に文書を足したり消したり、
-  見出し1を変えたりしたときは、`task docs` を起動し直すと一覧に反映される（本文の
-  変更はその場で反映される）。
+## Writing for the site
 
-設定は `docs-site/.vitepress/config.mts` にある。
+- Link between documents with relative paths. A `README.md` becomes its
+  directory's page (`/docs/how-to/`).
+- A link outside the published tree (source code, config, root documents)
+  points at GitHub on the site.
+- A missing link target fails the site build. Links to `http://localhost:…`
+  are allowed as examples.
+- Anchors follow GitHub's rules (github-slugger), so `#anchor` links work on
+  GitHub and on the site. Japanese pages keep the English anchors.
+- Mermaid blocks render on GitHub and on the site.
+- Write placeholders inside code spans (`` `<branch name>` ``). A bare
+  `<branch name>` is parsed as an HTML tag and fails the build.
 
-`docs-site/package.json` の `overrides` で vite を 6.4.3 に上げている。VitePress 1.6.4 が
-依存する vite 5 系と esbuild 0.21 には既知の脆弱性（GHSA-4w7w-66w2-5vf9 など）があり、
-VitePress の安定版では直っていないためである。VitePress の修正版が出たら外す。
+## Dependencies
+
+`docs-site/package.json` overrides vite to 6.4.3. VitePress 1.6.4 depends on
+vite 5 and esbuild 0.21, which have known vulnerabilities
+(GHSA-4w7w-66w2-5vf9 and others) that no stable VitePress release fixes yet.
+Remove the override once VitePress ships the fix.

@@ -5,11 +5,11 @@ themselves; the reasoning behind a decision belongs in `docs/design-docs/`.
 
 ## Documents
 
-- [VVMDM を実行する](running-vv.md)
-- [公開イメージで VVMDM をホスティングする](hosting-vv.md)
-- [ローカル開発](development.md)
-- [外部連携 API を使う](external-api.md)
-- [Codespaces で PR を確かめる](codespaces-preview.md)
-- [依存の更新（Renovate）](dependency-updates.md)
-- [動くプレビューとシーク用サムネイルの生成を測る](preview-benchmark.md)
-- [文書サイト](docs-site.md)
+- [Running VVMDM](running-vv.md)
+- [Hosting VVMDM with the published image](hosting-vv.md)
+- [Local development](development.md)
+- [Using the external API](external-api.md)
+- [Checking a PR in Codespaces](codespaces-preview.md)
+- [Dependency updates (Renovate)](dependency-updates.md)
+- [Measuring animated preview and seek thumbnail generation](preview-benchmark.md)
+- [Documentation site](docs-site.md)

@@ -1,44 +1,43 @@
-# 依存の更新（Renovate）
+# Dependency updates (Renovate)
 
-依存の更新 PR は [Renovate](https://docs.renovatebot.com/) の GitHub App が
-`renovate.json` に従って作る。設定の意図はこの文書に置き、`renovate.json`
-自体には書かない。
+The [Renovate](https://docs.renovatebot.com/) GitHub App opens dependency update PRs according to
+`renovate.json`. The intent of the configuration lives in this document, not in `renovate.json`
+itself.
 
-## 何が起きるか
+## What happens
 
-- 毎週月曜の早朝（JST）に、Go modules / web npm / tools npm / GitHub Actions /
-  mise tools / container images の 6 グループに分けて PR が出る。脆弱性対応の
-  PR は曜日を待たずに出る。
-- マイナー・パッチ・lockfile 保守・ダイジェスト更新は、PR の必須チェック
-  （Checks）が通れば Renovate が自動でマージする。Browser E2E と Docker image は
-  マージ後の `main` への push で回る。
-- メジャー更新は PR が残る。破壊的変更を読んで人がマージする。
-- GitHub Actions はコミットハッシュに固定され、コメントでタグ名を併記する
-  （`config:best-practices` の既定）。
-- `Dockerfile` のベースイメージは `タグ@sha256:ダイジェスト` で固定する。同じ
-  タグの中身が更新されると、Renovate がダイジェスト更新の PR を出す。
+- Every Monday early morning (JST), PRs open in 6 groups: Go modules / web npm / tools npm /
+  GitHub Actions / mise tools / container images. Vulnerability fix PRs open without waiting for
+  the weekday.
+- Renovate merges minor, patch, lockfile maintenance and digest updates automatically once the
+  PR's required checks (Checks) pass. Browser E2E and Docker image run on the push to `main` after
+  the merge.
+- Major update PRs stay open. A person reads the breaking changes and merges them.
+- GitHub Actions are pinned to commit hashes, with the tag name in a comment (the
+  `config:best-practices` default).
+- `Dockerfile` base images are pinned as `tag@sha256:digest`. When the content behind the same tag
+  changes, Renovate opens a digest update PR.
 
-## 対象外にしているもの
+## Excluded
 
-- `Dockerfile` の `golang` / `node` イメージと `mise.toml` の `go` / `node`。
-  ランタイム版は `go.mod` の `go` 行と揃える必要があるので、人が
-  `go.mod` を上げるときに一緒に変える。mise manager は `go` を `golang/go`、
-  `node` を `nodejs` という packageName で扱うため、除外は `matchPackageNames`
-  ではなく両 manager に共通の `matchDepNames` で指定している。
-  止めるのはバージョンの変更（major / minor / patch）だけで、`Dockerfile` の
-  イメージのダイジェスト更新は対象内に残す。
-- `mise.toml` の `task` と `jq`、`Dockerfile` の `alpine` は対象内で、それぞれ
-  mise tools / container images グループに入る。
-- Dependabot の security updates はリポジトリ設定で無効にしている。
-  Renovate の `vulnerabilityAlerts` が同じ役割を果たす。
+- The `golang` / `node` images in `Dockerfile` and `go` / `node` in `mise.toml`. The runtime
+  versions must match the `go` line in `go.mod`, so a person changes them together when raising
+  `go.mod`. The mise manager uses the packageName `golang/go` for `go` and `nodejs` for `node`, so
+  the exclusion uses `matchDepNames`, common to both managers, instead of `matchPackageNames`.
+- The exclusion stops only version changes (major / minor / patch). Digest updates of the
+  `Dockerfile` images stay in scope.
+- `task` and `jq` in `mise.toml` and `alpine` in `Dockerfile` are in scope, in the mise tools and
+  container images groups respectively.
+- Dependabot security updates are disabled in the repository settings. Renovate's
+  `vulnerabilityAlerts` does the same job.
 
-## Renovate の PR に対する扱い
+## Handling Renovate PRs
 
-- 自動マージが止まっている PR は、CI の失敗か、コンフリクトか、メジャー更新
-  のどれか。Renovate の Dependency Dashboard Issue に一覧が出る。
-- 更新を一時的に止めたいときは、PR を閉じる（同じ版は再作成されない）か、
-  `renovate.json` の `packageRules` で `enabled: false` にする。
+- A PR whose automerge stopped has a CI failure, a conflict, or a major update. Renovate's
+  Dependency Dashboard Issue lists them.
+- To pause an update, close the PR (the same version is not recreated), or set `enabled: false`
+  in `packageRules` of `renovate.json`.
 
-## 設定を変えたら
+## After changing the configuration
 
-`npx --package renovate renovate-config-validator` で検証してから push する。
+Validate with `npx --package renovate renovate-config-validator` before pushing.

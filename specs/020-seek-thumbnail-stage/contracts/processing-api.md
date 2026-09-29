@@ -1,38 +1,43 @@
-# Contract: 処理状況とシーク用サムネイルの状態
+# Contract: Processing status and seek thumbnail state
 
-親 Issue #388。正本は [api/openapi.yaml](../../../api/openapi.yaml)
-で、ここには変える箇所だけを書く。
+Parent Issue #388. [api/openapi.yaml](../../../api/openapi.yaml) is the source of truth; this
+document lists only the changes.
 
 ## 1. `Processing.seekThumbnail`
 
-`GET /api/processing` の応答と `/api/events` の `processing` イベントの `Processing` に、
-`seekThumbnail`（integer、required）を足す。
+Add `seekThumbnail` (integer, required) to `Processing` in the `GET /api/processing` response and in
+the `processing` event of `/api/events`.
 
-| 項目 | 意味 |
+| Field | Meaning |
 | --- | --- |
-| `probe` | 解析の残り（変えない） |
-| `thumbnail` | 代表サムネイルの残り（説明を「サムネイルとシーク用プレビューの残り」から改める） |
-| `seekThumbnail` | シーク用サムネイルの残り。`queued` / `running` の `seek_thumbnail` のうち登録済みの所在がある動画のもの |
-| `preview` | 一覧用プレビューの残り（変えない） |
+| `probe` | Remaining probes (unchanged) |
+| `thumbnail` | Remaining representative thumbnails (the description changes from "remaining thumbnails and seek previews") |
+| `seekThumbnail` | Remaining seek thumbnails: `seek_thumbnail` jobs in `queued` / `running` for videos with a registered location |
+| `preview` | Remaining list previews (unchanged) |
 
-すべて 0 なら準備は終わっている（`seekThumbnail` を含む）。web の `processingRemaining` と
-「準備中」の判定はこの合計を使う。処理状況の内訳は「解析・サムネイル・シーク用・プレビュー」の
-4 列になる。
+Preparation is finished when all of them are 0 (including `seekThumbnail`). The web
+`processingRemaining` and the "Preparing" check use this sum. The processing status breakdown
+becomes four columns: probe, thumbnail, seek, preview.
 
-## 2. `seekThumbnailState` の意味
+## 2. Meaning of `seekThumbnailState`
 
-`Video.seekThumbnailState`（`GET /api/videos/{id}` にだけ入り、`seekThumbnailUrl` と同じ条件）の
-値の意味を、[data-model.md §3](../data-model.md#3-状態遷移) に合わせて改める。schema（enum
-`pending` / `done` / `failed`）は変えない。
+The meaning of the values of `Video.seekThumbnailState` (present only in `GET /api/videos/{id}`,
+under the same condition as `seekThumbnailUrl`) changes to match
+[data-model.md §3](../data-model.md#3-state-transitions). The schema (enum `pending` / `done` / `failed`)
+does not change.
 
-| 値 | 意味 |
+| Value | Meaning |
 | --- | --- |
-| `done` | 置き場がある |
-| `pending` | 生成を待っている、または生成中。保存した状態が `done` なのに置き場が無いときは、サーバーが作り直しを積んで `pending` として返す |
-| `failed` | 生成に失敗し、再試行の上限に達した |
+| `done` | The artifact exists |
+| `pending` | Waiting for generation, or generating. When the stored state is `done` but the artifact is missing, the server queues a regeneration and returns `pending` |
+| `failed` | Generation failed and reached the retry limit |
 
-`reprobeVideo`（`POST /api/videos/{id}/probe`）の説明: 読み取りの状態を `pending` に戻して
-読み取りのジョブを積み、代表サムネイル・シーク用サムネイル・一覧用プレビューのうち `failed`
-のものを `pending` に戻して、代表サムネイルとシーク用サムネイルは戻したときだけそのジョブを
-積む（一覧用プレビューは読み取りの成功後に積まれる）。「シーク用プレビューの置き場が無いときは
-サムネイルのジョブも積む」の記述は無くなる。
+Description of `reprobeVideo` (`POST /api/videos/{id}/probe`):
+
+1. Reset the probe state to `pending` and queue a probe job.
+2. Reset each of the representative thumbnail, the seek thumbnail and the list preview that is
+   `failed` to `pending`.
+3. Queue the representative thumbnail and seek thumbnail jobs only when they were reset. (The list
+   preview job is queued after a successful probe.)
+
+The statement "also queues a thumbnail job when the seek preview artifact is missing" is removed.

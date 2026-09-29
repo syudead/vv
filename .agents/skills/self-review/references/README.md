@@ -27,8 +27,8 @@ agrees with itself.
 
 ### 1. Reconcile the diff against the sources of truth
 
-For each behaviour the diff adds or changes, quote the parent Issue's 要件 or
-受け入れ条件, or the line in `plan.md`, `data-model.md`, `contracts/`,
+For each behaviour the diff adds or changes, quote the parent Issue's Requirements or
+Acceptance criteria, or the line in `plan.md`, `data-model.md`, `contracts/`,
 `ui-design.md`, `api/openapi.yaml`, or `AGENTS.md` that governs it, and state whether the code matches. A behaviour
 with no governing line is either missing from the artifact or outside the
 change's scope; say which.
@@ -39,8 +39,9 @@ invisible from inside the change.
 
 A change that replaces a restatement with a reference is the same check run
 backwards, and it is where this one is most often skipped. List every item the
-removed text carried and name the reference that now covers it, one by one. A
-reference that covers most of the list reads as correct and silently drops the
+removed text carried and name the reference that now covers it, one by one.
+
+A reference that covers most of the list reads as correct and silently drops the
 rest: replacing an enumeration of six validation rules with three requirement
 numbers kept the overlap, symlink and root rules and lost absolute, exists,
 directory and readable, which read literally permitted registering a folder

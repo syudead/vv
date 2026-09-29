@@ -1,413 +1,476 @@
-# UI Design: 動画のタグと、タグでの絞り込み
+# UI Design: video tags and the tag filter
 
 **Feature**: [parent Issue #193](https://github.com/syudead/vv/issues/193)
 
-見た目の規則・シェル・一覧の密度は
-[ライブラリ UI: 見た目の規則と一覧の構成](../../docs/design-docs/library-ui.md) と
-[`web/src/index.css`](../../web/src/index.css) の `@theme` に従う。再生画面の構成は
-[012 の ui-design.md](../012-video-detail-ia/ui-design.md)、ツールバー・一致なし・「条件を解除」は
-[013 の ui-design.md](../013-library-search/ui-design.md) に従う。URL の形と履歴は
-[contracts/list-url.md](contracts/list-url.md)、誤りの `code` と本数は
-[contracts/tags-api.md](contracts/tags-api.md) で決まっており、ここでは決め直さない。
-本書は、カードのタグの行・絞り込み中のタグ・再生画面のタグ・選択バーのタグ操作・
-タグ管理画面が、既存の画面に**足す・変える**ものだけを定める。新しい色・半径・影の
-トークンは追加しない。
+This document does not re-decide what other documents own:
+
+| Topic | Source |
+| --- | --- |
+| Visual rules, shell, list density | [Library UI: visual rules and list structure](../../docs/design-docs/library-ui.md) and `@theme` in [`web/src/index.css`](../../web/src/index.css) |
+| Playback page structure | [012's ui-design.md](../012-video-detail-ia/ui-design.md) |
+| Toolbar, no-match state, "Clear filters" | [013's ui-design.md](../013-library-search/ui-design.md) |
+| URL shape and history | [contracts/list-url.md](contracts/list-url.md) |
+| Error `code` values and video counts | [contracts/tags-api.md](contracts/tags-api.md) |
+
+It defines only what the card tag row, active tags, playback page tags, selection bar tag actions
+and the tag management page **add to or change in** existing screens. No new color, radius or
+shadow tokens are added.
 
 ## Screen boundary
 
-- **ライブラリ（`/`）の格子表示のカード**: 題名の下にタグの行がある。ライブラリの
-  リスト表示の行にはタグの行は無い。
-  フォルダ画面のカードにも同じタグの行があり、押すとそのタグで絞ったライブラリ
-  （`/?tag=<id>`）へ移る。
-- **ライブラリの本文の先頭**: タグで絞り込んでいるときだけ、要約行の上に「絞り込み中の
-  タグ」の行を置く。ツールバー（トップバーの中）には足さない。
-- **再生画面（`/videos/:id`）**: 題名の下にタグの並びを置く。
-- **選択バー**: タグを一括で付ける・外す操作がある。配置は
-  [library-ui.md §6](../../docs/design-docs/library-ui.md#6-一覧の構成) に従う。
-- **タグ管理画面（`/tags`）**: `AppShell` の中にあり、サイドバーでは「フォルダ」の直後に
-  「タグ」（lucide `Tags`）の入口がある。
+- **Grid cards in the library (`/`)**: a tag row sits below the title. Rows in the library list
+  view have no tag row. Folder page cards have the same tag row; pressing a tag opens the library
+  filtered by it (`/?tag=<id>`).
+- **Top of the library content**: only while a tag filter is set, an "active tags" row sits above
+  the summary line. Nothing is added to the toolbar (inside the top bar).
+- **Playback page (`/videos/:id`)**: the video's tags sit below the title.
+- **Selection bar**: has actions to add or remove a tag in bulk. Placement follows
+  [library-ui.md §6](../../docs/design-docs/library-ui.md#6-list-layout).
+- **Tag management page (`/tags`)**: inside `AppShell`. The sidebar has a "Tags" entry
+  (lucide `Tags`) right after "Folders".
 
 ## Tag chip
 
-タグは、場所ごとに役割の違う3つの形で出す。どれも同じ見た目の骨格（`h-5` か `h-6`・
-`rounded-sm`・`px-1.5`〜`px-2`・`text-xs`・1行で省略）を持ち、色と印で役割を分ける。
+Tags appear in three forms with different roles. All share one visual skeleton (`h-5` or `h-6`,
+`rounded-sm`, `px-1.5` to `px-2`, `text-xs`, one line with truncation). Color and marks tell the
+roles apart.
 
-| 形 | 場所 | 面と文字 | 印 | 押したとき |
+| Form | Place | Surface and text | Mark | On press |
 | --- | --- | --- | --- | --- |
-| 動画のタグ | カード・再生画面 | `bg-elevated`・`text-fg-muted`（再生画面は `text-fg`） | なし | そのタグで絞り込む |
-| 絞り込み中のタグ | 一覧の上 | `bg-accent-soft`・`text-link`（今の `Chip` の accent） | 先頭に lucide `Tag`、末尾に `X` | その絞り込みを外す |
-| 候補・要約 | 候補の一覧・選択バー | 行の形（下の「Combobox」） | 一部だけのときは文言 | 付ける・外す |
+| Video tag | Card, playback page | `bg-elevated`, `text-fg-muted` (`text-fg` on the playback page) | None | Filter by that tag |
+| Active tag | Above the list | `bg-accent-soft`, `text-link` (the accent of the current `Chip`) | lucide `Tag` first, `X` last | Remove that filter |
+| Suggestion / summary | Suggestion list, selection bar | Row form ("Combobox" below) | Text when on only some | Add or remove |
 
-- 長い名前は、チップの中の文字に `min-w-0 truncate` を付けて末尾を省略し、`title` に全体を
-  入れる。チップの最大幅は置かれた行の幅（`max-w-full`）で、100 文字の名前でも 360px で
-  横にはみ出さない。
-- 絞り込み中のタグだけが accent の色を持つ。動画のタグは中立の色のままにし、「今どれで
-  絞っているか」が色でも区別できるようにする。色だけに頼らず、絞り込み中のタグは `Tag` の
-  アイコンと、行の先頭の文言（下の「Active tag filters」）でも区別する（UI品質の
-  「アクセシビリティ」）。
+- A long name gets `min-w-0 truncate` on the chip text, which truncates the end, and the full
+  name in `title`. The chip's maximum width is the width of its row (`max-w-full`), so even a
+  100-character name does not overflow horizontally at 360px.
+- Only active tags use the accent color. Video tags stay neutral, so color also shows which tags
+  filter the list now. Color is not the only cue: active tags also have the `Tag` icon and the
+  label at the start of the row ("Active tag filters" below) (UI quality "Accessibility").
 
 ## Library card
 
 ### Tag row
 
-- 題名の `h3` の直下、今のメタ情報の行と同じ位置に1行で置く。題名との間隔は今の `gap-1`
-  のまま、下の余白も今の `pb-3` のままである（UI品質の「余白のリズム」）。
-- 行は `flex flex-nowrap gap-1 overflow-hidden`。タグどうしの間隔は `gap-1` で一定にする。
-  並びは API の順（名前の自然順）である。
-- 行もカードの `article` も中身を切り取るので、グローバルの `:focus-visible` の外側の輪郭は
-  チップの外で切れる。カードのチップ（と「+N」）だけは、輪郭をチップの内側に描く
-  （`focus-visible:outline-offset-[-2px]`）。色と太さはグローバルのままである。
-- チップは `h-5`・`text-xs`。題名（`text-sm font-medium`）より小さく、`text-fg-muted` で、
-  題名より先に目に入らない。視聴済みのカードでは題名も `text-fg-muted` になるが、大きさと
-  チップの面で区別できる。
-- タグが1つも無い動画は、行を出さない。「タグなし」の文字は置かない。空の行を出すと、
-  分類が無いことを空白で伝えることになり、何も伝えないのと変わらないからである。格子の
-  各行のカードは今と同じく高さがそろう（`flex-wrap` の既定の `stretch`）。
+- One line directly below the title `h3`, where the current meta line sits. The gap to the title
+  stays the current `gap-1`, and the bottom padding stays the current `pb-3` (UI quality
+  "Spacing rhythm").
+- The row is `flex flex-nowrap gap-1 overflow-hidden`. The gap between tags is a constant
+  `gap-1`. The order is the API order (natural order of names).
+- Both the row and the card `article` clip their content, so the outer outline of the global
+  `:focus-visible` would be cut outside the chip. Only card chips (and "+N") draw the outline
+  inside the chip (`focus-visible:outline-offset-[-2px]`). Color and width stay global.
+- Chips are `h-5` and `text-xs`, smaller than the title (`text-sm font-medium`), and
+  `text-fg-muted`, so they do not draw the eye before the title. On a watched card the title is
+  also `text-fg-muted`, but size and the chip surface still tell them apart.
+- A video with no tags has no row, and no "no tags" text. An empty row would signal "no
+  classification" with blank space, which says nothing. Cards in each grid row keep equal height
+  as today (the default `stretch` of `flex-wrap`).
 
 ### Overflow
 
-- 1行に収まらない分は、行の末尾に「+N」のチップを置き、収まったチップだけを見せる
-  （UI品質の「情報密度」）。「+N」は動画のタグと同じ形で、中の文字は `tabular-nums`。
-  フェードで切る案は採らない。切れたのが名前の途中なのか、ほかのタグがあるのかが見分け
-  られないからである。
-- 「+N」はボタンで、押すと `ui/Popover` を開き、見えていないタグを同じチップで縦に並べる。
-  チップを押すと、カードの行と同じくそのタグで絞り込み、ポップオーバーは閉じる。
-  読み上げ名は「ほかのタグ N 個を表示」。
-- 何個収まるかは、描画の後に行の幅とチップの幅を測って決める。CSS だけでは数を出せない。
-  library-ui.md §4 が避けるのは画面幅の分岐を JavaScript で持つことで、中身の収まりを
-  測ることとは別である。測る前の1フレームで行が伸び縮みしないよう、描画の前（layout
-  effect）に決め、カードの大きさの切り替えと画面幅の変化で測り直す。
-  一覧は仮想スクロールを使わない（library-ui.md §3）ので、読み込んだカードの数だけ行を
-  見張ることになる。カードごとに見張りを作らず、一覧に1つの `ResizeObserver` を置いて
-  すべての行を見張る。カードの幅は表示倍率ごとに一定なので、測り直しが走るのは倍率と
-  画面幅が変わったときとタグが変わったときだけである。
+- Tags that do not fit in one line are replaced by a "+N" chip at the end of the row; only the
+  chips that fit are shown (UI quality "Information density"). "+N" has the video tag form, with
+  `tabular-nums` text.
+- "+N" is a button that opens `ui/Popover` with the hidden tags as the same chips in a column.
+  Pressing a chip filters by that tag, as in the card row, and closes the popover. Its
+  accessible name is "Show N more tags".
+- The number that fits is measured after render, from the row width and the chip widths; CSS
+  alone cannot produce a count. library-ui.md §4 avoids viewport-width branching in JavaScript,
+  which is different from measuring whether content fits.
+- The count is decided before paint (layout effect), so the row does not jump for one frame. It
+  is measured again when the card size setting or the viewport width changes.
+- The list does not use virtual scrolling (library-ui.md §3), so every loaded card's row is
+  observed. One `ResizeObserver` on the list watches all rows, instead of one per card. Card
+  width is fixed per zoom level, so re-measuring runs only when the zoom, the viewport width or
+  the tags change.
+
+| | |
+| --- | --- |
+| **Decision** | Show a "+N" chip for the tags that do not fit. |
+| **Why** | It tells the user that more tags exist and how many. |
+| **Rejected** | Cutting the row with a fade: the user cannot tell a cut name from the existence of further tags. |
 
 ### Card structure and pressing
 
-- カードは今、全体が再生画面への1つのリンクである。タグの行はリンクの**外**、同じ
-  `article` の中の題名の下に置く（リンクの中に押せる要素を入れ子にしない）。見た目は今と同じ1枚のカードで、境目の線は引かない。
-- カードの hover の浮き上がり・影・hover プレビューは、タグの行の上でも今と同じに効く。
-- タグのチップは、それぞれ1つのボタンである。押すと、今の条件にそのタグを加える
-  （[list-url.md §2](contracts/list-url.md#2-タグを押したときと外したとき)）。再生画面へは移らない。
-  すでに絞り込み中のタグを押しても何も変わらない。そのチップは、ほかと同じ見た目のまま
-  である（絞り込み中の印は一覧の上だけに出す）。
-- 16 個を絞り込んでいるときに17個目を押すと、加えずにトーストで「絞り込めるタグは 16 個
-  までです」と伝える。
-- **選択中**（1件以上選んでいるとき）は、タグのチップをボタンとして描かない。文字と面は
-  そのままにし、押すとカードの選択が切り替わる（Edge Case「選択中にタグを押したとき」）。
-  Tab の順からも外れる。選択中にタグの名前の「絞り込む」を読み上げると、押した結果と
-  名前が食い違うからである。「+N」も同じく押せない表示になる。
-- キーボードの順は、カードの中でチェック → リンク（題名）→ タグ → 「+N」である。
+- Today the whole card is one link to the playback page. The tag row sits **outside** the link,
+  below the title inside the same `article` (no interactive element nested in a link). It still
+  looks like one card, with no dividing line.
+- The card's hover lift, shadow and hover preview work the same over the tag row.
+- Each tag chip is one button. Pressing it adds the tag to the current conditions
+  ([list-url.md §2](contracts/list-url.md#2-pressing-and-removing-a-tag)). It does not open the
+  playback page. Pressing a tag that is already active changes nothing. That chip looks like the
+  others (the active mark appears only above the list).
+- Pressing a 17th tag while 16 are active does not add it; a toast says "Filter by at most 16
+  tags."
+- **During selection** (one or more items selected), tag chips are not rendered as buttons. Text
+  and surface stay; pressing toggles the card's selection (Edge case "Pressing a tag during
+  selection"). They leave the Tab order too, because announcing "Filter by" with the name would
+  contradict what the press does. "+N" also becomes non-interactive.
+- Keyboard order inside a card: check box → link (title) → tags → "+N".
 
 ## Active tag filters
 
-- ライブラリの本文の先頭、要約行の上に1行で置く。出すのはタグで絞り込んでいるときだけで、
-  絞り込んでいないときは場所を取らない。
-- 行は要約行と同じく中央寄せ（`flex flex-wrap justify-center items-center gap-1.5`）。
-  先頭に `text-xs text-fg-muted` で「タグで絞り込み中」の文言、続けて絞り込み中のタグを
-  名前の自然順に並べる。入りきらなければ折り返す。
-- 各チップは、`Tag` のアイコン・名前・`X` のアイコンを持つ1つのボタンで、どこを押しても
-  そのタグだけを外す（UI品質「ワンクリックで届き」）。× だけを小さな的にする案は採らない。
-  チップ全体が1つの操作しか持たないので、的を小さくする理由が無い。hover では内側に
-  `ring-1 ring-inset ring-border-strong` の縁を出す（動画のタグのチップと同じ）。文字の色を
-  変える案は採らない。`accent-hover` と `link` は同じ値で、見た目が変わらないからである。
-- 外すと、フォーカスは次のチップへ、無ければ前のチップへ、最後の1つなら検索欄へ移す。
-  外したチップが消えてフォーカスの行き先が失われるからである（013 の一致なしと同じ扱い）。
-- 階層: 行はツールバーより下の本文にあり、ツールバーの部品より小さい（`h-6`・`text-xs`）。
-  格子より先に目に入るのは、accent の面を持つこの行だけで、今どの条件かを一目で読める。
-- タグの一覧をまだ取得していないときは、名前の代わりに `Skeleton`（`w-12`）をチップの中に
-  置く。URL にある `id` の数だけ並べ、取得すると名前に置き換わる。
-- 絞り込みの「条件を解除」（013「Filter menu」）は、タグで絞り込んでいるときにも出す。
-  押すとタグの絞り込みも外れる。絞り込みボタンの数字にタグは数えない
-  （[list-url.md §2](contracts/list-url.md#2-タグを押したときと外したとき)）。
-- 要約行は今の書式のままで、タグの名前は入れない。件数は `tag` を含めた `total` である。
-- 一致なし（013「No-match state」）は、013 の今の契約（PR #262）のとおり、検索語・
-  絞り込み条件・検索範囲のチップや補足文、「条件を解除」ボタンを持たない。タグの絞り込みも
-  同じ扱いで、一致なしの中にチップや解除操作を足さない。絞り込んでいるタグは、一致なしの
-  上に出るこの行（絞り込み中のタグ）でだけ見え、外すのもここか、絞り込みメニューの
-  「条件を解除」（タグを含めてすべて外す）で行う。
-- 検索語・視聴状態・再生可否・タグのどれかを変えると、選択は解除する。条件の違う一覧で
-  選んだ動画が、見えないまま選択に残らないようにするためである。
+- One row at the top of the library content, above the summary line. It appears only while a tag
+  filter is set and takes no space otherwise.
+- Like the summary line, the row is centered (`flex flex-wrap justify-center items-center
+  gap-1.5`). It starts with the label "Filtering by tags" in `text-xs text-fg-muted`, followed by
+  the active tags in natural order of names. It wraps when it does not fit.
+- Each chip is one button with the `Tag` icon, the name and the `X` icon. Pressing anywhere on it
+  removes only that tag (UI quality "reachable in one click"). On hover, an inner
+  `ring-1 ring-inset ring-border-strong` edge appears (the same as video tag chips).
+- After a removal, focus moves to the next chip, else the previous chip, else (for the last one)
+  the search box. The removed chip disappears and would otherwise leave focus nowhere (the same
+  handling as 013's no-match state).
+- Hierarchy: the row is in the content below the toolbar and smaller than toolbar controls
+  (`h-6`, `text-xs`). Only this row, with its accent surface, draws the eye before the grid, so
+  the current condition reads at a glance.
+- While the tag list has not loaded, each chip holds a `Skeleton` (`w-12`) instead of the name,
+  one per `id` in the URL. The names replace them once loaded.
+- The filter menu's "Clear filters" (013 "Filter menu") also appears while a tag filter is set.
+  Pressing it also removes the tag filters. The filter button's count does not include tags
+  ([list-url.md §2](contracts/list-url.md#2-pressing-and-removing-a-tag)).
+- The summary line keeps its current format and does not include tag names. Its count is the
+  `total` with `tag` applied.
+- Per 013's current contract (PR #262), the no-match state (013 "No-match state") has no chips or
+  notes for search terms, filters or search scope, and no "Clear filters" button. Tag filters are
+  handled the same way: nothing is added inside the no-match state.
+- Active tags are visible only in this row above the no-match state. They are removed here, or
+  with "Clear filters" in the filter menu (which removes everything, tags included).
+- Changing the search term, watch status, playability or tags clears the selection. Videos
+  selected under different conditions must not stay selected while hidden.
+
+| | |
+| --- | --- |
+| **Decision** | The whole active-tag chip is the remove target, and hover shows an inner ring. |
+| **Why** | The chip has only one action, so there is no reason for a small target. |
+| **Rejected** | A small target on × only. Changing the text color on hover: `accent-hover` and `link` have the same value, so nothing would change. |
 
 ## Video page tags
 
 ### Placement
 
-- 題名（`h1`）のすぐ下に置く。タグはその動画の分類で、題名と一緒に読まれるものだからである。
-  カードでも題名の直下に出すので、一覧から開いたときに同じ並びで見える。
-- 題名とタグの並びは1つのまとまり（`flex flex-col gap-2`）にし、そのまとまりと区切り線の
-  間を今の `gap-5` にする。題名とタグの間を `gap-5` にすると、タグが属性の側のものに見える
-  からである。
-- 012 の「題名の下にチップ・ボタンが無い」（Visual review criteria の「情報密度」）は、この
-  feature でタグの並びに限って改める。題名の下の要約の行・ボタン・ほかのチップは今のまま
-  置かない。
-- 階層はチップの小ささ（`h-6`・`text-xs`）と中立の面で保つ。題名（`text-xl`〜`text-2xl`・
-  `font-semibold`）より先に目に入らない（UI品質の「視覚的階層」）。
-- ラベル（「TAGS」など）は付けない。チップの形でタグと分かり、題名の直下にラベルの行を
-  足すと題名の周りが騒がしくなるからである。まとまりの見出しは、視覚的に隠した `h2`
-  「タグ」で持つ。
-- 並びは `flex flex-wrap items-center gap-1.5`。付いているタグのチップのあとに、同じ行に
-  「タグを追加」の入力を置く。行は折り返す。
+- Directly below the title (`h1`). Tags classify the video and are read together with the
+  title. Cards also show them directly below the title, so the order matches when the page is
+  opened from the list.
+- The title and the tags form one group (`flex flex-col gap-2`), with the current `gap-5`
+  between that group and the divider. A `gap-5` between title and tags would make the tags look
+  like part of the attributes.
+- 012's "no chips or buttons below the title" (Visual review criteria "Information density") is
+  changed by this feature for the tag list only. A summary line, buttons or other chips below the
+  title are still not placed.
+- Hierarchy comes from small chips (`h-6`, `text-xs`) and a neutral surface. They do not draw
+  the eye before the title (`text-xl` to `text-2xl`, `font-semibold`) (UI quality "Visual
+  hierarchy").
+- No label (such as "TAGS"). The chip shape identifies tags, and a label line directly below the
+  title would crowd it. The group's heading is a visually hidden `h2` "Tags".
+- The list is `flex flex-wrap items-center gap-1.5`. After the attached tag chips, the "Add tag"
+  input sits on the same line. The line wraps.
 
 ### Chip
 
-- `h-6`・`text-xs`・`bg-elevated`・`text-fg`。名前の部分（リンク）と × の部分（ボタン）の2つに分け、
-  間に `bg-border-strong` の縦線（`w-px h-3.5`）を置く。
-  - 名前の部分: `/?tag=<id>` へのリンク（`Link`）で、押すとそのタグ1つで絞り込んだライブラリ
-    一覧を開く。移動なのでボタンでなくリンクにし、新しいタブでも開けるようにする（管理画面の
-    名前と同じ）。読み上げ名は「〈名〉で絞り込む」。
-  - × の部分: `size-6` の正方形、lucide `X`（`size-3`）。押すとこの動画から外す。読み上げ名は
-    「〈名〉をこの動画から外す」。絞り込み中のタグの「〈名〉の絞り込みを外す」と、名前で
-    区別する（UI品質の「アクセシビリティ」）。
-- 外した直後は、フォーカスを次のチップの × へ、無ければ前のチップの × へ、最後の1つなら
-  「タグを追加」の入力へ移す。
-- 付け外しは、サーバーの応答を受けてからチップを足す・消す。応答を待つ間、その × は
-  `disabled` で、入力は下の「送信中」になる。
+- `h-6`, `text-xs`, `bg-elevated`, `text-fg`. It has two parts, the name (a link) and the ×
+  (a button), with a `bg-border-strong` vertical line (`w-px h-3.5`) between them.
+  - Name part: a link (`Link`) to `/?tag=<id>` that opens the library list filtered by that one
+    tag. It is navigation, so it is a link, not a button, and can open in a new tab (as the
+    management page name does). Accessible name: "Filter by {name}".
+  - × part: a `size-6` square with lucide `X` (`size-3`). Pressing it removes the tag from this
+    video. Accessible name: "Remove {name} from this video". The name differs from the active
+    tag's "Remove the filter for {name}" (UI quality "Accessibility").
+- Right after a removal, focus moves to the next chip's ×, else the previous chip's ×, else (for
+  the last one) the "Add tag" input.
+- Chips are added or removed after the server responds. While waiting, that × is `disabled` and
+  the input is in the "submitting" state below.
 
 ### Add input
 
-- 部品は下の「Combobox」である。入力欄は `h-6`・`w-40`・`bg-field`・`border-border`・
-  `rounded-sm`・`text-xs`、左に lucide `Plus`（`size-3`・`text-fg-muted`）、プレースホルダー
-  「タグを追加」。フォーカスで `border-accent`（検索欄と同じ）。
-- 確定すると、入力を空にしてフォーカスを入力に残す。続けて別のタグを付けられるように
-  するためである。付いたタグのチップは並びの名前の順の位置に入る。
-- 入力にフォーカスがある間は、再生画面のキーの操作（Space・←→・F・M・0・Esc）は効かない
-  （今の `keyboard.ts` の `isEditable`）。Esc は候補の一覧が開いていれば閉じ、閉じていれば
-  入力を空にする。入力が空のときの Esc は何もしない。画面を閉じるのは、入力の外で
-  押した Esc だけである。
+- The control is the "Combobox" below. The input is `h-6`, `w-40`, `bg-field`, `border-border`,
+  `rounded-sm`, `text-xs`, with lucide `Plus` (`size-3`, `text-fg-muted`) on the left and the
+  placeholder "Add tag". Focus shows `border-accent` (as the search box does).
+- On confirm, the input clears and keeps focus, so the next tag can be added right away. The new
+  chip takes its place in name order.
+- While the input has focus, the playback page keys (Space, ←→, F, M, 0, Esc) do not act
+  (`isEditable` in the current `keyboard.ts`). Esc closes the suggestion list if it is open, and
+  otherwise clears the input. Esc in an empty input does nothing. Only Esc pressed outside the
+  input closes the page.
 
 ### States
 
-| 状態 | 見え方 |
+| State | Appearance |
 | --- | --- |
-| 詳細の読み込み中 | タグの並びを出さない（題名と同じく骨組みの中） |
-| タグが無い | 題名の下に「タグを追加」の入力だけ |
-| 付けられなかった・外せなかった | 並びのすぐ下に `text-xs text-danger` の1行（`role="alert"`）「タグを付けられませんでした」「タグを外せませんでした」。入力の文字は残し、Enter でやり直せる。次の操作で消える |
-| タグがもう無い（`tag_not_found`） | トースト「タグ「〈名〉」はもう無いため、一覧を取り直しました」。タグの一覧を取り直し、この動画を取り直す |
+| Details loading | No tag list (inside the skeleton, like the title) |
+| No tags | Only the "Add tag" input below the title |
+| Could not add or remove | One `text-xs text-danger` line (`role="alert"`) right below the list: "Couldn't add the tag: {reason}" or "Couldn't remove the tag: {reason}". The input text stays, and Enter retries. The line clears on the next action |
+| Tag no longer exists (`tag_not_found`) | Toast: `The tag "{name}" no longer exists, so the tags were reloaded`. The tag list and this video are refetched |
 
 ## Combobox
 
-再生画面の「タグを追加」、選択バーの「タグを付ける」「タグを外す」、管理画面の統合先の
-選択で同じ部品（`web/src/ui/Combobox.tsx`）を使う。ARIA 1.2 の combobox（入力 ＋ listbox、
-`aria-activedescendant`）である。
+The playback page's "Add tag", the selection bar's "Add tag" and "Remove tag", and the merge
+target picker on the management page share one control (`web/src/ui/Combobox.tsx`). It is an
+ARIA 1.2 combobox (input plus listbox, `aria-activedescendant`).
 
-- 候補の一覧は入力の下（選択バーでは上）に `ui/Popover` と同じ面（`bg-elevated`・
-  `shadow-elevated`・`rounded-md`）で出す。幅は `w-64`、高さは8行を超えるとスクロールする。
-  フォーカスで開き、入力が空なら全候補を出す。
-- 候補の行は `h-8`・`px-2.5`・`text-sm`。名前は `text-fg` で1行に省略し、行の右に従の情報を
-  `text-xs text-fg-muted tabular-nums` で置く（管理画面と同じ「本数」、選択バーの外す候補では
-  下の「一部」）。選んでいる行は `bg-hover-wash`（メニューの項目と同じ）。
-- 絞り方: 入力を含む名前またはシノニムを持つタグを残す。照合は大文字と小文字を区別しない
-  （管理画面の検索と同じ）。前方一致を先に、あとは名前の自然順である。シノニムで当たった
-  タグは、名前の下に `text-xs text-fg-muted` で「シノニム: アニメ」と添える。候補に出る名前は
-  常に元の名前である（要件 7）。
-- その動画にすでに付いているタグは、「タグを追加」の候補に出さない。
-- 入力と綴りが完全に一致する名前もシノニムも無いときは、一覧の末尾に「「〈入力〉」を作成」
-  （lucide `Plus`）の行を置く。`Anime` があるときに `anime` と打てば、この行が出る
-  （要件 4）。一致があれば出さない。
-- キー: ↓・↑ で行を移り、端で止まる。Enter は選んでいる行を確定する。行を選んでいない
-  ときの Enter は、入力の綴り（前後の空白を除いたもの）を確定する。これは一致する名前か
-  シノニムがあればそのタグ、無ければ新しいタグになる。作成の行を持たない形（選択バーの
-  「タグを外す」、管理画面の統合先）では、綴りが候補の名前かシノニムと完全に一致するとき
-  だけそのタグを確定し、一致しなければ何もしない。Tab は一覧を閉じて次へ進み、確定
-  しない。
-- Esc は、候補の一覧が開いていれば一覧だけを閉じる。ポップオーバーや窓の中の combobox では、
-  一覧が閉じていれば、そのポップオーバーや窓だけを閉じる。どちらの場合も Esc をそこで
-  止め、外側（選択の解除、再生画面を閉じる）へは伝えない。再生画面の入力での Esc は
-  上の「Add input」のとおりである。
-- 名前の検証（要件 4）: 入力のたびに確かめ、作れない名前のときは入力の下に `text-xs
-  text-danger` で理由を1行出し、Enter を受けない。理由は「改行やタブは使えません」と
-  「100 文字以内にしてください（今 101 文字）」である。空と空白だけの入力は、打っている間は
-  理由を出さず（確定の後や開いた直後に入力が空なのは普通の状態である）、その状態で Enter を
-  押したときだけ「名前を入力してください」を出す。文字の数は、前後の空白を除いた名前の
-  符号位置の数で数え、サーバー（[data-model.md §2](data-model.md#2-名前の規則)）と
-  そろえる。JavaScript の `length`（UTF-16 の単位）では数えない。入力に `maxLength` は
-  付けない。付けると 101 文字目が黙って捨てられ、理由を伝えられないからである。理由の行は
-  入力の `aria-describedby` で指す。
-- 改行は入力の値では見つけられない。1行の `input` は、値に入る前に改行（LF・CR）を取り
-  除くので、「旅行\n2024」を貼ると値は「旅行2024」になり、別の名前として確定されてしまう。
-  そこで、貼り付け（`paste` の `clipboardData`）と落とし込み（`beforeinput` の
-  `insertFromDrop`）の時点で元の文字列を調べる。改行を含むときは入力を取り込まず
-  （`preventDefault`）、入力の値はそのままにして、理由「改行やタブは使えません」を出す。
-  理由は次に入力が変わるまで残り、その間は Enter も確定のボタン（「作成」「追加」など）も
-  受けない。貼り付ける前の名前が入力に残っているので、確定を止めないと、利用者が貼った
-  名前ではなく元の名前が確定されるからである。入力が変わったら理由を消し、新しい値を
-  上の検証にかけてから確定を受ける。改行の無い部分だけを取り込む案は採らない。利用者が
-  貼った名前と違う名前が、黙って入力に入るからである。タブとその他の制御文字は値に
-  残るので、上の入力のたびの検証で見つかる。この扱いは、タグの名前を打つすべての入力
-  （「Combobox」、管理画面の作成・改名・シノニムの追加）で同じである。
-- 送信中は入力に `aria-busy="true"` を付け、Enter を受けない。見た目は入力の右端に
-  `LoaderCircle`（`size-3`・`animate-spin`）を出す。
+- The suggestion list opens below the input (above it in the selection bar) with the same surface
+  as `ui/Popover` (`bg-elevated`, `shadow-elevated`, `rounded-md`). Width `w-64`; over 8 rows it
+  scrolls. It opens on focus and shows all suggestions when the input is empty.
+- Suggestion rows are `h-8`, `px-2.5`, `text-sm`. The name is `text-fg`, truncated to one line.
+  Secondary information sits on the right in `text-xs text-fg-muted tabular-nums` (the video
+  count, as on the management page; "Some" below for remove suggestions in the selection bar).
+  The active row is `bg-hover-wash` (as in menu items).
+- Filtering: keep tags whose name or synonym contains the input, case-insensitively (as in the
+  management page search). Prefix matches first, then natural order of names. A tag matched by a
+  synonym shows `Synonym: アニメ` below the name in `text-xs text-fg-muted`. The name shown is
+  always the original name (Requirement 7).
+- "Add tag" does not suggest tags already on the video.
+- When no name or synonym matches the input exactly, the list ends with a `Create "{input}"` row
+  (lucide `Plus`). With `Anime` present, typing `anime` shows this row (Requirement 4). With an
+  exact match it is not shown.
+- Keys: ↓ and ↑ move between rows and stop at the ends. Enter confirms the active row. Tab closes
+  the list and moves on without confirming.
+- Enter with no active row confirms the typed spelling (trimmed): the matching tag if a name or
+  synonym matches, otherwise a new tag. In forms without a create row (the selection bar's
+  "Remove tag", the management page merge target), it confirms only when the spelling exactly
+  matches a suggestion's name or synonym, and otherwise does nothing.
+- Esc closes only the suggestion list when it is open. In a combobox inside a popover or dialog,
+  Esc with the list closed closes only that popover or dialog. In both cases Esc stops there and
+  does not reach outer handlers (clearing the selection, closing the playback page). Esc in the
+  playback page input follows "Add input" above.
+
+Name validation (Requirement 4):
+
+- The name is checked on every input. An invalid name shows one reason line below the input in
+  `text-xs text-danger`, and Enter is not accepted. The reasons are "Line breaks and tabs aren't
+  allowed" and "Use 100 characters or fewer (currently 101)". The reason line is referenced by the
+  input's `aria-describedby`.
+- Empty and whitespace-only input shows no reason while typing (an empty input right after a
+  confirm or on open is normal). Only Enter in that state shows "Enter a name".
+- Length counts the code points of the trimmed name, matching the server
+  ([data-model.md §2](data-model.md#2-name-rules)). It does not use JavaScript `length` (UTF-16
+  units). The input has no `maxLength`: it would drop the 101st character silently, with no
+  reason shown.
+
+Line breaks cannot be found in the input value. A one-line `input` strips LF and CR before they
+reach the value, so pasting `旅行\n2024` gives the value `旅行2024`, which would be confirmed as a
+different name. The original string is therefore checked at paste time (`clipboardData` of
+`paste`) and drop time (`insertFromDrop` of `beforeinput`):
+
+- If it contains a line break, the input is not taken in (`preventDefault`). The value stays, and
+  the reason "Line breaks and tabs aren't allowed" appears.
+- The reason stays until the input changes. Until then, neither Enter nor the confirm button
+  ("Create", "Add" and so on) is accepted. The name from before the paste is still in the input,
+  so without this block the old name would be confirmed instead of the pasted one.
+- When the input changes, the reason clears, and the new value goes through the validation above
+  before a confirm is accepted.
+- Tabs and other control characters stay in the value, so the per-input validation catches them.
+- This handling is the same in every input that takes a tag name ("Combobox", and create, rename
+  and add synonym on the management page).
+- While submitting, the input has `aria-busy="true"` and does not accept Enter. Visually, a
+  `LoaderCircle` (`size-3`, `animate-spin`) appears at the right end of the input.
+
+| | |
+| --- | --- |
+| **Decision** | A paste or drop with a line break is not taken in, and the reason is shown. |
+| **Why** | The user sees why the name was refused, and no other name is entered silently. |
+| **Rejected** | Taking in only the part without line breaks: a name different from the pasted one would enter the input silently. |
 
 ## Selection bar
 
-タグの 2 操作を 1 つのメニューにまとめないのは、狭い幅でだけ操作が 1 回増えるためである。
+| | |
+| --- | --- |
+| **Decision** | The two tag actions are separate buttons, not one menu. |
+| **Why** | One menu would add one more step, at narrow widths only. |
+| **Rejected** | One menu for both actions. |
 
 ### Add
 
-- 押すと、バーの上に `ui/Popover` を開き（今の `PopoverContent` は向きを受け取らないので、
-  上に開けるよう `side` を渡せるようにする）、中に「Combobox」を置く。
-  フォーカスは入力へ移る。候補は全タグで、各行の右に本数を出す。確定すると、選んだ
-  全動画に付け、ポップオーバーを閉じ、トースト「N 件に「〈名〉」を付けました」を出す。
-  フォーカスは「タグを付ける」へ戻る。
-- 選択は付けたあとも残す。続けて別のタグを付けたり外したりできるようにするためである。
+- Pressing it opens `ui/Popover` above the bar with a "Combobox" inside. The current
+  `PopoverContent` takes no direction, so it gains a `side` prop to open upward. Focus moves to
+  the input.
+- The suggestions are all tags, each with its video count on the right. On confirm, the tag is
+  added to every selected video, the popover closes, and a toast says
+  `Added "{name}" to N videos`. Focus returns to "Add tag".
+- The selection stays after adding, so another tag can be added or removed next.
 
 ### Remove
 
-- 押すと、同じくポップオーバーを開き、選んだ動画のタグの要約を取る。取るまでは中に
-  「読み込み中…」（`text-xs text-fg-muted`、`role="status"`）を出す。
-- 中身は「Combobox」の作成の行を持たない形で、候補は要約のタグだけである。各行の右に、
-  すべての動画に付いているタグは「3 件」、一部だけに付いているタグは lucide
-  `CircleDashed`（`size-3`）と「一部 1 / 3 件」を出す（要件 2）。色は変えない。
-  「一部」の文言とアイコンで区別し、行の読み上げ名にも「一部の動画だけ、3 件中 1 件」を
-  含める。
-- 確定すると、選んだ全動画から外し、トースト「N 件から「〈名〉」を外しました」を出す。
-- 選んだ動画のどれにもタグが無いときは、中に「選んだ動画にタグはありません」を出す。
-- 要約を取れなかったときは、中に `text-xs text-danger` の1行（`role="alert"`）「タグを
-  取得できませんでした」と `Button` の ghost・`sm`「再試行」を出す。選択は残す。
+- Pressing it opens the same kind of popover and fetches the tag summary of the selected videos.
+  Until it arrives, the popover shows "Loading…" (`text-xs text-fg-muted`, `role="status"`).
+- The content is the "Combobox" form without a create row, with only the summary's tags as
+  suggestions. On the right of each row, a tag on every video shows "3 videos". A tag on only
+  some shows lucide `CircleDashed` (`size-3`) and "Some: 1 / 3" (Requirement 2).
+- The color does not change. The "Some" text and the icon mark the difference, and the row's
+  accessible name includes "only some videos, 1 of 3".
+- On confirm, the tag is removed from every selected video and a toast says
+  `Removed "{name}" from N videos`.
+- If none of the selected videos has a tag, the popover shows "The selected videos have no tags
+  that can be removed".
+- If the summary fails, the popover shows one `text-xs text-danger` line (`role="alert"`)
+  "Couldn't load the tags" and a `Button` (ghost, `sm`) "Retry". The selection stays.
 
 ### Failure
 
-- 失敗したときは、ポップオーバーを開いたまま、入力の下に `text-xs text-danger` の1行
-  （`role="alert"`）「付けられませんでした。もう一度お試しください」「外せませんでした。
-  もう一度お試しください」を出す。選択と入力の文字は残し、そのまま Enter でやり直せる
-  （Edge Case「一括操作の途中失敗」）。
-- `tag_not_found` はトースト「タグ「〈名〉」はもう無いため、一覧を取り直しました」とし、
-  ポップオーバーの候補をタグの一覧の取り直しで作り直す。選択は残す。
+- On failure, the popover stays open and one `text-xs text-danger` line (`role="alert"`) appears
+  below the input: "Couldn't add the tag: {reason}" or "Couldn't remove the tag: {reason}". The
+  selection and the input text stay, and Enter retries (Edge case "Partial failure of a bulk
+  operation").
+- On `tag_not_found`, a toast says `The tag "{name}" no longer exists, so the tags were
+  reloaded`, and the popover's suggestions are rebuilt from the refetched tag list. The selection
+  stays.
 
 ## Tag management page
 
 ### Layout
 
-- 設定画面と同じ本文の幅と余白（`mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-8`）。上から
-  `h1`「タグ」、操作の行、件数の行、タグの一覧である。トップバーには何も置かない。
-- 操作の行は、左に検索の入力（ライブラリの `SearchBox` と同じ外見。プレースホルダー
-  「タグを検索」、読み上げ名「タグを検索」、`flex-1 sm:max-w-sm`）、右に `Button` の
-  secondary「新しいタグ」（lucide `Plus`）。本文で最初に Tab が届くのは検索の入力である
-  （UI品質の「管理画面では、検索の入力にキーボードだけで届く」）。`/` のキーで検索の入力へ
-  移るのも、ライブラリの検索欄と同じにする。
-- 件数の行は `text-xs text-fg-muted tabular-nums`、`role="status"`・`aria-live="polite"`。
-  「12 個のタグ」、検索中は「3 / 12 個のタグ」。
+- The same content width and padding as the settings page (`mx-auto max-w-4xl px-4 py-6
+  sm:px-6 sm:py-8`). From the top: `h1` "Tags", the action row, the count line, the tag list.
+  Nothing goes in the top bar.
+- The action row has a search input on the left and a `Button` (secondary) "New tag" (lucide
+  `Plus`) on the right. The search input looks like the library `SearchBox`, with placeholder
+  and accessible name "Search tags", and `flex-1 sm:max-w-sm`.
+- The search input is the first Tab stop in the content (UI quality "on the management page, the
+  search input is reachable by keyboard alone"). The `/` key moves to it, as in the library
+  search box.
+- The count line is `text-xs text-fg-muted tabular-nums`, `role="status"`,
+  `aria-live="polite"`: "12 tags", and "3 of 12 tags" while searching.
 
 ### Rows
 
-- 一覧は `divide-y divide-border` の行の並び（設定画面のメディアフォルダと同じ）。枠や
-  カードで囲わない。1行は `py-2`、多数のタグを見渡せる密度にする（UI品質の「情報密度」）。
-- 行の中は左から、名前の列（`flex-1 min-w-0`）・本数・操作である。
-  - 名前: `text-sm font-medium text-fg`、1行で省略、`title` に全体。リンクで、行き先は
-    `/?tag=<id>`（要件 6「移動」）。hover で `text-link`。読み上げ名は「〈名〉で絞り込んだ
-    ライブラリを開く」。
-  - シノニム: 名前の下に `text-xs text-fg-muted` の1行「シノニム: anime · アニメ」。無ければ
-    行を出さない。1行で省略し、`title` に全体。
-  - 本数: `text-sm text-fg-muted tabular-nums`、右寄せ `w-16`、「12 本」。0 本も「0 本」と出す。
-  - 操作: `IconButton`（ghost・`sm`）の「改名」（`Pencil`）と「シノニム」（lucide `Tags`）、その右に「その他の操作」（lucide `Ellipsis`）のメニュー。メニューの
-    中は「別のタグへ統合…」（`Merge`）、区切り線、「削除…」（`Trash2`、`text-danger`）。
-- 削除と統合は取り消せないので、行に直接出さずメニューの中に置く（UI品質「削除と統合を、
-  作成・改名より目立たせない」）。設定画面のメディアフォルダは削除を行に直接出しているが、
-  あちらは行の操作が2つだけで、ここは4つあるので、行を軽く保つ方を取る。
-- 階層: 名前が主、本数とシノニムは従（UI品質の「視覚的階層」）。
+- The list is rows with `divide-y divide-border` (as for media folders on the settings page),
+  with no frame or card. Each row is `py-2`, dense enough to scan many tags (UI quality
+  "Information density").
+- A row has, from left: the name column (`flex-1 min-w-0`), the video count, the actions.
+  - Name: `text-sm font-medium text-fg`, one line with truncation, full name in `title`. A link
+    to `/?tag=<id>` (Requirement 6 "Navigation"). `text-link` on hover. Accessible name: "Open
+    the library filtered by {name}".
+  - Synonyms: one `text-xs text-fg-muted` line below the name, such as
+    `Synonyms: anime · アニメ`. No line when there are none. One line with truncation, full text
+    in `title`.
+  - Count: `text-sm text-fg-muted tabular-nums`, right-aligned, `w-16`: "12 videos". Zero shows
+    "0 videos".
+  - Actions: `IconButton` (ghost, `sm`) "Rename" (`Pencil`) and "Synonyms" (lucide `Tags`), then
+    a "More actions" (lucide `Ellipsis`) menu. The menu holds "Merge into another tag…"
+    (`Merge`), a divider, and "Delete…" (`Trash2`, `text-danger`).
+- Hierarchy: the name is primary; the count and synonyms are secondary (UI quality "Visual
+  hierarchy").
+
+| | |
+| --- | --- |
+| **Decision** | Delete and merge sit in the menu, not directly on the row. |
+| **Why** | Both cannot be undone (UI quality "make delete and merge less prominent than create and rename"). This page has four row actions, so the row stays light. |
+| **Rejected** | Showing delete on the row, as media folders on the settings page do: that page has only two row actions. |
 
 ### Create and rename
 
-- 「新しいタグ」を押すと、一覧の先頭に入力の行を差し込み、フォーカスを移す。入力は
-  「Combobox」と同じ検証と理由の出し方をし、候補の一覧は持たない。Enter で作成、Esc か
-  「キャンセル」で閉じる。行の右に `Button` の primary・`sm`「作成」と ghost・`sm`
-  「キャンセル」。作ると、行は名前の順の位置に入り、その行の名前へフォーカスを移す。
-- 「改名」を押すと、その行の名前の場所を同じ入力に置き換え、今の名前を選んだ状態で
-  フォーカスを移す。Enter で確定、Esc で戻す。確定するとフォーカスは「改名」に戻る。
-- 既存の名前・シノニムと重なるとき（`tag_name_taken`）は、入力の下に `text-xs text-danger`
-  でサーバーの `message`（「「anime」は「Anime」のシノニムです」の形）を出し、入力を残す。
+- "New tag" inserts an input row at the top of the list and moves focus to it. The input uses
+  the same validation and reason display as "Combobox", without a suggestion list. Enter
+  creates; Esc or "Cancel" closes. On the right of the row: `Button` primary `sm` "Create" and
+  ghost `sm` "Cancel". After creation, the row moves to its name-order position and focus moves
+  to its name.
+- "Rename" replaces the row's name with the same input, with the current name selected and
+  focused. Enter confirms; Esc reverts. After confirming, focus returns to "Rename".
+- On a clash with an existing name or synonym (`tag_name_taken`), the server `message` appears
+  below the input in `text-xs text-danger` (such as `"anime" is already a synonym of the tag
+  "Anime".`), and the input stays.
 
 ### Synonyms
 
-- 「シノニム」を押すと、`ModalFrame`の窓「「Anime」のシノニム」を開く。
-  - 上に、今のシノニムを `Chip` に × を足した形で並べる。窓の面が `bg-elevated` で neutral の
-    `Chip` と同じ色になり面が消えるので、このチップだけ面を `bg-bg` にする（`fg` on `bg` は
-    `pairs` にある）。× の読み上げ名は
-    「シノニム「アニメ」を解除」。解除はその場で行い、確認をとらない（名前が空くだけで、
-    動画のタグは変わらないため）。
-  - 下に「シノニムを追加」の入力（「Combobox」と同じ検証、候補なし）と `Button` の
-    secondary「追加」。
-  - 別のタグのシノニムと重なるときは、入力の下に `message`（どのタグのシノニムか）を出す
-    （Edge Case「シノニム名の衝突」）。
-- 登録しようとした名前が既存のタグの名前のとき（要件 6「シノニム登録」）は、同じ窓の中を
-  確認に切り替える。
-  - 文言: 「「anime」は 10 本の動画に付いているタグです。「Anime」に統合すると、その 10 本に
-    「Anime」が付き、「anime」とそのシノニムは「Anime」のシノニムになります。「anime」は
-    タグの一覧から消えます。」シノニムが無いタグでは「とそのシノニム」を省く（Edge Case
-    「統合とシノニム」）。本数は `GET /api/tags` の `videoCount`（受け入れ条件 17）。
-  - 操作: `Button` の secondary「戻る」（最初のフォーカス）と、danger「統合する」。
-    「戻る」は何も変えずに入力へ戻り、入力の文字を残す。
-  - `tag_merge_required` を受けたら、タグの一覧を取り直し、新しい本数で確認を出し直す。
+- "Synonyms" opens a `ModalFrame` dialog `Synonyms of "Anime"`.
+  - At the top, the current synonyms are listed as `Chip` with an added ×. The dialog surface is
+    `bg-elevated`, the same color as a neutral `Chip`, so the chip surface would vanish; only
+    these chips use `bg-bg` (`fg` on `bg` is in `pairs`).
+  - The × accessible name is `Remove the synonym "アニメ"`. Removal is immediate, without
+    confirmation: it only frees the name, and the videos' tags do not change.
+  - Below: an "Add synonym" input (same validation as "Combobox", no suggestions) and a `Button`
+    (secondary) "Add".
+  - On a clash with another tag's synonym, the `message` (which tag's synonym it is) appears
+    below the input (Edge case "Synonym name clash").
+- When the name to add is an existing tag's name (Requirement 6 "Synonym registration"), the same
+  dialog switches to a confirmation.
+  - Text: `"anime" is a tag on 10 videos. Merging it into "Anime" adds "Anime" to those videos,
+    and "anime" and its synonyms become synonyms of "Anime". "anime" leaves the tag list.` For a
+    tag without synonyms, "and its synonyms" is omitted (Edge case "Merge and synonyms"). The
+    count is `videoCount` from `GET /api/tags` (Acceptance criterion 17).
+  - Actions: `Button` secondary "Back" (initial focus) and danger "Merge". "Back" returns to the
+    input without changes and keeps the input text.
+  - On `tag_merge_required`, the tag list is refetched and the confirmation is shown again with
+    the new count.
 
 ### Merge and delete
 
-- 「別のタグへ統合…」は、`ModalFrame` の窓「「X」を統合」を開く。統合元はその行のタグで、
-  統合先を「Combobox」（統合元を除く全タグ、作成の行なし）で選ぶ。選ぶと、下に確認の文言
-  「「X」が付いた 5 本の動画に「Y」が付きます。「X」とそのシノニムは「Y」のシノニムになり、
-  「X」はタグの一覧から消えます。この操作は取り消せません。」を出す。操作は secondary
-  「キャンセル」と danger「統合する」。統合先を選ぶまで「統合する」は `disabled`。
-- 「削除…」は、窓「「X」を削除」を開く。文言は「12 本の動画からこのタグが外れます。
-  この操作は取り消せません。」（受け入れ条件 11）。0 本なら「このタグはどの動画にも
-  付いていません。」操作は secondary「キャンセル」（最初のフォーカス）と danger「削除する」。
-- 実行中はどちらのボタンも `disabled` にし、danger のボタンに `LoaderCircle` を出す
-  （設定画面のフォルダの変更の確認と同じ）。
-- 終わったら窓を閉じ、トースト「統合しました」「削除しました」を出す。フォーカスは、統合は
-  統合先の行の名前へ、削除は次の行の「改名」へ、無ければ前の行、1つも無ければ
-  「新しいタグ」へ移す。
+- "Merge into another tag…" opens a `ModalFrame` dialog `Merge "X"`. The source is the row's
+  tag. The target is picked with "Combobox" (all tags except the source, no create row).
+- After a pick, a confirmation appears below: `The 5 videos tagged "X" get the tag "Y". "X" and
+  its synonyms become synonyms of "Y", and "X" leaves the tag list. This can't be undone.`
+  Actions: secondary "Cancel" and danger "Merge". "Merge" is `disabled` until a target is
+  picked.
+- "Delete…" opens a dialog `Delete "X"`. Text: "This tag will be removed from 12 videos. This
+  can't be undone." (Acceptance criterion 11). With 0 videos: "This tag isn't on any videos."
+  Actions: secondary "Cancel" (initial focus) and danger "Delete".
+- While running, both buttons are `disabled` and the danger button shows `LoaderCircle` (as in
+  the folder change confirmation on the settings page).
+- When done, the dialog closes and a toast says `Merged "X" into "Y"` or `Deleted "X"`. Focus
+  moves to the target row's name after a merge. After a delete it moves to the next row's
+  "Rename", else the previous row's, else "New tag" when no rows remain.
 
 ### States
 
-| 状態 | 見え方 |
+| State | Appearance |
 | --- | --- |
-| 読み込み中 | 件数の行は「読み込み中…」、一覧の場所に `Skeleton`（`h-10`）を6行 |
-| 読み込み失敗 | `EmptyState`（danger・`AlertCircle`）「タグを取得できません」、`Button`「再試行」 |
-| タグが1つも無い | `EmptyState`（lucide `Tags`）「タグはまだありません」、説明「動画の再生画面や、ライブラリの選択バーから付けられます。ここで先に作っておくこともできます。」、`Button` の primary「新しいタグ」。検索の入力は出したままにし、`disabled` にする |
-| 検索で一致が無い | `EmptyState`（`SearchX`）「「〈入力〉」に一致するタグはありません」、`Button`「検索をクリア」。押すと入力を空にしてフォーカスを入力へ移す。「タグが無い」とは見出しとアイコンで区別する |
-| 操作の失敗 | 窓の中か入力の下に `text-sm text-danger` の1行（`role="alert"`）。窓と入力は開いたまま |
-| タグがもう無い（`tag_not_found`） | 窓を閉じ、トースト「このタグはもう無いため、一覧を取り直しました」。一覧を取り直す |
+| Loading | Count line "Loading…"; 6 rows of `Skeleton` (`h-10`) in place of the list |
+| Load failed | `EmptyState` (danger, `AlertCircle`) "Couldn't load the tags", `Button` "Retry" |
+| No tags | `EmptyState` (lucide `Tags`) "No tags yet", description "Add tags from a video's playback page or the library's selection bar. You can also create them here first.", `Button` primary "New tag". The search input stays visible and is `disabled` |
+| No search match | `EmptyState` (`SearchX`) `No tags match "{input}"`, `Button` "Show all tags". Pressing it clears the input and moves focus to it. The heading and icon set it apart from "No tags" |
+| Action failed | One `text-sm text-danger` line (`role="alert"`) in the dialog or below the input. The dialog and input stay open |
+| Tag no longer exists (`tag_not_found`) | The dialog closes; toast "This tag no longer exists, so the list was reloaded". The list is refetched |
 
 ## Stale tags in other screens
 
-- 「すべて選択」の応答に `missingTagIds` があるときは選択を作らず、削除されたタグを
-  絞り込みから外して伝える。利用者は直った一覧でもう一度「すべて選択」を押す
-  （[tags-api.md §5](contracts/tags-api.md#5-一覧の絞り込みとすべて選択)）。
-- ライブラリで、URL の `tag` がもう無いタグを含む（`missingTagIds`、または控えから戻した
-  ときの突き合わせ）ときは、トースト「削除されたタグを絞り込みから外しました」を出し、
-  絞り込み中のタグの行からそのチップを消す（[list-url.md §1](contracts/list-url.md#1-パラメータ)）。
-  消えたタグの名前は、タグの一覧から分からないことがあるので文言に入れない。
-- カードのタグ・再生画面のタグは、次に一覧や動画を取るまで古い名前のままでよい。押して
-  `tag_not_found` や `missingTagIds` になった時点で、上のとおり伝えて直す。
+- When the "Select all" response has `missingTagIds`, no selection is built. The deleted tags
+  are removed from the filter and the user is told. The user presses "Select all" again on the
+  corrected list ([tags-api.md §5](contracts/tags-api.md#5-list-filter-and-select-all)).
+- When the library URL's `tag` includes a tag that no longer exists (`missingTagIds`, or the
+  comparison on restore from the snapshot), a toast says "Removed deleted tags from the filter",
+  and the chip leaves the active tags row ([list-url.md §1](contracts/list-url.md#1-parameters)).
+  The deleted tag's name may be unknown from the tag list, so the text does not include it.
+- Card tags and playback page tags may keep old names until the next list or video fetch. When a
+  press then returns `tag_not_found` or `missingTagIds`, the screen reports and corrects it as
+  above.
 
 ## Interaction states
 
-足す操作（チップ・「+N」・候補の行・選択バーのボタン・管理画面の行の操作）は、hover・
-focus-visible・active・disabled を、それぞれの元の部品（`Button` の ghost と secondary、
-`IconButton`、`ui/Menu` の項目、`Chip`）から受け継ぐ。独自の状態の色は作らない。動画の
-タグのチップは、hover で文字を `text-fg` にし、内側に `ring-1 ring-inset ring-border-strong` の縁を出す。
-面の色を変えないのは、`elevated` より明るい不透明の面のトークンが無いからである。フォーカスは
-グローバルの `:focus-visible`（`link` 色の外側輪郭）で示す。カードの中のタグにフォーカスが
-あるときは、カードの外側の輪郭（`has-[a:focus-visible]`）は出さず、そのチップの輪郭だけを
-出す。リンクとタグのどちらにフォーカスがあるかを取り違えないためである。
+The added controls (chips, "+N", suggestion rows, selection bar buttons, management row actions)
+inherit hover, focus-visible, active and disabled from their base components (`Button` ghost and
+secondary, `IconButton`, `ui/Menu` items, `Chip`). No custom state colors are added.
+
+- Video tag chips switch the text to `text-fg` on hover and show an inner
+  `ring-1 ring-inset ring-border-strong` edge. The surface color does not change, because there is
+  no opaque surface token lighter than `elevated`.
+- Focus uses the global `:focus-visible` (outer outline in the `link` color).
+- When a tag inside a card has focus, the card's outer outline (`has-[a:focus-visible]`) is not
+  shown, only the chip's. This keeps the user from confusing focus on the link with focus on a
+  tag.
 
 ## Accessibility
 
-- 読み上げ名:
-  - 動画のタグ（カード・再生画面・「+N」の中）: 「〈名〉で絞り込む」
-  - 絞り込み中のタグ: 「〈名〉の絞り込みを外す」
-  - 再生画面の ×: 「〈名〉をこの動画から外す」
-  - 「+N」: 「ほかのタグ N 個を表示」
-  - 管理画面の名前のリンク: 「〈名〉で絞り込んだライブラリを開く」
-  - 選択バーの一部の候補: 「〈名〉、一部の動画だけ、N 件中 M 件」
-- まとまり: カードのタグは `ul` に `aria-label="タグ"`、絞り込み中のタグは `ul` に
-  `aria-label="絞り込み中のタグ"`、再生画面は隠した `h2`「タグ」の下の `ul`。
-- 検証の理由は入力の `aria-describedby`、操作の失敗は `role="alert"`、件数の変化は
-  `role="status"`（`polite`）で伝える。
-- 色の組: 文字に使う組のうち、`fg`・`fg-muted` on `elevated`（チップ・候補）、`fg` on `bg`
-  （窓の中のシノニムのチップ）、`danger` on `bg`（再生画面と管理画面の本文の理由と失敗の行）は、
-  `tokens.test.ts` の `pairs` に既に入っている。`danger` on `elevated` は `pairs` に無い
-  （計算では約 5.9 で 4.5 を満たす）。これを使うのは、選択バーのポップオーバーの理由と失敗の
-  行、管理画面の窓（`ModalFrame` は `bg-elevated`）の中の理由と失敗の行である。選択バーの
-  この組は `pairs` に含める。絞り込み中のタグの `link` on `accent-soft` は、今の `Chip` の accent と同じ組で、
-  `accent-soft` が半透明なので `pairs` の対象外である（`tokens.test.ts` は 6 桁の 16 進の
-  値だけを読む）。新しいトークンは足さない。
+- Accessible names:
+  - Video tag (card, playback page, inside "+N"): "Filter by {name}"
+  - Active tag: "Remove the filter for {name}"
+  - × on the playback page: "Remove {name} from this video"
+  - "+N": "Show N more tags"
+  - Name link on the management page: "Open the library filtered by {name}"
+  - Partial suggestion in the selection bar: "{name}, only some videos, M of N"
+- Groups: card tags are a `ul` with `aria-label="Tags"`. Active tags are a `ul` with
+  `aria-label="Tags in the filter"`. The playback page uses a `ul` under the hidden `h2` "Tags".
+- Validation reasons use the input's `aria-describedby`, action failures `role="alert"`, and
+  count changes `role="status"` (`polite`).
+
+Color pairs used for text:
+
+| Pair | Where | In `pairs` of `tokens.test.ts` |
+| --- | --- | --- |
+| `fg`, `fg-muted` on `elevated` | Chips, suggestions | Yes |
+| `fg` on `bg` | Synonym chips in the dialog | Yes |
+| `danger` on `bg` | Reason and failure lines in the playback page and management page content | Yes |
+| `danger` on `elevated` | Reason and failure lines in the selection bar popover and in management page dialogs (`ModalFrame` is `bg-elevated`) | No (computed about 5.9, meets 4.5). The selection bar's use of this pair is added to `pairs` |
+| `link` on `accent-soft` | Active tags | Out of scope: the same pair as the current `Chip` accent, and `accent-soft` is translucent (`tokens.test.ts` reads only 6-digit hex values) |
+
+No new tokens are added.

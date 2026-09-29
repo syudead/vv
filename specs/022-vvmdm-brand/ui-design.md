@@ -1,74 +1,200 @@
-# VVMDM ブランドと画面の UI 設計
+# VVMDM brand and screen UI design
 
-この文書は [Issue #414](https://github.com/syudead/vv/issues/414) の画面上の具体化である。既存の画面構成と操作は [ライブラリ UI](../../docs/design-docs/library-ui.md) と各画面の既存 UI 設計に従う。ここでは VVMDM への変更分を定める。色・幅・半径などの実装値の正本は `web/src/index.css` の `@theme`、文字と面の対比の検査対象は `web/src/theme/tokens.test.ts` にある。
+This document makes [Issue #414](https://github.com/syudead/vv/issues/414) concrete on screen.
+The existing screen structure and interactions follow the [library UI](../../docs/design-docs/library-ui.md)
+and each screen's existing UI design. This document defines only the changes for VVMDM. The source
+of truth for colors, widths, radii and other implementation values is `@theme` in
+`web/src/index.css`. The text and surface contrast checks live in `web/src/theme/tokens.test.ts`.
 
-## ブランドの形と置き場所
+## Brand shape and placement
 
-提供された `logo/symbol.svg` のリング、平行な斜線、角のある中空の図形を単体シンボルの骨格とする。`logo/1.svg` の細い大文字を添えた版を標準ワードマークとし、`logo/2.svg` の白、`logo/3.svg` の黒を単色版として使う。PNG は見本であり、アプリへの配信は SVG 由来の輪郭を使う。16 px 用の調整では余白・線の太さ・図形間の抜けを光学的に補正してよいが、三つの特徴と文字形を別のマークに置き換えない。
+The skeleton of the standalone symbol is the ring, the parallel diagonal strokes and the angular
+hollow shape in the supplied `logo/symbol.svg`.
 
-| 場所 | 表示 |
+- The version with thin capitals in `logo/1.svg` is the standard wordmark. `logo/2.svg` (white)
+  and `logo/3.svg` (black) are the single-color versions.
+- The PNG files are samples. The app ships outlines derived from the SVG files.
+- The 16 px version may optically adjust margins, stroke weight and the gaps between shapes. It
+  must not replace the three features or the letterforms with a different mark.
+
+| Place | Display |
 | --- | --- |
-| 上部バーと再生画面の見出し | 640 px 以上ではシアンのワードマークをホームへのリンクとして置く。639 px 以下では単体シンボルとし、検索欄・パンくず・閉じる操作の幅を守る。シンボルだけのリンクの読み上げ名は「VVMDM ホーム」。 |
-| 初回設定・ログイン | 見出しの前にワードマークを置き、画面名「初回設定」「ログイン」を別の見出しとして読めるようにする。狭い画面でも文字をつぶさず、フォームの幅に収まる大きさにする。 |
-| タブアイコン | 単体シンボルを使う。16・24・32 px でリングの穴と斜線の間隔が読める小サイズ版を確認する。小さいタブでも図形からブランドを識別できる。古い favicon がキャッシュされた状態からの更新も確認する。 |
-| 背景ごとの版 | 暗い `bg`・`navbar`・`surface` 上ではシアン版を基本とし、単色が要る暗い面では白版を使う。明るい面に置く用途では黒版を使う。画像・映像の上へ直接置かず、一定の面の上に置く。 |
+| Top bar and playback page header | At 640 px and wider, the cyan wordmark is a link to home. At 639 px and narrower, the standalone symbol is used, to keep width for the search box, breadcrumbs and close action. The accessible name of the symbol-only link is "VVMDM home". |
+| Setup and sign-in | The wordmark comes before the heading, and the screen names "Create an account" and "Sign in" read as separate headings. On narrow screens the letters are not squeezed, and the size fits the form width. |
+| Tab icon | The standalone symbol. At 16, 24 and 32 px, check that the small version keeps the ring hole and the gaps between strokes readable. The brand is identifiable from the shape even in a small tab. Also check the update from a cached old favicon. |
+| Version per background | On dark `bg`, `navbar` and `surface`, the cyan version is the default; the white version is used on dark surfaces that need a single color. The black version is for light surfaces. The mark never sits directly on an image or video; it sits on a solid surface. |
 
-製品名は上部バー、認証、動画画面、ブラウザーの通常・動画タイトルと利用者向け説明で **VVMDM** と表記する。タイトルは通常「VVMDM」、動画画面では「〈動画の題名〉 · VVMDM」とし、長い題名もタブで先頭を識別できる。ロゴと同じ言葉を隣接するテキストで繰り返す場合、装飾側を読み上げから外す。既存の内部キーや CSS 名は表示名として扱わない。
+The product name is written **VVMDM** in the top bar, authentication, video pages, regular and
+video browser titles, and user-facing descriptions. The title is normally "VVMDM". On a video page
+it is "{video title} · VVMDM", so a long title stays identifiable by its start in the tab. When
+text next to the logo repeats the same word, the decorative side is hidden from assistive
+technology. Existing internal keys and CSS names are not display names.
 
-## 色、文字、面
+## Colors, type and surfaces
 
-指定された三つの暗色は、黒を `navbar`、深い暗色を `bg`、明るい暗色を `surface` の役割に割り当てる。指定された三つのシアンは、標準を `accent`、明るい色を `accent-hover`、濃い色を押下・選択の強調役とする。`index.css` の役割トークンを画面間で共有する。`elevated` はメニュー・ダイアログを本文の面から区別し、`fg`・`fg-muted`・`border` はこの暗色上で読める無彩色とする。危険・警告・成功は既存の意味別トークンで表し、操作のシアンと意味を区別できる。
+The three supplied dark colors map to roles: black is `navbar`, the deep dark is `bg`, and the
+lighter dark is `surface`. The three supplied cyans map to roles: the standard is `accent`, the
+light one is `accent-hover`, and the dark one emphasizes press and selection.
 
-強いシアン面は主要な実行ボタン、現在の選択、進捗とキーボードフォーカスで操作の意味をそろえる。動画の画像と題名を先に読めるよう、通常のカードは暗い面を基調とする。リンク、選択、進捗には形・下線・数値・文言も併用し、色以外でも意味を伝える。通常の文章は `fg`、補足は `fg-muted` を使う。装飾や補助線には `fg-subtle` を使い、本文の読みやすさを保つ。ロゴの細い文字形と、既存の日本語・英語に対応した本文書体を使い分ける。題名は文字の太さと行数、時刻や件数は桁の揃いで主従をつくる。カードの最小幅と動画の表示面積は現在の一覧性を保つ。
+- Screens share the role tokens in `index.css`.
+- `elevated` separates menus and dialogs from the content surface. `fg`, `fg-muted` and `border`
+  are neutral colors readable on these darks.
+- Danger, warning and success use the existing semantic tokens, so they stay distinct from the
+  cyan of actions.
 
-## 画面ごとの構図
+Strong cyan surfaces are reserved for primary action buttons, the current selection, progress and
+keyboard focus, so they share one meaning.
 
-### シェルと認証
+- Regular cards use a dark base, so the video image and title read first.
+- Links, selection and progress also use shape, underline, numbers or wording, so meaning does
+  not depend on color alone.
+- Body text uses `fg` and supporting text `fg-muted`. Decoration and guide lines use `fg-subtle`,
+  which keeps body text readable.
+- The logo's thin letterforms and the existing body typeface for Japanese and English each have
+  their own place.
+- Titles set hierarchy with weight and line count; times and counts use aligned digits.
+- Card minimum width and video display area keep the current list density.
 
-上部バーは一定の暗い面と細い境界で本文から離し、ロゴの次に画面固有の検索・操作、右端に所有者の「更新」を置く。ロゴは入口で認識できる大きさと明度にし、本文や映像へ視線を移しやすくする。サイドバーの現在地は面・文字の太さ・アイコンで分かり、ゲストの入口数と所有者専用の操作は [既存の認証設計](../016-single-account-auth/ui-design.md) に従う。レールとドロワーでも現在地と読み上げ名を保つ。
+## Screen composition
 
-認証画面はワードマーク、画面名と短い説明、入力、主ボタンの順に読む。`surface` のフォーム面は背景から分かれるが、余白を広げるために入力を不必要に離さない。接続警告は入力前、失敗理由は該当欄または送信操作の近くに、アイコンと文章を伴って表示する。送信中は文言と無効状態で判別できる。
+### Shell and authentication
 
-### ライブラリとフォルダ
+The top bar is a solid dark surface with a thin border that separates it from the content. The
+logo comes first, then the screen's own search and actions, and the owner's "Refresh" at the
+right end.
 
-格子ではサムネイルを最大の面、題名をその直下の最初の文字情報とする。再生時間・進捗は画像に重ねる場合も読める不透明寄りの面で支え、タグ・視聴状態は題名より低い強さにする。通常のカードを暗い面で並べ、フォーカス・選択時のシアンの輪郭を見つけやすくする。通常のカードとグループカードは同じ幅・高さのリズムを保ち、グループのフォルダ絵柄と本数で区別する。リスト表示でもサムネイルと題名を先に読め、数値列は整列して比較できる。既存のカード選択とタグ操作の意味は [ライブラリ UI](../../docs/design-docs/library-ui.md) に従う。
+- The logo has the size and brightness to be recognized at the entry point, and lets the eye move
+  on to content and video.
+- The current sidebar location shows through surface, text weight and icon. The number of guest
+  entry points and the owner-only actions follow the
+  [existing authentication design](../016-single-account-auth/ui-design.md).
+- The rail and the drawer keep the current location and accessible names.
 
-検索は上部バー内で先に見つかり、絞り込み・並び順・表示形式は一段弱い操作として続く。狭い幅では既存の「表示と並び順」へまとめ、検索と絞り込みへの入口は見つけやすく保つ。選択中はカードの印、選択本数、下部の選択バーを合わせて確認できる。バーの主要な一括操作と対象数・危険性を読み取れる。空・読み込み中・失敗では一覧と同じ面のリズムを保ち、空の理由と次の行動、失敗理由と「再試行」を文章で示す。読み込み骨組みは完成後のカード数と密度を予告する。
+An authentication screen reads in this order: wordmark, screen name and short description,
+inputs, primary button.
 
-フォルダ画面はフォルダ絵柄・階層名・本数を動画サムネイルと区別し、直接の動画は共有カードのまま並べる。長い日本語・英語名とパスは折り返し・省略の結果も操作に重ならず、全体を知る手段を残す。所有者の空の登録ルートは空の理由を表示し、ゲストには公開動画のある導線だけを示す。まとめ方の操作は動画一覧の文脈に置き、主要な移動操作より目立たせない。
+- The `surface` form panel stands apart from the background, but inputs are not spaced apart
+  just to add room.
+- The connection warning appears before the inputs. A failure reason appears next to the field or
+  the submit action. Both carry an icon and text.
+- While submitting, the label and the disabled state show it.
 
-### タグと設定
+### Library and folders
 
-タグ一覧は検索、作成、既存のタグと件数の順で読み、各行の改名・シノニム・削除は同じ余白と整列で探せる。編集欄は閲覧行との違いを面と輪郭で示し、失敗は対象行で説明する。削除・統合の確認は結果を文章で示し、取り消しと確定を距離・文言・危険色で区別する。設定では登録フォルダと取り込み状況を見出しとまとまりで分け、現在の値・変更・削除を混同させない。パスの長さやダイアログの狭さで主操作が押し出されないようにする。
+In the grid, the thumbnail is the largest surface and the title directly below it is the first
+text.
 
-### 動画詳細とプレイヤー
+- Duration and progress sit on a near-opaque surface that stays readable over the image. Tags
+  and watch status are weaker than the title.
+- Regular cards line up on dark surfaces, so the cyan outline on focus and selection is easy to
+  find.
+- Regular cards and group cards keep the same width and height rhythm. Group cards differ by the
+  folder illustration and the video count.
+- In list view, the thumbnail and title also read first, and number columns align for comparison.
+- Card selection and tag actions keep the meaning in the [library UI](../../docs/design-docs/library-ui.md).
 
-再生画面の最大の面は映像、次は題名と再生操作、その次はタグ・ファイル情報・関連動画とする。見出しのロゴは小さく、パンくずと閉じる操作を邪魔しない。プレイヤーのブランド色は再生進捗・音量など操作結果を示す場所に用い、映像に装飾のシアンを重ねない。コントロールと状態の文字は明るいフレームでも暗いフレームでも読める独立した面に載せる。再生・一時停止はボタンのアイコンと読み上げ名を切り替え、読み込み・失敗・終了は既存の一つの状態面で文言と次の行動を示す。関連動画は映像と競合しない密度にし、グループの次の動画は既存の予告と取り消し操作を保つ。
+Search is found first, inside the top bar. Filter, sort and view follow as one step weaker.
 
-## 幅と操作状態
+- At narrow widths, these collapse into the existing "View and sort", while the entry to search
+  and filters stays easy to find.
+- During selection, the card mark, the selected count and the bottom selection bar confirm it
+  together. The bar's main bulk actions show their target count and risk.
+- Empty, loading and failed states keep the list's surface rhythm. They state the reason for
+  empty and the next action, or the failure reason and "Retry". The loading skeleton previews the
+  final card count and density.
 
-レビュー幅は **360 px、768 px、1280 px** とする。360 px では上部バーは単体シンボル、検索と絞り込みの可用幅、ドロワー、折り返した選択バーを確認する。768 px ではレールとツールバー、カードの複数列を確認する。1280 px では展開したサイドバー、格子とリスト、再生画面の関連動画列を確認する。640 px と 1024 px の境界では既存のサイドバーと画面構成の切り替えに従い、主要操作に使える幅を保つ。所有者・ゲストの両方で同じ順序を確認する。
+The folder page separates folder illustrations, level names and counts from video thumbnails.
+Direct videos use the shared card.
 
-| 状態 | 見分ける手掛かり |
+- Long Japanese and English names and paths do not overlap actions when wrapped or truncated, and
+  the full text stays reachable.
+- An empty registered root for the owner shows why it is empty. Guests see only paths that lead
+  to public videos.
+- Grouping actions sit in the video list context and are less prominent than the main navigation
+  actions.
+
+### Tags and settings
+
+The tag list reads as search, create, then existing tags with counts. Each row's rename, synonym
+and delete actions are found at the same spacing and alignment.
+
+- An edit field differs from a read-only row by surface and outline. A failure is explained on
+  that row.
+- The delete and merge confirmations state the result in text. Cancel and confirm differ by
+  distance, wording and danger color.
+- Settings separate registered folders and import status with headings and groups, so the
+  current value, change and delete are not confused.
+- Long paths and narrow dialogs never push the primary action out of view.
+
+### Video details and player
+
+On the playback page, the video is the largest surface, then the title and playback controls,
+then tags, file information and related videos.
+
+- The header logo is small and does not get in the way of the breadcrumbs or the close action.
+- The player uses the brand color where it shows the result of an action, such as playback
+  progress and volume. No decorative cyan sits on the video.
+- Controls and status text sit on their own surface, readable over bright and dark frames.
+- Play and pause switch the button icon and accessible name. Loading, failure and end use the
+  existing single status surface with text and the next action.
+- Related videos have a density that does not compete with the video. The next video in a group
+  keeps the existing preview and cancel action.
+
+## Widths and interaction states
+
+The review widths are **360 px, 768 px and 1280 px**.
+
+| Width | Check |
 | --- | --- |
-| hover / 押下 | 面の変化に加え、押せる領域と押下後の結果が分かる。hover を持たない端末でも選択やメニューへの入口が見える。 |
-| focus-visible | `link` 系の輪郭を面の外側に連続して描き、選択中の塗りと重なっても焦点が分かる。検索欄は外枠を一つだけ強調する。 |
-| 選択 / 現在地 | チェック、件数、文字の太さや現在地の面を使い、シアンだけで区別しない。 |
-| disabled / pending | 無効の理由または進行中の文言を近くに置き、動きを減らす設定でも状態を伝える。 |
-| 空 / 失敗 / 危険 | 見出し、理由、次の行動を文章で示し、失敗・危険には意味別のアイコンと色を添える。 |
+| 360 px | Standalone symbol in the top bar, usable width for search and filters, the drawer, the wrapped selection bar |
+| 768 px | Rail and toolbar, multi-column cards |
+| 1280 px | Expanded sidebar, grid and list, the related-video column on the playback page |
 
-動きを減らす設定では装飾的な動きを止め、最終状態と操作の手掛かりを残す。ブランド表現は既存の操作の識別と理解に組み込む。
+At the 640 px and 1024 px breakpoints, the existing sidebar and screen layout switches apply, and
+primary actions keep usable width. Check the same order as both owner and guest.
 
-## アクセシビリティと目視判定
+| State | Cue |
+| --- | --- |
+| hover / pressed | Besides the surface change, the pressable area and the result are clear. Devices without hover still show the entry to selection and menus. |
+| focus-visible | A continuous `link`-style outline outside the surface, so focus stays visible over a selected fill. The search box highlights only one outer frame. |
+| Selected / current | Check mark, count, text weight or current-location surface; never cyan alone. |
+| disabled / pending | The reason for disabled, or in-progress text, is nearby, and the state reads even with reduced motion. |
+| Empty / failed / danger | Heading, reason and next action in text. Failure and danger add a semantic icon and color. |
 
-通常文字と実際の背景は **4.5:1 以上**、主要なアイコン・操作部の境界とフォーカスは **3:1 以上**を確認する。半透明の上やサムネイル・映像に重ねる情報は明暗両方の実画像で可読性を確認する。ワードマークとシンボルは 16・24・32 px、暗い面・明るい面・単色で判読できることを見て判断する。
+With reduced motion, decorative motion stops, and the final state and action cues remain. The
+brand expression is part of how existing actions are identified and understood.
 
-キーボードでは上部バーのメニュー → ロゴ → 検索・絞り込み → 所有者の更新、サイドバー、一覧のカードと選択、タグ・設定のダイアログ、動画ヘッダーとプレイヤー操作まで Tab と Shift+Tab でたどる。Enter / Space、Esc、プレイヤー固有のキー操作を既存設計どおり試し、閉じた後の焦点も確認する。スクリーンリーダーでは「VVMDM ホーム」、画面名、カードの題名と状態、選択本数、送信中・失敗の通知、再生・一時停止と進捗を聞き、ロゴの重複読みと無名アイコンを確認する。
+## Accessibility and visual review
 
-実装レビューでは [quickstart](quickstart.md) の全画面を上記の三幅で見比べ、次の五点を総合して判定する。
+Check **4.5:1 or higher** for body text against its actual background, and **3:1 or higher** for
+key icons, control borders and focus. Check information over translucent layers, thumbnails or
+video against real bright and dark images. Judge by eye that the wordmark and symbol read at 16,
+24 and 32 px, on dark and light surfaces, and in single color.
 
-1. **視覚的階層**: ライブラリで動画画像と題名、再生画面で映像と操作が先に目に入り、ロゴは入口として明瞭だがコンテンツを奪わない。
-2. **情報密度**: 同じ幅で既存の一覧性を保ち、長い題名・多いタグ・状態表示でもカードや行の操作が隠れない。
-3. **余白のリズム**: 上部バー、ツールバー、カード、設定のまとまりの内外に一貫した間隔があり、境界線を外してもグループが読める。
-4. **タイポグラフィ**: ロゴの細い大文字と本文を使い分け、日本語・英語の題名、長いパス、時刻、補助情報を大きさ・太さ・行間で区別できる。
-5. **操作の優先順位**: 検索・再生・主要な保存や再試行が先に分かり、更新・編集・危険操作は文脈に沿った強さを持つ。全状態を色以外でも判別できる。
+Keyboard checks with Tab and Shift+Tab cover:
+
+1. Top bar: menu → logo → search and filters → the owner's refresh.
+2. The sidebar.
+3. Cards and selection in the list.
+4. Tag and settings dialogs.
+5. The video header and player controls.
+
+Try Enter / Space, Esc and the player's own keys as the existing design defines them, and check
+focus after a close. With a screen reader, listen for "VVMDM home", screen names, card titles and
+states, the selected count, submitting and failure announcements, and play, pause and progress.
+Check for duplicate logo announcements and unnamed icons.
+
+The implementation review compares every screen in the [quickstart](quickstart.md) at the three
+widths above and judges these five points together.
+
+1. **Visual hierarchy**: the library shows video images and titles first, the playback page the
+   video and controls. The logo is clear as an entry point but does not take over the content.
+2. **Information density**: at the same width, the existing list density holds. Long titles, many
+   tags and status indicators do not hide card or row actions.
+3. **Spacing rhythm**: the top bar, toolbar, cards and settings groups have consistent spacing
+   inside and between them, and groups read even without border lines.
+4. **Typography**: the logo's thin capitals and the body text each have their place. Japanese and
+   English titles, long paths, times and supporting text differ by size, weight and line height.
+5. **Action priority**: search, play and the main save or retry actions read first. Refresh, edit
+   and danger actions have strength that fits their context. Every state is distinguishable
+   without color.

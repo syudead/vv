@@ -1,146 +1,172 @@
-# ライブ変換のハードウェアエンコード
+# Hardware encoding for live transcoding
 
-- ステータス: 採用
-- スコープ: ライブ変換（`GET /api/videos/{id}/transcode.mp4`）の映像エンコード方式の選択・起動時の確認・
-  要求の中の切り替え・方式ごとの引数と、設定の API（`GET`/`PUT /api/settings/transcoding`）
-- 経緯: [specs/025-hardware-encoding/](../../specs/025-hardware-encoding/plan.md)（親 Issue #370）
+- Status: Adopted
+- Scope: for live transcoding (`GET /api/videos/{id}/transcode.mp4`), the choice of video encoder,
+  the startup check, the fallback inside a request, the arguments per encoder, and the settings
+  API (`GET`/`PUT /api/settings/transcoding`)
+- History: [specs/025-hardware-encoding/](../../specs/025-hardware-encoding/plan.md) (parent
+  Issue #370)
 
-ライブ変換の開始（解析情報の用意、コピーとエンコードの切り替え）は
-[live-transcode-seek.md](live-transcode-seek.md) に、MOV の二入力は
-[mov-live-transcoding.md](mov-live-transcoding.md) に書いてある。この文書は、映像をエンコードする段で
-どの符号化器を使うかだけを扱う。
+[live-transcode-seek.md](live-transcode-seek.md) covers how live transcoding starts (preparing the
+probe data, switching between copy and encode). [mov-live-transcoding.md](mov-live-transcoding.md)
+covers the two MOV inputs. This document covers only which encoder the video encode step uses.
 
-## 方式と、実際に使う方式の決定
+## Encoders and resolving the encoder in use
 
 ### Context
 
-ライブ変換の映像は `libx264` でエンコードしていた。サーバーに GPU があれば、NVENC・Quick Sync・
-VAAPI・VideoToolbox で CPU の負荷を下げられる。ただし、ffmpeg のビルドに符号化器があっても、
-デバイスやドライバーが無ければ使えない（同梱の Docker イメージの中、`/dev/dri` の権限が無い、
-NVIDIA のライブラリが無い）。
+Live transcoding encoded video with `libx264`. When the server has a GPU, NVENC, Quick Sync,
+VAAPI or VideoToolbox lowers the CPU load. An encoder present in the ffmpeg build is still unusable
+without its device or driver: inside the bundled Docker image, without permission on `/dev/dri`,
+or without the NVIDIA libraries.
 
 ### Decision
 
-所有者が選ぶ値（`domain.EncoderChoice`）は `software`・`nvenc`・`qsv`・`vaapi`・`videotoolbox`・
-`auto` で、SQLite の `settings` 表のキー `transcode.video_encoder` に文字列で保存する
-（`SettingsStore`）。行が無いときと知らない文字列は `software` として扱い、保存値は書き換えない
-（`domain.ParseEncoderChoice`）。
+The owner's choice (`domain.EncoderChoice`) is one of `software`, `nvenc`, `qsv`, `vaapi`,
+`videotoolbox` and `auto`. `SettingsStore` saves it as a string under the key
+`transcode.video_encoder` in the SQLite `settings` table. A missing row or an unknown string reads
+as `software`, and the saved value is not rewritten (`domain.ParseEncoderChoice`).
 
-実際に使う方式（`domain.VideoEncoder`）は、選択と起動時の確認結果から純粋関数
-`domain.ResolveVideoEncoder` が決める。
+The pure function `domain.ResolveVideoEncoder` picks the encoder in use (`domain.VideoEncoder`)
+from the choice and the startup check results.
 
-- `software` は software。
-- `auto` は使える方式を `nvenc`・`qsv`・`vaapi`・`videotoolbox` の順で最初の 1 つ。無ければ software で、
-  これは fallback ではないので理由を付けない。
-- ハードウェアの方式は、使えればそれ。確認中なら software で理由 `checking`、確認して使えなければ
-  software で理由 `selected_unavailable`。
+| Choice | Encoder in use | Reason |
+| --- | --- | --- |
+| `software` | software | none |
+| `auto` | The first usable one in the order `nvenc`, `qsv`, `vaapi`, `videotoolbox`; software when none is usable | none (software here is not a fallback) |
+| A hardware encoder, usable | That encoder | none |
+| A hardware encoder, check still running | software | `checking` |
+| A hardware encoder, checked and unusable | software | `selected_unavailable` |
 
-選択と確認結果は `internal/app` の `TranscodeSettings` がメモリに持つ。確認結果は起動ごとに作り直す
-値なので保存しない。`Current()` が今の状態（選択・実際の方式・理由・確認中か・方式ごとの結果）を返し、
-`Select()` が保存してメモリを更新する。使える（確認済みで `available`）ハードウェアの方式でなければ
-`Select()` は `domain.ErrEncoderUnavailable` を返し、保存値を変えない。`software` と `auto` は常に
-受け付ける。確認が終わったときと `Select()` のたびに、選択・実際の方式・理由を `Info` で記録する。
+`TranscodeSettings` in `internal/app` holds the choice and the check results in memory. The check
+results are rebuilt on every start, so they are not saved.
 
-ライブ変換の経路（`internal/httpapi/transcode.go`）は、要求ごとに `Current()` の実際の方式を
-`domain.LiveTranscodeRequest.VideoEncoder` に載せる。方式の変更は次に始まる要求から効き、配信中の
-変換は始めたときの方式で続く。再起動は要らない。映像をコピーできる要求は方式に依らずコピーする。
+- `Current()` returns the current state: the choice, the encoder in use, the reason, whether the
+  check is running, and the result per encoder.
+- `Select()` saves the choice and updates memory. For a hardware encoder that is not usable
+  (checked and `available`), it returns `domain.ErrEncoderUnavailable` and leaves the saved value
+  unchanged. It always accepts `software` and `auto`.
+- When the check finishes, and on every `Select()`, it logs the choice, the encoder in use and the
+  reason at `Info`.
+
+The live transcoding route (`internal/httpapi/transcode.go`) puts the encoder in use from
+`Current()` into `domain.LiveTranscodeRequest.VideoEncoder` on every request. A change applies from
+the next request that starts. A transcode already streaming keeps the encoder it started with. No
+restart is needed. A request whose video can be copied copies it, whatever the encoder.
 
 ### Trade-offs
 
-- 要求ごとに読むのはメモリの状態で、変換の開始に SQLite の読み出しは加わらない。
-- 方式の変更は画面へ知らせない（domain event も `/api/events` の種類も無い）。別のタブや端末は、
-  次に区画を表示したときか、自分の保存の応答で正しい状態になる。
+- Each request reads the in-memory state, so starting a transcode adds no SQLite read.
+- An encoder change is not pushed to the UI (no domain event, no `/api/events` kind). Another tab
+  or device shows the correct state the next time it displays the section, or from the response to
+  its own save.
 
-## 起動時の確認
+## Startup check
 
 ### Decision
 
-`cmd/mdm` は保存値を読んで `TranscodeSettings` を作り、方式の行（選択・実際の方式・確認中か）を
-記録してから、確認を背後の goroutine で始める。HTTP の待ち受けは確認を待たない。確認が終わるまで、
-ハードウェアの方式を選んでいても実際の方式は software で、設定の API は `checking: true` を返す。
-停止の指示で確認を取り消し、終わりを待ってから走査とワーカーを止める。
+`cmd/mdm` reads the saved value, builds `TranscodeSettings`, logs the encoder line (choice, encoder
+in use, whether checking), and then starts the check in a background goroutine. The HTTP listener
+does not wait for the check. Until the check finishes, the encoder in use is software even when a
+hardware encoder is chosen, and the settings API returns `checking: true`. A stop request cancels
+the check and waits for it to end before stopping the scan and the workers.
 
-確認の対象は OS で決まる（`domain.HardwareEncoderCandidates`）。linux は NVENC・Quick Sync・VAAPI、
-windows は NVENC・Quick Sync、darwin は VideoToolbox で、それ以外の組は `unsupported_os` である。
+The OS decides what is checked (`domain.HardwareEncoderCandidates`).
 
-`internal/media` の `EncoderCheck` が 1 つの方式を確かめる。
+| OS | Encoders checked |
+| --- | --- |
+| linux | NVENC, Quick Sync, VAAPI |
+| windows | NVENC, Quick Sync |
+| darwin | VideoToolbox |
 
-1. `ffmpeg -encoders` を 1 回だけ読み、並行する確認で共有する。名前の無い方式は実行せずに
-   `encoder_missing`。読み取りが上限時間を超えたら `timed_out`。
-2. `-f lavfi -i testsrc2=size=256x144:rate=30 -frames:v 8` を、ライブ変換と同じエンコード引数で
-   `-f null -` へ符号化する。終了コード 0 なら `available`、失敗は `check_failed`、上限時間の超過は
-   `timed_out`。
+Any other OS and encoder pair is `unsupported_os`.
 
-方式ごとの確認は並行に走り、`TranscodeSettings` がそれぞれに上限時間（10 秒）を掛ける。確認が
-戻らなくても上限時間で `timed_out` にし、「確認中」のまま残さない。失敗した確認の標準エラーの末尾は
-`Warn` で記録し、API には出さない。確認は起動時の 1 回だけである。
+`EncoderCheck` in `internal/media` checks one encoder.
+
+1. Read `ffmpeg -encoders` once and share the output among the parallel checks. An encoder whose
+   name is missing gets `encoder_missing` without running anything. A read that exceeds the time
+   limit gets `timed_out`.
+2. Encode `-f lavfi -i testsrc2=size=256x144:rate=30 -frames:v 8` to `-f null -` with the same
+   encode arguments as live transcoding. Exit code 0 gives `available`, a failure gives
+   `check_failed`, and exceeding the time limit gives `timed_out`.
+
+The checks per encoder run in parallel, and `TranscodeSettings` applies a time limit (10 s) to
+each. A check that never returns becomes `timed_out` at the limit, so none stays "checking". The
+tail of a failed check's stderr is logged at `Warn` and is not exposed through the API. The check
+runs only once, at startup.
 
 ### Trade-offs
 
-- `-encoders` の有無だけではデバイスやドライバーの有無が分からないので、実際に短く符号化する。
-  合成入力（`lavfi`）はどのビルドにもあり、入力ファイルが要らない。
-- 並行にするので、固まる方式が 1 つあっても待ちは最悪で `-encoders` の読み取りと合わせて 20 秒程度で
-  済む。その間の要求は software で変換する。
+- The presence of a name in `-encoders` does not prove the device or driver exists, so the check
+  encodes a short clip. The synthetic input (`lavfi`) exists in every build and needs no input
+  file.
+- Because the checks run in parallel, one hanging encoder costs at most about 20 s including the
+  `-encoders` read. Requests during that time transcode with software.
 
-## 要求の中の切り替え
+## Fallback inside a request
 
 ### Decision
 
-`LiveTranscoder.Start` の切り替えの梯子
-（[live-transcode-seek.md](live-transcode-seek.md#コピーの経路と差の上限)）のうち、エンコードの段を
-「要求の方式 → software」の 2 段にする。ハードウェアの FFmpeg が最初のデータを出さずに終わったら、
-同じ解析情報で `libx264` で始め直す。期限は今までどおり `StartupDeadline` 1 つで、期限切れと
-取り消しでは切り替えない。最初のデータを出したあとの失敗も切り替えない。
+In the fallback ladder of `LiveTranscoder.Start`
+([live-transcode-seek.md](live-transcode-seek.md#copy-path-and-offset-limit)), the encode step has two
+rungs: "the request's encoder, then software". When the hardware FFmpeg ends without producing its
+first data, it restarts with `libx264` on the same probe data. The deadline stays the single
+`StartupDeadline`. Deadline expiry and cancellation do not fall back. A failure after the first
+data does not fall back either.
 
-切り替えたことは `LiveTranscode.HardwareFailure`（FFmpeg の標準エラーの末尾を含む誤り）で返り、
-経路が `Warn`（動画、方式、誤り）で記録する。応答は software の出力で 200 になり、形もヘッダーも
-変わらない。失敗した方式は覚えず、次の要求もまた設定の方式から試す。
+The fallback is returned as `LiveTranscode.HardwareFailure` (an error that includes the tail of
+FFmpeg's stderr), and the route logs it at `Warn` (video, encoder, error). The response is 200 with
+the software output, and its shape and headers do not change. The failed encoder is not
+remembered, so the next request again tries the configured encoder first.
 
 ### Trade-offs
 
-- ハードウェアの初期化の失敗（セッション数の上限、デバイスが無い、扱えない入力）はすぐに終了コードで
-  返るので、期限を分けなくても software のやり直しに時間が残る。
-- セッション数の上限は一時的なことが多いので、失敗を設定の状態（画面の表示）に反映しない。
+- Hardware initialization failures (session limit, missing device, unsupported input) return an
+  exit code at once, so the software retry has time left without a separate deadline.
+- A session limit is often temporary, so a failure does not change the settings state (what the UI
+  shows).
 
-## 方式ごとの引数
+## Arguments per encoder
 
 ### Decision
 
-`videoEncodeArgs` の共通の部分（縮小・pad・setsar・fps のフィルター、
-`-force_key_frames expr:gte(t,n_forced*2)`）と音声・`-movflags` は方式に依らない。符号化器の指定
-（`encoderCodecArgs`）だけを方式で差し替え、どれも H.264 High・Level 5.1・4:2:0 8bit・一定品質で、
-強制キーフレームを IDR にする。
+The shared part of `videoEncodeArgs` (the scale, pad, setsar and fps filters, and
+`-force_key_frames expr:gte(t,n_forced*2)`), the audio arguments and `-movflags` do not depend on
+the encoder. Only the encoder arguments (`encoderCodecArgs`) change per encoder. Every encoder
+produces H.264 High, Level 5.1, 4:2:0 8-bit, at constant quality, and makes forced keyframes IDR.
 
-| 方式 | 符号化器の指定 |
+| Encoder | Encoder arguments |
 | --- | --- |
 | `software` | `-c:v libx264 -profile:v high -level:v 5.1 -pix_fmt yuv420p -preset superfast -crf 23` |
 | `nvenc` | `-c:v h264_nvenc -profile:v high -level:v 5.1 -pix_fmt yuv420p -preset p4 -rc vbr -cq 23 -b:v 0 -forced-idr 1` |
 | `qsv` | `-c:v h264_qsv -profile:v high -level 51 -pix_fmt nv12 -preset veryfast -global_quality 23 -look_ahead 0 -forced_idr 1` |
-| `vaapi` | `-vaapi_device /dev/dri/renderD128`、フィルターの末尾に `format=nv12,hwupload`、`-c:v h264_vaapi -profile:v high -level 5.1 -rc_mode CQP -qp 23` |
+| `vaapi` | `-vaapi_device /dev/dri/renderD128`, `format=nv12,hwupload` at the end of the filter chain, `-c:v h264_vaapi -profile:v high -level 5.1 -rc_mode CQP -qp 23` |
 | `videotoolbox` | `-c:v h264_videotoolbox -profile:v high -level:v 5.1 -pix_fmt yuv420p -q:v 60 -realtime 1` |
 
-IDR にするのは、`frag_keyframe` が fragment を切る印にキーフレームを使うためである。非 IDR の I
-フレームでは fragment が切れず、最初のデータが遅れる。デコードはどの方式でもソフトウェアで行う。
+Keyframes are IDR because `frag_keyframe` cuts fragments at keyframes. A non-IDR I-frame does not
+cut a fragment, which delays the first data. Every encoder decodes in software.
 
 ### Alternatives
 
-- **ハードウェアデコード（`-hwaccel`）も使う**: 入力の形式ごとの対応の差が大きく、この feature の
-  対象外にした。
-- **`-g 60` でキーフレームを入れる**: fps フィルターで間引いたあとのフレーム数と時刻がずれる。
-  時刻基準の `-force_key_frames` を方式に依らず使う。
+- **Also use hardware decoding (`-hwaccel`)**: support differs widely by input format, so it is
+  out of scope for this feature.
+- **Insert keyframes with `-g 60`**: after the fps filter drops frames, the frame count and the
+  timestamps diverge. The time-based `-force_key_frames` is used for every encoder instead.
 
-## 設定の API
+## Settings API
 
-`GET /api/settings/transcoding` と `PUT /api/settings/transcoding`（本文 `{"videoEncoder": …}`）は
-どちらも同じ `TranscodingSettings`（選択、実際の方式、`fallbackReason`、`checking`、
-`nvenc`・`qsv`・`vaapi`・`videotoolbox` の順の 4 件の確認結果と理由）を `Cache-Control: no-store` で
-返す。所有者だけの経路である。`internal/httpapi/transcoding_settings.go` は要求の解釈と契約の形への
-変換だけを行い、方式の決定と拒否は `TranscodeSettings` に任せる。
+`GET /api/settings/transcoding` and `PUT /api/settings/transcoding` (body
+`{"videoEncoder": …}`) both return the same `TranscodingSettings` with `Cache-Control: no-store`:
+the choice, the encoder in use, `fallbackReason`, `checking`, and four check results with reasons
+in the order `nvenc`, `qsv`, `vaapi`, `videotoolbox`. The routes are owner-only.
+`internal/httpapi/transcoding_settings.go` only parses the request and maps to the contract shape;
+`TranscodeSettings` resolves and rejects encoders.
 
-- 列挙に無い値・本文が JSON でない: 400 `invalid_request`。
-- 使えないハードウェアの方式（確認中を含む）: 409 `conflict`、reason `encoder_unavailable`。
-  保存値は変えない。
-- 保存の失敗: 500 `internal`。
+| Case | Response |
+| --- | --- |
+| A value outside the enum, or a body that is not JSON | 400 `invalid_request` |
+| A hardware encoder that is not usable (including while checking) | 409 `conflict`, reason `encoder_unavailable`; the saved value is unchanged |
+| The save fails | 500 `internal` |
 
-契約の正本は [api/openapi.yaml](../../api/openapi.yaml)
-（[specs/025-hardware-encoding/contracts/transcoding-settings-api.md](../../specs/025-hardware-encoding/contracts/transcoding-settings-api.md)）。
+The contract source of truth is [api/openapi.yaml](../../api/openapi.yaml)
+([specs/025-hardware-encoding/contracts/transcoding-settings-api.md](../../specs/025-hardware-encoding/contracts/transcoding-settings-api.md)).

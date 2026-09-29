@@ -61,8 +61,7 @@ docker compose up -d
 The data folder survives a container update. Migrations run when the new version
 starts. To stay on a version or go back to one, replace `latest` in `image:`
 with its `sha-` tag. A database already migrated by a newer version may not
-open with an older one,
-so back up before updating.
+open with an older one, so back up before updating.
 
 ## Back up and restore
 

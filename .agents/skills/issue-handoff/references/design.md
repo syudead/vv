@@ -20,12 +20,14 @@ Read these before writing, and link them rather than repeating them:
   review criterion needs are written out
 - `web/src/theme/tokens.test.ts` — the `pairs` array is what actually enforces
   contrast; it is a hard-coded list, so a foreground/background combination is
-  checked only once it is added there. A new colour token is a decision, and the
-  change that introduces it records the token in `web/src/index.css`, which is
-  the single source of truth for the values. Add a pair to that array
-  only for a combination that carries a contrast requirement — the array is not
-  a registry of tokens, and it reads six-digit hex values only, so a
-  translucent or decorative token does not belong in it
+  checked only once it is added there.
+  - A new colour token is a decision, and the change that introduces it
+    records the token in `web/src/index.css`, which is the single source of
+    truth for the values.
+  - Add a pair to that array only for a combination that carries a contrast
+    requirement — the array is not a registry of tokens, and it reads
+    six-digit hex values only, so a translucent or decorative token does not
+    belong in it
 - the existing screens in `web/src` — what the product already does
 
 Where those settle a question, follow them and say so. Where the form is one
@@ -40,8 +42,8 @@ A technical constraint is never a reason to narrow the design (Q-7).
 
 1. Use the supplied Issue, PR, branch, and current checkout as context.
 2. Read the parent Issue, the plan, and any existing UI design as inputs, plus
-   the sources above. The Issue's `## UI品質` section is where
-   this artifact starts.
+   the sources above. The Issue's `## UI quality` section (older Issues:
+   `## UI品質`) is where this artifact starts.
 3. Create an arbitrary-name sub-branch from the feature branch.
 4. Create `<feature-dir>/ui-design.md`. Write only what this feature adds or
    changes: screen boundaries, visual hierarchy, responsive behaviour, content
@@ -49,17 +51,19 @@ A technical constraint is never a reason to narrow the design (Q-7).
    criteria. Cover each of these when the feature touches it, and leave out the
    ones it does not — the artifact is as long as the change earns. Do not
    implement code.
-5. Write the review criteria so they can be judged by looking. Q-3 names the
-   viewpoints a UI specification argues in — visual hierarchy, information
-   density, spacing rhythm, typography, and the priority of actions — and Q-4
-   rules out "the element is present" as a criterion. An element with no
-   behaviour behind it needs its value and its misrecognition risk stated
-   (Q-5). Name the widths the implementation will be judged against. Do not
-   add accessibility design (screen readers, ARIA, contrast ratios) unless the
-   parent Issue asks for it.
+5. Write the review criteria so they can be judged by looking.
+   - Q-3 names the viewpoints a UI specification argues in — visual hierarchy,
+     information density, spacing rhythm, typography, and the priority of
+     actions — and Q-4 rules out "the element is present" as a criterion.
+   - An element with no behaviour behind it needs its value and its
+     misrecognition risk stated (Q-5).
+   - Name the widths the implementation will be judged against.
+   - Do not add accessibility design (screen readers, ARIA, contrast ratios)
+     unless the parent Issue asks for it.
 6. Reconcile every stated behaviour against the parent Issue and the existing
    design system rules, which this artifact narrows more often than it
    contradicts.
-7. Push and open a feature-branch PR with `Refs #<parent>`. Stop.
+7. Push and open a feature-branch PR with `Refs #<parent>`. Write its body as
+   the `design` digest in [pr-digest.md](pr-digest.md). Stop.
 8. After human merge, the next stage is `plan-to-issues`. The parent Issue body
    is not edited.

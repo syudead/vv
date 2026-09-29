@@ -1,114 +1,67 @@
-# Research: ライブ変換のシークと解析情報の再利用
+# Research: seeking in live transcodes and reusing probe data
 
-技術スタックとライブ変換の現行の作りは正本に従う
-（[docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md)・
-[docs/design-docs/mov-live-transcoding.md](../../docs/design-docs/mov-live-transcoding.md)・
-[internal/media/transcode.go](../../internal/media/transcode.go)）。ここにはこの feature が足す決定だけを
-書く。R-1・R-6・R-7 の値は、開発コンテナの ffmpeg 6.1.1 で、キーフレーム間隔 250 フレーム・30fps・
-40 秒の H.264/AAC の MOV と、それを `-c copy` で MKV にした fixture に対して `-ss 27` で確かめた。
+The tech stack and the current live transcode design follow their sources of truth
+([docs/design-docs/tech-stack-selection.md](../../docs/design-docs/tech-stack-selection.md),
+[docs/design-docs/mov-live-transcoding.md](../../docs/design-docs/mov-live-transcoding.md),
+[internal/media/transcode.go](../../internal/media/transcode.go)). This document holds only the
+decisions this feature adds.
 
-## R-1: 実際の開始位置をどこから知るか
+The values in R-1, R-6 and R-7 were confirmed with ffmpeg 6.1.1 in the dev container, using `-ss 27`
+on 2 fixtures: a 40-second H.264/AAC MOV at 30fps with a keyframe interval of 250 frames, and the
+same file remuxed to MKV with `-c copy`.
 
-- Decision: コピーで途中から始める ffmpeg に `-copyts -start_at_zero` と
-  `-movflags frag_keyframe+empty_moov+default_base_moof+delay_moov` を付ける。mp4 muxer は
-  `delay_moov` で最初の fragment を切るまで `moov` を待ち、各 track の edit list（`elst`）の先頭に
-  「空の edit」としてその track が始まる時刻（movie timescale、ffmpeg では 1000 = ミリ秒）を書く。
-  サーバーはそこから実際の開始位置を読み、最も早い track を 0 にして他の track にはその差を残すよう
-  `elst` を書き換えてから送る。`moof` の `tfdt` は最初の fragment で 0 から始まっており、書き換えない。
-  `-start_at_zero` を付けるので、時刻は動画の先頭からの相対（今のプレイヤーの時間軸）である。
-- Rationale: mp4 muxer は `empty_moov` で `moov` を先に書くと、track の最初の時刻を 0 に寄せて
-  情報を捨てる（`-copyts` だけでは `tfdt` が 0 になることを確かめた）。`delay_moov` はその場合のために
-  muxer 自身が用意している選択で、開始位置が `moov` に 1 回だけ、ISO BMFF の形で現れる。`moov` は
-  最初の fragment と同時に出るので、今の「最初のデータを待ってから応答を始める」流れの中で読める。
-  Chrome と Firefox は progressive 再生で最初の時刻を 0 に寄せるため、`-copyts` の時刻をそのまま
-  出してもプレイヤーは開始位置を知れず、ブラウザごとに時間軸が変わる。edit list を書き換えれば、
-  ブラウザが見る出力は今のコピーの出力と同じ形（時間軸 0 始まり、`elst` は track 間の差だけ）になる。
-- Alternatives considered: `-copyts` のまま出す（上記のとおりブラウザ依存）。`moof` ごとの `tfdt` を
-  書き換える（送るデータ全部を通す必要があり、`moov` 1 回で済む方を採る）。`-movflags frag_discont`
-  （`tfdt` が 0 のままで、確かめた限り開始位置は現れない）。ffmpeg の `-debug_ts` や `-f framecrc` の
-  標準エラー出力を読む（行の形式が版に依存し、fragment 1 つ分の全 packet を書き出す）。
-  ffmpeg の前にキーフレームを調べる別プロセス（要件 8 が取り除く無駄そのもの）。
+## R-1: Where the actual start position comes from
 
-## R-2: コピーで許すキーフレームとの差
+| | |
+| --- | --- |
+| **Decision** | ffmpeg copying from a midpoint gets `-copyts -start_at_zero` and `-movflags frag_keyframe+empty_moov+default_base_moof+delay_moov`. With `delay_moov`, the mp4 muxer holds `moov` until it cuts the first fragment. It writes the time each track starts (movie timescale; 1000 = milliseconds in ffmpeg) as an "empty edit" at the head of that track's edit list (`elst`). The server reads the actual start position from there. Before sending, it rewrites `elst` so that the earliest track is 0 and the other tracks keep their difference. `tfdt` in `moof` already starts at 0 in the first fragment and is not rewritten. Because of `-start_at_zero`, the times are relative to the start of the video (the player's current timeline). |
+| **Why** | When the mp4 muxer writes `moov` first with `empty_moov`, it shifts each track's first time to 0 and drops the information (confirmed: with `-copyts` alone, `tfdt` becomes 0). `delay_moov` is the muxer's own option for this case; the start position appears once, in `moov`, in ISO BMFF form. `moov` comes out with the first fragment, so it can be read within the current flow of waiting for the first data before starting the response. Chrome and Firefox shift the first time to 0 in progressive playback. So emitting the `-copyts` times as is does not tell the player the start position, and the timeline differs per browser. With the edit list rewritten, the output the browser sees has the same shape as today's copy output (timeline starts at 0; `elst` holds only the difference between tracks). |
+| **Rejected** | Emitting with `-copyts` as is: browser-dependent, as above. Rewriting `tfdt` in each `moof`: all sent data must pass through it; rewriting `moov` once is chosen instead. `-movflags frag_discont`: `tfdt` stays 0 and, as far as tested, the start position does not appear. Reading the stderr of ffmpeg `-debug_ts` or `-f framecrc`: the line format depends on the version, and it writes out every packet of a fragment. A separate process that inspects keyframes before ffmpeg: that is exactly the waste Requirement 8 removes. |
 
-- Decision: `domain.CopySeekAllowance = 15 秒`。指定位置 − 実際の開始位置がこれ以下ならコピーで
-  続け、超えたら同じ要求の中でエンコードに切り替えて指定位置から始める。
-- Rationale: x264/x265 の既定のキーフレーム間隔は 250 フレームで、30fps で 8.3 秒、23.976fps で
-  10.4 秒になる。親 Issue が例に挙げる「中身が H.264 の MKV」はこの既定で作られたものが多く、
-  10 秒では film の frame rate の動画が全部エンコードし直しに落ちる。カメラや配信向けの動画は
-  1〜10 秒で、15 秒はそれらを全部コピーで通す。場面の切り替わりにしかキーフレームが無い動画
-  （数十秒〜分）は、戻り幅が「自分で選んだ位置」と読めなくなるので、要件 3 のとおりエンコードに落とす。
-  切り替えの費用は ffmpeg の起動 1 回（約 0.07 秒）と demuxer の索引の読み直しで、上限を超える
-  動画にだけ掛かる。
-- Alternatives considered: 10 秒（23.976fps の既定を落とす）。上限なし（要件 3 に反する）。
-  超えた動画を覚えておいて次から直接エンコードする（キーフレームの間隔は動画の中で場所によって
-  違い、1 回の超過で決められない。プロセス 1 回分の費用を受け入れる）。
+## R-2: Keyframe distance allowed for copying
 
-## R-3: 切り替えの順序と時間の予算
+| | |
+| --- | --- |
+| **Decision** | `domain.CopySeekAllowance = 15 seconds`. When requested position − actual start position is at most this, copying continues. When it is larger, the same request switches to encoding and starts at the requested position. |
+| **Why** | The default keyframe interval of x264/x265 is 250 frames: 8.3 seconds at 30fps and 10.4 seconds at 23.976fps. Many files of the parent Issue's example, "an MKV containing H.264", are made with this default. At 10 seconds, every video at the film frame rate would fall back to re-encoding. Camera and streaming videos use 1 to 10 seconds, and 15 seconds passes all of them through copy. Videos with keyframes only at scene cuts (tens of seconds to minutes) jump back so far that the position no longer reads as "the position I chose", so they fall back to encoding, as Requirement 3 says. The cost of switching is 1 ffmpeg startup (about 0.07 seconds) plus rereading the demuxer index, paid only by videos over the limit. |
+| **Rejected** | 10 seconds: drops the 23.976fps default. No limit: violates Requirement 3. Remembering videos that exceeded the limit and encoding them directly next time: keyframe intervals vary within a video, so 1 excess does not decide it. The cost of 1 extra process is accepted. |
 
-- Decision: `LiveTranscoder.Start` が同じ要求の中で次の順に試す。(1) 保存済みの解析情報でコピー
-  （`videoCanCopy` かつ `normalize` でないとき。それ以外は最初からエンコード）。`startMs > 0` のコピーは
-  R-1 の引数で出して実際の開始位置を解決し、`startMs = 0` のコピーは今の先頭からのコピーの引数のまま
-  （`-copyts` も `delay_moov` も付けない）で、実際の開始位置は 0、R-2 の判定もしない。
-  (2) コピーが最初のデータを出さずに終わった、または実際の開始位置が R-2 の上限を超えたら、同じ
-  解析情報でエンコード。(3) 最初のデータが出る前に失敗し、解析情報が保存済みのものだったら、その場で
-  ffprobe を実行して結果を返し、(1) からもう 1 度だけやり直す。切り替えの理由は「プロセスがデータを
-  出さずに終わる」と「上限の超過」だけで、`transcodeStartupTimeout`（6 秒）の期限切れは今までどおり
-  失敗にする。期限は切り替え全体で 1 つである。
-- Rationale: 親 Issue の Edge Cases（キーフレームの位置が取れない動画、保存値で失敗する動画）は
-  どちらも「最初のデータが出る前なら同じ要求の中でやり直す」と決めている。コピーが遅いのは I/O で、
-  同じファイルを読むエンコードはさらに CPU が要るので、コピーを早めに諦める予算に意味が無い。
-  ffprobe のやり直しを 1 回に限るのは、壊れたファイルで ffprobe と ffmpeg を繰り返さないためである。
-- Alternatives considered: 試行ごとの期限（上記）。切り替えを httpapi で行う（プロセスの起動と
-  出力の読み取りは media の責務で、httpapi に ffmpeg の引数の知識を持ち込むことになる）。
+## R-3: Fallback order and time budget
 
-## R-4: 実際の開始位置をプレイヤーへ伝える経路
+| | |
+| --- | --- |
+| **Decision** | `LiveTranscoder.Start` tries these steps in order within the same request. (1) Copy with the stored probe data, when `videoCanCopy` holds and `normalize` does not; otherwise encode from the start. A copy with `startMs > 0` uses the R-1 arguments and resolves the actual start position. A copy with `startMs = 0` keeps today's copy-from-start arguments (no `-copyts`, no `delay_moov`); its actual start position is 0 and the R-2 check is skipped. (2) When the copy ends without producing its first data, or the actual start position exceeds the R-2 limit, encode with the same probe data. (3) When it fails before the first data and the probe data came from storage, run ffprobe on the spot, return the result, and retry from (1) exactly once more. The only reasons to switch are "the process ends without data" and "the limit is exceeded". Expiry of `transcodeStartupTimeout` (6 seconds) is still a failure, as today. There is 1 deadline for the whole fallback sequence. |
+| **Why** | The parent Issue's Edge cases (a video whose keyframe position cannot be obtained, a video that fails with stored values) both decide "retry within the same request if before the first data". A slow copy is slow on I/O, and an encode of the same file also needs CPU, so a budget that gives up on copying early is pointless. The ffprobe retry is limited to 1 so a broken file does not repeat ffprobe and ffmpeg. |
+| **Rejected** | A deadline per attempt (reason above). Switching in httpapi: starting the process and reading its output are the responsibility of media, and httpapi would need knowledge of ffmpeg arguments. |
 
-- Decision: プレイヤーが変換の URL に `attempt`（要求ごとの乱数）を付け、同時に
-  `GET /api/videos/{id}/transcode-start?attempt=…` を呼ぶ。サーバーは変換の要求が始まったときに
-  台帳へ `attempt` を載せ、実際の開始位置が決まったら（応答を書き始める前に）記録する。報告の経路は
-  記録が無ければ載るまで、載っていて未決なら決まるまで、`transcodeStartupTimeout` を上限に待って
-  `{ "startMs": … }` を返し、上限までに現れなければ 404 を返す。変換の要求が終わった `attempt` は
-  60 秒残してから消す（[contracts/transcode-start-api.md](contracts/transcode-start-api.md)）。
-- Rationale: `<video src>` の再生は応答ヘッダーも本文の構造も JavaScript に見せない。ブラウザは
-  動画の要求と報告の要求をどちらを先に送るとも限らないので、報告の側が現れるまで待つ形にすると
-  順序を気にせずに済む。報告が届く前は今までどおり指定位置を表示するので、届かない場合も現行と同じ
-  表示に留まる。
-- Alternatives considered: `/api/events` の SSE（ゲストの購読と順序の扱いが増える）。先に開始位置を
-  返す経路が ffmpeg を起動し、動画の要求が接続する（プロセスの寿命が 2 つの要求にまたがる）。
-  MSE で本文を自分で取る（配信の作り直し、対象外）。応答の redirect で URL に開始位置を載せる
-  （`<video>` は redirect 後の URL を見せない）。
+## R-4: How the actual start position reaches the player
 
-## R-5: 解析情報の保存の形
+| | |
+| --- | --- |
+| **Decision** | The player adds `attempt` (a random value per request) to the transcode URL and at the same time calls `GET /api/videos/{id}/transcode-start?attempt=…`. The server enters `attempt` in the ledger when the transcode request starts. It records the actual start position once known (before it starts writing the response). The report route waits, up to `transcodeStartupTimeout`: until the record appears if absent, and until it is resolved if unresolved. It then returns `{ "startMs": … }`, or 404 when nothing appears within the limit. An `attempt` whose transcode request has ended is kept for 60 seconds, then deleted ([contracts/transcode-start-api.md](contracts/transcode-start-api.md)). |
+| **Why** | Playback through `<video src>` exposes neither the response headers nor the body structure to JavaScript. The browser may send the video request and the report request in either order; a report route that waits for the record makes the order irrelevant. Until the report arrives, the requested position is displayed as today, so a missing report leaves the display the same as now. |
+| **Rejected** | SSE on `/api/events`: adds guest subscriptions and ordering. A route that returns the start position first starts ffmpeg, and the video request attaches to it: the process lifetime spans 2 requests. Fetching the body through MSE: rebuilds delivery, out of scope. Putting the start position in the URL through a redirect: `<video>` does not expose the URL after a redirect. |
 
-- Decision: 新しい表 `video_transcode_probes` に、`domain.TranscodeProbe` の JSON、その版
-  （`domain.TranscodeProbeVersion`）、解析したファイルの大きさと更新時刻（`os.Stat` の値、ナノ秒）を
-  1 行で持つ（[data-model.md](data-model.md)）。読み出し側は、版が違う行と JSON が読めない行を
-  「無い」と扱う。
-- Rationale: 保存する項目は ffmpeg の引数に要るものだけで（要件 7 が列挙）、一覧や検索は使わない。
-  1 列の JSON なら項目が増えたときに版を上げるだけで済み、古い行は要件 10 の経路（最初の変換で
-  その場で解析して保存）で自然に埋まる。大きさと更新時刻を `video_locations` の値（スキャン時、秒）
-  ではなく解析時の `os.Stat` で別に持つのは、要求時に開いたファイルの `Stat` と同じ精度で比べるため
-  （単位が違うと常に不一致になる）。
-- Alternatives considered: `videos` の型付きの列（一覧の行を太らせ、項目の追加ごとにマイグレーション）。
-  ffprobe の生の JSON（要求時の解釈が保存時の ffprobe の版に依存し、大きい）。
+## R-5: Storage shape of the probe data
 
-## R-6: MOV の二入力で音声を実際の開始位置に揃える
+| | |
+| --- | --- |
+| **Decision** | A new table `video_transcode_probes` holds, in 1 row, the JSON of `domain.TranscodeProbe`, its version (`domain.TranscodeProbeVersion`), and the size and modification time of the probed file (`os.Stat` values, nanoseconds) ([data-model.md](data-model.md)). The reader treats rows with a different version and rows whose JSON cannot be parsed as absent. |
+| **Why** | The stored fields are only those the ffmpeg arguments need (listed in Requirement 7); lists and search do not use them. With 1 JSON column, adding a field only bumps the version, and old rows refill naturally through the path of Requirement 10 (probe on the spot at the first transcode and save). Size and modification time are stored separately from the probe-time `os.Stat`, not taken from `video_locations` (scan time, seconds). This compares them at the same precision as the `Stat` of the file opened at request time; different units would never match. |
+| **Rejected** | Typed columns in `videos`: fattens list rows and needs a migration per added field. Raw ffprobe JSON: interpretation at request time depends on the ffprobe version at save time, and it is large. |
 
-- Decision: 二入力は今のまま（両方の入力に同じ `-ss`）にし、追加の揃え方は持たない。
-- Rationale: 音声側の入力は `-vn` で映像 stream を捨てているが、MOV demuxer の seek は既定の
-  stream（映像）のキーフレームへ行い、他の stream をその時刻へ合わせる。確かめた出力では、
-  二入力でも単一入力でも音声は映像のキーフレーム時刻から始まった（`elst` は映像 25.000 秒、
-  音声 24.981 秒で、単一入力と同じ）。R-1 の書き換えは track 間の差を残すので、音ずれは起きない。
-- Alternatives considered: コピーの seek だけ単一入力にする（二入力の理由であるネットワークドライブの
-  track 間 seek を、確かめた限り解決済みの問題のために戻すことになる）。
+## R-6: Aligning MOV dual-input audio to the actual start position
 
-## R-7: コピーの最初のデータが出るまでの時間
+| | |
+| --- | --- |
+| **Decision** | Dual input stays as today (the same `-ss` on both inputs), with no extra alignment. |
+| **Why** | The audio input drops the video stream with `-vn`, but the MOV demuxer seeks to a keyframe of the default stream (video) and aligns the other streams to that time. In the confirmed output, audio started at the video keyframe time with both dual and single input (`elst` is 25.000 seconds for video and 24.981 seconds for audio, the same as single input). The R-1 rewrite keeps the difference between tracks, so audio does not drift. |
+| **Rejected** | Single input only for copy seeks: it would revert the reason for dual input (seeking between tracks on network drives) for a problem that, as far as tested, is already solved. |
 
-- Decision: 変えない。コピーの fragment は元動画のキーフレームで区切る（要件 6 の「コピーする場合は
-  元のキーフレームのまま」）ので、最初の fragment はキーフレーム 1 区間分を読み終えてから出る。
-  `delay_moov` で `moov` も同じ時点に出るが、再生はどのみち最初の fragment を待つ。
-- Rationale: 先頭からのコピー（`startMs = 0`）が今もこの性質を持ち、親 Issue はこれを無駄に数えて
-  いない。fragment を時間で切る（`-frag_duration`）とキーフレームで始まらない fragment になり、
-  ブラウザの progressive 再生での扱いを確かめる範囲が広がる。
-- Alternatives considered: `-frag_duration 2000000` を足す（上記）。
+## R-7: Time until the first copy data
+
+| | |
+| --- | --- |
+| **Decision** | No change. Copy fragments are cut at the source keyframes ("when copying, keep the original keyframes" in Requirement 6), so the first fragment comes out after 1 keyframe interval has been read. With `delay_moov`, `moov` also comes out at that point, but playback waits for the first fragment anyway. |
+| **Why** | Copying from the start (`startMs = 0`) already has this property, and the parent Issue does not count it as waste. Cutting fragments by time (`-frag_duration`) produces fragments that do not start at a keyframe, which widens what must be verified for progressive playback in browsers. |
+| **Rejected** | Adding `-frag_duration 2000000` (reason above). |

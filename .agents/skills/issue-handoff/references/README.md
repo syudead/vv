@@ -19,10 +19,12 @@ directory; do not reinstate one.
 
 Project-scoped workers may perform a bounded part of a run when the selected
 host supports them. The repository provides matching Codex and Claude workers:
-`subissue-implementer` for child-Issue implementation and focused checks.
-`sdd-stage-worker` and
-`pr-review-fixer` exist for `sdd-autopilot` only, and there they push and open
-PRs themselves. The other workers do not own the handoff, persist its state,
+
+- `subissue-implementer` for child-Issue implementation and focused checks.
+- `sdd-stage-worker` and `pr-review-fixer` exist for `sdd-autopilot` only, and
+  there they push and open PRs themselves.
+
+The other workers do not own the handoff, persist its state,
 or start another stage; the parent agent remains responsible for the workflow,
 fixes, full validation, push, and pull request.
 Other Agent Skills-compatible hosts should use an equivalent bounded worker
@@ -72,8 +74,8 @@ state fresh on every run — never from a prior conversation.
   to branch names or directory numbers.
 
 An Issue that is neither a native child nor a parent written as a
-specification (no `要件` or `受け入れ条件`) is not SDD work; ask before doing
-anything.
+specification (no `Requirements` or `Acceptance criteria` (older Issues: `要件` or
+`受け入れ条件`)) is not SDD work; ask before doing anything.
 
 **Child Issue** (it has a native parent): run `implement` for that child. If it
 is already done (see below), report that and stop. If it has an open
@@ -89,10 +91,10 @@ implementation PR, follow the open-PR rule below for that PR.
 4. **No native sub-issues** → `plan-to-issues`.
 5. **A child that is not done** → `implement` the first such child, in
    sub-issue order, that has no open PR and whose prerequisites (the "has to
-   land first" part of its body) are done. When every remaining child has an
-   open PR, apply rule 1's review check to those PRs in order, and otherwise
-   report what is waiting on merge and stop. When the rest are blocked only by
-   prerequisites, report that and stop.
+   land first" part of its body) are done.
+   - When every remaining child has an open PR, apply rule 1's review check to
+     those PRs in order, and otherwise report what is waiting on merge and stop.
+   - When the rest are blocked only by prerequisites, report that and stop.
 6. **Every child done** → [integrate](integrate.md), which opens the
    integration PR if it does not exist yet.
 
@@ -110,11 +112,14 @@ is never selected automatically. The maintainer names that stage.
 
 ## GitHub preflight
 
-Verify only the capabilities needed by the requested workflow. Every workflow
-needs Issue and PR read access. Plan, Design, and Implement need repository
-push and PR creation access. `plan-to-issues` needs Issue write
-access and native sub-issue operations but does not require push or PR creation.
-Stop before mutation when a required capability is missing.
+Verify only the capabilities needed by the requested workflow. Stop before
+mutation when a required capability is missing.
+
+| Workflow | Needs |
+| --- | --- |
+| Every workflow | Issue and PR read access |
+| Plan, Design, Implement | Repository push and PR creation access |
+| `plan-to-issues` | Issue write access and native sub-issue operations; no push or PR creation |
 
 Recover the feature branch and directory only through the standard GitHub
 relationships in [Selecting the stage](#selecting-the-stage). When review fixes
@@ -131,13 +136,14 @@ parent Issue. An active feature directory holds `plan.md`, adds `ui-design.md`
 for a `ui` Issue, and carries `research.md`, `data-model.md`, `contracts/` or
 `quickstart.md` when the Plan has that content of its own (P-2).
 
-Never select work from a branch name or a prior conversation. Use a separate
-checkout or worktree for each concurrent run.
+Constraints on every run:
 
-The skill deliberately does not infer whether an existing downstream
-artifact incorporates a later upstream revision. When an approved artifact is
-revised, the maintainer names the affected stages and reruns them through
-reviewed PRs.
+- Never select work from a branch name or a prior conversation. Use a separate
+  checkout or worktree for each concurrent run.
+- The skill deliberately does not infer whether an existing downstream
+  artifact incorporates a later upstream revision. When an approved artifact
+  is revised, the maintainer names the affected stages and reruns them through
+  reviewed PRs.
 
 ## Branch and PR contract
 

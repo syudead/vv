@@ -12,8 +12,9 @@ parent is done.
    now: feature branch → `main`, the parent's title, `Closes #<parent>`, and
    the repository PR template. Otherwise the push updates it; do not open a
    separate PR for it.
-4. Write the integration PR body with the checks you ran and any remaining
-   risk. When the body already lists remaining risks, including those recorded
+4. Write the integration PR body as the integration digest in
+   [pr-digest.md](pr-digest.md#integration-pr): the delivered children, the checks
+   you ran and any remaining risk. When the body already lists remaining risks, including those recorded
    from its review, keep them. Stop. A human merges the integration PR, and
    GitHub closes the parent.
 

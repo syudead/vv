@@ -1,222 +1,271 @@
-# ライブ変換のシークと解析情報の再利用
+# Live transcoding seek and probe data reuse
 
-- ステータス: 採用
-- スコープ: `GET /api/videos/{id}/transcode.mp4` の開始（解析情報の用意、FFmpeg の起動、途中からの開始位置）と、
-  実際の開始位置をプレイヤーへ伝える `GET /api/videos/{id}/transcode-start`
+- Status: Adopted
+- Scope: how `GET /api/videos/{id}/transcode.mp4` starts (preparing the probe data, launching
+  FFmpeg, the start position when starting mid-video), and `GET /api/videos/{id}/transcode-start`,
+  which tells the player the actual start position
 
-## 解析情報の再利用
-
-### Context
-
-ライブ変換の ffmpeg の引数（映像・音声の stream の選び方、コピーできるか、寸法・回転・fps の
-扱い、MOV の二入力）は ffprobe の事実で決まる。ネットワークドライブ上の動画では
-ffprobe の解析が最初のデータまでの時間の大きな部分を占める。
-
-### Decision
-
-取り込みの解析（ffprobe）が、ライブ変換に要る値 `domain.TranscodeProbe` を表
-`video_transcode_probes` に保存する。行は値の JSON とその版、解析したファイルの大きさと
-更新時刻（ナノ秒）を持つ。ライブ変換は次の順で解析情報を用意する。
-
-1. 経路（`internal/httpapi/transcode.go`）が `LibraryStore.TranscodeProbe` で保存値を読み、
-   `domain.TranscodeProbeUsable` で使ってよいかを決める。版が今の
-   `domain.TranscodeProbeVersion` と同じで、JSON が読め、大きさと更新時刻が変換で実際に開いた
-   ファイルの `Stat` と一致するときだけ使う。同じ内容の別の所在があっても、比べるのは開いた所在
-   である。
-2. 経路は使える解析情報か nil を `domain.LiveTranscodeRequest` に載せて
-   `LiveTranscoder.Start`（`internal/media`）に渡す。media は解析情報があれば ffprobe を起動
-   せず、無ければその場で ffprobe を実行する。
-3. media は FFmpeg の最初のデータが出たところで `Start` から返る。保存値で始めた変換が
-   データを出さずに終わったら（映像をコピーする動画では、エンコードへの切り替えも
-   失敗したら。[コピーの経路と差の上限](#コピーの経路と差の上限)）、同じ要求の中でその場の
-   ffprobe を実行し、1 回だけやり直す。
-   その場の解析で始めた FFmpeg の失敗、要求の取り消し、`transcodeStartupTimeout`（6 秒）の
-   期限切れではやり直さない。期限は解析とやり直しを含めて 1 つである。経路は `Start` が
-   戻ったあとに同じ期限をかけ直さず、要求の取り消しだけで打ち切る。
-4. media がその場で解析したときは、結果を `LiveTranscode.Probed` に載せて返し、経路が
-   `IngestStore.SaveTranscodeProbe` で開いたファイルの印とともに保存する。保存は最初のデータを
-   読んだあとに配信と並べて行い、書き込みの待ちで開始の期限を使わない。保存には配信と独立した
-   期限（`transcodeProbeSaveTimeout`、10 秒）があり、要求が取り消されても期限の中で済ませる。
-   次の変換はこれを使う。解析のあとにファイルの印が開いたときと違っていたら、media は結果を変換には使うが
-   保存用には返さない。途中で打ち切られた ffprobe は誤りで終わるので保存されない。
-
-保存は upsert 1 文で、取り込みと変換が同時に書いても後に書いた行が残る。表は索引で、消えても
-次の変換か再解析で埋まる。起動時に既存の動画をまとめて埋める処理は無く、取り込み済みで行の無い
-動画は最初の変換で埋まる。
-
-### Trade-offs
-
-- 保存値が合うかの判定は大きさと更新時刻だけで、内容は比べない。大きさと更新時刻を保ったまま
-  書き換えられたファイルでは古い解析情報で変換する。その変換が最初のデータの前に失敗すれば、
-  やり直しの解析で保存が置き換わる。
-- media が最初のデータを待つようになり、経路はその後の出力を読むだけになった。切り替えの判断を
-  プロセスの起動と出力の読み取りの側に置き、httpapi に ffmpeg の引数の知識を持ち込まない。
-- media は store を呼ばない。保存値を使ってよいかの判定と保存は経路が行い、ffmpeg を持たない
-  単体テストに SQLite が要らない。
-
-### Alternatives
-
-- **media が store を読む**: adapter が adapter に依存し、依存の向き（ARCHITECTURE.md）に反する。
-- **ffprobe の生の JSON を保存する**: 要求時の解釈が保存時の ffprobe の版に依存し、数十 KB の
-  文字列を動画ごとに持つ。parser を通した値を版つきで保存する。
-- **`videos` に型付きの列を足す**: 一覧の読み出しが使わない列で行が太り、項目が増えるたびに
-  マイグレーションが要る。
-
-### Validation
-
-- `internal/media/transcode_test.go`: `commandContext` を差し替え、保存値があれば ffprobe を
-  起動しないこと、無ければ 1 回だけ起動して結果を返すこと、保存値の失敗で 1 回だけやり直すこと、
-  期限切れと取り消しでやり直さず結果も返さないことを確かめる。
-- `internal/httpapi/transcode_test.go`: 本物の保存層で、取り込み済みの動画は 1 回目もシーク後も
-  解析しないこと、行の無い動画は 1 回目だけ解析して保存すること、大きさか更新時刻が違えば解析して
-  保存を置き換えることを確かめる。
-
-## コピーの経路と差の上限
+## Probe data reuse
 
 ### Context
 
-映像がそのままコピーできる動画（`videoCanCopy` が真。中身が H.264 の MKV など）は、
-途中からでも再エンコードを避けられる。コピーは指定位置ではなく直前のキーフレームから
-始まるため、実際に始まった時刻をサーバーが知る必要がある
-（[research.md R-1](../../specs/018-live-transcode-seek/research.md#r-1-実際の開始位置をどこから知るか)）。
+The ffmpeg arguments for live transcoding depend on ffprobe facts: which video and audio streams
+to pick, whether they can be copied, how to handle dimensions, rotation and fps, and the two MOV
+inputs. For videos on a network drive, ffprobe takes a large share of the time to the first data.
 
 ### Decision
 
-`LiveTranscoder.Start` は、1 つの解析情報について次の順に試す。
+The scan's probe (ffprobe) saves the values that live transcoding needs, `domain.TranscodeProbe`,
+in the table `video_transcode_probes`. A row holds the JSON of the values, its version, and the
+size and modification time (nanoseconds) of the probed file. Live transcoding prepares the probe
+data in this order.
 
-1. 映像がコピーできて `Normalize`（直接再生からの切り替え）でなければ、映像をコピーする。
-   - 先頭から（`startMs = 0`）は今までの引数のままで、実際の開始位置は 0 である。
-   - 途中からは、入力側の `-noaccurate_seek -ss` に `-copyts -start_at_zero` と
-     `-movflags …+delay_moov` を足す。mp4 muxer は最初の fragment を切るまで `moov` を待ち、
-     各 track の edit list（`elst`）の先頭に、その track が始まる時刻を空の edit として書く。
-     `internal/media/fmp4.go` が出力の `moov` までを読み、最も早く始まる track の時刻を実際の
-     開始位置とし、その track を 0、他の track をその差だけ遅らせるよう `elst` を書き換えて
-     から送る。`moof`/`mdat` には触れない。
-   - 「指定位置 − 実際の開始位置」が `domain.CopySeekAllowance`（15 秒）を超えたら、この
-     プロセスを止めて 2 に進む。最初のキーフレームより前へのシークでは実際の開始位置が指定
-     位置より後になり、そのまま使う。
-2. コピーが最初のデータ（途中からなら `moov` まで）を出さずに終わったか、差が上限を超えたら、
-   同じ解析情報で映像をエンコードし、指定位置から始める。実際の開始位置は指定位置である。
-3. それでもデータを出さずに終わり、解析情報が保存値だったら、その場で ffprobe を実行して
-   1 からもう 1 度だけやり直す（[解析情報の再利用](#解析情報の再利用)）。
+1. The route (`internal/httpapi/transcode.go`) reads the saved value with
+   `LibraryStore.TranscodeProbe`, and `domain.TranscodeProbeUsable` decides whether to use it. It
+   is used only when its version equals the current `domain.TranscodeProbeVersion`, the JSON
+   parses, and the size and modification time match `Stat` of the file the transcode actually
+   opened. Even when another location has the same content, the comparison uses the opened one.
+2. The route puts the usable probe data, or nil, into `domain.LiveTranscodeRequest` and passes it
+   to `LiveTranscoder.Start` (`internal/media`). With probe data, media does not launch ffprobe.
+   Without it, media runs ffprobe on the spot.
+3. media returns from `Start` when FFmpeg produces its first data. A transcode started from the
+   saved value may end without data. For a video whose video stream is copied, this means the
+   fallback to encoding also failed ([Copy path and offset limit](#copy-path-and-offset-limit)).
+   media then runs ffprobe on the spot and retries once, within the same request.
+   - It does not retry after a failure of FFmpeg started from on-the-spot probe data, after request
+     cancellation, or after `transcodeStartupTimeout` (6 s) expires.
+   - The one deadline covers probing and the retry. After `Start` returns, the route does not apply
+     the same deadline again; only request cancellation stops it.
+4. When media probed on the spot, it returns the result in `LiveTranscode.Probed`. The route saves
+   it with `IngestStore.SaveTranscodeProbe`, together with the marks of the opened file.
+   - The save runs after the first data is read, alongside streaming, so waiting for the write does
+     not use the startup deadline.
+   - The save has its own deadline, independent of streaming (`transcodeProbeSaveTimeout`, 10 s),
+     and completes within it even if the request is canceled. The next transcode uses the saved
+     value.
+   - If the file marks after probing differ from those at open time, media uses the result for the
+     transcode but does not return it for saving. An ffprobe cut short ends with an error, so it is
+     not saved.
 
-期限（`transcodeStartupTimeout`、6 秒）は解析と切り替え全体で 1 つで、期限切れと取り消しでは
-切り替えない。`Start` は実際の開始位置を `LiveTranscode.StartMs` で返し、経路はそれを
-[報告の経路](#報告の経路)の台帳に記録する。
-
-音声は `Normalize` でなく `audioCanCopy` ならコピーし、そうでなければ AAC にエンコードする。
-映像をコピーして途中から始めるときは、エンコードする音声も `-noaccurate_seek` で映像と同じ
-キーフレームの時刻から始まる。映像をエンコードして途中から始めるときは、今までどおり音声も
-エンコードする。入力側の `-ss` は、エンコードする stream では指定位置より前を捨てるが、コピー
-する stream では demuxer が着いたキーフレームからの区間を残すため、音声をコピーすると音声だけが
-指定位置より前（キーフレームの疎な動画では十数秒前）から始まる。
-
-MOV の二入力は両方の入力に同じ `-ss` を付けたままで、音声も映像のキーフレームの時刻から
-始まる（[mov-live-transcoding.md](mov-live-transcoding.md)）。track 間の差は書き換えた
-`elst` に残るので、音ずれは起きない。
-
-### 差の上限を 15 秒にした理由
-
-x264/x265 の既定のキーフレーム間隔は 250 フレームで、30fps で約 8.3 秒、23.976fps で約
-10.4 秒になる。親 Issue が例に挙げる「中身が H.264 の MKV」はこの既定で作られたものが多く、
-10 秒では film の frame rate の動画が全部エンコードし直しに落ちる。カメラや配信向けの動画の
-間隔は 1〜10 秒で、15 秒はそれらを全部コピーで通す。キーフレームが場面の切り替わりにしか
-無い動画（数十秒〜分）は、戻り幅が利用者の選んだ位置と読めなくなるので、エンコードし直して
-指定位置から始める。切り替えの費用は FFmpeg の起動 1 回と、上限を超えた動画でのキーフレーム
-1 区間分の読み込みで、上限を超える動画にだけ掛かる
-（[research.md R-2](../../specs/018-live-transcode-seek/research.md#r-2-コピーで許すキーフレームとの差)）。
+The save is one upsert statement. When a scan and a transcode write at the same time, the later
+row wins. The table is an index; if it is lost, the next transcode or re-probe fills it. No startup
+job backfills existing videos. A scanned video without a row gets one on its first transcode.
 
 ### Trade-offs
 
-- コピーの最初のデータは、元動画のキーフレーム 1 区間分を読み終えてから出る（先頭からの
-  コピーと同じ）。上限を超える動画では、その区間を読んでからエンコードに切り替える。
-- 実際の開始位置は、音声が映像のキーフレームより少し前から始まる動画では音声の開始時刻に
-  なる。表示の時刻は `elst` の書き換えと同じ基準なので、映っている内容とずれない。
-- 実際の開始位置がプレイヤーに届くまでは指定位置を表示する（[報告の経路](#報告の経路)）。
+- Whether the saved value matches is judged by size and modification time only; content is not
+  compared. A file rewritten with the same size and modification time is transcoded with stale
+  probe data. If that transcode fails before the first data, the retry's probe replaces the saved
+  value.
+- media now waits for the first data, and the route only reads the output after that. The fallback
+  decision stays with the side that launches the process and reads its output, and httpapi needs no
+  knowledge of ffmpeg arguments.
+- media does not call the store. The route decides whether a saved value is usable and saves it,
+  so unit tests without ffmpeg need no SQLite.
 
 ### Alternatives
 
-- **`-copyts` の時刻のまま出す**: Chrome と Firefox は progressive 再生で最初の時刻を 0 に
-  寄せるので、プレイヤーが開始位置を知る手段にならない。
-- **FFmpeg の前にキーフレームの位置を調べる**: 要求ごとの外部プロセスが増え、解析情報の
-  再利用で取り除いた待ちが戻る。
-- **`moof` ごとの `tfdt` を書き換える**: 送るデータ全部を通す必要があり、`moov` 1 回で済む方を採る。
+- **media reads the store**: an adapter would depend on an adapter, against the dependency
+  direction (ARCHITECTURE.md).
+- **Save ffprobe's raw JSON**: interpretation at request time would depend on the ffprobe version
+  at save time, and each video would hold a string of tens of KB. The parsed value is saved with a
+  version instead.
+- **Add typed columns to `videos`**: rows grow with columns that list reads never use, and every
+  new field needs a migration.
 
 ### Validation
 
-- `internal/media/fmp4_test.go`: `elst` の読み取りと書き換え（track 間の差を残す、timescale、
-  壊れた `moov`）。ffmpeg を起動し、H.264 の MKV と MOV（二入力）を途中からコピーした出力の
-  最初の映像 packet が直前のキーフレームと同じで、時間軸が 0 から始まり、出力の時刻に実際の
-  開始位置を足すと映像も音声も元動画の時刻になることを確かめる。キーフレームの間隔が上限より
-  長い動画ではエンコードに切り替えて指定位置から始まる。
-- `internal/media/transcode_test.go`: 引数（途中からのコピー、先頭からのコピー、エンコードの
-  切り替え、直接再生からの切り替え）と、切り替えの順序（コピー → エンコード → その場の解析）。
+- `internal/media/transcode_test.go`: replaces `commandContext` and checks that ffprobe is not
+  launched when a saved value exists, that it is launched exactly once and its result returned when
+  none exists, that a failure with the saved value retries exactly once, and that deadline expiry
+  and cancellation neither retry nor return a result.
+- `internal/httpapi/transcode_test.go`: with the real store, checks that a scanned video is not
+  probed on the first request or after a seek, that a video without a row is probed only on the
+  first request and saved, and that a different size or modification time triggers a probe that
+  replaces the saved value.
 
-## 報告の経路
+## Copy path and offset limit
 
 ### Context
 
-コピーで途中から始めた変換は、指定位置ではなく直前のキーフレームから映る。プレイヤーが指定
-位置を現在時刻として表示すると、表示と保存する再生位置が映っている内容より最大で差の上限だけ
-進む。`<video src>` の再生は応答ヘッダーも本文の構造も JavaScript に見せないので、変換の応答
-そのものでは開始位置を伝えられない
-（[research.md R-4](../../specs/018-live-transcode-seek/research.md#r-4-実際の開始位置をプレイヤーへ伝える経路)）。
+A video whose video stream can be copied as is (`videoCanCopy` is true, such as an MKV containing
+H.264) avoids re-encoding even when starting mid-video. A copy starts from the preceding keyframe,
+not the requested position, so the server needs to know the time it actually started
+([research.md R-1](../../specs/018-live-transcode-seek/research.md#r-1-where-the-actual-start-position-comes-from)).
 
 ### Decision
 
-プレイヤーが要求ごとの識別子 `attempt` を変換の URL に付け、同じ `attempt` で別の経路
-`GET /api/videos/{id}/transcode-start` を呼ぶ
-（[contracts/transcode-start-api.md](../../specs/018-live-transcode-seek/contracts/transcode-start-api.md)）。
+`LiveTranscoder.Start` tries these steps for one set of probe data.
 
-- **台帳**（`internal/httpapi/transcode_start.go`）: 鍵は動画の識別子と `attempt` の組で、
-  別の動画の経路から同じ `attempt` を引けない。`attempt` 付きの変換の要求は、動画を引けて
-  `attempt` の形式を確かめた時点で台帳に載り、`Start` が最初のデータを持って戻り、本文を書き
-  始める前に `StartMs` を記録する。同じ `attempt` の後の記録は前の値を上書きする。記録の前に
-  要求が終われば（409・500・取り消し）失敗として印を付ける。行は変換の要求が終わってから
-  `transcodeStartRetention`（60 秒）残して消す。`attempt` の無い要求は台帳に載らない。
-- **報告の経路**: `transcodeVideo` と同じ `lookupServedVideo` で動画を引くので、ゲストが公開で
-  ない動画を指すと存在しない動画と同じ 404 になる（境界の扱いは「ゲストも」）。`attempt` が
-  まだ無ければ載るまで、載っていて未決なら決まるまで、`transcodeStartupTimeout`（6 秒）を上限に
-  待つ。ブラウザは動画の要求と報告の要求のどちらを先に送るとも限らないためである。決まれば
-  `{ "startMs": … }` を `Cache-Control: no-store` で返し、失敗したか上限を過ぎたら 404 を返す。
-  報告の要求が作っただけの行は、待ち手が居なくなれば消す。
-- **プレイヤー**（`web/src/player/liveOffset.ts`）: `liveSource` は `startMs > 0` のときだけ
-  `attempt`（16 バイトの乱数の 16 進。`crypto.randomUUID` は LAN の http では使えない）を作る。
-  仲立ちは source を設定した直後（player の `src` と、未 buffer シークの作り直しの両方）に
-  `getTranscodeStart` を呼び、届くまでは現在時刻に指定位置を返す。200 が届いたら offset を
-  `startMs` に置き換えて `vvOffsetChanged` で `VideoPlayer` に伝え、再生位置の保存も同じ値に
-  そろえる。404 か誤りなら指定位置のまま（報告の無い変換と同じ表示）にする。source を差し
-  替えたあとに届いた古い `attempt` の報告は捨てる。未 buffer シークの作り直しを待つ間に届いた
-  報告は offset だけ置き換え、`vvOffsetChanged` は呼ばない。保存する位置を選んだ位置のまま
-  保つためで、作り直しが buffer 内へのシークで取り消されたときに通知する。
+1. If the video can be copied and the request is not `Normalize` (a fallback from direct play),
+   copy the video.
+   - From the start (`startMs = 0`), the arguments are unchanged and the actual start position is 0.
+   - Mid-video, add `-copyts -start_at_zero` and `-movflags …+delay_moov` to the input-side
+     `-noaccurate_seek -ss`. The mp4 muxer holds `moov` until it cuts the first fragment, and
+     writes, at the head of each track's edit list (`elst`), the time that track starts as an empty
+     edit.
+   - `internal/media/fmp4.go` reads the output up to `moov`. It takes the start time of the
+     earliest track as the actual start position, rewrites `elst` so that track starts at 0 and the
+     others are delayed by their difference, and then sends it. It does not touch `moof`/`mdat`.
+   - If "requested position − actual start position" exceeds `domain.CopySeekAllowance` (15 s), it
+     stops this process and goes to step 2. A seek before the first keyframe gives an actual start
+     position after the requested one, and that is used as is.
+2. If the copy ends without its first data (up to `moov` when mid-video), or the offset exceeds the
+   limit, encode the video from the same probe data, starting at the requested position. The
+   actual start position is the requested position.
+3. If that also ends without data and the probe data was the saved value, run ffprobe on the spot
+   and retry once more from step 1 ([Probe data reuse](#probe-data-reuse)).
+
+One deadline (`transcodeStartupTimeout`, 6 s) covers probing and all fallbacks. Deadline expiry and
+cancellation do not fall back. `Start` returns the actual start position in
+`LiveTranscode.StartMs`, and the route records it in the ledger of the
+[report route](#report-route).
+
+Audio is copied when the request is not `Normalize` and `audioCanCopy` holds; otherwise it is
+encoded to AAC.
+
+- When the video is copied mid-video, encoded audio also starts, via `-noaccurate_seek`, at the
+  same keyframe time as the video.
+- When the video is encoded mid-video, audio is encoded too, as before.
+- The input-side `-ss` discards data before the requested position for encoded streams. For copied
+  streams, the demuxer keeps the segment from the keyframe it landed on. Copying audio would
+  therefore start only the audio before the requested position (more than ten seconds early in
+  videos with sparse keyframes).
+
+The two MOV inputs keep the same `-ss` on both inputs, and audio also starts at the video keyframe
+time ([mov-live-transcoding.md](mov-live-transcoding.md)). The offset between tracks remains in the
+rewritten `elst`, so audio and video stay in sync.
+
+### Why the offset limit is 15 seconds
+
+- The default keyframe interval of x264/x265 is 250 frames: about 8.3 s at 30 fps and about 10.4 s
+  at 23.976 fps. Many "MKV containing H.264" files, the parent Issue's example, use this default.
+  With 10 s, every video at the film frame rate would fall back to encoding.
+- Cameras and streaming-oriented videos have intervals of 1–10 s, and 15 s lets all of them copy.
+- In videos with keyframes only at scene changes (tens of seconds to minutes), the jump back no
+  longer reads as the position the user chose, so they are re-encoded and start at the requested
+  position.
+- The fallback costs one FFmpeg launch and reading one keyframe interval, and only videos over the
+  limit pay it
+  ([research.md R-2](../../specs/018-live-transcode-seek/research.md#r-2-keyframe-distance-allowed-for-copying)).
 
 ### Trade-offs
 
-- 台帳はプロセスのメモリにあり、サーバーを再起動すると消える。再起動のあとは変換の要求も
-  作り直されるので、新しい `attempt` で引き直される。
-- 報告が届くまで現在時刻は指定位置で止まる。台帳への記録は最初のデータより前なので、報告は
-  映像が動き出す前に届く。
-- 報告の要求は変換 1 回につき 1 往復増える。先頭から（`startMs = 0`）の変換では開始位置が
-  常に 0 なので要求しない。
+- The first data of a copy comes out after one keyframe interval of the source has been read (the
+  same as copying from the start). For videos over the limit, that interval is read before the
+  switch to encoding.
+- When audio starts slightly before the video keyframe, the actual start position is the audio
+  start time. The displayed time uses the same reference as the `elst` rewrite, so it matches what
+  is on screen.
+- Until the actual start position reaches the player, the player shows the requested position
+  ([report route](#report-route)).
 
 ### Alternatives
 
-- **`/api/events` の SSE で配る**: ゲストの再生でも要り、購読の有無と届く順序を再生画面が
-  扱うことになる。
-- **先に開始位置を返す経路が ffmpeg を起動し、動画の要求がそれに接続する**: プロセスの寿命が
-  2 つの要求にまたがり、接続されなかったプロセスの後始末が要る。
-- **MSE で `fetch` して応答ヘッダーを読む**: 配信の仕組みの作り直しで、親 Issue の対象外。
+- **Emit the `-copyts` timestamps as is**: Chrome and Firefox shift the first timestamp to 0 in
+  progressive playback, so the player cannot learn the start position this way.
+- **Look up keyframe positions before FFmpeg**: one more external process per request, which brings
+  back the wait that probe data reuse removed.
+- **Rewrite `tfdt` in every `moof`**: all sent data would have to pass through it. Rewriting `moov`
+  once is chosen instead.
 
 ### Validation
 
-- `internal/httpapi/transcode_start_test.go`: 変換のあとの報告、変換より先に届いた報告の待ち、
-  未決の間の待ち、失敗した変換は上限を待たずに 404、上限までに現れない `attempt` と別の動画の
-  経路は 404、形式の違う `attempt` は両方の経路で 400、後の値での上書き、保持時間のあとの消去。
-- `internal/httpapi/guest_test.go`・`openapi_routes_test.go`: ゲストは公開の動画の開始位置だけを
-  引け、非公開の動画は存在しない動画と同じ 404。境界の扱いが `openapi.yaml` の `security` と一致する。
-- `web/src/player/liveOffset.test.ts`: 報告が届くまで指定位置、届いたら実際の開始位置、404 なら
-  指定位置のまま、未 buffer シークの作り直しでも新しい `attempt` で合わせる、古い `attempt` の
-  報告を捨てる、作り直しを待つ間に届いた報告は選んだ位置の保存を上書きしない。
-- `web/e2e/playback.e2e.ts`: キーフレームが 0・8・16 秒だけの H.264 の MKV で 14 秒付近へ
-  シークすると、報告は 8 秒、表示と保存も 8 秒台になり、再読み込みすると同じ場面（同じ色）から
-  8 秒台の表示で再開する。
+- `internal/media/fmp4_test.go`: reading and rewriting `elst` (keeping the offset between tracks,
+  timescale, broken `moov`).
+  - It launches ffmpeg and copies an H.264 MKV and a MOV (two inputs) from mid-video. It checks
+    that the first video packet of the output equals the preceding keyframe, that the timeline
+    starts at 0, and that output time plus the actual start position gives the source time for
+    both video and audio.
+  - A video whose keyframe interval exceeds the limit switches to encoding and starts at the
+    requested position.
+- `internal/media/transcode_test.go`: the arguments (mid-video copy, copy from the start, fallback
+  to encoding, fallback from direct play) and the fallback order (copy → encode → on-the-spot
+  probe).
+
+## Report route
+
+### Context
+
+A transcode that copies from mid-video shows content from the preceding keyframe, not from the
+requested position. If the player showed the requested position as the current time, the display
+and the saved playback position would run ahead of what is on screen by up to the offset limit.
+Playback through `<video src>` exposes neither response headers nor body structure to JavaScript,
+so the transcode response itself cannot carry the start position
+([research.md R-4](../../specs/018-live-transcode-seek/research.md#r-4-how-the-actual-start-position-reaches-the-player)).
+
+### Decision
+
+The player adds a per-request identifier `attempt` to the transcode URL, and calls a separate
+route, `GET /api/videos/{id}/transcode-start`, with the same `attempt`
+([contracts/transcode-start-api.md](../../specs/018-live-transcode-seek/contracts/transcode-start-api.md)).
+
+- **Ledger** (`internal/httpapi/transcode_start.go`): the key is the pair of video ID and
+  `attempt`, so another video's route cannot look up the same `attempt`.
+  - A transcode request with `attempt` enters the ledger once the video is found and the `attempt`
+    format is validated. `StartMs` is recorded after `Start` returns with the first data and before
+    the body is written.
+  - A later record for the same `attempt` overwrites the earlier value. A request that ends before
+    recording (409, 500, cancellation) is marked as failed.
+  - An entry is deleted `transcodeStartRetention` (60 s) after the transcode request ends. Requests
+    without `attempt` do not enter the ledger.
+- **Report route**: it looks up the video with the same `lookupServedVideo` as `transcodeVideo`, so
+  a guest asking for a non-public video gets the same 404 as for a missing video (the boundary
+  treatment is "guests too").
+  - It waits up to `transcodeStartupTimeout` (6 s): until the `attempt` appears if it is absent,
+    and until it settles if it is pending. The browser may send the video request or the report
+    request first.
+  - Once settled, it returns `{ "startMs": … }` with `Cache-Control: no-store`. On failure or when
+    the limit passes, it returns 404.
+  - An entry created only by a report request is deleted when no waiter remains.
+- **Player** (`web/src/player/liveOffset.ts`): `liveSource` creates `attempt` only when
+  `startMs > 0` (16 random bytes in hex; `crypto.randomUUID` is unavailable over plain http on a
+  LAN).
+  - The broker calls `getTranscodeStart` right after setting the source (both the player's `src`
+    and the rebuild for an unbuffered seek). Until the report arrives, it returns the requested
+    position as the current time.
+  - On 200, it replaces the offset with `startMs`, tells `VideoPlayer` through `vvOffsetChanged`,
+    and aligns the saved playback position to the same value. On 404 or an error, it keeps the
+    requested position (the same display as a transcode without a report).
+  - It discards reports for an old `attempt` that arrive after the source was replaced.
+  - A report that arrives while waiting for an unbuffered-seek rebuild replaces only the offset and
+    does not call `vvOffsetChanged`. This keeps the saved position at the chosen position. It
+    notifies when the rebuild is canceled by a seek within the buffer.
+
+### Trade-offs
+
+- The ledger lives in process memory and is lost when the server restarts. After a restart the
+  transcode requests are also recreated, so a new `attempt` looks it up again.
+- The current time stays at the requested position until the report arrives. The ledger record is
+  written before the first data, so the report arrives before the video starts moving.
+- Each transcode adds one report round trip. A transcode from the start (`startMs = 0`) always
+  starts at 0, so it sends no report request.
+
+### Alternatives
+
+- **Deliver it over SSE on `/api/events`**: guest playback needs it too, and the video page would
+  have to handle subscription state and delivery order.
+- **A route that returns the start position first launches ffmpeg, and the video request attaches
+  to it**: the process lifetime would span two requests, and processes that never get attached
+  would need cleanup.
+- **Use MSE, `fetch`, and read the response headers**: a rebuild of the delivery mechanism, out of
+  scope for the parent Issue.
+
+### Validation
+
+- `internal/httpapi/transcode_start_test.go`: a report after the transcode, waiting for a report
+  that arrives before the transcode, waiting while pending, 404 for a failed transcode without
+  waiting for the limit, 404 for an `attempt` that does not appear by the limit and for another
+  video's route, 400 on both routes for a malformed `attempt`, overwriting with a later value, and
+  deletion after the retention time.
+- `internal/httpapi/guest_test.go`, `openapi_routes_test.go`: a guest can look up the start
+  position only for public videos, and a non-public video gives the same 404 as a missing one. The
+  boundary treatment matches `security` in `openapi.yaml`.
+- `web/src/player/liveOffset.test.ts`: the requested position until the report arrives, the actual
+  start position after it, the requested position kept on 404, alignment with a new `attempt` on an
+  unbuffered-seek rebuild, discarding reports for an old `attempt`, and a report that arrives while
+  waiting for a rebuild not overwriting the saved chosen position.
+- `web/e2e/playback.e2e.ts`: with an H.264 MKV whose keyframes are only at 0, 8 and 16 s, seeking
+  to about 14 s gives a report of 8 s, and the display and the saved position are in the 8 s
+  range. After a reload, playback resumes from the same scene (the same color) with a display in
+  the 8 s range.

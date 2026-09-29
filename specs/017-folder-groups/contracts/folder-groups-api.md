@@ -1,83 +1,102 @@
-# Contract: フォルダのまとめ方・再生画面のグループ・タグの応答
+# Contract: Folder grouping, the group on the video page, and the tag response
 
-正本は `api/openapi.yaml` で、この文書は足す経路と変わるスキーマだけを書く。フォルダの指し方
-（`rootId` と `path`）は既存の `FolderRootId`・`FolderPath` パラメータと同じ。
+`api/openapi.yaml` is the source of truth. This document lists only the added routes and the changed
+schemas. A folder is addressed (`rootId` and `path`) exactly as by the existing `FolderRootId` and
+`FolderPath` parameters.
 
-## 1. フォルダのまとめ方
+## 1. Folder grouping
 
 ```yaml
 FolderGrouping:
   required: [mode, grouped, taggable]
   properties:
-    mode: { type: string, enum: [auto, ungroup, groupDirect] }  # auto = 例外なし
-    grouped: { type: boolean }   # いまこのフォルダの直下がグループか
-    taggable: { type: boolean }  # グループで、登録フォルダそのものではない（§2）
+    mode: { type: string, enum: [auto, ungroup, groupDirect] }  # auto = no override
+    grouped: { type: boolean }   # whether the videos directly in this folder form a group now
+    taggable: { type: boolean }  # a group, and not the media folder itself (§2)
 ```
 
-- `FolderSummary` に `grouping: FolderGrouping` を足す。所有者の応答には必ず入り、ゲストでは省く（任意の欄）。
-  フォルダ画面のメニューはこれで出す項目を決め、ゲストには出さない。
-- この節と §2 の変更の経路は所有者だけ（既定の `security`）。
-- `PUT /api/folders/{rootId}/grouping?path=…`、本文 `{ "mode": "auto" | "ungroup" | "groupDirect" }`
-  - 200: 変更後の `FolderGrouping`。`auto` は例外を消す。同じ値の再設定も 200。
-  - 400: パスや `mode` の誤り。404: そのフォルダが無い（`getFolder` と同じ判定）。
-  - 例外の保存と索引の作り直しは1つの取引（[data-model.md §3](../data-model.md#3-作り直す時点)）。
-    後の要求が勝つ（Edge Case「同時操作」）。
+- Add `grouping: FolderGrouping` to `FolderSummary`. It is always present in the owner's response
+  and omitted for a guest (an optional field). The folder page menu uses it to choose its items and
+  is not shown to a guest.
+- The mutating routes in this section and §2 are owner-only (the default `security`).
+- `PUT /api/folders/{rootId}/grouping?path=…`, body `{ "mode": "auto" | "ungroup" | "groupDirect" }`
+  - 200: the updated `FolderGrouping`. `auto` removes the override. Setting the same value again
+    also returns 200.
+  - 400: an invalid path or `mode`. 404: the folder does not exist (same check as `getFolder`).
+  - Saving the override and rebuilding the index run in one transaction
+    ([data-model.md §3](../data-model.md#3-rebuild-points)). The later request wins (Edge case
+    "Concurrent operations").
 
-## 2. グループをタグに変える
+## 2. Turning a group into a tag
 
-`POST /api/folders/{rootId}/grouping/tag?path=…`（本文なし）
+`POST /api/folders/{rootId}/grouping/tag?path=…` (no body)
 
-- 200: `{ "tag": TagRef, "created": boolean, "grouping": FolderGrouping }`。`created` は新しく作ったとき true。
-- 400 `invalid_request`: フォルダ名がタグ名の規則（`NormalizeTagName`）に合わない。タグも例外も作らない。
-- 404: フォルダが無い。409 `conflict`: そのフォルダが今グループでない、または登録フォルダそのもの
-  （登録フォルダの名前はフォルダ由来のタグの照合に入らないため、[data-model.md §4](../data-model.md#4-フォルダ由来のタグ)）。
-- `FolderGrouping` に `taggable: boolean`（必須）を足し、画面はこれが true のときだけ「グループをタグに変える」を出す。
-- タグの引き当て・作成、`ungroup` の保存、作り直しは1つの取引（[data-model.md §4](../data-model.md#4-フォルダ由来のタグ)）。
+| Status | Meaning |
+| --- | --- |
+| 200 | `{ "tag": TagRef, "created": boolean, "grouping": FolderGrouping }`. `created` is true when a new tag was created. |
+| 400 `invalid_request` | The folder name violates the tag name rules (`NormalizeTagName`). Neither a tag nor an override is created. |
+| 404 | The folder does not exist. |
+| 409 `conflict` | The folder is not a group now, or it is the media folder itself. The media folder's own name is not matched as a folder-derived tag ([data-model.md §4](../data-model.md#4-folder-derived-tags)). |
 
-## 3. 動画と関連動画のグループ
+- Add `taggable: boolean` (required) to `FolderGrouping`. The UI shows "Turn the group into a tag"
+  only when it is true.
+- Resolving or creating the tag, saving `ungroup`, and the rebuild run in one transaction
+  ([data-model.md §4](../data-model.md#4-folder-derived-tags)).
+
+## 3. The group of a video and of its related videos
 
 ```yaml
-VideoGroupRef:          # GET /api/videos/{id} の Video.group（メンバーのときだけ）
+VideoGroupRef:          # Video.group in GET /api/videos/{id} (members only)
   required: [folder, name, position, count]
   properties:
     folder: { $ref: VideoFolder }
     name: { type: string }
-    position: { type: integer }   # 1 始まり
+    position: { type: integer }   # 1-based
     count: { type: integer }
 
-RelatedGroup:           # RelatedVideos.group（メンバーのときだけ）
+RelatedGroup:           # RelatedVideos.group (members only)
   required: [folder, name, items]
   properties:
     folder: { $ref: VideoFolder }
     name: { type: string }
-    items: { type: array, items: { $ref: Video } }   # 全メンバー、並びの順、今の動画を含む
+    items: { type: array, items: { $ref: Video } }   # all members, in order, including the current video
 ```
 
-- `Video.group` は `GET /api/videos/{id}` の応答にだけ入る（`location` と同じ扱い）。一覧の項目には入らない。
-- ゲストでは、`position`・`count`・`group.items`・前後を公開のメンバーだけで作る。公開のメンバーが1本だけなら
-  `group` を省き、グループに属さない動画と同じ応答にする（[data-model.md §7](../data-model.md#7-見る人ごとの見え方)）。
-- メンバーの `GET /api/videos/{id}/related`:
-  - `group` を入れる。`items` の上限 20 はグループには掛けない（Edge Case「大きなグループ」）。
-  - `nextId`・`prevId` はグループの中の並びの次と前。最後のメンバーに `nextId`、最初のメンバーに `prevId` は無い。
-  - `items`（関連動画）は、同じグループのメンバーを `domain.OrderRelated` の入力（同じフォルダの動画と
-    追加日時の近い動画）から**先に**除いてから今の並べ方で並べたもの。上限 20 件はその後に掛けるので、
-    20 本を超えるグループでも関連動画が残る。`VideosAddedNear` に渡す件数も、除く本数を見込んで増やす。
-- グループに属さない動画の応答は今と同じ（要件 27 の後半・受け入れ条件 17）。
+- `Video.group` appears only in the `GET /api/videos/{id}` response (like `location`). List items do
+  not carry it.
+- For a guest, `position`, `count`, `group.items` and the previous/next videos are built from the
+  public members only. When only one member is public, `group` is omitted, and the response equals
+  that of a video outside any group ([data-model.md §7](../data-model.md#7-visibility-per-viewer)).
+- `GET /api/videos/{id}/related` for a member:
+  - It includes `group`. The `items` limit of 20 does not apply to the group (Edge case "Large
+    group").
+  - `nextId` and `prevId` are the next and previous videos in the group order. The last member has
+    no `nextId`, and the first member has no `prevId`.
+  - `items` (related videos) are ordered by the current ordering after members of the same group are
+    removed **first** from the `domain.OrderRelated` input (videos in the same folder and videos
+    with a close added time). The limit of 20 applies afterwards, so a group of more than 20 videos
+    still leaves related videos. The count passed to `VideosAddedNear` also grows by the number of
+    removed videos.
+- The response for a video outside any group is unchanged (second half of Requirement 27,
+  Acceptance criterion 17).
 
-## 4. タグの応答の変更
+## 4. Changes to the tag response
 
 ```yaml
-VideoTag:               # Video.tags と LibraryGroup.tags の要素（TagRef を置き換える）
+VideoTag:               # elements of Video.tags and LibraryGroup.tags (replaces TagRef)
   required: [id, name, manual, fromFolder]
   properties:
     id: { type: integer, format: int64 }
-    name: { type: string }        # 元の名前
-    manual: { type: boolean }     # 手で付けた分がある
-    fromFolder: { type: boolean } # 祖先フォルダの名前から付いている
+    name: { type: string }        # the primary name
+    manual: { type: boolean }     # attached by hand
+    fromFolder: { type: boolean } # attached from an ancestor folder name
 ```
 
-- ゲストの `Video.tags`・`LibraryGroup.tags` は今のまま空の配列で、フォルダ由来のタグも入れない。
-- `VideoTagsSummaryItem` に `manualCount`（必須、手で付けた本数）を足す。`count` はどちらかの出所で付いている本数。
-- `Tag.videoCount`、`tag` での絞り込み、検索欄のタグ名の照合は、フォルダ由来の分を含む
-  （[data-model.md §4](../data-model.md#4-フォルダ由来のタグ)）。
-- `POST /api/video-tags` の `remove` は手で付けた分だけを外す。応答（`tag`・`applied`）は変えない。
+- For a guest, `Video.tags` and `LibraryGroup.tags` stay empty arrays as today, and folder-derived
+  tags are not included either.
+- Add `manualCount` (required, the number of videos with the tag attached by hand) to
+  `VideoTagsSummaryItem`. `count` is the number of videos with the tag from either source.
+- `Tag.videoCount`, filtering by `tag`, and tag name matching in the search box include
+  folder-derived tags ([data-model.md §4](../data-model.md#4-folder-derived-tags)).
+- `remove` in `POST /api/video-tags` removes only tags attached by hand. The response (`tag`,
+  `applied`) does not change.
