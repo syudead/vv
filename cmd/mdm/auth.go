@@ -43,9 +43,11 @@ func (a httpAuth) State(ctx context.Context, token string) (httpapi.AuthState, e
 	return httpapi.AuthState(state), err
 }
 
-// newHTTPAuth は認証を組み立て、HTTP の境界に渡す形にする。
-func newHTTPAuth(authStore *store.AuthStore) httpapi.Authenticator {
-	return httpAuth{auth: app.NewAuth(app.AuthOptions{Store: authStore, Hasher: passwordHasher{}})}
+// newHTTPAuth は認証を組み立て、HTTP の境界に渡す形にする。API トークンの管理は
+// *app.Auth がそのまま httpapi.APITokens を満たすので、同じ値を渡す。
+func newHTTPAuth(authStore *store.AuthStore) (httpapi.Authenticator, httpapi.APITokens) {
+	auth := app.NewAuth(app.AuthOptions{Store: authStore, Hasher: passwordHasher{}})
+	return httpAuth{auth: auth}, auth
 }
 
 // prepareAuth は起動時に期限切れのセッションを消し、アカウントが未設定なら初回設定を

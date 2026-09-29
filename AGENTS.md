@@ -32,8 +32,9 @@ file into a handbook.
   and `specs/` changed, and `task check-docs` when any path inside them
   changed (both for a mixed change). Fix formatting failures with `task fmt`.
   Focused tests alone do not catch formatting or lint drift.
-- Do not hand-edit generated files (`internal/httpapi/gen/`, `web/src/api/gen/`);
-  change `api/openapi.yaml` and run `task generate`.
+- Do not hand-edit generated files (`internal/httpapi/gen/`,
+  `internal/httpapi/extgen/`, `web/src/api/gen/`); change `api/openapi.yaml` or
+  `api/external-v1.yaml` and run `task generate`.
 - Add links to new design documents from `docs/design-docs/index.md`.
 - Give every pushed working branch a pull request as its review target.
 - 依存更新（Renovate）の運用は

@@ -143,7 +143,7 @@ func TestScanOfUnreadableMediaFolderReturnsCodeAndPath(t *testing.T) {
 		},
 		Logger: logger,
 	})
-	if _, err := scans.StartScan(ctx); err != nil {
+	if _, _, err := scans.StartScan(ctx); err != nil {
 		t.Fatal(err)
 	}
 	scans.Wait()

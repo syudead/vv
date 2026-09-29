@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { openVideoFile, type Video } from "../api/client";
 import { errorText, formatDate, t, type UiText } from "../i18n";
+import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
 import IconButton from "../ui/IconButton";
@@ -49,30 +50,6 @@ export function useOpenFile(videoId: number): {
   return { open, failure };
 }
 
-/**
- * copyWithSelection は見えない入力欄に文字を置いて選び、コピーの命令で写す。
- * 選ぶと入力欄にフォーカスが移るので、終わったら元の要素（「パスをコピー」）へ戻す。
- */
-function copyWithSelection(text: string): boolean {
-  const previous = document.activeElement;
-  const field = document.createElement("textarea");
-  field.value = text;
-  field.setAttribute("readonly", "");
-  field.style.position = "fixed";
-  field.style.opacity = "0";
-  document.body.appendChild(field);
-  field.select();
-  try {
-    // 代わりの無い古い API だが、安全でない接続ではこれしか使えない。
-    return document.execCommand("copy");
-  } catch {
-    return false;
-  } finally {
-    field.remove();
-    if (previous instanceof HTMLElement && previous.isConnected) previous.focus();
-  }
-}
-
 function Fact({
   icon: Icon,
   label,
@@ -109,17 +86,10 @@ export default function VideoFacts({ video }: { video: Video }) {
 
   const copyPath = () => {
     if (location === undefined) return;
-    const path = location.path;
-    const done = () => toast(t.player.facts.pathCopied);
-    const fallback = () =>
-      copyWithSelection(path) ? done() : toast(t.player.facts.copyFailed);
-    // navigator.clipboard は安全な接続（HTTPS・localhost）でしか使えない。LAN のアドレスで
-    // 開いたときは、選んだ文字をコピーする古い方法に切り替える。
-    if (navigator.clipboard === undefined) {
-      fallback();
-      return;
-    }
-    void navigator.clipboard.writeText(path).then(done, fallback);
+    copyText(location.path, {
+      onCopied: () => toast(t.player.facts.pathCopied),
+      onFailed: () => toast(t.player.facts.copyFailed),
+    });
   };
 
   return (

@@ -68,11 +68,14 @@ describe("SettingsPage", () => {
   beforeEach(() => {
     // 「動画の変換」区画の読み取りは TranscodingSection.test.tsx が確かめる。ここでは
     // メディアフォルダの要求だけを fetchMock に通す。
-    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
-      String(input) === "/api/settings/transcoding"
-        ? Promise.resolve(json(transcodingSettings))
-        : fetchMock(input, init),
-    );
+    // 「API tokens」区画は APITokensSection.test.tsx が確かめる。ここでは空の一覧を返す。
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/settings/transcoding")
+        return Promise.resolve(json(transcodingSettings));
+      if (String(input) === "/api/api-tokens")
+        return Promise.resolve(json({ items: [] }));
+      return fetchMock(input, init);
+    });
     window.matchMedia = vi.fn().mockReturnValue({
       matches: false,
       addEventListener: vi.fn(),
@@ -97,7 +100,11 @@ describe("SettingsPage", () => {
     expect(
       await screen.findByRole("heading", { level: 2, name: "Video conversion" }),
     ).toBeDefined();
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(
+      within(screen.getByRole("region", { name: "Media folders" })).queryByRole(
+        "textbox",
+      ),
+    ).toBeNull();
     expect(screen.queryByRole("button", { name: /保存/ })).toBeNull();
     expect(
       screen

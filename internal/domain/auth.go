@@ -21,6 +21,9 @@ var (
 	ErrInvalidCredentials = errors.New("username or password is incorrect")
 	// ErrLoginThrottled はログインの試行が制限されていることを表す。
 	ErrLoginThrottled = errors.New("too many login attempts")
+	// ErrSessionNotValid は、操作を求めたセッションがその時点で有効でないことを表す。
+	// 境界で確かめた後に、ログアウトや資格情報の変更で無効になった場合を含む。
+	ErrSessionNotValid = errors.New("session is no longer valid")
 	// ErrInvalidUsername はユーザー名が ValidateUsername の規則を外れることを表す。
 	ErrInvalidUsername = errors.New("invalid username")
 	// ErrUsernameLength は ErrInvalidUsername のうち、長さ（1〜MaxUsernameLength

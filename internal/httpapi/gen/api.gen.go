@@ -178,41 +178,50 @@ func (e ErrorCode) Valid() bool {
 
 // Defines values for ErrorReason.
 const (
-	ErrorReasonCrossOrigin              ErrorReason = "cross_origin"
-	ErrorReasonDirectoryNotFound        ErrorReason = "directory_not_found"
-	ErrorReasonEncoderUnavailable       ErrorReason = "encoder_unavailable"
-	ErrorReasonFileUnavailable          ErrorReason = "file_unavailable"
-	ErrorReasonFolderNotFound           ErrorReason = "folder_not_found"
-	ErrorReasonFolderNotGroup           ErrorReason = "folder_not_group"
-	ErrorReasonGuestFilterNotAllowed    ErrorReason = "guest_filter_not_allowed"
-	ErrorReasonInvalidCursor            ErrorReason = "invalid_cursor"
-	ErrorReasonInvalidFolderPath        ErrorReason = "invalid_folder_path"
-	ErrorReasonMediaFoldersChanged      ErrorReason = "media_folders_changed"
-	ErrorReasonMergeSameTag             ErrorReason = "merge_same_tag"
-	ErrorReasonNameIsSynonym            ErrorReason = "name_is_synonym"
-	ErrorReasonNameIsTag                ErrorReason = "name_is_tag"
-	ErrorReasonNoScan                   ErrorReason = "no_scan"
-	ErrorReasonNotFolderGroup           ErrorReason = "not_folder_group"
-	ErrorReasonOpenNotLocal             ErrorReason = "open_not_local"
-	ErrorReasonPasswordLength           ErrorReason = "password_length"
-	ErrorReasonProbeInfoMissing         ErrorReason = "probe_info_missing"
-	ErrorReasonRelativeDirectoryPath    ErrorReason = "relative_directory_path"
-	ErrorReasonRootGroupNotTaggable     ErrorReason = "root_group_not_taggable"
-	ErrorReasonSearchTooLong            ErrorReason = "search_too_long"
-	ErrorReasonSeekPreviewGenerating    ErrorReason = "seek_preview_generating"
-	ErrorReasonTagNameControlCharacters ErrorReason = "tag_name_control_characters"
-	ErrorReasonTagNameEmpty             ErrorReason = "tag_name_empty"
-	ErrorReasonTagNameTooLong           ErrorReason = "tag_name_too_long"
-	ErrorReasonTooManyTagFilters        ErrorReason = "too_many_tag_filters"
-	ErrorReasonTooManyVideos            ErrorReason = "too_many_videos"
-	ErrorReasonTranscodeUnavailable     ErrorReason = "transcode_unavailable"
-	ErrorReasonUsernameLength           ErrorReason = "username_length"
-	ErrorReasonVideoNotFound            ErrorReason = "video_not_found"
+	ErrorReasonApiTokenNameControlCharacters ErrorReason = "api_token_name_control_characters"
+	ErrorReasonApiTokenNameEmpty             ErrorReason = "api_token_name_empty"
+	ErrorReasonApiTokenNameTooLong           ErrorReason = "api_token_name_too_long"
+	ErrorReasonCrossOrigin                   ErrorReason = "cross_origin"
+	ErrorReasonDirectoryNotFound             ErrorReason = "directory_not_found"
+	ErrorReasonEncoderUnavailable            ErrorReason = "encoder_unavailable"
+	ErrorReasonFileUnavailable               ErrorReason = "file_unavailable"
+	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
+	ErrorReasonFolderNotGroup                ErrorReason = "folder_not_group"
+	ErrorReasonGuestFilterNotAllowed         ErrorReason = "guest_filter_not_allowed"
+	ErrorReasonInvalidCursor                 ErrorReason = "invalid_cursor"
+	ErrorReasonInvalidFolderPath             ErrorReason = "invalid_folder_path"
+	ErrorReasonMediaFoldersChanged           ErrorReason = "media_folders_changed"
+	ErrorReasonMergeSameTag                  ErrorReason = "merge_same_tag"
+	ErrorReasonNameIsSynonym                 ErrorReason = "name_is_synonym"
+	ErrorReasonNameIsTag                     ErrorReason = "name_is_tag"
+	ErrorReasonNoScan                        ErrorReason = "no_scan"
+	ErrorReasonNotFolderGroup                ErrorReason = "not_folder_group"
+	ErrorReasonOpenNotLocal                  ErrorReason = "open_not_local"
+	ErrorReasonPasswordLength                ErrorReason = "password_length"
+	ErrorReasonProbeInfoMissing              ErrorReason = "probe_info_missing"
+	ErrorReasonRelativeDirectoryPath         ErrorReason = "relative_directory_path"
+	ErrorReasonRootGroupNotTaggable          ErrorReason = "root_group_not_taggable"
+	ErrorReasonSearchTooLong                 ErrorReason = "search_too_long"
+	ErrorReasonSeekPreviewGenerating         ErrorReason = "seek_preview_generating"
+	ErrorReasonTagNameControlCharacters      ErrorReason = "tag_name_control_characters"
+	ErrorReasonTagNameEmpty                  ErrorReason = "tag_name_empty"
+	ErrorReasonTagNameTooLong                ErrorReason = "tag_name_too_long"
+	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
+	ErrorReasonTooManyVideos                 ErrorReason = "too_many_videos"
+	ErrorReasonTranscodeUnavailable          ErrorReason = "transcode_unavailable"
+	ErrorReasonUsernameLength                ErrorReason = "username_length"
+	ErrorReasonVideoNotFound                 ErrorReason = "video_not_found"
 )
 
 // Valid indicates whether the value is a known member of the ErrorReason enum.
 func (e ErrorReason) Valid() bool {
 	switch e {
+	case ErrorReasonApiTokenNameControlCharacters:
+		return true
+	case ErrorReasonApiTokenNameEmpty:
+		return true
+	case ErrorReasonApiTokenNameTooLong:
+		return true
 	case ErrorReasonCrossOrigin:
 		return true
 	case ErrorReasonDirectoryNotFound:
@@ -815,6 +824,22 @@ func (e WatchFilter) Valid() bool {
 	}
 }
 
+// APIToken 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。
+type APIToken struct {
+	CreatedAt time.Time `json:"createdAt"`
+	Id        int64     `json:"id"`
+
+	// LastUsedAt 最後に使った時刻。未使用なら null。1 分より細かくは更新しない
+	LastUsedAt *time.Time `json:"lastUsedAt"`
+	Name       string     `json:"name"`
+}
+
+// APITokenList defines model for APITokenList.
+type APITokenList struct {
+	// Items 作成日時の降順
+	Items []APIToken `json:"items"`
+}
+
 // AddTagSynonymRequest defines model for AddTagSynonymRequest.
 type AddTagSynonymRequest struct {
 	// MergeTagId 統合を承諾したタグのid（contracts/tags-api.md §3）
@@ -840,6 +865,12 @@ type AuthSession struct {
 // AuthSessionState owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
 type AuthSessionState string
 
+// CreateAPITokenRequest defines model for CreateAPITokenRequest.
+type CreateAPITokenRequest struct {
+	// Name 用途の名前。前後の空白を除いて 1〜100 文字で、制御文字を含まない。重複してよい
+	Name string `json:"name"`
+}
+
 // CreateMediaFolderRequest defines model for CreateMediaFolderRequest.
 type CreateMediaFolderRequest struct {
 	Path string `json:"path"`
@@ -848,6 +879,15 @@ type CreateMediaFolderRequest struct {
 // CreateTagRequest defines model for CreateTagRequest.
 type CreateTagRequest struct {
 	Name string `json:"name"`
+}
+
+// CreatedAPIToken defines model for CreatedAPIToken.
+type CreatedAPIToken struct {
+	// Secret トークンの平文（`vvt_` で始まる 47 文字）。この応答にだけ現れ、再び取り出せない
+	Secret string `json:"secret"`
+
+	// Token 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。
+	Token APIToken `json:"token"`
 }
 
 // DirectoryEntry defines model for DirectoryEntry.
@@ -1692,6 +1732,9 @@ type VideoVisibilityResponse struct {
 // watched = 視聴済み
 type WatchFilter string
 
+// APITokenId defines model for APITokenId.
+type APITokenId = int64
+
 // FolderPath defines model for FolderPath.
 type FolderPath = string
 
@@ -1938,6 +1981,9 @@ type TranscodeVideoParams struct {
 	Attempt *string `form:"attempt,omitempty" json:"attempt,omitempty"`
 }
 
+// CreateApiTokenJSONRequestBody defines body for CreateApiToken for application/json ContentType.
+type CreateApiTokenJSONRequestBody = CreateAPITokenRequest
+
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
 
@@ -1985,6 +2031,15 @@ type PutVideoProgressJSONRequestBody = ProgressUpdate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListApiTokens 発行した API トークンを返す
+	// (GET /api/api-tokens)
+	ListApiTokens(w http.ResponseWriter, r *http.Request)
+	// CreateApiToken API トークンを 1 件発行する
+	// (POST /api/api-tokens)
+	CreateApiToken(w http.ResponseWriter, r *http.Request)
+	// DeleteApiToken API トークンを 1 件失効させる
+	// (DELETE /api/api-tokens/{id})
+	DeleteApiToken(w http.ResponseWriter, r *http.Request, id APITokenId)
 	// Login ユーザー名とパスワードでログインする
 	// (POST /api/auth/login)
 	Login(w http.ResponseWriter, r *http.Request)
@@ -2136,6 +2191,60 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListApiTokens operation middleware
+func (siw *ServerInterfaceWrapper) ListApiTokens(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListApiTokens(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateApiToken operation middleware
+func (siw *ServerInterfaceWrapper) CreateApiToken(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateApiToken(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteApiToken operation middleware
+func (siw *ServerInterfaceWrapper) DeleteApiToken(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id APITokenId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteApiToken(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // Login operation middleware
 func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
@@ -3912,6 +4021,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/media-folders/{id}", wrapper.UpdateMediaFolder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/transcoding", wrapper.GetTranscodingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/api-tokens/{id}", wrapper.DeleteApiToken)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags", wrapper.CreateTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}", wrapper.DeleteTag)

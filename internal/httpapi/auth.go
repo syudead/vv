@@ -78,12 +78,17 @@ type Authenticator interface {
 
 // access は要求の扱いである（contracts/auth-api.md §1）。ゼロ値は「所有者だけ」で、
 // 分類に挙がらない要求はここに倒れる。
+//
+// accessBearer は外部連携 API（/api/v1/…）と MCP（/mcp）の扱いで、Cookie を読まず
+// Authorization: Bearer の API トークンだけで所有者を決める（specs/026-external-api/
+// research.md R-3）。それ以外の扱いでは Authorization を読まない。
 type access int
 
 const (
 	accessOwner access = iota
 	accessGuest
 	accessPublic
+	accessBearer
 )
 
 func (a access) String() string {
@@ -92,9 +97,24 @@ func (a access) String() string {
 		return "public"
 	case accessGuest:
 		return "guest"
+	case accessBearer:
+		return "bearer"
 	default:
 		return "owner"
 	}
+}
+
+// externalAPIBase は外部連携 API の基底の経路である。正本は api/external-v1.yaml の
+// servers で、一致は openapi_routes_test.go が確かめる。
+const externalAPIBase = "/api/v1"
+
+// mcpPath は MCP の経路である（親 Issue 要件 9）。
+const mcpPath = "/mcp"
+
+// bearerPath は path.Clean した経路が Bearer の扱いかを返す。/api/v1 の下の未定義の経路も
+// Bearer の扱いにし、認証の後に JSON の 404 を返す。
+func bearerPath(cleaned string) bool {
+	return cleaned == externalAPIBase || strings.HasPrefix(cleaned, externalAPIBase+"/") || cleaned == mcpPath
 }
 
 // accessRoutes は「誰でも」と「ゲストも」の API 経路である。ここに無い /api/* は
@@ -141,9 +161,15 @@ var accessMux = func() *http.ServeMux {
 // 復号済みの経路の段と食い違う要求は、判定した経路と実際に動く操作がずれ得るので、
 // 「所有者だけ」に倒す（例: /api/videos/x%2F..%2F..%2Fa は復号すると /a だが、
 // ServeMux は GET /api/videos/{id} に振り分ける）。
+//
+// Bearer の扱いは、エスケープ済みの経路と復号済みの経路の段が一致するときだけ選ぶ。
+// 食い違う要求は今までの規則のまま、/api/ 以下なら「所有者だけ」に倒す。
 func classifyRequest(r *http.Request) (access, bool) {
 	cleaned := path.Clean("/" + r.URL.Path)
 	segmentsAgree := escapedSegmentsMatch(r.URL, cleaned)
+	if segmentsAgree && bearerPath(cleaned) {
+		return accessBearer, cleaned != mcpPath
+	}
 	// Clean は末尾の / を落とすので、/api/ そのものは /api になる。
 	if cleaned != "/api" && !strings.HasPrefix(cleaned, "/api/") {
 		if !segmentsAgree && escapedUnderAPI(r.URL) {
@@ -242,6 +268,10 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 				w.Header().Set(audienceHeader, audience.String())
 			}
 		}
+		if class == accessBearer {
+			s.bearerBoundary(w, r, next, setAudience)
+			return
+		}
 
 		if s.auth == nil {
 			setAudience(domain.AudienceGuest)
@@ -334,6 +364,96 @@ func (s *server) accountConfigured(ctx context.Context) (bool, error) {
 		return false, err
 	}
 	return state != AuthStateSetupRequired, nil
+}
+
+// bearerBoundary は Bearer の扱いの要求を、API トークンで所有者と確かめてから通す
+// （specs/026-external-api/research.md R-3・R-9）。Cookie は読まない。トークンが無い・
+// 形式が違う・無効・失効済みなら、原因を区別せずに 401 と WWW-Authenticate: Bearer を返す。
+//
+// 要求はトークンの id ごとに台帳へ載せ、画面での失効（DeleteApiToken）で打ち切る。
+// id は確かめるまで分からないので、確かめて id を知り、台帳に載せ、もう一度確かめる。
+// 1 回目と台帳に載せる間に失効したトークンは 2 回目で無効になり、2 回目より後の失効は
+// 台帳の打ち切りが届く。
+func (s *server) bearerBoundary(
+	w http.ResponseWriter, r *http.Request, next http.Handler, setAudience func(domain.Audience),
+) {
+	setAudience(domain.AudienceGuest)
+	if s.apiTokens == nil {
+		s.internalError(w, "Cannot verify the API token.", errors.New("API tokens are not configured"))
+		return
+	}
+	secret, ok := bearerSecret(r)
+	if !ok {
+		s.bearerUnauthenticated(w)
+		return
+	}
+	token, valid, err := s.apiTokens.CheckAPIToken(r.Context(), secret)
+	if err != nil {
+		s.internalError(w, "Could not check the API token.", err)
+		return
+	}
+	if !valid {
+		s.bearerUnauthenticated(w)
+		return
+	}
+
+	check := func(ctx context.Context) (bool, error) {
+		again, valid, err := s.apiTokens.CheckAPIToken(ctx, secret)
+		return valid && again.ID == token.ID, err
+	}
+	ctx, tracked, release := s.sessions.openWith(r.Context(), w, apiTokenLedgerKey(token.ID), check)
+	defer release()
+	valid, err = check(ctx)
+	if tracked.revoked() {
+		valid, err = false, nil
+	}
+	if err != nil {
+		s.internalError(w, "Could not check the API token.", err)
+		return
+	}
+	if valid {
+		// トークンに期限は無い。打ち切りは失効と確かめ直しだけで起きる。
+		ctx, valid = s.sessions.serve(ctx, tracked, time.Time{})
+	}
+	if !valid {
+		s.bearerUnauthenticated(w)
+		return
+	}
+
+	// 最終使用日時は 60 秒に 1 回だけ書く。書けなくても要求は続ける（research.md R-9）。
+	if err := s.apiTokens.RecordAPITokenUse(ctx, token.ID); err != nil {
+		s.logger.Warn("could not record the API token use", slog.Any("error", err))
+	}
+	setAudience(domain.AudienceOwner)
+	next.ServeHTTP(w, r.WithContext(withAudience(ctx, domain.AudienceOwner)))
+}
+
+// bearerSecret は Authorization: Bearer <token> の token を返す。ヘッダーが無い・複数ある・
+// 方式が Bearer でない・値が空か空白を含むときは false を返す。方式の名前は大文字小文字を
+// 区別しない（RFC 9110 §11.1）。
+func bearerSecret(r *http.Request) (string, bool) {
+	values := r.Header.Values("Authorization")
+	if len(values) != 1 {
+		return "", false
+	}
+	scheme, secret, found := strings.Cut(values[0], " ")
+	if !found || !strings.EqualFold(scheme, "Bearer") || secret == "" ||
+		strings.ContainsAny(secret, " \t") {
+		return "", false
+	}
+	return secret, true
+}
+
+// apiTokenLedgerKey は API トークンの要求を台帳に載せる鍵である。セッション ID は
+// base64url なので ":" を含まず、セッションの鍵とぶつからない。
+func apiTokenLedgerKey(id int64) string {
+	return "api-token:" + strconv.FormatInt(id, 10)
+}
+
+// bearerUnauthenticated は Bearer の扱いの未認証の応答である（contracts/external-api.md §1）。
+func (s *server) bearerUnauthenticated(w http.ResponseWriter) {
+	w.Header().Set("WWW-Authenticate", "Bearer")
+	s.writeError(w, http.StatusUnauthorized, gen.ErrorCodeUnauthenticated, "A valid API token is required.")
 }
 
 // unauthenticated は未認証の応答である。原因は区別せず、WWW-Authenticate は付けない。
@@ -543,7 +663,9 @@ type sessionLedger struct {
 }
 
 type trackedRequest struct {
-	token      string
+	token string
+	// check は確かめ直しに使う。nil なら台帳の check でセッション token を確かめる。
+	check      func(ctx context.Context) (bool, error)
 	cancel     context.CancelFunc
 	controller *http.ResponseController
 
@@ -615,8 +737,18 @@ func newSessionLedger(recheck time.Duration, logger *slog.Logger) *sessionLedger
 func (l *sessionLedger) open(
 	ctx context.Context, w http.ResponseWriter, token string,
 ) (context.Context, *trackedRequest, func()) {
+	return l.openWith(ctx, w, token, nil)
+}
+
+// openWith は open と同じで、鍵 key で台帳に載せ、確かめ直しに check を使う。API トークンの
+// 要求は、トークンの id から作った鍵とトークンを確かめる check で載せる。check が nil なら
+// 台帳の check で key をセッションとして確かめる。
+func (l *sessionLedger) openWith(
+	ctx context.Context, w http.ResponseWriter, key string, check func(ctx context.Context) (bool, error),
+) (context.Context, *trackedRequest, func()) {
+	token := key
 	ctx, cancel := context.WithCancel(ctx)
-	req := &trackedRequest{token: token, cancel: cancel, controller: http.NewResponseController(w)}
+	req := &trackedRequest{token: token, check: check, cancel: cancel, controller: http.NewResponseController(w)}
 
 	l.mu.Lock()
 	if l.requests[token] == nil {
@@ -639,7 +771,7 @@ func (l *sessionLedger) open(
 
 // serve は、有効と確かめたセッションで要求を処理し始める。ctx は open が返した
 // context で、それにセッションの期限を締め切りとして付けて返し、期限と打ち切りで
-// 書き込みも止める。open の後に打ち切られていれば false を返し、呼び出し側は
+// 書き込みも止める。expiresAt がゼロ値なら期限を付けない（API トークン）。open の後に打ち切られていれば false を返し、呼び出し側は
 // 有効ではなかったものとして扱う。
 //
 // 要求が recheck より長く続いたら、そこから recheck ごとにセッションを確かめ直し、
@@ -654,17 +786,26 @@ func (l *sessionLedger) serve(
 		return ctx, false
 	}
 	req.serving = true
-	ctx, cancel := context.WithDeadline(ctx, expiresAt)
+	var cancel context.CancelFunc
+	if expiresAt.IsZero() {
+		ctx, cancel = context.WithCancel(ctx)
+	} else {
+		ctx, cancel = context.WithDeadline(ctx, expiresAt)
+	}
 	parentCancel := req.cancel
 	req.cancel = func() { cancel(); parentCancel() }
 	// 期限を迎えたときにも書き込みを止める。
 	req.stopWatch = context.AfterFunc(ctx, req.abort)
 
-	if l.check != nil {
+	check := req.check
+	if check == nil && l.check != nil {
 		token := req.token
+		check = func(ctx context.Context) (bool, error) { return l.check(ctx, token) }
+	}
+	if check != nil {
 		checkCtx := context.WithoutCancel(ctx)
 		recheck := func() {
-			valid, err := l.check(checkCtx, token)
+			valid, err := check(checkCtx)
 			if err != nil {
 				// 確かめられないときは打ち切らず、次の間隔で確かめ直す。
 				l.logger.Warn("could not recheck the session of an in-flight request", slog.Any("error", err))

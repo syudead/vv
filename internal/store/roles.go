@@ -47,8 +47,9 @@ type PlaybackStore struct{ sql *sql.DB }
 // 接続だけを持ち、ライブラリ索引の型や通知には依存しない。
 type TagStore struct{ sql *sql.DB }
 
-// AuthStore は唯一のアカウントとログインセッションを保存する（auth.go）。初回設定、
-// 資格情報の書き換え、セッションの追加・有効性の確認・削除・期限切れの掃除を持つ。
+// AuthStore は唯一のアカウントとログインセッションと API トークンを保存する（auth.go・
+// api_tokens.go）。初回設定、資格情報の書き換え、セッションの追加・有効性の確認・削除・
+// 期限切れの掃除、API トークンの発行・一覧・失効・有効性の確認・最終使用日時の記録を持つ。
 // PlaybackStore と同じく、共有する SQLite 接続だけを持ち、ライブラリ索引の型や
 // 通知には依存しない。
 type AuthStore struct{ sql *sql.DB }

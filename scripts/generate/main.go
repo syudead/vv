@@ -1,4 +1,5 @@
-// generate は api/openapi.yaml から Go と TypeScript の型を生成する。
+// generate は api/openapi.yaml から Go と TypeScript の型を、api/external-v1.yaml から
+// 外部連携 API の Go の型を生成する。
 // task generate の実体で、-check を付けると task generate-check になる。
 //
 // 生成と差分確認を1つのコマンドに収めているのは、生成器の呼び出し方を
@@ -21,6 +22,7 @@ import (
 // generated は版管理に含める生成物である。手編集しない（AGENTS.md）。
 var generated = []string{
 	"internal/httpapi/gen/api.gen.go",
+	"internal/httpapi/extgen/api.gen.go",
 	"web/src/api/gen/openapi.ts",
 }
 
@@ -69,6 +71,11 @@ type runner func(dir string, name string, args ...string) error
 func generate(root, oapiCodegen, openapiTypescript string, run runner) error {
 	if err := run(root, oapiCodegen,
 		"-config", "api/oapi-codegen.yaml", "api/openapi.yaml"); err != nil {
+		return err
+	}
+	// 外部連携 API は Go だけを生成する（specs/026-external-api/research.md R-5）。
+	if err := run(root, oapiCodegen,
+		"-config", "api/oapi-codegen-external.yaml", "api/external-v1.yaml"); err != nil {
 		return err
 	}
 	return run(root, openapiTypescript,

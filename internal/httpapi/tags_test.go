@@ -107,6 +107,11 @@ func (f *fakeTags) DetachTag(_ context.Context, videoIDs []int64, tagID int64) (
 	return f.detachRef, f.detachApplied, nil
 }
 
+func (f *fakeTags) ApplyVideoTags(_ context.Context, _ []domain.VideoRef, _ domain.VideoTagsAction, _ []string) ([]domain.VideoTagsResult, error) {
+	f.operation = "apply-video-tags"
+	return nil, f.err
+}
+
 func (f *fakeTags) Summary(_ context.Context, videoIDs []int64) (domain.TagSummary, error) {
 	f.operation, f.lastVideoIDs = "summary", videoIDs
 	if f.err != nil {

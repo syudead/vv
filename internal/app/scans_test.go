@@ -200,7 +200,7 @@ func TestScanCompletes(t *testing.T) {
 	scans, store, publisher := newTestScans(t, context.Background(), scanner)
 
 	requestCtx, cancelRequest := context.WithCancel(context.Background())
-	scan, err := scans.StartScan(requestCtx)
+	scan, _, err := scans.StartScan(requestCtx)
 	cancelRequest()
 	if err != nil {
 		t.Fatal(err)
@@ -256,7 +256,7 @@ func TestScanFailure(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			scans, store, _ := newTestScans(t, context.Background(), tc.scanner)
-			if _, err := scans.StartScan(context.Background()); err != nil {
+			if _, _, err := scans.StartScan(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			closed := store.waitFinished(t)
@@ -275,17 +275,23 @@ func TestStartScanWhileRunningReturnsCurrent(t *testing.T) {
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
 
-	first, err := scans.StartScan(context.Background())
+	first, started, err := scans.StartScan(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	if !started {
+		t.Fatal("最初の開始の started = false, want true")
+	}
 	<-scanner.started
-	second, err := scans.StartScan(context.Background())
+	second, started, err := scans.StartScan(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if second.ID != first.ID {
 		t.Fatalf("2回目の開始 = %d, want 実行中の %d", second.ID, first.ID)
+	}
+	if started {
+		t.Fatal("実行中の開始の started = true, want false")
 	}
 	close(scanner.release)
 	store.waitFinished(t)
@@ -302,7 +308,7 @@ func TestScanStoppedByShutdownIsClosedAsFailed(t *testing.T) {
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
 	scans, store, _ := newTestScans(t, baseCtx, scanner)
 
-	if _, err := scans.StartScan(context.Background()); err != nil {
+	if _, _, err := scans.StartScan(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	<-scanner.started
@@ -328,7 +334,7 @@ func TestScanFailingRightAfterShutdownIsInterrupted(t *testing.T) {
 	}
 	scans, store, _ := newTestScans(t, baseCtx, scanner)
 
-	if _, err := scans.StartScan(context.Background()); err != nil {
+	if _, _, err := scans.StartScan(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	closed := store.waitFinished(t)
@@ -382,7 +388,7 @@ func TestScanRebuildsFolderIndexBeforeClosing(t *testing.T) {
 			scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}, err: tc.scanErr}
 			scans, store, _ := newTestScans(t, context.Background(), scanner)
 			store.rebuildErr = tc.rebuildErr
-			if _, err := scans.StartScan(context.Background()); err != nil {
+			if _, _, err := scans.StartScan(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			closed := store.waitFinished(t)
@@ -412,7 +418,7 @@ func (f *fakeScanStore) setVideos(videos, settled int, settledAt time.Time) {
 func TestCurrentScanStaysRunningUntilJobsSettle(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 2, Processed: 2, Added: 2}}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
-	if _, err := scans.StartScan(context.Background()); err != nil {
+	if _, _, err := scans.StartScan(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	closed := store.waitFinished(t)
@@ -451,7 +457,7 @@ func TestStartScanReturnsFindingImport(t *testing.T) {
 	release := make(chan struct{})
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}, release: release}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
-	scan, err := scans.StartScan(context.Background())
+	scan, _, err := scans.StartScan(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -469,7 +475,7 @@ func TestStartScanReturnsFindingImport(t *testing.T) {
 func TestReportedFileIssueMakesImportPartial(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 2, Processed: 1, Added: 1, Failed: 1}}
 	scans, store, publisher := newTestScans(t, context.Background(), scanner)
-	if _, err := scans.StartScan(context.Background()); err != nil {
+	if _, _, err := scans.StartScan(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	store.waitFinished(t)
@@ -504,7 +510,7 @@ func TestListScanIssues(t *testing.T) {
 	if _, err := scans.ListScanIssues(context.Background(), "", 50); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("走査前: err = %v, want ErrNotFound", err)
 	}
-	if _, err := scans.StartScan(context.Background()); err != nil {
+	if _, _, err := scans.StartScan(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	store.waitFinished(t)

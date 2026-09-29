@@ -56,10 +56,10 @@ type Playback interface {
 // Scans は取り込みの開始と状態の取得である。internal/app の *Scans がこれを
 // 満たす。
 //
-// StartScan は実行中なら新しく始めず、実行中のものを返す。走査を実際に
-// 動かすのはアプリケーション層である。
+// StartScan は実行中なら新しく始めず、実行中のものを返す。started は新しく始めたか
+// である。走査を実際に動かすのはアプリケーション層である。
 type Scans interface {
-	StartScan(ctx context.Context) (domain.Scan, error)
+	StartScan(ctx context.Context) (scan domain.Scan, started bool, err error)
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 	// ListScanIssues は直近の取り込みの問題を cursor の次から limit 件返す。一度も
 	// 走査していなければ domain.ErrNotFound、カーソルが不正なら domain.ErrInvalidCursor。
@@ -95,6 +95,10 @@ type Tags interface {
 	// progressFor と同じ位置（httpapi）から、一覧・詳細・関連動画・読み取りの
 	// やり直しの応答へ Video.tags を載せるために使う。
 	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error)
+	// ApplyVideoTags は外部連携 API の名前でのタグの一括操作（specs/026-external-api/research.md
+	// R-7）。引けない動画があれば *domain.VideoRefNotFoundError、規則に合わない名前は
+	// *domain.TagNameAtError で失敗し、何も反映しない。
+	ApplyVideoTags(ctx context.Context, videos []domain.VideoRef, action domain.VideoTagsAction, names []string) ([]domain.VideoTagsResult, error)
 }
 
 // Transcoder は1 request分のfragmented MP4を生成する。internal/media の
@@ -238,6 +242,10 @@ type Options struct {
 	// Auth は初回設定・ログイン・ログアウト・セッションの確認。nil なら「誰でも」以外の
 	// 要求と認証の経路は 500 を返す。所有者とみなして通すことはしない。
 	Auth Authenticator
+	// APITokens は API トークンの発行・一覧・失効。nil なら該当の経路は 500 を返す。
+	APITokens APITokens
+	// ExternalVideos は外部連携 API の動画の一覧と引き当て。nil なら該当の経路は 500 を返す。
+	ExternalVideos ExternalVideos
 	// SessionRecheck は、所有者として長く続く要求のセッションを確かめ直す間隔である。
 	// 0 なら 30 秒。テストが短くする。
 	SessionRecheck time.Duration
@@ -276,6 +284,8 @@ type server struct {
 	events          *Events
 	logger          *slog.Logger
 	auth            Authenticator
+	apiTokens       APITokens
+	externalVideos  ExternalVideos
 	sessions        *sessionLedger
 	// guests はゲストとして処理中の配信の応答を content_key ごとに覚える（visibility.go）。
 	guests *guestLedger
@@ -295,6 +305,9 @@ type server struct {
 //	/api/tags*       → JSON（同上）
 //	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/settings/*  → JSON（所有者が設定画面で選ぶ値。同上）
+//	/api/api-tokens* → JSON（所有者が設定画面で管理する API トークン。同上）
+//	/api/v1/*        → JSON（外部連携 API。api/external-v1.yaml から生成した経路で、Bearer だけ）
+//	/mcp             → MCP（Streamable HTTP の stateless。外部連携 API のツール、Bearer だけ）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
 //	それ以外          → SPA（/videos/{id} を含むクライアント側ルーティング）
 func NewRouter(opts Options) http.Handler {
@@ -333,6 +346,8 @@ func NewRouter(opts Options) http.Handler {
 		events:            opts.Events,
 		logger:            logger,
 		auth:              opts.Auth,
+		apiTokens:         opts.APITokens,
+		externalVideos:    opts.ExternalVideos,
 		sessions:          newSessionLedger(opts.SessionRecheck, logger),
 		guests:            newGuestLedger(),
 		now:               opts.Now,
@@ -349,6 +364,8 @@ func NewRouter(opts Options) http.Handler {
 		}
 	}
 
+	registerExternalAPI(mux, srv)
+	mux.Handle(mcpPath, newMCPHandler(srv))
 	generated := gen.HandlerWithOptions(srv, gen.StdHTTPServerOptions{
 		BaseRouter: mux,
 		ErrorHandlerFunc: func(w http.ResponseWriter, _ *http.Request, err error) {
@@ -413,7 +430,10 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
-			if !s.acceptsSameOrigin(w, r) {
+			// 同一オリジンの検査は、ブラウザが自動で送る Cookie を使った CSRF を防ぐ。
+			// Bearer の扱いの要求は Cookie を読まず、Authorization はブラウザが自動では
+			// 付けないので、Origin を問わない（specs/026-external-api/research.md R-4）。
+			if class, _ := classifyRequest(r); class != accessBearer && !s.acceptsSameOrigin(w, r) {
 				return
 			}
 		}
@@ -433,7 +453,7 @@ func requiresJSONBody(r *http.Request) bool {
 	case http.MethodPost:
 		switch r.URL.Path {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/video-tags", "/api/video-tags/summary",
-			"/api/auth/setup", "/api/auth/login":
+			"/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags":
 			return true
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
@@ -539,36 +559,39 @@ const (
 // 定数名は前置きを持たないので、ここで reason の別名を与えて呼び出し側で
 // 取り違えないようにする。
 const (
-	reasonNameIsTag                = gen.ErrorReasonNameIsTag
-	reasonNameIsSynonym            = gen.ErrorReasonNameIsSynonym
-	reasonUsernameLength           = gen.ErrorReasonUsernameLength
-	reasonPasswordLength           = gen.ErrorReasonPasswordLength
-	reasonTagNameEmpty             = gen.ErrorReasonTagNameEmpty
-	reasonTagNameControlCharacters = gen.ErrorReasonTagNameControlCharacters
-	reasonTagNameTooLong           = gen.ErrorReasonTagNameTooLong
-	reasonMergeSameTag             = gen.ErrorReasonMergeSameTag
-	reasonSearchTooLong            = gen.ErrorReasonSearchTooLong
-	reasonTooManyTagFilters        = gen.ErrorReasonTooManyTagFilters
-	reasonTooManyVideos            = gen.ErrorReasonTooManyVideos
-	reasonGuestFilterNotAllowed    = gen.ErrorReasonGuestFilterNotAllowed
-	reasonInvalidCursor            = gen.ErrorReasonInvalidCursor
-	reasonInvalidFolderPath        = gen.ErrorReasonInvalidFolderPath
-	reasonRelativeDirectoryPath    = gen.ErrorReasonRelativeDirectoryPath
-	reasonVideoNotFound            = gen.ErrorReasonVideoNotFound
-	reasonFolderNotFound           = gen.ErrorReasonFolderNotFound
-	reasonNotFolderGroup           = gen.ErrorReasonNotFolderGroup
-	reasonNoScan                   = gen.ErrorReasonNoScan
-	reasonDirectoryNotFound        = gen.ErrorReasonDirectoryNotFound
-	reasonFileUnavailable          = gen.ErrorReasonFileUnavailable
-	reasonMediaFoldersChanged      = gen.ErrorReasonMediaFoldersChanged
-	reasonRootGroupNotTaggable     = gen.ErrorReasonRootGroupNotTaggable
-	reasonFolderNotGroup           = gen.ErrorReasonFolderNotGroup
-	reasonProbeInfoMissing         = gen.ErrorReasonProbeInfoMissing
-	reasonSeekPreviewGenerating    = gen.ErrorReasonSeekPreviewGenerating
-	reasonTranscodeUnavailable     = gen.ErrorReasonTranscodeUnavailable
-	reasonCrossOrigin              = gen.ErrorReasonCrossOrigin
-	reasonOpenNotLocal             = gen.ErrorReasonOpenNotLocal
-	reasonEncoderUnavailable       = gen.ErrorReasonEncoderUnavailable
+	reasonNameIsTag                     = gen.ErrorReasonNameIsTag
+	reasonNameIsSynonym                 = gen.ErrorReasonNameIsSynonym
+	reasonUsernameLength                = gen.ErrorReasonUsernameLength
+	reasonPasswordLength                = gen.ErrorReasonPasswordLength
+	reasonTagNameEmpty                  = gen.ErrorReasonTagNameEmpty
+	reasonTagNameControlCharacters      = gen.ErrorReasonTagNameControlCharacters
+	reasonTagNameTooLong                = gen.ErrorReasonTagNameTooLong
+	reasonMergeSameTag                  = gen.ErrorReasonMergeSameTag
+	reasonSearchTooLong                 = gen.ErrorReasonSearchTooLong
+	reasonTooManyTagFilters             = gen.ErrorReasonTooManyTagFilters
+	reasonTooManyVideos                 = gen.ErrorReasonTooManyVideos
+	reasonGuestFilterNotAllowed         = gen.ErrorReasonGuestFilterNotAllowed
+	reasonInvalidCursor                 = gen.ErrorReasonInvalidCursor
+	reasonInvalidFolderPath             = gen.ErrorReasonInvalidFolderPath
+	reasonRelativeDirectoryPath         = gen.ErrorReasonRelativeDirectoryPath
+	reasonVideoNotFound                 = gen.ErrorReasonVideoNotFound
+	reasonFolderNotFound                = gen.ErrorReasonFolderNotFound
+	reasonNotFolderGroup                = gen.ErrorReasonNotFolderGroup
+	reasonNoScan                        = gen.ErrorReasonNoScan
+	reasonDirectoryNotFound             = gen.ErrorReasonDirectoryNotFound
+	reasonFileUnavailable               = gen.ErrorReasonFileUnavailable
+	reasonMediaFoldersChanged           = gen.ErrorReasonMediaFoldersChanged
+	reasonRootGroupNotTaggable          = gen.ErrorReasonRootGroupNotTaggable
+	reasonFolderNotGroup                = gen.ErrorReasonFolderNotGroup
+	reasonProbeInfoMissing              = gen.ErrorReasonProbeInfoMissing
+	reasonSeekPreviewGenerating         = gen.ErrorReasonSeekPreviewGenerating
+	reasonTranscodeUnavailable          = gen.ErrorReasonTranscodeUnavailable
+	reasonCrossOrigin                   = gen.ErrorReasonCrossOrigin
+	reasonOpenNotLocal                  = gen.ErrorReasonOpenNotLocal
+	reasonEncoderUnavailable            = gen.ErrorReasonEncoderUnavailable
+	reasonAPITokenNameEmpty             = gen.ErrorReasonApiTokenNameEmpty
+	reasonAPITokenNameControlCharacters = gen.ErrorReasonApiTokenNameControlCharacters
+	reasonAPITokenNameTooLong           = gen.ErrorReasonApiTokenNameTooLong
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

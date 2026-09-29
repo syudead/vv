@@ -215,7 +215,7 @@ linters:
         # import しない。使う側が interface を宣言し、組み立ては cmd/mdm が行う。
         # 外部テストパッケージ（package x_test）は自分のパッケージを import する
         # ので、テストのファイルは対象から外す。末尾の $ は完全一致で、
-        # internal/httpapi/gen のような子パッケージは対象に含めない。
+        # internal/httpapi/gen・extgen のような子パッケージは対象に含めない。
         internal-siblings-do-not-import-each-other:
           files:
             - "**/internal/httpapi/*.go"
@@ -299,7 +299,7 @@ linters:
         linters:
           - gosmopolitan
       # 生成物は手編集しないので、検査の対象からも外す（AGENTS.md）。
-      - path: internal/httpapi/gen/
+      - path: internal/httpapi/(ext)?gen/
         linters:
           - depguard
           - errcheck

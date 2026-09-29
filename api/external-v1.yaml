@@ -1,0 +1,514 @@
+# vv の外部連携 API v1 の契約。このファイルが外部連携 API の唯一の真実であり、
+# Go（oapi-codegen、api/oapi-codegen-external.yaml）だけをここから生成する。
+# 生成物（internal/httpapi/extgen/）は手編集しない。型を変えるときはこのファイルを直し、
+# task generate を実行すること。画面の API（api/openapi.yaml）とは別の約束である
+# （specs/026-external-api/research.md R-5）。
+#
+# 互換の方針: v1 の中では項目と操作の追加だけを行う。既存の項目の意味・型・必須を変えるときは
+# v2 を足す（docs/how-to/external-api.md）。
+openapi: 3.1.0
+
+info:
+  title: vv external API
+  version: 1.0.0
+  summary: 外部ツールが API トークンで vv を操作するための API
+  description: |
+    すべての操作は `Authorization: Bearer <token>` で認証する。トークンは設定ページの
+    「API トークン」節で所有者が発行する。トークンが無い・形式が違う・無効・失効済みのときは
+    `401` `unauthenticated` と `WWW-Authenticate: Bearer` を返す。Cookie は読まない。
+
+    見る人は常に所有者で、非公開の動画も返す。同一オリジンの検査はかけない。本文を取る操作は
+    `Content-Type: application/json` を要する（specs/026-external-api/contracts/external-api.md §1）。
+
+servers:
+  - url: /api/v1
+    description: アプリケーション自身が配信する
+
+security:
+  - bearerAuth: []
+
+paths:
+  /videos:
+    get:
+      operationId: listVideos
+      summary: 動画の一覧をページを分けて返す
+      description: |
+        登録フォルダの下に所在を 1 つ以上持つ動画を `(addedAt, id)` の昇順で返す。`nextCursor` が
+        空文字列になるまで、前回の `nextCursor` を `cursor` に渡してたどると全件を読める。
+        変更の追跡はしない。新しい動画を知るには一覧を読み直し、持っている動画が消えたことは
+        `lookup` の `404` で知る（contracts/external-api.md §2）。
+      parameters:
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。省略すると先頭から
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1 ページの件数。範囲外は `400` `invalid_request`
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: 動画の一覧 1 ページ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalVideoPage"
+        "400":
+          description: >-
+            limit が範囲外、またはカーソルを解釈できない（`invalid_request`、カーソルは
+            `invalid_cursor`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /videos/lookup:
+    get:
+      operationId: lookupVideo
+      summary: 動画を 1 本、id・内容キー・パスのどれかで引く
+      description: |
+        `id`・`contentKey`・`path` のちょうど 1 つを取る。0 個・2 個以上は `400` `invalid_request`。
+        `path` は正規化せず、今の所在の `path` とバイト列で完全一致させる。一覧が返した `path` を
+        そのまま渡せば引ける（contracts/external-api.md §2）。
+      parameters:
+        - name: id
+          in: query
+          schema:
+            type: integer
+            format: int64
+        - name: contentKey
+          in: query
+          schema:
+            type: string
+        - name: path
+          in: query
+          description: 所在の絶対パス
+          schema:
+            type: string
+      responses:
+        "200":
+          description: 動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalVideo"
+        "400":
+          description: 指定がちょうど 1 つでない（`invalid_request`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: 無い、または登録フォルダの下に所在が無い（`not_found` / `video_not_found`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /video-tags:
+    post:
+      operationId: updateVideoTags
+      summary: 複数の動画に名前で指定したタグを付ける・外す・置き換える
+      description: |
+        1 つのトランザクションで行う。付け外しの対象は手で付けたタグだけで、祖先のフォルダ名から
+        付くタグは残る（`replace` の後も）。名前はシノニムを含めて引き、`add`・`replace` では無い名前の
+        タグを作る。`remove` ではどのタグにも当たらない名前は何もしない。同じタグに当たる名前は 1 つに
+        まとめる。引けない動画が 1 つでもあれば `404` で何も反映しない（contracts/external-api.md §4）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoTagsRequest"
+      responses:
+        "200":
+          description: 各動画の操作後のタグ（`videos` の順）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoTagsResponse"
+        "400":
+          description: >-
+            本文の形が違う・`action` が不正・動画の指定がちょうど 1 つでない（`invalid_request`）、
+            件数の上限（`too_many_videos`・`too_many_tags`、`limit`）、タグ名の誤り
+            （`tag_name_empty`・`tag_name_control_characters`・`tag_name_too_long`、`index` は `tags` の位置）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: >-
+            引けない動画がある（`not_found` / `video_not_found`、`index` は `videos` の位置）。
+            何も反映しない
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /tags:
+    get:
+      operationId: listTags
+      summary: タグの一覧を返す
+      description: 画面のタグ管理と同じ並び（contracts/external-api.md §3）。
+      responses:
+        "200":
+          description: タグの一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /scans:
+    post:
+      operationId: startScan
+      summary: スキャンを始める
+      description: |
+        新しく始めたら `201`、実行中のものがあれば新しく始めずにそれを `200` で返す
+        （contracts/external-api.md §5）。本文は取らない。
+      responses:
+        "201":
+          description: 新しく始めたスキャン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalScan"
+        "200":
+          description: 実行中だったスキャン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalScan"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          description: メディアフォルダが 1 つも登録されていない（`media_folders_not_configured`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /scans/current:
+    get:
+      operationId: getCurrentScan
+      summary: 直近のスキャンの状態を返す
+      description: 実行中のものがあればそれを、無ければ最後に終わったものを返す。
+      responses:
+        "200":
+          description: 直近のスキャン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExternalScan"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: 一度もスキャンしていない（`not_found` / `no_scan`）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: 設定ページで発行した API トークン（`vvt_` で始まる 47 文字）。
+
+  responses:
+    Unauthenticated:
+      description: トークンが無い・形式が違う・無効・失効済み（`unauthenticated`）
+      headers:
+        WWW-Authenticate:
+          description: 常に `Bearer`
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Internal:
+      description: 予期しない失敗（`internal`）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      additionalProperties: false
+      description: >-
+        誤りの形は画面の API と同じで、index はこの API だけの項目である
+        （contracts/external-api.md §1）。
+      properties:
+        code:
+          type: string
+          description: 機械可読なエラー種別。
+          enum:
+            - unauthenticated
+            - invalid_request
+            - not_found
+            - media_folders_not_configured
+            - internal
+        message:
+          type: string
+          description: 英語の説明。利用者のプログラムは code と reason で分岐する
+        reason:
+          $ref: "#/components/schemas/ErrorReason"
+        limit:
+          type: integer
+          description: reason の上限値。上限を持つ reason のときだけ入る
+        index:
+          type: integer
+          description: >-
+            原因になった要素の位置（0 から）。タグ名の誤りでは tags の、それ以外では videos の位置を
+            指す（contracts/external-api.md §4）
+    ErrorReason:
+      type: string
+      description: 同じ code の中で状況を区別する下位の理由。
+      enum:
+        - invalid_cursor
+        - too_many_videos
+        - too_many_tags
+        - tag_name_empty
+        - tag_name_control_characters
+        - tag_name_too_long
+        - video_not_found
+        - no_scan
+
+    Tag:
+      type: object
+      required: [id, name, synonyms, videoCount]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        synonyms:
+          type: array
+          description: 名前の自然順
+          items:
+            type: string
+        videoCount:
+          type: integer
+          description: いまライブラリにある動画の本数
+
+    TagList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+
+    ExternalVideo:
+      type: object
+      required: [id, contentKey, title, durationMs, addedAt, locations, tags]
+      additionalProperties: false
+      description: 動画 1 本。見る人は常に所有者で、非公開の動画も返す
+      properties:
+        id:
+          type: integer
+          format: int64
+        contentKey:
+          type: string
+          description: 内容から決まる識別子。ファイルが移動しても変わらない
+        title:
+          type: string
+          description: 代表の所在（locations の先頭）の題名
+        durationMs:
+          type: [integer, "null"]
+          format: int64
+          description: 長さ（ミリ秒）。解析前は null
+        addedAt:
+          type: string
+          format: date-time
+        locations:
+          type: array
+          description: 登録フォルダの下の今の所在。パスの順で、代表が先頭
+          items:
+            $ref: "#/components/schemas/ExternalVideoLocation"
+        tags:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalVideoTag"
+
+    ExternalVideoLocation:
+      type: object
+      required: [path, fileName]
+      additionalProperties: false
+      properties:
+        path:
+          type: string
+          description: 絶対パス。ファイルシステムの綴り（NFD を含む）のまま
+        fileName:
+          type: string
+          description: path の最後の要素
+
+    ExternalVideoTag:
+      type: object
+      required: [id, name, manual, fromFolder]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        manual:
+          type: boolean
+          description: 手で付けた（この API の付け外しの対象）
+        fromFolder:
+          type: boolean
+          description: 祖先のフォルダ名から付く（この API では外れない）
+
+    ExternalVideoPage:
+      type: object
+      required: [items, nextCursor]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalVideo"
+        nextCursor:
+          type: string
+          description: 次のページの取得に渡す。続きが無ければ空文字列
+
+    VideoRef:
+      type: object
+      additionalProperties: false
+      description: >-
+        動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の
+        今の所在の path とバイト列で比べる
+      properties:
+        id:
+          type: integer
+          format: int64
+        contentKey:
+          type: string
+        path:
+          type: string
+
+    VideoTagsRequest:
+      type: object
+      required: [videos, action, tags]
+      additionalProperties: false
+      properties:
+        videos:
+          type: array
+          description: 1〜20000 件。範囲外は `too_many_videos`
+          items:
+            $ref: "#/components/schemas/VideoRef"
+        action:
+          type: string
+          description: >-
+            add は付ける、remove は外す、replace は手で付けたタグをちょうど tags の集合にする
+            （空なら手で付けたタグをすべて外す）
+          enum: [add, remove, replace]
+        tags:
+          type: array
+          description: >-
+            タグの名前（シノニムも可）。100 件まで。add・remove では 1 件以上。範囲外は `too_many_tags`
+          items:
+            type: string
+
+    VideoTagsResponse:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: videos の順
+          items:
+            $ref: "#/components/schemas/VideoTagsItem"
+
+    VideoTagsItem:
+      type: object
+      required: [video, tags]
+      additionalProperties: false
+      properties:
+        video:
+          $ref: "#/components/schemas/VideoTagsVideo"
+        tags:
+          type: array
+          description: 操作後のタグ（手で付けた分とフォルダ名から付く分、出所つき）
+          items:
+            $ref: "#/components/schemas/ExternalVideoTag"
+
+    VideoTagsVideo:
+      type: object
+      required: [id, contentKey]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        contentKey:
+          type: string
+
+    ExternalScan:
+      type: object
+      required: [id, status, startedAt, finishedAt, videos, settledVideos, errorCode]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        status:
+          type: string
+          description: >-
+            取り込みの状態。画面の API の Scan.status と同じ値で、failed は走査そのものの失敗、
+            finding は対象をまだ数え終えていない、running は走査中か済んでいない対象がある、
+            partial は失敗の問題がある、done はそれ以外である
+          enum: [finding, running, done, partial, failed]
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: [string, "null"]
+          format: date-time
+          description: 走査が終わった時刻。走査中なら null
+        videos:
+          type: [integer, "null"]
+          description: 対象の動画の本数。finding のあいだは null（本数を数え終えていない）
+        settledVideos:
+          type: [integer, "null"]
+          description: >-
+            対象のうち残りの仕事が無い本数。finding のあいだは null。数えたあとは
+            0 ≤ settledVideos ≤ videos
+        errorCode:
+          type: [string, "null"]
+          description: 走査そのものが失敗した理由のコード（status が failed のときだけ入る）
