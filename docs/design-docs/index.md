@@ -36,3 +36,4 @@ Add each new document to this index.
 - [動画のタグとタグでの絞り込み UI](../../specs/014-video-tags/ui-design.md)
 - [単一アカウント認証とゲストの閲覧 UI](../../specs/016-single-account-auth/ui-design.md)
 - [フォルダのグループと続けて再生の UI](../../specs/017-folder-groups/ui-design.md)
+- [画質メニューと途切れの警告の UI](../../specs/027-playback-quality/ui-design.md)
