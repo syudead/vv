@@ -235,7 +235,11 @@ export default function VideoPlayer(props: Props) {
     let reconnectCount = 0;
     let reconnectTimer: number | undefined;
     let reloadDeadline: number | undefined;
-    let pendingRecovery: { generation: number; positionMs: number } | null = null;
+    let pendingRecovery: { generation: number } | null = null;
+    // seekDuringReloadMs は、読み込み直しの要求を出したあとに見る人がシークした位置である。
+    // 変換は仲立ちが実際の開始位置を知らせても attempt の位置が変わるので、見る人のシークと
+    // 分けて持つ。
+    let seekDuringReloadMs: number | null = null;
     let playedSinceRecoveryMs: number | null = null;
     let lastTickMs: number | null = null;
     let recoveryGeneration = 0;
@@ -245,31 +249,43 @@ export default function VideoPlayer(props: Props) {
     let status: PlayerStatus = { ...initialPlayerStatus };
 
     // 回復を待つ間の見る人の操作（操作バー・中央の操作・キー）は、video.js の部品も
-    // playerControls もこのプレイヤーの play・pause・currentTime を通るので、ここで受ける。
-    // 再生は意図を覚えてすぐ読み込み直し、一時停止は意図だけを覚える。シークは読み込み直す
-    // 位置として覚え、再生バーにもその位置を出す。
+    // playerControls もこのプレイヤーの play・pause・paused・currentTime を通るので、ここで
+    // 受ける。止まっているかは壊れた要素ではなく見る人の意図を返し、再生・一時停止の
+    // ボタンの向きもそれに合わせる（止まった要素は止まっていないと答え続けることがあり、
+    // そのままでは再生を押したつもりが一時停止になる）。再生は意図を覚えてすぐ読み込み直し、
+    // 一時停止は意図だけを覚える。シークは読み込み直す位置として覚え、再生バーにも出す。
     const media = player as unknown as {
       play(): Promise<void> | undefined;
       pause(): void;
+      paused(): boolean;
       currentTime(seconds?: number): number | undefined;
     };
     const mediaPlay = media.play.bind(player);
     const mediaPause = media.pause.bind(player);
+    const mediaPaused = media.paused.bind(player);
     const mediaCurrentTime = media.currentTime.bind(player);
     media.play = () => {
       if (!recovering) return mediaPlay();
       attempt = { ...attempt, playIntended: true };
+      player.trigger("play");
       reconnectNow();
       return Promise.resolve();
     };
     media.pause = () => {
-      if (recovering) attempt = { ...attempt, playIntended: false };
+      if (!recovering) {
+        mediaPause();
+        return;
+      }
+      attempt = { ...attempt, playIntended: false };
       mediaPause();
+      player.trigger("pause");
     };
+    media.paused = () => (recovering ? !attempt.playIntended : mediaPaused());
     media.currentTime = (seconds?: number) => {
       if (!recovering) return mediaCurrentTime(seconds);
       if (seconds !== undefined) {
         attempt = updatePosition(attempt, seconds * 1000);
+        if (pendingRecovery !== null) seekDuringReloadMs = attempt.logicalPositionMs;
         latest.current.onPosition(attempt.logicalPositionMs);
         player.trigger("timeupdate");
       }
@@ -382,7 +398,7 @@ export default function VideoPlayer(props: Props) {
       }
       setHoldControlBar(false);
       if (pendingRecovery !== null) {
-        finishRecovery(pendingRecovery.positionMs);
+        finishRecovery();
         return;
       }
       if (resumeApplied || initialPositionMs <= 0) return;
@@ -451,6 +467,7 @@ export default function VideoPlayer(props: Props) {
       if (reloadDeadline !== undefined) window.clearTimeout(reloadDeadline);
       reloadDeadline = undefined;
       pendingRecovery = null;
+      seekDuringReloadMs = null;
     };
 
     const fail = (kind: PlaybackFailureKind, position: number) => {
@@ -471,15 +488,18 @@ export default function VideoPlayer(props: Props) {
     };
 
     // finishRecovery は読み込み直した source のメタデータが来たときに呼ぶ。直接再生は
-    // 読み込み直した位置へ戻し（変換はその位置から始めている）、読み込み直しの表示を下ろし、
-    // 再生する意図があれば再生を続ける。
-    const finishRecovery = (positionMs: number) => {
+    // 論理上の位置（要求の途中に見る人がシークしていればその位置）へ戻す。変換は始めた位置
+    // から始まっているので、要求の途中に見る人がシークしたときだけその位置へシークし直す
+    // （仲立ちが変換を始め直す）。読み込み直しの表示を下ろし、再生する意図があれば続ける。
+    const finishRecovery = () => {
+      const seekMs = seekDuringReloadMs;
       clearRecoveryTimers();
       recovering = false;
       resumeApplied = true;
-      if (attempt.route === "direct") {
-        player.currentTime(positionMs / 1000);
-        latest.current.onPosition(positionMs);
+      const targetMs = attempt.route === "direct" ? attempt.logicalPositionMs : seekMs;
+      if (targetMs !== null) {
+        player.currentTime(targetMs / 1000);
+        latest.current.onPosition(targetMs);
       }
       playedSinceRecoveryMs = 0;
       lastTickMs = null;
@@ -497,7 +517,8 @@ export default function VideoPlayer(props: Props) {
       if (player.isDisposed()) return;
       const generation = ++recoveryGeneration;
       const positionMs = attempt.logicalPositionMs;
-      pendingRecovery = { generation, positionMs };
+      pendingRecovery = { generation };
+      seekDuringReloadMs = null;
       reloadDeadline = window.setTimeout(() => {
         reloadDeadline = undefined;
         if (player.isDisposed() || pendingRecovery?.generation !== generation) return;

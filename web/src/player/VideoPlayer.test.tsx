@@ -844,6 +844,25 @@ describe("VideoPlayer", () => {
       expect(player.pausedValue).toBe(false);
     });
 
+    it("止まった要素が再生中と答えても、待つ間は意図を返し、再生の切り替えは意図に従う", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      // 要素は止まっていない（pausedValue は偽）が、見る人の意図は再生である。
+      expect(player.paused()).toBe(false);
+      const controls = values.onControls.mock.calls[0]?.[0] as {
+        togglePlay(): void;
+      };
+      act(() => controls.togglePlay());
+      expect(player.paused()).toBe(true);
+      act(() => controls.togglePlay());
+      expect(player.paused()).toBe(false);
+      // 再生を押したので、待たずに読み込み直した。
+      expect(player.sources).toHaveLength(2);
+    });
+
     it("待つ間のシークは、その位置から直接再生を読み込み直す", () => {
       vi.useFakeTimers();
       const values = props();
@@ -867,6 +886,49 @@ describe("VideoPlayer", () => {
       act(() => player.currentTime(60));
       act(() => vi.advanceTimersByTime(1000));
       expect(player.sources[1]).toMatchObject({ vvOffsetSeconds: 60 });
+    });
+
+    it("読み込み直しの要求の途中でシークしたら、メタデータの後にその位置へ移る", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(player.sources).toHaveLength(2);
+      act(() => player.currentTime(75));
+      player.time = 0;
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.time).toBe(75);
+    });
+
+    it("変換の読み込み直しの途中でシークしたら、メタデータの後にその位置へシークし直す", () => {
+      vi.useFakeTimers();
+      const values = props({ playable: false });
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(player.sources[1]).toMatchObject({ vvOffsetSeconds: 30 });
+      act(() => player.currentTime(75));
+      player.time = 0;
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.time).toBe(75);
+    });
+
+    it("変換の読み込み直しの途中でシークしなければ、実際の開始位置の知らせでもシークしない", () => {
+      vi.useFakeTimers();
+      const values = props({ playable: false });
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => vi.advanceTimersByTime(1000));
+      // 仲立ちが、コピーで始めた変換の実際の開始位置（直前のキーフレーム）を知らせる。
+      const reloaded = player.sources[1] as { vvOffsetChanged(seconds: number): void };
+      act(() => reloaded.vvOffsetChanged(28.5));
+      player.time = 0;
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.time).toBe(0);
     });
 
     it("直接再生でファイルを出せないと分かったら、変換へ切り替えずに伝える", async () => {
