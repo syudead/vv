@@ -740,12 +740,34 @@ describe("VideoPlayer", () => {
         act(() => vi.advanceTimersByTime(15_000));
         act(() => player.trigger("loadedmetadata"));
       }
-      player.time = 45;
-      act(() => player.trigger("timeupdate"));
+      for (let second = 31; second <= 40; second += 1) {
+        player.time = second;
+        act(() => player.trigger("timeupdate"));
+      }
       player.errorValue = { code: 2 };
       act(() => player.trigger("error"));
       expect(values.onError).not.toHaveBeenCalled();
       expect(lastStatus(values)).toMatchObject({ reconnecting: true });
+    });
+
+    it("シークで進んだ分は再生した長さに数えず、回数を数え直さない", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      for (let round = 0; round < 5; round += 1) {
+        player.errorValue = { code: 2 };
+        act(() => player.trigger("error"));
+        act(() => vi.advanceTimersByTime(15_000));
+        act(() => player.trigger("loadedmetadata"));
+      }
+      act(() => player.trigger("seeking"));
+      player.time = 60;
+      act(() => player.trigger("timeupdate"));
+      player.time = 61;
+      act(() => player.trigger("timeupdate"));
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      expect(values.onError).toHaveBeenCalledWith(61_000, "network");
     });
 
     it("端末が回線に戻ったら、待たずに読み込み直す", () => {

@@ -50,9 +50,9 @@ export function reconnectDelay(count: number): number | null {
 }
 
 /**
- * recoveredAfterMs は、読み込み直したあとにこれだけ再生が進んだら、回線が戻ったとみなして
- * 読み込み直しの回数を数え直す長さである。すぐにまた切れる回線で、待ちが短いまま
- * 読み込み直しを繰り返さないためである。
+ * recoveredAfterMs は、読み込み直したあとにこれだけ実際に再生したら（シークで動いた分は
+ * 数えない）、回線が戻ったとみなして読み込み直しの回数を数え直す長さである。すぐにまた
+ * 切れる回線で、待ちが短いまま読み込み直しを繰り返さないためである。
  */
 export const recoveredAfterMs = 10_000;
 

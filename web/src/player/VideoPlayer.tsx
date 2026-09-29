@@ -32,6 +32,11 @@ import {
 import { attachSeekPreview } from "./seekPreview";
 
 const saveIntervalMs = 5000;
+/**
+ * maxPlaybackStepMs は続けて届いた timeupdate の間に進んだとみなす上限である。timeupdate は
+ * 再生中おおよそ 0.25 秒ごとに届くので、2 倍速でもこれを超えない。超えた差はシークとみなす。
+ */
+const maxPlaybackStepMs = 2000;
 
 /** playbackRates は操作バーの再生速度の選択肢である（ui-design「Control bar」）。 */
 export const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -217,13 +222,16 @@ export default function VideoPlayer(props: Props) {
     let switchingSource = false;
     let resumeApplied = false;
     // 通信が切れたときの読み込み直し（playbackRecovery.ts）。reconnectCount は続けて
-    // 読み込み直した回数、recoveredFromMs は最後に読み込み直した位置で、そこから
-    // recoveredAfterMs 進んだら回数を数え直す。resumeAtMs は直接再生を読み込み直したときに
+    // 読み込み直した回数で、読み込み直したあと実際に recoveredAfterMs 再生したら数え直す。
+    // playedSinceRecoveryMs はその再生した長さで、続けて届いた timeupdate の差
+    // （maxPlaybackStepMs 以下）だけを足す。シークは lastTickMs を捨てて数えない。
+    // resumeAtMs は直接再生を読み込み直したときに
     // メタデータの後で戻す位置である。recoveryGeneration は誤り・読み込み直しのたびに
     // 進め、古い確かめや読み込み直しの結果を捨てる。
     let reconnectCount = 0;
     let reconnectTimer: number | undefined;
-    let recoveredFromMs: number | null = null;
+    let playedSinceRecoveryMs: number | null = null;
+    let lastTickMs: number | null = null;
     let resumeAtMs: number | undefined;
     let recoveryGeneration = 0;
     let reachability: AbortController | undefined;
@@ -354,9 +362,16 @@ export default function VideoPlayer(props: Props) {
     });
     player.on("timeupdate", () => {
       const position = reportPosition();
-      if (recoveredFromMs !== null && position - recoveredFromMs >= recoveredAfterMs) {
+      if (playedSinceRecoveryMs === null) return;
+      if (lastTickMs !== null) {
+        const step = position - lastTickMs;
+        if (step > 0 && step <= maxPlaybackStepMs) playedSinceRecoveryMs += step;
+      }
+      lastTickMs = position;
+      if (playedSinceRecoveryMs >= recoveredAfterMs) {
         reconnectCount = 0;
-        recoveredFromMs = null;
+        playedSinceRecoveryMs = null;
+        lastTickMs = null;
       }
     });
     player.on("play", () => {
@@ -367,7 +382,10 @@ export default function VideoPlayer(props: Props) {
     for (const event of ["playing", "canplay", "seeked"]) {
       player.on(event, () => setStatus({ loading: false }));
     }
-    player.on("seeking", () => setStatus({ ended: false }));
+    player.on("seeking", () => {
+      lastTickMs = null;
+      setStatus({ ended: false });
+    });
     player.on("useractive", () => setStatus({ userActive: true }));
     player.on("userinactive", () => setStatus({ userActive: false }));
     player.on("pause", () => {
@@ -411,7 +429,8 @@ export default function VideoPlayer(props: Props) {
       player.one("loadedmetadata", () => {
         if (generation !== recoveryGeneration || player.isDisposed()) return;
         switchingSource = false;
-        recoveredFromMs = position;
+        playedSinceRecoveryMs = 0;
+        lastTickMs = position;
         setStatus({ reconnecting: false });
         if (attempt.playIntended) {
           setStatus({ loading: true });
