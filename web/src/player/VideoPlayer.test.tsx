@@ -1281,4 +1281,84 @@ describe("VideoPlayer", () => {
       expect(window.localStorage.getItem("vv.playback-quality.v1")).toBeNull();
     });
   });
+
+  describe("回線の遅さで途切れるとき", () => {
+    function lastStatus(values: ReturnType<typeof props>) {
+      const calls = values.onStatus.mock.calls;
+      return calls[calls.length - 1]?.[0] as Record<string, unknown> | undefined;
+    }
+
+    /** 再生を始め、最初の読み込みが落ち着いた（playing が来た）プレイヤー。 */
+    function startPlaying(values: ReturnType<typeof props>) {
+      vi.useFakeTimers();
+      render(<VideoPlayer {...values} />);
+      const player = mock.instances[0];
+      if (player === undefined) throw new Error("playerがありません");
+      act(() => {
+        player.trigger("loadstart");
+        player.trigger("loadedmetadata");
+        player.pausedValue = false;
+        player.trigger("play");
+        player.trigger("waiting");
+        player.trigger("playing");
+      });
+      return player;
+    }
+
+    function stallFor(player: ReturnType<typeof startPlaying>, ms: number) {
+      act(() => player.trigger("waiting"));
+      act(() => vi.advanceTimersByTime(ms));
+      act(() => player.trigger("playing"));
+    }
+
+    it("再生中の waiting が 60 秒の中で 3 回来ると stalled を知らせ、再生は止めない", () => {
+      const values = props();
+      const player = startPlaying(values);
+      stallFor(player, 1000);
+      act(() => vi.advanceTimersByTime(20_000));
+      stallFor(player, 1000);
+      act(() => vi.advanceTimersByTime(20_000));
+      expect(lastStatus(values)).toMatchObject({ stalled: false });
+      act(() => player.trigger("waiting"));
+      expect(lastStatus(values)).toMatchObject({ stalled: true, loading: true });
+      expect(player.pausedValue).toBe(false);
+      expect(player.sources).toHaveLength(1);
+    });
+
+    it("1 回の waiting が playing の来ないまま 10 秒続くと、その最中に stalled を知らせる", () => {
+      const values = props();
+      const player = startPlaying(values);
+      act(() => player.trigger("waiting"));
+      act(() => vi.advanceTimersByTime(9_999));
+      expect(lastStatus(values)).toMatchObject({ stalled: false });
+      act(() => vi.advanceTimersByTime(1));
+      expect(lastStatus(values)).toMatchObject({ stalled: true, loading: true });
+      expect(player.pausedValue).toBe(false);
+    });
+
+    it("シーク直後の waiting は数えない", () => {
+      const values = props();
+      const player = startPlaying(values);
+      for (let i = 0; i < 3; i += 1) {
+        act(() => player.trigger("seeking"));
+        stallFor(player, 1000);
+      }
+      act(() => player.trigger("seeking"));
+      act(() => player.trigger("waiting"));
+      act(() => vi.advanceTimersByTime(15_000));
+      expect(values.onStatus).not.toHaveBeenCalledWith(
+        expect.objectContaining({ stalled: true }),
+      );
+    });
+
+    it("再生の終わりで stalled を下ろす", () => {
+      const values = props();
+      const player = startPlaying(values);
+      act(() => player.trigger("waiting"));
+      act(() => vi.advanceTimersByTime(10_000));
+      expect(lastStatus(values)).toMatchObject({ stalled: true });
+      act(() => player.trigger("ended"));
+      expect(lastStatus(values)).toMatchObject({ stalled: false, ended: true });
+    });
+  });
 });

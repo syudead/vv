@@ -612,6 +612,12 @@ export const en = {
     },
     loading: "Loading",
     reconnecting: "Connection lost · Reconnecting",
+    // 途切れの警告。知らせるだけで、画質を下げる勧めや切り替えは書かない
+    // （specs/027-playback-quality/ui-design.md「Words」）。
+    stallWarning: {
+      message: "Slow connection is interrupting playback",
+      dismiss: "Dismiss",
+    },
     playbackFailed: {
       network: {
         title: "Couldn't reach the server",

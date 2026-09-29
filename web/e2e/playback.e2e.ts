@@ -590,6 +590,96 @@ test.describe.serial("live MP4 playback", () => {
     }
   });
 
+  test("途切れの警告は左上に出て再生と操作を止めず、閉じると同じ動画では出ない（360・768・1280px・全画面）", async ({
+    page,
+  }) => {
+    // specs/027-playback-quality 受け入れ条件 9〜11、ui-design.md「Stall warning」。
+    // 回線の遅さはテストで再現できないので、再生中の要素にデータ待ちと再開の出来事を送る。
+    test.setTimeout(90_000);
+    const item = video("hd-1080p");
+    const warning = page.locator("[data-stall-warning]");
+    const stallThreeTimes = () =>
+      page.evaluate(() => {
+        const element = document.querySelector("video");
+        if (element === null) throw new Error("video がありません");
+        for (let i = 0; i < 3; i += 1) {
+          element.dispatchEvent(new Event("waiting"));
+          element.dispatchEvent(new Event("playing"));
+        }
+      });
+    for (const width of [360, 768, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await play(page, item);
+      await expect(warning).toHaveCount(0);
+      await stallThreeTimes();
+      await expect(
+        warning.getByRole("status").filter({
+          hasText: "Slow connection is interrupting playback",
+        }),
+      ).toBeVisible();
+      // 左上に出て、操作バーに重ならない。
+      const frame = await page.locator("[data-player-frame]").boundingBox();
+      const box = await warning.getByRole("status").boundingBox();
+      if (frame === null || box === null) throw new Error("枠か警告が見えません");
+      const inset = width >= 640 ? 12 : 8;
+      expect(Math.round(box.x - frame.x)).toBe(inset);
+      expect(Math.round(box.y - frame.y)).toBe(inset);
+      expect(box.height).toBeLessThanOrEqual(32);
+      await page.locator(".video-js").hover();
+      const bar = await page.locator(".vjs-control-bar").boundingBox();
+      if (bar === null) throw new Error("操作バーが見えません");
+      expect(box.y + box.height).toBeLessThan(bar.y);
+      // 画質は変わらず、画質を変える操作も無い。
+      await expect(warning.getByRole("button")).toHaveCount(1);
+      await expect(page.locator(".vv-quality-value")).toHaveText("1080p");
+      expect(await page.evaluate(() => document.querySelector("video")?.paused)).toBe(
+        false,
+      );
+      if (screenshotDir !== undefined) {
+        await mkdir(screenshotDir, { recursive: true });
+        await page.screenshot({
+          path: path.join(screenshotDir, `20260929-stall-warning-${String(width)}.png`),
+        });
+      }
+      if (width === 1280) {
+        await page.locator(".vjs-control-bar .vjs-fullscreen-control").click();
+        await expect
+          .poll(() => page.evaluate(() => document.fullscreenElement !== null))
+          .toBe(true);
+        await expect(warning.getByRole("status")).toBeVisible();
+        const full = await warning.getByRole("status").boundingBox();
+        expect(Math.round(full?.x ?? -1)).toBe(12);
+        expect(Math.round(full?.y ?? -1)).toBe(12);
+        if (screenshotDir !== undefined) {
+          await page.screenshot({
+            path: path.join(screenshotDir, "20260929-stall-warning-fullscreen.png"),
+          });
+        }
+        await page.keyboard.press("f");
+        await expect
+          .poll(() => page.evaluate(() => document.fullscreenElement === null))
+          .toBe(true);
+      }
+      // 操作バーの再生はそのまま押せる。
+      await page.locator(".video-js").hover();
+      await page.locator(".vjs-control-bar > .vjs-play-control").click();
+      await expect
+        .poll(() => page.evaluate(() => document.querySelector("video")?.paused))
+        .toBe(true);
+      // 閉じると消え、同じ動画では再び条件を満たしても出ない。
+      await warning.getByRole("button", { name: "Dismiss" }).click();
+      await expect(warning).toHaveCount(0);
+      await page.locator(".vjs-control-bar > .vjs-play-control").click();
+      await page.waitForFunction(() => {
+        const element = document.querySelector("video");
+        return element !== null && !element.paused && element.readyState >= 2;
+      });
+      await stallThreeTimes();
+      await page.waitForTimeout(300);
+      await expect(warning).toHaveCount(0);
+    }
+  });
+
   test("コピーで始めた変換は直前のキーフレームの時刻を表示し、再読み込みで同じ場面から再開する", async ({
     page,
   }) => {
