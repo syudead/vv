@@ -4,7 +4,7 @@ import {
   readPlaybackQuality,
   writePlaybackQuality,
 } from "../preferences/playbackQuality";
-import { effectiveQuality, qualityOptions } from "./quality";
+import { effectiveQuality, qualityOptions, sourceShortSide } from "./quality";
 
 describe("qualityOptions", () => {
   it("動画の短辺より小さい画質だけを大きい順に出す", () => {
@@ -57,5 +57,15 @@ describe("effectiveQuality", () => {
     );
     expect(effectiveQuality("1080p", { width: 1920, height: 1080 })).toBe("original");
     expect(readPlaybackQuality()).toBe("480p");
+  });
+});
+
+describe("sourceShortSide", () => {
+  it("表示の短辺を画質の名前の形で返し、寸法が無ければ undefined", () => {
+    expect(sourceShortSide({ width: 1920, height: 1080 })).toBe("1080p");
+    expect(sourceShortSide({ width: 1080, height: 1920 })).toBe("1080p");
+    expect(sourceShortSide({ width: 3840, height: 2160 })).toBe("2160p");
+    expect(sourceShortSide({})).toBeUndefined();
+    expect(sourceShortSide({ width: 0, height: 360 })).toBeUndefined();
   });
 });

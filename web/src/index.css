@@ -62,7 +62,7 @@
 /*
  * 操作バーの並び（specs/012-video-detail-ia/ui-design.md「Control bar」）。
  * 再生バーは操作バーの上に置き、バーの中は 最初に戻る・再生・音量・現在時刻/長さ・
- * 右寄せの空き・変換中の表示・再生速度・PiP・全画面 の順にする。
+ * 右寄せの空き・変換中の表示・画質・再生速度・PiP・全画面 の順にする。
  * 操作バーはプレイヤーの上に重ねる層（再生失敗・再生終了）より上に出し、押せるままにする。
  * video.js の CSS は index.css より後に読まれるので、.video-js を挟んで詳細度で勝つ。
  */
@@ -111,6 +111,48 @@
   justify-content: center;
 }
 
+/*
+ * 画質のメニュー（specs/027-playback-quality/ui-design.md「Control bar: quality menu」）。
+ * 箱・余白・hover は再生速度と同じ .vjs-control・.vjs-button の規則に任せ、文字だけを
+ * text-xs（0.75rem / 1rem）と等幅の数字にする。メニューの幅は video.js の既定（10em）の
+ * ままにして「Original (1080p)」を 1 行に収め、項目は小文字に変えない。
+ */
+.vv-video-player .video-js .vv-quality > .vjs-menu-button,
+.vv-video-player .video-js .vv-quality-value {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.vv-video-player .video-js .vv-quality-value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-fg);
+  font-size: 0.75rem;
+  line-height: 1rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.vv-video-player .video-js .vv-quality .vjs-menu li {
+  text-transform: none;
+}
+
+/* 選べる画質が無いときの補足の行。押せず、フォーカスも止まらない。 */
+.vv-video-player .video-js .vv-quality .vjs-menu li.vv-quality-note {
+  margin: 0;
+  padding: 0.3em 0.5em;
+  color: var(--color-fg-muted);
+  font-weight: normal;
+  font-size: 1em;
+  line-height: 1.4em;
+  white-space: normal;
+}
+
 /* 読み込み中は video.js の輪ではなく、プレイヤーの上の層の輪を出す。 */
 .vv-video-player .video-js .vjs-loading-spinner {
   display: none;
@@ -139,6 +181,12 @@
   .vv-video-player .video-js .vjs-time-control {
     padding-right: 0.5em;
     padding-left: 0.5em;
+  }
+
+  /* 3em の箱にも 1080p が収まるよう、画質の文字を 10px・字間を詰める。印には畳まない。 */
+  .vv-video-player .video-js .vv-quality-value {
+    font-size: 0.625rem;
+    letter-spacing: -0.025em;
   }
 }
 
