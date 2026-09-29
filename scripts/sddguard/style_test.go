@@ -325,3 +325,22 @@ func TestSidewaysNodesCountsDistinctNodes(t *testing.T) {
 		}
 	}
 }
+
+// TestDiagramsHaveNoTemplatePlaceholders fails on a {{...}} placeholder inside
+// a Mermaid block. Mermaid cannot parse one, so GitHub shows "Unable to render
+// rich display" instead of the diagram. Templates included: they are read on
+// GitHub too.
+func TestDiagramsHaveNoTemplatePlaceholders(t *testing.T) {
+	for _, path := range guardedMarkdown(t) {
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, m := range mermaidBlock.FindAllStringSubmatch(string(body), -1) {
+			if p := placeholderRe.FindString(m[1]); p != "" {
+				t.Errorf("%s: a Mermaid block contains %s, which Mermaid cannot parse. Use example names in the diagram and put the instruction outside it",
+					relativeTo(t, path), p)
+			}
+		}
+	}
+}

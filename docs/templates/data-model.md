@@ -16,10 +16,14 @@ Only the entities, columns and states this feature adds or changes.
 
 ## States
 
+{{Replace the example states and events below with this feature's.}}
+
 ```mermaid
 stateDiagram-v2
-  [*] --> {{state}}
-  {{state}} --> {{state}}: {{event}}
+  [*] --> queued
+  queued --> running: worker claims
+  running --> done: success
+  running --> failed: error
 ```
 
 | State | Entered when | Left when |

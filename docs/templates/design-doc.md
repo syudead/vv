@@ -17,9 +17,12 @@
 {{The mechanism as it works today. Prefer a diagram plus a short list over
 paragraphs.}}
 
+{{Replace the example nodes below with this design's components.}}
+
 ```mermaid
-flowchart LR
-  a[{{Component}}] --> b[{{Component}}]
+flowchart TD
+  scanner[internal/scanner] --> store[(internal/store)]
+  store --> worker[internal/jobs worker]
 ```
 
 ## Decisions
