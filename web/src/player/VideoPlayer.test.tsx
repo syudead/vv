@@ -83,6 +83,20 @@ const mock = vi.hoisted(() => {
     src(source: unknown) {
       this.sources.push(source);
     }
+    /** 技術層の要素。設けたときだけ、要素が読み込んでいる source（currentSrc）を確かめる。 */
+    techElement: HTMLVideoElement | undefined;
+    tech() {
+      const element = this.techElement;
+      return element === undefined ? undefined : { el: () => element };
+    }
+    /** 要素が読み込んでいる source を src に替える。 */
+    loadInTech(src: string) {
+      this.techElement ??= document.createElement("video");
+      Object.defineProperty(this.techElement, "currentSrc", {
+        value: new URL(src, window.location.href).href,
+        configurable: true,
+      });
+    }
     currentTime(seconds?: number) {
       if (seconds !== undefined) this.time = seconds;
       return this.time;
@@ -1196,6 +1210,42 @@ describe("VideoPlayer", () => {
       expect(window.localStorage.getItem("vv.playback-quality.v1")).toBe(
         JSON.stringify("360p"),
       );
+    });
+
+    it("変換の画質を続けて変えると、前の切り替えのメタデータでは速度と再生を戻さず、最後の source のメタデータで戻す", async () => {
+      const values = props(hd);
+      const player = await playerFor(values);
+      player.time = 30;
+      player.pausedValue = false;
+      player.rate = 1.5;
+      act(() => player.trigger("play"));
+
+      select(player, "480p");
+      select(player, "360p");
+      const [, first, last] = player.sources as { src: string }[];
+      if (first === undefined || last === undefined)
+        throw new Error("sourceがありません");
+      expect(first.src).toMatch(/quality=480p$/);
+      expect(last.src).toMatch(/quality=360p$/);
+
+      // video.js が 360p を要素へ渡す前に、480p のメタデータが届く。
+      player.pausedValue = true;
+      player.rate = 1;
+      player.loadInTech(first.src);
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.pausedValue).toBe(true);
+      expect(player.rate).toBe(1);
+
+      // 360p が要素に渡ったあと、未 buffer シークで仲立ちが同じ画質の URL へ読み込み直しても、
+      // そのメタデータで切り替えを終える。
+      player.loadInTech(last.src);
+      act(() => player.trigger("loadstart"));
+      player.loadInTech(
+        "/api/videos/7/transcode.mp4?startMs=50000&attempt=ab&quality=360p",
+      );
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.pausedValue).toBe(false);
+      expect(player.rate).toBe(1.5);
     });
 
     it("切り替えた変換の失敗は今の誤りの経路で伝わり、再試行の位置は切り替えた位置", async () => {

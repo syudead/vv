@@ -263,10 +263,13 @@ export default function VideoPlayer(props: Props) {
     let recoveryGeneration = 0;
     // 画質の切り替え（research.md R-5）。pendingSwitch は差し替えた source のメタデータを
     // 待っている切り替えで、切り替えるたびに置き換える（古い source のメタデータは、新しい
-    // source を位置へシークしない）。src は直接再生の source で、届いたメタデータがその
-    // source のものかを確かめる。変換の source は URL が位置を持つので確かめない。rate は
-    // 切り替える前の再生速度で、読み込み直すと要素が既定の速度に戻るので戻す。
-    let pendingSwitch: { src: string | null; rate: number } | null = null;
+    // source を位置へシークせず、速度と再生の意図も戻さない）。src は切り替えた source の
+    // URL で、届いたメタデータがその source のものかを確かめる。loaded はその source が
+    // 要素に渡ったことを表す。要素は source を替えると前の source の待っている出来事を
+    // 捨てるので、渡ったあとのメタデータは、変換の未 buffer シークで URL が変わっても
+    // 切り替えた source のものである。rate は切り替える前の再生速度で、読み込み直すと
+    // 要素が既定の速度に戻るので戻す。
+    let pendingSwitch: { src: string; loaded: boolean; rate: number } | null = null;
     let probe: AbortController | undefined;
     let slot: HTMLElement | null = null;
     let restart: HTMLElement | null = null;
@@ -315,7 +318,12 @@ export default function VideoPlayer(props: Props) {
     media.currentTime = (seconds?: number) => {
       // 直接再生へ戻す切り替えのメタデータを待つ間のシークは、メタデータのあとで戻す位置
       // として覚える（0 から読み込む要素へのシークは効かないことがある）。
-      if (!recovering && pendingSwitch?.src != null && seconds !== undefined) {
+      if (
+        !recovering &&
+        pendingSwitch !== null &&
+        attempt.route === "direct" &&
+        seconds !== undefined
+      ) {
         attempt = updatePosition(attempt, seconds * 1000);
       }
       if (!recovering) return mediaCurrentTime(seconds);
@@ -428,29 +436,35 @@ export default function VideoPlayer(props: Props) {
     // 変換の source は attempt の画質を持つ。最初の読み込み・直接再生からの切り替え・
     // 通信の失敗からの読み込み直し（reload）はどれもここを通り、未 buffer のシークは
     // liveOffset.ts の reloadAt が source の画質を引き継ぐ（要件 7）。
-    const setLiveSource = (positionMs: number) => {
-      player.src(
-        liveSource(
-          source.id,
-          attempt.durationMs,
-          positionMs,
-          (seconds) => {
-            attempt = {
-              ...updatePosition(attempt, seconds * 1000),
-              sourceOffsetMs: seconds * 1000,
-            };
-            latest.current.onPosition(attempt.logicalPositionMs);
-          },
-          attempt.quality === "original" ? undefined : attempt.quality,
-        ),
+    const liveSourceAt = (positionMs: number) =>
+      liveSource(
+        source.id,
+        attempt.durationMs,
+        positionMs,
+        (seconds) => {
+          attempt = {
+            ...updatePosition(attempt, seconds * 1000),
+            sourceOffsetMs: seconds * 1000,
+          };
+          latest.current.onPosition(attempt.logicalPositionMs);
+        },
+        attempt.quality === "original" ? undefined : attempt.quality,
       );
+    const setLiveSource = (positionMs: number) => {
+      player.src(liveSourceAt(positionMs));
     };
 
     player.on("loadedmetadata", () => {
       // 回復を待つ間に、止まったと見切った古い要求が遅れて届いても使わない。
       if (recovering && pendingRecovery === null) return;
       // 画質を切り替えたあとに、差し替える前の source のメタデータが届いても使わない。
-      if (pendingSwitch?.src != null && !mediaSourceIs(pendingSwitch.src)) return;
+      if (
+        pendingSwitch !== null &&
+        !pendingSwitch.loaded &&
+        !mediaSourceIs(pendingSwitch.src)
+      ) {
+        return;
+      }
       attempt = { ...attempt, state: "ready" };
       const videoWidth = player.videoWidth();
       const videoHeight = player.videoHeight();
@@ -476,6 +490,11 @@ export default function VideoPlayer(props: Props) {
       // ライブ変換はコピーで始めると直前のキーフレームから映る。仲立ちが実際の開始位置に
       // 合わせた論理時刻を伝える（contracts/transcode-start-api.md §3）。
       reportPosition();
+    });
+    player.on("loadstart", () => {
+      if (pendingSwitch !== null && mediaSourceIs(pendingSwitch.src)) {
+        pendingSwitch.loaded = true;
+      }
     });
     player.on("timeupdate", () => {
       const position = reportPosition();
@@ -701,11 +720,12 @@ export default function VideoPlayer(props: Props) {
       setStatus({ reconnecting: false, ended: false, loading: true });
       latest.current.onPosition(attempt.logicalPositionMs);
       if (attempt.route === "direct") {
-        pendingSwitch = { src: streamUrl(source.id), rate };
+        pendingSwitch = { src: streamUrl(source.id), loaded: false, rate };
         setDirectSource();
       } else {
-        pendingSwitch = { src: null, rate };
-        setLiveSource(attempt.sourceOffsetMs);
+        const next = liveSourceAt(attempt.sourceOffsetMs);
+        pendingSwitch = { src: next.src, loaded: false, rate };
+        player.src(next);
       }
     };
     player.on(qualitySelectEvent, (_event: unknown, selection?: QualitySelection) => {
