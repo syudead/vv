@@ -22,6 +22,13 @@ import {
   type PlayerControls,
   rateMenuOpen,
 } from "./playerControls";
+import {
+  classifyMediaError,
+  reconnectDelay,
+  recoveredAfterMs,
+  serverReachable,
+  type PlaybackFailureKind,
+} from "./playbackRecovery";
 import { attachSeekPreview } from "./seekPreview";
 
 const saveIntervalMs = 5000;
@@ -91,6 +98,8 @@ const keyShortcuts: [string, string][] = [
 export interface PlayerStatus {
   /** 読み込み中（再生を求めたのに映像が来ていない）。 */
   loading: boolean;
+  /** 通信が切れて、同じ位置から読み込み直そうとしている。 */
+  reconnecting: boolean;
   playing: boolean;
   /** video.js の user-active（操作バーが見えている）。 */
   userActive: boolean;
@@ -99,6 +108,7 @@ export interface PlayerStatus {
 
 export const initialPlayerStatus: PlayerStatus = {
   loading: false,
+  reconnecting: false,
   playing: false,
   userActive: true,
   ended: false,
@@ -112,8 +122,11 @@ interface Props {
   autoplay: boolean;
   onPosition: (positionMs: number) => void;
   onProgress: (positionMs: number, immediate: boolean) => void;
-  /** 再生できなかった。positionMs は失敗した論理上の位置。 */
-  onError: (positionMs: number) => void;
+  /**
+   * 再生できなかった。positionMs は失敗した論理上の位置、kind は見る人に伝える失敗の種類。
+   * 通信が切れたときは読み込み直しを使い切ってから呼ぶ。
+   */
+  onError: (positionMs: number, kind: PlaybackFailureKind) => void;
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
   /** 映像の寸法が分かったら、その横÷縦の比率を知らせる（縦長なら 1 未満）。 */
@@ -203,6 +216,17 @@ export default function VideoPlayer(props: Props) {
     let attempt: PlaybackAttempt = initialAttempt;
     let switchingSource = false;
     let resumeApplied = false;
+    // 通信が切れたときの読み込み直し（playbackRecovery.ts）。reconnectCount は続けて
+    // 読み込み直した回数、recoveredFromMs は最後に読み込み直した位置で、そこから
+    // recoveredAfterMs 進んだら回数を数え直す。resumeAtMs は直接再生を読み込み直したときに
+    // メタデータの後で戻す位置である。recoveryGeneration は誤り・読み込み直しのたびに
+    // 進め、古い確かめや読み込み直しの結果を捨てる。
+    let reconnectCount = 0;
+    let reconnectTimer: number | undefined;
+    let recoveredFromMs: number | null = null;
+    let resumeAtMs: number | undefined;
+    let recoveryGeneration = 0;
+    let reachability: AbortController | undefined;
     let slot: HTMLElement | null = null;
     let restart: HTMLElement | null = null;
     let status: PlayerStatus = { ...initialPlayerStatus };
@@ -239,6 +263,7 @@ export default function VideoPlayer(props: Props) {
       const merged = { ...status, ...next };
       if (
         merged.loading === status.loading &&
+        merged.reconnecting === status.reconnecting &&
         merged.playing === status.playing &&
         merged.userActive === status.userActive &&
         merged.ended === status.ended
@@ -309,6 +334,13 @@ export default function VideoPlayer(props: Props) {
         latest.current.onAspectRatio?.(videoWidth / videoHeight);
       }
       setHoldControlBar(false);
+      if (resumeAtMs !== undefined) {
+        const at = resumeAtMs;
+        resumeAtMs = undefined;
+        player.currentTime(at / 1000);
+        latest.current.onPosition(at);
+        return;
+      }
       if (resumeApplied || initialPositionMs <= 0) return;
       resumeApplied = true;
       if (attempt.route === "direct") {
@@ -320,7 +352,13 @@ export default function VideoPlayer(props: Props) {
       // 合わせた論理時刻を伝える（contracts/transcode-start-api.md §3）。
       reportPosition();
     });
-    player.on("timeupdate", reportPosition);
+    player.on("timeupdate", () => {
+      const position = reportPosition();
+      if (recoveredFromMs !== null && position - recoveredFromMs >= recoveredAfterMs) {
+        reconnectCount = 0;
+        recoveredFromMs = null;
+      }
+    });
     player.on("play", () => {
       attempt = { ...attempt, state: "playing", playIntended: true };
       setStatus({ playing: true, ended: false });
@@ -342,42 +380,139 @@ export default function VideoPlayer(props: Props) {
       setStatus({ playing: false, loading: false, ended: true });
       latest.current.onProgress(reportPosition(), true);
     });
-    player.on("error", () => {
-      const position = logicalPositionMs();
-      const fallback = fallbackToTranscode(
-        attempt,
-        position,
-        attempt.playIntended || !player.paused(),
-      );
-      if (fallback === null) {
-        attempt = { ...attempt, state: "failed" };
-        setStatus({ playing: false, loading: false });
-        latest.current.onError(position);
-        // 誤りの印（vjs-error）は操作バーを隠す。失敗はプレイヤーの上の層で伝え、
-        // 操作バーは見えるままにする（ui-design「Overlay layer」）。読み込みの前に
-        // 失敗したときも、操作バーを隠したままにしない。
-        player.error(null);
-        setHoldControlBar(false);
-        // 変換へ切り替えると video.js は「再生を始めた」印（vjs-has-started）を外し、
-        // 操作バーを出さなくなる。失敗の層の下でも操作バーを押せるように付け直す。
-        player.hasStarted(true);
+    const setDirectSource = () => {
+      player.src({ src: streamUrl(source.id), type: directContentType(source) });
+    };
+
+    const fail = (kind: PlaybackFailureKind, position: number) => {
+      switchingSource = false;
+      attempt = { ...attempt, state: "failed" };
+      setStatus({ playing: false, loading: false, reconnecting: false });
+      latest.current.onError(position, kind);
+      // 誤りの印（vjs-error）は操作バーを隠す。失敗はプレイヤーの上の層で伝え、
+      // 操作バーは見えるままにする（ui-design「Overlay layer」）。読み込みの前に
+      // 失敗したときも、操作バーを隠したままにしない。
+      player.error(null);
+      setHoldControlBar(false);
+      // 変換へ切り替えると video.js は「再生を始めた」印（vjs-has-started）を外し、
+      // 操作バーを出さなくなる。失敗の層の下でも操作バーを押せるように付け直す。
+      player.hasStarted(true);
+    };
+
+    // reload は通信が切れた位置から今の経路を読み込み直す。直接再生はメタデータが来たら
+    // その位置へ戻し、変換は位置から始め直す。どちらもメタデータが来たら読み込み直しの
+    // 表示を下ろし、再生していたなら再生を続ける。
+    const reload = () => {
+      reconnectTimer = undefined;
+      if (player.isDisposed()) return;
+      const generation = ++recoveryGeneration;
+      const position = attempt.logicalPositionMs;
+      resumeApplied = true;
+      player.one("loadedmetadata", () => {
+        if (generation !== recoveryGeneration || player.isDisposed()) return;
+        switchingSource = false;
+        recoveredFromMs = position;
+        setStatus({ reconnecting: false });
+        if (attempt.playIntended) {
+          setStatus({ loading: true });
+          void player.play()?.catch(() => setStatus({ loading: false }));
+        }
+      });
+      if (attempt.route === "direct") {
+        resumeAtMs = position;
+        setDirectSource();
+      } else {
+        setLiveSource(position);
+      }
+    };
+
+    const scheduleReconnect = (position: number) => {
+      const delay = reconnectDelay(reconnectCount);
+      if (delay === null) {
+        fail("network", position);
         return;
       }
+      reconnectCount += 1;
+      setStatus({ playing: false, loading: false, reconnecting: true });
+      setHoldControlBar(false);
+      player.hasStarted(true);
+      reconnectTimer = window.setTimeout(reload, delay);
+    };
 
+    // 端末が回線に戻ったら、待ちを切り上げてすぐ読み込み直す。
+    const reconnectNow = () => {
+      if (reconnectTimer === undefined) return;
+      window.clearTimeout(reconnectTimer);
+      reload();
+    };
+    window.addEventListener("online", reconnectNow);
+
+    const handleFailure = (
+      kind: PlaybackFailureKind,
+      position: number,
+      playIntended: boolean,
+    ) => {
+      if (kind === "network") {
+        scheduleReconnect(position);
+        return;
+      }
+      // 直接再生で形式が読めないときだけ、1 回だけ変換へ切り替える。
+      const fallback = fallbackToTranscode(attempt, position, playIntended);
+      if (fallback === null) {
+        fail(kind, position);
+        return;
+      }
       attempt = fallback;
       setRoute("transcode");
-      switchingSource = true;
-      player.error(null);
+      setStatus({ reconnecting: false });
       setLiveSource(attempt.sourceOffsetMs);
       player.one("canplay", () => {
         switchingSource = false;
         if (attempt.playIntended) void player.play()?.catch(() => undefined);
         else player.pause();
       });
+    };
+
+    // 誤りは種類で分ける（playbackRecovery.ts）。通信の失敗は同じ経路で読み込み直し、
+    // 形式・データの失敗は直接再生なら変換へ切り替える。番号だけで決まらない誤りは
+    // サーバーに届くかを確かめてから分ける。
+    player.on("error", () => {
+      const code = (player.error() as { code?: number } | null)?.code;
+      const position = logicalPositionMs();
+      const playIntended = attempt.playIntended || !player.paused();
+      const generation = ++recoveryGeneration;
+      reachability?.abort();
+      reachability = undefined;
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      reconnectTimer = undefined;
+      attempt = {
+        ...updatePosition(attempt, position),
+        state: "loading",
+        playIntended,
+      };
+      // 確かめと読み込み直しの間は、誤りの印（操作バーを隠す）を外し、止まったことを
+      // 再生を止めた操作として扱わない。
+      switchingSource = true;
+      player.error(null);
+
+      const errorClass = classifyMediaError(code);
+      if (errorClass !== "ambiguous") {
+        handleFailure(errorClass, position, playIntended);
+        return;
+      }
+      setStatus({ loading: true });
+      const controller = new AbortController();
+      reachability = controller;
+      void serverReachable(controller.signal).then((reachable) => {
+        if (controller.signal.aborted || player.isDisposed()) return;
+        if (generation !== recoveryGeneration) return;
+        reachability = undefined;
+        handleFailure(reachable ? "source" : "network", position, playIntended);
+      });
     });
 
     if (attempt.route === "direct") {
-      player.src({ src: streamUrl(source.id), type: directContentType(source) });
+      setDirectSource();
     } else {
       setLiveSource(attempt.sourceOffsetMs);
     }
@@ -394,6 +529,10 @@ export default function VideoPlayer(props: Props) {
 
     return () => {
       window.clearInterval(timer);
+      window.removeEventListener("online", reconnectNow);
+      if (reconnectTimer !== undefined) window.clearTimeout(reconnectTimer);
+      recoveryGeneration += 1;
+      reachability?.abort();
       if (syncFullscreen !== undefined) {
         document.removeEventListener("fullscreenchange", syncFullscreen);
       }

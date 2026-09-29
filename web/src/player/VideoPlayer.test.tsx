@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
@@ -195,6 +195,8 @@ describe("VideoPlayer", () => {
     window.localStorage.clear();
     mock.instances.length = 0;
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it("保存した音量を復元し、音量の変更を次のプレイヤーへ引き継ぐ", async () => {
@@ -248,6 +250,7 @@ describe("VideoPlayer", () => {
     player.time = 12.345;
     player.pausedValue = false;
     player.trigger("play");
+    player.errorValue = { code: 3 };
     player.trigger("error");
 
     expect(player.sources).toHaveLength(2);
@@ -257,9 +260,11 @@ describe("VideoPlayer", () => {
       ) as unknown,
       vvOffsetSeconds: 12.345,
     });
+    player.errorValue = { code: 3 };
     player.trigger("error");
     expect(player.sources).toHaveLength(2);
     expect(values.onError).toHaveBeenCalledTimes(1);
+    expect(values.onError).toHaveBeenCalledWith(12_345, "decode");
   });
 
   it("metadata前のdirect errorでも保存位置からtranscodeへ切り替える", async () => {
@@ -269,6 +274,7 @@ describe("VideoPlayer", () => {
     const player = mock.instances[0];
     if (player === undefined) throw new Error("playerがありません");
 
+    player.errorValue = { code: 3 };
     player.trigger("error");
 
     expect(player.sources[1]).toMatchObject({
@@ -420,7 +426,12 @@ describe("VideoPlayer", () => {
   it("directからtranscodeへ切り替えたら「変換して再生中」を出す", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
-    act(() => mock.instances[0]?.trigger("error"));
+    act(() => {
+      const player = mock.instances[0];
+      if (player === undefined) return;
+      player.errorValue = { code: 3 };
+      player.trigger("error");
+    });
     expect(
       await screen.findByRole("button", { name: "Converting for playback" }),
     ).toBeDefined();
@@ -474,8 +485,12 @@ describe("VideoPlayer", () => {
     player.trigger("loadedmetadata");
     player.time = 42.5;
     player.errorValue = { code: 4 };
+    // 番号 4 はサーバーに届くかを確かめてから分ける。届けば動画を出せなかった失敗になる。
+    const fetchMock = vi.fn(() => Promise.resolve(new Response("{}")));
+    vi.stubGlobal("fetch", fetchMock);
     act(() => player.trigger("error"));
-    expect(values.onError).toHaveBeenCalledWith(42_500);
+    await waitFor(() => expect(values.onError).toHaveBeenCalledWith(42_500, "source"));
+    expect(fetchMock).toHaveBeenCalledWith("/api/health", expect.anything());
     expect(player.errorValue).toBeNull();
     // 変換へ切り替えたあとの失敗でも、操作バーを出す印を付け直す。
     expect(player.started).toBe(true);
@@ -627,8 +642,167 @@ describe("VideoPlayer", () => {
     await waitFor(() => expect(mock.instances).toHaveLength(1));
     const host = view.container.querySelector(".vv-video-player");
     expect(host?.getAttribute("data-loading")).toBe("true");
-    act(() => mock.instances[0]?.trigger("error"));
+    act(() => {
+      const player = mock.instances[0];
+      if (player === undefined) return;
+      player.errorValue = { code: 3 };
+      player.trigger("error");
+    });
     expect(values.onError).toHaveBeenCalled();
     expect(host?.hasAttribute("data-loading")).toBe(false);
+  });
+
+  describe("通信が切れたとき", () => {
+    function lastStatus(values: ReturnType<typeof props>) {
+      const calls = values.onStatus.mock.calls;
+      return calls[calls.length - 1]?.[0] as Record<string, unknown> | undefined;
+    }
+
+    function startPlaying(values: ReturnType<typeof props>) {
+      render(<VideoPlayer {...values} />);
+      const player = mock.instances[0];
+      if (player === undefined) throw new Error("playerがありません");
+      player.trigger("loadedmetadata");
+      player.time = 30;
+      player.pausedValue = false;
+      player.trigger("play");
+      return player;
+    }
+
+    it("変換へ切り替えず、待ってから同じ位置で直接再生を読み込み直し、再生を続ける", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+
+      expect(player.errorValue).toBeNull();
+      expect(lastStatus(values)).toMatchObject({ reconnecting: true, loading: false });
+      expect(player.sources).toHaveLength(1);
+      expect(values.onError).not.toHaveBeenCalled();
+
+      act(() => vi.advanceTimersByTime(1000));
+      expect(player.sources).toHaveLength(2);
+      expect(player.sources[1]).toEqual({
+        src: "/api/videos/7/stream",
+        type: "video/mp4",
+      });
+
+      player.time = 0;
+      player.pausedValue = true;
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.time).toBe(30);
+      expect(player.pausedValue).toBe(false);
+      expect(lastStatus(values)).toMatchObject({ reconnecting: false });
+      expect(
+        screen.queryByRole("button", { name: "Converting for playback" }),
+      ).toBeNull();
+    });
+
+    it("変換中に切れたら、切れた位置から変換を始め直す", () => {
+      vi.useFakeTimers();
+      const values = props({ playable: false });
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(player.sources[1]).toMatchObject({
+        src: expect.stringMatching(
+          /^\/api\/videos\/7\/transcode\.mp4\?startMs=30000&attempt=[0-9a-f]{32}$/,
+        ) as unknown,
+        vvOffsetSeconds: 30,
+      });
+    });
+
+    it("読み込み直しを使い切ったら、通信の失敗として伝える", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      for (let round = 0; round < 5; round += 1) {
+        player.errorValue = { code: 2 };
+        act(() => player.trigger("error"));
+        act(() => vi.advanceTimersByTime(15_000));
+      }
+      expect(values.onError).not.toHaveBeenCalled();
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      expect(values.onError).toHaveBeenCalledWith(30_000, "network");
+      expect(lastStatus(values)).toMatchObject({ reconnecting: false, playing: false });
+    });
+
+    it("読み込み直したあと十分に進んだら、回数を数え直す", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      for (let round = 0; round < 5; round += 1) {
+        player.errorValue = { code: 2 };
+        act(() => player.trigger("error"));
+        act(() => vi.advanceTimersByTime(15_000));
+        act(() => player.trigger("loadedmetadata"));
+      }
+      player.time = 45;
+      act(() => player.trigger("timeupdate"));
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      expect(values.onError).not.toHaveBeenCalled();
+      expect(lastStatus(values)).toMatchObject({ reconnecting: true });
+    });
+
+    it("端末が回線に戻ったら、待たずに読み込み直す", () => {
+      vi.useFakeTimers();
+      const values = props();
+      const player = startPlaying(values);
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => vi.advanceTimersByTime(1000));
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      expect(player.sources).toHaveLength(2);
+      act(() => window.dispatchEvent(new Event("online")));
+      expect(player.sources).toHaveLength(3);
+    });
+
+    it("番号だけで決まらない誤りは、サーバーに届かなければ通信の失敗として読み込み直す", async () => {
+      const values = props();
+      const player = startPlaying(values);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
+      );
+      player.errorValue = { code: 4 };
+      act(() => player.trigger("error"));
+      expect(lastStatus(values)).toMatchObject({ loading: true });
+      await waitFor(() =>
+        expect(lastStatus(values)).toMatchObject({ reconnecting: true }),
+      );
+      expect(player.sources).toHaveLength(1);
+      expect(values.onError).not.toHaveBeenCalled();
+    });
+
+    it("番号だけで決まらない誤りは、サーバーに届けば直接再生から変換へ切り替える", async () => {
+      const values = props();
+      const player = startPlaying(values);
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() => Promise.resolve(new Response("{}"))),
+      );
+      player.errorValue = { code: 4 };
+      act(() => player.trigger("error"));
+      await waitFor(() => expect(player.sources).toHaveLength(2));
+      expect(player.sources[1]).toMatchObject({ vvOffsetSeconds: 30 });
+    });
+
+    it("捨てたプレイヤーは読み込み直さない", () => {
+      vi.useFakeTimers();
+      const values = props();
+      render(<VideoPlayer {...values} />);
+      const player = mock.instances[0];
+      if (player === undefined) throw new Error("playerがありません");
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      cleanup();
+      act(() => vi.advanceTimersByTime(20_000));
+      expect(player.sources).toHaveLength(1);
+    });
   });
 });

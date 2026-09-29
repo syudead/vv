@@ -14,6 +14,7 @@ import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { formatBytes, formatDuration } from "../lib/format";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/Tooltip";
+import type { PlaybackFailureKind } from "./playbackRecovery";
 import type { PlayerControls } from "./playerControls";
 import { technicalSummary } from "./properties";
 import type { PlayerStatus } from "./VideoPlayer";
@@ -25,7 +26,7 @@ interface PlayerProps {
   autoplay: boolean;
   onPosition: (positionMs: number) => void;
   onProgress: (positionMs: number, immediate: boolean) => void;
-  onError: (positionMs: number) => void;
+  onError: (positionMs: number, kind: PlaybackFailureKind) => void;
   onControls: (controls: PlayerControls | null) => void;
   onStatus: (status: PlayerStatus) => void;
 }
@@ -445,6 +446,7 @@ describe("VideoPage", () => {
       act(() =>
         player().onStatus({
           loading: false,
+          reconnecting: false,
           playing: true,
           userActive: true,
           ended: false,
@@ -467,6 +469,7 @@ describe("VideoPage", () => {
       act(() =>
         player().onStatus({
           loading: false,
+          reconnecting: false,
           playing: true,
           userActive: false,
           ended: false,
@@ -722,7 +725,7 @@ describe("VideoPage", () => {
     it("再生失敗の再試行は失敗した位置から、自動で再生を始める", async () => {
       renderPage();
       await ready();
-      act(() => player().onError(42_000));
+      act(() => player().onError(42_000, "source"));
       const alert = await screen.findByRole("alert");
       expect(within(alert).getByText("Couldn't play this video")).toBeDefined();
       fireEvent.click(within(alert).getByRole("button", { name: "Try again from 0:42" }));
@@ -732,12 +735,59 @@ describe("VideoPage", () => {
       expect(screen.queryByText("Couldn't play this video")).toBeNull();
     });
 
+    it("通信の失敗は、サーバーに届かないことを伝えて失敗した位置から再試行できる", async () => {
+      renderPage();
+      await ready();
+      act(() => player().onError(42_000, "network"));
+      const alert = await screen.findByRole("alert");
+      expect(within(alert).getByText("Couldn't reach the server")).toBeDefined();
+      expect(within(alert).queryByText(/moved or deleted/)).toBeNull();
+      expect(
+        within(alert).getByRole("button", { name: "Try again from 0:42" }),
+      ).toBeDefined();
+    });
+
+    it("データが読めない失敗は、ファイルが壊れているかもしれないと伝える", async () => {
+      renderPage();
+      await ready();
+      act(() => player().onError(1000, "decode"));
+      const alert = await screen.findByRole("alert");
+      expect(within(alert).getByText(/The file may be damaged/)).toBeDefined();
+    });
+
+    it("読み込み直しの間は、失敗の層ではなく再接続中の表示を出す", async () => {
+      renderPage();
+      await ready();
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: true,
+          playing: false,
+          userActive: true,
+          ended: false,
+        }),
+      );
+      expect(screen.getByText("Connection lost · Reconnecting")).toBeDefined();
+      expect(screen.queryByRole("alert")).toBeNull();
+      act(() =>
+        player().onStatus({
+          loading: false,
+          reconnecting: false,
+          playing: true,
+          userActive: true,
+          ended: false,
+        }),
+      );
+      expect(screen.queryByText("Connection lost · Reconnecting")).toBeNull();
+    });
+
     it("映像の読み込み中は文字を伴う状態を表示し、再生開始後に消す", async () => {
       renderPage();
       await ready();
       act(() =>
         player().onStatus({
           loading: true,
+          reconnecting: false,
           playing: true,
           userActive: true,
           ended: false,
@@ -749,6 +799,7 @@ describe("VideoPage", () => {
       act(() =>
         player().onStatus({
           loading: false,
+          reconnecting: false,
           playing: true,
           userActive: true,
           ended: false,
@@ -781,6 +832,7 @@ describe("VideoPage", () => {
       act(() =>
         player().onStatus({
           loading: false,
+          reconnecting: false,
           playing: false,
           userActive: true,
           ended: true,
@@ -892,6 +944,7 @@ describe("VideoPage", () => {
       act(() =>
         player().onStatus({
           loading: false,
+          reconnecting: false,
           playing: false,
           userActive: true,
           ended: true,
@@ -1316,7 +1369,7 @@ describe("VideoPage", () => {
       end();
       await advance(5000);
       await waitFor(() => expect(player().video.id).toBe(13));
-      act(() => player().onError(12_000));
+      act(() => player().onError(12_000, "source"));
       const alert = await screen.findByRole("alert");
       expect(within(alert).getByText("Couldn't play this video")).toBeDefined();
       await advance(6000);
@@ -1403,7 +1456,7 @@ describe("VideoPage", () => {
     it("無効なrouteへ変更したら前の動画の再生エラーを消す", async () => {
       renderPage();
       await ready();
-      act(() => player().onError(1000));
+      act(() => player().onError(1000, "source"));
       expect(await screen.findByText("Couldn't play this video")).toBeDefined();
       fireEvent.click(screen.getByRole("link", { name: "無効な動画" }));
       expect(await screen.findByText("This video can't be opened")).toBeDefined();
@@ -1558,8 +1611,8 @@ describe("VideoPage", () => {
       renderPage();
       await ready();
       server.session = "guest";
-      act(() => player().onError(1000));
-      act(() => player().onError(2000));
+      act(() => player().onError(1000, "source"));
+      act(() => player().onError(2000, "source"));
       await waitFor(() => expect(reloadPage).toHaveBeenCalledOnce());
       expect(screen.queryByText("Couldn't play this video")).toBeNull();
     });
@@ -1569,7 +1622,7 @@ describe("VideoPage", () => {
       server.session = "guest";
       renderPage("7", undefined, "guest");
       await ready();
-      act(() => player().onError(1000));
+      act(() => player().onError(1000, "source"));
       expect(await screen.findByText("Couldn't play this video")).toBeDefined();
       expect(reloadPage).not.toHaveBeenCalled();
     });
@@ -1586,7 +1639,7 @@ describe("VideoPage", () => {
       });
       renderPage();
       await ready();
-      act(() => player().onError(1000));
+      act(() => player().onError(1000, "source"));
       await waitFor(() => expect(answerSession).toBeDefined());
       fireEvent.click(screen.getByRole("link", { name: "別の動画" }));
       expect((await ready()).textContent).toBe("後続の動画");
@@ -1610,7 +1663,7 @@ describe("VideoPage", () => {
       renderPage("7", undefined, "guest");
       await ready();
       server.videos.delete(7);
-      act(() => player().onError(1000));
+      act(() => player().onError(1000, "source"));
       expect(await screen.findByText("This video can't be opened")).toBeDefined();
       expect(reloadPage).not.toHaveBeenCalled();
     });
@@ -1639,6 +1692,7 @@ describe("VideoPage", () => {
       act(() =>
         player().onStatus({
           loading: false,
+          reconnecting: false,
           playing: false,
           userActive: true,
           ended: true,
@@ -1732,7 +1786,7 @@ describe("VideoPage", () => {
       server.videos.set(7, [video]);
       const playback = renderPage();
       await ready();
-      act(() => player().onError(42_000));
+      act(() => player().onError(42_000, "source"));
       await screen.findByRole("alert");
       expectCatalogTextOnly(document.body, [...userData, formatDuration(42_000)]);
       playback.unmount();

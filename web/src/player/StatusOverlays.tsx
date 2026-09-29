@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   RefreshCw,
   RotateCcw,
+  WifiOff,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
@@ -15,6 +16,7 @@ import { probeErrorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration } from "../lib/format";
 import Button from "../ui/Button";
+import type { PlaybackFailureKind } from "./playbackRecovery";
 import { useOpenFile } from "./VideoFacts";
 import { creatingLine, processingStages, type StageState } from "./processing";
 
@@ -86,8 +88,17 @@ export function Dimmed({ children }: { children: ReactNode }) {
   );
 }
 
-/** LoadingOverlay は読み込み中を文字でも伝える。backdrop が偽なら映像を透かす。 */
-export function LoadingOverlay({ backdrop }: { backdrop: boolean }) {
+/**
+ * LoadingOverlay は読み込み中を文字でも伝える。backdrop が偽なら映像を透かす。
+ * label を渡すと「読み込み中」の代わりにその文を出す（通信が切れて読み込み直している間）。
+ */
+export function LoadingOverlay({
+  backdrop,
+  label = t.player.loading,
+}: {
+  backdrop: boolean;
+  label?: UiText;
+}) {
   return (
     <div
       // 読み込み中の輪は押せる要素を持たないので、下のプレイヤー（再生バー）へ通す。
@@ -101,28 +112,33 @@ export function LoadingOverlay({ backdrop }: { backdrop: boolean }) {
         className="flex items-center gap-2 rounded-md bg-navbar px-3 py-2 text-sm font-medium text-fg shadow-elevated"
       >
         <LoaderCircle className={cn("size-5 text-accent", spin)} aria-hidden="true" />
-        {t.player.loading}
+        {label}
       </span>
     </div>
   );
 }
 
-/** PlaybackFailure は再生失敗と、失敗した位置からの再試行である。 */
+/**
+ * PlaybackFailure は再生失敗と、失敗した位置からの再試行である。文は失敗の種類
+ * （サーバーに届かない・データが読めない・動画を出せない）で分ける。
+ */
 export function PlaybackFailure({
   positionMs,
+  kind,
   onRetry,
 }: {
   positionMs: number;
+  kind: PlaybackFailureKind;
   onRetry: () => void;
 }) {
+  const text = t.player.playbackFailed[kind];
+  const Icon = kind === "network" ? WifiOff : AlertCircle;
   return (
     <Dimmed>
       <Panel role="alert" className="max-w-md items-center gap-3 text-center">
-        <AlertCircle className="size-8 text-danger" aria-hidden="true" />
-        <h2 className="text-lg font-semibold text-fg">{t.player.playbackFailed.title}</h2>
-        <p className="text-sm text-fg-muted text-balance">
-          {t.player.playbackFailed.description}
-        </p>
+        <Icon className="size-8 text-danger" aria-hidden="true" />
+        <h2 className="text-lg font-semibold text-fg">{text.title}</h2>
+        <p className="text-sm text-fg-muted text-balance">{text.description}</p>
         <Button variant="secondary" onClick={onRetry} className="mt-1">
           <RotateCcw aria-hidden="true" />
           {t.player.playbackFailed.retryFrom(formatDuration(positionMs))}
