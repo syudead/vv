@@ -37,6 +37,24 @@ describe("PlaybackAttempt", () => {
     expect(createPlaybackAttempt({ ...video, durationMs: undefined }, 0)).toBeNull();
   });
 
+  it("元の画質以外は直接再生できる動画でも位置から変換で始め、元の画質は今までどおり", () => {
+    expect(createPlaybackAttempt(video, 2000, "480p")).toMatchObject({
+      route: "transcode",
+      quality: "480p",
+      logicalPositionMs: 2000,
+      sourceOffsetMs: 2000,
+    });
+    expect(
+      createPlaybackAttempt({ ...video, playable: false }, 2000, "480p"),
+    ).toMatchObject({ route: "transcode", quality: "480p", sourceOffsetMs: 2000 });
+    expect(createPlaybackAttempt(video, 2000, "original")).toMatchObject({
+      route: "direct",
+      quality: "original",
+      sourceOffsetMs: 0,
+    });
+    expect(createPlaybackAttempt(video, 2000)).toMatchObject({ quality: "original" });
+  });
+
   it("direct errorからtranscodeへ移るのは1回だけ", () => {
     const direct = createPlaybackAttempt(video, 0);
     if (direct === null) throw new Error("attemptがありません");

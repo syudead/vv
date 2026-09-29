@@ -73,7 +73,7 @@ async function waitForVideos(request: APIRequestContext) {
       },
       { timeout: 60_000 },
     )
-    .toBe(11);
+    .toBe(12);
 }
 
 async function waitForSeekThumbnails(request: APIRequestContext) {
@@ -445,6 +445,72 @@ test.describe.serial("live MP4 playback", () => {
     const body = (await progress).postDataJSON() as { positionMs: number };
     expect(body.positionMs).toBeGreaterThanOrEqual(actualStart);
     expect(body.positionMs).toBeLessThan(seekStart + 5000);
+    expect(
+      requests.filter((candidate) => candidate.url().includes("/stream")),
+    ).toHaveLength(0);
+  });
+
+  test("覚えた480pで1080pの直接再生できる動画を変換で始め、未buffer seekのあとも480pを保つ", async ({
+    page,
+  }) => {
+    // specs/027-playback-quality 受け入れ条件 5・7。
+    test.setTimeout(45_000);
+    const item = video("hd-1080p");
+    expect(item.playable).toBe(true);
+    await page.goto("/");
+    await page.evaluate(() => {
+      window.localStorage.setItem("vv.playback-quality.v1", JSON.stringify("480p"));
+    });
+    // 変換が再生より先に進みすぎて、シーク先まで読み込み済みにならないよう回線を絞る。
+    await throttle(page, 256 * 1024);
+    const requests = mediaRequests(page);
+    const initial = page.waitForRequest((candidate) =>
+      candidate
+        .url()
+        .endsWith(`/api/videos/${String(item.id)}/transcode.mp4?quality=480p`),
+    );
+    await page.goto(`/videos/${String(item.id)}`);
+    await initial;
+    await expect(page.getByRole("button", { name: "Converting to 480p" })).toBeVisible();
+    await page.locator(".vjs-big-play-button").click();
+    await page.waitForFunction(() => {
+      const element = document.querySelector("video");
+      return (
+        element !== null &&
+        !element.paused &&
+        element.readyState >= 2 &&
+        element.currentTime > 0.1
+      );
+    });
+    const height = () =>
+      page.evaluate(() => document.querySelector("video")?.videoHeight ?? 0);
+    expect(await height()).toBe(480);
+
+    const playerBox = await page.locator(".video-js").boundingBox();
+    if (playerBox === null) throw new Error("player is not visible");
+    await page.mouse.move(
+      playerBox.x + playerBox.width * 0.75,
+      playerBox.y + playerBox.height / 2,
+      { steps: 3 },
+    );
+    await expect(page.locator(".video-js")).toHaveClass(/vjs-user-active/);
+    const seekBar = page.locator(".vjs-progress-control");
+    const box = await seekBar.boundingBox();
+    if (box === null) throw new Error("seek bar is not visible");
+    const seekRequestPromise = page.waitForRequest((candidate) =>
+      candidate.url().includes(`/api/videos/${String(item.id)}/transcode.mp4?startMs=`),
+    );
+    await page.mouse.click(box.x + box.width * 0.9, box.y + box.height / 2);
+    const seekRequest = await seekRequestPromise;
+    const query = new URL(seekRequest.url()).searchParams;
+    expect(Number(query.get("startMs"))).toBeGreaterThan(15_000);
+    expect(query.get("quality")).toBe("480p");
+    await expect.poll(async () => displayedSeconds(page)).toBeGreaterThanOrEqual(15);
+    await page.waitForFunction(() => {
+      const element = document.querySelector("video");
+      return element !== null && element.readyState >= 2;
+    });
+    expect(await height()).toBe(480);
     expect(
       requests.filter((candidate) => candidate.url().includes("/stream")),
     ).toHaveLength(0);
