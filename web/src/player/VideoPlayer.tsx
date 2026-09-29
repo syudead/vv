@@ -417,15 +417,25 @@ export default function VideoPlayer(props: Props) {
       latest.current.onPosition(position);
       return position;
     };
+    // 字幕は再生の時間軸（変換の出力）で cue を選ぶので、変換の offset が決まるたびに
+    // その offset でトラックを付け直し、報告を待つ間は外す（specs/028-sidecar-subtitles
+    // research.md R-6）。直接再生の offset は 0 のまま。
     const setLiveSource = (positionMs: number) => {
       player.src(
-        liveSource(source.id, attempt.durationMs, positionMs, (seconds) => {
-          attempt = {
-            ...updatePosition(attempt, seconds * 1000),
-            sourceOffsetMs: seconds * 1000,
-          };
-          latest.current.onPosition(attempt.logicalPositionMs);
-        }),
+        liveSource(
+          source.id,
+          attempt.durationMs,
+          positionMs,
+          (seconds) => {
+            attempt = {
+              ...updatePosition(attempt, seconds * 1000),
+              sourceOffsetMs: seconds * 1000,
+            };
+            latest.current.onPosition(attempt.logicalPositionMs);
+          },
+          (seconds) => subtitles.setOffset(seconds * 1000),
+          () => subtitles.setOffset(null),
+        ),
       );
     };
 
@@ -500,6 +510,7 @@ export default function VideoPlayer(props: Props) {
       latest.current.onProgress(reportPosition(), true);
     });
     const setDirectSource = () => {
+      subtitles.setOffset(0);
       player.src({ src: streamUrl(source.id), type: directContentType(source) });
     };
 

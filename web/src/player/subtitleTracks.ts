@@ -15,6 +15,9 @@ import {
  *   無ければオフにし、保存値は書き換えない。ラベルはサーバーと同じ規則（NFC 正規化と
  *   case folding）で比べる。
  * - 保存するのは、利用者がメニューか `c` キーで選択を変えたときだけである。
+ * - 再生の時間軸の 0 が元動画のどの時刻か（offset）が変わると、その値を `offsetMs` に付けた
+ *   URL でトラックを付け直し、直前に表示していたラベルを表示する（R-6）。offset が決まるまでは
+ *   トラックを付けない。付け直しでは保存値を書き換えない。
  */
 
 /** TextTrackLike は、ここで触る TextTrack の部分である。 */
@@ -46,6 +49,11 @@ export interface SubtitleTracks {
   replace(videoId: number, subtitles: readonly SubtitleTrack[]): void;
   /** start はプレイヤーが準備できたときに呼ぶ。覚えた一覧のトラックを付ける。 */
   start(): void;
+  /**
+   * setOffset は再生の時間軸の 0 に当たる元動画の時刻（ミリ秒）を伝える。null は未決で、
+   * トラックを外す。値が変わったら、その offset の URL でトラックを付け直す。既定は 0。
+   */
+  setOffset(offsetMs: number | null): void;
   /**
    * toggle は `c` キーの切り替えである。トラックが無ければ何もしない。表示中ならオフに、
    * オフなら保存済みのラベルのトラック（無ければメニューの最初のトラック）を表示し、保存する。
@@ -100,6 +108,15 @@ export function createSubtitleTracks(
   /** 今付けているトラックの元の一覧。wanted と同じなら付け直さない。 */
   let applied: Wanted | null = null;
   let attached: Attached[] = [];
+  /** 再生の時間軸の 0 に当たる元動画の時刻（ミリ秒）。null は未決。 */
+  let offsetMs: number | null = 0;
+  /** 今付けているトラック（未決なら外した状態）の offset。 */
+  let appliedOffset: number | null = 0;
+  /**
+   * 次にトラックを付けたとき保存値で表示を決めるか。一覧が変わったときに立て、付けたら下ろす。
+   * 下りている間の付け直しは、直前に表示していたラベル（selection）を表示する。
+   */
+  let fromPreference = true;
   /** 自分で表示を変えている間。その間に届く change は利用者の選択ではない。 */
   let applying = false;
   /** 最後に見た表示中のラベル（オフなら null）。change と比べて、変わったときだけ保存する。 */
@@ -138,7 +155,7 @@ export function createSubtitleTracks(
   };
 
   const onChange = () => {
-    if (applying || disposed) return;
+    if (applying || disposed || attached.length === 0) return;
     const now = showing();
     if (now === selection) return;
     selection = now;
@@ -148,18 +165,24 @@ export function createSubtitleTracks(
   list.addEventListener("change", onChange);
 
   const attach = () => {
-    if (!started || disposed || wanted === applied) return;
+    if (!started || disposed) return;
+    if (wanted === applied && offsetMs === appliedOffset) return;
+    if (wanted !== applied) fromPreference = true;
+    // 外す前に、まだ change が届いていない利用者の選択を受け取っておく。
+    onChange();
+    const offset = offsetMs;
     applying = true;
     try {
       for (const entry of attached) player.removeRemoteTextTrack(entry.track);
       attached = [];
       applied = wanted;
-      if (wanted === null) return;
+      appliedOffset = offset;
+      if (wanted === null || offset === null) return;
       for (const subtitle of wanted.subtitles) {
         const element = player.addRemoteTextTrack(
           {
             kind: "subtitles",
-            src: subtitleUrl(wanted.videoId, subtitle.file, 0),
+            src: subtitleUrl(wanted.videoId, subtitle.file, offset),
             label: subtitleDisplayLabel(subtitle.label),
             default: false,
           },
@@ -172,8 +195,14 @@ export function createSubtitleTracks(
     } finally {
       applying = false;
     }
-    const saved = readSubtitlePreference(storage);
-    show(saved.enabled ? saved.label : null);
+    if (wanted === null || offset === null) return;
+    if (fromPreference) {
+      fromPreference = false;
+      const saved = readSubtitlePreference(storage);
+      show(saved.enabled ? saved.label : null);
+      return;
+    }
+    show(selection);
   };
 
   return {
@@ -190,6 +219,10 @@ export function createSubtitleTracks(
     },
     start() {
       started = true;
+      attach();
+    },
+    setOffset(next) {
+      offsetMs = next === null ? null : Math.max(0, Math.round(next));
       attach();
     },
     toggle() {
