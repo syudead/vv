@@ -12,7 +12,8 @@ import {
  * - トラックは `kind: "subtitles"` の remote text track として付ける。字幕ボタンとメニューは
  *   video.js の `SubsCapsButton` が出し、トラックが無ければボタンは自分を隠す。
  * - 付けたとき、保存値が `enabled: true` でそのラベルのトラックがあればそれを表示する。
- *   無ければオフにし、保存値は書き換えない。
+ *   無ければオフにし、保存値は書き換えない。ラベルはサーバーと同じ規則（NFC 正規化と
+ *   case folding）で比べる。
  * - 保存するのは、利用者がメニューか `c` キーで選択を変えたときだけである。
  */
 
@@ -53,6 +54,27 @@ export interface SubtitleTracks {
   dispose(): void;
 }
 
+/**
+ * subtitleLabelKey は字幕のラベルを比べるための鍵である。サーバーの `SubtitleSidecars` と同じく、
+ * NFC 正規化のうえ文字ごとの case folding で同じとみなす文字をそろえる（`JA` と `ja`、
+ * `Σ`・`σ`・`ς`）。文字が複数の文字に変わる大文字・小文字の変換（`ß` → `SS`）は使わない。
+ */
+export function subtitleLabelKey(label: string): string {
+  let key = "";
+  for (const char of label.normalize("NFC")) {
+    const upper = char.toUpperCase();
+    const base = [...upper].length === 1 ? upper : char;
+    const lower = base.toLowerCase();
+    key += [...lower].length === 1 ? lower : base;
+  }
+  return key;
+}
+
+/** sameSubtitleLabel は 2 つのラベルが同じ字幕のラベルかを返す（subtitleLabelKey で比べる）。 */
+export function sameSubtitleLabel(a: string, b: string): boolean {
+  return subtitleLabelKey(a) === subtitleLabelKey(b);
+}
+
 /** subtitleDisplayLabel はメニューに出す字幕の名前である。ラベルが無ければカタログの既定の名前。 */
 export function subtitleDisplayLabel(label: string): string {
   return label === "" ? t.player.subtitles.default : label;
@@ -90,13 +112,14 @@ export function createSubtitleTracks(
   const show = (label: string | null) => {
     applying = true;
     try {
-      let shown = false;
+      let shown: string | null = null;
       for (const entry of attached) {
-        const on = !shown && label !== null && entry.label === label;
-        if (on) shown = true;
+        const on =
+          shown === null && label !== null && sameSubtitleLabel(entry.label, label);
+        if (on) shown = entry.label;
         entry.track.mode = on ? "showing" : "disabled";
       }
-      selection = shown ? label : null;
+      selection = shown;
     } finally {
       applying = false;
     }
@@ -178,7 +201,9 @@ export function createSubtitleTracks(
         return;
       }
       const saved = readSubtitlePreference(storage);
-      const target = attached.find((entry) => entry.label === saved.label) ?? attached[0];
+      const target =
+        attached.find((entry) => sameSubtitleLabel(entry.label, saved.label)) ??
+        attached[0];
       if (target === undefined) return;
       show(target.label);
       save(target.label);

@@ -31,6 +31,7 @@ import {
   type PlaybackFailureKind,
 } from "./playbackRecovery";
 import { attachSeekPreview } from "./seekPreview";
+import { registerSubtitlesButton, subtitlesButtonName } from "./subtitleMenu";
 import {
   createSubtitleTracks,
   type SubtitlePlayer,
@@ -51,7 +52,8 @@ export const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 2];
  * 操作バーの並び（要件 6）。残り時間は出さず、現在時刻/長さを出す。再生バーは
  * index.css で操作バーの上へ出す。「最初に戻る」は再生の前へ、「変換して再生中」は字幕と
  * 再生速度の前へ差し込む。字幕ボタンは再生速度の前に置き、トラックが無ければ video.js が隠す
- * （specs/028-sidecar-subtitles research.md R-10）。秒数送りは置かない。前後の動画は
+ * （specs/028-sidecar-subtitles research.md R-10）。字幕ボタンは video.js の `SubsCapsButton` に、
+ * 字幕の名前を言語の表に通さない手直しを加えたもの（subtitleMenu.ts）。秒数送りは置かない。前後の動画は
  * プレイヤーの左右の端に置く（NeighborArrows）。
  */
 const controlBarChildren = [
@@ -62,7 +64,7 @@ const controlBarChildren = [
   "durationDisplay",
   "progressControl",
   "customControlSpacer",
-  "subsCapsButton",
+  subtitlesButtonName,
   "playbackRateMenuButton",
   "pictureInPictureToggle",
   "fullscreenToggle",
@@ -216,6 +218,7 @@ export default function VideoPlayer(props: Props) {
 
     // 言語はプレイヤーを作るときにカタログから作り直す（テストの疑似ロケールも届く）。
     videojs.addLanguage(playerLanguage, playerDictionary());
+    registerSubtitlesButton();
     const element = document.createElement("video-js");
     element.classList.add("video-js", "vjs-big-play-centered");
     host.appendChild(element);

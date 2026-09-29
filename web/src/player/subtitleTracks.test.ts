@@ -5,14 +5,16 @@ import type { SubtitleTrack } from "../api/client";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import {
   createSubtitleTracks,
+  sameSubtitleLabel,
   type SubtitlePlayer,
   type SubtitleTracks,
 } from "./subtitleTracks";
+import { registerSubtitlesButton, subtitlesButtonName } from "./subtitleMenu";
 import { playerDictionary, playerLanguage } from "./VideoPlayer";
 
 /**
  * 字幕ボタンとメニューを、本物の video.js が作る DOM で確かめる（受け入れ条件 2・3・6〜8・12）。
- * 操作バーは VideoPlayer と同じ設定（`subsCapsButton`、`textTrackSettings: false`、独自言語）にする。
+ * 操作バーは VideoPlayer と同じ設定（字幕ボタン、`textTrackSettings: false`、独自言語）にする。
  */
 
 const storageKey = "vv.subtitles.v1";
@@ -50,6 +52,7 @@ function saved(): unknown {
 
 function create(list: readonly SubtitleTrack[]) {
   videojs.addLanguage(playerLanguage, playerDictionary());
+  registerSubtitlesButton();
   const element = document.createElement("video-js");
   document.body.append(element);
   const created = videojs(element, {
@@ -57,7 +60,7 @@ function create(list: readonly SubtitleTrack[]) {
     language: playerLanguage,
     textTrackSettings: false,
     playbackRates: [0.5, 1, 2],
-    controlBar: { children: ["subsCapsButton", "playbackRateMenuButton"] },
+    controlBar: { children: [subtitlesButtonName, "playbackRateMenuButton"] },
   });
   player = created;
   const controller = createSubtitleTracks(created as unknown as SubtitlePlayer);
@@ -126,6 +129,14 @@ describe("字幕ボタンとメニュー", () => {
     expect(itemTexts(wrapper)).toEqual(["Off", "Default", "ja"]);
   });
 
+  it("プレイヤーの文言と同じ名前のラベルも、ファイル名のまま出す", () => {
+    const labels = ["Mute", "Subtitles", "subtitles off", "constructor"];
+    const { wrapper } = create(
+      labels.map((label) => ({ file: `movie.${label}.srt`, label, format: "srt" })),
+    );
+    expect(itemTexts(wrapper)).toEqual(["Off", ...labels]);
+  });
+
   it("疑似ロケールで、字幕のボタンとメニューの文言がカタログから出る", () => {
     enablePseudoLocale();
     const { root } = create([plain, ja]);
@@ -159,6 +170,24 @@ describe("字幕の選択と記憶", () => {
     expect(showing(second.player)).toEqual([]);
     await flush();
     expect(saved()).toEqual({ enabled: true, label: "ja" });
+  });
+
+  it("保存したラベルは、大文字・小文字と Unicode の正規化の違いを同じラベルとみなす", async () => {
+    save({ enabled: true, label: "JA" });
+    const first = create([en, ja]);
+    expect(showing(first.player)).toEqual(["ja"]);
+    await flush();
+    expect(saved()).toEqual({ enabled: true, label: "JA" });
+    tracks?.dispose();
+    player?.dispose();
+
+    // 保存値は NFD の「が」、字幕は NFC の「が」。
+    save({ enabled: true, label: "\u304b\u3099" });
+    const second = create([
+      en,
+      { file: "movie.\u304c.srt", label: "\u304c", format: "srt" },
+    ]);
+    expect(showing(second.player)).toEqual(["\u304c"]);
   });
 
   it("メニューで選ぶと保存値が変わり、「オフ」でオフを保存する", async () => {
@@ -216,11 +245,32 @@ describe("c キーの切り替え", () => {
     expect(saved()).toEqual({ enabled: true, label: "" });
   });
 
+  it("オンにするとき、保存済みのラベルを大文字・小文字を区別せずに探す", () => {
+    save({ enabled: false, label: "EN" });
+    const { player: created, controller } = create([ja, en]);
+    controller.toggle();
+    expect(showing(created)).toEqual(["en"]);
+    expect(saved()).toEqual({ enabled: true, label: "en" });
+  });
+
   it("字幕の無い動画では何もしない", () => {
     save({ enabled: false, label: "ja" });
     const { player: created, controller } = create([]);
     controller.toggle();
     expect(showing(created)).toEqual([]);
     expect(saved()).toEqual({ enabled: false, label: "ja" });
+  });
+});
+
+describe("sameSubtitleLabel", () => {
+  it("サーバーと同じく NFC 正規化と文字ごとの case folding で比べる", () => {
+    expect(sameSubtitleLabel("ja", "JA")).toBe(true);
+    expect(sameSubtitleLabel("en.Forced", "EN.forced")).toBe(true);
+    expect(sameSubtitleLabel("\u03a3", "\u03c2")).toBe(true);
+    expect(sameSubtitleLabel("\u212a", "k")).toBe(true);
+    expect(sameSubtitleLabel("\u304b\u3099", "\u304c")).toBe(true);
+    expect(sameSubtitleLabel("ja", "jp")).toBe(false);
+    expect(sameSubtitleLabel("", "ja")).toBe(false);
+    expect(sameSubtitleLabel("", "")).toBe(true);
   });
 });

@@ -173,6 +173,8 @@ const mock = vi.hoisted(() => {
     {
       use: vi.fn(),
       addLanguage: vi.fn(),
+      getComponent: vi.fn(() => class {}),
+      registerComponent: vi.fn(),
       createTimeRanges: vi.fn((values: [number, number][]) => ({
         length: values.length,
         start: (index: number) => values[index]?.[0] ?? 0,
@@ -368,7 +370,7 @@ describe("VideoPlayer", () => {
     };
     expect(options.textTrackSettings).toBe(false);
     const children = options.controlBar.children;
-    expect(children.indexOf("subsCapsButton")).toBe(
+    expect(children.indexOf("subtitlesButton")).toBe(
       children.indexOf("playbackRateMenuButton") - 1,
     );
     const element = mock.instances[0]?.element;
