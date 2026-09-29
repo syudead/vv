@@ -39,6 +39,13 @@ import {
 import { effectiveQuality, qualityOptions, sourceShortSide } from "./quality";
 import { qualitySelectEvent, setQualityMenu, type QualitySelection } from "./qualityMenu";
 import { attachSeekPreview } from "./seekPreview";
+import {
+  initialStallState,
+  stallStep,
+  waitDeadlineMs,
+  type StallEvent,
+  type StallState,
+} from "./stallMonitor";
 
 const saveIntervalMs = 5000;
 /**
@@ -121,6 +128,11 @@ export interface PlayerStatus {
   /** video.js の user-active（操作バーが見えている）。 */
   userActive: boolean;
   ended: boolean;
+  /**
+   * 回線の遅さで再生が途切れていると判断した（stallMonitor.ts）。再生は止めない。
+   * 再生の終わりと失敗で下ろす。
+   */
+  stalled: boolean;
 }
 
 export const initialPlayerStatus: PlayerStatus = {
@@ -129,6 +141,7 @@ export const initialPlayerStatus: PlayerStatus = {
   playing: false,
   userActive: true,
   ended: false,
+  stalled: false,
 };
 
 interface Props {
@@ -274,6 +287,10 @@ export default function VideoPlayer(props: Props) {
     let slot: HTMLElement | null = null;
     let restart: HTMLElement | null = null;
     let status: PlayerStatus = { ...initialPlayerStatus };
+    // 途切れの判断（stallMonitor.ts、research.md R-6）。stallTimer は数えているデータ待ちが
+    // 10 秒続いたかを確かめるタイマーである。
+    let stall: StallState = initialStallState;
+    let stallTimer: number | undefined;
 
     // 回復を待つ間の見る人の操作（操作バー・中央の操作・キー）は、video.js の部品も
     // playerControls もこのプレイヤーの play・pause・paused・currentTime を通るので、ここで
@@ -372,7 +389,8 @@ export default function VideoPlayer(props: Props) {
         merged.reconnecting === status.reconnecting &&
         merged.playing === status.playing &&
         merged.userActive === status.userActive &&
-        merged.ended === status.ended
+        merged.ended === status.ended &&
+        merged.stalled === status.stalled
       ) {
         return;
       }
@@ -380,6 +398,34 @@ export default function VideoPlayer(props: Props) {
       latest.current.onStatus(status);
     };
     latest.current.onStatus(status);
+
+    // feedStall は出来事を途切れの判断へ渡し、データ待ちが始まったら 10 秒のタイマーを掛ける。
+    const feedStall = (event: StallEvent) => {
+      stall = stallStep(stall, event, Date.now());
+      if (stallTimer !== undefined) window.clearTimeout(stallTimer);
+      stallTimer = undefined;
+      const deadline = waitDeadlineMs(stall);
+      if (deadline !== null) {
+        stallTimer = window.setTimeout(
+          () => {
+            stallTimer = undefined;
+            if (!player.isDisposed()) feedStall("tick");
+          },
+          Math.max(0, deadline - Date.now()),
+        );
+      }
+      setStatus({ stalled: stall.stalled });
+    };
+    for (const event of [
+      "waiting",
+      "playing",
+      "seeking",
+      "loadstart",
+      "play",
+      "pause",
+    ] as const) {
+      player.on(event, () => feedStall(event));
+    }
 
     const menuOpen = () => popoverOpen.current || controlBarMenuOpen(host);
     latest.current.onControls(
@@ -538,6 +584,7 @@ export default function VideoPlayer(props: Props) {
       latest.current.onProgress(reportPosition(), true);
     });
     player.on("ended", () => {
+      feedStall("clear");
       setStatus({ playing: false, loading: false, ended: true });
       latest.current.onProgress(reportPosition(), true);
     });
@@ -559,6 +606,7 @@ export default function VideoPlayer(props: Props) {
       recovering = false;
       switchingSource = false;
       attempt = { ...attempt, state: "failed" };
+      feedStall("clear");
       setStatus({ playing: false, loading: false, reconnecting: false });
       latest.current.onError(position, kind);
       // 誤りの印（vjs-error）は操作バーを隠す。失敗はプレイヤーの上の層で伝え、
@@ -776,6 +824,7 @@ export default function VideoPlayer(props: Props) {
       // 確かめと読み込み直しの間は、誤りの印（操作バーを隠す）を外し、見る人の操作を
       // 回復を待つ間の操作として受ける。
       recovering = true;
+      feedStall("recovering");
       playedSinceRecoveryMs = null;
       lastTickMs = null;
       player.error(null);
@@ -825,6 +874,7 @@ export default function VideoPlayer(props: Props) {
 
     return () => {
       window.clearInterval(timer);
+      if (stallTimer !== undefined) window.clearTimeout(stallTimer);
       window.removeEventListener("online", reconnectNow);
       clearRecoveryTimers();
       recovering = false;
