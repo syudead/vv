@@ -66,16 +66,20 @@ maps `domain.InvalidTagNameError` to the tag-name reasons
 
 `GET /api/library` takes the same parameters as `GET /api/videos` but returns
 library items: a video, or a folder group as one item
-(`LibraryStore.ListLibrary`). The search, playable and tag filters apply per
-member, a group appears when any member matches, its values (count, total
+(`LibraryStore.ListLibrary`). The search and tag filters apply per member. A
+group is one item only when all of its members match; when some but not all
+match, each matching member is listed as its own video item. With no search or
+tag filter every group matches in full. A group's values (count, total
 duration and size, latest dates, watch state and the member to open, decided by
 `domain.GroupWatch` and `domain.GroupOpenIndex`) come from all of its members,
-and the watch filter, sort and `total` apply to items. `GET /api/library/ids`
-returns the matched videos plus every member of matched groups (owner only),
-and `GET /api/folders/{rootId}/group` refetches one group card. A guest sees
+and the playable filter, watch filter, sort and `total` apply to items (a group
+is playable when any member is). `GET /api/library/ids`
+returns the ids of the listed video items plus every member of listed groups
+(owner only), and `GET /api/folders/{rootId}/group` refetches one group card. A guest sees
 groups built from public members only; a group with one public member is listed
-as that video
-([specs/017-folder-groups/contracts/library-api.md](specs/017-folder-groups/contracts/library-api.md)).
+as that video, and "all members" counts public members only
+([specs/017-folder-groups/contracts/library-api.md](specs/017-folder-groups/contracts/library-api.md),
+[specs/027-partial-group-search/contracts/library-api.md](specs/027-partial-group-search/contracts/library-api.md)).
 `GET /api/videos` stays a per-video list for the folder view's root search.
 
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts

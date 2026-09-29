@@ -13,14 +13,16 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ライブラリの項目（specs/017-folder-groups/data-model.md §5〜§7）。013 の一覧の流れ
+// ライブラリの項目（specs/027-partial-group-search/contracts/library-api.md §1〜§2。
+// 3 以降の段は specs/017-folder-groups/data-model.md §5〜§7）。013 の一覧の流れ
 // （範囲と検索式 → chosen → 絞り込み → keyset）に、当たった動画を項目（動画か
 // グループ）へまとめる段を足す。
 //
-//  1. chosen に再生可否とタグの AND を掛け、当たった動画（matched）を決める
-//  2. 当たった動画のうちグループのメンバーはグループへ、それ以外は動画の項目にする
-//  3. グループの値は、当たったかどうかに関わらず見せてよい全メンバーから数える
-//  4. 視聴状態の絞り込みを項目の視聴状態に掛け、項目の値で並べて keyset で区切る
+//  1. chosen にタグの AND を掛け、当たった動画（matched）を決める。再生可否は入れない
+//  2. グループとして見せるもの（live）ごとに当たったメンバーの本数を見せてよい全メンバーの
+//     本数と比べ、等しければグループの項目、一部だけならメンバーを1本ずつ動画の項目にする
+//  3. グループの値は見せてよい全メンバーから数える
+//  4. 再生可否と視聴状態の絞り込みを項目に掛け、項目の値で並べて keyset で区切る
 
 // minGroupMembers は、見る人にグループとして見せるのに要る、見せてよいメンバーの数である。
 // 所有者には、メンバーが消えて1本になったグループも次の作り直しまでグループとして
@@ -34,14 +36,21 @@ func minGroupMembers(audience domain.Audience) int {
 }
 
 // memberConditions はメンバー単位の絞り込み（再生可否とタグの AND）を、videos に
-// 対する条件句の並びと引数にする。
+// 対する条件句の並びと引数にする（GET /api/videos の一覧が使う）。
 func memberConditions(spec listSpec) ([]string, []any) {
 	var conditions []string
-	var args []any
 	if spec.playableOnly {
 		conditions = append(conditions, playableCondition)
 	}
-	// 手で付けた分とフォルダ名から付いている分のどちらでも当たる（data-model.md §4）。
+	tags, args := tagConditions(spec)
+	return append(conditions, tags...), args
+}
+
+// tagConditions はタグの AND を、videos に対する条件句の並びと引数にする。
+// 手で付けた分とフォルダ名から付いている分のどちらでも当たる（017 の data-model.md §4）。
+func tagConditions(spec listSpec) ([]string, []any) {
+	var conditions []string
+	var args []any
 	for _, tagID := range spec.tagIDs {
 		conditions = append(conditions, videoHasTagCondition("videos"))
 		args = append(args, tagID, tagID)
@@ -62,14 +71,27 @@ func representativeLocationValue(alias, column string, audience domain.Audience)
 // 定める with 句と、その引数を返す。group_id は動画の項目では NULL である。id は
 // 動画の項目では動画の id、グループの項目では見せてよいメンバーのうち並びで最初の
 // ものの id で、keyset とシャッフルの鍵に使う。
+//
+// 全メンバーが当たったグループ（whole）だけをグループの項目にし、一部だけが当たった
+// グループの当たったメンバーは、グループに属さない動画と同じく動画の項目にする
+// （specs/027-partial-group-search/contracts/library-api.md §1）。
 func libraryItemsCTE(spec listSpec) (string, []any) {
 	audience := spec.scope.audience
 	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
-	conditions, memberArgs := memberConditions(spec)
-	args = append(args, memberArgs...)
+	conditions, tagArgs := tagConditions(spec)
+	args = append(args, tagArgs...)
 	where := ""
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, " and ")
+	}
+	// 再生可否は決め手に入れず、できた項目に掛ける（research.md R-2）。動画の項目は
+	// その動画、グループの項目はメンバーのどれか1本が再生できるかで判定する。
+	videoPlayable := ""
+	groupPlayable := ""
+	if spec.playableOnly {
+		videoPlayable = ` and ` + playableCondition
+		groupPlayable = ` and exists (select 1 from gm pm join videos on videos.id = pm.video_id
+			where pm.group_id = hits.group_id and ` + playableCondition + `)`
 	}
 	// 内容の識別子が空の動画は再生位置を持たない（filteredFrom と同じ扱い）。
 	progressJoin := func(videoAlias string) string {
@@ -86,17 +108,21 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		visibleLocationCondition("l", audience) + `)),
 	live as (
 		select group_id from gm group by group_id having count(*) >= ` + strconv.Itoa(minGroupMembers(audience)) + `),
-	hit as (
-		select distinct gm.group_id from matched
+	hits as (
+		select gm.group_id, count(*) as n from matched
 		join gm on gm.video_id = matched.video_id
-		join live on live.group_id = gm.group_id),
+		join live on live.group_id = gm.group_id
+		group by gm.group_id),
+	whole as (
+		select hits.group_id from hits
+		where hits.n = (select count(*) from gm c where c.group_id = hits.group_id)` + groupPlayable + `),
 	mv as (
 		select gm.group_id, gm.video_id, gm.position, v.added_at, v.duration_ms,
 			` + representativeLocationValue("gm", "mtime", audience) + ` as mtime,
 			` + representativeLocationValue("gm", "size_bytes", audience) + ` as size_bytes,
 			p.updated_at as played_at,
 			coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms
-		from gm join hit on hit.group_id = gm.group_id
+		from gm join whole on whole.group_id = gm.group_id
 		join videos v on v.id = gm.video_id` + progressJoin("v") + `),
 	items as (
 		select null as group_id, videos.id as id, matched.path as path,
@@ -107,7 +133,8 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 				else 'inProgress' end as watch_state
 		from matched join videos on videos.id = matched.video_id
 		join video_locations loc on loc.path = matched.path` + progressJoin("videos") + `
-		where not exists (select 1 from gm join live on live.group_id = gm.group_id where gm.video_id = matched.video_id)
+		where not exists (select 1 from gm join whole on whole.group_id = gm.group_id where gm.video_id = matched.video_id)` +
+		videoPlayable + `
 		union all
 		select g.id, (select f.video_id from gm f where f.group_id = g.id order by f.position limit 1), null,
 			max(mv.added_at), max(mv.mtime), g.title_key,
@@ -151,7 +178,7 @@ func itemOrder(sort domain.VideoSort) listOrder {
 }
 
 // ListLibrary は見る人（audience）に見せるライブラリの項目1ページを返す
-// （GET /api/library、contracts/library-api.md §1）。条件（視聴状態・並べ替え・
+// （GET /api/library、specs/027-partial-group-search/contracts/library-api.md §1）。条件（視聴状態・並べ替え・
 // タグ）をゲストが使えるかは呼び出し側が domain.Audience.CheckVideoQuery で確かめる。
 //
 // タグの存在確認・件数・ページの項目・グループのメンバー・登録フォルダを同じ読み取り
@@ -432,7 +459,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 
 // LibraryIDs は ListLibrary と同じ条件（並び順・カーソル・件数を除く）に合う項目の、
 // 動画の id とグループの全メンバーの id を、ページングせずに返す
-// （GET /api/library/ids、contracts/library-api.md §2・data-model.md §5 の 7）。並びは
+// （GET /api/library/ids、specs/027-partial-group-search/contracts/library-api.md §2）。並びは
 // 決めない。「すべて選択」は所有者だけの操作なので、所有者として読む。
 func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) ([]int64, []int64, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})

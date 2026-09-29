@@ -22,8 +22,10 @@ import { ownerAccount } from "./owner-account";
 // ここで公開にした4本だけである。
 //
 // 「公開あり」と「非公開だけ」はどちらもグループになる（specs/017-folder-groups、親 #326
-// 要件 2）。ライブラリ（検索を含む）ではそれぞれ1枚のグループのカードで、ゲストには
-// 公開のメンバーだけで数えたカードが出る（data-model.md §7）。フォルダ画面は今のまま
+// 要件 2）。ライブラリでは全メンバーが当たったときだけ1枚のグループのカードで、一部の
+// メンバーだけが検索に当たれば当たったメンバーを1本ずつ出す
+// （specs/027-partial-group-search/contracts/library-api.md §1）。ゲストには公開の
+// メンバーだけで数えたカードが出る（data-model.md §7）。フォルダ画面は今のまま
 // 1本ずつ出す（要件 22）。
 
 interface MediaFolder {
@@ -50,9 +52,13 @@ const fillerTitles = ["確認用G", "確認用H", "確認用I", "確認用J", "�
 // ライブラリのグループのカードの読み上げ名（ui-design.md「Pressing and selection」）。
 // ゲストは公開のメンバーだけを数える。所有者は全メンバーを数える。
 const guestGroup = "公開あり, group of 4 videos";
-// 所有者が「ゲスト」で検索したときの項目。「非公開だけ」は D だけが検索語に当たるが、
-// グループは当たったメンバーが1本あれば1件で、本数は全メンバーで数える（data-model.md §5）。
-const ownerGroups = ["公開あり, group of 5 videos", "非公開だけ, group of 7 videos"];
+// 所有者が「ゲスト」で検索したときの項目（libraryItems の並び）。「公開あり」は5本全部が
+// 当たるのでグループのカード、「非公開だけ」は D だけが当たるので D の動画のカードになる
+// （specs/027-partial-group-search/contracts/library-api.md §1）。
+const ownerSearchItems = ["ゲスト非公開D", "公開あり, group of 5 videos"];
+// 「非公開だけ」のグループを選ぶには、全メンバーが当たるフォルダ名で検索する。
+const hiddenGroupSearch = `/?q=${encodeURIComponent("非公開だけ")}`;
+const hiddenGroup = "非公開だけ, group of 7 videos";
 const videos = new Map<string, Video>();
 let folder: MediaFolder | undefined;
 
@@ -395,10 +401,10 @@ test.describe.serial("guest", () => {
     const second = await context.newPage();
     const search = `/?q=${encodeURIComponent("ゲスト")}`;
     await Promise.all([first.goto(search), second.goto(search)]);
-    await expect.poll(() => libraryItems(second)).toEqual(ownerGroups);
+    await expect.poll(() => libraryItems(second)).toEqual(ownerSearchItems);
 
-    // 所有者の一覧で、非公開の動画だけのグループを選んでおく。
-    await second.getByRole("checkbox", { name: 'Select the group "非公開だけ"' }).check();
+    // 所有者の一覧で、全メンバーが当たったグループを選んでおく。
+    await second.getByRole("checkbox", { name: 'Select the group "公開あり"' }).check();
     await expect(second.getByRole("region", { name: "Selection actions" })).toBeVisible();
 
     await first.getByRole("button", { name: "Sign out" }).click();
@@ -421,7 +427,7 @@ test.describe.serial("guest", () => {
     await expect(second.getByRole("region", { name: "Selection actions" })).toHaveCount(
       0,
     );
-    await expect(second.getByText("非公開だけ")).toHaveCount(0);
+    await expect(second.getByText("ゲスト非公開D")).toHaveCount(0);
     await context.close();
   });
 
@@ -509,8 +515,8 @@ test.describe.serial("guest", () => {
 
     // 選択バー: 「非公開だけ」のグループを選んで「公開」→「公開にする」（キーボード確認の
     // 手順 5）。グループの選択は全メンバーの選択なので、7本が公開になる。
-    await ownerPage.goto(`/?q=${encodeURIComponent("ゲスト")}`);
-    await expect.poll(() => libraryItems(ownerPage)).toEqual(ownerGroups);
+    await ownerPage.goto(hiddenGroupSearch);
+    await expect.poll(() => libraryItems(ownerPage)).toEqual([hiddenGroup]);
     await ownerPage
       .getByRole("checkbox", { name: 'Select the group "非公開だけ"' })
       .check();
@@ -527,7 +533,7 @@ test.describe.serial("guest", () => {
     // 選択は残り、メンバーのカード（フォルダ画面）の右下に公開の印が出る。
     await expect(bar.getByText("7 videos selected")).toBeVisible();
     await expect.poll(publicMarksInHidden).toBe(7);
-    const withHidden = [guestGroup, "非公開だけ, group of 7 videos"];
+    const withHidden = [guestGroup, hiddenGroup];
     await expect.poll(guestSees).toEqual(withHidden);
 
     // 再スキャンの後も公開のままである。
@@ -648,14 +654,12 @@ test.describe.serial("guest", () => {
       await expect(page.locator("article[data-video-id] .lucide-globe")).toHaveCount(4);
       await ownerShot("folder");
 
-      // 選択バーの「公開」を開いた状態（360 は2段のバー）。ライブラリで2つのグループを選ぶ。
+      // 選択バーの「公開」を開いた状態（360 は2段のバー）。ライブラリでグループのカードと
+      // 1本ずつ出た D の動画のカードを選ぶ。
       await page.goto(`/?q=${encodeURIComponent("ゲスト")}`);
-      await expect.poll(() => libraryItems(page)).toEqual(ownerGroups);
-      for (const name of ["公開あり", "非公開だけ"]) {
-        const checkbox = page.getByRole("checkbox", {
-          name: `Select the group "${name}"`,
-        });
-        await checkbox.check({ force: true });
+      await expect.poll(() => libraryItems(page)).toEqual(ownerSearchItems);
+      for (const name of ['Select the group "公開あり"', 'Select "ゲスト非公開D"']) {
+        await page.getByRole("checkbox", { name }).check({ force: true });
       }
       const bar = page.getByRole("region", { name: "Selection actions" });
       await expect(bar).toBeVisible();
