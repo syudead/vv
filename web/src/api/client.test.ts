@@ -14,6 +14,7 @@ import {
   beaconProgress,
   listMediaFolders,
   startScan,
+  subtitleUrl,
   transcodeUrl,
   saveProgress,
   setRenderedAudience,
@@ -106,6 +107,14 @@ describe("playback URLs", () => {
   it("transcode startMsを省略または整数化する", () => {
     expect(transcodeUrl(7)).toBe("/api/videos/7/transcode.mp4");
     expect(transcodeUrl(7, 12_345.4)).toBe("/api/videos/7/transcode.mp4?startMs=12345");
+  });
+
+  it("builds subtitle URLs with an escaped file name and a rounded offset", () => {
+    expect(subtitleUrl(7, "movie.ja.srt")).toBe("/api/videos/7/subtitles/movie.ja.srt");
+    expect(subtitleUrl(7, "映画 #1.srt", 1_234.6)).toBe(
+      "/api/videos/7/subtitles/%E6%98%A0%E7%94%BB%20%231.srt?offsetMs=1235",
+    );
+    expect(subtitleUrl(7, "movie.srt", -5)).toBe("/api/videos/7/subtitles/movie.srt");
   });
 
   it("fetches the seek sprite description and sheets through the API boundary", async () => {

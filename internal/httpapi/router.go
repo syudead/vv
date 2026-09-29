@@ -175,6 +175,22 @@ type MediaFiles interface {
 	ListDirectories(path string) (domain.DirectoryListing, error)
 	// DirectoryRoots はディレクトリ選択の根を返す。
 	DirectoryRoots() domain.DirectoryListing
+	// ListSidecarFiles は、path が OpenMediaFile と同じ規則で開けるときだけ、その所在の
+	// フォルダにある通常ファイルの名前と大きさを返す（specs/028-sidecar-subtitles/research.md
+	// R-2）。開けなければ domain.ErrMediaFileUnavailable、フォルダを読めなければ
+	// domain.ErrDirectoryUnavailable を包む。
+	ListSidecarFiles(roots []string, path string) ([]domain.SidecarEntry, error)
+	// OpenSidecarFile は、ListSidecarFiles が返す名前の 1 つと完全に一致する name だけを
+	// 開く。開けないときは domain.ErrMediaFileUnavailable を包む。
+	OpenSidecarFile(roots []string, path, name string) (*os.File, os.FileInfo, error)
+}
+
+// SubtitleConverter は字幕ファイルの中身を UTF-8 の WebVTT にし、cue の時刻から
+// offsetMs を引く。internal/media の SubtitleConverter がこれを満たす
+// （specs/028-sidecar-subtitles/research.md R-4）。読めない中身には
+// domain.ErrSubtitleUnreadable を包んだ誤りを返す。
+type SubtitleConverter interface {
+	Convert(src []byte, format domain.SubtitleFormat, offsetMs int64) ([]byte, error)
 }
 
 // FileOpener はサーバーの PC の既定アプリでファイルを開く。internal/opener の
@@ -230,9 +246,11 @@ type Options struct {
 	// Opener はファイルを既定アプリで開く。nil なら開けない環境として扱う。
 	Opener FileOpener
 	// Files はメディアファイルとディレクトリへのアクセス。nil なら配信・ライブ変換・
-	// 既定アプリで開く操作・ディレクトリ選択は 500 を返す。黙って 404 にしないのは、
+	// 字幕・既定アプリで開く操作・ディレクトリ選択は 500 を返す。黙って 404 にしないのは、
 	// つなぎ忘れを「実体が無い」と見分けられなくなるためである。
 	Files MediaFiles
+	// Subtitles は字幕ファイルの WebVTT への変換。nil なら字幕の取得の経路は 500 を返す。
+	Subtitles SubtitleConverter
 	// Events は画面へ送る変化の知らせ。nilなら経路は500を返す。
 	Events *Events
 	// Assets は SPA のビルド成果物（web/dist に相当）。
@@ -281,6 +299,7 @@ type server struct {
 	catalog         VideoCatalog
 	opener          FileOpener
 	files           MediaFiles
+	subtitles       SubtitleConverter
 	events          *Events
 	logger          *slog.Logger
 	auth            Authenticator
@@ -343,6 +362,7 @@ func NewRouter(opts Options) http.Handler {
 		catalog:           opts.Catalog,
 		opener:            opts.Opener,
 		files:             opts.Files,
+		subtitles:         opts.Subtitles,
 		events:            opts.Events,
 		logger:            logger,
 		auth:              opts.Auth,
@@ -592,6 +612,7 @@ const (
 	reasonAPITokenNameEmpty             = gen.ErrorReasonApiTokenNameEmpty
 	reasonAPITokenNameControlCharacters = gen.ErrorReasonApiTokenNameControlCharacters
 	reasonAPITokenNameTooLong           = gen.ErrorReasonApiTokenNameTooLong
+	reasonSubtitleUnavailable           = gen.ErrorReasonSubtitleUnavailable
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

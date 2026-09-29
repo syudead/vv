@@ -45,6 +45,8 @@ export type ScanIssueKind = components["schemas"]["ScanIssueKind"];
 export type ScanIssuePage = components["schemas"]["ScanIssuePage"];
 export type Progress = components["schemas"]["Progress"];
 export type TranscodeStart = components["schemas"]["TranscodeStart"];
+export type SubtitleTrack = components["schemas"]["SubtitleTrack"];
+export type SubtitleTrackList = components["schemas"]["SubtitleTrackList"];
 export type MediaFolder = components["schemas"]["MediaFolder"];
 export type DirectoryListing = components["schemas"]["DirectoryListing"];
 export type ApiError = components["schemas"]["Error"];
@@ -776,6 +778,30 @@ export async function getTranscodeStart(
     { signal },
   );
   return body.startMs;
+}
+
+/**
+ * getVideoSubtitles は動画の隣に置いた字幕ファイルの一覧を取得する。サーバーは呼ぶたびに
+ * フォルダを読み直す（specs/028-sidecar-subtitles/contracts/subtitles-api.md §1）。
+ */
+export async function getVideoSubtitles(
+  id: number,
+  signal?: AbortSignal,
+): Promise<SubtitleTrack[]> {
+  const body = await request<SubtitleTrackList>(`/api/videos/${String(id)}/subtitles`, {
+    signal,
+  });
+  return body.subtitles;
+}
+
+/**
+ * subtitleUrl は字幕ファイル file を WebVTT で取得する先を返す。offsetMs は再生の時間軸の
+ * 0 に当たる元動画の時刻（ミリ秒）で、0 なら付けない（contracts/subtitles-api.md §2）。
+ */
+export function subtitleUrl(id: number, file: string, offsetMs = 0): string {
+  const offset = Math.max(0, Math.round(offsetMs));
+  const suffix = offset > 0 ? `?offsetMs=${String(offset)}` : "";
+  return `/api/videos/${String(id)}/subtitles/${encodeURIComponent(file)}${suffix}`;
 }
 
 /**

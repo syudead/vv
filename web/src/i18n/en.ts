@@ -170,6 +170,7 @@ const errorReasons = {
     limit === undefined
       ? "The name is too long."
       : `The name can be up to ${characters(limit)}.`,
+  subtitle_unavailable: "The subtitle file can't be read.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
