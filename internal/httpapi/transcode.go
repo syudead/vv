@@ -33,6 +33,10 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	// attempt 付きの要求は始めた時点で台帳に載せ、最初のデータを持って本文を書き始める
 	// 前に実際の開始位置を記録する。記録の前に終われば、報告の経路は 404 を返す
 	// （contracts/transcode-start-api.md §1）。
+	quality, ok := s.transcodeQuality(w, video, params.Quality)
+	if !ok {
+		return
+	}
 	resolveStart := func(int64) {}
 	if params.Attempt != nil {
 		if !validTranscodeAttempt(*params.Attempt) {
@@ -87,6 +91,9 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		// 方式は要求ごとに今の設定から決める。変更は次に始まる要求から効き、配信中の変換は
 		// 始めた方式のまま続く（specs/025-hardware-encoding/contracts/transcoding-settings-api.md §4）。
 		VideoEncoder: s.effectiveVideoEncoder(),
+		// 画質があれば映像を必ずエンコードするので、変換は startMs の位置そのものから始まる
+		// （specs/027-playback-quality/contracts/transcode-quality-api.md §1）。
+		Quality: quality,
 	}
 	started, err := s.transcoder.Start(r.Context(), request)
 	if err != nil {
@@ -111,7 +118,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	}
 	s.logger.Debug("live transcoding started",
 		slog.Int64("video", video.ID), slog.Int64("requested_ms", startMs), slog.Int64("start_ms", started.StartMs),
-		slog.String("encoder", string(started.VideoEncoder)))
+		slog.String("encoder", string(started.VideoEncoder)), slog.String("quality", qualityLogValue(quality)))
 	stream, wait, stop := started.Stream, started.Wait, started.Stop
 	defer func() { _ = stream.Close() }()
 	first, err := awaitInitialTranscodeData(r.Context(), stream, wait, stop)
@@ -166,6 +173,40 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		s.logger.Warn("live transcoding stream ended early",
 			slog.Int64("video", video.ID), slog.Any("copy_error", copyErr), slog.Any("process_error", waitErr))
 	}
+}
+
+// transcodeQuality は quality の指定を解釈する。無ければ元の画質（空）である。知らない値、
+// 動画の表示の短辺以上の画質、寸法の無い動画は 400 を書いて ok を偽にし、変換を始めない。
+// 使えるかの規則は domain が持つ（specs/027-playback-quality/research.md R-3）。
+func (s *server) transcodeQuality(w http.ResponseWriter, video domain.Video, param *gen.TranscodeVideoParamsQuality) (domain.TranscodeQuality, bool) {
+	if param == nil {
+		return "", true
+	}
+	quality, known := domain.ParseTranscodeQuality(string(*param))
+	if !known {
+		s.invalidRequest(w, "quality must be one of 1080p, 720p, 480p or 360p.")
+		return "", false
+	}
+	width, height := 0, 0
+	if video.Width != nil {
+		width = *video.Width
+	}
+	if video.Height != nil {
+		height = *video.Height
+	}
+	if !quality.Available(width, height) {
+		s.invalidRequest(w, "quality must be smaller than the video's resolution.")
+		return "", false
+	}
+	return quality, true
+}
+
+// qualityLogValue はログに添える画質で、元の画質は "original" と書く。
+func qualityLogValue(quality domain.TranscodeQuality) string {
+	if quality == "" {
+		return "original"
+	}
+	return string(quality)
 }
 
 // effectiveVideoEncoder は今の設定が使う方式を返す。設定が無ければ software である。
