@@ -190,49 +190,104 @@ func TestListLibraryGroupsFoldersIntoOneItem(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 11: 1本のメンバーだけが検索語に当たるグループも出て、値は全メンバーから作る。
-// 条件はメンバー単位で、1本の動画が全条件を満たす必要がある（要件 19）。
-func TestListLibraryFiltersPerMember(t *testing.T) {
+// 027 の受け入れ条件 1・2・5: 一部のメンバーだけが検索語に当たったグループは、当たった
+// メンバーを1本ずつ動画の項目にし、全メンバーが当たったときだけグループの項目にする
+// （specs/027-partial-group-search/contracts/library-api.md §1）。
+func TestListLibraryShowsPartiallyMatchedMembersAsVideos(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
 
-	items := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Query: "ep10", Limit: domain.MaxLimit})
-	if names := itemNames(items); !slices.Equal(names, []string{"group:show"}) {
-		t.Fatalf("ep10 の検索 = %v, want [group:show]", names)
+	page, err := db.Library().ListLibrary(ctx, domain.AudienceOwner, domain.VideoQuery{Query: "ep10", Limit: domain.MaxLimit})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := len(items[0].Group.Members); got != 3 {
-		t.Errorf("当たったグループの本数 = %d, want 3（全メンバー）", got)
+	if names := itemNames(page.Items); !slices.Equal(names, []string{"ep10"}) || page.Total != 1 {
+		t.Fatalf("ep10 の検索 = %v（total %d）, want [ep10]（total 1）", names, page.Total)
+	}
+	if page.Items[0].Video.ID != ids[fixturePath("/media/show/ep10.mp4")] {
+		t.Errorf("ep10 の検索の動画 = %d, want ep10", page.Items[0].Video.ID)
 	}
 
-	// 再生可否は ep2 だけが満たさない。グループには ep1・ep10 が当たる。
+	items := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Query: "show", Limit: domain.MaxLimit})
+	if names := itemNames(items); !slices.Equal(names, []string{"group:show"}) {
+		t.Fatalf("show の検索 = %v, want [group:show]", names)
+	}
+	if got := len(items[0].Group.Members); got != 3 {
+		t.Errorf("show の検索のグループの本数 = %d, want 3（全メンバー）", got)
+	}
+
+	// 再生可否は決め手に入れず項目に掛ける。ep2 だけが再生できず、show は全メンバーが
+	// 当たったグループのまま残る（027 の要件 4・6）。
 	items = libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{PlayableOnly: true, Limit: domain.MaxLimit})
 	names := itemNames(items)
 	slices.Sort(names)
 	if want := []string{"group:show", "solo", "x", "y"}; !slices.Equal(names, want) {
 		t.Errorf("再生できるものだけ = %v, want %v", names, want)
 	}
+	// 一部だけが当たったメンバーには、その動画の再生可否を掛ける。
+	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Query: "ep2", PlayableOnly: true})); len(names) != 0 {
+		t.Errorf("ep2 の検索で再生できるものだけ = %v, want 空", names)
+	}
+}
 
-	// タグの AND は1本の動画に求める。ep1 に a、ep2 に b を付けると、a と b の両方では
-	// show は出ない。
+// 027 の受け入れ条件 3・6: タグの AND は1本の動画に求め、手で付けたタグが一部のメンバー
+// だけに当たればそのメンバーが動画の項目になり、フォルダ由来のタグで全メンバーが当たれば
+// グループの項目になる。視聴状態は1本ずつ出したメンバー自身のものに掛ける。
+func TestListLibraryFiltersTagsPerMember(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	ep1, ep2, ep10 := ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep2.mp4")], ids[fixturePath("/media/show/ep10.mp4")]
+
+	two, err := db.Tags().CreateTag(ctx, "two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ep2, ep10}, two.ID); err != nil {
+		t.Fatal(err)
+	}
+	items := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{two.ID}, Limit: domain.MaxLimit})
+	names := itemNames(items)
+	slices.Sort(names)
+	if want := []string{"ep10", "ep2"}; !slices.Equal(names, want) {
+		t.Errorf("タグ two = %v, want %v", names, want)
+	}
+	// ep2 は未視聴、ep10 は途中（show 全体は途中）。
+	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{two.ID}, Watch: domain.WatchUnwatched})); !slices.Equal(names, []string{"ep2"}) {
+		t.Errorf("タグ two の未視聴 = %v, want [ep2]", names)
+	}
+	got, _, err := db.Library().LibraryIDs(ctx, domain.VideoQuery{TagIDs: []int64{two.ID}, Watch: domain.WatchUnwatched})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, []int64{ep2}) {
+		t.Errorf("タグ two の未視聴の ids = %v, want [%d]", got, ep2)
+	}
+
+	// フォルダ名と同じ名前のタグはフォルダの下の全メンバーに付く（017 の data-model.md §4）。
+	folder, err := db.Tags().CreateTag(ctx, "show")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{folder.ID}})); !slices.Equal(names, []string{"group:show"}) {
+		t.Errorf("タグ show = %v, want [group:show]", names)
+	}
+	// 1本で両方を満たすのは ep2・ep10 で、一部だけなので動画の項目になる。
+	names = itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{folder.ID, two.ID}}))
+	slices.Sort(names)
+	if want := []string{"ep10", "ep2"}; !slices.Equal(names, want) {
+		t.Errorf("タグ show と two = %v, want %v", names, want)
+	}
+
+	// ep1 に a だけを付けると、two と a の両方を満たすメンバーは無い。
 	tagA, err := db.Tags().CreateTag(ctx, "a")
 	if err != nil {
 		t.Fatal(err)
 	}
-	tagB, err := db.Tags().CreateTag(ctx, "b")
-	if err != nil {
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ep1}, tagA.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/show/ep1.mp4")]}, tagA.ID); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ids[fixturePath("/media/show/ep2.mp4")]}, tagB.ID); err != nil {
-		t.Fatal(err)
-	}
-	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID}})); !slices.Equal(names, []string{"group:show"}) {
-		t.Errorf("タグ a = %v, want [group:show]", names)
-	}
-	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID, tagB.ID}})); len(names) != 0 {
-		t.Errorf("タグ a と b = %v, want 空（1本で両方を満たすメンバーが無い）", names)
+	if names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{TagIDs: []int64{tagA.ID, two.ID}})); len(names) != 0 {
+		t.Errorf("タグ a と two = %v, want 空（1本で両方を満たすメンバーが無い）", names)
 	}
 }
 
@@ -424,9 +479,12 @@ func groupProgress(t *testing.T, db *DB, group domain.LibraryGroup) []*domain.Pr
 	return out
 }
 
-// 「すべて選択」の id は、当たった動画と当たったグループの全メンバーである（要件 21）。
-func TestLibraryIDsIncludeAllMembersOfMatchedGroups(t *testing.T) {
+// 「すべて選択」の id は一覧の項目に合わせる。動画の項目はその id、全メンバーが当たった
+// グループは全メンバーの id で、一部だけが当たったグループは当たったメンバーの id だけである
+// （027 の受け入れ条件 7、contracts/library-api.md §2）。
+func TestLibraryIDsFollowLibraryItems(t *testing.T) {
 	db, ids := itemsFixture(t)
+	ep10 := ids[fixturePath("/media/show/ep10.mp4")]
 	got, missing, err := db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "ep10 OR solo", TagIDs: []int64{999}})
 	if err != nil {
 		t.Fatal(err)
@@ -436,10 +494,29 @@ func TestLibraryIDsIncludeAllMembersOfMatchedGroups(t *testing.T) {
 		t.Errorf("missing = %v", missing)
 	}
 	slices.Sort(got)
-	want := []int64{ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep2.mp4")], ids[fixturePath("/media/show/ep10.mp4")], ids[fixturePath("/media/solo.mp4")]}
+	want := []int64{ep10, ids[fixturePath("/media/solo.mp4")]}
 	slices.Sort(want)
 	if !slices.Equal(got, want) {
 		t.Errorf("ids = %v, want %v", got, want)
+	}
+
+	got, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "ep10"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got, []int64{ep10}) {
+		t.Errorf("ep10 の ids = %v, want [%d]", got, ep10)
+	}
+
+	got, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Query: "show"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(got)
+	want = []int64{ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep2.mp4")], ep10}
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Errorf("show の ids = %v, want %v", got, want)
 	}
 
 	got, _, err = db.Library().LibraryIDs(context.Background(), domain.VideoQuery{Watch: domain.WatchUnwatched})
@@ -479,6 +556,17 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 	}
 	if show.LastPlayedAt != nil || show.WatchedCount != 0 || show.OpenVideoID != ids[fixturePath("/media/show/ep1.mp4")] {
 		t.Errorf("ゲストの show に再生の記録が出た: %+v", show)
+	}
+	// 「全メンバー」は公開のメンバーで数える（027 の受け入れ条件 8）。公開の ep10 だけが
+	// 当たれば動画の項目、フォルダ名で公開の2本が当たればグループの項目になる。
+	if names := itemNames(libraryPages(t, db, domain.AudienceGuest, domain.VideoQuery{Query: "ep10"})); !slices.Equal(names, []string{"ep10"}) {
+		t.Errorf("ゲストの ep10 の検索 = %v, want [ep10]", names)
+	}
+	items = libraryPages(t, db, domain.AudienceGuest, domain.VideoQuery{Query: "show"})
+	if names := itemNames(items); !slices.Equal(names, []string{"group:show"}) {
+		t.Errorf("ゲストの show の検索 = %v, want [group:show]", names)
+	} else if got := len(items[0].Group.Members); got != 2 {
+		t.Errorf("ゲストの show の検索のグループの本数 = %d, want 2", got)
 	}
 	// ゲストの検索は非公開のメンバー（ep2）に当たらない。
 	if names := itemNames(libraryPages(t, db, domain.AudienceGuest, domain.VideoQuery{Query: "ep2"})); len(names) != 0 {

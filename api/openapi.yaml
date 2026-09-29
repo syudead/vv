@@ -277,15 +277,18 @@ paths:
       summary: ライブラリの項目（動画とグループ）の一覧を返す
       description: |
         `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
-        （specs/017-folder-groups/contracts/library-api.md §1・data-model.md §5）。
-        グループのメンバーは1件のグループの項目に、それ以外は動画の項目になる。
-        `query`・`playable`・`tag` はメンバー単位で掛け（1本の動画が全条件を満たす）、
-        当たったメンバーが1本以上あればグループが出る。グループの値は、当たったかどうかに
-        関わらず全メンバーから数える。`watch` は項目の視聴状態に掛け、並べ替えは項目の値で
-        行う。`total` は絞り込み後の項目（カード）の数。カーソルの形は `listVideos` と同じ。
+        （specs/027-partial-group-search/contracts/library-api.md §1。値の作り方は
+        specs/017-folder-groups/data-model.md §5）。
+        `query` と `tag` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
+        全メンバーが当たればグループの項目1件に、一部だけが当たれば当たったメンバーを
+        それぞれ動画の項目にする。グループに属さない動画は動画の項目になる。
+        絞り込みが無ければどのグループも全メンバーが当たる。グループの値は全メンバーから
+        数える。`playable` は項目に掛け（グループはメンバーのどれか1本が再生できれば残る）、
+        `watch` は項目の視聴状態に掛け、並べ替えは項目の値で行う。`total` は絞り込み後の
+        項目（カード）の数。カーソルの形は `listVideos` と同じ。
 
-        ゲストでは公開のメンバーだけを数え、公開のメンバーが1本のグループは動画の項目に
-        し、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
+        ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
+        メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
         `playedDesc`、`tag` は `400` `invalid_request` にする（data-model.md §7）。
       parameters:
         - name: query
@@ -369,7 +372,9 @@ paths:
       description: |
         `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`）に合う項目の、
         動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
-        並びは決めない。「すべて選択」用（specs/017-folder-groups/contracts/library-api.md §2）。
+        一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
+        だけが入る。並びは決めない。「すべて選択」用
+        （specs/027-partial-group-search/contracts/library-api.md §2）。
       parameters:
         - name: query
           in: query
