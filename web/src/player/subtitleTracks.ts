@@ -168,6 +168,8 @@ export function createSubtitleTracks(
     if (!started || disposed) return;
     if (wanted === applied && offsetMs === appliedOffset) return;
     if (wanted !== applied) fromPreference = true;
+    // 外す前に、まだ change が届いていない利用者の選択を受け取っておく。
+    onChange();
     const offset = offsetMs;
     applying = true;
     try {

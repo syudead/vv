@@ -277,6 +277,17 @@ describe("ライブ変換の offset に合わせた付け直し", () => {
     expect(saved()).toBeNull();
   });
 
+  it("change が届く前に未決になっても、メニューで選んだ字幕を保存して付け直す", async () => {
+    const { player: created, controller, wrapper } = create([ja, en]);
+    menuItems(wrapper)[2]?.click();
+    controller.setOffset(null);
+    expect(saved()).toEqual({ enabled: true, label: "en" });
+    controller.setOffset(8000);
+    expect(showing(created)).toEqual(["en"]);
+    await flush();
+    expect(saved()).toEqual({ enabled: true, label: "en" });
+  });
+
   it("未決の間に一覧が替わったら、付けるときは保存値で表示を決める", () => {
     save({ enabled: true, label: "en" });
     const { player: created, controller } = create([ja]);
