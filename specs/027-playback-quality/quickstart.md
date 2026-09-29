@@ -22,10 +22,15 @@
 3. 止めた状態で「360p」を選ぶ。止まったまま同じ位置にいること（受け入れ条件 4）。
 4. 「480p」のまま再生バーでシークする。シークした位置から 480p のまま続き、`videoHeight` が `480`
    のままであること（受け入れ条件 7）。
-5. ビットレート（受け入れ条件 3）: `curl -o out.mp4 --cookie "<セッション>" "http://localhost:8080/api/videos/<id>/transcode.mp4?startMs=0&quality=480p"`
-   を 20 秒ほど流して止め、`ffprobe -v error -show_entries format=bit_rate:stream=codec_type,bit_rate,width,height -of default=nw=1 out.mp4`
-   で映像の短辺が 480、全体の `bit_rate` が 1.3 Mbps 程度以下であること
+5. ビットレート（受け入れ条件 3）: `curl --max-time 20 -o out.mp4 --cookie "<セッション>" "http://localhost:8080/api/videos/<id>/transcode.mp4?startMs=0&quality=480p"`
+   で 20 秒分ほど受け取る。途中で止めた fragmented MP4 は `format`・`stream` の `bit_rate` を出さない
+   ことがあるので、受け取ったパケットから求める。
+   `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 out.mp4`
+   で映像の短辺が 480 であること。
+   `ffprobe -v error -show_entries packet=pts_time,size -of csv=p=0 out.mp4 | awk -F, '$1!="N/A"{if(n==0||$1<a)a=$1;if($1>b)b=$1;s+=$2;n++} END{printf "%.0f kbps\n", s*8/(b-a)/1000}'`
+   で、映像と音声を合わせた平均が 1300 kbps 程度以下であること
    （[contracts/transcode-quality-api.md §2](contracts/transcode-quality-api.md#2-画質ごとの変換の約束)）。
+   ffmpeg は実時間より速く変換するので、受け取った時間ではなくパケットの時刻の幅で割る。
 6. 別の動画（480p より大きいもの）を開く。「480p」で始まること。ページを読み直しても同じ。
    480p 以下の動画を開くと「元の画質」で始まり、メニューには「元の画質」だけがあること
    （受け入れ条件 5、Edge Case 1・2）。
@@ -42,5 +47,5 @@
 10. 回線を絞ったままシーク・一時停止・再開し、その直後の読み込み待ちだけでは警告が出ないこと
     （Edge Case 8）。
 11. Edge Case 6（ハードウェアのあるホストだけ）: 設定画面でハードウェアの方式を選び、手順 5 を
-    繰り返す。短辺と全体の `bit_rate` が同じ範囲に収まること。ホストのプロセス一覧で
+    繰り返す。短辺とパケットから求めた平均が同じ範囲に収まること。ホストのプロセス一覧で
     `-maxrate 1200k` が見えること。
