@@ -600,10 +600,22 @@ export const en = {
       withTitle: (label: string, title: string) => `${label}: ${title}`,
     },
     loading: "Loading",
+    reconnecting: "Connection lost · Reconnecting",
     playbackFailed: {
-      title: "Couldn't play this video",
-      description:
-        "The file may have been moved or deleted, or the browser may not support its format.",
+      network: {
+        title: "Couldn't reach the server",
+        description:
+          "Playback stopped because the connection to the server was lost. Check your network and try again.",
+      },
+      decode: {
+        title: "Couldn't play this video",
+        description: "The video data couldn't be read. The file may be damaged.",
+      },
+      source: {
+        title: "Couldn't play this video",
+        description:
+          "The file may have been moved or deleted, or the browser may not support its format.",
+      },
       retryFrom: (time: string) => `Try again from ${time}`,
     },
     stages: {

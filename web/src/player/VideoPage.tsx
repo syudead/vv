@@ -23,6 +23,7 @@ import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
 import { playerAspectRatio } from "./aspect";
 import { autoplayRequested, backTarget, resumePosition } from "./pageDecisions";
+import type { PlaybackFailureKind } from "./playbackRecovery";
 import RelatedVideos from "./RelatedVideos";
 import {
   CreatingLine,
@@ -95,7 +96,10 @@ export default function VideoPage() {
   const [pageId, setPageId] = useState(id);
   const [controls, setControls] = useState<PlayerControls | null>(null);
   const [status, setStatus] = useState<PlayerStatus>(initialPlayerStatus);
-  const [failure, setFailure] = useState<{ positionMs: number } | null>(null);
+  const [failure, setFailure] = useState<{
+    positionMs: number;
+    kind: PlaybackFailureKind;
+  } | null>(null);
   const [attempt, setAttempt] = useState<Attempt>(() => ({
     key: 0,
     startMs: null,
@@ -181,14 +185,14 @@ export default function VideoPage() {
   currentId.current = id;
   useEffect(() => () => sessionCheck.current?.abort(), [id]);
   const onError = useCallback(
-    (positionMs: number) => {
+    (positionMs: number, kind: PlaybackFailureKind) => {
       sessionCheck.current?.abort();
       const controller = new AbortController();
       sessionCheck.current = controller;
       const checkedId = id;
       const stale = () => controller.signal.aborted || currentId.current !== checkedId;
       const showFailure = () => {
-        setFailure({ positionMs });
+        setFailure({ positionMs, kind });
         // 動画がライブラリから消えた（ゲストでは公開でなくなった）せいかもしれない。
         // 取り直して確かめる。
         void refresh();
@@ -283,7 +287,11 @@ export default function VideoPage() {
   else if (!playable) statusLayer = <Unplayable />;
   else if (failure !== null)
     statusLayer = (
-      <PlaybackFailure positionMs={failure.positionMs} onRetry={retryPlayback} />
+      <PlaybackFailure
+        positionMs={failure.positionMs}
+        kind={failure.kind}
+        onRetry={retryPlayback}
+      />
     );
 
   const showPlayer = playable && detail.kind === "ready";
@@ -322,6 +330,8 @@ export default function VideoPage() {
         onPlayNext={playNext}
       />
     );
+  } else if (layer === null && status.reconnecting) {
+    layer = <LoadingOverlay backdrop={false} label={t.player.reconnecting} />;
   } else if (layer === null && status.loading) {
     layer = <LoadingOverlay backdrop={false} />;
   } else if (layer === null && controls !== null) {
