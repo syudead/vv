@@ -35,3 +35,17 @@ export function effectiveQuality(
   if (remembered === "original") return remembered;
   return qualityOptions(video).includes(remembered) ? remembered : "original";
 }
+
+/**
+ * sourceShortSide は動画の表示の短辺を `1080p` の形で返す。元の画質のボタンの文字と
+ * 「Original (1080p)」に使う（ui-design.md「Words」）。寸法の無い動画は undefined である。
+ */
+export function sourceShortSide(
+  video: Pick<Video, "width" | "height">,
+): string | undefined {
+  const { width, height } = video;
+  if (width === undefined || height === undefined || width <= 0 || height <= 0) {
+    return undefined;
+  }
+  return `${String(Math.min(width, height))}p`;
+}

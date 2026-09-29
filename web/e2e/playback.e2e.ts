@@ -148,6 +148,49 @@ async function play(page: Page, item: Video) {
   expect(Date.now() - started).toBeLessThan(3000);
 }
 
+/**
+ * switchTo480p は直接再生を始め、再生中に操作バーの画質メニューから 480p を選ぶ。
+ * 480p の変換へ差し替わり、映像の高さが 480 になり、表示の時刻が戻らないことを確かめる。
+ */
+async function switchTo480p(page: Page, item: Video) {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await play(page, item);
+  await page.waitForFunction(() => {
+    const element = document.querySelector("video");
+    return element !== null && element.currentTime > 2;
+  });
+  const height = () =>
+    page.evaluate(() => document.querySelector("video")?.videoHeight ?? 0);
+  expect(await height()).toBe(1080);
+  const quality = page.locator(".vjs-control-bar > .vv-quality");
+  await page.locator(".video-js").hover();
+  await expect(quality.locator(".vv-quality-value")).toHaveText("1080p");
+  await expect(quality.getByRole("button", { name: "Quality" })).toBeVisible();
+
+  const transcode = page.waitForRequest((candidate) => {
+    const url = new URL(candidate.url());
+    return (
+      url.pathname === `/api/videos/${String(item.id)}/transcode.mp4` &&
+      url.searchParams.get("quality") === "480p"
+    );
+  });
+  const before = await displayedSeconds(page);
+  await quality.hover();
+  await page.getByRole("menuitemradio", { name: /^480p/ }).click();
+  const request = await transcode;
+  expect(
+    Number(new URL(request.url()).searchParams.get("startMs")),
+  ).toBeGreaterThanOrEqual((before - 1) * 1000);
+  await expect(quality.locator(".vv-quality-value")).toHaveText("480p");
+  await expect(page.getByRole("button", { name: "Converting to 480p" })).toBeVisible();
+  await expect.poll(height, { timeout: 15_000 }).toBe(480);
+  await page.waitForFunction(() => {
+    const element = document.querySelector("video");
+    return element !== null && !element.paused && element.readyState >= 2;
+  });
+  expect(await displayedSeconds(page)).toBeGreaterThanOrEqual(before);
+}
+
 function mediaRequests(page: Page): Request[] {
   const requests: Request[] = [];
   page.on("request", (request) => {
@@ -514,6 +557,37 @@ test.describe.serial("live MP4 playback", () => {
     expect(
       requests.filter((candidate) => candidate.url().includes("/stream")),
     ).toHaveLength(0);
+  });
+
+  test("再生中に操作バーの画質で480pを選ぶと、同じ位置から480pで続く（所有者・ゲスト）", async ({
+    page,
+    browser,
+    request,
+  }) => {
+    // specs/027-playback-quality 受け入れ条件 2・4・8。
+    test.setTimeout(60_000);
+    const item = video("hd-1080p");
+    expect(item.playable).toBe(true);
+    await switchTo480p(page, item);
+
+    const published = await request.put("/api/video-visibility", {
+      headers: mutationHeaders,
+      data: { videoIds: [item.id], public: true },
+    });
+    expect(published.status()).toBe(200);
+    const guest = await browser.newContext({
+      storageState: { cookies: [], origins: [] },
+    });
+    try {
+      await switchTo480p(await guest.newPage(), item);
+    } finally {
+      await guest.close();
+      const restored = await request.put("/api/video-visibility", {
+        headers: mutationHeaders,
+        data: { videoIds: [item.id], public: false },
+      });
+      expect(restored.status()).toBe(200);
+    }
   });
 
   test("コピーで始めた変換は直前のキーフレームの時刻を表示し、再読み込みで同じ場面から再開する", async ({

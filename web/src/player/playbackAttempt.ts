@@ -79,6 +79,36 @@ export function fallbackToTranscode(
   };
 }
 
+/**
+ * switchQuality は再生中の画質を quality に変えた attempt を返す（research.md R-5）。
+ * 「元の画質」は直接再生できる動画なら直接再生に戻す。直接再生が読めず変換へ切り替えた
+ * 動画（fallbackTried）は、元の画質でも変換のままにする。変換は positionMs から始め、
+ * 直接再生は 0 から読み込むので、呼ぶ側がメタデータのあとで positionMs へシークする。
+ */
+export function switchQuality(
+  attempt: PlaybackAttempt,
+  quality: PlaybackQuality,
+  playable: boolean,
+  positionMs: number,
+  playIntended: boolean,
+): PlaybackAttempt {
+  const route: PlaybackRoute =
+    quality === "original" && playable && !attempt.fallbackTried ? "direct" : "transcode";
+  const position =
+    route === "transcode"
+      ? clampTranscodeStart(positionMs, attempt.durationMs)
+      : clampPosition(positionMs, attempt.durationMs);
+  return {
+    ...attempt,
+    route,
+    quality,
+    state: "loading",
+    logicalPositionMs: position,
+    sourceOffsetMs: route === "transcode" ? position : 0,
+    playIntended,
+  };
+}
+
 export function clampPosition(positionMs: number, durationMs: number): number {
   if (!Number.isFinite(positionMs)) return 0;
   return Math.min(durationMs, Math.max(0, Math.round(positionMs)));

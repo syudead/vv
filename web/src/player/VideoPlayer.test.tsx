@@ -5,7 +5,7 @@ import type { Video } from "../api/client";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 
 const mock = vi.hoisted(() => {
-  type Callback = () => void;
+  type Callback = (event?: unknown, hash?: unknown) => void;
   class FakePlayer {
     handlers = new Map<string, Callback[]>();
     sources: unknown[] = [];
@@ -63,8 +63,22 @@ const mock = vi.hoisted(() => {
         (this.handlers.get(event) ?? []).filter((candidate) => candidate !== callback),
       );
     }
-    trigger(event: string) {
-      for (const callback of [...(this.handlers.get(event) ?? [])]) callback();
+    trigger(event: string, hash?: unknown) {
+      for (const callback of [...(this.handlers.get(event) ?? [])])
+        callback({ type: event }, hash);
+    }
+    /** 画質メニューに渡した状態（qualityMenu.ts の setQualityMenu）。 */
+    qualityStates: { options: readonly string[]; current: string }[] = [];
+    getChild(name: string): unknown {
+      if (name === "ControlBar") return this;
+      if (name === "QualityMenuButton") {
+        return {
+          setQualityState: (state: { options: readonly string[]; current: string }) => {
+            this.qualityStates.push(state);
+          },
+        };
+      }
+      return undefined;
     }
     src(source: unknown) {
       this.sources.push(source);
@@ -147,6 +161,9 @@ const mock = vi.hoisted(() => {
     {
       use: vi.fn(),
       addLanguage: vi.fn(),
+      // qualityMenu.ts が読み込むときに基底の部品を引いて登録する。
+      getComponent: vi.fn(() => class {}),
+      registerComponent: vi.fn(),
       createTimeRanges: vi.fn((values: [number, number][]) => ({
         length: values.length,
         start: (index: number) => values[index]?.[0] ?? 0,
@@ -300,7 +317,7 @@ describe("VideoPlayer", () => {
     expect(player.disposed).toBe(true);
   });
 
-  it("操作バーは速度・現在時刻/長さを持ち、秒数送りと残り時間を持たない", async () => {
+  it("操作バーは画質・速度・現在時刻/長さを持ち、秒数送りと残り時間を持たない", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
     const options = mock.instances[0]?.options as {
@@ -322,7 +339,8 @@ describe("VideoPlayer", () => {
       "timeDivider",
       "durationDisplay",
     ]);
-    expect(options.controlBar.children.slice(-3)).toEqual([
+    expect(options.controlBar.children.slice(-4)).toEqual([
+      "qualityMenuButton",
       "playbackRateMenuButton",
       "pictureInPictureToggle",
       "fullscreenToggle",
@@ -1049,6 +1067,168 @@ describe("VideoPlayer", () => {
       cleanup();
       act(() => vi.advanceTimersByTime(20_000));
       expect(player.sources).toHaveLength(1);
+    });
+  });
+
+  describe("画質の切り替え", () => {
+    const hd = { width: 1920, height: 1080 };
+
+    async function playerFor(values: ReturnType<typeof props>) {
+      render(<VideoPlayer {...values} />);
+      await waitFor(() => expect(mock.instances).toHaveLength(1));
+      const player = mock.instances[0];
+      if (player === undefined) throw new Error("playerがありません");
+      act(() => player.trigger("loadedmetadata"));
+      return player;
+    }
+
+    function select(player: (typeof mock.instances)[number], quality: string) {
+      act(() => player.trigger("vvqualityselect", { quality }));
+    }
+
+    it("再生中に480pを選ぶと、作り直さずに同じ位置から480pの変換で再生を続け、画質を覚える", async () => {
+      const values = props(hd);
+      const player = await playerFor(values);
+      expect(player.qualityStates.at(-1)).toMatchObject({
+        options: ["720p", "480p", "360p"],
+        current: "original",
+      });
+      player.time = 30;
+      player.pausedValue = false;
+      player.rate = 1.5;
+      act(() => player.trigger("play"));
+
+      select(player, "480p");
+      expect(mock.instances).toHaveLength(1);
+      expect(player.sources).toHaveLength(2);
+      expect(player.sources[1]).toMatchObject({
+        src: expect.stringMatching(
+          /^\/api\/videos\/7\/transcode\.mp4\?startMs=30000&attempt=[0-9a-f]{32}&quality=480p$/,
+        ) as unknown,
+        vvQuality: "480p",
+        vvOffsetSeconds: 30,
+      });
+      expect(window.localStorage.getItem("vv.playback-quality.v1")).toBe(
+        JSON.stringify("480p"),
+      );
+      expect(player.qualityStates.at(-1)).toMatchObject({ current: "480p" });
+      expect(
+        await screen.findByRole("button", { name: "Converting to 480p" }),
+      ).toBeDefined();
+
+      // 差し替えた要素は止まった状態・既定の速度から始まる。
+      player.pausedValue = true;
+      player.rate = 1;
+      player.time = 0;
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.pausedValue).toBe(false);
+      expect(player.rate).toBe(1.5);
+      // 変換の source は URL が位置を持つので、シークしない。
+      expect(player.time).toBe(0);
+    });
+
+    it("止めた状態で選ぶと、同じ位置で止まったままにする", async () => {
+      const values = props(hd);
+      const player = await playerFor(values);
+      player.time = 30;
+      select(player, "480p");
+      expect(player.sources[1]).toMatchObject({ vvOffsetSeconds: 30, vvQuality: "480p" });
+      act(() => player.trigger("pause"));
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.pausedValue).toBe(true);
+      expect(values.onPosition).toHaveBeenLastCalledWith(30_000);
+      expect(values.onProgress).not.toHaveBeenCalled();
+    });
+
+    it("元の画質に戻すと直接再生に戻り、メタデータのあとで切り替えた位置へシークして続ける", async () => {
+      window.localStorage.setItem("vv.playback-quality.v1", JSON.stringify("480p"));
+      const values = props(hd);
+      const player = await playerFor(values);
+      expect(player.sources[0]).toMatchObject({ vvQuality: "480p" });
+      await screen.findByRole("button", { name: "Converting to 480p" });
+      player.time = 40;
+      player.pausedValue = false;
+      act(() => player.trigger("play"));
+
+      select(player, "original");
+      expect(player.sources.at(-1)).toEqual({
+        src: "/api/videos/7/stream",
+        type: "video/mp4",
+      });
+      await waitFor(() =>
+        expect(screen.queryByRole("button", { name: /Converting/ })).toBeNull(),
+      );
+      player.pausedValue = true;
+      player.time = 0;
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.time).toBe(40);
+      expect(player.pausedValue).toBe(false);
+      expect(values.onPosition).toHaveBeenLastCalledWith(40_000);
+      expect(window.localStorage.getItem("vv.playback-quality.v1")).toBe(
+        JSON.stringify("original"),
+      );
+    });
+
+    it("続けて2回変えると最後の画質の source だけが残り、前の切り替えのメタデータは新しい source をシークしない", async () => {
+      window.localStorage.setItem("vv.playback-quality.v1", JSON.stringify("480p"));
+      const values = props(hd);
+      const player = await playerFor(values);
+      player.time = 40;
+      player.pausedValue = false;
+      act(() => player.trigger("play"));
+
+      select(player, "original");
+      select(player, "360p");
+      expect(player.sources).toHaveLength(3);
+      expect(player.sources.at(-1)).toMatchObject({
+        src: expect.stringMatching(
+          /startMs=40000&attempt=[0-9a-f]{32}&quality=360p$/,
+        ) as unknown,
+        vvQuality: "360p",
+      });
+      expect(player.qualityStates.at(-1)).toMatchObject({ current: "360p" });
+      // 直接再生へ戻す切り替えのシークは、置き換えた変換の source には効かない。
+      player.pausedValue = true;
+      player.time = 0;
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.time).toBe(0);
+      expect(player.pausedValue).toBe(false);
+      expect(window.localStorage.getItem("vv.playback-quality.v1")).toBe(
+        JSON.stringify("360p"),
+      );
+    });
+
+    it("切り替えた変換の失敗は今の誤りの経路で伝わり、再試行の位置は切り替えた位置", async () => {
+      const values = props(hd);
+      const player = await playerFor(values);
+      player.time = 25;
+      player.pausedValue = false;
+      act(() => player.trigger("play"));
+      select(player, "480p");
+      player.errorValue = { code: 3 };
+      act(() => player.trigger("error"));
+      expect(values.onError).toHaveBeenCalledWith(25_000, "decode");
+      expect(player.sources).toHaveLength(2);
+    });
+
+    it("切り替えの読み込み中に止めたら、読み込んだあとも止めたままにする", async () => {
+      const values = props(hd);
+      const player = await playerFor(values);
+      player.time = 30;
+      player.pausedValue = false;
+      act(() => player.trigger("play"));
+      select(player, "480p");
+      act(() => player.pause());
+      act(() => player.trigger("loadedmetadata"));
+      expect(player.pausedValue).toBe(true);
+    });
+
+    it("今と同じ画質を選んでも読み込み直さない", async () => {
+      const values = props(hd);
+      const player = await playerFor(values);
+      select(player, "original");
+      expect(player.sources).toHaveLength(1);
+      expect(window.localStorage.getItem("vv.playback-quality.v1")).toBeNull();
     });
   });
 });

@@ -597,6 +597,13 @@ export const en = {
       transcodingTo: (quality: string) => `Converting to ${quality}`,
       transcodingToDetail: (quality: string) =>
         `Playing a ${quality} version converted while it plays, so it needs less bandwidth. Choose “Original” in the quality menu to go back. Seeking takes a few seconds.`,
+      // 操作バーの画質メニュー（ui-design.md「Words」「Control bar: quality menu」）。
+      quality: "Quality",
+      qualityName: (quality: string) => quality,
+      qualityOriginal: "Original",
+      qualityOriginalOf: (quality: string) => `Original (${quality})`,
+      qualityOriginalShort: "Orig",
+      qualityNoSmaller: "No smaller sizes for this video",
     },
     neighbors: {
       previous: "Previous video",

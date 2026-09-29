@@ -37,11 +37,11 @@ export interface ControllablePlayer {
 }
 
 /**
- * rateMenuOpen は、video.js の操作バーのメニュー（再生速度）が開いているかを返す。
- * 押して開いたメニューには `vjs-lock-showing`、ポイントして開いたメニューのボタンには
- * `vjs-hover` が付く。開いている間の Esc はメニューを閉じるだけにする。
+ * controlBarMenuOpen は、video.js の操作バーのメニュー（画質・再生速度）のどれかが開いて
+ * いるかを返す。押して開いたメニューには `vjs-lock-showing`、ポイントして開いたメニューの
+ * ボタンには `vjs-hover` が付く。開いている間の Esc はメニューを閉じるだけにする。
  */
-export function rateMenuOpen(root: ParentNode): boolean {
+export function controlBarMenuOpen(root: ParentNode): boolean {
   return (
     root.querySelector(".vjs-menu.vjs-lock-showing") !== null ||
     root.querySelector(".vjs-menu-button-popup.vjs-hover") !== null

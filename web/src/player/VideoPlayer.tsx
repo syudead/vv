@@ -8,6 +8,7 @@ import { streamUrl, type Video } from "../api/client";
 import { t, type UiText } from "../i18n";
 import {
   readPlaybackQuality,
+  writePlaybackQuality,
   type PlaybackQuality,
 } from "../preferences/playbackQuality";
 import { readPlaybackVolume, writePlaybackVolume } from "../preferences/playbackVolume";
@@ -16,6 +17,7 @@ import { liveSource } from "./liveOffset";
 import {
   createPlaybackAttempt,
   fallbackToTranscode,
+  switchQuality,
   updatePosition,
   type PlaybackAttempt,
   type PlaybackRoute,
@@ -24,7 +26,7 @@ import {
   createPlayerControls,
   type ControllablePlayer,
   type PlayerControls,
-  rateMenuOpen,
+  controlBarMenuOpen,
 } from "./playerControls";
 import {
   classifyMediaError,
@@ -34,7 +36,8 @@ import {
   reloadTimeoutMs,
   type PlaybackFailureKind,
 } from "./playbackRecovery";
-import { effectiveQuality } from "./quality";
+import { effectiveQuality, qualityOptions, sourceShortSide } from "./quality";
+import { qualitySelectEvent, setQualityMenu, type QualitySelection } from "./qualityMenu";
 import { attachSeekPreview } from "./seekPreview";
 
 const saveIntervalMs = 5000;
@@ -49,8 +52,10 @@ export const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
 /**
  * 操作バーの並び（要件 6）。残り時間は出さず、現在時刻/長さを出す。再生バーは
- * index.css で操作バーの上へ出す。「最初に戻る」は再生の前へ、「変換して再生中」は再生速度の
- * 前へ差し込む。秒数送りは置かない。前後の動画はプレイヤーの左右の端に置く（NeighborArrows）。
+ * index.css で操作バーの上へ出す。「最初に戻る」は再生の前へ、「変換して再生中」は画質の
+ * 前へ差し込む。画質は再生速度の前に置く（specs/027-playback-quality/ui-design.md
+ * 「Control bar: quality menu」）。秒数送りは置かない。前後の動画はプレイヤーの左右の端に
+ * 置く（NeighborArrows）。
  */
 const controlBarChildren = [
   "playToggle",
@@ -60,6 +65,7 @@ const controlBarChildren = [
   "durationDisplay",
   "progressControl",
   "customControlSpacer",
+  "qualityMenuButton",
   "playbackRateMenuButton",
   "pictureInPictureToggle",
   "fullscreenToggle",
@@ -255,6 +261,12 @@ export default function VideoPlayer(props: Props) {
     let playedSinceRecoveryMs: number | null = null;
     let lastTickMs: number | null = null;
     let recoveryGeneration = 0;
+    // 画質の切り替え（research.md R-5）。pendingSwitch は差し替えた source のメタデータを
+    // 待っている切り替えで、切り替えるたびに置き換える（古い source のメタデータは、新しい
+    // source を位置へシークしない）。src は直接再生の source で、届いたメタデータがその
+    // source のものかを確かめる。変換の source は URL が位置を持つので確かめない。rate は
+    // 切り替える前の再生速度で、読み込み直すと要素が既定の速度に戻るので戻す。
+    let pendingSwitch: { src: string | null; rate: number } | null = null;
     let probe: AbortController | undefined;
     let slot: HTMLElement | null = null;
     let restart: HTMLElement | null = null;
@@ -277,6 +289,9 @@ export default function VideoPlayer(props: Props) {
     const mediaPaused = media.paused.bind(player);
     const mediaCurrentTime = media.currentTime.bind(player);
     media.play = () => {
+      // 画質の切り替えで読み込んでいる間の再生・一時停止は、切り替えのあとの意図として
+      // 覚える（差し替えた要素の pause は見る人の操作と見分けられないので数えない）。
+      if (pendingSwitch !== null) attempt = { ...attempt, playIntended: true };
       if (!recovering) return mediaPlay();
       attempt = { ...attempt, playIntended: true };
       player.trigger("play");
@@ -284,6 +299,10 @@ export default function VideoPlayer(props: Props) {
       return Promise.resolve();
     };
     media.pause = () => {
+      if (pendingSwitch !== null) {
+        attempt = { ...attempt, playIntended: false };
+        setStatus({ playing: false });
+      }
       if (!recovering) {
         mediaPause();
         return;
@@ -294,6 +313,11 @@ export default function VideoPlayer(props: Props) {
     };
     media.paused = () => (recovering ? !attempt.playIntended : mediaPaused());
     media.currentTime = (seconds?: number) => {
+      // 直接再生へ戻す切り替えのメタデータを待つ間のシークは、メタデータのあとで戻す位置
+      // として覚える（0 から読み込む要素へのシークは効かないことがある）。
+      if (!recovering && pendingSwitch?.src != null && seconds !== undefined) {
+        attempt = updatePosition(attempt, seconds * 1000);
+      }
       if (!recovering) return mediaCurrentTime(seconds);
       if (seconds !== undefined) {
         attempt = updatePosition(attempt, seconds * 1000);
@@ -349,10 +373,19 @@ export default function VideoPlayer(props: Props) {
     };
     latest.current.onStatus(status);
 
-    const menuOpen = () => popoverOpen.current || rateMenuOpen(host);
+    const menuOpen = () => popoverOpen.current || controlBarMenuOpen(host);
     latest.current.onControls(
       createPlayerControls(player as unknown as ControllablePlayer, menuOpen),
     );
+
+    // 画質メニューへ選択肢と今の画質を渡す（qualityMenu.ts）。
+    const renderQualityMenu = () => {
+      setQualityMenu(player, {
+        options: qualityOptions(source),
+        current: attempt.quality,
+        sourceSize: sourceShortSide(source),
+      });
+    };
 
     player.ready(() => {
       if (player.isDisposed()) return;
@@ -371,9 +404,13 @@ export default function VideoPlayer(props: Props) {
       if (bar !== null) {
         slot = document.createElement("div");
         slot.className = "vv-transcode-indicator flex flex-none items-center px-2";
-        bar.insertBefore(slot, bar.querySelector(":scope > .vjs-playback-rate"));
+        bar.insertBefore(
+          slot,
+          bar.querySelector(":scope > .vv-quality, :scope > .vjs-playback-rate"),
+        );
         setIndicatorSlot(slot);
       }
+      renderQualityMenu();
     });
 
     const logicalPositionMs = () => {
@@ -412,6 +449,8 @@ export default function VideoPlayer(props: Props) {
     player.on("loadedmetadata", () => {
       // 回復を待つ間に、止まったと見切った古い要求が遅れて届いても使わない。
       if (recovering && pendingRecovery === null) return;
+      // 画質を切り替えたあとに、差し替える前の source のメタデータが届いても使わない。
+      if (pendingSwitch?.src != null && !mediaSourceIs(pendingSwitch.src)) return;
       attempt = { ...attempt, state: "ready" };
       const videoWidth = player.videoWidth();
       const videoHeight = player.videoHeight();
@@ -421,6 +460,10 @@ export default function VideoPlayer(props: Props) {
       setHoldControlBar(false);
       if (pendingRecovery !== null) {
         finishRecovery();
+        return;
+      }
+      if (pendingSwitch !== null) {
+        finishSwitch();
         return;
       }
       if (resumeApplied || initialPositionMs <= 0) return;
@@ -603,6 +646,94 @@ export default function VideoPlayer(props: Props) {
       });
     };
 
+    // mediaSourceIs は、今の要素が読み込んでいる source が src かを返す。video.js は
+    // source の差し替えを少し遅らせて技術層へ渡すので、その間に届いた前の source の
+    // メタデータを見分ける。技術層を引けないときは確かめない。
+    const mediaSourceIs = (src: string) => {
+      const tech = (
+        player as unknown as { tech?(safety: boolean): { el?(): unknown } | undefined }
+      ).tech?.(true);
+      const element = tech?.el?.();
+      if (!(element instanceof HTMLMediaElement)) return true;
+      return (
+        new URL(element.currentSrc || src, window.location.href).href ===
+        new URL(src, window.location.href).href
+      );
+    };
+
+    // changeQuality は、プレイヤーを作り直さずに今の論理上の位置から選んだ画質の source へ
+    // 差し替える（要件 4・5・6、research.md R-5）。直接再生からの fallback と同じ作りで、
+    // 再生中なら続け、止めていたら止めたままにする。回復を待つ間でも、選んだ画質で
+    // 読み込み直す。
+    const changeQuality = (quality: PlaybackQuality) => {
+      if (player.isDisposed() || quality === attempt.quality) return;
+      writePlaybackQuality(quality);
+      if (attempt.state === "failed") {
+        // 失敗の層が出ている。再試行はプレイヤーを作り直し、覚えた画質で始める。
+        attempt = { ...attempt, quality };
+        setQuality(quality);
+        renderQualityMenu();
+        return;
+      }
+      const busy = recovering || switchingSource || pendingSwitch !== null;
+      const playIntended = busy ? attempt.playIntended : !player.paused();
+      const positionMs = recovering ? attempt.logicalPositionMs : logicalPositionMs();
+      probe?.abort();
+      probe = undefined;
+      clearRecoveryTimers();
+      recoveryGeneration += 1;
+      recovering = false;
+      playedSinceRecoveryMs = null;
+      lastTickMs = null;
+      resumeApplied = true;
+      const rate = pendingSwitch?.rate ?? player.playbackRate() ?? 1;
+      attempt = switchQuality(
+        attempt,
+        quality,
+        source.playable,
+        positionMs,
+        playIntended,
+      );
+      switchingSource = true;
+      setRoute(attempt.route);
+      setQuality(attempt.quality);
+      renderQualityMenu();
+      setStatus({ reconnecting: false, ended: false, loading: true });
+      latest.current.onPosition(attempt.logicalPositionMs);
+      if (attempt.route === "direct") {
+        pendingSwitch = { src: streamUrl(source.id), rate };
+        setDirectSource();
+      } else {
+        pendingSwitch = { src: null, rate };
+        setLiveSource(attempt.sourceOffsetMs);
+      }
+    };
+    player.on(qualitySelectEvent, (_event: unknown, selection?: QualitySelection) => {
+      if (selection !== undefined) changeQuality(selection.quality);
+    });
+
+    // finishSwitch は切り替えた source のメタデータが来たときに呼ぶ。直接再生は 0 から
+    // 読み込むので論理上の位置へシークし、変換は URL の位置から始まっている。そのあと
+    // 再生の意図を戻す。
+    const finishSwitch = () => {
+      const pending = pendingSwitch;
+      if (pending === null) return;
+      pendingSwitch = null;
+      switchingSource = false;
+      player.playbackRate(pending.rate);
+      if (attempt.route === "direct") {
+        player.currentTime(attempt.logicalPositionMs / 1000);
+        latest.current.onPosition(attempt.logicalPositionMs);
+      } else {
+        reportPosition();
+      }
+      if (attempt.playIntended) {
+        void player.play()?.catch(() => setStatus({ loading: false }));
+      } else {
+        setStatus({ loading: false });
+      }
+    };
+
     // 誤りは種類で分ける（playbackRecovery.ts）。通信の失敗は同じ経路で読み込み直し、
     // 形式・データの失敗は直接再生なら変換へ切り替える。番号だけで決まらない誤りは
     // サーバーに届くかを確かめてから分ける。
@@ -614,6 +745,9 @@ export default function VideoPlayer(props: Props) {
       probe?.abort();
       probe = undefined;
       clearRecoveryTimers();
+      // 切り替えた source の失敗は、切り替えた位置から今の誤りの経路で扱う（Edge Case 5）。
+      pendingSwitch = null;
+      switchingSource = false;
       attempt = {
         ...updatePosition(attempt, position),
         state: "loading",
