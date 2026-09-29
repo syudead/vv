@@ -174,6 +174,8 @@ function VideoCard(props: VideoCardProps) {
         />
       )}
 
+      {/* リンクは flex-1 で伸ばし、同じ格子の行で高いカードとの差を引き受ける。タグの行を
+          カードの下端へそろえつつ、その間の余白も押せる（開く・選択する）範囲に含めるためである。 */}
       <Link
         to={`/videos/${String(video.id)}`}
         state={{ from: backTo }}
@@ -189,7 +191,7 @@ function VideoCard(props: VideoCardProps) {
             onSelect(video.id, !selected);
           }
         }}
-        className="flex min-w-0 flex-col outline-none"
+        className="flex min-w-0 flex-1 flex-col outline-none"
       >
         <div className="relative aspect-video w-full overflow-hidden bg-navbar">
           <CardMedia video={video} preview={preview} />
@@ -258,10 +260,7 @@ function VideoCard(props: VideoCardProps) {
       {showTagsRow && (
         // タグの行はリンクの外（別の要素）に置くので、題名の下との間隔を今の
         // gap-1（4px）と同じに保つには、ここで pt-1 を明示する必要がある（B3）。
-        // mt-auto でカードの下端へ寄せ、同じ行で題名の行数が違ってもタグの高さをそろえる。
-        <div className="mt-auto flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">
-          {tagsRowNode}
-        </div>
+        <div className="flex min-w-0 flex-col gap-1 px-3 pt-1 pb-3">{tagsRowNode}</div>
       )}
     </article>
   );
