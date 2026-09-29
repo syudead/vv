@@ -96,3 +96,43 @@
 - **サーバーが見る人ごとに画質を覚える**: ゲストには見る人の識別が無く、要求の URL だけでは
   出力が決まらなくなる。
 - **使えない画質を黙って元の画質か最大の画質に直す**: 画面の選択と実際の画質がずれる。
+
+## 選択肢と覚え方
+
+### Context
+
+画質は見る人の回線に合わせて選ぶもので、動画ごとではなくブラウザごとに決まる。一度選んだら
+次に開く動画でも、シークや通信の失敗からの読み込み直しでも同じ画質で再生し続ける必要がある。
+一方で、動画の短辺以上の画質はサーバーが 400 で拒む（上の「API」）。
+
+### Decision
+
+- 選んだ画質は `web/src/preferences/playbackQuality.ts` が `localStorage` の
+  `vv.playback-quality.v1` に JSON の文字列（`"480p"`・`"original"`）で持つ。音量
+  （`playbackVolume.ts`）と同じ作りで、保存値が無い・壊れている・列挙に無い・保存領域が
+  使えないときは「元の画質」（`"original"`）で再生する。サーバーには送らない。
+- 選択肢は `web/src/player/quality.ts` の `qualityOptions` が動画の `width`・`height` から作る。
+  短辺より小さい画質だけを大きい順に出し、寸法の無い動画は空にする。規則はサーバーの
+  `TranscodeQuality.Available` と同じ短辺の比較だけで、変換の枠による縮小（1200×12000 など）は
+  考えない。
+- 覚えている画質が選択肢に無い動画（360p の動画での `480p` など）は、`effectiveQuality` が
+  「元の画質」で再生すると決める。覚えている値は書き換えず、次に大きい動画を開けばまた
+  その画質で再生する。
+- プレイヤー（`VideoPlayer.tsx`）は作るときに 1 回だけ覚えた画質を読み、`createPlaybackAttempt`
+  に渡す。`PlaybackAttempt.quality` が「元の画質」以外なら経路は直接再生できる動画でも変換で、
+  `sourceOffsetMs` は再開する位置になる。「元の画質」なら今までどおり、直接再生できる動画だけを
+  直接再生する。
+- 画質は変換の source が持ち続ける。`transcodeUrl` と `liveSource` は `quality` を URL と
+  source の `vvQuality` に載せ、未 buffer のシーク（`liveOffset.ts` の `reloadAt`）は source の
+  画質で作り直し、通信の失敗からの読み込み直し（`VideoPlayer.tsx` の `reload`）は attempt の
+  画質で作り直す。どちらも画質の無い要求に戻らない。
+- 「変換して再生中」は、元の画質なら今までどおりの文言、選んだ画質なら `Converting to 480p` と
+  縮めていることと戻し方の説明にする（[ui-design.md「Control bar: transcode indicator」](../../specs/027-playback-quality/ui-design.md#control-bar-transcode-indicator)）。
+  画質の名前は翻訳しない。
+
+### Alternatives
+
+- **サーバーに画質を覚えさせる**: ゲストには見る人の識別が無い（上の「API」）。
+- **使えない画質を覚えた値ごと「元の画質」に書き換える**: 小さい動画を 1 本開いただけで、
+  回線に合わせて選んだ画質が失われる。
+- **選択肢をサーバーの応答に載せる**: 規則が寸法の比較だけなのに `Video` の形と往復が増える。

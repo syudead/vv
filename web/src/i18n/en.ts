@@ -593,6 +593,10 @@ export const en = {
       transcoding: "Converting for playback",
       transcodingDetail:
         "The browser can't play this format directly, so it's converted while it plays. Seeking takes a few seconds.",
+      // 画質の名前（480p など）は翻訳しない（specs/027-playback-quality/ui-design.md「Words」）。
+      transcodingTo: (quality: string) => `Converting to ${quality}`,
+      transcodingToDetail: (quality: string) =>
+        `Playing a ${quality} version converted while it plays, so it needs less bandwidth. Choose “Original” in the quality menu to go back. Seeking takes a few seconds.`,
     },
     neighbors: {
       previous: "Previous video",

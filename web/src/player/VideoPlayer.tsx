@@ -6,6 +6,10 @@ import "video.js/dist/video-js.css";
 
 import { streamUrl, type Video } from "../api/client";
 import { t, type UiText } from "../i18n";
+import {
+  readPlaybackQuality,
+  type PlaybackQuality,
+} from "../preferences/playbackQuality";
 import { readPlaybackVolume, writePlaybackVolume } from "../preferences/playbackVolume";
 import { PopoverContent, PopoverRoot, PopoverTrigger } from "../ui/Popover";
 import { liveSource } from "./liveOffset";
@@ -30,6 +34,7 @@ import {
   reloadTimeoutMs,
   type PlaybackFailureKind,
 } from "./playbackRecovery";
+import { effectiveQuality } from "./quality";
 import { attachSeekPreview } from "./seekPreview";
 
 const saveIntervalMs = 5000;
@@ -170,6 +175,7 @@ export default function VideoPlayer(props: Props) {
   const [indicatorSlot, setIndicatorSlot] = useState<HTMLElement | null>(null);
   const [restartSlot, setRestartSlot] = useState<HTMLElement | null>(null);
   const [route, setRoute] = useState<PlaybackRoute | null>(null);
+  const [quality, setQuality] = useState<PlaybackQuality>("original");
   /** 最初の読み込みが終わるまで操作バーを隠す（自動で再生を始めるとき）。 */
   const [holdControlBar, setHoldControlBar] = useState(true);
   const [playerReady, setPlayerReady] = useState(false);
@@ -184,7 +190,13 @@ export default function VideoPlayer(props: Props) {
     const host = hostRef.current;
     const current = latest.current;
     const initialPositionMs = current.initialPositionMs;
-    const initialAttempt = createPlaybackAttempt(current.video, initialPositionMs);
+    // 覚えている画質は作るときに 1 回だけ読み、この動画に使えなければ元の画質で再生する
+    // （覚えている値は書き換えない。specs/027-playback-quality/research.md R-3・R-5）。
+    const initialAttempt = createPlaybackAttempt(
+      current.video,
+      initialPositionMs,
+      effectiveQuality(readPlaybackQuality(), current.video),
+    );
     if (host === null || initialAttempt === null) return;
     const source = current.video;
 
@@ -292,6 +304,7 @@ export default function VideoPlayer(props: Props) {
       return attempt.logicalPositionMs / 1000;
     };
     setRoute(attempt.route);
+    setQuality(attempt.quality);
     setHoldControlBar(true);
 
     // 全画面は、プレイヤーだけでなく上に重ねる層ごと（入れ物ごと）にする。video.js の
@@ -375,15 +388,24 @@ export default function VideoPlayer(props: Props) {
       latest.current.onPosition(position);
       return position;
     };
+    // 変換の source は attempt の画質を持つ。最初の読み込み・直接再生からの切り替え・
+    // 通信の失敗からの読み込み直し（reload）はどれもここを通り、未 buffer のシークは
+    // liveOffset.ts の reloadAt が source の画質を引き継ぐ（要件 7）。
     const setLiveSource = (positionMs: number) => {
       player.src(
-        liveSource(source.id, attempt.durationMs, positionMs, (seconds) => {
-          attempt = {
-            ...updatePosition(attempt, seconds * 1000),
-            sourceOffsetMs: seconds * 1000,
-          };
-          latest.current.onPosition(attempt.logicalPositionMs);
-        }),
+        liveSource(
+          source.id,
+          attempt.durationMs,
+          positionMs,
+          (seconds) => {
+            attempt = {
+              ...updatePosition(attempt, seconds * 1000),
+              sourceOffsetMs: seconds * 1000,
+            };
+            latest.current.onPosition(attempt.logicalPositionMs);
+          },
+          attempt.quality === "original" ? undefined : attempt.quality,
+        ),
       );
     };
 
@@ -722,6 +744,7 @@ export default function VideoPlayer(props: Props) {
         route === "transcode" &&
         createPortal(
           <TranscodeIndicator
+            quality={quality}
             container={fullscreenFrame}
             onOpenChange={(open) => {
               popoverOpen.current = open;
@@ -761,28 +784,36 @@ function BarButton({
 }
 
 /**
- * TranscodeIndicator は操作バーの中の「変換して再生中」である（要件 10）。
+ * TranscodeIndicator は操作バーの中の「変換して再生中」である（要件 10）。元の画質以外では
+ * 選んだ画質で変換していることと戻し方を伝える（specs/027-playback-quality 要件 6、
+ * ui-design.md「Control bar: transcode indicator」）。
  *
  * ポイントしたときだけ開くツールチップにはしない。タッチやキーボードの人が理由に
  * 届かなくなるので、押して開く吹き出しにする。
  */
 function TranscodeIndicator({
+  quality,
   container,
   onOpenChange,
 }: {
+  quality: PlaybackQuality;
   container: HTMLElement | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  const c = t.player.controls;
+  const label = quality === "original" ? c.transcoding : c.transcodingTo(quality);
+  const detail =
+    quality === "original" ? c.transcodingDetail : c.transcodingToDetail(quality);
   return (
     <PopoverRoot onOpenChange={onOpenChange}>
       {/* video.js の `.video-js button` が表示・文字の大きさ・色を上書きするので、! で戻す。 */}
       <PopoverTrigger className="inline-flex! items-center gap-1 rounded-sm px-1 text-xs! leading-4! whitespace-nowrap text-fg-muted! transition-colors! hover:text-fg!">
         <Info className="size-3.5 shrink-0" aria-hidden="true" />
         {/* 縦長の動画などで枠が狭いときは、印だけを残して操作バーの幅に収める。 */}
-        <span className="@max-[22.5rem]:sr-only">{t.player.controls.transcoding}</span>
+        <span className="@max-[22.5rem]:sr-only">{label}</span>
       </PopoverTrigger>
       <PopoverContent container={container} className="w-64 text-sm text-fg">
-        {t.player.controls.transcodingDetail}
+        {detail}
       </PopoverContent>
     </PopoverRoot>
   );

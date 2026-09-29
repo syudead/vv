@@ -1,4 +1,5 @@
 import type { Video } from "../api/client";
+import type { PlaybackQuality } from "../preferences/playbackQuality";
 
 export type PlaybackRoute = "direct" | "transcode";
 export type PlaybackState = "loading" | "ready" | "playing" | "failed" | "disposed";
@@ -7,6 +8,8 @@ export interface PlaybackAttempt {
   videoId: number;
   durationMs: number;
   route: PlaybackRoute;
+  /** 再生する画質。「元の画質」以外は直接再生できる動画でもライブ変換で縮める（R-5）。 */
+  quality: PlaybackQuality;
   state: PlaybackState;
   fallbackTried: boolean;
   logicalPositionMs: number;
@@ -14,9 +17,15 @@ export interface PlaybackAttempt {
   playIntended: boolean;
 }
 
+/**
+ * createPlaybackAttempt は再生の最初の経路を決める。quality は動画に使えると確かめた画質
+ * （quality.ts の effectiveQuality）で、「元の画質」以外なら経路は変換、「元の画質」なら
+ * 直接再生できる動画だけ直接再生にする（research.md R-5）。
+ */
 export function createPlaybackAttempt(
   video: Video,
   resumePositionMs: number,
+  quality: PlaybackQuality = "original",
 ): PlaybackAttempt | null {
   if (
     video.probeState !== "done" ||
@@ -27,11 +36,13 @@ export function createPlaybackAttempt(
     return null;
   }
   const position = clampPosition(resumePositionMs, video.durationMs);
-  const route: PlaybackRoute = video.playable ? "direct" : "transcode";
+  const route: PlaybackRoute =
+    quality === "original" && video.playable ? "direct" : "transcode";
   return {
     videoId: video.id,
     durationMs: video.durationMs,
     route,
+    quality,
     state: "loading",
     fallbackTried: false,
     logicalPositionMs: position,

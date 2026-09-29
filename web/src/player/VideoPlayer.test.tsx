@@ -423,6 +423,34 @@ describe("VideoPlayer", () => {
     expect(await screen.findByText(/Seeking takes a few seconds/)).toBeDefined();
   });
 
+  it("覚えた画質で直接再生できる動画も変換で始め、その画質で変換していると出す", async () => {
+    window.localStorage.setItem("vv.playback-quality.v1", JSON.stringify("480p"));
+    render(<VideoPlayer {...props({ width: 1920, height: 1080 })} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    expect(mock.instances[0]?.sources[0]).toMatchObject({
+      src: "/api/videos/7/transcode.mp4?quality=480p",
+      vvQuality: "480p",
+      vvOffsetSeconds: 0,
+    });
+    const indicator = await screen.findByRole("button", { name: "Converting to 480p" });
+    expect(screen.queryByText("Converting for playback")).toBeNull();
+    fireEvent.click(indicator);
+    expect(
+      await screen.findByText(/Playing a 480p version converted while it plays/),
+    ).toBeDefined();
+  });
+
+  it("覚えた画質がこの動画に使えなければ元の画質で再生し、覚えた値は変えない", async () => {
+    window.localStorage.setItem("vv.playback-quality.v1", JSON.stringify("480p"));
+    render(<VideoPlayer {...props({ width: 640, height: 360 })} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    expect(mock.instances[0]?.sources[0]).toMatchObject({ src: "/api/videos/7/stream" });
+    expect(screen.queryByText(/Converting/)).toBeNull();
+    expect(window.localStorage.getItem("vv.playback-quality.v1")).toBe(
+      JSON.stringify("480p"),
+    );
+  });
+
   it("directからtranscodeへ切り替えたら「変換して再生中」を出す", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));
@@ -711,6 +739,26 @@ describe("VideoPlayer", () => {
           /^\/api\/videos\/7\/transcode\.mp4\?startMs=30000&attempt=[0-9a-f]{32}$/,
         ) as unknown,
         vvOffsetSeconds: 30,
+      });
+    });
+
+    it("覚えた画質で変換中に切れたら、同じ画質で切れた位置から変換を始め直す", () => {
+      vi.useFakeTimers();
+      window.localStorage.setItem("vv.playback-quality.v1", JSON.stringify("480p"));
+      const values = props({ width: 1920, height: 1080 });
+      const player = startPlaying(values);
+      expect(player.sources[0]).toMatchObject({
+        src: "/api/videos/7/transcode.mp4?quality=480p",
+      });
+      player.errorValue = { code: 2 };
+      act(() => player.trigger("error"));
+      act(() => vi.advanceTimersByTime(1000));
+      expect(player.sources[1]).toMatchObject({
+        src: expect.stringMatching(
+          /^\/api\/videos\/7\/transcode\.mp4\?startMs=30000&attempt=[0-9a-f]{32}&quality=480p$/,
+        ) as unknown,
+        vvOffsetSeconds: 30,
+        vvQuality: "480p",
       });
     });
 
