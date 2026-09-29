@@ -185,3 +185,12 @@ func TestPlamoTranslatorUsesTheTranslationPrompt(t *testing.T) {
 		t.Errorf("prompt = %q", prompt)
 	}
 }
+
+func TestParagraphStartingWithAutolinkIsTranslated(t *testing.T) {
+	src := "<https://example.com> opens the page.\n\n<details>\n"
+	got := render(parse(src, keep), fake)
+	want := "JA[<https://example.com> opens the page.]\n\n<details>\n"
+	if got != want {
+		t.Errorf("render = %q, want %q", got, want)
+	}
+}

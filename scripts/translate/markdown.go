@@ -41,13 +41,14 @@ var (
 	frontValue  = regexp.MustCompile(`^(\s*(?:-\s+)?(?:text|tagline|title|details):\s+)(.+)$`)
 	frontLink   = regexp.MustCompile(`^(\s*(?:-\s+)?link:\s+)(/\S*)\s*$`)
 
-	imageRe    = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
-	linkRe     = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+)(\s+"[^"]*")?\)`)
-	autoLinkRe = regexp.MustCompile(`<https?://[^>]+>`)
-	htmlRe     = regexp.MustCompile(`</?[A-Za-z][^>]*>`)
-	urlRe      = regexp.MustCompile(`https?://[^\s)>\]]+`)
-	tagRe      = regexp.MustCompile(`</?[ax]\d+/?>`)
-	letterRe   = regexp.MustCompile(`\p{L}`)
+	imageRe       = regexp.MustCompile(`!\[[^\]]*\]\([^)]*\)`)
+	linkRe        = regexp.MustCompile(`\[([^\]]+)\]\(([^)\s]+)(\s+"[^"]*")?\)`)
+	autoLinkRe    = regexp.MustCompile(`<https?://[^>]+>`)
+	autoLinkStart = regexp.MustCompile(`^<(https?://|mailto:)[^>\s]+>`)
+	htmlRe        = regexp.MustCompile(`</?[A-Za-z][^>]*>`)
+	urlRe         = regexp.MustCompile(`https?://[^\s)>\]]+`)
+	tagRe         = regexp.MustCompile(`</?[ax]\d+/?>`)
+	letterRe      = regexp.MustCompile(`\p{L}`)
 )
 
 // linkFunc rewrites a link target found in the source for the translated
@@ -145,7 +146,7 @@ func parse(src string, rewrite linkFunc) []piece {
 				}
 			}
 			flush()
-		case strings.HasPrefix(strings.TrimSpace(l), "<"):
+		case htmlBlock(l):
 			verb(l)
 			i++
 		case itemLine.MatchString(l):
@@ -182,7 +183,14 @@ func paragraphContinues(l string) bool {
 	t := strings.TrimSpace(l)
 	return t != "" && !fenceLine.MatchString(l) && !headingLine.MatchString(l) &&
 		!strings.HasPrefix(t, "|") && !quoteLine.MatchString(l) && !itemLine.MatchString(l) &&
-		!strings.HasPrefix(t, "<")
+		!htmlBlock(l)
+}
+
+// htmlBlock reports whether a line starts an HTML block. A line that opens
+// with an autolink (<https://...>) is an ordinary paragraph.
+func htmlBlock(l string) bool {
+	t := strings.TrimSpace(l)
+	return strings.HasPrefix(t, "<") && !autoLinkStart.MatchString(t)
 }
 
 // tableRow translates each non-empty cell of a table row.
