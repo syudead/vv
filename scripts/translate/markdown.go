@@ -352,17 +352,28 @@ func (s *segment) restore(translated string) (string, error) {
 		return "", fmt.Errorf("expected %d tags, got %d", len(s.order), len(found))
 	}
 	seen := map[string]bool{}
+	var open []string // link tags opened and not yet closed
 	for _, tag := range found {
 		if _, ok := s.tokens[tag]; !ok || seen[tag] {
 			return "", fmt.Errorf("unexpected or repeated tag %s", tag)
 		}
-		if strings.HasPrefix(tag, "</a") && !seen["<a"+tag[3:]] {
-			return "", fmt.Errorf("tag %s closes before it opens", tag)
-		}
 		seen[tag] = true
+		switch {
+		case strings.HasPrefix(tag, "<a"):
+			open = append(open, tag)
+		case strings.HasPrefix(tag, "</a"):
+			// Links must nest: a closing tag ends the latest open link, so
+			// interleaved links (<a0> <a1> </a0> </a1>) are rejected.
+			if len(open) == 0 || open[len(open)-1] != "<a"+tag[3:] {
+				return "", fmt.Errorf("tag %s does not close the innermost open link", tag)
+			}
+			open = open[:len(open)-1]
+		}
 	}
-	out := tagRe.ReplaceAllStringFunc(translated, func(tag string) string { return s.tokens[tag] })
-	out = strings.Join(strings.Fields(out), " ")
+	// Normalise whitespace while the protected Markdown is still a tag, so
+	// the spaces inside a code span or a link target are kept byte for byte.
+	out := strings.Join(strings.Fields(translated), " ")
+	out = tagRe.ReplaceAllStringFunc(out, func(tag string) string { return s.tokens[tag] })
 	return out, nil
 }
 

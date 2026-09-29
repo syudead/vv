@@ -12,6 +12,8 @@ package main
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -107,12 +109,18 @@ func run(ctx context.Context, o options) error {
 	if err != nil {
 		return err
 	}
+	// The glossary is part of each memory key, so it is read even offline.
+	glossary, err := loadGlossary(o.glossary)
+	if err != nil {
+		return err
+	}
 	pending := map[string]*segment{}
 	for _, d := range docs {
 		for _, p := range d.pieces {
 			if p.seg != nil && p.seg.needsTranslation() {
-				if _, ok := memory[p.seg.text]; !ok {
-					pending[p.seg.text] = p.seg
+				key := memoryKey(p.seg, glossary)
+				if _, ok := memory[key]; !ok {
+					pending[key] = p.seg
 				}
 			}
 		}
@@ -120,10 +128,6 @@ func run(ctx context.Context, o options) error {
 
 	var failed int
 	if len(pending) > 0 && !o.offline {
-		glossary, err := loadGlossary(o.glossary)
-		if err != nil {
-			return err
-		}
 		tr, err := newTranslator(config{
 			Provider: os.Getenv("VV_TRANSLATE_PROVIDER"),
 			BaseURL:  os.Getenv("VV_TRANSLATE_BASE_URL"),
@@ -147,11 +151,12 @@ func run(ctx context.Context, o options) error {
 		if !s.needsTranslation() {
 			return "", false
 		}
-		ja, ok := memory[s.text]
+		key := memoryKey(s, glossary)
+		ja, ok := memory[key]
 		if !ok {
 			return "", false
 		}
-		used[s.text] = true
+		used[key] = true
 		restored, err := s.restore(ja)
 		return restored, err == nil
 	}
@@ -236,15 +241,15 @@ func translateAll(ctx context.Context, tr translator, pending map[string]*segmen
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for text := range work {
-				ja, err := translateOne(ctx, tr, pending[text])
+			for key := range work {
+				ja, err := translateOne(ctx, tr, pending[key])
 				mu.Lock()
 				switch {
 				case err == nil:
-					memory[text] = ja
+					memory[key] = ja
 				case errors.Is(err, errRejected):
 					failed++
-					fmt.Fprintf(os.Stderr, "translate: rejected %q: %v\n", short(text), err)
+					fmt.Fprintf(os.Stderr, "translate: rejected %q: %v\n", short(pending[key].text), err)
 				case fatal == nil:
 					fatal = err
 				}
@@ -267,6 +272,20 @@ func translateAll(ctx context.Context, tr translator, pending map[string]*segmen
 }
 
 var errRejected = errors.New("translation rejected")
+
+// memoryKey is the translation-memory key of a segment: its tagged English
+// text, plus a fingerprint of the glossary entries the segment uses. Editing
+// one of those entries changes the key, so the segment is translated again
+// with the new term; segments that use no changed entry keep their key and
+// are reused, offline included.
+func memoryKey(s *segment, glossary []term) string {
+	terms := matchingTerms(glossary, s.text)
+	if len(terms) == 0 {
+		return s.text
+	}
+	sum := sha256.Sum256([]byte(strings.Join(terms, "\n")))
+	return s.text + "\x00glossary:" + hex.EncodeToString(sum[:8])
+}
 
 // translateOne asks twice; a translation that breaks the segment's tags is
 // discarded rather than published.

@@ -45,8 +45,13 @@ flowchart TD
    code spans, URLs and HTML become `<x0/>`, and link text is wrapped as
    `<a1>text</a1>` with the target held back. The model sees plain prose.
 4. A segment found in the translation memory is reused. Others go to the model.
-   A reply that drops, repeats or reorders a tag is rejected; after two
-   rejections the segment stays English.
+   A reply that drops, repeats or invents a tag, or crosses two links, is
+   rejected; after two rejections the segment stays English.
+   - The memory key is the tagged English text plus a fingerprint of the
+     glossary entries the segment uses. Editing a glossary entry re-translates
+     only the segments that use it.
+   - Whitespace is normalised before the protected Markdown goes back in, so
+     code spans and link targets keep their exact bytes.
 5. The output mirrors the source tree under `docs-site/ja/`. Each page starts
    with a note linking the English original.
 

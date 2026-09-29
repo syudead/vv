@@ -194,3 +194,39 @@ func TestParagraphStartingWithAutolinkIsTranslated(t *testing.T) {
 		t.Errorf("render = %q, want %q", got, want)
 	}
 }
+
+func TestRestoreRejectsInterleavedLinks(t *testing.T) {
+	s := protect("[first](a.md) and [second](b.md)", keep)
+	if s.text != "<a0>first</a0> and <a1>second</a1>" {
+		t.Fatalf("protected text = %q", s.text)
+	}
+	if _, err := s.restore("<a0>first <a1>second</a0> third</a1>"); err == nil {
+		t.Error("restore accepted interleaved links")
+	}
+	// Nesting and reordering are fine: each closing tag ends the latest link.
+	if _, err := s.restore("<a1>second</a1> and <a0>first</a0>"); err != nil {
+		t.Errorf("restore rejected reordered links: %v", err)
+	}
+}
+
+func TestOfflineRenderKeepsSpacesInsideCode(t *testing.T) {
+	src := "Run `echo a  b` now,   then [the  guide](x.md)."
+	got := render(parse(src, keep), func(*segment) (string, bool) { return "", false })
+	want := "Run `echo a  b` now, then [the guide](x.md)."
+	if got != want {
+		t.Errorf("render = %q, want %q", got, want)
+	}
+}
+
+func TestGlossaryChangeInvalidatesOnlySegmentsUsingTheTerm(t *testing.T) {
+	uses := protect("Open the folder group.", keep)
+	other := protect("Open the library.", keep)
+	before := []term{{en: "folder group", ja: "A"}}
+	after := []term{{en: "folder group", ja: "B"}}
+	if memoryKey(uses, before) == memoryKey(uses, after) {
+		t.Error("changing the glossary entry kept the key of a segment that uses it")
+	}
+	if memoryKey(other, before) != memoryKey(other, after) || memoryKey(other, after) != other.text {
+		t.Error("a segment without glossary terms changed its key")
+	}
+}
