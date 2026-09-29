@@ -56,4 +56,24 @@ describe("rateMenuOpen", () => {
     button.dispatchEvent(new MouseEvent("mouseleave"));
     expect(rateMenuOpen(host)).toBe(false);
   });
+
+  it("字幕のメニューが開いているときも真にする", () => {
+    const element = document.createElement("video-js");
+    document.body.append(element);
+    player = videojs(element, {
+      controls: true,
+      textTrackSettings: false,
+      controlBar: { children: ["playToggle", "subsCapsButton"] },
+    });
+    player.addRemoteTextTrack({ kind: "subtitles", label: "ja", default: false }, true);
+    const host = player.el();
+    const menuButton = player?.getChild("ControlBar")?.getChild("SubsCapsButton") as
+      { pressButton(): void; unpressButton(): void } | undefined;
+    if (menuButton === undefined) throw new Error("字幕のボタンがありません");
+    expect(rateMenuOpen(host)).toBe(false);
+    menuButton.pressButton();
+    expect(rateMenuOpen(host)).toBe(true);
+    menuButton.unpressButton();
+    expect(rateMenuOpen(host)).toBe(false);
+  });
 });

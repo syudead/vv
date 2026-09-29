@@ -591,9 +591,18 @@ export const en = {
       volumeLevel: "Volume",
       videoPlayer: "Video player",
       restart: "Restart",
+      /** 操作バーのメニュー（再生速度・字幕）で選んでいる項目に、読み上げ用に添える文言。 */
+      menuItemSelected: ", selected",
       transcoding: "Converting for playback",
       transcodingDetail:
         "The browser can't play this format directly, so it's converted while it plays. Seeking takes a few seconds.",
+    },
+    // 字幕ボタンとメニュー（specs/028-sidecar-subtitles research.md R-10）。
+    subtitles: {
+      button: "Subtitles",
+      off: "Off",
+      /** ラベルの無い字幕（`<名前>.srt`）の表示名。 */
+      default: "Default",
     },
     neighbors: {
       previous: "Previous video",
