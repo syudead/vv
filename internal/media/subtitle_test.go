@@ -160,6 +160,10 @@ func TestConvertPassesWebVTTThrough(t *testing.T) {
 	if got := convert(t, []byte(vtt), domain.SubtitleFormatVTT, 0); got != want {
 		t.Errorf("got %q, want %q", got, want)
 	}
+	spaced := "WEBVTT\n\n\n\n00:01.000 --> 00:02.000\none\n \n\t\n00:03.000 --> 00:04.000\ntwo\n\n\n"
+	if got := convert(t, []byte(spaced), domain.SubtitleFormatVTT, 0); got != spaced {
+		t.Errorf("zero offset changed blank lines: got %q, want %q", got, spaced)
+	}
 	bom := append([]byte{0xEF, 0xBB, 0xBF}, "WEBVTT\n"...)
 	if got := convert(t, bom, domain.SubtitleFormatVTT, 0); got != "WEBVTT\n" {
 		t.Errorf("BOM: got %q", got)

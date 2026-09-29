@@ -49,7 +49,9 @@ type SubtitleSidecar struct {
 //   - 候補は `<名前>.srt`・`<名前>.vtt`・`<名前>.<ラベル>.srt`・`<名前>.<ラベル>.vtt` で、
 //     `<名前>` と拡張子は NFC 正規化のうえ大文字・小文字を区別せずに照合する。
 //   - SubtitleFileLimit を超える項目は候補にしない。
-//   - 同じラベル（大文字・小文字を区別しない）の `.srt` と `.vtt` は `.vtt` だけを残し、
+//   - ラベルはファイル名に書かれたままの形で返す。
+//   - 同じラベル（NFC 正規化のうえ Unicode の case folding で比べる）の `.srt` と `.vtt` は
+//     `.vtt` だけを残し、
 //     同じ拡張子どうしは名前の自然順で先の 1 つを残す。
 //   - 並びはラベルの無いものが先頭で、続いてラベルの自然順である。
 func SubtitleSidecars(videoFileName string, entries []SidecarEntry) []SubtitleSidecar {
@@ -66,7 +68,7 @@ func SubtitleSidecars(videoFileName string, entries []SidecarEntry) []SubtitleSi
 		if !ok {
 			continue
 		}
-		key := strings.ToLower(candidate.Label)
+		key := foldKey(norm.NFC.String(candidate.Label))
 		if current, exists := chosen[key]; !exists || preferSidecar(candidate, current) {
 			chosen[key] = candidate
 		}
@@ -94,14 +96,16 @@ func SubtitleSidecars(videoFileName string, entries []SidecarEntry) []SubtitleSi
 }
 
 // matchSidecar は name が stem の字幕ファイルの名前のときだけ、その字幕を返す。
+// 照合は NFC 正規化した形で行い、ラベルはファイル名に書かれたままの形で返す。
+// 正規化でバイト長が変わるので、元の名前をドットで区切った位置ごとに、その手前を
+// 正規化して stem と比べる（ドットは合成に加わらないので、区切りごとの正規化で足りる）。
 func matchSidecar(stem, name string) (SubtitleSidecar, bool) {
-	normalized := norm.NFC.String(name)
-	dot := strings.LastIndexByte(normalized, '.')
+	dot := strings.LastIndexByte(name, '.')
 	if dot < 0 {
 		return SubtitleSidecar{}, false
 	}
 	var format SubtitleFormat
-	switch strings.ToLower(normalized[dot+1:]) {
+	switch strings.ToLower(name[dot+1:]) {
 	case string(SubtitleFormatSRT):
 		format = SubtitleFormatSRT
 	case string(SubtitleFormatVTT):
@@ -109,18 +113,24 @@ func matchSidecar(stem, name string) (SubtitleSidecar, bool) {
 	default:
 		return SubtitleSidecar{}, false
 	}
-	rest, ok := trimPrefixFold(normalized[:dot], stem)
-	if !ok {
-		return SubtitleSidecar{}, false
-	}
-	var label string
-	if rest != "" {
-		if rest[0] != '.' || len(rest) == 1 {
+	base := name[:dot]
+	for end := 0; end <= len(base); end++ {
+		if end < len(base) && base[end] != '.' {
+			continue
+		}
+		rest, ok := trimPrefixFold(norm.NFC.String(base[:end]), stem)
+		if !ok || rest != "" {
+			continue
+		}
+		if end == len(base) {
+			return SubtitleSidecar{File: name, Label: "", Format: format}, true
+		}
+		if end+1 == len(base) {
 			return SubtitleSidecar{}, false
 		}
-		label = rest[1:]
+		return SubtitleSidecar{File: name, Label: base[end+1:], Format: format}, true
 	}
-	return SubtitleSidecar{File: name, Label: label, Format: format}, true
+	return SubtitleSidecar{}, false
 }
 
 // trimPrefixFold は s が prefix で始まる（大文字・小文字を区別しない）とき、残りを返す。
@@ -150,6 +160,21 @@ func equalFoldRune(a, b rune) bool {
 		}
 	}
 	return false
+}
+
+// foldKey は s の各文字を Unicode の単純な case folding で同じとみなす文字のうち最小の
+// ものに置き換える。equalFoldRune で等しい 2 つの文字列は同じ鍵になる（`Σ`・`σ`・`ς`）。
+func foldKey(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		least := r
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			least = min(least, f)
+		}
+		b.WriteRune(least)
+	}
+	return b.String()
 }
 
 // preferSidecar は同じラベルの 2 つのうち a を残すべきときに真を返す。

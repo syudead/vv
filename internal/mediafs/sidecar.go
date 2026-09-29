@@ -65,16 +65,12 @@ func (fs FS) OpenSidecarFile(roots []string, videoPath, name string) (*os.File, 
 // sidecarFolder は、videoPath が OpenMediaFile と同じ規則で開けるときだけ、その所在
 // （symlink を辿る前のパス）のフォルダを返す。再生に使う所在の隣を探すためである。
 func sidecarFolder(roots []string, videoPath string) (string, error) {
-	resolved, err := resolveInside(roots, videoPath)
+	// 配信と同じ判定にするため、stat ではなく実際に開いて閉じる。stat はできても読めない
+	// 所在（権限が無いなど）は配信が飛ばすので、その隣も探さない。
+	file, _, err := FS{}.OpenMediaFile(roots, videoPath)
 	if err != nil {
 		return "", err
 	}
-	info, err := os.Stat(resolved)
-	if err != nil {
-		return "", fmt.Errorf("%w: %w", domain.ErrMediaFileUnavailable, err)
-	}
-	if !info.Mode().IsRegular() {
-		return "", fmt.Errorf("%w: not a regular file", domain.ErrMediaFileUnavailable)
-	}
+	_ = file.Close()
 	return filepath.Dir(filepath.Clean(videoPath)), nil
 }

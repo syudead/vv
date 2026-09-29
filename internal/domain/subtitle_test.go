@@ -29,6 +29,9 @@ func TestSubtitleSidecarsMatchesNames(t *testing.T) {
 		{"my.movie.2024.mp4", "my.movie.2024.ja.srt", []SubtitleSidecar{{File: "my.movie.2024.ja.srt", Label: "ja", Format: SubtitleFormatSRT}}},
 		// 動画と字幕で正規化の形が違っても（macOS の NFD）照合する。File は元の名前のまま。
 		{norm.NFD.String("café.mp4"), norm.NFC.String("café.fr.srt"), []SubtitleSidecar{{File: norm.NFC.String("café.fr.srt"), Label: "fr", Format: SubtitleFormatSRT}}},
+		// ラベルはファイル名に書かれたままの形（ここでは NFD）で返す。
+		{"movie.mp4", norm.NFD.String("movie.café.srt"), []SubtitleSidecar{{File: norm.NFD.String("movie.café.srt"), Label: norm.NFD.String("café"), Format: SubtitleFormatSRT}}},
+		{norm.NFD.String("é.mp4"), norm.NFC.String("É.ÉN.srt"), []SubtitleSidecar{{File: norm.NFC.String("É.ÉN.srt"), Label: norm.NFC.String("ÉN"), Format: SubtitleFormatSRT}}},
 		{"movie.mp4", "movie2.srt", nil},
 		{"movie.mp4", "movie.txt", nil},
 		{"movie.mp4", "other.srt", nil},
@@ -58,6 +61,25 @@ func TestSubtitleSidecarsDedupesAndOrders(t *testing.T) {
 		{File: "movie.FR.srt", Label: "FR", Format: SubtitleFormatSRT},
 		{File: "movie.JA.vtt", Label: "JA", Format: SubtitleFormatVTT},
 	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("SubtitleSidecars = %+v\nwant %+v", got, want)
+	}
+}
+
+func TestSubtitleSidecarsDedupesLabelsWithUnicodeCaseFolding(t *testing.T) {
+	// strings.ToLower では Σ と ς が別の鍵になる。単純な case folding では同じラベルである。
+	got := SubtitleSidecars("movie.mp4", sidecarEntries("movie.Σ.srt", "movie.ς.vtt"))
+	want := []SubtitleSidecar{
+		{File: "movie.ς.vtt", Label: "ς", Format: SubtitleFormatVTT},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("SubtitleSidecars = %+v\nwant %+v", got, want)
+	}
+}
+
+func TestSubtitleSidecarsDedupesLabelsAcrossNormalizationForms(t *testing.T) {
+	got := SubtitleSidecars("movie.mp4", sidecarEntries(norm.NFD.String("movie.café.vtt"), norm.NFC.String("movie.CAFÉ.srt")))
+	want := []SubtitleSidecar{{File: norm.NFD.String("movie.café.vtt"), Label: norm.NFD.String("café"), Format: SubtitleFormatVTT}}
 	if !slices.Equal(got, want) {
 		t.Fatalf("SubtitleSidecars = %+v\nwant %+v", got, want)
 	}

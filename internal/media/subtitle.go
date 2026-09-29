@@ -264,6 +264,7 @@ func convertSRT(text string, offsetMs int64) ([]byte, error) {
 }
 
 // convertVTT は WebVTT のヘッダーを確かめ、cue の時刻だけを offsetMs ずらして通す。
+// offsetMs が 0 なら中身をそのまま返す。
 // NOTE・STYLE・REGION のブロックと、時刻の行が読めないブロックはそのまま残す。
 func convertVTT(text string, offsetMs int64) ([]byte, error) {
 	text = strings.TrimPrefix(text, "\uFEFF")
@@ -271,10 +272,14 @@ func convertVTT(text string, offsetMs int64) ([]byte, error) {
 	if header != "WEBVTT" && !strings.HasPrefix(header, "WEBVTT ") && !strings.HasPrefix(header, "WEBVTT\t") {
 		return nil, fmt.Errorf("%w: missing WEBVTT header", domain.ErrSubtitleUnreadable)
 	}
+	// ずらさないときは、復号と行末の統一のほかは手を入れずに通す（research.md R-4）。
+	if offsetMs == 0 {
+		return []byte(text), nil
+	}
 	all := blocks(text)
 	var out strings.Builder
 	for i, block := range all {
-		if i > 0 && offsetMs != 0 && !isVTTMetadata(block[0]) {
+		if i > 0 && !isVTTMetadata(block[0]) {
 			var keep bool
 			if block, keep = shiftVTTCue(block, offsetMs); !keep {
 				continue

@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -103,6 +104,21 @@ func TestSidecarFilesRejectVideosOutsideTheRoot(t *testing.T) {
 	}
 	if _, err := New().ListSidecarFiles(nil, video); !errors.Is(err, domain.ErrMediaFileUnavailable) {
 		t.Errorf("ListSidecarFiles without roots = %v, want ErrMediaFileUnavailable", err)
+	}
+}
+
+func TestSidecarFilesRejectAVideoThatCannotBeOpened(t *testing.T) {
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("file permissions do not stop this user from opening files")
+	}
+	root, video, _ := sidecarTree(t)
+	if err := os.Chmod(video, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(video, 0o600) })
+	// stat はできても開けない所在は、配信（OpenMediaFile）と同じく字幕も探さない。
+	if _, err := New().ListSidecarFiles([]string{root}, video); !errors.Is(err, domain.ErrMediaFileUnavailable) {
+		t.Fatalf("ListSidecarFiles = %v, want ErrMediaFileUnavailable", err)
 	}
 }
 
