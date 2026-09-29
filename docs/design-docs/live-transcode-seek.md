@@ -189,6 +189,11 @@ x264/x265 の既定のキーフレーム間隔は 250 フレームで、30fps �
   替えたあとに届いた古い `attempt` の報告は捨てる。未 buffer シークの作り直しを待つ間に届いた
   報告は offset だけ置き換え、`vvOffsetChanged` は呼ばない。保存する位置を選んだ位置のまま
   保つためで、作り直しが buffer 内へのシークで取り消されたときに通知する。
+- **字幕**: 動画の隣の字幕はこの offset を読む側に立つ。仲立ちは offset が決まるたび
+  （報告の 200・404・誤り、`attempt` の無い source）に `vvOffsetSettled` を、報告を待ち始める
+  ときに `vvOffsetPending` を呼び、プレイヤーは字幕トラックをその offset で付け直す
+  （[sidecar-subtitles.md のライブ変換の時刻合わせ](sidecar-subtitles.md#ライブ変換の時刻合わせ)）。
+  offset の決め方そのものは変えない。
 
 ### Trade-offs
 

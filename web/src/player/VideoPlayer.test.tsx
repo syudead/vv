@@ -441,6 +441,45 @@ describe("VideoPlayer", () => {
     expect(mock.instances).toHaveLength(1);
   });
 
+  it("直接再生から変換へ切り替えると、offset が決まるまで字幕を外し、決まった offset で付け直す", async () => {
+    window.localStorage.setItem(
+      "vv.subtitles.v1",
+      JSON.stringify({ enabled: true, label: "ja" }),
+    );
+    render(
+      <VideoPlayer
+        {...props()}
+        subtitles={[{ file: "movie.ja.srt", label: "ja", format: "srt" }]}
+      />,
+    );
+    await waitFor(() => expect(mock.instances[0]?.remoteTracks).toHaveLength(1));
+    const player = mock.instances[0];
+    if (player === undefined) throw new Error("playerがありません");
+    expect(player.remoteTracks[0]?.options.src).toBe(
+      "/api/videos/7/subtitles/movie.ja.srt",
+    );
+
+    player.time = 12.345;
+    player.errorValue = { code: 3 };
+    act(() => player.trigger("error"));
+    const live = player.sources[1] as {
+      vvOffsetSettled?: (seconds: number) => void;
+      vvOffsetPending?: () => void;
+    };
+    // 仲立ちは報告を待ち始めたときに未決を、届いたら実際の開始位置を知らせる。
+    act(() => live.vvOffsetPending?.());
+    expect(player.remoteTracks).toEqual([]);
+    act(() => live.vvOffsetSettled?.(8));
+    expect(player.remoteTracks.map((track) => track.options.src)).toEqual([
+      "/api/videos/7/subtitles/movie.ja.srt?offsetMs=8000",
+    ]);
+    expect(player.remoteTracks[0]?.mode).toBe("showing");
+    expect(JSON.parse(window.localStorage.getItem("vv.subtitles.v1") ?? "null")).toEqual({
+      enabled: true,
+      label: "ja",
+    });
+  });
+
   it("操作バーの読み上げ名とツールチップは英語の独自言語で、キーボード操作を持つボタンにキーを添える", async () => {
     render(<VideoPlayer {...props()} />);
     await waitFor(() => expect(mock.instances).toHaveLength(1));

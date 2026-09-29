@@ -2,7 +2,8 @@
 
 - ステータス: 採用
 - スコープ: 動画と同じフォルダにある SRT・WebVTT の字幕ファイルの見つけ方、WebVTT への変換、
-  `GET /api/videos/{id}/subtitles` と `GET /api/videos/{id}/subtitles/{file}` のアクセス制御
+  `GET /api/videos/{id}/subtitles` と `GET /api/videos/{id}/subtitles/{file}` のアクセス制御、
+  ライブ変換の再生での字幕の時刻合わせ
 - 経緯: [specs/028-sidecar-subtitles/research.md](../../specs/028-sidecar-subtitles/research.md)、
   契約: [contracts/subtitles-api.md](../../specs/028-sidecar-subtitles/contracts/subtitles-api.md)
 
@@ -61,3 +62,26 @@
 `internal/httpapi/auth.go` の `accessRoutes` がその写し）、動画を `lookupServedVideo` で引く。
 ゲストが公開でない動画を指すと、存在しない動画と同じ 404 `video_not_found` になる。ゲストの
 要求は配信と同じ台帳に載るので、動画を非公開にすると処理中の要求も打ち切られる。
+
+## ライブ変換の時刻合わせ
+
+video.js の字幕の表示は、エミュレーションでもブラウザ標準のトラックでも `<video>` 要素の
+`currentTime`、つまり変換の出力の時間軸で cue を選ぶ。`liveOffset.ts` の仲立ちが現在時刻に足す
+offset は字幕には効かないので、サーバーが `offsetMs` だけずらした WebVTT を返し、プレイヤーは
+offset が決まるたびにトラックを付け直す
+（[research.md R-6](../../specs/028-sidecar-subtitles/research.md)）。
+
+- `liveSource` の source は、再生の時間軸の 0 が元動画のどの時刻かが決まるたびに
+  `vvOffsetSettled(seconds)` を 1 回呼ぶ。`attempt` の無い source（先頭から）は指定位置で直ちに、
+  `attempt` のある source は `transcode-start` の報告が 200 なら実際の開始位置、404 や誤りなら
+  指定位置で呼ぶ。報告を待ち始めるときは `vvOffsetPending()` を呼ぶ。未 buffer シークの
+  作り直し（`reloadAt`）も同じ経路を通り、source を差し替えたあとに届いた古い報告では呼ばない
+  （[live-transcode-seek.md の報告の経路](live-transcode-seek.md#報告の経路)）。
+- `VideoPlayer.tsx` はこの 2 つを `subtitleTracks.ts` の `setOffset` に渡す。未決（`null`）の間は
+  トラックを外し、ずれた字幕を一瞬でも出さない。決まったら `subtitleUrl(id, file, offsetMs)` で
+  付け直し、直前に表示していたラベルを `showing` にする。付け直しは利用者の選択ではないので
+  保存値を書き換えない。一覧が替わったあとに初めて付けるときだけ、保存値で表示を決める。
+- 直接再生の offset は 0 のままで、直接再生から変換への切り替え（`fallbackToTranscode`）も
+  `liveSource` を通るので同じ経路で合う。
+- 付け直しは変換をやり直すとき（もともと数秒かかる）にしか起きない。その間は字幕ボタンも
+  トラックが無いので隠れる。

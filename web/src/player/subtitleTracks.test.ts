@@ -222,6 +222,72 @@ describe("字幕の選択と記憶", () => {
   });
 });
 
+describe("ライブ変換の offset に合わせた付け直し", () => {
+  function sources(target: Player): string[] {
+    const list = target.remoteTextTrackEls() as unknown as ArrayLike<HTMLTrackElement>;
+    return Array.from({ length: list.length }, (_, index) => list[index]?.src ?? "");
+  }
+
+  it("報告を待つ間はトラックを外し、届いたらその offset の URL で付け直して表示を保つ", async () => {
+    save({ enabled: true, label: "en" });
+    const { player: created, controller, wrapper } = create([ja, en]);
+    // 見る人がメニューで ja を選んでいる（保存値も ja になる）。
+    menuItems(wrapper)[1]?.click();
+    await flush();
+    expect(showing(created)).toEqual(["ja"]);
+    expect(saved()).toEqual({ enabled: true, label: "ja" });
+    // 保存値だけを en に戻し、付け直しが保存値ではなく直前の表示に従うかを見る。
+    save({ enabled: true, label: "en" });
+
+    controller.setOffset(null);
+    expect(textTracks(created)).toEqual([]);
+    expect(wrapper?.classList.contains("vjs-hidden")).toBe(true);
+    await flush();
+    expect(saved()).toEqual({ enabled: true, label: "en" });
+
+    controller.setOffset(8000);
+    expect(textTracks(created).map((track) => track.label)).toEqual(["ja", "en"]);
+    expect(sources(created)).toEqual([
+      expect.stringMatching(
+        /\/api\/videos\/7\/subtitles\/movie\.ja\.srt\?offsetMs=8000$/,
+      ),
+      expect.stringMatching(
+        /\/api\/videos\/7\/subtitles\/movie\.en\.vtt\?offsetMs=8000$/,
+      ),
+    ]);
+    expect(showing(created)).toEqual(["ja"]);
+    await flush();
+    expect(saved()).toEqual({ enabled: true, label: "en" });
+  });
+
+  it("オフのまま付け直すとオフを保ち、同じ offset では付け直さない", async () => {
+    const add = vi.spyOn(
+      videojs.getComponent("Player").prototype as unknown as SubtitlePlayer,
+      "addRemoteTextTrack",
+    );
+    const { player: created, controller } = create([ja]);
+    expect(add).toHaveBeenCalledTimes(1);
+    controller.setOffset(0);
+    expect(add).toHaveBeenCalledTimes(1);
+    controller.setOffset(null);
+    controller.setOffset(64_000);
+    expect(add).toHaveBeenCalledTimes(2);
+    expect(showing(created)).toEqual([]);
+    await flush();
+    expect(saved()).toBeNull();
+  });
+
+  it("未決の間に一覧が替わったら、付けるときは保存値で表示を決める", () => {
+    save({ enabled: true, label: "en" });
+    const { player: created, controller } = create([ja]);
+    controller.setOffset(null);
+    controller.replace(8, [ja, en]);
+    expect(textTracks(created)).toEqual([]);
+    controller.setOffset(2000);
+    expect(showing(created)).toEqual(["en"]);
+  });
+});
+
 describe("c キーの切り替え", () => {
   it("表示中ならオフにし、オフなら保存済みのラベルの字幕を出す", async () => {
     save({ enabled: true, label: "en" });
