@@ -123,7 +123,8 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			}
 			continue
 		}
-		probe := domain.Probe{DurationMs: 60_000, Width: 640, Height: 360, VideoCodec: "h264", AudioCodec: "aac"}
+		// 画質（480p など）が使えるよう、短辺は 360 より大きくする。
+		probe := domain.Probe{DurationMs: 60_000, Width: 1280, Height: 720, VideoCodec: "h264", AudioCodec: "aac"}
 		if err := db.Ingest().ApplyProbe(ctx, id, probe, domain.Playability{Playable: true}); err != nil {
 			t.Fatal(err)
 		}
@@ -445,6 +446,24 @@ func TestGuestTranscodeStartServesOnlyPublicVideos(t *testing.T) {
 	assertSameResponse(t, "非公開の動画の開始位置", hidden, missing, http.StatusNotFound)
 	ownerStart := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", "/transcode-start?attempt=guest-b"), cookies: []*http.Cookie{f.owner}})
 	assertStatus(t, "所有者の非公開の動画の開始位置", ownerStart, http.StatusOK)
+}
+
+// ゲストも公開の動画を画質付きで変換できる（親 Issue #521 受け入れ条件 8）。非公開の動画は
+// 画質があっても存在しない動画と同じ 404 である。
+func TestGuestTranscodesPublicVideoWithQuality(t *testing.T) {
+	f := newGuestFixture(t, true)
+	env := f.env
+
+	public := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("a", "/transcode.mp4?quality=480p")})
+	assertStatus(t, "公開の動画の画質付きの変換", public, http.StatusOK)
+	assertAudience(t, "公開の動画の画質付きの変換", public, "guest")
+	if f.transcode.quality != domain.TranscodeQuality480p {
+		t.Errorf("Quality = %q, want 480p", f.transcode.quality)
+	}
+
+	hidden := env.serve(authRequest{method: http.MethodGet, target: f.videoPath("b", "/transcode.mp4?quality=480p")})
+	missing := env.serve(authRequest{method: http.MethodGet, target: "/api/videos/9999/transcode.mp4?quality=480p"})
+	assertSameResponse(t, "非公開の動画の画質付きの変換", hidden, missing, http.StatusNotFound)
 }
 
 // ゲストは所有者のデータに依る一覧の条件を使えない（guest-api.md §3）。

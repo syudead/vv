@@ -2355,6 +2355,14 @@ export interface operations {
                  *     `getTranscodeStart` で引けるよう台帳に載る。形式が違えば 400。
                  */
                 attempt?: string;
+                /**
+                 * @description 縮める画質。無ければ元の画質（今までどおり、映像をコピーできればコピーする）。
+                 *     あれば映像を必ずエンコードし、表示の短辺をこの値に縮め、ビットレートに上限を付ける。
+                 *     動画の表示の短辺（`Video.width`・`height` の小さい方）より小さい画質だけを受け付け、
+                 *     それ以外と寸法の無い動画は 400
+                 *     （specs/027-playback-quality/contracts/transcode-quality-api.md）。
+                 */
+                quality?: "1080p" | "720p" | "480p" | "360p";
             };
             header?: never;
             path: {

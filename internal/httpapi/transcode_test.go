@@ -32,6 +32,7 @@ type fakeTranscoder struct {
 	path      string
 	startMs   int64
 	normalize bool
+	quality   domain.TranscodeQuality
 	source    domain.FileStamp
 	probe     *domain.TranscodeProbe
 	probed    domain.TranscodeProbe
@@ -48,6 +49,7 @@ type fakeTranscoder struct {
 func (f *fakeTranscoder) Start(_ context.Context, request domain.LiveTranscodeRequest) (domain.LiveTranscode, error) {
 	f.starts++
 	f.path, f.startMs, f.normalize = request.Path, request.StartMs, request.Normalize
+	f.quality = request.Quality
 	f.source, f.probe = request.Source, request.Probe
 	var probed *domain.TranscodeProbe
 	if request.Probe == nil {
@@ -258,8 +260,9 @@ func TestTranscodeServesStreamStartedAtDeadline(t *testing.T) {
 	}
 }
 
-// transcodeProbeEnv は本物の保存層に動画を 2 本入れる。"ingested" は取り込みの解析で
-// ライブ変換用の解析情報を保存済み、"bare" は保存が無い。
+// transcodeProbeEnv は本物の保存層に動画を 3 本入れる。"ingested" は取り込みの解析で
+// ライブ変換用の解析情報を保存済み、"bare" は保存が無い。"hd" は映像をコピーできる
+// 1280×720 の動画で、解析情報を保存済みである。
 type transcodeProbeEnv struct {
 	db      *store.DB
 	handler http.Handler
@@ -289,7 +292,7 @@ func newTranscodeProbeEnv(t *testing.T) *transcodeProbeEnv {
 		ids:   map[string]int64{},
 		paths: map[string]string{},
 	}
-	for _, name := range []string{"ingested", "bare"} {
+	for _, name := range []string{"ingested", "bare", "hd"} {
 		path := filepath.Join(mediaDir, name+".mkv")
 		if err := os.WriteFile(path, []byte(strings.Repeat(name, 1024)), 0o600); err != nil {
 			t.Fatal(err)
@@ -306,8 +309,16 @@ func newTranscodeProbeEnv(t *testing.T) *transcodeProbeEnv {
 			t.Fatal(err)
 		}
 		probe := domain.Probe{DurationMs: 60_000, Width: 640, Height: 360, VideoCodec: "h264"}
-		if name == "ingested" {
+		switch name {
+		case "ingested":
 			stored := transcodeProbeFixture("ingest")
+			probe.Transcode, probe.Source = &stored, domain.FileStampOf(info)
+		case "hd":
+			stored := transcodeProbeFixture("ingest")
+			stored.Video.Width, stored.Video.Height = 1280, 720
+			stored.Video.Profile, stored.Video.Level = "High", 41
+			stored.Video.PixelFormat, stored.Video.BitsPerRawSample = "yuv420p", 8
+			probe.Width, probe.Height = 1280, 720
 			probe.Transcode, probe.Source = &stored, domain.FileStampOf(info)
 		}
 		if err := db.Ingest().ApplyProbe(ctx, result.ID, probe, domain.Playability{}); err != nil {
@@ -539,6 +550,8 @@ type liveEncoderEnv struct {
 	settings *app.TranscodeSettings
 	logs     *syncBuffer
 	target   string
+	// hdTarget は画質を選べる 1280×720 の動画の変換の経路である。
+	hdTarget string
 }
 
 func newLiveEncoderEnv(t *testing.T) *liveEncoderEnv {
@@ -558,6 +571,7 @@ func newLiveEncoderEnv(t *testing.T) *liveEncoderEnv {
 		settings: newCheckedTranscodeSettings(t, &memoryEncoderStore{}),
 		logs:     &syncBuffer{},
 		target:   fmt.Sprintf("/api/videos/%d/transcode.mp4", probes.ids["ingested"]),
+		hdTarget: fmt.Sprintf("/api/videos/%d/transcode.mp4", probes.ids["hd"]),
 	}
 	serverDone := make(chan struct{})
 	t.Cleanup(func() { close(serverDone) })
@@ -595,7 +609,13 @@ func (e *liveEncoderEnv) calls(t *testing.T) []string {
 // start は変換を要求し、最初のデータまでを読んだ応答を返す。
 func (e *liveEncoderEnv) start(t *testing.T) *http.Response {
 	t.Helper()
-	res, err := e.server.Client().Get(e.server.URL + e.target)
+	return e.startAt(t, e.target)
+}
+
+// startAt は target（経路と問い合わせ）の変換を要求し、最初のデータまでを読んだ応答を返す。
+func (e *liveEncoderEnv) startAt(t *testing.T, target string) *http.Response {
+	t.Helper()
+	res, err := e.server.Client().Get(e.server.URL + target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -697,5 +717,143 @@ func TestTranscodeWithoutSettingsRequestsSoftware(t *testing.T) {
 	}
 	if got != domain.VideoEncoderSoftware {
 		t.Errorf("VideoEncoder = %q, want software", got)
+	}
+}
+
+// argsContain は ffmpeg の引数に want が連続して並ぶかを返す。
+func argsContain(args string, want ...string) bool {
+	fields := strings.Fields(args)
+	for i := 0; i+len(want) <= len(fields); i++ {
+		matched := true
+		for j, value := range want {
+			if fields[i+j] != value {
+				matched = false
+				break
+			}
+		}
+		if matched {
+			return true
+		}
+	}
+	return false
+}
+
+// 画質付きの要求は映像をエンコードし、短辺を縮めてビットレートに上限を付ける。画質の無い要求は
+// 今までどおりコピーで始まる（specs/027-playback-quality/contracts/transcode-quality-api.md §1）。
+func TestTranscodeQualityScalesAndCapsWhileOriginalCopies(t *testing.T) {
+	env := newLiveEncoderEnv(t)
+	env.touch(t, "release")
+
+	original := env.startAt(t, env.hdTarget)
+	if _, err := io.ReadAll(original.Body); err != nil {
+		t.Fatal(err)
+	}
+	quality := env.startAt(t, env.hdTarget+"?quality=480p")
+	if _, err := io.ReadAll(quality.Body); err != nil {
+		t.Fatal(err)
+	}
+
+	calls := env.calls(t)
+	if len(calls) != 2 {
+		t.Fatalf("ffmpeg の起動 = %q, want 2 回", calls)
+	}
+	if got := videoCodecArg(calls[0]); got != "copy" {
+		t.Errorf("画質の無い要求の -c:v = %q, want copy: %s", got, calls[0])
+	}
+	if strings.Contains(calls[0], "-maxrate") || strings.Contains(calls[0], "scale=") {
+		t.Errorf("画質の無い要求に縮小か上限がある: %s", calls[0])
+	}
+	if got := videoCodecArg(calls[1]); got != "libx264" {
+		t.Errorf("480p の -c:v = %q, want libx264: %s", got, calls[1])
+	}
+	if !strings.Contains(calls[1], "scale=854:480") {
+		t.Errorf("480p の引数に scale=854:480 が無い: %s", calls[1])
+	}
+	if !argsContain(calls[1], "-maxrate", "1200k") {
+		t.Errorf("480p の引数に -maxrate 1200k が無い: %s", calls[1])
+	}
+}
+
+// 画質付きの変換は startMs の位置そのものから始まり、transcode-start は startMs を返す。
+func TestTranscodeQualityReportsRequestedStart(t *testing.T) {
+	env := newLiveEncoderEnv(t)
+	env.touch(t, "release")
+
+	res := env.startAt(t, env.hdTarget+"?quality=360p&startMs=30000&attempt=quality-seek")
+	if _, err := io.ReadAll(res.Body); err != nil {
+		t.Fatal(err)
+	}
+	calls := env.calls(t)
+	if len(calls) != 1 || videoCodecArg(calls[0]) != "libx264" || !argsContain(calls[0], "-maxrate", "700k") {
+		t.Fatalf("ffmpeg の起動 = %q, want 360p の上限を付けたエンコード 1 回", calls)
+	}
+	startTarget := strings.TrimSuffix(env.hdTarget, "/transcode.mp4") + "/transcode-start?attempt=quality-seek"
+	rec := do(t, env.handler, http.MethodGet, startTarget)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"startMs":30000`) {
+		t.Errorf("transcode-start = %d %s, want startMs 30000", rec.Code, rec.Body)
+	}
+}
+
+// 画質は LiveTranscodeRequest.Quality に載り、開始のログに添えられる。
+func TestTranscodePassesQualityToTranscoder(t *testing.T) {
+	fake := &fakeTranscoder{body: "fragmented-mp4"}
+	logs := &syncBuffer{}
+	mediaDir, video, _ := streamFixture(t, "a.mkv", 128)
+	video.Playable = false
+	handler := newTestServer(t, Options{
+		Videos:     &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+		Transcoder: fake,
+		Logger:     slog.New(slog.NewTextHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+	})
+
+	rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4?quality=480p")
+	if rec.Code != http.StatusOK || fake.quality != domain.TranscodeQuality480p {
+		t.Fatalf("status = %d, Quality = %q: %s", rec.Code, fake.quality, rec.Body)
+	}
+	if !strings.Contains(logs.String(), "quality=480p") {
+		t.Errorf("開始のログに画質が無い: %s", logs)
+	}
+
+	rec = do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4")
+	if rec.Code != http.StatusOK || fake.quality != "" {
+		t.Errorf("画質の無い要求: status = %d, Quality = %q", rec.Code, fake.quality)
+	}
+}
+
+// 列挙に無い値、動画の短辺以上の画質、寸法の無い動画は 400 で、変換を始めない。
+func TestTranscodeRejectsUnavailableQuality(t *testing.T) {
+	width, height := 1280, 720
+	tests := []struct {
+		name          string
+		width, height *int
+		query         string
+	}{
+		{"列挙に無い値", &width, &height, "?quality=240p"},
+		{"空の値", &width, &height, "?quality="},
+		{"短辺と同じ画質", &width, &height, "?quality=720p"},
+		{"短辺より大きい画質", &width, &height, "?quality=1080p"},
+		{"寸法の無い動画", nil, nil, "?quality=360p"},
+		{"幅だけの動画", &width, nil, "?quality=360p"},
+		{"attempt 付き", &width, &height, "?quality=1080p&attempt=q-1"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeTranscoder{body: "fragmented-mp4"}
+			mediaDir, video, _ := streamFixture(t, "a.mkv", 128)
+			video.Width, video.Height = tc.width, tc.height
+			handler := newTestServer(t, Options{
+				Videos:     &fakeLibrary{videos: map[int64]domain.Video{video.ID: video}, roots: []string{mediaDir}},
+				Transcoder: fake,
+			})
+			rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4"+tc.query)
+			assertErrorBody(t, tc.name, rec.Code, rec.Body.Bytes(),
+				wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+			if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
+				t.Errorf("Cache-Control = %q", got)
+			}
+			if fake.starts != 0 {
+				t.Errorf("変換を %d 回始めた", fake.starts)
+			}
+		})
 	}
 }

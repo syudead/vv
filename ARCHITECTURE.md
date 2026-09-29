@@ -497,6 +497,12 @@ with. A hardware encoder that exits before its first data is retried with `libx2
 the same request, and the route logs that fallback as a warning. `cmd/mdm` starts the
 startup encoder checks in the background, so they never delay the HTTP listener
 ([hardware-encoding.md](docs/design-docs/hardware-encoding.md)).
+An optional `quality` (`1080p`, `720p`, `480p`, `360p`) on the transcode URL asks for a
+smaller picture: the route accepts only a quality below the video's display short side
+(`domain.TranscodeQuality.Available`) and answers 400 otherwise, and `internal/media` then
+always encodes from the exact `startMs`, scales the short side down and caps the bitrate.
+The server keeps no quality state; each request carries its own
+([playback-quality.md](docs/design-docs/playback-quality.md)).
 
 ## Intended dependency direction
 

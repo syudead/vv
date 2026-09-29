@@ -645,6 +645,18 @@ paths:
           schema:
             type: string
             pattern: "^[A-Za-z0-9_-]{1,64}$"
+        - name: quality
+          in: query
+          required: false
+          description: |
+            縮める画質。無ければ元の画質（今までどおり、映像をコピーできればコピーする）。
+            あれば映像を必ずエンコードし、表示の短辺をこの値に縮め、ビットレートに上限を付ける。
+            動画の表示の短辺（`Video.width`・`height` の小さい方）より小さい画質だけを受け付け、
+            それ以外と寸法の無い動画は 400
+            （specs/027-playback-quality/contracts/transcode-quality-api.md）。
+          schema:
+            type: string
+            enum: [1080p, 720p, 480p, 360p]
       responses:
         "200":
           description: fragmented MP4 stream

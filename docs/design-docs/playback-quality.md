@@ -65,3 +65,34 @@
 - **`scale=-2:480` で寸法の計算を ffmpeg に任せる**: 縦長の向きの判定を ffmpeg 側にも持つことになり、
   Go の計算とテストが二重になる。
 - **画質の短辺をそのまま守って枠を超える**: 1080×10800 は H.264 Level 5.1 の 1 フレームの上限を超える。
+
+## API
+
+### Context
+
+画質は見る人が選び、再生の途中でも切り替える。経路を増やしたりサーバーに画質を覚えさせたりすると、
+シークや再開の要求と画質の対応を別に管理することになる。
+
+### Decision
+
+`GET /api/videos/{id}/transcode.mp4` に任意の `quality`（`1080p`・`720p`・`480p`・`360p`）を足す
+（[contracts/transcode-quality-api.md §1](../../specs/027-playback-quality/contracts/transcode-quality-api.md#1-get-apivideosidtranscodemp4-の-quality)）。
+サーバーは画質を覚えず、要求ごとに `quality` から決める。
+
+- `quality` が無ければ元の画質で、変換は今までと同じである。
+- `internal/httpapi/transcode.go` は値を `domain.ParseTranscodeQuality` で解釈し、動画の `Width`・
+  `Height`（表示の寸法）で `TranscodeQuality.Available` を確かめる。列挙に無い値、動画の短辺以上の
+  画質、寸法の無い動画は 400 `invalid_request`（英語の `message`）で、変換を始めない。
+- 使える画質は `LiveTranscodeRequest.Quality` に載せ、開始のログ（Debug）に `quality` を添える。
+  画質の無い要求は `quality=original` と書く。
+- `startMs`・`attempt` は今までどおり組み合わせられる。画質のある変換は映像をエンコードして
+  `startMs` の位置そのものから始まるので、`transcode-start` は `startMs` と同じ値を返す。
+- 応答の形（fragmented MP4、`Cache-Control: no-store`）とエラーの形は変えない。境界はゲストも
+  使える経路のまま（公開の動画だけ）である。
+
+### Alternatives
+
+- **画質ごとの経路**: 開始位置の台帳や公開の境界を経路ごとに重ねることになる。
+- **サーバーが見る人ごとに画質を覚える**: ゲストには見る人の識別が無く、要求の URL だけでは
+  出力が決まらなくなる。
+- **使えない画質を黙って元の画質か最大の画質に直す**: 画面の選択と実際の画質がずれる。
