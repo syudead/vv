@@ -133,6 +133,8 @@ var accessRoutes = map[string]access{
 	"GET /api/videos/{id}/preview":                accessGuest,
 	"GET /api/videos/{id}/transcode.mp4":          accessGuest,
 	"GET /api/videos/{id}/transcode-start":        accessGuest,
+	"GET /api/videos/{id}/subtitles":              accessGuest,
+	"GET /api/videos/{id}/subtitles/{file}":       accessGuest,
 	"GET /api/videos/{id}/thumbnail":              accessGuest,
 	"GET /api/videos/{id}/seek-thumbnail":         accessGuest,
 	"GET /api/videos/{id}/seek-thumbnail/{sheet}": accessGuest,
