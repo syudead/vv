@@ -22,6 +22,7 @@ Add each new document to this index.
 - [MOVライブ変換のtrack分離入力](mov-live-transcoding.md)
 - [ライブ変換のシークと解析情報の再利用](live-transcode-seek.md)
 - [ライブ変換のハードウェアエンコード](hardware-encoding.md)
+- [再生の画質](playback-quality.md)
 - [シーク用スプライトの生成](seek-sprite-generation.md)
 - [ライブラリ UI: 見た目の規則と一覧の構成](library-ui.md)
 - [画面の文言と書式（i18n）](i18n.md)

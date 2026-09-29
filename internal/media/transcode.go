@@ -161,7 +161,7 @@ type startedTranscode struct {
 func (t *LiveTranscoder) startWithProbe(
 	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
 ) (startedTranscode, error) {
-	if !request.Normalize && videoCanCopy(metadata.Video) {
+	if !request.Normalize && request.Quality == "" && videoCanCopy(metadata.Video) {
 		started, err := t.startAttempt(ctx, request, metadata, "")
 		if err == nil {
 			return started, nil
@@ -217,7 +217,7 @@ func (t *LiveTranscoder) startAttempt(
 	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe, encoder domain.VideoEncoder,
 ) (startedTranscode, error) {
 	copyVideo := encoder == ""
-	args := buildTranscodeArgs(request.Path, request.StartMs, metadata, request.Normalize, copyVideo, encoder)
+	args := buildTranscodeArgs(request.Path, request.StartMs, metadata, request.Normalize, copyVideo, encoder, request.Quality)
 	process, err := t.startProcess(ctx, args)
 	if err != nil {
 		return startedTranscode{}, err
@@ -390,12 +390,12 @@ func parseTranscodeProbe(output []byte) (domain.TranscodeProbe, error) {
 
 // transcodeArgs は software の方式で最初に試す引数を返す。映像はコピーできればコピーする。
 func transcodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, normalize bool) []string {
-	return buildTranscodeArgs(path, startMs, metadata, normalize, !normalize && videoCanCopy(metadata.Video), domain.VideoEncoderSoftware)
+	return buildTranscodeArgs(path, startMs, metadata, normalize, !normalize && videoCanCopy(metadata.Video), domain.VideoEncoderSoftware, "")
 }
 
 // buildTranscodeArgs は FFmpeg の引数を組み立てる。copyVideo は映像をコピーするかで、
 // normalize でなく videoCanCopy が真のときだけ効く。encoder は映像をエンコードするときの
-// 方式で、コピーするときは見ない。
+// 方式で、コピーするときは見ない。quality は縮める画質で、空なら元の画質である。
 //
 // 音声は normalize でなく audioCanCopy が真ならコピーする（親 Issue #371 要件 4）。ただし
 // 映像をエンコードして途中から始めるときは、今までどおり音声もエンコードする。入力側の
@@ -405,10 +405,15 @@ func transcodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, n
 // 途中からのコピーだけ -copyts -start_at_zero と delay_moov を付け、mp4 muxer が各 track の
 // 開始時刻を moov の edit list に書くようにする（research.md R-1）。-noaccurate_seek は、
 // エンコードする音声もコピーする映像と同じくキーフレームの時刻から始めるためのものである。
+//
+// 画質があるときは映像も音声も必ずエンコードし、音声はその画質の kbps にする
+// （specs/027-playback-quality/research.md R-2）。
 func buildTranscodeArgs(
-	path string, startMs int64, metadata domain.TranscodeProbe, normalize, copyVideo bool, encoder domain.VideoEncoder,
+	path string, startMs int64, metadata domain.TranscodeProbe, normalize, copyVideo bool,
+	encoder domain.VideoEncoder, quality domain.TranscodeQuality,
 ) []string {
-	copyVideo = copyVideo && !normalize && videoCanCopy(metadata.Video)
+	limits, hasQuality := quality.Limits()
+	copyVideo = copyVideo && !normalize && !hasQuality && videoCanCopy(metadata.Video)
 	seekCopy := copyVideo && startMs > 0
 	args := []string{"-hide_banner", "-loglevel", "warning"}
 	if !copyVideo {
@@ -447,12 +452,14 @@ func buildTranscodeArgs(
 	if copyVideo {
 		args = append(args, "-c:v", "copy")
 	} else {
-		args = append(args, videoEncodeArgs(metadata.Video, encoder)...)
+		args = append(args, videoEncodeArgs(metadata.Video, encoder, quality)...)
 	}
 
 	if metadata.Audio != nil {
 		encodeAudio := normalize || !audioCanCopy(*metadata.Audio) || (startMs > 0 && !copyVideo)
-		if encodeAudio {
+		if hasQuality {
+			args = append(args, "-c:a", "aac", "-profile:a", "aac_low", "-ac", "2", "-b:a", kbps(limits.AudioKbps), "-ar", "48000")
+		} else if encodeAudio {
 			args = append(args, "-c:a", "aac", "-profile:a", "aac_low", "-ac", "2", "-b:a", "192k", "-ar", "48000")
 		} else {
 			args = append(args, "-c:a", "copy")
@@ -512,36 +519,70 @@ func hardwareDeviceArgs(encoder domain.VideoEncoder) []string {
 }
 
 // encoderCodecArgs は方式ごとの符号化器の指定である（research.md R-7）。どれも H.264 High・
-// Level 5.1・4:2:0 8bit・一定品質で、強制キーフレームを IDR にする。VAAPI の画素形式は
+// Level 5.1・4:2:0 8bit で、強制キーフレームを IDR にする。VAAPI の画素形式は
 // フィルターの format=nv12,hwupload で与える。知らない方式は software とする。
-func encoderCodecArgs(encoder domain.VideoEncoder) []string {
+//
+// 画質が無ければ一定品質である。画質があれば、software と NVENC は一定品質に
+// -maxrate／-bufsize の上限を重ね、QSV・VAAPI・VideoToolbox は一定品質をやめて上限の
+// VBR にする（specs/027-playback-quality/research.md R-2）。
+func encoderCodecArgs(encoder domain.VideoEncoder, quality domain.TranscodeQuality) []string {
+	limits, hasQuality := quality.Limits()
+	var capped []string
+	if hasQuality {
+		capped = []string{"-maxrate", kbps(limits.VideoKbps), "-bufsize", kbps(limits.BufferKbps)}
+	}
+	// variable は QSV・VAAPI・VideoToolbox の品質の指定で、画質があれば上限の VBR に替える。
+	variable := func(constantQuality ...string) []string {
+		if !hasQuality {
+			return constantQuality
+		}
+		return append([]string{"-b:v", kbps(limits.VideoKbps)}, capped...)
+	}
 	switch encoder {
 	case domain.VideoEncoderNVENC:
-		return []string{"-c:v", "h264_nvenc", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p",
+		args := []string{"-c:v", "h264_nvenc", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p",
 			"-preset", "p4", "-rc", "vbr", "-cq", "23", "-b:v", "0", "-forced-idr", "1"}
+		return append(args, capped...)
 	case domain.VideoEncoderQSV:
-		return []string{"-c:v", "h264_qsv", "-profile:v", "high", "-level", "51", "-pix_fmt", "nv12",
-			"-preset", "veryfast", "-global_quality", "23", "-look_ahead", "0", "-forced_idr", "1"}
+		args := []string{"-c:v", "h264_qsv", "-profile:v", "high", "-level", "51", "-pix_fmt", "nv12", "-preset", "veryfast"}
+		args = append(args, variable("-global_quality", "23")...)
+		return append(args, "-look_ahead", "0", "-forced_idr", "1")
 	case domain.VideoEncoderVAAPI:
-		return []string{"-c:v", "h264_vaapi", "-profile:v", "high", "-level", "5.1", "-rc_mode", "CQP", "-qp", "23"}
+		args := []string{"-c:v", "h264_vaapi", "-profile:v", "high", "-level", "5.1"}
+		if hasQuality {
+			return append(append(args, "-rc_mode", "VBR"), variable()...)
+		}
+		return append(args, "-rc_mode", "CQP", "-qp", "23")
 	case domain.VideoEncoderVideoToolbox:
-		return []string{"-c:v", "h264_videotoolbox", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p",
-			"-q:v", "60", "-realtime", "1"}
+		args := []string{"-c:v", "h264_videotoolbox", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p"}
+		args = append(args, variable("-q:v", "60")...)
+		return append(args, "-realtime", "1")
 	default:
-		return []string{"-c:v", "libx264", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p", "-preset", liveX264Preset, "-crf", "23"}
+		args := []string{"-c:v", "libx264", "-profile:v", "high", "-level:v", "5.1", "-pix_fmt", "yuv420p", "-preset", liveX264Preset, "-crf", "23"}
+		return append(args, capped...)
 	}
+}
+
+func kbps(value int) string {
+	return strconv.Itoa(value) + "k"
 }
 
 // videoEncodeArgs は映像をエンコードする引数を返す。フィルター（縮小・pad・setsar・fps）と
 // キーフレームの指定は方式に依らず共通で、出力の約束を守る。符号化器の指定だけを方式で
-// 差し替える。
-func videoEncodeArgs(stream domain.TranscodeVideo, encoder domain.VideoEncoder) []string {
+// 差し替える。画質があれば表示の短辺をその画質へ縮め（qualityDimensions）、符号化器に
+// ビットレートの上限を付ける。
+func videoEncodeArgs(stream domain.TranscodeVideo, encoder domain.VideoEncoder, quality domain.TranscodeQuality) []string {
 	displayWidth, displayHeight, sampleAspectNum, sampleAspectDen := displayGeometry(stream)
 	width, height := outputDimensions(displayWidth, displayHeight)
+	scaled := exceedsVideoBounds(displayWidth, displayHeight)
+	if limits, ok := quality.Limits(); ok && limits.ShortSide < min(displayWidth, displayHeight) {
+		width, height = qualityDimensions(displayWidth, displayHeight, limits.ShortSide)
+		scaled = true
+	}
 	filters := make([]string, 0, 2)
 	dimensionsChanged := width != displayWidth || height != displayHeight
 	if dimensionsChanged {
-		if exceedsVideoBounds(displayWidth, displayHeight) {
+		if scaled {
 			filters = append(filters, fmt.Sprintf("scale=%d:%d", width, height))
 		} else {
 			filters = append(filters, fmt.Sprintf("pad=%d:%d:0:0", width, height))
@@ -571,7 +612,7 @@ func videoEncodeArgs(stream domain.TranscodeVideo, encoder domain.VideoEncoder) 
 		filters = append(filters, "format=nv12", "hwupload")
 	}
 
-	args := encoderCodecArgs(encoder)
+	args := encoderCodecArgs(encoder, quality)
 	// フレーム数ではなく出力の時刻で揃えるため、fps フィルターで間引いたあとも
 	// 入力のフレームレートによらず同じ間隔になる。
 	args = append(args, "-force_key_frames", fmt.Sprintf("expr:gte(t,n_forced*%d)", liveKeyframeInterval))
@@ -601,6 +642,20 @@ func outputDimensions(width, height int) (int, int) {
 		return width, height
 	}
 	return width + width%2, height + height%2
+}
+
+// qualityDimensions は表示の寸法 width×height を、縦横比を保って短辺が shortSide になるよう
+// 縮めた偶数の寸法を返す。縮める比は shortSide への比と、今の変換の枠（長辺 maxVideoLongSide・
+// 短辺 maxVideoShortSide）への比の小さい方で、極端に細長い動画だけは短辺が shortSide より
+// 小さくなる（specs/027-playback-quality/research.md R-2）。shortSide は動画の短辺より小さいこと。
+func qualityDimensions(width, height, shortSide int) (int, int) {
+	longSide, videoShortSide := float64(max(width, height)), float64(min(width, height))
+	ratio := math.Min(float64(shortSide)/videoShortSide,
+		math.Min(maxVideoLongSide/longSide, maxVideoShortSide/videoShortSide))
+	even := func(side int) int {
+		return max(2, 2*int(math.Round(float64(side)*ratio/2)))
+	}
+	return even(width), even(height)
 }
 
 func maxOutputFPS(width, height int) float64 {

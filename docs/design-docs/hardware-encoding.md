@@ -119,6 +119,21 @@ windows は NVENC・Quick Sync、darwin は VideoToolbox で、それ以外の�
 | `vaapi` | `-vaapi_device /dev/dri/renderD128`、フィルターの末尾に `format=nv12,hwupload`、`-c:v h264_vaapi -profile:v high -level 5.1 -rc_mode CQP -qp 23` |
 | `videotoolbox` | `-c:v h264_videotoolbox -profile:v high -level:v 5.1 -pix_fmt yuv420p -q:v 60 -realtime 1` |
 
+画質（`domain.LiveTranscodeRequest.Quality`）のある変換では、表の指定に画質ごとの上限
+（映像の上限 `<上限>`、`-bufsize` はその 2 倍）を足す。値と縮める寸法は
+[playback-quality.md](playback-quality.md) にある。
+
+| 方式 | 画質のあるときの指定 |
+| --- | --- |
+| `software`・`nvenc` | 一定品質（`-crf 23`／`-cq 23`）のまま、末尾に `-maxrate <上限>k -bufsize <上限×2>k` |
+| `qsv` | `-global_quality 23` を `-b:v <上限>k -maxrate <上限>k -bufsize <上限×2>k` に替える |
+| `vaapi` | `-rc_mode CQP -qp 23` を `-rc_mode VBR -b:v <上限>k -maxrate <上限>k -bufsize <上限×2>k` に替える |
+| `videotoolbox` | `-q:v 60` を `-b:v <上限>k -maxrate <上限>k -bufsize <上限×2>k` に替える |
+
+software と NVENC は一定品質に上限を重ねられるので、静かな場面で上限より軽くなる。QSV・VAAPI・
+VideoToolbox で一定品質に上限を重ねる動作はドライバーの対応に依るので、確実に上限が効く VBR に
+する。ハードウェアが最初のデータを出さずに software に切り替えたときも、同じ画質の引数で始め直す。
+
 IDR にするのは、`frag_keyframe` が fragment を切る印にキーフレームを使うためである。非 IDR の I
 フレームでは fragment が切れず、最初のデータが遅れる。デコードはどの方式でもソフトウェアで行う。
 

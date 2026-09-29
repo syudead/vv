@@ -141,7 +141,7 @@ func TestTranscodeArgsNormalizesSeek(t *testing.T) {
 // 映像をエンコードする途中からの変換は、コピーからの切り替えでも、映像がコピーできない
 // 動画でも同じ引数で、今までどおり音声もエンコードする（受け入れ条件 4）。
 func TestTranscodeArgsEncodesSeekLikeBefore(t *testing.T) {
-	fallback := buildTranscodeArgs("movie.mkv", 25000, compatibleMetadata(), false, false, domain.VideoEncoderSoftware)
+	fallback := buildTranscodeArgs("movie.mkv", 25000, compatibleMetadata(), false, false, domain.VideoEncoderSoftware, "")
 	args := strings.Join(fallback, " ")
 	for _, want := range []string{"-ss 25.000 -i movie.mkv", "-c:v libx264", "-force_key_frames", "-c:a aac", "-movflags frag_keyframe+empty_moov+default_base_moof -f"} {
 		if !strings.Contains(args, want) {
@@ -159,11 +159,11 @@ func TestTranscodeArgsEncodesSeekLikeBefore(t *testing.T) {
 
 	uncopyable := compatibleMetadata()
 	uncopyable.Video.PixelFormat = "yuv420p10le"
-	want := buildTranscodeArgs("movie.mkv", 25000, uncopyable, false, false, domain.VideoEncoderSoftware)
+	want := buildTranscodeArgs("movie.mkv", 25000, uncopyable, false, false, domain.VideoEncoderSoftware, "")
 	if got := transcodeArgs("movie.mkv", 25000, uncopyable, false); !reflect.DeepEqual(got, want) {
 		t.Errorf("videoCanCopy が偽の動画の引数 = %v, want %v", got, want)
 	}
-	if got := buildTranscodeArgs("movie.mkv", 25000, uncopyable, false, true, domain.VideoEncoderSoftware); !reflect.DeepEqual(got, want) {
+	if got := buildTranscodeArgs("movie.mkv", 25000, uncopyable, false, true, domain.VideoEncoderSoftware, ""); !reflect.DeepEqual(got, want) {
 		t.Errorf("コピーできない映像をコピーする引数を作った: %v", got)
 	}
 }
@@ -338,7 +338,7 @@ func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			args := strings.Join(videoEncodeArgs(tc.stream, domain.VideoEncoderSoftware), " ")
+			args := strings.Join(videoEncodeArgs(tc.stream, domain.VideoEncoderSoftware, ""), " ")
 			if !strings.Contains(args, tc.want) {
 				t.Errorf("argsに %q がない: %s", tc.want, args)
 			}
@@ -347,7 +347,7 @@ func TestVideoEncodeArgsNormalizesDimensionsAndRate(t *testing.T) {
 }
 
 func TestVideoEncodeArgsForcesKeyframesByTime(t *testing.T) {
-	args := strings.Join(videoEncodeArgs(compatibleMetadata().Video, domain.VideoEncoderSoftware), " ")
+	args := strings.Join(videoEncodeArgs(compatibleMetadata().Video, domain.VideoEncoderSoftware, ""), " ")
 	if want := "-force_key_frames expr:gte(t,n_forced*2)"; !strings.Contains(args, want) {
 		t.Fatalf("argsに %q がない: %s", want, args)
 	}

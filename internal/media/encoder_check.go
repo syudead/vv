@@ -82,7 +82,7 @@ func (c *EncoderCheck) encode(ctx context.Context, encoder domain.VideoEncoder) 
 		"-f", "lavfi", "-i", "testsrc2=size=256x144:rate=30",
 		"-frames:v", "8",
 	)
-	args = append(args, videoEncodeArgs(encoderCheckSource, encoder)...)
+	args = append(args, videoEncodeArgs(encoderCheckSource, encoder, "")...)
 	args = append(args, "-f", "null", "-")
 
 	cmd := c.commandContext(runCtx, transcodeCommand, args...)
