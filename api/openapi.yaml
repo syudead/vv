@@ -1021,6 +1021,84 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/videos/{id}/versions:
+    get:
+      operationId: listVideoVersions
+      security:
+        - sessionCookie: []
+        - {}
+      summary: 動画の集まりの全バージョンを返す
+      description: |
+        この動画が属する集まり（同じ動画の別バージョン）のうち、見る人に見せてよい所在を持つ
+        バージョンを、実効の代表を先頭に、続きを題名の自然順（同じなら id）で返す。集まりに
+        属さなければ `items` はこの動画 1 本である。各項目は `GET /api/videos/{id}` と同じ形
+        （所有者には `location`、どちらにも `folder`）で、解像度・コーデック・`sizeBytes`・
+        `container` を持つ。ゲストでは公開の動画だけを数え、見せられない動画は 404 `video_not_found`
+        （specs/030-video-versions/contracts/screen-api.md §1）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: 集まりの全バージョン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoVersions"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/videos/{id}/make-representative:
+    post:
+      operationId: makeRepresentativeVersion
+      summary: 動画をその集まりの代表にする
+      description: |
+        所有者だけ。要求の本文は無い。この動画を集まりの代表（一覧に出す 1 件）にし、集まりの
+        全バージョンを返す（既に代表でも同じ）。集まりのタグ・再生位置・公開の設定は変わらない。
+        集まりに属さなければ 400 `not_bundled`、無いか登録フォルダの下に所在が無ければ 404
+        `video_not_found`。確定後に `/api/events` の `video` が全メンバーで流れる
+        （specs/030-video-versions/contracts/screen-api.md §3）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: 反映後の集まりの全バージョン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoVersions"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/videos/{id}/unbundle:
+    post:
+      operationId: unbundleVideo
+      summary: 動画をその集まりから外す
+      description: |
+        所有者だけ。要求の本文は無い。外した動画を `GET /api/videos/{id}` と同じ形で返し、
+        `tags`・`progress`・`public` は束ねる前のこの動画の値で、`versions` は無い。残りが 1 本
+        なら集まりは解け、その 1 本が集まりの値を持つ。集まりに属さなければ 400 `not_bundled`、
+        無いか登録フォルダの下に所在が無ければ 404 `video_not_found`。確定後に `/api/events` の
+        `video` が元の全メンバーで流れる（specs/030-video-versions/contracts/screen-api.md §4）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      responses:
+        "200":
+          description: 外した動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/scans:
     post:
       operationId: startScan
@@ -1479,6 +1557,39 @@ paths:
                 $ref: "#/components/schemas/VideoVisibilityResponse"
         "400":
           $ref: "#/components/responses/InvalidRequest"
+
+  /api/video-bundles:
+    post:
+      operationId: bundleVideos
+      summary: 動画を同じ動画の別バージョンとして束ねる
+      description: |
+        所有者だけ。`videoIds` の動画を 1 つの集まりに束ね、`representativeId` を代表（一覧に出す
+        1 件）にする。集まりのタグ・再生位置・公開の設定は代表のものになる。既に集まりに属する
+        動画を含むときは、その集まりの全メンバーが新しい集まりに入る。`videoIds` の重複は 1 つと
+        数え、2 本未満なら 400 `too_few_videos`、20000 本を超えれば 400 `too_many_videos`
+        （`POST /api/video-tags` と同じ上限）、`representativeId` が `videoIds` に無ければ 400
+        `representative_not_selected`、どれかが無いか登録フォルダの下に所在が無ければ 404
+        `video_not_found` で、何も変えない。確定後に `/api/events` の `video` が全メンバーで流れる
+        （specs/030-video-versions/contracts/screen-api.md §2）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoBundleRequest"
+      responses:
+        "200":
+          description: 新しい集まりの全バージョン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VideoVersions"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/directories:
     get:
@@ -2792,6 +2903,8 @@ components:
           $ref: "#/components/schemas/VideoFolder"
         group:
           $ref: "#/components/schemas/VideoGroupRef"
+        versions:
+          $ref: "#/components/schemas/VideoVersionsRef"
         tags:
           type: array
           description: |
@@ -2922,6 +3035,60 @@ components:
           type: integer
           minimum: 1
           description: グループのメンバーの本数
+
+    VideoVersionsRef:
+      type: object
+      required: [count, representativeId]
+      additionalProperties: false
+      description: |
+        動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
+        集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
+        （specs/030-video-versions/contracts/screen-api.md §0）
+      properties:
+        count:
+          type: integer
+          minimum: 1
+          description: 見る人に見せてよい所在を持つバージョンの本数
+        representativeId:
+          type: integer
+          format: int64
+          description: 実効の代表（一覧に出ている 1 件）の動画の id
+
+    VideoVersions:
+      type: object
+      required: [representativeId, items]
+      additionalProperties: false
+      description: |
+        集まりの全バージョン（specs/030-video-versions/contracts/screen-api.md §1）
+      properties:
+        representativeId:
+          type: integer
+          format: int64
+          description: 実効の代表の動画の id。集まりに属さなければその動画の id
+        items:
+          type: array
+          description: |
+            代表が先頭で、続きは題名の自然順（同じなら id）。各項目は GET /api/videos/{id} と
+            同じ形
+          items:
+            $ref: "#/components/schemas/Video"
+
+    VideoBundleRequest:
+      type: object
+      required: [videoIds, representativeId]
+      additionalProperties: false
+      properties:
+        videoIds:
+          type: array
+          maxItems: 20000
+          description: 束ねる動画。重複は 1 つと数え、2 本以上
+          items:
+            type: integer
+            format: int64
+        representativeId:
+          type: integer
+          format: int64
+          description: 代表にする動画。videoIds の 1 つ
 
     RelatedGroup:
       type: object
@@ -3356,3 +3523,6 @@ components:
         - duration_unknown
         - thumbnail_position_out_of_range
         - thumbnail_frame_unavailable
+        - too_few_videos
+        - representative_not_selected
+        - not_bundled
