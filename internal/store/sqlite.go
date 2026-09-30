@@ -188,11 +188,19 @@ func (db *DB) publishEvents(events ...domain.Event) {
 	}
 }
 
-// deleteOrphanVideos は所在が1つも無くなった動画の行を消し、消した動画を返す。
+// deleteOrphanVideos は所在が1つも無くなった動画の行を消し、消した動画を返す。消した内容の
+// 索引の行も同じ取引で消す（releaseContentIndex）。
 func deleteOrphanVideos(ctx context.Context, tx *sql.Tx) ([]domain.DeletedVideo, error) {
-	return collectDeletedVideos(tx.QueryContext(ctx, `delete from videos where not exists (
+	released, err := collectDeletedVideos(tx.QueryContext(ctx, `delete from videos where not exists (
 		select 1 from video_locations where video_locations.video_id = videos.id)
 		returning id, content_key`))
+	if err != nil {
+		return nil, err
+	}
+	if err := releaseContentIndex(ctx, tx, released); err != nil {
+		return nil, err
+	}
+	return released, nil
 }
 
 // collectDeletedVideos は returning id, content_key の結果を読み切る。

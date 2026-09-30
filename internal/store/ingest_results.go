@@ -43,16 +43,29 @@ func (s *IngestStore) ApplyProbe(
 	if err != nil {
 		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	}
-	if count, err := res.RowsAffected(); err != nil {
+	count, err := res.RowsAffected()
+	if err != nil {
 		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
-	} else if count == 1 && probe.Transcode != nil {
-		if err := upsertTranscodeProbe(ctx, tx, id, probe.Source, *probe.Transcode, now); err != nil {
+	}
+	var succeeded []int64
+	if count == 1 {
+		if probe.Transcode != nil {
+			if err := upsertTranscodeProbe(ctx, tx, id, probe.Source, *probe.Transcode, now); err != nil {
+				return err
+			}
+		}
+		var contentKey string
+		if err := tx.QueryRowContext(ctx, `select content_key from videos where id = ?`, id).Scan(&contentKey); err != nil {
+			return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
+		}
+		if succeeded, err = applySuccession(ctx, tx, contentKey, probe.DurationMs); err != nil {
 			return err
 		}
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	}
+	s.db.publishEvents(successionEvents(succeeded)...)
 	return nil
 }
 
@@ -100,11 +113,18 @@ func (s *IngestStore) ApplyProbeForJob(
 	if err := requeueJob(ctx, tx, domain.JobPreview, job.VideoID, now.Unix()); err != nil {
 		return false, err
 	}
+	// 走査が閉じたあとに解析が終わったなら、同じパスの前の中身を引き継ぐかをここで決める
+	// （specs/030-video-versions/data-model.md §5）。
+	succeeded, err := applySuccession(ctx, tx, job.ContentKey, probe.DurationMs)
+	if err != nil {
+		return false, err
+	}
 	var c changes
 	c.jobsQueued(domain.JobPreview)
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
 	}
+	s.db.publishEvents(successionEvents(succeeded)...)
 	return true, nil
 }
 

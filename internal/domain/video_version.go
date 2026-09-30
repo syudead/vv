@@ -60,3 +60,20 @@ type VideoBundleChanged struct {
 }
 
 func (VideoBundleChanged) event() {}
+
+// successionToleranceMinMs は、尺がほぼ同じとみなす差の下限（1 秒）である。
+const successionToleranceMinMs = 1000
+
+// DurationsMatch は 2 つの尺（ミリ秒）がほぼ同じかを返す。差が 1 秒と長い方の 0.5% の大きい方
+// 以下なら一致する。0 以下の尺（分からない尺）は一致しない（data-model.md §2、research.md R-5）。
+// 同じパスの中身の引き継ぎと、指紋の候補の尺の条件がこの規則を使う。
+func DurationsMatch(a, b int64) bool {
+	if a <= 0 || b <= 0 {
+		return false
+	}
+	diff := a - b
+	if diff < 0 {
+		diff = -diff
+	}
+	return diff <= max(successionToleranceMinMs, max(a, b)*5/1000)
+}
