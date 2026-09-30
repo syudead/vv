@@ -30,6 +30,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 	t.Cleanup(func() {
 		assertRepresentativeInvariant(t, db)
 		assertTagCanonicalNameInvariant(t, db)
+		assertVideoOverrideInvariant(t, db)
 	})
 	return db
 }
@@ -74,6 +75,39 @@ func assertTagCanonicalNameInvariant(t *testing.T, db *DB) {
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("タグの不変条件を検査できない: %v", err)
+	}
+}
+
+// assertVideoOverrideInvariant は video_overrides の行の不変条件を確かめる
+// （specs/029-video-overrides/data-model.md §1）。表示名と位置の両方が null の行は無く
+// （書く側が消す）、改版番号は位置があるときだけ持ち、空の content_key の行は無い。
+func assertVideoOverrideInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'video_overrides'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("上書きの不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+
+	for name, condition := range map[string]string{
+		"表示名と位置の両方が null の行": `display_name is null and thumbnail_position_ms is null`,
+		"位置が無いのに改版番号を持つ行":    `thumbnail_position_ms is null and thumbnail_revision is not null`,
+		"位置があるのに改版番号を持たない行":  `thumbnail_position_ms is not null and thumbnail_revision is null`,
+		"空の content_key の行":  `content_key = ''`,
+		"空文字の表示名の行":          `display_name = ''`,
+	} {
+		var count int
+		if err := db.sql.QueryRow(`select count(*) from video_overrides where ` + condition).Scan(&count); err != nil {
+			t.Fatalf("上書きの不変条件を検査できない: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("video_overrides に%sが %d 行ある", name, count)
+		}
 	}
 }
 

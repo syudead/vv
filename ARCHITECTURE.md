@@ -214,8 +214,8 @@ Changing that layout would orphan every file an existing data directory already 
 
 State changes that trigger side effects are domain events (`internal/domain/event.go`):
 a video's ingest state changed, jobs were queued, the remaining work per stage changed, the
-scan changed, the current import activity changed (`ScanActivityChanged`), and content keys
-lost their last reference. Publishers — `internal/store`
+scan changed, the current import activity changed (`ScanActivityChanged`), a video's
+owner override changed (`VideoOverrideChanged`), and content keys lost their last reference. Publishers — `internal/store`
 after a transaction commits (never from one that rolled back, and one notice per kind of
 change per transaction, plus one per deleted video) and `internal/app` for job outcomes and scans — call a `Publish`
 interface they declare themselves and know nothing about the subscribers. `internal/eventbus`
@@ -232,7 +232,7 @@ next startup closes the scan.
 `/api/events` pushes changes to the browser as Server-Sent Events instead of the
 browser polling: `scan` when the current scan, the remaining jobs (job outcomes
 move the import's settled count) or the current activity change, and `video` when a
-video's ingest state changes. There is no per-stage job count on the wire; the screen
+video's ingest state or its owner override (display name) changes. There is no per-stage job count on the wire; the screen
 shows only the import's own status, video count and current activity. The payload is read
 at send time, pending notices for a connection are coalesced, and a new connection
 first receives the current `scan` so a reconnect recovers what it missed. Logical videos are separated from their physical
@@ -287,15 +287,16 @@ thumbnails and previews, the folder index (`folder_groups`, `folder_group_member
 `video_folder_names`, `folder_index_state`), and `video_transcode_probes` are
 rebuildable from registered media folders by scanning and processing the files again.
 `playback_progress`, the tag tables (`tags`, `tag_names`, `video_tags`),
-`public_videos`, `folder_group_overrides`, `account`, `media_folders`, `settings`
-(owner-chosen values such as the live-transcode video encoder,
+`public_videos`, `video_overrides` (owner-set display names and representative thumbnail
+positions, `specs/029-video-overrides/data-model.md` §1), `folder_group_overrides`,
+`account`, `media_folders`, `settings` (owner-chosen values such as the live-transcode video encoder,
 `specs/025-hardware-encoding/data-model.md`), and `api_tokens` (issued API tokens, which
 must be issued again if lost, `specs/026-external-api/data-model.md` §1) are user or
 configuration data that a scan cannot restore. In particular, a scan
 cannot start with no registered `media_folders`; after database loss those folders
 must be registered again before scanning. `sessions` is transient and a fresh
 login restores it.
-That is why playback positions, tag assignments and public flags are keyed by the content
+That is why playback positions, tag assignments, public flags and video overrides are keyed by the content
 identifier rather than by `videos.id`, and why those tables carry no foreign
 key to `videos`. Grouping exceptions are keyed by the folder's absolute path
 (`domain.FolderKey`) and carry no foreign key to `videos` or `media_folders`, so they
@@ -388,6 +389,14 @@ compile:
   returning the content keys it applied to
   (`specs/016-single-account-auth/data-model.md` §5). Like `TagStore`, it holds only the
   SQL connection.
+- `OverrideStore` — an owner's display name for a video (resolved to its content key,
+  like tag attachment), one video or an external-API batch in one transaction, together
+  with rewriting the `title_key` and `search_key` of every location of that content
+  (`specs/029-video-overrides/data-model.md` §3, §4). It uses the SQL connection and
+  publishes `domain.VideoOverrideChanged` after the commit. Every read that returns a video
+  carries the override: `Video.Title` is the display name when set, `Video.FileTitle` the
+  location's file-derived title. Releasing generated files (`RemoveContent`) never
+  touches `video_overrides`.
 
 `store.DB` does not hand out its `*sql.DB`, so SQL stays inside `internal/store`.
 Tests outside the package set up and inspect storage through the role types, and

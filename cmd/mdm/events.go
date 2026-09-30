@@ -15,7 +15,9 @@ type waker interface {
 // eventSubscribers は状態の変化を受け取る側である。発行する側（保存層・
 // 取り込み・走査）はこれらを知らない。
 type eventSubscribers struct {
-	// Screen は画面へ送る知らせ（/api/events）へ変化を渡す。
+	// Screen は画面へ送る知らせ（/api/events）へ変化を渡す。動画の上書きの変化
+	// （domain.VideoOverrideChanged）もここで video の知らせになり、ワーカーの起床には
+	// 結ばない（specs/029-video-overrides/research.md R-7）。
 	Screen func(domain.Event)
 	// Workers は段階ごとのワーカーである。
 	Workers map[domain.JobKind]waker
