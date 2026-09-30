@@ -13,9 +13,10 @@
 | `fileTitle` | string | 拡張子を除いたファイル名。所有者の応答にだけ入る |
 | `displayName` | string | 表示名。設定されているときだけ、所有者の応答にだけ入る |
 | `thumbnailPositionMs` | integer (int64) | 代表サムネイルの位置。設定されているときだけ、所有者の応答にだけ入る |
-| `thumbnailUrl` | string（既存） | 位置が設定されているとき版が `<内容鍵の先頭>-<positionMs>` になる（[R-6](../research.md#r-6-thumbnailurl-の版に位置を含める)） |
+| `thumbnailUrl` | string（既存） | 位置が設定されているとき版が `<内容鍵の先頭>-r<改版番号>` になる。位置の値は入れない（[R-6](../research.md#r-6-thumbnailurl-の版に指定の改版番号を含める)） |
 
-ゲストの応答は `title` に表示名を受け取り（要件 1）、3 つの新しい項目を省く
+ゲストの応答は `title` に表示名を受け取り（要件 1）、3 つの新しい項目を省く。`thumbnailUrl` は所有者と
+同じ文字列で、位置の値を含まない
 （[specs/016-single-account-auth/contracts/guest-api.md §1](../../016-single-account-auth/contracts/guest-api.md)
 の `location` と同じ扱い）。一覧・関連動画・ライブラリ項目・`RelatedVideo` の `title` も有効な題名である。
 

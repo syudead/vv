@@ -17,10 +17,10 @@
   に表示名を織り込む（[R-2](research.md#r-2-有効な題名は保存層が決めdomainvideo-が表示名とファイル名由来の題名を両方持つ)、
   [R-3](research.md#r-3-並び替えと検索は所在ごとの-title_keysearch_key-に表示名を織り込む)）。
 - **サムネイル**: 位置の指定と解除は要求の中で画像を作ってから記録し、失敗したら前の画像と位置を残す。
-  取り込みの `thumbnail` job も指定の位置で作る。置き場の並べ方は変えず、`thumbnailUrl` の版に位置を
-  含める（[R-4](research.md#r-4-サムネイルの位置の指定は要求の中で生成してから記録する)、
+  取り込みの `thumbnail` job も指定の位置で作る。置き場の並べ方は変えず、`thumbnailUrl` の版に位置の記録ごとの
+  改版番号を含める（[R-4](research.md#r-4-サムネイルの位置の指定は要求の中で生成してから記録する)、
   [R-5](research.md#r-5-取り込みのサムネイル-job-も指定の位置で作り自動の規則は-internalmedia-に残す)、
-  [R-6](research.md#r-6-thumbnailurl-の版に位置を含める)）。
+  [R-6](research.md#r-6-thumbnailurl-の版に指定の改版番号を含める)）。
 - **通知**: 上書きの変化は `domain.VideoOverrideChanged` で `/api/events` の `video` に写す
   （[R-7](research.md#r-7-上書きの変化は-domainvideooverridechanged-を発行し画面の-video-通知に写す)）。
 - **API**: 画面は動画ごとの 2 つの `PUT`（[contracts/screen-api.md](contracts/screen-api.md)）、
@@ -160,7 +160,7 @@ specs/029-video-overrides/
 **Scope**: `00021_video_overrides.sql`、`domain.NormalizeDisplayName` と誤りの値、`Video.FileTitle`・
 `DisplayName`・`ThumbnailPositionMs`、`VideoOverrideChanged`（[data-model.md §1・§2](data-model.md#1-video_overrides)）。
 `OverrideStore.SetDisplayName`・`SetDisplayNames` と、動画を返す全読み出し（詳細・一覧・ライブラリ項目・
-関連・外部連携・`IngestStore.GetVideo`）の左結合、鍵の書き直しの 3 経路（[§3・§4](data-model.md#3-保存層の操作)）。
+関連・外部連携・`IngestStore.GetVideo`）の左結合、鍵の書き直しの 4 経路（[§3・§4](data-model.md#3-保存層の操作)）。
 `cmd/mdm/events.go` の画面の購読。ARCHITECTURE.md の利用者データの一覧と `store.DB` の役割の一覧。
 
 **Dependencies**: None
@@ -169,7 +169,8 @@ specs/029-video-overrides/
 所在の題名になり、`titleAsc` で表示名の位置に並び、表示名でもファイル名でも検索に出る（受け入れ条件 4）。
 所在を別のパスへ upsert し直しても（改名・移動の再スキャン）表示名と鍵が残る（受け入れ条件 3）。空・
 空白だけの名前で行が消え、制御文字と 201 符号位置は `*InvalidDisplayNameError` で何も書かない。同じ
-内容の 2 つ目の所在からも同じ `Title` が返る。確定後に `VideoOverrideChanged` が 1 回発行される。
+内容の 2 つ目の所在からも同じ `Title` が返る。表示名を付けた動画のあるメディアフォルダを
+`AddMediaFolder`・`ReplaceMediaFolder` で登録し直しても、`title_key` と `search_key` が表示名を含む。確定後に `VideoOverrideChanged` が 1 回発行される。
 
 ### 画面の API で表示名を設定・解除する
 
@@ -198,7 +199,8 @@ specs/029-video-overrides/
 `PublishThumbnail`→`SetThumbnailPosition` の順に呼び、生成の失敗では保存を呼ばず
 `ErrThumbnailFrameUnavailable` を返す。解析前は `ErrDurationUnknown`、尺以上は
 `ErrThumbnailPositionOutOfRange`。`Thumbnail`（job）が位置のある動画で `ThumbnailAt` を、無い動画で
-`Thumbnail` を呼ぶ。store の試験で、記録の取引が `thumbnail_state` を `done` にし `thumbnail_first_frame`
+`Thumbnail` を呼ぶ。job が錠の外で動画を読んだあと、錠を待つ間に `SetThumbnailPosition` が位置と
+`done` を記録した場合、job は錠の中で読み直して生成を飛ばし、記録された位置の画像が残る。store の試験で、記録の取引が `thumbnail_state` を `done` にし `thumbnail_first_frame`
 を消し、`nil` で行の列が null（両方 null なら行が無い）になる。`media` の試験（ffmpeg あり）で
 `ThumbnailAt` が指定の秒の画像を書く。
 
@@ -212,7 +214,8 @@ specs/029-video-overrides/
 
 **Acceptance**: `task check` が通る。httpapi の試験で、所有者の `PUT` が `200` と `thumbnailPositionMs`
 付きの `Video` を返し、`thumbnailUrl` の版が前と変わり、`GET /api/library` のその動画も同じ URL になる
-（受け入れ条件 5）。`null` で位置が消え URL が元に戻る（受け入れ条件 6）。解析前は `409 duration_unknown`、
+（受け入れ条件 5）。同じ位置を指定し直しても版が変わり、ゲストの `thumbnailUrl` に位置の値が
+入らない。`null` で位置が消え URL が元に戻る（受け入れ条件 6）。解析前は `409 duration_unknown`、
 尺以上は `400 thumbnail_position_out_of_range` と `limit`、生成の失敗は `409 thumbnail_frame_unavailable`
 で前の `thumbnailUrl` のまま。ゲストは `401`。
 

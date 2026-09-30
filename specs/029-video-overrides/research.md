@@ -9,7 +9,7 @@
 ## R-1: 上書きは `content_key` に結ぶ 1 つの利用者データの表に置く
 
 - Decision: 表示名とサムネイルの位置は、`video_overrides (content_key primary key, display_name,
-  thumbnail_position_ms, updated_at)` の 1 行で持つ（[data-model.md §1](data-model.md#1-video_overrides)）。
+  thumbnail_position_ms, thumbnail_revision, updated_at)` の 1 行で持つ（[data-model.md §1](data-model.md#1-video_overrides)）。
   `videos` への外部キーは張らず、両方の列が null になった行は消す。
 - Rationale: 要件 4 と Edge Case「同じ内容が複数の所在にある」は、上書きが再スキャン・移動・改名・
   所在の追加を越えて残り、所在によらず同じであることを求める。それは `playback_progress`・`video_tags`・
@@ -40,8 +40,9 @@
 - Decision: `video_locations.title_key` は有効な題名（表示名があればそれ）の `domain.NaturalSortKey`
   にする。`search_key` は今の「題名 `\n` 相対パス」に表示名を 3 つ目の部分として足す
   （`domain.SearchKeyVersion` は上げない。表示名の無い所在の鍵は今と同じ値になる）。鍵を書き直すのは
-  2 か所で、表示名を書き換える取引（その内容の動画の全所在）と、取り込みの所在の追加・更新
-  （`refreshSearchKeysByPath` が表示名を読む）である（[data-model.md §4](data-model.md#4-並び替えと検索の鍵)）。
+  3 か所で、表示名を書き換える取引（その内容の動画の全所在）と、取り込みの所在の追加・更新
+  （`refreshSearchKeysByPath` が表示名を読む）と、メディアフォルダの追加・変更
+  （`AddMediaFolder`・`ReplaceMediaFolder` の `refreshSearchKeysUnder` が表示名を読む）である（[data-model.md §4](data-model.md#4-並び替えと検索の鍵)）。
 - Rationale: 要件 3 は、題名順では表示名の位置に並び、検索は表示名とファイル名の両方に当たることを
   求める。並び替えは `loc.title_key` を、検索は `location_search_fts` を読んでいて
   （[specs/013-library-search/data-model.md](../013-library-search/data-model.md)）、そこに値を入れれば
@@ -74,28 +75,41 @@
 ## R-5: 取り込みのサムネイル job も指定の位置で作り、自動の規則は `internal/media` に残す
 
 - Decision: `Ingest.Thumbnail`（job）は `Video.ThumbnailPositionMs` があればその位置で
-  （`generator.ThumbnailAt`）、無ければ今の規則で作る。`internal/media` に
+  （`generator.ThumbnailAt`）、無ければ今の規則で作る。位置と `thumbnail_state` は、生成の錠
+  （`artifacts.generate`）に入ってから `IngestStore.GetVideo` で読み直した値で決める。錠の外で先に
+  読んだ `video` は尺と存在の確認にだけ使う。`internal/media` に
   `ThumbnailAt(ctx, path, positionMs, output) error` を足す。指定の位置で取れないときの先頭のコマへの
   代用は行わず、失敗は今の再試行と `failed` の記録に従う。自動の位置の規則（10%・1 秒〜60 秒）は
   `internal/media` の定数のまま、`internal/domain` には移さない。
 - Rationale: 動画の行が消えて生成物が片付けられたあと、同じ内容を置き直すと `thumbnail` の job が
   画像を作り直す。job が位置を知らないと、行（利用者データ）は指定の位置を持つのに画像は自動の
   場面になる（Edge Case「どの所在から見ても同じサムネイル」）。同じ内容のファイルで一度取れた位置は
-  もう一度取れるので、job の側に別の代用は要らない。位置の規則は生成の都合（ffmpeg が先頭で 0 枚
+  もう一度取れるので、job の側に別の代用は要らない。錠の中で読み直すのは、job が錠の外で動画を
+  読んだあと、錠を待つ間に `SetThumbnailPosition` が先に錠を取って位置と `done` を記録しうるためで
+  ある。前に読んだ値のままだと、job は古い状態（`done` でない）と古い位置で画像を上書きし、記録された
+  位置と画像が食い違う（Edge Case「最後の指定が勝つ」）。読み直せば、記録済みの `done` を見て生成を
+  飛ばすか、記録された位置で作る。位置の規則は生成の都合（ffmpeg が先頭で 0 枚
   出力する問題）で、判断ではないので移さない。
 - Alternatives considered: 指定の画像を別のファイル（`<s>.pick.jpg`）に置く（置き場の並べ方を変える
   ことになり、`RemoveContent`・ETag・配信の分岐が増える。1 つの内容に 1 つの代表画像で足りる）。
   job で指定の位置に失敗したら行を消す（利用者データを job が書き換える。取り込みの失敗で
   設定が消える）。
 
-## R-6: `thumbnailUrl` の版に位置を含める
+## R-6: `thumbnailUrl` の版に指定の改版番号を含める
 
-- Decision: `thumbnailURL` の `v` は、位置が指定されているとき `<内容鍵の先頭>-<positionMs>` にする。
-  未指定は今のまま。
+- Decision: `video_overrides.thumbnail_revision` は位置を記録するたびに書く改版番号で、
+  「今のミリ秒時刻と前の値 + 1 の大きい方」にする（解除では null）。`thumbnailURL` の `v` は、位置が
+  指定されているとき `<内容鍵の先頭>-r<thumbnail_revision>` にする。未指定は今のまま。位置の値そのものは
+  URL に入れない。
 - Rationale: 画像は `private, no-cache` と `ETag` で配るが、`<img>` の `src` が同じ文字列なら
   ブラウザは要求し直さない。位置を変えた直後の一覧と動画ページで新しい画像を出すには `src` が
-  変わる必要がある。解除は「位置なし」の URL に戻るので、こちらも変わる。
-- Alternatives considered: 応答のたびに `updated_at` を版にする（`video_overrides` の無い動画も
+  変わる必要がある。解除は「位置なし」の URL に戻るので、こちらも変わる。`thumbnailUrl` はゲストにも
+  渡るので、ゲストの応答から省く `thumbnailPositionMs` を URL で漏らさないよう、版は位置と無関係な値に
+  する。記録のたびに増えるので、同じ位置を指定し直しても URL は変わり、行を消して作り直しても時刻で
+  前の値と重ならない。
+- Alternatives considered: 版に `positionMs` をそのまま入れる（ゲストに所有者だけの項目が見える）。
+  `updated_at` を版にする（表示名の変更でもサムネイルの URL が変わり、要求し直しが無駄に起きる）。
+  応答のたびに `updated_at` を版にする（`video_overrides` の無い動画も
   含めて URL が安定しなくなり、ETag による 304 の意味が薄れる）。
 
 ## R-7: 上書きの変化は `domain.VideoOverrideChanged` を発行し、画面の `video` 通知に写す
