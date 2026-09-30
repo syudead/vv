@@ -1,5 +1,12 @@
 import { AlertCircle, CircleDashed, Plus, SearchX, Tags as TagsIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { RequestFailed } from "../api/client";
 import { compareTagRefs } from "../api/tagOrder";
@@ -92,6 +99,8 @@ export default function TagsPage() {
   const [rejectedNames, setRejectedNames] = useState<string[] | undefined>(undefined);
   const [rejectedError, setRejectedError] = useState<UiText | null>(null);
   const rejectedGeneration = useRef(0);
+  /** 取り直しの応答を待っている世代。待っていなければ null。 */
+  const rejectedInFlight = useRef<number | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const createButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -109,26 +118,31 @@ export default function TagsPage() {
   }, []);
 
   /**
+   * filtersRef は今描いている検索と「Tentative only」である。要求の応答を
+   * 待つ間に絞り込みが変わることがあるので、応答のあとのフォーカス先は
+   * 閉じ込めた（押した時点の）値ではなくこれで決める。
+   */
+  const filtersRef = useRef({ query: "", tentativeOnly: false });
+
+  /**
    * fallbackFocus は、行へ移せないときの最後の行き先である。ふだんは
    * 「新しいタグ」、「Tentative only」を押している間はそのボタン（次の操作が
    * 「絞り込みを外す」だから。specs/031-tentative-tags/ui-design.md「Toolbar」）。
    */
   function fallbackFocus() {
-    (tentativeOnly ? tentativeButtonRef : createButtonRef).current?.focus();
+    (filtersRef.current.tentativeOnly
+      ? tentativeButtonRef
+      : createButtonRef
+    ).current?.focus();
   }
 
   /**
-   * focusRow はタグの行のフォーカス先へ移す。id が無ければ `fallbackFocus`
-   * へ移す。「新しいタグ」は作成中に disabled になるので、`creating` を false に
-   * 戻す更新が DOM に反映されたあとで移す必要がある（ほかの行への移動と同じく
-   * setTimeout(0) で1呼吸置く。settings/SettingsPage.tsx の focusFolderAction
-   * と同じ）。
+   * focusRow はタグの行のフォーカス先へ移す。その行がもう無ければ
+   * `fallbackFocus` へ移す。行の差し替えが DOM に反映されたあとで移す必要が
+   * あるので setTimeout(0) で1呼吸置く（settings/SettingsPage.tsx の
+   * focusFolderAction と同じ）。
    */
-  function focusRow(id: number | undefined, part: FocusTarget) {
-    if (id === undefined) {
-      setTimeout(fallbackFocus, 0);
-      return;
-    }
+  function focusRow(id: number, part: FocusTarget) {
     setTimeout(() => {
       const refs = rowRefs.current.get(id);
       const target =
@@ -151,6 +165,10 @@ export default function TagsPage() {
    * `fallbackFocus`（ui-design.md「Merge and delete」、031 の「Toolbar」）。
    * order は消える前の（絞り込み後の）並びで、`alsoGone` は同時に一覧から
    * 外れるほかの行（統合先が確定になって絞り込みから外れるときなど）である。
+   *
+   * 候補は、移す時点でまだ描かれていて押せる「改名」に限る。ほかの行の確定が
+   * 並行していると、order を控えたあとにその行も外れていたり、送信中で
+   * 「改名」が disabled だったりするので、それを飛ばして次の行へ進む。
    */
   function focusAfterRemoval(
     order: readonly Tag[],
@@ -159,35 +177,56 @@ export default function TagsPage() {
   ) {
     const index = order.findIndex((tag) => tag.id === removedId);
     const stays = (tag: Tag) => tag.id !== removedId && !alsoGone.has(tag.id);
-    const after = order.slice(index + 1).find(stays);
-    const before = order.slice(0, Math.max(index, 0)).reverse().find(stays);
-    focusRow((after ?? before)?.id, "rename");
+    const candidates = [
+      ...order.slice(index + 1).filter(stays),
+      ...order.slice(0, Math.max(index, 0)).reverse().filter(stays),
+    ];
+    setTimeout(() => {
+      const target = candidates
+        .map((tag) => rowRefs.current.get(tag.id)?.renameButton)
+        .find((button) => button?.isConnected === true && !button.disabled);
+      if (target === null || target === undefined) fallbackFocus();
+      else target.focus();
+    }, 0);
   }
 
   /**
    * reloadRejectedNames は却下した名前の一覧を取り直す。却下・作成・改名・
    * シノニムの追加のあと（どれも一覧を変えうる。要件 15、受け入れ条件 14）と、
-   * 画面を開いたときに呼ぶ。追い越された古い取得の結果は捨てる。一覧をもう
-   * 持っているときの取り直しの失敗は、今の一覧を残す。
+   * 画面を開いたときに呼ぶ。追い越された古い取得の結果は捨てる。取り直しの
+   * 失敗は、最初の読み込みの失敗と同じ見え方（件数を出さず、「Couldn't load
+   * the rejected names」と Retry。ui-design.md「Rejected names」）にする。
+   * 古い一覧を黙って残すと、却下や作成で変わったはずの並びを正しいものとして
+   * 見せ続けてしまう。
    */
   const reloadRejectedNames = useCallback(() => {
     rejectedGeneration.current += 1;
     const generation = rejectedGeneration.current;
+    rejectedInFlight.current = generation;
     setRejectedError(null);
     listRejectedTagNames()
       .then((names) => {
         if (generation !== rejectedGeneration.current) return;
+        rejectedInFlight.current = null;
         setRejectedNames(names);
       })
       .catch((failure: unknown) => {
         if (generation !== rejectedGeneration.current) return;
+        rejectedInFlight.current = null;
+        setRejectedNames(undefined);
         setRejectedError(errorText(failure));
       });
   }, []);
 
+  /**
+   * forgetRejectedName は × の取り外しである。取り外しの前から待っている
+   * 取り直しがあれば、その応答は取り外す前の並び（外した名前を含む）かも
+   * しれないので捨て、取り外しのあとで取り直す。
+   */
   async function forgetRejectedName(name: string) {
     await forgetRejectedTagName(name);
     setRejectedNames((current) => current?.filter((item) => item !== name));
+    if (rejectedInFlight.current !== null) reloadRejectedNames();
   }
 
   const reload = useCallback(() => {
@@ -242,9 +281,17 @@ export default function TagsPage() {
     [sorted, normalizedQuery, tentativeOnly],
   );
 
-  /** shown は、その1件が今の検索と「Tentative only」の絞り込みで一覧に出るかである。 */
+  useLayoutEffect(() => {
+    filtersRef.current = { query: normalizedQuery, tentativeOnly };
+  }, [normalizedQuery, tentativeOnly]);
+
+  /**
+   * shown は、その1件が今の検索と「Tentative only」の絞り込みで一覧に出るかで
+   * ある。要求の応答のあとで呼ぶので、`filtersRef` の今の値で決める。
+   */
   function shown(tag: Tag): boolean {
-    return matchesFilters(tag, normalizedQuery, tentativeOnly);
+    const { query, tentativeOnly: onlyTentative } = filtersRef.current;
+    return matchesFilters(tag, query, onlyTentative);
   }
 
   /**
@@ -459,7 +506,7 @@ export default function TagsPage() {
         setRejectingTag(null);
         toast(t.tags.alreadyConfirmed);
         await reload();
-        if (tentativeOnly) focusAfterRemoval(order, target.id);
+        if (filtersRef.current.tentativeOnly) focusAfterRemoval(order, target.id);
         else focusRow(target.id, "menu");
         return;
       }
@@ -757,7 +804,10 @@ export default function TagsPage() {
                   if (createPending) return;
                   setCreating(false);
                   setCreateError(null);
-                  focusRow(undefined, "name");
+                  // 作成を始めた「新しいタグ」へ戻す（「Tentative only」を
+                  // 押していても。そちらは行が外れたときの行き先である）。
+                  // creating が false になって押せるようになってから移す。
+                  setTimeout(() => createButtonRef.current?.focus(), 0);
                 }}
                 onSubmit={(name) => void submitCreate(name)}
                 onDraftChange={() => setCreateError(null)}

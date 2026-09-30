@@ -81,6 +81,14 @@ const server = {
   confirmCalls: 0,
 };
 
+/**
+ * holdRejectedGets を true にした間の GET /api/tags/rejected-names は、release を
+ * 呼ぶまで応答しない。応答の中身は要求を受けた時点の `server.rejectedNames` を
+ * 写し取って持つ（取り外しの前に始まった取り直しの古い応答を再現する）。
+ */
+let holdRejectedGets = false;
+const rejectedGetReleases: (() => void)[] = [];
+
 /** holdConfirms を true にした間の POST /api/tags/{id}/confirm は、release() を呼ぶまで応答しない。 */
 let holdConfirms = false;
 const confirmReleases: (() => void)[] = [];
@@ -137,7 +145,13 @@ function install() {
           jsonResponse({ code: "internal", message: "failed" }, 500),
         );
       }
-      return Promise.resolve(jsonResponse({ items: [...server.rejectedNames] }));
+      const snapshot = [...server.rejectedNames];
+      if (holdRejectedGets) {
+        return new Promise((resolve) => {
+          rejectedGetReleases.push(() => resolve(jsonResponse({ items: snapshot })));
+        });
+      }
+      return Promise.resolve(jsonResponse({ items: snapshot }));
     }
 
     if (method !== "GET" && server.nextError !== null) {
@@ -434,6 +448,8 @@ beforeEach(() => {
   server.confirmCalls = 0;
   holdConfirms = false;
   confirmReleases.length = 0;
+  holdRejectedGets = false;
+  rejectedGetReleases.length = 0;
 });
 
 afterEach(() => {
@@ -2480,6 +2496,123 @@ describe("TagsPage 仮のタグ", () => {
     expect(
       await screen.findByRole("button", { name: 'Allow "Old" again' }),
     ).toBeDefined();
+  });
+
+  it("取り外しの前から待っていた取り直しの古い応答で、外した名前が戻らない", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = ["Old", "Stale"];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    const list = await screen.findByRole("list", { name: "Rejected names" });
+
+    // 却下で取り直しが始まり、その応答は取り外しの前の並びを持ったまま止まる。
+    holdRejectedGets = true;
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    await user.click(await screen.findByRole("button", { name: "Reject" }));
+    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
+    expect(rejectedGetReleases).toHaveLength(1);
+    holdRejectedGets = false;
+
+    await user.click(within(list).getByRole("button", { name: 'Allow "Old" again' }));
+    await waitFor(() => expect(within(list).queryByTitle("Old")).toBeNull());
+
+    rejectedGetReleases.forEach((resolve) => resolve());
+    // 取り外しのあとの取り直しが却下した Beta を並べ、古い応答の Old は戻らない。
+    expect(
+      await within(list).findByRole("button", { name: 'Allow "Beta" again' }),
+    ).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(within(list).queryByTitle("Old")).toBeNull();
+  });
+
+  it("一覧を持ったあとの取り直しに失敗しても、古い並びを残さず理由と再試行を出す", async () => {
+    const user = userEvent.setup();
+    server.rejectedNames = ["Old"];
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(screen.getByRole("button", { name: /Rejected names/ }));
+    expect(
+      await screen.findByRole("button", { name: 'Allow "Old" again' }),
+    ).toBeDefined();
+
+    server.failRejectedGets = true;
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "More actions" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Reject…" }));
+    await user.click(await screen.findByRole("button", { name: "Reject" }));
+
+    expect(await screen.findByText("Couldn't load the rejected names")).toBeDefined();
+    expect(screen.queryByRole("button", { name: 'Allow "Old" again' })).toBeNull();
+
+    server.failRejectedGets = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(
+      await screen.findByRole("button", { name: 'Allow "Beta" again' }),
+    ).toBeDefined();
+  });
+
+  it("「Tentative only」中に作成を取り消すと、「新しいタグ」へフォーカスが戻る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(tentativeOnlyButton());
+
+    const newTag = screen.getByRole("button", { name: "New tag" });
+    await user.click(newTag);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(document.activeElement).toBe(newTag));
+  });
+
+  it("確定の送信中に「Tentative only」を外すと、確定した行はそのまま出て、その行の「改名」へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(tentativeOnlyButton());
+
+    holdConfirms = true;
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Confirm" }));
+    await user.click(tentativeOnlyButton());
+    expect(tentativeOnlyButton().getAttribute("aria-pressed")).toBe("false");
+
+    confirmReleases.forEach((resolve) => resolve());
+    expect(await screen.findByText('Confirmed "Alpha"')).toBeDefined();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Alpha")).getByRole("button", { name: "Rename" }),
+      ),
+    );
+  });
+
+  it("「Tentative only」中に並行した確定が逆の順で終わっても、残った次の行へフォーカスが移る", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Alpha");
+    await user.click(tentativeOnlyButton());
+
+    holdConfirms = true;
+    await user.click(within(rowOf("Alpha")).getByRole("button", { name: "Confirm" }));
+    await user.click(within(rowOf("Beta")).getByRole("button", { name: "Confirm" }));
+    expect(confirmReleases).toHaveLength(2);
+
+    // 後から押した Beta が先に終わり、そのあとで Alpha が終わる。
+    const [releaseAlpha, releaseBeta] = confirmReleases;
+    releaseBeta!();
+    await waitFor(() => expect(screen.queryByTitle("Beta")).toBeNull());
+    releaseAlpha!();
+    await waitFor(() => expect(screen.queryByTitle("Alpha")).toBeNull());
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        within(rowOf("Cat")).getByRole("button", { name: "Rename" }),
+      ),
+    );
   });
 
   it("「新しいタグ」で却下した名前を作ると、却下した名前の一覧から消える（受け入れ条件14）", async () => {

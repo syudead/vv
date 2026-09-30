@@ -1,7 +1,6 @@
 import {
   Ban,
   Check,
-  CircleDashed,
   Ellipsis,
   LoaderCircle,
   Merge,
@@ -18,6 +17,7 @@ import { cn } from "../lib/cn";
 import { isComposingKeyEvent } from "../ui/Combobox";
 import IconButton from "../ui/IconButton";
 import { MenuContent, MenuItem, MenuRoot, MenuSeparator, MenuTrigger } from "../ui/Menu";
+import TentativeMark from "../ui/TentativeMark";
 import Tooltip from "../ui/Tooltip";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
 
@@ -164,8 +164,8 @@ export default function TagRow({
               </Link>
               {tag.tentative && (
                 <Tooltip content={t.tags.tentative}>
-                  <span className="inline-flex shrink-0 text-fg-subtle">
-                    <CircleDashed className="size-3.5" aria-hidden="true" />
+                  <span className="inline-flex shrink-0">
+                    <TentativeMark size="row" />
                     <span className="sr-only">{t.tags.tentative}</span>
                   </span>
                 </Tooltip>
