@@ -61,16 +61,19 @@ Handle each PR in review rounds, at most three: the first review and up to two
 re-reviews. The round is read from GitHub, not remembered: it is the number of
 the PR's reviews whose body contains `<!-- pr-review:`.
 
-1. Request the automated review of the current head by adding the label
-   `ai-review`. A routine outside the repository answers it: it swaps the
-   label for `ai-reviewing`, posts one review of that head whose body ends
-   with `<!-- pr-review:<head SHA> -->`, and swaps the label for
-   `ai-reviewed`. Never add `ai-reviewing` or `ai-reviewed` yourself.
-2. Wait for every check on the head to complete and for the PR to carry
-   `ai-reviewed`. A review by anyone else does not end the wait. Stop and
-   report when `ai-reviewed` arrives without a review marked for this head
+1. Request the automated review of the current head, only when it has no
+   review marked `<!-- pr-review:<head SHA> -->` and the PR carries neither
+   `ai-review` nor `ai-reviewing`: remove a leftover `ai-reviewed`, then add
+   `ai-review`. Every wake re-enters this step, so the condition is what keeps
+   one head from being requested twice. A routine outside the repository
+   answers the request: it swaps the label for `ai-reviewing`, posts one
+   review of that head whose body ends with that marker, and swaps the label
+   for `ai-reviewed`. Never add `ai-reviewing` or `ai-reviewed` yourself.
+2. Wait for every check on the head to complete and for a review marked for
+   this head. A review by anyone else does not end the wait. Stop and report
+   when the PR carries `ai-reviewed` without a review marked for this head
    (the routine could not review it), when 45 minutes pass after the request
-   without `ai-reviewed`, or when a check is still pending an hour after the
+   without that review, or when a check is still pending an hour after the
    head was pushed.
 3. Start a fresh review fixer with the feature-PR brief. It handles every
    failing check, every unresolved review thread, and a conflict with the
