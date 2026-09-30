@@ -489,7 +489,7 @@ R-9). The external API's handlers live on a separate type (`externalServer`,
 ([docs/how-to/external-api.md](docs/how-to/external-api.md)).
 `/mcp` is an MCP server (Streamable HTTP, stateless, JSON responses; `GET` and `DELETE`
 are `405`) built with the official Go SDK in `internal/httpapi/mcp.go`, behind the same
-Bearer boundary. Its six tools map one to one to the external API operations: each tool
+Bearer boundary. Its eight tools map one to one to the external API operations: each tool
 builds that operation's query or body, calls the same `externalServer` handler, and
 returns the response body as structured content, or `isError` with the external API's
 error body for a non-2xx status. A tool call is cancelled with its HTTP request, so

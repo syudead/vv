@@ -30,6 +30,8 @@ type fakeThumbnailPicker struct {
 	mu sync.Mutex
 	// fail があれば生成に失敗したとして何も記録しない。
 	fail error
+	// failVideos の動画は生成に失敗したとして何も記録しない（一括操作の途中の失敗）。
+	failVideos map[int64]bool
 	// paths は読む元として渡された所在である。
 	paths []string
 }
@@ -49,6 +51,9 @@ func (p *fakeThumbnailPicker) SetThumbnailPosition(
 	p.mu.Lock()
 	p.paths = append(p.paths, path)
 	fail := p.fail
+	if p.failVideos[videoID] {
+		fail = errors.New("ffmpeg: no frame")
+	}
 	p.mu.Unlock()
 	if fail != nil {
 		return domain.Video{}, errors.Join(domain.ErrThumbnailFrameUnavailable, fail)
@@ -60,6 +65,15 @@ func (p *fakeThumbnailPicker) setFail(err error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.fail = err
+}
+
+func (p *fakeThumbnailPicker) failVideo(videoID int64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.failVideos == nil {
+		p.failVideos = map[int64]bool{}
+	}
+	p.failVideos[videoID] = true
 }
 
 func (p *fakeThumbnailPicker) calledPaths() []string {

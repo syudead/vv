@@ -118,10 +118,14 @@ func toExternalVideo(item domain.ExternalVideo) extgen.ExternalVideo {
 		Id:         item.Video.ID,
 		ContentKey: item.Video.ContentKey,
 		Title:      item.Video.Title,
-		DurationMs: item.Video.DurationMs,
-		AddedAt:    item.Video.AddedAt.UTC(),
-		Locations:  make([]extgen.ExternalVideoLocation, 0, len(item.Locations)),
-		Tags:       toExternalVideoTags(item.Tags),
+		FileTitle:  item.Video.FileTitle,
+		// 表示名は空を未設定とする（domain.Video.DisplayName）。
+		DisplayName:         optionalString(item.Video.DisplayName),
+		ThumbnailPositionMs: item.Video.ThumbnailPositionMs,
+		DurationMs:          item.Video.DurationMs,
+		AddedAt:             item.Video.AddedAt.UTC(),
+		Locations:           make([]extgen.ExternalVideoLocation, 0, len(item.Locations)),
+		Tags:                toExternalVideoTags(item.Tags),
 	}
 	for _, path := range item.Locations {
 		out.Locations = append(out.Locations, extgen.ExternalVideoLocation{Path: path, FileName: filepath.Base(path)})

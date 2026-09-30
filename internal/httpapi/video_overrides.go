@@ -27,6 +27,11 @@ type OverrideStore interface {
 	// 動画を返す。規則に合わなければ *domain.InvalidDisplayNameError、動画が無いか
 	// 登録フォルダの下に所在が無ければ domain.ErrNotFound を返す。
 	SetDisplayName(ctx context.Context, videoID int64, name string) (domain.Video, error)
+	// SetDisplayNames は外部連携の一括操作で、changes の各動画の表示名を 1 つの取引で
+	// 書き換え、反映後の動画を changes の順に返す。規則に合わなければ
+	// *domain.DisplayNameAtError、動画を引けなければ *domain.VideoRefNotFoundError で、
+	// どちらも何も書かない。
+	SetDisplayNames(ctx context.Context, changes []domain.DisplayNameChange) ([]domain.Video, error)
 }
 
 // SetVideoDisplayName は動画の表示名を設定・解除する（PUT /api/videos/{id}/display-name）。
