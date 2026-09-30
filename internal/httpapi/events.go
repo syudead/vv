@@ -138,6 +138,12 @@ func (e *Events) Handle(event domain.Event) {
 		// 表示名・代表サムネイルの位置の変化も、一覧と動画ページに読み直させる
 		// （specs/029-video-overrides/research.md R-7）。
 		e.VideoChanged(event.VideoID)
+	case domain.VideoBundleChanged:
+		// 束ねの変化は、影響した各動画の video の知らせにする。一覧・動画ページが集まりの
+		// 値と代表を読み直す（specs/030-video-versions/research.md R-9）。
+		for _, id := range event.VideoIDs {
+			e.VideoChanged(id)
+		}
 	}
 }
 

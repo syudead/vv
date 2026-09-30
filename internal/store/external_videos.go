@@ -161,14 +161,15 @@ func loadExternalVideos(ctx context.Context, tx *sql.Tx, ids []int64) ([]domain.
 		return nil, err
 	}
 
-	contentKeys := make([]string, 0, len(byID))
+	userKeys := make([]string, 0, len(byID))
 	for _, video := range byID {
-		// 内容を読めていない動画（空の content_key）はタグを持たない。
-		if video.ContentKey != "" {
-			contentKeys = append(contentKeys, video.ContentKey)
+		// 内容を読めていない動画（空の content_key）はタグを持たない。タグは利用者データの鍵
+		// （Video.UserKey、specs/030-video-versions/research.md R-10）で引く。
+		if video.UserKey != "" {
+			userKeys = append(userKeys, video.UserKey)
 		}
 	}
-	tags, err := tagsByContentKeys(ctx, tx, contentKeys)
+	tags, err := tagsByContentKeys(ctx, tx, userKeys)
 	if err != nil {
 		return nil, err
 	}
@@ -179,8 +180,8 @@ func loadExternalVideos(ctx context.Context, tx *sql.Tx, ids []int64) ([]domain.
 			continue
 		}
 		item := domain.ExternalVideo{Video: video, Locations: locations[id], Tags: []domain.VideoTag{}}
-		if video.ContentKey != "" && tags[video.ContentKey] != nil {
-			item.Tags = tags[video.ContentKey]
+		if video.UserKey != "" && tags[video.UserKey] != nil {
+			item.Tags = tags[video.UserKey]
 		}
 		out = append(out, item)
 	}

@@ -125,7 +125,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 	payload := gen.VideoPage{Items: make([]gen.Video, 0, len(page.Items)), Total: page.Total}
 	for _, view := range s.presentVideos(r.Context(), page.Items) {
 		video := view.Video
-		item := withTags(withProgress(toAPIVideo(view), progress, video.ContentKey), tags, video.ContentKey)
+		item := withTags(withProgress(toAPIVideo(view), progress, video.UserKey), tags, video.UserKey)
 		if folder, ok := domain.LocateVideoFolder(roots, video.Path); ok {
 			item.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
 		}
@@ -288,7 +288,7 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video domain.Video) {
 	progress := s.progressFor(r.Context(), []domain.Video{video})
 	tags := s.tagsFor(r.Context(), []domain.Video{video})
-	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.ContentKey), tags, video.ContentKey)
+	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.UserKey), tags, video.UserKey)
 
 	// 所在とシーク用プレビューの状態は、動画1件の応答にだけ載せる。一覧に載せると、
 	// 画面が使わない絶対パスを1ページ 60 件ぶん毎回送ることになる。所在は
@@ -359,8 +359,8 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 
 	keys := make([]string, 0, len(videos))
 	for _, video := range videos {
-		if video.ContentKey != "" {
-			keys = append(keys, video.ContentKey)
+		if video.UserKey != "" {
+			keys = append(keys, video.UserKey)
 		}
 	}
 
@@ -386,8 +386,8 @@ func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string]
 
 	keys := make([]string, 0, len(videos))
 	for _, video := range videos {
-		if video.ContentKey != "" {
-			keys = append(keys, video.ContentKey)
+		if video.UserKey != "" {
+			keys = append(keys, video.UserKey)
 		}
 	}
 

@@ -95,7 +95,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	}
 	// 内容の識別子が空の動画は再生位置を持たない（filteredFrom と同じ扱い）。
 	progressJoin := func(videoAlias string) string {
-		return ` left join playback_progress p on p.content_key = ` + videoAlias + `.content_key and ` +
+		return ` left join playback_progress p on p.content_key = ` + userKeyExpr(videoAlias) + ` and ` +
 			videoAlias + `.content_key <> ''`
 	}
 	cte += `,
@@ -401,7 +401,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	progressJoin := ""
 	if audience.IsOwner() {
 		progressColumns = `p.position_ms, p.duration_ms, p.completed, p.updated_at`
-		progressJoin = ` left join playback_progress p on p.content_key = videos.content_key and videos.content_key <> ''`
+		progressJoin = ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 	}
 	rows, err := q.QueryContext(ctx, `select `+videoColumns(audience)+`, g.id, g.path, g.name, `+progressColumns+`
 		from folder_groups g join folder_group_members m on m.group_id = g.id

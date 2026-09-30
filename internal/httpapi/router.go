@@ -91,7 +91,7 @@ type Tags interface {
 	AttachTagByName(ctx context.Context, videoIDs []int64, name string) (domain.TagRef, int, error)
 	DetachTag(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error)
 	Summary(ctx context.Context, videoIDs []int64) (domain.TagSummary, error)
-	// TagsByContentKeys は content_key の集合からそれぞれのタグを引く。
+	// TagsByContentKeys は利用者データの鍵（Video.UserKey）の集合からそれぞれのタグを引く。
 	// progressFor と同じ位置（httpapi）から、一覧・詳細・関連動画・読み取りの
 	// やり直しの応答へ Video.tags を載せるために使う。
 	TagsByContentKeys(ctx context.Context, contentKeys []string) (map[string][]domain.VideoTag, error)

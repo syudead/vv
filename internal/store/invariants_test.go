@@ -31,6 +31,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertRepresentativeInvariant(t, db)
 		assertTagCanonicalNameInvariant(t, db)
 		assertVideoOverrideInvariant(t, db)
+		assertVideoBundleInvariant(t, db)
 	})
 	return db
 }
@@ -107,6 +108,40 @@ func assertVideoOverrideInvariant(t *testing.T, db *DB) {
 		}
 		if count != 0 {
 			t.Errorf("video_overrides に%sが %d 行ある", name, count)
+		}
+	}
+}
+
+// assertVideoBundleInvariant は集まりの不変条件を確かめる（specs/030-video-versions/
+// data-model.md §1）。代表はその集まりのメンバーで、メンバーが 2 本未満の集まりは無く
+// （書く側が解く）、user_key は bundle: で始まり、メンバーの content_key は空でない。
+func assertVideoBundleInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'video_bundles'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("集まりの不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+
+	for name, query := range map[string]string{
+		"代表がメンバーでない集まり": `select count(*) from video_bundles b where not exists (
+			select 1 from video_bundle_members m where m.bundle_id = b.id and m.content_key = b.representative_key)`,
+		"メンバーが 2 本未満の集まり": `select count(*) from video_bundles b
+			where (select count(*) from video_bundle_members m where m.bundle_id = b.id) < 2`,
+		"bundle: で始まらない user_key": `select count(*) from video_bundles where user_key not like 'bundle:%'`,
+		"空の content_key のメンバー":    `select count(*) from video_bundle_members where content_key = ''`,
+	} {
+		var count int
+		if err := db.sql.QueryRow(query).Scan(&count); err != nil {
+			t.Fatalf("集まりの不変条件を検査できない: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("%sが %d 件ある", name, count)
 		}
 	}
 }
