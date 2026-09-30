@@ -277,8 +277,8 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 // 一時置き場から置き換えるので、前の画像はそのまま残る。
 //
 // 走査は生成の錠を取らないので、要求が所在を決めたあとに、その所在が別の内容へ付け替わる
-// ことがある。生成の直前と記録の直前に、所在が今も動画の内容のものかを確かめ直し、違えば
-// 別の動画のコマを公開せずに domain.ErrMediaFileUnavailable を返す。公開のあとで記録
+// ことがある。生成の直前、生成のあとで公開する前、記録の直前に、所在が今も動画の内容のものかを
+// 確かめ直し、違えば別の動画のコマを公開・記録せずに domain.ErrMediaFileUnavailable を返す。公開のあとで記録
 // できなかったときは（確かめ直しの失敗・取引の失敗・要求の取り消し）、前の画像へ戻し、
 // 記録の位置と版に画像を揃える。
 func (i *Ingest) SetThumbnailPosition(
@@ -307,23 +307,33 @@ func (i *Ingest) SetThumbnailPosition(
 		if err != nil {
 			return false, err
 		}
-		var generateErr error
+		var generateErr, sourceErr error
 		if err := i.files.PublishThumbnail(video.ContentKey, func(output string) error {
 			if positionMs != nil {
 				generateErr = i.generator.ThumbnailAt(ctx, path, *positionMs, output)
 			} else {
 				_, generateErr = i.generator.Thumbnail(ctx, path, durationOf(video), output)
 			}
-			return generateErr
+			if generateErr != nil {
+				return generateErr
+			}
+			// 生成の間に付け替わっていたら、別の動画のコマを置き場へ移さない。公開の改名の
+			// 前に確かめるので、並ぶ要求にもその画像は見えない。
+			sourceErr = i.checkThumbnailSource(ctx, videoID, video.ContentKey, locationPath)
+			return sourceErr
 		}); err != nil {
 			discard()
 			if generateErr != nil {
 				return false, errors.Join(domain.ErrThumbnailFrameUnavailable, generateErr)
 			}
+			if sourceErr != nil {
+				return false, sourceErr
+			}
 			return false, err
 		}
-		// 公開した画像は、記録できたときだけ残す。記録できなければ前の画像へ戻し、生成中に
-		// 動画が消えていたら、戻した画像も後始末で残さない。
+		// 公開した画像は、記録できたときだけ残す。公開から記録までの間に付け替わったときや
+		// 記録できなければ前の画像へ戻し、生成中に動画が消えていたら、戻した画像も後始末で
+		// 残さない。
 		if err := i.checkThumbnailSource(ctx, videoID, video.ContentKey, locationPath); err != nil {
 			return true, errors.Join(err, restore())
 		}

@@ -287,7 +287,8 @@ func TestSetThumbnailPositionRestoresPreviousImageWhenRecordingFails(t *testing.
 
 // 所在を決めたあとに走査がそれを別の内容へ付け替えたら、別の動画のコマをこの内容の画像として
 // 公開・記録せずに ErrMediaFileUnavailable を返す。生成の直前に付け替わっていれば生成しない。
-// 生成の間に付け替わっていれば、記録せずに前の画像へ戻す。
+// 生成の間に付け替わっていれば、生成した画像を公開しない（並ぶ要求にも見せない）。公開と記録の
+// 間に付け替わっていれば、記録せずに前の画像へ戻す。
 func TestSetThumbnailPositionRevalidatesSource(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
@@ -297,6 +298,8 @@ func TestSetThumbnailPositionRevalidatesSource(t *testing.T) {
 	}{
 		{name: "生成の前", staleAt: 1, wantCalls: nil, wantStashes: nil},
 		{name: "生成の間", staleAt: 2,
+			wantCalls: []string{"thumbnail-at"}, wantStashes: []string{"stash", "discard"}},
+		{name: "公開と記録の間", staleAt: 3,
 			wantCalls: []string{"thumbnail-at", "publish-thumbnail"}, wantStashes: []string{"stash", "restore"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
