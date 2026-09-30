@@ -405,9 +405,7 @@ func withTags(video gen.Video, tags map[string][]domain.VideoTag, contentKey str
 	refs := tags[contentKey]
 	video.Tags = make([]gen.VideoTag, 0, len(refs))
 	for _, ref := range refs {
-		video.Tags = append(video.Tags, gen.VideoTag{
-			Id: ref.ID, Name: ref.Name, Manual: ref.Manual, FromFolder: ref.FromFolder,
-		})
+		video.Tags = append(video.Tags, toAPIVideoTag(ref))
 	}
 	return video
 }

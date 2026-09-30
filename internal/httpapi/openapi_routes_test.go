@@ -357,3 +357,29 @@ func TestClassifyBearerPaths(t *testing.T) {
 		}
 	}
 }
+
+// /api/tags/rejected-names は /api/tags/{id} と字面の段で区別される。GET と DELETE の
+// この経路が {id} の操作（タグの削除など）に取られないことを確かめる
+// （specs/031-tentative-tags/contracts/screen-api.md §3）。
+func TestRejectedTagNamesRouteIsNotTagID(t *testing.T) {
+	fake := &fakeTags{rejectedNames: []string{"Blocked"}}
+	handler := newTestServer(t, Options{Tags: fake})
+
+	rec := do(t, handler, http.MethodGet, "/api/tags/rejected-names")
+	if rec.Code != http.StatusOK || fake.operation != "list-rejected" {
+		t.Fatalf("GET: status = %d operation = %q: %s", rec.Code, fake.operation, rec.Body)
+	}
+
+	fake.operation = ""
+	rec = do(t, handler, http.MethodDelete, "/api/tags/rejected-names?name=Blocked")
+	if rec.Code != http.StatusNoContent || fake.operation != "forget-rejected" || fake.lastName != "Blocked" {
+		t.Fatalf("DELETE: status = %d operation = %q name = %q: %s", rec.Code, fake.operation, fake.lastName, rec.Body)
+	}
+
+	// name が無ければ 400 で、タグの削除にも却下した名前の操作にも届かない。
+	fake.operation = ""
+	rec = do(t, handler, http.MethodDelete, "/api/tags/rejected-names")
+	if rec.Code != http.StatusBadRequest || fake.operation != "" {
+		t.Fatalf("DELETE without name: status = %d operation = %q: %s", rec.Code, fake.operation, rec.Body)
+	}
+}

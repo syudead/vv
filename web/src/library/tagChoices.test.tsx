@@ -5,11 +5,11 @@ import { t } from "../i18n";
 import { buildAddOptions, buildRemoveOptions, removableSummary } from "./tagChoices";
 
 function tag(id: number, name: string, synonyms: string[] = [], videoCount = 1): Tag {
-  return { id, name, synonyms, videoCount };
+  return { id, name, synonyms, videoCount, tentative: false };
 }
 
 function summaryItem(id: number, name: string, manualCount: number, count = manualCount) {
-  return { tag: { id, name }, count, manualCount };
+  return { tag: { id, name, tentative: false }, count, manualCount };
 }
 
 describe("buildAddOptions", () => {
