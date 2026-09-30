@@ -198,11 +198,13 @@ const (
 	ErrorReasonNameIsSynonym                 ErrorReason = "name_is_synonym"
 	ErrorReasonNameIsTag                     ErrorReason = "name_is_tag"
 	ErrorReasonNoScan                        ErrorReason = "no_scan"
+	ErrorReasonNotBundled                    ErrorReason = "not_bundled"
 	ErrorReasonNotFolderGroup                ErrorReason = "not_folder_group"
 	ErrorReasonOpenNotLocal                  ErrorReason = "open_not_local"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
 	ErrorReasonProbeInfoMissing              ErrorReason = "probe_info_missing"
 	ErrorReasonRelativeDirectoryPath         ErrorReason = "relative_directory_path"
+	ErrorReasonRepresentativeNotSelected     ErrorReason = "representative_not_selected"
 	ErrorReasonRootGroupNotTaggable          ErrorReason = "root_group_not_taggable"
 	ErrorReasonSearchTooLong                 ErrorReason = "search_too_long"
 	ErrorReasonSeekPreviewGenerating         ErrorReason = "seek_preview_generating"
@@ -212,6 +214,7 @@ const (
 	ErrorReasonTagNameTooLong                ErrorReason = "tag_name_too_long"
 	ErrorReasonThumbnailFrameUnavailable     ErrorReason = "thumbnail_frame_unavailable"
 	ErrorReasonThumbnailPositionOutOfRange   ErrorReason = "thumbnail_position_out_of_range"
+	ErrorReasonTooFewVideos                  ErrorReason = "too_few_videos"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
 	ErrorReasonTooManyVideos                 ErrorReason = "too_many_videos"
 	ErrorReasonTranscodeUnavailable          ErrorReason = "transcode_unavailable"
@@ -262,6 +265,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonNoScan:
 		return true
+	case ErrorReasonNotBundled:
+		return true
 	case ErrorReasonNotFolderGroup:
 		return true
 	case ErrorReasonOpenNotLocal:
@@ -271,6 +276,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonProbeInfoMissing:
 		return true
 	case ErrorReasonRelativeDirectoryPath:
+		return true
+	case ErrorReasonRepresentativeNotSelected:
 		return true
 	case ErrorReasonRootGroupNotTaggable:
 		return true
@@ -289,6 +296,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonThumbnailFrameUnavailable:
 		return true
 	case ErrorReasonThumbnailPositionOutOfRange:
+		return true
+	case ErrorReasonTooFewVideos:
 		return true
 	case ErrorReasonTooManyTagFilters:
 		return true
@@ -1642,6 +1651,11 @@ type Video struct {
 	// UnplayableReason playable = false の理由。判定前は省略される
 	UnplayableReason *VideoUnplayableReason `json:"unplayableReason,omitempty"`
 
+	// Versions 動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
+	// 集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
+	// （specs/030-video-versions/contracts/screen-api.md §0）
+	Versions *VideoVersionsRef `json:"versions,omitempty"`
+
 	// VideoCodec Examples: h264, vp9
 	VideoCodec *string `json:"videoCodec,omitempty"`
 
@@ -1667,6 +1681,15 @@ type VideoThumbnailState string
 
 // VideoUnplayableReason playable = false の理由。判定前は省略される
 type VideoUnplayableReason string
+
+// VideoBundleRequest defines model for VideoBundleRequest.
+type VideoBundleRequest struct {
+	// RepresentativeId 代表にする動画。videoIds の 1 つ
+	RepresentativeId int64 `json:"representativeId"`
+
+	// VideoIds 束ねる動画。重複は 1 つと数え、2 本以上
+	VideoIds []int64 `json:"videoIds"`
+}
 
 // VideoChanged defines model for VideoChanged.
 type VideoChanged struct {
@@ -1819,6 +1842,27 @@ type VideoTagsSummaryItem struct {
 // VideoTagsSummaryRequest defines model for VideoTagsSummaryRequest.
 type VideoTagsSummaryRequest struct {
 	VideoIds []int64 `json:"videoIds"`
+}
+
+// VideoVersions 集まりの全バージョン（specs/030-video-versions/contracts/screen-api.md §1）
+type VideoVersions struct {
+	// Items 代表が先頭で、続きは題名の自然順（同じなら id）。各項目は GET /api/videos/{id} と
+	// 同じ形
+	Items []Video `json:"items"`
+
+	// RepresentativeId 実効の代表の動画の id。集まりに属さなければその動画の id
+	RepresentativeId int64 `json:"representativeId"`
+}
+
+// VideoVersionsRef 動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
+// 集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
+// （specs/030-video-versions/contracts/screen-api.md §0）
+type VideoVersionsRef struct {
+	// Count 見る人に見せてよい所在を持つバージョンの本数
+	Count int `json:"count"`
+
+	// RepresentativeId 実効の代表（一覧に出ている 1 件）の動画の id
+	RepresentativeId int64 `json:"representativeId"`
 }
 
 // VideoVisibilityRequest defines model for VideoVisibilityRequest.
@@ -2139,6 +2183,9 @@ type MergeTagJSONRequestBody = MergeTagRequest
 // AddTagSynonymJSONRequestBody defines body for AddTagSynonym for application/json ContentType.
 type AddTagSynonymJSONRequestBody = AddTagSynonymRequest
 
+// BundleVideosJSONRequestBody defines body for BundleVideos for application/json ContentType.
+type BundleVideosJSONRequestBody = VideoBundleRequest
+
 // UpdateVideoTagsJSONRequestBody defines body for UpdateVideoTags for application/json ContentType.
 type UpdateVideoTagsJSONRequestBody = VideoTagsRequest
 
@@ -2261,6 +2308,9 @@ type ServerInterface interface {
 	// AddTagSynonym 名前をidのタグのシノニムにする
 	// (POST /api/tags/{id}/synonyms)
 	AddTagSynonym(w http.ResponseWriter, r *http.Request, id TagId)
+	// BundleVideos 動画を同じ動画の別バージョンとして束ねる
+	// (POST /api/video-bundles)
+	BundleVideos(w http.ResponseWriter, r *http.Request)
 	// UpdateVideoTags 動画へタグを付ける・外す
 	// (POST /api/video-tags)
 	UpdateVideoTags(w http.ResponseWriter, r *http.Request)
@@ -2279,6 +2329,9 @@ type ServerInterface interface {
 	// SetVideoDisplayName 動画の表示名を設定・解除する
 	// (PUT /api/videos/{id}/display-name)
 	SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id VideoId)
+	// MakeRepresentativeVersion 動画をその集まりの代表にする
+	// (POST /api/videos/{id}/make-representative)
+	MakeRepresentativeVersion(w http.ResponseWriter, r *http.Request, id VideoId)
 	// OpenVideoFile 代表の所在をサーバーの PC の既定アプリで開く
 	// (POST /api/videos/{id}/open)
 	OpenVideoFile(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -2321,6 +2374,12 @@ type ServerInterface interface {
 	// TranscodeVideo 動画をMP4へライブ変換して配信する
 	// (GET /api/videos/{id}/transcode.mp4)
 	TranscodeVideo(w http.ResponseWriter, r *http.Request, id VideoId, params TranscodeVideoParams)
+	// UnbundleVideo 動画をその集まりから外す
+	// (POST /api/videos/{id}/unbundle)
+	UnbundleVideo(w http.ResponseWriter, r *http.Request, id VideoId)
+	// ListVideoVersions 動画の集まりの全バージョンを返す
+	// (GET /api/videos/{id}/versions)
+	ListVideoVersions(w http.ResponseWriter, r *http.Request, id VideoId)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -3418,6 +3477,20 @@ func (siw *ServerInterfaceWrapper) AddTagSynonym(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r)
 }
 
+// BundleVideos operation middleware
+func (siw *ServerInterfaceWrapper) BundleVideos(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.BundleVideos(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UpdateVideoTags operation middleware
 func (siw *ServerInterfaceWrapper) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 
@@ -3627,6 +3700,32 @@ func (siw *ServerInterfaceWrapper) SetVideoDisplayName(w http.ResponseWriter, r 
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetVideoDisplayName(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MakeRepresentativeVersion operation middleware
+func (siw *ServerInterfaceWrapper) MakeRepresentativeVersion(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MakeRepresentativeVersion(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4156,6 +4255,58 @@ func (siw *ServerInterfaceWrapper) TranscodeVideo(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// UnbundleVideo operation middleware
+func (siw *ServerInterfaceWrapper) UnbundleVideo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UnbundleVideo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVideoVersions operation middleware
+func (siw *ServerInterfaceWrapper) ListVideoVersions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVideoVersions(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -4300,6 +4451,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/display-name", wrapper.SetVideoDisplayName)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/versions", wrapper.ListVideoVersions)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/make-representative", wrapper.MakeRepresentativeVersion)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/unbundle", wrapper.UnbundleVideo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/scans", wrapper.StartScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/media-folders", wrapper.ListMediaFolders)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/media-folders", wrapper.CreateMediaFolder)
@@ -4320,6 +4474,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)

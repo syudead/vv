@@ -179,6 +179,9 @@ const errorReasons = {
   duration_unknown: "The video's length isn't known yet.",
   thumbnail_position_out_of_range: "The position is past the end of the video.",
   thumbnail_frame_unavailable: "No image could be made from this frame.",
+  too_few_videos: "Select at least two videos.",
+  representative_not_selected: "Pick which video to show in the library.",
+  not_bundled: "This video isn't bundled with others.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

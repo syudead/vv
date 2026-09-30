@@ -25,7 +25,8 @@ embedded goose migrations at startup, then starts the job worker. It serves `GET
 the video library API (`/api/videos*`, `/api/scans*`; a single video's response also
 carries its representative location, the folder that holds it (with the registered folder's
 display name, for the playback page's breadcrumb), seek-preview state and, for a folder-group
-member, the group and its position in it, and
+member, the group and its position in it, and, for a member of a bundle of versions, the
+number of versions the viewer may see and the effective representative (`versions`), and
 `/api/videos/{id}/related`, `/probe` and `/open` return related videos (for a group member,
 also every member in group order, with next/previous inside the group), retry a failed
 metadata read, and open the file in the server PC's default app), media-folder settings and
@@ -36,7 +37,7 @@ startup check result), the read-only folder browsing API
 rename, delete, merge and synonym registration/removal), the video-tags API
 (`/api/video-tags` to attach/detach a tag on a set of videos and
 `/api/video-tags/summary` to summarize which tags apply to a selection),
-the library items API (`/api/library*`, below), byte-range streaming,
+the library items API (`/api/library*`, below), the versions API (below), byte-range streaming,
 thumbnails, playback progress, and the SPA embedded from `web/dist`.
 
 The per-video lists, `GET /api/videos` (the folder view's root search) and a folder
@@ -97,6 +98,16 @@ no folder group. `VersionStore` rebuilds the folder index in the transaction
 that bundles, changes the representative or unbundles. `GET /api/videos/{id}`,
 locations, streaming and subtitles still serve every version
 ([specs/030-video-versions/data-model.md](specs/030-video-versions/data-model.md) §4).
+
+The versions API addresses a bundle by any of its videos' ids and never exposes the
+bundle's own id. `GET /api/videos/{id}/versions` (owner and guest) returns the versions the
+viewer may see, the effective representative first and the rest in natural title order,
+each shaped like `GET /api/videos/{id}`; a video outside any bundle returns itself alone.
+The owner-only `POST /api/video-bundles` (`videoIds`, `representativeId`, the same
+20,000-id cap as `/api/video-tags`), `POST /api/videos/{id}/make-representative` and
+`POST /api/videos/{id}/unbundle` call `VersionStore` directly and map its errors to the
+`too_few_videos`, `representative_not_selected` and `not_bundled` reasons
+([specs/030-video-versions/contracts/screen-api.md](specs/030-video-versions/contracts/screen-api.md) §0–§4).
 
 `internal/scanner` walks a snapshot of the media folders stored in SQLite when a user starts
 a scan. It identifies files by content
