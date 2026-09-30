@@ -158,10 +158,24 @@
 - 押すと、一覧を `tentative` が真のタグだけにする。検索と重ねられる（両方で絞る）。件数の行は
   検索と同じ「3 of 12 tags」の形（分母は全タグ）。絞り込みはこの画面の状態で、URL・
   `localStorage` には載せない（Why this shape）。画面を離れると解除される。
-- タグが 1 つも無いとき（「タグはまだありません」の状態）は検索の入力と同じく `disabled`。
-  読み込み中・読み込み失敗でも `disabled`。
+- 押していない間にタグが 1 つも無いとき（「タグはまだありません」の状態）は検索の入力と同じく
+  `disabled`。読み込み中・読み込み失敗でも `disabled`。**押している間は、タグが 0 になっても
+  `disabled` にしない**（最後のタグを却下した・取り直したら無かったとき、フォーカスの行き先で
+  あり、絞り込みを外す唯一の手でもあるため）。そのとき一覧は下の「States」の「No tentative
+  tags」の空の状態を出す。押して外した結果タグが 0 なら、ボタンは `disabled` になるので
+  フォーカスを「新しいタグ」へ移す（「Show all tags」で外したときも同じ）。
 - 改名中の行は、検索と同じく、絞り込みで一致しなくなっても一覧から外さない（改名すると
   確定になり、絞り込みの外へ出る。改名の応答を受けて閉じたときに外れる）。
+- **絞り込みから外れた行のフォーカス**: 「Tentative only」を押している間に、確定・改名・
+  シノニムの追加・統合で行が確定になって一覧から外れたとき、その操作の今のフォーカス先
+  （同じ行の「改名」「シノニム」、統合先の名前）はもう無い。そのときは削除と同じ規則で、
+  外れた行の位置の次の行の「改名」、無ければ前の行の「改名」、1 つも無ければ「Tentative
+  only」へ移す（「新しいタグ」ではなく絞り込みのボタンへ移すのは、その次の操作が
+  「絞り込みを外す」だからである）。却下・`tag_not_found` の取り直しで行が消えたときも、
+  押している間は同じ規則で最後の行き先を「Tentative only」にする。行き先の行が一覧に
+  残っているときは、各操作の今のフォーカス先のままである。実装の試験は、押している間の
+  仮のタグどうしの統合（フォーカスが「Tentative only」か隣の行へ行き「新しいタグ」へ落ちない）と、
+  唯一のタグの却下（「Tentative only」が押せるまま、そこにフォーカスがある）を含める。
 
 ### Row
 
@@ -192,12 +206,16 @@
 - 押すとすぐ `POST /api/tags/{id}/confirm` を送る。確認の窓は無い（取り消しの費用が無い。
   仮に戻す操作は要件に無いが、確定は「タグが使える」状態を変えないので取り消す理由も無い）。
 - 送信中はそのボタンのアイコンを `LoaderCircle`（`animate-spin motion-reduce:animate-none`）にし
-  `aria-busy`、その行の「改名」「その他の操作」を `disabled`（改名の送信中の `blockStart` と
-  同じ扱い。ほかの行はそのまま）。
+  `aria-busy` と `aria-disabled="true"` を付け、**次の押下（二度押し・キーの連打）を無視して
+  要求を 1 回だけにする**。`disabled` にしないのは、押した本人のボタンにフォーカスがあり、
+  `disabled` にするとフォーカスが `body` へ落ちるためである（失敗したときはこのボタンに
+  フォーカスが残ったまま戻る）。その行の「改名」「その他の操作」は `disabled`（改名の送信中の
+  `blockStart` と同じ扱い。ほかの行はそのまま）。
 - `200` を受けたら、応答の `Tag` で行を差し替える（目印と「確定する」が消える。受け入れ条件 7）。
   トースト「Confirmed "〈名〉"」（削除・統合のトーストと同じ）。フォーカスは、消えた「確定する」の
   代わりに同じ行の「改名」へ移す。「Tentative only」を押している間はその行が一覧から外れるので、
-  削除と同じ規則で次の行の「改名」、無ければ前の行、1 つも無ければ「Tentative only」へ移す
+  上の「絞り込みから外れた行のフォーカス」で次の行の「改名」、無ければ前の行、1 つも無ければ
+  「Tentative only」へ移す
   （「新しいタグ」ではなく絞り込みのボタンへ移すのは、その次の操作が「絞り込みを外す」だから
   である）。
 - 既に確定していた（別のタブで先に確定。応答は `200` のまま）ときも同じに扱う。
@@ -215,7 +233,7 @@
 - 実行中は両方のボタンを `disabled`、danger のボタンに `LoaderCircle`（削除の窓と同じ）。
 - `204` を受けたら窓を閉じ、行を一覧から消し、トースト「Rejected "〈名〉"」、フォーカスは削除と
   同じ規則（次の行の「改名」→ 前の行 → 「新しいタグ」。「Tentative only」中は「新しいタグ」の
-  代わりに「Tentative only」）。却下した名前の一覧（下）を取り直す。
+  代わりに「Tentative only」で、最後のタグでも押せるまま。上の「Toolbar」）。却下した名前の一覧（下）を取り直す。
 - `409 tag_not_tentative`（別のタブや API で先に確定された）は窓を閉じ、トースト「This tag was
   already confirmed, so the list was reloaded」、一覧を取り直す（Edge Case「操作の競合」、
   screen-api.md §2）。`404 tag_not_found` は今の「タグがもう無い」と同じ。その他の失敗は窓の中に
@@ -229,6 +247,11 @@
 - 仮の行の「別のタグへ統合…」は今の窓のまま。統合先の候補に仮のタグも出る（候補に目印は
   足さない。上の「それ以外は変えない」）。応答の `Tag`（統合先）は `tentative: false` で、
   統合先の行の目印が消える（Edge Case「仮のタグどうしの統合」、受け入れ条件 11）。
+- 成功したときのフォーカスは今どおり統合先の名前。ただし「Tentative only」を押している間は、
+  統合元は消え、統合先は確定になって一覧に無い（仮のタグどうしの統合でも、確定したタグへの
+  統合でも）。そのときは上の「絞り込みから外れた行のフォーカス」で、統合元の行の位置の次の
+  行の「改名」、無ければ前の行、1 つも無ければ「Tentative only」へ移す（「新しいタグ」へ
+  落ちない）。
 - 確認の文言は変えない。統合元が仮でも「"X" and its synonyms become synonyms」の文で不都合は
   無い（仮のタグのシノニムは空なので、その部分は空集合を言うだけ）。
 
@@ -275,9 +298,9 @@
 
 | 状態 | 見え方 |
 | --- | --- |
-| 「Tentative only」で仮のタグが無い（検索は空） | `EmptyState`（`CircleDashed`）「No tentative tags」、説明「Tags created by automatic tagging appear here until you confirm or reject them.」、`Button`「Show all tags」。押すと絞り込みを外し、フォーカスを「Tentative only」へ移す |
+| 「Tentative only」で仮のタグが無い（検索は空） | `EmptyState`（`CircleDashed`）「No tentative tags」、説明「Tags created by automatic tagging appear here until you confirm or reject them.」、`Button`「Show all tags」。押すと絞り込みを外し、フォーカスを「Tentative only」へ移す（外した結果タグが 0 なら「Tentative only」は `disabled` になるので「新しいタグ」へ）。最後のタグを却下したあとも、この状態で「Tentative only」は押したまま使える |
 | 「Tentative only」と検索で一致が無い | `EmptyState`（`SearchX`）「No tentative tags match "〈入力〉"」、`Button`「Show all tags」。押すと絞り込みと検索の両方を外し、フォーカスを検索の入力へ移す |
-| 確定の送信中 | 「確定する」が `LoaderCircle`、同じ行の「改名」「その他の操作」が `disabled` |
+| 確定の送信中 | 「確定する」が `LoaderCircle`・`aria-disabled` で次の押下を無視、同じ行の「改名」「その他の操作」が `disabled` |
 | 却下の送信中 | 窓のボタンが `disabled`、「Reject」に `LoaderCircle` |
 | タグが既に確定していた（`tag_not_tentative`） | 窓を閉じ、トースト「This tag was already confirmed, so the list was reloaded」、一覧を取り直す |
 | 却下した名前の取り外しの送信中 | その × が `disabled`（`opacity-50`） |
@@ -293,8 +316,12 @@
 | 768px | 同上 | 同上 | 同上 | 同上 |
 | 360px | 1 行目に検索、2 行目に「Tentative only」と「新しいタグ」が半分ずつ | 4 つの `IconButton`（`h-8 w-8`・`gap-1`）と本数の列（`w-16`）の右に、名前の列が省略されて残る。横スクロールは出ない | 名前の並びが折り返し、長い名前はチップの中で省略 | 同上 |
 
-- 仮の行の名前の列は 360px で約 120px になるが、名前は 1 行で省略され `title` で全体を確かめ
-  られる（今の 3 つの操作のときと同じ扱いで、1 つ増えた分だけ短くなる）。
+- 仮の行の名前の列は 360px で約 92px になる（本文の `px-4` と行の `px-2` を引いた 312px から、
+  列の間の `gap-2` ×2・本数の列 `w-16`・4 つの `IconButton` 128px と `gap-1` ×3 を引く。確定した
+  行は 3 つの操作で約 128px）。名前の列は今どおり `min-w-0 flex-1` で、名前の `Link` は `truncate`
+  （`min-w-0`）、目印は `shrink-0` にして名前の後ろに残し、名前だけが省略される。`title` で全体を
+  確かめられる。横スクロールは出ない。実装の PR で 360px の実機で確かめる（目印が見切れない、
+  長い名前で操作の一群が押し出されない）。
 - 却下の窓・統合の窓は `ModalFrame` の今の幅の扱い（狭い幅で全幅）に従う。
 
 ## Review criteria
@@ -353,6 +380,6 @@
 - 目印: `aria-hidden` のアイコンと、視覚的に隠した「Tentative」または読み上げ名の「(tentative)」。
 - 「Tentative only」: `aria-pressed`。件数の行は今の `role="status"`（`polite`）で絞り込みの
   結果を伝える。
-- 「確定する」: 読み上げ名「Confirm」、送信中は `aria-busy`。
+- 「確定する」: 読み上げ名「Confirm」、送信中は `aria-busy` と `aria-disabled="true"`。
 - 却下した名前: 見出しのボタンは `aria-expanded`、中身の `ul` に `aria-label`「Rejected names」、
   × は「Allow "〈名〉" again」。失敗の行は `role="alert"`。
